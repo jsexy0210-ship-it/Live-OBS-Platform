@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import Script from "next/script";
 import { SITE_NAME, SITE_URL } from "@/lib/site";
 import "./globals.css";
 
@@ -27,14 +26,14 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ko">
-      <body>
-        <Script
-          id="google-adsense"
+      <head>
+        <script
           async
           src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3588439746208886"
           crossOrigin="anonymous"
-          strategy="beforeInteractive"
         />
+      </head>
+      <body>
         <header className="siteHeader">
           <Link className="brand" href="/">LIFELEFT</Link>
           <nav>
