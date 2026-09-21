@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: lifeleft-production-domain
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -37,6 +37,7 @@ jobs:
 
       - name: Verify production output
         run: |
+          set -euo pipefail
           test -f out/index.html
           test -f out/commute/index.html
           test -f out/salary/index.html
@@ -47,6 +48,7 @@ jobs:
           test -f out/robots.txt
           test -f out/sitemap.xml
           grep -R "https://lifeleft.duckdns.org" out/index.html out/robots.txt out/sitemap.xml >/dev/null
+          printf '%s\n' "$GITHUB_SHA" > out/release.txt
 
       - name: Upload production candidate
         uses: actions/upload-artifact@v6
@@ -57,10 +59,10 @@ jobs:
           retention-days: 14
 
   deploy:
-    name: Stage and enable domain on existing Kakao VM
+    name: Deploy on LifeLeft Kakao VM
     needs: [build]
-    runs-on: [self-hosted, Linux, X64, weddingpick-kakao]
-    timeout-minutes: 25
+    runs-on: [self-hosted, Linux, X64, lifeleft-kakao]
+    timeout-minutes: 20
     steps:
       - name: Checkout deployment scripts
         uses: actions/checkout@v5
@@ -73,11 +75,17 @@ jobs:
           name: lifeleft-production-static
           path: .lifeleft-production
 
+      - name: Verify release identity
+        run: |
+          set -euo pipefail
+          test -f .lifeleft-production/release.txt
+          test "$(tr -d '\r\n' < .lifeleft-production/release.txt)" = "$GITHUB_SHA"
+
       - name: Stage immutable release
         run: bash ./scripts/stage-lifeleft-static.sh .lifeleft-production "$GITHUB_SHA"
 
       - name: Enable LifeLeft host and TLS
-        run: bash ./scripts/install-lifeleft-domain.sh "$GITHUB_SHA" lifeleft.duckdns.org 210.109.82.212
+        run: bash ./scripts/install-lifeleft-domain.sh "$GITHUB_SHA" lifeleft.duckdns.org 210.109.15.68
 
   verify:
     name: Verify public HTTPS
@@ -90,8 +98,7 @@ jobs:
           set -euo pipefail
           ok=false
           for _ in $(seq 1 24); do
-            if curl --fail --silent --show-error --connect-timeout 5 --max-time 15 \
-              https://lifeleft.duckdns.org/ > /tmp/lifeleft-home.html; then
+            if curl --fail --silent --show-error --connect-timeout 5 --max-time 15               https://lifeleft.duckdns.org/ > /tmp/lifeleft-home.html; then
               ok=true
               break
             fi
@@ -102,20 +109,20 @@ jobs:
           grep -q 'LIFELEFT' /tmp/lifeleft-home.html
 
           for path in commute salary weekends work-time subscriptions survival; do
-            curl --fail --silent --show-error --connect-timeout 5 --max-time 15 \
-              "https://lifeleft.duckdns.org/$path/" >/dev/null
+            curl --fail --silent --show-error --connect-timeout 5 --max-time 15               "https://lifeleft.duckdns.org/$path/" >/dev/null
           done
 
-          curl --fail --silent --show-error --connect-timeout 5 --max-time 15 \
-            https://lifeleft.duckdns.org/robots.txt | grep -Fq 'https://lifeleft.duckdns.org/sitemap.xml'
-          curl --fail --silent --show-error --connect-timeout 5 --max-time 15 \
-            https://lifeleft.duckdns.org/sitemap.xml | grep -Fq 'https://lifeleft.duckdns.org/'
+          actual="$(curl --fail --silent --show-error https://lifeleft.duckdns.org/release.txt | tr -d '\r\n')"
+          test "$actual" = "$GITHUB_SHA"
+
+          curl --fail --silent --show-error --connect-timeout 5 --max-time 15             https://lifeleft.duckdns.org/robots.txt | grep -Fq 'https://lifeleft.duckdns.org/sitemap.xml'
+          curl --fail --silent --show-error --connect-timeout 5 --max-time 15             https://lifeleft.duckdns.org/sitemap.xml | grep -Fq 'https://lifeleft.duckdns.org/'
 
   rollback:
-    name: Roll back domain on failed public verify
+    name: Roll back failed release
     if: ${{ always() && needs.deploy.result == 'success' && needs.verify.result != 'success' }}
     needs: [deploy, verify]
-    runs-on: [self-hosted, Linux, X64, weddingpick-kakao]
+    runs-on: [self-hosted, Linux, X64, lifeleft-kakao]
     timeout-minutes: 10
     steps:
       - name: Checkout rollback script
@@ -123,14 +130,14 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Restore prior LifeLeft domain state
+      - name: Restore prior LifeLeft state
         run: bash ./scripts/rollback-lifeleft-domain.sh
 
   finalize:
-    name: Finalize verified domain release
+    name: Finalize verified release
     if: ${{ needs.deploy.result == 'success' && needs.verify.result == 'success' }}
     needs: [deploy, verify]
-    runs-on: [self-hosted, Linux, X64, weddingpick-kakao]
+    runs-on: [self-hosted, Linux, X64, lifeleft-kakao]
     timeout-minutes: 5
     steps:
       - name: Checkout finalize script
