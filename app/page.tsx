@@ -6,12 +6,12 @@ import { depletionBadge } from "@/lib/badges";
 const badge = depletionBadge(18);
 
 const calculators = [
+  { href: "/commute/", title: "출근 잔량", metric: "횟수", status: "사용 가능" },
+  { href: "/salary/", title: "월급 잔량", metric: "횟수", status: "사용 가능" },
+  { href: "/weekends/", title: "주말 잔량", metric: "횟수", status: "사용 가능" },
+  { href: "/work-time/", title: "회사 누적시간", metric: "시간", status: "사용 가능" },
   { href: "/subscriptions/", title: "구독 누적", metric: "돈", status: "사용 가능" },
-  { href: "/survival/", title: "생존 잔량", metric: "돈", status: "사용 가능" },
-  { href: "#", title: "출근 잔량", metric: "횟수", status: "준비 중" },
-  { href: "#", title: "월급 잔량", metric: "횟수", status: "준비 중" },
-  { href: "#", title: "회사 누적시간", metric: "시간", status: "준비 중" },
-  { href: "#", title: "주말 잔량", metric: "횟수", status: "준비 중" }
+  { href: "/survival/", title: "생존 잔량", metric: "돈", status: "사용 가능" }
 ];
 
 export default function Home() {
@@ -54,19 +54,11 @@ export default function Home() {
         </div>
         <div className="calculatorGrid">
           {calculators.map((item) => (
-            item.href === "#" ? (
-              <div className="calculatorCard disabled" key={item.title}>
-                <span>{item.metric}</span>
-                <strong>{item.title}</strong>
-                <small>{item.status}</small>
-              </div>
-            ) : (
-              <Link className="calculatorCard" href={item.href} key={item.title}>
-                <span>{item.metric}</span>
-                <strong>{item.title}</strong>
-                <small>{item.status}</small>
-              </Link>
-            )
+            <Link className="calculatorCard" href={item.href} key={item.title}>
+              <span>{item.metric}</span>
+              <strong>{item.title}</strong>
+              <small>{item.status}</small>
+            </Link>
           ))}
         </div>
       </section>

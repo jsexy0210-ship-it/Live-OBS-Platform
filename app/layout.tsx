@@ -14,8 +14,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <header className="siteHeader">
           <Link className="brand" href="/">LIFELEFT</Link>
           <nav>
-            <Link href="/subscriptions/">구독 누적</Link>
-            <Link href="/survival/">생존 잔량</Link>
+            <Link href="/commute/">출근</Link>
+            <Link href="/salary/">월급</Link>
+            <Link href="/weekends/">주말</Link>
+            <Link href="/work-time/">회사시간</Link>
+            <Link href="/subscriptions/">구독</Link>
+            <Link href="/survival/">생존</Link>
           </nav>
         </header>
         {children}
