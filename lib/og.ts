@@ -5,6 +5,7 @@ export type OgSlug =
   | "weekends"
   | "work-time"
   | "ranking"
+  | "career"
   | "subscriptions"
   | "survival";
 
