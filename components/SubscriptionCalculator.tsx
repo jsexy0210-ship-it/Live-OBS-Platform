@@ -96,7 +96,7 @@ export function SubscriptionCalculator() {
           impactBadge={badge.impact}
           tone={badge.tone}
         />
-        <ResultShare title="구독 누적" value={resultValue} factBadge={badge.fact} impactBadge={badge.impact} />
+        <ResultShare title="구독 누적" value={resultValue} factBadge={badge.fact} impactBadge={badge.impact} tone={badge.tone} />
 
         <div className="metricGrid">
           <article><span>월 고정비</span><strong>{result.monthly.toLocaleString()}원</strong></article>

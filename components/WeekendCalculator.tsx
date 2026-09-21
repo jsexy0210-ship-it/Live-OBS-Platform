@@ -5,6 +5,8 @@ import { DepletionDonut, LifeGrid } from "@/components/Charts";
 import { InputNotice } from "@/components/InputNotice";
 import { ResultHero } from "@/components/ResultHero";
 import { ResultShare } from "@/components/ResultShare";
+import { SourceNote } from "@/components/SourceNote";
+import { lifeExpectancyAt, SOURCES } from "@/lib/stats";
 import { weekendBadge } from "@/lib/badges";
 import { useStoredState } from "@/lib/useStoredState";
 
@@ -46,6 +48,17 @@ export function WeekendCalculator() {
           <label><span>현재 나이</span><input type="number" min="0" max="120" value={currentAge} onChange={(event) => setCurrentAge(Number(event.target.value))} /></label>
           <label><span>계산 기준 나이</span><input type="number" min="1" max="120" value={targetAge} onChange={(event) => setTargetAge(Number(event.target.value))} /></label>
         </div>
+        <div className="presetBox">
+          <button
+            type="button"
+            className="secondaryButton"
+            onClick={() => setTargetAge(Math.round(Math.max(0, Math.min(120, currentAge)) + lifeExpectancyAt(currentAge)))}
+          >
+            기대여명 기준 적용 · {Math.round(Math.max(0, Math.min(120, currentAge)) + lifeExpectancyAt(currentAge))}세
+          </button>
+          <p>{Math.round(currentAge)}세 기대여명 {lifeExpectancyAt(currentAge).toFixed(1)}년 · 전체 인구 평균 · 개인 수명 예측 아님</p>
+          <SourceNote sources={[SOURCES.lifeTable]} />
+        </div>
         <InputNotice active={invalidInput} />
       </section>
 
@@ -57,7 +70,7 @@ export function WeekendCalculator() {
           impactBadge={badge.impact}
           tone={badge.tone}
         />
-        <ResultShare title="주말 잔량" value={resultValue} factBadge={badge.fact} impactBadge={badge.impact} />
+        <ResultShare title="주말 잔량" value={resultValue} factBadge={badge.fact} impactBadge={badge.impact} tone={badge.tone} />
         <div className="metricGrid">
           <article><span>남은 여름</span><strong>{result.summers.toLocaleString()}회</strong></article>
           <article><span>남은 연말</span><strong>{result.yearEnds.toLocaleString()}회</strong></article>

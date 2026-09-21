@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { AdSlot } from "@/components/AdSlot";
+import { RelatedCalculators } from "@/components/RelatedCalculators";
 import { WeekendCalculator } from "@/components/WeekendCalculator";
 
 export const metadata: Metadata = {
@@ -18,6 +20,8 @@ export default function WeekendPage() {
   return (
     <main className="pageShell">
       <WeekendCalculator />
+      <AdSlot slot="calculatorBottom" />
+      <RelatedCalculators current="/weekends/" />
     </main>
   );
 }

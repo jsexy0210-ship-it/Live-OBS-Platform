@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { AdSlot } from "@/components/AdSlot";
+import { RelatedCalculators } from "@/components/RelatedCalculators";
 import { SurvivalCalculator } from "@/components/SurvivalCalculator";
 
 export const metadata: Metadata = {
@@ -18,6 +20,8 @@ export default function SurvivalPage() {
   return (
     <main className="pageShell">
       <SurvivalCalculator />
+      <AdSlot slot="calculatorBottom" />
+      <RelatedCalculators current="/survival/" />
     </main>
   );
 }

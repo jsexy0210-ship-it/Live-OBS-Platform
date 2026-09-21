@@ -64,7 +64,7 @@ export function SurvivalCalculator() {
           impactBadge={badge.impact}
           tone={badge.tone}
         />
-        <ResultShare title="생존 잔량" value={displayMonths} factBadge={badge.fact} impactBadge={badge.impact} />
+        <ResultShare title="생존 잔량" value={displayMonths} factBadge={badge.fact} impactBadge={badge.impact} tone={badge.tone} />
 
         <div className="metricGrid">
           <article><span>월 총지출</span><strong>{result.expense.toLocaleString()}원</strong></article>

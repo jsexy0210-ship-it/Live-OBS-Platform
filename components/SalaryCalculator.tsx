@@ -5,6 +5,9 @@ import { SalaryCumulativeChart } from "@/components/Charts";
 import { InputNotice } from "@/components/InputNotice";
 import { ResultHero } from "@/components/ResultHero";
 import { ResultShare } from "@/components/ResultShare";
+import { RetirementScenarios } from "@/components/RetirementScenarios";
+import { SourceNote } from "@/components/SourceNote";
+import { SOURCES, wageGroupFor } from "@/lib/stats";
 import { salaryBadge } from "@/lib/badges";
 import { useStoredState } from "@/lib/useStoredState";
 
@@ -45,6 +48,12 @@ export function SalaryCalculator() {
   }, [careerStartAge, currentAge, monthlySalary, retirementAge]);
 
   const badge = salaryBadge(result.remainingPercent);
+  const wage = wageGroupFor(result.current);
+  const mineManwon = result.safeSalary / 10_000;
+  const peerMax = Math.max(mineManwon, wage.manwon, 1);
+  const peerMine = Math.min(100, (mineManwon / peerMax) * 100);
+  const peerRef = Math.min(100, (wage.manwon / peerMax) * 100);
+  const peerDiff = Math.round(((mineManwon - wage.manwon) / wage.manwon) * 100);
   const resultValue = `${result.remainingPays.toLocaleString()}회`;
 
   return (
@@ -69,13 +78,43 @@ export function SalaryCalculator() {
           impactBadge={badge.impact}
           tone={badge.tone}
         />
-        <ResultShare title="월급 잔량" value={resultValue} factBadge={badge.fact} impactBadge={badge.impact} />
+        <ResultShare title="월급 잔량" value={resultValue} factBadge={badge.fact} impactBadge={badge.impact} tone={badge.tone} />
         <div className="metricGrid">
           <article><span>미래 급여 총액</span><strong>{result.futureTotal.toLocaleString()}원</strong></article>
           <article><span>연간 급여</span><strong>{result.annual.toLocaleString()}원</strong></article>
           <article><span>급여 잔량</span><strong>{result.remainingPercent.toFixed(1)}%</strong></article>
         </div>
         <SalaryCumulativeChart currentAge={result.current} retirementAge={result.retirement} monthlySalary={result.safeSalary} />
+        <section className="peerSection" aria-labelledby="peer-title">
+          <div className="scenarioHead">
+            <h3 id="peer-title">같은 연령대 공식 평균</h3>
+            <span>{wage.label} · 월평균 세전 보수</span>
+          </div>
+          <div className="peerBars">
+            <div>
+              <span>입력 월급</span>
+              <strong>{Math.round(result.safeSalary / 10_000).toLocaleString()}만원</strong>
+              <span className="peerTrack"><span style={{ width: `${peerMine}%` }} /></span>
+            </div>
+            <div>
+              <span>{wage.label} 평균</span>
+              <strong>{wage.manwon.toLocaleString()}만원</strong>
+              <span className="peerTrack peerTrackRef"><span style={{ width: `${peerRef}%` }} /></span>
+            </div>
+          </div>
+          <p className="peerResult">
+            {peerDiff === 0 ? "연령대 평균과 동일" : `연령대 평균 대비 ${peerDiff > 0 ? "+" : ""}${peerDiff}%`}
+          </p>
+          <SourceNote sources={[SOURCES.wages]} />
+        </section>
+        <RetirementScenarios
+          currentAge={result.current}
+          careerStartAge={careerStartAge}
+          retirementAge={retirementAge}
+          perYear={12}
+          unit="회"
+          onSelect={setRetirementAge}
+        />
         <details className="evidence">
           <summary>계산 근거</summary>
           <p>남은 급여 횟수 · 예상 은퇴 나이까지 월 1회 기준</p>

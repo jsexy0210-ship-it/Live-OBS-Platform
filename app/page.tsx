@@ -1,36 +1,59 @@
 import Link from "next/link";
+import { AdSlot } from "@/components/AdSlot";
 import { BurnLine, DepletionDonut, LifeGrid, SpendBars } from "@/components/Charts";
+import { QuickLife } from "@/components/QuickLife";
 import { ResultHero } from "@/components/ResultHero";
 import { depletionBadge } from "@/lib/badges";
+import { CALCULATORS, CATEGORY_CODE, CATEGORY_ORDER } from "@/lib/calculators";
 
 const badge = depletionBadge(18);
-
-const calculators = [
-  { href: "/commute/", title: "출근 잔량", metric: "횟수", status: "사용 가능" },
-  { href: "/salary/", title: "월급 잔량", metric: "횟수", status: "사용 가능" },
-  { href: "/weekends/", title: "주말 잔량", metric: "횟수", status: "사용 가능" },
-  { href: "/work-time/", title: "회사 누적시간", metric: "시간", status: "사용 가능" },
-  { href: "/subscriptions/", title: "구독 누적", metric: "돈", status: "사용 가능" },
-  { href: "/survival/", title: "생존 잔량", metric: "돈", status: "사용 가능" }
-];
 
 export default function Home() {
   return (
     <main>
       <section className="hero">
-        <div>
+        <div className="heroHead">
           <p className="eyebrow">LIFE BALANCE / 2026</p>
           <h1>인생잔량</h1>
-          <p className="heroSub">시간 · 돈 · 횟수</p>
+          <p className="heroSub">나이 하나 · 즉시 계산 · 로그인 없음</p>
         </div>
-        <div className="heroStatus">
-          <span>현재 상태판</span>
-          <strong>잔량 계산</strong>
-        </div>
+        <QuickLife />
       </section>
 
-      <section className="previewSection">
-        <p className="sectionKicker">예시 결과</p>
+      <AdSlot slot="homeMiddle" />
+
+      <section className="catalogSection" aria-labelledby="catalog-title">
+        <div className="sectionHeading">
+          <p className="sectionKicker">CALCULATORS · {CALCULATORS.length}</p>
+          <h2 id="catalog-title">잔량 목록</h2>
+        </div>
+        {CATEGORY_ORDER.map((category) => (
+          <div className="catalogGroup" key={category}>
+            <p className="catalogGroupHead">
+              <span>{CATEGORY_CODE[category]}</span>
+              <strong>{category}</strong>
+            </p>
+            <div className="catalogGrid">
+              {CALCULATORS.filter((item) => item.category === category).map((item) => (
+                <Link className="catalogCard" href={item.href} key={item.href}>
+                  <strong>{item.title}</strong>
+                  <small>{item.summary}</small>
+                  <span className="cardFoot">
+                    <span>단위 · {item.unit}</span>
+                    <span className="cardArrow" aria-hidden="true">→</span>
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        ))}
+      </section>
+
+      <section className="previewSection" aria-labelledby="preview-title">
+        <div className="sectionHeading">
+          <p className="sectionKicker">RESULT FORMAT</p>
+          <h2 id="preview-title">결과 구조</h2>
+        </div>
         <ResultHero
           value="4,218회"
           label="남은 출근"
@@ -47,28 +70,14 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="calculatorSection">
-        <div className="sectionHeading">
-          <p className="sectionKicker">CALCULATORS</p>
-          <h2>잔량 목록</h2>
-        </div>
-        <div className="calculatorGrid">
-          {calculators.map((item) => (
-            <Link className="calculatorCard" href={item.href} key={item.title}>
-              <span>{item.metric}</span>
-              <strong>{item.title}</strong>
-              <small>{item.status}</small>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      <section className="principles">
+      <section className="principles" aria-label="결과 원칙">
         <article><span>01</span><strong>숫자</strong><small>결론</small></article>
         <article><span>02</span><strong>배지</strong><small>판정</small></article>
         <article><span>03</span><strong>차트</strong><small>체감</small></article>
         <article><span>04</span><strong>근거</strong><small>신뢰</small></article>
       </section>
+
+      <AdSlot slot="homeBottom" />
     </main>
   );
 }

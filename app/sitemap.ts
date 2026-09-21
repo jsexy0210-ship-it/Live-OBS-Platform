@@ -10,8 +10,11 @@ export default function sitemap(): MetadataRoute.Sitemap {
     "/salary/",
     "/weekends/",
     "/work-time/",
+    "/ranking/",
     "/subscriptions/",
-    "/survival/"
+    "/survival/",
+    "/about/",
+    "/privacy/"
   ];
 
   return routes.map((route) => ({
