@@ -38,5 +38,9 @@ jobs:
       - name: Verify output
         run: |
           test -f out/index.html
+          test -f out/commute/index.html
+          test -f out/salary/index.html
+          test -f out/weekends/index.html
+          test -f out/work-time/index.html
           test -f out/subscriptions/index.html
           test -f out/survival/index.html
