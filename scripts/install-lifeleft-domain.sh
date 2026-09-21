@@ -70,7 +70,7 @@ sudo -n mkdir -p "$RELEASES"
 mkdir -p "$ROOT" "$BACKUPS"
 
 cert_dir="/etc/letsencrypt/live/$domain"
-if [ ! -f "$cert_dir/fullchain.pem" ] || [ ! -f "$cert_dir/privkey.pem" ]; then
+if ! sudo -n test -f "$cert_dir/fullchain.pem" || ! sudo -n test -f "$cert_dir/privkey.pem"; then
   bootstrap="$(mktemp)"
   cat > "$bootstrap" <<EOF
 server {
@@ -103,8 +103,8 @@ EOF
   sudo -n certbot certonly     --webroot     --webroot-path /var/www/html     --domain "$domain"     --non-interactive     --agree-tos     --register-unsafely-without-email
 fi
 
-test -f "$cert_dir/fullchain.pem"
-test -f "$cert_dir/privkey.pem"
+sudo -n test -f "$cert_dir/fullchain.pem"
+sudo -n test -f "$cert_dir/privkey.pem"
 
 target="$RELEASES/$release_sha"
 if [ ! -f "$target/index.html" ]; then
