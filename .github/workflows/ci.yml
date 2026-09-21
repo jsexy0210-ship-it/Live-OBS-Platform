@@ -21,10 +21,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Staging script safety
+      - name: Deployment script safety
         run: |
+          set -euo pipefail
           bash -n scripts/stage-lifeleft-static.sh
-          ! grep -Eq '/home/ubuntu/WeddingPick|/var/www/weddingpick|/etc/nginx|nginx[[:space:]]+-|systemctl' scripts/stage-lifeleft-static.sh
+          bash -n scripts/install-lifeleft-domain.sh
+          bash -n scripts/rollback-lifeleft-domain.sh
+          bash -n scripts/finalize-lifeleft-domain.sh
+
+          ! grep -Eq '/home/ubuntu/WeddingPick|/var/www/weddingpick' \
+            scripts/stage-lifeleft-static.sh \
+            scripts/install-lifeleft-domain.sh \
+            scripts/rollback-lifeleft-domain.sh \
+            scripts/finalize-lifeleft-domain.sh
+
+          ! grep -Eq '/etc/nginx|nginx[[:space:]]+-|systemctl' scripts/stage-lifeleft-static.sh
+          grep -Fq 'lifeleft.duckdns.org' lib/site.ts
+          grep -Fq 'server_name $domain' scripts/install-lifeleft-domain.sh
 
       - name: Node
         uses: actions/setup-node@v4
@@ -49,3 +62,8 @@ jobs:
           test -f out/work-time/index.html
           test -f out/subscriptions/index.html
           test -f out/survival/index.html
+          test -f out/robots.txt
+          test -f out/sitemap.xml
+
+          grep -Fq 'https://lifeleft.duckdns.org/sitemap.xml' out/robots.txt
+          grep -Fq 'https://lifeleft.duckdns.org/' out/sitemap.xml
