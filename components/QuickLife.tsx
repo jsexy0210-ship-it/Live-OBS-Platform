@@ -2,16 +2,16 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { BirthField } from "@/components/BirthField";
 import { FitText } from "@/components/FitText";
 import { commuteBadge, salaryBadge, weekendBadge, type BadgeTone } from "@/lib/badges";
-import { useStoredState } from "@/lib/useStoredState";
+import { useBirthProfile } from "@/lib/profile";
 
 const START_AGE = 25;
 const RETIRE_AGE = 60;
 const TARGET_AGE = 80;
 const ANNUAL_WORKDAYS = 52 * 5 - 15;
 const WEEKS_PER_YEAR = 365.2425 / 7;
-const AGE_OPTIONS = Array.from({ length: 86 }, (_, i) => i + 15);
 
 type Tile = {
   key: "w" | "c" | "s";
@@ -25,7 +25,7 @@ type Tile = {
 };
 
 export function QuickLife() {
-  const [age, setAge] = useStoredState("lifeleft.quick.age", 36);
+  const { age } = useBirthProfile();
   const safeAge = Math.max(15, Math.min(100, Number.isFinite(age) ? age : 36));
 
   const tiles = useMemo<Tile[]>(() => {
@@ -114,21 +114,12 @@ export function QuickLife() {
       {friend ? (
         <p className="friendBanner" role="status">
           <strong>친구 결과 도착</strong>
-          <span>내 나이 입력 · 즉시 비교</span>
+          <span>내 생년월일 저장 · 즉시 비교</span>
         </p>
       ) : null}
       <div className="ageInput">
-        <label htmlFor="quick-age">현재 나이</label>
-        <span className="ageField">
-          <button type="button" aria-label="나이 1 감소" onClick={() => setAge(Math.max(15, safeAge - 1))}>−</button>
-          <select id="quick-age" value={safeAge} onChange={(event) => setAge(Number(event.target.value))}>
-            {AGE_OPTIONS.map((option) => (
-              <option key={option} value={option}>{option}세</option>
-            ))}
-          </select>
-          <button type="button" aria-label="나이 1 증가" onClick={() => setAge(Math.min(100, safeAge + 1))}>+</button>
-        </span>
-        {invalid ? <small className="ageNotice">15~100세 범위 보정</small> : <small>선택 즉시 계산</small>}
+        <BirthField large />
+        {invalid ? <small className="ageNotice">만 {age}세 · 15~100세 범위로 보정 계산</small> : null}
       </div>
 
       <div className="quickGrid">

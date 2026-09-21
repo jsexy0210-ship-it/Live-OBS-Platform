@@ -1,20 +1,19 @@
 "use client";
 
 import { useMemo } from "react";
-import { SelectField } from "@/components/fields";
-import { range } from "@/lib/format";
+import { BirthField } from "@/components/BirthField";
 import { InputNotice } from "@/components/InputNotice";
 import { ResultHero } from "@/components/ResultHero";
 import { ResultShare } from "@/components/ResultShare";
 import { SourceNote } from "@/components/SourceNote";
 import { lifeExpectancyAt, SOURCES, TIME_USE } from "@/lib/stats";
-import { useStoredState } from "@/lib/useStoredState";
+import { useBirthProfile } from "@/lib/profile";
 
 const DAYS_PER_YEAR = 365.2425;
 const GROUP_TONE = { 필수: "neutral", 의무: "danger", 여가: "watch" } as const;
 
 export function TimeRanking() {
-  const [age, setAge] = useStoredState("lifeleft.ranking.age", 36);
+  const { age } = useBirthProfile();
   const invalid = age < 0 || age > 100;
   const safeAge = Math.max(0, Math.min(100, Number.isFinite(age) ? age : 36));
 
@@ -39,7 +38,7 @@ export function TimeRanking() {
         <p className="eyebrow">공식 통계 기반</p>
         <h1>인생 시간 랭킹</h1>
         <div className="formGrid">
-          <SelectField label="현재 나이" value={age} options={range(1, 100)} unit="세" onChange={setAge} />
+          <BirthField />
         </div>
         <InputNotice active={invalid} />
         <p className="panelNote">

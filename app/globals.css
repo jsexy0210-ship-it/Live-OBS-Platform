@@ -559,6 +559,17 @@ input:focus { border-color: var(--lime); }
 }
 .wheelItem.active { color: var(--text); font-weight: 800; }
 
+.birthRow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.birthRow input { letter-spacing: .12em; }
+.birthRow .primaryButton { min-height: 52px; padding: 0 24px; }
+.birthRow .primaryButton:disabled { background: var(--panel-2); border-color: var(--line-strong); color: var(--dim); cursor: default; }
+.birthHint { font-size: 12px; color: var(--muted); }
+.birthHint.error { color: var(--amber); font-weight: 700; }
+.birthFieldLarge > label { font-size: 13px; color: var(--muted); }
+.birthFieldLarge .birthRow input { height: 64px; font-size: 30px; font-weight: 800; }
+.birthFieldLarge .birthRow .primaryButton { min-height: 64px; font-size: 17px; }
+.ageInput { max-width: 440px; }
+
 .fitText { display: block; white-space: nowrap; overflow: hidden; }
 
 /* ---------- Ads ---------- */

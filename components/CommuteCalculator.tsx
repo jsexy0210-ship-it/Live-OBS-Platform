@@ -5,15 +5,17 @@ import { useMemo } from "react";
 import { CommuteTimelineChart, DepletionDonut } from "@/components/Charts";
 import { SelectField } from "@/components/fields";
 import { range } from "@/lib/format";
+import { BirthField } from "@/components/BirthField";
 import { InputNotice } from "@/components/InputNotice";
 import { ResultHero } from "@/components/ResultHero";
 import { ResultShare } from "@/components/ResultShare";
 import { RetirementScenarios } from "@/components/RetirementScenarios";
 import { commuteBadge } from "@/lib/badges";
+import { useBirthProfile } from "@/lib/profile";
 import { useStoredState } from "@/lib/useStoredState";
 
 export function CommuteCalculator() {
-  const [currentAge, setCurrentAge] = useStoredState("lifeleft.commute.currentAge", 36);
+  const { age: currentAge } = useBirthProfile();
   const [careerStartAge, setCareerStartAge] = useStoredState("lifeleft.commute.careerStartAge", 25);
   const [retirementAge, setRetirementAge] = useStoredState("lifeleft.commute.retirementAge", 60);
   const [weeklyDays, setWeeklyDays] = useStoredState("lifeleft.commute.weeklyDays", 5);
@@ -64,7 +66,7 @@ export function CommuteCalculator() {
         <p className="eyebrow">사용자 입력 기반 추정</p>
         <h1>출근 잔량</h1>
         <div className="formGrid">
-          <SelectField label="현재 나이" value={currentAge} options={range(15, 100)} unit="세" onChange={setCurrentAge} />
+          <BirthField />
           <SelectField label="직장 시작 나이" value={careerStartAge} options={range(15, 70)} unit="세" onChange={setCareerStartAge} />
           <SelectField label="예상 은퇴 나이" value={retirementAge} options={range(40, 90)} unit="세" onChange={setRetirementAge} />
           <SelectField label="주간 출근일" value={weeklyDays} options={range(1, 7)} unit="일" onChange={setWeeklyDays} />

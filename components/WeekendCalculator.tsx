@@ -5,18 +5,20 @@ import { useMemo } from "react";
 import { DepletionDonut, LifeGrid } from "@/components/Charts";
 import { SelectField } from "@/components/fields";
 import { range } from "@/lib/format";
+import { BirthField } from "@/components/BirthField";
 import { InputNotice } from "@/components/InputNotice";
 import { ResultHero } from "@/components/ResultHero";
 import { ResultShare } from "@/components/ResultShare";
 import { SourceNote } from "@/components/SourceNote";
 import { lifeExpectancyAt, SOURCES } from "@/lib/stats";
 import { weekendBadge } from "@/lib/badges";
+import { useBirthProfile } from "@/lib/profile";
 import { useStoredState } from "@/lib/useStoredState";
 
 const WEEKS_PER_YEAR = 365.2425 / 7;
 
 export function WeekendCalculator() {
-  const [currentAge, setCurrentAge] = useStoredState("lifeleft.weekends.currentAge", 36);
+  const { age: currentAge } = useBirthProfile();
   const [targetAge, setTargetAge] = useStoredState("lifeleft.weekends.targetAge", 80);
 
   const invalidInput = currentAge < 0 || currentAge > 120 || targetAge <= currentAge || targetAge > 120;
@@ -48,7 +50,7 @@ export function WeekendCalculator() {
         <p className="eyebrow">선택 연령 기준 단순 계산</p>
         <h1>주말 잔량</h1>
         <div className="formGrid">
-          <SelectField label="현재 나이" value={currentAge} options={range(1, 100)} unit="세" onChange={setCurrentAge} />
+          <BirthField />
           <SelectField label="계산 기준 나이" value={targetAge} options={range(30, 120)} unit="세" onChange={setTargetAge} />
         </div>
         <div className="presetBox">
