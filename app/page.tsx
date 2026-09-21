@@ -15,7 +15,7 @@ export default function Home() {
         <div className="heroHead">
           <p className="eyebrow">LIFE BALANCE / 2026</p>
           <h1>인생잔량</h1>
-          <p className="heroSub">생년월일 하나 · 즉시 계산 · 로그인 없음</p>
+          <p className="heroSub">남은 인생잔량을 확인하세요</p>
         </div>
         <QuickLife />
       </section>
