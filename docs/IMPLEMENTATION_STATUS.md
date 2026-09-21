@@ -3,7 +3,7 @@
 > 기준일: 2026-09-21
 > Source of Truth: GitHub main + 현재 작업 PR
 
-## 구현 완료
+## 완료
 
 | 영역 | 상태 |
 |---|---|
@@ -20,80 +20,47 @@
 | localStorage 저장/복원 | 완료 |
 | 입력 범위 보정 | 완료 |
 | Static Export CI | 완료 |
-| 기존 인프라 재사용 정책 | 완료 |
+| DuckDNS 확보 | 완료 |
+| 운영 도메인 설정 | 완료 |
+| canonical / sitemap / robots | 완료 |
 | Kakao VM immutable staging | 완료 |
-| Nginx 무변경 CI guard | 완료 |
+| LifeLeft 전용 Nginx/TLS 배포 코드 | 완료 |
+| 공개 검증/rollback workflow | 완료 |
 
-## 현재 차트
+## 운영 정본
 
-- Depletion Donut
-- Area Chart
-- Line Chart
-- Horizontal Bar
-- Stacked Bar
-- Pie Chart
-- Life Grid
+```text
+https://lifeleft.duckdns.org
+```
 
-## 결과 공유 원칙
+DNS:
 
-- 결과명
-- 핵심 숫자
-- 팩트 배지
-- 임팩트 배지
-- 현재 페이지 URL
+```text
+lifeleft.duckdns.org → 210.109.82.212
+```
 
-공유 제외:
+## 배포 구조
 
-- 급여 입력값
-- 자산 입력값
-- 지출 입력값
-- 구독별 결제 입력값
-- 기타 민감 입력값
+- 기존 KakaoCloud VM
+- 기존 HTTPS 443
+- LifeLeft 전용 `server_name`
+- WeddingPick default server 보존
+- 별도 `/var/www/lifeleft`
+- Let's Encrypt
+- 외부 smoke 실패 시 rollback
 
-## 사용자 입력 저장
-
-- 브라우저 localStorage 전용
-- 서버 저장 없음
-- 계정 저장 없음
-- 계산기별 key 분리
-- 저장 실패 시 계산 기능 유지
-
-## 현재 계산 기준
-
-출근 잔량:
-- 사용자 입력 기반 추정
-- 공휴일 Snapshot 미연결
-- 공휴일·휴직·회사별 휴무일 미반영
-
-월급 잔량:
-- 현재 월 급여 유지 가정
-- 연봉 상승·성과급·퇴직금·세금 변동 미반영
-
-주말 잔량:
-- 사용자 선택 기준 나이 기반 단순 계산
-- 실제 수명 예측 아님
-
-회사 누적시간:
-- 사용자 입력 기반 추정
-- 공휴일·휴직·재택·야근 변동 미반영
-
-## 다음 작업
+## 남은 제품 작업
 
 1. 공휴일 Snapshot
-2. OG/SEO 보강
-3. 공유 카드 이미지
-4. 기존 self-hosted runner scope 확인
-5. 운영 URL/경로 확정 후 공개 전환
+2. 공유 카드 이미지
+3. 데이터 출처/기준일 세부 고도화
+4. 검색 유입용 계산기별 콘텐츠 보강
 
-## 인프라
+## 배포 직전 확인
 
-- 신규 VM 없음
-- 신규 DB 없음
-- 신규 백엔드 없음
-- Render 없음
-- 기존 GitHub Actions 사용
-- 기존 KakaoCloud VM 사용
-- 기존 Nginx/HTTPS 443 사용
-- LifeLeft 후보 경로 `/home/ubuntu/LifeLeft/static-releases/<SHA>`
-- 기존 WeddingPick 운영 경로 변경 금지
-- staging 단계 Nginx 변경 금지
+- PR CI 성공
+- main 병합
+- self-hosted runner 실행 여부
+- DNS propagation
+- certbot 발급
+- public HTTPS smoke
