@@ -48,6 +48,8 @@ jobs:
           test -f out/robots.txt
           test -f out/sitemap.xml
           grep -R "https://lifeleft.duckdns.org" out/index.html out/robots.txt out/sitemap.xml >/dev/null
+          grep -Fq "ca-pub-3588439746208886" out/index.html
+          grep -Fq "google.com, pub-3588439746208886, DIRECT, f08c47fec0942fa0" out/ads.txt
           printf '%s\n' "$GITHUB_SHA" > out/release.txt
 
       - name: Upload production candidate
