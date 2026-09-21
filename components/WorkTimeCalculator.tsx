@@ -84,7 +84,7 @@ export function WorkTimeCalculator() {
           impactBadge={badge.impact}
           tone={badge.tone}
         />
-        <ResultShare title="회사 누적시간" value={resultValue} factBadge={badge.fact} impactBadge={badge.impact} />
+        <ResultShare title="회사 누적시간" value={resultValue} factBadge={badge.fact} impactBadge={badge.impact} tone={badge.tone} />
         <div className="metricGrid">
           <article><span>근무 누적</span><strong>{Math.round(result.workHours).toLocaleString()}시간</strong></article>
           <article><span>출퇴근 누적</span><strong>{Math.round(result.commuteHours).toLocaleString()}시간</strong></article>

@@ -389,6 +389,7 @@ commercialUseAllowed
 /work-time
 /subscriptions
 /survival
+/ranking
 /about
 /privacy
 ```
@@ -444,6 +445,16 @@ LifeLeft
 
 - Web Share API
 - 링크 복사 fallback
+
+---
+
+### 12-1. 비교·확산 (2026-09-21 추가, YOU'RE NEXT 벤치마킹)
+
+- 공유 카드 이미지 · 결과 숫자·배지만 표기, 입력값 미포함
+- 친구 비교 링크 · 홈 즉시 계산 결과값(`w`,`c`,`s`)만 URL 포함, 급여·자산 등 입력값 금지
+- 은퇴 시점 시뮬레이션 · 평균 퇴직(고령층 부가조사) / 법정 정년 / 연금 개시 / 희망 근로 연령
+- 공식 통계 비교 · 연령대 평균 월급, 기대여명, 생활시간 (`lib/stats.ts`, 출처·기준일 화면 표기)
+- 인생 시간 랭킹 · 기대여명 × 생활시간조사 활동별 평균
 
 ---
 

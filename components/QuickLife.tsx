@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { commuteBadge, salaryBadge, weekendBadge, type BadgeTone } from "@/lib/badges";
 import { useStoredState } from "@/lib/useStoredState";
 
@@ -12,6 +12,7 @@ const ANNUAL_WORKDAYS = 52 * 5 - 15;
 const WEEKS_PER_YEAR = 365.2425 / 7;
 
 type Tile = {
+  key: "w" | "c" | "s";
   href: string;
   label: string;
   value: number;
@@ -40,6 +41,7 @@ export function QuickLife() {
 
     return [
       {
+        key: "w",
         href: "/weekends/",
         label: "남은 주말",
         value: Math.round(weekendLeftYears * WEEKS_PER_YEAR),
@@ -49,6 +51,7 @@ export function QuickLife() {
         tone: weekend.tone
       },
       {
+        key: "c",
         href: "/commute/",
         label: "남은 출근",
         value: Math.round(workLeftYears * ANNUAL_WORKDAYS),
@@ -58,6 +61,7 @@ export function QuickLife() {
         tone: commute.tone
       },
       {
+        key: "s",
         href: "/salary/",
         label: "남은 월급",
         value: Math.round(workLeftYears * 12),
@@ -70,9 +74,47 @@ export function QuickLife() {
   }, [safeAge]);
 
   const invalid = age < 15 || age > 100;
+  const [friend, setFriend] = useState<Partial<Record<Tile["key"], number>> | null>(null);
+  const [shareStatus, setShareStatus] = useState("");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const parsed: Partial<Record<Tile["key"], number>> = {};
+    for (const key of ["w", "c", "s"] as const) {
+      const raw = params.get(key);
+      if (raw === null) continue;
+      const value = Number(raw);
+      if (Number.isInteger(value) && value >= 0 && value <= 100_000) parsed[key] = value;
+    }
+    if (Object.keys(parsed).length > 0) setFriend(parsed);
+  }, []);
+
+  async function shareCompare() {
+    const query = tiles.map((tile) => `${tile.key}=${tile.value}`).join("&");
+    const url = `${window.location.origin}/?${query}`;
+    const text = ["인생잔량 비교", ...tiles.map((tile) => `${tile.label} ${tile.value.toLocaleString()}${tile.unit}`)].join("\n");
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: "인생잔량 비교 | LifeLeft", text, url });
+        setShareStatus("공유 완료");
+        return;
+      }
+      await navigator.clipboard.writeText(`${text}\n${url}`);
+      setShareStatus("비교 링크 복사 완료");
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      setShareStatus("공유 실패");
+    }
+  }
 
   return (
     <div className="quickLife">
+      {friend ? (
+        <p className="friendBanner" role="status">
+          <strong>친구 결과 도착</strong>
+          <span>내 나이 입력 · 즉시 비교</span>
+        </p>
+      ) : null}
       <label className="ageInput">
         <span>현재 나이</span>
         <span className="ageField">
@@ -92,7 +134,7 @@ export function QuickLife() {
 
       <div className="quickGrid">
         {tiles.map((tile) => (
-          <Link className="quickTile" href={tile.href} key={tile.label} data-tone={tile.tone}>
+          <Link className="quickTile" href={tile.href} key={tile.key} data-tone={tile.tone}>
             <span className="quickLabel">{tile.label}</span>
             <strong className="quickValue">
               {tile.value.toLocaleString()}
@@ -105,9 +147,26 @@ export function QuickLife() {
               <span>잔량 {tile.remainingPercent.toFixed(0)}%</span>
               <span className="toneText">{tile.impact}</span>
             </span>
+            {friend?.[tile.key] !== undefined ? (
+              <span className="friendLine">
+                <span>친구 {friend[tile.key]!.toLocaleString()}{tile.unit}</span>
+                <span className="toneText">
+                  {tile.value === friend[tile.key]
+                    ? "동일"
+                    : `나 ${tile.value > friend[tile.key]! ? "+" : ""}${(tile.value - friend[tile.key]!).toLocaleString()}${tile.unit}`}
+                </span>
+              </span>
+            ) : null}
             <span className="quickCta">상세 계산 →</span>
           </Link>
         ))}
+      </div>
+
+      <div className="resultActions quickActions">
+        <button className="primaryButton" type="button" onClick={shareCompare}>
+          친구 비교 링크
+        </button>
+        <span className="actionStatus" aria-live="polite">{shareStatus}</span>
       </div>
 
       <p className="quickBasis">

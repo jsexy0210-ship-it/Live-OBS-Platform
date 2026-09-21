@@ -5,6 +5,7 @@ import { CommuteTimelineChart, DepletionDonut } from "@/components/Charts";
 import { InputNotice } from "@/components/InputNotice";
 import { ResultHero } from "@/components/ResultHero";
 import { ResultShare } from "@/components/ResultShare";
+import { RetirementScenarios } from "@/components/RetirementScenarios";
 import { commuteBadge } from "@/lib/badges";
 import { useStoredState } from "@/lib/useStoredState";
 
@@ -77,7 +78,7 @@ export function CommuteCalculator() {
           impactBadge={badge.impact}
           tone={badge.tone}
         />
-        <ResultShare title="출근 잔량" value={resultValue} factBadge={badge.fact} impactBadge={badge.impact} />
+        <ResultShare title="출근 잔량" value={resultValue} factBadge={badge.fact} impactBadge={badge.impact} tone={badge.tone} />
         <div className="metricGrid">
           <article><span>소모 출근</span><strong>{result.usedCommutes.toLocaleString()}회</strong></article>
           <article><span>잔량 비율</span><strong>{result.remainingPercent.toFixed(1)}%</strong></article>
@@ -87,6 +88,14 @@ export function CommuteCalculator() {
           <DepletionDonut used={100 - result.remainingPercent} remaining={result.remainingPercent} />
           <CommuteTimelineChart currentAge={result.current} retirementAge={result.retirement} remainingCommutes={result.remainingCommutes} />
         </div>
+        <RetirementScenarios
+          currentAge={result.current}
+          careerStartAge={careerStartAge}
+          retirementAge={retirementAge}
+          perYear={Math.max(0, 52 * Math.max(0, Math.min(7, weeklyDays)) - Math.max(0, Math.min(365, annualLeave)))}
+          unit="회"
+          onSelect={setRetirementAge}
+        />
         <details className="evidence">
           <summary>계산 근거</summary>
           <p>연간 출근 추정 · 52주 × 주간 출근일 - 연간 휴가일</p>

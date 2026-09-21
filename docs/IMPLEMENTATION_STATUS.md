@@ -26,6 +26,13 @@
 | 다른 잔량 연결 | 완료 |
 | /about · /privacy | 완료 |
 | AdSense 스크립트 · ads.txt | 완료 |
+| 공유 카드 이미지 (1080×1350 PNG) | 완료 |
+| 친구 비교 링크 (결과값만 URL 포함) | 완료 |
+| 은퇴 시점 시뮬레이션 (출근·월급) | 완료 |
+| 연령대 평균 월급 비교 (공식 통계) | 완료 |
+| 기대여명 기준 주말 계산 (공식 통계) | 완료 |
+| 인생 시간 랭킹 /ranking | 완료 |
+| 다국어 | 보류 |
 | AdSense 수동 광고 슬롯 ID | 대기 |
 | 사업자 정보 · 문의 이메일 | 완료 |
 
@@ -57,4 +64,3 @@ https://lifeleft.duckdns.org
 3. 대기 중인 LifeLeft deploy workflow 실행
 4. HTTPS public smoke
 5. 공휴일 Snapshot
-6. 공유 카드 이미지
