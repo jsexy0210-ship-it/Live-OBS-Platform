@@ -5,38 +5,55 @@
 
 ## 원칙
 
-**신규 인프라 없음**
+LifeLeft 인프라는 WeddingPick과 완전 분리.
 
-재사용:
+공유:
 
-- 기존 GitHub
-- 기존 GitHub Actions
-- 기존 self-hosted runner 운영 방식
-- 기존 KakaoCloud VM
-- 기존 Nginx
-- 기존 HTTPS 443
+- KakaoCloud 계정
+- GitHub 계정
 
-미사용:
+분리:
 
-- Render
-- 신규 VM
-- 신규 DB
-- 신규 Redis
-- 신규 API 서버
-- 별도 컨테이너 런타임
+- KakaoCloud 프로젝트
+- VPC
+- Subnet
+- Security Group
+- VM
+- Public IP
+- GitHub self-hosted runner
+- Nginx
+- TLS
+- 배포 workflow
+
+## 현재 인프라
+
+```text
+project  lifeleft
+VPC      lifeleft-vpc / 10.10.0.0/16
+subnet   lifeleft-vpc_public_sn1 / 10.10.10.0/24
+VM       lifeleft-web-prod
+private  10.10.10.232
+public   210.109.15.68
+domain   lifeleft.duckdns.org
+runner   lifeleft-kakao
+```
 
 ## 네트워크
 
 ```text
-lifeleft.duckdns.org
-→ 210.109.82.212
-→ Nginx 443
-→ LifeLeft 전용 server_name
+Internet
+→ lifeleft.duckdns.org
+→ 210.109.15.68
+→ lifeleft-web-prod
+→ Nginx 80/443
+→ LifeLeft Static Export
 ```
 
-WeddingPick default server 유지.
+Security Group:
 
-LifeLeft는 host 기반 분리.
+- TCP 22: 관리자 공인 IP/32
+- TCP 80: 0.0.0.0/0
+- TCP 443: 0.0.0.0/0
 
 ## 파일 경로
 
@@ -53,61 +70,33 @@ live:
 /var/www/lifeleft/current
 ```
 
-WeddingPick:
+## 배포
 
-```text
-/home/ubuntu/WeddingPick/
-/var/www/weddingpick/
-```
+GitHub-hosted runner:
 
-LifeLeft 배포 코드에서 위 WeddingPick 경로 접근 금지.
+- npm install
+- typecheck
+- static export
+- artifact 생성
 
-## Nginx
+LifeLeft self-hosted runner:
 
-LifeLeft 전용 설정:
+- artifact 다운로드
+- immutable staging
+- release 전환
+- Nginx/TLS
+- local smoke
+- rollback/finalize
 
-```text
-/etc/nginx/sites-available/lifeleft
-/etc/nginx/sites-enabled/lifeleft
-```
+VM에서 npm build를 수행하지 않는다.
 
-기존 WeddingPick 설정 파일 수정 금지.
+## 미사용
 
-443 포트 공유는 `server_name lifeleft.duckdns.org`로 분리.
-
-## TLS
-
-- Let's Encrypt
-- certbot webroot
-- ACME root: `/var/www/html`
-- 인증서 호스트: `lifeleft.duckdns.org`
-
-## CI / Deploy
-
-PR CI:
-
-- shell syntax
-- WeddingPick 경로 침범 검사
-- TypeScript
-- Static Export
-- sitemap/robots 검증
-
-main:
-
-- production build
-- self-hosted staging
-- domain cutover
-- 외부 HTTPS 검증
-- 성공 finalize
-- 실패 rollback
-
-## 운영 안전 규칙
-
-- `nginx -t` 성공 전 reload 금지
-- 신규 default_server 생성 금지
-- 기존 IP 서비스 redirect 금지
-- 8443 금지
-- Render 금지
-- 외부 smoke 실패 시 rollback
+- WeddingPick 인프라
+- Render
+- DB
+- Redis
+- 별도 API
+- 컨테이너 런타임
 
 상세: `docs/DEPLOYMENT.md`
