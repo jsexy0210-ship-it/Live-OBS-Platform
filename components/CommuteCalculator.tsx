@@ -1,30 +1,49 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { CommuteTimelineChart, DepletionDonut } from "@/components/Charts";
+import { InputNotice } from "@/components/InputNotice";
 import { ResultHero } from "@/components/ResultHero";
+import { ResultShare } from "@/components/ResultShare";
 import { commuteBadge } from "@/lib/badges";
+import { useStoredState } from "@/lib/useStoredState";
 
 export function CommuteCalculator() {
-  const [currentAge, setCurrentAge] = useState(36);
-  const [careerStartAge, setCareerStartAge] = useState(25);
-  const [retirementAge, setRetirementAge] = useState(60);
-  const [weeklyDays, setWeeklyDays] = useState(5);
-  const [annualLeave, setAnnualLeave] = useState(15);
+  const [currentAge, setCurrentAge] = useStoredState("lifeleft.commute.currentAge", 36);
+  const [careerStartAge, setCareerStartAge] = useStoredState("lifeleft.commute.careerStartAge", 25);
+  const [retirementAge, setRetirementAge] = useStoredState("lifeleft.commute.retirementAge", 60);
+  const [weeklyDays, setWeeklyDays] = useStoredState("lifeleft.commute.weeklyDays", 5);
+  const [annualLeave, setAnnualLeave] = useStoredState("lifeleft.commute.annualLeave", 15);
+
+  const invalidInput =
+    currentAge < 15 ||
+    currentAge > 100 ||
+    careerStartAge < 15 ||
+    careerStartAge > currentAge ||
+    retirementAge < currentAge ||
+    retirementAge > 100 ||
+    weeklyDays < 0 ||
+    weeklyDays > 7 ||
+    annualLeave < 0 ||
+    annualLeave > 365;
 
   const result = useMemo(() => {
-    const start = Math.max(15, careerStartAge);
-    const current = Math.max(start, currentAge);
-    const retirement = Math.max(current, retirementAge);
+    const start = Math.max(15, Math.min(100, careerStartAge));
+    const current = Math.max(start, Math.min(100, currentAge));
+    const retirement = Math.max(current, Math.min(100, retirementAge));
+    const safeWeeklyDays = Math.max(0, Math.min(7, weeklyDays));
+    const safeAnnualLeave = Math.max(0, Math.min(365, annualLeave));
     const totalCareerYears = Math.max(1, retirement - start);
     const elapsedYears = Math.max(0, current - start);
-    const annualWorkdays = Math.max(0, 52 * Math.max(0, weeklyDays) - Math.max(0, annualLeave));
+    const annualWorkdays = Math.max(0, 52 * safeWeeklyDays - safeAnnualLeave);
     const totalCommutes = Math.round(totalCareerYears * annualWorkdays);
     const usedCommutes = Math.min(totalCommutes, Math.round(elapsedYears * annualWorkdays));
     const remainingCommutes = Math.max(0, totalCommutes - usedCommutes);
     const remainingPercent = totalCommutes > 0 ? (remainingCommutes / totalCommutes) * 100 : 0;
 
     return {
+      current,
+      retirement,
       usedCommutes,
       remainingCommutes,
       remainingPercent,
@@ -33,6 +52,7 @@ export function CommuteCalculator() {
   }, [annualLeave, careerStartAge, currentAge, retirementAge, weeklyDays]);
 
   const badge = commuteBadge(result.remainingPercent);
+  const resultValue = `${result.remainingCommutes.toLocaleString()}회`;
 
   return (
     <div className="calculatorLayout">
@@ -46,16 +66,18 @@ export function CommuteCalculator() {
           <label><span>주간 출근일</span><input type="number" min="0" max="7" value={weeklyDays} onChange={(event) => setWeeklyDays(Number(event.target.value))} /></label>
           <label><span>연간 휴가일</span><input type="number" min="0" max="365" value={annualLeave} onChange={(event) => setAnnualLeave(Number(event.target.value))} /></label>
         </div>
+        <InputNotice active={invalidInput} />
       </section>
 
       <section className="resultPanel">
         <ResultHero
-          value={`${result.remainingCommutes.toLocaleString()}회`}
+          value={resultValue}
           label="남은 출근"
           factBadge={badge.fact}
           impactBadge={badge.impact}
           tone={badge.tone}
         />
+        <ResultShare title="출근 잔량" value={resultValue} factBadge={badge.fact} impactBadge={badge.impact} />
         <div className="metricGrid">
           <article><span>소모 출근</span><strong>{result.usedCommutes.toLocaleString()}회</strong></article>
           <article><span>잔량 비율</span><strong>{result.remainingPercent.toFixed(1)}%</strong></article>
@@ -63,13 +85,14 @@ export function CommuteCalculator() {
         </div>
         <div className="chartGrid">
           <DepletionDonut used={100 - result.remainingPercent} remaining={result.remainingPercent} />
-          <CommuteTimelineChart currentAge={currentAge} retirementAge={Math.max(currentAge, retirementAge)} remainingCommutes={result.remainingCommutes} />
+          <CommuteTimelineChart currentAge={result.current} retirementAge={result.retirement} remainingCommutes={result.remainingCommutes} />
         </div>
         <details className="evidence">
           <summary>계산 근거</summary>
           <p>연간 출근 추정 · 52주 × 주간 출근일 - 연간 휴가일</p>
           <p>공휴일·휴직·회사별 휴무일 미반영</p>
           <p>공휴일 Snapshot 연결 전 · 사용자 입력 기반 추정</p>
+          <p>입력 저장 · 현재 브라우저 기기</p>
         </details>
       </section>
     </div>
