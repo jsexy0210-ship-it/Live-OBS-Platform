@@ -1,10 +1,26 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { SITE_NAME, SITE_URL } from "@/lib/site";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "인생잔량 | LifeLeft",
-  description: "시간·돈·횟수의 잔량 계산"
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: "인생잔량 | LifeLeft",
+    template: "%s | 인생잔량"
+  },
+  description: "시간·돈·횟수의 잔량 계산",
+  alternates: {
+    canonical: "/"
+  },
+  openGraph: {
+    type: "website",
+    locale: "ko_KR",
+    url: "/",
+    siteName: SITE_NAME,
+    title: "인생잔량 | LifeLeft",
+    description: "시간·돈·횟수의 잔량 계산"
+  }
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
