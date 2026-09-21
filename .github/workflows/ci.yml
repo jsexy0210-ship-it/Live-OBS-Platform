@@ -21,6 +21,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Staging script safety
+        run: |
+          bash -n scripts/stage-lifeleft-static.sh
+          ! grep -Eq '/home/ubuntu/WeddingPick|/var/www/weddingpick|/etc/nginx|nginx[[:space:]]+-|systemctl' scripts/stage-lifeleft-static.sh
+
       - name: Node
         uses: actions/setup-node@v4
         with:
