@@ -42,7 +42,9 @@ export function ResultShare({ title, value, factBadge, impactBadge }: Props) {
       <button className="primaryButton" type="button" onClick={shareResult}>
         결과 공유
       </button>
-      {status ? <span className="actionStatus">{status}</span> : null}
+      <span className="actionStatus" aria-live="polite">
+        {status}
+      </span>
     </div>
   );
 }
