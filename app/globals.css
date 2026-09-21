@@ -75,8 +75,8 @@ button, input { font: inherit; }
   height: 14px;
   background: linear-gradient(90deg, var(--lime) 0 62%, var(--line-strong) 62% 100%);
 }
-.siteHeader nav { display: flex; gap: 4px; }
-.siteHeader nav a {
+.desktopNav { display: flex; gap: 2px; }
+.desktopNav a {
   min-height: 40px;
   display: inline-flex;
   align-items: center;
@@ -86,7 +86,24 @@ button, input { font: inherit; }
   color: var(--muted);
   white-space: nowrap;
 }
-.siteHeader nav a:hover { color: var(--text); background: var(--panel-2); }
+.desktopNav a:hover, .desktopNav a[aria-current="page"] { color: var(--text); background: var(--panel-2); }
+.menuButton { display: none; width: 48px; height: 48px; border: 1px solid var(--line-strong); background: transparent; color: var(--text); cursor: pointer; }
+.menuIcon { position: relative; display: block; width: 20px; height: 14px; margin: 0 auto; }
+.menuIcon i { position: absolute; left: 0; width: 100%; height: 2px; background: currentColor; transition: transform .2s ease, opacity .2s ease, top .2s ease; }
+.menuIcon i:nth-child(1) { top: 0; }
+.menuIcon i:nth-child(2) { top: 6px; }
+.menuIcon i:nth-child(3) { top: 12px; }
+.menuIcon.open i:nth-child(1) { top: 6px; transform: rotate(45deg); }
+.menuIcon.open i:nth-child(2) { opacity: 0; }
+.menuIcon.open i:nth-child(3) { top: 6px; transform: rotate(-45deg); }
+.mobileMenuBackdrop { position: fixed; inset: 57px 0 0; z-index: 40; background: rgba(0, 0, 0, .6); }
+.mobileMenu { max-height: 100%; overflow-y: auto; background: var(--bg); border-bottom: 1px solid var(--line-strong); }
+.mobileMenu ul { list-style: none; margin: 0; padding: 0; }
+.mobileMenu li a { display: flex; justify-content: space-between; align-items: center; min-height: 56px; padding: 0 20px; border-bottom: 1px solid var(--line); font-size: 17px; font-weight: 700; }
+.mobileMenu li a[aria-current="page"] { color: var(--lime); box-shadow: inset 3px 0 0 var(--lime); }
+.mobileMenu li a span:last-child { color: var(--dim); }
+.mobileMenuInfo { display: flex; gap: 0; padding: 8px 0 16px !important; }
+.mobileMenuInfo li a { min-height: 44px; border-bottom: 0; font-size: 13px; font-weight: 600; color: var(--muted); }
 
 main { width: min(100%, var(--max)); margin: 0 auto; }
 
@@ -443,6 +460,40 @@ input:focus { border-color: var(--lime); }
 .econGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .flowNote { margin: 10px 0 0; font-size: 12px; color: var(--dim); }
 
+/* ---------- Job AI exposure ---------- */
+.exposureSection { padding: 72px var(--gutter); border-bottom: 1px solid var(--line); }
+.exposureLayout { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); gap: 1px; background: var(--line); border: 1px solid var(--line); }
+.exposureMain, .exposureBoards { background: var(--bg); padding: 24px; display: grid; gap: 18px; align-content: start; }
+.exposureCard { display: grid; gap: 14px; padding: 22px; background: var(--panel); }
+.exposureValue { font-family: var(--font-mono); font-size: clamp(64px, 9vw, 112px); font-weight: 800; line-height: .95; letter-spacing: -.05em; color: var(--tone); }
+.exposureValue small { margin-left: 6px; font-size: .32em; color: var(--muted); letter-spacing: 0; }
+.exposureCard .meter { height: 10px; }
+.exposureCard .badgeRow { margin-top: 0; }
+.exposureNote { margin: 14px 0 0; font-size: 12px; color: var(--dim); }
+.exposureCard .exposureNote { margin: 0; }
+.exposureLink { font-size: 14px; font-weight: 800; color: var(--lime); }
+.exposureBoard h3 { margin: 0 0 10px; font-size: 15px; }
+.exposureBoard ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); }
+.exposureBoard button {
+  width: 100%;
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  border: 0;
+  background: var(--panel);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.exposureBoard button:hover { background: var(--panel-2); }
+.exposureBoard button[aria-pressed="true"] { box-shadow: inset 3px 0 0 var(--lime); }
+.exposureBoard .toneText { font-family: var(--font-mono); font-size: 18px; }
+.boardLabel { font-size: 14px; font-weight: 700; }
+.peerSection .exposureCard { margin-top: 14px; }
+
 /* ---------- Friend compare ---------- */
 .friendBanner {
   display: flex;
@@ -625,12 +676,11 @@ input:focus { border-color: var(--lime); }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 900px) {
-  .headerInner { flex-direction: column; align-items: stretch; gap: 0; padding: 0; }
-  .brand { min-height: 52px; padding: 0 16px; }
-  .siteHeader nav { overflow-x: auto; padding: 0 8px 6px; scrollbar-width: none; }
-  .siteHeader nav::-webkit-scrollbar { display: none; }
+  .headerInner { min-height: 56px; padding: 0 12px 0 16px; }
+  .desktopNav { display: none; }
+  .menuButton { display: block; }
   .inputPanel { top: 0; position: static; }
-  .chartGrid, .calculatorLayout { grid-template-columns: minmax(0, 1fr); }
+  .chartGrid, .calculatorLayout, .exposureLayout { grid-template-columns: minmax(0, 1fr); }
   .catalogGrid, .relatedGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .principles { grid-template-columns: repeat(2, 1fr); }
 }

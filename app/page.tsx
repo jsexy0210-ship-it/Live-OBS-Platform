@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AdSlot } from "@/components/AdSlot";
+import { JobExposure } from "@/components/JobExposure";
 import { BurnLine, DepletionDonut, LifeGrid, SpendBars } from "@/components/Charts";
 import { QuickLife } from "@/components/QuickLife";
 import { ResultHero } from "@/components/ResultHero";
@@ -19,6 +20,8 @@ export default function Home() {
         </div>
         <QuickLife />
       </section>
+
+      <JobExposure variant="home" />
 
       <AdSlot slot="homeMiddle" />
 

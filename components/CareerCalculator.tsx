@@ -4,6 +4,7 @@ import { useId, useMemo } from "react";
 import { BirthField } from "@/components/BirthField";
 import { FitText } from "@/components/FitText";
 import { NumberField } from "@/components/fields";
+import { JobExposure } from "@/components/JobExposure";
 import { InputNotice } from "@/components/InputNotice";
 import { ResultHero } from "@/components/ResultHero";
 import { ResultShare } from "@/components/ResultShare";
@@ -92,6 +93,8 @@ export function CareerCalculator() {
           <article><span>{result.ageGroup.label} 평균 대비</span><strong><FitText>{signed(result.ageDiff)}%</FitText></strong></article>
           <article><span>시급 환산 · 최저임금 대비</span><strong><FitText>{formatNumber(Math.round(result.hourly))}원 · {formatNumber(result.minWageRatio, 1)}배</FitText></strong></article>
         </div>
+
+        <JobExposure variant="career" />
 
         <section className="peerSection" aria-labelledby="industry-rank-title">
           <div className="scenarioHead">

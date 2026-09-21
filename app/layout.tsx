@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import { ADSENSE_CLIENT } from "@/lib/ads";
 import { ogImages } from "@/lib/og";
-import { CALCULATORS } from "@/lib/calculators";
+import { SiteNav } from "@/components/SiteNav";
 import { BUSINESS, CONTACT_EMAIL, SITE_NAME, SITE_URL } from "@/lib/site";
 import "./globals.css";
 
@@ -67,11 +67,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
               <span className="brandMark" aria-hidden="true" />
               LIFELEFT
             </Link>
-            <nav aria-label="계산기">
-              {CALCULATORS.map((item) => (
-                <Link href={item.href} key={item.href}>{item.nav}</Link>
-              ))}
-            </nav>
+            <SiteNav />
           </div>
         </header>
         {children}
