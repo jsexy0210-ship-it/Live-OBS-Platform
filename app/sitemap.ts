@@ -11,6 +11,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     "/weekends/",
     "/work-time/",
     "/ranking/",
+    "/career/",
     "/subscriptions/",
     "/survival/",
     "/about/",
