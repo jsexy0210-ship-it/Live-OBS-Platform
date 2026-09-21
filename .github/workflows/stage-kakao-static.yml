@@ -1,0 +1,82 @@
+name: Stage Kakao Static
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeleft-kakao-static-stage
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build static candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Static export
+        run: npm run build
+
+      - name: Verify output
+        run: |
+          test -f out/index.html
+          test -f out/commute/index.html
+          test -f out/salary/index.html
+          test -f out/weekends/index.html
+          test -f out/work-time/index.html
+          test -f out/subscriptions/index.html
+          test -f out/survival/index.html
+
+      - name: Upload candidate
+        uses: actions/upload-artifact@v6
+        with:
+          name: lifeleft-static-candidate
+          path: out
+          if-no-files-found: error
+          retention-days: 14
+
+  stage:
+    name: Stage on existing Kakao VM
+    needs: [build]
+    runs-on: [self-hosted, Linux, X64, weddingpick-kakao]
+    timeout-minutes: 10
+    steps:
+      - name: Checkout staging script
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Download candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: lifeleft-static-candidate
+          path: .lifeleft-static
+
+      - name: Stage immutable candidate
+        run: bash ./scripts/stage-lifeleft-static.sh .lifeleft-static "$GITHUB_SHA"
+
+      - name: Record candidate
+        run: |
+          {
+            echo '### LifeLeft Kakao VM staging'
+            printf -- '- Commit: `%s`\n' "$GITHUB_SHA"
+            echo '- Candidate: `/home/ubuntu/LifeLeft/static-releases/<sha>`'
+            echo '- Nginx change: **none**'
+            echo '- Public cutover: **none**'
+          } >> "$GITHUB_STEP_SUMMARY"
