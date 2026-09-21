@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { AdSlot } from "@/components/AdSlot";
+import { RelatedCalculators } from "@/components/RelatedCalculators";
 import { SubscriptionCalculator } from "@/components/SubscriptionCalculator";
 
 export const metadata: Metadata = {
@@ -18,6 +20,8 @@ export default function SubscriptionPage() {
   return (
     <main className="pageShell">
       <SubscriptionCalculator />
+      <AdSlot slot="calculatorBottom" />
+      <RelatedCalculators current="/subscriptions/" />
     </main>
   );
 }

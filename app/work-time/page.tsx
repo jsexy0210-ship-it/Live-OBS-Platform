@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { AdSlot } from "@/components/AdSlot";
+import { RelatedCalculators } from "@/components/RelatedCalculators";
 import { WorkTimeCalculator } from "@/components/WorkTimeCalculator";
 
 export const metadata: Metadata = {
@@ -18,6 +20,8 @@ export default function WorkTimePage() {
   return (
     <main className="pageShell">
       <WorkTimeCalculator />
+      <AdSlot slot="calculatorBottom" />
+      <RelatedCalculators current="/work-time/" />
     </main>
   );
 }

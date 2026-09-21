@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { AdSlot } from "@/components/AdSlot";
+import { RelatedCalculators } from "@/components/RelatedCalculators";
 import { SalaryCalculator } from "@/components/SalaryCalculator";
 
 export const metadata: Metadata = {
@@ -18,6 +20,8 @@ export default function SalaryPage() {
   return (
     <main className="pageShell">
       <SalaryCalculator />
+      <AdSlot slot="calculatorBottom" />
+      <RelatedCalculators current="/salary/" />
     </main>
   );
 }

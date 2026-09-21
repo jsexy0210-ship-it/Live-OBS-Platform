@@ -18,7 +18,7 @@ export function ResultHero({
   eyebrow = "현재 결과"
 }: Props) {
   return (
-    <section className="resultHero">
+    <section className="resultHero" data-tone={tone}>
       <p className="eyebrow">{eyebrow}</p>
       <strong className="resultValue">{value}</strong>
       <h2 className="resultLabel">{label}</h2>

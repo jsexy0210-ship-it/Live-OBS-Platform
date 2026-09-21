@@ -16,12 +16,13 @@ import {
   XAxis,
   YAxis
 } from "recharts";
+import { COLORS } from "@/lib/theme";
 
 const tooltipStyle = {
-  background: "#111",
-  border: "1px solid #383838",
+  background: COLORS.panel,
+  border: `1px solid ${COLORS.grid}`,
   borderRadius: 0,
-  color: "#fff"
+  color: COLORS.text
 };
 
 export function DepletionDonut({ used, remaining }: { used: number; remaining: number }) {
@@ -40,8 +41,8 @@ export function DepletionDonut({ used, remaining }: { used: number; remaining: n
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie data={data} dataKey="value" nameKey="name" innerRadius="68%" outerRadius="92%" strokeWidth={0}>
-              <Cell fill="#ff3b30" />
-              <Cell fill="#2b2b2b" />
+              <Cell fill={COLORS.red} />
+              <Cell fill={COLORS.track} />
             </Pie>
             <Tooltip contentStyle={tooltipStyle} />
           </PieChart>
@@ -70,11 +71,11 @@ export function BurnLine() {
       <div className="chartBox">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data}>
-            <CartesianGrid stroke="#222" vertical={false} />
-            <XAxis dataKey="year" stroke="#777" tickLine={false} axisLine={false} />
+            <CartesianGrid stroke={COLORS.grid} vertical={false} />
+            <XAxis dataKey="year" stroke={COLORS.axis} tickLine={false} axisLine={false} />
             <YAxis hide domain={[0, 100]} />
             <Tooltip contentStyle={tooltipStyle} />
-            <Area type="monotone" dataKey="value" stroke="#ff3b30" fill="#ff3b30" fillOpacity={0.16} strokeWidth={2} />
+            <Area type="monotone" dataKey="value" stroke={COLORS.red} fill={COLORS.red} fillOpacity={0.16} strokeWidth={2} />
           </AreaChart>
         </ResponsiveContainer>
       </div>
@@ -99,11 +100,11 @@ export function SpendBars() {
       <div className="chartBox">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data} layout="vertical">
-            <CartesianGrid stroke="#222" horizontal={false} />
+            <CartesianGrid stroke={COLORS.grid} horizontal={false} />
             <XAxis type="number" hide />
-            <YAxis dataKey="name" type="category" stroke="#aaa" tickLine={false} axisLine={false} width={64} />
+            <YAxis dataKey="name" type="category" stroke={COLORS.axis} tickLine={false} axisLine={false} width={64} />
             <Tooltip contentStyle={tooltipStyle} formatter={(value) => [`${Number(value).toLocaleString()}원`, "월 비용"]} />
-            <Bar dataKey="value" fill="#f3f3f3" radius={0} />
+            <Bar dataKey="value" fill={COLORS.lime} radius={0} />
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -154,11 +155,11 @@ export function CashRunwayChart({
       <div className="chartBox">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data}>
-            <CartesianGrid stroke="#222" vertical={false} />
-            <XAxis dataKey="month" stroke="#777" tickLine={false} axisLine={false} minTickGap={24} />
+            <CartesianGrid stroke={COLORS.grid} vertical={false} />
+            <XAxis dataKey="month" stroke={COLORS.axis} tickLine={false} axisLine={false} minTickGap={24} />
             <YAxis hide />
             <Tooltip contentStyle={tooltipStyle} formatter={(value) => [`${Number(value).toLocaleString()}원`, "현금"]} />
-            <Area type="monotone" dataKey="value" stroke="#ff3b30" fill="#ff3b30" fillOpacity={0.16} strokeWidth={2} />
+            <Area type="monotone" dataKey="value" stroke={COLORS.red} fill={COLORS.red} fillOpacity={0.16} strokeWidth={2} />
           </AreaChart>
         </ResponsiveContainer>
       </div>
@@ -192,11 +193,11 @@ export function CommuteTimelineChart({
       <div className="chartBox">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data}>
-            <CartesianGrid stroke="#222" vertical={false} />
-            <XAxis dataKey="age" stroke="#777" tickLine={false} axisLine={false} />
+            <CartesianGrid stroke={COLORS.grid} vertical={false} />
+            <XAxis dataKey="age" stroke={COLORS.axis} tickLine={false} axisLine={false} />
             <YAxis hide />
             <Tooltip contentStyle={tooltipStyle} formatter={(value) => [`${Number(value).toLocaleString()}회`, "남은 출근"]} />
-            <Area type="monotone" dataKey="value" stroke="#ff3b30" fill="#ff3b30" fillOpacity={0.14} strokeWidth={2} />
+            <Area type="monotone" dataKey="value" stroke={COLORS.red} fill={COLORS.red} fillOpacity={0.14} strokeWidth={2} />
           </AreaChart>
         </ResponsiveContainer>
       </div>
@@ -231,11 +232,11 @@ export function SalaryCumulativeChart({
       <div className="chartBox">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data}>
-            <CartesianGrid stroke="#222" vertical={false} />
-            <XAxis dataKey="age" stroke="#777" tickLine={false} axisLine={false} />
+            <CartesianGrid stroke={COLORS.grid} vertical={false} />
+            <XAxis dataKey="age" stroke={COLORS.axis} tickLine={false} axisLine={false} />
             <YAxis hide />
             <Tooltip contentStyle={tooltipStyle} formatter={(value) => [`${Number(value).toLocaleString()}원`, "누적 급여"]} />
-            <Line type="monotone" dataKey="value" stroke="#f3f3f3" strokeWidth={2} dot={false} />
+            <Line type="monotone" dataKey="value" stroke={COLORS.lime} strokeWidth={2} dot={false} />
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -265,8 +266,8 @@ export function WorkTimeMixChart({
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie data={data} dataKey="value" nameKey="name" innerRadius="52%" outerRadius="92%" strokeWidth={0}>
-              <Cell fill="#f3f3f3" />
-              <Cell fill="#ff3b30" />
+              <Cell fill={COLORS.lime} />
+              <Cell fill={COLORS.red} />
             </Pie>
             <Tooltip contentStyle={tooltipStyle} formatter={(value) => [`${Math.round(Number(value)).toLocaleString()}시간`, "누적"]} />
           </PieChart>
@@ -301,12 +302,12 @@ export function WorkYearBars({
       <div className="chartBox">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data}>
-            <CartesianGrid stroke="#222" vertical={false} />
-            <XAxis dataKey="year" stroke="#777" tickLine={false} axisLine={false} />
+            <CartesianGrid stroke={COLORS.grid} vertical={false} />
+            <XAxis dataKey="year" stroke={COLORS.axis} tickLine={false} axisLine={false} />
             <YAxis hide />
             <Tooltip contentStyle={tooltipStyle} formatter={(value) => [`${Math.round(Number(value)).toLocaleString()}시간`, "연간"]} />
-            <Bar dataKey="work" stackId="time" fill="#f3f3f3" />
-            <Bar dataKey="commute" stackId="time" fill="#ff3b30" />
+            <Bar dataKey="work" stackId="time" fill={COLORS.lime} />
+            <Bar dataKey="commute" stackId="time" fill={COLORS.red} />
           </BarChart>
         </ResponsiveContainer>
       </div>

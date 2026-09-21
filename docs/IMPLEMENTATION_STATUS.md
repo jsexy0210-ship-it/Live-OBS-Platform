@@ -21,6 +21,13 @@
 | 입력 범위 보정 | 완료 |
 | Static Export CI | 완료 |
 | canonical / sitemap / robots | 완료 |
+| 전체 페이지 리뉴얼 (Countdown Board) | 완료 |
+| 홈 즉시 계산 (나이 1개 입력) | 완료 |
+| 다른 잔량 연결 | 완료 |
+| /about · /privacy | 완료 |
+| AdSense 스크립트 · ads.txt | 완료 |
+| AdSense 수동 광고 슬롯 ID | 대기 |
+| 문의 이메일 (CONTACT_EMAIL) | 대기 |
 
 ## 운영 인프라
 

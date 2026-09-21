@@ -11,7 +11,9 @@ export default function sitemap(): MetadataRoute.Sitemap {
     "/weekends/",
     "/work-time/",
     "/subscriptions/",
-    "/survival/"
+    "/survival/",
+    "/about/",
+    "/privacy/"
   ];
 
   return routes.map((route) => ({

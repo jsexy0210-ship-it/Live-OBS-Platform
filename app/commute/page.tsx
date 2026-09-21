@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { AdSlot } from "@/components/AdSlot";
+import { RelatedCalculators } from "@/components/RelatedCalculators";
 import { CommuteCalculator } from "@/components/CommuteCalculator";
 
 export const metadata: Metadata = {
@@ -18,6 +20,8 @@ export default function CommutePage() {
   return (
     <main className="pageShell">
       <CommuteCalculator />
+      <AdSlot slot="calculatorBottom" />
+      <RelatedCalculators current="/commute/" />
     </main>
   );
 }
