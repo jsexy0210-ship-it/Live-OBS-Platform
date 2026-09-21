@@ -1,131 +1,135 @@
-# LifeLeft KakaoCloud 배포 준비
+# LifeLeft 운영 배포 기준
 
 > 기준일: 2026-09-21
-> 상태: staging 준비 / 공개 전환 미실행
+> 운영 정본: https://lifeleft.duckdns.org
+> 운영 IP: 210.109.82.212
 
-## 목적
-
-기존 KakaoCloud VM과 기존 GitHub Actions 운영 방식을 재사용한다.
-
-신규 대상:
-
-- VM 없음
-- DB 없음
-- API 없음
-- 컨테이너 없음
-- Render 없음
-
-## 정적 후보 경로
+## 운영 구조
 
 ```text
-/home/ubuntu/LifeLeft/
-└ static-releases/
-  ├ <commit-sha>/
-  └ latest-candidate
+lifeleft.duckdns.org
+→ 210.109.82.212
+→ 기존 KakaoCloud VM
+→ Nginx 443 name-based virtual host
+→ /var/www/lifeleft/current
+→ /var/www/lifeleft/releases/<SHA>
 ```
 
-WeddingPick 경로와 완전 분리:
+WeddingPick은 기존 IP/default server 구조를 그대로 유지한다.
+
+LifeLeft는 별도 Nginx 파일만 사용:
 
 ```text
-/home/ubuntu/WeddingPick/
-/home/ubuntu/LifeLeft/
+/etc/nginx/sites-available/lifeleft
+/etc/nginx/sites-enabled/lifeleft
 ```
 
-LifeLeft staging에서 금지:
+WeddingPick Nginx 설정 파일 수정 금지.
 
-- `/home/ubuntu/WeddingPick` 변경
-- `/var/www/weddingpick` 변경
-- `/etc/nginx` 변경
-- Nginx reload
-- 443 route 변경
-- API health 의존
-- DB 의존
+## DNS
 
-## GitHub Actions
-
-수동 workflow:
-
-`.github/workflows/stage-kakao-static.yml`
-
-구조:
+DuckDNS:
 
 ```text
-workflow_dispatch
-→ GitHub-hosted build
+lifeleft.duckdns.org
+A → 210.109.82.212
+```
+
+IPv6 미사용.
+
+## TLS
+
+Let's Encrypt 인증서:
+
+```text
+/etc/letsencrypt/live/lifeleft.duckdns.org/fullchain.pem
+/etc/letsencrypt/live/lifeleft.duckdns.org/privkey.pem
+```
+
+발급 방식:
+
+- 기존 80 포트 ACME webroot 재사용
+- `/var/www/html/.well-known/acme-challenge/`
+- certbot `webroot`
+- Nginx plugin 자동수정 미사용
+
+## 배포
+
+자동 workflow:
+
+`.github/workflows/deploy-lifeleft-domain.yml`
+
+트리거:
+
+- main push
+- 수동 workflow_dispatch
+
+흐름:
+
+```text
+GitHub-hosted build
 → Typecheck
 → Static Export
 → artifact
 → 기존 self-hosted runner
 → /home/ubuntu/LifeLeft/static-releases/<SHA>
+→ /var/www/lifeleft/releases/<SHA>
+→ current symlink 전환
+→ 별도 LifeLeft Nginx host
+→ nginx -t
+→ reload
+→ 로컬 HTTPS smoke
+→ 외부 GitHub-hosted HTTPS smoke
+→ finalize
 ```
 
-공개 전환은 포함하지 않는다.
+외부 검증 실패 시 직전 LifeLeft symlink/Nginx 설정으로 자동 rollback.
 
-## runner 전제
+## 안전 규칙
 
-기존 runner label:
+- 신규 VM 없음
+- 신규 DB 없음
+- 신규 API 없음
+- Render 없음
+- 8443 없음
+- WeddingPick 디렉터리 접근 금지
+- WeddingPick Nginx 파일 수정 금지
+- LifeLeft 전용 server_name만 추가
+- Nginx reload 전 `nginx -t` 필수
+- 공개 검증 실패 시 rollback
+
+## 정적 경로
+
+staging:
 
 ```text
-self-hosted
-Linux
-X64
-weddingpick-kakao
+/home/ubuntu/LifeLeft/static-releases/<SHA>
 ```
 
-LifeLeft 저장소에서 해당 runner 사용 권한이 허용되어 있어야 staging job 실행 가능.
+live:
 
-권한 미확인 상태에서 자동 workflow 실행 금지.
+```text
+/var/www/lifeleft/releases/<SHA>
+/var/www/lifeleft/current
+```
 
-## 공개 주소 결정 필요
+## SEO 정본
 
-현재 미확정:
+- canonical: `https://lifeleft.duckdns.org`
+- sitemap: `https://lifeleft.duckdns.org/sitemap.xml`
+- robots: `https://lifeleft.duckdns.org/robots.txt`
+- 공유 URL: 현재 운영 페이지 URL
 
-- 전용 도메인
-- 기존 443의 별도 host
-- 기존 443의 subpath
+## 배포 확인
 
-### 전용 host 방식
+필수 경로:
 
-Next.js basePath 변경 불필요.
-
-### subpath 방식
-
-예: `/lifeleft/`
-
-필수:
-
-- Next.js `basePath`
-- asset path 검증
-- Nginx location
-- 공유 URL
-- canonical
-- sitemap
-
-따라서 공개 경로 확정 전 임의 subpath 배포 금지.
-
-## 공개 전환 조건
-
-1. main CI 성공
-2. staging workflow 성공
-3. 후보 SHA 확인
-4. 운영 URL 확정
-5. Nginx 변경안 별도 검토
-6. `nginx -t`
-7. 공개 smoke
-8. 실패 시 직전 설정 복구
-
-## 현재 완료 범위
-
-- 정적 export
-- immutable staging script
-- 수동 staging workflow
-- 기존 VM 분리 경로
-- Nginx 무변경 보장
-
-## 현재 미실행
-
-- self-hosted runner staging 실행
-- Nginx route
-- public URL
-- DNS
-- public smoke
+- `/`
+- `/commute/`
+- `/salary/`
+- `/weekends/`
+- `/work-time/`
+- `/subscriptions/`
+- `/survival/`
+- `/robots.txt`
+- `/sitemap.xml`
