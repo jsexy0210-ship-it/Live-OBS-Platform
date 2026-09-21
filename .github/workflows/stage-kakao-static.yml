@@ -8,7 +8,7 @@ permissions:
 
 concurrency:
   group: lifeleft-kakao-static-stage
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -52,9 +52,9 @@ jobs:
           retention-days: 14
 
   stage:
-    name: Stage on existing Kakao VM
+    name: Stage on LifeLeft Kakao VM
     needs: [build]
-    runs-on: [self-hosted, Linux, X64, weddingpick-kakao]
+    runs-on: [self-hosted, Linux, X64, lifeleft-kakao]
     timeout-minutes: 10
     steps:
       - name: Checkout staging script
@@ -74,9 +74,8 @@ jobs:
       - name: Record candidate
         run: |
           {
-            echo '### LifeLeft Kakao VM staging'
+            echo '### LifeLeft dedicated Kakao VM staging'
             printf -- '- Commit: `%s`\n' "$GITHUB_SHA"
             echo '- Candidate: `/home/ubuntu/LifeLeft/static-releases/<sha>`'
-            echo '- Nginx change: **none**'
             echo '- Public cutover: **none**'
           } >> "$GITHUB_STEP_SUMMARY"
