@@ -1,6 +1,10 @@
 "use client";
 
+import { FitText } from "@/components/FitText";
 import { useMemo } from "react";
+import { DateWheelField } from "@/components/DateWheelField";
+import { NumberField } from "@/components/fields";
+import { formatWon } from "@/lib/format";
 import { InputNotice } from "@/components/InputNotice";
 import { ResultHero } from "@/components/ResultHero";
 import { ResultShare } from "@/components/ResultShare";
@@ -39,7 +43,7 @@ export function SubscriptionCalculator() {
   }, [rows]);
 
   const badge = subscriptionBadge(result.annual);
-  const resultValue = `${result.total.toLocaleString()}원`;
+  const resultValue = formatWon(result.total);
 
   const update = (index: number, patch: Partial<Row>) => {
     setRows((current) =>
@@ -60,20 +64,8 @@ export function SubscriptionCalculator() {
                 <span>서비스명</span>
                 <input value={row.name} onChange={(event) => update(index, { name: event.target.value })} />
               </label>
-              <label>
-                <span>월 결제액</span>
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  min="0"
-                  value={row.monthly}
-                  onChange={(event) => update(index, { monthly: Number(event.target.value) })}
-                />
-              </label>
-              <label>
-                <span>이용 시작</span>
-                <input type="month" value={row.start} onChange={(event) => update(index, { start: event.target.value })} />
-              </label>
+              <NumberField label="월 결제액" value={row.monthly} onChange={(monthly) => update(index, { monthly })} unit="원" money />
+              <DateWheelField label="이용 시작" value={row.start} onChange={(start) => update(index, { start })} />
             </div>
           ))}
         </div>
@@ -81,7 +73,7 @@ export function SubscriptionCalculator() {
         <button
           className="secondaryButton"
           type="button"
-          onClick={() => setRows((current) => [...current, { name: "기타", monthly: 0, start: "2026-01" }])}
+          onClick={() => setRows((current) => [...current, { name: "기타", monthly: 0, start: new Date().toISOString().slice(0, 10) }])}
         >
           구독 추가
         </button>
@@ -99,9 +91,9 @@ export function SubscriptionCalculator() {
         <ResultShare title="구독 누적" value={resultValue} factBadge={badge.fact} impactBadge={badge.impact} tone={badge.tone} />
 
         <div className="metricGrid">
-          <article><span>월 고정비</span><strong>{result.monthly.toLocaleString()}원</strong></article>
-          <article><span>1년 예상</span><strong>{result.annual.toLocaleString()}원</strong></article>
-          <article><span>10년 예상</span><strong>{result.tenYears.toLocaleString()}원</strong></article>
+          <article><span>월 고정비</span><strong><FitText>{formatWon(result.monthly)}</FitText></strong></article>
+          <article><span>1년 예상</span><strong><FitText>{formatWon(result.annual)}</FitText></strong></article>
+          <article><span>10년 예상</span><strong><FitText>{formatWon(result.tenYears)}</FitText></strong></article>
         </div>
 
         <div className="depletionTrack" aria-label="10년 예상 구독료">

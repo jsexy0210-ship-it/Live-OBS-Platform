@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
+import { SelectField } from "@/components/fields";
+import { range } from "@/lib/format";
 import { InputNotice } from "@/components/InputNotice";
 import { ResultHero } from "@/components/ResultHero";
 import { ResultShare } from "@/components/ResultShare";
@@ -37,10 +39,7 @@ export function TimeRanking() {
         <p className="eyebrow">공식 통계 기반</p>
         <h1>인생 시간 랭킹</h1>
         <div className="formGrid">
-          <label>
-            <span>현재 나이</span>
-            <input type="number" min="0" max="100" value={age} onChange={(event) => setAge(Number(event.target.value))} />
-          </label>
+          <SelectField label="현재 나이" value={age} options={range(1, 100)} unit="세" onChange={setAge} />
         </div>
         <InputNotice active={invalid} />
         <p className="panelNote">

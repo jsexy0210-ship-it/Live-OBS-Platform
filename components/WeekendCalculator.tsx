@@ -1,7 +1,10 @@
 "use client";
 
+import { FitText } from "@/components/FitText";
 import { useMemo } from "react";
 import { DepletionDonut, LifeGrid } from "@/components/Charts";
+import { SelectField } from "@/components/fields";
+import { range } from "@/lib/format";
 import { InputNotice } from "@/components/InputNotice";
 import { ResultHero } from "@/components/ResultHero";
 import { ResultShare } from "@/components/ResultShare";
@@ -45,8 +48,8 @@ export function WeekendCalculator() {
         <p className="eyebrow">선택 연령 기준 단순 계산</p>
         <h1>주말 잔량</h1>
         <div className="formGrid">
-          <label><span>현재 나이</span><input type="number" min="0" max="120" value={currentAge} onChange={(event) => setCurrentAge(Number(event.target.value))} /></label>
-          <label><span>계산 기준 나이</span><input type="number" min="1" max="120" value={targetAge} onChange={(event) => setTargetAge(Number(event.target.value))} /></label>
+          <SelectField label="현재 나이" value={currentAge} options={range(1, 100)} unit="세" onChange={setCurrentAge} />
+          <SelectField label="계산 기준 나이" value={targetAge} options={range(30, 120)} unit="세" onChange={setTargetAge} />
         </div>
         <div className="presetBox">
           <button
@@ -72,9 +75,9 @@ export function WeekendCalculator() {
         />
         <ResultShare title="주말 잔량" value={resultValue} factBadge={badge.fact} impactBadge={badge.impact} tone={badge.tone} />
         <div className="metricGrid">
-          <article><span>남은 여름</span><strong>{result.summers.toLocaleString()}회</strong></article>
-          <article><span>남은 연말</span><strong>{result.yearEnds.toLocaleString()}회</strong></article>
-          <article><span>남은 생일</span><strong>{result.birthdays.toLocaleString()}회</strong></article>
+          <article><span>남은 여름</span><strong><FitText>{result.summers.toLocaleString()}회</FitText></strong></article>
+          <article><span>남은 연말</span><strong><FitText>{result.yearEnds.toLocaleString()}회</FitText></strong></article>
+          <article><span>남은 생일</span><strong><FitText>{result.birthdays.toLocaleString()}회</FitText></strong></article>
         </div>
         <div className="chartGrid">
           <LifeGrid used={result.usedPercent} title="주말 Life Grid" />

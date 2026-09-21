@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ogImages } from "@/lib/og";
 import { AdSlot } from "@/components/AdSlot";
 import { RelatedCalculators } from "@/components/RelatedCalculators";
 import { SalaryCalculator } from "@/components/SalaryCalculator";
@@ -12,7 +13,14 @@ export const metadata: Metadata = {
   openGraph: {
     url: "/salary/",
     title: "월급 잔량",
-    description: "예상 은퇴까지 남은 월급 횟수 계산"
+    description: "예상 은퇴까지 남은 월급 횟수 계산",
+    images: ogImages("salary", "월급 잔량")
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "월급 잔량",
+    description: "예상 은퇴까지 남은 월급 횟수 계산",
+    images: ogImages("salary", "월급 잔량")
   }
 };
 

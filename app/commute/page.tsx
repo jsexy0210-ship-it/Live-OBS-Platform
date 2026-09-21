@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ogImages } from "@/lib/og";
 import { AdSlot } from "@/components/AdSlot";
 import { RelatedCalculators } from "@/components/RelatedCalculators";
 import { CommuteCalculator } from "@/components/CommuteCalculator";
@@ -12,7 +13,14 @@ export const metadata: Metadata = {
   openGraph: {
     url: "/commute/",
     title: "출근 잔량",
-    description: "예상 은퇴까지 남은 출근 횟수 계산"
+    description: "예상 은퇴까지 남은 출근 횟수 계산",
+    images: ogImages("commute", "출근 잔량")
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "출근 잔량",
+    description: "예상 은퇴까지 남은 출근 횟수 계산",
+    images: ogImages("commute", "출근 잔량")
   }
 };
 

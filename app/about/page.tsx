@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ogImages } from "@/lib/og";
 import Link from "next/link";
 import { CALCULATORS } from "@/lib/calculators";
 import { BUSINESS, CONTACT_EMAIL } from "@/lib/site";
@@ -7,7 +8,8 @@ export const metadata: Metadata = {
   title: "서비스 소개",
   description: "인생잔량 서비스 기준과 계산 원칙",
   alternates: { canonical: "/about/" },
-  openGraph: { url: "/about/", title: "서비스 소개", description: "인생잔량 서비스 기준과 계산 원칙" }
+  openGraph: { url: "/about/", title: "서비스 소개", description: "인생잔량 서비스 기준과 계산 원칙", images: ogImages("home", "서비스 소개") },
+  twitter: { card: "summary_large_image", title: "서비스 소개", description: "인생잔량 서비스 기준과 계산 원칙", images: ogImages("home", "서비스 소개") }
 };
 
 export default function AboutPage() {

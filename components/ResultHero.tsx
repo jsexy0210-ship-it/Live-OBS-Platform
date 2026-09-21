@@ -1,3 +1,4 @@
+import { FitText } from "@/components/FitText";
 import type { BadgeTone } from "@/lib/badges";
 
 type Props = {
@@ -20,7 +21,7 @@ export function ResultHero({
   return (
     <section className="resultHero" data-tone={tone}>
       <p className="eyebrow">{eyebrow}</p>
-      <strong className="resultValue">{value}</strong>
+      <strong className="resultValue"><FitText>{value}</FitText></strong>
       <h2 className="resultLabel">{label}</h2>
       <div className="badgeRow">
         <span className="badge badgeFact">{factBadge}</span>

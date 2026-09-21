@@ -1,5 +1,6 @@
 "use client";
 
+import { FitText } from "@/components/FitText";
 import { SourceNote } from "@/components/SourceNote";
 import { LEGAL_RETIREMENT_AGE, OLDER_WORKERS, SOURCES } from "@/lib/stats";
 
@@ -48,8 +49,10 @@ export function RetirementScenarios({ currentAge, careerStartAge, retirementAge,
             >
               <span className="scenarioTag">{scenario.tag} · {scenario.age}세</span>
               <strong>
-                {value.toLocaleString()}
-                <small>{unit}</small>
+                <FitText>
+                  {value.toLocaleString()}
+                  <small>{unit}</small>
+                </FitText>
               </strong>
               <span className={diff > 0 ? "scenarioDiff up" : diff < 0 ? "scenarioDiff down" : "scenarioDiff"}>
                 {active ? "현재 선택" : diff === 0 ? "변화 없음" : `${diff > 0 ? "+" : ""}${diff.toLocaleString()}${unit}`}

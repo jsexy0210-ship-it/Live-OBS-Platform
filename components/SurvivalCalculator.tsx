@@ -1,7 +1,10 @@
 "use client";
 
+import { FitText } from "@/components/FitText";
 import { useMemo } from "react";
 import { CashRunwayChart } from "@/components/Charts";
+import { NumberField } from "@/components/fields";
+import { formatNumber, formatWon } from "@/lib/format";
 import { InputNotice } from "@/components/InputNotice";
 import { ResultHero } from "@/components/ResultHero";
 import { ResultShare } from "@/components/ResultShare";
@@ -26,7 +29,7 @@ export function SurvivalCalculator() {
 
   const badge = survivalBadge(result.months);
   const displayMonths = Number.isFinite(result.months)
-    ? `${result.months.toFixed(1)}개월`
+    ? `${formatNumber(result.months, 1)}개월`
     : "유지";
 
   return (
@@ -36,22 +39,10 @@ export function SurvivalCalculator() {
         <h1>생존 잔량</h1>
 
         <div className="formGrid">
-          <label>
-            <span>가용 현금</span>
-            <input type="number" inputMode="numeric" min="0" value={cash} onChange={(event) => setCash(Number(event.target.value))} />
-          </label>
-          <label>
-            <span>월 고정지출</span>
-            <input type="number" inputMode="numeric" min="0" value={fixed} onChange={(event) => setFixed(Number(event.target.value))} />
-          </label>
-          <label>
-            <span>월 변동지출</span>
-            <input type="number" inputMode="numeric" min="0" value={variable} onChange={(event) => setVariable(Number(event.target.value))} />
-          </label>
-          <label>
-            <span>월 정기수입</span>
-            <input type="number" inputMode="numeric" min="0" value={income} onChange={(event) => setIncome(Number(event.target.value))} />
-          </label>
+          <NumberField label="가용 현금" value={cash} onChange={setCash} unit="원" money />
+          <NumberField label="월 고정지출" value={fixed} onChange={setFixed} unit="원" money />
+          <NumberField label="월 변동지출" value={variable} onChange={setVariable} unit="원" money />
+          <NumberField label="월 정기수입" value={income} onChange={setIncome} unit="원" money />
         </div>
         <InputNotice active={invalidInput} />
       </section>
@@ -67,9 +58,9 @@ export function SurvivalCalculator() {
         <ResultShare title="생존 잔량" value={displayMonths} factBadge={badge.fact} impactBadge={badge.impact} tone={badge.tone} />
 
         <div className="metricGrid">
-          <article><span>월 총지출</span><strong>{result.expense.toLocaleString()}원</strong></article>
-          <article><span>월 순소모</span><strong>{result.burn.toLocaleString()}원</strong></article>
-          <article><span>가용 현금</span><strong>{result.safeCash.toLocaleString()}원</strong></article>
+          <article><span>월 총지출</span><strong><FitText>{formatWon(result.expense)}</FitText></strong></article>
+          <article><span>월 순소모</span><strong><FitText>{formatWon(result.burn)}</FitText></strong></article>
+          <article><span>가용 현금</span><strong><FitText>{formatWon(result.safeCash)}</FitText></strong></article>
         </div>
 
         <CashRunwayChart cash={result.safeCash} monthlyBurn={result.burn} months={result.months} />
