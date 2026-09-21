@@ -24,7 +24,7 @@ export default function PrivacyPage() {
 
       <section>
         <h2>2. 입력값 저장</h2>
-        <p>나이, 급여, 지출, 구독료 등 계산기 입력값은 이용자 브라우저의 localStorage에만 저장되며 서버로 전송·저장되지 않습니다.</p>
+        <p>생년월일, 급여, 지출, 구독료 등 계산기 입력값은 이용자 브라우저의 localStorage에만 저장되며 서버로 전송·저장되지 않습니다.</p>
         <p>브라우저의 사이트 데이터 삭제로 언제든지 제거할 수 있습니다.</p>
       </section>
 

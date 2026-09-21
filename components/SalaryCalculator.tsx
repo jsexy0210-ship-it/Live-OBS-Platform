@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import { SalaryCumulativeChart } from "@/components/Charts";
 import { NumberField, SelectField } from "@/components/fields";
 import { formatWon, range } from "@/lib/format";
+import { BirthField } from "@/components/BirthField";
 import { InputNotice } from "@/components/InputNotice";
 import { ResultHero } from "@/components/ResultHero";
 import { ResultShare } from "@/components/ResultShare";
@@ -12,10 +13,11 @@ import { RetirementScenarios } from "@/components/RetirementScenarios";
 import { SourceNote } from "@/components/SourceNote";
 import { SOURCES, wageGroupFor } from "@/lib/stats";
 import { salaryBadge } from "@/lib/badges";
+import { useBirthProfile } from "@/lib/profile";
 import { useStoredState } from "@/lib/useStoredState";
 
 export function SalaryCalculator() {
-  const [currentAge, setCurrentAge] = useStoredState("lifeleft.salary.currentAge", 36);
+  const { age: currentAge } = useBirthProfile();
   const [careerStartAge, setCareerStartAge] = useStoredState("lifeleft.salary.careerStartAge", 25);
   const [retirementAge, setRetirementAge] = useStoredState("lifeleft.salary.retirementAge", 60);
   const [monthlySalary, setMonthlySalary] = useStoredState("lifeleft.salary.monthlySalary", 4_000_000);
@@ -65,7 +67,7 @@ export function SalaryCalculator() {
         <p className="eyebrow">현재 급여 유지 가정</p>
         <h1>월급 잔량</h1>
         <div className="formGrid">
-          <SelectField label="현재 나이" value={currentAge} options={range(15, 100)} unit="세" onChange={setCurrentAge} />
+          <BirthField />
           <SelectField label="직장 시작 나이" value={careerStartAge} options={range(15, 70)} unit="세" onChange={setCareerStartAge} />
           <SelectField label="예상 은퇴 나이" value={retirementAge} options={range(40, 90)} unit="세" onChange={setRetirementAge} />
           <NumberField label="현재 월 급여" value={monthlySalary} onChange={setMonthlySalary} unit="원" money />
