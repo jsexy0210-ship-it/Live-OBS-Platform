@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ogImages } from "@/lib/og";
 import { AdSlot } from "@/components/AdSlot";
 import { RelatedCalculators } from "@/components/RelatedCalculators";
 import { WeekendCalculator } from "@/components/WeekendCalculator";
@@ -12,7 +13,14 @@ export const metadata: Metadata = {
   openGraph: {
     url: "/weekends/",
     title: "주말 잔량",
-    description: "선택한 기준 나이까지 남은 주말 횟수 계산"
+    description: "선택한 기준 나이까지 남은 주말 횟수 계산",
+    images: ogImages("weekends", "주말 잔량")
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "주말 잔량",
+    description: "선택한 기준 나이까지 남은 주말 횟수 계산",
+    images: ogImages("weekends", "주말 잔량")
   }
 };
 

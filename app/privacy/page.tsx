@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
+import { ogImages } from "@/lib/og";
 import { BUSINESS, CONTACT_EMAIL } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "개인정보처리방침",
   description: "인생잔량 개인정보 처리 및 광고 쿠키 안내",
   alternates: { canonical: "/privacy/" },
-  openGraph: { url: "/privacy/", title: "개인정보처리방침", description: "인생잔량 개인정보 처리 및 광고 쿠키 안내" }
+  openGraph: { url: "/privacy/", title: "개인정보처리방침", description: "인생잔량 개인정보 처리 및 광고 쿠키 안내", images: ogImages("home", "개인정보처리방침") },
+  twitter: { card: "summary_large_image", title: "개인정보처리방침", description: "인생잔량 개인정보 처리 및 광고 쿠키 안내", images: ogImages("home", "개인정보처리방침") }
 };
 
 export default function PrivacyPage() {

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import { ADSENSE_CLIENT } from "@/lib/ads";
+import { ogImages } from "@/lib/og";
 import { CALCULATORS } from "@/lib/calculators";
 import { BUSINESS, CONTACT_EMAIL, SITE_NAME, SITE_URL } from "@/lib/site";
 import "./globals.css";
@@ -21,7 +22,14 @@ export const metadata: Metadata = {
     url: "/",
     siteName: SITE_NAME,
     title: "인생잔량 | LifeLeft",
-    description: "시간·돈·횟수의 잔량 계산"
+    description: "시간·돈·횟수의 잔량 계산",
+    images: ogImages("home")
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "인생잔량 | LifeLeft",
+    description: "시간·돈·횟수의 잔량 계산",
+    images: ogImages("home")
   },
   other: {
     "google-adsense-account": ADSENSE_CLIENT
