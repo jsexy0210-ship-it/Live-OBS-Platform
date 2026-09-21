@@ -16,6 +16,7 @@ import {
   XAxis,
   YAxis
 } from "recharts";
+import { formatNumber, formatWon } from "@/lib/format";
 import { COLORS } from "@/lib/theme";
 
 const tooltipStyle = {
@@ -103,7 +104,7 @@ export function SpendBars() {
             <CartesianGrid stroke={COLORS.grid} horizontal={false} />
             <XAxis type="number" hide />
             <YAxis dataKey="name" type="category" stroke={COLORS.axis} tickLine={false} axisLine={false} width={64} />
-            <Tooltip contentStyle={tooltipStyle} formatter={(value) => [`${Number(value).toLocaleString()}원`, "월 비용"]} />
+            <Tooltip contentStyle={tooltipStyle} formatter={(value) => [formatWon(Number(value)), "월 비용"]} />
             <Bar dataKey="value" fill={COLORS.lime} radius={0} />
           </BarChart>
         </ResponsiveContainer>
@@ -150,7 +151,7 @@ export function CashRunwayChart({
     <div className="chartFrame">
       <div className="chartHeader">
         <span>현금 잔량 추이</span>
-        <strong>{Number.isFinite(months) ? `${months.toFixed(1)}개월` : "유지"}</strong>
+        <strong>{Number.isFinite(months) ? `${formatNumber(months, 1)}개월` : "유지"}</strong>
       </div>
       <div className="chartBox">
         <ResponsiveContainer width="100%" height="100%">
@@ -158,7 +159,7 @@ export function CashRunwayChart({
             <CartesianGrid stroke={COLORS.grid} vertical={false} />
             <XAxis dataKey="month" stroke={COLORS.axis} tickLine={false} axisLine={false} minTickGap={24} />
             <YAxis hide />
-            <Tooltip contentStyle={tooltipStyle} formatter={(value) => [`${Number(value).toLocaleString()}원`, "현금"]} />
+            <Tooltip contentStyle={tooltipStyle} formatter={(value) => [formatWon(Number(value)), "현금"]} />
             <Area type="monotone" dataKey="value" stroke={COLORS.red} fill={COLORS.red} fillOpacity={0.16} strokeWidth={2} />
           </AreaChart>
         </ResponsiveContainer>
@@ -235,7 +236,7 @@ export function SalaryCumulativeChart({
             <CartesianGrid stroke={COLORS.grid} vertical={false} />
             <XAxis dataKey="age" stroke={COLORS.axis} tickLine={false} axisLine={false} />
             <YAxis hide />
-            <Tooltip contentStyle={tooltipStyle} formatter={(value) => [`${Number(value).toLocaleString()}원`, "누적 급여"]} />
+            <Tooltip contentStyle={tooltipStyle} formatter={(value) => [formatWon(Number(value)), "누적 급여"]} />
             <Line type="monotone" dataKey="value" stroke={COLORS.lime} strokeWidth={2} dot={false} />
           </LineChart>
         </ResponsiveContainer>

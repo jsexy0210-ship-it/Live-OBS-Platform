@@ -1,7 +1,10 @@
 "use client";
 
+import { FitText } from "@/components/FitText";
 import { useMemo } from "react";
 import { WorkTimeMixChart, WorkYearBars } from "@/components/Charts";
+import { SelectField } from "@/components/fields";
+import { range } from "@/lib/format";
 import { InputNotice } from "@/components/InputNotice";
 import { ResultHero } from "@/components/ResultHero";
 import { ResultShare } from "@/components/ResultShare";
@@ -67,11 +70,11 @@ export function WorkTimeCalculator() {
         <p className="eyebrow">사용자 입력 기반 추정</p>
         <h1>회사 누적시간</h1>
         <div className="formGrid">
-          <label><span>직장 시작 연도</span><input type="number" min="1970" max={currentYear} value={careerStartYear} onChange={(event) => setCareerStartYear(Number(event.target.value))} /></label>
-          <label><span>일 평균 근무시간</span><input type="number" min="0" max="24" step="0.5" value={dailyWorkHours} onChange={(event) => setDailyWorkHours(Number(event.target.value))} /></label>
-          <label><span>일 왕복 출퇴근시간</span><input type="number" min="0" max="24" step="0.5" value={dailyCommuteHours} onChange={(event) => setDailyCommuteHours(Number(event.target.value))} /></label>
-          <label><span>주간 근무일</span><input type="number" min="0" max="7" value={weeklyDays} onChange={(event) => setWeeklyDays(Number(event.target.value))} /></label>
-          <label><span>연간 휴가일</span><input type="number" min="0" max="365" value={annualLeave} onChange={(event) => setAnnualLeave(Number(event.target.value))} /></label>
+          <SelectField label="직장 시작 연도" value={careerStartYear} options={range(currentYear, 1970)} format={(year) => `${year}년`} onChange={setCareerStartYear} />
+          <SelectField label="일 평균 근무시간" value={dailyWorkHours} options={range(1, 16, 0.5)} unit="시간" onChange={setDailyWorkHours} />
+          <SelectField label="일 왕복 출퇴근시간" value={dailyCommuteHours} options={range(0, 6, 0.5)} unit="시간" onChange={setDailyCommuteHours} />
+          <SelectField label="주간 근무일" value={weeklyDays} options={range(1, 7)} unit="일" onChange={setWeeklyDays} />
+          <SelectField label="연간 휴가일" value={annualLeave} options={range(0, 40)} unit="일" onChange={setAnnualLeave} />
         </div>
         <InputNotice active={invalidInput} />
       </section>
@@ -86,9 +89,9 @@ export function WorkTimeCalculator() {
         />
         <ResultShare title="회사 누적시간" value={resultValue} factBadge={badge.fact} impactBadge={badge.impact} tone={badge.tone} />
         <div className="metricGrid">
-          <article><span>근무 누적</span><strong>{Math.round(result.workHours).toLocaleString()}시간</strong></article>
-          <article><span>출퇴근 누적</span><strong>{Math.round(result.commuteHours).toLocaleString()}시간</strong></article>
-          <article><span>24시간 환산</span><strong>{result.totalYears.toFixed(1)}년</strong></article>
+          <article><span>근무 누적</span><strong><FitText>{Math.round(result.workHours).toLocaleString()}시간</FitText></strong></article>
+          <article><span>출퇴근 누적</span><strong><FitText>{Math.round(result.commuteHours).toLocaleString()}시간</FitText></strong></article>
+          <article><span>24시간 환산</span><strong><FitText>{result.totalYears.toFixed(1)}년</FitText></strong></article>
         </div>
         <div className="chartGrid">
           <WorkTimeMixChart workHours={result.workHours} commuteHours={result.commuteHours} />

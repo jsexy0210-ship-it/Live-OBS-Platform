@@ -1,7 +1,10 @@
 "use client";
 
+import { FitText } from "@/components/FitText";
 import { useMemo } from "react";
 import { CommuteTimelineChart, DepletionDonut } from "@/components/Charts";
+import { SelectField } from "@/components/fields";
+import { range } from "@/lib/format";
 import { InputNotice } from "@/components/InputNotice";
 import { ResultHero } from "@/components/ResultHero";
 import { ResultShare } from "@/components/ResultShare";
@@ -61,11 +64,11 @@ export function CommuteCalculator() {
         <p className="eyebrow">사용자 입력 기반 추정</p>
         <h1>출근 잔량</h1>
         <div className="formGrid">
-          <label><span>현재 나이</span><input type="number" min="15" max="100" value={currentAge} onChange={(event) => setCurrentAge(Number(event.target.value))} /></label>
-          <label><span>직장 시작 나이</span><input type="number" min="15" max="100" value={careerStartAge} onChange={(event) => setCareerStartAge(Number(event.target.value))} /></label>
-          <label><span>예상 은퇴 나이</span><input type="number" min="15" max="100" value={retirementAge} onChange={(event) => setRetirementAge(Number(event.target.value))} /></label>
-          <label><span>주간 출근일</span><input type="number" min="0" max="7" value={weeklyDays} onChange={(event) => setWeeklyDays(Number(event.target.value))} /></label>
-          <label><span>연간 휴가일</span><input type="number" min="0" max="365" value={annualLeave} onChange={(event) => setAnnualLeave(Number(event.target.value))} /></label>
+          <SelectField label="현재 나이" value={currentAge} options={range(15, 100)} unit="세" onChange={setCurrentAge} />
+          <SelectField label="직장 시작 나이" value={careerStartAge} options={range(15, 70)} unit="세" onChange={setCareerStartAge} />
+          <SelectField label="예상 은퇴 나이" value={retirementAge} options={range(40, 90)} unit="세" onChange={setRetirementAge} />
+          <SelectField label="주간 출근일" value={weeklyDays} options={range(1, 7)} unit="일" onChange={setWeeklyDays} />
+          <SelectField label="연간 휴가일" value={annualLeave} options={range(0, 40)} unit="일" onChange={setAnnualLeave} />
         </div>
         <InputNotice active={invalidInput} />
       </section>
@@ -80,9 +83,9 @@ export function CommuteCalculator() {
         />
         <ResultShare title="출근 잔량" value={resultValue} factBadge={badge.fact} impactBadge={badge.impact} tone={badge.tone} />
         <div className="metricGrid">
-          <article><span>소모 출근</span><strong>{result.usedCommutes.toLocaleString()}회</strong></article>
-          <article><span>잔량 비율</span><strong>{result.remainingPercent.toFixed(1)}%</strong></article>
-          <article><span>남은 근무시간</span><strong>{result.remainingHours.toLocaleString()}시간</strong></article>
+          <article><span>소모 출근</span><strong><FitText>{result.usedCommutes.toLocaleString()}회</FitText></strong></article>
+          <article><span>잔량 비율</span><strong><FitText>{result.remainingPercent.toFixed(1)}%</FitText></strong></article>
+          <article><span>남은 근무시간</span><strong><FitText>{result.remainingHours.toLocaleString()}시간</FitText></strong></article>
         </div>
         <div className="chartGrid">
           <DepletionDonut used={100 - result.remainingPercent} remaining={result.remainingPercent} />

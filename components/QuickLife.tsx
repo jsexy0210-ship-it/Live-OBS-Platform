@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { FitText } from "@/components/FitText";
 import { commuteBadge, salaryBadge, weekendBadge, type BadgeTone } from "@/lib/badges";
 import { useStoredState } from "@/lib/useStoredState";
 
@@ -10,6 +11,7 @@ const RETIRE_AGE = 60;
 const TARGET_AGE = 80;
 const ANNUAL_WORKDAYS = 52 * 5 - 15;
 const WEEKS_PER_YEAR = 365.2425 / 7;
+const AGE_OPTIONS = Array.from({ length: 86 }, (_, i) => i + 15);
 
 type Tile = {
   key: "w" | "c" | "s";
@@ -115,30 +117,29 @@ export function QuickLife() {
           <span>내 나이 입력 · 즉시 비교</span>
         </p>
       ) : null}
-      <label className="ageInput">
-        <span>현재 나이</span>
+      <div className="ageInput">
+        <label htmlFor="quick-age">현재 나이</label>
         <span className="ageField">
           <button type="button" aria-label="나이 1 감소" onClick={() => setAge(Math.max(15, safeAge - 1))}>−</button>
-          <input
-            type="number"
-            inputMode="numeric"
-            min="15"
-            max="100"
-            value={age}
-            onChange={(event) => setAge(Number(event.target.value))}
-          />
+          <select id="quick-age" value={safeAge} onChange={(event) => setAge(Number(event.target.value))}>
+            {AGE_OPTIONS.map((option) => (
+              <option key={option} value={option}>{option}세</option>
+            ))}
+          </select>
           <button type="button" aria-label="나이 1 증가" onClick={() => setAge(Math.min(100, safeAge + 1))}>+</button>
         </span>
-        {invalid ? <small className="ageNotice">15~100세 범위 보정</small> : <small>세 · 입력 즉시 계산</small>}
-      </label>
+        {invalid ? <small className="ageNotice">15~100세 범위 보정</small> : <small>선택 즉시 계산</small>}
+      </div>
 
       <div className="quickGrid">
         {tiles.map((tile) => (
           <Link className="quickTile" href={tile.href} key={tile.key} data-tone={tile.tone}>
             <span className="quickLabel">{tile.label}</span>
             <strong className="quickValue">
-              {tile.value.toLocaleString()}
-              <small>{tile.unit}</small>
+              <FitText>
+                {tile.value.toLocaleString()}
+                <small>{tile.unit}</small>
+              </FitText>
             </strong>
             <span className="meter" aria-hidden="true">
               <span style={{ width: `${Math.max(0, Math.min(100, tile.remainingPercent))}%` }} />

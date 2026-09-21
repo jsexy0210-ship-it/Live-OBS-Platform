@@ -1,7 +1,10 @@
 "use client";
 
+import { FitText } from "@/components/FitText";
 import { useMemo } from "react";
 import { SalaryCumulativeChart } from "@/components/Charts";
+import { NumberField, SelectField } from "@/components/fields";
+import { formatWon, range } from "@/lib/format";
 import { InputNotice } from "@/components/InputNotice";
 import { ResultHero } from "@/components/ResultHero";
 import { ResultShare } from "@/components/ResultShare";
@@ -62,10 +65,10 @@ export function SalaryCalculator() {
         <p className="eyebrow">현재 급여 유지 가정</p>
         <h1>월급 잔량</h1>
         <div className="formGrid">
-          <label><span>현재 나이</span><input type="number" min="15" max="100" value={currentAge} onChange={(event) => setCurrentAge(Number(event.target.value))} /></label>
-          <label><span>직장 시작 나이</span><input type="number" min="15" max="100" value={careerStartAge} onChange={(event) => setCareerStartAge(Number(event.target.value))} /></label>
-          <label><span>예상 은퇴 나이</span><input type="number" min="15" max="100" value={retirementAge} onChange={(event) => setRetirementAge(Number(event.target.value))} /></label>
-          <label><span>현재 월 급여</span><input type="number" inputMode="numeric" min="0" value={monthlySalary} onChange={(event) => setMonthlySalary(Number(event.target.value))} /></label>
+          <SelectField label="현재 나이" value={currentAge} options={range(15, 100)} unit="세" onChange={setCurrentAge} />
+          <SelectField label="직장 시작 나이" value={careerStartAge} options={range(15, 70)} unit="세" onChange={setCareerStartAge} />
+          <SelectField label="예상 은퇴 나이" value={retirementAge} options={range(40, 90)} unit="세" onChange={setRetirementAge} />
+          <NumberField label="현재 월 급여" value={monthlySalary} onChange={setMonthlySalary} unit="원" money />
         </div>
         <InputNotice active={invalidInput} />
       </section>
@@ -80,9 +83,9 @@ export function SalaryCalculator() {
         />
         <ResultShare title="월급 잔량" value={resultValue} factBadge={badge.fact} impactBadge={badge.impact} tone={badge.tone} />
         <div className="metricGrid">
-          <article><span>미래 급여 총액</span><strong>{result.futureTotal.toLocaleString()}원</strong></article>
-          <article><span>연간 급여</span><strong>{result.annual.toLocaleString()}원</strong></article>
-          <article><span>급여 잔량</span><strong>{result.remainingPercent.toFixed(1)}%</strong></article>
+          <article><span>미래 급여 총액</span><strong><FitText>{formatWon(result.futureTotal)}</FitText></strong></article>
+          <article><span>연간 급여</span><strong><FitText>{formatWon(result.annual)}</FitText></strong></article>
+          <article><span>급여 잔량</span><strong><FitText>{result.remainingPercent.toFixed(1)}%</FitText></strong></article>
         </div>
         <SalaryCumulativeChart currentAge={result.current} retirementAge={result.retirement} monthlySalary={result.safeSalary} />
         <section className="peerSection" aria-labelledby="peer-title">
