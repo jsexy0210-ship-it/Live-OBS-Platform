@@ -27,7 +27,7 @@
 | /about · /privacy | 완료 |
 | AdSense 스크립트 · ads.txt | 완료 |
 | AdSense 수동 광고 슬롯 ID | 대기 |
-| 문의 이메일 (CONTACT_EMAIL) | 대기 |
+| 사업자 정보 · 문의 이메일 | 완료 |
 
 ## 운영 인프라
 

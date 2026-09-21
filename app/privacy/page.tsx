@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { CONTACT_EMAIL } from "@/lib/site";
+import { BUSINESS, CONTACT_EMAIL } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "개인정보처리방침",
@@ -52,13 +52,17 @@ export default function PrivacyPage() {
       </section>
 
       <section>
-        <h2>5. 변경</h2>
+        <h2>5. 운영자 및 문의</h2>
+        <p>{BUSINESS.name} · 대표 {BUSINESS.representative} · 사업자등록번호 {BUSINESS.registrationNumber}</p>
+        <p>
+          개인정보 보호책임자 · {BUSINESS.representative} ·{" "}
+          <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
+        </p>
+      </section>
+
+      <section>
+        <h2>6. 변경</h2>
         <p>본 방침이 변경되는 경우 이 페이지에 게시합니다.</p>
-        {CONTACT_EMAIL ? (
-          <p>
-            문의 · <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
-          </p>
-        ) : null}
       </section>
     </main>
   );

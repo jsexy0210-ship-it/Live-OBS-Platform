@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import { ADSENSE_CLIENT } from "@/lib/ads";
 import { CALCULATORS } from "@/lib/calculators";
-import { SITE_NAME, SITE_URL } from "@/lib/site";
+import { BUSINESS, CONTACT_EMAIL, SITE_NAME, SITE_URL } from "@/lib/site";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -78,6 +78,15 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
               <Link href="/privacy/">개인정보처리방침</Link>
             </nav>
           </div>
+          <address className="businessInfo">
+            <span>상호 {BUSINESS.name}</span>
+            <span>대표 {BUSINESS.representative}</span>
+            <span>사업자등록번호 {BUSINESS.registrationNumber}</span>
+            <span>업태·종목 {BUSINESS.category}</span>
+            <span>
+              문의 <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
+            </span>
+          </address>
           <p className="footerNote">
             모든 결과는 입력값 기반 추정치. 개인 실제 수명·재무 상태 판정 아님. 입력값은 현재 브라우저에만 저장.
           </p>

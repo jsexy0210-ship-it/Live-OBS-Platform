@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { CALCULATORS } from "@/lib/calculators";
-import { CONTACT_EMAIL } from "@/lib/site";
+import { BUSINESS, CONTACT_EMAIL } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "서비스 소개",
@@ -56,11 +56,10 @@ export default function AboutPage() {
       <section>
         <h2>운영</h2>
         <p>광고 수익 기반 무료 운영 · Google AdSense 광고 게재.</p>
-        {CONTACT_EMAIL ? (
-          <p>
-            문의 · <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
-          </p>
-        ) : null}
+        <p>운영 · {BUSINESS.name} (대표 {BUSINESS.representative})</p>
+        <p>
+          문의 · <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
+        </p>
       </section>
     </main>
   );
