@@ -16,7 +16,7 @@ TX_NEW="$ROOT/.domain-update-new-sha"
 
 release_sha="${1:-${GITHUB_SHA:-}}"
 domain="${2:-lifeleft.duckdns.org}"
-expected_ip="${3:-210.109.82.212}"
+expected_ip="${3:-210.109.15.68}"
 
 if [[ ! "$release_sha" =~ ^[0-9a-f]{40}$ ]]; then
   echo "Invalid release SHA" >&2
@@ -26,19 +26,16 @@ if [ "$domain" != "lifeleft.duckdns.org" ]; then
   echo "Unexpected production domain: $domain" >&2
   exit 1
 fi
-if [ "$expected_ip" != "210.109.82.212" ]; then
+if [ "$expected_ip" != "210.109.15.68" ]; then
   echo "Unexpected production IP: $expected_ip" >&2
   exit 1
 fi
 
 source_dir="$STAGED/$release_sha"
-test -f "$source_dir/index.html"
-test -f "$source_dir/commute/index.html"
-test -f "$source_dir/salary/index.html"
-test -f "$source_dir/weekends/index.html"
-test -f "$source_dir/work-time/index.html"
-test -f "$source_dir/subscriptions/index.html"
-test -f "$source_dir/survival/index.html"
+for file in   index.html   commute/index.html   salary/index.html   weekends/index.html   work-time/index.html   subscriptions/index.html   survival/index.html   robots.txt   sitemap.xml   release.txt
+do
+  test -f "$source_dir/$file"
+done
 
 for marker in "$TX_PREV" "$TX_CONF" "$TX_ENABLED" "$TX_NEW"; do
   if [ -e "$marker" ]; then
@@ -61,37 +58,54 @@ if [ "$resolved" != "true" ]; then
   exit 1
 fi
 
-if ! command -v certbot >/dev/null 2>&1; then
+if ! command -v nginx >/dev/null 2>&1 || ! command -v certbot >/dev/null 2>&1; then
   sudo -n apt-get update
-  sudo -n apt-get install -y certbot
+  sudo -n apt-get install -y nginx certbot
 fi
 
+sudo -n systemctl enable nginx
+sudo -n systemctl start nginx
 sudo -n mkdir -p /var/www/html/.well-known/acme-challenge
-challenge="lifeleft-preflight-${GITHUB_RUN_ID:-manual}"
-printf 'lifeleft-acme-preflight\n' | sudo -n tee "/var/www/html/.well-known/acme-challenge/$challenge" >/dev/null
-if ! curl --fail --silent --show-error --connect-timeout 5 --max-time 10 \
-  -H "Host: $domain" "http://127.0.0.1/.well-known/acme-challenge/$challenge" | grep -Fxq "lifeleft-acme-preflight"; then
-  sudo -n rm -f "/var/www/html/.well-known/acme-challenge/$challenge"
-  echo "Existing port 80 ACME webroot is unavailable." >&2
-  exit 1
-fi
-sudo -n rm -f "/var/www/html/.well-known/acme-challenge/$challenge"
+sudo -n mkdir -p "$RELEASES"
+mkdir -p "$ROOT" "$BACKUPS"
 
 cert_dir="/etc/letsencrypt/live/$domain"
 if [ ! -f "$cert_dir/fullchain.pem" ] || [ ! -f "$cert_dir/privkey.pem" ]; then
-  sudo -n certbot certonly \
-    --webroot \
-    --webroot-path /var/www/html \
-    --domain "$domain" \
-    --non-interactive \
-    --agree-tos \
-    --register-unsafely-without-email
+  bootstrap="$(mktemp)"
+  cat > "$bootstrap" <<EOF
+server {
+    listen 80;
+    listen [::]:80;
+    server_name $domain;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
+
+    location / {
+        default_type text/plain;
+        return 200 "LifeLeft bootstrap\n";
+    }
+}
+EOF
+
+  sudo -n install -m 0644 "$bootstrap" "$CONF"
+  rm -f "$bootstrap"
+  sudo -n ln -sfn "$CONF" "$ENABLED"
+  sudo -n nginx -t
+  sudo -n systemctl reload nginx
+
+  challenge="lifeleft-preflight-${GITHUB_RUN_ID:-manual}"
+  printf 'lifeleft-acme-preflight\n' | sudo -n tee "/var/www/html/.well-known/acme-challenge/$challenge" >/dev/null
+  curl --fail --silent --show-error --connect-timeout 5 --max-time 10     -H "Host: $domain" "http://127.0.0.1/.well-known/acme-challenge/$challenge"     | grep -Fxq "lifeleft-acme-preflight"
+  sudo -n rm -f "/var/www/html/.well-known/acme-challenge/$challenge"
+
+  sudo -n certbot certonly     --webroot     --webroot-path /var/www/html     --domain "$domain"     --non-interactive     --agree-tos     --register-unsafely-without-email
 fi
 
 test -f "$cert_dir/fullchain.pem"
 test -f "$cert_dir/privkey.pem"
 
-sudo -n mkdir -p "$RELEASES"
 target="$RELEASES/$release_sha"
 if [ ! -f "$target/index.html" ]; then
   sudo -n rm -rf "$target"
@@ -99,7 +113,6 @@ if [ ! -f "$target/index.html" ]; then
 fi
 sudo -n chmod -R a+rX "$WEB_ROOT"
 
-mkdir -p "$BACKUPS"
 prev="$(readlink -f "$CURRENT" 2>/dev/null || true)"
 if [ -n "$prev" ]; then
   printf '%s\n' "$prev" > "$TX_PREV"
@@ -188,20 +201,24 @@ sudo -n install -m 0644 "$tmp_conf" "$CONF"
 rm -f "$tmp_conf"
 sudo -n ln -sfn "$CONF" "$ENABLED"
 
+if [ -L /etc/nginx/sites-enabled/default ]; then
+  sudo -n rm -f /etc/nginx/sites-enabled/default
+fi
+
 sudo -n nginx -t
 sudo -n systemctl reload nginx
 
 smoke="$(mktemp)"
-curl --fail --silent --show-error --connect-timeout 5 --max-time 15 \
-  --resolve "$domain:443:127.0.0.1" "https://$domain/" -o "$smoke"
+curl --fail --silent --show-error --connect-timeout 5 --max-time 15   --resolve "$domain:443:127.0.0.1" "https://$domain/" -o "$smoke"
 grep -qi '<html' "$smoke"
 grep -q 'LIFELEFT' "$smoke"
 rm -f "$smoke"
 
-curl --fail --silent --show-error --connect-timeout 5 --max-time 15 \
-  --resolve "$domain:443:127.0.0.1" "https://$domain/commute/" >/dev/null
-curl --fail --silent --show-error --connect-timeout 5 --max-time 15 \
-  --resolve "$domain:443:127.0.0.1" "https://$domain/sitemap.xml" >/dev/null
+for path in commute salary weekends work-time subscriptions survival; do
+  curl --fail --silent --show-error --connect-timeout 5 --max-time 15     --resolve "$domain:443:127.0.0.1" "https://$domain/$path/" >/dev/null
+done
+
+curl --fail --silent --show-error --connect-timeout 5 --max-time 15   --resolve "$domain:443:127.0.0.1" "https://$domain/sitemap.xml" >/dev/null
 
 trap - EXIT
 echo "LifeLeft domain cutover complete locally: https://$domain"
