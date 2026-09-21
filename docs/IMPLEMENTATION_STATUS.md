@@ -21,6 +21,8 @@
 | 입력 범위 보정 | 완료 |
 | Static Export CI | 완료 |
 | 기존 인프라 재사용 정책 | 완료 |
+| Kakao VM immutable staging | 완료 |
+| Nginx 무변경 CI guard | 완료 |
 
 ## 현재 차트
 
@@ -80,7 +82,7 @@
 1. 공휴일 Snapshot
 2. OG/SEO 보강
 3. 공유 카드 이미지
-4. 기존 인프라 배포 workflow
+4. 기존 self-hosted runner scope 확인
 5. 운영 URL/경로 확정 후 공개 전환
 
 ## 인프라
@@ -92,4 +94,6 @@
 - 기존 GitHub Actions 사용
 - 기존 KakaoCloud VM 사용
 - 기존 Nginx/HTTPS 443 사용
+- LifeLeft 후보 경로 `/home/ubuntu/LifeLeft/static-releases/<SHA>`
 - 기존 WeddingPick 운영 경로 변경 금지
+- staging 단계 Nginx 변경 금지
