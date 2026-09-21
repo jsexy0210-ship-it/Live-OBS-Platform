@@ -1,0 +1,142 @@
+name: Deploy LifeLeft Domain
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeleft-production-domain
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build production static
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Static export
+        run: npm run build
+
+      - name: Verify production output
+        run: |
+          test -f out/index.html
+          test -f out/commute/index.html
+          test -f out/salary/index.html
+          test -f out/weekends/index.html
+          test -f out/work-time/index.html
+          test -f out/subscriptions/index.html
+          test -f out/survival/index.html
+          test -f out/robots.txt
+          test -f out/sitemap.xml
+          grep -R "https://lifeleft.duckdns.org" out/index.html out/robots.txt out/sitemap.xml >/dev/null
+
+      - name: Upload production candidate
+        uses: actions/upload-artifact@v6
+        with:
+          name: lifeleft-production-static
+          path: out
+          if-no-files-found: error
+          retention-days: 14
+
+  deploy:
+    name: Stage and enable domain on existing Kakao VM
+    needs: [build]
+    runs-on: [self-hosted, Linux, X64, weddingpick-kakao]
+    timeout-minutes: 25
+    steps:
+      - name: Checkout deployment scripts
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Download production candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: lifeleft-production-static
+          path: .lifeleft-production
+
+      - name: Stage immutable release
+        run: bash ./scripts/stage-lifeleft-static.sh .lifeleft-production "$GITHUB_SHA"
+
+      - name: Enable LifeLeft host and TLS
+        run: bash ./scripts/install-lifeleft-domain.sh "$GITHUB_SHA" lifeleft.duckdns.org 210.109.82.212
+
+  verify:
+    name: Verify public HTTPS
+    needs: [deploy]
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Public domain smoke
+        run: |
+          set -euo pipefail
+          ok=false
+          for _ in $(seq 1 24); do
+            if curl --fail --silent --show-error --connect-timeout 5 --max-time 15 \
+              https://lifeleft.duckdns.org/ > /tmp/lifeleft-home.html; then
+              ok=true
+              break
+            fi
+            sleep 10
+          done
+          [ "$ok" = true ]
+          grep -qi '<html' /tmp/lifeleft-home.html
+          grep -q 'LIFELEFT' /tmp/lifeleft-home.html
+
+          for path in commute salary weekends work-time subscriptions survival; do
+            curl --fail --silent --show-error --connect-timeout 5 --max-time 15 \
+              "https://lifeleft.duckdns.org/$path/" >/dev/null
+          done
+
+          curl --fail --silent --show-error --connect-timeout 5 --max-time 15 \
+            https://lifeleft.duckdns.org/robots.txt | grep -Fq 'https://lifeleft.duckdns.org/sitemap.xml'
+          curl --fail --silent --show-error --connect-timeout 5 --max-time 15 \
+            https://lifeleft.duckdns.org/sitemap.xml | grep -Fq 'https://lifeleft.duckdns.org/'
+
+  rollback:
+    name: Roll back domain on failed public verify
+    if: ${{ always() && needs.deploy.result == 'success' && needs.verify.result != 'success' }}
+    needs: [deploy, verify]
+    runs-on: [self-hosted, Linux, X64, weddingpick-kakao]
+    timeout-minutes: 10
+    steps:
+      - name: Checkout rollback script
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Restore prior LifeLeft domain state
+        run: bash ./scripts/rollback-lifeleft-domain.sh
+
+  finalize:
+    name: Finalize verified domain release
+    if: ${{ needs.deploy.result == 'success' && needs.verify.result == 'success' }}
+    needs: [deploy, verify]
+    runs-on: [self-hosted, Linux, X64, weddingpick-kakao]
+    timeout-minutes: 5
+    steps:
+      - name: Checkout finalize script
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Finalize release marker
+        run: bash ./scripts/finalize-lifeleft-domain.sh
