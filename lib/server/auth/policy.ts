@@ -4,7 +4,9 @@ const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
+// 계정 기준: 5번 틀리면 10분 잠금(AU-001). IP 기준: 10분 안에 20번 틀리면 그 IP를 10분 막는다.
 export const LOGIN_LOCK = { maxFailures: 5, lockMs: 10 * MINUTE } as const;
+export const IP_LOCK = { maxFailures: 20, windowMs: 10 * MINUTE, lockMs: 10 * MINUTE } as const;
 
 export type Realm = "admin" | "seller" | "buyer";
 
@@ -58,13 +60,4 @@ export type LockState = { failedLoginCount: number; lockedUntil: Date | null };
 
 export function isLocked(s: LockState, now: Date): boolean {
   return !!s.lockedUntil && s.lockedUntil > now;
-}
-
-// 실패 1회를 반영한 다음 상태. 5회째에 10분 잠그고 횟수를 0으로 되돌린다.
-export function nextLockStateAfterFailure(s: LockState, now: Date): LockState & { lockedNow: boolean } {
-  const count = s.failedLoginCount + 1;
-  if (count >= LOGIN_LOCK.maxFailures) {
-    return { failedLoginCount: 0, lockedUntil: new Date(now.getTime() + LOGIN_LOCK.lockMs), lockedNow: true };
-  }
-  return { failedLoginCount: count, lockedUntil: s.lockedUntil, lockedNow: false };
 }

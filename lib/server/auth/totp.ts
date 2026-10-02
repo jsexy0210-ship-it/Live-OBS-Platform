@@ -14,16 +14,21 @@ export function totpCode(secretBase32: string, at: Date): string {
   return hotp(base32Decode(secretBase32), counter);
 }
 
-// 앞뒤 1스텝(±30초)까지 허용한다.
-export function verifyTotp(secretBase32: string, code: string, at: Date, window = 1): boolean {
-  if (!/^\d{6}$/.test(code)) return false;
+// 맞는 코드의 카운터(30초 단위 순번)를 돌려준다. 앞뒤 1스텝(±30초)까지 허용하고, 아니면 null.
+// 재사용을 막으려면 호출하는 쪽에서 마지막으로 받아들인 카운터보다 큰지 확인한다.
+export function matchTotpCounter(secretBase32: string, code: string, at: Date, window = 1): number | null {
+  if (!/^\d{6}$/.test(code)) return null;
   const key = base32Decode(secretBase32);
   const counter = Math.floor(at.getTime() / 1000 / STEP_SECONDS);
   for (let i = -window; i <= window; i++) {
     const expected = hotp(key, counter + i);
-    if (timingSafeEqual(Buffer.from(expected), Buffer.from(code))) return true;
+    if (timingSafeEqual(Buffer.from(expected), Buffer.from(code))) return counter + i;
   }
-  return false;
+  return null;
+}
+
+export function verifyTotp(secretBase32: string, code: string, at: Date, window = 1): boolean {
+  return matchTotpCounter(secretBase32, code, at, window) !== null;
 }
 
 function hotp(key: Buffer, counter: number): string {
