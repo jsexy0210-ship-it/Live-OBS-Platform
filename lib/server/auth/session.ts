@@ -11,7 +11,6 @@ const TOUCH_INTERVAL_MS = 60_000;
 export async function createAdminSession(
   db: PrismaClient,
   adminId: string,
-  opts: { mfaVerified: boolean; enrollmentOnly: boolean },
   meta: SessionMeta,
 ): Promise<IssuedSession> {
   const now = meta.now ?? new Date();
@@ -21,8 +20,6 @@ export async function createAdminSession(
     data: {
       adminId,
       tokenHash: hashToken(token),
-      mfaVerifiedAt: opts.mfaVerified ? now : null,
-      enrollmentOnly: opts.enrollmentOnly,
       ip: meta.ip ?? null,
       userAgent: meta.userAgent ?? null,
       expiresAt,
@@ -72,8 +69,7 @@ export async function createBuyerSession(
   return { token, expiresAt };
 }
 
-// enrollmentOnly: TOTP 등록 전용 제한 세션. requireAdmin은 거부하고 등록 API만 받는다.
-export type AdminSessionContext = { admin: PlatformAdmin; sessionId: string; enrollmentOnly: boolean };
+export type AdminSessionContext = { admin: PlatformAdmin; sessionId: string };
 
 export async function resolveAdminSession(
   db: PrismaClient,
@@ -84,11 +80,8 @@ export async function resolveAdminSession(
   const s = await db.adminSession.findUnique({ where: { tokenHash: hashToken(token) }, include: { admin: true } });
   if (!s || !isSessionActive("admin", s, now)) return null;
   if (s.admin.status !== "ACTIVE") return null;
-  // 2단계 인증을 등록한 계정은 인증을 마친 세션만 인정한다(등록 전에 받은 제한 세션 포함 거부).
-  if (s.admin.totpEnabledAt && !s.mfaVerifiedAt) return null;
-  if (!s.admin.totpEnabledAt && !s.enrollmentOnly) return null;
   await touch(db, "admin", s.id, s.lastSeenAt, now);
-  return { admin: s.admin, sessionId: s.id, enrollmentOnly: s.enrollmentOnly };
+  return { admin: s.admin, sessionId: s.id };
 }
 
 export type SellerSessionContext = { user: SellerUser; seller: Seller; sessionId: string };

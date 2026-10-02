@@ -30,13 +30,14 @@ export function clearSessionCookie(res: NextResponse, realm: Realm) {
 }
 
 // 신뢰할 프록시 단계 수(환경변수 TRUSTED_PROXY_HOPS). 0이거나 없으면 X-Forwarded-For를 믿지 않는다.
+// 접속 IP는 감사 로그 기록에만 쓴다(IP 허용 목록·제한은 두지 않음, 대표님 결정 2026-10-02).
 function trustedProxyHops(): number {
   const n = Number(process.env.TRUSTED_PROXY_HOPS ?? "0");
   return Number.isInteger(n) && n > 0 ? n : 0;
 }
 
 // 접속 IP. 신뢰 프록시가 설정된 경우에만 X-Forwarded-For에서 프록시가 덧붙인 위치의 주소를 쓴다
-// (맨 앞 값은 요청자가 마음대로 넣을 수 있어 쓰지 않는다). 알 수 없으면 null — IP 제한은 적용되지 않는다.
+// (맨 앞 값은 요청자가 마음대로 넣을 수 있어 쓰지 않는다). 알 수 없으면 null.
 export function clientIp(req: Request): string | null {
   const hops = trustedProxyHops();
   if (hops === 0) return null;
@@ -96,9 +97,8 @@ export function errorResponse(e: unknown): NextResponse {
   return NextResponse.json({ error: "internal_error" }, { status: 500 });
 }
 
-// 로그인 실패 사유별 상태 코드. 잠금은 429, 승인 대기·정지 등은 403.
+// 로그인 실패 사유별 상태 코드. 승인 대기·정지 등은 403.
 export function loginFailureStatus(reason: string): number {
-  if (reason === "locked") return 429;
   if (reason === "invalid_credentials") return 401;
   if (reason === "shop_required") return 409;
   return 403;

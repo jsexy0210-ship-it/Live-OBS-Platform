@@ -4,9 +4,7 @@ const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
-// 계정 기준: 5번 틀리면 10분 잠금(AU-001). IP 기준: 10분 안에 20번 틀리면 그 IP를 10분 막는다.
-export const LOGIN_LOCK = { maxFailures: 5, lockMs: 10 * MINUTE } as const;
-export const IP_LOCK = { maxFailures: 20, windowMs: 10 * MINUTE, lockMs: 10 * MINUTE } as const;
+// 로그인 실패 잠금·IP 제한·2단계 인증은 두지 않는다(대표님 결정 2026-10-02). 실패는 감사 로그에 남긴다.
 
 export type Realm = "admin" | "seller" | "buyer";
 
@@ -54,10 +52,4 @@ export function isSessionActive(realm: Realm, s: SessionTimes, now: Date, broadc
 
 export function sessionExpiry(realm: Realm, now: Date): Date {
   return new Date(now.getTime() + SESSION_POLICY[realm].maxMs);
-}
-
-export type LockState = { failedLoginCount: number; lockedUntil: Date | null };
-
-export function isLocked(s: LockState, now: Date): boolean {
-  return !!s.lockedUntil && s.lockedUntil > now;
 }
