@@ -71,16 +71,18 @@ enum SellerStatus {
 }
 
 model Seller {
-  id                String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  slug              String       @unique
-  shopName          String
-  status            SellerStatus @default(PENDING)
-  businessInfo      Json?
-  approvedAt        DateTime?    @db.Timestamptz(3)
-  approvedByAdminId String?      @db.Uuid
-  suspendedReason   String?
-  liveVersion       Int          @default(0)
-  createdAt         DateTime     @default(now()) @db.Timestamptz(3)
+  id                   String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug                 String       @unique
+  shopName             String
+  status               SellerStatus @default(PENDING)
+  businessInfo         Json?
+  approvedAt           DateTime?    @db.Timestamptz(3)
+  approvedByAdminId    String?      @db.Uuid
+  suspendedReason      String?
+  // 대표자 PASS 본인인증 CI의 HMAC-SHA256 값(원문 CI는 저장하지 않음). 대표자 1명당 쇼핑몰 1개는 마이그레이션 SQL 부분 유니크.
+  representativeCiHash String?
+  liveVersion          Int          @default(0)
+  createdAt            DateTime     @default(now()) @db.Timestamptz(3)
 
   approvedBy PlatformAdmin? @relation(fields: [approvedByAdminId], references: [id])
 
@@ -204,7 +206,7 @@ enum BuyerMemberStatus {
   WITHDRAWN
 }
 
-// 휴대폰·아이디·방송 닉네임 유니크는 deletedAt IS NULL 행에만 적용 (마이그레이션 SQL 부분 유니크 인덱스).
+// CI·휴대폰·아이디·방송 닉네임 유니크는 deletedAt IS NULL 행에만 적용 (마이그레이션 SQL 부분 유니크 인덱스).
 model BuyerMember {
   id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   sellerId           String            @db.Uuid
@@ -213,6 +215,9 @@ model BuyerMember {
   name               String
   phone              String
   phoneVerifiedAt    DateTime?         @db.Timestamptz(3)
+  // PASS 본인인증 CI의 HMAC-SHA256 값(원문 CI는 저장하지 않음). 같은 쇼핑몰 중복 가입 차단 기준.
+  ciHash             String
+  identityVerifiedAt DateTime          @db.Timestamptz(3)
   broadcastNickname  String
   gradeId            String            @db.Uuid
   status             BuyerMemberStatus @default(ACTIVE)
