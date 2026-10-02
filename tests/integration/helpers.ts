@@ -19,7 +19,10 @@ const next = () => ++seq;
 
 export async function createSeller() {
   const n = next();
-  const seller = await db.seller.create({ data: { slug: `shop-${n}`, shopName: `쇼핑몰 ${n}`, status: "ACTIVE" } });
+  // 기본은 체험하기 중(구독 차단 없이 다른 기능을 시험). 구독 시험은 trialEndsAt을 직접 바꾼다.
+  const seller = await db.seller.create({
+    data: { slug: `shop-${n}`, shopName: `쇼핑몰 ${n}`, status: "ACTIVE", trialEndsAt: new Date("2999-12-31T00:00:00Z") },
+  });
   const grade = await db.memberGrade.create({
     data: { sellerId: seller.id, displayName: "일반", sortOrder: 0, systemKey: "BASIC" },
   });

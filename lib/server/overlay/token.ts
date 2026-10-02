@@ -1,6 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { generateToken, hashToken } from "../auth/token";
+import { sellerAccessFor } from "../billing/subscription";
 import { requireSellerPermission, type TenantContext } from "../tenant/context";
 
 // 오버레이 URL 토큰 발급·재발급. 새로 발급하면 이전 토큰은 바로 폐기된다. 원문 토큰은 이때 한 번만 돌려준다.
@@ -23,13 +24,16 @@ export async function issueOverlayToken(db: PrismaClient, ctx: TenantContext, no
   return token;
 }
 
-// 오버레이 토큰으로 판매자를 찾는다. 폐기된 토큰이나 운영 중이 아닌 판매자는 null.
-export async function resolveOverlayToken(db: PrismaClient, token: string | undefined): Promise<string | null> {
+// 오버레이 토큰으로 판매자를 찾는다. 폐기된 토큰, 운영 중이 아닌 판매자, 구독이 끝나 잠긴 판매자는 null
+// (state·version·stream 모두 404, 열려 있는 SSE는 다음 핑 재확인 때 닫힘. MASTER 결정 2026-10-03).
+export async function resolveOverlayToken(db: PrismaClient, token: string | undefined, now?: Date): Promise<string | null> {
   if (!token || token.length > 100) return null;
   const row = await db.overlayToken.findUnique({
     where: { tokenHash: hashToken(token) },
     select: { sellerId: true, revokedAt: true, seller: { select: { status: true } } },
   });
   if (!row || row.revokedAt || row.seller.status !== "ACTIVE") return null;
+  // 이용 제한은 DB 시계로 판단한다
+  if ((await sellerAccessFor(db, row.sellerId, now)) === "expired") return null;
   return row.sellerId;
 }

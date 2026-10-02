@@ -72,6 +72,10 @@ model Seller {
   status                   SellerStatus @default(PENDING)
   businessInfo             Json?
   approvedAt               DateTime?    @db.Timestamptz(3)
+  // 체험하기 종료 시각 = 마스터 승인 시각(DB 시계) + TRIAL_DAYS(14일, lib/server/sellers/approval.ts). 지나면 구독 전까지 판매자 API를 막는다.
+  trialEndsAt              DateTime?    @db.Timestamptz(3)
+  // 잠긴 지 30일이 지나 자동 해지된 시각. 이때부터 90일 보관 뒤 삭제 대상(삭제는 별도 작업). 다시 구독하면 비운다.
+  serviceEndedAt           DateTime?    @db.Timestamptz(3)
   approvedByAdminId        String?      @db.Uuid
   suspendedReason          String?
   // 대표자 PASS 본인인증 CI의 HMAC-SHA256 값(원문 CI는 저장하지 않음). 대표자 1명당 쇼핑몰 1개는 마이그레이션 SQL 부분 유니크.
@@ -105,16 +109,20 @@ model Seller {
   rewardLedger             RewardLedger[]
   rewardBalances           RewardBalance[]
   overlayTokens            OverlayToken[]
+  subscription             SellerSubscription?
+  subscriptionPayments     SubscriptionPayment[]
   auditLogs                AuditLog[]
 }
 
 model SellerDomain {
-  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerId   String    @db.Uuid
-  hostname   String    @unique
-  verifiedAt DateTime? @db.Timestamptz(3)
-  certStatus String?
-  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId    String    @db.Uuid
+  hostname    String    @unique
+  verifiedAt  DateTime? @db.Timestamptz(3)
+  certStatus  String?
+  // 자동 해지로 연결을 푼 시각(비활성). 다시 구독하면 되살린다.
+  suspendedAt DateTime? @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
 
   seller Seller @relation(fields: [sellerId], references: [id])
 
@@ -715,4 +723,107 @@ model AuditLog {
 
   @@index([sellerId, createdAt])
   @@index([action, createdAt])
+}
+
+// ───────────── 플랫폼 구독 (판매자 → 플랫폼) ─────────────
+
+// 요금제. 가격은 코드에 두지 않고 여기서 바꾼다(마스터). 금액은 부가세 포함 원 단위, 청구액은 salePrice.
+model SubscriptionPlan {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code               String   @unique
+  name               String
+  listPrice          Int
+  salePrice          Int
+  // 체험하기 중 한도(대표님 결정 2026-10-02). 코드 수정 없이 마스터가 바꾼다.
+  trialMessageLimit  Int      @default(100)
+  trialIdentityLimit Int      @default(50)
+  trialStorageMb     Int      @default(1024)
+  createdAt          DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime @updatedAt @db.Timestamptz(3)
+
+  subscriptions SellerSubscription[]
+  priceChanges  SubscriptionPriceChange[]
+}
+
+// 판매가 변경 기록(대표님 결정 2026-10-02). 새 가입자는 바로 새 가격, 기존 구독자는 구독을 시작할 때 적용되던 가격을 내다가
+// 변경 시각 + 30일 이후 첫 결제부터 새 가격을 낸다. 청구 금액은 이 기록으로 계산한다(priceFor).
+model SubscriptionPriceChange {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  planId           String   @db.Uuid
+  listPrice        Int
+  salePrice        Int
+  changedAt        DateTime @db.Timestamptz(3)
+  changedByAdminId String?  @db.Uuid
+
+  plan SubscriptionPlan @relation(fields: [planId], references: [id])
+
+  @@index([planId, changedAt])
+}
+
+enum SellerSubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
+// 쇼핑몰당 하나. 카드 자동결제(빌링키)만 쓴다. 빌링키는 서버 비밀키로 암호화해서만 저장한다.
+model SellerSubscription {
+  id                 String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId           String                   @unique @db.Uuid
+  planId             String                   @db.Uuid
+  status             SellerSubscriptionStatus @default(ACTIVE)
+  billingKeyCipher   String?
+  cardLabel          String?
+  currentPeriodStart DateTime?                @db.Timestamptz(3)
+  currentPeriodEnd   DateTime?                @db.Timestamptz(3)
+  cancelAtPeriodEnd  Boolean                  @default(false)
+  // 다음 결제(또는 해지 처리)를 할 시각. 예약 실행이 이 시각이 지난 구독을 처리한다. 없으면 할 일 없음.
+  nextChargeAt       DateTime?                @db.Timestamptz(3)
+  // 매달 기간을 세는 기준 시각(첫 결제 기간의 시작). KST 날짜·시각으로 다음 달 같은 날(없으면 말일)을 센다.
+  billingAnchorAt    DateTime?                @db.Timestamptz(3)
+  // 지금 구독을 시작한 시각(처음 등록, 또는 해지 뒤 다시 구독). 기존 구독자 가격 판단에 쓴다.
+  subscribedAt       DateTime                 @default(now()) @db.Timestamptz(3)
+  // 해지(CANCELED)된 시각. 이 뒤에 만든 청구만 구독을 되살릴 수 있다(해지 전 청구가 늦게 확정돼도 되살리지 않음).
+  canceledAt         DateTime?                @db.Timestamptz(3)
+  // 자동결제 실패 뒤 다시 시도한 횟수(최대 3번)와 계속 쓸 수 있는 유예 끝(실패한 날 + 7일)
+  retryCount         Int                      @default(0)
+  graceUntil         DateTime?                @db.Timestamptz(3)
+  createdAt          DateTime                 @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime                 @updatedAt @db.Timestamptz(3)
+
+  seller   Seller                @relation(fields: [sellerId], references: [id])
+  plan     SubscriptionPlan      @relation(fields: [planId], references: [id])
+  payments SubscriptionPayment[]
+
+  @@unique([sellerId, id])
+  @@index([status, nextChargeAt])
+}
+
+enum SubscriptionPaymentStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+// 청구 내역. 같은 구독·같은 이용 기간에는 진행 중이거나 결제된 청구가 하나만 있다(마이그레이션 SQL 부분 유니크).
+model SubscriptionPayment {
+  id                String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId          String                    @db.Uuid
+  subscriptionId    String                    @db.Uuid
+  amount            Int
+  status            SubscriptionPaymentStatus @default(PENDING)
+  periodStart       DateTime                  @db.Timestamptz(3)
+  periodEnd         DateTime                  @db.Timestamptz(3)
+  providerPaymentId String?
+  receiptUrl        String?
+  failureReason     String?
+  // 예약 실행이 만든 청구(true)인지, 판매자가 카드 등록으로 직접 낸 청구(false)인지
+  scheduled         Boolean                   @default(false)
+  paidAt            DateTime?                 @db.Timestamptz(3)
+  createdAt         DateTime                  @default(now()) @db.Timestamptz(3)
+
+  seller       Seller             @relation(fields: [sellerId], references: [id])
+  subscription SellerSubscription @relation(fields: [sellerId, subscriptionId], references: [sellerId, id])
+
+  @@index([sellerId, createdAt])
 }

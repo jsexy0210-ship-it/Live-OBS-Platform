@@ -5,6 +5,8 @@ export const ADMIN_PERMISSIONS = {
   "platform.read": ["SUPER_ADMIN", "OPERATIONS", "CS", "READ_ONLY"],
   "seller.moderate": ["SUPER_ADMIN", "OPERATIONS"],
   "billing.manage": ["SUPER_ADMIN", "OPERATIONS"],
+  // 구독 가격 변경은 최고관리자(대표님)만(MASTER 결정 2026-10-03)
+  "billing.price": ["SUPER_ADMIN"],
   "support.manage": ["SUPER_ADMIN", "CS"],
   "seller.impersonate": ["SUPER_ADMIN", "OPERATIONS", "CS"],
   "admin.manage": ["SUPER_ADMIN"],
