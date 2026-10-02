@@ -1,14 +1,13 @@
 # HANDOFF
 
 > 기준일: 2026-10-02 (KST)
-> 브랜치: `claude/ecstatic-ramanujan-bmzcay`
 
 ## 세션
 
 | 세션 | ID | 담당 |
 |---|---|---|
 | Live-OBS-Platform MASTER (2) | `session_018xa8SC5evpEFNVcQBwcN5t` | 요구사항 접수 · 작업 배정 · 독립 검수 · main 병합 · 상태 문서 관리. 2026-10-02 17:21 KST 교체 생성 |
-| (이전) MASTER | `session_01XqBPGTKiEMmRSMB5SfFp3C` | 컨텍스트 50% 도달로 교체. 인계 후 보관 예정 |
+| (이전) MASTER | `session_01XqBPGTKiEMmRSMB5SfFp3C` | 컨텍스트 50% 도달로 교체. PR #15 병합 후 보관 완료 (2026-10-02 KST) |
 | 디자인 전담 | `session_011K2Cw69VDhwYpPegzFpXoK` | `docs/DESIGN_PROMPT.md`·`docs/IA.md` 기준 전체 화면 디자인 (클로드디자인). 2026-10-02 17:00 KST 대표님 생성, 17:14 KST MASTER 하위로 편입. 디자인 시스템은 대표님 A안: Montage는 구조 뼈대만, 색상·글꼴·로고는 자체 브랜드로 교체(17:20 KST 전달). 아티팩트: https://claude.ai/artifact/YYGXZ3u4QvjQpEMUHnN4tS |
 
 전담 세션 태그: `live-obs` + `lo-master` / `lo-design`. 새 전담 세션은 이 표에 추가하고 `docs/session-prompt.md`를 지시에 넣는다.
@@ -30,7 +29,7 @@
 ## 미확인·미변경 (권한/범위 밖)
 
 - 이전 프로젝트 흔적 (재검토 2026-10-02 KST, 현재 파일에는 없음):
-  - 원격 브랜치 11개: 대표님 지시로 삭제 완료 (2026-10-02 KST 확인, 남은 원격 브랜치는 `main`과 MASTER 작업 브랜치).
+  - 원격 브랜치 11개: 대표님 지시로 삭제 완료 (2026-10-02 KST 확인, 이전 MASTER 작업 브랜치도 PR #15 병합 후 삭제. 남은 원격 브랜치는 `main`뿐).
   - 종료된 PR #1~#6: 이전 프로젝트 제목·본문. GitHub에서 PR 삭제 불가.
   - Actions 실행 기록과 빌드 아티팩트 `lifeleft-production-static` (2026-10-06 08:24 KST 자동 만료). 실행 기록 삭제는 Actions 화면에서 가능.
   - Git 커밋 이력: 이력 재작성 금지로 유지.
