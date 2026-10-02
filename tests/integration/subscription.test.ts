@@ -3,13 +3,14 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { loginSeller } from "../../lib/server/auth/login";
 import { resolveAdminSession, createAdminSession } from "../../lib/server/auth/session";
 import { requireSeller } from "../../lib/server/authz/guards";
-import { updatePlanPrice } from "../../lib/server/billing/plans";
+import { listPriceChangeNoticeTargets, updatePlanPrice } from "../../lib/server/billing/plans";
 import { FakeBillingProvider } from "../../lib/server/billing/provider";
-import { addOneMonth } from "../../lib/server/billing/access";
+import { addMonthsKst } from "../../lib/server/billing/access";
 import { openBillingKey } from "../../lib/server/billing/secret";
 import {
   cancelSubscription,
   closeLongLockedSellers,
+  reconcileStalePayments,
   getSubscriptionView,
   registerCardAndPay,
   renewDueSubscriptions,
@@ -41,6 +42,7 @@ import { PASSWORD, adminCredentials, createAdmin, createBuyer, createSeller, cre
 
 beforeAll(() => {
   process.env.BILLING_KEY_SECRET = "test-billing-key-secret-0123456789abcdef";
+  process.env.BILLING_PROVIDER = "fake";
 });
 beforeEach(async () => {
   await resetDb();
@@ -124,7 +126,7 @@ describe("판매자 승인과 체험하기", () => {
 });
 
 describe("카드 등록·결제", () => {
-  it("체험하기 중에 구독하면 카드만 등록하고, 체험하기가 끝나는 시각에 199,000원을 처음 결제한다", async () => {
+  it("체험하기 중에 구독하면 카드만 등록하고, 체험하기가 끝난 뒤 예약 실행이 199,000원을 처음 결제한다(기간은 결제한 시각부터)", async () => {
     const trialEndsAt = new Date(Date.now() + 2 * DAY);
     const { seller, ctx } = await shop(trialEndsAt);
     const provider = new FakeBillingProvider();
@@ -137,11 +139,13 @@ describe("카드 등록·결제", () => {
     expect(await renewDueSubscriptions(db, provider, { now: new Date(trialEndsAt.getTime() - 1000) })).toMatchObject({ charged: 0 });
     // 체험하기가 끝나고 예약 실행이 돌기 전에도 끊기지 않는다
     expect(await sellerAccessFor(db, seller.id, new Date(trialEndsAt.getTime() + 60_000))).toBe("charging");
-    expect(await renewDueSubscriptions(db, provider, { now: new Date(trialEndsAt.getTime() + 60_000) })).toMatchObject({ charged: 1 });
+    const chargedAt = new Date(trialEndsAt.getTime() + 60_000);
+    expect(await renewDueSubscriptions(db, provider, { now: chargedAt })).toMatchObject({ charged: 1 });
     expect(provider.charges).toEqual([expect.objectContaining({ amount: 199000 })]);
     const sub = await db.sellerSubscription.findUniqueOrThrow({ where: { sellerId: seller.id } });
-    expect(sub).toMatchObject({ status: "ACTIVE", currentPeriodStart: trialEndsAt, currentPeriodEnd: addOneMonth(trialEndsAt) });
-    expect(sub.nextChargeAt).toEqual(new Date(addOneMonth(trialEndsAt).getTime() - DAY));
+    // 체험 종료와 결제 사이(잠금 대기)는 청구하지 않으므로 기간은 결제한 시각부터 한 달(KST 기준일)
+    expect(sub).toMatchObject({ status: "ACTIVE", currentPeriodStart: chargedAt, currentPeriodEnd: addMonthsKst(chargedAt, 1), billingAnchorAt: chargedAt });
+    expect(sub.nextChargeAt).toEqual(new Date(addMonthsKst(chargedAt, 1).getTime() - DAY));
     // 빌링키 원문은 저장하지 않는다
     expect(JSON.stringify(sub)).not.toContain("fake-bk-");
   });
@@ -220,21 +224,49 @@ describe("카드 등록·결제", () => {
 });
 
 describe("가격", () => {
-  it("마스터가 가격을 바꾸면 다음 결제부터 새 판매가로 청구한다", async () => {
-    const admin = await adminCtx("SUPER_ADMIN");
-    expect(await updatePlanPrice(db, admin, "STANDARD", { listPrice: 300000, salePrice: 249000 })).toMatchObject({ ok: true });
-    const { ctx } = await shop(new Date(Date.now() - DAY));
+  it("가격을 바꾸면 새 가입자는 바로, 기존 구독자는 변경 + 30일 이후 첫 결제부터 새 가격이다", async () => {
     const provider = new FakeBillingProvider();
-    await registerCardAndPay(db, provider, ctx, { authKey: "p" });
-    expect(provider.charges[0].amount).toBe(249000);
+    const old = await shop(new Date(Date.now() - DAY));
+    await registerCardAndPay(db, provider, old.ctx, { authKey: "old" });
+    const oldSub = await db.sellerSubscription.findUniqueOrThrow({ where: { sellerId: old.seller.id } });
+
+    const admin = await adminCtx("SUPER_ADMIN");
+    const r = await updatePlanPrice(db, admin, "STANDARD", { listPrice: 300000, salePrice: 249000 });
+    expect(r).toMatchObject({ ok: true, plan: { salePrice: 249000 } });
+    const changedAt = (await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "STANDARD" } })).priceChangedAt!;
+
+    // 새 가입자: 바로 새 가격
+    const fresh = await shop(new Date(Date.now() - DAY));
+    await registerCardAndPay(db, provider, fresh.ctx, { authKey: "new" });
+    expect(provider.charges.at(-1)!.amount).toBe(249000);
+
+    // 기존 구독자: 변경 뒤 30일 안의 결제는 이전 가격, 30일이 지난 뒤 결제는 새 가격
+    // (기존 구독자의 기간 끝을 변경 + 10일로 옮겨 30일 안에 다음 결제가 오게 한다)
+    const end = new Date(changedAt.getTime() + 10 * DAY);
+    await db.sellerSubscription.update({
+      where: { id: oldSub.id },
+      data: { currentPeriodEnd: end, nextChargeAt: new Date(end.getTime() - DAY), billingAnchorAt: addMonthsKst(end, -1) },
+    });
+    await renewDueSubscriptions(db, provider, { now: new Date(end.getTime() - DAY / 2) });
+    expect(provider.charges.at(-1)!.amount).toBe(199000);
+    const afterRenew = await db.sellerSubscription.findUniqueOrThrow({ where: { id: oldSub.id } });
+    await renewDueSubscriptions(db, provider, { now: new Date(afterRenew.currentPeriodEnd!.getTime() - DAY / 2) });
+    expect(provider.charges.at(-1)!.amount).toBe(249000);
+
+    // 고지 대상: 변경 전부터 구독하던 판매자만
+    const targets = await listPriceChangeNoticeTargets(db, admin);
+    expect(targets.map((t) => t.sellerId)).toEqual([old.seller.id]);
+    expect(targets[0]).toMatchObject({ oldPrice: 199000, newPrice: 249000, appliesFrom: new Date(changedAt.getTime() + 30 * DAY) });
     expect(await db.auditLog.count({ where: { action: "admin.plan.price_update" } })).toBe(1);
   });
 
-  it("판매가가 정가보다 크거나 정수가 아니면 거부, CS 역할은 바꿀 수 없다", async () => {
+  it("판매가가 정가보다 크거나 정수가 아니면 거부, 최고관리자가 아니면 바꿀 수 없다", async () => {
     const admin = await adminCtx("SUPER_ADMIN");
     expect(await updatePlanPrice(db, admin, "STANDARD", { listPrice: 100000, salePrice: 199000 })).toEqual({ ok: false, reason: "invalid_price" });
     expect(await updatePlanPrice(db, admin, "STANDARD", { listPrice: 300000, salePrice: 1.5 })).toEqual({ ok: false, reason: "invalid_price" });
     await expect(updatePlanPrice(db, await adminCtx("CS"), "STANDARD", { listPrice: 1, salePrice: 1 })).rejects.toMatchObject({ status: 403 });
+    // 가격 변경은 최고관리자만(운영 역할도 불가)
+    await expect(updatePlanPrice(db, await adminCtx("OPERATIONS"), "STANDARD", { listPrice: 300000, salePrice: 1000 })).rejects.toMatchObject({ status: 403 });
     expect((await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "STANDARD" } })).salePrice).toBe(199000);
   });
 });
@@ -248,7 +280,7 @@ describe("자동결제·재시도·해지", () => {
   }
   const declineStored = async (provider: FakeBillingProvider, subId: string) => {
     const stored = await db.sellerSubscription.findUniqueOrThrow({ where: { id: subId } });
-    provider.decline(openBillingKey(stored.billingKeyCipher!));
+    provider.decline(openBillingKey(stored.billingKeyCipher!, stored.sellerId));
   };
 
   it("기간 끝 하루 전부터 다음 달을 결제하고, 여러 번 돌려도 한 번만 결제한다", async () => {
@@ -328,6 +360,110 @@ describe("자동결제·재시도·해지", () => {
     });
     expect(v.payments).toHaveLength(1);
     expect(JSON.stringify(v)).not.toContain("billingKey");
+  });
+});
+
+describe("이중 결제·결제 결과 유실 (MASTER 검수 P1)", () => {
+  it("예약 실행이 하루 넘게 늦은 상태에서 카드 등록과 예약 결제가 겹쳐도 한 번만 결제된다", async () => {
+    const trialEndsAt = new Date(Date.now() - 3 * DAY);
+    const s = await shop(new Date(Date.now() + DAY));
+    const provider = new FakeBillingProvider();
+    await registerCardAndPay(db, provider, s.ctx, { authKey: "first" });
+    // 체험하기가 3일 전에 끝났는데 예약 실행이 아직 안 돈 상황
+    await db.seller.update({ where: { id: s.seller.id }, data: { trialEndsAt } });
+    await db.sellerSubscription.update({ where: { sellerId: s.seller.id }, data: { nextChargeAt: trialEndsAt } });
+    expect(await sellerAccessFor(db, s.seller.id)).toBe("charging");
+
+    for (let i = 0; i < 5; i++) {
+      await Promise.all([registerCardAndPay(db, provider, s.ctx, { authKey: `again-${i}` }), renewDueSubscriptions(db, provider)]);
+    }
+    expect(await db.subscriptionPayment.count({ where: { sellerId: s.seller.id, status: "PAID" } })).toBe(1);
+    expect(provider.charges).toHaveLength(1);
+  });
+
+  it("PG 응답이 끊겨 결제 결과를 못 받으면 PENDING으로 두고, 정리 함수가 같은 청구 id로 확인해 확정한다", async () => {
+    const s = await shop(new Date(Date.now() - DAY));
+    const provider = new FakeBillingProvider();
+    provider.failNext = "timeout_after_charge"; // PG에서는 결제됐지만 응답 유실
+    expect(await registerCardAndPay(db, provider, s.ctx, { authKey: "t1" })).toEqual({ ok: false, reason: "payment_pending" });
+    expect((await db.subscriptionPayment.findFirstOrThrow({ where: { sellerId: s.seller.id } })).status).toBe("PENDING");
+    // 확정 전 다시 눌러도 이중 결제하지 않는다
+    expect(await registerCardAndPay(db, provider, s.ctx, { authKey: "t2" })).toEqual({ ok: false, reason: "payment_in_progress" });
+    expect(await reconcileStalePayments(db, provider, { staleMs: 0 })).toMatchObject({ paid: 1, recharged: 0 });
+    expect(provider.charges).toHaveLength(1);
+    expect(await sellerAccessFor(db, s.seller.id)).toBe("paid");
+    // 다시 돌려도 바뀌지 않는다
+    expect(await reconcileStalePayments(db, provider, { staleMs: 0 })).toMatchObject({ paid: 0, failed: 0 });
+  });
+
+  it("결제 요청이 PG에 닿지 않았으면(기록 없음) 같은 청구 id로 다시 요청해 확정한다", async () => {
+    const s = await shop(new Date(Date.now() - DAY));
+    const provider = new FakeBillingProvider();
+    provider.failNext = "timeout_before_charge";
+    expect(await registerCardAndPay(db, provider, s.ctx, { authKey: "t3" })).toEqual({ ok: false, reason: "payment_pending" });
+    expect(await reconcileStalePayments(db, provider, { staleMs: 0 })).toMatchObject({ paid: 1, recharged: 1 });
+    const pay = await db.subscriptionPayment.findFirstOrThrow({ where: { sellerId: s.seller.id } });
+    expect(pay.status).toBe("PAID");
+    expect(provider.charges).toEqual([expect.objectContaining({ orderId: pay.id })]);
+  });
+
+  it("예약 실행은 한 판매자가 실패해도 나머지를 계속 처리한다", async () => {
+    const provider = new FakeBillingProvider();
+    const a = await shop(new Date(Date.now() - DAY));
+    const b = await shop(new Date(Date.now() - DAY));
+    await registerCardAndPay(db, provider, a.ctx, { authKey: "a" });
+    await registerCardAndPay(db, provider, b.ctx, { authKey: "b" });
+    const subA = await db.sellerSubscription.findUniqueOrThrow({ where: { sellerId: a.seller.id } });
+    // a의 빌링키를 다른 판매자 것으로 바꿔 풀리지 않게 만든다(AAD)
+    const subB = await db.sellerSubscription.findUniqueOrThrow({ where: { sellerId: b.seller.id } });
+    await db.sellerSubscription.update({ where: { id: subA.id }, data: { billingKeyCipher: subB.billingKeyCipher } });
+    const at = new Date(Math.max(subA.currentPeriodEnd!.getTime(), subB.currentPeriodEnd!.getTime()) - DAY / 2);
+    expect(await renewDueSubscriptions(db, provider, { now: at })).toMatchObject({ charged: 1, errors: 1 });
+  });
+});
+
+describe("기간은 항상 원래 결제일에 이어서 (대표님 결정)", () => {
+  async function failedRenewal() {
+    const provider = new FakeBillingProvider();
+    const s = await shop(new Date(Date.now() - DAY));
+    await registerCardAndPay(db, provider, s.ctx, { authKey: "p" });
+    const sub = await db.sellerSubscription.findUniqueOrThrow({ where: { sellerId: s.seller.id } });
+    provider.decline(openBillingKey(sub.billingKeyCipher!, s.seller.id));
+    const end = sub.currentPeriodEnd!;
+    await renewDueSubscriptions(db, provider, { now: new Date(end.getTime() - DAY / 2) });
+    return { s, sub, end, provider };
+  }
+
+  it("유예 중에 결제하면 지난 기간 끝부터, 다음 기준일까지", async () => {
+    const { s, sub, end, provider } = await failedRenewal();
+    const now = new Date(end.getTime() + 3 * DAY);
+    expect(await sellerAccessFor(db, s.seller.id, now)).toBe("grace");
+    expect((await registerCardAndPay(db, provider, s.ctx, { authKey: "grace", now })).ok).toBe(true);
+    const after = await db.sellerSubscription.findUniqueOrThrow({ where: { id: sub.id } });
+    expect(after).toMatchObject({ currentPeriodStart: end, currentPeriodEnd: addMonthsKst(sub.billingAnchorAt!, 2) });
+  });
+
+  it("잠긴 뒤에 결제해도 지난 기간 끝부터(잠긴 날도 포함)", async () => {
+    const { s, sub, end, provider } = await failedRenewal();
+    const now = new Date(end.getTime() + 10 * DAY);
+    expect(await sellerAccessFor(db, s.seller.id, now)).toBe("expired");
+    expect((await registerCardAndPay(db, provider, s.ctx, { authKey: "locked", now })).ok).toBe(true);
+    expect(await db.sellerSubscription.findUniqueOrThrow({ where: { id: sub.id } })).toMatchObject({ currentPeriodStart: end });
+  });
+
+  it("잠금이 길어 지난 기간 끝부터 세도 이미 지났으면 결제한 시각부터 새로 센다", async () => {
+    const { s, sub, end, provider } = await failedRenewal();
+    const now = new Date(end.getTime() + 40 * DAY);
+    expect((await registerCardAndPay(db, provider, s.ctx, { authKey: "late", now })).ok).toBe(true);
+    expect(await db.sellerSubscription.findUniqueOrThrow({ where: { id: sub.id } })).toMatchObject({ currentPeriodStart: now, billingAnchorAt: now });
+    expect(await sellerAccessFor(db, s.seller.id, now)).toBe("paid");
+  });
+
+  it("유예 중 해지 예약을 하면 유예가 지워진다", async () => {
+    const { s, sub, end } = await failedRenewal();
+    await cancelSubscription(db, s.ctx, { now: new Date(end.getTime() + DAY) });
+    expect((await db.sellerSubscription.findUniqueOrThrow({ where: { id: sub.id } })).graceUntil).toBeNull();
+    expect(await sellerAccessFor(db, s.seller.id, new Date(end.getTime() + 2 * DAY))).toBe("expired");
   });
 });
 

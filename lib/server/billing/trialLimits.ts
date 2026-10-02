@@ -20,7 +20,7 @@ export async function checkTrialLimit(
   sellerId: string,
   kind: TrialLimitKind,
   usage: { used: number; adding: number },
-  now = new Date(),
+  now?: Date,
 ): Promise<TrialLimitResult> {
   if ((await sellerAccessFor(db, sellerId, now)) !== "trial") return { ok: true };
   const plan = await db.subscriptionPlan.findUnique({ where: { code: DEFAULT_PLAN_CODE } });

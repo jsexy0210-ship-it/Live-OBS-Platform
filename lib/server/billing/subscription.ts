@@ -1,17 +1,20 @@
-import { Prisma, type ActorType, type PrismaClient, type SubscriptionPayment } from "@prisma/client";
+import { Prisma, type ActorType, type PrismaClient, type SellerSubscription, type SubscriptionPayment, type SubscriptionPlan } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
-import { addOneMonth, lockedSince, sellerAccess, type SellerAccess } from "./access";
+import { addMonthsKst, lockedSince, nextPeriodEnd, sellerAccess, type SellerAccess } from "./access";
 import type { BillingProvider, ChargeResult } from "./provider";
-import { openBillingKey, sealBillingKey } from "./secret";
+import { assertBillingSecret, openBillingKey, sealBillingKey } from "./secret";
 
 // 플랫폼 구독(판매자 → 플랫폼). 카드 자동결제(빌링키)만 쓰고 금액은 요금제의 판매가(부가세 포함)다.
 // 실제 결제는 PG 공급자 인터페이스로만 하며, 이 저장소에는 가짜 공급자만 있다.
-// 결제 시점(MASTER 결정 2026-10-03):
+// 결제 시점(MASTER·대표님 결정 2026-10-03):
 // - 체험하기 중에 구독을 시작하면 카드만 등록하고, 첫 결제는 체험하기가 끝나는 시각에 예약 실행이 한다.
-// - 다음 달 결제는 기간 끝 하루 전에 한다.
+// - 다음 달 결제는 기간 끝 하루 전에 한다. 기간은 KST 기준일(첫 결제 시작)로 매달 같은 날(없으면 말일)까지.
+// - 기간은 항상 원래 결제일(owed = 지난 기간 끝)에 이어서 센다. 잠겨서 못 쓴 날도 포함한다.
+//   체험 뒤 첫 결제와 해지 뒤 다시 구독은 결제한 시각부터 센다.
 // - 자동결제가 실패하면 하루 간격으로 3번 다시 시도하고, 실패한 때부터 7일 동안은 계속 쓸 수 있다(유예).
 //   판매자가 카드를 바꾸면 바로 다시 결제한다.
+// - 구독당 진행 중(PENDING) 청구는 하나뿐이다(DB 부분 유니크). PG 결과를 못 받은 청구는 reconcileStalePayments가 확정한다.
 
 type Tx = Prisma.TransactionClient;
 type Db = PrismaClient | Tx;
@@ -24,11 +27,15 @@ export const MAX_RETRIES = 3;
 export const GRACE_MS = 7 * DAY_MS;
 // 잠긴 지 이만큼 지나면 자동 해지(대표님 결정 2026-10-02). 해지 뒤 90일 보관·삭제는 별도 작업.
 export const AUTO_CLOSE_AFTER_MS = 30 * DAY_MS;
+// 가격 변경 뒤 기존 구독자에게 새 가격을 적용하기까지(대표님 결정 2026-10-02)
+export const PRICE_NOTICE_MS = 30 * DAY_MS;
+// PG 결과를 이만큼 못 받은 청구를 정리 대상으로 본다
+export const STALE_PENDING_MS = 10 * 60 * 1000;
 
 const isUniqueViolation = (e: unknown) => e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
 const after = (d: Date, ms: number) => new Date(d.getTime() + ms);
 
-async function dbNow(db: Db): Promise<Date> {
+export async function dbNow(db: Db): Promise<Date> {
   const rows = await db.$queryRaw<{ now: Date }[]>`SELECT now() AS now`;
   return rows[0].now;
 }
@@ -40,13 +47,33 @@ async function lockSeller(tx: Tx, sellerId: string) {
 
 const ACCESS_SELECT = { status: true, currentPeriodEnd: true, nextChargeAt: true, graceUntil: true, cancelAtPeriodEnd: true } as const;
 
-export async function sellerAccessFor(db: Db, sellerId: string, now: Date): Promise<SellerAccess> {
+// 이용 가능 여부. now를 주지 않으면 DB 시계로 판단한다.
+export async function sellerAccessFor(db: Db, sellerId: string, now?: Date): Promise<SellerAccess> {
+  const at = now ?? (await dbNow(db));
   const seller = await db.seller.findUnique({
     where: { id: sellerId },
     select: { trialEndsAt: true, subscription: { select: ACCESS_SELECT } },
   });
   if (!seller) return "expired";
-  return sellerAccess({ trialEndsAt: seller.trialEndsAt, subscription: seller.subscription }, now);
+  return sellerAccess({ trialEndsAt: seller.trialEndsAt, subscription: seller.subscription }, at);
+}
+
+// 이번 청구 금액. 가격을 바꾼 뒤 30일 동안은 그 전부터 구독하던 판매자에게 이전 가격을 받는다.
+export function priceFor(plan: SubscriptionPlan, subscribedAt: Date, at: Date): number {
+  if (plan.priceChangedAt && plan.previousSalePrice !== null && subscribedAt < plan.priceChangedAt && at < after(plan.priceChangedAt, PRICE_NOTICE_MS)) {
+    return plan.previousSalePrice;
+  }
+  return plan.salePrice;
+}
+
+// 다음 청구 기간. 결제한 적 있는 구독은 지난 기간 끝(owed)에 이어서, 처음이거나 해지 뒤면 지금부터(기준일 새로).
+// owed부터 세도 기간이 이미 지났으면(잠금이 한 달을 넘김) 지금부터 새로 센다.
+export function planPeriod(sub: Pick<SellerSubscription, "status" | "currentPeriodEnd" | "billingAnchorAt"> | null, now: Date) {
+  if (sub && sub.status !== "CANCELED" && sub.currentPeriodEnd && sub.billingAnchorAt) {
+    const end = nextPeriodEnd(sub.billingAnchorAt, sub.currentPeriodEnd);
+    if (end > now) return { start: sub.currentPeriodEnd, end, anchor: sub.billingAnchorAt };
+  }
+  return { start: now, end: addMonthsKst(now, 1), anchor: now };
 }
 
 // ───────────── 조회 ─────────────
@@ -64,7 +91,9 @@ export async function getSubscriptionView(db: PrismaClient, ctx: TenantContext, 
   return {
     access: sellerAccess({ trialEndsAt: seller.trialEndsAt, subscription: sub }, at),
     trialEndsAt: seller.trialEndsAt,
-    plan: shownPlan ? { name: shownPlan.name, listPrice: shownPlan.listPrice, salePrice: shownPlan.salePrice } : null,
+    plan: shownPlan
+      ? { name: shownPlan.name, listPrice: shownPlan.listPrice, salePrice: shownPlan.salePrice, nextAmount: priceFor(shownPlan, sub?.createdAt ?? at, sub?.nextChargeAt ?? at) }
+      : null,
     subscription: sub
       ? {
           status: sub.status,
@@ -94,13 +123,13 @@ export async function getSubscriptionView(db: PrismaClient, ctx: TenantContext, 
 
 export type SubscribeResult =
   | { ok: true; charged: boolean; currentPeriodEnd: Date | null; nextChargeAt: Date | null }
-  | { ok: false; reason: "card_rejected" | "plan_missing" | "payment_in_progress" | "payment_failed" };
+  | { ok: false; reason: "card_rejected" | "plan_missing" | "payment_in_progress" | "payment_failed" | "payment_pending" };
 
 // 카드를 등록(또는 교체)한다.
 // - 결제한 기간이 남아 있고 자동결제가 정상이면 카드만 바꾼다.
 // - 체험하기 중이면 카드만 등록하고 첫 결제를 체험하기 종료 시각으로 예약한다.
-// - 그 밖(체험하기 끝, 결제 대기, 자동결제 실패 유예, 잠김)이면 바로 결제한다.
-//   예약 결제 대기·유예 중이면 원래 시작해야 했던 기간을, 잠긴 뒤면 지금부터 한 달을 결제한다.
+// - 그 밖(예약 결제 대기·유예·잠김)이면 바로 결제한다. 기간은 planPeriod 규칙대로.
+// - PG 응답을 못 받으면(타임아웃) 청구를 PENDING으로 두고 payment_pending을 돌려준다(정리 함수가 확정).
 export async function registerCardAndPay(
   db: PrismaClient,
   provider: BillingProvider,
@@ -108,125 +137,147 @@ export async function registerCardAndPay(
   input: { authKey: string; now?: Date },
 ): Promise<SubscribeResult> {
   requireSellerPermission(ctx, "SUBSCRIPTION_MANAGE");
+  // 빌링키를 저장할 수 없으면 PG를 부르지 않는다
+  assertBillingSecret();
   const issued = await provider.issueBillingKey({ authKey: input.authKey, customerKey: ctx.sellerId });
   if (!issued.ok) {
     await writeAudit(db, { actorType: ctx.actorType, actorId: ctx.actorId, sellerId: ctx.sellerId, action: "subscription.card_rejected" });
     return { ok: false, reason: "card_rejected" };
   }
-  const billingKeyCipher = sealBillingKey(issued.billingKey);
+  const billingKeyCipher = sealBillingKey(issued.billingKey, ctx.sellerId);
 
   type Prepared =
     | { kind: "card_only"; end: Date | null; nextChargeAt: Date | null }
     | { kind: "charge"; payment: SubscriptionPayment; orderName: string }
     | { kind: "error"; reason: "plan_missing" | "payment_in_progress" };
-  const prepared = await db.$transaction(async (tx): Promise<Prepared> => {
-    await lockSeller(tx, ctx.sellerId);
-    const now = input.now ?? (await dbNow(tx));
-    const seller = await tx.seller.findUniqueOrThrow({ where: { id: ctx.sellerId }, select: { trialEndsAt: true, subscription: true } });
-    const before = seller.subscription;
-    const accessBefore = sellerAccess({ trialEndsAt: seller.trialEndsAt, subscription: before }, now);
-    const plan = before
-      ? await tx.subscriptionPlan.findUnique({ where: { id: before.planId } })
-      : await tx.subscriptionPlan.findUnique({ where: { code: DEFAULT_PLAN_CODE } });
-    if (!plan) return { kind: "error", reason: "plan_missing" };
+  const prepared = await db
+    .$transaction(async (tx): Promise<Prepared> => {
+      await lockSeller(tx, ctx.sellerId);
+      const now = input.now ?? (await dbNow(tx));
+      const seller = await tx.seller.findUniqueOrThrow({ where: { id: ctx.sellerId }, select: { trialEndsAt: true, subscription: true } });
+      const before = seller.subscription;
+      const plan = before
+        ? await tx.subscriptionPlan.findUnique({ where: { id: before.planId } })
+        : await tx.subscriptionPlan.findUnique({ where: { code: DEFAULT_PLAN_CODE } });
+      if (!plan) return { kind: "error", reason: "plan_missing" };
 
-    const inTrial = !!seller.trialEndsAt && seller.trialEndsAt > now;
-    const paidActive = before?.status === "ACTIVE" && !!before.currentPeriodEnd && before.currentPeriodEnd > now;
-    const cardOnly = paidActive || (inTrial && before?.status !== "PAST_DUE");
-    // 카드를 다시 등록하면 자동결제를 다시 켠다. 해지된 구독도 다시 시작한다.
-    const nextChargeAt = paidActive ? after(before!.currentPeriodEnd!, -RENEW_LEAD_MS) : inTrial && cardOnly ? seller.trialEndsAt : null;
-    const card = { billingKeyCipher, cardLabel: issued.cardLabel, cancelAtPeriodEnd: false };
-    const sub = await tx.sellerSubscription.upsert({
-      where: { sellerId: ctx.sellerId },
-      create: { sellerId: ctx.sellerId, planId: plan.id, ...card, nextChargeAt },
-      update: cardOnly ? { ...card, status: "ACTIVE", nextChargeAt } : card,
-    });
-    await writeAudit(tx, {
-      actorType: ctx.actorType,
-      actorId: ctx.actorId,
-      sellerId: ctx.sellerId,
-      action: "subscription.card_registered",
-      targetType: "SellerSubscription",
-      targetId: sub.id,
-      after: { cardLabel: issued.cardLabel, chargeNow: !cardOnly },
-    });
-    if (cardOnly) return { kind: "card_only", end: sub.currentPeriodEnd, nextChargeAt };
+      const inTrial = !!seller.trialEndsAt && seller.trialEndsAt > now;
+      const paidActive = before?.status === "ACTIVE" && !!before.currentPeriodEnd && before.currentPeriodEnd > now;
+      const cardOnly = paidActive || (inTrial && before?.status !== "PAST_DUE");
+      const nextChargeAt = paidActive ? after(before!.currentPeriodEnd!, -RENEW_LEAD_MS) : cardOnly ? seller.trialEndsAt : before?.nextChargeAt ?? null;
+      // 카드를 다시 등록하면 자동결제를 다시 켠다(해지 예약을 푼다).
+      const card = { billingKeyCipher, cardLabel: issued.cardLabel, cancelAtPeriodEnd: false };
+      const sub = await tx.sellerSubscription.upsert({
+        where: { sellerId: ctx.sellerId },
+        create: { sellerId: ctx.sellerId, planId: plan.id, ...card, nextChargeAt, createdAt: now },
+        update: cardOnly ? { ...card, status: "ACTIVE", nextChargeAt } : card,
+      });
+      await writeAudit(tx, {
+        actorType: ctx.actorType,
+        actorId: ctx.actorId,
+        sellerId: ctx.sellerId,
+        action: "subscription.card_registered",
+        targetType: "SellerSubscription",
+        targetId: sub.id,
+        after: { cardLabel: issued.cardLabel, chargeNow: !cardOnly },
+      });
+      if (cardOnly) return { kind: "card_only", end: sub.currentPeriodEnd, nextChargeAt };
 
-    const pending = await tx.subscriptionPayment.findFirst({ where: { subscriptionId: sub.id, status: "PENDING" } });
-    if (pending) return { kind: "error", reason: "payment_in_progress" };
-    // 결제 대기·유예 중이면 원래 시작했어야 할 기간(이미 그 기간을 쓰고 있음), 잠긴 뒤면 지금부터.
-    const owed = before?.currentPeriodEnd ?? seller.trialEndsAt ?? now;
-    const start = (accessBefore === "charging" || accessBefore === "grace") && owed <= now ? owed : now;
-    const payment = await tx.subscriptionPayment.create({
-      data: { sellerId: ctx.sellerId, subscriptionId: sub.id, amount: plan.salePrice, periodStart: start, periodEnd: addOneMonth(start) },
+      const pending = await tx.subscriptionPayment.findFirst({ where: { subscriptionId: sub.id, status: "PENDING" } });
+      if (pending) return { kind: "error", reason: "payment_in_progress" };
+      const period = planPeriod(sub, now);
+      if (sub.billingAnchorAt?.getTime() !== period.anchor.getTime()) {
+        await tx.sellerSubscription.update({ where: { id: sub.id }, data: { billingAnchorAt: period.anchor } });
+      }
+      const payment = await tx.subscriptionPayment.create({
+        data: {
+          sellerId: ctx.sellerId,
+          subscriptionId: sub.id,
+          amount: priceFor(plan, sub.createdAt, now),
+          periodStart: period.start,
+          periodEnd: period.end,
+          scheduled: false,
+        },
+      });
+      return { kind: "charge", payment, orderName: plan.name };
+    })
+    .catch((e): Prepared => {
+      // 예약 결제가 같은 순간 청구를 만들었으면(구독당 PENDING 1건) 진행 중으로 본다
+      if (isUniqueViolation(e)) return { kind: "error", reason: "payment_in_progress" };
+      throw e;
     });
-    return { kind: "charge", payment, orderName: plan.name };
-  });
 
   if (prepared.kind === "error") return { ok: false, reason: prepared.reason };
   if (prepared.kind === "card_only") return { ok: true, charged: false, currentPeriodEnd: prepared.end, nextChargeAt: prepared.nextChargeAt };
 
-  const result = await provider.charge({
-    billingKey: issued.billingKey,
-    customerKey: ctx.sellerId,
-    amount: prepared.payment.amount,
-    orderId: prepared.payment.id,
-    orderName: prepared.orderName,
-  });
-  const settled = await settlePayment(db, prepared.payment, result, { scheduled: false, actorType: ctx.actorType, actorId: ctx.actorId, now: input.now });
-  return result.ok ? { ok: true, charged: true, currentPeriodEnd: prepared.payment.periodEnd, nextChargeAt: settled.nextChargeAt } : { ok: false, reason: "payment_failed" };
+  let result: ChargeResult;
+  try {
+    result = await provider.charge({
+      billingKey: issued.billingKey,
+      customerKey: ctx.sellerId,
+      amount: prepared.payment.amount,
+      orderId: prepared.payment.id,
+      orderName: prepared.orderName,
+    });
+  } catch {
+    // 결제됐는지 알 수 없다. PENDING으로 두고 정리 함수가 같은 청구 id로 PG에 확인한다.
+    return { ok: false, reason: "payment_pending" };
+  }
+  const settled = await settlePayment(db, prepared.payment.id, result, { actorType: ctx.actorType, actorId: ctx.actorId, now: input.now });
+  return result.ok
+    ? { ok: true, charged: true, currentPeriodEnd: prepared.payment.periodEnd, nextChargeAt: settled?.nextChargeAt ?? null }
+    : { ok: false, reason: "payment_failed" };
 }
 
-// 결제 결과를 청구·구독에 반영한다.
+// 결제 결과를 청구·구독에 반영한다. 이미 확정된 청구면 아무것도 하지 않는다(여러 번 불러도 안전).
 // 성공: 이용 기간을 그 청구 기간으로, 다음 결제를 기간 끝 하루 전으로, 재시도·유예를 지운다.
 // 예약 결제 실패: 처음 실패면 PAST_DUE + 유예(지금 + 7일), 이후 실패마다 재시도 횟수를 올리고 3번을 넘기면 더 시도하지 않는다.
 // 판매자가 직접 한 결제(카드 등록)가 실패하면 구독 상태는 그대로 둔다.
 async function settlePayment(
   db: PrismaClient,
-  payment: SubscriptionPayment,
+  paymentId: string,
   result: ChargeResult,
-  opts: { scheduled: boolean; actorType: ActorType; actorId: string | null; now?: Date },
-): Promise<{ nextChargeAt: Date | null }> {
+  opts: { actorType: ActorType; actorId: string | null; now?: Date },
+): Promise<{ nextChargeAt: Date | null } | null> {
   return db.$transaction(async (tx) => {
+    const payment = await tx.subscriptionPayment.findUniqueOrThrow({ where: { id: paymentId } });
     await lockSeller(tx, payment.sellerId);
     const now = opts.now ?? (await dbNow(tx));
+    const claimed = await tx.subscriptionPayment.updateMany({
+      where: { id: paymentId, status: "PENDING" },
+      data: result.ok
+        ? { status: "PAID", paidAt: now, providerPaymentId: result.paymentId, receiptUrl: result.receiptUrl }
+        : { status: "FAILED", failureReason: result.reason.slice(0, 200) },
+    });
+    if (claimed.count !== 1) return null;
+
     let nextChargeAt: Date | null = null;
+    const sub = await tx.sellerSubscription.findUniqueOrThrow({ where: { id: payment.subscriptionId } });
     if (result.ok) {
       nextChargeAt = after(payment.periodEnd, -RENEW_LEAD_MS);
-      await restoreAfterResubscribe(tx, payment.sellerId, opts.actorType, opts.actorId);
-      await tx.subscriptionPayment.update({
-        where: { id: payment.id },
-        data: { status: "PAID", paidAt: now, providerPaymentId: result.paymentId, receiptUrl: result.receiptUrl },
-      });
       await tx.sellerSubscription.update({
-        where: { id: payment.subscriptionId },
+        where: { id: sub.id },
         data: {
           status: "ACTIVE",
           currentPeriodStart: payment.periodStart,
           currentPeriodEnd: payment.periodEnd,
-          nextChargeAt,
+          nextChargeAt: sub.cancelAtPeriodEnd ? payment.periodEnd : nextChargeAt,
           retryCount: 0,
           graceUntil: null,
         },
       });
-    } else {
-      await tx.subscriptionPayment.update({ where: { id: payment.id }, data: { status: "FAILED", failureReason: result.reason.slice(0, 200) } });
-      const sub = await tx.sellerSubscription.findUniqueOrThrow({ where: { id: payment.subscriptionId } });
-      if (opts.scheduled) {
-        if (sub.status !== "PAST_DUE") {
-          nextChargeAt = after(now, RETRY_INTERVAL_MS);
-          await tx.sellerSubscription.update({
-            where: { id: sub.id },
-            data: { status: "PAST_DUE", retryCount: 0, graceUntil: after(now, GRACE_MS), nextChargeAt },
-          });
-        } else {
-          const retryCount = Math.min(sub.retryCount + 1, MAX_RETRIES);
-          nextChargeAt = retryCount >= MAX_RETRIES ? null : after(now, RETRY_INTERVAL_MS);
-          await tx.sellerSubscription.update({ where: { id: sub.id }, data: { retryCount, nextChargeAt } });
-        }
+      await restoreAfterResubscribe(tx, payment.sellerId, opts.actorType, opts.actorId);
+    } else if (payment.scheduled) {
+      if (sub.status !== "PAST_DUE") {
+        nextChargeAt = after(now, RETRY_INTERVAL_MS);
+        await tx.sellerSubscription.update({ where: { id: sub.id }, data: { status: "PAST_DUE", retryCount: 0, graceUntil: after(now, GRACE_MS), nextChargeAt } });
       } else {
-        nextChargeAt = sub.nextChargeAt;
+        const retryCount = Math.min(sub.retryCount + 1, MAX_RETRIES);
+        nextChargeAt = retryCount >= MAX_RETRIES ? null : after(now, RETRY_INTERVAL_MS);
+        await tx.sellerSubscription.update({ where: { id: sub.id }, data: { retryCount, nextChargeAt } });
       }
+    } else {
+      nextChargeAt = sub.nextChargeAt;
     }
     await writeAudit(tx, {
       actorType: opts.actorType,
@@ -235,7 +286,7 @@ async function settlePayment(
       action: result.ok ? "subscription.payment_paid" : "subscription.payment_failed",
       targetType: "SubscriptionPayment",
       targetId: payment.id,
-      after: { amount: payment.amount, scheduled: opts.scheduled },
+      after: { amount: payment.amount, scheduled: payment.scheduled },
       reason: result.ok ? undefined : result.reason.slice(0, 200),
     });
     return { nextChargeAt };
@@ -246,6 +297,7 @@ async function settlePayment(
 
 // 결제한 기간이 남아 있으면 그 기간 끝까지 쓰고 다음 결제를 하지 않는다(즉시 환불 없음).
 // 결제한 기간이 없으면(체험하기 중 카드만 등록, 자동결제 실패 유예 중) 바로 해지하고 청구하지 않는다.
+// 어느 쪽이든 재시도·유예는 지운다.
 export async function cancelSubscription(db: PrismaClient, ctx: TenantContext, input: { now?: Date } = {}) {
   requireSellerPermission(ctx, "SUBSCRIPTION_MANAGE");
   return db.$transaction(async (tx) => {
@@ -257,8 +309,8 @@ export async function cancelSubscription(db: PrismaClient, ctx: TenantContext, i
     await tx.sellerSubscription.update({
       where: { id: sub.id },
       data: paidThrough
-        ? { cancelAtPeriodEnd: true, nextChargeAt: paidThrough }
-        : { cancelAtPeriodEnd: true, status: "CANCELED", nextChargeAt: null, graceUntil: null },
+        ? { cancelAtPeriodEnd: true, nextChargeAt: paidThrough, graceUntil: null, retryCount: 0 }
+        : { cancelAtPeriodEnd: true, status: "CANCELED", nextChargeAt: null, graceUntil: null, retryCount: 0 },
     });
     await writeAudit(tx, {
       actorType: ctx.actorType,
@@ -275,61 +327,125 @@ export async function cancelSubscription(db: PrismaClient, ctx: TenantContext, i
 
 // ───────────── 예약 실행 (첫 결제·다음 달 결제·재시도·해지 처리) ─────────────
 
-export type RenewSummary = { charged: number; failed: number; canceled: number; skipped: number };
+export type RenewSummary = { charged: number; failed: number; canceled: number; skipped: number; pending: number; errors: number };
 
 // nextChargeAt이 지난 구독을 처리한다. 예약 실행(인프라 승인 후 연결)에서 주기적으로 부른다.
-// 같은 기간 청구는 부분 유니크 인덱스로 한 번만 만들어지므로 여러 번·동시에 돌려도 이중 결제되지 않는다.
+// 구독마다 따로 처리해 한 곳이 실패해도 나머지는 계속한다. 진행 중 청구가 있으면 건너뛴다.
 export async function renewDueSubscriptions(db: PrismaClient, provider: BillingProvider, input: { now?: Date } = {}): Promise<RenewSummary> {
   const now = input.now ?? (await dbNow(db));
-  const summary: RenewSummary = { charged: 0, failed: 0, canceled: 0, skipped: 0 };
+  const summary: RenewSummary = { charged: 0, failed: 0, canceled: 0, skipped: 0, pending: 0, errors: 0 };
   const due = await db.sellerSubscription.findMany({
     where: { status: { in: ["ACTIVE", "PAST_DUE"] }, nextChargeAt: { lte: now } },
     select: { id: true, sellerId: true },
   });
 
   for (const { id, sellerId } of due) {
-    const prepared = await db
-      .$transaction(async (tx) => {
-        await lockSeller(tx, sellerId);
-        // 잠근 뒤 다시 읽는다(그사이 결제·해지·카드 교체가 있었을 수 있음).
-        const sub = await tx.sellerSubscription.findUniqueOrThrow({ where: { id }, include: { plan: true, seller: { select: { trialEndsAt: true } } } });
-        if (sub.status === "CANCELED" || !sub.nextChargeAt || sub.nextChargeAt > now) return null;
-        if (sub.cancelAtPeriodEnd) {
-          if (sub.currentPeriodEnd && sub.currentPeriodEnd > now) return null;
-          await tx.sellerSubscription.update({ where: { id }, data: { status: "CANCELED", nextChargeAt: null } });
-          await writeAudit(tx, { actorType: "SYSTEM", sellerId, action: "subscription.canceled", targetType: "SellerSubscription", targetId: id });
-          return "canceled" as const;
-        }
-        if (!sub.billingKeyCipher) return null;
-        const start = sub.currentPeriodEnd ?? sub.seller.trialEndsAt ?? now;
-        const payment = await tx.subscriptionPayment.create({
-          data: { sellerId, subscriptionId: id, amount: sub.plan.salePrice, periodStart: start, periodEnd: addOneMonth(start) },
+    try {
+      const prepared = await db
+        .$transaction(async (tx) => {
+          await lockSeller(tx, sellerId);
+          // 잠근 뒤 다시 읽는다(그사이 결제·해지·카드 교체가 있었을 수 있음).
+          const sub = await tx.sellerSubscription.findUniqueOrThrow({ where: { id }, include: { plan: true } });
+          if (sub.status === "CANCELED" || !sub.nextChargeAt || sub.nextChargeAt > now) return null;
+          if (sub.cancelAtPeriodEnd) {
+            if (sub.currentPeriodEnd && sub.currentPeriodEnd > now) return null;
+            await tx.sellerSubscription.update({ where: { id }, data: { status: "CANCELED", nextChargeAt: null } });
+            await writeAudit(tx, { actorType: "SYSTEM", sellerId, action: "subscription.canceled", targetType: "SellerSubscription", targetId: id });
+            return "canceled" as const;
+          }
+          if (!sub.billingKeyCipher) return null;
+          if (await tx.subscriptionPayment.findFirst({ where: { subscriptionId: id, status: "PENDING" }, select: { id: true } })) return null;
+          const period = planPeriod(sub, now);
+          if (sub.billingAnchorAt?.getTime() !== period.anchor.getTime()) {
+            await tx.sellerSubscription.update({ where: { id }, data: { billingAnchorAt: period.anchor } });
+          }
+          const payment = await tx.subscriptionPayment.create({
+            data: { sellerId, subscriptionId: id, amount: priceFor(sub.plan, sub.createdAt, now), periodStart: period.start, periodEnd: period.end, scheduled: true },
+          });
+          return { payment, billingKey: openBillingKey(sub.billingKeyCipher, sellerId), orderName: sub.plan.name };
+        })
+        .catch((e) => {
+          if (isUniqueViolation(e)) return null; // 같은 기간 청구나 진행 중 청구가 이미 있음
+          throw e;
         });
-        return { payment, billingKey: openBillingKey(sub.billingKeyCipher), orderName: sub.plan.name };
-      })
-      .catch((e) => {
-        if (isUniqueViolation(e)) return null; // 같은 기간 청구가 이미 진행 중이거나 결제됨
-        throw e;
-      });
 
-    if (prepared === null) {
-      summary.skipped++;
-      continue;
+      if (prepared === null) {
+        summary.skipped++;
+        continue;
+      }
+      if (prepared === "canceled") {
+        summary.canceled++;
+        continue;
+      }
+      let result: ChargeResult;
+      try {
+        result = await provider.charge({
+          billingKey: prepared.billingKey,
+          customerKey: sellerId,
+          amount: prepared.payment.amount,
+          orderId: prepared.payment.id,
+          orderName: prepared.orderName,
+        });
+      } catch {
+        summary.pending++; // PENDING으로 두고 정리 함수가 확정한다
+        continue;
+      }
+      await settlePayment(db, prepared.payment.id, result, { actorType: "SYSTEM", actorId: null, now: input.now });
+      if (result.ok) summary.charged++;
+      else summary.failed++;
+    } catch (e) {
+      summary.errors++;
+      console.error("renewDueSubscriptions", id, e);
     }
-    if (prepared === "canceled") {
-      summary.canceled++;
-      continue;
+  }
+  return summary;
+}
+
+// ───────────── PG 결과를 못 받은 청구 정리 (예약 실행) ─────────────
+
+export type ReconcileSummary = { paid: number; failed: number; recharged: number; unresolved: number };
+
+// 오래된 PENDING 청구를 같은 청구 id로 PG에 조회해 확정한다.
+// PG에 결제 기록이 있으면 그 결과로, 없으면(결제 요청이 PG에 닿지 않음) 같은 id로 다시 요청한다.
+export async function reconcileStalePayments(
+  db: PrismaClient,
+  provider: BillingProvider,
+  input: { now?: Date; staleMs?: number } = {},
+): Promise<ReconcileSummary> {
+  const now = input.now ?? (await dbNow(db));
+  const summary: ReconcileSummary = { paid: 0, failed: 0, recharged: 0, unresolved: 0 };
+  const stale = await db.subscriptionPayment.findMany({
+    where: { status: "PENDING", createdAt: { lte: after(now, -(input.staleMs ?? STALE_PENDING_MS)) } },
+    include: { subscription: { select: { billingKeyCipher: true } } },
+  });
+  for (const p of stale) {
+    try {
+      const found = await provider.getPayment(p.id);
+      let result: ChargeResult;
+      if (found.status === "PAID") result = { ok: true, paymentId: found.paymentId, receiptUrl: found.receiptUrl };
+      else if (found.status === "FAILED") result = { ok: false, reason: found.reason };
+      else {
+        if (!p.subscription.billingKeyCipher) {
+          result = { ok: false, reason: "no_card" };
+        } else {
+          const plan = await db.sellerSubscription.findUniqueOrThrow({ where: { id: p.subscriptionId }, select: { plan: { select: { name: true } } } });
+          result = await provider.charge({
+            billingKey: openBillingKey(p.subscription.billingKeyCipher, p.sellerId),
+            customerKey: p.sellerId,
+            amount: p.amount,
+            orderId: p.id,
+            orderName: plan.plan.name,
+          });
+          summary.recharged++;
+        }
+      }
+      await settlePayment(db, p.id, result, { actorType: "SYSTEM", actorId: null, now: input.now });
+      if (result.ok) summary.paid++;
+      else summary.failed++;
+    } catch (e) {
+      summary.unresolved++;
+      console.error("reconcileStalePayments", p.id, e);
     }
-    const result = await provider.charge({
-      billingKey: prepared.billingKey,
-      customerKey: sellerId,
-      amount: prepared.payment.amount,
-      orderId: prepared.payment.id,
-      orderName: prepared.orderName,
-    });
-    await settlePayment(db, prepared.payment, result, { scheduled: true, actorType: "SYSTEM", actorId: null, now: input.now });
-    if (result.ok) summary.charged++;
-    else summary.failed++;
   }
   return summary;
 }

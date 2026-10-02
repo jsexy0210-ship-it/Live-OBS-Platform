@@ -26,13 +26,14 @@ export async function issueOverlayToken(db: PrismaClient, ctx: TenantContext, no
 
 // 오버레이 토큰으로 판매자를 찾는다. 폐기된 토큰, 운영 중이 아닌 판매자, 구독이 끝나 잠긴 판매자는 null
 // (state·version·stream 모두 404, 열려 있는 SSE는 다음 핑 재확인 때 닫힘. MASTER 결정 2026-10-03).
-export async function resolveOverlayToken(db: PrismaClient, token: string | undefined, now = new Date()): Promise<string | null> {
+export async function resolveOverlayToken(db: PrismaClient, token: string | undefined, now?: Date): Promise<string | null> {
   if (!token || token.length > 100) return null;
   const row = await db.overlayToken.findUnique({
     where: { tokenHash: hashToken(token) },
     select: { sellerId: true, revokedAt: true, seller: { select: { status: true } } },
   });
   if (!row || row.revokedAt || row.seller.status !== "ACTIVE") return null;
+  // 이용 제한은 DB 시계로 판단한다
   if ((await sellerAccessFor(db, row.sellerId, now)) === "expired") return null;
   return row.sellerId;
 }
