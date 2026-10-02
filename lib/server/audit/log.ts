@@ -2,7 +2,7 @@ import type { ActorType, Prisma, PrismaClient } from "@prisma/client";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
-const SECRET_KEYS = new Set(["passwordHash", "password", "tokenHash", "token", "totpSecretEnc", "totpSecret", "codeHash"]);
+const SECRET_KEYS = new Set(["passwordHash", "password", "tokenHash", "token", "ciHash", "codeHash"]);
 
 // 비밀값 필드는 기록 전에 제거한다.
 export function redact(value: unknown): unknown {

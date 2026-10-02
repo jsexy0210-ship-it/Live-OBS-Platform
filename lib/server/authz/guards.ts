@@ -2,7 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { resolveAdminSession, resolveSellerSession, type AdminSessionContext } from "../auth/session";
 import type { TenantContext } from "../tenant/context";
-import { AuthError, forbidden, notFound, unauthenticated } from "./errors";
+import { forbidden, notFound, unauthenticated } from "./errors";
 import { adminCan, type AdminPermission } from "./permissions";
 
 // 마스터 API 가드. 판매자·구매자 세션 토큰은 AdminSession 테이블에 없으므로 여기서 항상 401이다.
@@ -14,16 +14,7 @@ export async function requireAdmin(
 ): Promise<AdminSessionContext> {
   const ctx = await resolveAdminSession(db, token, now);
   if (!ctx) throw unauthenticated();
-  if (ctx.enrollmentOnly) throw new AuthError(403, "mfa_enrollment_required");
   if (!adminCan(ctx.admin.role, permission)) throw forbidden();
-  return ctx;
-}
-
-// TOTP 등록 API 전용 가드. 등록 전용 제한 세션만 받는다.
-export async function requireAdminEnrollment(db: PrismaClient, token: string | undefined, now = new Date()): Promise<AdminSessionContext> {
-  const ctx = await resolveAdminSession(db, token, now);
-  if (!ctx) throw unauthenticated();
-  if (!ctx.enrollmentOnly) throw forbidden();
   return ctx;
 }
 
