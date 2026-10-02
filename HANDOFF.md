@@ -8,7 +8,8 @@
 |---|---|---|
 | Live-OBS-Platform MASTER (2) | `session_018xa8SC5evpEFNVcQBwcN5t` | 요구사항 접수 · 작업 배정 · 독립 검수 · main 병합 · 상태 문서 관리. 2026-10-02 17:21 KST 교체 생성 |
 | (이전) MASTER | `session_01XqBPGTKiEMmRSMB5SfFp3C` | 컨텍스트 50% 도달로 교체. PR #15 병합 후 보관 완료 (2026-10-02 KST) |
-| 디자인 전담 | `session_011K2Cw69VDhwYpPegzFpXoK` | `docs/DESIGN_PROMPT.md`·`docs/IA.md` 기준 전체 화면 디자인 (클로드디자인). 2026-10-02 17:00 KST 대표님 생성, 17:14 KST MASTER 하위로 편입. 디자인 시스템은 대표님 A안: Montage는 구조 뼈대만, 색상·글꼴·로고는 자체 브랜드로 교체(17:20 KST 전달). 아티팩트: https://claude.ai/artifact/YYGXZ3u4QvjQpEMUHnN4tS |
+| 디자인 전담 (2) | `session_01DCQ38rPYwPnVCZJbhLgJnc` | 디자인 아티팩트 https://claude.ai/artifact/YYGXZ3u4QvjQpEMUHnN4tS 이어서 작업 (아티팩트 `project/` 파일만 소유). 우선순위: ① 오버레이 9:16·16:9 기본 템플릿 3종 ② 기존 아트보드 A안·화면 문구·도메인·도우미·구매자 문의 반영 ③ 남은 화면. 2026-10-02 18:45 KST MASTER 생성 |
+| (이전) 디자인 전담 | `session_011K2Cw69VDhwYpPegzFpXoK` | 작업 기억 72% 도달·수정 지시 미반영으로 교체. 약 130장 제작(아티팩트에 보존). 2026-10-02 18:45 KST 보관 |
 
 전담 세션 태그: `live-obs` + `lo-master` / `lo-design`. 새 전담 세션은 이 표에 추가하고 `docs/session-prompt.md`를 지시에 넣는다.
 
