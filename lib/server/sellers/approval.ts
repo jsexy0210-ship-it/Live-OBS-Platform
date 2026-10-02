@@ -4,9 +4,10 @@ import { writeAudit } from "../audit/log";
 import { forbidden } from "../authz/errors";
 import { adminCan } from "../authz/permissions";
 
-export const TRIAL_DAYS = 3;
+// 체험하기 기간(대표님 결정 2026-10-02, 3일 → 14일 변경). 코드에서는 이 상수 하나만 쓴다.
+export const TRIAL_DAYS = 14;
 
-// 판매자 가입 승인(마스터). 승인 시각과 체험하기 종료(승인 + 3일)는 DB 시계로 정한다(대표님 결정 2026-10-02).
+// 판매자 가입 승인(마스터). 승인 시각과 체험하기 종료(승인 + TRIAL_DAYS일)는 DB 시계로 정한다(대표님 결정 2026-10-02).
 // 승인 대기(PENDING)인 쇼핑몰만 승인할 수 있고, 동시에 두 번 눌러도 한 번만 승인된다.
 export async function approveSeller(
   db: PrismaClient,

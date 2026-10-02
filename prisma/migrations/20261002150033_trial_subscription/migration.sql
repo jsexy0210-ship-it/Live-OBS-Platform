@@ -112,5 +112,5 @@ CREATE UNIQUE INDEX "SubscriptionPayment_one_pending_key" ON "SubscriptionPaymen
 INSERT INTO "SubscriptionPlan" ("code", "name", "listPrice", "salePrice", "updatedAt")
 VALUES ('STANDARD', '월 구독', 300000, 199000, CURRENT_TIMESTAMP);
 
--- 이미 승인된 쇼핑몰은 승인 시각(없으면 지금) + 3일을 체험하기 종료로 채운다.
-UPDATE "Seller" SET "trialEndsAt" = COALESCE("approvedAt", CURRENT_TIMESTAMP) + interval '3 days' WHERE "status" = 'ACTIVE' AND "trialEndsAt" IS NULL;
+-- 이미 승인된 쇼핑몰은 승인 시각(없으면 지금) + 14일(TRIAL_DAYS와 같게)을 체험하기 종료로 채운다.
+UPDATE "Seller" SET "trialEndsAt" = COALESCE("approvedAt", CURRENT_TIMESTAMP) + interval '14 days' WHERE "status" = 'ACTIVE' AND "trialEndsAt" IS NULL;

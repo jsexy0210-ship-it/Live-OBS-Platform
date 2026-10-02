@@ -224,9 +224,9 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 
 ### 4.8.1 체험하기·플랫폼 구독 (대표님 결정 2026-10-02, MASTER 결정 2026-10-03)
 
-화면·메일·API 메시지의 3일 무료 기간 표기는 「체험하기」다(「무료 이용」이라고 쓰지 않음). 코드 이름(`trialEndsAt` 등)은 그대로 둔다.
+화면·메일·API 메시지의 무료 체험 기간 표기는 「체험하기」다(「무료 이용」이라고 쓰지 않음). 코드 이름(`trialEndsAt` 등)은 그대로 둔다.
 
-- `Seller.trialEndsAt`: 마스터 승인 때 DB 시계로 `approvedAt + 3일`을 채운다(승인 대기인 쇼핑몰만, 동시 승인은 한 번만 반영).
+- `Seller.trialEndsAt`: 마스터 승인 때 DB 시계로 `approvedAt + 14일`(상수 `TRIAL_DAYS`, 대표님 결정 2026-10-02 3일 → 14일)을 채운다(승인 대기인 쇼핑몰만, 동시 승인은 한 번만 반영).
 - 이용 가능 여부(`sellerAccess`): 아래 중 하나면 쓸 수 있다. 아니면 판매자 API는 `402 subscription_required`, 오버레이 공개 주소(`state`·`version`·`stream`)는 404, 열려 있는 오버레이 SSE는 다음 핑 재확인 때 닫힌다.
   - `paid`: 결제한 이용 기간 안(`currentPeriodEnd > 지금`). 해지 예약·자동결제 실패여도 기간 끝까지.
   - `trial`: 체험하기 중.

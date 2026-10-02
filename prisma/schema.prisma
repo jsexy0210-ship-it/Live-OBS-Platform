@@ -72,7 +72,7 @@ model Seller {
   status                   SellerStatus @default(PENDING)
   businessInfo             Json?
   approvedAt               DateTime?    @db.Timestamptz(3)
-  // 체험하기(3일) 종료 시각 = 마스터 승인 시각(DB 시계) + 3일. 지나면 구독 전까지 판매자 API를 막는다.
+  // 체험하기 종료 시각 = 마스터 승인 시각(DB 시계) + TRIAL_DAYS(14일, lib/server/sellers/approval.ts). 지나면 구독 전까지 판매자 API를 막는다.
   trialEndsAt              DateTime?    @db.Timestamptz(3)
   // 잠긴 지 30일이 지나 자동 해지된 시각. 이때부터 90일 보관 뒤 삭제 대상(삭제는 별도 작업). 다시 구독하면 비운다.
   serviceEndedAt           DateTime?    @db.Timestamptz(3)

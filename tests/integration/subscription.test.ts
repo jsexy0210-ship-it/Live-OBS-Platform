@@ -27,7 +27,7 @@ import { GET as overlayVersion } from "../../app/api/overlay/[token]/version/rou
 import { issueOverlayToken } from "../../lib/server/overlay/token";
 import { liveHub } from "../../lib/server/realtime/hub";
 import { SSE_CONFIG } from "../../lib/server/realtime/sse";
-import { approveSeller } from "../../lib/server/sellers/approval";
+import { TRIAL_DAYS, approveSeller } from "../../lib/server/sellers/approval";
 import { POST as approveRoute } from "../../app/api/admin/sellers/[sellerId]/approve/route";
 import { GET as plansRoute } from "../../app/api/plans/route";
 import { POST as sellerLogin } from "../../app/api/seller/auth/login/route";
@@ -84,14 +84,15 @@ async function sessionToken(email: string) {
 }
 
 describe("판매자 승인과 체험하기", () => {
-  it("승인하면 ACTIVE가 되고 체험하기 종료 = 승인 시각 + 3일(DB 시계), 다시 승인할 수 없다", async () => {
+  it("승인하면 ACTIVE가 되고 체험하기 종료 = 승인 시각 + 14일(DB 시계), 다시 승인할 수 없다", async () => {
     const admin = await adminCtx("SUPER_ADMIN");
     const seller = await db.seller.create({ data: { slug: "pending-shop", shopName: "대기 쇼핑몰" } });
     const r = await approveSeller(db, admin, seller.id);
     expect(r.ok).toBe(true);
     const saved = await db.seller.findUniqueOrThrow({ where: { id: seller.id } });
     expect(saved.status).toBe("ACTIVE");
-    expect(saved.trialEndsAt!.getTime() - saved.approvedAt!.getTime()).toBe(3 * DAY);
+    expect(saved.trialEndsAt!.getTime() - saved.approvedAt!.getTime()).toBe(TRIAL_DAYS * DAY);
+    expect(TRIAL_DAYS).toBe(14);
     expect(saved.approvedByAdminId).toBe(admin.admin.id);
     expect(await approveSeller(db, admin, seller.id)).toEqual({ ok: false, reason: "not_pending" });
     expect(await db.auditLog.count({ where: { action: "admin.seller.approve", targetId: seller.id } })).toBe(1);
