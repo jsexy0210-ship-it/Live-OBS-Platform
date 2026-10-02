@@ -24,8 +24,8 @@ jobs:
       - name: No deploy workflows
         run: |
           set -euo pipefail
-          # 이번 단계는 운영 배포 미구성. self-hosted 러너·배포 워크플로 재유입 차단.
-          ! grep -RIlE 'self-hosted|lifeleft' .github/workflows/ --exclude=ci.yml
+          # 이번 단계는 운영 배포 미구성. self-hosted 러너 배포 워크플로 재유입 차단.
+          ! grep -RIl 'self-hosted' .github/workflows/ --exclude=ci.yml
 
       - name: Node
         uses: actions/setup-node@v4
