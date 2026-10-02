@@ -34,7 +34,7 @@
 
 ## 마스터·전담 세션 운영 (2026-10-02 대표님 지시, 웨딩픽 마스터 방식 준용)
 
-- **MASTER 세션**: `session_01XqBPGTKiEMmRSMB5SfFp3C` (Live-OBS-Platform MASTER). 세션 목록은 `HANDOFF.md`.
+- **MASTER 세션**: `session_018xa8SC5evpEFNVcQBwcN5t` (Live-OBS-Platform MASTER (2), 2026-10-02 17:21 KST 교체). 세션 목록은 `HANDOFF.md`.
 - 요구사항은 MASTER가 접수한다. 필요하면 전담 세션을 생성·재사용해 배정하고, **소유 파일과 완료 기준**을 먼저 정해 중복 작업을 막는다. 전담 세션끼리 같은 파일을 동시에 고치지 않는다.
 - MASTER는 구현자의 완료 보고를 그대로 승인하지 않는 **독립 검수자**다. 오류·회귀·누락·정책 불일치·허위 성공·권한·사용자 여정을 반례로 검토하고, 실패 항목은 수정 후 재검증한다.
 - **main 병합은 MASTER만 한다.** CI 통과·충돌 없음·리뷰 지적 확인 후 병합한다 (대표님 지시로 자동 병합).

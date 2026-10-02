@@ -19,6 +19,6 @@
    운영 배포·카카오클라우드 자원 변경·유료 자원 생성·실제 결제/환불/적립금 실행 (대표님 승인 전).
 6. 파일 존재·CI 성공만으로 완료라고 하지 않는다. 실제 동작 증거를 붙인다.
 7. 막힘·실패·위험·대표님 선택 필요 사항은 MASTER로 create_trigger 1회 보고한다.
-   MASTER 세션 ID는 최신 main의 HANDOFF.md 세션 표에서 확인한다 (작성 시점: session_01XqBPGTKiEMmRSMB5SfFp3C).
+   MASTER 세션 ID는 최신 main의 HANDOFF.md 세션 표에서 확인한다 (2026-10-02 17:21 KST 기준: session_018xa8SC5evpEFNVcQBwcN5t).
    담을 것: 무슨 일인지 한 줄 / 무엇이 안 되는지·영향 범위 / 선택지와 권고안 / 근거 파일·줄 또는 실행 링크. 비밀값은 적지 않는다.
 ```
