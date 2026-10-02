@@ -25,6 +25,21 @@ export function setSessionCookie(res: NextResponse, realm: Realm, token: string,
   });
 }
 
+// 짧게 쓰는 흐름용 쿠키(본인인증 소유 확인·비밀번호 재설정 권한). 지정한 경로에서만 보낸다.
+export function setFlowCookie(res: NextResponse, name: string, value: string, path: string, maxAgeSeconds: number) {
+  res.cookies.set(name, value, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    path,
+    maxAge: maxAgeSeconds,
+  });
+}
+
+export function clearFlowCookie(res: NextResponse, name: string, path: string) {
+  res.cookies.set(name, "", { httpOnly: true, path, maxAge: 0 });
+}
+
 export function clearSessionCookie(res: NextResponse, realm: Realm) {
   res.cookies.set(COOKIE_NAMES[realm], "", { httpOnly: true, path: "/", maxAge: 0 });
 }

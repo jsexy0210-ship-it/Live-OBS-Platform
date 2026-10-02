@@ -1,5 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
-import { requireSellerPermission, type TenantContext } from "../tenant/context";
+import { requireSellerRead, type TenantContext } from "../tenant/context";
 
 const ITEM_FIELDS = {
   id: true,
@@ -19,7 +19,7 @@ const ITEM_FIELDS = {
 
 // 방송 대시보드 상태. version은 실시간 알림·15초 확인용(docs/ARCHITECTURE.md 6절).
 export async function getQueueSnapshot(db: PrismaClient, ctx: TenantContext) {
-  requireSellerPermission(ctx, "broadcast.operate");
+  requireSellerRead(ctx, "BROADCAST_RUN");
   const sellerId = ctx.sellerId;
   return db.$transaction(
     async (tx) => {
@@ -56,7 +56,7 @@ export async function getQueueSnapshot(db: PrismaClient, ctx: TenantContext) {
 }
 
 export async function getLiveVersion(db: PrismaClient, ctx: TenantContext): Promise<number> {
-  requireSellerPermission(ctx, "broadcast.operate");
+  requireSellerRead(ctx, "BROADCAST_RUN");
   const s = await db.seller.findUniqueOrThrow({ where: { id: ctx.sellerId }, select: { liveVersion: true } });
   return s.liveVersion;
 }

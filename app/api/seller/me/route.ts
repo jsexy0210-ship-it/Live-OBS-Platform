@@ -6,7 +6,7 @@ import { errorResponse, sessionToken } from "../../../../lib/server/http/route";
 export async function GET(req: Request) {
   try {
     const ctx = await requireSeller(prisma, sessionToken(req, "seller"));
-    return NextResponse.json({ sellerId: ctx.sellerId, userId: ctx.actorId, role: ctx.sellerRole });
+    return NextResponse.json({ sellerId: ctx.sellerId, userId: ctx.actorId, isOwner: ctx.isOwner, permissions: ctx.permissions });
   } catch (e) {
     return errorResponse(e);
   }

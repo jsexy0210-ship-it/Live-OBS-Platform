@@ -68,7 +68,7 @@ export async function applyQueueAction(
   action: QueueAction,
   opts: QueueActionOptions = {},
 ): Promise<QueueResult<QueueItem>> {
-  requireSellerPermission(ctx, "broadcast.operate");
+  requireSellerPermission(ctx, "BROADCAST_RUN");
   if (action === "timer" && !isValidTimer(opts.timerSeconds)) return { ok: false, reason: "invalid_timer" };
   // 취소는 사유가 있어야 한다(상태 기록·감사 로그에 남긴다).
   if (action === "cancel" && !opts.reason?.trim()) return { ok: false, reason: "reason_required" };
@@ -146,7 +146,7 @@ export async function reorderWaiting(
   ctx: TenantContext,
   input: { broadcastSessionId: string | null; orderedIds: string[]; expectedLiveVersion: number },
 ): Promise<QueueResult<number>> {
-  requireSellerPermission(ctx, "broadcast.operate");
+  requireSellerPermission(ctx, "BROADCAST_RUN");
   return run(db, ctx.sellerId, async (tx, version) => {
     if (version - 1 !== input.expectedLiveVersion) throw new Rejected("conflict");
     const current = await tx.queueItem.findMany({
@@ -176,7 +176,7 @@ export async function startBroadcast(
   ctx: TenantContext,
   input: { title?: string; now?: Date } = {},
 ): Promise<QueueResult<{ broadcastSessionId: string; absorbed: number }>> {
-  requireSellerPermission(ctx, "broadcast.operate");
+  requireSellerPermission(ctx, "BROADCAST_RUN");
   const now = input.now ?? new Date();
   return run(
     db,
@@ -218,7 +218,7 @@ export async function endBroadcast(
   ctx: TenantContext,
   input: { now?: Date } = {},
 ): Promise<QueueResult<{ broadcastSessionId: string; carriedOver: number }>> {
-  requireSellerPermission(ctx, "broadcast.operate");
+  requireSellerPermission(ctx, "BROADCAST_RUN");
   const now = input.now ?? new Date();
   return run(db, ctx.sellerId, async (tx) => {
     const live = await tx.broadcastSession.findFirst({ where: { sellerId: ctx.sellerId, status: "LIVE" } });

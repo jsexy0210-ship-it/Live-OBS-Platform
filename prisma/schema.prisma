@@ -85,6 +85,7 @@ model Seller {
   domains                  SellerDomain[]
   users                    SellerUser[]
   sellerSessions           SellerSession[]
+  passwordResetGrants      PasswordResetGrant[]
   grades                   MemberGrade[]
   buyers                   BuyerMember[]
   identityVerifications    IdentityVerification[]
@@ -120,10 +121,19 @@ model SellerDomain {
   @@index([sellerId])
 }
 
-enum SellerUserRole {
-  OWNER
-  MANAGER
-  BROADCASTER
+// 판매자 직원 권한 항목(대표님 결정 2026-10-02: 고정 역할 대신 항목별로 켜고 끔).
+// PG 연결·구독·직원 관리·적립금 실지급 스위치는 대표자 전용이라 항목으로 줄 수 없다.
+enum SellerStaffPermission {
+  BROADCAST_RUN
+  OVERLAY_EDIT
+  PRODUCT_MANAGE
+  ORDER_SHIPPING
+  CUSTOMER_PII_VIEW
+  MEMBER_POINTS
+  INQUIRY_REPLY
+  RECEIPT_TAX
+  SALES_VIEW
+  SHOP_SETTINGS
 }
 
 enum SellerUserStatus {
@@ -132,34 +142,59 @@ enum SellerUserStatus {
 }
 
 model SellerUser {
-  id           String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerId     String           @db.Uuid
-  email        String
-  passwordHash String
-  name         String
-  role         SellerUserRole
-  status       SellerUserStatus @default(ACTIVE)
-  lastLoginAt  DateTime?        @db.Timestamptz(3)
-  createdAt    DateTime         @default(now()) @db.Timestamptz(3)
+  id                String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId          String                  @db.Uuid
+  email             String
+  passwordHash      String
+  name              String
+  // 대표자 여부. 대표자는 모든 권한과 대표자 전용 기능을 가진다.
+  isOwner           Boolean                 @default(false)
+  // 직원 권한 항목(대표자는 비워 둔다)
+  permissions       SellerStaffPermission[] @default([])
+  // 비밀번호가 바뀔 때마다 1씩 올린다. 세션은 만들 때의 값을 들고 있고, 다르면 무효(재설정 중 진행된 옛 비밀번호 로그인 차단).
+  credentialVersion Int                     @default(0)
+  status            SellerUserStatus        @default(ACTIVE)
+  lastLoginAt       DateTime?               @db.Timestamptz(3)
+  createdAt         DateTime                @default(now()) @db.Timestamptz(3)
 
-  seller   Seller          @relation(fields: [sellerId], references: [id])
-  sessions SellerSession[]
+  seller      Seller               @relation(fields: [sellerId], references: [id])
+  sessions    SellerSession[]
+  resetGrants PasswordResetGrant[]
 
   @@unique([sellerId, id])
   @@unique([sellerId, email])
 }
 
-model SellerSession {
+// 판매자 대표 비밀번호 재설정 권한(일회용·10분). 토큰은 해시만 저장한다.
+model PasswordResetGrant {
   id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerUserId String    @db.Uuid
   sellerId     String    @db.Uuid
+  sellerUserId String    @db.Uuid
   tokenHash    String    @unique
-  ip           String?
-  userAgent    String?
+  // 발급 때 확인한 대표자 CI 해시. 쓸 때 쇼핑몰 대표자 CI가 바뀌었으면 거부한다.
+  ciHash       String
   expiresAt    DateTime  @db.Timestamptz(3)
-  lastSeenAt   DateTime  @default(now()) @db.Timestamptz(3)
-  revokedAt    DateTime? @db.Timestamptz(3)
+  usedAt       DateTime? @db.Timestamptz(3)
   createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+
+  seller     Seller     @relation(fields: [sellerId], references: [id])
+  sellerUser SellerUser @relation(fields: [sellerId, sellerUserId], references: [sellerId, id])
+
+  @@index([sellerId, sellerUserId])
+}
+
+model SellerSession {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerUserId      String    @db.Uuid
+  sellerId          String    @db.Uuid
+  tokenHash         String    @unique
+  credentialVersion Int       @default(0)
+  ip                String?
+  userAgent         String?
+  expiresAt         DateTime  @db.Timestamptz(3)
+  lastSeenAt        DateTime  @default(now()) @db.Timestamptz(3)
+  revokedAt         DateTime? @db.Timestamptz(3)
+  createdAt         DateTime  @default(now()) @db.Timestamptz(3)
 
   seller     Seller     @relation(fields: [sellerId], references: [id])
   sellerUser SellerUser @relation(fields: [sellerId, sellerUserId], references: [sellerId, id])
@@ -249,19 +284,25 @@ enum IdentityVerificationStatus {
 // PASS 본인인증 요청·결과. 연동은 IdentityProvider 인터페이스 뒤에 둔다(개발·테스트는 가짜 공급자).
 // CI 원문은 저장하지 않고 서버 비밀키(IDENTITY_HASH_KEY) HMAC-SHA256 값만 저장한다. 판매자 대표자 인증은 sellerId가 없다.
 model IdentityVerification {
-  id         String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerId   String?                     @db.Uuid
-  purpose    IdentityVerificationPurpose
-  provider   String
-  requestId  String
-  status     IdentityVerificationStatus  @default(PENDING)
-  ciHash     String?
-  name       String?
-  phone      String?
-  birthDate  DateTime?                   @db.Date
-  verifiedAt DateTime?                   @db.Timestamptz(3)
-  expiresAt  DateTime                    @db.Timestamptz(3)
-  createdAt  DateTime                    @default(now()) @db.Timestamptz(3)
+  id             String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId       String?                     @db.Uuid
+  purpose        IdentityVerificationPurpose
+  provider       String
+  requestId      String
+  status         IdentityVerificationStatus  @default(PENDING)
+  ciHash         String?
+  name           String?
+  phone          String?
+  birthDate      DateTime?                   @db.Date
+  verifiedAt     DateTime?                   @db.Timestamptz(3)
+  // 인증을 시작한 브라우저에 준 일회용 값의 해시. 완료할 때 같은 값이 있어야 한다(다른 사람이 id만 알아서는 못 씀).
+  ownerTokenHash String?
+  // 비밀번호 찾기: 재설정 대상 계정(없는 계정이면 null, 응답은 같게)
+  subjectId      String?                     @db.Uuid
+  // 이 인증으로 가입·재설정 권한을 이미 발급했으면 기록(한 번만 쓰임)
+  consumedAt     DateTime?                   @db.Timestamptz(3)
+  expiresAt      DateTime                    @db.Timestamptz(3)
+  createdAt      DateTime                    @default(now()) @db.Timestamptz(3)
 
   seller Seller? @relation(fields: [sellerId], references: [id])
 

@@ -103,7 +103,8 @@ export async function loginSeller(
   }
 
   await db.sellerUser.update({ where: { id: user.id }, data: { lastLoginAt: now } });
-  const session = await createSellerSession(db, user.sellerId, user.id, { ...meta, now });
+  // 비밀번호를 확인한 시점의 자격 버전으로 세션을 만든다. 그사이 재설정되면 이 세션은 바로 무효다.
+  const session = await createSellerSession(db, user.sellerId, user.id, { ...meta, now }, user.credentialVersion);
   await audit("auth.seller.login", user.id, user.sellerId);
   return { ok: true, ...session };
 }

@@ -140,7 +140,7 @@ describe("판매자 로그인과 마스터 기능 차단", () => {
     const owner = await createSellerUser(seller.id, "OWNER");
     const r = await loginSeller(db, { email: owner.email, password: PASSWORD }, { now: t0 });
     if (!r.ok) throw new Error("login failed");
-    await expect(requireSeller(db, r.token, at(1))).resolves.toMatchObject({ sellerId: seller.id, sellerRole: "OWNER" });
+    await expect(requireSeller(db, r.token, at(1))).resolves.toMatchObject({ sellerId: seller.id, isOwner: true });
     await expect(requireAdmin(db, r.token, "platform.read", at(1))).rejects.toMatchObject({ status: 401 });
   });
 
