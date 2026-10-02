@@ -9,35 +9,23 @@ permissions:
   contents: read
 
 concurrency:
-  group: lifeleft-ci-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  static-build:
-    name: Typecheck and static export
+  build:
+    name: Typecheck and build
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Deployment script safety
+      - name: No deploy workflows
         run: |
           set -euo pipefail
-          bash -n scripts/stage-lifeleft-static.sh
-          bash -n scripts/install-lifeleft-domain.sh
-          bash -n scripts/rollback-lifeleft-domain.sh
-          bash -n scripts/finalize-lifeleft-domain.sh
-
-          ! grep -Eq '/home/ubuntu/WeddingPick|/var/www/weddingpick' \
-            scripts/stage-lifeleft-static.sh \
-            scripts/install-lifeleft-domain.sh \
-            scripts/rollback-lifeleft-domain.sh \
-            scripts/finalize-lifeleft-domain.sh
-
-          ! grep -Eq '/etc/nginx|nginx[[:space:]]+-|systemctl' scripts/stage-lifeleft-static.sh
-          grep -Fq 'lifeleft.duckdns.org' lib/site.ts
-          grep -Fq 'server_name $domain' scripts/install-lifeleft-domain.sh
+          # 이번 단계는 운영 배포 미구성. self-hosted 러너·배포 워크플로 재유입 차단.
+          ! grep -RIlE 'self-hosted|lifeleft' .github/workflows/ --exclude=ci.yml
 
       - name: Node
         uses: actions/setup-node@v4
@@ -50,20 +38,5 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Static export
+      - name: Build
         run: npm run build
-
-      - name: Verify output
-        run: |
-          test -f out/index.html
-          test -f out/commute/index.html
-          test -f out/salary/index.html
-          test -f out/weekends/index.html
-          test -f out/work-time/index.html
-          test -f out/subscriptions/index.html
-          test -f out/survival/index.html
-          test -f out/robots.txt
-          test -f out/sitemap.xml
-
-          grep -Fq 'https://lifeleft.duckdns.org/sitemap.xml' out/robots.txt
-          grep -Fq 'https://lifeleft.duckdns.org/' out/sitemap.xml
