@@ -3,13 +3,15 @@ import type { AdminSessionContext } from "../auth/session";
 import { writeAudit } from "../audit/log";
 import { forbidden } from "../authz/errors";
 import { adminCan } from "../authz/permissions";
+import { dbNow } from "../billing/subscription";
 
-export const TRIAL_DAYS = 3;
+// 체험하기 기간(대표님 결정 2026-10-02, 3일 → 14일 변경). 코드에서는 이 상수 하나만 쓴다.
+export const TRIAL_DAYS = 14;
 
 type Db = PrismaClient | Prisma.TransactionClient;
 type Meta = { ip?: string | null; userAgent?: string | null };
 
-// 승인 대기(PENDING) 쇼핑몰을 운영 중으로 바꾼다. 승인 시각과 체험하기 종료(승인 + 3일)는 DB 시계로 정한다
+// 승인 대기(PENDING) 쇼핑몰을 운영 중으로 바꾼다. 승인 시각과 체험하기 종료(승인 + TRIAL_DAYS일)는 DB 시계로 정한다
 // (대표님 결정 2026-10-02). 「확인 필요」 사유는 비운다. 승인 대기가 아니면 null(동시에 두 번 불러도 한 번만 승인).
 // adminId가 null이면 가입 자동 승인이다.
 export async function activateSeller(db: Db, sellerId: string, adminId: string | null) {
@@ -49,7 +51,11 @@ export async function rejectSeller(db: PrismaClient, admin: AdminSessionContext,
   if (!adminCan(admin.admin.role, "seller.moderate")) throw forbidden();
   const why = reason.trim().slice(0, 200);
   if (!why) return { ok: false as const, reason: "reason_required" as const };
-  const moved = await db.seller.updateMany({ where: { id: sellerId, status: "PENDING" }, data: { status: "REJECTED", suspendedReason: why } });
+  // 반려 사유·시각은 전용 컬럼에 둔다(정지 사유와 섞지 않음, MASTER 결정)
+  const moved = await db.seller.updateMany({
+    where: { id: sellerId, status: "PENDING" },
+    data: { status: "REJECTED", rejectedReason: why, rejectedAt: await dbNow(db) },
+  });
   if (moved.count !== 1) {
     const exists = await db.seller.findUnique({ where: { id: sellerId }, select: { id: true } });
     return { ok: false as const, reason: exists ? ("not_pending" as const) : ("not_found" as const) };

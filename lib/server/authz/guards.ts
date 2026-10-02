@@ -26,11 +26,12 @@ export async function requireAdmin(
 export async function requireSeller(
   db: PrismaClient,
   token: string | undefined,
-  now = new Date(),
+  now?: Date,
   opts: { allowUnpaid?: boolean } = {},
 ): Promise<TenantContext> {
-  const ctx = await resolveSellerSession(db, token, now);
+  const ctx = await resolveSellerSession(db, token, now ?? new Date());
   if (!ctx) throw unauthenticated();
+  // 이용 제한은 DB 시계로 판단한다(now를 넘긴 테스트는 그 시각)
   if (!opts.allowUnpaid && (await sellerAccessFor(db, ctx.seller.id, now)) === "expired") throw subscriptionRequired();
   return {
     sellerId: ctx.seller.id,
