@@ -746,6 +746,82 @@ describe("MASTER 재검수 3차 재현", () => {
     const now = new Date(c.getTime() + 6 * DAY);
     expect(await registerCardAndPay(db, provider, ctx, { authKey: "again", now })).toMatchObject({ ok: true, charged: true });
     expect(provider.charges.at(-1)!.amount).toBe(250000);
+    expect(await db.sellerSubscription.findUniqueOrThrow({ where: { id: sub.id } })).toMatchObject({ subscribedAt: now, status: "ACTIVE", canceledAt: null });
+    expect(await sellerAccessFor(db, ctx.sellerId, now)).toBe("paid");
+    expect(await db.auditLog.count({ where: { sellerId: ctx.sellerId, action: "subscription.refund_required" } })).toBe(0);
+  });
+});
+
+describe("MASTER 재검수 4차: 해지 뒤 다시 구독하면 되살린다", () => {
+  async function paidShop(provider: FakeBillingProvider) {
+    const s = await shop(new Date(Date.now() - DAY));
+    await registerCardAndPay(db, provider, s.ctx, { authKey: `k-${s.seller.id}` });
+    const sub = await db.sellerSubscription.findUniqueOrThrow({ where: { sellerId: s.seller.id } });
+    return { ...s, sub, end: sub.currentPeriodEnd! };
+  }
+  const expectRevived = async (sellerId: string, now: Date) => {
+    const sub = await db.sellerSubscription.findUniqueOrThrow({ where: { sellerId } });
+    expect(sub).toMatchObject({ status: "ACTIVE", canceledAt: null, cancelAtPeriodEnd: false, currentPeriodStart: now });
+    expect(await sellerAccessFor(db, sellerId, now)).toBe("paid");
+    expect(await db.auditLog.count({ where: { sellerId, action: "subscription.refund_required" } })).toBe(0);
+  };
+
+  it("①: 해지 예약 → 예약 실행이 CANCELED → 다시 구독하면 ACTIVE·이용 가능", async () => {
+    const provider = new FakeBillingProvider();
+    const { ctx, end, seller } = await paidShop(provider);
+    await cancelSubscription(db, ctx, { now: new Date(end.getTime() - 5 * DAY) });
+    expect(await renewDueSubscriptions(db, provider, { now: new Date(end.getTime() + 1000) })).toMatchObject({ canceled: 1 });
+    const now = new Date(end.getTime() + 2 * DAY);
+    expect(await registerCardAndPay(db, provider, ctx, { authKey: "back", now })).toMatchObject({ ok: true, charged: true });
+    expect(provider.charges).toHaveLength(2);
+    await expectRevived(seller.id, now);
+  });
+
+  it("②: 유예 중 즉시 해지 → 다시 구독하면 ACTIVE·이용 가능", async () => {
+    const provider = new FakeBillingProvider();
+    const { sub, ctx, end, seller } = await paidShop(provider);
+    const declining = new FakeBillingProvider();
+    declining.decline(openBillingKey(sub.billingKeyCipher!, seller.id));
+    await renewDueSubscriptions(db, declining, { now: new Date(end.getTime() - DAY / 2) });
+    expect(await cancelSubscription(db, ctx, { now: new Date(end.getTime() + DAY) })).toMatchObject({ ok: true, currentPeriodEnd: null });
+    expect((await db.sellerSubscription.findUniqueOrThrow({ where: { id: sub.id } })).status).toBe("CANCELED");
+    const now = new Date(end.getTime() + 2 * DAY);
+    expect(await registerCardAndPay(db, provider, ctx, { authKey: "back", now })).toMatchObject({ ok: true, charged: true });
+    await expectRevived(seller.id, now);
+  });
+
+  it("③: 구독하던 쇼핑몰이 30일 잠금으로 자동 해지된 뒤 다시 구독하면 해지 표시·도메인까지 되살린다", async () => {
+    const provider = new FakeBillingProvider();
+    const { sub, ctx, end, seller } = await paidShop(provider);
+    await db.sellerDomain.create({ data: { sellerId: seller.id, hostname: "revive.example.com" } });
+    await cancelSubscription(db, ctx, { now: new Date(end.getTime() - 5 * DAY) });
+    await renewDueSubscriptions(db, provider, { now: new Date(end.getTime() + 1000) });
+    const closeAt = new Date(end.getTime() + 31 * DAY);
+    expect(await closeLongLockedSellers(db, { now: closeAt })).toEqual({ closed: 1 });
+    expect((await db.seller.findUniqueOrThrow({ where: { id: seller.id } })).serviceEndedAt).toEqual(closeAt);
+    expect((await db.sellerDomain.findUniqueOrThrow({ where: { hostname: "revive.example.com" } })).suspendedAt).toEqual(closeAt);
+
+    const now = new Date(closeAt.getTime() + DAY);
+    expect(await registerCardAndPay(db, provider, ctx, { authKey: "back", now })).toMatchObject({ ok: true, charged: true });
+    await expectRevived(seller.id, now);
+    expect((await db.seller.findUniqueOrThrow({ where: { id: seller.id } })).serviceEndedAt).toBeNull();
+    expect((await db.sellerDomain.findUniqueOrThrow({ where: { hostname: "revive.example.com" } })).suspendedAt).toBeNull();
     expect((await db.sellerSubscription.findUniqueOrThrow({ where: { id: sub.id } })).subscribedAt).toEqual(now);
+  });
+
+  it("해지 뒤 다시 구독했지만 결제가 실패하면 CANCELED·잠김 그대로", async () => {
+    const provider = new FakeBillingProvider();
+    const { ctx, end, seller } = await paidShop(provider);
+    await cancelSubscription(db, ctx, { now: new Date(end.getTime() - 5 * DAY) });
+    await renewDueSubscriptions(db, provider, { now: new Date(end.getTime() + 1000) });
+    const declining = new (class extends FakeBillingProvider {
+      async charge() {
+        return { ok: false as const, reason: "card_declined" };
+      }
+    })();
+    const now = new Date(end.getTime() + 2 * DAY);
+    expect(await registerCardAndPay(db, declining, ctx, { authKey: "bad", now })).toEqual({ ok: false, reason: "payment_failed" });
+    expect((await db.sellerSubscription.findUniqueOrThrow({ where: { sellerId: seller.id } })).status).toBe("CANCELED");
+    expect(await sellerAccessFor(db, seller.id, now)).toBe("expired");
   });
 });

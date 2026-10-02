@@ -41,6 +41,7 @@ CREATE TABLE "SellerSubscription" (
     "nextChargeAt" TIMESTAMPTZ(3),
     "billingAnchorAt" TIMESTAMPTZ(3),
     "subscribedAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "canceledAt" TIMESTAMPTZ(3),
     "retryCount" INTEGER NOT NULL DEFAULT 0,
     "graceUntil" TIMESTAMPTZ(3),
     "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,

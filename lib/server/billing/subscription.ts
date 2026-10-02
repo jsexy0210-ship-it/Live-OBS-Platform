@@ -191,7 +191,8 @@ export async function registerCardAndPay(
         create: { sellerId: ctx.sellerId, planId: plan.id, ...card, nextChargeAt, createdAt: now, subscribedAt: now },
         update: {
           ...card,
-          ...(cardOnly ? { status: "ACTIVE" as const, nextChargeAt } : {}),
+          // 카드만 등록하는 경우(결제한 기간이 남음·체험하기 중)는 결제 없이도 정상 구독이다
+          ...(cardOnly ? { status: "ACTIVE" as const, nextChargeAt, canceledAt: null } : {}),
           ...(restart ? { subscribedAt: now } : {}),
         },
       });
@@ -221,6 +222,8 @@ export async function registerCardAndPay(
           periodStart: period.start,
           periodEnd: period.end,
           scheduled: false,
+          // 해지 시각과 비교하므로 같은 시계(now)로 남긴다
+          createdAt: now,
         },
       });
       return { kind: "charge", payment, orderName: plan.name };
@@ -277,8 +280,10 @@ async function settlePayment(
 
     let nextChargeAt: Date | null = null;
     const sub = await tx.sellerSubscription.findUniqueOrThrow({ where: { id: payment.subscriptionId } });
-    if (sub.status === "CANCELED") {
-      // 해지된 구독은 절대 되살리지 않는다. PG에서 결제가 확인된 건은 환불 대상으로만 남긴다.
+    // 해지 전에 만든 청구가 해지 뒤에 확정되면 구독을 되살리지 않는다(PG에서 결제가 확인된 건은 환불 대상으로만 남긴다).
+    // 해지 뒤에 만든 청구(다시 구독)는 정상 결제로 처리해 아래에서 ACTIVE·잠금 해제·자동 해지 복구까지 한다.
+    const createdBeforeCancel = !sub.canceledAt || payment.createdAt <= sub.canceledAt;
+    if (sub.status === "CANCELED" && (createdBeforeCancel || !result.ok)) {
       await writeAudit(tx, {
         actorType: opts.actorType,
         actorId: opts.actorId,
@@ -302,6 +307,7 @@ async function settlePayment(
           nextChargeAt: sub.cancelAtPeriodEnd ? payment.periodEnd : nextChargeAt,
           retryCount: 0,
           graceUntil: null,
+          canceledAt: null,
         },
       });
       await restoreAfterResubscribe(tx, payment.sellerId, opts.actorType, opts.actorId);
@@ -352,7 +358,7 @@ export async function cancelSubscription(db: PrismaClient, ctx: TenantContext, i
       where: { id: sub.id },
       data: paidThrough
         ? { cancelAtPeriodEnd: true, nextChargeAt: paidThrough, graceUntil: null, retryCount: 0 }
-        : { cancelAtPeriodEnd: true, status: "CANCELED", nextChargeAt: null, graceUntil: null, retryCount: 0 },
+        : { cancelAtPeriodEnd: true, status: "CANCELED", canceledAt: now, nextChargeAt: null, graceUntil: null, retryCount: 0 },
     });
     await writeAudit(tx, {
       actorType: ctx.actorType,
@@ -391,7 +397,7 @@ export async function renewDueSubscriptions(db: PrismaClient, provider: BillingP
           if (sub.status === "CANCELED" || !sub.nextChargeAt || sub.nextChargeAt > now) return null;
           if (sub.cancelAtPeriodEnd) {
             if (sub.currentPeriodEnd && sub.currentPeriodEnd > now) return null;
-            await tx.sellerSubscription.update({ where: { id }, data: { status: "CANCELED", nextChargeAt: null } });
+            await tx.sellerSubscription.update({ where: { id }, data: { status: "CANCELED", canceledAt: now, nextChargeAt: null } });
             await writeAudit(tx, { actorType: "SYSTEM", sellerId, action: "subscription.canceled", targetType: "SellerSubscription", targetId: id });
             return "canceled" as const;
           }
@@ -409,6 +415,7 @@ export async function renewDueSubscriptions(db: PrismaClient, provider: BillingP
               periodStart: period.start,
               periodEnd: period.end,
               scheduled: true,
+              createdAt: now,
             },
           });
           return { payment, billingKey: openBillingKey(sub.billingKeyCipher, sellerId), orderName: sub.plan.name };
@@ -552,7 +559,7 @@ export async function closeLongLockedSellers(db: PrismaClient, input: { now?: Da
       if (!since || since > cutoff) return false;
       await tx.seller.update({ where: { id }, data: { serviceEndedAt: now } });
       if (seller.subscription) {
-        await tx.sellerSubscription.update({ where: { id: seller.subscription.id }, data: { status: "CANCELED", nextChargeAt: null } });
+        await tx.sellerSubscription.update({ where: { id: seller.subscription.id }, data: { status: "CANCELED", canceledAt: now, nextChargeAt: null } });
       }
       const domains = await tx.sellerDomain.updateMany({ where: { sellerId: id, suspendedAt: null }, data: { suspendedAt: now } });
       await writeAudit(tx, {
