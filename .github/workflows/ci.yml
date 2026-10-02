@@ -40,3 +40,45 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  test:
+    name: Unit and integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      # 폐기 가능한 테스트 DB (GitHub Actions 서비스 컨테이너, 외부 자원 없음)
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: live_obs
+          POSTGRES_PASSWORD: live_obs
+          POSTGRES_DB: live_obs_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U live_obs -d live_obs_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://live_obs:live_obs@localhost:5432/live_obs_test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Migrate test DB
+        run: npm run db:migrate
+
+      - name: Integration tests
+        run: npm run test:integration
