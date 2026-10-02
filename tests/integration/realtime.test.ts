@@ -1,4 +1,9 @@
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
+import { GET as sellerStream } from "../../app/api/seller/stream/route";
+import { loginSeller } from "../../lib/server/auth/login";
+import { revokeSession } from "../../lib/server/auth/session";
+import { MAX_STREAMS_PER_KEY, SSE_CONFIG, openStreamCount } from "../../lib/server/realtime/sse";
+import { hashToken } from "../../lib/server/auth/token";
 import { GET as overlayState } from "../../app/api/overlay/[token]/state/route";
 import { GET as overlayStream } from "../../app/api/overlay/[token]/stream/route";
 import { prisma } from "../../lib/server/db";
@@ -6,9 +11,13 @@ import { issueOverlayToken } from "../../lib/server/overlay/token";
 import { applyQueueAction, markOrderPaid, startBroadcast } from "../../lib/server/queue/service";
 import { LiveHub, liveHub, type HubEvent } from "../../lib/server/realtime/hub";
 import type { TenantContext } from "../../lib/server/tenant/context";
-import { createBuyer, createPaidOrderItem, createSeller, createSellerUser, db, resetDb } from "./helpers";
+import { PASSWORD, createBuyer, createPaidOrderItem, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
 beforeEach(resetDb);
+const DEFAULT_PING_MS = SSE_CONFIG.pingMs;
+afterEach(() => {
+  SSE_CONFIG.pingMs = DEFAULT_PING_MS;
+});
 afterAll(async () => {
   await liveHub().close();
   await db.$disconnect();
@@ -85,6 +94,92 @@ describe("LISTEN/NOTIFY 허브", () => {
     await waitFor(() => got.find((e) => e.type === "version" && e.version === r.version));
     await hub.close();
   }, 15000);
+});
+
+describe("LISTEN 연결 실패·점검", () => {
+  it("처음 LISTEN 연결이 실패하면 구독은 오류를 던지고 리스너가 남지 않는다", async () => {
+    const hub = new LiveHub("postgresql://nobody:nothing@127.0.0.1:1/none");
+    for (let i = 0; i < 5; i++) await expect(hub.subscribe("s1", () => undefined)).rejects.toBeTruthy();
+    expect(hub.subscriberCount("s1")).toBe(0);
+    await hub.close();
+  });
+
+  it("점검 쿼리(SELECT 1)가 실패하면 다시 연결하고 「다시 받기」를 보낸다", async () => {
+    const hub = new LiveHub(process.env.DATABASE_URL!, { healthCheckMs: 100, healthTimeoutMs: 100 });
+    const a = await shop();
+    const got: HubEvent[] = [];
+    await hub.subscribe(a.seller.id, (e) => got.push(e));
+    // 조용히 끊긴 연결처럼 응답이 오지 않게 만든다
+    const inner = hub as unknown as { client: { query: (q: string) => Promise<unknown> } };
+    inner.client.query = () => new Promise(() => undefined);
+    await waitFor(() => got.find((e) => e.type === "resync"), 8000);
+    const r = await startBroadcast(db, a.ctx);
+    if (!r.ok) throw new Error(r.reason);
+    await waitFor(() => got.find((e) => e.type === "version" && e.version === r.version));
+    await hub.close();
+  }, 15000);
+});
+
+// SSE 응답을 끝까지(닫힐 때까지) 읽는다. 시간 안에 닫히지 않으면 실패.
+async function readToEnd(res: Response, timeoutMs = 5000): Promise<string> {
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  const until = Date.now() + timeoutMs;
+  for (;;) {
+    const left = until - Date.now();
+    if (left <= 0) throw new Error("스트림이 닫히지 않음");
+    const chunk = await Promise.race([reader.read(), new Promise<null>((r) => setTimeout(() => r(null), left))]);
+    if (chunk === null) throw new Error("스트림이 닫히지 않음");
+    if (chunk.done) return text;
+    text += decoder.decode(chunk.value);
+  }
+}
+
+describe("SSE 연결 재확인·상한", () => {
+  const params = (token: string) => ({ params: Promise.resolve({ token }) });
+  const open = (token: string, signal?: AbortSignal) =>
+    overlayStream(new Request(`http://localhost/api/overlay/${token}/stream`, { signal }), params(token));
+
+  it("오버레이 토큰을 재발급하면 옛 토큰 스트림은 다음 확인 때 닫힌다", async () => {
+    SSE_CONFIG.pingMs = 100;
+    const a = await shop();
+    const old = await issueOverlayToken(db, a.ctx);
+    const res = await open(old);
+    expect(res.status).toBe(200);
+    await issueOverlayToken(db, a.ctx);
+    const text = await readToEnd(res);
+    expect(text).toContain("event: version");
+    expect(openStreamCount(`overlay:${hashToken(old)}`)).toBe(0);
+  });
+
+  it("판매자 세션이 로그아웃되면 대시보드 스트림은 다음 확인 때 닫힌다", async () => {
+    SSE_CONFIG.pingMs = 100;
+    const a = await shop();
+    const user = await db.sellerUser.findUniqueOrThrow({ where: { id: a.ctx.actorId } });
+    const login = await loginSeller(db, { email: user.email, password: PASSWORD }, {});
+    if (!login.ok) throw new Error(login.reason);
+    const res = await sellerStream(new Request("http://localhost/api/seller/stream", { headers: { cookie: `lo_seller=${login.token}` } }));
+    expect(res.status).toBe(200);
+    await revokeSession(db, "seller", login.token);
+    await readToEnd(res);
+  });
+
+  it("토큰 하나로 동시에 10개까지 열 수 있고, 넘으면 429, 닫으면 다시 열 수 있다", async () => {
+    const a = await shop();
+    const token = await issueOverlayToken(db, a.ctx);
+    const controllers = Array.from({ length: MAX_STREAMS_PER_KEY }, () => new AbortController());
+    const opened = await Promise.all(controllers.map((c) => open(token, c.signal)));
+    expect(opened.map((r) => r.status)).toEqual(Array(MAX_STREAMS_PER_KEY).fill(200));
+    const over = await open(token);
+    expect(over.status).toBe(429);
+    expect(await over.json()).toEqual({ error: "too_many_streams" });
+    controllers[0].abort();
+    const again = new AbortController();
+    expect((await open(token, again.signal)).status).toBe(200);
+    for (const c of [...controllers, again]) c.abort();
+    expect(openStreamCount(`overlay:${hashToken(token)}`)).toBe(0);
+  });
 });
 
 describe("오버레이 API", () => {

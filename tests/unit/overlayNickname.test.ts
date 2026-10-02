@@ -6,6 +6,10 @@ describe("오버레이 닉네임 정리", () => {
     expect(overlayNickname("  카드\u202e왕\n\t망고  ")).toBe("카드왕 망고");
   });
 
+  it("양방향 제어 문자(Bidi_Control) 전체와 폭 없는 문자를 지운다", () => {
+    expect(overlayNickname("카드\u061C왕\u200E\u200F\u2066\u2067\u2068\u2069\u202A\u202B\u202C\u202D\u200B\uFEFF!")).toBe("카드왕!");
+  });
+
   it("20자를 넘으면 자르고 말줄임표를 붙인다", () => {
     expect(overlayNickname("가".repeat(25))).toBe("가".repeat(20) + "…");
     expect(overlayNickname("가".repeat(20))).toBe("가".repeat(20));

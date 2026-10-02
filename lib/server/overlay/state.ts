@@ -15,11 +15,11 @@ const PUBLIC_FIELDS = {
 
 const MAX_NICKNAME = 20;
 
-// 방송 화면 노출용 닉네임 정리: 제어 문자 제거, 공백 정리, 길이 제한.
+// 방송 화면 노출용 닉네임 정리: 제어 문자·양방향 제어 문자(Bidi_Control 전체)·폭 없는 문자 제거, 공백 정리, 길이 제한.
 export function overlayNickname(raw: string): string {
   const clean = raw
     .replace(/[\t\n\r]/g, " ")
-    .replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, "")
+    .replace(/[\p{Cc}\p{Bidi_Control}\u200b-\u200d\ufeff]/gu, "")
     .replace(/\s+/g, " ")
     .trim();
   const chars = Array.from(clean);

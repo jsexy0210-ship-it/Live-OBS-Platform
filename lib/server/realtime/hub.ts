@@ -9,6 +9,9 @@ type Listener = (e: HubEvent) => void;
 
 const RECONNECT_MIN_MS = 1_000;
 const RECONNECT_MAX_MS = 30_000;
+// 조용히 끊긴 연결(방화벽·NAT 시간 초과)을 찾으려고 주기적으로 SELECT 1을 보낸다.
+export const HEALTH_CHECK_MS = 45_000;
+const HEALTH_TIMEOUT_MS = 10_000;
 
 export class LiveHub {
   private client: Client | null = null;
@@ -17,18 +20,35 @@ export class LiveHub {
   private retryMs = RECONNECT_MIN_MS;
   private closed = false;
   private everConnected = false;
+  private health: ReturnType<typeof setInterval> | null = null;
 
-  constructor(private readonly connectionString: string) {}
+  private readonly healthCheckMs: number;
+  private readonly healthTimeoutMs: number;
 
+  constructor(
+    private readonly connectionString: string,
+    opts: { healthCheckMs?: number; healthTimeoutMs?: number } = {},
+  ) {
+    this.healthCheckMs = opts.healthCheckMs ?? HEALTH_CHECK_MS;
+    this.healthTimeoutMs = opts.healthTimeoutMs ?? HEALTH_TIMEOUT_MS;
+  }
+
+  // LISTEN 연결이 된 뒤에 돌아온다. 연결에 실패하면 등록한 리스너를 지우고 오류를 던진다(리스너가 남아 쌓이지 않게).
   async subscribe(sellerId: string, listener: Listener): Promise<() => void> {
     let set = this.listeners.get(sellerId);
     if (!set) this.listeners.set(sellerId, (set = new Set()));
     set.add(listener);
-    await this.ensureConnected();
-    return () => {
+    const remove = () => {
       set.delete(listener);
-      if (set.size === 0) this.listeners.delete(sellerId);
+      if (set.size === 0 && this.listeners.get(sellerId) === set) this.listeners.delete(sellerId);
     };
+    try {
+      await this.ensureConnected();
+    } catch (e) {
+      remove();
+      throw e;
+    }
+    return remove;
   }
 
   subscriberCount(sellerId: string): number {
@@ -37,6 +57,7 @@ export class LiveHub {
 
   async close(): Promise<void> {
     this.closed = true;
+    this.stopHealthCheck();
     const c = this.client;
     this.client = null;
     await c?.end().catch(() => undefined);
@@ -51,7 +72,7 @@ export class LiveHub {
   }
 
   private async connect(): Promise<void> {
-    const client = new Client({ connectionString: this.connectionString });
+    const client = new Client({ connectionString: this.connectionString, keepAlive: true });
     client.on("notification", (msg) => {
       if (msg.channel !== LIVE_CHANNEL || !msg.payload) return;
       try {
@@ -73,6 +94,7 @@ export class LiveHub {
     }
     this.client = client;
     this.retryMs = RECONNECT_MIN_MS;
+    this.startHealthCheck(client);
     if (this.everConnected) this.emitAll({ type: "resync" });
     this.everConnected = true;
   }
@@ -80,7 +102,28 @@ export class LiveHub {
   private handleDisconnect(client: Client) {
     if (this.client !== client) return;
     this.client = null;
+    this.stopHealthCheck();
+    client.end().catch(() => undefined);
     this.scheduleReconnect();
+  }
+
+  private startHealthCheck(client: Client) {
+    this.stopHealthCheck();
+    this.health = setInterval(() => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("health check timeout")), this.healthTimeoutMs);
+      });
+      Promise.race([client.query("SELECT 1"), timeout])
+        .catch(() => this.handleDisconnect(client))
+        .finally(() => clearTimeout(timer));
+    }, this.healthCheckMs);
+    this.health.unref?.();
+  }
+
+  private stopHealthCheck() {
+    if (this.health) clearInterval(this.health);
+    this.health = null;
   }
 
   private scheduleReconnect() {
@@ -88,6 +131,7 @@ export class LiveHub {
     const wait = this.retryMs;
     this.retryMs = Math.min(this.retryMs * 2, RECONNECT_MAX_MS);
     setTimeout(() => {
+      if (this.closed || this.listeners.size === 0) return;
       this.ensureConnected().catch(() => undefined);
     }, wait).unref?.();
   }
@@ -105,7 +149,8 @@ const globalForHub = globalThis as unknown as { liveHub?: LiveHub };
 
 export function liveHub(): LiveHub {
   if (!globalForHub.liveHub) {
-    const url = process.env.DATABASE_URL;
+    // LISTEN은 PgBouncer transaction 모드에서 동작하지 않으므로 직접 연결 주소가 있으면 그것을 쓴다.
+    const url = process.env.DATABASE_DIRECT_URL ?? process.env.DATABASE_URL;
     if (!url) throw new Error("DATABASE_URL이 설정되지 않았어요.");
     globalForHub.liveHub = new LiveHub(url);
   }
