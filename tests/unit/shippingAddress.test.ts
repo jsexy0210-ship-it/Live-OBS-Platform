@@ -23,6 +23,10 @@ describe("도서산간 주소 판정(우편번호가 범위 밖이어도)", () =
       "대한민국 경북 울릉군 1",
       "울릉도 1",
       "63100 제주시 1",
+      // 붙여 쓴 주소(#79 1차 회귀)
+      "경상북도울릉군 울릉읍 1",
+      "제주특별자치도제주시 첨단로 1",
+      "제주특별자치도서귀포시 1",
     ]) {
       expect(remote(a), a).toBe(true);
     }
@@ -36,6 +40,7 @@ describe("도서산간 주소 판정(우편번호가 범위 밖이어도)", () =
       "부산 해운대구 제주빌딩 1",
       "1 Jeju-ro, Gangnam-gu, Seoul",
       "제주로 1",
+      "대구 동구 울릉길 1",
     ]) {
       expect(remote(a), a).toBe(false);
     }
@@ -48,12 +53,36 @@ describe("도서산간 주소 판정(우편번호가 범위 밖이어도)", () =
 });
 
 describe("배송지 입력의 보이지 않는 문자", () => {
+  it("한글 채움 문자는 받는 분·주소에서 거부(채움 문자만 있는 이름 포함)", () => {
+    for (const f of ["\u3164", "\u115f", "\u1160", "\uffa0"]) {
+      expect(parseShippingAddress({ ...base, recipientName: f }), JSON.stringify(f)).toBeNull();
+      expect(parseShippingAddress({ ...base, recipientName: `김${f}` }), JSON.stringify(f)).toBeNull();
+      expect(parseShippingAddress({ ...base, address1: `서울${f}강남구` }), JSON.stringify(f)).toBeNull();
+      expect(parseShippingAddress({ ...base, address2: f }), JSON.stringify(f)).toBeNull();
+    }
+  });
+
+  it("메모는 ZWJ·변형 선택자가 든 이모지를 받고, 이름·주소에서는 거부", () => {
+    const family = "👨\u200d👩\u200d👧";
+    const heart = "❤\ufe0f";
+    expect(parseShippingAddress({ ...base, memo: `문 앞 ${family}${heart}` })).toMatchObject({ memo: `문 앞 ${family}${heart}` });
+    expect(parseShippingAddress({ ...base, recipientName: `김${family}` })).toBeNull();
+    // 메모라도 방향 바꿈·폭 없는 공백은 거부
+    expect(parseShippingAddress({ ...base, memo: "문 앞\u202e" })).toBeNull();
+    expect(parseShippingAddress({ ...base, memo: "문 앞\u200b" })).toBeNull();
+  });
+
+  it("연락처·우편번호는 전각 숫자·하이픈도 정규화해 받는다", () => {
+    expect(parseShippingAddress({ ...base, phone: "０１０－１２３４－５６７８", zipCode: "０６２３６" })).toMatchObject({ phone: "01012345678", zipCode: "06236" });
+  });
+
   it("방향 바꿈(RLO 등)·폭 없는 문자·줄·문단 구분 문자·제어문자는 거부", () => {
     for (const bad of ["‮", "⁦", "​", "‍", "﻿", "­", " ", " ", "\u0000", "\n", "\u0085"]) {
       expect(parseShippingAddress({ ...base, recipientName: `김${bad}구매` }), JSON.stringify(bad)).toBeNull();
       expect(parseShippingAddress({ ...base, address1: `서울${bad} 강남구` }), JSON.stringify(bad)).toBeNull();
       expect(parseShippingAddress({ ...base, address2: `101${bad}호` }), JSON.stringify(bad)).toBeNull();
-      expect(parseShippingAddress({ ...base, memo: `문 앞${bad}` }), JSON.stringify(bad)).toBeNull();
+      // 메모는 이모지용 ZWJ만 허용(아래 테스트)
+      if (bad !== "\u200d") expect(parseShippingAddress({ ...base, memo: `문 앞${bad}` }), JSON.stringify(bad)).toBeNull();
     }
   });
 

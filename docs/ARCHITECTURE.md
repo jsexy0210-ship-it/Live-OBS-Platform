@@ -303,10 +303,10 @@ PG 연결 정보, 구매자 문의·공지, 알림 발송 기록, 도우미 자�
 
 - `Order.fulfillmentType`(`IMMEDIATE | STORAGE`, 지금은 `IMMEDIATE`만), `Order.shippingFee`(주문 때 계산한 배송비, `totalAmount`에 포함).
 - `SellerShippingPolicy`(판매자당 1개, 없으면 기본값): baseFee(기본 3,000원), freeOverAmount(상품 합계가 이 금액 이상이면 기본 배송비 0원, null이면 무료 배송 없음), remoteSurcharge(도서산간 추가비, 기본 3,000원, 무료 배송이어도 붙음), remoteZipRanges(우편번호 범위, 기본 제주 63000~63644·울릉 40200~40240).
-  - 도서산간 판정: 우편번호가 범위에 들거나, 주소의 첫 행정구역 토큰이 제주·제주도·제주특별자치도·제주시·서귀포시·울릉·울릉군·울릉도이면 도서산간. 둘 중 하나라도 맞으면 추가비를 붙인다(구매자가 보낸 우편번호만 믿지 않음). 주소는 NFKC로 정규화하고 앞머리 기호·숫자, 「대한민국」·「경상북도」 같은 앞 토큰은 건너뛴다. 영문은 Jeju·Seogwipo·Ulleung(-do·-si·-gun) 토큰이 어디에 있든 본다. 도로명·건물명에 든 지명(「제주로」)은 해당하지 않는다.
+  - 도서산간 판정: 우편번호가 범위에 들거나, NFKC로 정규화하고 공백을 모두 지운 주소에 제주특별자치도·제주도·제주시·서귀포시·울릉군·울릉도가 들어 있으면 도서산간(붙여 쓴 「경상북도울릉군」도 잡힘). 둘 중 하나라도 맞으면 추가비를 붙인다(구매자가 보낸 우편번호만 믿지 않음). 영문은 Jeju·Seogwipo·Ulleung(-do·-si·-gun) 토큰이 어디에 있든 본다. 「제주로」·「울릉길」 같은 도로명은 해당하지 않고, 「제주도로」처럼 잘못 잡히는 경우는 추가비가 붙는 쪽이라 허용한다.
   - `GET·PUT /api/seller/shipping-policy`(`SHOP_SETTINGS`). 금액은 0~100,000원 정수, 무료 기준은 1~1억 원, 범위는 50개까지. 틀리면 `400 invalid_shipping_policy`. 변경은 감사 로그.
   - 배송비 = (무료 기준 이상이면 0, 아니면 baseFee) + (도서산간이면 remoteSurcharge). 바꾼 설정은 다음 주문부터(이미 만든 주문은 그대로).
-- `OrderShippingAddress`(주문당 1개, 스냅숏): 받는 분, 연락처(숫자만), 우편번호, 주소, 상세 주소, 메모, 도서산간 여부. 값은 NFKC로 정규화해 저장한다(전각 공백·NBSP는 일반 공백). 제어문자(Cc)·보이지 않는 서식 문자(Cf: 방향 바꿈·폭 없는 공백 등)·줄·문단 구분 문자(Zl·Zp)가 든 값은 `400 invalid_shipping_address`. 판매자 주문 조회에서는 `CUSTOMER_PII_VIEW`가 있을 때만 주소를 주고(열람 기록), 없으면 도서산간 여부만 준다.
+- `OrderShippingAddress`(주문당 1개, 스냅숏): 받는 분, 연락처(숫자만), 우편번호, 주소, 상세 주소, 메모, 도서산간 여부. 값은 NFKC로 정규화해 저장한다(전각 공백·NBSP는 일반 공백). 제어문자(Cc)·보이지 않는 서식 문자(Cf: 방향 바꿈·폭 없는 공백 등)·줄·문단 구분 문자(Zl·Zp)가 든 값, 받는 분·주소의 한글 채움 문자(U+115F·U+1160·U+3164·U+FFA0)는 `400 invalid_shipping_address`. 메모만 이모지용 ZWJ·변형 선택자를 허용한다. 연락처·우편번호도 NFKC 정규화 뒤 검사한다(전각 숫자 허용). 판매자 주문 조회에서는 `CUSTOMER_PII_VIEW`가 있을 때만 주소를 주고(열람 기록), 없으면 도서산간 여부만 준다.
 - `Shipment`(주문당 1개): 택배사 코드(`CJ | HANJIN | LOTTE | LOGEN | EPOST`), 송장번호(영문·숫자 8~30자, 하이픈·공백 제거), 상태, 발송 시각(DB 시계), 배송 완료 시각.
   - `POST /api/seller/orders/{orderId}/ship`(`ORDER_SHIPPING`, 잠금 중에도 가능): 결제 완료(`PAID`) 즉시 발송 주문만 `IN_TRANSIT`로 만든다. 재고 부족(`stockShortageAt`) 주문, 배송지가 없는 주문도 `409 not_shippable`. 배송 중에는 송장을 고쳐 다시 넣을 수 있고(첫 발송 시각 유지, `order.shipment.update` 기록), 배송 완료 뒤에는 바꾸지 않는다. 주문 상태는 `PAID` 그대로.
   - 발송한(Shipment가 있는) 주문을 환불하면 재고를 되돌리지 않고 배송 기록도 그대로 둔다. 감사 로그 `order.refund`에 `shippedBeforeRefund: true`와 배송 상태를 남긴다. 배송비 환불 금액 규칙은 대표님 결정 대기(지금은 주문 전체 금액 기준 그대로).
