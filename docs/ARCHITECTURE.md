@@ -155,6 +155,8 @@ tests/unit/**, tests/integration/**           테스트
 ### 4.5 주문·주문 품목
 
 - `Order`: id, sellerId, orderNo(판매자별 표시 번호, **(sellerId, orderNo) 유니크**), buyerMemberId, status(`PENDING_PAYMENT | PAID | CANCELLED | REFUNDED`), broadcastNicknameSnapshot, totalAmount, rewardUsedAmount, paymentMethod(`CARD | BANK_TRANSFER | …`), pgProvider, pgTxId, paidAt, stockShortageAt(재고 부족 표시), cancelledAt, refundedAt, createdAt
+  - `totalAmount`: 구매자가 실제로 결제한 금액(적립금 사용액을 **뺀 뒤**, 배송비가 생기면 포함). `rewardUsedAmount`: 이 주문에 쓴 적립금.
+  - 적립 기준액은 `totalAmount`를 쓰지 않고 「상품 결제 금액(주문 품목 단가 × 수량 합, 배송비 제외) − 적립금 사용액」으로 계산한다(MASTER 결정, 카페24 기본과 같음). 적립금이 두 번 빠지지 않는다.
 - `OrderItem`: id, sellerId, orderId, productId, optionId, productNameSnapshot, optionNameSnapshot, unitPrice, quantity
 - `OrderStatusHistory`: id, sellerId, orderId, from, to, actor, reason, createdAt
 - 상태 전이 (그 외 거부):
@@ -164,12 +166,14 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
        └──────취소──────▶ CANCELLED
 ```
 
-- 결제 완료 → 재고 차감 + 주문대기 생성 + 적립금 지급 대기 기록(재고 부족 분기는 5절). 환불 → 재고 복원(아래 규칙) + 적립금 회수 + 연결된 「대기」 주문대기 취소.
+- 결제 완료 → 재고 차감 + 주문대기 생성 + 적립금 지급 대기(`EARN`, 실지급 스위치가 꺼져 있으면 `testMode`) 기록(재고 부족 분기는 5절). 환불 → 재고 복원(아래 규칙) + 적립금 회수 대기(`REVOKE`) + 연결된 「대기」·「개봉 중」 주문대기 자동 취소.
 - [확정] 환불 시 재고 복원 (MASTER 결정, 주문 품목 단위):
   - 연결된 주문대기가 「대기」(환불과 함께 취소됨)이거나 개봉 전에 「취소」된 경우 → 자동 복원(`StockMovement.reason = REFUND`).
-  - 「개봉 중」이거나 「완료」(이미 개봉) → 복원하지 않는다.
+  - 「개봉 중」(환불과 함께 취소됨)·개봉을 시작한 뒤 취소됨·「완료」 → 이미 개봉했으므로 복원하지 않는다.
+  - 개봉한 품목이 있는 주문도 환불할 수 있다(배송 사고·판매자 판단). 대신 요청에 `confirmOpened: true`가 있어야 하고, 없으면 `409 opened_items_present`. 감사 로그에 개봉 품목 수를 남긴다.
   - 재고 부족(`stockShortageAt`)으로 차감되지 않은 주문 → 복원할 것 없음.
   - 그 밖의 조정은 판매자가 직접 `MANUAL` 이력으로 한다. 환불 API에 복원 여부 입력은 두지 않는다.
+  - 주문 상태를 결제 완료 → 환불로 원자적으로 바꿔 같은 주문을 두 번 환불하거나 재고를 두 번 복원하지 않는다. 결제 대기 주문은 「취소」(재고 변화 없음), 결제 완료 주문은 「환불」만 가능. 둘 다 사유 필수, `ORDER_SHIPPING` 권한, 화면이 받은 `expectedVersion`(판매자 liveVersion) 필수 — 다르면 `409 conflict`(주문대기 조작과 같은 규칙).
 - [확정] 부분 취소·부분 환불: 이번 단계 미지원(주문 전체 단위).
 
 ### 4.6 방송 세션·주문대기·HIT
@@ -207,7 +211,9 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 - `RewardLedger`: id, sellerId, buyerMemberId, orderId(nullable), type(`EARN | REVOKE | USE | RANKING_BONUS | ADJUST`), amount(부호 포함), status(`PENDING | SUCCEEDED | FAILED`), testMode(bool), failureReason, idempotencyKey, createdAt, processedAt — **(sellerId, idempotencyKey) 유니크**(같은 주문 지급·회수 중복 방지)
 - `RewardBalance`: (sellerId, buyerMemberId) PK, balance(**CHECK balance >= 0**), updatedAt — `SUCCEEDED`이고 `testMode = false`인 원장만 잔액에 반영(같은 트랜잭션)
 - 실지급 스위치가 꺼져 있으면 원장은 `testMode = true`로 기록만 하고 잔액은 바꾸지 않는다. 스위치 변경은 대표(OWNER)만, 감사 로그 필수.
-- 이번 1단계 구현 범위는 테이블·제약까지. 지급·회수 로직은 다음 단계.
+- 결제 완료 때 `EARN`(PENDING), 환불 때 회수: `revokeMode = AUTO`면 `REVOKE`(PENDING)를 기록하고, `MANUAL`이면 기록하지 않는다. MANUAL에서 「환불된 주문에 `EARN`은 있고 `REVOKE`가 없는 상태」가 수동 확인 대기다(감사 로그 `rewardRevoke: manual_review`).
+- 결제 확인에 결제수단이 없으면 주문에 저장된 결제수단으로 적립률을 정한다.
+- 원장의 실제 처리(SUCCEEDED·잔액 반영), 주문에 쓴 적립금(`USE`)을 환불·취소 때 돌려주는 것은 다음 단계(적립금 사용 기능과 함께).
 
 ### 4.8 오버레이·감사 로그
 

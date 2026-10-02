@@ -165,6 +165,21 @@ describe("SSE 연결 재확인·상한", () => {
     await readToEnd(res);
   });
 
+  it("핑 재확인은 세션 최대 수명(expiresAt)을 늘리지 않고, 만료 시각이 지나면 대시보드 스트림을 닫는다", async () => {
+    SSE_CONFIG.pingMs = 100;
+    const a = await shop();
+    const user = await db.sellerUser.findUniqueOrThrow({ where: { id: a.ctx.actorId } });
+    const login = await loginSeller(db, { email: user.email, password: PASSWORD }, {});
+    if (!login.ok) throw new Error(login.reason);
+    const session = await db.sellerSession.findUniqueOrThrow({ where: { tokenHash: hashToken(login.token) } });
+    const res = await sellerStream(new Request("http://localhost/api/seller/stream", { headers: { cookie: `lo_seller=${login.token}` } }));
+    expect(res.status).toBe(200);
+    await new Promise((r) => setTimeout(r, 400)); // 핑 재확인 몇 번
+    expect((await db.sellerSession.findUniqueOrThrow({ where: { id: session.id } })).expiresAt).toEqual(session.expiresAt);
+    await db.sellerSession.update({ where: { id: session.id }, data: { expiresAt: new Date(Date.now() - 1000) } });
+    await readToEnd(res);
+  });
+
   it("토큰 하나로 동시에 10개까지 열 수 있고, 넘으면 429, 닫으면 다시 열 수 있다", async () => {
     const a = await shop();
     const token = await issueOverlayToken(db, a.ctx);
