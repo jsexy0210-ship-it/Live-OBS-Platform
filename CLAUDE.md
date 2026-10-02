@@ -13,6 +13,7 @@
 - 참조 전용: `jsexy0210-ship-it/obs-order-queue-cafe24-webhook` (망고TCG). 수정 금지. 분석: `docs/REFERENCE_MANGOTCG.md`
 - 시간 표기: 모든 문서·보고는 KST 기준.
 - 상태 정본: `PROJECT_STATUS.md`, `HANDOFF.md`, `docs/PRODUCT_SCOPE.md`
+- 디자인 요청문: `docs/DESIGN_PROMPT.md`
 
 ## 작업 규칙
 
