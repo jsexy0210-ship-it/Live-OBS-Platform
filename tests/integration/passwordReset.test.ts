@@ -31,6 +31,13 @@ const provider = new FakeIdentityProvider();
 const person = (ci: string) => ({ ci, name: "대표", phone: "01011112222", birthDate: new Date("1980-01-01") });
 const NEW_PASSWORD = "new-password-123";
 
+// 시작이 성공했다고 보고 결과를 꺼낸다(한도 테스트는 따로)
+async function startOk(input: { email: string; shopSlug: string }, meta: { now?: Date } = {}) {
+  const r = await startSellerPasswordReset(db, provider, input, meta);
+  if (!r.ok) throw new Error(r.reason);
+  return r;
+}
+
 // 대표자 CI가 등록된 쇼핑몰과 대표·직원 계정
 async function shop(repCi = "REP-CI") {
   const { seller } = await createSeller();
@@ -42,7 +49,7 @@ async function shop(repCi = "REP-CI") {
 
 // 시작 → PASS 완료(ci) → 재설정 권한 요청
 async function grantFor(email: string, shopSlug: string, ci: string, now?: Date) {
-  const s = await startSellerPasswordReset(db, provider, { email, shopSlug }, { now });
+  const s = await startOk({ email, shopSlug }, { now });
   provider.complete(s.requestId, person(ci));
   return { start: s, grant: await issueSellerPasswordResetGrant(db, provider, { verificationId: s.verificationId, ownerToken: s.ownerToken }, { now }) };
 }
@@ -178,9 +185,9 @@ describe("판매자 비밀번호 찾기 (대표자 PASS)", () => {
 
   it("없는 계정도 시작 응답 모양이 같고, 결과는 같은 거부", async () => {
     const { seller, owner } = await shop();
-    const real = await startSellerPasswordReset(db, provider, { email: owner.email, shopSlug: seller.slug });
-    const fake = await startSellerPasswordReset(db, provider, { email: "nobody@example.com", shopSlug: seller.slug });
-    const noShop = await startSellerPasswordReset(db, provider, { email: owner.email, shopSlug: "no-such-shop" });
+    const real = await startOk({ email: owner.email, shopSlug: seller.slug });
+    const fake = await startOk({ email: "nobody@example.com", shopSlug: seller.slug });
+    const noShop = await startOk({ email: owner.email, shopSlug: "no-such-shop" });
     expect(Object.keys(fake).sort()).toEqual(Object.keys(real).sort());
     expect(Object.keys(noShop).sort()).toEqual(Object.keys(real).sort());
     provider.complete(fake.requestId, person("REP-CI"));
@@ -234,7 +241,7 @@ describe("판매자 비밀번호 찾기 (대표자 PASS)", () => {
 
   it("시작한 브라우저가 아니면(소유 값 불일치) 거부", async () => {
     const { seller, owner } = await shop();
-    const s = await startSellerPasswordReset(db, provider, { email: owner.email, shopSlug: seller.slug });
+    const s = await startOk({ email: owner.email, shopSlug: seller.slug });
     provider.complete(s.requestId, person("REP-CI"));
     expect(await issueSellerPasswordResetGrant(db, provider, { verificationId: s.verificationId, ownerToken: "stolen" })).toEqual({
       ok: false,
@@ -244,7 +251,7 @@ describe("판매자 비밀번호 찾기 (대표자 PASS)", () => {
 
   it("PASS를 아직 마치지 않았으면 대기", async () => {
     const { seller, owner } = await shop();
-    const s = await startSellerPasswordReset(db, provider, { email: owner.email, shopSlug: seller.slug });
+    const s = await startOk({ email: owner.email, shopSlug: seller.slug });
     expect(await issueSellerPasswordResetGrant(db, provider, { verificationId: s.verificationId, ownerToken: s.ownerToken })).toEqual({
       ok: false,
       reason: "pending",
@@ -271,6 +278,63 @@ describe("판매자 비밀번호 찾기 (대표자 PASS)", () => {
     const { grant } = await grantFor(owner.email, seller.slug, "REP-CI");
     if (!grant.ok) throw new Error("grant failed");
     expect(await resetSellerPassword(db, { grantToken: grant.grantToken, newPassword: "short" })).toEqual({ ok: false, reason: "weak_password" });
+  });
+});
+
+describe("비밀번호 찾기 시작 횟수 (쇼핑몰당 하루 10회, KST 자정 초기화)", () => {
+  it("10회까지는 시작되고 11회째는 거부, 감사 로그를 남긴다", async () => {
+    const { seller, owner } = await shop();
+    for (let i = 0; i < 10; i++) {
+      expect((await startSellerPasswordReset(db, provider, { email: owner.email, shopSlug: seller.slug })).ok).toBe(true);
+    }
+    expect(await startSellerPasswordReset(db, provider, { email: "other@example.com", shopSlug: seller.slug })).toEqual({
+      ok: false,
+      reason: "reset_limit_exceeded",
+    });
+    expect(await db.identityVerification.count({ where: { sellerId: seller.id } })).toBe(10);
+    expect(await db.auditLog.findFirstOrThrow({ where: { action: "auth.seller.password_reset.limited" } })).toMatchObject({
+      sellerId: seller.id,
+      reason: "reset_limit_exceeded",
+    });
+  });
+
+  it("다른 쇼핑몰은 영향이 없다", async () => {
+    const a = await shop("CI-A");
+    const b = await shop("CI-B");
+    for (let i = 0; i < 10; i++) await startSellerPasswordReset(db, provider, { email: a.owner.email, shopSlug: a.seller.slug });
+    expect((await startSellerPasswordReset(db, provider, { email: a.owner.email, shopSlug: a.seller.slug })).ok).toBe(false);
+    expect((await startSellerPasswordReset(db, provider, { email: b.owner.email, shopSlug: b.seller.slug })).ok).toBe(true);
+  });
+
+  it("동시에 몰려도 10회를 넘지 않는다", async () => {
+    const { seller, owner } = await shop();
+    const results = await Promise.all(
+      Array.from({ length: 15 }, () => startSellerPasswordReset(db, provider, { email: owner.email, shopSlug: seller.slug })),
+    );
+    expect(results.filter((r) => r.ok)).toHaveLength(10);
+    expect(await db.identityVerification.count({ where: { sellerId: seller.id } })).toBe(10);
+  });
+
+  it("어제(KST) 시작한 건은 세지 않는다", async () => {
+    const { seller, owner } = await shop();
+    const yesterday = new Date(Date.now() - 26 * 3_600_000);
+    for (let i = 0; i < 10; i++) await startSellerPasswordReset(db, provider, { email: owner.email, shopSlug: seller.slug }, { now: yesterday });
+    expect((await startSellerPasswordReset(db, provider, { email: owner.email, shopSlug: seller.slug })).ok).toBe(true);
+  });
+
+  it("HTTP: 11회째는 429 reset_limit_exceeded", async () => {
+    const { seller, owner } = await shop();
+    const BASE = "http://localhost:3000";
+    const req = () =>
+      new Request(BASE + "/api/seller/password-reset/start", {
+        method: "POST",
+        headers: { "content-type": "application/json", host: "localhost:3000", origin: BASE },
+        body: JSON.stringify({ email: owner.email, shopSlug: seller.slug }),
+      });
+    for (let i = 0; i < 10; i++) expect((await httpStart(req())).status).toBe(200);
+    const res = await httpStart(req());
+    expect(res.status).toBe(429);
+    expect(await res.json()).toEqual({ error: "reset_limit_exceeded" });
   });
 });
 
