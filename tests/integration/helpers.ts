@@ -44,6 +44,7 @@ export async function createBuyer(
       broadcastNickname: `닉네임${n}`,
       ciHash,
       identityVerifiedAt: new Date(),
+      birthDate: new Date("1990-01-01"),
     },
   });
 }

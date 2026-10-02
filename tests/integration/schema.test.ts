@@ -218,19 +218,47 @@ describe("적립금 제약", () => {
   });
 });
 
-describe("판매자 대표자 제약", () => {
-  it("대표자 1명(CI)은 운영 중인 쇼핑몰을 1개만 가질 수 있다", async () => {
-    await db.seller.create({ data: { slug: "a", shopName: "A", status: "ACTIVE", representativeCiHash: "rep-ci" } });
-    await expect(
-      db.seller.create({ data: { slug: "b", shopName: "B", status: "PENDING", representativeCiHash: "rep-ci" } }),
-    ).rejects.toMatchObject({ code: "P2002" });
+describe("판매자 대표자 제약 (대표자 1명당 쇼핑몰 1개)", () => {
+  const rep = (slug: string, status: "PENDING" | "ACTIVE" | "CLOSED" | "REJECTED") =>
+    db.seller.create({
+      data: { slug, shopName: slug, status, representativeCiHash: "rep-ci", representativeVerifiedAt: new Date() },
+    });
+
+  it("같은 대표자 CI로 두 번째 쇼핑몰을 만들면 거부", async () => {
+    await rep("a", "ACTIVE");
+    await expect(rep("b", "PENDING")).rejects.toMatchObject({ code: "P2002" });
   });
 
-  it("해지·반려된 쇼핑몰은 세지 않는다", async () => {
-    await db.seller.create({ data: { slug: "a", shopName: "A", status: "CLOSED", representativeCiHash: "rep-ci" } });
-    await db.seller.create({ data: { slug: "b", shopName: "B", status: "REJECTED", representativeCiHash: "rep-ci" } });
+  it("해지한 뒤에는 같은 대표자 CI로 쇼핑몰을 다시 만들 수 있다", async () => {
+    const first = await rep("a", "ACTIVE");
+    await db.seller.update({ where: { id: first.id }, data: { status: "CLOSED" } });
+    await expect(rep("b", "PENDING")).resolves.toBeTruthy();
+  });
+
+  it("반려된 가입 신청도 세지 않는다", async () => {
+    await rep("a", "REJECTED");
+    await expect(rep("b", "PENDING")).resolves.toBeTruthy();
+  });
+
+  it("대표자 CI 해시와 인증 시각은 함께 기록해야 한다", async () => {
+    await expect(db.seller.create({ data: { slug: "x", shopName: "x", representativeCiHash: "c" } })).rejects.toThrow();
+  });
+});
+
+describe("본인인증 기록", () => {
+  it("완료(VERIFIED) 기록에는 CI 해시와 완료 시각이 있어야 한다", async () => {
+    const base = { purpose: "BUYER_SIGNUP" as const, provider: "fake", expiresAt: new Date(Date.now() + 600_000) };
+    await expect(db.identityVerification.create({ data: { ...base, requestId: "r1", status: "VERIFIED" } })).rejects.toThrow();
     await expect(
-      db.seller.create({ data: { slug: "c", shopName: "C", status: "PENDING", representativeCiHash: "rep-ci" } }),
+      db.identityVerification.create({
+        data: { ...base, requestId: "r2", status: "VERIFIED", ciHash: "h", verifiedAt: new Date(), birthDate: new Date("2000-01-01") },
+      }),
     ).resolves.toBeTruthy();
+  });
+
+  it("같은 공급자의 같은 요청 id는 한 번만 기록", async () => {
+    const data = { purpose: "SELLER_REPRESENTATIVE" as const, provider: "fake", requestId: "dup", expiresAt: new Date() };
+    await db.identityVerification.create({ data });
+    await expect(db.identityVerification.create({ data })).rejects.toMatchObject({ code: "P2002" });
   });
 });
