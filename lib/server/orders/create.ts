@@ -2,12 +2,14 @@ import type { PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { dbNow, sellerAccessFor } from "../billing/subscription";
 import { OPENED_NO_REFUND_CONSENT } from "./consent";
+import { computeShippingFee, getShippingPolicy, INT4_MAX, isRemoteZip, parseShippingAddress } from "./shipping";
 
 // 구매자 주문 생성(결제 대기까지). 실제 PG 결제 호출은 없다.
 // - 결제 전 「개봉하면 취소·환불이 안 돼요」 동의 필수(체크 기본 해제, 동의 없으면 주문을 만들지 않음). 동의 시각(DB 시계)·문구 버전을 기록.
 // - 잠긴 판매자(체험하기·구독 끝)는 새 주문을 받지 않는다.
 // - 금액은 서버가 상품·옵션 가격으로 계산한다. 화면이 보낸 금액은 받지 않는다.
-// - 재고는 있는지만 확인한다(차감은 결제 완료 때, 선점 없음 — 대표님 확정, ARCHITECTURE 4.4).
+// - 재고는 주문 수량만큼 있는지 확인한다(차감은 결제 때, 선점 없음 — 대표님 확정, ARCHITECTURE 4.4).
+// - 즉시 발송: 배송지는 주문 때 받아 스냅숏으로 남기고, 배송비는 판매자 배송비 설정으로 계산한다(shipping.ts).
 // - 적립금 사용은 방식이 정해지기 전이라 받지 않는다(요청이 오면 거부).
 
 export const MAX_ORDER_LINES = 20;
@@ -19,6 +21,7 @@ export type CreateOrderInput = {
   items: unknown;
   consent: { agreed?: unknown; noticeVersion?: unknown } | undefined;
   rewardUseAmount?: unknown;
+  shippingAddress: unknown;
   meta?: { ip?: string | null; userAgent?: string | null };
 };
 
@@ -29,10 +32,12 @@ export type CreateOrderFailure =
   | "invalid_items"
   | "product_unavailable" // 판매 중이 아님·없는 옵션·다른 쇼핑몰 옵션
   | "out_of_stock"
-  | "reward_use_not_supported";
+  | "reward_use_not_supported"
+  | "invalid_shipping_address"
+  | "invalid_amount"; // 단가 1원 미만(음수 추가금 등)·합계가 정수 범위를 넘음
 
 export type CreateOrderResult =
-  | { ok: true; orderId: string; orderNo: number; totalAmount: number }
+  | { ok: true; orderId: string; orderNo: number; totalAmount: number; shippingFee: number }
   | { ok: false; reason: CreateOrderFailure };
 
 type Line = { optionId: string; quantity: number };
@@ -64,6 +69,8 @@ export async function createOrder(db: PrismaClient, input: CreateOrderInput): Pr
   if (input.rewardUseAmount !== undefined && input.rewardUseAmount !== 0) return { ok: false, reason: "reward_use_not_supported" };
   const lines = parseItems(input.items);
   if (!lines) return { ok: false, reason: "invalid_items" };
+  const address = parseShippingAddress(input.shippingAddress);
+  if (!address) return { ok: false, reason: "invalid_shipping_address" };
 
   return db.$transaction(async (tx) => {
     // 같은 판매자의 주문 번호를 한 줄로 매긴다
@@ -87,12 +94,19 @@ export async function createOrder(db: PrismaClient, input: CreateOrderInput): Pr
       if (o.stock < l.quantity) return { ok: false as const, reason: "out_of_stock" as const };
     }
 
-    // 금액은 서버 값으로만: 단가 = 상품 가격 + 옵션 추가금, 합계 = 단가 × 수량. 적립금 사용·배송비 없음.
+    // 금액은 서버 값으로만: 단가 = 상품 가격 + 옵션 추가금, 합계 = 단가 × 수량 + 배송비. 적립금 사용 없음.
+    // 단가가 1원 미만이거나 합계가 저장 범위(INT4)를 넘으면 주문을 만들지 않는다(500 대신 invalid_amount).
     const priced = lines.map((l) => {
       const o = byId.get(l.optionId)!;
       return { line: l, option: o, unitPrice: o.product.price + o.priceDelta };
     });
-    const totalAmount = priced.reduce((sum, p) => sum + p.unitPrice * p.line.quantity, 0);
+    if (priced.some((p) => p.unitPrice < 1)) return { ok: false as const, reason: "invalid_amount" as const };
+    const itemsSubtotal = priced.reduce((sum, p) => sum + p.unitPrice * p.line.quantity, 0);
+    const policy = await getShippingPolicy(tx, input.sellerId);
+    const isRemote = isRemoteZip(address.zipCode, policy.remoteZipRanges);
+    const shippingFee = computeShippingFee(itemsSubtotal, policy, isRemote);
+    const totalAmount = itemsSubtotal + shippingFee;
+    if (!Number.isSafeInteger(totalAmount) || totalAmount > INT4_MAX) return { ok: false as const, reason: "invalid_amount" as const };
 
     const last = await tx.order.aggregate({ where: { sellerId: input.sellerId }, _max: { orderNo: true } });
     const orderNo = (last._max.orderNo ?? 0) + 1;
@@ -104,10 +118,13 @@ export async function createOrder(db: PrismaClient, input: CreateOrderInput): Pr
         status: "PENDING_PAYMENT",
         broadcastNicknameSnapshot: member.broadcastNickname,
         totalAmount,
+        shippingFee,
+        fulfillmentType: "IMMEDIATE",
         rewardUsedAmount: 0,
         createdAt: now,
       },
     });
+    await tx.orderShippingAddress.create({ data: { sellerId: input.sellerId, orderId: order.id, ...address, isRemote } });
     await tx.orderItem.createMany({
       data: priced.map((p) => ({
         sellerId: input.sellerId,
@@ -139,10 +156,10 @@ export async function createOrder(db: PrismaClient, input: CreateOrderInput): Pr
       action: "order.create",
       targetType: "Order",
       targetId: order.id,
-      after: { orderNo, totalAmount, lines: lines.length, consentVersion: OPENED_NO_REFUND_CONSENT.version },
+      after: { orderNo, totalAmount, shippingFee, lines: lines.length, consentVersion: OPENED_NO_REFUND_CONSENT.version },
       ip: input.meta?.ip,
       userAgent: input.meta?.userAgent,
     });
-    return { ok: true as const, orderId: order.id, orderNo, totalAmount };
+    return { ok: true as const, orderId: order.id, orderNo, totalAmount, shippingFee };
   });
 }

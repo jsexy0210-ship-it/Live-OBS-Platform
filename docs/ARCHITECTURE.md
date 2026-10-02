@@ -163,7 +163,10 @@ tests/unit/**, tests/integration/**           테스트
   - 동의 필수: `consent.agreed === true`(체크 기본 해제)와 화면이 보여 준 문구 버전(`noticeVersion`)이 지금 버전과 같아야 한다. 아니면 `400 consent_required`·`consent_outdated`, 주문을 만들지 않는다. 동의는 주문과 같은 트랜잭션에 기록.
   - 잠긴 판매자(체험하기·구독 끝)는 `402 shop_unavailable`, 문구 「지금은 쇼핑몰을 이용할 수 없어요」(판매자 사정은 드러내지 않음).
   - 금액은 서버가 계산(단가 = 상품 가격 + 옵션 추가금, 합계 = 단가 × 수량). 본문의 금액·상태 값은 쓰지 않는다. 적립금 사용은 방식이 정해지기 전이라 요청이 오면 `400 reward_use_not_supported`(rewardUsedAmount = 0).
-  - 재고는 있는지만 확인(부족하면 `400 out_of_stock`). 차감은 결제 완료 때(선점 없음, 확정 그대로).
+  - 재고는 주문 수량만큼 있는지 확인(차감은 결제 때). 부족하면 `400 out_of_stock`. 선점 없음(확정 그대로).
+  - 단가가 1원 미만(음수 추가금 등)이거나 합계(상품 + 배송비)가 정수 범위(2,147,483,647원)를 넘으면 `400 invalid_amount`, 주문을 만들지 않는다.
+  - 배송지 필수(받는 분·연락처·우편번호 5자리·주소, 상세 주소·메모 선택). 틀리면 `400 invalid_shipping_address`. 4.10 참고.
+  - 400·402·409 응답은 `{ error, message }`. `message`는 화면에 그대로 보여 줄 해요체 문구이고, 사유 코드별 문구는 `lib/server/orders/messages.ts` 한 곳에서만 고친다.
   - 주문 번호는 판매자별 advisory lock 아래에서 매긴다(동시 주문에도 겹치지 않음). 판매 중(`ON_SALE`)이 아니거나 다른 쇼핑몰 옵션이면 `400 product_unavailable`.
 - `OrderStatusHistory`: id, sellerId, orderId, from, to, actor, reason, createdAt
 - 상태 전이 (그 외 거부):
@@ -288,13 +291,24 @@ PG 연결 정보, 구매자 문의·공지, 알림 발송 기록, 도우미 자�
 아래는 스키마를 다시 만들지 않도록 자리만 정해 둔다(이번에 테이블은 만들지 않음, 모두 추가 테이블·추가 컬럼으로 붙인다).
 
 - 현금영수증·세금계산서: 주문별 신청 정보(`OrderReceiptRequest`)와 발행 레코드(`ReceiptIssue`: 종류, 상태 `PENDING | ISSUED | FAILED | CANCELLED`, 연동 결과 키).
-- 배송: `Order.fulfillmentType`(`IMMEDIATE | STORAGE`), 배송지(`OrderShippingAddress`), 배송 레코드(`Shipment`: 택배사, 송장, 상태 `READY | IN_TRANSIT | DELIVERED`). 보관·합배송은 출시 후 1차.
+- 배송: 즉시 발송은 4.10에서 만들었다. 보관(`STORAGE`)·합배송은 출시 후 1차.
 - 무통장 입금: `Order.paymentDueAt`, 기한이 지난 결제 대기 주문은 자동 취소.
 - 법정 동의 기록: 회원 가입 시 약관·처리방침 버전과 마케팅 동의 시각·철회 시각(`MemberConsent`). 주문 단위 「개봉하면 취소·환불 불가」 결제 전 동의를 기록한다(`OrderConsent`: 주문, 동의 시각, 고지 문구 버전. 대표님 결정 2026-10-02, 개봉 전 취소 규칙은 그대로). 구매자 「내 차례 N건 전」 알림도 두지 않는다(주문·결제·발송 알림만).
 - 미성년자 정책: `Seller` 설정 `minorPurchasePolicy`(`BLOCK | NOTICE`), `BuyerMember.birthDate`(PASS)로 판정.
 - 판매자 직원 개인정보 접속기록: 기존 `AuditLog`를 확장해 기록하고 1년 보관.
 - 보존 기간: 거래기록(주문·결제·원장)은 5년 보존, 탈퇴 회원 개인정보는 탈퇴 시 비식별(4.3)하고 거래기록과 분리해 파기 일정 적용.
 - 1인 구매 수량 제한(상품·옵션별), 상품 카테고리, 구매 제한 회원.
+
+### 4.10 배송(즉시 발송, PRODUCT_SCOPE MVP)
+
+- `Order.fulfillmentType`(`IMMEDIATE | STORAGE`, 지금은 `IMMEDIATE`만), `Order.shippingFee`(주문 때 계산한 배송비, `totalAmount`에 포함).
+- `SellerShippingPolicy`(판매자당 1개, 없으면 기본값): baseFee(기본 3,000원), freeOverAmount(상품 합계가 이 금액 이상이면 기본 배송비 0원, null이면 무료 배송 없음), remoteSurcharge(도서산간 추가비, 기본 3,000원, 무료 배송이어도 붙음), remoteZipRanges(우편번호 범위, 기본 제주 63000~63644·울릉 40200~40240).
+  - `GET·PUT /api/seller/shipping-policy`(`SHOP_SETTINGS`). 금액은 0~100,000원 정수, 무료 기준은 1~1억 원, 범위는 50개까지. 틀리면 `400 invalid_shipping_policy`. 변경은 감사 로그.
+  - 배송비 = (무료 기준 이상이면 0, 아니면 baseFee) + (도서산간이면 remoteSurcharge). 바꾼 설정은 다음 주문부터(이미 만든 주문은 그대로).
+- `OrderShippingAddress`(주문당 1개, 스냅숏): 받는 분, 연락처(숫자만), 우편번호, 주소, 상세 주소, 메모, 도서산간 여부. 판매자 주문 조회에서는 `CUSTOMER_PII_VIEW`가 있을 때만 주소를 주고(열람 기록), 없으면 도서산간 여부만 준다.
+- `Shipment`(주문당 1개): 택배사 코드(`CJ | HANJIN | LOTTE | LOGEN | EPOST`), 송장번호(영문·숫자 8~30자, 하이픈·공백 제거), 상태, 발송 시각(DB 시계), 배송 완료 시각.
+  - `POST /api/seller/orders/{orderId}/ship`(`ORDER_SHIPPING`, 잠금 중에도 가능): 결제 완료(`PAID`) 즉시 발송 주문만 `IN_TRANSIT`로 만든다. 아니면 `409 not_shippable`. 배송 중에는 송장을 고쳐 다시 넣을 수 있고(첫 발송 시각 유지, `order.shipment.update` 기록), 배송 완료 뒤에는 바꾸지 않는다. 주문 상태는 `PAID` 그대로.
+  - 배송 완료(`DELIVERED`) 전환·배송 추적·발송 알림은 아직 없다.
 
 ## 5. 주요 흐름 요약
 

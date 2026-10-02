@@ -14,6 +14,7 @@ afterAll(async () => {
 });
 
 const consent = { agreed: true, noticeVersion: OPENED_NO_REFUND_CONSENT.version };
+const shippingAddress = { recipientName: "김구매", phone: "010-1234-5678", zipCode: "06236", address1: "서울 강남구 테헤란로 1", address2: "101호" };
 
 async function shop() {
   const { seller, grade } = await createSeller();
@@ -42,12 +43,14 @@ const post = (slug: string, body: unknown, cookie?: string) =>
 describe("주문 생성", () => {
   it("동의하면 결제 대기 주문을 만들고, 금액은 서버가 계산하며, 동의 시각(DB 시계)·문구 버전을 남긴다. 재고는 빼지 않는다", async () => {
     const s = await shop();
-    const r = await createOrder(db, { sellerId: s.seller.id, buyerMemberId: s.buyer.id, items: [{ optionId: s.option.id, quantity: 2 }], consent });
-    expect(r).toEqual({ ok: true, orderId: expect.any(String), orderNo: 1, totalAmount: 13000 });
+    const r = await createOrder(db, { shippingAddress, sellerId: s.seller.id, buyerMemberId: s.buyer.id, items: [{ optionId: s.option.id, quantity: 2 }], consent });
+    // 상품 13,000원 + 기본 배송비 3,000원(판매자 설정 없음)
+    expect(r).toEqual({ ok: true, orderId: expect.any(String), orderNo: 1, totalAmount: 16000, shippingFee: 3000 });
     if (!r.ok) return;
-    const order = await db.order.findUniqueOrThrow({ where: { id: r.orderId }, include: { items: true, consents: true } });
-    expect(order).toMatchObject({ status: "PENDING_PAYMENT", totalAmount: 13000, rewardUsedAmount: 0, broadcastNicknameSnapshot: s.buyer.broadcastNickname });
+    const order = await db.order.findUniqueOrThrow({ where: { id: r.orderId }, include: { items: true, consents: true, shippingAddress: true } });
+    expect(order).toMatchObject({ status: "PENDING_PAYMENT", totalAmount: 16000, shippingFee: 3000, fulfillmentType: "IMMEDIATE", rewardUsedAmount: 0, broadcastNicknameSnapshot: s.buyer.broadcastNickname });
     expect(order.items).toEqual([expect.objectContaining({ unitPrice: 6500, quantity: 2, productNameSnapshot: "부스터 팩", optionNameSnapshot: "1박스" })]);
+    expect(order.shippingAddress).toMatchObject({ recipientName: "김구매", phone: "01012345678", zipCode: "06236", address2: "101호", memo: null, isRemote: false });
     expect(order.consents).toEqual([
       expect.objectContaining({ kind: "OPENED_NO_REFUND", noticeVersion: OPENED_NO_REFUND_CONSENT.version, agreedAt: order.createdAt }),
     ]);
@@ -57,7 +60,7 @@ describe("주문 생성", () => {
 
   it("동의하지 않으면(체크 해제·값 없음·문자열 true) 주문을 만들지 않고, 문구 버전이 다르면 다시 보여 주게 한다", async () => {
     const s = await shop();
-    const base = { sellerId: s.seller.id, buyerMemberId: s.buyer.id, items: [{ optionId: s.option.id, quantity: 1 }] };
+    const base = { shippingAddress, sellerId: s.seller.id, buyerMemberId: s.buyer.id, items: [{ optionId: s.option.id, quantity: 1 }] };
     for (const c of [undefined, { agreed: false, noticeVersion: OPENED_NO_REFUND_CONSENT.version }, { agreed: "true", noticeVersion: OPENED_NO_REFUND_CONSENT.version }]) {
       expect(await createOrder(db, { ...base, consent: c })).toEqual({ ok: false, reason: "consent_required" });
     }
@@ -69,7 +72,7 @@ describe("주문 생성", () => {
   it("품절·재고 부족·판매 중 아님·다른 쇼핑몰 옵션·잘못된 품목은 거부", async () => {
     const s = await shop();
     const other = await shop();
-    const base = { sellerId: s.seller.id, buyerMemberId: s.buyer.id, consent };
+    const base = { shippingAddress, sellerId: s.seller.id, buyerMemberId: s.buyer.id, consent };
     expect(await createOrder(db, { ...base, items: [{ optionId: s.option.id, quantity: 4 }] })).toEqual({ ok: false, reason: "out_of_stock" });
     await db.productOption.update({ where: { id: s.option.id }, data: { stock: 0 } });
     expect(await createOrder(db, { ...base, items: [{ optionId: s.option.id, quantity: 1 }] })).toEqual({ ok: false, reason: "out_of_stock" });
@@ -86,7 +89,7 @@ describe("주문 생성", () => {
   it("적립금 사용 요청은 무시하지 않고 거부한다(사용 방식 미정)", async () => {
     const s = await shop();
     expect(
-      await createOrder(db, { sellerId: s.seller.id, buyerMemberId: s.buyer.id, items: [{ optionId: s.option.id, quantity: 1 }], consent, rewardUseAmount: 1000 }),
+      await createOrder(db, { shippingAddress, sellerId: s.seller.id, buyerMemberId: s.buyer.id, items: [{ optionId: s.option.id, quantity: 1 }], consent, rewardUseAmount: 1000 }),
     ).toEqual({ ok: false, reason: "reward_use_not_supported" });
   });
 
@@ -94,7 +97,7 @@ describe("주문 생성", () => {
     const s = await shop();
     await db.productOption.update({ where: { id: s.option.id }, data: { stock: 100 } });
     const rs = await Promise.all(
-      Array.from({ length: 10 }, () => createOrder(db, { sellerId: s.seller.id, buyerMemberId: s.buyer.id, items: [{ optionId: s.option.id, quantity: 1 }], consent })),
+      Array.from({ length: 10 }, () => createOrder(db, { shippingAddress, sellerId: s.seller.id, buyerMemberId: s.buyer.id, items: [{ optionId: s.option.id, quantity: 1 }], consent })),
     );
     const nos = rs.map((r) => (r.ok ? r.orderNo : 0)).sort((a, b) => a - b);
     expect(nos).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
@@ -103,7 +106,7 @@ describe("주문 생성", () => {
   it("마지막 재고에 두 주문이 들어와도(선점 없음) 동시 결제 확인에서 재고는 음수가 되지 않고, 늦은 결제에는 재고 부족 표시가 남는다", async () => {
     const s = await shop();
     await db.productOption.update({ where: { id: s.option.id }, data: { stock: 1 } });
-    const make = () => createOrder(db, { sellerId: s.seller.id, buyerMemberId: s.buyer.id, items: [{ optionId: s.option.id, quantity: 1 }], consent });
+    const make = () => createOrder(db, { shippingAddress, sellerId: s.seller.id, buyerMemberId: s.buyer.id, items: [{ optionId: s.option.id, quantity: 1 }], consent });
     const [a, b] = [await make(), await make()];
     if (!a.ok || !b.ok) throw new Error("order failed");
     const paid = await Promise.all([
@@ -122,13 +125,13 @@ describe("HTTP: 주문 생성 API", () => {
     const cookie = await buyerCookie(s.seller.id, s.buyer.loginId);
     const res = await post(
       s.seller.slug,
-      { items: [{ optionId: s.option.id, quantity: 1, unitPrice: 1 }], consent, totalAmount: 1, status: "PAID", sellerId: "x" },
+      { items: [{ optionId: s.option.id, quantity: 1, unitPrice: 1 }], consent, shippingAddress, totalAmount: 1, shippingFee: 0, status: "PAID", sellerId: "x" },
       cookie,
     );
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toMatchObject({ ok: true, totalAmount: 6500 });
-    expect(await db.order.findUniqueOrThrow({ where: { id: body.orderId } })).toMatchObject({ totalAmount: 6500, status: "PENDING_PAYMENT", sellerId: s.seller.id });
+    expect(body).toMatchObject({ ok: true, totalAmount: 9500, shippingFee: 3000 });
+    expect(await db.order.findUniqueOrThrow({ where: { id: body.orderId } })).toMatchObject({ totalAmount: 9500, shippingFee: 3000, status: "PENDING_PAYMENT", sellerId: s.seller.id });
   });
 
   it("로그인 안 함·다른 쇼핑몰 세션은 401, 동의 없으면 400", async () => {
@@ -138,9 +141,9 @@ describe("HTTP: 주문 생성 API", () => {
     const otherCookie = await buyerCookie(other.seller.id, other.buyer.loginId);
     expect((await post(s.seller.slug, { items: [{ optionId: s.option.id, quantity: 1 }], consent }, otherCookie)).status).toBe(401);
     const cookie = await buyerCookie(s.seller.id, s.buyer.loginId);
-    const noConsent = await post(s.seller.slug, { items: [{ optionId: s.option.id, quantity: 1 }] }, cookie);
+    const noConsent = await post(s.seller.slug, { items: [{ optionId: s.option.id, quantity: 1 }], shippingAddress }, cookie);
     expect(noConsent.status).toBe(400);
-    expect(await noConsent.json()).toEqual({ error: "consent_required" });
+    expect(await noConsent.json()).toEqual({ error: "consent_required", message: "안내를 확인하고 동의해 주세요" });
   });
 
   it("잠긴 쇼핑몰은 402와 「지금은 쇼핑몰을 이용할 수 없어요」(판매자 사정은 드러내지 않음)", async () => {
@@ -165,5 +168,49 @@ describe("HTTP: 주문 생성 API", () => {
       { params: Promise.resolve({ slug: s.seller.slug }) },
     );
     expect(res.status).toBe(403);
+  });
+});
+
+describe("주문 금액 검증(500 대신 400 invalid_amount)", () => {
+  async function priced(price: number, priceDelta: number) {
+    const s = await shop();
+    const product = await db.product.create({ data: { sellerId: s.seller.id, name: "특가", price, status: "ON_SALE" } });
+    const option = await db.productOption.create({ data: { sellerId: s.seller.id, productId: product.id, name: "옵션", priceDelta, stock: 10 } });
+    return { ...s, option };
+  }
+
+  it("음수 추가금으로 단가가 1원 미만(음수·0원)이면 주문을 만들지 않는다", async () => {
+    for (const [price, delta] of [[1000, -5000], [1000, -1000]]) {
+      const s = await priced(price, delta);
+      expect(
+        await createOrder(db, { shippingAddress, sellerId: s.seller.id, buyerMemberId: s.buyer.id, items: [{ optionId: s.option.id, quantity: 1 }], consent }),
+      ).toEqual({ ok: false, reason: "invalid_amount" });
+    }
+    expect(await db.order.count()).toBe(0);
+  });
+
+  it("합계가 정수 범위를 넘으면(20억 × 2, 배송비를 더해 넘는 경우) 거부하고, 딱 맞으면 만든다", async () => {
+    const big = await priced(2_000_000_000, 0);
+    const base = { shippingAddress, sellerId: big.seller.id, buyerMemberId: big.buyer.id, consent };
+    expect(await createOrder(db, { ...base, items: [{ optionId: big.option.id, quantity: 2 }] })).toEqual({ ok: false, reason: "invalid_amount" });
+
+    // 상품 2,147,480,648원 + 배송비 3,000원 = INT4 최댓값 + 1
+    const over = await priced(2_147_480_648, 0);
+    expect(
+      await createOrder(db, { shippingAddress, sellerId: over.seller.id, buyerMemberId: over.buyer.id, items: [{ optionId: over.option.id, quantity: 1 }], consent }),
+    ).toEqual({ ok: false, reason: "invalid_amount" });
+    expect(await db.order.count()).toBe(0);
+
+    const edge = await priced(2_147_480_647, 0);
+    expect(
+      await createOrder(db, { shippingAddress, sellerId: edge.seller.id, buyerMemberId: edge.buyer.id, items: [{ optionId: edge.option.id, quantity: 1 }], consent }),
+    ).toMatchObject({ ok: true, totalAmount: 2_147_483_647 });
+  });
+
+  it("HTTP: 금액 오류는 400과 화면 문구로 돌려준다(500 아님)", async () => {
+    const s = await priced(1000, -5000);
+    const res = await post(s.seller.slug, { items: [{ optionId: s.option.id, quantity: 1 }], consent, shippingAddress }, await buyerCookie(s.seller.id, s.buyer.loginId));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_amount", message: "주문 금액을 계산할 수 없어요. 판매자에게 문의해 주세요" });
   });
 });
