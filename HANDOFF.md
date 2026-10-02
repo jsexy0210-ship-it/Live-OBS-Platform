@@ -34,12 +34,12 @@
   - 종료된 PR #1~#6: 이전 프로젝트 제목·본문. GitHub에서 PR 삭제 불가.
   - Actions 실행 기록과 빌드 아티팩트 `lifeleft-production-static` (2026-10-06 08:24 KST 자동 만료). 실행 기록 삭제는 Actions 화면에서 가능.
   - Git 커밋 이력: 이력 재작성 금지로 유지.
-- 기존 self-hosted 러너, 저장소 Secrets·Environments: 미확인, 유지.
+- 기존 self-hosted 러너, 저장소 Secrets·Environments: 미확인, 유지. 단 `GEMINI_API_KEY`(Actions Secret)는 2026-10-02 대표님 등록 완료(대표님 보고 기준, 값 미기록). 실서버 사용 시 서버 환경변수 등록은 배포 단계에서 별도 승인.
 - 카카오클라우드 실제 자원(프로젝트·VM·버킷·DNS): 미확인, 변경 없음. 기존 VM에서 이전 사이트가 계속 서비스 중일 수 있음.
 
 ## 대표님 조치 대기
 
-- Gemini API 키를 GitHub 저장소 Secrets에 `GEMINI_API_KEY` 이름으로 등록 (2026-10-02 대표님 예정). 코드·문서에는 값을 쓰지 않는다.
+- 없음
 
 ## 다음 작업
 
