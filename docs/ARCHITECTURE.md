@@ -102,7 +102,7 @@ tests/unit/**, tests/integration/**           테스트
 
 ### 4.2 판매자(쇼핑몰)·직원
 
-- `Seller` (테넌트 = 쇼핑몰 1개): id, slug(기본 주소 하위 이름, **유니크**), shopName, status(`PENDING | ACTIVE | SUSPENDED | REJECTED | CLOSED`), businessInfo(JSON), approvedAt, approvedByAdminId, suspendedReason, liveVersion(실시간 version 카운터, 기본 0), createdAt
+- `Seller` (테넌트 = 쇼핑몰 1개): id, slug(기본 주소 하위 이름, **유니크**), shopName, status(`PENDING | ACTIVE | SUSPENDED | REJECTED | CLOSED`), businessInfo(JSON), approvedAt, approvedByAdminId, suspendedReason, representativeCiHash(대표자 PASS CI의 HMAC), liveVersion(실시간 version 카운터, 기본 0), createdAt — **대표자 1명당 쇼핑몰 1개**: representativeCiHash 부분 유니크(해지 `CLOSED`·반려 `REJECTED` 제외)
 - `SellerDomain`: id, sellerId, hostname(**유니크**), verifiedAt, certStatus — 개인 도메인 연결용 자리만
 - `SellerUser`: id, sellerId, email, passwordHash, name, role(`OWNER | MANAGER | BROADCASTER`), status(`ACTIVE | DISABLED`), failedLoginCount, lockedUntil, lastLoginAt — **(sellerId, email) 유니크**, 판매자당 OWNER 1명 이상
 - `SellerSession`: id, sellerUserId, sellerId, tokenHash(**유니크**), expiresAt, lastSeenAt, revokedAt
@@ -110,7 +110,7 @@ tests/unit/**, tests/integration/**           테스트
 
 ### 4.3 구매자 회원 (판매자 쇼핑몰별)
 
-- `BuyerMember`: id, sellerId, loginId, passwordHash, name, phone, phoneVerifiedAt, broadcastNickname, gradeId, status(`ACTIVE | DORMANT | WITHDRAWN`), marketingConsentAt, createdAt, deletedAt — **(sellerId, phone) 유니크**, **(sellerId, loginId) 유니크**, **(sellerId, broadcastNickname) 유니크**(방송 화면에서 구분 가능하게). 세 유니크는 `deletedAt IS NULL`인 행에만 적용(부분 유니크 인덱스)
+- `BuyerMember`: id, sellerId, loginId, passwordHash, name, phone, phoneVerifiedAt, ciHash(PASS 본인인증 CI의 HMAC-SHA256, 원문 CI 미저장), identityVerifiedAt, broadcastNickname, gradeId, status(`ACTIVE | DORMANT | WITHDRAWN`), marketingConsentAt, createdAt, deletedAt — **(sellerId, ciHash) 유니크**(같은 쇼핑몰 중복 가입 차단), **(sellerId, phone) 유니크**, **(sellerId, loginId) 유니크**, **(sellerId, broadcastNickname) 유니크**(방송 화면에서 구분 가능하게). 네 유니크는 `deletedAt IS NULL`인 행에만 적용(부분 유니크 인덱스)
   - 탈퇴하면 `status = WITHDRAWN`과 `deletedAt`을 같은 트랜잭션에서 함께 기록하고 개인정보(이름·휴대폰·닉네임)를 비식별 처리한다. `DORMANT`는 삭제가 아니므로 `deletedAt`이 비어 있다. 주문·원장은 회원 id로 남는다.
 - `MemberGrade`: id, sellerId, displayName, sortOrder, systemKey(nullable: `BASIC | SPROUT | SILVER | GOLD | VIP`) — 등급은 **id·displayName·sortOrder로 식별**한다. 판매자 생성 시 일반·새싹·실버·골드·VIP 5개를 기본으로 만들고 `systemKey`로 표시만 한다. 판매자가 추가한 등급은 `systemKey = null`. **(sellerId, displayName) 유니크**, **(sellerId, systemKey) 유니크(null 제외)**. 디자인 지시(`docs/DESIGN_PROMPT.md` 245줄) 「이름·개수는 판매자가 정한다」에 맞춰 고정 enum으로 식별하지 않는다. 적립률(`RewardPolicy.rates`)도 등급 id 기준. [확정]
 - `PhoneVerification`: id, sellerId, phone, codeHash, purpose(`SIGNUP | RESET`), attempts, expiresAt, verifiedAt — 발송은 `SmsSender` 인터페이스 뒤에 두고 개발·테스트는 가짜 발송기만 쓴다(실제 문자 연동 제외).

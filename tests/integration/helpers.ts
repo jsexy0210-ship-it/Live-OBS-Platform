@@ -26,7 +26,12 @@ export async function createSeller() {
   return { seller, grade };
 }
 
-export async function createBuyer(sellerId: string, gradeId: string, phone = `010${String(next()).padStart(8, "0")}`) {
+export async function createBuyer(
+  sellerId: string,
+  gradeId: string,
+  phone = `010${String(next()).padStart(8, "0")}`,
+  ciHash = `ci-${next()}`,
+) {
   const n = next();
   return db.buyerMember.create({
     data: {
@@ -37,6 +42,8 @@ export async function createBuyer(sellerId: string, gradeId: string, phone = `01
       name: `구매자${n}`,
       phone,
       broadcastNickname: `닉네임${n}`,
+      ciHash,
+      identityVerifiedAt: new Date(),
     },
   });
 }
