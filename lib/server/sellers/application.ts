@@ -7,7 +7,13 @@ import { hashToken } from "../auth/token";
 import type { IdentityProvider } from "../identity/provider";
 import { startIdentityVerification } from "../identity/verification";
 import { activateSeller } from "./approval";
-import { normalizeBusinessNumber, normalizeMailOrderNumber, type BusinessStatusProvider } from "./businessCheck";
+import {
+  normalizeBusinessNumber,
+  normalizeMailOrderNumber,
+  normalizeOpenedOn,
+  type BusinessStatusProvider,
+  type MailOrderProvider,
+} from "./businessCheck";
 
 // 판매자 가입 신청과 자동 점검(대표님 결정 2026-10-02, PRODUCT_SCOPE 「판매자 가입 자동 승인」).
 // 점검: 대표자 PASS 본인인증(필수) · 대표자 CI 중복(1인 1쇼핑몰) · 국세청 사업자 상태 「계속사업자」 · 통신판매업 신고번호 형식.
@@ -56,7 +62,16 @@ export async function startSellerSignupVerification(
   return { ok: true as const, verificationId: started.verification.id, requestId: started.verification.requestId, ownerToken: started.ownerToken };
 }
 
-export type ReviewReason = "business_not_active" | "business_lookup_failed" | "mail_order_number_invalid";
+// 자동 점검에서 걸린 항목(「확인 필요」 사유)
+export type ReviewReason =
+  | "business_lookup_failed" // 국세청 조회 실패(키 없음·연동 전 포함)
+  | "business_info_mismatch" // 진위확인 불일치(사업자번호·대표자명·개업일자)
+  | "business_not_active" // 계속사업자 아님(휴업·폐업)
+  | "business_duplicate" // 같은 사업자번호로 운영 중이거나 신청 중인 쇼핑몰이 있음
+  | "mail_order_number_invalid" // 통신판매업 신고번호 없음·형식 틀림
+  | "mail_order_lookup_failed" // 공정위 조회 실패(키 없음·연동 전 포함)
+  | "mail_order_not_registered" // 등록 없음 또는 사업자번호 불일치
+  | "mail_order_not_active"; // 영업 상태가 정상이 아님
 
 export type ApplyInput = {
   verificationId: string;
@@ -67,6 +82,8 @@ export type ApplyInput = {
   slug: string;
   businessNumber: string;
   companyName: string;
+  // 개업일자(YYYYMMDD 또는 YYYY-MM-DD). 국세청 진위확인에 쓴다.
+  openedOn: string;
   mailOrderNumber?: string | null;
   meta?: { ip?: string | null; userAgent?: string | null };
   now?: Date;
@@ -89,7 +106,11 @@ class Fail extends Error {
   }
 }
 
-export async function applyForSeller(db: PrismaClient, business: BusinessStatusProvider, input: ApplyInput): Promise<ApplyResult> {
+export async function applyForSeller(
+  db: PrismaClient,
+  providers: { business: BusinessStatusProvider; mailOrder: MailOrderProvider },
+  input: ApplyInput,
+): Promise<ApplyResult> {
   const now = input.now ?? new Date();
   const email = normalizeEmail(input.email);
   const shopName = input.shopName.trim();
@@ -100,6 +121,8 @@ export async function applyForSeller(db: PrismaClient, business: BusinessStatusP
   if (!SLUG.test(slug) || RESERVED_SLUGS.has(slug)) return { ok: false, reason: "invalid_slug" };
   const businessNumber = normalizeBusinessNumber(input.businessNumber);
   if (!businessNumber) return { ok: false, reason: "invalid_business_number" };
+  const openedOn = normalizeOpenedOn(input.openedOn ?? "");
+  if (!openedOn) return { ok: false, reason: "invalid_input" };
 
   // 대표자 PASS: 이 신청을 시작한 브라우저의 인증, 완료, 30분 안, 아직 안 쓴 것
   const v = await db.identityVerification.findUnique({ where: { id: input.verificationId } });
@@ -127,17 +150,39 @@ export async function applyForSeller(db: PrismaClient, business: BusinessStatusP
 
   // 자동 점검: 걸린 항목은 「확인 필요」 사유가 된다
   const reasons: ReviewReason[] = [];
-  const lookup = await business.lookup(businessNumber);
-  if (!lookup.ok) reasons.push("business_lookup_failed");
-  else if (lookup.status !== "ACTIVE") reasons.push("business_not_active");
+  // 국세청 진위확인: 사업자번호·대표자명(PASS로 확인한 이름)·개업일자 대조 + 계속사업자
+  const nts = await providers.business.verify({ businessNumber, representativeName: v.name, openedOn });
+  if (!nts.ok) reasons.push("business_lookup_failed");
+  else {
+    if (!nts.valid) reasons.push("business_info_mismatch");
+    if (nts.status !== "ACTIVE") reasons.push("business_not_active");
+  }
+  // 공정위 통신판매업 신고 조회: 등록·사업자번호 일치·영업 정상
   const mailOrderNumber = input.mailOrderNumber ? normalizeMailOrderNumber(input.mailOrderNumber) : null;
+  let mailOrderStatus: string | null = null;
   if (!mailOrderNumber) reasons.push("mail_order_number_invalid");
+  else {
+    const ftc = await providers.mailOrder.lookup({ businessNumber, mailOrderNumber });
+    if (!ftc.ok) reasons.push("mail_order_lookup_failed");
+    else if (!ftc.record || ftc.record.businessNumber !== businessNumber) reasons.push("mail_order_not_registered");
+    else {
+      mailOrderStatus = ftc.record.status;
+      if (ftc.record.status !== "NORMAL") reasons.push("mail_order_not_active");
+    }
+  }
 
   const passwordHash = await hashPassword(input.password);
   try {
     const result = await db.$transaction(async (tx) => {
       const used = await tx.identityVerification.updateMany({ where: { id: v.id, consumedAt: null }, data: { consumedAt: now } });
       if (used.count !== 1) throw new Fail("verification_invalid");
+      // 같은 사업자번호로 운영 중이거나 신청 중인 쇼핑몰이 있으면 자동 승인하지 않는다(번호별로 줄을 세워 동시 신청도 막음)
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`seller_bizno:${businessNumber}`}))`;
+      const sameBusiness = await tx.seller.findFirst({
+        where: { status: { notIn: ["CLOSED", "REJECTED"] }, businessInfo: { path: ["businessNumber"], equals: businessNumber } },
+        select: { id: true },
+      });
+      if (sameBusiness) reasons.push("business_duplicate");
       const seller = await tx.seller.create({
         data: {
           slug,
@@ -150,8 +195,11 @@ export async function applyForSeller(db: PrismaClient, business: BusinessStatusP
             businessNumber,
             companyName,
             representativeName: v.name,
+            openedOn,
             mailOrderNumber: mailOrderNumber ?? input.mailOrderNumber?.trim().slice(0, 100) ?? null,
-            businessStatus: lookup.ok ? lookup.status : null,
+            businessStatus: nts.ok ? nts.status : null,
+            businessInfoValid: nts.ok ? nts.valid : null,
+            mailOrderStatus,
             checkedAt: now.toISOString(),
           },
         },

@@ -263,13 +263,16 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 
 ### 4.8.2 판매자 가입 신청·자동 승인 (대표님 결정 2026-10-02)
 
-- 흐름: `POST /api/seller-signup/verification`(대표자 PASS 시작, 같은 접속 IP 하루(KST 자정 초기화) 10회까지 — 가입 PASS는 건당 비용, 넘으면 `429 daily_limit_exceeded`, 시작한 브라우저에만 `lo_sidv` 쿠키, 경로 `/api/seller-signup`) → PASS 완료 → `POST /api/seller-signup/apply`(로그인 이메일·비밀번호는 신청자가 정함, 쇼핑몰 이름·주소 이름(slug)·사업자등록번호·상호·통신판매업 신고번호).
+- 흐름: `POST /api/seller-signup/verification`(대표자 PASS 시작, 같은 접속 IP 하루(KST 자정 초기화) 10회까지 — 가입 PASS는 건당 비용, 넘으면 `429 daily_limit_exceeded`, 시작한 브라우저에만 `lo_sidv` 쿠키, 경로 `/api/seller-signup`) → PASS 완료 → `POST /api/seller-signup/apply`(로그인 이메일·비밀번호는 신청자가 정함, 쇼핑몰 이름·주소 이름(slug)·사업자등록번호·상호·개업일자·통신판매업 신고번호).
 - 신청을 받지 않는 경우(입력 오류로 응답): 본인인증 무효(다른 브라우저·이미 씀·30분 지남·다른 용도), 대표자 1명당 쇼핑몰 1개 위반(해지·반려 제외, `409 representative_has_shop`, 문구 「이미 운영 중인 쇼핑몰이 있어요 · 한 대표자는 쇼핑몰 하나만 열 수 있어요」, 다른 쇼핑몰 이름은 보여 주지 않음, DB 부분 유니크로도 막음), 주소 이름 형식·예약어·중복, 사업자등록번호 검증 숫자 틀림, 비밀번호 8자 미만. 이 경우 본인인증은 소진되지 않는다.
-- 자동 점검(`reviewReasons`): 국세청 사업자 상태가 「계속사업자」가 아님(`business_not_active`), 조회 실패(`business_lookup_failed`), 통신판매업 신고번호 없음·형식 틀림(`mail_order_number_invalid`, 「제2024-서울강남-01234호」 형식).
+- 자동 점검(`reviewReasons`, 하나라도 걸리면 자동 승인하지 않음):
+  - 국세청 「사업자등록정보 진위확인 및 상태조회」: 사업자번호·대표자명(PASS로 확인한 이름)·개업일자(신청 항목) 대조 불일치(`business_info_mismatch`), 계속사업자 아님(`business_not_active`), 조회 실패·키 없음(`business_lookup_failed`). 키 `NTS_BUSINESS_STATUS_API_KEY` 하나로 진위확인·상태조회를 함께 쓴다.
+  - 같은 사업자번호로 운영 중이거나 신청 중인(해지·반려 제외) 쇼핑몰이 있음(`business_duplicate`). 번호별 advisory lock으로 동시 신청도 한 건만 자동 승인.
+  - 공정위 「통신판매사업자 등록상세」 조회(기준은 조회, MASTER 결정): 신고번호 없음·형식 틀림(`mail_order_number_invalid`), 조회 실패·키 없음(`mail_order_lookup_failed`), 등록 없음·사업자번호 불일치(`mail_order_not_registered`), 영업 상태 정상 아님(`mail_order_not_active`). 키 `FTC_MAIL_ORDER_API_KEY`.
   - 하나도 없으면 같은 트랜잭션에서 자동 승인(`approvedByAdminId = null`, 체험하기 시작, 감사 로그 `seller.auto_approve`).
   - 하나라도 있으면 승인 대기(`PENDING`)로 두고 마스터 「확인 필요」(`GET /api/admin/sellers/review`)에 올린다. 대표님이 승인(`approve`, 사유 비움)·반려(`reject`, 사유 필수, `rejectedReason`·`rejectedAt` 전용 컬럼 — 정지 사유와 섞지 않음)한다. 보완 요청은 화면 단계에서.
-- 신청 때 쇼핑몰·대표자 계정(PASS 이름)·기본 등급 5개를 만든다. 사업자 정보는 `Seller.businessInfo`(사업자등록번호·상호·대표자명·통신판매업 신고번호·조회 결과·점검 시각)에 둔다.
-- 국세청 사업자 상태 조회는 공급자 인터페이스(`lib/server/sellers/businessCheck.ts`)로만 부른다. `BUSINESS_STATUS_PROVIDER=fake`를 명시했을 때만 가짜(운영 불가). 그 밖에는 실제 조회(키 `NTS_BUSINESS_STATUS_API_KEY`) 자리이며, 키가 없거나 연동 전이면 조회 실패로 처리해 자동 승인하지 않는다. 통신판매업 실제 조회(키 `FTC_MAIL_ORDER_API_KEY`)는 연동 전이라 형식만 본다. 환경변수 이름은 `.env.example`.
+- 신청 때 쇼핑몰·대표자 계정(PASS 이름)·기본 등급 5개를 만든다. 사업자 정보는 `Seller.businessInfo`(사업자등록번호·상호·대표자명·개업일자·통신판매업 신고번호·국세청·공정위 조회 결과·점검 시각)에 둔다.
+- 국세청·공정위 조회는 공급자 인터페이스(`lib/server/sellers/businessCheck.ts`)로만 부른다. `BUSINESS_STATUS_PROVIDER=fake`·`MAIL_ORDER_PROVIDER=fake`를 명시했을 때만 가짜(운영 불가). 그 밖에는 실제 조회 자리이며, 실제 연동 전이거나 키가 없으면 조회 실패로 처리해 자동 승인하지 않는다. 환경변수 이름은 `.env.example`.
 
 ### 4.9 이번 초안에서 뺀 것 (다음 단계)
 

@@ -1,18 +1,24 @@
 // 판매자 가입 자동 점검에 쓰는 사업자 확인(대표님 결정 2026-10-02, PRODUCT_SCOPE 「판매자 가입 자동 승인」).
-// 국세청 사업자 상태 조회는 공급자 인터페이스로만 부른다. 실제 조회(공공데이터포털 API 키 필요) 연결 전에는 가짜 공급자뿐이다.
+// - 국세청 「사업자등록정보 진위확인 및 상태조회」: 사업자번호·대표자명(PASS 이름)·개업일자 대조(진위확인)와 상태(계속사업자) 확인.
+//   키 NTS_BUSINESS_STATUS_API_KEY. BUSINESS_STATUS_PROVIDER=fake를 명시했을 때만 가짜.
+// - 공정위 「통신판매사업자 등록상세」: 신고번호 등록·사업자번호 일치·영업 상태 조회. 키 FTC_MAIL_ORDER_API_KEY. MAIL_ORDER_PROVIDER=fake를 명시했을 때만 가짜.
+// 실제 연동 전이거나 키가 없으면 조회 실패로 처리해 자동 승인하지 않는다(MASTER 결정 2026-10-03). 키 값은 저장소에 두지 않는다.
 
 export type BusinessStatus = "ACTIVE" | "SUSPENDED" | "CLOSED" | "NOT_FOUND";
-export type BusinessLookup = { ok: true; status: BusinessStatus } | { ok: false; reason: "lookup_failed" };
+// valid: 사업자번호·대표자명·개업일자가 국세청 등록 정보와 일치하는지
+export type BusinessVerify = { ok: true; valid: boolean; status: BusinessStatus } | { ok: false; reason: "lookup_failed" };
+export type BusinessVerifyInput = { businessNumber: string; representativeName: string; openedOn: string };
 
 export interface BusinessStatusProvider {
   readonly name: string;
-  // 사업자등록번호(숫자 10자리)의 상태. ACTIVE = 국세청 「계속사업자」.
-  lookup(businessNumber: string): Promise<BusinessLookup>;
+  verify(input: BusinessVerifyInput): Promise<BusinessVerify>;
 }
+
+type BusinessRecord = { representativeName: string; openedOn: string; status: BusinessStatus };
 
 export class FakeBusinessStatusProvider implements BusinessStatusProvider {
   readonly name = "fake";
-  private statuses = new Map<string, BusinessStatus>();
+  private records = new Map<string, BusinessRecord>();
   private failing = new Set<string>();
 
   // 운영 환경에서는 만들 수 없다(가짜 조회로 자동 승인되는 것을 막는다).
@@ -20,40 +26,114 @@ export class FakeBusinessStatusProvider implements BusinessStatusProvider {
     if (env === "production") throw new Error("운영 환경에서는 가짜 사업자 조회를 쓸 수 없어요.");
   }
 
-  set(businessNumber: string, status: BusinessStatus) {
-    this.statuses.set(businessNumber, status);
+  // 테스트에서 국세청 등록 정보를 정한다. 등록하지 않은 번호는 입력과 일치하는 계속사업자로 본다.
+  register(businessNumber: string, record: Partial<BusinessRecord> & { representativeName: string }) {
+    this.records.set(businessNumber, { openedOn: "20200101", status: "ACTIVE", ...record });
   }
+
+  set(businessNumber: string, status: BusinessStatus) {
+    const prev = this.records.get(businessNumber);
+    if (prev) prev.status = status;
+    else this.statuses.set(businessNumber, status);
+  }
+  private statuses = new Map<string, BusinessStatus>();
 
   fail(businessNumber: string) {
     this.failing.add(businessNumber);
   }
 
-  async lookup(businessNumber: string): Promise<BusinessLookup> {
-    if (this.failing.has(businessNumber)) return { ok: false, reason: "lookup_failed" };
-    return { ok: true, status: this.statuses.get(businessNumber) ?? "ACTIVE" };
+  async verify(input: BusinessVerifyInput): Promise<BusinessVerify> {
+    if (this.failing.has(input.businessNumber)) return { ok: false, reason: "lookup_failed" };
+    const r = this.records.get(input.businessNumber);
+    if (!r) return { ok: true, valid: true, status: this.statuses.get(input.businessNumber) ?? "ACTIVE" };
+    return { ok: true, valid: r.representativeName === input.representativeName && r.openedOn === input.openedOn, status: r.status };
   }
 }
-
-const globalForBusiness = globalThis as unknown as { businessStatusProvider?: BusinessStatusProvider };
 
 // 조회 키가 없거나 실제 연동 전이면 모든 조회를 「조회 실패」로 돌려준다 → 자동 승인하지 않고 「확인 필요」로 간다.
 export class UnavailableBusinessStatusProvider implements BusinessStatusProvider {
   readonly name = "unavailable";
-  async lookup(): Promise<BusinessLookup> {
+  async verify(): Promise<BusinessVerify> {
     return { ok: false, reason: "lookup_failed" };
   }
 }
 
-// 라우트가 쓰는 사업자 조회 공급자.
-// - BUSINESS_STATUS_PROVIDER=fake를 명시했을 때만 가짜(개발·테스트, 운영에서는 만들 수 없음).
-// - 그 밖에는 실제 국세청 조회(키: NTS_BUSINESS_STATUS_API_KEY)를 붙일 자리다. 아직 연동 전이고, 키가 없을 때와 같이
-//   조회 실패로 처리해 자동 승인하지 않는다(MASTER 결정 2026-10-03). 키 값은 저장소에 두지 않는다.
+const globalForBusiness = globalThis as unknown as { businessStatusProvider?: BusinessStatusProvider; mailOrderProvider?: MailOrderProvider };
+
+// 라우트가 쓰는 국세청 조회 공급자. 실제 조회는 아직 연동 전이라 fake가 아니면 조회 실패로 처리한다.
 export function businessStatusProvider(): BusinessStatusProvider {
   if (process.env.BUSINESS_STATUS_PROVIDER === "fake") {
     globalForBusiness.businessStatusProvider ??= new FakeBusinessStatusProvider();
     return globalForBusiness.businessStatusProvider;
   }
   return new UnavailableBusinessStatusProvider();
+}
+
+// ───────────── 통신판매업 신고 조회(공정위) ─────────────
+
+export type MailOrderStatus = "NORMAL" | "SUSPENDED" | "CLOSED";
+// 이 사업자번호로 등록된 신고 가운데 신청한 신고번호와 같은 것(없으면 null)
+export type MailOrderLookup =
+  | { ok: true; record: { mailOrderNumber: string; businessNumber: string; status: MailOrderStatus } | null }
+  | { ok: false; reason: "lookup_failed" };
+
+export interface MailOrderProvider {
+  readonly name: string;
+  lookup(input: { businessNumber: string; mailOrderNumber: string }): Promise<MailOrderLookup>;
+}
+
+export class FakeMailOrderProvider implements MailOrderProvider {
+  readonly name = "fake";
+  private records = new Map<string, { mailOrderNumber: string; businessNumber: string; status: MailOrderStatus } | null>();
+  private failing = new Set<string>();
+
+  constructor(env: string | undefined = process.env.NODE_ENV) {
+    if (env === "production") throw new Error("운영 환경에서는 가짜 통신판매업 조회를 쓸 수 없어요.");
+  }
+
+  // 테스트에서 신고번호의 등록 정보를 정한다(null = 등록 없음). 정하지 않은 번호는 그 사업자번호로 정상 등록된 것으로 본다.
+  register(mailOrderNumber: string, record: { businessNumber: string; status?: MailOrderStatus } | null) {
+    this.records.set(mailOrderNumber, record ? { mailOrderNumber, status: "NORMAL", ...record } : null);
+  }
+
+  fail(mailOrderNumber: string) {
+    this.failing.add(mailOrderNumber);
+  }
+
+  async lookup(input: { businessNumber: string; mailOrderNumber: string }): Promise<MailOrderLookup> {
+    if (this.failing.has(input.mailOrderNumber)) return { ok: false, reason: "lookup_failed" };
+    if (!this.records.has(input.mailOrderNumber)) {
+      return { ok: true, record: { mailOrderNumber: input.mailOrderNumber, businessNumber: input.businessNumber, status: "NORMAL" } };
+    }
+    return { ok: true, record: this.records.get(input.mailOrderNumber) ?? null };
+  }
+}
+
+export class UnavailableMailOrderProvider implements MailOrderProvider {
+  readonly name = "unavailable";
+  async lookup(): Promise<MailOrderLookup> {
+    return { ok: false, reason: "lookup_failed" };
+  }
+}
+
+export function mailOrderProvider(): MailOrderProvider {
+  if (process.env.MAIL_ORDER_PROVIDER === "fake") {
+    globalForBusiness.mailOrderProvider ??= new FakeMailOrderProvider();
+    return globalForBusiness.mailOrderProvider;
+  }
+  return new UnavailableMailOrderProvider();
+}
+
+// 개업일자: YYYYMMDD 또는 YYYY-MM-DD → YYYYMMDD(실제 있는 날짜만). 틀리면 null.
+export function normalizeOpenedOn(raw: string): string | null {
+  const d = raw.replace(/[\s.-]/g, "");
+  if (!/^\d{8}$/.test(d)) return null;
+  const y = Number(d.slice(0, 4));
+  const m = Number(d.slice(4, 6));
+  const day = Number(d.slice(6, 8));
+  const dt = new Date(Date.UTC(y, m - 1, day));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== day || y < 1900) return null;
+  return d;
 }
 
 // 사업자등록번호: 숫자만 남겨 10자리, 국세청 검증 숫자 규칙. 틀리면 null.

@@ -4,7 +4,7 @@ import { clearFlowCookie, mutation, readCookie, readJson, requestMeta } from "..
 import { identityProvider } from "../../../../lib/server/identity/registry";
 import { completeIdentityVerification } from "../../../../lib/server/identity/verification";
 import { REPRESENTATIVE_HAS_SHOP_MESSAGE, applyForSeller } from "../../../../lib/server/sellers/application";
-import { businessStatusProvider } from "../../../../lib/server/sellers/businessCheck";
+import { businessStatusProvider, mailOrderProvider } from "../../../../lib/server/sellers/businessCheck";
 import { SELLER_SIGNUP_IDV_COOKIE, SELLER_SIGNUP_PATH } from "../../../../lib/server/sellers/signupFlow";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -24,7 +24,7 @@ export const POST = mutation(async (req: Request) => {
   });
   if (!done.ok) return NextResponse.json({ error: done.reason === "pending" ? "verification_pending" : "verification_invalid" }, { status: done.reason === "pending" ? 409 : 400 });
 
-  const r = await applyForSeller(prisma, businessStatusProvider(), {
+  const r = await applyForSeller(prisma, { business: businessStatusProvider(), mailOrder: mailOrderProvider() }, {
     verificationId,
     ownerToken,
     email: str(body.email),
@@ -33,6 +33,7 @@ export const POST = mutation(async (req: Request) => {
     slug: str(body.slug, 40),
     businessNumber: str(body.businessNumber, 20),
     companyName: str(body.companyName),
+    openedOn: str(body.openedOn, 20),
     mailOrderNumber: str(body.mailOrderNumber, 100) || null,
     meta: requestMeta(req),
   });

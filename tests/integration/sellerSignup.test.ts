@@ -9,12 +9,18 @@ import { identityProvider } from "../../lib/server/identity/registry";
 import { completeIdentityVerification, startIdentityVerification } from "../../lib/server/identity/verification";
 import { SIGNUP_VERIFY_DAILY_LIMIT_PER_IP, applyForSeller, startSellerSignupVerification, type ApplyInput } from "../../lib/server/sellers/application";
 import { TRIAL_DAYS, approveSeller, listSellersToReview, rejectSeller } from "../../lib/server/sellers/approval";
-import { FakeBusinessStatusProvider, UnavailableBusinessStatusProvider } from "../../lib/server/sellers/businessCheck";
+import {
+  FakeBusinessStatusProvider,
+  FakeMailOrderProvider,
+  UnavailableBusinessStatusProvider,
+  UnavailableMailOrderProvider,
+} from "../../lib/server/sellers/businessCheck";
 import { createAdmin, db, resetDb } from "./helpers";
 
 beforeAll(() => {
   process.env.IDENTITY_HASH_KEY = "test-identity-hash-key-0123456789abcdef";
   process.env.BUSINESS_STATUS_PROVIDER = "fake";
+  process.env.MAIL_ORDER_PROVIDER = "fake";
 });
 beforeEach(resetDb);
 afterAll(async () => {
@@ -34,6 +40,20 @@ async function verified(ci: string, name = "김대표") {
   return { verificationId: verification.id, ownerToken };
 }
 
+// 검증 숫자가 맞는 서로 다른 사업자등록번호(신청마다 다르게, 같은 번호 중복 점검과 섞이지 않게)
+function businessNumberOf(seq: number): string {
+  const head = String(300000000 + seq).padStart(9, "0");
+  const w = [1, 3, 7, 1, 3, 7, 1, 3, 5];
+  const d = Array.from(head, Number);
+  const sum = w.reduce((a, wi, i) => a + d[i] * wi, 0) + Math.floor((d[8] * 5) / 10);
+  return head + String((10 - (sum % 10)) % 10);
+}
+
+let mailOrder = new FakeMailOrderProvider();
+beforeEach(() => {
+  mailOrder = new FakeMailOrderProvider();
+});
+
 let n = 0;
 function form(v: { verificationId: string; ownerToken: string }, extra: Partial<ApplyInput> = {}): ApplyInput {
   n++;
@@ -43,8 +63,9 @@ function form(v: { verificationId: string; ownerToken: string }, extra: Partial<
     password: "seller-pass-1",
     shopName: `카드샵 ${n}`,
     slug: `card-shop-${n}`,
-    businessNumber: "124-81-00998",
+    businessNumber: businessNumberOf(n),
     companyName: "주식회사 카드",
+    openedOn: "2020-01-01",
     mailOrderNumber: "제2024-서울강남-01234호",
     ...extra,
   };
@@ -57,17 +78,25 @@ async function adminCtx(role: "SUPER_ADMIN" | "CS" | "READ_ONLY" = "SUPER_ADMIN"
 }
 
 describe("자동 점검 통과 → 자동 승인", () => {
-  it("모두 통과하면 바로 운영 중, 체험하기 = 승인 + 3일, 기본 등급 5개, 대표자 계정으로 로그인된다", async () => {
+  it("모두 통과하면 바로 운영 중, 체험하기 = 승인 + 14일, 기본 등급 5개, 대표자 계정으로 로그인된다", async () => {
     const business = new FakeBusinessStatusProvider();
     const f = form(await verified("CI-1"));
-    const r = await applyForSeller(db, business, f);
+    const r = await applyForSeller(db, { business, mailOrder }, f);
     expect(r).toMatchObject({ ok: true, approved: true, reviewReasons: [] });
     if (!r.ok) return;
     const seller = await db.seller.findUniqueOrThrow({ where: { id: r.sellerId } });
     expect(seller).toMatchObject({ status: "ACTIVE", approvedByAdminId: null, reviewReasons: [] });
     expect(seller.trialEndsAt!.getTime() - seller.approvedAt!.getTime()).toBe(TRIAL_DAYS * DAY);
     expect(TRIAL_DAYS).toBe(14);
-    expect(seller.businessInfo).toMatchObject({ businessNumber: "1248100998", representativeName: "김대표", mailOrderNumber: "제2024-서울강남-01234호", businessStatus: "ACTIVE" });
+    expect(seller.businessInfo).toMatchObject({
+      businessNumber: f.businessNumber,
+      representativeName: "김대표",
+      openedOn: "20200101",
+      mailOrderNumber: "제2024-서울강남-01234호",
+      businessStatus: "ACTIVE",
+      businessInfoValid: true,
+      mailOrderStatus: "NORMAL",
+    });
     expect(await db.memberGrade.count({ where: { sellerId: seller.id } })).toBe(5);
     const owner = await db.sellerUser.findFirstOrThrow({ where: { sellerId: seller.id } });
     expect(owner).toMatchObject({ isOwner: true, name: "김대표", email: f.email });
@@ -84,10 +113,10 @@ describe("자동 점검에 걸림 → 「확인 필요」", () => {
     const business = new FakeBusinessStatusProvider();
     business.set("1234567891", "CLOSED");
     business.fail("2208162517");
-    const closed = await applyForSeller(db, business, form(await verified("CI-2"), { businessNumber: "1234567891" }));
-    const failed = await applyForSeller(db, business, form(await verified("CI-3"), { businessNumber: "2208162517" }));
-    const noMail = await applyForSeller(db, business, form(await verified("CI-4"), { mailOrderNumber: null }));
-    const badMail = await applyForSeller(db, business, form(await verified("CI-5"), { mailOrderNumber: "신고 준비 중" }));
+    const closed = await applyForSeller(db, { business, mailOrder }, form(await verified("CI-2"), { businessNumber: "1234567891" }));
+    const failed = await applyForSeller(db, { business, mailOrder }, form(await verified("CI-3"), { businessNumber: "2208162517" }));
+    const noMail = await applyForSeller(db, { business, mailOrder }, form(await verified("CI-4"), { mailOrderNumber: null }));
+    const badMail = await applyForSeller(db, { business, mailOrder }, form(await verified("CI-5"), { mailOrderNumber: "신고 준비 중" }));
     expect(closed).toMatchObject({ ok: true, approved: false, reviewReasons: ["business_not_active"] });
     expect(failed).toMatchObject({ ok: true, approved: false, reviewReasons: ["business_lookup_failed"] });
     expect(noMail).toMatchObject({ ok: true, approved: false, reviewReasons: ["mail_order_number_invalid"] });
@@ -102,8 +131,8 @@ describe("자동 점검에 걸림 → 「확인 필요」", () => {
   it("마스터 「확인 필요」 목록에 보이고, 승인하면 사유를 지우고 체험하기를 시작, 반려는 사유 필수", async () => {
     const business = new FakeBusinessStatusProvider();
     business.set("1234567891", "SUSPENDED");
-    const a = await applyForSeller(db, business, form(await verified("CI-6"), { businessNumber: "1234567891" }));
-    const b = await applyForSeller(db, business, form(await verified("CI-7"), { mailOrderNumber: null }));
+    const a = await applyForSeller(db, { business, mailOrder }, form(await verified("CI-6"), { businessNumber: "1234567891" }));
+    const b = await applyForSeller(db, { business, mailOrder }, form(await verified("CI-7"), { mailOrderNumber: null }));
     if (!a.ok || !b.ok) throw new Error("apply failed");
 
     const reader = await adminCtx("READ_ONLY");
@@ -132,17 +161,17 @@ describe("자동 점검에 걸림 → 「확인 필요」", () => {
 describe("거부되는 신청", () => {
   it("대표자 1명당 쇼핑몰 1개: 같은 CI로 두 번째 신청은 거부, 반려된 뒤에는 다시 신청할 수 있다", async () => {
     const business = new FakeBusinessStatusProvider();
-    const first = await applyForSeller(db, business, form(await verified("CI-8"), { mailOrderNumber: null }));
+    const first = await applyForSeller(db, { business, mailOrder }, form(await verified("CI-8"), { mailOrderNumber: null }));
     expect(first.ok).toBe(true);
-    expect(await applyForSeller(db, business, form(await verified("CI-8")))).toEqual({ ok: false, reason: "representative_has_shop" });
+    expect(await applyForSeller(db, { business, mailOrder }, form(await verified("CI-8")))).toEqual({ ok: false, reason: "representative_has_shop" });
     await rejectSeller(db, await adminCtx(), (first as { sellerId: string }).sellerId, "보완 필요");
-    expect(await applyForSeller(db, business, form(await verified("CI-8")))).toMatchObject({ ok: true, approved: true });
+    expect(await applyForSeller(db, { business, mailOrder }, form(await verified("CI-8")))).toMatchObject({ ok: true, approved: true });
   });
 
   it("같은 CI로 동시에 신청해도 하나만 만들어진다", async () => {
     const business = new FakeBusinessStatusProvider();
     const [v1, v2] = [await verified("CI-9"), await verified("CI-9")];
-    const rs = await Promise.all([applyForSeller(db, business, form(v1)), applyForSeller(db, business, form(v2))]);
+    const rs = await Promise.all([applyForSeller(db, { business, mailOrder }, form(v1)), applyForSeller(db, { business, mailOrder }, form(v2))]);
     expect(rs.filter((r) => r.ok)).toHaveLength(1);
     expect(rs.find((r) => !r.ok)).toEqual({ ok: false, reason: "representative_has_shop" });
     expect(await db.seller.count()).toBe(1);
@@ -151,30 +180,30 @@ describe("거부되는 신청", () => {
   it("본인인증: 다른 브라우저·이미 쓴 인증·30분 지난 인증·다른 용도는 거부", async () => {
     const business = new FakeBusinessStatusProvider();
     const v = await verified("CI-10");
-    expect(await applyForSeller(db, business, form({ ...v, ownerToken: "other" }))).toEqual({ ok: false, reason: "verification_invalid" });
-    const late = await applyForSeller(db, business, { ...form(v), now: new Date(Date.now() + 31 * 60_000) });
+    expect(await applyForSeller(db, { business, mailOrder }, form({ ...v, ownerToken: "other" }))).toEqual({ ok: false, reason: "verification_invalid" });
+    const late = await applyForSeller(db, { business, mailOrder }, { ...form(v), now: new Date(Date.now() + 31 * 60_000) });
     expect(late).toEqual({ ok: false, reason: "verification_invalid" });
-    expect((await applyForSeller(db, business, form(v))).ok).toBe(true);
-    expect(await applyForSeller(db, business, form(v))).toEqual({ ok: false, reason: "verification_invalid" });
+    expect((await applyForSeller(db, { business, mailOrder }, form(v))).ok).toBe(true);
+    expect(await applyForSeller(db, { business, mailOrder }, form(v))).toEqual({ ok: false, reason: "verification_invalid" });
 
     const { verification, ownerToken } = await startIdentityVerification(db, identity, { purpose: "PASSWORD_RESET", sellerId: null });
     identity.complete(verification.requestId, { ci: "CI-11", name: "x", phone: "01000000000", birthDate: new Date("1990-01-01") });
     await completeIdentityVerification(db, identity, verification.id, { sellerId: null, purpose: "PASSWORD_RESET", ownerToken });
-    expect(await applyForSeller(db, business, form({ verificationId: verification.id, ownerToken }))).toEqual({ ok: false, reason: "verification_invalid" });
+    expect(await applyForSeller(db, { business, mailOrder }, form({ verificationId: verification.id, ownerToken }))).toEqual({ ok: false, reason: "verification_invalid" });
   });
 
   it("입력: 주소 이름 형식·예약어·중복, 사업자등록번호 검증 숫자, 짧은 비밀번호", async () => {
     const business = new FakeBusinessStatusProvider();
     const v = await verified("CI-12");
-    expect(await applyForSeller(db, business, form(v, { slug: "Admin" }))).toEqual({ ok: false, reason: "invalid_slug" });
-    expect(await applyForSeller(db, business, form(v, { slug: "a" }))).toEqual({ ok: false, reason: "invalid_slug" });
-    expect(await applyForSeller(db, business, form(v, { businessNumber: "124-81-00999" }))).toEqual({ ok: false, reason: "invalid_business_number" });
-    expect(await applyForSeller(db, business, form(v, { password: "short" }))).toEqual({ ok: false, reason: "weak_password" });
-    expect(await applyForSeller(db, business, form(v, { email: "not-an-email" }))).toEqual({ ok: false, reason: "invalid_input" });
-    await applyForSeller(db, business, form(await verified("CI-13"), { slug: "taken-shop" }));
-    expect(await applyForSeller(db, business, form(v, { slug: "taken-shop" }))).toEqual({ ok: false, reason: "slug_taken" });
+    expect(await applyForSeller(db, { business, mailOrder }, form(v, { slug: "Admin" }))).toEqual({ ok: false, reason: "invalid_slug" });
+    expect(await applyForSeller(db, { business, mailOrder }, form(v, { slug: "a" }))).toEqual({ ok: false, reason: "invalid_slug" });
+    expect(await applyForSeller(db, { business, mailOrder }, form(v, { businessNumber: "124-81-00999" }))).toEqual({ ok: false, reason: "invalid_business_number" });
+    expect(await applyForSeller(db, { business, mailOrder }, form(v, { password: "short" }))).toEqual({ ok: false, reason: "weak_password" });
+    expect(await applyForSeller(db, { business, mailOrder }, form(v, { email: "not-an-email" }))).toEqual({ ok: false, reason: "invalid_input" });
+    await applyForSeller(db, { business, mailOrder }, form(await verified("CI-13"), { slug: "taken-shop" }));
+    expect(await applyForSeller(db, { business, mailOrder }, form(v, { slug: "taken-shop" }))).toEqual({ ok: false, reason: "slug_taken" });
     // 거부된 입력으로는 인증이 소진되지 않는다
-    expect((await applyForSeller(db, business, form(v))).ok).toBe(true);
+    expect((await applyForSeller(db, { business, mailOrder }, form(v))).ok).toBe(true);
   });
 });
 
@@ -198,6 +227,7 @@ describe("HTTP: 가입 신청", () => {
     (identityProvider() as FakeIdentityProvider).complete(requestId, { ci: "CI-HTTP", name: "박대표", phone: "01033334444", birthDate: new Date("1980-02-02") });
 
     const body = {
+      openedOn: "20200101",
       verificationId,
       email: "http-owner@example.com",
       password: "seller-pass-1",
@@ -228,7 +258,7 @@ describe("HTTP: 가입 신청", () => {
 
 describe("MASTER 결정 반영", () => {
   it("국세청 조회 키가 없거나 연동 전이면 조회 실패로 보고 자동 승인하지 않는다", async () => {
-    const r = await applyForSeller(db, new UnavailableBusinessStatusProvider(), form(await verified("CI-NOKEY")));
+    const r = await applyForSeller(db, { business: new UnavailableBusinessStatusProvider(), mailOrder }, form(await verified("CI-NOKEY")));
     expect(r).toMatchObject({ ok: true, approved: false, reviewReasons: ["business_lookup_failed"] });
   });
 
@@ -249,3 +279,80 @@ describe("MASTER 결정 반영", () => {
     expect(rs.filter((r) => r.ok)).toHaveLength(SIGNUP_VERIFY_DAILY_LIMIT_PER_IP);
   });
 });
+
+describe("MASTER 검수 P1: 사업자 대조·통신판매업 조회", () => {
+  it("다른 사람이 같은 사업자번호로 신청하면 대표자명 불일치·같은 번호 중복으로 「확인 필요」(자동 승인 안 함)", async () => {
+    const business = new FakeBusinessStatusProvider();
+    // 국세청 등록: 124-81-00998은 대표자 김대표, 개업일 2020-01-01
+    business.register("1248100998", { representativeName: "김대표", openedOn: "20200101" });
+    const owner = await applyForSeller(db, { business, mailOrder }, form(await verified("CI-REAL", "김대표"), { businessNumber: "124-81-00998", companyName: "삼성" }));
+    expect(owner).toMatchObject({ ok: true, approved: true });
+    const other = await applyForSeller(
+      db,
+      { business, mailOrder },
+      form(await verified("CI-OTHER", "이아무개"), { businessNumber: "124-81-00998", companyName: "아무개상사" }),
+    );
+    expect(other).toMatchObject({ ok: true, approved: false });
+    if (!other.ok) return;
+    expect(other.reviewReasons).toEqual(expect.arrayContaining(["business_info_mismatch", "business_duplicate"]));
+    expect((await db.seller.findUniqueOrThrow({ where: { id: other.sellerId } })).status).toBe("PENDING");
+  });
+
+  it("개업일자가 다르면 진위확인 불일치로 「확인 필요」, 개업일자 형식이 틀리면 신청을 받지 않는다", async () => {
+    const business = new FakeBusinessStatusProvider();
+    const bn = businessNumberOf(9001);
+    business.register(bn, { representativeName: "김대표", openedOn: "20190505" });
+    expect(await applyForSeller(db, { business, mailOrder }, form(await verified("CI-DATE"), { businessNumber: bn }))).toMatchObject({
+      ok: true,
+      approved: false,
+      reviewReasons: ["business_info_mismatch"],
+    });
+    expect(await applyForSeller(db, { business, mailOrder }, form(await verified("CI-DATE2"), { openedOn: "2019-02-30" }))).toEqual({ ok: false, reason: "invalid_input" });
+  });
+
+  it("같은 사업자번호 두 번째 신청은 대표자가 같아도(대조 일치) 「확인 필요」, 동시에 내도 둘 다 자동 승인되지는 않는다", async () => {
+    const business = new FakeBusinessStatusProvider();
+    const bn = businessNumberOf(9002);
+    const rs = await Promise.all([
+      applyForSeller(db, { business, mailOrder }, form(await verified("CI-D1"), { businessNumber: bn })),
+      applyForSeller(db, { business, mailOrder }, form(await verified("CI-D2"), { businessNumber: bn })),
+    ]);
+    expect(rs.filter((r) => r.ok && r.approved)).toHaveLength(1);
+    expect(rs.filter((r) => r.ok && !r.approved && r.reviewReasons.includes("business_duplicate"))).toHaveLength(1);
+  });
+
+  it("통신판매업 신고: 등록 없음·사업자번호 불일치·영업 정상 아님·조회 실패는 각각 「확인 필요」", async () => {
+    const business = new FakeBusinessStatusProvider();
+    const cases: [string, Parameters<FakeMailOrderProvider["register"]>[1] | "fail", string][] = [
+      ["제2024-서울강남-10001호", null, "mail_order_not_registered"],
+      ["제2024-서울강남-10002호", { businessNumber: "1112223339" }, "mail_order_not_registered"],
+      ["제2024-서울강남-10003호", { businessNumber: "", status: "CLOSED" }, "mail_order_not_active"],
+      ["제2024-서울강남-10004호", "fail", "mail_order_lookup_failed"],
+    ];
+    for (const [i, [number, record, reason]] of cases.entries()) {
+      const f = form(await verified(`CI-MO-${i}`), { mailOrderNumber: number });
+      if (record === "fail") mailOrder.fail(number);
+      else mailOrder.register(number, record && record.businessNumber === "" ? { ...record, businessNumber: normalize(f.businessNumber) } : record);
+      expect(await applyForSeller(db, { business, mailOrder }, f)).toMatchObject({ ok: true, approved: false, reviewReasons: [reason] });
+    }
+  });
+
+  it("공정위 조회 키가 없거나(연동 전) fake를 명시하지 않으면 조회 실패로 「확인 필요」", async () => {
+    const r = await applyForSeller(
+      db,
+      { business: new FakeBusinessStatusProvider(), mailOrder: new UnavailableMailOrderProvider() },
+      form(await verified("CI-NOFTC")),
+    );
+    expect(r).toMatchObject({ ok: true, approved: false, reviewReasons: ["mail_order_lookup_failed"] });
+    const prev = process.env.MAIL_ORDER_PROVIDER;
+    delete process.env.MAIL_ORDER_PROVIDER;
+    try {
+      const { mailOrderProvider } = await import("../../lib/server/sellers/businessCheck");
+      expect(mailOrderProvider().name).toBe("unavailable");
+    } finally {
+      process.env.MAIL_ORDER_PROVIDER = prev;
+    }
+  });
+});
+
+const normalize = (bn: string) => bn.replace(/-/g, "");
