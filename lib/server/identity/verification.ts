@@ -1,4 +1,4 @@
-import type { IdentityVerification, IdentityVerificationPurpose, PrismaClient } from "@prisma/client";
+import type { IdentityVerification, IdentityVerificationPurpose, Prisma, PrismaClient } from "@prisma/client";
 import { generateToken, hashToken } from "../auth/token";
 import { hashCi } from "./ciHash";
 import type { IdentityProvider } from "./provider";
@@ -8,7 +8,7 @@ const REQUEST_TTL_MS = 10 * 60_000;
 // 본인인증 시작. ownerToken은 시작한 브라우저에만 주는 일회용 값(HttpOnly 쿠키로 보관)이고,
 // 완료할 때 같은 값이 있어야 한다. DB에는 해시만 저장한다.
 export async function startIdentityVerification(
-  db: PrismaClient,
+  db: PrismaClient | Prisma.TransactionClient,
   provider: IdentityProvider,
   input: { purpose: IdentityVerificationPurpose; sellerId: string | null; subjectId?: string | null; now?: Date },
 ): Promise<{ verification: IdentityVerification; ownerToken: string }> {
@@ -24,7 +24,7 @@ export async function startIdentityVerification(
       requestId,
       ownerTokenHash: hashToken(ownerToken),
       expiresAt: new Date(now.getTime() + REQUEST_TTL_MS),
-      createdAt: now,
+      ...(input.now ? { createdAt: input.now } : {}),
     },
   });
   return { verification, ownerToken };

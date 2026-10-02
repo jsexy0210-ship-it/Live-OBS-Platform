@@ -59,6 +59,7 @@ tests/unit/**, tests/integration/**           테스트
   - 이메일+쇼핑몰로 시작 → PASS 완료 → 결과 CI가 그 쇼핑몰 `Seller.representativeCiHash`와 같고 계정이 대표자(`isOwner`)일 때만 일회용·10분 재설정 권한(`PasswordResetGrant`, 토큰 해시 저장) 발급 → 새 비밀번호 저장, 그 계정의 기존 세션 모두 폐기.
   - 본인인증 건은 시작한 브라우저에만 준 일회용 값(`IdentityVerification.ownerTokenHash`, HttpOnly 쿠키)과 묶고, 한 번 쓰면 `consumedAt`으로 소진한다(구매자 가입도 같음).
   - CI 불일치·직원 계정·없는 계정은 모두 같은 거부 응답(계정 존재 비노출). 시작·발급·완료·실패는 감사 로그.
+  - 시작 횟수: 쇼핑몰 하나당 하루 10회(KST 자정 초기화, DB 시계로 집계, 쇼핑몰별 직렬화). 넘으면 429 `reset_limit_exceeded`와 감사 로그(대표님 결정 2026-10-02). 없는 쇼핑몰 주소는 한 묶음으로 센다.
   - 직원(매니저·방송 담당) 비밀번호는 대표가 직원 관리에서 재설정하고, 직원의 기존 세션을 폐기한다.
 
 ### 3.2 마스터 역할

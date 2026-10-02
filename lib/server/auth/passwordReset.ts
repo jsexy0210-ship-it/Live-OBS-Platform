@@ -25,37 +25,65 @@ export const MIN_PASSWORD_LENGTH = 8;
 
 type Meta = { ip?: string | null; userAgent?: string | null; now?: Date };
 
+// 쇼핑몰 하나당 하루(한국 시간 자정 초기화) 비밀번호 찾기 시작 횟수. 실제 PASS는 호출마다 비용이 든다(대표님 결정 2026-10-02).
+export const RESET_DAILY_LIMIT_PER_SHOP = 10;
+
+export type StartResult =
+  | { ok: true; verificationId: string; requestId: string; ownerToken: string }
+  | { ok: false; reason: "reset_limit_exceeded" };
+
 export async function startSellerPasswordReset(
   db: PrismaClient,
   provider: IdentityProvider,
   input: { email: string; shopSlug: string },
   meta: Meta = {},
-) {
+): Promise<StartResult> {
   const seller = await db.seller.findUnique({ where: { slug: input.shopSlug }, select: { id: true } });
+  const sellerId = seller?.id ?? null;
   const user = seller
     ? await db.sellerUser.findUnique({
         where: { sellerId_email: { sellerId: seller.id, email: normalizeEmail(input.email) } },
         select: { id: true },
       })
     : null;
-  // 계정이 없어도 똑같이 인증을 시작한다(응답 모양이 같다).
-  const { verification, ownerToken } = await startIdentityVerification(db, provider, {
-    purpose: "PASSWORD_RESET",
-    sellerId: seller?.id ?? null,
-    subjectId: user?.id ?? null,
-    now: meta.now,
+
+  // 쇼핑몰별로 줄을 세워(advisory lock) 오늘(KST) 시작 건수를 DB 시계로 센 뒤, 한도 안일 때만 인증을 시작한다.
+  // 없는 쇼핑몰 주소로 온 요청은 하나의 묶음(sellerId 없음)으로 센다. 계정 유무와 상관없이 같은 응답이다.
+  const started = await db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`pwreset:${sellerId ?? "none"}`}))`;
+    const [{ count }] = await tx.$queryRaw<{ count: bigint }[]>`
+      SELECT count(*)::bigint AS count FROM "IdentityVerification"
+      WHERE "purpose" = 'PASSWORD_RESET'
+        AND "sellerId" IS NOT DISTINCT FROM ${sellerId}::uuid
+        AND "createdAt" >= (date_trunc('day', now() AT TIME ZONE 'Asia/Seoul') AT TIME ZONE 'Asia/Seoul')`;
+    if (Number(count) >= RESET_DAILY_LIMIT_PER_SHOP) return null;
+    return startIdentityVerification(tx, provider, { purpose: "PASSWORD_RESET", sellerId, subjectId: user?.id ?? null, now: meta.now });
   });
+
+  if (!started) {
+    await writeAudit(db, {
+      actorType: "SELLER_USER",
+      actorId: user?.id ?? null,
+      sellerId,
+      action: "auth.seller.password_reset.limited",
+      reason: "reset_limit_exceeded",
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+    });
+    return { ok: false, reason: "reset_limit_exceeded" };
+  }
+  const { verification, ownerToken } = started;
   await writeAudit(db, {
     actorType: "SELLER_USER",
     actorId: user?.id ?? null,
-    sellerId: seller?.id ?? null,
+    sellerId,
     action: "auth.seller.password_reset.start",
     targetType: "IdentityVerification",
     targetId: verification.id,
     ip: meta.ip,
     userAgent: meta.userAgent,
   });
-  return { verificationId: verification.id, requestId: verification.requestId, ownerToken };
+  return { ok: true, verificationId: verification.id, requestId: verification.requestId, ownerToken };
 }
 
 export type GrantResult = { ok: true; grantToken: string; expiresAt: Date } | { ok: false; reason: "reset_not_allowed" | "pending" };

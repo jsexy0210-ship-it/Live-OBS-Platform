@@ -9,6 +9,7 @@ export const POST = mutation(async (req: Request) => {
   const body = await readJson<{ email: string; shopSlug: string }>(req);
   if (!isString(body.email) || !isString(body.shopSlug)) return NextResponse.json({ error: "bad_request" }, { status: 400 });
   const r = await startSellerPasswordReset(prisma, identityProvider(), { email: body.email, shopSlug: body.shopSlug }, requestMeta(req));
+  if (!r.ok) return NextResponse.json({ error: r.reason }, { status: 429 });
   const res = NextResponse.json({ verificationId: r.verificationId, requestId: r.requestId }, { headers: { "cache-control": "no-store" } });
   setFlowCookie(res, IDV_COOKIE, r.ownerToken, RESET_PATH, 10 * 60);
   return res;
