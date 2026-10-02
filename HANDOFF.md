@@ -9,9 +9,10 @@
 | Live-OBS-Platform MASTER (2) | `session_018xa8SC5evpEFNVcQBwcN5t` | 요구사항 접수 · 작업 배정 · 독립 검수 · main 병합 · 상태 문서 관리. 2026-10-02 17:21 KST 교체 생성 |
 | (이전) MASTER | `session_01XqBPGTKiEMmRSMB5SfFp3C` | 컨텍스트 50% 도달로 교체. PR #15 병합 후 보관 완료 (2026-10-02 KST) |
 | 디자인 전담 (2) | `session_01DCQ38rPYwPnVCZJbhLgJnc` | 디자인 아티팩트 https://claude.ai/artifact/YYGXZ3u4QvjQpEMUHnN4tS 이어서 작업 (아티팩트 `project/` 파일만 소유). 우선순위: ① 오버레이 9:16·16:9 기본 템플릿 3종 ② 기존 아트보드 A안·화면 문구·도메인·도우미·구매자 문의 반영 ③ 남은 화면. 2026-10-02 18:45 KST MASTER 생성 |
+| 개발 전담 (기반) | `session_01Lhh5mXm1mdLnACzpHDNLUw` | 개발 1단계(화면 제외): 설계 문서 `docs/ARCHITECTURE.md` → 스키마·권한·테넌트 격리·주문대기 도메인·로그인·테스트·CI 테스트 단계. 소유: `prisma/**`, `lib/server/**`, `app/api/**`, `tests/**`, `docs/ARCHITECTURE.md`, `package*.json`, `ci.yml` 테스트 단계. 2026-10-02 21:30 KST MASTER 생성 |
 | (이전) 디자인 전담 | `session_011K2Cw69VDhwYpPegzFpXoK` | 작업 기억 72% 도달·수정 지시 미반영으로 교체. 약 130장 제작(아티팩트에 보존). 2026-10-02 18:45 KST 보관 |
 
-전담 세션 태그: `live-obs` + `lo-master` / `lo-design`. 새 전담 세션은 이 표에 추가하고 `docs/session-prompt.md`를 지시에 넣는다.
+전담 세션 태그: `live-obs` + `lo-master` / `lo-design` / `lo-dev`. 새 전담 세션은 이 표에 추가하고 `docs/session-prompt.md`를 지시에 넣는다.
 
 ## 완료
 
@@ -48,6 +49,5 @@
    - 프로젝트: 이름 변경 불가 → 유지, 설명만 변경
    - 버킷: 새 버킷 생성 → 필요한 파일만 복사 → 연결·검증 → 기존 버킷 삭제는 별도 결정 (객체 URL에 버킷명 포함 주의)
    - 기존 VM의 이전 사이트 종료 여부 결정
-2. **디자인 작업 우선** (운영자 결정, 2026-10-02): 화면 디자인 확정 전 기능 구현을 시작하지 않는다. 클로드디자인 프롬프트: `docs/DESIGN_PROMPT.md`
-3. 디자인 확정 후 대기열 도메인 판매자 범위 재설계 및 단위 테스트 (`docs/REFERENCE_MANGOTCG.md` 7절).
-4. 데이터 모델(판매자·상품·재고·주문·적립금) 및 DB 선택 설계.
+2. 디자인 수정 중 (깨짐 수정 → 쇼핑몰 PC판). 화면 구현은 디자인 확정 후 시작한다. 클로드디자인 프롬프트: `docs/DESIGN_PROMPT.md`
+3. 개발 1단계(화면과 무관한 기반)는 디자인과 병행한다 (대표님 결정 2026-10-02 21:15 KST): 설계(`docs/ARCHITECTURE.md`) → 데이터 모델·DB·권한·주문대기 도메인(`docs/REFERENCE_MANGOTCG.md` 7절)·로그인·테스트. 담당: 개발 전담 (기반).
