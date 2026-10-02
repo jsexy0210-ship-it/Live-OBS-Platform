@@ -163,6 +163,21 @@ describe("구매자 회원 제약", () => {
     await expect(createBuyer(seller.id, grade.id, "01011112222")).resolves.toBeTruthy();
   });
 
+  it("같은 쇼핑몰에서 본인인증 CI가 같으면 휴대폰·아이디가 달라도 중복 가입할 수 없다", async () => {
+    const { seller, grade } = await createSeller();
+    await createBuyer(seller.id, grade.id, "01011112222", "same-ci");
+    await expect(createBuyer(seller.id, grade.id, "01033334444", "same-ci")).rejects.toMatchObject({ code: "P2002" });
+  });
+
+  it("CI가 같아도 다른 쇼핑몰이나 탈퇴 후에는 가입할 수 있다", async () => {
+    const a = await createSeller();
+    const b = await createSeller();
+    const m = await createBuyer(a.seller.id, a.grade.id, undefined, "same-ci");
+    await expect(createBuyer(b.seller.id, b.grade.id, undefined, "same-ci")).resolves.toBeTruthy();
+    await db.buyerMember.update({ where: { id: m.id }, data: { status: "WITHDRAWN", deletedAt: new Date() } });
+    await expect(createBuyer(a.seller.id, a.grade.id, undefined, "same-ci")).resolves.toBeTruthy();
+  });
+
   it("탈퇴 상태와 deletedAt은 함께 기록해야 한다", async () => {
     const { seller, grade } = await createSeller();
     const m = await createBuyer(seller.id, grade.id);
@@ -200,5 +215,22 @@ describe("적립금 제약", () => {
     const policy = await db.rewardPolicy.create({ data: { sellerId: seller.id } });
     expect(policy.livePayoutEnabled).toBe(false);
     expect(policy.rankingBonusEnabled).toBe(false);
+  });
+});
+
+describe("판매자 대표자 제약", () => {
+  it("대표자 1명(CI)은 운영 중인 쇼핑몰을 1개만 가질 수 있다", async () => {
+    await db.seller.create({ data: { slug: "a", shopName: "A", status: "ACTIVE", representativeCiHash: "rep-ci" } });
+    await expect(
+      db.seller.create({ data: { slug: "b", shopName: "B", status: "PENDING", representativeCiHash: "rep-ci" } }),
+    ).rejects.toMatchObject({ code: "P2002" });
+  });
+
+  it("해지·반려된 쇼핑몰은 세지 않는다", async () => {
+    await db.seller.create({ data: { slug: "a", shopName: "A", status: "CLOSED", representativeCiHash: "rep-ci" } });
+    await db.seller.create({ data: { slug: "b", shopName: "B", status: "REJECTED", representativeCiHash: "rep-ci" } });
+    await expect(
+      db.seller.create({ data: { slug: "c", shopName: "C", status: "PENDING", representativeCiHash: "rep-ci" } }),
+    ).resolves.toBeTruthy();
   });
 });

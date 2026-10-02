@@ -96,6 +96,7 @@ CREATE TABLE "Seller" (
     "approvedAt" TIMESTAMPTZ(3),
     "approvedByAdminId" UUID,
     "suspendedReason" TEXT,
+    "representativeCiHash" TEXT,
     "liveVersion" INTEGER NOT NULL DEFAULT 0,
     "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -168,6 +169,8 @@ CREATE TABLE "BuyerMember" (
     "name" TEXT NOT NULL,
     "phone" TEXT NOT NULL,
     "phoneVerifiedAt" TIMESTAMPTZ(3),
+    "ciHash" TEXT NOT NULL,
+    "identityVerifiedAt" TIMESTAMPTZ(3) NOT NULL,
     "broadcastNickname" TEXT NOT NULL,
     "gradeId" UUID NOT NULL,
     "status" "BuyerMemberStatus" NOT NULL DEFAULT 'ACTIVE',
@@ -732,6 +735,7 @@ ALTER TABLE "OverlayToken" ADD CONSTRAINT "OverlayToken_sellerId_fkey" FOREIGN K
 -- AddForeignKey
 ALTER TABLE "AuditLog" ADD CONSTRAINT "AuditLog_sellerId_fkey" FOREIGN KEY ("sellerId") REFERENCES "Seller"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
+
 -- ───────────── Prisma 스키마로 표현할 수 없는 제약 (docs/ARCHITECTURE.md 4절) ─────────────
 
 -- 판매자당 「개봉 중」 1건
@@ -741,6 +745,7 @@ CREATE UNIQUE INDEX "QueueItem_one_opening_per_seller" ON "QueueItem"("sellerId"
 CREATE UNIQUE INDEX "BroadcastSession_one_live_per_seller" ON "BroadcastSession"("sellerId") WHERE "status" = 'LIVE';
 
 -- 구매자 회원 유니크는 탈퇴하지 않은 회원(deletedAt IS NULL)에만 적용
+CREATE UNIQUE INDEX "BuyerMember_sellerId_ciHash_active_key" ON "BuyerMember"("sellerId", "ciHash") WHERE "deletedAt" IS NULL;
 CREATE UNIQUE INDEX "BuyerMember_sellerId_phone_active_key" ON "BuyerMember"("sellerId", "phone") WHERE "deletedAt" IS NULL;
 CREATE UNIQUE INDEX "BuyerMember_sellerId_loginId_active_key" ON "BuyerMember"("sellerId", "loginId") WHERE "deletedAt" IS NULL;
 CREATE UNIQUE INDEX "BuyerMember_sellerId_broadcastNickname_active_key" ON "BuyerMember"("sellerId", "broadcastNickname") WHERE "deletedAt" IS NULL;
@@ -759,3 +764,7 @@ ALTER TABLE "Product" ADD CONSTRAINT "Product_price_check" CHECK ("price" >= 0);
 ALTER TABLE "QueueItem" ADD CONSTRAINT "QueueItem_quantity_check" CHECK ("quantity" > 0);
 ALTER TABLE "QueueItem" ADD CONSTRAINT "QueueItem_timerSeconds_check" CHECK ("timerSeconds" BETWEEN 0 AND 3600);
 ALTER TABLE "RewardPolicy" ADD CONSTRAINT "RewardPolicy_rankingBonusAmount_check" CHECK ("rankingBonusAmount" >= 0);
+
+-- 대표자 1명당 쇼핑몰 1개 (대표자 CI 기준, 해지·반려된 쇼핑몰은 제외)
+CREATE UNIQUE INDEX "Seller_representativeCiHash_open_key" ON "Seller"("representativeCiHash")
+  WHERE "representativeCiHash" IS NOT NULL AND "status" NOT IN ('CLOSED', 'REJECTED');
