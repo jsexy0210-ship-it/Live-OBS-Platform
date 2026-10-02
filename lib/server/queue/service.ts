@@ -16,6 +16,12 @@ class Rejected extends Error {
 
 const isUniqueViolation = (e: unknown) => e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
 
+// 시각은 DB 시계로 정한다(앱 서버마다 시계가 달라도 판정이 같게). 테스트는 now를 넘겨 고정한다.
+async function dbNow(tx: Tx): Promise<Date> {
+  const rows = await tx.$queryRaw<{ now: Date }[]>`SELECT now() AS now`;
+  return rows[0].now;
+}
+
 // 판매자 행을 잠그고 실시간 version을 올린다. 같은 판매자의 주문대기 변경은 이 잠금으로 한 줄로 처리된다.
 async function lockAndBump(tx: Tx, sellerId: string): Promise<number> {
   const s = await tx.seller.update({ where: { id: sellerId }, data: { liveVersion: { increment: 1 } }, select: { liveVersion: true } });
@@ -63,7 +69,6 @@ export async function applyQueueAction(
   opts: QueueActionOptions = {},
 ): Promise<QueueResult<QueueItem>> {
   requireSellerPermission(ctx, "broadcast.operate");
-  const now = opts.now ?? new Date();
   if (action === "timer" && !isValidTimer(opts.timerSeconds)) return { ok: false, reason: "invalid_timer" };
   // 취소는 사유가 있어야 한다(상태 기록·감사 로그에 남긴다).
   if (action === "cancel" && !opts.reason?.trim()) return { ok: false, reason: "reason_required" };
@@ -72,6 +77,7 @@ export async function applyQueueAction(
     db,
     ctx.sellerId,
     async (tx) => {
+      const now = opts.now ?? (await dbNow(tx));
       const item = await tx.queueItem.findFirst({
         where: { id: itemId, sellerId: ctx.sellerId },
         include: { broadcastSession: { select: { status: true } } },
@@ -182,7 +188,7 @@ export async function startBroadcast(
       const session = await tx.broadcastSession.create({ data: { sellerId: ctx.sellerId, title: input.title, startedAt: now } });
       const pending = await tx.queueItem.findMany({
         where: { sellerId: ctx.sellerId, status: "WAITING", broadcastSessionId: null },
-        orderBy: [{ receivedAt: "asc" }, { id: "asc" }],
+        orderBy: [{ position: "asc" }, { receivedAt: "asc" }, { id: "asc" }],
         select: { id: true },
       });
       for (const [i, p] of pending.entries()) {
@@ -220,10 +226,18 @@ export async function endBroadcast(
     if (await tx.queueItem.count({ where: { sellerId: ctx.sellerId, broadcastSessionId: live.id, status: "OPENING" } })) {
       throw new Rejected("opening_in_progress");
     }
-    const carried = await tx.queueItem.updateMany({
+    // 남은 대기는 방송 전 대기 맨 뒤로, 원래 순서를 지켜 옮긴다.
+    const remaining = await tx.queueItem.findMany({
       where: { sellerId: ctx.sellerId, broadcastSessionId: live.id, status: "WAITING" },
-      data: { broadcastSessionId: null, version: { increment: 1 } },
+      orderBy: [{ position: "asc" }, { receivedAt: "asc" }, { id: "asc" }],
+      select: { id: true },
     });
+    const max = await tx.queueItem.aggregate({ where: { sellerId: ctx.sellerId, broadcastSessionId: null }, _max: { position: true } });
+    let position = max._max.position ?? 0;
+    for (const r of remaining) {
+      await tx.queueItem.update({ where: { id: r.id }, data: { broadcastSessionId: null, position: ++position, version: { increment: 1 } } });
+    }
+    const carried = { count: remaining.length };
     await tx.broadcastSession.update({ where: { id: live.id }, data: { status: "ENDED", endedAt: now } });
     await writeAudit(tx, {
       actorType: ctx.actorType,

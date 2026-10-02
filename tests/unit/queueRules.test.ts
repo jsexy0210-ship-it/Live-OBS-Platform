@@ -59,6 +59,14 @@ describe("개봉 완료 되돌리기 (10초)", () => {
     expect(checkTransition(item("DONE", ago(10_001)), "revert", ctx)).toEqual({ ok: false, reason: "revert_expired" });
   });
 
+  it("방송이 끝난 항목(LIVE 아님)은 되돌릴 수 없다", () => {
+    expect(checkTransition({ ...item("DONE", ago(1_000)), inLiveBroadcast: false }, "revert", ctx)).toEqual({ ok: false, reason: "not_live" });
+  });
+
+  it("완료 시각이 지금보다 미래면 거부", () => {
+    expect(checkTransition(item("DONE", new Date(now.getTime() + 1_000)), "revert", ctx)).toEqual({ ok: false, reason: "revert_expired" });
+  });
+
   it("다른 「개봉 중」이 있으면 거부", () => {
     expect(checkTransition(item("DONE", ago(1_000)), "revert", { now, hasOtherOpening: true })).toEqual({
       ok: false,

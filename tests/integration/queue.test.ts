@@ -62,8 +62,9 @@ const status = async (id: string) => (await db.queueItem.findUniqueOrThrow({ whe
 describe("결제 완료 → 주문대기", () => {
   it("방송 전 결제는 미배정 대기로 쌓이고, 방송 시작 때 접수 시각 순으로 자동 편입된다", async () => {
     const s = await setupShop();
-    const later = await s.paidItem(sec(20));
+    // 결제는 들어온 순서대로 방송 전 대기 맨 뒤에 붙는다(순번 = 접수 순). 판매자가 순서를 바꾸면 그 순서를 따른다(아래 「방송 전 대기 순서」).
     const first = await s.paidItem(sec(10));
+    const later = await s.paidItem(sec(20));
     const r = await startBroadcast(db, s.ctx, { now: sec(30) });
     expect(r).toMatchObject({ ok: true, value: { absorbed: 2 } });
     const snap = await getQueueSnapshot(db, s.ctx);
@@ -225,6 +226,26 @@ describe("개봉 완료 되돌리기", () => {
     expect(await status(id)).toBe("DONE");
   });
 
+  it("방송이 끝난 뒤에는 10초 안이어도 되돌릴 수 없다 (다음 방송 개봉이 막히지 않게)", async () => {
+    const { s, id } = await doneItem();
+    await endBroadcast(db, s.ctx, { now: sec(11) });
+    expect(await applyQueueAction(db, s.ctx, id, "revert", { now: sec(12) })).toEqual({ ok: false, reason: "not_live" });
+    expect(await status(id)).toBe("DONE");
+    // 다음 방송의 개봉은 정상
+    await startBroadcast(db, s.ctx, { now: sec(20) });
+    const next = await s.paidItem(sec(21));
+    expect(await applyQueueAction(db, s.ctx, next, "start", { now: sec(22) })).toMatchObject({ ok: true });
+  });
+
+  it("시각을 넘기지 않으면 DB 시계로 판정한다 (방금 완료한 항목은 되돌릴 수 있다)", async () => {
+    const s = await setupShop();
+    await startBroadcast(db, s.ctx);
+    const id = await s.paidItem();
+    await applyQueueAction(db, s.ctx, id, "start");
+    await applyQueueAction(db, s.ctx, id, "complete");
+    expect(await applyQueueAction(db, s.ctx, id, "revert")).toMatchObject({ ok: true, value: { status: "OPENING" } });
+  });
+
   it("다른 항목이 「개봉 중」이면 거부", async () => {
     const { s, id } = await doneItem();
     const other = await s.paidItem(sec(11));
@@ -283,6 +304,36 @@ describe("순서 변경", () => {
       reason: "conflict",
     });
     expect((await getQueueSnapshot(db, s.ctx)).waiting.map((w) => w.id)).toEqual([ids[2], ids[0], ids[1]]);
+  });
+});
+
+describe("방송 전 대기 순서", () => {
+  const liveVersion = async (sellerId: string) => (await db.seller.findUniqueOrThrow({ where: { id: sellerId } })).liveVersion;
+
+  it("방송 전 대기 순서를 바꾸면 조회와 방송 시작 편입 모두 그 순서를 따른다", async () => {
+    const s = await setupShop();
+    const ids = [await s.paidItem(sec(1)), await s.paidItem(sec(2)), await s.paidItem(sec(3))];
+    const order = [ids[2], ids[0], ids[1]];
+    expect(
+      await reorderWaiting(db, s.ctx, { broadcastSessionId: null, orderedIds: order, expectedLiveVersion: await liveVersion(s.seller.id) }),
+    ).toMatchObject({ ok: true });
+    expect((await getQueueSnapshot(db, s.ctx)).beforeBroadcast.map((w) => w.id)).toEqual(order);
+    await startBroadcast(db, s.ctx, { now: sec(10) });
+    const snap = await getQueueSnapshot(db, s.ctx);
+    expect(snap.waiting.map((w) => w.id)).toEqual(order);
+    expect(snap.waiting.map((w) => w.position)).toEqual([1, 2, 3]);
+  });
+
+  it("방송 종료 때 남은 대기는 기존 방송 전 대기 뒤로, 원래 순서대로 붙는다", async () => {
+    const s = await setupShop();
+    await startBroadcast(db, s.ctx, { now: t0 });
+    const inLive = [await s.paidItem(sec(1)), await s.paidItem(sec(2))];
+    await endBroadcast(db, s.ctx, { now: sec(5) });
+    const pending = await s.paidItem(sec(6));
+    await startBroadcast(db, s.ctx, { now: sec(7) });
+    const live2 = [await s.paidItem(sec(8))];
+    await endBroadcast(db, s.ctx, { now: sec(9) });
+    expect((await getQueueSnapshot(db, s.ctx)).beforeBroadcast.map((w) => w.id)).toEqual([...inLive, pending, ...live2]);
   });
 });
 

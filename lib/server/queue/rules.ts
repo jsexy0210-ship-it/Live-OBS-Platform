@@ -52,8 +52,11 @@ export function checkTransition(item: TransitionInput, action: QueueAction, ctx:
     if (ctx.hasOtherOpening) return { ok: false, reason: "other_opening" };
   }
   if (action === "revert") {
-    // 완료 후 10초 안(서버 시각 기준)이고 다른 개봉 중이 없을 때만 되돌린다.
-    if (!item.doneAt || ctx.now.getTime() - item.doneAt.getTime() > REVERT_WINDOW_MS) {
+    // 그 항목의 방송이 LIVE일 때만(방송이 끝난 뒤 개봉 중이 남지 않게).
+    if (!item.inLiveBroadcast) return { ok: false, reason: "not_live" };
+    // 완료 후 10초 안(DB 시각 기준)이고 다른 개봉 중이 없을 때만 되돌린다. 완료 시각이 미래면 거부.
+    const elapsed = item.doneAt ? ctx.now.getTime() - item.doneAt.getTime() : -1;
+    if (!item.doneAt || elapsed < 0 || elapsed > REVERT_WINDOW_MS) {
       return { ok: false, reason: "revert_expired" };
     }
     if (ctx.hasOtherOpening) return { ok: false, reason: "other_opening" };

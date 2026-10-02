@@ -33,18 +33,18 @@ export async function getQueueSnapshot(db: PrismaClient, ctx: TenantContext) {
         live
           ? tx.queueItem.findMany({
               where: { sellerId, broadcastSessionId: live.id, status: "WAITING" },
-              orderBy: [{ position: "asc" }, { receivedAt: "asc" }],
+              orderBy: [{ position: "asc" }, { receivedAt: "asc" }, { id: "asc" }],
               select: ITEM_FIELDS,
             })
           : Promise.resolve([]),
         tx.queueItem.findMany({
           where: { sellerId, broadcastSessionId: null, status: "WAITING" },
-          orderBy: [{ receivedAt: "asc" }, { id: "asc" }],
+          orderBy: [{ position: "asc" }, { receivedAt: "asc" }, { id: "asc" }],
           select: ITEM_FIELDS,
         }),
         tx.queueItem.findMany({
           where: { sellerId, status: "DONE" },
-          orderBy: { doneAt: "desc" },
+          orderBy: [{ doneAt: "desc" }, { id: "desc" }],
           take: 10,
           select: ITEM_FIELDS,
         }),
