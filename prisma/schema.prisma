@@ -26,38 +26,53 @@ enum PlatformAdminStatus {
 }
 
 model PlatformAdmin {
-  id               String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email            String              @unique
-  passwordHash     String
-  name             String
-  role             PlatformAdminRole
-  status           PlatformAdminStatus @default(ACTIVE)
-  totpSecretEnc    String?
-  totpEnabledAt    DateTime?           @db.Timestamptz(3)
-  failedLoginCount Int                 @default(0)
-  lockedUntil      DateTime?           @db.Timestamptz(3)
-  lastLoginAt      DateTime?           @db.Timestamptz(3)
-  createdAt        DateTime            @default(now()) @db.Timestamptz(3)
+  id                   String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email                String              @unique
+  passwordHash         String
+  name                 String
+  role                 PlatformAdminRole
+  status               PlatformAdminStatus @default(ACTIVE)
+  totpSecretEnc        String?
+  totpEnabledAt        DateTime?           @db.Timestamptz(3)
+  // 등록 확인 전 임시 TOTP 비밀키(암호화). 확인되면 totpSecretEnc로 옮긴다.
+  totpPendingSecretEnc String?
+  // 마지막으로 받아들인 TOTP 카운터. 이 값 이하의 코드는 재사용으로 거부한다.
+  lastTotpCounter      Int?
+  failedLoginCount     Int                 @default(0)
+  lockedUntil          DateTime?           @db.Timestamptz(3)
+  lastLoginAt          DateTime?           @db.Timestamptz(3)
+  createdAt            DateTime            @default(now()) @db.Timestamptz(3)
 
   sessions        AdminSession[]
   approvedSellers Seller[]
 }
 
 model AdminSession {
-  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  adminId       String    @db.Uuid
-  tokenHash     String    @unique
-  mfaVerifiedAt DateTime? @db.Timestamptz(3)
-  ip            String?
-  userAgent     String?
-  expiresAt     DateTime  @db.Timestamptz(3)
-  lastSeenAt    DateTime  @default(now()) @db.Timestamptz(3)
-  revokedAt     DateTime? @db.Timestamptz(3)
-  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  adminId        String    @db.Uuid
+  tokenHash      String    @unique
+  mfaVerifiedAt  DateTime? @db.Timestamptz(3)
+  // TOTP 미등록 마스터의 로그인: 등록 API 외에는 모두 거부하는 제한 세션
+  enrollmentOnly Boolean   @default(false)
+  ip             String?
+  userAgent      String?
+  expiresAt      DateTime  @db.Timestamptz(3)
+  lastSeenAt     DateTime  @default(now()) @db.Timestamptz(3)
+  revokedAt      DateTime? @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
 
   admin PlatformAdmin @relation(fields: [adminId], references: [id])
 
   @@index([adminId])
+}
+
+// 로그인 실패 IP 제한. key는 「영역:ip:주소」. 실패 횟수는 원자적으로 올린다(lib/server/auth/throttle.ts).
+model LoginThrottle {
+  key         String    @id
+  failures    Int       @default(0)
+  windowStart DateTime  @db.Timestamptz(3)
+  lockedUntil DateTime? @db.Timestamptz(3)
+  updatedAt   DateTime  @default(now()) @db.Timestamptz(3)
 }
 
 // ───────────── 판매자(쇼핑몰)·직원 ─────────────

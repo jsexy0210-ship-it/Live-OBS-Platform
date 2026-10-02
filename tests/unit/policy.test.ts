@@ -1,23 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { isLocked, isSessionActive, nextLockStateAfterFailure, sessionExpiry } from "../../lib/server/auth/policy";
+import { isLocked, isSessionActive, sessionExpiry } from "../../lib/server/auth/policy";
 
 const t0 = new Date("2026-10-02T12:00:00Z");
 const min = (n: number) => new Date(t0.getTime() + n * 60_000);
 
-describe("로그인 잠금 (5번 틀리면 10분)", () => {
-  it("4번째까지는 횟수만 늘린다", () => {
-    let s = { failedLoginCount: 0, lockedUntil: null as Date | null };
-    for (let i = 0; i < 4; i++) s = nextLockStateAfterFailure(s, t0);
-    expect(s.failedLoginCount).toBe(4);
-    expect(isLocked(s, t0)).toBe(false);
-  });
-
-  it("5번째에 10분 잠그고 10분 뒤 풀린다", () => {
-    const s = nextLockStateAfterFailure({ failedLoginCount: 4, lockedUntil: null }, t0);
-    expect(s.lockedNow).toBe(true);
-    expect(s.failedLoginCount).toBe(0);
+describe("잠금 상태", () => {
+  // 실패 횟수 증가·잠금 설정은 DB에서 원자적으로 한다(tests/integration/auth.test.ts 동시 실패 테스트).
+  it("잠금 시각 전에는 잠김, 지나면 풀림", () => {
+    const s = { failedLoginCount: 0, lockedUntil: min(10) };
     expect(isLocked(s, min(9))).toBe(true);
     expect(isLocked(s, min(10))).toBe(false);
+    expect(isLocked({ failedLoginCount: 3, lockedUntil: null }, t0)).toBe(false);
   });
 });
 

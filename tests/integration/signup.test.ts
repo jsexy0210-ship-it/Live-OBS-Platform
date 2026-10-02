@@ -12,12 +12,13 @@ beforeEach(resetDb);
 afterAll(() => db.$disconnect());
 
 const provider = new FakeIdentityProvider();
+const own = (sellerId: string) => ({ sellerId, purpose: "BUYER_SIGNUP" as const });
 const person = (ci: string) => ({ ci, name: "홍길동", phone: "01012345678", birthDate: new Date("1995-05-05") });
 
 async function verified(sellerId: string, ci: string) {
   const v = await startIdentityVerification(db, provider, { purpose: "BUYER_SIGNUP", sellerId });
   provider.complete(v.requestId, person(ci));
-  const r = await completeIdentityVerification(db, provider, v.id);
+  const r = await completeIdentityVerification(db, provider, v.id, { sellerId, purpose: "BUYER_SIGNUP" });
   if (!r.ok) throw new Error(r.reason);
   return r.verification;
 }
@@ -35,14 +36,27 @@ describe("PASS 본인인증 기록", () => {
     expect(raw).not.toContain("RAW-CI-VALUE");
   });
 
+  it("다른 쇼핑몰이나 다른 용도로는 인증을 완료할 수 없다", async () => {
+    const a = await createSeller();
+    const b = await createSeller();
+    const v = await startIdentityVerification(db, provider, { purpose: "BUYER_SIGNUP", sellerId: a.seller.id });
+    provider.complete(v.requestId, person("CI-O"));
+    expect(await completeIdentityVerification(db, provider, v.id, own(b.seller.id))).toEqual({ ok: false, reason: "not_found" });
+    expect(await completeIdentityVerification(db, provider, v.id, { sellerId: a.seller.id, purpose: "PASSWORD_RESET" })).toEqual({
+      ok: false,
+      reason: "not_found",
+    });
+    expect((await db.identityVerification.findUniqueOrThrow({ where: { id: v.id } })).status).toBe("PENDING");
+  });
+
   it("인증 실패·만료는 VERIFIED가 되지 않는다", async () => {
     const { seller } = await createSeller();
     const failed = await startIdentityVerification(db, provider, { purpose: "BUYER_SIGNUP", sellerId: seller.id });
     provider.fail(failed.requestId);
-    expect(await completeIdentityVerification(db, provider, failed.id)).toEqual({ ok: false, reason: "failed" });
+    expect(await completeIdentityVerification(db, provider, failed.id, own(seller.id))).toEqual({ ok: false, reason: "failed" });
     const old = await startIdentityVerification(db, provider, { purpose: "BUYER_SIGNUP", sellerId: seller.id, now: new Date(Date.now() - 3_600_000) });
     provider.complete(old.requestId, person("x"));
-    expect(await completeIdentityVerification(db, provider, old.id)).toEqual({ ok: false, reason: "expired" });
+    expect(await completeIdentityVerification(db, provider, old.id, own(seller.id))).toEqual({ ok: false, reason: "expired" });
   });
 });
 
@@ -54,7 +68,7 @@ describe("운영 환경 차단", () => {
     const prev = process.env.NODE_ENV;
     (process.env as Record<string, string | undefined>).NODE_ENV = "production";
     try {
-      expect(await completeIdentityVerification(db, provider, v.id)).toEqual({ ok: false, reason: "failed" });
+      expect(await completeIdentityVerification(db, provider, v.id, own(seller.id))).toEqual({ ok: false, reason: "failed" });
     } finally {
       (process.env as Record<string, string | undefined>).NODE_ENV = prev;
     }
