@@ -99,6 +99,29 @@ describe("배송지 입력의 보이지 않는 문자", () => {
     }
   });
 
+  it("메모의 태그 문자는 깃발 시퀀스(🏴 + 태그 + 끝 태그) 안에서만 받고, 따로 숨긴 태그 문자는 거부", () => {
+    const scotland = "\u{1f3f4}\u{e0067}\u{e0062}\u{e0073}\u{e0063}\u{e0074}\u{e007f}";
+    expect(parseShippingAddress({ ...base, memo: `${scotland} 문 앞 ${scotland}` })).toMatchObject({ memo: `${scotland} 문 앞 ${scotland}` });
+    for (const bad of [
+      "문 앞\u{e0068}\u{e0069}", // 글 뒤에 숨긴 태그 문자
+      "문 앞\u{e0068}\u{e0069}\u{e007f}", // 🏴 없이 태그 + 끝 태그
+      "\u{1f3f4}\u{e0067}\u{e0062}", // 끝 태그 없음
+      "\u{1f3f4}\u{e007f}", // 태그 없이 끝 태그만
+      `${scotland}\u{e0041}`, // 깃발 뒤에 이어 붙인 태그
+      "문 앞\u{e0001}", // 언어 태그(범위 밖)
+    ]) {
+      expect(parseShippingAddress({ ...base, memo: bad }), JSON.stringify(bad)).toBeNull();
+    }
+  });
+
+  it("메모의 비문자(U+FFFE·U+FFFF, U+FDD0–FDEF, 각 평면 끝 두 글자)는 거부", () => {
+    for (const bad of ["\ufffe", "\uffff", "\ufdd0", "\ufdef", "\u{1fffe}", "\u{1ffff}", "\u{10fffe}", "\u{10ffff}"]) {
+      expect(parseShippingAddress({ ...base, memo: `문 앞${bad}` }), JSON.stringify(bad)).toBeNull();
+    }
+    // 바로 옆 글자는 받는다
+    expect(parseShippingAddress({ ...base, memo: "문 앞 \ufdcf\ufdf0" })).not.toBeNull();
+  });
+
   it("연락처·우편번호는 전각 숫자·하이픈도 정규화해 받는다", () => {
     expect(parseShippingAddress({ ...base, phone: "０１０－１２３４－５６７８", zipCode: "０６２３６" })).toMatchObject({ phone: "01012345678", zipCode: "06236" });
   });
