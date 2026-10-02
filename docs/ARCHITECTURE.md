@@ -1,8 +1,8 @@
 # 아키텍처 설계 (개발 1단계 · 기반)
 
-> 작성: 2026-10-02 (KST) · 개발 전담(기반) · 상태: **설계 초안, MASTER 검수 대기**
+> 작성: 2026-10-02 (KST) · 개발 전담(기반) · 상태: **확정** (2026-10-02 21:50 KST MASTER 검수, 판단 필요 11건 확정 반영)
 > 범위: 서버 기반(DB·인증·권한·테넌트 격리·주문대기 도메인·실시간 전달). 화면(UI)·PG·알림톡·문자·배포는 제외.
-> 표기: **[확정 제안]** 이 PR 병합 시 확정으로 본다 · **[판단 필요]** MASTER 또는 대표님 결정 필요 · **[비용]** 돈이 드는 선택(대표님 결정)
+> 표기: **[확정 제안]** 이 PR 병합 시 확정 · **[확정]** 대표님·MASTER 결정 반영 · **[비용]** 돈이 드는 선택(대표님 결정, 미정)
 
 ## 1. 기술 선택
 
@@ -45,13 +45,14 @@ tests/unit/**, tests/integration/**           테스트
 
 | 영역 | 주체 | 쿠키 | 로그인 | 세션 유지 |
 |---|---|---|---|---|
-| 마스터 | `PlatformAdmin` | `lo_admin` (경로 `/`, 마스터 호스트 한정) | 이메일+비밀번호+TOTP | 유휴 30분, 최대 12시간 |
-| 판매자 | `SellerUser` (대표·직원) | `lo_seller` | 이메일+비밀번호 | 유휴 12시간, 최대 30일 |
+| 마스터 | `PlatformAdmin` | `lo_admin` (경로 `/`, 마스터 호스트 한정) | 이메일+비밀번호+TOTP | 미활동 30분, 최대 8시간 |
+| 판매자 | `SellerUser` (대표·직원) | `lo_seller` | 이메일+비밀번호 | 미활동 12시간, 최대 30일. 방송 LIVE 중에는 미활동 로그아웃 없음 |
 | 구매자 | `BuyerMember` (판매자 쇼핑몰별) | `lo_buyer` (쇼핑몰 호스트 한정) | 4.3 참고 | 최대 30일 |
 
 - 세션 테이블도 영역별로 분리(`AdminSession`, `SellerSession`, `BuyerSession`). 판매자 세션으로 마스터 API를 호출하면 세션 조회 자체가 실패한다 → **판매자는 마스터 기능에 접근 불가**가 구조적으로 보장된다.
 - 쿠키 공통: `HttpOnly`, `Secure`(운영), `SameSite=Lax`. 상태 변경 API는 `Origin` 검사로 CSRF 차단.
-- 로그인 실패 5회 → 15분 잠금(계정+IP 기준). 로그인·실패·잠금은 감사 로그.
+- 판매자 미활동 로그아웃은 방송이 LIVE인 동안 적용하지 않고, 방송 종료 30분 뒤부터 다시 적용한다(디자인 AU-007). 최대 유지 시간은 그대로 적용.
+- 로그인 실패 5회 → 10분 잠금(계정+IP 기준, 디자인 AU-001). 로그인·실패·잠금은 감사 로그.
 
 ### 3.2 마스터 역할
 
@@ -68,7 +69,7 @@ tests/unit/**, tests/integration/**           테스트
 
 - 표는 코드의 한 곳(`lib/server/authz/permissions.ts`)에 상수로 두고, 모든 마스터 API는 `requirePlatformAdmin(permission)`을 거친다. 조회 전용은 어떤 변경 권한도 갖지 않는다.
 - 최고관리자는 최소 1명 유지(마지막 최고관리자 강등·정지 거부).
-- [판단 필요] 운영·CS의 세부 권한 경계(위 표는 권고안).
+- [확정] 위 표대로 운영·CS 권한 경계를 둔다.
 
 ### 3.3 판매자 직원 역할
 
@@ -78,7 +79,7 @@ tests/unit/**, tests/integration/**           테스트
 | `MANAGER` 매니저 | 상품·주문·회원·문의·방송·오버레이. 구독·PG·직원·실지급 스위치 제외 |
 | `BROADCASTER` 방송 담당 | 방송 대시보드(주문대기 조작·HIT·타이머)와 오버레이만 |
 
-[판단 필요] 직원 역할 개수·이름 (권고안 3개).
+[확정] 직원 역할은 위 3개.
 
 ### 3.4 테넌트 격리 (판매자 간 차단)
 
@@ -88,7 +89,7 @@ tests/unit/**, tests/integration/**           테스트
 4. **구매자**는 쇼핑몰 호스트로 `sellerId`가 정해지고, 자기 회원 ID 범위만 조회한다.
 5. **마스터 대리 조회**는 읽기 전용 컨텍스트(`{ sellerId, readOnly: true, actor: admin }`)로 판매자 조회 함수를 재사용하고, 변경 함수는 `readOnly`면 거부한다. 진입 시 사유와 함께 감사 로그.
 6. 통합 테스트에 판매자 A·B를 만들고 B 세션으로 A의 주문·주문대기·회원·상품 조회·변경이 모두 거부되는지 검사한다.
-7. [판단 필요] Postgres 행 수준 보안(RLS)은 이번 단계에서 쓰지 않는다(Prisma 연결 풀과 세션 변수 결합이 복잡). 위 2·3으로 막고, 운영 전 보강 여부를 다시 정한다.
+7. [확정] Postgres 행 수준 보안(RLS)은 이번 단계에서 쓰지 않는다(Prisma 연결 풀과 세션 변수 결합이 복잡). 위 2·3으로 막고, 운영 전 보강 여부를 다시 정한다.
 
 ## 4. 데이터 모델 초안
 
@@ -105,16 +106,16 @@ tests/unit/**, tests/integration/**           테스트
 - `SellerDomain`: id, sellerId, hostname(**유니크**), verifiedAt, certStatus — 개인 도메인 연결용 자리만
 - `SellerUser`: id, sellerId, email, passwordHash, name, role(`OWNER | MANAGER | BROADCASTER`), status(`ACTIVE | DISABLED`), failedLoginCount, lockedUntil, lastLoginAt — **(sellerId, email) 유니크**, 판매자당 OWNER 1명 이상
 - `SellerSession`: id, sellerUserId, sellerId, tokenHash(**유니크**), expiresAt, lastSeenAt, revokedAt
-- [판단 필요] 한 사람이 여러 판매자의 직원이 되는 경우: 권고안은 판매자별 별도 계정(이메일 같아도 됨). 한 판매자가 쇼핑몰 여러 개를 갖는 경우는 지원하지 않음(별도 판매자로 가입).
+- [확정] 한 사람이 여러 판매자의 직원이 되는 경우 판매자별 별도 계정(이메일 같아도 됨). 한 판매자가 쇼핑몰 여러 개를 갖는 경우는 지원하지 않음(별도 판매자로 가입).
 
 ### 4.3 구매자 회원 (판매자 쇼핑몰별)
 
 - `BuyerMember`: id, sellerId, loginId, passwordHash, name, phone, phoneVerifiedAt, broadcastNickname, gradeId, status(`ACTIVE | DORMANT | WITHDRAWN`), marketingConsentAt, createdAt — **(sellerId, phone) 유니크**, **(sellerId, loginId) 유니크**, **(sellerId, broadcastNickname) 유니크**(방송 화면에서 구분 가능하게)
-- `MemberGrade`: id, sellerId, code(`BASIC | SPROUT | SILVER | GOLD | VIP`), displayName, sortOrder — 판매자 생성 시 일반·새싹·실버·골드·VIP 5개를 기본으로 만든다. 디자인 지시(`docs/DESIGN_PROMPT.md` 245줄)에 「이름·개수는 판매자가 정한다」가 있어 고정 enum이 아니라 판매자별 테이블로 둔다.
+- `MemberGrade`: id, sellerId, displayName, sortOrder, systemKey(nullable: `BASIC | SPROUT | SILVER | GOLD | VIP`) — 등급은 **id·displayName·sortOrder로 식별**한다. 판매자 생성 시 일반·새싹·실버·골드·VIP 5개를 기본으로 만들고 `systemKey`로 표시만 한다. 판매자가 추가한 등급은 `systemKey = null`. **(sellerId, displayName) 유니크**, **(sellerId, systemKey) 유니크(null 제외)**. 디자인 지시(`docs/DESIGN_PROMPT.md` 245줄) 「이름·개수는 판매자가 정한다」에 맞춰 고정 enum으로 식별하지 않는다. 적립률(`RewardPolicy.rates`)도 등급 id 기준. [확정]
 - `PhoneVerification`: id, sellerId, phone, codeHash, purpose(`SIGNUP | RESET`), attempts, expiresAt, verifiedAt — 발송은 `SmsSender` 인터페이스 뒤에 두고 개발·테스트는 가짜 발송기만 쓴다(실제 문자 연동 제외).
 - `BuyerSession`: id, buyerMemberId, sellerId, tokenHash(**유니크**), expiresAt, revokedAt
 - 같은 사람이 다른 판매자 쇼핑몰에 가입하면 별도 회원이다(데이터 공유 없음).
-- [판단 필요] 구매자 로그인 수단: 권고안은 「아이디+비밀번호」, 가입 시 휴대폰 인증 필수. 휴대폰 번호 로그인·카카오 로그인은 보류.
+- [확정] 구매자 로그인 수단은 「아이디+비밀번호」, 가입 시 휴대폰 인증 필수. 휴대폰 번호 로그인·카카오 로그인은 보류.
 - [비용] 휴대폰 인증 문자 발송 업체 (PRODUCT_SCOPE 미확정 항목과 동일).
 
 ### 4.4 상품·옵션·재고
@@ -124,11 +125,11 @@ tests/unit/**, tests/integration/**           테스트
 - `ProductOption`: id, sellerId, productId, name(예: 「1팩」), priceDelta, stock(**CHECK stock >= 0**), sku, sortOrder — 옵션 없는 상품도 기본 옵션 1개를 둬 재고를 한 곳에서 관리
 - `StockMovement`: id, sellerId, optionId, delta, reason(`ORDER | CANCEL | REFUND | MANUAL`), orderId, actor, createdAt — 재고 변경 이력
 - 재고 차감은 `UPDATE … SET stock = stock - n WHERE id = ? AND sellerId = ? AND stock >= n`의 영향 행 수로 판정(초과 판매 방지).
-- [판단 필요] 재고 차감 시점: 권고안은 **결제 완료 시 차감**, 결제 대기 중에는 15분 선점(예약) 없이 결제 완료 순으로 확정. 라이브 판매 특성상 결제 경합이 심하면 주문 생성 시 선점으로 바꾼다.
+- [확정] 재고 차감 시점: **결제 완료 시 차감**(선점 없음, 결제 완료 순). 동시 결제로 재고가 모자라면 늦게 결제된 주문은 `PAID`로 기록하되 `stockShortageAt`을 남겨 「취소·환불 대상」으로 표시하고, 주문대기는 만들지 않는다. 실제 PG 환불 연동은 다음 단계.
 
 ### 4.5 주문·주문 품목
 
-- `Order`: id, sellerId, orderNo(판매자별 표시 번호, **(sellerId, orderNo) 유니크**), buyerMemberId, status(`PENDING_PAYMENT | PAID | CANCELLED | REFUNDED`), broadcastNicknameSnapshot, totalAmount, rewardUsedAmount, paymentMethod(`CARD | BANK_TRANSFER | …`), pgProvider, pgTxId, paidAt, cancelledAt, refundedAt, createdAt
+- `Order`: id, sellerId, orderNo(판매자별 표시 번호, **(sellerId, orderNo) 유니크**), buyerMemberId, status(`PENDING_PAYMENT | PAID | CANCELLED | REFUNDED`), broadcastNicknameSnapshot, totalAmount, rewardUsedAmount, paymentMethod(`CARD | BANK_TRANSFER | …`), pgProvider, pgTxId, paidAt, stockShortageAt(재고 부족 표시), cancelledAt, refundedAt, createdAt
 - `OrderItem`: id, sellerId, orderId, productId, optionId, productNameSnapshot, optionNameSnapshot, unitPrice, quantity
 - `OrderStatusHistory`: id, sellerId, orderId, from, to, actor, reason, createdAt
 - 상태 전이 (그 외 거부):
@@ -139,7 +140,7 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 ```
 
 - 결제 완료 → 재고 차감 + 주문대기 생성 + 적립금 지급 대기 기록. 환불 → 재고 복원(선택) + 적립금 회수 + 연결된 「대기」 주문대기 취소.
-- [판단 필요] 부분 취소·부분 환불: 이번 단계 미지원(주문 전체 단위) 권고.
+- [확정] 부분 취소·부분 환불: 이번 단계 미지원(주문 전체 단위).
 
 ### 4.6 방송 세션·주문대기·HIT
 
@@ -154,19 +155,21 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 |---|---|---|---|
 | 개봉 시작 | `WAITING` | `OPENING`, openingStartedAt 기록 | 다른 OPENING 없음, 방송 LIVE 중 |
 | 개봉 완료 | `OPENING` | `DONE` | |
+| 완료 되돌리기 | `DONE` | `OPENING`, doneAt 비움 | doneAt에서 **10초 안**, 다른 OPENING 없음. 감사 로그·상태 기록 필수 |
 | 취소 | `WAITING`, `OPENING` | `CANCELLED` | 사유 기록, 화면은 확인 후 호출 |
 | 순서 변경 | `WAITING` 항목끼리만 | position 재배치 | 같은 방송 범위 안 |
 | 타이머 조정 | `WAITING`, `OPENING` | timerSeconds 변경 | 0~3600초 |
 
-  - `DONE`·`CANCELLED`는 끝 상태. 되돌리기 없음. [판단 필요] 실수로 완료한 경우 「완료 취소(→ OPENING)」 허용 여부.
+  - [확정] `CANCELLED`는 끝 상태. `DONE`은 10초 안에만 `OPENING`으로 되돌릴 수 있고, 10초가 지나면 끝 상태(거부). 기준 시각은 서버 시각.
+  - 상태 변경은 모두 `QueueItemStatusHistory`(id, sellerId, queueItemId, from, to, actor, reason, createdAt)에 남긴다.
   - 모든 변경은 트랜잭션 + `version` 비교(낙관적 잠금)로 두 화면 동시 조작 시 나중 요청을 거부한다.
   - 주문대기 취소는 주문 취소·환불과 별개다(개봉만 하지 않음). 주문 환불 시에는 연결된 `WAITING`·`OPENING` 항목을 자동 취소한다.
 - 방송 전 주문 처리:
   - 방송이 없을 때 결제된 주문은 `broadcastSessionId = null`, `WAITING`으로 접수 시각 순으로 쌓인다.
   - 방송 시작 시 미배정 `WAITING` 항목을 접수 시각 순으로 새 방송에 편입하고 position을 다시 매긴다.
   - 방송 종료 시 남은 `WAITING`은 미배정으로 돌려 다음 방송에 이어진다. `OPENING`이 남아 있으면 종료를 거부(먼저 완료 또는 취소).
-  - [판단 필요] 방송 시작 때 미배정 주문을 자동 편입(권고) vs 판매자가 골라 편입.
-- [판단 필요] 주문대기 단위: 권고안은 **주문 품목 1개 = 대기 1건(수량 표시)**. 망고TCG는 주문 1건 = 대기 1건. 수량만큼 쪼개는 방식은 보류.
+  - [확정] 방송 시작 때 미배정 주문은 자동 편입한다.
+- [확정] 주문대기 단위: **주문 품목 1개 = 대기 1건(수량 표시)**. 수량만큼 쪼개지 않는다.
 
 ### 4.7 적립금
 
@@ -181,7 +184,7 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 - `OverlayToken`: id, sellerId, tokenHash(**유니크**), createdAt, revokedAt — 오버레이 URL용 추측 불가 토큰. 재발급 시 이전 토큰 폐기.
 - `AuditLog` (추가만, 수정·삭제 없음): id, actorType(`PLATFORM_ADMIN | SELLER_USER | BUYER | SYSTEM`), actorId, sellerId(nullable), action(예: `seller.suspend`, `queue.cancel`, `reward.live_payout.enable`, `admin.impersonate.view`), targetType, targetId, before(JSON), after(JSON), reason, ip, userAgent, createdAt
   - 비밀번호 해시·토큰·TOTP 비밀키·카드 정보는 before/after에 넣지 않는다(기록 전 제거).
-  - [판단 필요] DB 권한으로 UPDATE/DELETE를 막는 것은 운영 DB 계정 설계 때 적용.
+  - DB 권한으로 UPDATE/DELETE를 막는 것은 운영 DB 계정 설계 때 적용(다음 단계).
 
 ### 4.9 이번 초안에서 뺀 것 (다음 단계)
 
@@ -214,7 +217,7 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 
 ## 7. 테스트·CI
 
-- 단위: 주문대기 상태 전이 표 전체(허용·거부), 순서 변경, 방송 전 주문 편입, 권한 표, 비밀번호 해시·세션 토큰.
+- 단위: 주문대기 상태 전이 표 전체(허용·거부), 완료 되돌리기(10초 안 허용 / 10초 뒤 거부 / 다른 개봉 중이 있으면 거부), 순서 변경, 방송 전 주문 편입, 권한 표, 비밀번호 해시·세션 토큰.
 - 통합: 실제 Postgres에 `prisma migrate deploy` 후
   - 판매자 A·B 격리(조회·변경 거부)
   - 마스터 역할별 허용·거부, 판매자 세션으로 마스터 API 거부
@@ -229,20 +232,22 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 - [비용] 문자·알림톡·본인인증 업체 — PRODUCT_SCOPE 미확정 항목.
 - 비밀값(DB 접속 문자열, 세션·TOTP 암호화 키)은 환경변수로만. 저장소·문서·로그 기록 금지.
 
-## 9. 판단 필요 모음
+## 9. 확정 결과 (2026-10-02 21:50 KST)
 
-| 번호 | 항목 | 권고안 |
-|---|---|---|
-| 1 | 운영·CS 세부 권한 경계 | 3.2 표 |
-| 2 | 판매자 직원 역할 | 대표·매니저·방송 담당 3개 |
-| 3 | 직원이 여러 판매자 소속일 때 | 판매자별 별도 계정 |
-| 4 | 구매자 로그인 수단 | 아이디+비밀번호, 가입 시 휴대폰 인증 |
-| 5 | 재고 차감 시점 | 결제 완료 시 |
-| 6 | 부분 취소·환불 | 이번 단계 미지원 |
-| 7 | 주문대기 단위 | 주문 품목 1개 = 대기 1건 |
-| 8 | 개봉 완료 되돌리기 | 미허용 |
-| 9 | 방송 전 주문 편입 | 방송 시작 시 자동 편입 |
-| 10 | RLS 적용 | 이번 단계 미적용, 운영 전 재검토 |
-| 11 | 회원 등급 | 판매자별 테이블, 기본 5개(일반·새싹·실버·골드·VIP) |
+| 번호 | 항목 | 확정 | 결정 |
+|---|---|---|---|
+| 1 | 운영·CS 세부 권한 경계 | 3.2 표 | MASTER |
+| 2 | 판매자 직원 역할 | 대표·매니저·방송 담당 3개 | MASTER |
+| 3 | 직원이 여러 판매자 소속일 때 | 판매자별 별도 계정 | MASTER |
+| 4 | 구매자 로그인 수단 | 아이디+비밀번호, 가입 시 휴대폰 인증 필수 | MASTER |
+| 5 | 재고 차감 시점 | 결제 완료 시. 재고 부족한 늦은 결제는 취소·환불 대상 표시 | 대표님 |
+| 6 | 부분 취소·환불 | 이번 단계 미지원 | MASTER |
+| 7 | 주문대기 단위 | 주문 품목 1개 = 대기 1건, 수량 표시 | 대표님 |
+| 8 | 개봉 완료 되돌리기 | 완료 10초 안, 다른 개봉 중 없을 때만 허용. 기록 필수 | 대표님 |
+| 9 | 방송 전 주문 편입 | 방송 시작 시 자동 편입 | 대표님 |
+| 10 | RLS 적용 | 이번 단계 미적용, 운영 전 재검토 | MASTER |
+| 11 | 회원 등급 | 판매자별 테이블, id로 식별, 기본 5개는 systemKey 표시 | MASTER |
 
-판단이 나오기 전에는 B 구현을 권고안대로 진행하되, 바꾸기 쉬운 형태(설정값·상수)로 둔다.
+디자인 맞춤 수정(MASTER 검수): 로그인 잠금 10분(AU-001), 세션 시간(AU-007), 등급 식별 방식.
+
+남은 미정은 8절 [비용] 항목뿐이다.
