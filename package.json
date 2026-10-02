@@ -6,9 +6,14 @@
     "dev": "next dev",
     "typecheck": "tsc --noEmit",
     "build": "next build",
-    "check": "npm run typecheck && npm run build"
+    "check": "npm run typecheck && npm run build",
+    "postinstall": "prisma generate",
+    "test": "vitest run --dir tests/unit",
+    "test:integration": "vitest run --dir tests/integration --no-file-parallelism",
+    "db:migrate": "prisma migrate deploy"
   },
   "dependencies": {
+    "@prisma/client": "6.19.3",
     "next": "16.3.8",
     "react": "19.3.0",
     "react-dom": "19.3.0"
@@ -17,6 +22,8 @@
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "typescript": "^5.9.0"
+    "prisma": "6.19.3",
+    "typescript": "^5.9.0",
+    "vitest": "4.0.18"
   }
 }
