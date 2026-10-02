@@ -6,7 +6,7 @@ import { approveSeller } from "../../../../../../lib/server/sellers/approval";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// 판매자 가입 승인. 승인 시각부터 3일 무료 이용이 시작된다.
+// 판매자 가입 승인. 승인 시각부터 3일 체험하기가 시작된다.
 export const POST = mutation(async (req: Request, { params }: { params: Promise<{ sellerId: string }> }) => {
   const admin = await requireAdmin(prisma, sessionToken(req, "admin"), "seller.moderate");
   const { sellerId } = await params;

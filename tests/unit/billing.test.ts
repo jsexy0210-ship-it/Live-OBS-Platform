@@ -1,25 +1,46 @@
 import { describe, expect, it } from "vitest";
-import { addOneMonth, sellerAccess } from "../../lib/server/billing/access";
+import { CHARGE_WAIT_MS, addOneMonth, sellerAccess, type AccessInput } from "../../lib/server/billing/access";
 import { FakeBillingProvider } from "../../lib/server/billing/provider";
 import { openBillingKey, sealBillingKey } from "../../lib/server/billing/secret";
 
 const now = new Date("2026-10-02T03:00:00Z");
 const later = new Date(now.getTime() + 1000);
 const earlier = new Date(now.getTime() - 1000);
+const sub = (v: Partial<NonNullable<AccessInput["subscription"]>>): AccessInput["subscription"] => ({
+  status: "ACTIVE",
+  currentPeriodEnd: null,
+  nextChargeAt: null,
+  graceUntil: null,
+  cancelAtPeriodEnd: false,
+  ...v,
+});
 
 describe("이용 가능 여부", () => {
-  it("무료 이용 중 / 결제 기간 중 / 둘 다 끝남", () => {
+  it("체험하기 중 / 결제 기간 중 / 둘 다 끝남", () => {
     expect(sellerAccess({ trialEndsAt: later, subscription: null }, now)).toBe("trial");
-    expect(sellerAccess({ trialEndsAt: earlier, subscription: { status: "ACTIVE", currentPeriodEnd: later } }, now)).toBe("paid");
-    expect(sellerAccess({ trialEndsAt: earlier, subscription: { status: "ACTIVE", currentPeriodEnd: earlier } }, now)).toBe("expired");
+    expect(sellerAccess({ trialEndsAt: earlier, subscription: sub({ currentPeriodEnd: later }) }, now)).toBe("paid");
+    expect(sellerAccess({ trialEndsAt: earlier, subscription: sub({ currentPeriodEnd: earlier }) }, now)).toBe("expired");
     expect(sellerAccess({ trialEndsAt: null, subscription: null }, now)).toBe("expired");
     // 경계: 종료 시각과 같으면 끝난 것
     expect(sellerAccess({ trialEndsAt: now, subscription: null }, now)).toBe("expired");
   });
 
-  it("자동결제 실패·해지여도 결제한 기간 끝까지는 쓸 수 있다", () => {
-    expect(sellerAccess({ trialEndsAt: null, subscription: { status: "PAST_DUE", currentPeriodEnd: later } }, now)).toBe("paid");
-    expect(sellerAccess({ trialEndsAt: null, subscription: { status: "CANCELED", currentPeriodEnd: later } }, now)).toBe("paid");
+  it("자동결제 실패·해지 예약이어도 결제한 기간 끝까지는 쓸 수 있다", () => {
+    expect(sellerAccess({ trialEndsAt: null, subscription: sub({ status: "PAST_DUE", currentPeriodEnd: later }) }, now)).toBe("paid");
+    expect(sellerAccess({ trialEndsAt: null, subscription: sub({ cancelAtPeriodEnd: true, currentPeriodEnd: later }) }, now)).toBe("paid");
+  });
+
+  it("자동결제 실패 뒤 유예 중에는 쓸 수 있고, 유예가 끝나면 잠긴다", () => {
+    expect(sellerAccess({ trialEndsAt: earlier, subscription: sub({ status: "PAST_DUE", graceUntil: later }) }, now)).toBe("grace");
+    expect(sellerAccess({ trialEndsAt: earlier, subscription: sub({ status: "PAST_DUE", graceUntil: earlier }) }, now)).toBe("expired");
+  });
+
+  it("예약 결제 시각이 막 지났으면(예약 실행 대기) 하루까지는 끊지 않는다. 해지했으면 잠긴다", () => {
+    expect(sellerAccess({ trialEndsAt: earlier, subscription: sub({ nextChargeAt: earlier }) }, now)).toBe("charging");
+    const old = new Date(now.getTime() - CHARGE_WAIT_MS - 1);
+    expect(sellerAccess({ trialEndsAt: earlier, subscription: sub({ nextChargeAt: old }) }, now)).toBe("expired");
+    expect(sellerAccess({ trialEndsAt: earlier, subscription: sub({ nextChargeAt: earlier, cancelAtPeriodEnd: true }) }, now)).toBe("expired");
+    expect(sellerAccess({ trialEndsAt: earlier, subscription: sub({ status: "CANCELED", nextChargeAt: earlier }) }, now)).toBe("expired");
   });
 });
 

@@ -216,16 +216,30 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
   - 비밀번호 해시·토큰·CI 해시·카드 정보는 before/after에 넣지 않는다(기록 전 제거).
   - DB 권한으로 UPDATE/DELETE를 막는 것은 운영 DB 계정 설계 때 적용(다음 단계).
 
-### 4.8.1 무료 이용·플랫폼 구독 (대표님 결정 2026-10-02)
+### 4.8.1 체험하기·플랫폼 구독 (대표님 결정 2026-10-02, MASTER 결정 2026-10-03)
+
+화면·메일·API 메시지의 3일 무료 기간 표기는 「체험하기」다(「무료 이용」이라고 쓰지 않음). 코드 이름(`trialEndsAt` 등)은 그대로 둔다.
 
 - `Seller.trialEndsAt`: 마스터 승인 때 DB 시계로 `approvedAt + 3일`을 채운다(승인 대기인 쇼핑몰만, 동시 승인은 한 번만 반영).
-- 이용 가능 여부: 결제한 이용 기간 안(`currentPeriodEnd > 지금`)이거나 무료 이용 중이면 쓸 수 있다. 둘 다 아니면 판매자 API는 `402 subscription_required`. 열리는 것은 내 정보(`/api/seller/me`, 이용 상태 포함), 구독·결제(`/api/seller/subscription/**`), 로그아웃뿐이다. 판정은 서버 가드(`requireSeller`)에서 한다. 결제하면 바로 열린다.
+- 이용 가능 여부(`sellerAccess`): 아래 중 하나면 쓸 수 있다. 아니면 판매자 API는 `402 subscription_required`, 오버레이 공개 주소(`state`·`version`·`stream`)는 404, 열려 있는 오버레이 SSE는 다음 핑 재확인 때 닫힌다.
+  - `paid`: 결제한 이용 기간 안(`currentPeriodEnd > 지금`). 해지 예약·자동결제 실패여도 기간 끝까지.
+  - `trial`: 체험하기 중.
+  - `charging`: 카드를 등록해 두었고 예약 결제 시각이 지난 지 하루가 안 됨(예약 실행이 처리할 때까지 끊지 않음).
+  - `grace`: 자동결제 실패 뒤 유예 중(실패한 때 + 7일).
+  - 잠겨도 열리는 것: 내 정보(`/api/seller/me`, 이용 상태 포함), 구독·결제(`/api/seller/subscription/**`), 로그아웃. 판정은 서버 가드(`requireSeller`)에서 한다.
 - `SubscriptionPlan`: 정가(`listPrice`)·판매가(`salePrice`), 원 단위 부가세 포함, 청구액은 판매가. 기본값 300,000원 / 199,000원은 마이그레이션 데이터로 넣고, 이후 변경은 마스터 API(`billing.manage`)로 한다(코드 수정 없음, 다음 결제부터 적용, 감사 로그).
-- `SellerSubscription`(쇼핑몰당 1개): 카드 자동결제(빌링키)만. 빌링키는 `BILLING_KEY_SECRET`으로 AES-256-GCM 암호화해서만 저장하고 응답·감사 로그에 넣지 않는다. 상태 `ACTIVE | PAST_DUE | CANCELED`, 이용 기간, 해지 예약(`cancelAtPeriodEnd`). 대표자 전용(`SUBSCRIPTION_MANAGE`), 마스터 대리 조회로도 볼 수 없다.
-- `SubscriptionPayment`(청구 내역): `PENDING → PAID | FAILED`. 같은 구독·같은 기간 시작에는 `PENDING·PAID` 청구가 하나만(부분 유니크) → 동시 클릭·작업 중복 실행에도 한 번만 결제. 모든 구독 변경은 판매자 행을 먼저 잠근다.
-- 카드 등록: 결제한 기간이 남아 있고 자동결제가 정상이면 카드만 바꾼다. 아니면 바로 한 달 치를 결제하고, 새 기간은 남은 무료 기간(또는 자동결제 실패로 남은 기간) 뒤에 이어 붙인다. 카드를 다시 등록하면 해지 예약을 푼다.
-- 자동결제(`renewDueSubscriptions`): 기간 끝 하루 전부터 다음 달을 결제. 실패하면 `PAST_DUE`(남은 기간이 끝나면 막힘). 해지 예약은 기간이 끝나면 결제 없이 `CANCELED`. 즉시 환불은 하지 않는다.
-- 결제 공급자는 인터페이스(`lib/server/billing/provider.ts`)로만 부른다. 지금은 가짜 공급자뿐이고 운영 환경에서는 만들 수 없다(실제 결제 없음).
+- `SellerSubscription`(쇼핑몰당 1개): 카드 자동결제(빌링키)만. 빌링키는 `BILLING_KEY_SECRET`으로 AES-256-GCM 암호화해서만 저장하고 응답·감사 로그에 넣지 않는다. 상태 `ACTIVE | PAST_DUE | CANCELED`, 이용 기간, 해지 예약(`cancelAtPeriodEnd`), 다음 처리 시각(`nextChargeAt`), 재시도 횟수(`retryCount`), 유예 끝(`graceUntil`). 대표자 전용(`SUBSCRIPTION_MANAGE`), 마스터 대리 조회로도 볼 수 없다.
+- `SubscriptionPayment`(청구 내역): `PENDING → PAID | FAILED`. 같은 구독·같은 기간 시작에는 `PENDING·PAID` 청구가 하나만(부분 유니크) → 동시 클릭·예약 실행 중복에도 한 번만 결제. 모든 구독 변경은 판매자 행을 먼저 잠근다.
+- 카드 등록(구독 시작·카드 변경):
+  - 결제한 기간이 남아 있고 자동결제가 정상 → 카드만 바꾼다.
+  - 체험하기 중 → 카드만 등록하고 첫 결제를 체험하기 종료 시각으로 예약한다(`nextChargeAt = trialEndsAt`).
+  - 그 밖 → 바로 결제한다. 예약 결제 대기·유예 중이면 원래 시작했어야 할 기간(이미 쓰고 있는 기간)부터, 잠긴 뒤면 지금부터 한 달. 카드를 다시 등록하면 해지 예약을 푼다.
+- 예약 실행(`renewDueSubscriptions`, `nextChargeAt`이 지난 구독):
+  - 첫 결제(체험하기 종료 시각), 다음 달 결제(기간 끝 하루 전).
+  - 실패: 처음 실패면 `PAST_DUE` + 유예 7일, 하루 간격으로 최대 3번 다시 시도, 그 뒤에는 시도하지 않는다. 판매자가 카드를 바꾸면 바로 다시 결제한다.
+  - 해지 예약은 기간이 끝나면 결제 없이 `CANCELED`.
+- 해지: 결제한 기간이 남아 있으면 기간 끝까지 쓰고 다음 결제를 하지 않는다. 결제한 기간이 없으면(체험하기 중 카드만 등록, 유예 중) 바로 해지하고 청구하지 않는다. 즉시 환불은 하지 않는다.
+- 결제 공급자는 인터페이스(`lib/server/billing/provider.ts`)로만 부른다. 지금은 가짜 공급자뿐이고 운영 환경에서는 만들 수 없다(실제 결제 없음). 예약 실행을 주기적으로 돌리는 인프라는 승인 후 연결한다.
 
 ### 4.9 이번 초안에서 뺀 것 (다음 단계)
 

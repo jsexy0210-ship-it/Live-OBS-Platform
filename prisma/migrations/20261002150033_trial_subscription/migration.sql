@@ -31,6 +31,9 @@ CREATE TABLE "SellerSubscription" (
     "currentPeriodStart" TIMESTAMPTZ(3),
     "currentPeriodEnd" TIMESTAMPTZ(3),
     "cancelAtPeriodEnd" BOOLEAN NOT NULL DEFAULT false,
+    "nextChargeAt" TIMESTAMPTZ(3),
+    "retryCount" INTEGER NOT NULL DEFAULT 0,
+    "graceUntil" TIMESTAMPTZ(3),
     "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMPTZ(3) NOT NULL,
 
@@ -65,6 +68,9 @@ CREATE UNIQUE INDEX "SellerSubscription_sellerId_key" ON "SellerSubscription"("s
 CREATE UNIQUE INDEX "SellerSubscription_sellerId_id_key" ON "SellerSubscription"("sellerId", "id");
 
 -- CreateIndex
+CREATE INDEX "SellerSubscription_status_nextChargeAt_idx" ON "SellerSubscription"("status", "nextChargeAt");
+
+-- CreateIndex
 CREATE INDEX "SubscriptionPayment_sellerId_createdAt_idx" ON "SubscriptionPayment"("sellerId", "createdAt");
 
 -- AddForeignKey
@@ -83,6 +89,7 @@ ALTER TABLE "SubscriptionPayment" ADD CONSTRAINT "SubscriptionPayment_sellerId_s
 ALTER TABLE "SubscriptionPlan" ADD CONSTRAINT "SubscriptionPlan_price_check" CHECK ("salePrice" > 0 AND "listPrice" >= "salePrice");
 ALTER TABLE "SubscriptionPayment" ADD CONSTRAINT "SubscriptionPayment_amount_check" CHECK ("amount" > 0);
 ALTER TABLE "SubscriptionPayment" ADD CONSTRAINT "SubscriptionPayment_period_check" CHECK ("periodEnd" > "periodStart");
+ALTER TABLE "SellerSubscription" ADD CONSTRAINT "SellerSubscription_retry_check" CHECK ("retryCount" >= 0 AND "retryCount" <= 3);
 
 -- 같은 구독·같은 이용 기간에는 진행 중이거나 결제된 청구가 하나만(중복 결제 방지). 실패한 청구는 다시 시도할 수 있다.
 CREATE UNIQUE INDEX "SubscriptionPayment_active_period_key" ON "SubscriptionPayment"("subscriptionId", "periodStart") WHERE "status" IN ('PENDING', 'PAID');
@@ -91,5 +98,5 @@ CREATE UNIQUE INDEX "SubscriptionPayment_active_period_key" ON "SubscriptionPaym
 INSERT INTO "SubscriptionPlan" ("code", "name", "listPrice", "salePrice", "updatedAt")
 VALUES ('STANDARD', '월 구독', 300000, 199000, CURRENT_TIMESTAMP);
 
--- 이미 승인된 쇼핑몰은 승인 시각(없으면 지금) + 3일을 무료 이용 종료로 채운다.
+-- 이미 승인된 쇼핑몰은 승인 시각(없으면 지금) + 3일을 체험하기 종료로 채운다.
 UPDATE "Seller" SET "trialEndsAt" = COALESCE("approvedAt", CURRENT_TIMESTAMP) + interval '3 days' WHERE "status" = 'ACTIVE' AND "trialEndsAt" IS NULL;

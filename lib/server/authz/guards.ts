@@ -20,7 +20,7 @@ export async function requireAdmin(
 }
 
 // 판매자 API 가드. sellerId는 세션에서만 얻는다. 세부 권한은 requireSellerPermission으로 확인한다.
-// 무료 이용이 끝났고 결제한 기간도 없으면 402로 막는다. 구독·결제 화면과 내 정보만 allowUnpaid로 연다(로그아웃은 가드 없음).
+// 체험하기가 끝났고 결제한 기간도 없으면 402로 막는다. 구독·결제 화면과 내 정보만 allowUnpaid로 연다(로그아웃은 가드 없음).
 export async function requireSeller(
   db: PrismaClient,
   token: string | undefined,

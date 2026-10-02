@@ -5,7 +5,7 @@ import { registerCardAndPay } from "../../../../../lib/server/billing/subscripti
 import { prisma } from "../../../../../lib/server/db";
 import { isString, mutation, readJson, sessionToken } from "../../../../../lib/server/http/route";
 
-// 카드 등록(교체) 후 필요하면 바로 결제(대표자 전용). 무료 이용이 끝나도 열린다.
+// 카드 등록(교체) 후 필요하면 바로 결제(대표자 전용). 체험하기가 끝나도 열린다.
 export const POST = mutation(async (req: Request) => {
   const ctx = await requireSeller(prisma, sessionToken(req, "seller"), new Date(), { allowUnpaid: true });
   const body = await readJson<{ authKey: string }>(req);
