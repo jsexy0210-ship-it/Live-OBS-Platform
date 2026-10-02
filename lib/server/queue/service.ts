@@ -1,6 +1,7 @@
 import { Prisma, type PaymentMethod, type PrismaClient, type QueueItem } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { notifySellerChanged } from "../realtime/notify";
+import { earnAmount } from "../rewards/earn";
 import { requireSellerPermission, type TenantContext } from "../tenant/context";
 import { checkTransition, isCompletePermutation, isValidTimer, type QueueAction, type QueueRejection } from "./rules";
 
@@ -308,6 +309,33 @@ export async function markOrderPaid(
         });
         queueItemIds.push(q.id);
       }
+      // 적립금 지급 대기 기록(실지급 스위치가 꺼져 있으면 testMode). 지급·잔액 반영은 다음 단계.
+      const policy = await tx.rewardPolicy.findUnique({ where: { sellerId } });
+      const amount = policy
+        ? earnAmount({
+            rates: policy.rates,
+            earnStartsAt: policy.earnStartsAt,
+            gradeId: order.buyerMember.gradeId,
+            paymentMethod: input.paymentMethod ?? null,
+            base: order.totalAmount - order.rewardUsedAmount,
+            now,
+          })
+        : 0;
+      if (policy && amount > 0) {
+        await tx.rewardLedger.create({
+          data: {
+            sellerId,
+            buyerMemberId: order.buyerMemberId,
+            orderId,
+            type: "EARN",
+            amount,
+            status: "PENDING",
+            testMode: !policy.livePayoutEnabled,
+            idempotencyKey: `earn:${orderId}`,
+            createdAt: now,
+          },
+        });
+      }
       await writeAudit(tx, { ...system, sellerId, action: "order.paid", targetType: "Order", targetId: orderId });
       return { orderId, stockShortage: false, queueItemIds };
     });
@@ -338,3 +366,117 @@ async function loadPendingOrder(tx: Tx, sellerId: string, orderId: string) {
   if (order.status !== "PENDING_PAYMENT") throw new Rejected("invalid_transition");
   return order;
 }
+
+// ───────────── 주문 취소·환불 (ARCHITECTURE 4.5, MASTER 지시) ─────────────
+
+// 결제 전 주문 취소: 결제 대기 → 취소. 재고는 결제 때 빼므로 되돌릴 것이 없다.
+export async function cancelPendingOrder(
+  db: PrismaClient,
+  ctx: TenantContext,
+  orderId: string,
+  opts: { reason?: string; now?: Date } = {},
+): Promise<QueueResult<{ orderId: string }>> {
+  requireSellerPermission(ctx, "ORDER_SHIPPING");
+  if (!opts.reason?.trim()) return { ok: false, reason: "reason_required" };
+  return run(db, ctx.sellerId, async (tx) => {
+    const now = opts.now ?? (await dbNow(tx));
+    const moved = await tx.order.updateMany({
+      where: { id: orderId, sellerId: ctx.sellerId, status: "PENDING_PAYMENT" },
+      data: { status: "CANCELLED", cancelledAt: now },
+    });
+    if (moved.count !== 1) {
+      throw new Rejected((await tx.order.count({ where: { id: orderId, sellerId: ctx.sellerId } })) ? "invalid_transition" : "not_found");
+    }
+    await tx.orderStatusHistory.create({
+      data: { sellerId: ctx.sellerId, orderId, fromStatus: "PENDING_PAYMENT", toStatus: "CANCELLED", actorType: ctx.actorType, actorId: ctx.actorId, reason: opts.reason, createdAt: now },
+    });
+    await writeAudit(tx, { actorType: ctx.actorType, actorId: ctx.actorId, sellerId: ctx.sellerId, action: "order.cancel", targetType: "Order", targetId: orderId, reason: opts.reason });
+    return { orderId };
+  });
+}
+
+export type RefundOutcome = { orderId: string; restockedItemIds: string[]; cancelledQueueItemIds: string[]; rewardRevoked: boolean };
+
+// 결제 완료 주문 환불: 결제 완료 → 환불. 주문 품목마다
+// - 연결된 주문대기가 「대기」·「개봉 중」이면 자동 취소
+// - 개봉 전(대기였거나 개봉 전에 취소됨)이면 재고 복구, 개봉을 시작했거나 완료했으면 복구 안 함
+// - 재고 부족으로 차감되지 않은 주문은 복구할 것 없음
+// 주문 상태를 원자적으로 바꾸므로 같은 주문을 두 번 환불하거나 재고를 두 번 복구하지 않는다.
+export async function refundOrder(
+  db: PrismaClient,
+  ctx: TenantContext,
+  orderId: string,
+  opts: { reason?: string; now?: Date } = {},
+): Promise<QueueResult<RefundOutcome>> {
+  requireSellerPermission(ctx, "ORDER_SHIPPING");
+  if (!opts.reason?.trim()) return { ok: false, reason: "reason_required" };
+  const reason = opts.reason.trim();
+  return run(db, ctx.sellerId, async (tx) => {
+    const now = opts.now ?? (await dbNow(tx));
+    const moved = await tx.order.updateMany({
+      where: { id: orderId, sellerId: ctx.sellerId, status: "PAID" },
+      data: { status: "REFUNDED", refundedAt: now },
+    });
+    if (moved.count !== 1) {
+      throw new Rejected((await tx.order.count({ where: { id: orderId, sellerId: ctx.sellerId } })) ? "invalid_transition" : "not_found");
+    }
+    const order = await tx.order.findUniqueOrThrow({ where: { id: orderId }, include: { items: true, queueItems: true } });
+    await tx.orderStatusHistory.create({
+      data: { sellerId: ctx.sellerId, orderId, fromStatus: "PAID", toStatus: "REFUNDED", actorType: ctx.actorType, actorId: ctx.actorId, reason, createdAt: now },
+    });
+
+    const restockedItemIds: string[] = [];
+    const cancelledQueueItemIds: string[] = [];
+    for (const item of order.items) {
+      const q = order.queueItems.find((x) => x.orderItemId === item.id);
+      if (q && (q.status === "WAITING" || q.status === "OPENING")) {
+        await tx.queueItem.update({
+          where: { id: q.id },
+          data: { status: "CANCELLED", cancelledAt: now, cancelReason: `환불: ${reason}`, version: { increment: 1 } },
+        });
+        await tx.queueItemStatusHistory.create({
+          data: { sellerId: ctx.sellerId, queueItemId: q.id, fromStatus: q.status, toStatus: "CANCELLED", actorType: ctx.actorType, actorId: ctx.actorId, reason: `환불: ${reason}`, createdAt: now },
+        });
+        cancelledQueueItemIds.push(q.id);
+      }
+      if (order.stockShortageAt) continue;
+      const opened = !q || q.openingStartedAt !== null || q.status === "OPENING" || q.status === "DONE";
+      if (opened) continue;
+      await tx.productOption.update({ where: { id: item.optionId }, data: { stock: { increment: item.quantity } } });
+      await tx.stockMovement.create({
+        data: { sellerId: ctx.sellerId, optionId: item.optionId, delta: item.quantity, reason: "REFUND", orderId, actorType: ctx.actorType, actorId: ctx.actorId, createdAt: now },
+      });
+      restockedItemIds.push(item.id);
+    }
+
+    // 적립금 회수 대기 기록(지급 기록이 있을 때만, 한 번만)
+    const earn = await tx.rewardLedger.findUnique({ where: { sellerId_idempotencyKey: { sellerId: ctx.sellerId, idempotencyKey: `earn:${orderId}` } } });
+    if (earn) {
+      await tx.rewardLedger.create({
+        data: {
+          sellerId: ctx.sellerId,
+          buyerMemberId: earn.buyerMemberId,
+          orderId,
+          type: "REVOKE",
+          amount: -earn.amount,
+          status: "PENDING",
+          testMode: earn.testMode,
+          idempotencyKey: `revoke:${orderId}`,
+          createdAt: now,
+        },
+      });
+    }
+    await writeAudit(tx, {
+      actorType: ctx.actorType,
+      actorId: ctx.actorId,
+      sellerId: ctx.sellerId,
+      action: "order.refund",
+      targetType: "Order",
+      targetId: orderId,
+      reason,
+      after: { restockedItems: restockedItemIds.length, cancelledQueueItems: cancelledQueueItemIds.length, rewardRevoked: !!earn },
+    });
+    return { orderId, restockedItemIds, cancelledQueueItemIds, rewardRevoked: !!earn };
+  });
+}
+
