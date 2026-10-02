@@ -68,28 +68,39 @@ export const DEFAULT_PAGE_SIZE = 50;
 export const MAX_PAGE_SIZE = 200;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// 상품 목록(커서 페이지). 정렬: 진열 순서 → 최근 등록 → id. nextCursor가 null이면 마지막 쪽이에요.
-// 커서는 이 판매자 상품 id만 받는다(지운 상품이어도 위치 기준으로는 쓸 수 있음).
+// 상품 목록(keyset 커서 페이지). 정렬: 진열 순서 → 최근 등록 → id. nextCursor가 null이면 마지막 쪽이에요.
+// 커서는 이 판매자 상품 id만 받고, 그 행의 정렬 값(sortOrder, createdAt, id) 바로 뒤부터 고른다.
+// 기준 상품이 그사이 지워졌거나 필터 밖이 되어도 값만 쓰므로 다음 상품을 건너뛰지 않는다.
+// limit은 숫자 또는 숫자만 있는 문자열(1~200)만 받는다("1e2", "0x10", " 5 "는 거부).
 export async function listProducts(
   db: PrismaClient,
   ctx: TenantContext,
   opts: { status?: unknown; cursor?: unknown; limit?: unknown } = {},
-): Promise<{ ok: true; value: { products: Awaited<ReturnType<typeof productView>>[]; nextCursor: string | null } } | { ok: false; reason: "invalid_cursor" }> {
+): Promise<
+  { ok: true; value: { products: Awaited<ReturnType<typeof productView>>[]; nextCursor: string | null } } | { ok: false; reason: "invalid_cursor" | "invalid_limit" }
+> {
   requireSellerRead(ctx, "PRODUCT_MANAGE");
   const status = PRODUCT_STATUSES.includes(opts.status as ProductStatus) ? (opts.status as ProductStatus) : undefined;
-  const limit = opts.limit === undefined ? DEFAULT_PAGE_SIZE : Number(opts.limit);
-  if (!Number.isInteger(limit) || limit < 1 || limit > MAX_PAGE_SIZE) return { ok: false, reason: "invalid_cursor" };
-  let cursor: string | undefined;
+  const limit =
+    opts.limit === undefined ? DEFAULT_PAGE_SIZE : typeof opts.limit === "string" && /^\d+$/.test(opts.limit) ? Number(opts.limit) : typeof opts.limit === "number" ? opts.limit : NaN;
+  if (!Number.isInteger(limit) || limit < 1 || limit > MAX_PAGE_SIZE) return { ok: false, reason: "invalid_limit" };
+  let after: Prisma.ProductWhereInput = {};
   if (opts.cursor !== undefined && opts.cursor !== "") {
     if (typeof opts.cursor !== "string" || !UUID.test(opts.cursor)) return { ok: false, reason: "invalid_cursor" };
-    if (!(await db.product.findFirst({ where: { id: opts.cursor, sellerId: ctx.sellerId }, select: { id: true } }))) return { ok: false, reason: "invalid_cursor" };
-    cursor = opts.cursor;
+    const c = await db.product.findFirst({ where: { id: opts.cursor, sellerId: ctx.sellerId }, select: { id: true, sortOrder: true, createdAt: true } });
+    if (!c) return { ok: false, reason: "invalid_cursor" };
+    after = {
+      OR: [
+        { sortOrder: { gt: c.sortOrder } },
+        { sortOrder: c.sortOrder, createdAt: { lt: c.createdAt } },
+        { sortOrder: c.sortOrder, createdAt: c.createdAt, id: { gt: c.id } },
+      ],
+    };
   }
   const rows = await db.product.findMany({
-    where: { sellerId: ctx.sellerId, deletedAt: null, ...(status ? { status } : {}) },
+    where: { sellerId: ctx.sellerId, deletedAt: null, ...(status ? { status } : {}), ...after },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }, { id: "asc" }],
     take: limit + 1,
-    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     include: { options: { where: { deletedAt: null }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] } },
   });
   const page = rows.slice(0, limit);

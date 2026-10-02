@@ -21,6 +21,7 @@ export const ORDER_ERROR_MESSAGES = {
   no_sellable_option: "판매하려면 옵션이 하나 이상 있어야 해요",
   stock_conflict: "그사이 재고가 바뀌었어요. 새로 불러온 뒤 다시 입력해 주세요",
   invalid_cursor: "목록을 처음부터 다시 불러와 주세요",
+  invalid_limit: "한 번에 볼 개수는 1~200개로 정해 주세요",
 } as const;
 
 export type OrderErrorCode = keyof typeof ORDER_ERROR_MESSAGES;

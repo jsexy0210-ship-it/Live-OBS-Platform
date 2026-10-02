@@ -7,7 +7,7 @@ const base = { recipientName: "김구매", phone: "010-1234-5678", zipCode: "062
 describe("도서산간 주소 판정(우편번호가 범위 밖이어도)", () => {
   it("앞머리 기호·폭 없는 공백·나라 이름·괄호·NFD·영문 표기를 거쳐도 첫 행정구역이 제주·울릉이면 도서산간", () => {
     for (const a of [
-      "​제주시 첨단로 1",
+      "\u200b제주시 첨단로 1",
       "대한민국 제주특별자치도 제주시 첨단로 1",
       "(제주) 제주시 첨단로 1",
       "[제주특별자치도] 서귀포시 중앙로 1",
@@ -80,12 +80,26 @@ describe("배송지 입력의 보이지 않는 문자", () => {
     expect(parseShippingAddress({ ...base, memo: "문 앞\ud800" })).toBeNull();
   });
 
+  it("메모는 서버가 아직 모르는 최신 이모지(미할당 판정)·지역 깃발 태그 문자를 받고, 이름·주소는 거부", () => {
+    const newEmoji = "\u{1faea}";
+    const scotland = "\u{1f3f4}\u{e0067}\u{e0062}\u{e0073}\u{e0063}\u{e0074}\u{e007f}";
+    expect(parseShippingAddress({ ...base, memo: `문 앞 ${newEmoji}` })).toMatchObject({ memo: `문 앞 ${newEmoji}` });
+    expect(parseShippingAddress({ ...base, memo: newEmoji })).toMatchObject({ memo: newEmoji });
+    expect(parseShippingAddress({ ...base, memo: `문 앞 ${scotland}` })).toMatchObject({ memo: `문 앞 ${scotland}` });
+    expect(parseShippingAddress({ ...base, recipientName: `김${newEmoji}` })).toBeNull();
+    expect(parseShippingAddress({ ...base, address1: `서울 ${scotland}` })).toBeNull();
+    // 메모라도 서로게이트·사용자 정의·제어·방향 문자는 거부
+    for (const bad of ["\ud800", "\ue000", "\u0000", "\u202e"]) {
+      expect(parseShippingAddress({ ...base, memo: `문 앞${bad}` }), JSON.stringify(bad)).toBeNull();
+    }
+  });
+
   it("연락처·우편번호는 전각 숫자·하이픈도 정규화해 받는다", () => {
     expect(parseShippingAddress({ ...base, phone: "０１０－１２３４－５６７８", zipCode: "０６２３６" })).toMatchObject({ phone: "01012345678", zipCode: "06236" });
   });
 
   it("방향 바꿈(RLO 등)·폭 없는 문자·줄·문단 구분 문자·제어문자는 거부", () => {
-    for (const bad of ["‮", "⁦", "​", "‍", "﻿", "­", " ", " ", "\u0000", "\n", "\u0085"]) {
+    for (const bad of ["\u202e", "\u2066", "\u200b", "\u200d", "\ufeff", "\u00ad", "\u2028", "\u2029", "\u0000", "\n", "\u0085"]) {
       expect(parseShippingAddress({ ...base, recipientName: `김${bad}구매` }), JSON.stringify(bad)).toBeNull();
       expect(parseShippingAddress({ ...base, address1: `서울${bad} 강남구` }), JSON.stringify(bad)).toBeNull();
       expect(parseShippingAddress({ ...base, address2: `101${bad}호` }), JSON.stringify(bad)).toBeNull();

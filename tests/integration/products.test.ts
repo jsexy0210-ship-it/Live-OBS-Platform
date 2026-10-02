@@ -86,10 +86,10 @@ describe("상품 등록·가격 검증", () => {
     expect(await createProduct(db, s.ctx, { name: "x", price: 1000, status: "ON_SALE" })).toEqual({ ok: false, reason: "no_sellable_option" });
     const many = Array.from({ length: 101 }, (_, i) => ({ name: `o${i}` }));
     expect(await createProduct(db, s.ctx, { name: "x", price: 1000, options: many })).toEqual({ ok: false, reason: "too_many_options" });
-    expect(await createProduct(db, s.ctx, { name: "부스터‮팩", price: 1000 })).toEqual({ ok: false, reason: "invalid_product" });
+    expect(await createProduct(db, s.ctx, { name: "부스터\u202e팩", price: 1000 })).toEqual({ ok: false, reason: "invalid_product" });
     expect(await createProduct(db, s.ctx, { name: "x", price: 1000, options: [{ name: "o\u0000" }] })).toEqual({ ok: false, reason: "invalid_option" });
     expect(await createProduct(db, s.ctx, { name: "x", price: 1000, description: "첫 줄\n둘째 줄" })).toMatchObject({ ok: true, value: { description: "첫 줄\n둘째 줄" } });
-    expect(await createProduct(db, s.ctx, { name: "x", price: 1000, description: "숨김 " })).toEqual({ ok: false, reason: "invalid_product" });
+    expect(await createProduct(db, s.ctx, { name: "x", price: 1000, description: "숨김\u2028" })).toEqual({ ok: false, reason: "invalid_product" });
     expect(await db.product.count()).toBe(1);
   });
 
@@ -161,15 +161,71 @@ describe("목록 페이지 넘김", () => {
     const all = await listProducts(db, s.ctx, { limit: 200 });
     expect(all.ok && all.value.products.map((p) => p.id)).toEqual(seen);
     expect(all.ok && all.value.nextCursor).toBeNull();
-    for (const bad of [{ cursor: otherP.id }, { cursor: "x" }, { cursor: "00000000-0000-0000-0000-000000000000" }, { limit: 0 }, { limit: 201 }, { limit: "abc" }]) {
+    for (const bad of [{ cursor: otherP.id }, { cursor: "x" }, { cursor: "00000000-0000-0000-0000-000000000000" }]) {
       expect(await listProducts(db, s.ctx, bad), JSON.stringify(bad)).toEqual({ ok: false, reason: "invalid_cursor" });
     }
+    for (const limit of [0, 201, 1.5, "abc", "1e2", "0x10", " 5 ", "", "-1"]) {
+      expect(await listProducts(db, s.ctx, { limit }), JSON.stringify(limit)).toEqual({ ok: false, reason: "invalid_limit" });
+    }
+    expect(await listProducts(db, s.ctx, { limit: "5" })).toMatchObject({ ok: true });
     const res = await listRoute(new Request(`http://localhost:3000/api/seller/products?limit=2`, { headers: { ...H, cookie: await cookie(s.owner.email) } }));
     const body = await res.json();
     expect(body.products).toHaveLength(2);
     expect(body.nextCursor).toBe(body.products[1].id);
     const bad = await listRoute(new Request(`http://localhost:3000/api/seller/products?cursor=${otherP.id}`, { headers: { ...H, cookie: await cookie(s.owner.email) } }));
     expect(bad.status).toBe(400);
+  });
+});
+
+describe("목록 페이지 넘김: 기준 상품이 그사이 바뀌어도 빠지지 않는다", () => {
+  async function seven(ctx: TenantContext) {
+    for (let i = 0; i < 7; i++) await made(ctx, { name: `상품${i}`, sortOrder: i % 2 });
+  }
+  async function pages(ctx: TenantContext, opts: { status?: string }, between: (cursor: string, round: number) => Promise<void>) {
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    for (let round = 0; round < 10; round++) {
+      const r = await listProducts(db, ctx, { ...opts, cursor, limit: 2 });
+      if (!r.ok) throw new Error(r.reason);
+      seen.push(...r.value.products.map((p) => p.id));
+      if (!r.value.nextCursor) break;
+      cursor = r.value.nextCursor;
+      await between(cursor, round);
+    }
+    return seen;
+  }
+
+  it("다음 쪽을 부르기 전에 기준(nextCursor) 상품을 지워도 나머지 상품이 하나도 빠지지 않는다", async () => {
+    const s = await seller();
+    await seven(s.ctx);
+    const deleted: string[] = [];
+    const seen = await pages(s.ctx, {}, async (cursor, round) => {
+      if (round === 0) {
+        await deleteProduct(db, s.ctx, cursor);
+        deleted.push(cursor);
+      }
+    });
+    const alive = (await db.product.findMany({ where: { sellerId: s.seller.id, deletedAt: null }, select: { id: true } })).map((p) => p.id);
+    expect(alive).toHaveLength(6);
+    // 첫 쪽에서 이미 받은 기준 상품 + 살아 있는 나머지 6개가 모두 한 번씩
+    expect(new Set(seen)).toEqual(new Set([...alive, ...deleted]));
+    expect(seen).toHaveLength(7);
+  });
+
+  it("판매 중 필터에서 기준 상품을 숨김으로 바꿔도 나머지 판매 중 상품이 빠지지 않는다", async () => {
+    const s = await seller();
+    await seven(s.ctx);
+    const hidden: string[] = [];
+    const seen = await pages(s.ctx, { status: "ON_SALE" }, async (cursor, round) => {
+      if (round === 0) {
+        await updateProduct(db, s.ctx, cursor, { status: "HIDDEN" });
+        hidden.push(cursor);
+      }
+    });
+    const onSale = (await db.product.findMany({ where: { sellerId: s.seller.id, status: "ON_SALE" }, select: { id: true } })).map((p) => p.id);
+    expect(onSale).toHaveLength(6);
+    expect(new Set(seen)).toEqual(new Set([...onSale, ...hidden]));
+    expect(seen).toHaveLength(7);
   });
 });
 
