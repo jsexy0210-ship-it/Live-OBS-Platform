@@ -26,34 +26,29 @@ enum PlatformAdminStatus {
 }
 
 model PlatformAdmin {
-  id               String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email            String              @unique
-  passwordHash     String
-  name             String
-  role             PlatformAdminRole
-  status           PlatformAdminStatus @default(ACTIVE)
-  totpSecretEnc    String?
-  totpEnabledAt    DateTime?           @db.Timestamptz(3)
-  failedLoginCount Int                 @default(0)
-  lockedUntil      DateTime?           @db.Timestamptz(3)
-  lastLoginAt      DateTime?           @db.Timestamptz(3)
-  createdAt        DateTime            @default(now()) @db.Timestamptz(3)
+  id           String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String              @unique
+  passwordHash String
+  name         String
+  role         PlatformAdminRole
+  status       PlatformAdminStatus @default(ACTIVE)
+  lastLoginAt  DateTime?           @db.Timestamptz(3)
+  createdAt    DateTime            @default(now()) @db.Timestamptz(3)
 
   sessions        AdminSession[]
   approvedSellers Seller[]
 }
 
 model AdminSession {
-  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  adminId       String    @db.Uuid
-  tokenHash     String    @unique
-  mfaVerifiedAt DateTime? @db.Timestamptz(3)
-  ip            String?
-  userAgent     String?
-  expiresAt     DateTime  @db.Timestamptz(3)
-  lastSeenAt    DateTime  @default(now()) @db.Timestamptz(3)
-  revokedAt     DateTime? @db.Timestamptz(3)
-  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  adminId    String    @db.Uuid
+  tokenHash  String    @unique
+  ip         String?
+  userAgent  String?
+  expiresAt  DateTime  @db.Timestamptz(3)
+  lastSeenAt DateTime  @default(now()) @db.Timestamptz(3)
+  revokedAt  DateTime? @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
 
   admin PlatformAdmin @relation(fields: [adminId], references: [id])
 
@@ -137,17 +132,15 @@ enum SellerUserStatus {
 }
 
 model SellerUser {
-  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerId         String           @db.Uuid
-  email            String
-  passwordHash     String
-  name             String
-  role             SellerUserRole
-  status           SellerUserStatus @default(ACTIVE)
-  failedLoginCount Int              @default(0)
-  lockedUntil      DateTime?        @db.Timestamptz(3)
-  lastLoginAt      DateTime?        @db.Timestamptz(3)
-  createdAt        DateTime         @default(now()) @db.Timestamptz(3)
+  id           String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId     String           @db.Uuid
+  email        String
+  passwordHash String
+  name         String
+  role         SellerUserRole
+  status       SellerUserStatus @default(ACTIVE)
+  lastLoginAt  DateTime?        @db.Timestamptz(3)
+  createdAt    DateTime         @default(now()) @db.Timestamptz(3)
 
   seller   Seller          @relation(fields: [sellerId], references: [id])
   sessions SellerSession[]
@@ -224,6 +217,7 @@ model BuyerMember {
   gradeId            String            @db.Uuid
   status             BuyerMemberStatus @default(ACTIVE)
   marketingConsentAt DateTime?         @db.Timestamptz(3)
+  lastLoginAt        DateTime?         @db.Timestamptz(3)
   createdAt          DateTime          @default(now()) @db.Timestamptz(3)
   deletedAt          DateTime?         @db.Timestamptz(3)
 

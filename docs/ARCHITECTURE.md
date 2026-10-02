@@ -12,7 +12,7 @@
 | ORM·마이그레이션 | **Prisma** (버전 고정, `latest` 금지) | 스키마 한 파일로 모델 검토가 쉬움, 마이그레이션 SQL이 저장소에 남아 리뷰 가능, 타입 생성으로 `tsc` 검사에 포함. 부분 유니크 인덱스·CHECK 제약 등 Prisma 문법 밖은 마이그레이션 SQL에 직접 추가 | 대안 Drizzle(가벼움, SQL에 가까움). 팀 규모·검토 편의로 Prisma 권고. [확정 제안] |
 | 비밀번호 해시 | **argon2id** (`@node-rs/argon2`, 사전 빌드 바이너리) | 메모리 하드 해시, OWASP 1순위 권고. 네이티브 컴파일 불필요해 CI·서버 설치가 단순 | bcrypt는 72바이트 제한·GPU 내성 낮음. 설치 문제 시 대안 [확정 제안] |
 | 세션 | **서버 세션 + HttpOnly 쿠키** | 무작위 256비트 토큰을 쿠키로, DB에는 SHA-256 해시만 저장. 즉시 강제 로그아웃·정지 반영 가능(JWT는 폐기 어려움) | [확정 제안] |
-| 마스터 2단계 인증 | **TOTP(RFC 6238)** 자리 마련 | 비밀키는 AES-256-GCM 암호화 저장(키는 환경변수, 저장소 기록 금지). 1단계 구현에서는 필드·검증 함수·로그인 흐름 분기까지, 등록 화면은 UI 단계 | [확정 제안] |
+| 마스터 2단계 인증 | **없음** | 대표님 결정(2026-10-02). 이메일+비밀번호만 확인한다 | [확정] |
 | 테스트 | **Vitest** (단위) + 실제 Postgres 통합 테스트 | TypeScript 바로 실행, 빠름 | [확정 제안] |
 | 실시간 | **SSE + Postgres `LISTEN/NOTIFY`** | 6절 | [확정 제안] |
 
@@ -27,7 +27,7 @@
 ```text
 prisma/schema.prisma, prisma/migrations/**   스키마·마이그레이션
 lib/server/db.ts                              Prisma 클라이언트 (서버 전용, 'server-only')
-lib/server/auth/                              해시·세션·TOTP·로그인 (영역별)
+lib/server/auth/                              해시·세션·로그인 (영역별)
 lib/server/authz/                             역할·권한 표, 가드 (requirePlatformAdmin, requireSellerUser …)
 lib/server/tenant/                            테넌트 컨텍스트, 판매자 범위 쿼리 도우미
 lib/server/queue/                             주문대기 상태 전이·순서·방송 전 주문 처리 (순수 함수 + 저장소)
@@ -45,14 +45,16 @@ tests/unit/**, tests/integration/**           테스트
 
 | 영역 | 주체 | 쿠키 | 로그인 | 세션 유지 |
 |---|---|---|---|---|
-| 마스터 | `PlatformAdmin` | `lo_admin` (경로 `/`, 마스터 호스트 한정) | 이메일+비밀번호+TOTP | 미활동 30분, 최대 8시간 |
+| 마스터 | `PlatformAdmin` | `lo_admin` (경로 `/`, 마스터 호스트 한정) | 이메일+비밀번호(2단계 인증 없음, 대표님 결정 2026-10-02) | 미활동 30분, 최대 8시간 |
 | 판매자 | `SellerUser` (대표·직원) | `lo_seller` | 이메일+비밀번호 | 미활동 12시간, 최대 30일. 방송 LIVE 중에는 미활동 로그아웃 없음 |
 | 구매자 | `BuyerMember` (판매자 쇼핑몰별) | `lo_buyer` (쇼핑몰 호스트 한정) | 4.3 참고 | 최대 30일 |
 
 - 세션 테이블도 영역별로 분리(`AdminSession`, `SellerSession`, `BuyerSession`). 판매자 세션으로 마스터 API를 호출하면 세션 조회 자체가 실패한다 → **판매자는 마스터 기능에 접근 불가**가 구조적으로 보장된다.
-- 쿠키 공통: `HttpOnly`, `Secure`(운영), `SameSite=Lax`. 상태 변경 API는 `Origin` 검사로 CSRF 차단.
+- 쿠키 공통: `HttpOnly`, `Secure`(운영), `SameSite=Lax`. 상태 변경 API는 공통 래퍼에서 `Origin` 검사로 CSRF 차단(Origin이 없거나 다르면 거부).
 - 판매자 미활동 로그아웃은 방송이 LIVE인 동안 적용하지 않고, 방송 종료 30분 뒤부터 다시 적용한다(디자인 AU-007). 최대 유지 시간은 그대로 적용.
-- 로그인 실패 5회 → 10분 잠금(계정+IP 기준, 디자인 AU-001). 로그인·실패·잠금은 감사 로그.
+- 로그인 실패 잠금 없음(대표님 결정 2026-10-02). 실패는 감사 로그에 기록. IP 허용 목록·IP 기준 제한도 두지 않는다.
+- 접속 IP는 감사 로그 기록용으로만 쓰고, 신뢰 프록시를 거친 경우에만 `X-Forwarded-For`에서 얻는다(환경변수 `TRUSTED_PROXY_HOPS`, 기본 0 = 믿지 않음).
+- 로그인 성공·실패·차단은 감사 로그.
 
 ### 3.2 마스터 역할
 
@@ -97,14 +99,14 @@ tests/unit/**, tests/integration/**           테스트
 
 ### 4.1 플랫폼
 
-- `PlatformAdmin`: id, email(**유니크**), passwordHash, name, role(`SUPER_ADMIN | OPERATIONS | CS | READ_ONLY`), status(`ACTIVE | SUSPENDED`), totpSecretEnc, totpEnabledAt, failedLoginCount, lockedUntil, lastLoginAt, createdAt
-- `AdminSession`: id, adminId, tokenHash(**유니크**), mfaVerifiedAt, ip, userAgent, expiresAt, lastSeenAt, revokedAt
+- `PlatformAdmin`: id, email(**유니크**), passwordHash, name, role(`SUPER_ADMIN | OPERATIONS | CS | READ_ONLY`), status(`ACTIVE | SUSPENDED`), lastLoginAt, createdAt
+- `AdminSession`: id, adminId, tokenHash(**유니크**), ip, userAgent, expiresAt, lastSeenAt, revokedAt
 
 ### 4.2 판매자(쇼핑몰)·직원
 
 - `Seller` (테넌트 = 쇼핑몰 1개): id, slug(기본 주소 하위 이름, **유니크**), shopName, status(`PENDING | ACTIVE | SUSPENDED | REJECTED | CLOSED`), businessInfo(JSON), approvedAt, approvedByAdminId, suspendedReason, representativeCiHash(대표자 PASS CI의 HMAC), representativeVerifiedAt(둘은 함께 기록), liveVersion(실시간 version 카운터, 기본 0), createdAt — **대표자 1명당 쇼핑몰 1개**: representativeCiHash 부분 유니크(해지 `CLOSED`·반려 `REJECTED` 제외)
 - `SellerDomain`: id, sellerId, hostname(**유니크**), verifiedAt, certStatus — 개인 도메인 연결용 자리만
-- `SellerUser`: id, sellerId, email, passwordHash, name, role(`OWNER | MANAGER | BROADCASTER`), status(`ACTIVE | DISABLED`), failedLoginCount, lockedUntil, lastLoginAt — **(sellerId, email) 유니크**, 판매자당 OWNER 1명 이상
+- `SellerUser`: id, sellerId, email, passwordHash, name, role(`OWNER | MANAGER | BROADCASTER`), status(`ACTIVE | DISABLED`), lastLoginAt — **(sellerId, email) 유니크**, 판매자당 OWNER 1명 이상
 - `SellerSession`: id, sellerUserId, sellerId, tokenHash(**유니크**), expiresAt, lastSeenAt, revokedAt
 - [확정] 한 사람이 여러 판매자의 직원이 되는 경우 판매자별 별도 계정(이메일 같아도 됨). 한 판매자가 쇼핑몰 여러 개를 갖는 경우는 지원하지 않음(별도 판매자로 가입).
 
@@ -192,7 +194,7 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 
 - `OverlayToken`: id, sellerId, tokenHash(**유니크**), createdAt, revokedAt — 오버레이 URL용 추측 불가 토큰. 재발급 시 이전 토큰 폐기.
 - `AuditLog` (추가만, 수정·삭제 없음): id, actorType(`PLATFORM_ADMIN | SELLER_USER | BUYER | SYSTEM`), actorId, sellerId(nullable), action(예: `seller.suspend`, `queue.cancel`, `reward.live_payout.enable`, `admin.impersonate.view`), targetType, targetId, before(JSON), after(JSON), reason, ip, userAgent, createdAt
-  - 비밀번호 해시·토큰·TOTP 비밀키·카드 정보는 before/after에 넣지 않는다(기록 전 제거).
+  - 비밀번호 해시·토큰·CI 해시·카드 정보는 before/after에 넣지 않는다(기록 전 제거).
   - DB 권한으로 UPDATE/DELETE를 막는 것은 운영 DB 계정 설계 때 적용(다음 단계).
 
 ### 4.9 이번 초안에서 뺀 것 (다음 단계)
@@ -212,7 +214,7 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 
 ## 5. 주요 흐름 요약
 
-- **로그인**: 해시 검증 → (마스터) TOTP 검증 → 세션 생성 → 토큰 쿠키. 정지된 판매자의 직원은 로그인 거부.
+- **로그인**: 해시 검증 → 세션 생성 → 토큰 쿠키. 정지된 판매자의 직원은 로그인 거부.
 - **요청 처리**: 쿠키 → 영역별 세션 조회(만료·폐기·주체 정지 확인) → 권한 가드 → `TenantContext` 생성 → 도메인 함수 → 감사 로그 → NOTIFY.
 - **결제 완료(이번 단계는 테스트용 내부 함수)**: 주문 PAID → 전 품목 재고 차감(한 트랜잭션)
   - 성공 → QueueItem 생성(방송 중이면 그 방송, 아니면 미배정) → 적립 원장 PENDING → 커밋 → NOTIFY.
@@ -258,7 +260,7 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 
 - [비용] 운영 Postgres 위치: 카카오클라우드 기존 VM에 직접 설치(추가 비용 적음, 백업·운영 부담) vs 관리형 DB(유료, 백업·장애 대응 포함). 배포 단계에서 대표님 결정.
 - [비용] 문자·알림톡·본인인증 업체 — PRODUCT_SCOPE 미확정 항목.
-- 비밀값(DB 접속 문자열, 세션·TOTP 암호화 키)은 환경변수로만. 저장소·문서·로그 기록 금지.
+- 비밀값(DB 접속 문자열, CI 해시 키)은 환경변수로만. 저장소·문서·로그 기록 금지.
 
 ## 9. 확정 결과 (2026-10-02 21:50 KST)
 
@@ -276,6 +278,6 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 | 10 | RLS 적용 | 이번 단계 미적용, 운영 전 재검토 | MASTER |
 | 11 | 회원 등급 | 판매자별 테이블, id로 식별, 기본 5개는 systemKey 표시 | MASTER |
 
-디자인 맞춤 수정(MASTER 검수): 로그인 잠금 10분(AU-001), 세션 시간(AU-007), 등급 식별 방식.
+디자인 맞춤 수정(MASTER 검수): 세션 시간(AU-007), 등급 식별 방식. 로그인 실패 잠금은 없음(대표님 결정 2026-10-02, 실패는 감사 로그에 기록).
 
 남은 미정은 8절 [비용] 항목뿐이다.

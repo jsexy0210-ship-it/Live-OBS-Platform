@@ -77,3 +77,39 @@ export async function createPaidOrderItem(sellerId: string, buyerMemberId: strin
   });
   return { product, option, order, item };
 }
+
+export const PASSWORD = "test-password-1";
+let pwHash: Promise<string> | undefined;
+async function passwordHash() {
+  const { hashPassword } = await import("../../lib/server/auth/password");
+  pwHash ??= hashPassword(PASSWORD);
+  return pwHash;
+}
+
+export async function createAdmin(
+  role: "SUPER_ADMIN" | "OPERATIONS" | "CS" | "READ_ONLY",
+  extra: { status?: "ACTIVE" | "SUSPENDED" } = {},
+) {
+  return db.platformAdmin.create({
+    data: {
+      email: `admin${next()}@example.com`,
+      passwordHash: await passwordHash(),
+      name: "관리자",
+      role,
+      status: extra.status ?? "ACTIVE",
+    },
+  });
+}
+
+// 마스터 로그인 입력(이메일 + 비밀번호, 2단계 인증 없음)
+export const adminCredentials = (admin: { email: string }) => ({ email: admin.email, password: PASSWORD });
+
+export async function createSellerUser(sellerId: string, role: "OWNER" | "MANAGER" | "BROADCASTER", email?: string) {
+  return db.sellerUser.create({
+    data: { sellerId, email: email ?? `staff${next()}@example.com`, passwordHash: await passwordHash(), name: "직원", role },
+  });
+}
+export async function createLoginBuyer(sellerId: string, gradeId: string) {
+  const m = await createBuyer(sellerId, gradeId);
+  return db.buyerMember.update({ where: { id: m.id }, data: { passwordHash: await passwordHash() } });
+}
