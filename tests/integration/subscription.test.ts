@@ -451,10 +451,15 @@ describe("기간은 항상 원래 결제일에 이어서 (대표님 결정)", ()
     expect(await db.sellerSubscription.findUniqueOrThrow({ where: { id: sub.id } })).toMatchObject({ currentPeriodStart: end });
   });
 
-  it("잠금이 길어 지난 기간 끝부터 세도 이미 지났으면 결제한 시각부터 새로 센다", async () => {
+  it("잠금이 길어 지난 기간 끝부터 세도 이미 지났으면 결제한 시각부터 새로 세고, 청구는 1회만 한다(MASTER 결정)", async () => {
     const { s, sub, end, provider } = await failedRenewal();
     const now = new Date(end.getTime() + 40 * DAY);
+    const paidBefore = await db.subscriptionPayment.count({ where: { sellerId: s.seller.id, status: "PAID" } });
+    const chargesBefore = provider.charges.length;
     expect((await registerCardAndPay(db, provider, s.ctx, { authKey: "late", now })).ok).toBe(true);
+    expect(await db.subscriptionPayment.count({ where: { sellerId: s.seller.id, status: "PAID" } })).toBe(paidBefore + 1);
+    expect(provider.charges.length).toBe(chargesBefore + 1);
+    expect(provider.charges.at(-1)!.amount).toBe(199000);
     expect(await db.sellerSubscription.findUniqueOrThrow({ where: { id: sub.id } })).toMatchObject({ currentPeriodStart: now, billingAnchorAt: now });
     expect(await sellerAccessFor(db, s.seller.id, now)).toBe("paid");
   });
