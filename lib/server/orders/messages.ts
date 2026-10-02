@@ -1,4 +1,4 @@
-// 주문·배송 거부 사유별 화면 문구(해요체). 화면은 error 코드로 분기하고 message를 그대로 보여 준다.
+// 주문·배송·상품 거부 사유별 화면 문구(해요체). 화면은 error 코드로 분기하고 message를 그대로 보여 준다.
 // 문구는 여기 한 곳에서만 고친다.
 export const ORDER_ERROR_MESSAGES = {
   shop_unavailable: "지금은 쇼핑몰을 이용할 수 없어요",
@@ -13,6 +13,13 @@ export const ORDER_ERROR_MESSAGES = {
   invalid_shipment: "택배사와 송장번호를 다시 확인해 주세요",
   not_shippable: "결제가 끝난 주문만 발송할 수 있어요",
   invalid_shipping_policy: "배송비 설정을 다시 확인해 주세요",
+  // 판매자 상품·옵션
+  invalid_product: "상품 정보를 다시 확인해 주세요",
+  invalid_option: "옵션 정보를 다시 확인해 주세요",
+  invalid_price: "가격을 다시 확인해 주세요. 옵션 추가금을 더한 가격도 1원 이상이어야 해요",
+  too_many_options: "옵션은 상품 하나에 100개까지 만들 수 있어요",
+  no_sellable_option: "판매하려면 옵션이 하나 이상 있어야 해요",
+  stock_conflict: "그사이 재고가 바뀌었어요. 새로 불러온 뒤 다시 입력해 주세요",
 } as const;
 
 export type OrderErrorCode = keyof typeof ORDER_ERROR_MESSAGES;

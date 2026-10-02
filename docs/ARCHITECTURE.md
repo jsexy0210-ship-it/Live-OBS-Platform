@@ -146,10 +146,17 @@ tests/unit/**, tests/integration/**           테스트
 
 - `Product`: id, sellerId, name, description, price, status(`DRAFT | ON_SALE | SOLD_OUT | HIDDEN`), sortOrder, deletedAt
 - `ProductImage`: id, sellerId, productId, storageKey, sortOrder — 저장소 구성은 미확정(PRODUCT_SCOPE)
-- `ProductOption`: id, sellerId, productId, name(예: 「1팩」), priceDelta, stock(**CHECK stock >= 0**), sku, sortOrder — 옵션 없는 상품도 기본 옵션 1개를 둬 재고를 한 곳에서 관리
+- `ProductOption`: id, sellerId, productId, name(예: 「1팩」), priceDelta, stock(**CHECK stock >= 0**), sku, sortOrder, deletedAt(소프트 삭제) — 옵션 없는 상품도 기본 옵션 1개를 둬 재고를 한 곳에서 관리
 - `StockMovement`: id, sellerId, optionId, delta, reason(`ORDER | CANCEL | REFUND | MANUAL`), orderId, actor, createdAt — 재고 변경 이력
 - 재고 차감은 `UPDATE … SET stock = stock - n WHERE id = ? AND sellerId = ? AND stock >= n`의 영향 행 수로 판정(초과 판매 방지).
 - 주문의 모든 품목 차감은 **한 트랜잭션**에서 처리한다. 품목 하나라도 영향 행 수가 0이면 그 트랜잭션의 모든 차감을 되돌리고(롤백), 별도 트랜잭션에서 주문에 `stockShortageAt`만 기록한다. 일부 품목만 차감된 상태는 생기지 않는다.
+- 판매자 상품·옵션 API(`PRODUCT_MANAGE`, 잠긴 판매자는 402, 마스터 대리 조회는 403): `GET·POST /api/seller/products`, `GET·PATCH·DELETE /api/seller/products/{productId}`, `POST /api/seller/products/{productId}/options`, `PATCH·DELETE /api/seller/products/{productId}/options/{optionId}`.
+  - 다른 판매자 상품·옵션, 다른 상품의 옵션은 404. 상품 행을 잠근 뒤 가격·옵션을 검사한다.
+  - 가격은 1원~2,147,483,647원 정수. 살아 있는 옵션의 단가(가격 + 추가금)도 1원~정수 범위여야 하고, 상품 가격·추가금을 바꿀 때 다시 확인한다. 틀리면 `400 invalid_price`.
+  - 재고는 0 이상 정수. 바꿀 때는 `{ stock, expectedStock }`을 함께 보내고, 지금 재고가 expectedStock과 다르면(결제 차감과 겹침) `409 stock_conflict`로 덮어쓰지 않는다. 차이와 등록 때 재고는 `MANUAL` 재고 이력.
+  - 상태는 `DRAFT | ON_SALE | SOLD_OUT | HIDDEN`. 판매 중은 살아 있는 옵션이 하나 이상 있어야 하고(`400 no_sellable_option`), 판매 중 상품의 마지막 옵션은 지울 수 없다. 옵션은 상품당 100개까지.
+  - 삭제는 소프트 삭제(`deletedAt`). 지운 상품·옵션은 목록·조회·새 주문에서 빠지고, 지난 주문 품목은 그대로 둔다. 이름·SKU는 NFKC 정규화 후 제어·보이지 않는 서식·줄 구분 문자를 거부하고, 설명은 줄바꿈만 허용한다. 등록·수정·삭제는 감사 로그.
+  - 상품 이미지는 저장소가 정해지지 않아 이번에 만들지 않았다.
 - [확정] 재고 차감 시점: **결제 완료 시 차감**(선점 없음, 결제 완료 순). 동시 결제로 재고가 모자라면 늦게 결제된 주문은 `PAID`로 기록하되 `stockShortageAt`을 남겨 「취소·환불 대상」으로 표시하고, 주문대기는 만들지 않는다. 실제 PG 환불 연동은 다음 단계.
 
 ### 4.5 주문·주문 품목
