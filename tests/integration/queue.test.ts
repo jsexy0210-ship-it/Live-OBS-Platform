@@ -19,7 +19,7 @@ const sec = (n: number) => new Date(t0.getTime() + n * 1000);
 async function setupShop() {
   const { seller, grade } = await createSeller();
   const user = await createSellerUser(seller.id, "BROADCASTER");
-  const ctx: TenantContext = { sellerId: seller.id, actorType: "SELLER_USER", actorId: user.id, sellerRole: "BROADCASTER", readOnly: false };
+  const ctx: TenantContext = { sellerId: seller.id, actorType: "SELLER_USER", actorId: user.id, isOwner: false, permissions: user.permissions, readOnly: false };
   const buyer = await createBuyer(seller.id, grade.id);
   let orderNo = 0;
   // 결제 대기 주문을 만든다. lines: [재고, 수량]
@@ -381,10 +381,19 @@ describe("권한·테넌트 격리", () => {
     expect(await status(id)).toBe("WAITING");
   });
 
+  it("방송 진행 권한(BROADCAST_RUN)이 없는 직원은 주문대기를 조회·조작할 수 없다", async () => {
+    const s = await setupShop();
+    const id = await s.paidItem();
+    const noRun: TenantContext = { ...s.ctx, permissions: ["ORDER_SHIPPING", "SALES_VIEW"] };
+    await expect(getQueueSnapshot(db, noRun)).rejects.toMatchObject({ status: 403 });
+    await expect(applyQueueAction(db, noRun, id, "cancel", { reason: "x" })).rejects.toMatchObject({ status: 403 });
+    await expect(startBroadcast(db, noRun)).rejects.toMatchObject({ status: 403 });
+  });
+
   it("마스터 대리 조회(읽기 전용)로는 주문대기를 조작할 수 없다", async () => {
     const s = await setupShop();
     const id = await s.paidItem();
-    const ro: TenantContext = { ...s.ctx, actorType: "PLATFORM_ADMIN", sellerRole: null, readOnly: true };
+    const ro: TenantContext = { ...s.ctx, actorType: "PLATFORM_ADMIN", isOwner: false, permissions: [], readOnly: true };
     await expect(applyQueueAction(db, ro, id, "cancel", { reason: "x" })).rejects.toMatchObject({ status: 403 });
     await expect(startBroadcast(db, ro)).rejects.toMatchObject({ status: 403 });
   });
