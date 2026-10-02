@@ -86,7 +86,12 @@ describe("배송지 입력의 보이지 않는 문자", () => {
     expect(parseShippingAddress({ ...base, memo: `문 앞 ${newEmoji}` })).toMatchObject({ memo: `문 앞 ${newEmoji}` });
     expect(parseShippingAddress({ ...base, memo: newEmoji })).toMatchObject({ memo: newEmoji });
     expect(parseShippingAddress({ ...base, memo: `문 앞 ${scotland}` })).toMatchObject({ memo: `문 앞 ${scotland}` });
-    expect(parseShippingAddress({ ...base, recipientName: `김${newEmoji}` })).toBeNull();
+    // 이름·주소의 미할당 거부는 Node·ICU 버전이 바뀌어도 영구히 미할당인 문자로 확인한다(비문자 U+FFFE, U+0378).
+    // U+1FAEA처럼 새로 할당되는 이모지는 버전에 따라 결과가 달라진다.
+    for (const unassigned of ["\ufffe", "\u0378"]) {
+      expect(parseShippingAddress({ ...base, recipientName: `김${unassigned}` }), JSON.stringify(unassigned)).toBeNull();
+      expect(parseShippingAddress({ ...base, address1: `서울 ${unassigned}` }), JSON.stringify(unassigned)).toBeNull();
+    }
     expect(parseShippingAddress({ ...base, address1: `서울 ${scotland}` })).toBeNull();
     // 메모라도 서로게이트·사용자 정의·제어·방향 문자는 거부
     for (const bad of ["\ud800", "\ue000", "\u0000", "\u202e"]) {
