@@ -46,6 +46,22 @@ describe("PASS 본인인증 기록", () => {
   });
 });
 
+describe("운영 환경 차단", () => {
+  it("운영 환경에서는 가짜 공급자로 만든 인증 기록을 완료 처리하지 않는다", async () => {
+    const { seller } = await createSeller();
+    const v = await startIdentityVerification(db, provider, { purpose: "BUYER_SIGNUP", sellerId: seller.id });
+    provider.complete(v.requestId, person("CI-P"));
+    const prev = process.env.NODE_ENV;
+    (process.env as Record<string, string | undefined>).NODE_ENV = "production";
+    try {
+      expect(await completeIdentityVerification(db, provider, v.id)).toEqual({ ok: false, reason: "failed" });
+    } finally {
+      (process.env as Record<string, string | undefined>).NODE_ENV = prev;
+    }
+    expect((await db.identityVerification.findUniqueOrThrow({ where: { id: v.id } })).status).toBe("PENDING");
+  });
+});
+
 describe("구매자 회원가입", () => {
   it("본인인증을 마치면 가입되고, 이름·휴대폰·생년월일은 인증 결과를 쓴다", async () => {
     const { seller } = await createSeller();

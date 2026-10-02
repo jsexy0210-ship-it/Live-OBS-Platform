@@ -18,6 +18,11 @@ export class FakeIdentityProvider implements IdentityProvider {
   private seq = 0;
   private results = new Map<string, IdentityResult>();
 
+  // 운영 환경에서는 만들 수 없다. 가짜 인증으로 가입·대표자 인증이 통과되는 것을 막는다.
+  constructor(env: string | undefined = process.env.NODE_ENV) {
+    if (env === "production") throw new Error("운영 환경에서는 가짜 본인인증 공급자를 쓸 수 없어요.");
+  }
+
   async createRequest() {
     return { requestId: `fake-${Date.now()}-${++this.seq}` };
   }
