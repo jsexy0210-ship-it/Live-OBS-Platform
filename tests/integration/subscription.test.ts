@@ -7,7 +7,19 @@ import { updatePlanPrice } from "../../lib/server/billing/plans";
 import { FakeBillingProvider } from "../../lib/server/billing/provider";
 import { addOneMonth } from "../../lib/server/billing/access";
 import { openBillingKey } from "../../lib/server/billing/secret";
-import { cancelSubscription, getSubscriptionView, registerCardAndPay, renewDueSubscriptions, sellerAccessFor } from "../../lib/server/billing/subscription";
+import {
+  cancelSubscription,
+  closeLongLockedSellers,
+  getSubscriptionView,
+  registerCardAndPay,
+  renewDueSubscriptions,
+  sellerAccessFor,
+} from "../../lib/server/billing/subscription";
+import { checkTrialLimit, updateTrialLimits } from "../../lib/server/billing/trialLimits";
+import { POST as broadcastStart } from "../../app/api/seller/broadcast/start/route";
+import { GET as orderRoute } from "../../app/api/seller/orders/[orderId]/route";
+import { POST as refundRoute } from "../../app/api/seller/orders/[orderId]/refund/route";
+import { markOrderPaid } from "../../lib/server/queue/service";
 import { GET as overlayState } from "../../app/api/overlay/[token]/state/route";
 import { GET as overlayStream } from "../../app/api/overlay/[token]/stream/route";
 import { GET as overlayVersion } from "../../app/api/overlay/[token]/version/route";
@@ -25,7 +37,7 @@ import { GET as subscriptionRoute } from "../../app/api/seller/subscription/rout
 import { POST as cardRoute } from "../../app/api/seller/subscription/card/route";
 import { POST as adminLogin } from "../../app/api/admin/auth/login/route";
 import { prisma } from "../../lib/server/db";
-import { PASSWORD, adminCredentials, createAdmin, createSeller, createSellerUser, db, resetDb } from "./helpers";
+import { PASSWORD, adminCredentials, createAdmin, createBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
 beforeAll(() => {
   process.env.BILLING_KEY_SECRET = "test-billing-key-secret-0123456789abcdef";
@@ -391,5 +403,95 @@ describe("HTTP: 체험하기 종료 후 열리는 화면", () => {
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ ok: true, trialEndsAt: expect.any(String) });
+  });
+});
+
+describe("잠금 중 허용 범위", () => {
+  it("잠긴 판매자도 이미 받은 주문은 조회·환불할 수 있고, 방송 시작(새 판매)은 402다", async () => {
+    const { seller, owner } = await shop(new Date(Date.now() + DAY));
+    const grade = await db.memberGrade.findFirstOrThrow({ where: { sellerId: seller.id } });
+    const buyer = await createBuyer(seller.id, grade.id);
+    const product = await db.product.create({ data: { sellerId: seller.id, name: "팩", price: 5000, status: "ON_SALE" } });
+    const option = await db.productOption.create({ data: { sellerId: seller.id, productId: product.id, name: "1팩", stock: 5 } });
+    const order = await db.order.create({ data: { sellerId: seller.id, orderNo: 1, buyerMemberId: buyer.id, broadcastNicknameSnapshot: "닉", totalAmount: 5000 } });
+    await db.orderItem.create({
+      data: { sellerId: seller.id, orderId: order.id, productId: product.id, optionId: option.id, productNameSnapshot: "팩", optionNameSnapshot: "1팩", unitPrice: 5000, quantity: 1 },
+    });
+    expect((await markOrderPaid(db, { sellerId: seller.id, orderId: order.id, paymentMethod: "CARD" })).ok).toBe(true);
+    await db.seller.update({ where: { id: seller.id }, data: { trialEndsAt: new Date(Date.now() - 1000) } });
+
+    const token = await sessionToken(owner.email);
+    const headers = { "content-type": "application/json", host: "localhost:3000", origin: "http://localhost:3000", cookie: `lo_seller=${token}` };
+    const params = { params: Promise.resolve({ orderId: order.id }) };
+    expect((await orderRoute(new Request(`http://localhost:3000/api/seller/orders/${order.id}`, { headers }), params)).status).toBe(200);
+    const version = (await db.seller.findUniqueOrThrow({ where: { id: seller.id } })).liveVersion;
+    const refund = await refundRoute(
+      new Request(`http://localhost:3000/api/seller/orders/${order.id}/refund`, { method: "POST", headers, body: JSON.stringify({ reason: "요청", expectedVersion: version }) }),
+      params,
+    );
+    expect(refund.status).toBe(200);
+    const start = await broadcastStart(new Request("http://localhost:3000/api/seller/broadcast/start", { method: "POST", headers, body: "{}" }));
+    expect(start.status).toBe(402);
+  });
+});
+
+describe("잠금 30일 뒤 자동 해지", () => {
+  const ago = (days: number) => new Date(Date.now() - days * DAY);
+
+  it("잠긴 지 30일이 지나면 해지 표시·구독 CANCELED·도메인 비활성, 30일 전이거나 유예 중이면 그대로", async () => {
+    const closedShop = await shop(ago(31));
+    const recent = await shop(ago(29));
+    const grace = await shop(ago(40));
+    await db.sellerSubscription.create({
+      data: { sellerId: grace.seller.id, planId: (await db.subscriptionPlan.findFirstOrThrow()).id, status: "PAST_DUE", graceUntil: new Date(Date.now() + DAY) },
+    });
+    const pastDue = await shop(ago(60));
+    await db.sellerSubscription.create({
+      data: { sellerId: pastDue.seller.id, planId: (await db.subscriptionPlan.findFirstOrThrow()).id, status: "PAST_DUE", graceUntil: ago(31), currentPeriodEnd: ago(38) },
+    });
+    await db.sellerDomain.create({ data: { sellerId: closedShop.seller.id, hostname: "closed.example.com" } });
+
+    const now = new Date();
+    expect(await closeLongLockedSellers(db, { now })).toEqual({ closed: 2 });
+    expect((await db.seller.findUniqueOrThrow({ where: { id: closedShop.seller.id } })).serviceEndedAt).toEqual(now);
+    expect((await db.sellerDomain.findUniqueOrThrow({ where: { hostname: "closed.example.com" } })).suspendedAt).toEqual(now);
+    expect((await db.sellerSubscription.findUniqueOrThrow({ where: { sellerId: pastDue.seller.id } })).status).toBe("CANCELED");
+    for (const s of [recent, grace]) expect((await db.seller.findUniqueOrThrow({ where: { id: s.seller.id } })).serviceEndedAt).toBeNull();
+    // 다시 돌려도 바뀌지 않는다
+    expect(await closeLongLockedSellers(db)).toEqual({ closed: 0 });
+    expect(await db.auditLog.count({ where: { action: "subscription.auto_closed" } })).toBe(2);
+  });
+
+  it("보관 기간 안에 다시 구독하면 해지 표시를 지우고 해지 때 푼 도메인만 되살린다", async () => {
+    const s = await shop(ago(31));
+    await db.sellerDomain.create({ data: { sellerId: s.seller.id, hostname: "live.example.com" } });
+    const manual = await db.sellerDomain.create({ data: { sellerId: s.seller.id, hostname: "old.example.com", suspendedAt: ago(100) } });
+    await closeLongLockedSellers(db);
+    expect((await registerCardAndPay(db, new FakeBillingProvider(), s.ctx, { authKey: "back" })).ok).toBe(true);
+    expect((await db.seller.findUniqueOrThrow({ where: { id: s.seller.id } })).serviceEndedAt).toBeNull();
+    expect((await db.sellerDomain.findUniqueOrThrow({ where: { hostname: "live.example.com" } })).suspendedAt).toBeNull();
+    expect((await db.sellerDomain.findUniqueOrThrow({ where: { id: manual.id } })).suspendedAt).toEqual(manual.suspendedAt);
+    expect(await sellerAccessFor(db, s.seller.id, new Date())).toBe("paid");
+  });
+});
+
+describe("체험하기 한도", () => {
+  it("체험하기 중에만 한도를 보고, 마스터가 바꾼 값이 바로 적용된다", async () => {
+    const trial = await shop(new Date(Date.now() + DAY));
+    expect(await checkTrialLimit(db, trial.seller.id, "message", { used: 99, adding: 1 })).toEqual({ ok: true });
+    expect(await checkTrialLimit(db, trial.seller.id, "message", { used: 99, adding: 2 })).toEqual({ ok: false, reason: "trial_limit_exceeded", limit: 100 });
+    expect(await checkTrialLimit(db, trial.seller.id, "identity", { used: 50, adding: 1 })).toMatchObject({ ok: false, limit: 50 });
+    expect(await checkTrialLimit(db, trial.seller.id, "storageMb", { used: 1000, adding: 24 })).toEqual({ ok: true });
+
+    const admin = await adminCtx("SUPER_ADMIN");
+    expect(await updateTrialLimits(db, admin, "STANDARD", { message: 200, identity: 50, storageMb: 1024 })).toMatchObject({ ok: true });
+    expect(await checkTrialLimit(db, trial.seller.id, "message", { used: 150, adding: 1 })).toEqual({ ok: true });
+    expect(await updateTrialLimits(db, admin, "STANDARD", { message: -1, identity: 50, storageMb: 1024 })).toEqual({ ok: false, reason: "invalid_limit" });
+    await expect(updateTrialLimits(db, await adminCtx("CS"), "STANDARD", { message: 1, identity: 1, storageMb: 1 })).rejects.toMatchObject({ status: 403 });
+
+    // 결제한 판매자는 한도 없음
+    const paid = await shop(new Date(Date.now() - DAY));
+    await registerCardAndPay(db, new FakeBillingProvider(), paid.ctx, { authKey: "p" });
+    expect(await checkTrialLimit(db, paid.seller.id, "message", { used: 10_000, adding: 1 })).toEqual({ ok: true });
   });
 });

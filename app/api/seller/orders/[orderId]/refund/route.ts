@@ -9,7 +9,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // 결제 완료 주문 환불(개봉 전 품목만 재고 복구, 연결된 대기·개봉 중 자동 취소). 사유·expectedVersion 필수, ORDER_SHIPPING 권한.
 // 개봉을 시작했거나 마친 품목이 있으면 confirmOpened: true가 있어야 한다(없으면 409 opened_items_present).
 export const POST = mutation(async (req: Request, { params }: { params: Promise<{ orderId: string }> }) => {
-  const ctx = await requireSeller(prisma, sessionToken(req, "seller"));
+  // 잠금 중에도 이미 받은 주문은 처리할 수 있다(대표님 결정 2026-10-02, PRODUCT_SCOPE 「잠금 중 허용 범위」).
+  const ctx = await requireSeller(prisma, sessionToken(req, "seller"), new Date(), { allowUnpaid: true });
   const { orderId } = await params;
   if (!UUID.test(orderId)) return NextResponse.json({ error: "not_found" }, { status: 404 });
   const body = await readJson<{ reason: string; expectedVersion: number; confirmOpened: boolean }>(req);

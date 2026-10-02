@@ -5,7 +5,11 @@ CREATE TYPE "SellerSubscriptionStatus" AS ENUM ('ACTIVE', 'PAST_DUE', 'CANCELED'
 CREATE TYPE "SubscriptionPaymentStatus" AS ENUM ('PENDING', 'PAID', 'FAILED');
 
 -- AlterTable
-ALTER TABLE "Seller" ADD COLUMN     "trialEndsAt" TIMESTAMPTZ(3);
+ALTER TABLE "Seller" ADD COLUMN     "serviceEndedAt" TIMESTAMPTZ(3),
+ADD COLUMN     "trialEndsAt" TIMESTAMPTZ(3);
+
+-- AlterTable
+ALTER TABLE "SellerDomain" ADD COLUMN     "suspendedAt" TIMESTAMPTZ(3);
 
 -- CreateTable
 CREATE TABLE "SubscriptionPlan" (
@@ -14,6 +18,9 @@ CREATE TABLE "SubscriptionPlan" (
     "name" TEXT NOT NULL,
     "listPrice" INTEGER NOT NULL,
     "salePrice" INTEGER NOT NULL,
+    "trialMessageLimit" INTEGER NOT NULL DEFAULT 100,
+    "trialIdentityLimit" INTEGER NOT NULL DEFAULT 50,
+    "trialStorageMb" INTEGER NOT NULL DEFAULT 1024,
     "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMPTZ(3) NOT NULL,
 
@@ -87,6 +94,7 @@ ALTER TABLE "SubscriptionPayment" ADD CONSTRAINT "SubscriptionPayment_sellerId_s
 
 -- 손으로 추가: 가격·금액·기간 검사
 ALTER TABLE "SubscriptionPlan" ADD CONSTRAINT "SubscriptionPlan_price_check" CHECK ("salePrice" > 0 AND "listPrice" >= "salePrice");
+ALTER TABLE "SubscriptionPlan" ADD CONSTRAINT "SubscriptionPlan_trial_limit_check" CHECK ("trialMessageLimit" >= 0 AND "trialIdentityLimit" >= 0 AND "trialStorageMb" >= 0);
 ALTER TABLE "SubscriptionPayment" ADD CONSTRAINT "SubscriptionPayment_amount_check" CHECK ("amount" > 0);
 ALTER TABLE "SubscriptionPayment" ADD CONSTRAINT "SubscriptionPayment_period_check" CHECK ("periodEnd" > "periodStart");
 ALTER TABLE "SellerSubscription" ADD CONSTRAINT "SellerSubscription_retry_check" CHECK ("retryCount" >= 0 AND "retryCount" <= 3);

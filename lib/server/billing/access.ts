@@ -30,6 +30,15 @@ export function sellerAccess({ trialEndsAt, subscription: s }: AccessInput, now:
   return "expired";
 }
 
+// 잠기기 시작한 시각(이용 가능했던 마지막 시각). 잠금 30일 뒤 자동 해지 판단에 쓴다.
+// 체험하기 끝, 결제한 기간 끝, 유예 끝, 예약 결제 대기 끝 중 가장 늦은 시각. 하나도 없으면 null.
+export function lockedSince({ trialEndsAt, subscription: s }: AccessInput): Date | null {
+  const candidates: (Date | null)[] = [trialEndsAt, s?.currentPeriodEnd ?? null];
+  if (s?.status === "PAST_DUE") candidates.push(s.graceUntil);
+  if (s?.status === "ACTIVE" && !s.cancelAtPeriodEnd && s.nextChargeAt) candidates.push(new Date(s.nextChargeAt.getTime() + CHARGE_WAIT_MS));
+  return candidates.reduce<Date | null>((a, b) => (b && (!a || b > a) ? b : a), null);
+}
+
 // 한 달 뒤 같은 시각. 다음 달에 같은 날이 없으면 그 달 마지막 날로 맞춘다(1월 31일 → 2월 28·29일).
 export function addOneMonth(d: Date): Date {
   const r = new Date(d);

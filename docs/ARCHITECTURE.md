@@ -232,7 +232,9 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
   - `trial`: 체험하기 중.
   - `charging`: 카드를 등록해 두었고 예약 결제 시각이 지난 지 하루가 안 됨(예약 실행이 처리할 때까지 끊지 않음).
   - `grace`: 자동결제 실패 뒤 유예 중(실패한 때 + 7일).
-  - 잠겨도 열리는 것: 내 정보(`/api/seller/me`, 이용 상태 포함), 구독·결제(`/api/seller/subscription/**`), 로그아웃. 판정은 서버 가드(`requireSeller`)에서 한다.
+  - 잠겨도 열리는 것(대표님 결정, PRODUCT_SCOPE 「잠금 중 허용 범위」): 내 정보(`/api/seller/me`, 이용 상태 포함), 구독·결제(`/api/seller/subscription/**`), 로그아웃, 이미 받은 주문의 처리(주문 조회·취소·환불, 배송·구매자 문의 답변·영수증은 기능을 만들 때 같은 방식으로 연다). 막는 것은 새 판매(쇼핑몰 주문 생성·오버레이·방송 시작·상품 등록·수정·도메인 신규 연결)와 그 밖의 판매자 API다. 판정은 서버 가드(`requireSeller`, 예외는 `allowUnpaid`)에서 한다.
+- 잠금 30일 뒤 자동 해지(`closeLongLockedSellers`, 예약 실행): 잠기기 시작한 시각(체험하기 끝·기간 끝·유예 끝·예약 결제 대기 끝 중 가장 늦은 시각)에서 30일이 지나면 `Seller.serviceEndedAt`을 기록하고 구독을 `CANCELED`, 연결 도메인을 비활성(`SellerDomain.suspendedAt`)으로 바꾼다. 데이터는 지우지 않는다(90일 보관 뒤 삭제·5년 주문·결제 기록 보관은 별도 작업). 보관 기간 안에 다시 결제하면 해지 표시를 지우고 해지 때 푼 도메인을 되살린다.
+- 체험하기 한도(대표님 결정): 알림톡·문자 100건, 구매자 PASS 50건, 저장 용량 1GB. `SubscriptionPlan`의 `trialMessageLimit`·`trialIdentityLimit`·`trialStorageMb`에 두고 마스터 API(`POST /api/admin/plans/{code}/trial-limits`, `billing.manage`, 감사 로그)로 바꾼다. 확인 함수 `checkTrialLimit`은 체험하기 중인 판매자에게만 적용하며, 알림톡·PASS·업로드 기능을 만들 때 연결한다.
 - `SubscriptionPlan`: 정가(`listPrice`)·판매가(`salePrice`), 원 단위 부가세 포함, 청구액은 판매가. 기본값 300,000원 / 199,000원은 마이그레이션 데이터로 넣고, 이후 변경은 마스터 API(`billing.manage`)로 한다(코드 수정 없음, 다음 결제부터 적용, 감사 로그).
 - `SellerSubscription`(쇼핑몰당 1개): 카드 자동결제(빌링키)만. 빌링키는 `BILLING_KEY_SECRET`으로 AES-256-GCM 암호화해서만 저장하고 응답·감사 로그에 넣지 않는다. 상태 `ACTIVE | PAST_DUE | CANCELED`, 이용 기간, 해지 예약(`cancelAtPeriodEnd`), 다음 처리 시각(`nextChargeAt`), 재시도 횟수(`retryCount`), 유예 끝(`graceUntil`). 대표자 전용(`SUBSCRIPTION_MANAGE`), 마스터 대리 조회로도 볼 수 없다.
 - `SubscriptionPayment`(청구 내역): `PENDING → PAID | FAILED`. 같은 구독·같은 기간 시작에는 `PENDING·PAID` 청구가 하나만(부분 유니크) → 동시 클릭·예약 실행 중복에도 한 번만 결제. 모든 구독 변경은 판매자 행을 먼저 잠근다.

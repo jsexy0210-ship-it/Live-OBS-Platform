@@ -74,6 +74,8 @@ model Seller {
   approvedAt               DateTime?    @db.Timestamptz(3)
   // 체험하기(3일) 종료 시각 = 마스터 승인 시각(DB 시계) + 3일. 지나면 구독 전까지 판매자 API를 막는다.
   trialEndsAt              DateTime?    @db.Timestamptz(3)
+  // 잠긴 지 30일이 지나 자동 해지된 시각. 이때부터 90일 보관 뒤 삭제 대상(삭제는 별도 작업). 다시 구독하면 비운다.
+  serviceEndedAt           DateTime?    @db.Timestamptz(3)
   approvedByAdminId        String?      @db.Uuid
   suspendedReason          String?
   // 대표자 PASS 본인인증 CI의 HMAC-SHA256 값(원문 CI는 저장하지 않음). 대표자 1명당 쇼핑몰 1개는 마이그레이션 SQL 부분 유니크.
@@ -113,12 +115,14 @@ model Seller {
 }
 
 model SellerDomain {
-  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerId   String    @db.Uuid
-  hostname   String    @unique
-  verifiedAt DateTime? @db.Timestamptz(3)
-  certStatus String?
-  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId    String    @db.Uuid
+  hostname    String    @unique
+  verifiedAt  DateTime? @db.Timestamptz(3)
+  certStatus  String?
+  // 자동 해지로 연결을 푼 시각(비활성). 다시 구독하면 되살린다.
+  suspendedAt DateTime? @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
 
   seller Seller @relation(fields: [sellerId], references: [id])
 
@@ -725,13 +729,17 @@ model AuditLog {
 
 // 요금제. 가격은 코드에 두지 않고 여기서 바꾼다(마스터). 금액은 부가세 포함 원 단위, 청구액은 salePrice.
 model SubscriptionPlan {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  code      String   @unique
-  name      String
-  listPrice Int
-  salePrice Int
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code               String   @unique
+  name               String
+  listPrice          Int
+  salePrice          Int
+  // 체험하기 중 한도(대표님 결정 2026-10-02). 코드 수정 없이 마스터가 바꾼다.
+  trialMessageLimit  Int      @default(100)
+  trialIdentityLimit Int      @default(50)
+  trialStorageMb     Int      @default(1024)
+  createdAt          DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime @updatedAt @db.Timestamptz(3)
 
   subscriptions SellerSubscription[]
 }

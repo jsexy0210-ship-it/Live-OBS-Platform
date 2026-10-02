@@ -1,7 +1,7 @@
 import { Prisma, type ActorType, type PrismaClient, type SubscriptionPayment } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
-import { addOneMonth, sellerAccess, type SellerAccess } from "./access";
+import { addOneMonth, lockedSince, sellerAccess, type SellerAccess } from "./access";
 import type { BillingProvider, ChargeResult } from "./provider";
 import { openBillingKey, sealBillingKey } from "./secret";
 
@@ -22,6 +22,8 @@ export const RENEW_LEAD_MS = DAY_MS;
 export const RETRY_INTERVAL_MS = DAY_MS;
 export const MAX_RETRIES = 3;
 export const GRACE_MS = 7 * DAY_MS;
+// 잠긴 지 이만큼 지나면 자동 해지(대표님 결정 2026-10-02). 해지 뒤 90일 보관·삭제는 별도 작업.
+export const AUTO_CLOSE_AFTER_MS = 30 * DAY_MS;
 
 const isUniqueViolation = (e: unknown) => e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
 const after = (d: Date, ms: number) => new Date(d.getTime() + ms);
@@ -191,6 +193,7 @@ async function settlePayment(
     let nextChargeAt: Date | null = null;
     if (result.ok) {
       nextChargeAt = after(payment.periodEnd, -RENEW_LEAD_MS);
+      await restoreAfterResubscribe(tx, payment.sellerId, opts.actorType, opts.actorId);
       await tx.subscriptionPayment.update({
         where: { id: payment.id },
         data: { status: "PAID", paidAt: now, providerPaymentId: result.paymentId, receiptUrl: result.receiptUrl },
@@ -329,4 +332,66 @@ export async function renewDueSubscriptions(db: PrismaClient, provider: BillingP
     else summary.failed++;
   }
   return summary;
+}
+
+// ───────────── 잠금 30일 뒤 자동 해지 (예약 실행) ─────────────
+
+// 잠긴 지 30일이 지난 쇼핑몰을 해지 상태로 바꾼다: serviceEndedAt 기록(90일 보관 시작), 구독 CANCELED,
+// 연결 도메인 비활성. 데이터 삭제는 하지 않는다(별도 작업). 다시 구독하면 restoreAfterResubscribe가 되살린다.
+export async function closeLongLockedSellers(db: PrismaClient, input: { now?: Date } = {}): Promise<{ closed: number }> {
+  const now = input.now ?? (await dbNow(db));
+  const cutoff = after(now, -AUTO_CLOSE_AFTER_MS);
+  // 잠긴 지 30일이 지났다면 체험하기도 그 전에 끝났다
+  const candidates = await db.seller.findMany({
+    where: { status: "ACTIVE", serviceEndedAt: null, trialEndsAt: { lte: cutoff } },
+    select: { id: true },
+  });
+  let closed = 0;
+  for (const { id } of candidates) {
+    const done = await db.$transaction(async (tx) => {
+      await lockSeller(tx, id);
+      const seller = await tx.seller.findUniqueOrThrow({
+        where: { id },
+        select: { status: true, serviceEndedAt: true, trialEndsAt: true, subscription: { select: { id: true, ...ACCESS_SELECT } } },
+      });
+      if (seller.status !== "ACTIVE" || seller.serviceEndedAt) return false;
+      const input = { trialEndsAt: seller.trialEndsAt, subscription: seller.subscription };
+      if (sellerAccess(input, now) !== "expired") return false;
+      const since = lockedSince(input);
+      if (!since || since > cutoff) return false;
+      await tx.seller.update({ where: { id }, data: { serviceEndedAt: now } });
+      if (seller.subscription) {
+        await tx.sellerSubscription.update({ where: { id: seller.subscription.id }, data: { status: "CANCELED", nextChargeAt: null } });
+      }
+      const domains = await tx.sellerDomain.updateMany({ where: { sellerId: id, suspendedAt: null }, data: { suspendedAt: now } });
+      await writeAudit(tx, {
+        actorType: "SYSTEM",
+        sellerId: id,
+        action: "subscription.auto_closed",
+        targetType: "Seller",
+        targetId: id,
+        after: { lockedSince: since, suspendedDomains: domains.count },
+      });
+      return true;
+    });
+    if (done) closed++;
+  }
+  return { closed };
+}
+
+// 자동 해지된 쇼핑몰이 보관 기간 안에 다시 결제하면 해지 표시를 지우고, 해지 때 푼 도메인을 되살린다.
+async function restoreAfterResubscribe(tx: Tx, sellerId: string, actorType: ActorType, actorId: string | null) {
+  const seller = await tx.seller.findUniqueOrThrow({ where: { id: sellerId }, select: { serviceEndedAt: true } });
+  if (!seller.serviceEndedAt) return;
+  const domains = await tx.sellerDomain.updateMany({ where: { sellerId, suspendedAt: seller.serviceEndedAt }, data: { suspendedAt: null } });
+  await tx.seller.update({ where: { id: sellerId }, data: { serviceEndedAt: null } });
+  await writeAudit(tx, {
+    actorType,
+    actorId,
+    sellerId,
+    action: "subscription.restored",
+    targetType: "Seller",
+    targetId: sellerId,
+    after: { restoredDomains: domains.count },
+  });
 }

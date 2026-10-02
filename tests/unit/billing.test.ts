@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CHARGE_WAIT_MS, addOneMonth, sellerAccess, type AccessInput } from "../../lib/server/billing/access";
+import { CHARGE_WAIT_MS, addOneMonth, lockedSince, sellerAccess, type AccessInput } from "../../lib/server/billing/access";
 import { FakeBillingProvider } from "../../lib/server/billing/provider";
 import { openBillingKey, sealBillingKey } from "../../lib/server/billing/secret";
 
@@ -41,6 +41,17 @@ describe("이용 가능 여부", () => {
     expect(sellerAccess({ trialEndsAt: earlier, subscription: sub({ nextChargeAt: old }) }, now)).toBe("expired");
     expect(sellerAccess({ trialEndsAt: earlier, subscription: sub({ nextChargeAt: earlier, cancelAtPeriodEnd: true }) }, now)).toBe("expired");
     expect(sellerAccess({ trialEndsAt: earlier, subscription: sub({ status: "CANCELED", nextChargeAt: earlier }) }, now)).toBe("expired");
+  });
+});
+
+describe("잠기기 시작한 시각", () => {
+  it("체험하기 끝·기간 끝·유예 끝·예약 결제 대기 끝 중 가장 늦은 시각", () => {
+    const d = (days: number) => new Date(now.getTime() + days * 86_400_000);
+    expect(lockedSince({ trialEndsAt: d(-40), subscription: null })).toEqual(d(-40));
+    expect(lockedSince({ trialEndsAt: d(-40), subscription: sub({ status: "PAST_DUE", currentPeriodEnd: d(-20), graceUntil: d(-13) }) })).toEqual(d(-13));
+    expect(lockedSince({ trialEndsAt: d(-40), subscription: sub({ status: "CANCELED", currentPeriodEnd: d(-5) }) })).toEqual(d(-5));
+    expect(lockedSince({ trialEndsAt: d(-40), subscription: sub({ nextChargeAt: d(-3) }) })).toEqual(new Date(d(-3).getTime() + CHARGE_WAIT_MS));
+    expect(lockedSince({ trialEndsAt: null, subscription: null })).toBeNull();
   });
 });
 
