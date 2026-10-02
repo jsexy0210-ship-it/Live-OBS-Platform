@@ -146,10 +146,18 @@ tests/unit/**, tests/integration/**           테스트
 
 - `Product`: id, sellerId, name, description, price, status(`DRAFT | ON_SALE | SOLD_OUT | HIDDEN`), sortOrder, deletedAt
 - `ProductImage`: id, sellerId, productId, storageKey, sortOrder — 저장소 구성은 미확정(PRODUCT_SCOPE)
-- `ProductOption`: id, sellerId, productId, name(예: 「1팩」), priceDelta, stock(**CHECK stock >= 0**), sku, sortOrder — 옵션 없는 상품도 기본 옵션 1개를 둬 재고를 한 곳에서 관리
+- `ProductOption`: id, sellerId, productId, name(예: 「1팩」), priceDelta, stock(**CHECK stock >= 0**), sku, sortOrder, deletedAt(소프트 삭제) — 옵션 없는 상품도 기본 옵션 1개를 둬 재고를 한 곳에서 관리
 - `StockMovement`: id, sellerId, optionId, delta, reason(`ORDER | CANCEL | REFUND | MANUAL`), orderId, actor, createdAt — 재고 변경 이력
 - 재고 차감은 `UPDATE … SET stock = stock - n WHERE id = ? AND sellerId = ? AND stock >= n`의 영향 행 수로 판정(초과 판매 방지).
 - 주문의 모든 품목 차감은 **한 트랜잭션**에서 처리한다. 품목 하나라도 영향 행 수가 0이면 그 트랜잭션의 모든 차감을 되돌리고(롤백), 별도 트랜잭션에서 주문에 `stockShortageAt`만 기록한다. 일부 품목만 차감된 상태는 생기지 않는다.
+- 판매자 상품·옵션 API(`PRODUCT_MANAGE`, 잠긴 판매자는 402, 마스터 대리 조회는 목록·조회만 되고 변경은 403): `GET·POST /api/seller/products`, `GET·PATCH·DELETE /api/seller/products/{productId}`, `POST /api/seller/products/{productId}/options`, `PATCH·DELETE /api/seller/products/{productId}/options/{optionId}`.
+  - 다른 판매자 상품·옵션, 다른 상품의 옵션은 404. 상품 행을 잠근 뒤 가격·옵션을 검사한다.
+  - 목록은 커서 페이지(`?cursor·limit`, 기본 50·최대 200, 응답 `{ products, nextCursor }`, 정렬 진열 순서 → 최근 등록 → id). 커서는 이 판매자 상품 id만 받고(아니면 `400 invalid_cursor`), 그 행의 (sortOrder, createdAt, id) 값 바로 뒤부터 keyset으로 고른다 — 기준 상품이 그사이 지워지거나 필터 밖이 되어도 다음 상품을 건너뛰지 않는다. limit은 숫자만 있는 값 1~200만 받고 아니면 `400 invalid_limit`.
+  - 가격은 1원~2,147,483,647원 정수. 살아 있는 옵션의 단가(가격 + 추가금)도 1원~정수 범위여야 하고, 상품 가격·추가금을 바꿀 때 다시 확인한다. 틀리면 `400 invalid_price`.
+  - 재고는 0 이상 정수. 바꿀 때는 `{ stock, expectedStock }`을 함께 보내고, 지금 재고가 expectedStock과 다르면(결제 차감과 겹침) `409 stock_conflict`로 덮어쓰지 않는다. 차이와 등록 때 재고는 `MANUAL` 재고 이력.
+  - 상태는 `DRAFT | ON_SALE | SOLD_OUT | HIDDEN`. 판매 중은 살아 있는 옵션이 하나 이상 있어야 하고(`400 no_sellable_option`), 판매 중 상품의 마지막 옵션은 지울 수 없다. 옵션은 상품당 100개까지.
+  - 삭제는 소프트 삭제(`deletedAt`). 지운 상품·옵션은 목록·조회·새 주문에서 빠지고, 지난 주문 품목은 그대로 둔다. 글자 검사는 배송지와 같은 `lib/server/text/clean.ts`: NFKC 정규화 후 제어·서식·짝 없는 서로게이트·사용자 정의·미할당·줄 구분 문자를 거부하고, 이름·SKU는 한글 채움 문자·점자 빈칸을 거부하며 눈에 보이는 글자(문자·숫자·기호·문장부호)가 하나 이상 있어야 한다. 설명은 줄바꿈만 허용한다. 등록·수정·삭제는 감사 로그.
+  - 상품 이미지는 저장소가 정해지지 않아 이번에 만들지 않았다.
 - [확정] 재고 차감 시점: **결제 완료 시 차감**(선점 없음, 결제 완료 순). 동시 결제로 재고가 모자라면 늦게 결제된 주문은 `PAID`로 기록하되 `stockShortageAt`을 남겨 「취소·환불 대상」으로 표시하고, 주문대기는 만들지 않는다. 실제 PG 환불 연동은 다음 단계.
 
 ### 4.5 주문·주문 품목
@@ -306,7 +314,7 @@ PG 연결 정보, 구매자 문의·공지, 알림 발송 기록, 도우미 자�
   - 도서산간 판정: 우편번호가 범위에 들거나, NFKC로 정규화하고 공백을 모두 지운 주소에 제주특별자치도·제주도·제주시·서귀포시·울릉군·울릉도가 들어 있으면 도서산간(붙여 쓴 「경상북도울릉군」도 잡힘). 둘 중 하나라도 맞으면 추가비를 붙인다(구매자가 보낸 우편번호만 믿지 않음). 영문은 Jeju·Seogwipo·Ulleung(-do·-si·-gun) 토큰이 어디에 있든 본다. 「제주로」·「울릉길」 같은 도로명은 해당하지 않고, 「제주도로」처럼 잘못 잡히는 경우는 추가비가 붙는 쪽이라 허용한다.
   - `GET·PUT /api/seller/shipping-policy`(`SHOP_SETTINGS`). 금액은 0~100,000원 정수, 무료 기준은 1~1억 원, 범위는 50개까지. 틀리면 `400 invalid_shipping_policy`. 변경은 감사 로그.
   - 배송비 = (무료 기준 이상이면 0, 아니면 baseFee) + (도서산간이면 remoteSurcharge). 바꾼 설정은 다음 주문부터(이미 만든 주문은 그대로).
-- `OrderShippingAddress`(주문당 1개, 스냅숏): 받는 분, 연락처(숫자만), 우편번호, 주소, 상세 주소, 메모, 도서산간 여부. 값은 NFKC로 정규화해 저장한다(전각 공백·NBSP는 일반 공백). 제어문자(Cc)·보이지 않는 서식 문자(Cf: 방향 바꿈·폭 없는 공백 등)·줄·문단 구분 문자(Zl·Zp)가 든 값, 받는 분·주소의 한글 채움 문자(U+115F·U+1160·U+3164·U+FFA0)는 `400 invalid_shipping_address`. 메모만 이모지용 ZWJ·변형 선택자를 허용한다. 연락처·우편번호도 NFKC 정규화 뒤 검사한다(전각 숫자 허용). 판매자 주문 조회에서는 `CUSTOMER_PII_VIEW`가 있을 때만 주소를 주고(열람 기록), 없으면 도서산간 여부만 준다.
+- `OrderShippingAddress`(주문당 1개, 스냅숏): 받는 분, 연락처(숫자만), 우편번호, 주소, 상세 주소, 메모, 도서산간 여부. 값은 NFKC로 정규화해 저장한다(전각 공백·NBSP는 일반 공백). 제어(Cc)·서식(Cf: 방향 바꿈·폭 없는 공백 등)·짝 없는 서로게이트(Cs)·사용자 정의(Co)·미할당(Cn)·줄·문단 구분(Zl·Zp) 문자가 든 값, 받는 분·주소의 한글 채움 문자(U+115F·U+1160·U+3164·U+FFA0)·점자 빈칸(U+2800), 눈에 보이는 글자가 없는 받는 분·주소는 `400 invalid_shipping_address`(`lib/server/text/clean.ts`, 상품과 같은 규칙). 메모만 이모지용 ZWJ·변형 선택자·지역 깃발 태그 문자를 허용하고, 서버가 모르는 최신 이모지로 주문이 막히지 않게 미할당(Cn) 검사를 하지 않는다. 연락처·우편번호도 NFKC 정규화 뒤 검사한다(전각 숫자 허용). 판매자 주문 조회에서는 `CUSTOMER_PII_VIEW`가 있을 때만 주소를 주고(열람 기록), 없으면 도서산간 여부만 준다.
 - `Shipment`(주문당 1개): 택배사 코드(`CJ | HANJIN | LOTTE | LOGEN | EPOST`), 송장번호(영문·숫자 8~30자, 하이픈·공백 제거), 상태, 발송 시각(DB 시계), 배송 완료 시각.
   - `POST /api/seller/orders/{orderId}/ship`(`ORDER_SHIPPING`, 잠금 중에도 가능): 결제 완료(`PAID`) 즉시 발송 주문만 `IN_TRANSIT`로 만든다. 재고 부족(`stockShortageAt`) 주문, 배송지가 없는 주문도 `409 not_shippable`. 배송 중에는 송장을 고쳐 다시 넣을 수 있고(첫 발송 시각 유지, `order.shipment.update` 기록), 배송 완료 뒤에는 바꾸지 않는다. 주문 상태는 `PAID` 그대로.
   - 발송한(Shipment가 있는) 주문을 환불하면 재고를 되돌리지 않고 배송 기록도 그대로 둔다. 감사 로그 `order.refund`에 `shippedBeforeRefund: true`와 배송 상태를 남긴다. 배송비 환불 금액 규칙은 대표님 결정 대기(지금은 주문 전체 금액 기준 그대로).

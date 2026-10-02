@@ -83,7 +83,7 @@ export async function createOrder(db: PrismaClient, input: CreateOrderInput): Pr
     if (!member) return { ok: false as const, reason: "shop_unavailable" as const };
 
     const options = await tx.productOption.findMany({
-      where: { sellerId: input.sellerId, id: { in: lines.map((l) => l.optionId) } },
+      where: { sellerId: input.sellerId, id: { in: lines.map((l) => l.optionId) }, deletedAt: null },
       include: { product: true },
     });
     if (options.length !== lines.length) return { ok: false as const, reason: "product_unavailable" as const };
