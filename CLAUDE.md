@@ -3,7 +3,8 @@
 ## 기준
 
 - 기획·작업지시·검수 기준 저장소: `jsexy0210-ship-it/Live-OBS-Platform` (유일)
-- 참조 전용: `jsexy0210-ship-it/obs-order-queue-cafe24-webhook` (망고TCG). 수정 금지.
+- 참조 전용: `jsexy0210-ship-it/obs-order-queue-cafe24-webhook` (망고TCG). 수정 금지. 분석: `docs/REFERENCE_MANGOTCG.md`
+- 시간 표기: 모든 문서·보고는 KST 기준.
 - 상태 정본: `PROJECT_STATUS.md`, `HANDOFF.md`, `docs/PRODUCT_SCOPE.md`
 
 ## 작업 규칙

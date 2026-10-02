@@ -4,7 +4,8 @@
 
 ## 단계
 
-0단계: LifeLeft 정리 및 최소 구성 (진행 중, PR 검토 대기)
+0단계: LifeLeft 정리 및 최소 구성 (완료, PR #7 병합)
+1단계 준비: 망고TCG 구조 분석 (`docs/REFERENCE_MANGOTCG.md`)
 
 ## 현재 저장소
 
