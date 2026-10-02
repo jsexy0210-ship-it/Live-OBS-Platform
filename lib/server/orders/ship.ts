@@ -4,7 +4,7 @@ import { dbNow } from "../billing/subscription";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 import { getShippingPolicy, isCourier, parseShippingPolicy, type ShippingPolicy } from "./shipping";
 
-// 즉시 발송 처리(ORDER_SHIPPING). 결제가 끝난(PAID) 즉시 발송 주문만 택배사·송장을 넣어 배송 중으로 바꾼다.
+// 즉시 발송 처리(ORDER_SHIPPING). 결제가 끝난(PAID)·재고가 차감된·배송지가 있는 즉시 발송 주문만 택배사·송장을 넣어 배송 중으로 바꾼다.
 // 배송 중에는 송장을 고쳐 다시 넣을 수 있고, 배송 완료 뒤에는 바꾸지 않는다. 주문 상태(PAID)는 그대로 둔다.
 
 export type ShipFailure = "not_found" | "invalid_shipment" | "not_shippable";
@@ -30,12 +30,14 @@ export async function shipOrder(
   const courier = input.courier;
 
   return db.$transaction(async (tx) => {
-    const rows = await tx.$queryRaw<{ id: string; status: string; fulfillmentType: string }[]>`
-      SELECT "id", "status"::text AS "status", "fulfillmentType"::text AS "fulfillmentType"
+    const rows = await tx.$queryRaw<{ id: string; status: string; fulfillmentType: string; stockShortageAt: Date | null }[]>`
+      SELECT "id", "status"::text AS "status", "fulfillmentType"::text AS "fulfillmentType", "stockShortageAt"
       FROM "Order" WHERE "id" = ${orderId}::uuid AND "sellerId" = ${ctx.sellerId}::uuid FOR UPDATE`;
     const order = rows[0];
     if (!order) return { ok: false as const, reason: "not_found" as const };
-    if (order.status !== "PAID" || order.fulfillmentType !== "IMMEDIATE") return { ok: false as const, reason: "not_shippable" as const };
+    // 재고 부족으로 차감되지 않은 주문, 배송지가 없는 주문은 보낼 물건·주소가 없으니 발송하지 않는다
+    if (order.status !== "PAID" || order.fulfillmentType !== "IMMEDIATE" || order.stockShortageAt) return { ok: false as const, reason: "not_shippable" as const };
+    if (!(await tx.orderShippingAddress.findUnique({ where: { orderId }, select: { id: true } }))) return { ok: false as const, reason: "not_shippable" as const };
     const before = await tx.shipment.findUnique({ where: { orderId } });
     if (before?.status === "DELIVERED") return { ok: false as const, reason: "not_shippable" as const };
 

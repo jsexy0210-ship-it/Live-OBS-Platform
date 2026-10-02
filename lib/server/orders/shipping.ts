@@ -74,9 +74,15 @@ export async function getShippingPolicy(db: Db, sellerId: string): Promise<Shipp
   };
 }
 
-export function isRemoteZip(zipCode: string, ranges: readonly ZipRange[]): boolean {
+// 도서산간 시·도(주소 첫머리). 우편번호와 주소가 어긋나도 추가비가 빠지지 않게 둘 중 하나라도 맞으면 도서산간으로 본다.
+export const REMOTE_ADDRESS_PREFIXES = ["제주", "울릉"] as const;
+
+export function isRemoteAddress(zipCode: string, address1: string, ranges: readonly ZipRange[]): boolean {
   const zip = Number(zipCode);
-  return ranges.some(([from, to]) => zip >= from && zip <= to);
+  if (ranges.some(([from, to]) => zip >= from && zip <= to)) return true;
+  // 「경상북도 울릉군 …」처럼 도 이름이 앞에 오는 주소도 잡는다
+  const head = address1.replace(/^(경상북도|경북)\s*/, "");
+  return REMOTE_ADDRESS_PREFIXES.some((p) => head.startsWith(p));
 }
 
 export function computeShippingFee(itemsSubtotal: number, policy: ShippingPolicy, isRemote: boolean): number {
@@ -93,8 +99,10 @@ export type ShippingAddressInput = {
   memo: string | null;
 };
 
+// 제어문자(NUL·줄바꿈·탭 등)는 받지 않는다(DB 오류·송장 출력 깨짐 방지)
+const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
 const text = (v: unknown, max: number): string | null => {
-  if (typeof v !== "string") return null;
+  if (typeof v !== "string" || CONTROL.test(v)) return null;
   const t = v.trim();
   return t.length > 0 && t.length <= max ? t : null;
 };
@@ -108,7 +116,7 @@ export function parseShippingAddress(raw: unknown): ShippingAddressInput | null 
   if (!raw || typeof raw !== "object") return null;
   const b = raw as Record<string, unknown>;
   const recipientName = text(b.recipientName, 30);
-  const phone = typeof b.phone === "string" ? b.phone.replace(/[\s-]/g, "") : "";
+  const phone = typeof b.phone === "string" ? b.phone.replace(/[ -]/g, "") : "";
   const zipCode = typeof b.zipCode === "string" ? b.zipCode.trim() : "";
   const address1 = text(b.address1, 200);
   const address2 = optionalText(b.address2, 100);

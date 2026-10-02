@@ -9,7 +9,7 @@ import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
 import { createOrder } from "../../lib/server/orders/create";
 import { ORDER_ERROR_MESSAGES } from "../../lib/server/orders/messages";
 import { shipOrder } from "../../lib/server/orders/ship";
-import { markOrderPaid } from "../../lib/server/queue/service";
+import { markOrderPaid, refundOrder } from "../../lib/server/queue/service";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { PASSWORD, createLoginBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
@@ -69,6 +69,17 @@ describe("배송비 계산", () => {
     expect(remote).toBe(3);
   });
 
+  it("우편번호가 범위 밖이어도 주소가 제주·울릉(시·도 단위)으로 시작하면 도서산간, 중간에 들어간 지명은 아님", async () => {
+    const s = await shop();
+    const at = (address1: string) => ({ ...addr("06236"), address1 });
+    expect(await s.order(1, at("제주특별자치도 제주시 첨단로 1"))).toMatchObject({ shippingFee: 6000 });
+    expect(await s.order(1, at("제주 서귀포시 중앙로 1"))).toMatchObject({ shippingFee: 6000 });
+    expect(await s.order(1, at("경상북도 울릉군 울릉읍 도동길 1"))).toMatchObject({ shippingFee: 6000 });
+    expect(await s.order(1, at("울릉군 서면 1"))).toMatchObject({ shippingFee: 6000 });
+    expect(await s.order(1, at("서울 강남구 제주로 1"))).toMatchObject({ shippingFee: 3000 });
+    expect(await s.order(1, at("경상북도 포항시 울릉로 1"))).toMatchObject({ shippingFee: 3000 });
+  });
+
   it("주문 뒤 배송비 설정을 바꿔도 이미 만든 주문 금액·배송지는 그대로(스냅숏)", async () => {
     const s = await shop();
     const r = await s.order(1);
@@ -101,6 +112,13 @@ describe("배송지 검증", () => {
       { ...addr(), address1: "" },
       { ...addr(), address2: "가".repeat(101) },
       { ...addr(), memo: 123 },
+      // 제어문자(NUL·줄바꿈·탭)
+      { ...addr(), address1: "주소\u0000 1" },
+      { ...addr(), recipientName: "김\n구매" },
+      { ...addr(), address2: "101\t호" },
+      { ...addr(), memo: "문 앞\u0000" },
+      { ...addr(), phone: "010\n12345678" },
+      { ...addr(), zipCode: "0623\u0000" },
     ];
     for (const shippingAddress of bad) {
       expect(
@@ -125,6 +143,17 @@ describe("배송지 검증", () => {
     );
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "invalid_shipping_address", message: ORDER_ERROR_MESSAGES.invalid_shipping_address });
+    // NUL이 든 주소도 500이 아니라 400
+    const nul = await orderRoute(
+      new Request(`http://localhost:3000/api/shop/${s.seller.slug}/orders`, {
+        method: "POST",
+        headers: { ...H, cookie: `lo_buyer=${login.token}` },
+        body: JSON.stringify({ items: [{ optionId: s.option.id, quantity: 1 }], consent, shippingAddress: { ...addr(), address1: "주소\u0000" } }),
+      }),
+      { params: Promise.resolve({ slug: s.seller.slug }) },
+    );
+    expect(nul.status).toBe(400);
+    expect(await db.order.count()).toBe(0);
   });
 });
 
@@ -165,6 +194,55 @@ describe("즉시 발송 처리", () => {
 
     expect(await shipOrder(db, s.ctx, p.orderId, { courier: "CJ", trackingNumber: "123456789012" })).toEqual({ ok: false, reason: "not_found" });
     expect(await db.shipment.count()).toBe(1);
+  });
+
+  it("재고 부족으로 차감되지 않은 주문, 배송지가 없는 주문은 발송할 수 없다", async () => {
+    const s = await shop();
+    await db.productOption.update({ where: { id: s.option.id }, data: { stock: 1 } });
+    const [a, b] = [await s.order(1), await s.order(1)];
+    await markOrderPaid(db, { sellerId: s.seller.id, orderId: a.orderId, paymentMethod: "CARD" });
+    await markOrderPaid(db, { sellerId: s.seller.id, orderId: b.orderId, paymentMethod: "CARD" });
+    expect(await db.order.findUniqueOrThrow({ where: { id: b.orderId } })).toMatchObject({ status: "PAID", stockShortageAt: expect.any(Date) });
+    expect(await shipOrder(db, s.ctx, b.orderId, { courier: "CJ", trackingNumber: "123456789012" })).toEqual({ ok: false, reason: "not_shippable" });
+    expect(await shipOrder(db, s.ctx, a.orderId, { courier: "CJ", trackingNumber: "123456789012" })).toMatchObject({ ok: true });
+
+    // 배송지 없이 만들어진 결제 완료 주문(이 PR 이전 주문 등)
+    const legacy = await db.order.create({
+      data: { sellerId: s.seller.id, orderNo: 99, buyerMemberId: s.buyer.id, status: "PAID", broadcastNicknameSnapshot: "닉", totalAmount: 5000, paidAt: new Date() },
+    });
+    expect(await shipOrder(db, s.ctx, legacy.id, { courier: "CJ", trackingNumber: "123456789012" })).toEqual({ ok: false, reason: "not_shippable" });
+    expect(await db.shipment.count()).toBe(1);
+  });
+
+  it("발송한 주문을 환불하면 재고를 되돌리지 않고 배송 기록은 그대로, 감사 로그에 발송 후 환불을 남긴다(발송 전 환불은 기존대로 복구)", async () => {
+    const s = await shop();
+    await db.productOption.update({ where: { id: s.option.id }, data: { stock: 10 } });
+    const lv = async () => (await db.seller.findUniqueOrThrow({ where: { id: s.seller.id } })).liveVersion;
+    const stock = async () => (await db.productOption.findUniqueOrThrow({ where: { id: s.option.id } })).stock;
+
+    const shipped = await s.order(2);
+    await markOrderPaid(db, { sellerId: s.seller.id, orderId: shipped.orderId, paymentMethod: "CARD" });
+    expect(await stock()).toBe(8);
+    await shipOrder(db, s.ctx, shipped.orderId, { courier: "CJ", trackingNumber: "123456789012" });
+    expect(await refundOrder(db, s.ctx, shipped.orderId, { reason: "구매자 요청", expectedLiveVersion: await lv() })).toMatchObject({
+      ok: true,
+      value: { restockedItemIds: [] },
+    });
+    expect(await stock()).toBe(8);
+    expect(await db.shipment.findUniqueOrThrow({ where: { orderId: shipped.orderId } })).toMatchObject({ status: "IN_TRANSIT" });
+    expect(await db.stockMovement.count({ where: { orderId: shipped.orderId, reason: "REFUND" } })).toBe(0);
+    expect(await db.auditLog.findFirstOrThrow({ where: { action: "order.refund", targetId: shipped.orderId } })).toMatchObject({
+      after: { status: "REFUNDED", restockedItems: 0, shippedBeforeRefund: true, shipmentStatus: "IN_TRANSIT" },
+    });
+
+    const notShipped = await s.order(1);
+    await markOrderPaid(db, { sellerId: s.seller.id, orderId: notShipped.orderId, paymentMethod: "CARD" });
+    expect(await stock()).toBe(7);
+    expect(await refundOrder(db, s.ctx, notShipped.orderId, { reason: "구매자 요청", expectedLiveVersion: await lv() })).toMatchObject({ ok: true });
+    expect(await stock()).toBe(8);
+    expect(await db.auditLog.findFirstOrThrow({ where: { action: "order.refund", targetId: notShipped.orderId } })).toMatchObject({
+      after: { shippedBeforeRefund: false },
+    });
   });
 
   it("목록에 없는 택배사·형식이 틀린 송장은 거부", async () => {

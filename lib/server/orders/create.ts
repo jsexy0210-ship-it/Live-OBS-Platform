@@ -2,7 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { dbNow, sellerAccessFor } from "../billing/subscription";
 import { OPENED_NO_REFUND_CONSENT } from "./consent";
-import { computeShippingFee, getShippingPolicy, INT4_MAX, isRemoteZip, parseShippingAddress } from "./shipping";
+import { computeShippingFee, getShippingPolicy, INT4_MAX, isRemoteAddress, parseShippingAddress } from "./shipping";
 
 // 구매자 주문 생성(결제 대기까지). 실제 PG 결제 호출은 없다.
 // - 결제 전 「개봉하면 취소·환불이 안 돼요」 동의 필수(체크 기본 해제, 동의 없으면 주문을 만들지 않음). 동의 시각(DB 시계)·문구 버전을 기록.
@@ -103,7 +103,7 @@ export async function createOrder(db: PrismaClient, input: CreateOrderInput): Pr
     if (priced.some((p) => p.unitPrice < 1)) return { ok: false as const, reason: "invalid_amount" as const };
     const itemsSubtotal = priced.reduce((sum, p) => sum + p.unitPrice * p.line.quantity, 0);
     const policy = await getShippingPolicy(tx, input.sellerId);
-    const isRemote = isRemoteZip(address.zipCode, policy.remoteZipRanges);
+    const isRemote = isRemoteAddress(address.zipCode, address.address1, policy.remoteZipRanges);
     const shippingFee = computeShippingFee(itemsSubtotal, policy, isRemote);
     const totalAmount = itemsSubtotal + shippingFee;
     if (!Number.isSafeInteger(totalAmount) || totalAmount > INT4_MAX) return { ok: false as const, reason: "invalid_amount" as const };
