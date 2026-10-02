@@ -14,7 +14,7 @@
 - 시간 표기: 모든 문서·보고는 KST 기준.
 - 호칭: 대표님. 보고는 한국어로 결론부터 간결하게.
 - 상태 정본: `PROJECT_STATUS.md`, `HANDOFF.md`, `docs/PRODUCT_SCOPE.md`
-- 디자인 요청문: `docs/DESIGN_PROMPT.md`
+- 디자인 요청문: `docs/DESIGN_PROMPT.md` · 정보구조(IA): `docs/IA.md`
 
 ## 제품 원칙
 
