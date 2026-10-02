@@ -7,13 +7,14 @@ import { prisma } from "../../lib/server/db";
 import { FakeIdentityProvider } from "../../lib/server/identity/provider";
 import { identityProvider } from "../../lib/server/identity/registry";
 import { completeIdentityVerification, startIdentityVerification } from "../../lib/server/identity/verification";
-import { applyForSeller, type ApplyInput } from "../../lib/server/sellers/application";
-import { approveSeller, listSellersToReview, rejectSeller } from "../../lib/server/sellers/approval";
-import { FakeBusinessStatusProvider } from "../../lib/server/sellers/businessCheck";
+import { SIGNUP_VERIFY_DAILY_LIMIT_PER_IP, applyForSeller, startSellerSignupVerification, type ApplyInput } from "../../lib/server/sellers/application";
+import { TRIAL_DAYS, approveSeller, listSellersToReview, rejectSeller } from "../../lib/server/sellers/approval";
+import { FakeBusinessStatusProvider, UnavailableBusinessStatusProvider } from "../../lib/server/sellers/businessCheck";
 import { createAdmin, db, resetDb } from "./helpers";
 
 beforeAll(() => {
   process.env.IDENTITY_HASH_KEY = "test-identity-hash-key-0123456789abcdef";
+  process.env.BUSINESS_STATUS_PROVIDER = "fake";
 });
 beforeEach(resetDb);
 afterAll(async () => {
@@ -64,7 +65,8 @@ describe("자동 점검 통과 → 자동 승인", () => {
     if (!r.ok) return;
     const seller = await db.seller.findUniqueOrThrow({ where: { id: r.sellerId } });
     expect(seller).toMatchObject({ status: "ACTIVE", approvedByAdminId: null, reviewReasons: [] });
-    expect(seller.trialEndsAt!.getTime() - seller.approvedAt!.getTime()).toBe(3 * DAY);
+    expect(seller.trialEndsAt!.getTime() - seller.approvedAt!.getTime()).toBe(TRIAL_DAYS * DAY);
+    expect(TRIAL_DAYS).toBe(14);
     expect(seller.businessInfo).toMatchObject({ businessNumber: "1248100998", representativeName: "김대표", mailOrderNumber: "제2024-서울강남-01234호", businessStatus: "ACTIVE" });
     expect(await db.memberGrade.count({ where: { sellerId: seller.id } })).toBe(5);
     const owner = await db.sellerUser.findFirstOrThrow({ where: { sellerId: seller.id } });
@@ -116,7 +118,12 @@ describe("자동 점검에 걸림 → 「확인 필요」", () => {
     expect(await db.seller.findUniqueOrThrow({ where: { id: a.sellerId } })).toMatchObject({ status: "ACTIVE", reviewReasons: [] });
     expect(await rejectSeller(db, admin, b.sellerId, " ")).toEqual({ ok: false, reason: "reason_required" });
     expect(await rejectSeller(db, admin, b.sellerId, "통신판매업 신고 후 다시 신청해 주세요")).toEqual({ ok: true });
-    expect((await db.seller.findUniqueOrThrow({ where: { id: b.sellerId } })).status).toBe("REJECTED");
+    expect(await db.seller.findUniqueOrThrow({ where: { id: b.sellerId } })).toMatchObject({
+      status: "REJECTED",
+      rejectedReason: "통신판매업 신고 후 다시 신청해 주세요",
+      rejectedAt: expect.any(Date),
+      suspendedReason: null,
+    });
     await expect(rejectSeller(db, await adminCtx("CS"), a.sellerId, "x")).rejects.toMatchObject({ status: 403 });
     expect(await listSellersToReview(db, reader)).toEqual([]);
   });
@@ -205,5 +212,40 @@ describe("HTTP: 가입 신청", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ approved: true, reviewReasons: [] });
     expect((await db.seller.findUniqueOrThrow({ where: { slug: "http-card" } })).status).toBe("ACTIVE");
+
+    // 같은 대표자가 또 신청하면 409와 정해진 문구(다른 쇼핑몰 이름 없음)
+    const again = await startRoute(post("/api/seller-signup/verification", {}));
+    const cookie2 = (again.headers.get("set-cookie") ?? "").split(";")[0];
+    const second = await again.json();
+    (identityProvider() as FakeIdentityProvider).complete(second.requestId, { ci: "CI-HTTP", name: "박대표", phone: "01033334444", birthDate: new Date("1980-02-02") });
+    const dup = await applyRoute(post("/api/seller-signup/apply", { ...body, verificationId: second.verificationId, slug: "http-card-2" }, cookie2));
+    expect(dup.status).toBe(409);
+    const dupBody = await dup.json();
+    expect(dupBody).toEqual({ error: "representative_has_shop", message: "이미 운영 중인 쇼핑몰이 있어요 · 한 대표자는 쇼핑몰 하나만 열 수 있어요" });
+    expect(JSON.stringify(dupBody)).not.toContain("HTTP 카드");
+  });
+});
+
+describe("MASTER 결정 반영", () => {
+  it("국세청 조회 키가 없거나 연동 전이면 조회 실패로 보고 자동 승인하지 않는다", async () => {
+    const r = await applyForSeller(db, new UnavailableBusinessStatusProvider(), form(await verified("CI-NOKEY")));
+    expect(r).toMatchObject({ ok: true, approved: false, reviewReasons: ["business_lookup_failed"] });
+  });
+
+  it("가입 PASS 시작은 같은 IP에서 하루 10회까지, 다른 IP는 따로 센다", async () => {
+    for (let i = 0; i < SIGNUP_VERIFY_DAILY_LIMIT_PER_IP; i++) {
+      expect((await startSellerSignupVerification(db, identity, { ip: "203.0.113.7" })).ok).toBe(true);
+    }
+    expect(await startSellerSignupVerification(db, identity, { ip: "203.0.113.7" })).toEqual({ ok: false, reason: "daily_limit_exceeded" });
+    expect((await startSellerSignupVerification(db, identity, { ip: "203.0.113.8" })).ok).toBe(true);
+    expect(await db.auditLog.count({ where: { action: "seller.signup.verify_limited" } })).toBe(1);
+    // 어제 시작한 건은 세지 않는다(KST 자정 초기화)
+    await db.identityVerification.updateMany({ where: { requestIp: "203.0.113.7" }, data: { createdAt: new Date(Date.now() - 2 * DAY) } });
+    expect((await startSellerSignupVerification(db, identity, { ip: "203.0.113.7" })).ok).toBe(true);
+  });
+
+  it("같은 IP에서 동시에 시작해도 10회를 넘지 않는다", async () => {
+    const rs = await Promise.all(Array.from({ length: 15 }, () => startSellerSignupVerification(db, identity, { ip: "198.51.100.1" })));
+    expect(rs.filter((r) => r.ok)).toHaveLength(SIGNUP_VERIFY_DAILY_LIMIT_PER_IP);
   });
 });

@@ -3,7 +3,7 @@ import { prisma } from "../../../../lib/server/db";
 import { clearFlowCookie, mutation, readCookie, readJson, requestMeta } from "../../../../lib/server/http/route";
 import { identityProvider } from "../../../../lib/server/identity/registry";
 import { completeIdentityVerification } from "../../../../lib/server/identity/verification";
-import { applyForSeller } from "../../../../lib/server/sellers/application";
+import { REPRESENTATIVE_HAS_SHOP_MESSAGE, applyForSeller } from "../../../../lib/server/sellers/application";
 import { businessStatusProvider } from "../../../../lib/server/sellers/businessCheck";
 import { SELLER_SIGNUP_IDV_COOKIE, SELLER_SIGNUP_PATH } from "../../../../lib/server/sellers/signupFlow";
 
@@ -37,8 +37,10 @@ export const POST = mutation(async (req: Request) => {
     meta: requestMeta(req),
   });
   if (!r.ok) {
-    const status = r.reason === "slug_taken" || r.reason === "representative_has_shop" ? 409 : 400;
-    return NextResponse.json({ error: r.reason }, { status });
+    if (r.reason === "representative_has_shop") {
+      return NextResponse.json({ error: r.reason, message: REPRESENTATIVE_HAS_SHOP_MESSAGE }, { status: 409 });
+    }
+    return NextResponse.json({ error: r.reason }, { status: r.reason === "slug_taken" ? 409 : 400 });
   }
   const res = NextResponse.json({ approved: r.approved, reviewReasons: r.reviewReasons });
   clearFlowCookie(res, SELLER_SIGNUP_IDV_COOKIE, SELLER_SIGNUP_PATH);

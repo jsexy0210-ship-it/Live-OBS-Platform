@@ -36,11 +36,24 @@ export class FakeBusinessStatusProvider implements BusinessStatusProvider {
 
 const globalForBusiness = globalThis as unknown as { businessStatusProvider?: BusinessStatusProvider };
 
-// 라우트가 쓰는 사업자 조회 공급자. 실제 연동 전이라 운영에서는 쓸 수 있는 공급자가 없다(호출하면 오류).
+// 조회 키가 없거나 실제 연동 전이면 모든 조회를 「조회 실패」로 돌려준다 → 자동 승인하지 않고 「확인 필요」로 간다.
+export class UnavailableBusinessStatusProvider implements BusinessStatusProvider {
+  readonly name = "unavailable";
+  async lookup(): Promise<BusinessLookup> {
+    return { ok: false, reason: "lookup_failed" };
+  }
+}
+
+// 라우트가 쓰는 사업자 조회 공급자.
+// - BUSINESS_STATUS_PROVIDER=fake를 명시했을 때만 가짜(개발·테스트, 운영에서는 만들 수 없음).
+// - 그 밖에는 실제 국세청 조회(키: NTS_BUSINESS_STATUS_API_KEY)를 붙일 자리다. 아직 연동 전이고, 키가 없을 때와 같이
+//   조회 실패로 처리해 자동 승인하지 않는다(MASTER 결정 2026-10-03). 키 값은 저장소에 두지 않는다.
 export function businessStatusProvider(): BusinessStatusProvider {
-  if (process.env.NODE_ENV === "production") throw new Error("운영 사업자 상태 조회가 아직 연결되지 않았어요.");
-  globalForBusiness.businessStatusProvider ??= new FakeBusinessStatusProvider();
-  return globalForBusiness.businessStatusProvider;
+  if (process.env.BUSINESS_STATUS_PROVIDER === "fake") {
+    globalForBusiness.businessStatusProvider ??= new FakeBusinessStatusProvider();
+    return globalForBusiness.businessStatusProvider;
+  }
+  return new UnavailableBusinessStatusProvider();
 }
 
 // 사업자등록번호: 숫자만 남겨 10자리, 국세청 검증 숫자 규칙. 틀리면 null.

@@ -4,6 +4,8 @@ import { normalizeEmail } from "../auth/login";
 import { hashPassword } from "../auth/password";
 import { MIN_PASSWORD_LENGTH } from "../auth/passwordReset";
 import { hashToken } from "../auth/token";
+import type { IdentityProvider } from "../identity/provider";
+import { startIdentityVerification } from "../identity/verification";
 import { activateSeller } from "./approval";
 import { normalizeBusinessNumber, normalizeMailOrderNumber, type BusinessStatusProvider } from "./businessCheck";
 
@@ -16,6 +18,43 @@ const VERIFY_WINDOW_MS = 30 * 60_000;
 const SLUG = /^[a-z0-9](?:[a-z0-9-]{1,28}[a-z0-9])$/;
 const RESERVED_SLUGS = new Set(["admin", "api", "app", "www", "master", "seller", "shop", "static", "help", "support", "login", "signup", "overlay"]);
 const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/;
+
+// 가입용 PASS는 건당 비용이 들어 같은 접속 IP에서 하루(KST 자정 초기화) 10회까지만 시작한다(MASTER 결정 2026-10-03).
+export const SIGNUP_VERIFY_DAILY_LIMIT_PER_IP = 10;
+
+// 대표자 1인 1쇼핑몰 위반 때 보여 줄 문구(다른 쇼핑몰 이름은 보여 주지 않음, MASTER 결정)
+export const REPRESENTATIVE_HAS_SHOP_MESSAGE = "이미 운영 중인 쇼핑몰이 있어요 · 한 대표자는 쇼핑몰 하나만 열 수 있어요";
+
+// 판매자 가입 PASS 시작. IP별로 줄을 세워(advisory lock) 오늘(KST) 시작 건수를 DB 시계로 센 뒤 한도 안일 때만 시작한다.
+// IP를 알 수 없으면(신뢰 프록시 미설정) 하나의 묶음으로 센다.
+export async function startSellerSignupVerification(
+  db: PrismaClient,
+  provider: IdentityProvider,
+  meta: { ip?: string | null; userAgent?: string | null; now?: Date } = {},
+) {
+  const ip = meta.ip ?? null;
+  const started = await db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`seller_signup:${ip ?? "unknown"}`}))`;
+    const [{ count }] = await tx.$queryRaw<{ count: bigint }[]>`
+      SELECT count(*)::bigint AS count FROM "IdentityVerification"
+      WHERE "purpose" = 'SELLER_REPRESENTATIVE'
+        AND "requestIp" IS NOT DISTINCT FROM ${ip}
+        AND "createdAt" >= (date_trunc('day', now() AT TIME ZONE 'Asia/Seoul') AT TIME ZONE 'Asia/Seoul')`;
+    if (Number(count) >= SIGNUP_VERIFY_DAILY_LIMIT_PER_IP) return null;
+    return startIdentityVerification(tx, provider, { purpose: "SELLER_REPRESENTATIVE", sellerId: null, requestIp: ip, now: meta.now });
+  });
+  if (!started) {
+    await writeAudit(db, {
+      actorType: "SYSTEM",
+      action: "seller.signup.verify_limited",
+      reason: "daily_limit_exceeded",
+      ip,
+      userAgent: meta.userAgent,
+    });
+    return { ok: false as const, reason: "daily_limit_exceeded" as const };
+  }
+  return { ok: true as const, verificationId: started.verification.id, requestId: started.verification.requestId, ownerToken: started.ownerToken };
+}
 
 export type ReviewReason = "business_not_active" | "business_lookup_failed" | "mail_order_number_invalid";
 

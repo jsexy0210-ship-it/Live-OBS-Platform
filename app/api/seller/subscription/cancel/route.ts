@@ -8,6 +8,9 @@ import { mutation, sessionToken } from "../../../../../lib/server/http/route";
 export const POST = mutation(async (req: Request) => {
   const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { allowUnpaid: true });
   const r = await cancelSubscription(prisma, ctx);
-  if (!r.ok) return NextResponse.json({ error: r.reason }, { status: 409 });
+  if (!r.ok) {
+    const message = r.reason === "payment_in_progress" ? "결제를 처리하고 있어요. 잠시 뒤 다시 시도해 주세요" : undefined;
+    return NextResponse.json({ error: r.reason, ...(message ? { message } : {}) }, { status: 409 });
+  }
   return NextResponse.json(r);
 });

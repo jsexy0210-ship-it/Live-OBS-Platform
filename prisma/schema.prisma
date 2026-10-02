@@ -312,6 +312,8 @@ model IdentityVerification {
   ownerTokenHash String?
   // 비밀번호 찾기: 재설정 대상 계정(없는 계정이면 null, 응답은 같게)
   subjectId      String?                     @db.Uuid
+  // 인증을 시작한 접속 IP(신뢰 프록시 기준, 없으면 null). 판매자 가입 PASS 시작 하루 횟수 제한에 쓴다.
+  requestIp      String?
   // 이 인증으로 가입·재설정 권한을 이미 발급했으면 기록(한 번만 쓰임)
   consumedAt     DateTime?                   @db.Timestamptz(3)
   expiresAt      DateTime                    @db.Timestamptz(3)
@@ -320,6 +322,7 @@ model IdentityVerification {
   seller Seller? @relation(fields: [sellerId], references: [id])
 
   @@unique([provider, requestId])
+  @@index([purpose, requestIp, createdAt])
   @@index([sellerId, ciHash])
 }
 

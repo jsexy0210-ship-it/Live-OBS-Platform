@@ -12,7 +12,7 @@ export const POST = mutation(async (req: Request) => {
   if (!isString(body.authKey)) return NextResponse.json({ error: "invalid_input" }, { status: 400 });
   const r = await registerCardAndPay(prisma, billingProvider(), ctx, { authKey: body.authKey });
   if (!r.ok) {
-    const status = r.reason === "payment_in_progress" ? 409 : r.reason === "plan_missing" ? 500 : 402;
+    const status = r.reason === "payment_in_progress" || r.reason === "not_activated" ? 409 : r.reason === "plan_missing" ? 500 : 402;
     return NextResponse.json({ error: r.reason }, { status });
   }
   return NextResponse.json(r);
