@@ -20,7 +20,10 @@ CREATE TYPE "GradeSystemKey" AS ENUM ('BASIC', 'SPROUT', 'SILVER', 'GOLD', 'VIP'
 CREATE TYPE "BuyerMemberStatus" AS ENUM ('ACTIVE', 'DORMANT', 'WITHDRAWN');
 
 -- CreateEnum
-CREATE TYPE "PhoneVerificationPurpose" AS ENUM ('SIGNUP', 'RESET');
+CREATE TYPE "IdentityVerificationPurpose" AS ENUM ('BUYER_SIGNUP', 'SELLER_REPRESENTATIVE', 'PASSWORD_RESET');
+
+-- CreateEnum
+CREATE TYPE "IdentityVerificationStatus" AS ENUM ('PENDING', 'VERIFIED', 'FAILED', 'EXPIRED');
 
 -- CreateEnum
 CREATE TYPE "ProductStatus" AS ENUM ('DRAFT', 'ON_SALE', 'SOLD_OUT', 'HIDDEN');
@@ -97,6 +100,7 @@ CREATE TABLE "Seller" (
     "approvedByAdminId" UUID,
     "suspendedReason" TEXT,
     "representativeCiHash" TEXT,
+    "representativeVerifiedAt" TIMESTAMPTZ(3),
     "liveVersion" INTEGER NOT NULL DEFAULT 0,
     "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -168,9 +172,9 @@ CREATE TABLE "BuyerMember" (
     "passwordHash" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "phone" TEXT NOT NULL,
-    "phoneVerifiedAt" TIMESTAMPTZ(3),
     "ciHash" TEXT NOT NULL,
     "identityVerifiedAt" TIMESTAMPTZ(3) NOT NULL,
+    "birthDate" DATE NOT NULL,
     "broadcastNickname" TEXT NOT NULL,
     "gradeId" UUID NOT NULL,
     "status" "BuyerMemberStatus" NOT NULL DEFAULT 'ACTIVE',
@@ -182,18 +186,22 @@ CREATE TABLE "BuyerMember" (
 );
 
 -- CreateTable
-CREATE TABLE "PhoneVerification" (
+CREATE TABLE "IdentityVerification" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),
-    "sellerId" UUID NOT NULL,
-    "phone" TEXT NOT NULL,
-    "codeHash" TEXT NOT NULL,
-    "purpose" "PhoneVerificationPurpose" NOT NULL,
-    "attempts" INTEGER NOT NULL DEFAULT 0,
-    "expiresAt" TIMESTAMPTZ(3) NOT NULL,
+    "sellerId" UUID,
+    "purpose" "IdentityVerificationPurpose" NOT NULL,
+    "provider" TEXT NOT NULL,
+    "requestId" TEXT NOT NULL,
+    "status" "IdentityVerificationStatus" NOT NULL DEFAULT 'PENDING',
+    "ciHash" TEXT,
+    "name" TEXT,
+    "phone" TEXT,
+    "birthDate" DATE,
     "verifiedAt" TIMESTAMPTZ(3),
+    "expiresAt" TIMESTAMPTZ(3) NOT NULL,
     "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT "PhoneVerification_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "IdentityVerification_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -508,7 +516,10 @@ CREATE INDEX "BuyerMember_sellerId_gradeId_idx" ON "BuyerMember"("sellerId", "gr
 CREATE UNIQUE INDEX "BuyerMember_sellerId_id_key" ON "BuyerMember"("sellerId", "id");
 
 -- CreateIndex
-CREATE INDEX "PhoneVerification_sellerId_phone_idx" ON "PhoneVerification"("sellerId", "phone");
+CREATE INDEX "IdentityVerification_sellerId_ciHash_idx" ON "IdentityVerification"("sellerId", "ciHash");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "IdentityVerification_provider_requestId_key" ON "IdentityVerification"("provider", "requestId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "BuyerSession_tokenHash_key" ON "BuyerSession"("tokenHash");
@@ -622,7 +633,7 @@ ALTER TABLE "BuyerMember" ADD CONSTRAINT "BuyerMember_sellerId_fkey" FOREIGN KEY
 ALTER TABLE "BuyerMember" ADD CONSTRAINT "BuyerMember_sellerId_gradeId_fkey" FOREIGN KEY ("sellerId", "gradeId") REFERENCES "MemberGrade"("sellerId", "id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "PhoneVerification" ADD CONSTRAINT "PhoneVerification_sellerId_fkey" FOREIGN KEY ("sellerId") REFERENCES "Seller"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "IdentityVerification" ADD CONSTRAINT "IdentityVerification_sellerId_fkey" FOREIGN KEY ("sellerId") REFERENCES "Seller"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "BuyerSession" ADD CONSTRAINT "BuyerSession_sellerId_fkey" FOREIGN KEY ("sellerId") REFERENCES "Seller"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -768,3 +779,11 @@ ALTER TABLE "RewardPolicy" ADD CONSTRAINT "RewardPolicy_rankingBonusAmount_check
 -- 대표자 1명당 쇼핑몰 1개 (대표자 CI 기준, 해지·반려된 쇼핑몰은 제외)
 CREATE UNIQUE INDEX "Seller_representativeCiHash_open_key" ON "Seller"("representativeCiHash")
   WHERE "representativeCiHash" IS NOT NULL AND "status" NOT IN ('CLOSED', 'REJECTED');
+
+-- 본인인증 완료 기록에는 CI 해시와 완료 시각이 있어야 한다
+ALTER TABLE "IdentityVerification" ADD CONSTRAINT "IdentityVerification_verified_check"
+  CHECK ("status" <> 'VERIFIED' OR ("ciHash" IS NOT NULL AND "verifiedAt" IS NOT NULL));
+
+-- 대표자 CI 해시와 인증 시각은 함께 기록
+ALTER TABLE "Seller" ADD CONSTRAINT "Seller_representative_identity_check"
+  CHECK (("representativeCiHash" IS NULL) = ("representativeVerifiedAt" IS NULL));
