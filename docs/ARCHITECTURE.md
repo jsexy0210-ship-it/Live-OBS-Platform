@@ -102,7 +102,7 @@ tests/unit/**, tests/integration/**           테스트
 
 ### 4.2 판매자(쇼핑몰)·직원
 
-- `Seller` (테넌트 = 쇼핑몰 1개): id, slug(기본 주소 하위 이름, **유니크**), shopName, status(`PENDING | ACTIVE | SUSPENDED | REJECTED | CLOSED`), businessInfo(JSON), approvedAt, approvedByAdminId, suspendedReason, representativeCiHash(대표자 PASS CI의 HMAC), liveVersion(실시간 version 카운터, 기본 0), createdAt — **대표자 1명당 쇼핑몰 1개**: representativeCiHash 부분 유니크(해지 `CLOSED`·반려 `REJECTED` 제외)
+- `Seller` (테넌트 = 쇼핑몰 1개): id, slug(기본 주소 하위 이름, **유니크**), shopName, status(`PENDING | ACTIVE | SUSPENDED | REJECTED | CLOSED`), businessInfo(JSON), approvedAt, approvedByAdminId, suspendedReason, representativeCiHash(대표자 PASS CI의 HMAC), representativeVerifiedAt(둘은 함께 기록), liveVersion(실시간 version 카운터, 기본 0), createdAt — **대표자 1명당 쇼핑몰 1개**: representativeCiHash 부분 유니크(해지 `CLOSED`·반려 `REJECTED` 제외)
 - `SellerDomain`: id, sellerId, hostname(**유니크**), verifiedAt, certStatus — 개인 도메인 연결용 자리만
 - `SellerUser`: id, sellerId, email, passwordHash, name, role(`OWNER | MANAGER | BROADCASTER`), status(`ACTIVE | DISABLED`), failedLoginCount, lockedUntil, lastLoginAt — **(sellerId, email) 유니크**, 판매자당 OWNER 1명 이상
 - `SellerSession`: id, sellerUserId, sellerId, tokenHash(**유니크**), expiresAt, lastSeenAt, revokedAt
@@ -110,14 +110,16 @@ tests/unit/**, tests/integration/**           테스트
 
 ### 4.3 구매자 회원 (판매자 쇼핑몰별)
 
-- `BuyerMember`: id, sellerId, loginId, passwordHash, name, phone, phoneVerifiedAt, ciHash(PASS 본인인증 CI의 HMAC-SHA256, 원문 CI 미저장), identityVerifiedAt, broadcastNickname, gradeId, status(`ACTIVE | DORMANT | WITHDRAWN`), marketingConsentAt, createdAt, deletedAt — **(sellerId, ciHash) 유니크**(같은 쇼핑몰 중복 가입 차단), **(sellerId, phone) 유니크**, **(sellerId, loginId) 유니크**, **(sellerId, broadcastNickname) 유니크**(방송 화면에서 구분 가능하게). 네 유니크는 `deletedAt IS NULL`인 행에만 적용(부분 유니크 인덱스)
+- `BuyerMember`: id, sellerId, loginId, passwordHash, name, phone, ciHash(PASS 본인인증 CI의 HMAC-SHA256, 원문 CI 미저장), identityVerifiedAt, birthDate(PASS 생년월일, 미성년자 판정용), broadcastNickname, gradeId, status(`ACTIVE | DORMANT | WITHDRAWN`), marketingConsentAt, createdAt, deletedAt — **(sellerId, ciHash) 유니크**(같은 쇼핑몰 중복 가입 차단), **(sellerId, phone) 유니크**, **(sellerId, loginId) 유니크**, **(sellerId, broadcastNickname) 유니크**(방송 화면에서 구분 가능하게). 네 유니크는 `deletedAt IS NULL`인 행에만 적용(부분 유니크 인덱스)
   - 탈퇴하면 `status = WITHDRAWN`과 `deletedAt`을 같은 트랜잭션에서 함께 기록하고 개인정보(이름·휴대폰·닉네임)를 비식별 처리한다. `DORMANT`는 삭제가 아니므로 `deletedAt`이 비어 있다. 주문·원장은 회원 id로 남는다.
 - `MemberGrade`: id, sellerId, displayName, sortOrder, systemKey(nullable: `BASIC | SPROUT | SILVER | GOLD | VIP`) — 등급은 **id·displayName·sortOrder로 식별**한다. 판매자 생성 시 일반·새싹·실버·골드·VIP 5개를 기본으로 만들고 `systemKey`로 표시만 한다. 판매자가 추가한 등급은 `systemKey = null`. **(sellerId, displayName) 유니크**, **(sellerId, systemKey) 유니크(null 제외)**. 디자인 지시(`docs/DESIGN_PROMPT.md` 245줄) 「이름·개수는 판매자가 정한다」에 맞춰 고정 enum으로 식별하지 않는다. 적립률(`RewardPolicy.rates`)도 등급 id 기준. [확정]
-- `PhoneVerification`: id, sellerId, phone, codeHash, purpose(`SIGNUP | RESET`), attempts, expiresAt, verifiedAt — 발송은 `SmsSender` 인터페이스 뒤에 두고 개발·테스트는 가짜 발송기만 쓴다(실제 문자 연동 제외).
+- `IdentityVerification` (PASS 본인인증 요청·결과): id, sellerId(nullable, 판매자 대표자 인증은 null), purpose(`BUYER_SIGNUP | SELLER_REPRESENTATIVE | PASSWORD_RESET`), provider, requestId, status(`PENDING | VERIFIED | FAILED | EXPIRED`), ciHash, name, phone, birthDate, verifiedAt, expiresAt — **(provider, requestId) 유니크**, `VERIFIED`면 ciHash·verifiedAt 필수(CHECK)
+  - CI 원문은 저장하지 않는다. 서버 비밀키(환경변수 `IDENTITY_HASH_KEY`)로 만든 HMAC-SHA256 값만 저장한다.
+  - 연동은 `IdentityProvider` 인터페이스 뒤에 둔다. 개발·테스트는 가짜 공급자만 쓰고, 실제 PASS 대행사 연동은 계약 후(이번 범위 아님).
 - `BuyerSession`: id, buyerMemberId, sellerId, tokenHash(**유니크**), expiresAt, revokedAt
 - 같은 사람이 다른 판매자 쇼핑몰에 가입하면 별도 회원이다(데이터 공유 없음).
-- [확정] 구매자 로그인 수단은 「아이디+비밀번호」, 가입 시 휴대폰 인증 필수. 휴대폰 번호 로그인·카카오 로그인은 보류.
-- [비용] 휴대폰 인증 문자 발송 업체 (PRODUCT_SCOPE 미확정 항목과 동일).
+- [확정] 구매자 로그인 수단은 「아이디+비밀번호」, 가입 시 PASS 본인인증 필수(2026-10-02 대표님 지시). 휴대폰 번호 로그인·카카오 로그인은 보류.
+- [비용] PASS 본인인증 대행사 계약·건당 비용 (MASTER가 대표님께 보고).
 
 ### 4.4 상품·옵션·재고
 
@@ -197,6 +199,17 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 
 요금제·구독·청구, PG 연결 정보, 구매자 문의·공지, 알림 발송 기록, 도우미 자료, 오버레이 편집 설정, 구매 랭킹. 모두 `sellerId` 범위 규칙을 그대로 따른다.
 
+아래는 스키마를 다시 만들지 않도록 자리만 정해 둔다(이번에 테이블은 만들지 않음, 모두 추가 테이블·추가 컬럼으로 붙인다).
+
+- 현금영수증·세금계산서: 주문별 신청 정보(`OrderReceiptRequest`)와 발행 레코드(`ReceiptIssue`: 종류, 상태 `PENDING | ISSUED | FAILED | CANCELLED`, 연동 결과 키).
+- 배송: `Order.fulfillmentType`(`IMMEDIATE | STORAGE`), 배송지(`OrderShippingAddress`), 배송 레코드(`Shipment`: 택배사, 송장, 상태 `READY | IN_TRANSIT | DELIVERED`). 보관·합배송은 출시 후 1차.
+- 무통장 입금: `Order.paymentDueAt`, 기한이 지난 결제 대기 주문은 자동 취소.
+- 법정 동의 기록: 주문별 「개봉 후 취소 불가」 동의 시각·약관 버전(`OrderConsent`), 회원 가입 시 약관·처리방침 버전과 마케팅 동의 시각·철회 시각(`MemberConsent`).
+- 미성년자 정책: `Seller` 설정 `minorPurchasePolicy`(`BLOCK | NOTICE`), `BuyerMember.birthDate`(PASS)로 판정.
+- 판매자 직원 개인정보 접속기록: 기존 `AuditLog`를 확장해 기록하고 1년 보관.
+- 보존 기간: 거래기록(주문·결제·원장)은 5년 보존, 탈퇴 회원 개인정보는 탈퇴 시 비식별(4.3)하고 거래기록과 분리해 파기 일정 적용.
+- 1인 구매 수량 제한(상품·옵션별), 상품 카테고리, 구매 제한 회원.
+
 ## 5. 주요 흐름 요약
 
 - **로그인**: 해시 검증 → (마스터) TOTP 검증 → 세션 생성 → 토큰 쿠키. 정지된 판매자의 직원은 로그인 거부.
@@ -254,7 +267,7 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 | 1 | 운영·CS 세부 권한 경계 | 3.2 표 | MASTER |
 | 2 | 판매자 직원 역할 | 대표·매니저·방송 담당 3개 | MASTER |
 | 3 | 직원이 여러 판매자 소속일 때 | 판매자별 별도 계정 | MASTER |
-| 4 | 구매자 로그인 수단 | 아이디+비밀번호, 가입 시 휴대폰 인증 필수 | MASTER |
+| 4 | 구매자 로그인 수단 | 아이디+비밀번호, 가입 시 PASS 본인인증 필수(2026-10-02 대표님 지시로 변경) | MASTER |
 | 5 | 재고 차감 시점 | 결제 완료 시. 재고 부족한 늦은 결제는 취소·환불 대상 표시 | 대표님 |
 | 6 | 부분 취소·환불 | 이번 단계 미지원 | MASTER |
 | 7 | 주문대기 단위 | 주문 품목 1개 = 대기 1건, 수량 표시 | 대표님 |

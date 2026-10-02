@@ -71,18 +71,19 @@ enum SellerStatus {
 }
 
 model Seller {
-  id                   String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  slug                 String       @unique
-  shopName             String
-  status               SellerStatus @default(PENDING)
-  businessInfo         Json?
-  approvedAt           DateTime?    @db.Timestamptz(3)
-  approvedByAdminId    String?      @db.Uuid
-  suspendedReason      String?
+  id                       String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug                     String       @unique
+  shopName                 String
+  status                   SellerStatus @default(PENDING)
+  businessInfo             Json?
+  approvedAt               DateTime?    @db.Timestamptz(3)
+  approvedByAdminId        String?      @db.Uuid
+  suspendedReason          String?
   // 대표자 PASS 본인인증 CI의 HMAC-SHA256 값(원문 CI는 저장하지 않음). 대표자 1명당 쇼핑몰 1개는 마이그레이션 SQL 부분 유니크.
-  representativeCiHash String?
-  liveVersion          Int          @default(0)
-  createdAt            DateTime     @default(now()) @db.Timestamptz(3)
+  representativeCiHash     String?
+  representativeVerifiedAt DateTime?    @db.Timestamptz(3)
+  liveVersion              Int          @default(0)
+  createdAt                DateTime     @default(now()) @db.Timestamptz(3)
 
   approvedBy PlatformAdmin? @relation(fields: [approvedByAdminId], references: [id])
 
@@ -91,7 +92,7 @@ model Seller {
   sellerSessions           SellerSession[]
   grades                   MemberGrade[]
   buyers                   BuyerMember[]
-  phoneVerifications       PhoneVerification[]
+  identityVerifications    IdentityVerification[]
   buyerSessions            BuyerSession[]
   products                 Product[]
   productImages            ProductImage[]
@@ -214,10 +215,11 @@ model BuyerMember {
   passwordHash       String
   name               String
   phone              String
-  phoneVerifiedAt    DateTime?         @db.Timestamptz(3)
   // PASS 본인인증 CI의 HMAC-SHA256 값(원문 CI는 저장하지 않음). 같은 쇼핑몰 중복 가입 차단 기준.
   ciHash             String
   identityVerifiedAt DateTime          @db.Timestamptz(3)
+  // PASS 생년월일. 미성년자 구매 정책 판정에 쓴다.
+  birthDate          DateTime          @db.Date
   broadcastNickname  String
   gradeId            String            @db.Uuid
   status             BuyerMemberStatus @default(ACTIVE)
@@ -237,25 +239,40 @@ model BuyerMember {
   @@index([sellerId, gradeId])
 }
 
-enum PhoneVerificationPurpose {
-  SIGNUP
-  RESET
+enum IdentityVerificationPurpose {
+  BUYER_SIGNUP
+  SELLER_REPRESENTATIVE
+  PASSWORD_RESET
 }
 
-model PhoneVerification {
-  id         String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerId   String                   @db.Uuid
-  phone      String
-  codeHash   String
-  purpose    PhoneVerificationPurpose
-  attempts   Int                      @default(0)
-  expiresAt  DateTime                 @db.Timestamptz(3)
-  verifiedAt DateTime?                @db.Timestamptz(3)
-  createdAt  DateTime                 @default(now()) @db.Timestamptz(3)
+enum IdentityVerificationStatus {
+  PENDING
+  VERIFIED
+  FAILED
+  EXPIRED
+}
 
-  seller Seller @relation(fields: [sellerId], references: [id])
+// PASS 본인인증 요청·결과. 연동은 IdentityProvider 인터페이스 뒤에 둔다(개발·테스트는 가짜 공급자).
+// CI 원문은 저장하지 않고 서버 비밀키(IDENTITY_HASH_KEY) HMAC-SHA256 값만 저장한다. 판매자 대표자 인증은 sellerId가 없다.
+model IdentityVerification {
+  id         String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId   String?                     @db.Uuid
+  purpose    IdentityVerificationPurpose
+  provider   String
+  requestId  String
+  status     IdentityVerificationStatus  @default(PENDING)
+  ciHash     String?
+  name       String?
+  phone      String?
+  birthDate  DateTime?                   @db.Date
+  verifiedAt DateTime?                   @db.Timestamptz(3)
+  expiresAt  DateTime                    @db.Timestamptz(3)
+  createdAt  DateTime                    @default(now()) @db.Timestamptz(3)
 
-  @@index([sellerId, phone])
+  seller Seller? @relation(fields: [sellerId], references: [id])
+
+  @@unique([provider, requestId])
+  @@index([sellerId, ciHash])
 }
 
 model BuyerSession {
