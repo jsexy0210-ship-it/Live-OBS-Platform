@@ -42,6 +42,8 @@ export async function completeIdentityVerification(
     await db.identityVerification.update({ where: { id: v.id }, data: { status: "EXPIRED" } });
     return { ok: false, reason: "expired" };
   }
+  // 운영에서는 가짜 공급자 기록을 완료 처리하지 않는다(공급자 객체를 우회해 만든 경우까지 막는다).
+  if (v.provider === "fake" && process.env.NODE_ENV === "production") return { ok: false, reason: "failed" };
   const r = await provider.fetchResult(v.requestId);
   if (!r.ok) {
     if (r.reason === "failed") await db.identityVerification.update({ where: { id: v.id }, data: { status: "FAILED" } });
