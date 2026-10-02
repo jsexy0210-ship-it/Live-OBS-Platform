@@ -5,12 +5,14 @@ import { errorResponse, mutation, readJson, sessionToken } from "../../../../lib
 import { orderErrorBody } from "../../../../lib/server/orders/messages";
 import { createProduct, listProducts } from "../../../../lib/server/products/manage";
 
-// 판매자 상품 목록·등록(PRODUCT_MANAGE). 잠긴 판매자는 상품을 다룰 수 없다(새 판매 차단, PRODUCT_SCOPE 「잠금 중 허용 범위」).
+// 판매자 상품 목록(?status·cursor·limit, 응답 { products, nextCursor })·등록(PRODUCT_MANAGE). 마스터 대리 조회는 목록·조회만. 잠긴 판매자는 상품을 다룰 수 없다(새 판매 차단, PRODUCT_SCOPE 「잠금 중 허용 범위」).
 export async function GET(req: Request) {
   try {
     const ctx = await requireSeller(prisma, sessionToken(req, "seller"));
-    const status = new URL(req.url).searchParams.get("status") ?? undefined;
-    return NextResponse.json({ products: await listProducts(prisma, ctx, { status }) });
+    const q = new URL(req.url).searchParams;
+    const r = await listProducts(prisma, ctx, { status: q.get("status") ?? undefined, cursor: q.get("cursor") ?? undefined, limit: q.get("limit") ?? undefined });
+    if (!r.ok) return NextResponse.json(orderErrorBody(r.reason), { status: 400 });
+    return NextResponse.json(r.value);
   } catch (e) {
     return errorResponse(e);
   }

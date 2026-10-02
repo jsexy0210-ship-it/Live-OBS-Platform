@@ -72,6 +72,14 @@ describe("배송지 입력의 보이지 않는 문자", () => {
     expect(parseShippingAddress({ ...base, memo: "문 앞\u200b" })).toBeNull();
   });
 
+  it("짝 없는 서로게이트·사용자 정의 문자·점자 빈칸·결합 문자만 있는 이름·주소는 거부(상품과 같은 규칙)", () => {
+    for (const bad of ["김\ud800", "김\ue000", "\u2800", "김\u2800구매", "\u0301"]) {
+      expect(parseShippingAddress({ ...base, recipientName: bad }), JSON.stringify(bad)).toBeNull();
+      expect(parseShippingAddress({ ...base, address1: bad }), JSON.stringify(bad)).toBeNull();
+    }
+    expect(parseShippingAddress({ ...base, memo: "문 앞\ud800" })).toBeNull();
+  });
+
   it("연락처·우편번호는 전각 숫자·하이픈도 정규화해 받는다", () => {
     expect(parseShippingAddress({ ...base, phone: "０１０－１２３４－５６７８", zipCode: "０６２３６" })).toMatchObject({ phone: "01012345678", zipCode: "06236" });
   });

@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
+import { cleanText, type TextKind } from "../text/clean";
 
 // 즉시 발송 배송비·배송지(PRODUCT_SCOPE MVP 「즉시 발송」).
 // 배송비 = 기본 배송비(상품 합계가 무료 기준 이상이면 0) + 도서산간 추가비(무료 배송이어도 붙음).
@@ -104,36 +105,20 @@ export type ShippingAddressInput = {
   memo: string | null;
 };
 
-// NFKC로 정규화한 뒤 제어문자(NUL·줄바꿈·탭), 보이지 않는 서식 문자(방향 바꿈·폭 없는 공백 등), 줄·문단 구분 문자는 받지 않는다
-// (DB 오류·송장 출력 깨짐·표시 위장 방지). 전각 공백·NBSP는 정규화에서 일반 공백이 되어 허용된다.
-const DISALLOWED = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
-// 이름·주소: 빈칸처럼 보이는 한글 채움 문자도 거부(정규화 전후 모두 검사)
-const HANGUL_FILLER = /[\u115f\u1160\u3164\uffa0]/u;
-// 메모: 이모지를 쓰도록 ZWJ와 변형 선택자는 허용
-const EMOJI_JOINERS = /[\u200d\ufe00-\ufe0f\u{e0100}-\u{e01ef}]/gu;
-type TextKind = "name" | "memo";
-const text = (v: unknown, max: number, kind: TextKind = "name"): string | null => {
-  if (typeof v !== "string") return null;
-  const n = v.normalize("NFKC");
-  if (DISALLOWED.test(kind === "memo" ? n.replace(EMOJI_JOINERS, "") : n)) return null;
-  if (kind === "name" && (HANGUL_FILLER.test(v) || HANGUL_FILLER.test(n))) return null;
-  const t = n.trim();
-  return t.length > 0 && t.length <= max ? t : null;
-};
 const optionalText = (v: unknown, max: number, kind: TextKind = "name"): string | null | undefined => {
   if (v === undefined || v === null || (typeof v === "string" && v.trim() === "")) return null;
-  return text(v, max, kind) ?? undefined;
+  return cleanText(v, max, kind) ?? undefined;
 };
 
 // 받는 분·연락처(숫자만 저장)·우편번호(5자리)·주소. 잘못된 값은 null.
 export function parseShippingAddress(raw: unknown): ShippingAddressInput | null {
   if (!raw || typeof raw !== "object") return null;
   const b = raw as Record<string, unknown>;
-  const recipientName = text(b.recipientName, 30);
+  const recipientName = cleanText(b.recipientName, 30);
   // 전각 숫자·하이픈도 받도록 NFKC 정규화 뒤 검사한다
   const phone = typeof b.phone === "string" ? b.phone.normalize("NFKC").replace(/[ -]/g, "") : "";
   const zipCode = typeof b.zipCode === "string" ? b.zipCode.normalize("NFKC").trim() : "";
-  const address1 = text(b.address1, 200);
+  const address1 = cleanText(b.address1, 200);
   const address2 = optionalText(b.address2, 100);
   const memo = optionalText(b.memo, 100, "memo");
   if (!recipientName || !address1 || address2 === undefined || memo === undefined) return null;

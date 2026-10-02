@@ -57,4 +57,4 @@ export function isStaffPermission(v: unknown): v is SellerStaffPermission {
 }
 
 // 마스터 대리 조회(읽기 전용)에서 허용하는 조회. 변경은 항상 거부한다.
-export const IMPERSONATION_READ_ACTIONS: readonly SellerAction[] = ["ORDER_SHIPPING", "CUSTOMER_PII_VIEW", "SALES_VIEW", "MEMBER_POINTS"];
+export const IMPERSONATION_READ_ACTIONS: readonly SellerAction[] = ["ORDER_SHIPPING", "CUSTOMER_PII_VIEW", "SALES_VIEW", "MEMBER_POINTS", "PRODUCT_MANAGE"];

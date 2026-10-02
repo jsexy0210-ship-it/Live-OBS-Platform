@@ -3,6 +3,7 @@ import { writeAudit } from "../audit/log";
 import { notFound } from "../authz/errors";
 import { dbNow } from "../billing/subscription";
 import { INT4_MAX } from "../orders/shipping";
+import { cleanText } from "../text/clean";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 
 // 판매자 상품·옵션 관리(PRODUCT_MANAGE). 모든 조회·변경은 ctx.sellerId 범위이고 다른 판매자 상품은 없음(404)으로 본다.
@@ -20,24 +21,11 @@ export type ProductResult<T> = { ok: true; value: T } | { ok: false; reason: Pro
 type Tx = Prisma.TransactionClient;
 const fail = (reason: ProductFailure) => ({ ok: false as const, reason });
 
-// 이름 등 한 줄 글자: NFKC 정규화, 제어·보이지 않는 서식·줄 구분 문자 거부. 설명은 줄바꿈(\n)만 허용.
-const DISALLOWED = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
-function line(v: unknown, max: number): string | null {
-  if (typeof v !== "string") return null;
-  const n = v.normalize("NFKC");
-  if (DISALLOWED.test(n)) return null;
-  const t = n.trim();
-  return t.length > 0 && t.length <= max ? t : null;
-}
+// 이름·SKU는 한 줄 글자, 설명은 줄바꿈만 허용(lib/server/text/clean.ts, 배송지와 같은 규칙)
+const line = (v: unknown, max: number): string | null => cleanText(v, max, "name");
 function multiline(v: unknown, max: number): string | null | undefined {
-  if (v === null || v === undefined) return null;
-  if (typeof v !== "string") return undefined;
-  const n = v.normalize("NFKC").replace(/\r\n/g, "\n");
-  // 앞뒤 공백을 자르기 전에 검사한다(trim이 줄 구분 문자를 조용히 지우지 않게)
-  if (DISALLOWED.test(n.replace(/\n/g, ""))) return undefined;
-  const t = n.trim();
-  if (t.length > max) return undefined;
-  return t.length === 0 ? null : t;
+  if (v === null || v === undefined || (typeof v === "string" && v.trim() === "")) return null;
+  return cleanText(v, max, "multiline") ?? undefined;
 }
 const isInt = (v: unknown, min: number, max: number): v is number => typeof v === "number" && Number.isInteger(v) && v >= min && v <= max;
 const unitOk = (price: number, delta: number) => price + delta >= 1 && price + delta <= INT4_MAX;
@@ -76,16 +64,42 @@ async function productView(tx: Tx | PrismaClient, sellerId: string, productId: s
   return { ...rest, options: (await liveOptions(tx, sellerId, productId)).map(({ deletedAt: _o, ...o }) => o) };
 }
 
-export async function listProducts(db: PrismaClient, ctx: TenantContext, opts: { status?: unknown } = {}) {
+export const DEFAULT_PAGE_SIZE = 50;
+export const MAX_PAGE_SIZE = 200;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// 상품 목록(커서 페이지). 정렬: 진열 순서 → 최근 등록 → id. nextCursor가 null이면 마지막 쪽이에요.
+// 커서는 이 판매자 상품 id만 받는다(지운 상품이어도 위치 기준으로는 쓸 수 있음).
+export async function listProducts(
+  db: PrismaClient,
+  ctx: TenantContext,
+  opts: { status?: unknown; cursor?: unknown; limit?: unknown } = {},
+): Promise<{ ok: true; value: { products: Awaited<ReturnType<typeof productView>>[]; nextCursor: string | null } } | { ok: false; reason: "invalid_cursor" }> {
   requireSellerRead(ctx, "PRODUCT_MANAGE");
   const status = PRODUCT_STATUSES.includes(opts.status as ProductStatus) ? (opts.status as ProductStatus) : undefined;
-  const products = await db.product.findMany({
+  const limit = opts.limit === undefined ? DEFAULT_PAGE_SIZE : Number(opts.limit);
+  if (!Number.isInteger(limit) || limit < 1 || limit > MAX_PAGE_SIZE) return { ok: false, reason: "invalid_cursor" };
+  let cursor: string | undefined;
+  if (opts.cursor !== undefined && opts.cursor !== "") {
+    if (typeof opts.cursor !== "string" || !UUID.test(opts.cursor)) return { ok: false, reason: "invalid_cursor" };
+    if (!(await db.product.findFirst({ where: { id: opts.cursor, sellerId: ctx.sellerId }, select: { id: true } }))) return { ok: false, reason: "invalid_cursor" };
+    cursor = opts.cursor;
+  }
+  const rows = await db.product.findMany({
     where: { sellerId: ctx.sellerId, deletedAt: null, ...(status ? { status } : {}) },
-    orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
-    take: 200,
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }, { id: "asc" }],
+    take: limit + 1,
+    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     include: { options: { where: { deletedAt: null }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] } },
   });
-  return products.map(({ deletedAt: _d, options, ...p }) => ({ ...p, options: options.map(({ deletedAt: _o, ...o }) => o) }));
+  const page = rows.slice(0, limit);
+  return {
+    ok: true,
+    value: {
+      products: page.map(({ deletedAt: _d, options, ...p }) => ({ ...p, options: options.map(({ deletedAt: _o, ...o }) => o) })),
+      nextCursor: rows.length > limit ? page[page.length - 1].id : null,
+    },
+  };
 }
 
 export async function getProduct(db: PrismaClient, ctx: TenantContext, productId: string) {

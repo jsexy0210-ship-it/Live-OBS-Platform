@@ -16,10 +16,11 @@ export const ORDER_ERROR_MESSAGES = {
   // 판매자 상품·옵션
   invalid_product: "상품 정보를 다시 확인해 주세요",
   invalid_option: "옵션 정보를 다시 확인해 주세요",
-  invalid_price: "가격을 다시 확인해 주세요. 옵션 추가금을 더한 가격도 1원 이상이어야 해요",
+  invalid_price: "가격은 1원 이상, 21억 원 이하로 입력해 주세요. 옵션 추가금을 더한 가격도 같아요",
   too_many_options: "옵션은 상품 하나에 100개까지 만들 수 있어요",
   no_sellable_option: "판매하려면 옵션이 하나 이상 있어야 해요",
   stock_conflict: "그사이 재고가 바뀌었어요. 새로 불러온 뒤 다시 입력해 주세요",
+  invalid_cursor: "목록을 처음부터 다시 불러와 주세요",
 } as const;
 
 export type OrderErrorCode = keyof typeof ORDER_ERROR_MESSAGES;
