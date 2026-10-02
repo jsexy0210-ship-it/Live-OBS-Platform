@@ -78,6 +78,14 @@ describe("배송비 계산", () => {
     expect(await s.order(1, at("울릉군 서면 1"))).toMatchObject({ shippingFee: 6000 });
     expect(await s.order(1, at("서울 강남구 제주로 1"))).toMatchObject({ shippingFee: 3000 });
     expect(await s.order(1, at("경상북도 포항시 울릉로 1"))).toMatchObject({ shippingFee: 3000 });
+    expect(await s.order(1, at("대한민국 제주특별자치도 제주시 첨단로 1"))).toMatchObject({ shippingFee: 6000 });
+    expect(await s.order(1, at("(제주) 제주시 첨단로 1"))).toMatchObject({ shippingFee: 6000 });
+    expect(await s.order(1, at("Jeju-si, Jeju-do"))).toMatchObject({ shippingFee: 6000 });
+    expect(await s.order(1, at("제주시 첨단로 1".normalize("NFD")))).toMatchObject({ shippingFee: 6000 });
+    // 폭 없는 공백을 붙인 주소는 배송지 오류로 거부(추가비를 피해 주문이 만들어지지 않음)
+    expect(
+      await createOrder(db, { sellerId: s.seller.id, buyerMemberId: s.buyer.id, items: [{ optionId: s.option.id, quantity: 1 }], consent, shippingAddress: at("\u200b제주시 첨단로 1") }),
+    ).toEqual({ ok: false, reason: "invalid_shipping_address" });
   });
 
   it("주문 뒤 배송비 설정을 바꿔도 이미 만든 주문 금액·배송지는 그대로(스냅숏)", async () => {

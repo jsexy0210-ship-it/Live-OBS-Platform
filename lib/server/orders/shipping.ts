@@ -74,15 +74,20 @@ export async function getShippingPolicy(db: Db, sellerId: string): Promise<Shipp
   };
 }
 
-// 도서산간 시·도(주소 첫머리). 우편번호와 주소가 어긋나도 추가비가 빠지지 않게 둘 중 하나라도 맞으면 도서산간으로 본다.
-export const REMOTE_ADDRESS_PREFIXES = ["제주", "울릉"] as const;
+// 도서산간 판정. 우편번호와 주소가 어긋나도 추가비가 빠지지 않게 둘 중 하나라도 맞으면 도서산간으로 본다.
+// 주소는 NFKC 정규화 후 공백을 모두 지운 문자열에 행정구역 이름이 들어 있는지 본다(「경상북도울릉군」처럼 붙여 써도 잡힘).
+// 「제주로」·「울릉길」 같은 도로명은 이 이름과 달라 빠진다. 「제주도로」처럼 잘못 잡히는 경우는 추가비가 붙는 쪽이라 허용한다.
+const REMOTE_REGION_NAMES = ["제주특별자치도", "제주도", "제주시", "서귀포시", "울릉군", "울릉도"] as const;
+// 영문 주소는 토큰으로 본다(「Jeju-ro」 같은 도로명은 맞지 않음)
+const REMOTE_LATIN_TOKEN = /^(jeju|seogwipo|ulleung)(-?(do|si|gun|island))?$/i;
 
 export function isRemoteAddress(zipCode: string, address1: string, ranges: readonly ZipRange[]): boolean {
   const zip = Number(zipCode);
   if (ranges.some(([from, to]) => zip >= from && zip <= to)) return true;
-  // 「경상북도 울릉군 …」처럼 도 이름이 앞에 오는 주소도 잡는다
-  const head = address1.replace(/^(경상북도|경북)\s*/, "");
-  return REMOTE_ADDRESS_PREFIXES.some((p) => head.startsWith(p));
+  const n = address1.normalize("NFKC");
+  const compact = n.replace(/\s+/g, "");
+  if (REMOTE_REGION_NAMES.some((name) => compact.includes(name))) return true;
+  return n.split(/[^\p{L}\p{N}-]+/u).some((t) => REMOTE_LATIN_TOKEN.test(t));
 }
 
 export function computeShippingFee(itemsSubtotal: number, policy: ShippingPolicy, isRemote: boolean): number {
@@ -99,16 +104,25 @@ export type ShippingAddressInput = {
   memo: string | null;
 };
 
-// 제어문자(NUL·줄바꿈·탭 등)는 받지 않는다(DB 오류·송장 출력 깨짐 방지)
-const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
-const text = (v: unknown, max: number): string | null => {
-  if (typeof v !== "string" || CONTROL.test(v)) return null;
-  const t = v.trim();
+// NFKC로 정규화한 뒤 제어문자(NUL·줄바꿈·탭), 보이지 않는 서식 문자(방향 바꿈·폭 없는 공백 등), 줄·문단 구분 문자는 받지 않는다
+// (DB 오류·송장 출력 깨짐·표시 위장 방지). 전각 공백·NBSP는 정규화에서 일반 공백이 되어 허용된다.
+const DISALLOWED = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
+// 이름·주소: 빈칸처럼 보이는 한글 채움 문자도 거부(정규화 전후 모두 검사)
+const HANGUL_FILLER = /[\u115f\u1160\u3164\uffa0]/u;
+// 메모: 이모지를 쓰도록 ZWJ와 변형 선택자는 허용
+const EMOJI_JOINERS = /[\u200d\ufe00-\ufe0f\u{e0100}-\u{e01ef}]/gu;
+type TextKind = "name" | "memo";
+const text = (v: unknown, max: number, kind: TextKind = "name"): string | null => {
+  if (typeof v !== "string") return null;
+  const n = v.normalize("NFKC");
+  if (DISALLOWED.test(kind === "memo" ? n.replace(EMOJI_JOINERS, "") : n)) return null;
+  if (kind === "name" && (HANGUL_FILLER.test(v) || HANGUL_FILLER.test(n))) return null;
+  const t = n.trim();
   return t.length > 0 && t.length <= max ? t : null;
 };
-const optionalText = (v: unknown, max: number): string | null | undefined => {
+const optionalText = (v: unknown, max: number, kind: TextKind = "name"): string | null | undefined => {
   if (v === undefined || v === null || (typeof v === "string" && v.trim() === "")) return null;
-  return text(v, max) ?? undefined;
+  return text(v, max, kind) ?? undefined;
 };
 
 // 받는 분·연락처(숫자만 저장)·우편번호(5자리)·주소. 잘못된 값은 null.
@@ -116,11 +130,12 @@ export function parseShippingAddress(raw: unknown): ShippingAddressInput | null 
   if (!raw || typeof raw !== "object") return null;
   const b = raw as Record<string, unknown>;
   const recipientName = text(b.recipientName, 30);
-  const phone = typeof b.phone === "string" ? b.phone.replace(/[ -]/g, "") : "";
-  const zipCode = typeof b.zipCode === "string" ? b.zipCode.trim() : "";
+  // 전각 숫자·하이픈도 받도록 NFKC 정규화 뒤 검사한다
+  const phone = typeof b.phone === "string" ? b.phone.normalize("NFKC").replace(/[ -]/g, "") : "";
+  const zipCode = typeof b.zipCode === "string" ? b.zipCode.normalize("NFKC").trim() : "";
   const address1 = text(b.address1, 200);
   const address2 = optionalText(b.address2, 100);
-  const memo = optionalText(b.memo, 100);
+  const memo = optionalText(b.memo, 100, "memo");
   if (!recipientName || !address1 || address2 === undefined || memo === undefined) return null;
   if (!/^0\d{8,10}$/.test(phone) || !/^\d{5}$/.test(zipCode)) return null;
   return { recipientName, phone, zipCode, address1, address2, memo };
