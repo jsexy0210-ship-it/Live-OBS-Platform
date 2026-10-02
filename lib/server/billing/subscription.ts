@@ -140,7 +140,7 @@ export async function getSubscriptionView(db: PrismaClient, ctx: TenantContext, 
 
 export type SubscribeResult =
   | { ok: true; charged: boolean; currentPeriodEnd: Date | null; nextChargeAt: Date | null }
-  | { ok: false; reason: "card_rejected" | "plan_missing" | "payment_in_progress" | "payment_failed" | "payment_pending" };
+  | { ok: false; reason: "card_rejected" | "plan_missing" | "payment_in_progress" | "payment_failed" | "payment_pending" | "not_activated" };
 
 // 카드를 등록(또는 교체)한다.
 // - 결제한 기간이 남아 있고 자동결제가 정상이면 카드만 바꾼다.
@@ -250,10 +250,20 @@ export async function registerCardAndPay(
     // 결제됐는지 알 수 없다. PENDING으로 두고 정리 함수가 같은 청구 id로 PG에 확인한다.
     return { ok: false, reason: "payment_pending" };
   }
-  const settled = await settlePayment(db, prepared.payment.id, result, { actorType: ctx.actorType, actorId: ctx.actorId, now: input.now });
-  return result.ok
-    ? { ok: true, charged: true, currentPeriodEnd: prepared.payment.periodEnd, nextChargeAt: settled?.nextChargeAt ?? null }
-    : { ok: false, reason: "payment_failed" };
+  await settlePayment(db, prepared.payment.id, result, { actorType: ctx.actorType, actorId: ctx.actorId, now: input.now });
+  if (!result.ok) return { ok: false, reason: "payment_failed" };
+  // 응답은 PG 결과가 아니라 반영된 뒤의 실제 구독 상태로 정한다(그사이 해지 등으로 이 결제가 기간에 반영되지 않았으면 성공이 아님).
+  const state = await db.sellerSubscription.findUniqueOrThrow({
+    where: { sellerId: ctx.sellerId },
+    select: { status: true, currentPeriodStart: true, currentPeriodEnd: true, nextChargeAt: true },
+  });
+  const applied =
+    state.status === "ACTIVE" &&
+    state.currentPeriodStart?.getTime() === prepared.payment.periodStart.getTime() &&
+    state.currentPeriodEnd?.getTime() === prepared.payment.periodEnd.getTime();
+  return applied
+    ? { ok: true, charged: true, currentPeriodEnd: state.currentPeriodEnd, nextChargeAt: state.nextChargeAt }
+    : { ok: false, reason: "not_activated" };
 }
 
 // 결제 결과를 청구·구독에 반영한다. 이미 확정된 청구면 아무것도 하지 않는다(여러 번 불러도 안전).
@@ -353,6 +363,10 @@ export async function cancelSubscription(db: PrismaClient, ctx: TenantContext, i
     const now = input.now ?? (await dbNow(tx));
     const sub = await tx.sellerSubscription.findUnique({ where: { sellerId: ctx.sellerId } });
     if (!sub || sub.status === "CANCELED" || sub.cancelAtPeriodEnd) return { ok: false as const, reason: "not_subscribed" as const };
+    // 결제를 처리하는 중(PENDING 청구)에는 해지하지 않는다(결제 결과와 해지가 엇갈리지 않게)
+    if (await tx.subscriptionPayment.findFirst({ where: { subscriptionId: sub.id, status: "PENDING" }, select: { id: true } })) {
+      return { ok: false as const, reason: "payment_in_progress" as const };
+    }
     const paidThrough = sub.currentPeriodEnd && sub.currentPeriodEnd > now ? sub.currentPeriodEnd : null;
     await tx.sellerSubscription.update({
       where: { id: sub.id },

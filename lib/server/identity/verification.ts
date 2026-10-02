@@ -10,7 +10,7 @@ const REQUEST_TTL_MS = 10 * 60_000;
 export async function startIdentityVerification(
   db: PrismaClient | Prisma.TransactionClient,
   provider: IdentityProvider,
-  input: { purpose: IdentityVerificationPurpose; sellerId: string | null; subjectId?: string | null; now?: Date },
+  input: { purpose: IdentityVerificationPurpose; sellerId: string | null; subjectId?: string | null; requestIp?: string | null; now?: Date },
 ): Promise<{ verification: IdentityVerification; ownerToken: string }> {
   const now = input.now ?? new Date();
   const { requestId } = await provider.createRequest();
@@ -20,6 +20,7 @@ export async function startIdentityVerification(
       purpose: input.purpose,
       sellerId: input.sellerId,
       subjectId: input.subjectId ?? null,
+      requestIp: input.requestIp ?? null,
       provider: provider.name,
       requestId,
       ownerTokenHash: hashToken(ownerToken),

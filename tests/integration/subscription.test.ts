@@ -36,6 +36,7 @@ import { GET as sellerMe } from "../../app/api/seller/me/route";
 import { GET as queueRoute } from "../../app/api/seller/queue/route";
 import { GET as subscriptionRoute } from "../../app/api/seller/subscription/route";
 import { POST as cardRoute } from "../../app/api/seller/subscription/card/route";
+import { POST as cancelRoute } from "../../app/api/seller/subscription/cancel/route";
 import { POST as adminLogin } from "../../app/api/admin/auth/login/route";
 import { prisma } from "../../lib/server/db";
 import { PASSWORD, adminCredentials, createAdmin, createBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
@@ -651,7 +652,9 @@ describe("MASTER 재검수 3차 재현", () => {
     const { sub, ctx, end, seller } = await paidShop(provider);
     provider.failNext = "timeout_before_charge";
     expect(await renewDueSubscriptions(db, provider, { now: new Date(end.getTime() - DAY / 2) })).toMatchObject({ pending: 1 });
-    expect(await cancelSubscription(db, ctx, { now: new Date(end.getTime() - DAY / 3) })).toMatchObject({ ok: true });
+    // 진행 중 결제가 있으면 해지는 막힌다(409). 다른 경로로 해지 예약 상태가 된 경우를 직접 만들어 정리 함수를 확인한다.
+    expect(await cancelSubscription(db, ctx, { now: new Date(end.getTime() - DAY / 3) })).toEqual({ ok: false, reason: "payment_in_progress" });
+    await db.sellerSubscription.update({ where: { id: sub.id }, data: { cancelAtPeriodEnd: true, nextChargeAt: end } });
     await reconcileStalePayments(db, provider, { staleMs: 0, now: new Date(end.getTime() - DAY / 4) });
     expect(provider.charges).toHaveLength(1); // 처음 결제만
     const pending = await db.subscriptionPayment.findFirstOrThrow({ where: { sellerId: seller.id, scheduled: true } });
@@ -670,7 +673,12 @@ describe("MASTER 재검수 3차 재현", () => {
     const pg = new FakeBillingProvider();
     pg.failNext = "timeout_before_charge";
     expect(await renewDueSubscriptions(db, pg, { now: new Date(end.getTime() + DAY) })).toMatchObject({ pending: 1 });
-    expect(await cancelSubscription(db, ctx, { now: new Date(end.getTime() + DAY + 1000) })).toMatchObject({ ok: true, currentPeriodEnd: null });
+    expect(await cancelSubscription(db, ctx, { now: new Date(end.getTime() + DAY + 1000) })).toEqual({ ok: false, reason: "payment_in_progress" });
+    // 다른 경로(예: 자동 해지)로 해지된 상태를 직접 만든다
+    await db.sellerSubscription.update({
+      where: { id: sub.id },
+      data: { status: "CANCELED", canceledAt: new Date(end.getTime() + DAY + 1000), cancelAtPeriodEnd: true, nextChargeAt: null, graceUntil: null },
+    });
     await reconcileStalePayments(db, pg, { staleMs: 0, now: new Date(end.getTime() + 2 * DAY) });
     expect(pg.charges).toHaveLength(0);
     expect(await db.sellerSubscription.findUniqueOrThrow({ where: { id: sub.id } })).toMatchObject({ status: "CANCELED", currentPeriodEnd: end });
@@ -684,7 +692,11 @@ describe("MASTER 재검수 3차 재현", () => {
     const pg = new FakeBillingProvider();
     pg.failNext = "timeout_after_charge";
     expect(await renewDueSubscriptions(db, pg, { now: new Date(end.getTime() + DAY) })).toMatchObject({ pending: 1 });
-    await cancelSubscription(db, ctx, { now: new Date(end.getTime() + DAY + 1000) });
+    expect(await cancelSubscription(db, ctx, { now: new Date(end.getTime() + DAY + 1000) })).toEqual({ ok: false, reason: "payment_in_progress" });
+    await db.sellerSubscription.update({
+      where: { id: sub.id },
+      data: { status: "CANCELED", canceledAt: new Date(end.getTime() + DAY + 1000), cancelAtPeriodEnd: true, nextChargeAt: null, graceUntil: null },
+    });
     await reconcileStalePayments(db, pg, { staleMs: 0, now: new Date(end.getTime() + 2 * DAY) });
     expect(await db.sellerSubscription.findUniqueOrThrow({ where: { id: sub.id } })).toMatchObject({ status: "CANCELED", currentPeriodEnd: end });
     expect(await db.auditLog.count({ where: { sellerId: seller.id, action: "subscription.refund_required" } })).toBe(1);
@@ -823,5 +835,46 @@ describe("MASTER 재검수 4차: 해지 뒤 다시 구독하면 되살린다", (
     expect(await registerCardAndPay(db, declining, ctx, { authKey: "bad", now })).toEqual({ ok: false, reason: "payment_failed" });
     expect((await db.sellerSubscription.findUniqueOrThrow({ where: { sellerId: seller.id } })).status).toBe("CANCELED");
     expect(await sellerAccessFor(db, seller.id, now)).toBe("expired");
+  });
+});
+
+describe("#67 재검수 P2: 결제를 처리하는 중의 해지", () => {
+  it("카드 등록 결제가 진행 중이면 해지는 409(payment_in_progress)이고, 등록 응답은 실제 구독 상태대로 성공이다", async () => {
+    const s = await shop(new Date(Date.now() - DAY));
+    let release!: () => void;
+    let entered!: () => void;
+    const inCharge = new Promise<void>((r) => (entered = r));
+    const slow = new (class extends FakeBillingProvider {
+      async charge(input: Parameters<FakeBillingProvider["charge"]>[0]) {
+        entered();
+        await new Promise<void>((r) => (release = r));
+        return super.charge(input);
+      }
+    })();
+    const registering = registerCardAndPay(db, slow, s.ctx, { authKey: "slow" });
+    await inCharge;
+    expect(await cancelSubscription(db, s.ctx)).toEqual({ ok: false, reason: "payment_in_progress" });
+    release();
+    expect(await registering).toMatchObject({ ok: true, charged: true });
+    const sub = await db.sellerSubscription.findUniqueOrThrow({ where: { sellerId: s.seller.id } });
+    expect(sub).toMatchObject({ status: "ACTIVE", cancelAtPeriodEnd: false });
+    expect(await sellerAccessFor(db, s.seller.id)).toBe("paid");
+  });
+
+  it("해지 API: 진행 중 결제가 있으면 409와 안내 문구", async () => {
+    const s = await shop(new Date(Date.now() - DAY));
+    const provider = new FakeBillingProvider();
+    provider.failNext = "timeout_before_charge";
+    await registerCardAndPay(db, provider, s.ctx, { authKey: "p" });
+    const token = await sessionToken(s.owner.email);
+    const res = await cancelRoute(
+      new Request("http://localhost:3000/api/seller/subscription/cancel", {
+        method: "POST",
+        headers: { "content-type": "application/json", host: "localhost:3000", origin: "http://localhost:3000", cookie: `lo_seller=${token}` },
+        body: "{}",
+      }),
+    );
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "payment_in_progress", message: "결제를 처리하고 있어요. 잠시 뒤 다시 시도해 주세요" });
   });
 });

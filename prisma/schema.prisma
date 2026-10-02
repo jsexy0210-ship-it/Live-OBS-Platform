@@ -78,6 +78,11 @@ model Seller {
   serviceEndedAt           DateTime?    @db.Timestamptz(3)
   approvedByAdminId        String?      @db.Uuid
   suspendedReason          String?
+  // 가입 자동 점검에서 걸린 항목(「확인 필요」 사유). 자동 승인·마스터 승인 때 비운다.
+  reviewReasons            String[]     @default([])
+  // 가입 반려 사유·시각(정지 사유와 따로 둔다)
+  rejectedReason           String?
+  rejectedAt               DateTime?    @db.Timestamptz(3)
   // 대표자 PASS 본인인증 CI의 HMAC-SHA256 값(원문 CI는 저장하지 않음). 대표자 1명당 쇼핑몰 1개는 마이그레이션 SQL 부분 유니크.
   representativeCiHash     String?
   representativeVerifiedAt DateTime?    @db.Timestamptz(3)
@@ -307,6 +312,8 @@ model IdentityVerification {
   ownerTokenHash String?
   // 비밀번호 찾기: 재설정 대상 계정(없는 계정이면 null, 응답은 같게)
   subjectId      String?                     @db.Uuid
+  // 인증을 시작한 접속 IP(신뢰 프록시 기준, 없으면 null). 판매자 가입 PASS 시작 하루 횟수 제한에 쓴다.
+  requestIp      String?
   // 이 인증으로 가입·재설정 권한을 이미 발급했으면 기록(한 번만 쓰임)
   consumedAt     DateTime?                   @db.Timestamptz(3)
   expiresAt      DateTime                    @db.Timestamptz(3)
@@ -315,6 +322,7 @@ model IdentityVerification {
   seller Seller? @relation(fields: [sellerId], references: [id])
 
   @@unique([provider, requestId])
+  @@index([purpose, requestIp, createdAt])
   @@index([sellerId, ciHash])
 }
 
