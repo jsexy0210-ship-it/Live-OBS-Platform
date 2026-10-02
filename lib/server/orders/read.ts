@@ -12,14 +12,21 @@ export async function getOrder(db: PrismaClient, ctx: TenantContext, orderId: st
     where: { id: orderId, sellerId: ctx.sellerId },
     include: {
       items: true,
+      shipment: { select: { courier: true, trackingNumber: true, status: true, shippedAt: true, deliveredAt: true } },
+      shippingAddress: { select: { recipientName: true, phone: true, zipCode: true, address1: true, address2: true, memo: true, isRemote: true } },
       buyerMember: { select: { id: true, broadcastNickname: true, name: true, phone: true } },
     },
   });
   if (!order) throw notFound();
 
-  const { buyerMember, ...rest } = order;
+  const { buyerMember, shippingAddress, ...rest } = order;
   if (!canViewCustomerPii(ctx)) {
-    return { ...rest, buyer: { id: buyerMember.id, broadcastNickname: buyerMember.broadcastNickname } };
+    // 배송지도 개인정보라 도서산간 여부(배송비 근거)만 남긴다
+    return {
+      ...rest,
+      shippingAddress: shippingAddress ? { isRemote: shippingAddress.isRemote } : null,
+      buyer: { id: buyerMember.id, broadcastNickname: buyerMember.broadcastNickname },
+    };
   }
   await writeAudit(db, {
     actorType: ctx.actorType,
@@ -29,7 +36,7 @@ export async function getOrder(db: PrismaClient, ctx: TenantContext, orderId: st
     targetType: "Order",
     targetId: order.id,
   });
-  return { ...rest, buyer: buyerMember };
+  return { ...rest, shippingAddress, buyer: buyerMember };
 }
 
 export async function listOrders(

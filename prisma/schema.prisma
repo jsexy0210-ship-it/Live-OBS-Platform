@@ -106,6 +106,9 @@ model Seller {
   orders                   Order[]
   orderItems               OrderItem[]
   orderConsents            OrderConsent[]
+  shippingPolicy           SellerShippingPolicy?
+  orderShippingAddresses   OrderShippingAddress[]
+  shipments                Shipment[]
   orderStatusHistories     OrderStatusHistory[]
   broadcastSessions        BroadcastSession[]
   queueItems               QueueItem[]
@@ -453,31 +456,36 @@ enum PaymentMethod {
 }
 
 model Order {
-  id                        String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerId                  String         @db.Uuid
+  id                        String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId                  String          @db.Uuid
   orderNo                   Int
-  buyerMemberId             String         @db.Uuid
-  status                    OrderStatus    @default(PENDING_PAYMENT)
+  buyerMemberId             String          @db.Uuid
+  status                    OrderStatus     @default(PENDING_PAYMENT)
   broadcastNicknameSnapshot String
   totalAmount               Int
-  rewardUsedAmount          Int            @default(0)
+  rewardUsedAmount          Int             @default(0)
+  // 배송(MVP는 즉시 발송만). 배송비는 주문할 때 판매자 배송비 정책으로 계산해 고정한다(totalAmount에 포함, 적립 기준에서는 제외).
+  fulfillmentType           FulfillmentType @default(IMMEDIATE)
+  shippingFee               Int             @default(0)
   paymentMethod             PaymentMethod?
   pgProvider                String?
   pgTxId                    String?
-  paidAt                    DateTime?      @db.Timestamptz(3)
-  stockShortageAt           DateTime?      @db.Timestamptz(3)
-  cancelledAt               DateTime?      @db.Timestamptz(3)
-  refundedAt                DateTime?      @db.Timestamptz(3)
-  createdAt                 DateTime       @default(now()) @db.Timestamptz(3)
+  paidAt                    DateTime?       @db.Timestamptz(3)
+  stockShortageAt           DateTime?       @db.Timestamptz(3)
+  cancelledAt               DateTime?       @db.Timestamptz(3)
+  refundedAt                DateTime?       @db.Timestamptz(3)
+  createdAt                 DateTime        @default(now()) @db.Timestamptz(3)
 
-  seller         Seller               @relation(fields: [sellerId], references: [id])
-  buyerMember    BuyerMember          @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id])
-  items          OrderItem[]
-  consents       OrderConsent[]
-  statusHistory  OrderStatusHistory[]
-  stockMovements StockMovement[]
-  queueItems     QueueItem[]
-  rewardLedger   RewardLedger[]
+  seller          Seller                @relation(fields: [sellerId], references: [id])
+  buyerMember     BuyerMember           @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id])
+  items           OrderItem[]
+  consents        OrderConsent[]
+  shippingAddress OrderShippingAddress?
+  shipment        Shipment?
+  statusHistory   OrderStatusHistory[]
+  stockMovements  StockMovement[]
+  queueItems      QueueItem[]
+  rewardLedger    RewardLedger[]
 
   @@unique([sellerId, id])
   @@unique([sellerId, orderNo])
@@ -853,4 +861,66 @@ model OrderConsent {
 
   @@unique([orderId, kind])
   @@index([sellerId, orderId])
+}
+
+enum FulfillmentType {
+  IMMEDIATE
+  STORAGE
+}
+
+// 판매자 배송비 정책(판매자당 1행, 없으면 기본값). 금액은 원, 부가세 포함.
+// 배송비 = 기본 배송비(상품 금액이 무료 기준 이상이면 0) + 도서산간이면 추가 배송비(무료 기준과 상관없이).
+// 도서산간은 우편번호 범위 목록(remoteZipRanges: [[시작, 끝], ...])으로 판정한다.
+model SellerShippingPolicy {
+  sellerId        String   @id @db.Uuid
+  baseFee         Int      @default(3000)
+  freeOverAmount  Int?
+  remoteSurcharge Int      @default(3000)
+  remoteZipRanges Json     @default("[[63000, 63644], [40200, 40240]]")
+  updatedAt       DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+}
+
+// 주문할 때 받은 배송지(스냅숏). 회원 정보가 바뀌어도 그대로 남는다. 받는 분 이름·연락처·주소는 CUSTOMER_PII_VIEW가 있을 때만 응답에 넣는다.
+model OrderShippingAddress {
+  id            String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String  @db.Uuid
+  orderId       String  @unique @db.Uuid
+  recipientName String
+  phone         String
+  zipCode       String
+  address1      String
+  address2      String?
+  memo          String?
+  isRemote      Boolean @default(false)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+  order  Order  @relation(fields: [sellerId, orderId], references: [sellerId, id])
+
+  @@unique([sellerId, orderId])
+}
+
+enum ShipmentStatus {
+  READY
+  IN_TRANSIT
+  DELIVERED
+}
+
+// 배송 레코드(즉시 발송은 주문당 1건). 송장은 판매자가 직접 입력한다(택배사 연동은 나중).
+model Shipment {
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId       String         @db.Uuid
+  orderId        String         @unique @db.Uuid
+  courier        String
+  trackingNumber String
+  status         ShipmentStatus @default(IN_TRANSIT)
+  shippedAt      DateTime       @db.Timestamptz(3)
+  deliveredAt    DateTime?      @db.Timestamptz(3)
+  updatedAt      DateTime       @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+  order  Order  @relation(fields: [sellerId, orderId], references: [sellerId, id])
+
+  @@unique([sellerId, orderId])
 }

@@ -452,7 +452,9 @@ export async function refundOrder(
     if (moved.count !== 1) {
       throw new Rejected((await tx.order.count({ where: { id: orderId, sellerId: ctx.sellerId } })) ? "invalid_transition" : "not_found");
     }
-    const order = await tx.order.findUniqueOrThrow({ where: { id: orderId }, include: { items: true, queueItems: true } });
+    const order = await tx.order.findUniqueOrThrow({ where: { id: orderId }, include: { items: true, queueItems: true, shipment: { select: { status: true } } } });
+    // 발송한 주문은 상품이 구매자에게 가 있으므로 재고를 되돌리지 않는다(회수는 판매자가 MANUAL로). 배송 기록은 그대로 둔다.
+    const shippedBeforeRefund = order.shipment !== null;
     const isOpened = (q: (typeof order.queueItems)[number] | undefined) =>
       !!q && (q.openingStartedAt !== null || q.status === "OPENING" || q.status === "DONE");
     const openedItemCount = order.items.filter((i) => isOpened(order.queueItems.find((x) => x.orderItemId === i.id))).length;
@@ -476,7 +478,7 @@ export async function refundOrder(
         });
         cancelledQueueItemIds.push(q.id);
       }
-      if (order.stockShortageAt) continue;
+      if (order.stockShortageAt || shippedBeforeRefund) continue;
       if (!q || isOpened(q)) continue;
       await tx.productOption.update({ where: { id: item.optionId }, data: { stock: { increment: item.quantity } } });
       await tx.stockMovement.create({
@@ -519,6 +521,8 @@ export async function refundOrder(
         cancelledQueueItems: cancelledQueueItemIds.length,
         openedItems: openedItemCount,
         rewardRevoke,
+        shippedBeforeRefund,
+        ...(order.shipment ? { shipmentStatus: order.shipment.status } : {}),
       },
     });
     return { orderId, restockedItemIds, cancelledQueueItemIds, openedItemCount, rewardRevoke };
