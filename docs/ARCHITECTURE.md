@@ -102,7 +102,7 @@ tests/unit/**, tests/integration/**           테스트
 
 ### 4.2 판매자(쇼핑몰)·직원
 
-- `Seller` (테넌트 = 쇼핑몰 1개): id, slug(기본 주소 하위 이름, **유니크**), shopName, status(`PENDING | ACTIVE | SUSPENDED | REJECTED | CLOSED`), businessInfo(JSON), approvedAt, approvedByAdminId, suspendedReason, createdAt
+- `Seller` (테넌트 = 쇼핑몰 1개): id, slug(기본 주소 하위 이름, **유니크**), shopName, status(`PENDING | ACTIVE | SUSPENDED | REJECTED | CLOSED`), businessInfo(JSON), approvedAt, approvedByAdminId, suspendedReason, liveVersion(실시간 version 카운터, 기본 0), createdAt
 - `SellerDomain`: id, sellerId, hostname(**유니크**), verifiedAt, certStatus — 개인 도메인 연결용 자리만
 - `SellerUser`: id, sellerId, email, passwordHash, name, role(`OWNER | MANAGER | BROADCASTER`), status(`ACTIVE | DISABLED`), failedLoginCount, lockedUntil, lastLoginAt — **(sellerId, email) 유니크**, 판매자당 OWNER 1명 이상
 - `SellerSession`: id, sellerUserId, sellerId, tokenHash(**유니크**), expiresAt, lastSeenAt, revokedAt
@@ -110,7 +110,8 @@ tests/unit/**, tests/integration/**           테스트
 
 ### 4.3 구매자 회원 (판매자 쇼핑몰별)
 
-- `BuyerMember`: id, sellerId, loginId, passwordHash, name, phone, phoneVerifiedAt, broadcastNickname, gradeId, status(`ACTIVE | DORMANT | WITHDRAWN`), marketingConsentAt, createdAt — **(sellerId, phone) 유니크**, **(sellerId, loginId) 유니크**, **(sellerId, broadcastNickname) 유니크**(방송 화면에서 구분 가능하게)
+- `BuyerMember`: id, sellerId, loginId, passwordHash, name, phone, phoneVerifiedAt, broadcastNickname, gradeId, status(`ACTIVE | DORMANT | WITHDRAWN`), marketingConsentAt, createdAt, deletedAt — **(sellerId, phone) 유니크**, **(sellerId, loginId) 유니크**, **(sellerId, broadcastNickname) 유니크**(방송 화면에서 구분 가능하게). 세 유니크는 `deletedAt IS NULL`인 행에만 적용(부분 유니크 인덱스)
+  - 탈퇴하면 `status = WITHDRAWN`과 `deletedAt`을 같은 트랜잭션에서 함께 기록하고 개인정보(이름·휴대폰·닉네임)를 비식별 처리한다. `DORMANT`는 삭제가 아니므로 `deletedAt`이 비어 있다. 주문·원장은 회원 id로 남는다.
 - `MemberGrade`: id, sellerId, displayName, sortOrder, systemKey(nullable: `BASIC | SPROUT | SILVER | GOLD | VIP`) — 등급은 **id·displayName·sortOrder로 식별**한다. 판매자 생성 시 일반·새싹·실버·골드·VIP 5개를 기본으로 만들고 `systemKey`로 표시만 한다. 판매자가 추가한 등급은 `systemKey = null`. **(sellerId, displayName) 유니크**, **(sellerId, systemKey) 유니크(null 제외)**. 디자인 지시(`docs/DESIGN_PROMPT.md` 245줄) 「이름·개수는 판매자가 정한다」에 맞춰 고정 enum으로 식별하지 않는다. 적립률(`RewardPolicy.rates`)도 등급 id 기준. [확정]
 - `PhoneVerification`: id, sellerId, phone, codeHash, purpose(`SIGNUP | RESET`), attempts, expiresAt, verifiedAt — 발송은 `SmsSender` 인터페이스 뒤에 두고 개발·테스트는 가짜 발송기만 쓴다(실제 문자 연동 제외).
 - `BuyerSession`: id, buyerMemberId, sellerId, tokenHash(**유니크**), expiresAt, revokedAt
@@ -125,6 +126,7 @@ tests/unit/**, tests/integration/**           테스트
 - `ProductOption`: id, sellerId, productId, name(예: 「1팩」), priceDelta, stock(**CHECK stock >= 0**), sku, sortOrder — 옵션 없는 상품도 기본 옵션 1개를 둬 재고를 한 곳에서 관리
 - `StockMovement`: id, sellerId, optionId, delta, reason(`ORDER | CANCEL | REFUND | MANUAL`), orderId, actor, createdAt — 재고 변경 이력
 - 재고 차감은 `UPDATE … SET stock = stock - n WHERE id = ? AND sellerId = ? AND stock >= n`의 영향 행 수로 판정(초과 판매 방지).
+- 주문의 모든 품목 차감은 **한 트랜잭션**에서 처리한다. 품목 하나라도 영향 행 수가 0이면 그 트랜잭션의 모든 차감을 되돌리고(롤백), 별도 트랜잭션에서 주문에 `stockShortageAt`만 기록한다. 일부 품목만 차감된 상태는 생기지 않는다.
 - [확정] 재고 차감 시점: **결제 완료 시 차감**(선점 없음, 결제 완료 순). 동시 결제로 재고가 모자라면 늦게 결제된 주문은 `PAID`로 기록하되 `stockShortageAt`을 남겨 「취소·환불 대상」으로 표시하고, 주문대기는 만들지 않는다. 실제 PG 환불 연동은 다음 단계.
 
 ### 4.5 주문·주문 품목
@@ -139,7 +141,12 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
        └──────취소──────▶ CANCELLED
 ```
 
-- 결제 완료 → 재고 차감 + 주문대기 생성 + 적립금 지급 대기 기록. 환불 → 재고 복원(선택) + 적립금 회수 + 연결된 「대기」 주문대기 취소.
+- 결제 완료 → 재고 차감 + 주문대기 생성 + 적립금 지급 대기 기록(재고 부족 분기는 5절). 환불 → 재고 복원(아래 규칙) + 적립금 회수 + 연결된 「대기」 주문대기 취소.
+- [확정] 환불 시 재고 복원 (MASTER 결정, 주문 품목 단위):
+  - 연결된 주문대기가 「대기」(환불과 함께 취소됨)이거나 개봉 전에 「취소」된 경우 → 자동 복원(`StockMovement.reason = REFUND`).
+  - 「개봉 중」이거나 「완료」(이미 개봉) → 복원하지 않는다.
+  - 재고 부족(`stockShortageAt`)으로 차감되지 않은 주문 → 복원할 것 없음.
+  - 그 밖의 조정은 판매자가 직접 `MANUAL` 이력으로 한다. 환불 API에 복원 여부 입력은 두지 않는다.
 - [확정] 부분 취소·부분 환불: 이번 단계 미지원(주문 전체 단위).
 
 ### 4.6 방송 세션·주문대기·HIT
@@ -194,7 +201,9 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 
 - **로그인**: 해시 검증 → (마스터) TOTP 검증 → 세션 생성 → 토큰 쿠키. 정지된 판매자의 직원은 로그인 거부.
 - **요청 처리**: 쿠키 → 영역별 세션 조회(만료·폐기·주체 정지 확인) → 권한 가드 → `TenantContext` 생성 → 도메인 함수 → 감사 로그 → NOTIFY.
-- **결제 완료(이번 단계는 테스트용 내부 함수)**: 주문 PAID → 재고 차감 → QueueItem 생성(방송 중이면 그 방송, 아니면 미배정) → 적립 원장 PENDING → NOTIFY.
+- **결제 완료(이번 단계는 테스트용 내부 함수)**: 주문 PAID → 전 품목 재고 차감(한 트랜잭션)
+  - 성공 → QueueItem 생성(방송 중이면 그 방송, 아니면 미배정) → 적립 원장 PENDING → 커밋 → NOTIFY.
+  - 재고 부족 → 차감 전부 롤백 → `stockShortageAt` 기록만. **주문대기 생성·적립 원장 기록을 하지 않는다.** 판매자 화면에 「취소·환불 대상」으로 표시.
 
 ## 6. 실시간 전달 (오버레이·방송 대시보드)
 
@@ -212,7 +221,13 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 - 채널: 판매자별 `seller:{sellerId}`. 오버레이는 `OverlayToken`으로 판매자를 찾고, 대시보드는 판매자 세션으로 찾는다. 다른 판매자 채널은 구독할 수 없다.
 - 오버레이로 보내는 데이터는 표시용 최소 필드만(닉네임·등급·상품명·수량·상태). 회원 ID·휴대폰·주문 금액은 보내지 않는다(망고TCG `liveOverlayPrivacy` 개념 재사용).
 - 다중 인스턴스: 상태 변경 트랜잭션 커밋 후 Postgres `NOTIFY live_obs, '{sellerId, version}'` → 각 서버 인스턴스가 `LISTEN`해 해당 판매자 연결에 전달. Redis 등 추가 자원 불필요.
-- 메시지는 「바뀌었다 + version」만 보내고 화면이 최신 상태를 다시 받는 방식 → 이벤트 유실·순서 꼬임에 강함. 25초마다 ping.
+- 메시지는 「바뀌었다 + version」만 보내고 화면이 최신 상태를 다시 받는 방식 → 순서 꼬임에 강함. 25초마다 ping.
+- version은 판매자별 카운터(`Seller.liveVersion`)로, 주문대기·HIT·방송 변경 트랜잭션 안에서 +1 한다.
+- NOTIFY 유실 대비(커밋 후 NOTIFY 전 프로세스 종료, `LISTEN` 연결 끊김): NOTIFY는 빠른 알림일 뿐 정본이 아니다.
+  - SSE가 다시 연결될 때마다 화면은 최신 상태 전체를 다시 받는다.
+  - 화면은 15초마다 version만 확인하고, 가진 것과 다르면 최신 상태를 다시 받는다.
+  - 서버 인스턴스는 `LISTEN` 연결이 끊기면 다시 연결한 뒤 자기 SSE 연결 전부에 「다시 받기」를 보낸다.
+  - 아웃박스(내구성 있는 이벤트 저장)는 필요하면 다음 단계에서 다룬다.
 - 대시보드 단축키 조작도 POST → 같은 SSE로 결과 반영.
 
 ## 7. 테스트·CI
