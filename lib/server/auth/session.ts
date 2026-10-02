@@ -35,6 +35,7 @@ export async function createSellerSession(
   sellerId: string,
   sellerUserId: string,
   meta: SessionMeta,
+  credentialVersion: number,
 ): Promise<IssuedSession> {
   const now = meta.now ?? new Date();
   const token = generateToken();
@@ -44,6 +45,7 @@ export async function createSellerSession(
       sellerId,
       sellerUserId,
       tokenHash: hashToken(token),
+      credentialVersion,
       ip: meta.ip ?? null,
       userAgent: meta.userAgent ?? null,
       expiresAt,
@@ -112,6 +114,8 @@ export async function resolveSellerSession(
   const broadcast = await sellerBroadcastActivity(db, s.sellerId);
   if (!isSessionActive("seller", s, now, broadcast)) return null;
   if (s.sellerUser.status !== "ACTIVE" || s.seller.status !== "ACTIVE") return null;
+  // 세션을 만든 뒤 비밀번호가 바뀌었으면 무효
+  if (s.credentialVersion !== s.sellerUser.credentialVersion) return null;
   await touch(db, "seller", s.id, s.lastSeenAt, now);
   return { user: s.sellerUser, seller: s.seller, sessionId: s.id };
 }

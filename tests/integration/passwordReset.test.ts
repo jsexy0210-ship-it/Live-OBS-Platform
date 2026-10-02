@@ -4,7 +4,7 @@ import { POST as httpStart } from "../../app/api/seller/password-reset/start/rou
 import { POST as httpVerify } from "../../app/api/seller/password-reset/verify/route";
 import { loginSeller } from "../../lib/server/auth/login";
 import { issueSellerPasswordResetGrant, resetSellerPassword, resetStaffPassword, startSellerPasswordReset } from "../../lib/server/auth/passwordReset";
-import { resolveSellerSession } from "../../lib/server/auth/session";
+import { createSellerSession, resolveSellerSession } from "../../lib/server/auth/session";
 import { prisma } from "../../lib/server/db";
 import { hashCi } from "../../lib/server/identity/ciHash";
 import { FakeIdentityProvider } from "../../lib/server/identity/provider";
@@ -57,6 +57,41 @@ describe("판매자 비밀번호 찾기 (대표자 PASS)", () => {
       (l) => l.action,
     );
     expect(actions).toEqual(["auth.seller.password_reset.start", "auth.seller.password_reset.granted", "auth.seller.password_reset.completed"]);
+  });
+
+  it("재설정 도중 옛 비밀번호로 진행된 로그인이 만든 세션도 무효다 (자격 버전)", async () => {
+    const { seller, owner } = await shop();
+    // 옛 비밀번호 확인까지 마친 로그인: 그 시점의 자격 버전을 들고 있다
+    const verifiedVersion = (await db.sellerUser.findUniqueOrThrow({ where: { id: owner.id } })).credentialVersion;
+    const { grant } = await grantFor(owner.email, seller.slug, "REP-CI");
+    if (!grant.ok) throw new Error("grant failed");
+    expect(await resetSellerPassword(db, { grantToken: grant.grantToken, newPassword: NEW_PASSWORD })).toEqual({ ok: true });
+    // 재설정이 끝난 뒤에 세션이 만들어져도
+    const late = await createSellerSession(db, seller.id, owner.id, {}, verifiedVersion);
+    expect(await resolveSellerSession(db, late.token)).toBeNull();
+    // 새 비밀번호 로그인 세션은 유효
+    const fresh = await loginSeller(db, { email: owner.email, password: NEW_PASSWORD }, {});
+    if (!fresh.ok) throw new Error("login failed");
+    expect(await resolveSellerSession(db, fresh.token)).not.toBeNull();
+  });
+
+  it("완료된 본인인증도 유효 시간(10분)이 지나면 재설정 권한을 받을 수 없다", async () => {
+    const { seller, owner } = await shop();
+    const t0 = new Date();
+    // 대표자 CI가 달라 한 번 거부된 인증(완료됐지만 소진되지 않음)
+    const { start, grant } = await grantFor(owner.email, seller.slug, "LATER-CI", t0);
+    expect(grant).toEqual({ ok: false, reason: "reset_not_allowed" });
+    // 나중에 대표자 CI가 바뀌어도 오래된 인증으로는 받을 수 없다
+    await db.seller.update({ where: { id: seller.id }, data: { representativeCiHash: hashCi("LATER-CI") } });
+    expect(
+      await issueSellerPasswordResetGrant(
+        db,
+        provider,
+        { verificationId: start.verificationId, ownerToken: start.ownerToken },
+        { now: new Date(t0.getTime() + 11 * 60_000) },
+      ),
+    ).toEqual({ ok: false, reason: "reset_not_allowed" });
+    expect(await db.passwordResetGrant.count()).toBe(0);
   });
 
   it("CI가 대표자와 다르면 거부하고 실패를 감사 로그에 남긴다", async () => {

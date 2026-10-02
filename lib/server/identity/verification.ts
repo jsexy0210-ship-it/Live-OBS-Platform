@@ -54,7 +54,8 @@ export async function completeIdentityVerification(
   ) {
     return { ok: false, reason: "not_found" };
   }
-  if (v.status === "VERIFIED") return { ok: true, verification: v };
+  // 이미 완료된 건도 유효 시간이 지나면 쓰지 않는다(오래된 인증으로 나중에 권한을 받지 못하게).
+  if (v.status === "VERIFIED") return v.expiresAt > now ? { ok: true, verification: v } : { ok: false, reason: "expired" };
   if (v.status !== "PENDING") return { ok: false, reason: v.status === "EXPIRED" ? "expired" : "failed" };
   if (v.expiresAt <= now) {
     await db.identityVerification.update({ where: { id: v.id }, data: { status: "EXPIRED" } });

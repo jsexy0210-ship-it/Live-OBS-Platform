@@ -162,7 +162,7 @@ export async function resetSellerPassword(
     });
     if (used.count !== 1) return null;
     const g = await tx.passwordResetGrant.findUniqueOrThrow({ where: { tokenHash } });
-    await tx.sellerUser.update({ where: { id: g.sellerUserId }, data: { passwordHash } });
+    await tx.sellerUser.update({ where: { id: g.sellerUserId }, data: { passwordHash, credentialVersion: { increment: 1 } } });
     const revoked = await tx.sellerSession.updateMany({ where: { sellerUserId: g.sellerUserId, revokedAt: null }, data: { revokedAt: now } });
     await writeAudit(tx, {
       actorType: "SELLER_USER",
@@ -205,7 +205,7 @@ export async function resetStaffPassword(
   if (staff.isOwner) throw forbidden();
   const passwordHash = await hashPassword(input.newPassword);
   await db.$transaction(async (tx) => {
-    await tx.sellerUser.update({ where: { id: staff.id }, data: { passwordHash } });
+    await tx.sellerUser.update({ where: { id: staff.id }, data: { passwordHash, credentialVersion: { increment: 1 } } });
     const revoked = await tx.sellerSession.updateMany({ where: { sellerUserId: staff.id, revokedAt: null }, data: { revokedAt: now } });
     await writeAudit(tx, {
       actorType: ctx.actorType,

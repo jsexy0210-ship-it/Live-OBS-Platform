@@ -142,18 +142,20 @@ enum SellerUserStatus {
 }
 
 model SellerUser {
-  id           String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerId     String                  @db.Uuid
-  email        String
-  passwordHash String
-  name         String
+  id                String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId          String                  @db.Uuid
+  email             String
+  passwordHash      String
+  name              String
   // 대표자 여부. 대표자는 모든 권한과 대표자 전용 기능을 가진다.
-  isOwner      Boolean                 @default(false)
+  isOwner           Boolean                 @default(false)
   // 직원 권한 항목(대표자는 비워 둔다)
-  permissions  SellerStaffPermission[] @default([])
-  status       SellerUserStatus        @default(ACTIVE)
-  lastLoginAt  DateTime?               @db.Timestamptz(3)
-  createdAt    DateTime                @default(now()) @db.Timestamptz(3)
+  permissions       SellerStaffPermission[] @default([])
+  // 비밀번호가 바뀔 때마다 1씩 올린다. 세션은 만들 때의 값을 들고 있고, 다르면 무효(재설정 중 진행된 옛 비밀번호 로그인 차단).
+  credentialVersion Int                     @default(0)
+  status            SellerUserStatus        @default(ACTIVE)
+  lastLoginAt       DateTime?               @db.Timestamptz(3)
+  createdAt         DateTime                @default(now()) @db.Timestamptz(3)
 
   seller      Seller               @relation(fields: [sellerId], references: [id])
   sessions    SellerSession[]
@@ -180,16 +182,17 @@ model PasswordResetGrant {
 }
 
 model SellerSession {
-  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerUserId String    @db.Uuid
-  sellerId     String    @db.Uuid
-  tokenHash    String    @unique
-  ip           String?
-  userAgent    String?
-  expiresAt    DateTime  @db.Timestamptz(3)
-  lastSeenAt   DateTime  @default(now()) @db.Timestamptz(3)
-  revokedAt    DateTime? @db.Timestamptz(3)
-  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerUserId      String    @db.Uuid
+  sellerId          String    @db.Uuid
+  tokenHash         String    @unique
+  credentialVersion Int       @default(0)
+  ip                String?
+  userAgent         String?
+  expiresAt         DateTime  @db.Timestamptz(3)
+  lastSeenAt        DateTime  @default(now()) @db.Timestamptz(3)
+  revokedAt         DateTime? @db.Timestamptz(3)
+  createdAt         DateTime  @default(now()) @db.Timestamptz(3)
 
   seller     Seller     @relation(fields: [sellerId], references: [id])
   sellerUser SellerUser @relation(fields: [sellerId, sellerUserId], references: [sellerId, id])
