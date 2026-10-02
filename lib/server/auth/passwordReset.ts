@@ -14,6 +14,9 @@ import { normalizeEmail } from "./login";
 
 const GRANT_TTL_MS = 10 * 60_000;
 
+// 비밀번호 해시 함수(테스트에서 호출 여부를 확인할 수 있게 객체로 둔다)
+export const passwordHasher = { hashPassword };
+
 // 라우트 쿠키(시작한 브라우저 확인용·재설정 권한). 비밀번호 찾기 API 경로에서만 보낸다.
 export const RESET_PATH = "/api/seller/password-reset";
 export const IDV_COOKIE = "lo_idv";
@@ -150,8 +153,11 @@ export async function resetSellerPassword(
   const now = meta.now ?? new Date();
   if (input.newPassword.length < MIN_PASSWORD_LENGTH) return { ok: false, reason: "weak_password" };
   if (!input.grantToken) return { ok: false, reason: "invalid_grant" };
-  const passwordHash = await hashPassword(input.newPassword);
   const tokenHash = hashToken(input.grantToken);
+  // 무효한 권한이면 비싼 해시 계산 전에 거부한다. 실제 소진은 아래 트랜잭션에서 원자적으로 한다.
+  const candidate = await db.passwordResetGrant.findUnique({ where: { tokenHash }, select: { usedAt: true, expiresAt: true } });
+  if (!candidate || candidate.usedAt || candidate.expiresAt <= now) return { ok: false, reason: "invalid_grant" };
+  const passwordHash = await passwordHasher.hashPassword(input.newPassword);
 
   // 권한을 먼저 소진하고(한 번만 쓰임), 그 순간 계정·대표자 CI를 다시 확인한다. 확인에 실패해도 권한은 소진된 채로 남는다.
   const outcome = await db.$transaction(async (tx) => {

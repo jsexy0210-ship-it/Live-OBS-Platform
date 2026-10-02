@@ -1,9 +1,15 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST as httpComplete } from "../../app/api/seller/password-reset/complete/route";
 import { POST as httpStart } from "../../app/api/seller/password-reset/start/route";
 import { POST as httpVerify } from "../../app/api/seller/password-reset/verify/route";
 import { loginSeller } from "../../lib/server/auth/login";
-import { issueSellerPasswordResetGrant, resetSellerPassword, resetStaffPassword, startSellerPasswordReset } from "../../lib/server/auth/passwordReset";
+import {
+  issueSellerPasswordResetGrant,
+  passwordHasher,
+  resetSellerPassword,
+  resetStaffPassword,
+  startSellerPasswordReset,
+} from "../../lib/server/auth/passwordReset";
 import { createSellerSession, resolveSellerSession } from "../../lib/server/auth/session";
 import { prisma } from "../../lib/server/db";
 import { hashCi } from "../../lib/server/identity/ciHash";
@@ -245,6 +251,21 @@ describe("판매자 비밀번호 찾기 (대표자 PASS)", () => {
     });
   });
 
+  it("무효한 재설정 권한이면 새 비밀번호 해시를 계산하지 않는다", async () => {
+    const { seller, owner } = await shop();
+    const { grant } = await grantFor(owner.email, seller.slug, "REP-CI");
+    if (!grant.ok) throw new Error("grant failed");
+    expect(await resetSellerPassword(db, { grantToken: grant.grantToken, newPassword: NEW_PASSWORD })).toEqual({ ok: true });
+    const spy = vi.spyOn(passwordHasher, "hashPassword");
+    try {
+      expect(await resetSellerPassword(db, { grantToken: "not-a-grant", newPassword: NEW_PASSWORD })).toEqual({ ok: false, reason: "invalid_grant" });
+      expect(await resetSellerPassword(db, { grantToken: grant.grantToken, newPassword: NEW_PASSWORD })).toEqual({ ok: false, reason: "invalid_grant" });
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it("짧은 비밀번호(8자 미만)는 거부", async () => {
     const { seller, owner } = await shop();
     const { grant } = await grantFor(owner.email, seller.slug, "REP-CI");
@@ -300,6 +321,10 @@ describe("HTTP: 비밀번호 찾기 흐름", () => {
     const { verificationId, requestId } = await s.json();
     (identityProvider() as FakeIdentityProvider).complete(requestId, person("REP-CI"));
 
+    // id 형식이 틀리면 서버 오류가 아니라 같은 거부(400 reset_not_allowed)
+    const badId = await httpVerify(post("/api/seller/password-reset/verify", { verificationId: "not-a-uuid" }, cookieOf(s)));
+    expect(badId.status).toBe(400);
+    expect(await badId.json()).toEqual({ error: "reset_not_allowed" });
     // 쿠키 없이(다른 브라우저) 확인하면 거부
     expect((await httpVerify(post("/api/seller/password-reset/verify", { verificationId }))).status).toBe(400);
     const v = await httpVerify(post("/api/seller/password-reset/verify", { verificationId }, cookieOf(s)));
