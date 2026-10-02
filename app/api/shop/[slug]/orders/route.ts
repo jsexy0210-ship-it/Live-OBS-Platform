@@ -1,9 +1,27 @@
 import { NextResponse } from "next/server";
 import { resolveBuyerSession } from "../../../../../lib/server/auth/session";
 import { prisma } from "../../../../../lib/server/db";
-import { mutation, readJson, requestMeta, sessionToken } from "../../../../../lib/server/http/route";
+import { errorResponse, mutation, readJson, requestMeta, sessionToken } from "../../../../../lib/server/http/route";
+import { listBuyerOrders } from "../../../../../lib/server/orders/buyer";
 import { createOrder } from "../../../../../lib/server/orders/create";
 import { orderErrorBody } from "../../../../../lib/server/orders/messages";
+
+// 구매자 본인 주문 목록(?cursor·limit, 응답 { orders, nextCursor }). 잠긴 쇼핑몰이어도 기존 주문 조회는 연다.
+export async function GET(req: Request, { params }: { params: Promise<{ slug: string }> }) {
+  try {
+    const { slug } = await params;
+    const seller = await prisma.seller.findUnique({ where: { slug: slug.slice(0, 60) }, select: { id: true } });
+    if (!seller) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    const session = await resolveBuyerSession(prisma, sessionToken(req, "buyer"), seller.id);
+    if (!session) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+    const q = new URL(req.url).searchParams;
+    const r = await listBuyerOrders(prisma, { sellerId: seller.id, buyerMemberId: session.member.id }, { cursor: q.get("cursor") ?? undefined, limit: q.get("limit") ?? undefined });
+    if (!r.ok) return NextResponse.json(orderErrorBody(r.reason), { status: 400 });
+    return NextResponse.json(r.value);
+  } catch (e) {
+    return errorResponse(e);
+  }
+}
 
 // 구매자 주문 생성(결제 대기까지). 본문: { items: [{ optionId, quantity }], consent: { agreed: true, noticeVersion },
 // shippingAddress: { recipientName, phone, zipCode, address1, address2?, memo? } }. 실패 응답은 { error, message(화면 문구) }.
