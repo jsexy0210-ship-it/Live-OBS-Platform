@@ -7,6 +7,7 @@ CREATE TABLE "SellerOrderPolicy" (
     "sellerId" UUID NOT NULL,
     "paymentDueHours" INTEGER NOT NULL DEFAULT 24,
     "unpaidRestrictionEnabled" BOOLEAN NOT NULL DEFAULT true,
+    "unpaidRestrictionEnabledAt" TIMESTAMPTZ(3),
     "updatedAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "SellerOrderPolicy_pkey" PRIMARY KEY ("sellerId")
@@ -43,3 +44,7 @@ ALTER TABLE "BuyerPurchaseRestriction" ADD CONSTRAINT "BuyerPurchaseRestriction_
 
 -- AddForeignKey
 ALTER TABLE "BuyerPurchaseRestriction" ADD CONSTRAINT "BuyerPurchaseRestriction_sellerId_buyerMemberId_fkey" FOREIGN KEY ("sellerId", "buyerMemberId") REFERENCES "BuyerMember"("sellerId", "id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- 이 기능 전에 만든 결제 대기 주문도 기본 입금 기한(주문 시각 + 24시간)을 갖게 한다(MASTER 결정, 운영 데이터 없음).
+UPDATE "Order" SET "paymentDueAt" = "createdAt" + INTERVAL '24 hours'
+WHERE "status" = 'PENDING_PAYMENT' AND "paymentDueAt" IS NULL;

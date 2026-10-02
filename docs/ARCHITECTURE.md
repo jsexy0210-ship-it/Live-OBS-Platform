@@ -326,11 +326,11 @@ PG 연결 정보, 구매자 문의·공지, 알림 발송 기록, 도우미 자�
 ### 4.11 입금 기한·미입금 자동 취소·구매 제한 (PRODUCT_SCOPE 「무통장 입금·구매 제한 기본값」, MASTER 결정)
 
 - `SellerOrderPolicy`(판매자당 1행, 없으면 기본값): paymentDueHours(기본 24, 1~168), unpaidRestrictionEnabled(기본 켜짐). `GET·PUT /api/seller/order-policy`(`SHOP_SETTINGS`, 틀리면 `400 invalid_order_policy`, 감사 로그).
-- 주문할 때 `Order.paymentDueAt` = 주문 시각(DB 시계) + paymentDueHours. 설정을 바꿔도 이미 만든 주문은 그대로. 이 기능 전에 만든 주문은 기한이 없어 자동 취소 대상이 아니다.
+- 주문할 때 `Order.paymentDueAt` = 주문 시각 + paymentDueHours. 주문 시각은 판매자 주문 잠금을 잡은 뒤의 `clock_timestamp()`(트랜잭션 시작 시각인 `now()`가 아님). 설정을 바꿔도 이미 만든 주문은 그대로. 이 기능 전에 만든 결제 대기 주문은 마이그레이션에서 주문 시각 + 24시간으로 채운다. PG 연동 때 무통장 입금 주문에만 두도록 바꾼다(MASTER 결정).
 - 자동 취소 `cancelOverdueOrders`(lib/server/orders/overdue.ts): 기한이 지난 결제 대기 주문을 판매자별 주문 잠금(order_no) 아래에서 `status = PENDING_PAYMENT` 조건으로 취소하고 `autoCancelledAt`, 시스템 상태 이력(reason `payment_overdue`), 감사 로그 `order.auto_cancel`을 남긴다. 재고는 결제 때 빼므로 되돌릴 것이 없다. 여러 번·동시에 돌려도 주문마다 한 번만 취소(멱등). 정기 실행 연결은 인프라 승인 대기.
   - 결제 확인(`markOrderPaid`)도 `status = PENDING_PAYMENT` 조건으로 바꿔, 자동 취소와 겹치면 둘 중 하나만 된다.
 - 기한 1시간 전 알림 대상 `listPaymentDueSoon`: 발송 연동 전이라 대상 조회만.
-- 자동 구매 제한 `BuyerPurchaseRestriction`: 같은 쇼핑몰에서 마지막 제한(풀었으면 푼 시각, 아니면 시작 시각) 뒤 자동 취소가 3회 쌓이면 30일 제한을 만든다(감사 로그 `buyer.purchase_restriction.create`). 제한 중 새 주문은 `403 purchase_restricted`. 판매자 목록 `GET /api/seller/purchase-restrictions`, 풀기 `POST /api/seller/purchase-restrictions/{buyerMemberId}/lift`(`MEMBER_POINTS`, 잠금 중에도 가능, 감사 로그). 「결제 후 취소 5회 → 30일」(기본 꺼짐)은 아직 없다.
+- 자동 구매 제한 `BuyerPurchaseRestriction`: 같은 쇼핑몰에서 기준 시각 뒤 자동 취소가 3회 쌓이면 30일 제한을 만든다(감사 로그 `buyer.purchase_restriction.create`). 기준 시각은 마지막 제한(풀었으면 푼 시각, 아니면 시작 시각)과 자동 제한을 다시 켠 시각(`SellerOrderPolicy.unpaidRestrictionEnabledAt`) 중 늦은 쪽이다. 끄더라도 이미 걸린 제한은 그대로 두고 판매자가 직접 푼다(MASTER 결정). 걸려 있는 제한 = 풀지 않았고 끝나는 시각 전(시작 시각은 보지 않음). 제한 중 새 주문은 `403 purchase_restricted`와 `endsAt`, 풀리는 KST 날짜·시각 안내(「11월 2일 오후 3시부터 다시 주문할 수 있어요」). 판매자 목록 `GET /api/seller/purchase-restrictions`, 풀기 `POST /api/seller/purchase-restrictions/{buyerMemberId}/lift`(`MEMBER_POINTS`, 잠금 중에도 가능, 감사 로그, 사유는 200자 이하·글자 검사를 통과해야 하며 아니면 `400 invalid_reason`). 「결제 후 취소 5회 → 30일」(기본 꺼짐)은 아직 없다.
 - 주문 생성 횟수 제한: 같은 구매자는 쇼핑몰당 1분에 10건까지(`429 order_rate_limited`). 구매 제한·횟수 제한은 주문 생성과 같은 잠금 아래에서 세므로 동시 주문에도 넘지 않는다.
 - 구매자 주문 조회 응답은 `Cache-Control: no-store`. 재고 부족으로 환불 대상인 결제 주문은 `needsRefund: true`와 안내 문구(`ORDER_NOTICES`)만 주고 `stockShortageAt`은 숨긴다. 입금 기한(`paymentDueAt`)도 준다. 폐업한 쇼핑몰이어도 본인 주문 조회는 열린다.
 

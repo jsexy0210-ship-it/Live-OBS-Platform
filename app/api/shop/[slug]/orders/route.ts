@@ -4,7 +4,7 @@ import { prisma } from "../../../../../lib/server/db";
 import { errorResponse, mutation, noStore, readJson, requestMeta, sessionToken } from "../../../../../lib/server/http/route";
 import { listBuyerOrders } from "../../../../../lib/server/orders/buyer";
 import { createOrder, type CreateOrderFailure } from "../../../../../lib/server/orders/create";
-import { orderErrorBody } from "../../../../../lib/server/orders/messages";
+import { orderErrorBody, purchaseRestrictedMessage } from "../../../../../lib/server/orders/messages";
 
 // 구매자 본인 주문 목록(?cursor·limit, 응답 { orders, nextCursor }). 잠긴 쇼핑몰이어도 기존 주문 조회는 연다.
 export async function GET(req: Request, { params }: { params: Promise<{ slug: string }> }) {
@@ -45,6 +45,12 @@ export const POST = mutation(async (req: Request, { params }: { params: Promise<
     shippingAddress: body.shippingAddress,
     meta: requestMeta(req),
   });
-  if (!r.ok) return NextResponse.json(orderErrorBody(r.reason), { status: createOrderStatus(r.reason) });
+  if (!r.ok) {
+    // 구매 제한은 풀리는 시각(endsAt)과 KST 날짜 안내를 함께 준다
+    if (r.reason === "purchase_restricted" && r.endsAt) {
+      return NextResponse.json({ error: r.reason, message: purchaseRestrictedMessage(r.endsAt), endsAt: r.endsAt }, { status: 403 });
+    }
+    return NextResponse.json(orderErrorBody(r.reason), { status: createOrderStatus(r.reason) });
+  }
   return NextResponse.json(r);
 });

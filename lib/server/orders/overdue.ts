@@ -1,6 +1,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { dbNow } from "../billing/subscription";
+import { cleanText } from "../text/clean";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 
 // 무통장 입금 기한·미입금 자동 취소·자동 구매 제한(PRODUCT_SCOPE 「무통장 입금·구매 제한 기본값」, MASTER 결정).
@@ -20,29 +21,39 @@ export const PAYMENT_REMINDER_MINUTES = 60;
 type Db = PrismaClient | Prisma.TransactionClient;
 export type OrderPolicy = { paymentDueHours: number; unpaidRestrictionEnabled: boolean };
 
-export async function getOrderPolicy(db: Db, sellerId: string): Promise<OrderPolicy> {
+export async function getOrderPolicy(db: Db, sellerId: string): Promise<OrderPolicy & { unpaidRestrictionEnabledAt: Date | null }> {
   const p = await db.sellerOrderPolicy.findUnique({ where: { sellerId } });
   return p
-    ? { paymentDueHours: p.paymentDueHours, unpaidRestrictionEnabled: p.unpaidRestrictionEnabled }
-    : { paymentDueHours: DEFAULT_PAYMENT_DUE_HOURS, unpaidRestrictionEnabled: true };
+    ? { paymentDueHours: p.paymentDueHours, unpaidRestrictionEnabled: p.unpaidRestrictionEnabled, unpaidRestrictionEnabledAt: p.unpaidRestrictionEnabledAt }
+    : { paymentDueHours: DEFAULT_PAYMENT_DUE_HOURS, unpaidRestrictionEnabled: true, unpaidRestrictionEnabledAt: null };
 }
 
 export const lockSellerOrders = (tx: Prisma.TransactionClient, sellerId: string) =>
   tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`order_no:${sellerId}`}))`;
 
+// 잠금을 잡은 뒤의 실제 DB 시각. dbNow(now())는 트랜잭션 시작 시각이라 잠금을 기다린 시간이 빠진다.
+export async function dbClock(db: Db): Promise<Date> {
+  const rows = await db.$queryRaw<{ now: Date }[]>`SELECT clock_timestamp() AS now`;
+  return rows[0].now;
+}
+
+// 걸려 있는 제한 = 풀지 않았고 끝나는 시각 전. 시작 시각은 보지 않는다(제한이 생긴 뒤 들어온 주문은 시각과 상관없이 막는다).
 export function activeRestriction(db: Db, sellerId: string, buyerMemberId: string, now: Date) {
   return db.buyerPurchaseRestriction.findFirst({
-    where: { sellerId, buyerMemberId, liftedAt: null, startsAt: { lte: now }, endsAt: { gt: now } },
+    where: { sellerId, buyerMemberId, liftedAt: null, endsAt: { gt: now } },
     orderBy: { endsAt: "desc" },
   });
 }
 
 // 마지막 제한(풀었으면 푼 시각, 아니면 시작 시각) 뒤에 생긴 자동 취소가 기준 횟수에 닿으면 제한을 만든다.
+// 판매자가 자동 제한을 다시 켰으면 켠 시각 뒤의 자동 취소만 센다(끈 동안 쌓인 횟수는 넣지 않음, MASTER 결정).
 async function maybeRestrict(tx: Prisma.TransactionClient, sellerId: string, buyerMemberId: string, now: Date) {
-  if (!(await getOrderPolicy(tx, sellerId)).unpaidRestrictionEnabled) return null;
+  const policy = await getOrderPolicy(tx, sellerId);
+  if (!policy.unpaidRestrictionEnabled) return null;
   if (await activeRestriction(tx, sellerId, buyerMemberId, now)) return null;
   const last = await tx.buyerPurchaseRestriction.findFirst({ where: { sellerId, buyerMemberId }, orderBy: { startsAt: "desc" } });
-  const anchor = last ? (last.liftedAt ?? last.startsAt) : new Date(0);
+  const anchors = [new Date(0), policy.unpaidRestrictionEnabledAt, last ? (last.liftedAt ?? last.startsAt) : null].filter((d): d is Date => d !== null);
+  const anchor = new Date(Math.max(...anchors.map((d) => d.getTime())));
   const count = await tx.order.count({ where: { sellerId, buyerMemberId, autoCancelledAt: { gt: anchor } } });
   if (count < UNPAID_CANCEL_LIMIT) return null;
   const endsAt = new Date(now.getTime() + RESTRICTION_DAYS * 24 * 60 * 60 * 1000);
@@ -74,8 +85,9 @@ export async function cancelOverdueOrders(db: PrismaClient, opts: { now?: Date; 
   for (const o of due) {
     await db.$transaction(async (tx) => {
       await lockSellerOrders(tx, o.sellerId);
-      // 잠금을 잡은 뒤의 DB 시계로 처리한다(이 시각 뒤에 만들어지는 주문은 아래 제한을 반드시 본다)
-      const now = opts.now ?? (await dbNow(tx));
+      // 잠금을 잡은 뒤의 실제 DB 시각으로 처리한다. 제한은 이 트랜잭션이 끝나야 보이고, 주문 생성도 같은 잠금을 잡으므로
+      // 제한이 생긴 뒤 잠금을 얻은 주문은 반드시 제한을 본다(시각 비교에 기대지 않음).
+      const now = opts.now ?? (await dbClock(tx));
       // 그사이 결제·취소된 주문은 건드리지 않는다
       const moved = await tx.order.updateMany({
         where: { id: o.id, sellerId: o.sellerId, status: "PENDING_PAYMENT", paymentDueAt: { lte: now } },
@@ -119,7 +131,7 @@ export async function listActiveRestrictions(db: PrismaClient, ctx: TenantContex
   requireSellerRead(ctx, "MEMBER_POINTS");
   const now = await dbNow(db);
   return db.buyerPurchaseRestriction.findMany({
-    where: { sellerId: ctx.sellerId, liftedAt: null, startsAt: { lte: now }, endsAt: { gt: now } },
+    where: { sellerId: ctx.sellerId, liftedAt: null, endsAt: { gt: now } },
     orderBy: { startsAt: "desc" },
     take: 200,
     select: { id: true, buyerMemberId: true, reason: true, startsAt: true, endsAt: true, buyerMember: { select: { broadcastNickname: true } } },
@@ -127,11 +139,14 @@ export async function listActiveRestrictions(db: PrismaClient, ctx: TenantContex
 }
 
 // 판매자: 구매 제한 풀기(MEMBER_POINTS, 감사 로그). 풀린 뒤부터 자동 취소 횟수를 새로 센다.
-export async function liftRestriction(db: PrismaClient, ctx: TenantContext, buyerMemberId: string, reason?: string) {
+export async function liftRestriction(db: PrismaClient, ctx: TenantContext, buyerMemberId: string, rawReason?: unknown) {
   requireSellerPermission(ctx, "MEMBER_POINTS");
+  // 사유는 선택. 넣었다면 글자 검사를 통과해야 한다(NUL·서로게이트 등은 400, 자르지 않음).
+  const reason = rawReason === undefined || rawReason === null || rawReason === "" ? undefined : cleanText(rawReason, 200, "multiline");
+  if (reason === null) return { ok: false as const, reason: "invalid_reason" as const };
   return db.$transaction(async (tx) => {
     await lockSellerOrders(tx, ctx.sellerId);
-    const now = await dbNow(tx);
+    const now = await dbClock(tx);
     const active = await activeRestriction(tx, ctx.sellerId, buyerMemberId, now);
     if (!active) return { ok: false as const, reason: "no_restriction" as const };
     await tx.buyerPurchaseRestriction.update({ where: { id: active.id }, data: { liftedAt: now, liftedById: ctx.actorId } });
@@ -142,7 +157,7 @@ export async function liftRestriction(db: PrismaClient, ctx: TenantContext, buye
       action: "buyer.purchase_restriction.lift",
       targetType: "BuyerMember",
       targetId: buyerMemberId,
-      reason: reason?.trim().slice(0, 200) || undefined,
+      reason,
       before: { endsAt: active.endsAt },
       after: { liftedAt: now },
     });
@@ -150,9 +165,10 @@ export async function liftRestriction(db: PrismaClient, ctx: TenantContext, buye
   });
 }
 
-export async function readOrderPolicy(db: PrismaClient, ctx: TenantContext) {
+export async function readOrderPolicy(db: PrismaClient, ctx: TenantContext): Promise<OrderPolicy> {
   requireSellerRead(ctx, "SHOP_SETTINGS");
-  return getOrderPolicy(db, ctx.sellerId);
+  const { paymentDueHours, unpaidRestrictionEnabled } = await getOrderPolicy(db, ctx.sellerId);
+  return { paymentDueHours, unpaidRestrictionEnabled };
 }
 
 // 판매자 주문 정책 변경(SHOP_SETTINGS). 입금 기한은 1~168시간 정수. 바꾼 기한은 다음 주문부터.
@@ -166,8 +182,13 @@ export async function updateOrderPolicy(db: PrismaClient, ctx: TenantContext, ra
   }
   const policy: OrderPolicy = { paymentDueHours: h, unpaidRestrictionEnabled: b.unpaidRestrictionEnabled };
   return db.$transaction(async (tx) => {
-    const before = await getOrderPolicy(tx, ctx.sellerId);
-    await tx.sellerOrderPolicy.upsert({ where: { sellerId: ctx.sellerId }, create: { sellerId: ctx.sellerId, ...policy }, update: policy });
+    // 같은 판매자의 자동 취소·주문과 순서를 맞춘다
+    await lockSellerOrders(tx, ctx.sellerId);
+    const { unpaidRestrictionEnabledAt: _at, ...before } = await getOrderPolicy(tx, ctx.sellerId);
+    // 꺼져 있다가 켜면 켠 시각을 남긴다(그 뒤 자동 취소만 센다). 끄더라도 이미 걸린 제한은 그대로 둔다.
+    const reEnabled = !before.unpaidRestrictionEnabled && policy.unpaidRestrictionEnabled;
+    const data = { ...policy, ...(reEnabled ? { unpaidRestrictionEnabledAt: await dbClock(tx) } : {}) };
+    await tx.sellerOrderPolicy.upsert({ where: { sellerId: ctx.sellerId }, create: { sellerId: ctx.sellerId, ...data }, update: data });
     await writeAudit(tx, {
       actorType: ctx.actorType,
       actorId: ctx.actorId,

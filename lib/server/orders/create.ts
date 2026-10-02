@@ -1,8 +1,8 @@
 import type { PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
-import { dbNow, sellerAccessFor } from "../billing/subscription";
+import { sellerAccessFor } from "../billing/subscription";
 import { OPENED_NO_REFUND_CONSENT } from "./consent";
-import { activeRestriction, getOrderPolicy, lockSellerOrders } from "./overdue";
+import { activeRestriction, dbClock, getOrderPolicy, lockSellerOrders } from "./overdue";
 import { computeShippingFee, getShippingPolicy, INT4_MAX, isRemoteAddress, parseShippingAddress } from "./shipping";
 
 // 구매자 주문 생성(결제 대기까지). 실제 PG 결제 호출은 없다.
@@ -44,7 +44,7 @@ export type CreateOrderFailure =
 
 export type CreateOrderResult =
   | { ok: true; orderId: string; orderNo: number; totalAmount: number; shippingFee: number }
-  | { ok: false; reason: CreateOrderFailure };
+  | { ok: false; reason: CreateOrderFailure; endsAt?: Date };
 
 type Line = { optionId: string; quantity: number };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -81,14 +81,16 @@ export async function createOrder(db: PrismaClient, input: CreateOrderInput): Pr
   return db.$transaction(async (tx) => {
     // 같은 판매자의 주문 번호를 한 줄로 매긴다
     await lockSellerOrders(tx, input.sellerId);
-    const now = await dbNow(tx);
+    // 잠금을 잡은 뒤의 실제 DB 시각(주문 시각·입금 기한·횟수 제한 창의 기준)
+    const now = await dbClock(tx);
     const member = await tx.buyerMember.findFirst({
       where: { id: input.buyerMemberId, sellerId: input.sellerId, status: "ACTIVE", deletedAt: null },
       select: { id: true, broadcastNickname: true },
     });
     if (!member) return { ok: false as const, reason: "shop_unavailable" as const };
     // 구매 제한·횟수 제한은 같은 잠금 아래에서 세므로 동시 주문에도 한도를 넘지 않는다
-    if (await activeRestriction(tx, input.sellerId, member.id, now)) return { ok: false as const, reason: "purchase_restricted" as const };
+    const restriction = await activeRestriction(tx, input.sellerId, member.id, now);
+    if (restriction) return { ok: false as const, reason: "purchase_restricted" as const, endsAt: restriction.endsAt };
     const recent = await tx.order.count({
       where: { sellerId: input.sellerId, buyerMemberId: member.id, createdAt: { gt: new Date(now.getTime() - ORDER_RATE_WINDOW_MS) } },
     });

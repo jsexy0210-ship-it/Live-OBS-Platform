@@ -938,12 +938,14 @@ model Shipment {
 
 // 판매자 주문 정책(판매자당 1행, 없으면 기본값). PRODUCT_SCOPE 「무통장 입금·구매 제한 기본값」.
 model SellerOrderPolicy {
-  sellerId                 String   @id @db.Uuid
+  sellerId                   String    @id @db.Uuid
   // 입금 기한(시간). 주문할 때 paymentDueAt을 정하는 데만 쓰고, 이미 만든 주문은 바꾸지 않는다.
-  paymentDueHours          Int      @default(24)
+  paymentDueHours            Int       @default(24)
   // 「미입금 자동 취소 3회 → 30일 주문 막기」
-  unpaidRestrictionEnabled Boolean  @default(true)
-  updatedAt                DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+  unpaidRestrictionEnabled   Boolean   @default(true)
+  // 꺼져 있다가 다시 켠 시각. 이 뒤의 자동 취소만 센다(MASTER 결정).
+  unpaidRestrictionEnabledAt DateTime? @db.Timestamptz(3)
+  updatedAt                  DateTime  @default(now()) @updatedAt @db.Timestamptz(3)
 
   seller Seller @relation(fields: [sellerId], references: [id])
 }
