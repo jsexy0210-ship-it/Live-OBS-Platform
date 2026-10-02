@@ -6,6 +6,8 @@ import { GET as adminMe } from "../../app/api/admin/me/route";
 import { POST as sellerLogin } from "../../app/api/seller/auth/login/route";
 import { GET as sellerOrder } from "../../app/api/seller/orders/[orderId]/route";
 import { POST as buyerLogin } from "../../app/api/shop/[slug]/auth/login/route";
+import { POST as queueAction } from "../../app/api/seller/queue/[itemId]/[action]/route";
+import { POST as queueReorder } from "../../app/api/seller/queue/reorder/route";
 import { prisma } from "../../lib/server/db";
 
 beforeEach(resetDb);
@@ -113,5 +115,22 @@ describe("HTTP: 구매자 로그인", () => {
       params: Promise.resolve({ slug: seller.slug }),
     });
     expect(res.status).toBe(404);
+  });
+});
+
+describe("HTTP: 주문대기 입력 검증", () => {
+  it("항목 version이 없으면 400, 순서 변경 범위·version이 잘못되면 400", async () => {
+    const { seller } = await createSeller();
+    const owner = await createSellerUser(seller.id, "OWNER");
+    const cookie = cookieOf(await sellerLogin(post("/api/seller/auth/login", { email: owner.email, password: PASSWORD })));
+    const anyId = "00000000-0000-4000-8000-000000000000";
+    const noVersion = await queueAction(post(`/api/seller/queue/${anyId}/start`, {}, { cookie }), {
+      params: Promise.resolve({ itemId: anyId, action: "start" }),
+    });
+    expect(noVersion.status).toBe(400);
+    expect(await noVersion.json()).toEqual({ error: "version_required" });
+    expect((await queueReorder(post("/api/seller/queue/reorder", { broadcastSessionId: "invalid", orderedIds: [], expectedVersion: 0 }, { cookie }))).status).toBe(400);
+    expect((await queueReorder(post("/api/seller/queue/reorder", { broadcastSessionId: null, orderedIds: [] }, { cookie }))).status).toBe(400);
+    expect((await queueReorder(post("/api/seller/queue/reorder", { broadcastSessionId: null, orderedIds: [], expectedVersion: 0 }, { cookie }))).status).toBe(200);
   });
 });

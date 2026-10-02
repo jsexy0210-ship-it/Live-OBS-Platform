@@ -16,7 +16,8 @@ export type QueueRejection =
   | "conflict"
   | "not_found"
   | "already_live"
-  | "opening_in_progress";
+  | "opening_in_progress"
+  | "reason_required";
 
 export type TransitionInput = {
   status: QueueItemStatus;

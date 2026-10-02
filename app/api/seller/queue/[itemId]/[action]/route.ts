@@ -9,6 +9,7 @@ const ACTIONS: readonly QueueAction[] = ["start", "complete", "revert", "cancel"
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // 개봉 시작(start) · 개봉 완료(complete) · 완료 되돌리기(revert) · 취소(cancel) · 타이머(timer)
+// expectedVersion(화면이 가진 항목 version)은 필수다. 두 화면에서 같은 항목을 바꿀 때 나중 요청을 거부한다.
 export const POST = mutation(async (req: Request, { params }: { params: Promise<{ itemId: string; action: string }> }) => {
   const { itemId, action } = await params;
   const ctx = await requireSeller(prisma, sessionToken(req, "seller"));
@@ -16,8 +17,9 @@ export const POST = mutation(async (req: Request, { params }: { params: Promise<
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
   const body = await readJson<{ expectedVersion: number; reason: string; timerSeconds: number }>(req);
+  if (!Number.isInteger(body.expectedVersion)) return NextResponse.json({ error: "version_required" }, { status: 400 });
   const result = await applyQueueAction(prisma, ctx, itemId, action as QueueAction, {
-    expectedVersion: Number.isInteger(body.expectedVersion) ? body.expectedVersion : undefined,
+    expectedVersion: body.expectedVersion,
     reason: typeof body.reason === "string" ? body.reason.slice(0, 200) : undefined,
     timerSeconds: body.timerSeconds,
   });

@@ -152,7 +152,7 @@ describe("개봉 시작·완료·취소", () => {
     expect(await applyQueueAction(db, s.ctx, id, "complete")).toEqual({ ok: false, reason: "invalid_transition" });
     await applyQueueAction(db, s.ctx, id, "cancel", { reason: "구매자 요청" });
     for (const action of ["start", "complete", "cancel", "revert"] as const) {
-      expect(await applyQueueAction(db, s.ctx, id, action)).toEqual({ ok: false, reason: "invalid_transition" });
+      expect(await applyQueueAction(db, s.ctx, id, action, { reason: "다시 시도" })).toEqual({ ok: false, reason: "invalid_transition" });
     }
     expect(await status(id)).toBe("CANCELLED");
     expect(await db.queueItemStatusHistory.count({ where: { queueItemId: id } })).toBe(1);
@@ -234,13 +234,18 @@ describe("개봉 완료 되돌리기", () => {
 });
 
 describe("순서 변경", () => {
+  const liveVersion = async (sellerId: string) => (await db.seller.findUniqueOrThrow({ where: { id: sellerId } })).liveVersion;
+
   it("같은 방송의 대기 항목 전체를 새 순서로 바꾼다", async () => {
     const s = await setupShop();
     const live = await startBroadcast(db, s.ctx, { now: t0 });
     if (!live.ok) throw new Error();
     const ids = [await s.paidItem(sec(1)), await s.paidItem(sec(2)), await s.paidItem(sec(3))];
     const reversed = [...ids].reverse();
-    expect(await reorderWaiting(db, s.ctx, { broadcastSessionId: live.value.broadcastSessionId, orderedIds: reversed })).toMatchObject({ ok: true });
+    const v = await liveVersion(s.seller.id);
+    expect(
+      await reorderWaiting(db, s.ctx, { broadcastSessionId: live.value.broadcastSessionId, orderedIds: reversed, expectedLiveVersion: v }),
+    ).toMatchObject({ ok: true });
     expect((await getQueueSnapshot(db, s.ctx)).waiting.map((w) => w.id)).toEqual(reversed);
   });
 
@@ -250,10 +255,46 @@ describe("순서 변경", () => {
     if (!live.ok) throw new Error();
     const ids = [await s.paidItem(sec(1)), await s.paidItem(sec(2))];
     const scope = live.value.broadcastSessionId;
-    expect(await reorderWaiting(db, s.ctx, { broadcastSessionId: scope, orderedIds: [ids[1]] })).toEqual({ ok: false, reason: "conflict" });
+    const v = await liveVersion(s.seller.id);
+    expect(await reorderWaiting(db, s.ctx, { broadcastSessionId: scope, orderedIds: [ids[1]], expectedLiveVersion: v })).toEqual({
+      ok: false,
+      reason: "conflict",
+    });
     const other = await setupShop();
     const foreign = await other.paidItem();
-    expect(await reorderWaiting(db, s.ctx, { broadcastSessionId: scope, orderedIds: [ids[0], foreign] })).toEqual({ ok: false, reason: "conflict" });
+    expect(await reorderWaiting(db, s.ctx, { broadcastSessionId: scope, orderedIds: [ids[0], foreign], expectedLiveVersion: v })).toEqual({
+      ok: false,
+      reason: "conflict",
+    });
+  });
+
+  it("두 화면이 같은 상태를 보고 순서를 바꾸면 나중 요청은 거부 (낡은 화면)", async () => {
+    const s = await setupShop();
+    const live = await startBroadcast(db, s.ctx, { now: t0 });
+    if (!live.ok) throw new Error();
+    const ids = [await s.paidItem(sec(1)), await s.paidItem(sec(2)), await s.paidItem(sec(3))];
+    const scope = live.value.broadcastSessionId;
+    const seen = await liveVersion(s.seller.id);
+    expect(await reorderWaiting(db, s.ctx, { broadcastSessionId: scope, orderedIds: [ids[2], ids[0], ids[1]], expectedLiveVersion: seen })).toMatchObject({
+      ok: true,
+    });
+    expect(await reorderWaiting(db, s.ctx, { broadcastSessionId: scope, orderedIds: [ids[1], ids[2], ids[0]], expectedLiveVersion: seen })).toEqual({
+      ok: false,
+      reason: "conflict",
+    });
+    expect((await getQueueSnapshot(db, s.ctx)).waiting.map((w) => w.id)).toEqual([ids[2], ids[0], ids[1]]);
+  });
+});
+
+describe("취소 사유", () => {
+  it("사유 없이 취소하면 거부하고, 사유가 상태 기록에 남는다", async () => {
+    const s = await setupShop();
+    const id = await s.paidItem();
+    expect(await applyQueueAction(db, s.ctx, id, "cancel")).toEqual({ ok: false, reason: "reason_required" });
+    expect(await applyQueueAction(db, s.ctx, id, "cancel", { reason: "  " })).toEqual({ ok: false, reason: "reason_required" });
+    expect(await status(id)).toBe("WAITING");
+    expect(await applyQueueAction(db, s.ctx, id, "cancel", { reason: "구매자 요청" })).toMatchObject({ ok: true, value: { cancelReason: "구매자 요청" } });
+    expect((await db.queueItemStatusHistory.findFirstOrThrow({ where: { queueItemId: id } })).reason).toBe("구매자 요청");
   });
 });
 
@@ -285,7 +326,7 @@ describe("권한·테넌트 격리", () => {
     await startBroadcast(db, a.ctx);
     const id = await a.paidItem();
     expect(await applyQueueAction(db, b.ctx, id, "start")).toEqual({ ok: false, reason: "not_found" });
-    expect(await applyQueueAction(db, b.ctx, id, "cancel")).toEqual({ ok: false, reason: "not_found" });
+    expect(await applyQueueAction(db, b.ctx, id, "cancel", { reason: "x" })).toEqual({ ok: false, reason: "not_found" });
     expect(await status(id)).toBe("WAITING");
   });
 
@@ -293,7 +334,7 @@ describe("권한·테넌트 격리", () => {
     const s = await setupShop();
     const id = await s.paidItem();
     const ro: TenantContext = { ...s.ctx, actorType: "PLATFORM_ADMIN", sellerRole: null, readOnly: true };
-    await expect(applyQueueAction(db, ro, id, "cancel")).rejects.toMatchObject({ status: 403 });
+    await expect(applyQueueAction(db, ro, id, "cancel", { reason: "x" })).rejects.toMatchObject({ status: 403 });
     await expect(startBroadcast(db, ro)).rejects.toMatchObject({ status: 403 });
   });
 });

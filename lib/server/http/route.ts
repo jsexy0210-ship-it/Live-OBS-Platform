@@ -107,6 +107,6 @@ export function loginFailureStatus(reason: string): number {
 // 주문대기 거부 사유별 상태 코드.
 export function queueRejectionStatus(reason: string): number {
   if (reason === "not_found") return 404;
-  if (reason === "invalid_timer") return 400;
+  if (reason === "invalid_timer" || reason === "reason_required") return 400;
   return 409;
 }

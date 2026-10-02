@@ -65,6 +65,8 @@ export async function applyQueueAction(
   requireSellerPermission(ctx, "broadcast.operate");
   const now = opts.now ?? new Date();
   if (action === "timer" && !isValidTimer(opts.timerSeconds)) return { ok: false, reason: "invalid_timer" };
+  // 취소는 사유가 있어야 한다(상태 기록·감사 로그에 남긴다).
+  if (action === "cancel" && !opts.reason?.trim()) return { ok: false, reason: "reason_required" };
 
   return run(
     db,
@@ -132,13 +134,15 @@ export async function applyQueueAction(
 }
 
 // 순서 변경: 같은 방송(또는 방송 전 미배정) 범위의 「대기」 항목 전체를 새 순서로 보낸다.
+// expectedLiveVersion: 화면이 받은 상태의 version. 그사이 바뀌었으면 낡은 화면이므로 거부한다.
 export async function reorderWaiting(
   db: PrismaClient,
   ctx: TenantContext,
-  input: { broadcastSessionId: string | null; orderedIds: string[] },
+  input: { broadcastSessionId: string | null; orderedIds: string[]; expectedLiveVersion: number },
 ): Promise<QueueResult<number>> {
   requireSellerPermission(ctx, "broadcast.operate");
-  return run(db, ctx.sellerId, async (tx) => {
+  return run(db, ctx.sellerId, async (tx, version) => {
+    if (version - 1 !== input.expectedLiveVersion) throw new Rejected("conflict");
     const current = await tx.queueItem.findMany({
       where: { sellerId: ctx.sellerId, status: "WAITING", broadcastSessionId: input.broadcastSessionId },
       select: { id: true },
