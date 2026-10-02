@@ -105,6 +105,7 @@ model Seller {
   stockMovements           StockMovement[]
   orders                   Order[]
   orderItems               OrderItem[]
+  orderConsents            OrderConsent[]
   orderStatusHistories     OrderStatusHistory[]
   broadcastSessions        BroadcastSession[]
   queueItems               QueueItem[]
@@ -472,6 +473,7 @@ model Order {
   seller         Seller               @relation(fields: [sellerId], references: [id])
   buyerMember    BuyerMember          @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id])
   items          OrderItem[]
+  consents       OrderConsent[]
   statusHistory  OrderStatusHistory[]
   stockMovements StockMovement[]
   queueItems     QueueItem[]
@@ -834,4 +836,21 @@ model SubscriptionPayment {
   subscription SellerSubscription @relation(fields: [sellerId, subscriptionId], references: [sellerId, id])
 
   @@index([sellerId, createdAt])
+}
+
+// 주문 단위 결제 전 동의(대표님 결정 2026-10-02): 「개봉하면 취소·환불이 안 돼요」. 동의하지 않으면 주문을 만들지 않는다.
+// 동의 시각은 DB 시계, 고지 문구 버전을 함께 남긴다(법정 동의 기록, ARCHITECTURE).
+model OrderConsent {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String   @db.Uuid
+  orderId       String   @db.Uuid
+  kind          String
+  noticeVersion String
+  agreedAt      DateTime @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+  order  Order  @relation(fields: [sellerId, orderId], references: [sellerId, id])
+
+  @@unique([orderId, kind])
+  @@index([sellerId, orderId])
 }
