@@ -1,34 +1,16 @@
-# LifeLeft / 인생잔량
+# Live OBS Platform
 
-시간·돈·횟수의 잔량 계산 서비스.
+판매자별 쇼핑몰·라이브 방송 운영 구독 플랫폼.
 
-- 제품 기준: `docs/MVP_SPEC.md`
-- 인프라 기준: `docs/INFRASTRUCTURE.md`
-- 배포 기준: `docs/DEPLOYMENT.md`
-- 구현 상태: `docs/IMPLEMENTATION_STATUS.md`
-- 기술: Next.js + TypeScript + Recharts
-- 배포 형태: Static Export
-- 저장: 브라우저 localStorage
-- DB: 없음
+- 제품 범위: `docs/PRODUCT_SCOPE.md`
+- 현재 상태: `PROJECT_STATUS.md`
+- 인수인계: `HANDOFF.md`
+- 작업 규칙: `CLAUDE.md`
 
-## 운영
+## 기술
 
-- KakaoCloud 프로젝트: `lifeleft`
-- VM: `lifeleft-web-prod`
-- Public IP: `210.109.15.68`
-- Domain: `https://lifeleft.duckdns.org`
-- Runner: `lifeleft-kakao`
-
-WeddingPick 인프라와 공유하지 않는다.
-
-## 현재 계산기
-
-- 출근 잔량
-- 월급 잔량
-- 주말 잔량
-- 회사 누적시간
-- 구독 누적
-- 생존 잔량
+- Next.js + TypeScript
+- DB·스토리지·PG·배포: 미구성
 
 ## 검증
 
@@ -36,6 +18,9 @@ WeddingPick 인프라와 공유하지 않는다.
 npm install
 npm run typecheck
 npm run build
-bash -n scripts/stage-lifeleft-static.sh
-bash -n scripts/install-lifeleft-domain.sh
 ```
+
+## 배포
+
+현재 운영 배포 없음. 배포 워크플로가 저장소에 없다.
+신규 배포 구성은 운영자 승인 후 별도 작업으로 진행한다.
