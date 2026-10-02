@@ -158,6 +158,13 @@ tests/unit/**, tests/integration/**           테스트
   - `totalAmount`: 구매자가 실제로 결제한 금액(적립금 사용액을 **뺀 뒤**, 배송비가 생기면 포함). `rewardUsedAmount`: 이 주문에 쓴 적립금.
   - 적립 기준액은 `totalAmount`를 쓰지 않고 「상품 결제 금액(주문 품목 단가 × 수량 합, 배송비 제외) − 적립금 사용액」으로 계산한다(MASTER 결정, 카페24 기본과 같음). 적립금이 두 번 빠지지 않는다.
 - `OrderItem`: id, sellerId, orderId, productId, optionId, productNameSnapshot, optionNameSnapshot, unitPrice, quantity
+- `OrderConsent`: id, sellerId, orderId, kind(`OPENED_NO_REFUND`), noticeVersion, agreedAt(DB 시계) — **(orderId, kind) 유니크**. 결제 전 「개봉하면 취소·환불이 안 돼요」 동의 기록(대표님 결정 2026-10-02).
+- 주문 생성(`POST /api/shop/{slug}/orders`, 구매자 세션, 결제 대기까지 — 실제 PG 결제 호출 없음):
+  - 동의 필수: `consent.agreed === true`(체크 기본 해제)와 화면이 보여 준 문구 버전(`noticeVersion`)이 지금 버전과 같아야 한다. 아니면 `400 consent_required`·`consent_outdated`, 주문을 만들지 않는다. 동의는 주문과 같은 트랜잭션에 기록.
+  - 잠긴 판매자(체험하기·구독 끝)는 `402 shop_unavailable`, 문구 「지금은 쇼핑몰을 이용할 수 없어요」(판매자 사정은 드러내지 않음).
+  - 금액은 서버가 계산(단가 = 상품 가격 + 옵션 추가금, 합계 = 단가 × 수량). 본문의 금액·상태 값은 쓰지 않는다. 적립금 사용은 방식이 정해지기 전이라 요청이 오면 `400 reward_use_not_supported`(rewardUsedAmount = 0).
+  - 재고는 있는지만 확인(부족하면 `400 out_of_stock`). 차감은 결제 완료 때(선점 없음, 확정 그대로).
+  - 주문 번호는 판매자별 advisory lock 아래에서 매긴다(동시 주문에도 겹치지 않음). 판매 중(`ON_SALE`)이 아니거나 다른 쇼핑몰 옵션이면 `400 product_unavailable`.
 - `OrderStatusHistory`: id, sellerId, orderId, from, to, actor, reason, createdAt
 - 상태 전이 (그 외 거부):
 
