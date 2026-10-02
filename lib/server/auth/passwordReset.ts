@@ -104,7 +104,7 @@ export async function issueSellerPasswordResetGrant(
     await failAudit("account_not_found");
     return { ok: false, reason: "reset_not_allowed" };
   }
-  if (user.role !== "OWNER") {
+  if (!user.isOwner) {
     await failAudit("not_owner");
     return { ok: false, reason: "reset_not_allowed" };
   }
@@ -197,12 +197,12 @@ export async function resetStaffPassword(
   input: { staffUserId: string; newPassword: string },
   meta: Meta = {},
 ): Promise<ResetResult> {
-  requireSellerPermission(ctx, "staff.manage");
+  requireSellerPermission(ctx, "STAFF_MANAGE");
   const now = meta.now ?? new Date();
   if (input.newPassword.length < MIN_PASSWORD_LENGTH) return { ok: false, reason: "weak_password" };
   const staff = await db.sellerUser.findFirst({ where: { id: input.staffUserId, sellerId: ctx.sellerId } });
   if (!staff) throw notFound();
-  if (staff.role === "OWNER") throw forbidden();
+  if (staff.isOwner) throw forbidden();
   const passwordHash = await hashPassword(input.newPassword);
   await db.$transaction(async (tx) => {
     await tx.sellerUser.update({ where: { id: staff.id }, data: { passwordHash } });

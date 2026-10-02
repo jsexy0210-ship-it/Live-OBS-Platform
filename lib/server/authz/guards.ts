@@ -26,7 +26,8 @@ export async function requireSeller(db: PrismaClient, token: string | undefined,
     sellerId: ctx.seller.id,
     actorType: "SELLER_USER",
     actorId: ctx.user.id,
-    sellerRole: ctx.user.role,
+    isOwner: ctx.user.isOwner,
+    permissions: ctx.user.permissions,
     readOnly: false,
   };
 }
@@ -54,5 +55,5 @@ export async function impersonateSeller(
     ip: meta.ip,
     userAgent: meta.userAgent,
   });
-  return { sellerId, actorType: "PLATFORM_ADMIN", actorId: admin.admin.id, sellerRole: null, readOnly: true };
+  return { sellerId, actorType: "PLATFORM_ADMIN", actorId: admin.admin.id, isOwner: false, permissions: [], readOnly: true };
 }

@@ -158,11 +158,12 @@ describe("판매자 비밀번호 찾기 (대표자 PASS)", () => {
 });
 
 describe("직원 비밀번호 재설정 (대표가 직원 관리에서)", () => {
-  const ctxOf = (u: { id: string; sellerId: string; role: "OWNER" | "MANAGER" | "BROADCASTER" }): TenantContext => ({
+  const ctxOf = (u: { id: string; sellerId: string; isOwner: boolean; permissions: TenantContext["permissions"] }): TenantContext => ({
     sellerId: u.sellerId,
     actorType: "SELLER_USER",
     actorId: u.id,
-    sellerRole: u.role,
+    isOwner: u.isOwner,
+    permissions: u.permissions,
     readOnly: false,
   });
 

@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, type SellerStaffPermission } from "@prisma/client";
 import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
 
 // 모듈을 불러오는 순간 테스트 DB인지 확인한다.
@@ -104,9 +104,31 @@ export async function createAdmin(
 // 마스터 로그인 입력(이메일 + 비밀번호, 2단계 인증 없음)
 export const adminCredentials = (admin: { email: string }) => ({ email: admin.email, password: PASSWORD });
 
-export async function createSellerUser(sellerId: string, role: "OWNER" | "MANAGER" | "BROADCASTER", email?: string) {
+// 옛 역할 이름을 권한 묶음으로 쓴다(마이그레이션과 같은 매핑). 직접 권한을 주려면 permissions를 넘긴다.
+export const STAFF_PRESETS = {
+  MANAGER: [
+    "BROADCAST_RUN",
+    "OVERLAY_EDIT",
+    "PRODUCT_MANAGE",
+    "ORDER_SHIPPING",
+    "CUSTOMER_PII_VIEW",
+    "MEMBER_POINTS",
+    "INQUIRY_REPLY",
+    "RECEIPT_TAX",
+    "SALES_VIEW",
+  ],
+  BROADCASTER: ["BROADCAST_RUN", "OVERLAY_EDIT"],
+} as const;
+
+export async function createSellerUser(
+  sellerId: string,
+  kind: "OWNER" | keyof typeof STAFF_PRESETS | { permissions: SellerStaffPermission[] },
+  email?: string,
+) {
+  const isOwner = kind === "OWNER";
+  const permissions = typeof kind === "object" ? kind.permissions : isOwner ? [] : [...STAFF_PRESETS[kind]];
   return db.sellerUser.create({
-    data: { sellerId, email: email ?? `staff${next()}@example.com`, passwordHash: await passwordHash(), name: "직원", role },
+    data: { sellerId, email: email ?? `staff${next()}@example.com`, passwordHash: await passwordHash(), name: "직원", isOwner, permissions },
   });
 }
 export async function createLoginBuyer(sellerId: string, gradeId: string) {

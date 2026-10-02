@@ -56,7 +56,7 @@ tests/unit/**, tests/integration/**           테스트
 - 접속 IP는 감사 로그 기록용으로만 쓰고, 신뢰 프록시를 거친 경우에만 `X-Forwarded-For`에서 얻는다(환경변수 `TRUSTED_PROXY_HOPS`, 기본 0 = 믿지 않음).
 - 로그인 성공·실패·차단은 감사 로그.
 - 판매자 비밀번호 찾기(대표님 지시 2026-10-02): 메일 링크 없이 **대표자 PASS 본인인증**으로만 한다.
-  - 이메일+쇼핑몰로 시작 → PASS 완료 → 결과 CI가 그 쇼핑몰 `Seller.representativeCiHash`와 같고 계정이 대표(OWNER)일 때만 일회용·10분 재설정 권한(`PasswordResetGrant`, 토큰 해시 저장) 발급 → 새 비밀번호 저장, 그 계정의 기존 세션 모두 폐기.
+  - 이메일+쇼핑몰로 시작 → PASS 완료 → 결과 CI가 그 쇼핑몰 `Seller.representativeCiHash`와 같고 계정이 대표자(`isOwner`)일 때만 일회용·10분 재설정 권한(`PasswordResetGrant`, 토큰 해시 저장) 발급 → 새 비밀번호 저장, 그 계정의 기존 세션 모두 폐기.
   - 본인인증 건은 시작한 브라우저에만 준 일회용 값(`IdentityVerification.ownerTokenHash`, HttpOnly 쿠키)과 묶고, 한 번 쓰면 `consumedAt`으로 소진한다(구매자 가입도 같음).
   - CI 불일치·직원 계정·없는 계정은 모두 같은 거부 응답(계정 존재 비노출). 시작·발급·완료·실패는 감사 로그.
   - 직원(매니저·방송 담당) 비밀번호는 대표가 직원 관리에서 재설정하고, 직원의 기존 세션을 폐기한다.
@@ -78,15 +78,28 @@ tests/unit/**, tests/integration/**           테스트
 - 최고관리자는 최소 1명 유지(마지막 최고관리자 강등·정지 거부).
 - [확정] 위 표대로 운영·CS 권한 경계를 둔다.
 
-### 3.3 판매자 직원 역할
+### 3.3 판매자 직원 권한 (대표님 결정 2026-10-02: 고정 역할 대신 권한 항목)
 
-| 역할 | 내용 |
+- 대표자(`SellerUser.isOwner = true`)는 모든 권한과 아래 대표자 전용 기능을 가진다.
+- 대표자가 직원 계정을 직접 만들고(이메일·이름·초기 비밀번호·권한 항목) 항목별로 켜고 끈다. 직원은 켠 항목만 쓸 수 있다.
+
+| 권한 항목 | 내용 |
 |---|---|
-| `OWNER` 대표 | 전부. 구독·PG·직원 관리·적립금 실지급 스위치 |
-| `MANAGER` 매니저 | 상품·주문·회원·문의·방송·오버레이. 구독·PG·직원·실지급 스위치 제외 |
-| `BROADCASTER` 방송 담당 | 방송 대시보드(주문대기 조작·HIT·타이머)와 오버레이만 |
+| `BROADCAST_RUN` | 방송 진행(주문대기·개봉·HIT·타이머, 방송 시작·종료) |
+| `OVERLAY_EDIT` | 오버레이 편집·URL 재발급 |
+| `PRODUCT_MANAGE` | 상품·재고 |
+| `ORDER_SHIPPING` | 주문·배송 |
+| `CUSTOMER_PII_VIEW` | 구매자 이름·연락처·주소 보기. 없으면 **API 응답에서 그 필드를 뺀다**(화면 가림으로는 부족). 열람은 감사 로그 `customer.pii.view` |
+| `MEMBER_POINTS` | 회원·적립금 |
+| `INQUIRY_REPLY` | 구매자 문의 답변 |
+| `RECEIPT_TAX` | 현금영수증·세금계산서 |
+| `SALES_VIEW` | 매출 보기 |
+| `SHOP_SETTINGS` | 쇼핑몰 설정 |
 
-[확정] 직원 역할은 위 3개.
+- **대표자 전용(항목으로 줄 수 없음)**: PG 연결, 구독, 직원 관리, 적립금 실지급 스위치.
+- 직원 관리 API(대표자 전용): 생성, 권한 변경, 비활성화(기존 세션 폐기), 비밀번호 재설정. 같은 쇼핑몰 직원만(다른 쇼핑몰은 404), 대표자 계정은 대상 아님(403). 생성·권한 변경·비활성화는 감사 로그(누가, 누구의, 전과 후).
+- 옛 역할 데이터 이전: `OWNER` → 대표자, `MANAGER` → `SHOP_SETTINGS`를 뺀 9개 항목, `BROADCASTER` → `BROADCAST_RUN`·`OVERLAY_EDIT`.
+- 마스터 대리 조회(읽기 전용)는 주문·고객 정보·매출·회원 조회만 허용하고 변경은 모두 거부.
 
 ### 3.4 테넌트 격리 (판매자 간 차단)
 
@@ -111,7 +124,7 @@ tests/unit/**, tests/integration/**           테스트
 
 - `Seller` (테넌트 = 쇼핑몰 1개): id, slug(기본 주소 하위 이름, **유니크**), shopName, status(`PENDING | ACTIVE | SUSPENDED | REJECTED | CLOSED`), businessInfo(JSON), approvedAt, approvedByAdminId, suspendedReason, representativeCiHash(대표자 PASS CI의 HMAC), representativeVerifiedAt(둘은 함께 기록), liveVersion(실시간 version 카운터, 기본 0), createdAt — **대표자 1명당 쇼핑몰 1개**: representativeCiHash 부분 유니크(해지 `CLOSED`·반려 `REJECTED` 제외)
 - `SellerDomain`: id, sellerId, hostname(**유니크**), verifiedAt, certStatus — 개인 도메인 연결용 자리만
-- `SellerUser`: id, sellerId, email, passwordHash, name, role(`OWNER | MANAGER | BROADCASTER`), status(`ACTIVE | DISABLED`), lastLoginAt — **(sellerId, email) 유니크**, 판매자당 OWNER 1명 이상
+- `SellerUser`: id, sellerId, email, passwordHash, name, isOwner, permissions(권한 항목 배열, 3.3), status(`ACTIVE | DISABLED`), lastLoginAt — **(sellerId, email) 유니크**, 판매자당 OWNER 1명 이상
 - `SellerSession`: id, sellerUserId, sellerId, tokenHash(**유니크**), expiresAt, lastSeenAt, revokedAt
 - [확정] 한 사람이 여러 판매자의 직원이 되는 경우 판매자별 별도 계정(이메일 같아도 됨). 한 판매자가 쇼핑몰 여러 개를 갖는 경우는 지원하지 않음(별도 판매자로 가입).
 
@@ -272,7 +285,7 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 | 번호 | 항목 | 확정 | 결정 |
 |---|---|---|---|
 | 1 | 운영·CS 세부 권한 경계 | 3.2 표 | MASTER |
-| 2 | 판매자 직원 역할 | 대표·매니저·방송 담당 3개 | MASTER |
+| 2 | 판매자 직원 권한 | 고정 역할 대신 권한 항목 10개(3.3, 대표님 결정 2026-10-02로 변경) | 대표님 |
 | 3 | 직원이 여러 판매자 소속일 때 | 판매자별 별도 계정 | MASTER |
 | 4 | 구매자 로그인 수단 | 아이디+비밀번호, 가입 시 PASS 본인인증 필수(2026-10-02 대표님 지시로 변경) | MASTER |
 | 5 | 재고 차감 시점 | 결제 완료 시. 재고 부족한 늦은 결제는 취소·환불 대상 표시 | 대표님 |

@@ -121,10 +121,19 @@ model SellerDomain {
   @@index([sellerId])
 }
 
-enum SellerUserRole {
-  OWNER
-  MANAGER
-  BROADCASTER
+// 판매자 직원 권한 항목(대표님 결정 2026-10-02: 고정 역할 대신 항목별로 켜고 끔).
+// PG 연결·구독·직원 관리·적립금 실지급 스위치는 대표자 전용이라 항목으로 줄 수 없다.
+enum SellerStaffPermission {
+  BROADCAST_RUN
+  OVERLAY_EDIT
+  PRODUCT_MANAGE
+  ORDER_SHIPPING
+  CUSTOMER_PII_VIEW
+  MEMBER_POINTS
+  INQUIRY_REPLY
+  RECEIPT_TAX
+  SALES_VIEW
+  SHOP_SETTINGS
 }
 
 enum SellerUserStatus {
@@ -133,15 +142,18 @@ enum SellerUserStatus {
 }
 
 model SellerUser {
-  id           String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerId     String           @db.Uuid
+  id           String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId     String                  @db.Uuid
   email        String
   passwordHash String
   name         String
-  role         SellerUserRole
-  status       SellerUserStatus @default(ACTIVE)
-  lastLoginAt  DateTime?        @db.Timestamptz(3)
-  createdAt    DateTime         @default(now()) @db.Timestamptz(3)
+  // 대표자 여부. 대표자는 모든 권한과 대표자 전용 기능을 가진다.
+  isOwner      Boolean                 @default(false)
+  // 직원 권한 항목(대표자는 비워 둔다)
+  permissions  SellerStaffPermission[] @default([])
+  status       SellerUserStatus        @default(ACTIVE)
+  lastLoginAt  DateTime?               @db.Timestamptz(3)
+  createdAt    DateTime                @default(now()) @db.Timestamptz(3)
 
   seller      Seller               @relation(fields: [sellerId], references: [id])
   sessions    SellerSession[]
