@@ -94,6 +94,67 @@ describe("판매자 비밀번호 찾기 (대표자 PASS)", () => {
     expect(await db.passwordResetGrant.count()).toBe(0);
   });
 
+  it("거부된 본인인증은 소진되어, 대표자 CI가 바뀐 뒤 유효 시간 안에 다시 써도 거부", async () => {
+    const { seller, owner } = await shop();
+    const { start, grant } = await grantFor(owner.email, seller.slug, "LATER-CI");
+    expect(grant).toEqual({ ok: false, reason: "reset_not_allowed" });
+    expect((await db.identityVerification.findUniqueOrThrow({ where: { id: start.verificationId } })).consumedAt).not.toBeNull();
+    await db.seller.update({ where: { id: seller.id }, data: { representativeCiHash: hashCi("LATER-CI") } });
+    expect(await issueSellerPasswordResetGrant(db, provider, { verificationId: start.verificationId, ownerToken: start.ownerToken })).toEqual({
+      ok: false,
+      reason: "reset_not_allowed",
+    });
+    expect(await db.passwordResetGrant.count()).toBe(0);
+  });
+
+  describe("권한을 쓰는 순간 다시 확인", () => {
+    async function issued() {
+      const s = await shop();
+      const { grant } = await grantFor(s.owner.email, s.seller.slug, "REP-CI");
+      if (!grant.ok) throw new Error("grant failed");
+      return { ...s, grantToken: grant.grantToken };
+    }
+    const passwordUnchanged = async (email: string) => expect((await loginSeller(db, { email, password: PASSWORD }, {})).ok).toBe(true);
+
+    it("그사이 대표자가 아니게 되면 거부", async () => {
+      const { owner, grantToken } = await issued();
+      await db.sellerUser.update({ where: { id: owner.id }, data: { isOwner: false } });
+      expect(await resetSellerPassword(db, { grantToken, newPassword: NEW_PASSWORD })).toEqual({ ok: false, reason: "invalid_grant" });
+      await db.sellerUser.update({ where: { id: owner.id }, data: { isOwner: true } });
+      await passwordUnchanged(owner.email);
+      expect((await db.auditLog.findFirstOrThrow({ where: { action: "auth.seller.password_reset.failed", reason: "not_owner" } })).actorId).toBe(owner.id);
+    });
+
+    it("그사이 계정이 비활성화되면 거부", async () => {
+      const { owner, grantToken } = await issued();
+      await db.sellerUser.update({ where: { id: owner.id }, data: { status: "DISABLED" } });
+      expect(await resetSellerPassword(db, { grantToken, newPassword: NEW_PASSWORD })).toEqual({ ok: false, reason: "invalid_grant" });
+      expect(await db.auditLog.count({ where: { action: "auth.seller.password_reset.failed", reason: "account_disabled" } })).toBe(1);
+    });
+
+    it("그사이 쇼핑몰 대표자 CI가 바뀌면 거부, 권한은 다시 쓸 수 없다", async () => {
+      const { seller, owner, grantToken } = await issued();
+      await db.seller.update({ where: { id: seller.id }, data: { representativeCiHash: hashCi("NEW-REP") } });
+      expect(await resetSellerPassword(db, { grantToken, newPassword: NEW_PASSWORD })).toEqual({ ok: false, reason: "invalid_grant" });
+      await db.seller.update({ where: { id: seller.id }, data: { representativeCiHash: hashCi("REP-CI") } });
+      expect(await resetSellerPassword(db, { grantToken, newPassword: NEW_PASSWORD })).toEqual({ ok: false, reason: "invalid_grant" });
+      await passwordUnchanged(owner.email);
+    });
+
+    it("재설정에 성공하면 같은 계정의 다른 미사용 권한은 모두 무효", async () => {
+      const { seller, owner } = await shop();
+      const first = await grantFor(owner.email, seller.slug, "REP-CI");
+      const second = await grantFor(owner.email, seller.slug, "REP-CI");
+      if (!first.grant.ok || !second.grant.ok) throw new Error("grant failed");
+      expect(await resetSellerPassword(db, { grantToken: first.grant.grantToken, newPassword: NEW_PASSWORD })).toEqual({ ok: true });
+      expect(await resetSellerPassword(db, { grantToken: second.grant.grantToken, newPassword: "another-pass-1" })).toEqual({
+        ok: false,
+        reason: "invalid_grant",
+      });
+      expect((await loginSeller(db, { email: owner.email, password: NEW_PASSWORD }, {})).ok).toBe(true);
+    });
+  });
+
   it("CI가 대표자와 다르면 거부하고 실패를 감사 로그에 남긴다", async () => {
     const { seller, owner } = await shop();
     const { grant } = await grantFor(owner.email, seller.slug, "SOMEONE-ELSE");

@@ -100,18 +100,16 @@ export async function issueSellerPasswordResetGrant(
     ? await db.sellerUser.findUnique({ where: { id: v.subjectId }, include: { seller: { select: { representativeCiHash: true } } } })
     : null;
   const ci = done.verification.ciHash;
-  if (!user || user.sellerId !== v.sellerId) {
-    await failAudit("account_not_found");
+  // 거부되는 경우에도 이 본인인증은 소진해 같은 인증으로 다시 시도하지 못하게 한다.
+  const rejectAndConsume = async (reason: string): Promise<GrantResult> => {
+    await db.identityVerification.updateMany({ where: { id: v.id, consumedAt: null }, data: { consumedAt: now } });
+    await failAudit(reason);
     return { ok: false, reason: "reset_not_allowed" };
-  }
-  if (!user.isOwner) {
-    await failAudit("not_owner");
-    return { ok: false, reason: "reset_not_allowed" };
-  }
-  if (!ci || !user.seller.representativeCiHash || user.seller.representativeCiHash !== ci) {
-    await failAudit("ci_mismatch");
-    return { ok: false, reason: "reset_not_allowed" };
-  }
+  };
+  if (!user || user.sellerId !== v.sellerId) return rejectAndConsume("account_not_found");
+  if (!user.isOwner) return rejectAndConsume("not_owner");
+  if (user.status !== "ACTIVE") return rejectAndConsume("account_disabled");
+  if (!ci || !user.seller.representativeCiHash || user.seller.representativeCiHash !== ci) return rejectAndConsume("ci_mismatch");
 
   const grantToken = generateToken();
   const expiresAt = new Date(now.getTime() + GRANT_TTL_MS);
@@ -120,7 +118,7 @@ export async function issueSellerPasswordResetGrant(
     const used = await tx.identityVerification.updateMany({ where: { id: v.id, consumedAt: null }, data: { consumedAt: now } });
     if (used.count !== 1) return false;
     await tx.passwordResetGrant.create({
-      data: { sellerId: user.sellerId, sellerUserId: user.id, tokenHash: hashToken(grantToken), expiresAt, createdAt: now },
+      data: { sellerId: user.sellerId, sellerUserId: user.id, tokenHash: hashToken(grantToken), ciHash: ci, expiresAt, createdAt: now },
     });
     return true;
   });
@@ -155,15 +153,28 @@ export async function resetSellerPassword(
   const passwordHash = await hashPassword(input.newPassword);
   const tokenHash = hashToken(input.grantToken);
 
-  const grant = await db.$transaction(async (tx) => {
+  // 권한을 먼저 소진하고(한 번만 쓰임), 그 순간 계정·대표자 CI를 다시 확인한다. 확인에 실패해도 권한은 소진된 채로 남는다.
+  const outcome = await db.$transaction(async (tx) => {
     const used = await tx.passwordResetGrant.updateMany({
       where: { tokenHash, usedAt: null, expiresAt: { gt: now } },
       data: { usedAt: now },
     });
-    if (used.count !== 1) return null;
-    const g = await tx.passwordResetGrant.findUniqueOrThrow({ where: { tokenHash } });
+    if (used.count !== 1) return { grant: null, reason: "invalid_grant" as const };
+    const g = await tx.passwordResetGrant.findUniqueOrThrow({
+      where: { tokenHash },
+      include: { sellerUser: { include: { seller: { select: { representativeCiHash: true } } } } },
+    });
+    const u = g.sellerUser;
+    const stale = !u.isOwner ? "not_owner" : u.status !== "ACTIVE" ? "account_disabled" : u.seller.representativeCiHash !== g.ciHash ? "ci_changed" : null;
+    if (stale) return { grant: g, reason: stale };
+
     await tx.sellerUser.update({ where: { id: g.sellerUserId }, data: { passwordHash, credentialVersion: { increment: 1 } } });
     const revoked = await tx.sellerSession.updateMany({ where: { sellerUserId: g.sellerUserId, revokedAt: null }, data: { revokedAt: now } });
+    // 같은 계정의 다른 미사용 재설정 권한은 모두 무효
+    const otherGrants = await tx.passwordResetGrant.updateMany({
+      where: { sellerUserId: g.sellerUserId, usedAt: null, id: { not: g.id } },
+      data: { usedAt: now },
+    });
     await writeAudit(tx, {
       actorType: "SELLER_USER",
       actorId: g.sellerUserId,
@@ -171,12 +182,25 @@ export async function resetSellerPassword(
       action: "auth.seller.password_reset.completed",
       targetType: "SellerUser",
       targetId: g.sellerUserId,
-      after: { revokedSessions: revoked.count },
+      after: { revokedSessions: revoked.count, revokedGrants: otherGrants.count },
       ip: meta.ip,
       userAgent: meta.userAgent,
     });
-    return g;
+    return { grant: g, reason: null };
   });
+  const grant = outcome.reason === null ? outcome.grant : null;
+  if (outcome.reason !== null && outcome.reason !== "invalid_grant") {
+    await writeAudit(db, {
+      actorType: "SELLER_USER",
+      actorId: outcome.grant?.sellerUserId ?? null,
+      sellerId: outcome.grant?.sellerId ?? null,
+      action: "auth.seller.password_reset.failed",
+      reason: outcome.reason,
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+    });
+    return { ok: false, reason: "invalid_grant" };
+  }
   if (!grant) {
     await writeAudit(db, {
       actorType: "SELLER_USER",

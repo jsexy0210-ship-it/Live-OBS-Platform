@@ -171,6 +171,8 @@ model PasswordResetGrant {
   sellerId     String    @db.Uuid
   sellerUserId String    @db.Uuid
   tokenHash    String    @unique
+  // 발급 때 확인한 대표자 CI 해시. 쓸 때 쇼핑몰 대표자 CI가 바뀌었으면 거부한다.
+  ciHash       String
   expiresAt    DateTime  @db.Timestamptz(3)
   usedAt       DateTime? @db.Timestamptz(3)
   createdAt    DateTime  @default(now()) @db.Timestamptz(3)
