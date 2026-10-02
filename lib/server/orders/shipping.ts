@@ -74,15 +74,25 @@ export async function getShippingPolicy(db: Db, sellerId: string): Promise<Shipp
   };
 }
 
-// 도서산간 시·도(주소 첫머리). 우편번호와 주소가 어긋나도 추가비가 빠지지 않게 둘 중 하나라도 맞으면 도서산간으로 본다.
-export const REMOTE_ADDRESS_PREFIXES = ["제주", "울릉"] as const;
+// 도서산간 판정. 우편번호와 주소가 어긋나도 추가비가 빠지지 않게 둘 중 하나라도 맞으면 도서산간으로 본다.
+// 주소는 첫 행정구역(시·도, 시·군) 토큰으로 본다. 「서울 강남구 제주로」처럼 도로명에 든 지명은 해당하지 않는다.
+const REMOTE_REGION_TOKENS = new Set(["제주", "제주도", "제주특별자치도", "제주시", "서귀포", "서귀포시", "울릉", "울릉군", "울릉도"]);
+// 울릉 앞에 오는 도 이름, 앞에 붙는 나라 이름은 건너뛴다
+const SKIP_LEADING_TOKENS = new Set(["대한민국", "한국", "경상북도", "경북"]);
+// 영문 주소는 순서가 반대라 어느 자리에 있든 행정구역 토큰이면 본다(「Jeju-ro」 같은 도로명은 맞지 않음)
+const REMOTE_LATIN_TOKEN = /^(jeju|seogwipo|ulleung)(-?(do|si|gun|island))?$/i;
 
 export function isRemoteAddress(zipCode: string, address1: string, ranges: readonly ZipRange[]): boolean {
   const zip = Number(zipCode);
   if (ranges.some(([from, to]) => zip >= from && zip <= to)) return true;
-  // 「경상북도 울릉군 …」처럼 도 이름이 앞에 오는 주소도 잡는다
-  const head = address1.replace(/^(경상북도|경북)\s*/, "");
-  return REMOTE_ADDRESS_PREFIXES.some((p) => head.startsWith(p));
+  const tokens = address1
+    .normalize("NFKC")
+    .replace(/^[^\p{L}\p{N}]+/u, "")
+    .split(/[^\p{L}\p{N}-]+/u)
+    .filter(Boolean);
+  if (tokens.some((t) => REMOTE_LATIN_TOKEN.test(t))) return true;
+  const first = tokens.find((t) => !SKIP_LEADING_TOKENS.has(t) && !/^\d+$/.test(t));
+  return first !== undefined && REMOTE_REGION_TOKENS.has(first);
 }
 
 export function computeShippingFee(itemsSubtotal: number, policy: ShippingPolicy, isRemote: boolean): number {
@@ -99,11 +109,14 @@ export type ShippingAddressInput = {
   memo: string | null;
 };
 
-// 제어문자(NUL·줄바꿈·탭 등)는 받지 않는다(DB 오류·송장 출력 깨짐 방지)
-const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
+// NFKC로 정규화한 뒤 제어문자(NUL·줄바꿈·탭), 보이지 않는 서식 문자(방향 바꿈·폭 없는 공백 등), 줄·문단 구분 문자는 받지 않는다
+// (DB 오류·송장 출력 깨짐·표시 위장 방지). 전각 공백·NBSP는 정규화에서 일반 공백이 되어 허용된다.
+const DISALLOWED = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
 const text = (v: unknown, max: number): string | null => {
-  if (typeof v !== "string" || CONTROL.test(v)) return null;
-  const t = v.trim();
+  if (typeof v !== "string") return null;
+  const n = v.normalize("NFKC");
+  if (DISALLOWED.test(n)) return null;
+  const t = n.trim();
   return t.length > 0 && t.length <= max ? t : null;
 };
 const optionalText = (v: unknown, max: number): string | null | undefined => {
