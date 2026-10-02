@@ -3,6 +3,14 @@
 > 기준일: 2026-10-02 (KST)
 > 브랜치: `claude/ecstatic-ramanujan-bmzcay`
 
+## 세션
+
+| 세션 | ID | 담당 |
+|---|---|---|
+| Live-OBS-Platform MASTER | `session_01XqBPGTKiEMmRSMB5SfFp3C` | 요구사항 접수 · 작업 배정 · 독립 검수 · main 병합 · 상태 문서 관리 |
+
+전담 세션은 아직 없다. 생성 시 이 표에 추가하고 `docs/session-prompt.md`를 지시에 넣는다.
+
 ## 완료
 
 - 0단계 이전 프로젝트 정리 및 최소 구성: PR #7 병합 (2026-10-02 16:23 KST, merge `b92cad1`)
