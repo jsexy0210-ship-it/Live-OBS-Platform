@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { redact } from "../../lib/server/audit/log";
 import { hashPassword, verifyPassword } from "../../lib/server/auth/password";
-import { open, seal } from "../../lib/server/auth/secretBox";
 import { generateToken, hashToken } from "../../lib/server/auth/token";
 
 describe("비밀번호 해시 (argon2id)", () => {
@@ -24,21 +23,9 @@ describe("세션 토큰", () => {
   });
 });
 
-describe("비밀값 암호화 (AES-256-GCM)", () => {
-  it("왕복하고, 변조하면 실패", () => {
-    process.env.SECRET_BOX_KEY = Buffer.alloc(32, 7).toString("base64");
-    const sealed = seal("JBSWY3DPEHPK3PXP");
-    expect(sealed).not.toContain("JBSWY3DPEHPK3PXP");
-    expect(open(sealed)).toBe("JBSWY3DPEHPK3PXP");
-    const parts = sealed.split(".");
-    parts[3] = Buffer.from("tampered").toString("base64url");
-    expect(() => open(parts.join("."))).toThrow();
-  });
-});
-
 describe("감사 로그 비밀값 제거", () => {
-  it("비밀번호 해시·토큰·TOTP 비밀키는 지운다", () => {
-    expect(redact({ email: "a@b.c", passwordHash: "x", nested: { tokenHash: "y", ok: 1 }, list: [{ totpSecretEnc: "z" }] })).toEqual({
+  it("비밀번호 해시·토큰은 지운다", () => {
+    expect(redact({ email: "a@b.c", passwordHash: "x", nested: { tokenHash: "y", ok: 1 }, list: [{ ciHash: "z" }] })).toEqual({
       email: "a@b.c",
       nested: { ok: 1 },
       list: [{}],

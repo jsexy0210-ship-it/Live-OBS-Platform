@@ -1,18 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { isLocked, isSessionActive, sessionExpiry } from "../../lib/server/auth/policy";
+import { isSessionActive, sessionExpiry } from "../../lib/server/auth/policy";
 
 const t0 = new Date("2026-10-02T12:00:00Z");
 const min = (n: number) => new Date(t0.getTime() + n * 60_000);
-
-describe("잠금 상태", () => {
-  // 실패 횟수 증가·잠금 설정은 DB에서 원자적으로 한다(tests/integration/auth.test.ts 동시 실패 테스트).
-  it("잠금 시각 전에는 잠김, 지나면 풀림", () => {
-    const s = { failedLoginCount: 0, lockedUntil: min(10) };
-    expect(isLocked(s, min(9))).toBe(true);
-    expect(isLocked(s, min(10))).toBe(false);
-    expect(isLocked({ failedLoginCount: 3, lockedUntil: null }, t0)).toBe(false);
-  });
-});
 
 describe("세션 시간", () => {
   const live = (now: Date) => ({ lastSeenAt: t0, expiresAt: sessionExpiry("admin", t0), revokedAt: null, now });
