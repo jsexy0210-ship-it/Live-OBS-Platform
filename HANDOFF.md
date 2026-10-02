@@ -8,8 +8,9 @@
 | 세션 | ID | 담당 |
 |---|---|---|
 | Live-OBS-Platform MASTER | `session_01XqBPGTKiEMmRSMB5SfFp3C` | 요구사항 접수 · 작업 배정 · 독립 검수 · main 병합 · 상태 문서 관리 |
+| 디자인 전담 | `session_011K2Cw69VDhwYpPegzFpXoK` | `docs/DESIGN_PROMPT.md`·`docs/IA.md` 기준 전체 화면 디자인 (클로드디자인). 2026-10-02 17:00 KST 대표님 생성, 17:14 KST MASTER 하위로 편입. 아티팩트: https://claude.ai/artifact/YYGXZ3u4QvjQpEMUHnN4tS |
 
-전담 세션은 아직 없다. 생성 시 이 표에 추가하고 `docs/session-prompt.md`를 지시에 넣는다.
+전담 세션 태그: `live-obs` + `lo-master` / `lo-design`. 새 전담 세션은 이 표에 추가하고 `docs/session-prompt.md`를 지시에 넣는다.
 
 ## 완료
 
