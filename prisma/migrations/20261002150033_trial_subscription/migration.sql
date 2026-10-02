@@ -18,8 +18,6 @@ CREATE TABLE "SubscriptionPlan" (
     "name" TEXT NOT NULL,
     "listPrice" INTEGER NOT NULL,
     "salePrice" INTEGER NOT NULL,
-    "previousSalePrice" INTEGER,
-    "priceChangedAt" TIMESTAMPTZ(3),
     "trialMessageLimit" INTEGER NOT NULL DEFAULT 100,
     "trialIdentityLimit" INTEGER NOT NULL DEFAULT 50,
     "trialStorageMb" INTEGER NOT NULL DEFAULT 1024,
@@ -42,6 +40,7 @@ CREATE TABLE "SellerSubscription" (
     "cancelAtPeriodEnd" BOOLEAN NOT NULL DEFAULT false,
     "nextChargeAt" TIMESTAMPTZ(3),
     "billingAnchorAt" TIMESTAMPTZ(3),
+    "subscribedAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "retryCount" INTEGER NOT NULL DEFAULT 0,
     "graceUntil" TIMESTAMPTZ(3),
     "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -68,6 +67,24 @@ CREATE TABLE "SubscriptionPayment" (
 
     CONSTRAINT "SubscriptionPayment_pkey" PRIMARY KEY ("id")
 );
+
+-- CreateTable
+CREATE TABLE "SubscriptionPriceChange" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "planId" UUID NOT NULL,
+    "listPrice" INTEGER NOT NULL,
+    "salePrice" INTEGER NOT NULL,
+    "changedAt" TIMESTAMPTZ(3) NOT NULL,
+    "changedByAdminId" UUID,
+
+    CONSTRAINT "SubscriptionPriceChange_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE INDEX "SubscriptionPriceChange_planId_changedAt_idx" ON "SubscriptionPriceChange"("planId", "changedAt");
+
+-- AddForeignKey
+ALTER TABLE "SubscriptionPriceChange" ADD CONSTRAINT "SubscriptionPriceChange_planId_fkey" FOREIGN KEY ("planId") REFERENCES "SubscriptionPlan"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- CreateIndex
 CREATE UNIQUE INDEX "SubscriptionPlan_code_key" ON "SubscriptionPlan"("code");
@@ -111,6 +128,9 @@ CREATE UNIQUE INDEX "SubscriptionPayment_one_pending_key" ON "SubscriptionPaymen
 -- 기본 요금제(대표님 결정 2026-10-02): 정가 300,000원, 판매가 199,000원, 부가세 포함. 이후 변경은 마스터가 한다.
 INSERT INTO "SubscriptionPlan" ("code", "name", "listPrice", "salePrice", "updatedAt")
 VALUES ('STANDARD', '월 구독', 300000, 199000, CURRENT_TIMESTAMP);
+-- 가격 기록의 시작점(모든 구독 시작보다 앞선 시각)
+INSERT INTO "SubscriptionPriceChange" ("planId", "listPrice", "salePrice", "changedAt")
+SELECT "id", "listPrice", "salePrice", TIMESTAMPTZ '2000-01-01 00:00:00+00' FROM "SubscriptionPlan" WHERE "code" = 'STANDARD';
 
 -- 이미 승인된 쇼핑몰은 승인 시각(없으면 지금) + 14일(TRIAL_DAYS와 같게)을 체험하기 종료로 채운다.
 UPDATE "Seller" SET "trialEndsAt" = COALESCE("approvedAt", CURRENT_TIMESTAMP) + interval '14 days' WHERE "status" = 'ACTIVE' AND "trialEndsAt" IS NULL;

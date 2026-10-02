@@ -58,18 +58,30 @@ export async function sellerAccessFor(db: Db, sellerId: string, now?: Date): Pro
   return sellerAccess({ trialEndsAt: seller.trialEndsAt, subscription: seller.subscription }, at);
 }
 
-// 이번 청구 금액. 가격을 바꾼 뒤 30일 동안은 그 전부터 구독하던 판매자에게 이전 가격을 받는다.
-export function priceFor(plan: SubscriptionPlan, subscribedAt: Date, at: Date): number {
-  if (plan.priceChangedAt && plan.previousSalePrice !== null && subscribedAt < plan.priceChangedAt && at < after(plan.priceChangedAt, PRICE_NOTICE_MS)) {
-    return plan.previousSalePrice;
-  }
-  return plan.salePrice;
+// 이번 청구 금액(대표님 결정 2026-10-02). 가격 기록 중 「구독을 시작할 때 이미 적용되던 것」이거나
+// 「변경 + 30일이 지난 것」 가운데 가장 최근 가격이다. 그래서 기존 구독자는 고지 기간(30일)이 끝나기 전에는
+// 구독을 시작할 때의 가격(또는 그 뒤 고지가 끝난 가격)을 내고, 새 구독자는 지금 가격을 낸다.
+export async function priceFor(db: Db, plan: SubscriptionPlan, subscribedAt: Date, at: Date): Promise<number> {
+  const row = await db.subscriptionPriceChange.findFirst({
+    where: { planId: plan.id, OR: [{ changedAt: { lte: subscribedAt } }, { changedAt: { lte: after(at, -PRICE_NOTICE_MS) } }] },
+    orderBy: { changedAt: "desc" },
+    select: { salePrice: true },
+  });
+  return row?.salePrice ?? plan.salePrice;
+}
+
+type PeriodState = Pick<SellerSubscription, "status" | "currentPeriodEnd" | "billingAnchorAt" | "cancelAtPeriodEnd">;
+
+// 해지된 구독인지: CANCELED이거나, 해지 예약한 기간이 이미 끝남(예약 실행이 아직 CANCELED로 바꾸기 전).
+export function isEndedSubscription(sub: PeriodState | null, now: Date): boolean {
+  if (!sub) return true;
+  return sub.status === "CANCELED" || (sub.cancelAtPeriodEnd && !!sub.currentPeriodEnd && sub.currentPeriodEnd <= now);
 }
 
 // 다음 청구 기간. 결제한 적 있는 구독은 지난 기간 끝(owed)에 이어서, 처음이거나 해지 뒤면 지금부터(기준일 새로).
 // owed부터 세도 기간이 이미 지났으면(잠금이 한 달을 넘김) 지금부터 새로 센다.
-export function planPeriod(sub: Pick<SellerSubscription, "status" | "currentPeriodEnd" | "billingAnchorAt"> | null, now: Date) {
-  if (sub && sub.status !== "CANCELED" && sub.currentPeriodEnd && sub.billingAnchorAt) {
+export function planPeriod(sub: PeriodState | null, now: Date) {
+  if (sub && !isEndedSubscription(sub, now) && sub.currentPeriodEnd && sub.billingAnchorAt) {
     const end = nextPeriodEnd(sub.billingAnchorAt, sub.currentPeriodEnd);
     if (end > now) return { start: sub.currentPeriodEnd, end, anchor: sub.billingAnchorAt };
   }
@@ -92,7 +104,12 @@ export async function getSubscriptionView(db: PrismaClient, ctx: TenantContext, 
     access: sellerAccess({ trialEndsAt: seller.trialEndsAt, subscription: sub }, at),
     trialEndsAt: seller.trialEndsAt,
     plan: shownPlan
-      ? { name: shownPlan.name, listPrice: shownPlan.listPrice, salePrice: shownPlan.salePrice, nextAmount: priceFor(shownPlan, sub?.createdAt ?? at, sub?.nextChargeAt ?? at) }
+      ? {
+          name: shownPlan.name,
+          listPrice: shownPlan.listPrice,
+          salePrice: shownPlan.salePrice,
+          nextAmount: await priceFor(db, shownPlan, sub && !isEndedSubscription(sub, at) ? sub.subscribedAt : at, sub?.nextChargeAt ?? at),
+        }
       : null,
     subscription: sub
       ? {
@@ -162,6 +179,8 @@ export async function registerCardAndPay(
       if (!plan) return { kind: "error", reason: "plan_missing" };
 
       const inTrial = !!seller.trialEndsAt && seller.trialEndsAt > now;
+      // 처음이거나 해지된 뒤 다시 구독하면 새 구독자다(구독 시작 시각을 새로, 기간도 지금부터).
+      const restart = isEndedSubscription(before, now);
       const paidActive = before?.status === "ACTIVE" && !!before.currentPeriodEnd && before.currentPeriodEnd > now;
       const cardOnly = paidActive || (inTrial && before?.status !== "PAST_DUE");
       const nextChargeAt = paidActive ? after(before!.currentPeriodEnd!, -RENEW_LEAD_MS) : cardOnly ? seller.trialEndsAt : before?.nextChargeAt ?? null;
@@ -169,8 +188,12 @@ export async function registerCardAndPay(
       const card = { billingKeyCipher, cardLabel: issued.cardLabel, cancelAtPeriodEnd: false };
       const sub = await tx.sellerSubscription.upsert({
         where: { sellerId: ctx.sellerId },
-        create: { sellerId: ctx.sellerId, planId: plan.id, ...card, nextChargeAt, createdAt: now },
-        update: cardOnly ? { ...card, status: "ACTIVE", nextChargeAt } : card,
+        create: { sellerId: ctx.sellerId, planId: plan.id, ...card, nextChargeAt, createdAt: now, subscribedAt: now },
+        update: {
+          ...card,
+          ...(cardOnly ? { status: "ACTIVE" as const, nextChargeAt } : {}),
+          ...(restart ? { subscribedAt: now } : {}),
+        },
       });
       await writeAudit(tx, {
         actorType: ctx.actorType,
@@ -185,7 +208,8 @@ export async function registerCardAndPay(
 
       const pending = await tx.subscriptionPayment.findFirst({ where: { subscriptionId: sub.id, status: "PENDING" } });
       if (pending) return { kind: "error", reason: "payment_in_progress" };
-      const period = planPeriod(sub, now);
+      // 기간은 카드 등록 전 상태로 정한다(해지 예약이 끝난 구독은 새로 시작)
+      const period = planPeriod(before, now);
       if (sub.billingAnchorAt?.getTime() !== period.anchor.getTime()) {
         await tx.sellerSubscription.update({ where: { id: sub.id }, data: { billingAnchorAt: period.anchor } });
       }
@@ -193,7 +217,7 @@ export async function registerCardAndPay(
         data: {
           sellerId: ctx.sellerId,
           subscriptionId: sub.id,
-          amount: priceFor(plan, sub.createdAt, now),
+          amount: await priceFor(tx, plan, sub.subscribedAt, now),
           periodStart: period.start,
           periodEnd: period.end,
           scheduled: false,
@@ -253,6 +277,20 @@ async function settlePayment(
 
     let nextChargeAt: Date | null = null;
     const sub = await tx.sellerSubscription.findUniqueOrThrow({ where: { id: payment.subscriptionId } });
+    if (sub.status === "CANCELED") {
+      // 해지된 구독은 절대 되살리지 않는다. PG에서 결제가 확인된 건은 환불 대상으로만 남긴다.
+      await writeAudit(tx, {
+        actorType: opts.actorType,
+        actorId: opts.actorId,
+        sellerId: payment.sellerId,
+        action: result.ok ? "subscription.refund_required" : "subscription.payment_failed",
+        targetType: "SubscriptionPayment",
+        targetId: payment.id,
+        after: { amount: payment.amount, scheduled: payment.scheduled, canceledSubscription: true },
+        reason: result.ok ? "paid_after_cancel" : result.reason.slice(0, 200),
+      });
+      return { nextChargeAt: null };
+    }
     if (result.ok) {
       nextChargeAt = after(payment.periodEnd, -RENEW_LEAD_MS);
       await tx.sellerSubscription.update({
@@ -267,6 +305,10 @@ async function settlePayment(
         },
       });
       await restoreAfterResubscribe(tx, payment.sellerId, opts.actorType, opts.actorId);
+    } else if (payment.scheduled && sub.cancelAtPeriodEnd) {
+      // 해지 예약된 구독은 다시 시도하지 않고 기간 끝에 해지한다
+      nextChargeAt = sub.currentPeriodEnd;
+      await tx.sellerSubscription.update({ where: { id: sub.id }, data: { nextChargeAt } });
     } else if (payment.scheduled) {
       if (sub.status !== "PAST_DUE") {
         nextChargeAt = after(now, RETRY_INTERVAL_MS);
@@ -360,7 +402,14 @@ export async function renewDueSubscriptions(db: PrismaClient, provider: BillingP
             await tx.sellerSubscription.update({ where: { id }, data: { billingAnchorAt: period.anchor } });
           }
           const payment = await tx.subscriptionPayment.create({
-            data: { sellerId, subscriptionId: id, amount: priceFor(sub.plan, sub.createdAt, now), periodStart: period.start, periodEnd: period.end, scheduled: true },
+            data: {
+              sellerId,
+              subscriptionId: id,
+              amount: await priceFor(tx, sub.plan, sub.subscribedAt, now),
+              periodStart: period.start,
+              periodEnd: period.end,
+              scheduled: true,
+            },
           });
           return { payment, billingKey: openBillingKey(sub.billingKeyCipher, sellerId), orderName: sub.plan.name };
         })
@@ -425,6 +474,32 @@ export async function reconcileStalePayments(
       if (found.status === "PAID") result = { ok: true, paymentId: found.paymentId, receiptUrl: found.receiptUrl };
       else if (found.status === "FAILED") result = { ok: false, reason: found.reason };
       else {
+        // PG에 기록이 없으면 다시 요청하기 전에, 판매자를 잠그고 구독을 다시 읽어 해지됐는지 본다.
+        // 해지(CANCELED)했거나 해지 예약을 했으면 다시 결제하지 않고 청구를 닫는다.
+        const closed = await db.$transaction(async (tx) => {
+          await lockSeller(tx, p.sellerId);
+          const sub = await tx.sellerSubscription.findUniqueOrThrow({ where: { id: p.subscriptionId } });
+          if (sub.status !== "CANCELED" && !sub.cancelAtPeriodEnd) return false;
+          const moved = await tx.subscriptionPayment.updateMany({ where: { id: p.id, status: "PENDING" }, data: { status: "FAILED", failureReason: "canceled" } });
+          if (moved.count === 1) {
+            await writeAudit(tx, {
+              actorType: "SYSTEM",
+              sellerId: p.sellerId,
+              action: "subscription.payment_closed",
+              targetType: "SubscriptionPayment",
+              targetId: p.id,
+              reason: "canceled",
+            });
+          }
+          if (sub.cancelAtPeriodEnd && sub.status !== "CANCELED") {
+            await tx.sellerSubscription.update({ where: { id: sub.id }, data: { nextChargeAt: sub.currentPeriodEnd } });
+          }
+          return true;
+        });
+        if (closed) {
+          summary.failed++;
+          continue;
+        }
         if (!p.subscription.billingKeyCipher) {
           result = { ok: false, reason: "no_card" };
         } else {

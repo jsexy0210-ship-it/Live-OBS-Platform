@@ -234,7 +234,7 @@ describe("가격", () => {
     const admin = await adminCtx("SUPER_ADMIN");
     const r = await updatePlanPrice(db, admin, "STANDARD", { listPrice: 300000, salePrice: 249000 });
     expect(r).toMatchObject({ ok: true, plan: { salePrice: 249000 } });
-    const changedAt = (await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "STANDARD" } })).priceChangedAt!;
+    const changedAt = (await db.subscriptionPriceChange.findFirstOrThrow({ orderBy: { changedAt: "desc" } })).changedAt;
 
     // 새 가입자: 바로 새 가격
     const fresh = await shop(new Date(Date.now() - DAY));
@@ -635,5 +635,117 @@ describe("체험하기 한도", () => {
     const paid = await shop(new Date(Date.now() - DAY));
     await registerCardAndPay(db, new FakeBillingProvider(), paid.ctx, { authKey: "p" });
     expect(await checkTrialLimit(db, paid.seller.id, "message", { used: 10_000, adding: 1 })).toEqual({ ok: true });
+  });
+});
+
+describe("MASTER 재검수 3차 재현", () => {
+  async function paidShop(provider: FakeBillingProvider) {
+    const s = await shop(new Date(Date.now() - DAY));
+    await registerCardAndPay(db, provider, s.ctx, { authKey: `k-${s.seller.id}` });
+    const sub = await db.sellerSubscription.findUniqueOrThrow({ where: { sellerId: s.seller.id } });
+    return { ...s, sub, end: sub.currentPeriodEnd! };
+  }
+
+  it("1a: 예약 결제가 PG에 닿지 못해 PENDING인 채로 해지 예약하면, 정리 함수가 다시 결제하지 않고 청구를 닫는다", async () => {
+    const provider = new FakeBillingProvider();
+    const { sub, ctx, end, seller } = await paidShop(provider);
+    provider.failNext = "timeout_before_charge";
+    expect(await renewDueSubscriptions(db, provider, { now: new Date(end.getTime() - DAY / 2) })).toMatchObject({ pending: 1 });
+    expect(await cancelSubscription(db, ctx, { now: new Date(end.getTime() - DAY / 3) })).toMatchObject({ ok: true });
+    await reconcileStalePayments(db, provider, { staleMs: 0, now: new Date(end.getTime() - DAY / 4) });
+    expect(provider.charges).toHaveLength(1); // 처음 결제만
+    const pending = await db.subscriptionPayment.findFirstOrThrow({ where: { sellerId: seller.id, scheduled: true } });
+    expect(pending).toMatchObject({ status: "FAILED", failureReason: "canceled" });
+    expect((await db.sellerSubscription.findUniqueOrThrow({ where: { id: sub.id } })).currentPeriodEnd).toEqual(end);
+    expect(await renewDueSubscriptions(db, provider, { now: new Date(end.getTime() + 1000) })).toMatchObject({ canceled: 1, charged: 0 });
+  });
+
+  it("1b: 자동결제 재시도가 PENDING인 채로 즉시 해지하면, 정리 함수가 다시 결제하지 않고 구독은 CANCELED로 남는다", async () => {
+    const declining = new FakeBillingProvider();
+    const { sub, ctx, end, seller } = await paidShop(declining);
+    declining.decline(openBillingKey(sub.billingKeyCipher!, seller.id));
+    await renewDueSubscriptions(db, declining, { now: new Date(end.getTime() - DAY / 2) });
+    expect((await db.sellerSubscription.findUniqueOrThrow({ where: { id: sub.id } })).status).toBe("PAST_DUE");
+
+    const pg = new FakeBillingProvider();
+    pg.failNext = "timeout_before_charge";
+    expect(await renewDueSubscriptions(db, pg, { now: new Date(end.getTime() + DAY) })).toMatchObject({ pending: 1 });
+    expect(await cancelSubscription(db, ctx, { now: new Date(end.getTime() + DAY + 1000) })).toMatchObject({ ok: true, currentPeriodEnd: null });
+    await reconcileStalePayments(db, pg, { staleMs: 0, now: new Date(end.getTime() + 2 * DAY) });
+    expect(pg.charges).toHaveLength(0);
+    expect(await db.sellerSubscription.findUniqueOrThrow({ where: { id: sub.id } })).toMatchObject({ status: "CANCELED", currentPeriodEnd: end });
+  });
+
+  it("1b': PG가 이미 결제했는데(응답 유실) 그사이 해지됐으면, 구독은 되살리지 않고 환불 대상으로만 기록한다", async () => {
+    const declining = new FakeBillingProvider();
+    const { sub, ctx, end, seller } = await paidShop(declining);
+    declining.decline(openBillingKey(sub.billingKeyCipher!, seller.id));
+    await renewDueSubscriptions(db, declining, { now: new Date(end.getTime() - DAY / 2) });
+    const pg = new FakeBillingProvider();
+    pg.failNext = "timeout_after_charge";
+    expect(await renewDueSubscriptions(db, pg, { now: new Date(end.getTime() + DAY) })).toMatchObject({ pending: 1 });
+    await cancelSubscription(db, ctx, { now: new Date(end.getTime() + DAY + 1000) });
+    await reconcileStalePayments(db, pg, { staleMs: 0, now: new Date(end.getTime() + 2 * DAY) });
+    expect(await db.sellerSubscription.findUniqueOrThrow({ where: { id: sub.id } })).toMatchObject({ status: "CANCELED", currentPeriodEnd: end });
+    expect(await db.auditLog.count({ where: { sellerId: seller.id, action: "subscription.refund_required" } })).toBe(1);
+  });
+
+  it("2: 해지 예약 기간이 끝난 뒤 예약 실행보다 먼저 다시 구독하면, 기간은 지난 기간 끝이 아니라 결제한 시각부터다", async () => {
+    const provider = new FakeBillingProvider();
+    const { sub, ctx, end } = await paidShop(provider);
+    await cancelSubscription(db, ctx, { now: new Date(end.getTime() - 5 * DAY) });
+    const now = new Date(end.getTime() + 2 * DAY); // 예약 실행이 아직 CANCELED로 바꾸지 않음
+    expect((await db.sellerSubscription.findUniqueOrThrow({ where: { id: sub.id } })).status).toBe("ACTIVE");
+    expect(await registerCardAndPay(db, provider, ctx, { authKey: "back", now })).toMatchObject({ ok: true, charged: true });
+    expect(await db.sellerSubscription.findUniqueOrThrow({ where: { id: sub.id } })).toMatchObject({
+      currentPeriodStart: now,
+      billingAnchorAt: now,
+      subscribedAt: now,
+      cancelAtPeriodEnd: false,
+    });
+  });
+
+  it("3-1: 30일 안에 가격을 두 번 바꿔도, 첫 변경 뒤 가입한 판매자는 가입 때 가격(250,000원)을 내다가 30일 뒤 새 가격을 낸다", async () => {
+    const admin = await adminCtx("SUPER_ADMIN");
+    const provider = new FakeBillingProvider();
+    await updatePlanPrice(db, admin, "STANDARD", { listPrice: 300000, salePrice: 250000 });
+    const { sub, ctx } = await paidShop(provider);
+    expect(provider.charges.at(-1)!.amount).toBe(250000);
+    await updatePlanPrice(db, admin, "STANDARD", { listPrice: 300000, salePrice: 280000 });
+    const c2 = (await db.subscriptionPriceChange.findFirstOrThrow({ orderBy: { changedAt: "desc" } })).changedAt;
+
+    // 두 번째 변경 + 10일에 다음 결제가 오게 기간 끝을 옮긴다
+    const end = new Date(c2.getTime() + 10 * DAY);
+    await db.sellerSubscription.update({
+      where: { id: sub.id },
+      data: { currentPeriodEnd: end, nextChargeAt: new Date(end.getTime() - DAY), billingAnchorAt: addMonthsKst(end, -1) },
+    });
+    await renewDueSubscriptions(db, provider, { now: new Date(end.getTime() - DAY / 2) });
+    expect(provider.charges.at(-1)!.amount).toBe(250000); // 199,000원으로 내려가지 않는다
+    const next = await db.sellerSubscription.findUniqueOrThrow({ where: { id: sub.id } });
+    await renewDueSubscriptions(db, provider, { now: new Date(next.currentPeriodEnd!.getTime() - DAY / 2) });
+    expect(provider.charges.at(-1)!.amount).toBe(280000);
+    // 두 번째 변경 전에 가입했으므로 그 변경의 고지 대상이다
+    const targets = await listPriceChangeNoticeTargets(db, admin);
+    expect(targets.find((t) => t.sellerId === ctx.sellerId)).toBeDefined();
+  });
+
+  it("3-2: 가격 변경 전 구독자가 해지했다가 30일 안에 다시 구독하면 새 구독자로 보고 지금 가격을 낸다", async () => {
+    const admin = await adminCtx("SUPER_ADMIN");
+    const provider = new FakeBillingProvider();
+    const { sub, ctx } = await paidShop(provider);
+    expect(provider.charges.at(-1)!.amount).toBe(199000);
+    await updatePlanPrice(db, admin, "STANDARD", { listPrice: 300000, salePrice: 250000 });
+    const c = (await db.subscriptionPriceChange.findFirstOrThrow({ orderBy: { changedAt: "desc" } })).changedAt;
+
+    // 해지 예약 → 기간 끝(변경 + 5일) → 예약 실행이 CANCELED → 변경 + 6일에 다시 구독
+    await cancelSubscription(db, ctx);
+    const end = new Date(c.getTime() + 5 * DAY);
+    await db.sellerSubscription.update({ where: { id: sub.id }, data: { currentPeriodEnd: end, nextChargeAt: end, billingAnchorAt: addMonthsKst(end, -1) } });
+    expect(await renewDueSubscriptions(db, provider, { now: new Date(end.getTime() + 1000) })).toMatchObject({ canceled: 1 });
+    const now = new Date(c.getTime() + 6 * DAY);
+    expect(await registerCardAndPay(db, provider, ctx, { authKey: "again", now })).toMatchObject({ ok: true, charged: true });
+    expect(provider.charges.at(-1)!.amount).toBe(250000);
+    expect((await db.sellerSubscription.findUniqueOrThrow({ where: { id: sub.id } })).subscribedAt).toEqual(now);
   });
 });

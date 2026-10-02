@@ -729,23 +729,35 @@ model AuditLog {
 
 // 요금제. 가격은 코드에 두지 않고 여기서 바꾼다(마스터). 금액은 부가세 포함 원 단위, 청구액은 salePrice.
 model SubscriptionPlan {
-  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  code               String    @unique
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code               String   @unique
   name               String
   listPrice          Int
   salePrice          Int
-  // 가격 변경(대표님 결정 2026-10-02): 새 가입자는 바로 새 판매가, 기존 구독자는 변경 시각 + 30일 이후 첫 결제부터.
-  // 그 전 결제는 previousSalePrice를 쓴다.
-  previousSalePrice  Int?
-  priceChangedAt     DateTime? @db.Timestamptz(3)
   // 체험하기 중 한도(대표님 결정 2026-10-02). 코드 수정 없이 마스터가 바꾼다.
-  trialMessageLimit  Int       @default(100)
-  trialIdentityLimit Int       @default(50)
-  trialStorageMb     Int       @default(1024)
-  createdAt          DateTime  @default(now()) @db.Timestamptz(3)
-  updatedAt          DateTime  @updatedAt @db.Timestamptz(3)
+  trialMessageLimit  Int      @default(100)
+  trialIdentityLimit Int      @default(50)
+  trialStorageMb     Int      @default(1024)
+  createdAt          DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime @updatedAt @db.Timestamptz(3)
 
   subscriptions SellerSubscription[]
+  priceChanges  SubscriptionPriceChange[]
+}
+
+// 판매가 변경 기록(대표님 결정 2026-10-02). 새 가입자는 바로 새 가격, 기존 구독자는 구독을 시작할 때 적용되던 가격을 내다가
+// 변경 시각 + 30일 이후 첫 결제부터 새 가격을 낸다. 청구 금액은 이 기록으로 계산한다(priceFor).
+model SubscriptionPriceChange {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  planId           String   @db.Uuid
+  listPrice        Int
+  salePrice        Int
+  changedAt        DateTime @db.Timestamptz(3)
+  changedByAdminId String?  @db.Uuid
+
+  plan SubscriptionPlan @relation(fields: [planId], references: [id])
+
+  @@index([planId, changedAt])
 }
 
 enum SellerSubscriptionStatus {
@@ -769,6 +781,8 @@ model SellerSubscription {
   nextChargeAt       DateTime?                @db.Timestamptz(3)
   // 매달 기간을 세는 기준 시각(첫 결제 기간의 시작). KST 날짜·시각으로 다음 달 같은 날(없으면 말일)을 센다.
   billingAnchorAt    DateTime?                @db.Timestamptz(3)
+  // 지금 구독을 시작한 시각(처음 등록, 또는 해지 뒤 다시 구독). 기존 구독자 가격 판단에 쓴다.
+  subscribedAt       DateTime                 @default(now()) @db.Timestamptz(3)
   // 자동결제 실패 뒤 다시 시도한 횟수(최대 3번)와 계속 쓸 수 있는 유예 끝(실패한 날 + 7일)
   retryCount         Int                      @default(0)
   graceUntil         DateTime?                @db.Timestamptz(3)
