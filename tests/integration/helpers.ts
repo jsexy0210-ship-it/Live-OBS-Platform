@@ -69,3 +69,31 @@ export async function createPaidOrderItem(sellerId: string, buyerMemberId: strin
   });
   return { product, option, order, item };
 }
+
+export const PASSWORD = "test-password-1";
+let pwHash: Promise<string> | undefined;
+async function passwordHash() {
+  const { hashPassword } = await import("../../lib/server/auth/password");
+  pwHash ??= hashPassword(PASSWORD);
+  return pwHash;
+}
+
+export async function createAdmin(
+  role: "SUPER_ADMIN" | "OPERATIONS" | "CS" | "READ_ONLY",
+  extra: { status?: "ACTIVE" | "SUSPENDED"; totpSecretEnc?: string; totpEnabledAt?: Date } = {},
+) {
+  return db.platformAdmin.create({
+    data: { email: `admin${next()}@example.com`, passwordHash: await passwordHash(), name: "관리자", role, ...extra },
+  });
+}
+
+export async function createSellerUser(sellerId: string, role: "OWNER" | "MANAGER" | "BROADCASTER", email?: string) {
+  return db.sellerUser.create({
+    data: { sellerId, email: email ?? `staff${next()}@example.com`, passwordHash: await passwordHash(), name: "직원", role },
+  });
+}
+
+export async function createLoginBuyer(sellerId: string, gradeId: string) {
+  const m = await createBuyer(sellerId, gradeId);
+  return db.buyerMember.update({ where: { id: m.id }, data: { passwordHash: await passwordHash() } });
+}
