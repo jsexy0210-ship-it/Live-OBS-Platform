@@ -1,8 +1,9 @@
 import type { PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { resolveAdminSession, resolveSellerSession, type AdminSessionContext } from "../auth/session";
+import { sellerAccessFor } from "../billing/subscription";
 import type { TenantContext } from "../tenant/context";
-import { forbidden, notFound, unauthenticated } from "./errors";
+import { forbidden, notFound, subscriptionRequired, unauthenticated } from "./errors";
 import { adminCan, type AdminPermission } from "./permissions";
 
 // 마스터 API 가드. 판매자·구매자 세션 토큰은 AdminSession 테이블에 없으므로 여기서 항상 401이다.
@@ -19,9 +20,16 @@ export async function requireAdmin(
 }
 
 // 판매자 API 가드. sellerId는 세션에서만 얻는다. 세부 권한은 requireSellerPermission으로 확인한다.
-export async function requireSeller(db: PrismaClient, token: string | undefined, now = new Date()): Promise<TenantContext> {
+// 무료 이용이 끝났고 결제한 기간도 없으면 402로 막는다. 구독·결제 화면과 내 정보만 allowUnpaid로 연다(로그아웃은 가드 없음).
+export async function requireSeller(
+  db: PrismaClient,
+  token: string | undefined,
+  now = new Date(),
+  opts: { allowUnpaid?: boolean } = {},
+): Promise<TenantContext> {
   const ctx = await resolveSellerSession(db, token, now);
   if (!ctx) throw unauthenticated();
+  if (!opts.allowUnpaid && (await sellerAccessFor(db, ctx.seller.id, now)) === "expired") throw subscriptionRequired();
   return {
     sellerId: ctx.seller.id,
     actorType: "SELLER_USER",

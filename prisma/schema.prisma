@@ -72,6 +72,8 @@ model Seller {
   status                   SellerStatus @default(PENDING)
   businessInfo             Json?
   approvedAt               DateTime?    @db.Timestamptz(3)
+  // 무료 이용 종료 시각 = 마스터 승인 시각(DB 시계) + 3일. 지나면 구독 결제 전까지 판매자 API를 막는다.
+  trialEndsAt              DateTime?    @db.Timestamptz(3)
   approvedByAdminId        String?      @db.Uuid
   suspendedReason          String?
   // 대표자 PASS 본인인증 CI의 HMAC-SHA256 값(원문 CI는 저장하지 않음). 대표자 1명당 쇼핑몰 1개는 마이그레이션 SQL 부분 유니크.
@@ -105,6 +107,8 @@ model Seller {
   rewardLedger             RewardLedger[]
   rewardBalances           RewardBalance[]
   overlayTokens            OverlayToken[]
+  subscription             SellerSubscription?
+  subscriptionPayments     SubscriptionPayment[]
   auditLogs                AuditLog[]
 }
 
@@ -715,4 +719,73 @@ model AuditLog {
 
   @@index([sellerId, createdAt])
   @@index([action, createdAt])
+}
+
+// ───────────── 플랫폼 구독 (판매자 → 플랫폼) ─────────────
+
+// 요금제. 가격은 코드에 두지 않고 여기서 바꾼다(마스터). 금액은 부가세 포함 원 단위, 청구액은 salePrice.
+model SubscriptionPlan {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code      String   @unique
+  name      String
+  listPrice Int
+  salePrice Int
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  subscriptions SellerSubscription[]
+}
+
+enum SellerSubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
+// 쇼핑몰당 하나. 카드 자동결제(빌링키)만 쓴다. 빌링키는 서버 비밀키로 암호화해서만 저장한다.
+model SellerSubscription {
+  id                 String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId           String                   @unique @db.Uuid
+  planId             String                   @db.Uuid
+  status             SellerSubscriptionStatus @default(ACTIVE)
+  billingKeyCipher   String?
+  cardLabel          String?
+  currentPeriodStart DateTime?                @db.Timestamptz(3)
+  currentPeriodEnd   DateTime?                @db.Timestamptz(3)
+  cancelAtPeriodEnd  Boolean                  @default(false)
+  createdAt          DateTime                 @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime                 @updatedAt @db.Timestamptz(3)
+
+  seller   Seller                @relation(fields: [sellerId], references: [id])
+  plan     SubscriptionPlan      @relation(fields: [planId], references: [id])
+  payments SubscriptionPayment[]
+
+  @@unique([sellerId, id])
+}
+
+enum SubscriptionPaymentStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+// 청구 내역. 같은 구독·같은 이용 기간에는 진행 중이거나 결제된 청구가 하나만 있다(마이그레이션 SQL 부분 유니크).
+model SubscriptionPayment {
+  id                String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId          String                    @db.Uuid
+  subscriptionId    String                    @db.Uuid
+  amount            Int
+  status            SubscriptionPaymentStatus @default(PENDING)
+  periodStart       DateTime                  @db.Timestamptz(3)
+  periodEnd         DateTime                  @db.Timestamptz(3)
+  providerPaymentId String?
+  receiptUrl        String?
+  failureReason     String?
+  paidAt            DateTime?                 @db.Timestamptz(3)
+  createdAt         DateTime                  @default(now()) @db.Timestamptz(3)
+
+  seller       Seller             @relation(fields: [sellerId], references: [id])
+  subscription SellerSubscription @relation(fields: [sellerId, subscriptionId], references: [sellerId, id])
+
+  @@index([sellerId, createdAt])
 }
