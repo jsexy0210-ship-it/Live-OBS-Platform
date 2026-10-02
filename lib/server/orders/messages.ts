@@ -22,6 +22,16 @@ export const ORDER_ERROR_MESSAGES = {
   stock_conflict: "그사이 재고가 바뀌었어요. 새로 불러온 뒤 다시 입력해 주세요",
   invalid_cursor: "목록을 처음부터 다시 불러와 주세요",
   invalid_limit: "한 번에 볼 개수는 1~200개로 정해 주세요",
+  // 무통장 입금·구매 제한
+  purchase_restricted: "입금하지 않은 주문이 쌓여서 지금은 주문할 수 없어요. 판매자에게 문의해 주세요",
+  order_rate_limited: "주문을 너무 자주 했어요. 1분 뒤에 다시 해 주세요",
+  invalid_order_policy: "입금 기한은 1~168시간으로 정해 주세요",
+  no_restriction: "주문 제한이 걸려 있지 않아요",
+} as const;
+
+// 구매자 주문 화면 안내 문구(해요체)
+export const ORDER_NOTICES = {
+  stock_shortage_refund: "재고가 부족해 주문을 취소하고 환불해 드릴 예정이에요",
 } as const;
 
 export type OrderErrorCode = keyof typeof ORDER_ERROR_MESSAGES;

@@ -176,6 +176,7 @@ tests/unit/**, tests/integration/**           테스트
   - 배송지 필수(받는 분·연락처·우편번호 5자리·주소, 상세 주소·메모 선택). 틀리면 `400 invalid_shipping_address`. 4.10 참고.
   - 400·402·409 응답은 `{ error, message }`. `message`는 화면에 그대로 보여 줄 해요체 문구이고, 사유 코드별 문구는 `lib/server/orders/messages.ts` 한 곳에서만 고친다.
   - 주문 번호는 판매자별 advisory lock 아래에서 매긴다(동시 주문에도 겹치지 않음). 판매 중(`ON_SALE`)이 아니거나 다른 쇼핑몰 옵션이면 `400 product_unavailable`.
+- 입금 기한·자동 취소·구매 제한·주문 횟수 제한: 4.11.
 - 결제 전 동의 문구(`GET /api/shop/{slug}/order-consent`, 로그인 없이): `{ consents: [{ kind, version, text }] }`. 화면은 이 version을 주문 요청의 `consent.noticeVersion`으로 보낸다. 문구는 아직 코드 상수(`lib/server/orders/consent.ts`)에만 있다.
 - 구매자 본인 주문 조회(`GET /api/shop/{slug}/orders?cursor·limit`, `GET /api/shop/{slug}/orders/{orderId}`, 구매자 세션): 조회 조건에 쇼핑몰과 본인이 항상 들어가고 다른 구매자·다른 쇼핑몰 주문은 404. 상태·품목 스냅숏·금액·배송비·배송 상태·송장(택배사 이름 포함)을 주고, 배송지는 본인 상세에서만 준다. 결제사 거래 번호·재고 부족 표시·판매자·회원 id는 주지 않는다. 목록은 최근순 keyset 커서(기본 20·최대 50, `invalid_cursor`·`invalid_limit`). 잠긴 쇼핑몰이어도 기존 주문 조회는 열린다.
 - `OrderStatusHistory`: id, sellerId, orderId, from, to, actor, reason, createdAt
@@ -302,7 +303,7 @@ PG 연결 정보, 구매자 문의·공지, 알림 발송 기록, 도우미 자�
 
 - 현금영수증·세금계산서: 주문별 신청 정보(`OrderReceiptRequest`)와 발행 레코드(`ReceiptIssue`: 종류, 상태 `PENDING | ISSUED | FAILED | CANCELLED`, 연동 결과 키).
 - 배송: 즉시 발송은 4.10에서 만들었다. 보관(`STORAGE`)·합배송은 출시 후 1차.
-- 무통장 입금: `Order.paymentDueAt`, 기한이 지난 결제 대기 주문은 자동 취소.
+- 무통장 입금: 4.11에서 만들었다.
 - 법정 동의 기록: 회원 가입 시 약관·처리방침 버전과 마케팅 동의 시각·철회 시각(`MemberConsent`). 주문 단위 「개봉하면 취소·환불 불가」 결제 전 동의를 기록한다(`OrderConsent`: 주문, 동의 시각, 고지 문구 버전. 대표님 결정 2026-10-02, 개봉 전 취소 규칙은 그대로). 구매자 「내 차례 N건 전」 알림도 두지 않는다(주문·결제·발송 알림만).
 - 미성년자 정책: `Seller` 설정 `minorPurchasePolicy`(`BLOCK | NOTICE`), `BuyerMember.birthDate`(PASS)로 판정.
 - 판매자 직원 개인정보 접속기록: 기존 `AuditLog`를 확장해 기록하고 1년 보관.
@@ -321,6 +322,17 @@ PG 연결 정보, 구매자 문의·공지, 알림 발송 기록, 도우미 자�
   - `POST /api/seller/orders/{orderId}/ship`(`ORDER_SHIPPING`, 잠금 중에도 가능): 결제 완료(`PAID`) 즉시 발송 주문만 `IN_TRANSIT`로 만든다. 재고 부족(`stockShortageAt`) 주문, 배송지가 없는 주문도 `409 not_shippable`. 배송 중에는 송장을 고쳐 다시 넣을 수 있고(첫 발송 시각 유지, `order.shipment.update` 기록), 배송 완료 뒤에는 바꾸지 않는다. 주문 상태는 `PAID` 그대로.
   - 발송한(Shipment가 있는) 주문을 환불하면 재고를 되돌리지 않고 배송 기록도 그대로 둔다. 감사 로그 `order.refund`에 `shippedBeforeRefund: true`와 배송 상태를 남긴다. 배송비 환불 금액 규칙은 대표님 결정 대기(지금은 주문 전체 금액 기준 그대로).
   - 배송 완료(`DELIVERED`) 전환·배송 추적·발송 알림은 아직 없다.
+
+### 4.11 입금 기한·미입금 자동 취소·구매 제한 (PRODUCT_SCOPE 「무통장 입금·구매 제한 기본값」, MASTER 결정)
+
+- `SellerOrderPolicy`(판매자당 1행, 없으면 기본값): paymentDueHours(기본 24, 1~168), unpaidRestrictionEnabled(기본 켜짐). `GET·PUT /api/seller/order-policy`(`SHOP_SETTINGS`, 틀리면 `400 invalid_order_policy`, 감사 로그).
+- 주문할 때 `Order.paymentDueAt` = 주문 시각(DB 시계) + paymentDueHours. 설정을 바꿔도 이미 만든 주문은 그대로. 이 기능 전에 만든 주문은 기한이 없어 자동 취소 대상이 아니다.
+- 자동 취소 `cancelOverdueOrders`(lib/server/orders/overdue.ts): 기한이 지난 결제 대기 주문을 판매자별 주문 잠금(order_no) 아래에서 `status = PENDING_PAYMENT` 조건으로 취소하고 `autoCancelledAt`, 시스템 상태 이력(reason `payment_overdue`), 감사 로그 `order.auto_cancel`을 남긴다. 재고는 결제 때 빼므로 되돌릴 것이 없다. 여러 번·동시에 돌려도 주문마다 한 번만 취소(멱등). 정기 실행 연결은 인프라 승인 대기.
+  - 결제 확인(`markOrderPaid`)도 `status = PENDING_PAYMENT` 조건으로 바꿔, 자동 취소와 겹치면 둘 중 하나만 된다.
+- 기한 1시간 전 알림 대상 `listPaymentDueSoon`: 발송 연동 전이라 대상 조회만.
+- 자동 구매 제한 `BuyerPurchaseRestriction`: 같은 쇼핑몰에서 마지막 제한(풀었으면 푼 시각, 아니면 시작 시각) 뒤 자동 취소가 3회 쌓이면 30일 제한을 만든다(감사 로그 `buyer.purchase_restriction.create`). 제한 중 새 주문은 `403 purchase_restricted`. 판매자 목록 `GET /api/seller/purchase-restrictions`, 풀기 `POST /api/seller/purchase-restrictions/{buyerMemberId}/lift`(`MEMBER_POINTS`, 잠금 중에도 가능, 감사 로그). 「결제 후 취소 5회 → 30일」(기본 꺼짐)은 아직 없다.
+- 주문 생성 횟수 제한: 같은 구매자는 쇼핑몰당 1분에 10건까지(`429 order_rate_limited`). 구매 제한·횟수 제한은 주문 생성과 같은 잠금 아래에서 세므로 동시 주문에도 넘지 않는다.
+- 구매자 주문 조회 응답은 `Cache-Control: no-store`. 재고 부족으로 환불 대상인 결제 주문은 `needsRefund: true`와 안내 문구(`ORDER_NOTICES`)만 주고 `stockShortageAt`은 숨긴다. 입금 기한(`paymentDueAt`)도 준다. 폐업한 쇼핑몰이어도 본인 주문 조회는 열린다.
 
 ## 5. 주요 흐름 요약
 

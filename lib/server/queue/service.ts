@@ -274,7 +274,8 @@ export async function markOrderPaid(
       const order = await loadPendingOrder(tx, sellerId, orderId);
       // 결제수단을 넘기지 않으면 주문에 이미 있는 값을 쓴다(저장·적립 계산 모두).
       const paymentMethod = input.paymentMethod ?? order.paymentMethod;
-      await tx.order.update({ where: { id: order.id }, data: { status: "PAID", paidAt: now, paymentMethod } });
+      // 상태 조건을 걸어 바꾼다: 자동 취소(overdue.ts)가 같은 주문을 먼저 취소했으면 결제로 덮어쓰지 않는다
+      await markPaidIfPending(tx, sellerId, orderId, { status: "PAID", paidAt: now, paymentMethod });
       await tx.orderStatusHistory.create({
         data: { sellerId, orderId, fromStatus: "PENDING_PAYMENT", toStatus: "PAID", ...system, createdAt: now },
       });
@@ -348,10 +349,7 @@ export async function markOrderPaid(
 
   return run(db, sellerId, async (tx) => {
     const order = await loadPendingOrder(tx, sellerId, orderId);
-    await tx.order.update({
-      where: { id: orderId },
-      data: { status: "PAID", paidAt: now, paymentMethod: input.paymentMethod ?? order.paymentMethod, stockShortageAt: now },
-    });
+    await markPaidIfPending(tx, sellerId, orderId, { status: "PAID", paidAt: now, paymentMethod: input.paymentMethod ?? order.paymentMethod, stockShortageAt: now });
     await tx.orderStatusHistory.create({
       data: { sellerId, orderId, fromStatus: "PENDING_PAYMENT", toStatus: "PAID", ...system, reason: "stock_shortage", createdAt: now },
     });
@@ -363,6 +361,11 @@ export async function markOrderPaid(
 // 적립 기준액: 상품 결제 금액(배송비 제외) − 적립금 사용액(ARCHITECTURE 4.7)
 export function rewardBase(items: { unitPrice: number; quantity: number }[], rewardUsedAmount: number): number {
   return items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0) - rewardUsedAmount;
+}
+
+async function markPaidIfPending(tx: Tx, sellerId: string, orderId: string, data: Prisma.OrderUpdateManyMutationInput) {
+  const moved = await tx.order.updateMany({ where: { id: orderId, sellerId, status: "PENDING_PAYMENT" }, data });
+  if (moved.count !== 1) throw new Rejected("invalid_transition");
 }
 
 async function loadPendingOrder(tx: Tx, sellerId: string, orderId: string) {

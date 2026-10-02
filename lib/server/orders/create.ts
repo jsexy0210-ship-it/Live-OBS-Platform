@@ -2,6 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { dbNow, sellerAccessFor } from "../billing/subscription";
 import { OPENED_NO_REFUND_CONSENT } from "./consent";
+import { activeRestriction, getOrderPolicy, lockSellerOrders } from "./overdue";
 import { computeShippingFee, getShippingPolicy, INT4_MAX, isRemoteAddress, parseShippingAddress } from "./shipping";
 
 // 구매자 주문 생성(결제 대기까지). 실제 PG 결제 호출은 없다.
@@ -14,6 +15,9 @@ import { computeShippingFee, getShippingPolicy, INT4_MAX, isRemoteAddress, parse
 
 export const MAX_ORDER_LINES = 20;
 export const MAX_LINE_QUANTITY = 99;
+// 주문 생성 횟수 제한: 같은 구매자, 같은 쇼핑몰 기준 1분에 10건
+export const ORDER_RATE_LIMIT = 10;
+export const ORDER_RATE_WINDOW_MS = 60_000;
 
 export type CreateOrderInput = {
   sellerId: string;
@@ -34,7 +38,9 @@ export type CreateOrderFailure =
   | "out_of_stock"
   | "reward_use_not_supported"
   | "invalid_shipping_address"
-  | "invalid_amount"; // 단가 1원 미만(음수 추가금 등)·합계가 정수 범위를 넘음
+  | "invalid_amount" // 단가 1원 미만(음수 추가금 등)·합계가 정수 범위를 넘음
+  | "purchase_restricted" // 미입금 자동 취소가 쌓여 주문이 막힌 구매자(overdue.ts)
+  | "order_rate_limited"; // 같은 구매자가 이 쇼핑몰에서 1분에 10건 넘게 주문
 
 export type CreateOrderResult =
   | { ok: true; orderId: string; orderNo: number; totalAmount: number; shippingFee: number }
@@ -74,13 +80,19 @@ export async function createOrder(db: PrismaClient, input: CreateOrderInput): Pr
 
   return db.$transaction(async (tx) => {
     // 같은 판매자의 주문 번호를 한 줄로 매긴다
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`order_no:${input.sellerId}`}))`;
+    await lockSellerOrders(tx, input.sellerId);
     const now = await dbNow(tx);
     const member = await tx.buyerMember.findFirst({
       where: { id: input.buyerMemberId, sellerId: input.sellerId, status: "ACTIVE", deletedAt: null },
       select: { id: true, broadcastNickname: true },
     });
     if (!member) return { ok: false as const, reason: "shop_unavailable" as const };
+    // 구매 제한·횟수 제한은 같은 잠금 아래에서 세므로 동시 주문에도 한도를 넘지 않는다
+    if (await activeRestriction(tx, input.sellerId, member.id, now)) return { ok: false as const, reason: "purchase_restricted" as const };
+    const recent = await tx.order.count({
+      where: { sellerId: input.sellerId, buyerMemberId: member.id, createdAt: { gt: new Date(now.getTime() - ORDER_RATE_WINDOW_MS) } },
+    });
+    if (recent >= ORDER_RATE_LIMIT) return { ok: false as const, reason: "order_rate_limited" as const };
 
     const options = await tx.productOption.findMany({
       where: { sellerId: input.sellerId, id: { in: lines.map((l) => l.optionId) }, deletedAt: null },
@@ -108,6 +120,8 @@ export async function createOrder(db: PrismaClient, input: CreateOrderInput): Pr
     const totalAmount = itemsSubtotal + shippingFee;
     if (!Number.isSafeInteger(totalAmount) || totalAmount > INT4_MAX) return { ok: false as const, reason: "invalid_amount" as const };
 
+    // 입금 기한: 주문 시각 + 판매자 설정(기본 24시간). 이미 만든 주문은 설정을 바꿔도 그대로다.
+    const paymentDueAt = new Date(now.getTime() + (await getOrderPolicy(tx, input.sellerId)).paymentDueHours * 60 * 60 * 1000);
     const last = await tx.order.aggregate({ where: { sellerId: input.sellerId }, _max: { orderNo: true } });
     const orderNo = (last._max.orderNo ?? 0) + 1;
     const order = await tx.order.create({
@@ -122,6 +136,7 @@ export async function createOrder(db: PrismaClient, input: CreateOrderInput): Pr
         fulfillmentType: "IMMEDIATE",
         rewardUsedAmount: 0,
         createdAt: now,
+        paymentDueAt,
       },
     });
     await tx.orderShippingAddress.create({ data: { sellerId: input.sellerId, orderId: order.id, ...address, isRemote } });
