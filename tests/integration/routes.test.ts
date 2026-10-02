@@ -1,8 +1,9 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { PASSWORD, createAdmin, createBuyer, createPaidOrderItem, createSeller, createSellerUser, db, resetDb } from "./helpers";
+import { PASSWORD, adminCredentials, createAdmin, createBuyer, createPaidOrderItem, createSeller, createSellerUser, db, resetDb } from "./helpers";
 import { POST as adminLogin } from "../../app/api/admin/auth/login/route";
 import { POST as adminLogout } from "../../app/api/admin/auth/logout/route";
 import { GET as adminMe } from "../../app/api/admin/me/route";
+import { POST as enrollStart } from "../../app/api/admin/mfa/enroll/start/route";
 import { POST as sellerLogin } from "../../app/api/seller/auth/login/route";
 import { GET as sellerOrder } from "../../app/api/seller/orders/[orderId]/route";
 import { POST as buyerLogin } from "../../app/api/shop/[slug]/auth/login/route";
@@ -30,7 +31,7 @@ const cookieOf = (res: Response) => res.headers.get("set-cookie")?.split(";")[0]
 describe("HTTP: 로그인·세션 쿠키", () => {
   it("마스터 로그인 → HttpOnly 쿠키 → 내 정보 → 로그아웃 후 401", async () => {
     const admin = await createAdmin("SUPER_ADMIN");
-    const res = await adminLogin(post("/api/admin/auth/login", { email: admin.email, password: PASSWORD }));
+    const res = await adminLogin(post("/api/admin/auth/login", await adminCredentials(admin, new Date())));
     expect(res.status).toBe(200);
     const setCookie = res.headers.get("set-cookie") ?? "";
     expect(setCookie).toMatch(/^lo_admin=/);
@@ -49,14 +50,35 @@ describe("HTTP: 로그인·세션 쿠키", () => {
   it("틀린 비밀번호 401, 5번째 429(잠금)", async () => {
     const admin = await createAdmin("SUPER_ADMIN");
     const statuses = [];
-    for (let i = 0; i < 5; i++) statuses.push((await adminLogin(post("/api/admin/auth/login", { email: admin.email, password: "x" }))).status);
+    for (let i = 0; i < 5; i++) {
+      statuses.push((await adminLogin(post("/api/admin/auth/login", { ...(await adminCredentials(admin, new Date())), password: "x" }))).status);
+    }
     expect(statuses).toEqual([401, 401, 401, 401, 429]);
   });
 
-  it("다른 사이트에서 온 로그인 요청(Origin 불일치)은 403", async () => {
+  it("다른 사이트에서 온 로그인 요청(Origin 불일치)과 Origin이 없는 변경 요청은 403", async () => {
     const admin = await createAdmin("SUPER_ADMIN");
-    const res = await adminLogin(post("/api/admin/auth/login", { email: admin.email, password: PASSWORD }, { origin: "https://evil.example" }));
-    expect(res.status).toBe(403);
+    const creds = await adminCredentials(admin, new Date());
+    expect((await adminLogin(post("/api/admin/auth/login", creds, { origin: "https://evil.example" }))).status).toBe(403);
+    const noOrigin = new Request(BASE + "/api/admin/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "localhost:3000" },
+      body: JSON.stringify(creds),
+    });
+    expect((await adminLogin(noOrigin)).status).toBe(403);
+    expect((await adminLogout(new Request(BASE + "/api/admin/auth/logout", { method: "POST", headers: { host: "localhost:3000" } }))).status).toBe(403);
+  });
+
+  it("TOTP 미등록 마스터는 등록 전용 세션: 내 정보 403, 등록 시작 200", async () => {
+    const admin = await createAdmin("SUPER_ADMIN", { enrolled: false });
+    const res = await adminLogin(post("/api/admin/auth/login", { email: admin.email, password: PASSWORD }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, mfaEnrollmentRequired: true });
+    const cookie = cookieOf(res);
+    const me = await adminMe(get("/api/admin/me", cookie));
+    expect(me.status).toBe(403);
+    expect(await me.json()).toEqual({ error: "mfa_enrollment_required" });
+    expect((await enrollStart(post("/api/admin/mfa/enroll/start", {}, { cookie }))).status).toBe(200);
   });
 
   it("판매자 쿠키로 마스터 API를 부르면 401", async () => {

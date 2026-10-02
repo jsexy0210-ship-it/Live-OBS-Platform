@@ -1,17 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireSeller } from "../../../../../lib/server/authz/guards";
 import { prisma } from "../../../../../lib/server/db";
-import { assertSameOrigin, errorResponse, queueRejectionStatus, sessionToken } from "../../../../../lib/server/http/route";
+import { mutation, queueRejectionStatus, sessionToken } from "../../../../../lib/server/http/route";
 import { endBroadcast } from "../../../../../lib/server/queue/service";
 
-export async function POST(req: Request) {
-  try {
-    assertSameOrigin(req);
-    const ctx = await requireSeller(prisma, sessionToken(req, "seller"));
-    const result = await endBroadcast(prisma, ctx);
-    if (!result.ok) return NextResponse.json({ error: result.reason }, { status: queueRejectionStatus(result.reason) });
-    return NextResponse.json({ ...result.value, version: result.version });
-  } catch (e) {
-    return errorResponse(e);
-  }
-}
+export const POST = mutation(async (req: Request) => {
+  const ctx = await requireSeller(prisma, sessionToken(req, "seller"));
+  const result = await endBroadcast(prisma, ctx);
+  if (!result.ok) return NextResponse.json({ error: result.reason }, { status: queueRejectionStatus(result.reason) });
+  return NextResponse.json({ ...result.value, version: result.version });
+});

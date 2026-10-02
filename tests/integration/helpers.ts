@@ -86,13 +86,35 @@ async function passwordHash() {
   return pwHash;
 }
 
+// 테스트용 TOTP 암호화 키(실제 값 아님). 테스트 프로세스에서만 쓴다.
+process.env.SECRET_BOX_KEY ??= Buffer.alloc(32, 9).toString("base64");
+
+// 기본은 TOTP 등록을 마친 마스터. enrolled: false면 등록 전 계정.
 export async function createAdmin(
   role: "SUPER_ADMIN" | "OPERATIONS" | "CS" | "READ_ONLY",
-  extra: { status?: "ACTIVE" | "SUSPENDED"; totpSecretEnc?: string; totpEnabledAt?: Date } = {},
+  extra: { status?: "ACTIVE" | "SUSPENDED"; enrolled?: boolean } = {},
 ) {
-  return db.platformAdmin.create({
-    data: { email: `admin${next()}@example.com`, passwordHash: await passwordHash(), name: "관리자", role, ...extra },
+  const { seal } = await import("../../lib/server/auth/secretBox");
+  const { generateTotpSecret } = await import("../../lib/server/auth/totp");
+  const totpSecret = generateTotpSecret();
+  const enrolled = extra.enrolled ?? true;
+  const admin = await db.platformAdmin.create({
+    data: {
+      email: `admin${next()}@example.com`,
+      passwordHash: await passwordHash(),
+      name: "관리자",
+      role,
+      status: extra.status ?? "ACTIVE",
+      ...(enrolled ? { totpSecretEnc: seal(totpSecret), totpEnabledAt: new Date() } : {}),
+    },
   });
+  return { ...admin, totpSecret };
+}
+
+// 마스터 로그인 입력(비밀번호 + 그 시각의 TOTP 코드)
+export async function adminCredentials(admin: { email: string; totpSecret: string }, at: Date) {
+  const { totpCode } = await import("../../lib/server/auth/totp");
+  return { email: admin.email, password: PASSWORD, totpCode: totpCode(admin.totpSecret, at) };
 }
 
 export async function createSellerUser(sellerId: string, role: "OWNER" | "MANAGER" | "BROADCASTER", email?: string) {
