@@ -16,11 +16,13 @@
     "@node-rs/argon2": "2.2.1",
     "@prisma/client": "6.19.3",
     "next": "16.3.8",
+    "pg": "8.23.1",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "@types/pg": "8.23.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "prisma": "6.19.3",
