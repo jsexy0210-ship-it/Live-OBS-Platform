@@ -436,23 +436,27 @@ enum ActorType {
 }
 
 model StockMovement {
-  id        String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerId  String              @db.Uuid
-  optionId  String              @db.Uuid
-  delta     Int
-  reason    StockMovementReason
-  orderId   String?             @db.Uuid
+  id         String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId   String              @db.Uuid
+  optionId   String              @db.Uuid
+  delta      Int
+  reason     StockMovementReason
+  orderId    String?             @db.Uuid
   // 수동 증감 사유(MANUAL). 예) 「이벤트 증정」
-  note      String?
-  actorType ActorType
-  actorId   String?             @db.Uuid
-  createdAt DateTime            @default(now()) @db.Timestamptz(3)
+  note       String?
+  // 이 이동 뒤 옵션 재고. DB 트리거(StockMovement_set_stock_after)가 넣는다: 이동은 언제나 재고를 바꾼 뒤 같은 트랜잭션에서 기록한다.
+  // 트리거 전 기록은 null.
+  stockAfter Int?
+  actorType  ActorType
+  actorId    String?             @db.Uuid
+  createdAt  DateTime            @default(now()) @db.Timestamptz(3)
 
   seller Seller        @relation(fields: [sellerId], references: [id])
   option ProductOption @relation(fields: [sellerId, optionId], references: [sellerId, id])
   order  Order?        @relation(fields: [sellerId, orderId], references: [sellerId, id])
 
   @@index([sellerId, optionId])
+  @@index([sellerId, createdAt(sort: Desc), id(sort: Desc)])
 }
 
 // ───────────── 주문·주문 품목 ─────────────
