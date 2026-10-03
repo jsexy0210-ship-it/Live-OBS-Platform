@@ -26,6 +26,8 @@ export type EngineHooks = {
   // 행동마다(비용·통계 기록 + lease 연장). 실행 자리를 잃었으면 던진다.
   touch(stats: EngineStats): Promise<void>;
   enterVerify(): Promise<void>;
+  // 브라우저 상태를 보관하기 직전(「보관 중」 표시를 먼저 남긴다). 실패하면 보관하지 않는다.
+  holdBrowserState?(): Promise<void>;
   // 무료 재연결 대조를 통과했다(그때의 쇼핑몰·PC). 재시도 때 브라우저 단계를 다시 하지 않으면 이 기록을 쓴다.
   targetVerified?(target: { shopKey: string; obsPairingId: string }): Promise<void>;
   stepDone(nextIndex: number, facts: ConnectionFacts): Promise<void>;
@@ -73,14 +75,24 @@ export async function runSteps(rt: AutomationRuntime, scope: JobScope, opts: Eng
   const guard = () => {
     if (opts.signal?.aborted) throw new EngineAborted();
   };
-  const keep = () => result?.kind === "needs_customer" && opts.keepBrowserStateOnWait !== false && session !== null;
+  let held = false;
   try {
     result = await runAll(rt, scope, opts, hooks, guard, (s) => (session = s), () => session);
-    if (result.kind === "needs_customer" && keep()) result = { ...result, heldBrowserState: true };
+    if (result.kind === "needs_customer" && opts.keepBrowserStateOnWait !== false && session !== null) {
+      // 보관하기 전에 「보관 중」 표시를 먼저 남긴다(fenced). 그 뒤 취소·fencing이 일어나도 표시가 남아 서버가 반드시 지운다.
+      // 표시를 남기지 못하면(자리를 잃음) 보관하지 않고 바로 지운다.
+      try {
+        await hooks.holdBrowserState?.();
+        held = true;
+      } catch {
+        held = false;
+      }
+      if (held) result = { ...result, heldBrowserState: true };
+    }
     return result;
   } finally {
     // 고객 행동 대기면 이 작업의 로그인·승인 상태를 암호화 보관해 재개 때 이어 간다. 그 밖에는 모두 지운다.
-    await (session as BrowserSession | null)?.close({ keepForResume: keep() });
+    await (session as BrowserSession | null)?.close({ keepForResume: held });
   }
 }
 
@@ -109,16 +121,26 @@ async function runAll(
   // 무료 재연결: 무엇이든 바꾸기 전에 실제로 연결된 쇼핑몰·PC가 기준 작업과 같은지 읽기만으로 확인한다.
   // 고객 로그인 전에는 쇼핑몰을 알 수 없으므로, 첫 변경 행동 바로 전에 한다. 알 수 없으면 무료로 진행하지 않는다.
   const want = opts.expectFacts;
-  let targetChecked = !want || (opts.targetVerified === true && STEPS[opts.startIndex]?.kind !== "browser");
+  // 쇼핑몰 대조는 기록(targetVerified)이 있고 브라우저 단계부터 다시 하지 않으면 다시 하지 않는다.
+  // PC(OBS pairing) 대조는 실행을 이어 갈 때마다 첫 변경 행동 전에 다시 한다(그사이 PC가 바뀔 수 있음).
+  let shopChecked = !want || (opts.targetVerified === true && STEPS[opts.startIndex]?.kind !== "browser");
+  let pcChecked = !want;
   const checkTarget = async (): Promise<EngineResult | null> => {
-    if (targetChecked || !want) return null;
-    const session = await browser();
+    if (!want || (shopChecked && pcChecked)) return null;
+    if (!want.shopKey || !want.obsPairingId) return { kind: "failed", reason: "reconnect_target_unverified" };
+    let shopKey: string | null = want.shopKey;
+    if (!shopChecked) {
+      const session = await browser();
+      guard();
+      shopKey = await session.currentShopKey();
+    }
     guard();
-    const [shopKey, obsPairingId] = await Promise.all([session.currentShopKey(), rt.obs.currentPairingId(scope)]);
-    if (!shopKey || !obsPairingId || !want.shopKey || !want.obsPairingId) return { kind: "failed", reason: "reconnect_target_unverified" };
+    const obsPairingId = await rt.obs.currentPairingId(scope);
+    if (!shopKey || !obsPairingId) return { kind: "failed", reason: "reconnect_target_unverified" };
     if (shopKey !== want.shopKey || obsPairingId !== want.obsPairingId) return { kind: "failed", reason: "reconnect_target_mismatch" };
-    targetChecked = true;
-    await hooks.targetVerified?.({ shopKey, obsPairingId });
+    if (!shopChecked) await hooks.targetVerified?.({ shopKey, obsPairingId });
+    shopChecked = true;
+    pcChecked = true;
     return null;
   };
   const secretBook = opts.secretPlaybook === undefined ? opts.playbook : opts.secretPlaybook;
@@ -195,7 +217,10 @@ async function runAll(
         if (!raw.url || !hostAllowed(raw.url) || !here || !hostAllowed(here)) return { kind: "failed", reason: "unsafe_action:secret_origin_not_allowed" };
       }
       guard();
-      const out: ActionOutcome = session ? await session.perform(action, secrets) : await rt.obs.perform(scope, action);
+      // 변경 행동의 고정 키: 작업·단계·순번·행동 종류. 실행기·로컬 도구는 같은 키를 한 번만 적용한다(다시 실행돼도 중복 없음).
+      // 이동·확인 같은 바꾸지 않는 행동은 새 세션에서 다시 해야 하므로 키를 붙이지 않는다.
+      const actionKey = MUTATING.includes(action.type) ? `${scope.jobId}:${stepIndex}:${i}:${action.type}` : undefined;
+      const out: ActionOutcome = session ? await session.perform(action, secrets, actionKey) : await rt.obs.perform(scope, action, actionKey);
       if (out.kind === "needs_customer") return { kind: "needs_customer", action: out.action };
       if (out.kind === "retryable") return { kind: "retry", reason: out.reason };
       if (out.kind === "fatal") return { kind: "failed", reason: out.reason };

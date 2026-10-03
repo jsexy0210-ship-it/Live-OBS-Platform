@@ -15,7 +15,7 @@ import { markConnectionRevoked } from "../../lib/server/automation/connection";
 import { cancelJob, getJob, requestRefund, resumeJob } from "../../lib/server/automation/jobs";
 import { purchaseAutomation, reconcileAutomationPayments, reconnectAutomation } from "../../lib/server/automation/purchase";
 import { runSteps } from "../../lib/server/automation/engine";
-import { FencingError, advanceStep, claimNext, finishJob, reapExpired, toVerifying, touch } from "../../lib/server/automation/queue";
+import { FencingError, advanceStep, claimNext, finishJob, markBrowserStateHeld, parkForCustomer, reapExpired, toVerifying, touch } from "../../lib/server/automation/queue";
 import { executeJob, purgeEndedBrowserState, runOnce, runWorkerLoop } from "../../lib/server/automation/worker";
 import { FakeBillingProvider } from "../../lib/server/billing/provider";
 import { billingProvider } from "../../lib/server/billing/registry";
@@ -1157,5 +1157,84 @@ describe("정본 d6e22c4: 실행 시간 6시간 마감·시작 뒤 취소", () =
     expect(j.activeMsUsed).toBeGreaterThan(0);
     expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: running.seller.id } })).toMatchObject({ status: "PAID" });
     expect(await requestRefund(db, running.ctx, running.jobId)).toEqual({ ok: false, reason: "not_refundable" });
+  });
+});
+
+describe("Codex 4차 반영", () => {
+  async function completedJob() {
+    const s = await bought();
+    expect(await runOnce(db, runtime(), W)).toBe("succeeded");
+    return { ...s, target: { shopKey: `mall-${s.seller.id}`, obsPairingId: `pc-${s.seller.id}` } };
+  }
+  const noHooks = { touch: async () => {}, enterVerify: async () => {}, stepDone: async () => {} };
+  const baseOpts = { verifying: false, costLimit: 3000, maxActionsPerStep: 12, playbook: cafe24Playbook };
+  const freshStats = () => ({ costUsed: 0, plannerCalls: 0, playbookActions: 0, deviatedSteps: [] as string[] });
+
+  it("무료 재연결: 대조를 통과한 뒤 OBS 단계에서 재시도하는 사이 PC가 바뀌면, 다시 실행할 때 OBS 변경 0회로 mismatch", async () => {
+    const s = await completedJob();
+    const r = await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: newKey(), target: s.target });
+    if (!r.ok) throw new Error(r.reason);
+    const rt = runtime();
+    rt.obs.failOnce.add(s.seller.id);
+    expect(await runOnce(db, rt, { ...W, random: () => 0 })).toBe("retry");
+    expect((await job(r.jobId)).targetVerifiedAt).not.toBeNull();
+    await db.automationJob.update({ where: { id: r.jobId }, data: { runAfter: new Date(Date.now() - 1000) } });
+    rt.obs.pairing.set(s.seller.id, "other-pc");
+    const before = rt.obs.performed.length;
+    expect(await runOnce(db, rt, W)).toBe("failed");
+    expect(await job(r.jobId)).toMatchObject({ lastError: "reconnect_target_mismatch" });
+    expect(rt.obs.performed.slice(before)).toHaveLength(0);
+  });
+
+  it("보관 직전에 「보관 중」 표시를 먼저 남긴다: 표시 뒤·대기 기록 전에 취소돼도 서버가 지우고, 표시 전에 자리를 잃으면 보관하지 않는다", async () => {
+    for (const when of ["after_hold", "before_hold"] as const) {
+      const a = await bought();
+      const claimed = await claimNext(db, "w1");
+      if (!claimed) throw new Error("no claim");
+      const rt = runtime();
+      let asked = false;
+      rt.browser.outcome = (_s, action) => (action.type === "click" && !asked ? ((asked = true), { kind: "needs_customer", action: "LOGIN" }) : undefined);
+      const r = await runSteps(rt, { sellerId: a.seller.id, jobId: a.jobId }, { ...baseOpts, startIndex: 0, stats: freshStats() }, {
+        ...noHooks,
+        holdBrowserState: async () => {
+          if (when === "before_hold") await cancelJob(db, a.ctx, a.jobId);
+          await markBrowserStateHeld(db, claimed.claim);
+        },
+      });
+      expect(r.kind).toBe("needs_customer");
+      if (when === "after_hold") {
+        expect(r).toMatchObject({ heldBrowserState: true });
+        expect(rt.browser.saved.has(a.jobId)).toBe(true);
+        // 대기 기록(parking) 전에 취소: 대기 기록은 fencing으로 거부되지만 표시가 남아 서버가 지운다
+        await cancelJob(db, a.ctx, a.jobId);
+        await expect(parkForCustomer(db, claimed.claim, "LOGIN", true)).rejects.toBeInstanceOf(FencingError);
+        expect(await job(a.jobId)).toMatchObject({ status: "CANCELED", browserStateHeld: true });
+        expect(await purgeEndedBrowserState(db, rt)).toBe(1);
+      } else {
+        expect(r).not.toHaveProperty("heldBrowserState");
+      }
+      expect(rt.browser.saved.size).toBe(0);
+    }
+  });
+
+  it("변경 행동은 고정 키로 한 번만 적용된다: OBS 소스 추가 직후 작업자가 죽고 다시 실행해도 소스는 1개", async () => {
+    const a = await bought();
+    const rt = runtime();
+    const scope = { sellerId: a.seller.id, jobId: a.jobId };
+    // OBS 소스 추가 단계(2)를 마친 뒤 진행 위치를 남기기 전에 죽은 작업자
+    await expect(
+      runSteps(rt, scope, { ...baseOpts, startIndex: 2, stats: freshStats() }, {
+        ...noHooks,
+        stepDone: async (next) => {
+          if (next === 3) throw new Error("crash");
+        },
+      }),
+    ).rejects.toThrow("crash");
+    expect(rt.obs.sources.get(a.seller.id)).toBe(1);
+    // 회수 뒤 같은 단계부터 다시 실행
+    const again = await runSteps(rt, scope, { ...baseOpts, startIndex: 2, stats: freshStats() }, noHooks);
+    expect(again.kind).toBe("succeeded");
+    expect(rt.obs.sources.get(a.seller.id)).toBe(1);
+    expect(rt.obs.performed.filter((p) => p.type === "obs_add_overlay_source")).toHaveLength(1);
   });
 });

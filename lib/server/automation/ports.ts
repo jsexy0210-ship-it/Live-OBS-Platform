@@ -54,7 +54,10 @@ export type ActionOutcome =
 export interface BrowserSession {
   readonly id: string;
   observe(): Promise<Observation>;
-  perform(action: AutomationAction, secrets: JobSecrets): Promise<ActionOutcome>;
+  // actionKey: 변경 행동(클릭·입력·OBS 설정·테스트 주문)에만 붙는 고정 키(작업 id·단계·순번·행동 종류). 실행기는 같은 키로
+  // 이미 성공한 행동을 다시 적용하지 않고 그때 결과를 돌려준다(작업자가 죽은 뒤 회수·재실행해도 중복 적용 없음).
+  // 키 기록도 보관 자료처럼 작업에만 묶고 작업이 끝나면 지운다. 키가 없는 행동(이동·확인)은 매번 실행한다.
+  perform(action: AutomationAction, secrets: JobSecrets, actionKey?: string): Promise<ActionOutcome>;
   // 지금 로그인된 관리 화면의 쇼핑몰 식별자(읽기만, 아무것도 바꾸지 않음). 알 수 없으면 null
   currentShopKey(): Promise<string | null>;
   // 지금 문서의 주소(리다이렉트 뒤 실제 출처, 읽기만). 알 수 없으면 null. 비밀값을 넣기 직전에 확인한다.
@@ -83,7 +86,8 @@ export interface BrowserExecutor {
 
 export interface ObsBridge {
   observe(scope: JobScope): Promise<Observation>;
-  perform(scope: JobScope, action: AutomationAction): Promise<ActionOutcome>;
+  // actionKey: 위와 같다. 로컬 도구는 같은 키로 이미 성공한 OBS 변경(소스 추가 등)을 다시 적용하지 않는다.
+  perform(scope: JobScope, action: AutomationAction, actionKey?: string): Promise<ActionOutcome>;
   // 연결된 로컬 도구의 OBS pairing id(읽기만). 연결 안 됐거나 알 수 없으면 null
   currentPairingId(scope: JobScope): Promise<string | null>;
   // 이 작업의 OBS 연결 정보(로컬 도구 연결 토큰 등)를 지운다. 고객 대기 중에는 암호화해 작업에만 묶어 두고,

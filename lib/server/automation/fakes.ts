@@ -93,6 +93,8 @@ export class FakeBrowserExecutor implements BrowserExecutor {
   // 관찰·현재 문서 주소(리다이렉트 흉내용). observe 때와 실행 직전 주소를 따로 바꿀 수 있다.
   pageUrl: (scope: JobScope) => string | null = () => "https://admin.cafe24.com/";
   currentUrlOverride: ((scope: JobScope) => string | null) | null = null;
+  // 이미 적용한 행동 키 → 결과(같은 키는 한 번만 적용)
+  readonly applied = new Map<string, ActionOutcome>();
   // currentShopKey를 몇 번 읽었는지(재연결 대조 횟수 확인용)
   shopKeyReads = 0;
   // 판매자별로 연결된 쇼핑몰(기본: mall-<판매자 id>). 쇼핑몰 교체를 흉내 낼 때 바꾼다. null이면 알 수 없음.
@@ -133,15 +135,22 @@ export class FakeBrowserExecutor implements BrowserExecutor {
         const v = self.shopKey.get(scope.sellerId);
         return v === undefined ? `mall-${scope.sellerId}` : v;
       },
-      async perform(action, secrets): Promise<ActionOutcome> {
+      async perform(action, secrets, actionKey?: string): Promise<ActionOutcome> {
         secretsSeen = secrets;
+        // 같은 키로 이미 성공한 행동은 다시 적용하지 않는다(계약)
+        const done = actionKey ? self.applied.get(actionKey) : undefined;
+        if (done) return done;
         self.performed.push({ scope, type: action.type });
         await sleep(self.delayMs);
         const o = self.outcome?.(scope, action);
         if (o) return o;
         if (action.type === "navigate") jar.set("session", `${scope.sellerId}:${scope.jobId}`);
-        if (action.type === "step_done") return { kind: "ok", stepDone: true, facts: { shopKey: self.shopKey.get(scope.sellerId) ?? `mall-${scope.sellerId}` } };
-        return { kind: "ok", stepDone: false };
+        const out: ActionOutcome =
+          action.type === "step_done"
+            ? { kind: "ok", stepDone: true, facts: { shopKey: self.shopKey.get(scope.sellerId) ?? `mall-${scope.sellerId}` } }
+            : { kind: "ok", stepDone: false };
+        if (actionKey) self.applied.set(actionKey, out);
+        return out;
       },
       async close(opts) {
         self.live.delete(id);
@@ -188,9 +197,24 @@ export class FakeObsBridge implements ObsBridge {
     return v === undefined ? `pc-${scope.sellerId}` : v;
   }
 
-  async perform(scope: JobScope, action: AutomationAction): Promise<ActionOutcome> {
+  // 이미 적용한 행동 키 → 결과, 판매자별 OBS 소스 수(같은 키는 한 번만 적용되는지 확인용)
+  readonly applied = new Map<string, ActionOutcome>();
+  readonly sources = new Map<string, number>();
+
+  async perform(scope: JobScope, action: AutomationAction, actionKey?: string): Promise<ActionOutcome> {
     await sleep(this.delayMs);
+    const done = actionKey ? this.applied.get(actionKey) : undefined;
+    if (done) return done;
+    const out = await this.apply(scope, action);
+    if (out.kind === "ok" && actionKey) this.applied.set(actionKey, out);
+    return out;
+  }
+
+  private async apply(scope: JobScope, action: AutomationAction): Promise<ActionOutcome> {
     this.performed.push({ scope, type: action.type });
+    if (action.type === "obs_add_overlay_source" && !this.disconnected.has(scope.sellerId) && !this.failOnce.has(scope.sellerId)) {
+      this.sources.set(scope.sellerId, (this.sources.get(scope.sellerId) ?? 0) + 1);
+    }
     if (this.failOnce.delete(scope.sellerId)) return { kind: "retryable", reason: "obs_busy" };
     if (this.disconnected.has(scope.sellerId)) return { kind: "needs_customer", action: "LOCAL_TOOL" };
     if (action.type === "check_overlay_shows_test_event") {

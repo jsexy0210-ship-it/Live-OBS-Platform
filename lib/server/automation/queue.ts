@@ -183,6 +183,9 @@ export const failWithRefund = (db: PrismaClient, c: Claim, reason: string) =>
     after: (tx, cur, at) => markRefundPending(tx, cur, reason, at),
   }));
 
+// 브라우저 상태 보관 직전 「보관 중」 표시(보관본을 놓치지 않게 보관보다 먼저 남긴다)
+export const markBrowserStateHeld = (db: PrismaClient, c: Claim) => fencedWrite(db, c, () => ({ data: { browserStateHeld: true } }));
+
 // 무료 재연결 대조 통과 기록(그때의 쇼핑몰·PC와 시각)
 export const markTargetVerified = (db: PrismaClient, c: Claim, target: { shopKey: string; obsPairingId: string }) =>
   fencedWrite(db, c, (now) => ({ data: { targetVerifiedAt: now, shopKey: target.shopKey.slice(0, 200), obsPairingId: target.obsPairingId.slice(0, 200) } }));
