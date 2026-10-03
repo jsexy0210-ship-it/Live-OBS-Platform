@@ -9,6 +9,9 @@ import { prisma } from "../../lib/server/db";
 import { loginBuyer, loginSeller } from "../../lib/server/auth/login";
 import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
 import { createOrder } from "../../lib/server/orders/create";
+import { getBuyerOrder, listBuyerOrders } from "../../lib/server/orders/buyer";
+import { autoConfirmPurchases } from "../../lib/server/orders/delivery";
+import { getOrder, listOrders, listSellerOrders } from "../../lib/server/orders/read";
 import { signupBuyer } from "../../lib/server/buyers/signup";
 import { identityProvider } from "../../lib/server/identity/registry";
 import { refundOrder } from "../../lib/server/queue/service";
@@ -373,5 +376,98 @@ describe("탈퇴와 동시 요청", () => {
     expect(logged.ok).toBe(true);
     expect(await db.buyerSession.count({ where: { buyerMemberId: s.buyer.id } })).toBe(0);
     expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.withdraw", actorId: s.buyer.id } })).toMatchObject({ after: { deletedSessions: 2 } });
+  });
+});
+
+describe("탈퇴 회원 법정 보관 분리", () => {
+  const YEAR5 = (d: Date) => new Date(Date.UTC(d.getUTCFullYear() + 5, d.getUTCMonth(), d.getUTCDate(), d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds(), d.getUTCMilliseconds()));
+  const ship = (sellerId: string, orderId: string, deliveredAt: Date) =>
+    db.shipment.create({ data: { sellerId, orderId, courier: "CJ", trackingNumber: "123456789012", status: "DELIVERED", shippedAt: deliveredAt, deliveredAt } });
+
+  it("탈퇴하면 끝난 주문(취소·환불·구매 확정)에 분리 보관 표시와 마지막 거래 + 5년 만료일을 달고 판매자·구매자 일반 조회에서 뺀다. 구매 확정 전 주문은 두고, 환불·자동 구매 확정 때 분리한다", async () => {
+    const s = await shop();
+    const t0 = new Date("2026-09-01T00:00:00.000Z");
+    const refundedAt = new Date("2026-09-05T03:00:00.000Z");
+    const cancelled = await s.order("CANCELLED", { createdAt: t0, cancelledAt: new Date("2026-09-01T01:00:00.000Z") });
+    const refunded = await s.order("REFUNDED", { createdAt: t0, paidAt: t0, refundedAt });
+    const confirmed = await s.order("PAID", { createdAt: t0, paidAt: t0, purchaseConfirmedAt: new Date("2026-09-10T00:00:00.000Z") });
+    await ship(s.seller.id, confirmed.id, new Date("2026-09-03T00:00:00.000Z"));
+    const toRefund = await s.order("PAID", { paidAt: new Date() });
+    await ship(s.seller.id, toRefund.id, new Date());
+    const toConfirm = await s.order("PAID", { paidAt: new Date(Date.now() - 9 * 86400_000) });
+    await ship(s.seller.id, toConfirm.id, new Date(Date.now() - 8 * 86400_000));
+    // 다른 회원 주문은 그대로
+    const other = await createLoginBuyer(s.seller.id, s.grade.id);
+    const otherOrder = await db.order.create({ data: { sellerId: s.seller.id, orderNo: 99, buyerMemberId: other.id, broadcastNicknameSnapshot: "남", totalAmount: 1000, status: "CANCELLED", cancelledAt: t0 } });
+
+    const before = Date.now();
+    expect((await s.withdraw(PASSWORD)).status).toBe(200);
+    const rows = new Map((await db.order.findMany()).map((o) => [o.id, o]));
+    expect(rows.get(cancelled.id)!.legalRetainUntil).toEqual(new Date("2031-09-01T01:00:00.000Z"));
+    expect(rows.get(refunded.id)!.legalRetainUntil).toEqual(YEAR5(refundedAt));
+    expect(rows.get(confirmed.id)!.legalRetainUntil).toEqual(new Date("2031-09-10T00:00:00.000Z"));
+    for (const id of [cancelled.id, refunded.id, confirmed.id]) expect(rows.get(id)!.legalHoldAt!.getTime()).toBeGreaterThanOrEqual(before);
+    for (const id of [toRefund.id, toConfirm.id, otherOrder.id]) expect(rows.get(id)).toMatchObject({ legalHoldAt: null, legalRetainUntil: null });
+    expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.withdraw", actorId: s.buyer.id } })).toMatchObject({ after: { heldOrders: 3 } });
+
+    // 판매자 일반 조회(목록·검색·상세)와 구매자 조회에서 빠진다
+    const owner = await createSellerUser(s.seller.id, "OWNER");
+    const sctx: TenantContext = { sellerId: s.seller.id, actorType: "SELLER_USER", actorId: owner.id, isOwner: true, permissions: [], readOnly: false };
+    const listed = await listSellerOrders(db, sctx, {});
+    if (!listed.ok) throw new Error("list");
+    expect(listed.orders.map((o) => o.id).sort()).toEqual([toRefund.id, toConfirm.id, otherOrder.id].sort());
+    const searched = await listSellerOrders(db, sctx, { q: String(refunded.orderNo) });
+    expect(searched.ok).toBe(true);
+    expect(searched.ok && searched.orders.map((o) => o.id)).not.toContain(refunded.id);
+    expect((await listOrders(db, sctx)).map((o) => o.id)).not.toContain(refunded.id);
+    await expect(getOrder(db, sctx, refunded.id)).rejects.toMatchObject({ status: 404 });
+    expect((await getOrder(db, sctx, toRefund.id)).id).toBe(toRefund.id);
+    expect(await getBuyerOrder(db, { sellerId: s.seller.id, buyerMemberId: s.buyer.id }, refunded.id)).toBeNull();
+    const mine = await listBuyerOrders(db, { sellerId: s.seller.id, buyerMemberId: s.buyer.id });
+    expect(mine.ok && mine.value.orders.map((o) => o.id).sort()).toEqual([toRefund.id, toConfirm.id].sort());
+
+    // 구매 확정 전에 탈퇴한 주문은 환불·자동 구매 확정 때 분리한다
+    const r = await refundOrder(db, sctx, toRefund.id, { reason: "불량", expectedLiveVersion: (await db.seller.findUniqueOrThrow({ where: { id: s.seller.id } })).liveVersion, fault: "SELLER" });
+    expect(r.ok).toBe(true);
+    const afterRefund = await db.order.findUniqueOrThrow({ where: { id: toRefund.id } });
+    expect(afterRefund.legalHoldAt).not.toBeNull();
+    expect(afterRefund.legalRetainUntil).toEqual(YEAR5(afterRefund.refundedAt!));
+    expect(await autoConfirmPurchases(db)).toMatchObject({ done: [toConfirm.id] });
+    const afterConfirm = await db.order.findUniqueOrThrow({ where: { id: toConfirm.id } });
+    expect(afterConfirm.legalHoldAt).not.toBeNull();
+    expect(afterConfirm.legalRetainUntil).toEqual(YEAR5(afterConfirm.purchaseConfirmedAt!));
+    // 탈퇴하지 않은 회원 주문은 끝나도 분리하지 않는다
+    expect((await db.order.findUniqueOrThrow({ where: { id: otherOrder.id } })).legalHoldAt).toBeNull();
+  });
+
+  it("탈퇴 회원이 행위자·대상인 감사 로그는 거래 관련만 분리 보관하고 기록 시각 + 5년, 거래 무관은 탈퇴 + 3개월까지 회원 id를 둔다. 다른 회원·다른 쇼핑몰 기록은 그대로", async () => {
+    const s = await shop();
+    const at = new Date("2026-08-01T00:00:00.000Z");
+    const log = (action: string, extra: Record<string, unknown> = {}) =>
+      db.auditLog.create({ data: { actorType: "BUYER", actorId: s.buyer.id, sellerId: s.seller.id, action, createdAt: at, ...extra } });
+    const orderCreate = await log("order.create", { targetType: "Order", targetId: crypto.randomUUID() });
+    const login = await log("auth.buyer.login");
+    const loginFailed = await log("auth.buyer.login_failed", { reason: "wrong_password" });
+    const signup = await log("buyer.signup");
+    const address = await log("buyer_address.update", { targetType: "BuyerAddress", targetId: crypto.randomUUID() });
+    const restriction = await db.auditLog.create({
+      data: { actorType: "SYSTEM", sellerId: s.seller.id, action: "buyer.purchase_restriction.create", targetType: "BuyerMember", targetId: s.buyer.id, createdAt: at },
+    });
+    const unknown = await log("buyer.something_new");
+    const other = await db.auditLog.create({ data: { actorType: "BUYER", actorId: crypto.randomUUID(), sellerId: s.seller.id, action: "order.create", createdAt: at } });
+    const { seller: otherShop } = await createSeller();
+    const otherShopRow = await db.auditLog.create({ data: { actorType: "BUYER", actorId: s.buyer.id, sellerId: otherShop.id, action: "auth.buyer.login", createdAt: at } });
+
+    const now = new Date("2026-10-03T05:00:00.000Z");
+    expect(await withdrawBuyer(db, { sellerId: s.seller.id, buyerMemberId: s.buyer.id }, { password: PASSWORD, now })).toEqual({ ok: true });
+    const get = (id: string) => db.auditLog.findUniqueOrThrow({ where: { id } });
+    const fiveYears = new Date("2031-08-01T00:00:00.000Z");
+    const threeMonths = new Date("2027-01-03T05:00:00.000Z");
+    expect(await get(orderCreate.id)).toMatchObject({ legalHoldAt: now, retainUntil: fiveYears });
+    // 분류가 없는 행동은 더 긴 거래 관련 기준
+    expect(await get(unknown.id)).toMatchObject({ legalHoldAt: now, retainUntil: fiveYears });
+    for (const r of [login, loginFailed, signup, address, restriction]) expect(await get(r.id), r.action).toMatchObject({ legalHoldAt: null, retainUntil: threeMonths });
+    expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.withdraw", actorId: s.buyer.id } })).toMatchObject({ legalHoldAt: null, retainUntil: threeMonths });
+    for (const r of [other, otherShopRow]) expect(await get(r.id)).toMatchObject({ legalHoldAt: null, retainUntil: null });
   });
 });

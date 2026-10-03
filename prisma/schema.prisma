@@ -578,6 +578,10 @@ model Order {
   paymentDueAt              DateTime?         @db.Timestamptz(3)
   // 입금 기한이 지나 시스템이 자동 취소한 시각. 자동 구매 제한 횟수를 셀 때 쓴다.
   autoCancelledAt           DateTime?         @db.Timestamptz(3)
+  // 법정 보관 분리(탈퇴 회원의 끝난 주문, buyers/legalHold.ts): 분리한 시각과 보관 만료일(마지막 거래 시각 + 5년).
+  // 분리된 주문은 판매자·구매자 일반 조회(목록·검색·상세)에서 뺀다. 보관 만료 뒤 파기는 별도 함수.
+  legalHoldAt               DateTime?         @db.Timestamptz(3)
+  legalRetainUntil          DateTime?         @db.Timestamptz(3)
 
   seller          Seller                @relation(fields: [sellerId], references: [id])
   buyerMember     BuyerMember           @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id])
@@ -845,19 +849,23 @@ model OverlayToken {
 
 // 추가만 한다. 수정·삭제하지 않는다. 비밀번호 해시·토큰·TOTP 비밀키는 before/after에 넣지 않는다.
 model AuditLog {
-  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  actorType  ActorType
-  actorId    String?   @db.Uuid
-  sellerId   String?   @db.Uuid
-  action     String
-  targetType String?
-  targetId   String?
-  before     Json?
-  after      Json?
-  reason     String?
-  ip         String?
-  userAgent  String?
-  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actorType   ActorType
+  actorId     String?   @db.Uuid
+  sellerId    String?   @db.Uuid
+  action      String
+  targetType  String?
+  targetId    String?
+  before      Json?
+  after       Json?
+  reason      String?
+  ip          String?
+  userAgent   String?
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  // 탈퇴 회원이 행위자·대상인 행(buyers/legalHold.ts): 거래 관련 행은 법정 보관으로 분리(legalHoldAt)하고,
+  // retainUntil까지 회원 id를 둔다(거래 관련 기록 시각 + 5년, 거래 무관 탈퇴 + 3개월). 그 뒤 회원 id 비식별은 별도 함수.
+  legalHoldAt DateTime? @db.Timestamptz(3)
+  retainUntil DateTime? @db.Timestamptz(3)
 
   seller Seller? @relation(fields: [sellerId], references: [id])
 

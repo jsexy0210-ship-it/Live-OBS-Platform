@@ -4,6 +4,7 @@ import { writeAudit } from "../audit/log";
 import { loginErrorBody } from "../auth/messages";
 import { hashPassword, verifyPassword } from "../auth/password";
 import { lockBuyerAddresses } from "./addresses";
+import { holdFinishedOrders, holdMemberAuditLogs } from "./legalHold";
 import { WITHDRAWN_DISPLAY_NAME } from "./memberData";
 
 // 구매자 탈퇴(ARCHITECTURE 「구매자 회원」: WITHDRAWN과 deletedAt을 같은 트랜잭션에서, 개인정보 비식별).
@@ -22,6 +23,8 @@ import { WITHDRAWN_DISPLAY_NAME } from "./memberData";
 //   소멸(EXPIRE, 음수, SUCCEEDED) 원장을 남기고 잔액을 0으로 만든다. 아직 처리 전(PENDING)인 이 회원의 원장(지급·회수 대기)은
 //   FAILED(member_withdrawn)로 닫아 나중에 잔액에 들어가지 않게 한다. 재가입하면 새 회원이라 되살아나지 않는다.
 // - 저장 배송지·구매 제한·세션 행을 지운다.
+// - 법정 보관 기록을 분리한다(buyers/legalHold.ts): 끝난 주문은 분리 보관 표시·만료일(마지막 거래 + 5년)을 달아 일반 조회에서 빼고,
+//   이 회원이 행위자·대상인 감사 로그는 행동 종류별로 거래 관련 분리 보관·기록 + 5년, 거래 무관 탈퇴 + 3개월 기한을 단다.
 
 export const WITHDRAW_FAIL_LIMIT = 5;
 export const WITHDRAW_FAIL_WINDOW_MS = 15 * 60_000;
@@ -103,6 +106,7 @@ export async function withdrawBuyer(
     const restrictions = await tx.buyerPurchaseRestriction.deleteMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id } });
     const addresses = await tx.buyerAddress.deleteMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id } });
     const sessions = await tx.buyerSession.deleteMany({ where: { buyerMemberId: member.id } });
+    const heldOrders = await holdFinishedOrders(tx, scope.sellerId, member.id, now);
     await writeAudit(tx, {
       actorType: "BUYER",
       actorId: member.id,
@@ -112,8 +116,10 @@ export async function withdrawBuyer(
       targetId: member.id,
       ip: input.meta?.ip,
       userAgent: input.meta?.userAgent,
-      after: { status: "WITHDRAWN", deletedAddresses: addresses.count, deletedSessions: sessions.count, deletedVerifications: identities.count, anonymizedOrders: orders.count, anonymizedQueueItems: queueItems.count, anonymizedHitCards: hitCards.count, deletedRestrictions: restrictions.count, ...forfeited },
+      after: { status: "WITHDRAWN", deletedAddresses: addresses.count, deletedSessions: sessions.count, deletedVerifications: identities.count, anonymizedOrders: orders.count, anonymizedQueueItems: queueItems.count, anonymizedHitCards: hitCards.count, deletedRestrictions: restrictions.count, heldOrders, ...forfeited },
     });
+    // 방금 남긴 탈퇴 기록까지 포함해 기한을 단다
+    await holdMemberAuditLogs(tx, scope.sellerId, member.id, now);
     return null;
   });
   return result ? { ok: false, reason: result } : { ok: true };

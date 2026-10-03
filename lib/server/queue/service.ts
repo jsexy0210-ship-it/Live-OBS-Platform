@@ -8,6 +8,7 @@ import { createPendingRewardLedger } from "../rewards/ledger";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 import { restoreOrderStock } from "../products/stock";
 import { checkTransition, isCompletePermutation, isValidTimer, type QueueAction, type QueueRejection } from "./rules";
+import { holdFinishedOrders } from "../buyers/legalHold";
 
 type Tx = Prisma.TransactionClient;
 
@@ -647,6 +648,8 @@ export async function refundOrder(
     });
     // 「결제 후 취소 5회 → 30일」(판매자 설정, 기본 꺼짐). 맨 앞에서 잡은 주문 생성 잠금 아래에서 센다.
     await maybeRestrict(tx, ctx.sellerId, order.buyerMemberId, now, "paid_cancel");
+    // 탈퇴한 회원의 주문(배송 완료 뒤 구매 확정 전에 탈퇴)이면 이제 끝난 거래라 법정 보관으로 분리한다(buyers/legalHold.ts)
+    await holdFinishedOrders(tx, ctx.sellerId, order.buyerMemberId, now, orderId);
     return { orderId, restockedItemIds, cancelledQueueItemIds, openedItemCount, rewardRevoke, refundAmount, refundFault, returnFeeDeducted };
   });
 }

@@ -11,7 +11,7 @@ export const MEMBER_DATA_POLICY: Record<string, { policy: MemberDataPolicy; note
   BuyerSession: { policy: "delete", note: "로그인 세션" },
   BuyerPurchaseRestriction: { policy: "delete", note: "구매 제한(개인정보 없음, 탈퇴하면 쓸 일 없음)" },
   IdentityVerification: { policy: "delete", note: "이 쇼핑몰에서 회원과 이어진(subjectId) 또는 같은 CI 해시의 본인확인 기록" },
-  Order: { policy: "retain_legal", note: "대금 결제·재화 공급 기록 5년(받는 사람 스냅숏 포함). 방송 닉네임 스냅숏만 「탈퇴한 회원」으로" },
+  Order: { policy: "retain_legal", note: "대금 결제·재화 공급 기록 5년(받는 사람 스냅숏·결제·환불 포함). 끝난 주문은 분리 보관 표시·만료일(buyers/legalHold.ts), 방송 닉네임 스냅숏만 「탈퇴한 회원」으로" },
   QueueItem: { policy: "anonymize", note: "그 회원 주문의 주문대기 닉네임 스냅숏을 「탈퇴한 회원」으로" },
   HitCard: { policy: "anonymize", note: "닉네임 스냅숏을 「탈퇴한 회원」으로" },
   RewardLedger: { policy: "retain_legal", note: "적립금 원장(거래 기록). 처리 전 원장은 FAILED(member_withdrawn)" },
@@ -22,12 +22,42 @@ export const MEMBER_DATA_POLICY: Record<string, { policy: MemberDataPolicy; note
 // 「모델.칸」마다 탈퇴 때 처리. 행위자·대상 칸을 가진 표를 새로 만들면 여기에 넣어야 한다(tests/unit/memberData.test.ts).
 // 법정 보관 기록의 보관 기간 뒤 비식별(행위자 id를 비식별 값으로)은 별도 파기 함수(⑩)에서 한다.
 export const MEMBER_REFERENCE_POLICY: Record<string, { policy: MemberDataPolicy; note: string }> = {
-  "AuditLog.actorId": { policy: "retain_legal", note: "actorType=BUYER 행. 동의·탈퇴 등 계약 기록이라 보관, 기간(거래 기록 5년, 거래 없으면 3개월) 뒤 행위자 id 비식별" },
+  "AuditLog.actorId": { policy: "retain_legal", note: "actorType=BUYER 행. 행동 종류별(MEMBER_AUDIT_RETENTION): 거래 관련은 분리 보관·기록 시각 + 5년, 거래 무관은 탈퇴 + 3개월 뒤 회원 id 비식별" },
   "AuditLog.targetId": { policy: "retain_legal", note: "targetType=BuyerMember 행. 위와 같음" },
   "StockMovement.actorId": { policy: "retain_legal", note: "actorType=BUYER 행(주문으로 생긴 재고 증감). 거래 기록" },
   "OrderStatusHistory.actorId": { policy: "retain_legal", note: "actorType=BUYER 행(구매자 취소 등). 거래 기록" },
   "QueueItemStatusHistory.actorId": { policy: "retain_legal", note: "actorType=BUYER 행. 주문 이행 기록" },
 };
+
+// 탈퇴 회원이 행위자·대상인 감사 로그의 행동 종류별 보관(대표님 결정 2026-10-03, PRODUCT_SCOPE 「구매자 탈퇴·재가입」).
+// - transaction: 거래 관련(주문·결제·취소·환불·배송). 법정 보관으로 분리하고 기록 시각 + 5년 동안 회원 id를 둔다.
+// - non_transaction: 거래 무관(로그인·로그인 실패·가입·회원 정보 수정 등). 탈퇴 + 3개월 뒤 회원 id 비식별.
+// 구매자 회원 id를 행위자·대상으로 남기는 행동을 새로 만들면 여기에 넣어야 한다(tests/unit/memberData.test.ts).
+export type MemberAuditRetention = "transaction" | "non_transaction";
+export const MEMBER_AUDIT_RETENTION_PREFIX: Record<string, MemberAuditRetention> = {
+  "order.": "transaction", // 주문 생성·결제·취소·자동 취소·환불·재고 부족·구매 확정·배송
+};
+export const MEMBER_AUDIT_RETENTION: Record<string, MemberAuditRetention> = {
+  "auth.buyer.login": "non_transaction",
+  "auth.buyer.login_failed": "non_transaction",
+  "buyer.signup": "non_transaction",
+  "buyer.signup.verify_limited": "non_transaction", // 가입 본인확인 한도(회원 id 없이 남지만 같은 가입 분류)
+  "buyer_address.create": "non_transaction",
+  "buyer_address.update": "non_transaction",
+  "buyer_address.delete": "non_transaction",
+  "buyer.withdraw": "non_transaction",
+  "buyer.withdraw_failed": "non_transaction",
+  // 미입금 자동 취소로 생긴 구매 제한(판매자 회원 관리). 주문 기록 자체는 order.* 행이 따로 남는다.
+  "buyer.purchase_restriction.create": "non_transaction",
+  "buyer.purchase_restriction.lift": "non_transaction",
+};
+
+// 행동 종류의 보관 분류. 목록에 없으면 null(탈퇴 처리는 더 긴 거래 관련 기준으로 둔다).
+export function memberAuditRetention(action: string): MemberAuditRetention | null {
+  if (action in MEMBER_AUDIT_RETENTION) return MEMBER_AUDIT_RETENTION[action];
+  const prefix = Object.keys(MEMBER_AUDIT_RETENTION_PREFIX).find((p) => action.startsWith(p));
+  return prefix ? MEMBER_AUDIT_RETENTION_PREFIX[prefix] : null;
+}
 
 // 탈퇴 회원 표시 이름(닉네임 스냅숏 비식별 값)
 export const WITHDRAWN_DISPLAY_NAME = "탈퇴한 회원";
