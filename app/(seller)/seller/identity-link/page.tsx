@@ -11,10 +11,10 @@ import { api, failMessage, type ApiResult, type Me } from "../../../../component
 // 연결은 직원이 아이디·비밀번호를 스스로 찾을 때만 쓴다. 연결 전이나 건너뛴 뒤에도 로그인·업무는 그대로다(「나중에 할게요」).
 // 대표자가 SA-100에서 등록한 이름·휴대폰과 본인확인 결과가 같아야 연결된다. 다르면 대표자에게 정보 수정을 부탁하게 안내한다.
 // 대표자가 번호를 바꿔 연결이 풀렸으면(relinkRequired) 「본인확인 다시 하기」로 안내한다.
-// API: GET /api/seller/me/identity { phoneRegistered, linked, relinkRequired? } → POST start(·resend·confirm) → POST link { verificationId }.
+// API: GET /api/seller/me/identity { available, phoneRegistered, registeredPhoneLast4, linked, relinkRequired } → POST start(·resend·confirm) → POST link { verificationId }.
 const BASE = "/api/seller/me/identity";
 
-type Status = { phoneRegistered: boolean; linked: boolean; relinkRequired?: boolean };
+type Status = { available: boolean; phoneRegistered: boolean; registeredPhoneLast4: string | null; linked: boolean; relinkRequired: boolean };
 type View = "form" | "relink" | "mismatch" | "done";
 
 // 등록 정보와 다르면(identity_mismatch) 대표자에게 정보 수정을 부탁하는 화면으로 바꾼다
@@ -138,8 +138,16 @@ export default function IdentityLinkPage() {
             <span>{me.shop.name} · 직원</span>
           </div>
           <div className="row between">
-            <span className="c-alt">대표자가 등록한 이름</span>
-            <span>{me.user.name}</span>
+            <span className="c-alt">대표자가 등록한 정보</span>
+            <span>
+              {me.user.name}
+              {status.registeredPhoneLast4 && (
+                <>
+                  {" · "}
+                  <span className="nw">010-****-{status.registeredPhoneLast4}</span>
+                </>
+              )}
+            </span>
           </div>
         </div>
       )}
@@ -148,7 +156,9 @@ export default function IdentityLinkPage() {
       ) : view === "mismatch" ? (
         <div className="col" style={{ gap: 10 }}>
           <div id="il-state" tabIndex={-1} className="msg msg-cau" role="alert" style={{ display: "block" }}>
-            <b>대표자가 등록한 직원 정보와 맞지 않아요.</b> 이름이나 휴대폰 번호가 달라요. 대표자에게 정보 수정을 부탁해 주세요
+            <span>
+              <b>대표자가 등록한 직원 정보와 맞지 않아요.</b> 이름이나 휴대폰 번호가 달라요. 대표자에게 정보 수정을 부탁해 주세요
+            </span>
           </div>
           <span className="t-c1 c-alt">본인확인 결과는 저장하지 않았어요 · 로그인 · 업무는 그대로예요 · 고쳐지면 다음 로그인 때 다시 연결해요</span>
           <button className="btn btn-lg btn-block btn-out" type="button" onClick={later}>
@@ -158,7 +168,9 @@ export default function IdentityLinkPage() {
       ) : view === "relink" ? (
         <div className="col" style={{ gap: 10 }}>
           <div id="il-state" tabIndex={-1} className="msg msg-cau" role="status" style={{ display: "block" }}>
-            <b>휴대폰 번호가 바뀌어서 본인확인을 다시 해야 아이디 · 비밀번호를 스스로 찾을 수 있어요.</b> 다시 연결하기 전까지는 대표자에게 요청해 주세요. 다른 메뉴는 그대로 써요.
+            <span>
+              <b>휴대폰 번호가 바뀌어서 본인확인을 다시 해야 아이디 · 비밀번호를 스스로 찾을 수 있어요.</b> 다시 연결하기 전까지는 대표자에게 요청해 주세요. 다른 메뉴는 그대로 써요.
+            </span>
           </div>
           <div className="row" style={{ gap: 8 }}>
             <button className="btn btn-sm" type="button" onClick={() => setView("form")}>
@@ -201,7 +213,9 @@ export default function IdentityLinkPage() {
         </>
       ) : (
         <div className="msg msg-cau" role="status" style={{ display: "block" }}>
-          <b>등록된 휴대폰 번호가 없어요.</b> 대표자에게 직원 계정 관리에서 번호 등록을 부탁해 주세요. 로그인 · 업무는 그대로예요.
+          <span>
+            <b>등록된 휴대폰 번호가 없어요.</b> 대표자에게 직원 계정 관리에서 번호 등록을 부탁해 주세요. 로그인 · 업무는 그대로예요.
+          </span>
         </div>
       )}
       {(unavailable || view === "form") && laterLinks}

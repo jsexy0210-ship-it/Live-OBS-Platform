@@ -467,3 +467,12 @@ body {
   min-width: 0;
   text-align: right;
 }
+.il-info .nw {
+  white-space: nowrap;
+}
+.il-info > .row {
+  gap: 12px;
+}
+.il-info > .row > span:first-child {
+  flex: none;
+}

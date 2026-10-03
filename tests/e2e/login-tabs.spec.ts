@@ -129,6 +129,16 @@ test("로그인 전 직원 본인확인 연결 화면에 오면 직원 탭 로�
   await expect(page).toHaveURL(/\/seller\/orders$/);
 });
 
+test("본인확인을 쓸 수 없는 서버(대행사 미연결)에서는 연결하지 않은 직원도 연결 안내 없이 바로 들어간다", async ({ page }) => {
+  await page.goto("/seller/login?type=staff");
+  const status = page.waitForResponse((r) => r.url().endsWith("/api/seller/me/identity"));
+  await page.getByLabel("이메일").fill("demo-staff@example.com");
+  await page.getByLabel("비밀번호").fill(PASSWORD);
+  await page.getByRole("button", { name: "로그인" }).click();
+  expect(await (await status).json()).toMatchObject({ available: false, linked: false });
+  await expect(page).toHaveURL(/\/seller\/products$/);
+});
+
 test("아이디 찾기: 본인확인 대행사 연결 전이면 인증번호 받기에서 준비 중 화면으로 바뀐다", async ({ page }) => {
   await page.goto("/seller/login");
   await page.getByRole("link", { name: "아이디 찾기" }).click();

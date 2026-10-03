@@ -1,5 +1,4 @@
 import { expect, test, type Page } from "@playwright/test";
-import { submitSellerLogin } from "./sellerLogin";
 
 // 파트너스 가입 신청(PF-007) → 로그인 → 비밀번호 찾기(AU-003·004)를 실제 API로 끝까지 확인한다.
 // 개발 서버(playwright.config.ts 「dev」)에서 돈다: 가짜 본인확인 공급자(인증번호 000000)와
@@ -228,17 +227,6 @@ async function signOut(page: Page) {
   await page.context().clearCookies();
 }
 
-// 연결 상태 응답에 본인확인 사용 가능 값을 더한다(서버가 아직 주지 않는 값: 기반 세션에 요청 중. 나머지는 실제 응답 그대로)
-async function identityStatus(page: Page, extra: Record<string, unknown> = { available: true }) {
-  await page.unroute("**/api/seller/me/identity");
-  await page.route("**/api/seller/me/identity", async (route) => {
-    if (route.request().method() !== "GET") return route.continue();
-    // route.fetch가 서버의 유휴 연결을 다시 쓰다 끊기면(socket hang up, 서버 로그에는 200) 한 번만 다시 받는다
-    const res = await route.fetch().catch(() => route.fetch());
-    await route.fulfill({ response: res, json: { ...(await res.json()), ...extra } });
-  });
-}
-
 async function login(page: Page, tab: "대표자" | "직원", email: string, password: string) {
   await page.goto("/seller/login");
   await page.getByRole("tab", { name: tab }).click();
@@ -294,18 +282,13 @@ test("직원: 로그인하면 본인확인 연결 안내가 뜨고, 나중에 �
   await createStaff(page, s);
   await signOut(page);
 
-  // 본인확인을 쓸 수 있다는 값이 없으면(대행사 미연결 서버) 연결 안내 없이 바로 들어간다
-  await login(page, "직원", s.email, s.password);
-  await expect(page).toHaveURL(/\/seller\/products$/);
-  await signOut(page);
-
-  // 연결 전 직원은 로그인할 때마다 연결 안내로 간다 → 나중에 할게요면 원래 가려던 화면으로
-  await identityStatus(page);
+  // 연결 전 직원은 로그인할 때마다 연결 안내로 간다(개발 서버는 가짜 본인확인이라 available: true) → 나중에 할게요면 원래 가려던 화면으로
   await login(page, "직원", s.email, s.password);
   await expect(page).toHaveURL(/\/seller\/identity-link\?next=/);
   await expect(page.getByRole("heading", { name: "본인확인으로 계정을 연결해요" })).toBeVisible();
   await expect(page.getByTestId("il-account")).toContainText(s.email);
   await expect(page.getByTestId("il-account")).toContainText(s.name);
+  await expect(page.getByTestId("il-account")).toContainText(`010-****-${s.phone.slice(-4)}`);
   await expect(page.getByText("다음 로그인 때 다시 안내해요", { exact: false })).toBeVisible();
   await shot(page, "AU-012");
   await page.getByRole("button", { name: "나중에 할게요" }).click();
@@ -376,17 +359,32 @@ test("직원: 로그인하면 본인확인 연결 안내가 뜨고, 나중에 �
   await expect(page.getByRole("heading", { name: "비밀번호를 바꿨어요" })).toBeVisible();
   await login(page, "직원", s.email, next);
   await expect(page).toHaveURL(/\/seller\/products$/);
-});
 
-test("직원 본인확인 연결: 휴대폰 번호가 바뀌어 연결이 풀렸으면 「본인확인 다시 하기」로 안내한다", async ({ page }) => {
-  // 서버가 아직 relinkRequired를 주지 않아 상태 응답에 더해 화면 상태만 확인한다(기반 세션에 요청 중)
-  await page.goto("/seller/login");
-  await submitSellerLogin(page, "demo-staff@example.com", process.env.E2E_PASSWORD ?? "");
+  // 대표자가 번호를 바꾸면 연결이 풀리고, 직원이 다음에 로그인하면 「번호가 바뀌어서 본인확인을 다시 해야」 안내가 뜬다
+  await signOut(page);
+  await login(page, "대표자", a.email, a.password);
   await expect(page).toHaveURL(/\/seller\/products$/);
-  await identityStatus(page, { available: true, relinkRequired: true, phoneRegistered: true });
-  await page.goto("/seller/identity-link");
+  const nextPhone = randomPhone();
+  const patched = await page.evaluate(
+    async ({ email, phone }) => {
+      const list = (await (await fetch("/api/seller/staff")).json()) as { staff: { id: string; email: string }[] };
+      const id = list.staff.find((x) => x.email === email)!.id;
+      const r = await fetch(`/api/seller/staff/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ phone }) });
+      return { status: r.status, body: await r.json() };
+    },
+    { email: s.email, phone: nextPhone },
+  );
+  expect(patched).toMatchObject({ status: 200, body: { identityLinked: false } });
+  await signOut(page);
+  await login(page, "직원", s.email, next);
+  await expect(page).toHaveURL(/\/seller\/identity-link\?next=/);
   await expect(page.locator("#il-state")).toContainText("휴대폰 번호가 바뀌어서 본인확인을 다시 해야 아이디 · 비밀번호를 스스로 찾을 수 있어요.");
+  await expect(page.getByTestId("il-account")).toContainText(`010-****-${nextPhone.slice(-4)}`);
   await expect(page.getByLabel("휴대폰번호", { exact: true })).toHaveCount(0);
+  // 휴대폰 폭(390)에서도 안내 문장이 줄바꿈되어 가로로 넘치지 않는다
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await page.setViewportSize({ width: 1440, height: 900 });
   await shot(page, "AU-012-relink");
   await page.getByRole("button", { name: "본인확인 다시 하기" }).click();
   await expect(page.getByLabel("휴대폰번호", { exact: true })).toBeVisible();
