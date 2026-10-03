@@ -2,7 +2,7 @@ import type { PrismaClient, RefundFault } from "@prisma/client";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
 import { createOrder } from "../../lib/server/orders/create";
-import { PAID_CANCEL_LIMIT, RESTRICTION_DAYS, UNPAID_CANCEL_LIMIT, cancelOverdueOrders, liftRestriction, lockSellerOrders, readOrderPolicy, updateOrderPolicy } from "../../lib/server/orders/overdue";
+import { PAID_CANCEL_LIMIT, RESTRICTION_DAYS, UNPAID_CANCEL_LIMIT, cancelOverdueOrders, liftRestriction, lockSellerOrders, readOrderPolicy, sellerEventClock, updateOrderPolicy } from "../../lib/server/orders/overdue";
 import { refundOrder } from "../../lib/server/queue/service";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { createLoginBuyer, createPaidOrderItem, createSeller, createSellerUser, db, resetDb } from "./helpers";
@@ -169,8 +169,9 @@ describe("결제 후 취소 5회 → 30일 구매 제한", () => {
       await lockSellerOrders(tx, s.seller.id);
       refunding = refundOrder(db, s.ctx, order.id, { reason: "취소 요청", expectedLiveVersion: lv, fault: "BUYER" });
       await new Promise((r) => setTimeout(r, 300));
-      await tx.$executeRaw`INSERT INTO "SellerOrderPolicy" ("sellerId", "paidCancelRestrictionEnabled", "paidCancelRestrictionEnabledAt")
-        VALUES (${s.seller.id}::uuid, true, clock_timestamp())`;
+      // 실제 켜기 경로(updateOrderPolicy)와 같이 판매자 시계로 켠 시각을 찍는다(lastEventClockAt도 같은 값)
+      const at = await sellerEventClock(tx, s.seller.id);
+      await tx.sellerOrderPolicy.update({ where: { sellerId: s.seller.id }, data: { paidCancelRestrictionEnabled: true, paidCancelRestrictionEnabledAt: at } });
       release(null);
     });
     await gate;
