@@ -1,11 +1,19 @@
 #!/usr/bin/env bash
 # 앱만 직전 릴리스로 되돌린다(DB·마이그레이션은 그대로, 빌드 없음). DB를 되돌리는 것은 db-restore.sh로 따로 한다.
-# 사용: scripts/ops/rollback-app.sh [되돌릴 커밋 SHA 전체]
+# 사용: scripts/ops/rollback-app.sh [되돌릴 커밋 SHA 전체] [--force-unchecked]
 #   SHA를 비우면 deploy-history.log에서 지금 버전 바로 앞에 성공한 배포 SHA를 쓴다.
+#   되돌릴 버전의 migrate 이미지가 없으면 스키마 호환을 확인할 수 없어 멈춘다. --force-unchecked면 경고만 남기고 진행한다.
 . "$(dirname "$0")/lib.sh"
 
+force=0; want=""
+for a in "$@"; do
+  case "$a" in
+    --force-unchecked) force=1 ;;
+    -*) die "모르는 옵션이에요: $a" ;;
+    *) want="$a" ;;
+  esac
+done
 cur="$(current_version)"
-want="${1:-}"
 if [ -z "$want" ]; then
   [ -f "$HISTORY" ] || die "$HISTORY 이 없어요. 되돌릴 SHA를 직접 넣어 주세요(docker image ls obs-web-app)."
   want="$(grep -o 'sha=[0-9a-f]\{40\}' "$HISTORY" | cut -d= -f2 | awk -v cur="$cur" '$0 != cur' | tail -n1)"
@@ -16,7 +24,14 @@ docker image inspect "obs-web-app:$want" >/dev/null 2>&1 || die "obs-web-app:$wa
 
 # 되돌릴 버전이 모르는 마이그레이션이 DB에 있으면 경고한다(구버전 코드가 새 스키마와 맞지 않을 수 있음).
 db="$(db_container)"
-if [ -n "$db" ] && docker image inspect "obs-web-migrate:$want" >/dev/null 2>&1; then
+if [ -z "$db" ] || ! docker image inspect "obs-web-migrate:$want" >/dev/null 2>&1; then
+  why="obs-web-migrate:$want 이미지가 없어서"; [ -n "$db" ] || why="DB 컨테이너가 없어서"
+  if [ "$force" = 1 ]; then
+    log "경고: ${why} 스키마 호환을 확인할 수 없어요. --force-unchecked로 확인 없이 진행해요."
+  else
+    die "${why} 스키마 호환을 확인할 수 없어요. 그래도 되돌리려면 --force-unchecked를 붙여 주세요."
+  fi
+else
   known="$(docker run --rm --entrypoint ls "obs-web-migrate:$want" prisma/migrations | grep -v '\.toml$' | sort)"
   applied="$(docker exec "$db" sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -XAtq -c "SELECT migration_name FROM \"_prisma_migrations\" WHERE finished_at IS NOT NULL"' | sort)"
   newer="$(comm -13 <(echo "$known") <(echo "$applied") | grep -v '^$' || true)"

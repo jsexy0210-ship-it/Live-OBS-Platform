@@ -98,6 +98,22 @@ function lastDeployedSha() {
   return m.length ? m.at(-1)[1] : null;
 }
 
+// 시간당 알림 한도 기록. 감시를 다시 만들어도(가용성 on/off·재시작) 한도가 이어지게 /data에 남긴다.
+const ALERT_WINDOW_FILE = () => `${cfg.dir}/alert-window.json`;
+function loadAlertWindow() {
+  try {
+    const v = JSON.parse(readFileSync(ALERT_WINDOW_FILE(), "utf8"));
+    if (!Array.isArray(v) || !v.every((t) => Number.isFinite(t))) throw new Error("형식이 맞지 않음");
+    return v.filter((t) => Date.now() - t < 3600_000);
+  } catch (e) {
+    if (existsSync(ALERT_WINDOW_FILE())) console.error(`[monitor] alert-window.json을 읽지 못해 빈 목록으로 시작해요: ${e instanceof Error ? e.message : String(e)}`);
+    return [];
+  }
+}
+function saveAlertWindow() {
+  writeFileSync(ALERT_WINDOW_FILE(), JSON.stringify(state.alerts) + "\n");
+}
+
 const state = { fails: {}, incidents: {}, warned: {}, alerts: [], outbox: [], mismatchTicks: {} };
 const ALERT_MAX_ATTEMPTS = 5;
 const OUTBOX_MAX = 50;
@@ -131,6 +147,7 @@ async function flushAlerts() {
     const r = await send(item.ev);
     if (r.ok) {
       state.alerts.push(now);
+      saveAlertWindow();
       continue;
     }
     item.attempts += 1;
@@ -226,6 +243,7 @@ async function tick() {
 
 async function main() {
   mkdirSync(cfg.dir, { recursive: true });
+  state.alerts = loadAlertWindow();
   await event({ level: "info", kind: "monitor_start", targets: cfg.targets.map((t) => t.name), intervalS: cfg.intervalS });
   // 고정 주기: 확인에 걸린 시간만큼 다음 틱까지 기다리는 시간을 줄인다.
   for (;;) {
