@@ -15,6 +15,7 @@ import {
   cleanPhone,
   phoneOk,
   staffFail,
+  staffNameError,
   type Staff,
   type StaffPerm,
 } from "../../../../../components/seller/StaffForms";
@@ -222,7 +223,8 @@ function AddStaff({ onAdded }: { onAdded: (name: string) => void }) {
     e.preventDefault();
     if (busy) return;
     const next: Errors = {};
-    if (!name.trim()) next.name = "이름을 적어 주세요";
+    const nameError = staffNameError(name);
+    if (nameError) next.name = nameError;
     if (!phoneOk(phone)) next.phone = "01로 시작하는 휴대폰 번호를 숫자로 적어 주세요";
     if (!email.trim().includes("@")) next.email = "로그인에 쓸 이메일을 적어 주세요";
     if (password.length < MIN_PASSWORD_LENGTH) next.password = `${MIN_PASSWORD_LENGTH}자 이상으로 정해 주세요`;
@@ -289,7 +291,7 @@ function AddStaff({ onAdded }: { onAdded: (name: string) => void }) {
           <span>{failure}</span>
         </div>
       )}
-      {field("name", "이름", <input {...inputProps("name")} maxLength={50} value={name} onChange={(e) => setName(e.target.value)} />)}
+      {field("name", "이름", <input {...inputProps("name")} value={name} onChange={(e) => setName(e.target.value)} />)}
       {field(
         "phone",
         "휴대폰 번호",

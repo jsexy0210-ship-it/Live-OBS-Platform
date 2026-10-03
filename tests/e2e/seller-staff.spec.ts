@@ -67,6 +67,19 @@ test("대표자: 메뉴에서 직원 계정으로 들어가 목록을 보고, �
   await expect(page.getByText("로그인에 쓸 이메일을 적어 주세요")).toBeVisible();
   await expect(page.getByLabel("이름", { exact: true })).toBeFocused();
 
+  // 이름 규칙은 서버와 같다: 폭 없는 공백 같은 서식 문자는 안 되고, 50자(코드포인트)까지
+  const posts: string[] = [];
+  page.on("request", (r) => {
+    if (r.url().endsWith("/api/seller/staff") && r.method() === "POST") posts.push(r.url());
+  });
+  await page.getByLabel("이름", { exact: true }).fill("김\u200b직원");
+  await page.getByRole("button", { name: "계정 만들기" }).click();
+  await expect(page.getByText("이름에 쓸 수 없는 문자가 있어요")).toBeVisible();
+  await page.getByLabel("이름", { exact: true }).fill("가".repeat(51));
+  await page.getByRole("button", { name: "계정 만들기" }).click();
+  await expect(page.getByText("이름은 50자까지 적을 수 있어요")).toBeVisible();
+  expect(posts).toHaveLength(0);
+
   // 초기 비밀번호는 가려 두고 「보기」로만 잠깐 보여 준다
   await expect(page.getByLabel("초기 비밀번호")).toHaveAttribute("type", "password");
   await page.getByLabel("초기 비밀번호").fill("pw-visible-check");
@@ -122,6 +135,9 @@ test("대표자: 직원 이름·휴대폰·권한을 고치면 바로 목록에 
   await expect(dialog.getByText("본인확인 전")).toBeVisible();
   // 바꾼 것이 없으면 저장할 수 없다
   await expect(dialog.getByRole("button", { name: "저장" })).toBeDisabled();
+  await dialog.getByLabel("이름").fill(`${s.name}\u200b`);
+  await dialog.getByRole("button", { name: "저장" }).click();
+  await expect(dialog.getByText("이름에 쓸 수 없는 문자가 있어요")).toBeVisible();
   await dialog.getByLabel("이름").fill(`${s.name}팀장`);
   await dialog.getByLabel("휴대폰 번호").fill("0101");
   await dialog.getByRole("checkbox", { name: "상품", exact: true }).check();

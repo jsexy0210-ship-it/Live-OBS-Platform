@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { cleanText, textLength } from "../../lib/server/text/clean";
 import { api, failMessage } from "./api";
 
 // SA-100 직원 계정(대표자 전용)에서 쓰는 권한 고르기·수정·비밀번호 재설정·비활성화 창.
@@ -47,6 +48,15 @@ export type Staff = {
   lastLoginAt: string | null;
   createdAt: string;
 };
+
+// 직원 이름: 서버(lib/server/sellers/staffName.ts)와 같은 규칙. NFKC 뒤 코드포인트 50자까지, 제어·서식 문자(폭 없는 공백 등) 거부
+export const STAFF_NAME_MAX = 50;
+export function staffNameError(v: string): string | null {
+  if (!v.trim()) return "이름을 적어 주세요";
+  if (textLength(v) > STAFF_NAME_MAX) return `이름은 ${STAFF_NAME_MAX}자까지 적을 수 있어요`;
+  if (cleanText(v, STAFF_NAME_MAX) === null) return "이름에 쓸 수 없는 문자가 있어요";
+  return null;
+}
 
 export const MIN_PASSWORD_LENGTH = 8; // 서버(lib/server/auth/passwordReset.ts)와 같은 값
 // 서버(normalizeStaffPhone)와 같은 규칙: 띄어쓰기·하이픈을 빼고 01로 시작하는 10~11자리
@@ -157,7 +167,8 @@ export function EditStaffModal({ staff, onClose, onSaved }: { staff: Staff; onCl
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (busy) return;
-    if (!name.trim()) return setError("이름을 적어 주세요");
+    const nameError = staffNameError(name);
+    if (nameError) return setError(nameError);
     if (nextPhone !== null && !phoneOk(phone)) return setPhoneError("01로 시작하는 휴대폰 번호를 숫자로 적어 주세요");
     setBusy(true);
     setError(null);
@@ -195,7 +206,7 @@ export function EditStaffModal({ staff, onClose, onSaved }: { staff: Staff; onCl
         <div className="pa-two">
           <div className="fld">
             <label htmlFor="se-name">이름</label>
-            <input id="se-name" className="inp" maxLength={50} value={name} disabled={busy} onChange={(e) => setName(e.target.value)} />
+            <input id="se-name" className="inp" value={name} disabled={busy} onChange={(e) => setName(e.target.value)} />
           </div>
           <div className="fld">
             <label htmlFor="se-phone">휴대폰 번호</label>
