@@ -21,12 +21,12 @@ const REASONS = ["이벤트 증정", "서비스", "파손", "직접 입력"] as 
 // 한 번에 적용할 때 고르는 사유(목표 재고로 맞추는 경우가 많아 입고·재고 조사를 앞에 둔다)
 const BULK_REASONS = ["재고 조사", "입고", "파손", "직접 입력"] as const;
 
-// 직접 쓴 사유 검사: 서버(stock-adjust)와 같이 cleanText(NFKC, 코드포인트 100자) 기준
+// 직접 쓴 사유 검사: 실제로 보내는 값(앞뒤 공백을 뺀 메모)을 서버(stock-adjust)와 같은 cleanText(NFKC, 코드포인트 100자) 기준으로 본다
 function memoError(memo: string): string | null {
-  const t = memo.normalize("NFKC").trim();
-  if (t === "") return null;
-  if (textLength(t) > 100) return "사유는 100자까지 쓸 수 있어요";
-  return cleanText(memo, 100, "name") ? null : "쓸 수 없는 글자가 있어요";
+  const sent = memo.trim();
+  if (sent === "") return null;
+  if (textLength(sent.normalize("NFKC").trim()) > 100) return "사유는 100자까지 쓸 수 있어요";
+  return cleanText(sent, 100, "name") ? null : "쓸 수 없는 글자가 있어요";
 }
 
 // 재고 화면은 검색·걸러 보기를 화면에서 하므로 모든 상품을 200개씩 이어서 불러온다(다음 쪽이 없을 때까지, 개수 제한 없음).
@@ -65,6 +65,8 @@ export default function StockPage() {
   const [filter, setFilter] = useState<Filter>("all");
   const [confirm, setConfirm] = useState(false);
   const [applying, setApplying] = useState(false);
+  // 한 번에 적용 진행(순서대로 한 건씩 보낸다. 그사이 바뀐 재고 처리를 옵션마다 확실히 하려고 병렬로 보내지 않는다)
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [notice, setNotice] = useState<{ kind: "neg" | "cau"; text: string } | null>(null);
   const [sheet, setSheet] = useState<Row | null>(null);
   const [histRow, setHistRow] = useState<Row | null>(null);
@@ -163,6 +165,8 @@ export default function StockPage() {
     const conflicts: string[] = [];
     const failed: string[] = [];
     let done = 0;
+    let sent = 0;
+    setProgress({ done: 0, total: valid.length });
     for (const r of valid) {
       const res = await api<{ optionId: string; stock: number }>(`/api/seller/products/${r.productId}/options/${r.optionId}/stock-adjust`, {
         method: "POST",
@@ -171,8 +175,10 @@ export default function StockPage() {
       if (res.ok) done++;
       else if (res.error === "stock_conflict") conflicts.push(`${r.productName} · ${r.optionName}`);
       else failed.push(`${r.productName} · ${r.optionName}`);
+      setProgress({ done: ++sent, total: valid.length });
     }
     setApplying(false);
+    setProgress(null);
     setBulkReason(null);
     setBulkMemo("");
     await load();
@@ -207,7 +213,7 @@ export default function StockPage() {
   const shownKeys = new Set(shown.map((r) => r.key));
   const hiddenCount = valid.filter((r) => !shownKeys.has(r.key)).length;
 
-  const applyLabel = applying ? "적용하고 있어요" : `변경 ${valid.length}건 적용`;
+  const applyLabel = applying ? (progress ? `${progress.done.toLocaleString("ko-KR")}/${progress.total.toLocaleString("ko-KR")} 적용 중` : "적용하고 있어요") : `변경 ${valid.length}건 적용`;
 
   if (!can("PRODUCT_MANAGE")) {
     return (

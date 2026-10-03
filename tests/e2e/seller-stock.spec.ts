@@ -590,3 +590,79 @@ test("검색을 바꿔 다시 모두 선택해 적용하면 이전 검색 결과
   await applyAll(page);
   await expect(page.getByText("재고 1건을 바꿨어요")).toBeVisible();
 });
+
+test("390·360 카드형 행: 상태 배지가 잘리지 않고 「이력」·「빼기 · 더하기」 버튼과 겹치지 않는다", async ({ page }) => {
+  await openAs(page);
+  for (const width of [390, 360]) {
+    await page.setViewportSize({ width, height: 844 });
+    const rows = page.getByTestId("stock-row");
+    const n = Math.min(await rows.count(), 8);
+    for (let i = 0; i < n; i++) {
+      const r = rows.nth(i);
+      const badge = (await r.locator(".c-state .bdg").boundingBox())!;
+      const cell = (await r.locator(".c-state").boundingBox())!;
+      // 배지가 칸 밖으로 잘리지 않는다
+      expect(badge.x + badge.width, `${width} ${i}행 배지 잘림`).toBeLessThanOrEqual(cell.x + cell.width + 0.5);
+      for (const b of await r.locator(".c-act .btn").all()) {
+        const bb = (await b.boundingBox())!;
+        const overlap = badge.x < bb.x + bb.width && bb.x < badge.x + badge.width && badge.y < bb.y + bb.height && bb.y < badge.y + badge.height;
+        expect(overlap, `${width} ${i}행 배지·버튼 겹침`).toBe(false);
+      }
+    }
+  }
+});
+
+test("사유 메모는 실제로 보내는 값(앞뒤 공백 뺀 값)으로 검사한다", async ({ page }) => {
+  await openAs(page);
+  await page.getByRole("button", { name: "탑로더 25장 1팩 빼기 · 더하기" }).click();
+  const sheet = page.getByRole("dialog");
+  await sheet.getByLabel("수량").fill("1");
+  await sheet.getByRole("radio", { name: "직접 입력" }).click();
+  // 앞에 붙은 BOM은 보낼 때 빠지므로 막지 않는다
+  await sheet.getByLabel("사유 메모").fill("﻿창고 정리");
+  await expect(sheet.getByText("쓸 수 없는 글자가 있어요")).toHaveCount(0);
+  await expect(sheet.getByRole("button", { name: "1개 빼기" })).toBeEnabled();
+  // 가운데 낀 보이지 않는 글자는 서버도 막으므로 화면에서 막는다
+  await sheet.getByLabel("사유 메모").fill("창고\u0007정리");
+  await expect(sheet.getByText("쓸 수 없는 글자가 있어요")).toBeVisible();
+  await sheet.getByRole("button", { name: "취소" }).click();
+});
+
+test("옵션 이력 창 제목은 2줄까지 보인다", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openAs(page);
+  // 데모 상품 중 이름이 가장 긴 것(390에서 제목이 2줄을 넘는다)
+  await page.getByRole("button", { name: /^포켓몬 카드 게임.* 이력$/ }).first().click();
+  const title = page.getByRole("dialog").locator("#opt-hist-title");
+  await expect(title).toBeVisible();
+  expect(await title.evaluate((el) => getComputedStyle(el).webkitLineClamp)).toBe("2");
+  expect(await title.evaluate((el) => el.getBoundingClientRect().height)).toBeLessThanOrEqual(2 * 32);
+});
+
+test("한 번에 적용하는 동안 「n/N 적용 중」으로 진행 상황을 보여 준다", async ({ page }) => {
+  // 한 건씩 늦게 처리되게 해 진행 표시를 본다(실제로 적용하고 되돌린다)
+  await page.route("**/stock-adjust", async (route) => {
+    await new Promise((r) => setTimeout(r, 400));
+    return route.continue();
+  });
+  await openAs(page);
+  const top = Number((await row(page, "탑로더 25장").locator(".c-cur").innerText()).replace(/\D/g, ""));
+  const moon = Number((await row(page, "문라이트 컬렉션 박스").locator(".c-cur").innerText()).replace(/\D/g, ""));
+  await nextInput(page, "탑로더 25장 1팩").fill(String(top + 1));
+  await nextInput(page, "문라이트 컬렉션 박스 1박스").fill(String(moon + 1));
+  await applyAll(page);
+  await expect(page.getByRole("button", { name: /^[01]\/2 적용 중$/ }).first()).toBeVisible();
+  await expect(page.getByText("재고 2건을 바꿨어요")).toBeVisible();
+  // 서버에서 다시 읽어 둘 다 +1인지 본다
+  await page.reload();
+  await expect(nextInput(page, "탑로더 25장 1팩")).toHaveValue(String(top + 1));
+  await expect(nextInput(page, "문라이트 컬렉션 박스 1박스")).toHaveValue(String(moon + 1));
+  // 되돌려 둔다. 앞 안내가 남아 있을 수 있어, 적용이 끝난 뒤 다시 불러와 실제 재고로 확인한다
+  await nextInput(page, "탑로더 25장 1팩").fill(String(top));
+  await nextInput(page, "문라이트 컬렉션 박스 1박스").fill(String(moon));
+  await applyAll(page);
+  await expect(page.getByRole("button", { name: "변경 0건 적용" }).first()).toBeVisible({ timeout: 10_000 });
+  await page.reload();
+  await expect(nextInput(page, "탑로더 25장 1팩")).toHaveValue(String(top));
+  await expect(nextInput(page, "문라이트 컬렉션 박스 1박스")).toHaveValue(String(moon));
+});
