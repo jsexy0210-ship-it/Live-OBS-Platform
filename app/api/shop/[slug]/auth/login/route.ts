@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { loginBuyer } from "../../../../../../lib/server/auth/login";
+import { loginErrorBody, SHOP_NOT_FOUND_MESSAGE } from "../../../../../../lib/server/auth/messages";
 import { prisma } from "../../../../../../lib/server/db";
 import { isString, loginFailureStatus, mutation, readJson, requestMeta, setSessionCookie } from "../../../../../../lib/server/http/route";
 
@@ -7,11 +8,12 @@ import { isString, loginFailureStatus, mutation, readJson, requestMeta, setSessi
 export const POST = mutation(async (req: Request, { params }: { params: Promise<{ slug: string }> }) => {
   const { slug } = await params;
   const seller = await prisma.seller.findUnique({ where: { slug }, select: { id: true, status: true } });
-  if (!seller || seller.status !== "ACTIVE") return NextResponse.json({ error: "not_found" }, { status: 404 });
+  if (!seller || seller.status !== "ACTIVE") return NextResponse.json({ error: "not_found", message: SHOP_NOT_FOUND_MESSAGE }, { status: 404 });
   const body = await readJson<{ loginId: string; password: string }>(req);
-  if (!isString(body.loginId) || !isString(body.password)) return NextResponse.json({ error: "bad_request" }, { status: 400 });
+  if (!isString(body.loginId) || !isString(body.password)) return NextResponse.json(loginErrorBody("bad_request", "buyer"), { status: 400 });
   const result = await loginBuyer(prisma, { sellerId: seller.id, loginId: body.loginId, password: body.password }, requestMeta(req));
-  if (!result.ok) return NextResponse.json({ error: result.reason }, { status: loginFailureStatus(result.reason) });
+  // 실패는 { error, message(화면 문구) }. 아이디·비밀번호 중 무엇이 틀렸는지는 구분하지 않는다.
+  if (!result.ok) return NextResponse.json(loginErrorBody(result.reason, "buyer"), { status: loginFailureStatus(result.reason) });
   const res = NextResponse.json({ ok: true });
   setSessionCookie(res, "buyer", result.token, result.expiresAt);
   return res;
