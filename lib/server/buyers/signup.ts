@@ -9,6 +9,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { hashToken } from "../auth/token";
 import { buyerSignupIdentityLimitReached, completeIdentityVerification, parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
 import { EMAIL } from "../sellers/application";
+import { REJOIN_RETENTION_CONSENT_VERSION, purgeExpiredRejoinBlocks, rejoinBlockedUntil, rejoinDaysToAgree } from "./rejoin";
 import { cleanText } from "../text/clean";
 
 
@@ -146,10 +147,17 @@ export type BuyerSignupFailure =
   | "already_member"
   | "login_id_taken"
   | "nickname_taken"
-  | "shop_unavailable";
+  | "shop_unavailable"
+  | "rejoin_restricted" // 재가입 제한 기간 중(탈퇴한 같은 사람, buyers/rejoin.ts)
+  | "invalid_rejoin_consent" // 재가입 제한 정보 보관 동의 값이 불리언이 아님
+  | "rejoin_policy_changed" // 동의한 회원: 화면에 보여 준 재가입 제한 기간이 지금 정책과 다름(화면을 다시 불러와 다시 동의)
+  | "consent_outdated"; // 동의한 회원: 화면이 보여 준 재가입 제한 정보 보관 동의 문서 버전이 지금과 다름
 
 // resumed: 응답이 끊겨 같은 요청을 다시 보낸 경우(새로 만들지 않고 이미 만든 회원을 돌려줌)
-export type BuyerSignupResult = { ok: true; memberId: string; broadcastNickname: string; resumed: boolean } | { ok: false; reason: BuyerSignupFailure };
+// rejoinAvailableAt: rejoin_restricted일 때 다시 가입할 수 있는 시각
+export type BuyerSignupResult =
+  | { ok: true; memberId: string; broadcastNickname: string; resumed: boolean }
+  | { ok: false; reason: BuyerSignupFailure; rejoinAvailableAt?: Date };
 
 // 구매자 회원가입. 휴대폰 본인확인(같은 쇼핑몰, 같은 공급자, 완료, 사용 기한·30분 안, 시작한 브라우저의 ownerToken,
 // 아직 안 쓴 건)이 있어야 하고, 같은 쇼핑몰에 같은 CI로 가입한 회원이 있으면 거부한다. 이름·휴대폰·생년월일은 인증 결과를 쓴다.
@@ -170,6 +178,13 @@ export async function signupBuyer(
     agreedPrivacy?: boolean;
     // 선택 마케팅 수신 동의. true면 가입 시각을 marketingConsentAt에 남긴다. 빠지면 동의 안 함, 불리언이 아니면 거부.
     agreedMarketing?: unknown;
+    // 「재가입 제한 정보 보관 동의」(선택, 대표님 결정 2026-10-03). 재가입 제한을 켠 쇼핑몰에서만 보고, 빠지면 동의 안 함, 불리언이 아니면 거부.
+    // 동의하지 않은 회원은 기간 스냅숏이 없어 탈퇴 때 CI 해시를 남기지 않고 재가입 제한도 받지 않는다.
+    agreedRejoinRetention?: unknown;
+    // 동의한 경우: 화면이 보여 준 재가입 제한 기간(일)과 동의 문서 버전. 지금 정책·버전과 다르면 동의한 내용을 확인할 수 없어
+    // 저장하지 않는다(409 rejoin_policy_changed·consent_outdated).
+    rejoinRestrictionDaysShown?: unknown;
+    rejoinRetentionVersionShown?: unknown;
     // 감사 로그에 남길 요청 정보
     meta?: { ip?: string | null; userAgent?: string | null };
     now?: Date;
@@ -185,6 +200,7 @@ export async function signupBuyer(
   if (input.agreedTerms !== true || input.agreedPrivacy !== true) return { ok: false, reason: "terms_required" };
   if (input.agreedMarketing !== undefined && typeof input.agreedMarketing !== "boolean") return { ok: false, reason: "invalid_marketing_consent" };
   const agreedMarketing = input.agreedMarketing === true;
+  if (input.agreedRejoinRetention !== undefined && typeof input.agreedRejoinRetention !== "boolean") return { ok: false, reason: "invalid_rejoin_consent" };
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.verificationId)) return { ok: false, reason: "verification_invalid" };
 
   const done = await completeIdentityVerification(db, provider, input.verificationId, { sellerId: input.sellerId, purpose: "BUYER_SIGNUP", ownerToken: input.ownerToken }, now);
@@ -199,7 +215,14 @@ export async function signupBuyer(
     }
     return { ok: false, reason: "verification_invalid" };
   };
+  // 이미 가입을 마친 같은 요청의 재시도는 정책 대조보다 먼저 본다(그사이 정책이 바뀌어도 만든 계정의 201·세션을 받는다)
   if (v.consumedAt) return resume(v.subjectId);
+  // 재가입 제한을 켠 쇼핑몰에서 보관에 동의한 경우만 기간을 회원에 남긴다(가입 처리 중 설정이 바뀌어도 동의한 값 기준).
+  // 화면을 연 뒤 판매자가 기간을 바꿨거나 문서 버전이 바뀌었으면 동의한 내용과 다르다. 저장하지 않고 새 내용을 다시 보여 주게 한다.
+  const policyDays = await rejoinDaysToAgree(db, input.sellerId);
+  const rejoinDays = policyDays !== null && input.agreedRejoinRetention === true ? policyDays : null;
+  if (rejoinDays !== null && input.rejoinRestrictionDaysShown !== rejoinDays) return { ok: false, reason: "rejoin_policy_changed" };
+  if (rejoinDays !== null && input.rejoinRetentionVersionShown !== REJOIN_RETENTION_CONSENT_VERSION) return { ok: false, reason: "consent_outdated" };
   if (
     !v.ciHash ||
     !v.verifiedAt ||
@@ -211,6 +234,9 @@ export async function signupBuyer(
   ) {
     return { ok: false, reason: "verification_invalid" };
   }
+  // 이 쇼핑몰의 기간이 끝난 재가입 제한 기록을 지운다(전역 정리는 jobs/scheduler.ts 정기 실행).
+  // 본인확인(시작한 브라우저·완료·기한)이 확인된 요청에서만 돌린다. 비인증 요청으로 DELETE를 반복시키지 못하게 한다.
+  await purgeExpiredRejoinBlocks(db, now, input.sellerId);
 
   const grade = await db.memberGrade.findFirst({
     where: { sellerId: input.sellerId },
@@ -221,7 +247,10 @@ export async function signupBuyer(
 
   // 비밀번호 해시는 잠금 밖에서 미리 만든다(잠금을 짧게)
   const passwordHash = await hashPassword(input.password);
-  type Step = { kind: "resume"; subjectId: string | null } | { kind: "fail"; reason: BuyerSignupFailure } | { kind: "created"; id: string; broadcastNickname: string };
+  type Step =
+    | { kind: "resume"; subjectId: string | null }
+    | { kind: "fail"; reason: BuyerSignupFailure; rejoinAvailableAt?: Date }
+    | { kind: "created"; id: string; broadcastNickname: string };
   try {
     // 같은 본인확인 건의 가입 처리는 이 잠금 아래에서 한 줄로 한다(동시에 다시 보낸 요청이 서로 엇갈리지 않게).
     // 순서: 다시 읽기 → 이미 소진됐으면 재전송 판정 → 시도 예약 → 중복 확인 → 소진·회원 생성·회원 기록.
@@ -236,6 +265,8 @@ export async function signupBuyer(
       if (await tx.buyerMember.findFirst({ where: { ...live, OR: [{ ciHash: v.ciHash! }, { phone: v.phone! }] }, select: { id: true } })) {
         return { kind: "fail", reason: "already_member" };
       }
+      const blockedUntil = await rejoinBlockedUntil(tx, input.sellerId, v.ciHash!, now);
+      if (blockedUntil) return { kind: "fail", reason: "rejoin_restricted", rejoinAvailableAt: blockedUntil };
       if (await tx.buyerMember.findFirst({ where: { ...live, loginId }, select: { id: true } })) return { kind: "fail", reason: "login_id_taken" };
       if (await tx.buyerMember.findFirst({ where: { ...live, broadcastNickname: nickname }, select: { id: true } })) return { kind: "fail", reason: "nickname_taken" };
       await tx.identityVerification.update({ where: { id: v.id }, data: { consumedAt: now } });
@@ -252,6 +283,9 @@ export async function signupBuyer(
           broadcastNickname: nickname,
           gradeId: grade.id,
           marketingConsentAt: agreedMarketing ? now : null,
+          rejoinRestrictionDaysAgreed: rejoinDays,
+          rejoinRetentionAgreedAt: rejoinDays !== null ? now : null,
+          rejoinRetentionVersion: rejoinDays !== null ? REJOIN_RETENTION_CONSENT_VERSION : null,
           createdAt: now,
         },
       });
@@ -265,12 +299,18 @@ export async function signupBuyer(
         action: "buyer.signup",
         ip: input.meta?.ip ?? null,
         userAgent: input.meta?.userAgent ?? null,
-        after: { agreedTerms: true, agreedPrivacy: true, agreedMarketing, agreedAt: now.toISOString() },
+        after: {
+          agreedTerms: true,
+          agreedPrivacy: true,
+          agreedMarketing,
+          ...(rejoinDays !== null ? { agreedRejoinRetention: true, rejoinRetentionVersion: REJOIN_RETENTION_CONSENT_VERSION, rejoinRestrictionDays: rejoinDays } : {}),
+          agreedAt: now.toISOString(),
+        },
       });
       return { kind: "created", id: created.id, broadcastNickname: created.broadcastNickname };
     });
     if (step.kind === "resume") return resume(step.subjectId);
-    if (step.kind === "fail") return { ok: false, reason: step.reason };
+    if (step.kind === "fail") return { ok: false, reason: step.reason, ...(step.rejoinAvailableAt ? { rejoinAvailableAt: step.rejoinAvailableAt } : {}) };
     return { ok: true, memberId: step.id, broadcastNickname: step.broadcastNickname, resumed: false };
   } catch (e) {
     // 다른 본인확인으로 같은 값이 동시에 가입된 경우(부분 유니크 인덱스 이름으로 어느 값인지 구분한다).
@@ -306,6 +346,10 @@ export const BUYER_SIGNUP_MESSAGES: Record<BuyerSignupFailure | "daily_limit_exc
   login_id_taken: "이미 가입한 이메일이에요. 다른 이메일로 가입해 주세요",
   nickname_taken: "이미 쓰고 있는 방송 닉네임이에요. 다른 닉네임으로 정해 주세요",
   shop_unavailable: "지금은 쇼핑몰을 이용할 수 없어요",
+  rejoin_restricted: "지금은 다시 가입할 수 없어요",
+  invalid_rejoin_consent: "재가입 제한 정보 보관 동의 값을 다시 확인해 주세요",
+  consent_outdated: "약관이 바뀌었어요. 다시 확인하고 동의해 주세요",
+  rejoin_policy_changed: "재가입 제한 기간이 바뀌었어요. 바뀐 내용을 확인하고 다시 동의해 주세요",
   daily_limit_exceeded: "오늘은 본인확인을 더 할 수 없어요. 내일 다시 해 주세요",
   start_in_progress: "인증번호를 보내고 있어요. 잠시 뒤 다시 시도해 주세요",
 };
@@ -323,4 +367,8 @@ export const BUYER_SIGNUP_STATUS: Record<BuyerSignupFailure, number> = {
   login_id_taken: 409,
   nickname_taken: 409,
   shop_unavailable: 402,
+  rejoin_restricted: 403,
+  invalid_rejoin_consent: 400,
+  consent_outdated: 409,
+  rejoin_policy_changed: 409,
 };

@@ -1,7 +1,7 @@
 # 자동 설치·연결 상품 설계 (1차: 백엔드 골격, 실제 Gemini·브라우저·결제 없음)
 
 정본 요구사항: `docs/PRODUCT_SCOPE.md` 「자동 설치·연결 상품」「동시 실행·급성장 대응」, `docs/ONQ_PLAN.md` 단계 4·5, 종단 흐름 E3.
-작성 2026-10-03 KST, 확정 ②·⑦·⑦-1 반영 2026-10-04 KST. 코드: `lib/server/automation/**`, `app/api/automation/**`, 스키마 `prisma/schema.prisma` 「자동 설치·연결 상품」 블록, 마이그레이션 `20261003220000_automation`.
+작성 2026-10-03 KST, 확정 ②·⑦·⑦-1 반영 2026-10-04 KST. 코드: `lib/server/automation/**`, `app/api/automation/**`, 스키마 `prisma/schema.prisma` 「자동 설치·연결 상품」 블록, 마이그레이션 `20261003230000_automation`.
 
 ## 1. 1차 범위와 아닌 것
 
