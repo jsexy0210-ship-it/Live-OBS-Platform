@@ -233,7 +233,8 @@ async function identityStatus(page: Page, extra: Record<string, unknown> = { ava
   await page.unroute("**/api/seller/me/identity");
   await page.route("**/api/seller/me/identity", async (route) => {
     if (route.request().method() !== "GET") return route.continue();
-    const res = await route.fetch();
+    // route.fetch가 서버의 유휴 연결을 다시 쓰다 끊기면(socket hang up, 서버 로그에는 200) 한 번만 다시 받는다
+    const res = await route.fetch().catch(() => route.fetch());
     await route.fulfill({ response: res, json: { ...(await res.json()), ...extra } });
   });
 }
