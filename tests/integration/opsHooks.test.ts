@@ -278,7 +278,7 @@ describe("운영 지표 보완(Codex)", () => {
     expect((await opsMetrics(db)).incidents.open.map((e) => [e.source, e.key])).toEqual([["monitor-b", "health"]]);
   });
 
-  it("받은 지 30일 지난 사건은 정리하되 (source, key)별 마지막 열림·닫힘은 남아 열린 상태가 유지된다. 1000건씩 나눠 지운다", async () => {
+  it("받은 지 30일 지난 사건은 정리하되 (source, key)별 마지막 열림·닫힘은 남아 열린 상태가 유지된다. 정기 실행 한 번에 1000건씩, 실행마다 따로 커밋", async () => {
     const days = (d: number) => new Date(Date.now() - d * 86_400_000);
     const row = (source: string, eventId: string, kind: string, key: string, receivedDaysAgo: number) => ({
       source, eventId, kind, key, severity: "critical", message: "m", occurredAt: days(receivedDaysAgo), createdAt: days(receivedDaysAgo),
@@ -291,7 +291,18 @@ describe("운영 지표 보완(Codex)", () => {
     // 오래된 정보 사건 2500건(묶음 여러 번), 최근 정보 사건 1건
     await db.opsEvent.createMany({ data: Array.from({ length: 2500 }, (_, i) => row("monitor-a", `old-${i}`, "info", "note", 31)) });
     await db.opsEvent.create({ data: row("monitor-a", "recent", "info", "note", 1) });
-    expect(await purgeOldOpsEvents(db, new Date())).toBe(2501);
+    // 정기 실행 한 번에 한 묶음(1000건)만, 각 실행은 따로 커밋된다: 세 번 돌면 밀린 2501건이 모두 정리된다
+    const { SCHEDULED_JOBS: jobs } = await import("../../lib/server/jobs/scheduler");
+    const purge = jobs.filter((j) => j.name === "ops_event.purge_old");
+    const left = async () => db.opsEvent.count({ where: { createdAt: { lt: days(30) } } });
+    const counts: number[] = [];
+    for (let i = 0; i < 3; i++) {
+      const [out] = await runScheduledJobs(db, new Date(), purge);
+      counts.push(out.status === "done" ? out.count : -1);
+      expect(await left()).toBe(2503 - counts.reduce((x, y) => x + y, 0));
+    }
+    expect(counts).toEqual([1000, 1000, 501]);
+    expect(await purgeOldOpsEvents(db, new Date())).toBe(0);
     expect((await db.opsEvent.findMany({ orderBy: { eventId: "asc" } })).map((e) => e.eventId)).toEqual(["a1", "b2", "recent"]);
     expect((await opsMetrics(db)).incidents.open.map((e) => [e.source, e.key])).toEqual([["monitor-a", "health"]]);
     expect((await import("../../lib/server/jobs/scheduler")).SCHEDULED_JOBS.map((j) => j.name)).toContain("ops_event.purge_old");
