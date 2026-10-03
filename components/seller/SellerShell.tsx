@@ -21,7 +21,7 @@ const NAV: Nav[] = [
   { label: "입금 확인", perm: "ORDER_SHIPPING" },
   { label: "배송", perm: "ORDER_SHIPPING" },
   { label: "영수증 · 세금계산서", perm: "RECEIPT_TAX" },
-  { label: "적립금", perm: "MEMBER_POINTS" },
+  { label: "적립금", href: "/seller/rewards", perm: "MEMBER_POINTS" },
   { label: "회원", perm: "MEMBER_POINTS" },
   { label: "구매 제한", perm: "MEMBER_POINTS" },
   { label: "구매자 문의", perm: "INQUIRY_REPLY" },

@@ -119,3 +119,32 @@ test("쇼핑몰 설정 권한이 없는 직원은 권한 안내를 본다", asyn
   await expect(page.getByText("필요한 권한: 쇼핑몰 설정")).toBeVisible();
   await expect(page.getByRole("button", { name: "저장", exact: true })).toHaveCount(0);
 });
+
+test("반품 · 교환 배송비: 기본 3,000원 · 6,000원, 바꾸면 저장되고 무료 배송 주문은 반품 배송비 × 2를 뺀다고 안내한다", async ({ page }) => {
+  await openAs(page, "demo-owner@example.com");
+  const ret = page.getByLabel("반품 배송비 (편도)");
+  const exc = page.getByLabel("교환 배송비 (왕복)");
+  await expect(page.getByText("무료 배송 주문은 반품 배송비 × 2를 빼요.")).toBeVisible();
+  const before = { ret: await ret.inputValue(), exc: await exc.inputValue() };
+
+  // 잘못된 금액은 막는다
+  await ret.fill("-1");
+  await save(page);
+  await expect(page.getByText("숫자만 입력해 주세요").or(page.getByText("0원 이상으로 적어 주세요")).first()).toBeVisible();
+  await exc.fill("100001");
+  await expect(page.getByText("100,000원까지 정할 수 있어요")).toBeVisible();
+
+  await ret.fill("2,500");
+  await exc.fill("5000");
+  await expect(page.getByTestId("return-preview")).toContainText("단순 변심 반품 배송비 2,500원 · 교환 5,000원");
+  await saveOk(page);
+  await page.reload();
+  await expect(ret).toHaveValue("2500");
+  await expect(exc).toHaveValue("5000");
+  await shot(page, "SA-061-return");
+
+  // 되돌려 둔다
+  await ret.fill(before.ret);
+  await exc.fill(before.exc);
+  await saveOk(page);
+});

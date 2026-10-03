@@ -7,19 +7,84 @@ import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../.
 import { api, failMessage } from "../../../../../../components/seller/api";
 import { parseAmount } from "../../../../../../components/seller/format";
 
-// SA-063 주문 설정. 지금 API가 받는 항목(미입금 자동 취소·입금 기한·자동 구매 제한)만 보여 준다.
-// 기한 하루 전 알림·재고 되돌리기·자동 배송 완료·구매 확정·반품 배송비는 API가 생기면 붙인다.
+// SA-063 주문 설정: 미입금 자동 취소·입금 기한·자동 구매 제한·재고 되돌리기·자동 배송 완료·자동 구매 확정.
+// 반품·교환 배송비는 배송비 정책(SA-061)에서 정한다(API가 배송비 정책에 있음). 마감 전 알림은 API가 생기면 붙인다.
 
-type Policy = { autoCancelEnabled: boolean; paymentDueHours: number; unpaidRestrictionEnabled: boolean; restockOnCancel: boolean };
+type Policy = {
+  autoCancelEnabled: boolean;
+  paymentDueHours: number;
+  unpaidRestrictionEnabled: boolean;
+  restockOnCancel: boolean;
+  autoDeliverEnabled: boolean;
+  autoDeliverDays: number;
+  autoConfirmEnabled: boolean;
+  autoConfirmDays: number;
+};
 type Unit = "day" | "hour";
 
 const DEFAULT_DUE_HOURS = 24; // 대표님 결정 2026-10-03(#87): 기본은 주문 후 24시간
 const MAX_DUE_HOURS = 720;
+const MAX_AUTO_DAYS = 30; // 자동 배송 완료·구매 확정 기간 1~30일, 기본 7일
+
+function daysError(v: string): string | null {
+  const n = parseAmount(v);
+  if (n === null) return "숫자만 입력해 주세요";
+  if (n < 1 || n > MAX_AUTO_DAYS) return `1일부터 ${MAX_AUTO_DAYS}일까지 정할 수 있어요`;
+  return null;
+}
 const SET_ROW = { padding: "12px 0", gap: 12, boxShadow: "inset 0 -1px 0 var(--wds-line-normal-alternative)" };
 
 // 하루 단위로 딱 떨어지고 이틀 이상이면 「일」, 그 밖에는 「시간」으로 보여 준다
 const unitFor = (h: number): Unit => (h % 24 === 0 && h >= 48 ? "day" : "hour");
 const dueText = (h: number) => (unitFor(h) === "day" ? `${h / 24}일` : `${h}시간`);
+
+// 자동 배송 완료·구매 확정 한 줄: 스위치 + 켜져 있으면 기간(일) 칸
+function autoDaysRow(o: {
+  id: string;
+  title: string;
+  desc: string;
+  offDesc: string;
+  on: boolean;
+  setOn: (f: (v: boolean) => boolean) => void;
+  value: string;
+  setValue: (v: string) => void;
+  err: string | null;
+}) {
+  return (
+    <div className="col" style={{ ...SET_ROW, gap: 10 }}>
+      <div className="row between" style={{ gap: 12 }}>
+        <span className="col" style={{ gap: 2 }}>
+          <span className="t-l1 fw6" id={`${o.id}-label`}>
+            {o.title}
+          </span>
+          <span className="t-c1 c-alt">{o.on ? o.desc : o.offDesc}</span>
+        </span>
+        <button className={`sw${o.on ? " on" : ""}`} type="button" role="switch" aria-checked={o.on} aria-labelledby={`${o.id}-label`} onClick={() => o.setOn((v) => !v)} />
+      </div>
+      {o.on && (
+        <div className="fld" style={{ width: 160 }}>
+          <label htmlFor={`${o.id}-days`}>{o.id === "deliver" ? "자동 배송 완료 기간" : "자동 구매 확정 기간"}</label>
+          <div style={{ position: "relative" }}>
+            <input
+              id={`${o.id}-days`}
+              className={`inp num${o.err ? " is-error" : ""}`}
+              type="text"
+              inputMode="numeric"
+              value={o.value}
+              onChange={(e) => o.setValue(e.target.value)}
+              style={{ textAlign: "right", paddingRight: 32 }}
+              aria-invalid={!!o.err}
+            />
+            <span className="t-l2 c-alt amount-unit" aria-hidden="true">
+              일
+            </span>
+          </div>
+          {o.err ? <span className="err">{o.err}</span> : <span className="help">1~{MAX_AUTO_DAYS}일</span>}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function OrderSettingsPage() {
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; saved: Policy }>({ kind: "loading" });
@@ -28,6 +93,10 @@ export default function OrderSettingsPage() {
   const [unit, setUnit] = useState<Unit>("hour");
   const [restriction, setRestriction] = useState(true);
   const [restock, setRestock] = useState(true);
+  const [deliverOn, setDeliverOn] = useState(true);
+  const [deliverDays, setDeliverDays] = useState("");
+  const [confirmOn, setConfirmOn] = useState(true);
+  const [confirmDays, setConfirmDays] = useState("");
   const [showError, setShowError] = useState(false);
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -39,6 +108,10 @@ export default function OrderSettingsPage() {
     setDue(String(unitFor(p.paymentDueHours) === "day" ? p.paymentDueHours / 24 : p.paymentDueHours));
     setRestriction(p.unpaidRestrictionEnabled);
     setRestock(p.restockOnCancel);
+    setDeliverOn(p.autoDeliverEnabled);
+    setDeliverDays(String(p.autoDeliverDays));
+    setConfirmOn(p.autoConfirmEnabled);
+    setConfirmDays(String(p.autoConfirmDays));
   };
 
   const load = useCallback(async () => {
@@ -60,13 +133,26 @@ export default function OrderSettingsPage() {
   const saved = state.kind === "ok" ? state.saved : null;
   // 자동 취소를 끄면 입금 기한 칸은 숨기고 검사하지 않는다. 틀린 값이면 저장된 값을 그대로 쓴다(버튼 상태도 같은 기준)
   const effectiveHours = autoCancel || !dueError ? hours : saved?.paymentDueHours ?? null;
+  // 자동 배송 완료·구매 확정 기간도 같은 기준: 끄면 칸을 숨기고, 틀린 값이면 저장된 값을 쓴다
+  const deliverError = daysError(deliverDays);
+  const confirmError = daysError(confirmDays);
+  const effectiveDeliver = deliverOn || !deliverError ? parseAmount(deliverDays) : saved?.autoDeliverDays ?? null;
+  const effectiveConfirm = confirmOn || !confirmError ? parseAmount(confirmDays) : saved?.autoConfirmDays ?? null;
   const dirty =
-    !!saved && (saved.autoCancelEnabled !== autoCancel || saved.unpaidRestrictionEnabled !== restriction || saved.restockOnCancel !== restock || saved.paymentDueHours !== effectiveHours);
+    !!saved &&
+    (saved.autoCancelEnabled !== autoCancel ||
+      saved.unpaidRestrictionEnabled !== restriction ||
+      saved.restockOnCancel !== restock ||
+      saved.paymentDueHours !== effectiveHours ||
+      saved.autoDeliverEnabled !== deliverOn ||
+      saved.autoDeliverDays !== effectiveDeliver ||
+      saved.autoConfirmEnabled !== confirmOn ||
+      saved.autoConfirmDays !== effectiveConfirm);
 
   // 입금 기한 칸은 자동 취소를 꺼도 값을 남겨 둔다(다시 켤 때 그대로 쓰도록). 꺼져 있으면 검사하지 않고 저장된 값을 보낸다.
   const save = async () => {
     if (!saved) return;
-    if (autoCancel && dueError) {
+    if ((autoCancel && dueError) || (deliverOn && deliverError) || (confirmOn && confirmError)) {
       setShowError(true);
       return;
     }
@@ -77,6 +163,10 @@ export default function OrderSettingsPage() {
       paymentDueHours: effectiveHours!,
       unpaidRestrictionEnabled: restriction,
       restockOnCancel: restock,
+      autoDeliverEnabled: deliverOn,
+      autoDeliverDays: effectiveDeliver!,
+      autoConfirmEnabled: confirmOn,
+      autoConfirmDays: effectiveConfirm!,
     };
     const r = await api<{ policy: Policy }>("/api/seller/order-policy", { method: "PUT", body });
     setSaving(false);
@@ -111,7 +201,7 @@ export default function OrderSettingsPage() {
         <div className="ph">
           <div className="col" style={{ gap: 6 }}>
             <h1 className="t-t3">주문 설정</h1>
-            <span className="t-l2 c-alt">미입금 주문을 어떻게 처리할지 정해요. 저장하면 다음 주문부터 적용돼요.</span>
+            <span className="t-l2 c-alt">미입금 취소 · 재고 · 배송 완료 · 구매 확정 규칙이에요. 저장하면 다음 주문부터 적용돼요.</span>
           </div>
         </div>
 
@@ -251,6 +341,38 @@ export default function OrderSettingsPage() {
                 </div>
                 <span className="t-c1 c-alt">재고를 언제 줄일지는 상품마다 「재고 차감 기준」에서 정해요(결제하면 차감 · 주문하면 바로 차감).</span>
               </section>
+
+              <section className="card pad col" style={{ gap: 10 }}>
+                <h2 className="t-hl2">배송 완료 · 구매 확정</h2>
+                {/* 자동 배송 완료·구매 확정을 실제로 돌리는 정기 실행이 아직 연결되지 않았다(HANDOFF 「배송」). 연결되면 이 안내를 지운다 */}
+                <div className="msg msg-cau" role="note" data-testid="auto-deliver-pending">
+                  <span>
+                    <b>아직 자동으로 바뀌지 않아요.</b> 정해 둔 설정은 저장되고, 자동 처리가 시작되면 그대로 적용돼요.
+                  </span>
+                </div>
+                {autoDaysRow({
+                  id: "deliver",
+                  title: "배송 중 n일 뒤 자동으로 배송 완료",
+                  desc: "송장을 올린 뒤 배송 중 상태가 이 기간 지나면 자동으로 배송 완료가 돼요 · 기본 7일",
+                  offDesc: "꺼 두면 배송 완료는 직접 바꿔요",
+                  on: deliverOn,
+                  setOn: setDeliverOn,
+                  value: deliverDays,
+                  setValue: setDeliverDays,
+                  err: showError && deliverOn ? deliverError : null,
+                })}
+                {autoDaysRow({
+                  id: "confirm",
+                  title: "배송 완료 n일 뒤 자동 구매 확정",
+                  desc: "구매자가 확정하지 않아도 이 기간이 지나면 구매 확정돼요 · 기본 7일",
+                  offDesc: "꺼 두면 구매자가 확정할 때까지 기다려요",
+                  on: confirmOn,
+                  setOn: setConfirmOn,
+                  value: confirmDays,
+                  setValue: setConfirmDays,
+                  err: showError && confirmOn ? confirmError : null,
+                })}
+              </section>
             </div>
 
             <aside className="col aside-sticky" style={{ gap: 16 }}>
@@ -264,12 +386,22 @@ export default function OrderSettingsPage() {
                         : "입금 기한을 입력하면 여기에 보여요"
                       : "주문서 · 무통장 입금: 입금 기한 안내가 보이지 않아요"}
                   </span>
+                  <span className="t-l2" data-testid="delivery-preview">
+                    주문 상세: 「
+                    {[
+                      deliverOn && !deliverError ? `배송 중 ${parseAmount(deliverDays)}일이 지나면 배송 완료로 바뀌어요` : null,
+                      confirmOn && !confirmError ? `배송 완료 ${parseAmount(confirmDays)}일 뒤 자동으로 구매 확정돼요` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ") || "배송 완료 · 구매 확정은 직접 처리해요"}
+                    」
+                  </span>
                 </div>
               </div>
               <div className="card pad col" style={{ gap: 8 }}>
                 <span className="t-hl2">알아 두세요</span>
                 <span className="t-c1 c-alt" style={{ lineHeight: 1.6 }}>
-                  바꾼 기한은 저장한 뒤 들어오는 주문부터 적용돼요. 이미 받은 주문의 입금 기한은 그대로예요.
+                  바꾼 기한은 저장한 뒤 들어오는 주문부터 적용돼요. 이미 받은 주문의 입금 기한은 그대로예요. 반품 · 교환 배송비는 「배송비 정책」에서 정해요.
                 </span>
               </div>
               <button className="btn btn-lg btn-block" type="button" onClick={() => void save()} disabled={saving || !dirty}>
