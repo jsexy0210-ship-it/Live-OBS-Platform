@@ -125,14 +125,14 @@ export async function linkStaffIdentity(
   if (!done.ok) return { ok: false, reason: done.reason === "pending" ? "pending" : "verification_invalid" };
   const v = done.verification;
   if (v.subjectId !== user.id || v.consumedAt || !v.ciHash) return { ok: false, reason: "verification_invalid" };
-  const matches = !!user.phone && v.phone === user.phone && sameName(v.name, user.name);
   return db.$transaction(async (tx) => {
     const used = await tx.identityVerification.updateMany({ where: { id: v.id, consumedAt: null }, data: { consumedAt: now } });
     if (used.count !== 1) return { ok: false as const, reason: "verification_invalid" as const };
-    // 그사이 대표자가 번호를 바꿨으면 연결하지 않는다(같은 번호일 때만 갱신)
-    const linked = matches
-      ? await tx.sellerUser.updateMany({ where: { id: user.id, phone: user.phone, status: "ACTIVE" }, data: { identityCiHash: v.ciHash, identityLinkedAt: now } })
-      : { count: 0 };
+    // 직원 행을 잠그고 다시 읽어 그 자리에서 이름·휴대폰·상태를 비교한다(그사이 대표자가 이름·번호를 바꾸거나 계정을 끄면 연결하지 않음)
+    const [cur] = await tx.$queryRaw<{ name: string; phone: string | null; status: string }[]>`
+      SELECT "name", "phone", "status"::text AS "status" FROM "SellerUser" WHERE "id" = ${user.id}::uuid FOR UPDATE`;
+    const matches = !!cur && cur.status === "ACTIVE" && !!cur.phone && v.phone === cur.phone && sameName(v.name, cur.name);
+    const linked = matches ? await tx.sellerUser.updateMany({ where: { id: user.id }, data: { identityCiHash: v.ciHash, identityLinkedAt: now } }) : { count: 0 };
     await writeAudit(tx, {
       actorType: "SELLER_USER",
       actorId: user.id,

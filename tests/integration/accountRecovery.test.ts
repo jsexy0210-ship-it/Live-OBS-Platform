@@ -221,6 +221,34 @@ describe("비밀번호 찾기(이메일+쇼핑몰) 직원", () => {
     expect((await done.json()).error).toBe("already_verified");
   });
 
+  it("연결 결과를 비교한 뒤 저장하기 전에 대표자가 직원 이름을 바꾸면 연결하지 않는다(직원 행을 잠그고 다시 비교)", async () => {
+    const { seller } = await shop();
+    const staff = await createSellerUser(seller.id, "MANAGER");
+    await db.sellerUser.update({ where: { id: staff.id }, data: { phone: "01055556666" } });
+    const cookie = await sessionOf(staff.email);
+    const s = await linkStart(post("/api/seller/me/identity/start", { ...IDV_INPUT, name: "직원", phone: "01055556666" }, cookie));
+    const flow = cookieOf(s, "lo_lidv");
+    const { verificationId } = await s.json();
+    await confirmWith(linkConfirm, "/api/seller/me/identity/confirm", verificationId, flow, { ci: "STAFF-CI" });
+    // 연결 트랜잭션이 시작되기 직전에 대표자가 이름을 바꾼다
+    const { linkStaffIdentity } = await import("../../lib/server/sellers/staffIdentity");
+    const { requireSeller } = await import("../../lib/server/authz/guards");
+    const ctx = await requireSeller(db, cookie.replace("lo_seller=", ""));
+    const racing = new Proxy(db, {
+      get(t, p) {
+        const v = Reflect.get(t, p);
+        if (p !== "$transaction") return typeof v === "function" ? v.bind(t) : v;
+        return async (...args: unknown[]) => {
+          await db.sellerUser.update({ where: { id: staff.id }, data: { name: "다른이름" } });
+          return (v as (...a: unknown[]) => unknown).apply(t, args);
+        };
+      },
+    }) as typeof db;
+    const r = await linkStaffIdentity(racing, fake(), ctx, { verificationId, ownerToken: flow.split("=")[1] });
+    expect(r).toEqual({ ok: false, reason: "identity_mismatch" });
+    expect((await db.sellerUser.findUniqueOrThrow({ where: { id: staff.id } })).identityCiHash).toBeNull();
+  });
+
   it("직원 이름 상한은 만들기·고치기·연결에 같은 50자: 40자 이름 직원도 연결을 시작하고, 51자는 만들 때·고칠 때 400", async () => {
     const { seller, owner } = await shop();
     const ownerCookie = await sessionOf(owner.email);
