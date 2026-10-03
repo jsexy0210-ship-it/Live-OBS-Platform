@@ -30,6 +30,127 @@ body {
   gap: 18px;
 }
 
+/* 파트너스 가입 신청(PF-007) · 비밀번호 찾기(AU-003·004) */
+.login-card.pa-wide {
+  width: 720px;
+}
+.pa-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pa-steps > li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pa-step-n {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 800;
+  background: var(--wds-fill-strong);
+  color: var(--wds-label-alternative);
+}
+.pa-steps > li.on .pa-step-n {
+  background: var(--brand);
+  color: var(--brand-ink);
+}
+.pa-sec {
+  gap: 12px;
+}
+.pa-idv {
+  gap: 10px;
+  padding: 14px;
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px var(--wds-line-normal-normal);
+}
+.pa-fs {
+  gap: 14px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+/* 본인확인 전에는 흐리게 */
+.pa-fs.is-waiting {
+  opacity: 0.55;
+}
+.pa-two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+}
+.pa-two > .fld {
+  min-width: 0;
+}
+.pa-carrier {
+  grid-template-columns: 160px 1fr;
+}
+.pa-seg {
+  display: flex;
+}
+.pa-seg > button {
+  flex: 1;
+  height: 40px;
+}
+.pa-seg > button:disabled {
+  cursor: not-allowed;
+}
+.pa-done {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--wds-background-status-positive);
+}
+.pa-done-text {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.pa-done-who {
+  display: block;
+}
+.pa-done-text .nw {
+  white-space: nowrap;
+}
+.pa-done > .btn {
+  margin-left: auto;
+}
+.pa-result-ic[data-approved="true"] {
+  background: var(--wds-background-status-positive);
+  color: var(--pos-text);
+}
+.pa-reasons {
+  margin: 0;
+  padding: 12px 16px 12px 32px;
+  border-radius: 12px;
+  background: var(--page);
+  text-align: left;
+  align-self: stretch;
+}
+.pa-reasons > li + li {
+  margin-top: 4px;
+}
+@media (max-width: 767px) {
+  .login-card {
+    padding: 24px 18px;
+  }
+  .pa-two,
+  .pa-carrier {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* 공통 틀 */
 .shell {
   min-height: 100vh;
