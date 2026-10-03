@@ -42,7 +42,7 @@
 
 ## 미완료·블로커
 
-- 상품 목록 재고 필터(`stock=out·low`)는 판매자 상품 전체를 GROUP BY로 고른 뒤 `id IN (...)`으로 거른다. 상품이 많아지면 SQL 하나로 합친다
+- 운영 DB 생성 때 collation을 UTF-8 계열(`ko_KR.UTF-8` 등)로 만들 것. 「C」 collation이면 상품 이름 검색의 대소문자 무시(`lower()`)가 ASCII에만 적용된다
 - 재고 이력 `stockAfter`는 이 기능 전 이력에서 null(화면은 표시하지 않음)
 - 휴대폰 본인확인: 포트원 V2 + KCP 어댑터(`lib/server/identity/portone.ts`)는 실제 호출 미검증(계약 전). 계약 뒤 요청·응답 필드, 인증번호 자릿수·유효시간·재전송 규칙, 오류 코드(`wrong_code` 판정)를 대행사 규격으로 맞추고 `lib/server/identity/verification.ts` 상수를 바꾼다
 - 구매자 가입 HTTP 라우트(본인확인 시작·확인·가입)가 아직 없음(`lib/server/buyers/signup.ts`·본인확인 함수만 있음). 붙일 때 `signupBuyer`가 공급자·방식을 확인하지 않으므로 `completeIdentityVerification`을 거치게 한다

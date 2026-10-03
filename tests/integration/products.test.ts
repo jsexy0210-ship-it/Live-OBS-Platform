@@ -248,6 +248,27 @@ describe("목록 이름 검색(q)", () => {
   });
 });
 
+describe("목록 필터: 결과가 많아도 오류 없이 SQL에서 거른다", () => {
+  it("검색·재고 조건에 맞는 상품이 Postgres 바인드 변수 한도(32,767)를 넘어도 500 없이 쪽을 나눠 돌려주고, 다른 쇼핑몰은 섞이지 않는다", async () => {
+    const s = await seller();
+    const other = await seller();
+    const N = 33000;
+    for (const sid of [s.ctx.sellerId, other.ctx.sellerId]) {
+      await db.$executeRaw`INSERT INTO "Product" ("sellerId", "name", "price", "status", "sortOrder")
+        SELECT ${sid}::uuid, '포켓몬 카드 ' || g, 5000, 'ON_SALE', 0 FROM generate_series(1, ${N}) g`;
+    }
+    for (const opts of [{ q: "포켓몬" }, { stock: "out" }, { q: "카드", stock: "out", status: "ON_SALE" }]) {
+      const first = await listProducts(db, s.ctx, { ...opts, limit: 2 });
+      expect(first.ok, JSON.stringify(opts)).toBe(true);
+      if (!first.ok) continue;
+      expect(first.value.products).toHaveLength(2);
+      expect(first.value.products.every((p) => p.sellerId === s.ctx.sellerId)).toBe(true);
+      const next = await listProducts(db, s.ctx, { ...opts, limit: 2, cursor: first.value.nextCursor ?? undefined });
+      expect(next.ok && next.value.products.map((p) => p.id).filter((id) => first.value.products.some((f) => f.id === id))).toEqual([]);
+    }
+  }, 120000);
+});
+
 describe("목록 페이지 넘김: 기준 상품이 그사이 바뀌어도 빠지지 않는다", () => {
   async function seven(ctx: TenantContext) {
     for (let i = 0; i < 7; i++) await made(ctx, { name: `상품${i}`, sortOrder: i % 2 });

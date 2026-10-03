@@ -155,7 +155,7 @@ tests/unit/**, tests/integration/**           테스트
 - 판매자 상품·옵션 API(`PRODUCT_MANAGE`, 잠긴 판매자는 402, 마스터 대리 조회는 목록·조회만 되고 변경은 403): `GET·POST /api/seller/products`, `GET·PATCH·DELETE /api/seller/products/{productId}`, `POST /api/seller/products/{productId}/options`, `PATCH·DELETE /api/seller/products/{productId}/options/{optionId}`.
   - 다른 판매자 상품·옵션, 다른 상품의 옵션은 404. 상품 행을 잠근 뒤 가격·옵션을 검사한다.
   - 목록은 커서 페이지(`?cursor·limit`, 기본 50·최대 200, 응답 `{ products, nextCursor }`, 정렬 진열 순서 → 최근 등록 → id). 커서는 이 판매자 상품 id만 받고(아니면 `400 invalid_cursor`), 그 행의 (sortOrder, createdAt, id) 값 바로 뒤부터 keyset으로 고른다 — 기준 상품이 그사이 지워지거나 필터 밖이 되어도 다음 상품을 건너뛰지 않는다. limit은 숫자만 있는 값 1~200만 받고 아니면 `400 invalid_limit`.
-  - 이름 검색 `?q`: 상품 이름이나 지우지 않은 옵션 이름에 들어 있으면 나온다(대소문자 무시, 부분 일치, NFKC로 맞춤, `%`·`_`도 글자 그대로). 앞뒤 공백을 지우고 50자까지, 비었으면 검색 안 함. 쓸 수 없는 글자·50자 초과는 `400 invalid_search`. 상태·재고 필터·커서와 함께 쓴다.
+  - 이름 검색 `?q`: 상품 이름이나 지우지 않은 옵션 이름에 들어 있으면 나온다(대소문자 무시, 부분 일치, NFKC로 맞춤, `%`·`_`도 글자 그대로). 앞뒤 공백을 지우고 50자까지, 비었으면 검색 안 함. 쓸 수 없는 글자·50자 초과는 `400 invalid_search`. 상태·재고 필터·커서와 함께 쓴다. 필터·정렬·커서는 SQL 안에서 걸러 그 쪽의 상품 id만 고른다(결과가 많아도 바인드 변수 한도에 걸리지 않음). 대소문자 무시는 `lower()`라 운영 DB는 UTF-8 계열 collation(예: `ko_KR.UTF-8`·`en_US.UTF-8`)으로 만들어야 한다(「C」이면 ASCII만 소문자가 된다).
   - 가격은 1원~2,147,483,647원 정수. 살아 있는 옵션의 단가(가격 + 추가금)도 1원~정수 범위여야 하고, 상품 가격·추가금을 바꿀 때 다시 확인한다. 틀리면 `400 invalid_price`.
   - 재고는 0 이상 정수. 바꿀 때는 `{ stock, expectedStock }`을 함께 보내고, 지금 재고가 expectedStock과 다르면(결제 차감과 겹침) `409 stock_conflict`로 덮어쓰지 않는다. 차이와 등록 때 재고는 `MANUAL` 재고 이력.
   - 상태는 `DRAFT | ON_SALE | SOLD_OUT | HIDDEN`. 판매 중은 살아 있는 옵션이 하나 이상 있어야 하고(`400 no_sellable_option`), 판매 중 상품의 마지막 옵션은 지울 수 없다. 옵션은 상품당 100개까지.
