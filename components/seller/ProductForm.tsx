@@ -115,8 +115,8 @@ export function ProductForm({ initial }: { initial?: Product }) {
     restock === null
       ? "취소·반품 때 재고를 되돌릴지는 주문 설정의 「취소·반품하면 재고 되돌리기」를 따라요"
       : restock
-        ? "취소·반품하면 재고가 돌아와요(주문 설정에서 켜져 있어요)"
-        : "취소·반품해도 재고가 돌아오지 않아요(주문 설정에서 꺼져 있어요)";
+        ? "주문 취소·발송 전 환불이면 재고가 돌아와요(주문 설정에서 켜져 있어요). 발송 뒤 환불이나 개봉한 상품은 돌아오지 않아요"
+        : "취소·환불해도 재고가 돌아오지 않아요(주문 설정에서 꺼져 있어요)";
   const [rows, setRows] = useState<OptRow[]>(() => (initial ? initial.options.map(toRow) : [blankRow("기본")]));
   const [removed, setRemoved] = useState<string[]>([]);
   const [showErrors, setShowErrors] = useState(false);
