@@ -171,7 +171,8 @@ export async function cancelOverdueOrders(db: PrismaClient, opts: { now?: Date; 
 }
 
 // 미입금 알림 대상(대표님 결정 2026-10-03, PRODUCT_SCOPE): 알림 시각이 지났고 기한은 아직 안 지난 결제 대기 주문.
-// 알림 시각 = 기한 하루 전. 입금 기간(기한 − 주문 시각)이 하루 이하면 기한 1시간 전. 발송 연동 전이라 대상 조회만 한다.
+// 알림 시각 = 기한 하루 전. 입금 기간(기한 − 주문 시각)이 하루 이하면 기한 1시간 전. 조회만 한다.
+// 실제로 보낼 때는 중복 발송을 막도록 orders/notifications.ts claimPaymentDueSoon으로 잡는다.
 export async function listPaymentDueSoon(db: PrismaClient, opts: { now?: Date } = {}) {
   const now = opts.now ?? (await dbNow(db));
   return db.$queryRaw<{ id: string; sellerId: string; buyerMemberId: string; orderNo: number; totalAmount: number; paymentDueAt: Date }[]>`

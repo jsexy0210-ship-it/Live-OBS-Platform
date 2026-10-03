@@ -584,6 +584,7 @@ model Order {
   stockMovements  StockMovement[]
   queueItems      QueueItem[]
   rewardLedger    RewardLedger[]
+  notifications   OrderNotification[]
 
   @@unique([sellerId, id])
   @@unique([sellerId, orderNo])
@@ -1081,4 +1082,34 @@ model BuyerPurchaseRestriction {
   buyerMember BuyerMember @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id])
 
   @@index([sellerId, buyerMemberId, startsAt])
+}
+
+// 주문 알림 발송 기록(중복 발송 방지). 주문·종류마다 1행. 보내기 전에 PENDING으로 먼저 잡고(claim), 보낸 뒤 SENT·FAILED로 바꾼다.
+// 실패했거나 PENDING으로 오래 멈춘 기록은 시도 횟수 안에서 다시 잡을 수 있다(lib/server/orders/notifications.ts).
+enum OrderNotificationKind {
+  PAYMENT_DUE_SOON
+}
+
+enum OrderNotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model OrderNotification {
+  id            String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String                  @db.Uuid
+  orderId       String                  @db.Uuid
+  kind          OrderNotificationKind
+  status        OrderNotificationStatus @default(PENDING)
+  attempts      Int                     @default(1)
+  claimedAt     DateTime                @db.Timestamptz(3)
+  sentAt        DateTime?               @db.Timestamptz(3)
+  failureReason String?
+  createdAt     DateTime                @default(now()) @db.Timestamptz(3)
+
+  order Order @relation(fields: [sellerId, orderId], references: [sellerId, id])
+
+  @@unique([orderId, kind])
+  @@index([sellerId, kind, status])
 }
