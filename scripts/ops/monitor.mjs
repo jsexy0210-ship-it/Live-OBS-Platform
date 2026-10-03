@@ -9,7 +9,9 @@
 //   4) 자기 heartbeat(heartbeat.json)를 매번 남긴다 → 감시가 끊겼는지 바깥에서 알 수 있다
 // 기록: MONITOR_DIR/samples-YYYYMMDD.jsonl(표본), events.jsonl(사건), status.json(마지막 상태), heartbeat.json
 // 알림: 채널이 미정이라 인터페이스만 둔다. MONITOR_ALERT_URL이 있으면 사건을 JSON으로 POST하고, 없으면 기록만 한다.
-//   같은 사건은 한 번만, 시간당 MONITOR_ALERT_MAX_PER_HOUR건까지만 보낸다(알림 폭주 방지).
+//   같은 사건은 한 번만, 시간당 MONITOR_ALERT_MAX_PER_HOUR건까지만 보낸다(알림 폭주 방지). 한도에 걸린 알림은 버리지 않고
+//   남겨 두었다가 한도가 열리면 보낸다. 아직 못 나간 incident_open은 같은 대상의 incident_close와 합친다(openNotSent).
+//   보낼 목록(최대 50건)이 넘치면 incident_close가 아닌 오래된 것부터 버린다.
 //   받는 쪽이 2xx가 아니면 alert_failed를 남기고 한도를 쓰지 않은 채 다음 주기에 다시 보낸다(최대 5번).
 //   전송은 동시 5건·틱마다 간격의 1/3 안에서만 해 감시 주기를 막지 않는다.
 // 감시 상태(실패 횟수·열린 장애·경고 쿨다운·알림 한도·보낼 목록)는 monitor-state.json에 남겨 재시작해도 이어진다.
@@ -155,7 +157,7 @@ function loadState() {
     st.warned = v.warned;
     st.mismatchTicks = v.mismatchTicks;
     st.alerts = v.alerts.filter((t) => Number.isFinite(t) && now - t < 3600_000);
-    st.outbox = v.outbox.filter((x) => isObj(x) && isObj(x.ev) && Number.isInteger(x.attempts) && x.attempts < ALERT_MAX_ATTEMPTS).slice(-OUTBOX_MAX);
+    st.outbox = v.outbox.filter((x) => isObj(x) && isObj(x.ev) && Number.isInteger(x.attempts) && x.attempts < ALERT_MAX_ATTEMPTS);
   } catch (e) {
     if (existsSync(STATE_FILE())) console.error(`[monitor] monitor-state.json을 읽지 못해 빈 상태로 시작해요: ${e instanceof Error ? e.message : String(e)}`);
   }
@@ -225,7 +227,8 @@ async function send(ev, timeoutMs) {
 const ALERT_CONCURRENCY = 5;
 async function flushAlerts() {
   if (!cfg.alertUrl || state.outbox.length === 0) return;
-  const deadline = Date.now() + (cfg.intervalS * 1000) / 3;
+  // 정수 밀리초로(AbortSignal.timeout은 정수만 받음: 간격이 3의 배수가 아니면 모든 전송이 RangeError로 실패했었음).
+  const deadline = Date.now() + Math.floor((cfg.intervalS * 1000) / 3);
   const pending = [...state.outbox];
   const keep = [];
   while (pending.length && Date.now() < deadline - 100) {
@@ -233,11 +236,16 @@ async function flushAlerts() {
     state.alerts = state.alerts.filter((t) => now - t < 3600_000);
     const slots = cfg.alertMaxPerHour - state.alerts.length;
     if (slots <= 0) {
-      for (const item of pending.splice(0)) record("events.jsonl", { at: kst(), kind: "alert_suppressed", ref: item.ev.kind });
+      // 한도에 걸린 알림은 버리지 않고 남겨 두었다가 한도가 다시 열리는 틱에 보낸다(미룬 사실은 항목마다 한 번만 기록).
+      for (const item of pending) {
+        if (item.deferred) continue;
+        item.deferred = true;
+        record("events.jsonl", { at: kst(), kind: "alert_deferred", ref: item.ev.kind, target: item.ev.target ?? null });
+      }
       break;
     }
     const batch = pending.splice(0, Math.min(ALERT_CONCURRENCY, slots));
-    const timeoutMs = Math.max(100, Math.min(5000, deadline - now));
+    const timeoutMs = Math.max(100, Math.min(5000, Math.floor(deadline - now)));
     const results = await Promise.all(batch.map((item) => send(item.ev, timeoutMs)));
     for (const [k, item] of batch.entries()) {
       const r = results[k];
@@ -258,8 +266,30 @@ async function flushAlerts() {
 async function alert(ev) {
   // 경고·장애와 복구만 보낸다(감시 시작 같은 정보성 사건은 기록만: 재시작 반복 때 알림 폭주 방지).
   if (!cfg.alertUrl || (ev.level === "info" && ev.kind !== "incident_close")) return;
+  // 같은 대상의 incident_open이 아직 못 나갔으면(한도·전송 실패) close 하나로 합친다(close에 openedAt·durationS가 있어 정보가 줄지 않음).
+  if (ev.kind === "incident_close") {
+    for (let i = state.outbox.length - 1; i >= 0; i--) {
+      const o = state.outbox[i].ev;
+      if (o.target !== ev.target || (o.kind !== "incident_open" && o.kind !== "incident_close")) continue;
+      if (o.kind === "incident_open") {
+        state.outbox.splice(i, 1);
+        ev = { ...ev, openNotSent: true };
+      }
+      break;
+    }
+  }
   state.outbox.push({ ev, attempts: 0 });
-  if (state.outbox.length > OUTBOX_MAX) record("events.jsonl", { at: kst(), kind: "alert_dropped", ref: state.outbox.shift().ev.kind });
+  trimOutbox();
+}
+
+// 보낼 목록이 상한을 넘으면 오래된 것부터 버리되 incident_close는 마지막까지 남긴다(복구 알림이 빠지지 않게).
+function trimOutbox() {
+  while (state.outbox.length > OUTBOX_MAX) {
+    let i = state.outbox.findIndex((x) => x.ev.kind !== "incident_close");
+    if (i < 0) i = 0;
+    const [dropped] = state.outbox.splice(i, 1);
+    record("events.jsonl", { at: kst(), kind: "alert_dropped", ref: dropped.ev.kind, target: dropped.ev.target ?? null });
+  }
 }
 
 async function event(ev) {
@@ -362,6 +392,7 @@ async function tick() {
 async function main() {
   mkdirSync(cfg.dir, { recursive: true });
   state = loadState();
+  trimOutbox();
   await event({ level: "info", kind: "monitor_start", targets: cfg.targets.map((t) => t.name), intervalS: cfg.intervalS });
   // 고정 주기: 확인에 걸린 시간만큼 다음 틱까지 기다리는 시간을 줄인다.
   for (;;) {

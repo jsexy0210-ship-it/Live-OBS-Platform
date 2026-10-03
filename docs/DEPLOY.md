@@ -188,7 +188,7 @@ sudo -u obs nano /opt/obs/.env
 | `OBS_ALERT_URL` | 선택 | 장애 알림을 받을 주소(웹훅). 알림 채널이 정해지기 전에는 비워 둬요(기록만 남아요) |
 | `OBS_MONITOR_INTERVAL_S` | 선택 | 감시 간격(기본 15초, 1~60초. 범위 밖이거나 숫자가 아니면 감시가 시작하지 않고 로그에 이유를 남겨요) |
 | `OBS_MONITOR_KEEP_DAYS` | 선택 | 일별 표본 파일(`samples-YYYYMMDD.jsonl`)을 오늘 포함 며칠 치 남길지(기본 14, 1~3650). 지난 파일은 날짜가 바뀔 때 지워요. 상태·사건·heartbeat 파일은 지우지 않아요 |
-| `OBS_MONITOR_DIR`·`OBS_HISTORY_FILE` | 선택 | 감시 폴더(기본 `/opt/obs/monitor`)·배포 기록 파일(기본 `/opt/obs/deploy-history.log`). 운영 스크립트도 compose와 같은 순서(셸 값 → `.env` → 기본값)로 읽어요. 절대 경로만 받아요 |
+| `OBS_MONITOR_DIR`·`OBS_HISTORY_FILE` | 선택 | 감시 폴더(기본 `/opt/obs/monitor`)·배포 기록 파일(기본 `/opt/obs/deploy-history.log`). 운영 스크립트는 `docker compose config`가 감시 서비스에 실제로 마운트하는 경로를 그대로 써요(`.env` 해석은 compose에 맡김) |
 
 `DATABASE_URL`과 `TRUSTED_PROXY_HOPS`(=1)는 compose가 만들어 넣어요. `.env`에 적지 않아요.
 `.env`를 바꾼 뒤에는 재배포(또는 `up -d`)해야 반영돼요.
@@ -422,7 +422,7 @@ scripts/ops/availability.sh off
 - 연속 3번 실패 → `incident_open`(critical), 다시 성공 → `incident_close`(지속 시간). 배포 진행 표시(`deploy-in-progress`, 15분 이내)가 있는 동안에는 새 장애를 열지 않고(실패 횟수는 셈), 표시가 사라진 뒤에도 실패가 이어지면 다음 틱에 열어요. 복원·롤링 배포·롤백 스크립트는 도는 동안 표시 시각을 1분마다 갱신해, 15분을 넘겨도 표시가 유효해요. 갱신은 최대 1시간(`OBS_DEPLOY_MARK_MAX_S`)까지만 하고 로그를 남겨요. 스크립트가 멈춰 있어도 그 뒤 15분이 지나면 감시가 다시 장애를 판단해요. 스크립트가 TERM·INT·HUP으로 끝나면 표시를 지우고, 강제 종료(SIGKILL)되면 갱신이 멈춰 15분 뒤 오래된 표시로 처리돼요. 느림(1초 초과)·배포 기록과 실행 버전 불일치(연속 3번. `rolling-deploy.sh`·`rollback-app.sh`가 배포 중 `/opt/obs/monitor/deploy-in-progress` 표시를 두는 동안은 미룸, 표시가 15분 넘게 남으면 따로 경고하고 그 표시는 무시)·인증서 14일 미만 → warn(같은 경고는 한 번만). 알림은 틱 끝에 모아 동시 5건씩, 틱마다 간격의 1/3(기본 5초) 안에서만 보내고 못 보낸 것은 다음 틱으로 넘겨요. 받는 쪽이 응답을 미뤄도 감시 주기와 heartbeat는 밀리지 않아요.
 - 감시 상태(대상별 연속 실패 횟수·열린 장애와 시작 시각·버전 불일치 연속 횟수·경고 쿨다운·시간당 알림 한도·보내지 못한 알림)는 `monitor-state.json` 하나에 남겨, 감시를 다시 만들어도(가용성 on/off·재시작) 이어져요. 장애 중에 다시 만들면 `incident_open`을 또 내지 않고, 복구되면 `incident_close`를 한 번 내요. 파일이 깨졌으면 로그를 한 줄 남기고 빈 상태로 시작해요. 가용성 off로 감시 대상에서 빠진 앱(app2)의 상태는 지우고, 열린 장애는 `incident_close`(`reason: target_removed`)로 닫아요.
 - 기록(`/opt/obs/monitor`): `samples-YYYYMMDD.jsonl`(표본), `events.jsonl`(사건), `monitor-state.json`(감시 상태), `status.json`(마지막 상태), `heartbeat.json`(감시 자체의 마지막 시각 → 감시 끊김 판단). 컨테이너 healthcheck도 heartbeat가 2분 넘게 멈추면 unhealthy예요.
-- 알림: 채널 미정(`PRODUCT_SCOPE.md` 「미확정」)이라 **인터페이스만** 있어요. `OBS_ALERT_URL`을 넣으면 경고·장애·복구를 JSON으로 POST하고, 시간당 10건까지만 보내요. 알림톡·메일·텔레그램이 정해지면 그 주소(또는 중계 함수)만 넣으면 돼요.
+- 알림: 채널 미정(`PRODUCT_SCOPE.md` 「미확정」)이라 **인터페이스만** 있어요. `OBS_ALERT_URL`을 넣으면 경고·장애·복구를 JSON으로 POST하고, 시간당 10건까지만 보내요. 한도에 걸린 알림은 버리지 않고 기다렸다가 한도가 열리면 보내고, 아직 못 보낸 장애 시작 알림은 같은 대상의 복구 알림과 하나로 합쳐요(`openNotSent: true`). 보낼 목록(50건)이 넘치면 복구 알림이 아닌 오래된 것부터 버려요. 알림톡·메일·텔레그램이 정해지면 그 주소(또는 중계 함수)만 넣으면 돼요.
 - 로컬 확인(2026-10-04): 2초 간격으로 앱을 12초 멈췄을 때 6초 안에 `incident_open`, 다시 켠 뒤 `incident_close`(8초) 기록. 알림 주소로 `version_mismatch` POST 수신.
 
 아직 못 재는 것과 필요한 앱 쪽 훅(앱 코드 `lib/server/**`는 기반 세션 소유, MASTER 요청):

@@ -17,23 +17,6 @@ die() { log "중단: $*" >&2; exit 1; }
 
 [ -f "$ENV_FILE" ] || die "$ENV_FILE 이 없어요(docs/DEPLOY.md 「서버 .env」)."
 
-# .env에서 KEY=값 한 줄만 읽는다(source하지 않음: 비밀값이 셸 변수로 퍼지거나 명령이 실행되지 않게). 마지막 줄이 이기고, 감싼 따옴표는 벗긴다.
-env_value() {
-  sed -n "s/^[[:space:]]*$1=//p" "$ENV_FILE" | tail -n1 | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'$/\1/"
-}
-# compose가 마운트에 쓰는 경로와 같은 순서로 정한다: 셸 값 → .env → 기본값. 절대 경로만 받는다.
-abs_path_setting() {
-  local key="$1" def="$2" v
-  v="${!key:-}"; [ -n "$v" ] || v="$(env_value "$key")"; [ -n "$v" ] || v="$def"
-  case "$v" in /*) ;; *) die "$key 값은 절대 경로여야 해요: $v" ;; esac
-  case "$v" in *$'\n'*|*..*) die "$key 값이 올바르지 않아요." ;; esac
-  printf '%s' "$v"
-}
-# 배포 진행 표시. 감시 수집기(/data = OBS_MONITOR_DIR)가 이 파일이 있는 동안 장애·버전 불일치 판단을 미룬다.
-DEPLOY_MARK="${OBS_DEPLOY_MARK:-$(abs_path_setting OBS_MONITOR_DIR /opt/obs/monitor)/deploy-in-progress}"
-# 배포 기록. 감시 수집기가 읽는 파일(compose의 OBS_HISTORY_FILE 마운트)과 같아야 한다. OBS_HISTORY는 예전 이름(로컬 시험용).
-HISTORY="${OBS_HISTORY:-$(abs_path_setting OBS_HISTORY_FILE /opt/obs/deploy-history.log)}"
-
 # 가용성 프로파일을 켜 두었으면(availability.sh on) 그 정의도 함께 쓴다.
 availability_on() { [ -f "$AVAIL_MARK" ]; }
 # compose 명령줄을 COMPOSE_ARGV에 만든다(백그라운드로 직접 실행해야 하는 곳에서 함수 대신 쓴다).
@@ -48,6 +31,31 @@ compose() {
   compose_argv
   "${COMPOSE_ARGV[@]}" "$@"
 }
+
+# 감시 폴더·배포 기록 파일은 compose가 감시 서비스에 실제로 마운트하는 원본 경로를 그대로 쓴다.
+# (.env 해석—따옴표·주석·공백·셸 값 우선—을 compose에 맡겨 스크립트와 감시 컨테이너가 같은 파일을 보게 한다.)
+compose_monitor_mounts() {
+  # JSON으로 읽는다(YAML 출력은 긴 경로를 공백에서 줄바꿈해 잘림). jq 없이 줄 단위로 읽고 JSON 이스케이프를 푼다.
+  compose --profile monitor config --format json obs-web-monitor 2>/dev/null | awk '
+    function str(line) {
+      sub(/^[^:]*:[ ]*"/, "", line); sub(/",?[ ]*$/, "", line)
+      gsub(/\\u0026/, "\\&", line); gsub(/\\u003c/, "<", line); gsub(/\\u003e/, ">", line)
+      gsub(/\\"/, "\"", line); gsub(/\\\\/, "\\", line)
+      return line
+    }
+    /^[ ]*"source": "/ { src = str($0) }
+    /^[ ]*"target": "/ { t = str($0); if (t == "/data") print "data=" src; else if (t == "/deploy-history.log") print "hist=" src }'
+}
+if [ -z "${OBS_DEPLOY_MARK:-}" ] || [ -z "${OBS_HISTORY:-}" ]; then
+  _mounts="$(compose_monitor_mounts || true)"
+  _data="$(sed -n 's/^data=//p' <<<"$_mounts")"; _hist="$(sed -n 's/^hist=//p' <<<"$_mounts")"
+  [ -n "${OBS_DEPLOY_MARK:-}" ] || case "$_data" in /*) ;; *) die "compose 설정에서 감시 폴더(/data 마운트)를 찾지 못했어요(docker compose config 확인)." ;; esac
+  [ -n "${OBS_HISTORY:-}" ] || case "$_hist" in /*) ;; *) die "compose 설정에서 배포 기록 파일(/deploy-history.log 마운트)을 찾지 못했어요." ;; esac
+fi
+# 배포 진행 표시. 감시 수집기(/data)가 이 파일이 있는 동안 장애·버전 불일치 판단을 미룬다.
+DEPLOY_MARK="${OBS_DEPLOY_MARK:-${_data:-}/deploy-in-progress}"
+# 배포 기록. 감시 수집기가 읽는 파일과 같다. OBS_HISTORY는 로컬 시험용 덮어쓰기.
+HISTORY="${OBS_HISTORY:-${_hist:-}}"
 
 container_of() { docker ps -aq --filter label=com.docker.compose.project=obs-web --filter "label=com.docker.compose.service=$1" | head -n1; }
 db_container() { container_of obs-web-db; }
