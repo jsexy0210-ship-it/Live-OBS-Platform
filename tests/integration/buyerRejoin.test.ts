@@ -35,22 +35,37 @@ async function shop() {
   const base = `/api/shop/${seller.slug}/signup`;
   // 본인확인부터 가입까지. 응답을 그대로 돌려준다.
   const shownDays = async () => (await db.sellerMemberPolicy.findUnique({ where: { sellerId: seller.id } }))?.rejoinRestrictionDays ?? 30;
-  const signup = async (person: Partial<Record<keyof typeof IDV_INPUT, string>> = {}, loginId = "buyer01@example.com", nickname = "카드왕", extra: Record<string, unknown> = { agreedRejoinRetention: true }) => {
+  const verified = async (person: Partial<Record<keyof typeof IDV_INPUT, string>> = {}) => {
     const s = await startRoute(post(`${base}/verification`, { ...IDV_INPUT, ...person }), ctx(seller.slug));
     expect(s.status).toBe(200);
     const cookie = cookieOf(s, "lo_bidv");
-    const { verificationId } = await s.json();
+    const { verificationId } = (await s.json()) as { verificationId: string };
     expect((await confirmRoute(post(`${base}/verification/confirm`, { verificationId, code: "000000" }, cookie), ctx(seller.slug))).status).toBe(200);
-    return signupRoute(
+    return { verificationId, cookie };
+  };
+  // 화면처럼 보관에 동의하고 지금 정책 기간·문서 버전을 「보여 준 값」으로 함께 보낸다(extra로 덮어쓸 수 있다)
+  const signupWith = async (v: { verificationId: string; cookie: string }, loginId = "buyer01@example.com", nickname = "카드왕", extra: Record<string, unknown> = {}) =>
+    signupRoute(
       post(
         base,
-        // 화면처럼 지금 정책 기간을 「보여 준 기간」으로 함께 보낸다(extra로 덮어쓸 수 있다)
-        { verificationId, loginId, password: "pw-123456", broadcastNickname: nickname, agreedTerms: true, agreedPrivacy: true, rejoinRestrictionDaysShown: await shownDays(), ...extra },
-        cookie,
+        {
+          verificationId: v.verificationId,
+          loginId,
+          password: "pw-123456",
+          broadcastNickname: nickname,
+          agreedTerms: true,
+          agreedPrivacy: true,
+          agreedRejoinRetention: true,
+          rejoinRestrictionDaysShown: await shownDays(),
+          rejoinRetentionVersionShown: REJOIN_RETENTION_CONSENT_VERSION,
+          ...extra,
+        },
+        v.cookie,
       ),
       ctx(seller.slug),
     );
-  };
+  const signup = async (person: Partial<Record<keyof typeof IDV_INPUT, string>> = {}, loginId = "buyer01@example.com", nickname = "카드왕", extra: Record<string, unknown> = {}) =>
+    signupWith(await verified(person), loginId, nickname, extra);
   const withdraw = async (loginId = "buyer01@example.com") => {
     const m = await db.buyerMember.findFirstOrThrow({ where: { sellerId: seller.id, loginId, deletedAt: null } });
     expect(await withdrawBuyer(db, { sellerId: seller.id, buyerMemberId: m.id }, { password: "pw-123456" })).toEqual({ ok: true });
@@ -59,7 +74,7 @@ async function shop() {
   const setPolicy = (body: unknown, cookie = sellerCookie) =>
     policyPut(new Request("http://localhost:3000/api/seller/member-policy", { method: "PUT", headers: { ...H, cookie }, body: JSON.stringify(body) }));
   const getPolicy = (cookie = sellerCookie) => policyGet(new Request("http://localhost:3000/api/seller/member-policy", { headers: { ...H, cookie } }));
-  return { seller, owner, sellerCookie, signup, withdraw, setPolicy, getPolicy };
+  return { seller, owner, sellerCookie, verified, signupWith, signup, withdraw, setPolicy, getPolicy };
 }
 
 describe("구매자 재가입 제한", () => {
@@ -130,46 +145,79 @@ describe("구매자 재가입 제한", () => {
     expect((await t.signup({}, "back@example.com", "돌아옴")).status).toBe(403);
   });
 
-  it("재가입 제한을 켠 쇼핑몰은 「재가입 제한 정보 보관 동의」가 없으면 400으로 가입을 막고, 동의하면 시각·문서 버전·기간을 따로 남긴다. 끈 쇼핑몰은 그 값을 보지 않는다", async () => {
+  it("재가입 제한 정보 보관 동의는 선택: 동의하지 않아도 가입되고 기간 스냅숏이 없어 탈퇴 뒤 바로 다시 가입된다. 동의하면 시각·문서 버전·기간을 남기고 탈퇴 뒤 기간 안 재가입은 거절된다", async () => {
     const s = await shop();
     await s.setPolicy({ rejoinRestrictionEnabled: true, rejoinRestrictionDays: 90 });
-    for (const extra of [{}, { agreedRejoinRetention: false }, { agreedRejoinRetention: "true" }]) {
-      const r = await s.signup({}, "buyer01@example.com", "카드왕", extra);
-      expect(r.status).toBe(400);
-      expect(await r.json()).toEqual({ error: "rejoin_consent_required", message: "재가입 제한 정보 보관에 동의해 주세요" });
+    // 불리언이 아니면 거부
+    const bad = await s.signup({}, "buyer01@example.com", "카드왕", { agreedRejoinRetention: "true" });
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toEqual({ error: "invalid_rejoin_consent", message: "재가입 제한 정보 보관 동의 값을 다시 확인해 주세요" });
+    // 미동의(값 없음·false): 보여 준 기간·버전이 틀려도 보지 않는다
+    expect((await s.signup({}, "no1@example.com", "미동의1", { agreedRejoinRetention: undefined, rejoinRestrictionDaysShown: 1, rejoinRetentionVersionShown: "old" })).status).toBe(201);
+    expect((await s.signup({ name: "김미동", birth7: "9001011", phone: "01033334444" }, "no2@example.com", "미동의2", { agreedRejoinRetention: false })).status).toBe(201);
+    for (const x of await db.buyerMember.findMany({ where: { sellerId: s.seller.id } })) {
+      expect(x).toMatchObject({ rejoinRestrictionDaysAgreed: null, rejoinRetentionAgreedAt: null, rejoinRetentionVersion: null });
     }
-    expect(await db.buyerMember.count({ where: { sellerId: s.seller.id } })).toBe(0);
-    expect((await s.signup()).status).toBe(201);
-    const m = await db.buyerMember.findFirstOrThrow({ where: { sellerId: s.seller.id } });
+    // 미동의 회원은 탈퇴해도 CI 해시를 남기지 않고 바로 다시 가입된다
+    await s.withdraw("no1@example.com");
+    expect(await db.buyerRejoinBlock.count({ where: { sellerId: s.seller.id } })).toBe(0);
+    expect((await s.signup({}, "again@example.com", "다시", { agreedRejoinRetention: false })).status).toBe(201);
+
+    // 동의 회원: 스냅숏을 남기고 탈퇴 뒤 기간 안 재가입은 거절
+    const t = await shop();
+    await t.setPolicy({ rejoinRestrictionEnabled: true, rejoinRestrictionDays: 90 });
+    expect((await t.signup()).status).toBe(201);
+    const m = await db.buyerMember.findFirstOrThrow({ where: { sellerId: t.seller.id } });
     expect(m).toMatchObject({ rejoinRestrictionDaysAgreed: 90, rejoinRetentionAgreedAt: expect.any(Date), rejoinRetentionVersion: REJOIN_RETENTION_CONSENT_VERSION });
     expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.signup", actorId: m.id } })).toMatchObject({
       after: { agreedRejoinRetention: true, rejoinRetentionVersion: REJOIN_RETENTION_CONSENT_VERSION, rejoinRestrictionDays: 90 },
     });
+    await t.withdraw();
+    const again = await t.signup({}, "again@example.com", "다시", { agreedRejoinRetention: false });
+    expect(again.status).toBe(403);
+    expect((await again.json()).error).toBe("rejoin_restricted");
 
+    // 끈 쇼핑몰은 동의해도 남기지 않는다
     const off = await shop();
-    expect((await off.signup({}, "b@example.com", "끈곳", {})).status).toBe(201);
-    expect((await off.signup({ name: "김끔", birth7: "9001011", phone: "01033334444" }, "c@example.com", "끈곳2", { agreedRejoinRetention: false })).status).toBe(201);
-    for (const x of await db.buyerMember.findMany({ where: { sellerId: off.seller.id } })) {
-      expect(x).toMatchObject({ rejoinRestrictionDaysAgreed: null, rejoinRetentionAgreedAt: null, rejoinRetentionVersion: null });
-    }
+    expect((await off.signup({}, "b@example.com", "끈곳")).status).toBe(201);
+    expect(await db.buyerMember.findFirstOrThrow({ where: { sellerId: off.seller.id } })).toMatchObject({ rejoinRestrictionDaysAgreed: null, rejoinRetentionVersion: null });
   });
 
-  it("화면이 보여 준 기간이 지금 정책과 다르면 409 rejoin_policy_changed로 저장하지 않고, 같으면 그 기간으로 저장한다. 끈 쇼핑몰은 보여 준 기간을 보지 않는다", async () => {
+  it("동의한 경우 화면이 보여 준 기간·문서 버전이 지금과 다르면 409(rejoin_policy_changed·consent_outdated)로 저장하지 않고, 같으면 그 기간으로 저장한다. 끈 쇼핑몰은 보지 않는다", async () => {
     const s = await shop();
     await s.setPolicy({ rejoinRestrictionEnabled: true, rejoinRestrictionDays: 30 });
     // 화면을 연 뒤 판매자가 365일로 바꿈: 화면은 30일을 보여 줬다
     await s.setPolicy({ rejoinRestrictionEnabled: true, rejoinRestrictionDays: 365 });
     for (const shown of [30, undefined, "365"]) {
-      const r = await s.signup({}, "buyer01@example.com", "카드왕", { agreedRejoinRetention: true, rejoinRestrictionDaysShown: shown });
+      const r = await s.signup({}, "buyer01@example.com", "카드왕", { rejoinRestrictionDaysShown: shown });
       expect(r.status).toBe(409);
       expect(await r.json()).toEqual({ error: "rejoin_policy_changed", message: "재가입 제한 기간이 바뀌었어요. 바뀐 내용을 확인하고 다시 동의해 주세요" });
     }
+    for (const version of ["2020-01-01.v0", undefined]) {
+      const r = await s.signup({}, "buyer01@example.com", "카드왕", { rejoinRetentionVersionShown: version });
+      expect(r.status).toBe(409);
+      expect(await r.json()).toEqual({ error: "consent_outdated", message: "약관이 바뀌었어요. 다시 확인하고 동의해 주세요" });
+    }
     expect(await db.buyerMember.count({ where: { sellerId: s.seller.id } })).toBe(0);
-    expect((await s.signup({}, "buyer01@example.com", "카드왕", { agreedRejoinRetention: true, rejoinRestrictionDaysShown: 365 })).status).toBe(201);
+    expect((await s.signup({}, "buyer01@example.com", "카드왕", { rejoinRestrictionDaysShown: 365 })).status).toBe(201);
     expect((await db.buyerMember.findFirstOrThrow({ where: { sellerId: s.seller.id } })).rejoinRestrictionDaysAgreed).toBe(365);
 
     const off = await shop();
-    expect((await off.signup({}, "o@example.com", "끔", { rejoinRestrictionDaysShown: 999 })).status).toBe(201);
+    expect((await off.signup({}, "o@example.com", "끔", { rejoinRestrictionDaysShown: 999, rejoinRetentionVersionShown: "old" })).status).toBe(201);
+  });
+
+  it("가입이 커밋된 뒤 응답이 끊기고 그사이 정책이 바뀌어도, 같은 요청 재시도는 정책 대조보다 먼저 만든 계정의 201과 세션을 받는다", async () => {
+    const s = await shop();
+    await s.setPolicy({ rejoinRestrictionEnabled: true, rejoinRestrictionDays: 30 });
+    const v = await s.verified();
+    const body = { rejoinRestrictionDaysShown: 30 };
+    const first = await s.signupWith(v, "buyer01@example.com", "카드왕", body);
+    expect(first.status).toBe(201);
+    await s.setPolicy({ rejoinRestrictionEnabled: true, rejoinRestrictionDays: 365 });
+    const retry = await s.signupWith(v, "buyer01@example.com", "카드왕", body);
+    expect(retry.status).toBe(201);
+    expect(cookieOf(retry, "lo_buyer")).toMatch(/^lo_buyer=.+/);
+    expect(await db.buyerMember.count({ where: { sellerId: s.seller.id } })).toBe(1);
   });
 
   it("가입 때 제한이 꺼져 있었던 회원은 나중에 켠 뒤 탈퇴해도 CI 해시를 남기지 않고 바로 다시 가입된다", async () => {

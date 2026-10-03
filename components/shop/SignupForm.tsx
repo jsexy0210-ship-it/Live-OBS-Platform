@@ -30,11 +30,14 @@ type SignupBody = {
   agreedPrivacy: boolean;
   agreedMarketing: boolean;
   agreedRejoinRetention?: boolean;
+  rejoinRestrictionDaysShown?: number;
+  rejoinRetentionVersionShown?: string;
 };
 
 // 재가입 제한을 켠 쇼핑몰의 제한 기간(일). 꺼진 쇼핑몰은 null(서버 페이지가 lib/server/buyers/rejoin.ts에서 넘긴다).
-// 켠 쇼핑몰은 「재가입 제한 정보 보관 동의」를 개인정보 수집·이용 동의와 따로 받는다(docs/terms/PRIVACY_CONSENT_TEMPLATE.md 하단).
-type RejoinInfo = { days: number } | null;
+// 켠 쇼핑몰은 「재가입 제한 정보 보관 동의」(선택, 대표님 결정 2026-10-03)를 개인정보 수집·이용 동의와 따로 받는다
+// (docs/terms/PRIVACY_CONSENT_TEMPLATE.md 하단). version은 그 문서 버전.
+type RejoinInfo = { days: number; version: string } | null;
 
 // rejoinAvailableAt(ISO) → 「11월 2일」(KST)
 const kstDate = (iso: unknown): string | null => {
@@ -118,7 +121,7 @@ export default function SignupForm({ slug, rejoin = null }: { slug: string; rejo
   const [agreedRejoin, setAgreedRejoin] = useState(false);
   const router = useRouter();
   // 재가입 제한 기간이 바뀌어 다시 불러오면(새 기간) 앞 동의는 다시 받는다
-  useEffect(() => setAgreedRejoin(false), [rejoin?.days]);
+  useEffect(() => setAgreedRejoin(false), [rejoin?.days, rejoin?.version]);
   // 선택 동의(기본 해제). 체크 여부를 그대로 agreedMarketing으로 보낸다.
   const [agreedMarketing, setAgreedMarketing] = useState(false);
   // 가입을 요청한 닉네임(완료 문구는 이 값을 쓴다)
@@ -129,7 +132,7 @@ export default function SignupForm({ slug, rejoin = null }: { slug: string; rejo
 
   const identityReady = name.trim() !== "" && birth.length === 8 && gender !== null && carrier !== "" && phone.length >= 10 && idvAgreed;
   const nicknameTooLong = textLength(nickname) > MAX_NICKNAME_LENGTH;
-  const accountReady = loginId.trim() !== "" && password !== "" && nickname.trim() !== "" && !nicknameTooLong && agreedTerms && agreedPrivacy && (!rejoin || agreedRejoin);
+  const accountReady = loginId.trim() !== "" && password !== "" && nickname.trim() !== "" && !nicknameTooLong && agreedTerms && agreedPrivacy;
 
   // 처음부터 다시: 입력한 인적사항은 두고 본인확인 요청만 버린다
   const restart = (n: Notice | null) => {
@@ -281,7 +284,7 @@ export default function SignupForm({ slug, rejoin = null }: { slug: string; rejo
     setBusy(true);
     setNotice(null);
     setFieldErrors({});
-    const body: SignupBody = { verificationId, loginId: loginId.trim(), password, broadcastNickname: nickname.trim(), agreedTerms, agreedPrivacy, agreedMarketing, ...(rejoin ? { agreedRejoinRetention: agreedRejoin, rejoinRestrictionDaysShown: rejoin.days } : {}) };
+    const body: SignupBody = { verificationId, loginId: loginId.trim(), password, broadcastNickname: nickname.trim(), agreedTerms, agreedPrivacy, agreedMarketing, ...(rejoin ? { agreedRejoinRetention: agreedRejoin, ...(agreedRejoin ? { rejoinRestrictionDaysShown: rejoin.days, rejoinRetentionVersionShown: rejoin.version } : {}) } : {}) };
     // 응답에 닉네임이 없을 때 쓸 값: 서버(cleanText)가 저장하는 형태(NFKC 정규화 + 앞뒤 공백 제거)
     const pending = { body, nickname: body.broadcastNickname.normalize("NFKC").trim() };
     const r = await api<{ broadcastNickname?: string }>(base, { method: "POST", body });
@@ -322,15 +325,14 @@ export default function SignupForm({ slug, rejoin = null }: { slug: string; rejo
         focus("acc-nick");
         break;
       case "rejoin_policy_changed":
-        // 재가입 제한을 새로 켰거나 기간을 바꿨다. 입력은 두고 화면의 제한 정보만 새로 받아 다시 동의하게 한다
+      case "consent_outdated":
+        // 재가입 제한 기간이나 동의 문서가 바뀌었다. 입력은 두고 화면의 제한 정보만 새로 받아 다시 동의하게 한다
         router.refresh();
         setFieldErrors({ terms: text });
         focus("acc-terms-all");
         break;
       case "terms_required":
-      case "rejoin_consent_required":
-        // 화면을 연 뒤 판매자가 재가입 제한을 켰으면 동의 칸이 없다. 제한 정보를 새로 받아 칸을 보여 준다
-        if (r.error === "rejoin_consent_required" && !rejoin) router.refresh();
+      case "invalid_rejoin_consent":
         setFieldErrors({ terms: text });
         focus("acc-terms-all");
         break;
@@ -674,7 +676,7 @@ export default function SignupForm({ slug, rejoin = null }: { slug: string; rejo
               <>
                 <label className="chk">
                   <input type="checkbox" className="cbx" {...termsAria} checked={agreedRejoin} onChange={(e) => setAgreedRejoin(e.target.checked)} />
-                  재가입 제한 정보 보관 (필수)
+                  재가입 제한 정보 보관 (선택)
                 </label>
                 <details className="signup-terms-doc">
                   <summary>보기</summary>
@@ -684,7 +686,7 @@ export default function SignupForm({ slug, rejoin = null }: { slug: string; rejo
                     <li>보관 항목: 본인확인 식별값(CI)을 바꾼 값</li>
                     <li>보관 기간: 탈퇴한 날부터 {rejoin.days}일</li>
                   </ul>
-                  <p>이 동의를 하지 않을 수 있어요. 다만 이 쇼핑몰은 재가입 제한을 운영해서, 동의하지 않으면 가입할 수 없어요.</p>
+                  <p>동의하지 않아도 가입할 수 있어요. 동의하지 않으면 이 정보를 보관하지 않고, 탈퇴한 뒤 다시 가입할 때 기간 제한을 받지 않아요.</p>
                 </details>
               </>
             )}

@@ -104,8 +104,8 @@ export async function rejoinBlockedUntil(db: Db, sellerId: string, ciHash: strin
   return b && b.expiresAt > now ? b.expiresAt : null;
 }
 
-// 기간이 끝난 제한 기록 파기. sellerId를 주면 그 쇼핑몰만. 정기 실행(모든 쇼핑몰) 연결은 인프라 승인 뒤라,
-// 그 전까지는 가입·탈퇴 처리 때 그 쇼핑몰의 끝난 기록을 먼저 지운다(끝난 기록은 판정에 쓰이지 않아 결과는 같다). 지운 수를 돌려준다.
+// 기간이 끝난 제한 기록 파기. sellerId를 주면 그 쇼핑몰만. 모든 쇼핑몰은 앱 안 정기 실행(jobs/scheduler.ts, 1시간)이 지우고,
+// 가입·탈퇴 처리 때도 그 쇼핑몰의 끝난 기록을 먼저 지운다(끝난 기록은 판정에 쓰이지 않아 결과는 같다). 지운 수를 돌려준다.
 export async function purgeExpiredRejoinBlocks(db: Db, now = new Date(), sellerId?: string): Promise<number> {
   return (await db.buyerRejoinBlock.deleteMany({ where: { expiresAt: { lte: now }, ...(sellerId ? { sellerId } : {}) } })).count;
 }

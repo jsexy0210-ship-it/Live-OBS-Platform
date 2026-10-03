@@ -1,4 +1,5 @@
 import { expect, request, test, type Page } from "@playwright/test";
+import { REJOIN_RETENTION_CONSENT_VERSION } from "../../lib/server/buyers/rejoin";
 import { BUYER_SIGNUP_MESSAGES } from "../../lib/server/buyers/signup";
 import { IDENTITY_ERROR_MESSAGES } from "../../lib/server/identity/messages";
 
@@ -722,35 +723,45 @@ test("재가입 제한을 끈 쇼핑몰은 보관 동의 줄이 없다", async (
   await mockApi(page);
   await page.goto(`/shop/${SLUG}/signup`);
   await toVerified(page);
-  await expect(page.getByLabel("재가입 제한 정보 보관 (필수)")).toHaveCount(0);
+  await expect(page.getByText("재가입 제한 정보 보관", { exact: false })).toHaveCount(0);
 });
 
-test("재가입 제한을 켠 쇼핑몰은 보관 동의를 따로 체크해야 가입할 수 있고, 「보기」에 실제 기간을 보여 준다", async ({ page, baseURL }) => {
+test("재가입 제한을 켠 쇼핑몰의 보관 동의는 선택: 체크하지 않아도 가입되고, 체크하면 보여 준 기간·문서 버전을 함께 보낸다. 「보기」에 실제 기간을 보여 준다", async ({ page, baseURL }) => {
   if (!PASSWORD) throw new Error("E2E_PASSWORD가 없어요. dev-seed가 출력한 데모 비밀번호를 넣어 주세요");
   await setRejoin(baseURL!, true, 90);
   try {
-    const id = uniq();
-    await page.goto(`/shop/${SLUG}/signup`);
-    await fillIdentity(page, `제한${id}`, uniqPhone());
-    await page.getByRole("button", { name: "인증번호 받기" }).click();
-    await page.getByLabel("인증번호").fill("000000");
-    await page.getByRole("button", { name: "확인", exact: true }).click();
-    await expect(page.getByText("본인확인을 마쳤어요")).toBeVisible();
-    await page.getByLabel("아이디 (이메일)").fill(`buyer-${id}@example.com`);
-    await page.getByLabel("비밀번호").fill(`pw-${id}-long`);
-    await page.getByLabel("방송 닉네임").fill(`제한${id}`);
-    await page.getByLabel("이용약관 (필수)").check();
-    await page.getByLabel("개인정보 수집 · 이용 (필수)").check();
-    const join = page.getByRole("button", { name: "가입하기" });
-    // 보관 동의 전에는 가입할 수 없다
-    await expect(join).toBeDisabled();
-    await page.getByText("보기").click();
-    await expect(page.getByText("보관 기간: 탈퇴한 날부터 90일")).toBeVisible();
-    await page.getByLabel("재가입 제한 정보 보관 (필수)").check();
-    const req = page.waitForRequest((r) => r.url().endsWith(API) && r.method() === "POST");
-    await join.click();
-    expect((await req).postDataJSON()).toMatchObject({ agreedRejoinRetention: true, rejoinRestrictionDaysShown: 90 });
-    await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
+    for (const agree of [false, true]) {
+      const id = uniq();
+      await page.goto(`/shop/${SLUG}/signup`);
+      await fillIdentity(page, `제한${id}`, uniqPhone());
+      await page.getByRole("button", { name: "인증번호 받기" }).click();
+      await page.getByLabel("인증번호").fill("000000");
+      await page.getByRole("button", { name: "확인", exact: true }).click();
+      await expect(page.getByText("본인확인을 마쳤어요")).toBeVisible();
+      await page.getByLabel("아이디 (이메일)").fill(`buyer-${id}@example.com`);
+      await page.getByLabel("비밀번호").fill(`pw-${id}-long`);
+      await page.getByLabel("방송 닉네임").fill(`제한${id}`);
+      await page.getByLabel("이용약관 (필수)").check();
+      await page.getByLabel("개인정보 수집 · 이용 (필수)").check();
+      const join = page.getByRole("button", { name: "가입하기" });
+      const box = page.getByLabel("재가입 제한 정보 보관 (선택)");
+      // 기본은 체크 안 함이고, 체크하지 않아도 가입할 수 있다
+      await expect(box).not.toBeChecked();
+      await expect(join).toBeEnabled();
+      await page.getByText("보기").click();
+      await expect(page.getByText("보관 기간: 탈퇴한 날부터 90일")).toBeVisible();
+      await expect(page.getByText("동의하지 않아도 가입할 수 있어요. 동의하지 않으면 이 정보를 보관하지 않고, 탈퇴한 뒤 다시 가입할 때 기간 제한을 받지 않아요.")).toBeVisible();
+      if (agree) await box.check();
+      const req = page.waitForRequest((r) => r.url().endsWith(API) && r.method() === "POST");
+      await join.click();
+      const body = (await req).postDataJSON();
+      if (agree) expect(body).toMatchObject({ agreedRejoinRetention: true, rejoinRestrictionDaysShown: 90, rejoinRetentionVersionShown: REJOIN_RETENTION_CONSENT_VERSION });
+      else {
+        expect(body.agreedRejoinRetention).toBe(false);
+        expect(body).not.toHaveProperty("rejoinRestrictionDaysShown");
+      }
+      await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
+    }
   } finally {
     await setRejoin(baseURL!, false);
   }
