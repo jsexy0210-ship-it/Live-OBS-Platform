@@ -93,6 +93,11 @@ export async function withdrawBuyer(
     if (busy > 0) return "orders_in_progress" as const;
     const pending = await tx.order.findMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id, status: "PENDING_PAYMENT" }, select: { id: true } });
     for (const o of pending) {
+      // 판매자 취소·입금 확인은 이 잠금이 아니라 판매자 행 잠금으로 주문을 바꾼다. 주문 행을 잠그고 지금 상태를 다시 읽어,
+      // 그사이 취소됐으면 건너뛰고 결제됐으면 진행 중 주문으로 거절한다(조건부 변경 실패로 500이 나지 않게).
+      const [cur] = await tx.$queryRaw<{ status: string }[]>`SELECT "status" FROM "Order" WHERE "id" = ${o.id}::uuid FOR UPDATE`;
+      if (cur?.status === "CANCELLED") continue;
+      if (cur?.status !== "PENDING_PAYMENT") return "orders_in_progress" as const;
       await cancelPendingOrderInTx(tx, { sellerId: scope.sellerId, orderId: o.id, now, actorType: "BUYER", actorId: member.id, reason: "member_withdrawn" });
     }
     const moved = await tx.buyerMember.updateMany({

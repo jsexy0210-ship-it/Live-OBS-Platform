@@ -1,4 +1,4 @@
-import type { OrderStatus, PrismaClient } from "@prisma/client";
+import type { OrderStatus, Prisma, PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { GET as addressesRoute } from "../../app/api/shop/[slug]/addresses/route";
 import { POST as loginRoute } from "../../app/api/shop/[slug]/auth/login/route";
@@ -305,6 +305,50 @@ describe("구매자 탈퇴", () => {
         expect(await res.json()).toEqual({ error: "orders_in_progress", message: "배송 중인 주문이 끝나거나 환불되면 탈퇴할 수 있어요" });
         expect((await db.buyerMember.findUniqueOrThrow({ where: { id: s.buyer.id } })).status).toBe("ACTIVE");
       }
+    }
+  });
+
+  it("탈퇴가 결제 대기 주문을 읽은 뒤 그 주문이 판매자 취소·입금 확인으로 바뀌어도 500이 아니다: 취소됐으면 건너뛰고 탈퇴, 결제됐으면 409", async () => {
+    for (const [change, expected] of [
+      [{ status: "CANCELLED", cancelledAt: new Date() }, { ok: true }],
+      [{ status: "PAID", paidAt: new Date() }, { ok: false, reason: "orders_in_progress" }],
+    ] as const) {
+      await resetDb();
+      const s = await shop();
+      const o = await s.order("PENDING_PAYMENT");
+      // 결제 대기 목록을 읽은 직후 다른 연결이 그 주문을 먼저 바꾼다(판매자 행 잠금 경로를 흉내)
+      const racing = new Proxy(db, {
+        get(t, p) {
+          const v = Reflect.get(t, p);
+          if (p !== "$transaction") return typeof v === "function" ? v.bind(t) : v;
+          return (fn: (tx: Prisma.TransactionClient) => unknown, opts?: unknown) =>
+            t.$transaction(
+              (tx) =>
+                fn(
+                  new Proxy(tx, {
+                    get(x, k, r) {
+                      const m = Reflect.get(x, k, r);
+                      if (k !== "order") return m;
+                      return new Proxy(m, {
+                        get: (d, f) =>
+                          f !== "findMany"
+                            ? Reflect.get(d, f)
+                            : async (args: { where?: { status?: string } }) => {
+                                const rows = await d.findMany(args as never);
+                                if (args?.where?.status === "PENDING_PAYMENT") await db.order.update({ where: { id: o.id }, data: change });
+                                return rows;
+                              },
+                      });
+                    },
+                  }) as Prisma.TransactionClient,
+                ) as Promise<unknown>,
+              opts as never,
+            );
+        },
+      }) as typeof db;
+      expect(await withdrawBuyer(racing, { sellerId: s.seller.id, buyerMemberId: s.buyer.id }, { password: PASSWORD }), change.status).toEqual(expected);
+      expect((await db.order.findUniqueOrThrow({ where: { id: o.id } })).status).toBe(change.status);
+      expect((await db.buyerMember.findUniqueOrThrow({ where: { id: s.buyer.id } })).status).toBe(expected.ok ? "WITHDRAWN" : "ACTIVE");
     }
   });
 
