@@ -27,7 +27,7 @@
 - Next.js 최소 앱 (`app/layout.tsx`, `app/page.tsx`)
 - CI: typecheck + build, self-hosted 배포 워크플로 재유입 검사
 - 배포 워크플로: 없음
-- GitHub Secrets(대표님 등록, 값은 기록하지 않음): `NICEPAY_CLIENT_KEY`, `NICEPAY_SECRET_KEY`, `SWEETTRACKER_API_KEY`(스마트택배 배송 조회, 연동은 출시 후)
+- GitHub Secrets(대표님 등록, 값은 기록하지 않음): `NICEPAY_CLIENT_KEY`, `NICEPAY_SECRET_KEY`, `SWEETTRACKER_API_KEY`(스마트택배 배송 조회, 연동은 출시 후), `YOUTUBE_API_KEY`(YouTube Data API v3, 방송·실시간 채팅 조회. 하루 무료 할당량에 가까워지면 미리 알리고, 넘으면 MASTER에 보고)
 - 테스트: 없음
 
 ## 미확인·미변경 (권한/범위 밖)
@@ -62,6 +62,7 @@
 - 상품: 숨기거나 지운 상품의 결제 대기 주문도 결제되면 그대로 이행함(MASTER 결정). 화면에서 대기 주문이 있다고 안내 필요
 - 배송: 도서산간 부분 문자열 판정이라 「제주시스템빌딩」, 「울릉도로」 같은 주소에 추가비가 붙을 수 있음. 판매자가 송장을 넣을 때 확인할 수 있게 표시 필요
 - 배송: 발송 후 환불 때 배송비를 돌려줄지(금액 규칙) 대표님 결정 대기. 지금은 환불을 막지 않고 재고만 되돌리지 않음
+- 구매자 탈퇴 기능이 아직 없음. 만들 때 저장 배송지(`BuyerAddress`)도 함께 지운다(#91)
 
 ## 화면 구현 시 지킬 것
 
