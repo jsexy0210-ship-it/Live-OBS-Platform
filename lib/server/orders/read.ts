@@ -91,7 +91,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 // 판매자 주문 목록(주문 시각 내림차순, 커서 페이지). 항상 ctx.sellerId 범위만 본다.
 // q는 주문번호(숫자 전체 일치)·방송 닉네임(부분 일치)을 찾고, 받는 분 이름은 CUSTOMER_PII_VIEW가 있을 때만 찾는다
-// (권한 없는 직원이 검색 결과로 개인정보를 알아내지 못하게). 잘못된 값이면 { ok: false }.
+// (권한 없는 직원이 검색 결과로 개인정보를 알아내지 못하게). 받는 분 이름으로 찾았으면 customer.pii.view를 남긴다. 잘못된 값이면 { ok: false }.
 export async function listSellerOrders(db: PrismaClient, ctx: TenantContext, query: SellerOrderListQuery) {
   requireSellerRead(ctx, "ORDER_SHIPPING");
   const statuses = query.status ?? [];
@@ -107,6 +107,7 @@ export async function listSellerOrders(db: PrismaClient, ctx: TenantContext, que
   const q = query.q?.trim() ?? "";
   if (q.length > 50) return { ok: false as const };
 
+  const searchesPii = q !== "" && canViewCustomerPii(ctx);
   const and: Prisma.OrderWhereInput[] = [{ sellerId: ctx.sellerId }];
   if (statuses.length) and.push({ status: { in: statuses as OrderStatus[] } });
   if (from) and.push({ createdAt: { gte: from } });
@@ -117,7 +118,7 @@ export async function listSellerOrders(db: PrismaClient, ctx: TenantContext, que
       { buyerMember: { broadcastNickname: { contains: q, mode: "insensitive" } } },
     ];
     if (/^\d{1,9}$/.test(q)) or.push({ orderNo: Number(q) });
-    if (canViewCustomerPii(ctx)) or.push({ shippingAddress: { recipientName: { contains: q, mode: "insensitive" } } });
+    if (searchesPii) or.push({ shippingAddress: { recipientName: { contains: q, mode: "insensitive" } } });
     and.push({ OR: or });
   }
   if (cursor) and.push({ OR: [{ createdAt: { lt: cursor.createdAt } }, { createdAt: cursor.createdAt, id: { lt: cursor.id } }] });
@@ -141,6 +142,18 @@ export async function listSellerOrders(db: PrismaClient, ctx: TenantContext, que
   });
   const page = rows.slice(0, take);
   const last = page[page.length - 1];
+  // 받는 분 이름으로 찾았으면 결과(일치 여부)가 개인정보 열람이라 기록을 남긴다. 검색어는 남기지 않고 돌려준 주문 id·건수만 남긴다.
+  if (searchesPii) {
+    await writeAudit(db, {
+      actorType: ctx.actorType,
+      actorId: ctx.actorId,
+      sellerId: ctx.sellerId,
+      action: "customer.pii.view",
+      targetType: "OrderSearch",
+      reason: "order_list_recipient_search",
+      after: { orderIds: page.map((o) => o.id), count: page.length },
+    });
+  }
   return {
     ok: true as const,
     orders: page.map((o) => ({

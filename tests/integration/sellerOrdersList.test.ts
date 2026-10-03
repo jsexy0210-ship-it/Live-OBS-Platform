@@ -107,6 +107,23 @@ describe("판매자 주문 목록 GET /api/seller/orders", () => {
     expect((await list(s.cookie, `?q=${"가".repeat(51)}`)).status).toBe(400);
   });
 
+  it("받는 분 이름까지 찾는 검색(권한 있음 + q)은 열람 기록 1건(검색어 없이 주문 id·건수), 권한 없음·q 없음은 0건", async () => {
+    const s = await shop();
+    const hit = await s.order();
+    await db.orderShippingAddress.create({ data: { sellerId: s.seller.id, orderId: hit.id, recipientName: "김받음", phone: "01000000000", zipCode: "00000", address1: "주소" } });
+    const piiLogs = () => db.auditLog.findMany({ where: { sellerId: s.seller.id, action: "customer.pii.view" } });
+    await list(s.cookie);
+    await list(s.cookie, "?status=PENDING_PAYMENT");
+    const noPii = await createSellerUser(s.seller.id, { permissions: ["ORDER_SHIPPING"] });
+    await list(await sellerCookie(noPii.email), `?q=${encodeURIComponent("김받")}`);
+    expect(await piiLogs()).toHaveLength(0);
+    await list(s.cookie, `?q=${encodeURIComponent("김받")}`);
+    const logs = await piiLogs();
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatchObject({ actorId: s.owner.id, targetType: "OrderSearch", after: { orderIds: [hit.id], count: 1 } });
+    expect(JSON.stringify(logs[0])).not.toContain("김받");
+  });
+
   it("같은 시각 주문이 여러 건이어도 커서로 빠짐·겹침 없이 끝까지 넘기고, 잘못된 커서는 400", async () => {
     const s = await shop();
     const at = new Date("2026-10-02T03:00:00.123Z");
