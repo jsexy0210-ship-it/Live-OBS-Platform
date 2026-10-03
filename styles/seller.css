@@ -102,6 +102,12 @@ body {
 .app a.p-name:hover {
   color: var(--wds-primary-normal);
 }
+.p-table {
+  table-layout: fixed;
+}
+.p-table td {
+  overflow: hidden;
+}
 .p-row td {
   height: 96px;
   vertical-align: top;
@@ -201,7 +207,8 @@ body {
   .shell.nav-open .nav-dim {
     display: block;
     position: fixed;
-    inset: 0;
+    /* 메뉴 서랍(260px) 오른쪽만 덮는다. 서랍 아래로 겹치면 닫기 누르기가 메뉴에 가로막힌다 */
+    inset: 0 0 0 260px;
     z-index: 45;
     border: 0;
     background: var(--wds-material-dimmer);

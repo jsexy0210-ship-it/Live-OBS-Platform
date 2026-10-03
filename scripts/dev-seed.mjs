@@ -7,7 +7,11 @@ import { PrismaClient } from "@prisma/client";
 
 const url = process.env.DATABASE_URL;
 const dbName = url ? decodeURIComponent(new URL(url).pathname.replace(/^\//, "")) : "";
-if (!dbName.endsWith("_test") || process.env.NODE_ENV === "production") {
+if (process.env.NODE_ENV === "production") {
+  console.error("운영 모드(NODE_ENV=production)에서는 데모 데이터를 넣지 않아요. 개발용 터미널에서 폐기용 DB로 실행해 주세요.");
+  process.exit(1);
+}
+if (!dbName.endsWith("_test")) {
   console.error(`폐기용 DB가 아니에요(DB 이름: ${dbName || "없음"}). 이름이 _test로 끝나는 DB에만 데모 데이터를 넣어요.`);
   process.exit(1);
 }
@@ -30,6 +34,18 @@ const PRODUCTS = [
   },
   { name: "문라이트 1탄 박스", price: 132000, status: "HIDDEN", options: [["1박스", 0, 0]] },
   { name: "카드 슬리브 100매", price: 4500, status: "DRAFT", options: [["투명", 0, 320], ["블랙", 500, 120]] },
+  // 옵션 이름이 길고 많은 상품: 목록 표가 넘치지 않는지 확인용
+  {
+    name: "보관용 카드 바인더",
+    price: 18000,
+    status: "ON_SALE",
+    options: [
+      ["9포켓 바인더 (블랙 · 사이드 로딩 · 360장 수납 · 지퍼 케이스 포함)", 0, 20],
+      ["9포켓 바인더 (화이트 · 사이드 로딩 · 360장 수납 · 지퍼 케이스 포함)", 0, 15],
+      ["4포켓 바인더 (네이비 · 톱 로딩 · 160장 수납)", -4000, 30],
+      ["12포켓 대용량 바인더 (그레이 · 480장 수납 · 손잡이 달린 하드 케이스)", 6000, 8],
+    ],
+  },
 ];
 
 async function main() {
@@ -44,6 +60,7 @@ async function main() {
     { email: "demo-owner@example.com", name: "대표자", isOwner: true, permissions: [] },
     { email: "demo-staff@example.com", name: "상품 담당 직원", isOwner: false, permissions: ["PRODUCT_MANAGE"] },
     { email: "demo-viewer@example.com", name: "배송 담당 직원", isOwner: false, permissions: ["ORDER_SHIPPING"] },
+    { email: "demo-none@example.com", name: "권한 없는 직원", isOwner: false, permissions: [] },
   ];
   for (const u of users) {
     await db.sellerUser.upsert({
@@ -64,7 +81,8 @@ async function main() {
   console.log(`  대표자: ${users[0].email}`);
   console.log(`  상품 담당 직원: ${users[1].email}`);
   console.log(`  상품 권한 없는 직원: ${users[2].email}`);
-  console.log(`  비밀번호(세 계정 같음): ${password}`);
+  console.log(`  권한 0개 직원: ${users[3].email}`);
+  console.log(`  비밀번호(네 계정 같음): ${password}`);
 }
 
 main()
