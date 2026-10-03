@@ -155,22 +155,23 @@ export async function issueSellerPasswordResetGrant(
     await tx.passwordResetGrant.create({
       data: { sellerId: user.sellerId, sellerUserId: user.id, tokenHash: hashToken(grantToken), ciHash: ci, expiresAt, createdAt: now },
     });
+    // 발급 기록도 같은 트랜잭션에서 남긴다(쓰지 못하면 권한 발급·본인확인 소진도 되돌린다)
+    await writeAudit(tx, {
+      actorType: "SELLER_USER",
+      actorId: user.id,
+      sellerId: user.sellerId,
+      action: "auth.seller.password_reset.granted",
+      targetType: "SellerUser",
+      targetId: user.id,
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+    });
     return true;
   });
   if (!issued) {
     await failAudit("verification_already_used");
     return { ok: false, reason: "reset_not_allowed" };
   }
-  await writeAudit(db, {
-    actorType: "SELLER_USER",
-    actorId: user.id,
-    sellerId: user.sellerId,
-    action: "auth.seller.password_reset.granted",
-    targetType: "SellerUser",
-    targetId: user.id,
-    ip: meta.ip,
-    userAgent: meta.userAgent,
-  });
   return { ok: true, grantToken, expiresAt };
 }
 
