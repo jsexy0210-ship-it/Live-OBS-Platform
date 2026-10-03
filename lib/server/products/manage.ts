@@ -105,6 +105,25 @@ export const LOW_STOCK_MAX = 5;
 const STOCK_FILTERS = { out: [0, 0], low: [1, LOW_STOCK_MAX] } as const;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// 쪽 크기: 숫자 또는 숫자만 있는 문자열(1~200)만 받는다("1e2", "0x10", " 5 "는 거부). 빼면 기본 50. 틀리면 null.
+export function parsePageLimit(raw: unknown): number | null {
+  const limit = raw === undefined ? DEFAULT_PAGE_SIZE : typeof raw === "string" && /^\d+$/.test(raw) ? Number(raw) : typeof raw === "number" ? raw : NaN;
+  return Number.isInteger(limit) && limit >= 1 && limit <= MAX_PAGE_SIZE ? limit : null;
+}
+
+// 이름 검색어: 저장할 때처럼 NFKC로 맞추고 앞뒤 공백을 지운 뒤 50자까지. 비었거나 일반 공백(U+0020)뿐이면 검색하지 않는다(null).
+// 탭·줄바꿈·BOM·폭 없는 공백 같은 제어·서식 문자만 있으면(trim으로 지워져도) cleanText가 막아 "invalid".
+export function parseSearchTerm(raw: unknown): string | null | "invalid" {
+  if (raw === undefined || (typeof raw === "string" && /^ *$/.test(raw))) return null;
+  return cleanText(raw, MAX_SEARCH_LENGTH) ?? "invalid";
+}
+
+// 재고 조건(out·low)의 범위. 빼거나 비었으면 null, 틀리면 "invalid".
+export function parseStockFilter(raw: unknown): readonly [number, number] | null | "invalid" {
+  if (raw === undefined || raw === "") return null;
+  return raw === "out" || raw === "low" ? STOCK_FILTERS[raw] : "invalid";
+}
+
 // 상품 목록(keyset 커서 페이지). 정렬: 진열 순서 → 최근 등록 → id. nextCursor가 null이면 마지막 쪽이에요.
 // 커서는 이 판매자 상품 id만 받고, 그 행의 정렬 값(sortOrder, createdAt, id) 바로 뒤부터 고른다.
 // 기준 상품이 그사이 지워졌거나 필터 밖이 되어도 값만 쓰므로 다음 상품을 건너뛰지 않는다.
@@ -119,17 +138,17 @@ export async function listProducts(
 > {
   requireSellerRead(ctx, "PRODUCT_MANAGE");
   const status = PRODUCT_STATUSES.includes(opts.status as ProductStatus) ? (opts.status as ProductStatus) : undefined;
-  const limit =
-    opts.limit === undefined ? DEFAULT_PAGE_SIZE : typeof opts.limit === "string" && /^\d+$/.test(opts.limit) ? Number(opts.limit) : typeof opts.limit === "number" ? opts.limit : NaN;
-  if (!Number.isInteger(limit) || limit < 1 || limit > MAX_PAGE_SIZE) return { ok: false, reason: "invalid_limit" };
+  const limit = parsePageLimit(opts.limit);
+  if (limit === null) return { ok: false, reason: "invalid_limit" };
   // 필터·정렬·커서는 모두 SQL 안에서 걸러 이번 쪽의 상품 id(최대 limit + 1개)만 고른다. 걸러진 id 목록을 IN으로 넘기면
   // 결과가 Postgres 바인드 변수 한도(32,767)를 넘을 때 오류가 나므로 쓰지 않는다.
   const where: Prisma.Sql[] = [Prisma.sql`p."sellerId" = ${ctx.sellerId}::uuid`, Prisma.sql`p."deletedAt" IS NULL`];
   if (status) where.push(Prisma.sql`p."status" = ${status}::"ProductStatus"`);
   let stockJoin = Prisma.empty;
-  if (opts.stock !== undefined && opts.stock !== "") {
-    if (opts.stock !== "out" && opts.stock !== "low") return { ok: false, reason: "invalid_stock_filter" };
-    const [lo, hi] = STOCK_FILTERS[opts.stock];
+  const stockRange = parseStockFilter(opts.stock);
+  if (stockRange === "invalid") return { ok: false, reason: "invalid_stock_filter" };
+  if (stockRange) {
+    const [lo, hi] = stockRange;
     // 판매자 옵션 재고를 상품별로 한 번만 더해 붙인다(상관 서브쿼리에 BETWEEN을 걸면 합계를 두 번 계산해 느려진다).
     // 옵션이 없는 상품은 합계 0.
     stockJoin = Prisma.sql`LEFT JOIN (
@@ -138,13 +157,11 @@ export async function listProducts(
       GROUP BY o."productId") st ON st."productId" = p."id"`;
     where.push(Prisma.sql`COALESCE(st."total", 0) BETWEEN ${lo} AND ${hi}`);
   }
-  // 이름 검색 q: 상품 이름이나 (지우지 않은) 옵션 이름에 들어 있으면(대소문자 무시, 부분 일치). 저장할 때처럼 NFKC로 맞추고
-  // 앞뒤 공백을 지운 뒤 50자까지. 비었거나 일반 공백(U+0020)뿐이면 검색하지 않는다. 탭·줄바꿈·BOM·폭 없는 공백 같은
-  // 제어·서식 문자만 있으면(trim으로 지워져도) cleanText가 막아 400. %·_ 같은 글자도 그대로 찾는다(LIKE 패턴으로 쓰지 않음).
-  // 옵션은 판매자 범위((sellerId, productId) 인덱스)로 좁혀서 본다.
-  if (opts.q !== undefined && !(typeof opts.q === "string" && /^ *$/.test(opts.q))) {
-    const term = cleanText(opts.q, MAX_SEARCH_LENGTH);
-    if (!term) return { ok: false, reason: "invalid_search" };
+  // 이름 검색 q(parseSearchTerm): 상품 이름이나 (지우지 않은) 옵션 이름에 들어 있으면(대소문자 무시, 부분 일치).
+  // %·_ 같은 글자도 그대로 찾는다(LIKE 패턴으로 쓰지 않음). 옵션은 판매자 범위((sellerId, productId) 인덱스)로 좁혀서 본다.
+  const term = parseSearchTerm(opts.q);
+  if (term === "invalid") return { ok: false, reason: "invalid_search" };
+  if (term) {
     where.push(Prisma.sql`(strpos(lower(p."name"), lower(${term})) > 0
       OR EXISTS (SELECT 1 FROM "ProductOption" o
                  WHERE o."sellerId" = ${ctx.sellerId}::uuid AND o."productId" = p."id" AND o."deletedAt" IS NULL
