@@ -1,0 +1,140 @@
+import { expect, test, type Page } from "@playwright/test";
+
+// SA-014 재고 관리: 한 번에 적용, 빼기·더하기(사유), 그사이 바뀐 재고는 덮어쓰지 않음, 걸러 보기, 권한, 390.
+const PASSWORD = process.env.E2E_PASSWORD ?? "";
+const SHOTS = process.env.E2E_SCREENSHOTS === "1";
+
+test.beforeAll(() => {
+  if (!PASSWORD) throw new Error("E2E_PASSWORD가 없어요. dev-seed가 출력한 데모 비밀번호를 넣어 주세요");
+});
+
+async function shot(page: Page, name: string) {
+  if (!SHOTS) return;
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForTimeout(150);
+    await page.screenshot({ path: `tests/e2e/screenshots/${name}-${width}.png`, fullPage: true });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+}
+
+async function openAs(page: Page, email = "demo-owner@example.com") {
+  await page.goto("/seller/login?next=%2Fseller%2Fproducts%2Fstock");
+  await page.getByLabel("이메일").fill(email);
+  await page.getByLabel("비밀번호").fill(PASSWORD);
+  await page.getByRole("button", { name: "로그인" }).click();
+  await expect(page).toHaveURL(/\/seller\/products\/stock$/);
+}
+
+const nextInput = (page: Page, label: string) => page.getByLabel(`${label} 변경 후 재고`);
+const row = (page: Page, text: string) => page.getByTestId("stock-row").filter({ hasText: text });
+
+async function applyAll(page: Page) {
+  await page.getByRole("button", { name: /^변경 \d+건 적용$/ }).last().click();
+  await page.getByRole("dialog").getByRole("button", { name: "적용", exact: true }).click();
+}
+
+test("변경 후 재고를 적고 한 번에 적용하면 반영된다", async ({ page }) => {
+  await openAs(page);
+  await nextInput(page, "탑로더 25장 1팩").fill("20");
+  await nextInput(page, "문라이트 컬렉션 박스 1박스").fill("9");
+  await expect(page.getByTestId("sum-count")).toHaveText("2개");
+  await expect(row(page, "탑로더 25장")).toContainText("+17");
+  await shot(page, "SA-014-stock");
+  await applyAll(page);
+  await expect(page.getByText("재고 2건을 바꿨어요")).toBeVisible();
+  await expect(row(page, "탑로더 25장").locator(".c-cur")).toContainText("20");
+  await page.reload();
+  await expect(nextInput(page, "문라이트 컬렉션 박스 1박스")).toHaveValue("9");
+
+  // 되돌려 둔다
+  await nextInput(page, "탑로더 25장 1팩").fill("3");
+  await nextInput(page, "문라이트 컬렉션 박스 1박스").fill("5");
+  await applyAll(page);
+  await expect(page.getByText("재고 2건을 바꿨어요")).toBeVisible();
+});
+
+test("빼기·더하기: 사유와 함께 바꾸고, 남은 재고보다 많이 뺄 수 없다", async ({ page }) => {
+  await openAs(page);
+  const label = "스타라이트 부스터 박스 1박스 (36팩)";
+  const before = Number((await nextInput(page, label).inputValue()).replace(/,/g, ""));
+  await page.getByRole("button", { name: `${label} 빼기 · 더하기` }).click();
+  const sheet = page.getByRole("dialog");
+  await sheet.getByLabel("수량").fill(String(before + 1));
+  await expect(sheet.getByText(`남은 재고보다 많이 뺄 수 없어요 · 지금 ${before}개`)).toBeVisible();
+  await sheet.getByRole("radio", { name: "이벤트 증정" }).click();
+  await expect(sheet.getByRole("button", { name: `${before + 1}개 빼기` })).toBeDisabled();
+  await sheet.getByLabel("수량").fill("3");
+  await shot(page, "SA-014-stock-sheet");
+  await sheet.getByRole("button", { name: "3개 빼기" }).click();
+  await expect(page.getByText(`스타라이트 부스터 박스 재고 3개를 뺐어요 · 남은 재고 ${before - 3}`)).toBeVisible();
+  await expect(nextInput(page, label)).toHaveValue(String(before - 3));
+
+  await page.getByRole("button", { name: `${label} 빼기 · 더하기` }).click();
+  await sheet.getByRole("radio", { name: "더하기" }).click();
+  await sheet.getByLabel("수량").fill("3");
+  await sheet.getByRole("radio", { name: "직접 입력" }).click();
+  await expect(sheet.getByRole("button", { name: "3개 더하기" })).toBeDisabled();
+  await sheet.getByLabel("사유 메모").fill("추가 입고");
+  await sheet.getByRole("button", { name: "3개 더하기" }).click();
+  await expect(page.getByText(`스타라이트 부스터 박스 재고 3개를 더했어요 · 남은 재고 ${before}`)).toBeVisible();
+  await page.reload();
+  await expect(nextInput(page, label)).toHaveValue(String(before));
+});
+
+test("그사이 재고가 바뀐 옵션은 덮어쓰지 않고 알려 준다", async ({ page }) => {
+  await openAs(page);
+  const label = "탑로더 25장 1팩";
+  await nextInput(page, label).fill("50");
+  // 화면을 띄워 둔 사이 다른 곳(주문·다른 직원)에서 재고가 1개 줄었다고 가정한다
+  const r = await page.evaluate(async () => {
+    const list = await (await fetch("/api/seller/products?limit=200")).json();
+    const p = list.products.find((x: { name: string }) => x.name === "탑로더 25장");
+    const o = p.options[0];
+    const res = await fetch(`/api/seller/products/${p.id}/options/${o.id}/stock-adjust`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ delta: -1, reason: "e2e 동시 변경" }),
+    });
+    return { status: res.status, before: o.stock };
+  });
+  expect(r.status).toBe(200);
+  await applyAll(page);
+  await expect(page.getByText(/그사이 주문 등으로 재고가 바뀌어 1건은 바꾸지 않았어요/)).toBeVisible();
+  await expect(nextInput(page, label)).toHaveValue(String(r.before - 1));
+
+  // 되돌려 둔다
+  await nextInput(page, label).fill(String(r.before));
+  await applyAll(page);
+  await expect(page.getByText("재고 1건을 바꿨어요")).toBeVisible();
+});
+
+test("검색·품절·재고 적은 순으로 걸러 보고, 잘못된 값은 빼고 적용한다", async ({ page }) => {
+  await openAs(page);
+  await page.getByRole("button", { name: "품절", exact: true }).click();
+  await expect(row(page, "드래곤 소울 부스터")).toBeVisible();
+  await expect(row(page, "스타라이트 부스터 박스")).toHaveCount(0);
+  await page.getByRole("button", { name: "품절", exact: true }).click();
+  await page.getByLabel("재고 검색").fill("바인더");
+  await expect(page.getByTestId("stock-row")).toHaveCount(4);
+  await nextInput(page, "보관용 카드 바인더 4포켓 바인더 (네이비 · 톱 로딩 · 160장 수납)").fill("-1");
+  await expect(page.getByText("고칠 칸이 1개 있어요. 그 칸은 빼고 적용해요")).toBeVisible();
+  await expect(page.getByRole("button", { name: "변경 0건 적용" }).first()).toBeDisabled();
+  await page.getByLabel("재고 검색").fill("없는상품이름");
+  await expect(page.getByText("조건에 맞는 옵션이 없어요")).toBeVisible();
+});
+
+test("상품 권한이 없는 직원은 권한 안내를 본다", async ({ page }) => {
+  await openAs(page, "demo-viewer@example.com");
+  await expect(page.getByText("필요한 권한: 상품")).toBeVisible();
+  await expect(page.getByTestId("stock-row")).toHaveCount(0);
+});
+
+test("390에서는 옵션이 카드처럼 쌓이고 가로로 넘치지 않는다", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openAs(page);
+  await expect(page.getByTestId("stock-row").first()).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await expect(page.getByRole("button", { name: "스타라이트 부스터 박스 1박스 (36팩) 빼기 · 더하기" })).toBeVisible();
+});
