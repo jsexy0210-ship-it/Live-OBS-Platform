@@ -10,8 +10,11 @@ import { START_IN_PROGRESS_MESSAGE, keyedOwnerToken as keyedToken, reuseKeyedAtt
 import { hashToken } from "../auth/token";
 import { buyerSignupIdentityLimitReached, completeIdentityVerification, parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
 import { EMAIL } from "../sellers/application";
-import { REJOIN_RETENTION_CONSENT_VERSION, purgeExpiredRejoinBlocks, rejoinBlockedUntil, rejoinDaysToAgree } from "./rejoin";
+import { type ConsentFailure, parseSignupConsent, readSignupConsent } from "./consent";
+import { purgeExpiredRejoinBlocks, rejoinBlockedUntil, rejoinDaysToAgree } from "./rejoin";
 import { cleanText } from "../text/clean";
+
+type Db = PrismaClient | Prisma.TransactionClient;
 
 
 // 본인인증 후 가입에 쓸 수 있는 시간
@@ -63,6 +66,10 @@ export async function startBuyerSignupVerification(
   meta: { ip?: string | null; userAgent?: string | null; now?: Date; attemptKey?: unknown } = {},
 ) {
   if (!(await shopOpen(db, sellerId))) return { ok: false as const, reason: "shop_unavailable" as const };
+  // 가입 필수 동의는 본인확인 요청 전에 받는다(PRODUCT_SCOPE 「동의 순서」). 같은 요청 본문의 동의 값·문서 버전이 없거나 다르면 새로 시작하지 않는다.
+  // 같은 attemptKey로 이미 시작한 기록이 있으면(응답 유실 뒤 재시도) 그사이 문서 버전·재가입 제한 정책이 바뀌어도 그 기록을 돌려준다
+  // (그 기록에는 시작 때 확인한 동의가 묶여 있다). 동의 검사는 새 기록을 만들 때만 적용한다.
+  const consent = parseSignupConsent(rawPerson, await rejoinDaysToAgree(db, sellerId), meta.now ?? new Date());
   if (meta.attemptKey !== undefined && (typeof meta.attemptKey !== "string" || !UUID_RE.test(meta.attemptKey))) {
     return { ok: false as const, reason: "invalid_identity_input" as const };
   }
@@ -75,6 +82,7 @@ export async function startBuyerSignupVerification(
     | { kind: "reused"; verificationId: string; ownerToken: string }
     | { kind: "refused"; reason: "already_verified" | "expired" | "failed" | "trial_limit_exceeded" | "start_in_progress" }
     | { kind: "limited" }
+    | { kind: "consent"; reason: ConsentFailure }
     | { kind: "send"; verification: IdentityVerification; ownerToken: string };
   const started = await db.$transaction(async (tx): Promise<Started> => {
     const now = meta.now ?? (await dbNow(tx));
@@ -85,6 +93,7 @@ export async function startBuyerSignupVerification(
       if (r?.kind === "reused") return { kind: "reused", verificationId: r.verificationId, ownerToken: keyedOwnerToken(attemptKey!, r.verificationId) };
       if (r) return r;
     }
+    if (!consent.ok) return { kind: "consent", reason: consent.reason };
     // 체험하기 중 본인확인 한도가 찼으면 확정할 수 없으니 기록을 만들거나 문자를 보내지 않는다
     if (await buyerSignupIdentityLimitReached(tx, sellerId, meta.now)) return { kind: "refused", reason: "trial_limit_exceeded" };
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`buyer_signup:${sellerId}:${ip ?? "unknown"}`}))`;
@@ -104,12 +113,14 @@ export async function startBuyerSignupVerification(
       sendStartedAt: now,
       id,
       ownerToken: attemptKey ? keyedOwnerToken(attemptKey, id) : undefined,
+      signupConsent: consent.consent,
       now: meta.now,
     });
     return { kind: "send", verification: created.verification, ownerToken: created.ownerToken };
   });
   if (started.kind === "reused") return { ok: true as const, verificationId: started.verificationId, ownerToken: started.ownerToken };
   if (started.kind === "refused") return { ok: false as const, reason: started.reason };
+  if (started.kind === "consent") return { ok: false as const, reason: started.reason };
   if (started.kind === "limited") {
     await writeAudit(db, { actorType: "SYSTEM", sellerId, action: "buyer.signup.verify_limited", reason: "daily_limit_exceeded", ip, userAgent: meta.userAgent });
     return { ok: false as const, reason: "daily_limit_exceeded" as const };
@@ -133,9 +144,9 @@ export type BuyerSignupFailure =
   | "nickname_taken"
   | "shop_unavailable"
   | "rejoin_restricted" // 재가입 제한 기간 중(탈퇴한 같은 사람, buyers/rejoin.ts)
-  | "invalid_rejoin_consent" // 재가입 제한 정보 보관 동의 값이 불리언이 아님
-  | "rejoin_policy_changed" // 동의한 회원: 화면에 보여 준 재가입 제한 기간이 지금 정책과 다름(화면을 다시 불러와 다시 동의)
-  | "consent_outdated"; // 동의한 회원: 화면이 보여 준 재가입 제한 정보 보관 동의 문서 버전이 지금과 다름
+  | "invalid_rejoin_consent" // 재가입 제한 정보 보관 동의 값이 불리언이 아님(본인확인 시작)
+  | "rejoin_policy_changed" // 보관에 동의한 경우: 화면에 보여 준 재가입 제한 기간이 지금 정책과 다름(본인확인 시작, 화면을 다시 불러와 다시 동의)
+  | "consent_outdated"; // 화면이 보여 준 동의 문서 버전(필수 약관, 동의한 경우 재가입 제한 보관)이 지금과 다름(본인확인 시작)
 
 // resumed: 응답이 끊겨 같은 요청을 다시 보낸 경우(새로 만들지 않고 이미 만든 회원을 돌려줌)
 // rejoinAvailableAt: rejoin_restricted일 때 다시 가입할 수 있는 시각
@@ -157,18 +168,9 @@ export async function signupBuyer(
     loginId: string;
     password: string;
     broadcastNickname: string;
-    // 필수 약관 동의(true여야 한다). 생략하면 동의한 것으로 보지 않는다.
-    agreedTerms?: boolean;
-    agreedPrivacy?: boolean;
+    // 필수 약관·재가입 제한 보관 동의는 본인확인 시작 때 받아 본인확인 기록에 있다(여기서 받지 않는다).
     // 선택 마케팅 수신 동의. true면 가입 시각을 marketingConsentAt에 남긴다. 빠지면 동의 안 함, 불리언이 아니면 거부.
     agreedMarketing?: unknown;
-    // 「재가입 제한 정보 보관 동의」(선택, 대표님 결정 2026-10-03). 재가입 제한을 켠 쇼핑몰에서만 보고, 빠지면 동의 안 함, 불리언이 아니면 거부.
-    // 동의하지 않은 회원은 기간 스냅숏이 없어 탈퇴 때 CI 해시를 남기지 않고 재가입 제한도 받지 않는다.
-    agreedRejoinRetention?: unknown;
-    // 동의한 경우: 화면이 보여 준 재가입 제한 기간(일)과 동의 문서 버전. 지금 정책·버전과 다르면 동의한 내용을 확인할 수 없어
-    // 저장하지 않는다(409 rejoin_policy_changed·consent_outdated).
-    rejoinRestrictionDaysShown?: unknown;
-    rejoinRetentionVersionShown?: unknown;
     // 감사 로그에 남길 요청 정보
     meta?: { ip?: string | null; userAgent?: string | null };
     now?: Date;
@@ -181,10 +183,8 @@ export async function signupBuyer(
   if (typeof input.password !== "string" || input.password.length < MIN_PASSWORD_LENGTH || input.password.length > 200) return { ok: false, reason: "weak_password" };
   const nickname = cleanText(input.broadcastNickname, MAX_NICKNAME_LENGTH);
   if (!nickname) return { ok: false, reason: "invalid_nickname" };
-  if (input.agreedTerms !== true || input.agreedPrivacy !== true) return { ok: false, reason: "terms_required" };
   if (input.agreedMarketing !== undefined && typeof input.agreedMarketing !== "boolean") return { ok: false, reason: "invalid_marketing_consent" };
   const agreedMarketing = input.agreedMarketing === true;
-  if (input.agreedRejoinRetention !== undefined && typeof input.agreedRejoinRetention !== "boolean") return { ok: false, reason: "invalid_rejoin_consent" };
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.verificationId)) return { ok: false, reason: "verification_invalid" };
 
   const done = await completeIdentityVerification(db, provider, input.verificationId, { sellerId: input.sellerId, purpose: "BUYER_SIGNUP", ownerToken: input.ownerToken }, now);
@@ -201,12 +201,11 @@ export async function signupBuyer(
   };
   // 이미 가입을 마친 같은 요청의 재시도는 정책 대조보다 먼저 본다(그사이 정책이 바뀌어도 만든 계정의 201·세션을 받는다)
   if (v.consumedAt) return resume(v.subjectId);
-  // 재가입 제한을 켠 쇼핑몰에서 보관에 동의한 경우만 기간을 회원에 남긴다(가입 처리 중 설정이 바뀌어도 동의한 값 기준).
-  // 화면을 연 뒤 판매자가 기간을 바꿨거나 문서 버전이 바뀌었으면 동의한 내용과 다르다. 저장하지 않고 새 내용을 다시 보여 주게 한다.
-  const policyDays = await rejoinDaysToAgree(db, input.sellerId);
-  const rejoinDays = policyDays !== null && input.agreedRejoinRetention === true ? policyDays : null;
-  if (rejoinDays !== null && input.rejoinRestrictionDaysShown !== rejoinDays) return { ok: false, reason: "rejoin_policy_changed" };
-  if (rejoinDays !== null && input.rejoinRetentionVersionShown !== REJOIN_RETENTION_CONSENT_VERSION) return { ok: false, reason: "consent_outdated" };
+  // 본인확인 시작 때 받은 동의. 없으면(이 변경 전 요청) 처음부터 다시 한다.
+  const consent = readSignupConsent(v.signupConsent);
+  if (!consent) return { ok: false, reason: "verification_invalid" };
+  // 재가입 제한 보관 동의를 했으면 그때 안내한 기간을 회원에 남긴다(설정이 그 뒤 바뀌어도 동의한 값 기준)
+  const rejoinDays = consent.rejoinRetention?.days ?? null;
   if (
     !v.ciHash ||
     !v.verifiedAt ||
@@ -218,9 +217,10 @@ export async function signupBuyer(
   ) {
     return { ok: false, reason: "verification_invalid" };
   }
-  // 이 쇼핑몰의 기간이 끝난 재가입 제한 기록을 지운다(전역 정리는 jobs/scheduler.ts 정기 실행).
-  // 본인확인(시작한 브라우저·완료·기한)이 확인된 요청에서만 돌린다. 비인증 요청으로 DELETE를 반복시키지 못하게 한다.
+  // 이 쇼핑몰의 기간이 끝난 재가입 제한 기록·끝난 미가입 본인확인·3개월 지난 요청 IP를 정리한다(전역 정리는 jobs/scheduler.ts 정기 실행).
+  // 본인확인(시작한 브라우저·완료·기한)이 확인된 요청에서만 돌린다. 비인증 요청으로 정리 쿼리를 반복시키지 못하게 한다.
   await purgeExpiredRejoinBlocks(db, now, input.sellerId);
+  await purgeSignupVerificationsForShop(db, input.sellerId);
 
   const grade = await db.memberGrade.findFirst({
     where: { sellerId: input.sellerId },
@@ -241,8 +241,10 @@ export async function signupBuyer(
     // 시도 횟수는 같은 트랜잭션에서 올리고, 중복 같은 실패는 값으로 돌려줘 커밋되게 해서 실패한 시도도 남긴다.
     const step = await db.$transaction(async (tx): Promise<Step> => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`buyer_signup_v:${v.id}`}))`;
-      const cur = await tx.identityVerification.findUniqueOrThrow({ where: { id: v.id }, select: { consumedAt: true, subjectId: true, useAttemptCount: true } });
+      const cur = await tx.identityVerification.findUniqueOrThrow({ where: { id: v.id }, select: { consumedAt: true, subjectId: true, useAttemptCount: true, anonymizedAt: true } });
       if (cur.consumedAt) return { kind: "resume", subjectId: cur.subjectId };
+      // 처음 읽은 뒤 미가입 정리(purgeUnfinishedSignupVerifications)가 비식별했으면 쓸 수 없다
+      if (cur.anonymizedAt) return { kind: "fail", reason: "verification_invalid" };
       if (cur.useAttemptCount >= MAX_SIGNUP_ATTEMPTS_PER_VERIFICATION) return { kind: "fail", reason: "too_many_signup_attempts" };
       await tx.identityVerification.update({ where: { id: v.id }, data: { useAttemptCount: { increment: 1 } } });
       const live = { sellerId: input.sellerId, deletedAt: null };
@@ -253,7 +255,10 @@ export async function signupBuyer(
       if (blockedUntil) return { kind: "fail", reason: "rejoin_restricted", rejoinAvailableAt: blockedUntil };
       if (await tx.buyerMember.findFirst({ where: { ...live, loginId }, select: { id: true } })) return { kind: "fail", reason: "login_id_taken" };
       if (await tx.buyerMember.findFirst({ where: { ...live, broadcastNickname: nickname }, select: { id: true } })) return { kind: "fail", reason: "nickname_taken" };
-      await tx.identityVerification.update({ where: { id: v.id }, data: { consumedAt: now } });
+      // 소진은 「아직 안 썼고 비식별 전」일 때만 한 문장으로 한다. 정리 작업과 겹치면 먼저 커밋한 쪽만 행을 바꾼다
+      // (정리가 먼저면 여기서 0건 → 거부, 가입이 먼저면 정리 조건 consumedAt IS NULL에 걸리지 않음).
+      const consumed = await tx.identityVerification.updateMany({ where: { id: v.id, consumedAt: null, anonymizedAt: null }, data: { consumedAt: now } });
+      if (consumed.count !== 1) return { kind: "fail", reason: "verification_invalid" };
       const created = await tx.buyerMember.create({
         data: {
           sellerId: input.sellerId,
@@ -267,9 +272,10 @@ export async function signupBuyer(
           broadcastNickname: nickname,
           gradeId: grade.id,
           marketingConsentAt: agreedMarketing ? now : null,
+          signupConsent: consent,
           rejoinRestrictionDaysAgreed: rejoinDays,
-          rejoinRetentionAgreedAt: rejoinDays !== null ? now : null,
-          rejoinRetentionVersion: rejoinDays !== null ? REJOIN_RETENTION_CONSENT_VERSION : null,
+          rejoinRetentionAgreedAt: consent.rejoinRetention ? new Date(consent.agreedAt) : null,
+          rejoinRetentionVersion: consent.rejoinRetention?.version ?? null,
           createdAt: now,
         },
       });
@@ -287,7 +293,13 @@ export async function signupBuyer(
           agreedTerms: true,
           agreedPrivacy: true,
           agreedMarketing,
-          ...(rejoinDays !== null ? { agreedRejoinRetention: true, rejoinRetentionVersion: REJOIN_RETENTION_CONSENT_VERSION, rejoinRestrictionDays: rejoinDays } : {}),
+          termsVersion: consent.termsVersion,
+          privacyVersion: consent.privacyVersion,
+          ...(consent.rejoinRetention
+            ? { agreedRejoinRetention: true, rejoinRetentionVersion: consent.rejoinRetention.version, rejoinRestrictionDays: consent.rejoinRetention.days }
+            : {}),
+          // 필수 동의는 본인확인 시작 때(consentAgreedAt), 마케팅 동의는 가입 때(agreedAt)
+          consentAgreedAt: consent.agreedAt,
           agreedAt: now.toISOString(),
         },
       });
@@ -356,3 +368,39 @@ export const BUYER_SIGNUP_STATUS: Record<BuyerSignupFailure, number> = {
   consent_outdated: 409,
   rejoin_policy_changed: 409,
 };
+
+// 가입을 끝내지 않은 본인확인 기록 비식별(PRODUCT_SCOPE 「동의 순서」·PRIVACY_CONSENT_TEMPLATE: 확인 시간이 끝나면 바로 지움).
+// 대상: 구매자 가입용이고 가입에 쓰지 않았으며(consumedAt 없음) 유효 시간(expiresAt)이 지났고 아직 비식별하지 않은 기록.
+// 이름·휴대폰·요청 휴대폰·생년월일·CI 해시·subjectId·동의·시작 브라우저 값(ownerTokenHash)을 비우고, 대행사에서 결과를 다시 조회하는
+// 열쇠인 requestId는 겹치지 않는 무작위 값으로 바꾼다. 행은 지우지 않는다(MASTER 결정 2026-10-03, Codex P1): 쇼핑몰·상태·요청 시각·요청 IP로
+// 같은 IP 하루 시작 횟수와 체험 한도(VERIFIED 건수)를 세므로, 지우거나 상태를 바꾸면 만료를 기다려 유료 문자를 다시 받는 남용이 된다.
+// 요청 IP는 purgeOldSignupVerificationIps가 3개월 뒤 비운다. 정기 실행(jobs/scheduler.ts)과 가입·탈퇴 처리 때 부른다. 비식별한 수를 돌려준다.
+export async function purgeUnfinishedSignupVerifications(db: Db, now?: Date, sellerId?: string): Promise<number> {
+  const at = now ?? (await dbNow(db));
+  return db.$executeRaw`
+    UPDATE "IdentityVerification"
+    SET "name" = NULL, "phone" = NULL, "requestedPhone" = NULL, "birthDate" = NULL, "ciHash" = NULL, "subjectId" = NULL,
+        "signupConsent" = NULL, "ownerTokenHash" = NULL, "requestId" = 'anonymized:' || gen_random_uuid()::text, "anonymizedAt" = ${at}
+    WHERE "purpose" = 'BUYER_SIGNUP' AND "consumedAt" IS NULL AND "anonymizedAt" IS NULL AND "expiresAt" <= ${at}
+      AND (${sellerId ?? null}::uuid IS NULL OR "sellerId" = ${sellerId ?? null}::uuid)`;
+}
+
+// 구매자 가입 본인확인 기록의 요청 IP는 3개월 뒤 비운다(접속 기록 보관 3개월, PRODUCT_SCOPE 「구매자 탈퇴·재가입」).
+// 가입을 마친 기록과 비식별한 미가입 기록이 대상이다. sellerId를 주면 그 쇼핑몰만. 정기 실행(jobs/scheduler.ts)과 가입·탈퇴 처리 때 부른다. 비운 수를 돌려준다.
+export const SIGNUP_IP_RETENTION_MONTHS = 3;
+export async function purgeOldSignupVerificationIps(db: Db, now?: Date, sellerId?: string): Promise<number> {
+  const at = now ?? (await dbNow(db));
+  const [{ before }] = await db.$queryRaw<{ before: Date }[]>`SELECT (${at}::timestamptz - make_interval(months => ${SIGNUP_IP_RETENTION_MONTHS}::int)) AS "before"`;
+  const r = await db.identityVerification.updateMany({
+    where: { purpose: "BUYER_SIGNUP", OR: [{ consumedAt: { not: null } }, { anonymizedAt: { not: null } }], requestIp: { not: null }, createdAt: { lte: before }, ...(sellerId ? { sellerId } : {}) },
+    data: { requestIp: null },
+  });
+  return r.count;
+}
+
+// 가입·탈퇴 처리 때 그 쇼핑몰의 끝난 미가입 본인확인과 3개월 지난 요청 IP를 정리한다(모든 쇼핑몰은 정기 실행).
+export async function purgeSignupVerificationsForShop(db: Db, sellerId: string, now?: Date) {
+  const at = now ?? (await dbNow(db));
+  await purgeUnfinishedSignupVerifications(db, at, sellerId);
+  await purgeOldSignupVerificationIps(db, at, sellerId);
+}
