@@ -133,6 +133,15 @@ export async function signupBuyer(
     return { ok: false, reason: "verification_invalid" };
   };
   if (v.consumedAt) return resume(v.subjectId);
+  // 같은 요청이 동시에 와서 다른 쪽이 먼저 가입시켰는지 다시 본다(소진됐으면 재전송과 같은 기준으로 판정).
+  // 같은 회원으로 끝나면 이 요청이 올린 시도 횟수는 되돌린다(가입 한 번에 한 번만 센다). 소진 전이면 null.
+  const lostRace = async (counted: boolean): Promise<BuyerSignupResult | null> => {
+    const after = await db.identityVerification.findUniqueOrThrow({ where: { id: v.id }, select: { consumedAt: true, subjectId: true } });
+    if (!after.consumedAt) return null;
+    const r = await resume(after.subjectId);
+    if (r.ok && counted) await db.identityVerification.updateMany({ where: { id: v.id, useAttemptCount: { gt: 0 } }, data: { useAttemptCount: { decrement: 1 } } });
+    return r;
+  };
   if (
     !v.ciHash ||
     !v.verifiedAt ||
@@ -150,13 +159,13 @@ export async function signupBuyer(
     where: { id: v.id, consumedAt: null, useAttemptCount: { lt: MAX_SIGNUP_ATTEMPTS_PER_VERIFICATION } },
     data: { useAttemptCount: { increment: 1 } },
   });
-  if (counted.count !== 1) return { ok: false, reason: "too_many_signup_attempts" };
+  if (counted.count !== 1) return (await lostRace(false)) ?? { ok: false, reason: "too_many_signup_attempts" };
 
   const existing = await db.buyerMember.findFirst({
     where: { sellerId: input.sellerId, ciHash: v.ciHash, deletedAt: null },
     select: { id: true },
   });
-  if (existing) return { ok: false, reason: "already_member" };
+  if (existing) return (await lostRace(true)) ?? { ok: false, reason: "already_member" };
 
   const grade = await db.memberGrade.findFirst({
     where: { sellerId: input.sellerId },
@@ -203,14 +212,7 @@ export async function signupBuyer(
     });
     return { ok: true, memberId: member.id, broadcastNickname: member.broadcastNickname, resumed: false };
   } catch (e) {
-    if (e instanceof VerificationUsed) {
-      // 같은 요청이 동시에 와서 다른 쪽이 먼저 가입시켰으면 그 결과로 다시 판단한다(재전송과 같은 기준).
-      // 같은 회원으로 끝나면 이 요청이 올린 시도 횟수는 되돌린다(가입 한 번에 한 번만 센다).
-      const after = await db.identityVerification.findUniqueOrThrow({ where: { id: v.id }, select: { subjectId: true } });
-      const r = await resume(after.subjectId);
-      if (r.ok) await db.identityVerification.updateMany({ where: { id: v.id, useAttemptCount: { gt: 0 } }, data: { useAttemptCount: { decrement: 1 } } });
-      return r;
-    }
+    if (e instanceof VerificationUsed) return (await lostRace(true)) ?? { ok: false, reason: "verification_invalid" };
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
       // 부분 유니크 인덱스 이름으로 어느 값이 겹쳤는지 구분한다(동시에 가입한 경우 포함).
       const target = String((e.meta as { target?: unknown } | undefined)?.target ?? e.message);
