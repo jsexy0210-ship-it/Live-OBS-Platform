@@ -14,7 +14,7 @@ export type Device = (typeof DEVICES)[number];
 // 인적사항. birth7: 생년월일 6자리 + 성별 자리 1자리(주민등록번호 전체는 받지 않는다). device: 화면 기기(기본 MOBILE).
 export type IdentityPerson = { name: string; phone: string; birth7: string; carrier: Carrier; device: Device };
 
-export type IdentityPurposeTag = "BUYER_SIGNUP" | "SELLER_REPRESENTATIVE" | "PASSWORD_RESET";
+export type IdentityPurposeTag = "BUYER_SIGNUP" | "SELLER_REPRESENTATIVE" | "PASSWORD_RESET" | "STAFF_LINK" | "ACCOUNT_RECOVERY";
 
 export type IdentityResult =
   // requestId·purpose: 대행사 결과에 실려 온 요청 id와 서비스(용도). 우리 기록과 대조한다.

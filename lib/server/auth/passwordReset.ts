@@ -8,6 +8,7 @@ import type { IdentityProvider } from "../identity/provider";
 import { completeIdentityVerification, parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
 import { requireSellerPermission, type TenantContext } from "../tenant/context";
 import { hashPassword } from "./password";
+import { recoveryLimitReached } from "./recoveryLimit";
 import { generateToken, hashToken } from "./token";
 import { normalizeEmail } from "./login";
 
@@ -15,7 +16,7 @@ import { normalizeEmail } from "./login";
 // 1) 이메일+쇼핑몰로 시작 → 2) 휴대폰 본인확인 완료 후 CI가 쇼핑몰 대표자 CI와 같고 계정이 대표(OWNER)면 일회용·10분 재설정 권한 발급
 // → 3) 새 비밀번호 저장, 그 계정의 기존 세션 모두 폐기. 계정이 있는지 없는지는 응답으로 드러나지 않는다.
 
-const GRANT_TTL_MS = 10 * 60_000;
+export const GRANT_TTL_MS = 10 * 60_000;
 
 // 비밀번호 해시 함수(테스트에서 호출 여부를 확인할 수 있게 객체로 둔다)
 export const passwordHasher = { hashPassword };
@@ -39,7 +40,8 @@ export type StartResult =
 export async function startSellerPasswordReset(
   db: PrismaClient,
   provider: IdentityProvider,
-  input: { email: string; shopSlug: string; person: unknown },
+  // accountType: 로그인 화면에서 고른 탭(owner|staff). 주면 그 종류의 계정만 대상으로 본다(다르면 없는 계정과 같은 처리).
+  input: { email: string; shopSlug: string; person: unknown; accountType?: "owner" | "staff" },
   meta: Meta = {},
 ): Promise<StartResult> {
   const attemptKey = parseAttemptKey(meta.attemptKey);
@@ -51,9 +53,11 @@ export async function startSellerPasswordReset(
   const user = seller
     ? await db.sellerUser.findUnique({
         where: { sellerId_email: { sellerId: seller.id, email: normalizeEmail(input.email) } },
-        select: { id: true },
+        select: { id: true, isOwner: true },
       })
     : null;
+  const subject = user && (!input.accountType || user.isOwner === (input.accountType === "owner")) ? user : null;
+  const ip = meta.ip ?? null;
 
   // attemptKey(선택, 클라이언트 UUID): 응답이 끊겨 같은 키로 다시 보내면 같은 기록·같은 ownerToken을 돌려주고 문자·하루 횟수를 다시 쓰지 않는다.
   // 키는 같은 쇼핑몰 주소·같은 아이디 범위로만 찾는다(다른 아이디로 같은 키를 보내면 새 시작). 계정 유무와 상관없이 같은 응답이다.
@@ -74,6 +78,8 @@ export async function startSellerPasswordReset(
       if (r?.kind === "reused") return { ...r, ownerToken: keyedOwnerToken(OWNER_SCOPE, attemptKey!, r.verificationId) };
       if (r) return r;
     }
+    // 같은 휴대폰 하루 10회·같은 IP 하루 30회(아이디 찾기와 합산, auth/recoveryLimit.ts) → 쇼핑몰당 하루 10회
+    if (await recoveryLimitReached(tx, person.phone, ip)) return null;
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`pwreset:${sellerId ?? "none"}`}))`;
     const [{ count }] = await tx.$queryRaw<{ count: bigint }[]>`
       SELECT count(*)::bigint AS count FROM "IdentityVerification"
@@ -86,7 +92,8 @@ export async function startSellerPasswordReset(
       purpose: "PASSWORD_RESET",
       sellerId,
       person,
-      subjectId: user?.id ?? null,
+      subjectId: subject?.id ?? null,
+      requestIp: ip,
       attemptKeyHash: keyHash,
       sendStartedAt: keyHash ? (meta.now ?? (await dbNow(tx))) : null,
       id,
@@ -128,7 +135,8 @@ export async function startSellerPasswordReset(
 
 export type GrantResult = { ok: true; grantToken: string; expiresAt: Date } | { ok: false; reason: "reset_not_allowed" | "pending" };
 
-// 휴대폰 본인확인 완료 확인 → 대표자 CI 비교 → 재설정 권한 발급. 실패 사유는 하나로 묶는다(계정 존재·CI 일치 여부 비노출).
+// 휴대폰 본인확인 완료 확인 → CI 비교 → 재설정 권한 발급. 대표자는 쇼핑몰 대표자 CI, 직원은 계정에 연결한 CI와 같아야 한다
+// (2026-10-03 대표님 결정, 연결 안 된 직원은 대표자 재설정만). 실패 사유는 하나로 묶는다(계정 존재·종류·CI 일치·연결 여부 비노출).
 export async function issueSellerPasswordResetGrant(
   db: PrismaClient,
   provider: IdentityProvider,
@@ -178,9 +186,10 @@ export async function issueSellerPasswordResetGrant(
     return { ok: false, reason: "reset_not_allowed" };
   };
   if (!user || user.sellerId !== v.sellerId) return rejectAndConsume("account_not_found");
-  if (!user.isOwner) return rejectAndConsume("not_owner");
   if (user.status !== "ACTIVE") return rejectAndConsume("account_disabled");
-  if (!ci || !user.seller.representativeCiHash || user.seller.representativeCiHash !== ci) return rejectAndConsume("ci_mismatch");
+  const expected = expectedResetCi(user);
+  if (!expected) return rejectAndConsume(user.isOwner ? "ci_mismatch" : "staff_not_linked");
+  if (!ci || expected !== ci) return rejectAndConsume("ci_mismatch");
 
   const grantToken = generateToken();
   const expiresAt = new Date(now.getTime() + GRANT_TTL_MS);
@@ -209,6 +218,11 @@ export async function issueSellerPasswordResetGrant(
     return { ok: false, reason: "reset_not_allowed" };
   }
   return { ok: true, grantToken, expiresAt };
+}
+
+// 재설정 권한을 줄 때·쓸 때 대조하는 CI 해시: 대표자는 쇼핑몰 대표자 CI, 직원은 연결 CI(없으면 null = 셀프 재설정 불가)
+export function expectedResetCi(u: { isOwner: boolean; identityCiHash: string | null; seller: { representativeCiHash: string | null } }): string | null {
+  return u.isOwner ? u.seller.representativeCiHash : u.identityCiHash;
 }
 
 export type ResetResult = { ok: true } | { ok: false; reason: "invalid_grant" | "weak_password" };
@@ -240,7 +254,9 @@ export async function resetSellerPassword(
       include: { sellerUser: { include: { seller: { select: { representativeCiHash: true } } } } },
     });
     const u = g.sellerUser;
-    const stale = !u.isOwner ? "not_owner" : u.status !== "ACTIVE" ? "account_disabled" : u.seller.representativeCiHash !== g.ciHash ? "ci_changed" : null;
+    // 발급 뒤 계정이 비활성화됐거나, 대조한 CI(대표자 CI·직원 연결 CI)가 바뀌었거나 대표자·직원 종류가 바뀌었으면 거부
+    const expected = expectedResetCi(u);
+    const stale = u.status !== "ACTIVE" ? "account_disabled" : !expected ? (u.isOwner ? "ci_changed" : "staff_not_linked") : expected !== g.ciHash ? "ci_changed" : null;
     if (stale) return { grant: g, reason: stale };
 
     await tx.sellerUser.update({ where: { id: g.sellerUserId }, data: { passwordHash, credentialVersion: { increment: 1 } } });
