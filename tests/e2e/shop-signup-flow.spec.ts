@@ -527,3 +527,21 @@ test("완료 문구의 닉네임은 서버가 저장하는 형태(NFKC 정규화
   await page.getByRole("button", { name: "가입하기" }).click();
   await expect(page.getByText("이제 주문할 수 있어요. 방송에서는 AB1 닉네임으로 보여요.")).toBeVisible();
 });
+
+test("첫 가입 응답이 5xx면 결과가 애매하다고 보고 같은 요청을 한 번 다시 보내 201이면 완료한다", async ({ page }) => {
+  await mockApi(page);
+  const bodies: unknown[] = [];
+  await page.route((u) => u.pathname === API, (route) => {
+    bodies.push(route.request().postDataJSON());
+    return bodies.length === 1
+      ? route.fulfill({ status: 500, contentType: "application/json", body: "{}" })
+      : route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ ok: true, broadcastNickname: "별빛" }) });
+  });
+  await page.goto(`/shop/${SLUG}/signup`);
+  await toVerified(page);
+  await fillAccount(page, "xf", "별빛");
+  await page.getByRole("button", { name: "가입하기" }).click();
+  await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
+  expect(bodies).toHaveLength(2);
+  expect(bodies[1]).toEqual(bodies[0]);
+});

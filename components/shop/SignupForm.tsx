@@ -34,6 +34,9 @@ type SignupBody = {
 // 입력 칸 maxLength는 UTF-16 단위라 이모지가 절반에서 잘리므로 쓰지 않는다.
 const MAX_NICKNAME_LENGTH = 20;
 
+// 가입 결과를 알 수 없는 응답: 끊김(0)이나 5xx. 503(본인확인 서비스 없음)은 처리 전에 막힌 것이라 상태 화면으로 보낸다.
+const unclear = (status: number) => status === 0 || (status >= 500 && status !== 503);
+
 const digits = (v: string, max: number) => v.replace(/\D/g, "").slice(0, max);
 
 // 생년월일 8자리 + 성별 + 내·외국인 → 서버가 받는 birth7(YYMMDD + 성별 자리). 1900년대 1·2, 2000년대 3·4, 외국인은 5~8.
@@ -231,8 +234,9 @@ export default function SignupForm({ slug }: { slug: string }) {
       finish(r.data.broadcastNickname ?? pending.nickname);
       return;
     }
-    // 응답이 끊김: 서버에서는 가입됐을 수 있다. 같은 요청을 한 번 다시 보낸다(가입됐으면 같은 회원으로 201과 세션을 다시 준다).
-    if (r.status === 0) {
+    // 응답이 끊겼거나 5xx(503 서비스 없음 제외): 서버에서는 가입됐을 수 있다. 같은 요청을 한 번 다시 보낸다
+    // (가입됐으면 같은 회원으로 201과 세션을 다시 준다).
+    if (unclear(r.status)) {
       setUnconfirmed(pending);
       await resubmit(pending);
       setBusy(false);
@@ -292,7 +296,7 @@ export default function SignupForm({ slug }: { slug: string }) {
     // 포커스를 옮길 칸이 잠긴 채로 남지 않게 먼저 푼다
     setBusy(false);
     if (r.ok) finish(r.data.broadcastNickname ?? pending.nickname);
-    else if (r.status === 0 || r.status >= 500) showNotice({ kind: "neg", text: "가입이 끝났는지 확인하지 못했어요. 다시 시도해 주세요" });
+    else if (unclear(r.status)) showNotice({ kind: "neg", text: "가입이 끝났는지 확인하지 못했어요. 다시 시도해 주세요" });
     else {
       setUnconfirmed(null);
       signupFail(r);
