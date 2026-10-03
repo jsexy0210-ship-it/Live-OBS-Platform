@@ -249,8 +249,10 @@ export async function signupBuyer(
     // 시도 횟수는 같은 트랜잭션에서 올리고, 중복 같은 실패는 값으로 돌려줘 커밋되게 해서 실패한 시도도 남긴다.
     const step = await db.$transaction(async (tx): Promise<Step> => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`buyer_signup_v:${v.id}`}))`;
-      const cur = await tx.identityVerification.findUniqueOrThrow({ where: { id: v.id }, select: { consumedAt: true, subjectId: true, useAttemptCount: true } });
+      const cur = await tx.identityVerification.findUniqueOrThrow({ where: { id: v.id }, select: { consumedAt: true, subjectId: true, useAttemptCount: true, anonymizedAt: true } });
       if (cur.consumedAt) return { kind: "resume", subjectId: cur.subjectId };
+      // 처음 읽은 뒤 미가입 정리(purgeUnfinishedSignupVerifications)가 비식별했으면 쓸 수 없다
+      if (cur.anonymizedAt) return { kind: "fail", reason: "verification_invalid" };
       if (cur.useAttemptCount >= MAX_SIGNUP_ATTEMPTS_PER_VERIFICATION) return { kind: "fail", reason: "too_many_signup_attempts" };
       await tx.identityVerification.update({ where: { id: v.id }, data: { useAttemptCount: { increment: 1 } } });
       const live = { sellerId: input.sellerId, deletedAt: null };
@@ -261,7 +263,10 @@ export async function signupBuyer(
       if (blockedUntil) return { kind: "fail", reason: "rejoin_restricted", rejoinAvailableAt: blockedUntil };
       if (await tx.buyerMember.findFirst({ where: { ...live, loginId }, select: { id: true } })) return { kind: "fail", reason: "login_id_taken" };
       if (await tx.buyerMember.findFirst({ where: { ...live, broadcastNickname: nickname }, select: { id: true } })) return { kind: "fail", reason: "nickname_taken" };
-      await tx.identityVerification.update({ where: { id: v.id }, data: { consumedAt: now } });
+      // 소진은 「아직 안 썼고 비식별 전」일 때만 한 문장으로 한다. 정리 작업과 겹치면 먼저 커밋한 쪽만 행을 바꾼다
+      // (정리가 먼저면 여기서 0건 → 거부, 가입이 먼저면 정리 조건 consumedAt IS NULL에 걸리지 않음).
+      const consumed = await tx.identityVerification.updateMany({ where: { id: v.id, consumedAt: null, anonymizedAt: null }, data: { consumedAt: now } });
+      if (consumed.count !== 1) return { kind: "fail", reason: "verification_invalid" };
       const created = await tx.buyerMember.create({
         data: {
           sellerId: input.sellerId,

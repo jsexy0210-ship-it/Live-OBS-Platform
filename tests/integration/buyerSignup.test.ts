@@ -765,6 +765,30 @@ describe("signupBuyer는 completeIdentityVerification을 거친다", () => {
     expect(await db.buyerMember.count({ where: { sellerId: seller.id } })).toBe(1);
     expect((await db.identityVerification.findUniqueOrThrow({ where: { id: verification.id } })).useAttemptCount).toBe(MAX_SIGNUP_ATTEMPTS_PER_VERIFICATION);
   });
+  it("가입이 본인확인을 읽은 뒤 미가입 정리가 그 기록을 비식별하면 가입은 거부되고 회원·연결이 생기지 않는다(정리와 소진 경합)", async () => {
+    const provider = new FakeIdentityProvider();
+    const { seller } = await createSeller();
+    const { verification, ownerToken } = await startIdv(provider, { purpose: "BUYER_SIGNUP", sellerId: seller.id });
+    expect((await confirmIdv(provider, verification, ownerToken)).ok).toBe(true);
+    // 가입 트랜잭션이 시작되기 직전에 정리 작업이 (유효 시간이 지났다고 보는 시계로) 먼저 커밋된다
+    const racing = new Proxy(db, {
+      get(t, p) {
+        const v = Reflect.get(t, p);
+        if (p === "$transaction") {
+          return async (fn: never, o?: never) => {
+            expect(await purgeUnfinishedSignupVerifications(db, new Date(Date.now() + 86_400_000), seller.id)).toBe(1);
+            return t.$transaction(fn, o);
+          };
+        }
+        return typeof v === "function" ? v.bind(t) : v;
+      },
+    }) as PrismaClient;
+    const r = await signupBuyer(racing, provider, { sellerId: seller.id, verificationId: verification.id, ownerToken, loginId: "race@example.com", password: "pw-123456", broadcastNickname: "경합" });
+    expect(r).toEqual({ ok: false, reason: "verification_invalid" });
+    expect(await db.buyerMember.count({ where: { sellerId: seller.id } })).toBe(0);
+    const row = await db.identityVerification.findUniqueOrThrow({ where: { id: verification.id } });
+    expect(row).toMatchObject({ consumedAt: null, subjectId: null, ciHash: null, anonymizedAt: expect.any(Date) });
+  });
   it("다른 본인확인으로 같은 아이디가 동시에 가입돼 회원 생성이 유니크 충돌로 실패해도 409이고 시도 횟수는 남는다", async () => {
     const provider = new FakeIdentityProvider();
     const { seller } = await createSeller();
