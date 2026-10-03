@@ -19,6 +19,8 @@ if [ -z "$confirm" ]; then
 fi
 [ "$confirm" = "$name" ] || die "DB 이름이 달라 멈췄어요."
 
+# 복원하는 동안 앱이 내려가 있으므로 감시가 장애로 알리지 않게 배포 표시를 둔다(끝나면 지움).
+mark_deploying "db-restore $(basename "$file")"
 log "복원 전 안전 백업"
 "$(dirname "$0")/db-backup.sh" before-restore >/dev/null
 

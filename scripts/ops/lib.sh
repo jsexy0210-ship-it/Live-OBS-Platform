@@ -75,9 +75,20 @@ wait_health() {
 deploy_mark_set() { mkdir -p "$(dirname "$DEPLOY_MARK")" && echo "$(kst '+%F %T KST') $1 pid=$$" > "$DEPLOY_MARK"; }
 deploy_mark_clear() { rm -f "$DEPLOY_MARK"; }
 # 이 스크립트가 끝날 때(실패 포함) 표시를 지운다. 여러 단계에 걸친 배포(워크플로)는 deploy-mark.sh on/off를 쓴다.
+# 15분이 넘게 걸리는 작업(복원 등)에서도 오래된 표시로 무시되지 않게, 도는 동안 표시 시각을 주기적으로 갱신한다.
+# 스크립트가 SIGKILL 등으로 죽으면 갱신도 멈춰(다음 주기에 부모가 없음을 확인) 표시가 15분 뒤 오래된 것으로 처리된다.
 mark_deploying() {
   deploy_mark_set "$1"
-  trap deploy_mark_clear EXIT
+  local every="${OBS_DEPLOY_MARK_REFRESH_S:-60}" parent=$$
+  (
+    while sleep "$every"; do
+      kill -0 "$parent" 2>/dev/null || exit 0
+      [ -e "$DEPLOY_MARK" ] && touch "$DEPLOY_MARK"
+    done
+  ) </dev/null >/dev/null 2>&1 &
+  DEPLOY_MARK_KEEPER=$!
+  # 갱신 루프와 그 안의 sleep까지 끝낸 뒤 표시를 지운다.
+  trap 'pkill -P "$DEPLOY_MARK_KEEPER" 2>/dev/null; kill "$DEPLOY_MARK_KEEPER" 2>/dev/null; deploy_mark_clear' EXIT
 }
 # 감시 수집기가 떠 있으면 지금 compose 정의(가용성 여부 포함)로 다시 만든다(감시 대상이 앱 수에 맞게 바뀜).
 refresh_monitor() {
