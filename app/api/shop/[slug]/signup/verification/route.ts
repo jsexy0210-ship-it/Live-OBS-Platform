@@ -10,7 +10,7 @@ const NO_STORE = { "cache-control": "no-store" };
 
 // 구매자 가입 1단계: 휴대폰 본인확인 시작(같은 IP·같은 쇼핑몰 하루 10회까지). 본문 { name, phone, birth7, carrier, device?, attemptKey?,
 // agreedTerms: true, agreedPrivacy: true, termsVersion, privacyVersion, agreedRejoinRetention?, rejoinRetentionVersion?, rejoinRestrictionDaysShown? }.
-// 가입 필수 동의를 본인확인 전에 받는다(없으면 400 terms_required·rejoin_consent_required, 버전이 다르면 409 consent_outdated, 재가입 제한 기간이 화면과 다르면 409 rejoin_policy_changed).
+// 가입 필수 동의를 본인확인 전에 받는다(필수 동의가 없으면 400 terms_required, 보관 동의 값이 불리언이 아니면 400 invalid_rejoin_consent, 문서 버전이 다르면 409 consent_outdated, 보관에 동의했는데 재가입 제한 기간이 화면과 다르면 409 rejoin_policy_changed).
 // attemptKey(UUID)를 보내면 응답이 끊겨 다시 보낸 요청은 같은 verificationId와 같은 쿠키 값을 받는다(문자·횟수 다시 안 씀).
 // 첫 인증번호를 보내고, 시작한 브라우저에만 확인용 쿠키를 준다(이 쇼핑몰 가입 경로에서만 보냄). 운영에 본인확인 설정이 없으면 503.
 export const POST = mutation(async (req: Request, { params }: { params: Promise<{ slug: string }> }) => {
@@ -27,7 +27,7 @@ export const POST = mutation(async (req: Request, { params }: { params: Promise<
   if (!r.ok) {
     if (r.reason === "daily_limit_exceeded") return NextResponse.json({ error: r.reason, message: BUYER_SIGNUP_MESSAGES.daily_limit_exceeded }, { status: 429, headers: NO_STORE });
     if (r.reason === "start_in_progress") return NextResponse.json({ error: r.reason, message: BUYER_SIGNUP_MESSAGES.start_in_progress }, { status: 409, headers: NO_STORE });
-    if (r.reason === "terms_required" || r.reason === "rejoin_consent_required" || r.reason === "rejoin_policy_changed" || r.reason === "consent_outdated") {
+    if (r.reason === "terms_required" || r.reason === "invalid_rejoin_consent" || r.reason === "rejoin_policy_changed" || r.reason === "consent_outdated") {
       return NextResponse.json({ error: r.reason, message: BUYER_SIGNUP_MESSAGES[r.reason] }, { status: BUYER_SIGNUP_STATUS[r.reason], headers: NO_STORE });
     }
     if (r.reason === "shop_unavailable") return NextResponse.json({ error: r.reason, message: BUYER_SIGNUP_MESSAGES.shop_unavailable }, { status: 402, headers: NO_STORE });

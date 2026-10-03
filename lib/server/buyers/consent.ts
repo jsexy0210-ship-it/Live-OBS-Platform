@@ -19,24 +19,26 @@ export type SignupConsent = {
   agreedAt: string;
 };
 
-export type ConsentFailure = "terms_required" | "rejoin_consent_required" | "rejoin_policy_changed" | "consent_outdated";
+export type ConsentFailure = "terms_required" | "invalid_rejoin_consent" | "rejoin_policy_changed" | "consent_outdated";
 
 // 본문: { agreedTerms: true, agreedPrivacy: true, termsVersion, privacyVersion, agreedRejoinRetention?, rejoinRetentionVersion?, rejoinRestrictionDaysShown? }.
-// 재가입 제한을 켠 쇼핑몰은 화면이 보여 준 기간(rejoinRestrictionDaysShown)이 지금 기간과 같아야 한다. 다르면 동의한 기간을 확인할 수 없어 시작하지 않는다(rejoin_policy_changed).
 // rejoinDays: 지금 재가입 제한 기간(꺼져 있으면 null). 꺼진 쇼핑몰은 보관 동의 값을 보지 않는다.
+// 재가입 제한 정보 보관 동의는 선택(대표님 결정 2026-10-03): 빠지거나 false면 동의 안 함(가입은 되고 기간 스냅숏 없음), 불리언이 아니면 거부.
+// 동의한 경우만 화면이 보여 준 문서 버전·기간이 지금과 같아야 한다(다르면 동의한 내용을 확인할 수 없어 시작하지 않는다).
 export function parseSignupConsent(raw: unknown, rejoinDays: number | null, now: Date): { ok: true; consent: SignupConsent } | { ok: false; reason: ConsentFailure } {
   const b = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   if (b.agreedTerms !== true || b.agreedPrivacy !== true) return { ok: false, reason: "terms_required" };
-  if (rejoinDays !== null && b.agreedRejoinRetention !== true) return { ok: false, reason: "rejoin_consent_required" };
   if (b.termsVersion !== SIGNUP_CONSENT_VERSIONS.terms || b.privacyVersion !== SIGNUP_CONSENT_VERSIONS.privacy) return { ok: false, reason: "consent_outdated" };
-  if (rejoinDays !== null && b.rejoinRetentionVersion !== SIGNUP_CONSENT_VERSIONS.rejoinRetention) return { ok: false, reason: "consent_outdated" };
-  if (rejoinDays !== null && b.rejoinRestrictionDaysShown !== rejoinDays) return { ok: false, reason: "rejoin_policy_changed" };
+  if (b.agreedRejoinRetention !== undefined && typeof b.agreedRejoinRetention !== "boolean") return { ok: false, reason: "invalid_rejoin_consent" };
+  const rejoin = rejoinDays !== null && b.agreedRejoinRetention === true;
+  if (rejoin && b.rejoinRetentionVersion !== SIGNUP_CONSENT_VERSIONS.rejoinRetention) return { ok: false, reason: "consent_outdated" };
+  if (rejoin && b.rejoinRestrictionDaysShown !== rejoinDays) return { ok: false, reason: "rejoin_policy_changed" };
   return {
     ok: true,
     consent: {
       termsVersion: SIGNUP_CONSENT_VERSIONS.terms,
       privacyVersion: SIGNUP_CONSENT_VERSIONS.privacy,
-      rejoinRetention: rejoinDays !== null ? { version: SIGNUP_CONSENT_VERSIONS.rejoinRetention, days: rejoinDays } : null,
+      rejoinRetention: rejoin && rejoinDays !== null ? { version: SIGNUP_CONSENT_VERSIONS.rejoinRetention, days: rejoinDays } : null,
       agreedAt: now.toISOString(),
     },
   };

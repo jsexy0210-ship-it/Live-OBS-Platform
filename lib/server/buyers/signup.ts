@@ -154,9 +154,9 @@ export type BuyerSignupFailure =
   | "nickname_taken"
   | "shop_unavailable"
   | "rejoin_restricted" // 재가입 제한 기간 중(탈퇴한 같은 사람, buyers/rejoin.ts)
-  | "rejoin_consent_required" // 재가입 제한을 켠 쇼핑몰에서 「재가입 제한 정보 보관 동의」가 없음(본인확인 시작)
-  | "rejoin_policy_changed" // 화면에 보여 준 재가입 제한 기간이 지금 정책과 다름(본인확인 시작, 화면을 다시 불러와 다시 동의)
-  | "consent_outdated"; // 화면이 보여 준 동의 문서 버전이 지금과 다름(본인확인 시작)
+  | "invalid_rejoin_consent" // 재가입 제한 정보 보관 동의 값이 불리언이 아님(본인확인 시작)
+  | "rejoin_policy_changed" // 보관에 동의한 경우: 화면에 보여 준 재가입 제한 기간이 지금 정책과 다름(본인확인 시작, 화면을 다시 불러와 다시 동의)
+  | "consent_outdated"; // 화면이 보여 준 동의 문서 버전(필수 약관, 동의한 경우 재가입 제한 보관)이 지금과 다름(본인확인 시작)
 
 // resumed: 응답이 끊겨 같은 요청을 다시 보낸 경우(새로 만들지 않고 이미 만든 회원을 돌려줌)
 // rejoinAvailableAt: rejoin_restricted일 때 다시 가입할 수 있는 시각
@@ -212,6 +212,7 @@ export async function signupBuyer(
     }
     return { ok: false, reason: "verification_invalid" };
   };
+  // 이미 가입을 마친 같은 요청의 재시도는 정책 대조보다 먼저 본다(그사이 정책이 바뀌어도 만든 계정의 201·세션을 받는다)
   if (v.consumedAt) return resume(v.subjectId);
   // 본인확인 시작 때 받은 동의. 없으면(이 변경 전 요청) 처음부터 다시 한다.
   const consent = readSignupConsent(v.signupConsent);
@@ -346,7 +347,7 @@ export const BUYER_SIGNUP_MESSAGES: Record<BuyerSignupFailure | "daily_limit_exc
   nickname_taken: "이미 쓰고 있는 방송 닉네임이에요. 다른 닉네임으로 정해 주세요",
   shop_unavailable: "지금은 쇼핑몰을 이용할 수 없어요",
   rejoin_restricted: "지금은 다시 가입할 수 없어요",
-  rejoin_consent_required: "재가입 제한 정보 보관에 동의해 주세요",
+  invalid_rejoin_consent: "재가입 제한 정보 보관 동의 값을 다시 확인해 주세요",
   consent_outdated: "약관이 바뀌었어요. 다시 확인하고 동의해 주세요",
   rejoin_policy_changed: "재가입 제한 기간이 바뀌었어요. 바뀐 내용을 확인하고 다시 동의해 주세요",
   daily_limit_exceeded: "오늘은 본인확인을 더 할 수 없어요. 내일 다시 해 주세요",
@@ -367,7 +368,7 @@ export const BUYER_SIGNUP_STATUS: Record<BuyerSignupFailure, number> = {
   nickname_taken: 409,
   shop_unavailable: 402,
   rejoin_restricted: 403,
-  rejoin_consent_required: 400,
+  invalid_rejoin_consent: 400,
   consent_outdated: 409,
   rejoin_policy_changed: 409,
 };
