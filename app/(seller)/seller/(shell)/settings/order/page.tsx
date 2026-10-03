@@ -7,13 +7,14 @@ import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../.
 import { api, failMessage } from "../../../../../../components/seller/api";
 import { parseAmount } from "../../../../../../components/seller/format";
 
-// SA-063 주문 설정: 미입금 자동 취소·입금 기한·자동 구매 제한·재고 되돌리기·자동 배송 완료·자동 구매 확정.
+// SA-063 주문 설정: 미입금 자동 취소·입금 기한·자동 구매 제한(미입금·결제 후 취소)·재고 되돌리기·자동 배송 완료·자동 구매 확정.
 // 반품·교환 배송비는 배송비 정책(SA-061)에서 정한다(API가 배송비 정책에 있음). 마감 전 알림은 API가 생기면 붙인다.
 
 type Policy = {
   autoCancelEnabled: boolean;
   paymentDueHours: number;
   unpaidRestrictionEnabled: boolean;
+  paidCancelRestrictionEnabled: boolean;
   restockOnCancel: boolean;
   autoDeliverEnabled: boolean;
   autoDeliverDays: number;
@@ -93,6 +94,7 @@ export default function OrderSettingsPage() {
   const [due, setDue] = useState("");
   const [unit, setUnit] = useState<Unit>("hour");
   const [restriction, setRestriction] = useState(true);
+  const [paidRestriction, setPaidRestriction] = useState(false);
   const [restock, setRestock] = useState(true);
   const [deliverOn, setDeliverOn] = useState(true);
   const [deliverDays, setDeliverDays] = useState("");
@@ -108,6 +110,7 @@ export default function OrderSettingsPage() {
     setUnit(unitFor(p.paymentDueHours));
     setDue(String(unitFor(p.paymentDueHours) === "day" ? p.paymentDueHours / 24 : p.paymentDueHours));
     setRestriction(p.unpaidRestrictionEnabled);
+    setPaidRestriction(p.paidCancelRestrictionEnabled);
     setRestock(p.restockOnCancel);
     setDeliverOn(p.autoDeliverEnabled);
     setDeliverDays(String(p.autoDeliverDays));
@@ -143,6 +146,7 @@ export default function OrderSettingsPage() {
     !!saved &&
     (saved.autoCancelEnabled !== autoCancel ||
       saved.unpaidRestrictionEnabled !== restriction ||
+      saved.paidCancelRestrictionEnabled !== paidRestriction ||
       saved.restockOnCancel !== restock ||
       saved.paymentDueHours !== effectiveHours ||
       saved.autoDeliverEnabled !== deliverOn ||
@@ -163,6 +167,7 @@ export default function OrderSettingsPage() {
       autoCancelEnabled: autoCancel,
       paymentDueHours: effectiveHours!,
       unpaidRestrictionEnabled: restriction,
+      paidCancelRestrictionEnabled: paidRestriction,
       restockOnCancel: restock,
       autoDeliverEnabled: deliverOn,
       autoDeliverDays: effectiveDeliver!,
@@ -320,6 +325,29 @@ export default function OrderSettingsPage() {
                 <span className="t-c1 c-cau" data-testid="restriction-pending">
                   아직 자동 취소가 시작되지 않아서 주문 막기도 시작되지 않았어요. 자동 취소가 시작되면 함께 적용돼요.
                 </span>
+              </section>
+
+              <section className="card pad col" style={{ gap: 10 }}>
+                <h2 className="t-hl2">결제 후 취소가 잦은 구매자 주문 막기</h2>
+                <div className="row between" style={SET_ROW}>
+                  <span className="col" style={{ gap: 2 }}>
+                    <span className="t-l1 fw6" id="pc-label">
+                      결제 후 5번 취소하면 30일 동안 주문 막기
+                    </span>
+                    <span className="t-c1 c-alt">
+                      {paidRestriction ? "결제 후 구매자 사정으로 5번 취소하면 30일 동안 주문을 막아요 · 켠 뒤부터 세요" : "결제 후 구매자 사정으로 5번 취소하면 30일 동안 주문을 막아요 · 기본 꺼짐"}
+                    </span>
+                  </span>
+                  <button
+                    className={`sw${paidRestriction ? " on" : ""}`}
+                    type="button"
+                    role="switch"
+                    aria-checked={paidRestriction}
+                    aria-labelledby="pc-label"
+                    onClick={() => setPaidRestriction((v) => !v)}
+                  />
+                </div>
+                <span className="t-c1 c-alt">판매자 사정으로 환불한 주문은 세지 않아요. 꺼도 이미 막힌 구매자는 그대로예요.</span>
               </section>
 
               <section className="card pad col" style={{ gap: 10 }}>

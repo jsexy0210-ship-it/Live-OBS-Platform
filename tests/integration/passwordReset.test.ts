@@ -17,7 +17,7 @@ import { hashCi } from "../../lib/server/identity/ciHash";
 import { FakeIdentityProvider } from "../../lib/server/identity/provider";
 import { identityProvider } from "../../lib/server/identity/registry";
 import type { TenantContext } from "../../lib/server/tenant/context";
-import { IDV_INPUT, PASSWORD, confirmIdv, createSeller, createSellerUser, db, resetDb } from "./helpers";
+import { IDV_INPUT, PASSWORD, confirmIdv, createSeller, createSellerUser, db, failingAudit, resetDb } from "./helpers";
 
 beforeAll(() => {
   process.env.IDENTITY_HASH_KEY = "test-identity-hash-key-0123456789abcdef";
@@ -415,5 +415,15 @@ describe("HTTP: 비밀번호 찾기 흐름", () => {
     expect((await httpComplete(post("/api/seller/password-reset/complete", { newPassword: NEW_PASSWORD }, gc))).status).toBe(200);
     expect((await httpComplete(post("/api/seller/password-reset/complete", { newPassword: "again-pass-1" }, gc))).status).toBe(400);
     expect((await loginSeller(db, { email: owner.email, password: NEW_PASSWORD }, {})).ok).toBe(true);
+  });
+  it("재설정 권한 발급 감사 로그를 쓰지 못하면 권한도 만들지 않고 본인확인도 소진하지 않는다(같은 트랜잭션)", async () => {
+    const { seller, owner } = await shop();
+    const s = await startOk({ email: owner.email, shopSlug: seller.slug });
+    await confirmReset(s, "REP-CI");
+    const ids = { verificationId: s.verificationId, ownerToken: s.ownerToken };
+    await expect(issueSellerPasswordResetGrant(failingAudit(db, "auth.seller.password_reset.granted"), provider, ids)).rejects.toThrow("감사 로그 쓰기 실패");
+    expect(await db.passwordResetGrant.count()).toBe(0);
+    expect((await db.identityVerification.findUniqueOrThrow({ where: { id: s.verificationId } })).consumedAt).toBeNull();
+    expect((await issueSellerPasswordResetGrant(db, provider, ids)).ok).toBe(true);
   });
 });
