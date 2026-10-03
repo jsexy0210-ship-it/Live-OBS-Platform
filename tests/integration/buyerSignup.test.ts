@@ -785,6 +785,25 @@ describe("signupBuyer는 completeIdentityVerification을 거친다", () => {
     expect(await db.buyerMember.count({ where: { sellerId: seller.id } })).toBe(1);
     expect((await db.identityVerification.findUniqueOrThrow({ where: { id: verification.id } })).useAttemptCount).toBe(MAX_SIGNUP_ATTEMPTS_PER_VERIFICATION);
   });
+  it("인증번호 확인이 대행사 결과를 받는 사이 미가입 정리가 기록을 비식별하면 확정하지 않고 지운 개인정보를 다시 채우지 않는다", async () => {
+    const fake = new FakeIdentityProvider();
+    const { seller } = await createSeller();
+    const { verification, ownerToken } = await startIdv(fake, { purpose: "BUYER_SIGNUP", sellerId: seller.id });
+    // 결과를 가져오는 순간 정리 작업이 먼저 커밋된다
+    const racing = new Proxy(fake, {
+      get(t, p, r) {
+        if (p !== "fetchResult") return Reflect.get(t, p, r);
+        return async (...args: Parameters<FakeIdentityProvider["fetchResult"]>) => {
+          expect(await purgeUnfinishedSignupVerifications(db, new Date(Date.now() + 86_400_000), seller.id)).toBe(1);
+          return t.fetchResult(...args);
+        };
+      },
+    });
+    const r = await confirmIdv(racing, verification, ownerToken);
+    expect(r).toEqual({ ok: false, reason: "expired" });
+    const row = await db.identityVerification.findUniqueOrThrow({ where: { id: verification.id } });
+    expect(row).toMatchObject({ status: "PENDING", name: null, phone: null, birthDate: null, ciHash: null, anonymizedAt: expect.any(Date) });
+  });
   it("가입이 본인확인을 읽은 뒤 미가입 정리가 그 기록을 비식별하면 가입은 거부되고 회원·연결이 생기지 않는다(정리와 소진 경합)", async () => {
     const provider = new FakeIdentityProvider();
     const { seller } = await createSeller();
