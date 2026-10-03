@@ -98,7 +98,7 @@ function lastDeployedSha() {
   return m.length ? m.at(-1)[1] : null;
 }
 
-const state = { fails: {}, incidents: {}, warned: {}, alerts: [], outbox: [], mismatchTicks: 0 };
+const state = { fails: {}, incidents: {}, warned: {}, alerts: [], outbox: [], mismatchTicks: {} };
 const ALERT_MAX_ATTEMPTS = 5;
 const OUTBOX_MAX = 50;
 
@@ -195,14 +195,17 @@ async function tick() {
     if (ageMin > cfg.deployMarkStaleMin) await warnOnce("deploy_mark_stale", { kind: "deploy_mark_stale", ageMin: Math.round(ageMin) }, 3600_000);
     else deploying = true;
   } catch {}
-  if (deploying) {
-    state.mismatchTicks = 0;
-  } else if (deployed && running && deployed !== running) {
-    state.mismatchTicks += 1;
-    if (state.mismatchTicks >= cfg.versionMismatchTicks)
-      await warnOnce(`version:${deployed}:${running}`, { kind: "version_mismatch", deployed, running, ticks: state.mismatchTicks }, 86400_000);
-  } else {
-    state.mismatchTicks = 0;
+  // healthy인 대상마다 따로 비교한다(앱 하나만 보면 다른 앱이 옛 이미지로 떠 있어도 못 잡음). 연속 틱도 대상마다 센다.
+  const versionMismatch = {};
+  for (const [name, r] of Object.entries(results)) {
+    if (deploying || !deployed || !r.ok || !r.version || r.version === deployed) {
+      state.mismatchTicks[name] = 0;
+      continue;
+    }
+    const ticks = (state.mismatchTicks[name] = (state.mismatchTicks[name] ?? 0) + 1);
+    versionMismatch[name] = { running: r.version, ticks };
+    if (ticks >= cfg.versionMismatchTicks)
+      await warnOnce(`version:${name}:${deployed}:${r.version}`, { kind: "version_mismatch", target: name, deployed, running: r.version, ticks }, 86400_000);
   }
 
   let certDays = null;
@@ -212,7 +215,7 @@ async function tick() {
     else if (certDays < cfg.tlsWarnDays) await warnOnce("tls:expiry", { kind: "tls_expiring", host: cfg.tlsHost, daysLeft: certDays }, 86400_000);
   }
 
-  const status = { at, targets: results, openIncidents: Object.keys(state.incidents), deployedSha: deployed, runningVersion: running, certDaysLeft: certDays };
+  const status = { at, targets: results, openIncidents: Object.keys(state.incidents), deployedSha: deployed, runningVersion: running, versionMismatch, certDaysLeft: certDays };
   writeFileSync(`${cfg.dir}/status.json`, JSON.stringify(status, null, 2) + "\n");
   writeFileSync(`${cfg.dir}/heartbeat.json`, JSON.stringify({ at, epochMs: Date.now(), intervalS: cfg.intervalS }) + "\n");
   await flushAlerts(); // 이번 틱의 새 알림 + 지난 틱에 실패한 알림을 한 번에
