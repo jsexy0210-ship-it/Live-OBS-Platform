@@ -24,7 +24,13 @@ export const POST = mutation(async (req: Request) => {
     purpose: "SELLER_REPRESENTATIVE",
     ownerToken,
   });
-  if (!done.ok) return NextResponse.json({ error: done.reason === "pending" ? "verification_pending" : "verification_invalid" }, { status: done.reason === "pending" ? 409 : 400 });
+  if (!done.ok) {
+    if (done.reason === "pending") return NextResponse.json({ error: "verification_pending" }, { status: 409 });
+    // 이미 쓴 본인확인(신청을 만든 뒤 응답을 잃은 재시도)은 유효 시간이 지났어도 아래 applyForSeller의 재개 확인으로 넘긴다.
+    // 재개 확인은 시작한 브라우저(쿠키)·같은 이메일·비밀번호·주소일 때만 결과를 돌려준다. 새 신청은 지금처럼 거부한다.
+    const used = await prisma.identityVerification.findUnique({ where: { id: verificationId }, select: { consumedAt: true } });
+    if (!used?.consumedAt) return NextResponse.json({ error: "verification_invalid" }, { status: 400 });
+  }
 
   const r = await applyForSeller(prisma, { business: businessStatusProvider(), mailOrder: mailOrderProvider() }, {
     verificationId,

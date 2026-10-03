@@ -319,6 +319,44 @@ describe("아이디 찾기·계정 고르기 비밀번호 찾기", () => {
     expect(a.owner.id).not.toBe(b.owner.id);
   });
 
+  it("재설정 권한 응답을 잃으면 같은 본인확인·같은 계정으로 10분 안에 다시 받아 새 권한으로 바꾸고, 이전 권한은 거부된다. 다른 계정·10분 뒤·유효 시간 지난 뒤에도 같은 기준", async () => {
+    const me = await shop("ME");
+    const other = await shop("OTHER");
+    const { flow, verificationId } = await begin();
+    await confirmWith(findConfirm, "/api/seller/find-id/confirm", verificationId, flow, { ci: "ME" });
+    const reset = (accountId: string, cookie = flow) => findReset(post("/api/seller/find-id/reset", { verificationId, accountType: "owner", accountId }, cookie));
+    const first = await reset(me.owner.id);
+    expect(first.status).toBe(200);
+    // 성공 응답이 흐름 쿠키를 지우지 않는다(잃은 응답을 다시 받으려면 필요)
+    expect(first.headers.getSetCookie().filter((c) => c.startsWith("lo_fidv="))).toEqual([]);
+    const lost = cookieOf(first, "lo_pwreset");
+    // 응답을 잃었다고 보고 다시 요청: 새 권한
+    const again = await reset(me.owner.id);
+    expect(again.status).toBe(200);
+    const fresh = cookieOf(again, "lo_pwreset");
+    expect(fresh).not.toBe(lost);
+    // 다른 계정·쿠키 없는 재시도는 거부
+    expect((await reset(other.owner.id)).status).toBe(400);
+    expect((await reset(me.owner.id, "")).status).toBe(400);
+    // 이전 권한은 거부, 새 권한으로 바뀐다
+    expect((await resetComplete(post("/api/seller/password-reset/complete", { newPassword: NEW_PASSWORD }, lost))).status).toBe(400);
+    expect((await resetComplete(post("/api/seller/password-reset/complete", { newPassword: NEW_PASSWORD }, fresh))).status).toBe(200);
+    expect((await loginSeller(db, { email: me.owner.email, password: NEW_PASSWORD, shopSlug: me.seller.slug }, {})).ok).toBe(true);
+    // 권한으로 비밀번호를 바꾼 뒤에는 다시 받을 수 없다
+    expect((await reset(me.owner.id)).status).toBe(400);
+
+    // 유효 시간이 지났어도 10분 안이면 다시 받고, 10분이 지나면 거부
+    const b = await begin();
+    await confirmWith(findConfirm, "/api/seller/find-id/confirm", b.verificationId, b.flow, { ci: "OTHER" });
+    const resetB = () => findReset(post("/api/seller/find-id/reset", { verificationId: b.verificationId, accountType: "owner", accountId: other.owner.id }, b.flow));
+    expect((await resetB()).status).toBe(200);
+    await db.identityVerification.update({ where: { id: b.verificationId }, data: { expiresAt: new Date(Date.now() - 60_000), consumedAt: new Date(Date.now() - 5 * 60_000) } });
+    await db.passwordResetGrant.updateMany({ where: { sellerUserId: other.owner.id }, data: { createdAt: new Date(Date.now() - 5 * 60_000) } });
+    expect((await resetB()).status).toBe(200);
+    await db.identityVerification.update({ where: { id: b.verificationId }, data: { consumedAt: new Date(Date.now() - 11 * 60_000) } });
+    expect((await resetB()).status).toBe(400);
+  });
+
   it("직원 탭: 여러 쇼핑몰에 연결된 직원 계정을 쇼핑몰 이름과 함께 모두 보여 준다", async () => {
     const a = await shop("A");
     const b = await shop("B");
@@ -348,6 +386,55 @@ describe("아이디 찾기·계정 고르기 비밀번호 찾기", () => {
 });
 
 describe("아이디·비밀번호 찾기 한도(같은 휴대폰 하루 10회·같은 IP 하루 30회 합산)", () => {
+  it("하루 횟수 기간이 지난 아이디 찾기·직원 연결 본인확인 기록은 정기 실행이 개인정보를 비우고, 오늘 기록·하루 횟수·직원 연결 CI는 그대로다", async () => {
+    const { seller } = await shop();
+    const { staff } = await linkedStaff(seller.id, "STAFF-CI");
+    const now = new Date();
+    const old = new Date(now.getTime() - 2 * 86_400_000);
+    const row = (purpose: "ACCOUNT_RECOVERY" | "STAFF_LINK", createdAt: Date, phone: string) =>
+      db.identityVerification.create({
+        data: {
+          purpose,
+          sellerId: purpose === "STAFF_LINK" ? seller.id : null,
+          subjectId: purpose === "STAFF_LINK" ? staff.id : null,
+          provider: "fake",
+          method: "SMS",
+          requestId: `req-${Math.random()}`,
+          requestedPhone: phone,
+          name: "직원",
+          phone,
+          birthDate: new Date("1990-01-01"),
+          ciHash: "ci",
+          ownerTokenHash: "h",
+          requestIp: "203.0.113.9",
+          status: "VERIFIED",
+          verifiedAt: createdAt,
+          createdAt,
+          expiresAt: new Date(createdAt.getTime() + 20 * 60_000),
+        },
+      });
+    const oldRecovery = await row("ACCOUNT_RECOVERY", old, "01011112222");
+    const oldLink = await row("STAFF_LINK", old, "01055556666");
+    // 오늘 같은 번호로 하루 한도만큼 시작한 기록
+    for (let i = 0; i < RECOVERY_DAILY_LIMIT_PER_PHONE; i++) await row("ACCOUNT_RECOVERY", now, "01099998888");
+    const { purgeOldRecoveryVerifications } = await import("../../lib/server/auth/accountRecovery");
+    const { SCHEDULED_JOBS } = await import("../../lib/server/jobs/scheduler");
+    expect(SCHEDULED_JOBS.map((j) => j.name)).toContain("identity_verification.anonymize_old_recovery");
+    expect(await purgeOldRecoveryVerifications(db, now)).toBeGreaterThanOrEqual(2);
+    for (const id of [oldRecovery.id, oldLink.id]) {
+      const v = await db.identityVerification.findUniqueOrThrow({ where: { id } });
+      expect(v).toMatchObject({ name: null, phone: null, requestedPhone: null, birthDate: null, ciHash: null, subjectId: null, ownerTokenHash: null, requestIp: null, status: "VERIFIED" });
+      expect(v.anonymizedAt).not.toBeNull();
+      expect(v.requestId).toMatch(/^anonymized:/);
+    }
+    // 오늘 기록은 그대로라 하루 한도도 그대로 걸린다
+    expect(await db.identityVerification.count({ where: { requestedPhone: "01099998888", anonymizedAt: null } })).toBe(RECOVERY_DAILY_LIMIT_PER_PHONE);
+    const limited = await findStart(post("/api/seller/find-id/start", { ...IDV_INPUT, name: "직원", phone: "01099998888" }));
+    expect(limited.status).toBe(429);
+    // 연결된 직원의 CI는 계정 쪽에 그대로
+    expect((await db.sellerUser.findUniqueOrThrow({ where: { id: staff.id } })).identityCiHash).toBe(hashCi("STAFF-CI"));
+  });
+
   it("같은 휴대폰은 아이디 찾기·비밀번호 찾기를 합쳐 하루 10회까지, 11번째는 거부되고 문자를 보내지 않는다", async () => {
     const { seller, owner } = await shop();
     const provider = fake();
