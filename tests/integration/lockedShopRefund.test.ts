@@ -42,13 +42,13 @@ async function cookieOf(email: string) {
 async function refundViaDetail(orderId: string, cookie: string) {
   const d = await orderRoute(new Request(`http://localhost:3000/api/seller/orders/${orderId}`, { headers: { ...H, cookie } }), { params: Promise.resolve({ orderId }) });
   expect(d.status).toBe(200);
-  const { queueVersion } = (await d.json()) as { queueVersion: number };
+  const { queueVersion, refundPreview } = (await d.json()) as { queueVersion: number; refundPreview: { byFault: { SELLER: { refundAmount: number } } } };
   expect(Number.isInteger(queueVersion)).toBe(true);
   return refundRoute(
     new Request(`http://localhost:3000/api/seller/orders/${orderId}/refund`, {
       method: "POST",
       headers: { ...H, cookie },
-      body: JSON.stringify({ reason: "품절 · 재고 없음", expectedVersion: queueVersion, fault: "SELLER" }),
+      body: JSON.stringify({ reason: "품절 · 재고 없음", expectedVersion: queueVersion, fault: "SELLER", expectedRefundAmount: refundPreview.byFault.SELLER.refundAmount }),
     }),
     { params: Promise.resolve({ orderId }) },
   );
@@ -99,7 +99,7 @@ describe("잠긴 쇼핑몰의 환불", () => {
       new Request(`http://localhost:3000/api/seller/orders/${o.orderId}/refund`, {
         method: "POST",
         headers: { ...H, cookie },
-        body: JSON.stringify({ reason: "품절 · 재고 없음", expectedVersion: version, fault: "SELLER" }),
+        body: JSON.stringify({ reason: "품절 · 재고 없음", expectedVersion: version, fault: "SELLER", expectedRefundAmount: o.totalAmount }),
       }),
       { params: Promise.resolve({ orderId: o.orderId }) },
     );
