@@ -297,8 +297,13 @@ test("방송 닉네임이 20자를 넘으면 칸 아래에 알려 주고 가입�
 test("확인 응답을 못 받은 뒤 다시 받기에서 이미 확인됐다고 하면 본인확인을 마친 것으로 이어 간다", async ({ page }) => {
   const id = "00000000-0000-4000-8000-000000000000";
   await mockApi(page, { resend: fail(409, "already_verified", IDENTITY_ERROR_MESSAGES.already_verified) });
-  // 확인 요청은 서버에서 처리됐지만 응답이 끊긴 상황
-  await page.route((u) => u.pathname === `${API}/verification/confirm`, (route) => route.abort());
+  // 확인 요청은 서버에서 처리됐지만 첫 응답이 끊긴 상황. 이후 확인 요청은 저장된 결과를 돌려준다.
+  let confirms = 0;
+  await page.route((u) => u.pathname === `${API}/verification/confirm`, (route) =>
+    ++confirms === 1
+      ? route.abort()
+      : route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, identity: { name: "김구매", phone: "01033334444", birthDate: "1999-01-01" } }) }),
+  );
   await page.goto(`/shop/${SLUG}/signup`);
   await fillIdentity(page, "김구매", "01033334444");
   await page.getByRole("button", { name: "인증번호 받기" }).click();
@@ -614,4 +619,32 @@ test("390px: 본인확인 완료 줄은 글자와 버튼이 겹치지 않고, �
   }
   await expect(text.locator(".nw").first()).toHaveText("가나다라마바사아자차 ·");
   await expect(text.locator(".nw")).toHaveCount(2);
+});
+
+test("다시 받기가 이미 확인됨이면 확인 결과를 다시 불러와 서버가 확인한 이름을 보여 주고, 못 불러오면 가입 단계로 넘어가지 않는다", async ({ page }) => {
+  await mockApi(page, { resend: fail(409, "already_verified", IDENTITY_ERROR_MESSAGES.already_verified) });
+  const confirmBodies: unknown[] = [];
+  await page.route((u) => u.pathname === `${API}/verification/confirm`, (route) => {
+    confirmBodies.push(route.request().postDataJSON());
+    // 1: 처음 확인 응답 끊김 2: 결과 다시 불러오기도 끊김 3: 저장된 결과
+    if (confirmBodies.length <= 2) return route.abort();
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, identity: { name: "Kim정규", phone: "01055556666", birthDate: "1999-01-01" } }) });
+  });
+  await page.goto(`/shop/${SLUG}/signup`);
+  await fillIdentity(page, " Ｋｉｍ정규 ", "01055556666");
+  await page.getByRole("button", { name: "인증번호 받기" }).click();
+  await page.getByLabel("인증번호").fill("000000");
+  await page.getByRole("button", { name: "확인", exact: true }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "연결이 끊겼어요" })).toBeVisible();
+  await page.getByRole("button", { name: "인증번호 다시 받기" }).click();
+  // 결과를 못 불러오면 입력값을 확정 결과처럼 보이지 않고, 가입 단계로 넘어가지 않는다
+  await expect(page.getByText("본인확인 결과를 불러오지 못했어요. 다시 시도해 주세요")).toBeVisible();
+  await expect(page.locator("#v-name")).toHaveCount(0);
+  await expect(page.getByLabel("아이디 (이메일)")).toBeDisabled();
+  await page.getByRole("button", { name: "다시 시도" }).click();
+  await expect(page.locator("#v-name")).toHaveValue("Kim정규");
+  await expect(page.locator("#v-phone")).toHaveValue("010-5555-6666");
+  await expect.poll(() => focusedId(page)).toBe("acc-id");
+  expect(confirmBodies).toHaveLength(3);
+  expect((confirmBodies[2] as { verificationId: string }).verificationId).toBe("00000000-0000-4000-8000-000000000000");
 });

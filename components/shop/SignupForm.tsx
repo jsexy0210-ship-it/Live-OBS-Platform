@@ -86,6 +86,8 @@ export default function SignupForm({ slug }: { slug: string }) {
   const [verificationId, setVerificationId] = useState<string | null>(null);
   // 본인확인을 요청한 값(요청 뒤 화면은 이 값을 보여 준다)
   const [sent, setSent] = useState<{ name: string; phone: string } | null>(null);
+  // 이미 확인됐다는 응답을 받았지만 확인 결과(서버가 확인한 이름·휴대폰)를 아직 못 불러옴
+  const [resultPending, setResultPending] = useState(false);
   const [code, setCode] = useState("");
   const [codeError, setCodeError] = useState<string | null>(null);
 
@@ -111,6 +113,7 @@ export default function SignupForm({ slug }: { slug: string }) {
   const restart = (n: Notice | null) => {
     setVerificationId(null);
     setSent(null);
+    setResultPending(false);
     setCode("");
     setCodeError(null);
     setStep("identity");
@@ -185,9 +188,7 @@ export default function SignupForm({ slug }: { slug: string }) {
     if (commonFail(r)) return;
     // 확인 응답을 못 받았지만 서버에서는 이미 확인된 경우: 처음부터 하지 않고 확인 완료로 이어 간다(보낸 값 스냅숏 유지)
     if (r.error === "already_verified") {
-      setStep("verified");
-      setNotice(null);
-      focus("acc-id");
+      await loadVerified();
       return;
     }
     if (r.error === "resend_too_soon") {
@@ -204,11 +205,12 @@ export default function SignupForm({ slug }: { slug: string }) {
     const r = await api<{ identity?: { name: string; phone: string } }>(`${base}/verification/confirm`, { method: "POST", body: { verificationId, code } });
     setBusy(false);
     // 본인확인 결과 영역은 공급자가 확인한 이름·휴대폰을 보여 준다(응답에 없으면 보낸 값)
-    if (r.ok && r.data.identity) setSent({ name: r.data.identity.name, phone: r.data.identity.phone });
-    if (r.ok || (!r.ok && r.error === "already_verified")) {
-      setStep("verified");
-      setNotice(null);
-      focus("acc-id");
+    if (r.ok) {
+      verified(r.data.identity);
+      return;
+    }
+    if (r.error === "already_verified") {
+      await loadVerified();
       return;
     }
     if (commonFail(r)) return;
@@ -217,6 +219,33 @@ export default function SignupForm({ slug }: { slug: string }) {
       setCodeError(failMessage(r));
       focus("idv-code");
     } else restart({ kind: "neg", text: failMessage(r) });
+  };
+
+  const verified = (identity?: { name: string; phone: string }) => {
+    if (identity) setSent({ name: identity.name, phone: identity.phone });
+    setResultPending(false);
+    setStep("verified");
+    setNotice(null);
+    focus("acc-id");
+  };
+
+  // 이미 확인된 본인확인: 확인을 한 번 더 불러 서버가 확인한 결과(identity)를 받는다(이미 확인된 기록은 코드와 관계없이 저장값을 준다).
+  // 못 불러오면 입력값을 확정 결과처럼 보이지 않게 가입 단계로 넘어가지 않고 다시 시도하게 한다.
+  const loadVerified = async () => {
+    if (!verificationId) return;
+    setBusy(true);
+    const r = await api<{ identity?: { name: string; phone: string } }>(`${base}/verification/confirm`, { method: "POST", body: { verificationId, code } });
+    setBusy(false);
+    if (r.ok) {
+      verified(r.data.identity);
+      return;
+    }
+    if (r.status === 503) {
+      commonFail(r);
+      return;
+    }
+    setResultPending(true);
+    showNotice({ kind: "neg", text: "본인확인 결과를 불러오지 못했어요. 다시 시도해 주세요" });
   };
 
   const signup = async (e: React.FormEvent) => {
@@ -337,8 +366,8 @@ export default function SignupForm({ slug }: { slug: string }) {
       {notice && (
         <div id="signup-notice" tabIndex={-1} className={`msg msg-${notice.kind}`} role={notice.kind === "neg" ? "alert" : "status"}>
           <span className="grow">{notice.text}</span>
-          {unconfirmed && (
-            <button type="button" className="btn btn-sm btn-out" disabled={busy} onClick={retry}>
+          {(unconfirmed || resultPending) && (
+            <button type="button" className="btn btn-sm btn-out" disabled={busy} onClick={unconfirmed ? retry : loadVerified}>
               다시 시도
             </button>
           )}
