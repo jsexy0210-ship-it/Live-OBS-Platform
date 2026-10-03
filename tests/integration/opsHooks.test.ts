@@ -270,6 +270,14 @@ describe("운영 지표 보완(Codex)", () => {
     expect(await db.opsEvent.count({ where: { eventId: { in: ["f3", "f4"] } } })).toBe(0);
   });
 
+  it("열림·닫힘은 수집기(source)·key별: 두 수집기가 같은 key를 써도 A의 닫힘이 B의 열림을 닫지 않는다. 열린 사건에는 source가 있다", async () => {
+    vi.stubEnv("OPS_INGEST_TOKEN", TOKEN);
+    await ingest({ events: [ev({ source: "monitor-b", eventId: "g1", key: "health", kind: "incident_open", occurredAt: ago(5) })] }, TOKEN);
+    await ingest({ events: [ev({ source: "monitor-a", eventId: "g2", key: "health", kind: "incident_open", occurredAt: ago(4) })] }, TOKEN);
+    await ingest({ events: [ev({ source: "monitor-a", eventId: "g3", key: "health", kind: "incident_close", occurredAt: ago(3) })] }, TOKEN);
+    expect((await opsMetrics(db)).incidents.open.map((e) => [e.source, e.key])).toEqual([["monitor-b", "health"]]);
+  });
+
   it("등록만 하고 heartbeat가 없는 인스턴스도 heartbeats에 「시작 후 신호 없음」과 등록 시각으로 나온다", async () => {
     await registerInstance(db, "web-quiet");
     const gen = await registerInstance(db, "web-busy");

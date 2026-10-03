@@ -86,7 +86,7 @@ export async function purgeRetiredHeartbeats(db: Db, now: Date): Promise<number>
 // - db: SELECT 1 지연, 이 데이터베이스의 연결 수(활성·유휴·트랜잭션 중 유휴·잠금 대기)와 max_connections(연결 풀 사용량을 DB 쪽에서 본 값)
 // - heartbeats: 인스턴스·작업별 마지막 실행
 // - queueBacklog: 작업 큐가 아직 없어 not_measured(자동연결 큐가 생기면 여기에 넣는다)
-// - incidents: 열린 사건(같은 key에서 마지막으로 받은 것이 incident_open)과 최근 받은 사건 50개
+// - incidents: 열린 사건(같은 수집기·key에서 마지막으로 받은 것이 incident_open, source 포함)과 최근 받은 사건 50개
 export async function opsMetrics(db: PrismaClient) {
   const t0 = performance.now();
   await db.$queryRaw`SELECT 1`;
@@ -118,11 +118,12 @@ export async function opsMetrics(db: PrismaClient) {
     FROM "OpsInstance" i LEFT JOIN "OpsHeartbeat" h ON h."instance" = i."name" AND h."generation" = i."generation"
     ORDER BY i."name", h."job" NULLS FIRST`;
   const recent = await db.opsEvent.findMany({ orderBy: { seq: "desc" }, take: 50 });
-  // 같은 key의 마지막 열기·닫기는 서버가 받은 순서(seq)로 정한다. occurredAt은 표시용이다(수집기 시계가 틀려도 상태가 꼬이지 않게).
-  const latestByKey = await db.$queryRaw<{ key: string; kind: string; occurredAt: Date; message: string; severity: string }[]>`
-    SELECT DISTINCT ON ("key") "key", "kind", "occurredAt", "message", "severity"
+  // 열기·닫기는 수집기(source)·key별로, 서버가 받은 순서(seq)로 정한다(다른 수집기의 닫힘이 이쪽 열림을 닫지 않게).
+  // occurredAt은 표시용이다(수집기 시계가 틀려도 상태가 꼬이지 않게).
+  const latestByKey = await db.$queryRaw<{ source: string; key: string; kind: string; occurredAt: Date; message: string; severity: string }[]>`
+    SELECT DISTINCT ON ("source", "key") "source", "key", "kind", "occurredAt", "message", "severity"
     FROM "OpsEvent" WHERE "kind" IN ('incident_open', 'incident_close')
-    ORDER BY "key", "seq" DESC`;
+    ORDER BY "source", "key", "seq" DESC`;
   const beat = (h: (typeof heartbeats)[number]) => ({
     instance: h.instance,
     job: h.job,

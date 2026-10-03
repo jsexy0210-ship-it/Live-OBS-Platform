@@ -1226,5 +1226,6 @@ model OpsEvent {
   @@unique([source, eventId])
   @@unique([seq])
   @@index([occurredAt])
-  @@index([key, occurredAt])
+  // 열린 사건 계산(수집기·key별 마지막으로 받은 사건)
+  @@index([source, key, seq])
 }
