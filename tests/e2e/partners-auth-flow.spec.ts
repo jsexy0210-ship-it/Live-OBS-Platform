@@ -312,8 +312,20 @@ test("아이디 찾기(대표자): 본인확인하면 가입한 이메일과 쇼
   // 계정이 하나면 미리 골라 둔다
   await expect(row.getByRole("radio")).toBeChecked();
   await shot(page, "AU-011-accounts");
+  // 재설정 권한 응답을 놓치면 고른 계정 화면에 남아 다시 누를 수 있고, 다시 누르면 서버가 권한을 다시 줘 이어 간다
+  let resetCalls = 0;
+  await page.route((u) => u.pathname === "/api/seller/find-id/reset", async (route) => {
+    resetCalls += 1;
+    const res = await route.fetch();
+    return resetCalls === 1 ? route.abort("connectionreset") : route.fulfill({ response: res });
+  });
+  await page.getByRole("button", { name: "고른 계정 비밀번호 바꾸기" }).click();
+  await expect(page.locator("#pa-notice")).toContainText("연결이 끊겼어요");
+  await expect(page.getByTestId("fi-account")).toHaveCount(1);
   await page.getByRole("button", { name: "고른 계정 비밀번호 바꾸기" }).click();
   await expect(page.getByRole("heading", { name: "새 비밀번호를 정해요" })).toBeVisible();
+  expect(resetCalls).toBe(2);
+  await page.unroute((u) => u.pathname === "/api/seller/find-id/reset");
   await expect(page.getByText(a.email)).toBeVisible();
   const next = `${a.password}-found`;
   await page.getByLabel("새 비밀번호", { exact: true }).fill(next);

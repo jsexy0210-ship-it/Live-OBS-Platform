@@ -36,6 +36,7 @@ export default async function ShopSignupPage({ params }: Params) {
     termsVersion: SIGNUP_CONSENT_VERSIONS.terms,
     privacyVersion: SIGNUP_CONSENT_VERSIONS.privacy,
     rejoinRetentionVersion: SIGNUP_CONSENT_VERSIONS.rejoinRetention,
+    marketingVersion: SIGNUP_CONSENT_VERSIONS.marketing,
     rejoinDays: await rejoinDaysToAgree(prisma, shop.id),
   };
   return (

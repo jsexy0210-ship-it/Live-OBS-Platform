@@ -1,4 +1,4 @@
-import { Prisma, type PaymentMethod, type PrismaClient, type QueueItem, type RefundFault } from "@prisma/client";
+import { Prisma, type ActorType, type PaymentMethod, type PrismaClient, type QueueItem, type RefundFault } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { notifySellerChanged } from "../realtime/notify";
 import { lockSellerOrders, maybeRestrict, sellerEventClock } from "../orders/overdue";
@@ -8,6 +8,7 @@ import { createPendingRewardLedger } from "../rewards/ledger";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 import { restoreOrderStock } from "../products/stock";
 import { checkTransition, isCompletePermutation, isValidTimer, type QueueAction, type QueueRejection } from "./rules";
+import { refreshOrderRetention } from "../buyers/legalHold";
 
 type Tx = Prisma.TransactionClient;
 
@@ -420,31 +421,43 @@ export async function cancelPendingOrder(
     // 화면이 본 상태(version) 그대로일 때만 처리한다(주문대기 조작과 같은 규칙)
     if (version - 1 !== opts.expectedLiveVersion) throw new Rejected("conflict");
     const now = opts.now ?? (await dbNow(tx));
-    const moved = await tx.order.updateMany({
-      where: { id: orderId, sellerId: ctx.sellerId, status: "PENDING_PAYMENT" },
-      data: { status: "CANCELLED", cancelledAt: now },
-    });
-    if (moved.count !== 1) {
-      throw new Rejected((await tx.order.count({ where: { id: orderId, sellerId: ctx.sellerId } })) ? "invalid_transition" : "not_found");
-    }
-    await tx.orderStatusHistory.create({
-      data: { sellerId: ctx.sellerId, orderId, fromStatus: "PENDING_PAYMENT", toStatus: "CANCELLED", actorType: ctx.actorType, actorId: ctx.actorId, reason, createdAt: now },
-    });
-    // 주문 때 뺀 재고(ORDER 상품)가 있으면 되돌린다(판매자 설정 restockOnCancel)
-    const restocked = await restoreOrderStock(tx, { sellerId: ctx.sellerId, orderId, reason: "CANCEL", now, actor: { actorType: ctx.actorType, actorId: ctx.actorId } });
-    await writeAudit(tx, {
-      actorType: ctx.actorType,
-      actorId: ctx.actorId,
-      sellerId: ctx.sellerId,
-      action: "order.cancel",
-      targetType: "Order",
-      targetId: orderId,
-      reason,
-      before: { status: "PENDING_PAYMENT" },
-      after: { status: "CANCELLED", restockedItems: restocked.length },
-    });
+    await cancelPendingOrderInTx(tx, { sellerId: ctx.sellerId, orderId, now, actorType: ctx.actorType, actorId: ctx.actorId, reason });
     return { orderId };
   });
+}
+
+// 결제 대기 주문 하나를 취소한다(호출한 쪽이 트랜잭션·잠금을 잡는다). 판매자 취소와 탈퇴 때 자동 취소(buyers/withdraw.ts)가 같이 쓴다.
+// 상태 조건으로 바꾸고, 상태 이력·주문 때 뺀 재고 되돌리기(restockOnCancel)·감사 로그 order.cancel을 남긴다. 결제 대기가 아니면 Rejected.
+// 주문대기는 결제 때 만들므로 결제 대기 주문에는 없다.
+export async function cancelPendingOrderInTx(
+  tx: Tx,
+  o: { sellerId: string; orderId: string; now: Date; actorType: ActorType; actorId: string | null; reason: string },
+) {
+  const moved = await tx.order.updateMany({
+    where: { id: o.orderId, sellerId: o.sellerId, status: "PENDING_PAYMENT" },
+    data: { status: "CANCELLED", cancelledAt: o.now },
+  });
+  if (moved.count !== 1) {
+    throw new Rejected((await tx.order.count({ where: { id: o.orderId, sellerId: o.sellerId } })) ? "invalid_transition" : "not_found");
+  }
+  await tx.orderStatusHistory.create({
+    data: { sellerId: o.sellerId, orderId: o.orderId, fromStatus: "PENDING_PAYMENT", toStatus: "CANCELLED", actorType: o.actorType, actorId: o.actorId, reason: o.reason, createdAt: o.now },
+  });
+  // 주문 때 뺀 재고(ORDER 상품)가 있으면 되돌린다(판매자 설정 restockOnCancel)
+  const restocked = await restoreOrderStock(tx, { sellerId: o.sellerId, orderId: o.orderId, reason: "CANCEL", now: o.now, actor: { actorType: o.actorType, actorId: o.actorId } });
+  await writeAudit(tx, {
+    actorType: o.actorType,
+    actorId: o.actorId,
+    sellerId: o.sellerId,
+    action: "order.cancel",
+    targetType: "Order",
+    targetId: o.orderId,
+    reason: o.reason,
+    before: { status: "PENDING_PAYMENT" },
+    after: { status: "CANCELLED", restockedItems: restocked.length },
+  });
+  await refreshOrderRetention(tx, o.sellerId, o.now, { orderId: o.orderId });
+  return { restockedItems: restocked.length };
 }
 
 // 적립금 회수: AUTO면 회수 대기(REVOKE) 기록, MANUAL이면 기록하지 않고 수동 확인 대기로 남긴다
@@ -647,6 +660,8 @@ export async function refundOrder(
     });
     // 「결제 후 취소 5회 → 30일」(판매자 설정, 기본 꺼짐). 맨 앞에서 잡은 주문 생성 잠금 아래에서 센다.
     await maybeRestrict(tx, ctx.sellerId, order.buyerMemberId, now, "paid_cancel");
+    // 끝난 날이 바뀌었으니 보관 만료일을 다시 계산하고(구매 확정 뒤 환불 포함), 탈퇴한 회원의 주문이면 분리 보관 표시를 단다(buyers/legalHold.ts)
+    await refreshOrderRetention(tx, ctx.sellerId, now, { orderId });
     return { orderId, restockedItemIds, cancelledQueueItemIds, openedItemCount, rewardRevoke, refundAmount, refundFault, returnFeeDeducted };
   });
 }
