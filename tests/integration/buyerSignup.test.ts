@@ -4,7 +4,7 @@ import { POST as signupRoute } from "../../app/api/shop/[slug]/signup/route";
 import { POST as confirmRoute } from "../../app/api/shop/[slug]/signup/verification/confirm/route";
 import { POST as resendRoute } from "../../app/api/shop/[slug]/signup/verification/resend/route";
 import { POST as startRoute } from "../../app/api/shop/[slug]/signup/verification/route";
-import { BUYER_SIGNUP_MESSAGES, BUYER_SIGNUP_VERIFY_DAILY_LIMIT_PER_IP, signupBuyer } from "../../lib/server/buyers/signup";
+import { BUYER_SIGNUP_MESSAGES, BUYER_SIGNUP_VERIFY_DAILY_LIMIT_PER_IP, MAX_SIGNUP_ATTEMPTS_PER_VERIFICATION, signupBuyer } from "../../lib/server/buyers/signup";
 import { prisma } from "../../lib/server/db";
 import { FakeIdentityProvider } from "../../lib/server/identity/provider";
 import { IDV_INPUT, confirmIdv, createSeller, db, resetDb, startIdv } from "./helpers";
@@ -41,7 +41,7 @@ async function shop() {
     expect(s.status).toBe(200);
     const cookie = cookieOf(s, "lo_bidv");
     const { verificationId } = await s.json();
-    const c = await confirmRoute(post(`${base}/verification/confirm`, { verificationId, code: "000000" }, cookie));
+    const c = await confirmRoute(post(`${base}/verification/confirm`, { verificationId, code: "000000" }, cookie), ctx(slug));
     expect(c.status).toBe(200);
     return { cookie, verificationId };
   };
@@ -161,9 +161,9 @@ describe("구매자 가입 HTTP", () => {
     const start = await startRoute(post(`${s.base}/verification`, IDV_INPUT), ctx(s.slug));
     const cookie = cookieOf(start, "lo_bidv");
     const { verificationId } = await start.json();
-    expect((await resendRoute(post(`${s.base}/verification/resend`, { verificationId }, cookie))).status).toBe(429);
-    expect((await confirmRoute(post(`${s.base}/verification/confirm`, { verificationId, code: "000000" }, "lo_bidv=someone-else"))).status).toBe(404);
-    const wrong = await confirmRoute(post(`${s.base}/verification/confirm`, { verificationId, code: "987654" }, cookie));
+    expect((await resendRoute(post(`${s.base}/verification/resend`, { verificationId }, cookie), ctx(s.slug))).status).toBe(429);
+    expect((await confirmRoute(post(`${s.base}/verification/confirm`, { verificationId, code: "000000" }, "lo_bidv=someone-else"), ctx(s.slug))).status).toBe(404);
+    const wrong = await confirmRoute(post(`${s.base}/verification/confirm`, { verificationId, code: "987654" }, cookie), ctx(s.slug));
     expect(wrong.status).toBe(400);
   });
 
@@ -184,6 +184,44 @@ describe("구매자 가입 HTTP", () => {
     await db.seller.update({ where: { id: other.seller.id }, data: { trialEndsAt: new Date("2000-01-01T00:00:00Z") } });
     const locked = await startRoute(post(`${other.base}/verification`, IDV_INPUT), ctx(other.slug));
     expect(locked.status).toBe(402);
+  });
+});
+
+describe("본인확인 단계·가입 시도 제한(#114 보안 검수 후속)", () => {
+  it("본인확인 1건으로 가입을 5번 시도하면(중복 실패 포함) 그 뒤로는 맞는 입력이어도 429, 본인확인을 다시 하면 가입된다", async () => {
+    const s = await shop();
+    expect((await s.signup(await s.verified())).status).toBe(201);
+    const v = await s.verified({ name: "이몽룡", phone: "01011112222" });
+    for (let i = 0; i < MAX_SIGNUP_ATTEMPTS_PER_VERIFICATION; i++) {
+      const r = await s.signup(v, { broadcastNickname: `닉${i}` });
+      expect(r.status).toBe(409);
+      expect((await r.json()).error).toBe("login_id_taken");
+    }
+    const blocked = await s.signup(v, { loginId: "free@example.com", broadcastNickname: "새닉" });
+    expect(blocked.status).toBe(429);
+    expect(await blocked.json()).toEqual({ error: "too_many_signup_attempts", message: BUYER_SIGNUP_MESSAGES.too_many_signup_attempts });
+    expect(await db.buyerMember.count({ where: { sellerId: s.seller.id } })).toBe(1);
+    // 입력 형식 오류는 세지 않는다(DB를 보기 전에 끝남) — 새 본인확인으로 가입
+    const fresh = await s.verified({ name: "이몽룡", phone: "01011112222" });
+    expect((await s.signup(fresh, { loginId: "bad" })).status).toBe(400);
+    expect((await s.signup(fresh, { loginId: "free@example.com", broadcastNickname: "새닉" })).status).toBe(201);
+  });
+
+  it("다시 보내기·확인은 URL 쇼핑몰이 본인확인 기록의 쇼핑몰과 같아야 하고(다르면 404), 잠긴 쇼핑몰이면 402", async () => {
+    const a = await shop();
+    const b = await shop();
+    const start = await startRoute(post(`${a.base}/verification`, IDV_INPUT), ctx(a.slug));
+    const cookie = cookieOf(start, "lo_bidv");
+    const { verificationId } = await start.json();
+    expect((await confirmRoute(post(`${b.base}/verification/confirm`, { verificationId, code: "000000" }, cookie), ctx(b.slug))).status).toBe(404);
+    expect((await resendRoute(post(`${b.base}/verification/resend`, { verificationId }, cookie), ctx(b.slug))).status).toBe(404);
+    expect((await confirmRoute(post(`/api/shop/nope/signup/verification/confirm`, { verificationId, code: "000000" }, cookie), ctx("nope"))).status).toBe(404);
+    await db.seller.update({ where: { id: a.seller.id }, data: { trialEndsAt: new Date("2000-01-01T00:00:00Z") } });
+    const locked = await confirmRoute(post(`${a.base}/verification/confirm`, { verificationId, code: "000000" }, cookie), ctx(a.slug));
+    expect(locked.status).toBe(402);
+    expect((await locked.json()).error).toBe("shop_unavailable");
+    expect((await resendRoute(post(`${a.base}/verification/resend`, { verificationId }, cookie), ctx(a.slug))).status).toBe(402);
+    expect((await db.identityVerification.findUniqueOrThrow({ where: { id: verificationId } })).status).toBe("PENDING");
   });
 });
 

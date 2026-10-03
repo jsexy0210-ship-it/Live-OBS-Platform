@@ -24,8 +24,12 @@ export const BUYER_SIGNUP_VERIFY_DAILY_LIMIT_PER_IP = 10;
 // 비밀번호 8~200자, 방송 닉네임 1~20자(보이는 글자).
 export const MAX_NICKNAME_LENGTH = 20;
 
+// 본인확인 1건으로 가입을 시도할 수 있는 횟수(아이디·닉네임 중복 실패 포함). 같은 본인확인으로 다른 사람의 가입 여부를
+// 계속 조회하지 못하게 한다(#114 보안 검수). 입력 형식 오류(400)는 DB를 보기 전에 끝나므로 세지 않는다.
+export const MAX_SIGNUP_ATTEMPTS_PER_VERIFICATION = 5;
+
 // 운영 중이고 잠기지 않은 쇼핑몰만 가입을 받는다(주문과 같은 기준, DB 시계)
-async function shopOpen(db: PrismaClient, sellerId: string) {
+export async function shopOpen(db: PrismaClient, sellerId: string) {
   const seller = await db.seller.findUnique({ where: { id: sellerId }, select: { status: true } });
   return !!seller && seller.status === "ACTIVE" && (await sellerAccessFor(db, sellerId)) !== "expired";
 }
@@ -68,6 +72,7 @@ export type BuyerSignupFailure =
   | "terms_required"
   | "verification_pending"
   | "verification_invalid"
+  | "too_many_signup_attempts"
   | "already_member"
   | "login_id_taken"
   | "nickname_taken"
@@ -122,6 +127,13 @@ export async function signupBuyer(
   ) {
     return { ok: false, reason: "verification_invalid" };
   }
+
+  // 시도 횟수를 먼저 센다(가입이 중복으로 롤백돼도 남도록 별도 갱신). 한도에 닿으면 이 본인확인으로는 더 가입할 수 없다.
+  const counted = await db.identityVerification.updateMany({
+    where: { id: v.id, consumedAt: null, useAttemptCount: { lt: MAX_SIGNUP_ATTEMPTS_PER_VERIFICATION } },
+    data: { useAttemptCount: { increment: 1 } },
+  });
+  if (counted.count !== 1) return { ok: false, reason: "too_many_signup_attempts" };
 
   const existing = await db.buyerMember.findFirst({
     where: { sellerId: input.sellerId, ciHash: v.ciHash, deletedAt: null },
@@ -189,6 +201,7 @@ export const BUYER_SIGNUP_MESSAGES: Record<BuyerSignupFailure | "daily_limit_exc
   terms_required: "필수 약관에 동의해 주세요",
   verification_pending: "인증번호 확인을 먼저 마쳐 주세요",
   verification_invalid: "본인확인을 처음부터 다시 해 주세요",
+  too_many_signup_attempts: "가입을 여러 번 시도했어요. 본인확인을 처음부터 다시 해 주세요",
   already_member: "이미 이 쇼핑몰에 가입했어요. 로그인해 주세요",
   login_id_taken: "이미 가입한 이메일이에요. 다른 이메일로 가입해 주세요",
   nickname_taken: "이미 쓰고 있는 방송 닉네임이에요. 다른 닉네임으로 정해 주세요",
@@ -203,6 +216,7 @@ export const BUYER_SIGNUP_STATUS: Record<BuyerSignupFailure, number> = {
   terms_required: 400,
   verification_pending: 409,
   verification_invalid: 400,
+  too_many_signup_attempts: 429,
   already_member: 409,
   login_id_taken: 409,
   nickname_taken: 409,
