@@ -89,7 +89,8 @@ async function main() {
   const results = [];
   let n = 0;
   const startedAt = new Date().toISOString();
-  while (performance.now() - t0 < opt.duration * 1000) {
+  // 예정 시각이 측정 시간 안인 요청만 보낸다(요청 수 = ceil(duration × rps). 타이머가 조금 일찍 깨어나도 넘치지 않게).
+  while (n * interval < opt.duration * 1000) {
     const due = t0 + n * interval;
     const wait = due - performance.now();
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));

@@ -10,6 +10,7 @@
 // 기록: MONITOR_DIR/samples-YYYYMMDD.jsonl(표본), events.jsonl(사건), status.json(마지막 상태), heartbeat.json
 // 알림: 채널이 미정이라 인터페이스만 둔다. MONITOR_ALERT_URL이 있으면 사건을 JSON으로 POST하고, 없으면 기록만 한다.
 //   같은 사건은 한 번만, 시간당 MONITOR_ALERT_MAX_PER_HOUR건까지만 보낸다(알림 폭주 방지).
+//   받는 쪽이 2xx가 아니면 alert_failed를 남기고 한도를 쓰지 않은 채 다음 주기에 다시 보낸다(최대 5번).
 // 아직 못 재는 것(앱 쪽 훅 필요, MASTER 요청): DB pool 사용량, worker·scheduler heartbeat, 작업 큐 적체.
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import http from "node:http";
@@ -92,24 +93,55 @@ function lastDeployedSha() {
   return m.length ? m.at(-1)[1] : null;
 }
 
-const state = { fails: {}, incidents: {}, warned: {}, alerts: [] };
+const state = { fails: {}, incidents: {}, warned: {}, alerts: [], outbox: [] };
+const ALERT_MAX_ATTEMPTS = 5;
+const OUTBOX_MAX = 50;
 
 function record(file, obj) {
   appendFileSync(`${cfg.dir}/${file}`, JSON.stringify(obj) + "\n");
 }
 
+// 알림 한 건을 보낸다. 2xx가 아니거나 연결이 실패하면 false.
+async function send(ev) {
+  try {
+    const res = await fetch(cfg.alertUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(ev), signal: AbortSignal.timeout(5000) });
+    await res.arrayBuffer().catch(() => {});
+    return { ok: res.ok, status: res.status };
+  } catch {
+    return { ok: false, status: 0 };
+  }
+}
+
+// 보낼 알림을 차례로 보낸다. 실패한 알림은 시간당 한도를 쓰지 않고 다음 주기에 다시 보낸다(최대 ALERT_MAX_ATTEMPTS번).
+async function flushAlerts() {
+  if (!cfg.alertUrl) return;
+  const rest = [];
+  for (const item of state.outbox) {
+    const now = Date.now();
+    state.alerts = state.alerts.filter((t) => now - t < 3600_000);
+    if (state.alerts.length >= cfg.alertMaxPerHour) {
+      record("events.jsonl", { at: kst(), kind: "alert_suppressed", ref: item.ev.kind });
+      continue;
+    }
+    const r = await send(item.ev);
+    if (r.ok) {
+      state.alerts.push(now);
+      continue;
+    }
+    item.attempts += 1;
+    record("events.jsonl", { at: kst(), kind: "alert_failed", ref: item.ev.kind, status: r.status, attempts: item.attempts });
+    if (item.attempts < ALERT_MAX_ATTEMPTS) rest.push(item);
+    else record("events.jsonl", { at: kst(), kind: "alert_dropped", ref: item.ev.kind });
+  }
+  state.outbox = rest;
+}
+
 async function alert(ev) {
   // 경고·장애와 복구만 보낸다(감시 시작 같은 정보성 사건은 기록만: 재시작 반복 때 알림 폭주 방지).
   if (!cfg.alertUrl || (ev.level === "info" && ev.kind !== "incident_close")) return;
-  const now = Date.now();
-  state.alerts = state.alerts.filter((t) => now - t < 3600_000);
-  if (state.alerts.length >= cfg.alertMaxPerHour) return record("events.jsonl", { at: kst(), kind: "alert_suppressed", ref: ev.kind });
-  state.alerts.push(now);
-  try {
-    await fetch(cfg.alertUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(ev), signal: AbortSignal.timeout(5000) });
-  } catch (e) {
-    record("events.jsonl", { at: kst(), kind: "alert_failed", ref: ev.kind });
-  }
+  state.outbox.push({ ev, attempts: 0 });
+  if (state.outbox.length > OUTBOX_MAX) record("events.jsonl", { at: kst(), kind: "alert_dropped", ref: state.outbox.shift().ev.kind });
+  await flushAlerts();
 }
 
 async function event(ev) {
@@ -128,6 +160,7 @@ async function warnOnce(key, ev, cooldownMs = 3600_000) {
 }
 
 async function tick() {
+  await flushAlerts(); // 지난 주기에 실패한 알림 재시도
   const at = kst();
   const results = {};
   for (const t of cfg.targets) {
