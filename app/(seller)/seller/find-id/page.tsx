@@ -88,7 +88,10 @@ export default function FindIdPage() {
     setBusy(false);
     if (r.ok) return setStep("password");
     if (r.status === 503) return toUnavailable();
-    restart({ text: r.error === "recovery_not_allowed" ? "본인확인을 처음부터 다시 해 주세요" : failMessage(r, "확인하지 못했어요. 처음부터 다시 해 주세요") });
+    if (r.error === "recovery_not_allowed") return restart({ text: "본인확인을 처음부터 다시 해 주세요" });
+    // 응답을 놓쳤거나(연결 끊김) 잠깐의 서버 오류: 고른 계정을 그대로 두고 다시 누르게 한다(서버는 10분 안의 같은 요청에 권한을 다시 준다)
+    setNotice({ text: failMessage(r, "확인하지 못했어요. 다시 눌러 주세요") });
+    focus("pa-notice");
   };
 
   const pickedAccount = accounts.find((a) => a.accountId === picked);
