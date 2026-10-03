@@ -98,21 +98,26 @@ function lastDeployedSha() {
   return m.length ? m.at(-1)[1] : null;
 }
 
-// 시간당 알림 한도 기록. 감시를 다시 만들어도(가용성 on/off·재시작) 한도가 이어지게 /data에 남긴다.
-const ALERT_WINDOW_FILE = () => `${cfg.dir}/alert-window.json`;
-function loadAlertWindow() {
-  try {
-    const v = JSON.parse(readFileSync(ALERT_WINDOW_FILE(), "utf8"));
-    if (!Array.isArray(v) || !v.every((t) => Number.isFinite(t))) throw new Error("형식이 맞지 않음");
-    return v.filter((t) => Date.now() - t < 3600_000);
-  } catch (e) {
-    if (existsSync(ALERT_WINDOW_FILE())) console.error(`[monitor] alert-window.json을 읽지 못해 빈 목록으로 시작해요: ${e instanceof Error ? e.message : String(e)}`);
-    return [];
-  }
-}
-function saveAlertWindow() {
-  writeFileSync(ALERT_WINDOW_FILE(), JSON.stringify(state.alerts) + "\n");
-}
+// 시간당 알림 한도 기록과 보내지 못한 알림 목록. 감시를 다시 만들어도(가용성 on/off·재시작) 이어지게 /data에 남긴다.
+// 파일이 깨졌으면 빈 목록으로 시작하고 로그를 한 줄 남긴다.
+const persisted = (name, valid) => ({
+  file: () => `${cfg.dir}/${name}`,
+  load() {
+    try {
+      const v = JSON.parse(readFileSync(this.file(), "utf8"));
+      if (!Array.isArray(v) || !v.every(valid)) throw new Error("형식이 맞지 않음");
+      return v;
+    } catch (e) {
+      if (existsSync(this.file())) console.error(`[monitor] ${name}을 읽지 못해 빈 목록으로 시작해요: ${e instanceof Error ? e.message : String(e)}`);
+      return [];
+    }
+  },
+  save(v) {
+    writeFileSync(this.file(), JSON.stringify(v) + "\n");
+  },
+});
+const alertWindow = persisted("alert-window.json", (t) => Number.isFinite(t));
+const alertOutbox = persisted("alert-outbox.json", (x) => x && typeof x === "object" && x.ev && Number.isInteger(x.attempts));
 
 const state = { fails: {}, incidents: {}, warned: {}, alerts: [], outbox: [], mismatchTicks: {} };
 const ALERT_MAX_ATTEMPTS = 5;
@@ -147,7 +152,7 @@ async function flushAlerts() {
     const r = await send(item.ev);
     if (r.ok) {
       state.alerts.push(now);
-      saveAlertWindow();
+      alertWindow.save(state.alerts);
       continue;
     }
     item.attempts += 1;
@@ -156,6 +161,7 @@ async function flushAlerts() {
     else record("events.jsonl", { at: kst(), kind: "alert_dropped", ref: item.ev.kind });
   }
   state.outbox = rest;
+  alertOutbox.save(state.outbox);
 }
 
 // 보낼 목록에 넣기만 한다. 실제 전송은 틱 끝에 한 번(flushAlerts) — 한 틱에 알림이 여러 건이어도 항목마다 시도는 1번.
@@ -164,6 +170,7 @@ async function alert(ev) {
   if (!cfg.alertUrl || (ev.level === "info" && ev.kind !== "incident_close")) return;
   state.outbox.push({ ev, attempts: 0 });
   if (state.outbox.length > OUTBOX_MAX) record("events.jsonl", { at: kst(), kind: "alert_dropped", ref: state.outbox.shift().ev.kind });
+  alertOutbox.save(state.outbox);
 }
 
 async function event(ev) {
@@ -243,7 +250,8 @@ async function tick() {
 
 async function main() {
   mkdirSync(cfg.dir, { recursive: true });
-  state.alerts = loadAlertWindow();
+  state.alerts = alertWindow.load().filter((t) => Date.now() - t < 3600_000);
+  state.outbox = alertOutbox.load().filter((x) => x.attempts < ALERT_MAX_ATTEMPTS).slice(-OUTBOX_MAX);
   await event({ level: "info", kind: "monitor_start", targets: cfg.targets.map((t) => t.name), intervalS: cfg.intervalS });
   // 고정 주기: 확인에 걸린 시간만큼 다음 틱까지 기다리는 시간을 줄인다.
   for (;;) {

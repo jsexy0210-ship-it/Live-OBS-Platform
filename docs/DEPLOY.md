@@ -414,7 +414,7 @@ scripts/ops/availability.sh off
 - 실행: `docker compose -p obs-web -f deploy/docker-compose.yml --env-file /opt/obs/.env --profile monitor up -d obs-web-monitor` (가용성 프로파일이면 `-f deploy/compose.availability.yml`도). 처음 한 번 `mkdir -p /opt/obs/monitor && touch /opt/obs/deploy-history.log`.
 - 기본 배포(워크플로)에는 뜨지 않아요(`profiles: monitor`). `.env`는 넘기지 않아요.
 - 15초마다(`OBS_MONITOR_INTERVAL_S`): 앱·프록시 `/api/health`의 상태·응답 시간(DB `SELECT 1` 시간 포함)·db·version, 배포 기록의 마지막 SHA와 실행 버전 비교, 인증서 남은 일수(`OBS_MONITOR_TLS_HOST`).
-- 연속 3번 실패 → `incident_open`(critical), 다시 성공 → `incident_close`(지속 시간). 느림(1초 초과)·배포 기록과 실행 버전 불일치(연속 3번. `rolling-deploy.sh`·`rollback-app.sh`가 배포 중 `/opt/obs/monitor/deploy-in-progress` 표시를 두는 동안은 미룸, 표시가 15분 넘게 남으면 따로 경고하고 그 표시는 무시)·인증서 14일 미만 → warn(같은 경고는 한 번만). 알림은 틱 끝에 한 번 모아 보내고, 시간당 한도 기록(`alert-window.json`)은 감시를 다시 만들어도 이어져요.
+- 연속 3번 실패 → `incident_open`(critical), 다시 성공 → `incident_close`(지속 시간). 느림(1초 초과)·배포 기록과 실행 버전 불일치(연속 3번. `rolling-deploy.sh`·`rollback-app.sh`가 배포 중 `/opt/obs/monitor/deploy-in-progress` 표시를 두는 동안은 미룸, 표시가 15분 넘게 남으면 따로 경고하고 그 표시는 무시)·인증서 14일 미만 → warn(같은 경고는 한 번만). 알림은 틱 끝에 한 번 모아 보내고, 시간당 한도 기록(`alert-window.json`)과 보내지 못한 알림(`alert-outbox.json`)은 감시를 다시 만들어도 이어져요.
 - 기록(`/opt/obs/monitor`): `samples-YYYYMMDD.jsonl`(표본), `events.jsonl`(사건), `status.json`(마지막 상태), `heartbeat.json`(감시 자체의 마지막 시각 → 감시 끊김 판단). 컨테이너 healthcheck도 heartbeat가 2분 넘게 멈추면 unhealthy예요.
 - 알림: 채널 미정(`PRODUCT_SCOPE.md` 「미확정」)이라 **인터페이스만** 있어요. `OBS_ALERT_URL`을 넣으면 경고·장애·복구를 JSON으로 POST하고, 시간당 10건까지만 보내요. 알림톡·메일·텔레그램이 정해지면 그 주소(또는 중계 함수)만 넣으면 돼요.
 - 로컬 확인(2026-10-04): 2초 간격으로 앱을 12초 멈췄을 때 6초 안에 `incident_open`, 다시 켠 뒤 `incident_close`(8초) 기록. 알림 주소로 `version_mismatch` POST 수신.
