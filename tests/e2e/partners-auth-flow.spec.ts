@@ -4,7 +4,7 @@ import { submitSellerLogin } from "./sellerLogin";
 // 파트너스 가입 신청(PF-007) → 로그인 → 비밀번호 찾기(AU-003·004)를 실제 API로 끝까지 확인한다.
 // 개발 서버(playwright.config.ts 「dev」)에서 돈다: 가짜 본인확인 공급자(인증번호 000000)와
 // 가짜 사업자·통신판매업 조회(BUSINESS_STATUS_PROVIDER=fake, MAIL_ORDER_PROVIDER=fake → 처음 보는 번호는 정상으로 본다)가 필요하다.
-// 실행마다 가입용 본인확인 2회를 쓴다(같은 IP 하루 10회 한도, DB를 새로 만들면 풀린다).
+// 실행마다 가입용 본인확인 4회를 쓴다(같은 IP 하루 10회 한도라 DB를 새로 만들지 않으면 두 번까지 돈다. DB를 새로 만들면 풀린다).
 const SHOTS = process.env.E2E_SCREENSHOTS === "1";
 
 async function shot(page: Page, name: string) {
