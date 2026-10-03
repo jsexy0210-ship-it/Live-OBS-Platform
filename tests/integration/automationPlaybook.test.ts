@@ -49,6 +49,11 @@ const W = { workerId: "w1" };
 const job = (id: string) => db.automationJob.findUniqueOrThrow({ where: { id } });
 
 describe("작업서 우선 실행", () => {
+  // 구매는 지원 목록(연습 검증된 작업서)일 때만 되므로 먼저 검증 기록을 만든다
+  beforeEach(async () => {
+    for (let i = 0; i < PRACTICE_STREAK_REQUIRED; i++) await runPractice(db, runtime(), cafe24Playbook);
+  });
+
   it("쇼핑몰 주소로 작업서를 고르고, 화면이 작업서와 맞으면 판단 모델을 부르지 않고 끝까지 실행한다", async () => {
     const rt = runtime();
     const a = await boughtWithShop();
@@ -59,10 +64,10 @@ describe("작업서 우선 실행", () => {
     expect((await job(a.jobId)).verificationEvidence).toMatchObject({ shownOnOverlay: true });
   });
 
-  it("모르는 쇼핑몰 주소면 작업서 없이 판단 모델로만 진행한다", async () => {
+  it("작업서가 없는 작업(작업서 정보가 지워진 경우)은 판단 모델로만 진행한다", async () => {
     const rt = runtime();
-    const a = await boughtWithShop("https://unknown-shop.example/");
-    expect(await job(a.jobId)).toMatchObject({ playbookId: null, playbookVersion: null });
+    const a = await boughtWithShop();
+    await db.automationJob.update({ where: { id: a.jobId }, data: { playbookId: null, playbookVersion: null } });
     expect(await runOnce(db, rt, W)).toBe("succeeded");
     const j = await job(a.jobId);
     expect(j.playbookActions).toBe(0);

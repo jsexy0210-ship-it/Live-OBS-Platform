@@ -13,7 +13,9 @@ import {
   REINSTALL_ORDER_NAME,
   REINSTALL_PRICE,
 } from "./config";
-import { playbookForShopUrl } from "./playbooks";
+import type { Playbook } from "./playbook";
+import { findPlaybook, playbookForShopUrl } from "./playbooks";
+import { playbookReadiness } from "./practice";
 import { dbNow, writeJobEvent } from "./queue";
 
 // 자동 연결 결제. 결제는 기존 billing 공통 구조(BillingProvider, 등록된 카드 빌링키, 청구 id = orderId로 PG 중복 방지)를 그대로 쓴다.
@@ -24,7 +26,7 @@ const KEY_RE = /^[A-Za-z0-9_-]{8,100}$/;
 const isUniqueViolation = (e: unknown) => e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
 const OPEN = { notIn: ["SUCCEEDED", "FAILED", "CANCELED"] as AutomationJob["status"][] };
 
-type Failure = "bad_idempotency_key" | "consent_required" | "consent_outdated" | "card_required" | "job_in_progress" | "payment_failed";
+type Failure = "bad_idempotency_key" | "shop_not_supported" | "consent_required" | "consent_outdated" | "card_required" | "job_in_progress" | "payment_failed";
 export type PurchaseResult =
   | { ok: true; jobId: string; kind: AutomationJob["kind"]; paymentStatus: AutomationPayment["status"] | null; jobStatus: AutomationJob["status"]; replayed: boolean }
   | { ok: false; reason: Failure; jobId?: string };
@@ -32,6 +34,7 @@ export type PurchaseResult =
 // 실패 사유별 HTTP 상태(라우트용)
 export const PURCHASE_FAILURE_STATUS: Record<Failure, number> = {
   bad_idempotency_key: 400,
+  shop_not_supported: 409,
   consent_required: 400,
   consent_outdated: 409,
   card_required: 409,
@@ -39,10 +42,15 @@ export const PURCHASE_FAILURE_STATUS: Record<Failure, number> = {
   payment_failed: 402,
 };
 
-const playbookFields = (shopUrl: unknown) => {
+// 지원 목록(연습으로 검증된 작업서)에 있는 쇼핑몰인지. 판매자는 플랫폼을 고르지 않고 쇼핑몰 주소만 낸다.
+// 작업서가 없거나 검증 전이면 결제 전에 거부한다(MASTER 판단 2026-10-04: 대표님 원지시 「개별 검증 후 지원 목록에 추가」).
+export async function supportedPlaybookFor(db: PrismaClient, shopUrl: unknown): Promise<Playbook | null> {
   const pb = typeof shopUrl === "string" && shopUrl.length <= 300 ? playbookForShopUrl(shopUrl) : null;
-  return pb ? { playbookId: pb.id, playbookVersion: pb.version } : {};
-};
+  return pb && (await playbookReadiness(db, pb)).verified ? pb : null;
+}
+
+// 거부 안내 문구(화면 문구 정본은 디자인 쪽). 플랫폼 이름을 넣지 않는다.
+export const SHOP_NOT_SUPPORTED_MESSAGE = "아직 자동 연결할 수 없는 쇼핑몰이에요. 직접 설정으로 연결해 주세요";
 
 const view = (p: AutomationPayment & { job: AutomationJob | null }, replayed: boolean): PurchaseResult =>
   p.job
@@ -59,8 +67,8 @@ function consentProblem(consent: unknown): "consent_required" | "consent_outdate
 type PaidJobInput = {
   idempotencyKey: unknown;
   consent: unknown;
-  // 쇼핑몰 주소. 서버가 연결 작업서를 고른다(판매자는 플랫폼을 고르지 않음). 모르는 주소면 작업서 없이 진행.
-  shopUrl?: unknown;
+  // 지원 목록 작업서 고르기(결제 전에 부른다). 없으면 shop_not_supported
+  resolvePlaybook: () => Promise<Playbook | null>;
   kind: "INITIAL" | "REINSTALL";
   baseJobId?: string;
   obsTargetKey?: string;
@@ -74,7 +82,7 @@ export async function purchaseAutomation(
   ctx: TenantContext,
   input: { idempotencyKey: unknown; consent: unknown; shopUrl?: unknown },
 ): Promise<PurchaseResult> {
-  return buyPaidJob(db, provider, ctx, { ...input, kind: "INITIAL" });
+  return buyPaidJob(db, provider, ctx, { ...input, kind: "INITIAL", resolvePlaybook: () => supportedPlaybookFor(db, input.shopUrl) });
 }
 
 async function buyPaidJob(db: PrismaClient, provider: BillingProvider, ctx: TenantContext, input: PaidJobInput): Promise<PurchaseResult> {
@@ -88,6 +96,8 @@ async function buyPaidJob(db: PrismaClient, provider: BillingProvider, ctx: Tena
   };
   const existing = await replay();
   if (existing) return existing;
+  const playbook = await input.resolvePlaybook();
+  if (!playbook) return { ok: false, reason: "shop_not_supported" };
   const problem = consentProblem(input.consent);
   if (problem) return { ok: false, reason: problem };
 
@@ -110,7 +120,8 @@ async function buyPaidJob(db: PrismaClient, provider: BillingProvider, ctx: Tena
           kind: input.kind,
           paymentId: payment.id,
           costLimit: plannerConfig().costLimitWon,
-          ...playbookFields(input.shopUrl),           baseJobId: input.baseJobId,
+          playbookId: playbook.id,
+          playbookVersion: playbook.version,           baseJobId: input.baseJobId,
           obsTargetKey: input.obsTargetKey ?? `seller:${ctx.sellerId}`,
         },
       });
@@ -181,7 +192,7 @@ const isTarget = (v: unknown): v is ReconnectTarget => {
   return !!t && ok(t.shopKey) && ok(t.obsPairingId);
 };
 
-export type ReconnectResult = PurchaseResult | { ok: false; reason: "bad_target" } | { ok: false; reason: "payment_required"; paidReason: PaidReason; price: number };
+export type ReconnectResult = PurchaseResult | { ok: false; reason: "bad_target" } | { ok: false; reason: "shop_not_supported"; jobId?: undefined } | { ok: false; reason: "payment_required"; paidReason: PaidReason; price: number };
 
 // 재연결 요청. 무료 대상이면 결제 없이 바로 대기열에 넣는다. 아니면 33,000원 재설치로 결제한다
 // (결제 동의·Idempotency-Key가 있어야 하고, 동의 없이 오면 금액과 사유만 돌려준다 — 화면이 안내 후 다시 보낸다).
@@ -196,15 +207,24 @@ export async function reconnectAutomation(
   const target = input.target;
   const decision = await decideReconnect(db, ctx.sellerId, target);
   const obsTargetKey = `obs:${target.obsPairingId}`;
+  // 쇼핑몰 주소가 오면 그 주소로, 없으면 이전 완료 작업의 작업서로. 어느 쪽이든 지금 지원 목록에 있어야 한다.
+  const resolvePlaybook = async (): Promise<Playbook | null> => {
+    if (input.shopUrl !== undefined) return supportedPlaybookFor(db, input.shopUrl);
+    const base = decision.baseJobId ? await db.automationJob.findFirst({ where: { id: decision.baseJobId, sellerId: ctx.sellerId }, select: { playbookId: true } }) : null;
+    const pb = findPlaybook(base?.playbookId);
+    return pb && (await playbookReadiness(db, pb)).verified ? pb : null;
+  };
+  const playbook = await resolvePlaybook();
+  if (!playbook) return { ok: false, reason: "shop_not_supported" };
   if (!decision.free) {
     if (input.consent === undefined) return { ok: false, reason: "payment_required", paidReason: decision.reason, price: REINSTALL_PRICE };
-    return buyPaidJob(db, provider, ctx, { idempotencyKey: input.idempotencyKey, consent: input.consent, shopUrl: input.shopUrl, kind: "REINSTALL", baseJobId: decision.baseJobId ?? undefined, obsTargetKey });
+    return buyPaidJob(db, provider, ctx, { idempotencyKey: input.idempotencyKey, consent: input.consent, resolvePlaybook: async () => playbook, kind: "REINSTALL", baseJobId: decision.baseJobId ?? undefined, obsTargetKey });
   }
   try {
     const job = await db.$transaction(async (tx) => {
       const now = await dbNow(tx);
       const j = await tx.automationJob.create({
-        data: { sellerId: ctx.sellerId, kind: "RECONNECT_FREE", costLimit: plannerConfig().costLimitWon, ...playbookFields(input.shopUrl), baseJobId: decision.baseJobId, status: "QUEUED", runAfter: now, obsTargetKey },
+        data: { sellerId: ctx.sellerId, kind: "RECONNECT_FREE", costLimit: plannerConfig().costLimitWon, playbookId: playbook.id, playbookVersion: playbook.version, baseJobId: decision.baseJobId, status: "QUEUED", runAfter: now, obsTargetKey },
       });
       await writeJobEvent(tx, j, null, "QUEUED", 0, { freeReconnectOf: decision.baseJobId });
       await writeAudit(tx, {

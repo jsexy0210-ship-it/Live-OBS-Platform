@@ -8,6 +8,8 @@ import { POST as reconnectRoute } from "../../app/api/automation/reconnect/route
 import { POST as refundRoute } from "../../app/api/automation/jobs/[jobId]/refund-request/route";
 import { loginSeller } from "../../lib/server/auth/login";
 import { AUTOMATION_CONSENT, AUTOMATION_PRICE, REINSTALL_PRICE } from "../../lib/server/automation/config";
+import { cafe24Playbook } from "../../lib/server/automation/playbooks/cafe24";
+import { PRACTICE_STREAK_REQUIRED } from "../../lib/server/automation/practice";
 import { FakeBrowserExecutor, FakeObsBridge, FakePlanner, FakeSecretVault } from "../../lib/server/automation/fakes";
 import { cancelJob, requestRefund, resumeJob } from "../../lib/server/automation/jobs";
 import { purchaseAutomation, reconcileAutomationPayments, reconnectAutomation } from "../../lib/server/automation/purchase";
@@ -24,7 +26,10 @@ beforeAll(() => {
   process.env.BILLING_KEY_SECRET = "test-billing-key-secret-0123456789abcdef";
   process.env.BILLING_PROVIDER = "fake";
 });
-beforeEach(resetDb);
+beforeEach(async () => {
+  await resetDb();
+  await verifyPlaybook();
+});
 afterAll(async () => {
   await db.$disconnect();
   await prisma.$disconnect();
@@ -32,6 +37,23 @@ afterAll(async () => {
 
 const BK = "fake-bk-automation";
 const consent = { agreed: true, noticeVersion: AUTOMATION_CONSENT.version };
+const SHOP = "https://myshop.cafe24.com";
+
+// 지원 목록에 오르게 작업서 현재 버전의 연습 성공 기록을 기준 횟수만큼 넣는다
+async function verifyPlaybook() {
+  await db.automationPracticeRun.createMany({
+    data: Array.from({ length: PRACTICE_STREAK_REQUIRED }, () => ({
+      playbookId: cafe24Playbook.id,
+      playbookVersion: cafe24Playbook.version,
+      outcome: "SUCCEEDED" as const,
+      durationMs: 1,
+      plannerCalls: 0,
+      playbookActions: 13,
+      costWon: 0,
+      startedAt: new Date(),
+    })),
+  });
+}
 
 export async function shopWithCard() {
   const { seller } = await createSeller();
@@ -42,8 +64,11 @@ export async function shopWithCard() {
   return { seller, owner, ctx };
 }
 
+// 기본 관리 화면은 작업서 화면 단서와 맞는다(이탈이 생기면 그 작업서가 재검증 대상이 되어 구매가 막힌다)
 function runtime() {
-  return { planner: new FakePlanner(), browser: new FakeBrowserExecutor(), obs: new FakeObsBridge(), vault: new FakeSecretVault() };
+  const rt = { planner: new FakePlanner(), browser: new FakeBrowserExecutor(), obs: new FakeObsBridge(), vault: new FakeSecretVault() };
+  rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장";
+  return rt;
 }
 
 const W = { workerId: "w1" };
@@ -64,7 +89,7 @@ const newKey = () => `key-${Date.now()}-${++key}`;
 
 async function bought(provider = new FakeBillingProvider()) {
   const s = await shopWithCard();
-  const r = await purchaseAutomation(db, provider, s.ctx, { idempotencyKey: newKey(), consent });
+  const r = await purchaseAutomation(db, provider, s.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP });
   if (!r.ok) throw new Error(r.reason);
   return { ...s, jobId: r.jobId, provider };
 }
@@ -92,8 +117,8 @@ describe("자동 연결 결제와 실행 권한", () => {
     // 성공 기준 검증 증거(테스트 주문 표시)가 남는다
     expect(j.verifiedAt).toEqual(j.finishedAt);
     expect(j.verificationEvidence).toEqual({ testEvent: `test-${jobId}`, shownOnOverlay: true });
-    expect(j.costUsed).toBeGreaterThan(0);
-    expect(j.costLimit).toBe(3000);
+    // 화면이 작업서와 맞아 판단 모델을 부르지 않았다(비용 0)
+    expect(j).toMatchObject({ costUsed: 0, plannerCalls: 0, costLimit: 3000, playbookId: "cafe24" });
     expect(await statuses(jobId)).toEqual(["->AWAITING_PAYMENT", "AWAITING_PAYMENT>QUEUED", "QUEUED>RUNNING", "RUNNING>VERIFYING", "VERIFYING>SUCCEEDED"]);
     expect((await db.automationPayment.findFirstOrThrow()).status).toBe("PAID");
   });
@@ -102,13 +127,13 @@ describe("자동 연결 결제와 실행 권한", () => {
     const provider = new FlakyLookupProvider();
     const first = await shopWithCard();
     provider.failNext = "timeout_after_charge";
-    expect(await purchaseAutomation(db, provider, first.ctx, { idempotencyKey: newKey(), consent })).toMatchObject({ ok: true, paymentStatus: "PAID", jobStatus: "QUEUED" });
+    expect(await purchaseAutomation(db, provider, first.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP })).toMatchObject({ ok: true, paymentStatus: "PAID", jobStatus: "QUEUED" });
     await db.automationJob.updateMany({ data: { status: "CANCELED", finishedAt: new Date() } });
 
     const s = await shopWithCard();
     provider.failNext = "timeout_after_charge";
     provider.lookupDown = 1;
-    const r = await purchaseAutomation(db, provider, s.ctx, { idempotencyKey: newKey(), consent });
+    const r = await purchaseAutomation(db, provider, s.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP });
     expect(r).toMatchObject({ ok: true, paymentStatus: "PENDING", jobStatus: "AWAITING_PAYMENT" });
     expect(await runOnce(db, runtime(), W)).toBe("idle");
     expect(await reconcileAutomationPayments(db, provider, { olderThanMs: 0 })).toBe(1);
@@ -120,13 +145,13 @@ describe("자동 연결 결제와 실행 권한", () => {
     const provider = new FakeBillingProvider();
     const a = await shopWithCard();
     provider.failNext = "timeout_before_charge";
-    expect(await purchaseAutomation(db, provider, a.ctx, { idempotencyKey: newKey(), consent })).toMatchObject({ ok: true, paymentStatus: "PENDING" });
+    expect(await purchaseAutomation(db, provider, a.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP })).toMatchObject({ ok: true, paymentStatus: "PENDING" });
     await reconcileAutomationPayments(db, provider, { olderThanMs: 0 });
     expect((await db.automationPayment.findFirstOrThrow()).status).toBe("PENDING");
 
     const b = await shopWithCard();
     provider.decline(BK);
-    const r = await purchaseAutomation(db, provider, b.ctx, { idempotencyKey: newKey(), consent });
+    const r = await purchaseAutomation(db, provider, b.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP });
     expect(r).toMatchObject({ ok: false, reason: "payment_failed" });
     expect(await db.automationJob.findFirstOrThrow({ where: { sellerId: b.seller.id } })).toMatchObject({ status: "FAILED", lastError: "payment_failed" });
     expect(await runOnce(db, runtime(), W)).toBe("idle");
@@ -136,19 +161,19 @@ describe("자동 연결 결제와 실행 권한", () => {
     const provider = new FakeBillingProvider();
     const s = await shopWithCard();
     for (const c of [undefined, { agreed: false, noticeVersion: AUTOMATION_CONSENT.version }, { agreed: "true", noticeVersion: AUTOMATION_CONSENT.version }]) {
-      expect(await purchaseAutomation(db, provider, s.ctx, { idempotencyKey: newKey(), consent: c })).toEqual({ ok: false, reason: "consent_required" });
+      expect(await purchaseAutomation(db, provider, s.ctx, { idempotencyKey: newKey(), consent: c, shopUrl: SHOP })).toEqual({ ok: false, reason: "consent_required" });
     }
-    expect(await purchaseAutomation(db, provider, s.ctx, { idempotencyKey: newKey(), consent: { agreed: true, noticeVersion: "old" } })).toEqual({ ok: false, reason: "consent_outdated" });
-    expect(await purchaseAutomation(db, provider, s.ctx, { idempotencyKey: "x", consent })).toEqual({ ok: false, reason: "bad_idempotency_key" });
+    expect(await purchaseAutomation(db, provider, s.ctx, { idempotencyKey: newKey(), consent: { agreed: true, noticeVersion: "old" }, shopUrl: SHOP })).toEqual({ ok: false, reason: "consent_outdated" });
+    expect(await purchaseAutomation(db, provider, s.ctx, { idempotencyKey: "x", consent, shopUrl: SHOP })).toEqual({ ok: false, reason: "bad_idempotency_key" });
 
     const { seller } = await createSeller();
     const owner = await createSellerUser(seller.id, "OWNER");
     const noCard: TenantContext = { sellerId: seller.id, actorType: "SELLER_USER", actorId: owner.id, isOwner: true, permissions: [], readOnly: false };
-    expect(await purchaseAutomation(db, provider, noCard, { idempotencyKey: newKey(), consent })).toEqual({ ok: false, reason: "card_required" });
+    expect(await purchaseAutomation(db, provider, noCard, { idempotencyKey: newKey(), consent, shopUrl: SHOP })).toEqual({ ok: false, reason: "card_required" });
     expect(await db.automationPayment.count()).toBe(0);
     expect(provider.charges).toHaveLength(0);
 
-    const r = await purchaseAutomation(db, provider, s.ctx, { idempotencyKey: newKey(), consent });
+    const r = await purchaseAutomation(db, provider, s.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP });
     expect(r).toMatchObject({ ok: true, kind: "INITIAL" });
     const p = await db.automationPayment.findFirstOrThrow();
     expect(p).toMatchObject({ consentNoticeVersion: AUTOMATION_CONSENT.version, amount: AUTOMATION_PRICE });
@@ -161,7 +186,7 @@ describe("자동 연결 결제와 실행 권한", () => {
     const s = await shopWithCard();
     provider.failNext = "timeout_after_charge";
     provider.lookupDown = 1;
-    const r = await purchaseAutomation(db, provider, s.ctx, { idempotencyKey: newKey(), consent });
+    const r = await purchaseAutomation(db, provider, s.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP });
     if (!r.ok) throw new Error(r.reason);
     expect(await cancelJob(db, s.ctx, r.jobId)).toMatchObject({ ok: true, job: { status: "CANCELED" } });
     await reconcileAutomationPayments(db, provider, { olderThanMs: 0 });
@@ -176,8 +201,8 @@ describe("중복 결제·재전송·버튼 연타", () => {
     const provider = new FakeBillingProvider();
     const s = await shopWithCard();
     const k = newKey();
-    const first = await purchaseAutomation(db, provider, s.ctx, { idempotencyKey: k, consent });
-    const again = await purchaseAutomation(db, provider, s.ctx, { idempotencyKey: k, consent });
+    const first = await purchaseAutomation(db, provider, s.ctx, { idempotencyKey: k, consent, shopUrl: SHOP });
+    const again = await purchaseAutomation(db, provider, s.ctx, { idempotencyKey: k, consent, shopUrl: SHOP });
     expect(first).toMatchObject({ ok: true, replayed: false });
     expect(again).toMatchObject({ ok: true, replayed: true, jobId: first.ok ? first.jobId : "" });
     expect(provider.charges).toHaveLength(1);
@@ -187,11 +212,11 @@ describe("중복 결제·재전송·버튼 연타", () => {
     const provider = new FakeBillingProvider();
     const s = await shopWithCard();
     const k = newKey();
-    const same = await Promise.all(Array.from({ length: 10 }, () => purchaseAutomation(db, provider, s.ctx, { idempotencyKey: k, consent })));
+    const same = await Promise.all(Array.from({ length: 10 }, () => purchaseAutomation(db, provider, s.ctx, { idempotencyKey: k, consent, shopUrl: SHOP })));
     expect(new Set(same.map((r) => (r.ok ? r.jobId : r.reason))).size).toBe(1);
 
     const t = await shopWithCard();
-    const mash = await Promise.all(Array.from({ length: 10 }, () => purchaseAutomation(db, provider, t.ctx, { idempotencyKey: newKey(), consent })));
+    const mash = await Promise.all(Array.from({ length: 10 }, () => purchaseAutomation(db, provider, t.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP })));
     expect(mash.filter((r) => r.ok)).toHaveLength(1);
     expect(mash.filter((r) => !r.ok && r.reason === "job_in_progress")).toHaveLength(9);
     expect(await db.automationJob.count()).toBe(2);
@@ -205,7 +230,7 @@ describe("중복 결제·재전송·버튼 연타", () => {
     const fake = billingProvider() as FakeBillingProvider;
     const before = fake.charges.length;
     const call = (h: Record<string, string>) =>
-      purchaseRoute(new Request("http://localhost:3000/api/automation/purchase", { method: "POST", headers: { ...h, "content-type": "application/json" }, body: JSON.stringify({ consent }) }));
+      purchaseRoute(new Request("http://localhost:3000/api/automation/purchase", { method: "POST", headers: { ...h, "content-type": "application/json" }, body: JSON.stringify({ consent, shopUrl: SHOP }) }));
     expect((await call(H(cookie))).status).toBe(400);
     expect((await call({ ...H(cookie, { "idempotency-key": newKey() }), origin: "http://evil.test" })).status).toBe(403);
     const k = newKey();
@@ -316,7 +341,8 @@ describe("lease·fencing·잠금·동시성", () => {
 
   it("작업당 비용 상한을 넘으면 멈춘다", async () => {
     const a = await bought();
-    await db.automationJob.update({ where: { id: a.jobId }, data: { costLimit: 25 } });
+    // 판단 모델 경로(작업서 없음)에서 비용이 쌓인다
+    await db.automationJob.update({ where: { id: a.jobId }, data: { costLimit: 25, playbookId: null, playbookVersion: null } });
     expect(await runOnce(db, runtime(), W)).toBe("failed");
     expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "cost_limit", costUsed: 30 });
   });
@@ -330,7 +356,7 @@ describe("격리·비밀값·악성 페이지", () => {
     rt.planner.override = (input) =>
       input.observation.untrustedPageText.includes("evil.test") ? { action: { type: "navigate", url: "https://evil.test/steal" }, costWon: 10 } : undefined;
     let navigated = false;
-    rt.browser.outcome = (_s, action) => ((navigated ||= action.type === "navigate"), undefined);
+    rt.browser.outcome = (_s, action) => ((navigated ||= action.type === "navigate" && action.url.includes("evil.test")), undefined);
     expect(await runOnce(db, rt, W)).toBe("failed");
     expect(navigated).toBe(false);
     expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "unsafe_action:host_not_allowed" });
@@ -397,7 +423,7 @@ describe("다른 판매자·직원 접근", () => {
     const staff = await createSellerUser(a.seller.id, "MANAGER");
     const cookieStaff = await cookieFor(staff.email);
     const buy = await purchaseRoute(
-      new Request("http://localhost:3000/api/automation/purchase", { method: "POST", headers: H(cookieStaff, { "idempotency-key": newKey() }), body: JSON.stringify({ consent }) }),
+      new Request("http://localhost:3000/api/automation/purchase", { method: "POST", headers: H(cookieStaff, { "idempotency-key": newKey() }), body: JSON.stringify({ consent, shopUrl: SHOP }) }),
     );
     expect(buy.status).toBe(403);
     expect((await jobsRoute(new Request("http://localhost:3000/api/automation/jobs", { headers: H(cookieStaff) }))).status).toBe(403);
@@ -471,7 +497,7 @@ describe("재연결·재설치(확정 ②)", () => {
 
   it("쇼핑몰·PC가 바뀌었거나, 권한이 해제됐거나, 30일이 지났거나, 완료한 적이 없으면 33,000원 재설치다(사유를 알려 준다)", async () => {
     const none = await shopWithCard();
-    expect(await reconnectAutomation(db, new FakeBillingProvider(), none.ctx, { idempotencyKey: newKey(), target: { shopKey: "m", obsPairingId: "p" } })).toEqual({
+    expect(await reconnectAutomation(db, new FakeBillingProvider(), none.ctx, { idempotencyKey: newKey(), target: { shopKey: "m", obsPairingId: "p" }, shopUrl: SHOP })).toEqual({
       ok: false,
       reason: "payment_required",
       paidReason: "no_completed_install",
@@ -557,7 +583,7 @@ describe("외부 쇼핑몰 플랫폼 이름 비노출(2026-10-04 대표님 결�
     };
     await post("http://localhost:3000/api/automation/reconnect", { target: { shopKey: "m", obsPairingId: "p" } });
     await post("http://localhost:3000/api/automation/purchase", {});
-    await post("http://localhost:3000/api/automation/purchase", { consent });
+    await post("http://localhost:3000/api/automation/purchase", { consent, shopUrl: SHOP });
     rt.browser.outcome = () => ({ kind: "fatal", reason: "Cafe24 관리자 화면 오류" });
     expect(await runOnce(db, rt, W)).toBe("failed");
     const j = await db.automationJob.findFirstOrThrow();
@@ -568,5 +594,52 @@ describe("외부 쇼핑몰 플랫폼 이름 비노출(2026-10-04 대표님 결�
     expect(JSON.parse(one).lastError).toBe("step_failed");
     const hits = texts.filter((t) => PLATFORM.test(t));
     expect(hits).toEqual([]);
+  });
+});
+
+describe("지원 목록 밖 쇼핑몰 구매 차단(MASTER 판단 2026-10-04)", () => {
+  it("작업서가 없는 주소·주소 없음·연습 검증 전·재검증 대상이면 결제 전에 거부한다(결제·작업 없음)", async () => {
+    const provider = new FakeBillingProvider();
+    const s = await shopWithCard();
+    const buy = (shopUrl: unknown) => purchaseAutomation(db, provider, s.ctx, { idempotencyKey: newKey(), consent, shopUrl });
+    expect(await buy("https://unknown-shop.example/")).toEqual({ ok: false, reason: "shop_not_supported" });
+    expect(await buy(undefined)).toEqual({ ok: false, reason: "shop_not_supported" });
+    expect(await buy("https://cafe24.com.evil.test/")).toEqual({ ok: false, reason: "shop_not_supported" });
+
+    await db.automationPracticeRun.updateMany({ data: { outcome: "FAILED" } });
+    expect(await buy(SHOP)).toEqual({ ok: false, reason: "shop_not_supported" });
+    await verifyPlaybook();
+    // 검증 뒤 고객 작업에서 화면이 작업서와 달랐으면(관리 화면 변경 의심) 다시 검증될 때까지 막는다
+    const other = await shopWithCard();
+    const first = await purchaseAutomation(db, provider, other.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP });
+    if (!first.ok) throw new Error(first.reason);
+    await db.automationJob.update({ where: { id: first.jobId }, data: { deviatedSteps: ["webhook_setup"] } });
+    expect(await buy(SHOP)).toEqual({ ok: false, reason: "shop_not_supported" });
+
+    expect(await db.automationPayment.count({ where: { sellerId: s.seller.id } })).toBe(0);
+    // 결제는 지원 쇼핑몰인 다른 판매자의 1건뿐이다
+    expect(provider.charges).toHaveLength(1);
+  });
+
+  it("라우트: 409와 안내 문구(플랫폼 이름 없음), 재연결도 지원 목록 밖이면 무료 대상이어도 거부", async () => {
+    const s = await shopWithCard();
+    const cookie = await cookieFor(s.owner.email);
+    const res = await purchaseRoute(
+      new Request("http://localhost:3000/api/automation/purchase", {
+        method: "POST",
+        headers: H(cookie, { "idempotency-key": newKey(), "content-type": "application/json" }),
+        body: JSON.stringify({ consent, shopUrl: "https://unknown-shop.example/" }),
+      }),
+    );
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "shop_not_supported", message: "아직 자동 연결할 수 없는 쇼핑몰이에요. 직접 설정으로 연결해 주세요" });
+
+    const done = await bought();
+    expect(await runOnce(db, runtime(), W)).toBe("succeeded");
+    const target = { shopKey: `mall-${done.seller.id}`, obsPairingId: `pc-${done.seller.id}` };
+    await db.automationPracticeRun.deleteMany();
+    expect(await reconnectAutomation(db, done.provider, done.ctx, { idempotencyKey: newKey(), target })).toEqual({ ok: false, reason: "shop_not_supported" });
+    await verifyPlaybook();
+    expect(await reconnectAutomation(db, done.provider, done.ctx, { idempotencyKey: newKey(), target })).toMatchObject({ ok: true, kind: "RECONNECT_FREE" });
   });
 });

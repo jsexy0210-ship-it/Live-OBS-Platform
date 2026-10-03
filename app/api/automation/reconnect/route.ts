@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { PURCHASE_FAILURE_STATUS, reconnectAutomation } from "../../../../lib/server/automation/purchase";
+import { PURCHASE_FAILURE_STATUS, SHOP_NOT_SUPPORTED_MESSAGE, reconnectAutomation } from "../../../../lib/server/automation/purchase";
 import { requireSeller } from "../../../../lib/server/authz/guards";
 import { billingProvider } from "../../../../lib/server/billing/registry";
 import { prisma } from "../../../../lib/server/db";
@@ -15,5 +15,5 @@ export const POST = mutation(async (req: Request) => {
   if (r.ok) return noStore(NextResponse.json(r, { status: r.paymentStatus === "PENDING" ? 202 : r.replayed ? 200 : 201 }));
   if (r.reason === "bad_target") return noStore(NextResponse.json({ error: r.reason }, { status: 400 }));
   if (r.reason === "payment_required") return noStore(NextResponse.json({ error: r.reason, paidReason: r.paidReason, price: r.price }, { status: 402 }));
-  return noStore(NextResponse.json({ error: r.reason, ...(r.jobId ? { jobId: r.jobId } : {}) }, { status: PURCHASE_FAILURE_STATUS[r.reason] }));
+  return noStore(NextResponse.json({ error: r.reason, ...(r.reason === "shop_not_supported" ? { message: SHOP_NOT_SUPPORTED_MESSAGE } : {}), ...(r.jobId ? { jobId: r.jobId } : {}) }, { status: PURCHASE_FAILURE_STATUS[r.reason] }));
 });
