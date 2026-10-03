@@ -181,6 +181,8 @@ model SellerUser {
   // 대표자가 휴대폰 번호를 바꾸면 지운다. 대표자는 쇼핑몰 대표자 CI(Seller.representativeCiHash)를 쓰고 여기는 비워 둔다.
   identityCiHash    String?
   identityLinkedAt  DateTime?               @db.Timestamptz(3)
+  // 연결돼 있다가 대표자가 휴대폰 번호를 바꿔 연결이 풀린 시각(다시 연결하면 비움). 처음부터 미연결인 직원과 구별한다.
+  identityUnlinkedAt DateTime?              @db.Timestamptz(3)
   createdAt         DateTime                @default(now()) @db.Timestamptz(3)
 
   seller      Seller               @relation(fields: [sellerId], references: [id])
