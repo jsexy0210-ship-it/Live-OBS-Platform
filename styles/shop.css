@@ -1,0 +1,167 @@
+/* 구매자 화면 공통 틀(최소) + SH-011 회원가입 */
+html,
+body {
+  margin: 0;
+  background: #f6f4f0;
+}
+.shop-app {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+.shop-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--page);
+}
+.shop-top {
+  display: flex;
+  align-items: center;
+  height: 56px;
+  padding: 0 16px;
+  background: var(--surface);
+  box-shadow: inset 0 -1px 0 var(--wds-line-normal-alternative);
+}
+.shop-name {
+  font-size: 17px;
+  font-weight: 700;
+}
+.shop-main {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  padding: 16px 16px 40px;
+}
+.shop-foot {
+  display: flex;
+  justify-content: center;
+  padding: 20px 16px 28px;
+}
+.shop-card {
+  width: 560px;
+  max-width: 100%;
+  padding: 24px 20px;
+}
+.shop-state {
+  align-self: flex-start;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 40px 24px;
+  text-align: center;
+}
+.shop-state-ico {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 8px;
+  border-radius: 50%;
+  background: var(--info-bg);
+}
+/* 안내: 느낌표 */
+.shop-state-ico::before,
+.shop-state-ico::after {
+  content: "";
+  position: absolute;
+  left: 22px;
+  width: 4px;
+  border-radius: 2px;
+  background: var(--wds-primary-normal);
+}
+.shop-state-ico::before {
+  top: 12px;
+  height: 15px;
+}
+.shop-state-ico::after {
+  top: 31px;
+  height: 4px;
+}
+/* 완료: 체크 */
+.shop-state-ico.is-done {
+  background: var(--wds-background-status-positive);
+}
+.shop-state-ico.is-done::before {
+  display: none;
+}
+.shop-state-ico.is-done::after {
+  left: 18px;
+  top: 12px;
+  width: 9px;
+  height: 18px;
+  border-radius: 0;
+  background: none;
+  border: solid var(--pos-text);
+  border-width: 0 3px 3px 0;
+  transform: rotate(45deg);
+}
+
+.signup {
+  align-self: flex-start;
+  gap: 24px;
+}
+.signup-sec {
+  gap: 14px;
+}
+.signup-sec + .signup-sec {
+  padding-top: 24px;
+  box-shadow: inset 0 1px 0 var(--wds-line-normal-alternative);
+}
+.signup-fs {
+  gap: 14px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.signup-fs:disabled {
+  opacity: 0.55;
+}
+.signup-two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.signup-seg {
+  display: flex;
+}
+.signup-seg > button {
+  flex: 1;
+  height: 40px;
+}
+.signup-seg > button:disabled {
+  cursor: not-allowed;
+}
+.signup-done {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--wds-background-status-positive);
+}
+.signup-terms {
+  gap: 10px;
+}
+.signup-all {
+  padding-bottom: 10px;
+  font-weight: 600;
+  box-shadow: inset 0 -1px 0 var(--wds-line-normal-alternative);
+}
+.signup-cta {
+  padding-top: 4px;
+}
+
+@media (max-width: 767px) {
+  .shop-main {
+    padding: 0 0 24px;
+  }
+  .shop-card {
+    width: 100%;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .shop-state {
+    align-self: stretch;
+  }
+}
