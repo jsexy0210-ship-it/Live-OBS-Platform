@@ -26,6 +26,14 @@ async function shot(page: Page, name: string) {
   await page.setViewportSize({ width: 1440, height: 900 });
 }
 
+// 테스트에서 만든 상품은 첫 쪽 목록에 기대지 않고 이름 검색(서버 q)으로 찾는다
+async function searchFor(page: Page, text: string) {
+  await Promise.all([
+    page.waitForResponse((r) => r.url().includes("/api/seller/products?") && new URL(r.url()).searchParams.get("q") === text.trim()),
+    page.getByLabel("상품 검색").fill(text),
+  ]);
+}
+
 async function login(page: Page, email = OWNER) {
   await page.goto("/seller/login");
   await page.getByLabel("이메일").fill(email);
@@ -130,6 +138,8 @@ test("상품 등록 → 목록에 바로 보인다", async ({ page }) => {
 
   await expect(page).toHaveURL(/\/seller\/products$/);
   await expect(page.getByText("상품을 등록했어요")).toBeVisible();
+  await searchFor(page, name);
+  await expect(page.getByTestId("product-row")).toHaveCount(1);
   const row = page.getByTestId("product-row").filter({ hasText: name });
   await expect(row).toBeVisible();
   await expect(row).toContainText("15,000원");
@@ -159,6 +169,8 @@ test("상품명 100자를 넘기면 글자 수가 빨갛게 바뀌고 안내한�
   await expect(page).toHaveURL(/\/seller\/products$/);
   await expect(page.getByText("임시 저장했어요")).toBeVisible();
   await page.getByRole("tab", { name: "임시 저장" }).click();
+  // 검색어는 50자까지라 이름 끝 20자(👍 16개 + 실행 표식 4자)로 찾는다
+  await searchFor(page, [...name100].slice(-20).join(""));
   await expect(page.getByTestId("product-row").filter({ hasText: name100 })).toHaveCount(1);
 });
 
@@ -198,6 +210,7 @@ test("상품 삭제: 숨김을 먼저 권하고, 완전 삭제는 상품명을 �
   await page.getByLabel("판매가").fill("1000");
   await page.getByRole("button", { name: "등록", exact: true }).first().click();
   await expect(page).toHaveURL(/\/seller\/products$/);
+  await searchFor(page, name);
   await page.getByTestId("product-row").filter({ hasText: name }).getByRole("link").click();
 
   await page.getByRole("button", { name: "삭제", exact: true }).click();
@@ -216,6 +229,8 @@ test("상품 삭제: 숨김을 먼저 권하고, 완전 삭제는 상품명을 �
   await confirm.click();
   await expect(page).toHaveURL(/\/seller\/products$/);
   await expect(page.getByText("상품을 삭제했어요")).toBeVisible();
+  await searchFor(page, name);
+  await expect(page.getByText(`「${name}」에 해당하는 상품이 없어요`)).toBeVisible();
   await expect(page.getByTestId("product-row").filter({ hasText: name })).toHaveCount(0);
 });
 
@@ -229,6 +244,7 @@ test("판매가를 내리면서 추가 금액을 바꿔도 저장된다(중간 �
   await page.getByLabel("옵션 1 추가 금액").fill("-9000");
   await page.getByRole("button", { name: "등록", exact: true }).first().click();
   await expect(page).toHaveURL(/\/seller\/products$/);
+  await searchFor(page, name);
   await page.getByTestId("product-row").filter({ hasText: name }).getByRole("link").first().click();
 
   // 10000 / -9000 → 5000 / -4000 (판매가를 내림)
@@ -397,4 +413,37 @@ test("로그아웃하면 로그인 화면으로 가고 다시 들어갈 수 없�
   await expect(page).toHaveURL(/\/seller\/login$/);
   await page.goto("/seller/products");
   await expect(page).toHaveURL(/\/seller\/login\?next=/);
+});
+
+test("상품 검색: 상품·옵션 이름으로 서버에서 찾고(대소문자 무시), 판매 상태 탭과 함께 쓸 수 있다", async ({ page }) => {
+  await login(page);
+  // 옵션 이름으로도 찾는다(「4포켓」은 보관용 카드 바인더의 옵션)
+  await searchFor(page, "4포켓");
+  await expect(page.getByTestId("product-row")).toHaveCount(1);
+  await expect(page.getByTestId("product-row").first()).toContainText("보관용 카드 바인더");
+  // 상품 이름 일부
+  await searchFor(page, "문라이트");
+  await expect(page.getByTestId("product-row")).toHaveCount(2);
+  // 탭과 함께: 숨김 탭에서는 숨긴 「문라이트 1탄 박스」만
+  await page.getByRole("tab", { name: "숨김" }).click();
+  await expect(page.getByTestId("product-row")).toHaveCount(1);
+  await expect(page.getByTestId("product-row").first()).toContainText("문라이트 1탄 박스");
+  // 없는 이름은 안내하고, 「전체 보기」로 검색까지 지운다
+  await searchFor(page, "없는상품이름");
+  await expect(page.getByText("「없는상품이름 · 숨김」에 해당하는 상품이 없어요")).toBeVisible();
+  await page.getByRole("button", { name: "전체 보기" }).click();
+  await expect(page.getByLabel("상품 검색")).toHaveValue("");
+  await expect(page.getByTestId("product-row").filter({ hasText: "스타라이트 부스터 박스" })).toBeVisible();
+  await shot(page, "SA-011-search");
+});
+
+test("상품 검색어는 50자까지: 입력은 50자에서 멈추고, 바꾼 뒤 50자를 넘으면 길이로 안내한다", async ({ page }) => {
+  await login(page);
+  await page.getByLabel("상품 검색").fill("가".repeat(51));
+  await expect(page.getByLabel("상품 검색")).toHaveValue("가".repeat(50));
+  await page.getByLabel("상품 검색").fill("㈜".repeat(50));
+  await expect(page.getByText("검색어는 50자까지 쓸 수 있어요")).toBeVisible();
+  await page.getByRole("button", { name: "검색 지우기" }).click();
+  await expect(page.getByLabel("상품 검색")).toHaveValue("");
+  await expect(page.getByTestId("product-row").first()).toBeVisible();
 });
