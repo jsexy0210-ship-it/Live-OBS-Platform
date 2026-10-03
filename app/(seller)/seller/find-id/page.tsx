@@ -6,6 +6,7 @@ import IdentityCheck from "../../../../components/seller/IdentityCheck";
 import NewPasswordForm from "../../../../components/seller/NewPasswordForm";
 import { AuthFrame, IdentityUnavailable, useStaffType, withType } from "../../../../components/seller/PartnersAuth";
 import { api, failMessage } from "../../../../components/seller/api";
+import { RETRY_TEXT, stepOutcome } from "../../../../components/seller/stepFailure";
 
 // AU-011 아이디 찾기(정본: docs/IA.md AU-011). 대표자·직원 본인 휴대폰 본인확인 → 맞는 계정의 로그인 이메일을 쇼핑몰 이름과 함께 모두 보여 준다.
 // 하나를 고르면 그 계정만 비밀번호를 바꿀 수 있다(쇼핑몰 주소를 몰라도 됨, AU-003 → AU-004).
@@ -68,15 +69,14 @@ export default function FindIdPage() {
       setStep("accounts");
       return focus("fi-title");
     }
-    if (r.status === 503) return toUnavailable();
-    // 본인확인 결과를 아직 받는 중: 같은 요청으로 다시 누르게 한다
-    if (r.error === "pending") {
-      setVerificationId(id);
-      setPending(true);
-      setNotice({ text: "본인확인 결과를 확인하고 있어요. 잠시 뒤 다시 눌러 주세요" });
-      return focus("pa-notice");
-    }
-    restart({ text: r.error === "recovery_not_allowed" ? "본인확인을 처음부터 다시 해 주세요" : failMessage(r, "확인하지 못했어요. 처음부터 다시 해 주세요") });
+    const out = stepOutcome(r);
+    if (out === "unavailable") return toUnavailable();
+    if (out === "restart") return restart({ text: "본인확인을 처음부터 다시 해 주세요" });
+    // 결과를 아직 받는 중이거나 잠깐의 오류(연결 끊김·서버 오류 등): 본인확인을 버리지 않고 같은 요청으로 다시 누르게 한다
+    setVerificationId(id);
+    setPending(true);
+    setNotice({ text: r.error === "pending" ? "본인확인 결과를 확인하고 있어요. 잠시 뒤 다시 눌러 주세요" : failMessage(r, RETRY_TEXT) });
+    focus("pa-notice");
   };
 
   // 고른 계정의 비밀번호 재설정 권한을 받는다(본인확인은 여기서 소진된다)
@@ -87,10 +87,11 @@ export default function FindIdPage() {
     const r = await api(`${BASE}/reset`, { method: "POST", body: { verificationId, accountType, accountId: picked } });
     setBusy(false);
     if (r.ok) return setStep("password");
-    if (r.status === 503) return toUnavailable();
-    if (r.error === "recovery_not_allowed") return restart({ text: "본인확인을 처음부터 다시 해 주세요" });
-    // 응답을 놓쳤거나(연결 끊김) 잠깐의 서버 오류: 고른 계정을 그대로 두고 다시 누르게 한다(서버는 10분 안의 같은 요청에 권한을 다시 준다)
-    setNotice({ text: failMessage(r, "확인하지 못했어요. 다시 눌러 주세요") });
+    const out = stepOutcome(r);
+    if (out === "unavailable") return toUnavailable();
+    if (out === "restart") return restart({ text: "본인확인을 처음부터 다시 해 주세요" });
+    // 응답을 놓쳤거나(연결 끊김) 잠깐의 오류: 고른 계정을 그대로 두고 다시 누르게 한다(서버는 같은 본인확인의 재요청에 같은 권한을 돌려준다)
+    setNotice({ text: failMessage(r, RETRY_TEXT) });
     focus("pa-notice");
   };
 

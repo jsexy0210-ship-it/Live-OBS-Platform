@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import IdentityCheck from "../../../../components/seller/IdentityCheck";
 import { AuthFrame, IdentityUnavailable, safeNext } from "../../../../components/seller/PartnersAuth";
 import { api, failMessage, type ApiResult, type Me } from "../../../../components/seller/api";
+import { stepOutcome } from "../../../../components/seller/stepFailure";
 
 // AU-012 직원 본인확인으로 계정 연결(정본: docs/IA.md AU-012, 디자인 AU-012). 연결 전 직원이 로그인하면 로그인 화면이 이리로 보낸다.
 // 연결은 직원이 아이디·비밀번호를 스스로 찾을 때만 쓴다. 연결 전이나 건너뛴 뒤에도 로그인·업무는 그대로다(「나중에 할게요」).
@@ -70,10 +71,11 @@ export default function IdentityLinkPage() {
       setView("done");
       return focus("il-title");
     }
-    if (r.status === 503) return setUnavailable(true);
+    const out = stepOutcome(r);
+    if (out === "unavailable") return setUnavailable(true);
     // 응답을 놓쳤거나(연결 끊김) 잠깐의 서버 오류면 저장됐을 수 있다: 본인확인을 버리지 않고 연결 상태를 다시 읽는다.
     // 연결됐으면 완료로, 아니면 같은 본인확인으로 다시 누를 수 있게 둔다(유료 문자 본인확인을 다시 하지 않게)
-    if (r.status === 0 || r.status >= 500) {
+    if (out === "retry") {
       const st = await api<Status>(BASE, { authRedirect: false });
       if (st.ok && st.data.linked) {
         setPending(null);
@@ -85,15 +87,16 @@ export default function IdentityLinkPage() {
       return focus("pa-notice");
     }
     if (isMismatch(r)) return toMismatch();
-    if (r.error === "verification_pending") {
-      setPending(verificationId);
-      setNotice("본인확인 결과를 확인하고 있어요. 잠시 뒤 다시 눌러 주세요");
+    // 서버가 본인확인을 다시 하라고 한 경우만 칸을 비우고 처음부터
+    if (out === "restart") {
+      setPending(null);
+      setIdvKey((k) => k + 1);
+      setNotice(failMessage(r, "본인확인을 처음부터 다시 해 주세요"));
       return focus("pa-notice");
     }
-    // 다시 해야 하는 본인확인: 칸을 비우고 처음부터
-    setPending(null);
-    setIdvKey((k) => k + 1);
-    setNotice(failMessage(r, "연결하지 못했어요. 처음부터 다시 해 주세요"));
+    // 결과를 아직 받는 중이거나 그 밖의 거절: 본인확인을 버리지 않고 안내만 한다
+    setPending(verificationId);
+    setNotice(r.error === "verification_pending" ? "본인확인 결과를 확인하고 있어요. 잠시 뒤 다시 눌러 주세요" : failMessage(r, "연결하지 못했어요. 잠시 뒤 다시 시도해 주세요"));
     focus("pa-notice");
   };
 
@@ -112,7 +115,8 @@ export default function IdentityLinkPage() {
       <button className="btn btn-sm btn-text" type="button" onClick={later}>
         나중에 할게요
       </button>
-      <Link href="/seller/login?type=staff">다른 계정으로 로그인</Link>
+      {/* 상태를 받은 뒤(브라우저)에만 그려지므로 safeNext()로 원래 가려던 곳을 함께 넘긴다 */}
+      <Link href={`/seller/login?type=staff&next=${encodeURIComponent(safeNext())}`}>다른 계정으로 로그인</Link>
     </div>
   );
 

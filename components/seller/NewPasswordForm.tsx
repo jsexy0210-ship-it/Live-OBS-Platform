@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { api, failMessage } from "./api";
+import { stepOutcome } from "./stepFailure";
 
 // AU-004 새 비밀번호 입력. 비밀번호 찾기(AU-003)와 아이디 찾기에서 고른 계정(AU-011) 모두 재설정 권한(쿠키 lo_pwreset)을 받은 뒤 이 칸으로 저장한다.
 // API: POST /api/seller/password-reset/complete { newPassword }. 권한이 지났으면(invalid_grant) onExpired로 처음부터 다시 하게 한다.
 const MIN_PASSWORD_LENGTH = 8; // 서버(lib/server/auth/passwordReset.ts)와 같은 값
 
-// 저장 응답을 놓친 뒤(연결 끊김·서버 오류) 다시 누르면 invalid_grant가 올 수 있다: 권한은 이미 쓰였고 비밀번호가 바뀌었을 수 있으므로,
-// 바로 처음부터(유료 본인확인) 보내지 않고 방금 정한 비밀번호로 로그인해 보게 한다(loginHref)
+// 저장 응답을 놓치면(연결 끊김·서버 오류) 비밀번호가 바뀌었는지 알 수 없다: 그 자리에서 방금 정한 비밀번호로 로그인해 보게 안내하고(loginHref),
+// 같은 칸으로 다시 저장할 수도 있게 둔다. 다시 눌러 invalid_grant가 오면 권한은 이미 쓰인 것이므로 처음부터(유료 본인확인) 보내지 않고 같은 안내만 남긴다
 type Props = { onDone: () => void; onExpired: () => void; loginHref: string };
 
 export default function NewPasswordForm({ onDone, onExpired, loginHref }: Props) {
@@ -20,7 +21,7 @@ export default function NewPasswordForm({ onDone, onExpired, loginHref }: Props)
   const [pw2, setPw2] = useState("");
   const [pwError, setPwError] = useState<string | null>(null);
   const [pw2Error, setPw2Error] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ text: string; maybe?: boolean } | null>(null);
   const [focusTo, setFocusTo] = useState<{ id: string } | null>(null);
   useEffect(() => {
     if (!focusTo) return;
@@ -52,8 +53,10 @@ export default function NewPasswordForm({ onDone, onExpired, loginHref }: Props)
       setMaybeChanged(true);
       return focus("pw-maybe");
     }
-    if (r.status === 0 || r.status >= 500) uncertain.current = true;
-    setNotice(failMessage(r, "바꾸지 못했어요. 잠시 뒤 다시 시도해 주세요"));
+    if (stepOutcome(r) === "retry") {
+      uncertain.current = true;
+      setNotice({ text: "새 비밀번호로 로그인해 보세요. 안 되면 다시 바꿔 주세요", maybe: true });
+    } else setNotice({ text: failMessage(r, "바꾸지 못했어요. 잠시 뒤 다시 시도해 주세요") });
     focus("pw-notice");
   };
 
@@ -78,8 +81,21 @@ export default function NewPasswordForm({ onDone, onExpired, loginHref }: Props)
   return (
     <form className="col" style={{ gap: 14 }} onSubmit={complete} noValidate>
       {notice && (
-        <div id="pw-notice" tabIndex={-1} className="msg msg-neg" role="alert">
-          <span>{notice}</span>
+        <div id="pw-notice" tabIndex={-1} className={`msg ${notice.maybe ? "msg-info" : "msg-neg"}`} role="alert" style={{ display: "block" }}>
+          {notice.maybe ? (
+            <>
+              <span>
+                <b>비밀번호가 바뀌었을 수 있어요.</b> {notice.text}
+              </span>
+              <span className="row" style={{ marginTop: 8 }}>
+                <Link className="btn btn-sm" href={loginHref}>
+                  로그인하기
+                </Link>
+              </span>
+            </>
+          ) : (
+            <span>{notice.text}</span>
+          )}
         </div>
       )}
       <div className="fld">
