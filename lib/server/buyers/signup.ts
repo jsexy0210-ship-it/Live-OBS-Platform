@@ -70,6 +70,7 @@ export type BuyerSignupFailure =
   | "weak_password"
   | "invalid_nickname"
   | "terms_required"
+  | "invalid_marketing_consent" // 마케팅 수신 동의 값이 불리언이 아님
   | "verification_pending"
   | "verification_invalid"
   | "too_many_signup_attempts"
@@ -97,6 +98,8 @@ export async function signupBuyer(
     // 필수 약관 동의(true여야 한다). 생략하면 동의한 것으로 보지 않는다.
     agreedTerms?: boolean;
     agreedPrivacy?: boolean;
+    // 선택 마케팅 수신 동의. true면 가입 시각을 marketingConsentAt에 남긴다. 빠지면 동의 안 함, 불리언이 아니면 거부.
+    agreedMarketing?: unknown;
     // 감사 로그에 남길 요청 정보
     meta?: { ip?: string | null; userAgent?: string | null };
     now?: Date;
@@ -110,6 +113,8 @@ export async function signupBuyer(
   const nickname = cleanText(input.broadcastNickname, MAX_NICKNAME_LENGTH);
   if (!nickname) return { ok: false, reason: "invalid_nickname" };
   if (input.agreedTerms !== true || input.agreedPrivacy !== true) return { ok: false, reason: "terms_required" };
+  if (input.agreedMarketing !== undefined && typeof input.agreedMarketing !== "boolean") return { ok: false, reason: "invalid_marketing_consent" };
+  const agreedMarketing = input.agreedMarketing === true;
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.verificationId)) return { ok: false, reason: "verification_invalid" };
 
   const done = await completeIdentityVerification(db, provider, input.verificationId, { sellerId: input.sellerId, purpose: "BUYER_SIGNUP", ownerToken: input.ownerToken }, now);
@@ -166,6 +171,7 @@ export async function signupBuyer(
           birthDate: v.birthDate!,
           broadcastNickname: nickname,
           gradeId: grade.id,
+          marketingConsentAt: agreedMarketing ? now : null,
           createdAt: now,
         },
       });
@@ -177,7 +183,7 @@ export async function signupBuyer(
       action: "buyer.signup",
       ip: input.meta?.ip ?? null,
       userAgent: input.meta?.userAgent ?? null,
-      after: { agreedTerms: true, agreedPrivacy: true, agreedAt: now.toISOString() },
+      after: { agreedTerms: true, agreedPrivacy: true, agreedMarketing, agreedAt: now.toISOString() },
     });
     return { ok: true, memberId: member.id };
   } catch (e) {
@@ -199,6 +205,7 @@ export const BUYER_SIGNUP_MESSAGES: Record<BuyerSignupFailure | "daily_limit_exc
   weak_password: "비밀번호는 8자 이상으로 정해 주세요",
   invalid_nickname: "방송 닉네임은 20자까지, 쓸 수 있는 글자로 정해 주세요",
   terms_required: "필수 약관에 동의해 주세요",
+  invalid_marketing_consent: "마케팅 정보 수신 동의를 다시 선택해 주세요",
   verification_pending: "인증번호 확인을 먼저 마쳐 주세요",
   verification_invalid: "본인확인을 처음부터 다시 해 주세요",
   too_many_signup_attempts: "가입을 여러 번 시도했어요. 본인확인을 처음부터 다시 해 주세요",
@@ -214,6 +221,7 @@ export const BUYER_SIGNUP_STATUS: Record<BuyerSignupFailure, number> = {
   weak_password: 400,
   invalid_nickname: 400,
   terms_required: 400,
+  invalid_marketing_consent: 400,
   verification_pending: 409,
   verification_invalid: 400,
   too_many_signup_attempts: 429,
