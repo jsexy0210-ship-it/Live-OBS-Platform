@@ -9,8 +9,10 @@
 | Live-OBS-Platform MASTER (2) | `session_018xa8SC5evpEFNVcQBwcN5t` | 요구사항 접수 · 작업 배정 · 독립 검수 · main 병합 · 상태 문서 관리. 2026-10-02 17:21 KST 교체 생성 |
 | (이전) MASTER | `session_01XqBPGTKiEMmRSMB5SfFp3C` | 컨텍스트 50% 도달로 교체. PR #15 병합 후 보관 완료 (2026-10-02 KST) |
 | 디자인 전담 (2) | `session_01DCQ38rPYwPnVCZJbhLgJnc` | 디자인 아티팩트 https://claude.ai/artifact/YYGXZ3u4QvjQpEMUHnN4tS 이어서 작업 (아티팩트 `project/` 파일만 소유). 우선순위: ① 오버레이 9:16·16:9 기본 템플릿 3종 ② 기존 아트보드 A안·화면 문구·도메인·도우미·구매자 문의 반영 ③ 남은 화면. 2026-10-02 18:45 KST MASTER 생성 |
-| 개발 전담 (기반) | `session_01Lhh5mXm1mdLnACzpHDNLUw` | 개발 1단계(화면 제외): 설계 문서 `docs/ARCHITECTURE.md` → 스키마·권한·테넌트 격리·주문대기 도메인·로그인·테스트·CI 테스트 단계. 소유: `prisma/**`, `lib/server/**`, `app/api/**`, `tests/**`, `docs/ARCHITECTURE.md`, `package*.json`, `ci.yml` 테스트 단계. 2026-10-02 21:30 KST MASTER 생성 |
+| 개발 전담 (기반) (2) | `session_01Ud86wDnEPvsi8jPbo4zGCi` | 이전 기반 세션을 이어받음(서버·DB·API·테스트). 소유: `prisma/**`, `lib/server/**`, `app/api/**`, `tests/**`, `docs/ARCHITECTURE.md`, `package*.json`, `ci.yml` 테스트 단계. 2026-10-03 20:18 KST MASTER 생성 |
+| (이전) 개발 전담 (기반) | `session_01Lhh5mXm1mdLnACzpHDNLUw` | 개발 1단계(화면 제외): 설계 문서 `docs/ARCHITECTURE.md` → 스키마·권한·테넌트 격리·주문대기 도메인·로그인·테스트·CI 테스트 단계. 소유: `prisma/**`, `lib/server/**`, `app/api/**`, `tests/**`, `docs/ARCHITECTURE.md`, `package*.json`, `ci.yml` 테스트 단계. 2026-10-02 21:30 KST MASTER 생성. 컨텍스트 70% 초과로 2026-10-03 교체 |
 | 개발 전담 (화면) | `session_01U3TpR6Kgg8zZnxyS48PegW` | 2026-10-03 대표님 결정 「판매자 화면부터 실제로 만들어 눌러 볼 수 있게」. 화면 라우트·components·스타일·dev-seed·e2e만 소유. 서버 API·lib/server·prisma는 개발 전담 (기반) 소유 |
+| 인프라 전담 | `session_016ErhcGpbBooDx8a9sYYUmK` | 이슈 #137 테스트 서버 배포 구성(Docker Compose·Caddy·`/api/health`·`docs/DEPLOY.md`). #145 병합(2026-10-03). 배포 워크플로 파일은 MASTER 소유. 2026-10-03 MASTER 생성 |
 | (이전) 디자인 전담 | `session_011K2Cw69VDhwYpPegzFpXoK` | 작업 기억 72% 도달·수정 지시 미반영으로 교체. 약 130장 제작(아티팩트에 보존). 2026-10-02 18:45 KST 보관 |
 
 전담 세션 태그: `live-obs` + `lo-master` / `lo-design` / `lo-dev` / `lo-dev-ui`. 새 전담 세션은 이 표에 추가하고 `docs/session-prompt.md`를 지시에 넣는다.
@@ -26,7 +28,7 @@
 
 - Next.js 최소 앱 (`app/layout.tsx`, `app/page.tsx`)
 - CI: typecheck + build, self-hosted 배포 워크플로 재유입 검사
-- 배포 워크플로: 없음
+- 배포 워크플로: `.github/workflows/deploy-obs-test.yml`(테스트 서버 obs-test, 수동 실행만, main만, Environment `obs-test`(main만, 승인자 대표님), 상시 self-hosted runner `obs-web-test`(라벨 `obs-kakao`, 서버의 `/home/obs`에 설치·서비스 등록). 2026-10-03 첫 배포 성공: `https://test.on-aircue.com/api/health` → status ok, db ok, version c37492f. 대표님 결정 2026-10-03: 공개 저장소 + 상시 runner, 「Require approval for all external contributors」 필수). 테스트 도메인 `test.on-aircue.com`(Cloudflare DNS 전용). 절차: `docs/DEPLOY.md`
 - GitHub Secrets(대표님 등록, 값은 기록하지 않음): `NICEPAY_CLIENT_KEY`, `NICEPAY_SECRET_KEY`, `SWEETTRACKER_API_KEY`(스마트택배 배송 조회, 연동은 출시 후), `RESEND_MAIL_API`(Resend 메일 발송. 개발·테스트용, 운영 발송은 AWS SES 예정. 하루·월 무료 한도에 가까워지면 미리 알리고 넘으면 MASTER에 보고), `BAROBILL_API_KEY`(바로빌 세금계산서·현금영수증 발행. 연동 전, 요금·판매자 명의 발행 조건 확인 필요), `YOUTUBE_API_KEY`(YouTube Data API v3, 방송·실시간 채팅 조회. 하루 무료 할당량에 가까워지면 미리 알리고, 넘으면 MASTER에 보고)
 - 테스트: 없음
 
@@ -37,8 +39,8 @@
   - 종료된 PR #1~#6: 이전 프로젝트 제목·본문. GitHub에서 PR 삭제 불가.
   - Actions 실행 기록과 빌드 아티팩트 `lifeleft-production-static` (2026-10-06 08:24 KST 자동 만료). 실행 기록 삭제는 Actions 화면에서 가능.
   - Git 커밋 이력: 이력 재작성 금지로 유지.
-- 기존 self-hosted 러너, 저장소 Secrets·Environments: 미확인, 유지. 단 `GEMINI_API_KEY`(Actions Secret)는 2026-10-02 대표님 등록 완료(대표님 보고 기준, 값 미기록). 실서버 사용 시 서버 환경변수 등록은 배포 단계에서 별도 승인.
-- 카카오클라우드 실제 자원(프로젝트·VM·버킷·DNS): 미확인, 변경 없음. 기존 VM에서 이전 사이트가 계속 서비스 중일 수 있음.
+- 기존 self-hosted 러너 `lifeleft-kakao`(오프라인)는 2026-10-03 대표님이 제거함. Environment `obs-test`는 대표님이 만들고 보호 규칙(main만, 승인자 대표님)과 외부 기여자 워크플로 승인 설정까지 마침(2026-10-03). 그 밖의 저장소 Secrets: 아래 값 이름만 기록. 단 `GEMINI_API_KEY`(Actions Secret)는 2026-10-02 대표님 등록 완료(대표님 보고 기준, 값 미기록). 실서버 사용 시 서버 환경변수 등록은 배포 단계에서 별도 승인.
+- 카카오클라우드: 테스트 VM `obs-web-test`와 Cloudflare DNS `test.on-aircue.com`은 대표님 보고로 확인(PROJECT_STATUS 「인프라 방향」). 이전(Leftlife) VM·버킷·보안 그룹과 Object Storage 버킷 상태는 미확인이며, 새 서버가 뜬 것을 확인한 뒤 삭제 여부를 정한다(PROJECT_STATUS).
 
 ## 미완료·블로커
 
@@ -80,7 +82,6 @@
 ## 대표님 조치 대기
 
 - 플랫폼 운영사 정보(대표님 사업자): 배포 때 마스터 콘솔 설정에 입력(대표님 확인). 저장소·문서에는 값을 적지 않음
-- 카카오 테스트 VM: 대기(대표님 지시 2026-10-03)
 - 브랜치 `fix/shipping-refund-note` 삭제 지시(2026-10-03): 이 환경에서 원격 브랜치 삭제가 막혀 GitHub 화면에서 지워야 함
 - 휴대폰 본인확인 대행사 선정·계약(유료): 포트원 V2 + NHN KCP API 방식 우선 검토. 계약 전 대행사에 확인할 것: ① API 방식(자체 화면) 허용·심사 ② PASS 없이 문자만 제공해도 되는지 ③ CI 제공 설정 ④ 건당 요금·최소 이용료·포트원 수수료 ⑤ 계약 전 테스트 채널과 실제 문자·과금 여부 ⑥ 인증번호 유효시간·재전송·실패 제한 ⑦ 문자 발신번호·문구 등록
 - 본인확인 대행사 계약 때 성별·내외국인 구분·이동통신사·접속 기기 종류의 대행사 보관 기간을 확인(수집·이용 동의 서식 `{{본인확인 대행사 보관 기간}}`에 채움)
@@ -88,10 +89,6 @@
 
 ## 다음 작업
 
-1. 카카오클라우드 재사용 확인 (운영자 콘솔 화면 필요, 키는 가림):
-   - 기존 이름이 IAM 프로젝트인지 Object Storage 버킷인지 식별
-   - 프로젝트: 이름 변경 불가 → 유지, 설명만 변경
-   - 버킷: 새 버킷 생성 → 필요한 파일만 복사 → 연결·검증 → 기존 버킷 삭제는 별도 결정 (객체 URL에 버킷명 포함 주의)
-   - 기존 VM의 이전 사이트 종료 여부 결정
+1. 테스트 서버 첫 배포 완료(2026-10-03). 다음: 이전(Leftlife) 자원 삭제 여부 결정(PROJECT_STATUS), 서버 22번 포트 출발지는 대표님 IP가 바뀌면 보안 그룹에서 고침
 2. 디자인 수정 중 (깨짐 수정 → 쇼핑몰 PC판). 화면 구현은 디자인 확정 후 시작한다. 클로드디자인 프롬프트: `docs/DESIGN_PROMPT.md`
 3. 개발 1단계(화면과 무관한 기반)는 디자인과 병행한다 (대표님 결정 2026-10-02 21:15 KST): 설계(`docs/ARCHITECTURE.md`) → 데이터 모델·DB·권한·주문대기 도메인(`docs/REFERENCE_MANGOTCG.md` 7절)·로그인·테스트. 담당: 개발 전담 (기반).

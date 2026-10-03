@@ -197,9 +197,6 @@ export async function signupBuyer(
   if (!nickname) return { ok: false, reason: "invalid_nickname" };
   if (input.agreedMarketing !== undefined && typeof input.agreedMarketing !== "boolean") return { ok: false, reason: "invalid_marketing_consent" };
   const agreedMarketing = input.agreedMarketing === true;
-  // 이 쇼핑몰의 기간이 끝난 재가입 제한 기록·끝난 미가입 본인확인·3개월 지난 요청 IP를 먼저 정리한다(정기 실행 연결 전 파기 경로)
-  await purgeExpiredRejoinBlocks(db, now, input.sellerId);
-  await purgeSignupVerificationsForShop(db, input.sellerId);
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.verificationId)) return { ok: false, reason: "verification_invalid" };
 
   const done = await completeIdentityVerification(db, provider, input.verificationId, { sellerId: input.sellerId, purpose: "BUYER_SIGNUP", ownerToken: input.ownerToken }, now);
@@ -232,6 +229,10 @@ export async function signupBuyer(
   ) {
     return { ok: false, reason: "verification_invalid" };
   }
+  // 이 쇼핑몰의 기간이 끝난 재가입 제한 기록·끝난 미가입 본인확인·3개월 지난 요청 IP를 정리한다(전역 정리는 jobs/scheduler.ts 정기 실행).
+  // 본인확인(시작한 브라우저·완료·기한)이 확인된 요청에서만 돌린다. 비인증 요청으로 정리 쿼리를 반복시키지 못하게 한다.
+  await purgeExpiredRejoinBlocks(db, now, input.sellerId);
+  await purgeSignupVerificationsForShop(db, input.sellerId);
 
   const grade = await db.memberGrade.findFirst({
     where: { sellerId: input.sellerId },

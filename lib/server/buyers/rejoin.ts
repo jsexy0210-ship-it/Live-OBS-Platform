@@ -17,7 +17,14 @@ const DAY_MS = 24 * 3600_000;
 
 export const MEMBER_POLICY_MESSAGES = {
   invalid_member_policy: `재가입 제한 기간은 ${REJOIN_DAYS_MIN}일에서 ${REJOIN_DAYS_MAX}일 사이로 정해 주세요`,
+  rejoin_restriction_unavailable: "회원이 동의를 철회할 수 있는 화면이 준비되면 켤 수 있어요",
 } as const;
+export const MEMBER_POLICY_STATUS = { invalid_member_policy: 400, rejoin_restriction_unavailable: 409 } as const;
+
+// 재가입 제한을 켤 수 있는지(MASTER 결정 2026-10-03, Codex P1). 보관 동의를 철회하는 기능(회원 정보 화면·API)이 생기기 전에는
+// 켤 수 없게 막는다(PUT으로 켜면 409 rejoin_restriction_unavailable, 화면은 스위치 비활성). 철회 기능과 함께 true로 바꾼다.
+// 끄기와 이미 켜진 쇼핑몰의 동작은 그대로다. 테스트만 이 값을 켠다(tests/integration/buyerRejoin.test.ts).
+export const REJOIN_RESTRICTION_CONFIG = { available: false };
 
 // 「재가입 제한 정보 보관 동의」 문서 버전(docs/terms/PRIVACY_CONSENT_TEMPLATE.md 하단). 문구가 바뀌면 올린다.
 export const REJOIN_RETENTION_CONSENT_VERSION = "2026-10-03.v1";
@@ -40,6 +47,7 @@ export async function updateMemberPolicy(db: PrismaClient, ctx: TenantContext, r
   const b = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   const days = b.rejoinRestrictionDays;
   if (typeof b.rejoinRestrictionEnabled !== "boolean") return { ok: false as const, reason: "invalid_member_policy" as const };
+  if (b.rejoinRestrictionEnabled && !REJOIN_RESTRICTION_CONFIG.available) return { ok: false as const, reason: "rejoin_restriction_unavailable" as const };
   if (days !== undefined && (!Number.isInteger(days) || (days as number) < REJOIN_DAYS_MIN || (days as number) > REJOIN_DAYS_MAX)) {
     return { ok: false as const, reason: "invalid_member_policy" as const };
   }
