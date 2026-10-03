@@ -60,7 +60,7 @@ test("무료·고정으로 바꿔도 저장되고, 잘못된 금액은 막는다
   await page.getByRole("radio", { name: "고정" }).check();
   await page.getByLabel("배송비", { exact: true }).fill("-500");
   await save(page);
-  await expect(page.getByText("숫자만 입력해 주세요")).toBeVisible();
+  await expect(page.getByText("1원 이상으로 적어 주세요")).toBeVisible();
   await page.getByLabel("배송비", { exact: true }).fill("200000");
   await expect(page.getByText("100,000원까지 정할 수 있어요")).toBeVisible();
   await shot(page, "SA-061-shipping-error");
