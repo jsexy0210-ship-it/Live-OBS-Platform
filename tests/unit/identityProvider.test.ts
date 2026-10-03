@@ -94,11 +94,17 @@ describe("포트원 휴대폰 본인확인 어댑터(실제 호출 미검증, �
     expect(await down.confirmCode("idv-1", "123456")).toEqual({ ok: false, reason: "provider_error" });
   });
 
-  it("[MASTER 후속] 인증번호 확인: 502 PgProviderError는 wrong_code(틀린 횟수로 셈), 409 이미 확인됨은 성공, 그 밖의 502는 장애", async () => {
-    expect(await new PortOneIdentityProvider(config, async () => json(502, { type: "PgProviderError", pgCode: "x" })).confirmCode("idv-1", "111111")).toEqual({ ok: false, reason: "wrong_code" });
-    expect(await new PortOneIdentityProvider(config, async () => json(409, { type: "IdentityVerificationAlreadyVerifiedError" })).confirmCode("idv-1", "111111")).toEqual({ ok: true });
-    expect(await new PortOneIdentityProvider(config, async () => json(409, { type: "Other" })).confirmCode("idv-1", "111111")).toEqual({ ok: false, reason: "provider_error" });
-    expect(await new PortOneIdentityProvider(config, async () => json(502, { type: "Other" })).confirmCode("idv-1", "111111")).toEqual({ ok: false, reason: "provider_error" });
+  it("[MASTER 후속] 인증번호 확인(포트원 V2 OpenAPI discriminator 값): 502 PG_PROVIDER는 wrong_code(틀린 횟수로 셈), 409 IDENTITY_VERIFICATION_ALREADY_VERIFIED는 성공, 그 밖은 장애", async () => {
+    const confirm = (status: number, body: unknown) => new PortOneIdentityProvider(config, async () => json(status, body)).confirmCode("idv-1", "111111");
+    expect(await confirm(502, { type: "PG_PROVIDER", message: "인증번호 불일치", pgCode: "9999", pgMessage: "OTP mismatch" })).toEqual({ ok: false, reason: "wrong_code" });
+    expect(await confirm(409, { type: "IDENTITY_VERIFICATION_ALREADY_VERIFIED", message: "이미 인증 완료" })).toEqual({ ok: true });
+    expect(await confirm(400, { type: "INVALID_REQUEST", message: "형식 오류" })).toEqual({ ok: false, reason: "wrong_code" });
+    // 스키마 이름(옛 비교 값)은 실제 type이 아니므로 장애로 본다
+    expect(await confirm(502, { type: "PgProviderError" })).toEqual({ ok: false, reason: "provider_error" });
+    expect(await confirm(409, { type: "IdentityVerificationAlreadyVerifiedError" })).toEqual({ ok: false, reason: "provider_error" });
+    for (const [status, type] of [[404, "IDENTITY_VERIFICATION_NOT_FOUND"], [404, "IDENTITY_VERIFICATION_NOT_SENT"], [401, "UNAUTHORIZED"], [403, "FORBIDDEN"]] as const) {
+      expect(await confirm(status, { type, message: "x" })).toEqual({ ok: false, reason: "provider_error" });
+    }
   });
 
   it("인증번호 확인: 400은 wrong_code, 그 밖의 실패는 provider_error", async () => {
