@@ -44,7 +44,7 @@ async function sellerCookie(email: string) {
   return `lo_seller=${r.token}`;
 }
 
-const setPolicy = (sellerId: string, data: { baseFee?: number; freeOverAmount?: number | null; remoteSurcharge?: number }) =>
+const setPolicy = (sellerId: string, data: { baseFee?: number; freeOverAmount?: number | null; remoteSurcharge?: number; freeShipping?: boolean; returnFee?: number }) =>
   db.sellerShippingPolicy.create({ data: { sellerId, ...data } });
 
 describe("배송비 계산", () => {
@@ -232,7 +232,7 @@ describe("즉시 발송 처리", () => {
     await markOrderPaid(db, { sellerId: s.seller.id, orderId: shipped.orderId, paymentMethod: "CARD" });
     expect(await stock()).toBe(8);
     await shipOrder(db, s.ctx, shipped.orderId, { courier: "CJ", trackingNumber: "123456789012" });
-    expect(await refundOrder(db, s.ctx, shipped.orderId, { reason: "구매자 요청", expectedLiveVersion: await lv() })).toMatchObject({
+    expect(await refundOrder(db, s.ctx, shipped.orderId, { reason: "구매자 요청", expectedLiveVersion: await lv(), fault: "BUYER" })).toMatchObject({
       ok: true,
       value: { restockedItemIds: [] },
     });
@@ -320,7 +320,7 @@ describe("판매자 배송비 설정 API", () => {
     const s = await shop();
     const cookie = await sellerCookie(s.owner.email);
     const got = await (await getPolicyRoute(new Request("http://localhost:3000/api/seller/shipping-policy", { headers: { ...H, cookie } }))).json();
-    expect(got.policy).toEqual({ freeShipping: false, baseFee: 3000, freeOverAmount: null, remoteSurcharge: 3000, remoteZipRanges: [[63000, 63644], [40200, 40240]] });
+    expect(got.policy).toEqual({ freeShipping: false, baseFee: 3000, freeOverAmount: null, remoteSurcharge: 3000, remoteZipRanges: [[63000, 63644], [40200, 40240]], returnFee: 3000, exchangeFee: 6000 });
     expect(got.couriers).toMatchObject({ CJ: "CJ대한통운" });
     const res = await put(cookie, { baseFee: 0, freeOverAmount: null, remoteSurcharge: 5000, remoteZipRanges: [[63000, 63644]] });
     expect(res.status).toBe(200);
@@ -342,6 +342,10 @@ describe("판매자 배송비 설정 API", () => {
       { ...ok, remoteZipRanges: [[63644, 63000]] },
       { ...ok, remoteZipRanges: [[63000]] },
       { ...ok, remoteZipRanges: "63000" },
+      { ...ok, returnFee: -1 },
+      { ...ok, returnFee: 100_001 },
+      { ...ok, exchangeFee: 1.5 },
+      { ...ok, exchangeFee: "6000" },
     ]) {
       const res = await put(cookie, body);
       expect(res.status).toBe(400);
@@ -350,5 +354,113 @@ describe("판매자 배송비 설정 API", () => {
     expect(await db.sellerShippingPolicy.count()).toBe(0);
     const staff = await createSellerUser(s.seller.id, { permissions: ["ORDER_SHIPPING"] });
     expect((await put(await sellerCookie(staff.email), ok)).status).toBe(403);
+  });
+});
+
+describe("반품·교환 배송비(환불액)", () => {
+  // 상품 5,000원 × 2 = 10,000원 + 배송비. 발송한 뒤 환불한다.
+  async function shippedOrder(s: Awaited<ReturnType<typeof shop>>, quantity = 2) {
+    const r = await s.order(quantity);
+    await markOrderPaid(db, { sellerId: s.seller.id, orderId: r.orderId, paymentMethod: "CARD" });
+    await shipOrder(db, s.ctx, r.orderId, { courier: "CJ", trackingNumber: "123456789012" });
+    return r;
+  }
+  const lv = async (sellerId: string) => (await db.seller.findUniqueOrThrow({ where: { id: sellerId } })).liveVersion;
+  const refund = async (s: Awaited<ReturnType<typeof shop>>, orderId: string, fault?: "BUYER" | "SELLER") =>
+    refundOrder(db, s.ctx, orderId, { reason: "요청", expectedLiveVersion: await lv(s.seller.id), ...(fault ? { fault } : {}) });
+
+  it("발송 후 구매자 사정이면 처음 배송비는 돌려주지 않고 반품 배송비(편도)를 뺀다", async () => {
+    const s = await shop();
+    const o = await shippedOrder(s);
+    expect(o).toMatchObject({ totalAmount: 13000, shippingFee: 3000 });
+    expect(await refund(s, o.orderId, "BUYER")).toMatchObject({ ok: true, value: { refundAmount: 7000, refundFault: "BUYER", returnFeeDeducted: 3000 } });
+    expect(await db.order.findUniqueOrThrow({ where: { id: o.orderId } })).toMatchObject({ refundAmount: 7000, refundFault: "BUYER", returnFeeDeducted: 3000 });
+    expect((await db.auditLog.findFirstOrThrow({ where: { action: "order.refund", targetId: o.orderId } })).after).toMatchObject({ refundAmount: 7000, refundFault: "BUYER", returnFeeDeducted: 3000 });
+  });
+
+  it("처음 배송비가 0원(무료 배송)이었으면 반품 배송비를 왕복(편도 × 2)으로 뺀다", async () => {
+    const s = await shop();
+    await setPolicy(s.seller.id, { freeShipping: true, returnFee: 2500 });
+    const o = await shippedOrder(s);
+    expect(o.shippingFee).toBe(0);
+    expect(await refund(s, o.orderId, "BUYER")).toMatchObject({ ok: true, value: { refundAmount: 5000, returnFeeDeducted: 5000 } });
+  });
+
+  it("반품 배송비가 상품 금액보다 크면 0원까지만 뺀다(음수 환불 없음)", async () => {
+    const s = await shop();
+    await setPolicy(s.seller.id, { freeShipping: true, returnFee: 4000 });
+    const o = await shippedOrder(s, 1);
+    expect(await refund(s, o.orderId, "BUYER")).toMatchObject({ ok: true, value: { refundAmount: 0, returnFeeDeducted: 5000 } });
+  });
+
+  it("발송 후 판매자 사정(불량·오배송)이면 처음 배송비까지 모두 돌려주고 반품 배송비를 받지 않는다", async () => {
+    const s = await shop();
+    const o = await shippedOrder(s);
+    expect(await refund(s, o.orderId, "SELLER")).toMatchObject({ ok: true, value: { refundAmount: 13000, refundFault: "SELLER", returnFeeDeducted: 0 } });
+  });
+
+  it("발송 전 환불은 사유 주체 없이 결제 금액을 모두 돌려준다", async () => {
+    const s = await shop();
+    const o = await s.order(2);
+    await markOrderPaid(db, { sellerId: s.seller.id, orderId: o.orderId, paymentMethod: "CARD" });
+    expect(await refund(s, o.orderId)).toMatchObject({ ok: true, value: { refundAmount: 13000, refundFault: null, returnFeeDeducted: 0 } });
+  });
+
+  it("발송한 주문은 사유 주체(fault)가 없으면 400 fault_required이고 아무것도 바뀌지 않는다", async () => {
+    const s = await shop();
+    const o = await shippedOrder(s);
+    expect(await refund(s, o.orderId)).toEqual({ ok: false, reason: "fault_required" });
+    expect(await db.order.findUniqueOrThrow({ where: { id: o.orderId } })).toMatchObject({ status: "PAID", refundAmount: null, refundedAt: null });
+  });
+
+  it("주문 뒤 반품 배송비를 바꿔도 그 주문은 주문할 때 금액으로 뺀다(스냅숏)", async () => {
+    const s = await shop();
+    const o = await shippedOrder(s);
+    await setPolicy(s.seller.id, { returnFee: 9000 });
+    expect(await refund(s, o.orderId, "BUYER")).toMatchObject({ ok: true, value: { refundAmount: 7000, returnFeeDeducted: 3000 } });
+  });
+
+  // 적립금을 쓴 주문: totalAmount는 적립금을 뺀 실제 결제액이다(상품 10,000 + 배송비 3,000 − 적립금 2,000 = 11,000).
+  // 지금은 주문에서 적립금을 쓸 수 없어 DB 값을 직접 넣는다.
+  const useReward = (orderId: string) => db.order.update({ where: { id: orderId }, data: { rewardUsedAmount: 2000, totalAmount: 11000 } });
+
+  it("적립금을 쓴 주문을 발송 전에 환불하면 실제 결제액을 모두 돌려준다(적립금을 두 번 빼지 않음)", async () => {
+    const s = await shop();
+    const o = await s.order(2);
+    await useReward(o.orderId);
+    await markOrderPaid(db, { sellerId: s.seller.id, orderId: o.orderId, paymentMethod: "CARD" });
+    expect(await refund(s, o.orderId)).toMatchObject({ ok: true, value: { refundAmount: 11000, returnFeeDeducted: 0 } });
+  });
+
+  it("적립금을 쓴 주문을 발송 후 구매자 사정으로 반품하면 상품 금액 − 반품 배송비(결제액 안에서)를 돌려준다", async () => {
+    const s = await shop();
+    const o = await s.order(2);
+    await useReward(o.orderId);
+    await markOrderPaid(db, { sellerId: s.seller.id, orderId: o.orderId, paymentMethod: "CARD" });
+    await shipOrder(db, s.ctx, o.orderId, { courier: "CJ", trackingNumber: "123456789012" });
+    expect(await refund(s, o.orderId, "BUYER")).toMatchObject({ ok: true, value: { refundAmount: 7000, returnFeeDeducted: 3000 } });
+  });
+
+  it("반품·교환 배송비를 저장하고 그대로 돌려준다", async () => {
+    const s = await shop();
+    const cookie = await sellerCookie(s.owner.email);
+    const res = await putPolicyRoute(
+      new Request("http://localhost:3000/api/seller/shipping-policy", {
+        method: "PUT",
+        headers: { ...H, cookie },
+        body: JSON.stringify({ baseFee: 3000, remoteSurcharge: 3000, remoteZipRanges: [], returnFee: 4000, exchangeFee: 0 }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect((await res.json()).policy).toMatchObject({ returnFee: 4000, exchangeFee: 0 });
+    expect(await db.sellerShippingPolicy.findUniqueOrThrow({ where: { sellerId: s.seller.id } })).toMatchObject({ returnFee: 4000, exchangeFee: 0 });
+    // 이 설정 뒤 주문은 새 반품 배송비로 기록된다
+    const o = await s.order(1);
+    expect(await db.order.findUniqueOrThrow({ where: { id: o.orderId } })).toMatchObject({ returnFeeSnapshot: 4000 });
+    // 반품·교환 배송비 칸이 없는 화면이 저장해도 지금 값을 그대로 둔다(기본값으로 돌아가지 않음)
+    const again = await putPolicyRoute(
+      new Request("http://localhost:3000/api/seller/shipping-policy", { method: "PUT", headers: { ...H, cookie }, body: JSON.stringify({ baseFee: 2500, remoteSurcharge: 3000, remoteZipRanges: [] }) }),
+    );
+    expect((await again.json()).policy).toMatchObject({ baseFee: 2500, returnFee: 4000, exchangeFee: 0 });
   });
 });

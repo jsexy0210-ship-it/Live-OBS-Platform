@@ -6,7 +6,8 @@ import { orderErrorBody } from "../../../../lib/server/orders/messages";
 import { readShippingPolicy, updateShippingPolicy } from "../../../../lib/server/orders/ship";
 import { COURIERS } from "../../../../lib/server/orders/shipping";
 
-// 판매자 배송비 설정(SHOP_SETTINGS). 본문: { baseFee, freeOverAmount(null이면 무료 배송 없음), remoteSurcharge, remoteZipRanges: [[시작, 끝]] }.
+// 판매자 배송비 설정(SHOP_SETTINGS). 본문: { baseFee, freeOverAmount(null이면 무료 배송 없음), remoteSurcharge, remoteZipRanges: [[시작, 끝]], returnFee(반품 배송비 편도), exchangeFee(교환 배송비 왕복) }.
+// returnFee·exchangeFee는 빼고 보내면 지금 값을 그대로 둔다.
 export async function GET(req: Request) {
   try {
     const ctx = await requireSeller(prisma, sessionToken(req, "seller"));
