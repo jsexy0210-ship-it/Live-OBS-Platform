@@ -25,7 +25,7 @@
   - Leftlife VM·버킷·보안그룹은 새 서버가 뜨는 것을 확인한 뒤 삭제한다. 삭제 전에 남길 파일이 있는지 대표님이 확인한다.
   - 오늘 IP 이름으로 잘못 만든 DNS 영역(`210.109.15.68`)은 삭제한다. DNS 영역은 도메인을 산 뒤 그 이름으로 만든다.
 
-- 테스트 VM 이름·IP: 대표님 보고로 확인(위). 서버 안 설정(Docker·runner·.env)은 대표님 조치 대기(HANDOFF)
+- 테스트 VM 이름·IP: 대표님 보고로 확인(위). 서버 안 설정(Docker·runner·.env)과 첫 배포는 2026-10-03 대표님이 마침
 - Object Storage 버킷: 존재 여부·이름 미확인
 - DNS `test.on-aircue.com`(Cloudflare, DNS only)은 대표님이 등록함. 서버 안 설정·runner 등록·첫 배포는 2026-10-03 대표님이 마침
 
