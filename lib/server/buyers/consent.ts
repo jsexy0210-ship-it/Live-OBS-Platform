@@ -9,6 +9,7 @@ export const SIGNUP_CONSENT_VERSIONS = {
   terms: "2026-10-03.v1", // 이용약관(BUYER_TERMS_TEMPLATE)
   privacy: "2026-10-03.v1", // 개인정보 수집·이용(PRIVACY_CONSENT_TEMPLATE)
   rejoinRetention: REJOIN_RETENTION_CONSENT_VERSION, // 재가입 제한 정보 보관(같은 문서 하단, 재가입 제한을 켠 쇼핑몰만)
+  marketing: "2026-10-03.v1", // 마케팅 정보 수신(MARKETING_CONSENT_TEMPLATE, 선택)
 } as const;
 
 export type SignupConsent = {
@@ -16,12 +17,14 @@ export type SignupConsent = {
   privacyVersion: string;
   // 재가입 제한을 켠 쇼핑몰에서만: 동의한 문서 버전과 그때 안내한 기간(일)
   rejoinRetention: { version: string; days: number } | null;
+  // 마케팅 정보 수신(선택)에 동의한 경우만: 동의한 문서 버전
+  marketing: { version: string } | null;
   agreedAt: string;
 };
 
-export type ConsentFailure = "terms_required" | "invalid_rejoin_consent" | "rejoin_policy_changed" | "consent_outdated";
+export type ConsentFailure = "terms_required" | "invalid_rejoin_consent" | "invalid_marketing_consent" | "rejoin_policy_changed" | "consent_outdated";
 
-// 본문: { agreedTerms: true, agreedPrivacy: true, termsVersion, privacyVersion, agreedRejoinRetention?, rejoinRetentionVersion?, rejoinRestrictionDaysShown? }.
+// 본문: { agreedTerms: true, agreedPrivacy: true, termsVersion, privacyVersion, agreedRejoinRetention?, rejoinRetentionVersion?, rejoinRestrictionDaysShown?, agreedMarketing?, marketingVersion? }.
 // rejoinDays: 지금 재가입 제한 기간(꺼져 있으면 null). 꺼진 쇼핑몰은 보관 동의 값을 보지 않는다.
 // 재가입 제한 정보 보관 동의는 선택(대표님 결정 2026-10-03): 빠지거나 false면 동의 안 함(가입은 되고 기간 스냅숏 없음), 불리언이 아니면 거부.
 // 동의한 경우만 화면이 보여 준 문서 버전·기간이 지금과 같아야 한다(다르면 동의한 내용을 확인할 수 없어 시작하지 않는다).
@@ -33,12 +36,18 @@ export function parseSignupConsent(raw: unknown, rejoinDays: number | null, now:
   const rejoin = rejoinDays !== null && b.agreedRejoinRetention === true;
   if (rejoin && b.rejoinRetentionVersion !== SIGNUP_CONSENT_VERSIONS.rejoinRetention) return { ok: false, reason: "consent_outdated" };
   if (rejoin && b.rejoinRestrictionDaysShown !== rejoinDays) return { ok: false, reason: "rejoin_policy_changed" };
+  // 마케팅 정보 수신 동의(선택)도 본인확인 전에 받는다(PRODUCT_SCOPE 「동의 순서」). 빠지거나 false면 동의 안 함, 불리언이 아니면 거부,
+  // 동의한 경우 화면이 보여 준 문서 버전이 지금과 같아야 한다.
+  if (b.agreedMarketing !== undefined && typeof b.agreedMarketing !== "boolean") return { ok: false, reason: "invalid_marketing_consent" };
+  const marketing = b.agreedMarketing === true;
+  if (marketing && b.marketingVersion !== SIGNUP_CONSENT_VERSIONS.marketing) return { ok: false, reason: "consent_outdated" };
   return {
     ok: true,
     consent: {
       termsVersion: SIGNUP_CONSENT_VERSIONS.terms,
       privacyVersion: SIGNUP_CONSENT_VERSIONS.privacy,
       rejoinRetention: rejoin && rejoinDays !== null ? { version: SIGNUP_CONSENT_VERSIONS.rejoinRetention, days: rejoinDays } : null,
+      marketing: marketing ? { version: SIGNUP_CONSENT_VERSIONS.marketing } : null,
       agreedAt: now.toISOString(),
     },
   };
@@ -51,5 +60,7 @@ export function readSignupConsent(v: Prisma.JsonValue | null | undefined): Signu
   if (typeof c.termsVersion !== "string" || typeof c.privacyVersion !== "string" || typeof c.agreedAt !== "string") return null;
   const r = c.rejoinRetention as Record<string, unknown> | null | undefined;
   const rejoinRetention = r && typeof r.version === "string" && Number.isInteger(r.days) ? { version: r.version, days: r.days as number } : null;
-  return { termsVersion: c.termsVersion, privacyVersion: c.privacyVersion, rejoinRetention, agreedAt: c.agreedAt };
+  const m = c.marketing as Record<string, unknown> | null | undefined;
+  const marketing = m && typeof m.version === "string" ? { version: m.version } : null;
+  return { termsVersion: c.termsVersion, privacyVersion: c.privacyVersion, rejoinRetention, marketing, agreedAt: c.agreedAt };
 }
