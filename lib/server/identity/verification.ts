@@ -108,7 +108,7 @@ export async function reissueOwnerToken(db: Db, id: string): Promise<string | nu
 
 // 첫 인증번호 보내기. 공급자 장애·타임아웃이면 이 요청은 실패로 끝낸다(처음부터 다시).
 export async function sendFirstIdentityCode(
-  db: PrismaClient,
+  db: Db,
   provider: IdentityProvider,
   v: IdentityVerification,
   person: IdentityPerson,

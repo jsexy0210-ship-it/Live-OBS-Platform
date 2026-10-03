@@ -5,7 +5,7 @@ import { POST as signupRoute } from "../../app/api/shop/[slug]/signup/route";
 import { POST as confirmRoute } from "../../app/api/shop/[slug]/signup/verification/confirm/route";
 import { POST as resendRoute } from "../../app/api/shop/[slug]/signup/verification/resend/route";
 import { POST as startRoute } from "../../app/api/shop/[slug]/signup/verification/route";
-import { BUYER_SIGNUP_MESSAGES, BUYER_SIGNUP_STATUS, BUYER_SIGNUP_VERIFY_DAILY_LIMIT_PER_IP, MAX_SIGNUP_ATTEMPTS_PER_VERIFICATION, signupBuyer } from "../../lib/server/buyers/signup";
+import { BUYER_SIGNUP_MESSAGES, BUYER_SIGNUP_STATUS, BUYER_SIGNUP_VERIFY_DAILY_LIMIT_PER_IP, MAX_SIGNUP_ATTEMPTS_PER_VERIFICATION, signupBuyer, startBuyerSignupVerification } from "../../lib/server/buyers/signup";
 import { prisma } from "../../lib/server/db";
 import { startSellerPasswordReset } from "../../lib/server/auth/passwordReset";
 import { FakeIdentityProvider } from "../../lib/server/identity/provider";
@@ -404,6 +404,59 @@ describe("signupBuyer는 completeIdentityVerification을 거친다", () => {
     expect(await again.json()).toEqual({ verificationId });
     expect(cookieOf(again, "lo_bidv")).toBe(cookie);
     expect((await confirmRoute(post(`${s.base}/verification/confirm`, { verificationId, code: "000000" }, cookie), ctx(s.slug))).status).toBe(200);
+  });
+
+  it("첫 요청이 문자를 보내는 사이 같은 attemptKey로 다시 오면 발송이 끝날 때까지 기다렸다 같은 기록을 받고 문자는 한 번이다", async () => {
+    const s = await shop();
+    const key = crypto.randomUUID();
+    const fake = identityProvider() as FakeIdentityProvider;
+    let entered!: () => void;
+    const sending = new Promise<void>((r) => (entered = r));
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let sends = 0;
+    const slow = new Proxy(fake, {
+      get(t, p, r) {
+        if (p !== "sendCode") return Reflect.get(t, p, r);
+        return async (...args: Parameters<FakeIdentityProvider["sendCode"]>) => {
+          sends++;
+          entered();
+          await gate;
+          return t.sendCode(...args);
+        };
+      },
+    });
+    const first = startBuyerSignupVerification(db, slow, s.seller.id, IDV_INPUT, { attemptKey: key });
+    await sending;
+    const second = startBuyerSignupVerification(db, slow, s.seller.id, IDV_INPUT, { attemptKey: key });
+    // 재요청이 키 잠금에서 기다리는지 DB에서 확인한다
+    for (let i = 0; ; i++) {
+      const [{ n }] = await db.$queryRaw<{ n: bigint }[]>`SELECT count(*)::bigint AS n FROM pg_locks WHERE locktype = 'advisory' AND NOT granted`;
+      if (n > 0n) break;
+      if (i > 200) throw new Error("재요청이 키 잠금에서 기다리지 않았어요");
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    release();
+    const [a, b] = await Promise.all([first, second]);
+    expect(a.ok && b.ok).toBe(true);
+    if (!a.ok || !b.ok) return;
+    expect(b.verificationId).toBe(a.verificationId);
+    expect(sends).toBe(1);
+    expect((await db.identityVerification.findUniqueOrThrow({ where: { id: a.verificationId } })).sendCount).toBe(1);
+  });
+
+  it("첫 문자 발송이 실패하면 기록을 남기지 않고, 같은 attemptKey로 다시 시작하면 새로 만들어 한 번 보낸다", async () => {
+    const s = await shop();
+    const key = crypto.randomUUID();
+    const fake = identityProvider() as FakeIdentityProvider;
+    fake.failNext("error");
+    expect(await startBuyerSignupVerification(db, fake, s.seller.id, IDV_INPUT, { attemptKey: key })).toEqual({ ok: false, reason: "provider_error" });
+    expect(await db.identityVerification.count({ where: { sellerId: s.seller.id } })).toBe(0);
+    const again = await startBuyerSignupVerification(db, fake, s.seller.id, IDV_INPUT, { attemptKey: key });
+    expect(again.ok).toBe(true);
+    const rows = await db.identityVerification.findMany({ where: { sellerId: s.seller.id } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ status: "PENDING", sendCount: 1 });
   });
 
   it("인증번호 확인에 성공하면 저장된 본인확인 결과(NFKC 정규화한 이름·휴대폰·생년월일)를 돌려준다", async () => {

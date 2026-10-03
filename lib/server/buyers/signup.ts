@@ -34,6 +34,9 @@ export async function shopOpen(db: PrismaClient, sellerId: string) {
   return !!seller && seller.status === "ACTIVE" && (await sellerAccessFor(db, sellerId)) !== "expired";
 }
 
+// 첫 문자 발송 실패. 시작 트랜잭션을 롤백시키는 데만 쓴다.
+class FirstSendFailed extends Error {}
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // 구매자 가입 1단계: 휴대폰 본인확인 시작(같은 IP·같은 쇼핑몰 하루 10회까지). 첫 인증번호를 보내고 ownerToken을 돌려준다.
@@ -89,16 +92,23 @@ export async function startBuyerSignupVerification(
         AND "requestIp" IS NOT DISTINCT FROM ${ip}
         AND "createdAt" >= (date_trunc('day', now() AT TIME ZONE 'Asia/Seoul') AT TIME ZONE 'Asia/Seoul')`;
     if (Number(count) >= BUYER_SIGNUP_VERIFY_DAILY_LIMIT_PER_IP) return { kind: "limited" };
-    return { kind: "created", started: await startIdentityVerification(tx, provider, { purpose: "BUYER_SIGNUP", sellerId, person, requestIp: ip, attemptKeyHash: keyHash, now: meta.now }) };
+    const created = await startIdentityVerification(tx, provider, { purpose: "BUYER_SIGNUP", sellerId, person, requestIp: ip, attemptKeyHash: keyHash, now: meta.now });
+    // 첫 문자도 키 잠금을 잡은 이 트랜잭션 안에서 보낸다. 같은 키 재요청은 발송이 끝날 때까지 기다렸다 같은 기록을 쓰고,
+    // 발송이 실패하면 기록째 롤백해 같은 키로 다시 시작할 수 있게 한다.
+    const sent = await sendFirstIdentityCode(tx, provider, created.verification, person, meta.now);
+    if (!sent.ok) throw new FirstSendFailed();
+    return { kind: "created", started: created };
+  }, { timeout: 15_000 }).catch((e: unknown) => {
+    if (e instanceof FirstSendFailed) return null;
+    throw e;
   });
+  if (!started) return { ok: false as const, reason: "provider_error" as const };
   if (started.kind === "reused") return { ok: true as const, verificationId: started.verificationId, ownerToken: started.ownerToken };
   if (started.kind === "refused") return { ok: false as const, reason: started.reason };
   if (started.kind === "limited") {
     await writeAudit(db, { actorType: "SYSTEM", sellerId, action: "buyer.signup.verify_limited", reason: "daily_limit_exceeded", ip, userAgent: meta.userAgent });
     return { ok: false as const, reason: "daily_limit_exceeded" as const };
   }
-  const sent = await sendFirstIdentityCode(db, provider, started.started.verification, person, meta.now);
-  if (!sent.ok) return { ok: false as const, reason: sent.reason };
   return { ok: true as const, verificationId: started.started.verification.id, ownerToken: started.started.ownerToken };
 }
 
