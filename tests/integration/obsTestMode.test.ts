@@ -8,9 +8,20 @@ import { POST as cardRoute } from "../../app/api/seller/subscription/card/route"
 import { POST as signupRoute } from "../../app/api/shop/[slug]/signup/route";
 import { POST as confirmRoute } from "../../app/api/shop/[slug]/signup/verification/confirm/route";
 import { POST as startRoute } from "../../app/api/shop/[slug]/signup/verification/route";
+import { POST as findAccountsRoute } from "../../app/api/seller/find-id/accounts/route";
+import { POST as findConfirmRoute } from "../../app/api/seller/find-id/confirm/route";
+import { POST as findResetRoute } from "../../app/api/seller/find-id/reset/route";
+import { POST as findStartRoute } from "../../app/api/seller/find-id/start/route";
+import { POST as linkConfirmRoute } from "../../app/api/seller/me/identity/confirm/route";
+import { POST as linkRoute } from "../../app/api/seller/me/identity/link/route";
+import { POST as linkStartRoute } from "../../app/api/seller/me/identity/start/route";
+import { POST as staffCreateRoute } from "../../app/api/seller/staff/route";
+import { POST as applyRoute } from "../../app/api/seller-signup/apply/route";
+import { POST as sellerConfirmRoute } from "../../app/api/seller-signup/verification/confirm/route";
+import { POST as sellerStartRoute } from "../../app/api/seller-signup/verification/route";
 import { loginSeller } from "../../lib/server/auth/login";
 import { prisma } from "../../lib/server/db";
-import { IDV_INPUT, createSeller, db, resetDb } from "./helpers";
+import { IDV_INPUT, SIGNUP_CONSENT, createSeller, db, resetDb } from "./helpers";
 
 beforeEach(async () => {
   vi.unstubAllEnvs();
@@ -98,7 +109,8 @@ describe("테스트 서버 모드: 운영 빌드에서 본인확인 우회", () 
     expect((await resetStartRoute(post("/api/seller/password-reset/start", { email: "owner@example.com", shopSlug: seller.slug, person: IDV_INPUT }))).status).toBe(503);
 
     vi.stubEnv("OBS_TEST_MODE", "1");
-    const start = await startRoute(post(`${base}/verification`, IDV_INPUT), ctx(seller.slug));
+    // 구매자 가입 본인확인 시작은 필수 동의를 함께 받는다(#147)
+    const start = await startRoute(post(`${base}/verification`, { ...IDV_INPUT, ...SIGNUP_CONSENT }), ctx(seller.slug));
     expect(start.status).toBe(200);
     const cookie = cookieOf(start, "lo_bidv");
     const { verificationId } = await start.json();
@@ -139,6 +151,76 @@ describe("테스트 서버 모드: 시험 대표자 계정의 비밀번호 찾�
     const grant = cookieOf(v, "lo_pwreset");
     expect((await resetCompleteRoute(post("/api/seller/password-reset/complete", { newPassword: "new-pass-5678" }, grant))).status).toBe(200);
     expect((await loginSeller(db, { email: "test", password: "new-pass-5678" }, {})).ok).toBe(true);
+  });
+});
+
+describe("테스트 서버 모드: 바뀐 본인확인 흐름(아이디 찾기·직원 연결·가입 재개)", () => {
+  const testServer = () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("IDENTITY_HASH_KEY", HASH_KEY);
+    vi.stubEnv("OBS_TEST_MODE", "1");
+    for (const k of ["PORTONE_API_SECRET", "PORTONE_STORE_ID", "PORTONE_IDENTITY_CHANNEL_KEY"]) vi.stubEnv(k, "");
+  };
+  const REP = { ...IDV_INPUT, name: "테스트대표", birth7: "9001011" };
+
+  it("아이디 찾기: 시험 인물로 확인하면 시험 대표자 계정이 나오고, 재설정 권한(응답을 잃은 재시도도 같은 권한)으로 새 비밀번호가 된다", async () => {
+    expect(seed({ OBS_TEST_MODE: "1", ...SEED }).code).toBe(0);
+    testServer();
+    const s = await findStartRoute(post("/api/seller/find-id/start", REP));
+    expect(s.status).toBe(200);
+    const flow = cookieOf(s, "lo_fidv");
+    const { verificationId } = await s.json();
+    expect((await findConfirmRoute(post("/api/seller/find-id/confirm", { verificationId, code: "000000" }, flow))).status).toBe(200);
+    const { accounts } = await (await findAccountsRoute(post("/api/seller/find-id/accounts", { verificationId, accountType: "owner" }, flow))).json();
+    expect(accounts.map((a: { email: string; shopSlug: string }) => [a.email, a.shopSlug])).toEqual([["test", "test-shop"]]);
+    const reset = () => findResetRoute(post("/api/seller/find-id/reset", { verificationId, accountType: "owner", accountId: accounts[0].accountId }, flow));
+    const first = await reset();
+    const again = await reset();
+    expect([first.status, again.status]).toEqual([200, 200]);
+    expect(cookieOf(again, "lo_pwreset")).toBe(cookieOf(first, "lo_pwreset"));
+    expect((await resetCompleteRoute(post("/api/seller/password-reset/complete", { newPassword: "found-pass-5678" }, cookieOf(first, "lo_pwreset")))).status).toBe(200);
+    expect((await loginSeller(db, { email: "test", password: "found-pass-5678" }, {})).ok).toBe(true);
+  });
+
+  it("직원 연결: 시험 대표자가 만든 직원이 인증번호 000000으로 본인확인을 연결한다", async () => {
+    expect(seed({ OBS_TEST_MODE: "1", ...SEED }).code).toBe(0);
+    testServer();
+    const owner = await loginSeller(db, { email: "test", password: "1234" }, {});
+    if (!owner.ok) throw new Error(owner.reason);
+    const created = await staffCreateRoute(post("/api/seller/staff", { email: "staff@example.com", name: "시험직원", password: "staff-pass-1234", permissions: [], phone: IDV_INPUT.phone }, `lo_seller=${owner.token}`));
+    expect(created.status).toBe(201);
+    const staff = await loginSeller(db, { email: "staff@example.com", password: "staff-pass-1234" }, {});
+    if (!staff.ok) throw new Error(staff.reason);
+    const session = `lo_seller=${staff.token}`;
+    const s = await linkStartRoute(post("/api/seller/me/identity/start", { ...IDV_INPUT, name: "시험직원" }, session));
+    expect(s.status).toBe(200);
+    const flow = cookieOf(s, "lo_lidv");
+    const { verificationId } = await s.json();
+    expect((await linkConfirmRoute(post("/api/seller/me/identity/confirm", { verificationId, code: "000000" }, flow))).status).toBe(200);
+    expect((await linkRoute(post("/api/seller/me/identity/link", { verificationId }, `${session}; ${flow}`))).status).toBe(200);
+    expect((await db.sellerUser.findFirstOrThrow({ where: { email: "staff@example.com" } })).identityCiHash).not.toBeNull();
+  });
+
+  it("파트너스 가입: 인증번호 000000으로 신청하고, 응답을 잃은 뒤 본인확인 유효 시간이 지나 다시 보내도 같은 신청(resumed)을 받는다", async () => {
+    testServer();
+    const person = { ...IDV_INPUT, name: "가입대표", birth7: "8505051" };
+    const s = await sellerStartRoute(post("/api/seller-signup/verification", { ...person, attemptKey: "0f1e2d3c-4b5a-4968-8776-5a4b3c2d1e0f" }));
+    expect(s.status).toBe(200);
+    const flow = cookieOf(s, "lo_sidv");
+    const { verificationId } = await s.json();
+    expect((await sellerConfirmRoute(post("/api/seller-signup/verification/confirm", { verificationId, code: "000000" }, flow))).status).toBe(200);
+    const body = {
+      verificationId, email: "partner@example.com", password: "partner-pass-1", shopName: "가입 쇼핑몰", slug: "join-shop",
+      businessNumber: "124-81-00998", companyName: "가입 상사", openedOn: "20200101", mailOrderNumber: "제2025-부산해운대-00077호",
+    };
+    const first = await applyRoute(post("/api/seller-signup/apply", body, flow));
+    expect(first.status).toBe(200);
+    expect((await first.json()).resumed).toBe(false);
+    await db.identityVerification.update({ where: { id: verificationId }, data: { verifiedAt: new Date(Date.now() - 15 * 60_000), expiresAt: new Date(Date.now() - 60_000) } });
+    const late = await applyRoute(post("/api/seller-signup/apply", body, flow));
+    expect(late.status).toBe(200);
+    expect((await late.json()).resumed).toBe(true);
+    expect(await db.seller.count({ where: { slug: "join-shop" } })).toBe(1);
   });
 });
 
