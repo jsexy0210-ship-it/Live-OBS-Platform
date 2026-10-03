@@ -155,6 +155,17 @@ sudo -u obs nano /opt/obs/.env
 `DATABASE_URL`과 `TRUSTED_PROXY_HOPS`(=1)는 compose가 만들어 넣어요. `.env`에 적지 않아요.
 `.env`를 바꾼 뒤에는 재배포(또는 `up -d`)해야 반영돼요.
 
+**`POSTGRES_USER`·`POSTGRES_PASSWORD`·`POSTGRES_DB`는 첫 배포 때 DB를 만들 때만 쓰여요.** 그 뒤에 `.env` 값만 바꾸면 DB 안의 계정은 그대로라서 앱과 마이그레이션이 접속에 실패해요. 비밀번호를 바꿀 때는 DB 안의 비밀번호를 먼저 바꾸고 `.env`를 맞춰요(아래 「서버 명령 준비」를 먼저 실행).
+
+```bash
+$C exec obs-web-db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+# psql 안에서: \password <POSTGRES_USER 값>   ← 새 비밀번호를 두 번 입력(화면·기록에 남지 않음), 끝나면 \q
+nano /opt/obs/.env      # POSTGRES_PASSWORD를 같은 새 값으로
+$C up -d --wait         # 같은 버전 그대로, 앱·마이그레이션이 새 비밀번호로 접속
+```
+
+계정 이름·DB 이름은 바꾸지 않아요(바꾸려면 백업 → 새 DB로 복구가 필요해요).
+
 ### 5. runner 등록
 
 1. GitHub 저장소 → Settings → Actions → Runners → New self-hosted runner → Linux x64. 화면의 다운로드·`config.sh` 명령을 그대로 써요. **토큰은 화면에서 복사해 서버에서만 입력해요.**
@@ -182,6 +193,9 @@ GitHub Secrets·Variables는 이 방식에서 필요 없어요(비밀값은 서�
 
 ```bash
 cd /opt/obs/src && C="docker compose -p obs-web -f deploy/docker-compose.yml --env-file /opt/obs/.env"
+# 지금 떠 있는 앱 이미지의 커밋 SHA. 이 값이 있어야 `$C up`이 새로 빌드하지 않고 같은 이미지를 다시 써요.
+export APP_VERSION=$(docker ps -a --filter label=com.docker.compose.project=obs-web --filter label=com.docker.compose.service=obs-web-app --format '{{.Image}}' | head -1 | cut -d: -f2)
+echo "현재 버전: ${APP_VERSION:-없음}"
 ```
 
 ## 수동 배포(서버에서 직접, 워크플로를 쓸 수 없을 때)
