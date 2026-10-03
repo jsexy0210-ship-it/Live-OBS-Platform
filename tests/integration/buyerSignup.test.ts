@@ -418,4 +418,48 @@ describe("signupBuyer는 completeIdentityVerification을 거친다", () => {
     expect(await db.buyerMember.count({ where: { sellerId: s.seller.id } })).toBe(1);
     expect((await db.identityVerification.findUniqueOrThrow({ where: { id: v.verificationId } })).useAttemptCount).toBe(1);
   });
+  it("시도 횟수 4에서 같은 요청 두 개가 겹치고 이긴 쪽이 회원 생성 직전에 멈춰 있어도, 진 쪽은 기다렸다가 같은 회원으로 201", async () => {
+    const provider = new FakeIdentityProvider();
+    const { seller } = await createSeller();
+    const { verification, ownerToken } = await startIdv(provider, { purpose: "BUYER_SIGNUP", sellerId: seller.id });
+    expect((await confirmIdv(provider, verification, ownerToken)).ok).toBe(true);
+    await db.identityVerification.update({ where: { id: verification.id }, data: { useAttemptCount: MAX_SIGNUP_ATTEMPTS_PER_VERIFICATION - 1 } });
+    const input = { sellerId: seller.id, verificationId: verification.id, ownerToken, loginId: "buyer01@example.com", password: "pw-123456", broadcastNickname: "닉", agreedTerms: true, agreedPrivacy: true };
+    let release!: (v: unknown) => void;
+    const gate = new Promise((r) => (release = r));
+    // 이긴 쪽: 트랜잭션 안에서 회원을 만들기 직전에 멈춘다
+    const paused = new Proxy(db, {
+      get(t, p) {
+        const v = Reflect.get(t, p);
+        if (p === "$transaction") {
+          return (fn: (tx: object) => unknown, o?: unknown) =>
+            t.$transaction(
+              (tx) =>
+                fn(
+                  new Proxy(tx, {
+                    get(x, k, r) {
+                      const m = Reflect.get(x, k, r);
+                      if (k !== "buyerMember") return m;
+                      return new Proxy(m, { get: (d, f) => (f === "create" ? async (a: never) => (await gate, d.create(a)) : Reflect.get(d, f)) });
+                    },
+                  }),
+                ) as Promise<unknown>,
+              o as never,
+            );
+        }
+        return typeof v === "function" ? v.bind(t) : v;
+      },
+    }) as PrismaClient;
+    const winner = signupBuyer(paused, provider, input);
+    await new Promise((r) => setTimeout(r, 400));
+    const loser = signupBuyer(db, provider, input);
+    await new Promise((r) => setTimeout(r, 500));
+    release(null);
+    const [a, b] = await Promise.all([winner, loser]);
+    expect(a).toMatchObject({ ok: true, resumed: false });
+    expect(b).toMatchObject({ ok: true, resumed: true });
+    if (a.ok && b.ok) expect(b.memberId).toBe(a.memberId);
+    expect(await db.buyerMember.count({ where: { sellerId: seller.id } })).toBe(1);
+    expect((await db.identityVerification.findUniqueOrThrow({ where: { id: verification.id } })).useAttemptCount).toBe(MAX_SIGNUP_ATTEMPTS_PER_VERIFICATION);
+  });
 });
