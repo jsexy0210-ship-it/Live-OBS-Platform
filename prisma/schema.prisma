@@ -207,10 +207,15 @@ model PasswordResetGrant {
   expiresAt    DateTime  @db.Timestamptz(3)
   usedAt       DateTime? @db.Timestamptz(3)
   createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  // 아이디 찾기로 준 권한: 발급에 쓴 본인확인과 토큰을 다시 만드는 무작위 값(토큰 = 서버 비밀키 HMAC(nonce), 원문은 저장하지 않음).
+  // 응답을 잃은 재시도에 같은 토큰을 다시 돌려준다(auth/accountRecovery.ts).
+  verificationId String?   @db.Uuid
+  nonce          String?
 
   seller     Seller     @relation(fields: [sellerId], references: [id])
   sellerUser SellerUser @relation(fields: [sellerId, sellerUserId], references: [sellerId, id])
 
+  @@index([verificationId])
   @@index([sellerId, sellerUserId])
 }
 
