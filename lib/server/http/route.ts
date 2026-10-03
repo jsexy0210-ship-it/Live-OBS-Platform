@@ -90,7 +90,8 @@ export function mutation<A extends unknown[]>(handler: (req: Request, ...args: A
       assertSameOrigin(req);
       return await handler(req, ...args);
     } catch (e) {
-      return errorResponse(e);
+      // 다른 출처 403 등 오류 응답도 캐시하지 않는다
+      return noStore(errorResponse(e));
     }
   };
 }
