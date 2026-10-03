@@ -500,6 +500,9 @@ export async function refundOrder(
     // 발송했거나 개봉한 품목이 있으면 환불액이 사유 주체(구매자·판매자 사정)에 따라 달라지므로 꼭 받는다
     if ((shippedBeforeRefund || openedItemCount > 0) && !opts.fault) throw new Rejected("fault_required");
     const refundFault = opts.fault ?? null;
+    // 발송 전 주문에 개봉 품목이 있으면 구매자 사정 환불을 막는다. 개봉 품목 값을 안 돌려주면서 상품도 안 보내게 되기 때문
+    // (부분 환불 구조가 생길 때까지 임시, MASTER 결정 2026-10-03). 판매자 사정은 전액 환불.
+    if (!shippedBeforeRefund && openedItemCount > 0 && refundFault === "BUYER") throw new Rejected("opened_items_unshipped");
     const returnFee = order.returnFeeSnapshot ?? (await getShippingPolicy(tx, ctx.sellerId)).returnFee;
     const { refundAmount, returnFeeDeducted } = computeRefund({
       items: order.items.map((i) => ({ unitPrice: i.unitPrice, quantity: i.quantity, opened: isOpened(order.queueItems.find((x) => x.orderItemId === i.id)) })),

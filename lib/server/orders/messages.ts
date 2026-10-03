@@ -45,6 +45,10 @@ export const ORDER_ERROR_MESSAGES = {
   invalid_stock_adjust: "바꿀 수량(0이 아닌 정수)과 사유(100자 이내)를 확인해 주세요",
   insufficient_stock: "재고가 모자라서 뺄 수 없어요",
   stock_too_large: "재고는 21억 개까지 넣을 수 있어요",
+  // 환불
+  fault_required: "구매자 사정인지 판매자 사정인지 골라 주세요",
+  opened_items_present: "개봉한 상품이 있어요. 확인한 뒤 다시 환불해 주세요",
+  opened_items_unshipped: "개봉한 상품이 있어서 지금은 환불할 수 없어요. 개봉한 상품을 보낸 뒤 나머지를 처리해 주세요",
 } as const;
 
 // 구매자 주문 화면 안내 문구(해요체)

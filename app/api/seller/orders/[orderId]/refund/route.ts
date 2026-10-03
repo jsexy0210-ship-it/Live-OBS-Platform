@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { requireSeller } from "../../../../../../lib/server/authz/guards";
 import { prisma } from "../../../../../../lib/server/db";
 import { mutation, queueRejectionStatus, readJson, sessionToken } from "../../../../../../lib/server/http/route";
+import { orderErrorBody } from "../../../../../../lib/server/orders/messages";
 import { refundOrder } from "../../../../../../lib/server/queue/service";
+
+// 화면에 바로 보여 줄 안내 문구가 있는 환불 거부 사유
+type RefundMessageCode = "fault_required" | "opened_items_present" | "opened_items_unshipped";
+const REFUND_MESSAGE_CODES = new Set<string>(["fault_required", "opened_items_present", "opened_items_unshipped"] satisfies RefundMessageCode[]);
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -23,6 +28,9 @@ export const POST = mutation(async (req: Request, { params }: { params: Promise<
     confirmOpened: body.confirmOpened === true,
     fault: body.fault ?? undefined,
   });
-  if (!result.ok) return NextResponse.json({ error: result.reason }, { status: queueRejectionStatus(result.reason) });
+  if (!result.ok) {
+    const status = queueRejectionStatus(result.reason);
+    return NextResponse.json(REFUND_MESSAGE_CODES.has(result.reason) ? orderErrorBody(result.reason as RefundMessageCode) : { error: result.reason }, { status });
+  }
   return NextResponse.json({ ...result.value, version: result.version });
 });

@@ -1,4 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { ORDER_ERROR_MESSAGES } from "../../lib/server/orders/messages";
+import { shipOrder } from "../../lib/server/orders/ship";
 import { applyQueueAction, cancelPendingOrder, markOrderPaid, refundOrder, startBroadcast } from "../../lib/server/queue/service";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { POST as cancelRoute } from "../../app/api/seller/orders/[orderId]/cancel/route";
@@ -41,6 +43,13 @@ async function setup() {
     return { ...p, queueItemIds: r.value.queueItemIds, shortage: r.value.stockShortage };
   }
   return { seller, grade, ctx, buyer, owner, pendingOrder, paid };
+}
+
+// 발송 처리(배송지를 넣고 송장 등록)
+async function ship(ctx: TenantContext, orderId: string) {
+  await db.orderShippingAddress.create({ data: { sellerId: ctx.sellerId, orderId, recipientName: "김구매", phone: "01012345678", zipCode: "06236", address1: "주소 1" } });
+  const r = await shipOrder(db, ctx, orderId, { courier: "CJ", trackingNumber: "123456789012" });
+  if (!r.ok) throw new Error(r.reason);
 }
 
 const stockOf = async (id: string) => (await db.productOption.findUniqueOrThrow({ where: { id } })).stock;
@@ -87,7 +96,7 @@ describe("환불: 개봉 전 품목만 재고 복구, 연결된 대기·개봉 �
     await applyQueueAction(db, s.ctx, queueItemIds[0], "start");
     await applyQueueAction(db, s.ctx, queueItemIds[0], "complete");
     expect(
-      await refundOrder(db, s.ctx, order.id, { reason: "요청", expectedLiveVersion: await lv(s.ctx.sellerId), confirmOpened: true, fault: "BUYER" }),
+      await refundOrder(db, s.ctx, order.id, { reason: "요청", expectedLiveVersion: await lv(s.ctx.sellerId), confirmOpened: true, fault: "SELLER" }),
     ).toMatchObject({ ok: true, value: { restockedItemIds: [], cancelledQueueItemIds: [], openedItemCount: 1 } });
     expect(await queueStatus(queueItemIds[0])).toBe("DONE");
     const audit = await db.auditLog.findFirstOrThrow({ where: { action: "order.refund", targetId: order.id } });
@@ -105,9 +114,25 @@ describe("환불: 개봉 전 품목만 재고 복구, 연결된 대기·개봉 �
     if (!r.ok) throw new Error(r.reason);
     const [first] = r.value.queueItemIds;
     await applyQueueAction(db, s.ctx, first, "start", { expectedVersion: await v(first) });
+    // 발송 후 구매자 사정(반품 배송비 0원으로 두고 적립금 상한만 본다)
+    await db.sellerShippingPolicy.create({ data: { sellerId: s.seller.id, returnFee: 0 } });
+    await ship(s.ctx, p.order.id);
     const res = await refundOrder(db, s.ctx, p.order.id, { reason: "요청", expectedLiveVersion: await lv(s.ctx.sellerId), confirmOpened: true, fault: "BUYER" });
     // 개봉하지 않은 품목 5,000원이지만 돈으로는 실제 결제액 4,000원까지만 돌려준다
     expect(res).toMatchObject({ ok: true, value: { refundAmount: 4000, openedItemCount: 1 } });
+  });
+
+  it("발송 전에 개봉한 품목이 있으면 구매자 사정 환불은 409(opened_items_unshipped)이고 아무것도 바뀌지 않는다, 판매자 사정은 전액", async () => {
+    const s = await setup();
+    await startBroadcast(db, s.ctx);
+    const { order, options, queueItemIds } = await s.paid([[10, 1], [10, 1]]);
+    await applyQueueAction(db, s.ctx, queueItemIds[0], "start");
+    const opts = { reason: "단순 변심", confirmOpened: true };
+    expect(await refundOrder(db, s.ctx, order.id, { ...opts, expectedLiveVersion: await lv(s.ctx.sellerId), fault: "BUYER" })).toEqual({ ok: false, reason: "opened_items_unshipped" });
+    expect(await db.order.findUniqueOrThrow({ where: { id: order.id } })).toMatchObject({ status: "PAID", refundAmount: null });
+    expect(await queueStatus(queueItemIds[0])).toBe("OPENING");
+    expect(await stockOf(options[1].id)).toBe(9);
+    expect(await refundOrder(db, s.ctx, order.id, { ...opts, expectedLiveVersion: await lv(s.ctx.sellerId), fault: "SELLER" })).toMatchObject({ ok: true, value: { refundAmount: 10000, refundFault: "SELLER" } });
   });
 
   it("개봉 전에 취소된 항목은 재고를 되돌리고, 개봉을 시작한 뒤 취소된 항목은 되돌리지 않는다", async () => {
@@ -120,10 +145,10 @@ describe("환불: 개봉 전 품목만 재고 복구, 연결된 대기·개봉 �
     await applyQueueAction(db, s.ctx, queueItemIds[0], "cancel", { reason: "개봉 전 취소" });
     await applyQueueAction(db, s.ctx, queueItemIds[1], "start");
     await applyQueueAction(db, s.ctx, queueItemIds[1], "cancel", { reason: "개봉 중 취소" });
-    const r = await refundOrder(db, s.ctx, order.id, { reason: "요청", expectedLiveVersion: await lv(s.ctx.sellerId), confirmOpened: true, fault: "BUYER" });
+    const r = await refundOrder(db, s.ctx, order.id, { reason: "요청", expectedLiveVersion: await lv(s.ctx.sellerId), confirmOpened: true, fault: "SELLER" });
     expect(r.ok && r.value.restockedItemIds.length).toBe(1);
-    // 구매자 사정이면 개봉을 시작한 품목(5,000원)은 환불액에서 빠진다
-    expect(r.ok && r.value.refundAmount).toBe(5000);
+    // 판매자 사정이면 개봉을 시작한 품목도 돌려준다
+    expect(r.ok && r.value.refundAmount).toBe(10000);
     expect(await stockOf(options[0].id)).toBe(10);
     expect(await stockOf(options[1].id)).toBe(9);
   });
@@ -302,17 +327,21 @@ describe("HTTP: 환불·취소 API", () => {
     expect((await call(refundRoute, order.id, "refund", { reason: "요청" })).status).toBe(400);
     const noConfirm = await call(refundRoute, order.id, "refund", { reason: "요청", expectedVersion: await lv(s.seller.id) });
     expect(noConfirm.status).toBe(409);
-    expect(await noConfirm.json()).toEqual({ error: "opened_items_present" });
+    expect(await noConfirm.json()).toEqual({ error: "opened_items_present", message: ORDER_ERROR_MESSAGES.opened_items_present });
     // 개봉한 품목이 있으면 사유 주체(fault)도 꼭 보낸다. 잘못된 값은 400.
     const noFault = await call(refundRoute, order.id, "refund", { reason: "요청", expectedVersion: await lv(s.seller.id), confirmOpened: true });
     expect(noFault.status).toBe(400);
-    expect(await noFault.json()).toEqual({ error: "fault_required" });
+    expect(await noFault.json()).toEqual({ error: "fault_required", message: ORDER_ERROR_MESSAGES.fault_required });
     expect((await call(refundRoute, order.id, "refund", { reason: "요청", expectedVersion: await lv(s.seller.id), confirmOpened: true, fault: "buyer" })).status).toBe(400);
     expect((await db.order.findUniqueOrThrow({ where: { id: order.id } })).status).toBe("PAID");
-    const ok = await call(refundRoute, order.id, "refund", { reason: "요청", expectedVersion: await lv(s.seller.id), confirmOpened: true, fault: "BUYER" });
+    // 발송 전에 개봉한 품목이 있으면 구매자 사정 환불은 막는다(안내 문구 포함)
+    const buyer = await call(refundRoute, order.id, "refund", { reason: "요청", expectedVersion: await lv(s.seller.id), confirmOpened: true, fault: "BUYER" });
+    expect(buyer.status).toBe(409);
+    expect(await buyer.json()).toEqual({ error: "opened_items_unshipped", message: ORDER_ERROR_MESSAGES.opened_items_unshipped });
+    expect((await db.order.findUniqueOrThrow({ where: { id: order.id } })).status).toBe("PAID");
+    const ok = await call(refundRoute, order.id, "refund", { reason: "요청", expectedVersion: await lv(s.seller.id), confirmOpened: true, fault: "SELLER" });
     expect(ok.status).toBe(200);
-    // 구매자 사정이면 개봉한 상품은 돌려주지 않는다(발송 전이라 반품 배송비는 없음)
-    expect(await ok.json()).toMatchObject({ refundAmount: 0, refundFault: "BUYER", returnFeeDeducted: 0 });
+    expect(await ok.json()).toMatchObject({ refundAmount: 5000, refundFault: "SELLER", returnFeeDeducted: 0 });
 
     const pending = await s.pendingOrder([[10, 1]]);
     expect((await call(cancelRoute, pending.order.id, "cancel", { reason: "x" })).status).toBe(400);
