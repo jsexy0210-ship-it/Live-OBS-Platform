@@ -35,8 +35,21 @@ export function identityStepRoute(step: "resend" | "confirm", purpose: IdentityV
       }
     }
     const owner = { sellerId: v.sellerId, purpose, ownerToken: readCookie(req, cookieName) };
-    const r = step === "resend" ? await resendIdentityCode(prisma, provider, id, owner) : await confirmIdentityCode(prisma, provider, id, owner, body.code);
+    if (step === "resend") {
+      const r = await resendIdentityCode(prisma, provider, id, owner);
+      if (!r.ok) return identityFailure(r.reason);
+      return NextResponse.json({ ok: true }, { headers: { "cache-control": "no-store" } });
+    }
+    const r = await confirmIdentityCode(prisma, provider, id, owner, body.code);
     if (!r.ok) return identityFailure(r.reason);
+    // 구매자 가입 확인 성공이면 저장된 본인확인 결과를 돌려준다(시작한 브라우저에만 가는 응답). 화면은 이 값을 본인확인 결과로 보여 준다.
+    if (purpose === "BUYER_SIGNUP") {
+      const { name, phone, birthDate } = r.verification;
+      return NextResponse.json(
+        { ok: true, identity: { name, phone, birthDate: birthDate ? birthDate.toISOString().slice(0, 10) : null } },
+        { headers: { "cache-control": "no-store" } },
+      );
+    }
     return NextResponse.json({ ok: true }, { headers: { "cache-control": "no-store" } });
   });
 }

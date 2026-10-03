@@ -1,6 +1,6 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
-import { hashPassword } from "../auth/password";
+import { hashPassword, verifyPassword } from "../auth/password";
 import { MAX_EMAIL_LENGTH, normalizeEmail } from "../auth/login";
 import { MIN_PASSWORD_LENGTH } from "../auth/passwordReset";
 import { sellerAccessFor } from "../billing/subscription";
@@ -81,7 +81,8 @@ export type BuyerSignupFailure =
   | "nickname_taken"
   | "shop_unavailable";
 
-export type BuyerSignupResult = { ok: true; memberId: string } | { ok: false; reason: BuyerSignupFailure };
+// resumed: 응답이 끊겨 같은 요청을 다시 보낸 경우(새로 만들지 않고 이미 만든 회원을 돌려줌)
+export type BuyerSignupResult = { ok: true; memberId: string; broadcastNickname: string; resumed: boolean } | { ok: false; reason: BuyerSignupFailure };
 
 // 구매자 회원가입. 휴대폰 본인확인(같은 쇼핑몰, 같은 공급자, 완료, 사용 기한·30분 안, 시작한 브라우저의 ownerToken,
 // 아직 안 쓴 건)이 있어야 하고, 같은 쇼핑몰에 같은 CI로 가입한 회원이 있으면 거부한다. 이름·휴대폰·생년월일은 인증 결과를 쓴다.
@@ -122,8 +123,18 @@ export async function signupBuyer(
   const done = await completeIdentityVerification(db, provider, input.verificationId, { sellerId: input.sellerId, purpose: "BUYER_SIGNUP", ownerToken: input.ownerToken }, now);
   if (!done.ok) return { ok: false, reason: done.reason === "pending" ? "verification_pending" : "verification_invalid" };
   const v = done.verification;
+  // 응답 유실 뒤 다시 보낸 요청: 이 본인확인으로 이미 만든 회원(subjectId)이고 아이디·비밀번호가 같으면 그 회원을 돌려준다.
+  // 시작한 브라우저(ownerToken)만 여기까지 온다. 시도 횟수에 넣지 않고, 아니면 지금처럼 verification_invalid.
+  if (v.consumedAt) {
+    const made = v.subjectId
+      ? await db.buyerMember.findFirst({ where: { id: v.subjectId, sellerId: input.sellerId, status: "ACTIVE", deletedAt: null } })
+      : null;
+    if (made && made.loginId === loginId && (await verifyPassword(made.passwordHash, input.password))) {
+      return { ok: true, memberId: made.id, broadcastNickname: made.broadcastNickname, resumed: true };
+    }
+    return { ok: false, reason: "verification_invalid" };
+  }
   if (
-    v.consumedAt ||
     !v.ciHash ||
     !v.verifiedAt ||
     !v.name ||
@@ -161,7 +172,7 @@ export async function signupBuyer(
       // 같은 본인인증으로 두 번 가입하지 못하게 먼저 소진 처리한다.
       const used = await tx.identityVerification.updateMany({ where: { id: v.id, consumedAt: null }, data: { consumedAt: now } });
       if (used.count !== 1) throw new VerificationUsed();
-      return tx.buyerMember.create({
+      const created = await tx.buyerMember.create({
         data: {
           sellerId: input.sellerId,
           loginId,
@@ -177,6 +188,9 @@ export async function signupBuyer(
           createdAt: now,
         },
       });
+      // 이 본인확인으로 만든 회원을 남긴다(응답이 끊겨 다시 보낸 요청을 알아보는 데 쓴다)
+      await tx.identityVerification.update({ where: { id: v.id }, data: { subjectId: created.id } });
+      return created;
     });
     await writeAudit(db, {
       actorType: "BUYER",
@@ -187,7 +201,7 @@ export async function signupBuyer(
       userAgent: input.meta?.userAgent ?? null,
       after: { agreedTerms: true, agreedPrivacy: true, agreedMarketing, agreedAt: now.toISOString() },
     });
-    return { ok: true, memberId: member.id };
+    return { ok: true, memberId: member.id, broadcastNickname: member.broadcastNickname, resumed: false };
   } catch (e) {
     if (e instanceof VerificationUsed) return { ok: false, reason: "verification_invalid" };
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {

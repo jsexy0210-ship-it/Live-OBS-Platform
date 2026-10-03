@@ -33,7 +33,7 @@ export const POST = mutation(async (req: Request, { params }: { params: Promise<
     meta: requestMeta(req),
   });
   if (!r.ok) return NextResponse.json({ error: r.reason, message: BUYER_SIGNUP_MESSAGES[r.reason] }, { status: BUYER_SIGNUP_STATUS[r.reason], headers: NO_STORE });
-  const res = NextResponse.json({ ok: true }, { status: 201, headers: NO_STORE });
+  const res = NextResponse.json({ ok: true, broadcastNickname: r.broadcastNickname }, { status: 201, headers: NO_STORE });
   clearFlowCookie(res, BUYER_SIGNUP_IDV_COOKIE, buyerSignupPath(slug));
   // 가입한 아이디·비밀번호로 바로 로그인한다(로그인 실패 감사 등 기존 규칙 그대로)
   const login = await loginBuyer(prisma, { sellerId: seller.id, loginId: raw(body.loginId), password: str(body.password, 400) }, requestMeta(req));

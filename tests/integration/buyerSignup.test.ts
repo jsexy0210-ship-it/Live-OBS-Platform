@@ -348,4 +348,44 @@ describe("signupBuyer는 completeIdentityVerification을 거친다", () => {
     expect(await buyerSignupIdentityLimitReached(counting, s.seller.id)).toBe(true);
     expect(counts).toBe(1);
   });
+  it("인증번호 확인에 성공하면 저장된 본인확인 결과(NFKC 정규화한 이름·휴대폰·생년월일)를 돌려준다", async () => {
+    const s = await shop();
+    const st = await startRoute(post(`${s.base}/verification`, { ...IDV_INPUT, name: " Ｋｉｍ구매 ", phone: "010-9999-1234" }), ctx(s.slug));
+    const cookie = cookieOf(st, "lo_bidv");
+    const { verificationId } = await st.json();
+    const c = await confirmRoute(post(`${s.base}/verification/confirm`, { verificationId, code: "000000" }, cookie), ctx(s.slug));
+    expect(c.status).toBe(200);
+    expect(await c.json()).toEqual({ ok: true, identity: { name: "Kim구매", phone: "01099991234", birthDate: "1995-05-05" } });
+  });
+
+  it("가입 응답이 끊겨 같은 요청을 다시 보내면 같은 회원으로 201·세션을 다시 주고, 다른 비밀번호·아이디·쿠키 없음은 거부한다", async () => {
+    const s = await shop();
+    const v = await s.verified();
+    const first = await s.signup(v);
+    expect(first.status).toBe(201);
+    expect(await first.json()).toEqual({ ok: true, broadcastNickname: "카드왕" });
+    const member = await db.buyerMember.findFirstOrThrow({ where: { sellerId: s.seller.id } });
+    const attempts = (await db.identityVerification.findUniqueOrThrow({ where: { id: v.verificationId } })).useAttemptCount;
+    // 같은 요청을 다시 보내면(대소문자만 다른 아이디 포함) 같은 회원으로 201과 세션
+    const again = await s.signup(v, { loginId: "Buyer01@Example.com" });
+    expect(again.status).toBe(201);
+    expect(await again.json()).toEqual({ ok: true, broadcastNickname: "카드왕" });
+    expect(cookieOf(again, "lo_buyer")).toMatch(/^lo_buyer=.+/);
+    expect(await db.buyerMember.count({ where: { sellerId: s.seller.id } })).toBe(1);
+    expect((await db.identityVerification.findUniqueOrThrow({ where: { id: v.verificationId } })).subjectId).toBe(member.id);
+    // 다른 비밀번호·다른 아이디·쿠키 없음은 지금처럼 verification_invalid
+    for (const [body, cookie] of [
+      [{ password: "other-pass-1" }, v.cookie],
+      [{ loginId: "buyer02@example.com" }, v.cookie],
+      [{}, undefined],
+    ] as const) {
+      const r = await s.signup({ verificationId: v.verificationId, cookie }, body);
+      expect(r.status, JSON.stringify(body)).toBe(400);
+      expect((await r.json()).error).toBe("verification_invalid");
+      expect(cookieOf(r, "lo_buyer")).toBe("");
+    }
+    // 재전송은 시도 횟수에 넣지 않는다
+    expect((await db.identityVerification.findUniqueOrThrow({ where: { id: v.verificationId } })).useAttemptCount).toBe(attempts);
+    expect(await db.buyerMember.count({ where: { sellerId: s.seller.id } })).toBe(1);
+  });
 });
