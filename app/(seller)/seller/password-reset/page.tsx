@@ -24,6 +24,8 @@ export default function PasswordResetPage() {
   const [notice, setNotice] = useState<{ title?: string; text: string } | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // 인증번호를 보낸 뒤에는 그 요청에 쓴 이메일·쇼핑몰 주소를 바꿀 수 없다(「정보 다시 입력」으로 풀린다)
+  const [codeSent, setCodeSent] = useState(false);
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
   const [pwError, setPwError] = useState<string | null>(null);
@@ -155,7 +157,7 @@ export default function PasswordResetPage() {
                   </div>
                   <div className="fld">
                     <label htmlFor="pr-email">이메일</label>
-                    <input id="pr-email" className="inp" type="email" autoComplete="username" value={email} disabled={busy} onChange={(e) => setEmail(e.target.value)} />
+                    <input id="pr-email" className="inp" type="email" autoComplete="username" value={email} disabled={busy || codeSent} onChange={(e) => setEmail(e.target.value)} />
                   </div>
                   <div className="fld">
                     <label htmlFor="pr-shop">쇼핑몰 주소</label>
@@ -166,7 +168,7 @@ export default function PasswordResetPage() {
                       spellCheck={false}
                       placeholder="예: byulbit"
                       value={shopSlug}
-                      disabled={busy}
+                      disabled={busy || codeSent}
                       onChange={(e) => setShopSlug(e.target.value.toLowerCase())}
                     />
                     <span className="help">가입할 때 정한 쇼핑몰 주소예요</span>
@@ -178,6 +180,7 @@ export default function PasswordResetPage() {
                     blocked={!findReady || busy}
                     start={(person) => api<{ verificationId: string }>(`${BASE}/start`, { method: "POST", body: { email: email.trim(), shopSlug: shopSlug.trim(), person } })}
                     onUnavailable={toUnavailable}
+                    onSentChange={setCodeSent}
                     onVerified={(id) => void verify(id)}
                   />
                 </>

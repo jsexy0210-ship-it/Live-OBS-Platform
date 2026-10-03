@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import IdentityCheck, { IdentityDone } from "../../../../components/seller/IdentityCheck";
+import IdentityCheck, { IdentityDone, kstToday } from "../../../../components/seller/IdentityCheck";
 import { AuthFrame, IdentityUnavailable, Steps } from "../../../../components/seller/PartnersAuth";
 import { api, failMessage } from "../../../../components/seller/api";
 
@@ -35,7 +35,8 @@ const validDate = (d: string) => {
   if (!/^\d{8}$/.test(d)) return false;
   const [y, m, day] = [Number(d.slice(0, 4)), Number(d.slice(4, 6)), Number(d.slice(6))];
   const dt = new Date(Date.UTC(y, m - 1, day));
-  return y >= 1900 && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === day && dt.getTime() <= Date.now();
+  // 미래 날짜는 한국 달력 기준으로 거른다(오늘은 된다)
+  return y >= 1900 && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === day && d <= kstToday();
 };
 
 export default function PartnersSignupPage() {

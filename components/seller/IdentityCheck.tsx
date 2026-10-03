@@ -16,7 +16,8 @@ const CARRIERS: { value: Carrier; label: string }[] = [
   { value: "LGU_MVNO", label: "알뜰폰 (LG U+망)" },
 ];
 
-export type IdentityPerson = { name: string; phone: string; birth7: string; carrier: Carrier };
+// device: 본인확인 대행사에 보내는 기기 구분(PC는 768px 이상, 구매자 가입과 같은 기준)
+export type IdentityPerson = { name: string; phone: string; birth7: string; carrier: Carrier; device: "PC" | "MOBILE" };
 type Fail = { status: number; error: string; message?: string };
 
 // 서버가 문구를 주지 않는 하루 한도 응답(429)
@@ -27,6 +28,9 @@ const LIMIT_MESSAGES: Record<string, string> = {
 export const identityFailText = (r: Fail) => LIMIT_MESSAGES[r.error] ?? failMessage(r);
 
 const digits = (v: string, max: number) => v.replace(/\D/g, "").slice(0, max);
+// 한국 날짜(YYYYMMDD). 미래 날짜 검사는 한국 달력 기준(UTC로 비교하면 00:00~08:59 KST에 오늘을 미래로 본다)
+export const kstToday = () => new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10).replace(/-/g, "");
+
 export const phoneText = (p: string) => (p.length === 11 ? `${p.slice(0, 3)}-${p.slice(3, 7)}-${p.slice(7)}` : `${p.slice(0, 3)}-${p.slice(3, 6)}-${p.slice(6)}`);
 
 // 생년월일 8자리 + 성별 + 내·외국인 → 서버가 받는 birth7(YYMMDD + 성별 자리). 1900년대 1·2, 2000년대 3·4, 외국인은 5~8.
@@ -35,7 +39,7 @@ function toBirth7(birth: string, gender: "M" | "F", foreigner: boolean): string 
   if (!m) return null;
   const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
   const date = new Date(Date.UTC(y, mo - 1, d));
-  if (y < 1900 || y > 2099 || date.getUTCMonth() !== mo - 1 || date.getUTCDate() !== d || date.getTime() > Date.now()) return null;
+  if (y < 1900 || y > 2099 || date.getUTCMonth() !== mo - 1 || date.getUTCDate() !== d || birth > kstToday()) return null;
   const base = (y >= 2000 ? 3 : 1) + (gender === "F" ? 1 : 0) + (foreigner ? 4 : 0);
   return `${m[1].slice(2)}${m[2]}${m[3]}${base}`;
 }
@@ -50,9 +54,11 @@ type Props = {
   blocked?: boolean;
   onVerified: (verificationId: string, who: { name: string; phone: string }) => void;
   onUnavailable: () => void;
+  // 인증번호를 보낸 동안 true(부모는 인증 요청에 쓴 다른 칸을 잠근다)
+  onSentChange?: (sent: boolean) => void;
 };
 
-export default function IdentityCheck({ label, start, base, blocked = false, onVerified, onUnavailable }: Props) {
+export default function IdentityCheck({ label, start, base, blocked = false, onVerified, onUnavailable, onSentChange }: Props) {
   const [step, setStep] = useState<"identity" | "code">("identity");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ kind: "neg" | "info"; text: string } | null>(null);
@@ -75,6 +81,8 @@ export default function IdentityCheck({ label, start, base, blocked = false, onV
     setFocusTo(null);
   }, [focusTo]);
   const focus = (id: string) => setFocusTo({ id });
+
+  useEffect(() => onSentChange?.(step === "code"), [step, onSentChange]);
 
   const ready = !blocked && name.trim() !== "" && birth.length === 8 && gender !== null && carrier !== "" && phone.length >= 10 && agreed;
   const locked = step === "code" || busy;
@@ -109,7 +117,8 @@ export default function IdentityCheck({ label, start, base, blocked = false, onV
     setNotice(null);
     setBirthError(null);
     const person = { name: name.trim(), phone };
-    const r = await start({ ...person, birth7, carrier });
+    const device = window.matchMedia("(min-width: 768px)").matches ? "PC" : "MOBILE";
+    const r = await start({ ...person, birth7, carrier, device });
     setBusy(false);
     if (!r.ok) return fail(r);
     setVerificationId(r.data.verificationId);

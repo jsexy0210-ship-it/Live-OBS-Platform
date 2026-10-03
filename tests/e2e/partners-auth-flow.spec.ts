@@ -40,8 +40,12 @@ async function fillIdentity(page: Page, name: string) {
 }
 
 // 인증번호 받기 → (틀린 번호 한 번) → 000000 확인
-async function verify(page: Page, wrongFirst = false) {
+async function verify(page: Page, wrongFirst = false, startPath = "/api/seller-signup/verification") {
+  const started = page.waitForRequest((r) => r.url().endsWith(startPath) && r.method() === "POST");
   await page.getByRole("button", { name: "인증번호 받기" }).click();
+  // 본인확인 대행사에 보내는 기기 구분: 768px 이상이면 PC(구매자 가입과 같은 기준)
+  const body = (await started).postDataJSON() as { device?: string; person?: { device?: string } };
+  expect(body.device ?? body.person?.device).toBe((page.viewportSize()?.width ?? 0) >= 768 ? "PC" : "MOBILE");
   await expect(page.getByText("인증번호를 보냈어요. 문자로 받은 6자리를 넣어 주세요")).toBeVisible();
   if (wrongFirst) {
     await page.getByLabel("인증번호").fill("111111");
@@ -54,7 +58,7 @@ async function verify(page: Page, wrongFirst = false) {
 
 type Account = { email: string; password: string; slug: string; name: string };
 
-async function signup(page: Page, opts: { mailOrderNumber: string; wrongFirst?: boolean; shots?: boolean }): Promise<Account> {
+async function signup(page: Page, opts: { mailOrderNumber: string; wrongFirst?: boolean; shots?: boolean; openedOn?: string }): Promise<Account> {
   const id = uniq();
   const a: Account = { email: `partner-${id}@example.com`, password: `pw-${id}-long`, slug: `p-${id}`, name: `김${letters(id)}` };
   await page.goto("/seller/login");
@@ -73,7 +77,7 @@ async function signup(page: Page, opts: { mailOrderNumber: string; wrongFirst?: 
   await expect(page.getByText("10자리를 모두 적어 주세요")).toBeVisible();
   await page.getByLabel("상호").fill(`별빛상사${id}`);
   await page.getByLabel("사업자등록번호").fill(businessNumber());
-  await page.getByLabel("개업일").fill("20200101");
+  await page.getByLabel("개업일").fill(opts.openedOn ?? "20200101");
   await page.getByLabel("통신판매업 신고번호").fill(opts.mailOrderNumber);
   await page.getByLabel("이메일 (로그인에 써요)").fill(a.email);
   await page.getByLabel("비밀번호", { exact: true }).fill(a.password);
@@ -108,7 +112,7 @@ test("파트너스 가입 신청 → 바로 승인 → 로그인 → 비밀번�
   await page.getByLabel("이메일").fill(a.email);
   await page.getByLabel("쇼핑몰 주소").fill(a.slug);
   await fillIdentity(page, a.name);
-  await verify(page);
+  await verify(page, false, "/api/seller/password-reset/start");
   await expect(page.getByRole("heading", { name: "새 비밀번호를 정해요" })).toBeVisible();
   await expect(page.getByText(`${a.email} · 휴대폰 본인확인 완료`)).toBeVisible();
   await expect(page.getByLabel("새 비밀번호", { exact: true })).toBeFocused();
@@ -136,8 +140,10 @@ test("파트너스 가입 신청 → 바로 승인 → 로그인 → 비밀번�
   await expect(page).toHaveURL(/\/seller\/products$/);
 });
 
-test("통신판매업 신고번호를 확인하지 못하면 승인 대기로 받고, 걸린 항목을 알려 준다", async ({ page }) => {
-  await signup(page, { mailOrderNumber: "신고번호없음" });
+test("통신판매업 신고번호를 확인하지 못하면 승인 대기로 받고, 걸린 항목을 알려 준다(개업일 오늘은 한국 날짜 기준)", async ({ page }) => {
+  // 한국 시각 10월 4일 00:30(UTC로는 10월 3일). 개업일 「오늘(20261004)」은 미래가 아니다
+  await page.clock.setFixedTime(new Date("2026-10-03T15:30:00Z"));
+  await signup(page, { mailOrderNumber: "신고번호없음", openedOn: "20261004" });
   await expect(page.getByRole("heading", { name: "신청을 받았어요" })).toBeVisible();
   await expect(page.getByText("통신판매업 신고번호를 확인하지 못했어요")).toBeVisible();
   await expect(page.getByText("승인 전에는 로그인할 수 없어요.")).toBeVisible();
@@ -150,8 +156,20 @@ test("비밀번호 찾기: 대표자가 아니거나 정보가 맞지 않으면 
   await page.getByLabel("이메일").fill("demo-owner@example.com");
   await page.getByLabel("쇼핑몰 주소").fill("demo-shop");
   await fillIdentity(page, `김${letters(uniq())}`);
+  // 휴대폰 폭에서는 MOBILE로 보낸다
+  await page.setViewportSize({ width: 390, height: 844 });
+  const started = page.waitForRequest((r) => r.url().endsWith("/api/seller/password-reset/start"));
+  await page.getByRole("button", { name: "인증번호 받기" }).click();
+  expect(((await started).postDataJSON() as { person: { device: string } }).person.device).toBe("MOBILE");
+  // 인증번호를 보낸 뒤에는 그 요청에 쓴 이메일·쇼핑몰 주소를 바꿀 수 없고, 「정보 다시 입력」이면 다시 바꿀 수 있다
+  await expect(page.getByLabel("이메일")).toBeDisabled();
+  await expect(page.getByLabel("쇼핑몰 주소")).toBeDisabled();
+  await page.getByRole("button", { name: "정보 다시 입력" }).click();
+  await expect(page.getByLabel("이메일")).toBeEnabled();
+  await expect(page.getByLabel("쇼핑몰 주소")).toBeEnabled();
+  await page.setViewportSize({ width: 1440, height: 900 });
   const res = page.waitForResponse((r) => r.url().endsWith("/api/seller/password-reset/verify"));
-  await verify(page);
+  await verify(page, false, "/api/seller/password-reset/start");
   expect((await res).status()).toBe(400);
   const notice = page.locator("#pa-notice");
   await expect(notice).toHaveAttribute("role", "alert");
