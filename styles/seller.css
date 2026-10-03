@@ -30,6 +30,24 @@ body {
   gap: 18px;
 }
 
+/* 로그인 카드 안: 가운데 로고 → 제목 → 탭 → 입력(AU-002) */
+.login-logo {
+  align-self: center;
+  font-size: 24px;
+}
+.login-head {
+  gap: 4px;
+  align-items: center;
+  text-align: center;
+}
+.login-tabs > .tab {
+  flex: 1;
+}
+.login-links {
+  justify-content: center;
+  gap: 8px;
+}
+
 /* 파트너스 가입 신청(PF-007) · 비밀번호 찾기(AU-003·004) */
 .login-card.pa-wide {
   width: 720px;

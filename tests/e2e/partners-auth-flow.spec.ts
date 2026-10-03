@@ -62,7 +62,7 @@ async function signup(page: Page, opts: { mailOrderNumber: string; wrongFirst?: 
   const id = uniq();
   const a: Account = { email: `partner-${id}@example.com`, password: `pw-${id}-long`, slug: `p-${id}`, name: `김${letters(id)}` };
   await page.goto("/seller/login");
-  await page.getByRole("link", { name: "파트너스 가입" }).click();
+  await page.getByRole("link", { name: "회원가입" }).click();
   await expect(page).toHaveURL(/\/seller\/signup$/);
   await expect(page.getByLabel("상호")).toBeDisabled();
   await fillIdentity(page, a.name);
@@ -184,10 +184,28 @@ test("비밀번호 찾기: 대표자가 아니거나 정보가 맞지 않으면 
   const notice = page.locator("#pa-notice");
   await expect(notice).toHaveAttribute("role", "alert");
   await expect(notice).toContainText("비밀번호를 바꿀 수 없어요");
-  await expect(notice).toContainText("직원 계정은 대표자에게 재설정을 요청해 주세요.");
+  await expect(notice).toContainText("이메일 · 쇼핑몰 주소와 대표자 본인인지 확인해 주세요.");
   await expect(notice).toBeFocused();
   // 본인확인 칸은 비워지고 다시 받을 수 있다
   await expect(page.getByLabel("이름", { exact: true })).toHaveValue("");
   await expect(page.getByRole("button", { name: "인증번호 받기" })).toBeVisible();
   await shot(page, "AU-003-not-allowed");
+});
+
+test("비밀번호 찾기(직원 탭에서 옴): 본인확인이 등록된 직원 정보와 맞지 않으면 대표자에게 물어보라고 안내한다", async ({ page }) => {
+  await page.goto("/seller/login");
+  await page.getByRole("tab", { name: "직원" }).click();
+  await page.getByRole("link", { name: "비밀번호 찾기" }).click();
+  await expect(page).toHaveURL(/\/seller\/password-reset\?type=staff$/);
+  await expect(page.getByText("직원 본인 명의의 휴대폰으로 확인해요.")).toBeVisible();
+  await page.getByLabel("이메일").fill("demo-staff@example.com");
+  await page.getByLabel("쇼핑몰 주소").fill("demo-shop");
+  await fillIdentity(page, `김${letters(uniq())}`);
+  const started = page.waitForRequest((r) => r.url().endsWith("/api/seller/password-reset/start"));
+  const res = page.waitForResponse((r) => r.url().endsWith("/api/seller/password-reset/verify"));
+  await verify(page, false, "/api/seller/password-reset/start");
+  expect(((await started).postDataJSON() as { accountType: string }).accountType).toBe("staff");
+  expect((await res).status()).toBe(400);
+  await expect(page.locator("#pa-notice")).toContainText("등록된 직원 정보와 맞지 않아요. 대표자에게 물어보세요");
+  await shot(page, "AU-003-staff-not-allowed");
 });
