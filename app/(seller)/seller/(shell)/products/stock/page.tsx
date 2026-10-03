@@ -2,7 +2,7 @@
 
 import "../../../../../../styles/seller-stock.css";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage, type Product } from "../../../../../../components/seller/api";
@@ -18,19 +18,23 @@ type Filter = "all" | "low" | "out";
 const LOW = 5;
 const REASONS = ["이벤트 증정", "서비스", "파손", "직접 입력"] as const;
 
-async function loadAllProducts(): Promise<{ ok: true; products: Product[] } | { ok: false; status: number }> {
-  const all: Product[] = [];
+// 재고 화면은 검색·걸러 보기를 화면에서 하므로 모든 상품을 200개씩 이어서 불러온다(다음 쪽이 없을 때까지, 개수 제한 없음).
+// 첫 쪽이 오면 바로 그리고 나머지는 뒤에서 이어 붙인다(상품이 많아도 첫 화면을 기다리지 않게). stale()이 참이면 새로 불러오기가 시작된 것이라 멈춘다.
+type Page = { products: Product[]; nextCursor: string | null };
+async function loadAllProducts(onPage: (products: Product[], first: boolean) => void, stale: () => boolean): Promise<{ ok: true } | { ok: false; status: number; first: boolean }> {
   let cursor: string | null = null;
-  // 재고 화면은 검색·걸러 보기를 화면에서 하므로 모든 상품을 200개씩 이어서 불러온다(다음 쪽이 없을 때까지, 개수 제한 없음)
-  for (;;) {
-    const r: Awaited<ReturnType<typeof api<{ products: Product[]; nextCursor: string | null }>>> = await api<{ products: Product[]; nextCursor: string | null }>(`/api/seller/products?limit=200${cursor ? `&cursor=${cursor}` : ""}`);
-    if (!r.ok) return { ok: false, status: r.status };
-    all.push(...r.data.products);
+  for (let first = true; ; first = false) {
+    const r: Awaited<ReturnType<typeof api<Page>>> = await api<Page>(`/api/seller/products?limit=200${cursor ? `&cursor=${cursor}` : ""}`);
+    if (stale()) return { ok: true };
+    if (!r.ok) return { ok: false, status: r.status, first };
+    onPage(r.data.products, first);
     cursor = r.data.nextCursor;
-    if (!cursor) break;
+    if (!cursor) return { ok: true };
   }
-  return { ok: true, products: all };
 }
+
+// 한 번에 그리는 줄 수. 옵션이 수만 개여도 화면이 멈추지 않게 이만큼씩 늘려 그린다
+const PAGE_ROWS = 200;
 
 const toRows = (products: Product[]): Row[] =>
   products.flatMap((p) => p.options.map((o) => ({ key: o.id, productId: p.id, productName: p.name, optionId: o.id, optionName: o.name, stock: o.stock })));
@@ -54,14 +58,29 @@ export default function StockPage() {
   const [sheet, setSheet] = useState<Row | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
+  const loadId = useRef(0);
+  const [loadingMore, setLoadingMore] = useState(false);
   const load = useCallback(async () => {
+    const id = ++loadId.current;
     setState({ kind: "loading" });
-    const r = await loadAllProducts();
-    if (!r.ok) return setState({ kind: "error", status: r.status });
-    setRows(toRows(r.products));
-    setNext({});
-    setSelected(new Set());
-    setState({ kind: "ok" });
+    const r = await loadAllProducts(
+      (products, first) => {
+        if (first) {
+          setRows(toRows(products));
+          setNext({});
+          setSelected(new Set());
+          setState({ kind: "ok" });
+          setLoadingMore(true);
+        } else setRows((rs) => [...rs, ...toRows(products)]);
+      },
+      () => id !== loadId.current,
+    );
+    if (id !== loadId.current) return;
+    setLoadingMore(false);
+    if (!r.ok) {
+      if (r.first) setState({ kind: "error", status: r.status });
+      else setNotice({ kind: "neg", text: "상품을 모두 불러오지 못했어요. 새로 고침해 주세요" });
+    }
   }, []);
 
   useEffect(() => {
@@ -85,6 +104,10 @@ export default function StockPage() {
       return !q || `${r.productName} ${r.optionName}`.normalize("NFKC").toLowerCase().includes(q);
     });
   }, [rows, query, filter]);
+  // 그리는 줄은 PAGE_ROWS개씩. 검색·걸러 보기를 바꾸면 처음부터 다시 센다
+  const [shownCount, setShownCount] = useState(PAGE_ROWS);
+  useEffect(() => setShownCount(PAGE_ROWS), [query, filter]);
+  const shown = visible.slice(0, shownCount);
 
   const changed = rows.filter((r) => next[r.key] !== undefined && target(r) !== r.stock);
   const invalid = changed.filter((r) => rowError(r));
@@ -130,12 +153,13 @@ export default function StockPage() {
     }
   };
 
-  const allVisibleSelected = visible.length > 0 && visible.every((r) => selected.has(r.key));
+  // 「모두 선택」은 지금 화면에 그려진 옵션만 고른다
+  const allVisibleSelected = shown.length > 0 && shown.every((r) => selected.has(r.key));
   const toggleAll = () =>
     setSelected((s) => {
       const out = new Set(s);
-      if (allVisibleSelected) visible.forEach((r) => out.delete(r.key));
-      else visible.forEach((r) => out.add(r.key));
+      if (allVisibleSelected) shown.forEach((r) => out.delete(r.key));
+      else shown.forEach((r) => out.add(r.key));
       return out;
     });
 
@@ -201,6 +225,11 @@ export default function StockPage() {
                 <button className={`chip${filter === "out" ? " on" : ""}`} type="button" aria-pressed={filter === "out"} onClick={() => setFilter(filter === "out" ? "all" : "out")}>
                   품절
                 </button>
+                {/* 휴대폰에서는 표 머리줄이 숨으므로 「모두 선택」을 따로 둔다 */}
+                <label className="chk stock-mselect">
+                  <input className="cbx" type="checkbox" checked={allVisibleSelected} onChange={toggleAll} />
+                  모두 선택
+                </label>
                 <div className="row stock-bulk">
                   <span className="t-l2 c-alt">선택한 옵션에</span>
                   <input className="inp inp-sm num" type="text" inputMode="numeric" placeholder="+10" value={bulkDelta} onChange={(e) => setBulkDelta(e.target.value)} aria-label="선택한 옵션에 더하거나 뺄 수량" style={{ width: 80, textAlign: "right" }} />
@@ -249,7 +278,7 @@ export default function StockPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {visible.map((r) => {
+                    {shown.map((r) => {
                       const t = target(r);
                       const err = rowError(r);
                       const diff = t === null ? 0 : t - r.stock;
@@ -281,10 +310,11 @@ export default function StockPage() {
                             />
                           </td>
                           <td className="c-name">
-                            <span className="fw6 ell" style={{ display: "block" }}>
+                            {/* 2줄까지 보이고 넘치면 말줄임. 전체 이름은 마우스를 올리면 보인다 */}
+                            <span className="fw6 clamp2" title={r.productName}>
                               {r.productName}
                             </span>
-                            <span className="t-c1 c-alt ell" style={{ display: "block" }}>
+                            <span className="t-c1 c-alt clamp2" title={r.optionName}>
                               {r.optionName}
                             </span>
                           </td>
@@ -320,9 +350,17 @@ export default function StockPage() {
                   </tbody>
                 </table>
               )}
+              {visible.length > shown.length && (
+                <div className="row center" style={{ padding: "12px 20px" }}>
+                  <button className="btn btn-sm btn-out" type="button" onClick={() => setShownCount((c) => c + PAGE_ROWS)}>
+                    {Math.min(PAGE_ROWS, visible.length - shown.length).toLocaleString("ko-KR")}개 더 보기 ({(visible.length - shown.length).toLocaleString("ko-KR")}개 남음)
+                  </button>
+                </div>
+              )}
               <div className="row between" style={{ padding: "12px 20px", gap: 12, flexWrap: "wrap" }}>
                 <span className="t-l2 c-alt">
                   옵션 {rows.length.toLocaleString("ko-KR")}개 중 {changed.length}개 바뀜 · 적용하기 전에는 반영되지 않아요
+                  {loadingMore && <span data-testid="stock-loading-more"> · 나머지 상품을 불러오고 있어요</span>}
                 </span>
                 {invalid.length > 0 && <span className="err">고칠 칸이 {invalid.length}개 있어요. 그 칸은 빼고 적용해요</span>}
               </div>
@@ -351,6 +389,19 @@ export default function StockPage() {
           </div>
         )}
       </main>
+
+      {/* 휴대폰: 바뀐 것이 있으면 아래에 적용 바를 고정한다 */}
+      {state.kind === "ok" && changed.length > 0 && (
+        <div className="stock-mbar" data-testid="stock-mbar">
+          <span className="t-l2">
+            바꿀 옵션 <b className="num">{valid.length}개</b>
+            {invalid.length > 0 && <span className="c-neg"> · 고칠 칸 {invalid.length}개</span>}
+          </span>
+          <button className="btn" type="button" disabled={valid.length === 0 || applying} onClick={() => setConfirm(true)}>
+            {applyLabel}
+          </button>
+        </div>
+      )}
 
       {confirm && (
         <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="apply-title">

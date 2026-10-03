@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Topbar } from "./SellerShell";
 import { NoImage, Toast } from "./States";
 import { api, failMessage, type Product, type ProductOption, type ProductStatus, type StockDeductMode } from "./api";
@@ -104,6 +104,19 @@ export function ProductForm({ initial }: { initial?: Product }) {
   const [price, setPrice] = useState(initial ? String(initial.price) : "");
   const [status, setStatus] = useState<ProductStatus>(initial?.status ?? "ON_SALE");
   const [deduct, setDeduct] = useState<StockDeductMode>(initial?.stockDeductMode ?? "PAYMENT");
+  // 취소·반품 때 재고를 되돌릴지는 주문 설정(restockOnCancel)을 따른다. 쇼핑몰 설정 권한이 없으면 읽지 못하므로 설정 이름만 안내한다
+  const [restock, setRestock] = useState<boolean | null>(null);
+  useEffect(() => {
+    void api<{ policy: { restockOnCancel: boolean } }>("/api/seller/order-policy").then((r) => {
+      if (r.ok) setRestock(r.data.policy.restockOnCancel);
+    });
+  }, []);
+  const restockText =
+    restock === null
+      ? "취소·반품 때 재고를 되돌릴지는 주문 설정의 「취소·반품하면 재고 되돌리기」를 따라요"
+      : restock
+        ? "취소·반품하면 재고가 돌아와요(주문 설정에서 켜져 있어요)"
+        : "취소·반품해도 재고가 돌아오지 않아요(주문 설정에서 꺼져 있어요)";
   const [rows, setRows] = useState<OptRow[]>(() => (initial ? initial.options.map(toRow) : [blankRow("기본")]));
   const [removed, setRemoved] = useState<string[]>([]);
   const [showErrors, setShowErrors] = useState(false);
@@ -445,7 +458,8 @@ export function ProductForm({ initial }: { initial?: Product }) {
               ))}
             </div>
             <span className="help">
-              기본은 결제하면 차감이에요 · 「주문하면 바로 차감」은 선착순·한정 판매에 좋아요(미입금으로 취소되면 재고가 돌아와요){isEdit ? " · 바꾸면 다음 주문부터 적용돼요" : ""}
+              기본은 결제하면 차감이에요 · 「주문하면 바로 차감」은 선착순·한정 판매에 좋아요 · {restockText}
+              {isEdit ? " · 바꾸면 다음 주문부터 적용돼요" : ""}
             </span>
           </section>
 

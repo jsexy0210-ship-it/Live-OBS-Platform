@@ -186,3 +186,51 @@ test("체크한 옵션에 「+10」처럼 적으면 한꺼번에 더해 적어 �
   await expect(nextInput(page, "카드 슬리브 100매 블랙")).toHaveValue(String(Number(before[1]) + 10));
   await expect(page.getByTestId("sum-count")).toHaveText("2개");
 });
+
+test("상품명·옵션명은 2줄까지 보이고, 전체 이름은 마우스를 올리면 보인다", async ({ page }) => {
+  await openAs(page);
+  const name = "12포켓 대용량 바인더 (그레이 · 480장 수납 · 손잡이 달린 하드 케이스)";
+  const cell = row(page, "12포켓 대용량").locator(".c-name .clamp2").nth(1);
+  await expect(cell).toHaveAttribute("title", name);
+  expect(await cell.evaluate((el) => getComputedStyle(el).webkitLineClamp)).toBe("2");
+});
+
+test("재고 차감 기준 안내는 주문 설정의 「취소·반품하면 재고 되돌리기」를 따른다", async ({ page }) => {
+  // 대표자: 주문 설정을 읽을 수 있어서 지금 상태(기본 켜짐)를 알려 준다
+  await page.goto("/seller/login?next=%2Fseller%2Fproducts%2Fnew");
+  await page.getByLabel("이메일").fill("demo-owner@example.com");
+  await page.getByLabel("비밀번호").fill(PASSWORD);
+  await page.getByRole("button", { name: "로그인" }).click();
+  await expect(page.getByText("취소·반품하면 재고가 돌아와요(주문 설정에서 켜져 있어요)", { exact: false })).toBeVisible();
+  await expect(page.getByText("미입금으로 취소되면", { exact: false })).toHaveCount(0);
+});
+
+test("상품 담당 직원(쇼핑몰 설정 권한 없음)은 설정 이름으로 안내받는다", async ({ page }) => {
+  await page.goto("/seller/login?next=%2Fseller%2Fproducts%2Fnew");
+  await page.getByLabel("이메일").fill("demo-staff@example.com");
+  await page.getByLabel("비밀번호").fill(PASSWORD);
+  await page.getByRole("button", { name: "로그인" }).click();
+  await expect(page.getByText("주문 설정의 「취소·반품하면 재고 되돌리기」를 따라요", { exact: false })).toBeVisible();
+});
+
+test("390에서는 「모두 선택」이 있고, 바꾸면 아래 고정 바에서 적용한다", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openAs(page);
+  await expect(page.getByTestId("stock-mbar")).toHaveCount(0);
+  await page.getByLabel("재고 검색").fill("탑로더");
+  await page.getByLabel("모두 선택", { exact: true }).check();
+  await page.getByLabel("선택한 옵션에 더하거나 뺄 수량").fill("+2");
+  await page.getByRole("button", { name: "한꺼번에 적기" }).click();
+  const bar = page.getByTestId("stock-mbar");
+  await expect(bar).toBeInViewport();
+  await expect(bar).toContainText("바꿀 옵션 1개");
+  await bar.getByRole("button", { name: "변경 1건 적용" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "적용", exact: true }).click();
+  await expect(page.getByText("재고 1건을 바꿨어요")).toBeVisible();
+  await expect(bar).toHaveCount(0);
+  // 되돌려 둔다
+  await nextInput(page, "탑로더 25장 1팩").fill(String(Number(await row(page, "탑로더 25장").locator(".c-cur").innerText().then((t) => t.replace(/\D/g, ""))) - 2));
+  await page.getByTestId("stock-mbar").getByRole("button", { name: "변경 1건 적용" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "적용", exact: true }).click();
+  await expect(page.getByText("재고 1건을 바꿨어요")).toBeVisible();
+});
