@@ -527,7 +527,7 @@ export async function refundOrder(
   db: PrismaClient,
   ctx: TenantContext,
   orderId: string,
-  opts: { reason?: string; expectedLiveVersion: number; confirmOpened?: boolean; fault?: RefundFault; now?: Date },
+  opts: { reason?: string; expectedLiveVersion: number; confirmOpened?: boolean; fault?: RefundFault; expectedRefundAmount?: number; now?: Date },
 ): Promise<QueueResult<RefundOutcome>> {
   requireSellerPermission(ctx, "ORDER_SHIPPING");
   if (!opts.reason?.trim()) return { ok: false, reason: "reason_required" };
@@ -568,6 +568,8 @@ export async function refundOrder(
       fault: refundFault,
       returnFee,
     });
+    // 화면에서 확인받은 금액과 다르면(그사이 발송·개봉 등) 아무것도 바꾸지 않고 되돌린다
+    if (opts.expectedRefundAmount !== undefined && opts.expectedRefundAmount !== refundAmount) throw new Rejected("refund_amount_changed");
     await tx.order.update({ where: { id: orderId }, data: { refundAmount, refundFault, returnFeeDeducted } });
     await tx.orderStatusHistory.create({
       data: { sellerId: ctx.sellerId, orderId, fromStatus: "PAID", toStatus: "REFUNDED", actorType: ctx.actorType, actorId: ctx.actorId, reason, createdAt: now },

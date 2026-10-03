@@ -206,6 +206,47 @@ test("환불 모달: 개봉한 상품이 있으면 사유 주체를 바꿀 때�
   await expect(dialog.getByRole("button", { name: /환불 실행/ })).toHaveText("15,000원 환불 실행");
 });
 
+test("환불 모달: 확인한 금액을 함께 보내고, 그사이 금액이 바뀌었다는 응답(refund_amount_changed)이면 새 금액을 보여 주고 다시 확인받는다", async ({ page }) => {
+  await login(page);
+  // 환불은 흉내 낸다. 첫 요청은 「금액이 바뀌었어요」, 그 뒤 상세는 구매자 사정 금액을 120,000원으로 바꿔 돌려준다
+  const bodies: Record<string, unknown>[] = [];
+  let changed = false;
+  await page.route(/\/api\/seller\/orders\/[0-9a-f-]{36}\/refund$/, async (route) => {
+    bodies.push(route.request().postDataJSON());
+    if (bodies.length === 1) {
+      changed = true;
+      return route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ error: "refund_amount_changed" }) });
+    }
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ refundAmount: 120000, version: 1 }) });
+  });
+  await page.route(/\/api\/seller\/orders\/[0-9a-f-]{36}$/, async (route) => {
+    const res = await route.fetch();
+    const json = await res.json();
+    if (changed && json.refundPreview) json.refundPreview.byFault.BUYER.refundAmount = 120000;
+    await route.fulfill({ response: res, json });
+  });
+  await page.getByRole("button", { name: "주문 더 불러오기" }).click();
+  await rows(page).filter({ hasText: "외 1건" }).filter({ hasText: "카드왕" }).getByRole("link", { name: "환불 처리" }).click();
+  const dialog = page.getByRole("dialog", { name: "취소 · 환불 처리" });
+  const agree = dialog.getByLabel("위 금액으로 환불해요. 승인 취소 후 되돌릴 수 없어요.");
+  const run = dialog.getByRole("button", { name: /환불 실행/ });
+  await dialog.getByRole("radio", { name: /구매자 사정/ }).check();
+  await dialog.getByLabel("처리 사유").selectOption("기타");
+  await dialog.getByLabel("개봉한 상품이 있는 걸 확인했어요").check();
+  await agree.check();
+  await expect(run).toHaveText("129,000원 환불 실행");
+  await run.click();
+  await expect(dialog.getByRole("alert")).toHaveText("그사이 환불 금액이 바뀌었어요. 금액을 다시 확인해 주세요");
+  await expect(dialog.getByTestId("refund-amount")).toHaveText("120,000원");
+  await expect(agree).not.toBeChecked();
+  await expect(run).toBeDisabled();
+  await agree.check();
+  await expect(run).toHaveText("120,000원 환불 실행");
+  await run.click();
+  await expect(page.getByText("120,000원 환불을 완료했어요")).toBeVisible();
+  expect(bodies.map((b) => b.expectedRefundAmount)).toEqual([129000, 120000]);
+});
+
 test("실제 환불: 판매자 사정으로 환불하면 완료 알림이 뜨고 주문이 환불됨으로 바뀐다", async ({ page }) => {
   await login(page);
   await page.getByRole("button", { name: /상태: 전체/ }).click();

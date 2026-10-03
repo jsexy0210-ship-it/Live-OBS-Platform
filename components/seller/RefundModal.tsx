@@ -11,7 +11,8 @@ import { longTime, type OrderDetail, type RefundFault as Fault, type RefundPrevi
 // 돌려줄 금액이 0원이면 환불 버튼 대신 안내만 보인다.
 // 환불 API는 주문대기 버전(expectedVersion)을 받는다. 주문 상세 응답의 queueVersion을 쓰고(환불과 같은 권한으로 읽힘),
 // 그사이 주문대기가 바뀌어 conflict가 오면 상세를 다시 읽는다. 환불 금액이 그대로면 새 버전으로 한 번만 다시 보내고,
-// 바뀌었으면 보내지 않고 새 금액을 다시 확인받는다.
+// 바뀌었으면 보내지 않고 새 금액을 다시 확인받는다. 확인받은 금액(expectedRefundAmount)도 함께 보내,
+// 서버 계산과 다르면(refund_amount_changed, 상태 그대로) 상세를 다시 읽어 새 금액을 다시 확인받는다.
 const FAULTS: { key: Fault; label: string; desc: string }[] = [
   { key: "BUYER", label: "구매자 사정", desc: "변심 · 잘못 주문" },
   { key: "SELLER", label: "판매자 사정", desc: "품절 · 오류" },
@@ -23,6 +24,7 @@ type Fail = { status: number; error: string; message?: string };
 export default function RefundModal({ order, onClose, onDone }: { order: OrderDetail; onClose: () => void; onDone: (refundAmount: number) => void }) {
   const [fault, setFault] = useState<Fault | null>(null);
   const [preview, setPreview] = useState<RefundPreview | null>(order.refundPreview ?? null);
+  const [queueVersion, setQueueVersion] = useState(order.queueVersion);
   const [reason, setReason] = useState("");
   const [agree, setAgree] = useState(false);
   // 서버가 「개봉한 상품이 있어요」라고 하면 확인을 받은 뒤 confirmOpened로 다시 보낸다
@@ -66,15 +68,20 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
     setAgree(false);
   };
 
-  type Sent = { ok: true; refundAmount: number } | { ok: false; fail: Fail } | { ok: false; changed: RefundPreview | null };
+  type Sent = { ok: true; refundAmount: number } | { ok: false; fail: Fail } | { ok: false; changed: RefundPreview | null; version: number };
   const send = async (): Promise<Sent> => {
-    let version = order.queueVersion;
+    let version = queueVersion;
     for (let attempt = 0; attempt < 2; attempt++) {
       const r = await api<{ refundAmount?: number }>(`/api/seller/orders/${order.id}/refund`, {
         method: "POST",
-        body: { reason, expectedVersion: version, fault, confirmOpened: openedOk },
+        body: { reason, expectedVersion: version, fault, confirmOpened: openedOk, expectedRefundAmount: quote?.refundAmount },
       });
       if (r.ok) return { ok: true, refundAmount: r.data.refundAmount ?? order.totalAmount };
+      if (r.error === "refund_amount_changed") {
+        const d = await api<{ queueVersion: number; refundPreview: RefundPreview | null }>(`/api/seller/orders/${order.id}`);
+        if (!d.ok) return { ok: false, fail: r };
+        return { ok: false, changed: d.data.refundPreview, version: d.data.queueVersion };
+      }
       if (r.error !== "conflict" || attempt === 1) return { ok: false, fail: r };
       // 그사이 주문대기가 바뀌었으면(다른 화면·방송) 상세를 다시 읽어 새 버전으로 한 번만 다시 보낸다
       const d = await api<{ queueVersion: number; refundPreview: RefundPreview | null }>(`/api/seller/orders/${order.id}`);
@@ -83,7 +90,7 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
       const nextQuote = next && fault ? next.byFault[fault] : null;
       // 확인받은 금액과 다르면(그사이 개봉·발송) 보내지 않는다
       if (preview && (!nextQuote || nextQuote.refundAmount !== quote?.refundAmount || nextQuote.blocked || next!.openedItems.length !== preview.openedItems.length)) {
-        return { ok: false, changed: next };
+        return { ok: false, changed: next, version: d.data.queueVersion };
       }
       version = d.data.queueVersion;
     }
@@ -99,6 +106,7 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
     if (r.ok) return onDone(r.refundAmount);
     if ("changed" in r) {
       setPreview(r.changed);
+      setQueueVersion(r.version);
       if (r.changed?.openedItems.length) setNeedOpened(true);
       setAgree(false);
       setError({ text: r.changed ? "그사이 환불 금액이 바뀌었어요. 금액을 다시 확인해 주세요" : "이미 환불했거나 지금은 환불할 수 없는 주문이에요" });

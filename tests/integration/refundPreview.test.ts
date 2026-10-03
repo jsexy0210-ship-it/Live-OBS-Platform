@@ -60,12 +60,12 @@ async function detail(orderId: string, cookie: string) {
   return (await r.json()) as { queueVersion: number; refundPreview: RefundPreview | null };
 }
 
-async function refund(orderId: string, cookie: string, expectedVersion: number, fault: "BUYER" | "SELLER") {
+async function refund(orderId: string, cookie: string, expectedVersion: number, fault: "BUYER" | "SELLER", expectedRefundAmount?: unknown) {
   const r = await refundRoute(
     new Request(`http://localhost:3000/api/seller/orders/${orderId}/refund`, {
       method: "POST",
       headers: { ...H, cookie },
-      body: JSON.stringify({ reason: "기타", expectedVersion, fault, confirmOpened: true }),
+      body: JSON.stringify({ reason: "기타", expectedVersion, fault, confirmOpened: true, expectedRefundAmount }),
     }),
     { params: Promise.resolve({ orderId }) },
   );
@@ -113,5 +113,35 @@ describe("주문 상세의 환불 미리보기", () => {
     expect(d.refundPreview!.byFault.SELLER.blocked).toBe(false);
     const r = await refund(orderId, cookie, d.queueVersion, "BUYER");
     expect(r.body.error).toBe("opened_items_unshipped");
+  });
+});
+
+describe("확인받은 환불액(expectedRefundAmount)", () => {
+  it("서버 계산과 다르면 409 refund_amount_changed이고 주문·주문대기·버전은 그대로다", async () => {
+    const { orderId, cookie } = await setup({ opened: ["A"], shipped: true });
+    const d = await detail(orderId, cookie);
+    const before = await db.order.findUniqueOrThrow({ where: { id: orderId }, include: { queueItems: true } });
+    const seller = await db.seller.findUniqueOrThrow({ where: { id: before.sellerId }, select: { liveVersion: true } });
+    // 화면은 판매자 사정 금액을 확인했는데 그사이 바뀌었다고 가정(구매자 사정으로 보냄)
+    const r = await refund(orderId, cookie, d.queueVersion, "BUYER", d.refundPreview!.byFault.SELLER.refundAmount);
+    expect(r.status).toBe(409);
+    expect(r.body.error).toBe("refund_amount_changed");
+    const after = await db.order.findUniqueOrThrow({ where: { id: orderId }, include: { queueItems: true } });
+    expect(after.status).toBe("PAID");
+    expect(after.refundAmount).toBeNull();
+    expect(after.queueItems.map((q) => q.status).sort()).toEqual(before.queueItems.map((q) => q.status).sort());
+    expect((await db.seller.findUniqueOrThrow({ where: { id: before.sellerId }, select: { liveVersion: true } })).liveVersion).toBe(seller.liveVersion);
+    expect(await db.orderStatusHistory.count({ where: { orderId, toStatus: "REFUNDED" } })).toBe(0);
+    // 같은 버전·맞는 금액이면 그대로 환불된다
+    const ok = await refund(orderId, cookie, d.queueVersion, "BUYER", d.refundPreview!.byFault.BUYER.refundAmount);
+    expect(ok.status).toBe(200);
+    expect(ok.body.refundAmount).toBe(d.refundPreview!.byFault.BUYER.refundAmount);
+  });
+
+  it("음수·소수·문자열이면 400이다", async () => {
+    const { orderId, cookie } = await setup({ opened: [], shipped: false });
+    const d = await detail(orderId, cookie);
+    for (const bad of [-1, 1.5, "1000"]) expect((await refund(orderId, cookie, d.queueVersion, "SELLER", bad)).status).toBe(400);
+    expect((await db.order.findUniqueOrThrow({ where: { id: orderId } })).status).toBe("PAID");
   });
 });
