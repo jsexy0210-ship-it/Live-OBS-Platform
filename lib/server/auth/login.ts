@@ -20,6 +20,9 @@ export type LoginResult = ({ ok: true } & IssuedSession) | { ok: false; reason: 
 const fail = (reason: LoginFailure): LoginResult => ({ ok: false, reason });
 
 export const normalizeEmail = (email: string) => email.trim().toLowerCase();
+// 이메일 아이디 길이 상한(RFC 5321 경로 길이). 구매자 가입·로그인이 같은 기준을 쓴다.
+export const MAX_EMAIL_LENGTH = 254;
+export const isEmailLengthOk = (v: unknown): v is string => typeof v === "string" && normalizeEmail(v).length > 0 && normalizeEmail(v).length <= MAX_EMAIL_LENGTH;
 
 // ───────────── 마스터 ─────────────
 

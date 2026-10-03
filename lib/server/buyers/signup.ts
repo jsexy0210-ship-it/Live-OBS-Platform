@@ -1,7 +1,7 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { hashPassword } from "../auth/password";
-import { normalizeEmail } from "../auth/login";
+import { MAX_EMAIL_LENGTH, normalizeEmail } from "../auth/login";
 import { MIN_PASSWORD_LENGTH } from "../auth/passwordReset";
 import { sellerAccessFor } from "../billing/subscription";
 import type { IdentityProvider } from "../identity/provider";
@@ -22,7 +22,6 @@ export const BUYER_SIGNUP_VERIFY_DAILY_LIMIT_PER_IP = 10;
 
 // 가입 입력 규칙: 아이디는 이메일(PRODUCT_SCOPE 「아이디(이메일)」, 254자까지, 소문자로 맞춰 저장해 대소문자만 다른 중복을 막는다),
 // 비밀번호 8~200자, 방송 닉네임 1~20자(보이는 글자).
-const MAX_EMAIL_LENGTH = 254;
 export const MAX_NICKNAME_LENGTH = 20;
 
 // 운영 중이고 잠기지 않은 쇼핑몰만 가입을 받는다(주문과 같은 기준, DB 시계)

@@ -90,6 +90,20 @@ describe("구매자 가입 HTTP", () => {
     expect((await s.signup(v)).status).toBe(201);
   });
 
+  it("254자 이메일은 가입·로그인 모두 되고, 255자는 가입 400(invalid_login_id)·로그인 400", async () => {
+    const s = await shop();
+    const email = (len: number) => `${"a".repeat(64)}@${"b".repeat(len - 64 - 1 - 5)}.test`;
+    expect(email(254)).toHaveLength(254);
+    const tooLong = await s.signup(await s.verified(), { loginId: email(255) });
+    expect(tooLong.status).toBe(400);
+    expect((await tooLong.json()).error).toBe("invalid_login_id");
+    const ok = await s.signup(await s.verified(), { loginId: email(254) });
+    expect(ok.status).toBe(201);
+    const login = (loginId: string) => loginRoute(post(`/api/shop/${s.slug}/auth/login`, { loginId, password: "pw-123456" }), ctx(s.slug));
+    expect((await login(email(254).toUpperCase())).status).toBe(200);
+    expect((await login(email(255))).status).toBe(400);
+  });
+
   it("본인확인을 마치지 않았거나, 시작한 브라우저가 아니거나, 이미 쓴 본인확인이면 가입할 수 없다", async () => {
     const s = await shop();
     const start = await startRoute(post(`${s.base}/verification`, IDV_INPUT), ctx(s.slug));
