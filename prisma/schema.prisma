@@ -277,6 +277,9 @@ model BuyerMember {
   // 가입 때 재가입 제한이 켜져 있었으면 그때 기간(일). 가입하며 안내받은(동의한) 기간보다 길게 CI 해시를 보관하지 않으려고 남긴다.
   // 없으면(제한이 꺼져 있을 때 가입) 탈퇴해도 재가입을 제한하지 않는다(buyers/rejoin.ts).
   rejoinRestrictionDaysAgreed Int?
+  // 「재가입 제한 정보 보관 동의」(개인정보 수집·이용 동의와 별도, 재가입 제한을 켠 쇼핑몰에서만 받음) 시각·문서 버전
+  rejoinRetentionAgreedAt     DateTime? @db.Timestamptz(3)
+  rejoinRetentionVersion      String?
   lastLoginAt        DateTime?         @db.Timestamptz(3)
   createdAt          DateTime          @default(now()) @db.Timestamptz(3)
   deletedAt          DateTime?         @db.Timestamptz(3)

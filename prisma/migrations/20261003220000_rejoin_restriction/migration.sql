@@ -28,3 +28,6 @@ ALTER TABLE "BuyerRejoinBlock" ADD CONSTRAINT "BuyerRejoinBlock_sellerId_fkey" F
 
 -- 가입 때 안내받은 재가입 제한 기간(일). 제한이 꺼져 있을 때 가입했으면 null.
 ALTER TABLE "BuyerMember" ADD COLUMN "rejoinRestrictionDaysAgreed" INTEGER;
+-- 「재가입 제한 정보 보관 동의」 시각·문서 버전(재가입 제한을 켠 쇼핑몰에서 가입할 때만)
+ALTER TABLE "BuyerMember" ADD COLUMN "rejoinRetentionAgreedAt" TIMESTAMPTZ(3);
+ALTER TABLE "BuyerMember" ADD COLUMN "rejoinRetentionVersion" TEXT;

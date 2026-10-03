@@ -19,6 +19,9 @@ export const MEMBER_POLICY_MESSAGES = {
   invalid_member_policy: `재가입 제한 기간은 ${REJOIN_DAYS_MIN}일에서 ${REJOIN_DAYS_MAX}일 사이로 정해 주세요`,
 } as const;
 
+// 「재가입 제한 정보 보관 동의」 문서 버전(docs/terms/PRIVACY_CONSENT_TEMPLATE.md 하단). 문구가 바뀌면 올린다.
+export const REJOIN_RETENTION_CONSENT_VERSION = "2026-10-03.v1";
+
 export type MemberPolicy = { rejoinRestrictionEnabled: boolean; rejoinRestrictionDays: number };
 
 async function policyOf(db: Db, sellerId: string): Promise<MemberPolicy> {

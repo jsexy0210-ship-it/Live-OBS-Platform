@@ -7,7 +7,7 @@ import { sellerAccessFor } from "../billing/subscription";
 import type { IdentityProvider } from "../identity/provider";
 import { buyerSignupIdentityLimitReached, completeIdentityVerification, parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
 import { EMAIL } from "../sellers/application";
-import { rejoinBlockedUntil, rejoinDaysToAgree } from "./rejoin";
+import { REJOIN_RETENTION_CONSENT_VERSION, rejoinBlockedUntil, rejoinDaysToAgree } from "./rejoin";
 import { cleanText } from "../text/clean";
 
 
@@ -80,7 +80,8 @@ export type BuyerSignupFailure =
   | "login_id_taken"
   | "nickname_taken"
   | "shop_unavailable"
-  | "rejoin_restricted"; // 재가입 제한 기간 중(탈퇴한 같은 사람, buyers/rejoin.ts)
+  | "rejoin_restricted" // 재가입 제한 기간 중(탈퇴한 같은 사람, buyers/rejoin.ts)
+  | "rejoin_consent_required"; // 재가입 제한을 켠 쇼핑몰에서 「재가입 제한 정보 보관 동의」가 없음
 
 // resumed: 응답이 끊겨 같은 요청을 다시 보낸 경우(새로 만들지 않고 이미 만든 회원을 돌려줌)
 // rejoinAvailableAt: rejoin_restricted일 때 다시 가입할 수 있는 시각
@@ -107,6 +108,8 @@ export async function signupBuyer(
     agreedPrivacy?: boolean;
     // 선택 마케팅 수신 동의. true면 가입 시각을 marketingConsentAt에 남긴다. 빠지면 동의 안 함, 불리언이 아니면 거부.
     agreedMarketing?: unknown;
+    // 「재가입 제한 정보 보관 동의」. 재가입 제한을 켠 쇼핑몰에서는 true여야 하고, 끈 쇼핑몰에서는 보지 않는다.
+    agreedRejoinRetention?: unknown;
     // 감사 로그에 남길 요청 정보
     meta?: { ip?: string | null; userAgent?: string | null };
     now?: Date;
@@ -122,6 +125,9 @@ export async function signupBuyer(
   if (input.agreedTerms !== true || input.agreedPrivacy !== true) return { ok: false, reason: "terms_required" };
   if (input.agreedMarketing !== undefined && typeof input.agreedMarketing !== "boolean") return { ok: false, reason: "invalid_marketing_consent" };
   const agreedMarketing = input.agreedMarketing === true;
+  // 재가입 제한을 켠 쇼핑몰은 보관 동의를 따로 받는다. 이때 본 기간을 회원에 남긴다(가입 처리 중 설정이 바뀌어도 동의한 값 기준).
+  const rejoinDays = await rejoinDaysToAgree(db, input.sellerId);
+  if (rejoinDays !== null && input.agreedRejoinRetention !== true) return { ok: false, reason: "rejoin_consent_required" };
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.verificationId)) return { ok: false, reason: "verification_invalid" };
 
   const done = await completeIdentityVerification(db, provider, input.verificationId, { sellerId: input.sellerId, purpose: "BUYER_SIGNUP", ownerToken: input.ownerToken }, now);
@@ -194,7 +200,9 @@ export async function signupBuyer(
           broadcastNickname: nickname,
           gradeId: grade.id,
           marketingConsentAt: agreedMarketing ? now : null,
-          rejoinRestrictionDaysAgreed: await rejoinDaysToAgree(tx, input.sellerId),
+          rejoinRestrictionDaysAgreed: rejoinDays,
+          rejoinRetentionAgreedAt: rejoinDays !== null ? now : null,
+          rejoinRetentionVersion: rejoinDays !== null ? REJOIN_RETENTION_CONSENT_VERSION : null,
           createdAt: now,
         },
       });
@@ -208,7 +216,13 @@ export async function signupBuyer(
         action: "buyer.signup",
         ip: input.meta?.ip ?? null,
         userAgent: input.meta?.userAgent ?? null,
-        after: { agreedTerms: true, agreedPrivacy: true, agreedMarketing, agreedAt: now.toISOString() },
+        after: {
+          agreedTerms: true,
+          agreedPrivacy: true,
+          agreedMarketing,
+          ...(rejoinDays !== null ? { agreedRejoinRetention: true, rejoinRetentionVersion: REJOIN_RETENTION_CONSENT_VERSION, rejoinRestrictionDays: rejoinDays } : {}),
+          agreedAt: now.toISOString(),
+        },
       });
       return { kind: "created", id: created.id, broadcastNickname: created.broadcastNickname };
     });
@@ -250,6 +264,7 @@ export const BUYER_SIGNUP_MESSAGES: Record<BuyerSignupFailure | "daily_limit_exc
   nickname_taken: "이미 쓰고 있는 방송 닉네임이에요. 다른 닉네임으로 정해 주세요",
   shop_unavailable: "지금은 쇼핑몰을 이용할 수 없어요",
   rejoin_restricted: "지금은 다시 가입할 수 없어요",
+  rejoin_consent_required: "재가입 제한 정보 보관에 동의해 주세요",
   daily_limit_exceeded: "오늘은 본인확인을 더 할 수 없어요. 내일 다시 해 주세요",
 };
 
@@ -267,4 +282,5 @@ export const BUYER_SIGNUP_STATUS: Record<BuyerSignupFailure, number> = {
   nickname_taken: 409,
   shop_unavailable: 402,
   rejoin_restricted: 403,
+  rejoin_consent_required: 400,
 };
