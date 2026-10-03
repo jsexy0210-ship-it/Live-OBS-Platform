@@ -22,8 +22,32 @@ export const ORDER_ERROR_MESSAGES = {
   stock_conflict: "그사이 재고가 바뀌었어요. 새로 불러온 뒤 다시 입력해 주세요",
   invalid_cursor: "목록을 처음부터 다시 불러와 주세요",
   invalid_limit: "한 번에 볼 개수는 1~200개로 정해 주세요",
+  // 무통장 입금·구매 제한
+  purchase_restricted: "입금하지 않은 주문이 쌓여서 지금은 주문할 수 없어요. 판매자에게 문의해 주세요",
+  order_rate_limited: "잠시 뒤 다시 주문해 주세요",
+  invalid_order_policy: "자동 취소 기간은 1시간에서 30일 사이로 정해 주세요",
+  no_restriction: "주문 제한이 걸려 있지 않아요",
+  invalid_reason: "사유를 다시 확인해 주세요",
+} as const;
+
+// 구매자 주문 화면 안내 문구(해요체)
+export const ORDER_NOTICES = {
+  stock_shortage_refund: "재고가 부족해 주문을 취소하고 환불해 드릴 예정이에요",
 } as const;
 
 export type OrderErrorCode = keyof typeof ORDER_ERROR_MESSAGES;
 
 export const orderErrorBody = (code: OrderErrorCode) => ({ error: code, message: ORDER_ERROR_MESSAGES[code] });
+
+// 구매 제한 안내: 풀리는 시각을 KST로 알려 준다. 예) 「11월 2일 오후 3시 5분부터 다시 주문할 수 있어요」(정각이면 분은 뺀다)
+export function purchaseRestrictedMessage(endsAt: Date): string {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Seoul", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", hourCycle: "h23" })
+      .formatToParts(endsAt)
+      .map((p) => [p.type, p.value]),
+  );
+  const h = Number(parts.hour);
+  const m = Number(parts.minute);
+  const clock = `${h < 12 ? "오전" : "오후"} ${h % 12 === 0 ? 12 : h % 12}시${m ? ` ${m}분` : ""}`;
+  return `${parts.month}월 ${parts.day}일 ${clock}부터 다시 주문할 수 있어요`;
+}

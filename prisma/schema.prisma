@@ -106,6 +106,8 @@ model Seller {
   orders                   Order[]
   orderItems               OrderItem[]
   orderConsents            OrderConsent[]
+  orderPolicy              SellerOrderPolicy?
+  purchaseRestrictions     BuyerPurchaseRestriction[]
   shippingPolicy           SellerShippingPolicy?
   orderShippingAddresses   OrderShippingAddress[]
   shipments                Shipment[]
@@ -273,13 +275,14 @@ model BuyerMember {
   createdAt          DateTime          @default(now()) @db.Timestamptz(3)
   deletedAt          DateTime?         @db.Timestamptz(3)
 
-  seller         Seller          @relation(fields: [sellerId], references: [id])
-  grade          MemberGrade     @relation(fields: [sellerId, gradeId], references: [sellerId, id])
-  sessions       BuyerSession[]
-  orders         Order[]
-  hitCards       HitCard[]
-  rewardLedger   RewardLedger[]
-  rewardBalances RewardBalance[]
+  seller               Seller                     @relation(fields: [sellerId], references: [id])
+  grade                MemberGrade                @relation(fields: [sellerId, gradeId], references: [sellerId, id])
+  sessions             BuyerSession[]
+  orders               Order[]
+  purchaseRestrictions BuyerPurchaseRestriction[]
+  hitCards             HitCard[]
+  rewardLedger         RewardLedger[]
+  rewardBalances       RewardBalance[]
 
   @@unique([sellerId, id])
   @@index([sellerId, gradeId])
@@ -477,6 +480,10 @@ model Order {
   cancelledAt               DateTime?       @db.Timestamptz(3)
   refundedAt                DateTime?       @db.Timestamptz(3)
   createdAt                 DateTime        @default(now()) @db.Timestamptz(3)
+  // 입금 기한(주문 시각 + 판매자 설정 시간, 기본 24시간). 지나면 결제 대기 주문을 자동 취소한다(lib/server/orders/overdue.ts).
+  paymentDueAt              DateTime?       @db.Timestamptz(3)
+  // 입금 기한이 지나 시스템이 자동 취소한 시각. 자동 구매 제한 횟수를 셀 때 쓴다.
+  autoCancelledAt           DateTime?       @db.Timestamptz(3)
 
   seller          Seller                @relation(fields: [sellerId], references: [id])
   buyerMember     BuyerMember           @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id])
@@ -493,6 +500,8 @@ model Order {
   @@unique([sellerId, orderNo])
   @@index([sellerId, buyerMemberId])
   @@index([sellerId, status])
+  @@index([status, paymentDueAt])
+  @@index([sellerId, buyerMemberId, autoCancelledAt])
 }
 
 model OrderItem {
@@ -925,4 +934,38 @@ model Shipment {
   order  Order  @relation(fields: [sellerId, orderId], references: [sellerId, id])
 
   @@unique([sellerId, orderId])
+}
+
+// 판매자 주문 정책(판매자당 1행, 없으면 기본값). PRODUCT_SCOPE 「무통장 입금·구매 제한 기본값」.
+model SellerOrderPolicy {
+  sellerId                   String    @id @db.Uuid
+  // 미입금 자동 취소 사용 여부와 기간(시간). 기본 사용·240시간(10일), 1~720시간(카페24 방식, 대표님 결정 2026-10-03).
+  // 주문할 때 paymentDueAt을 정하는 데만 쓰고(끄면 기한 없음), 이미 만든 주문은 바꾸지 않는다.
+  autoCancelEnabled          Boolean   @default(true)
+  paymentDueHours            Int       @default(240)
+  // 「미입금 자동 취소 3회 → 30일 주문 막기」
+  unpaidRestrictionEnabled   Boolean   @default(true)
+  // 꺼져 있다가 다시 켠 시각. 이 뒤의 자동 취소만 센다(MASTER 결정).
+  unpaidRestrictionEnabledAt DateTime? @db.Timestamptz(3)
+  updatedAt                  DateTime  @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+}
+
+// 쇼핑몰별 구매자 주문 제한. 막는 기간은 startsAt~endsAt이고, 판매자가 풀면 liftedAt을 남긴다.
+// 횟수는 마지막 제한의 startsAt(또는 liftedAt) 뒤에 생긴 자동 취소만 센다.
+model BuyerPurchaseRestriction {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String    @db.Uuid
+  buyerMemberId String    @db.Uuid
+  reason        String
+  startsAt      DateTime  @db.Timestamptz(3)
+  endsAt        DateTime  @db.Timestamptz(3)
+  liftedAt      DateTime? @db.Timestamptz(3)
+  liftedById    String?   @db.Uuid
+
+  seller      Seller      @relation(fields: [sellerId], references: [id])
+  buyerMember BuyerMember @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id])
+
+  @@index([sellerId, buyerMemberId, startsAt])
 }

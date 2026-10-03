@@ -106,6 +106,12 @@ export async function readJson<T>(req: Request): Promise<Partial<T>> {
 
 export const isString = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length <= 200;
 
+// 개인 정보가 든 응답은 브라우저·중간 캐시에 남기지 않는다(구매자 주문 조회 등)
+export function noStore<T extends Response>(res: T): T {
+  res.headers.set("Cache-Control", "no-store");
+  return res;
+}
+
 export function errorResponse(e: unknown): NextResponse {
   if (e instanceof AuthError) return NextResponse.json({ error: e.code }, { status: e.status });
   console.error(e);
