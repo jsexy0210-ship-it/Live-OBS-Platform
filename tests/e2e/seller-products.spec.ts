@@ -364,6 +364,21 @@ test("탭을 빨리 바꾸면 마지막으로 고른 탭 결과만 보인다", a
   await expect(page.getByRole("tab", { name: "판매 중" })).toHaveAttribute("aria-selected", "true");
 });
 
+test("「재고 없음」·「재고 부족」으로 걸러 보면 서버 기준(합계 0 / 1~5)과 배지가 맞는다", async ({ page }) => {
+  await login(page);
+  await page.getByRole("button", { name: "재고 없음", exact: true }).click();
+  await expect(page.getByTestId("product-row").filter({ hasText: "드래곤 소울 부스터" })).toBeVisible();
+  await expect(page.getByTestId("product-row").filter({ hasText: "스타라이트 부스터 박스" })).toHaveCount(0);
+  await page.getByRole("button", { name: "재고 부족", exact: true }).click();
+  const low = page.getByTestId("product-row").filter({ hasText: "탑로더 25장" });
+  await expect(low).toBeVisible();
+  await expect(low.locator(".bdg")).toHaveText("재고 부족");
+  await expect(page.getByTestId("product-row").filter({ hasText: "드래곤 소울 부스터" })).toHaveCount(0);
+  // 판매 상태 탭과 함께 쓴다: 「숨김」 + 「재고 부족」은 해당 없음
+  await page.getByRole("tab", { name: "숨김" }).click();
+  await expect(page.getByText("「숨김 · 재고 부족」에 해당하는 상품이 없어요")).toBeVisible();
+});
+
 test("「품절로 설정」 탭은 판매 상태가 품절인 상품만, 배지와 이름이 맞는다", async ({ page }) => {
   await login(page);
   await page.getByRole("tab", { name: "품절로 설정" }).click();

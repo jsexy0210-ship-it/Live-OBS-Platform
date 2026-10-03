@@ -17,6 +17,8 @@ type Row = { key: string; productId: string; productName: string; optionId: stri
 type Filter = "all" | "low" | "out";
 const LOW = 5;
 const REASONS = ["이벤트 증정", "서비스", "파손", "직접 입력"] as const;
+// 한 번에 적용할 때 고르는 사유(목표 재고로 맞추는 경우가 많아 입고·재고 조사를 앞에 둔다)
+const BULK_REASONS = ["재고 조사", "입고", "파손", "직접 입력"] as const;
 
 // 재고 화면은 검색·걸러 보기를 화면에서 하므로 모든 상품을 200개씩 이어서 불러온다(다음 쪽이 없을 때까지, 개수 제한 없음).
 // 첫 쪽이 오면 바로 그리고 나머지는 뒤에서 이어 붙인다(상품이 많아도 첫 화면을 기다리지 않게). stale()이 참이면 새로 불러오기가 시작된 것이라 멈춘다.
@@ -126,7 +128,15 @@ export default function StockPage() {
     });
   };
 
+  // 한 번에 적용: 재고 증감 API에 화면이 본 재고(expectedStock)와 사유를 함께 보낸다.
+  // 그사이 재고가 바뀌었으면 서버가 바꾸지 않고 stock_conflict로 돌려준다(덮어쓰지 않음). 사유는 재고 이력에 남는다.
+  const [bulkReason, setBulkReason] = useState<(typeof BULK_REASONS)[number] | null>(null);
+  const [bulkMemo, setBulkMemo] = useState("");
+  const bulkNote = bulkReason === "직접 입력" ? bulkMemo.trim() : bulkReason;
+  const bulkNoteOk = !!bulkNote && bulkNote.length <= 100;
+  const [histKey, setHistKey] = useState(0);
   const applyChanges = async () => {
+    if (!bulkNoteOk) return;
     setConfirm(false);
     setApplying(true);
     setNotice(null);
@@ -134,16 +144,19 @@ export default function StockPage() {
     const failed: string[] = [];
     let done = 0;
     for (const r of valid) {
-      const res = await api<Product>(`/api/seller/products/${r.productId}/options/${r.optionId}`, {
-        method: "PATCH",
-        body: { stock: target(r), expectedStock: r.stock },
+      const res = await api<{ optionId: string; stock: number }>(`/api/seller/products/${r.productId}/options/${r.optionId}/stock-adjust`, {
+        method: "POST",
+        body: { delta: target(r)! - r.stock, reason: bulkNote, expectedStock: r.stock },
       });
       if (res.ok) done++;
       else if (res.error === "stock_conflict") conflicts.push(`${r.productName} · ${r.optionName}`);
       else failed.push(`${r.productName} · ${r.optionName}`);
     }
     setApplying(false);
+    setBulkReason(null);
+    setBulkMemo("");
     await load();
+    setHistKey((k) => k + 1);
     if (done) setToast(`재고 ${done}건을 바꿨어요`);
     if (conflicts.length || failed.length) {
       const parts = [];
@@ -388,6 +401,7 @@ export default function StockPage() {
             </aside>
           </div>
         )}
+        {state.kind === "ok" && <StockHistory refreshKey={histKey} />}
       </main>
 
       {/* 휴대폰: 바뀐 것이 있으면 아래에 적용 바를 고정한다 */}
@@ -414,11 +428,29 @@ export default function StockPage() {
                 쇼핑몰에 바로 반영돼요.{invalid.length ? ` 고칠 칸 ${invalid.length}개는 빼고 적용해요.` : ""} 그사이 주문으로 재고가 바뀐 옵션은 바꾸지 않고 알려 드려요.
               </p>
             </div>
+            <div className="fld">
+              <span className="lbl">사유</span>
+              <div className="row" style={{ gap: 6, flexWrap: "wrap" }} role="radiogroup" aria-label="한 번에 적용하는 사유">
+                {BULK_REASONS.map((r) => (
+                  <button key={r} className={`chip${bulkReason === r ? " on" : ""}`} type="button" role="radio" aria-checked={bulkReason === r} onClick={() => setBulkReason(r)}>
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {bulkReason === "직접 입력" && (
+              <div className="fld">
+                <label htmlFor="bulk-memo">사유 메모</label>
+                <input id="bulk-memo" className={`inp${bulkMemo.trim().length > 100 ? " is-error" : ""}`} type="text" placeholder="예: 창고 재고 맞춤" value={bulkMemo} onChange={(e) => setBulkMemo(e.target.value)} />
+                {bulkMemo.trim().length > 100 && <span className="err">사유는 100자까지 쓸 수 있어요</span>}
+              </div>
+            )}
+            <span className="t-c1 c-alt">사유는 재고 이력에 함께 남아요</span>
             <div className="modal-f">
               <button className="btn btn-out" type="button" onClick={() => setConfirm(false)}>
                 취소
               </button>
-              <button className="btn" type="button" onClick={() => void applyChanges()}>
+              <button className="btn" type="button" onClick={() => void applyChanges()} disabled={!bulkNoteOk}>
                 적용
               </button>
             </div>
@@ -438,6 +470,7 @@ export default function StockPage() {
             });
             setSheet(null);
             setToast(text);
+            setHistKey((k) => k + 1);
           }}
         />
       )}
@@ -553,3 +586,97 @@ function AdjustSheet({ row, onClose, onDone }: { row: Row; onClose: () => void; 
   );
 }
 
+
+// ───────── 재고 이력 ─────────
+type Movement = {
+  id: string;
+  productName: string;
+  optionName: string;
+  delta: number;
+  stockAfter: number | null;
+  type: "ORDER" | "CANCEL" | "REFUND" | "MANUAL";
+  typeLabel: string;
+  note: string | null;
+  actor: { name: string };
+  createdAt: string;
+};
+
+const kst = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
+
+// 누가·언제·왜 바꿨는지(주문·취소·환불·직접 변경). 최근 것부터 50개씩, 「더 보기」로 이어서 불러온다.
+function StockHistory({ refreshKey }: { refreshKey: number }) {
+  const [items, setItems] = useState<Movement[] | null>(null);
+  const [next, setNext] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+  const [more, setMore] = useState(false);
+
+  const load = useCallback(async (cursor?: string) => {
+    const r = await api<{ movements: Movement[]; nextCursor: string | null }>(`/api/seller/products/stock-movements?limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`);
+    if (!r.ok) return setError(true);
+    setError(false);
+    setItems((prev) => (cursor && prev ? [...prev, ...r.data.movements] : r.data.movements));
+    setNext(r.data.nextCursor);
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load, refreshKey]);
+
+  return (
+    <section className="card pad col" style={{ gap: 12 }} aria-labelledby="hist-title">
+      <div className="row between" style={{ gap: 12, flexWrap: "wrap" }}>
+        <h2 id="hist-title" className="t-hl2">
+          재고 이력
+        </h2>
+        <span className="t-c1 c-alt">누가 · 언제 · 왜 바꿨는지 남아요 · 주문 · 취소 · 환불 · 직접 변경을 구분해요</span>
+      </div>
+      {error ? (
+        <ErrorState title="재고 이력을 불러오지 못했어요" onRetry={() => void load()} />
+      ) : items === null ? (
+        <LoadingRows rows={3} />
+      ) : items.length === 0 ? (
+        <span className="t-l2 c-alt">아직 재고를 바꾼 기록이 없어요</span>
+      ) : (
+        <ul className="hist-list" data-testid="stock-history">
+          {items.map((m) => (
+            <li key={m.id} className="row between hist-item" data-testid="history-item">
+              <span className="row" style={{ gap: 10, minWidth: 0 }}>
+                <span className={`bdg nodot ${m.type === "MANUAL" ? "b-warn" : m.type === "ORDER" ? "b-gray" : "b-info"}`} style={{ flex: "none" }}>
+                  {m.typeLabel}
+                </span>
+                <span className="col" style={{ gap: 2, minWidth: 0 }}>
+                  <span className="t-l2 fw6 clamp2">
+                    {m.productName} · {m.optionName}
+                  </span>
+                  <span className="t-c1 c-alt">
+                    {m.actor.name} · {kst.format(new Date(m.createdAt))}
+                    {m.note ? ` · 사유: ${m.note}` : ""}
+                    {m.stockAfter !== null ? ` · 남은 재고 ${m.stockAfter.toLocaleString("ko-KR")}` : ""}
+                  </span>
+                </span>
+              </span>
+              <span className={`num fw6 ${m.delta > 0 ? "c-pos" : "c-neg"}`} style={{ flex: "none" }}>
+                {signed(m.delta)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {next && !error && (
+        <button
+          className="btn btn-sm btn-out"
+          type="button"
+          style={{ alignSelf: "center" }}
+          disabled={more}
+          onClick={async () => {
+            setMore(true);
+            await load(next);
+            setMore(false);
+          }}
+        >
+          {more ? "불러오고 있어요" : "이력 더 보기"}
+        </button>
+      )}
+    </section>
+  );
+}

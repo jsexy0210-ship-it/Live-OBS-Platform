@@ -30,9 +30,17 @@ async function openAs(page: Page, email = "demo-owner@example.com") {
 const nextInput = (page: Page, label: string) => page.getByLabel(`${label} 변경 후 재고`);
 const row = (page: Page, text: string) => page.getByTestId("stock-row").filter({ hasText: text });
 
-async function applyAll(page: Page) {
+// 확인 창에서 사유를 고르고 적용한다(사유는 재고 이력에 남는다). 사유 없이는 적용 버튼이 꺼져 있다
+async function confirmApply(page: Page, reason = "재고 조사") {
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("button", { name: "적용", exact: true })).toBeDisabled();
+  await dialog.getByRole("radio", { name: reason }).click();
+  await dialog.getByRole("button", { name: "적용", exact: true }).click();
+}
+
+async function applyAll(page: Page, reason?: string) {
   await page.getByRole("button", { name: /^변경 \d+건 적용$/ }).last().click();
-  await page.getByRole("dialog").getByRole("button", { name: "적용", exact: true }).click();
+  await confirmApply(page, reason);
 }
 
 test("변경 후 재고를 적고 한 번에 적용하면 반영된다", async ({ page }) => {
@@ -225,12 +233,38 @@ test("390에서는 「모두 선택」이 있고, 바꾸면 아래 고정 바에
   await expect(bar).toBeInViewport();
   await expect(bar).toContainText("바꿀 옵션 1개");
   await bar.getByRole("button", { name: "변경 1건 적용" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "적용", exact: true }).click();
+  await confirmApply(page);
   await expect(page.getByText("재고 1건을 바꿨어요")).toBeVisible();
   await expect(bar).toHaveCount(0);
   // 되돌려 둔다
   await nextInput(page, "탑로더 25장 1팩").fill(String(Number(await row(page, "탑로더 25장").locator(".c-cur").innerText().then((t) => t.replace(/\D/g, ""))) - 2));
   await page.getByTestId("stock-mbar").getByRole("button", { name: "변경 1건 적용" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "적용", exact: true }).click();
+  await confirmApply(page);
   await expect(page.getByText("재고 1건을 바꿨어요")).toBeVisible();
+});
+
+test("재고 이력: 빼기·한 번에 적용이 사유·처리자·남은 재고와 함께 최근 것부터 남는다", async ({ page }) => {
+  await openAs(page);
+  const label = "탑로더 25장 1팩";
+  const before = Number(await row(page, "탑로더 25장").locator(".c-cur").innerText().then((t) => t.replace(/\D/g, "")));
+  // 1) 빼기 시트(이벤트 증정)
+  await page.getByRole("button", { name: `${label} 빼기 · 더하기` }).click();
+  const sheet = page.getByRole("dialog");
+  await sheet.getByLabel("수량").fill("1");
+  await sheet.getByRole("radio", { name: "이벤트 증정" }).click();
+  await sheet.getByRole("button", { name: "1개 빼기" }).click();
+  const first = page.getByTestId("history-item").first();
+  await expect(first).toContainText("직접 변경");
+  await expect(first).toContainText("탑로더 25장 · 1팩");
+  await expect(first).toContainText("사유: 이벤트 증정");
+  await expect(first).toContainText("대표자");
+  await expect(first).toContainText(`남은 재고 ${before - 1}`);
+  await expect(first).toContainText("−1");
+  // 2) 한 번에 적용(입고) — 원래대로 되돌리며 사유가 남는지 본다
+  await nextInput(page, label).fill(String(before));
+  await applyAll(page, "입고");
+  await expect(page.getByText("재고 1건을 바꿨어요")).toBeVisible();
+  await expect(page.getByTestId("history-item").first()).toContainText("사유: 입고");
+  await expect(page.getByTestId("history-item").first()).toContainText("+1");
+  await expect(page.getByTestId("history-item").first()).toContainText(`남은 재고 ${before}`);
 });

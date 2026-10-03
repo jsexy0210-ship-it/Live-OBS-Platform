@@ -137,3 +137,22 @@
     padding-bottom: 72px;
   }
 }
+
+/* 재고 이력 */
+.hist-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.hist-item {
+  gap: 12px;
+  padding: 10px 0;
+  box-shadow: inset 0 -1px 0 var(--wds-line-normal-alternative);
+}
+.hist-item .clamp2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-all;
+}
