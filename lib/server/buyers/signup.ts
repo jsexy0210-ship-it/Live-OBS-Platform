@@ -189,16 +189,17 @@ export async function signupBuyer(
       });
       // 이 본인확인으로 만든 회원을 남긴다(응답이 끊겨 다시 보낸 요청을 알아보는 데 쓴다)
       await tx.identityVerification.update({ where: { id: v.id }, data: { subjectId: created.id } });
+      // 동의 기록(감사 로그)도 같은 트랜잭션에서 남긴다. 쓰지 못하면 회원 생성·본인확인 소진도 되돌린다.
+      await writeAudit(tx, {
+        actorType: "BUYER",
+        actorId: created.id,
+        sellerId: input.sellerId,
+        action: "buyer.signup",
+        ip: input.meta?.ip ?? null,
+        userAgent: input.meta?.userAgent ?? null,
+        after: { agreedTerms: true, agreedPrivacy: true, agreedMarketing, agreedAt: now.toISOString() },
+      });
       return created;
-    });
-    await writeAudit(db, {
-      actorType: "BUYER",
-      actorId: member.id,
-      sellerId: input.sellerId,
-      action: "buyer.signup",
-      ip: input.meta?.ip ?? null,
-      userAgent: input.meta?.userAgent ?? null,
-      after: { agreedTerms: true, agreedPrivacy: true, agreedMarketing, agreedAt: now.toISOString() },
     });
     return { ok: true, memberId: member.id, broadcastNickname: member.broadcastNickname, resumed: false };
   } catch (e) {

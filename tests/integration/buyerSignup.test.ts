@@ -12,7 +12,7 @@ import { FakeIdentityProvider } from "../../lib/server/identity/provider";
 import { identityProvider } from "../../lib/server/identity/registry";
 import { buyerSignupIdentityLimitReached, resendIdentityCode } from "../../lib/server/identity/verification";
 import { startSellerSignupVerification } from "../../lib/server/sellers/application";
-import { IDV_INPUT, confirmIdv, createSeller, db, resetDb, startIdv } from "./helpers";
+import { IDV_INPUT, confirmIdv, createSeller, db, failingAudit, resetDb, startIdv } from "./helpers";
 
 beforeAll(() => {
   process.env.IDENTITY_HASH_KEY = "test-identity-hash-key-0123456789abcdef";
@@ -417,5 +417,17 @@ describe("signupBuyer는 completeIdentityVerification을 거친다", () => {
     ]);
     expect(await db.buyerMember.count({ where: { sellerId: s.seller.id } })).toBe(1);
     expect((await db.identityVerification.findUniqueOrThrow({ where: { id: v.verificationId } })).useAttemptCount).toBe(1);
+  });
+  it("가입 감사 로그를 쓰지 못하면 회원도 만들지 않고 본인확인도 소진하지 않는다(같은 트랜잭션)", async () => {
+    const provider = new FakeIdentityProvider();
+    const { seller } = await createSeller();
+    const { verification, ownerToken } = await startIdv(provider, { purpose: "BUYER_SIGNUP", sellerId: seller.id });
+    expect((await confirmIdv(provider, verification, ownerToken)).ok).toBe(true);
+    const input = { sellerId: seller.id, verificationId: verification.id, ownerToken, loginId: "buyer01@example.com", password: "pw-123456", broadcastNickname: "닉", agreedTerms: true, agreedPrivacy: true };
+    await expect(signupBuyer(failingAudit(db, "buyer.signup"), provider, input)).rejects.toThrow("감사 로그 쓰기 실패");
+    expect(await db.buyerMember.count()).toBe(0);
+    expect((await db.identityVerification.findUniqueOrThrow({ where: { id: verification.id } })).consumedAt).toBeNull();
+    // 다시 하면 가입된다
+    expect((await signupBuyer(db, provider, input)).ok).toBe(true);
   });
 });
