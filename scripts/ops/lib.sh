@@ -101,11 +101,12 @@ DEPLOY_MARK_DIR="$DEPLOY_MARK.d"
 deploy_mark_key_ok() { [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]]; }
 deploy_mark_set() { # $1=키 $2=사유
   deploy_mark_key_ok "$1" || die "배포 표시 키는 영문·숫자로 시작하고 영문·숫자·.-_만 쓸 수 있어요(받은 값: $1)."
-  local max="${OBS_DEPLOY_MARK_MAX_S:-3600}" f="$DEPLOY_MARK_DIR/$1"
+  # 임시 파일은 키로 만들 수 없는 이름(.으로 시작)을 써서 감시가 키와 헷갈리지 않게 한다.
+  local max="${OBS_DEPLOY_MARK_MAX_S:-3600}" f="$DEPLOY_MARK_DIR/$1" tmp="$DEPLOY_MARK_DIR/.tmp-$$-$RANDOM"
   [[ "$max" =~ ^[1-9][0-9]*$ ]] || die "OBS_DEPLOY_MARK_MAX_S는 1 이상 정수여야 해요."
   mkdir -p "$DEPLOY_MARK_DIR" \
-    && printf 'reason=%s\npid=%s\nstarted=%s\nexpiresEpoch=%s\n' "${2:-$1}" "$$" "$(kst '+%F %T KST')" "$(( $(date +%s) + max ))" > "$f.tmp" \
-    && mv -f "$f.tmp" "$f"
+    && printf 'reason=%s\npid=%s\nstarted=%s\nexpiresEpoch=%s\n' "${2:-$1}" "$$" "$(kst '+%F %T KST')" "$(( $(date +%s) + max ))" > "$tmp" \
+    && mv -f "$tmp" "$f"
 }
 deploy_mark_clear() { deploy_mark_key_ok "$1" && rm -f "$DEPLOY_MARK_DIR/$1"; }
 # 이 스크립트가 끝날 때(실패 포함) 표시를 지운다. 여러 단계에 걸친 배포(워크플로)는 deploy-mark.sh on/off를 쓴다.

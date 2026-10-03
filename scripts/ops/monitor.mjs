@@ -327,7 +327,8 @@ async function pruneRemovedTargets() {
 
 // 유효한 배포 진행 표시 목록. 작업마다 자기 파일(deployMarkDir/<키>)을 두고, 하나라도 유효하면 배포 중이다.
 // 유효: 마지막 갱신이 기준 시간(deployMarkStaleMin) 안이고 파일에 적힌 만료 시각(expiresEpoch)이 지나지 않음.
-// 지난 파일(SIGKILL·재부팅으로 남은 고아)은 판단에서 빼고 지운 뒤 한 번 경고한다. 쓰다 남은 .tmp도 기준 시간이 지나면 지운다.
+// 지난 파일(SIGKILL·재부팅으로 남은 고아)은 판단에서 빼고 지운 뒤 한 번 경고한다.
+// .으로 시작하는 파일은 쓰는 도중의 임시 파일이라(키는 영문·숫자로 시작) 판단에서 빼고, 기준 시간이 지나면 지운다.
 // 예전 단일 파일(deployMark)도 계속 읽는다(호환. 지난 것은 경고만 하고 그대로 둠).
 async function activeDeployMarks() {
   const now = Date.now();
@@ -338,7 +339,7 @@ async function activeDeployMarks() {
     const p = `${cfg.deployMarkDir}/${f}`;
     try {
       const ageMin = (now - statSync(p).mtimeMs) / 60_000;
-      const tmp = f.endsWith(".tmp");
+      const tmp = f.startsWith(".");
       const exp = tmp ? 0 : Number(/^expiresEpoch=(\d+)$/m.exec(readFileSync(p, "utf8"))?.[1] ?? 0);
       if (!tmp && ageMin <= cfg.deployMarkStaleMin && !(exp > 0 && now >= exp * 1000)) { active.push(f); continue; }
       if (tmp && ageMin <= cfg.deployMarkStaleMin) continue;
