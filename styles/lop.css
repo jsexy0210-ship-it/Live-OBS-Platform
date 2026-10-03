@@ -1,5 +1,8 @@
-/* ONQ(가칭) — Live OBS Platform 공통 스타일. A안: Montage(WDS) 구조·변수 이름은 유지하고 색(큐 바이올렛 · 웜 뉴트럴 · 마스터 틸)과 서체(Gothic A1)는 자체 제안값으로 덮어씀.
+/* ONQ(가칭) — Live OBS Platform 공통 스타일. A안: Montage(WDS) 구조·변수 이름은 유지하고 색(큐 바이올렛 · 웜 뉴트럴 · 마스터 틸)과 서체(원티드 산스, 대표님 지시 2026-10-03)는 자체 제안값으로 덮어씀.
    브랜드 교체 지점: 아래 .app 의 --brand-name / --brand-ko / --brand / --brand-ink 네 줄. 오버레이는 ov.css */
+/* 원티드 산스 가변 서체(SIL OFL 1.1, public/fonts/wanted-sans/OFL.txt). 외부 CDN 없이 저장소에서 내려준다. */
+@font-face{font-family:"Wanted Sans Variable";font-style:normal;font-display:swap;font-weight:400 1000;
+  src:url("/fonts/wanted-sans/WantedSansVariable.woff2") format("woff2-variations"),url("/fonts/wanted-sans/WantedSansVariable.woff2") format("woff2")}
 .app{
   --brand-name:"ONQ"; --brand-ko:"온큐";
   --brand:#5b3df6; --brand-ink:#ffffff; --onair:#e8382d;
@@ -13,7 +16,7 @@
   --wds-fill-normal:#716c6414; --wds-fill-strong:#716c6429; --wds-fill-alternative:#716c640d;
   --wds-inverse-primary:#8f78ff; --wds-inverse-background:#171615; --wds-inverse-label:#f6f4f0;
   --info-bg:#eeeaff; --page:var(--wds-background-normal-alternative); --surface:var(--wds-background-elevated-normal);
-  font-family:"Gothic A1","Apple SD Gothic Neo","Noto Sans KR",sans-serif;
+  font-family:"Wanted Sans Variable","Wanted Sans","Pretendard JP","Apple SD Gothic Neo",sans-serif;
   color:var(--wds-label-normal); background:var(--page); font-size:14px; line-height:1.43; letter-spacing:.0145em;
   box-sizing:border-box; -webkit-font-smoothing:antialiased;
 }
@@ -222,7 +225,7 @@ select.inp{cursor:pointer}
 .node{padding:10px 12px;border-radius:10px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--wds-line-normal-normal);font-size:13px;line-height:18px}
 .node b{display:block;font-size:11px;color:var(--wds-label-alternative);font-weight:600}
 /* OBS 오버레이 */
-.ov{position:relative;overflow:hidden;color:#fff;font-family:"Gothic A1","Noto Sans KR",sans-serif;
+.ov{position:relative;overflow:hidden;color:#fff;font-family:"Wanted Sans Variable","Wanted Sans","Pretendard JP","Apple SD Gothic Neo",sans-serif;
   background-color:#2a2b2f;background-image:linear-gradient(45deg,#33343a 25%,transparent 25%,transparent 75%,#33343a 75%),linear-gradient(45deg,#33343a 25%,transparent 25%,transparent 75%,#33343a 75%);background-size:48px 48px;background-position:0 0,24px 24px}
 .ov-hint{position:absolute;font-size:20px;font-weight:600;color:#ffffff59;letter-spacing:.02em}
 .ovp{background:#0f0f10e6;border-radius:24px;box-shadow:0 0 0 1px #ffffff1f,0 16px 40px #00000066}
