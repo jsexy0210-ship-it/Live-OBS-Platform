@@ -26,7 +26,8 @@ export function identityStepRoute(step: "resend" | "confirm", purpose: IdentityV
     if (!id) return identityFailure("not_found");
     const v = await prisma.identityVerification.findUnique({ where: { id }, select: { sellerId: true } });
     if (!v) return identityFailure("not_found");
-    const slug = ctx ? (await ctx.params).slug : undefined;
+    // 동적 세그먼트가 없는 라우트에서도 Next가 ctx를 넘기고 params는 undefined로 풀린다
+    const slug = ctx ? (await ctx.params)?.slug : undefined;
     if (slug !== undefined) {
       const shop = await prisma.seller.findUnique({ where: { slug }, select: { id: true } });
       if (!shop || shop.id !== v.sellerId) return identityFailure("not_found");

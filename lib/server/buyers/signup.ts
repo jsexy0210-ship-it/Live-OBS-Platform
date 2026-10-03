@@ -69,9 +69,10 @@ export async function startBuyerSignupVerification(
   meta: { ip?: string | null; userAgent?: string | null; now?: Date; attemptKey?: unknown } = {},
 ) {
   if (!(await shopOpen(db, sellerId))) return { ok: false as const, reason: "shop_unavailable" as const };
-  // 가입 필수 동의는 본인확인 요청 전에 받는다(PRODUCT_SCOPE 「동의 순서」). 같은 요청 본문의 동의 값·문서 버전이 없거나 다르면 시작하지 않는다.
+  // 가입 필수 동의는 본인확인 요청 전에 받는다(PRODUCT_SCOPE 「동의 순서」). 같은 요청 본문의 동의 값·문서 버전이 없거나 다르면 새로 시작하지 않는다.
+  // 같은 attemptKey로 이미 시작한 기록이 있으면(응답 유실 뒤 재시도) 그사이 문서 버전·재가입 제한 정책이 바뀌어도 그 기록을 돌려준다
+  // (그 기록에는 시작 때 확인한 동의가 묶여 있다). 동의 검사는 새 기록을 만들 때만 적용한다.
   const consent = parseSignupConsent(rawPerson, await rejoinDaysToAgree(db, sellerId), meta.now ?? new Date());
-  if (!consent.ok) return { ok: false as const, reason: consent.reason };
   if (meta.attemptKey !== undefined && (typeof meta.attemptKey !== "string" || !UUID_RE.test(meta.attemptKey))) {
     return { ok: false as const, reason: "invalid_identity_input" as const };
   }
@@ -84,6 +85,7 @@ export async function startBuyerSignupVerification(
     | { kind: "reused"; verificationId: string; ownerToken: string }
     | { kind: "refused"; reason: "already_verified" | "expired" | "failed" | "trial_limit_exceeded" | "start_in_progress" }
     | { kind: "limited" }
+    | { kind: "consent"; reason: ConsentFailure }
     | { kind: "send"; verification: IdentityVerification; ownerToken: string };
   const started = await db.$transaction(async (tx): Promise<Started> => {
     const now = meta.now ?? (await dbNow(tx));
@@ -107,6 +109,7 @@ export async function startBuyerSignupVerification(
         }
       }
     }
+    if (!consent.ok) return { kind: "consent", reason: consent.reason };
     // 체험하기 중 본인확인 한도가 찼으면 확정할 수 없으니 기록을 만들거나 문자를 보내지 않는다
     if (await buyerSignupIdentityLimitReached(tx, sellerId, meta.now)) return { kind: "refused", reason: "trial_limit_exceeded" };
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`buyer_signup:${sellerId}:${ip ?? "unknown"}`}))`;
@@ -133,6 +136,7 @@ export async function startBuyerSignupVerification(
   });
   if (started.kind === "reused") return { ok: true as const, verificationId: started.verificationId, ownerToken: started.ownerToken };
   if (started.kind === "refused") return { ok: false as const, reason: started.reason };
+  if (started.kind === "consent") return { ok: false as const, reason: started.reason };
   if (started.kind === "limited") {
     await writeAudit(db, { actorType: "SYSTEM", sellerId, action: "buyer.signup.verify_limited", reason: "daily_limit_exceeded", ip, userAgent: meta.userAgent });
     return { ok: false as const, reason: "daily_limit_exceeded" as const };
