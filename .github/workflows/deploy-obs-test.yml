@@ -1,0 +1,113 @@
+# obs-test 서버(obs-web-test) 배포. 절차·runner 등록: docs/DEPLOY.md
+# - 수동 실행(workflow_dispatch)만. PR·push·예약 실행 없음.
+# - main 브랜치와 이 저장소일 때만 job이 돈다. fork·다른 브랜치는 runner로 가지 않는다.
+# - VM 안의 self-hosted runner(라벨 obs-kakao)가 main을 받아 VM에서 이미지를 빌드·기동한다.
+# - 비밀값은 서버의 /opt/obs/.env에만 있다. 이 파일과 로그에 넣지 않는다.
+name: Deploy obs-test
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_sha:
+        description: "배포할 main 커밋 SHA(앞 7자리 이상). 실행 시점의 main과 다르면 멈춰요."
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-obs-test
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to obs-test
+    if: github.ref == 'refs/heads/main' && github.repository == 'jsexy0210-ship-it/Live-OBS-Platform'
+    runs-on: [self-hosted, obs-kakao]
+    environment: obs-test
+    timeout-minutes: 40
+    env:
+      ENV_FILE: /opt/obs/.env
+      BACKUP_DIR: /opt/obs/backups
+      CONFIRM_SHA: ${{ inputs.confirm_sha }}
+    steps:
+      - name: Check target commit
+        run: |
+          set -euo pipefail
+          if [ "${#CONFIRM_SHA}" -lt 7 ] || ! printf '%s' "$CONFIRM_SHA" | grep -Eq '^[0-9a-f]+$'; then
+            echo "커밋 SHA를 7자리 이상 소문자 16진수로 입력해 주세요."; exit 1
+          fi
+          case "$GITHUB_SHA" in
+            "$CONFIRM_SHA"*) echo "배포 커밋: $GITHUB_SHA" ;;
+            *) echo "입력한 SHA($CONFIRM_SHA)가 실행 시점의 main($GITHUB_SHA)과 달라요."; exit 1 ;;
+          esac
+          test -f "$ENV_FILE" || { echo "$ENV_FILE 이 없어요(docs/DEPLOY.md 「서버 .env」)."; exit 1; }
+
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Backup DB before deploy
+        run: |
+          set -euo pipefail
+          # 이번 배포의 compose 정의로 DB를 다시 만들지 않도록, 지금 있는 DB 컨테이너를 그대로 깨워 백업한다
+          # (새 정의로 up 하면 이미지·볼륨 변경이 백업보다 먼저 적용될 수 있음)
+          db="$(docker ps -aq --filter label=com.docker.compose.project=obs-web --filter label=com.docker.compose.service=obs-web-db | head -n1)"
+          if [ -n "$db" ]; then
+            docker start "$db" >/dev/null
+            for i in $(seq 1 30); do
+              docker exec "$db" sh -c 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"' >/dev/null 2>&1 && break
+              [ "$i" -eq 30 ] && { echo "DB가 준비되지 않아 백업하지 못했어요. 배포를 멈춰요."; exit 1; }
+              sleep 2
+            done
+            f="$BACKUP_DIR/obs-$(TZ=Asia/Seoul date +%Y%m%d-%H%M%S)-before-${GITHUB_SHA:0:7}.dump"
+            # 중간에 실패해도 잘린 파일이 정상 백업 이름으로 남지 않게 .part에 먼저 쓴다
+            if ! docker exec "$db" sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$f.part"; then
+              rm -f "$f.part"; echo "백업에 실패해 배포를 멈춰요."; exit 1
+            fi
+            chmod 600 "$f.part"
+            mv "$f.part" "$f"
+            echo "백업: $(basename "$f")"
+          elif docker volume inspect obs-web_obs-web-pgdata >/dev/null 2>&1; then
+            echo "DB 볼륨은 있는데 DB 컨테이너가 없어요. docs/DEPLOY.md 「백업·복구」로 수동 백업한 뒤 다시 실행해 주세요."
+            exit 1
+          else
+            echo "DB 볼륨이 아직 없어 백업을 건너뛰어요(첫 배포)."
+          fi
+
+      - name: Build and start
+        env:
+          APP_VERSION: ${{ github.sha }}
+          OBS_ENV_FILE: /opt/obs/.env
+        run: |
+          set -euo pipefail
+          docker compose -p obs-web -f deploy/docker-compose.yml --env-file "$ENV_FILE" up -d --build --wait --wait-timeout 600
+
+      - name: Health check
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            body="$(curl -fsS --max-time 5 http://127.0.0.1/api/health || true)"
+            if printf '%s' "$body" | grep -q "\"version\":\"$GITHUB_SHA\"" && printf '%s' "$body" | grep -q '"db":"ok"'; then
+              echo "health ok: $body"; break
+            fi
+            if [ "$i" -eq 30 ]; then echo "health 실패: ${body:-응답 없음}"; exit 1; fi
+            sleep 5
+          done
+
+      - name: Record deploy
+        if: success()
+        run: |
+          set -euo pipefail
+          line="$(TZ=Asia/Seoul date '+%F %T KST') sha=$GITHUB_SHA run=$GITHUB_RUN_ID actor=$GITHUB_ACTOR"
+          echo "$line" >> /opt/obs/deploy-history.log
+          { echo "### obs-test 배포 완료"; echo; echo "- 커밋: \`$GITHUB_SHA\`"; echo "- 시각: $(TZ=Asia/Seoul date '+%F %T') KST"; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Show status on failure
+        if: failure()
+        run: |
+          docker compose -p obs-web -f deploy/docker-compose.yml --env-file "$ENV_FILE" ps || true
+          docker compose -p obs-web -f deploy/docker-compose.yml --env-file "$ENV_FILE" logs --tail 80 obs-web-migrate obs-web-app || true

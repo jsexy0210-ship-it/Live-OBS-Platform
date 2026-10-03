@@ -1,0 +1,92 @@
+# obs-web(테스트 서버 obs-test) 배포 구성. 절차·변수 이름: docs/DEPLOY.md
+# 실행(저장소 루트에서): docker compose -p obs-web -f deploy/docker-compose.yml --env-file /opt/obs/.env up -d --build --wait
+# - DB 포트는 호스트·인터넷에 열지 않는다(같은 compose 네트워크 안에서만 접속).
+# - 밖으로 여는 포트는 프록시의 80·443뿐.
+name: obs-web
+
+x-app-env: &app-env
+  # DB 주소는 .env의 POSTGRES_* 값으로 만든다(비밀번호는 URL에 그대로 들어가므로 영문·숫자만 쓴다).
+  DATABASE_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@obs-web-db:5432/${POSTGRES_DB:?}
+
+services:
+  obs-web-db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: ${POSTGRES_DB:?}
+      TZ: Asia/Seoul
+    volumes:
+      - obs-web-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # 앱 기동 전 prisma migrate deploy를 한 번 실행하고 끝난다.
+  obs-web-migrate:
+    # 이미지에 커밋 SHA를 붙여 남긴다(롤백 때 이전 이미지를 그대로 다시 띄움, docs/DEPLOY.md 「롤백」).
+    image: obs-web-migrate:${APP_VERSION:-local}
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: migrator
+    environment: *app-env
+    depends_on:
+      obs-web-db:
+        condition: service_healthy
+    restart: "no"
+
+  obs-web-app:
+    image: obs-web-app:${APP_VERSION:-local}
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: runner
+      args:
+        APP_VERSION: ${APP_VERSION:-}
+    restart: unless-stopped
+    env_file:
+      - path: ${OBS_ENV_FILE:-/opt/obs/.env}
+        required: true
+    environment:
+      <<: *app-env
+      # 앞단 프록시(Caddy) 한 단계만 믿는다.
+      TRUSTED_PROXY_HOPS: "1"
+    expose:
+      - "3000"
+    depends_on:
+      obs-web-db:
+        condition: service_healthy
+      obs-web-migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 6
+
+  obs-web-proxy:
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      OBS_SITE_ADDRESS: ${OBS_SITE_ADDRESS:-:80}
+    ports:
+      - "80:80"
+      # HTTPS. 보안 그룹에서 443을 열기 전까지는 밖에서 닿지 않는다.
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - obs-web-caddy-data:/data
+      - obs-web-caddy-config:/config
+    depends_on:
+      obs-web-app:
+        condition: service_healthy
+
+volumes:
+  obs-web-pgdata:
+  obs-web-caddy-data:
+  obs-web-caddy-config:
