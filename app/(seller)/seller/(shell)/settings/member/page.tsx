@@ -16,6 +16,8 @@ const SET_ROW = { padding: "12px 0", gap: 12, boxShadow: "inset 0 -1px 0 var(--w
 
 export default function MemberSettingsPage() {
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; saved: Policy }>({ kind: "loading" });
+  // 동의 철회 기능이 준비되기 전에는 켤 수 없다(서버가 알려 줌). 이미 켜진 쇼핑몰은 끄기만 된다.
+  const [available, setAvailable] = useState(true);
   const [enabled, setEnabled] = useState(false);
   const [days, setDays] = useState(30);
   const [saving, setSaving] = useState(false);
@@ -29,8 +31,9 @@ export default function MemberSettingsPage() {
 
   const load = useCallback(async () => {
     setState({ kind: "loading" });
-    const r = await api<{ policy: Policy }>("/api/seller/member-policy");
+    const r = await api<{ policy: Policy; restrictionAvailable?: boolean }>("/api/seller/member-policy");
     if (!r.ok) return setState({ kind: "error", status: r.status });
+    setAvailable(r.data.restrictionAvailable !== false);
     apply(r.data.policy);
     setState({ kind: "ok", saved: r.data.policy });
   }, []);
@@ -104,9 +107,24 @@ export default function MemberSettingsPage() {
                     <span className="t-l1 fw6" id="rj-label">
                       탈퇴한 사람의 재가입 막기
                     </span>
-                    <span className="t-c1 c-alt">{enabled ? `탈퇴한 날부터 ${label(days)} 동안 같은 사람이 다시 가입할 수 없어요` : "꺼 두면 탈퇴한 사람도 바로 다시 가입할 수 있어요 · 기본 꺼짐"}</span>
+                    <span className="t-c1 c-alt" id="rj-help">
+                      {!available && !enabled
+                        ? "회원이 동의를 철회할 수 있는 화면이 준비되면 켤 수 있어요"
+                        : enabled
+                          ? `탈퇴한 날부터 ${label(days)} 동안 같은 사람이 다시 가입할 수 없어요`
+                          : "꺼 두면 탈퇴한 사람도 바로 다시 가입할 수 있어요 · 기본 꺼짐"}
+                    </span>
                   </span>
-                  <button className={`sw${enabled ? " on" : ""}`} type="button" role="switch" aria-checked={enabled} aria-labelledby="rj-label" onClick={() => setEnabled((v) => !v)} />
+                  <button
+                    className={`sw${enabled ? " on" : ""}`}
+                    type="button"
+                    role="switch"
+                    aria-checked={enabled}
+                    aria-labelledby="rj-label"
+                    aria-describedby="rj-help"
+                    disabled={!available && !enabled}
+                    onClick={() => setEnabled((v) => !v)}
+                  />
                 </div>
                 {enabled && (
                   <div className="col" style={{ gap: 8 }}>
