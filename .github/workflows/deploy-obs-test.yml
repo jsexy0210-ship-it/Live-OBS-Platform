@@ -53,14 +53,23 @@ jobs:
       - name: Backup DB before deploy
         run: |
           set -euo pipefail
-          C="docker compose -p obs-web -f deploy/docker-compose.yml --env-file $ENV_FILE"
-          # 컨테이너가 멈춰 있어도 볼륨에 데이터가 있으면 DB를 띄워 백업한다(실행 중인 컨테이너만 보면 down 뒤에 백업을 건너뜀)
-          if docker volume inspect obs-web_obs-web-pgdata >/dev/null 2>&1; then
-            $C up -d --wait obs-web-db
+          # 이번 배포의 compose 정의로 DB를 다시 만들지 않도록, 지금 있는 DB 컨테이너를 그대로 깨워 백업한다
+          # (새 정의로 up 하면 이미지·볼륨 변경이 백업보다 먼저 적용될 수 있음)
+          db="$(docker ps -aq --filter label=com.docker.compose.project=obs-web --filter label=com.docker.compose.service=obs-web-db | head -n1)"
+          if [ -n "$db" ]; then
+            docker start "$db" >/dev/null
+            for i in $(seq 1 30); do
+              docker exec "$db" sh -c 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"' >/dev/null 2>&1 && break
+              [ "$i" -eq 30 ] && { echo "DB가 준비되지 않아 백업하지 못했어요. 배포를 멈춰요."; exit 1; }
+              sleep 2
+            done
             f="$BACKUP_DIR/obs-$(TZ=Asia/Seoul date +%Y%m%d-%H%M%S)-before-${GITHUB_SHA:0:7}.dump"
-            $C exec -T obs-web-db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$f"
+            docker exec "$db" sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$f"
             chmod 600 "$f"
             echo "백업: $(basename "$f")"
+          elif docker volume inspect obs-web_obs-web-pgdata >/dev/null 2>&1; then
+            echo "DB 볼륨은 있는데 DB 컨테이너가 없어요. docs/DEPLOY.md 「백업·복구」로 수동 백업한 뒤 다시 실행해 주세요."
+            exit 1
           else
             echo "DB 볼륨이 아직 없어 백업을 건너뛰어요(첫 배포)."
           fi
