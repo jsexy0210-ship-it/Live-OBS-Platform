@@ -5,7 +5,8 @@ import { MAX_EMAIL_LENGTH, normalizeEmail } from "../auth/login";
 import { MIN_PASSWORD_LENGTH } from "../auth/passwordReset";
 import { sellerAccessFor } from "../billing/subscription";
 import type { IdentityProvider } from "../identity/provider";
-import { buyerSignupIdentityLimitReached, completeIdentityVerification, parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
+import { hashToken } from "../auth/token";
+import { buyerSignupIdentityLimitReached, completeIdentityVerification, parseIdentityPerson, reissueOwnerToken, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
 import { EMAIL } from "../sellers/application";
 import { cleanText } from "../text/clean";
 
@@ -34,37 +35,67 @@ export async function shopOpen(db: PrismaClient, sellerId: string) {
   return !!seller && seller.status === "ACTIVE" && (await sellerAccessFor(db, sellerId)) !== "expired";
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // 구매자 가입 1단계: 휴대폰 본인확인 시작(같은 IP·같은 쇼핑몰 하루 10회까지). 첫 인증번호를 보내고 ownerToken을 돌려준다.
+// attemptKey(선택, 클라이언트가 만든 UUID): 응답이 끊겨 같은 키로 다시 보내면, 같은 쇼핑몰·같은 키로 이미 만든 확인 전(PENDING) 기록을
+// 새로 만들거나 문자를 다시 보내지 않고 그대로 쓴다. 이때 ownerToken을 새로 발급하고(이전 토큰은 무효) 일일 횟수·체험 한도는 다시 세지 않는다.
+// 같은 키의 기록이 확인 전이 아니면(확인됨·만료·실패) 그 상태의 오류를 돌려준다. 키 확인·생성은 키별 잠금 아래에서 해 동시 요청도 문자를 한 번만 보낸다.
 export async function startBuyerSignupVerification(
   db: PrismaClient,
   provider: IdentityProvider,
   sellerId: string,
   rawPerson: unknown,
-  meta: { ip?: string | null; userAgent?: string | null; now?: Date } = {},
+  meta: { ip?: string | null; userAgent?: string | null; now?: Date; attemptKey?: unknown } = {},
 ) {
   if (!(await shopOpen(db, sellerId))) return { ok: false as const, reason: "shop_unavailable" as const };
+  if (meta.attemptKey !== undefined && (typeof meta.attemptKey !== "string" || !UUID_RE.test(meta.attemptKey))) {
+    return { ok: false as const, reason: "invalid_identity_input" as const };
+  }
+  const keyHash = typeof meta.attemptKey === "string" ? hashToken(meta.attemptKey.toLowerCase()) : null;
   const person = parseIdentityPerson(rawPerson);
   if (!person) return { ok: false as const, reason: "invalid_identity_input" as const };
-  // 체험하기 중 본인확인 한도가 찼으면 확정할 수 없으니 기록을 만들거나 문자를 보내지 않는다
-  if (await buyerSignupIdentityLimitReached(db, sellerId, meta.now)) return { ok: false as const, reason: "trial_limit_exceeded" as const };
   const ip = meta.ip ?? null;
-  const started = await db.$transaction(async (tx) => {
+  type Started =
+    | { kind: "reused"; verificationId: string; ownerToken: string }
+    | { kind: "refused"; reason: "already_verified" | "expired" | "failed" | "trial_limit_exceeded" }
+    | { kind: "limited" }
+    | { kind: "created"; started: Awaited<ReturnType<typeof startIdentityVerification>> };
+  const started = await db.$transaction(async (tx): Promise<Started> => {
+    if (keyHash) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`buyer_signup_key:${sellerId}:${keyHash}`}))`;
+      const same = await tx.identityVerification.findUnique({ where: { sellerId_attemptKeyHash: { sellerId, attemptKeyHash: keyHash } } });
+      if (same) {
+        const now = meta.now ?? new Date();
+        if (same.status === "PENDING" && same.expiresAt > now) {
+          const ownerToken = await reissueOwnerToken(tx, same.id);
+          if (ownerToken) return { kind: "reused", verificationId: same.id, ownerToken };
+        }
+        if (same.status === "VERIFIED") return { kind: "refused", reason: "already_verified" };
+        if (same.status === "FAILED") return { kind: "refused", reason: "failed" };
+        return { kind: "refused", reason: "expired" };
+      }
+    }
+    // 체험하기 중 본인확인 한도가 찼으면 확정할 수 없으니 기록을 만들거나 문자를 보내지 않는다
+    if (await buyerSignupIdentityLimitReached(tx, sellerId, meta.now)) return { kind: "refused", reason: "trial_limit_exceeded" };
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`buyer_signup:${sellerId}:${ip ?? "unknown"}`}))`;
     const [{ count }] = await tx.$queryRaw<{ count: bigint }[]>`
       SELECT count(*)::bigint AS count FROM "IdentityVerification"
       WHERE "purpose" = 'BUYER_SIGNUP' AND "sellerId" = ${sellerId}::uuid
         AND "requestIp" IS NOT DISTINCT FROM ${ip}
         AND "createdAt" >= (date_trunc('day', now() AT TIME ZONE 'Asia/Seoul') AT TIME ZONE 'Asia/Seoul')`;
-    if (Number(count) >= BUYER_SIGNUP_VERIFY_DAILY_LIMIT_PER_IP) return null;
-    return startIdentityVerification(tx, provider, { purpose: "BUYER_SIGNUP", sellerId, person, requestIp: ip, now: meta.now });
+    if (Number(count) >= BUYER_SIGNUP_VERIFY_DAILY_LIMIT_PER_IP) return { kind: "limited" };
+    return { kind: "created", started: await startIdentityVerification(tx, provider, { purpose: "BUYER_SIGNUP", sellerId, person, requestIp: ip, attemptKeyHash: keyHash, now: meta.now }) };
   });
-  if (!started) {
+  if (started.kind === "reused") return { ok: true as const, verificationId: started.verificationId, ownerToken: started.ownerToken };
+  if (started.kind === "refused") return { ok: false as const, reason: started.reason };
+  if (started.kind === "limited") {
     await writeAudit(db, { actorType: "SYSTEM", sellerId, action: "buyer.signup.verify_limited", reason: "daily_limit_exceeded", ip, userAgent: meta.userAgent });
     return { ok: false as const, reason: "daily_limit_exceeded" as const };
   }
-  const sent = await sendFirstIdentityCode(db, provider, started.verification, person, meta.now);
+  const sent = await sendFirstIdentityCode(db, provider, started.started.verification, person, meta.now);
   if (!sent.ok) return { ok: false as const, reason: sent.reason };
-  return { ok: true as const, verificationId: started.verification.id, ownerToken: started.ownerToken };
+  return { ok: true as const, verificationId: started.started.verification.id, ownerToken: started.started.ownerToken };
 }
 
 export type BuyerSignupFailure =

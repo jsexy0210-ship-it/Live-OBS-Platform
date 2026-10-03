@@ -348,4 +348,47 @@ describe("signupBuyer는 completeIdentityVerification을 거친다", () => {
     expect(await buyerSignupIdentityLimitReached(counting, s.seller.id)).toBe(true);
     expect(counts).toBe(1);
   });
+  it("attemptKey로 다시 시작하면 같은 본인확인을 새 쿠키로 돌려주고 문자·일일 횟수는 다시 쓰지 않는다(이전 쿠키는 무효)", async () => {
+    const s = await shop();
+    const key = crypto.randomUUID();
+    const first = await startRoute(post(`${s.base}/verification`, { ...IDV_INPUT, attemptKey: key }), ctx(s.slug));
+    expect(first.status).toBe(200);
+    const oldCookie = cookieOf(first, "lo_bidv");
+    const { verificationId } = await first.json();
+    // 응답이 끊겨 쿠키 없이 같은 키로 다시 보낸다
+    const again = await startRoute(post(`${s.base}/verification`, { ...IDV_INPUT, attemptKey: key }), ctx(s.slug));
+    expect(again.status).toBe(200);
+    expect(await again.json()).toEqual({ verificationId });
+    const newCookie = cookieOf(again, "lo_bidv");
+    expect(newCookie).toMatch(/^lo_bidv=.+/);
+    expect(newCookie).not.toBe(oldCookie);
+    expect(await db.identityVerification.count({ where: { sellerId: s.seller.id } })).toBe(1);
+    expect((await db.identityVerification.findUniqueOrThrow({ where: { id: verificationId } })).sendCount).toBe(1);
+    // 이전 쿠키로는 확인할 수 없고 새 쿠키로는 된다
+    expect((await confirmRoute(post(`${s.base}/verification/confirm`, { verificationId, code: "000000" }, oldCookie), ctx(s.slug))).status).toBe(404);
+    expect((await confirmRoute(post(`${s.base}/verification/confirm`, { verificationId, code: "000000" }, newCookie), ctx(s.slug))).status).toBe(200);
+    // 확인을 마친 뒤 같은 키면 새로 만들지 않고 409
+    const done = await startRoute(post(`${s.base}/verification`, { ...IDV_INPUT, attemptKey: key }), ctx(s.slug));
+    expect(done.status).toBe(409);
+    expect((await done.json()).error).toBe("already_verified");
+    // 다른 키면 새로 만든다
+    expect((await startRoute(post(`${s.base}/verification`, { ...IDV_INPUT, attemptKey: crypto.randomUUID() }), ctx(s.slug))).status).toBe(200);
+    expect(await db.identityVerification.count({ where: { sellerId: s.seller.id } })).toBe(2);
+    // 키가 UUID가 아니면 400
+    expect((await startRoute(post(`${s.base}/verification`, { ...IDV_INPUT, attemptKey: "abc" }), ctx(s.slug))).status).toBe(400);
+  });
+
+  it("같은 attemptKey로 동시에 시작해도 기록·문자는 한 번이고, 다른 쇼핑몰의 같은 키는 따로 만든다", async () => {
+    const a = await shop();
+    const b = await shop();
+    const key = crypto.randomUUID();
+    const rs = await Promise.all([1, 2, 3].map(() => startRoute(post(`${a.base}/verification`, { ...IDV_INPUT, attemptKey: key }), ctx(a.slug))));
+    expect(rs.map((r) => r.status)).toEqual([200, 200, 200]);
+    const ids = new Set(await Promise.all(rs.map(async (r) => (await r.json()).verificationId)));
+    expect(ids.size).toBe(1);
+    const [v] = await db.identityVerification.findMany({ where: { sellerId: a.seller.id } });
+    expect(v.sendCount).toBe(1);
+    expect((await startRoute(post(`${b.base}/verification`, { ...IDV_INPUT, attemptKey: key }), ctx(b.slug))).status).toBe(200);
+    expect(await db.identityVerification.count({ where: { sellerId: b.seller.id } })).toBe(1);
+  });
 });

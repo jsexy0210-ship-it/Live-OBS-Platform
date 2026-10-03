@@ -68,7 +68,15 @@ export function parseIdentityPerson(raw: unknown): IdentityPerson | null {
 export async function startIdentityVerification(
   db: Db,
   provider: IdentityProvider,
-  input: { purpose: IdentityVerificationPurpose; sellerId: string | null; person: IdentityPerson; subjectId?: string | null; requestIp?: string | null; now?: Date },
+  input: {
+    purpose: IdentityVerificationPurpose;
+    sellerId: string | null;
+    person: IdentityPerson;
+    subjectId?: string | null;
+    requestIp?: string | null;
+    attemptKeyHash?: string | null;
+    now?: Date;
+  },
 ): Promise<{ verification: IdentityVerification; ownerToken: string }> {
   const now = input.now ?? new Date();
   const ownerToken = generateToken();
@@ -78,6 +86,7 @@ export async function startIdentityVerification(
       sellerId: input.sellerId,
       subjectId: input.subjectId ?? null,
       requestIp: input.requestIp ?? null,
+      attemptKeyHash: input.attemptKeyHash ?? null,
       provider: provider.name,
       method: "SMS",
       requestId: newIdentityRequestId(),
@@ -88,6 +97,13 @@ export async function startIdentityVerification(
     },
   });
   return { verification, ownerToken };
+}
+
+// 시작한 브라우저 토큰을 새로 발급한다(이전 토큰은 무효). 확인 전(PENDING)인 기록만. 바꿨으면 새 토큰, 아니면 null.
+export async function reissueOwnerToken(db: Db, id: string): Promise<string | null> {
+  const ownerToken = generateToken();
+  const r = await db.identityVerification.updateMany({ where: { id, status: "PENDING" }, data: { ownerTokenHash: hashToken(ownerToken) } });
+  return r.count === 1 ? ownerToken : null;
 }
 
 // 첫 인증번호 보내기. 공급자 장애·타임아웃이면 이 요청은 실패로 끝낸다(처음부터 다시).
