@@ -67,6 +67,13 @@ export interface BrowserSession {
   close(opts?: { keepForResume?: boolean }): Promise<void>;
 }
 
+// 실제 실행기가 지켜야 할 접속 조건(정본 c4cc711). 서버 쪽 검사(validateDecision의 허용 호스트·https·기본 포트)만으로는
+// DNS 바꿔치기·리다이렉트로 내부망에 닿는 것을 막을 수 없으므로 실행기가 접속 단계에서 직접 막는다.
+// - navigate·리다이렉트·하위 요청 모두: DNS 확인 뒤 실제 접속 IP와 리다이렉트마다 다시 확인한 IP가
+//   localhost(127.0.0.0/8, ::1)·사설망(10/8, 172.16/12, 192.168/16, fc00::/7)·링크로컬(169.254/16, fe80::/10)·
+//   클라우드 메타데이터(169.254.169.254 등)·0.0.0.0이면 거부한다. 리다이렉트는 횟수 상한을 둔다.
+// - https와 기본 포트만, 허용 호스트(ALLOWED_HOSTS) 밖으로 리다이렉트되면 거부한다.
+// - 거부하면 retryable이 아니라 fatal로 돌려준다(같은 주소를 반복 시도하지 않게).
 export interface BrowserExecutor {
   // 작업마다 새 browser context. 다른 작업·판매자와 쿠키·저장소를 나누지 않는다(같은 작업의 보관본만 복원).
   open(scope: JobScope): Promise<BrowserSession>;
@@ -123,7 +130,8 @@ export function hostAllowed(raw: string): boolean {
   } catch {
     return false;
   }
-  if (u.protocol !== "https:" || u.username || u.password) return false;
+  // https·기본 포트만(사용자 정보가 든 주소 거부)
+  if (u.protocol !== "https:" || u.port !== "" || u.username || u.password) return false;
   return ALLOWED_HOSTS.some((h) => u.hostname === h || u.hostname.endsWith(`.${h}`));
 }
 

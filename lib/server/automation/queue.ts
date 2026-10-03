@@ -15,7 +15,17 @@ export class FencingError extends Error {
   }
 }
 
+// 고객 대기를 뺀 실행 시간 합계가 상한(6시간)을 넘었다. 작업자는 이것을 받으면 실패·전액 환불 처리 대기로 끝낸다.
+export class RunTimeExceeded extends Error {
+  constructor() {
+    super("run_time_limit");
+  }
+}
+
 export type Claim = { readonly jobId: string; readonly token: number };
+
+// 지금 실행 자리에서 쓴 시간(ms)
+const runningMs = (cur: { runStartedAt: Date | null }, now: Date) => (cur.runStartedAt ? Math.max(0, now.getTime() - cur.runStartedAt.getTime()) : 0);
 export type Claimed = { job: AutomationJob; claim: Claim };
 
 export async function dbNow(db: Tx | PrismaClient): Promise<Date> {
@@ -83,6 +93,7 @@ export async function claimNext(
         leaseExpiresAt: plus(now, leaseMs),
         fencingToken: { increment: 1 },
         startedAt: before.startedAt ?? now,
+        runStartedAt: now,
       },
     });
     await writeJobEvent(tx, job, "QUEUED", "RUNNING", job.fencingToken, { workerId });
@@ -90,7 +101,13 @@ export async function claimNext(
   });
 }
 
-type FencedChange = { to?: AutomationJobStatus; data: Prisma.AutomationJobUpdateManyMutationInput; detail?: Record<string, unknown> };
+type FencedChange = {
+  to?: AutomationJobStatus;
+  data: Prisma.AutomationJobUpdateManyMutationInput;
+  detail?: Record<string, unknown>;
+  // 같은 트랜잭션에서 이어서 할 쓰기(예: 결제를 환불 처리 대기로)
+  after?: (tx: Tx, cur: AutomationJob, now: Date) => Promise<void>;
+};
 
 // 작업자의 모든 쓰기는 여기를 거친다. 토큰이 같고, 실행 중 상태이고, lease가 아직 살아 있을 때만 쓴다.
 async function fencedWrite(db: PrismaClient, c: Claim, build: (now: Date, cur: AutomationJob) => FencedChange): Promise<void> {
@@ -101,12 +118,19 @@ async function fencedWrite(db: PrismaClient, c: Claim, build: (now: Date, cur: A
     if (!cur) throw new FencingError();
     const change = build(now, cur);
     const from = change.to ? sourcesOf(change.to).filter((s) => LEASED.includes(s)) : [...LEASED];
+    // 실행 자리를 놓는 전이(대기·재시도·끝)면 이번에 쓴 실행 시간을 합계에 더한다
+    const releasing = change.to && !LEASED.includes(change.to);
     const r = await tx.automationJob.updateMany({
       where: { id: c.jobId, fencingToken: c.token, status: { in: from }, leaseExpiresAt: { gt: now } },
-      data: { ...change.data, ...(change.to ? { status: change.to } : {}) },
+      data: {
+        ...change.data,
+        ...(change.to ? { status: change.to } : {}),
+        ...(releasing ? { activeMsUsed: cur.activeMsUsed + runningMs(cur, now), runStartedAt: null } : {}),
+      },
     });
     if (r.count !== 1) throw new FencingError();
     if (change.to && change.to !== cur.status) await writeJobEvent(tx, cur, cur.status, change.to, c.token, change.detail);
+    await change.after?.(tx, cur, now);
   });
 }
 
@@ -114,8 +138,13 @@ const RELEASE = { leaseOwner: null, leaseExpiresAt: null } as const;
 
 // lease 연장 + 쓴 비용·실행 통계(판단 호출 수·작업서 행동 수·화면 이탈 단계) 기록
 export type TouchStats = { costUsed: number; plannerCalls?: number; playbookActions?: number; deviatedSteps?: string[]; deviatedNow?: boolean };
+// 실행 시간 합계(대기 제외)가 상한을 넘었으면 던진다(touch·heartbeat 때 확인)
+function assertRunTime(cur: AutomationJob, now: Date) {
+  if (cur.activeMsUsed + runningMs(cur, now) > AUTOMATION_LIMITS.maxRunMs) throw new RunTimeExceeded();
+}
+
 export const touch = (db: PrismaClient, c: Claim, stats: TouchStats, leaseMs: number = AUTOMATION_LIMITS.leaseMs) =>
-  fencedWrite(db, c, (now) => ({
+  fencedWrite(db, c, (now, cur) => (assertRunTime(cur, now), {
     data: {
       costUsed: stats.costUsed,
       ...(stats.plannerCalls !== undefined ? { plannerCalls: stats.plannerCalls } : {}),
@@ -129,7 +158,30 @@ export const touch = (db: PrismaClient, c: Claim, stats: TouchStats, leaseMs: nu
 // 다음 단계로. 이 단계에서 알게 된 연결 결과(쇼핑몰·OBS pairing)를 함께 남긴다.
 // lease만 연장(작업자 heartbeat). 외부 호출이 오래 걸려도 다른 작업자가 가져가지 않게 따로 주기적으로 부른다.
 export const extendLease = (db: PrismaClient, c: Claim, leaseMs: number = AUTOMATION_LIMITS.leaseMs) =>
-  fencedWrite(db, c, (now) => ({ data: { leaseExpiresAt: plus(now, leaseMs) } }));
+  fencedWrite(db, c, (now, cur) => (assertRunTime(cur, now), { data: { leaseExpiresAt: plus(now, leaseMs) } }));
+
+// 결제를 환불 처리 대기로(확정 ②: 성공 기준 미통과 실패). 결제가 없거나(무료 재연결) PAID가 아니면 아무것도 안 한다.
+export async function markRefundPending(tx: Tx, job: { id: string; sellerId: string; paymentId: string | null }, reason: string, now: Date) {
+  if (!job.paymentId) return;
+  const r = await tx.automationPayment.updateMany({
+    where: { id: job.paymentId, status: "PAID" },
+    data: { status: "REFUND_PENDING", refundReason: reason, refundRequestedAt: now },
+  });
+  if (r.count === 1) {
+    await tx.auditLog.create({
+      data: { actorType: "SYSTEM", sellerId: job.sellerId, action: "automation.refund_request", targetType: "AutomationPayment", targetId: job.paymentId, after: { jobId: job.id, reason } },
+    });
+  }
+}
+
+// 실패로 끝내고 결제를 전액 환불 처리 대기로(실행 시간 상한 초과 등)
+export const failWithRefund = (db: PrismaClient, c: Claim, reason: string) =>
+  fencedWrite(db, c, (now) => ({
+    to: "FAILED",
+    data: { ...RELEASE, finishedAt: now, lastError: reason },
+    detail: { reason },
+    after: (tx, cur, at) => markRefundPending(tx, cur, reason, at),
+  }));
 
 // 무료 재연결 대조 통과 기록(그때의 쇼핑몰·PC와 시각)
 export const markTargetVerified = (db: PrismaClient, c: Claim, target: { shopKey: string; obsPairingId: string }) =>
@@ -195,9 +247,14 @@ export async function reapExpired(db: PrismaClient, random: () => number = Math.
       const give = attempts >= cur.maxAttempts;
       const job = await tx.automationJob.update({
         where: { id },
-        data: give
-          ? { ...RELEASE, status: "FAILED", attempts, lastError: "lease_expired", finishedAt: now, fencingToken: { increment: 1 } }
-          : { ...RELEASE, status: "QUEUED", attempts, lastError: "lease_expired", runAfter: plus(now, backoffMs(attempts, random)), fencingToken: { increment: 1 } },
+        data: {
+          ...(give
+            ? { ...RELEASE, status: "FAILED" as const, attempts, lastError: "lease_expired", finishedAt: now, fencingToken: { increment: 1 } }
+            : { ...RELEASE, status: "QUEUED" as const, attempts, lastError: "lease_expired", runAfter: plus(now, backoffMs(attempts, random)), fencingToken: { increment: 1 } }),
+          // 멈춘 작업자가 쓴 시간도 실행 시간에 넣는다(lease가 끝난 시각까지)
+          activeMsUsed: cur.activeMsUsed + (cur.leaseExpiresAt ? runningMs(cur, cur.leaseExpiresAt) : 0),
+          runStartedAt: null,
+        },
       });
       await writeJobEvent(tx, job, cur.status, job.status, job.fencingToken, { reason: "lease_expired" });
       if (give) failed++;
@@ -214,17 +271,7 @@ export async function reapExpired(db: PrismaClient, random: () => number = Math.
       });
       await writeJobEvent(tx, job, "NEEDS_CUSTOMER", "FAILED", job.fencingToken, { reason: "customer_action_timeout" });
       // 마감으로 끝난 작업은 성공 기준을 통과하지 못했으므로 확정 ②대로 전액 환불 처리 대기로 둔다(실제 환불 실행은 승인 뒤)
-      if (job.paymentId) {
-        const r = await tx.automationPayment.updateMany({
-          where: { id: job.paymentId, status: "PAID" },
-          data: { status: "REFUND_PENDING", refundReason: "customer_action_timeout", refundRequestedAt: now },
-        });
-        if (r.count === 1) {
-          await tx.auditLog.create({
-            data: { actorType: "SYSTEM", sellerId: job.sellerId, action: "automation.refund_request", targetType: "AutomationPayment", targetId: job.paymentId, after: { jobId: job.id, reason: "customer_action_timeout" } },
-          });
-        }
-      }
+      await markRefundPending(tx, job, "customer_action_timeout", now);
       failed++;
     }
     return { requeued, failed };

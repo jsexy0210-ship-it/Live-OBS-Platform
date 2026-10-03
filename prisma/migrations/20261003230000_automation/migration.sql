@@ -69,6 +69,8 @@ CREATE TABLE "AutomationJob" (
     "plannerCalls" INTEGER NOT NULL DEFAULT 0,
     "playbookActions" INTEGER NOT NULL DEFAULT 0,
     "deviatedSteps" TEXT[] DEFAULT ARRAY[]::TEXT[],
+    "activeMsUsed" INTEGER NOT NULL DEFAULT 0,
+    "runStartedAt" TIMESTAMPTZ(3),
     "lastDeviationAt" TIMESTAMPTZ(3),
     "targetVerifiedAt" TIMESTAMPTZ(3),
     "startedAt" TIMESTAMPTZ(3),
@@ -159,7 +161,7 @@ CREATE UNIQUE INDEX "AutomationJob_one_open_per_seller" ON "AutomationJob"("sell
 CREATE UNIQUE INDEX "AutomationJob_one_running_per_obs_target" ON "AutomationJob"("obsTargetKey") WHERE "status" IN ('RUNNING', 'VERIFYING');
 
 ALTER TABLE "AutomationPayment" ADD CONSTRAINT "AutomationPayment_amount_positive" CHECK ("amount" > 0);
-ALTER TABLE "AutomationJob" ADD CONSTRAINT "AutomationJob_counters_valid" CHECK ("attempts" >= 0 AND "maxAttempts" > 0 AND "costUsed" >= 0 AND "costLimit" > 0 AND "stepIndex" >= 0 AND "fencingToken" >= 0);
+ALTER TABLE "AutomationJob" ADD CONSTRAINT "AutomationJob_counters_valid" CHECK ("activeMsUsed" >= 0 AND "attempts" >= 0 AND "maxAttempts" > 0 AND "costUsed" >= 0 AND "costLimit" > 0 AND "stepIndex" >= 0 AND "fencingToken" >= 0);
 -- 실행 중이면 실행 자리(lease)가 있고, 실행 중이 아니면 없다.
 ALTER TABLE "AutomationJob" ADD CONSTRAINT "AutomationJob_lease_matches_status" CHECK (("status" IN ('RUNNING', 'VERIFYING')) = ("leaseOwner" IS NOT NULL AND "leaseExpiresAt" IS NOT NULL));
 -- 무료 재연결만 결제가 없고, 나머지는 결제가 있어야 한다.

@@ -38,6 +38,7 @@ const PUBLIC_ERRORS = new Set([
   "reconnect_target_unverified",
   "verification_missing",
   "worker_error",
+  "run_time_limit",
 ]);
 const STEP_KEYS = new Set(STEPS.map((s) => s.key));
 
@@ -91,7 +92,10 @@ export async function resumeJob(db: PrismaClient, ctx: TenantContext, jobId: str
 // 취소: 실행 중이어도 토큰을 올려 작업자의 다음 쓰기를 막는다. 결제 환불은 자동으로 하지 않는다(환불 조건은 판단 필요).
 export async function cancelJob(db: PrismaClient, ctx: TenantContext, jobId: string): Promise<ChangeResult> {
   requireSellerPermission(ctx, "SUBSCRIPTION_MANAGE");
-  return change(db, ctx, jobId, "CANCELED", "automation.cancel", (now) => ({
+  return change(db, ctx, jobId, "CANCELED", "automation.cancel", (now, cur) => ({
+    // 실행 중이었으면 쓴 시간을 합계에 넣는다
+    activeMsUsed: cur.activeMsUsed + (cur.runStartedAt ? Math.max(0, now.getTime() - cur.runStartedAt.getTime()) : 0),
+    runStartedAt: null,
     leaseOwner: null,
     leaseExpiresAt: null,
     customerAction: null,
@@ -107,7 +111,7 @@ async function change(
   jobId: string,
   to: "QUEUED" | "CANCELED",
   action: string,
-  data: (now: Date) => Parameters<PrismaClient["automationJob"]["updateMany"]>[0]["data"],
+  data: (now: Date, cur: AutomationJob) => Parameters<PrismaClient["automationJob"]["updateMany"]>[0]["data"],
 ): Promise<ChangeResult> {
   const from = to === "QUEUED" ? (["NEEDS_CUSTOMER"] as const) : sourcesOf(to);
   const result = await db.$transaction(async (tx) => {
@@ -116,7 +120,7 @@ async function change(
     const cur = await tx.automationJob.findFirst({ where: { id: jobId, sellerId: ctx.sellerId } });
     if (!cur) throw notFound();
     const now = await dbNow(tx);
-    const r = await tx.automationJob.updateMany({ where: { id: jobId, sellerId: ctx.sellerId, status: { in: [...from] } }, data: { ...data(now), status: to } });
+    const r = await tx.automationJob.updateMany({ where: { id: jobId, sellerId: ctx.sellerId, status: { in: [...from] } }, data: { ...data(now, cur), status: to } });
     if (r.count !== 1) return false;
     const after = await tx.automationJob.findUniqueOrThrow({ where: { id: jobId } });
     await writeJobEvent(tx, after, cur.status, to, after.fencingToken, { by: ctx.actorId });

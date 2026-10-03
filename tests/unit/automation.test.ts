@@ -50,7 +50,7 @@ describe("모델 입력 정리와 행동 검사", () => {
   it("허용 호스트(https, 하위 도메인 포함)만 이동, 비슷한 가짜 도메인·http·계정 포함 주소는 거부", () => {
     const b = step("browser");
     expect(validateDecision(b, d({ type: "navigate", url: "https://shop1.cafe24.com/admin" }), secrets)).toEqual({ ok: true });
-    for (const url of ["https://cafe24.com.evil.test/", "https://evilcafe24.com/", "http://admin.cafe24.com/", "https://u:p@admin.cafe24.com/", "javascript:alert(1)"]) {
+    for (const url of ["https://cafe24.com.evil.test/", "https://evilcafe24.com/", "http://admin.cafe24.com/", "https://u:p@admin.cafe24.com/", "javascript:alert(1)", "https://admin.cafe24.com:8443/", "https://127.0.0.1/", "https://169.254.169.254/"]) {
       expect(validateDecision(b, d({ type: "navigate", url }), secrets)).toEqual({ ok: false, reason: "host_not_allowed" });
     }
   });

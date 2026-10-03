@@ -34,6 +34,17 @@ describe("연결 작업서 형식", () => {
     expect(playbookForShopUrl("https://cafe24.com.evil.test/")).toBeNull();
     expect(playbookForShopUrl("https://evilcafe24.com/")).toBeNull();
     expect(playbookForShopUrl("not a url")).toBeNull();
+    // 내부 주소·메타데이터 주소는 작업서가 없고(이름 비교만), 판별에 네트워크 요청을 쓰지 않는다
+    const realFetch = globalThis.fetch;
+    let fetched = 0;
+    globalThis.fetch = (async () => (fetched++, new Response())) as typeof fetch;
+    try {
+      for (const u of ["http://127.0.0.1/", "http://169.254.169.254/latest/meta-data", "http://10.0.0.1/", "http://localhost:5432/"]) expect(playbookForShopUrl(u)).toBeNull();
+      playbookForShopUrl("https://myshop.cafe24.com/");
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+    expect(fetched).toBe(0);
   });
 
   it("화면 단서·예외 화면 판별", () => {

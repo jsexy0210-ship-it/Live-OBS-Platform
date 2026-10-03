@@ -12,7 +12,7 @@ import { cafe24Playbook } from "../../lib/server/automation/playbooks/cafe24";
 import { PRACTICE_STREAK_REQUIRED, playbookReadiness, runPractice } from "../../lib/server/automation/practice";
 import { FakeBrowserExecutor, FakeObsBridge, FakePlanner, FakeSecretVault } from "../../lib/server/automation/fakes";
 import { markConnectionRevoked } from "../../lib/server/automation/connection";
-import { cancelJob, requestRefund, resumeJob } from "../../lib/server/automation/jobs";
+import { cancelJob, getJob, requestRefund, resumeJob } from "../../lib/server/automation/jobs";
 import { purchaseAutomation, reconcileAutomationPayments, reconnectAutomation } from "../../lib/server/automation/purchase";
 import { runSteps } from "../../lib/server/automation/engine";
 import { FencingError, advanceStep, claimNext, finishJob, reapExpired, toVerifying, touch } from "../../lib/server/automation/queue";
@@ -1079,5 +1079,83 @@ describe("Codex 3차·정본 fc09f13 반영", () => {
     expect(reinstallPayment).toMatchObject({ status: "REFUND_PENDING", refundReason: "customer_action_timeout", amount: REINSTALL_PRICE });
     // 실제 환불은 하지 않는다
     expect(await db.automationPayment.count({ where: { status: "REFUNDED" } })).toBe(0);
+  });
+});
+
+describe("정본 d6e22c4: 실행 시간 6시간 마감·시작 뒤 취소", () => {
+  it("고객 대기를 뺀 실행 시간은 실행 자리를 놓을 때마다 합산되고, 고객 대기 시간은 넣지 않는다", async () => {
+    const a = await bought();
+    const rt = { ...runtime(), browser: new FakeBrowserExecutor(20), obs: new FakeObsBridge(20) };
+    rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장";
+    rt.obs.disconnected.add(a.seller.id);
+    expect(await runOnce(db, rt, W)).toBe("needs_customer");
+    const parked = await job(a.jobId);
+    expect(parked.activeMsUsed).toBeGreaterThan(0);
+    expect(parked.runStartedAt).toBeNull();
+    // 대기 중 시간이 흘러도 합계는 그대로
+    await new Promise((r) => setTimeout(r, 120));
+    expect((await job(a.jobId)).activeMsUsed).toBe(parked.activeMsUsed);
+    rt.obs.disconnected.delete(a.seller.id);
+    await resumeJob(db, a.ctx, a.jobId);
+    expect(await runOnce(db, rt, W)).toBe("succeeded");
+    const done = await job(a.jobId);
+    expect(done.activeMsUsed).toBeGreaterThan(parked.activeMsUsed);
+    expect(done.activeMsUsed).toBeLessThan(parked.activeMsUsed + 5_000);
+  });
+
+  it("실행 시간 합계가 6시간을 넘으면 실패로 끝내고 결제를 전액 환불 처리 대기로 두며, 보관 자료도 지운다", async () => {
+    const a = await bought();
+    const rt = { ...runtime(), browser: new FakeBrowserExecutor(30), obs: new FakeObsBridge(30) };
+    rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장";
+    // 로그인 대기로 보관 자료가 생긴 작업
+    let asked = false;
+    rt.browser.outcome = (_s, action) => (action.type === "click" && !asked ? ((asked = true), { kind: "needs_customer", action: "LOGIN" }) : undefined);
+    expect(await runOnce(db, rt, W)).toBe("needs_customer");
+    expect((await job(a.jobId)).browserStateHeld).toBe(true);
+    // 실행 시간이 상한 직전까지 쓰인 상태로 재개
+    await db.automationJob.update({ where: { id: a.jobId }, data: { activeMsUsed: 6 * 60 * 60_000 - 100 } });
+    await resumeJob(db, a.ctx, a.jobId);
+    expect(await runOnce(db, rt, W)).toBe("failed");
+    expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "run_time_limit", leaseOwner: null, runStartedAt: null });
+    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "REFUND_PENDING", refundReason: "run_time_limit" });
+    await purgeEndedBrowserState(db, rt);
+    expect(rt.browser.saved.size).toBe(0);
+    expect(rt.browser.discarded).toContain(a.jobId);
+    expect(rt.obs.discarded).toContain(a.jobId);
+    const view = await getJob(db, a.ctx, a.jobId);
+    expect(view.lastError).toBe("run_time_limit");
+  });
+
+  it("연결을 시작한 뒤 취소하면 이후 변경 행동을 멈추고(작업자 fencing), 보관 자료를 지우며, 결제는 환불하지 않는다", async () => {
+    // 고객 대기로 보관 자료가 있는 상태에서 취소
+    const parked = await bought();
+    const rt = runtime();
+    let asked = false;
+    rt.browser.outcome = (_s, action) => (action.type === "click" && !asked ? ((asked = true), { kind: "needs_customer", action: "LOGIN" }) : undefined);
+    expect(await runOnce(db, rt, W)).toBe("needs_customer");
+    await cancelJob(db, parked.ctx, parked.jobId);
+    await purgeEndedBrowserState(db, rt);
+    expect(rt.browser.saved.size).toBe(0);
+    expect(rt.obs.discarded).toContain(parked.jobId);
+    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: parked.seller.id } })).toMatchObject({ status: "PAID", refundReason: null });
+    expect(await requestRefund(db, parked.ctx, parked.jobId)).toEqual({ ok: false, reason: "not_refundable" });
+
+    // 실행 중에 취소
+    const running = await bought();
+    const rt2 = { ...runtime(), browser: new FakeBrowserExecutor(40), obs: new FakeObsBridge(40) };
+    rt2.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장";
+    const run = runOnce(db, rt2, { ...W, leaseMs: 150 });
+    await new Promise((r) => setTimeout(r, 150));
+    await cancelJob(db, running.ctx, running.jobId);
+    const mutating = () => [...rt2.browser.performed, ...rt2.obs.performed].filter((p) => ["click", "fill", "obs_add_overlay_source", "obs_apply_display_settings", "send_test_event"].includes(p.type)).length;
+    const atCancel = mutating();
+    expect(await run).toBe("fenced");
+    // 진행 중이던 호출 1개 + heartbeat 주기 사이 1개까지만
+    expect(mutating() - atCancel).toBeLessThanOrEqual(2);
+    const j = await job(running.jobId);
+    expect(j).toMatchObject({ status: "CANCELED", runStartedAt: null });
+    expect(j.activeMsUsed).toBeGreaterThan(0);
+    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: running.seller.id } })).toMatchObject({ status: "PAID" });
+    expect(await requestRefund(db, running.ctx, running.jobId)).toEqual({ ok: false, reason: "not_refundable" });
   });
 });

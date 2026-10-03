@@ -21,6 +21,8 @@ export const AUTOMATION_LIMITS = {
   maxRunning: 20,
   // 한 단계에서 판단·실행을 반복하는 최대 횟수(무한 반복 방지)
   maxActionsPerStep: 12,
+  // 고객 대기를 뺀 실제 실행 시간 합계 상한(재시도 포함). 넘으면 실패로 끝내고 전액 환불 처리 대기(정본 d6e22c4).
+  maxRunMs: 6 * 60 * 60_000,
   // 고객 행동(로그인·인증 등)을 기다리는 시간. 지나면 실패로 닫는다.
   customerActionMs: 24 * 60 * 60_000,
   // 다시 시도 간격: 지수 증가 + 지터, 상한
