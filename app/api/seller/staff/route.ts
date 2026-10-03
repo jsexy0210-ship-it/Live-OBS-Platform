@@ -14,17 +14,17 @@ export async function GET(req: Request) {
   }
 }
 
-// 직원 계정 만들기(대표자 전용): 이메일·이름·초기 비밀번호·권한 항목
+// 직원 계정 만들기(대표자 전용): 이메일·이름·초기 비밀번호·권한 항목·휴대폰(선택, 형식이 틀리면 400 invalid_phone)
 export const POST = mutation(async (req: Request) => {
   const ctx = await requireSeller(prisma, sessionToken(req, "seller"));
-  const body = await readJson<{ email: string; name: string; password: string; permissions: unknown }>(req);
+  const body = await readJson<{ email: string; name: string; password: string; permissions: unknown; phone?: unknown }>(req);
   if (!isString(body.email) || !isString(body.name) || !isString(body.password)) {
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
   }
   const r = await createStaff(
     prisma,
     ctx,
-    { email: body.email, name: body.name, password: body.password, permissions: body.permissions },
+    { email: body.email, name: body.name, password: body.password, permissions: body.permissions, phone: body.phone },
     requestMeta(req),
   );
   if (!r.ok) return NextResponse.json({ error: r.reason }, { status: r.reason === "email_taken" ? 409 : 400 });

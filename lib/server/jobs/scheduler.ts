@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
+import { purgeOldRecoveryVerifications } from "../auth/accountRecovery";
 import { purgeExpiredRejoinBlocks } from "../buyers/rejoin";
 import { purgeOldSignupVerificationIps, purgeUnfinishedSignupVerifications } from "../buyers/signup";
 import { markInstanceRetired, purgeOldOpsEvents, purgeRetiredHeartbeats, recordHeartbeat, registerInstance } from "../ops/metrics";
@@ -19,6 +20,8 @@ export const SCHEDULED_JOBS: ScheduledJob[] = [
   { name: "identity_verification.anonymize_unfinished_signup", run: (tx, now) => purgeUnfinishedSignupVerifications(tx, now) },
   // 3개월 지난 가입 본인확인 요청 IP 비우기
   { name: "identity_verification.purge_old_signup_ip", run: (tx, now) => purgeOldSignupVerificationIps(tx, now) },
+  // 하루 횟수 기간이 지난 아이디 찾기·직원 연결 본인확인 기록 비식별(auth/accountRecovery.ts)
+  { name: "identity_verification.anonymize_old_recovery", run: (tx, now) => purgeOldRecoveryVerifications(tx, now) },
   // 정상 종료하고 7일 지난 인스턴스의 heartbeat 지우기(ops/metrics.ts)
   { name: "ops_heartbeat.purge_retired", run: (tx, now) => purgeRetiredHeartbeats(tx, now) },
   // 받은 지 30일 지난 감시 사건 지우기((source, key)별 마지막 열림·닫힘은 남김, ops/metrics.ts)
