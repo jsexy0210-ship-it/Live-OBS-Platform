@@ -159,6 +159,7 @@ async function createInTransaction(
         broadcastNicknameSnapshot: member.broadcastNickname,
         totalAmount,
         shippingFee,
+        returnFeeSnapshot: policy.returnFee,
         fulfillmentType: "IMMEDIATE",
         rewardUsedAmount: 0,
         createdAt: now,

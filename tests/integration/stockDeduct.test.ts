@@ -176,7 +176,7 @@ describe("취소·반품 때 재고 자동 복구", () => {
     const id = await s.order([{ optionId: ord.optionId, quantity: 2 }]);
     await markOrderPaid(db, { sellerId: s.seller.id, orderId: id, paymentMethod: "CARD" });
     await shipOrder(db, s.ctx, id, { courier: "CJ", trackingNumber: "123456789012" });
-    expect(await refundOrder(db, s.ctx, id, { reason: "요청", expectedLiveVersion: await s.lv() })).toMatchObject({ ok: true, value: { restockedItemIds: [] } });
+    expect(await refundOrder(db, s.ctx, id, { reason: "요청", expectedLiveVersion: await s.lv(), fault: "BUYER" })).toMatchObject({ ok: true, value: { restockedItemIds: [] } });
     expect(await stockOf(ord.optionId)).toBe(8);
 
     const other = await s.order([{ optionId: ord.optionId, quantity: 1 }]);
