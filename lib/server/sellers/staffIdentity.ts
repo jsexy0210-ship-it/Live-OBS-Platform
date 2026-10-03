@@ -28,10 +28,20 @@ async function loadSelf(db: PrismaClient, ctx: TenantContext) {
 
 const sameName = (a: string | null, b: string) => !!a && cleanText(a, 30) === cleanText(b, 30);
 
-// 연결 상태(화면의 첫 로그인 안내·건너뛰기용)
-export async function staffLinkStatus(db: PrismaClient, ctx: TenantContext) {
+// 연결 상태(화면의 첫 로그인 안내·건너뛰기용, 로그인한 직원 본인만)
+// - available: 본인확인을 쓸 수 있는지(공급자 설정 또는 테스트 서버 모드)
+// - relinkRequired: 연결돼 있다가 대표자가 휴대폰 번호를 바꿔 풀린 상태
+// - registeredPhoneLast4: 대표자가 등록한 휴대폰 끝 4자리(전체 번호는 내보내지 않음)
+export async function staffLinkStatus(db: PrismaClient, ctx: TenantContext, available: boolean) {
   const user = await loadSelf(db, ctx);
-  return { phoneRegistered: user.phone !== null, linked: user.identityCiHash !== null };
+  const linked = user.identityCiHash !== null;
+  return {
+    available,
+    phoneRegistered: user.phone !== null,
+    registeredPhoneLast4: user.phone ? user.phone.slice(-4) : null,
+    linked,
+    relinkRequired: !linked && user.identityUnlinkedAt !== null,
+  };
 }
 
 export async function startStaffLink(db: PrismaClient, provider: IdentityProvider, ctx: TenantContext, rawPerson: unknown, meta: Meta = {}): Promise<StaffLinkStartResult> {
@@ -76,7 +86,7 @@ export async function linkStaffIdentity(
     if (used.count !== 1) return { ok: false as const, reason: "verification_invalid" as const };
     // 그사이 대표자가 번호나 이름을 바꿨으면 연결하지 않는다(비교한 번호·이름 그대로일 때만 갱신)
     const linked = matches
-      ? await tx.sellerUser.updateMany({ where: { id: user.id, phone: user.phone, name: user.name, status: "ACTIVE" }, data: { identityCiHash: v.ciHash, identityLinkedAt: now } })
+      ? await tx.sellerUser.updateMany({ where: { id: user.id, phone: user.phone, name: user.name, status: "ACTIVE" }, data: { identityCiHash: v.ciHash, identityLinkedAt: now, identityUnlinkedAt: null } })
       : { count: 0 };
     await writeAudit(tx, {
       actorType: "SELLER_USER",

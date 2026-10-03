@@ -153,7 +153,7 @@ describe("직원 본인확인 연결", () => {
     const start = (body: unknown) => linkStart(post("/api/seller/me/identity/start", body, cookie));
     expect((await (await start({ ...IDV_INPUT, name: "직원" })).json()).error).toBe("phone_not_registered");
     await db.sellerUser.update({ where: { id: staff.id }, data: { phone: "01055556666" } });
-    expect(await (await linkStatus(req("/api/seller/me/identity", "GET", undefined, cookie))).json()).toEqual({ phoneRegistered: true, linked: false });
+    expect(await (await linkStatus(req("/api/seller/me/identity", "GET", undefined, cookie))).json()).toMatchObject({ phoneRegistered: true, linked: false });
     const sentBefore = fake().sent.length;
     const mismatch = await start({ ...IDV_INPUT, name: "남", phone: "01055556666" });
     expect(mismatch.status).toBe(409);
@@ -173,7 +173,7 @@ describe("직원 본인확인 연결", () => {
     await db.sellerUser.delete({ where: { id: staff.id } }).catch(() => undefined);
     const { staff: linked, cookie: linkedCookie } = await linkedStaff(seller.id, "STAFF-CI");
     expect((await db.sellerUser.findUniqueOrThrow({ where: { id: linked.id } })).identityCiHash).toBe(hashCi("STAFF-CI"));
-    expect(await (await linkStatus(req("/api/seller/me/identity", "GET", undefined, linkedCookie))).json()).toEqual({ phoneRegistered: true, linked: true });
+    expect(await (await linkStatus(req("/api/seller/me/identity", "GET", undefined, linkedCookie))).json()).toMatchObject({ phoneRegistered: true, linked: true });
     expect(await db.auditLog.count({ where: { action: "seller.staff.identity_linked", targetId: linked.id } })).toBe(1);
     // 대표자는 403
     expect((await linkStatus(req("/api/seller/me/identity", "GET", undefined, await sessionOf(owner.email)))).status).toBe(403);
@@ -204,6 +204,38 @@ describe("직원 본인확인 연결", () => {
     const ownerToken = flow.split("=")[1];
     expect(await linkStaffIdentity(racing, fake(), ctx, { verificationId, ownerToken })).toEqual({ ok: false, reason: "identity_mismatch" });
     expect((await db.sellerUser.findUniqueOrThrow({ where: { id: staff.id } })).identityCiHash).toBeNull();
+  });
+});
+
+describe("직원 연결 상태 GET /api/seller/me/identity", () => {
+  it("본인확인 사용 가능 여부·등록 번호 끝 4자리·연결 여부를 주고, 번호 변경으로 풀리면 relinkRequired, 다시 연결하면 해제된다. 다른 직원·대표자에게는 새지 않는다", async () => {
+    const { seller, owner } = await shop();
+    const other = await shop("OTHER-REP");
+    const status = async (cookie: string) => (await linkStatus(req("/api/seller/me/identity", "GET", undefined, cookie))).json();
+    // 다른 쇼핑몰 직원(번호 01077778888)
+    const otherStaff = await createSellerUser(other.seller.id, "MANAGER");
+    await db.sellerUser.update({ where: { id: otherStaff.id }, data: { phone: "01077778888" } });
+    // 처음 미연결: 다시 연결 필요 아님
+    const fresh = await createSellerUser(seller.id, "MANAGER");
+    await db.sellerUser.update({ where: { id: fresh.id }, data: { phone: "01055556666" } });
+    expect(await status(await sessionOf(fresh.email))).toEqual({ available: true, phoneRegistered: true, registeredPhoneLast4: "6666", linked: false, relinkRequired: false });
+    // 연결 → 대표자가 번호 변경 → 다시 연결 필요 → 다시 연결하면 해제
+    const { staff, cookie } = await linkedStaff(seller.id, "STAFF-CI");
+    expect(await status(cookie)).toMatchObject({ linked: true, relinkRequired: false, registeredPhoneLast4: "6666" });
+    await staffPatch(req(`/api/seller/staff/${staff.id}`, "PATCH", { phone: "01055550000" }, await sessionOf(owner.email)), ctxOf(staff.id));
+    const after = await status(cookie);
+    expect(after).toEqual({ available: true, phoneRegistered: true, registeredPhoneLast4: "0000", linked: false, relinkRequired: true });
+    expect(JSON.stringify(after)).not.toContain("01055550000");
+    expect(JSON.stringify(after)).not.toContain("7777");
+    await db.sellerUser.update({ where: { id: staff.id }, data: { phone: "01055556666" } });
+    const s = await linkStart(post("/api/seller/me/identity/start", { ...IDV_INPUT, name: "직원", phone: "01055556666" }, cookie));
+    const flow = cookieOf(s, "lo_lidv");
+    const { verificationId } = await s.json();
+    await confirmWith(linkConfirm, "/api/seller/me/identity/confirm", verificationId, flow, { ci: "STAFF-CI" });
+    expect((await linkRoute(post("/api/seller/me/identity/link", { verificationId }, `${cookie}; ${flow}`))).status).toBe(200);
+    expect(await status(cookie)).toMatchObject({ linked: true, relinkRequired: false });
+    // 대표자는 403(다른 직원 값을 볼 수 없음)
+    expect((await linkStatus(req("/api/seller/me/identity", "GET", undefined, await sessionOf(owner.email)))).status).toBe(403);
   });
 });
 
