@@ -58,10 +58,10 @@ async function buyerCookie(sellerId: string, loginId: string) {
 }
 
 describe("입금 기한", () => {
-  it("주문 시각 + 10일(기본), 판매자가 바꾸면 다음 주문부터 그 시간으로 정하고 이미 만든 주문은 그대로", async () => {
+  it("주문 시각 + 24시간(기본), 판매자가 바꾸면 다음 주문부터 그 시간으로 정하고 이미 만든 주문은 그대로", async () => {
     const s = await shop();
     const a = await db.order.findUniqueOrThrow({ where: { id: await s.order() } });
-    expect(a.paymentDueAt!.getTime() - a.createdAt.getTime()).toBe(240 * HOUR);
+    expect(a.paymentDueAt!.getTime() - a.createdAt.getTime()).toBe(24 * HOUR);
     const c = await sellerCookie(s.owner.email);
     const put = await policyPut(new Request("http://localhost:3000/api/seller/order-policy", { method: "PUT", headers: { ...H, cookie: c }, body: JSON.stringify({ autoCancelEnabled: true, paymentDueHours: 2, unpaidRestrictionEnabled: true }) }));
     expect(put.status).toBe(200);
@@ -86,11 +86,11 @@ describe("입금 기한", () => {
     expect((await listPaymentDueSoon(db)).map((o) => o.id)).not.toContain(after);
   });
 
-  it("주문 정책 API: 기본값 조회(사용·240시간), 1시간~30일(720시간) 정수·켜고 끄기 값만 받고, 쇼핑몰 설정 권한 없는 직원은 403", async () => {
+  it("주문 정책 API: 기본값 조회(사용·24시간), 1시간~30일(720시간) 정수·켜고 끄기 값만 받고, 쇼핑몰 설정 권한 없는 직원은 403", async () => {
     const s = await shop();
     const c = await sellerCookie(s.owner.email);
     const got = await (await policyGet(new Request("http://localhost:3000/api/seller/order-policy", { headers: { ...H, cookie: c } }))).json();
-    expect(got.policy).toEqual({ autoCancelEnabled: true, paymentDueHours: 240, unpaidRestrictionEnabled: true, restockOnCancel: true });
+    expect(got.policy).toEqual({ autoCancelEnabled: true, paymentDueHours: 24, unpaidRestrictionEnabled: true, restockOnCancel: true });
     const ok = { autoCancelEnabled: true, paymentDueHours: 240, unpaidRestrictionEnabled: true };
     for (const body of [
       { ...ok, paymentDueHours: 0 },

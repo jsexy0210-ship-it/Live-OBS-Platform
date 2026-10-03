@@ -331,8 +331,8 @@ PG 연결 정보, 구매자 문의·공지, 알림 발송 기록, 도우미 자�
 
 ### 4.11 입금 기한·미입금 자동 취소·구매 제한 (PRODUCT_SCOPE 「무통장 입금·구매 제한 기본값」, MASTER 결정)
 
-- `SellerOrderPolicy`(판매자당 1행, 없으면 기본값): autoCancelEnabled(미입금 자동 취소 사용, 기본 켜짐), paymentDueHours(기본 240시간=10일, 1~720시간=30일, 카페24 방식, 대표님 결정 2026-10-03), unpaidRestrictionEnabled(기본 켜짐). `GET·PUT /api/seller/order-policy`(`SHOP_SETTINGS`, 틀리면 `400 invalid_order_policy`, 감사 로그).
-- 주문할 때 `Order.paymentDueAt` = 주문 시각 + paymentDueHours. 주문 시각은 판매자 주문 잠금을 잡은 뒤의 `clock_timestamp()`(트랜잭션 시작 시각인 `now()`가 아님). 설정을 바꿔도 이미 만든 주문은 그대로. 이 기능 전에 만든 결제 대기 주문은 마이그레이션에서 주문 시각 + 10일로 채운다. 자동 취소를 끈 쇼핑몰의 새 주문은 기한이 없다(이미 기한이 붙은 주문은 그대로 자동 취소 대상). PG 연동 때 무통장 입금 주문에만 두도록 바꾼다(MASTER 결정).
+- `SellerOrderPolicy`(판매자당 1행, 없으면 기본값): autoCancelEnabled(미입금 자동 취소 사용, 기본 켜짐), paymentDueHours(기본 24시간, 1~720시간=30일, 대표님 결정 2026-10-03. 이미 저장된 판매자 설정값은 바꾸지 않음), unpaidRestrictionEnabled(기본 켜짐). `GET·PUT /api/seller/order-policy`(`SHOP_SETTINGS`, 틀리면 `400 invalid_order_policy`, 감사 로그).
+- 주문할 때 `Order.paymentDueAt` = 주문 시각 + paymentDueHours. 주문 시각은 판매자 주문 잠금을 잡은 뒤의 `clock_timestamp()`(트랜잭션 시작 시각인 `now()`가 아님). 설정을 바꿔도 이미 만든 주문은 그대로. 이 기능 전에 만든 결제 대기 주문은 마이그레이션(#82)에서 주문 시각 + 10일로 채웠다(당시 기본값, 운영 데이터 없음). 자동 취소를 끈 쇼핑몰의 새 주문은 기한이 없다(이미 기한이 붙은 주문은 그대로 자동 취소 대상). PG 연동 때 무통장 입금 주문에만 두도록 바꾼다(MASTER 결정).
 - 자동 취소 `cancelOverdueOrders`(lib/server/orders/overdue.ts): 기한이 지난 결제 대기 주문을 판매자별 주문 잠금(order_no) 아래에서 `status = PENDING_PAYMENT` 조건으로 취소하고 `autoCancelledAt`, 시스템 상태 이력(reason `payment_overdue`), 감사 로그 `order.auto_cancel`을 남긴다. 재고는 결제 때 빼므로 되돌릴 것이 없다. 여러 번·동시에 돌려도 주문마다 한 번만 취소(멱등). 주문마다 따로 처리해 한 건이 실패해도 나머지는 계속하고, 실패한 건은 감사 로그 `order.auto_cancel_failed`를 남긴 뒤 다음 실행에서 다시 시도한다(결과의 `failed`). 정기 실행 연결은 인프라 승인 대기.
   - 결제 확인(`markOrderPaid`)도 `status = PENDING_PAYMENT` 조건으로 바꿔, 자동 취소와 겹치면 둘 중 하나만 된다.
 - 미입금 알림 대상 `listPaymentDueSoon`(대표님 결정 2026-10-03): 알림 시각이 지났고 기한 전인 결제 대기 주문. 알림 시각은 기한 하루 전, 입금 기간(기한 − 주문 시각)이 하루 이하면 1시간 전. 발송 연동 전이라 대상 조회만.

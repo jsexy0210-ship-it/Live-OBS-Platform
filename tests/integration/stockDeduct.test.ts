@@ -299,6 +299,19 @@ describe("미입금 알림 시점", () => {
   });
 });
 
+describe("기본 입금 기한 24시간(대표님 결정 2026-10-03)", () => {
+  it("설정이 없으면 주문 후 24시간이 기한이고, 기간이 하루 이하라 알림은 기한 1시간 전부터 대상", async () => {
+    const s = await shop();
+    const p = await s.product("PAYMENT", 10);
+    const id = await s.order([{ optionId: p.optionId, quantity: 1 }]);
+    const o = await db.order.findUniqueOrThrow({ where: { id } });
+    expect(o.paymentDueAt!.getTime() - o.createdAt.getTime()).toBe(24 * HOUR);
+    const due = o.paymentDueAt!.getTime();
+    expect((await listPaymentDueSoon(db, { now: new Date(due - 2 * HOUR) })).map((x) => x.id)).not.toContain(id);
+    expect((await listPaymentDueSoon(db, { now: new Date(due - HOUR) })).map((x) => x.id)).toContain(id);
+  });
+});
+
 describe("검수 후속 P2·배송비 무료 유형", () => {
   it("구매 제한 안내는 초가 있으면 분을 올림해 실제로 풀리는 시각보다 이르게 안내하지 않는다", () => {
     expect(purchaseRestrictedMessage(new Date("2026-11-02T06:05:30Z"))).toBe("11월 2일 오후 3시 6분부터 다시 주문할 수 있어요");

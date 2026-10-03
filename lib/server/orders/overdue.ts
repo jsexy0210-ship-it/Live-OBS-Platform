@@ -12,8 +12,8 @@ import { requireSellerPermission, requireSellerRead, type TenantContext } from "
 // - 자동 구매 제한: 같은 쇼핑몰에서 미입금 자동 취소가 3회 쌓이면 30일 동안 새 주문을 막는다(판매자 설정으로 끌 수 있음).
 // 같은 판매자의 주문 생성과 같은 advisory lock(order_no:{sellerId}) 아래에서 처리해, 제한이 생기는 순간과 주문이 엇갈리지 않게 한다.
 
-// 미입금 자동 취소 기간: 기본 사용·10일(240시간), 1시간~30일(카페24 방식, 대표님 결정 2026-10-03)
-export const DEFAULT_PAYMENT_DUE_HOURS = 240;
+// 미입금 자동 취소 기간: 기본 사용·주문 후 24시간, 1시간~30일(대표님 결정 2026-10-03, 기간 범위·끄기는 카페24 방식)
+export const DEFAULT_PAYMENT_DUE_HOURS = 24;
 export const MAX_PAYMENT_DUE_HOURS = 720;
 export const UNPAID_CANCEL_LIMIT = 3;
 export const RESTRICTION_DAYS = 30;
