@@ -6,18 +6,14 @@ import { MIN_PASSWORD_LENGTH } from "../auth/passwordReset";
 import { hashPassword } from "../auth/password";
 import { normalizeEmail } from "../auth/login";
 import { requireSellerPermission, type TenantContext } from "../tenant/context";
-import { cleanText } from "../text/clean";
 
 // 직원 관리(대표자 전용, STAFF_MANAGE). 대표자가 직원 계정을 직접 만들고 권한 항목을 켜고 끈다.
 // 같은 쇼핑몰 직원만 다루고(다른 쇼핑몰은 없음으로 처리), 대표자 계정은 대상이 아니다. 생성·권한 변경·비활성화는 감사 로그.
 
 type Meta = { ip?: string | null; userAgent?: string | null; now?: Date };
 
-// 직원 이름 최대 글자 수(코드포인트). 만들기·고치기·본인확인 연결 비교가 모두 이 값을 쓴다(sellers/staffIdentity.ts).
-export const STAFF_NAME_MAX = 50;
-// 직원 이름 정규화: NFKC·앞뒤 공백 정리, 제어·서식 문자(폭 없는 공백 등)·빈칸처럼 보이는 글자 거부, 코드포인트 50자까지.
-// 저장하는 값과 연결 비교가 같은 기준이라, 저장한 이름은 본인확인 결과와 항상 같은 방식으로 비교된다. 맞지 않으면 null.
-export const cleanStaffName = (v: unknown): string | null => cleanText(v, STAFF_NAME_MAX);
+export { STAFF_NAME_MAX, cleanStaffName } from "./staffName";
+import { cleanStaffName } from "./staffName";
 
 const STAFF_FIELDS = { id: true, email: true, name: true, phone: true, identityLinkedAt: true, permissions: true, status: true, lastLoginAt: true, createdAt: true } as const;
 

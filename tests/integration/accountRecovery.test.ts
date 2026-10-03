@@ -262,6 +262,37 @@ describe("비밀번호 찾기(이메일+쇼핑몰) 직원", () => {
     const staffCookie = await sessionOf("long@example.com", seller.slug);
     const s = await linkStart(post("/api/seller/me/identity/start", { ...IDV_INPUT, name: long, phone: "01055556666" }, staffCookie));
     expect(s.status).toBe(200);
+    // 확인 단계(공급자 결과 정리)도 같은 상한이라 40자 결과 이름으로 확인·연결까지 된다
+    const flow = cookieOf(s, "lo_lidv");
+    const { verificationId } = await s.json();
+    await confirmWith(linkConfirm, "/api/seller/me/identity/confirm", verificationId, flow, { ci: "LONG-CI", name: long });
+    expect((await linkRoute(post("/api/seller/me/identity/link", { verificationId }, `${staffCookie}; ${flow}`))).status).toBe(200);
+    expect((await db.sellerUser.findUniqueOrThrow({ where: { id } })).identityCiHash).toBe(hashCi("LONG-CI"));
+  });
+
+  it("본인확인 시작 중 계정을 읽은 뒤 대표자가 번호를 바꾸면 문자를 보내지 않고 기록·하루 횟수도 쓰지 않는다(직원 행을 잠그고 다시 비교)", async () => {
+    const { seller } = await shop();
+    const staff = await createSellerUser(seller.id, "MANAGER");
+    await db.sellerUser.update({ where: { id: staff.id }, data: { phone: "01055556666" } });
+    const cookie = await sessionOf(staff.email);
+    const { startStaffLink } = await import("../../lib/server/sellers/staffIdentity");
+    const { requireSeller } = await import("../../lib/server/authz/guards");
+    const ctx = await requireSeller(db, cookie.replace("lo_seller=", ""));
+    const racing = new Proxy(db, {
+      get(t, p) {
+        const v = Reflect.get(t, p);
+        if (p !== "$transaction") return typeof v === "function" ? v.bind(t) : v;
+        return async (...args: unknown[]) => {
+          await db.sellerUser.update({ where: { id: staff.id }, data: { phone: "01077778888" } });
+          return (v as (...a: unknown[]) => unknown).apply(t, args);
+        };
+      },
+    }) as typeof db;
+    const sentBefore = fake().sent.length;
+    const r = await startStaffLink(racing, fake(), ctx, { ...IDV_INPUT, name: "직원", phone: "01055556666" });
+    expect(r).toEqual({ ok: false, reason: "identity_mismatch" });
+    expect(fake().sent.length).toBe(sentBefore);
+    expect(await db.identityVerification.count({ where: { purpose: "STAFF_LINK", subjectId: staff.id } })).toBe(0);
   });
 
   it("직원 이름은 만들기·고치기에서 연결과 같은 정규화로 저장한다: 전각 공백·전각 글자는 정리돼 연결되고, 폭 없는 공백은 400, 길이는 코드포인트 기준. 예전에 정규화 없이 저장된 이름도 연결된다", async () => {
