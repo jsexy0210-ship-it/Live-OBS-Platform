@@ -112,7 +112,8 @@ describe("입금 기한 알림 「보냈음」 기록", () => {
     const [old] = await claimPaymentDueSoon(db);
     await db.orderNotification.updateMany({ data: { claimedAt: new Date(Date.now() - 11 * 60_000) } });
     const [renewed] = await claimPaymentDueSoon(db);
-    expect(renewed).toMatchObject({ notificationId: old.notificationId, attempts: 2 });
+    expect(renewed).toMatchObject({ notificationId: old.notificationId, idempotencyKey: old.idempotencyKey, attempts: 2 });
+    expect(old.idempotencyKey).toBe(old.notificationId);
     expect(await markNotificationFailed(db, old, "옛 작업자 시간 초과")).toBe(false);
     expect(await markNotificationSent(db, old)).toBe(false);
     expect(await db.orderNotification.findUniqueOrThrow({ where: { id: old.notificationId } })).toMatchObject({ status: "PENDING", attempts: 2, failureReason: null, sentAt: null });
