@@ -59,6 +59,28 @@ async function shop() {
 }
 
 describe("구매자 가입 HTTP", () => {
+  // KST 오늘에서 years년 + extraDays일 전에 태어난 사람의 birth7(2000년대생: 성별 자리 3)
+  const birth7Ago = (years: number, extraDays = 0) => {
+    const t = new Date(Date.now() + 9 * 3600_000);
+    const b = new Date(Date.UTC(t.getUTCFullYear() - years, t.getUTCMonth(), t.getUTCDate() - extraDays));
+    const p = (n: number) => String(n).padStart(2, "0");
+    return `${p(b.getUTCFullYear() % 100)}${p(b.getUTCMonth() + 1)}${p(b.getUTCDate())}3`;
+  };
+
+  it("만 14세 미만은 403 under_age와 문구로 거절하고(생일 전날), 만 14세 생일 당일은 가입된다. 거절은 시도 횟수에 넣지 않는다", async () => {
+    const s = await shop();
+    const young = await s.verified({ name: "어린이", birth7: birth7Ago(14, -1), phone: "01055554444" });
+    const r = await s.signup(young, { loginId: "kid@example.com", broadcastNickname: "어린이" });
+    expect(r.status).toBe(403);
+    expect(await r.json()).toEqual({ error: "under_age", message: "만 14세 미만은 가입할 수 없어요" });
+    expect(BUYER_SIGNUP_MESSAGES.under_age).toBe("만 14세 미만은 가입할 수 없어요");
+    expect(await db.buyerMember.count({ where: { sellerId: s.seller.id } })).toBe(0);
+    expect((await db.identityVerification.findUniqueOrThrow({ where: { id: young.verificationId } })).useAttemptCount).toBe(0);
+
+    const today = await s.verified({ name: "생일", birth7: birth7Ago(14), phone: "01055553333" });
+    expect((await s.signup(today, { loginId: "bday@example.com", broadcastNickname: "생일" })).status).toBe(201);
+  });
+
   it("본인확인 시작 → 인증번호 확인 → 가입하면 201로 바로 로그인되고, 이름·휴대폰은 본인확인 결과를 쓰며 동의를 기록한다", async () => {
     const s = await shop();
     const start = await startRoute(post(`${s.base}/verification`, IDV_INPUT), ctx(s.slug));
