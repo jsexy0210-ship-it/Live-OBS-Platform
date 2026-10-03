@@ -19,6 +19,19 @@
 .stock-table .m-lbl {
   display: none;
 }
+.stock-table .c-act {
+  white-space: nowrap;
+}
+.stock-table .c-act .btn + .btn {
+  margin-left: 6px;
+}
+.stock-selinfo {
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 20px;
+  background: var(--wds-fill-alternative);
+  box-shadow: inset 0 -1px 0 var(--wds-line-normal-alternative);
+}
 
 @media (max-width: 1023px) {
   .stock-grid {
@@ -44,7 +57,7 @@
   }
   .stock-table tr {
     display: grid;
-    grid-template-columns: 28px minmax(0, 1fr) 96px;
+    grid-template-columns: 28px minmax(0, 1fr) minmax(96px, auto);
     grid-template-areas:
       "chk name name"
       ". cur next"
@@ -82,9 +95,16 @@
   .stock-table .c-act {
     grid-area: act;
   }
+  .stock-table .c-act {
+    display: flex;
+    gap: 6px;
+  }
   .stock-table .c-act .btn {
-    width: 100%;
-    padding: 0 6px;
+    flex: 1;
+    padding: 0 8px;
+  }
+  .stock-table .c-act .btn + .btn {
+    margin-left: 0;
   }
   .stock-table .m-lbl {
     display: inline;
@@ -108,7 +128,8 @@
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  word-break: break-all;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 .stock-mselect,
 .stock-mbar {
@@ -132,9 +153,9 @@
     background: var(--surface);
     box-shadow: 0 -1px 0 var(--wds-line-normal-alternative), var(--wds-shadow-medium);
   }
-  /* 고정 바에 가려지지 않게 아래 여백을 둔다 */
-  .stock-grid {
-    padding-bottom: 72px;
+  /* 고정 바에 가려지지 않게 페이지 맨 끝(재고 이력 뒤)에 여백을 둔다 */
+  .stock-hist {
+    margin-bottom: 72px;
   }
 }
 
@@ -154,5 +175,19 @@
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  word-break: break-all;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+/* 옵션별 재고 이력 창: 목록이 길면 창 안에서 스크롤한다 */
+.stock-hist-modal {
+  width: 560px;
+  max-width: calc(100vw - 32px);
+}
+.stock-hist-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: min(60vh, 520px);
+  overflow-y: auto;
 }

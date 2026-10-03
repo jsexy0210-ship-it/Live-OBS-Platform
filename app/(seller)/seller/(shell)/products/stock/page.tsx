@@ -6,12 +6,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage, type Product } from "../../../../../../components/seller/api";
-import { INT4_MAX, parseAmount } from "../../../../../../components/seller/format";
+import { INT4_MAX, parseAmount, textLength } from "../../../../../../components/seller/format";
+import { cleanText } from "../../../../../../lib/server/text/clean";
 
 // SA-014 재고 관리. 옵션마다 「변경 후」 재고를 적어 한 번에 적용하거나, 한 옵션을 사유와 함께 빼고 더한다.
-// - 한 번에 적용: 옵션 수정 API에 화면이 본 재고(expectedStock)를 함께 보내, 그사이 주문으로 재고가 바뀌었으면 덮어쓰지 않는다.
+// - 한 번에 적용: 재고 증감 API에 화면이 본 재고(expectedStock)와 사유를 함께 보내, 그사이 주문으로 재고가 바뀌었으면 덮어쓰지 않는다.
 // - 빼기·더하기: 재고 증감 API(사유 필수). 그사이 바뀌어도 그 수량만큼만 더하고 빼며, 모자라면 빼지 않는다.
-// 재고 이력·CSV·되돌리기는 API가 생기면 붙인다.
+// CSV·되돌리기는 API가 생기면 붙인다.
 
 type Row = { key: string; productId: string; productName: string; optionId: string; optionName: string; stock: number };
 type Filter = "all" | "low" | "out";
@@ -19,6 +20,14 @@ const LOW = 5;
 const REASONS = ["이벤트 증정", "서비스", "파손", "직접 입력"] as const;
 // 한 번에 적용할 때 고르는 사유(목표 재고로 맞추는 경우가 많아 입고·재고 조사를 앞에 둔다)
 const BULK_REASONS = ["재고 조사", "입고", "파손", "직접 입력"] as const;
+
+// 직접 쓴 사유 검사: 서버(stock-adjust)와 같이 cleanText(NFKC, 코드포인트 100자) 기준
+function memoError(memo: string): string | null {
+  const t = memo.normalize("NFKC").trim();
+  if (t === "") return null;
+  if (textLength(t) > 100) return "사유는 100자까지 쓸 수 있어요";
+  return cleanText(memo, 100, "name") ? null : "쓸 수 없는 글자가 있어요";
+}
 
 // 재고 화면은 검색·걸러 보기를 화면에서 하므로 모든 상품을 200개씩 이어서 불러온다(다음 쪽이 없을 때까지, 개수 제한 없음).
 // 첫 쪽이 오면 바로 그리고 나머지는 뒤에서 이어 붙인다(상품이 많아도 첫 화면을 기다리지 않게). stale()이 참이면 새로 불러오기가 시작된 것이라 멈춘다.
@@ -58,6 +67,7 @@ export default function StockPage() {
   const [applying, setApplying] = useState(false);
   const [notice, setNotice] = useState<{ kind: "neg" | "cau"; text: string } | null>(null);
   const [sheet, setSheet] = useState<Row | null>(null);
+  const [histRow, setHistRow] = useState<Row | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   const loadId = useRef(0);
@@ -133,7 +143,8 @@ export default function StockPage() {
   const [bulkReason, setBulkReason] = useState<(typeof BULK_REASONS)[number] | null>(null);
   const [bulkMemo, setBulkMemo] = useState("");
   const bulkNote = bulkReason === "직접 입력" ? bulkMemo.trim() : bulkReason;
-  const bulkNoteOk = !!bulkNote && bulkNote.length <= 100;
+  const bulkMemoError = bulkReason === "직접 입력" ? memoError(bulkMemo) : null;
+  const bulkNoteOk = !!bulkNote && !bulkMemoError;
   const [histKey, setHistKey] = useState(0);
   const applyChanges = async () => {
     if (!bulkNoteOk) return;
@@ -166,8 +177,15 @@ export default function StockPage() {
     }
   };
 
-  // 「모두 선택」은 지금 화면에 그려진 옵션만 고른다
+  // 「모두 선택」은 지금 화면에 그려진 옵션만 고른다. 걸러 본 결과가 그린 줄보다 많으면 「N개 모두 선택」으로 전부 고를 수 있다
   const allVisibleSelected = shown.length > 0 && shown.every((r) => selected.has(r.key));
+  const allFilteredSelected = visible.length > 0 && visible.every((r) => selected.has(r.key));
+  const selectAllFiltered = () =>
+    setSelected((s) => {
+      const out = new Set(s);
+      visible.forEach((r) => out.add(r.key));
+      return out;
+    });
   const toggleAll = () =>
     setSelected((s) => {
       const out = new Set(s);
@@ -251,6 +269,18 @@ export default function StockPage() {
                   </button>
                 </div>
               </div>
+              {visible.length > shown.length && (
+                <div className="row stock-selinfo" data-testid="stock-selinfo">
+                  <span className="t-l2 c-alt num">
+                    선택 {selected.size.toLocaleString("ko-KR")}개 · 전체 {visible.length.toLocaleString("ko-KR")}개
+                  </span>
+                  {!allFilteredSelected && (
+                    <button className="btn btn-sm btn-text" type="button" onClick={selectAllFiltered}>
+                      {visible.length.toLocaleString("ko-KR")}개 모두 선택
+                    </button>
+                  )}
+                </div>
+              )}
 
               {visible.length === 0 ? (
                 <div className="st" style={{ boxShadow: "none" }}>
@@ -287,7 +317,7 @@ export default function StockPage() {
                         차이
                       </th>
                       <th style={{ width: 100 }}>상태</th>
-                      <th style={{ width: 128 }} />
+                      <th style={{ width: 204 }} />
                     </tr>
                   </thead>
                   <tbody>
@@ -353,6 +383,9 @@ export default function StockPage() {
                             <span className={`bdg ${badge.c}`}>{badge.l}</span>
                           </td>
                           <td className="c-act">
+                            <button className="btn btn-sm btn-out" type="button" onClick={() => setHistRow(r)} aria-label={`${r.productName} ${r.optionName} 이력`}>
+                              이력
+                            </button>
                             <button className="btn btn-sm btn-out" type="button" onClick={() => setSheet(r)} aria-label={`${r.productName} ${r.optionName} 빼기 · 더하기`}>
                               빼기 · 더하기
                             </button>
@@ -401,7 +434,17 @@ export default function StockPage() {
             </aside>
           </div>
         )}
-        {state.kind === "ok" && <StockHistory refreshKey={histKey} />}
+        {state.kind === "ok" && (
+          <section className="card pad col stock-hist" style={{ gap: 12 }} aria-labelledby="hist-title">
+            <div className="row between" style={{ gap: 12, flexWrap: "wrap" }}>
+              <h2 id="hist-title" className="t-hl2">
+                재고 이력
+              </h2>
+              <span className="t-c1 c-alt">주문 · 취소 · 환불과 직접 바꾼 재고가 사유와 함께 남아요</span>
+            </div>
+            <StockHistory refreshKey={histKey} />
+          </section>
+        )}
       </main>
 
       {/* 휴대폰: 바뀐 것이 있으면 아래에 적용 바를 고정한다 */}
@@ -441,8 +484,8 @@ export default function StockPage() {
             {bulkReason === "직접 입력" && (
               <div className="fld">
                 <label htmlFor="bulk-memo">사유 메모</label>
-                <input id="bulk-memo" className={`inp${bulkMemo.trim().length > 100 ? " is-error" : ""}`} type="text" placeholder="예: 창고 재고 맞춤" value={bulkMemo} onChange={(e) => setBulkMemo(e.target.value)} />
-                {bulkMemo.trim().length > 100 && <span className="err">사유는 100자까지 쓸 수 있어요</span>}
+                <input id="bulk-memo" className={`inp${bulkMemoError ? " is-error" : ""}`} type="text" placeholder="예: 창고 재고 맞춤" value={bulkMemo} onChange={(e) => setBulkMemo(e.target.value)} aria-invalid={!!bulkMemoError} />
+                {bulkMemoError && <span className="err">{bulkMemoError}</span>}
               </div>
             )}
             <span className="t-c1 c-alt">사유는 재고 이력에 함께 남아요</span>
@@ -474,6 +517,26 @@ export default function StockPage() {
           }}
         />
       )}
+      {histRow && (
+        <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="opt-hist-title">
+          <div className="modal stock-hist-modal">
+            <div className="modal-h">
+              <h3 id="opt-hist-title" className="t-hl1 clamp2">
+                {histRow.productName} · {histRow.optionName}
+              </h3>
+              <p className="t-l2 c-alt">이 옵션의 재고 이력이에요 · 지금 재고 {histRow.stock.toLocaleString("ko-KR")}개</p>
+            </div>
+            <div className="stock-hist-body">
+              <StockHistory refreshKey={histKey} productId={histRow.productId} optionId={histRow.optionId} />
+            </div>
+            <div className="modal-f">
+              <button className="btn btn-out" type="button" onClick={() => setHistRow(null)}>
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {toast && <Toast text={toast} onDone={() => setToast(null)} />}
     </>
   );
@@ -502,8 +565,8 @@ function AdjustSheet({ row, onClose, onDone }: { row: Row; onClose: () => void; 
               ? "재고는 21억 개까지 넣을 수 있어요"
               : null;
   const note = reason === "직접 입력" ? memo.trim() : reason;
-  const memoError = reason === "직접 입력" && memo.trim().length > 100 ? "사유는 100자까지 쓸 수 있어요" : null;
-  const ready = n !== null && n >= 1 && !qtyError && !!note && !memoError;
+  const memoErr = reason === "직접 입력" ? memoError(memo) : null;
+  const ready = n !== null && n >= 1 && !qtyError && !!note && !memoErr;
   const verb = mode === "minus" ? "빼기" : "더하기";
 
   const submit = async () => {
@@ -568,8 +631,8 @@ function AdjustSheet({ row, onClose, onDone }: { row: Row; onClose: () => void; 
         {reason === "직접 입력" && (
           <div className="fld">
             <label htmlFor="adj-memo">사유 메모</label>
-            <input id="adj-memo" className={`inp${memoError ? " is-error" : ""}`} type="text" placeholder="예: 추가 입고" value={memo} onChange={(e) => setMemo(e.target.value)} />
-            {memoError && <span className="err">{memoError}</span>}
+            <input id="adj-memo" className={`inp${memoErr ? " is-error" : ""}`} type="text" placeholder="예: 추가 입고" value={memo} onChange={(e) => setMemo(e.target.value)} aria-invalid={!!memoErr} />
+            {memoErr && <span className="err">{memoErr}</span>}
           </div>
         )}
         <span className="t-c1 c-alt">바꾼 사람·시각과 사유가 함께 기록돼요</span>
@@ -601,88 +664,99 @@ type Movement = {
   createdAt: string;
 };
 
-const kst = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
+const KST_PARTS = { timeZone: "Asia/Seoul", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false } as const;
+const kst = new Intl.DateTimeFormat("ko-KR", KST_PARTS);
+const kstWithYear = new Intl.DateTimeFormat("ko-KR", { ...KST_PARTS, year: "numeric" });
+const kstYear = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Seoul", year: "numeric" });
+// 올해(KST) 이력은 월·일·시각만, 올해가 아니면 연도를 붙인다
+const when = (iso: string) => {
+  const d = new Date(iso);
+  return kstYear.format(d) === kstYear.format(new Date()) ? kst.format(d) : kstWithYear.format(d);
+};
 
 // 누가·언제·왜 바꿨는지(주문·취소·환불·직접 변경). 최근 것부터 50개씩, 「더 보기」로 이어서 불러온다.
-function StockHistory({ refreshKey }: { refreshKey: number }) {
+// productId·optionId를 주면 그 옵션의 이력만 보여 준다.
+function StockHistory({ refreshKey, productId, optionId }: { refreshKey: number; productId?: string; optionId?: string }) {
   const [items, setItems] = useState<Movement[] | null>(null);
   const [next, setNext] = useState<string | null>(null);
   const [error, setError] = useState(false);
   const [more, setMore] = useState(false);
+  // 「이력 더 보기」 실패는 지금 목록을 두고 그 자리에서 다시 부르게 한다
+  const [moreError, setMoreError] = useState(false);
 
-  // 첫 쪽을 다시 부를 때마다 세대를 올린다. 늦게 온 옛 응답(새로고침 전 첫 쪽·「더 보기」)은 버려 새 목록을 덮거나 뒤에 붙지 않게 한다
+  // 첫 쪽을 다시 불러올 때마다 세대를 올린다. 늦게 온 옛 응답(새로고침 전 첫 쪽·「더 보기」)은 버려 새 목록을 덮거나 뒤에 붙지 않게 한다
   const gen = useRef(0);
-  const load = useCallback(async (cursor?: string) => {
-    const id = cursor ? gen.current : ++gen.current;
-    // 새로고침 중에는 옛 커서로 「더 보기」를 누르지 못하게 숨긴다
-    if (!cursor) setNext(null);
-    const r = await api<{ movements: Movement[]; nextCursor: string | null }>(`/api/seller/products/stock-movements?limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`);
-    if (id !== gen.current) return;
-    if (!r.ok) return setError(true);
-    setError(false);
-    setItems((prev) => (cursor && prev ? [...prev, ...r.data.movements] : r.data.movements));
-    setNext(r.data.nextCursor);
-  }, []);
+  const load = useCallback(
+    async (cursor?: string) => {
+      const id = cursor ? gen.current : ++gen.current;
+      // 새로고침 중에는 옛 커서로 「더 보기」를 누르지 못하게 숨긴다
+      if (!cursor) setNext(null);
+      setMoreError(false);
+      const qs = [productId && `productId=${productId}`, optionId && `optionId=${optionId}`, "limit=50", cursor && `cursor=${encodeURIComponent(cursor)}`].filter(Boolean).join("&");
+      const r = await api<{ movements: Movement[]; nextCursor: string | null }>(`/api/seller/products/stock-movements?${qs}`);
+      if (id !== gen.current) return;
+      if (!r.ok) return cursor ? setMoreError(true) : setError(true);
+      setError(false);
+      setItems((prev) => (cursor && prev ? [...prev, ...r.data.movements] : r.data.movements));
+      setNext(r.data.nextCursor);
+    },
+    [productId, optionId],
+  );
 
   useEffect(() => {
     void load();
   }, [load, refreshKey]);
 
+  const loadMore = async () => {
+    if (!next) return;
+    setMore(true);
+    await load(next);
+    setMore(false);
+  };
+
+  if (error) return <ErrorState title="재고 이력을 불러오지 못했어요" onRetry={() => void load()} />;
+  if (items === null) return <LoadingRows rows={3} />;
+  if (items.length === 0) return <span className="t-l2 c-alt">아직 재고를 바꾼 기록이 없어요</span>;
   return (
-    <section className="card pad col" style={{ gap: 12 }} aria-labelledby="hist-title">
-      <div className="row between" style={{ gap: 12, flexWrap: "wrap" }}>
-        <h2 id="hist-title" className="t-hl2">
-          재고 이력
-        </h2>
-        <span className="t-c1 c-alt">누가 · 언제 · 왜 바꿨는지 남아요 · 주문 · 취소 · 환불 · 직접 변경을 구분해요</span>
-      </div>
-      {error ? (
-        <ErrorState title="재고 이력을 불러오지 못했어요" onRetry={() => void load()} />
-      ) : items === null ? (
-        <LoadingRows rows={3} />
-      ) : items.length === 0 ? (
-        <span className="t-l2 c-alt">아직 재고를 바꾼 기록이 없어요</span>
+    <>
+      <ul className="hist-list" data-testid="stock-history">
+        {items.map((m) => (
+          <li key={m.id} className="row between hist-item" data-testid="history-item">
+            <span className="row" style={{ gap: 10, minWidth: 0 }}>
+              <span className={`bdg nodot ${m.type === "MANUAL" ? "b-warn" : m.type === "ORDER" ? "b-gray" : "b-info"}`} style={{ flex: "none" }}>
+                {m.typeLabel}
+              </span>
+              <span className="col" style={{ gap: 2, minWidth: 0 }}>
+                <span className="t-l2 fw6 clamp2">
+                  {m.productName} · {m.optionName}
+                </span>
+                <span className="t-c1 c-alt">
+                  {m.actor.name} · {when(m.createdAt)}
+                  {m.note ? ` · 사유: ${m.note}` : ""}
+                  {m.stockAfter !== null ? ` · 남은 재고 ${m.stockAfter.toLocaleString("ko-KR")}` : ""}
+                </span>
+              </span>
+            </span>
+            <span className={`num fw6 ${m.delta > 0 ? "c-pos" : "c-neg"}`} style={{ flex: "none" }}>
+              {signed(m.delta)}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {moreError ? (
+        <div className="row center" style={{ gap: 8, flexWrap: "wrap" }} role="alert">
+          <span className="t-l2 c-neg">이력을 더 불러오지 못했어요</span>
+          <button className="btn btn-sm btn-out" type="button" disabled={more} onClick={() => void loadMore()}>
+            {more ? "불러오고 있어요" : "다시 불러오기"}
+          </button>
+        </div>
       ) : (
-        <ul className="hist-list" data-testid="stock-history">
-          {items.map((m) => (
-            <li key={m.id} className="row between hist-item" data-testid="history-item">
-              <span className="row" style={{ gap: 10, minWidth: 0 }}>
-                <span className={`bdg nodot ${m.type === "MANUAL" ? "b-warn" : m.type === "ORDER" ? "b-gray" : "b-info"}`} style={{ flex: "none" }}>
-                  {m.typeLabel}
-                </span>
-                <span className="col" style={{ gap: 2, minWidth: 0 }}>
-                  <span className="t-l2 fw6 clamp2">
-                    {m.productName} · {m.optionName}
-                  </span>
-                  <span className="t-c1 c-alt">
-                    {m.actor.name} · {kst.format(new Date(m.createdAt))}
-                    {m.note ? ` · 사유: ${m.note}` : ""}
-                    {m.stockAfter !== null ? ` · 남은 재고 ${m.stockAfter.toLocaleString("ko-KR")}` : ""}
-                  </span>
-                </span>
-              </span>
-              <span className={`num fw6 ${m.delta > 0 ? "c-pos" : "c-neg"}`} style={{ flex: "none" }}>
-                {signed(m.delta)}
-              </span>
-            </li>
-          ))}
-        </ul>
+        next && (
+          <button className="btn btn-sm btn-out" type="button" style={{ alignSelf: "center" }} disabled={more} onClick={() => void loadMore()}>
+            {more ? "불러오고 있어요" : "이력 더 보기"}
+          </button>
+        )
       )}
-      {next && !error && (
-        <button
-          className="btn btn-sm btn-out"
-          type="button"
-          style={{ alignSelf: "center" }}
-          disabled={more}
-          onClick={async () => {
-            setMore(true);
-            await load(next);
-            setMore(false);
-          }}
-        >
-          {more ? "불러오고 있어요" : "이력 더 보기"}
-        </button>
-      )}
-    </section>
+    </>
   );
 }
