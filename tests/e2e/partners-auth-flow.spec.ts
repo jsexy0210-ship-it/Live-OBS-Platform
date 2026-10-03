@@ -330,10 +330,27 @@ test("아이디 찾기(대표자): 본인확인하면 가입한 이메일과 쇼
   const next = `${a.password}-found`;
   await page.getByLabel("새 비밀번호", { exact: true }).fill(next);
   await page.getByLabel("새 비밀번호 확인").fill(next);
+  // 저장은 서버에서 끝났는데 응답만 끊긴다: 다시 누르면 권한이 이미 쓰여 invalid_grant가 오지만,
+  // 처음부터(유료 본인확인) 보내지 않고 방금 정한 비밀번호로 로그인해 보게 한다
+  let completeCalls = 0;
+  await page.route((u) => u.pathname === "/api/seller/password-reset/complete", async (route) => {
+    completeCalls += 1;
+    if (completeCalls > 1) return route.continue();
+    await route.fetch();
+    return route.abort("connectionreset");
+  });
   await page.getByRole("button", { name: "비밀번호 바꾸기" }).click();
-  await expect(page.getByRole("heading", { name: "비밀번호를 바꿨어요" })).toBeVisible();
-
-  await login(page, "대표자", a.email, next);
+  await expect(page.locator("#pw-notice")).toContainText("연결이 끊겼어요");
+  await page.getByRole("button", { name: "비밀번호 바꾸기" }).click();
+  await expect(page.locator("#pw-maybe")).toContainText("비밀번호가 이미 바뀌었을 수 있어요.");
+  await expect(page.getByLabel("인증번호")).toHaveCount(0);
+  expect(completeCalls).toBe(2);
+  await page.unroute((u) => u.pathname === "/api/seller/password-reset/complete");
+  await page.getByRole("link", { name: "로그인하기" }).click();
+  await expect(page).toHaveURL(/\/seller\/login$/);
+  await page.getByLabel("이메일").fill(a.email);
+  await page.getByLabel("비밀번호").fill(next);
+  await page.getByRole("button", { name: "로그인" }).click();
   await expect(page).toHaveURL(/\/seller\/products$/);
 });
 

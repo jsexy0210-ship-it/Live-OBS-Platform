@@ -1,15 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import { api, failMessage } from "./api";
 
 // AU-004 새 비밀번호 입력. 비밀번호 찾기(AU-003)와 아이디 찾기에서 고른 계정(AU-011) 모두 재설정 권한(쿠키 lo_pwreset)을 받은 뒤 이 칸으로 저장한다.
 // API: POST /api/seller/password-reset/complete { newPassword }. 권한이 지났으면(invalid_grant) onExpired로 처음부터 다시 하게 한다.
 const MIN_PASSWORD_LENGTH = 8; // 서버(lib/server/auth/passwordReset.ts)와 같은 값
 
-type Props = { onDone: () => void; onExpired: () => void };
+// 저장 응답을 놓친 뒤(연결 끊김·서버 오류) 다시 누르면 invalid_grant가 올 수 있다: 권한은 이미 쓰였고 비밀번호가 바뀌었을 수 있으므로,
+// 바로 처음부터(유료 본인확인) 보내지 않고 방금 정한 비밀번호로 로그인해 보게 한다(loginHref)
+type Props = { onDone: () => void; onExpired: () => void; loginHref: string };
 
-export default function NewPasswordForm({ onDone, onExpired }: Props) {
+export default function NewPasswordForm({ onDone, onExpired, loginHref }: Props) {
+  const uncertain = useRef(false);
+  const [maybeChanged, setMaybeChanged] = useState(false);
   const [busy, setBusy] = useState(false);
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
@@ -42,10 +47,33 @@ export default function NewPasswordForm({ onDone, onExpired }: Props) {
       setPwError(`${MIN_PASSWORD_LENGTH}자 이상으로 정해 주세요`);
       return focus("pw-new");
     }
-    if (r.error === "invalid_grant") return onExpired();
+    if (r.error === "invalid_grant") {
+      if (!uncertain.current) return onExpired();
+      setMaybeChanged(true);
+      return focus("pw-maybe");
+    }
+    if (r.status === 0 || r.status >= 500) uncertain.current = true;
     setNotice(failMessage(r, "바꾸지 못했어요. 잠시 뒤 다시 시도해 주세요"));
     focus("pw-notice");
   };
+
+  if (maybeChanged) {
+    return (
+      <div className="col" style={{ gap: 12 }}>
+        <div id="pw-maybe" tabIndex={-1} className="msg msg-info" role="status" style={{ display: "block" }}>
+          <span>
+            <b>비밀번호가 이미 바뀌었을 수 있어요.</b> 방금 정한 비밀번호로 로그인해 보세요.
+          </span>
+        </div>
+        <Link className="btn btn-lg btn-block" href={loginHref}>
+          로그인하기
+        </Link>
+        <button className="btn btn-lg btn-block btn-out" type="button" onClick={onExpired}>
+          처음부터 다시 찾기
+        </button>
+      </div>
+    );
+  }
 
   return (
     <form className="col" style={{ gap: 14 }} onSubmit={complete} noValidate>
