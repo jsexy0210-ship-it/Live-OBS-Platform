@@ -1,5 +1,7 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, request, test, type Page } from "@playwright/test";
+import { REJOIN_RETENTION_CONSENT_VERSION } from "../../lib/server/buyers/rejoin";
 import { BUYER_SIGNUP_MESSAGES } from "../../lib/server/buyers/signup";
+import { setMemberPolicyInDb } from "./memberPolicyDb";
 import { IDENTITY_ERROR_MESSAGES } from "../../lib/server/identity/messages";
 
 // SH-011 구매자 회원가입 흐름 — 개발 서버(가짜 본인확인 공급자, 인증번호 000000)에서 돈다(playwright.config.ts 「dev」).
@@ -701,4 +703,81 @@ test("다시 받기가 이미 확인됨이면 확인 결과를 다시 불러와 
   await expect.poll(() => focusedId(page)).toBe("acc-id");
   expect(confirmBodies).toHaveLength(3);
   expect((confirmBodies[2] as { verificationId: string }).verificationId).toBe("00000000-0000-4000-8000-000000000000");
+});
+
+// 재가입 제한(SH-011·SA-043). 켠 쇼핑몰 확인은 판매자 API로 잠시 켰다가 끈다(데모 대표자 비밀번호 E2E_PASSWORD 필요).
+const PASSWORD = process.env.E2E_PASSWORD ?? "";
+
+// 재가입 제한은 지금 API로 켤 수 없어 테스트 DB에 직접 넣는다(memberPolicyDb.ts). baseURL은 호출 모양을 맞추려고 둔다.
+async function setRejoin(_baseURL: string, enabled: boolean, days = 90) {
+  await setMemberPolicyInDb(SLUG, enabled, days);
+}
+
+test("재가입 제한을 끈 쇼핑몰은 보관 동의 줄이 없다", async ({ page }) => {
+  await mockApi(page);
+  await page.goto(`/shop/${SLUG}/signup`);
+  await toVerified(page);
+  await expect(page.getByText("재가입 제한 정보 보관", { exact: false })).toHaveCount(0);
+});
+
+test("재가입 제한을 켠 쇼핑몰의 보관 동의는 선택: 체크하지 않아도 가입되고, 체크하면 보여 준 기간·문서 버전을 함께 보낸다. 「보기」에 실제 기간을 보여 준다", async ({ page, baseURL }) => {
+  if (!PASSWORD) throw new Error("E2E_PASSWORD가 없어요. dev-seed가 출력한 데모 비밀번호를 넣어 주세요");
+  await setRejoin(baseURL!, true, 90);
+  try {
+    for (const agree of [false, true]) {
+      const id = uniq();
+      await page.goto(`/shop/${SLUG}/signup`);
+      await fillIdentity(page, `제한${id}`, uniqPhone());
+      await page.getByRole("button", { name: "인증번호 받기" }).click();
+      await page.getByLabel("인증번호").fill("000000");
+      await page.getByRole("button", { name: "확인", exact: true }).click();
+      await expect(page.getByText("본인확인을 마쳤어요")).toBeVisible();
+      await page.getByLabel("아이디 (이메일)").fill(`buyer-${id}@example.com`);
+      await page.getByLabel("비밀번호").fill(`pw-${id}-long`);
+      await page.getByLabel("방송 닉네임").fill(`제한${id}`);
+      await page.getByLabel("이용약관 (필수)").check();
+      await page.getByLabel("개인정보 수집 · 이용 (필수)").check();
+      const join = page.getByRole("button", { name: "가입하기" });
+      const box = page.getByLabel("재가입 제한 정보 보관 (선택)");
+      // 기본은 체크 안 함이고, 체크하지 않아도 가입할 수 있다
+      await expect(box).not.toBeChecked();
+      await expect(join).toBeEnabled();
+      await page.getByText("보기").click();
+      await expect(page.getByText("보관 기간: 탈퇴한 날부터 90일")).toBeVisible();
+      await expect(page.getByText("동의하지 않아도 가입할 수 있어요. 동의하지 않으면 이 정보를 보관하지 않고, 탈퇴한 뒤 다시 가입할 때 기간 제한을 받지 않아요.")).toBeVisible();
+      if (agree) await box.check();
+      const req = page.waitForRequest((r) => r.url().endsWith(API) && r.method() === "POST");
+      await join.click();
+      const body = (await req).postDataJSON();
+      if (agree) expect(body).toMatchObject({ agreedRejoinRetention: true, rejoinRestrictionDaysShown: 90, rejoinRetentionVersionShown: REJOIN_RETENTION_CONSENT_VERSION });
+      else {
+        expect(body.agreedRejoinRetention).toBe(false);
+        expect(body).not.toHaveProperty("rejoinRestrictionDaysShown");
+      }
+      await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
+    }
+  } finally {
+    await setRejoin(baseURL!, false);
+  }
+});
+
+test("재가입 제한 중이면 문구 뒤에 다시 가입할 수 있는 날(KST)을 붙여 보여 준다", async ({ page }) => {
+  // 2026-11-02T15:30Z = KST 11월 3일 0시 30분
+  await mockApi(page, { signup: { status: 403, body: { error: "rejoin_restricted", message: "지금은 다시 가입할 수 없어요", rejoinAvailableAt: "2026-11-02T15:30:00.000Z" } } });
+  await page.goto(`/shop/${SLUG}/signup`);
+  await toVerified(page);
+  await fillAccount(page, "rj", "제한");
+  await page.getByRole("button", { name: "가입하기" }).click();
+  await expect(page.getByText("지금은 다시 가입할 수 없어요. 11월 3일부터 다시 가입할 수 있어요")).toBeVisible();
+});
+
+test("가입 중에 판매자가 재가입 제한 기간을 바꾸면(409) 안내를 보여 주고 동의를 다시 받는다", async ({ page }) => {
+  await mockApi(page, { signup: fail(409, "rejoin_policy_changed", BUYER_SIGNUP_MESSAGES.rejoin_policy_changed) });
+  await page.goto(`/shop/${SLUG}/signup`);
+  await toVerified(page);
+  await fillAccount(page, "pc", "바뀜");
+  await page.getByRole("button", { name: "가입하기" }).click();
+  await expect(page.locator("#acc-terms-err")).toHaveText(BUYER_SIGNUP_MESSAGES.rejoin_policy_changed);
+  // 입력한 계정 정보는 남아 있다
+  await expect(page.getByLabel("방송 닉네임")).toHaveValue("바뀜");
 });
