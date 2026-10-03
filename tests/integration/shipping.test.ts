@@ -320,7 +320,7 @@ describe("판매자 배송비 설정 API", () => {
     const s = await shop();
     const cookie = await sellerCookie(s.owner.email);
     const got = await (await getPolicyRoute(new Request("http://localhost:3000/api/seller/shipping-policy", { headers: { ...H, cookie } }))).json();
-    expect(got.policy).toEqual({ baseFee: 3000, freeOverAmount: null, remoteSurcharge: 3000, remoteZipRanges: [[63000, 63644], [40200, 40240]] });
+    expect(got.policy).toEqual({ freeShipping: false, baseFee: 3000, freeOverAmount: null, remoteSurcharge: 3000, remoteZipRanges: [[63000, 63644], [40200, 40240]] });
     expect(got.couriers).toMatchObject({ CJ: "CJ대한통운" });
     const res = await put(cookie, { baseFee: 0, freeOverAmount: null, remoteSurcharge: 5000, remoteZipRanges: [[63000, 63644]] });
     expect(res.status).toBe(200);

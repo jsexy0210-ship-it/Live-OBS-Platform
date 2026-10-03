@@ -82,6 +82,22 @@ export async function createOrder(db: PrismaClient, input: CreateOrderInput): Pr
   if (!address) return { ok: false, reason: "invalid_shipping_address" };
   if (input.saveAddress !== undefined && typeof input.saveAddress !== "boolean") return { ok: false, reason: "invalid_shipping_address" };
 
+  try {
+    return await createInTransaction(db, input, lines, address);
+  } catch (e) {
+    if (e instanceof OutOfStockAtOrder) return { ok: false, reason: "out_of_stock" };
+    throw e;
+  }
+}
+
+class OutOfStockAtOrder extends Error {}
+
+async function createInTransaction(
+  db: PrismaClient,
+  input: CreateOrderInput,
+  lines: Line[],
+  address: NonNullable<ReturnType<typeof parseShippingAddress>>,
+): Promise<CreateOrderResult> {
   return db.$transaction(async (tx) => {
     // 같은 판매자의 주문 번호를 한 줄로 매긴다
     await lockSellerOrders(tx, input.sellerId);
@@ -160,6 +176,19 @@ export async function createOrder(db: PrismaClient, input: CreateOrderInput): Pr
         quantity: p.line.quantity,
       })),
     });
+    // 주문 때 차감(ORDER) 상품은 지금 뺀다. 조건부 UPDATE라 동시 주문·결제 차감과 겹쳐도 음수가 되지 않고,
+    // 모자라면 이 트랜잭션 전체를 되돌린다(주문 없음, out_of_stock).
+    for (const p of priced.filter((x) => x.option.product.stockDeductMode === "ORDER")) {
+      const dec = await tx.productOption.updateMany({
+        where: { id: p.option.id, sellerId: input.sellerId, stock: { gte: p.line.quantity } },
+        data: { stock: { decrement: p.line.quantity } },
+      });
+      if (dec.count !== 1) throw new OutOfStockAtOrder();
+      await tx.stockMovement.create({
+        data: { sellerId: input.sellerId, optionId: p.option.id, delta: -p.line.quantity, reason: "ORDER", orderId: order.id, actorType: "BUYER", actorId: member.id, createdAt: now },
+      });
+      await tx.orderItem.updateMany({ where: { orderId: order.id, optionId: p.option.id }, data: { stockDeductedAt: now } });
+    }
     await tx.orderConsent.create({
       data: {
         sellerId: input.sellerId,
