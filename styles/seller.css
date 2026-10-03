@@ -455,3 +455,15 @@ body {
   transform: translateY(-50%);
   pointer-events: none;
 }
+
+/* 직원 본인확인 연결(AU-012): 로그인한 계정·쇼핑몰·등록 이름 */
+.il-info {
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--wds-fill-alternative);
+}
+.il-info > .row > span:last-child {
+  min-width: 0;
+  text-align: right;
+}

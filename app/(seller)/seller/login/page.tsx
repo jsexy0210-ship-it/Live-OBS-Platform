@@ -66,10 +66,11 @@ export default function SellerLoginPage() {
       body: { email: email.trim(), password, accountType: tab, ...(needShop ? { shopSlug: shopSlug.trim() } : {}) },
     });
     if (r.ok) {
-      // 직원은 본인확인을 연결하지 않았으면 연결 안내(AU-012)로 먼저 보낸다. 건너뛸 수 있고, 상태를 못 읽으면 그냥 들어간다
+      // 직원은 본인확인을 연결하지 않았으면 로그인할 때마다 연결 안내(AU-012)로 먼저 보낸다. 건너뛸 수 있고, 상태를 못 읽으면 그냥 들어간다.
+      // 본인확인을 실제로 할 수 없는 서버(대행사 미연결·테스트 모드 아님)에서는 띄우지 않는다: 서버가 available: true를 줄 때만(대행사 연결 시 켜짐)
       if (tab === "staff") {
-        const s = await api<{ phoneRegistered: boolean; linked: boolean }>("/api/seller/me/identity");
-        if (s.ok && !s.data.linked) {
+        const s = await api<{ phoneRegistered: boolean; linked: boolean; available?: boolean }>("/api/seller/me/identity");
+        if (s.ok && !s.data.linked && s.data.available === true) {
           router.replace(`/seller/identity-link?next=${encodeURIComponent(safeNext())}`);
           return;
         }

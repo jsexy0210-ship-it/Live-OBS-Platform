@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { submitSellerLogin } from "./sellerLogin";
 
 // 파트너스 가입 신청(PF-007) → 로그인 → 비밀번호 찾기(AU-003·004)를 실제 API로 끝까지 확인한다.
 // 개발 서버(playwright.config.ts 「dev」)에서 돈다: 가짜 본인확인 공급자(인증번호 000000)와
@@ -227,6 +228,16 @@ async function signOut(page: Page) {
   await page.context().clearCookies();
 }
 
+// 연결 상태 응답에 본인확인 사용 가능 값을 더한다(서버가 아직 주지 않는 값: 기반 세션에 요청 중. 나머지는 실제 응답 그대로)
+async function identityStatus(page: Page, extra: Record<string, unknown> = { available: true }) {
+  await page.unroute("**/api/seller/me/identity");
+  await page.route("**/api/seller/me/identity", async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    const res = await route.fetch();
+    await route.fulfill({ response: res, json: { ...(await res.json()), ...extra } });
+  });
+}
+
 async function login(page: Page, tab: "대표자" | "직원", email: string, password: string) {
   await page.goto("/seller/login");
   await page.getByRole("tab", { name: tab }).click();
@@ -282,11 +293,19 @@ test("직원: 로그인하면 본인확인 연결 안내가 뜨고, 나중에 �
   await createStaff(page, s);
   await signOut(page);
 
-  // 연결 전 직원은 로그인 뒤 연결 안내로 간다 → 나중에 할게요면 원래 가려던 화면으로
+  // 본인확인을 쓸 수 있다는 값이 없으면(대행사 미연결 서버) 연결 안내 없이 바로 들어간다
+  await login(page, "직원", s.email, s.password);
+  await expect(page).toHaveURL(/\/seller\/products$/);
+  await signOut(page);
+
+  // 연결 전 직원은 로그인할 때마다 연결 안내로 간다 → 나중에 할게요면 원래 가려던 화면으로
+  await identityStatus(page);
   await login(page, "직원", s.email, s.password);
   await expect(page).toHaveURL(/\/seller\/identity-link\?next=/);
-  await expect(page.getByRole("heading", { name: "본인확인을 연결해 주세요" })).toBeVisible();
-  await expect(page.getByText("휴대폰 번호가 바뀌면 다시 연결해 주세요.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "본인확인으로 계정을 연결해요" })).toBeVisible();
+  await expect(page.getByTestId("il-account")).toContainText(s.email);
+  await expect(page.getByTestId("il-account")).toContainText(s.name);
+  await expect(page.getByText("다음 로그인 때 다시 안내해요", { exact: false })).toBeVisible();
   await shot(page, "AU-012");
   await page.getByRole("button", { name: "나중에 할게요" }).click();
   await expect(page).toHaveURL(/\/seller\/products$/);
@@ -301,17 +320,26 @@ test("직원: 로그인하면 본인확인 연결 안내가 뜨고, 나중에 �
   await expect(page.getByText("등록된 직원 정보와 맞는 계정이 없어요. 대표자에게 물어봐 주세요")).toBeVisible();
   await shot(page, "AU-011-staff-empty");
 
-  // 다시 로그인 → 등록 정보와 다른 이름은 문자 없이 거절 → 맞는 정보로 연결
+  // 다시 로그인 → 등록 정보와 다른 이름은 문자 없이 거절되고 대표자에게 정보 수정을 부탁하게 안내 → 나중에 할게요
   await login(page, "직원", s.email, s.password);
   await expect(page).toHaveURL(/\/seller\/identity-link\?next=/);
   await fillIdentity(page, `박${letters(uniq())}`, s.phone);
   const mismatch = page.waitForResponse((r) => r.url().endsWith("/api/seller/me/identity/start"));
   await page.getByRole("button", { name: "인증번호 받기" }).click();
   expect((await mismatch).status()).toBe(409);
-  await expect(page.getByText("등록된 직원 정보와 맞지 않아요. 대표자에게 물어봐 주세요")).toBeVisible();
-  await page.getByLabel("이름", { exact: true }).fill(s.name);
+  await expect(page.locator("#il-state")).toContainText("대표자가 등록한 직원 정보와 맞지 않아요.");
+  await expect(page.locator("#il-state")).toContainText("대표자에게 정보 수정을 부탁해 주세요");
+  await shot(page, "AU-012-mismatch");
+  await page.getByRole("button", { name: "나중에 할게요" }).click();
+  await expect(page).toHaveURL(/\/seller\/products$/);
+
+  // 다시 로그인 → 맞는 정보로 연결
+  await signOut(page);
+  await login(page, "직원", s.email, s.password);
+  await expect(page).toHaveURL(/\/seller\/identity-link\?next=/);
+  await fillIdentity(page, s.name, s.phone);
   await verify(page, false, "/api/seller/me/identity/start");
-  await expect(page.getByRole("heading", { name: "본인확인을 연결했어요" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "계정을 연결했어요" })).toBeVisible();
   await shot(page, "AU-012-done");
   await page.getByRole("button", { name: "계속하기" }).click();
   await expect(page).toHaveURL(/\/seller\/products$/);
@@ -347,4 +375,18 @@ test("직원: 로그인하면 본인확인 연결 안내가 뜨고, 나중에 �
   await expect(page.getByRole("heading", { name: "비밀번호를 바꿨어요" })).toBeVisible();
   await login(page, "직원", s.email, next);
   await expect(page).toHaveURL(/\/seller\/products$/);
+});
+
+test("직원 본인확인 연결: 휴대폰 번호가 바뀌어 연결이 풀렸으면 「본인확인 다시 하기」로 안내한다", async ({ page }) => {
+  // 서버가 아직 relinkRequired를 주지 않아 상태 응답에 더해 화면 상태만 확인한다(기반 세션에 요청 중)
+  await page.goto("/seller/login");
+  await submitSellerLogin(page, "demo-staff@example.com", process.env.E2E_PASSWORD ?? "");
+  await expect(page).toHaveURL(/\/seller\/products$/);
+  await identityStatus(page, { available: true, relinkRequired: true, phoneRegistered: true });
+  await page.goto("/seller/identity-link");
+  await expect(page.locator("#il-state")).toContainText("휴대폰 번호가 바뀌어서 본인확인을 다시 해야 아이디 · 비밀번호를 스스로 찾을 수 있어요.");
+  await expect(page.getByLabel("휴대폰번호", { exact: true })).toHaveCount(0);
+  await shot(page, "AU-012-relink");
+  await page.getByRole("button", { name: "본인확인 다시 하기" }).click();
+  await expect(page.getByLabel("휴대폰번호", { exact: true })).toBeVisible();
 });
