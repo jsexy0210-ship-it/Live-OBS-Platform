@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoImage, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, type Product, type ProductStatus } from "../../../../../components/seller/api";
-import { LOW_STOCK, statusBadge, totalStock, won } from "../../../../../components/seller/format";
+import { LOW_STOCK, MAX_SEARCH_LENGTH, statusBadge, textLength, totalStock, won } from "../../../../../components/seller/format";
 
 // SA-011 상품 목록. 상태별로 걸러 보고, 한 번에 50개씩 이어서 불러온다.
 const FILTERS: { key: ProductStatus | "ALL"; label: string }[] = [
@@ -23,8 +23,10 @@ const STOCK_FILTERS: { key: StockFilter; label: string }[] = [
   { key: "out", label: "재고 없음" },
   { key: "low", label: "재고 부족" },
 ];
-const query = (f: ProductStatus | "ALL", sf: StockFilter | null) =>
-  [f === "ALL" ? "" : `status=${f}`, sf ? `stock=${sf}` : ""].filter(Boolean).join("&");
+// q: 서버 이름 검색(상품·옵션 이름, 대소문자 무시, 50자까지)
+const query = (f: ProductStatus | "ALL", sf: StockFilter | null, q: string) =>
+  [f === "ALL" ? "" : `status=${f}`, sf ? `stock=${sf}` : "", q ? `q=${encodeURIComponent(q)}` : ""].filter(Boolean).join("&");
+const SEARCH_DELAY_MS = 300;
 
 const TOASTS: Record<string, string> = { created: "상품을 등록했어요", draft: "임시 저장했어요", deleted: "상품을 삭제했어요" };
 
@@ -38,24 +40,31 @@ export default function ProductListPage() {
   const [filter, setFilter] = useState<ProductStatus | "ALL">("ALL");
   // 재고 기준 걸러 보기(서버 ?stock=out|low, 판매 상태 탭과 함께 쓸 수 있다)
   const [stockFilter, setStockFilter] = useState<StockFilter | null>(null);
+  // 검색어: 입력을 멈추고 잠시 뒤 서버에서 찾는다
+  const [search, setSearch] = useState("");
+  const [q, setQ] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setQ(search.trim()), SEARCH_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [search]);
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [more, setMore] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   // 탭을 빨리 바꾸면 이전 탭 응답이 늦게 올 수 있다. 마지막으로 보낸 요청의 응답만 화면에 반영한다
   const reqId = useRef(0);
-  const load = useCallback(async (f: ProductStatus | "ALL", sf: StockFilter | null) => {
+  const load = useCallback(async (f: ProductStatus | "ALL", sf: StockFilter | null, q: string) => {
     const id = ++reqId.current;
     setState({ kind: "loading" });
-    const qs = query(f, sf);
+    const qs = query(f, sf, q);
     const r = await api<Page>(`/api/seller/products${qs ? `?${qs}` : ""}`);
     if (id !== reqId.current) return;
     setState(r.ok ? { kind: "ok", items: r.data.products, next: r.data.nextCursor } : { kind: "error", status: r.status });
   }, []);
 
   useEffect(() => {
-    void load(filter, stockFilter);
-  }, [filter, stockFilter, load]);
+    void load(filter, stockFilter, q);
+  }, [filter, stockFilter, q, load]);
 
   // 등록·삭제 뒤 돌아오면 한 번 알려 주고 주소에서 지운다
   useEffect(() => {
@@ -70,7 +79,8 @@ export default function ProductListPage() {
     if (state.kind !== "ok" || !state.next) return;
     setMore(true);
     const id = reqId.current;
-    const qs = `${query(filter, stockFilter)}${query(filter, stockFilter) ? "&" : ""}cursor=${state.next}`;
+    const base = query(filter, stockFilter, q);
+    const qs = `${base}${base ? "&" : ""}cursor=${state.next}`;
     const r = await api<Page>(`/api/seller/products?${qs}`);
     setMore(false);
     if (id !== reqId.current) return;
@@ -114,6 +124,9 @@ export default function ProductListPage() {
                 </button>
               ))}
             </div>
+            <div className="search p-search">
+              <input className="inp inp-sm" type="search" placeholder="상품명 · 옵션명 검색" aria-label="상품 검색" value={search} onChange={(e) => setSearch(e.target.value)} maxLength={MAX_SEARCH_LENGTH} />
+            </div>
             {STOCK_FILTERS.map((sf) => (
               <button
                 key={sf.key}
@@ -134,12 +147,25 @@ export default function ProductListPage() {
             ) : state.status === 402 ? (
               <Locked />
             ) : (
-              <ErrorState title="상품을 불러오지 못했어요" onRetry={() => void load(filter, stockFilter)} />
+              state.status === 400 && q ? (
+                <div className="st" style={{ boxShadow: "none" }}>
+                  <div className="st-ic neg">!</div>
+                  {/* 서버 기준(NFKC 뒤 50자)을 넘었으면 길이 안내, 아니면 글자 안내 */}
+                  <span className="t">
+                    {textLength(q.normalize("NFKC").trim()) > MAX_SEARCH_LENGTH ? `검색어는 ${MAX_SEARCH_LENGTH}자까지 쓸 수 있어요` : "검색어에 쓸 수 없는 글자가 있어요"}
+                  </span>
+                  <button className="btn btn-sm btn-text" type="button" onClick={() => setSearch("")}>
+                    검색 지우기
+                  </button>
+                </div>
+              ) : (
+                <ErrorState title="상품을 불러오지 못했어요" onRetry={() => void load(filter, stockFilter, q)} />
+              )
             ))}
           {state.kind === "ok" && items.length === 0 && (
             <div className="st" style={{ boxShadow: "none" }}>
               <div className="st-ic">+</div>
-              {filter === "ALL" && !stockFilter ? (
+              {filter === "ALL" && !stockFilter && !q ? (
                 <>
                   <span className="t">아직 등록된 상품이 없어요</span>
                   <span className="s">첫 상품을 등록하면 쇼핑몰에 바로 보여요.</span>
@@ -152,7 +178,7 @@ export default function ProductListPage() {
               ) : (
                 <>
                   <span className="t">
-                    「{[filter === "ALL" ? null : FILTERS.find((f) => f.key === filter)?.label, STOCK_FILTERS.find((f) => f.key === stockFilter)?.label].filter(Boolean).join(" · ")}」에 해당하는 상품이 없어요
+                    「{[q || null, filter === "ALL" ? null : FILTERS.find((f) => f.key === filter)?.label, STOCK_FILTERS.find((f) => f.key === stockFilter)?.label].filter(Boolean).join(" · ")}」에 해당하는 상품이 없어요
                   </span>
                   <button
                     className="btn btn-sm btn-text"
@@ -160,6 +186,7 @@ export default function ProductListPage() {
                     onClick={() => {
                       setFilter("ALL");
                       setStockFilter(null);
+                      setSearch("");
                     }}
                   >
                     전체 보기
