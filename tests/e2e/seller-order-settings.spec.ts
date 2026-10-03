@@ -29,6 +29,7 @@ async function resetPolicy(page: Page) {
         autoCancelEnabled: true,
         paymentDueHours: 24,
         unpaidRestrictionEnabled: true,
+        paidCancelRestrictionEnabled: false,
         restockOnCancel: true,
         autoDeliverEnabled: true,
         autoDeliverDays: 7,
@@ -234,4 +235,24 @@ test("자동 구매 확정을 꺼 둔 상태에서는 숨겨진 기간 값이 �
   await saveOk(page);
   await page.reload();
   await expect(page.getByRole("switch", { name: "배송 완료 뒤 일정 기간이 지나면 자동 구매 확정" })).toHaveAttribute("aria-checked", "true");
+});
+
+test("결제 후 취소 제한: 기본 꺼짐, 켜서 저장하면 다시 열어도 켜져 있고 서버에 그대로 보낸다", async ({ page }) => {
+  await openAs(page, "demo-owner@example.com");
+  const sw = page.getByRole("switch", { name: "결제 후 5번 취소하면 30일 동안 주문 막기" });
+  await expect(sw).toHaveAttribute("aria-checked", "false");
+  await expect(page.getByText("결제 후 구매자 사정으로 5번 취소하면 30일 동안 주문을 막아요")).toBeVisible();
+  await sw.click();
+  await expect(page.getByText("켠 뒤부터 세요", { exact: false })).toBeVisible();
+  const put = page.waitForRequest((r) => r.method() === "PUT" && r.url().includes("/api/seller/order-policy"));
+  await saveOk(page);
+  expect((await put).postDataJSON().paidCancelRestrictionEnabled).toBe(true);
+  await shot(page, "SA-063-paid-cancel-on");
+  await page.reload();
+  await expect(page.getByRole("switch", { name: "결제 후 5번 취소하면 30일 동안 주문 막기" })).toHaveAttribute("aria-checked", "true");
+  // 다시 끄면 저장되고 그대로 꺼져 있다
+  await page.getByRole("switch", { name: "결제 후 5번 취소하면 30일 동안 주문 막기" }).click();
+  await saveOk(page);
+  await page.reload();
+  await expect(page.getByRole("switch", { name: "결제 후 5번 취소하면 30일 동안 주문 막기" })).toHaveAttribute("aria-checked", "false");
 });
