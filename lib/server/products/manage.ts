@@ -177,7 +177,7 @@ export async function createProduct(db: PrismaClient, ctx: TenantContext, raw: u
     });
     for (const o of options) {
       const created = await tx.productOption.create({ data: { sellerId: ctx.sellerId, productId: product.id, ...o, createdAt: now } });
-      if (o.stock > 0) await stockLog(tx, ctx, created.id, o.stock, now);
+      if (o.stock > 0) await stockLog(tx, ctx, created.id, o.stock, now, STOCK_NOTES.initial);
     }
     await writeAudit(tx, {
       actorType: ctx.actorType,
@@ -276,7 +276,7 @@ export async function createOption(db: PrismaClient, ctx: TenantContext, product
     const last = await tx.productOption.aggregate({ where: { sellerId: ctx.sellerId, productId, deletedAt: null }, _max: { sortOrder: true } });
     const sortOrder = o.sortOrder ?? Math.min((last._max.sortOrder ?? -1) + 1, 100000);
     const option = await tx.productOption.create({ data: { sellerId: ctx.sellerId, productId, ...o, sortOrder, createdAt: now } });
-    if (o.stock > 0) await stockLog(tx, ctx, option.id, o.stock, now);
+    if (o.stock > 0) await stockLog(tx, ctx, option.id, o.stock, now, STOCK_NOTES.initial);
     await writeAudit(tx, {
       actorType: ctx.actorType,
       actorId: ctx.actorId,
@@ -329,7 +329,7 @@ export async function updateOption(db: PrismaClient, ctx: TenantContext, product
       // 결제 차감과 겹치면 화면이 본 값과 달라지므로 덮어쓰지 않는다
       const moved = await tx.productOption.updateMany({ where: { id: optionId, sellerId: ctx.sellerId, stock: expectedStock }, data: { stock } });
       if (moved.count !== 1) return fail("stock_conflict");
-      if (stock !== expectedStock) await stockLog(tx, ctx, optionId, stock - expectedStock, now);
+      if (stock !== expectedStock) await stockLog(tx, ctx, optionId, stock - expectedStock, now, STOCK_NOTES.bulkEdit);
     }
     if (Object.keys(data).length > 0) await tx.productOption.update({ where: { id: optionId }, data });
     await writeAudit(tx, {
@@ -363,8 +363,11 @@ export async function deleteOption(db: PrismaClient, ctx: TenantContext, product
   });
 }
 
-function stockLog(tx: Tx, ctx: TenantContext, optionId: string, delta: number, now: Date) {
+// 직접 바꾼 재고(MANUAL)는 사유와 함께 남긴다(PRODUCT_SCOPE 「수동 재고 차감」). 등록·「변경 후」 일괄 적용은 사유 입력이 없어 정해진 문구를 쓴다.
+export const STOCK_NOTES = { initial: "처음 재고", bulkEdit: "재고 일괄 수정" } as const;
+
+function stockLog(tx: Tx, ctx: TenantContext, optionId: string, delta: number, now: Date, note: string) {
   return tx.stockMovement.create({
-    data: { sellerId: ctx.sellerId, optionId, delta, reason: "MANUAL", actorType: ctx.actorType, actorId: ctx.actorId, createdAt: now },
+    data: { sellerId: ctx.sellerId, optionId, delta, reason: "MANUAL", note, actorType: ctx.actorType, actorId: ctx.actorId, createdAt: now },
   });
 }

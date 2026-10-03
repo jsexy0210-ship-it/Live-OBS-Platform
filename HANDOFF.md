@@ -46,6 +46,7 @@
 - 구매자 가입 HTTP 라우트(본인확인 시작·확인·가입)가 아직 없음(`lib/server/buyers/signup.ts`·본인확인 함수만 있음). 붙일 때 `signupBuyer`가 공급자·방식을 확인하지 않으므로 `completeIdentityVerification`을 거치게 한다
 - 휴대폰 본인확인 다시 보내기는 공급자 실패 때도 1회가 소진됨(MASTER 검수에서 받아들임)
 - 실제 국세청·공정위 연동 때 정상 일치 사례로 대표자 이름·개업일 비교를 시험해야 함(지금은 가짜 공급자로만 검증)
+- 실제 국세청 어댑터는 `NTS_BUSINESS_STATUS_API_KEY`를 다시 인코딩하지 않고 serviceKey에 그대로 붙인다(이미 인코딩된 키, 다시 인코딩하면 401). `lib/server/sellers/businessCheck.ts` 머리 주석
 - 남의 사업자번호로 먼저 신청하면 진짜 대표는 같은 번호 중복으로 수동 검토로 감(앞 신청을 반려하면 풀림)
 - `reconcileStalePayments` 정기 실행 미연결(그 전까지 결제 확인이 안 된 청구가 남으면 해지가 409로 막힘)
 - 운영에서 `TRUSTED_PROXY_HOPS`를 앞단 구성에 맞게 설정해야 함(없으면 가입 본인확인 하루 10회가 모든 요청에 합쳐 적용)
