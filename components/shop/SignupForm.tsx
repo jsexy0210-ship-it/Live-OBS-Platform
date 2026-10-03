@@ -353,7 +353,8 @@ export default function SignupForm({ slug }: { slug: string }) {
               <b>본인확인을 마쳤어요</b>
               <span className="c-alt"> · {shown.name} · {phoneText(shown.phone)}</span>
             </span>
-            <button type="button" className="btn btn-sm btn-out" onClick={() => restart(null)}>
+            {/* 요청 중이거나 가입 결과가 애매한 동안에는 본인확인 요청을 지우지 않게 막는다(같은 요청으로만 다시 시도) */}
+            <button type="button" className="btn btn-sm btn-out" disabled={busy || unconfirmed !== null} onClick={() => restart(null)}>
               다시 확인
             </button>
           </div>

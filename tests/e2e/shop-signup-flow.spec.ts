@@ -545,3 +545,22 @@ test("첫 가입 응답이 5xx면 결과가 애매하다고 보고 같은 요청
   expect(bodies).toHaveLength(2);
   expect(bodies[1]).toEqual(bodies[0]);
 });
+
+test("가입 결과가 애매한 동안에는 본인확인 다시 하기를 막고 같은 요청으로만 다시 시도하게 한다", async ({ page }) => {
+  await mockApi(page);
+  let signups = 0;
+  await page.route((u) => u.pathname === API, (route) => {
+    signups++;
+    return signups <= 2 ? route.abort() : route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ ok: true, broadcastNickname: "별빛" }) });
+  });
+  await page.goto(`/shop/${SLUG}/signup`);
+  await toVerified(page);
+  await fillAccount(page, "xg", "별빛");
+  await page.getByRole("button", { name: "가입하기" }).click();
+  await expect(page.getByText("가입이 끝났는지 확인하지 못했어요. 다시 시도해 주세요")).toBeVisible();
+  // 누르면 본인확인 요청이 사라져 같은 요청으로 복구할 수 없게 된다
+  await expect(page.getByRole("button", { name: "다시 확인", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "다시 시도" }).click();
+  await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
+  expect(signups).toBe(3);
+});
