@@ -283,6 +283,7 @@ async function finalizeIdentity(db: PrismaClient, v: IdentityVerification, r: Id
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`identity_usage:${v.sellerId}`}))`;
       // 잠금을 기다리는 동안 같은 요청의 다른 확인이 먼저 확정했으면 그 결과를 돌려준다(한도로 다시 세지 않는다)
       const current = await tx.identityVerification.findUniqueOrThrow({ where: { id: v.id } });
+      if (current.anonymizedAt) return { ok: false as const, reason: "expired" as const };
       if (current.status === "VERIFIED") return { ok: true as const, verification: current };
       if (current.status !== "PENDING") return { ok: false as const, reason: current.status === "EXPIRED" ? ("expired" as const) : ("failed" as const) };
       const sellerId = v.sellerId;
@@ -292,8 +293,9 @@ async function finalizeIdentity(db: PrismaClient, v: IdentityVerification, r: Id
         return { ok: false as const, reason: "trial_limit_exceeded" as const };
       }
     }
+    // 대행사 호출 중 미가입 정리가 이 기록을 비식별했으면(anonymizedAt) 확정하지 않는다(지운 개인정보를 다시 채우지 않게)
     const moved = await tx.identityVerification.updateMany({
-      where: { id: v.id, status: "PENDING" },
+      where: { id: v.id, status: "PENDING", anonymizedAt: null },
       data: {
         status: "VERIFIED",
         ciHash: hashCi(r.ci),
@@ -305,6 +307,7 @@ async function finalizeIdentity(db: PrismaClient, v: IdentityVerification, r: Id
       },
     });
     const after = await tx.identityVerification.findUniqueOrThrow({ where: { id: v.id } });
+    if (after.anonymizedAt) return { ok: false as const, reason: "expired" as const };
     // 같이 눌린 다른 요청이 먼저 확정했으면 그 결과를 그대로 돌려준다(두 번 세지 않는다)
     if (moved.count === 1 || after.status === "VERIFIED") return { ok: true as const, verification: after };
     return { ok: false as const, reason: after.status === "EXPIRED" ? ("expired" as const) : ("failed" as const) };
