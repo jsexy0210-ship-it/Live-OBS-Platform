@@ -69,7 +69,7 @@ runner는 처음 한 번 상시 서비스로 등록해 둬요(「서버 준비�
 | 실패한 단계 | 확인할 것 |
 | --- | --- |
 | Check target commit | `confirm_sha`가 지금 main 맨 위 커밋과 같은지. `/opt/obs/.env`가 있는지 |
-| Waiting for a runner(시작 안 함) | 서버에서 `cd /opt/obs/actions-runner && sudo ./svc.sh status`가 active인지, GitHub Runners 화면에 `obs-web-test`가 Idle인지, 등록 때 라벨 `obs-kakao`를 넣었는지 |
+| Waiting for a runner(시작 안 함) | 서버에서 `sudo bash -c 'cd /home/obs && ./svc.sh status'`가 active인지, GitHub Runners 화면에 `obs-web-test`가 Idle인지, 등록 때 라벨 `obs-kakao`를 넣었는지 |
 | Backup / Build and start에서 permission denied | `obs` 계정이 `docker` 그룹인지(`id obs`). 그룹을 추가한 뒤에는 runner 서비스를 다시 시작해야 해요(`sudo ./svc.sh stop && sudo ./svc.sh start`) |
 | Build and start | 마이그레이션 실패(`obs-web-migrate` 로그), `.env` 값 누락(`POSTGRES_*`), 디스크 부족(`df -h`) |
 | Health check | `db":"error"`면 DB 컨테이너 상태, version이 다르면 이전 컨테이너가 남았는지(`docker ps`) |
@@ -88,7 +88,7 @@ runner는 처음 한 번 상시 서비스로 등록해 둬요(「서버 준비�
 - GitHub Runners 화면에서 runner가 받은 job 기록을 가끔 확인해요(배포 워크플로 말고 다른 job이 있으면 아래 「이상할 때」).
 
 이상할 때(배포가 아닌 job을 runner가 받았을 때):
-1. 서버에서 `cd /opt/obs/actions-runner && sudo ./svc.sh stop`으로 멈추고, GitHub Runners 화면에서 `obs-web-test`를 지워요.
+1. 서버에서 `sudo bash -c 'cd /home/obs && ./svc.sh stop'`으로 멈추고, GitHub Runners 화면에서 `obs-web-test`를 지워요.
 2. 그 job의 실행 화면을 열어 어느 워크플로·PR인지 기록해 MASTER에 알려요.
 3. `/opt/obs/.env`의 비밀값(DB 비밀번호·키)을 바꾸는 것을 검토해요(DB 비밀번호는 「서버 .env」의 변경 절차).
 
@@ -211,13 +211,11 @@ $C up -d --wait         # 같은 버전 그대로, 앱·마이그레이션이 �
    ./config.sh --url https://github.com/jsexy0210-ship-it/Live-OBS-Platform --labels obs-kakao --name obs-web-test --unattended --token <화면의 토큰>
    exit
    ```
-3. 서비스로 등록하고 시작해요(관리자 계정에서).
+3. 서비스로 등록하고 시작해요(관리자 계정에서). `/opt/obs`는 `obs` 계정만 열 수 있어서 `sudo bash -c`로 들어가요.
    ```bash
-   cd /opt/obs/actions-runner
-   sudo ./svc.sh install obs
-   sudo ./svc.sh start
-   sudo ./svc.sh status    # active (running)이면 돼요
+   sudo bash -c 'cd /opt/obs/actions-runner && ./svc.sh install obs && ./svc.sh start && ./svc.sh status'   # active (running)이면 돼요
    ```
+   - 지금 obs-test 서버(obs-web-test)의 runner는 `/home/obs`에 설치돼 있어요(2026-10-03). 그 서버에서는 위·아래 명령의 `/opt/obs/actions-runner`를 `/home/obs`로 바꿔 써요.
    GitHub Runners 화면에 `obs-web-test`가 **Idle**로 보이면 끝이에요.
 4. Settings → Environments → `obs-test`를 이렇게 설정하길 권해요.
    - Deployment branches and tags: **Selected branches** → `main`만

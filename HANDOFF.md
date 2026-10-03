@@ -28,7 +28,7 @@
 
 - Next.js 최소 앱 (`app/layout.tsx`, `app/page.tsx`)
 - CI: typecheck + build, self-hosted 배포 워크플로 재유입 검사
-- 배포 워크플로: `.github/workflows/deploy-obs-test.yml`(테스트 서버 obs-test, 수동 실행만, main만, Environment `obs-test`(승인자 지정은 대표님 조치 대기 ⑤를 마쳐야 적용됨, 그 전에는 승인 단계 없음), 상시 self-hosted runner `obs-kakao`(아직 등록 전). 대표님 결정 2026-10-03: 공개 저장소 + 상시 runner, 「Require approval for all external contributors」 필수). 테스트 도메인 `test.on-aircue.com`(Cloudflare DNS 전용). 절차: `docs/DEPLOY.md`
+- 배포 워크플로: `.github/workflows/deploy-obs-test.yml`(테스트 서버 obs-test, 수동 실행만, main만, Environment `obs-test`(main만, 승인자 대표님), 상시 self-hosted runner `obs-web-test`(라벨 `obs-kakao`, 서버의 `/home/obs`에 설치·서비스 등록). 2026-10-03 첫 배포 성공: `https://test.on-aircue.com/api/health` → status ok, db ok, version c37492f. 대표님 결정 2026-10-03: 공개 저장소 + 상시 runner, 「Require approval for all external contributors」 필수). 테스트 도메인 `test.on-aircue.com`(Cloudflare DNS 전용). 절차: `docs/DEPLOY.md`
 - GitHub Secrets(대표님 등록, 값은 기록하지 않음): `NICEPAY_CLIENT_KEY`, `NICEPAY_SECRET_KEY`, `SWEETTRACKER_API_KEY`(스마트택배 배송 조회, 연동은 출시 후), `RESEND_MAIL_API`(Resend 메일 발송. 개발·테스트용, 운영 발송은 AWS SES 예정. 하루·월 무료 한도에 가까워지면 미리 알리고 넘으면 MASTER에 보고), `BAROBILL_API_KEY`(바로빌 세금계산서·현금영수증 발행. 연동 전, 요금·판매자 명의 발행 조건 확인 필요), `YOUTUBE_API_KEY`(YouTube Data API v3, 방송·실시간 채팅 조회. 하루 무료 할당량에 가까워지면 미리 알리고, 넘으면 MASTER에 보고)
 - 테스트: 없음
 
@@ -82,7 +82,6 @@
 ## 대표님 조치 대기
 
 - 플랫폼 운영사 정보(대표님 사업자): 배포 때 마스터 콘솔 설정에 입력(대표님 확인). 저장소·문서에는 값을 적지 않음
-- 테스트 서버(obs-web-test, 210.109.15.68) 준비: (DNS: Cloudflare `test.on-aircue.com` A → 210.109.15.68, DNS only는 2026-10-03 대표님이 등록함, 바뀌면 `docs/DEPLOY.md` 「HTTPS」대로 다시 확인) `docs/DEPLOY.md` 순서대로 ① GitHub 외부 기여자 워크플로 승인 설정 ② 보안 그룹(80·443 열기, 22는 대표님 IP만, 5432·3000 닫기) ③ Docker·obs 계정·/opt/obs·`.env`(OBS_SITE_ADDRESS=test.on-aircue.com) ④ 상시 runner 등록 ⑤ Environment obs-test 보호 ⑥ Run workflow(`confirm_sha`에 main 맨 위 커밋 7자리) → Review deployments → Approve ⑦ https://test.on-aircue.com/api/health 확인
 - 브랜치 `fix/shipping-refund-note` 삭제 지시(2026-10-03): 이 환경에서 원격 브랜치 삭제가 막혀 GitHub 화면에서 지워야 함
 - 휴대폰 본인확인 대행사 선정·계약(유료): 포트원 V2 + NHN KCP API 방식 우선 검토. 계약 전 대행사에 확인할 것: ① API 방식(자체 화면) 허용·심사 ② PASS 없이 문자만 제공해도 되는지 ③ CI 제공 설정 ④ 건당 요금·최소 이용료·포트원 수수료 ⑤ 계약 전 테스트 채널과 실제 문자·과금 여부 ⑥ 인증번호 유효시간·재전송·실패 제한 ⑦ 문자 발신번호·문구 등록
 - 본인확인 대행사 계약 때 성별·내외국인 구분·이동통신사·접속 기기 종류의 대행사 보관 기간을 확인(수집·이용 동의 서식 `{{본인확인 대행사 보관 기간}}`에 채움)
@@ -90,6 +89,6 @@
 
 ## 다음 작업
 
-1. 테스트 서버 준비(대표님 조치 대기의 서버 준비 순서) → 첫 배포 → `https://test.on-aircue.com/api/health` 확인. 그 뒤 이전(Leftlife) 자원 삭제 여부 결정(PROJECT_STATUS)
+1. 테스트 서버 첫 배포 완료(2026-10-03). 다음: 이전(Leftlife) 자원 삭제 여부 결정(PROJECT_STATUS), 서버 22번 포트 출발지는 대표님 IP가 바뀌면 보안 그룹에서 고침
 2. 디자인 수정 중 (깨짐 수정 → 쇼핑몰 PC판). 화면 구현은 디자인 확정 후 시작한다. 클로드디자인 프롬프트: `docs/DESIGN_PROMPT.md`
 3. 개발 1단계(화면과 무관한 기반)는 디자인과 병행한다 (대표님 결정 2026-10-02 21:15 KST): 설계(`docs/ARCHITECTURE.md`) → 데이터 모델·DB·권한·주문대기 도메인(`docs/REFERENCE_MANGOTCG.md` 7절)·로그인·테스트. 담당: 개발 전담 (기반).
