@@ -296,6 +296,34 @@ describe("비밀번호 찾기(이메일+쇼핑몰) 직원", () => {
     expect(s.status).toBe(200);
   });
 
+  it("직원 이름은 만들기·고치기에서 연결과 같은 정규화로 저장한다: 전각 공백·전각 글자는 정리돼 연결되고, 폭 없는 공백은 400, 길이는 코드포인트 기준. 예전에 정규화 없이 저장된 이름도 연결된다", async () => {
+    const { seller, owner } = await shop();
+    const ownerCookie = await sessionOf(owner.email);
+    const create = (email: string, name: string) => staffCreate(post("/api/seller/staff", { email, name, password: PASSWORD, permissions: [], phone: "01055556666" }, ownerCookie));
+    // 전각 공백·전각 글자 → NFKC로 「직원A」
+    const r = await create("wide@example.com", "\u3000직원Ａ\u3000");
+    expect(r.status).toBe(201);
+    const { id } = await r.json();
+    expect((await db.sellerUser.findUniqueOrThrow({ where: { id } })).name).toBe("직원A");
+    expect((await linkStart(post("/api/seller/me/identity/start", { ...IDV_INPUT, name: "직원A", phone: "01055556666" }, await sessionOf("wide@example.com", seller.slug)))).status).toBe(200);
+    // 폭 없는 공백이 섞인 이름은 저장하지 않는다(비교가 영영 맞지 않는 이름을 남기지 않게)
+    expect((await create("zw@example.com", "직\u200b원")).status).toBe(400);
+    expect((await staffPatch(req(`/api/seller/staff/${id}`, "PATCH", { name: "직\u200b원" }, ownerCookie), ctxOf(id))).status).toBe(400);
+    // 길이는 코드포인트: 이모지 50개(UTF-16 100자)는 되고 51개는 400
+    expect((await create("emoji@example.com", "👍".repeat(50))).status).toBe(201);
+    expect((await create("emoji2@example.com", "👍".repeat(51))).status).toBe(400);
+    // 정규화 전에 저장된 예전 이름(폭 없는 공백 포함)도 비교할 때는 같은 정규화로 본다
+    const legacy = await createSellerUser(seller.id, "MANAGER", "legacy@example.com");
+    await db.sellerUser.update({ where: { id: legacy.id }, data: { name: "직\u200b원", phone: "01055556666" } });
+    const legacyCookie = await sessionOf("legacy@example.com", seller.slug);
+    const s = await linkStart(post("/api/seller/me/identity/start", { ...IDV_INPUT, name: "직원", phone: "01055556666" }, legacyCookie));
+    expect(s.status).toBe(200);
+    const flow = cookieOf(s, "lo_lidv");
+    const { verificationId } = await s.json();
+    await confirmWith(linkConfirm, "/api/seller/me/identity/confirm", verificationId, flow, { ci: "LEGACY-CI", name: "직원" });
+    expect((await linkRoute(post("/api/seller/me/identity/link", { verificationId }, `${legacyCookie}; ${flow}`))).status).toBe(200);
+  });
+
   it("연결 CI가 맞는 직원은 재설정 권한을 받아 새 비밀번호로 로그인된다. CI가 다르거나·연결 전이거나·탭이 다르면 같은 거부", async () => {
     const { seller } = await shop();
     const { staff } = await linkedStaff(seller.id, "STAFF-CI");
