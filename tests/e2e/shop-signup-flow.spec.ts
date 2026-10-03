@@ -436,3 +436,12 @@ test("마케팅 정보 수신은 선택이고, 체크 여부를 agreedMarketing�
     await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
   }
 });
+
+test("완료 문구의 닉네임은 서버가 저장하는 형태(NFKC 정규화)로 보여 준다", async ({ page }) => {
+  await mockApi(page);
+  await page.goto(`/shop/${SLUG}/signup`);
+  await toVerified(page);
+  await fillAccount(page, "xa", "ＡＢ①");
+  await page.getByRole("button", { name: "가입하기" }).click();
+  await expect(page.getByText("이제 주문할 수 있어요. 방송에서는 AB1 닉네임으로 보여요.")).toBeVisible();
+});

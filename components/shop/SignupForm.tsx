@@ -212,14 +212,15 @@ export default function SignupForm({ slug }: { slug: string }) {
     setNotice(null);
     setFieldErrors({});
     const broadcastNickname = nickname.trim();
-    const account = { loginId: loginId.trim(), password, nickname: broadcastNickname };
+    // 완료 문구에는 서버(cleanText)가 저장하는 형태(NFKC 정규화 + 앞뒤 공백 제거)로 보여 준다
+    const account = { loginId: loginId.trim(), password, nickname: broadcastNickname.normalize("NFKC").trim() };
     const r = await api(base, {
       method: "POST",
       body: { verificationId, loginId: account.loginId, password, broadcastNickname, agreedTerms, agreedPrivacy, agreedMarketing },
     });
     if (r.ok) {
       setBusy(false);
-      finish(broadcastNickname);
+      finish(account.nickname);
       return;
     }
     // 응답이 끊김: 서버에서는 가입됐을 수 있다. 같은 본인확인으로 다시 보내지 않고 로그인으로 확인한다(성공하면 세션도 이때 받는다).
