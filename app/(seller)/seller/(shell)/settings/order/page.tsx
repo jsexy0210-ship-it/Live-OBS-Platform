@@ -347,7 +347,7 @@ export default function OrderSettingsPage() {
                     onClick={() => setPaidRestriction((v) => !v)}
                   />
                 </div>
-                <span className="t-c1 c-alt">판매자 사정으로 환불한 주문은 세지 않아요. 꺼도 이미 막힌 구매자는 그대로예요.</span>
+                <span className="t-c1 c-alt">파트너스 사정으로 환불한 주문은 세지 않아요. 꺼도 이미 막힌 구매자는 그대로예요.</span>
               </section>
 
               <section className="card pad col" style={{ gap: 10 }}>

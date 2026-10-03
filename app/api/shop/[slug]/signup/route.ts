@@ -12,7 +12,7 @@ const str = (v: unknown, max: number) => (typeof v === "string" && v.length <= m
 const raw = (v: unknown) => (typeof v === "string" && v.length <= 4096 ? v : "");
 
 // 구매자 가입 2단계: 휴대폰 본인확인을 마친 브라우저에서 가입. 본문 { verificationId, loginId, password, broadcastNickname,
-// agreedTerms: true, agreedPrivacy: true, agreedMarketing?: boolean(선택, 기본 false) }. 이름·휴대폰·생년월일은 본인확인 결과를 쓴다. 가입하면 바로 로그인된다(세션 쿠키).
+// agreedTerms: true, agreedPrivacy: true, agreedMarketing?: boolean(선택, 기본 false), agreedRejoinRetention?: boolean(선택), rejoinRestrictionDaysShown?: number, rejoinRetentionVersionShown?: string(보관에 동의했을 때만 보고, 기간이 지금과 다르면 409 rejoin_policy_changed, 문서 버전이 다르면 409 consent_outdated) }. 이름·휴대폰·생년월일은 본인확인 결과를 쓴다. 가입하면 바로 로그인된다(세션 쿠키).
 export const POST = mutation(async (req: Request, { params }: { params: Promise<{ slug: string }> }) => {
   const { slug } = await params;
   const seller = await prisma.seller.findUnique({ where: { slug }, select: { id: true, status: true } });
@@ -30,9 +30,16 @@ export const POST = mutation(async (req: Request, { params }: { params: Promise<
     agreedTerms: body.agreedTerms === true,
     agreedPrivacy: body.agreedPrivacy === true,
     agreedMarketing: body.agreedMarketing,
+    agreedRejoinRetention: body.agreedRejoinRetention,
+    rejoinRestrictionDaysShown: body.rejoinRestrictionDaysShown,
+    rejoinRetentionVersionShown: body.rejoinRetentionVersionShown,
     meta: requestMeta(req),
   });
-  if (!r.ok) return NextResponse.json({ error: r.reason, message: BUYER_SIGNUP_MESSAGES[r.reason] }, { status: BUYER_SIGNUP_STATUS[r.reason], headers: NO_STORE });
+  if (!r.ok) {
+    // 재가입 제한 중이면 다시 가입할 수 있는 시각(ISO)을 함께 준다. 화면이 「…부터 가입할 수 있어요」를 붙인다(SH-011).
+    const extra = r.rejoinAvailableAt ? { rejoinAvailableAt: r.rejoinAvailableAt.toISOString() } : {};
+    return NextResponse.json({ error: r.reason, message: BUYER_SIGNUP_MESSAGES[r.reason], ...extra }, { status: BUYER_SIGNUP_STATUS[r.reason], headers: NO_STORE });
+  }
   const res = NextResponse.json({ ok: true, broadcastNickname: r.broadcastNickname }, { status: 201, headers: NO_STORE });
   // 본인확인 쿠키(lo_bidv)는 지우지 않는다. 응답 헤더만 도착하고 본문이 끊겨도 같은 가입 요청을 다시 보내 같은 회원을 받을 수 있게.
   // 본인확인은 이미 소진되어 재전송에만 쓰이고, 쓸 수 있는 시간(확인 뒤 10분)이 지나면 쓸모가 없다(쿠키는 시작 때 40분).

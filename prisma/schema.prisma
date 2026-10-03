@@ -108,6 +108,8 @@ model Seller {
   orderItems               OrderItem[]
   orderConsents            OrderConsent[]
   orderPolicy              SellerOrderPolicy?
+  memberPolicy             SellerMemberPolicy?
+  rejoinBlocks             BuyerRejoinBlock[]
   purchaseRestrictions     BuyerPurchaseRestriction[]
   shippingPolicy           SellerShippingPolicy?
   orderShippingAddresses   OrderShippingAddress[]
@@ -272,6 +274,12 @@ model BuyerMember {
   gradeId            String            @db.Uuid
   status             BuyerMemberStatus @default(ACTIVE)
   marketingConsentAt DateTime?         @db.Timestamptz(3)
+  // 가입 때 재가입 제한이 켜져 있었으면 그때 기간(일). 가입하며 안내받은(동의한) 기간보다 길게 CI 해시를 보관하지 않으려고 남긴다.
+  // 없으면(제한이 꺼져 있을 때 가입) 탈퇴해도 재가입을 제한하지 않는다(buyers/rejoin.ts).
+  rejoinRestrictionDaysAgreed Int?
+  // 「재가입 제한 정보 보관 동의」(개인정보 수집·이용 동의와 별도, 재가입 제한을 켠 쇼핑몰에서만 받음) 시각·문서 버전
+  rejoinRetentionAgreedAt     DateTime? @db.Timestamptz(3)
+  rejoinRetentionVersion      String?
   lastLoginAt        DateTime?         @db.Timestamptz(3)
   createdAt          DateTime          @default(now()) @db.Timestamptz(3)
   deletedAt          DateTime?         @db.Timestamptz(3)
@@ -1127,4 +1135,29 @@ model OrderNotification {
 
   @@unique([orderId, kind])
   @@index([sellerId, kind, status])
+}
+
+// 판매자 회원 정책. 재가입 제한(대표님 결정 2026-10-03, 기본 꺼짐): 켜면 탈퇴한 사람(본인확인 기준)이 정한 기간(일) 동안 다시 가입할 수 없다.
+model SellerMemberPolicy {
+  sellerId                 String   @id @db.Uuid
+  rejoinRestrictionEnabled Boolean  @default(false)
+  rejoinRestrictionDays    Int      @default(30)
+  updatedAt                DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+}
+
+// 재가입 제한 목적으로만 남기는 탈퇴 회원의 본인확인 식별값 해시. 이름·휴대폰 등 다른 정보는 두지 않는다.
+// 재가입 제한이 켜진 쇼핑몰에서 탈퇴할 때만 만들고, expiresAt이 지나거나 판매자가 제한을 끄면 지운다(buyers/rejoin.ts).
+model BuyerRejoinBlock {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId  String   @db.Uuid
+  ciHash    String
+  expiresAt DateTime @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+
+  @@unique([sellerId, ciHash])
+  @@index([expiresAt])
 }
