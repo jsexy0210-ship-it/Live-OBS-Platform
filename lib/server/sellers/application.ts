@@ -150,7 +150,37 @@ class Fail extends Error {
   }
 }
 
+// 같은 신청을 동시에 다시 보낸 경우: 두 요청이 모두 쓰지 않은 본인확인을 읽고 점검을 지나면, 늦은 쪽은 본인확인을 쓰는 조건부 변경에서 지거나
+// (verification_invalid) 먼저 만든 쇼핑몰에 걸린다(representative_has_shop·slug_taken). 이때 그 행을 다시 읽어 재개 확인을 돌린다.
+// 조건부 변경은 앞 요청이 같은 행을 잠근 채 커밋할 때까지 기다린 뒤 0행으로 끝나므로, 다시 읽을 때는 앞 요청의 결과가 이미 보인다
+// (기다리기나 재시도 없이 행 잠금으로 순서가 정해짐). 조건이 맞으면 resumed, 아니면 원래 실패를 그대로 돌려준다.
 export async function applyForSeller(
+  db: PrismaClient,
+  providers: { business: BusinessStatusProvider; mailOrder: MailOrderProvider },
+  input: ApplyInput,
+): Promise<ApplyResult> {
+  const r = await applyOnce(db, providers, input);
+  if (r.ok || !["verification_invalid", "representative_has_shop", "slug_taken"].includes(r.reason)) return r;
+  const v = await db.identityVerification.findUnique({ where: { id: input.verificationId } });
+  return (v && (await resumeApplication(db, v, input))) ?? r;
+}
+
+// 응답 유실 뒤 다시 보낸 같은 요청: 시작한 브라우저(ownerToken)의 이미 쓴 본인확인이 만든 대표자 계정(subjectId)이고
+// 아이디·비밀번호·쇼핑몰 주소가 같으면 새로 만들지 않고 그 신청의 지금 상태(승인 여부·확인 필요 사유)를 돌려준다.
+// 이미 쓴 이 브라우저의 본인확인이지만 조건이 다르면 verification_invalid, 재개 대상이 아니면 null.
+async function resumeApplication(db: PrismaClient, v: IdentityVerification, input: ApplyInput): Promise<ApplyResult | null> {
+  if (!(v.consumedAt && v.purpose === "SELLER_REPRESENTATIVE" && v.sellerId === null && input.ownerToken && v.ownerTokenHash === hashToken(input.ownerToken))) return null;
+  const email = normalizeEmail(input.email);
+  const slug = input.slug.trim().toLowerCase();
+  const owner = v.subjectId ? await db.sellerUser.findUnique({ where: { id: v.subjectId }, include: { seller: { select: { id: true, slug: true, status: true, reviewReasons: true } } } }) : null;
+  if (owner?.isOwner && owner.email === email && owner.seller.slug === slug && (await verifyPassword(owner.passwordHash, input.password))) {
+    const approved = owner.seller.status === "ACTIVE";
+    return { ok: true, sellerId: owner.seller.id, approved, reviewReasons: approved ? [] : (owner.seller.reviewReasons as ReviewReason[]), resumed: true };
+  }
+  return { ok: false, reason: "verification_invalid" };
+}
+
+async function applyOnce(
   db: PrismaClient,
   providers: { business: BusinessStatusProvider; mailOrder: MailOrderProvider },
   input: ApplyInput,
@@ -170,16 +200,8 @@ export async function applyForSeller(
 
   // 대표자 휴대폰 본인확인: 이 신청을 시작한 브라우저의 인증, 완료, 30분 안, 아직 안 쓴 것
   const v = await db.identityVerification.findUnique({ where: { id: input.verificationId } });
-  // 응답 유실 뒤 다시 보낸 같은 요청: 시작한 브라우저(ownerToken)의 이미 쓴 본인확인이 만든 대표자 계정(subjectId)이고
-  // 아이디·비밀번호·쇼핑몰 주소가 같으면 새로 만들지 않고 그 신청의 지금 상태(승인 여부·확인 필요 사유)를 돌려준다. 아니면 지금처럼 verification_invalid.
-  if (v?.consumedAt && v.purpose === "SELLER_REPRESENTATIVE" && v.sellerId === null && input.ownerToken && v.ownerTokenHash === hashToken(input.ownerToken)) {
-    const owner = v.subjectId ? await db.sellerUser.findUnique({ where: { id: v.subjectId }, include: { seller: { select: { id: true, slug: true, status: true, reviewReasons: true } } } }) : null;
-    if (owner?.isOwner && owner.email === email && owner.seller.slug === slug && (await verifyPassword(owner.passwordHash, input.password))) {
-      const approved = owner.seller.status === "ACTIVE";
-      return { ok: true, sellerId: owner.seller.id, approved, reviewReasons: approved ? [] : (owner.seller.reviewReasons as ReviewReason[]), resumed: true };
-    }
-    return { ok: false, reason: "verification_invalid" };
-  }
+  const resumed = v ? await resumeApplication(db, v, input) : null;
+  if (resumed) return resumed;
   if (
     !v ||
     v.purpose !== "SELLER_REPRESENTATIVE" ||
