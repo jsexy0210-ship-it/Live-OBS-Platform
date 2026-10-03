@@ -391,4 +391,16 @@ describe("signupBuyer는 completeIdentityVerification을 거친다", () => {
     expect((await startRoute(post(`${b.base}/verification`, { ...IDV_INPUT, attemptKey: key }), ctx(b.slug))).status).toBe(200);
     expect(await db.identityVerification.count({ where: { sellerId: b.seller.id } })).toBe(1);
   });
+  it("같은 attemptKey로 다시 시작할 때 유효한 현재 쿠키가 있으면 토큰을 바꾸지 않는다", async () => {
+    const s = await shop();
+    const key = crypto.randomUUID();
+    const first = await startRoute(post(`${s.base}/verification`, { ...IDV_INPUT, attemptKey: key }), ctx(s.slug));
+    const cookie = cookieOf(first, "lo_bidv");
+    const { verificationId } = await first.json();
+    const again = await startRoute(post(`${s.base}/verification`, { ...IDV_INPUT, attemptKey: key }, cookie), ctx(s.slug));
+    expect(again.status).toBe(200);
+    expect(await again.json()).toEqual({ verificationId });
+    expect(cookieOf(again, "lo_bidv")).toBe(cookie);
+    expect((await confirmRoute(post(`${s.base}/verification/confirm`, { verificationId, code: "000000" }, cookie), ctx(s.slug))).status).toBe(200);
+  });
 });

@@ -39,14 +39,15 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 // 구매자 가입 1단계: 휴대폰 본인확인 시작(같은 IP·같은 쇼핑몰 하루 10회까지). 첫 인증번호를 보내고 ownerToken을 돌려준다.
 // attemptKey(선택, 클라이언트가 만든 UUID): 응답이 끊겨 같은 키로 다시 보내면, 같은 쇼핑몰·같은 키로 이미 만든 확인 전(PENDING) 기록을
-// 새로 만들거나 문자를 다시 보내지 않고 그대로 쓴다. 이때 ownerToken을 새로 발급하고(이전 토큰은 무효) 일일 횟수·체험 한도는 다시 세지 않는다.
+// 새로 만들거나 문자를 다시 보내지 않고 그대로 쓴다. 요청에 그 기록의 유효한 쿠키가 있으면 토큰을 그대로 두고, 없거나 맞지 않을 때만
+// ownerToken을 새로 발급한다(이전 토큰은 무효). 일일 횟수·체험 한도는 다시 세지 않는다.
 // 같은 키의 기록이 확인 전이 아니면(확인됨·만료·실패) 그 상태의 오류를 돌려준다. 키 확인·생성은 키별 잠금 아래에서 해 동시 요청도 문자를 한 번만 보낸다.
 export async function startBuyerSignupVerification(
   db: PrismaClient,
   provider: IdentityProvider,
   sellerId: string,
   rawPerson: unknown,
-  meta: { ip?: string | null; userAgent?: string | null; now?: Date; attemptKey?: unknown } = {},
+  meta: { ip?: string | null; userAgent?: string | null; now?: Date; attemptKey?: unknown; ownerToken?: string } = {},
 ) {
   if (!(await shopOpen(db, sellerId))) return { ok: false as const, reason: "shop_unavailable" as const };
   if (meta.attemptKey !== undefined && (typeof meta.attemptKey !== "string" || !UUID_RE.test(meta.attemptKey))) {
@@ -68,6 +69,10 @@ export async function startBuyerSignupVerification(
       if (same) {
         const now = meta.now ?? new Date();
         if (same.status === "PENDING" && same.expiresAt > now) {
+          // 이 기록의 유효한 현재 쿠키를 가지고 왔으면 토큰을 바꾸지 않는다(브라우저가 Set-Cookie를 받는 순서가 처리 순서와 다를 수 있어서)
+          if (meta.ownerToken && same.ownerTokenHash === hashToken(meta.ownerToken)) {
+            return { kind: "reused", verificationId: same.id, ownerToken: meta.ownerToken };
+          }
           const ownerToken = await reissueOwnerToken(tx, same.id);
           if (ownerToken) return { kind: "reused", verificationId: same.id, ownerToken };
         }

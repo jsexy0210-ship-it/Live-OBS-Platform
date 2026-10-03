@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { SHOP_NOT_FOUND_MESSAGE } from "../../../../../../lib/server/auth/messages";
 import { BUYER_SIGNUP_IDV_COOKIE, BUYER_SIGNUP_MESSAGES, buyerSignupPath, startBuyerSignupVerification } from "../../../../../../lib/server/buyers/signup";
 import { prisma } from "../../../../../../lib/server/db";
-import { mutation, readJson, requestMeta, setFlowCookie } from "../../../../../../lib/server/http/route";
+import { mutation, readCookie, readJson, requestMeta, setFlowCookie } from "../../../../../../lib/server/http/route";
 import { identityFailure } from "../../../../../../lib/server/identity/http";
 import { identityProvider, identityUnavailable } from "../../../../../../lib/server/identity/registry";
 
@@ -18,7 +18,11 @@ export const POST = mutation(async (req: Request, { params }: { params: Promise<
   const provider = identityProvider();
   if (!provider) return identityUnavailable();
   const body = await readJson<Record<string, unknown>>(req);
-  const r = await startBuyerSignupVerification(prisma, provider, seller.id, body, { ...requestMeta(req), attemptKey: body.attemptKey });
+  const r = await startBuyerSignupVerification(prisma, provider, seller.id, body, {
+    ...requestMeta(req),
+    attemptKey: body.attemptKey,
+    ownerToken: readCookie(req, BUYER_SIGNUP_IDV_COOKIE),
+  });
   if (!r.ok) {
     if (r.reason === "daily_limit_exceeded") return NextResponse.json({ error: r.reason, message: BUYER_SIGNUP_MESSAGES.daily_limit_exceeded }, { status: 429, headers: NO_STORE });
     if (r.reason === "shop_unavailable") return NextResponse.json({ error: r.reason, message: BUYER_SIGNUP_MESSAGES.shop_unavailable }, { status: 402, headers: NO_STORE });
