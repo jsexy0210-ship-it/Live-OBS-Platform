@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../lib/server/db";
-import { clearFlowCookie, mutation, readCookie, readJson, requestMeta } from "../../../../lib/server/http/route";
+import { mutation, readCookie, readJson, requestMeta } from "../../../../lib/server/http/route";
 import { identityProvider, identityUnavailable } from "../../../../lib/server/identity/registry";
 import { completeIdentityVerification } from "../../../../lib/server/identity/verification";
 import { REPRESENTATIVE_HAS_SHOP_MESSAGE, applyForSeller } from "../../../../lib/server/sellers/application";
 import { businessStatusProvider, mailOrderProvider } from "../../../../lib/server/sellers/businessCheck";
-import { SELLER_SIGNUP_IDV_COOKIE, SELLER_SIGNUP_PATH } from "../../../../lib/server/sellers/signupFlow";
+import { SELLER_SIGNUP_IDV_COOKIE } from "../../../../lib/server/sellers/signupFlow";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const str = (v: unknown, max = 200) => (typeof v === "string" && v.length <= max ? v : "");
@@ -45,7 +45,7 @@ export const POST = mutation(async (req: Request) => {
     }
     return NextResponse.json({ error: r.reason }, { status: r.reason === "slug_taken" ? 409 : 400 });
   }
-  const res = NextResponse.json({ approved: r.approved, reviewReasons: r.reviewReasons, resumed: r.resumed });
-  clearFlowCookie(res, SELLER_SIGNUP_IDV_COOKIE, SELLER_SIGNUP_PATH);
-  return res;
+  // 흐름 쿠키는 성공해도 지우지 않는다. 성공 응답이 잘려 브라우저가 결과를 못 받았을 때 같은 요청을 다시 보내면 이 쿠키로
+  // 이미 만든 신청을 돌려받는다(resumed). 쿠키는 시작 때 정한 유효 시간(40분)이 지나면 사라진다.
+  return NextResponse.json({ approved: r.approved, reviewReasons: r.reviewReasons, resumed: r.resumed });
 });

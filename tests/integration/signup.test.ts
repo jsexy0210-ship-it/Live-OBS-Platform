@@ -36,8 +36,6 @@ const signup = (sellerId: string, v: { verification: { id: string }; ownerToken:
     loginId: `user${++n}@example.com`,
     password: "pw-123456",
     broadcastNickname: `닉${n}`,
-    agreedTerms: true,
-    agreedPrivacy: true,
     ...extra,
   });
 
