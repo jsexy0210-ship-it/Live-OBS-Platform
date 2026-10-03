@@ -66,7 +66,7 @@
 
 ## 5. 격리·비밀값·악성 페이지 방어
 
-- 고객별 격리: 작업마다 `BrowserExecutor.open({sellerId, jobId})`로 새 context(쿠키·저장소·임시파일 분리), 작업이 끝나면 `close()`로 모두 지운다. 고객 행동(로그인·2단계 인증·CAPTCHA·권한 승인) 대기로 멈출 때만 `close({ keepForResume: true })`로 그 작업의 로그인·승인 상태를 작업 id에 묶어 보관하고, 재개 때 같은 작업에만 복원한 뒤 보관본을 지운다. 보관본은 고객 행동 마감(24시간)이 지나면 실행기가 지운다. OBS 대상 키(`obsTargetKey`, 지금은 `seller:<id>`, 로컬 도구 pairing을 붙이면 기기 id)로 OBS 연결을 나눈다.
+- 고객별 격리: 작업마다 `BrowserExecutor.open({sellerId, jobId})`로 새 context(쿠키·저장소·임시파일 분리), 작업이 끝나면 `close()`로 모두 지운다. 고객 행동(로그인·2단계 인증·CAPTCHA·권한 승인) 대기로 멈출 때만 `close({ keepForResume: true })`로 그 작업의 쿠키·저장소·자격증명을 **암호화해 작업 id에만 묶어** 보관하고(다른 작업 id로는 풀리지 않음), 재개 때 같은 작업에만 복원한 뒤 보관본을 지운다. 보관하면 작업에 `browserStateHeld`를 표시하고, 작업이 끝나면(완료·취소·실패·고객 행동 마감) 작업자 반복의 `purgeEndedBrowserState`가 실행기에 `discard`를 요청해 바로 지운다(판매자 취소·마감 회수처럼 작업자 밖에서 끝난 경우 포함, 요청이 실패하면 다음 반복에서 다시). 지운 뒤에는 같은 작업으로도 복원되지 않고, 끝난 작업은 실행 자리를 다시 받지 않는다. 연습 실행은 보관하지 않는다(정본 4678efb). OBS 대상 키(`obsTargetKey`, 지금은 `seller:<id>`, 로컬 도구 pairing을 붙이면 기기 id)로 OBS 연결을 나눈다.
 - 비밀값: 모델은 `SecretRef`(`webhook_url`·`webhook_secret`) 이름만 쓰고, 실행기가 실행 직전에만 값을 넣는다. 비밀값을 넣어도 되는 칸은 작업서가 단계마다 정한다(`secretTargets`, 예: 웹훅 단계의 「주문 알림 주소」 칸에 `webhook_url`만). 작업서 행동이든 판단 모델 행동이든 목록 밖의 비밀 참조·칸·단계면 `secret_target_not_allowed`로 실행하지 않고 멈춘다. 작업서가 없으면 비밀값을 쓰지 못한다. 모델 입력은 `sanitizeObservation`이 비밀값을 `[비밀값]`으로 지우고 8,000자로 자른다. 작업 기록·감사 기록에 비밀값을 넣지 않는다. 고객 쇼핑몰 비밀번호는 받지도 저장하지도 않는다.
 - 악성 페이지 지시: 화면 글은 `untrustedPageText`(신뢰하지 않는 데이터)로만 넘긴다. 실행 전 `validateDecision`이 단계별 허용 행동, https·허용 호스트(`cafe24.com`, `cafe24api.com`과 하위 도메인), 비밀값을 글자로 적기, 모르는 비밀 참조·고객 행동, 음수 비용을 거부한다. 거부되면 실행하지 않고 작업을 `FAILED(unsafe_action:…)`로 멈춘다(무한 재시도 방지).
 

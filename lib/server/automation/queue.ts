@@ -138,10 +138,15 @@ export const advanceStep = (db: PrismaClient, c: Claim, stepIndex: number, facts
 export const toVerifying = (db: PrismaClient, c: Claim) => fencedWrite(db, c, () => ({ to: "VERIFYING", data: {} }));
 
 // 고객 행동이 필요하면 실행 자리를 반납하고 기다린다(다른 작업이 그 자리를 쓴다).
-export const parkForCustomer = (db: PrismaClient, c: Claim, action: AutomationCustomerAction) =>
+export const parkForCustomer = (db: PrismaClient, c: Claim, action: AutomationCustomerAction, heldBrowserState = false) =>
   fencedWrite(db, c, (now) => ({
     to: "NEEDS_CUSTOMER",
-    data: { ...RELEASE, customerAction: action, actionDeadlineAt: plus(now, AUTOMATION_LIMITS.customerActionMs) },
+    data: {
+      ...RELEASE,
+      customerAction: action,
+      actionDeadlineAt: plus(now, AUTOMATION_LIMITS.customerActionMs),
+      ...(heldBrowserState ? { browserStateHeld: true } : {}),
+    },
     detail: { customerAction: action },
   }));
 

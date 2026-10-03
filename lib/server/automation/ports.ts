@@ -58,15 +58,17 @@ export interface BrowserSession {
   // 지금 로그인된 관리 화면의 쇼핑몰 식별자(읽기만, 아무것도 바꾸지 않음). 알 수 없으면 null
   currentShopKey(): Promise<string | null>;
   // 기본: 쿠키·저장소·임시파일까지 지운다.
-  // keepForResume: 고객 행동(로그인·2단계 인증·CAPTCHA·권한 승인) 대기로 멈출 때. 실행기는 이 작업의 쿠키·저장소를
-  // 작업 id에만 묶어 암호화 보관하고 다음 open(같은 작업)에서 복원한 뒤 보관본을 지운다. 보관본은 고객 행동 마감
-  // (AUTOMATION_LIMITS.customerActionMs)이 지나면 실행기가 지운다(취소·마감 실패 작업의 상태가 남지 않게).
+  // keepForResume: 고객 행동(로그인·2단계 인증·CAPTCHA·권한 승인) 대기로 멈출 때. 실행기는 이 작업의 쿠키·저장소·자격증명을
+  // 암호화하고 작업 id에만 묶어 보관한다(다른 작업 id로는 풀리지 않음). 다음 open(같은 작업)에서 복원한 뒤 보관본을 지운다.
+  // 작업이 끝나면(완료·취소·실패·마감) 서버가 discard로 바로 지운다(worker.ts purgeEndedBrowserState).
   close(opts?: { keepForResume?: boolean }): Promise<void>;
 }
 
 export interface BrowserExecutor {
-  // 작업마다 새 브라우저 context. 다른 작업·판매자와 쿠키·저장소를 나누지 않는다.
+  // 작업마다 새 browser context. 다른 작업·판매자와 쿠키·저장소를 나누지 않는다(같은 작업의 보관본만 복원).
   open(scope: JobScope): Promise<BrowserSession>;
+  // 그 작업의 보관본을 지운다(완료·취소·실패·고객 행동 마감 때 서버가 요청). 없으면 아무것도 안 한다. 지운 뒤에는 복원할 수 없다.
+  discard(scope: JobScope): Promise<void>;
 }
 
 export interface ObsBridge {

@@ -16,7 +16,7 @@ import { cancelJob, requestRefund, resumeJob } from "../../lib/server/automation
 import { purchaseAutomation, reconcileAutomationPayments, reconnectAutomation } from "../../lib/server/automation/purchase";
 import { runSteps } from "../../lib/server/automation/engine";
 import { FencingError, advanceStep, claimNext, finishJob, reapExpired, toVerifying, touch } from "../../lib/server/automation/queue";
-import { executeJob, runOnce } from "../../lib/server/automation/worker";
+import { executeJob, purgeEndedBrowserState, runOnce, runWorkerLoop } from "../../lib/server/automation/worker";
 import { FakeBillingProvider } from "../../lib/server/billing/provider";
 import { billingProvider } from "../../lib/server/billing/registry";
 import { sealBillingKey } from "../../lib/server/billing/secret";
@@ -889,5 +889,98 @@ describe("Codex 리뷰 반영", () => {
       }
       expect(cur).toBe((await job(a.jobId)).status);
     }
+  });
+});
+
+describe("고객 대기용 보관 세션(정본 4678efb)", () => {
+  // 쇼핑몰 연결 단계에서 이동(쿠키 생김) 뒤 로그인 요구로 멈추게 한다
+  async function parked() {
+    const a = await bought();
+    const rt = runtime();
+    let asked = false;
+    rt.browser.outcome = (_s, action) => {
+      if (action.type === "click" && !asked) {
+        asked = true;
+        return { kind: "needs_customer", action: "LOGIN" };
+      }
+      return undefined;
+    };
+    expect(await runOnce(db, rt, W)).toBe("needs_customer");
+    expect(await job(a.jobId)).toMatchObject({ status: "NEEDS_CUSTOMER", browserStateHeld: true });
+    return { ...a, rt };
+  }
+
+  it("보관본은 암호문으로만 저장되고, 그 작업 id로만 풀린다(다른 작업은 거부)", async () => {
+    const a = await parked();
+    const blob = a.rt.browser.saved.get(a.jobId)!;
+    const plain = `${a.seller.id}:${a.jobId}`;
+    expect(typeof blob).toBe("string");
+    expect(blob).not.toContain(plain);
+    expect(blob).not.toContain("session");
+    for (const part of blob.split(".")) expect(Buffer.from(part, "base64url").toString("utf8")).not.toContain(plain);
+    expect(a.rt.browser.restoreBlob(a.jobId, blob)?.get("session")).toBe(plain);
+    const other = await bought();
+    expect(a.rt.browser.restoreBlob(other.jobId, blob)).toBeNull();
+    expect(a.rt.browser.restoreBlob(a.jobId, blob.slice(0, -2) + "AA")).toBeNull();
+  });
+
+  it("완료·취소·실패·고객 행동 마감 때마다 서버가 보관본 삭제를 요청하고, 끝나지 않은 작업은 건드리지 않는다", async () => {
+    // 취소
+    const canceled = await parked();
+    // 끝나지 않은 작업(대기 중)은 지우지 않는다
+    expect(await purgeEndedBrowserState(db, canceled.rt.browser)).toBe(0);
+    expect(canceled.rt.browser.saved.has(canceled.jobId)).toBe(true);
+    await cancelJob(db, canceled.ctx, canceled.jobId);
+    expect(await purgeEndedBrowserState(db, canceled.rt.browser)).toBe(1);
+    expect(canceled.rt.browser.saved.has(canceled.jobId)).toBe(false);
+    expect(await job(canceled.jobId)).toMatchObject({ browserStateHeld: false });
+
+    // 고객 행동 마감
+    const expired = await parked();
+    await db.automationJob.update({ where: { id: expired.jobId }, data: { actionDeadlineAt: new Date(Date.now() - 1000) } });
+    await reapExpired(db);
+    expect((await job(expired.jobId)).status).toBe("FAILED");
+    await purgeEndedBrowserState(db, expired.rt.browser);
+    expect(expired.rt.browser.discarded).toContain(expired.jobId);
+    expect(expired.rt.browser.saved.size).toBe(0);
+
+    // 재개 뒤 실패
+    const failed = await parked();
+    await resumeJob(db, failed.ctx, failed.jobId);
+    failed.rt.browser.outcome = (_s, action) => (action.type === "click" ? { kind: "fatal", reason: "admin_error" } : undefined);
+    expect(await runOnce(db, failed.rt, W)).toBe("failed");
+    await purgeEndedBrowserState(db, failed.rt.browser);
+    expect(failed.rt.browser.discarded).toContain(failed.jobId);
+    expect(await job(failed.jobId)).toMatchObject({ browserStateHeld: false });
+
+    // 재개 뒤 완료
+    const done = await parked();
+    await resumeJob(db, done.ctx, done.jobId);
+    done.rt.browser.outcome = null;
+    expect(await runOnce(db, done.rt, W)).toBe("succeeded");
+    await purgeEndedBrowserState(db, done.rt.browser);
+    expect(done.rt.browser.discarded).toContain(done.jobId);
+    expect(done.rt.browser.saved.size).toBe(0);
+    expect(await db.automationJob.count({ where: { browserStateHeld: true } })).toBe(0);
+  });
+
+  it("작업자 반복이 끝난 작업의 보관본을 지우고, 지운 뒤에는 그 작업으로도 복원되지 않는다", async () => {
+    const a = await parked();
+    const blob = a.rt.browser.saved.get(a.jobId)!;
+    await cancelJob(db, a.ctx, a.jobId);
+    const stop = new AbortController();
+    const loop = runWorkerLoop(db, a.rt, { workerId: "loop", signal: stop.signal, idleMs: 10 });
+    await new Promise((r) => setTimeout(r, 150));
+    stop.abort();
+    await loop;
+    expect(a.rt.browser.saved.has(a.jobId)).toBe(false);
+    expect(await job(a.jobId)).toMatchObject({ browserStateHeld: false });
+    // 끝난 작업 id로 다시 열어도 빈 상태(보관본 없음)
+    const reopened = await a.rt.browser.open({ sellerId: a.seller.id, jobId: a.jobId });
+    expect(a.rt.browser.cookies.get(reopened.id)?.get("session")).toBeUndefined();
+    await reopened.close();
+    // 끝난 작업은 다시 실행 자리를 받지 못한다
+    expect(await claimNext(db, "w9")).toBeNull();
+    expect(blob.length).toBeGreaterThan(0);
   });
 });

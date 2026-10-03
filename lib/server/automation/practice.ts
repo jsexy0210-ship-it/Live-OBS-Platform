@@ -36,6 +36,8 @@ export async function runPractice(
         costLimit: opts.costLimitWon ?? plannerConfig().costLimitWon,
         maxActionsPerStep: opts.maxActionsPerStep ?? AUTOMATION_LIMITS.maxActionsPerStep,
         playbook,
+        // 연습은 고객 대기로 멈추면 그대로 끝낸다(보관하지 않음)
+        keepBrowserStateOnWait: false,
       },
       { touch: async () => {}, enterVerify: async () => {}, stepDone: async (next) => void (stepIndex = next) },
     );

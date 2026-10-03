@@ -72,7 +72,7 @@ export async function executeJob(db: PrismaClient, rt: AutomationRuntime, { job,
         await finishJob(db, claim, "SUCCEEDED", undefined, result.evidence);
         return "succeeded";
       case "needs_customer":
-        await parkForCustomer(db, claim, result.action);
+        await parkForCustomer(db, claim, result.action, result.heldBrowserState === true);
         return "needs_customer";
       case "retry":
         return await retry(result.reason);
@@ -94,7 +94,27 @@ export async function executeJob(db: PrismaClient, rt: AutomationRuntime, { job,
   }
 }
 
-// 작업자 반복: 만료 회수 → 결제 대사 → 작업 하나 실행. 할 일이 없으면 잠깐 쉰다. signal로 멈춘다.
+// 끝난 작업(완료·취소·실패·고객 행동 마감)의 브라우저 보관본 삭제를 실행기에 요청한다.
+// 판매자 취소·마감 회수처럼 작업자 밖에서 끝난 작업도 여기서 지운다. 삭제 요청이 실패하면 표시가 남아 다음 반복에서 다시 한다.
+export async function purgeEndedBrowserState(db: PrismaClient, browser: AutomationRuntime["browser"], limit = 50): Promise<number> {
+  const ended = await db.automationJob.findMany({
+    where: { browserStateHeld: true, status: { in: ["SUCCEEDED", "FAILED", "CANCELED"] } },
+    select: { id: true, sellerId: true },
+    take: limit,
+  });
+  let purged = 0;
+  for (const j of ended) {
+    try {
+      await browser.discard({ sellerId: j.sellerId, jobId: j.id });
+    } catch {
+      continue;
+    }
+    purged += (await db.automationJob.updateMany({ where: { id: j.id, browserStateHeld: true }, data: { browserStateHeld: false } })).count;
+  }
+  return purged;
+}
+
+// 작업자 반복: 만료 회수 → 보관본 삭제 → 결제 대사 → 작업 하나 실행. 할 일이 없으면 잠깐 쉰다. signal로 멈춘다.
 export async function runWorkerLoop(
   db: PrismaClient,
   rt: AutomationRuntime,
@@ -103,6 +123,7 @@ export async function runWorkerLoop(
   const idleMs = opts.idleMs ?? 1_000;
   while (!opts.signal.aborted) {
     await reapExpired(db, opts.random);
+    await purgeEndedBrowserState(db, rt.browser);
     if (opts.billing) await reconcileAutomationPayments(db, opts.billing);
     const r = await runOnce(db, rt, opts);
     if (r === "idle") await new Promise((res) => setTimeout(res, idleMs));

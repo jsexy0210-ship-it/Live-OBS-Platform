@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import type {
   ActionOutcome,
   AutomationAction,
@@ -58,8 +58,37 @@ export class FakeBrowserExecutor implements BrowserExecutor {
   readonly live = new Set<string>();
   // 세션별 쿠키 저장소. 세션끼리 나눠 쓰지 않는지 테스트가 확인한다.
   readonly cookies = new Map<string, Map<string, string>>();
-  // 고객 행동 대기로 보관한 작업별 쿠키(작업 id → 쿠키). 같은 작업이 다시 열 때만 복원한다.
-  readonly saved = new Map<string, Map<string, string>>();
+  // 고객 행동 대기로 보관한 작업별 브라우저 상태(작업 id → 암호문). 작업 id를 추가 인증 데이터로 묶어 AES-256-GCM으로
+  // 암호화한다. 같은 작업이 다시 열 때만 복원되고, discard 뒤에는 복원할 수 없다.
+  readonly saved = new Map<string, string>();
+  readonly discarded: string[] = [];
+  private readonly stateKey = randomBytes(32);
+
+  private seal(jobId: string, jar: Map<string, string>): string {
+    const iv = randomBytes(12);
+    const c = createCipheriv("aes-256-gcm", this.stateKey, iv);
+    c.setAAD(Buffer.from(jobId, "utf8"));
+    const body = Buffer.concat([c.update(JSON.stringify([...jar]), "utf8"), c.final()]);
+    return [iv, c.getAuthTag(), body].map((b) => b.toString("base64url")).join(".");
+  }
+
+  // 보관본을 그 작업 id로 푼다. 다른 작업 id·변조된 값이면 null(복원 거부).
+  restoreBlob(jobId: string, blob: string): Map<string, string> | null {
+    try {
+      const [iv, tag, body] = blob.split(".").map((p) => Buffer.from(p, "base64url"));
+      const d = createDecipheriv("aes-256-gcm", this.stateKey, iv);
+      d.setAAD(Buffer.from(jobId, "utf8"));
+      d.setAuthTag(tag);
+      return new Map(JSON.parse(Buffer.concat([d.update(body), d.final()]).toString("utf8")) as [string, string][]);
+    } catch {
+      return null;
+    }
+  }
+
+  async discard(scope: JobScope): Promise<void> {
+    this.saved.delete(scope.jobId);
+    this.discarded.push(scope.jobId);
+  }
   pageText: (scope: JobScope, secrets?: JobSecrets) => string = () => "Cafe24 관리자";
   // 판매자별로 연결된 쇼핑몰(기본: mall-<판매자 id>). 쇼핑몰 교체를 흉내 낼 때 바꾼다. null이면 알 수 없음.
   readonly shopKey = new Map<string, string | null>();
@@ -79,7 +108,8 @@ export class FakeBrowserExecutor implements BrowserExecutor {
     const id = `ctx-${++this.seq}`;
     this.opened.push({ id, scope });
     this.live.add(id);
-    const jar = this.saved.get(scope.jobId) ?? new Map<string, string>();
+    const blob = this.saved.get(scope.jobId);
+    const jar = (blob && this.restoreBlob(scope.jobId, blob)) || new Map<string, string>();
     this.saved.delete(scope.jobId);
     this.cookies.set(id, jar);
     const self = this;
@@ -107,7 +137,7 @@ export class FakeBrowserExecutor implements BrowserExecutor {
       async close(opts) {
         self.live.delete(id);
         self.cookies.delete(id);
-        if (opts?.keepForResume) self.saved.set(scope.jobId, jar);
+        if (opts?.keepForResume) self.saved.set(scope.jobId, self.seal(scope.jobId, jar));
       },
     };
   }

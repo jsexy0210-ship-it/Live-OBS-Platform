@@ -29,7 +29,8 @@ export type EngineHooks = {
 
 export type EngineResult =
   | { kind: "succeeded"; evidence: VerificationEvidence }
-  | { kind: "needs_customer"; action: AutomationCustomerAction }
+  // heldBrowserState: 이 작업의 브라우저 상태를 실행기에 암호화 보관했다(작업이 끝나면 서버가 지운다)
+  | { kind: "needs_customer"; action: AutomationCustomerAction; heldBrowserState?: boolean }
   | { kind: "retry"; reason: string }
   | { kind: "failed"; reason: string };
 
@@ -46,6 +47,8 @@ const MUTATING: readonly AutomationAction["type"][] = ["click", "fill", "obs_add
 export type EngineOptions = {
   // 실행 자리를 잃으면 abort된다. 외부 호출(관찰·판단·실행) 직전마다 확인한다.
   signal?: AbortSignal;
+  // 고객 행동 대기로 멈출 때 브라우저 상태를 보관할지(기본 true). 연습 실행은 보관하지 않는다.
+  keepBrowserStateOnWait?: boolean;
   // 비밀값을 넣어도 되는 칸을 정하는 작업서(작업 중 버전이 바뀌어 정해진 행동은 안 쓰더라도 비밀 칸 목록은 그 작업서 것을 쓴다). 없으면 playbook
   secretPlaybook?: Playbook | null;
   startIndex: number;
@@ -64,12 +67,14 @@ export async function runSteps(rt: AutomationRuntime, scope: JobScope, opts: Eng
   const guard = () => {
     if (opts.signal?.aborted) throw new EngineAborted();
   };
+  const keep = () => result?.kind === "needs_customer" && opts.keepBrowserStateOnWait !== false && session !== null;
   try {
     result = await runAll(rt, scope, opts, hooks, guard, (s) => (session = s), () => session);
+    if (result.kind === "needs_customer" && keep()) result = { ...result, heldBrowserState: true };
     return result;
   } finally {
-    // 고객 행동 대기면 이 작업의 로그인·승인 상태를 보관해 재개 때 이어 간다. 그 밖에는 모두 지운다.
-    await (session as BrowserSession | null)?.close({ keepForResume: result?.kind === "needs_customer" });
+    // 고객 행동 대기면 이 작업의 로그인·승인 상태를 암호화 보관해 재개 때 이어 간다. 그 밖에는 모두 지운다.
+    await (session as BrowserSession | null)?.close({ keepForResume: keep() });
   }
 }
 
