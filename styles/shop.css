@@ -166,3 +166,9 @@ body {
     align-self: stretch;
   }
 }
+
+/* 요청이 끝나고 포커스를 옮겨 받는 안내·제목(읽기용, 누르는 요소 아님) */
+.shop-state h1:focus,
+.signup .msg:focus {
+  outline: none;
+}

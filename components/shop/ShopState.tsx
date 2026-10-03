@@ -3,7 +3,9 @@ export default function ShopState({ title, body, done = false }: { title: string
   return (
     <section className="card shop-card shop-state" role="status">
       <span className={`shop-state-ico${done ? " is-done" : ""}`} aria-hidden />
-      <h1 className="t-h1">{title}</h1>
+      <h1 id="shop-state-title" className="t-h1" tabIndex={-1}>
+        {title}
+      </h1>
       <p className="t-l1 c-alt">{body}</p>
     </section>
   );

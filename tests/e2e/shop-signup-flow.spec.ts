@@ -101,7 +101,7 @@ test("본인확인 → 틀린 인증번호 → 맞는 인증번호 → 가입까
   await page.getByRole("button", { name: "가입하기" }).click();
   expect((await done).status()).toBe(201);
   await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
-  await expect(page.getByText(`첫 주문부터 적립돼요. 방송에서는 별${id} 닉네임으로 보여요.`)).toBeVisible();
+  await expect(page.getByText(`이제 주문할 수 있어요. 방송에서는 별${id} 닉네임으로 보여요.`)).toBeVisible();
   await shot(page, "SH-011-done");
 });
 
@@ -243,7 +243,7 @@ test("가입을 요청하는 동안에는 계정 칸을 고칠 수 없고, 완�
   await expect(page.getByLabel("방송 닉네임")).toBeDisabled();
   await expect(page.getByLabel("아이디 (이메일)")).toBeDisabled();
   release();
-  await expect(page.getByText("첫 주문부터 적립돼요. 방송에서는 보낸닉네임 닉네임으로 보여요.")).toBeVisible();
+  await expect(page.getByText("이제 주문할 수 있어요. 방송에서는 보낸닉네임 닉네임으로 보여요.")).toBeVisible();
 });
 
 test("방송 닉네임은 서버처럼 글자(코드포인트) 기준으로 20자까지 잘리지 않고 보낸다", async ({ page }) => {
@@ -290,4 +290,71 @@ test("확인 응답을 못 받은 뒤 다시 받기에서 이미 확인됐다고
   await page.getByRole("button", { name: "가입하기" }).click();
   expect((await req).postDataJSON().verificationId).toBe(id);
   await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
+});
+
+// 같은 주소에 차례대로 다른 응답을 준다(마지막 응답은 계속 반복)
+async function seq(page: Page, path: string, replies: Reply[]) {
+  let i = 0;
+  await page.route((u) => u.pathname === path, (route) => {
+    const reply = replies[Math.min(i++, replies.length - 1)];
+    return route.fulfill({ status: reply.status, contentType: "application/json", body: JSON.stringify(reply.body) });
+  });
+}
+const focusedId = (page: Page) => page.evaluate(() => document.activeElement?.id ?? "");
+
+test("생년월일이 틀리면 포커스를 생년월일 칸으로 옮긴다", async ({ page }) => {
+  await mockApi(page);
+  await page.goto(`/shop/${SLUG}/signup`);
+  await fillIdentity(page, "김구매");
+  await page.getByLabel("생년월일").fill("19990231");
+  await page.getByRole("button", { name: "인증번호 받기" }).click();
+  await expect.poll(() => focusedId(page)).toBe("idv-birth");
+});
+
+test("요청이 끝나면 포커스가 본문으로 빠지지 않고 다음에 할 곳으로 간다", async ({ page }) => {
+  await mockApi(page);
+  await seq(page, `${API}/verification/confirm`, [fail(400, "wrong_code", IDENTITY_ERROR_MESSAGES.wrong_code), { status: 200, body: { ok: true } }]);
+  await seq(page, API, [fail(409, "nickname_taken", BUYER_SIGNUP_MESSAGES.nickname_taken), { status: 201, body: { ok: true } }]);
+  await page.goto(`/shop/${SLUG}/signup`);
+  await fillIdentity(page, "김구매");
+  await page.getByRole("button", { name: "인증번호 받기" }).click();
+  // 인증번호를 받으면 인증번호 칸
+  await expect.poll(() => focusedId(page)).toBe("idv-code");
+  await page.getByLabel("인증번호").fill("111111");
+  await page.getByRole("button", { name: "확인", exact: true }).click();
+  // 틀리면 다시 인증번호 칸
+  await expect(page.getByRole("alert").filter({ hasText: IDENTITY_ERROR_MESSAGES.wrong_code })).toBeVisible();
+  await expect.poll(() => focusedId(page)).toBe("idv-code");
+  await page.getByLabel("인증번호").fill("000000");
+  await page.getByRole("button", { name: "확인", exact: true }).click();
+  // 본인확인을 마치면 아이디 칸
+  await expect.poll(() => focusedId(page)).toBe("acc-id");
+  await fillAccount(page, "x7", "별빛");
+  await page.getByRole("button", { name: "가입하기" }).click();
+  // 칸 오류면 그 칸
+  await expect.poll(() => focusedId(page)).toBe("acc-nick");
+  await page.getByLabel("방송 닉네임").fill("별빛2");
+  await page.getByRole("button", { name: "가입하기" }).click();
+  // 가입하면 완료 제목
+  await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
+  await expect.poll(() => focusedId(page)).toBe("shop-state-title");
+});
+
+test("위쪽 안내가 뜨면 안내로, 약관 오류면 약관 체크박스로 포커스를 옮기고 오류를 연결한다", async ({ page }) => {
+  await mockApi(page);
+  await seq(page, API, [fail(409, "already_member", BUYER_SIGNUP_MESSAGES.already_member), fail(400, "terms_required", BUYER_SIGNUP_MESSAGES.terms_required)]);
+  await page.goto(`/shop/${SLUG}/signup`);
+  await toVerified(page);
+  await fillAccount(page, "x8", "별빛");
+  await page.getByRole("button", { name: "가입하기" }).click();
+  await expect(page.getByRole("status").filter({ hasText: BUYER_SIGNUP_MESSAGES.already_member })).toBeVisible();
+  await expect.poll(() => focusedId(page)).toBe("signup-notice");
+  await page.getByRole("button", { name: "가입하기" }).click();
+  await expect.poll(() => focusedId(page)).toBe("acc-terms-all");
+  for (const label of ["필수 약관에 모두 동의해요", "이용약관 (필수)", "개인정보 수집 · 이용 (필수)"]) {
+    const box = page.getByLabel(label);
+    await expect(box).toHaveAttribute("aria-invalid", "true");
+    await expect(box).toHaveAttribute("aria-describedby", "acc-terms-err");
+  }
+  await expect(page.locator("#acc-terms-err")).toHaveText(BUYER_SIGNUP_MESSAGES.terms_required);
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, failMessage } from "../seller/api";
 import { textLength } from "../seller/format";
 import ShopState from "./ShopState";
@@ -46,6 +46,19 @@ export default function SignupForm({ slug }: { slug: string }) {
   const [unavailable, setUnavailable] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
+  // 요청이 끝나면 포커스를 옮길 곳(버튼이 잠기거나 사라져 포커스가 본문으로 빠지지 않게). 같은 칸도 다시 옮기도록 객체로 둔다.
+  const [focusTo, setFocusTo] = useState<{ id: string } | null>(null);
+  useEffect(() => {
+    if (!focusTo) return;
+    document.getElementById(focusTo.id)?.focus();
+    setFocusTo(null);
+  }, [focusTo]);
+  const focus = (id: string) => setFocusTo({ id });
+  // 위쪽 안내를 띄우고 그 영역으로 포커스를 옮긴다
+  const showNotice = (n: Notice) => {
+    setNotice(n);
+    focus("signup-notice");
+  };
 
   // 본인확인
   const [name, setName] = useState("");
@@ -84,16 +97,18 @@ export default function SignupForm({ slug }: { slug: string }) {
     setCodeError(null);
     setStep("identity");
     setNotice(n);
+    focus(n ? "signup-notice" : "idv-name");
   };
 
   // 여러 단계에서 같은 뜻인 실패(서비스 없음·쇼핑몰 막힘·연결 끊김)
   const commonFail = (r: Fail): boolean => {
     if (r.status === 503) {
       setUnavailable(true);
+      focus("shop-state-title");
       return true;
     }
     if (r.status === 0 || r.error === "shop_unavailable" || r.error === "provider_error" || r.error === "daily_limit_exceeded") {
-      setNotice({ kind: "neg", text: failMessage(r) });
+      showNotice({ kind: "neg", text: failMessage(r) });
       return true;
     }
     return false;
@@ -105,6 +120,7 @@ export default function SignupForm({ slug }: { slug: string }) {
     const birth7 = toBirth7(birth, gender, foreigner);
     if (!birth7) {
       setBirthError("생년월일 8자리를 다시 확인해 주세요");
+      focus("idv-birth");
       return;
     }
     setBusy(true);
@@ -124,9 +140,10 @@ export default function SignupForm({ slug }: { slug: string }) {
       setCodeError(null);
       setStep("code");
       setNotice({ kind: "info", text: "인증번호를 보냈어요. 문자로 받은 6자리를 넣어 주세요" });
+      focus("idv-code");
       return;
     }
-    if (!commonFail(r)) setNotice({ kind: "neg", text: failMessage(r) });
+    if (!commonFail(r)) showNotice({ kind: "neg", text: failMessage(r) });
   };
 
   const resend = async () => {
@@ -138,6 +155,7 @@ export default function SignupForm({ slug }: { slug: string }) {
     if (r.ok) {
       setCode("");
       setNotice({ kind: "info", text: "인증번호를 다시 보냈어요" });
+      focus("idv-code");
       return;
     }
     if (commonFail(r)) return;
@@ -145,9 +163,13 @@ export default function SignupForm({ slug }: { slug: string }) {
     if (r.error === "already_verified") {
       setStep("verified");
       setNotice(null);
+      focus("acc-id");
       return;
     }
-    if (r.error === "resend_too_soon") setNotice({ kind: "info", text: failMessage(r) });
+    if (r.error === "resend_too_soon") {
+      setNotice({ kind: "info", text: failMessage(r) });
+      focus("idv-code");
+    }
     else restart({ kind: "neg", text: failMessage(r) });
   };
 
@@ -160,12 +182,14 @@ export default function SignupForm({ slug }: { slug: string }) {
     if (r.ok || (!r.ok && r.error === "already_verified")) {
       setStep("verified");
       setNotice(null);
+      focus("acc-id");
       return;
     }
     if (commonFail(r)) return;
     if (r.error === "wrong_code" || r.error === "code_expired") {
       setNotice(null);
       setCodeError(failMessage(r));
+      focus("idv-code");
     } else restart({ kind: "neg", text: failMessage(r) });
   };
 
@@ -184,6 +208,7 @@ export default function SignupForm({ slug }: { slug: string }) {
     if (r.ok) {
       setJoinedNickname(broadcastNickname);
       setStep("done");
+      focus("shop-state-title");
       return;
     }
     if (commonFail(r)) return;
@@ -192,27 +217,31 @@ export default function SignupForm({ slug }: { slug: string }) {
       case "invalid_login_id":
       case "login_id_taken":
         setFieldErrors({ loginId: text });
+        focus("acc-id");
         break;
       case "weak_password":
         setFieldErrors({ password: text });
+        focus("acc-pw");
         break;
       case "invalid_nickname":
       case "nickname_taken":
         setFieldErrors({ nickname: text });
+        focus("acc-nick");
         break;
       case "terms_required":
         setFieldErrors({ terms: text });
+        focus("acc-terms-all");
         break;
       case "verification_pending":
         setStep("code");
-        setNotice({ kind: "neg", text });
+        showNotice({ kind: "neg", text });
         break;
       case "verification_invalid":
       case "too_many_signup_attempts":
         restart({ kind: "neg", text });
         break;
       default:
-        setNotice({ kind: r.error === "already_member" ? "info" : "neg", text });
+        showNotice({ kind: r.error === "already_member" ? "info" : "neg", text });
     }
   };
 
@@ -221,13 +250,14 @@ export default function SignupForm({ slug }: { slug: string }) {
   }
 
   if (step === "done") {
-    return <ShopState done title="가입했어요" body={`첫 주문부터 적립돼요. 방송에서는 ${joinedNickname} 닉네임으로 보여요.`} />;
+    return <ShopState done title="가입했어요" body={`이제 주문할 수 있어요. 방송에서는 ${joinedNickname} 닉네임으로 보여요.`} />;
   }
 
   // 요청 중에도 잠가 보낸 값과 화면 값이 달라지지 않게 한다
   const locked = step !== "identity" || busy;
   const nicknameError = nicknameTooLong ? `닉네임은 ${MAX_NICKNAME_LENGTH}자까지 쓸 수 있어요` : fieldErrors.nickname;
   const shown = sent ?? { name: name.trim(), phone };
+  const termsAria = fieldErrors.terms ? { "aria-invalid": true, "aria-describedby": "acc-terms-err" } : {};
   return (
     <div className="card shop-card col signup">
       <div className="col" style={{ gap: 4 }}>
@@ -236,7 +266,7 @@ export default function SignupForm({ slug }: { slug: string }) {
       </div>
 
       {notice && (
-        <div className={`msg msg-${notice.kind}`} role={notice.kind === "neg" ? "alert" : "status"}>
+        <div id="signup-notice" tabIndex={-1} className={`msg msg-${notice.kind}`} role={notice.kind === "neg" ? "alert" : "status"}>
           <span>{notice.text}</span>
         </div>
       )}
@@ -469,8 +499,10 @@ export default function SignupForm({ slug }: { slug: string }) {
           <div className="col signup-terms">
             <label className="chk signup-all">
               <input
+                id="acc-terms-all"
                 type="checkbox"
                 className="cbx"
+                {...termsAria}
                 checked={agreedTerms && agreedPrivacy}
                 onChange={(e) => {
                   setAgreedTerms(e.target.checked);
@@ -480,15 +512,15 @@ export default function SignupForm({ slug }: { slug: string }) {
               필수 약관에 모두 동의해요
             </label>
             <label className="chk">
-              <input type="checkbox" className="cbx" checked={agreedTerms} onChange={(e) => setAgreedTerms(e.target.checked)} />
+              <input type="checkbox" className="cbx" {...termsAria} checked={agreedTerms} onChange={(e) => setAgreedTerms(e.target.checked)} />
               이용약관 (필수)
             </label>
             <label className="chk">
-              <input type="checkbox" className="cbx" checked={agreedPrivacy} onChange={(e) => setAgreedPrivacy(e.target.checked)} />
+              <input type="checkbox" className="cbx" {...termsAria} checked={agreedPrivacy} onChange={(e) => setAgreedPrivacy(e.target.checked)} />
               개인정보 수집 · 이용 (필수)
             </label>
             {fieldErrors.terms && (
-              <span className="err" role="alert">
+              <span id="acc-terms-err" className="err" role="alert">
                 {fieldErrors.terms}
               </span>
             )}
