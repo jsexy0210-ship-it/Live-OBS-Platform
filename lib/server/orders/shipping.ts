@@ -12,7 +12,16 @@ export const MAX_ZIP_RANGES = 50;
 
 export type ZipRange = [number, number];
 // freeShipping: 무료(0원) 배송 유형. 켜면 기본 배송비·무료 기준을 쓰지 않고, 도서산간 추가비는 그대로 붙는다(대표님 결정 2026-10-03).
-export type ShippingPolicy = { freeShipping: boolean; baseFee: number; freeOverAmount: number | null; remoteSurcharge: number; remoteZipRanges: ZipRange[] };
+// returnFee: 반품 배송비(편도), exchangeFee: 교환 배송비(왕복). 구매자 사정일 때만 받는다(PRODUCT_SCOPE 「반품·교환 배송비」).
+export type ShippingPolicy = {
+  freeShipping: boolean;
+  baseFee: number;
+  freeOverAmount: number | null;
+  remoteSurcharge: number;
+  remoteZipRanges: ZipRange[];
+  returnFee: number;
+  exchangeFee: number;
+};
 
 // 제주(63000~63644)·울릉(40200~40240). 판매자가 바꿀 수 있다.
 export const DEFAULT_SHIPPING_POLICY: ShippingPolicy = {
@@ -24,6 +33,8 @@ export const DEFAULT_SHIPPING_POLICY: ShippingPolicy = {
     [63000, 63644],
     [40200, 40240],
   ],
+  returnFee: 3000,
+  exchangeFee: 6000,
 };
 
 // 판매자가 고를 수 있는 택배사. 화면에는 이름을 보여 주고 값은 코드로 받는다.
@@ -51,8 +62,8 @@ function parseZipRanges(raw: unknown): ZipRange[] | null {
   return out;
 }
 
-// 판매자 정책 입력 검증. 잘못된 값은 null.
-export function parseShippingPolicy(raw: unknown): ShippingPolicy | null {
+// 판매자 정책 입력 검증. 잘못된 값은 null. 반품·교환 배송비를 빼고 보내면 current(지금 설정) 값을 그대로 둔다.
+export function parseShippingPolicy(raw: unknown, current: ShippingPolicy = DEFAULT_SHIPPING_POLICY): ShippingPolicy | null {
   if (!raw || typeof raw !== "object") return null;
   const b = raw as Record<string, unknown>;
   if (!isFee(b.baseFee, MAX_FEE) || !isFee(b.remoteSurcharge, MAX_FEE)) return null;
@@ -63,7 +74,11 @@ export function parseShippingPolicy(raw: unknown): ShippingPolicy | null {
   // 무료 배송 유형은 빼고 보내면 꺼짐(유료)
   const freeShipping = b.freeShipping ?? false;
   if (typeof freeShipping !== "boolean") return null;
-  return { freeShipping, baseFee: b.baseFee, freeOverAmount, remoteSurcharge: b.remoteSurcharge, remoteZipRanges };
+  // 반품·교환 배송비 칸이 없는 화면이 저장해도 지운 것처럼 기본값으로 돌아가지 않게 한다
+  const returnFee = b.returnFee ?? current.returnFee;
+  const exchangeFee = b.exchangeFee ?? current.exchangeFee;
+  if (!isFee(returnFee, MAX_FEE) || !isFee(exchangeFee, MAX_FEE)) return null;
+  return { freeShipping, baseFee: b.baseFee, freeOverAmount, remoteSurcharge: b.remoteSurcharge, remoteZipRanges, returnFee, exchangeFee };
 }
 
 type Db = PrismaClient | Prisma.TransactionClient;
@@ -78,6 +93,8 @@ export async function getShippingPolicy(db: Db, sellerId: string): Promise<Shipp
     remoteSurcharge: p.remoteSurcharge,
     // 저장 때 검증했지만, 깨진 값이면 기본 지역으로 계산한다
     remoteZipRanges: parseZipRanges(p.remoteZipRanges) ?? DEFAULT_SHIPPING_POLICY.remoteZipRanges,
+    returnFee: p.returnFee,
+    exchangeFee: p.exchangeFee,
   };
 }
 
