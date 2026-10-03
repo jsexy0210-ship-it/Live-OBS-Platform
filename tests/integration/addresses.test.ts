@@ -128,7 +128,7 @@ describe("배송지 관리 API", () => {
     expect((await bad.json()).error).toBe("invalid_shipping_address");
     const longLabel = await create(s.seller.slug, s.cookie, { ...home, label: "가".repeat(21) });
     expect(longLabel.status).toBe(400);
-    expect(await longLabel.json()).toEqual({ error: "invalid_address_label", message: ORDER_ERROR_MESSAGES.invalid_address_label });
+    expect(await longLabel.json()).toEqual({ error: "address_label_too_long", message: "배송지 이름은 20자까지 쓸 수 있어요" });
     expect((await create(s.seller.slug, s.cookie, { ...home, label: "가".repeat(20) })).status).toBe(201);
     const dup = await create(s.seller.slug, s.cookie, { ...home, phone: "01012345678", memo: "다른 메모" });
     expect(dup.status).toBe(409);
@@ -206,5 +206,34 @@ describe("검수 후속(#91)", () => {
     const def = (await addressesOf(s.buyer.id)).find((x) => x.isDefault)!;
     expect((await remove(s.seller.slug, s.cookie, def.id)).status).toBe(200);
     expect((await addressesOf(s.buyer.id)).find((x) => x.isDefault)!.id).toBe(officeRow.id);
+  });
+
+  it("[검수 P2] 이름 사유별 문구, isDefault 문자열 거부, 연속 공백은 같은 배송지, 403도 no-store, 빈 수정 400, 주문 저장도 감사 로그", async () => {
+    const s = await shop();
+    const invisible = await create(s.seller.slug, s.cookie, { ...home, label: "\u200b" });
+    expect(invisible.status).toBe(400);
+    expect(await invisible.json()).toEqual({ error: "invalid_address_label", message: "배송지 이름을 다시 확인해 주세요" });
+    const strDefault = await create(s.seller.slug, s.cookie, { ...home, isDefault: "true" });
+    expect(strDefault.status).toBe(400);
+    expect(await addressesOf(s.buyer.id)).toEqual([]);
+    // 주문으로 저장해도 감사 로그를 남긴다
+    expect((await order(s.seller.slug, s.cookie, s.option.id, home)).status).toBe(200);
+    const [saved] = await addressesOf(s.buyer.id);
+    expect(await db.auditLog.count({ where: { action: "buyer_address.create", targetId: saved.id } })).toBe(1);
+    // 주소 안의 연속 공백은 하나로 보고 같은 배송지로 본다
+    expect((await order(s.seller.slug, s.cookie, s.option.id, { ...home, address1: "서울  강남구   테헤란로 1", address2: "101호" })).status).toBe(200);
+    expect(await addressesOf(s.buyer.id)).toHaveLength(1);
+    const dup = await create(s.seller.slug, s.cookie, { ...home, address1: "서울 강남구 테헤란로  1" });
+    expect(dup.status).toBe(409);
+    // 다른 출처 403도 캐시하지 않는다
+    const forbidden = await create(s.seller.slug, s.cookie, office, false);
+    expect(forbidden.status).toBe(403);
+    expect(forbidden.headers.get("cache-control")).toBe("no-store");
+    // 바꿀 항목이 없는 수정은 400이고 감사 로그를 남기지 않는다
+    for (const body of [[], {}]) {
+      const r = await patch(s.seller.slug, s.cookie, saved.id, body);
+      expect(r.status).toBe(400);
+    }
+    expect(await db.auditLog.count({ where: { action: "buyer_address.update", targetId: saved.id } })).toBe(0);
   });
 });

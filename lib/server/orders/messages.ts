@@ -14,7 +14,8 @@ export const ORDER_ERROR_MESSAGES = {
   not_shippable: "결제가 끝난 주문만 발송할 수 있어요",
   invalid_shipping_policy: "배송비 설정을 다시 확인해 주세요",
   // 구매자 저장 배송지
-  invalid_address_label: "배송지 이름은 20자까지 쓸 수 있어요",
+  invalid_address_label: "배송지 이름을 다시 확인해 주세요",
+  address_label_too_long: "배송지 이름은 20자까지 쓸 수 있어요",
   too_many_addresses: "배송지는 20개까지 저장할 수 있어요. 안 쓰는 배송지를 지운 뒤 다시 해 주세요",
   duplicate_address: "이미 저장된 배송지예요",
   address_not_found: "배송지를 찾을 수 없어요",

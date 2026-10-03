@@ -22,6 +22,6 @@ export const POST = mutation(async (req: Request, { params }: { params: Promise<
   const b = await buyerScope(req, (await params).slug);
   if (!b.scope) return noStore(b.res);
   const r = await createAddress(prisma, b.scope, await readJson(req));
-  if (!r.ok) return noStore(NextResponse.json(orderErrorBody(r.reason), { status: r.reason === "invalid_shipping_address" || r.reason === "invalid_address_label" ? 400 : 409 }));
+  if (!r.ok) return noStore(NextResponse.json(orderErrorBody(r.reason), { status: r.reason === "too_many_addresses" || r.reason === "duplicate_address" ? 409 : 400 }));
   return noStore(NextResponse.json({ address: r.value }, { status: 201 }));
 });

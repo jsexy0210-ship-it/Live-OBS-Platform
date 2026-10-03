@@ -18,7 +18,8 @@ export const MAX_ADDRESS_LABEL = 20;
 export type AddressScope = { sellerId: string; buyerMemberId: string };
 export type AddressFailure =
   | "invalid_shipping_address"
-  | "invalid_address_label"
+  | "invalid_address_label" // 보이지 않는 문자 등 쓸 수 없는 이름
+  | "address_label_too_long"
   | "too_many_addresses"
   | "duplicate_address"
   | "address_not_found"
@@ -36,10 +37,12 @@ const ORDER: Prisma.BuyerAddressOrderByWithRelationInput[] = [{ isDefault: "desc
 
 const lockBuyerAddresses = (tx: Tx, s: AddressScope) => tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`buyer_address:${s.sellerId}:${s.buyerMemberId}`}))`;
 
-// 이름(선택): 없거나 빈 값이면 null, 20자(코드포인트) 넘거나 보이지 않는 문자만 있으면 undefined
-function parseLabel(v: unknown): string | null | undefined {
+// 이름(선택): 없거나 빈 값이면 null. 글자 수는 cleanText 기준(코드포인트)이고, 길기만 하면 too_long, 쓸 수 없는 글자면 invalid.
+function parseLabel(v: unknown): string | null | "invalid_address_label" | "address_label_too_long" {
   if (v === undefined || v === null || (typeof v === "string" && v.trim() === "")) return null;
-  return cleanText(v, MAX_ADDRESS_LABEL) ?? undefined;
+  const label = cleanText(v, MAX_ADDRESS_LABEL);
+  if (label) return label;
+  return cleanText(v, Number.MAX_SAFE_INTEGER) ? "address_label_too_long" : "invalid_address_label";
 }
 
 const sameAddress = (a: ShippingAddressInput) => ({
@@ -76,7 +79,7 @@ function parseFields(raw: unknown): Fields | AddressFailure {
   const address = parseShippingAddress(raw);
   if (!address) return "invalid_shipping_address";
   const label = parseLabel((raw as Record<string, unknown>).label);
-  if (label === undefined) return "invalid_address_label";
+  if (label === "invalid_address_label" || label === "address_label_too_long") return label;
   return { ...address, label };
 }
 
@@ -84,7 +87,9 @@ function parseFields(raw: unknown): Fields | AddressFailure {
 export async function createAddress(db: PrismaClient, s: AddressScope, raw: unknown): Promise<AddressResult<AddressView>> {
   const f = parseFields(raw);
   if (typeof f === "string") return { ok: false, reason: f };
-  const wantDefault = (raw as { isDefault?: unknown }).isDefault === true;
+  const isDefault = (raw as { isDefault?: unknown }).isDefault;
+  if (isDefault !== undefined && typeof isDefault !== "boolean") return { ok: false, reason: "invalid_shipping_address" };
+  const wantDefault = isDefault === true;
   return db.$transaction(async (tx) => {
     await lockBuyerAddresses(tx, s);
     const now = await dbNow(tx);
@@ -96,10 +101,13 @@ export async function createAddress(db: PrismaClient, s: AddressScope, raw: unkn
   });
 }
 
-// 수정: 보낸 항목만 바꾼다. isDefault: true면 기본 배송지로 정한다. 기본 배송지에 false를 보내면 거부한다(기본은 항상 1개).
+const EDITABLE = ["recipientName", "phone", "zipCode", "address1", "address2", "memo", "label", "isDefault"];
+
+// 수정: 보낸 항목만 바꾼다(바꿀 항목이 하나도 없으면 400). isDefault: true면 기본 배송지로 정한다. 기본 배송지에 false를 보내면 거부한다(기본은 항상 1개).
 export async function updateAddress(db: PrismaClient, s: AddressScope, id: string, raw: unknown): Promise<AddressResult<AddressView>> {
-  if (!raw || typeof raw !== "object") return { ok: false, reason: "invalid_shipping_address" };
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ok: false, reason: "invalid_shipping_address" };
   const body = raw as Record<string, unknown>;
+  if (!EDITABLE.some((k) => k in body)) return { ok: false, reason: "invalid_shipping_address" };
   if (body.isDefault !== undefined && typeof body.isDefault !== "boolean") return { ok: false, reason: "invalid_shipping_address" };
   return db.$transaction(async (tx) => {
     await lockBuyerAddresses(tx, s);
@@ -147,5 +155,9 @@ export async function deleteAddress(db: PrismaClient, s: AddressScope, id: strin
 export async function recordOrderAddress(tx: Tx, s: AddressScope, address: ShippingAddressInput, save: boolean, now: Date): Promise<void> {
   await lockBuyerAddresses(tx, s);
   const used = await tx.buyerAddress.updateMany({ where: { sellerId: s.sellerId, buyerMemberId: s.buyerMemberId, ...sameAddress(address) }, data: { lastUsedAt: now } });
-  if (used.count === 0 && save) await insert(tx, s, { ...address, label: null }, false, now, now);
+  if (used.count > 0 || !save) return;
+  const r = await insert(tx, s, { ...address, label: null }, false, now, now);
+  if (r !== "too_many_addresses" && r.created) {
+    await writeAudit(tx, { actorType: "BUYER", actorId: s.buyerMemberId, sellerId: s.sellerId, action: "buyer_address.create", targetType: "BuyerAddress", targetId: r.address.id, after: { source: "order" } });
+  }
 }
