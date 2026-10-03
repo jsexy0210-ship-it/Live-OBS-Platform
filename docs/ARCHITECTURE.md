@@ -172,7 +172,7 @@ tests/unit/**, tests/integration/**           테스트
 
 - `Order`: id, sellerId, orderNo(판매자별 표시 번호, **(sellerId, orderNo) 유니크**), buyerMemberId, status(`PENDING_PAYMENT | PAID | CANCELLED | REFUNDED`), broadcastNicknameSnapshot, totalAmount, rewardUsedAmount, paymentMethod(`CARD | BANK_TRANSFER | …`), pgProvider, pgTxId, paidAt, stockShortageAt(재고 부족 표시), cancelledAt, refundedAt, createdAt
   - `totalAmount`: 구매자가 실제로 결제한 금액(적립금 사용액을 **뺀 뒤**, 배송비가 생기면 포함). `rewardUsedAmount`: 이 주문에 쓴 적립금.
-  - 적립 기준액은 `totalAmount`를 쓰지 않고 「상품 결제 금액(주문 품목 단가 × 수량 합, 배송비 제외) − 적립금 사용액」으로 계산한다(MASTER 결정, 카페24 기본과 같음). 적립금이 두 번 빠지지 않는다.
+  - 적립 기준액은 `totalAmount`를 쓰지 않고 「할인 후 상품 금액(주문 품목 단가 × 수량 합)」으로 계산한다. 배송비는 빼고, 적립금으로 낸 금액은 빼지 않는다(대표님 결정 2026-10-03).
 - `OrderItem`: id, sellerId, orderId, productId, optionId, productNameSnapshot, optionNameSnapshot, unitPrice, quantity
 - `OrderConsent`: id, sellerId, orderId, kind(`OPENED_NO_REFUND`), noticeVersion, agreedAt(DB 시계) — **(orderId, kind) 유니크**. 결제 전 「개봉하면 취소·환불이 안 돼요」 동의 기록(대표님 결정 2026-10-02).
 - 주문 생성(`POST /api/shop/{slug}/orders`, 구매자 세션, 결제 대기까지 — 실제 PG 결제 호출 없음):
@@ -195,7 +195,7 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
        └──────취소──────▶ CANCELLED
 ```
 
-- 결제 완료 → 재고 차감 + 주문대기 생성 + 적립금 지급 대기(`EARN`, 실지급 스위치가 꺼져 있으면 `testMode`) 기록(재고 부족 분기는 5절). 환불 → 재고 복원(아래 규칙) + 적립금 회수 대기(`REVOKE`) + 연결된 「대기」·「개봉 중」 주문대기 자동 취소.
+- 결제 완료 → 재고 차감 + 주문대기 생성 + 적립금 지급 시점이 「결제 즉시」면 지급 대기(`EARN`, 실지급 스위치가 꺼져 있으면 `testMode`) 기록(재고 부족 분기는 5절). 환불 → 재고 복원(아래 규칙) + 적립금 회수 대기(`REVOKE`) + 연결된 「대기」·「개봉 중」 주문대기 자동 취소.
 - [확정] 환불 시 재고 복원 (MASTER 결정, 주문 품목 단위):
   - 연결된 주문대기가 「대기」(환불과 함께 취소됨)이거나 개봉 전에 「취소」된 경우 → 자동 복원(`StockMovement.reason = REFUND`).
   - 「개봉 중」(환불과 함께 취소됨)·개봉을 시작한 뒤 취소됨·「완료」 → 이미 개봉했으므로 복원하지 않는다.
@@ -241,7 +241,8 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 - `RewardLedger`: id, sellerId, buyerMemberId, orderId(nullable), type(`EARN | REVOKE | USE | RANKING_BONUS | ADJUST`), amount(부호 포함), status(`PENDING | SUCCEEDED | FAILED`), testMode(bool), failureReason, idempotencyKey, createdAt, processedAt — **(sellerId, idempotencyKey) 유니크**(같은 주문 지급·회수 중복 방지)
 - `RewardBalance`: (sellerId, buyerMemberId) PK, balance(**CHECK balance >= 0**), updatedAt — `SUCCEEDED`이고 `testMode = false`인 원장만 잔액에 반영(같은 트랜잭션)
 - 실지급 스위치가 꺼져 있으면 원장은 `testMode = true`로 기록만 하고 잔액은 바꾸지 않는다. 스위치 변경은 대표(OWNER)만, 감사 로그 필수.
-- 결제 완료 때 `EARN`(PENDING), 환불 때 회수: `revokeMode = AUTO`면 `REVOKE`(PENDING)를 기록하고, `MANUAL`이면 기록하지 않는다. MANUAL에서 「환불된 주문에 `EARN`은 있고 `REVOKE`가 없는 상태」가 수동 확인 대기다(감사 로그 `rewardRevoke: manual_review`).
+- 지급 시점 `RewardPolicy.earnTiming`(대표님 결정 2026-10-03): `ON_PAYMENT`(결제 즉시) 또는 `ON_DELIVERY`(배송 완료 후, 기본). `GET·PUT /api/seller/reward-policy` `{ earnTiming }`(`MEMBER_POINTS`, 감사 로그 `reward_policy.earn_timing`, 틀리면 `400 invalid_reward_policy`). 배송 완료 때 아직 `EARN`이 없으면 기록하므로 결제 뒤 설정을 바꿔도 주문당 한 번 기록된다. 등급은 기록하는 때의 회원 등급을 쓴다.
+- `EARN`(PENDING), 환불 때 회수: `revokeMode = AUTO`면 `REVOKE`(PENDING)를 기록하고, `MANUAL`이면 기록하지 않는다. MANUAL에서 「환불된 주문에 `EARN`은 있고 `REVOKE`가 없는 상태」가 수동 확인 대기다(감사 로그 `rewardRevoke: manual_review`).
 - 결제 확인에 결제수단이 없으면 주문에 저장된 결제수단으로 적립률을 정한다.
 - 원장의 실제 처리(SUCCEEDED·잔액 반영), 주문에 쓴 적립금(`USE`)을 환불·취소 때 돌려주는 것은 다음 단계(적립금 사용 기능과 함께).
 
@@ -330,11 +331,14 @@ PG 연결 정보, 구매자 문의·공지, 알림 발송 기록, 도우미 자�
 - `Shipment`(주문당 1개): 택배사 코드(`CJ | HANJIN | LOTTE | LOGEN | EPOST`), 송장번호(영문·숫자 8~30자, 하이픈·공백 제거), 상태, 발송 시각(DB 시계), 배송 완료 시각.
   - `POST /api/seller/orders/{orderId}/ship`(`ORDER_SHIPPING`, 잠금 중에도 가능): 결제 완료(`PAID`) 즉시 발송 주문만 `IN_TRANSIT`로 만든다. 재고 부족(`stockShortageAt`) 주문, 배송지가 없는 주문도 `409 not_shippable`. 배송 중에는 송장을 고쳐 다시 넣을 수 있고(첫 발송 시각 유지, `order.shipment.update` 기록), 배송 완료 뒤에는 바꾸지 않는다. 주문 상태는 `PAID` 그대로.
   - 발송한(Shipment가 있는) 주문을 환불하면 재고를 되돌리지 않고 배송 기록도 그대로 둔다. 감사 로그 `order.refund`에 `shippedBeforeRefund: true`와 배송 상태를 남긴다. 배송비 환불 금액 규칙은 대표님 결정 대기(지금은 주문 전체 금액 기준 그대로).
-  - 배송 완료(`DELIVERED`) 전환·배송 추적·발송 알림은 아직 없다.
+  - 배송 완료 `POST /api/seller/orders/{orderId}/deliver`(`ORDER_SHIPPING`, 잠금 중에도 가능): 결제 완료·배송 중(`IN_TRANSIT`)인 주문만 `DELIVERED`·`deliveredAt`(DB 시계)로 바꾸고 아직 없으면 `EARN`을 기록한다. 아니면 `409 not_deliverable`. 주문 행을 잠가 발송·환불과 겹치지 않는다. 감사 로그 `order.deliver`.
+  - 자동 처리(`lib/server/orders/delivery.ts`, 정기 실행 연결은 인프라 승인 대기): `autoCompleteDeliveries`는 발송 뒤 `autoDeliverDays`가 지난 배송 중 주문을 배송 완료(`order.auto_deliver`), `autoConfirmPurchases`는 배송 완료 뒤 `autoConfirmDays`가 지난 결제 완료 주문에 `Order.purchaseConfirmedAt`을 남긴다(`order.purchase_confirmed`). 주문 상태는 `PAID` 그대로. 멱등이고 한 건 실패해도 나머지는 계속한다(`*_failed` 감사 로그).
+  - 배송 추적·발송 알림은 아직 없다.
 
 ### 4.11 입금 기한·미입금 자동 취소·구매 제한 (PRODUCT_SCOPE 「무통장 입금·구매 제한 기본값」, MASTER 결정)
 
 - `SellerOrderPolicy`(판매자당 1행, 없으면 기본값): autoCancelEnabled(미입금 자동 취소 사용, 기본 켜짐), paymentDueHours(기본 24시간, 1~720시간=30일, 대표님 결정 2026-10-03. 이미 저장된 판매자 설정값은 바꾸지 않음), unpaidRestrictionEnabled(기본 켜짐). `GET·PUT /api/seller/order-policy`(`SHOP_SETTINGS`, 틀리면 `400 invalid_order_policy`, 감사 로그).
+  - 자동 배송 완료 `autoDeliverEnabled`·`autoDeliverDays`, 자동 구매 확정 `autoConfirmEnabled`·`autoConfirmDays`(기본 사용·7일, 1~30일). `PUT /api/seller/order-policy`에서 빼고 보내면 지금 값 유지.
 - 주문할 때 `Order.paymentDueAt` = 주문 시각 + paymentDueHours. 주문 시각은 판매자 주문 잠금을 잡은 뒤의 `clock_timestamp()`(트랜잭션 시작 시각인 `now()`가 아님). 설정을 바꿔도 이미 만든 주문은 그대로. 이 기능 전에 만든 결제 대기 주문은 마이그레이션(#82)에서 주문 시각 + 10일로 채웠다(당시 기본값, 운영 데이터 없음). 자동 취소를 끈 쇼핑몰의 새 주문은 기한이 없다(이미 기한이 붙은 주문은 그대로 자동 취소 대상). PG 연동 때 무통장 입금 주문에만 두도록 바꾼다(MASTER 결정).
 - 자동 취소 `cancelOverdueOrders`(lib/server/orders/overdue.ts): 기한이 지난 결제 대기 주문을 판매자별 주문 잠금(order_no) 아래에서 `status = PENDING_PAYMENT` 조건으로 취소하고 `autoCancelledAt`, 시스템 상태 이력(reason `payment_overdue`), 감사 로그 `order.auto_cancel`을 남긴다. 재고는 결제 때 빼므로 되돌릴 것이 없다. 여러 번·동시에 돌려도 주문마다 한 번만 취소(멱등). 주문마다 따로 처리해 한 건이 실패해도 나머지는 계속하고, 실패한 건은 감사 로그 `order.auto_cancel_failed`를 남긴 뒤 다음 실행에서 다시 시도한다(결과의 `failed`). 정기 실행 연결은 인프라 승인 대기.
   - 결제 확인(`markOrderPaid`)도 `status = PENDING_PAYMENT` 조건으로 바꿔, 자동 취소와 겹치면 둘 중 하나만 된다.

@@ -12,6 +12,8 @@ export const ORDER_ERROR_MESSAGES = {
   invalid_shipping_address: "받는 분, 연락처, 주소를 다시 확인해 주세요",
   invalid_shipment: "택배사와 송장번호를 다시 확인해 주세요",
   not_shippable: "결제가 끝난 주문만 발송할 수 있어요",
+  not_deliverable: "배송 중인 주문만 배송 완료로 바꿀 수 있어요",
+  invalid_reward_policy: "적립금 지급 시점을 다시 골라 주세요",
   invalid_shipping_policy: "배송비 설정을 다시 확인해 주세요",
   // 구매자 저장 배송지
   invalid_address_label: "배송지 이름을 다시 확인해 주세요",
@@ -38,7 +40,7 @@ export const ORDER_ERROR_MESSAGES = {
   // 무통장 입금·구매 제한
   purchase_restricted: "입금하지 않은 주문이 쌓여서 지금은 주문할 수 없어요. 판매자에게 문의해 주세요",
   order_rate_limited: "잠시 뒤 다시 주문해 주세요",
-  invalid_order_policy: "자동 취소 기간은 1시간에서 30일 사이로 정해 주세요",
+  invalid_order_policy: "자동 취소 기간은 1시간에서 30일, 자동 배송 완료·구매 확정은 1일에서 30일 사이로 정해 주세요",
   no_restriction: "주문 제한이 걸려 있지 않아요",
   invalid_reason: "사유를 다시 확인해 주세요",
   // 수동 재고 증감

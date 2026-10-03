@@ -316,34 +316,9 @@ export async function markOrderPaid(
         });
         queueItemIds.push(q.id);
       }
-      // 적립금 지급 대기 기록(실지급 스위치가 꺼져 있으면 testMode). 지급·잔액 반영은 다음 단계.
-      // 적립 기준액 = 상품 결제 금액(주문 품목 단가 × 수량 합, 배송비 제외) − 적립금 사용액. totalAmount는 쓰지 않는다.
-      const policy = await tx.rewardPolicy.findUnique({ where: { sellerId } });
-      const amount = policy
-        ? earnAmount({
-            rates: policy.rates,
-            earnStartsAt: policy.earnStartsAt,
-            gradeId: order.buyerMember.gradeId,
-            paymentMethod,
-            base: rewardBase(order.items, order.rewardUsedAmount),
-            now,
-          })
-        : 0;
-      if (policy && amount > 0) {
-        await tx.rewardLedger.create({
-          data: {
-            sellerId,
-            buyerMemberId: order.buyerMemberId,
-            orderId,
-            type: "EARN",
-            amount,
-            status: "PENDING",
-            testMode: !policy.livePayoutEnabled,
-            idempotencyKey: `earn:${orderId}`,
-            createdAt: now,
-          },
-        });
-      }
+      // 적립금 지급 시점이 「결제 즉시」인 쇼핑몰만 지금 기록한다. 「배송 완료 후」(기본)는 배송 완료 때 기록한다(orders/delivery.ts).
+      const timing = await tx.rewardPolicy.findUnique({ where: { sellerId }, select: { earnTiming: true } });
+      if (timing?.earnTiming === "ON_PAYMENT") await recordOrderEarn(tx, { sellerId, orderId, now });
       await writeAudit(tx, { ...system, sellerId, action: "order.paid", targetType: "Order", targetId: orderId });
       return { orderId, stockShortage: false, queueItemIds };
     });
@@ -362,9 +337,44 @@ export async function markOrderPaid(
   });
 }
 
-// 적립 기준액: 상품 결제 금액(배송비 제외) − 적립금 사용액(ARCHITECTURE 4.7)
-export function rewardBase(items: { unitPrice: number; quantity: number }[], rewardUsedAmount: number): number {
-  return items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0) - rewardUsedAmount;
+// 적립 기준액(대표님 결정 2026-10-03): 할인 후 상품 금액(주문 품목 단가 × 수량 합). 배송비는 빼고, 적립금으로 낸 금액은 빼지 않는다.
+export function rewardBase(items: { unitPrice: number; quantity: number }[]): number {
+  return items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
+}
+
+// 적립금 지급 대기(EARN) 기록. 주문당 한 번(idempotencyKey earn:{orderId}), 이미 있으면 그대로 둔다.
+// 등급은 기록하는 때의 회원 등급, 결제수단은 주문에 저장된 값으로 적립률을 고른다. 실지급 스위치가 꺼져 있으면 testMode.
+// 지급·잔액 반영은 다음 단계. 기록했으면 금액, 아니면 0을 돌려준다.
+export async function recordOrderEarn(tx: Tx, input: { sellerId: string; orderId: string; now: Date }): Promise<number> {
+  const { sellerId, orderId, now } = input;
+  const policy = await tx.rewardPolicy.findUnique({ where: { sellerId } });
+  if (!policy) return 0;
+  const key = `earn:${orderId}`;
+  if (await tx.rewardLedger.findUnique({ where: { sellerId_idempotencyKey: { sellerId, idempotencyKey: key } }, select: { id: true } })) return 0;
+  const order = await tx.order.findUniqueOrThrow({ where: { id: orderId }, include: { items: true, buyerMember: { select: { gradeId: true } } } });
+  const amount = earnAmount({
+    rates: policy.rates,
+    earnStartsAt: policy.earnStartsAt,
+    gradeId: order.buyerMember.gradeId,
+    paymentMethod: order.paymentMethod,
+    base: rewardBase(order.items),
+    now,
+  });
+  if (amount <= 0) return 0;
+  await tx.rewardLedger.create({
+    data: {
+      sellerId,
+      buyerMemberId: order.buyerMemberId,
+      orderId,
+      type: "EARN",
+      amount,
+      status: "PENDING",
+      testMode: !policy.livePayoutEnabled,
+      idempotencyKey: key,
+      createdAt: now,
+    },
+  });
+  return amount;
 }
 
 async function markPaidIfPending(tx: Tx, sellerId: string, orderId: string, data: Prisma.OrderUpdateManyMutationInput) {
