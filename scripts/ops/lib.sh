@@ -121,9 +121,12 @@ mark_deploying() {
   DEPLOY_MARK_KEEPER=$!
 }
 # 감시 수집기가 떠 있으면 지금 compose 정의(가용성 여부 포함)로 다시 만든다(감시 대상이 앱 수에 맞게 바뀜).
+# 컨테이너가 있으면(멈춤·생성만 됨 포함) 다시 만든다: 지난 새로 고침이 중간에 실패해 컨테이너가 멈춰 있어도 다시 실행하면 복구된다.
+# 감시를 끄려면 컨테이너를 지운다(compose --profile monitor rm -sf obs-web-monitor). 실패하면 0이 아닌 코드로 끝난다.
 refresh_monitor() {
-  if [ -n "$(docker ps -q --filter label=com.docker.compose.project=obs-web --filter label=com.docker.compose.service=obs-web-monitor)" ]; then
-    compose --profile monitor up -d --no-build --no-deps --force-recreate obs-web-monitor >/dev/null
+  if [ -n "$(docker ps -aq --filter label=com.docker.compose.project=obs-web --filter label=com.docker.compose.service=obs-web-monitor)" ]; then
+    compose --profile monitor up -d --no-build --no-deps --force-recreate obs-web-monitor >/dev/null \
+      || die "감시 수집기를 다시 만들지 못했어요. 같은 명령을 다시 실행해 주세요(구성 전환은 끝났어요)."
     log "감시 수집기를 다시 만들었어요(감시 대상: $(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$(container_of obs-web-monitor)" | grep '^MONITOR_TARGETS=' | cut -d= -f2- | tr ',' '\n' | cut -d= -f1 | paste -sd, -))"
   fi
 }

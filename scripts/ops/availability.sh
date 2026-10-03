@@ -71,7 +71,8 @@ case "${1:-status}" in
   on)
     require_test_env
     # 이미 켜져 있으면 아무것도 바꾸지 않는다(되돌리기가 시작 때와 다른 상태로 가지 않게).
-    if availability_on; then log "이미 켜져 있어요(실제 구성은 availability.sh status로 확인)."; exit 0; fi
+    # 감시 수집기 새로 고침은 다시 실행한다(지난번에 전환만 되고 새로 고침이 실패했으면 여기서 복구).
+    if availability_on; then refresh_monitor; log "이미 켜져 있어요(실제 구성은 availability.sh status로 확인)."; exit 0; fi
     [ -n "$APP_VERSION" ] || die "떠 있는 앱 버전을 찾지 못했어요. 먼저 배포해 주세요."
     # 표시 파일은 compose가 가용성 정의를 읽게 하는 스위치다.
     guard rollback_on
@@ -83,7 +84,7 @@ case "${1:-status}" in
     ;;
   off)
     require_test_env
-    if ! availability_on; then log "이미 꺼져 있어요(실제 구성은 availability.sh status로 확인)."; exit 0; fi
+    if ! availability_on; then refresh_monitor; log "이미 꺼져 있어요(실제 구성은 availability.sh status로 확인)."; exit 0; fi
     guard rollback_off
     rm -f "$AVAIL_MARK"
     run_compose up -d --no-build --wait --remove-orphans || rollback_off "compose 실패"
