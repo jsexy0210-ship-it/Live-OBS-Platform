@@ -1045,23 +1045,27 @@ model Shipment {
 
 // 판매자 주문 정책(판매자당 1행, 없으면 기본값). PRODUCT_SCOPE 「무통장 입금·구매 제한 기본값」.
 model SellerOrderPolicy {
-  sellerId                   String    @id @db.Uuid
+  sellerId                       String    @id @db.Uuid
   // 미입금 자동 취소 사용 여부와 기간(시간). 기본 사용·24시간, 1~720시간(대표님 결정 2026-10-03).
   // 주문할 때 paymentDueAt을 정하는 데만 쓰고(끄면 기한 없음), 이미 만든 주문은 바꾸지 않는다.
-  autoCancelEnabled          Boolean   @default(true)
-  paymentDueHours            Int       @default(24)
+  autoCancelEnabled              Boolean   @default(true)
+  paymentDueHours                Int       @default(24)
   // 취소·반품 때 재고 자동 복구(기본 켜짐). 결제 전 취소·미입금 자동 취소·발송 전 환불에 적용한다.
-  restockOnCancel            Boolean   @default(true)
+  restockOnCancel                Boolean   @default(true)
   // 배송 중 n일 뒤 자동 배송 완료(기본 사용·7일), 배송 완료 n일 뒤 자동 구매 확정(기본 사용·7일). 1~30일(PRODUCT_SCOPE 「배송 완료」·「구매 확정」).
-  autoDeliverEnabled         Boolean   @default(true)
-  autoDeliverDays            Int       @default(7)
-  autoConfirmEnabled         Boolean   @default(true)
-  autoConfirmDays            Int       @default(7)
+  autoDeliverEnabled             Boolean   @default(true)
+  autoDeliverDays                Int       @default(7)
+  autoConfirmEnabled             Boolean   @default(true)
+  autoConfirmDays                Int       @default(7)
   // 「미입금 자동 취소 3회 → 30일 주문 막기」
-  unpaidRestrictionEnabled   Boolean   @default(true)
+  unpaidRestrictionEnabled       Boolean   @default(true)
   // 꺼져 있다가 다시 켠 시각. 이 뒤의 자동 취소만 센다(MASTER 결정).
-  unpaidRestrictionEnabledAt DateTime? @db.Timestamptz(3)
-  updatedAt                  DateTime  @default(now()) @updatedAt @db.Timestamptz(3)
+  unpaidRestrictionEnabledAt     DateTime? @db.Timestamptz(3)
+  // 「결제 후 취소 5회 → 30일 주문 막기」(기본 꺼짐). 판매자 사정(refundFault=SELLER)이 아닌 환불을 센다.
+  paidCancelRestrictionEnabled   Boolean   @default(false)
+  // 켠 시각. 이 뒤의 환불만 센다(켜기 전 환불은 넣지 않음).
+  paidCancelRestrictionEnabledAt DateTime? @db.Timestamptz(3)
+  updatedAt                      DateTime  @default(now()) @updatedAt @db.Timestamptz(3)
 
   seller Seller @relation(fields: [sellerId], references: [id])
 }

@@ -10,6 +10,8 @@ import { requireSellerPermission, requireSellerRead, type TenantContext } from "
 // - 자동 취소: 기한이 지난 결제 대기 주문을 취소한다. 재고는 결제 때 차감하므로 되돌릴 것이 없다. 여러 번 돌려도 같은 결과(멱등).
 //   정기 실행(cron) 연결은 인프라 승인 대기라 함수만 둔다.
 // - 자동 구매 제한: 같은 쇼핑몰에서 미입금 자동 취소가 3회 쌓이면 30일 동안 새 주문을 막는다(판매자 설정으로 끌 수 있음).
+//   「결제 후 취소 5회 → 30일」(기본 꺼짐): 판매자 사정(refundFault=SELLER)이 아닌 환불이 5회 쌓이면 같은 식으로 막는다
+//   (환불 처리 queue/service refundOrder에서 센다).
 // 같은 판매자의 주문 생성과 같은 advisory lock(order_no:{sellerId}) 아래에서 처리해, 제한이 생기는 순간과 주문이 엇갈리지 않게 한다.
 
 // 미입금 자동 취소 기간: 기본 사용·주문 후 24시간, 1시간~30일(대표님 결정 2026-10-03, 기간 범위·끄기는 카페24 방식)
@@ -18,6 +20,8 @@ export const MAX_PAYMENT_DUE_HOURS = 720;
 export const UNPAID_CANCEL_LIMIT = 3;
 export const RESTRICTION_DAYS = 30;
 export const RESTRICTION_REASON_UNPAID = "UNPAID_AUTO_CANCEL";
+export const PAID_CANCEL_LIMIT = 5;
+export const RESTRICTION_REASON_PAID_CANCEL = "PAID_CANCEL";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 // autoCancelEnabled가 꺼져 있으면 새 주문에 입금 기한을 두지 않아 자동 취소되지 않는다(이미 기한이 붙은 주문은 그대로).
@@ -27,6 +31,7 @@ export type OrderPolicy = {
   autoCancelEnabled: boolean;
   paymentDueHours: number;
   unpaidRestrictionEnabled: boolean;
+  paidCancelRestrictionEnabled: boolean;
   restockOnCancel: boolean;
   autoDeliverEnabled: boolean;
   autoDeliverDays: number;
@@ -36,7 +41,9 @@ export type OrderPolicy = {
 export const DEFAULT_AUTO_DAYS = 7;
 export const MAX_AUTO_DAYS = 30;
 
-export async function getOrderPolicy(db: Db, sellerId: string): Promise<OrderPolicy & { unpaidRestrictionEnabledAt: Date | null }> {
+type PolicyAnchors = { unpaidRestrictionEnabledAt: Date | null; paidCancelRestrictionEnabledAt: Date | null };
+
+export async function getOrderPolicy(db: Db, sellerId: string): Promise<OrderPolicy & PolicyAnchors> {
   const p = await db.sellerOrderPolicy.findUnique({ where: { sellerId } });
   return p
     ? {
@@ -44,6 +51,8 @@ export async function getOrderPolicy(db: Db, sellerId: string): Promise<OrderPol
         paymentDueHours: p.paymentDueHours,
         unpaidRestrictionEnabled: p.unpaidRestrictionEnabled,
         unpaidRestrictionEnabledAt: p.unpaidRestrictionEnabledAt,
+        paidCancelRestrictionEnabled: p.paidCancelRestrictionEnabled,
+        paidCancelRestrictionEnabledAt: p.paidCancelRestrictionEnabledAt,
         restockOnCancel: p.restockOnCancel,
         autoDeliverEnabled: p.autoDeliverEnabled,
         autoDeliverDays: p.autoDeliverDays,
@@ -55,6 +64,8 @@ export async function getOrderPolicy(db: Db, sellerId: string): Promise<OrderPol
         paymentDueHours: DEFAULT_PAYMENT_DUE_HOURS,
         unpaidRestrictionEnabled: true,
         unpaidRestrictionEnabledAt: null,
+        paidCancelRestrictionEnabled: false,
+        paidCancelRestrictionEnabledAt: null,
         restockOnCancel: true,
         autoDeliverEnabled: true,
         autoDeliverDays: DEFAULT_AUTO_DAYS,
@@ -80,20 +91,32 @@ export function activeRestriction(db: Db, sellerId: string, buyerMemberId: strin
   });
 }
 
-// 마지막 제한(풀었으면 푼 시각, 아니면 시작 시각) 뒤에 생긴 자동 취소가 기준 횟수에 닿으면 제한을 만든다.
-// 판매자가 자동 제한을 다시 켰으면 켠 시각 뒤의 자동 취소만 센다(끈 동안 쌓인 횟수는 넣지 않음, MASTER 결정).
-async function maybeRestrict(tx: Prisma.TransactionClient, sellerId: string, buyerMemberId: string, now: Date) {
+// 마지막 제한(사유와 상관없이, 풀었으면 푼 시각, 아니면 시작 시각) 뒤에 쌓인 횟수가 기준에 닿으면 제한을 만든다.
+// 판매자가 자동 제한을 (다시) 켰으면 켠 시각 뒤의 것만 센다(끈 동안 쌓인 횟수는 넣지 않음, MASTER 결정).
+// - unpaid: 미입금 자동 취소(autoCancelledAt) 3회
+// - paid_cancel: 판매자 사정(refundFault=SELLER)이 아닌 환불(refundedAt) 5회
+// 주문 생성과 같은 잠금(lockSellerOrders) 아래에서 부른다.
+export async function maybeRestrict(tx: Prisma.TransactionClient, sellerId: string, buyerMemberId: string, now: Date, kind: "unpaid" | "paid_cancel" = "unpaid") {
   const policy = await getOrderPolicy(tx, sellerId);
-  if (!policy.unpaidRestrictionEnabled) return null;
+  const rule =
+    kind === "unpaid"
+      ? { enabled: policy.unpaidRestrictionEnabled, enabledAt: policy.unpaidRestrictionEnabledAt, limit: UNPAID_CANCEL_LIMIT, reason: RESTRICTION_REASON_UNPAID }
+      : { enabled: policy.paidCancelRestrictionEnabled, enabledAt: policy.paidCancelRestrictionEnabledAt, limit: PAID_CANCEL_LIMIT, reason: RESTRICTION_REASON_PAID_CANCEL };
+  if (!rule.enabled) return null;
   if (await activeRestriction(tx, sellerId, buyerMemberId, now)) return null;
   const last = await tx.buyerPurchaseRestriction.findFirst({ where: { sellerId, buyerMemberId }, orderBy: { startsAt: "desc" } });
-  const anchors = [new Date(0), policy.unpaidRestrictionEnabledAt, last ? (last.liftedAt ?? last.startsAt) : null].filter((d): d is Date => d !== null);
+  const anchors = [new Date(0), rule.enabledAt, last ? (last.liftedAt ?? last.startsAt) : null].filter((d): d is Date => d !== null);
   const anchor = new Date(Math.max(...anchors.map((d) => d.getTime())));
-  const count = await tx.order.count({ where: { sellerId, buyerMemberId, autoCancelledAt: { gt: anchor } } });
-  if (count < UNPAID_CANCEL_LIMIT) return null;
+  const count = await tx.order.count({
+    where:
+      kind === "unpaid"
+        ? { sellerId, buyerMemberId, autoCancelledAt: { gt: anchor } }
+        : { sellerId, buyerMemberId, status: "REFUNDED", refundedAt: { gt: anchor }, OR: [{ refundFault: null }, { refundFault: { not: "SELLER" } }] },
+  });
+  if (count < rule.limit) return null;
   const endsAt = new Date(now.getTime() + RESTRICTION_DAYS * 24 * 60 * 60 * 1000);
   const r = await tx.buyerPurchaseRestriction.create({
-    data: { sellerId, buyerMemberId, reason: RESTRICTION_REASON_UNPAID, startsAt: now, endsAt },
+    data: { sellerId, buyerMemberId, reason: rule.reason, startsAt: now, endsAt },
   });
   await writeAudit(tx, {
     actorType: "SYSTEM",
@@ -101,7 +124,7 @@ async function maybeRestrict(tx: Prisma.TransactionClient, sellerId: string, buy
     action: "buyer.purchase_restriction.create",
     targetType: "BuyerMember",
     targetId: buyerMemberId,
-    after: { reason: RESTRICTION_REASON_UNPAID, unpaidCancels: count, endsAt },
+    after: { reason: rule.reason, ...(kind === "unpaid" ? { unpaidCancels: count } : { paidCancels: count }), endsAt },
   });
   return r;
 }
@@ -223,7 +246,7 @@ export async function liftRestriction(db: PrismaClient, ctx: TenantContext, buye
 
 export async function readOrderPolicy(db: PrismaClient, ctx: TenantContext): Promise<OrderPolicy> {
   requireSellerRead(ctx, "SHOP_SETTINGS");
-  const { unpaidRestrictionEnabledAt: _at, ...policy } = await getOrderPolicy(db, ctx.sellerId);
+  const { unpaidRestrictionEnabledAt: _u, paidCancelRestrictionEnabledAt: _p, ...policy } = await getOrderPolicy(db, ctx.sellerId);
   return policy;
 }
 
@@ -242,6 +265,7 @@ export async function updateOrderPolicy(db: PrismaClient, ctx: TenantContext, ra
     h < 1 ||
     h > MAX_PAYMENT_DUE_HOURS ||
     typeof b.unpaidRestrictionEnabled !== "boolean" ||
+    (b.paidCancelRestrictionEnabled !== undefined && typeof b.paidCancelRestrictionEnabled !== "boolean") ||
     (b.restockOnCancel !== undefined && typeof b.restockOnCancel !== "boolean") ||
     (b.autoDeliverEnabled !== undefined && typeof b.autoDeliverEnabled !== "boolean") ||
     (b.autoConfirmEnabled !== undefined && typeof b.autoConfirmEnabled !== "boolean") ||
@@ -253,22 +277,28 @@ export async function updateOrderPolicy(db: PrismaClient, ctx: TenantContext, ra
   return db.$transaction(async (tx) => {
     // 같은 판매자의 자동 취소·주문과 순서를 맞춘다
     await lockSellerOrders(tx, ctx.sellerId);
-    // restockOnCancel·자동 배송 완료·자동 구매 확정은 빼고 보내면 지금 값을 그대로 둔다
+    // 결제 후 취소 제한·restockOnCancel·자동 배송 완료·자동 구매 확정은 빼고 보내면 지금 값을 그대로 둔다
     const current = await getOrderPolicy(tx, ctx.sellerId);
     const policy: OrderPolicy = {
       autoCancelEnabled: b.autoCancelEnabled as boolean,
       paymentDueHours: h,
       unpaidRestrictionEnabled: b.unpaidRestrictionEnabled as boolean,
+      paidCancelRestrictionEnabled: typeof b.paidCancelRestrictionEnabled === "boolean" ? b.paidCancelRestrictionEnabled : current.paidCancelRestrictionEnabled,
       restockOnCancel: typeof b.restockOnCancel === "boolean" ? b.restockOnCancel : current.restockOnCancel,
       autoDeliverEnabled: typeof b.autoDeliverEnabled === "boolean" ? b.autoDeliverEnabled : current.autoDeliverEnabled,
       autoDeliverDays: isAutoDays(b.autoDeliverDays) ? b.autoDeliverDays : current.autoDeliverDays,
       autoConfirmEnabled: typeof b.autoConfirmEnabled === "boolean" ? b.autoConfirmEnabled : current.autoConfirmEnabled,
       autoConfirmDays: isAutoDays(b.autoConfirmDays) ? b.autoConfirmDays : current.autoConfirmDays,
     };
-    const { unpaidRestrictionEnabledAt: _at, ...before } = await getOrderPolicy(tx, ctx.sellerId);
-    // 꺼져 있다가 켜면 켠 시각을 남긴다(그 뒤 자동 취소만 센다). 끄더라도 이미 걸린 제한은 그대로 둔다.
-    const reEnabled = !before.unpaidRestrictionEnabled && policy.unpaidRestrictionEnabled;
-    const data = { ...policy, ...(reEnabled ? { unpaidRestrictionEnabledAt: await dbClock(tx) } : {}) };
+    const { unpaidRestrictionEnabledAt: _u, paidCancelRestrictionEnabledAt: _p, ...before } = current;
+    // 꺼져 있다가 켜면 켠 시각을 남긴다(그 뒤의 횟수만 센다). 끄더라도 이미 걸린 제한은 그대로 둔다.
+    const turnedOn = (was: boolean, is: boolean) => !was && is;
+    const at = await dbClock(tx);
+    const data = {
+      ...policy,
+      ...(turnedOn(before.unpaidRestrictionEnabled, policy.unpaidRestrictionEnabled) ? { unpaidRestrictionEnabledAt: at } : {}),
+      ...(turnedOn(before.paidCancelRestrictionEnabled, policy.paidCancelRestrictionEnabled) ? { paidCancelRestrictionEnabledAt: at } : {}),
+    };
     await tx.sellerOrderPolicy.upsert({ where: { sellerId: ctx.sellerId }, create: { sellerId: ctx.sellerId, ...data }, update: data });
     await writeAudit(tx, {
       actorType: ctx.actorType,

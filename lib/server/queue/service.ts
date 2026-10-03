@@ -1,6 +1,7 @@
 import { Prisma, type PaymentMethod, type PrismaClient, type QueueItem, type RefundFault } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { notifySellerChanged } from "../realtime/notify";
+import { lockSellerOrders, maybeRestrict } from "../orders/overdue";
 import { getShippingPolicy } from "../orders/shipping";
 import { earnQuote } from "../rewards/earn";
 import { requireSellerPermission, type TenantContext } from "../tenant/context";
@@ -612,6 +613,9 @@ export async function refundOrder(
         ...(order.shipment ? { shipmentStatus: order.shipment.status } : {}),
       },
     });
+    // 「결제 후 취소 5회 → 30일」(판매자 설정, 기본 꺼짐). 주문 생성과 같은 잠금 아래에서 세어 제한과 새 주문이 엇갈리지 않게 한다.
+    await lockSellerOrders(tx, ctx.sellerId);
+    await maybeRestrict(tx, ctx.sellerId, order.buyerMemberId, now, "paid_cancel");
     return { orderId, restockedItemIds, cancelledQueueItemIds, openedItemCount, rewardRevoke, refundAmount, refundFault, returnFeeDeducted };
   });
 }

@@ -94,6 +94,7 @@ describe("입금 기한", () => {
       autoCancelEnabled: true,
       paymentDueHours: 24,
       unpaidRestrictionEnabled: true,
+      paidCancelRestrictionEnabled: false,
       restockOnCancel: true,
       autoDeliverEnabled: true,
       autoDeliverDays: 7,
