@@ -2,7 +2,7 @@ import type { AutomationJob, AutomationPayment, PrismaClient } from "@prisma/cli
 import { writeAudit } from "../audit/log";
 import { notFound } from "../authz/errors";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
-import { dbNow, lockJob, writeJobEvent } from "./queue";
+import { dbNow, lockJob, markRefundPending, writeJobEvent } from "./queue";
 import { sourcesOf } from "./states";
 import { STEPS } from "./steps";
 
@@ -82,7 +82,8 @@ export async function getJob(db: PrismaClient, ctx: TenantContext, jobId: string
   return toView(j);
 }
 
-type ChangeResult = { ok: true; job: JobView } | { ok: false; reason: "invalid_state" };
+// action_expired: 고객 행동 마감이 지나 재개할 수 없다(그 자리에서 실패·전액 환불 처리 대기로 끝냈다)
+type ChangeResult = { ok: true; job: JobView } | { ok: false; reason: "invalid_state" | "action_expired" };
 
 // 고객이 로그인·인증·권한 승인·로컬 도구 연결을 마쳤다: 대기열로 돌려 자동으로 이어 간다.
 export async function resumeJob(db: PrismaClient, ctx: TenantContext, jobId: string): Promise<ChangeResult> {
@@ -121,13 +122,27 @@ async function change(
     const cur = await tx.automationJob.findFirst({ where: { id: jobId, sellerId: ctx.sellerId } });
     if (!cur) throw notFound();
     const now = await dbNow(tx);
-    const r = await tx.automationJob.updateMany({ where: { id: jobId, sellerId: ctx.sellerId, status: { in: [...from] } }, data: { ...data(now, cur), status: to } });
+    // 마감이 지난 대기 작업은 회수(reapExpired)를 기다리지 않고 같은 트랜잭션에서 회수와 같게 끝낸다(재개로 되살리지 않음)
+    if (to === "QUEUED" && cur.status === "NEEDS_CUSTOMER" && cur.actionDeadlineAt && cur.actionDeadlineAt <= now) {
+      const failed = await tx.automationJob.update({
+        where: { id: jobId },
+        data: { status: "FAILED", lastError: "customer_action_timeout", finishedAt: now, customerAction: null, actionDeadlineAt: null },
+      });
+      await writeJobEvent(tx, failed, "NEEDS_CUSTOMER", "FAILED", failed.fencingToken, { reason: "customer_action_timeout" });
+      await markRefundPending(tx, failed, "customer_action_timeout", now);
+      return "expired" as const;
+    }
+    const r = await tx.automationJob.updateMany({
+      where: { id: jobId, sellerId: ctx.sellerId, status: { in: [...from] }, ...(to === "QUEUED" ? { OR: [{ actionDeadlineAt: null }, { actionDeadlineAt: { gt: now } }] } : {}) },
+      data: { ...data(now, cur), status: to },
+    });
     if (r.count !== 1) return false;
     const after = await tx.automationJob.findUniqueOrThrow({ where: { id: jobId } });
     await writeJobEvent(tx, after, cur.status, to, after.fencingToken, { by: ctx.actorId });
     await writeAudit(tx, { actorType: ctx.actorType, actorId: ctx.actorId, sellerId: ctx.sellerId, action, targetType: "AutomationJob", targetId: jobId, before: { status: cur.status }, after: { status: to } });
     return true;
   });
+  if (result === "expired") return { ok: false, reason: "action_expired" };
   return result ? { ok: true, job: await getJob(db, ctx, jobId) } : { ok: false, reason: "invalid_state" };
 }
 

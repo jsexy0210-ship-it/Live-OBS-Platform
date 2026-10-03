@@ -17,7 +17,7 @@ import {
 import type { Playbook } from "./playbook";
 import { findPlaybook, playbookForShopUrl } from "./playbooks";
 import { playbookReadiness } from "./practice";
-import { dbNow, writeJobEvent } from "./queue";
+import { dbNow, lockJob, writeJobEvent } from "./queue";
 
 // 자동 연결 결제. 결제는 기존 billing 공통 구조(BillingProvider, 등록된 카드 빌링키, 청구 id = orderId로 PG 중복 방지)를 그대로 쓴다.
 // 실행 권한(작업 QUEUED)은 서버가 PG에 결제 결과를 직접 조회해 PAID를 확인한 트랜잭션에서만 준다.
@@ -170,17 +170,8 @@ async function buyPaidJob(db: PrismaClient, provider: BillingProvider, ctx: Tena
     return { ok: false, reason: "job_in_progress", jobId: open?.id };
   }
 
-  try {
-    await provider.charge({
-      billingKey,
-      customerKey: ctx.sellerId,
-      amount,
-      orderId: created.payment.id,
-      orderName: input.kind === "INITIAL" ? AUTOMATION_ORDER_NAME : REINSTALL_ORDER_NAME,
-    });
-  } catch {
-    // 결과를 모른다. PENDING으로 두고 대사(reconcile)가 같은 청구 id로 PG에 확인한다.
-  }
+  // 여기서 멈춰도(결제 요청 전) 결제 요청 기록이 비어 있어 대사가 같은 청구 id로 보낸다
+  await submitCharge(db, provider, created.payment.id, billingKey, null);
   // 조회도 실패하면 PENDING으로 두고 대사가 다시 묻는다
   await verifyAndSettle(db, provider, created.payment.id).catch(() => null);
   const p = await db.automationPayment.findUniqueOrThrow({ where: { id: created.payment.id }, include: { job: true } });
@@ -332,13 +323,55 @@ export async function verifyAndSettle(
   });
 }
 
+// 결제 요청 보내기(outbox). 작업이 결제 대기(AWAITING_PAYMENT)이고 청구가 PENDING이며, 보낸 적이 없거나(null)
+// 마지막으로 보낸 지 resendBefore보다 오래됐을 때만 「보냄」을 먼저 기록하고 같은 청구 id(orderId)로 보낸다.
+// 같은 청구 id는 PG가 한 번만 결제하므로(공통 billing 계약) 다시 보내도 이중 결제가 없다. 작업자 둘이 동시에 보내지 않게 작업 행을 잠근다.
+async function submitCharge(db: PrismaClient, provider: BillingProvider, paymentId: string, billingKey: string, resendBefore: Date | null): Promise<void> {
+  const claimed = await db.$transaction(async (tx) => {
+    const p = await tx.automationPayment.findUniqueOrThrow({ where: { id: paymentId }, include: { job: { select: { id: true, kind: true } } } });
+    if (!p.job) return null;
+    await lockJob(tx, p.job.id);
+    const r = await tx.automationPayment.updateMany({
+      where: {
+        id: paymentId,
+        status: "PENDING",
+        job: { is: { status: "AWAITING_PAYMENT" } },
+        OR: resendBefore ? [{ chargeSubmittedAt: null }, { chargeSubmittedAt: { lte: resendBefore } }] : [{ chargeSubmittedAt: null }],
+      },
+      data: { chargeSubmittedAt: await dbNow(tx) },
+    });
+    return r.count === 1 ? { sellerId: p.sellerId, amount: p.amount, kind: p.job.kind } : null;
+  });
+  if (!claimed) return;
+  try {
+    await provider.charge({
+      billingKey,
+      customerKey: claimed.sellerId,
+      amount: claimed.amount,
+      orderId: paymentId,
+      orderName: claimed.kind === "INITIAL" ? AUTOMATION_ORDER_NAME : REINSTALL_ORDER_NAME,
+    });
+  } catch {
+    // 결과를 모른다. PENDING으로 두고 대사(reconcile)가 같은 청구 id로 PG에 확인한다.
+  }
+}
+
 // 결과를 못 받은(PENDING) 청구를 PG에 다시 묻는다. 작업자 반복에서 부른다. 확정한 건수를 돌려준다.
+// PG에 기록이 없으면(결제 요청 전에 멈췄거나 요청이 PG에 닿지 않음) 결제 대기 작업에 한해 같은 청구 id로 다시 보낸다.
 export async function reconcileAutomationPayments(db: PrismaClient, provider: BillingProvider, opts: { olderThanMs?: number } = {}): Promise<number> {
   const cutoff = new Date((await dbNow(db)).getTime() - (opts.olderThanMs ?? AUTOMATION_LIMITS.reconcileAfterMs));
-  const stale = await db.automationPayment.findMany({ where: { status: "PENDING", createdAt: { lte: cutoff } }, select: { id: true }, take: 50 });
+  const stale = await db.automationPayment.findMany({ where: { status: "PENDING", createdAt: { lte: cutoff } }, select: { id: true, sellerId: true }, take: 50 });
   let settled = 0;
   for (const p of stale) {
     // 한 건 조회가 실패해도 나머지는 계속 확인한다
+    try {
+      if ((await provider.getPayment(p.id)).status === "NOT_FOUND") {
+        const sub = await db.sellerSubscription.findUnique({ where: { sellerId: p.sellerId }, select: { billingKeyCipher: true } });
+        if (sub?.billingKeyCipher) await submitCharge(db, provider, p.id, openBillingKey(sub.billingKeyCipher, p.sellerId), cutoff);
+      }
+    } catch {
+      // 조회·다시 보내기가 실패해도 아래 확인(마감 처리 포함)은 한다
+    }
     const status = await verifyAndSettle(db, provider, p.id).catch(() => "PENDING" as const);
     if (status !== "PENDING") settled++;
   }

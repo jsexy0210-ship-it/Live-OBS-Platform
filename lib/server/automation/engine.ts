@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { cueMatches, matchException, type Playbook } from "./playbook";
 import {
-  hostAllowed,
   sanitizeObservation,
+  secretOriginAllowed,
   validateDecision,
   type ActionOutcome,
   type AutomationAction,
@@ -99,14 +99,11 @@ export async function runSteps(rt: AutomationRuntime, scope: JobScope, opts: Eng
     result = await runAll(rt, scope, opts, hooks, guard, (s) => (session = s), () => session);
     if (result.kind === "needs_customer" && opts.keepBrowserStateOnWait !== false && session !== null) {
       // 보관하기 전에 「보관 중」 표시를 먼저 남긴다(fenced). 그 뒤 취소·fencing이 일어나도 표시가 남아 서버가 반드시 지운다.
-      // 표시를 남기지 못하면(자리를 잃음) 보관하지 않고 바로 지운다.
-      try {
-        await hooks.holdBrowserState?.();
-        held = true;
-      } catch {
-        held = false;
-      }
-      if (held) result = { ...result, heldBrowserState: true };
+      // 표시를 남기지 못하면 보관하지 않고 지운 뒤 오류를 그대로 올린다: 자리를 잃었으면 작업자가 멈추고,
+      // 일시적인 오류면 다시 시도한다(보관본 없이 고객 대기로 두지 않는다).
+      await hooks.holdBrowserState?.();
+      held = true;
+      result = { ...result, heldBrowserState: true };
     }
     return result;
   } finally {
@@ -230,20 +227,25 @@ async function runAll(
       if (MUTATING.includes(action.type)) {
         const blocked = await checkTarget();
         if (blocked) return blocked;
-        // OBS를 처음 바꾸기 전에 같은 PC 잠금을 실제 PC로 옮긴다(다른 판매자·작업이 같은 PC를 동시에 바꾸지 못하게)
-        if (!session && !obsTargetClaimed && hooks.claimObsTarget) {
+        // OBS를 바꾸기 직전마다 실제 PC를 새로 읽는다. 무료 재연결은 기준 PC와 다르면 바꾸지 않고 멈춘다(앞선 대조 기록을 믿지 않음).
+        // 처음 바꾸기 전에는 같은 PC 잠금을 그 PC로 옮긴다(다른 판매자·작업이 같은 PC를 동시에 바꾸지 못하게)
+        if (!session && (want || (!obsTargetClaimed && hooks.claimObsTarget))) {
           guard();
           const pairingId = await rt.obs.currentPairingId(scope);
-          if (!pairingId) return { kind: "needs_customer", action: "LOCAL_TOOL" };
-          await hooks.claimObsTarget(pairingId);
-          obsTargetClaimed = true;
+          if (!pairingId) return want ? { kind: "failed", reason: "reconnect_target_unverified" } : { kind: "needs_customer", action: "LOCAL_TOOL" };
+          if (want && pairingId !== want.obsPairingId) return { kind: "failed", reason: "reconnect_target_mismatch" };
+          if (!obsTargetClaimed && hooks.claimObsTarget) {
+            await hooks.claimObsTarget(pairingId);
+            obsTargetClaimed = true;
+          }
         }
       }
-      // 비밀값 입력은 승인 때 관찰한 주소와 실행 직전 실제 문서 주소가 모두 허용 호스트여야 한다(리다이렉트로 다른 출처에 간 경우 차단)
+      // 비밀값 입력은 승인 때 관찰한 주소와 실행 직전 실제 문서 주소가 모두 관리 화면 출처여야 한다
+      // (리다이렉트로 다른 출처나 판매자가 꾸미는 쇼핑몰 앞 화면에 간 경우 차단)
       if (action.type === "fill" && "secretRef" in action.value) {
         guard();
         const here = session ? await session.currentUrl() : null;
-        if (!raw.url || !hostAllowed(raw.url) || !here || !hostAllowed(here)) return { kind: "failed", reason: "unsafe_action:secret_origin_not_allowed" };
+        if (!raw.url || !secretOriginAllowed(raw.url) || !here || !secretOriginAllowed(here)) return { kind: "failed", reason: "unsafe_action:secret_origin_not_allowed" };
       }
       guard();
       // 변경 행동의 고정 키: 작업·단계와 행동의 의미(종류·대상·값)의 해시. 순번과 무관해 같은 행동은 몇 번째로 오든 한 번만,

@@ -23,6 +23,7 @@ CREATE TABLE "AutomationPayment" (
     "requestFingerprint" TEXT NOT NULL,
     "consentNoticeVersion" TEXT NOT NULL,
     "consentAgreedAt" TIMESTAMPTZ(3) NOT NULL,
+    "chargeSubmittedAt" TIMESTAMPTZ(3),
     "providerPaymentId" TEXT,
     "failureReason" TEXT,
     "paidAt" TIMESTAMPTZ(3),

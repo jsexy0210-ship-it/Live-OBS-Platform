@@ -140,6 +140,15 @@ export function hostAllowed(raw: string): boolean {
   return ALLOWED_HOSTS.some((h) => u.hostname === h || u.hostname.endsWith(`.${h}`));
 }
 
+// 비밀값을 넣어도 되는 출처: 쇼핑몰 관리 화면 호스트만 정확히(하위 도메인 묶음 허용 아님).
+// 이동 허용 목록(*.cafe24.com)에는 판매자가 내용을 꾸미는 쇼핑몰 앞 화면(<몰>.cafe24.com)이 섞여 있어, 같은 칸 이름의 가짜 입력란에 비밀이 들어갈 수 있다.
+export const SECRET_FILL_HOSTS = ["admin.cafe24.com", "developers.cafe24.com"] as const;
+
+export function secretOriginAllowed(raw: string): boolean {
+  if (!hostAllowed(raw)) return false;
+  return (SECRET_FILL_HOSTS as readonly string[]).includes(new URL(raw).hostname);
+}
+
 // 판단 모델이 낸 행동을 실행 전에 검사한다. 화면 글에 숨은 지시(악성 페이지)를 따른 결과도 여기서 걸러진다:
 // 단계에 없는 행동, 허용 밖 주소, 비밀값을 화면 글로 옮겨 적기, 모르는 고객 행동은 모두 거부한다.
 // 비밀값을 넣어도 되는 칸: 비밀 참조 → 이 단계에서 허용된 입력 칸 이름 목록. 작업서가 단계마다 미리 정한다.

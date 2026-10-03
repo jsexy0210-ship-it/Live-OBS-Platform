@@ -1225,6 +1225,8 @@ model AutomationPayment {
   // 결제 전 고지(연결 시작 뒤 단순 변심 환불 없음, 실패 시 전액 환불) 동의 기록. 동의가 없으면 결제를 만들지 않는다. 시각은 DB 시계.
   consentNoticeVersion String
   consentAgreedAt      DateTime                @db.Timestamptz(3)
+  // 결제 요청 보낸 기록(outbox). null = 아직 PG에 보내지 않음(결제 행만 만들고 멈춤). 대사가 같은 청구 id로 다시 보낸다.
+  chargeSubmittedAt    DateTime?               @db.Timestamptz(3)
   providerPaymentId    String?
   failureReason        String?
   paidAt               DateTime?               @db.Timestamptz(3)

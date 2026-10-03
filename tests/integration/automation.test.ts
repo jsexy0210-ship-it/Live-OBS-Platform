@@ -149,6 +149,8 @@ describe("자동 연결 결제와 실행 권한", () => {
     const a = await shopWithCard();
     provider.failNext = "timeout_before_charge";
     expect(await purchaseAutomation(db, provider, a.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP })).toMatchObject({ ok: true, paymentStatus: "PENDING" });
+    // 대사가 다시 보낸 요청도 PG에 닿지 않았다
+    provider.failNext = "timeout_before_charge";
     await reconcileAutomationPayments(db, provider, { olderThanMs: 0 });
     expect((await db.automationPayment.findFirstOrThrow()).status).toBe("PENDING");
 
@@ -1195,15 +1197,16 @@ describe("Codex 4차 반영", () => {
       const rt = runtime();
       let asked = false;
       rt.browser.outcome = (_s, action) => (action.type === "click" && !asked ? ((asked = true), { kind: "needs_customer", action: "LOGIN" }) : undefined);
-      const r = await runSteps(rt, { sellerId: a.seller.id, jobId: a.jobId }, { ...baseOpts, startIndex: 0, stats: freshStats() }, {
+      const run = runSteps(rt, { sellerId: a.seller.id, jobId: a.jobId }, { ...baseOpts, startIndex: 0, stats: freshStats() }, {
         ...noHooks,
         holdBrowserState: async () => {
           if (when === "before_hold") await cancelJob(db, a.ctx, a.jobId);
           await markBrowserStateHeld(db, claimed.claim);
         },
       });
-      expect(r.kind).toBe("needs_customer");
       if (when === "after_hold") {
+        const r = await run;
+        expect(r.kind).toBe("needs_customer");
         expect(r).toMatchObject({ heldBrowserState: true });
         expect(rt.browser.saved.has(a.jobId)).toBe(true);
         // 대기 기록(parking) 전에 취소: 대기 기록은 fencing으로 거부되지만 표시가 남아 서버가 지운다
@@ -1212,7 +1215,8 @@ describe("Codex 4차 반영", () => {
         expect(await job(a.jobId)).toMatchObject({ status: "CANCELED", browserStateHeld: true });
         expect(await purgeEndedBrowserState(db, rt)).toBe(1);
       } else {
-        expect(r).not.toHaveProperty("heldBrowserState");
+        // 표시 전에 자리를 잃었다: 보관하지 않고 fencing 오류를 그대로 올린다(작업자는 아무것도 쓰지 않고 멈춘다)
+        await expect(run).rejects.toBeInstanceOf(FencingError);
       }
       expect(rt.browser.saved.size).toBe(0);
     }
@@ -1466,5 +1470,106 @@ describe("Codex 6차 반영(9144f55)", () => {
     }
     // 한 번 정리한 작업은 다시 고르지 않는다
     expect(await purgeEndedBrowserState(db, rt)).toBe(0);
+  });
+});
+
+describe("Codex 7차 반영(6325051)", () => {
+  async function completedJob() {
+    const s = await bought();
+    expect(await runOnce(db, runtime(), W)).toBe("succeeded");
+    return { ...s, target: { shopKey: `mall-${s.seller.id}`, obsPairingId: `pc-${s.seller.id}` } };
+  }
+
+  it("비밀값은 정해 둔 관리 화면 출처에서만 넣는다: 허용 이동 뒤 같은 칸 이름의 쇼핑몰 앞 화면(판매자가 꾸미는 화면)으로 넘어가면 입력 0회", async () => {
+    const cases: [string, (rt: ReturnType<typeof runtime>) => void][] = [
+      ["redirect", (rt) => (rt.browser.currentUrlOverride = () => "https://myshop.cafe24.com/product/detail.html")],
+      ["observed", (rt) => (rt.browser.pageUrl = () => "https://myshop.cafe24.com/board/free")],
+    ];
+    for (const [name, setup] of cases) {
+      const a = await bought();
+      const rt = runtime();
+      setup(rt);
+      expect(await runOnce(db, rt, W), name).toBe("failed");
+      expect(await job(a.jobId), name).toMatchObject({ status: "FAILED", lastError: "unsafe_action:secret_origin_not_allowed" });
+      expect(rt.browser.performed.filter((p) => p.type === "fill"), name).toHaveLength(0);
+      await db.automationJob.updateMany({ data: { deviatedSteps: [], lastDeviationAt: null } });
+    }
+  });
+
+  it("무료 재연결은 OBS를 바꾸기 직전마다 실제 PC를 새로 읽어 대조한다: 브라우저 단계 뒤 PC가 바뀌면 OBS 변경 0회", async () => {
+    const s = await completedJob();
+    const r = await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: newKey(), target: s.target });
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.kind).toBe("RECONNECT_FREE");
+    const rt = runtime();
+    rt.browser.outcome = (scope, action) => {
+      if (action.type === "click" && action.target === "저장") rt.obs.pairing.set(scope.sellerId, "pc-other");
+      return undefined;
+    };
+    expect(await runOnce(db, rt, W)).toBe("failed");
+    expect(await job(r.jobId)).toMatchObject({ status: "FAILED", lastError: "reconnect_target_mismatch" });
+    expect(rt.obs.performed.filter((p) => p.scope.jobId === r.jobId)).toHaveLength(0);
+  });
+
+  it("고객 행동 마감이 지난 뒤(회수 전) 재개하면 대기열로 가지 않고 실패·전액 환불 처리 대기가 된다", async () => {
+    const a = await bought();
+    const rt = runtime();
+    rt.browser.outcome = (_s, action) => (action.type === "click" ? { kind: "needs_customer", action: "LOGIN" } : undefined);
+    expect(await runOnce(db, rt, W)).toBe("needs_customer");
+    await db.automationJob.update({ where: { id: a.jobId }, data: { actionDeadlineAt: new Date(Date.now() - 1000) } });
+    expect(await resumeJob(db, a.ctx, a.jobId)).toEqual({ ok: false, reason: "action_expired" });
+    expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "customer_action_timeout", customerAction: null });
+    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "REFUND_PENDING", refundReason: "customer_action_timeout" });
+    expect(await runOnce(db, rt, W)).toBe("idle");
+  });
+
+  it("결제 행을 만든 뒤 결제 요청 전에 멈춰도, 대사가 같은 청구 id로 결제 요청을 한 번만 다시 보낸다(취소된 작업은 보내지 않음)", async () => {
+    const provider = new FakeBillingProvider();
+    const a = await shopWithCard();
+    provider.failNext = "timeout_before_charge";
+    const r = await purchaseAutomation(db, provider, a.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP });
+    if (!r.ok) throw new Error(r.reason);
+    expect(r).toMatchObject({ paymentStatus: "PENDING", jobStatus: "AWAITING_PAYMENT" });
+    expect(provider.charges).toHaveLength(0);
+
+    expect(await reconcileAutomationPayments(db, provider, { olderThanMs: 0 })).toBe(1);
+    await reconcileAutomationPayments(db, provider, { olderThanMs: 0 });
+    expect(provider.charges).toEqual([expect.objectContaining({ orderId: (await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).id, amount: AUTOMATION_PRICE })]);
+    expect(await job(r.jobId)).toMatchObject({ status: "QUEUED" });
+    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "PAID" });
+
+    // 결제 요청 전에 취소한 작업은 다시 보내지 않는다
+    const b = await shopWithCard();
+    provider.failNext = "timeout_before_charge";
+    const rb = await purchaseAutomation(db, provider, b.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP });
+    if (!rb.ok) throw new Error(rb.reason);
+    await cancelJob(db, b.ctx, rb.jobId);
+    await reconcileAutomationPayments(db, provider, { olderThanMs: 0 });
+    expect(provider.charges).toHaveLength(1);
+  });
+
+  it("브라우저 상태 「보관 중」 기록이 일시적인 DB 오류로 실패하면 고객 대기로 두지 않고 다시 시도한다", async () => {
+    const a = await bought();
+    let fail = true;
+    const flaky = db.$extends({
+      query: {
+        automationJob: {
+          async updateMany({ args, query }) {
+            if (fail && (args.data as { browserStateHeld?: unknown }).browserStateHeld === true) {
+              fail = false;
+              throw new Error("connection reset");
+            }
+            return query(args);
+          },
+        },
+      },
+    }) as unknown as typeof db;
+    const rt = runtime();
+    rt.browser.outcome = (_s, action) => (action.type === "click" ? { kind: "needs_customer", action: "LOGIN" } : undefined);
+    expect(await runOnce(flaky, rt, { ...W, random: () => 0 })).toBe("retry");
+    expect(fail).toBe(false);
+    expect(await job(a.jobId)).toMatchObject({ status: "QUEUED", lastError: "worker_error", browserStateHeld: false });
+    expect(await db.automationJob.count({ where: { status: "NEEDS_CUSTOMER" } })).toBe(0);
+    expect(rt.browser.saved.has(a.jobId)).toBe(false);
   });
 });
