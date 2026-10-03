@@ -1,0 +1,48 @@
+import Link from "next/link";
+
+// 로그인 밖 파트너스 화면(로그인 · 가입 신청 · 비밀번호 찾기) 공통 틀: 가운데 로고와 카드
+export function AuthFrame({ children, wide = false }: { children: React.ReactNode; wide?: boolean }) {
+  return (
+    <div className="login-page">
+      <Link className="logo" href="/seller/login" style={{ fontSize: 22 }} aria-label="파트너스 로그인으로">
+        <span className="logo-sym" />
+        <span className="logo-word" />
+        <span className="t-l1 c-alt" style={{ marginLeft: 6 }}>
+          파트너스
+        </span>
+      </Link>
+      <div className={`card col login-card${wide ? " pa-wide" : ""}`}>{children}</div>
+    </div>
+  );
+}
+
+// 단계 표시(1 본인확인 → 2 정보 입력 → 3 신청 완료). 지난 단계와 지금 단계는 채운 원
+export function Steps({ steps, current }: { steps: string[]; current: number }) {
+  return (
+    <ol className="pa-steps" aria-label="진행 단계">
+      {steps.map((s, i) => (
+        <li key={s} className={i <= current ? "on" : ""} aria-current={i === current ? "step" : undefined}>
+          <span className="pa-step-n">{i + 1}</span>
+          <span className={i === current ? "fw7" : "c-alt"}>{s}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+// 본인확인 대행사 연결 전(API 503 「본인확인 서비스 준비 중이에요」) 상태 화면
+// action: 「가입을 신청할」·「비밀번호를 찾을」
+export function IdentityUnavailable({ action }: { action: string }) {
+  return (
+    <div className="st" style={{ boxShadow: "none", padding: "24px 0" }}>
+      <div className="st-ic">!</div>
+      <h2 className="t" id="pa-state-title" tabIndex={-1}>
+        본인확인 서비스 준비 중이에요
+      </h2>
+      <span className="s">휴대폰 본인확인을 연결하고 있어요. 준비되면 바로 {action} 수 있어요.</span>
+      <Link className="btn btn-sm btn-out" href="/seller/login">
+        로그인으로 돌아가기
+      </Link>
+    </div>
+  );
+}

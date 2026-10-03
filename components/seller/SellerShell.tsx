@@ -115,12 +115,12 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   return (
     <Ctx.Provider value={{ me, trialDaysLeft, openNav: () => setNavOpen(true), can }}>
       <div className={`shell${navOpen ? " nav-open" : ""}`}>
-        <aside className="side" aria-label="판매자 메뉴">
+        <aside className="side" aria-label="파트너스 메뉴">
           <Link className="logo" href="/seller/products" style={{ padding: "6px 12px 14px", fontSize: 18 }}>
             <span className="logo-sym" />
             <span className="logo-word" />
             <span className="t-c1 c-alt" style={{ marginLeft: 4 }}>
-              판매자
+              파트너스
             </span>
           </Link>
           {nav.map((n, i) =>

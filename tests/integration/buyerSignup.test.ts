@@ -481,6 +481,26 @@ describe("signupBuyer는 completeIdentityVerification을 거친다", () => {
     expect(await buyerSignupIdentityLimitReached(counting, s.seller.id)).toBe(true);
     expect(counts).toBe(1);
   });
+  it("같은 attemptKey의 재시도는 그사이 동의 문서 버전이 바뀌어도(보낸 버전이 지금과 달라도) 이미 시작한 본인확인을 돌려주고, 새 키는 409로 막는다", async () => {
+    const s = await shop();
+    const fake = identityProvider() as FakeIdentityProvider;
+    const key = crypto.randomUUID();
+    const first = await startRoute(post(`${s.base}/verification`, { ...IDV_INPUT, ...SIGNUP_CONSENT, attemptKey: key }), ctx(s.slug));
+    expect(first.status).toBe(200);
+    const { verificationId } = await first.json();
+    const sent = fake.sent.length;
+    // 응답이 끊긴 사이 배포로 문서 버전이 올라간 상황: 열린 화면은 옛 버전을 그대로 다시 보낸다
+    const outdated = { ...SIGNUP_CONSENT, termsVersion: "2020-01-01.v0" };
+    const again = await startRoute(post(`${s.base}/verification`, { ...IDV_INPUT, ...outdated, attemptKey: key }), ctx(s.slug));
+    expect(again.status).toBe(200);
+    expect(await again.json()).toEqual({ verificationId });
+    expect(fake.sent.length).toBe(sent);
+    // 새로 시작하는 요청은 지금 버전이어야 한다
+    const fresh = await startRoute(post(`${s.base}/verification`, { ...IDV_INPUT, ...outdated, attemptKey: crypto.randomUUID() }), ctx(s.slug));
+    expect(fresh.status).toBe(409);
+    expect((await fresh.json()).error).toBe("consent_outdated");
+    expect(await db.identityVerification.count({ where: { sellerId: s.seller.id } })).toBe(1);
+  });
   it("attemptKey로 다시 시작하면 같은 본인확인을 같은 쿠키 값으로 돌려주고 문자·일일 횟수는 다시 쓰지 않는다", async () => {
     const s = await shop();
     const key = crypto.randomUUID();
