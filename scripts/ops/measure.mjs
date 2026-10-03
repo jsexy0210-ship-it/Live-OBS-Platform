@@ -23,7 +23,10 @@ function args(argv) {
   for (const [k, [min, max]] of Object.entries(LIMITS)) {
     const v = out[k];
     const okMin = k === "duration" || k === "rps" ? v > min : v >= min;
-    if (!Number.isFinite(v) || !okMin || v > max) throw new ArgError(`--${k} 값이 올바르지 않아요(${k === "duration" || k === "rps" ? "0 초과" : `${min} 이상`} ${max} 이하): ${v}`);
+    // timeout·gapMs는 밀리초 정수만(소수면 AbortSignal.timeout이 RangeError를 내 모든 요청이 실패로 집계됨).
+    const intOnly = k === "timeout" || k === "gapMs";
+    if (!Number.isFinite(v) || !okMin || v > max || (intOnly && !Number.isInteger(v)))
+      throw new ArgError(`--${k} 값이 올바르지 않아요(${intOnly ? "정수, " : ""}${k === "duration" || k === "rps" ? "0 초과" : `${min} 이상`} ${max} 이하): ${v}`);
   }
   return out;
 }
