@@ -134,12 +134,29 @@ test("상품 등록 → 목록에 바로 보인다", async ({ page }) => {
   await expect(row).toContainText("판매 중");
 });
 
-test("상품명 100자를 넘기면 글자 수가 빨갛게 바뀌고 안내한다", async ({ page }) => {
+test("상품명 100자를 넘기면 글자 수가 빨갛게 바뀌고 안내한다(이모지도 1자, 서버와 같은 기준)", async ({ page }) => {
   await login(page);
   await page.goto("/seller/products/new");
   await page.getByLabel("상품명").fill("가".repeat(101));
   await expect(page.getByTestId("name-count")).toHaveText("101/100");
   await expect(page.getByText("상품명은 100자까지 쓸 수 있어요")).toBeVisible();
+
+  // 👍 101개는 101자로 세고 막는다
+  await page.getByLabel("상품명").fill("👍".repeat(101));
+  await expect(page.getByTestId("name-count")).toHaveText("101/100");
+  await expect(page.getByText("상품명은 100자까지 쓸 수 있어요")).toBeVisible();
+
+  // 이모지 96개 + 실행마다 다른 글자 4개 = 100자라 서버도 받는다(실제로 등록해 목록에서 확인)
+  const name100 = "👍".repeat(96) + stamp.slice(-4);
+  await page.getByLabel("상품명").fill(name100);
+  await expect(page.getByTestId("name-count")).toHaveText("100/100");
+  await expect(page.getByText("상품명은 100자까지 쓸 수 있어요")).toHaveCount(0);
+  await page.getByLabel("판매가").fill("1000");
+  await page.getByRole("button", { name: "임시 저장" }).first().click();
+  await expect(page).toHaveURL(/\/seller\/products$/);
+  await expect(page.getByText("임시 저장했어요")).toBeVisible();
+  await page.getByRole("tab", { name: "임시 저장" }).click();
+  await expect(page.getByTestId("product-row").filter({ hasText: name100 })).toHaveCount(1);
 });
 
 test("상품 수정: 가격·재고를 바꾸면 저장되고 목록에도 반영된다", async ({ page }) => {
@@ -302,6 +319,12 @@ test("휴대폰 폭(390)에서는 메뉴가 서랍으로 열리고 상품이 카
   await expect(page.getByRole("link", { name: "상품", exact: true })).toBeInViewport();
   if (SHOTS) await page.screenshot({ path: "tests/e2e/screenshots/SA-shell-drawer-390.png" });
   await page.getByRole("button", { name: "메뉴 닫기" }).click();
+  await expect(page.getByRole("link", { name: "상품", exact: true })).not.toBeInViewport();
+
+  // 지금 보고 있는 메뉴(상품)를 눌러도 서랍이 닫힌다
+  await page.getByRole("button", { name: "메뉴 열기" }).click();
+  await expect(page.getByRole("link", { name: "상품", exact: true })).toBeInViewport();
+  await page.getByRole("link", { name: "상품", exact: true }).click();
   await expect(page.getByRole("link", { name: "상품", exact: true })).not.toBeInViewport();
 });
 
