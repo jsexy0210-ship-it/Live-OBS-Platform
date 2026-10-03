@@ -27,6 +27,7 @@ ENV NODE_ENV=production \
     PORT=3000
 COPY --from=builder --chown=node:node /app/.next/standalone ./
 COPY --from=builder --chown=node:node /app/.next/static ./.next/static
+COPY --from=builder --chown=node:node /app/public ./public
 # 배포한 커밋 SHA. /api/health가 돌려준다(빌드 마지막 단계라 바뀌어도 앞 단계 캐시는 그대로).
 ARG APP_VERSION=""
 ENV APP_VERSION=$APP_VERSION
