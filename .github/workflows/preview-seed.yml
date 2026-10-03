@@ -1,0 +1,40 @@
+name: Preview seed
+
+# 무료 미리보기(Vercel + Neon)용 폐기 DB에 마이그레이션과 데모 데이터를 넣는다. 운영 DB에는 쓰지 않는다.
+# DB 이름이 _test로 끝나지 않으면 scripts/dev-seed.mjs가 스스로 멈춘다. 처음 한 번만 실행한다.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  seed:
+    name: Seed preview DB
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DATABASE_URL: ${{ secrets.PREVIEW_DATABASE_URL }}
+      DEV_SEED_PASSWORD: ${{ secrets.PREVIEW_SEED_PASSWORD }}
+    steps:
+      - name: Check secrets
+        run: |
+          [ -n "$DATABASE_URL" ] || { echo "::error::PREVIEW_DATABASE_URL이 없어요"; exit 1; }
+          [ -n "$DEV_SEED_PASSWORD" ] || { echo "::error::PREVIEW_SEED_PASSWORD가 없어요"; exit 1; }
+
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Migrate
+        run: npx prisma migrate deploy
+
+      - name: Seed
+        run: node scripts/dev-seed.mjs

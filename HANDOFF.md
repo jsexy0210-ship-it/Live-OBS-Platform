@@ -26,7 +26,11 @@
 
 - Next.js 최소 앱 (`app/layout.tsx`, `app/page.tsx`)
 - CI: typecheck + build, self-hosted 배포 워크플로 재유입 검사
-- 배포 워크플로: 없음
+- 운영 배포 워크플로: 없음
+- 미리보기(대표님 결정 2026-10-03 13:40 KST, 무료): Vercel Hobby + Neon Free, 시험용 데이터만. 운영 아님.
+  - Vercel이 `vercel-build`(마이그레이션 + 빌드)로 빌드한다. 미리보기 DB 이름은 `_test`로 끝나야 한다.
+  - 데모 데이터는 Actions 「Preview seed」(수동 실행, 처음 한 번)로 넣는다. Secrets: `PREVIEW_DATABASE_URL`, `PREVIEW_SEED_PASSWORD`.
+  - Vercel Hobby는 비상업용 약관이라 출시 전 내부 확인용으로만 쓴다. 방송 실시간(LISTEN)은 서버리스 구조상 미리보기에서 동작이 보장되지 않는다.
 - GitHub Secrets(대표님 등록, 값은 기록하지 않음): `NICEPAY_CLIENT_KEY`, `NICEPAY_SECRET_KEY`, `SWEETTRACKER_API_KEY`(스마트택배 배송 조회, 연동은 출시 후), `RESEND_MAIL_API`(Resend 메일 발송. 개발·테스트용, 운영 발송은 AWS SES 예정. 하루·월 무료 한도에 가까워지면 미리 알리고 넘으면 MASTER에 보고), `BAROBILL_API_KEY`(바로빌 세금계산서·현금영수증 발행. 연동 전, 요금·판매자 명의 발행 조건 확인 필요), `YOUTUBE_API_KEY`(YouTube Data API v3, 방송·실시간 채팅 조회. 하루 무료 할당량에 가까워지면 미리 알리고, 넘으면 MASTER에 보고)
 - 테스트: 없음
 
@@ -77,6 +81,7 @@
 
 ## 대표님 조치 대기
 
+- 미리보기: Neon 무료 가입 → DB `preview_test` 생성 → Vercel 무료 가입(GitHub 로그인) → 저장소 가져오기 → 환경변수 `DATABASE_URL`(Neon 주소)·`TRUSTED_PROXY_HOPS`=1 → GitHub Secrets `PREVIEW_DATABASE_URL`·`PREVIEW_SEED_PASSWORD` 등록 → vercel.app 주소를 MASTER에 전달
 - 휴대폰 본인확인 대행사 선정·계약(유료): 포트원 V2 + NHN KCP API 방식 우선 검토. 계약 전 대행사에 확인할 것: ① API 방식(자체 화면) 허용·심사 ② PASS 없이 문자만 제공해도 되는지 ③ CI 제공 설정 ④ 건당 요금·최소 이용료·포트원 수수료 ⑤ 계약 전 테스트 채널과 실제 문자·과금 여부 ⑥ 인증번호 유효시간·재전송·실패 제한 ⑦ 문자 발신번호·문구 등록
 - NICEPAY: 노출된 시크릿키 재발급 여부 확인, 결제창 방식 빌링키 발급 가능 여부 문의
 

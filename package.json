@@ -6,6 +6,7 @@
     "dev": "next dev",
     "typecheck": "tsc --noEmit",
     "build": "next build",
+    "vercel-build": "prisma migrate deploy && next build",
     "check": "npm run typecheck && npm run build",
     "postinstall": "prisma generate",
     "test": "vitest run --dir tests/unit",
