@@ -277,8 +277,8 @@ model BuyerMember {
   // PASS 본인인증 CI의 HMAC-SHA256 값(원문 CI는 저장하지 않음). 같은 쇼핑몰 중복 가입 차단 기준.
   ciHash             String
   identityVerifiedAt DateTime          @db.Timestamptz(3)
-  // PASS 생년월일. 미성년자 구매 정책 판정에 쓴다.
-  birthDate          DateTime          @db.Date
+  // PASS 생년월일. 미성년자 구매 정책 판정에 쓴다. 탈퇴하면 지운다(null).
+  birthDate          DateTime?         @db.Date
   broadcastNickname  String
   gradeId            String            @db.Uuid
   status             BuyerMemberStatus @default(ACTIVE)
@@ -604,6 +604,10 @@ model Order {
   paymentDueAt              DateTime?         @db.Timestamptz(3)
   // 입금 기한이 지나 시스템이 자동 취소한 시각. 자동 구매 제한 횟수를 셀 때 쓴다.
   autoCancelledAt           DateTime?         @db.Timestamptz(3)
+  // 법정 보관(buyers/legalHold.ts): 끝난 주문의 보관 만료일(끝난 날 + 5년, 모든 회원)과, 탈퇴 회원의 끝난 주문에 다는 분리 보관 표시.
+  // 분리된 주문은 판매자·구매자 일반 조회(목록·검색·상세)에서 뺀다. 보관 만료 뒤 파기는 별도 함수.
+  legalHoldAt               DateTime?         @db.Timestamptz(3)
+  legalRetainUntil          DateTime?         @db.Timestamptz(3)
 
   seller          Seller                @relation(fields: [sellerId], references: [id])
   buyerMember     BuyerMember           @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id])
@@ -871,19 +875,23 @@ model OverlayToken {
 
 // 추가만 한다. 수정·삭제하지 않는다. 비밀번호 해시·토큰·TOTP 비밀키는 before/after에 넣지 않는다.
 model AuditLog {
-  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  actorType  ActorType
-  actorId    String?   @db.Uuid
-  sellerId   String?   @db.Uuid
-  action     String
-  targetType String?
-  targetId   String?
-  before     Json?
-  after      Json?
-  reason     String?
-  ip         String?
-  userAgent  String?
-  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actorType   ActorType
+  actorId     String?   @db.Uuid
+  sellerId    String?   @db.Uuid
+  action      String
+  targetType  String?
+  targetId    String?
+  before      Json?
+  after       Json?
+  reason      String?
+  ip          String?
+  userAgent   String?
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  // 구매자 회원이 행위자·대상인 행: 회원 id를 둘 기한(retainUntil, 기록 시각 + 거래 관련 5년·거래 무관 3개월, audit/log.ts)과
+  // 탈퇴 때 거래 관련 행에 다는 분리 보관 표시(legalHoldAt, buyers/legalHold.ts). 기한 뒤 회원 id 비식별은 별도 함수.
+  legalHoldAt DateTime? @db.Timestamptz(3)
+  retainUntil DateTime? @db.Timestamptz(3)
 
   seller Seller? @relation(fields: [sellerId], references: [id])
 

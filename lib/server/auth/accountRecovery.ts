@@ -1,4 +1,4 @@
-import type { IdentityVerification, PrismaClient } from "@prisma/client";
+import type { IdentityVerification, Prisma, PrismaClient } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { writeAudit } from "../audit/log";
 import { dbNow } from "../billing/subscription";
@@ -128,8 +128,13 @@ export async function listRecoveryAccounts(
   return { ok: true, accounts: users.map((u) => ({ accountId: u.id, shopName: u.seller.shopName, shopSlug: u.seller.slug, email: u.email })) };
 }
 
+// 권한 응답을 잃은 재시도를 받아 주는 시간(본인확인을 소진한 뒤)
+export const RECOVERY_RESET_RETRY_MS = 10 * 60_000;
+
 // 계정 고르기 비밀번호 찾기: 목록에서 고른 계정 하나에 재설정 권한. 고른 계정이 목록에 없으면(다른 사람 계정·종류 다름·연결 풀림) 거부.
 // 본인확인은 권한을 줄 때 소진한다(같은 확인으로 두 계정을 바꾸지 못함).
+// 응답을 잃은 재시도: 시작한 브라우저(쿠키)가 같은 본인확인·같은 계정으로 소진 뒤 10분 안에 다시 요청하면 새 권한을 주고, 그 본인확인으로
+// 준 이전 권한은 무효로 바꾼다(회전, 원래 토큰은 저장하지 않음). 이미 그 권한으로 비밀번호를 바꿨거나 다른 계정·기간이 지난 요청은 거부한다.
 export async function issueRecoveryResetGrant(
   db: PrismaClient,
   provider: IdentityProvider,
@@ -137,28 +142,53 @@ export async function issueRecoveryResetGrant(
   meta: Meta = {},
 ): Promise<{ ok: true; grantToken: string; expiresAt: Date } | { ok: false; reason: "pending" | "recovery_not_allowed" }> {
   const now = meta.now ?? new Date();
-  const v = await verified(db, provider, input.verificationId, input.ownerToken, now);
-  if (!v.ok) return v;
-  const ciHash = v.verification.ciHash!;
-  const user = (await matchingAccounts(db, ciHash, input.accountType)).find((u) => u.id === input.accountId);
+  const done = await completeIdentityVerification(db, provider, input.verificationId, { sellerId: null, purpose: "ACCOUNT_RECOVERY", ownerToken: input.ownerToken }, now);
+  let v: IdentityVerification | null = done.ok ? done.verification : null;
+  if (!done.ok) {
+    if (done.reason === "pending") return { ok: false, reason: "pending" };
+    // 소진 뒤 본인확인 유효 시간이 지난 재시도도 같은 브라우저의 것이면 아래 재시도 판정으로 넘긴다
+    const row = done.reason === "expired" ? await db.identityVerification.findUnique({ where: { id: input.verificationId } }) : null;
+    const owned = !!row && row.purpose === "ACCOUNT_RECOVERY" && row.sellerId === null && row.status === "VERIFIED" && !!input.ownerToken && row.ownerTokenHash === hashToken(input.ownerToken);
+    if (!owned || !row.consumedAt) return { ok: false, reason: "recovery_not_allowed" };
+    v = row;
+  }
+  if (!v?.ciHash) return { ok: false, reason: "recovery_not_allowed" };
+  const verification = v;
+  const ciHash = v.ciHash;
   const fail = async (reason: string) => {
     await writeAudit(db, {
       actorType: "SYSTEM",
       action: "auth.seller.recovery.reset_failed",
       targetType: "IdentityVerification",
-      targetId: v.verification.id,
+      targetId: verification.id,
       reason,
       ip: meta.ip,
       userAgent: meta.userAgent,
     });
     return { ok: false as const, reason: "recovery_not_allowed" as const };
   };
+  const user = (await matchingAccounts(db, ciHash, input.accountType)).find((u) => u.id === input.accountId);
   if (!user) return fail("account_not_matched");
   const grantToken = generateToken();
   const expiresAt = new Date(now.getTime() + GRANT_TTL_MS);
   const issued = await db.$transaction(async (tx) => {
-    const used = await tx.identityVerification.updateMany({ where: { id: v.verification.id, consumedAt: null }, data: { consumedAt: now, subjectId: user.id } });
-    if (used.count !== 1) return false;
+    // 같은 본인확인의 권한 발급을 한 줄로 세운다(처음 발급·재시도가 겹쳐도 하나씩)
+    const [cur] = await tx.$queryRaw<{ consumedAt: Date | null; subjectId: string | null }[]>`
+      SELECT "consumedAt", "subjectId" FROM "IdentityVerification" WHERE "id" = ${verification.id}::uuid FOR UPDATE`;
+    if (!cur) return null;
+    let rotated = false;
+    if (!cur.consumedAt) {
+      if (!done.ok) return null;
+      await tx.identityVerification.update({ where: { id: verification.id }, data: { consumedAt: now, subjectId: user.id } });
+    } else {
+      if (cur.subjectId !== user.id) return "account_not_matched";
+      if (now.getTime() - cur.consumedAt.getTime() > RECOVERY_RESET_RETRY_MS) return "retry_window_passed";
+      // 이 본인확인으로 준 권한(소진 뒤 이 계정·이 CI로 만든 것)
+      const prior = { sellerUserId: user.id, ciHash, createdAt: { gte: cur.consumedAt } };
+      if (await tx.passwordResetGrant.count({ where: { ...prior, usedAt: { not: null } } })) return "grant_already_used";
+      await tx.passwordResetGrant.updateMany({ where: { ...prior, usedAt: null, expiresAt: { gt: now } }, data: { expiresAt: now } });
+      rotated = true;
+    }
     await tx.passwordResetGrant.create({
       data: { sellerId: user.sellerId, sellerUserId: user.id, tokenHash: hashToken(grantToken), ciHash, expiresAt, createdAt: now },
     });
@@ -169,12 +199,28 @@ export async function issueRecoveryResetGrant(
       action: "auth.seller.password_reset.granted",
       targetType: "SellerUser",
       targetId: user.id,
-      after: { via: "account_recovery", accountType: input.accountType },
+      after: { via: "account_recovery", accountType: input.accountType, ...(rotated ? { rotated: true } : {}) },
       ip: meta.ip,
       userAgent: meta.userAgent,
     });
     return true;
   });
-  if (!issued) return fail("verification_already_used");
+  if (issued !== true) return fail(issued ?? "verification_already_used");
   return { ok: true, grantToken, expiresAt };
+}
+
+// 아이디 찾기(ACCOUNT_RECOVERY)·직원 연결(STAFF_LINK) 본인확인 기록 비식별(MASTER 2026-10-04, 가입 기록과 같은 기준).
+// 하루 횟수를 세는 기간(그 기록의 KST 날짜)이 지나고 유효 시간·권한 재시도 기간(10분)도 지난 기록의 이름·휴대폰·요청 휴대폰·생년월일·
+// CI 해시·subjectId·시작 브라우저 값(ownerTokenHash)·요청 IP를 비우고, 대행사 조회 열쇠인 requestId는 겹치지 않는 무작위 값으로 바꾼다.
+// 행·용도·상태·요청 시각은 남긴다. 오늘 기록은 건드리지 않으므로 휴대폰·IP·직원별 하루 횟수 계산은 그대로다.
+// 연결된 직원의 CI 해시는 SellerUser.identityCiHash에 있으므로 그대로 둔다. 정기 실행(jobs/scheduler.ts)이 부른다. 비식별한 수를 돌려준다.
+export async function purgeOldRecoveryVerifications(db: PrismaClient | Prisma.TransactionClient, now?: Date): Promise<number> {
+  const at = now ?? (await dbNow(db));
+  return db.$executeRaw`
+    UPDATE "IdentityVerification"
+    SET "name" = NULL, "phone" = NULL, "requestedPhone" = NULL, "birthDate" = NULL, "ciHash" = NULL, "subjectId" = NULL,
+        "ownerTokenHash" = NULL, "requestIp" = NULL, "requestId" = 'anonymized:' || gen_random_uuid()::text, "anonymizedAt" = ${at}
+    WHERE "purpose" IN ('ACCOUNT_RECOVERY', 'STAFF_LINK') AND "anonymizedAt" IS NULL
+      AND "createdAt" < (date_trunc('day', ${at}::timestamptz AT TIME ZONE 'Asia/Seoul') AT TIME ZONE 'Asia/Seoul')
+      AND "expiresAt" + make_interval(secs => ${RECOVERY_RESET_RETRY_MS / 1000}::int) <= ${at}`;
 }
