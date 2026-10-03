@@ -105,6 +105,31 @@ test("본인확인 → 틀린 인증번호 → 맞는 인증번호 → 가입까
   await shot(page, "SH-011-done");
 });
 
+test("실제 서버: 본인확인 결과를 확인 응답 값으로 보여 주고, 가입 응답만 끊겨도 같은 요청 재전송(201)으로 완료한다", async ({ page }) => {
+  const id = uniq();
+  const phone = uniqPhone();
+  // 가입 요청은 서버가 처리하게 두고 첫 응답만 끊는다(서버에서는 회원이 만들어진 상태)
+  const statuses: number[] = [];
+  await page.route((u) => u.pathname === API, async (route) => {
+    const res = await route.fetch();
+    statuses.push(res.status());
+    return statuses.length === 1 ? route.abort() : route.fulfill({ response: res });
+  });
+  await page.goto(`/shop/${SLUG}/signup`);
+  // 전각·앞뒤 공백 이름: 공급자 결과(NFKC 정규화·trim)를 보여 줘야 한다
+  await fillIdentity(page, ` Ｋｉｍ${id} `, phone);
+  await page.getByRole("button", { name: "인증번호 받기" }).click();
+  await page.getByLabel("인증번호").fill("000000");
+  await page.getByRole("button", { name: "확인", exact: true }).click();
+  await expect(page.locator("#v-name")).toHaveValue(`Kim${id}`);
+  await expect(page.locator("#v-phone")).toHaveValue(`${phone.slice(0, 3)}-${phone.slice(3, 7)}-${phone.slice(7)}`);
+  await fillAccount(page, id, `ＡＢ${id}`);
+  await page.getByRole("button", { name: "가입하기" }).click();
+  await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
+  await expect(page.getByText(`방송에서는 AB${id} 닉네임으로 보여요.`)).toBeVisible();
+  expect(statuses).toEqual([201, 201]);
+});
+
 test("생년월일이 없는 날짜면 요청을 보내지 않고 칸 아래에 알려 준다", async ({ page }) => {
   let calls = 0;
   await page.route((u) => u.pathname.startsWith(API), (route) => {
