@@ -74,23 +74,29 @@ export async function restoreOrderStock(
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export type StockAdjustFailure = "invalid_stock_adjust" | "insufficient_stock" | "stock_too_large";
+export type StockAdjustFailure = "invalid_stock_adjust" | "insufficient_stock" | "stock_too_large" | "stock_conflict";
 
 // 판매자 수동 증감(방송 이벤트 증정·서비스 등, PRODUCT_MANAGE). delta는 0이 아닌 정수, 사유 필수(최대 100자).
 // 조건부 UPDATE(stock + delta >= 0, 정수 범위 안)라서 결제 차감과 겹쳐도 음수가 되거나 차감이 사라지지 않는다.
+// expectedStock(선택): 화면이 본 재고. 지금 재고와 다르면(그사이 주문·결제로 바뀜) 바꾸지 않고 stock_conflict와 지금 재고를 돌려준다.
+// 「목표 재고로 맞추기」는 delta = 목표 − expectedStock으로 보내면 사유와 함께 한 번에 적용된다.
 export async function adjustStock(
   db: PrismaClient,
   ctx: TenantContext,
   productId: string,
   optionId: string,
   raw: unknown,
-): Promise<{ ok: true; value: { optionId: string; stock: number } } | { ok: false; reason: StockAdjustFailure }> {
+): Promise<{ ok: true; value: { optionId: string; stock: number } } | { ok: false; reason: StockAdjustFailure; currentStock?: number }> {
   requireSellerPermission(ctx, "PRODUCT_MANAGE");
   if (!UUID.test(productId) || !UUID.test(optionId)) throw notFound();
   const b = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   const delta = b.delta;
   const reason = cleanText(b.reason, 100, "name");
   if (typeof delta !== "number" || !Number.isInteger(delta) || delta === 0 || Math.abs(delta) > INT4_MAX || !reason) {
+    return { ok: false, reason: "invalid_stock_adjust" };
+  }
+  const expected = b.expectedStock;
+  if (expected !== undefined && (typeof expected !== "number" || !Number.isInteger(expected) || expected < 0 || expected > INT4_MAX)) {
     return { ok: false, reason: "invalid_stock_adjust" };
   }
   return db.$transaction(async (tx) => {
@@ -100,9 +106,17 @@ export async function adjustStock(
     });
     if (!option) throw notFound();
     const moved = await tx.productOption.updateMany({
-      where: { id: optionId, sellerId: ctx.sellerId, stock: delta < 0 ? { gte: -delta } : { lte: INT4_MAX - delta } },
+      where: {
+        id: optionId,
+        sellerId: ctx.sellerId,
+        AND: [{ stock: delta < 0 ? { gte: -delta } : { lte: INT4_MAX - delta } }, ...(expected !== undefined ? [{ stock: expected }] : [])],
+      },
       data: { stock: { increment: delta } },
     });
+    if (moved.count !== 1 && expected !== undefined) {
+      const cur = await tx.productOption.findUniqueOrThrow({ where: { id: optionId }, select: { stock: true } });
+      if (cur.stock !== expected) return { ok: false as const, reason: "stock_conflict" as const, currentStock: cur.stock };
+    }
     // 빼다가 모자라면 insufficient_stock, 더하다가 정수 상한을 넘으면 stock_too_large
     if (moved.count !== 1) return { ok: false as const, reason: delta < 0 ? ("insufficient_stock" as const) : ("stock_too_large" as const) };
     const now = await dbNow(tx);

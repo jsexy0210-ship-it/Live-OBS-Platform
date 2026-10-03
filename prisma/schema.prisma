@@ -477,23 +477,29 @@ enum ActorType {
 }
 
 model StockMovement {
-  id        String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerId  String              @db.Uuid
-  optionId  String              @db.Uuid
-  delta     Int
-  reason    StockMovementReason
-  orderId   String?             @db.Uuid
+  id         String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId   String              @db.Uuid
+  optionId   String              @db.Uuid
+  delta      Int
+  reason     StockMovementReason
+  orderId    String?             @db.Uuid
   // 수동 증감 사유(MANUAL). 예) 「이벤트 증정」
-  note      String?
-  actorType ActorType
-  actorId   String?             @db.Uuid
-  createdAt DateTime            @default(now()) @db.Timestamptz(3)
+  note       String?
+  // 이 이동 뒤 옵션 재고. DB 트리거(StockMovement_set_stock_after)가 넣는다: 이동은 언제나 재고를 바꾼 뒤 같은 트랜잭션에서 기록한다.
+  // 트리거 전 기록은 null(화면은 표시하지 않음).
+  stockAfter Int?
+  // 기록 순서. 이동은 옵션 행을 잠근 UPDATE 뒤에 넣으므로 옵션마다 seq 순서가 실제 적용 순서와 같다(createdAt은 트랜잭션 시작 시각이라 뒤바뀔 수 있음).
+  seq        BigInt              @unique @default(autoincrement())
+  actorType  ActorType
+  actorId    String?             @db.Uuid
+  createdAt  DateTime            @default(now()) @db.Timestamptz(3)
 
   seller Seller        @relation(fields: [sellerId], references: [id])
   option ProductOption @relation(fields: [sellerId, optionId], references: [sellerId, id])
   order  Order?        @relation(fields: [sellerId, orderId], references: [sellerId, id])
 
   @@index([sellerId, optionId])
+  @@index([sellerId, seq(sort: Desc)])
 }
 
 // ───────────── 주문·주문 품목 ─────────────
