@@ -180,6 +180,7 @@ async function runAll(
     }
     const pb = opts.playbook?.steps[step.key] ?? null;
     const secretTargets = secretBook?.steps[step.key]?.secretTargets ?? {};
+    const allowedTargets = secretBook?.steps[step.key]?.allowedTargets ?? [];
     const scripted = pb ? [...pb.actions] : [];
     let deviated = !pb;
     const history: string[] = [];
@@ -216,7 +217,7 @@ async function runAll(
         const decision = await rt.planner.decide({ step, observation: sanitizeObservation(raw, secrets), history, reference });
         stats.plannerCalls++;
         costWon = Number.isInteger(decision.costWon) && decision.costWon > 0 ? decision.costWon : 0;
-        const check = validateDecision(step, decision, secrets, secretTargets);
+        const check = validateDecision(step, decision, secrets, secretTargets, allowedTargets);
         stats.costUsed += costWon;
         await touchStats();
         if (stats.costUsed > opts.costLimit) return { kind: "failed", reason: "cost_limit" };
@@ -224,7 +225,7 @@ async function runAll(
         action = decision.action;
       } else {
         // 작업서 행동도 같은 검사를 거친다(작업서가 잘못돼도 허용 밖 행동은 하지 않음)
-        const check = validateDecision(step, { action, costWon: 0 }, secrets, secretTargets);
+        const check = validateDecision(step, { action, costWon: 0 }, secrets, secretTargets, allowedTargets);
         await touchStats();
         if (!check.ok) return { kind: "failed", reason: `unsafe_action:${check.reason}` };
       }

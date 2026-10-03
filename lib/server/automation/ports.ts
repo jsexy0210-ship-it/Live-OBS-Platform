@@ -160,6 +160,9 @@ export function validateDecision(
   d: PlannerDecision,
   secrets: JobSecrets,
   secretTargets: SecretTargets = {},
+  // 이 단계에서 누르거나(click) 글을 넣어도(비밀값 아닌 fill) 되는 대상. 작업서가 단계마다 정한다. 목록 밖이면 거부한다
+  // (악성 화면 지시로 삭제·권한·계정 설정 같은 설치와 무관한 칸을 누르지 못하게). 작업서가 없으면 누르거나 넣을 수 없다.
+  allowedTargets: readonly string[] = [],
 ): { ok: true } | { ok: false; reason: string } {
   const a = d.action;
   if (!Number.isInteger(d.costWon) || d.costWon < 0) return { ok: false, reason: "bad_cost" };
@@ -168,7 +171,8 @@ export function validateDecision(
     case "navigate":
       return hostAllowed(a.url) ? { ok: true } : { ok: false, reason: "host_not_allowed" };
     case "click":
-      return typeof a.target === "string" && a.target.length > 0 && a.target.length <= 200 ? { ok: true } : { ok: false, reason: "bad_target" };
+      if (typeof a.target !== "string" || !a.target || a.target.length > 200) return { ok: false, reason: "bad_target" };
+      return allowedTargets.includes(a.target) ? { ok: true } : { ok: false, reason: "target_not_allowed" };
     case "fill": {
       if (typeof a.target !== "string" || !a.target || a.target.length > 200) return { ok: false, reason: "bad_target" };
       if ("secretRef" in a.value) {
@@ -179,7 +183,7 @@ export function validateDecision(
       if (typeof text !== "string" || text.length > 200) return { ok: false, reason: "bad_text" };
       // 모델이 어떤 경로로든 비밀값을 알아내 직접 적으려 하면 막는다
       if (Object.values(secrets).some((v) => v.length >= 8 && text.includes(v))) return { ok: false, reason: "secret_in_text" };
-      return { ok: true };
+      return allowedTargets.includes(a.target) ? { ok: true } : { ok: false, reason: "target_not_allowed" };
     }
     case "request_customer":
       return CUSTOMER_ACTIONS.includes(a.action) ? { ok: true } : { ok: false, reason: "bad_customer_action" };

@@ -346,10 +346,10 @@ describe("lease·fencing·잠금·동시성", () => {
 
   it("작업당 비용 상한을 넘으면 멈춘다", async () => {
     const a = await bought();
-    // 판단 모델 경로(작업서 없음)에서 비용이 쌓인다
-    await db.automationJob.update({ where: { id: a.jobId }, data: { costLimit: 25, playbookId: null, playbookVersion: null } });
+    // 판단 모델 경로(작업서 없음)에서 비용이 쌓인다(이동 10 → 다음 판단 20에서 상한 15 초과, 행동 검사 전에 멈춘다)
+    await db.automationJob.update({ where: { id: a.jobId }, data: { costLimit: 15, playbookId: null, playbookVersion: null } });
     expect(await runOnce(db, runtime(), W)).toBe("failed");
-    expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "cost_limit", costUsed: 30 });
+    expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "cost_limit", costUsed: 20 });
   });
 });
 
@@ -1414,7 +1414,9 @@ describe("Codex 6차 반영(9144f55)", () => {
   it("행동 고정 키는 순번이 아니라 행동의 의미(단계·종류·대상·값)로 만든다: 같은 순번의 다른 행동은 실행, 다른 순번의 같은 행동은 한 번만", async () => {
     const a = await bought();
     const scope = { sellerId: a.seller.id, jobId: a.jobId };
-    const opts = { verifying: false, costLimit: 3000, maxActionsPerStep: 12, playbook: null, startIndex: 0, stats: freshStats() };
+    // 판단 모델만 쓰되(작업서 행동 없음) 누를 수 있는 대상(A·B)은 작업서가 정한다
+    const targets = { ...cafe24Playbook, steps: { ...cafe24Playbook.steps, shop_connect: { ...cafe24Playbook.steps.shop_connect, allowedTargets: ["A", "B"] } } };
+    const opts = { verifying: false, costLimit: 3000, maxActionsPerStep: 12, playbook: null, secretPlaybook: targets, startIndex: 0, stats: freshStats() };
     // 1회차: 0번째에 「A」 클릭 성공 뒤 작업자가 죽음
     const rt = runtime();
     let script: AutomationAction[] = [{ type: "click", target: "A" }, { type: "step_done" }];
@@ -1657,5 +1659,38 @@ describe("Codex 8차 반영(748f1ff)", () => {
     expect(await runOnce(db, rt, W)).toBe("failed");
     expect(onB.filter((t) => t !== "step_done")).toHaveLength(0);
     expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "obs_target_changed", obsTargetKey: "obs:pc-A" });
+  });
+});
+
+describe("Codex 9차 반영(d1afe8a)", () => {
+  it("화면 글의 숨은 지시로 판단 모델이 설치와 무관한 칸을 누르거나 입력하려 하면(삭제·권한·계정 설정) 실행 0회로 멈춘다", async () => {
+    const bad: AutomationAction[] = [
+      { type: "click", target: "쇼핑몰 삭제" },
+      { type: "fill", target: "운영자 이메일", value: { text: "attacker@evil.test" } },
+    ];
+    for (const action of bad) {
+      const a = await bought();
+      const rt = runtime();
+      rt.browser.pageText = () => "화면이 바뀌었어요 · 로그아웃"; // 작업서와 달라 판단 모델로 넘어간다
+      rt.planner.override = (input) => (input.step.key === "shop_connect" ? { action, costWon: 10 } : undefined);
+      expect(await runOnce(db, rt, W), action.type).toBe("failed");
+      expect(await job(a.jobId), action.type).toMatchObject({ status: "FAILED", lastError: "unsafe_action:target_not_allowed" });
+      expect(rt.browser.performed.filter((p) => p.type === "click" || p.type === "fill"), action.type).toHaveLength(0);
+      await db.automationJob.updateMany({ data: { deviatedSteps: [], lastDeviationAt: null } });
+    }
+  });
+
+  it("연습 실행이 끝나면(성공·실패 모두) 그 실행의 브라우저·OBS 보관 자료(행동 키 기록·OBS 연결 정보)를 지운다", async () => {
+    for (const text of ["앱 설치 · 설치 완료 · 주문 알림 · 저장 · 로그아웃", "로그인이 필요해요"]) {
+      const rt = runtime();
+      rt.browser.pageText = () => text;
+      await runPractice(db, rt, cafe24Playbook, { shopHost: "myshop.cafe24.com" });
+      const runId = rt.browser.opened[0].scope.jobId;
+      expect(rt.browser.discarded, text).toContain(runId);
+      expect(rt.obs.discarded, text).toContain(runId);
+      expect(rt.browser.applied.size, text).toBe(0);
+      expect(rt.obs.applied.size, text).toBe(0);
+      expect(rt.obs.connections.size, text).toBe(0);
+    }
   });
 });

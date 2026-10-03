@@ -30,6 +30,8 @@ export type PlaybookStep = {
   examples: readonly string[];
   // 이 단계에서 비밀값을 넣어도 되는 칸(비밀 참조 → 칸 이름). 작업서·판단 모델 행동 모두 이 목록으로만 비밀을 넣는다.
   secretTargets: SecretTargets;
+  // 이 단계에서 누르거나 글을 넣어도 되는 대상(비밀값 칸 제외). 작업서·판단 모델 행동 모두 이 목록 안에서만 한다.
+  allowedTargets: readonly string[];
 };
 
 export type Playbook = {
@@ -75,7 +77,7 @@ export function validatePlaybook(p: Playbook): string[] {
       problems.push(`secret_origin_missing:${step.key}`);
     }
     s.actions.forEach(({ action }, i) => {
-      const v = validateDecision(step, { action, costWon: 0 }, probe, s.secretTargets);
+      const v = validateDecision(step, { action, costWon: 0 }, probe, s.secretTargets, s.allowedTargets);
       if (!v.ok) problems.push(`${step.key}[${i}]:${v.reason}`);
     });
     if (s.actions.length === 0 || s.actions[s.actions.length - 1].action.type !== "step_done") problems.push(`no_step_done:${step.key}`);

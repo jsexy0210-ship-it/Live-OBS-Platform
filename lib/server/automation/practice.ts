@@ -26,10 +26,11 @@ export async function runPractice(
   const stats: EngineStats = { costUsed: 0, plannerCalls: 0, playbookActions: 0, deviatedSteps: [] };
   let stepIndex = 0;
   let result: Awaited<ReturnType<typeof runSteps>>;
+  const scope = { sellerId: "practice", jobId: randomUUID() };
   try {
     result = await runSteps(
       rt,
-      { sellerId: "practice", jobId: randomUUID() },
+      scope,
       {
         startIndex: 0,
         verifying: false,
@@ -45,6 +46,10 @@ export async function runPractice(
     );
   } catch {
     result = { kind: "failed", reason: "practice_error" };
+  } finally {
+    // 연습 실행의 보관 자료(행동 키 기록·OBS 연결 정보)는 실행마다 바로 지운다(삭제 실패는 결과 기록을 막지 않음)
+    await rt.browser.discard(scope).catch(() => undefined);
+    await rt.obs.discard(scope).catch(() => undefined);
   }
   const outcome = result.kind === "succeeded" ? "SUCCEEDED" : result.kind === "needs_customer" ? "NEEDS_CUSTOMER" : "FAILED";
   return db.automationPracticeRun.create({

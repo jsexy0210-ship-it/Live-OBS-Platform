@@ -29,6 +29,7 @@ export const cafe24Playbook: Playbook = {
       ],
       examples: [],
       secretTargets: {},
+      allowedTargets: ["앱 설치"],
     },
     webhook_setup: {
       guide: "주문 알림 주소 칸에 webhook_url 비밀 참조를 넣고 저장한다. 저장 완료 표시가 보이면 단계 끝.",
@@ -41,6 +42,7 @@ export const cafe24Playbook: Playbook = {
       exceptions: [{ when: { textIncludes: ["로그인"] }, then: { customerAction: "LOGIN" } }],
       examples: [],
       secretTargets: { webhook_url: ["주문 알림 주소"] },
+      allowedTargets: ["저장"],
     },
     obs_overlay_install: {
       guide: "로컬 연결 도구로 OBS에 주문 오버레이 브라우저 소스를 추가한다.",
@@ -49,6 +51,7 @@ export const cafe24Playbook: Playbook = {
       exceptions: [{ when: { textIncludes: ["OBS 연결 안 됨"] }, then: { customerAction: "LOCAL_TOOL" } }],
       examples: [],
       secretTargets: {},
+      allowedTargets: [],
     },
     display_settings: {
       guide: "오버레이 표시 설정(위치·크기)을 기본값으로 맞춘다.",
@@ -57,6 +60,7 @@ export const cafe24Playbook: Playbook = {
       exceptions: [{ when: { textIncludes: ["OBS 연결 안 됨"] }, then: { customerAction: "LOCAL_TOOL" } }],
       examples: [],
       secretTargets: {},
+      allowedTargets: [],
     },
     test_event_verify: {
       guide: "테스트 주문을 보내고 OBS 오버레이에 실제로 보이는지 확인한다. 보이지 않으면 끝내지 않는다.",
@@ -65,6 +69,7 @@ export const cafe24Playbook: Playbook = {
       exceptions: [{ when: { textIncludes: ["OBS 연결 안 됨"] }, then: { customerAction: "LOCAL_TOOL" } }],
       examples: [],
       secretTargets: {},
+      allowedTargets: [],
     },
   },
 };
