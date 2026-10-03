@@ -110,7 +110,14 @@ type FencedChange = {
 };
 
 // 작업자의 모든 쓰기는 여기를 거친다. 토큰이 같고, 실행 중 상태이고, lease가 아직 살아 있을 때만 쓴다.
-async function fencedWrite(db: PrismaClient, c: Claim, build: (now: Date, cur: AutomationJob) => FencedChange): Promise<void> {
+// allowExpiredLease: lease가 막 끝났어도 토큰이 그대로면(아무도 회수·재할당하지 않았으면) 쓴다. 실행 시간 상한 실패처럼
+// heartbeat가 일부러 연장을 멈춘 뒤의 마무리 쓰기에만 쓴다. 회수·취소·다른 작업자는 토큰을 올리므로 여전히 막힌다.
+async function fencedWrite(
+  db: PrismaClient,
+  c: Claim,
+  build: (now: Date, cur: AutomationJob) => FencedChange,
+  opts: { allowExpiredLease?: boolean } = {},
+): Promise<void> {
   await db.$transaction(async (tx) => {
     await lockJob(tx, c.jobId);
     const now = await dbNow(tx);
@@ -121,7 +128,7 @@ async function fencedWrite(db: PrismaClient, c: Claim, build: (now: Date, cur: A
     // 실행 자리를 놓는 전이(대기·재시도·끝)면 이번에 쓴 실행 시간을 합계에 더한다
     const releasing = change.to && !LEASED.includes(change.to);
     const r = await tx.automationJob.updateMany({
-      where: { id: c.jobId, fencingToken: c.token, status: { in: from }, leaseExpiresAt: { gt: now } },
+      where: { id: c.jobId, fencingToken: c.token, status: { in: from }, ...(opts.allowExpiredLease ? {} : { leaseExpiresAt: { gt: now } }) },
       data: {
         ...change.data,
         ...(change.to ? { status: change.to } : {}),
@@ -175,13 +182,19 @@ export async function markRefundPending(tx: Tx, job: { id: string; sellerId: str
 }
 
 // 실패로 끝내고 결제를 전액 환불 처리 대기로(실행 시간 상한 초과 등)
+// (실행 시간 상한 초과 뒤에는 heartbeat가 연장을 멈추므로 lease가 막 끝났어도 토큰이 그대로면 마무리한다)
 export const failWithRefund = (db: PrismaClient, c: Claim, reason: string) =>
-  fencedWrite(db, c, (now) => ({
-    to: "FAILED",
-    data: { ...RELEASE, finishedAt: now, lastError: reason },
-    detail: { reason },
-    after: (tx, cur, at) => markRefundPending(tx, cur, reason, at),
-  }));
+  fencedWrite(
+    db,
+    c,
+    (now) => ({
+      to: "FAILED",
+      data: { ...RELEASE, finishedAt: now, lastError: reason },
+      detail: { reason },
+      after: (tx, cur, at) => markRefundPending(tx, cur, reason, at),
+    }),
+    { allowExpiredLease: true },
+  );
 
 // 브라우저 상태 보관 직전 「보관 중」 표시(보관본을 놓치지 않게 보관보다 먼저 남긴다)
 export const markBrowserStateHeld = (db: PrismaClient, c: Claim) => fencedWrite(db, c, () => ({ data: { browserStateHeld: true } }));

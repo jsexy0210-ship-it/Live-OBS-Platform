@@ -1301,3 +1301,70 @@ describe("Codex 5차 반영", () => {
     expect(await job(a.jobId)).toMatchObject({ obsTargetKey: "obs:pc-shared", obsPairingId: "pc-shared" });
   });
 });
+
+describe("MASTER 요청 시험(26c2974 Codex 3건)", () => {
+  it("외부 행동 도중 실행 시간 6시간을 넘기면 그 결과(고객 대기)를 기록하지 않고 FAILED·REFUND_PENDING으로 끝낸다", async () => {
+    const a = await bought();
+    const rt = { ...runtime(), browser: new FakeBrowserExecutor(500), obs: new FakeObsBridge(0) };
+    rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장";
+    rt.browser.outcome = (_s, action) => (action.type === "click" ? { kind: "needs_customer", action: "LOGIN" } : undefined);
+    // 이동(관찰 500 + 실행 500) 뒤 클릭 직전 기록(약 1.5초)까지는 상한 안, 클릭 실행(약 1.5~2.0초) 도중 상한을 넘는다
+    await db.automationJob.update({ where: { id: a.jobId }, data: { activeMsUsed: 6 * 60 * 60_000 - 1800 } });
+    expect(await runOnce(db, rt, { ...W, leaseMs: 60 })).toBe("failed");
+    expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "run_time_limit", customerAction: null, browserStateHeld: false });
+    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "REFUND_PENDING", refundReason: "run_time_limit" });
+    expect(rt.browser.saved.size).toBe(0);
+  }, 20_000);
+
+  it("heartbeat 갱신이 DB 오류로 실패하면 그 뒤 외부 행동은 0회(진행 중이던 1회만 끝남)", async () => {
+    const a = await bought();
+    const rt = { ...runtime(), browser: new FakeBrowserExecutor(40), obs: new FakeObsBridge(40) };
+    rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장";
+    let failing = false;
+    const beat = startHeartbeat(async () => {
+      if (failing) throw new Error("db connection lost");
+    }, 10);
+    const count = () => rt.browser.performed.length + rt.obs.performed.length;
+    let atAbort = -1;
+    beat.signal.addEventListener("abort", () => (atAbort = count()));
+    const run = runSteps(
+      rt,
+      { sellerId: a.seller.id, jobId: a.jobId },
+      { verifying: false, costLimit: 3000, maxActionsPerStep: 12, playbook: cafe24Playbook, startIndex: 0, stats: { costUsed: 0, plannerCalls: 0, playbookActions: 0, deviatedSteps: [] }, signal: beat.signal },
+      { touch: async () => {}, enterVerify: async () => {}, stepDone: async () => {} },
+    );
+    await new Promise((r) => setTimeout(r, 150));
+    failing = true;
+    await expect(run).rejects.toBeInstanceOf(EngineAborted);
+    beat.stop();
+    expect(atAbort).toBeGreaterThanOrEqual(0);
+    expect(count() - atAbort).toBeLessThanOrEqual(1);
+  });
+
+  it("판매자 A 첫 설치가 실제 PC로 잠금을 옮긴 뒤에는 같은 PC의 판매자 B 재연결이 동시에 실행되지 않는다", async () => {
+    // B: 같은 PC(pc-shared)로 완료한 뒤 무료 재연결 대기
+    const b = await bought();
+    const rtB = runtime();
+    rtB.obs.pairing.set(b.seller.id, "pc-shared");
+    expect(await runOnce(db, rtB, W)).toBe("succeeded");
+    const re = await reconnectAutomation(db, b.provider, b.ctx, { idempotencyKey: newKey(), target: { shopKey: `mall-${b.seller.id}`, obsPairingId: "pc-shared" } });
+    if (!re.ok) throw new Error(re.reason);
+    expect(await job(re.jobId)).toMatchObject({ status: "QUEUED", obsTargetKey: "obs:pc-shared" });
+    await db.automationJob.update({ where: { id: re.jobId }, data: { runAfter: new Date(Date.now() + 60_000) } });
+
+    // A: 첫 설치(판매자 키로 시작) — OBS 단계에서 실제 PC로 잠금을 옮긴다
+    const a = await bought();
+    const rtA = { ...runtime(), browser: new FakeBrowserExecutor(0), obs: new FakeObsBridge(150) };
+    rtA.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장";
+    rtA.obs.pairing.set(a.seller.id, "pc-shared");
+    const runA = runOnce(db, rtA, { ...W, leaseMs: 2000 });
+    for (let i = 0; i < 100 && (await job(a.jobId)).obsTargetKey !== "obs:pc-shared"; i++) await new Promise((r) => setTimeout(r, 20));
+    expect(await job(a.jobId)).toMatchObject({ status: "RUNNING", obsTargetKey: "obs:pc-shared" });
+    // A가 실행 중인 동안 B는 실행 자리를 받지 못한다
+    await db.automationJob.update({ where: { id: re.jobId }, data: { runAfter: new Date(Date.now() - 1000) } });
+    expect(await claimNext(db, "w-b")).toBeNull();
+    expect(await runA).toBe("succeeded");
+    const claimedB = await claimNext(db, "w-b");
+    expect(claimedB?.job.id).toBe(re.jobId);
+  }, 20_000);
+});
