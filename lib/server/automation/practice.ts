@@ -17,6 +17,8 @@ import { STEPS } from "./steps";
 export const PRACTICE_STREAK_REQUIRED = 5;
 // 정리 다시 시도 상한. 모두 실패하면 「정리 필요」로 바꾸고 마스터 관리자 알림(운영 이벤트)을 남긴다.
 export const CLEANUP_MAX_ATTEMPTS = 10;
+// 연습 시작 때 남기는 기록의 사유(결과가 나오면 바뀐다)
+const PRACTICE_INCOMPLETE = "practice_incomplete";
 
 // 연습 실행 범위의 보관 자료(행동 키 기록·OBS 연결 정보)를 두 실행기에 지우라고 요청한다. 둘 다 성공해야 정리 끝이다.
 async function discardScope(rt: Pick<AutomationRuntime, "browser" | "obs">, scope: JobScope): Promise<boolean> {
@@ -43,7 +45,7 @@ export async function runPractice(
       playbookId: playbook.id,
       playbookVersion: playbook.version,
       outcome: "FAILED",
-      reason: "practice_incomplete",
+      reason: PRACTICE_INCOMPLETE,
       durationMs: 0,
       plannerCalls: 0,
       playbookActions: 0,
@@ -150,7 +152,11 @@ export type Readiness = {
 
 export async function playbookReadiness(db: PrismaClient | Prisma.TransactionClient, playbook: Playbook, required = PRACTICE_STREAK_REQUIRED): Promise<Readiness> {
   const where = { playbookId: playbook.id, playbookVersion: playbook.version };
-  const runs = await db.automationPracticeRun.findMany({ where, orderBy: { finishedAt: "desc" }, take: 100 });
+  // 진행 중인 연습(시작 때 남긴 기록, 아직 결과 없음)은 빼고 센다. 실행 시간 상한(6시간)을 넘겨도 끝나지 않은 기록은 죽은 것으로 보고 실패로 센다.
+  const runningSince = new Date(Date.now() - AUTOMATION_LIMITS.maxRunMs);
+  const runs = (await db.automationPracticeRun.findMany({ where, orderBy: { finishedAt: "desc" }, take: 100 })).filter(
+    (r) => !(r.reason === PRACTICE_INCOMPLETE && r.startedAt > runningSince),
+  );
   // 고객 작업에서 화면이 작업서와 달랐던 가장 최근 시각. 그 전의 연습 성공은 바뀐 화면을 검증하지 못했으므로 세지 않는다.
   const drifted = await db.automationJob.findFirst({
     where: { ...where, lastDeviationAt: { not: null } },

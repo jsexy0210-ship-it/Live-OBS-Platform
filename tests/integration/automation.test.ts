@@ -2141,3 +2141,26 @@ describe("Codex 14차 반영(32fc6cd)·MASTER 되돌리기 경로", () => {
     expect(await job(a.jobId)).toMatchObject({ artifactsPurgedAt: null });
   });
 });
+
+describe("Codex(4ad65d7~) 진행 중 연습", () => {
+  it("진행 중인 연습 기록(아직 결과 없음)은 연속 성공 판정에서 빼서, 검증된 작업서가 연습 도중 잠깐 미검증이 되지 않는다(6시간 넘게 끝나지 않은 기록은 실패로 센다)", async () => {
+    const row = {
+      playbookId: cafe24Playbook.id,
+      playbookVersion: cafe24Playbook.version,
+      outcome: "FAILED" as const,
+      reason: "practice_incomplete",
+      durationMs: 0,
+      plannerCalls: 0,
+      playbookActions: 0,
+      costWon: 0,
+    };
+    const running = await db.automationPracticeRun.create({ data: { ...row, startedAt: new Date(), cleanupPendingAt: new Date(Date.now() + 6 * 3600_000) } });
+    expect((await playbookReadiness(db, cafe24Playbook)).verified).toBe(true);
+    const a = await bought();
+    expect(await runOnce(db, runtime(), W)).toBe("succeeded");
+    expect(await job(a.jobId)).toMatchObject({ status: "SUCCEEDED" });
+    // 6시간 넘게 끝나지 않은 연습은 죽은 것으로 보고 실패로 센다
+    await db.automationPracticeRun.update({ where: { id: running.id }, data: { startedAt: new Date(Date.now() - 7 * 3600_000) } });
+    expect((await playbookReadiness(db, cafe24Playbook)).verified).toBe(false);
+  });
+});
