@@ -1,0 +1,21 @@
+# Cloudflare DNS-only. 루트 도메인만 발급하며 www/와일드카드는 요청하지 않는다.
+on-aircue.com {
+    header X-Robots-Tag "noindex, nofollow, noarchive"
+    handle /robots.txt {
+        respond "User-agent: *\nDisallow: /" 200
+    }
+    handle {
+        reverse_proxy obs-web-app:3000 {
+            header_up Host on-aircue.com
+            header_up X-Forwarded-Host on-aircue.com
+            header_up -Forwarded
+        }
+    }
+}
+
+# 임의 Host를 반사하는 리다이렉트를 만들지 않는다.
+:80 {
+    @canonical host on-aircue.com
+    redir @canonical https://on-aircue.com{uri} 308
+    respond "Misdirected request" 421
+}

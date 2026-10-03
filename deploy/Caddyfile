@@ -1,5 +1,23 @@
-# 지금은 도메인이 없어 공인 IP의 80 포트(HTTP)만 받는다.
-# 도메인을 정하면 아래 :80 을 도메인 이름으로 바꾸고 443을 열면 Caddy가 인증서를 자동으로 받는다(docs/DEPLOY.md 「HTTPS」).
+# DNS/TLS 준비 전: 알려진 호스트의 진단 경로만 HTTP로 제공한다.
 :80 {
-	reverse_proxy obs-web-app:3000
+    header X-Robots-Tag "noindex, nofollow, noarchive"
+    @health {
+        host on-aircue.com 210.109.15.68 127.0.0.1 localhost
+        path /api/health /api/live
+        method GET HEAD
+    }
+    handle @health {
+        reverse_proxy obs-web-app:3000 {
+            header_up Host on-aircue.com
+            header_up X-Forwarded-Host on-aircue.com
+            header_up -Forwarded
+        }
+    }
+    @known host on-aircue.com 210.109.15.68 127.0.0.1 localhost
+    handle @known {
+        respond "obs-test: HTTPS setup pending" 503
+    }
+    handle {
+        respond "Misdirected request" 421
+    }
 }

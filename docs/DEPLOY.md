@@ -1,209 +1,139 @@
-# 테스트 서버(obs-test) 배포
+# obs-test 배포·HTTPS 운영 절차
 
-이슈 #137. 대상은 KakaoCloud VM `obs-web-test`(Ubuntu 24.04, kr-central-2) 한 대예요. 운영(obs-web-prod) 배포는 이 문서 범위가 아니에요.
+이슈 #137, PR #145의 Docker 기반 후속 구성. 아래는 **구현과 실행 절차**이며 실제 VM 배포 성공 보고가 아니다.
+
+## 대상과 최신 확인 수준
+
+| 항목 | 기준 | 근거 |
+| --- | --- | --- |
+| 저장소 | `jsexy0210-ship-it/Live-OBS-Platform` | GitHub 확인 |
+| KakaoCloud 프로젝트 | `lifeleft` 유지 | 사용자 지시 |
+| 테스트 VM | `obs-web-test`, Ubuntu 24.04 / 2 vCPU·4GiB / SSD 30GB | 사용자 콘솔 보고, Active |
+| 공인 IP | `210.109.15.68` | 사용자 콘솔 보고, In Use |
+| 네트워크 | `obs-public-sn1`, `obs-web-sg` | 사용자 보고 |
+| 대표·허용 호스트 | `on-aircue.com` | 사용자 등록 완료 보고 |
+| DNS | Cloudflare Registrar, 루트 A → VM IP, DNS-only | 사용자 보고, 이 세션 독립 조회 미완료 |
+| www | 없음. 인증서·허용 호스트·리다이렉트에 추가하지 않음 | 사용자 지시 |
+| GitHub Environment | `obs-test` | 생성 완료 사용자 보고 |
+| SSH / runner | 접속·등록·Online 확인 미완료 | 실행 증거 필요 |
+
+이전 DuckDNS 이름은 활성 배포 대상에서 제외한다. Git 이력이나 실제 DNS/클라우드 자원은 삭제하지 않는다. 실제 서비스 브랜드 변경은 이번 도메인 구성과 별개다.
+
+2026-10-03 KST GitHub 조회에서 저장소는 **Public**이다. 상주 VM runner를 Public 저장소에 연결하지 않는 안전장치를 이 배포안에 적용한다. 공개 범위는 임의로 바꾸지 않는다. GitHub의 전면적 기능 금지가 아니라, 이번 상주 runner 배포의 안전 정책이다.
 
 ## 구성
 
-| 파일 | 역할 |
+- `Dockerfile`: Next.js standalone 앱과 Prisma migrator 이미지(PR #145 기반).
+- `deploy/docker-compose.yml`: **기존 VM 내부** PostgreSQL 16, 앱, Caddy. 새로운 Managed DB·VM·클라우드 볼륨·버킷은 만들지 않는다. Docker의 이름 있는 볼륨은 기존 30GB 디스크를 사용한다.
+- DB/앱 포트 5432/3000은 외부·호스트에 게시하지 않는다. Caddy만 80/443 사용. 각 서비스는 `unless-stopped`, 로그 10MB × 3개 제한.
+- `proxy.ts` / `lib/infra/host-policy.ts`: 이 테스트 배포에서 `OBS_ENFORCE_HOST_POLICY=1`, `OBS_ALLOWED_HOSTS=on-aircue.com`. 루트 호스트 외에는 421. 컨테이너 내부 루프백은 GET/HEAD `/api/health`, `/api/live`만 허용.
+- Caddy도 호스트를 제한하고 Host/X-Forwarded-Host를 canonical 도메인으로 전달한다. 외부 `Forwarded`는 제거한다. DNS-only이므로 앱은 Caddy 한 단계만 신뢰한다. Cloudflare 프록시를 나중에 켤 때는 신뢰 IP·프록시 설정을 별도 검토한다.
+- `/api/live`: DB와 무관한 프로세스 생존. `/api/health`: DB `SELECT 1`, 이미지에 기록한 배포 SHA, no-store, 내부 오류 비노출. liveness 200만으로 배포 성공 판정 금지.
+- 실제 결제·본인확인·메일 키는 앱에 주입하지 않는다. 기존 미설정 시 실패 정책을 유지한다. 유료 연동·테스트용 fake 결제 자동 활성화 금지.
+- 이미지 버킷·실결제·인증·실고객 메일 동작은 인프라 기동과 별도 검증이다. Resend 선택은 유지하되 이번 인프라 PR에서 별도 공급자 구현이나 키 변경을 하지 않는다.
+
+기존 VM 요금·네트워크 전송·Actions 사용량은 기존 계정 과금에 따른다. 별도 유료 자원을 만들지 않는다고 실행 비용 전체가 0원이 되는 것은 아니다.
+
+## 배포 차단 조건
+
+1. 상주 runner를 사용할 저장소의 Private 전환은 소유자가 결정한다. Public을 유지하려면 별도 격리 배포 경로를 검토한다. 현재 워크플로는 Public 상태에서는 **호스팅 authorize 단계에서 중단**한다. runner 레이블·main 가드만으로 악성 PR이 격리된다고 가정하지 않는다.
+2. SSH는 새 VM의 호스트 키 지문을 콘솔/안전한 경로와 대조한다. 같은 IP를 재사용했어도 과거 호스트 키를 그대로 믿거나 `StrictHostKeyChecking=no`로 우회하지 않는다.
+3. 로컬 테스트 DB 사용을 확인하고 `/opt/obs/.env`의 `OBS_ALLOW_LOCAL_DB=1` 지정. 다른 서비스 DB를 연결하지 않는다.
+4. `obs-test` Environment는 main만 배포 허용. 사용 가능한 보호 기능으로 승인자를 지정하고 저장소 쓰기 권한을 제한한다. runner가 대상 VM에서 Online/Idle인지 확인한다.
+5. DNS 조회 결과, 80/443 인바운드, Caddy 인증서 저장 볼륨을 준비한다. **도메인 구매·A 레코드 입력과 인증서 발급 성공은 다른 상태다.**
+
+## VM 초기 준비
+
+관리자가 승인된 커밋의 스크립트를 대상 VM에 전달해 실행한다. 다른 서버에서 실행하지 않는다.
+
+```bash
+sudo bash scripts/infra/bootstrap_obs_test.sh --confirm-obs-web-test
+```
+
+Docker·Python·Git, `obs` 계정과 `/opt/obs`를 준비한다. 최초에만 난수 비밀값을 파일에 생성하고 출력하지 않는다. 기존 `.env`는 덮어쓰지 않는다. 대상 표식과 machine-id를 기록한다. Docker 그룹은 사실상 root 권한이므로 다른 프로젝트·비밀정보와 공유하지 않는다.
+
+`/opt/obs/.env`는 obs 소유, 600 또는 400 권한. 변수 이름:
+`POSTGRES_USER`, `POSTGRES_DB`, `POSTGRES_PASSWORD`, `IDENTITY_HASH_KEY`, `BILLING_KEY_SECRET`, `OBS_ALLOW_LOCAL_DB`.
+비밀값은 32자 이상 영문·숫자·밑줄의 따옴표 없는 KEY=VALUE 형식이다. 배포 실행은 값을 검증하고 허용 목록만 자식 프로세스에 전달한다. `source`, `set -x`, `.env` 출력, 전체 `docker compose config` 출력은 하지 않는다. 설정 검사는 `config --quiet`만 사용한다.
+
+### 네트워크
+
+| 포트 | 허용 범위 |
 | --- | --- |
-| `Dockerfile` | 앱 이미지(Next.js standalone, `node server.js`) + 마이그레이션 이미지(`migrator` 단계) |
-| `deploy/docker-compose.yml` | 프로젝트 `obs-web`: DB·마이그레이션·앱·프록시 |
-| `deploy/Caddyfile` | 80 포트를 받아 앱으로 넘기는 리버스 프록시 |
-| `app/api/health/route.ts` | `GET /api/health` 기동·DB 확인 |
+| 22/tcp | 관리자 접속 IP/32 |
+| 80/tcp | HTTP ACME challenge와 HTTPS 리다이렉트에 필요한 접근 |
+| 443/tcp | 인증서 발급 시도 **이전부터** 인터넷 접근 |
+| 3000/5432·Docker API·관리 포트 | 외부 비공개 |
 
-| 서비스 | 내용 | 밖으로 여는 포트 |
-| --- | --- | --- |
-| `obs-web-db` | PostgreSQL 16. 데이터는 이름 있는 볼륨 `obs-web_obs-web-pgdata`에 보존 | 없음 |
-| `obs-web-migrate` | `prisma migrate deploy`를 한 번 실행하고 끝남. 실패하면 앱이 뜨지 않음 | 없음 |
-| `obs-web-app` | 앱(3000, compose 네트워크 안에서만). healthcheck가 `/api/health`를 봄 | 없음 |
-| `obs-web-proxy` | Caddy. 앱이 healthy가 된 뒤 시작 | 80 |
+보안 그룹과 VM 방화벽 모두 확인한다. GitHub·Docker Hub·인증기관·DNS-over-HTTPS 등에 대한 아웃바운드 연결도 필요하다. 이 문서는 방화벽 변경 완료를 의미하지 않는다.
 
-- 실시간(SSE)은 DB `LISTEN/NOTIFY`로 전달돼요. 앱 컨테이너 하나 기준이고, 여러 개로 늘려도 DB를 통해 전달돼요.
-- 이미지는 `obs-web-app:<커밋 SHA>`, `obs-web-migrate:<커밋 SHA>`로 남아요(롤백용).
-- 레지스트리·Managed DB 등 유료 자원은 쓰지 않아요.
+## runner 등록
 
-## `GET /api/health`
-
-- DB에 `SELECT 1`이 되면 `200 {"status":"ok","db":"ok","version":"<커밋 SHA>"}`
-- DB 연결이 안 되면 `503 {"status":"error","db":"error","version":...}`. 오류 내용·주소는 응답에 넣지 않아요.
-- `version`은 이미지 빌드 때 넣은 `APP_VERSION`(커밋 SHA). 없으면 `null`.
-
-## 배포 방식
-
-### 권고: VM 안의 self-hosted runner
-
-VM에 GitHub Actions runner(라벨 `obs-kakao`)를 설치하고, Actions 화면에서 수동 실행하면 runner가 main을 받아 VM에서 이미지를 빌드·기동하는 방식이에요.
-
-- runner는 GitHub로 나가는 연결만 써요. SSH 22를 인터넷에 열 필요가 없어요.
-- 비밀값은 서버의 `/opt/obs/.env`에만 있어요. GitHub Secrets에 DB 비밀번호를 둘 필요가 없어요.
-- 레지스트리(GHCR 용량 과금 가능성) 없이 동작해요.
-- 주의: runner가 받은 코드를 VM에서 그대로 실행해요. 그래서 배포 워크플로는 `workflow_dispatch`만, main만, Environment `obs-test`로 묶어야 하고, PR·다른 브랜치·fork에서는 절대 runner로 가지 않아야 해요.
-
-**배포 워크플로 파일(`.github/workflows/deploy-obs-test.yml`)은 아직 없어요.** 이 작업 세션에서 작성하려 했지만 세션 권한 검사가 「운영 배포」로 분류해 막았어요. 대표님이 승인 범위를 다시 확인해 주시면 추가해요. 그 전까지는 아래 「수동 배포」로 같은 일을 할 수 있어요.
-CI의 「No deploy workflows」 검사도 그대로 두었어요(워크플로를 넣을 때 `deploy-obs-test.yml` 하나만, `workflow_dispatch` 전용일 때만 허용하도록 같이 좁혀요).
-
-### 대안: GitHub 호스팅 러너 + SSH
-
-GitHub 러너가 SSH로 VM에 접속해 같은 compose 명령을 실행하는 방식이에요.
-
-| | self-hosted runner(권고) | SSH |
-| --- | --- | --- |
-| 인터넷에 여는 포트 | 없음(나가는 연결만) | 22를 GitHub 러너 IP 대역 전체에 열어야 함(대역이 넓고 자주 바뀜) |
-| GitHub에 두는 비밀값 | 없음 | SSH 개인키·호스트 키 |
-| 서버에 설치할 것 | runner 서비스 | 없음 |
-| 빌드 위치 | VM(4GB 메모리로 충분) | VM(동일) 또는 러너에서 빌드 후 이미지 전송 |
-| 위험 | runner가 실행하는 워크플로를 엄격히 제한해야 함 | 키 유출 시 서버 접속 가능 |
-
-22를 넓게 여는 게 더 큰 위험이라 runner 방식을 권해요.
-
-## 서버 준비(대표님 조치, 순서대로)
-
-모두 VM에서 대표님 계정으로 실행해요. 토큰·비밀번호는 서버에서 직접 입력하고 저장소·채팅·로그에 남기지 않아요.
-
-### 1. 보안 그룹 `obs-web-sg`(KakaoCloud 콘솔)
-
-| 포트 | 출발지 | 비고 |
-| --- | --- | --- |
-| 80/tcp | 0.0.0.0/0 | 서비스 |
-| 443/tcp | 막음 | 도메인·HTTPS 설정 뒤 0.0.0.0/0 허용 |
-| 22/tcp | 대표님 IP/32만 | 서버 관리 |
-| 5432, 3000 등 | 막음 | DB·앱은 compose 안에서만 쓰고 호스트에도 열지 않음 |
-
-나가는 연결(443)은 GitHub·Docker Hub·npm 접속에 필요해요.
-
-### 2. Docker 설치
+Private/격리 정책을 해결한 뒤 GitHub Settings → Actions → Runners → New self-hosted runner → Linux x64 안내를 따른다. `/opt/obs/actions-runner`에 `obs` 계정으로 설치한다. 토큰은 코드·이슈·명령 히스토리에 넣지 않고 대화형 입력으로 전달한다.
 
 ```bash
-sudo apt-get update && sudo apt-get install -y ca-certificates curl
-sudo install -m 0755 -d /etc/apt/keyrings
-sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" \
-  | sudo tee /etc/apt/sources.list.d/docker.list
-sudo apt-get update && sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-sudo systemctl enable --now docker
-docker compose version
+# obs 계정, runner 디렉터리에서 실행. token 플래그를 사용하지 않는다.
+./config.sh --url https://github.com/jsexy0210-ship-it/Live-OBS-Platform \
+  --name obs-web-test --labels obs-kakao,obs-test
+# 등록 완료 후 관리자 계정에서 서비스 설치·시작
+sudo ./svc.sh install obs
+sudo ./svc.sh start
 ```
 
-### 3. 작업 폴더 `/opt/obs`
+Linux/X64 기본 레이블과 추가 obs-kakao/obs-test 모두 필요하다. Environment는 `obs-test`. 이 구성은 VM 내부에서 로컬 배포하므로 워크플로에 SSH 개인키를 전달하지 않는다.
+
+## DNS 및 HTTPS
+
+사용자가 Cloudflare에서 루트 A를 이미 VM IP에 연결했다고 보고했다. **DNS를 다시 생성하거나 프록시를 켜지 않는다.** 실제 배포 전에 아래 읽기 전용 검사로 확인한다.
 
 ```bash
-sudo useradd -m -s /bin/bash obs            # 배포 전용 계정(runner도 이 계정으로 실행)
-sudo usermod -aG docker obs
-sudo mkdir -p /opt/obs/backups
-sudo chown -R obs:obs /opt/obs
-sudo chmod 700 /opt/obs /opt/obs/backups
+python3 scripts/infra/dns_preflight.py
 ```
 
-`docker` 그룹은 root와 같은 권한이에요. 이 계정에는 다른 용도를 주지 않아요.
+두 공개 리졸버와 서버 리졸버에서 루트 A가 지정 IPv4와 일치해야 한다. 구성된 IPv6가 없으므로 AAAA가 나타나면 중단하고 실제 할당 여부를 확인한다. 코드가 레코드를 자동 삭제하지 않는다. CAA 제한이 있으면 Caddy 인증기관을 허용하는지도 확인한다.
 
-### 4. 서버 `.env`(`/opt/obs/.env`, 권한 600)
+- 인증서 대상은 **on-aircue.com 한 개**. www와 와일드카드는 신청하지 않는다.
+- Caddy가 공개 ACME 인증서를 발급·갱신한다. DNS-only이므로 브라우저가 VM 인증서를 직접 검증한다. **Cloudflare Origin CA 인증서를 직접 사용자용 인증서로 대체하지 않는다.**
+- HTTP/TLS ACME challenge를 사용하므로 Cloudflare DNS API 토큰을 배포 워크플로에 추가할 필요가 없다.
+- 적용 전: `deploy/Caddyfile`의 허용 호스트 진단 경로만 HTTP 200/503. 로그인·구매 페이지는 503 준비중. 임의 Host는 421.
+- 적용 후: `deploy/Caddyfile.https`. 루트 도메인의 HTTP만 고정 HTTPS 주소로 308 리다이렉트. 다른 Host는 애플리케이션으로 전달하지 않는다.
+- 인증서 개인키와 계정 데이터는 `obs-web-caddy-data`/`obs-web-caddy-config` 볼륨에 보존한다. 인증서를 코드·로그에 넣거나 매 배포 때 삭제하지 않는다.
+- Secure/HttpOnly 쿠키와 기존 CSRF·동일 출처 정책을 유지한다. HTTPS 문제를 쿠키 비활성화·CORS 와일드카드로 우회하지 않는다.
 
-```bash
-sudo -u obs touch /opt/obs/.env && sudo -u obs chmod 600 /opt/obs/.env
-sudo -u obs nano /opt/obs/.env
-```
+## 배포·검증 순서
 
-넣을 변수 **이름**(값은 대표님이 직접 입력):
+1. MASTER가 PR #145 및 후속 PR을 검수·main에 반영하고 **정확한 main SHA의 CI 성공**을 확인한다.
+2. VM 초기 준비·runner 등록·로컬 테스트 DB 승인 완료.
+3. Actions → **Deploy obs-test (manual)** → main → confirm_target에 `obs-web-test` 입력.
+4. DNS/TLS가 미준비면 `enable_https=false`로 진단용 기동만 검증한다. DNS·포트가 준비됐으면 `true`.
+5. 호스팅 runner에서 테스트·전체 Dockerfile 빌드·폐기용 Compose smoke를 수행한다. 이미지를 파일 아티팩트로 전달하고 보관 기간은 1일이다. 별도 레지스트리를 생성하지 않는다. VM에서 빌드하지 않는다.
+6. VM은 실행 대상 표식·machine-id·파일 소유권·아티팩트 목록/해시·배포 SHA를 확인하고 파일 잠금으로 동시 배포를 차단한다.
+7. DB 기동 → pg_dump → 덤프 목록 확인 → 앱 정지 → migrate deploy → 앱·프록시 기동 → DB/버전/로컬 프록시/TLS 확인.
+8. GitHub 호스팅 runner가 외부에서 https://on-aircue.com/api/health 를 검증한다. 인증서 검증을 끄는 `-k`나 임의 TLS 무시를 사용하지 않는다. HTTPS 전에는 IP의 health만 확인한다.
+9. 로그인 유지·실시간 이벤트·이미지 업로드 등 기능 검증은 별도로 수행한다. 테스트 계정 준비나 외부 계약이 없다면 차단 상태를 기록한다. 실결제·환불·유료 인증·실고객 메일은 수행하지 않는다.
+10. 재부팅 후 Docker·runner 및 앱 자동 기동은 실제 VM에서 별도 검증한다. `unless-stopped`는 명시적으로 정지한 컨테이너를 강제로 켜지 않는다.
 
-| 변수 | 필수 | 내용 |
-| --- | --- | --- |
-| `POSTGRES_USER` | 필수 | DB 계정 이름 |
-| `POSTGRES_PASSWORD` | 필수 | DB 비밀번호. 접속 주소에 그대로 들어가서 **영문·숫자만** 써요(`openssl rand -hex 24`로 만들면 돼요) |
-| `POSTGRES_DB` | 필수 | DB 이름 |
-| `IDENTITY_HASH_KEY` | 필수 | 본인확인 CI 해시 키(32자 이상) |
-| `BILLING_KEY_SECRET` | 필수 | 빌링키 암호화 키(32자 이상) |
-| `BILLING_PROVIDER` | 결정 필요 | 결제 공급자. 실제 업체 연동 전이라 지금 값은 `fake`뿐이에요. 비우면 결제 경로는 오류로 멈춰요 |
-| `BUSINESS_STATUS_PROVIDER`, `NTS_BUSINESS_STATUS_API_KEY` | 선택 | 판매자 가입 사업자 상태 점검 |
-| `MAIL_ORDER_PROVIDER`, `FTC_MAIL_ORDER_API_KEY` | 선택 | 통신판매업 점검 |
-| `PORTONE_API_SECRET`, `PORTONE_STORE_ID`, `PORTONE_IDENTITY_CHANNEL_KEY` | 선택 | 휴대폰 본인확인. 없으면 가입 본인확인은 503 「준비 중」 |
+## 데이터·롤백
 
-`DATABASE_URL`과 `TRUSTED_PROXY_HOPS`(=1)는 compose가 만들어 넣어요. `.env`에 적지 않아요.
-`.env`를 바꾼 뒤에는 재배포(또는 `up -d`)해야 반영돼요.
+DB는 `obs-web_obs-web-pgdata`, 앱은 SHA별 이미지/릴리스로 분리한다. `/opt/obs/backups`에 제한된 권한으로 배포 전 덤프를 보존한다. 아카이브 목록 검증은 실제 복원 시험의 대체가 아니다.
 
-### 5. runner 등록(배포 워크플로 추가 뒤)
+- 서버에서 `down -v`, `docker volume rm`, 전체 `prune --volumes` 금지.
+- 30GB 디스크에 이미지·백업이 쌓인다. 여유 6GiB 미만이면 배포 중지. 자동 파일·이미지 삭제 금지.
+- 백업·이미지 보존으로 공간이 부족하면 필요 용량과 대상을 보고한다. 유료 디스크 확장/버킷 생성은 별도 승인.
+- VM 내부 백업은 VM 손실 대비책이 아니다. 승인된 외부 위치로 암호화 보관할 계획이 별도로 필요하다.
+- DB migration 파일 지문이 같으면 앱 실패 시 이전 이미지/프록시 복구를 시도한다. 달라졌으면 자동 DB 복원·오래된 앱 강제 기동은 하지 않는다.
+- DB 복원은 데이터 손실 범위를 확인한 후 별도 승인으로 수행한다.
+- HTTPS 적용 완료 후 HTTP로 하향하는 실수는 차단한다.
+- 상태 파일 current.json/previous.json 및 배포 이력에는 SHA·상태·시각만 저장한다. 파일 존재를 현재 health 성공으로 취급하지 않는다.
 
-1. GitHub 저장소 → Settings → Actions → Runners → New self-hosted runner → Linux x64. 화면의 다운로드·`config.sh` 명령을 그대로 써요. **토큰은 화면에서 복사해 서버에서만 입력해요.**
-2. 서버에서 `obs` 계정으로 `/opt/obs/actions-runner`에 설치하고 등록할 때 라벨 `obs-kakao`를 추가해요.
-   ```bash
-   sudo -u obs -i
-   mkdir -p /opt/obs/actions-runner && cd /opt/obs/actions-runner
-   # (GitHub 화면의 다운로드·압축 해제 명령)
-   ./config.sh --url https://github.com/jsexy0210-ship-it/Live-OBS-Platform --labels obs-kakao --name obs-web-test --unattended --token <화면의 토큰>
-   exit
-   cd /opt/obs/actions-runner && sudo ./svc.sh install obs && sudo ./svc.sh start
-   ```
-3. Settings → Environments → `obs-test` → Deployment branches를 `main`만 허용으로 바꿔요. 필요하면 Required reviewers에 대표님을 넣어요.
-4. Settings → Actions → General → Fork pull request workflows는 승인 필요(기본값)로 둬요.
+## 검증 수준 기록
 
-GitHub Secrets·Variables는 이 방식에서 필요 없어요(비밀값은 서버 `.env`에만).
+후속 작업의 로컬 Python/YAML/셸/독립 호스트 정책 검증과 GitHub CI·실제 VM 실행을 구분해 PR에 보고한다. 이 작업 세션은 네트워크 이름 해석이 실패해 공개 DNS를 독립적으로 확인하지 못했고, Docker·VM SSH 자격정보도 없다. 따라서 사용자 보고한 DNS 등록 상태를 실패로 단정하지 않는다. 전체 앱 빌드·Docker 실기동은 GitHub CI 실행 결과를 따로 확인해야 한다. DNS·인증서·로그인·runner Online은 실제 증거가 나올 때까지 미검증이다.
 
-## 수동 배포(서버에서 직접)
-
-```bash
-sudo -u obs -i
-git clone https://github.com/jsexy0210-ship-it/Live-OBS-Platform.git /opt/obs/src   # 처음 한 번
-cd /opt/obs/src && git fetch origin main && git checkout --detach origin/main
-export APP_VERSION=$(git rev-parse HEAD)
-docker compose -p obs-web -f deploy/docker-compose.yml --env-file /opt/obs/.env up -d --build --wait
-curl -s http://127.0.0.1/api/health      # status ok, version = 위 SHA 확인
-echo "$(TZ=Asia/Seoul date '+%F %T KST') sha=$APP_VERSION" >> /opt/obs/deploy-history.log
-```
-
-배포 전 백업(아래)을 먼저 받아 두세요.
-
-## 백업·복구
-
-```bash
-cd /opt/obs/src
-C="docker compose -p obs-web -f deploy/docker-compose.yml --env-file /opt/obs/.env"
-# 백업
-$C exec -T obs-web-db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > /opt/obs/backups/obs-$(TZ=Asia/Seoul date +%Y%m%d-%H%M).dump
-chmod 600 /opt/obs/backups/*.dump
-# 복구(현재 DB 내용을 백업 시점으로 덮어써요)
-$C stop obs-web-app
-$C exec -T obs-web-db sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists' < /opt/obs/backups/<파일>.dump
-$C start obs-web-app
-```
-
-백업 파일은 VM 디스크(30GB)에 쌓이니 주기적으로 VM 밖(대표님 PC 등)으로 옮겨 두고 오래된 것은 직접 정리해요.
-
-## 데이터 보존 확인
-
-- `docker compose ... restart`, `down` 후 `up`, 재배포 모두 볼륨 `obs-web_obs-web-pgdata`는 그대로예요.
-- **`down -v`와 `docker volume rm`은 DB를 지워요. 쓰지 않아요.**
-- 확인: 재배포 전후로 같은 행 수를 비교해요.
-  ```bash
-  $C exec -T obs-web-db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT count(*) FROM \"Seller\""'
-  ```
-
-## 롤백
-
-이전 커밋의 이미지가 서버에 남아 있으면 빌드 없이 되돌려요.
-
-```bash
-docker image ls obs-web-app                 # 남아 있는 SHA 확인
-APP_VERSION=<이전 SHA> $C up -d --no-build --wait
-```
-
-- 마이그레이션은 되돌리지 않아요. 새 버전이 DB 구조를 바꿨다면 배포 전 백업으로 복구한 뒤 이전 이미지를 띄워요.
-- 근본 수정은 main에 되돌림 PR을 병합한 뒤 다시 배포해요.
-- 쌓인 이미지는 `docker image ls`로 보고 필요 없는 SHA만 `docker image rm`으로 지워요.
-
-## 로그
-
-```bash
-$C ps                                   # 상태·healthy 여부
-$C logs -f --tail 200 obs-web-app       # 앱
-$C logs --tail 100 obs-web-migrate      # 마이그레이션 결과
-$C logs --tail 100 obs-web-proxy        # 프록시
-```
-
-## HTTPS(도메인 확정 뒤)
-
-1. 도메인 DNS A 레코드를 `210.109.15.68`로 지정해요.
-2. `deploy/Caddyfile`의 `:80`을 도메인 이름으로 바꾸고, compose 프록시에 `443:443`을 추가하는 PR을 올려요.
-3. 보안 그룹에서 443을 열어요. Caddy가 인증서를 자동으로 받아요(무료, `obs-web-caddy-data` 볼륨에 보관).
-
-## 알려진 문제
-
-- **HTTP(IP:80)에서는 로그인이 유지되지 않아요.** 운영 빌드는 로그인 쿠키에 `Secure`를 붙여서 브라우저가 HTTP 주소에서는 저장하지 않아요(`lib/server/http/route.ts`). 화면·API 확인은 되지만 로그인 흐름은 HTTPS(도메인) 뒤에 확인할 수 있어요.
+공식 근거:
+- https://caddyserver.com/docs/automatic-https
+- https://caddyserver.com/docs/caddyfile/directives/reverse_proxy
+- https://developers.cloudflare.com/dns/proxy-status/
+- https://developers.cloudflare.com/ssl/origin-configuration/origin-ca/
+- https://docs.github.com/en/actions/reference/security/secure-use
+- https://docs.docker.com/engine/install/ubuntu/

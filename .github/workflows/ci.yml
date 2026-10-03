@@ -20,24 +20,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-
-      - name: No deploy workflows
+      - name: Validate deployment policy
         run: |
-          set -euo pipefail
-          # 이번 단계는 운영 배포 미구성. self-hosted 러너 배포 워크플로 재유입 차단.
-          ! grep -RIl 'self-hosted' .github/workflows/ --exclude=ci.yml
-
+          python3 -m pip install 'PyYAML==6.0.2'
+          python3 scripts/infra/check_workflows.py
+          python3 -m unittest discover -s tests/infra -v
       - name: Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
-
       - name: Install
         run: npm ci --no-audit --no-fund
-
       - name: Typecheck
         run: npm run typecheck
-
       - name: Build
         run: npm run build
 
@@ -46,7 +41,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
-      # 폐기 가능한 테스트 DB (GitHub Actions 서비스 컨테이너, 외부 자원 없음)
       postgres:
         image: postgres:16
         env:
@@ -61,24 +55,32 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
+      # 폐기용 GitHub Actions DB. VM에서 재사용하지 않는다.
       DATABASE_URL: postgresql://live_obs:live_obs@localhost:5432/live_obs_test
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-
       - name: Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
-
       - name: Install
         run: npm ci --no-audit --no-fund
-
       - name: Unit tests
         run: npm test
-
       - name: Migrate test DB
         run: npm run db:migrate
-
       - name: Integration tests
         run: npm run test:integration
+
+  docker-smoke:
+    name: Full Docker build and disposable deployment smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      APP_VERSION: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - run: bash scripts/infra/ci_smoke.sh

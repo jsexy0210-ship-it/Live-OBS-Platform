@@ -1,0 +1,164 @@
+name: Deploy obs-test (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_target:
+        description: '대상 확인: obs-web-test 입력'
+        required: true
+        type: string
+      enable_https:
+        description: 'DNS A/AAAA와 80/443 접근을 준비한 뒤 HTTPS 적용'
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: obs-test-deploy
+  cancel-in-progress: false
+
+jobs:
+  authorize:
+    if: github.repository == 'jsexy0210-ship-it/Live-OBS-Platform' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.confirm_target == 'obs-web-test'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require private repository before using a persistent VM runner
+        run: |
+          python3 - <<'PY'
+          import json, os
+          event = json.load(open(os.environ['GITHUB_EVENT_PATH']))
+          if event['repository']['private'] is not True:
+              raise SystemExit('Public 저장소에는 VM 상주 runner를 연결하지 않습니다. Private 전환 또는 별도 격리 배포 정책 승인이 필요합니다.')
+          PY
+
+      - name: Require successful main CI for this exact SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOY_SHA: ${{ github.sha }}
+        run: |
+          python3 - <<'PYCODE'
+          import json, os, urllib.request
+          url='https://api.github.com/repos/jsexy0210-ship-it/Live-OBS-Platform/actions/workflows/ci.yml/runs?branch=main&event=push&head_sha='+os.environ['DEPLOY_SHA']+'&per_page=5'
+          req=urllib.request.Request(url,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'})
+          try:
+              with urllib.request.urlopen(req,timeout=15) as r: runs=json.load(r)['workflow_runs']
+              runs=[x for x in runs if x['head_sha']==os.environ['DEPLOY_SHA'] and x['head_branch']=='main']
+              assert runs and runs[0]['status']=='completed' and runs[0]['conclusion']=='success'
+          except Exception:
+              raise SystemExit('지정 main SHA의 최신 CI 성공을 확인하지 못했습니다. 배포하지 않습니다.') from None
+          print('Exact main SHA has successful CI.')
+          PYCODE
+
+  build:
+    needs: authorize
+    if: github.repository == 'jsexy0210-ship-it/Live-OBS-Platform' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.confirm_target == 'obs-web-test'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      APP_VERSION: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Unit and infrastructure checks
+        run: |
+          python3 -m pip install 'PyYAML==6.0.2'
+          python3 scripts/infra/check_workflows.py
+          python3 -m unittest discover -s tests/infra -v
+          npm ci --no-audit --no-fund
+          npm run typecheck
+          npm test
+      - name: Build full Dockerfiles and validate disposable stack
+        run: bash scripts/infra/ci_smoke.sh
+      - name: Bundle tested images (no registry, no secrets)
+        run: |
+          mkdir -p _obs_artifact/src/scripts
+          cp -R deploy _obs_artifact/src/deploy
+          cp -R scripts/infra _obs_artifact/src/scripts/infra
+          find _obs_artifact -type d -name __pycache__ -prune -exec rm -rf {} +
+          printf '%s\n' "$GITHUB_SHA" > _obs_artifact/src/release.sha
+          python3 - <<'PY'
+          import hashlib
+          from pathlib import Path
+          h=hashlib.sha256()
+          for p in sorted(Path('prisma/migrations').rglob('*')):
+              if p.is_file():
+                  h.update(str(p).encode()+b'\0'+p.read_bytes()+b'\0')
+          Path('_obs_artifact/src/migrations.sha').write_text(h.hexdigest()+'\n')
+          PY
+          docker save "obs-web-app:$GITHUB_SHA" "obs-web-migrate:$GITHUB_SHA" -o _obs_artifact/images.tar
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          root=Path('_obs_artifact'); manifest={}
+          for p in sorted(root.rglob('*')):
+              if p.is_file():
+                  with p.open('rb') as f: manifest[str(p.relative_to(root))]=hashlib.file_digest(f,'sha256').hexdigest()
+          (root/'manifest.json').write_text(json.dumps(manifest))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: obs-test-${{ github.sha }}
+          path: _obs_artifact/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  deploy:
+    needs: build
+    if: github.repository == 'jsexy0210-ship-it/Live-OBS-Platform' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.confirm_target == 'obs-web-test'
+    environment: obs-test
+    runs-on: [self-hosted, Linux, X64, obs-kakao, obs-test]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: obs-test-${{ github.sha }}
+          path: ${{ runner.temp }}/obs-bundle-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Validate target, backup, migrate and start
+        env:
+          DEPLOY_SHA: ${{ github.sha }}
+          ENABLE_HTTPS: ${{ inputs.enable_https }}
+        run: |
+          set +x
+          set -euo pipefail
+          bundle="$RUNNER_TEMP/obs-bundle-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          args=(--bundle "$bundle" --sha "$DEPLOY_SHA")
+          if [[ "$ENABLE_HTTPS" == true ]]; then args+=(--https); fi
+          python3 "$bundle/src/scripts/infra/deploy_obs_test.py" "${args[@]}"
+          printf '### obs-test\n- Commit: `%s`\n- Local health: passed\n- HTTPS requested: %s\n' "$DEPLOY_SHA" "$ENABLE_HTTPS" >> "$GITHUB_STEP_SUMMARY"
+
+  verify:
+    needs: deploy
+    if: github.repository == 'jsexy0210-ship-it/Live-OBS-Platform' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.confirm_target == 'obs-web-test'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify from outside VM without bypassing TLS
+        env:
+          DEPLOY_SHA: ${{ github.sha }}
+          ENABLE_HTTPS: ${{ inputs.enable_https }}
+        run: |
+          python3 - <<'PY'
+          import json, os, time, urllib.request
+          secure=os.environ['ENABLE_HTTPS']=='true'
+          url=('https://on-aircue.com' if secure else 'http://210.109.15.68')+'/api/health'
+          for _ in range(12):
+              try:
+                  with urllib.request.urlopen(url,timeout=10) as r:
+                      j=json.load(r)
+                      if r.status==200 and j.get('status')=='ok' and j.get('db')=='ok' and j.get('version')==os.environ['DEPLOY_SHA']:
+                          print('External health, DB and release SHA verified; HTTPS='+str(secure)); break
+              except Exception: pass
+              time.sleep(5)
+          else: raise SystemExit('External verification failed. Check DNS/security group/TLS. No automatic data restore.')
+          PY
