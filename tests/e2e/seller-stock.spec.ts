@@ -534,3 +534,59 @@ test("행의 「이력」은 그 옵션의 재고 이력만 보여 준다", asyn
   await dialog.getByRole("button", { name: "닫기" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
+
+test("검색을 바꾸면 이전 선택은 지금 결과와 겹치는 것만 남는다(표시·한꺼번에 적기 대상)", async ({ page }) => {
+  // 「가방」 250개 + 「나무」 220개(가짜 응답, 겹치지 않는 이름). 적용은 하지 않는다
+  const fake = (prefix: string, n: number, base: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      id: `00000000-0000-4000-8000-${String(base + i).padStart(12, "0")}`,
+      name: `${prefix} ${i + 1}`,
+      price: 1000,
+      status: "ON_SALE",
+      stockDeductMode: "ON_PAYMENT",
+      options: [{ id: `10000000-0000-4000-8000-${String(base + i).padStart(12, "0")}`, name: "기본", stock: 10, sortOrder: 0 }],
+    }));
+  await page.route("**/api/seller/products?limit=200**", (route) => route.fulfill({ json: { products: [...fake("가방", 250, 0), ...fake("나무", 220, 1000)], nextCursor: null } }));
+  await openAs(page);
+  const info = page.getByTestId("stock-selinfo");
+  await page.getByLabel("재고 검색").fill("가방");
+  await info.getByRole("button", { name: "250개 모두 선택" }).click();
+  await expect(info).toContainText("선택 250개 · 전체 250개");
+  // 겹치지 않는 검색으로 바꾸면 이전 선택은 빠진다
+  await page.getByLabel("재고 검색").fill("나무");
+  await expect(info).toContainText("선택 0개 · 전체 220개");
+  await info.getByRole("button", { name: "220개 모두 선택" }).click();
+  await expect(info).toContainText("선택 220개 · 전체 220개");
+  await page.getByLabel("선택한 옵션에 더하거나 뺄 수량").fill("+1");
+  await page.getByRole("button", { name: "한꺼번에 적기" }).click();
+  // 바뀐 옵션은 지금 결과 220개뿐(이전 검색의 250개는 그대로)
+  await expect(page.getByTestId("sum-count")).toHaveText("220개");
+  await page.getByLabel("재고 검색").fill("가방");
+  await expect(nextInput(page, "가방 1 기본")).toHaveValue("10");
+});
+
+test("검색을 바꿔 다시 모두 선택해 적용하면 이전 검색 결과의 재고는 바뀌지 않는다", async ({ page }) => {
+  await openAs(page);
+  const cur = async (name: string) => Number((await row(page, name).locator(".c-cur").innerText()).replace(/\D/g, ""));
+  const topBefore = await cur("탑로더 25장");
+  const moonBefore = await cur("문라이트 컬렉션 박스");
+  // 1) 「탑로더」를 모두 선택
+  await page.getByLabel("재고 검색").fill("탑로더");
+  await page.getByLabel("보이는 옵션 모두 선택").check();
+  // 2) 겹치지 않는 「문라이트 컬렉션」으로 바꿔 모두 선택하고 +1 적용
+  await page.getByLabel("재고 검색").fill("문라이트 컬렉션");
+  await page.getByLabel("보이는 옵션 모두 선택").check();
+  await page.getByLabel("선택한 옵션에 더하거나 뺄 수량").fill("+1");
+  await page.getByRole("button", { name: "한꺼번에 적기" }).click();
+  await expect(page.getByTestId("sum-count")).toHaveText("1개");
+  await applyAll(page);
+  await expect(page.getByText("재고 1건을 바꿨어요")).toBeVisible();
+  // 3) 서버에서 다시 읽어도 탑로더는 그대로, 문라이트만 +1
+  await page.reload();
+  await expect(row(page, "문라이트 컬렉션 박스").locator(".c-cur")).toContainText(String(moonBefore + 1));
+  expect(await cur("탑로더 25장")).toBe(topBefore);
+  // 되돌려 둔다
+  await nextInput(page, "문라이트 컬렉션 박스 1박스").fill(String(moonBefore));
+  await applyAll(page);
+  await expect(page.getByText("재고 1건을 바꿨어요")).toBeVisible();
+});

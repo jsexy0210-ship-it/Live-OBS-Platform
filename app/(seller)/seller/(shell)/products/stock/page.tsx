@@ -120,6 +120,15 @@ export default function StockPage() {
   const [shownCount, setShownCount] = useState(PAGE_ROWS);
   useEffect(() => setShownCount(PAGE_ROWS), [query, filter]);
   const shown = visible.slice(0, shownCount);
+  // 검색·걸러 보기를 바꾸면 선택은 지금 결과와 겹치는 것만 남긴다(조건 밖 옵션이 「한꺼번에 적기」에 섞이지 않게)
+  useEffect(() => {
+    setSelected((s) => {
+      if (s.size === 0) return s;
+      const keys = new Set(visible.map((r) => r.key));
+      const out = new Set([...s].filter((k) => keys.has(k)));
+      return out.size === s.size ? s : out;
+    });
+  }, [visible]);
 
   const changed = rows.filter((r) => next[r.key] !== undefined && target(r) !== r.stock);
   const invalid = changed.filter((r) => rowError(r));
@@ -133,7 +142,7 @@ export default function StockPage() {
     if (d === null || d === 0 || selected.size === 0) return;
     setNext((m) => {
       const out = { ...m };
-      for (const r of rows) if (selected.has(r.key)) out[r.key] = String(Math.max(0, (target(r) ?? r.stock) + d));
+      for (const r of visible) if (selected.has(r.key)) out[r.key] = String(Math.max(0, (target(r) ?? r.stock) + d));
       return out;
     });
   };
