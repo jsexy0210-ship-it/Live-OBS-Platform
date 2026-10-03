@@ -125,15 +125,14 @@ export async function signupBuyer(
   const v = done.verification;
   // 응답 유실 뒤 다시 보낸 요청: 이 본인확인으로 이미 만든 회원(subjectId)이고 아이디·비밀번호가 같으면 그 회원을 돌려준다.
   // 시작한 브라우저(ownerToken)만 여기까지 온다. 시도 횟수에 넣지 않고, 아니면 지금처럼 verification_invalid.
-  if (v.consumedAt) {
-    const made = v.subjectId
-      ? await db.buyerMember.findFirst({ where: { id: v.subjectId, sellerId: input.sellerId, status: "ACTIVE", deletedAt: null } })
-      : null;
+  const resume = async (subjectId: string | null): Promise<BuyerSignupResult> => {
+    const made = subjectId ? await db.buyerMember.findFirst({ where: { id: subjectId, sellerId: input.sellerId, status: "ACTIVE", deletedAt: null } }) : null;
     if (made && made.loginId === loginId && (await verifyPassword(made.passwordHash, input.password))) {
       return { ok: true, memberId: made.id, broadcastNickname: made.broadcastNickname, resumed: true };
     }
     return { ok: false, reason: "verification_invalid" };
-  }
+  };
+  if (v.consumedAt) return resume(v.subjectId);
   if (
     !v.ciHash ||
     !v.verifiedAt ||
@@ -203,7 +202,14 @@ export async function signupBuyer(
     });
     return { ok: true, memberId: member.id, broadcastNickname: member.broadcastNickname, resumed: false };
   } catch (e) {
-    if (e instanceof VerificationUsed) return { ok: false, reason: "verification_invalid" };
+    if (e instanceof VerificationUsed) {
+      // 같은 요청이 동시에 와서 다른 쪽이 먼저 가입시켰으면 그 결과로 다시 판단한다(재전송과 같은 기준).
+      // 같은 회원으로 끝나면 이 요청이 올린 시도 횟수는 되돌린다(가입 한 번에 한 번만 센다).
+      const after = await db.identityVerification.findUniqueOrThrow({ where: { id: v.id }, select: { subjectId: true } });
+      const r = await resume(after.subjectId);
+      if (r.ok) await db.identityVerification.updateMany({ where: { id: v.id, useAttemptCount: { gt: 0 } }, data: { useAttemptCount: { decrement: 1 } } });
+      return r;
+    }
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
       // 부분 유니크 인덱스 이름으로 어느 값이 겹쳤는지 구분한다(동시에 가입한 경우 포함).
       const target = String((e.meta as { target?: unknown } | undefined)?.target ?? e.message);

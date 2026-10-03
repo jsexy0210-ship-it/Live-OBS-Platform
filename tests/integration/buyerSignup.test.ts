@@ -9,6 +9,7 @@ import { BUYER_SIGNUP_MESSAGES, BUYER_SIGNUP_VERIFY_DAILY_LIMIT_PER_IP, MAX_SIGN
 import { prisma } from "../../lib/server/db";
 import { startSellerPasswordReset } from "../../lib/server/auth/passwordReset";
 import { FakeIdentityProvider } from "../../lib/server/identity/provider";
+import { identityProvider } from "../../lib/server/identity/registry";
 import { buyerSignupIdentityLimitReached, resendIdentityCode } from "../../lib/server/identity/verification";
 import { startSellerSignupVerification } from "../../lib/server/sellers/application";
 import { IDV_INPUT, confirmIdv, createSeller, db, resetDb, startIdv } from "./helpers";
@@ -390,5 +391,31 @@ describe("signupBuyer는 completeIdentityVerification을 거친다", () => {
     // 재전송은 시도 횟수에 넣지 않는다
     expect((await db.identityVerification.findUniqueOrThrow({ where: { id: v.verificationId } })).useAttemptCount).toBe(attempts);
     expect(await db.buyerMember.count({ where: { sellerId: s.seller.id } })).toBe(1);
+  });
+  it("공급자가 돌려준 이름도 NFKC·앞뒤 공백 정리 뒤 저장하고 confirm 응답·가입 회원 이름이 같다", async () => {
+    const s = await shop();
+    const st = await startRoute(post(`${s.base}/verification`, IDV_INPUT), ctx(s.slug));
+    const cookie = cookieOf(st, "lo_bidv");
+    const { verificationId } = await st.json();
+    const { requestId } = await db.identityVerification.findUniqueOrThrow({ where: { id: verificationId } });
+    (identityProvider() as FakeIdentityProvider).complete(requestId, { ci: "ci-kim", name: " Ｋｉｍ ", phone: "010-1234-5678", birthDate: new Date("1995-05-05") });
+    const c = await confirmRoute(post(`${s.base}/verification/confirm`, { verificationId, code: "000000" }, cookie), ctx(s.slug));
+    expect(await c.json()).toEqual({ ok: true, identity: { name: "Kim", phone: "01012345678", birthDate: "1995-05-05" } });
+    expect(await db.identityVerification.findUniqueOrThrow({ where: { id: verificationId } })).toMatchObject({ name: "Kim", phone: "01012345678" });
+    expect((await s.signup({ cookie, verificationId })).status).toBe(201);
+    expect((await db.buyerMember.findFirstOrThrow({ where: { sellerId: s.seller.id } })).name).toBe("Kim");
+  });
+
+  it("같은 가입 요청 두 개가 동시에 와도 둘 다 201·같은 회원이고 회원 1명, 시도 횟수는 한 번만 는다", async () => {
+    const s = await shop();
+    const v = await s.verified();
+    const rs = await Promise.all([s.signup(v), s.signup(v)]);
+    expect(rs.map((r) => r.status)).toEqual([201, 201]);
+    expect(await Promise.all(rs.map((r) => r.json()))).toEqual([
+      { ok: true, broadcastNickname: "카드왕" },
+      { ok: true, broadcastNickname: "카드왕" },
+    ]);
+    expect(await db.buyerMember.count({ where: { sellerId: s.seller.id } })).toBe(1);
+    expect((await db.identityVerification.findUniqueOrThrow({ where: { id: v.verificationId } })).useAttemptCount).toBe(1);
   });
 });
