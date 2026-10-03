@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { hostname } from "node:os";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { hashToken } from "../auth/token";
@@ -11,15 +11,27 @@ type Db = PrismaClient | Prisma.TransactionClient;
 // 인스턴스 이름: OPS_INSTANCE_NAME이 있으면 그 값, 없으면 호스트 이름(컨테이너 id)
 export const opsInstanceName = () => (process.env.OPS_INSTANCE_NAME || hostname()).slice(0, 100);
 
+// 이 프로세스의 세대 값. registerInstance가 성공하면 정한다(개발 핫 리로드에도 하나만 두도록 globalThis).
+const generationState = globalThis as unknown as { liveObsOpsGeneration?: string };
+export const currentGeneration = (): string | null => generationState.liveObsOpsGeneration ?? null;
+
 // 정기 실행 heartbeat 남기기. 실패해도 정기 실행을 멈추지 않는다(호출한 쪽이 잡는다).
 // - done: 마지막 실행·성공 시각을 갱신하고 오류를 비운다.
 // - failed: 마지막 실행·상태·오류를 남기고 성공 시각은 그대로.
 // - skipped(다른 인스턴스가 잠금을 잡음): 실행 결과를 모르므로 마지막 실행 시각만 남긴다(상태·성공 시각·오류는 그대로).
-export async function recordHeartbeat(db: Db, job: string, status: "done" | "skipped" | "failed", now: Date, error?: string, instance = opsInstanceName()) {
+export async function recordHeartbeat(
+  db: Db,
+  job: string,
+  status: "done" | "skipped" | "failed",
+  now: Date,
+  error?: string,
+  instance = opsInstanceName(),
+  generation = currentGeneration(),
+) {
   const err = status === "failed" ? (error?.slice(0, 500) ?? null) : null;
   await db.opsHeartbeat.upsert({
     where: { instance_job: { instance, job } },
-    create: { instance, job, lastRunAt: now, lastStatus: status, lastError: err, lastOkAt: status === "done" ? now : null },
+    create: { instance, job, generation, lastRunAt: now, lastStatus: status, lastError: err, lastOkAt: status === "done" ? now : null },
     // 종료 표시(retiredAt)는 여기서 절대 건드리지 않는다. 종료 뒤 늦게 커밋된 heartbeat가 표시를 되돌리지 않게,
     // 표시를 비우는 곳은 인스턴스가 새로 시작할 때 한 번 부르는 registerInstance뿐이다.
     update:
@@ -29,17 +41,20 @@ export async function recordHeartbeat(db: Db, job: string, status: "done" | "ski
   });
 }
 
-// 인스턴스 등록: 프로세스가 새로 시작할 때 한 번(jobs/scheduler.ts startScheduler). 같은 이름으로 다시 뜬 인스턴스의 종료 표시를 비운다.
-export async function registerInstance(db: Db, instance = opsInstanceName()): Promise<number> {
-  const r = await db.opsHeartbeat.updateMany({ where: { instance, retiredAt: { not: null } }, data: { retiredAt: null } });
-  return r.count;
+// 인스턴스 등록: 프로세스가 새로 시작할 때 한 번(jobs/scheduler.ts startScheduler, 성공할 때까지 다시 시도). 새 세대 값을 정해
+// 같은 이름의 행 모두에 기록하고 종료 표시를 비운다. 이후 이 프로세스의 종료 표시는 이 세대 행에만 걸린다.
+export async function registerInstance(db: Db, instance = opsInstanceName(), generation: string = randomUUID()): Promise<string> {
+  await db.opsHeartbeat.updateMany({ where: { instance }, data: { generation, retiredAt: null } });
+  generationState.liveObsOpsGeneration = generation;
+  return generation;
 }
 
 // 종료 표시: 인스턴스가 정상 종료할 때 자기 행 모두에 retiredAt을 남긴다(jobs/scheduler.ts 종료 신호 처리).
 // 배포마다 컨테이너 이름(인스턴스)이 바뀌어 옛 행이 남는데, 나이만으로 종료로 보면 heartbeat만 고장 난 살아 있는 인스턴스를 놓친다.
 // 그래서 종료는 명시 신호로만 판단한다. 표시가 없는 행은 오래돼도 지표 heartbeats에 남아 멈춤으로 보인다.
-export async function markInstanceRetired(db: Db, now: Date, instance = opsInstanceName()): Promise<number> {
-  const r = await db.opsHeartbeat.updateMany({ where: { instance, retiredAt: null }, data: { retiredAt: now } });
+// 자기 세대 행에만 건다: 같은 이름으로 먼저 등록한 후속 프로세스가 있으면 이전 프로세스의 종료가 그 행을 종료 처리하지 않는다.
+export async function markInstanceRetired(db: Db, now: Date, instance = opsInstanceName(), generation = currentGeneration()): Promise<number> {
+  const r = await db.opsHeartbeat.updateMany({ where: { instance, generation, retiredAt: null }, data: { retiredAt: now } });
   return r.count;
 }
 

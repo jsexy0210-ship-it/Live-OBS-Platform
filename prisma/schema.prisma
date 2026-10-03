@@ -1181,8 +1181,10 @@ model OpsHeartbeat {
   // 마지막 성공 시각(실패가 이어져도 언제부터인지 알 수 있게)
   lastOkAt   DateTime? @db.Timestamptz(3)
   // 인스턴스가 정상 종료(SIGTERM·SIGINT)할 때 자기 행에 남기는 종료 시각. 없으면 아무리 오래돼도 살아 있는 인스턴스로 보고
-  // 멈춤 판단 대상으로 둔다(heartbeat만 고장 난 인스턴스를 놓치지 않게). 다시 실행하면 비운다.
+  // 멈춤 판단 대상으로 둔다(heartbeat만 고장 난 인스턴스를 놓치지 않게). 같은 이름으로 새로 시작해 등록할 때만 비운다.
   retiredAt  DateTime? @db.Timestamptz(3)
+  // 프로세스가 시작할 때 등록하며 정한 세대 값(uuid). 종료 표시는 자기 세대 행에만 건다(같은 이름의 후속 프로세스 행을 건드리지 않게).
+  generation String?
   updatedAt  DateTime  @updatedAt @db.Timestamptz(3)
 
   @@id([instance, job])

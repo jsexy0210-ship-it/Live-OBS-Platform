@@ -4,7 +4,7 @@ import { POST as eventsRoute } from "../../app/api/internal/ops/events/route";
 import { GET as healthRoute } from "../../app/api/health/route";
 import { createAdminSession } from "../../lib/server/auth/session";
 import { prisma } from "../../lib/server/db";
-import { resetShutdownForTests, retireInstance, runScheduledJobs, type ScheduledJob } from "../../lib/server/jobs/scheduler";
+import { registerUntilDone, resetShutdownForTests, retireInstance, runScheduledJobs, type ScheduledJob } from "../../lib/server/jobs/scheduler";
 import { markInstanceRetired, opsInstanceName, opsMetrics, purgeRetiredHeartbeats, recordHeartbeat, registerInstance } from "../../lib/server/ops/metrics";
 import { createAdmin, db, resetDb } from "./helpers";
 
@@ -91,9 +91,52 @@ describe("heartbeat 보완(Codex)", () => {
     for (const st of ["done", "failed", "skipped"] as const) await recordHeartbeat(db, "scheduler.tick", st, now, "late", "web-old");
     expect((await opsMetrics(db)).heartbeats.map((h) => h.instance).sort()).toEqual(["web-new", "web-stuck"]);
     // 같은 이름으로 새로 시작해 등록하면 살아 있는 인스턴스로 돌아온다
-    expect(await registerInstance(db, "web-old")).toBe(1);
+    await registerInstance(db, "web-old");
     expect((await opsMetrics(db)).heartbeats.map((h) => h.instance).sort()).toEqual(["web-new", "web-old", "web-stuck"]);
     expect((await import("../../lib/server/jobs/scheduler")).SCHEDULED_JOBS.map((j) => j.name)).toContain("ops_heartbeat.purge_retired");
+  });
+
+  it("같은 이름의 새 프로세스가 등록한 뒤 이전 프로세스가 종료돼도 새 프로세스 행은 살아 있는 쪽에 남는다(종료 표시는 자기 세대 행에만)", async () => {
+    const now = new Date();
+    const oldGen = await registerInstance(db, "web-x");
+    await recordHeartbeat(db, "scheduler.tick", "done", now, undefined, "web-x", oldGen);
+    // 같은 이름(OPS_INSTANCE_NAME 고정)으로 새 프로세스가 뜨고 등록한다
+    const newGen = await registerInstance(db, "web-x");
+    expect(newGen).not.toBe(oldGen);
+    await recordHeartbeat(db, "scheduler.tick", "done", now, undefined, "web-x", newGen);
+    // 이전 프로세스가 늦게 종료 신호를 받는다
+    expect(await markInstanceRetired(db, now, "web-x", oldGen)).toBe(0);
+    expect((await opsMetrics(db)).heartbeats.map((h) => h.instance)).toEqual(["web-x"]);
+    // 새 프로세스의 종료는 자기 행에 걸린다
+    expect(await markInstanceRetired(db, now, "web-x", newGen)).toBe(1);
+    expect((await opsMetrics(db)).retiredHeartbeats.map((h) => h.instance)).toEqual(["web-x"]);
+  });
+
+  it("시작 때 DB가 잠깐 실패해도 등록을 다시 시도해 성공하고, 그 뒤 실행의 heartbeat가 살아 있는 쪽에 들어간다", async () => {
+    vi.stubEnv("OPS_INSTANCE_NAME", "web-retry");
+    let fails = 2;
+    const flaky = new Proxy(db, {
+      get(t, p) {
+        const v = Reflect.get(t, p);
+        if (p !== "opsHeartbeat") return typeof v === "function" ? v.bind(t) : v;
+        return new Proxy(v, {
+          get: (d, f) =>
+            f === "updateMany" && fails > 0
+              ? async () => {
+                  fails--;
+                  throw new Error("연결 실패(테스트)");
+                }
+              : Reflect.get(d, f),
+        });
+      },
+    }) as typeof db;
+    const gen = await registerUntilDone(flaky, 10);
+    expect(fails).toBe(0);
+    expect(gen).toEqual(expect.any(String));
+    await runScheduledJobs(db, new Date(), [{ name: "job", run: async () => 0 }]);
+    const live = (await opsMetrics(db)).heartbeats.filter((h) => h.instance === "web-retry");
+    expect(live.map((h) => h.job).sort()).toEqual(["job", "scheduler.tick"]);
+    expect((await db.opsHeartbeat.findMany({ where: { instance: "web-retry" } })).every((r) => r.generation === gen)).toBe(true);
   });
 
   it("종료 처리 중에 진행 중이던 실행이 끝나도 종료 표시가 되돌아가지 않고, 종료 뒤에는 새 실행·heartbeat를 쓰지 않는다", async () => {

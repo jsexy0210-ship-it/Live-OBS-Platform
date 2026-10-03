@@ -77,25 +77,44 @@ async function beat(db: PrismaClient, job: string, status: "done" | "skipped" | 
   }
 }
 
-const state = globalThis as unknown as { liveObsScheduler?: ReturnType<typeof setInterval> };
+const state = globalThis as unknown as { liveObsScheduler?: ReturnType<typeof setInterval> | "registering" };
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms).unref?.());
+
+export const REGISTER_RETRY_MS = 5_000;
+
+// 인스턴스 등록(세대 값, ops/metrics.ts)을 성공할 때까지 짧은 간격으로 다시 시도한다. 종료 중이면 그만둔다(null).
+export async function registerUntilDone(db: PrismaClient, retryMs = REGISTER_RETRY_MS): Promise<string | null> {
+  while (!shutdown.requested) {
+    try {
+      return await registerInstance(db);
+    } catch (e) {
+      console.error(`[scheduler] register failed, retrying: ${e instanceof Error ? e.message : String(e)}`);
+      await sleep(retryMs);
+    }
+  }
+  return null;
+}
 
 // 서버 시작 때 한 번. 같은 프로세스에서 다시 불러도(개발 핫 리로드) 하나만 둔다.
+// 등록이 성공한 뒤에야 정기 실행과 heartbeat를 시작한다(세대 값 없이 쓴 행은 종료 표시를 받을 수 없다).
 export function startScheduler(db: PrismaClient, intervalMs = SCHEDULER_INTERVAL_MS): boolean {
   if (process.env.SCHEDULER_DISABLED === "1" || state.liveObsScheduler) return false;
-  // 같은 이름으로 다시 뜬 인스턴스면 종료 표시를 비운다(heartbeat 쓰기는 표시를 건드리지 않는다, ops/metrics.ts)
-  registerInstance(db).catch((e) => console.error(`[scheduler] register failed: ${e instanceof Error ? e.message : String(e)}`));
+  state.liveObsScheduler = "registering";
   const tick = () => {
     runScheduledJobs(db).catch((e) => console.error(`[scheduler] run failed: ${e instanceof Error ? e.message : String(e)}`));
   };
-  state.liveObsScheduler = setInterval(tick, intervalMs);
-  state.liveObsScheduler.unref?.();
-  // 시작 직후 한 번(서버가 뜨는 것을 막지 않게 조금 뒤에)
-  setTimeout(tick, 30_000).unref?.();
+  void registerUntilDone(db).then((generation) => {
+    if (!generation) return;
+    const timer = setInterval(tick, intervalMs);
+    timer.unref?.();
+    state.liveObsScheduler = timer;
+    // 시작 직후 한 번(서버가 뜨는 것을 막지 않게 조금 뒤에)
+    setTimeout(tick, 30_000).unref?.();
+  });
   for (const signal of ["SIGTERM", "SIGINT"] as const) process.once(signal, () => void retireOnSignal(db, signal));
   return true;
 }
-
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms).unref?.());
 
 // 종료 처리: 새 실행·heartbeat 쓰기를 막고, 진행 중인 실행을 최대 waitMs 기다린 뒤 이 인스턴스의 heartbeat에 종료 표시를 남긴다.
 // 이미 시작돼 나중에 커밋되는 heartbeat 쓰기가 있어도 recordHeartbeat는 종료 표시를 건드리지 않으므로 표시는 그대로 남는다.
