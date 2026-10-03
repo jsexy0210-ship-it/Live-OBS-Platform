@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import { randomBytes } from "node:crypto";
 import { writeAudit } from "../audit/log";
 import { loginErrorBody } from "../auth/messages";
@@ -17,7 +17,9 @@ import { recordRejoinBlock } from "./rejoin";
 //   재가입 제한이 켜진 쇼핑몰이고 가입 때 제한 기간을 안내받은 회원이면 CI 해시 하나만 제한 기간 동안 따로 남겨(buyers/rejoin.ts)
 //   그동안 같은 사람의 가입을 막는다.
 //   비밀번호는 아무도 모르는 값으로 바꾼다.
-// - 적립금 잔액은 건드리지 않는다(처리 규칙은 대표님 결정 대기).
+// - 남은 적립금은 소멸한다(대표님 결정 2026-10-03, PRODUCT_SCOPE 「구매자 탈퇴·재가입」). 잔액(RewardBalance)이 있으면 그만큼
+//   소멸(EXPIRE, 음수, SUCCEEDED) 원장을 남기고 잔액을 0으로 만든다. 아직 처리 전(PENDING)인 이 회원의 원장(지급·회수 대기)은
+//   FAILED(member_withdrawn)로 닫아 나중에 잔액에 들어가지 않게 한다. 재가입하면 새 회원이라 되살아나지 않는다.
 // - 저장 배송지를 지우고, 이 회원의 세션을 모두 폐기한다.
 
 export const WITHDRAW_FAIL_LIMIT = 5;
@@ -85,6 +87,7 @@ export async function withdrawBuyer(
       },
     });
     if (moved.count !== 1) return "not_found" as const;
+    const forfeited = await forfeitRewards(tx, scope.sellerId, member.id, now);
     const rejoinBlockedUntil = await recordRejoinBlock(tx, scope.sellerId, member, now);
     const addresses = await tx.buyerAddress.deleteMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id } });
     const sessions = await tx.buyerSession.updateMany({ where: { buyerMemberId: member.id, revokedAt: null }, data: { revokedAt: now } });
@@ -97,9 +100,38 @@ export async function withdrawBuyer(
       targetId: member.id,
       ip: input.meta?.ip,
       userAgent: input.meta?.userAgent,
-      after: { status: "WITHDRAWN", deletedAddresses: addresses.count, revokedSessions: sessions.count, rejoinBlockedUntil },
+      after: { status: "WITHDRAWN", deletedAddresses: addresses.count, revokedSessions: sessions.count, rejoinBlockedUntil, ...forfeited },
     });
     return null;
   });
   return result ? { ok: false, reason: result } : { ok: true };
+}
+
+// 탈퇴 회원의 적립금 소멸. 잔액 행을 잠그고(FOR UPDATE) 남은 만큼 EXPIRE 원장을 남긴 뒤 0으로 만든다.
+async function forfeitRewards(tx: Prisma.TransactionClient, sellerId: string, buyerMemberId: string, now: Date) {
+  const [row] = await tx.$queryRaw<{ balance: number }[]>`
+    SELECT "balance" FROM "RewardBalance" WHERE "sellerId" = ${sellerId}::uuid AND "buyerMemberId" = ${buyerMemberId}::uuid FOR UPDATE`;
+  const expiredPoints = row?.balance ?? 0;
+  if (expiredPoints > 0) {
+    await tx.rewardLedger.create({
+      data: {
+        sellerId,
+        buyerMemberId,
+        type: "EXPIRE",
+        amount: -expiredPoints,
+        status: "SUCCEEDED",
+        testMode: false,
+        failureReason: null,
+        idempotencyKey: `expire:withdraw:${buyerMemberId}`,
+        createdAt: now,
+        processedAt: now,
+      },
+    });
+    await tx.rewardBalance.update({ where: { sellerId_buyerMemberId: { sellerId, buyerMemberId } }, data: { balance: 0 } });
+  }
+  const closed = await tx.rewardLedger.updateMany({
+    where: { sellerId, buyerMemberId, status: "PENDING" },
+    data: { status: "FAILED", failureReason: "member_withdrawn", processedAt: now },
+  });
+  return { expiredPoints, closedPendingRewards: closed.count };
 }
