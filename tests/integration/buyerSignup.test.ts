@@ -350,7 +350,7 @@ describe("signupBuyer는 completeIdentityVerification을 거친다", () => {
     expect(await buyerSignupIdentityLimitReached(counting, s.seller.id)).toBe(true);
     expect(counts).toBe(1);
   });
-  it("attemptKey로 다시 시작하면 같은 본인확인을 새 쿠키로 돌려주고 문자·일일 횟수는 다시 쓰지 않는다(이전 쿠키는 무효)", async () => {
+  it("attemptKey로 다시 시작하면 같은 본인확인을 같은 쿠키 값으로 돌려주고 문자·일일 횟수는 다시 쓰지 않는다", async () => {
     const s = await shop();
     const key = crypto.randomUUID();
     const first = await startRoute(post(`${s.base}/verification`, { ...IDV_INPUT, attemptKey: key }), ctx(s.slug));
@@ -361,14 +361,12 @@ describe("signupBuyer는 completeIdentityVerification을 거친다", () => {
     const again = await startRoute(post(`${s.base}/verification`, { ...IDV_INPUT, attemptKey: key }), ctx(s.slug));
     expect(again.status).toBe(200);
     expect(await again.json()).toEqual({ verificationId });
-    const newCookie = cookieOf(again, "lo_bidv");
-    expect(newCookie).toMatch(/^lo_bidv=.+/);
-    expect(newCookie).not.toBe(oldCookie);
+    expect(oldCookie).toMatch(/^lo_bidv=.+/);
+    expect(cookieOf(again, "lo_bidv")).toBe(oldCookie);
     expect(await db.identityVerification.count({ where: { sellerId: s.seller.id } })).toBe(1);
     expect((await db.identityVerification.findUniqueOrThrow({ where: { id: verificationId } })).sendCount).toBe(1);
-    // 이전 쿠키로는 확인할 수 없고 새 쿠키로는 된다
-    expect((await confirmRoute(post(`${s.base}/verification/confirm`, { verificationId, code: "000000" }, oldCookie), ctx(s.slug))).status).toBe(404);
-    expect((await confirmRoute(post(`${s.base}/verification/confirm`, { verificationId, code: "000000" }, newCookie), ctx(s.slug))).status).toBe(200);
+    // 어느 응답의 쿠키가 남아도 확인된다
+    expect((await confirmRoute(post(`${s.base}/verification/confirm`, { verificationId, code: "000000" }, oldCookie), ctx(s.slug))).status).toBe(200);
     // 확인을 마친 뒤 같은 키면 새로 만들지 않고 409
     const done = await startRoute(post(`${s.base}/verification`, { ...IDV_INPUT, attemptKey: key }), ctx(s.slug));
     expect(done.status).toBe(409);
@@ -473,24 +471,43 @@ describe("signupBuyer는 completeIdentityVerification을 거친다", () => {
     expect(await db.identityVerification.findUniqueOrThrow({ where: { id: again.verificationId } })).toMatchObject({ status: "PENDING", sendCount: 1 });
   });
 
-  it("보내는 중으로 남은 채 앞 요청이 멈춘 기록은 같은 attemptKey 재요청이 넘겨받아 한 번 보내고 새 쿠키를 준다", async () => {
+  it("첫 문자를 보낸 뒤 쿠키 없는 같은 attemptKey 재요청이 동시에 여러 번 와도 모두 첫 응답과 같은 쿠키를 받는다(도착 순서와 상관없이 유효)", async () => {
     const s = await shop();
     const key = crypto.randomUUID();
     const first = await startRoute(post(`${s.base}/verification`, { ...IDV_INPUT, attemptKey: key }), ctx(s.slug));
-    const oldCookie = cookieOf(first, "lo_bidv");
+    const cookie = cookieOf(first, "lo_bidv");
     const { verificationId } = await first.json();
-    // 앞 요청이 발송 전에 멈춘 상태로 되돌린다(20초보다 오래 전에 보내기 시작, 보낸 기록 없음)
-    await db.identityVerification.update({ where: { id: verificationId }, data: { sendCount: 0, lastSentAt: null, sendStartedAt: new Date(Date.now() - 30_000) } });
+    const rs = await Promise.all([1, 2, 3].map(() => startRoute(post(`${s.base}/verification`, { ...IDV_INPUT, attemptKey: key }), ctx(s.slug))));
+    expect(rs.map((r) => r.status)).toEqual([200, 200, 200]);
+    expect(rs.map((r) => cookieOf(r, "lo_bidv"))).toEqual([cookie, cookie, cookie]);
+    expect((await confirmRoute(post(`${s.base}/verification/confirm`, { verificationId, code: "000000" }, cookie), ctx(s.slug))).status).toBe(200);
+  });
+
+  it("보내는 중으로 남은 채 앞 요청이 멈춘 기록은 같은 요청 id로 다시 보내지 않고, 버린 뒤 새 기록·새 요청 id로 한 번 보낸다. 늦게 끝난 앞 요청은 실패", async () => {
+    const s = await shop();
+    const key = crypto.randomUUID();
+    const { provider, state } = gatedProvider();
+    const late = startBuyerSignupVerification(db, provider, s.seller.id, IDV_INPUT, { attemptKey: key });
+    await until(() => state.entered === 1, "첫 요청이 발송에 들어가지 않았어요");
+    const [stalled] = await db.identityVerification.findMany({ where: { sellerId: s.seller.id } });
+    // 앞 요청이 발송 중에 멈춘 것처럼 20초보다 오래 전에 보내기 시작한 것으로 되돌린다
+    await db.identityVerification.update({ where: { id: stalled.id }, data: { sendStartedAt: new Date(Date.now() - 30_000) } });
     const fake = identityProvider() as FakeIdentityProvider;
     const sentBefore = fake.sent.length;
-    const r = await startRoute(post(`${s.base}/verification`, { ...IDV_INPUT, attemptKey: key }, oldCookie), ctx(s.slug));
+    const r = await startRoute(post(`${s.base}/verification`, { ...IDV_INPUT, attemptKey: key }), ctx(s.slug));
     expect(r.status).toBe(200);
-    expect(await r.json()).toEqual({ verificationId });
+    const { verificationId } = await r.json();
+    expect(verificationId).not.toBe(stalled.id);
     expect(fake.sent.length - sentBefore).toBe(1);
-    expect((await db.identityVerification.findUniqueOrThrow({ where: { id: verificationId } })).sendCount).toBe(1);
+    const fresh = await db.identityVerification.findUniqueOrThrow({ where: { id: verificationId } });
+    expect(fresh).toMatchObject({ status: "PENDING", sendCount: 1 });
+    expect(fresh.requestId).not.toBe(stalled.requestId);
+    expect(await db.identityVerification.findUniqueOrThrow({ where: { id: stalled.id } })).toMatchObject({ status: "FAILED", attemptKeyHash: null, sendCount: 0 });
+    // 멈췄던 앞 요청이 늦게 끝나도 버린 기록을 되살리지 않고 실패를 돌려준다
+    state.release();
+    expect(await late).toEqual({ ok: false, reason: "provider_error" });
+    expect(await db.identityVerification.findUniqueOrThrow({ where: { id: stalled.id } })).toMatchObject({ status: "FAILED", sendCount: 0 });
     const cookie = cookieOf(r, "lo_bidv");
-    expect(cookie).not.toBe(oldCookie);
-    expect((await confirmRoute(post(`${s.base}/verification/confirm`, { verificationId, code: "000000" }, oldCookie), ctx(s.slug))).status).toBe(404);
     expect((await confirmRoute(post(`${s.base}/verification/confirm`, { verificationId, code: "000000" }, cookie), ctx(s.slug))).status).toBe(200);
   });
 

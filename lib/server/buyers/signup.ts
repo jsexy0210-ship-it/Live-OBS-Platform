@@ -5,8 +5,9 @@ import { MAX_EMAIL_LENGTH, normalizeEmail } from "../auth/login";
 import { MIN_PASSWORD_LENGTH } from "../auth/passwordReset";
 import { dbNow, sellerAccessFor } from "../billing/subscription";
 import type { IdentityProvider } from "../identity/provider";
-import { generateToken, hashToken } from "../auth/token";
-import { buyerSignupIdentityLimitReached, completeIdentityVerification, parseIdentityPerson, reissueOwnerToken, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
+import { createHash, randomUUID } from "node:crypto";
+import { hashToken } from "../auth/token";
+import { buyerSignupIdentityLimitReached, completeIdentityVerification, parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
 import { EMAIL } from "../sellers/application";
 import { cleanText } from "../text/clean";
 
@@ -35,32 +36,40 @@ export async function shopOpen(db: PrismaClient, sellerId: string) {
 }
 
 // 첫 문자를 보내는 중으로 보는 시간. 공급자 호출 제한시간(10초)보다 넉넉하게 잡는다. 이 시간이 지나도 보낸 기록이 없으면
-// 앞 요청이 멈춘 것으로 보고 같은 키 재요청이 발송을 넘겨받는다.
+// 앞 요청이 멈춘 것으로 보고 같은 키 재요청이 그 기록을 버리고 새로 시작한다.
 export const FIRST_SEND_WINDOW_MS = 20_000;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// attemptKey로 시작한 기록의 ownerToken은 키와 기록 id로 정해진다. 같은 키 재요청이 몇 번 겹쳐도 모두 같은 토큰을 받으므로
+// 응답이 어떤 순서로 도착해도 브라우저 쿠키가 무효가 되지 않는다. 키를 가진 쪽만 만들 수 있고(키는 브라우저만 안다),
+// DB에는 키·토큰 모두 해시만 있다.
+function keyedOwnerToken(attemptKey: string, verificationId: string) {
+  return createHash("sha256").update(`buyer_signup_owner\0${attemptKey.toLowerCase()}\0${verificationId}`).digest("base64url");
+}
 
 // 구매자 가입 1단계: 휴대폰 본인확인 시작(같은 IP·같은 쇼핑몰 하루 10회까지). 첫 인증번호를 보내고 ownerToken을 돌려준다.
 // 기록 생성은 짧은 트랜잭션에서 커밋하고(sendStartedAt 기록), 첫 문자는 트랜잭션 밖에서 보낸다. 공급자를 기다리는 동안
 // 잠금·DB 연결을 쥐지 않는다. 보내면 sendCount 0→1, 실패하면 FAILED로 바꾸고 attemptKey를 비워 같은 키로 다시 시작할 수 있게 한다.
 // attemptKey(선택, 클라이언트가 만든 UUID): 응답이 끊겨 같은 키로 다시 보내면 키별 잠금 아래에서 같은 쇼핑몰·같은 키의 기록을 찾는다.
-// - 확인 전(PENDING)이고 첫 문자를 보냈으면 그대로 쓴다. 요청에 그 기록의 유효한 쿠키가 있으면 토큰을 그대로 두고, 없거나 맞지 않을 때만
-//   ownerToken을 새로 발급한다(이전 토큰은 무효). 일일 횟수·체험 한도는 다시 세지 않는다.
+// - 확인 전(PENDING)이고 첫 문자를 보냈으면 그대로 쓰고 같은 ownerToken을 다시 준다(토큰을 바꾸지 않음). 일일 횟수·체험 한도는 다시 세지 않는다.
 // - 아직 보내는 중이면(FIRST_SEND_WINDOW_MS 안) 기다리지 않고 start_in_progress로 돌려준다.
-// - 보내는 중으로 둔 채 그 시간이 지났으면(앞 요청이 멈춤) 조건부 갱신으로 발송을 넘겨받아 한 번 보낸다.
+// - 보내는 중으로 둔 채 그 시간이 지났으면(앞 요청이 멈춤) 공급자가 문자를 받았는지 알 수 없어 같은 요청 id로 다시 보내지 않는다.
+//   그 기록을 FAILED로 버리고(키 비움) 새 기록·새 요청 id로 처음부터 시작한다(일일 횟수에 1회 더 들어감).
 // - 확인 전이 아니면(확인됨·만료·실패) 그 상태의 오류를 돌려준다.
 export async function startBuyerSignupVerification(
   db: PrismaClient,
   provider: IdentityProvider,
   sellerId: string,
   rawPerson: unknown,
-  meta: { ip?: string | null; userAgent?: string | null; now?: Date; attemptKey?: unknown; ownerToken?: string } = {},
+  meta: { ip?: string | null; userAgent?: string | null; now?: Date; attemptKey?: unknown } = {},
 ) {
   if (!(await shopOpen(db, sellerId))) return { ok: false as const, reason: "shop_unavailable" as const };
   if (meta.attemptKey !== undefined && (typeof meta.attemptKey !== "string" || !UUID_RE.test(meta.attemptKey))) {
     return { ok: false as const, reason: "invalid_identity_input" as const };
   }
-  const keyHash = typeof meta.attemptKey === "string" ? hashToken(meta.attemptKey.toLowerCase()) : null;
+  const attemptKey = typeof meta.attemptKey === "string" ? meta.attemptKey.toLowerCase() : null;
+  const keyHash = attemptKey ? hashToken(attemptKey) : null;
   const person = parseIdentityPerson(rawPerson);
   if (!person) return { ok: false as const, reason: "invalid_identity_input" as const };
   const ip = meta.ip ?? null;
@@ -76,27 +85,19 @@ export async function startBuyerSignupVerification(
       const same = await tx.identityVerification.findUnique({ where: { sellerId_attemptKeyHash: { sellerId, attemptKeyHash: keyHash } } });
       if (same) {
         if (same.status === "PENDING" && same.expiresAt > now) {
-          if (same.sendCount === 0) {
-            if (same.sendStartedAt && now.getTime() - same.sendStartedAt.getTime() < FIRST_SEND_WINDOW_MS) return { kind: "refused", reason: "start_in_progress" };
-            // 앞 요청이 멈췄다. 보낸 시작 시각이 그대로일 때만 넘겨받는다(compare-and-set).
-            const ownerToken = generateToken();
-            const taken = await tx.identityVerification.updateMany({
-              where: { id: same.id, status: "PENDING", sendCount: 0, sendStartedAt: same.sendStartedAt },
-              data: { sendStartedAt: now, ownerTokenHash: hashToken(ownerToken) },
-            });
-            if (taken.count !== 1) return { kind: "refused", reason: "start_in_progress" };
-            return { kind: "send", verification: { ...same, sendStartedAt: now }, ownerToken };
-          }
-          // 이 기록의 유효한 현재 쿠키를 가지고 왔으면 토큰을 바꾸지 않는다(브라우저가 Set-Cookie를 받는 순서가 처리 순서와 다를 수 있어서)
-          if (meta.ownerToken && same.ownerTokenHash === hashToken(meta.ownerToken)) {
-            return { kind: "reused", verificationId: same.id, ownerToken: meta.ownerToken };
-          }
-          const ownerToken = await reissueOwnerToken(tx, same.id);
-          if (ownerToken) return { kind: "reused", verificationId: same.id, ownerToken };
+          if (same.sendCount > 0) return { kind: "reused", verificationId: same.id, ownerToken: keyedOwnerToken(attemptKey!, same.id) };
+          if (same.sendStartedAt && now.getTime() - same.sendStartedAt.getTime() < FIRST_SEND_WINDOW_MS) return { kind: "refused", reason: "start_in_progress" };
+          // 앞 요청이 멈췄다. 보낸 시작 시각이 그대로일 때만 버린다(compare-and-set). 늦게 끝난 앞 요청은 실패로 돌려받는다.
+          const dropped = await tx.identityVerification.updateMany({
+            where: { id: same.id, status: "PENDING", sendCount: 0, sendStartedAt: same.sendStartedAt },
+            data: { status: "FAILED", attemptKeyHash: null },
+          });
+          if (dropped.count !== 1) return { kind: "refused", reason: "start_in_progress" };
+        } else {
+          if (same.status === "VERIFIED") return { kind: "refused", reason: "already_verified" };
+          if (same.status === "FAILED") return { kind: "refused", reason: "failed" };
+          return { kind: "refused", reason: "expired" };
         }
-        if (same.status === "VERIFIED") return { kind: "refused", reason: "already_verified" };
-        if (same.status === "FAILED") return { kind: "refused", reason: "failed" };
-        return { kind: "refused", reason: "expired" };
       }
     }
     // 체험하기 중 본인확인 한도가 찼으면 확정할 수 없으니 기록을 만들거나 문자를 보내지 않는다
@@ -108,7 +109,18 @@ export async function startBuyerSignupVerification(
         AND "requestIp" IS NOT DISTINCT FROM ${ip}
         AND "createdAt" >= (date_trunc('day', now() AT TIME ZONE 'Asia/Seoul') AT TIME ZONE 'Asia/Seoul')`;
     if (Number(count) >= BUYER_SIGNUP_VERIFY_DAILY_LIMIT_PER_IP) return { kind: "limited" };
-    const created = await startIdentityVerification(tx, provider, { purpose: "BUYER_SIGNUP", sellerId, person, requestIp: ip, attemptKeyHash: keyHash, sendStartedAt: now, now: meta.now });
+    const id = randomUUID();
+    const created = await startIdentityVerification(tx, provider, {
+      purpose: "BUYER_SIGNUP",
+      sellerId,
+      person,
+      requestIp: ip,
+      attemptKeyHash: keyHash,
+      sendStartedAt: now,
+      id,
+      ownerToken: attemptKey ? keyedOwnerToken(attemptKey, id) : undefined,
+      now: meta.now,
+    });
     return { kind: "send", verification: created.verification, ownerToken: created.ownerToken };
   });
   if (started.kind === "reused") return { ok: true as const, verificationId: started.verificationId, ownerToken: started.ownerToken };

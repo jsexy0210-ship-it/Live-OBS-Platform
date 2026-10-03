@@ -76,13 +76,17 @@ export async function startIdentityVerification(
     requestIp?: string | null;
     attemptKeyHash?: string | null;
     sendStartedAt?: Date | null;
+    // 기록 id와 그 id로 만든 ownerToken을 호출한 쪽이 정할 때(같은 키 재요청에 같은 토큰을 주려고). 없으면 무작위.
+    id?: string;
+    ownerToken?: string;
     now?: Date;
   },
 ): Promise<{ verification: IdentityVerification; ownerToken: string }> {
   const now = input.now ?? new Date();
-  const ownerToken = generateToken();
+  const ownerToken = input.ownerToken ?? generateToken();
   const verification = await db.identityVerification.create({
     data: {
+      ...(input.id ? { id: input.id } : {}),
       purpose: input.purpose,
       sellerId: input.sellerId,
       subjectId: input.subjectId ?? null,
@@ -101,15 +105,9 @@ export async function startIdentityVerification(
   return { verification, ownerToken };
 }
 
-// 시작한 브라우저 토큰을 새로 발급한다(이전 토큰은 무효). 확인 전(PENDING)인 기록만. 바꿨으면 새 토큰, 아니면 null.
-export async function reissueOwnerToken(db: Db, id: string): Promise<string | null> {
-  const ownerToken = generateToken();
-  const r = await db.identityVerification.updateMany({ where: { id, status: "PENDING" }, data: { ownerTokenHash: hashToken(ownerToken) } });
-  return r.count === 1 ? ownerToken : null;
-}
-
 // 첫 인증번호 보내기(트랜잭션 밖에서 부른다). 공급자 장애·타임아웃이면 이 요청은 실패로 끝낸다(처음부터 다시).
 // 실패하면 attemptKey를 비워 같은 키로 새로 시작할 수 있게 한다. 성공 기록은 아직 보내지 않은(sendCount 0) 확인 전 기록에만 남긴다.
+// 그 사이 기록이 버려졌으면(멈춘 것으로 보고 같은 키 재요청이 실패 처리) 문자가 나갔어도 쓸 수 없는 기록이라 실패로 돌려준다.
 export async function sendFirstIdentityCode(
   db: Db,
   provider: IdentityProvider,
@@ -122,7 +120,8 @@ export async function sendFirstIdentityCode(
     await db.identityVerification.updateMany({ where: { id: v.id, status: "PENDING", sendCount: 0 }, data: { status: "FAILED", attemptKeyHash: null } });
     return { ok: false, reason: "provider_error" };
   }
-  await db.identityVerification.updateMany({ where: { id: v.id, status: "PENDING", sendCount: 0 }, data: { sendCount: 1, lastSentAt: now } });
+  const sent = await db.identityVerification.updateMany({ where: { id: v.id, status: "PENDING", sendCount: 0 }, data: { sendCount: 1, lastSentAt: now } });
+  if (sent.count !== 1) return { ok: false, reason: "provider_error" };
   return { ok: true };
 }
 
