@@ -135,9 +135,10 @@ export async function listProducts(
     stockScope = { id: { in: rows.map((r) => r.id) } };
   }
   // 이름 검색 q: 상품 이름이나 (지우지 않은) 옵션 이름에 들어 있으면(대소문자 무시, 부분 일치). 저장할 때처럼 NFKC로 맞추고
-  // 앞뒤 공백을 지운 뒤 50자까지. 비었으면 검색하지 않는다. %·_ 같은 글자도 그대로 찾는다(LIKE 패턴으로 쓰지 않음).
+  // 앞뒤 공백을 지운 뒤 50자까지. 비었거나 일반 공백(U+0020)뿐이면 검색하지 않는다. 탭·줄바꿈·BOM·폭 없는 공백 같은
+  // 제어·서식 문자만 있으면(trim으로 지워져도) cleanText가 막아 400. %·_ 같은 글자도 그대로 찾는다(LIKE 패턴으로 쓰지 않음).
   let searchScope: Prisma.ProductWhereInput = {};
-  if (opts.q !== undefined && !(typeof opts.q === "string" && opts.q.trim() === "")) {
+  if (opts.q !== undefined && !(typeof opts.q === "string" && /^ *$/.test(opts.q))) {
     const term = cleanText(opts.q, MAX_SEARCH_LENGTH);
     if (!term) return { ok: false, reason: "invalid_search" };
     const rows = await db.$queryRaw<{ id: string }[]>`

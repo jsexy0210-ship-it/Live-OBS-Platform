@@ -230,13 +230,20 @@ describe("목록 이름 검색(q)", () => {
     await made(s.ctx, { name: "부스터 팩" });
     const c = await cookie(s.owner.email);
     const get = (q: string) => listRoute(new Request(`http://localhost:3000/api/seller/products?q=${encodeURIComponent(q)}`, { headers: { ...H, cookie: c } }));
-    for (const bad of ["가".repeat(51), "팩\u0000", "\u200b"]) {
+    // 탭·줄바꿈·BOM·폭 없는 공백만 있는 검색어도 400(필터 없는 전체 목록을 돌려주지 않음)
+    for (const bad of ["가".repeat(51), "팩\u0000", "\u200b", "\ufeff", "\t", "\n", " \t "]) {
       const r = await get(bad);
       expect(r.status, JSON.stringify(bad)).toBe(400);
       expect(await r.json()).toEqual({ error: "invalid_search", message: ORDER_ERROR_MESSAGES.invalid_search });
     }
     const ok = await get("가".repeat(49) + "팩");
     expect(ok.status).toBe(200);
+    // 빈 검색어·일반 공백만 있는 검색어는 검색하지 않는다
+    for (const blank of ["", " ", "   "]) {
+      const r = await get(blank);
+      expect(r.status, JSON.stringify(blank)).toBe(200);
+      expect((await r.json()).products).toHaveLength(1);
+    }
     expect((await (await get("부스터")).json()).products.map((p: { name: string }) => p.name)).toEqual(["부스터 팩"]);
   });
 });
