@@ -6,7 +6,8 @@ export const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 export { textLength } from "../../lib/server/text/clean";
 
 export const INT4_MAX = 2147483647;
-export const LOW_STOCK = 3;
+// 서버 「재고 부족」 기준(LOW_STOCK_MAX = 5)과 같게 둔다
+export const LOW_STOCK = 5;
 
 export const STATUS_LABEL: Record<ProductStatus, string> = { ON_SALE: "판매 중", SOLD_OUT: "품절", HIDDEN: "숨김", DRAFT: "임시 저장" };
 
