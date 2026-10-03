@@ -13,7 +13,7 @@
 
 - Next.js 최소 앱 (`app/layout.tsx`, `app/page.tsx`)
 - CI: typecheck + build, 배포 워크플로 재유입 검사
-- 배포 워크플로: `.github/workflows/deploy-obs-test.yml`(테스트 서버 obs-test, 수동 실행만, main만, Environment `obs-test`(승인자 지정은 대표님 조치 대기 ⑤를 마쳐야 적용됨, 그 전에는 승인 단계 없음), 상시 self-hosted runner `obs-kakao`(아직 등록 전). 대표님 결정 2026-10-03: 공개 저장소 + 상시 runner, 「Require approval for all external contributors」 필수). 테스트 도메인 `test.on-aircue.com`(Cloudflare DNS 전용). 절차: `docs/DEPLOY.md`
+- 배포 워크플로: `.github/workflows/deploy-obs-test.yml`(테스트 서버 obs-test, 수동 실행만, main만, Environment `obs-test`(main만, 승인자 대표님), 상시 self-hosted runner `obs-web-test`(라벨 `obs-kakao`, 서버의 `/home/obs`에 설치·서비스 등록). 2026-10-03 첫 배포 성공: `https://test.on-aircue.com/api/health` → status ok, db ok, version c37492f. 대표님 결정 2026-10-03: 공개 저장소 + 상시 runner, 「Require approval for all external contributors」 필수). 테스트 도메인 `test.on-aircue.com`(Cloudflare DNS 전용). 절차: `docs/DEPLOY.md`
 
 ## 인프라 방향
 
@@ -25,9 +25,9 @@
   - Leftlife VM·버킷·보안그룹은 새 서버가 뜨는 것을 확인한 뒤 삭제한다. 삭제 전에 남길 파일이 있는지 대표님이 확인한다.
   - 오늘 IP 이름으로 잘못 만든 DNS 영역(`210.109.15.68`)은 삭제한다. DNS 영역은 도메인을 산 뒤 그 이름으로 만든다.
 
-- 테스트 VM 이름·IP: 대표님 보고로 확인(위). 서버 안 설정(Docker·runner·.env)은 대표님 조치 대기(HANDOFF)
+- 테스트 VM 이름·IP: 대표님 보고로 확인(위). 서버 안 설정(Docker·runner·.env)과 첫 배포는 2026-10-03 대표님이 마침
 - Object Storage 버킷: 존재 여부·이름 미확인
-- DNS `test.on-aircue.com`(Cloudflare, DNS only)은 대표님이 등록함. 서버 안 설정·runner 등록은 대표님 조치 대기(HANDOFF)
+- DNS `test.on-aircue.com`(Cloudflare, DNS only)은 대표님이 등록함. 서버 안 설정·runner 등록·첫 배포는 2026-10-03 대표님이 마침
 
 ## 미확정·미확인
 
