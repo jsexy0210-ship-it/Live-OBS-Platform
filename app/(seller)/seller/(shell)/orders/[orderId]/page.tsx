@@ -17,7 +17,7 @@ import { PAYMENT_METHOD, STATUS_BADGE, detailStatusLabel, fullTime, longTime, ph
 type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; order: OrderDetail };
 
 const SHIPMENT_STATUS: Record<string, string> = { IN_TRANSIT: "배송 중", DELIVERED: "배송 완료" };
-const FAULT_LABEL = { BUYER: "구매자 사정", SELLER: "판매자 사정" } as const;
+const FAULT_LABEL = { BUYER: "구매자 사정", SELLER: "파트너스 사정" } as const;
 // 송장의 택배사는 코드(CJ·HANJIN …)로 저장된다. 화면 이름으로 바꾸고, 모르는 값은 그대로 보인다.
 const courierName = (c: string) => (isCourier(c) ? COURIERS[c] : c);
 

@@ -1,10 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api } from "../../../../components/seller/api";
 
-// AU-002 판매자 로그인
+// AU-002 파트너스(판매자) 로그인. 아래에 파트너스 가입(PF-007)·비밀번호 찾기(AU-003) 링크
 // 실패 문구는 서버가 주는 message를 그대로 쓴다(정본: lib/server/auth/messages.ts). 심사 중만 안내 색으로 보여 준다.
 type Notice = { kind: "neg" | "info"; text: string };
 
@@ -55,13 +56,13 @@ export default function SellerLoginPage() {
         <span className="logo-sym" />
         <span className="logo-word" />
         <span className="t-l1 c-alt" style={{ marginLeft: 6 }}>
-          판매자
+          파트너스
         </span>
       </span>
       <form className="card col login-card" onSubmit={submit} noValidate>
         <div className="col" style={{ gap: 4 }}>
-          <h1 className="t-t3">판매자 관리자에 로그인해요</h1>
-          <span className="t-l2 c-alt">쇼핑몰 운영과 방송 주문대기를 한곳에서 할 수 있어요.</span>
+          <h1 className="t-t3">파트너스 관리자</h1>
+          <span className="t-l2 c-alt">쇼핑몰 운영과 방송 주문대기를 한곳에서 관리하세요.</span>
         </div>
         {notice && (
           <div className={`msg msg-${notice.kind}`} role="alert">
@@ -108,6 +109,11 @@ export default function SellerLoginPage() {
           )}
         </button>
       </form>
+      <nav className="row t-l2 c-alt" style={{ gap: 12 }} aria-label="계정 도움">
+        <Link href="/seller/signup">파트너스 가입</Link>
+        <span aria-hidden>·</span>
+        <Link href="/seller/password-reset">비밀번호 찾기</Link>
+      </nav>
     </div>
   );
 }
