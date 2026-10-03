@@ -61,6 +61,19 @@ export const STAFF_ERRORS: Record<string, string> = {
   invalid_permissions: "권한을 다시 골라 주세요",
   bad_request: "입력한 내용을 다시 확인해 주세요",
 };
+// 새 비밀번호 칸: 기본은 가리고 「보기」로 잠깐 확인한다(화면 녹화·옆사람에게 그대로 보이지 않게)
+export function SecretInput(props: React.InputHTMLAttributes<HTMLInputElement> & { id: string }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="pw-wrap">
+      <input {...props} type={show ? "text" : "password"} autoComplete="new-password" />
+      <button className="btn btn-sm btn-text pw-toggle" type="button" onClick={() => setShow((v) => !v)} aria-pressed={show} aria-controls={props.id}>
+        {show ? "숨기기" : "보기"}
+      </button>
+    </div>
+  );
+}
+
 export const staffFail = (r: { status: number; error: string; message?: string }, fallback: string) => STAFF_ERRORS[r.error] ?? failMessage(r, fallback);
 
 export function PermissionPicker({ value, onChange, disabled }: { value: StaffPerm[]; onChange: (v: StaffPerm[]) => void; disabled?: boolean }) {
@@ -257,11 +270,9 @@ export function ResetPasswordModal({ staff, onClose, onDone }: { staff: Staff; o
       <form className="col" style={{ gap: 14 }} onSubmit={submit} noValidate>
         <div className="fld">
           <label htmlFor="sp-new">새 비밀번호</label>
-          <input
+          <SecretInput
             id="sp-new"
             className={`inp${error ? " is-error" : ""}`}
-            type="text"
-            autoComplete="off"
             maxLength={200}
             value={pw}
             disabled={busy}

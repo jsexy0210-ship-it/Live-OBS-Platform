@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { api, type Me } from "./api";
 
 // 판매자 관리자 공통 틀: 왼쪽 메뉴(좁은 화면에서는 서랍) + 상단 바 + 이용 상태 배너.
@@ -75,8 +75,17 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     void load();
-    // 처음 한 번만 불러온다(화면 이동마다 다시 부르지 않음)
+    // 처음 한 번 불러온다
   }, []);
+
+  // 화면을 옮길 때마다 권한·이용 상태를 조용히 다시 읽는다(대표자가 직원 권한을 바꾸면 다음 화면부터 메뉴에 반영).
+  // 로딩 화면은 띄우지 않고, 실패하면 지금 값을 그대로 둔다(401이면 공통 api()가 로그인으로 보낸다)
+  const firstPath = useRef(pathname);
+  useEffect(() => {
+    if (pathname === firstPath.current) return;
+    firstPath.current = pathname;
+    void api<Me>("/api/seller/me").then((r) => r.ok && setMe(r.data));
+  }, [pathname]);
 
   useEffect(() => setNavOpen(false), [pathname]);
 

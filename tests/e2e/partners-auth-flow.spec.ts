@@ -364,17 +364,16 @@ test("직원: 로그인하면 본인확인 연결 안내가 뜨고, 나중에 �
   await signOut(page);
   await login(page, "대표자", a.email, a.password);
   await expect(page).toHaveURL(/\/seller\/products$/);
+  // 직원 계정 화면(SA-100)의 수정 창에서 번호를 바꾼다: 연결된 직원이라 다시 본인확인해야 한다고 알려 준다
   const nextPhone = randomPhone();
-  const patched = await page.evaluate(
-    async ({ email, phone }) => {
-      const list = (await (await fetch("/api/seller/staff")).json()) as { staff: { id: string; email: string }[] };
-      const id = list.staff.find((x) => x.email === email)!.id;
-      const r = await fetch(`/api/seller/staff/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ phone }) });
-      return { status: r.status, body: await r.json() };
-    },
-    { email: s.email, phone: nextPhone },
-  );
-  expect(patched).toMatchObject({ status: 200, body: { identityLinked: false } });
+  await page.goto("/seller/staff");
+  await page.getByRole("button", { name: `${s.name} 정보 · 권한 수정` }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("연결됨", { exact: true })).toBeVisible();
+  await dialog.getByLabel("휴대폰 번호").fill(nextPhone);
+  await expect(dialog.getByText("번호를 바꾸면 직원이 다시 본인확인을 해야 해요.")).toBeVisible();
+  await dialog.getByRole("button", { name: "저장" }).click();
+  await expect(page.getByText("다음 로그인 때 본인확인을 다시 안내해요", { exact: false })).toBeVisible();
   await signOut(page);
   await login(page, "직원", s.email, next);
   await expect(page).toHaveURL(/\/seller\/identity-link\?next=/);

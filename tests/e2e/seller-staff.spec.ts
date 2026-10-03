@@ -30,6 +30,12 @@ async function login(page: Page, email: string, password = PASSWORD, next = "/se
   await page.getByRole("button", { name: "로그인" }).click();
 }
 
+// 본인확인을 쓸 수 있는 서버(개발·테스트 모드)에서는 연결 전 직원이 로그인하면 연결 안내(AU-012)로 간다: 「나중에 할게요」로 넘긴다
+async function skipIdentityLink(page: Page) {
+  await page.waitForURL((u) => u.pathname !== "/seller/login");
+  if (new URL(page.url()).pathname === "/seller/identity-link") await page.getByRole("button", { name: "나중에 할게요" }).click();
+}
+
 const uniq = () => `${Date.now().toString(36).slice(-5)}${Math.floor(Math.random() * 36 ** 2).toString(36)}`;
 const row = (page: Page, email: string) => page.getByTestId("staff-row").filter({ hasText: email });
 
@@ -60,6 +66,14 @@ test("대표자: 메뉴에서 직원 계정으로 들어가 목록을 보고, �
   await expect(page.getByText("01로 시작하는 휴대폰 번호를 숫자로 적어 주세요")).toBeVisible();
   await expect(page.getByText("로그인에 쓸 이메일을 적어 주세요")).toBeVisible();
   await expect(page.getByLabel("이름", { exact: true })).toBeFocused();
+
+  // 초기 비밀번호는 가려 두고 「보기」로만 잠깐 보여 준다
+  await expect(page.getByLabel("초기 비밀번호")).toHaveAttribute("type", "password");
+  await page.getByLabel("초기 비밀번호").fill("pw-visible-check");
+  await page.getByRole("button", { name: "보기" }).click();
+  await expect(page.getByLabel("초기 비밀번호")).toHaveAttribute("type", "text");
+  await page.getByRole("button", { name: "숨기기" }).click();
+  await expect(page.getByLabel("초기 비밀번호")).toHaveAttribute("type", "password");
 
   const id = uniq();
   const s = { name: `방송보조${id}`, phone: "010-1234-5678", email: `staff-${id}@example.com`, password: `pw-${id}-init` };
@@ -157,6 +171,7 @@ test("대표자: 직원 비밀번호를 재설정하면 새 비밀번호로만 �
 
   await page.getByRole("button", { name: `${s.name} 비밀번호 재설정` }).click();
   const dialog = page.getByRole("dialog");
+  await expect(dialog.getByLabel("새 비밀번호")).toHaveAttribute("type", "password");
   await dialog.getByLabel("새 비밀번호").fill("short");
   await dialog.getByRole("button", { name: "재설정" }).click();
   await expect(dialog.getByText("8자 이상으로 정해 주세요")).toBeVisible();
@@ -171,7 +186,19 @@ test("대표자: 직원 비밀번호를 재설정하면 새 비밀번호로만 �
   await login(staffPage, s.email, s.password, "/seller/products");
   await expect(staffPage.locator("#login-err")).toBeVisible();
   await login(staffPage, s.email, next, "/seller/products");
+  await skipIdentityLink(staffPage);
   await expect(staffPage).toHaveURL(/\/seller\/products$/);
+
+  // 직원이 로그인해 있는 동안 대표자가 권한을 켜면, 직원이 다음 화면으로 옮길 때 메뉴에 바로 나온다(새로고침 없이)
+  const staffMenu = staffPage.getByRole("complementary", { name: "파트너스 메뉴" });
+  await expect(staffMenu.getByRole("link", { name: "주문", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: `${s.name} 정보 · 권한 수정` }).click();
+  await dialog.getByRole("checkbox", { name: "주문·배송", exact: true }).check();
+  await dialog.getByRole("button", { name: "저장" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await staffPage.getByRole("link", { name: "재고 관리" }).click();
+  await expect(staffPage).toHaveURL(/\/seller\/products\/stock$/);
+  await expect(staffMenu.getByRole("link", { name: "주문", exact: true })).toBeVisible();
 
   // 비활성화: 목록에서 비활성으로 바뀌고 관리 버튼이 없어지며, 그 직원은 다시 로그인할 수 없다
   await page.getByRole("button", { name: `${s.name} 비활성화` }).click();
@@ -193,6 +220,7 @@ test("직원: 메뉴에 직원 계정이 없고, 주소로 들어오면 대표�
     () => false,
   );
   await login(page, "demo-staff@example.com", PASSWORD, "/seller/staff");
+  await skipIdentityLink(page);
   await expect(page).toHaveURL(/\/seller\/staff$/);
   await expect(page.getByText("대표자만 볼 수 있어요")).toBeVisible();
   await expect(page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "직원 계정" })).toHaveCount(0);

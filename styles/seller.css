@@ -475,6 +475,8 @@ body {
 }
 .il-info > .row > span:first-child {
   flex: none;
+}
+
 /* 직원 계정(SA-100): 왼쪽 목록 + 오른쪽 직원 추가. 좁은 화면에서는 아래로 내리고 표는 칸 안에서 가로로 민다 */
 .staff-grid {
   display: grid;
@@ -514,6 +516,19 @@ body {
   padding: 10px 12px;
   border-radius: 10px;
   background: var(--wds-fill-alternative);
+}
+.pw-wrap {
+  position: relative;
+}
+.pw-wrap > .inp {
+  width: 100%;
+  padding-right: 72px;
+}
+.pw-toggle {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
 }
 .staff-modal {
   max-height: calc(100vh - 40px);

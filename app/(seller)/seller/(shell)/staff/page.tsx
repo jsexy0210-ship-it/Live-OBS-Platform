@@ -10,6 +10,7 @@ import {
   PERMS,
   PermissionPicker,
   ResetPasswordModal,
+  SecretInput,
   STAFF_ERRORS,
   cleanPhone,
   phoneOk,
@@ -303,7 +304,7 @@ function AddStaff({ onAdded }: { onAdded: (name: string) => void }) {
       {field(
         "password",
         "초기 비밀번호",
-        <input {...inputProps("password")} type="text" autoComplete="off" maxLength={200} value={password} onChange={(e) => setPassword(e.target.value)} />,
+        <SecretInput {...inputProps("password")} maxLength={200} value={password} onChange={(e) => setPassword(e.target.value)} />,
         `${MIN_PASSWORD_LENGTH}자 이상 · 직원에게 직접 전달해 주세요`,
       )}
       <PermissionPicker value={perms} onChange={setPerms} disabled={busy} />
