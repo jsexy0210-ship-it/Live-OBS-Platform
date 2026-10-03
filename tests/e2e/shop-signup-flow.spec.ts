@@ -564,3 +564,29 @@ test("가입 결과가 애매한 동안에는 본인확인 다시 하기를 막�
   await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
   expect(signups).toBe(3);
 });
+
+test("390px: 본인확인 완료 줄은 글자와 버튼이 겹치지 않고, 이름·번호는 「·」와 한 덩어리로 줄바꿈된다", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockApi(page);
+  await page.goto(`/shop/${SLUG}/signup`);
+  // 통신사 첫 항목 글자가 잘리지 않는다
+  const carrier = page.getByLabel("통신사");
+  await expect(carrier).toHaveValue("");
+  expect(await carrier.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  await toVerified(page, "가나다라마바사아자차");
+  const text = page.locator(".signup-done-text");
+  const button = page.getByRole("button", { name: "다시 확인", exact: true });
+  const t = (await text.boundingBox())!;
+  const b = (await button.boundingBox())!;
+  // 겹치지 않는다(좁은 폭에서는 버튼이 글자 아래 줄로 내려간다)
+  const overlap = t.x < b.x + b.width && b.x < t.x + t.width && t.y < b.y + b.height && b.y < t.y + t.height;
+  expect(overlap).toBe(false);
+  // 「이름 ·」「번호」는 각각 한 줄 덩어리라, 줄이 넘어가도 줄 첫머리가 「·」로 시작하지 않는다
+  for (const part of await text.locator(".nw").all()) {
+    const box = (await part.boundingBox())!;
+    expect(box.height).toBeLessThan(30);
+    expect((await part.textContent())!.trim().startsWith("·")).toBe(false);
+  }
+  await expect(text.locator(".nw").first()).toHaveText("가나다라마바사아자차 ·");
+  await expect(text.locator(".nw")).toHaveCount(2);
+});

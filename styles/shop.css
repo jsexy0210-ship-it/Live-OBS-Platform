@@ -135,11 +135,26 @@ body {
 }
 .signup-done {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   padding: 12px 14px;
   border-radius: 12px;
   background: var(--wds-background-status-positive);
+}
+/* 글자가 220px보다 좁아지면 「다시 확인」 버튼은 아래 줄 오른쪽으로 내려간다 */
+.signup-done-text {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.signup-done-who {
+  display: block;
+}
+.signup-done-text .nw {
+  white-space: nowrap;
+}
+.signup-done > .btn {
+  margin-left: auto;
 }
 .signup-terms {
   gap: 10px;

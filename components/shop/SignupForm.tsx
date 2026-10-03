@@ -349,9 +349,12 @@ export default function SignupForm({ slug }: { slug: string }) {
         <section className="col signup-sec" aria-label="본인확인">
           <div className="signup-done">
             <span className="tdot" aria-hidden />
-            <span className="grow">
+            {/* 이름·번호는 다음 줄에 두고 「이름 ·」「번호」를 각각 한 덩어리로 묶어, 줄이 넘어가도 「·」로 시작하지 않게 한다 */}
+            <span className="signup-done-text">
               <b>본인확인을 마쳤어요</b>
-              <span className="c-alt"> · {shown.name} · {phoneText(shown.phone)}</span>
+              <span className="c-alt signup-done-who">
+                <span className="nw">{shown.name} ·</span> <span className="nw">{phoneText(shown.phone)}</span>
+              </span>
             </span>
             {/* 요청 중이거나 가입 결과가 애매한 동안에는 본인확인 요청을 지우지 않게 막는다(같은 요청으로만 다시 시도) */}
             <button type="button" className="btn btn-sm btn-out" disabled={busy || unconfirmed !== null} onClick={() => restart(null)}>
