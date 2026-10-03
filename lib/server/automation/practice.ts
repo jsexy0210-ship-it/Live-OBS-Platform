@@ -3,7 +3,7 @@ import type { AutomationPracticeRun, Prisma, PrismaClient } from "@prisma/client
 import { AUTOMATION_LIMITS, plannerConfig } from "./config";
 import { writeAudit } from "../audit/log";
 import { runSteps, type EngineStats } from "./engine";
-import { backoffMs } from "./queue";
+import { backoffMs, lockPlaybook } from "./queue";
 import type { Playbook } from "./playbook";
 import { PLAYBOOKS } from "./playbooks";
 import type { AutomationRuntime, JobScope } from "./ports";
@@ -151,6 +151,17 @@ export type Readiness = {
 };
 
 export async function playbookReadiness(db: PrismaClient | Prisma.TransactionClient, playbook: Playbook, required = PRACTICE_STREAK_REQUIRED): Promise<Readiness> {
+  // 기준 시각(최신 화면 이탈) 읽기와 연속 성공 집계를 작업서 공유 잠금 아래 한 트랜잭션에서 한다(이미 트랜잭션 안이면 그 잠금을 쓴다)
+  if ("$transaction" in db) {
+    return db.$transaction(async (tx) => {
+      await lockPlaybook(tx, playbook.id, "shared");
+      return computeReadiness(tx, playbook, required);
+    });
+  }
+  return computeReadiness(db, playbook, required);
+}
+
+async function computeReadiness(db: Prisma.TransactionClient, playbook: Playbook, required: number): Promise<Readiness> {
   const where = { playbookId: playbook.id, playbookVersion: playbook.version };
   // 진행 중인 연습(시작 때 남긴 기록, 아직 결과 없음)은 빼고 센다. 실행 시간 상한(6시간)을 넘겨도 끝나지 않은 기록은 죽은 것으로 보고 실패로 센다.
   const runningSince = new Date(Date.now() - AUTOMATION_LIMITS.maxRunMs);
@@ -166,7 +177,8 @@ export async function playbookReadiness(db: PrismaClient | Prisma.TransactionCli
   const driftAt = drifted?.lastDeviationAt ?? null;
   let streak = 0;
   for (const r of runs) {
-    if (driftAt && r.finishedAt <= driftAt) break;
+    // 화면 이탈 전에 시작한 연습은 바뀐 화면을 검증하지 못했다(이탈 뒤에 끝났어도 세지 않는다)
+    if (driftAt && r.startedAt <= driftAt) break;
     if (r.outcome !== "SUCCEEDED" || r.deviatedSteps.length > 0) break;
     streak++;
   }

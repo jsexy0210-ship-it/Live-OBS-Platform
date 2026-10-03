@@ -120,9 +120,17 @@ export async function executeJob(db: PrismaClient, rt: AutomationRuntime, { job,
       },
     );
     switch (result.kind) {
-      case "succeeded":
+      case "succeeded": {
+        // 성공 확정 전에 연결한 쇼핑몰 식별값이 저장됐는지 확인한다. 없으면 무료 재연결 판정을 할 수 없으므로 성공이 아니라 확인 실패다
+        // (변경이 있었으니 실패 경로의 정리 필요 표시·알림이 붙는다)
+        const saved = await db.automationJob.findUnique({ where: { id: job.id }, select: { shopKey: true } });
+        if (!saved?.shopKey) {
+          await finishJob(db, claim, "FAILED", "shop_identity_unverified");
+          return "failed";
+        }
         await finishJob(db, claim, "SUCCEEDED", undefined, result.evidence);
         return "succeeded";
+      }
       case "needs_customer":
         await parkForCustomer(db, claim, result.action, result.heldBrowserState === true);
         return "needs_customer";

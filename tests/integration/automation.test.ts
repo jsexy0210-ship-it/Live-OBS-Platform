@@ -2199,3 +2199,45 @@ describe("MASTER 최소 안전 동작: 변경 뒤 실패는 정리 필요·알�
     expect(await db.auditLog.count({ where: { action: "automation.job_cleanup_needed", targetId: a.jobId } })).toBe(1);
   });
 });
+
+describe("Codex 15차 반영(238d7c2)", () => {
+  it("화면 이탈 전에 시작해 그 뒤에 끝난 연습은 연속 성공에 들어가지 않고, 이탈 뒤에 시작한 연습만 센다", async () => {
+    const a = await bought();
+    // 기본 검증 기록(매 시험 전에 넣는 연습 5건)보다 뒤의 이탈
+    const drift = new Date(Date.now() + 1000);
+    await db.automationJob.update({ where: { id: a.jobId }, data: { lastDeviationAt: drift, deviatedSteps: ["webhook_setup"] } });
+    const run = (startedAt: Date) => ({
+      playbookId: cafe24Playbook.id,
+      playbookVersion: cafe24Playbook.version,
+      outcome: "SUCCEEDED" as const,
+      durationMs: 1,
+      plannerCalls: 0,
+      playbookActions: 13,
+      costWon: 0,
+      startedAt,
+      finishedAt: new Date(drift.getTime() + 30_000),
+    });
+    await db.automationPracticeRun.createMany({ data: Array.from({ length: PRACTICE_STREAK_REQUIRED }, () => run(new Date(drift.getTime() - 1000))) });
+    expect((await playbookReadiness(db, cafe24Playbook)).verified).toBe(false);
+    await db.automationPracticeRun.createMany({
+      data: Array.from({ length: PRACTICE_STREAK_REQUIRED }, () => ({ ...run(new Date(drift.getTime() + 1000)), finishedAt: new Date(drift.getTime() + 40_000) })),
+    });
+    expect((await playbookReadiness(db, cafe24Playbook)).verified).toBe(true);
+  });
+
+  it("쇼핑몰 식별값 없이 검증만 통과하면 성공으로 두지 않고(변경이 있었으니 정리 필요·알림), 식별값이 있는 성공 뒤 같은 쇼핑몰 재연결은 무료다", async () => {
+    const a = await bought();
+    const rt = runtime();
+    // 쇼핑몰 단계 끝에 식별값을 알려 주지 않는 실행기
+    rt.browser.outcome = (_s, action) => (action.type === "step_done" ? { kind: "ok", stepDone: true } : undefined);
+    expect(await runOnce(db, rt, W)).toBe("failed");
+    const j = await job(a.jobId);
+    expect(j).toMatchObject({ status: "FAILED", lastError: "shop_identity_unverified", shopKey: null, verifiedAt: null });
+    expect(j.cleanupNeededAt).toBeInstanceOf(Date);
+
+    const b = await bought();
+    expect(await runOnce(db, runtime(), W)).toBe("succeeded");
+    const r = await reconnectAutomation(db, b.provider, b.ctx, { idempotencyKey: newKey(), target: { shopKey: `mall-${b.seller.id}`, obsPairingId: `pc-${b.seller.id}` } });
+    expect(r).toMatchObject({ ok: true, kind: "RECONNECT_FREE" });
+  });
+});

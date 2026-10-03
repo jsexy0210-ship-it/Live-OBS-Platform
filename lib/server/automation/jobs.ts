@@ -43,6 +43,7 @@ const PUBLIC_ERRORS = new Set([
   "obs_target_changed",
   "playbook_version_changed",
   "playbook_not_verified",
+  "shop_identity_unverified",
 ]);
 const STEP_KEYS = new Set(STEPS.map((s) => s.key));
 
