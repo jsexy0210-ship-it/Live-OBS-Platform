@@ -260,6 +260,14 @@ async function tick() {
   // 대상을 동시에 확인한다(여러 대상이 시간 초과여도 한 틱이 timeoutMs 정도로 끝나게).
   // 인증서 확인도 함께 돌린다(순서대로 하면 틱이 길어져 주기가 밀림).
   const [probed, certDays] = await Promise.all([Promise.all(cfg.targets.map((t) => probe(t))), cfg.tlsHost ? certDaysLeft(cfg.tlsHost) : Promise.resolve(null)]);
+  // 배포 중이면(표시 파일) 새 장애를 열지 않고(실패 횟수는 셈) 버전 불일치도 세지 않는다. 표시가 너무 오래 남으면(스크립트가 죽는 등) 따로 경고한다.
+  let deploying = false;
+  try {
+    const ageMin = (Date.now() - statSync(cfg.deployMark).mtimeMs) / 60_000;
+    // 기준 시간이 지난 표시(SIGKILL·재부팅으로 남은 것)는 배포 중으로 보지 않는다. 파일은 그대로 두고 판단에서만 뺀다.
+    if (ageMin > cfg.deployMarkStaleMin) await warnOnce("deploy_mark_stale", { kind: "deploy_mark_stale", ageMin: Math.round(ageMin) }, 3600_000);
+    else deploying = true;
+  } catch {}
   for (const [i, t] of cfg.targets.entries()) {
     const r = probed[i];
     const ok = r.status === 200 && r.db === "ok";
@@ -268,7 +276,8 @@ async function tick() {
 
     state.fails[t.name] = ok ? 0 : (state.fails[t.name] ?? 0) + 1;
     const open = state.incidents[t.name];
-    if (!ok && !open && state.fails[t.name] >= cfg.failThreshold) {
+    // 배포 중에는 교체로 잠깐 실패해도 장애를 열지 않는다. 표시가 사라진 뒤에도 실패가 이어지면 다음 틱에 연다.
+    if (!ok && !open && !deploying && state.fails[t.name] >= cfg.failThreshold) {
       state.incidents[t.name] = { openedAt: Date.now(), openedKst: at };
       await event({ level: "critical", kind: "incident_open", target: t.name, status: r.status, error: r.error ?? null, db: r.db ?? null });
     } else if (ok && open) {
@@ -280,14 +289,6 @@ async function tick() {
 
   const deployed = lastDeployedSha();
   const running = Object.values(results).find((r) => r.ok && r.version)?.version ?? null;
-  // 배포 중이면(표시 파일) 불일치를 세지 않는다. 표시가 너무 오래 남으면(스크립트가 죽는 등) 따로 경고한다.
-  let deploying = false;
-  try {
-    const ageMin = (Date.now() - statSync(cfg.deployMark).mtimeMs) / 60_000;
-    // 기준 시간이 지난 표시(SIGKILL·재부팅으로 남은 것)는 배포 중으로 보지 않는다. 파일은 그대로 두고 판단에서만 뺀다.
-    if (ageMin > cfg.deployMarkStaleMin) await warnOnce("deploy_mark_stale", { kind: "deploy_mark_stale", ageMin: Math.round(ageMin) }, 3600_000);
-    else deploying = true;
-  } catch {}
   // healthy인 대상마다 따로 비교한다(앱 하나만 보면 다른 앱이 옛 이미지로 떠 있어도 못 잡음). 연속 틱도 대상마다 센다.
   const versionMismatch = {};
   for (const [name, r] of Object.entries(results)) {
@@ -306,7 +307,7 @@ async function tick() {
     else if (certDays < cfg.tlsWarnDays) await warnOnce("tls:expiry", { kind: "tls_expiring", host: cfg.tlsHost, daysLeft: certDays }, 86400_000);
   }
 
-  const status = { at, targets: results, openIncidents: Object.keys(state.incidents), deployedSha: deployed, runningVersion: running, versionMismatch, certDaysLeft: certDays };
+  const status = { at, targets: results, openIncidents: Object.keys(state.incidents), deploying, deployedSha: deployed, runningVersion: running, versionMismatch, certDaysLeft: certDays };
   writeFileSync(`${cfg.dir}/status.json`, JSON.stringify(status, null, 2) + "\n");
   // heartbeat는 알림 전송과 상관없이 매 틱 먼저 남긴다.
   writeFileSync(`${cfg.dir}/heartbeat.json`, JSON.stringify({ at, epochMs: Date.now(), intervalS: cfg.intervalS }) + "\n");
