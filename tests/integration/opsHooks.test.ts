@@ -112,6 +112,28 @@ describe("heartbeat 보완(Codex)", () => {
     expect((await opsMetrics(db)).retiredHeartbeats.map((h) => h.instance)).toEqual(["web-x"]);
   });
 
+  it("새 세대가 등록한 뒤 이전 세대의 늦은 heartbeat는 새 행의 상태·시각·오류를 덮지 않고, 다른 세대가 쓰는 이름에 새 행도 만들지 않는다", async () => {
+    const t = (m: number) => new Date(Date.UTC(2026, 9, 4, 0, m));
+    const oldGen = await registerInstance(db, "web-y");
+    await recordHeartbeat(db, "scheduler.tick", "done", t(0), undefined, "web-y", oldGen);
+    const newGen = await registerInstance(db, "web-y");
+    await recordHeartbeat(db, "scheduler.tick", "done", t(1), undefined, "web-y", newGen);
+    // 이전 세대의 늦은 기록(실패·건너뜀·새 작업)
+    await recordHeartbeat(db, "scheduler.tick", "failed", t(2), "old boom", "web-y", oldGen);
+    await recordHeartbeat(db, "scheduler.tick", "skipped", t(3), undefined, "web-y", oldGen);
+    await recordHeartbeat(db, "old.job", "done", t(3), undefined, "web-y", oldGen);
+    const rows = await db.opsHeartbeat.findMany({ where: { instance: "web-y" } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ job: "scheduler.tick", generation: newGen, lastStatus: "done", lastError: null, lastRunAt: t(1), lastOkAt: t(1) });
+    // 내 세대 기록은 그대로 쓴다(실패는 성공 시각을 두고, 건너뜀은 실행 시각만)
+    await recordHeartbeat(db, "scheduler.tick", "failed", t(4), "new boom", "web-y", newGen);
+    await recordHeartbeat(db, "scheduler.tick", "skipped", t(5), undefined, "web-y", newGen);
+    await recordHeartbeat(db, "new.job", "done", t(5), undefined, "web-y", newGen);
+    const after = await db.opsHeartbeat.findMany({ where: { instance: "web-y" }, orderBy: { job: "asc" } });
+    expect(after.map((r) => r.job)).toEqual(["new.job", "scheduler.tick"]);
+    expect(after[1]).toMatchObject({ lastStatus: "failed", lastError: "new boom", lastRunAt: t(5), lastOkAt: t(1) });
+  });
+
   it("시작 때 DB가 잠깐 실패해도 등록을 다시 시도해 성공하고, 그 뒤 실행의 heartbeat가 살아 있는 쪽에 들어간다", async () => {
     vi.stubEnv("OPS_INSTANCE_NAME", "web-retry");
     let fails = 2;

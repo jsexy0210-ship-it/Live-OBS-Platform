@@ -29,16 +29,20 @@ export async function recordHeartbeat(
   generation = currentGeneration(),
 ) {
   const err = status === "failed" ? (error?.slice(0, 500) ?? null) : null;
-  await db.opsHeartbeat.upsert({
-    where: { instance_job: { instance, job } },
-    create: { instance, job, generation, lastRunAt: now, lastStatus: status, lastError: err, lastOkAt: status === "done" ? now : null },
-    // 종료 표시(retiredAt)는 여기서 절대 건드리지 않는다. 종료 뒤 늦게 커밋된 heartbeat가 표시를 되돌리지 않게,
-    // 표시를 비우는 곳은 인스턴스가 새로 시작할 때 한 번 부르는 registerInstance뿐이다.
-    update:
-      status === "skipped"
-        ? { lastRunAt: now }
-        : { lastRunAt: now, lastStatus: status, lastError: err, ...(status === "done" ? { lastOkAt: now } : {}) },
-  });
+  // 갱신은 내 세대 행에만 한다(세대가 다르면 0행으로 조용히 무시): 이전 세대 프로세스의 늦은 heartbeat가 같은 이름으로 새로 등록한
+  // 프로세스의 상태·시각·오류를 덮지 못하게. 새 행도 같은 이름에 다른 세대 행이 있으면 만들지 않는다(그 이름은 다른 세대가 쓰는 중).
+  // 종료 표시(retiredAt)는 여기서 절대 건드리지 않는다(종료 뒤 늦게 커밋돼도 그대로). 표시를 비우는 곳은 registerInstance뿐이다.
+  const set =
+    status === "skipped"
+      ? Prisma.sql`"lastRunAt" = EXCLUDED."lastRunAt", "updatedAt" = EXCLUDED."updatedAt"`
+      : Prisma.sql`"lastRunAt" = EXCLUDED."lastRunAt", "lastStatus" = EXCLUDED."lastStatus", "lastError" = EXCLUDED."lastError",
+          "lastOkAt" = ${status === "done" ? Prisma.sql`EXCLUDED."lastOkAt"` : Prisma.sql`"OpsHeartbeat"."lastOkAt"`}, "updatedAt" = EXCLUDED."updatedAt"`;
+  await db.$executeRaw`
+    INSERT INTO "OpsHeartbeat" ("instance", "job", "generation", "lastRunAt", "lastStatus", "lastError", "lastOkAt", "updatedAt")
+    SELECT ${instance}, ${job}, ${generation}::text, ${now}::timestamptz(3), ${status}, ${err}::text, ${status === "done" ? now : null}::timestamptz(3), now()
+    WHERE NOT EXISTS (SELECT 1 FROM "OpsHeartbeat" WHERE "instance" = ${instance} AND "generation" IS DISTINCT FROM ${generation}::text)
+    ON CONFLICT ("instance", "job") DO UPDATE SET ${set}
+    WHERE "OpsHeartbeat"."generation" IS NOT DISTINCT FROM EXCLUDED."generation"`;
 }
 
 // 인스턴스 등록: 프로세스가 새로 시작할 때 한 번(jobs/scheduler.ts startScheduler, 성공할 때까지 다시 시도). 새 세대 값을 정해
