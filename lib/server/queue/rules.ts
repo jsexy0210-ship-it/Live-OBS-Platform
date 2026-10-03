@@ -18,7 +18,8 @@ export type QueueRejection =
   | "already_live"
   | "opening_in_progress"
   | "reason_required"
-  | "opened_items_present";
+  | "opened_items_present"
+  | "fault_required";
 
 export type TransitionInput = {
   status: QueueItemStatus;

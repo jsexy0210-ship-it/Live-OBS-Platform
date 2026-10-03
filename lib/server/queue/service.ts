@@ -1,6 +1,7 @@
-import { Prisma, type PaymentMethod, type PrismaClient, type QueueItem } from "@prisma/client";
+import { Prisma, type PaymentMethod, type PrismaClient, type QueueItem, type RefundFault } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { notifySellerChanged } from "../realtime/notify";
+import { getShippingPolicy } from "../orders/shipping";
 import { earnAmount } from "../rewards/earn";
 import { requireSellerPermission, type TenantContext } from "../tenant/context";
 import { restoreOrderStock } from "../products/stock";
@@ -433,7 +434,35 @@ export type RefundOutcome = {
   cancelledQueueItemIds: string[];
   openedItemCount: number;
   rewardRevoke: RewardRevokeOutcome;
+  refundAmount: number;
+  refundFault: RefundFault | null;
+  returnFeeDeducted: number;
 };
+
+// 환불액(PRODUCT_SCOPE 「반품·교환 배송비」, 대표님 결정 2026-10-03).
+// - 발송 전: 결제 금액 전부(상품 + 배송비). 구매자 사정이면 개봉한 상품은 빼고 돌려준다.
+// - 발송 후 판매자 사정(불량·오배송): 상품 + 처음 배송비. 반품 배송비를 받지 않는다.
+// - 발송 후 구매자 사정(단순 변심): 개봉하지 않은 상품 − 반품 배송비(편도). 처음 배송비는 돌려주지 않는다.
+//   처음 배송비가 0원(무료 배송)이었으면 왕복(편도 × 2)으로 뺀다. 돌려줄 상품이 없으면 빼지 않는다. 0원 아래로 내려가지 않는다.
+// - 개봉한 상품은 구매자 사정이면 환불하지 않는다(OPENED_NO_REFUND 동의). 판매자 사정이면 판매자가 확인(confirmOpened)하고 돌려준다.
+// - 적립금으로 낸 금액은 현금으로 돌려주지 않는다(환불액 상한 = 결제 금액 − 적립금 사용액).
+export function computeRefund(input: {
+  items: { unitPrice: number; quantity: number; opened: boolean }[];
+  shippingFee: number;
+  totalAmount: number;
+  rewardUsedAmount: number;
+  shipped: boolean;
+  fault: RefundFault | null;
+  returnFee: number;
+}): { refundAmount: number; returnFeeDeducted: number } {
+  const buyerFault = input.fault === "BUYER";
+  const items = input.items.reduce((sum, i) => sum + (buyerFault && i.opened ? 0 : i.unitPrice * i.quantity), 0);
+  const shipping = !input.shipped || input.fault === "SELLER" ? input.shippingFee : 0;
+  const fee = input.shipped && buyerFault && items > 0 ? input.returnFee * (input.shippingFee === 0 ? 2 : 1) : 0;
+  const gross = Math.min(items + shipping, input.totalAmount - input.rewardUsedAmount);
+  const returnFeeDeducted = Math.min(fee, Math.max(0, gross));
+  return { refundAmount: Math.max(0, gross - returnFeeDeducted), returnFeeDeducted };
+}
 
 // 결제 완료 주문 환불: 결제 완료 → 환불. 주문 품목마다
 // - 연결된 주문대기가 「대기」·「개봉 중」이면 자동 취소
@@ -445,7 +474,7 @@ export async function refundOrder(
   db: PrismaClient,
   ctx: TenantContext,
   orderId: string,
-  opts: { reason?: string; expectedLiveVersion: number; confirmOpened?: boolean; now?: Date },
+  opts: { reason?: string; expectedLiveVersion: number; confirmOpened?: boolean; fault?: RefundFault; now?: Date },
 ): Promise<QueueResult<RefundOutcome>> {
   requireSellerPermission(ctx, "ORDER_SHIPPING");
   if (!opts.reason?.trim()) return { ok: false, reason: "reason_required" };
@@ -468,6 +497,20 @@ export async function refundOrder(
     const openedItemCount = order.items.filter((i) => isOpened(order.queueItems.find((x) => x.orderItemId === i.id))).length;
     // 트랜잭션을 되돌리므로 주문 상태도 결제 완료로 남는다
     if (openedItemCount > 0 && opts.confirmOpened !== true) throw new Rejected("opened_items_present");
+    // 발송했거나 개봉한 품목이 있으면 환불액이 사유 주체(구매자·판매자 사정)에 따라 달라지므로 꼭 받는다
+    if ((shippedBeforeRefund || openedItemCount > 0) && !opts.fault) throw new Rejected("fault_required");
+    const refundFault = opts.fault ?? null;
+    const returnFee = order.returnFeeSnapshot ?? (await getShippingPolicy(tx, ctx.sellerId)).returnFee;
+    const { refundAmount, returnFeeDeducted } = computeRefund({
+      items: order.items.map((i) => ({ unitPrice: i.unitPrice, quantity: i.quantity, opened: isOpened(order.queueItems.find((x) => x.orderItemId === i.id)) })),
+      shippingFee: order.shippingFee,
+      totalAmount: order.totalAmount,
+      rewardUsedAmount: order.rewardUsedAmount,
+      shipped: shippedBeforeRefund,
+      fault: refundFault,
+      returnFee,
+    });
+    await tx.order.update({ where: { id: orderId }, data: { refundAmount, refundFault, returnFeeDeducted } });
     await tx.orderStatusHistory.create({
       data: { sellerId: ctx.sellerId, orderId, fromStatus: "PAID", toStatus: "REFUNDED", actorType: ctx.actorType, actorId: ctx.actorId, reason, createdAt: now },
     });
@@ -538,10 +581,13 @@ export async function refundOrder(
         openedItems: openedItemCount,
         rewardRevoke,
         shippedBeforeRefund,
+        refundAmount,
+        refundFault,
+        returnFeeDeducted,
         ...(order.shipment ? { shipmentStatus: order.shipment.status } : {}),
       },
     });
-    return { orderId, restockedItemIds, cancelledQueueItemIds, openedItemCount, rewardRevoke };
+    return { orderId, restockedItemIds, cancelledQueueItemIds, openedItemCount, rewardRevoke, refundAmount, refundFault, returnFeeDeducted };
   });
 }
 

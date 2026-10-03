@@ -73,8 +73,9 @@ describe("환불: 개봉 전 품목만 재고 복구, 연결된 대기·개봉 �
     });
     expect((await db.order.findUniqueOrThrow({ where: { id: order.id } })).status).toBe("PAID");
     expect(await queueStatus(queueItemIds[0])).toBe("OPENING");
-    const r = await refundOrder(db, s.ctx, order.id, { reason: "배송 사고", expectedLiveVersion: await lv(s.ctx.sellerId), confirmOpened: true });
-    expect(r).toMatchObject({ ok: true, value: { restockedItemIds: [], cancelledQueueItemIds: queueItemIds } });
+    const r = await refundOrder(db, s.ctx, order.id, { reason: "배송 사고", expectedLiveVersion: await lv(s.ctx.sellerId), confirmOpened: true, fault: "SELLER" });
+    // 판매자 사정이면 개봉한 품목도 돌려준다
+    expect(r).toMatchObject({ ok: true, value: { restockedItemIds: [], cancelledQueueItemIds: queueItemIds, refundAmount: 5000, refundFault: "SELLER" } });
     expect(await queueStatus(queueItemIds[0])).toBe("CANCELLED");
     expect(await stockOf(options[0].id)).toBe(9);
   });
@@ -86,7 +87,7 @@ describe("환불: 개봉 전 품목만 재고 복구, 연결된 대기·개봉 �
     await applyQueueAction(db, s.ctx, queueItemIds[0], "start");
     await applyQueueAction(db, s.ctx, queueItemIds[0], "complete");
     expect(
-      await refundOrder(db, s.ctx, order.id, { reason: "요청", expectedLiveVersion: await lv(s.ctx.sellerId), confirmOpened: true }),
+      await refundOrder(db, s.ctx, order.id, { reason: "요청", expectedLiveVersion: await lv(s.ctx.sellerId), confirmOpened: true, fault: "BUYER" }),
     ).toMatchObject({ ok: true, value: { restockedItemIds: [], cancelledQueueItemIds: [], openedItemCount: 1 } });
     expect(await queueStatus(queueItemIds[0])).toBe("DONE");
     const audit = await db.auditLog.findFirstOrThrow({ where: { action: "order.refund", targetId: order.id } });
@@ -104,8 +105,10 @@ describe("환불: 개봉 전 품목만 재고 복구, 연결된 대기·개봉 �
     await applyQueueAction(db, s.ctx, queueItemIds[0], "cancel", { reason: "개봉 전 취소" });
     await applyQueueAction(db, s.ctx, queueItemIds[1], "start");
     await applyQueueAction(db, s.ctx, queueItemIds[1], "cancel", { reason: "개봉 중 취소" });
-    const r = await refundOrder(db, s.ctx, order.id, { reason: "요청", expectedLiveVersion: await lv(s.ctx.sellerId), confirmOpened: true });
+    const r = await refundOrder(db, s.ctx, order.id, { reason: "요청", expectedLiveVersion: await lv(s.ctx.sellerId), confirmOpened: true, fault: "BUYER" });
     expect(r.ok && r.value.restockedItemIds.length).toBe(1);
+    // 구매자 사정이면 개봉을 시작한 품목(5,000원)은 환불액에서 빠진다
+    expect(r.ok && r.value.refundAmount).toBe(5000);
     expect(await stockOf(options[0].id)).toBe(10);
     expect(await stockOf(options[1].id)).toBe(9);
   });
@@ -285,7 +288,16 @@ describe("HTTP: 환불·취소 API", () => {
     const noConfirm = await call(refundRoute, order.id, "refund", { reason: "요청", expectedVersion: await lv(s.seller.id) });
     expect(noConfirm.status).toBe(409);
     expect(await noConfirm.json()).toEqual({ error: "opened_items_present" });
-    expect((await call(refundRoute, order.id, "refund", { reason: "요청", expectedVersion: await lv(s.seller.id), confirmOpened: true })).status).toBe(200);
+    // 개봉한 품목이 있으면 사유 주체(fault)도 꼭 보낸다. 잘못된 값은 400.
+    const noFault = await call(refundRoute, order.id, "refund", { reason: "요청", expectedVersion: await lv(s.seller.id), confirmOpened: true });
+    expect(noFault.status).toBe(400);
+    expect(await noFault.json()).toEqual({ error: "fault_required" });
+    expect((await call(refundRoute, order.id, "refund", { reason: "요청", expectedVersion: await lv(s.seller.id), confirmOpened: true, fault: "buyer" })).status).toBe(400);
+    expect((await db.order.findUniqueOrThrow({ where: { id: order.id } })).status).toBe("PAID");
+    const ok = await call(refundRoute, order.id, "refund", { reason: "요청", expectedVersion: await lv(s.seller.id), confirmOpened: true, fault: "BUYER" });
+    expect(ok.status).toBe(200);
+    // 구매자 사정이면 개봉한 상품은 돌려주지 않는다(발송 전이라 반품 배송비는 없음)
+    expect(await ok.json()).toMatchObject({ refundAmount: 0, refundFault: "BUYER", returnFeeDeducted: 0 });
 
     const pending = await s.pendingOrder([[10, 1]]);
     expect((await call(cancelRoute, pending.order.id, "cancel", { reason: "x" })).status).toBe(400);
