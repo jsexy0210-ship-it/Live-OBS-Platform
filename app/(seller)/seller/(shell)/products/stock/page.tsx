@@ -21,8 +21,8 @@ const REASONS = ["이벤트 증정", "서비스", "파손", "직접 입력"] as 
 async function loadAllProducts(): Promise<{ ok: true; products: Product[] } | { ok: false; status: number }> {
   const all: Product[] = [];
   let cursor: string | null = null;
-  // 재고 화면은 검색·걸러 보기를 화면에서 하므로 모든 상품을 200개씩 이어서 불러온다
-  for (let i = 0; i < 100; i++) {
+  // 재고 화면은 검색·걸러 보기를 화면에서 하므로 모든 상품을 200개씩 이어서 불러온다(다음 쪽이 없을 때까지, 개수 제한 없음)
+  for (;;) {
     const r: Awaited<ReturnType<typeof api<{ products: Product[]; nextCursor: string | null }>>> = await api<{ products: Product[]; nextCursor: string | null }>(`/api/seller/products?limit=200${cursor ? `&cursor=${cursor}` : ""}`);
     if (!r.ok) return { ok: false, status: r.status };
     all.push(...r.data.products);

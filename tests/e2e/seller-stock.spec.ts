@@ -173,3 +173,16 @@ test("로그인이 풀린 뒤 재고를 바꾸면 로그인으로 보낸다", as
   await sheet.getByRole("button", { name: "1개 빼기" }).click();
   await expect(page).toHaveURL(/\/seller\/login\?next=%2Fseller%2Fproducts%2Fstock$/);
 });
+
+test("체크한 옵션에 「+10」처럼 적으면 한꺼번에 더해 적어 준다", async ({ page }) => {
+  await openAs(page);
+  await page.getByLabel("재고 검색").fill("카드 슬리브");
+  await expect(page.getByTestId("stock-row")).toHaveCount(2);
+  const before = await Promise.all(["카드 슬리브 100매 투명", "카드 슬리브 100매 블랙"].map((l) => nextInput(page, l).inputValue()));
+  await page.getByLabel("보이는 옵션 모두 선택").check();
+  await page.getByLabel("선택한 옵션에 더하거나 뺄 수량").fill("+10");
+  await page.getByRole("button", { name: "한꺼번에 적기" }).click();
+  await expect(nextInput(page, "카드 슬리브 100매 투명")).toHaveValue(String(Number(before[0]) + 10));
+  await expect(nextInput(page, "카드 슬리브 100매 블랙")).toHaveValue(String(Number(before[1]) + 10));
+  await expect(page.getByTestId("sum-count")).toHaveText("2개");
+});
