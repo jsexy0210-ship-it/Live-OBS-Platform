@@ -1,5 +1,4 @@
 import "../../styles/tokens.css";
-import "../../styles/wanted-sans.css";
 import "../../styles/lop.css";
 import "../../styles/seller.css";
 
@@ -7,8 +6,6 @@ import "../../styles/seller.css";
 export default function SellerRootLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
-      <link rel="preload" href="/fonts/wanted-sans/split/WantedSansVariable.split.90.woff2" as="font" type="font/woff2" crossOrigin="" />
-      <link rel="preload" href="/fonts/wanted-sans/split/WantedSansVariable.split.88.woff2" as="font" type="font/woff2" crossOrigin="" />
       <div className="app seller-app" data-theme="light">
         {children}
       </div>

@@ -19,23 +19,23 @@ async function shot(page: Page, name: string) {
 }
 
 // 화면 글자가 원티드 산스로 그려지는지: 계산된 서체 첫 번째가 원티드 산스이고, 실제로 내려받아 400·800 굵기를 쓸 수 있다
-async function expectWantedSans(page: Page) {
-  const r = await page.evaluate(async () => {
+async function expectWantedSans(page: Page, selector = ".app") {
+  const r = await page.evaluate(async (sel) => {
     await document.fonts.ready;
     await Promise.all([document.fonts.load('400 16px "Wanted Sans Variable"'), document.fonts.load('800 16px "Wanted Sans Variable"')]);
-    const el = document.querySelector(".app") as HTMLElement;
+    const el = document.querySelector(sel) as HTMLElement;
     return {
       family: getComputedStyle(el).fontFamily,
       w400: document.fonts.check('400 16px "Wanted Sans Variable"'),
       w800: document.fonts.check('800 16px "Wanted Sans Variable"'),
       loaded: [...document.fonts].some((f) => f.family.replace(/"/g, "") === "Wanted Sans Variable" && f.status === "loaded"),
     };
-  });
+  }, selector);
   expect(r.family.startsWith('"Wanted Sans Variable"')).toBe(true);
   expect(r).toMatchObject({ w400: true, w800: true, loaded: true });
 }
 
-test("파트너스 로그인·주문 화면과 쇼핑몰 화면이 원티드 산스로 그려지고, 외부 글꼴 CDN을 부르지 않는다", async ({ page }) => {
+test("파트너스 로그인·주문 화면, 쇼핑몰 화면, 루트(/)가 원티드 산스로 그려지고, 외부 글꼴 CDN을 부르지 않는다", async ({ page }) => {
   const external: string[] = [];
   const font: { url: string; status: number; size: Promise<number> }[] = [];
   page.on("request", (r) => {
@@ -70,5 +70,9 @@ test("파트너스 로그인·주문 화면과 쇼핑몰 화면이 원티드 산
   await shot(page, "FONT-shop");
 
   expect(external).toEqual([]);
+  // 어느 화면 그룹에도 속하지 않는 루트(/)도 루트 레이아웃에서 같은 서체를 쓴다
+  await page.goto("/");
+  await expectWantedSans(page, "main");
+
   expect(font.every((f) => f.status === 200 || f.status === 304)).toBe(true);
 });
