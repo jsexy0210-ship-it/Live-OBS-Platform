@@ -290,6 +290,21 @@ describe("구매자 재가입 제한", () => {
     expect((await db.buyerRejoinBlock.findMany({ orderBy: { ciHash: "asc" } })).map((b) => b.ciHash)).toEqual(["live-a"]);
   });
 
+  it("본인확인이 확인되지 않은 가입 요청은 만료 기록 정리를 돌리지 않는다(비인증 반복 DELETE 방지)", async () => {
+    const s = await shop();
+    const past = new Date(Date.now() - 1000);
+    await db.buyerRejoinBlock.create({ data: { sellerId: s.seller.id, ciHash: "expired-a", expiresAt: past } });
+    const v = await s.verified();
+    // 형식이 틀린 verificationId, 쿠키 없음(다른 브라우저), 없는 본인확인
+    expect((await s.signupWith({ verificationId: "not-a-uuid", cookie: v.cookie })).status).toBe(400);
+    expect((await s.signupWith({ verificationId: v.verificationId, cookie: "" })).status).toBe(400);
+    expect((await s.signupWith({ verificationId: "00000000-0000-4000-8000-000000000000", cookie: v.cookie })).status).toBe(400);
+    expect((await db.buyerRejoinBlock.findMany()).map((b) => b.ciHash)).toEqual(["expired-a"]);
+    // 본인확인을 마친 요청에서만 지운다
+    expect((await s.signupWith(v)).status).toBe(201);
+    expect(await db.buyerRejoinBlock.count()).toBe(0);
+  });
+
   it("꺼진 쇼핑몰(기본): 탈퇴해도 CI 해시를 남기지 않고 같은 사람이 바로 다시 가입된다", async () => {
     const s = await shop();
     expect((await s.signup()).status).toBe(201);
