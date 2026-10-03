@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
-import { saveAddressFromOrder } from "../buyers/addresses";
+import { recordOrderAddress } from "../buyers/addresses";
 import { sellerAccessFor } from "../billing/subscription";
 import { OPENED_NO_REFUND_CONSENT } from "./consent";
 import { activeRestriction, dbClock, getOrderPolicy, lockSellerOrders } from "./overdue";
@@ -147,7 +147,7 @@ export async function createOrder(db: PrismaClient, input: CreateOrderInput): Pr
       },
     });
     await tx.orderShippingAddress.create({ data: { sellerId: input.sellerId, orderId: order.id, ...address, isRemote } });
-    if (input.saveAddress !== false) await saveAddressFromOrder(tx, { sellerId: input.sellerId, buyerMemberId: member.id }, address, now);
+    await recordOrderAddress(tx, { sellerId: input.sellerId, buyerMemberId: member.id }, address, input.saveAddress !== false, now);
     await tx.orderItem.createMany({
       data: priced.map((p) => ({
         sellerId: input.sellerId,

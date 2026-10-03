@@ -11,6 +11,7 @@ CREATE TABLE "BuyerAddress" (
     "address2" TEXT,
     "memo" TEXT,
     "isDefault" BOOLEAN NOT NULL DEFAULT false,
+    "lastUsedAt" TIMESTAMPTZ(3),
     "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 

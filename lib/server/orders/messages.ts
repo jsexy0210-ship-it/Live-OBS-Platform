@@ -18,6 +18,7 @@ export const ORDER_ERROR_MESSAGES = {
   too_many_addresses: "배송지는 20개까지 저장할 수 있어요. 안 쓰는 배송지를 지운 뒤 다시 해 주세요",
   duplicate_address: "이미 저장된 배송지예요",
   address_not_found: "배송지를 찾을 수 없어요",
+  default_address_required: "다른 배송지를 기본으로 정해 주세요",
   // 판매자 상품·옵션
   invalid_product: "상품 정보를 다시 확인해 주세요",
   invalid_option: "옵션 정보를 다시 확인해 주세요",

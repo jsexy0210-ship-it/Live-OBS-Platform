@@ -143,7 +143,7 @@ describe("배송지 관리 API", () => {
     expect(await over.json()).toEqual({ error: "too_many_addresses", message: ORDER_ERROR_MESSAGES.too_many_addresses });
   });
 
-  it("기본 배송지를 지우면 가장 최근에 저장한 배송지가 기본이 되고, 지난 주문의 배송지는 그대로다", async () => {
+  it("기본 배송지를 지우면(주문에 쓴 적 없는 배송지끼리는) 가장 최근에 저장한 배송지가 기본이 되고, 지난 주문의 배송지는 그대로다", async () => {
     const s = await shop();
     expect((await order(s.seller.slug, s.cookie, s.option.id, home)).status).toBe(200);
     const [def] = await addressesOf(s.buyer.id);
@@ -165,5 +165,46 @@ describe("배송지 관리 API", () => {
     expect(rs.filter((r) => r.status === 409)).toHaveLength(5);
     expect(await db.buyerAddress.count({ where: { buyerMemberId: s.buyer.id } })).toBe(MAX_BUYER_ADDRESSES);
     expect(await db.buyerAddress.count({ where: { buyerMemberId: s.buyer.id, isDefault: true } })).toBe(1);
+  });
+});
+
+describe("검수 후속(#91)", () => {
+  it("배송지가 있으면 기본 배송지는 항상 1개: 기본 배송지를 기본에서 내리면 400, 다른 배송지는 그대로 200", async () => {
+    const s = await shop();
+    const a = (await (await create(s.seller.slug, s.cookie, home)).json()).address;
+    const b = (await (await create(s.seller.slug, s.cookie, office)).json()).address;
+    const r = await patch(s.seller.slug, s.cookie, a.id, { isDefault: false });
+    expect(r.status).toBe(400);
+    expect(await r.json()).toEqual({ error: "default_address_required", message: "다른 배송지를 기본으로 정해 주세요" });
+    expect((await patch(s.seller.slug, s.cookie, b.id, { isDefault: false, label: "회사" })).status).toBe(200);
+    expect((await addressesOf(s.buyer.id)).map((x) => [x.id, x.isDefault, x.label])).toEqual([[a.id, true, null], [b.id, false, "회사"]]);
+  });
+
+  it("같은 주소라도 받는 분이나 연락처가 다르면 다른 배송지로 저장한다(메모·이름은 비교하지 않음)", async () => {
+    const s = await shop();
+    for (const addr of [home, { ...home, recipientName: "이받는" }, { ...home, phone: "010-9999-8888" }, { ...home, memo: "다른 메모" }]) {
+      expect((await order(s.seller.slug, s.cookie, s.option.id, addr)).status).toBe(200);
+    }
+    expect((await addressesOf(s.buyer.id)).map((x) => [x.recipientName, x.phone])).toEqual([["김구매", "01012345678"], ["이받는", "01012345678"], ["김구매", "01099998888"]]);
+  });
+
+  it("기본 배송지를 지우면 가장 최근에 사용한(주문에 쓴) 배송지가 기본이 된다. 같은 배송지로 다시 주문하면 사용 시각만 바뀐다", async () => {
+    const s = await shop();
+    const used = (addr: unknown, extra: Record<string, unknown> = {}) => order(s.seller.slug, s.cookie, s.option.id, addr, extra);
+    expect((await used(home)).status).toBe(200); // 기본
+    expect((await used(office)).status).toBe(200);
+    expect((await used(nth(7))).status).toBe(200);
+    const officeRow = (await addressesOf(s.buyer.id)).find((x) => x.zipCode === "04524")!;
+    // 저장은 가장 늦지만 쓴 적 없는 배송지
+    expect((await create(s.seller.slug, s.cookie, nth(8))).status).toBe(201);
+    // 회사로 다시 주문(메모만 다름): 새로 저장하지 않고 사용 시각만 바뀐다
+    expect((await used({ ...office, memo: "경비실" })).status).toBe(200);
+    const after = (await addressesOf(s.buyer.id)).find((x) => x.id === officeRow.id)!;
+    expect(after.lastUsedAt!.getTime()).toBeGreaterThan(officeRow.lastUsedAt!.getTime());
+    expect(after).toMatchObject({ memo: null, isDefault: false });
+    expect(await addressesOf(s.buyer.id)).toHaveLength(4);
+    const def = (await addressesOf(s.buyer.id)).find((x) => x.isDefault)!;
+    expect((await remove(s.seller.slug, s.cookie, def.id)).status).toBe(200);
+    expect((await addressesOf(s.buyer.id)).find((x) => x.isDefault)!.id).toBe(officeRow.id);
   });
 });

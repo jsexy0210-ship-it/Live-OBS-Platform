@@ -291,12 +291,13 @@ model BuyerMember {
 }
 
 // 구매자 저장 배송지(2026-10-03 대표님 결정). 주문 때 입력한 배송지를 저장하고(구매자가 끌 수 있음), 주문서에서 고른다.
-// 구매자당 20개까지. 기본 배송지는 1개까지(부분 유니크 인덱스 BuyerAddress_one_default_per_buyer, 마이그레이션 SQL).
+// 구매자당 20개까지. 배송지가 있으면 기본 배송지는 항상 1개(부분 유니크 인덱스 BuyerAddress_one_default_per_buyer, 마이그레이션 SQL).
+// lastUsedAt: 마지막으로 주문에 쓴 시각. 기본 배송지를 지우면 가장 최근에 사용한 배송지가 기본이 된다.
 // 주문에는 OrderShippingAddress 스냅숏이 따로 남으므로 여기 값을 고치거나 지워도 지난 주문은 바뀌지 않는다.
 model BuyerAddress {
-  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerId      String   @db.Uuid
-  buyerMemberId String   @db.Uuid
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String    @db.Uuid
+  buyerMemberId String    @db.Uuid
   label         String?
   recipientName String
   phone         String
@@ -304,9 +305,10 @@ model BuyerAddress {
   address1      String
   address2      String?
   memo          String?
-  isDefault     Boolean  @default(false)
-  createdAt     DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt     DateTime @default(now()) @db.Timestamptz(3)
+  isDefault     Boolean   @default(false)
+  lastUsedAt    DateTime? @db.Timestamptz(3)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime  @default(now()) @db.Timestamptz(3)
 
   seller Seller      @relation(fields: [sellerId], references: [id])
   member BuyerMember @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id], onDelete: Cascade)
