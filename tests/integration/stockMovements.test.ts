@@ -78,7 +78,7 @@ describe("재고 이력 조회", () => {
       [-1, 4, "직접 변경", "이벤트 증정", "김대표", null],
       [2, 5, "취소", null, "김대표", order.orderId],
       [-2, 3, "주문", null, "구매자 주문", order.orderId],
-      [5, 5, "직접 변경", null, "김대표", null],
+      [5, 5, "직접 변경", "처음 재고", "김대표", null],
     ]);
     expect(movements[0]).toMatchObject({ productId: p.productId, productName: "부스터 팩", optionId: p.optionId, optionName: "기본", type: "MANUAL" });
   });

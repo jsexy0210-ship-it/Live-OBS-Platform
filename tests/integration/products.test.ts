@@ -241,7 +241,9 @@ describe("재고 변경", () => {
     expect(await updateOption(db, s.ctx, p.id, optionId, { stock: 20, expectedStock: 10 })).toEqual({ ok: false, reason: "stock_conflict" });
     expect((await db.productOption.findUniqueOrThrow({ where: { id: optionId } })).stock).toBe(7);
     expect(await updateOption(db, s.ctx, p.id, optionId, { stock: 20, expectedStock: 7 })).toMatchObject({ ok: true, value: { options: [{ stock: 20 }] } });
-    expect(await db.stockMovement.findFirstOrThrow({ where: { optionId, reason: "MANUAL", delta: 13 } })).toBeTruthy();
+    // 「변경 후」 일괄 적용도 사유와 함께 남긴다(MASTER 후속), 등록 때 재고는 「처음 재고」
+    expect(await db.stockMovement.findFirstOrThrow({ where: { optionId, reason: "MANUAL", delta: 13 } })).toMatchObject({ note: "재고 일괄 수정" });
+    expect(await db.stockMovement.count({ where: { optionId, reason: "MANUAL", note: null } })).toBe(0);
     for (const body of [{ stock: 5 }, { stock: -1, expectedStock: 20 }, { stock: 1.5, expectedStock: 20 }, {}]) {
       expect(await updateOption(db, s.ctx, p.id, optionId, body), JSON.stringify(body)).toEqual({ ok: false, reason: "invalid_option" });
     }
