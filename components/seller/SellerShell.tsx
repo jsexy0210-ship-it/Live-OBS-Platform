@@ -147,7 +147,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
 
 // 화면마다 상단 바(경로·버튼)를 넣고, 그 아래에 이용 상태 배너를 붙인다.
 export function Topbar({ crumb, badge, children }: { crumb: string; badge?: React.ReactNode; children?: React.ReactNode }) {
-  const { openNav } = useSeller();
+  const { me, openNav } = useSeller();
   return (
     <>
       <header className="topbar">
@@ -158,7 +158,12 @@ export function Topbar({ crumb, badge, children }: { crumb: string; badge?: Reac
         </button>
         <span className="crumb ell">{crumb}</span>
         {badge}
-        {children && <div className="row tb-actions">{children}</div>}
+        <div className="row tb-actions">
+          {children}
+          <span className="btn btn-sm btn-ghost tb-account" title={`${me.user.name} · ${me.user.email}`}>
+            {me.shop.name}
+          </span>
+        </div>
       </header>
       <AccessBanner />
     </>

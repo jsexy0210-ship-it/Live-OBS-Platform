@@ -50,6 +50,7 @@ test("비밀번호가 틀리면 안내하고 로그인하지 않는다", async (
 test("상품 목록: 데모 상품·상태 배지·필터, 체험 배너가 보인다", async ({ page }) => {
   await login(page);
   await expect(page.getByText(/체험이 \d+일 남았어요/)).toBeVisible();
+  await expect(page.locator(".topbar")).toContainText("카드숍 별빛");
   const rows = page.getByTestId("product-row");
   await expect(rows.filter({ hasText: "스타라이트 부스터 박스" })).toBeVisible();
   await expect(rows.filter({ hasText: "탑로더 25장" }).getByText("재고 부족")).toBeVisible();

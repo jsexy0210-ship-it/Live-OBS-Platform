@@ -30,7 +30,10 @@ export function failMessage(r: { status: number; message?: string }, fallback = 
 }
 
 export type SellerAccess = "trial" | "paid" | "charging" | "grace" | "expired";
-export type Me = { sellerId: string; userId: string; isOwner: boolean; permissions: string[]; access: SellerAccess };
+export type Me = { sellerId: string; userId: string; isOwner: boolean; permissions: string[]; access: SellerAccess;
+  shop: { name: string; slug: string };
+  user: { name: string; email: string };
+};
 
 export type ProductStatus = "DRAFT" | "ON_SALE" | "SOLD_OUT" | "HIDDEN";
 export type ProductOption = { id: string; name: string; priceDelta: number; stock: number; sku: string | null; sortOrder: number };

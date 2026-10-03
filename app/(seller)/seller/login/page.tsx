@@ -50,7 +50,7 @@ export default function SellerLoginPage() {
     if (r.error === "invalid_credentials") setFieldError("이메일 또는 비밀번호가 맞지 않아요");
     else if (r.error === "shop_required") setNeedShop(true);
     else if (NOTICES[r.error]) setNotice(NOTICES[r.error]);
-    else setNotice({ kind: "neg", title: "로그인하지 못했어요.", body: r.status === 0 ? "인터넷 연결을 확인해 주세요." : "잠시 뒤 다시 시도해 주세요." });
+    else setNotice({ kind: "neg", title: "로그인하지 못했어요.", body: r.status === 0 ? "인터넷 연결을 확인해 주세요." : (r.message ?? "잠시 뒤 다시 시도해 주세요.") });
   };
 
   return (

@@ -244,8 +244,13 @@ body {
   .ph > .row {
     width: 100%;
   }
-  .tb-actions {
+  .tb-actions > :not(.tb-account) {
     display: none;
+  }
+  .tb-account {
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .g3 {
     grid-template-columns: minmax(0, 1fr);
