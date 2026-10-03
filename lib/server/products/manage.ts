@@ -1,9 +1,11 @@
-import type { Prisma, PrismaClient, ProductStatus, StockDeductMode } from "@prisma/client";
+import type { EventDiscountType, Prisma, PrismaClient, ProductStatus, StockDeductMode } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { notFound } from "../authz/errors";
 import { dbNow } from "../billing/subscription";
+import { dbClock } from "../orders/overdue";
 import { INT4_MAX } from "../orders/shipping";
 import { cleanText } from "../text/clean";
+import { eventFits, eventOf, eventView } from "./event";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 
 // 판매자 상품·옵션 관리(PRODUCT_MANAGE). 모든 조회·변경은 ctx.sellerId 범위이고 다른 판매자 상품은 없음(404)으로 본다.
@@ -22,7 +24,8 @@ export type ProductFailure =
   | "invalid_price"
   | "too_many_options"
   | "no_sellable_option"
-  | "stock_conflict";
+  | "stock_conflict"
+  | "event_price_too_low"; // 이벤트 할인이 걸린 상품의 가격·옵션 추가금을 바꿔 할인 뒤 단가가 1원 미만이 됨
 
 // 상품명은 공백 포함 100자(코드포인트, 대표님 결정 2026-10-03). 글자 검사는 통과하는데 길기만 하면 따로 알려 준다.
 export const PRODUCT_NAME_MAX = 100;
@@ -65,8 +68,19 @@ function parseNewOption(raw: unknown): OptionInput | null {
 
 // 지운 상품은 없는 상품으로 본다. 가격·옵션 검사가 다른 변경과 겹치지 않게 상품 행을 잠근다.
 async function lockProduct(tx: Tx, sellerId: string, productId: string) {
-  const rows = await tx.$queryRaw<{ id: string; price: number; status: ProductStatus }[]>`
-    SELECT "id", "price", "status"::text AS "status" FROM "Product"
+  const rows = await tx.$queryRaw<
+    {
+      id: string;
+      price: number;
+      status: ProductStatus;
+      eventDiscountType: EventDiscountType | null;
+      eventDiscountValue: number | null;
+      eventStartsAt: Date | null;
+      eventEndsAt: Date | null;
+    }[]
+  >`
+    SELECT "id", "price", "status"::text AS "status", "eventDiscountType"::text AS "eventDiscountType", "eventDiscountValue", "eventStartsAt", "eventEndsAt"
+    FROM "Product"
     WHERE "id" = ${productId}::uuid AND "sellerId" = ${sellerId}::uuid AND "deletedAt" IS NULL FOR UPDATE`;
   if (!rows[0]) throw notFound();
   return rows[0];
@@ -78,7 +92,8 @@ const liveOptions = (tx: Tx | PrismaClient, sellerId: string, productId: string)
 async function productView(tx: Tx | PrismaClient, sellerId: string, productId: string) {
   const p = await tx.product.findFirstOrThrow({ where: { id: productId, sellerId } });
   const { deletedAt: _d, ...rest } = p;
-  return { ...rest, options: (await liveOptions(tx, sellerId, productId)).map(({ deletedAt: _o, ...o }) => o) };
+  const event = eventView(eventOf(p), p.price, await dbNow(tx));
+  return { ...rest, event, options: (await liveOptions(tx, sellerId, productId)).map(({ deletedAt: _o, ...o }) => o) };
 }
 
 export const DEFAULT_PAGE_SIZE = 50;
@@ -138,10 +153,15 @@ export async function listProducts(
     include: { options: { where: { deletedAt: null }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }] } },
   });
   const page = rows.slice(0, limit);
+  const now = await dbNow(db);
   return {
     ok: true,
     value: {
-      products: page.map(({ deletedAt: _d, options, ...p }) => ({ ...p, options: options.map(({ deletedAt: _o, ...o }) => o) })),
+      products: page.map(({ deletedAt: _d, options, ...p }) => ({
+        ...p,
+        event: eventView(eventOf(p), p.price, now),
+        options: options.map(({ deletedAt: _o, ...o }) => o),
+      })),
       nextCursor: rows.length > limit ? page[page.length - 1].id : null,
     },
   };
@@ -253,6 +273,8 @@ export async function updateProduct(
     const options = await liveOptions(tx, ctx.sellerId, productId);
     const price = (data.price as number | undefined) ?? before.price;
     if (options.some((o) => !unitOk(price, o.priceDelta))) return fail("invalid_price");
+    // 이벤트 할인이 걸려 있으면 바뀐 가격에서도 할인 뒤 단가가 1원 이상이어야 한다
+    if (!eventFits(eventOf(before), price, [0, ...options.map((o) => o.priceDelta)], await dbClock(tx))) return fail("event_price_too_low");
     if ((data.status ?? before.status) === "ON_SALE" && options.length === 0) return fail("no_sellable_option");
     await tx.product.update({ where: { id: productId }, data });
     await writeAudit(tx, {
@@ -286,6 +308,7 @@ export async function createOption(db: PrismaClient, ctx: TenantContext, product
   return db.$transaction(async (tx) => {
     const product = await lockProduct(tx, ctx.sellerId, productId);
     if (!unitOk(product.price, o.priceDelta)) return fail("invalid_price");
+    if (!eventFits(eventOf(product), product.price, [o.priceDelta], await dbClock(tx))) return fail("event_price_too_low");
     if ((await tx.productOption.count({ where: { sellerId: ctx.sellerId, productId, deletedAt: null } })) >= MAX_OPTIONS_PER_PRODUCT) {
       return fail("too_many_options");
     }
@@ -339,6 +362,9 @@ export async function updateOption(db: PrismaClient, ctx: TenantContext, product
     const option = await tx.productOption.findFirst({ where: { id: optionId, sellerId: ctx.sellerId, productId, deletedAt: null } });
     if (!option) throw notFound();
     if (data.priceDelta !== undefined && !unitOk(product.price, data.priceDelta as number)) return fail("invalid_price");
+    if (data.priceDelta !== undefined && !eventFits(eventOf(product), product.price, [data.priceDelta as number], await dbClock(tx))) {
+      return fail("event_price_too_low");
+    }
     const now = await dbNow(tx);
     if (stockChange) {
       const stock = b.stock as number;
