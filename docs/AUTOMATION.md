@@ -1,0 +1,144 @@
+# 자동 설치·연결 상품 설계 (1차: 백엔드 골격, 실제 Gemini·브라우저·결제 없음)
+
+정본 요구사항: `docs/PRODUCT_SCOPE.md` 「자동 설치·연결 상품」「동시 실행·급성장 대응」, `docs/ONQ_PLAN.md` 단계 4·5, 종단 흐름 E3.
+작성 2026-10-03 KST, 확정 ②·⑦·⑦-1 반영 2026-10-04 KST. 코드: `lib/server/automation/**`, `app/api/automation/**`, 스키마 `prisma/schema.prisma` 「자동 설치·연결 상품」 블록, 마이그레이션 `20261004040000_automation`.
+
+## 1. 1차 범위와 아닌 것
+
+- 한다: 결제·작업 모델과 저장, 서버 결제 검증 뒤에만 실행, 작업 큐(lease·fencing·잠금·동시성·backoff·비용 상한), 판단·실행기·로컬 도구 **인터페이스 + 가짜 구현**, 판매자 API, 테스트·모의 부하.
+- 안 한다(승인 필요): 실제 Gemini 호출·키·모델 선택, 실제 브라우저 실행기, 고객 PC 로컬 연결 도구, 실결제·환불, 작업자 프로세스 배포, 화면.
+
+## 2. 상태기계 — 결제와 작업을 나눈다
+
+결제 `AutomationPayment.status`: `PENDING → PAID | FAILED`, `PAID → REFUND_PENDING(환불 처리 대기) → REFUNDED`.
+- `REFUNDED`로 바꾸는 실제 환불 실행은 대표님 승인 대상이라 1차 코드에 없다(billing 공통 `BillingProvider`에 환불 API도 아직 없음).
+- 결제 방식(확정 ②, PRODUCT_SCOPE 8a06dfe): 연결 시작 전에 결제를 받고(승인·매입 = `PAID`), 실패 확정 때 전액 환불(카드 승인 취소) 요청 = `REFUND_PENDING`. 「승인만 받고 성공 뒤 매입」은 PG 지원 확인 뒤 결제 상태에 `AUTHORIZED`(승인)·`CAPTURED`(매입) 단계를 더하는 방식으로 바꿀 수 있다. 실행 권한을 주는 조건(서버가 확인한 결제 성공)과 작업 상태는 그대로 두고 결제 상태만 늘리면 되게 결제·작업 상태를 분리해 두었다.
+
+### 환불·재설치 정책 (2026-10-04 대표님 확정 ②, 정본 PRODUCT_SCOPE 「미확정 → 확정 ②」)
+
+- **결제 전 고지·동의**: 구매·재설치 결제는 `consent: { agreed: true, noticeVersion }`가 서버 문구 버전(`AUTOMATION_CONSENT.version`)과 맞을 때만 만든다. 동의 시각(DB 시계)·문구 버전을 결제 행에 남긴다. 체크 해제·값 없음·문자열 `"true"`·예전 버전은 거부(결제·작업 없음).
+- **성공 기준**: 테스트 주문이 고객 OBS 오버레이에 실제 표시됨. 검증 단계에서 로컬 도구가 확인한 증거를 `verificationEvidence`·`verifiedAt`에 저장하고, 증거 없이 `SUCCEEDED`로 두지 않는다.
+- **환불**: 「실패 확정 → 환불 요청」. 판매자 대표자가 `POST /api/automation/jobs/[jobId]/refund-request`로 요청하면 결제가 `PAID → REFUND_PENDING`(사유 `failed`). 대상은 ① 작업이 `FAILED`(기준 미통과, 지원으로도 해결 안 됨) ② 연결을 시작하기 전(`startedAt` 없음) 취소한 작업(`canceled_before_start`). 연결 시작 뒤 취소(단순 변심)·완료 작업·무료 재연결은 대상이 아니다. 결제 확정 전에 취소했는데 결제가 들어오면 자동으로 `REFUND_PENDING`. 지원(재시도·안내)으로 해결할지는 환불 처리 대기 단계에서 마스터가 본다(마스터 화면·API는 다음 범위).
+- **재연결·재설치**: `POST /api/automation/reconnect` `{ target: { shopKey, obsPairingId } }`. 기준 = 가장 최근에 돈을 내고(처음 연결·재설치) 완료한 작업. 그 완료 시각(DB 시계)부터 30일 안 + 같은 쇼핑몰(`shopKey`) + 같은 PC(`obsPairingId`, OBS pairing) + 연결 권한 해제(`connectionRevokedAt`) 없음 → 무료(`RECONNECT_FREE`, 결제 없이 바로 대기열). 아니면 사유(`no_completed_install`·`window_expired`·`shop_changed`·`pc_changed`·`connection_revoked`)와 33,000원을 돌려주고, 동의를 붙여 다시 오면 `REINSTALL`로 결제한다. 무료 재연결의 완료는 30일을 늘리지 않는다(연달아 무료로 이어 붙이기 방지). `shopKey`·`obsPairingId`는 연결 단계 결과로 작업에 남는다.
+- Idempotency-Key: 무료 재연결도 키를 받아 작업 행에 남기고 재전송이면 처음 결과를 돌려준다. 결제 행·작업 행에 요청 지문(종류·쇼핑몰 주소·재설치 대상의 해시)을 남겨, 같은 키라도 다른 요청이면 `idempotency_key_reused`(409)로 거부한다(예전 작업을 돌려주지 않음).
+- 작업 종류 `kind`: `INITIAL`(110,000원) · `REINSTALL`(33,000원) · `RECONNECT_FREE`(결제 없음, DB CHECK로 결제 없음과 짝).
+
+작업 `AutomationJob.status` (전이표 정본: `lib/server/automation/states.ts`):
+
+| 출발 | 갈 수 있는 곳 | 계기 |
+|---|---|---|
+| AWAITING_PAYMENT(결제 대기) | QUEUED / FAILED / CANCELED | 서버가 PG 조회로 PAID 확인 / 결제 실패 / 판매자 취소 |
+| QUEUED(대기열) | RUNNING / CANCELED | 작업자가 자리 잡음 / 취소 |
+| RUNNING(실행 중) | VERIFYING / NEEDS_CUSTOMER / QUEUED / FAILED / CANCELED | 검증 단계 도달 / 고객 행동 필요 / 일시 오류·lease 만료 / 치명 오류·시도 소진·비용 초과·위험 행동 / 취소 |
+| NEEDS_CUSTOMER(고객 행동 필요) | QUEUED / FAILED / CANCELED | 고객이 마쳤다고 알림(재개) / 마감 24시간 지남 / 취소 |
+| VERIFYING(검증 중) | SUCCEEDED / NEEDS_CUSTOMER / QUEUED / FAILED / CANCELED | 테스트 표시 확인 / OBS 미연결 등 / 재시도 / 실패 / 취소 |
+| SUCCEEDED·FAILED·CANCELED | 없음 | 끝 |
+
+- 고객 행동 종류: `LOGIN`, `TWO_FACTOR`, `CAPTCHA`, `PERMISSION_GRANT`, `LOCAL_TOOL`. 완전 무인을 약속하지 않는다.
+- 변경 행동(클릭·입력·OBS 설정·테스트 주문)에는 작업 id·단계와 행동의 의미(종류·대상·값, 키 순서와 무관한 해시)로 만든 고정 키(`actionKey`, 순번과 무관)를 붙여 실행기·로컬 도구에 넘기고, 같은 키는 한 번만 적용한다(같은 행동은 몇 번째로 오든 한 번, 다른 행동은 같은 순번이라도 실행)(작업자가 행동 성공 직후 죽고 회수·재실행돼도 중복 없음). 이동·확인은 새 세션에서 다시 해야 하므로 키를 붙이지 않는다.
+- 진행 위치는 `stepIndex`(단계 목록 `steps.ts`: 쇼핑몰 연결 → 웹훅 설정 → OBS 오버레이 설치 → 표시 설정 → 테스트 이벤트 검증). 재개·재시도는 멈춘 단계부터 이어 간다.
+- 모든 전이는 `AutomationJobEvent`에 (전, 후, fencing 토큰, 사유)로 남긴다. 상태를 바꾸는 쓰기(작업자·판매자 취소·재개)는 작업 행을 잠그고 읽어, 기록의 이전 상태가 실제 상태와 어긋나지 않는다. 구매·취소·재개는 `AuditLog`에도 남긴다.
+
+### 재개·재시도·취소 규칙
+
+- 재개: `NEEDS_CUSTOMER`에서만, 마감 전에만. 고객 행동 정보·마감을 지우고 `QUEUED`(즉시 실행 가능). 마감이 지났으면 회수를 기다리지 않고 같은 트랜잭션에서 `FAILED(customer_action_timeout)`·결제 `REFUND_PENDING`으로 끝내고 `action_expired`(409)를 돌려준다.
+- 고객 행동 마감(24시간): 지나면 작업은 `FAILED(customer_action_timeout)`로 끝나고, 결제(110,000원·33,000원)는 확정 ②대로 `REFUND_PENDING`(전액 환불 처리 대기)이 된다(정본 fc09f13). 실제 환불 실행은 승인 뒤.
+- 실행 시간 마감(6시간, 정본 d6e22c4): 고객 대기를 뺀 실제 실행 시간(`activeMsUsed`, 실행 자리를 놓을 때마다 합산·lease 만료 회수 땐 만료 시각까지)이 재시도 포함 합계 6시간을 넘으면 `touch`·heartbeat가 막고 작업을 `FAILED(run_time_limit)`로 끝내며 결제는 `REFUND_PENDING`. 보관 자료는 종료 삭제 규칙대로 지운다.
+- 시작 뒤 취소(정본 d6e22c4): 즉시 `CANCELED` + fencing 토큰 증가 → heartbeat가 자리 잃음을 알아채고 다음 외부 행동 전에 멈춤(진행 중 호출 1개까지). 보관 자료는 지우고, 결제는 단순 변심이라 환불하지 않는다(`refund-request`도 거부).
+- 재시도: 일시 오류마다 `attempts+1`, `runAfter = now + min(10분, 5초×2^(n-1)) × (0.5~1.0 지터)`. `maxAttempts`(기본 5) 도달 시 `FAILED`. 고객 대기·재개는 시도 횟수를 쓰지 않는다.
+- 취소: 끝나지 않은 모든 상태에서 가능. 실행 중이어도 즉시 `CANCELED` + fencing 토큰 증가 → 작업자의 다음 쓰기부터 거부된다(진행 중인 외부 행동 1개는 끝까지 갈 수 있다; 단계 경계에서 멈춤).
+- 환불은 위 「환불·재설치 정책」대로 요청·처리 대기까지만 한다. 결제 확정 전에 취소했는데 결제가 들어오면 작업은 다시 열지 않고 `REFUND_PENDING` + `automation.paid_after_cancel` 감사 기록.
+
+## 3. 세 구성요소 경계 (`ports.ts`)
+
+| 구성요소 | 하는 일 | 하지 않는 일 |
+|---|---|---|
+| 판단 `AutomationPlanner` (Gemini 예정) | 정리된 관찰 → 다음 행동 1개와 비용 | 실행, 비밀값 보기, 완료 판정 |
+| 서버 브라우저 실행기 `BrowserExecutor` | 작업마다 새 context에서 허용된 행동 실행, 비밀 참조를 실제 값으로 바꿔 입력 | 고객 OBS 제어, 다른 작업과 context 공유 |
+| 로컬 연결 도구 `ObsBridge` (고객 PC, OBS WebSocket) | 오버레이 소스 추가·표시 설정·테스트 표시 확인 | 서버 브라우저가 고객 OBS를 직접 제어한다고 가정하지 않음 |
+
+- 단계 완료는 판단 모델의 「끝」 요청이 아니라 실행기·로컬 도구의 실제 확인(`stepDone`)으로 정한다. 검증 단계는 `check_overlay_shows_test_event`가 `verified`를 돌려준 뒤에만 끝난다.
+- 공식 API·OAuth·앱 설치를 먼저 쓴다(4절). 브라우저 실행기는 API로 안 되는 관리 화면에만 쓴다.
+
+## 4. Cafe24 공식 경로 조사 (공개 문서 기준)
+
+- Cafe24 API는 OAuth 2.0 인증, HTTPS(TLS 1.2 이상), JSON 응답. 앱을 개발자센터에 등록해 Client ID·Secret을 받는다. 출처: [Getting Started with CAFE24 API](https://developers.cafe24.com/docs-new/en/docs/guide/intro)
+- 인가 코드는 **웹 브라우저에서만** 요청하고, 코드로 `oauth/token`에 POST해 Access Token을 받는다. scope로 권한을 나눈다. Access Token 2시간, Refresh Token 14일. 출처: [OAuth 2.0 인증 가이드](https://developers.cafe24.com/docs-new/docs/guide/oauth2-authentication) (영문 [OAuth 2.0 Authentication Guide](https://developers.cafe24.com/docs-new/en/docs/guide/oauth2-authentication))
+- 따라서 쇼핑몰 연결 단계는 「고객이 브라우저에서 앱 설치·권한 승인(`PERMISSION_GRANT`) → 서버가 토큰 교환」이 기본 경로다. 서버 브라우저로 고객 Cafe24 비밀번호를 입력하지 않는다(로그인·2단계 인증은 고객 행동).
+- 기존 참고 구현(망고TCG, 읽기 전용): 카페24 웹훅 수신·OAuth 토큰 AES-256-GCM 암호화 저장·누락 보정 대조가 있다(`docs/REFERENCE_MANGOTCG.md`).
+- 확인 필요(이 세션은 developers.cafe24.com 직접 열람이 네트워크 정책으로 막혀 검색 요약으로만 확인): 웹훅 등록이 개발자센터 설정인지 API인지, 주문 관련 scope 이름, 호출 한도, 앱 심사 절차. 실제 연결 전에 문서를 직접 확인해 이 절을 고친다.
+
+## 5. 격리·비밀값·악성 페이지 방어
+
+- 고객별 격리: 작업마다 `BrowserExecutor.open({sellerId, jobId})`로 새 context(쿠키·저장소·임시파일 분리), 작업이 끝나면 `close()`로 모두 지운다. 고객 행동(로그인·2단계 인증·CAPTCHA·권한 승인) 대기로 멈출 때만 `close({ keepForResume: true })`로 그 작업의 쿠키·저장소·자격증명과 임시 파일(화면 캡처·내려받은 파일·실행 기록), 로컬 도구의 OBS 연결 정보를 **암호화해 작업 id에만 묶어** 보관하고(다른 작업 id로는 풀리지 않음), 재개 때 같은 작업에만 복원한 뒤 보관본을 지운다. 보관하기 **전에** 작업에 `browserStateHeld`(보관 중)를 fenced 쓰기로 먼저 표시하고(표시를 못 하면 보관하지 않고 바로 지운 뒤 오류를 올린다: 자리를 잃었으면 작업자가 멈추고, 일시적인 DB 오류면 고객 대기로 두지 않고 다시 시도), 작업이 끝나면(완료·취소·실패·고객 행동 마감·실행 시간 마감) 고객 대기가 없었던 작업까지 **끝난 모든 작업**에 대해 작업자 반복의 `purgeEndedBrowserState`가 실행기와 로컬 도구에 `discard`를 한 번씩 요청해(행동 키 기록·OBS 연결 정보 포함) 바로 지우고 `artifactsPurgedAt`을 남긴다(판매자 취소·마감 회수처럼 작업자 밖에서 끝난 경우 포함, 요청이 실패하면 다음 반복에서 다시). 지운 뒤에는 같은 작업으로도 복원되지 않고, 끝난 작업은 실행 자리를 다시 받지 않는다. 연습 실행은 보관하지 않는다(정본 4678efb). OBS 대상 키(`obsTargetKey`, 지금은 `seller:<id>`, 로컬 도구 pairing을 붙이면 기기 id)로 OBS 연결을 나눈다.
+- 비밀값: 모델은 `SecretRef`(`webhook_url`·`webhook_secret`) 이름만 쓰고, 실행기가 실행 직전에만 값을 넣는다. 비밀값을 넣어도 되는 칸은 작업서가 단계마다 정한다(`secretTargets`, 예: 웹훅 단계의 「주문 알림 주소」 칸에 `webhook_url`만). 작업서 행동이든 판단 모델 행동이든 목록 밖의 비밀 참조·칸·단계면 `secret_target_not_allowed`로 실행하지 않고 멈춘다. 작업서가 없으면 비밀값을 쓰지 못한다. 비밀값 입력은 승인 때 관찰한 주소와 실행 직전 실행기가 알려 주는 실제 문서 주소(`currentUrl`, 리다이렉트 뒤 출처)가 모두 **작업 대상 쇼핑몰의 관리자 화면**이어야 한다: ① 호스트가 판매자가 낸 쇼핑몰 주소의 호스트(`AutomationJob.shopHost`)와 정확히 같고 ② 경로가 작업서의 관리자 경로 접두사(`secretOrigin.pathPrefixes`, cafe24 초안 `/disp/admin/`·`/admin/`)로 시작하며 ③ 관찰한 화면에 관리자 로그인 상태 단서(`secretOrigin.adminCue`, 초안 「로그아웃」)가 있어야 한다. 관리자 화면이 쇼핑몰 자체 하위 도메인(`<몰>.cafe24.com/admin`)에 있어 호스트만으로는 판매자가 꾸미는 쇼핑몰 앞 화면과 가를 수 없기 때문이다(근거: 공개 자료 검색 결과 — 관리자 주소 `https://{mallId}.cafe24.com/admin`, 로그인 센터 `eclogin.cafe24.com`. 공식 개발자 문서는 이 세션 네트워크에서 열리지 않아 직접 확인하지 못함 → 실습 때 확인). 다른 몰의 관리자 경로·같은 호스트의 쇼핑몰 앞 화면·로그인 단서 없음·중앙 호스트(`admin.cafe24.com`)는 모두 거부한다. 작업서 초안의 이동 주소(`https://admin.cafe24.com/apps`)도 가정값이라 실습 때 실제 관리자 주소로 고친다. 아니거나 알 수 없으면 `secret_origin_not_allowed`로 실행하지 않는다. 모델 입력은 `sanitizeObservation`이 만든다: 화면 본문을 그대로 보내지 않고 실행기가 구조화한 요소 중 조작에 필요한 것(버튼·링크·제목·폼 라벨·안내 문구)만 보내며, 표 본문·주문/회원 목록·입력값은 뺀다(ONQ 확정: 구매자 개인정보를 판단 모델에 보내지 않음). 요소 글은 허용 어휘(공통 UI 어휘 `COMMON_UI_WORDS` + 작업서 단계의 화면 단서·예외 단서·누를 대상·비밀값 칸 이름)에 정확히 있을 때만 원문으로 보내고, 그 밖은 자리표시 「[문구]」와 요소 번호만 보낸다(이름은 패턴으로 가릴 수 없어 허용 목록으로 막는다). 남은 글도 비밀값을 `[비밀값]`으로, 이메일·전화번호·주소·주문번호 같은 긴 숫자열을 가리고 8,000자로 자른다. 주소는 출처·경로만 보낸다(쿼리 제외). 작업 기록·감사 기록에 비밀값을 넣지 않는다. 고객 쇼핑몰 비밀번호는 받지도 저장하지도 않는다.
+- 같은 작업은 한 PC에만 설치한다: 모든 작업(첫 설치·재설치 포함)이 OBS를 바꾸기 직전마다 로컬 도구에서 실제 PC를 새로 읽는다. 검증 읽기(테스트 표시 확인)·단계 끝 직전에도 다시 읽는다. 첫 변경 직전 잠금을 잡는 같은 쓰기에서 그 PC를 `obsPairingId`로 저장해, 첫 변경 직후 작업자가 죽어도 다시 시작한 실행이 그 PC를 기준으로 삼는다. 이번 실행·이전 실행(작업 행 `obsPairingId`)에서 이미 다른 PC를 바꿨으면 `FAILED(obs_target_changed)`로 멈추고 새 PC에는 바꾸지 않으며, 다른 PC의 증거로 완료하거나 그 PC를 저장하지 않는다.
+- 누르기·글 넣기 대상 고정: 작업서가 단계마다 누르거나(click) 비밀값 아닌 글을 넣어도 되는 대상을 정한다(`allowedTargets`, 예: 쇼핑몰 연결 「앱 설치」, 웹훅 「저장」). 작업서·판단 모델 행동 모두 목록 밖이면 `target_not_allowed`로 실행하지 않는다(악성 화면 지시로 삭제·권한·계정 설정을 누르지 못하게). 작업서가 없으면 누르거나 넣을 수 없다. 삭제·탈퇴·해지·초기화·권한·계정·비밀번호·결제·환불이 든 대상은 작업서 목록에 있어도 `dangerous_target`으로 거부한다(작업서 실수 방어). 거부되면 작업을 실패로 멈춘다(실행 0회). 실습 확인 필요: 앱 설치 동의 화면의 정상 버튼 문구(「권한 동의」「앱 권한」「계정 연결」 등)가 위험 단어에 걸리는지. 걸리면 단어 전체 거부 대신 작업서에 명시한 전체 문구만 예외로 두는 방식으로 바꾼다.
+- 연습 실행은 실행 전에 기록(정리 대상 범위 `cleanupScopeId`, 정리 예정 `cleanupPendingAt`)부터 남기고, 끝날 때마다(성공·실패 모두) 그 실행의 브라우저·OBS 보관 자료를 `discard`로 지운다. 정리에 실패하면 기록에 남겨 작업자 반복의 `cleanupPracticeArtifacts`가 백오프로 다시 한다(도중에 죽은 연습은 실행 시간 상한 뒤 정리). 10회 모두 실패하면 자동 정리를 멈추고 「정리 필요」(`cleanupNeededAt`)로 바꾸며, 같은 트랜잭션에서 마스터 관리자 알림(감사 기록 운영 이벤트 `automation.practice_cleanup_needed`) 1건을 남긴다. 조용히 버리지 않는다.
+- 구매 확정 직전 재확인: 결제·작업 생성 트랜잭션은 판매자 단위 잠금(`lockSellerAutomation`)과 작업서 공유 잠금(`lockPlaybook` shared)을 잡고, 커밋 직전에 작업서 준비 상태와(유료 재설치면) 무료 재연결 판정을 다시 계산한다. 준비가 풀렸으면 `shop_not_supported`, 무료 재연결 조건이 됐으면 `free_reconnect_available`(409)로 결제를 만들지 않는다. 화면 이탈 기록은 작업서 배타 잠금, 설치 완료 기록은 판매자 잠금을 행 변경 전에 잡아 같은 순서로 직렬화한다.
+- 정리와 늦은 실행: 실행기·로컬 도구는 `discard`한 범위에 tombstone을 남기고, 그 뒤 늦게 끝난 행동·닫기가 보관 자료·행동 키·연결 정보를 다시 쓰는 것을 거부한다(`fatal scope_discarded`, ports.ts 계약).
+- 작업서 버전 고정: 실행 중 작업서 버전이 구매 때 버전과 달라지면(새 버전은 연습 검증 전) 새 버전의 허용 규칙·행동으로 실행하지 않고, 외부 행동 없이 `FAILED(playbook_version_changed)`·결제 `REFUND_PENDING`으로 끝낸다.
+- 화면 이탈은 판단 모델을 부르기 전에 `lastDeviationAt`으로 기록한다. 판단 모델 호출이 계속 실패해 작업이 닫혀도 작업서는 다시 검증 대상이 되어 새 구매가 막힌다.
+- 악성 페이지 지시: 화면 글은 `untrustedPageText`(신뢰하지 않는 데이터)로만 넘긴다. 실행 전 `validateDecision`이 단계별 허용 행동, 이동은 https·기본 포트이고 호스트가 이 작업의 쇼핑몰 호스트(`shopHost`)와 정확히 같으며 경로가 작업서 단계별 허용 경로 접두(`allowedUrls.pathPrefixes`)로 시작하고 쿼리는 정한 키만·조각(#) 없음(다른 몰·중앙 호스트는 `host_not_allowed`, 그 밖은 `target_not_allowed`; 작업서 이동 주소는 호스트 자리에 `{shop}`), 비밀값을 글자로 적기, 모르는 비밀 참조·고객 행동, 음수 비용을 거부한다. 거부되면 실행하지 않고 작업을 `FAILED(unsafe_action:…)`로 멈춘다(무한 재시도 방지).
+
+### 외부 쇼핑몰 플랫폼 이름 비노출 (2026-10-04 대표님 결정)
+
+- 화면에 외부 쇼핑몰 플랫폼 이름(Cafe24 등)을 노출하지 않는다. 이 문서·코드 식별자·허용 호스트 목록 같은 내부 이름은 그대로 쓴다.
+- API 응답에는 코드만 싣는다(오류 `error`, 재설치 사유 `paidReason`, 단계 `step`). 작업 조회의 `lastError`는 정해 둔 코드만 내보내고, 실행기·외부 화면에서 온 원문은 `step_failed`로 바꾼다(원문은 작업 기록에만). 결제 전 동의 문구에도 플랫폼 이름이 없다. 테스트가 응답 전체에서 플랫폼 이름 0건을 확인한다.
+- 판매자는 플랫폼을 고르지 않고 쇼핑몰 주소를 입력하며, 서버가 주소로 플랫폼을 판별한다(판별·연결 단계는 외부 연동 범위). `shopKey`는 서버가 판별·연결한 결과로 채우는 내부 식별자다.
+
+## 5-1. 연결 작업서와 연습 모드 (확정 ⑦-1, 2026-10-04 대표님 지시 「Gemini가 미리 학습하게 한다」)
+
+모델 재학습(fine-tuning)이 아니라 **사전 자료 제공** 방식이다.
+
+- **작업서 형식** (`lib/server/automation/playbook.ts`): 작업서 = `id`·`version`·내부용 플랫폼 이름·주소 판별용 `hostSuffixes`·단계별 `{ guide(판단 모델에 넣는 설명), referenceImages(화면 기준 이미지 경로), actions(정해진 행동 + 화면 단서 expect), exceptions(예외 화면 → 고객 행동/재시도/실패), examples(성공 사례 요약) }`. `validatePlaybook`이 모든 단계·허용 행동(판단 모델과 같은 검사)·단계 끝 행동·비밀값 원문 없음을 확인하고, 단위 테스트가 저장소의 모든 작업서를 검사한다.
+- **저장 위치·버전 관리**: `lib/server/automation/playbooks/<id>.ts`, 목록 `playbooks/index.ts`. 바꿀 때는 `version`을 올린다. 연습 기록이 `id+version`으로 묶여, 버전을 올리면 다시 연습해 검증해야 지원 목록에 오른다. 이전 버전은 git 기록. 작업 중 버전이 바뀌면 그 작업은 작업서 없이 판단 모델로만 진행한다.
+- **판별**: 판매자가 낸 쇼핑몰 주소(`shopUrl`)로 서버가 작업서를 고른다(`playbookForShopUrl`). 작업서 id·플랫폼 이름은 응답에 나가지 않는다.
+- **실행 순서** (`engine.ts`, 고객 작업·연습이 같이 씀): 관찰 → 예외 화면이면 바로 고객 행동/재시도/실패(판단 호출 없음) → 다음 정해진 행동의 화면 단서가 맞으면 그대로 실행(판단 호출 없음, 비용 0) → 단서가 다르면 「화면 이탈」로 기록하고 그 단계 나머지는 판단 모델이 작업서 설명·성공 사례(`PlannerInput.reference`)를 참고해 고른다. 어느 쪽이든 실행 전 같은 검사(`validateDecision`). 프롬프트는 `buildPlannerPrompt`가 작업서·사례(지시)와 화면 글(신뢰하지 않는 데이터)을 나눠 만든다.
+- **통계**: 작업마다 `plannerCalls`·`playbookActions`·`deviatedSteps`를 남긴다.
+- **연습 모드** (`practice.ts`): `runPractice`가 시험용 쇼핑몰·시험용 PC에 연결된 실행기로 작업서를 처음부터 끝까지 실행하고 `AutomationPracticeRun`(결과·멈춘 단계·사유 코드·소요 시간·판단 호출 수·작업서 행동 수·비용·이탈 단계)을 남긴다. `playbookReadiness`: 같은 버전의 최근 연습이 **연속 5회(`PRACTICE_STREAK_REQUIRED`) 화면 이탈 없이 성공**해야 `verified`. 연속 횟수는 고객 작업에서 마지막으로 이탈이 난 시각(`lastDeviationAt`, 이탈이 생길 때만 기록) 뒤의 연습만 센다(이탈 전 성공은 바뀐 화면을 검증하지 못했으므로). 고객 작업에서 이탈이 생기면(관리 화면 변경 의심) `needsReverify`가 되고 지원 목록(`supportedPlaybookIds`)에서 빠진다 → 다시 연습해 검증.
+- 비밀값은 작업서·연습 기록에 넣지 않는다(작업서는 secretRef 이름만, 기록은 사유 코드만).
+- 현재 작업서: `cafe24` v1 **초안(draft)** — 화면 단서·기준 이미지·성공 사례는 시험용 쇼핑몰 연습 전이라 가정값·빈 값이다. 연습으로 채운다.
+- **지원 목록 밖 구매 차단**(MASTER 판단 2026-10-04, 대표님 원지시 「개별 검증 후 지원 목록에 추가」): 구매·재설치·무료 재연결 모두 결제 전에 쇼핑몰 주소(재연결은 주소가 없으면 이전 작업의 작업서)로 작업서를 고르고, 그 작업서가 지금 `verified`가 아니면 `shop_not_supported`(409, 안내 「아직 자동 연결할 수 없는 쇼핑몰이에요. 직접 설정으로 연결해 주세요」)로 거부한다. 재검증 대상이 되면 다시 검증될 때까지 막힌다.
+- 아직 안 한 것: 실제 시험용 쇼핑몰 연습, 기준 이미지 확보, 연습 실행을 정기적으로 돌리는 장치.
+
+### 내부 주소 접속 차단 (정본 c4cc711)
+
+- 쇼핑몰 주소로 작업서를 고를 때(`playbookForShopUrl`) 서버는 그 주소에 접속하지 않는다(주소 문자열의 호스트 이름만 비교, HTTP·DNS 요청 없음 — 단위 테스트가 fetch 0회를 확인).
+- 브라우저 이동은 서버가 https·기본 포트·허용 호스트만 승인하고, 실제 실행기는 DNS 확인 뒤·리다이렉트마다 IP를 다시 검사해 localhost·사설망·링크로컬·메타데이터 주소를 거부해야 한다(`ports.ts` `BrowserExecutor` 계약 주석).
+
+## 6. 동시 실행·급성장 대응
+
+- 분리: 자동 연결은 전용 테이블·전용 잠금(advisory lock `automation_claim`)만 쓰고 판매자 행을 잠그지 않는다. 작업자는 웹 서버와 다른 프로세스로 띄운다(진입 모듈 `lib/server/automation/worker.ts`의 `runWorkerLoop`).
+- idempotency: 판매자별 `Idempotency-Key`(`@@unique([sellerId, idempotencyKey])`), 판매자당 열린 작업 1개(부분 유니크 `AutomationJob_one_open_per_seller`), 결제별 PG 요청 id = 청구 id, 결제 1건에 작업 1개(`@@unique([sellerId, paymentId])`), 작업별 쓰기는 fencing 토큰.
+- 같은 OBS 대상 잠금: 고르기에서 제외 + 부분 유니크 `AutomationJob_one_running_per_obs_target`. 처음 연결은 판매자 키(`seller:<id>`), 재연결·재설치는 요청한 PC 키로 시작하고, 실행마다 OBS를 처음 바꾸기 직전에 로컬 도구가 알려 준 실제 PC로 잠금 키(`obs:<pairing>`)를 옮긴다(요청 값·이전 기록을 믿지 않음). 그 PC에서 다른 작업이 실행 중이면 OBS 변경 0회로 `obs_target_busy` 재시도.
+- lease·fencing: 자리를 잡을 때마다 토큰 +1. 작업자 쓰기는 `토큰 일치 AND 실행 중 상태 AND lease 살아 있음`일 때만. 만료 회수·취소도 토큰을 올린다.
+- 동시성 상한: 전체 실행 수(기본 20)를 잠금 안에서 세고 고른다. 공정 처리: 판매자당 열린 작업 1개 + `runAfter` 순(FIFO)이라 한 판매자가 자리를 독차지하지 못한다.
+- 고객 행동 대기 중에는 lease를 반납한다(다른 작업이 그 자리를 쓴다).
+- timeout: lease(기본 60초). 작업자는 행동마다 연장하고, 따로 heartbeat가 lease의 1/3마다 연장해 관찰·판단·실행 호출이 오래 걸려도 회수되지 않는다. 연장이 어떤 이유로든 실패하면(만료·취소·다른 작업자·실행 시간 상한·DB 오류) 다음 외부 행동 전에 멈추고, 진행 중이던 외부 호출이 돌아온 직후에도 다시 확인해 그 결과를 쓰지 않는다(진행 중이던 호출 1개는 끝까지 갈 수 있다). 연장을 못 하면 회수. 단계당 행동 12번 상한. 고객 행동 마감 24시간.
+- 판단 모델(확정 ⑦, 2026-10-04): Pro급. 모델 이름은 `AUTOMATION_PLANNER_MODEL`(기본 `gemini-2.5-pro`, 연결 때 공식 목록으로 재확인)로 바꾼다. 실제 키 연결·호출·대규모 부하 시험은 시작 전에 MASTER 경유 재승인.
+- 비용 상한: 판단 호출 비용을 `costUsed`에 쌓고 작업 생성 때 정한 `costLimit`(`AUTOMATION_COST_LIMIT_WON`, 기본 3,000원 = 예상 약 500원의 6배, 실측 후 조정) 초과 시 멈춘다. 상한을 끄는 값은 받지 않는다.
+- 결제 대사: 결과를 못 받은 PENDING 청구는 작업자 반복이 1분 뒤부터 PG에 다시 묻고,  결제 요청 보낸 기록(`chargeSubmittedAt`, outbox)을 보내기 직전에 남긴다. PG에 기록이 없고 작업이 결제 대기(`AWAITING_PAYMENT`)면 — 결제 행만 만들고 요청 전에 멈췄거나(null) 요청이 PG에 닿지 않았으면(1분 지남) — 대사가 작업 행을 잠그고 같은 청구 id로 다시 보낸다(PG가 같은 id는 한 번만 결제). 취소된 작업은 다시 보내지 않는다. 「결제 안 됨」 마감은 첫 제출 시각(`chargeFirstSubmittedAt`) + 30분으로 고정한다. 대사는 확인한 지 오래된 순(`lastCheckedAt`, 처음이면 먼저, 같으면 id 순)으로 50건씩 보고 확인 직전에 시각을 남겨, 앞 건이 계속 오류여도 뒤 건이 다음 회차에 확인된다. 다시 보내기는 그 전까지만 하고, 마감 뒤에는 마지막 제출(`chargeSubmittedAt`)에서 반영 지연 유예 2분이 지나고도 PG에 기록이 없으면 실패로 닫는다(열린 작업 칸이 풀린다).
+
+## 7. 측정 (모의 부하, 2026-10-03 KST, 이 세션 컨테이너 + 로컬 Postgres 16)
+
+`tests/integration/automationLoad.test.ts`: 작업자 10개, 동시 상한 20, 가짜 실행기 행동당 5ms 지연. 같은 시간에 주문 API(`POST /api/shop/[slug]/orders`)를 순서대로 호출.
+
+| 상황 | 자동 연결 처리 | 주문 API p50 / p95 / 최대 |
+|---|---|---|
+| 부하 없음(40건) | — | 32.8 / 46.1 / 51.9ms |
+| 작업 10개 | 522ms, 19.2건/초, 최대 동시 10 | 31.6 / 58.8 / 95.1ms |
+| 작업 50개 | 1,719ms, 29.1건/초, 최대 동시 10 | 42.3 / 65.7 / 72.9ms |
+| 작업 100개 | 3,229ms, 31.0건/초, 최대 동시 10 | 43.8 / 59.3 / 69.0ms |
+
+- 한계: 같은 프로세스·같은 DB의 모의 측정이다. 실제 Gemini·브라우저 지연, 작업자 CPU·메모리(브라우저 context당 수백 MB 예상), 운영 DB 연결 수는 반영하지 않았다. 실제 용량 목표는 실행기 연결 후 다시 잰다. VM 한 대 구성을 고가용성으로 보지 않는다.
+
+## 8. 판단 필요 (미확정)
+
+- Gemini 키 연결·실제 호출·대규모 부하 시험(확정 ⑦: 시작 전 재승인), 비용 상한 실측 조정.
+- 실제 환불 실행(REFUND_PENDING → REFUNDED): PG 환불 API와 승인 절차(대표님 승인 대상).
+- 「권한 해제」 감지: 기록 함수 `markConnectionRevoked`(`connection.ts`)는 있고, 앱 삭제·권한 회수 알림에서 부르는 경로는 외부 연동 단계(TODO). **감지 경로가 생기기 전에는 30일 안 같은 쇼핑몰·PC면 무료로 판정되므로 실제 판매를 열지 않는다**(MASTER 검수 2026-10-04).
+- 재연결 대상 확인: 무료 판정은 요청 값(`shopKey`·`obsPairingId`)으로 하되, 작업자가 **첫 변경 행동(클릭·입력·OBS 설정·테스트 주문) 바로 전에**(이동·관찰·고객 로그인 대기는 그 전에 허용) 실행기·로컬 도구에서 읽기만으로 지금 연결된 쇼핑몰(`currentShopKey`)·PC(`currentPairingId`)를 받아 기준 작업과 대조한다. 다르면 `reconnect_target_mismatch`, 알 수 없으면 `reconnect_target_unverified`로 변경 행동 0회에 실패한다. 통과하면 그 쇼핑몰·PC와 시각(`targetVerifiedAt`)을 작업에 남겨, 재시도 때 브라우저 단계부터 다시 하지 않으면 쇼핑몰은 다시 대조하지 않는다. PC(OBS pairing)는 **OBS를 바꾸기 직전마다** 로컬 도구에서 새로 읽어 대조한다(앞선 대조 기록을 믿지 않음. 브라우저 단계 뒤 PC가 바뀌면 OBS 변경 0회로 mismatch). 서버가 따로 아는 PC 등록 정보(pairing 목록)는 로컬 연결 도구가 생기면 판정 시점 대조에 더한다.
+- 결제 수단: 1차는 구독용 등록 카드(빌링키)로 일회 결제한다. 카드 없는 판매자의 일회 결제창(PG 결제창)은 billing 공통 코드 확장이 필요하다. PG 결과 조회에 금액이 없어(`PaymentLookup`) 금액 대조를 못 한다.
+- 직원(대표자 아님)에게 조회·재개를 열지. 지금은 대표자 전용.
+- `sellerId` 외래키: Seller 모델에 역관계 한 줄이 필요해(다른 모델 수정 금지) 두지 않았다. 판매자 삭제 시 정리 정책과 함께 결정.

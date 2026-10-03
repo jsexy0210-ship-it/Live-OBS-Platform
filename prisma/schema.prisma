@@ -1176,3 +1176,207 @@ model BuyerRejoinBlock {
   @@unique([sellerId, ciHash])
   @@index([expiresAt])
 }
+
+// ───────────── 자동 설치·연결 상품 (docs/AUTOMATION.md) ─────────────
+// 결제 상태(AutomationPayment)와 연결 작업 상태(AutomationJob)를 따로 둔다. 작업은 서버가 결제를 PAID로 확정한
+// 같은 트랜잭션에서만 QUEUED가 된다(무료 재연결은 서버가 대상 판정 뒤 바로 QUEUED). 판매자 테이블과는 Prisma 관계를 두지 않는다(Seller 모델을 고치지 않기 위해,
+// sellerId는 세션에서만 얻고 모든 조회에 조건으로 붙인다). 블록 안 자식은 (sellerId, 부모 id) 복합 외래키로 묶는다.
+// 부분 유니크(판매자당 열린 작업 1개, 같은 OBS 대상 실행 1개)와 CHECK는 마이그레이션 SQL에 있다.
+
+// 환불(2026-10-04 대표님 확정 ②): 성공 기준(테스트 주문이 고객 OBS 오버레이에 표시)을 통과하지 못하고 지원으로도 해결되지 않으면 전액 환불.
+// 연결 시작 뒤 단순 변심 환불은 없다. REFUND_PENDING = 환불 요청을 받아 처리 대기. 실제 환불 실행은 대표님 승인 대상이라 1차 코드에는 없다.
+enum AutomationPaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUND_PENDING
+  REFUNDED
+}
+
+// INITIAL = 처음 자동 연결(110,000원), REINSTALL = 무료 대상이 아닌 재설치(33,000원),
+// RECONNECT_FREE = 완료 뒤 30일 안 같은 쇼핑몰·같은 PC(OBS pairing) 재연결(무료, 결제 없음)
+enum AutomationJobKind {
+  INITIAL
+  REINSTALL
+  RECONNECT_FREE
+}
+
+enum AutomationJobStatus {
+  AWAITING_PAYMENT
+  QUEUED
+  RUNNING
+  NEEDS_CUSTOMER
+  VERIFYING
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
+// 고객이 직접 해야 하는 일. 이 동안 작업은 실행 자리(lease)를 반납한다.
+enum AutomationCustomerAction {
+  LOGIN
+  TWO_FACTOR
+  CAPTCHA
+  PERMISSION_GRANT
+  LOCAL_TOOL
+}
+
+model AutomationPayment {
+  id                   String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId             String                  @db.Uuid
+  amount               Int
+  status               AutomationPaymentStatus @default(PENDING)
+  // 판매자가 보낸 Idempotency-Key. 같은 키로 다시 요청하면 같은 결제·작업을 돌려준다.
+  idempotencyKey       String
+  // 같은 키를 다른 요청(구매 ↔ 재설치, 다른 쇼핑몰 주소·대상)에 다시 쓰는지 가리는 요청 지문(종류·주소·대상의 해시)
+  requestFingerprint   String
+  // 결제 전 고지(연결 시작 뒤 단순 변심 환불 없음, 실패 시 전액 환불) 동의 기록. 동의가 없으면 결제를 만들지 않는다. 시각은 DB 시계.
+  consentNoticeVersion String
+  consentAgreedAt      DateTime                @db.Timestamptz(3)
+  // 결제 요청 보낸 기록(outbox). null = 아직 PG에 보내지 않음(결제 행만 만들고 멈춤). 대사가 같은 청구 id로 다시 보낸다.
+  chargeSubmittedAt    DateTime?               @db.Timestamptz(3)
+  // 처음 결제 요청을 보낸 시각. 「결제 안 됨」 마감(이 시각 + 30분)을 고정하는 기준이다. 다시 보내도 바뀌지 않는다.
+  chargeFirstSubmittedAt DateTime?             @db.Timestamptz(3)
+  // 대사가 마지막으로 확인한 시각. 확인할 때마다 갱신해 오류가 난 건도 뒤로 돌린다(앞 건이 계속 실패해도 뒤 건이 확인된다).
+  lastCheckedAt        DateTime?               @db.Timestamptz(3)
+  providerPaymentId    String?
+  failureReason        String?
+  paidAt               DateTime?               @db.Timestamptz(3)
+  refundReason         String?
+  refundRequestedAt    DateTime?               @db.Timestamptz(3)
+  refundedAt           DateTime?               @db.Timestamptz(3)
+  createdAt            DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime                @updatedAt @db.Timestamptz(3)
+
+  job AutomationJob?
+
+  @@unique([sellerId, idempotencyKey])
+  @@unique([sellerId, id])
+  @@index([status, createdAt])
+}
+
+model AutomationJob {
+  id                   String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId             String                    @db.Uuid
+  kind                 AutomationJobKind         @default(INITIAL)
+  // 무료 재연결(RECONNECT_FREE)만 결제가 없다(마이그레이션 CHECK)
+  paymentId            String?                   @db.Uuid
+  // 재연결·재설치가 기준으로 삼은 이전 완료 작업
+  baseJobId            String?                   @db.Uuid
+  status               AutomationJobStatus       @default(AWAITING_PAYMENT)
+  // 같은 OBS에 동시에 두 작업이 붙지 않게 잠그는 대상 키(판매자 OBS 연결 단위)
+  obsTargetKey         String
+  // 진행 중인 단계 순번(0부터). 단계 목록은 lib/server/automation/steps.ts
+  stepIndex            Int                       @default(0)
+  customerAction       AutomationCustomerAction?
+  // 고객 행동 대기 마감. 지나면 FAILED(customer_action_timeout)
+  actionDeadlineAt     DateTime?                 @db.Timestamptz(3)
+  attempts             Int                       @default(0)
+  maxAttempts          Int                       @default(5)
+  // 판단 모델 호출 비용(원 단위 추정). 상한을 넘기면 멈춘다.
+  costUsed             Int                       @default(0)
+  costLimit            Int                       @default(3000)
+  runAfter             DateTime                  @default(now()) @db.Timestamptz(3)
+  leaseOwner           String?
+  leaseExpiresAt       DateTime?                 @db.Timestamptz(3)
+  // 실행 자리를 잡을 때마다 1씩 오른다. 작업자는 이 값이 같을 때만 쓴다(fencing).
+  fencingToken         Int                       @default(0)
+  lastError            String?
+  // 연결 결과: 외부 쇼핑몰 식별자(예: Cafe24 몰 id)와 고객 PC의 OBS pairing id. 무료 재연결 판정에 쓴다.
+  shopKey              String?
+  // 판매자가 낸 쇼핑몰 주소의 호스트(소문자). 비밀값은 이 호스트의 관리자 경로에서만 넣는다.
+  shopHost             String?
+  obsPairingId         String?
+  // 쇼핑몰 앱 권한 해제 등으로 연결이 끊긴 시각. 있으면 무료 재연결 대상이 아니다.
+  connectionRevokedAt  DateTime?                 @db.Timestamptz(3)
+  // 성공 기준 검증 증거(테스트 주문 표시 확인 결과). 비밀값은 넣지 않는다.
+  verifiedAt           DateTime?                 @db.Timestamptz(3)
+  verificationEvidence Json?
+  // 연결 작업서(확정 ⑦-1). 쇼핑몰 주소로 서버가 고른 작업서 id·버전(내부용, 화면 비노출). 없으면 판단 모델로만 진행.
+  playbookId           String?
+  playbookVersion      Int?
+  // 고객 행동 대기로 실행기에 브라우저 상태(암호화 보관본)를 맡겼는가. 작업이 끝나면(완료·취소·실패·마감) 작업자가
+  // 실행기에 삭제를 요청하고 false로 돌린다(purgeEndedBrowserState). 삭제 요청이 끝나기 전까지 true로 남아 다시 시도된다.
+  browserStateHeld     Boolean                   @default(false)
+  // 끝난 작업의 보관 자료(브라우저 상태·임시 파일·행동 키 기록·OBS 연결 정보) 삭제를 실행기·로컬 도구에 요청한 시각.
+  // 고객 대기가 없었던 작업도 포함해 끝난 모든 작업을 한 번씩 정리한다(worker.ts purgeEndedBrowserState).
+  artifactsPurgedAt    DateTime?                 @db.Timestamptz(3)
+  // 무료 재연결(결제 없음) 요청의 Idempotency-Key·요청 지문. 유료 작업의 키는 결제 행에 있다.
+  idempotencyKey       String?
+  requestFingerprint   String?
+  // 실행 통계: 판단 모델 호출 수, 작업서대로 실행한 행동 수, 화면이 작업서와 달랐던 단계(관리 화면 변경 신호)
+  plannerCalls         Int                       @default(0)
+  playbookActions      Int                       @default(0)
+  deviatedSteps        String[]                  @default([])
+  // 고객 대기를 뺀 실제 실행 시간 합계(ms)와 지금 실행 자리를 잡은 시각. 합계가 6시간을 넘으면 실패·전액 환불(정본 d6e22c4).
+  activeMsUsed         Int                       @default(0)
+  runStartedAt         DateTime?                 @db.Timestamptz(3)
+  // 화면이 작업서와 마지막으로 달랐던 시각. 연습 연속 성공은 이 시각 뒤의 연습만 센다(practice.ts).
+  lastDeviationAt      DateTime?                 @db.Timestamptz(3)
+  // 무료 재연결의 쇼핑몰·PC 대조를 통과한 시각(그때의 쇼핑몰·PC는 shopKey·obsPairingId). 재시도 때 브라우저 단계를 다시 하지 않으면 이 기록을 쓴다.
+  targetVerifiedAt     DateTime?                 @db.Timestamptz(3)
+  startedAt            DateTime?                 @db.Timestamptz(3)
+  finishedAt           DateTime?                 @db.Timestamptz(3)
+  createdAt            DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime                  @updatedAt @db.Timestamptz(3)
+
+  payment AutomationPayment?   @relation(fields: [sellerId, paymentId], references: [sellerId, id])
+  events  AutomationJobEvent[]
+
+  @@unique([sellerId, id])
+  // 결제 1건에 작업 1개
+  @@unique([sellerId, paymentId])
+  @@unique([sellerId, idempotencyKey])
+  @@index([status, runAfter])
+  @@index([sellerId, createdAt])
+  @@index([sellerId, status, finishedAt])
+}
+
+// 작업 상태 전이 기록(누가·언제·어느 fencing 토큰으로). 비밀값은 넣지 않는다.
+model AutomationJobEvent {
+  id           String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId     String               @db.Uuid
+  jobId        String               @db.Uuid
+  fromStatus   AutomationJobStatus?
+  toStatus     AutomationJobStatus
+  fencingToken Int
+  detail       Json?
+  createdAt    DateTime             @default(now()) @db.Timestamptz(3)
+
+  job AutomationJob @relation(fields: [sellerId, jobId], references: [sellerId, id])
+
+  @@index([jobId, createdAt])
+}
+
+// 연결 작업서 연습 실행 기록(확정 ⑦-1). 시험용 쇼핑몰에서 작업서를 반복 실행한 결과. 판매자 데이터가 아니다.
+// 같은 작업서 id·버전의 최근 연습이 연속으로 기준 횟수만큼 성공(화면 이탈 없이)해야 지원 목록에 오른다(lib/server/automation/practice.ts).
+enum AutomationPracticeOutcome {
+  SUCCEEDED
+  FAILED
+  NEEDS_CUSTOMER
+}
+
+model AutomationPracticeRun {
+  id              String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  playbookId      String
+  playbookVersion Int
+  outcome         AutomationPracticeOutcome
+  // 멈춘 단계와 사유(코드). 비밀값·화면 원문은 넣지 않는다.
+  failedStep      String?
+  reason          String?
+  durationMs      Int
+  plannerCalls    Int
+  playbookActions Int
+  costWon         Int
+  deviatedSteps   String[]                  @default([])
+  startedAt       DateTime                  @db.Timestamptz(3)
+  finishedAt      DateTime                  @default(now()) @db.Timestamptz(3)
+  // 실행기 보관 자료 정리(연습 실행의 작업 범위 id). 정리가 끝나지 않았으면 cleanupPendingAt에 다음 정리 시각을 둔다(null = 정리 끝).
+  cleanupScopeId   String?                  @db.Uuid
+  cleanupPendingAt DateTime?                @db.Timestamptz(3)
+  cleanupAttempts  Int                      @default(0)
+  // 「정리 필요」: 다시 시도 상한을 넘겨 자동 정리를 멈춘 시각. 이때 마스터 관리자 알림(감사 기록 운영 이벤트)을 1건 남긴다.
+  cleanupNeededAt  DateTime?                @db.Timestamptz(3)
+
+  @@index([playbookId, playbookVersion, finishedAt])
+}
