@@ -539,3 +539,33 @@ describe("재연결·재설치(확정 ②)", () => {
     expect(await pay.json()).toMatchObject({ kind: "REINSTALL", paymentStatus: "PAID" });
   });
 });
+
+describe("외부 쇼핑몰 플랫폼 이름 비노출(2026-10-04 대표님 결정)", () => {
+  const PLATFORM = /cafe24|카페24|imweb|아임웹|smartstore|스마트스토어|godo|고도몰|makeshop|메이크샵/i;
+
+  it("구매·재연결 안내·작업 조회 응답과 결제 전 동의 문구에 플랫폼 이름이 0건이다(실행기 오류 원문도 싣지 않음)", async () => {
+    const rt = runtime();
+    const s = await shopWithCard();
+    const cookie = await cookieFor(s.owner.email);
+    const texts: string[] = [JSON.stringify(AUTOMATION_CONSENT)];
+    const post = async (url: string, body: unknown) => {
+      const res = await (url.endsWith("purchase") ? purchaseRoute : reconnectRoute)(
+        new Request(url, { method: "POST", headers: H(cookie, { "idempotency-key": newKey(), "content-type": "application/json" }), body: JSON.stringify(body) }),
+      );
+      texts.push(await res.text());
+    };
+    await post("http://localhost:3000/api/automation/reconnect", { target: { shopKey: "m", obsPairingId: "p" } });
+    await post("http://localhost:3000/api/automation/purchase", {});
+    await post("http://localhost:3000/api/automation/purchase", { consent });
+    rt.browser.outcome = () => ({ kind: "fatal", reason: "Cafe24 관리자 화면 오류" });
+    expect(await runOnce(db, rt, W)).toBe("failed");
+    const j = await db.automationJob.findFirstOrThrow();
+    expect(j.lastError).toContain("Cafe24");
+    texts.push(await (await jobsRoute(new Request("http://localhost:3000/api/automation/jobs", { headers: H(cookie) }))).text());
+    const one = await (await jobRoute(new Request(`http://localhost:3000/api/automation/jobs/${j.id}`, { headers: H(cookie) }), params(j.id))).text();
+    texts.push(one);
+    expect(JSON.parse(one).lastError).toBe("step_failed");
+    const hits = texts.filter((t) => PLATFORM.test(t));
+    expect(hits).toEqual([]);
+  });
+});

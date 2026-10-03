@@ -27,6 +27,28 @@ export type JobView = {
   finishedAt: Date | null;
 };
 
+// 화면에 내보내는 실패 사유는 정해 둔 코드만. 실행기·외부 화면에서 온 원문(외부 쇼핑몰 플랫폼 이름 등)은
+// 응답에 싣지 않는다(2026-10-04 대표님 결정: 외부 쇼핑몰 플랫폼 이름 화면 노출 금지). 원문은 작업 기록에만 남는다.
+const PUBLIC_ERRORS = new Set([
+  "payment_failed",
+  "lease_expired",
+  "customer_action_timeout",
+  "cost_limit",
+  "reconnect_target_mismatch",
+  "verification_missing",
+  "worker_error",
+]);
+const STEP_KEYS = new Set(STEPS.map((s) => s.key));
+
+export function publicError(raw: string | null): string | null {
+  if (!raw) return null;
+  if (PUBLIC_ERRORS.has(raw)) return raw;
+  if (raw.startsWith("unsafe_action:")) return "unsafe_action";
+  const [head, step] = raw.split(":");
+  if (head === "step_action_limit" && STEP_KEYS.has(step)) return raw;
+  return "step_failed";
+}
+
 const toView = (j: AutomationJob & { payment: AutomationPayment | null }): JobView => ({
   id: j.id,
   kind: j.kind,
@@ -38,7 +60,7 @@ const toView = (j: AutomationJob & { payment: AutomationPayment | null }): JobVi
   stepCount: STEPS.length,
   customerAction: j.customerAction,
   actionDeadlineAt: j.actionDeadlineAt,
-  lastError: j.lastError,
+  lastError: publicError(j.lastError),
   verifiedAt: j.verifiedAt,
   createdAt: j.createdAt,
   finishedAt: j.finishedAt,

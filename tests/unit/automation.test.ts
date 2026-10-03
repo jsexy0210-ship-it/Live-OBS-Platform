@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { FakeBrowserExecutor, FakePlanner } from "../../lib/server/automation/fakes";
+import { publicError } from "../../lib/server/automation/jobs";
 import { sanitizeObservation, validateDecision, type AutomationAction } from "../../lib/server/automation/ports";
 import { backoffMs } from "../../lib/server/automation/queue";
 import { TERMINAL, TRANSITIONS, canTransition, sourcesOf } from "../../lib/server/automation/states";
@@ -68,5 +69,16 @@ describe("가짜 구현", () => {
   it("운영 환경에서는 만들 수 없다", () => {
     expect(() => new FakePlanner(10, "production")).toThrow();
     expect(() => new FakeBrowserExecutor(0, "production")).toThrow();
+  });
+});
+
+describe("화면용 실패 사유", () => {
+  it("정해 둔 코드만 내보내고 원문은 step_failed로 바꾼다", () => {
+    expect(publicError(null)).toBeNull();
+    expect(publicError("cost_limit")).toBe("cost_limit");
+    expect(publicError("unsafe_action:host_not_allowed")).toBe("unsafe_action");
+    expect(publicError("step_action_limit:test_event_verify")).toBe("step_action_limit:test_event_verify");
+    expect(publicError("step_action_limit:Cafe24")).toBe("step_failed");
+    expect(publicError("Cafe24 관리자 오류")).toBe("step_failed");
   });
 });
