@@ -4,7 +4,8 @@ export type ApiResult<T> =
   | { ok: true; status: number; data: T }
   | { ok: false; status: number; error: string; message?: string; body?: Record<string, unknown> };
 
-export async function api<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<ApiResult<T>> {
+// authRedirect: false면 401이어도 로그인으로 보내지 않는다(화면이 직접 로그인 주소를 만들 때)
+export async function api<T>(path: string, init: { method?: string; body?: unknown; authRedirect?: boolean } = {}): Promise<ApiResult<T>> {
   let res: Response;
   try {
     res = await fetch(path, {
@@ -19,7 +20,7 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
   const data = await res.json().catch(() => ({}));
   if (res.ok) return { ok: true, status: res.status, data: data as T };
   // 로그인이 풀렸으면(만료·로그아웃·비밀번호 변경) 어느 화면에서든 로그인으로 보낸다. 로그인·로그아웃 요청 자체의 401은 화면이 처리한다.
-  if (res.status === 401 && path.startsWith("/api/seller/") && !path.startsWith("/api/seller/auth/")) {
+  if (res.status === 401 && init.authRedirect !== false && path.startsWith("/api/seller/") && !path.startsWith("/api/seller/auth/")) {
     window.location.assign(`/seller/login?next=${encodeURIComponent(window.location.pathname)}`);
   }
   const body = data as { error?: string; message?: string } & Record<string, unknown>;
