@@ -2,7 +2,7 @@ import type { PrismaClient, RefundFault } from "@prisma/client";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
 import { createOrder } from "../../lib/server/orders/create";
-import { PAID_CANCEL_LIMIT, RESTRICTION_DAYS, liftRestriction, lockSellerOrders, readOrderPolicy, updateOrderPolicy } from "../../lib/server/orders/overdue";
+import { PAID_CANCEL_LIMIT, RESTRICTION_DAYS, UNPAID_CANCEL_LIMIT, cancelOverdueOrders, liftRestriction, lockSellerOrders, readOrderPolicy, updateOrderPolicy } from "../../lib/server/orders/overdue";
 import { refundOrder } from "../../lib/server/queue/service";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { createLoginBuyer, createPaidOrderItem, createSeller, createSellerUser, db, resetDb } from "./helpers";
@@ -211,5 +211,32 @@ describe("결제 후 취소 5회 → 30일 구매 제한", () => {
     expect((await s.restrictions()).every((r) => r.liftedAt !== null)).toBe(true);
     expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.purchase_restriction.lift", targetId: s.buyer.id } })).toMatchObject({ after: { lifted: 2 } });
     expect((await s.place()).ok).toBe(true);
+  });
+  it("기준 시각(켠 시각)과 같거나 늦은 시계로 들어온 환불도 기준 뒤로 기록되어 횟수에 들어간다", async () => {
+    const s = await shop();
+    await updateOrderPolicy(db, s.ctx, { ...BASE, paidCancelRestrictionEnabled: true });
+    // 켠 시각이 DB 시계와 같은 밀리초(또는 그보다 뒤)인 경우를 강제로 만든다
+    const enabledAt = new Date(Date.now() + 2000);
+    await db.sellerOrderPolicy.update({ where: { sellerId: s.seller.id }, data: { paidCancelRestrictionEnabledAt: enabledAt } });
+    for (let i = 0; i < PAID_CANCEL_LIMIT; i++) await s.refund("BUYER");
+    const refunded = await db.order.findMany({ where: { sellerId: s.seller.id, status: "REFUNDED" }, select: { refundedAt: true } });
+    expect(refunded.every((o) => o.refundedAt!.getTime() > enabledAt.getTime())).toBe(true);
+    expect(await s.restrictions()).toHaveLength(1);
+  });
+
+  it("미입금 자동 취소도 기준 시각과 같거나 늦은 시계로 들어오면 기준 뒤로 기록되어 횟수에 들어간다", async () => {
+    const s = await shop();
+    const enabledAt = new Date(Date.now() + 2000);
+    await db.sellerOrderPolicy.create({ data: { sellerId: s.seller.id, unpaidRestrictionEnabledAt: enabledAt } });
+    for (let i = 0; i < UNPAID_CANCEL_LIMIT; i++) {
+      await db.order.create({
+        data: { sellerId: s.seller.id, orderNo: 9000 + i, buyerMemberId: s.buyer.id, broadcastNicknameSnapshot: "닉", totalAmount: 1000, status: "PENDING_PAYMENT", paymentDueAt: new Date(Date.now() - 60_000) },
+      });
+    }
+    const r = await cancelOverdueOrders(db);
+    expect(r.cancelled).toHaveLength(UNPAID_CANCEL_LIMIT);
+    const cancelled = await db.order.findMany({ where: { sellerId: s.seller.id, status: "CANCELLED" }, select: { autoCancelledAt: true } });
+    expect(cancelled.every((o) => o.autoCancelledAt!.getTime() > enabledAt.getTime())).toBe(true);
+    expect((await s.restrictions()).map((x) => x.reason)).toEqual(["UNPAID_AUTO_CANCEL"]);
   });
 });
