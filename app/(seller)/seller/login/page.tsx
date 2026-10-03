@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../../../../components/seller/api";
 
 // AU-002 파트너스 관리자 로그인(정본: docs/IA.md AU-002, 대표님 결정 2026-10-03).
@@ -36,6 +36,10 @@ export default function SellerLoginPage() {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [busy, setBusy] = useState(false);
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  // 직원 탭에서 계정 찾기로 갔다가 돌아오면(?type=staff) 직원 탭으로 연다
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("type") === "staff") setTab("staff");
+  }, []);
 
   const ready = email.trim() !== "" && password !== "" && (!needShop || shopSlug.trim() !== "");
   // 찾기 화면은 대표자·직원 공통이고 계정 종류만 넘긴다
@@ -77,7 +81,7 @@ export default function SellerLoginPage() {
       const other: AccountType = tab === "owner" ? "staff" : "owner";
       setNotice({
         kind: "info",
-        text: other === "staff" ? "직원 계정이에요. 직원 탭에서 로그인하세요" : "대표자 계정이에요. 대표자 탭에서 로그인하세요",
+        text: other === "staff" ? "직원 계정이에요. 직원 탭에서 로그인해 주세요" : "대표자 계정이에요. 대표자 탭에서 로그인해 주세요",
         switchTo: other,
       });
     } else if (r.error === "invalid_credentials") setFieldError(text);

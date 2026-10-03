@@ -206,6 +206,6 @@ test("비밀번호 찾기(직원 탭에서 옴): 본인확인이 등록된 직�
   await verify(page, false, "/api/seller/password-reset/start");
   expect(((await started).postDataJSON() as { accountType: string }).accountType).toBe("staff");
   expect((await res).status()).toBe(400);
-  await expect(page.locator("#pa-notice")).toContainText("등록된 직원 정보와 맞지 않아요. 대표자에게 물어보세요");
+  await expect(page.locator("#pa-notice")).toContainText("등록된 직원 정보와 맞지 않아요. 대표자에게 물어봐 주세요");
   await shot(page, "AU-003-staff-not-allowed");
 });

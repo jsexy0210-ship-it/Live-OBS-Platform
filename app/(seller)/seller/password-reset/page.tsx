@@ -3,14 +3,14 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import IdentityCheck from "../../../../components/seller/IdentityCheck";
-import { AuthFrame, IdentityUnavailable } from "../../../../components/seller/PartnersAuth";
+import { AuthFrame, IdentityUnavailable, useStaffType, withType } from "../../../../components/seller/PartnersAuth";
 import { api, failMessage } from "../../../../components/seller/api";
 
 // AU-003 비밀번호 찾기 → AU-004 새 비밀번호. 쇼핑몰 대표자 본인만 할 수 있다(대표자 휴대폰 본인확인, 메일 링크 없음).
 // API: POST /api/seller/password-reset/start(·/resend·/confirm) → /verify(재설정 권한) → /complete(새 비밀번호).
 // 서버는 계정이 있는지·대표자인지 따로 알려 주지 않는다(reset_not_allowed 하나).
 // 로그인 화면 직원 탭에서 오면 ?type=staff(정본: docs/IA.md AU-003). 화면은 대표자·직원 공통이고 요청에 accountType만 다르게 보낸다.
-// 직원 본인확인이 맞지 않으면 그때만 「등록된 직원 정보와 맞지 않아요. 대표자에게 물어보세요」를 보여 준다.
+// 직원 본인확인이 맞지 않으면 그때만 「등록된 직원 정보와 맞지 않아요. 대표자에게 물어봐 주세요」를 보여 준다.
 // 본인확인 대행사 연결 전에는 API가 503을 주고, 이 화면은 「본인확인 서비스 준비 중이에요」 상태로 바꾼다.
 const BASE = "/api/seller/password-reset";
 const MIN_PASSWORD_LENGTH = 8; // 서버(lib/server/auth/passwordReset.ts)와 같은 값
@@ -19,8 +19,7 @@ type Step = "find" | "password" | "done";
 
 export default function PasswordResetPage() {
   const [step, setStep] = useState<Step>("find");
-  const [staff, setStaff] = useState(false);
-  useEffect(() => setStaff(new URLSearchParams(window.location.search).get("type") === "staff"), []);
+  const staff = useStaffType();
   const [unavailable, setUnavailable] = useState(false);
   const [email, setEmail] = useState("");
   const [shopSlug, setShopSlug] = useState("");
@@ -78,7 +77,7 @@ export default function PasswordResetPage() {
     if (r.error === "reset_not_allowed") {
       return restart(
         staff
-          ? { title: "비밀번호를 바꿀 수 없어요", text: "등록된 직원 정보와 맞지 않아요. 대표자에게 물어보세요" }
+          ? { title: "비밀번호를 바꿀 수 없어요", text: "등록된 직원 정보와 맞지 않아요. 대표자에게 물어봐 주세요" }
           : { title: "비밀번호를 바꿀 수 없어요", text: "이메일 · 쇼핑몰 주소와 대표자 본인인지 확인해 주세요." },
       );
     }
@@ -120,7 +119,7 @@ export default function PasswordResetPage() {
             비밀번호를 바꿨어요
           </h1>
           <span className="t-l2 c-alt">다른 기기의 로그인은 모두 풀렸어요. 새 비밀번호로 로그인해 주세요.</span>
-          <Link className="btn btn-lg btn-block" href="/seller/login">
+          <Link className="btn btn-lg btn-block" href={withType("/seller/login", staff)}>
             로그인하기
           </Link>
         </div>
@@ -255,7 +254,7 @@ export default function PasswordResetPage() {
           )}
           {!unavailable && (
             <div className="row t-l2 c-alt" style={{ justifyContent: "center" }}>
-              <Link href="/seller/login">로그인으로 돌아가기</Link>
+              <Link href={withType("/seller/login", staff)}>로그인으로 돌아가기</Link>
             </div>
           )}
         </>

@@ -77,13 +77,13 @@ test("고른 탭과 계정 종류가 다르면(wrong_account_type) 맞는 탭으
   await page.getByLabel("이메일").fill("someone@example.com");
   await page.getByLabel("비밀번호").fill("password-1");
   await page.getByRole("button", { name: "로그인" }).click();
-  await expect(page.getByText("직원 계정이에요. 직원 탭에서 로그인하세요")).toBeVisible();
+  await expect(page.getByText("직원 계정이에요. 직원 탭에서 로그인해 주세요")).toBeVisible();
   await shot(page, "AU-002-wrong-type");
   await page.getByRole("button", { name: "직원 탭으로" }).click();
   await expect(page.getByRole("tab", { name: "직원" })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("tab", { name: "직원" })).toBeFocused();
   await page.getByRole("button", { name: "로그인" }).click();
-  await expect(page.getByText("대표자 계정이에요. 대표자 탭에서 로그인하세요")).toBeVisible();
+  await expect(page.getByText("대표자 계정이에요. 대표자 탭에서 로그인해 주세요")).toBeVisible();
   expect(bodies.map((b) => b.accountType)).toEqual(["owner", "staff"]);
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
@@ -96,6 +96,22 @@ test("아이디 찾기: 서버 기능 준비 전에는 준비 중 화면을 보�
   await expect(page.getByRole("heading", { name: "본인확인 서비스 준비 중이에요" })).toBeVisible();
   expect(await page.locator("body").innerText()).not.toMatch(/판매자|cafe24|카페24/i);
   await shot(page, "AU-011");
+});
+
+test("직원 탭 흐름 전체에서 계정 종류가 이어진다: 로그인 → 아이디 찾기 → 비밀번호 찾기 → 로그인 복귀(직원 탭)", async ({ page }) => {
+  await page.goto("/seller/login");
+  await page.getByRole("tab", { name: "직원" }).click();
+  await page.getByRole("link", { name: "아이디 찾기" }).click();
+  await expect(page).toHaveURL(/\/seller\/find-id\?type=staff$/);
+  await expect(page.getByRole("link", { name: "비밀번호 찾기" })).toHaveAttribute("href", "/seller/password-reset?type=staff");
+  await expect(page.getByRole("link", { name: "로그인으로 돌아가기" })).toHaveAttribute("href", "/seller/login?type=staff");
+  await page.getByRole("link", { name: "비밀번호 찾기" }).click();
+  await expect(page).toHaveURL(/\/seller\/password-reset\?type=staff$/);
+  await expect(page.getByText("직원 본인 명의의 휴대폰으로 확인해요.")).toBeVisible();
+  await page.getByRole("link", { name: "로그인으로 돌아가기" }).click();
+  await expect(page).toHaveURL(/\/seller\/login\?type=staff$/);
+  await expect(page.getByRole("tab", { name: "직원" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("link", { name: "회원가입" })).toHaveCount(0);
 });
 
 // 대표님 결정(2026-10-04): 외부 쇼핑몰 플랫폼 이름은 어떤 화면에도 보이지 않는다. 화면 코드(app·components, 서버 API 제외)에서 0건이어야 한다.
