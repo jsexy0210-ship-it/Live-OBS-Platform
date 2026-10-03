@@ -1,0 +1,5 @@
+# 지금은 도메인이 없어 공인 IP의 80 포트(HTTP)만 받는다.
+# 도메인을 정하면 아래 :80 을 도메인 이름으로 바꾸고 443을 열면 Caddy가 인증서를 자동으로 받는다(docs/DEPLOY.md 「HTTPS」).
+:80 {
+	reverse_proxy obs-web-app:3000
+}

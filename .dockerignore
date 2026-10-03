@@ -1,0 +1,15 @@
+.git
+.github
+node_modules
+.next
+out
+tests
+docs
+deploy
+*.md
+*.log
+*.tsbuildinfo
+.env
+.env.*
+Dockerfile
+.dockerignore
