@@ -104,11 +104,11 @@
 
 - 분리: 자동 연결은 전용 테이블·전용 잠금(advisory lock `automation_claim`)만 쓰고 판매자 행을 잠그지 않는다. 작업자는 웹 서버와 다른 프로세스로 띄운다(진입 모듈 `lib/server/automation/worker.ts`의 `runWorkerLoop`).
 - idempotency: 판매자별 `Idempotency-Key`(`@@unique([sellerId, idempotencyKey])`), 판매자당 열린 작업 1개(부분 유니크 `AutomationJob_one_open_per_seller`), 결제별 PG 요청 id = 청구 id, 결제 1건에 작업 1개(`@@unique([sellerId, paymentId])`), 작업별 쓰기는 fencing 토큰.
-- 같은 OBS 대상 잠금: 고르기에서 제외 + 부분 유니크 `AutomationJob_one_running_per_obs_target`.
+- 같은 OBS 대상 잠금: 고르기에서 제외 + 부분 유니크 `AutomationJob_one_running_per_obs_target`. 처음 연결은 판매자 키(`seller:<id>`)로 시작하고, OBS를 처음 바꾸기 직전에 로컬 도구가 알려 준 실제 PC로 잠금 키(`obs:<pairing>`)를 옮긴다. 그 PC에서 다른 작업이 실행 중이면 OBS 변경 0회로 `obs_target_busy` 재시도.
 - lease·fencing: 자리를 잡을 때마다 토큰 +1. 작업자 쓰기는 `토큰 일치 AND 실행 중 상태 AND lease 살아 있음`일 때만. 만료 회수·취소도 토큰을 올린다.
 - 동시성 상한: 전체 실행 수(기본 20)를 잠금 안에서 세고 고른다. 공정 처리: 판매자당 열린 작업 1개 + `runAfter` 순(FIFO)이라 한 판매자가 자리를 독차지하지 못한다.
 - 고객 행동 대기 중에는 lease를 반납한다(다른 작업이 그 자리를 쓴다).
-- timeout: lease(기본 60초). 작업자는 행동마다 연장하고, 따로 heartbeat가 lease의 1/3마다 연장해 관찰·판단·실행 호출이 오래 걸려도 회수되지 않는다. 연장이 거부되면(만료·취소·다른 작업자) 다음 외부 행동 전에 멈춘다(진행 중이던 호출 1개는 끝까지 갈 수 있다). 연장을 못 하면 회수. 단계당 행동 12번 상한. 고객 행동 마감 24시간.
+- timeout: lease(기본 60초). 작업자는 행동마다 연장하고, 따로 heartbeat가 lease의 1/3마다 연장해 관찰·판단·실행 호출이 오래 걸려도 회수되지 않는다. 연장이 어떤 이유로든 실패하면(만료·취소·다른 작업자·실행 시간 상한·DB 오류) 다음 외부 행동 전에 멈추고, 진행 중이던 외부 호출이 돌아온 직후에도 다시 확인해 그 결과를 쓰지 않는다(진행 중이던 호출 1개는 끝까지 갈 수 있다). 연장을 못 하면 회수. 단계당 행동 12번 상한. 고객 행동 마감 24시간.
 - 판단 모델(확정 ⑦, 2026-10-04): Pro급. 모델 이름은 `AUTOMATION_PLANNER_MODEL`(기본 `gemini-2.5-pro`, 연결 때 공식 목록으로 재확인)로 바꾼다. 실제 키 연결·호출·대규모 부하 시험은 시작 전에 MASTER 경유 재승인.
 - 비용 상한: 판단 호출 비용을 `costUsed`에 쌓고 작업 생성 때 정한 `costLimit`(`AUTOMATION_COST_LIMIT_WON`, 기본 3,000원 = 예상 약 500원의 6배, 실측 후 조정) 초과 시 멈춘다. 상한을 끄는 값은 받지 않는다.
 - 결제 대사: 결과를 못 받은 PENDING 청구는 작업자 반복이 1분 뒤부터 PG에 다시 묻고, 기록 없음이 30분 이어지면 실패로 닫는다.

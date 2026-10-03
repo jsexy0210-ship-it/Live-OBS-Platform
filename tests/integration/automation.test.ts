@@ -14,9 +14,9 @@ import { FakeBrowserExecutor, FakeObsBridge, FakePlanner, FakeSecretVault } from
 import { markConnectionRevoked } from "../../lib/server/automation/connection";
 import { cancelJob, getJob, requestRefund, resumeJob } from "../../lib/server/automation/jobs";
 import { purchaseAutomation, reconcileAutomationPayments, reconnectAutomation } from "../../lib/server/automation/purchase";
-import { runSteps } from "../../lib/server/automation/engine";
-import { FencingError, advanceStep, claimNext, finishJob, markBrowserStateHeld, parkForCustomer, reapExpired, toVerifying, touch } from "../../lib/server/automation/queue";
-import { executeJob, purgeEndedBrowserState, runOnce, runWorkerLoop } from "../../lib/server/automation/worker";
+import { EngineAborted, runSteps } from "../../lib/server/automation/engine";
+import { FencingError, RunTimeExceeded, advanceStep, claimNext, finishJob, markBrowserStateHeld, parkForCustomer, reapExpired, toVerifying, touch } from "../../lib/server/automation/queue";
+import { executeJob, purgeEndedBrowserState, runOnce, runWorkerLoop, startHeartbeat } from "../../lib/server/automation/worker";
 import { FakeBillingProvider } from "../../lib/server/billing/provider";
 import { billingProvider } from "../../lib/server/billing/registry";
 import { sealBillingKey } from "../../lib/server/billing/secret";
@@ -1236,5 +1236,68 @@ describe("Codex 4차 반영", () => {
     expect(again.kind).toBe("succeeded");
     expect(rt.obs.sources.get(a.seller.id)).toBe(1);
     expect(rt.obs.performed.filter((p) => p.type === "obs_add_overlay_source")).toHaveLength(1);
+  });
+});
+
+describe("Codex 5차 반영", () => {
+  const noHooks = { touch: async () => {}, enterVerify: async () => {}, stepDone: async () => {} };
+  const baseOpts = { verifying: false, costLimit: 3000, maxActionsPerStep: 12, playbook: cafe24Playbook };
+  const freshStats = () => ({ costUsed: 0, plannerCalls: 0, playbookActions: 0, deviatedSteps: [] as string[] });
+
+  it("외부 행동이 끝나는 사이 중단 신호가 오면 그 결과(고객 대기 등)를 쓰지 않고 멈춘다", async () => {
+    const a = await bought();
+    const rt = runtime();
+    const ctrl = new AbortController();
+    let held = 0;
+    rt.browser.outcome = (_s, action) => (action.type === "click" ? (ctrl.abort(), { kind: "needs_customer", action: "LOGIN" }) : undefined);
+    await expect(
+      runSteps(rt, { sellerId: a.seller.id, jobId: a.jobId }, { ...baseOpts, startIndex: 0, stats: freshStats(), signal: ctrl.signal }, {
+        ...noHooks,
+        holdBrowserState: async () => void held++,
+      }),
+    ).rejects.toBeInstanceOf(EngineAborted);
+    expect(held).toBe(0);
+    expect(rt.browser.saved.size).toBe(0);
+  });
+
+  it("heartbeat 연장이 어떤 이유로든 실패하면 바로 중단 신호를 보낸다(실행 시간 상한이면 그 사실도 알린다)", async () => {
+    const generic = startHeartbeat(async () => {
+      throw new Error("db down");
+    }, 10);
+    await new Promise((r) => setTimeout(r, 40));
+    generic.stop();
+    expect(generic.signal.aborted).toBe(true);
+    expect(generic.overTime()).toBe(false);
+    const over = startHeartbeat(async () => {
+      throw new RunTimeExceeded();
+    }, 10);
+    await new Promise((r) => setTimeout(r, 40));
+    over.stop();
+    expect(over.signal.aborted).toBe(true);
+    expect(over.overTime()).toBe(true);
+    const ok = startHeartbeat(async () => {}, 10);
+    await new Promise((r) => setTimeout(r, 40));
+    ok.stop();
+    expect(ok.signal.aborted).toBe(false);
+  });
+
+  it("OBS를 처음 바꾸기 전에 같은 PC 잠금을 실제 PC로 옮긴다: 다른 판매자 작업이 그 PC에서 실행 중이면 OBS 변경 0회로 나중에 다시", async () => {
+    const other = await bought();
+    await db.automationJob.update({
+      where: { id: other.jobId },
+      data: { status: "RUNNING", leaseOwner: "other", leaseExpiresAt: new Date(Date.now() + 60_000), obsTargetKey: "obs:pc-shared", runStartedAt: new Date() },
+    });
+    const a = await bought();
+    const rt = runtime();
+    rt.obs.pairing.set(a.seller.id, "pc-shared");
+    expect(await runOnce(db, rt, { ...W, random: () => 0 })).toBe("retry");
+    expect(await job(a.jobId)).toMatchObject({ status: "QUEUED", lastError: "obs_target_busy", stepIndex: 2, obsTargetKey: `seller:${a.seller.id}` });
+    expect(rt.obs.performed.filter((p) => p.scope.jobId === a.jobId)).toHaveLength(0);
+
+    // 그 PC의 작업이 끝나면 잠금을 옮기고 끝까지 진행한다
+    await db.automationJob.update({ where: { id: other.jobId }, data: { status: "CANCELED", leaseOwner: null, leaseExpiresAt: null, finishedAt: new Date(), runStartedAt: null } });
+    await db.automationJob.update({ where: { id: a.jobId }, data: { runAfter: new Date(Date.now() - 1000) } });
+    expect(await runOnce(db, rt, W)).toBe("succeeded");
+    expect(await job(a.jobId)).toMatchObject({ obsTargetKey: "obs:pc-shared", obsPairingId: "pc-shared" });
   });
 });

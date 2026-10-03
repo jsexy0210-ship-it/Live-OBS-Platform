@@ -39,6 +39,7 @@ const PUBLIC_ERRORS = new Set([
   "verification_missing",
   "worker_error",
   "run_time_limit",
+  "obs_target_busy",
 ]);
 const STEP_KEYS = new Set(STEPS.map((s) => s.key));
 

@@ -186,13 +186,22 @@ export const failWithRefund = (db: PrismaClient, c: Claim, reason: string) =>
 // 브라우저 상태 보관 직전 「보관 중」 표시(보관본을 놓치지 않게 보관보다 먼저 남긴다)
 export const markBrowserStateHeld = (db: PrismaClient, c: Claim) => fencedWrite(db, c, () => ({ data: { browserStateHeld: true } }));
 
+// 같은 PC 잠금을 실제 PC(OBS pairing)로 옮긴다. OBS를 처음 바꾸기 직전에 부른다.
+// 그 PC에서 다른 작업이 실행 중이면 부분 유니크(AutomationJob_one_running_per_obs_target)가 막고(P2002) 작업자는 obs_target_busy로 나중에 다시 한다.
+export const claimObsTarget = (db: PrismaClient, c: Claim, pairingId: string) =>
+  fencedWrite(db, c, () => ({ data: { obsTargetKey: `obs:${pairingId.slice(0, 200)}` } }));
+
 // 무료 재연결 대조 통과 기록(그때의 쇼핑몰·PC와 시각)
 export const markTargetVerified = (db: PrismaClient, c: Claim, target: { shopKey: string; obsPairingId: string }) =>
   fencedWrite(db, c, (now) => ({ data: { targetVerifiedAt: now, shopKey: target.shopKey.slice(0, 200), obsPairingId: target.obsPairingId.slice(0, 200) } }));
 
 export const advanceStep = (db: PrismaClient, c: Claim, stepIndex: number, facts: ConnectionFacts = {}) =>
   fencedWrite(db, c, () => ({
-    data: { stepIndex, ...(facts.shopKey ? { shopKey: facts.shopKey.slice(0, 200) } : {}), ...(facts.obsPairingId ? { obsPairingId: facts.obsPairingId.slice(0, 200) } : {}) },
+    data: {
+      stepIndex,
+      ...(facts.shopKey ? { shopKey: facts.shopKey.slice(0, 200) } : {}),
+      ...(facts.obsPairingId ? { obsPairingId: facts.obsPairingId.slice(0, 200) } : {}),
+    },
   }));
 
 export const toVerifying = (db: PrismaClient, c: Claim) => fencedWrite(db, c, () => ({ to: "VERIFYING", data: {} }));

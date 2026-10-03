@@ -26,6 +26,8 @@ export type EngineHooks = {
   // 행동마다(비용·통계 기록 + lease 연장). 실행 자리를 잃었으면 던진다.
   touch(stats: EngineStats): Promise<void>;
   enterVerify(): Promise<void>;
+  // OBS를 처음 바꾸기 직전: 같은 PC 잠금을 실제 PC(OBS pairing)로 옮긴다. 다른 작업이 그 PC에서 실행 중이면 던진다.
+  claimObsTarget?(pairingId: string): Promise<void>;
   // 브라우저 상태를 보관하기 직전(「보관 중」 표시를 먼저 남긴다). 실패하면 보관하지 않는다.
   holdBrowserState?(): Promise<void>;
   // 무료 재연결 대조를 통과했다(그때의 쇼핑몰·PC). 재시도 때 브라우저 단계를 다시 하지 않으면 이 기록을 쓴다.
@@ -55,6 +57,8 @@ export type EngineOptions = {
   signal?: AbortSignal;
   // 고객 행동 대기로 멈출 때 브라우저 상태를 보관할지(기본 true). 연습 실행은 보관하지 않는다.
   keepBrowserStateOnWait?: boolean;
+  // 같은 PC 잠금 키가 이미 실제 PC 기준인가(obs:<pairing>). 아니면 OBS를 처음 바꾸기 전에 옮긴다.
+  obsTargetClaimed?: boolean;
   // 이전 실행에서 무료 재연결 대조를 통과했다(작업 행 기록). 브라우저 단계부터 다시 하지 않으면 다시 대조하지 않는다.
   targetVerified?: boolean;
   // 비밀값을 넣어도 되는 칸을 정하는 작업서(작업 중 버전이 바뀌어 정해진 행동은 안 쓰더라도 비밀 칸 목록은 그 작업서 것을 쓴다). 없으면 playbook
@@ -144,6 +148,7 @@ async function runAll(
     return null;
   };
   const secretBook = opts.secretPlaybook === undefined ? opts.playbook : opts.secretPlaybook;
+  let obsTargetClaimed = opts.obsTargetClaimed === true;
   const touchStats = async () => {
     await hooks.touch(stats);
     stats.deviatedNow = false;
@@ -209,6 +214,14 @@ async function runAll(
       if (MUTATING.includes(action.type)) {
         const blocked = await checkTarget();
         if (blocked) return blocked;
+        // OBS를 처음 바꾸기 전에 같은 PC 잠금을 실제 PC로 옮긴다(다른 판매자·작업이 같은 PC를 동시에 바꾸지 못하게)
+        if (!session && !obsTargetClaimed && hooks.claimObsTarget) {
+          guard();
+          const pairingId = await rt.obs.currentPairingId(scope);
+          if (!pairingId) return { kind: "needs_customer", action: "LOCAL_TOOL" };
+          await hooks.claimObsTarget(pairingId);
+          obsTargetClaimed = true;
+        }
       }
       // 비밀값 입력은 승인 때 관찰한 주소와 실행 직전 실제 문서 주소가 모두 허용 호스트여야 한다(리다이렉트로 다른 출처에 간 경우 차단)
       if (action.type === "fill" && "secretRef" in action.value) {
@@ -221,6 +234,8 @@ async function runAll(
       // 이동·확인 같은 바꾸지 않는 행동은 새 세션에서 다시 해야 하므로 키를 붙이지 않는다.
       const actionKey = MUTATING.includes(action.type) ? `${scope.jobId}:${stepIndex}:${i}:${action.type}` : undefined;
       const out: ActionOutcome = session ? await session.perform(action, secrets, actionKey) : await rt.obs.perform(scope, action, actionKey);
+      // 외부 행동이 끝나는 사이 자리를 잃었거나 실행 시간 상한을 넘었으면 결과를 쓰지 않고 멈춘다(작업자가 상황에 맞게 정리)
+      guard();
       if (out.kind === "needs_customer") return { kind: "needs_customer", action: out.action };
       if (out.kind === "retryable") return { kind: "retry", reason: out.reason };
       if (out.kind === "fatal") return { kind: "failed", reason: out.reason };
