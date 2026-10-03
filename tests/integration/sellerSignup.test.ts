@@ -319,9 +319,17 @@ describe("HTTP: 가입 신청", () => {
     const first = await applyRoute(post("/api/seller-signup/apply", body, cookie));
     expect(first.status).toBe(200);
     expect(await first.json()).toEqual({ approved: true, reviewReasons: [], resumed: false });
+    // 성공 응답은 흐름 쿠키를 지우지 않는다(응답이 잘려 결과를 못 받은 브라우저가 같은 쿠키로 다시 보내 같은 결과를 받게)
+    expect(first.headers.getSetCookie().filter((c) => c.startsWith("lo_sidv="))).toEqual([]);
     const again = await applyRoute(post("/api/seller-signup/apply", body, cookie));
     expect(again.status).toBe(200);
     expect(await again.json()).toEqual({ approved: true, reviewReasons: [], resumed: true });
+    expect(again.headers.getSetCookie().filter((c) => c.startsWith("lo_sidv="))).toEqual([]);
+    // 확인 뒤 15분이 지나 본인확인 유효 시간이 끝났어도 같은 브라우저의 같은 요청은 재개 결과를 받는다(새 신청은 만들지 않음)
+    await db.identityVerification.update({ where: { id: verificationId }, data: { verifiedAt: new Date(Date.now() - 15 * 60_000), expiresAt: new Date(Date.now() - 60_000) } });
+    const late = await applyRoute(post("/api/seller-signup/apply", body, cookie));
+    expect(late.status).toBe(200);
+    expect(await late.json()).toEqual({ approved: true, reviewReasons: [], resumed: true });
     expect(await db.seller.count()).toBe(1);
     expect(await db.sellerUser.count()).toBe(1);
     expect(await db.auditLog.count({ where: { action: "seller.apply" } })).toBe(1);
