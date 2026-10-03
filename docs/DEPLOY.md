@@ -33,7 +33,7 @@
 
 ### 권고: VM 안의 self-hosted runner
 
-VM에 GitHub Actions runner(라벨 `obs-kakao`)를 **배포할 때만 1회용으로 등록**하고, Actions 화면에서 수동 실행하면 runner가 main을 받아 VM에서 이미지를 빌드·기동한 뒤 스스로 등록을 해제하는 방식이에요(2026-10-03 대표님 결정, 아래 「runner 보안」).
+VM에 GitHub Actions runner(라벨 `obs-kakao`)를 **상시 서비스로 등록**해 두고, Actions 화면에서 수동 실행하면 runner가 main을 받아 VM에서 이미지를 빌드·기동하는 방식이에요(2026-10-03 대표님 결정, 아래 「runner 보안」). **먼저 꼭 할 설정**: Settings → Actions → General → 「Approval for running fork pull request workflows from contributors」를 **Require approval for all external contributors**로 바꿔요(이 설정 없이 runner를 등록하지 않아요).
 
 - runner는 GitHub로 나가는 연결만 써요. SSH 22를 인터넷에 열 필요가 없어요.
 - 비밀값은 서버의 `/opt/obs/.env`에만 있어요. GitHub Secrets에 DB 비밀번호를 둘 필요가 없어요.
@@ -53,26 +53,13 @@ CI의 「No deploy workflows」 검사가 self-hosted runner를 이 워크플로
 
 #### 배포 실행 순서
 
-runner 프로그램은 처음 한 번만 설치해요(「서버 준비」 5번). 그 뒤 배포할 때마다 이 순서를 따라요.
+runner는 처음 한 번 상시 서비스로 등록해 둬요(「서버 준비」 5번). 그 뒤 배포할 때마다 이 순서를 따라요.
 
 1. 배포할 main 커밋을 확인해요(저장소 첫 화면 또는 Commits에서 맨 위 커밋의 앞 7자리).
-2. GitHub 저장소 → Settings → Actions → Runners → **New self-hosted runner**에서 등록 토큰을 복사해요(1시간 동안 유효). **토큰은 서버에서만 입력하고 채팅·문서에 남기지 않아요.**
-3. 서버에서 1회용 runner를 등록하고 띄워요.
-   ```bash
-   sudo -u obs -i
-   cd /opt/obs/actions-runner
-   ./config.sh --url https://github.com/jsexy0210-ship-it/Live-OBS-Platform --labels obs-kakao --name obs-web-test --ephemeral --unattended --token <2의 토큰>
-   ./run.sh      # 이 창은 그대로 둬요. job 하나를 받아 끝나면 스스로 종료돼요
-   ```
-   `Listening for Jobs`가 보이면 바로 4로 가요. 기다리는 시간이 짧을수록 안전해요.
-4. Actions → **Deploy obs-test** → **Run workflow**를 눌러요. Branch는 **main** 그대로 두고, `confirm_sha`에 1의 앞 7자리를 넣고 실행해요.
+2. Actions → **Deploy obs-test** → **Run workflow**를 눌러요. Branch는 **main** 그대로 두고, `confirm_sha`에 1의 앞 7자리를 넣고 실행해요.
    - 다른 브랜치를 고르면 job이 건너뛰어져요. 입력한 SHA가 main과 다르면(그새 병합이 있었으면) 멈춰요.
-5. Environment `obs-test`에 Required reviewers가 있으면 **Review deployments → Approve**를 눌러요.
-6. 서버 창에 `Running job: Deploy to obs-test`가 보이는지 확인해요. **다른 이름의 job이면 바로 `Ctrl+C`로 멈추고** 「runner 보안」의 「이상할 때」를 따라요.
-7. 끝나면 실행 요약의 「obs-test 배포 완료」와 커밋을 확인하고, 브라우저로 주소를 열어 봐요.
-8. runner가 스스로 해제됐는지 확인해요: 서버의 `./run.sh`가 종료됐고, GitHub Runners 화면에 `obs-web-test`가 없어야 해요.
-
-배포 없이 runner를 띄웠다가 그만둘 때는 `Ctrl+C`로 멈춘 뒤 `./config.sh remove --token <Runners 화면의 제거 토큰>`으로 등록을 지워요. 1회용 runner를 등록해 둔 채로 두지 않아요.
+3. Environment `obs-test`에 Required reviewers가 있으면 **Review deployments → Approve**를 눌러요.
+4. 끝나면 실행 요약의 「obs-test 배포 완료」와 커밋을 확인하고, 브라우저로 주소를 열어 봐요.
 
 #### 실패했을 때
 
@@ -82,41 +69,57 @@ runner 프로그램은 처음 한 번만 설치해요(「서버 준비」 5번).
 | 실패한 단계 | 확인할 것 |
 | --- | --- |
 | Check target commit | `confirm_sha`가 지금 main 맨 위 커밋과 같은지. `/opt/obs/.env`가 있는지 |
-| Waiting for a runner(시작 안 함) | 서버에서 `./run.sh`가 떠 있고 `Listening for Jobs`인지, 등록 때 라벨 `obs-kakao`를 넣었는지 |
-| Backup / Build and start에서 permission denied | `obs` 계정이 `docker` 그룹인지(`id obs`). 그룹을 추가한 뒤에는 `sudo -u obs -i`로 새로 접속해 `run.sh`를 띄워야 해요 |
+| Waiting for a runner(시작 안 함) | 서버에서 `cd /opt/obs/actions-runner && sudo ./svc.sh status`가 active인지, GitHub Runners 화면에 `obs-web-test`가 Idle인지, 등록 때 라벨 `obs-kakao`를 넣었는지 |
+| Backup / Build and start에서 permission denied | `obs` 계정이 `docker` 그룹인지(`id obs`). 그룹을 추가한 뒤에는 runner 서비스를 다시 시작해야 해요(`sudo ./svc.sh stop && sudo ./svc.sh start`) |
 | Build and start | 마이그레이션 실패(`obs-web-migrate` 로그), `.env` 값 누락(`POSTGRES_*`), 디스크 부족(`df -h`) |
 | Health check | `db":"error"`면 DB 컨테이너 상태, version이 다르면 이전 컨테이너가 남았는지(`docker ps`) |
 
 - 실패해도 이전 컨테이너가 그대로 떠 있거나 일부만 바뀌었을 수 있어요. 아래 「로그」로 상태를 보고, 필요하면 「롤백」을 따라요.
 
-#### runner 보안: 공개 저장소라 1회용 runner만 써요
+#### runner 보안: 공개 저장소 + 상시 runner(남은 위험을 알고 쓰기로 함)
 
 워크플로의 `if`(main만)와 Environment `obs-test`는 **배포 워크플로 job만** 막아요. 다른 워크플로가 `runs-on: [self-hosted, obs-kakao]`를 쓰면 같은 runner로 갈 수 있어요. 예를 들어 PR이 `ci.yml`(pull_request로 실행)을 고쳐 이 라벨을 고르면, 그 PR 코드가 VM에서 `obs` 계정(docker 그룹 = root와 같은 권한)으로 실행돼 `/opt/obs/.env`를 읽을 수 있어요. CI의 「No deploy workflows」 검사도 PR이 함께 고칠 수 있어서 막지 못해요. 개인 계정 저장소라 runner를 특정 워크플로에만 묶는 runner 그룹도 쓸 수 없어요.
 
-그래서 **저장소는 공개로 두고, runner는 배포할 때만 1회용(`--ephemeral`)으로 등록해요**(2026-10-03 대표님 결정).
+**2026-10-03 대표님 결정: 저장소는 공개로 두고 runner는 상시 등록해요. 위 위험은 알고 받아들였어요.** 대신 아래를 꼭 지켜요.
 
-- runner는 상시 등록하지 않아요. 서비스 등록(`svc.sh install`)은 **쓰지 않아요.**
-- 1회용 runner는 job 하나를 받으면 끝나고 등록이 자동으로 해제돼요. 노출은 「등록 → 배포 job이 잡힐 때까지」의 짧은 시간뿐이에요.
-- 저장소 설정: Settings → Actions → General → 「Approval for running fork pull request workflows from contributors」를 **Require approval for all external contributors**로 바꿔요. 외부 기여자의 PR 워크플로는 대표님이 승인해야 실행돼요.
+- **필수 설정**: Settings → Actions → General → 「Approval for running fork pull request workflows from contributors」 = **Require approval for all external contributors**. 외부 기여자의 PR 워크플로는 승인 전에는 실행되지 않아요.
+- 외부 기여자 PR의 워크플로를 승인하기 전에 그 PR이 `.github/workflows/`를 바꿨는지, 특히 `runs-on`에 `self-hosted`·`obs-kakao`를 넣었는지 **반드시** 확인해요. 바꿨으면 승인하지 않아요.
+- 저장소에 쓰기 권한자(Collaborator)를 늘리지 않아요. 쓰기 권한자의 브랜치 PR은 승인 없이 실행돼요.
+- GitHub Runners 화면에서 runner가 받은 job 기록을 가끔 확인해요(배포 워크플로 말고 다른 job이 있으면 아래 「이상할 때」).
 
 이상할 때(배포가 아닌 job을 runner가 받았을 때):
-1. 서버의 `./run.sh`를 `Ctrl+C`로 멈추고, GitHub Runners 화면에서 `obs-web-test`를 지워요.
+1. 서버에서 `cd /opt/obs/actions-runner && sudo ./svc.sh stop`으로 멈추고, GitHub Runners 화면에서 `obs-web-test`를 지워요.
 2. 그 job의 실행 화면을 열어 어느 워크플로·PR인지 기록해 MASTER에 알려요.
 3. `/opt/obs/.env`의 비밀값(DB 비밀번호·키)을 바꾸는 것을 검토해요(DB 비밀번호는 「서버 .env」의 변경 절차).
+
+#### 대안: 배포할 때만 1회용 runner(위험을 더 줄이고 싶을 때)
+
+상시 runner를 지우고(`sudo ./svc.sh stop && sudo ./svc.sh uninstall`, `./config.sh remove --token <제거 토큰>`), 배포할 때마다 등록해요.
+
+1. Settings → Actions → Runners → **New self-hosted runner**에서 등록 토큰을 복사해요(1시간 유효, 서버에서만 입력).
+2. 서버에서:
+   ```bash
+   sudo -u obs -i
+   cd /opt/obs/actions-runner
+   ./config.sh --url https://github.com/jsexy0210-ship-it/Live-OBS-Platform --labels obs-kakao --name obs-web-test --ephemeral --unattended --token <토큰>
+   ./run.sh      # job 하나를 받아 끝나면 스스로 종료돼요
+   ```
+3. `Listening for Jobs`가 보이면 바로 Run workflow를 실행하고, 서버 창에 `Running job: Deploy to obs-test`가 보이는지 확인해요(다른 job이면 `Ctrl+C`).
+4. 끝난 뒤 `run.sh`가 종료되고 Runners 화면에서 `obs-web-test`가 사라졌는지 확인해요.
 
 ### 대안: GitHub 호스팅 러너 + SSH
 
 GitHub 러너가 SSH로 VM에 접속해 같은 compose 명령을 실행하는 방식이에요.
 
-| | 1회용 self-hosted runner(채택) | SSH |
+| | 상시 self-hosted runner(채택) | SSH |
 | --- | --- | --- |
 | 인터넷에 여는 포트 | 없음(나가는 연결만) | 22를 GitHub 러너 IP 대역 전체에 열어야 함(대역이 넓고 자주 바뀜) |
 | GitHub에 두는 비밀값 | 없음 | SSH 개인키·호스트 키 |
-| 서버에 설치할 것 | runner 프로그램(배포 때만 등록) | 없음 |
+| 서버에 설치할 것 | runner 서비스(상시) | 없음 |
 | 빌드 위치 | VM(4GB 메모리로 충분) | VM(동일) 또는 러너에서 빌드 후 이미지 전송 |
-| 위험 | 등록~실행 사이 다른 워크플로가 runner를 잡을 수 있음(1회용으로 짧게) | 키 유출 시 서버 접속 가능 |
+| 위험 | 다른 워크플로가 runner를 잡을 수 있음(외부 PR 승인 설정·승인 전 확인으로 줄임) | 키 유출 시 서버 접속 가능 |
 
-22를 넓게 여는 게 더 큰 위험이라 1회용 runner 방식을 택했어요(2026-10-03 대표님 결정).
+22를 넓게 여는 게 더 큰 위험이라 self-hosted runner 방식을 택했고, 대표님 결정으로 상시 runner로 운영해요(2026-10-03).
 
 ## 서버 준비(대표님 조치, 순서대로)
 
@@ -156,7 +159,7 @@ sudo chown -R obs:obs /opt/obs
 sudo chmod 700 /opt/obs /opt/obs/backups
 ```
 
-- runner가 `obs` 계정으로 `docker compose`를 실행하므로 `docker` 그룹이 꼭 필요해요. 그룹은 새로 접속할 때 반영되니, 추가한 뒤에는 `sudo -u obs -i`로 새로 들어가 `run.sh`를 띄워요.
+- runner가 `obs` 계정으로 `docker compose`를 실행하므로 `docker` 그룹이 꼭 필요해요. 그룹은 새로 접속할 때 반영되니, 추가한 뒤에는 runner 서비스를 다시 시작해요(`sudo ./svc.sh stop && sudo ./svc.sh start`).
 - `docker` 그룹은 서버에서 root와 같은 권한이에요. 이 계정에는 다른 용도를 주지 않고, 비밀번호 로그인·sudo 권한도 주지 않아요.
 
 ### 4. 서버 `.env`(`/opt/obs/.env`, 권한 600)
@@ -195,22 +198,30 @@ $C up -d --wait         # 같은 버전 그대로, 앱·마이그레이션이 �
 
 계정 이름·DB 이름은 바꾸지 않아요(바꾸려면 백업 → 새 DB로 복구가 필요해요).
 
-### 5. runner 프로그램 설치(처음 한 번)
+### 5. runner 등록(처음 한 번, 상시 서비스)
 
-등록은 배포할 때마다 1회용으로 해요(「배포 실행 순서」). 여기서는 프로그램만 받아 둬요.
+**먼저** Settings → Actions → General → 「Approval for running fork pull request workflows from contributors」를 **Require approval for all external contributors**로 바꿔요(「runner 보안」). 이 설정 전에는 runner를 등록하지 않아요.
 
-1. GitHub 저장소 → Settings → Actions → Runners → New self-hosted runner → Linux x64 화면에서 **다운로드·압축 해제 명령만** 복사해요(`config.sh` 줄은 아직 실행하지 않아요).
-2. 서버에서 `obs` 계정으로 `/opt/obs/actions-runner`에 풀어요.
+1. GitHub 저장소 → Settings → Actions → Runners → **New self-hosted runner** → Linux x64 화면을 열어요. **등록 토큰은 서버에서만 입력하고 채팅·문서에 남기지 않아요.**
+2. 서버에서 `obs` 계정으로 설치·등록해요.
    ```bash
    sudo -u obs -i
    mkdir -p /opt/obs/actions-runner && cd /opt/obs/actions-runner
    # (GitHub 화면의 다운로드·압축 해제 명령)
+   ./config.sh --url https://github.com/jsexy0210-ship-it/Live-OBS-Platform --labels obs-kakao --name obs-web-test --unattended --token <화면의 토큰>
+   exit
    ```
-   서비스 등록(`sudo ./svc.sh install`)은 **쓰지 않아요**(상시 runner 금지, 「runner 보안」).
-3. Settings → Environments → `obs-test`를 이렇게 설정하길 권해요.
+3. 서비스로 등록하고 시작해요(관리자 계정에서).
+   ```bash
+   cd /opt/obs/actions-runner
+   sudo ./svc.sh install obs
+   sudo ./svc.sh start
+   sudo ./svc.sh status    # active (running)이면 돼요
+   ```
+   GitHub Runners 화면에 `obs-web-test`가 **Idle**로 보이면 끝이에요.
+4. Settings → Environments → `obs-test`를 이렇게 설정하길 권해요.
    - Deployment branches and tags: **Selected branches** → `main`만
    - Required reviewers: **대표님** (실행할 때마다 승인 한 번)
-4. Settings → Actions → General → 「Approval for running fork pull request workflows from contributors」를 **Require approval for all external contributors**로 바꿔요.
 
 GitHub Secrets·Variables는 이 방식에서 필요 없어요(비밀값은 서버 `.env`에만).
 
