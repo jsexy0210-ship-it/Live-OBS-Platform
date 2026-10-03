@@ -1,5 +1,5 @@
 import { expect, request, test, type Page } from "@playwright/test";
-import { REJOIN_RETENTION_CONSENT_VERSION } from "../../lib/server/buyers/rejoin";
+import { SIGNUP_CONSENT_VERSIONS } from "../../lib/server/buyers/consent";
 import { BUYER_SIGNUP_MESSAGES } from "../../lib/server/buyers/signup";
 import { setMemberPolicyInDb } from "./memberPolicyDb";
 import { IDENTITY_ERROR_MESSAGES } from "../../lib/server/identity/messages";
@@ -31,14 +31,14 @@ async function fillIdentity(page: Page, name: string, phone = "01012345678") {
   await page.getByRole("button", { name: "여", exact: true }).click();
   await page.getByLabel("통신사").selectOption("KT");
   await page.getByLabel("휴대폰번호", { exact: true }).fill(phone);
-  await page.getByLabel("본인확인 약관에 모두 동의해요").check();
+  // 가입 필수 동의는 본인확인 전에 받는다(동의 순서)
+  await page.getByLabel("필수 약관에 모두 동의해요").check();
 }
 
 async function fillAccount(page: Page, id: string, nickname: string) {
   await page.getByLabel("아이디 (이메일)").fill(`buyer-${id}@example.com`);
   await page.getByLabel("비밀번호").fill(`pw-${id}-long`);
   await page.getByLabel("방송 닉네임").fill(nickname);
-  await page.getByLabel("약관에 모두 동의해요", { exact: true }).check();
 }
 
 type Reply = { status: number; body: unknown };
@@ -156,7 +156,19 @@ test("인적사항을 서버 형식(birth7·통신사)으로 바꿔 보낸다", 
   const req = page.waitForRequest((r) => r.url().endsWith(`${API}/verification`));
   await page.getByRole("button", { name: "인증번호 받기" }).click();
   // 2001년생 외국인 여성 → 8, 화면 폭 1440 → PC
-  expect((await req).postDataJSON()).toEqual({ name: "김구매", phone: "01012345678", birth7: "0103058", carrier: "LGU_MVNO", device: "PC", attemptKey: expect.stringMatching(UUID) });
+  expect((await req).postDataJSON()).toEqual({
+    name: "김구매",
+    phone: "01012345678",
+    birth7: "0103058",
+    carrier: "LGU_MVNO",
+    device: "PC",
+    attemptKey: expect.stringMatching(UUID),
+    // 필수 동의와 화면이 보여 준 문서 버전을 본인확인 시작에 함께 보낸다(데모 쇼핑몰은 재가입 제한 꺼짐)
+    agreedTerms: true,
+    agreedPrivacy: true,
+    termsVersion: SIGNUP_CONSENT_VERSIONS.terms,
+    privacyVersion: SIGNUP_CONSENT_VERSIONS.privacy,
+  });
 });
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -426,23 +438,49 @@ test("요청이 끝나면 포커스가 본문으로 빠지지 않고 다음에 �
   await expect.poll(() => focusedId(page)).toBe("shop-state-title");
 });
 
-test("위쪽 안내가 뜨면 안내로, 약관 오류면 약관 체크박스로 포커스를 옮기고 오류를 연결한다", async ({ page }) => {
+test("위쪽 안내가 뜨면 안내로 포커스를 옮긴다", async ({ page }) => {
   await mockApi(page);
-  await seq(page, API, [fail(409, "already_member", BUYER_SIGNUP_MESSAGES.already_member), fail(400, "terms_required", BUYER_SIGNUP_MESSAGES.terms_required)]);
+  await seq(page, API, [fail(409, "already_member", BUYER_SIGNUP_MESSAGES.already_member)]);
   await page.goto(`/shop/${SLUG}/signup`);
   await toVerified(page);
   await fillAccount(page, "x8", "별빛");
   await page.getByRole("button", { name: "가입하기" }).click();
   await expect(page.getByRole("status").filter({ hasText: BUYER_SIGNUP_MESSAGES.already_member })).toBeVisible();
   await expect.poll(() => focusedId(page)).toBe("signup-notice");
-  await page.getByRole("button", { name: "가입하기" }).click();
-  await expect.poll(() => focusedId(page)).toBe("acc-terms-all");
-  for (const label of ["약관에 모두 동의해요", "이용약관 (필수)", "개인정보 수집 · 이용 (필수)"]) {
-    const box = page.getByLabel(label, { exact: true });
-    await expect(box).toHaveAttribute("aria-invalid", "true");
-    await expect(box).toHaveAttribute("aria-describedby", "acc-terms-err");
+});
+
+test("필수 동의 전에는 인증번호 받기를 누를 수 없고, 하나라도 풀면 다시 막힌다", async ({ page }) => {
+  await mockApi(page);
+  await page.goto(`/shop/${SLUG}/signup`);
+  await fillIdentity(page, "김구매");
+  const send = page.getByRole("button", { name: "인증번호 받기" });
+  await expect(send).toBeEnabled();
+  for (const label of ["이용약관 (필수)", "개인정보 수집 · 이용 (필수)", "본인확인 약관에 모두 동의해요"]) {
+    await page.getByLabel(label, { exact: true }).uncheck();
+    await expect(send).toBeDisabled();
+    await expect(page.getByLabel("필수 약관에 모두 동의해요")).not.toBeChecked();
+    await page.getByLabel(label, { exact: true }).check();
+    await expect(send).toBeEnabled();
   }
-  await expect(page.locator("#acc-terms-err")).toHaveText(BUYER_SIGNUP_MESSAGES.terms_required);
+  // 재가입 제한을 끈 쇼핑몰이라 보관 동의 칸은 없다
+  await expect(page.getByText("재가입 제한 정보 보관", { exact: false })).toHaveCount(0);
+});
+
+test("본인확인 시작이 동의 오류(약관 없음·문서 바뀜)면 동의 칸으로 포커스를 옮기고 오류를 연결한다", async ({ page }) => {
+  for (const [code, status] of [["terms_required", 400], ["consent_outdated", 409]] as const) {
+    await page.unrouteAll();
+    await mockApi(page, { verification: fail(status, code, BUYER_SIGNUP_MESSAGES[code]) });
+    await page.goto(`/shop/${SLUG}/signup`);
+    await fillIdentity(page, "김구매");
+    await page.getByRole("button", { name: "인증번호 받기" }).click();
+    await expect.poll(() => focusedId(page)).toBe("idv-terms-all");
+    for (const label of ["필수 약관에 모두 동의해요", "이용약관 (필수)", "개인정보 수집 · 이용 (필수)", "본인확인 약관에 모두 동의해요"]) {
+      const box = page.getByLabel(label, { exact: true });
+      await expect(box).toHaveAttribute("aria-invalid", "true");
+      await expect(box).toHaveAttribute("aria-describedby", "idv-terms-err");
+    }
+    await expect(page.locator("#idv-terms-err")).toHaveText(BUYER_SIGNUP_MESSAGES[code]);
+  }
 });
 
 test("체험 한도로 본인확인이 막히면 처음부터 다시 하게 하지 않고 가입할 수 없음 상태를 보여 준다", async ({ page }) => {
@@ -588,16 +626,8 @@ test("마케팅 정보 수신은 선택이고, 체크 여부를 agreedMarketing�
     const marketing = page.getByLabel("(선택) 마케팅 정보 수신");
     // 기본은 해제
     await expect(marketing).not.toBeChecked();
-    if (agree) {
-      // 전체 동의에 선택 항목도 들어간다
-      await page.getByLabel("약관에 모두 동의해요", { exact: true }).check();
-      await expect(marketing).toBeChecked();
-    } else {
-      // 필수만 동의해도 가입할 수 있다
-      await page.getByLabel("이용약관 (필수)").check();
-      await page.getByLabel("개인정보 수집 · 이용 (필수)").check();
-      await expect(page.getByLabel("약관에 모두 동의해요", { exact: true })).not.toBeChecked();
-    }
+    // 필수 동의는 본인확인 전에 받았고, 여기서는 선택 항목만 고른다
+    if (agree) await marketing.check();
     const req = page.waitForRequest((r) => r.url().endsWith(API) && r.method() === "POST");
     await page.getByRole("button", { name: "가입하기" }).click();
     expect((await req).postDataJSON().agreedMarketing).toBe(agree);
@@ -720,7 +750,7 @@ test("재가입 제한을 끈 쇼핑몰은 보관 동의 줄이 없다", async (
   await expect(page.getByText("재가입 제한 정보 보관", { exact: false })).toHaveCount(0);
 });
 
-test("재가입 제한을 켠 쇼핑몰의 보관 동의는 선택: 체크하지 않아도 가입되고, 체크하면 보여 준 기간·문서 버전을 함께 보낸다. 「보기」에 실제 기간을 보여 준다", async ({ page, baseURL }) => {
+test("재가입 제한을 켠 쇼핑몰의 보관 동의는 선택(본인확인 전): 체크하지 않아도 인증번호를 받고 가입되며, 체크하면 보여 준 기간·문서 버전을 함께 보낸다. 「보기」에 실제 기간을 보여 준다", async ({ page, baseURL }) => {
   if (!PASSWORD) throw new Error("E2E_PASSWORD가 없어요. dev-seed가 출력한 데모 비밀번호를 넣어 주세요");
   await setRejoin(baseURL!, true, 90);
   try {
@@ -728,32 +758,28 @@ test("재가입 제한을 켠 쇼핑몰의 보관 동의는 선택: 체크하지
       const id = uniq();
       await page.goto(`/shop/${SLUG}/signup`);
       await fillIdentity(page, `제한${id}`, uniqPhone());
-      await page.getByRole("button", { name: "인증번호 받기" }).click();
-      await page.getByLabel("인증번호").fill("000000");
-      await page.getByRole("button", { name: "확인", exact: true }).click();
-      await expect(page.getByText("본인확인을 마쳤어요")).toBeVisible();
-      await page.getByLabel("아이디 (이메일)").fill(`buyer-${id}@example.com`);
-      await page.getByLabel("비밀번호").fill(`pw-${id}-long`);
-      await page.getByLabel("방송 닉네임").fill(`제한${id}`);
-      await page.getByLabel("이용약관 (필수)").check();
-      await page.getByLabel("개인정보 수집 · 이용 (필수)").check();
-      const join = page.getByRole("button", { name: "가입하기" });
-      const box = page.getByLabel("재가입 제한 정보 보관 (선택)");
-      // 기본은 체크 안 함이고, 체크하지 않아도 가입할 수 있다
-      await expect(box).not.toBeChecked();
-      await expect(join).toBeEnabled();
+      const send = page.getByRole("button", { name: "인증번호 받기" });
+      const rejoinBox = page.getByLabel("재가입 제한 정보 보관 (선택)");
+      // 필수 약관 전체 동의에 들어가지 않고 기본은 체크 안 함, 체크하지 않아도 인증번호를 받을 수 있다
+      await expect(rejoinBox).not.toBeChecked();
+      await expect(send).toBeEnabled();
       await page.getByText("보기").click();
       await expect(page.getByText("보관 기간: 탈퇴한 날부터 90일")).toBeVisible();
       await expect(page.getByText("동의하지 않아도 가입할 수 있어요. 동의하지 않으면 이 정보를 보관하지 않고, 탈퇴한 뒤 다시 가입할 때 기간 제한을 받지 않아요.")).toBeVisible();
-      if (agree) await box.check();
-      const req = page.waitForRequest((r) => r.url().endsWith(API) && r.method() === "POST");
-      await join.click();
+      if (agree) await rejoinBox.check();
+      const req = page.waitForRequest((r) => r.url().endsWith(`${API}/verification`));
+      await send.click();
       const body = (await req).postDataJSON();
-      if (agree) expect(body).toMatchObject({ agreedRejoinRetention: true, rejoinRestrictionDaysShown: 90, rejoinRetentionVersionShown: REJOIN_RETENTION_CONSENT_VERSION });
+      if (agree) expect(body).toMatchObject({ agreedRejoinRetention: true, rejoinRetentionVersion: SIGNUP_CONSENT_VERSIONS.rejoinRetention, rejoinRestrictionDaysShown: 90 });
       else {
         expect(body.agreedRejoinRetention).toBe(false);
         expect(body).not.toHaveProperty("rejoinRestrictionDaysShown");
       }
+      await page.getByLabel("인증번호").fill("000000");
+      await page.getByRole("button", { name: "확인", exact: true }).click();
+      await expect(page.getByText("본인확인을 마쳤어요")).toBeVisible();
+      await fillAccount(page, id, `제한${id}`);
+      await page.getByRole("button", { name: "가입하기" }).click();
       await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
     }
   } finally {
@@ -771,13 +797,18 @@ test("재가입 제한 중이면 문구 뒤에 다시 가입할 수 있는 날(K
   await expect(page.getByText("지금은 다시 가입할 수 없어요. 11월 3일부터 다시 가입할 수 있어요")).toBeVisible();
 });
 
-test("가입 중에 판매자가 재가입 제한 기간을 바꾸면(409) 안내를 보여 주고 동의를 다시 받는다", async ({ page }) => {
-  await mockApi(page, { signup: fail(409, "rejoin_policy_changed", BUYER_SIGNUP_MESSAGES.rejoin_policy_changed) });
-  await page.goto(`/shop/${SLUG}/signup`);
-  await toVerified(page);
-  await fillAccount(page, "pc", "바뀜");
-  await page.getByRole("button", { name: "가입하기" }).click();
-  await expect(page.locator("#acc-terms-err")).toHaveText(BUYER_SIGNUP_MESSAGES.rejoin_policy_changed);
-  // 입력한 계정 정보는 남아 있다
-  await expect(page.getByLabel("방송 닉네임")).toHaveValue("바뀜");
+test("본인확인 시작 때 동의 정보가 바뀌었으면(문서 버전·재가입 제한 기간 변경) 입력은 두고 동의 정보를 새로 받아 다시 동의하게 한다", async ({ page }) => {
+  for (const [code, status] of [["consent_outdated", 409], ["rejoin_policy_changed", 409]] as const) {
+    await page.unrouteAll();
+    await mockApi(page, { verification: fail(status, code, BUYER_SIGNUP_MESSAGES[code]) });
+    await page.goto(`/shop/${SLUG}/signup`);
+    await fillIdentity(page, "김바뀜");
+    // 화면 새로 받기(router.refresh)는 같은 주소로 RSC 요청을 보낸다
+    const refresh = page.waitForRequest((r) => new URL(r.url()).pathname === `/shop/${SLUG}/signup` && r.headers()["rsc"] === "1");
+    await page.getByRole("button", { name: "인증번호 받기" }).click();
+    await refresh;
+    await expect(page.locator("#idv-terms-err")).toHaveText(BUYER_SIGNUP_MESSAGES[code]);
+    await expect.poll(() => focusedId(page)).toBe("idv-terms-all");
+    await expect(page.getByLabel("이름", { exact: true })).toHaveValue("김바뀜");
+  }
 });
