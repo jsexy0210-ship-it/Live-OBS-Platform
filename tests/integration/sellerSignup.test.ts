@@ -319,9 +319,12 @@ describe("HTTP: 가입 신청", () => {
     const first = await applyRoute(post("/api/seller-signup/apply", body, cookie));
     expect(first.status).toBe(200);
     expect(await first.json()).toEqual({ approved: true, reviewReasons: [], resumed: false });
+    // 성공 응답은 흐름 쿠키를 지우지 않는다(응답이 잘려 결과를 못 받은 브라우저가 같은 쿠키로 다시 보내 같은 결과를 받게)
+    expect(first.headers.getSetCookie().filter((c) => c.startsWith("lo_sidv="))).toEqual([]);
     const again = await applyRoute(post("/api/seller-signup/apply", body, cookie));
     expect(again.status).toBe(200);
     expect(await again.json()).toEqual({ approved: true, reviewReasons: [], resumed: true });
+    expect(again.headers.getSetCookie().filter((c) => c.startsWith("lo_sidv="))).toEqual([]);
     expect(await db.seller.count()).toBe(1);
     expect(await db.sellerUser.count()).toBe(1);
     expect(await db.auditLog.count({ where: { action: "seller.apply" } })).toBe(1);

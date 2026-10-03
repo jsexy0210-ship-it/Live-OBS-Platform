@@ -151,7 +151,7 @@ test("파트너스 가입 신청 → 바로 승인 → 로그인 → 비밀번�
 });
 
 // 시작 요청은 서버가 처리하게 두고 첫 응답만 끊는다(서버에서는 문자를 보내고 횟수를 쓴 상태). 다시 누르면 같은 attemptKey로 보내고
-// 서버는 같은 본인확인을 돌려준다(문자·하루 횟수를 다시 쓰지 않는 것은 integration sellerApplication·passwordReset에서 확인).
+// 서버는 같은 본인확인을 돌려준다(문자·하루 횟수를 다시 쓰지 않는 것은 integration sellerSignup·passwordReset에서 확인).
 async function dropFirstStart(page: Page, path: string) {
   const sent: { key: string; id?: string }[] = [];
   await page.route((u) => u.pathname === path, async (route) => {
