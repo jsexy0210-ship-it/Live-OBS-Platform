@@ -39,9 +39,9 @@ export default function IdentityLinkPage() {
   const focus = (id: string) => setFocusTo({ id });
   const later = () => router.replace(safeNext());
 
-  // 로그인 전이면 로그인으로, 대표자이거나 이미 연결했으면 바로 다음 화면으로
+  // 로그인 전이면 직원 탭 로그인으로(원래 가려던 곳을 담아 한 번만 이동), 대표자이거나 이미 연결했으면 바로 다음 화면으로
   useEffect(() => {
-    void api<Status>(BASE).then((r) => {
+    void api<Status>(BASE, { authRedirect: false }).then((r) => {
       if (r.ok && !r.data.linked) {
         setStatus(r.data);
         if (r.data.relinkRequired) setView("relink");

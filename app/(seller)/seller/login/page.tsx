@@ -44,6 +44,9 @@ export default function SellerLoginPage() {
     setTab(t);
     setNotice(null);
     setFieldError(null);
+    // 쇼핑몰 고르기는 그 탭에서 받은 응답 때문이라 탭을 바꾸면 처음부터
+    setNeedShop(false);
+    setShopSlug("");
     if (focusTab) tabRefs.current[TABS.findIndex((x) => x.key === t)]?.focus();
   };
 

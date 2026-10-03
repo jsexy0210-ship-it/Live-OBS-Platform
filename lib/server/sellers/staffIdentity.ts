@@ -74,9 +74,9 @@ export async function linkStaffIdentity(
   return db.$transaction(async (tx) => {
     const used = await tx.identityVerification.updateMany({ where: { id: v.id, consumedAt: null }, data: { consumedAt: now } });
     if (used.count !== 1) return { ok: false as const, reason: "verification_invalid" as const };
-    // 그사이 대표자가 번호를 바꿨으면 연결하지 않는다(같은 번호일 때만 갱신)
+    // 그사이 대표자가 번호나 이름을 바꿨으면 연결하지 않는다(비교한 번호·이름 그대로일 때만 갱신)
     const linked = matches
-      ? await tx.sellerUser.updateMany({ where: { id: user.id, phone: user.phone, status: "ACTIVE" }, data: { identityCiHash: v.ciHash, identityLinkedAt: now } })
+      ? await tx.sellerUser.updateMany({ where: { id: user.id, phone: user.phone, name: user.name, status: "ACTIVE" }, data: { identityCiHash: v.ciHash, identityLinkedAt: now } })
       : { count: 0 };
     await writeAudit(tx, {
       actorType: "SELLER_USER",

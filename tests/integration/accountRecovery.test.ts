@@ -17,6 +17,8 @@ import { GET as staffList, POST as staffCreate } from "../../app/api/seller/staf
 import { startAccountRecovery } from "../../lib/server/auth/accountRecovery";
 import { loginSeller } from "../../lib/server/auth/login";
 import { startSellerPasswordReset } from "../../lib/server/auth/passwordReset";
+import { requireSeller } from "../../lib/server/authz/guards";
+import { linkStaffIdentity } from "../../lib/server/sellers/staffIdentity";
 import { RECOVERY_DAILY_LIMIT_PER_IP, RECOVERY_DAILY_LIMIT_PER_PHONE } from "../../lib/server/auth/recoveryLimit";
 import { prisma } from "../../lib/server/db";
 import { hashCi } from "../../lib/server/identity/ciHash";
@@ -175,6 +177,33 @@ describe("직원 본인확인 연결", () => {
     expect(await db.auditLog.count({ where: { action: "seller.staff.identity_linked", targetId: linked.id } })).toBe(1);
     // 대표자는 403
     expect((await linkStatus(req("/api/seller/me/identity", "GET", undefined, await sessionOf(owner.email)))).status).toBe(403);
+  });
+  it("본인확인 결과를 받는 사이 대표자가 직원 이름을 바꾸면 옛 이름으로 연결하지 않는다(등록 정보와 맞지 않음)", async () => {
+    const { seller } = await shop();
+    const staff = await createSellerUser(seller.id, "MANAGER");
+    await db.sellerUser.update({ where: { id: staff.id }, data: { phone: "01055556666" } });
+    const cookie = await sessionOf(staff.email);
+    const s = await linkStart(post("/api/seller/me/identity/start", { ...IDV_INPUT, name: "직원", phone: "01055556666" }, cookie));
+    const flow = cookieOf(s, "lo_lidv");
+    const { verificationId } = await s.json();
+    await confirmWith(linkConfirm, "/api/seller/me/identity/confirm", verificationId, flow, { ci: "STAFF-CI" });
+    // 직원 정보를 읽은 뒤 연결을 저장하기 직전에 대표자가 이름을 바꾼다
+    const racing = new Proxy(db, {
+      get(target, prop) {
+        if (prop === "$transaction") {
+          return async (fn: Parameters<typeof db.$transaction>[0]) => {
+            await db.sellerUser.update({ where: { id: staff.id }, data: { name: "바뀐이름" } });
+            return target.$transaction(fn as never);
+          };
+        }
+        const v = Reflect.get(target, prop);
+        return typeof v === "function" ? v.bind(target) : v;
+      },
+    });
+    const ctx = await requireSeller(db, cookie.split("=")[1]);
+    const ownerToken = flow.split("=")[1];
+    expect(await linkStaffIdentity(racing, fake(), ctx, { verificationId, ownerToken })).toEqual({ ok: false, reason: "identity_mismatch" });
+    expect((await db.sellerUser.findUniqueOrThrow({ where: { id: staff.id } })).identityCiHash).toBeNull();
   });
 });
 

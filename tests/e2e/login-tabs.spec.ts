@@ -88,6 +88,47 @@ test("고른 탭과 계정 종류가 다르면(wrong_account_type) 맞는 탭으
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
+test("대표자 탭에서 쇼핑몰 주소를 물은 뒤 직원 탭으로 바꾸면 쇼핑몰 칸이 사라지고 바로 로그인된다", async ({ page }) => {
+  const bodies: Record<string, unknown>[] = [];
+  let first = true;
+  await page.route("**/api/seller/auth/login", (route) => {
+    bodies.push(route.request().postDataJSON());
+    if (!first) return route.continue();
+    first = false;
+    return route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ error: "shop_required", message: "로그인할 쇼핑몰 주소를 넣어 주세요" }) });
+  });
+  await page.goto("/seller/login");
+  await page.getByLabel("이메일").fill("demo-staff@example.com");
+  await page.getByLabel("비밀번호").fill(PASSWORD);
+  await page.getByRole("button", { name: "로그인" }).click();
+  await expect(page.getByLabel("쇼핑몰 주소")).toBeVisible();
+  await page.getByLabel("쇼핑몰 주소").fill("demo-shop");
+  await page.getByRole("tab", { name: "직원" }).click();
+  await expect(page.getByLabel("쇼핑몰 주소")).toHaveCount(0);
+  await page.getByRole("button", { name: "로그인" }).click();
+  await expect(page).toHaveURL(/\/seller\/products$/);
+  // 직원 탭 요청에는 앞 탭에서 적은 쇼핑몰 주소가 실리지 않는다
+  expect(bodies[1]).toMatchObject({ accountType: "staff" });
+  expect(bodies[1]).not.toHaveProperty("shopSlug");
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("로그인 전 직원 본인확인 연결 화면에 오면 직원 탭 로그인으로 한 번만 보내고, 로그인하면 원래 가려던 곳으로 간다", async ({ page }) => {
+  const logins: string[] = [];
+  page.on("framenavigated", (f) => {
+    if (f === page.mainFrame() && new URL(f.url()).pathname === "/seller/login") logins.push(f.url());
+  });
+  await page.goto("/seller/identity-link?next=%2Fseller%2Forders");
+  await expect(page).toHaveURL(/\/seller\/login\?type=staff&next=%2Fseller%2Forders$/);
+  await expect(page.getByRole("tab", { name: "직원" })).toHaveAttribute("aria-selected", "true");
+  await page.waitForTimeout(500);
+  expect(logins).toHaveLength(1);
+  await page.getByLabel("이메일").fill("demo-viewer@example.com");
+  await page.getByLabel("비밀번호").fill(PASSWORD);
+  await page.getByRole("button", { name: "로그인" }).click();
+  await expect(page).toHaveURL(/\/seller\/orders$/);
+});
+
 test("아이디 찾기: 본인확인 대행사 연결 전이면 인증번호 받기에서 준비 중 화면으로 바뀐다", async ({ page }) => {
   await page.goto("/seller/login");
   await page.getByRole("link", { name: "아이디 찾기" }).click();
