@@ -774,7 +774,7 @@ test("재가입 제한을 켠 쇼핑몰은 본인확인 전에 보관 동의를 
     await rejoinBox.check();
     const req = page.waitForRequest((r) => r.url().endsWith(`${API}/verification`));
     await send.click();
-    expect((await req).postDataJSON()).toMatchObject({ agreedRejoinRetention: true, rejoinRetentionVersion: SIGNUP_CONSENT_VERSIONS.rejoinRetention });
+    expect((await req).postDataJSON()).toMatchObject({ agreedRejoinRetention: true, rejoinRetentionVersion: SIGNUP_CONSENT_VERSIONS.rejoinRetention, rejoinRestrictionDaysShown: 90 });
     await page.getByLabel("인증번호").fill("000000");
     await page.getByRole("button", { name: "확인", exact: true }).click();
     await expect(page.getByText("본인확인을 마쳤어요")).toBeVisible();
@@ -794,4 +794,20 @@ test("재가입 제한 중이면 문구 뒤에 다시 가입할 수 있는 날(K
   await fillAccount(page, "rj", "제한");
   await page.getByRole("button", { name: "가입하기" }).click();
   await expect(page.getByText("지금은 다시 가입할 수 없어요. 11월 3일부터 다시 가입할 수 있어요")).toBeVisible();
+});
+
+test("본인확인 시작 때 동의 정보가 바뀌었으면(문서·재가입 제한 켬·기간 변경) 입력은 두고 동의 정보를 새로 받아 다시 동의하게 한다", async ({ page }) => {
+  for (const [code, status] of [["consent_outdated", 409], ["rejoin_consent_required", 400], ["rejoin_policy_changed", 409]] as const) {
+    await page.unrouteAll();
+    await mockApi(page, { verification: fail(status, code, BUYER_SIGNUP_MESSAGES[code]) });
+    await page.goto(`/shop/${SLUG}/signup`);
+    await fillIdentity(page, "김바뀜");
+    // 화면 새로 받기(router.refresh)는 같은 주소로 RSC 요청을 보낸다
+    const refresh = page.waitForRequest((r) => new URL(r.url()).pathname === `/shop/${SLUG}/signup` && r.headers()["rsc"] === "1");
+    await page.getByRole("button", { name: "인증번호 받기" }).click();
+    await refresh;
+    await expect(page.locator("#idv-terms-err")).toHaveText(BUYER_SIGNUP_MESSAGES[code]);
+    await expect.poll(() => focusedId(page)).toBe("idv-terms-all");
+    await expect(page.getByLabel("이름", { exact: true })).toHaveValue("김바뀜");
+  }
 });

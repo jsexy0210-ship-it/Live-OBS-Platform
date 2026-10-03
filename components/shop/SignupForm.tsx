@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { api, failMessage } from "../seller/api";
 import { textLength } from "../seller/format";
@@ -113,6 +114,13 @@ export default function SignupForm({ slug, consent }: { slug: string; consent: S
   const [agreedPrivacy, setAgreedPrivacy] = useState(false);
   // 재가입 제한을 켠 쇼핑몰만 받는 「재가입 제한 정보 보관 동의」
   const [agreedRejoin, setAgreedRejoin] = useState(false);
+  const router = useRouter();
+  // 동의 정보를 다시 불러와 문서 버전이나 재가입 제한 기간이 바뀌면 앞 동의는 다시 받는다
+  useEffect(() => {
+    setAgreedTerms(false);
+    setAgreedPrivacy(false);
+  }, [consent.termsVersion, consent.privacyVersion]);
+  useEffect(() => setAgreedRejoin(false), [consent.rejoinDays, consent.rejoinRetentionVersion]);
   // 선택 동의(기본 해제). 체크 여부를 그대로 agreedMarketing으로 보낸다.
   const [agreedMarketing, setAgreedMarketing] = useState(false);
   // 가입을 요청한 닉네임(완료 문구는 이 값을 쓴다)
@@ -178,7 +186,7 @@ export default function SignupForm({ slug, consent }: { slug: string; consent: S
       agreedPrivacy,
       termsVersion: consent.termsVersion,
       privacyVersion: consent.privacyVersion,
-      ...(rejoinRequired ? { agreedRejoinRetention: agreedRejoin, rejoinRetentionVersion: consent.rejoinRetentionVersion } : {}),
+      ...(rejoinRequired ? { agreedRejoinRetention: agreedRejoin, rejoinRetentionVersion: consent.rejoinRetentionVersion, rejoinRestrictionDaysShown: consent.rejoinDays } : {}),
     };
     const input = { ...person, birth7, carrier, device, ...agreed };
     const fp = JSON.stringify(input);
@@ -201,8 +209,10 @@ export default function SignupForm({ slug, consent }: { slug: string; consent: S
       return;
     }
     if (commonFail(r)) return;
-    // 동의가 빠졌거나 문서가 바뀌었으면 동의 칸으로 보낸다
-    if (r.error === "terms_required" || r.error === "rejoin_consent_required" || r.error === "consent_outdated") {
+    // 동의가 빠졌거나 문서·재가입 제한 기간이 바뀌었으면 동의 칸으로 보낸다.
+    // 화면을 연 뒤 바뀐 경우(문서 버전·재가입 제한을 새로 켬·기간 변경)는 입력은 두고 동의 정보만 새로 받아 다시 동의하게 한다.
+    if (r.error === "terms_required" || r.error === "rejoin_consent_required" || r.error === "rejoin_policy_changed" || r.error === "consent_outdated") {
+      if (r.error !== "terms_required") router.refresh();
       setFieldErrors({ terms: failMessage(r) });
       focus("idv-terms-all");
       return;

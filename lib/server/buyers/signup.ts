@@ -155,6 +155,7 @@ export type BuyerSignupFailure =
   | "shop_unavailable"
   | "rejoin_restricted" // 재가입 제한 기간 중(탈퇴한 같은 사람, buyers/rejoin.ts)
   | "rejoin_consent_required" // 재가입 제한을 켠 쇼핑몰에서 「재가입 제한 정보 보관 동의」가 없음(본인확인 시작)
+  | "rejoin_policy_changed" // 화면에 보여 준 재가입 제한 기간이 지금 정책과 다름(본인확인 시작, 화면을 다시 불러와 다시 동의)
   | "consent_outdated"; // 화면이 보여 준 동의 문서 버전이 지금과 다름(본인확인 시작)
 
 // resumed: 응답이 끊겨 같은 요청을 다시 보낸 경우(새로 만들지 않고 이미 만든 회원을 돌려줌)
@@ -347,6 +348,7 @@ export const BUYER_SIGNUP_MESSAGES: Record<BuyerSignupFailure | "daily_limit_exc
   rejoin_restricted: "지금은 다시 가입할 수 없어요",
   rejoin_consent_required: "재가입 제한 정보 보관에 동의해 주세요",
   consent_outdated: "약관이 바뀌었어요. 다시 확인하고 동의해 주세요",
+  rejoin_policy_changed: "재가입 제한 기간이 바뀌었어요. 바뀐 내용을 확인하고 다시 동의해 주세요",
   daily_limit_exceeded: "오늘은 본인확인을 더 할 수 없어요. 내일 다시 해 주세요",
   start_in_progress: "인증번호를 보내고 있어요. 잠시 뒤 다시 시도해 주세요",
 };
@@ -367,6 +369,7 @@ export const BUYER_SIGNUP_STATUS: Record<BuyerSignupFailure, number> = {
   rejoin_restricted: 403,
   rejoin_consent_required: 400,
   consent_outdated: 409,
+  rejoin_policy_changed: 409,
 };
 
 // 가입을 끝내지 않은 본인확인 기록 파기(PRODUCT_SCOPE 「동의 순서」·PRIVACY_CONSENT_TEMPLATE: 확인 시간이 끝나면 바로 지움).
