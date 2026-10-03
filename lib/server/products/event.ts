@@ -1,7 +1,7 @@
 import type { EventDiscountType, PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { notFound } from "../authz/errors";
-import { dbNow } from "../billing/subscription";
+import { dbClock } from "../orders/overdue";
 import { requireSellerPermission, type TenantContext } from "../tenant/context";
 
 // 상품 이벤트 할인·마감 임박 표시(대표님 결정 2026-10-03, PRODUCT_SCOPE 「상품 이벤트 할인·마감 임박 표시」).
@@ -34,8 +34,10 @@ export function discountedUnit(unit: number, e: ProductEvent): number {
 // 주문 단가: 기간 안이면 할인 뒤 단가, 아니면 정가
 export const orderUnitPrice = (unit: number, e: ProductEvent | null, now: Date) => (isEventActive(e, now) ? discountedUnit(unit, e) : unit);
 
-// 할인을 걸어도 모든 옵션의 단가가 1원 이상인지(가격·옵션 추가금을 바꿀 때도 확인한다)
-export const eventFits = (e: ProductEvent | null, price: number, deltas: number[]) => !e || deltas.every((d) => discountedUnit(price + d, e) >= 1);
+// 할인을 걸어도 모든 옵션의 단가가 1원 이상인지(가격·옵션 추가금을 바꿀 때도 확인한다).
+// 이미 끝난 이벤트(종료 ≤ 지금)는 다시 적용되지 않으므로 보지 않는다. 시작 전 이벤트는 앞으로 적용되므로 본다.
+export const eventFits = (e: ProductEvent | null, price: number, deltas: number[], now: Date) =>
+  !e || e.endsAt <= now || deltas.every((d) => discountedUnit(price + d, e) >= 1);
 
 const kstDate = (d: Date) => new Date(d.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
@@ -86,14 +88,16 @@ export async function setProductEvent(db: PrismaClient, ctx: TenantContext, prod
   requireSellerPermission(ctx, "PRODUCT_MANAGE");
   if (!UUID.test(productId)) throw notFound();
   return db.$transaction(async (tx) => {
-    const product = await tx.product.findFirst({ where: { id: productId, sellerId: ctx.sellerId, deletedAt: null } });
-    if (!product) throw notFound();
-    await tx.$queryRaw`SELECT id FROM "Product" WHERE id = ${productId}::uuid FOR UPDATE`;
-    const now = await dbNow(tx);
+    // 먼저 상품 행을 잠그고(가격·옵션 수정과 한 줄로), 그 뒤에 가격·옵션과 시각(잠금을 기다린 뒤의 DB 시계)을 읽는다
+    const locked = await tx.$queryRaw<{ id: string }[]>`
+      SELECT id FROM "Product" WHERE id = ${productId}::uuid AND "sellerId" = ${ctx.sellerId}::uuid AND "deletedAt" IS NULL FOR UPDATE`;
+    if (!locked[0]) throw notFound();
+    const product = await tx.product.findUniqueOrThrow({ where: { id: productId } });
+    const now = await dbClock(tx);
     const e = parseEvent(raw, now);
     if (typeof e === "string") return { ok: false as const, reason: e };
     const options = await tx.productOption.findMany({ where: { sellerId: ctx.sellerId, productId, deletedAt: null }, select: { priceDelta: true } });
-    if (!eventFits(e, product.price, [0, ...options.map((o) => o.priceDelta)])) return { ok: false as const, reason: "event_price_too_low" as const };
+    if (!eventFits(e, product.price, [0, ...options.map((o) => o.priceDelta)], now)) return { ok: false as const, reason: "event_price_too_low" as const };
     await tx.product.update({
       where: { id: productId },
       data: { eventDiscountType: e.type, eventDiscountValue: e.value, eventStartsAt: e.startsAt, eventEndsAt: e.endsAt },

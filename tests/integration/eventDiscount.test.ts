@@ -7,6 +7,7 @@ import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
 import { createOrder } from "../../lib/server/orders/create";
 import { ORDER_ERROR_MESSAGES } from "../../lib/server/orders/messages";
 import { createOption, createProduct, updateOption, updateProduct } from "../../lib/server/products/manage";
+import { setProductEvent } from "../../lib/server/products/event";
 import { rewardBase } from "../../lib/server/queue/service";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { PASSWORD, createLoginBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
@@ -133,5 +134,48 @@ describe("이벤트 할인 설정 검증", () => {
     const staff = await createSellerUser(s.seller.id, { permissions: [] });
     expect((await put(await cookieOf(staff.email), s.productId, { type: "RATE", value: 10, startsAt: iso(-HOUR), endsAt: iso(HOUR) })).status).toBe(403);
     expect((await del(await cookieOf(staff.email), s.productId)).status).toBe(403);
+  });
+});
+
+describe("Codex 검수 후속(#105)", () => {
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  // 다른 트랜잭션이 상품 행을 잠근 채 ms 동안 머무르게 한다(그 안에서 change를 실행하고 커밋)
+  const holdLock = (productId: string, ms: number, change: (tx: Parameters<Parameters<typeof db.$transaction>[0]>[0]) => Promise<unknown> = async () => undefined) =>
+    db.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "Product" WHERE id = ${productId}::uuid FOR UPDATE`;
+        await change(tx);
+        await wait(ms);
+      },
+      { timeout: 10_000 },
+    );
+
+  it("[1] 잠근 뒤에 가격을 읽어 검증한다: 가격 인하가 잠금을 잡고 있는 동안 들어온 이벤트는 바뀐 가격으로 검증해 거부한다", async () => {
+    const s = await shop();
+    const hold = holdLock(s.productId, 400, (tx) => tx.product.update({ where: { id: s.productId }, data: { price: 1000 } }));
+    await wait(100);
+    const r = await setProductEvent(db, s.ctx, s.productId, { type: "AMOUNT", value: 5000, startsAt: iso(-HOUR), endsAt: iso(HOUR) });
+    await hold;
+    expect(r).toEqual({ ok: false, reason: "event_price_too_low" });
+    expect((await db.product.findUniqueOrThrow({ where: { id: s.productId } })).eventDiscountType).toBeNull();
+  });
+
+  it("[2] 이미 끝난 이벤트는 가격·옵션 검증에서 빼고, 시작 전 이벤트는 그대로 검증한다", async () => {
+    const s = await shop();
+    expect((await put(s.cookie, s.productId, { type: "AMOUNT", value: 9000, startsAt: iso(HOUR), endsAt: iso(2 * HOUR) })).status).toBe(200);
+    expect(await updateProduct(db, s.ctx, s.productId, { price: 9000 })).toEqual({ ok: false, reason: "event_price_too_low" });
+    await db.product.update({ where: { id: s.productId }, data: { eventStartsAt: new Date(Date.now() - 3 * HOUR), eventEndsAt: new Date(Date.now() - HOUR) } });
+    expect((await updateProduct(db, s.ctx, s.productId, { price: 9000 })).ok).toBe(true);
+    expect((await createOption(db, s.ctx, s.productId, { name: "할인 옵션", priceDelta: -8500, stock: 1 })).ok).toBe(true);
+    expect((await updateOption(db, s.ctx, s.productId, s.base, { priceDelta: -8000 })).ok).toBe(true);
+  });
+
+  it("[3] 시각은 잠금을 기다린 뒤의 DB 시계로 본다: 기다리는 사이 종료 시각이 지나면 끝난 기간으로 거부한다", async () => {
+    const s = await shop();
+    const hold = holdLock(s.productId, 700);
+    await wait(100);
+    const r = await setProductEvent(db, s.ctx, s.productId, { type: "RATE", value: 10, startsAt: iso(-HOUR), endsAt: iso(300) });
+    await hold;
+    expect(r).toEqual({ ok: false, reason: "invalid_event_period" });
   });
 });

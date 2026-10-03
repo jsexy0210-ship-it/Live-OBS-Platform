@@ -14,9 +14,13 @@ describe("이벤트 할인 계산", () => {
     expect(orderUnitPrice(10000, e, at("2026-10-01T00:00:00Z"))).toBe(9000);
     expect(orderUnitPrice(10000, e, at("2026-10-10T15:00:00Z"))).toBe(10000);
     expect(orderUnitPrice(10000, null, at("2026-10-05T00:00:00Z"))).toBe(10000);
-    expect(eventFits({ ...e, type: "AMOUNT", value: 1000 }, 1000, [0])).toBe(false);
-    expect(eventFits({ ...e, type: "AMOUNT", value: 999 }, 1000, [0, 500])).toBe(true);
-    expect(eventFits(rate(90), 1, [0])).toBe(false); // 1원 × 10% → 0원
+    const mid = at("2026-10-05T00:00:00Z");
+    expect(eventFits({ ...e, type: "AMOUNT", value: 1000 }, 1000, [0], mid)).toBe(false);
+    expect(eventFits({ ...e, type: "AMOUNT", value: 999 }, 1000, [0, 500], mid)).toBe(true);
+    expect(eventFits(rate(90), 1, [0], mid)).toBe(false); // 1원 × 10% → 0원
+    // 시작 전은 검증하고, 끝난 뒤는 보지 않는다
+    expect(eventFits({ ...e, type: "AMOUNT", value: 1000 }, 1000, [0], at("2026-09-01T00:00:00Z"))).toBe(false);
+    expect(eventFits({ ...e, type: "AMOUNT", value: 1000 }, 1000, [0], at("2026-10-10T15:00:00Z"))).toBe(true);
   });
 
   it("마감 임박: 종료일이 오늘(KST)이면 「오늘 마감」, 7일 안이면 「D-n」, 하루 안이면 남은 시간 문구. 시작 전·끝난 뒤는 배지 없음", () => {

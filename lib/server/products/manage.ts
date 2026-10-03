@@ -2,6 +2,7 @@ import type { EventDiscountType, Prisma, PrismaClient, ProductStatus, StockDeduc
 import { writeAudit } from "../audit/log";
 import { notFound } from "../authz/errors";
 import { dbNow } from "../billing/subscription";
+import { dbClock } from "../orders/overdue";
 import { INT4_MAX } from "../orders/shipping";
 import { cleanText } from "../text/clean";
 import { eventFits, eventOf, eventView } from "./event";
@@ -273,7 +274,7 @@ export async function updateProduct(
     const price = (data.price as number | undefined) ?? before.price;
     if (options.some((o) => !unitOk(price, o.priceDelta))) return fail("invalid_price");
     // 이벤트 할인이 걸려 있으면 바뀐 가격에서도 할인 뒤 단가가 1원 이상이어야 한다
-    if (!eventFits(eventOf(before), price, [0, ...options.map((o) => o.priceDelta)])) return fail("event_price_too_low");
+    if (!eventFits(eventOf(before), price, [0, ...options.map((o) => o.priceDelta)], await dbClock(tx))) return fail("event_price_too_low");
     if ((data.status ?? before.status) === "ON_SALE" && options.length === 0) return fail("no_sellable_option");
     await tx.product.update({ where: { id: productId }, data });
     await writeAudit(tx, {
@@ -307,7 +308,7 @@ export async function createOption(db: PrismaClient, ctx: TenantContext, product
   return db.$transaction(async (tx) => {
     const product = await lockProduct(tx, ctx.sellerId, productId);
     if (!unitOk(product.price, o.priceDelta)) return fail("invalid_price");
-    if (!eventFits(eventOf(product), product.price, [o.priceDelta])) return fail("event_price_too_low");
+    if (!eventFits(eventOf(product), product.price, [o.priceDelta], await dbClock(tx))) return fail("event_price_too_low");
     if ((await tx.productOption.count({ where: { sellerId: ctx.sellerId, productId, deletedAt: null } })) >= MAX_OPTIONS_PER_PRODUCT) {
       return fail("too_many_options");
     }
@@ -361,7 +362,9 @@ export async function updateOption(db: PrismaClient, ctx: TenantContext, product
     const option = await tx.productOption.findFirst({ where: { id: optionId, sellerId: ctx.sellerId, productId, deletedAt: null } });
     if (!option) throw notFound();
     if (data.priceDelta !== undefined && !unitOk(product.price, data.priceDelta as number)) return fail("invalid_price");
-    if (data.priceDelta !== undefined && !eventFits(eventOf(product), product.price, [data.priceDelta as number])) return fail("event_price_too_low");
+    if (data.priceDelta !== undefined && !eventFits(eventOf(product), product.price, [data.priceDelta as number], await dbClock(tx))) {
+      return fail("event_price_too_low");
+    }
     const now = await dbNow(tx);
     if (stockChange) {
       const stock = b.stock as number;
