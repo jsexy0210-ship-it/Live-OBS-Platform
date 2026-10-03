@@ -22,7 +22,8 @@ const H = { "content-type": "application/json", host: "localhost:3000", origin: 
 const consent = { agreed: true, noticeVersion: OPENED_NO_REFUND_CONSENT.version };
 const addr = { recipientName: "김구매", phone: "01012345678", zipCode: "06236", address1: "서울 강남구 테헤란로 1" };
 const HOUR = 60 * 60 * 1000;
-const iso = (ms: number) => new Date(Date.now() + ms).toISOString();
+// 지금부터 ms 뒤 시각. 같은 시각을 두 번 써야 하면 base를 한 번 잡아 넘긴다(호출마다 Date.now()가 달라 흔들리지 않게).
+const iso = (ms: number, base = Date.now()) => new Date(base + ms).toISOString();
 
 async function cookieOf(email: string) {
   const r = await loginSeller(db, { email, password: PASSWORD }, {});
@@ -89,17 +90,18 @@ describe("이벤트 할인 주문 금액", () => {
 describe("이벤트 할인 설정 검증", () => {
   it("할인율 1~90%·할인 금액 1원 이상·기간(종료 > 시작, 종료 > 지금, 1년 안) 밖이면 400과 문구, 할인 뒤 단가가 1원 미만이면 거부", async () => {
     const s = await shop();
-    const period = { startsAt: iso(-HOUR), endsAt: iso(HOUR) };
+    const base = Date.now();
+    const period = { startsAt: iso(-HOUR, base), endsAt: iso(HOUR, base) };
     for (const body of [{ type: "RATE", value: 0, ...period }, { type: "RATE", value: 91, ...period }, { type: "RATE", value: "10", ...period }, { type: "FREE", value: 10, ...period }, { type: "AMOUNT", value: 1.5, ...period }]) {
       const r = await put(s.cookie, s.productId, body);
       expect(r.status, JSON.stringify(body)).toBe(400);
       expect(await r.json()).toEqual({ error: "invalid_event", message: ORDER_ERROR_MESSAGES.invalid_event });
     }
     for (const p of [
-      { startsAt: iso(HOUR), endsAt: iso(HOUR) },
-      { startsAt: iso(-2 * HOUR), endsAt: iso(-HOUR) },
-      { startsAt: iso(0), endsAt: iso(366 * 24 * HOUR) },
-      { startsAt: "내일", endsAt: iso(HOUR) },
+      { startsAt: iso(HOUR, base), endsAt: iso(HOUR, base) },
+      { startsAt: iso(-2 * HOUR, base), endsAt: iso(-HOUR, base) },
+      { startsAt: iso(0, base), endsAt: iso(366 * 24 * HOUR, base) },
+      { startsAt: "내일", endsAt: iso(HOUR, base) },
     ]) {
       const r = await put(s.cookie, s.productId, { type: "RATE", value: 10, ...p });
       expect(r.status).toBe(400);
