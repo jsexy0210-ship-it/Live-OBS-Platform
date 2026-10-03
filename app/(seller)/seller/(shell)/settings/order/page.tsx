@@ -137,6 +137,12 @@ export default function OrderSettingsPage() {
               )}
               <section className="card pad col" style={{ gap: 10 }}>
                 <h2 className="t-hl2">미입금 주문 자동 취소</h2>
+                {/* 자동 취소·주문 막기를 실제로 돌리는 정기 실행이 아직 연결되지 않았다(HANDOFF 「미입금 자동 취소 정기 실행 미연결」). 연결되면 이 안내를 지운다 */}
+                <div className="msg msg-cau" role="note" data-testid="auto-cancel-pending">
+                  <span>
+                    <b>아직 자동으로 취소되지 않아요.</b> 정해 둔 설정은 저장되고, 자동 취소가 시작되면 그대로 적용돼요. 그 전까지는 기한이 지난 주문을 직접 취소해 주세요.
+                  </span>
+                </div>
                 <div className="row between" style={SET_ROW}>
                   <span className="col" style={{ gap: 2 }}>
                     <span className="t-l1 fw6" id="ac-label">
