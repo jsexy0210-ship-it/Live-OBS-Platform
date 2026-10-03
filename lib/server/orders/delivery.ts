@@ -3,7 +3,7 @@ import { writeAudit } from "../audit/log";
 import { recordOrderEarn } from "../queue/service";
 import { requireSellerPermission, type TenantContext } from "../tenant/context";
 import { dbClock, getOrderPolicy } from "./overdue";
-import { holdFinishedOrders } from "../buyers/legalHold";
+import { refreshOrderRetention } from "../buyers/legalHold";
 
 // 배송 완료·구매 확정(PRODUCT_SCOPE 「배송 완료」·「구매 확정」, 「적립금 지급 시점」).
 // - 배송 완료: 판매자가 직접 처리하거나, 배송 중으로 n일(판매자 설정, 기본 사용·7일)이 지나면 자동으로 처리한다.
@@ -124,10 +124,10 @@ async function autoConfirmOrder(tx: Tx, o: { orderId: string; sellerId: string }
   if (order.purchaseConfirmedAt || !deliveredAt) return false;
   const policy = await getOrderPolicy(tx, o.sellerId);
   if (!policy.autoConfirmEnabled || deliveredAt.getTime() + policy.autoConfirmDays * DAY_MS > locked.now.getTime()) return false;
-  const confirmed = await tx.order.update({ where: { id: o.orderId }, data: { purchaseConfirmedAt: locked.now }, select: { buyerMemberId: true } });
+  await tx.order.update({ where: { id: o.orderId }, data: { purchaseConfirmedAt: locked.now } });
   await writeAudit(tx, { ...SYSTEM, sellerId: o.sellerId, action: "order.purchase_confirmed", targetType: "Order", targetId: o.orderId });
-  // 탈퇴한 회원의 주문이면 이제 끝난 거래라 법정 보관으로 분리한다(buyers/legalHold.ts)
-  await holdFinishedOrders(tx, o.sellerId, confirmed.buyerMemberId, locked.now, o.orderId);
+  // 끝난 거래가 되었으니 보관 만료일을 계산하고, 탈퇴한 회원의 주문이면 분리 보관 표시를 단다(buyers/legalHold.ts)
+  await refreshOrderRetention(tx, o.sellerId, locked.now, { orderId: o.orderId });
   return true;
 }
 

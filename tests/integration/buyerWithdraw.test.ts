@@ -5,15 +5,18 @@ import { POST as loginRoute } from "../../app/api/shop/[slug]/auth/login/route";
 import { POST as withdrawRoute } from "../../app/api/shop/[slug]/me/withdraw/route";
 import { createAddress } from "../../lib/server/buyers/addresses";
 import { WITHDRAW_FAIL_LIMIT, WITHDRAW_MESSAGES, withdrawBuyer } from "../../lib/server/buyers/withdraw";
+import { writeAudit } from "../../lib/server/audit/log";
 import { prisma } from "../../lib/server/db";
 import { loginBuyer, loginSeller } from "../../lib/server/auth/login";
 import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
 import { createOrder } from "../../lib/server/orders/create";
 import { getBuyerOrder, listBuyerOrders } from "../../lib/server/orders/buyer";
 import { autoConfirmPurchases } from "../../lib/server/orders/delivery";
+import { maybeRestrict } from "../../lib/server/orders/overdue";
 import { getOrder, listOrders, listSellerOrders } from "../../lib/server/orders/read";
 import { signupBuyer } from "../../lib/server/buyers/signup";
 import { identityProvider } from "../../lib/server/identity/registry";
+import { identityUsage } from "../../lib/server/identity/verification";
 import { refundOrder } from "../../lib/server/queue/service";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { PASSWORD, confirmIdv, createLoginBuyer, createPaidOrderItem, createSeller, createSellerUser, db, resetDb, startIdv } from "./helpers";
@@ -75,7 +78,7 @@ describe("구매자 탈퇴", () => {
     // 세션은 폐기 표시가 아니라 행을 지운다
     expect(await db.buyerSession.count({ where: { buyerMemberId: s.buyer.id } })).toBe(0);
     expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.withdraw", actorId: s.buyer.id } })).toMatchObject({
-      after: { status: "WITHDRAWN", deletedAddresses: 1, deletedSessions: 1, deletedVerifications: 0, anonymizedOrders: 2, expiredPoints: 500, closedPendingRewards: 0 },
+      after: { status: "WITHDRAWN", deletedAddresses: 1, deletedSessions: 1, anonymizedVerifications: 0, anonymizedOrders: 2, expiredPoints: 500, closedPendingRewards: 0 },
     });
     // 주문은 회원 id로 남는다
     expect(await db.order.count({ where: { buyerMemberId: s.buyer.id } })).toBe(2);
@@ -87,11 +90,11 @@ describe("구매자 탈퇴", () => {
     );
     expect(login.status).toBe(401);
     // 같은 CI·휴대폰·아이디·닉네임으로 다시 가입할 수 있다(부분 유니크 인덱스는 탈퇴 회원을 보지 않음)
-    const { id: _id, createdAt: _c, deletedAt: _d, status: _st, ...again } = s.buyer;
+    const { id: _id, createdAt: _c, deletedAt: _d, status: _st, signupConsent: _sc, ...again } = s.buyer;
     await expect(db.buyerMember.create({ data: again })).resolves.toMatchObject({ status: "ACTIVE" });
   });
 
-  it("거래 없는 회원이 탈퇴하면 회원 행의 생년월일·CI 해시를 지우고 그 회원의 본인확인 기록은 행을 지운다. 다른 사람·다른 쇼핑몰 기록은 그대로", async () => {
+  it("거래 없는 회원이 탈퇴하면 회원 행의 생년월일·CI 해시를 지우고 그 회원의 본인확인 기록은 식별 항목만 비우고(requestId 무작위) 체험 한도·IP 횟수 계산 값은 남긴다. 다른 사람·다른 쇼핑몰 기록은 그대로", async () => {
     const provider = identityProvider()!;
     const { seller } = await createSeller();
     const other = await createSeller();
@@ -104,7 +107,7 @@ describe("구매자 탈퇴", () => {
     const mine = await verified(seller.id);
     const r = await signupBuyer(db, provider, {
       sellerId: seller.id, verificationId: mine.verification.id, ownerToken: mine.ownerToken,
-      loginId: "me@example.com", password: "pw-123456", broadcastNickname: "나", agreedTerms: true, agreedPrivacy: true,
+      loginId: "me@example.com", password: "pw-123456", broadcastNickname: "나",
     });
     if (!r.ok) throw new Error(r.reason);
     // 가입 뒤 같은 사람이 다시 한 본인확인(회원과 이어지지 않음), 다른 사람·다른 쇼핑몰의 같은 사람 기록
@@ -113,15 +116,31 @@ describe("구매자 탈퇴", () => {
     const elsewhere = await verified(other.seller.id);
     const member = await db.buyerMember.findUniqueOrThrow({ where: { id: r.memberId } });
     expect(member.birthDate).not.toBeNull();
+    const before = new Map((await db.identityVerification.findMany()).map((v) => [v.id, v]));
+    const usage = await identityUsage(db, seller.id);
+    const ipCount = () => db.identityVerification.count({ where: { sellerId: seller.id, purpose: "BUYER_SIGNUP", requestIp: "203.0.113.7" } });
+    const ipBefore = await ipCount();
 
-    expect(await withdrawBuyer(db, { sellerId: seller.id, buyerMemberId: member.id }, { password: "pw-123456" })).toEqual({ ok: true });
+    const now = new Date();
+    expect(await withdrawBuyer(db, { sellerId: seller.id, buyerMemberId: member.id }, { password: "pw-123456", now })).toEqual({ ok: true });
     expect(await db.buyerMember.findUniqueOrThrow({ where: { id: member.id } })).toMatchObject({ birthDate: null, ciHash: "" });
-    // 이 회원의 본인확인 기록은 행을 지운다(이어진 기록·같은 CI 해시 기록)
-    expect(await db.identityVerification.count({ where: { id: { in: [mine.verification.id, again.verification.id] } } })).toBe(0);
-    for (const id of [stranger.verification.id, elsewhere.verification.id]) {
-      expect(await db.identityVerification.findUniqueOrThrow({ where: { id } })).toMatchObject({ name: expect.any(String), ciHash: expect.any(String), requestIp: "203.0.113.7" });
+    // 이 회원의 본인확인 기록(이어진 기록·같은 CI 해시 기록)은 행을 두고 식별 항목만 비운다. requestId는 무작위 값으로 바꾼다
+    for (const id of [mine.verification.id, again.verification.id]) {
+      const v = await db.identityVerification.findUniqueOrThrow({ where: { id } });
+      const was = before.get(id)!;
+      expect(v).toMatchObject({
+        name: null, phone: null, requestedPhone: null, birthDate: null, ciHash: null, subjectId: null, signupConsent: null, ownerTokenHash: null,
+        anonymizedAt: now, status: "VERIFIED", sellerId: seller.id, createdAt: was.createdAt, requestIp: "203.0.113.7",
+      });
+      expect(v.requestId).not.toBe(was.requestId);
     }
-    expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.withdraw", actorId: member.id } })).toMatchObject({ after: { deletedVerifications: 2 } });
+    for (const id of [stranger.verification.id, elsewhere.verification.id]) {
+      expect(await db.identityVerification.findUniqueOrThrow({ where: { id } })).toMatchObject({ name: expect.any(String), ciHash: expect.any(String), requestIp: "203.0.113.7", anonymizedAt: null });
+    }
+    // 체험 한도 사용량(VERIFIED 건수)과 같은 IP 기록 수는 탈퇴 뒤에도 그대로
+    expect(await identityUsage(db, seller.id)).toBe(usage);
+    expect(await ipCount()).toBe(ipBefore);
+    expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.withdraw", actorId: member.id } })).toMatchObject({ after: { anonymizedVerifications: 2 } });
   });
 
   it("탈퇴하면 처리 전 적립 원장(지급·회수 대기)은 실패(member_withdrawn)로 닫히고, 잔액이 없으면 소멸 원장을 남기지 않으며, 같은 사람이 다시 가입해도 적립금은 0", async () => {
@@ -135,7 +154,7 @@ describe("구매자 탈퇴", () => {
     expect(await db.rewardLedger.findUniqueOrThrow({ where: { id: pending.id } })).toMatchObject({ status: "FAILED", failureReason: "member_withdrawn", processedAt: expect.any(Date) });
     expect(await db.rewardLedger.count({ where: { buyerMemberId: s.buyer.id, type: "EXPIRE" } })).toBe(0);
     expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.withdraw", actorId: s.buyer.id } })).toMatchObject({ after: { expiredPoints: 0, closedPendingRewards: 1 } });
-    const { id: _id, createdAt: _c, deletedAt: _d, status: _st, ...again } = s.buyer;
+    const { id: _id, createdAt: _c, deletedAt: _d, status: _st, signupConsent: _sc, ...again } = s.buyer;
     const back = await db.buyerMember.create({ data: again });
     expect(await db.rewardBalance.findUnique({ where: { sellerId_buyerMemberId: { sellerId: s.seller.id, buyerMemberId: back.id } } })).toBeNull();
     expect(await db.rewardLedger.count({ where: { buyerMemberId: back.id } })).toBe(0);
@@ -240,9 +259,9 @@ describe("구매자 탈퇴", () => {
     expect((await s.withdraw(PASSWORD)).status).toBe(200);
   });
 
-  it("진행 중인 주문(결제 대기·발송 전·배송 중·재고 부족 환불 대기)이 있으면 409, 배송 완료·구매 확정·취소·환불된 주문만 있으면 탈퇴된다", async () => {
+  it("결제 완료 뒤 배송 완료 전 주문(발송 전·배송 중·재고 부족 환불 대기)이 있으면 409, 결제 대기·배송 완료·구매 확정·취소·환불된 주문만 있으면 탈퇴된다", async () => {
     for (const [status, extra, shipment, expected] of [
-      ["PENDING_PAYMENT", {}, null, 409],
+      ["PENDING_PAYMENT", {}, null, 200],
       ["PAID", {}, null, 409],
       ["PAID", {}, "IN_TRANSIT", 409],
       ["PAID", { stockShortageAt: new Date() }, null, 409],
@@ -262,10 +281,35 @@ describe("구매자 탈퇴", () => {
       const res = await s.withdraw(PASSWORD);
       expect(res.status, `${status} ${JSON.stringify(extra)} ${shipment}`).toBe(expected);
       if (expected === 409) {
-        expect(await res.json()).toEqual({ error: "orders_in_progress", message: "진행 중인 주문이 끝나면 탈퇴할 수 있어요" });
+        expect(await res.json()).toEqual({ error: "orders_in_progress", message: "배송 중인 주문이 끝나거나 환불되면 탈퇴할 수 있어요" });
         expect((await db.buyerMember.findUniqueOrThrow({ where: { id: s.buyer.id } })).status).toBe("ACTIVE");
       }
     }
+  });
+
+  it("결제 대기 주문은 탈퇴 트랜잭션 안에서 판매자 취소와 같은 경로로 자동 취소한다(주문 때 뺀 재고 되돌림·상태 이력·감사 로그). 결제 완료·배송 전 주문이 함께 있으면 아무것도 바꾸지 않고 409", async () => {
+    const s = await shop();
+    // 주문 때 재고를 빼는 상품(ORDER)의 결제 대기 주문
+    const product = await db.product.create({ data: { sellerId: s.seller.id, name: "부스터 팩", price: 1000, status: "ON_SALE", stockDeductMode: "ORDER" } });
+    const option = await db.productOption.create({ data: { sellerId: s.seller.id, productId: product.id, name: "1팩", stock: 4 } });
+    const pending = await s.order("PENDING_PAYMENT");
+    const now0 = new Date();
+    await db.orderItem.create({ data: { sellerId: s.seller.id, orderId: pending.id, productId: product.id, optionId: option.id, productNameSnapshot: "부스터 팩", optionNameSnapshot: "1팩", unitPrice: 1000, quantity: 1, stockDeductedAt: now0 } });
+    await db.stockMovement.create({ data: { sellerId: s.seller.id, optionId: option.id, delta: -1, reason: "ORDER", orderId: pending.id, actorType: "BUYER", actorId: s.buyer.id, createdAt: now0 } });
+
+    // 결제 완료·발송 전 주문이 있으면 409이고 결제 대기 주문도 그대로
+    const paid = await s.order("PAID", { paidAt: new Date() });
+    const blocked = await s.withdraw(PASSWORD);
+    expect(blocked.status).toBe(409);
+    expect((await db.order.findUniqueOrThrow({ where: { id: pending.id } })).status).toBe("PENDING_PAYMENT");
+    await db.order.update({ where: { id: paid.id }, data: { status: "REFUNDED", refundedAt: new Date() } });
+
+    expect((await s.withdraw(PASSWORD)).status).toBe(200);
+    expect(await db.order.findUniqueOrThrow({ where: { id: pending.id } })).toMatchObject({ status: "CANCELLED", cancelledAt: expect.any(Date), legalHoldAt: expect.any(Date) });
+    expect((await db.productOption.findUniqueOrThrow({ where: { id: option.id } })).stock).toBe(5);
+    expect(await db.orderStatusHistory.findFirstOrThrow({ where: { orderId: pending.id, toStatus: "CANCELLED" } })).toMatchObject({ actorType: "BUYER", actorId: s.buyer.id, reason: "member_withdrawn" });
+    expect(await db.auditLog.findFirstOrThrow({ where: { action: "order.cancel", targetId: pending.id } })).toMatchObject({ actorType: "BUYER", actorId: s.buyer.id, reason: "member_withdrawn" });
+    expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.withdraw", actorId: s.buyer.id } })).toMatchObject({ after: { cancelledPendingOrders: 1 } });
   });
 
   it("로그인하지 않았거나, 다른 쇼핑몰 세션·판매자 세션이면 401, 다른 출처는 403", async () => {
@@ -334,7 +378,7 @@ describe("탈퇴와 동시 요청", () => {
     expect(await db.buyerAddress.count({ where: { buyerMemberId: s.buyer.id } })).toBe(0);
   });
 
-  it("주문 생성이 탈퇴와 겹쳐도 탈퇴 회원에게 결제 대기 주문이 생기지 않는다", async () => {
+  it("주문 생성이 탈퇴와 겹쳐도 탈퇴 회원에게 결제 대기 주문이 남지 않는다(탈퇴가 자동 취소)", async () => {
     const s = await shop();
     const product = await db.product.create({ data: { sellerId: s.seller.id, name: "부스터 팩", price: 5000, status: "ON_SALE" } });
     const option = await db.productOption.create({ data: { sellerId: s.seller.id, productId: product.id, name: "1박스", stock: 10 } });
@@ -354,11 +398,12 @@ describe("탈퇴와 동시 요청", () => {
     const [ordered, withdrawn] = await Promise.all([ordering, withdrawing]);
     const member = await db.buyerMember.findUniqueOrThrow({ where: { id: s.buyer.id } });
     const pending = await db.order.count({ where: { buyerMemberId: s.buyer.id, status: "PENDING_PAYMENT" } });
-    // 주문이 먼저 끝나므로 탈퇴는 진행 중 주문으로 막힌다
+    // 주문이 먼저 끝나고(같은 판매자 주문 잠금), 탈퇴가 그 결제 대기 주문을 자동 취소한 뒤 진행된다
     expect(ordered.ok).toBe(true);
-    expect(withdrawn).toEqual({ ok: false, reason: "orders_in_progress" });
-    expect(member.status).toBe("ACTIVE");
-    expect(pending).toBe(1);
+    expect(withdrawn).toEqual({ ok: true });
+    expect(member.status).toBe("WITHDRAWN");
+    expect(pending).toBe(0);
+    expect(await db.order.count({ where: { buyerMemberId: s.buyer.id, status: "CANCELLED" } })).toBe(1);
   });
   it("로그인이 탈퇴와 겹쳐도 탈퇴 회원에게 살아 있는 세션이 남지 않는다", async () => {
     const s = await shop();
@@ -380,11 +425,21 @@ describe("탈퇴와 동시 요청", () => {
 });
 
 describe("탈퇴 회원 법정 보관 분리", () => {
+  // PostgreSQL make_interval(months)와 같게 더한다(말일은 그 달 마지막 날로)
+  const addMonths = (d: Date, months: number) => {
+    const r = new Date(d);
+    const day = r.getUTCDate();
+    r.setUTCDate(1);
+    r.setUTCMonth(r.getUTCMonth() + months);
+    const last = new Date(Date.UTC(r.getUTCFullYear(), r.getUTCMonth() + 1, 0)).getUTCDate();
+    r.setUTCDate(Math.min(day, last));
+    return r;
+  };
   const YEAR5 = (d: Date) => new Date(Date.UTC(d.getUTCFullYear() + 5, d.getUTCMonth(), d.getUTCDate(), d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds(), d.getUTCMilliseconds()));
   const ship = (sellerId: string, orderId: string, deliveredAt: Date) =>
     db.shipment.create({ data: { sellerId, orderId, courier: "CJ", trackingNumber: "123456789012", status: "DELIVERED", shippedAt: deliveredAt, deliveredAt } });
 
-  it("탈퇴하면 끝난 주문(취소·환불·구매 확정)에 분리 보관 표시와 마지막 거래 + 5년 만료일을 달고 판매자·구매자 일반 조회에서 뺀다. 구매 확정 전 주문은 두고, 환불·자동 구매 확정 때 분리한다", async () => {
+  it("탈퇴하지 않은 회원의 끝난 주문은 일반 조회에 그대로 두고, 탈퇴하면 끝난 주문(취소·환불·구매 확정)에 분리 보관 표시와 끝난 날 + 5년 만료일을 달아 판매자·구매자 일반 조회에서 뺀다. 구매 확정 전 주문은 두고, 환불·자동 구매 확정 때 분리한다", async () => {
     const s = await shop();
     const t0 = new Date("2026-09-01T00:00:00.000Z");
     const refundedAt = new Date("2026-09-05T03:00:00.000Z");
@@ -399,6 +454,16 @@ describe("탈퇴 회원 법정 보관 분리", () => {
     // 다른 회원 주문은 그대로
     const other = await createLoginBuyer(s.seller.id, s.grade.id);
     const otherOrder = await db.order.create({ data: { sellerId: s.seller.id, orderNo: 99, buyerMemberId: other.id, broadcastNicknameSnapshot: "남", totalAmount: 1000, status: "CANCELLED", cancelledAt: t0 } });
+    const otherToConfirm = await db.order.create({ data: { sellerId: s.seller.id, orderNo: 98, buyerMemberId: other.id, broadcastNicknameSnapshot: "남", totalAmount: 1000, status: "PAID", paidAt: new Date(Date.now() - 9 * 86400_000) } });
+    await ship(s.seller.id, otherToConfirm.id, new Date(Date.now() - 8 * 86400_000));
+    const owner = await createSellerUser(s.seller.id, "OWNER");
+    const sctx: TenantContext = { sellerId: s.seller.id, actorType: "SELLER_USER", actorId: owner.id, isOwner: true, permissions: [], readOnly: false };
+
+    // 탈퇴 전: 회원 서비스(주문 내역 등)를 위해 끝난 주문도 판매자·구매자 조회에 그대로 있다
+    const activeList = await listSellerOrders(db, sctx, {});
+    expect(activeList.ok && activeList.orders.map((o) => o.id)).toEqual(expect.arrayContaining([cancelled.id, refunded.id, confirmed.id]));
+    const activeMine = await listBuyerOrders(db, { sellerId: s.seller.id, buyerMemberId: s.buyer.id });
+    expect(activeMine.ok && activeMine.value.orders.map((o) => o.id)).toEqual(expect.arrayContaining([cancelled.id, refunded.id, confirmed.id]));
 
     const before = Date.now();
     expect((await s.withdraw(PASSWORD)).status).toBe(200);
@@ -407,15 +472,13 @@ describe("탈퇴 회원 법정 보관 분리", () => {
     expect(rows.get(refunded.id)!.legalRetainUntil).toEqual(YEAR5(refundedAt));
     expect(rows.get(confirmed.id)!.legalRetainUntil).toEqual(new Date("2031-09-10T00:00:00.000Z"));
     for (const id of [cancelled.id, refunded.id, confirmed.id]) expect(rows.get(id)!.legalHoldAt!.getTime()).toBeGreaterThanOrEqual(before);
-    for (const id of [toRefund.id, toConfirm.id, otherOrder.id]) expect(rows.get(id)).toMatchObject({ legalHoldAt: null, legalRetainUntil: null });
+    for (const id of [toRefund.id, toConfirm.id, otherOrder.id, otherToConfirm.id]) expect(rows.get(id)).toMatchObject({ legalHoldAt: null, legalRetainUntil: null });
     expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.withdraw", actorId: s.buyer.id } })).toMatchObject({ after: { heldOrders: 3 } });
 
     // 판매자 일반 조회(목록·검색·상세)와 구매자 조회에서 빠진다
-    const owner = await createSellerUser(s.seller.id, "OWNER");
-    const sctx: TenantContext = { sellerId: s.seller.id, actorType: "SELLER_USER", actorId: owner.id, isOwner: true, permissions: [], readOnly: false };
     const listed = await listSellerOrders(db, sctx, {});
     if (!listed.ok) throw new Error("list");
-    expect(listed.orders.map((o) => o.id).sort()).toEqual([toRefund.id, toConfirm.id, otherOrder.id].sort());
+    expect(listed.orders.map((o) => o.id).sort()).toEqual([toRefund.id, toConfirm.id, otherOrder.id, otherToConfirm.id].sort());
     const searched = await listSellerOrders(db, sctx, { q: String(refunded.orderNo) });
     expect(searched.ok).toBe(true);
     expect(searched.ok && searched.orders.map((o) => o.id)).not.toContain(refunded.id);
@@ -432,15 +495,46 @@ describe("탈퇴 회원 법정 보관 분리", () => {
     const afterRefund = await db.order.findUniqueOrThrow({ where: { id: toRefund.id } });
     expect(afterRefund.legalHoldAt).not.toBeNull();
     expect(afterRefund.legalRetainUntil).toEqual(YEAR5(afterRefund.refundedAt!));
-    expect(await autoConfirmPurchases(db)).toMatchObject({ done: [toConfirm.id] });
+    expect((await autoConfirmPurchases(db)).done.sort()).toEqual([toConfirm.id, otherToConfirm.id].sort());
     const afterConfirm = await db.order.findUniqueOrThrow({ where: { id: toConfirm.id } });
     expect(afterConfirm.legalHoldAt).not.toBeNull();
     expect(afterConfirm.legalRetainUntil).toEqual(YEAR5(afterConfirm.purchaseConfirmedAt!));
-    // 탈퇴하지 않은 회원 주문은 끝나도 분리하지 않는다
+    // 탈퇴하지 않은 회원 주문은 끝나면 보관 만료일만 계산하고 분리하지 않는다(일반 조회에 그대로)
+    const otherConfirmed = await db.order.findUniqueOrThrow({ where: { id: otherToConfirm.id } });
+    expect(otherConfirmed).toMatchObject({ legalHoldAt: null, legalRetainUntil: YEAR5(otherConfirmed.purchaseConfirmedAt!) });
+    expect((await getOrder(db, sctx, otherToConfirm.id)).id).toBe(otherToConfirm.id);
     expect((await db.order.findUniqueOrThrow({ where: { id: otherOrder.id } })).legalHoldAt).toBeNull();
+
+    // 분리된 구매 확정 주문을 나중에 환불하면 보관 만료일을 환불 날 기준으로 다시 계산한다(분리 표시는 그대로)
+    const heldAt = rows.get(confirmed.id)!.legalHoldAt;
+    const late = await refundOrder(db, sctx, confirmed.id, { reason: "불량", expectedLiveVersion: (await db.seller.findUniqueOrThrow({ where: { id: s.seller.id } })).liveVersion, fault: "SELLER" });
+    expect(late.ok).toBe(true);
+    const lateRefunded = await db.order.findUniqueOrThrow({ where: { id: confirmed.id } });
+    expect(lateRefunded.legalHoldAt).toEqual(heldAt);
+    expect(lateRefunded.legalRetainUntil).toEqual(YEAR5(lateRefunded.refundedAt!));
   });
 
-  it("탈퇴 회원이 행위자·대상인 감사 로그는 거래 관련만 분리 보관하고 기록 시각 + 5년, 거래 무관은 탈퇴 + 3개월까지 회원 id를 둔다. 다른 회원·다른 쇼핑몰 기록은 그대로", async () => {
+  it("탈퇴한 회원에게는 구매 제한을 새로 만들지 않는다", async () => {
+    const s = await shop();
+    expect((await s.withdraw(PASSWORD)).status).toBe(200);
+    // 탈퇴 뒤에 기준(미입금 자동 취소 3회)을 채운 경우
+    for (let i = 0; i < 3; i++) {
+      const at = new Date(Date.now() - (3 - i) * 60_000);
+      await s.order("CANCELLED", { cancelledAt: at, autoCancelledAt: at });
+    }
+    const r = await db.$transaction((tx) => maybeRestrict(tx, s.seller.id, s.buyer.id, new Date()));
+    expect(r).toBeNull();
+    expect(await db.buyerPurchaseRestriction.count({ where: { buyerMemberId: s.buyer.id } })).toBe(0);
+    // 탈퇴하지 않은 회원은 그대로 제한된다
+    const t = await shop();
+    for (let i = 0; i < 3; i++) {
+      const at = new Date(Date.now() - (3 - i) * 60_000);
+      await t.order("CANCELLED", { cancelledAt: at, autoCancelledAt: at });
+    }
+    expect(await db.$transaction((tx) => maybeRestrict(tx, t.seller.id, t.buyer.id, new Date()))).not.toBeNull();
+  });
+
+  it("회원이 행위자·대상인 감사 로그는 기록할 때 보관 기한(거래 관련 기록 시각 + 5년, 거래 무관 기록 시각 + 3개월)을 달고(탈퇴와 상관없이), 탈퇴하면 거래 관련만 분리 보관한다. 다른 회원·다른 쇼핑몰 기록은 그대로", async () => {
     const s = await shop();
     const at = new Date("2026-08-01T00:00:00.000Z");
     const log = (action: string, extra: Record<string, unknown> = {}) =>
@@ -462,12 +556,31 @@ describe("탈퇴 회원 법정 보관 분리", () => {
     expect(await withdrawBuyer(db, { sellerId: s.seller.id, buyerMemberId: s.buyer.id }, { password: PASSWORD, now })).toEqual({ ok: true });
     const get = (id: string) => db.auditLog.findUniqueOrThrow({ where: { id } });
     const fiveYears = new Date("2031-08-01T00:00:00.000Z");
-    const threeMonths = new Date("2027-01-03T05:00:00.000Z");
+    const threeMonths = new Date("2026-11-01T00:00:00.000Z");
     expect(await get(orderCreate.id)).toMatchObject({ legalHoldAt: now, retainUntil: fiveYears });
     // 분류가 없는 행동은 더 긴 거래 관련 기준
     expect(await get(unknown.id)).toMatchObject({ legalHoldAt: now, retainUntil: fiveYears });
     for (const r of [login, loginFailed, signup, address, restriction]) expect(await get(r.id), r.action).toMatchObject({ legalHoldAt: null, retainUntil: threeMonths });
-    expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.withdraw", actorId: s.buyer.id } })).toMatchObject({ legalHoldAt: null, retainUntil: threeMonths });
+    const withdrawRow = await db.auditLog.findFirstOrThrow({ where: { action: "buyer.withdraw", actorId: s.buyer.id } });
+    expect(withdrawRow.legalHoldAt).toBeNull();
+    expect(withdrawRow.retainUntil).toEqual(addMonths(withdrawRow.createdAt, 3));
     for (const r of [other, otherShopRow]) expect(await get(r.id)).toMatchObject({ legalHoldAt: null, retainUntil: null });
+  });
+
+  it("탈퇴하지 않은 회원도 감사 로그를 남길 때 행동 종류별 보관 기한이 기록 시각 기준으로 붙고, 회원과 무관한 행은 붙지 않는다", async () => {
+    const s = await shop();
+    await writeAudit(db, { actorType: "BUYER", actorId: s.buyer.id, sellerId: s.seller.id, action: "auth.buyer.login" });
+    await writeAudit(db, { actorType: "BUYER", actorId: s.buyer.id, sellerId: s.seller.id, action: "order.create", targetType: "Order", targetId: crypto.randomUUID() });
+    await writeAudit(db, { actorType: "SYSTEM", sellerId: s.seller.id, action: "buyer.purchase_restriction.lift", targetType: "BuyerMember", targetId: s.buyer.id });
+    await writeAudit(db, { actorType: "SELLER_USER", actorId: crypto.randomUUID(), sellerId: s.seller.id, action: "product.create", targetType: "Product", targetId: crypto.randomUUID() });
+    const rows = new Map((await db.auditLog.findMany({ where: { sellerId: s.seller.id } })).map((r) => [r.action, r]));
+    const login = rows.get("auth.buyer.login")!;
+    expect(login.retainUntil).toEqual(addMonths(login.createdAt, 3));
+    const order = rows.get("order.create")!;
+    expect(order.retainUntil).toEqual(addMonths(order.createdAt, 60));
+    const lift = rows.get("buyer.purchase_restriction.lift")!;
+    expect(lift.retainUntil).toEqual(addMonths(lift.createdAt, 3));
+    expect(rows.get("product.create")!.retainUntil).toBeNull();
+    for (const r of rows.values()) expect(r.legalHoldAt).toBeNull();
   });
 });

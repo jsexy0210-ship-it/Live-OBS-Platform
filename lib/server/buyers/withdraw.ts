@@ -3,28 +3,37 @@ import { randomBytes } from "node:crypto";
 import { writeAudit } from "../audit/log";
 import { loginErrorBody } from "../auth/messages";
 import { hashPassword, verifyPassword } from "../auth/password";
+import { lockSellerOrders } from "../orders/overdue";
+import { cancelPendingOrderInTx } from "../queue/service";
 import { lockBuyerAddresses } from "./addresses";
-import { holdFinishedOrders, holdMemberAuditLogs } from "./legalHold";
+import { holdMemberAuditLogs, refreshOrderRetention } from "./legalHold";
 import { WITHDRAWN_DISPLAY_NAME } from "./memberData";
+import { purgeExpiredRejoinBlocks, recordRejoinBlock } from "./rejoin";
+import { purgeSignupVerificationsForShop } from "./signup";
 
 // 구매자 탈퇴(ARCHITECTURE 「구매자 회원」: WITHDRAWN과 deletedAt을 같은 트랜잭션에서, 개인정보 비식별).
 // 기준(MASTER 결정 2026-10-03):
 // - 본인 확인으로 비밀번호를 다시 받는다. 틀리면 구매자 로그인 실패와 같은 문구·상태(401 invalid_credentials).
 //   같은 회원이 15분 안에 5번 틀리면 429 too_many_attempts로 막는다(buyer.withdraw_failed 감사 로그로 세고,
 //   회원별 advisory lock 아래에서 세고·확인하고·기록해 동시 요청에도 한도를 넘지 않는다).
-// - 진행 중인 주문(결제 대기, 결제 완료 뒤 배송 완료 전 = 발송 전·배송 중·재고 부족 환불 대기)이 있으면 막는다.
+// - 결제 완료 뒤 배송 완료 전 주문(발송 전·배송 중·재고 부족 환불 대기)이 있으면 409 orders_in_progress로 막는다.
+//   결제 대기 주문은 막지 않고 탈퇴 트랜잭션 안에서 자동 취소한다(약관 제7조 ①, MASTER 결정 2026-10-03). 판매자 취소와 같은 경로
+//   (queue/service.ts cancelPendingOrderInTx: 상태 이력·주문 때 뺀 재고 되돌리기·감사 로그 order.cancel, 사유 member_withdrawn)를 쓴다.
 // - 주문·결제·환불 기록과 주문의 받는 사람 스냅숏은 그대로 둔다(전자상거래법 보관 의무).
 // - 이름·휴대폰·방송 닉네임·아이디(이메일)를 비식별 값으로 바꾸고 CI 해시·생년월일은 비운다(같은 사람·같은 아이디·닉네임으로 다시 가입 가능).
-//   그 회원의 본인확인 기록(이 쇼핑몰에서 이 회원과 이어졌거나 같은 CI 해시)은 행을 지운다.
+//   그 회원의 본인확인 기록(이 쇼핑몰에서 이 회원과 이어졌거나 같은 CI 해시)은 행을 두고 식별 항목만 비운다(한도 계산 값 보존).
 //   주문·주문대기·히트 카드의 방송 닉네임 스냅숏은 「탈퇴한 회원」으로 바꾸고, 받는 사람 스냅숏 등 법정 거래 기록은 그대로 둔다.
 //   표마다 처리 방식은 buyers/memberData.ts MEMBER_DATA_POLICY에 둔다(PRODUCT_SCOPE 「구매자 탈퇴·재가입」).
+// - 이름·휴대폰·방송 닉네임·아이디(이메일)를 비식별 값으로 바꾸고 회원 행의 CI 해시는 비운다(같은 아이디·닉네임으로 다시 가입 가능).
+//   재가입 제한이 켜진 쇼핑몰이고 가입 때 제한 기간을 안내받은 회원이면 CI 해시 하나만 제한 기간 동안 따로 남겨(buyers/rejoin.ts)
+//   그동안 같은 사람의 가입을 막는다.
 //   비밀번호는 아무도 모르는 값으로 바꾼다.
 // - 남은 적립금은 소멸한다(대표님 결정 2026-10-03, PRODUCT_SCOPE 「구매자 탈퇴·재가입」). 잔액(RewardBalance)이 있으면 그만큼
 //   소멸(EXPIRE, 음수, SUCCEEDED) 원장을 남기고 잔액을 0으로 만든다. 아직 처리 전(PENDING)인 이 회원의 원장(지급·회수 대기)은
 //   FAILED(member_withdrawn)로 닫아 나중에 잔액에 들어가지 않게 한다. 재가입하면 새 회원이라 되살아나지 않는다.
 // - 저장 배송지·구매 제한·세션 행을 지운다.
-// - 법정 보관 기록을 분리한다(buyers/legalHold.ts): 끝난 주문은 분리 보관 표시·만료일(마지막 거래 + 5년)을 달아 일반 조회에서 빼고,
-//   이 회원이 행위자·대상인 감사 로그는 행동 종류별로 거래 관련 분리 보관·기록 + 5년, 거래 무관 탈퇴 + 3개월 기한을 단다.
+// - 법정 보관 기록을 분리한다(buyers/legalHold.ts): 이 회원의 끝난 주문에 분리 보관 표시를 달아 일반 조회에서 빼고(보관 만료일은
+//   끝난 날 + 5년), 이 회원이 행위자·대상인 거래 관련 감사 로그에도 분리 보관 표시를 단다.
 
 export const WITHDRAW_FAIL_LIMIT = 5;
 export const WITHDRAW_FAIL_WINDOW_MS = 15 * 60_000;
@@ -34,7 +43,7 @@ export type WithdrawFailure = "invalid_credentials" | "too_many_attempts" | "ord
 export const WITHDRAW_MESSAGES: Record<WithdrawFailure, string> = {
   invalid_credentials: loginErrorBody("invalid_credentials", "buyer").message,
   too_many_attempts: "비밀번호를 여러 번 틀렸어요. 잠시 뒤 다시 해 주세요",
-  orders_in_progress: "진행 중인 주문이 끝나면 탈퇴할 수 있어요",
+  orders_in_progress: "배송 중인 주문이 끝나거나 환불되면 탈퇴할 수 있어요",
   not_found: "회원 정보를 찾을 수 없어요",
 };
 export const WITHDRAW_STATUS: Record<WithdrawFailure, number> = { invalid_credentials: 401, too_many_attempts: 429, orders_in_progress: 409, not_found: 404 };
@@ -61,10 +70,15 @@ export async function withdrawBuyer(
   );
   if (checked) return { ok: false, reason: checked };
   const unusable = await hashPassword(randomBytes(32).toString("hex"));
+  // 이 쇼핑몰의 기간이 끝난 재가입 제한 기록을 먼저 지운다(정기 실행 연결 전 파기 경로)
+  await purgeExpiredRejoinBlocks(db, now, scope.sellerId);
+  await purgeSignupVerificationsForShop(db, scope.sellerId);
   const tag = member.id.replace(/-/g, "").slice(0, 12);
   const result = await db.$transaction(async (tx) => {
     // 같은 회원 행을 잠가 주문 생성(FOR SHARE)·다른 탈퇴 요청과 겹치지 않게 한다. FOR UPDATE가 아닌 이유: 배송지 저장이
     // 배송지 잠금을 쥔 채 외래 키 확인(FOR KEY SHARE)으로 회원 행을 기다리면 아래 배송지 잠금과 교착이 생긴다.
+    // 주문 생성·결제·자동 취소와 같은 판매자 주문 잠금을 먼저 잡는다(주문 생성과 같은 순서: 판매자 주문 잠금 → 회원 행)
+    await lockSellerOrders(tx, scope.sellerId);
     await tx.$queryRaw`SELECT "id" FROM "BuyerMember" WHERE "id" = ${member.id}::uuid FOR NO KEY UPDATE`;
     // 배송지 저장·수정과 같은 잠금을 잡아, 겹쳐 저장된 배송지가 탈퇴 뒤에 남지 않게 한다
     await lockBuyerAddresses(tx, scope);
@@ -72,10 +86,15 @@ export async function withdrawBuyer(
       where: {
         sellerId: scope.sellerId,
         buyerMemberId: member.id,
-        OR: [{ status: "PENDING_PAYMENT" }, { status: "PAID", OR: [{ shipment: null }, { shipment: { status: { not: "DELIVERED" } } }] }],
+        status: "PAID",
+        OR: [{ shipment: null }, { shipment: { status: { not: "DELIVERED" } } }],
       },
     });
     if (busy > 0) return "orders_in_progress" as const;
+    const pending = await tx.order.findMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id, status: "PENDING_PAYMENT" }, select: { id: true } });
+    for (const o of pending) {
+      await cancelPendingOrderInTx(tx, { sellerId: scope.sellerId, orderId: o.id, now, actorType: "BUYER", actorId: member.id, reason: "member_withdrawn" });
+    }
     const moved = await tx.buyerMember.updateMany({
       where: { id: member.id, sellerId: scope.sellerId, deletedAt: null },
       data: {
@@ -93,9 +112,14 @@ export async function withdrawBuyer(
     });
     if (moved.count !== 1) return "not_found" as const;
     const forfeited = await forfeitRewards(tx, scope.sellerId, member.id, now);
-    const identities = await tx.identityVerification.deleteMany({
-      where: { sellerId: scope.sellerId, OR: [{ subjectId: member.id }, ...(member.ciHash ? [{ ciHash: member.ciHash }] : [])] },
-    });
+    // 본인확인 기록은 행을 지우지 않고 식별 항목만 비운다(미가입 기록 정리와 같은 기준, buyers/signup.ts). 쇼핑몰·상태·요청 시각·요청 IP는
+    // 체험 한도(VERIFIED 건수)·같은 IP 하루 횟수 계산에 남긴다(지우면 가입·탈퇴를 되풀이해 유료 문자를 다시 받는 남용, MASTER 결정 2026-10-03).
+    const identities = await tx.$executeRaw`
+      UPDATE "IdentityVerification"
+      SET "name" = NULL, "phone" = NULL, "requestedPhone" = NULL, "birthDate" = NULL, "ciHash" = NULL, "subjectId" = NULL,
+          "signupConsent" = NULL, "ownerTokenHash" = NULL, "requestId" = 'anonymized:' || gen_random_uuid()::text, "anonymizedAt" = ${now}
+      WHERE "sellerId" = ${scope.sellerId}::uuid AND "anonymizedAt" IS NULL
+        AND ("subjectId" = ${member.id}::uuid OR (${member.ciHash || null}::text IS NOT NULL AND "ciHash" = ${member.ciHash || null}::text))`;
     // 방송 화면·주문 목록에 남는 닉네임 스냅숏(주문·주문대기·히트 카드). 받는 사람 스냅숏은 법정 보관이라 그대로.
     const orders = await tx.order.updateMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id }, data: { broadcastNicknameSnapshot: WITHDRAWN_DISPLAY_NAME } });
     const queueItems = await tx.queueItem.updateMany({
@@ -104,9 +128,10 @@ export async function withdrawBuyer(
     });
     const hitCards = await tx.hitCard.updateMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id }, data: { nicknameSnapshot: WITHDRAWN_DISPLAY_NAME } });
     const restrictions = await tx.buyerPurchaseRestriction.deleteMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id } });
+    const rejoinBlockedUntil = await recordRejoinBlock(tx, scope.sellerId, member, now);
     const addresses = await tx.buyerAddress.deleteMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id } });
     const sessions = await tx.buyerSession.deleteMany({ where: { buyerMemberId: member.id } });
-    const heldOrders = await holdFinishedOrders(tx, scope.sellerId, member.id, now);
+    const heldOrders = await refreshOrderRetention(tx, scope.sellerId, now, { buyerMemberId: member.id });
     await writeAudit(tx, {
       actorType: "BUYER",
       actorId: member.id,
@@ -116,7 +141,7 @@ export async function withdrawBuyer(
       targetId: member.id,
       ip: input.meta?.ip,
       userAgent: input.meta?.userAgent,
-      after: { status: "WITHDRAWN", deletedAddresses: addresses.count, deletedSessions: sessions.count, deletedVerifications: identities.count, anonymizedOrders: orders.count, anonymizedQueueItems: queueItems.count, anonymizedHitCards: hitCards.count, deletedRestrictions: restrictions.count, heldOrders, ...forfeited },
+      after: { status: "WITHDRAWN", deletedAddresses: addresses.count, deletedSessions: sessions.count, anonymizedVerifications: identities, anonymizedOrders: orders.count, anonymizedQueueItems: queueItems.count, anonymizedHitCards: hitCards.count, deletedRestrictions: restrictions.count, cancelledPendingOrders: pending.length, heldOrders, rejoinBlockedUntil, ...forfeited },
     });
     // 방금 남긴 탈퇴 기록까지 포함해 기한을 단다
     await holdMemberAuditLogs(tx, scope.sellerId, member.id, now);
