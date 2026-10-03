@@ -17,6 +17,7 @@ healthy() { [ "$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}
 # 장애를 넣을 앱 컨테이너. 다른 앱이 healthy가 아니면 둘 다 내려가므로 멈춘다.
 app_container() {
   local n="${1:-1}" svc=obs-web-app other=obs-web-app-2
+  [[ "$n" == 1 || "$n" == 2 ]] || die "앱 번호는 1 또는 2만 넣어 주세요: $n"
   [ "$n" = 2 ] && { svc=obs-web-app-2; other=obs-web-app; }
   availability_on || die "앱 장애는 가용성 프로파일(앱 2개)에서만 실행해요(availability.sh on)."
   local o; o="$(container_of "$other")"

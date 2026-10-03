@@ -191,8 +191,9 @@ async function tick() {
   let deploying = false;
   try {
     const ageMin = (Date.now() - statSync(cfg.deployMark).mtimeMs) / 60_000;
-    deploying = true;
+    // 기준 시간이 지난 표시(SIGKILL·재부팅으로 남은 것)는 배포 중으로 보지 않는다. 파일은 그대로 두고 판단에서만 뺀다.
     if (ageMin > cfg.deployMarkStaleMin) await warnOnce("deploy_mark_stale", { kind: "deploy_mark_stale", ageMin: Math.round(ageMin) }, 3600_000);
+    else deploying = true;
   } catch {}
   if (deploying) {
     state.mismatchTicks = 0;
