@@ -1,6 +1,9 @@
-import type { PrismaClient } from "@prisma/client";
+import type { IdentityVerification, PrismaClient } from "@prisma/client";
+import { randomUUID } from "node:crypto";
 import { writeAudit } from "../audit/log";
 import { forbidden, notFound } from "../authz/errors";
+import { dbNow } from "../billing/subscription";
+import { keyedOwnerToken, parseAttemptKey, reuseKeyedAttempt, scopedAttemptKeyHash } from "../identity/attempt";
 import type { IdentityProvider } from "../identity/provider";
 import { completeIdentityVerification, parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
 import { requireSellerPermission, type TenantContext } from "../tenant/context";
@@ -23,14 +26,15 @@ export const IDV_COOKIE = "lo_idv";
 export const GRANT_COOKIE = "lo_pwreset";
 export const MIN_PASSWORD_LENGTH = 8;
 
-type Meta = { ip?: string | null; userAgent?: string | null; now?: Date };
+type Meta = { ip?: string | null; userAgent?: string | null; now?: Date; attemptKey?: unknown };
+const OWNER_SCOPE = "pwreset_owner";
 
 // 쇼핑몰 하나당 하루(한국 시간 자정 초기화) 비밀번호 찾기 시작 횟수. 실제 휴대폰 본인확인은 호출마다 비용이 든다(대표님 결정 2026-10-02).
 export const RESET_DAILY_LIMIT_PER_SHOP = 10;
 
 export type StartResult =
   | { ok: true; verificationId: string; ownerToken: string }
-  | { ok: false; reason: "reset_limit_exceeded" | "invalid_identity_input" | "provider_error" };
+  | { ok: false; reason: "reset_limit_exceeded" | "invalid_identity_input" | "provider_error" | "start_in_progress" | "already_verified" | "expired" | "failed" };
 
 export async function startSellerPasswordReset(
   db: PrismaClient,
@@ -38,6 +42,8 @@ export async function startSellerPasswordReset(
   input: { email: string; shopSlug: string; person: unknown },
   meta: Meta = {},
 ): Promise<StartResult> {
+  const attemptKey = parseAttemptKey(meta.attemptKey);
+  if (attemptKey === false) return { ok: false, reason: "invalid_identity_input" };
   const person = parseIdentityPerson(input.person);
   if (!person) return { ok: false, reason: "invalid_identity_input" };
   const seller = await db.seller.findUnique({ where: { slug: input.shopSlug }, select: { id: true } });
@@ -49,9 +55,25 @@ export async function startSellerPasswordReset(
       })
     : null;
 
+  // attemptKey(선택, 클라이언트 UUID): 응답이 끊겨 같은 키로 다시 보내면 같은 기록·같은 ownerToken을 돌려주고 문자·하루 횟수를 다시 쓰지 않는다.
+  // 키는 같은 쇼핑몰 주소·같은 아이디 범위로만 찾는다(다른 아이디로 같은 키를 보내면 새 시작). 계정 유무와 상관없이 같은 응답이다.
+  const keyHash = attemptKey ? scopedAttemptKeyHash("PASSWORD_RESET", `${sellerId ?? `none:${input.shopSlug}`}\0${normalizeEmail(input.email)}`, attemptKey) : null;
+  type Started =
+    | null
+    | { kind: "reused"; verificationId: string; ownerToken: string }
+    | { kind: "refused"; reason: "already_verified" | "expired" | "failed" | "start_in_progress" }
+    | { kind: "send"; verification: IdentityVerification; ownerToken: string };
   // 쇼핑몰별로 줄을 세워(advisory lock) 오늘(KST) 시작 건수를 DB 시계로 센 뒤, 한도 안일 때만 인증을 시작한다.
   // 없는 쇼핑몰 주소로 온 요청은 하나의 묶음(sellerId 없음)으로 센다. 계정 유무와 상관없이 같은 응답이다.
-  const started = await db.$transaction(async (tx) => {
+  const started = await db.$transaction(async (tx): Promise<Started> => {
+    if (keyHash) {
+      const now = meta.now ?? (await dbNow(tx));
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`idv_key:${keyHash}`}))`;
+      const same = await tx.identityVerification.findFirst({ where: { purpose: "PASSWORD_RESET", sellerId, attemptKeyHash: keyHash } });
+      const r = await reuseKeyedAttempt(tx, same, now);
+      if (r?.kind === "reused") return { ...r, ownerToken: keyedOwnerToken(OWNER_SCOPE, attemptKey!, r.verificationId) };
+      if (r) return r;
+    }
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`pwreset:${sellerId ?? "none"}`}))`;
     const [{ count }] = await tx.$queryRaw<{ count: bigint }[]>`
       SELECT count(*)::bigint AS count FROM "IdentityVerification"
@@ -59,8 +81,22 @@ export async function startSellerPasswordReset(
         AND "sellerId" IS NOT DISTINCT FROM ${sellerId}::uuid
         AND "createdAt" >= (date_trunc('day', now() AT TIME ZONE 'Asia/Seoul') AT TIME ZONE 'Asia/Seoul')`;
     if (Number(count) >= RESET_DAILY_LIMIT_PER_SHOP) return null;
-    return startIdentityVerification(tx, provider, { purpose: "PASSWORD_RESET", sellerId, person, subjectId: user?.id ?? null, now: meta.now });
+    const id = randomUUID();
+    const created = await startIdentityVerification(tx, provider, {
+      purpose: "PASSWORD_RESET",
+      sellerId,
+      person,
+      subjectId: user?.id ?? null,
+      attemptKeyHash: keyHash,
+      sendStartedAt: keyHash ? (meta.now ?? (await dbNow(tx))) : null,
+      id,
+      ownerToken: attemptKey ? keyedOwnerToken(OWNER_SCOPE, attemptKey, id) : undefined,
+      now: meta.now,
+    });
+    return { kind: "send", ...created };
   });
+  if (started?.kind === "reused") return { ok: true, verificationId: started.verificationId, ownerToken: started.ownerToken };
+  if (started?.kind === "refused") return { ok: false, reason: started.reason };
 
   if (!started) {
     await writeAudit(db, {
