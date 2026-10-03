@@ -10,9 +10,10 @@
 | (이전) MASTER | `session_01XqBPGTKiEMmRSMB5SfFp3C` | 컨텍스트 50% 도달로 교체. PR #15 병합 후 보관 완료 (2026-10-02 KST) |
 | 디자인 전담 (2) | `session_01DCQ38rPYwPnVCZJbhLgJnc` | 디자인 아티팩트 https://claude.ai/artifact/YYGXZ3u4QvjQpEMUHnN4tS 이어서 작업 (아티팩트 `project/` 파일만 소유). 우선순위: ① 오버레이 9:16·16:9 기본 템플릿 3종 ② 기존 아트보드 A안·화면 문구·도메인·도우미·구매자 문의 반영 ③ 남은 화면. 2026-10-02 18:45 KST MASTER 생성 |
 | 개발 전담 (기반) | `session_01Lhh5mXm1mdLnACzpHDNLUw` | 개발 1단계(화면 제외): 설계 문서 `docs/ARCHITECTURE.md` → 스키마·권한·테넌트 격리·주문대기 도메인·로그인·테스트·CI 테스트 단계. 소유: `prisma/**`, `lib/server/**`, `app/api/**`, `tests/**`, `docs/ARCHITECTURE.md`, `package*.json`, `ci.yml` 테스트 단계. 2026-10-02 21:30 KST MASTER 생성 |
+| 개발 전담 (화면) | `session_01U3TpR6Kgg8zZnxyS48PegW` | 2026-10-03 대표님 결정 「판매자 화면부터 실제로 만들어 눌러 볼 수 있게」. 화면 라우트·components·스타일·dev-seed·e2e만 소유. 서버 API·lib/server·prisma는 개발 전담 (기반) 소유 |
 | (이전) 디자인 전담 | `session_011K2Cw69VDhwYpPegzFpXoK` | 작업 기억 72% 도달·수정 지시 미반영으로 교체. 약 130장 제작(아티팩트에 보존). 2026-10-02 18:45 KST 보관 |
 
-전담 세션 태그: `live-obs` + `lo-master` / `lo-design` / `lo-dev`. 새 전담 세션은 이 표에 추가하고 `docs/session-prompt.md`를 지시에 넣는다.
+전담 세션 태그: `live-obs` + `lo-master` / `lo-design` / `lo-dev` / `lo-dev-ui`. 새 전담 세션은 이 표에 추가하고 `docs/session-prompt.md`를 지시에 넣는다.
 
 ## 완료
 
