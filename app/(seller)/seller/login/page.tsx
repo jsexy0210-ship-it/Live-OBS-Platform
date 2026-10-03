@@ -71,7 +71,8 @@ export default function SellerLoginPage() {
         )}
         <div className="fld">
           <label htmlFor="email">이메일</label>
-          <input id="email" className="inp" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} />
+          {/* 아이디는 이메일이지만 테스트 서버 시험 계정(예: test)도 있어 브라우저 이메일 형식 검사를 쓰지 않는다 */}
+          <input id="email" className="inp" type="text" inputMode="email" autoCapitalize="none" spellCheck={false} autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} />
         </div>
         <div className="fld">
           <label htmlFor="password">비밀번호</label>

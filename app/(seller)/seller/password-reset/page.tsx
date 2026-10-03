@@ -157,7 +157,7 @@ export default function PasswordResetPage() {
                   </div>
                   <div className="fld">
                     <label htmlFor="pr-email">이메일</label>
-                    <input id="pr-email" className="inp" type="email" autoComplete="username" value={email} disabled={busy || codeSent} onChange={(e) => setEmail(e.target.value)} />
+                    <input id="pr-email" className="inp" type="text" inputMode="email" autoCapitalize="none" spellCheck={false} autoComplete="username" value={email} disabled={busy || codeSent} onChange={(e) => setEmail(e.target.value)} />
                   </div>
                   <div className="fld">
                     <label htmlFor="pr-shop">쇼핑몰 주소</label>

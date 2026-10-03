@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, failMessage } from "../seller/api";
 import { textLength } from "../seller/format";
 import ShopState from "./ShopState";
+import TestModeNotice from "../seller/TestModeNotice";
 
 // SH-011 구매자 회원가입: 휴대폰 본인확인(인증번호 받기 → 확인) → 아이디·비밀번호·방송 닉네임·필수 약관 → 가입.
 // 실패 문구는 서버 message를 그대로 쓴다(정본: lib/server/buyers/signup.ts BUYER_SIGNUP_MESSAGES, lib/server/identity/messages.ts).
@@ -452,6 +453,7 @@ export default function SignupForm({ slug, rejoin = null }: { slug: string; rejo
             <h2 className="t-hl2">휴대폰 본인확인</h2>
             <span className="help">본인 명의의 휴대폰으로 인증해 주세요.</span>
           </div>
+          <TestModeNotice kind="identity" />
           <div className="fld">
             <label htmlFor="idv-name">이름</label>
             <input id="idv-name" className="inp" autoComplete="name" value={name} disabled={locked} onChange={(e) => setName(e.target.value)} />
