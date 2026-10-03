@@ -167,8 +167,10 @@ async function warnOnce(key, ev, cooldownMs = 3600_000) {
 async function tick() {
   const at = kst();
   const results = {};
-  for (const t of cfg.targets) {
-    const r = await probe(t);
+  // 대상을 동시에 확인한다(여러 대상이 시간 초과여도 한 틱이 timeoutMs 정도로 끝나게).
+  const probed = await Promise.all(cfg.targets.map((t) => probe(t)));
+  for (const [i, t] of cfg.targets.entries()) {
+    const r = probed[i];
     const ok = r.status === 200 && r.db === "ok";
     results[t.name] = { ...r, ok };
     record(`samples-${today()}.jsonl`, { at, target: t.name, ...r, ok });
@@ -225,14 +227,16 @@ async function tick() {
 async function main() {
   mkdirSync(cfg.dir, { recursive: true });
   await event({ level: "info", kind: "monitor_start", targets: cfg.targets.map((t) => t.name), intervalS: cfg.intervalS });
+  // 고정 주기: 확인에 걸린 시간만큼 다음 틱까지 기다리는 시간을 줄인다.
   for (;;) {
+    const started = Date.now();
     try {
       const s = await tick();
       if (cfg.once) return console.log(JSON.stringify(s));
     } catch (e) {
       console.error(`[monitor] tick failed: ${e instanceof Error ? e.message : String(e)}`);
     }
-    await new Promise((r) => setTimeout(r, cfg.intervalS * 1000));
+    await new Promise((r) => setTimeout(r, Math.max(0, cfg.intervalS * 1000 - (Date.now() - started))));
   }
 }
 

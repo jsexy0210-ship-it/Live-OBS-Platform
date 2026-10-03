@@ -21,6 +21,7 @@ case "${1:-status}" in
     log "가용성 프로파일 켜짐: $(app_services), version=$APP_VERSION"
     ;;
   off)
+    require_test_env
     rm -f "$AVAIL_MARK"
     if ! compose up -d --no-build --wait --remove-orphans; then
       touch "$AVAIL_MARK"
