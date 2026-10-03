@@ -6,16 +6,34 @@
 # 배포 워크플로(Deploy obs-test)는 기본 정의만 쓴다. 실행하기 전에 off로 돌려 두거나, 배포 뒤 on을 다시 실행한다.
 . "$(dirname "$0")/lib.sh"
 
-# 전환(compose up)은 백그라운드로 돌리고 wait로 기다린다. 그래야 SIGTERM·SIGHUP·SIGINT를 받았을 때
-# trap이 바로 실행돼 compose를 멈추고, 정상 실패와 같은 되돌리기를 한다. 전환이 끝나면 trap을 해제한다.
+# 전환(compose up)은 새 프로세스 그룹(setsid)으로 백그라운드 실행하고 wait로 기다린다. 그래야 SIGTERM·SIGHUP·SIGINT를
+# 받았을 때 trap이 바로 실행되고, docker CLI와 compose 플러그인을 그룹째 끝낸 뒤 되돌리기를 시작할 수 있다.
+# 전환이 끝나면 trap을 해제한다.
 CHILD=""
 run_compose() {
-  compose "$@" &
+  compose_argv
+  setsid "${COMPOSE_ARGV[@]}" "$@" &
   CHILD=$!
   local rc=0
   wait "$CHILD" || rc=$?
   CHILD=""
   return "$rc"
+}
+# 그룹 전체에 TERM → 최대 30초 기다림 → 남으면 KILL. 끝날 때까지 기다려 되돌리기와 겹치지 않게 한다.
+stop_child_group() {
+  local i killer
+  kill -TERM -- "-$CHILD" 2>/dev/null || true
+  (sleep 30; kill -KILL -- "-$CHILD" 2>/dev/null) &
+  killer=$!
+  wait "$CHILD" 2>/dev/null || true
+  # 그룹장(docker CLI)이 끝난 뒤에도 남은 플러그인 프로세스가 끝날 때까지 기다린다.
+  for i in $(seq 1 150); do
+    kill -0 -- "-$CHILD" 2>/dev/null || break
+    sleep 0.2
+  done
+  kill -KILL -- "-$CHILD" 2>/dev/null || true
+  kill "$killer" 2>/dev/null || true
+  CHILD=""
 }
 guard() {
   ROLLBACK="$1"
@@ -24,11 +42,7 @@ guard() {
 unguard() { trap - TERM HUP INT; }
 interrupted() {
   unguard
-  if [ -n "$CHILD" ]; then
-    kill -TERM "$CHILD" 2>/dev/null || true
-    wait "$CHILD" 2>/dev/null || true
-    CHILD=""
-  fi
+  if [ -n "$CHILD" ]; then stop_child_group; fi
   "$ROLLBACK" "중단 신호를 받아 멈췄어요"
 }
 # 켜기 실패·중단 → 기본 정의(앱 1개)로 되돌린다.

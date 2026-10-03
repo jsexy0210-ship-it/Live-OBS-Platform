@@ -22,12 +22,17 @@ die() { log "중단: $*" >&2; exit 1; }
 
 # 가용성 프로파일을 켜 두었으면(availability.sh on) 그 정의도 함께 쓴다.
 availability_on() { [ -f "$AVAIL_MARK" ]; }
-compose() {
-  local files=(-f "$OPS_ROOT/deploy/docker-compose.yml")
-  if availability_on; then files+=(-f "$OPS_ROOT/deploy/compose.availability.yml"); fi
+# compose 명령줄을 COMPOSE_ARGV에 만든다(백그라운드로 직접 실행해야 하는 곳에서 함수 대신 쓴다).
+compose_argv() {
+  COMPOSE_ARGV=(docker compose -p obs-web -f "$OPS_ROOT/deploy/docker-compose.yml")
+  if availability_on; then COMPOSE_ARGV+=(-f "$OPS_ROOT/deploy/compose.availability.yml"); fi
   # 로컬 시험 전용 덧붙임 파일(서버에서는 쓰지 않음)
-  if [ -n "${OBS_COMPOSE_EXTRA:-}" ]; then files+=(-f "$OBS_COMPOSE_EXTRA"); fi
-  docker compose -p obs-web "${files[@]}" --env-file "$ENV_FILE" "$@"
+  if [ -n "${OBS_COMPOSE_EXTRA:-}" ]; then COMPOSE_ARGV+=(-f "$OBS_COMPOSE_EXTRA"); fi
+  COMPOSE_ARGV+=(--env-file "$ENV_FILE")
+}
+compose() {
+  compose_argv
+  "${COMPOSE_ARGV[@]}" "$@"
 }
 
 container_of() { docker ps -aq --filter label=com.docker.compose.project=obs-web --filter "label=com.docker.compose.service=$1" | head -n1; }
@@ -40,6 +45,19 @@ export APP_VERSION="${APP_VERSION:-$(current_version)}"
 
 health() { curl -fsS --max-time 5 "$HEALTH_URL"; }
 # version이 비어 있으면 db ok만 본다. 성공하면 응답을 출력한다.
+# 서비스마다 컨테이너 healthcheck가 healthy가 될 때까지 기다린다(프록시 health는 앱 하나만 살아도 통과하므로 따로 본다).
+wait_services_healthy() {
+  local s c st="" i
+  for s in "$@"; do
+    for i in $(seq 1 60); do
+      c="$(container_of "$s")"
+      st="$( [ -n "$c" ] && docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$c" 2>/dev/null || echo missing)"
+      [ "$st" = healthy ] && break
+      sleep 2
+    done
+    [ "$st" = healthy ] || { echo "$s 상태: $st" >&2; return 1; }
+  done
+}
 wait_health() {
   local want="${1:-}" tries="${2:-30}" body="" i
   for i in $(seq 1 "$tries"); do

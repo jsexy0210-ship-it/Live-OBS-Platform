@@ -32,5 +32,7 @@ compose up --no-build --no-deps obs-web-migrate
 [ "$(docker inspect -f '{{.State.ExitCode}}' "$(container_of obs-web-migrate)")" = 0 ] || die "복원 뒤 마이그레이션 실패. 앱은 멈춘 채로 두었어요(복원 전 상태는 before-restore 백업)."
 log "앱 시작"
 compose start $(app_services)
+# 앱이 2개면 프록시 health는 하나만 살아도 통과하므로, 앱마다 컨테이너 healthcheck를 따로 확인한다.
+wait_services_healthy $(app_services) || die "복원 뒤 앱이 healthy가 되지 않았어요(availability.sh status로 확인, 복원 전 상태는 before-restore 백업)."
 wait_health "" >/dev/null
 log "복원 완료: $(basename "$file"), health ok"
