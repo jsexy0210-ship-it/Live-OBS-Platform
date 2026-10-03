@@ -84,14 +84,14 @@ export function summarize(results, opt) {
 async function main() {
   const opt = args(process.argv.slice(2));
   const t0 = performance.now();
-  const interval = 1000 / opt.rps;
   const pending = [];
   const results = [];
   let n = 0;
   const startedAt = new Date().toISOString();
-  // 예정 시각이 측정 시간 안인 요청만 보낸다(요청 수 = ceil(duration × rps). 타이머가 조금 일찍 깨어나도 넘치지 않게).
-  while (n * interval < opt.duration * 1000) {
-    const due = t0 + n * interval;
+  // 보낼 요청 수를 정수로 먼저 정하고(부동소수 오차로 1건 더 나가지 않게) 그만큼만 보낸다.
+  const total = Math.max(1, Math.round(opt.duration * opt.rps));
+  for (; n < total; ) {
+    const due = t0 + (n * 1000) / opt.rps;
     const wait = due - performance.now();
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
     n += 1;

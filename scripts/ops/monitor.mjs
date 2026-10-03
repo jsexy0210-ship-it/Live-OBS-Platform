@@ -32,6 +32,8 @@ const cfg = {
   intervalS: Number(env("MONITOR_INTERVAL_S", "15")),
   timeoutMs: Number(env("MONITOR_TIMEOUT_MS", "5000")),
   failThreshold: Number(env("MONITOR_FAIL_THRESHOLD", "3")),
+  // 배포 기록과 실행 버전이 이 횟수만큼 연속으로 다를 때만 경고(무중단 배포 중 잠깐 다른 것은 정상)
+  versionMismatchTicks: Number(env("MONITOR_VERSION_MISMATCH_TICKS", "3")),
   slowMs: Number(env("MONITOR_SLOW_MS", "1000")),
   dir: env("MONITOR_DIR", "/data"),
   deployLog: env("MONITOR_DEPLOY_LOG", "/deploy-history.log"),
@@ -93,7 +95,7 @@ function lastDeployedSha() {
   return m.length ? m.at(-1)[1] : null;
 }
 
-const state = { fails: {}, incidents: {}, warned: {}, alerts: [], outbox: [] };
+const state = { fails: {}, incidents: {}, warned: {}, alerts: [], outbox: [], mismatchTicks: 0 };
 const ALERT_MAX_ATTEMPTS = 5;
 const OUTBOX_MAX = 50;
 
@@ -183,7 +185,13 @@ async function tick() {
 
   const deployed = lastDeployedSha();
   const running = Object.values(results).find((r) => r.ok && r.version)?.version ?? null;
-  if (deployed && running && deployed !== running) await warnOnce(`version:${deployed}:${running}`, { kind: "version_mismatch", deployed, running }, 86400_000);
+  if (deployed && running && deployed !== running) {
+    state.mismatchTicks += 1;
+    if (state.mismatchTicks >= cfg.versionMismatchTicks)
+      await warnOnce(`version:${deployed}:${running}`, { kind: "version_mismatch", deployed, running, ticks: state.mismatchTicks }, 86400_000);
+  } else {
+    state.mismatchTicks = 0;
+  }
 
   let certDays = null;
   if (cfg.tlsHost) {
