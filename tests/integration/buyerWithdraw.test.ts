@@ -60,12 +60,33 @@ describe("구매자 탈퇴", () => {
     const done = await s.order("PAID", { purchaseConfirmedAt: new Date() });
     await db.shipment.create({ data: { sellerId: s.seller.id, orderId: done.id, courier: "CJ", trackingNumber: "123456789012", status: "DELIVERED", shippedAt: new Date(), deliveredAt: new Date() } });
     await db.rewardBalance.create({ data: { sellerId: s.seller.id, buyerMemberId: s.buyer.id, balance: 500 } });
+    // 가입 때 남긴 동의 기록(마케팅 동의 버전·재가입 제한 보관 동의 스냅숏)
+    await db.buyerMember.update({
+      where: { id: s.buyer.id },
+      data: {
+        marketingConsentAt: new Date(),
+        signupConsent: { termsVersion: "t", privacyVersion: "p", rejoinRetention: { version: "r", days: 30 }, marketing: { version: "m" }, agreedAt: new Date().toISOString() },
+        rejoinRestrictionDaysAgreed: 30,
+        rejoinRetentionAgreedAt: new Date(),
+        rejoinRetentionVersion: "r",
+      },
+    });
     const res = await s.withdraw(PASSWORD);
     expect(res.status).toBe(200);
     expect(res.headers.get("cache-control")).toContain("no-store");
     expect(res.headers.getSetCookie().find((c) => c.startsWith("lo_buyer="))).toMatch(/^lo_buyer=;/);
     const m = await db.buyerMember.findUniqueOrThrow({ where: { id: s.buyer.id } });
-    expect(m).toMatchObject({ status: "WITHDRAWN", deletedAt: expect.any(Date), name: "탈퇴한 회원", marketingConsentAt: null });
+    expect(m).toMatchObject({
+      status: "WITHDRAWN",
+      deletedAt: expect.any(Date),
+      name: "탈퇴한 회원",
+      marketingConsentAt: null,
+      // 동의 기록도 남기지 않는다(법정 보관 주문에 이어진 회원 행에서 동의 이력을 알아볼 수 없게)
+      signupConsent: null,
+      rejoinRestrictionDaysAgreed: null,
+      rejoinRetentionAgreedAt: null,
+      rejoinRetentionVersion: null,
+    });
     for (const v of [s.buyer.name, s.buyer.phone, s.buyer.broadcastNickname, s.buyer.loginId]) {
       expect(JSON.stringify([m.name, m.phone, m.broadcastNickname, m.loginId])).not.toContain(v);
     }

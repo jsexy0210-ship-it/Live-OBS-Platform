@@ -6,7 +6,7 @@
 export type MemberDataPolicy = "delete" | "anonymize" | "retain_legal";
 
 export const MEMBER_DATA_POLICY: Record<string, { policy: MemberDataPolicy; note: string }> = {
-  BuyerMember: { policy: "anonymize", note: "이름·휴대폰·닉네임·아이디·CI 해시·생년월일·비밀번호·마케팅 동의 비식별, WITHDRAWN·deletedAt" },
+  BuyerMember: { policy: "anonymize", note: "이름·휴대폰·닉네임·아이디·CI 해시·생년월일·비밀번호·마케팅 동의·가입 동의 기록(signupConsent)·재가입 제한 보관 동의 스냅숏 비식별, WITHDRAWN·deletedAt" },
   BuyerAddress: { policy: "delete", note: "저장 배송지" },
   BuyerSession: { policy: "delete", note: "로그인 세션" },
   BuyerPurchaseRestriction: { policy: "delete", note: "구매 제한(개인정보 없음, 탈퇴하면 쓸 일 없음)" },
