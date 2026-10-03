@@ -74,6 +74,8 @@ export default function StockPage() {
   const [loadedQ, setLoadedQ] = useState("");
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  // 검색 요청이 실패하면(400 말고) 같은 검색어로 다시 부를 수 있게 한다
+  const [searchFailed, setSearchFailed] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   // 늦게 온 옛 응답(이전 검색·이전 「더 불러오기」)은 버린다
   const loadId = useRef(0);
@@ -82,13 +84,14 @@ export default function StockPage() {
     const id = ++loadId.current;
     if (reset) setState((s) => (s.kind === "ok" ? s : { kind: "loading" }));
     setSearching(true);
+    setSearchFailed(false);
     setLoadingMore(false);
     const r = await fetchProducts(q, null);
     if (id !== loadId.current) return;
     setSearching(false);
     if (!r.ok) {
       if (r.status === 400) return setSearchError("검색어에 쓸 수 없는 글자가 있어요");
-      if (loadedOnce.current) return setNotice({ kind: "neg", text: "상품을 불러오지 못했어요. 다시 시도해 주세요" });
+      if (loadedOnce.current) return setSearchFailed(true);
       return setState({ kind: "error", status: r.status });
     }
     loadedOnce.current = true;
@@ -125,6 +128,9 @@ export default function StockPage() {
 
   // 검색어를 멈추고 잠시 뒤 서버에서 다시 찾는다
   const searchQ = query.trim();
+  // 적용이 끝난 뒤 다시 불러올 때는 그사이 바뀐 검색어를 쓴다(적용 중에 검색을 바꿔도 새 결과를 옛 검색어로 덮지 않게)
+  const searchQRef = useRef(searchQ);
+  searchQRef.current = searchQ;
   const firstSearch = useRef(true);
   useEffect(() => {
     if (firstSearch.current) {
@@ -221,7 +227,7 @@ export default function StockPage() {
     setProgress(null);
     setBulkReason(null);
     setBulkMemo("");
-    await load(loadedQ, true);
+    await load(searchQRef.current, true);
     setHistKey((k) => k + 1);
     if (done) setToast(`재고 ${done}건을 바꿨어요`);
     if (conflicts.length || failed.length) {
@@ -337,6 +343,14 @@ export default function StockPage() {
                   </button>
                 </div>
               </div>
+              {searchFailed && (
+                <div className="row stock-selinfo" role="alert" data-testid="search-failed">
+                  <span className="t-l2 c-neg">「{searchQ || "전체"}」 결과를 불러오지 못했어요</span>
+                  <button className="btn btn-sm btn-out" type="button" onClick={() => void load(searchQRef.current, false)}>
+                    다시 시도
+                  </button>
+                </div>
+              )}
               {/* 재고 조건(5 이하·품절)은 옵션 단위라 서버가 아닌 불러온 줄에서 거른다(옵션 단위 서버 필터는 HANDOFF 미완료) */}
               {filter !== "all" && (
                 <div className="row stock-selinfo" data-testid="chip-scope">

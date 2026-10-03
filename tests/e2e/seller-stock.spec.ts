@@ -749,3 +749,49 @@ test("검색 결과가 오기 전에는 모두 선택·한꺼번에 적기를 �
   await expect(page.getByLabel("보이는 옵션 모두 선택")).toBeEnabled({ timeout: 5000 });
   await expect(page.getByTestId("stock-row")).toHaveCount(1);
 });
+
+test("검색 요청이 실패하면 「다시 시도」로 같은 검색어를 다시 불러온다", async ({ page }) => {
+  let failOnce = true;
+  await page.route("**/api/seller/products?**q=**", (route) => {
+    if (failOnce) {
+      failOnce = false;
+      return route.fulfill({ status: 500, json: { error: "internal" } });
+    }
+    return route.continue();
+  });
+  await openAs(page);
+  await page.getByLabel("재고 검색").fill("탑로더");
+  await expect(page.getByTestId("search-failed")).toContainText("「탑로더」 결과를 불러오지 못했어요");
+  await expect(page.getByLabel("보이는 옵션 모두 선택")).toBeDisabled();
+  await page.getByTestId("search-failed").getByRole("button", { name: "다시 시도" }).click();
+  await expect(page.getByTestId("search-failed")).toHaveCount(0);
+  await expect(page.getByTestId("stock-row")).toHaveCount(1);
+  await expect(page.getByLabel("보이는 옵션 모두 선택")).toBeEnabled();
+});
+
+test("한 번에 적용하는 사이 검색을 바꾸면, 적용 뒤에도 새 검색 결과가 남는다", async ({ page }) => {
+  // 적용 요청을 늦춰 그사이 검색을 바꾼다(실제로 적용하고 되돌린다)
+  await page.route("**/stock-adjust", async (route) => {
+    await new Promise((r) => setTimeout(r, 1500));
+    return route.continue();
+  });
+  await openAs(page);
+  const top = Number((await row(page, "탑로더 25장").locator(".c-cur").innerText()).replace(/\D/g, ""));
+  await nextInput(page, "탑로더 25장 1팩").fill(String(top + 1));
+  await applyAll(page);
+  await expect(page.getByRole("button", { name: /^0\/1 적용 중$/ }).first()).toBeVisible();
+  await page.getByLabel("재고 검색").fill("문라이트 컬렉션");
+  await expect(page.getByText("재고 1건을 바꿨어요")).toBeVisible();
+  // 적용 뒤 다시 불러와도 지금 검색어(문라이트 컬렉션) 결과가 보이고, 모두 선택이 다시 켜진다
+  await expect(page.getByTestId("stock-row")).toHaveCount(1);
+  await expect(page.getByTestId("stock-row").first()).toContainText("문라이트 컬렉션 박스");
+  await expect(page.getByLabel("보이는 옵션 모두 선택")).toBeEnabled();
+  // 되돌려 둔다
+  await page.getByLabel("재고 검색").fill("탑로더");
+  await expect(page.getByTestId("stock-row")).toHaveCount(1);
+  await nextInput(page, "탑로더 25장 1팩").fill(String(top));
+  await applyAll(page);
+  await expect(page.getByRole("button", { name: "변경 0건 적용" }).first()).toBeVisible({ timeout: 10_000 });
+  await page.reload();
+  await expect(nextInput(page, "탑로더 25장 1팩")).toHaveValue(String(top));
+});
