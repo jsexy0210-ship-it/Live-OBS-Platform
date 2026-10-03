@@ -28,23 +28,30 @@ export async function claimPaymentDueSoon(db: PrismaClient, opts: { now?: Date; 
   const limit = Math.min(Math.max(opts.limit ?? 100, 1), 500);
   const staleBefore = new Date(now.getTime() - STALE_CLAIM_MS);
   const due = Prisma.sql`
-    SELECT o."id", o."sellerId" FROM "Order" o
+    SELECT o."id", o."sellerId", o."paymentDueAt" FROM "Order" o
     WHERE o."status" = 'PENDING_PAYMENT' AND o."paymentDueAt" > ${now}
       AND o."paymentDueAt" - CASE WHEN o."paymentDueAt" - o."createdAt" > INTERVAL '1 day' THEN INTERVAL '1 day' ELSE INTERVAL '1 hour' END <= ${now}`;
-  // 처음 잡는 주문: 기록이 없으면 넣는다(이미 있으면 그대로 두고 건너뛴다)
+  // 처음 잡는 주문: 기록이 없는 주문만 골라 한도만큼 넣는다. 기록 있는 주문을 먼저 빼야 기한이 이른 기록 있는 주문에
+  // 한도가 막혀 새 주문이 계속 밀리지 않는다. 동시에 넣은 기록은 ON CONFLICT로 건너뛴다.
   const fresh = await db.$queryRaw<{ id: string }[]>`
     INSERT INTO "OrderNotification" ("sellerId", "orderId", "kind", "status", "attempts", "claimedAt")
     SELECT d."sellerId", d."id", 'PAYMENT_DUE_SOON', 'PENDING', 1, ${now}
-    FROM (${due} ORDER BY o."paymentDueAt" ASC LIMIT ${limit}) d
+    FROM (${due}
+      AND NOT EXISTS (SELECT 1 FROM "OrderNotification" n WHERE n."orderId" = o."id" AND n."kind" = 'PAYMENT_DUE_SOON')
+      ORDER BY o."paymentDueAt" ASC LIMIT ${limit}) d
     ON CONFLICT ("orderId", "kind") DO NOTHING
     RETURNING "id"`;
-  // 다시 잡는 주문: 실패했거나 PENDING으로 오래 멈췄고 시도 횟수가 남은 기록(조건부 갱신이라 동시에 돌려도 한 번만 잡힌다)
+  // 다시 잡는 주문: 실패했거나 PENDING으로 오래 멈췄고 시도 횟수가 남은 기록을 기한 이른 순으로 한도만큼
+  // (조건부 갱신이라 동시에 돌려도 한 번만 잡힌다)
+  const retryable = Prisma.sql`n."kind" = 'PAYMENT_DUE_SOON' AND n."attempts" < ${MAX_NOTIFICATION_ATTEMPTS}
+      AND (n."status" = 'FAILED' OR (n."status" = 'PENDING' AND n."claimedAt" <= ${staleBefore}))`;
   const retried = await db.$queryRaw<{ id: string }[]>`
     UPDATE "OrderNotification" n
     SET "status" = 'PENDING', "attempts" = n."attempts" + 1, "claimedAt" = ${now}, "failureReason" = NULL
-    FROM (${due}) d
-    WHERE n."orderId" = d."id" AND n."kind" = 'PAYMENT_DUE_SOON' AND n."attempts" < ${MAX_NOTIFICATION_ATTEMPTS}
-      AND (n."status" = 'FAILED' OR (n."status" = 'PENDING' AND n."claimedAt" <= ${staleBefore}))
+    WHERE ${retryable} AND n."id" IN (
+      SELECT n."id" FROM "OrderNotification" n JOIN (${due}) d ON d."id" = n."orderId"
+      WHERE ${retryable}
+      ORDER BY d."paymentDueAt" ASC LIMIT ${limit})
     RETURNING n."id"`;
   const ids = [...fresh, ...retried].map((r) => r.id);
   if (ids.length === 0) return [];

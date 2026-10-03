@@ -90,4 +90,19 @@ describe("입금 기한 알림 「보냈음」 기록", () => {
     await db.order.update({ where: { id: paidLater.id }, data: { status: "PAID" } });
     expect((await claimPaymentDueSoon(db)).map((c) => [c.orderId, c.attempts])).toEqual([[stuck.id, 2]]);
   });
+  it("기한이 이른 주문에 기록이 이미 있어도 한도(limit) 안에서 새 주문을 잡고, 다시 잡기도 한도를 지킨다", async () => {
+    const s = await shop();
+    const sent = await s.order(1 * HOUR);
+    const exhausted = await s.order(2 * HOUR);
+    const fresh = await s.order(10 * HOUR);
+    await claimPaymentDueSoon(db, { limit: 2 });
+    await db.orderNotification.update({ where: { orderId_kind: { orderId: sent.id, kind: "PAYMENT_DUE_SOON" } }, data: { status: "SENT" } });
+    await db.orderNotification.update({ where: { orderId_kind: { orderId: exhausted.id, kind: "PAYMENT_DUE_SOON" } }, data: { status: "FAILED", attempts: MAX_NOTIFICATION_ATTEMPTS } });
+    // 기록 있는 주문 2개가 기한이 더 일러도 새 주문은 잡힌다
+    expect(ids(await claimPaymentDueSoon(db, { limit: 2 }))).toEqual([fresh.id]);
+    // 다시 잡을 기록이 3개여도 한도만큼만 잡는다(기한 이른 순)
+    const more = await Promise.all([s.order(3 * HOUR), s.order(4 * HOUR), s.order(5 * HOUR)]);
+    for (const o of await claimPaymentDueSoon(db, { limit: 3 })) await markNotificationFailed(db, o.notificationId, "실패");
+    expect(ids(await claimPaymentDueSoon(db, { limit: 2 }))).toEqual([more[0].id, more[1].id].sort());
+  });
 });
