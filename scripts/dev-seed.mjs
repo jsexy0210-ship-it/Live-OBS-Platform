@@ -183,7 +183,7 @@ async function seedOrders(sellerId, passwordHash) {
     });
     if (shipped) {
       await db.shipment.create({
-        data: { sellerId, orderId: order.id, courier: "CJ대한통운", trackingNumber: `5600000000${String(n).padStart(2, "0")}`, shippedAt: new Date(createdAt.getTime() + 3 * 3600_000) },
+        data: { sellerId, orderId: order.id, courier: "CJ", trackingNumber: `5600000000${String(n).padStart(2, "0")}`, shippedAt: new Date(createdAt.getTime() + 3 * 3600_000) },
       });
     }
   }

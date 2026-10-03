@@ -9,6 +9,7 @@ import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { LoadingRows, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
 import { won } from "../../../../../../components/seller/format";
+import { COURIERS, isCourier } from "../../../../../../lib/server/orders/shipping";
 import { PAYMENT_METHOD, STATUS_BADGE, detailStatusLabel, fullTime, longTime, phoneText, type OrderDetail } from "../../../../../../components/seller/orders";
 
 // SA-022 판매자 주문 상세(GET /api/seller/orders/{id}). 결제 완료 주문만 「취소 · 환불」(SA-023 모달)을 열 수 있다.
@@ -17,6 +18,8 @@ type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "o
 
 const SHIPMENT_STATUS: Record<string, string> = { IN_TRANSIT: "배송 중", DELIVERED: "배송 완료" };
 const FAULT_LABEL = { BUYER: "구매자 사정", SELLER: "판매자 사정" } as const;
+// 송장의 택배사는 코드(CJ·HANJIN …)로 저장된다. 화면 이름으로 바꾸고, 모르는 값은 그대로 보인다.
+const courierName = (c: string) => (isCourier(c) ? COURIERS[c] : c);
 
 export default function OrderDetailPage() {
   const { orderId } = useParams<{ orderId: string }>();
@@ -219,7 +222,7 @@ export default function OrderDetailPage() {
                   </>
                 )}
                 <dt>송장</dt>
-                <dd>{o.shipment ? `${o.shipment.courier} ${o.shipment.trackingNumber}` : "아직 보내지 않았어요"}</dd>
+                <dd>{o.shipment ? `${courierName(o.shipment.courier)} ${o.shipment.trackingNumber}` : "아직 보내지 않았어요"}</dd>
                 {o.shipment && (
                   <>
                     <dt>발송 시각</dt>

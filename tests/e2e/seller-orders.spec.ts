@@ -219,3 +219,12 @@ test("주문·배송 권한만 있는 직원(방송 진행 권한 없음)도 실
   await expect(page.getByText(/원 환불을 완료했어요/)).toBeVisible();
   await expect(page.locator(".bdg-lg").first()).toHaveText("환불됨");
 });
+
+test("발송한 주문의 송장은 택배사 코드가 아니라 화면 이름(CJ대한통운)으로 보인다", async ({ page }) => {
+  await login(page);
+  const shipped = rows(page).filter({ has: page.locator("td:nth-child(6)", { hasText: "발송함" }) }).first();
+  await shipped.locator("a.ord-link").click();
+  await expect(page).toHaveURL(/\/seller\/orders\/[0-9a-f-]{36}$/);
+  const dd = page.locator("dt", { hasText: "송장" }).locator("xpath=following-sibling::dd[1]");
+  await expect(dd).toHaveText(/^CJ대한통운 \d+$/);
+});
