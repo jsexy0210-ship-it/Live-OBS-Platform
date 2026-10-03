@@ -152,7 +152,7 @@ test("검색·품절·재고 적은 순으로 걸러 보고, 잘못된 값은 �
   await expect(page.getByText("고칠 칸이 1개 있어요. 그 칸은 빼고 적용해요")).toBeVisible();
   await expect(page.getByRole("button", { name: "변경 0건 적용" }).first()).toBeDisabled();
   await page.getByLabel("재고 검색").fill("없는상품이름");
-  await expect(page.getByText("「없는상품이름」와 일치하는 상품이 없어요")).toBeVisible();
+  await expect(page.getByText("「없는상품이름」에 해당하는 상품이 없어요")).toBeVisible();
 });
 
 test("상품 권한이 없는 직원은 권한 안내를 본다", async ({ page }) => {
@@ -794,4 +794,59 @@ test("한 번에 적용하는 사이 검색을 바꾸면, 적용 뒤에도 새 �
   await expect(page.getByRole("button", { name: "변경 0건 적용" }).first()).toBeVisible({ timeout: 10_000 });
   await page.reload();
   await expect(nextInput(page, "탑로더 25장 1팩")).toHaveValue(String(top));
+});
+
+test("검색어가 틀리면(400) 검색창 바로 아래에 알리고 옛 결과를 감추며, 「검색 지우기」로 되돌린다", async ({ page }) => {
+  await openAs(page);
+  await expect(page.getByTestId("stock-row").first()).toBeVisible();
+  // 폭 없는 공백만 있는 검색어는 서버가 400으로 막는다
+  await page.getByLabel("재고 검색").fill("\u200b");
+  await expect(page.getByTestId("search-error")).toHaveText(/검색어에 쓸 수 없는 글자가 있어요/);
+  await expect(page.getByTestId("stock-row")).toHaveCount(0);
+  // 검색창 바로 아래(툴바 다음)에 보인다
+  const bar = (await page.locator(".stock-search").boundingBox())!;
+  const err = (await page.getByTestId("search-error").boundingBox())!;
+  expect(err.y - (bar.y + bar.height)).toBeLessThan(80);
+  await page.getByTestId("search-error").getByRole("button", { name: "검색 지우기" }).click();
+  await expect(page.getByLabel("재고 검색")).toHaveValue("");
+  await expect(page.getByTestId("search-error")).toHaveCount(0);
+  await expect(page.getByTestId("stock-row").first()).toBeVisible();
+});
+
+test("재고 검색어는 50자까지: 입력은 50자에서 멈추고, 바꾼 뒤 50자를 넘으면 길이로 안내한다", async ({ page }) => {
+  await openAs(page);
+  await page.getByLabel("재고 검색").fill("가".repeat(51));
+  await expect(page.getByLabel("재고 검색")).toHaveValue("가".repeat(50));
+  // 「㈜」는 NFKC로 「(주)」 3자가 되어 50개면 150자 → 서버가 길이로 막는다
+  await page.getByLabel("재고 검색").fill("㈜".repeat(50));
+  await expect(page.getByTestId("search-error")).toHaveText(/검색어는 50자까지 쓸 수 있어요/);
+});
+
+test("한 번에 적용하는 사이 새로 적은 재고는 적용 뒤에도 남는다", async ({ page }) => {
+  await page.route("**/stock-adjust", async (route) => {
+    await new Promise((r) => setTimeout(r, 1500));
+    return route.continue();
+  });
+  await openAs(page);
+  const top = Number((await row(page, "탑로더 25장").locator(".c-cur").innerText()).replace(/\D/g, ""));
+  const moon = Number((await row(page, "문라이트 컬렉션 박스").locator(".c-cur").innerText()).replace(/\D/g, ""));
+  await nextInput(page, "탑로더 25장 1팩").fill(String(top + 1));
+  await applyAll(page);
+  await expect(page.getByRole("button", { name: /^0\/1 적용 중$/ }).first()).toBeVisible();
+  // 적용 중에 다른 옵션을 새로 적는다(이번 적용에는 들어가지 않음)
+  await nextInput(page, "문라이트 컬렉션 박스 1박스").fill(String(moon + 2));
+  await expect(page.getByText("재고 1건을 바꿨어요")).toBeVisible();
+  await expect(page.getByRole("button", { name: "변경 1건 적용" }).first()).toBeVisible();
+  await expect(nextInput(page, "문라이트 컬렉션 박스 1박스")).toHaveValue(String(moon + 2));
+  await expect(page.getByTestId("sum-count")).toHaveText("1개");
+  // 적용한 탑로더는 새 재고로 바뀌어 있고 바뀐 것으로 세지 않는다
+  await expect(row(page, "탑로더 25장").locator(".c-cur")).toContainText(String(top + 1));
+  // 문라이트는 적용하지 않고 지우고, 탑로더는 되돌려 둔다
+  await nextInput(page, "문라이트 컬렉션 박스 1박스").fill(String(moon));
+  await nextInput(page, "탑로더 25장 1팩").fill(String(top));
+  await applyAll(page);
+  await expect(page.getByRole("button", { name: "변경 0건 적용" }).first()).toBeVisible({ timeout: 10_000 });
+  await page.reload();
+  await expect(nextInput(page, "탑로더 25장 1팩")).toHaveValue(String(top));
+  await expect(nextInput(page, "문라이트 컬렉션 박스 1박스")).toHaveValue(String(moon));
 });

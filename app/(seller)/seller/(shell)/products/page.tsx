@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoImage, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, type Product, type ProductStatus } from "../../../../../components/seller/api";
-import { LOW_STOCK, statusBadge, totalStock, won } from "../../../../../components/seller/format";
+import { LOW_STOCK, MAX_SEARCH_LENGTH, statusBadge, textLength, totalStock, won } from "../../../../../components/seller/format";
 
 // SA-011 상품 목록. 상태별로 걸러 보고, 한 번에 50개씩 이어서 불러온다.
 const FILTERS: { key: ProductStatus | "ALL"; label: string }[] = [
@@ -125,7 +125,7 @@ export default function ProductListPage() {
               ))}
             </div>
             <div className="search p-search">
-              <input className="inp inp-sm" type="search" placeholder="상품명 · 옵션명 검색" aria-label="상품 검색" value={search} onChange={(e) => setSearch(e.target.value)} />
+              <input className="inp inp-sm" type="search" placeholder="상품명 · 옵션명 검색" aria-label="상품 검색" value={search} onChange={(e) => setSearch(e.target.value)} maxLength={MAX_SEARCH_LENGTH} />
             </div>
             {STOCK_FILTERS.map((sf) => (
               <button
@@ -150,7 +150,10 @@ export default function ProductListPage() {
               state.status === 400 && q ? (
                 <div className="st" style={{ boxShadow: "none" }}>
                   <div className="st-ic neg">!</div>
-                  <span className="t">검색어에 쓸 수 없는 글자가 있어요</span>
+                  {/* 서버 기준(NFKC 뒤 50자)을 넘었으면 길이 안내, 아니면 글자 안내 */}
+                  <span className="t">
+                    {textLength(q.normalize("NFKC").trim()) > MAX_SEARCH_LENGTH ? `검색어는 ${MAX_SEARCH_LENGTH}자까지 쓸 수 있어요` : "검색어에 쓸 수 없는 글자가 있어요"}
+                  </span>
                   <button className="btn btn-sm btn-text" type="button" onClick={() => setSearch("")}>
                     검색 지우기
                   </button>

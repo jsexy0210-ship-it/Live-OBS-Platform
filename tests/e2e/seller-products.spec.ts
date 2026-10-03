@@ -436,3 +436,14 @@ test("상품 검색: 상품·옵션 이름으로 서버에서 찾고(대소문�
   await expect(page.getByTestId("product-row").filter({ hasText: "스타라이트 부스터 박스" })).toBeVisible();
   await shot(page, "SA-011-search");
 });
+
+test("상품 검색어는 50자까지: 입력은 50자에서 멈추고, 바꾼 뒤 50자를 넘으면 길이로 안내한다", async ({ page }) => {
+  await login(page);
+  await page.getByLabel("상품 검색").fill("가".repeat(51));
+  await expect(page.getByLabel("상품 검색")).toHaveValue("가".repeat(50));
+  await page.getByLabel("상품 검색").fill("㈜".repeat(50));
+  await expect(page.getByText("검색어는 50자까지 쓸 수 있어요")).toBeVisible();
+  await page.getByRole("button", { name: "검색 지우기" }).click();
+  await expect(page.getByLabel("상품 검색")).toHaveValue("");
+  await expect(page.getByTestId("product-row").first()).toBeVisible();
+});

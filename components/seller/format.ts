@@ -4,6 +4,8 @@ export const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 
 // 글자 수는 서버와 같은 공용 함수로 센다(NFKC 정규화·앞뒤 공백 제외·코드포인트 기준, 이모지 하나 = 1자)
 export { textLength } from "../../lib/server/text/clean";
+// 상품 이름 검색어 최대 길이(NFKC 뒤 코드포인트). 서버 lib/server/products/manage.ts MAX_SEARCH_LENGTH와 같은 값
+export const MAX_SEARCH_LENGTH = 50;
 
 export const INT4_MAX = 2147483647;
 // 서버 「재고 부족」 기준(LOW_STOCK_MAX = 5)과 같게 둔다

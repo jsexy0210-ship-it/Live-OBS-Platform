@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage, type Product } from "../../../../../../components/seller/api";
-import { INT4_MAX, parseAmount, textLength } from "../../../../../../components/seller/format";
+import { INT4_MAX, MAX_SEARCH_LENGTH, parseAmount, textLength } from "../../../../../../components/seller/format";
 import { cleanText } from "../../../../../../lib/server/text/clean";
 
 // SA-014 재고 관리. 옵션마다 「변경 후」 재고를 적어 한 번에 적용하거나, 한 옵션을 사유와 함께 빼고 더한다.
@@ -80,7 +80,8 @@ export default function StockPage() {
   // 늦게 온 옛 응답(이전 검색·이전 「더 불러오기」)은 버린다
   const loadId = useRef(0);
   const loadedOnce = useRef(false);
-  const load = useCallback(async (q: string, reset: boolean) => {
+  // keep: 다시 불러온 뒤 남겨 둘 바꾼 값(적용 중에 새로 적은 값은 지우지 않는다). 없으면 reset일 때 모두 지운다
+  const load = useCallback(async (q: string, reset: boolean, keep?: (prev: Record<string, string>) => Record<string, string>) => {
     const id = ++loadId.current;
     if (reset) setState((s) => (s.kind === "ok" ? s : { kind: "loading" }));
     setSearching(true);
@@ -90,7 +91,8 @@ export default function StockPage() {
     if (id !== loadId.current) return;
     setSearching(false);
     if (!r.ok) {
-      if (r.status === 400) return setSearchError("검색어에 쓸 수 없는 글자가 있어요");
+      // 서버 기준(NFKC 뒤 50자)을 넘었으면 길이 안내, 아니면 글자 안내
+      if (r.status === 400) return setSearchError(textLength(q.normalize("NFKC").trim()) > MAX_SEARCH_LENGTH ? `검색어는 ${MAX_SEARCH_LENGTH}자까지 쓸 수 있어요` : "검색어에 쓸 수 없는 글자가 있어요");
       if (loadedOnce.current) return setSearchFailed(true);
       return setState({ kind: "error", status: r.status });
     }
@@ -100,9 +102,9 @@ export default function StockPage() {
     setRows(got);
     setCursor(r.data.nextCursor);
     setLoadedQ(q);
-    setPool((p) => ({ ...(reset ? {} : p), ...Object.fromEntries(got.map((x) => [x.key, x])) }));
+    setPool((p) => ({ ...(reset && !keep ? {} : p), ...Object.fromEntries(got.map((x) => [x.key, x])) }));
     if (reset) {
-      setNext({});
+      setNext((prev) => (keep ? keep(prev) : {}));
       setSelected(new Set());
     }
     setState({ kind: "ok" });
@@ -212,6 +214,8 @@ export default function StockPage() {
     const failed: string[] = [];
     let done = 0;
     let sent = 0;
+    // 이번에 보낸 값. 적용이 끝난 뒤 이 값 그대로인 칸만 지우고, 그사이 새로 적거나 고친 칸은 남긴다
+    const sentValues: Record<string, string> = Object.fromEntries(valid.map((r) => [r.key, next[r.key]]));
     setProgress({ done: 0, total: valid.length });
     for (const r of valid) {
       const res = await api<{ optionId: string; stock: number }>(`/api/seller/products/${r.productId}/options/${r.optionId}/stock-adjust`, {
@@ -227,7 +231,7 @@ export default function StockPage() {
     setProgress(null);
     setBulkReason(null);
     setBulkMemo("");
-    await load(searchQRef.current, true);
+    await load(searchQRef.current, true, (prev) => Object.fromEntries(Object.entries(prev).filter(([k, v]) => sentValues[k] !== v)));
     setHistKey((k) => k + 1);
     if (done) setToast(`재고 ${done}건을 바꿨어요`);
     if (conflicts.length || failed.length) {
@@ -321,6 +325,7 @@ export default function StockPage() {
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     aria-invalid={!!searchError}
+                    maxLength={MAX_SEARCH_LENGTH}
                     aria-busy={searching}
                   />
                 </div>
@@ -343,6 +348,15 @@ export default function StockPage() {
                   </button>
                 </div>
               </div>
+              {/* 검색어가 틀리면(400) 검색창 바로 아래에 알리고, 옛 결과는 감춰 모두 선택이 꺼진 이유가 보이게 한다 */}
+              {searchError && (
+                <div className="row stock-selinfo" role="alert" data-testid="search-error">
+                  <span className="t-l2 c-neg">{searchError}</span>
+                  <button className="btn btn-sm btn-out" type="button" onClick={() => setQuery("")}>
+                    검색 지우기
+                  </button>
+                </div>
+              )}
               {searchFailed && (
                 <div className="row stock-selinfo" role="alert" data-testid="search-failed">
                   <span className="t-l2 c-neg">「{searchQ || "전체"}」 결과를 불러오지 못했어요</span>
@@ -359,7 +373,7 @@ export default function StockPage() {
                   </span>
                 </div>
               )}
-              {visible.length > shown.length && (
+              {!searchError && visible.length > shown.length && (
                 <div className="row stock-selinfo" data-testid="stock-selinfo">
                   <span className="t-l2 c-alt num">
                     선택 {selected.size.toLocaleString("ko-KR")}개 · 전체 {visible.length.toLocaleString("ko-KR")}개
@@ -372,11 +386,11 @@ export default function StockPage() {
                 </div>
               )}
 
-              {visible.length === 0 ? (
+              {searchError ? null : visible.length === 0 ? (
                 <div className="st" style={{ boxShadow: "none" }}>
                   <div className="st-ic">?</div>
                   <span className="t">
-                    {rows.length > 0 ? "조건에 맞는 옵션이 없어요" : loadedQ ? `「${loadedQ}」와 일치하는 상품이 없어요` : "아직 재고를 관리할 상품이 없어요"}
+                    {rows.length > 0 ? "조건에 맞는 옵션이 없어요" : loadedQ ? `「${loadedQ}」에 해당하는 상품이 없어요` : "아직 재고를 관리할 상품이 없어요"}
                   </span>
                   {(rows.length > 0 || loadedQ) && (
                     <button
@@ -488,7 +502,7 @@ export default function StockPage() {
                   </tbody>
                 </table>
               )}
-              {visible.length > shown.length ? (
+              {searchError ? null : visible.length > shown.length ? (
                 <div className="row center" style={{ padding: "12px 20px" }}>
                   <button className="btn btn-sm btn-out" type="button" onClick={() => setShownCount((c) => c + PAGE_ROWS)}>
                     {Math.min(PAGE_ROWS, visible.length - shown.length).toLocaleString("ko-KR")}개 더 보기 ({(visible.length - shown.length).toLocaleString("ko-KR")}개 남음)
@@ -511,7 +525,6 @@ export default function StockPage() {
                   불러온 옵션 {rows.length.toLocaleString("ko-KR")}개{cursor ? " · 상품이 더 있어요" : ""} · 바뀐 옵션 {changed.length}개 · 적용하기 전에는 반영되지 않아요
                   {loadingMore && <span data-testid="stock-loading-more"> · 상품을 더 불러오고 있어요</span>}
                 </span>
-                {searchError && <span className="err">{searchError}</span>}
                 {invalid.length > 0 && <span className="err">고칠 칸이 {invalid.length}개 있어요. 그 칸은 빼고 적용해요</span>}
               </div>
             </div>
