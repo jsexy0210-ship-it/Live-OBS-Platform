@@ -282,21 +282,22 @@ export async function verifyAndSettle(
   db: PrismaClient,
   provider: BillingProvider,
   paymentId: string,
-  // resentNow: 이번 회차에 결제 요청을 (다시) 보냈다. PG 반영이 늦을 수 있어 이번 회차에는 「결제 안 됨」으로 확정하지 않는다.
-  opts: { notChargedAfterMs?: number; resentNow?: boolean } = {},
+  opts: { notChargedAfterMs?: number } = {},
 ): Promise<AutomationPayment["status"]> {
   const found = await provider.getPayment(paymentId);
   return db.$transaction(async (tx) => {
     const now = await dbNow(tx);
     const payment = await tx.automationPayment.findUniqueOrThrow({ where: { id: paymentId }, include: { job: true } });
     if (payment.status !== "PENDING") return payment.status;
-    // 「결제 안 됨」 마감은 마지막으로 결제 요청을 보낸 시각부터 센다(다시 보냈으면 그때부터 다시)
-    const ageMs = now.getTime() - (payment.chargeSubmittedAt ?? payment.createdAt).getTime();
+    // 「결제 안 됨」 마감은 첫 제출 + 30분으로 고정한다(다시 보내도 늘지 않음). 마감 뒤에도 마지막 제출에서 반영 지연 유예(2분)가 지나야 닫는다.
+    const sinceFirst = now.getTime() - (payment.chargeFirstSubmittedAt ?? payment.createdAt).getTime();
+    const sinceLast = now.getTime() - (payment.chargeSubmittedAt ?? payment.createdAt).getTime();
+    const notCharged = sinceFirst >= (opts.notChargedAfterMs ?? AUTOMATION_LIMITS.notChargedAfterMs) && sinceLast >= AUTOMATION_LIMITS.chargeLookupGraceMs;
     let status: "PAID" | "FAILED" | null = null;
     let failureReason: string | null = null;
     if (found.status === "PAID") status = "PAID";
     else if (found.status === "FAILED") [status, failureReason] = ["FAILED", found.reason.slice(0, 200)];
-    else if (!opts.resentNow && ageMs >= (opts.notChargedAfterMs ?? AUTOMATION_LIMITS.notChargedAfterMs)) [status, failureReason] = ["FAILED", "not_charged"];
+    else if (notCharged) [status, failureReason] = ["FAILED", "not_charged"];
     if (!status) return "PENDING";
 
     const claimed = await tx.automationPayment.updateMany({
@@ -339,14 +340,19 @@ async function submitCharge(db: PrismaClient, provider: BillingProvider, payment
     const p = await tx.automationPayment.findUniqueOrThrow({ where: { id: paymentId }, include: { job: { select: { id: true, kind: true } } } });
     if (!p.job) return null;
     await lockJob(tx, p.job.id);
+    const now = await dbNow(tx);
     const r = await tx.automationPayment.updateMany({
       where: {
         id: paymentId,
         status: "PENDING",
         job: { is: { status: "AWAITING_PAYMENT" } },
-        OR: resendBefore ? [{ chargeSubmittedAt: null }, { chargeSubmittedAt: { lte: resendBefore } }] : [{ chargeSubmittedAt: null }],
+        AND: [
+          { OR: resendBefore ? [{ chargeSubmittedAt: null }, { chargeSubmittedAt: { lte: resendBefore } }] : [{ chargeSubmittedAt: null }] },
+          // 다시 보내기는 고정 마감(첫 제출 + 30분) 전까지만
+          { OR: [{ chargeFirstSubmittedAt: null }, { chargeFirstSubmittedAt: { gt: new Date(now.getTime() - AUTOMATION_LIMITS.notChargedAfterMs) } }] },
+        ],
       },
-      data: { chargeSubmittedAt: await dbNow(tx) },
+      data: { chargeSubmittedAt: now, chargeFirstSubmittedAt: p.chargeFirstSubmittedAt ?? now },
     });
     return r.count === 1 ? { sellerId: p.sellerId, amount: p.amount, kind: p.job.kind } : null;
   });
@@ -373,16 +379,15 @@ export async function reconcileAutomationPayments(db: PrismaClient, provider: Bi
   let settled = 0;
   for (const p of stale) {
     // 한 건 조회가 실패해도 나머지는 계속 확인한다
-    let resentNow = false;
     try {
       if ((await provider.getPayment(p.id)).status === "NOT_FOUND") {
         const sub = await db.sellerSubscription.findUnique({ where: { sellerId: p.sellerId }, select: { billingKeyCipher: true } });
-        if (sub?.billingKeyCipher) resentNow = await submitCharge(db, provider, p.id, openBillingKey(sub.billingKeyCipher, p.sellerId), cutoff);
+        if (sub?.billingKeyCipher) await submitCharge(db, provider, p.id, openBillingKey(sub.billingKeyCipher, p.sellerId), cutoff);
       }
     } catch {
       // 조회·다시 보내기가 실패해도 아래 확인(마감 처리 포함)은 한다
     }
-    const status = await verifyAndSettle(db, provider, p.id, { resentNow }).catch(() => "PENDING" as const);
+    const status = await verifyAndSettle(db, provider, p.id).catch(() => "PENDING" as const);
     if (status !== "PENDING") settled++;
   }
   return settled;

@@ -31,6 +31,8 @@ export const AUTOMATION_LIMITS = {
   // 결제 결과를 못 받은 청구를 PG에 다시 묻기 시작하는 나이, 기록이 없으면 실패로 닫는 나이
   reconcileAfterMs: 60_000,
   notChargedAfterMs: 30 * 60_000,
+  // 마감 뒤에도 마지막 결제 요청에서 이만큼은 PG 반영 지연을 기다린 뒤 「결제 안 됨」으로 닫는다
+  chargeLookupGraceMs: 2 * 60_000,
 } as const;
 
 // 판단 모델 설정(2026-10-04 대표님 확정 ⑦: Pro급, 작업당 약 500원 추정, 작업당 비용 상한을 두고 실측 후 조정).

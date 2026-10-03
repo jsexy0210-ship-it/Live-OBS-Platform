@@ -346,10 +346,10 @@ describe("lease·fencing·잠금·동시성", () => {
 
   it("작업당 비용 상한을 넘으면 멈춘다", async () => {
     const a = await bought();
-    // 판단 모델 경로(작업서 없음)에서 비용이 쌓인다(이동 10 → 다음 판단 20에서 상한 15 초과, 행동 검사 전에 멈춘다)
-    await db.automationJob.update({ where: { id: a.jobId }, data: { costLimit: 15, playbookId: null, playbookVersion: null } });
+    // 판단 모델 경로(작업서 없음)에서 비용이 쌓인다(첫 판단 10에서 상한 5 초과, 행동 검사 전에 멈춘다)
+    await db.automationJob.update({ where: { id: a.jobId }, data: { costLimit: 5, playbookId: null, playbookVersion: null } });
     expect(await runOnce(db, runtime(), W)).toBe("failed");
-    expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "cost_limit", costUsed: 20 });
+    expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "cost_limit", costUsed: 10 });
   });
 });
 
@@ -1173,7 +1173,7 @@ describe("Codex 4차 반영", () => {
     return { ...s, target: { shopKey: `mall-${s.seller.id}`, obsPairingId: `pc-${s.seller.id}` } };
   }
   const noHooks = { touch: async () => {}, enterVerify: async () => {}, stepDone: async () => {} };
-  const baseOpts = { verifying: false, costLimit: 3000, maxActionsPerStep: 12, playbook: cafe24Playbook };
+  const baseOpts = { verifying: false, costLimit: 3000, maxActionsPerStep: 12, playbook: cafe24Playbook, shopHost: "myshop.cafe24.com" };
   const freshStats = () => ({ costUsed: 0, plannerCalls: 0, playbookActions: 0, deviatedSteps: [] as string[] });
 
   it("무료 재연결: 대조를 통과한 뒤 OBS 단계에서 재시도하는 사이 PC가 바뀌면, 다시 실행할 때 OBS 변경 0회로 mismatch", async () => {
@@ -1249,7 +1249,7 @@ describe("Codex 4차 반영", () => {
 
 describe("Codex 5차 반영", () => {
   const noHooks = { touch: async () => {}, enterVerify: async () => {}, stepDone: async () => {} };
-  const baseOpts = { verifying: false, costLimit: 3000, maxActionsPerStep: 12, playbook: cafe24Playbook };
+  const baseOpts = { verifying: false, costLimit: 3000, maxActionsPerStep: 12, playbook: cafe24Playbook, shopHost: "myshop.cafe24.com" };
   const freshStats = () => ({ costUsed: 0, plannerCalls: 0, playbookActions: 0, deviatedSteps: [] as string[] });
 
   it("외부 행동이 끝나는 사이 중단 신호가 오면 그 결과(고객 대기 등)를 쓰지 않고 멈춘다", async () => {
@@ -1339,7 +1339,7 @@ describe("MASTER 요청 시험(26c2974 Codex 3건)", () => {
     const run = runSteps(
       rt,
       { sellerId: a.seller.id, jobId: a.jobId },
-      { verifying: false, costLimit: 3000, maxActionsPerStep: 12, playbook: cafe24Playbook, startIndex: 0, stats: { costUsed: 0, plannerCalls: 0, playbookActions: 0, deviatedSteps: [] }, signal: beat.signal },
+      { verifying: false, costLimit: 3000, maxActionsPerStep: 12, playbook: cafe24Playbook, shopHost: "myshop.cafe24.com", startIndex: 0, stats: { costUsed: 0, plannerCalls: 0, playbookActions: 0, deviatedSteps: [] }, signal: beat.signal },
       { touch: async () => {}, enterVerify: async () => {}, stepDone: async () => {} },
     );
     await new Promise((r) => setTimeout(r, 150));
@@ -1416,7 +1416,7 @@ describe("Codex 6차 반영(9144f55)", () => {
     const scope = { sellerId: a.seller.id, jobId: a.jobId };
     // 판단 모델만 쓰되(작업서 행동 없음) 누를 수 있는 대상(A·B)은 작업서가 정한다
     const targets = { ...cafe24Playbook, steps: { ...cafe24Playbook.steps, shop_connect: { ...cafe24Playbook.steps.shop_connect, allowedTargets: ["A", "B"] } } };
-    const opts = { verifying: false, costLimit: 3000, maxActionsPerStep: 12, playbook: null, secretPlaybook: targets, startIndex: 0, stats: freshStats() };
+    const opts = { verifying: false, costLimit: 3000, maxActionsPerStep: 12, playbook: null, secretPlaybook: targets, shopHost: "myshop.cafe24.com", startIndex: 0, stats: freshStats() };
     // 1회차: 0번째에 「A」 클릭 성공 뒤 작업자가 죽음
     const rt = runtime();
     let script: AutomationAction[] = [{ type: "click", target: "A" }, { type: "step_done" }];
@@ -1442,7 +1442,7 @@ describe("Codex 6차 반영(9144f55)", () => {
     const clicks = () => rt.browser.performed.filter((p) => p.type === "click").length;
     expect(clicks()).toBe(2);
     // 3회차: 같은 행동(「A」 클릭)이 다른 순번(1번째)으로 와도 다시 적용하지 않는다
-    script = [{ type: "navigate", url: "https://admin.cafe24.com/apps" }, { type: "click", target: "A" }, { type: "step_done" }];
+    script = [{ type: "navigate", url: "https://myshop.cafe24.com/disp/admin/shop1/" }, { type: "click", target: "A" }, { type: "step_done" }];
     await expect(
       runSteps(rt, scope, { ...opts, stats: freshStats() }, {
         ...noHooks,
@@ -1622,14 +1622,15 @@ describe("Codex 8차 반영(748f1ff)", () => {
     }
   }
 
-  it("30분이 지난 결제를 다시 보낸 회차에는 조회가 NOT_FOUND여도 실패로 확정하지 않고, 다음 회차에 PAID로 대사한다", async () => {
+  it("마감 직전(첫 제출 29분 뒤)에 다시 보낸 회차에는 조회가 NOT_FOUND여도 실패로 확정하지 않고, 다음 회차에 PAID로 대사한다", async () => {
     const provider = new LaggyProvider();
     const a = await shopWithCard();
     provider.failNext = "timeout_before_charge";
     const r = await purchaseAutomation(db, provider, a.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP });
     if (!r.ok) throw new Error(r.reason);
     const old = new Date(Date.now() - 31 * 60_000);
-    await db.automationPayment.updateMany({ where: { sellerId: a.seller.id }, data: { createdAt: old, chargeSubmittedAt: old } });
+    const first = new Date(Date.now() - 29 * 60_000);
+    await db.automationPayment.updateMany({ where: { sellerId: a.seller.id }, data: { createdAt: old, chargeFirstSubmittedAt: first, chargeSubmittedAt: first } });
 
     await reconcileAutomationPayments(db, provider, { olderThanMs: 0 });
     expect(provider.charges).toHaveLength(1);
@@ -1713,5 +1714,93 @@ describe("Codex 9차 반영(d1afe8a)", () => {
       expect(rt.obs.applied.size, text).toBe(0);
       expect(rt.obs.connections.size, text).toBe(0);
     }
+  });
+});
+
+describe("Codex 10차 반영(38e24f1)", () => {
+  const freshStats = () => ({ costUsed: 0, plannerCalls: 0, playbookActions: 0, deviatedSteps: [] as string[] });
+  const noHooks = { touch: async () => {}, enterVerify: async () => {}, stepDone: async () => {} };
+
+  it("판단 모델의 이동은 이 작업 쇼핑몰 호스트의 단계별 허용 경로·쿼리 키로만: 다른 몰·같은 호스트 쇼핑몰 화면·허용 밖 쿼리는 이동 0회", async () => {
+    const a = await bought();
+    const scope = { sellerId: a.seller.id, jobId: a.jobId };
+    const opts = { verifying: false, costLimit: 3000, maxActionsPerStep: 12, playbook: null, secretPlaybook: cafe24Playbook, startIndex: 0, shopHost: "myshop.cafe24.com" };
+    const cases: [string, string][] = [
+      ["https://othershop.cafe24.com/disp/admin/shop1/", "host_not_allowed"],
+      ["https://myshop.cafe24.com/board/free/list.html", "target_not_allowed"],
+      ["https://myshop.cafe24.com/disp/admin/shop1/?redirect=https://evil.test/", "target_not_allowed"],
+    ];
+    for (const [url, reason] of cases) {
+      const rt = runtime();
+      rt.planner.override = (input) => (input.step.key === "shop_connect" ? { action: { type: "navigate", url }, costWon: 0 } : undefined);
+      const r = await runSteps(rt, scope, { ...opts, stats: freshStats() }, noHooks);
+      expect(r, url).toEqual({ kind: "failed", reason: `unsafe_action:${reason}` });
+      expect(rt.browser.performed.filter((p) => p.type === "navigate"), url).toHaveLength(0);
+    }
+    // 허용 경로는 그대로 이동한다
+    const rt = runtime();
+    let n = 0;
+    rt.planner.override = (input) =>
+      input.step.key === "shop_connect" ? { action: n++ === 0 ? { type: "navigate", url: "https://myshop.cafe24.com/disp/admin/shop1/" } : { type: "step_done" }, costWon: 0 } : undefined;
+    await runSteps(rt, scope, { ...opts, stats: freshStats() }, noHooks);
+    expect(rt.browser.performed.filter((p) => p.type === "navigate")).toHaveLength(1);
+  });
+
+  it("검증 읽기·단계 끝 직전에도 실제 PC를 다시 읽는다: 테스트 주문 뒤 PC가 바뀌면 다른 PC의 증거로 완료하지 않고 그 PC를 저장하지 않는다", async () => {
+    const a = await bought();
+    const rt = runtime();
+    const obs = rt.obs;
+    const perform = obs.perform.bind(obs);
+    const afterSwitch: string[] = [];
+    obs.perform = async (scope, action, actionKey) => {
+      if (obs.pairing.get(scope.sellerId) === "pc-B") afterSwitch.push(action.type);
+      const out = await perform(scope, action, actionKey);
+      if (action.type === "send_test_event") obs.pairing.set(scope.sellerId, "pc-B");
+      return out;
+    };
+    obs.pairing.set(a.seller.id, "pc-A");
+    expect(await runOnce(db, rt, W)).toBe("failed");
+    expect(afterSwitch).toHaveLength(0);
+    const j = await job(a.jobId);
+    expect(j).toMatchObject({ status: "FAILED", lastError: "obs_target_changed", verifiedAt: null, obsPairingId: "pc-A" });
+  });
+
+  it("판단 모델 입력에는 조작에 필요한 요소(버튼·링크·제목·라벨·안내)만 가고, 표·목록·입력값과 전화·이메일·주소·주문번호는 빠진다", async () => {
+    await bought();
+    const rt = runtime();
+    const pii = ["홍길동", "010-1234-5678", "테헤란로 123", "김철수", "hong@example.com", "010-9876-5432", "help@shop.test", "20261003000123", "월드컵로 45"];
+    rt.browser.pageText = () => `주문 관리 · 홍길동 010-1234-5678 서울특별시 강남구 테헤란로 123 · 김철수 주문 20261003-0001234 · hong@example.com · 문의 010-9876-5432 help@shop.test 주문번호 20261003000123 서울특별시 마포구 월드컵로 45 · 저장 · 로그아웃`;
+    (rt.browser as unknown as { pageElements: unknown }).pageElements = () => [
+      { kind: "heading", text: "주문 관리" },
+      { kind: "table", text: "홍길동 010-1234-5678 서울특별시 강남구 테헤란로 123" },
+      { kind: "list", text: "김철수 주문 20261003-0001234" },
+      { kind: "input", text: "hong@example.com" },
+      { kind: "notice", text: "문의 010-9876-5432 help@shop.test 주문번호 20261003000123 서울특별시 마포구 월드컵로 45" },
+      { kind: "button", text: "저장" },
+    ];
+    await runOnce(db, rt, W);
+    expect(rt.planner.inputs.length).toBeGreaterThan(0);
+    const sent = JSON.stringify(rt.planner.inputs.map((i) => i.observation));
+    for (const v of pii) expect(sent, v).not.toContain(v);
+    expect(sent).toContain("저장");
+    expect(sent).toContain("주문 관리");
+  });
+
+  it("「결제 안 됨」 마감은 첫 제출 + 30분으로 고정: 계속 NOT_FOUND여도 마감 뒤 마지막 제출에서 2분이 지나면 실패로 닫고 열린 작업 칸이 풀린다", async () => {
+    const provider = new FakeBillingProvider();
+    const a = await shopWithCard();
+    provider.failNext = "timeout_before_charge";
+    const r = await purchaseAutomation(db, provider, a.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP });
+    if (!r.ok) throw new Error(r.reason);
+    const ago = (m: number) => new Date(Date.now() - m * 60_000);
+    // 첫 제출 31분 전, 마지막 제출 3분 전(그동안 계속 PG에 닿지 않음)
+    await db.automationPayment.updateMany({ where: { sellerId: a.seller.id }, data: { createdAt: ago(31), chargeFirstSubmittedAt: ago(31), chargeSubmittedAt: ago(3) } });
+    await reconcileAutomationPayments(db, provider, { olderThanMs: 0 });
+    // 마감 뒤에는 다시 보내지 않는다
+    expect(provider.charges).toHaveLength(0);
+    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "FAILED", failureReason: "not_charged" });
+    expect(await job(r.jobId)).toMatchObject({ status: "FAILED", lastError: "payment_failed" });
+    // 열린 작업 칸이 풀려 다시 살 수 있다
+    expect(await purchaseAutomation(db, provider, a.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP })).toMatchObject({ ok: true, paymentStatus: "PAID" });
   });
 });

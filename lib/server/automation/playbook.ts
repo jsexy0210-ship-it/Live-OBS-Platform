@@ -1,5 +1,5 @@
 import type { AutomationCustomerAction } from "@prisma/client";
-import { validateDecision, type AutomationAction, type JobSecrets, type Observation, type SecretTargets } from "./ports";
+import { validateDecision, type AutomationAction, type JobSecrets, type NavRules, type Observation, type SecretTargets } from "./ports";
 import { STEPS } from "./steps";
 
 // 연결 작업서(확정 ⑦-1, 2026-10-04 대표님 지시 「Gemini가 미리 학습하게 한다」).
@@ -32,7 +32,17 @@ export type PlaybookStep = {
   secretTargets: SecretTargets;
   // 이 단계에서 누르거나 글을 넣어도 되는 대상(비밀값 칸 제외). 작업서·판단 모델 행동 모두 이 목록 안에서만 한다.
   allowedTargets: readonly string[];
+  // 이 단계에서 이동해도 되는 경로 접두와 쿼리 키(호스트는 이 작업의 쇼핑몰 호스트로 고정). 작업서 이동 주소는 호스트 자리에 {shop}을 쓴다.
+  allowedUrls: { pathPrefixes: readonly string[]; queryKeys: readonly string[] };
 };
+
+// 작업서 이동 주소의 {shop} 자리를 이 작업의 쇼핑몰 호스트로 바꾼다(호스트를 모르면 빈 값 → 검사에서 거부)
+export function resolveShop(action: AutomationAction, shopHost: string | null | undefined): AutomationAction {
+  return action.type === "navigate" && action.url.includes("{shop}") ? { ...action, url: action.url.split("{shop}").join(shopHost ?? "") } : action;
+}
+
+export const navRulesFor = (step: PlaybookStep | null | undefined, shopHost: string | null | undefined): NavRules | null =>
+  step ? { shopHost, pathPrefixes: step.allowedUrls.pathPrefixes, queryKeys: step.allowedUrls.queryKeys } : null;
 
 export type Playbook = {
   id: string;
@@ -77,7 +87,8 @@ export function validatePlaybook(p: Playbook): string[] {
       problems.push(`secret_origin_missing:${step.key}`);
     }
     s.actions.forEach(({ action }, i) => {
-      const v = validateDecision(step, { action, costWon: 0 }, probe, s.secretTargets, s.allowedTargets);
+      const host = `probe.${p.hostSuffixes[0] ?? "invalid"}`;
+      const v = validateDecision(step, { action: resolveShop(action, host), costWon: 0 }, probe, s.secretTargets, s.allowedTargets, navRulesFor(s, host));
       if (!v.ok) problems.push(`${step.key}[${i}]:${v.reason}`);
     });
     if (s.actions.length === 0 || s.actions[s.actions.length - 1].action.type !== "step_done") problems.push(`no_step_done:${step.key}`);

@@ -1235,6 +1235,8 @@ model AutomationPayment {
   consentAgreedAt      DateTime                @db.Timestamptz(3)
   // 결제 요청 보낸 기록(outbox). null = 아직 PG에 보내지 않음(결제 행만 만들고 멈춤). 대사가 같은 청구 id로 다시 보낸다.
   chargeSubmittedAt    DateTime?               @db.Timestamptz(3)
+  // 처음 결제 요청을 보낸 시각. 「결제 안 됨」 마감(이 시각 + 30분)을 고정하는 기준이다. 다시 보내도 바뀌지 않는다.
+  chargeFirstSubmittedAt DateTime?             @db.Timestamptz(3)
   providerPaymentId    String?
   failureReason        String?
   paidAt               DateTime?               @db.Timestamptz(3)

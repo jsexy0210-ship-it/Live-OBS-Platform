@@ -41,17 +41,26 @@ describe("다시 시도 간격", () => {
 
 describe("모델 입력 정리와 행동 검사", () => {
   it("관찰에서 비밀값을 지우고 길이를 자른다", () => {
-    const o = sanitizeObservation({ url: `https://admin.cafe24.com/?k=${secrets.webhook_secret}`, text: `값 ${secrets.webhook_url} ${"가".repeat(9000)}` }, secrets);
+    const text = `값 ${secrets.webhook_url} ${"가".repeat(9000)}`;
+    const o = sanitizeObservation({ url: `https://admin.cafe24.com/?k=${secrets.webhook_secret}`, text, elements: [{ kind: "notice", text }] }, secrets);
     expect(JSON.stringify(o)).not.toContain(secrets.webhook_secret);
     expect(JSON.stringify(o)).not.toContain(secrets.webhook_url);
     expect(o.untrustedPageText.length).toBe(8000);
+    // 주소는 출처·경로만(쿼리 제외), 요소가 없으면 화면 글을 보내지 않는다
+    expect(o.url).toBe("https://admin.cafe24.com/");
+    expect(sanitizeObservation({ url: null, text: "홍길동 010-1234-5678" }, secrets).untrustedPageText).toBe("");
   });
 
-  it("허용 호스트(https, 하위 도메인 포함)만 이동, 비슷한 가짜 도메인·http·계정 포함 주소는 거부", () => {
+  it("이 작업 쇼핑몰 호스트(https)의 허용 경로·쿼리 키로만 이동, 다른 몰·비슷한 가짜 도메인·http·계정 포함 주소·규칙 없음은 거부", () => {
     const b = step("browser");
-    expect(validateDecision(b, d({ type: "navigate", url: "https://shop1.cafe24.com/admin" }), secrets)).toEqual({ ok: true });
-    for (const url of ["https://cafe24.com.evil.test/", "https://evilcafe24.com/", "http://admin.cafe24.com/", "https://u:p@admin.cafe24.com/", "javascript:alert(1)", "https://admin.cafe24.com:8443/", "https://127.0.0.1/", "https://169.254.169.254/"]) {
-      expect(validateDecision(b, d({ type: "navigate", url }), secrets)).toEqual({ ok: false, reason: "host_not_allowed" });
+    const nav = { shopHost: "shop1.cafe24.com", pathPrefixes: ["/admin/"], queryKeys: ["page"] };
+    expect(validateDecision(b, d({ type: "navigate", url: "https://shop1.cafe24.com/admin/apps?page=2" }), secrets, {}, [], nav)).toEqual({ ok: true });
+    expect(validateDecision(b, d({ type: "navigate", url: "https://shop1.cafe24.com/admin/apps" }), secrets)).toEqual({ ok: false, reason: "host_not_allowed" });
+    for (const url of ["https://shop2.cafe24.com/admin/", "https://cafe24.com.evil.test/", "https://evilcafe24.com/", "http://shop1.cafe24.com/admin/", "https://u:p@shop1.cafe24.com/admin/", "javascript:alert(1)", "https://shop1.cafe24.com:8443/admin/", "https://127.0.0.1/", "https://169.254.169.254/"]) {
+      expect(validateDecision(b, d({ type: "navigate", url }), secrets, {}, [], nav)).toEqual({ ok: false, reason: "host_not_allowed" });
+    }
+    for (const url of ["https://shop1.cafe24.com/board/", "https://shop1.cafe24.com/admin/?next=https://evil.test/", "https://shop1.cafe24.com/admin/#x"]) {
+      expect(validateDecision(b, d({ type: "navigate", url }), secrets, {}, [], nav)).toEqual({ ok: false, reason: "target_not_allowed" });
     }
   });
 

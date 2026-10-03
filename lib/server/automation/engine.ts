@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { cueMatches, matchException, type Playbook } from "./playbook";
+import { cueMatches, matchException, navRulesFor, resolveShop, type Playbook } from "./playbook";
 import {
   sanitizeObservation,
   secretOriginAllowed,
@@ -181,6 +181,7 @@ async function runAll(
     const pb = opts.playbook?.steps[step.key] ?? null;
     const secretTargets = secretBook?.steps[step.key]?.secretTargets ?? {};
     const allowedTargets = secretBook?.steps[step.key]?.allowedTargets ?? [];
+    const nav = navRulesFor(secretBook?.steps[step.key], opts.shopHost);
     const scripted = pb ? [...pb.actions] : [];
     let deviated = !pb;
     const history: string[] = [];
@@ -202,7 +203,7 @@ async function runAll(
       let costWon = 0;
       if (!deviated && scripted.length > 0) {
         if (cueMatches(scripted[0].expect, raw)) {
-          action = scripted.shift()!.action;
+          action = resolveShop(scripted.shift()!.action, opts.shopHost);
           stats.playbookActions++;
         } else {
           // 화면이 작업서와 다르다: 관리 화면 변경 신호. 재검증 대상이 된다(practice.ts).
@@ -217,7 +218,7 @@ async function runAll(
         const decision = await rt.planner.decide({ step, observation: sanitizeObservation(raw, secrets), history, reference });
         stats.plannerCalls++;
         costWon = Number.isInteger(decision.costWon) && decision.costWon > 0 ? decision.costWon : 0;
-        const check = validateDecision(step, decision, secrets, secretTargets, allowedTargets);
+        const check = validateDecision(step, decision, secrets, secretTargets, allowedTargets, nav);
         stats.costUsed += costWon;
         await touchStats();
         if (stats.costUsed > opts.costLimit) return { kind: "failed", reason: "cost_limit" };
@@ -225,24 +226,27 @@ async function runAll(
         action = decision.action;
       } else {
         // 작업서 행동도 같은 검사를 거친다(작업서가 잘못돼도 허용 밖 행동은 하지 않음)
-        const check = validateDecision(step, { action, costWon: 0 }, secrets, secretTargets, allowedTargets);
+        const check = validateDecision(step, { action, costWon: 0 }, secrets, secretTargets, allowedTargets, nav);
         await touchStats();
         if (!check.ok) return { kind: "failed", reason: `unsafe_action:${check.reason}` };
       }
       history.push(action.type);
       if (action.type === "request_customer") return { kind: "needs_customer", action: action.action };
-      if (MUTATING.includes(action.type)) {
+      const mutating = MUTATING.includes(action.type);
+      if (mutating) {
         const blocked = await checkTarget();
         if (blocked) return blocked;
-        // OBS를 바꾸기 직전마다(모든 작업) 실제 PC를 새로 읽는다. 무료 재연결은 기준 PC와 다르면 바꾸지 않고 멈춘다(앞선 대조 기록을 믿지 않음).
-        // 이미 한 PC에 바꾼 뒤 PC가 바뀌었으면 두 PC에 나눠 설치하지 않게 멈춘다.
-        // 이번 실행에서 처음 바꾸기 전에는 같은 PC 잠금을 그 PC로 옮긴다(다른 작업이 그 PC를 쓰고 있으면 claimObsTarget이 던져 obs_target_busy)
-        if (!session) {
-          guard();
-          const pairingId = await rt.obs.currentPairingId(scope);
-          if (!pairingId) return want ? { kind: "failed", reason: "reconnect_target_unverified" } : { kind: "needs_customer", action: "LOCAL_TOOL" };
-          if (want && pairingId !== want.obsPairingId) return { kind: "failed", reason: "reconnect_target_mismatch" };
-          if (obsPairing && pairingId !== obsPairing) return { kind: "failed", reason: "obs_target_changed" };
+      }
+      // OBS 쪽 행동은 바꾸기·검증 읽기·단계 끝 모두 직전마다(모든 작업) 실제 PC를 새로 읽는다. 무료 재연결은 기준 PC와 다르면 멈춘다(앞선 대조 기록을 믿지 않음).
+      // 이미 한 PC에 바꾼 뒤 PC가 바뀌었으면 두 PC에 나눠 설치하거나 다른 PC의 증거로 완료하지 않게 멈춘다.
+      // 이번 실행에서 처음 바꾸기 전에는 같은 PC 잠금을 그 PC로 옮긴다(다른 작업이 그 PC를 쓰고 있으면 claimObsTarget이 던져 obs_target_busy)
+      if (!session) {
+        guard();
+        const pairingId = await rt.obs.currentPairingId(scope);
+        if (!pairingId) return want ? { kind: "failed", reason: "reconnect_target_unverified" } : { kind: "needs_customer", action: "LOCAL_TOOL" };
+        if (want && pairingId !== want.obsPairingId) return { kind: "failed", reason: "reconnect_target_mismatch" };
+        if (obsPairing && pairingId !== obsPairing) return { kind: "failed", reason: "obs_target_changed" };
+        if (mutating) {
           if (!obsTargetClaimed && hooks.claimObsTarget) {
             await hooks.claimObsTarget(pairingId);
             obsTargetClaimed = true;
@@ -269,6 +273,8 @@ async function runAll(
       if (out.kind === "needs_customer") return { kind: "needs_customer", action: out.action };
       if (out.kind === "retryable") return { kind: "retry", reason: out.reason };
       if (out.kind === "fatal") return { kind: "failed", reason: out.reason };
+      // 실행기가 알려 준 PC가 이 작업이 바꾼 PC와 다르면 그 결과(증거·PC)를 저장하지 않고 멈춘다
+      if (!session && obsPairing && out.facts?.obsPairingId && out.facts.obsPairingId !== obsPairing) return { kind: "failed", reason: "obs_target_changed" };
       Object.assign(facts, out.facts);
       if (out.verified) {
         verified = true;

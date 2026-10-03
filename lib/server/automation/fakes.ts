@@ -9,6 +9,7 @@ import type {
   JobSecrets,
   ObsBridge,
   Observation,
+  ObservedElement,
   PlannerDecision,
   PlannerInput,
   SecretVault,
@@ -23,7 +24,7 @@ const sleep = (ms: number) => (ms > 0 ? new Promise((r) => setTimeout(r, ms)) : 
 
 // 단계별 기본 행동 순서. 행동 하나마다 판단 비용 costWon을 쓴다.
 const SCRIPT: Record<string, AutomationAction[]> = {
-  shop_connect: [{ type: "navigate", url: "https://admin.cafe24.com/apps" }, { type: "click", target: "앱 설치" }, { type: "step_done" }],
+  shop_connect: [{ type: "navigate", url: "https://myshop.cafe24.com/disp/admin/shop1/" }, { type: "click", target: "앱 설치" }, { type: "step_done" }],
   webhook_setup: [{ type: "fill", target: "주문 알림 주소", value: { secretRef: "webhook_url" } }, { type: "step_done" }],
   obs_overlay_install: [{ type: "obs_add_overlay_source" }, { type: "step_done" }],
   display_settings: [{ type: "obs_apply_display_settings" }, { type: "step_done" }],
@@ -95,6 +96,8 @@ export class FakeBrowserExecutor implements BrowserExecutor {
   // 관찰·현재 문서 주소(리다이렉트 흉내용). observe 때와 실행 직전 주소를 따로 바꿀 수 있다.
   pageUrl: (scope: JobScope) => string | null = () => "https://myshop.cafe24.com/disp/admin/shop1/";
   currentUrlOverride: ((scope: JobScope) => string | null) | null = null;
+  // 테스트용: 화면 요소(표·목록·입력값 등)를 직접 정한다
+  pageElements: ((scope: JobScope) => ObservedElement[]) | null = null;
   // 이미 적용한 행동 키 → 결과(같은 키는 한 번만 적용)
   readonly applied = new Map<string, ActionOutcome>();
   // currentShopKey를 몇 번 읽었는지(재연결 대조 횟수 확인용)
@@ -127,7 +130,10 @@ export class FakeBrowserExecutor implements BrowserExecutor {
       id,
       async observe(): Promise<Observation> {
         await sleep(self.delayMs);
-        return { url: self.pageUrl(scope), text: self.pageText(scope, secretsSeen) };
+        const text = self.pageText(scope, secretsSeen);
+        // 구조화된 화면 요소. 따로 정하지 않으면 화면 글을 「 · 」로 나눠 안내 문구로 본다
+        const elements = self.pageElements ? self.pageElements(scope) : text.split(" · ").map((t) => ({ kind: "notice" as const, text: t }));
+        return { url: self.pageUrl(scope), text, elements };
       },
       async currentUrl() {
         return self.currentUrlOverride ? self.currentUrlOverride(scope) : self.pageUrl(scope);
@@ -181,7 +187,8 @@ export class FakeObsBridge implements ObsBridge {
 
   async observe(scope: JobScope): Promise<Observation> {
     await sleep(this.delayMs);
-    return { url: null, text: this.disconnected.has(scope.sellerId) ? "OBS 연결 안 됨" : "OBS 연결됨" };
+    const text = this.disconnected.has(scope.sellerId) ? "OBS 연결 안 됨" : "OBS 연결됨";
+    return { url: null, text, elements: [{ kind: "notice", text }] };
   }
 
   // 지운 작업(OBS 연결 정보 삭제 요청을 받은 작업)

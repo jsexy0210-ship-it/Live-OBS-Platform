@@ -16,7 +16,7 @@ export const cafe24Playbook: Playbook = {
       guide: "앱 설치 화면에서 우리 앱 설치를 누르고, 권한 승인은 고객이 직접 한다. 설치 완료 표시가 보이면 단계 끝.",
       referenceImages: [],
       actions: [
-        { action: { type: "navigate", url: "https://admin.cafe24.com/apps" } },
+        { action: { type: "navigate", url: "https://{shop}/disp/admin/shop1/" } },
         { action: { type: "click", target: "앱 설치" }, expect: { textIncludes: ["앱 설치"] } },
         { action: { type: "step_done" }, expect: { textIncludes: ["설치 완료"] } },
       ],
@@ -30,6 +30,8 @@ export const cafe24Playbook: Playbook = {
       examples: [],
       secretTargets: {},
       allowedTargets: ["앱 설치"],
+      // 관리자 경로만(초안 가정: 실제 앱 설치 화면 경로·쿼리는 실습 때 확인)
+      allowedUrls: { pathPrefixes: ["/disp/admin/", "/admin/"], queryKeys: [] },
     },
     webhook_setup: {
       guide: "주문 알림 주소 칸에 webhook_url 비밀 참조를 넣고 저장한다. 저장 완료 표시가 보이면 단계 끝.",
@@ -43,6 +45,7 @@ export const cafe24Playbook: Playbook = {
       examples: [],
       secretTargets: { webhook_url: ["주문 알림 주소"] },
       allowedTargets: ["저장"],
+      allowedUrls: { pathPrefixes: ["/disp/admin/", "/admin/"], queryKeys: [] },
     },
     obs_overlay_install: {
       guide: "로컬 연결 도구로 OBS에 주문 오버레이 브라우저 소스를 추가한다.",
@@ -52,6 +55,7 @@ export const cafe24Playbook: Playbook = {
       examples: [],
       secretTargets: {},
       allowedTargets: [],
+      allowedUrls: { pathPrefixes: [], queryKeys: [] },
     },
     display_settings: {
       guide: "오버레이 표시 설정(위치·크기)을 기본값으로 맞춘다.",
@@ -61,6 +65,7 @@ export const cafe24Playbook: Playbook = {
       examples: [],
       secretTargets: {},
       allowedTargets: [],
+      allowedUrls: { pathPrefixes: [], queryKeys: [] },
     },
     test_event_verify: {
       guide: "테스트 주문을 보내고 OBS 오버레이에 실제로 보이는지 확인한다. 보이지 않으면 끝내지 않는다.",
@@ -70,6 +75,7 @@ export const cafe24Playbook: Playbook = {
       examples: [],
       secretTargets: {},
       allowedTargets: [],
+      allowedUrls: { pathPrefixes: [], queryKeys: [] },
     },
   },
 };

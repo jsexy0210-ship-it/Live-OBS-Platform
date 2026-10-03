@@ -64,13 +64,14 @@ describe("작업서 우선 실행", () => {
     expect((await job(a.jobId)).verificationEvidence).toMatchObject({ shownOnOverlay: true });
   });
 
-  it("작업서가 없는 작업은 누를 대상·비밀값을 넣을 칸이 정해져 있지 않아 첫 클릭에서 멈춘다(판단 모델이 아무 칸이나 누르거나 비밀을 넣지 못함)", async () => {
+  it("작업서가 없는 작업은 이동 경로·누를 대상·비밀값을 넣을 칸이 정해져 있지 않아 첫 행동(이동)에서 멈춘다(판단 모델이 아무 곳이나 가거나 누르거나 비밀을 넣지 못함)", async () => {
     const rt = runtime();
     const a = await boughtWithShop();
     await db.automationJob.update({ where: { id: a.jobId }, data: { playbookId: null, playbookVersion: null } });
     expect(await runOnce(db, rt, W)).toBe("failed");
     const j = await job(a.jobId);
-    expect(j).toMatchObject({ lastError: "unsafe_action:target_not_allowed", playbookActions: 0, stepIndex: 0 });
+    expect(j).toMatchObject({ lastError: "unsafe_action:host_not_allowed", playbookActions: 0, stepIndex: 0 });
+    expect(rt.browser.performed.filter((p) => p.type === "navigate")).toHaveLength(0);
     expect(rt.browser.performed.filter((p) => p.type === "click")).toHaveLength(0);
     expect(rt.planner.inputs.every((i) => i.reference === null)).toBe(true);
     expect(rt.browser.performed.filter((p) => p.type === "fill")).toHaveLength(0);

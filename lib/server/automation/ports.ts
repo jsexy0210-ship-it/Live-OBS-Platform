@@ -25,8 +25,12 @@ export type AutomationAction =
   // 판단 모델의 「이 단계 끝」 요청. 끝났는지는 실행기·로컬 도구가 실제 상태로 확인한다.
   | { type: "step_done" };
 
-export type Observation = { url: string | null; text: string };
-// 모델에 넘기는 관찰. 비밀값을 지우고, 화면 글은 신뢰하지 않는 데이터로만 넘긴다.
+// 화면 요소(실행기가 구조화해 준다). 판단 모델에는 조작에 필요한 종류(버튼·링크·제목·폼 라벨·안내 문구)만 넘기고,
+// 표 본문·주문/회원 목록·입력값은 넘기지 않는다(구매자 개인정보 차단).
+export type ObservedElement = { kind: "button" | "link" | "heading" | "label" | "notice" | "table" | "list" | "input"; text: string };
+// text: 화면 전체 글(서버 안에서 작업서 화면 단서 대조에만 쓰고 판단 모델에 보내지 않는다)
+export type Observation = { url: string | null; text: string; elements?: readonly ObservedElement[] };
+// 모델에 넘기는 관찰. 조작 요소만 추리고 비밀값·개인정보를 가리며, 화면 글은 신뢰하지 않는 데이터로만 넘긴다.
 export type SafeObservation = { url: string | null; untrustedPageText: string };
 
 // reference: 연결 작업서의 단계 설명·성공 사례(확정 ⑦-1). 작업서가 없거나 화면이 작업서와 다를 때 판단 모델이 참고한다.
@@ -107,13 +111,39 @@ export type AutomationRuntime = { planner: AutomationPlanner; browser: BrowserEx
 const MAX_PAGE_TEXT = 8_000;
 const REDACTED = "[비밀값]";
 
-// 비밀값을 지우고 길이를 자른다. 비밀값이 짧으면(8자 미만) 오탐이 많아 지우지 않는다 — 그런 값은 비밀로 쓰지 않는다.
+const PLANNER_ELEMENT_KINDS: readonly ObservedElement["kind"][] = ["button", "link", "heading", "label", "notice"];
+
+// 남은 글의 개인정보 패턴을 가린다(이메일·전화번호·주소·주문번호 같은 긴 숫자열). 이름은 패턴으로 못 잡으므로 표·목록·입력값을 통째로 뺀다.
+export function maskPersonal(s: string): string {
+  return s
+    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[이메일]")
+    .replace(/(?:\+?82[-\s.]?)?0\d{1,2}[-\s.]?\d{3,4}[-\s.]?\d{4}/g, "[전화번호]")
+    .replace(/[가-힣]+(?:특별시|광역시|특별자치시|특별자치도|시|도)\s+[가-힣]+(?:시|군|구)(?:\s+[가-힣0-9]+(?:구|읍|면|동|리|로|길))*(?:\s*\d+(?:-\d+)?)?/g, "[주소]")
+    .replace(/[가-힣0-9]+(?:로|길)\s*\d+(?:-\d+)?/g, "[주소]")
+    .replace(/\d[\d-]{5,}\d/g, "[번호]");
+}
+
+// 판단 모델 입력을 만든다: 화면 본문을 그대로 보내지 않고 조작 요소만 추린 뒤 비밀값·개인정보를 가리고 길이를 자른다.
+// 주소는 출처·경로만(쿼리·조각에 개인정보가 실릴 수 있음). 비밀값이 짧으면(8자 미만) 오탐이 많아 지우지 않는다 — 그런 값은 비밀로 쓰지 않는다.
 export function sanitizeObservation(o: Observation, secrets: JobSecrets): SafeObservation {
   const strip = (s: string) =>
     Object.values(secrets)
       .filter((v) => v.length >= 8)
       .reduce((acc, v) => acc.split(v).join(REDACTED), s);
-  return { url: o.url ? strip(o.url) : null, untrustedPageText: strip(o.text).slice(0, MAX_PAGE_TEXT) };
+  const text = (o.elements ?? [])
+    .filter((e) => PLANNER_ELEMENT_KINDS.includes(e.kind))
+    .map((e) => `[${e.kind}] ${e.text}`)
+    .join("\n");
+  let url: string | null = null;
+  if (o.url) {
+    try {
+      const u = new URL(o.url);
+      url = maskPersonal(strip(`${u.origin}${u.pathname}`));
+    } catch {
+      url = null;
+    }
+  }
+  return { url, untrustedPageText: maskPersonal(strip(text)).slice(0, MAX_PAGE_TEXT) };
 }
 
 // 관리 화면 이동은 이 호스트(와 하위 도메인)만. https만 허용한다.
@@ -157,6 +187,8 @@ export function secretOriginAllowed(raw: string, shopHost: string | null | undef
 // 비밀값을 넣어도 되는 칸: 비밀 참조 → 이 단계에서 허용된 입력 칸 이름 목록. 작업서가 단계마다 미리 정한다.
 // 목록에 없는 비밀 참조·칸은 거부한다(악성 화면 지시로 다른 칸·다른 단계에 비밀을 넣지 못하게). 작업서가 없으면 비밀값을 쓰지 못한다.
 export type SecretTargets = Readonly<Partial<Record<SecretRef, readonly string[]>>>;
+// 이동 규칙: 이 작업의 쇼핑몰 호스트(정확히 일치)와 단계별 허용 경로 접두·쿼리 키. 없으면 이동할 수 없다.
+export type NavRules = { shopHost: string | null | undefined; pathPrefixes: readonly string[]; queryKeys: readonly string[] };
 
 export function validateDecision(
   step: Step,
@@ -166,13 +198,22 @@ export function validateDecision(
   // 이 단계에서 누르거나(click) 글을 넣어도(비밀값 아닌 fill) 되는 대상. 작업서가 단계마다 정한다. 목록 밖이면 거부한다
   // (악성 화면 지시로 삭제·권한·계정 설정 같은 설치와 무관한 칸을 누르지 못하게). 작업서가 없으면 누르거나 넣을 수 없다.
   allowedTargets: readonly string[] = [],
+  nav: NavRules | null = null,
 ): { ok: true } | { ok: false; reason: string } {
   const a = d.action;
   if (!Number.isInteger(d.costWon) || d.costWon < 0) return { ok: false, reason: "bad_cost" };
   if (!a || !ALLOWED_ACTIONS[step.kind].includes(a.type)) return { ok: false, reason: "action_not_allowed" };
   switch (a.type) {
-    case "navigate":
-      return hostAllowed(a.url) ? { ok: true } : { ok: false, reason: "host_not_allowed" };
+    case "navigate": {
+      if (!hostAllowed(a.url)) return { ok: false, reason: "host_not_allowed" };
+      const u = new URL(a.url);
+      // 호스트는 이 작업의 쇼핑몰 호스트만(같은 플랫폼의 다른 몰·중앙 호스트 거부)
+      if (!nav?.shopHost || u.hostname !== nav.shopHost) return { ok: false, reason: "host_not_allowed" };
+      // 경로는 단계별 허용 접두, 쿼리는 정한 키만, 조각(#)은 쓰지 않는다
+      if (!nav.pathPrefixes.some((p) => p.startsWith("/") && u.pathname.startsWith(p))) return { ok: false, reason: "target_not_allowed" };
+      if ([...u.searchParams.keys()].some((k) => !nav.queryKeys.includes(k)) || u.hash) return { ok: false, reason: "target_not_allowed" };
+      return { ok: true };
+    }
     case "click":
       if (typeof a.target !== "string" || !a.target || a.target.length > 200) return { ok: false, reason: "bad_target" };
       if (dangerous(a.target)) return { ok: false, reason: "dangerous_target" };
