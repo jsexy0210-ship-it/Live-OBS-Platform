@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { RUN, cleanupProducts, track } from "./cleanup";
 
 // SA-014 재고 관리: 한 번에 적용, 빼기·더하기(사유), 그사이 바뀐 재고는 덮어쓰지 않음, 걸러 보기, 권한, 390.
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
@@ -7,6 +8,8 @@ const SHOTS = process.env.E2E_SCREENSHOTS === "1";
 test.beforeAll(() => {
   if (!PASSWORD) throw new Error("E2E_PASSWORD가 없어요. dev-seed가 출력한 데모 비밀번호를 넣어 주세요");
 });
+// 이 파일에서 만든 상품은 끝나면 지운다(같은 DB에서 여러 번 돌려도 쌓이지 않게)
+test.afterAll(() => cleanupProducts(PASSWORD));
 
 async function shot(page: Page, name: string) {
   if (!SHOTS) return;
@@ -148,7 +151,7 @@ test("390에서는 옵션이 카드처럼 쌓이고 가로로 넘치지 않는�
 });
 
 test("상품 재고 차감 기준을 정하고 바꿀 수 있다(주문하면 바로 차감 ↔ 결제하면 차감)", async ({ page }) => {
-  const name = `e2e ${Date.now().toString(36)} 차감 기준`;
+  const name = track(`e2e ${RUN} 차감 기준`);
   await page.goto("/seller/login?next=%2Fseller%2Fproducts%2Fnew");
   await page.getByLabel("이메일").fill("demo-owner@example.com");
   await page.getByLabel("비밀번호").fill(PASSWORD);
@@ -171,8 +174,10 @@ test("상품 재고 차감 기준을 정하고 바꿀 수 있다(주문하면 �
 
 test("로그인이 풀린 뒤 재고를 바꾸면 로그인으로 보낸다", async ({ page }) => {
   await openAs(page);
-  // 첫 화면 데이터를 다 받은 뒤 로그인을 끊는다
+  // 첫 화면 데이터(상품·재고 이력)를 다 받은 뒤 로그인을 끊는다. 이력 요청이 남아 있으면 그 401로 먼저 로그인 화면으로 가 버린다
   await expect(page.getByTestId("stock-row").first()).toBeVisible();
+  await expect(page.getByTestId("history-item").first().or(page.getByText("아직 재고를 바꾼 기록이 없어요"))).toBeVisible();
+  await expect(page.getByTestId("stock-loading-more")).toHaveCount(0);
   await page.context().clearCookies();
   await page.getByRole("button", { name: "탑로더 25장 1팩 빼기 · 더하기" }).click();
   const sheet = page.getByRole("dialog");

@@ -97,7 +97,7 @@ describe("배송비 계산", () => {
 
   it("적립 기준에는 배송비를 넣지 않는다(상품 10,000원 × 1% = 100원, 배송비 3,000원 제외)", async () => {
     const s = await shop();
-    await db.rewardPolicy.create({ data: { sellerId: s.seller.id, rates: { [s.grade.id]: { card: 1, bankTransfer: 1 } } } });
+    await db.rewardPolicy.create({ data: { sellerId: s.seller.id, rates: { [s.grade.id]: { card: 1, bankTransfer: 1 } }, earnTiming: "ON_PAYMENT" } });
     const r = await s.order(2);
     expect(r.totalAmount).toBe(13000);
     expect(await markOrderPaid(db, { sellerId: s.seller.id, orderId: r.orderId, paymentMethod: "CARD" })).toMatchObject({ ok: true });

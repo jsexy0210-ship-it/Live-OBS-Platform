@@ -62,7 +62,7 @@ describe("이벤트 할인 주문 금액", () => {
     const o = await s.order(s.premium, 2);
     expect(o.items[0]).toMatchObject({ unitPrice: 9450, listUnitPrice: 10500, quantity: 2 });
     expect(o.totalAmount).toBe(9450 * 2 + 3000);
-    expect(rewardBase(o.items, 0)).toBe(18900);
+    expect(rewardBase(o.items)).toBe(18900);
     expect(await db.auditLog.count({ where: { action: "product.event_set", targetId: s.productId } })).toBe(1);
   });
 
