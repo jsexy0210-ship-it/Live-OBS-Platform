@@ -377,35 +377,74 @@ test("체험 한도로 본인확인이 막히면 처음부터 다시 하게 하�
   }
 });
 
-test("가입 응답을 못 받으면 같은 본인확인으로 다시 보내지 않고 로그인으로 가입 여부를 확인한다", async ({ page }) => {
+test("가입 응답이 끊기면 같은 요청을 한 번 다시 보내고, 201이면 서버가 준 닉네임으로 완료한다", async ({ page }) => {
   await mockApi(page);
-  let signups = 0;
+  const bodies: unknown[] = [];
   await page.route((u) => u.pathname === API, (route) => {
-    signups++;
-    return route.abort();
+    bodies.push(route.request().postDataJSON());
+    return bodies.length === 1
+      ? route.abort()
+      : route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ ok: true, broadcastNickname: "별빛" }) });
   });
-  const logins: unknown[] = [];
-  let loginOk = false;
+  let logins = 0;
   await page.route((u) => u.pathname === `/api/shop/${SLUG}/auth/login`, (route) => {
-    logins.push(route.request().postDataJSON());
-    return loginOk
-      ? route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) })
-      : route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ error: "invalid_credentials", message: "x" }) });
+    logins++;
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
   });
   await page.goto(`/shop/${SLUG}/signup`);
   await toVerified(page);
   await fillAccount(page, "x9", "별빛");
   await page.getByRole("button", { name: "가입하기" }).click();
-  // 로그인으로 확인했지만 아직 계정이 없으면: 확인하지 못했다고 알리고 가입은 다시 보내지 않는다
+  await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
+  // 같은 요청을 그대로 한 번 더 보냈고, 로그인으로 확인하지 않는다
+  expect(bodies).toHaveLength(2);
+  expect(bodies[1]).toEqual(bodies[0]);
+  expect(logins).toBe(0);
+});
+
+test("재전송도 처리되지 않으면(400) 같은 아이디·비밀번호 계정이 있어도 완료로 가지 않는다", async ({ page }) => {
+  await mockApi(page);
+  let signups = 0;
+  await page.route((u) => u.pathname === API, (route) => {
+    signups++;
+    return signups === 1 ? route.abort() : route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ error: "verification_invalid", message: BUYER_SIGNUP_MESSAGES.verification_invalid }) });
+  });
+  // 예전 계정이 같은 비밀번호로 로그인되는 상황이어도 이번 가입 완료로 보지 않는다
+  await page.route((u) => u.pathname === `/api/shop/${SLUG}/auth/login`, (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) }),
+  );
+  await page.goto(`/shop/${SLUG}/signup`);
+  await toVerified(page);
+  await fillAccount(page, "xb", "별빛");
+  await page.getByRole("button", { name: "가입하기" }).click();
   await expect(page.getByText("가입이 끝났는지 확인하지 못했어요. 다시 시도해 주세요")).toBeVisible();
   await expect(page.getByRole("button", { name: "가입하기" })).toBeDisabled();
-  expect(logins).toEqual([{ loginId: "buyer-x9@example.com", password: "pw-x9-long" }]);
-  // 다시 확인: 이번에는 가입돼 있어 로그인 성공 → 완료 화면
-  loginOk = true;
+  expect(signups).toBe(2);
+  // 다시 시도도 같은 요청 재전송이고, 400이면 그대로 완료로 가지 않는다
   await page.getByRole("button", { name: "다시 시도" }).click();
-  await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
-  expect(signups).toBe(1);
-  expect(logins).toHaveLength(2);
+  await expect.poll(() => signups).toBe(3);
+  await expect(page.getByText("가입이 끝났는지 확인하지 못했어요. 다시 시도해 주세요")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "가입했어요" })).toHaveCount(0);
+});
+
+test("본인확인 결과 영역은 확인 응답이 준 이름·휴대폰을 보여 준다", async ({ page }) => {
+  await mockApi(page, { confirm: { status: 200, body: { ok: true, identity: { name: "홍길동", phone: "01099998888", birthDate: "1999-01-01" } } } });
+  await page.goto(`/shop/${SLUG}/signup`);
+  await fillIdentity(page, "김구매", "01011112222");
+  await page.getByRole("button", { name: "인증번호 받기" }).click();
+  await page.getByLabel("인증번호").fill("000000");
+  await page.getByRole("button", { name: "확인", exact: true }).click();
+  await expect(page.locator("#v-name")).toHaveValue("홍길동");
+  await expect(page.locator("#v-phone")).toHaveValue("010-9999-8888");
+});
+
+test("완료 문구의 닉네임은 가입 응답의 broadcastNickname을 쓴다", async ({ page }) => {
+  await mockApi(page, { signup: { status: 201, body: { ok: true, broadcastNickname: "서버닉네임" } } });
+  await page.goto(`/shop/${SLUG}/signup`);
+  await toVerified(page);
+  await fillAccount(page, "xc", "입력닉네임");
+  await page.getByRole("button", { name: "가입하기" }).click();
+  await expect(page.getByText("이제 주문할 수 있어요. 방송에서는 서버닉네임 닉네임으로 보여요.")).toBeVisible();
 });
 
 test("마케팅 정보 수신은 선택이고, 체크 여부를 agreedMarketing으로 그대로 보낸다", async ({ page }) => {

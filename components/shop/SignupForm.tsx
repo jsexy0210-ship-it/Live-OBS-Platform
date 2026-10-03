@@ -20,6 +20,15 @@ const CARRIERS: { value: Carrier; label: string }[] = [
 type Step = "identity" | "code" | "verified" | "done";
 type Notice = { kind: "neg" | "info"; text: string };
 type Fail = { status: number; error: string; message?: string };
+type SignupBody = {
+  verificationId: string;
+  loginId: string;
+  password: string;
+  broadcastNickname: string;
+  agreedTerms: boolean;
+  agreedPrivacy: boolean;
+  agreedMarketing: boolean;
+};
 
 // 방송 닉네임 최대 글자 수. 서버(lib/server/buyers/signup.ts MAX_NICKNAME_LENGTH)와 같은 값, 같은 셈법(코드포인트, textLength).
 // 입력 칸 maxLength는 UTF-16 단위라 이모지가 절반에서 잘리므로 쓰지 않는다.
@@ -87,8 +96,8 @@ export default function SignupForm({ slug }: { slug: string }) {
   const [agreedMarketing, setAgreedMarketing] = useState(false);
   // 가입을 요청한 닉네임(완료 문구는 이 값을 쓴다)
   const [joinedNickname, setJoinedNickname] = useState("");
-  // 가입 응답을 못 받았을 때 가입 여부를 로그인으로 확인할 값. 있으면 같은 본인확인으로 가입을 다시 보내지 않는다.
-  const [unconfirmed, setUnconfirmed] = useState<{ loginId: string; password: string; nickname: string } | null>(null);
+  // 가입 응답을 못 받았을 때 그대로 다시 보낼 요청. 서버는 같은 본인확인·쿠키·아이디·비밀번호면 같은 회원으로 201을 다시 준다.
+  const [unconfirmed, setUnconfirmed] = useState<{ body: SignupBody; nickname: string } | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{ loginId?: string; password?: string; nickname?: string; terms?: string }>({});
 
   const identityReady = name.trim() !== "" && birth.length === 8 && gender !== null && carrier !== "" && phone.length >= 10 && idvAgreed;
@@ -189,8 +198,10 @@ export default function SignupForm({ slug }: { slug: string }) {
     if (!verificationId || busy || code.length !== 6) return;
     setBusy(true);
     setCodeError(null);
-    const r = await api(`${base}/verification/confirm`, { method: "POST", body: { verificationId, code } });
+    const r = await api<{ identity?: { name: string; phone: string } }>(`${base}/verification/confirm`, { method: "POST", body: { verificationId, code } });
     setBusy(false);
+    // 본인확인 결과 영역은 공급자가 확인한 이름·휴대폰을 보여 준다(응답에 없으면 보낸 값)
+    if (r.ok && r.data.identity) setSent({ name: r.data.identity.name, phone: r.data.identity.phone });
     if (r.ok || (!r.ok && r.error === "already_verified")) {
       setStep("verified");
       setNotice(null);
@@ -211,22 +222,19 @@ export default function SignupForm({ slug }: { slug: string }) {
     setBusy(true);
     setNotice(null);
     setFieldErrors({});
-    const broadcastNickname = nickname.trim();
-    // 완료 문구에는 서버(cleanText)가 저장하는 형태(NFKC 정규화 + 앞뒤 공백 제거)로 보여 준다
-    const account = { loginId: loginId.trim(), password, nickname: broadcastNickname.normalize("NFKC").trim() };
-    const r = await api(base, {
-      method: "POST",
-      body: { verificationId, loginId: account.loginId, password, broadcastNickname, agreedTerms, agreedPrivacy, agreedMarketing },
-    });
+    const body: SignupBody = { verificationId, loginId: loginId.trim(), password, broadcastNickname: nickname.trim(), agreedTerms, agreedPrivacy, agreedMarketing };
+    // 응답에 닉네임이 없을 때 쓸 값: 서버(cleanText)가 저장하는 형태(NFKC 정규화 + 앞뒤 공백 제거)
+    const pending = { body, nickname: body.broadcastNickname.normalize("NFKC").trim() };
+    const r = await api<{ broadcastNickname?: string }>(base, { method: "POST", body });
     if (r.ok) {
       setBusy(false);
-      finish(account.nickname);
+      finish(r.data.broadcastNickname ?? pending.nickname);
       return;
     }
-    // 응답이 끊김: 서버에서는 가입됐을 수 있다. 같은 본인확인으로 다시 보내지 않고 로그인으로 확인한다(성공하면 세션도 이때 받는다).
+    // 응답이 끊김: 서버에서는 가입됐을 수 있다. 같은 요청을 한 번 다시 보낸다(가입됐으면 같은 회원으로 201과 세션을 다시 준다).
     if (r.status === 0) {
-      setUnconfirmed(account);
-      await checkJoined(account);
+      setUnconfirmed(pending);
+      await resubmit(pending);
       setBusy(false);
       return;
     }
@@ -272,16 +280,17 @@ export default function SignupForm({ slug }: { slug: string }) {
     focus("shop-state-title");
   };
 
-  const checkJoined = async (account: { loginId: string; password: string; nickname: string }) => {
-    const r = await api(`/api/shop/${encodeURIComponent(slug)}/auth/login`, { method: "POST", body: { loginId: account.loginId, password: account.password } });
-    if (r.ok) finish(account.nickname);
+  // 201이 아니면(다시 끊김·400 등) 완료로 보지 않는다. 기존 계정에 로그인되는지로 판단하지 않는다.
+  const resubmit = async (pending: { body: SignupBody; nickname: string }) => {
+    const r = await api<{ broadcastNickname?: string }>(base, { method: "POST", body: pending.body });
+    if (r.ok) finish(r.data.broadcastNickname ?? pending.nickname);
     else showNotice({ kind: "neg", text: "가입이 끝났는지 확인하지 못했어요. 다시 시도해 주세요" });
   };
 
-  const recheck = async () => {
+  const retry = async () => {
     if (!unconfirmed || busy) return;
     setBusy(true);
-    await checkJoined(unconfirmed);
+    await resubmit(unconfirmed);
     setBusy(false);
   };
 
@@ -313,7 +322,7 @@ export default function SignupForm({ slug }: { slug: string }) {
         <div id="signup-notice" tabIndex={-1} className={`msg msg-${notice.kind}`} role={notice.kind === "neg" ? "alert" : "status"}>
           <span className="grow">{notice.text}</span>
           {unconfirmed && (
-            <button type="button" className="btn btn-sm btn-out" disabled={busy} onClick={recheck}>
+            <button type="button" className="btn btn-sm btn-out" disabled={busy} onClick={retry}>
               다시 시도
             </button>
           )}
