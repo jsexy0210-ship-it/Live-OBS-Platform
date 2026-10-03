@@ -299,7 +299,10 @@ test("아이디 찾기(대표자): 본인확인하면 가입한 이메일과 쇼
   await fillIdentity(page, a.name, randomPhone());
   await shot(page, "AU-011");
   const started = page.waitForRequest((r) => r.url().endsWith("/api/seller/find-id/start"));
-  await verify(page, false, "/api/seller/find-id/start");
+  // 첫 시작 응답을 잃어도 다시 누르면 같은 attemptKey로 같은 본인확인에 이어진다
+  const findSent = await dropFirstStart(page, "/api/seller/find-id/start");
+  await retryAfterDrop(page, findSent);
+  await page.unroute((u) => u.pathname === "/api/seller/find-id/start");
   expect(((await started).postDataJSON() as { accountType: string }).accountType).toBe("owner");
   await expect(page.getByRole("heading", { name: "가입한 계정을 찾았어요" })).toBeVisible();
   const row = page.getByTestId("fi-account");
@@ -374,7 +377,10 @@ test("직원: 로그인하면 본인확인 연결 안내가 뜨고, 나중에 �
   await login(page, "직원", s.email, s.password);
   await expect(page).toHaveURL(/\/seller\/identity-link\?next=/);
   await fillIdentity(page, s.name, s.phone);
-  await verify(page, false, "/api/seller/me/identity/start");
+  // 직원 연결도 첫 시작 응답을 잃고 다시 누르면 같은 attemptKey로 같은 본인확인에 이어진다
+  const linkSent = await dropFirstStart(page, "/api/seller/me/identity/start");
+  await retryAfterDrop(page, linkSent);
+  await page.unroute((u) => u.pathname === "/api/seller/me/identity/start");
   await expect(page.getByRole("heading", { name: "계정을 연결했어요" })).toBeVisible();
   await shot(page, "AU-012-done");
   await page.getByRole("button", { name: "계속하기" }).click();

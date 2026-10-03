@@ -200,8 +200,8 @@ export default function IdentityLinkPage() {
             label="휴대폰 본인확인"
             base={BASE}
             blocked={busy}
-            start={async (person) => {
-              const r = await api<{ verificationId: string }>(`${BASE}/start`, { method: "POST", body: person });
+            start={async (person, attemptKey) => {
+              const r = await api<{ verificationId: string }>(`${BASE}/start`, { method: "POST", body: { ...person, attemptKey } });
               // 입력한 이름·번호가 등록 정보와 다르면 문자 없이 409: 칸 안 안내 대신 대표자에게 수정을 부탁하는 화면으로
               if (isMismatch(r)) toMismatch();
               return r;
