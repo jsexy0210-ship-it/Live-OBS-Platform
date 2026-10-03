@@ -7,7 +7,8 @@ import { longTime, type OrderDetail } from "./orders";
 
 // SA-023 취소 · 환불 처리(모달). 전액 환불만 된다(API에 부분 환불 없음).
 // 사유 주체(구매자 사정 / 판매자 사정)는 꼭 골라야 하고, 고르지 않으면 환불 버튼이 꺼져 있다.
-// 환불 API는 주문대기 버전(expectedVersion)을 받으므로 보내기 직전에 /api/seller/queue/version을 읽는다.
+// 환불 API는 주문대기 버전(expectedVersion)을 받는다. 주문 상세 응답의 queueVersion을 쓰고(환불과 같은 권한으로 읽힘),
+// 그사이 주문대기가 바뀌어 conflict가 오면 상세를 다시 읽어 새 값으로 한 번만 다시 보낸다.
 type Fault = "BUYER" | "SELLER";
 const FAULTS: { key: Fault; label: string; desc: string }[] = [
   { key: "BUYER", label: "구매자 사정", desc: "변심 · 잘못 주문" },
@@ -44,17 +45,18 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
   const summary = first ? `${first.productNameSnapshot}${order.items.length > 1 ? ` 외 ${order.items.length - 1}건` : ` ×${first.quantity}`}` : "";
 
   const send = async (): Promise<{ ok: true; refundAmount: number } | { ok: false; fail: Fail }> => {
+    let version = order.queueVersion;
     for (let attempt = 0; attempt < 2; attempt++) {
-      const v = await api<{ version: number }>("/api/seller/queue/version");
-      if (!v.ok) return { ok: false, fail: v };
       const r = await api<{ refundAmount?: number }>(`/api/seller/orders/${order.id}/refund`, {
         method: "POST",
-        body: { reason, expectedVersion: v.data.version, fault, confirmOpened: openedOk },
+        body: { reason, expectedVersion: version, fault, confirmOpened: openedOk },
       });
       if (r.ok) return { ok: true, refundAmount: r.data.refundAmount ?? order.totalAmount };
-      // 그사이 주문대기가 바뀌었으면(다른 화면·방송) 새 버전으로 한 번만 다시 보낸다
-      if (r.error === "conflict" && attempt === 0) continue;
-      return { ok: false, fail: r };
+      if (r.error !== "conflict" || attempt === 1) return { ok: false, fail: r };
+      // 그사이 주문대기가 바뀌었으면(다른 화면·방송) 상세를 다시 읽어 새 버전으로 한 번만 다시 보낸다
+      const d = await api<{ queueVersion: number }>(`/api/seller/orders/${order.id}`);
+      if (!d.ok) return { ok: false, fail: d };
+      version = d.data.queueVersion;
     }
     return { ok: false, fail: { status: 409, error: "conflict" } };
   };

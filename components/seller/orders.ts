@@ -39,6 +39,8 @@ export type OrderDetail = {
     | { isRemote: boolean; recipientName?: string; phone?: string; zipCode?: string; address1?: string; address2?: string | null; memo?: string | null }
     | null;
   buyer: { id: string; broadcastNickname: string; name?: string; phone?: string };
+  // 환불 API의 expectedVersion(주문대기 버전). 상세를 읽은 때의 값이다.
+  queueVersion: number;
 };
 
 // 결제 상태 배지. 시안 결제 배지(완료·결제 대기·환불됨)에 맞추고, 시안에 없는 취소는 「취소」로 보인다.

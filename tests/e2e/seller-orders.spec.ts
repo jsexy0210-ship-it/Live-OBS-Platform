@@ -200,3 +200,22 @@ test("환불 모달: 결제 수단이 카드면 「카드 승인 취소」를 �
   await expect(page.getByText("2,000원 환불을 완료했어요")).toBeVisible();
   expect(calls).toBe(3);
 });
+
+test("주문·배송 권한만 있는 직원(방송 진행 권한 없음)도 실제로 환불할 수 있다", async ({ page }) => {
+  await login(page, "demo-viewer@example.com");
+  await page.getByRole("button", { name: /상태: 전체/ }).click();
+  await page.getByRole("group", { name: "결제 상태" }).getByLabel("완료").check();
+  await page.getByRole("button", { name: "적용" }).click();
+  await expect(rows(page).first().locator(".bdg").first()).toHaveText("완료");
+  const target = rows(page).filter({ has: page.locator("td:nth-child(6)", { hasText: "—" }) }).first();
+  await target.getByRole("link", { name: "환불 처리" }).click();
+  const dialog = page.getByRole("dialog", { name: "취소 · 환불 처리" });
+  await dialog.getByRole("radio", { name: /판매자 사정/ }).check();
+  await dialog.getByLabel("처리 사유").selectOption("품절 · 재고 없음");
+  await dialog.getByLabel("위 금액으로 환불해요. 승인 취소 후 되돌릴 수 없어요.").check();
+  const refund = page.waitForResponse((r) => r.url().endsWith("/refund") && r.request().method() === "POST");
+  await dialog.getByRole("button", { name: /환불 실행/ }).click();
+  expect((await refund).status()).toBe(200);
+  await expect(page.getByText(/원 환불을 완료했어요/)).toBeVisible();
+  await expect(page.locator(".bdg-lg").first()).toHaveText("환불됨");
+});
