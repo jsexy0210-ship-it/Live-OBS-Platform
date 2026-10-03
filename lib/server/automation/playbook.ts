@@ -41,6 +41,18 @@ export function resolveShop(action: AutomationAction, shopHost: string | null | 
   return action.type === "navigate" && action.url.includes("{shop}") ? { ...action, url: action.url.split("{shop}").join(shopHost ?? "") } : action;
 }
 
+// 판단 모델에 원문으로 보내도 되는 이 단계의 어휘: 작업서 단계의 화면 단서·예외 단서·누를 대상·비밀값 칸 이름(공통 UI 어휘는 ports.ts)
+export function plannerVocabulary(step: PlaybookStep | null | undefined): string[] {
+  if (!step) return [];
+  const words = [
+    ...step.actions.flatMap((a) => a.expect?.textIncludes ?? []),
+    ...step.exceptions.flatMap((e) => e.when.textIncludes ?? []),
+    ...step.allowedTargets,
+    ...Object.values(step.secretTargets).flatMap((t) => t ?? []),
+  ];
+  return [...new Set(words)];
+}
+
 export const navRulesFor = (step: PlaybookStep | null | undefined, shopHost: string | null | undefined): NavRules | null =>
   step ? { shopHost, pathPrefixes: step.allowedUrls.pathPrefixes, queryKeys: step.allowedUrls.queryKeys } : null;
 

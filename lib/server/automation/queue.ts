@@ -201,8 +201,9 @@ export const markBrowserStateHeld = (db: PrismaClient, c: Claim) => fencedWrite(
 
 // 같은 PC 잠금을 실제 PC(OBS pairing)로 옮긴다. OBS를 처음 바꾸기 직전에 부른다.
 // 그 PC에서 다른 작업이 실행 중이면 부분 유니크(AutomationJob_one_running_per_obs_target)가 막고(P2002) 작업자는 obs_target_busy로 나중에 다시 한다.
+// 잠금과 같은 쓰기로 이 작업이 바꿀 PC(obsPairingId)도 남긴다. 첫 변경 직후 작업자가 죽어도 다시 시작한 실행이 이 PC를 기준으로 삼는다.
 export const claimObsTarget = (db: PrismaClient, c: Claim, pairingId: string) =>
-  fencedWrite(db, c, () => ({ data: { obsTargetKey: `obs:${pairingId.slice(0, 200)}` } }));
+  fencedWrite(db, c, () => ({ data: { obsTargetKey: `obs:${pairingId.slice(0, 200)}`, obsPairingId: pairingId.slice(0, 200) } }));
 
 // 무료 재연결 대조 통과 기록(그때의 쇼핑몰·PC와 시각)
 export const markTargetVerified = (db: PrismaClient, c: Claim, target: { shopKey: string; obsPairingId: string }) =>

@@ -375,9 +375,16 @@ async function submitCharge(db: PrismaClient, provider: BillingProvider, payment
 // PG에 기록이 없으면(결제 요청 전에 멈췄거나 요청이 PG에 닿지 않음) 결제 대기 작업에 한해 같은 청구 id로 다시 보낸다.
 export async function reconcileAutomationPayments(db: PrismaClient, provider: BillingProvider, opts: { olderThanMs?: number } = {}): Promise<number> {
   const cutoff = new Date((await dbNow(db)).getTime() - (opts.olderThanMs ?? AUTOMATION_LIMITS.reconcileAfterMs));
-  const stale = await db.automationPayment.findMany({ where: { status: "PENDING", createdAt: { lte: cutoff } }, select: { id: true, sellerId: true }, take: 50 });
+  // 확인한 지 오래된 순(처음이면 먼저), 같으면 id 순. 확인 직전에 시각을 남겨 오류가 난 건도 다음 회차에는 뒤로 간다.
+  const stale = await db.automationPayment.findMany({
+    where: { status: "PENDING", createdAt: { lte: cutoff } },
+    select: { id: true, sellerId: true },
+    orderBy: [{ lastCheckedAt: { sort: "asc", nulls: "first" } }, { id: "asc" }],
+    take: 50,
+  });
   let settled = 0;
   for (const p of stale) {
+    await db.automationPayment.updateMany({ where: { id: p.id, status: "PENDING" }, data: { lastCheckedAt: await dbNow(db) } });
     // 한 건 조회가 실패해도 나머지는 계속 확인한다
     try {
       if ((await provider.getPayment(p.id)).status === "NOT_FOUND") {

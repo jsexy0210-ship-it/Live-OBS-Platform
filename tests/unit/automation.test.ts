@@ -42,9 +42,11 @@ describe("다시 시도 간격", () => {
 describe("모델 입력 정리와 행동 검사", () => {
   it("관찰에서 비밀값을 지우고 길이를 자른다", () => {
     const text = `값 ${secrets.webhook_url} ${"가".repeat(9000)}`;
-    const o = sanitizeObservation({ url: `https://admin.cafe24.com/?k=${secrets.webhook_secret}`, text, elements: [{ kind: "notice", text }] }, secrets);
+    const o = sanitizeObservation({ url: `https://admin.cafe24.com/?k=${secrets.webhook_secret}`, text, elements: [{ kind: "notice", text }, ...Array.from({ length: 2000 }, () => ({ kind: "button" as const, text: "저장" }))] }, secrets);
     expect(JSON.stringify(o)).not.toContain(secrets.webhook_secret);
     expect(JSON.stringify(o)).not.toContain(secrets.webhook_url);
+    // 허용 어휘가 아닌 글은 자리표시, 허용 어휘는 원문. 길이는 8,000자로 자른다
+    expect(o.untrustedPageText.startsWith("[notice#1] [문구]\n[button#2] 저장")).toBe(true);
     expect(o.untrustedPageText.length).toBe(8000);
     // 주소는 출처·경로만(쿼리 제외), 요소가 없으면 화면 글을 보내지 않는다
     expect(o.url).toBe("https://admin.cafe24.com/");

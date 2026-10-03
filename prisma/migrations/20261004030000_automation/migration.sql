@@ -25,6 +25,7 @@ CREATE TABLE "AutomationPayment" (
     "consentAgreedAt" TIMESTAMPTZ(3) NOT NULL,
     "chargeSubmittedAt" TIMESTAMPTZ(3),
     "chargeFirstSubmittedAt" TIMESTAMPTZ(3),
+    "lastCheckedAt" TIMESTAMPTZ(3),
     "providerPaymentId" TEXT,
     "failureReason" TEXT,
     "paidAt" TIMESTAMPTZ(3),

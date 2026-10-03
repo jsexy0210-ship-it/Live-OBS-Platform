@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { cueMatches, matchException, navRulesFor, resolveShop, type Playbook } from "./playbook";
+import { cueMatches, matchException, navRulesFor, plannerVocabulary, resolveShop, type Playbook } from "./playbook";
 import {
   sanitizeObservation,
   secretOriginAllowed,
@@ -215,7 +215,8 @@ async function runAll(
       if (!action) {
         const reference = pb ? { guide: pb.guide, examples: pb.examples, referenceImages: pb.referenceImages } : null;
         guard();
-        const decision = await rt.planner.decide({ step, observation: sanitizeObservation(raw, secrets), history, reference });
+        const vocabulary = plannerVocabulary(pb ?? secretBook?.steps[step.key]);
+        const decision = await rt.planner.decide({ step, observation: sanitizeObservation(raw, secrets, vocabulary), history, reference });
         stats.plannerCalls++;
         costWon = Number.isInteger(decision.costWon) && decision.costWon > 0 ? decision.costWon : 0;
         const check = validateDecision(step, decision, secrets, secretTargets, allowedTargets, nav);

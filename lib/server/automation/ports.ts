@@ -112,6 +112,9 @@ const MAX_PAGE_TEXT = 8_000;
 const REDACTED = "[비밀값]";
 
 const PLANNER_ELEMENT_KINDS: readonly ObservedElement["kind"][] = ["button", "link", "heading", "label", "notice"];
+// 공통 UI 어휘. 판단 모델에는 이 목록과 작업서 단계 문구에 정확히 있는 글만 원문으로 보낸다(이름은 패턴으로 가릴 수 없어 허용 목록으로 막는다).
+export const COMMON_UI_WORDS: readonly string[] = ["저장", "확인", "취소", "다음", "이전", "닫기", "완료", "설치", "설정", "로그인", "로그아웃", "관리자", "메뉴", "검색", "적용", "동의", "OBS 연결됨", "OBS 연결 안 됨"];
+const PLACEHOLDER = "[문구]";
 
 // 남은 글의 개인정보 패턴을 가린다(이메일·전화번호·주소·주문번호 같은 긴 숫자열). 이름은 패턴으로 못 잡으므로 표·목록·입력값을 통째로 뺀다.
 export function maskPersonal(s: string): string {
@@ -123,16 +126,19 @@ export function maskPersonal(s: string): string {
     .replace(/\d[\d-]{5,}\d/g, "[번호]");
 }
 
-// 판단 모델 입력을 만든다: 화면 본문을 그대로 보내지 않고 조작 요소만 추린 뒤 비밀값·개인정보를 가리고 길이를 자른다.
+// 판단 모델 입력을 만든다: 화면 본문을 그대로 보내지 않고 조작 요소만 추린다. 요소 글은 허용 어휘(공통 UI 어휘 + 작업서 단계 문구, vocabulary)에
+// 정확히 있을 때만 원문으로 보내고, 그 밖은 자리표시 「[문구]」와 요소 번호만 보낸다(이름이 든 안내·링크 차단). 남은 글도 비밀값·개인정보 패턴을 가린다.
 // 주소는 출처·경로만(쿼리·조각에 개인정보가 실릴 수 있음). 비밀값이 짧으면(8자 미만) 오탐이 많아 지우지 않는다 — 그런 값은 비밀로 쓰지 않는다.
-export function sanitizeObservation(o: Observation, secrets: JobSecrets): SafeObservation {
+export function sanitizeObservation(o: Observation, secrets: JobSecrets, vocabulary: readonly string[] = COMMON_UI_WORDS): SafeObservation {
   const strip = (s: string) =>
     Object.values(secrets)
       .filter((v) => v.length >= 8)
       .reduce((acc, v) => acc.split(v).join(REDACTED), s);
+  const allowed = new Set([...COMMON_UI_WORDS, ...vocabulary]);
   const text = (o.elements ?? [])
-    .filter((e) => PLANNER_ELEMENT_KINDS.includes(e.kind))
-    .map((e) => `[${e.kind}] ${e.text}`)
+    .map((e, i) => ({ e, i }))
+    .filter(({ e }) => PLANNER_ELEMENT_KINDS.includes(e.kind))
+    .map(({ e, i }) => `[${e.kind}#${i + 1}] ${allowed.has(e.text.trim()) ? e.text.trim() : PLACEHOLDER}`)
     .join("\n");
   let url: string | null = null;
   if (o.url) {
