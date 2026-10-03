@@ -1,0 +1,274 @@
+/* 판매자 화면 실제 구현용 보조 스타일. 색·글꼴·부품 모양은 시안(tokens.css · lop.css)을 그대로 쓰고,
+   여기에는 실제 브라우저 폭(390~1440)에 맞추는 배치만 둔다. */
+html,
+body {
+  margin: 0;
+  background: #f6f4f0;
+}
+.seller-app {
+  min-height: 100vh;
+}
+
+/* 로그인 */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 48px 16px;
+  background: var(--page);
+}
+.login-card {
+  width: 440px;
+  max-width: 100%;
+  padding: 32px 28px;
+  gap: 18px;
+}
+
+/* 공통 틀 */
+.shell {
+  min-height: 100vh;
+}
+.side {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+.app a.nav-i.off {
+  cursor: not-allowed;
+}
+.side-logout {
+  margin: 16px 12px 0;
+}
+.nav-dim {
+  display: none;
+}
+.shell-body {
+  min-width: 0;
+}
+.topbar .menu-btn {
+  display: none;
+  flex: none;
+}
+.topbar .crumb {
+  min-width: 0;
+}
+.tb-actions {
+  margin-left: auto;
+  gap: 8px;
+  flex: none;
+}
+.access-banner {
+  margin: 16px 32px 0;
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+.toast-wrap {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 60;
+  max-width: calc(100% - 32px);
+}
+.dim-fixed {
+  position: fixed;
+  z-index: 70;
+}
+.choice {
+  padding: 12px 14px;
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px var(--wds-line-normal-normal);
+  cursor: pointer;
+}
+.choice.on {
+  box-shadow: inset 0 0 0 2px var(--brand);
+}
+
+/* 상품 목록: 한 줄 높이 고정. 상품명은 2줄까지, 넘치면 말줄임(가장 긴 이름 기준으로 줄 맞춤) */
+.p-name {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 20px;
+  min-height: 40px;
+  word-break: break-all;
+}
+.app a.p-name:hover {
+  color: var(--wds-primary-normal);
+}
+.p-row td {
+  height: 76px;
+}
+.p-cards {
+  display: none;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.p-card {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  min-height: 110px;
+  color: inherit;
+  text-decoration: none;
+  box-shadow: inset 0 -1px 0 var(--wds-line-normal-alternative);
+}
+.app a.p-card,
+.app a.p-card:hover {
+  color: inherit;
+}
+.seg-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* 상품 등록·수정 */
+.form-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 20px;
+  align-items: start;
+}
+.aside-sticky {
+  position: sticky;
+  top: 24px;
+}
+.g3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.name-count {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.opt-head,
+.opt-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 140px 110px 32px;
+  gap: 8px;
+  align-items: start;
+}
+.opt-head {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--wds-label-alternative);
+  padding: 0 2px;
+}
+.opt-head .r {
+  text-align: right;
+}
+.opt-lbl {
+  display: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--wds-label-alternative);
+}
+.opt-del {
+  margin-top: 2px;
+}
+
+/* 태블릿 이하: 메뉴는 서랍으로 */
+@media (max-width: 1023px) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .side {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 260px;
+    height: auto;
+    z-index: 50;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+  }
+  .shell.nav-open .side {
+    transform: none;
+  }
+  .shell.nav-open .nav-dim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 45;
+    border: 0;
+    background: var(--wds-material-dimmer);
+  }
+  .topbar {
+    padding: 0 16px;
+    gap: 8px;
+  }
+  .topbar .menu-btn {
+    display: inline-flex;
+    margin-left: -8px;
+  }
+  .main {
+    padding: 16px 16px 32px;
+  }
+  .access-banner {
+    margin: 12px 16px 0;
+  }
+  .form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .aside-sticky {
+    position: static;
+  }
+}
+
+/* 휴대폰: 표 대신 카드 목록, 입력 칸은 한 줄씩 */
+@media (max-width: 767px) {
+  .p-table {
+    display: none;
+  }
+  .p-cards {
+    display: block;
+  }
+  .ph {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .ph .btn {
+    width: 100%;
+  }
+  .ph > .row {
+    width: 100%;
+  }
+  .tb-actions {
+    display: none;
+  }
+  .g3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .card.pad-l {
+    padding: 20px 16px;
+  }
+  .opt-head {
+    display: none;
+  }
+  .opt-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 32px;
+    padding-bottom: 12px;
+    box-shadow: inset 0 -1px 0 var(--wds-line-normal-alternative);
+  }
+  .opt-row .opt-name {
+    grid-column: 1 / 3;
+  }
+  .opt-row .opt-del {
+    grid-column: 3;
+    grid-row: 1;
+  }
+  .opt-lbl {
+    display: block;
+  }
+}
