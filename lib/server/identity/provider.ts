@@ -57,8 +57,9 @@ export class FakeIdentityProvider implements IdentityProvider {
   readonly sent: string[] = [];
 
   // 운영 환경에서는 만들 수 없다. 가짜 인증으로 가입·대표자 인증이 통과되는 것을 막는다.
-  constructor(env: string | undefined = process.env.NODE_ENV) {
-    if (env === "production") throw new Error("운영 환경에서는 가짜 본인확인 공급자를 쓸 수 없어요.");
+  // 테스트 서버 모드(OBS_TEST_MODE=1, testMode.ts)만 예외로 허용한다.
+  constructor(env: string | undefined = process.env.NODE_ENV, opts: { testMode?: boolean } = {}) {
+    if (env === "production" && !opts.testMode) throw new Error("운영 환경에서는 가짜 본인확인 공급자를 쓸 수 없어요.");
   }
 
   failNext(kind: "error" | "hang" | "afterHang") {
