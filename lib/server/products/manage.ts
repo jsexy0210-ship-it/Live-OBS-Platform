@@ -98,6 +98,7 @@ async function productView(tx: Tx | PrismaClient, sellerId: string, productId: s
 
 export const DEFAULT_PAGE_SIZE = 50;
 export const MAX_PAGE_SIZE = 200;
+export const MAX_SEARCH_LENGTH = 50;
 // 재고 기준 필터(화면 「재고 없음」·「재고 적음」 배지·탭과 같은 기준). 지운 옵션은 빼고 살아 있는 옵션 재고를 더한다.
 // out: 합계 0(옵션이 없는 상품 포함), low: 1~LOW_STOCK_MAX. 판매 상태와 상관없이 고르고, status와 함께 쓸 수 있다.
 export const LOW_STOCK_MAX = 5;
@@ -111,10 +112,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export async function listProducts(
   db: PrismaClient,
   ctx: TenantContext,
-  opts: { status?: unknown; stock?: unknown; cursor?: unknown; limit?: unknown } = {},
+  opts: { status?: unknown; stock?: unknown; q?: unknown; cursor?: unknown; limit?: unknown } = {},
 ): Promise<
   | { ok: true; value: { products: Awaited<ReturnType<typeof productView>>[]; nextCursor: string | null } }
-  | { ok: false; reason: "invalid_cursor" | "invalid_limit" | "invalid_stock_filter" }
+  | { ok: false; reason: "invalid_cursor" | "invalid_limit" | "invalid_stock_filter" | "invalid_search" }
 > {
   requireSellerRead(ctx, "PRODUCT_MANAGE");
   const status = PRODUCT_STATUSES.includes(opts.status as ProductStatus) ? (opts.status as ProductStatus) : undefined;
@@ -133,6 +134,21 @@ export async function listProducts(
       HAVING COALESCE(SUM(o."stock"), 0) BETWEEN ${lo} AND ${hi}`;
     stockScope = { id: { in: rows.map((r) => r.id) } };
   }
+  // 이름 검색 q: 상품 이름이나 (지우지 않은) 옵션 이름에 들어 있으면(대소문자 무시, 부분 일치). 저장할 때처럼 NFKC로 맞추고
+  // 앞뒤 공백을 지운 뒤 50자까지. 비었으면 검색하지 않는다. %·_ 같은 글자도 그대로 찾는다(LIKE 패턴으로 쓰지 않음).
+  let searchScope: Prisma.ProductWhereInput = {};
+  if (opts.q !== undefined && !(typeof opts.q === "string" && opts.q.trim() === "")) {
+    const term = cleanText(opts.q, MAX_SEARCH_LENGTH);
+    if (!term) return { ok: false, reason: "invalid_search" };
+    const rows = await db.$queryRaw<{ id: string }[]>`
+      SELECT p."id" FROM "Product" p
+      WHERE p."sellerId" = ${ctx.sellerId}::uuid AND p."deletedAt" IS NULL
+        AND (strpos(lower(p."name"), lower(${term})) > 0
+          OR EXISTS (SELECT 1 FROM "ProductOption" o
+                     WHERE o."productId" = p."id" AND o."sellerId" = p."sellerId" AND o."deletedAt" IS NULL
+                       AND strpos(lower(o."name"), lower(${term})) > 0))`;
+    searchScope = { id: { in: rows.map((r) => r.id) } };
+  }
   let after: Prisma.ProductWhereInput = {};
   if (opts.cursor !== undefined && opts.cursor !== "") {
     if (typeof opts.cursor !== "string" || !UUID.test(opts.cursor)) return { ok: false, reason: "invalid_cursor" };
@@ -147,7 +163,7 @@ export async function listProducts(
     };
   }
   const rows = await db.product.findMany({
-    where: { sellerId: ctx.sellerId, deletedAt: null, ...(status ? { status } : {}), ...stockScope, ...after },
+    where: { sellerId: ctx.sellerId, deletedAt: null, ...(status ? { status } : {}), AND: [stockScope, searchScope, after] },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }, { id: "asc" }],
     take: limit + 1,
     include: { options: { where: { deletedAt: null }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }] } },

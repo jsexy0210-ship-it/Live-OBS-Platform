@@ -177,6 +177,70 @@ describe("목록 페이지 넘김", () => {
   });
 });
 
+describe("목록 이름 검색(q)", () => {
+  const names = (r: Awaited<ReturnType<typeof listProducts>>) => (r.ok ? r.value.products.map((p) => p.name).sort() : r.reason);
+
+  it("상품·옵션 이름에서 대소문자 무시·부분 일치로 찾고, 다른 쇼핑몰·지운 옵션은 섞이지 않는다", async () => {
+    const s = await seller();
+    const other = await seller();
+    await made(s.ctx, { name: "Pokemon 부스터", options: [{ name: "1박스", stock: 3 }] });
+    await made(s.ctx, { name: "원피스 카드", options: [{ name: "POKEMON 콜라보", stock: 0 }] });
+    const gone = await made(s.ctx, { name: "디지몬", options: [{ name: "pokemon 한정", stock: 1 }, { name: "1팩", stock: 1 }] });
+    expect(await deleteOption(db, s.ctx, gone.id, gone.options.find((o) => o.name === "pokemon 한정")!.id)).toMatchObject({ ok: true });
+    await made(s.ctx, { name: "유희왕", options: [{ name: "1팩", stock: 1 }] });
+    await made(other.ctx, { name: "pokemon 다른 쇼핑몰" });
+    expect(names(await listProducts(db, s.ctx, { q: "POKEmon" }))).toEqual(["Pokemon 부스터", "원피스 카드"]);
+    expect(names(await listProducts(db, s.ctx, { q: "  부스터  " }))).toEqual(["Pokemon 부스터"]);
+    expect(names(await listProducts(db, s.ctx, { q: "없는 이름" }))).toEqual([]);
+    // 빈 검색어는 검색하지 않는다
+    expect(names(await listProducts(db, s.ctx, { q: " " }))).toHaveLength(4);
+  });
+
+  it("%·_도 글자 그대로 찾고(전부 나오지 않음), 전각 글자는 NFKC로 맞춰 찾는다", async () => {
+    const s = await seller();
+    await made(s.ctx, { name: "할인 50% 팩" });
+    await made(s.ctx, { name: "snake_case 팩" });
+    await made(s.ctx, { name: "보통 팩" });
+    expect(names(await listProducts(db, s.ctx, { q: "%" }))).toEqual(["할인 50% 팩"]);
+    expect(names(await listProducts(db, s.ctx, { q: "_" }))).toEqual(["snake_case 팩"]);
+    expect(names(await listProducts(db, s.ctx, { q: "５０%" }))).toEqual(["할인 50% 팩"]);
+  });
+
+  it("상태·재고 필터, 커서와 함께 동작한다", async () => {
+    const s = await seller();
+    for (let i = 0; i < 5; i++) await made(s.ctx, { name: `포켓몬 ${i}`, sortOrder: i, options: [{ name: "1박스", stock: i === 0 ? 0 : 10 }] });
+    await made(s.ctx, { name: "포켓몬 숨김", status: "HIDDEN", options: [{ name: "1박스", stock: 10 }] });
+    await made(s.ctx, { name: "원피스", options: [{ name: "1박스", stock: 0 }] });
+    expect(names(await listProducts(db, s.ctx, { q: "포켓몬", stock: "out" }))).toEqual(["포켓몬 0"]);
+    expect(names(await listProducts(db, s.ctx, { q: "포켓몬", status: "HIDDEN" }))).toEqual(["포켓몬 숨김"]);
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    for (let pageNo = 0; pageNo < 10; pageNo++) {
+      const r = await listProducts(db, s.ctx, { q: "포켓몬", status: "ON_SALE", cursor, limit: 2 });
+      if (!r.ok) throw new Error(r.reason);
+      seen.push(...r.value.products.map((p) => p.name));
+      if (!r.value.nextCursor) break;
+      cursor = r.value.nextCursor;
+    }
+    expect(seen).toEqual(["포켓몬 0", "포켓몬 1", "포켓몬 2", "포켓몬 3", "포켓몬 4"]);
+  });
+
+  it("50자 넘는 검색어·쓸 수 없는 글자는 400과 문구(HTTP)", async () => {
+    const s = await seller();
+    await made(s.ctx, { name: "부스터 팩" });
+    const c = await cookie(s.owner.email);
+    const get = (q: string) => listRoute(new Request(`http://localhost:3000/api/seller/products?q=${encodeURIComponent(q)}`, { headers: { ...H, cookie: c } }));
+    for (const bad of ["가".repeat(51), "팩\u0000", "\u200b"]) {
+      const r = await get(bad);
+      expect(r.status, JSON.stringify(bad)).toBe(400);
+      expect(await r.json()).toEqual({ error: "invalid_search", message: ORDER_ERROR_MESSAGES.invalid_search });
+    }
+    const ok = await get("가".repeat(49) + "팩");
+    expect(ok.status).toBe(200);
+    expect((await (await get("부스터")).json()).products.map((p: { name: string }) => p.name)).toEqual(["부스터 팩"]);
+  });
+});
+
 describe("목록 페이지 넘김: 기준 상품이 그사이 바뀌어도 빠지지 않는다", () => {
   async function seven(ctx: TenantContext) {
     for (let i = 0; i < 7; i++) await made(ctx, { name: `상품${i}`, sortOrder: i % 2 });
