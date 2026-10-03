@@ -50,13 +50,13 @@ describe("결제 후 취소 5회 → 30일 구매 제한", () => {
     expect((await s.place()).ok).toBe(true);
   });
 
-  it("켜면 그 뒤 판매자 사정이 아닌 환불 5회째에 30일 제한을 걸고, 켜기 전 환불·판매자 사정 환불은 세지 않는다", async () => {
+  it("켜면 그 뒤 구매자 사정 환불 5회째에 30일 제한을 걸고, 켜기 전 환불·판매자 사정·미지정 환불은 세지 않는다", async () => {
     const s = await shop();
     for (let i = 0; i < PAID_CANCEL_LIMIT; i++) await s.refund("BUYER");
     expect(await updateOrderPolicy(db, s.ctx, { ...BASE, paidCancelRestrictionEnabled: true })).toMatchObject({ ok: true, policy: { paidCancelRestrictionEnabled: true } });
-    await s.refund("SELLER");
-    await s.refund("SELLER");
-    for (const f of ["BUYER", undefined, "BUYER", undefined] as const) await s.refund(f);
+    for (let i = 0; i < PAID_CANCEL_LIMIT; i++) await s.refund("SELLER");
+    for (let i = 0; i < PAID_CANCEL_LIMIT; i++) await s.refund();
+    for (let i = 0; i < PAID_CANCEL_LIMIT - 1; i++) await s.refund("BUYER");
     expect(await s.restrictions()).toEqual([]);
     const last = await s.refund("BUYER");
     const [r] = await s.restrictions();
@@ -66,7 +66,8 @@ describe("결제 후 취소 5회 → 30일 구매 제한", () => {
       actorType: "SYSTEM",
       after: { reason: "PAID_CANCEL", paidCancels: PAID_CANCEL_LIMIT },
     });
-    expect((await db.order.findUniqueOrThrow({ where: { id: last } })).status).toBe("REFUNDED");
+    // 발송 전 환불도 사유 주체를 골라 남길 수 있다
+    expect(await db.order.findUniqueOrThrow({ where: { id: last } })).toMatchObject({ status: "REFUNDED", refundFault: "BUYER" });
     // 제한 중 새 주문은 막는다
     expect(await s.place()).toMatchObject({ ok: false, reason: "purchase_restricted", endsAt: r.endsAt });
     // 꺼도 이미 걸린 제한은 그대로 둔다

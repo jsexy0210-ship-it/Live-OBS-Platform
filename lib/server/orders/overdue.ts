@@ -10,7 +10,7 @@ import { requireSellerPermission, requireSellerRead, type TenantContext } from "
 // - 자동 취소: 기한이 지난 결제 대기 주문을 취소한다. 재고는 결제 때 차감하므로 되돌릴 것이 없다. 여러 번 돌려도 같은 결과(멱등).
 //   정기 실행(cron) 연결은 인프라 승인 대기라 함수만 둔다.
 // - 자동 구매 제한: 같은 쇼핑몰에서 미입금 자동 취소가 3회 쌓이면 30일 동안 새 주문을 막는다(판매자 설정으로 끌 수 있음).
-//   「결제 후 취소 5회 → 30일」(기본 꺼짐): 판매자 사정(refundFault=SELLER)이 아닌 환불이 5회 쌓이면 같은 식으로 막는다
+//   「결제 후 취소 5회 → 30일」(기본 꺼짐): 구매자 사정(refundFault=BUYER)으로 표시한 환불이 5회 쌓이면 같은 식으로 막는다
 //   (환불 처리 queue/service refundOrder에서 센다).
 // 같은 판매자의 주문 생성과 같은 advisory lock(order_no:{sellerId}) 아래에서 처리해, 제한이 생기는 순간과 주문이 엇갈리지 않게 한다.
 
@@ -94,7 +94,8 @@ export function activeRestriction(db: Db, sellerId: string, buyerMemberId: strin
 // 마지막 제한(사유와 상관없이, 풀었으면 푼 시각, 아니면 시작 시각) 뒤에 쌓인 횟수가 기준에 닿으면 제한을 만든다.
 // 판매자가 자동 제한을 (다시) 켰으면 켠 시각 뒤의 것만 센다(끈 동안 쌓인 횟수는 넣지 않음, MASTER 결정).
 // - unpaid: 미입금 자동 취소(autoCancelledAt) 3회
-// - paid_cancel: 판매자 사정(refundFault=SELLER)이 아닌 환불(refundedAt) 5회
+// - paid_cancel: 구매자 사정(refundFault=BUYER)으로 표시한 환불(refundedAt) 5회. 판매자 사정·미지정(재고 부족 등)은 세지 않는다
+//   (구매자를 잘못 막지 않게, MASTER 결정). 발송 전 환불도 판매자가 사유 주체를 고를 수 있다.
 // 주문 생성과 같은 잠금(lockSellerOrders) 아래에서 부른다.
 export async function maybeRestrict(tx: Prisma.TransactionClient, sellerId: string, buyerMemberId: string, now: Date, kind: "unpaid" | "paid_cancel" = "unpaid") {
   const policy = await getOrderPolicy(tx, sellerId);
@@ -111,7 +112,7 @@ export async function maybeRestrict(tx: Prisma.TransactionClient, sellerId: stri
     where:
       kind === "unpaid"
         ? { sellerId, buyerMemberId, autoCancelledAt: { gt: anchor } }
-        : { sellerId, buyerMemberId, status: "REFUNDED", refundedAt: { gt: anchor }, OR: [{ refundFault: null }, { refundFault: { not: "SELLER" } }] },
+        : { sellerId, buyerMemberId, status: "REFUNDED", refundedAt: { gt: anchor }, refundFault: "BUYER" },
   });
   if (count < rule.limit) return null;
   const endsAt = new Date(now.getTime() + RESTRICTION_DAYS * 24 * 60 * 60 * 1000);
