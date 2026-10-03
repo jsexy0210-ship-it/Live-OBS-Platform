@@ -352,6 +352,38 @@ describe("구매자 탈퇴", () => {
     }
   });
 
+  it("입금 확인(주문 행을 바꾼 뒤 회원 행 FOR SHARE)과 탈퇴가 겹쳐도 교착 없이 입금 확인이 끝나고 탈퇴는 409", async () => {
+    const s = await shop();
+    const o = await s.order("PENDING_PAYMENT");
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let locked!: () => void;
+    const orderLocked = new Promise<void>((r) => (locked = r));
+    // 입금 확인 흉내: 주문 행을 결제로 바꿔 잠근 채, 탈퇴가 기다리기 시작한 뒤 적립 예정 기록처럼 회원 행을 FOR SHARE로 잠근다
+    const payment = db.$transaction(
+      async (tx) => {
+        await tx.$executeRaw`UPDATE "Order" SET "status" = 'PAID', "paidAt" = now() WHERE "id" = ${o.id}::uuid`;
+        locked();
+        await gate;
+        await tx.$queryRaw`SELECT "id" FROM "BuyerMember" WHERE "id" = ${s.buyer.id}::uuid FOR SHARE`;
+      },
+      { timeout: 20_000 },
+    );
+    await orderLocked;
+    const withdrawal = withdrawBuyer(db, { sellerId: s.seller.id, buyerMemberId: s.buyer.id }, { password: PASSWORD });
+    // 탈퇴가 잠금을 기다리기 시작할 때까지 기다린다
+    for (let i = 0; i < 100; i++) {
+      const [w] = await db.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS n FROM pg_stat_activity WHERE "wait_event_type" = 'Lock' AND "datname" = current_database()`;
+      if (w.n > 0) break;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    release();
+    const [paid, withdrawn] = await Promise.allSettled([payment, withdrawal]);
+    expect(paid.status).toBe("fulfilled");
+    expect(withdrawn).toEqual({ status: "fulfilled", value: { ok: false, reason: "orders_in_progress" } });
+    expect((await db.buyerMember.findUniqueOrThrow({ where: { id: s.buyer.id } })).status).toBe("ACTIVE");
+  });
+
   it("결제 대기 주문은 탈퇴 트랜잭션 안에서 판매자 취소와 같은 경로로 자동 취소한다(주문 때 뺀 재고 되돌림·상태 이력·감사 로그). 결제 완료·배송 전 주문이 함께 있으면 아무것도 바꾸지 않고 409", async () => {
     const s = await shop();
     // 주문 때 재고를 빼는 상품(ORDER)의 결제 대기 주문

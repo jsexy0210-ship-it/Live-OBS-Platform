@@ -23,7 +23,9 @@ FROM (
   SELECT m."id", m."sellerId", m."deletedAt", m."ciHash" FROM "BuyerMember" m WHERE m."status" = 'WITHDRAWN' AND m."ciHash" <> ''
 ) w
 WHERE v."sellerId" = w."sellerId" AND v."anonymizedAt" IS NULL
-  AND (v."subjectId" = w."memberId" OR (w."ciHash" IS NOT NULL AND v."ciHash" = w."ciHash"));
+  AND (v."subjectId" = w."memberId"
+       -- 같은 CI는 탈퇴 때 있던 시도만(탈퇴 뒤 다시 가입·가입 중인 같은 사람의 새 기록은 건드리지 않는다)
+       OR (w."ciHash" IS NOT NULL AND v."ciHash" = w."ciHash" AND v."createdAt" <= COALESCE(w."deletedAt", now())));
 
 -- 2-1) 방송 화면·주문 목록에 남는 닉네임 스냅숏(주문·주문대기·히트 카드)을 「탈퇴한 회원」으로(memberData.ts WITHDRAWN_DISPLAY_NAME)
 UPDATE "Order" o SET "broadcastNicknameSnapshot" = '탈퇴한 회원'

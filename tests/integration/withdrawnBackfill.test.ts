@@ -28,13 +28,16 @@ describe("이미 탈퇴한 회원 정리 마이그레이션", () => {
       where: { id: gone.id },
       data: { status: "WITHDRAWN", deletedAt, ciHash: "", marketingConsentAt: new Date(), signupConsent: { termsVersion: "t" }, rejoinRestrictionDaysAgreed: 30, rejoinRetentionVersion: "r" },
     });
-    const idv = (sellerId: string, subjectId: string | null, ciHash: string | null) =>
+    const before = new Date("2026-09-01T00:00:00Z");
+    const idv = (sellerId: string, subjectId: string | null, ciHash: string | null, createdAt = new Date()) =>
       db.identityVerification.create({
-        data: { purpose: "BUYER_SIGNUP", sellerId, subjectId, provider: "fake", method: "SMS", requestId: `req-${Math.random()}`, requestedPhone: "01012345678", name: "김구매", phone: "01012345678", ciHash, status: "VERIFIED", verifiedAt: new Date(), ownerTokenHash: "h", expiresAt: new Date(), consumedAt: new Date() },
+        data: { createdAt, purpose: "BUYER_SIGNUP", sellerId, subjectId, provider: "fake", method: "SMS", requestId: `req-${Math.random()}`, requestedPhone: "01012345678", name: "김구매", phone: "01012345678", ciHash, status: "VERIFIED", verifiedAt: new Date(), ownerTokenHash: "h", expiresAt: new Date(), consumedAt: new Date() },
       });
-    const goneIdv = await idv(seller.id, gone.id, "ci-gone");
+    const goneIdv = await idv(seller.id, gone.id, "ci-gone", before);
     // 같은 사람의 다른 시도(회원과 이어지지 않음). 회원 행 CI는 예전 탈퇴 처리로 ''라서 이어진 기록의 CI로 찾아야 한다
-    const goneRetry = await idv(seller.id, null, "ci-gone");
+    const goneRetry = await idv(seller.id, null, "ci-gone", before);
+    // 탈퇴 뒤 같은 사람이 다시 가입 중인 시도는 건드리지 않는다(가입이 끊기지 않게)
+    const rejoining = await idv(seller.id, null, "ci-gone");
     const liveIdv = await idv(seller.id, live.id, live.ciHash);
     const otherIdv = await idv(other.seller.id, null, "ci-gone");
     let no = 0;
@@ -66,6 +69,7 @@ describe("이미 탈퇴한 회원 정리 마이그레이션", () => {
     expect(g).toMatchObject({ name: null, phone: null, ciHash: null, subjectId: null, status: "VERIFIED", anonymizedAt: deletedAt });
     expect(g.requestId).toMatch(/^anonymized:/);
     expect(await db.identityVerification.findUniqueOrThrow({ where: { id: goneRetry.id } })).toMatchObject({ name: null, ciHash: null, anonymizedAt: deletedAt });
+    expect(await db.identityVerification.findUniqueOrThrow({ where: { id: rejoining.id } })).toMatchObject({ name: "김구매", ciHash: "ci-gone", ownerTokenHash: "h", anonymizedAt: null });
     for (const id of [liveIdv.id, otherIdv.id]) expect((await db.identityVerification.findUniqueOrThrow({ where: { id } })).anonymizedAt).toBeNull();
     const held = async (id: string) => (await db.order.findUniqueOrThrow({ where: { id } })).legalHoldAt;
     expect(await held(goneDone.id)).toEqual(deletedAt);

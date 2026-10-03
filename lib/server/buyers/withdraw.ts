@@ -79,6 +79,17 @@ export async function withdrawBuyer(
     // 배송지 잠금을 쥔 채 외래 키 확인(FOR KEY SHARE)으로 회원 행을 기다리면 아래 배송지 잠금과 교착이 생긴다.
     // 주문 생성·결제·자동 취소와 같은 판매자 주문 잠금을 먼저 잡는다(주문 생성과 같은 순서: 판매자 주문 잠금 → 회원 행)
     await lockSellerOrders(tx, scope.sellerId);
+    // 결제 대기 주문 행은 회원 행보다 먼저 잠근다. 입금 확인은 주문 행을 바꾼 뒤 적립 예정 기록에서 회원 행을 FOR SHARE로 잠그므로
+    // (rewards/ledger.ts), 회원 행을 쥔 채 주문 행을 기다리면 교착이 생긴다. 판매자 취소·입금 확인은 이 잠금이 아니라 판매자 행 잠금으로
+    // 주문을 바꾸므로, 잠근 뒤 지금 상태를 다시 읽어 그사이 취소됐으면 건너뛰고 결제됐으면 진행 중 주문으로 거절한다(500이 나지 않게).
+    const listed = await tx.order.findMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id, status: "PENDING_PAYMENT" }, select: { id: true }, orderBy: { id: "asc" } });
+    const pending: string[] = [];
+    for (const o of listed) {
+      const [cur] = await tx.$queryRaw<{ status: string }[]>`SELECT "status" FROM "Order" WHERE "id" = ${o.id}::uuid FOR UPDATE`;
+      if (cur?.status === "CANCELLED") continue;
+      if (cur?.status !== "PENDING_PAYMENT") return "orders_in_progress" as const;
+      pending.push(o.id);
+    }
     await tx.$queryRaw`SELECT "id" FROM "BuyerMember" WHERE "id" = ${member.id}::uuid FOR NO KEY UPDATE`;
     // 배송지 저장·수정과 같은 잠금을 잡아, 겹쳐 저장된 배송지가 탈퇴 뒤에 남지 않게 한다
     await lockBuyerAddresses(tx, scope);
@@ -91,14 +102,8 @@ export async function withdrawBuyer(
       },
     });
     if (busy > 0) return "orders_in_progress" as const;
-    const pending = await tx.order.findMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id, status: "PENDING_PAYMENT" }, select: { id: true } });
-    for (const o of pending) {
-      // 판매자 취소·입금 확인은 이 잠금이 아니라 판매자 행 잠금으로 주문을 바꾼다. 주문 행을 잠그고 지금 상태를 다시 읽어,
-      // 그사이 취소됐으면 건너뛰고 결제됐으면 진행 중 주문으로 거절한다(조건부 변경 실패로 500이 나지 않게).
-      const [cur] = await tx.$queryRaw<{ status: string }[]>`SELECT "status" FROM "Order" WHERE "id" = ${o.id}::uuid FOR UPDATE`;
-      if (cur?.status === "CANCELLED") continue;
-      if (cur?.status !== "PENDING_PAYMENT") return "orders_in_progress" as const;
-      await cancelPendingOrderInTx(tx, { sellerId: scope.sellerId, orderId: o.id, now, actorType: "BUYER", actorId: member.id, reason: "member_withdrawn" });
+    for (const orderId of pending) {
+      await cancelPendingOrderInTx(tx, { sellerId: scope.sellerId, orderId, now, actorType: "BUYER", actorId: member.id, reason: "member_withdrawn" });
     }
     const moved = await tx.buyerMember.updateMany({
       where: { id: member.id, sellerId: scope.sellerId, deletedAt: null },
