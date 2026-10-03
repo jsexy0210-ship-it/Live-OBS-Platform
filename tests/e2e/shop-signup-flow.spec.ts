@@ -268,3 +268,26 @@ test("방송 닉네임이 20자를 넘으면 칸 아래에 알려 주고 가입�
   await expect(page.getByLabel("방송 닉네임")).toHaveAttribute("aria-invalid", "true");
   await expect(page.getByRole("button", { name: "가입하기" })).toBeDisabled();
 });
+
+test("확인 응답을 못 받은 뒤 다시 받기에서 이미 확인됐다고 하면 본인확인을 마친 것으로 이어 간다", async ({ page }) => {
+  const id = "00000000-0000-4000-8000-000000000000";
+  await mockApi(page, { resend: fail(409, "already_verified", IDENTITY_ERROR_MESSAGES.already_verified) });
+  // 확인 요청은 서버에서 처리됐지만 응답이 끊긴 상황
+  await page.route((u) => u.pathname === `${API}/verification/confirm`, (route) => route.abort());
+  await page.goto(`/shop/${SLUG}/signup`);
+  await fillIdentity(page, "김구매", "01033334444");
+  await page.getByRole("button", { name: "인증번호 받기" }).click();
+  await page.getByLabel("인증번호").fill("000000");
+  await page.getByRole("button", { name: "확인", exact: true }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "연결이 끊겼어요" })).toBeVisible();
+  await page.getByRole("button", { name: "인증번호 다시 받기" }).click();
+  // 처음부터 다시 하지 않고(판매자 본인확인 비용을 버리지 않고) 확인 완료로 넘어간다
+  await expect(page.getByRole("region", { name: "본인확인" }).locator(".signup-done")).toBeVisible();
+  await expect(page.locator("#v-name")).toHaveValue("김구매");
+  await expect(page.locator("#v-phone")).toHaveValue("010-3333-4444");
+  await fillAccount(page, "x6", "별빛");
+  const req = page.waitForRequest((r) => r.url().endsWith(API) && r.method() === "POST");
+  await page.getByRole("button", { name: "가입하기" }).click();
+  expect((await req).postDataJSON().verificationId).toBe(id);
+  await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
+});

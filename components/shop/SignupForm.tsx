@@ -141,6 +141,12 @@ export default function SignupForm({ slug }: { slug: string }) {
       return;
     }
     if (commonFail(r)) return;
+    // 확인 응답을 못 받았지만 서버에서는 이미 확인된 경우: 처음부터 하지 않고 확인 완료로 이어 간다(보낸 값 스냅숏 유지)
+    if (r.error === "already_verified") {
+      setStep("verified");
+      setNotice(null);
+      return;
+    }
     if (r.error === "resend_too_soon") setNotice({ kind: "info", text: failMessage(r) });
     else restart({ kind: "neg", text: failMessage(r) });
   };
