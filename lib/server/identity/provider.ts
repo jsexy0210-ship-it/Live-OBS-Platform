@@ -7,8 +7,12 @@
 export const CARRIERS = ["SKT", "KT", "LGU", "SKT_MVNO", "KT_MVNO", "LGU_MVNO"] as const;
 export type Carrier = (typeof CARRIERS)[number];
 
-// 인적사항. birth7: 생년월일 6자리 + 성별 자리 1자리(주민등록번호 전체는 받지 않는다).
-export type IdentityPerson = { name: string; phone: string; birth7: string; carrier: Carrier };
+// 화면 기기. KCP API 방식은 PC(MC01)·모바일(MC02)을 꼭 보내야 한다(포트원 kcp-v2-identity-verification.mdx).
+export const DEVICES = ["PC", "MOBILE"] as const;
+export type Device = (typeof DEVICES)[number];
+
+// 인적사항. birth7: 생년월일 6자리 + 성별 자리 1자리(주민등록번호 전체는 받지 않는다). device: 화면 기기(기본 MOBILE).
+export type IdentityPerson = { name: string; phone: string; birth7: string; carrier: Carrier; device: Device };
 
 export type IdentityPurposeTag = "BUYER_SIGNUP" | "SELLER_REPRESENTATIVE" | "PASSWORD_RESET";
 

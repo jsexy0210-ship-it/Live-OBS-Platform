@@ -143,6 +143,7 @@ export async function applyForSeller(
     !v.ciHash ||
     !v.verifiedAt ||
     !v.name ||
+    v.expiresAt <= now ||
     now.getTime() - v.verifiedAt.getTime() > VERIFY_WINDOW_MS
   ) {
     return { ok: false, reason: "verification_invalid" };

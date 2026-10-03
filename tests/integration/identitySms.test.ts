@@ -6,6 +6,8 @@ import { POST as signupStartRoute } from "../../app/api/seller-signup/verificati
 import { POST as resetStartRoute } from "../../app/api/seller/password-reset/start/route";
 import { POST as resetVerifyRoute } from "../../app/api/seller/password-reset/verify/route";
 import { signupBuyer } from "../../lib/server/buyers/signup";
+import { applyForSeller } from "../../lib/server/sellers/application";
+import { FakeBusinessStatusProvider, FakeMailOrderProvider } from "../../lib/server/sellers/businessCheck";
 import { prisma } from "../../lib/server/db";
 import { IDENTITY_ERROR_MESSAGES } from "../../lib/server/identity/messages";
 import { FakeIdentityProvider } from "../../lib/server/identity/provider";
@@ -17,6 +19,7 @@ import {
   OTP_TTL_MS,
   REQUEST_TTL_MS,
   RESEND_INTERVAL_MS,
+  VERIFIED_USE_TTL_MS,
   completeIdentityVerification,
   identityUsage,
   resendIdentityCode,
@@ -244,5 +247,51 @@ describe("사용량·판매자 상태", () => {
     expect((await confirmIdv(provider, reset.verification, reset.ownerToken)).ok).toBe(true);
     expect(await db.seller.findUniqueOrThrow({ where: { id: seller.id } })).toEqual(before);
     expect(await db.sellerSubscription.count()).toBe(0);
+  });
+});
+
+describe("Codex 검수 후속(#95)", () => {
+  it("[P2] 확인 뒤 사용 기한(expiresAt)이 지나면 구매자 가입·판매자 신청 모두 거부한다(30분 창 안이어도)", async () => {
+    const { seller } = await createSeller();
+    const b = await buyerIdv(seller.id);
+    const done = await confirmIdv(provider, b.verification, b.ownerToken);
+    if (!done.ok) throw new Error(done.reason);
+    const after = new Date(done.verification.expiresAt.getTime() + 1000);
+    expect(after.getTime() - done.verification.verifiedAt!.getTime()).toBeLessThan(30 * 60_000);
+    expect(
+      await signupBuyer(db, { sellerId: seller.id, verificationId: b.verification.id, ownerToken: b.ownerToken, loginId: "late", password: "pw-123456", broadcastNickname: "늦음", now: after }),
+    ).toEqual({ ok: false, reason: "verification_invalid" });
+
+    const rep = await startIdv(provider, { purpose: "SELLER_REPRESENTATIVE", sellerId: null });
+    const repDone = await confirmIdv(provider, rep.verification, rep.ownerToken);
+    if (!repDone.ok) throw new Error(repDone.reason);
+    const r = await applyForSeller(db, { business: new FakeBusinessStatusProvider(), mailOrder: new FakeMailOrderProvider() }, {
+      verificationId: rep.verification.id,
+      ownerToken: rep.ownerToken,
+      email: "late@example.com",
+      password: "seller-pass-1",
+      shopName: "늦은 가게",
+      slug: "late-shop",
+      businessNumber: "124-81-00998",
+      companyName: "늦은 상사",
+      openedOn: "20200101",
+      mailOrderNumber: null,
+      now: new Date(repDone.verification.expiresAt.getTime() + 1000),
+    });
+    expect(r).toEqual({ ok: false, reason: "verification_invalid" });
+    expect(VERIFIED_USE_TTL_MS).toBe(10 * 60_000);
+  });
+
+  it("[P2] 체험 한도가 1건 남았을 때 같은 요청에 확인이 동시에 들어와도 모두 성공이고 사용량은 1", async () => {
+    const { seller } = await createSeller();
+    await db.subscriptionPlan.upsert({
+      where: { code: "STANDARD" },
+      update: { trialIdentityLimit: 1 },
+      create: { code: "STANDARD", name: "스탠다드", listPrice: 300000, salePrice: 199000, trialIdentityLimit: 1 },
+    });
+    const { verification: v, ownerToken } = await buyerIdv(seller.id);
+    const rs = await Promise.all(Array.from({ length: 4 }, () => confirmIdv(provider, v, ownerToken)));
+    expect(rs.map((r) => r.ok)).toEqual([true, true, true, true]);
+    expect(await identityUsage(db, seller.id)).toBe(1);
   });
 });

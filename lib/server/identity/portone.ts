@@ -56,6 +56,8 @@ export class PortOneIdentityProvider implements IdentityProvider {
       operator: person.carrier,
       method: "SMS",
       customData: JSON.stringify({ purpose }),
+      // KCP API 방식 필수: 화면 기기(PC MC01, 모바일 MC02)
+      bypass: { kcpV2: { media_type: person.device === "PC" ? "MC01" : "MC02" } },
     });
     return r && r.status >= 200 && r.status < 300 ? { ok: true as const } : FAILURE;
   }

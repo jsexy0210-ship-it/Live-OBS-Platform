@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PortOneIdentityProvider } from "../../lib/server/identity/portone";
 import { FakeIdentityProvider } from "../../lib/server/identity/provider";
+import { newIdentityRequestId, parseIdentityPerson } from "../../lib/server/identity/verification";
 import { identityProvider } from "../../lib/server/identity/registry";
 
 describe("본인확인 공급자 고르기", () => {
@@ -24,7 +25,7 @@ describe("본인확인 공급자 고르기", () => {
 
 describe("포트원 휴대폰 본인확인 어댑터(실제 호출 미검증, 요청 모양·결과 대조만)", () => {
   const config = { apiSecret: "secret-value", storeId: "store-1", channelKey: "channel-1" };
-  const person = { name: "홍길동", phone: "01012345678", birth7: "9505051", carrier: "KT_MVNO" as const };
+  const person = { name: "홍길동", phone: "01012345678", birth7: "9505051", carrier: "KT_MVNO" as const, device: "PC" as const };
   const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
   const verified = (over: Record<string, unknown> = {}) => ({
     id: "idv-1",
@@ -51,7 +52,21 @@ describe("포트원 휴대폰 본인확인 어댑터(실제 호출 미검증, �
       operator: "KT_MVNO",
       method: "SMS",
       customData: JSON.stringify({ purpose: "BUYER_SIGNUP" }),
+      bypass: { kcpV2: { media_type: "MC01" } },
     });
+    // 모바일 화면은 MC02
+    await p.sendCode("idv-2", "BUYER_SIGNUP", { ...person, device: "MOBILE" });
+    expect(JSON.parse(String(calls[1].init.body)).bypass).toEqual({ kcpV2: { media_type: "MC02" } });
+  });
+
+  it("[Codex P1] 대행사 요청 id는 영문·숫자만 40자 이하(hex 32자), 화면 기기는 PC·MOBILE만(없으면 MOBILE)", () => {
+    const ids = new Set(Array.from({ length: 200 }, () => newIdentityRequestId()));
+    expect(ids.size).toBe(200);
+    for (const id of ids) expect(id).toMatch(/^[A-Za-z0-9]{1,40}$/);
+    const base = { name: "홍길동", phone: "010-1234-5678", birth7: "9505051", carrier: "SKT" };
+    expect(parseIdentityPerson(base)).toMatchObject({ device: "MOBILE", phone: "01012345678" });
+    expect(parseIdentityPerson({ ...base, device: "PC" })).toMatchObject({ device: "PC" });
+    expect(parseIdentityPerson({ ...base, device: "TABLET" })).toBeNull();
   });
 
   it("결과 조회: 요청 id·용도를 돌려주고, 채널·용도가 다르거나 값이 빠지면 실패, 장애·네트워크 오류는 provider_error", async () => {

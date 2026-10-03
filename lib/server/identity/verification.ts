@@ -1,9 +1,10 @@
 import type { IdentityVerification, IdentityVerificationPurpose, Prisma, PrismaClient } from "@prisma/client";
+import { randomBytes } from "node:crypto";
 import { generateToken, hashToken } from "../auth/token";
 import { checkTrialLimit } from "../billing/trialLimits";
 import { cleanText } from "../text/clean";
 import { hashCi } from "./ciHash";
-import { CARRIERS, birthDateOf, type Carrier, type IdentityPerson, type IdentityProvider, type ProviderFailure } from "./provider";
+import { CARRIERS, DEVICES, birthDateOf, type Carrier, type Device, type IdentityPerson, type IdentityProvider, type ProviderFailure } from "./provider";
 
 // 휴대폰 본인확인(문자) 흐름(PRODUCT_SCOPE 「휴대폰 본인확인 방식」).
 // 시작(인적사항 → 요청 기록, 시작한 브라우저에만 ownerToken) → 인증번호 보내기 → (다시 보내기) → 인증번호 확인
@@ -44,7 +45,11 @@ async function call<T>(p: Promise<T>): Promise<T | ProviderFailure> {
   }
 }
 
-// 인적사항 검사. 휴대폰번호는 숫자만 남긴다. 생년월일+성별 자리 7자리, 통신사(알뜰폰 포함). 주민번호 전체는 받지 않는다.
+// 대행사에 보내는 요청 id. 포트원 identityVerificationId는 영문·숫자만, 40자 이하라서 hex 32자로 만든다.
+export const newIdentityRequestId = () => randomBytes(16).toString("hex");
+
+// 인적사항 검사. 휴대폰번호는 숫자만 남긴다. 생년월일+성별 자리 7자리, 통신사(알뜰폰 포함), 화면 기기(PC·MOBILE, 없으면 MOBILE).
+// 주민번호 전체는 받지 않는다.
 export function parseIdentityPerson(raw: unknown): IdentityPerson | null {
   if (!raw || typeof raw !== "object") return null;
   const b = raw as Record<string, unknown>;
@@ -52,8 +57,9 @@ export function parseIdentityPerson(raw: unknown): IdentityPerson | null {
   const phone = typeof b.phone === "string" ? b.phone.normalize("NFKC").replace(/[ -]/g, "") : "";
   const birth7 = typeof b.birth7 === "string" ? b.birth7.normalize("NFKC").replace(/[ -]/g, "") : "";
   const carrier = typeof b.carrier === "string" && (CARRIERS as readonly string[]).includes(b.carrier) ? (b.carrier as Carrier) : null;
-  if (!name || !carrier || !/^01\d{8,9}$/.test(phone) || !birthDateOf(birth7)) return null;
-  return { name, phone, birth7, carrier };
+  const device = b.device === undefined ? "MOBILE" : typeof b.device === "string" && (DEVICES as readonly string[]).includes(b.device) ? (b.device as Device) : null;
+  if (!name || !carrier || !device || !/^01\d{8,9}$/.test(phone) || !birthDateOf(birth7)) return null;
+  return { name, phone, birth7, carrier, device };
 }
 
 // 요청 기록만 만든다(공급자 호출 없음, 트랜잭션 안에서 불러도 된다). 인증번호는 sendFirstIdentityCode로 보낸다.
@@ -72,7 +78,7 @@ export async function startIdentityVerification(
       requestIp: input.requestIp ?? null,
       provider: provider.name,
       method: "SMS",
-      requestId: `idv-${generateToken().slice(0, 32)}`,
+      requestId: newIdentityRequestId(),
       requestedPhone: input.person.phone,
       ownerTokenHash: hashToken(ownerToken),
       expiresAt: new Date(now.getTime() + REQUEST_TTL_MS),
@@ -200,6 +206,10 @@ export async function confirmIdentityCode(
     // 구매자 가입 본인확인은 체험하기 중 판매자 한도(trialIdentityLimit)를 쓴다. 성공 건수를 같은 잠금 아래에서 센다.
     if (v.purpose === "BUYER_SIGNUP" && v.sellerId) {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`identity_usage:${v.sellerId}`}))`;
+      // 잠금을 기다리는 동안 같은 요청의 다른 확인이 먼저 확정했으면 그 결과를 돌려준다(한도로 다시 세지 않는다)
+      const current = await tx.identityVerification.findUniqueOrThrow({ where: { id: v.id } });
+      if (current.status === "VERIFIED") return { ok: true as const, verification: current };
+      if (current.status !== "PENDING") return { ok: false as const, reason: current.status === "EXPIRED" ? ("expired" as const) : ("failed" as const) };
       const used = await identityUsage(tx, v.sellerId);
       const limit = await checkTrialLimit(tx, v.sellerId, "identity", { used, adding: 1 }, now);
       if (!limit.ok) {

@@ -49,6 +49,7 @@ export async function signupBuyer(
     !v.name ||
     !v.phone ||
     !v.birthDate ||
+    v.expiresAt <= now ||
     now.getTime() - v.verifiedAt.getTime() > SIGNUP_WINDOW_MS
   ) {
     return { ok: false, reason: "verification_invalid" };

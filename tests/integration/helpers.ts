@@ -142,7 +142,7 @@ export async function createLoginBuyer(sellerId: string, gradeId: string) {
 }
 
 // 휴대폰 본인확인(가짜 공급자) 테스트 도우미. 인적사항 기본값은 아래, 필요한 항목만 바꿔 쓴다.
-export const IDV_INPUT = { name: "홍길동", phone: "01012345678", birth7: "9505051", carrier: "SKT" } as const;
+export const IDV_INPUT = { name: "홍길동", phone: "01012345678", birth7: "9505051", carrier: "SKT", device: "MOBILE" } as const;
 
 // 시작 + 첫 인증번호 보내기
 export async function startIdv(
