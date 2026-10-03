@@ -11,6 +11,8 @@
 // 알림: 채널이 미정이라 인터페이스만 둔다. MONITOR_ALERT_URL이 있으면 사건을 JSON으로 POST하고, 없으면 기록만 한다.
 //   같은 사건은 한 번만, 시간당 MONITOR_ALERT_MAX_PER_HOUR건까지만 보낸다(알림 폭주 방지).
 //   받는 쪽이 2xx가 아니면 alert_failed를 남기고 한도를 쓰지 않은 채 다음 주기에 다시 보낸다(최대 5번).
+//   전송은 동시 5건·틱마다 간격의 1/3 안에서만 해 감시 주기를 막지 않는다.
+// 감시 상태(실패 횟수·열린 장애·경고 쿨다운·알림 한도·보낼 목록)는 monitor-state.json에 남겨 재시작해도 이어진다.
 // 아직 못 재는 것(앱 쪽 훅 필요, MASTER 요청): DB pool 사용량, worker·scheduler heartbeat, 작업 큐 적체.
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync, existsSync, statSync } from "node:fs";
 import http from "node:http";
@@ -98,39 +100,48 @@ function lastDeployedSha() {
   return m.length ? m.at(-1)[1] : null;
 }
 
-// 시간당 알림 한도 기록과 보내지 못한 알림 목록. 감시를 다시 만들어도(가용성 on/off·재시작) 이어지게 /data에 남긴다.
-// 파일이 깨졌으면 빈 목록으로 시작하고 로그를 한 줄 남긴다.
-const persisted = (name, valid) => ({
-  file: () => `${cfg.dir}/${name}`,
-  load() {
-    try {
-      const v = JSON.parse(readFileSync(this.file(), "utf8"));
-      if (!Array.isArray(v) || !v.every(valid)) throw new Error("형식이 맞지 않음");
-      return v;
-    } catch (e) {
-      if (existsSync(this.file())) console.error(`[monitor] ${name}을 읽지 못해 빈 목록으로 시작해요: ${e instanceof Error ? e.message : String(e)}`);
-      return [];
-    }
-  },
-  save(v) {
-    writeFileSync(this.file(), JSON.stringify(v) + "\n");
-  },
-});
-const alertWindow = persisted("alert-window.json", (t) => Number.isFinite(t));
-const alertOutbox = persisted("alert-outbox.json", (x) => x && typeof x === "object" && x.ev && Number.isInteger(x.attempts));
-
-const state = { fails: {}, incidents: {}, warned: {}, alerts: [], outbox: [], mismatchTicks: {} };
+// 감시 상태는 모두 /data/monitor-state.json 하나에 남겨, 감시를 다시 만들어도(가용성 on/off·재시작) 이어진다.
+//   fails: 대상별 연속 실패 횟수 / incidents: 열린 장애(시작 시각) / mismatchTicks: 대상별 버전 불일치 연속 횟수
+//   warned: 같은 경고의 마지막 시각(쿨다운) / alerts: 시간당 알림 한도에 쓴 전송 시각 / outbox: 보내지 못한 알림
+// 파일이 없으면 빈 상태로, 깨졌으면 빈 상태로 시작하고 로그를 한 줄 남긴다.
+const STATE_FILE = () => `${cfg.dir}/monitor-state.json`;
+const emptyState = () => ({ fails: {}, incidents: {}, warned: {}, alerts: [], outbox: [], mismatchTicks: {} });
 const ALERT_MAX_ATTEMPTS = 5;
 const OUTBOX_MAX = 50;
+const isObj = (v) => v && typeof v === "object" && !Array.isArray(v);
+
+function loadState() {
+  const st = emptyState();
+  try {
+    const v = JSON.parse(readFileSync(STATE_FILE(), "utf8"));
+    if (!isObj(v) || !isObj(v.fails) || !isObj(v.incidents) || !isObj(v.warned) || !isObj(v.mismatchTicks) || !Array.isArray(v.alerts) || !Array.isArray(v.outbox))
+      throw new Error("형식이 맞지 않음");
+    const now = Date.now();
+    st.fails = v.fails;
+    st.incidents = v.incidents;
+    st.warned = v.warned;
+    st.mismatchTicks = v.mismatchTicks;
+    st.alerts = v.alerts.filter((t) => Number.isFinite(t) && now - t < 3600_000);
+    st.outbox = v.outbox.filter((x) => isObj(x) && isObj(x.ev) && Number.isInteger(x.attempts) && x.attempts < ALERT_MAX_ATTEMPTS).slice(-OUTBOX_MAX);
+  } catch (e) {
+    if (existsSync(STATE_FILE())) console.error(`[monitor] monitor-state.json을 읽지 못해 빈 상태로 시작해요: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  return st;
+}
+function saveState() {
+  writeFileSync(STATE_FILE(), JSON.stringify(state) + "\n");
+}
+
+let state = emptyState();
 
 function record(file, obj) {
   appendFileSync(`${cfg.dir}/${file}`, JSON.stringify(obj) + "\n");
 }
 
-// 알림 한 건을 보낸다. 2xx가 아니거나 연결이 실패하면 false.
-async function send(ev) {
+// 알림 한 건을 보낸다. 2xx가 아니거나 연결이 실패하면 ok=false.
+async function send(ev, timeoutMs) {
   try {
-    const res = await fetch(cfg.alertUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(ev), signal: AbortSignal.timeout(5000) });
+    const res = await fetch(cfg.alertUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(ev), signal: AbortSignal.timeout(timeoutMs) });
     await res.arrayBuffer().catch(() => {});
     return { ok: res.ok, status: res.status };
   } catch {
@@ -138,30 +149,38 @@ async function send(ev) {
   }
 }
 
-// 보낼 알림을 차례로 보낸다. 실패한 알림은 시간당 한도를 쓰지 않고 다음 주기에 다시 보낸다(최대 ALERT_MAX_ATTEMPTS번).
+// 보낼 알림을 보낸다. 감시 주기를 막지 않게 동시 ALERT_CONCURRENCY건, 틱마다 간격의 1/3 시간 안에서만 보내고
+// 못 보낸 것은 다음 틱으로 넘긴다(시도 횟수도 그대로). 실패한 알림은 한도를 쓰지 않고 다음 틱에 다시(최대 ALERT_MAX_ATTEMPTS번).
+const ALERT_CONCURRENCY = 5;
 async function flushAlerts() {
-  if (!cfg.alertUrl) return;
-  const rest = [];
-  for (const item of state.outbox) {
+  if (!cfg.alertUrl || state.outbox.length === 0) return;
+  const deadline = Date.now() + (cfg.intervalS * 1000) / 3;
+  const pending = [...state.outbox];
+  const keep = [];
+  while (pending.length && Date.now() < deadline - 100) {
     const now = Date.now();
     state.alerts = state.alerts.filter((t) => now - t < 3600_000);
-    if (state.alerts.length >= cfg.alertMaxPerHour) {
-      record("events.jsonl", { at: kst(), kind: "alert_suppressed", ref: item.ev.kind });
-      continue;
+    const slots = cfg.alertMaxPerHour - state.alerts.length;
+    if (slots <= 0) {
+      for (const item of pending.splice(0)) record("events.jsonl", { at: kst(), kind: "alert_suppressed", ref: item.ev.kind });
+      break;
     }
-    const r = await send(item.ev);
-    if (r.ok) {
-      state.alerts.push(now);
-      alertWindow.save(state.alerts);
-      continue;
+    const batch = pending.splice(0, Math.min(ALERT_CONCURRENCY, slots));
+    const timeoutMs = Math.max(100, Math.min(5000, deadline - now));
+    const results = await Promise.all(batch.map((item) => send(item.ev, timeoutMs)));
+    for (const [k, item] of batch.entries()) {
+      const r = results[k];
+      if (r.ok) {
+        state.alerts.push(Date.now());
+        continue;
+      }
+      item.attempts += 1;
+      record("events.jsonl", { at: kst(), kind: "alert_failed", ref: item.ev.kind, status: r.status, attempts: item.attempts });
+      if (item.attempts < ALERT_MAX_ATTEMPTS) keep.push(item);
+      else record("events.jsonl", { at: kst(), kind: "alert_dropped", ref: item.ev.kind });
     }
-    item.attempts += 1;
-    record("events.jsonl", { at: kst(), kind: "alert_failed", ref: item.ev.kind, status: r.status, attempts: item.attempts });
-    if (item.attempts < ALERT_MAX_ATTEMPTS) rest.push(item);
-    else record("events.jsonl", { at: kst(), kind: "alert_dropped", ref: item.ev.kind });
   }
-  state.outbox = rest;
-  alertOutbox.save(state.outbox);
+  state.outbox = [...keep, ...pending]; // pending = 이번 틱 시간 안에 못 보낸 것
 }
 
 // 보낼 목록에 넣기만 한다. 실제 전송은 틱 끝에 한 번(flushAlerts) — 한 틱에 알림이 여러 건이어도 항목마다 시도는 1번.
@@ -170,7 +189,6 @@ async function alert(ev) {
   if (!cfg.alertUrl || (ev.level === "info" && ev.kind !== "incident_close")) return;
   state.outbox.push({ ev, attempts: 0 });
   if (state.outbox.length > OUTBOX_MAX) record("events.jsonl", { at: kst(), kind: "alert_dropped", ref: state.outbox.shift().ev.kind });
-  alertOutbox.save(state.outbox);
 }
 
 async function event(ev) {
@@ -192,7 +210,8 @@ async function tick() {
   const at = kst();
   const results = {};
   // 대상을 동시에 확인한다(여러 대상이 시간 초과여도 한 틱이 timeoutMs 정도로 끝나게).
-  const probed = await Promise.all(cfg.targets.map((t) => probe(t)));
+  // 인증서 확인도 함께 돌린다(순서대로 하면 틱이 길어져 주기가 밀림).
+  const [probed, certDays] = await Promise.all([Promise.all(cfg.targets.map((t) => probe(t))), cfg.tlsHost ? certDaysLeft(cfg.tlsHost) : Promise.resolve(null)]);
   for (const [i, t] of cfg.targets.entries()) {
     const r = probed[i];
     const ok = r.status === 200 && r.db === "ok";
@@ -234,24 +253,24 @@ async function tick() {
       await warnOnce(`version:${name}:${deployed}:${r.version}`, { kind: "version_mismatch", target: name, deployed, running: r.version, ticks }, 86400_000);
   }
 
-  let certDays = null;
   if (cfg.tlsHost) {
-    certDays = await certDaysLeft(cfg.tlsHost);
     if (certDays === null) await warnOnce("tls:unreachable", { kind: "tls_unreachable", host: cfg.tlsHost });
     else if (certDays < cfg.tlsWarnDays) await warnOnce("tls:expiry", { kind: "tls_expiring", host: cfg.tlsHost, daysLeft: certDays }, 86400_000);
   }
 
   const status = { at, targets: results, openIncidents: Object.keys(state.incidents), deployedSha: deployed, runningVersion: running, versionMismatch, certDaysLeft: certDays };
   writeFileSync(`${cfg.dir}/status.json`, JSON.stringify(status, null, 2) + "\n");
+  // heartbeat는 알림 전송과 상관없이 매 틱 먼저 남긴다.
   writeFileSync(`${cfg.dir}/heartbeat.json`, JSON.stringify({ at, epochMs: Date.now(), intervalS: cfg.intervalS }) + "\n");
-  await flushAlerts(); // 이번 틱의 새 알림 + 지난 틱에 실패한 알림을 한 번에
+  saveState();
+  await flushAlerts(); // 이번 틱의 새 알림 + 지난 틱에 실패한 알림(시간 상한 안에서)
+  saveState();
   return status;
 }
 
 async function main() {
   mkdirSync(cfg.dir, { recursive: true });
-  state.alerts = alertWindow.load().filter((t) => Date.now() - t < 3600_000);
-  state.outbox = alertOutbox.load().filter((x) => x.attempts < ALERT_MAX_ATTEMPTS).slice(-OUTBOX_MAX);
+  state = loadState();
   await event({ level: "info", kind: "monitor_start", targets: cfg.targets.map((t) => t.name), intervalS: cfg.intervalS });
   // 고정 주기: 확인에 걸린 시간만큼 다음 틱까지 기다리는 시간을 줄인다.
   for (;;) {
