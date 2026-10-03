@@ -250,6 +250,7 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 - 지급 시점 `RewardPolicy.earnTiming`(대표님 결정 2026-10-03): `ON_PAYMENT`(결제 즉시) 또는 `ON_DELIVERY`(배송 완료 후, 기본). `GET·PUT /api/seller/reward-policy` `{ earnTiming }`(`MEMBER_POINTS`, 감사 로그 `reward_policy.earn_timing`, 틀리면 `400 invalid_reward_policy`). 적립은 결제 시점 스냅숏으로 판정한다(MASTER 결정 2026-10-03): 결제 때 주문에 지급 시점·회원 등급·적립률·적립 예정액(`Order.rewardEarnTiming·rewardGradeId·rewardRate·rewardEarnAmount`)을 남기고, 지급 시작일(`earnStartsAt`)은 결제 시각과 비교한다. 배송 완료 때는 스냅숏 지급 시점이 `ON_DELIVERY`이고 예정액이 0원보다 큰 주문만 그 금액으로 한 번 기록한다. 결제 때 0원이면 나중에도 적립하지 않고, 결제 뒤 적립률·등급·지급 시점을 바꿔도 결과는 같다. 실지급 스위치(`testMode`)만 기록하는 때의 값을 쓴다.
 - `EARN`(PENDING), 환불 때 회수: `revokeMode = AUTO`면 `REVOKE`(PENDING)를 기록하고, `MANUAL`이면 기록하지 않는다. MANUAL에서 「환불된 주문에 `EARN`은 있고 `REVOKE`가 없는 상태」가 수동 확인 대기다(감사 로그 `rewardRevoke: manual_review`).
 - 결제 확인에 결제수단이 없으면 주문에 저장된 결제수단으로 적립률을 정한다.
+- 적립금 3년 소멸(대표님 결정 2026-10-03, `lib/server/rewards/expire.ts` `expireDormantRewards`, 정기 실행 연결은 인프라 승인 대기): 마지막 적립일(실지급·실패 아닌 양수 `EARN`·`RANKING_BONUS`·`ADJUST` 원장의 가장 늦은 `createdAt`)부터 3년이 지난 잔액을 `EXPIRE`(음수, `SUCCEEDED`)로 남기고 0으로 만든다(감사 로그 `reward.expire`, 사유 `no_earn_3_years`). 적립 기록이 없는 잔액은 소멸하지 않는다. 오래된 순으로 limit(기본 100)건, 회원마다 잔액 행을 잠그고 다시 확인한다(멱등, 한 건 실패해도 계속). 소멸 30일 전 안내 발송은 알림 연동 때.
 - 원장의 실제 처리(SUCCEEDED·잔액 반영), 주문에 쓴 적립금(`USE`)을 환불·취소 때 돌려주는 것은 다음 단계(적립금 사용 기능과 함께).
 
 ### 4.8 오버레이·감사 로그
