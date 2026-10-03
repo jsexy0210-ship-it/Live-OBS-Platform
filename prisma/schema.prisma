@@ -1375,6 +1375,8 @@ model AutomationPracticeRun {
   cleanupScopeId   String?                  @db.Uuid
   cleanupPendingAt DateTime?                @db.Timestamptz(3)
   cleanupAttempts  Int                      @default(0)
+  // 「정리 필요」: 다시 시도 상한을 넘겨 자동 정리를 멈춘 시각. 이때 마스터 관리자 알림(감사 기록 운영 이벤트)을 1건 남긴다.
+  cleanupNeededAt  DateTime?                @db.Timestamptz(3)
 
   @@index([playbookId, playbookVersion, finishedAt])
 }

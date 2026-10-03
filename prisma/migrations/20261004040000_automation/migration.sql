@@ -118,6 +118,7 @@ CREATE TABLE "AutomationPracticeRun" (
     "cleanupScopeId" UUID,
     "cleanupPendingAt" TIMESTAMPTZ(3),
     "cleanupAttempts" INTEGER NOT NULL DEFAULT 0,
+    "cleanupNeededAt" TIMESTAMPTZ(3),
 
     CONSTRAINT "AutomationPracticeRun_pkey" PRIMARY KEY ("id")
 );

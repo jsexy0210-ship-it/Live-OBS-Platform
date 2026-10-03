@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { AutomationPracticeRun, PrismaClient } from "@prisma/client";
 import { AUTOMATION_LIMITS, plannerConfig } from "./config";
+import { writeAudit } from "../audit/log";
 import { runSteps, type EngineStats } from "./engine";
 import { backoffMs } from "./queue";
 import type { Playbook } from "./playbook";
@@ -14,8 +15,8 @@ import { STEPS } from "./steps";
 
 // 지원 목록 기준: 같은 작업서 버전의 최근 연습이 연속 이만큼 성공(화면 이탈 없이)
 export const PRACTICE_STREAK_REQUIRED = 5;
-// 정리 다시 시도 상한(넘으면 운영 확인 대상으로 남긴다)
-const CLEANUP_MAX_ATTEMPTS = 10;
+// 정리 다시 시도 상한. 모두 실패하면 「정리 필요」로 바꾸고 마스터 관리자 알림(운영 이벤트)을 남긴다.
+export const CLEANUP_MAX_ATTEMPTS = 10;
 
 // 연습 실행 범위의 보관 자료(행동 키 기록·OBS 연결 정보)를 두 실행기에 지우라고 요청한다. 둘 다 성공해야 정리 끝이다.
 async function discardScope(rt: Pick<AutomationRuntime, "browser" | "obs">, scope: JobScope): Promise<boolean> {
@@ -92,7 +93,8 @@ export async function runPractice(
   });
 }
 
-// 정리가 끝나지 않은 연습 실행의 보관 자료를 다시 지운다(작업자 반복에서 부른다). 실패하면 백오프로 미루고, 상한을 넘으면 그대로 남긴다.
+// 정리가 끝나지 않은 연습 실행의 보관 자료를 다시 지운다(작업자 반복에서 부른다). 실패하면 백오프로 미루고,
+// 상한(10회)을 모두 실패하면 자동 정리를 멈추고 「정리 필요」(cleanupNeededAt)로 바꾼 뒤 같은 트랜잭션에서 마스터 관리자 알림 1건을 남긴다.
 export async function cleanupPracticeArtifacts(db: PrismaClient, rt: Pick<AutomationRuntime, "browser" | "obs">, limit = 20): Promise<number> {
   const due = await db.automationPracticeRun.findMany({
     where: { cleanupPendingAt: { lte: new Date() }, cleanupScopeId: { not: null }, cleanupAttempts: { lt: CLEANUP_MAX_ATTEMPTS } },
@@ -103,11 +105,29 @@ export async function cleanupPracticeArtifacts(db: PrismaClient, rt: Pick<Automa
   for (const r of due) {
     const ok = await discardScope(rt, { sellerId: "practice", jobId: r.cleanupScopeId! });
     const attempts = r.cleanupAttempts + 1;
-    await db.automationPracticeRun.update({
-      where: { id: r.id },
-      data: ok ? { cleanupPendingAt: null, cleanupAttempts: attempts } : { cleanupAttempts: attempts, cleanupPendingAt: new Date(Date.now() + backoffMs(attempts)) },
+    if (ok || attempts < CLEANUP_MAX_ATTEMPTS) {
+      await db.automationPracticeRun.update({
+        where: { id: r.id },
+        data: ok ? { cleanupPendingAt: null, cleanupAttempts: attempts } : { cleanupAttempts: attempts, cleanupPendingAt: new Date(Date.now() + backoffMs(attempts)) },
+      });
+      if (ok) cleaned++;
+      continue;
+    }
+    await db.$transaction(async (tx) => {
+      const moved = await tx.automationPracticeRun.updateMany({
+        where: { id: r.id, cleanupNeededAt: null },
+        data: { cleanupAttempts: attempts, cleanupPendingAt: null, cleanupNeededAt: new Date() },
+      });
+      if (moved.count === 1) {
+        await writeAudit(tx, {
+          actorType: "SYSTEM",
+          action: "automation.practice_cleanup_needed",
+          targetType: "AutomationPracticeRun",
+          targetId: r.id,
+          after: { playbookId: r.playbookId, playbookVersion: r.playbookVersion, attempts },
+        });
+      }
     });
-    if (ok) cleaned++;
   }
   return cleaned;
 }

@@ -1933,3 +1933,27 @@ describe("Codex 12차 반영(6706ed2)", () => {
     expect(await purchaseAutomation(db, new FakeBillingProvider(), s.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP })).toEqual({ ok: false, reason: "shop_not_supported" });
   });
 });
+
+describe("MASTER 보강(d47b9f0): 연습 정리 상한", () => {
+  it("연습 정리가 10회 모두 실패하면 「정리 필요」로 바뀌고 마스터 관리자 알림(운영 이벤트) 1건이 남는다", async () => {
+    const practice = await import("../../lib/server/automation/practice");
+    const rt = runtime();
+    rt.browser.discard = async () => {
+      throw new Error("executor unavailable");
+    };
+    const run = await runPractice(db, rt, cafe24Playbook, { shopHost: "myshop.cafe24.com" });
+    for (let i = 0; i < 12; i++) {
+      await db.automationPracticeRun.update({ where: { id: run.id }, data: { cleanupPendingAt: new Date(Date.now() - 1000) } });
+      await practice.cleanupPracticeArtifacts(db, rt);
+      const r = await db.automationPracticeRun.findUniqueOrThrow({ where: { id: run.id } });
+      if (r.cleanupPendingAt === null) break;
+    }
+    const r = await db.automationPracticeRun.findUniqueOrThrow({ where: { id: run.id } });
+    expect(r).toMatchObject({ cleanupAttempts: 10, cleanupPendingAt: null });
+    expect(r.cleanupNeededAt).toBeInstanceOf(Date);
+    expect(await db.auditLog.count({ where: { action: "automation.practice_cleanup_needed", targetId: run.id } })).toBe(1);
+    // 다시 돌려도 알림이 늘지 않는다
+    await practice.cleanupPracticeArtifacts(db, rt);
+    expect(await db.auditLog.count({ where: { action: "automation.practice_cleanup_needed" } })).toBe(1);
+  });
+});
