@@ -68,7 +68,8 @@ describe("구매자 가입 HTTP", () => {
     const res = await s.signup(v);
     expect(res.status).toBe(201);
     expect(cookieOf(res, "lo_buyer")).toMatch(/^lo_buyer=.+/);
-    expect(cookieOf(res, "lo_bidv")).toBe("lo_bidv=");
+    // 응답 본문이 끊겨도 같은 요청을 다시 보낼 수 있게 본인확인 쿠키는 지우지 않는다(본인확인은 소진되어 재전송에만 쓰임)
+    expect(res.headers.getSetCookie().some((c) => c.startsWith("lo_bidv="))).toBe(false);
     const member = await db.buyerMember.findFirstOrThrow({ where: { sellerId: s.seller.id } });
     expect(member).toMatchObject({ loginId: "buyer01@example.com", name: "김구매", phone: "01099998888", broadcastNickname: "카드왕" });
     expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.signup", actorId: member.id } })).toMatchObject({
@@ -364,6 +365,8 @@ describe("signupBuyer는 completeIdentityVerification을 거친다", () => {
     const first = await s.signup(v);
     expect(first.status).toBe(201);
     expect(await first.json()).toEqual({ ok: true, broadcastNickname: "카드왕" });
+    // 헤더만 도착하고 본문이 끊긴 경우에도 쿠키가 남아 있어야 다시 보낼 수 있다
+    expect(first.headers.getSetCookie().some((c) => c.startsWith("lo_bidv="))).toBe(false);
     const member = await db.buyerMember.findFirstOrThrow({ where: { sellerId: s.seller.id } });
     const attempts = (await db.identityVerification.findUniqueOrThrow({ where: { id: v.verificationId } })).useAttemptCount;
     // 같은 요청을 다시 보내면(대소문자만 다른 아이디 포함) 같은 회원으로 201과 세션
