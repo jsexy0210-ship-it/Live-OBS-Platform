@@ -76,3 +76,14 @@ export function Toast({ text, onDone, neg }: { text: string; onDone: () => void;
     </div>
   );
 }
+
+// 상품 이미지가 아직 없을 때 자리에 두는 그림(글자 대신)
+export function NoImage({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="4" width="18" height="16" rx="3" />
+      <circle cx="9" cy="10" r="1.6" />
+      <path d="m21 16-5-5-8 9" />
+    </svg>
+  );
+}

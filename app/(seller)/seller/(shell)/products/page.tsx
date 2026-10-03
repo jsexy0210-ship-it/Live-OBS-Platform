@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
-import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../components/seller/States";
+import { ErrorState, LoadingRows, Locked, NoImage, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, type Product, type ProductStatus } from "../../../../../components/seller/api";
 import { LOW_STOCK, statusBadge, totalStock, won } from "../../../../../components/seller/format";
 
@@ -149,8 +149,8 @@ export default function ProductListPage() {
                     return (
                       <tr key={p.id} className="p-row" data-testid="product-row">
                         <td>
-                          <div className="img" style={{ width: 44, height: 44, borderRadius: 8 }} aria-hidden="true">
-                            IMG
+                          <div className="img" style={{ width: 44, height: 44, borderRadius: 8 }} title="이미지 없음">
+                            <NoImage />
                           </div>
                         </td>
                         <td>
@@ -176,8 +176,8 @@ export default function ProductListPage() {
                   return (
                     <li key={p.id}>
                       <Link href={`/seller/products/${p.id}`} className="p-card" data-testid="product-card">
-                        <div className="img" style={{ width: 64, height: 64 }} aria-hidden="true">
-                          IMG
+                        <div className="img" style={{ width: 64, height: 64 }} title="이미지 없음">
+                          <NoImage size={24} />
                         </div>
                         <div className="col grow" style={{ gap: 4 }}>
                           <span className="fw6 p-name">{p.name}</span>

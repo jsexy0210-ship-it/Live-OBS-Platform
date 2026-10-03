@@ -22,13 +22,13 @@ const NAV: Nav[] = [
   { label: "배송", perm: "ORDER_SHIPPING" },
   { label: "영수증 · 세금계산서", perm: "RECEIPT_TAX" },
   { label: "적립금", perm: "MEMBER_POINTS" },
-  { label: "회원" },
-  { label: "구매 제한" },
+  { label: "회원", perm: "MEMBER_POINTS" },
+  { label: "구매 제한", perm: "MEMBER_POINTS" },
   { label: "구매자 문의", perm: "INQUIRY_REPLY" },
   { h: "방송 · 오버레이" },
   { label: "오버레이 편집기", perm: "OVERLAY_EDIT" },
-  { label: "HIT 카드 이력" },
-  { label: "방송 이력" },
+  { label: "HIT 카드 이력", perm: "BROADCAST_RUN" },
+  { label: "방송 이력", perm: "BROADCAST_RUN" },
   { h: "설정" },
   { label: "쇼핑몰 설정", perm: "SHOP_SETTINGS" },
   { label: "결제(PG) 연결", perm: "OWNER" },
@@ -178,7 +178,7 @@ function AccessBanner() {
   if (me.access === "trial") {
     return (
       <div className="msg msg-info access-banner" role="status">
-        <b>{trialDaysLeft === null ? "체험하기 중이에요" : trialDaysLeft === 0 ? "체험이 오늘 끝나요" : `체험이 ${trialDaysLeft}일 남았어요`}</b>
+        <b>{trialDaysLeft === null ? "체험 중이에요" : trialDaysLeft === 0 ? "체험이 오늘 끝나요" : `체험이 ${trialDaysLeft}일 남았어요`}</b>
         <span>체험이 끝나기 전에 구독하면 그대로 이어서 쓸 수 있어요</span>
       </div>
     );

@@ -61,7 +61,7 @@ export default function SellerLoginPage() {
       <form className="card col login-card" onSubmit={submit} noValidate>
         <div className="col" style={{ gap: 4 }}>
           <h1 className="t-t3">판매자 관리자에 로그인해요</h1>
-          <span className="t-l2 c-alt">쇼핑몰 운영과 방송 주문대기를 한곳에서.</span>
+          <span className="t-l2 c-alt">쇼핑몰 운영과 방송 주문대기를 한곳에서 할 수 있어요.</span>
         </div>
         {notice && (
           <div className={`msg msg-${notice.kind}`} role="alert">

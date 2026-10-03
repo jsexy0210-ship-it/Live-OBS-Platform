@@ -25,10 +25,10 @@ export function statusBadge(p: Product): { label: string; cls: string } {
   return { label: "임시 저장", cls: "b-wait nodot" };
 }
 
-// 「12,000」「12000원」처럼 써도 숫자만 읽는다. 숫자가 아니면 null
-export function parseAmount(v: string, allowNegative = false): number | null {
-  const t = v.replace(/[,\s원]/g, "");
-  if (!(allowNegative ? /^-?\d+$/ : /^\d+$/).test(t)) return null;
+// 「12,000」「12000원」「１２０００」(전각)처럼 써도 정수로 읽는다. 음수도 읽고 범위는 부르는 쪽이 검사한다. 숫자가 아니면 null
+export function parseAmount(v: string): number | null {
+  const t = v.normalize("NFKC").replace(/[,\s원]/g, "").replace(/^[−–]/, "-");
+  if (!/^-?\d+$/.test(t)) return null;
   const n = Number(t);
   return Number.isSafeInteger(n) ? n : null;
 }

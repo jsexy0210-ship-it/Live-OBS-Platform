@@ -84,6 +84,21 @@ test("상품 목록: 데모 상품·상태 배지·필터, 체험 배너가 보�
   await expect(rows.filter({ hasText: "스타라이트 부스터 박스" })).toHaveCount(0);
 });
 
+test("옵션 이름이 길고 많아도 목록 표가 카드 밖으로 넘치지 않는다(1440·1024)", async ({ page }) => {
+  await login(page);
+  const row = page.getByTestId("product-row").filter({ hasText: "보관용 카드 바인더" });
+  for (const width of [1440, 1024]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(row).toBeVisible();
+    const fit = await page.locator(".p-table").evaluate((t) => ({ table: t.scrollWidth, card: t.parentElement!.clientWidth }));
+    expect(fit.table).toBeLessThanOrEqual(fit.card);
+    // 판매가·재고·상태 열이 화면 안에 보인다(세로로는 그 줄까지 내려서 본다)
+    await row.scrollIntoViewIfNeeded();
+    await expect(row.getByText("18,000원")).toBeInViewport();
+    await expect(row.locator(".bdg")).toBeInViewport();
+  }
+});
+
 test("상품 등록 → 목록에 바로 보인다", async ({ page }) => {
   const name = `e2e 부스터 팩 ${stamp}`;
   await login(page);
@@ -182,6 +197,69 @@ test("상품 삭제: 숨김을 먼저 권하고, 완전 삭제는 상품명을 �
   await expect(page).toHaveURL(/\/seller\/products$/);
   await expect(page.getByText("상품을 삭제했어요")).toBeVisible();
   await expect(page.getByTestId("product-row").filter({ hasText: name })).toHaveCount(0);
+});
+
+test("판매가를 내리면서 추가 금액을 바꿔도 저장된다(중간 상태가 늘 올바른 순서)", async ({ page }) => {
+  const name = `e2e ${stamp} 가격 순서`;
+  await login(page);
+  await page.goto("/seller/products/new");
+  await page.getByLabel("상품명").fill(name);
+  await page.getByLabel("판매가").fill("10000");
+  await page.getByLabel("옵션 1 이름").fill("낱개");
+  await page.getByLabel("옵션 1 추가 금액").fill("-9000");
+  await page.getByRole("button", { name: "등록", exact: true }).first().click();
+  await expect(page).toHaveURL(/\/seller\/products$/);
+  await page.getByTestId("product-row").filter({ hasText: name }).getByRole("link").first().click();
+
+  // 10000 / -9000 → 5000 / -4000 (판매가를 내림)
+  await page.getByLabel("판매가").fill("5000");
+  await page.getByLabel("옵션 1 추가 금액").fill("-4000");
+  await page.getByRole("button", { name: "저장", exact: true }).first().click();
+  await expect(page.getByText("저장했어요", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("판매가")).toHaveValue("5000");
+  await expect(page.getByLabel("옵션 1 추가 금액")).toHaveValue("-4000");
+
+  // 5000 / -4000 → 10000 / -9000 (판매가를 올림)
+  await page.getByLabel("판매가").fill("10000");
+  await page.getByLabel("옵션 1 추가 금액").fill("-9000");
+  await page.getByRole("button", { name: "저장", exact: true }).first().click();
+  await expect(page.getByText("저장했어요", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("판매가")).toHaveValue("10000");
+  await expect(page.getByLabel("옵션 1 추가 금액")).toHaveValue("-9000");
+});
+
+test("숫자·글자 입력: 전각 숫자는 받고, 음수 가격과 보이지 않는 글자는 칸별로 안내한다", async ({ page }) => {
+  await login(page);
+  await page.goto("/seller/products/new");
+  await page.getByLabel("상품명").fill("부스터\u200b팩");
+  await page.getByLabel("판매가").fill("-5");
+  await page.getByRole("button", { name: "등록", exact: true }).first().click();
+  await expect(page.getByText("가격은 1원 이상, 21억 원 이하로 입력해 주세요")).toBeVisible();
+  await expect(page.getByText("쓸 수 없는 글자가 들어 있어요", { exact: false })).toBeVisible();
+  // 판매가가 틀렸을 때 정상 옵션에는 단가 오류를 띄우지 않는다
+  await expect(page.getByText("추가 금액을 더한 가격이", { exact: false })).toHaveCount(0);
+
+  await page.getByLabel("상품명").fill("부스터 팩");
+  await page.getByLabel("판매가").fill("１５０００");
+  await expect(page.getByText("15,000원", { exact: true })).toBeVisible();
+  await expect(page.getByText("가격은 1원 이상", { exact: false })).toHaveCount(0);
+});
+
+test("권한이 하나도 없는 직원에게는 권한이 필요한 메뉴가 보이지 않는다", async ({ page }) => {
+  await page.goto("/seller/login");
+  await page.getByLabel("이메일").fill("demo-none@example.com");
+  await page.getByLabel("비밀번호").fill(PASSWORD);
+  await page.getByRole("button", { name: "로그인" }).click();
+  await expect(page.getByText("이 기능은 권한이 필요해요")).toBeVisible();
+  const side = page.getByRole("complementary", { name: "판매자 메뉴" });
+  for (const hidden of ["방송 대시보드", "상품", "주문", "입금 확인", "배송", "영수증 · 세금계산서", "적립금", "회원", "구매 제한", "구매자 문의", "오버레이 편집기", "HIT 카드 이력", "방송 이력", "쇼핑몰 설정", "결제(PG) 연결", "주문자 알림", "구독 · 결제", "직원 계정"]) {
+    await expect(side.getByText(hidden, { exact: true })).toHaveCount(0);
+  }
+  for (const shown of ["홈", "공지 · 문의", "도우미", "내 계정"]) {
+    await expect(side.getByText(shown, { exact: true }).last()).toBeVisible();
+  }
 });
 
 test("상품 권한이 없는 직원은 권한 안내를 본다", async ({ page }) => {

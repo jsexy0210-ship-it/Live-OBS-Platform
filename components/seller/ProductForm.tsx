@@ -4,9 +4,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { Topbar } from "./SellerShell";
-import { Toast } from "./States";
+import { NoImage, Toast } from "./States";
 import { api, failMessage, type Product, type ProductOption, type ProductStatus } from "./api";
 import { INT4_MAX, STATUS_LABEL, parseAmount, statusBadge, textLength, won } from "./format";
+import { cleanText } from "../../lib/server/text/clean";
 
 // SA-012 상품 등록 · SA-012-E 상품 수정. 지금 API가 받는 항목(상품명·설명·판매가·판매 상태·옵션)만 보여 준다.
 // 이미지·카테고리·이벤트 할인 등은 API가 생기면 붙인다.
@@ -45,25 +46,36 @@ const toRow = (o: ProductOption): OptRow => ({
 });
 const blankRow = (name = ""): OptRow => ({ key: ++seq, name, priceDelta: "0", stock: "0" });
 
+// 서버와 같은 글자 규칙(lib/server/text/clean.ts)으로 미리 검사해, 서버만 거부하는 글자(폭 없는 공백·채움 문자 등)가 어느 칸인지 알려 준다
+const BAD_CHARS = "쓸 수 없는 글자가 들어 있어요. 보이지 않는 글자나 빈칸 문자를 지워 주세요";
+const badLine = (v: string) => v.trim() !== "" && cleanText(v, Number.MAX_SAFE_INTEGER, "name") === null;
+const badMultiline = (v: string) => v.trim() !== "" && cleanText(v, Number.MAX_SAFE_INTEGER, "multiline") === null;
+
 function validate(name: string, description: string, price: string, status: ProductStatus, rows: OptRow[]): Errors {
   const e: Errors = { rows: {} };
   const len = textLength(name);
   if (len === 0) e.name = "상품명을 입력해 주세요";
   else if (len > NAME_MAX) e.name = `상품명은 ${NAME_MAX}자까지 쓸 수 있어요`;
+  else if (badLine(name)) e.name = BAD_CHARS;
   if (textLength(description) > DESC_MAX) e.description = `설명은 ${DESC_MAX.toLocaleString("ko-KR")}자까지 쓸 수 있어요`;
+  else if (badMultiline(description)) e.description = BAD_CHARS;
   const p = parseAmount(price);
   if (p === null) e.price = "숫자만 입력해 주세요";
   else if (p < 1 || p > INT4_MAX) e.price = "가격은 1원 이상, 21억 원 이하로 입력해 주세요";
+  // 판매가가 올바를 때만 옵션 단가(판매가 + 추가 금액)를 검사한다
+  const priceOk = !e.price && p !== null;
   for (const r of rows) {
     const re: Errors["rows"][number] = {};
     const n = textLength(r.name);
     if (n === 0) re.name = "옵션명을 입력해 주세요";
     else if (n > NAME_MAX) re.name = `옵션명은 ${NAME_MAX}자까지 쓸 수 있어요`;
-    const d = parseAmount(r.priceDelta, true);
+    else if (badLine(r.name)) re.name = BAD_CHARS;
+    const d = parseAmount(r.priceDelta);
     if (d === null) re.priceDelta = "숫자만 입력해 주세요";
-    else if (p !== null && (p + d < 1 || p + d > INT4_MAX)) re.priceDelta = "추가 금액을 더한 가격이 1원보다 작거나 너무 커요";
+    else if (priceOk && (p + d < 1 || p + d > INT4_MAX)) re.priceDelta = "추가 금액을 더한 가격이 1원보다 작거나 너무 커요";
     const s = parseAmount(r.stock);
-    if (s === null || s > INT4_MAX) re.stock = "0 이상 숫자로 입력해 주세요";
+    if (s === null) re.stock = "숫자만 입력해 주세요";
+    else if (s < 0 || s > INT4_MAX) re.stock = "재고는 0개 이상으로 입력해 주세요";
     if (Object.keys(re).length) e.rows[r.key] = re;
   }
   if (rows.length > OPTION_MAX) e.options = `옵션은 ${OPTION_MAX}개까지 만들 수 있어요`;
@@ -136,10 +148,10 @@ export function ProductForm({ initial }: { initial?: Product }) {
       method: "POST",
       body: {
         name: name.trim(),
-        description: description.trim() === "" ? null : description,
+        description: description.trim() === "" ? null : description.trim(),
         price: priceNum,
         status: st,
-        options: rows.map((o, i) => ({ name: o.name.trim(), priceDelta: parseAmount(o.priceDelta, true), stock: parseAmount(o.stock), sortOrder: i })),
+        options: rows.map((o, i) => ({ name: o.name.trim(), priceDelta: parseAmount(o.priceDelta), stock: parseAmount(o.stock), sortOrder: i })),
       },
     });
     if (!r.ok) return fail(failMessage(r, "상품을 등록하지 못했어요. 입력한 내용은 그대로 있어요"));
@@ -154,30 +166,32 @@ export function ProductForm({ initial }: { initial?: Product }) {
     let current = base;
     let list = rows;
     let gone = removed;
-    const productPatch: Record<string, unknown> = {};
-    if (name.trim() !== current.name) productPatch.name = name.trim();
-    if ((description.trim() === "" ? null : description.trim()) !== (current.description ?? null)) productPatch.description = description.trim() === "" ? null : description;
-    if (priceNum !== current.price) productPatch.price = priceNum;
-    if (status !== current.status) productPatch.status = status;
+    // 서버는 단계마다 「판매가 + 추가 금액 ≥ 1원」, 「판매 중이면 옵션 1개 이상」을 검사한다. 중간 상태가 늘 올바르도록
+    // 판매가를 올리거나 판매 중이 아닌 상태로 바꾸는 것은 옵션보다 먼저(early), 판매가를 내리거나 판매 중으로 바꾸는 것은 옵션 뒤에(late) 보낸다.
+    const early: Record<string, unknown> = {};
+    const late: Record<string, unknown> = {};
+    const desc = description.trim() === "" ? null : description.trim();
+    if (name.trim() !== current.name) early.name = name.trim();
+    if (desc !== (current.description ?? null)) early.description = desc;
+    if (priceNum !== current.price) (priceNum! > current.price ? early : late).price = priceNum;
+    if (status !== current.status) (status === "ON_SALE" ? late : early).status = status;
 
-    const patchProduct = async () => {
-      if (Object.keys(productPatch).length === 0) return true;
-      const r = await api<Product>(`/api/seller/products/${current.id}`, { method: "PATCH", body: productPatch });
+    const patchProduct = async (patch: Record<string, unknown>) => {
+      if (Object.keys(patch).length === 0) return true;
+      const r = await api<Product>(`/api/seller/products/${current.id}`, { method: "PATCH", body: patch });
       if (!r.ok) {
         fail(failMessage(r, "저장하지 못했어요"));
         return false;
       }
       current = r.data;
       setBase(current);
-      for (const k of Object.keys(productPatch)) delete productPatch[k];
       return true;
     };
 
-    // 판매 중으로 바꾸는 경우는 옵션을 먼저, 그 밖에는 상품을 먼저 바꿔야 서버 규칙(판매 중엔 옵션 1개 이상)에 걸리지 않는다
-    if (status !== "ON_SALE" && !(await patchProduct())) return;
+    if (!(await patchProduct(early))) return;
 
     for (const [i, o] of rows.entries()) {
-      const delta = parseAmount(o.priceDelta, true)!;
+      const delta = parseAmount(o.priceDelta)!;
       const stock = parseAmount(o.stock)!;
       if (!o.id) {
         const known = new Set(current.options.map((x) => x.id));
@@ -199,11 +213,14 @@ export function ProductForm({ initial }: { initial?: Product }) {
       if (Object.keys(body).length === 0) continue;
       const r = await api<Product>(`/api/seller/products/${current.id}/options/${o.id}`, { method: "PATCH", body });
       if (!r.ok) {
-        // 그사이 재고가 바뀌었으면 지금 재고를 보여 주고 다시 입력하게 한다
+        // 그사이 재고가 바뀌었으면 지금 재고를 알려 주고 그 값으로 바꿔 둔다. 다시 확인하고 저장하게 한다
         if (r.error === "stock_conflict") {
           const fresh = await api<Product>(`/api/seller/products/${current.id}`);
           const now = fresh.ok ? fresh.data.options.find((x) => x.id === o.id) : undefined;
-          if (now) setRows(list.map((x) => (x.key === o.key ? { ...x, stock: String(now.stock), orig: { ...x.orig!, stock: now.stock } } : x)));
+          if (now) {
+            setRows(list.map((x) => (x.key === o.key ? { ...x, stock: String(now.stock), orig: { ...x.orig!, stock: now.stock } } : x)));
+            return fail(`그사이 「${o.name.trim()}」 재고가 바뀌었어요. 지금 재고는 ${now.stock.toLocaleString("ko-KR")}개예요. 확인하고 다시 저장해 주세요`);
+          }
         }
         return fail(failMessage(r, "옵션을 저장하지 못했어요"));
       }
@@ -220,7 +237,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
       setRemoved(gone);
     }
 
-    if (!(await patchProduct())) return;
+    if (!(await patchProduct(late))) return;
     setBase(current);
     setRows(current.options.map(toRow));
     setRemoved([]);
@@ -412,12 +429,9 @@ export function ProductForm({ initial }: { initial?: Product }) {
 
           {isEdit && (
             <section className="card pad-l col" style={{ gap: 12, boxShadow: "inset 0 0 0 1px var(--wds-line-status-negative-normal)" }}>
-              <h2 className="t-hl1 c-neg">위험 구역</h2>
+              <h2 className="t-hl1 c-neg">상품 삭제</h2>
               <div className="row between" style={{ gap: 12 }}>
-                <span className="col">
-                  <span className="t-l1 fw6">상품 삭제</span>
-                  <span className="t-c1 c-alt">판매한 적이 있는 상품은 삭제 대신 「숨김」을 권장해요. 삭제해도 주문 기록은 남아요.</span>
-                </span>
+                <span className="t-c1 c-alt">판매한 적이 있는 상품은 삭제 대신 「숨김」을 권장해요. 삭제해도 주문 기록은 남아요.</span>
                 <button className="btn btn-out" type="button" style={{ color: "var(--neg-text)" }} onClick={() => setConfirmDelete(true)} disabled={busy}>
                   삭제
                 </button>
@@ -429,8 +443,8 @@ export function ProductForm({ initial }: { initial?: Product }) {
         <aside className="col aside-sticky" style={{ gap: 16 }}>
           <div className="card pad col pcard" style={{ gap: 10 }}>
             <span className="t-hl2">쇼핑몰 미리보기</span>
-            <div className="img" style={{ width: "100%", aspectRatio: "1" }}>
-              대표 이미지
+            <div className="img" style={{ width: "100%", aspectRatio: "1" }} title="이미지 없음">
+              <NoImage size={40} />
             </div>
             <span className={`t-b1 fw6 pname${nameLen ? "" : " c-ast"}`}>{nameLen ? name.trim() : "상품명을 입력해 주세요"}</span>
             <span className="pprice">
@@ -438,10 +452,8 @@ export function ProductForm({ initial }: { initial?: Product }) {
             </span>
           </div>
           <div className="card pad col" style={{ gap: 8 }}>
-            <span className="t-hl2">{isEdit ? "저장 체크" : "등록 체크"}</span>
-            <div className="row t-l2" style={{ gap: 8 }}>
-              <span className="bdg b-wait nodot">필수</span>상품명 · 판매가 · 옵션
-            </div>
+            <span className="t-hl2">꼭 채워 주세요</span>
+            <span className="t-l2 c-neu">상품명, 판매가, 옵션 이름은 비워 둘 수 없어요</span>
           </div>
           <div className="col" style={{ gap: 8 }}>
             {saveButtons(true)}
