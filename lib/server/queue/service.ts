@@ -4,6 +4,7 @@ import { notifySellerChanged } from "../realtime/notify";
 import { lockSellerOrders, maybeRestrict, sellerEventClock } from "../orders/overdue";
 import { getShippingPolicy } from "../orders/shipping";
 import { earnQuote } from "../rewards/earn";
+import { createPendingRewardLedger } from "../rewards/ledger";
 import { requireSellerPermission, type TenantContext } from "../tenant/context";
 import { restoreOrderStock } from "../products/stock";
 import { checkTransition, isCompletePermutation, isValidTimer, type QueueAction, type QueueRejection } from "./rules";
@@ -362,18 +363,15 @@ export function rewardBase(items: { unitPrice: number; quantity: number }[]): nu
 
 // 적립금 지급 대기(EARN) 기록. 실지급 스위치가 꺼져 있으면 testMode. 지급·잔액 반영은 다음 단계.
 async function createEarn(tx: Tx, e: { sellerId: string; buyerMemberId: string; orderId: string; amount: number; testMode: boolean; now: Date }) {
-  await tx.rewardLedger.create({
-    data: {
-      sellerId: e.sellerId,
-      buyerMemberId: e.buyerMemberId,
-      orderId: e.orderId,
-      type: "EARN",
-      amount: e.amount,
-      status: "PENDING",
-      testMode: e.testMode,
-      idempotencyKey: `earn:${e.orderId}`,
-      createdAt: e.now,
-    },
+  await createPendingRewardLedger(tx, {
+    sellerId: e.sellerId,
+    buyerMemberId: e.buyerMemberId,
+    orderId: e.orderId,
+    type: "EARN",
+    amount: e.amount,
+    testMode: e.testMode,
+    idempotencyKey: `earn:${e.orderId}`,
+    createdAt: e.now,
   });
 }
 
@@ -584,18 +582,16 @@ export async function refundOrder(
     const policy = earn ? await tx.rewardPolicy.findUnique({ where: { sellerId: ctx.sellerId }, select: { revokeMode: true } }) : null;
     const rewardRevoke: RewardRevokeOutcome = !earn ? "none" : policy?.revokeMode === "MANUAL" ? "manual_review" : "revoked";
     if (earn && rewardRevoke === "revoked") {
-      await tx.rewardLedger.create({
-        data: {
-          sellerId: ctx.sellerId,
-          buyerMemberId: earn.buyerMemberId,
-          orderId,
-          type: "REVOKE",
-          amount: -earn.amount,
-          status: "PENDING",
-          testMode: earn.testMode,
-          idempotencyKey: `revoke:${orderId}`,
-          createdAt: now,
-        },
+      // 탈퇴한 회원이면 FAILED(member_withdrawn)로 남는다(잔액은 탈퇴 때 이미 소멸)
+      await createPendingRewardLedger(tx, {
+        sellerId: ctx.sellerId,
+        buyerMemberId: earn.buyerMemberId,
+        orderId,
+        type: "REVOKE",
+        amount: -earn.amount,
+        testMode: earn.testMode,
+        idempotencyKey: `revoke:${orderId}`,
+        createdAt: now,
       });
     }
     await writeAudit(tx, {
