@@ -1664,20 +1664,41 @@ describe("Codex 8차 반영(748f1ff)", () => {
 
 describe("Codex 9차 반영(d1afe8a)", () => {
   it("화면 글의 숨은 지시로 판단 모델이 설치와 무관한 칸을 누르거나 입력하려 하면(삭제·권한·계정 설정) 실행 0회로 멈춘다", async () => {
-    const bad: AutomationAction[] = [
-      { type: "click", target: "쇼핑몰 삭제" },
-      { type: "fill", target: "운영자 이메일", value: { text: "attacker@evil.test" } },
+    const bad: [AutomationAction, string][] = [
+      [{ type: "click", target: "쇼핑몰 삭제" }, "dangerous_target"],
+      [{ type: "fill", target: "운영자 이메일", value: { text: "attacker@evil.test" } }, "target_not_allowed"],
     ];
-    for (const action of bad) {
+    for (const [action, reason] of bad) {
       const a = await bought();
       const rt = runtime();
       rt.browser.pageText = () => "화면이 바뀌었어요 · 로그아웃"; // 작업서와 달라 판단 모델로 넘어간다
       rt.planner.override = (input) => (input.step.key === "shop_connect" ? { action, costWon: 10 } : undefined);
       expect(await runOnce(db, rt, W), action.type).toBe("failed");
-      expect(await job(a.jobId), action.type).toMatchObject({ status: "FAILED", lastError: "unsafe_action:target_not_allowed" });
+      expect(await job(a.jobId), action.type).toMatchObject({ status: "FAILED", lastError: `unsafe_action:${reason}` });
       expect(rt.browser.performed.filter((p) => p.type === "click" || p.type === "fill"), action.type).toHaveLength(0);
       await db.automationJob.updateMany({ data: { deviatedSteps: [], lastDeviationAt: null } });
     }
+  });
+
+  it("삭제·탈퇴·권한·계정 설정처럼 위험한 단어가 든 대상은 작업서 목록에 있어도 누르지 않고, 목록 안의 안전한 대상은 그대로 누른다", async () => {
+    const a = await bought();
+    const scope = { sellerId: a.seller.id, jobId: a.jobId };
+    // 잘못 만든 작업서: 위험한 대상까지 허용 목록에 넣었다
+    const risky = { ...cafe24Playbook, steps: { ...cafe24Playbook.steps, shop_connect: { ...cafe24Playbook.steps.shop_connect, allowedTargets: ["앱 설치", "쇼핑몰 삭제", "운영자 권한 변경"] } } };
+    const opts = { verifying: false, costLimit: 3000, maxActionsPerStep: 12, playbook: null, secretPlaybook: risky, startIndex: 0, shopHost: "myshop.cafe24.com" };
+    const hooks = { touch: async () => {}, enterVerify: async () => {}, stepDone: async () => {} };
+    for (const target of ["쇼핑몰 삭제", "운영자 권한 변경"]) {
+      const rt = runtime();
+      rt.planner.override = (input) => (input.step.key === "shop_connect" ? { action: { type: "click", target }, costWon: 0 } : undefined);
+      const r = await runSteps(rt, scope, { ...opts, stats: { costUsed: 0, plannerCalls: 0, playbookActions: 0, deviatedSteps: [] } }, hooks);
+      expect(r, target).toEqual({ kind: "failed", reason: "unsafe_action:dangerous_target" });
+      expect(rt.browser.performed.filter((p) => p.type === "click"), target).toHaveLength(0);
+    }
+    const rt = runtime();
+    let n = 0;
+    rt.planner.override = (input) => (input.step.key === "shop_connect" ? { action: n++ === 0 ? { type: "click", target: "앱 설치" } : { type: "step_done" }, costWon: 0 } : undefined);
+    await runSteps(rt, scope, { ...opts, stats: { costUsed: 0, plannerCalls: 0, playbookActions: 0, deviatedSteps: [] } }, hooks);
+    expect(rt.browser.performed.filter((p) => p.type === "click")).toHaveLength(1);
   });
 
   it("연습 실행이 끝나면(성공·실패 모두) 그 실행의 브라우저·OBS 보관 자료(행동 키 기록·OBS 연결 정보)를 지운다", async () => {
