@@ -695,7 +695,7 @@ test("재가입 제한을 켠 쇼핑몰은 보관 동의를 따로 체크해야 
     await page.getByLabel("재가입 제한 정보 보관 (필수)").check();
     const req = page.waitForRequest((r) => r.url().endsWith(API) && r.method() === "POST");
     await join.click();
-    expect((await req).postDataJSON().agreedRejoinRetention).toBe(true);
+    expect((await req).postDataJSON()).toMatchObject({ agreedRejoinRetention: true, rejoinRestrictionDaysShown: 90 });
     await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
   } finally {
     await setRejoin(baseURL!, false);
@@ -710,4 +710,15 @@ test("재가입 제한 중이면 문구 뒤에 다시 가입할 수 있는 날(K
   await fillAccount(page, "rj", "제한");
   await page.getByRole("button", { name: "가입하기" }).click();
   await expect(page.getByText("지금은 다시 가입할 수 없어요. 11월 3일부터 다시 가입할 수 있어요")).toBeVisible();
+});
+
+test("가입 중에 판매자가 재가입 제한 기간을 바꾸면(409) 안내를 보여 주고 동의를 다시 받는다", async ({ page }) => {
+  await mockApi(page, { signup: fail(409, "rejoin_policy_changed", BUYER_SIGNUP_MESSAGES.rejoin_policy_changed) });
+  await page.goto(`/shop/${SLUG}/signup`);
+  await toVerified(page);
+  await fillAccount(page, "pc", "바뀜");
+  await page.getByRole("button", { name: "가입하기" }).click();
+  await expect(page.locator("#acc-terms-err")).toHaveText(BUYER_SIGNUP_MESSAGES.rejoin_policy_changed);
+  // 입력한 계정 정보는 남아 있다
+  await expect(page.getByLabel("방송 닉네임")).toHaveValue("바뀜");
 });

@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api, failMessage } from "../seller/api";
 import { textLength } from "../seller/format";
@@ -112,6 +113,9 @@ export default function SignupForm({ slug, rejoin = null }: { slug: string; rejo
   const [agreedTerms, setAgreedTerms] = useState(false);
   const [agreedPrivacy, setAgreedPrivacy] = useState(false);
   const [agreedRejoin, setAgreedRejoin] = useState(false);
+  const router = useRouter();
+  // 재가입 제한 기간이 바뀌어 다시 불러오면(새 기간) 앞 동의는 다시 받는다
+  useEffect(() => setAgreedRejoin(false), [rejoin?.days]);
   // 선택 동의(기본 해제). 체크 여부를 그대로 agreedMarketing으로 보낸다.
   const [agreedMarketing, setAgreedMarketing] = useState(false);
   // 가입을 요청한 닉네임(완료 문구는 이 값을 쓴다)
@@ -269,7 +273,7 @@ export default function SignupForm({ slug, rejoin = null }: { slug: string; rejo
     setBusy(true);
     setNotice(null);
     setFieldErrors({});
-    const body: SignupBody = { verificationId, loginId: loginId.trim(), password, broadcastNickname: nickname.trim(), agreedTerms, agreedPrivacy, agreedMarketing, ...(rejoin ? { agreedRejoinRetention: agreedRejoin } : {}) };
+    const body: SignupBody = { verificationId, loginId: loginId.trim(), password, broadcastNickname: nickname.trim(), agreedTerms, agreedPrivacy, agreedMarketing, ...(rejoin ? { agreedRejoinRetention: agreedRejoin, rejoinRestrictionDaysShown: rejoin.days } : {}) };
     // 응답에 닉네임이 없을 때 쓸 값: 서버(cleanText)가 저장하는 형태(NFKC 정규화 + 앞뒤 공백 제거)
     const pending = { body, nickname: body.broadcastNickname.normalize("NFKC").trim() };
     const r = await api<{ broadcastNickname?: string }>(base, { method: "POST", body });
@@ -309,8 +313,16 @@ export default function SignupForm({ slug, rejoin = null }: { slug: string; rejo
         setFieldErrors({ nickname: text });
         focus("acc-nick");
         break;
+      case "rejoin_policy_changed":
+        // 재가입 제한을 새로 켰거나 기간을 바꿨다. 입력은 두고 화면의 제한 정보만 새로 받아 다시 동의하게 한다
+        router.refresh();
+        setFieldErrors({ terms: text });
+        focus("acc-terms-all");
+        break;
       case "terms_required":
       case "rejoin_consent_required":
+        // 화면을 연 뒤 판매자가 재가입 제한을 켰으면 동의 칸이 없다. 제한 정보를 새로 받아 칸을 보여 준다
+        if (r.error === "rejoin_consent_required" && !rejoin) router.refresh();
         setFieldErrors({ terms: text });
         focus("acc-terms-all");
         break;
