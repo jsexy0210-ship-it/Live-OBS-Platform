@@ -5,7 +5,7 @@ import { api, failMessage } from "../seller/api";
 import { textLength } from "../seller/format";
 import ShopState from "./ShopState";
 
-// SH-011 구매자 회원가입: 휴대폰 본인확인(인증번호 받기 → 확인) → 아이디·비밀번호·방송 닉네임·필수 약관 → 가입.
+// SH-011 구매자 회원가입: 필수 약관 동의 → 휴대폰 본인확인(인증번호 받기 → 확인) → 아이디·비밀번호·방송 닉네임·(선택) 마케팅 → 가입.
 // 실패 문구는 서버 message를 그대로 쓴다(정본: lib/server/buyers/signup.ts BUYER_SIGNUP_MESSAGES, lib/server/identity/messages.ts).
 type Carrier = "SKT" | "KT" | "LGU" | "SKT_MVNO" | "KT_MVNO" | "LGU_MVNO";
 const CARRIERS: { value: Carrier; label: string }[] = [
@@ -25,10 +25,12 @@ type SignupBody = {
   loginId: string;
   password: string;
   broadcastNickname: string;
-  agreedTerms: boolean;
-  agreedPrivacy: boolean;
   agreedMarketing: boolean;
 };
+
+// 가입 필수 동의 문서 버전과 재가입 제한 기간(서버 페이지가 lib/server/buyers/consent.ts·rejoin.ts에서 넘긴다).
+// 필수 동의는 본인확인 요청 전에 받아 본인확인 시작 요청에 함께 보낸다(PRODUCT_SCOPE 「동의 순서」).
+export type SignupConsentInfo = { termsVersion: string; privacyVersion: string; rejoinRetentionVersion: string; rejoinDays: number | null };
 
 // 방송 닉네임 최대 글자 수. 서버(lib/server/buyers/signup.ts MAX_NICKNAME_LENGTH)와 같은 값, 같은 셈법(코드포인트, textLength).
 // 입력 칸 maxLength는 UTF-16 단위라 이모지가 절반에서 잘리므로 쓰지 않는다.
@@ -52,7 +54,7 @@ function toBirth7(birth: string, gender: "M" | "F", foreigner: boolean): string 
 
 const phoneText = (p: string) => (p.length === 11 ? `${p.slice(0, 3)}-${p.slice(3, 7)}-${p.slice(7)}` : `${p.slice(0, 3)}-${p.slice(3, 6)}-${p.slice(6)}`);
 
-export default function SignupForm({ slug }: { slug: string }) {
+export default function SignupForm({ slug, consent }: { slug: string; consent: SignupConsentInfo }) {
   const base = `/api/shop/${encodeURIComponent(slug)}/signup`;
   const [step, setStep] = useState<Step>("identity");
   const [unavailable, setUnavailable] = useState(false);
@@ -100,6 +102,8 @@ export default function SignupForm({ slug }: { slug: string }) {
   const [nickname, setNickname] = useState("");
   const [agreedTerms, setAgreedTerms] = useState(false);
   const [agreedPrivacy, setAgreedPrivacy] = useState(false);
+  // 재가입 제한을 켠 쇼핑몰만 받는 「재가입 제한 정보 보관 동의」
+  const [agreedRejoin, setAgreedRejoin] = useState(false);
   // 선택 동의(기본 해제). 체크 여부를 그대로 agreedMarketing으로 보낸다.
   const [agreedMarketing, setAgreedMarketing] = useState(false);
   // 가입을 요청한 닉네임(완료 문구는 이 값을 쓴다)
@@ -108,9 +112,11 @@ export default function SignupForm({ slug }: { slug: string }) {
   const [unconfirmed, setUnconfirmed] = useState<{ body: SignupBody; nickname: string } | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{ loginId?: string; password?: string; nickname?: string; terms?: string }>({});
 
-  const identityReady = name.trim() !== "" && birth.length === 8 && gender !== null && carrier !== "" && phone.length >= 10 && idvAgreed;
+  const rejoinRequired = consent.rejoinDays !== null;
+  const consentReady = agreedTerms && agreedPrivacy && (!rejoinRequired || agreedRejoin) && idvAgreed;
+  const identityReady = name.trim() !== "" && birth.length === 8 && gender !== null && carrier !== "" && phone.length >= 10 && consentReady;
   const nicknameTooLong = textLength(nickname) > MAX_NICKNAME_LENGTH;
-  const accountReady = loginId.trim() !== "" && password !== "" && nickname.trim() !== "" && !nicknameTooLong && agreedTerms && agreedPrivacy;
+  const accountReady = loginId.trim() !== "" && password !== "" && nickname.trim() !== "" && !nicknameTooLong;
 
   // 처음부터 다시: 입력한 인적사항은 두고 본인확인 요청만 버린다
   const restart = (n: Notice | null) => {
@@ -158,7 +164,14 @@ export default function SignupForm({ slug }: { slug: string }) {
     setBirthError(null);
     const device = window.matchMedia("(min-width: 768px)").matches ? "PC" : "MOBILE";
     const person = { name: name.trim(), phone };
-    const input = { ...person, birth7, carrier, device };
+    const agreed = {
+      agreedTerms,
+      agreedPrivacy,
+      termsVersion: consent.termsVersion,
+      privacyVersion: consent.privacyVersion,
+      ...(rejoinRequired ? { agreedRejoinRetention: agreedRejoin, rejoinRetentionVersion: consent.rejoinRetentionVersion } : {}),
+    };
+    const input = { ...person, birth7, carrier, device, ...agreed };
     const fp = JSON.stringify(input);
     if (attempt.current?.fp !== fp) attempt.current = { fp, key: crypto.randomUUID() };
     const r = await api<{ verificationId: string }>(`${base}/verification`, {
@@ -178,7 +191,14 @@ export default function SignupForm({ slug }: { slug: string }) {
       focus("idv-code");
       return;
     }
-    if (!commonFail(r)) showNotice({ kind: "neg", text: failMessage(r) });
+    if (commonFail(r)) return;
+    // 동의가 빠졌거나 문서가 바뀌었으면 동의 칸으로 보낸다
+    if (r.error === "terms_required" || r.error === "rejoin_consent_required" || r.error === "consent_outdated") {
+      setFieldErrors({ terms: failMessage(r) });
+      focus("idv-terms-all");
+      return;
+    }
+    showNotice({ kind: "neg", text: failMessage(r) });
   };
 
   const resend = async () => {
@@ -262,7 +282,7 @@ export default function SignupForm({ slug }: { slug: string }) {
     setBusy(true);
     setNotice(null);
     setFieldErrors({});
-    const body: SignupBody = { verificationId, loginId: loginId.trim(), password, broadcastNickname: nickname.trim(), agreedTerms, agreedPrivacy, agreedMarketing };
+    const body: SignupBody = { verificationId, loginId: loginId.trim(), password, broadcastNickname: nickname.trim(), agreedMarketing };
     // 응답에 닉네임이 없을 때 쓸 값: 서버(cleanText)가 저장하는 형태(NFKC 정규화 + 앞뒤 공백 제거)
     const pending = { body, nickname: body.broadcastNickname.normalize("NFKC").trim() };
     const r = await api<{ broadcastNickname?: string }>(base, { method: "POST", body });
@@ -301,10 +321,6 @@ export default function SignupForm({ slug }: { slug: string }) {
       case "nickname_taken":
         setFieldErrors({ nickname: text });
         focus("acc-nick");
-        break;
-      case "terms_required":
-        setFieldErrors({ terms: text });
-        focus("acc-terms-all");
         break;
       case "verification_pending":
         setStep("code");
@@ -363,7 +379,7 @@ export default function SignupForm({ slug }: { slug: string }) {
   const locked = step !== "identity" || busy;
   const nicknameError = nicknameTooLong ? `닉네임은 ${MAX_NICKNAME_LENGTH}자까지 쓸 수 있어요` : fieldErrors.nickname;
   const shown = sent ?? { name: name.trim(), phone };
-  const termsAria = fieldErrors.terms ? { "aria-invalid": true, "aria-describedby": "acc-terms-err" } : {};
+  const termsAria = fieldErrors.terms ? { "aria-invalid": true, "aria-describedby": "idv-terms-err" } : {};
   return (
     <div className="card shop-card col signup">
       <div className="col" style={{ gap: 4 }}>
@@ -492,10 +508,48 @@ export default function SignupForm({ slug }: { slug: string }) {
           </div>
           {step === "identity" ? (
             <>
-              <label className="chk">
-                <input type="checkbox" className="cbx" checked={idvAgreed} onChange={(e) => setIdvAgreed(e.target.checked)} />
-                본인확인 약관에 모두 동의해요
-              </label>
+              {/* 가입 필수 동의는 본인확인을 요청하기 전에 받는다(PRODUCT_SCOPE 「동의 순서」) */}
+              <div className="col signup-terms">
+                <label className="chk signup-all">
+                  <input
+                    id="idv-terms-all"
+                    type="checkbox"
+                    className="cbx"
+                    {...termsAria}
+                    checked={consentReady}
+                    onChange={(e) => {
+                      setAgreedTerms(e.target.checked);
+                      setAgreedPrivacy(e.target.checked);
+                      setAgreedRejoin(e.target.checked);
+                      setIdvAgreed(e.target.checked);
+                    }}
+                  />
+                  필수 약관에 모두 동의해요
+                </label>
+                <label className="chk">
+                  <input type="checkbox" className="cbx" {...termsAria} checked={agreedTerms} onChange={(e) => setAgreedTerms(e.target.checked)} />
+                  이용약관 (필수)
+                </label>
+                <label className="chk">
+                  <input type="checkbox" className="cbx" {...termsAria} checked={agreedPrivacy} onChange={(e) => setAgreedPrivacy(e.target.checked)} />
+                  개인정보 수집 · 이용 (필수)
+                </label>
+                {rejoinRequired && (
+                  <label className="chk">
+                    <input type="checkbox" className="cbx" {...termsAria} checked={agreedRejoin} onChange={(e) => setAgreedRejoin(e.target.checked)} />
+                    재가입 제한 정보 보관 (필수) · 탈퇴하면 {consent.rejoinDays}일 동안 다시 가입할 수 없어요
+                  </label>
+                )}
+                <label className="chk">
+                  <input type="checkbox" className="cbx" {...termsAria} checked={idvAgreed} onChange={(e) => setIdvAgreed(e.target.checked)} />
+                  본인확인 약관에 모두 동의해요
+                </label>
+                {fieldErrors.terms && (
+                  <span id="idv-terms-err" className="err" role="alert">
+                    {fieldErrors.terms}
+                  </span>
+                )}
+              </div>
               <button className={`btn btn-lg btn-block${busy ? " is-loading" : ""}`} type="submit" disabled={!identityReady || busy}>
                 {busy ? "인증번호를 보내고 있어요" : "인증번호 받기"}
               </button>
@@ -612,38 +666,10 @@ export default function SignupForm({ slug }: { slug: string }) {
             )}
           </div>
           <div className="col signup-terms">
-            <label className="chk signup-all">
-              <input
-                id="acc-terms-all"
-                type="checkbox"
-                className="cbx"
-                {...termsAria}
-                checked={agreedTerms && agreedPrivacy && agreedMarketing}
-                onChange={(e) => {
-                  setAgreedTerms(e.target.checked);
-                  setAgreedPrivacy(e.target.checked);
-                  setAgreedMarketing(e.target.checked);
-                }}
-              />
-              약관에 모두 동의해요
-            </label>
-            <label className="chk">
-              <input type="checkbox" className="cbx" {...termsAria} checked={agreedTerms} onChange={(e) => setAgreedTerms(e.target.checked)} />
-              이용약관 (필수)
-            </label>
-            <label className="chk">
-              <input type="checkbox" className="cbx" {...termsAria} checked={agreedPrivacy} onChange={(e) => setAgreedPrivacy(e.target.checked)} />
-              개인정보 수집 · 이용 (필수)
-            </label>
             <label className="chk">
               <input type="checkbox" className="cbx" checked={agreedMarketing} onChange={(e) => setAgreedMarketing(e.target.checked)} />
               (선택) 마케팅 정보 수신
             </label>
-            {fieldErrors.terms && (
-              <span id="acc-terms-err" className="err" role="alert">
-                {fieldErrors.terms}
-              </span>
-            )}
           </div>
           <div className="signup-cta">
             <button className={`btn btn-lg btn-block${busy && step === "verified" ? " is-loading" : ""}`} type="submit" disabled={!accountReady || busy}>

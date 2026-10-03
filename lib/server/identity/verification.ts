@@ -79,6 +79,8 @@ export async function startIdentityVerification(
     // 기록 id와 그 id로 만든 ownerToken을 호출한 쪽이 정할 때(같은 키 재요청에 같은 토큰을 주려고). 없으면 무작위.
     id?: string;
     ownerToken?: string;
+    // 구매자 가입: 본인확인 전에 받은 필수 동의(buyers/consent.ts)
+    signupConsent?: Prisma.InputJsonValue;
     now?: Date;
   },
 ): Promise<{ verification: IdentityVerification; ownerToken: string }> {
@@ -87,6 +89,7 @@ export async function startIdentityVerification(
   const verification = await db.identityVerification.create({
     data: {
       ...(input.id ? { id: input.id } : {}),
+      ...(input.signupConsent ? { signupConsent: input.signupConsent } : {}),
       purpose: input.purpose,
       sellerId: input.sellerId,
       subjectId: input.subjectId ?? null,

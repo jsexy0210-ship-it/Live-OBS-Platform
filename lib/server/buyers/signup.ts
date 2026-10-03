@@ -9,7 +9,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { hashToken } from "../auth/token";
 import { buyerSignupIdentityLimitReached, completeIdentityVerification, parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
 import { EMAIL } from "../sellers/application";
-import { REJOIN_RETENTION_CONSENT_VERSION, rejoinBlockedUntil, rejoinDaysToAgree } from "./rejoin";
+import { type ConsentFailure, parseSignupConsent, readSignupConsent } from "./consent";
+import { rejoinBlockedUntil, rejoinDaysToAgree } from "./rejoin";
 import { cleanText } from "../text/clean";
 
 
@@ -66,6 +67,9 @@ export async function startBuyerSignupVerification(
   meta: { ip?: string | null; userAgent?: string | null; now?: Date; attemptKey?: unknown } = {},
 ) {
   if (!(await shopOpen(db, sellerId))) return { ok: false as const, reason: "shop_unavailable" as const };
+  // 가입 필수 동의는 본인확인 요청 전에 받는다(PRODUCT_SCOPE 「동의 순서」). 같은 요청 본문의 동의 값·문서 버전이 없거나 다르면 시작하지 않는다.
+  const consent = parseSignupConsent(rawPerson, await rejoinDaysToAgree(db, sellerId), meta.now ?? new Date());
+  if (!consent.ok) return { ok: false as const, reason: consent.reason };
   if (meta.attemptKey !== undefined && (typeof meta.attemptKey !== "string" || !UUID_RE.test(meta.attemptKey))) {
     return { ok: false as const, reason: "invalid_identity_input" as const };
   }
@@ -120,6 +124,7 @@ export async function startBuyerSignupVerification(
       sendStartedAt: now,
       id,
       ownerToken: attemptKey ? keyedOwnerToken(attemptKey, id) : undefined,
+      signupConsent: consent.consent,
       now: meta.now,
     });
     return { kind: "send", verification: created.verification, ownerToken: created.ownerToken };
@@ -149,7 +154,8 @@ export type BuyerSignupFailure =
   | "nickname_taken"
   | "shop_unavailable"
   | "rejoin_restricted" // 재가입 제한 기간 중(탈퇴한 같은 사람, buyers/rejoin.ts)
-  | "rejoin_consent_required"; // 재가입 제한을 켠 쇼핑몰에서 「재가입 제한 정보 보관 동의」가 없음
+  | "rejoin_consent_required" // 재가입 제한을 켠 쇼핑몰에서 「재가입 제한 정보 보관 동의」가 없음(본인확인 시작)
+  | "consent_outdated"; // 화면이 보여 준 동의 문서 버전이 지금과 다름(본인확인 시작)
 
 // resumed: 응답이 끊겨 같은 요청을 다시 보낸 경우(새로 만들지 않고 이미 만든 회원을 돌려줌)
 // rejoinAvailableAt: rejoin_restricted일 때 다시 가입할 수 있는 시각
@@ -171,13 +177,9 @@ export async function signupBuyer(
     loginId: string;
     password: string;
     broadcastNickname: string;
-    // 필수 약관 동의(true여야 한다). 생략하면 동의한 것으로 보지 않는다.
-    agreedTerms?: boolean;
-    agreedPrivacy?: boolean;
+    // 필수 약관·재가입 제한 보관 동의는 본인확인 시작 때 받아 본인확인 기록에 있다(여기서 받지 않는다).
     // 선택 마케팅 수신 동의. true면 가입 시각을 marketingConsentAt에 남긴다. 빠지면 동의 안 함, 불리언이 아니면 거부.
     agreedMarketing?: unknown;
-    // 「재가입 제한 정보 보관 동의」. 재가입 제한을 켠 쇼핑몰에서는 true여야 하고, 끈 쇼핑몰에서는 보지 않는다.
-    agreedRejoinRetention?: unknown;
     // 감사 로그에 남길 요청 정보
     meta?: { ip?: string | null; userAgent?: string | null };
     now?: Date;
@@ -190,12 +192,8 @@ export async function signupBuyer(
   if (typeof input.password !== "string" || input.password.length < MIN_PASSWORD_LENGTH || input.password.length > 200) return { ok: false, reason: "weak_password" };
   const nickname = cleanText(input.broadcastNickname, MAX_NICKNAME_LENGTH);
   if (!nickname) return { ok: false, reason: "invalid_nickname" };
-  if (input.agreedTerms !== true || input.agreedPrivacy !== true) return { ok: false, reason: "terms_required" };
   if (input.agreedMarketing !== undefined && typeof input.agreedMarketing !== "boolean") return { ok: false, reason: "invalid_marketing_consent" };
   const agreedMarketing = input.agreedMarketing === true;
-  // 재가입 제한을 켠 쇼핑몰은 보관 동의를 따로 받는다. 이때 본 기간을 회원에 남긴다(가입 처리 중 설정이 바뀌어도 동의한 값 기준).
-  const rejoinDays = await rejoinDaysToAgree(db, input.sellerId);
-  if (rejoinDays !== null && input.agreedRejoinRetention !== true) return { ok: false, reason: "rejoin_consent_required" };
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.verificationId)) return { ok: false, reason: "verification_invalid" };
 
   const done = await completeIdentityVerification(db, provider, input.verificationId, { sellerId: input.sellerId, purpose: "BUYER_SIGNUP", ownerToken: input.ownerToken }, now);
@@ -211,6 +209,11 @@ export async function signupBuyer(
     return { ok: false, reason: "verification_invalid" };
   };
   if (v.consumedAt) return resume(v.subjectId);
+  // 본인확인 시작 때 받은 동의. 없으면(이 변경 전 요청) 처음부터 다시 한다.
+  const consent = readSignupConsent(v.signupConsent);
+  if (!consent) return { ok: false, reason: "verification_invalid" };
+  // 재가입 제한 보관 동의를 했으면 그때 안내한 기간을 회원에 남긴다(설정이 그 뒤 바뀌어도 동의한 값 기준)
+  const rejoinDays = consent.rejoinRetention?.days ?? null;
   if (
     !v.ciHash ||
     !v.verifiedAt ||
@@ -268,9 +271,10 @@ export async function signupBuyer(
           broadcastNickname: nickname,
           gradeId: grade.id,
           marketingConsentAt: agreedMarketing ? now : null,
+          signupConsent: consent,
           rejoinRestrictionDaysAgreed: rejoinDays,
-          rejoinRetentionAgreedAt: rejoinDays !== null ? now : null,
-          rejoinRetentionVersion: rejoinDays !== null ? REJOIN_RETENTION_CONSENT_VERSION : null,
+          rejoinRetentionAgreedAt: consent.rejoinRetention ? new Date(consent.agreedAt) : null,
+          rejoinRetentionVersion: consent.rejoinRetention?.version ?? null,
           createdAt: now,
         },
       });
@@ -288,7 +292,13 @@ export async function signupBuyer(
           agreedTerms: true,
           agreedPrivacy: true,
           agreedMarketing,
-          ...(rejoinDays !== null ? { agreedRejoinRetention: true, rejoinRetentionVersion: REJOIN_RETENTION_CONSENT_VERSION, rejoinRestrictionDays: rejoinDays } : {}),
+          termsVersion: consent.termsVersion,
+          privacyVersion: consent.privacyVersion,
+          ...(consent.rejoinRetention
+            ? { agreedRejoinRetention: true, rejoinRetentionVersion: consent.rejoinRetention.version, rejoinRestrictionDays: consent.rejoinRetention.days }
+            : {}),
+          // 필수 동의는 본인확인 시작 때(consentAgreedAt), 마케팅 동의는 가입 때(agreedAt)
+          consentAgreedAt: consent.agreedAt,
           agreedAt: now.toISOString(),
         },
       });
@@ -333,6 +343,7 @@ export const BUYER_SIGNUP_MESSAGES: Record<BuyerSignupFailure | "daily_limit_exc
   shop_unavailable: "지금은 쇼핑몰을 이용할 수 없어요",
   rejoin_restricted: "지금은 다시 가입할 수 없어요",
   rejoin_consent_required: "재가입 제한 정보 보관에 동의해 주세요",
+  consent_outdated: "약관이 바뀌었어요. 다시 확인하고 동의해 주세요",
   daily_limit_exceeded: "오늘은 본인확인을 더 할 수 없어요. 내일 다시 해 주세요",
   start_in_progress: "인증번호를 보내고 있어요. 잠시 뒤 다시 시도해 주세요",
 };
@@ -352,4 +363,23 @@ export const BUYER_SIGNUP_STATUS: Record<BuyerSignupFailure, number> = {
   shop_unavailable: 402,
   rejoin_restricted: 403,
   rejoin_consent_required: 400,
+  consent_outdated: 409,
 };
+
+// 가입을 끝내지 않은 본인확인 기록 파기(PRODUCT_SCOPE 「동의 순서」·PRIVACY_CONSENT_TEMPLATE: 확인 시간이 끝나면 바로 지움).
+// 정기 실행 연결은 인프라 승인 뒤라 함수만 둔다. 대상: 구매자 가입용이고 가입에 쓰지 않았으며(consumedAt 없음) 유효 시간(expiresAt)이 지난 기록.
+// - 유효 시간이 지나면 바로 이름·휴대폰·생년월일·CI 해시·요청 휴대폰·동의 기록을 지우고 상태를 만료(EXPIRED)로 둔다.
+// - 행 자체는 같은 IP 하루 시작 횟수(부정 이용 방지)를 세는 데 쓰여 그날(KST)이 끝난 뒤 지운다.
+// 지운 수를 돌려준다.
+export async function purgeUnfinishedSignupVerifications(db: PrismaClient, now?: Date): Promise<{ cleared: number; deleted: number }> {
+  const at = now ?? (await dbNow(db));
+  const unfinished = { purpose: "BUYER_SIGNUP" as const, consumedAt: null, expiresAt: { lte: at } };
+  const cleared = await db.identityVerification.updateMany({
+    where: { ...unfinished, OR: [{ name: { not: null } }, { phone: { not: null } }, { birthDate: { not: null } }, { ciHash: { not: null } }, { requestedPhone: { not: null } }, { status: { in: ["PENDING", "VERIFIED"] } }] },
+    data: { status: "EXPIRED", name: null, phone: null, birthDate: null, ciHash: null, requestedPhone: null, signupConsent: Prisma.DbNull },
+  });
+  const [{ start }] = await db.$queryRaw<{ start: Date }[]>`
+    SELECT (date_trunc('day', ${at}::timestamptz AT TIME ZONE 'Asia/Seoul') AT TIME ZONE 'Asia/Seoul') AS "start"`;
+  const deleted = await db.identityVerification.deleteMany({ where: { ...unfinished, createdAt: { lt: start } } });
+  return { cleared: cleared.count, deleted: deleted.count };
+}

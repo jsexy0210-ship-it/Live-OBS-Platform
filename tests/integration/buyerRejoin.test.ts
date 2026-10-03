@@ -8,7 +8,7 @@ import { BUYER_SIGNUP_STATUS } from "../../lib/server/buyers/signup";
 import { REJOIN_RETENTION_CONSENT_VERSION, purgeExpiredRejoinBlocks } from "../../lib/server/buyers/rejoin";
 import { withdrawBuyer } from "../../lib/server/buyers/withdraw";
 import { prisma } from "../../lib/server/db";
-import { IDV_INPUT, PASSWORD, createSeller, createSellerUser, db, resetDb } from "./helpers";
+import { IDV_INPUT, PASSWORD, REJOIN_CONSENT, SIGNUP_CONSENT, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
 beforeAll(() => {
   process.env.IDENTITY_HASH_KEY = "test-identity-hash-key-0123456789abcdef";
@@ -34,14 +34,17 @@ async function shop() {
   const sellerCookie = `lo_seller=${login.token}`;
   const base = `/api/shop/${seller.slug}/signup`;
   // 본인확인부터 가입까지. 응답을 그대로 돌려준다.
-  const signup = async (person: Partial<Record<keyof typeof IDV_INPUT, string>> = {}, loginId = "buyer01@example.com", nickname = "카드왕", extra: Record<string, unknown> = { agreedRejoinRetention: true }) => {
-    const s = await startRoute(post(`${base}/verification`, { ...IDV_INPUT, ...person }), ctx(seller.slug));
+  // extra: 본인확인 시작 본문에 더할 값(재가입 제한 보관 동의 등). 기본은 보관 동의까지(끈 쇼핑몰은 보지 않음).
+  const startIdv = (person: Partial<Record<keyof typeof IDV_INPUT, string>>, extra: Record<string, unknown>) =>
+    startRoute(post(`${base}/verification`, { ...IDV_INPUT, ...SIGNUP_CONSENT, ...extra, ...person }), ctx(seller.slug));
+  const signup = async (person: Partial<Record<keyof typeof IDV_INPUT, string>> = {}, loginId = "buyer01@example.com", nickname = "카드왕", extra: Record<string, unknown> = REJOIN_CONSENT) => {
+    const s = await startIdv(person, extra);
     expect(s.status).toBe(200);
     const cookie = cookieOf(s, "lo_bidv");
     const { verificationId } = await s.json();
     expect((await confirmRoute(post(`${base}/verification/confirm`, { verificationId, code: "000000" }, cookie), ctx(seller.slug))).status).toBe(200);
     return signupRoute(
-      post(base, { verificationId, loginId, password: "pw-123456", broadcastNickname: nickname, agreedTerms: true, agreedPrivacy: true, ...extra }, cookie),
+      post(base, { verificationId, loginId, password: "pw-123456", broadcastNickname: nickname }, cookie),
       ctx(seller.slug),
     );
   };
@@ -53,7 +56,7 @@ async function shop() {
   const setPolicy = (body: unknown, cookie = sellerCookie) =>
     policyPut(new Request("http://localhost:3000/api/seller/member-policy", { method: "PUT", headers: { ...H, cookie }, body: JSON.stringify(body) }));
   const getPolicy = (cookie = sellerCookie) => policyGet(new Request("http://localhost:3000/api/seller/member-policy", { headers: { ...H, cookie } }));
-  return { seller, owner, sellerCookie, signup, withdraw, setPolicy, getPolicy };
+  return { seller, owner, sellerCookie, startIdv, signup, withdraw, setPolicy, getPolicy };
 }
 
 describe("구매자 재가입 제한", () => {
@@ -126,11 +129,13 @@ describe("구매자 재가입 제한", () => {
   it("재가입 제한을 켠 쇼핑몰은 「재가입 제한 정보 보관 동의」가 없으면 400으로 가입을 막고, 동의하면 시각·문서 버전·기간을 따로 남긴다. 끈 쇼핑몰은 그 값을 보지 않는다", async () => {
     const s = await shop();
     await s.setPolicy({ rejoinRestrictionEnabled: true, rejoinRestrictionDays: 90 });
-    for (const extra of [{}, { agreedRejoinRetention: false }, { agreedRejoinRetention: "true" }]) {
-      const r = await s.signup({}, "buyer01@example.com", "카드왕", extra);
+    // 본인확인 시작 때 받는다(동의 순서). 없거나 true가 아니면 시작하지 않는다.
+    for (const extra of [{}, { agreedRejoinRetention: false }, { agreedRejoinRetention: "true", rejoinRetentionVersion: REJOIN_CONSENT.rejoinRetentionVersion }]) {
+      const r = await s.startIdv({}, extra);
       expect(r.status).toBe(400);
       expect(await r.json()).toEqual({ error: "rejoin_consent_required", message: "재가입 제한 정보 보관에 동의해 주세요" });
     }
+    expect(await db.identityVerification.count({ where: { sellerId: s.seller.id } })).toBe(0);
     expect(await db.buyerMember.count({ where: { sellerId: s.seller.id } })).toBe(0);
     expect((await s.signup()).status).toBe(201);
     const m = await db.buyerMember.findFirstOrThrow({ where: { sellerId: s.seller.id } });

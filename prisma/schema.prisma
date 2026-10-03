@@ -280,6 +280,8 @@ model BuyerMember {
   // 「재가입 제한 정보 보관 동의」(개인정보 수집·이용 동의와 별도, 재가입 제한을 켠 쇼핑몰에서만 받음) 시각·문서 버전
   rejoinRetentionAgreedAt     DateTime? @db.Timestamptz(3)
   rejoinRetentionVersion      String?
+  // 가입 필수 동의 기록(본인확인 시작 때 받은 문서 버전·시각, buyers/consent.ts SignupConsent)
+  signupConsent               Json?
   lastLoginAt        DateTime?         @db.Timestamptz(3)
   createdAt          DateTime          @default(now()) @db.Timestamptz(3)
   deletedAt          DateTime?         @db.Timestamptz(3)
@@ -368,6 +370,8 @@ model IdentityVerification {
   verifiedAt      DateTime?                   @db.Timestamptz(3)
   // 인증을 시작한 브라우저에 준 일회용 값의 해시. 완료할 때 같은 값이 있어야 한다(다른 사람이 id만 알아서는 못 씀).
   ownerTokenHash  String?
+  // 구매자 가입: 본인확인 전에 받은 필수 동의(buyers/consent.ts SignupConsent). 가입하면 회원으로 옮긴다.
+  signupConsent   Json?
   // 비밀번호 찾기: 재설정 대상 계정(없는 계정이면 null, 응답은 같게)
   subjectId       String?                     @db.Uuid
   // 구매자 가입 시작 멱등 키(클라이언트가 만든 attemptKey의 해시). 같은 쇼핑몰·같은 키로 다시 시작하면 새로 만들지 않는다.

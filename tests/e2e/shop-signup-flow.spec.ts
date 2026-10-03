@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { SIGNUP_CONSENT_VERSIONS } from "../../lib/server/buyers/consent";
 import { BUYER_SIGNUP_MESSAGES } from "../../lib/server/buyers/signup";
 import { IDENTITY_ERROR_MESSAGES } from "../../lib/server/identity/messages";
 
@@ -29,14 +30,14 @@ async function fillIdentity(page: Page, name: string, phone = "01012345678") {
   await page.getByRole("button", { name: "여", exact: true }).click();
   await page.getByLabel("통신사").selectOption("KT");
   await page.getByLabel("휴대폰번호", { exact: true }).fill(phone);
-  await page.getByLabel("본인확인 약관에 모두 동의해요").check();
+  // 가입 필수 동의는 본인확인 전에 받는다(동의 순서)
+  await page.getByLabel("필수 약관에 모두 동의해요").check();
 }
 
 async function fillAccount(page: Page, id: string, nickname: string) {
   await page.getByLabel("아이디 (이메일)").fill(`buyer-${id}@example.com`);
   await page.getByLabel("비밀번호").fill(`pw-${id}-long`);
   await page.getByLabel("방송 닉네임").fill(nickname);
-  await page.getByLabel("약관에 모두 동의해요", { exact: true }).check();
 }
 
 type Reply = { status: number; body: unknown };
@@ -154,7 +155,19 @@ test("인적사항을 서버 형식(birth7·통신사)으로 바꿔 보낸다", 
   const req = page.waitForRequest((r) => r.url().endsWith(`${API}/verification`));
   await page.getByRole("button", { name: "인증번호 받기" }).click();
   // 2001년생 외국인 여성 → 8, 화면 폭 1440 → PC
-  expect((await req).postDataJSON()).toEqual({ name: "김구매", phone: "01012345678", birth7: "0103058", carrier: "LGU_MVNO", device: "PC", attemptKey: expect.stringMatching(UUID) });
+  expect((await req).postDataJSON()).toEqual({
+    name: "김구매",
+    phone: "01012345678",
+    birth7: "0103058",
+    carrier: "LGU_MVNO",
+    device: "PC",
+    attemptKey: expect.stringMatching(UUID),
+    // 필수 동의와 화면이 보여 준 문서 버전을 본인확인 시작에 함께 보낸다(데모 쇼핑몰은 재가입 제한 꺼짐)
+    agreedTerms: true,
+    agreedPrivacy: true,
+    termsVersion: SIGNUP_CONSENT_VERSIONS.terms,
+    privacyVersion: SIGNUP_CONSENT_VERSIONS.privacy,
+  });
 });
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -424,23 +437,49 @@ test("요청이 끝나면 포커스가 본문으로 빠지지 않고 다음에 �
   await expect.poll(() => focusedId(page)).toBe("shop-state-title");
 });
 
-test("위쪽 안내가 뜨면 안내로, 약관 오류면 약관 체크박스로 포커스를 옮기고 오류를 연결한다", async ({ page }) => {
+test("위쪽 안내가 뜨면 안내로 포커스를 옮긴다", async ({ page }) => {
   await mockApi(page);
-  await seq(page, API, [fail(409, "already_member", BUYER_SIGNUP_MESSAGES.already_member), fail(400, "terms_required", BUYER_SIGNUP_MESSAGES.terms_required)]);
+  await seq(page, API, [fail(409, "already_member", BUYER_SIGNUP_MESSAGES.already_member)]);
   await page.goto(`/shop/${SLUG}/signup`);
   await toVerified(page);
   await fillAccount(page, "x8", "별빛");
   await page.getByRole("button", { name: "가입하기" }).click();
   await expect(page.getByRole("status").filter({ hasText: BUYER_SIGNUP_MESSAGES.already_member })).toBeVisible();
   await expect.poll(() => focusedId(page)).toBe("signup-notice");
-  await page.getByRole("button", { name: "가입하기" }).click();
-  await expect.poll(() => focusedId(page)).toBe("acc-terms-all");
-  for (const label of ["약관에 모두 동의해요", "이용약관 (필수)", "개인정보 수집 · 이용 (필수)"]) {
-    const box = page.getByLabel(label, { exact: true });
-    await expect(box).toHaveAttribute("aria-invalid", "true");
-    await expect(box).toHaveAttribute("aria-describedby", "acc-terms-err");
+});
+
+test("필수 동의 전에는 인증번호 받기를 누를 수 없고, 하나라도 풀면 다시 막힌다", async ({ page }) => {
+  await mockApi(page);
+  await page.goto(`/shop/${SLUG}/signup`);
+  await fillIdentity(page, "김구매");
+  const send = page.getByRole("button", { name: "인증번호 받기" });
+  await expect(send).toBeEnabled();
+  for (const label of ["이용약관 (필수)", "개인정보 수집 · 이용 (필수)", "본인확인 약관에 모두 동의해요"]) {
+    await page.getByLabel(label, { exact: true }).uncheck();
+    await expect(send).toBeDisabled();
+    await expect(page.getByLabel("필수 약관에 모두 동의해요")).not.toBeChecked();
+    await page.getByLabel(label, { exact: true }).check();
+    await expect(send).toBeEnabled();
   }
-  await expect(page.locator("#acc-terms-err")).toHaveText(BUYER_SIGNUP_MESSAGES.terms_required);
+  // 재가입 제한을 끈 쇼핑몰이라 보관 동의 칸은 없다
+  await expect(page.getByText("재가입 제한 정보 보관 (필수)")).toHaveCount(0);
+});
+
+test("본인확인 시작이 동의 오류(약관 없음·문서 바뀜)면 동의 칸으로 포커스를 옮기고 오류를 연결한다", async ({ page }) => {
+  for (const [code, status] of [["terms_required", 400], ["consent_outdated", 409]] as const) {
+    await page.unrouteAll();
+    await mockApi(page, { verification: fail(status, code, BUYER_SIGNUP_MESSAGES[code]) });
+    await page.goto(`/shop/${SLUG}/signup`);
+    await fillIdentity(page, "김구매");
+    await page.getByRole("button", { name: "인증번호 받기" }).click();
+    await expect.poll(() => focusedId(page)).toBe("idv-terms-all");
+    for (const label of ["필수 약관에 모두 동의해요", "이용약관 (필수)", "개인정보 수집 · 이용 (필수)", "본인확인 약관에 모두 동의해요"]) {
+      const box = page.getByLabel(label, { exact: true });
+      await expect(box).toHaveAttribute("aria-invalid", "true");
+      await expect(box).toHaveAttribute("aria-describedby", "idv-terms-err");
+    }
+    await expect(page.locator("#idv-terms-err")).toHaveText(BUYER_SIGNUP_MESSAGES[code]);
+  }
 });
 
 test("체험 한도로 본인확인이 막히면 처음부터 다시 하게 하지 않고 가입할 수 없음 상태를 보여 준다", async ({ page }) => {
@@ -586,16 +625,8 @@ test("마케팅 정보 수신은 선택이고, 체크 여부를 agreedMarketing�
     const marketing = page.getByLabel("(선택) 마케팅 정보 수신");
     // 기본은 해제
     await expect(marketing).not.toBeChecked();
-    if (agree) {
-      // 전체 동의에 선택 항목도 들어간다
-      await page.getByLabel("약관에 모두 동의해요", { exact: true }).check();
-      await expect(marketing).toBeChecked();
-    } else {
-      // 필수만 동의해도 가입할 수 있다
-      await page.getByLabel("이용약관 (필수)").check();
-      await page.getByLabel("개인정보 수집 · 이용 (필수)").check();
-      await expect(page.getByLabel("약관에 모두 동의해요", { exact: true })).not.toBeChecked();
-    }
+    // 필수 동의는 본인확인 전에 받았고, 여기서는 선택 항목만 고른다
+    if (agree) await marketing.check();
     const req = page.waitForRequest((r) => r.url().endsWith(API) && r.method() === "POST");
     await page.getByRole("button", { name: "가입하기" }).click();
     expect((await req).postDataJSON().agreedMarketing).toBe(agree);
