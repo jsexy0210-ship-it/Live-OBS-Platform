@@ -129,4 +129,11 @@ describe("입금 기한 알림 「보냈음」 기록", () => {
     expect(ids(first)).toEqual([...fresh.map((o) => o.id), retry[0].id].sort());
     expect(ids(await claimPaymentDueSoon(db, { limit: 3 }))).toEqual([retry[1].id]);
   });
+  it("여러 곳에서 동시에 잡아도 각자 한도를 서로 다른 주문으로 채운다", async () => {
+    const s = await shop();
+    const orders = await Promise.all([1, 2, 3, 4].map((h) => s.order(h * HOUR)));
+    const runs = await Promise.all([claimPaymentDueSoon(db, { limit: 2 }), claimPaymentDueSoon(db, { limit: 2 })]);
+    expect(runs.map((r) => r.length)).toEqual([2, 2]);
+    expect(ids(runs.flat())).toEqual(orders.map((o) => o.id).sort());
+  });
 });

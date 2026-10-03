@@ -24,7 +24,14 @@ export type ClaimedNotification = {
 
 // 입금 기한 알림(PRODUCT_SCOPE: 기한 하루 전, 입금 기간이 하루 이하면 1시간 전) 보낼 주문을 잡는다.
 // 대상 조건은 listPaymentDueSoon(orders/overdue.ts)과 같다.
+// 처음 잡기·다시 잡기를 한 트랜잭션에서 하고, 맨 앞에서 종류별 잠금을 잡아 동시 실행을 한 줄로 세운다. 그래야 여러 곳이
+// 동시에 돌려도 같은 앞쪽 주문을 두고 다투다 배치가 덜 차거나 비지 않는다(뒤에 온 쪽은 앞 쪽이 잡은 기록을 보고 다음 주문을 고른다).
 export async function claimPaymentDueSoon(db: PrismaClient, opts: { now?: Date; limit?: number } = {}): Promise<ClaimedNotification[]> {
+  return db.$transaction((tx) => claimPaymentDueSoonLocked(tx, opts), { timeout: 30_000 });
+}
+
+async function claimPaymentDueSoonLocked(db: Prisma.TransactionClient, opts: { now?: Date; limit?: number }): Promise<ClaimedNotification[]> {
+  await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('order_notification_claim:PAYMENT_DUE_SOON'))`;
   const now = opts.now ?? (await dbNow(db));
   const limit = Math.min(Math.max(opts.limit ?? 100, 1), 500);
   const staleBefore = new Date(now.getTime() - STALE_CLAIM_MS);
@@ -33,7 +40,7 @@ export async function claimPaymentDueSoon(db: PrismaClient, opts: { now?: Date; 
     WHERE o."status" = 'PENDING_PAYMENT' AND o."paymentDueAt" > ${now}
       AND o."paymentDueAt" - CASE WHEN o."paymentDueAt" - o."createdAt" > INTERVAL '1 day' THEN INTERVAL '1 day' ELSE INTERVAL '1 hour' END <= ${now}`;
   // 처음 잡는 주문: 기록이 없는 주문만 골라 한도만큼 넣는다. 기록 있는 주문을 먼저 빼야 기한이 이른 기록 있는 주문에
-  // 한도가 막혀 새 주문이 계속 밀리지 않는다. 동시에 넣은 기록은 ON CONFLICT로 건너뛴다.
+  // 한도가 막혀 새 주문이 계속 밀리지 않는다. ON CONFLICT는 잠금 밖에서 넣은 기록에 대한 안전장치다.
   const fresh = await db.$queryRaw<{ id: string }[]>`
     INSERT INTO "OrderNotification" ("sellerId", "orderId", "kind", "status", "attempts", "claimedAt")
     SELECT d."sellerId", d."id", 'PAYMENT_DUE_SOON', 'PENDING', 1, ${now}
@@ -43,7 +50,7 @@ export async function claimPaymentDueSoon(db: PrismaClient, opts: { now?: Date; 
     ON CONFLICT ("orderId", "kind") DO NOTHING
     RETURNING "id"`;
   // 다시 잡는 주문: 실패했거나 PENDING으로 오래 멈췄고 시도 횟수가 남은 기록을 기한 이른 순으로, 처음 잡은 수를 뺀
-  // 남은 한도만큼(합쳐 limit개까지). 조건부 갱신이라 동시에 돌려도 한 번만 잡힌다.
+  // 남은 한도만큼(합쳐 limit개까지). 조건부 갱신이라 잠금 밖의 갱신과 겹쳐도 한 번만 잡힌다.
   const remaining = limit - fresh.length;
   const retryable = Prisma.sql`n."kind" = 'PAYMENT_DUE_SOON' AND n."attempts" < ${MAX_NOTIFICATION_ATTEMPTS}
       AND (n."status" = 'FAILED' OR (n."status" = 'PENDING' AND n."claimedAt" <= ${staleBefore}))`;
