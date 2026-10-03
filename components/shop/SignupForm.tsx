@@ -538,13 +538,14 @@ export default function SignupForm({ slug, consent }: { slug: string; consent: S
           </div>
           {step === "identity" ? (
             <>
-              {/* 가입 필수 동의는 본인확인을 요청하기 전에 받는다(PRODUCT_SCOPE 「동의 순서」) */}
+              {/* 가입 필수 동의는 본인확인을 요청하기 전에 받는다(PRODUCT_SCOPE 「동의 순서」). 시작 요청 중에는 보낸 값과 화면이 어긋나지 않게 잠근다 */}
               <div className="col signup-terms">
                 <label className="chk signup-all">
                   <input
                     id="idv-terms-all"
                     type="checkbox"
                     className="cbx"
+                    disabled={busy}
                     {...termsAria}
                     checked={consentReady}
                     onChange={(e) => {
@@ -556,17 +557,17 @@ export default function SignupForm({ slug, consent }: { slug: string; consent: S
                   필수 약관에 모두 동의해요
                 </label>
                 <label className="chk">
-                  <input type="checkbox" className="cbx" {...termsAria} checked={agreedTerms} onChange={(e) => setAgreedTerms(e.target.checked)} />
+                  <input type="checkbox" className="cbx" disabled={busy} {...termsAria} checked={agreedTerms} onChange={(e) => setAgreedTerms(e.target.checked)} />
                   이용약관 (필수)
                 </label>
                 <label className="chk">
-                  <input type="checkbox" className="cbx" {...termsAria} checked={agreedPrivacy} onChange={(e) => setAgreedPrivacy(e.target.checked)} />
+                  <input type="checkbox" className="cbx" disabled={busy} {...termsAria} checked={agreedPrivacy} onChange={(e) => setAgreedPrivacy(e.target.checked)} />
                   개인정보 수집 · 이용 (필수)
                 </label>
                 {rejoinShown && (
                   <>
                     <label className="chk">
-                      <input type="checkbox" className="cbx" {...termsAria} checked={agreedRejoin} onChange={(e) => setAgreedRejoin(e.target.checked)} />
+                      <input type="checkbox" className="cbx" disabled={busy} {...termsAria} checked={agreedRejoin} onChange={(e) => setAgreedRejoin(e.target.checked)} />
                       재가입 제한 정보 보관 (선택)
                     </label>
                     {/* 본문: docs/terms/PRIVACY_CONSENT_TEMPLATE.md 하단 「재가입 제한 정보 보관 동의」 */}
@@ -583,11 +584,11 @@ export default function SignupForm({ slug, consent }: { slug: string; consent: S
                   </>
                 )}
                 <label className="chk">
-                  <input type="checkbox" className="cbx" checked={agreedMarketing} onChange={(e) => setAgreedMarketing(e.target.checked)} />
+                  <input type="checkbox" className="cbx" disabled={busy} checked={agreedMarketing} onChange={(e) => setAgreedMarketing(e.target.checked)} />
                   (선택) 마케팅 정보 수신
                 </label>
                 <label className="chk">
-                  <input type="checkbox" className="cbx" {...termsAria} checked={idvAgreed} onChange={(e) => setIdvAgreed(e.target.checked)} />
+                  <input type="checkbox" className="cbx" disabled={busy} {...termsAria} checked={idvAgreed} onChange={(e) => setIdvAgreed(e.target.checked)} />
                   본인확인 약관에 모두 동의해요
                 </label>
                 {fieldErrors.terms && (

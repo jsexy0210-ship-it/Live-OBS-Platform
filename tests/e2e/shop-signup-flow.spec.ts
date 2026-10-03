@@ -310,6 +310,24 @@ async function hold(page: Page, path: string, reply: Reply) {
   return release;
 }
 
+test("인증번호를 요청하는 동안에는 동의 체크도 바꿀 수 없다(보낸 동의와 화면이 어긋나지 않게)", async ({ page }) => {
+  await mockApi(page);
+  const release = await hold(page, `${API}/verification`, { status: 200, body: { verificationId: "00000000-0000-4000-8000-000000000000" } });
+  await page.goto(`/shop/${SLUG}/signup`);
+  await fillIdentity(page, "김구매", "01011112222");
+  const marketing = page.getByLabel("(선택) 마케팅 정보 수신");
+  await marketing.check();
+  const req = page.waitForRequest((r) => r.url().endsWith(`${API}/verification`) && r.method() === "POST");
+  await page.getByRole("button", { name: "인증번호 받기" }).click();
+  expect((await req).postDataJSON().agreedMarketing).toBe(true);
+  for (const label of ["(선택) 마케팅 정보 수신", "이용약관 (필수)", "개인정보 수집 · 이용 (필수)", "필수 약관에 모두 동의해요", "본인확인 약관에 모두 동의해요"]) {
+    await expect(page.getByLabel(label), label).toBeDisabled();
+  }
+  await expect(marketing).toBeChecked();
+  release();
+  await expect(page.getByLabel("인증번호")).toBeVisible();
+});
+
 test("인증번호를 요청하는 동안에는 인적사항을 고칠 수 없고, 보낸 값으로 본인확인을 마친다", async ({ page }) => {
   await mockApi(page);
   const release = await hold(page, `${API}/verification`, { status: 200, body: { verificationId: "00000000-0000-4000-8000-000000000000" } });
