@@ -27,6 +27,7 @@ const MAX_DUE_HOURS = 720;
 const MAX_AUTO_DAYS = 30; // 자동 배송 완료·구매 확정 기간 1~30일, 기본 7일
 
 function daysError(v: string): string | null {
+  if (v.trim() === "") return "기간을 적어 주세요";
   const n = parseAmount(v);
   if (n === null) return "숫자만 입력해 주세요";
   if (n < 1 || n > MAX_AUTO_DAYS) return `1일부터 ${MAX_AUTO_DAYS}일까지 정할 수 있어요`;
@@ -352,8 +353,8 @@ export default function OrderSettingsPage() {
                 </div>
                 {autoDaysRow({
                   id: "deliver",
-                  title: "배송 중 n일 뒤 자동으로 배송 완료",
-                  desc: "송장을 올린 뒤 배송 중 상태가 이 기간 지나면 자동으로 배송 완료가 돼요 · 기본 7일",
+                  title: "배송 중 일정 기간이 지나면 자동으로 배송 완료",
+                  desc: "송장을 올린 뒤 배송 중 상태로 이 기간이 지나면 자동으로 배송 완료로 바꿔요 · 기본 7일",
                   offDesc: "꺼 두면 배송 완료는 직접 바꿔요",
                   on: deliverOn,
                   setOn: setDeliverOn,
@@ -363,7 +364,7 @@ export default function OrderSettingsPage() {
                 })}
                 {autoDaysRow({
                   id: "confirm",
-                  title: "배송 완료 n일 뒤 자동 구매 확정",
+                  title: "배송 완료 뒤 일정 기간이 지나면 자동 구매 확정",
                   desc: "구매자가 확정하지 않아도 이 기간이 지나면 구매 확정돼요 · 기본 7일",
                   offDesc: "꺼 두면 구매자가 확정할 때까지 기다려요",
                   on: confirmOn,

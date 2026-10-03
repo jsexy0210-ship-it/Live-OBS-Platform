@@ -107,7 +107,7 @@ export default function RewardPolicyPage() {
                 </div>
                 <div className="msg msg-info t-l2" role="note">
                   <span>
-                    <b>적립금은 결제할 때 금액으로 정해져요.</b> 지급 시점을 바꿔도 적립 금액은 그대로이고, 언제 쌓이는지만 달라져요. 구매자 주문 상세의 「적립 예정 · 적립 완료」 표시가 이 설정을 따라요.
+                    <b>적립금은 결제할 때 금액으로 정해져요.</b> 지급 시점을 바꿔도 적립 금액은 그대로이고, 언제 쌓이는지만 달라져요.
                   </span>
                 </div>
               </section>

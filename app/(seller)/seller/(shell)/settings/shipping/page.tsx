@@ -33,6 +33,7 @@ const MODES: { key: Mode; title: string; desc: string }[] = [
 const modeOf = (p: Policy): Mode => (p.freeShipping ? "free" : p.freeOverAmount === null ? "fixed" : "threshold");
 
 function feeError(v: string, max: number, min = 0): string | null {
+  if (v.trim() === "") return "금액을 적어 주세요";
   const n = parseAmount(v);
   if (n === null) return "숫자만 입력해 주세요";
   if (n < min) return `${min.toLocaleString("ko-KR")}원 이상으로 적어 주세요`;
@@ -282,7 +283,7 @@ export default function ShippingSettingsPage() {
               </div>
               <div className="card pad col" style={{ gap: 6 }}>
                 <span className="t-hl2">알아 두세요</span>
-                <span className="t-l2 c-neu">배송비는 결제 금액에 합산되고 환불 시 함께 돌려줘요. 이미 받은 주문의 배송비는 바뀌지 않아요.</span>
+                <span className="t-l2 c-neu">배송비는 결제 금액에 합산돼요. 발송 전에 환불하면 배송비까지 모두 돌려줘요. 발송 뒤 상품 불량 · 오배송이면 상품값과 처음 낸 배송비를 돌려주고, 단순 변심이면 반품 배송비를 빼고 돌려줘요. 이미 받은 주문의 배송비는 바뀌지 않아요.</span>
               </div>
               <button className="btn btn-lg btn-block" type="button" onClick={() => void save()} disabled={saving || !dirty}>
                 {saving ? "저장하고 있어요" : "저장"}
