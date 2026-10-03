@@ -592,6 +592,9 @@ model Order {
   @@index([sellerId, status])
   @@index([status, paymentDueAt])
   @@index([sellerId, buyerMemberId, autoCancelledAt])
+  // 결제 후 취소·미입금 제한을 켤 때 판매자의 마지막 사건 시각(_max)을 인덱스 끝 한 번 읽기로 찾는다(orders/overdue.ts updateOrderPolicy)
+  @@index([sellerId, refundedAt])
+  @@index([sellerId, autoCancelledAt])
 }
 
 model OrderItem {
