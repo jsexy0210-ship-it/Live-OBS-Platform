@@ -4,7 +4,7 @@ import { hashPassword, verifyPassword } from "../auth/password";
 import { MAX_EMAIL_LENGTH, normalizeEmail } from "../auth/login";
 import { MIN_PASSWORD_LENGTH } from "../auth/passwordReset";
 import { dbNow, sellerAccessFor } from "../billing/subscription";
-import type { IdentityProvider } from "../identity/provider";
+import { birthDateOf, type IdentityProvider } from "../identity/provider";
 import { createHash, randomUUID } from "node:crypto";
 import { hashToken } from "../auth/token";
 import { buyerSignupIdentityLimitReached, completeIdentityVerification, parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
@@ -32,6 +32,17 @@ export const MAX_NICKNAME_LENGTH = 20;
 // 본인확인 1건으로 가입을 시도할 수 있는 횟수(아이디·닉네임 중복 실패 포함). 같은 본인확인으로 다른 사람의 가입 여부를
 // 계속 조회하지 못하게 한다(#114 보안 검수). 입력 형식 오류(400)는 DB를 보기 전에 끝나므로 세지 않는다.
 export const MAX_SIGNUP_ATTEMPTS_PER_VERIFICATION = 5;
+
+// 가입할 수 있는 최소 만 나이
+export const MIN_SIGNUP_AGE = 14;
+
+// 생년월일(DB date, UTC 0시로 들어옴) 기준 KST 오늘의 만 나이. 생일 당일에 한 살 많아진다(2월 29일생은 평년에 3월 1일).
+export function kstAge(birthDate: Date, now: Date): number {
+  const today = new Date(now.getTime() + 9 * 3600_000);
+  const [ty, tm, td] = [today.getUTCFullYear(), today.getUTCMonth() + 1, today.getUTCDate()];
+  const [by, bm, bd] = [birthDate.getUTCFullYear(), birthDate.getUTCMonth() + 1, birthDate.getUTCDate()];
+  return ty - by - (tm < bm || (tm === bm && td < bd) ? 1 : 0);
+}
 
 // 운영 중이고 잠기지 않은 쇼핑몰만 가입을 받는다(주문과 같은 기준, DB 시계)
 export async function shopOpen(db: PrismaClient, sellerId: string) {
@@ -80,6 +91,8 @@ export async function startBuyerSignupVerification(
   const keyHash = attemptKey ? hashToken(attemptKey) : null;
   const person = parseIdentityPerson(rawPerson);
   if (!person) return { ok: false as const, reason: "invalid_identity_input" as const };
+  // 입력한 생년월일로 만 14세 미만이면 공급자 호출·기록·일일 횟수 없이 거절한다(가입 때 본인확인 결과 생년월일로 다시 확인).
+  if (kstAge(birthDateOf(person.birth7)!, meta.now ?? new Date()) < MIN_SIGNUP_AGE) return { ok: false as const, reason: "under_age" as const };
   const ip = meta.ip ?? null;
   type Started =
     | { kind: "reused"; verificationId: string; ownerToken: string }
@@ -159,6 +172,7 @@ export type BuyerSignupFailure =
   | "login_id_taken"
   | "nickname_taken"
   | "shop_unavailable"
+  | "under_age" // 만 14세 미만(본인확인 시작 때 입력한 생년월일, 가입 때 본인확인 결과 생년월일)
   | "rejoin_restricted" // 재가입 제한 기간 중(탈퇴한 같은 사람, buyers/rejoin.ts)
   | "invalid_rejoin_consent" // 재가입 제한 정보 보관 동의 값이 불리언이 아님(본인확인 시작)
   | "rejoin_policy_changed" // 보관에 동의한 경우: 화면에 보여 준 재가입 제한 기간이 지금 정책과 다름(본인확인 시작, 화면을 다시 불러와 다시 동의)
@@ -233,6 +247,9 @@ export async function signupBuyer(
   ) {
     return { ok: false, reason: "verification_invalid" };
   }
+  // 만 14세 미만은 가입할 수 없다(MASTER 결정 2026-10-03, 법정대리인 동의 기능 전까지). 본인확인 생년월일·KST 날짜 기준이고
+  // 같은 본인확인으로 몇 번 다시 해도 결과가 같아 시도 횟수에 넣지 않는다.
+  if (kstAge(v.birthDate, now) < MIN_SIGNUP_AGE) return { ok: false, reason: "under_age" };
   // 이 쇼핑몰의 기간이 끝난 재가입 제한 기록·끝난 미가입 본인확인·3개월 지난 요청 IP를 정리한다(전역 정리는 jobs/scheduler.ts 정기 실행).
   // 본인확인(시작한 브라우저·완료·기한)이 확인된 요청에서만 돌린다. 비인증 요청으로 정리 쿼리를 반복시키지 못하게 한다.
   await purgeExpiredRejoinBlocks(db, now, input.sellerId);
@@ -358,6 +375,7 @@ export const BUYER_SIGNUP_MESSAGES: Record<BuyerSignupFailure | "daily_limit_exc
   login_id_taken: "이미 가입한 이메일이에요. 다른 이메일로 가입해 주세요",
   nickname_taken: "이미 쓰고 있는 방송 닉네임이에요. 다른 닉네임으로 정해 주세요",
   shop_unavailable: "지금은 쇼핑몰을 이용할 수 없어요",
+  under_age: "만 14세 미만은 가입할 수 없어요",
   rejoin_restricted: "지금은 다시 가입할 수 없어요",
   invalid_rejoin_consent: "재가입 제한 정보 보관 동의 값을 다시 확인해 주세요",
   consent_outdated: "약관이 바뀌었어요. 다시 확인하고 동의해 주세요",
@@ -379,6 +397,7 @@ export const BUYER_SIGNUP_STATUS: Record<BuyerSignupFailure, number> = {
   login_id_taken: 409,
   nickname_taken: 409,
   shop_unavailable: 402,
+  under_age: 403,
   rejoin_restricted: 403,
   invalid_rejoin_consent: 400,
   consent_outdated: 409,
