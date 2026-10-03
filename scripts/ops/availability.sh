@@ -13,9 +13,13 @@ case "${1:-status}" in
     # 표시 파일은 compose가 가용성 정의를 읽게 하는 스위치다. 실패하면 지우고 기본 정의로 되돌려 「켜짐」으로 남지 않게 한다.
     touch "$AVAIL_MARK"
     if ! compose up -d --no-build --wait; then
+      # off 실패와 같은 방식: 기본 정의(앱 1개)로 실제로 되돌리고, 그 결과로 안내를 가른다.
       rm -f "$AVAIL_MARK"
-      compose up -d --no-build --wait --remove-orphans || true
-      die "켜기 실패. 표시를 지우고 기본 정의로 되돌렸어요(availability.sh status로 확인)."
+      if compose up -d --no-build --wait --remove-orphans; then
+        refresh_monitor
+        die "켜기 실패. 기본 구성(앱 1개)으로 되돌렸어요. 원인을 확인한 뒤 다시 on해 주세요."
+      fi
+      die "켜기 실패, 되돌리기도 실패했어요. 구성이 불확실해요, availability.sh status로 확인해 주세요."
     fi
     refresh_monitor
     log "가용성 프로파일 켜짐: $(app_services), version=$APP_VERSION"

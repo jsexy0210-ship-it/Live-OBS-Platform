@@ -58,20 +58,37 @@ function probe({ url, host }) {
     const u = new URL(url);
     const lib = u.protocol === "https:" ? https : http;
     const start = performance.now();
-    const req = lib.request(u, { method: "GET", timeout: cfg.timeoutMs, headers: host ? { host } : {} }, (res) => {
+    // 결과는 한 번만 정한다. 헤더·본문 일부 뒤 연결이 끊기거나(aborted·error·close) 응답이 질질 끌려도
+    // 전체 상한(timeoutMs)에서 실패로 끝나게 해 틱이 멈추지 않게 한다.
+    let done = false;
+    let req;
+    const finish = (r) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      req?.destroy();
+      resolve({ ms: Math.round(performance.now() - start), ...r });
+    };
+    const fail = (error) => finish({ status: 0, error });
+    const timer = setTimeout(() => fail("timeout"), cfg.timeoutMs);
+    req = lib.request(u, { method: "GET", timeout: cfg.timeoutMs, headers: host ? { host } : {} }, (res) => {
       let body = "";
       res.setEncoding("utf8");
       res.on("data", (c) => (body.length < 4096 ? (body += c) : null));
+      res.on("aborted", () => fail("network"));
+      res.on("error", () => fail("network"));
+      res.on("close", () => (res.complete ? null : fail("network")));
       res.on("end", () => {
+        if (!res.complete) return fail("network");
         let j = {};
         try {
           j = JSON.parse(body);
         } catch {}
-        resolve({ status: res.statusCode, ms: Math.round(performance.now() - start), db: j.db ?? null, version: j.version ?? null });
+        finish({ status: res.statusCode, db: j.db ?? null, version: j.version ?? null });
       });
     });
-    req.on("timeout", () => req.destroy(new Error("timeout")));
-    req.on("error", (e) => resolve({ status: 0, ms: Math.round(performance.now() - start), error: e.message === "timeout" ? "timeout" : "network" }));
+    req.on("timeout", () => fail("timeout"));
+    req.on("error", (e) => fail(e.message === "timeout" ? "timeout" : "network"));
     req.end();
   });
 }
