@@ -1,11 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
 
 // 테스트 서버 모드 안내(대표님 지시 2026-10-03). 서버가 OBS_TEST_MODE=1이면 GET /api/health에 testMode: true가 붙고,
-// 본인확인 단계에 「테스트 모드예요. 인증번호 000000을 입력하세요」가 보인다. 운영(값 없음)에서는 보이지 않는다.
+// 본인확인 단계에 「테스트 모드예요. 인증번호 000000을 입력해 주세요」가 보인다. 운영(값 없음)에서는 보이지 않는다.
 // 이 e2e 서버는 테스트 모드가 아니라서, 켜진 경우는 /api/health 응답을 testMode: true로 바꿔 확인한다.
 // 구매자 가입(SH-011)은 운영 빌드에서 본인확인 공급자가 없으면 폼 대신 준비 중 화면이라 개발 서버(test-mode-flow.spec.ts)에서 확인한다.
 const SHOTS = process.env.E2E_SCREENSHOTS === "1";
-const NOTICE = "테스트 모드예요. 인증번호 000000을 입력하세요";
+const NOTICE = "테스트 모드예요. 인증번호 000000을 입력해 주세요";
 const PAGES = ["/seller/signup", "/seller/password-reset"];
 
 async function shot(page: Page, name: string) {

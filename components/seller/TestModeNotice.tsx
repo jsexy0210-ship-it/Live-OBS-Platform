@@ -31,7 +31,7 @@ export default function TestModeNotice({ kind }: { kind: "identity" | "payment" 
   if (!on) return null;
   return (
     <div className="msg msg-info" role="note" data-testid="test-mode-notice">
-      <span>{kind === "identity" ? "테스트 모드예요. 인증번호 000000을 입력하세요" : "테스트 모드예요. 실제로 결제되지 않아요"}</span>
+      <span>{kind === "identity" ? "테스트 모드예요. 인증번호 000000을 입력해 주세요" : "테스트 모드예요. 실제로 결제되지 않아요"}</span>
     </div>
   );
 }

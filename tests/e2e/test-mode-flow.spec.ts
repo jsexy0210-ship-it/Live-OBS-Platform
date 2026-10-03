@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 // 구매자 가입(SH-011) 본인확인 단계의 테스트 모드 안내. 개발 서버(playwright.config.ts 「dev」, 가짜 본인확인 공급자)에서 폼이 보인다.
 // 개발 서버도 테스트 서버 모드(OBS_TEST_MODE=1)는 아니라서, 켜진 경우는 /api/health 응답을 testMode: true로 바꿔 확인한다.
 const SHOTS = process.env.E2E_SCREENSHOTS === "1";
-const NOTICE = "테스트 모드예요. 인증번호 000000을 입력하세요";
+const NOTICE = "테스트 모드예요. 인증번호 000000을 입력해 주세요";
 
 async function open(page: Page) {
   const health = page.waitForResponse((r) => r.url().endsWith("/api/health"));
