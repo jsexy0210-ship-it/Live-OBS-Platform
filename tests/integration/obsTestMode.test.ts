@@ -21,7 +21,7 @@ import { POST as sellerConfirmRoute } from "../../app/api/seller-signup/verifica
 import { POST as sellerStartRoute } from "../../app/api/seller-signup/verification/route";
 import { loginSeller } from "../../lib/server/auth/login";
 import { prisma } from "../../lib/server/db";
-import { IDV_INPUT, SIGNUP_CONSENT, createSeller, db, resetDb } from "./helpers";
+import { IDV_INPUT, SELLER_SIGNUP_CONSENT, SIGNUP_CONSENT, createSeller, db, resetDb } from "./helpers";
 
 beforeEach(async () => {
   vi.unstubAllEnvs();
@@ -212,7 +212,7 @@ describe("테스트 서버 모드: 바뀐 본인확인 흐름(아이디 찾기·
   it("파트너스 가입: 인증번호 000000으로 신청하고, 응답을 잃은 뒤 본인확인 유효 시간이 지나 다시 보내도 같은 신청(resumed)을 받는다", async () => {
     testServer();
     const person = { ...IDV_INPUT, name: "가입대표", birth7: "8505051" };
-    const s = await sellerStartRoute(post("/api/seller-signup/verification", { ...person, attemptKey: "0f1e2d3c-4b5a-4968-8776-5a4b3c2d1e0f" }));
+    const s = await sellerStartRoute(post("/api/seller-signup/verification", { ...person, ...SELLER_SIGNUP_CONSENT, attemptKey: "0f1e2d3c-4b5a-4968-8776-5a4b3c2d1e0f" }));
     expect(s.status).toBe(200);
     const flow = cookieOf(s, "lo_sidv");
     const { verificationId } = await s.json();
