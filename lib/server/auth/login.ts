@@ -129,7 +129,8 @@ export async function loginBuyer(
     });
 
   const member = await db.buyerMember.findFirst({
-    where: { sellerId: input.sellerId, loginId: input.loginId.trim(), deletedAt: null },
+    // 구매자 아이디는 이메일이라 가입 때처럼 소문자로 맞춰 찾는다
+    where: { sellerId: input.sellerId, loginId: normalizeEmail(input.loginId), deletedAt: null },
   });
   if (!member) {
     await burnPasswordCheck(input.password);

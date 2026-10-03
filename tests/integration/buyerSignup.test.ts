@@ -40,7 +40,7 @@ async function shop() {
   };
   const signup = (v: { cookie?: string; verificationId: string }, body: Record<string, unknown> = {}) =>
     signupRoute(
-      post(base, { verificationId: v.verificationId, loginId: "buyer01", password: "pw-123456", broadcastNickname: "카드왕", agreedTerms: true, agreedPrivacy: true, ...body }, v.cookie),
+      post(base, { verificationId: v.verificationId, loginId: "buyer01@example.com", password: "pw-123456", broadcastNickname: "카드왕", agreedTerms: true, agreedPrivacy: true, ...body }, v.cookie),
       ctx(slug),
     );
   return { seller, slug, base, verified, signup };
@@ -59,11 +59,12 @@ describe("구매자 가입 HTTP", () => {
     expect(cookieOf(res, "lo_buyer")).toMatch(/^lo_buyer=.+/);
     expect(cookieOf(res, "lo_bidv")).toBe("lo_bidv=");
     const member = await db.buyerMember.findFirstOrThrow({ where: { sellerId: s.seller.id } });
-    expect(member).toMatchObject({ loginId: "buyer01", name: "김구매", phone: "01099998888", broadcastNickname: "카드왕" });
+    expect(member).toMatchObject({ loginId: "buyer01@example.com", name: "김구매", phone: "01099998888", broadcastNickname: "카드왕" });
     expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.signup", actorId: member.id } })).toMatchObject({
       after: { agreedTerms: true, agreedPrivacy: true },
     });
-    const login = await loginRoute(post(`/api/shop/${s.slug}/auth/login`, { loginId: "buyer01", password: "pw-123456" }), ctx(s.slug));
+    // 로그인도 이메일 대소문자를 가리지 않는다
+    const login = await loginRoute(post(`/api/shop/${s.slug}/auth/login`, { loginId: "Buyer01@Example.COM", password: "pw-123456" }), ctx(s.slug));
     expect(login.status).toBe(200);
   });
 
@@ -71,8 +72,10 @@ describe("구매자 가입 HTTP", () => {
     const s = await shop();
     const v = await s.verified();
     for (const [body, code] of [
-      [{ loginId: "ab" }, "invalid_login_id"],
-      [{ loginId: "한글아이디" }, "invalid_login_id"],
+      [{ loginId: "buyer01" }, "invalid_login_id"],
+      [{ loginId: "buyer@nodot" }, "invalid_login_id"],
+      [{ loginId: "a b@example.com" }, "invalid_login_id"],
+      [{ loginId: `${"a".repeat(250)}@example.com` }, "invalid_login_id"],
       [{ password: "short" }, "weak_password"],
       [{ broadcastNickname: "​" }, "invalid_nickname"],
       [{ broadcastNickname: "닉".repeat(21) }, "invalid_nickname"],
@@ -98,8 +101,8 @@ describe("구매자 가입 HTTP", () => {
     expect((await s.signup({ verificationId: v.verificationId })).status).toBe(400);
     expect((await s.signup({ verificationId: v.verificationId, cookie: "lo_bidv=someone-else" })).status).toBe(400);
     expect((await s.signup({ verificationId: "not-a-uuid", cookie: v.cookie })).status).toBe(400);
-    expect((await s.signup(v, { loginId: "first01" })).status).toBe(201);
-    const again = await s.signup(v, { loginId: "second01", broadcastNickname: "다른닉" });
+    expect((await s.signup(v, { loginId: "first01@example.com" })).status).toBe(201);
+    const again = await s.signup(v, { loginId: "second01@example.com", broadcastNickname: "다른닉" });
     expect(again.status).toBe(400);
     expect((await again.json()).error).toBe("verification_invalid");
   });
@@ -107,13 +110,14 @@ describe("구매자 가입 HTTP", () => {
   it("같은 사람(CI)은 같은 쇼핑몰에 한 번만, 아이디·방송 닉네임이 겹치면 409와 문구", async () => {
     const s = await shop();
     expect((await s.signup(await s.verified())).status).toBe(201);
-    const dup = await s.signup(await s.verified(), { loginId: "other01", broadcastNickname: "다른닉" });
+    const dup = await s.signup(await s.verified(), { loginId: "other01@example.com", broadcastNickname: "다른닉" });
     expect(dup.status).toBe(409);
     expect(await dup.json()).toEqual({ error: "already_member", message: BUYER_SIGNUP_MESSAGES.already_member });
-    const idTaken = await s.signup(await s.verified({ name: "이몽룡", phone: "01011112222" }), { broadcastNickname: "새닉" });
+    // 대소문자만 다른 이메일도 같은 아이디로 본다(소문자로 맞춰 저장)
+    const idTaken = await s.signup(await s.verified({ name: "이몽룡", phone: "01011112222" }), { loginId: " BUYER01@example.com ", broadcastNickname: "새닉" });
     expect(idTaken.status).toBe(409);
     expect((await idTaken.json()).error).toBe("login_id_taken");
-    const nickTaken = await s.signup(await s.verified({ name: "성춘향", phone: "01033334444" }), { loginId: "new01" });
+    const nickTaken = await s.signup(await s.verified({ name: "성춘향", phone: "01033334444" }), { loginId: "new01@example.com" });
     expect(nickTaken.status).toBe(409);
     expect((await nickTaken.json()).error).toBe("nickname_taken");
   });
@@ -162,7 +166,7 @@ describe("signupBuyer는 completeIdentityVerification을 거친다", () => {
         sellerId: seller.id,
         verificationId: verification.id,
         ownerToken,
-        loginId: "buyer01",
+        loginId: "buyer01@example.com",
         password: "pw-123456",
         broadcastNickname: "닉",
         agreedTerms: true,

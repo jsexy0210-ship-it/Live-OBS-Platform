@@ -1,10 +1,12 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { hashPassword } from "../auth/password";
+import { normalizeEmail } from "../auth/login";
 import { MIN_PASSWORD_LENGTH } from "../auth/passwordReset";
 import { sellerAccessFor } from "../billing/subscription";
 import type { IdentityProvider } from "../identity/provider";
 import { completeIdentityVerification, parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
+import { EMAIL } from "../sellers/application";
 import { cleanText } from "../text/clean";
 
 class VerificationUsed extends Error {}
@@ -18,8 +20,9 @@ export const buyerSignupPath = (slug: string) => `/api/shop/${slug}/signup`;
 // 같은 IP에서 하루(KST)에 시작할 수 있는 구매자 가입 본인확인 수(쇼핑몰마다). 판매자 가입과 같은 10회.
 export const BUYER_SIGNUP_VERIFY_DAILY_LIMIT_PER_IP = 10;
 
-// 가입 입력 규칙: 아이디 4~100자(영문·숫자와 . _ @ + -, 이메일도 됨), 비밀번호 8~200자, 방송 닉네임 1~20자(보이는 글자).
-export const LOGIN_ID_PATTERN = /^[A-Za-z0-9._@+-]{4,100}$/;
+// 가입 입력 규칙: 아이디는 이메일(PRODUCT_SCOPE 「아이디(이메일)」, 254자까지, 소문자로 맞춰 저장해 대소문자만 다른 중복을 막는다),
+// 비밀번호 8~200자, 방송 닉네임 1~20자(보이는 글자).
+const MAX_EMAIL_LENGTH = 254;
 export const MAX_NICKNAME_LENGTH = 20;
 
 // 운영 중이고 잠기지 않은 쇼핑몰만 가입을 받는다(주문과 같은 기준, DB 시계)
@@ -95,8 +98,8 @@ export async function signupBuyer(
 ): Promise<BuyerSignupResult> {
   const now = input.now ?? new Date();
   if (!(await shopOpen(db, input.sellerId))) return { ok: false, reason: "shop_unavailable" };
-  const loginId = typeof input.loginId === "string" ? input.loginId.trim() : "";
-  if (!LOGIN_ID_PATTERN.test(loginId)) return { ok: false, reason: "invalid_login_id" };
+  const loginId = typeof input.loginId === "string" ? normalizeEmail(input.loginId) : "";
+  if (loginId.length > MAX_EMAIL_LENGTH || !EMAIL.test(loginId)) return { ok: false, reason: "invalid_login_id" };
   if (typeof input.password !== "string" || input.password.length < MIN_PASSWORD_LENGTH || input.password.length > 200) return { ok: false, reason: "weak_password" };
   const nickname = cleanText(input.broadcastNickname, MAX_NICKNAME_LENGTH);
   if (!nickname) return { ok: false, reason: "invalid_nickname" };
@@ -177,14 +180,14 @@ export async function signupBuyer(
 
 // 가입 실패 문구(해요체). 화면은 error 코드로 분기하고 message를 그대로 보여 준다.
 export const BUYER_SIGNUP_MESSAGES: Record<BuyerSignupFailure | "daily_limit_exceeded", string> = {
-  invalid_login_id: "아이디는 영문·숫자로 4~100자 안에서 정해 주세요. 마침표, 밑줄, @, +, -도 쓸 수 있어요",
+  invalid_login_id: "아이디로 쓸 이메일 주소를 다시 확인해 주세요",
   weak_password: "비밀번호는 8자 이상으로 정해 주세요",
   invalid_nickname: "방송 닉네임은 20자까지, 쓸 수 있는 글자로 정해 주세요",
   terms_required: "필수 약관에 동의해 주세요",
   verification_pending: "인증번호 확인을 먼저 마쳐 주세요",
   verification_invalid: "본인확인을 처음부터 다시 해 주세요",
   already_member: "이미 이 쇼핑몰에 가입했어요. 로그인해 주세요",
-  login_id_taken: "이미 쓰고 있는 아이디예요. 다른 아이디로 정해 주세요",
+  login_id_taken: "이미 가입한 이메일이에요. 다른 이메일로 가입해 주세요",
   nickname_taken: "이미 쓰고 있는 방송 닉네임이에요. 다른 닉네임으로 정해 주세요",
   shop_unavailable: "지금은 쇼핑몰을 이용할 수 없어요",
   daily_limit_exceeded: "오늘은 본인확인을 더 할 수 없어요. 내일 다시 해 주세요",

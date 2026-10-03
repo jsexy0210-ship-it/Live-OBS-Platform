@@ -122,9 +122,9 @@ describe("위조·재사용 결과 차단", () => {
     expect(await completeIdentityVerification(db, provider, v.id, { sellerId: b.seller.id, purpose: "BUYER_SIGNUP", ownerToken })).toEqual({ ok: false, reason: "not_found" });
     expect(await completeIdentityVerification(db, provider, v.id, { sellerId: a.seller.id, purpose: "PASSWORD_RESET", ownerToken })).toEqual({ ok: false, reason: "not_found" });
     const signup = (loginId: string) =>
-      signupBuyer(db, provider, { sellerId: a.seller.id, verificationId: v.id, ownerToken, loginId, password: "pw-123456", broadcastNickname: loginId, agreedTerms: true, agreedPrivacy: true });
-    expect((await signup("first")).ok).toBe(true);
-    expect(await signup("second")).toEqual({ ok: false, reason: "verification_invalid" });
+      signupBuyer(db, provider, { sellerId: a.seller.id, verificationId: v.id, ownerToken, loginId, password: "pw-123456", broadcastNickname: loginId.split("@")[0], agreedTerms: true, agreedPrivacy: true });
+    expect((await signup("first@example.com")).ok).toBe(true);
+    expect(await signup("second@example.com")).toEqual({ ok: false, reason: "verification_invalid" });
   });
 
   it("인증 대상 휴대폰번호가 바뀌면(결과의 번호가 요청 때와 다르면) 확정하지 않는다. 바뀐 번호는 새로 시작해 다시 인증한다", async () => {
@@ -259,7 +259,7 @@ describe("Codex 검수 후속(#95)", () => {
     const after = new Date(done.verification.expiresAt.getTime() + 1000);
     expect(after.getTime() - done.verification.verifiedAt!.getTime()).toBeLessThan(30 * 60_000);
     expect(
-      await signupBuyer(db, provider, { sellerId: seller.id, verificationId: b.verification.id, ownerToken: b.ownerToken, loginId: "late", password: "pw-123456", broadcastNickname: "늦음", agreedTerms: true, agreedPrivacy: true, now: after }),
+      await signupBuyer(db, provider, { sellerId: seller.id, verificationId: b.verification.id, ownerToken: b.ownerToken, loginId: "late@example.com", password: "pw-123456", broadcastNickname: "늦음", agreedTerms: true, agreedPrivacy: true, now: after }),
     ).toEqual({ ok: false, reason: "verification_invalid" });
 
     const rep = await startIdv(provider, { purpose: "SELLER_REPRESENTATIVE", sellerId: null });
