@@ -164,7 +164,7 @@ export type BuyerSignupFailure =
   | "weak_password"
   | "invalid_nickname"
   | "terms_required"
-  | "invalid_marketing_consent" // 마케팅 수신 동의 값이 불리언이 아님
+  | "invalid_marketing_consent" // 마케팅 수신 동의 값이 불리언이 아님(본인확인 시작)
   | "verification_pending"
   | "verification_invalid"
   | "too_many_signup_attempts"
@@ -198,9 +198,7 @@ export async function signupBuyer(
     loginId: string;
     password: string;
     broadcastNickname: string;
-    // 필수 약관·재가입 제한 보관 동의는 본인확인 시작 때 받아 본인확인 기록에 있다(여기서 받지 않는다).
-    // 선택 마케팅 수신 동의. true면 가입 시각을 marketingConsentAt에 남긴다. 빠지면 동의 안 함, 불리언이 아니면 거부.
-    agreedMarketing?: unknown;
+    // 필수 약관·재가입 제한 보관·마케팅 수신 동의는 본인확인 시작 때 받아 본인확인 기록에 있다(여기서 받지 않는다).
     // 감사 로그에 남길 요청 정보
     meta?: { ip?: string | null; userAgent?: string | null };
     now?: Date;
@@ -213,8 +211,6 @@ export async function signupBuyer(
   if (typeof input.password !== "string" || input.password.length < MIN_PASSWORD_LENGTH || input.password.length > 200) return { ok: false, reason: "weak_password" };
   const nickname = cleanText(input.broadcastNickname, MAX_NICKNAME_LENGTH);
   if (!nickname) return { ok: false, reason: "invalid_nickname" };
-  if (input.agreedMarketing !== undefined && typeof input.agreedMarketing !== "boolean") return { ok: false, reason: "invalid_marketing_consent" };
-  const agreedMarketing = input.agreedMarketing === true;
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.verificationId)) return { ok: false, reason: "verification_invalid" };
 
   const done = await completeIdentityVerification(db, provider, input.verificationId, { sellerId: input.sellerId, purpose: "BUYER_SIGNUP", ownerToken: input.ownerToken }, now);
@@ -304,7 +300,8 @@ export async function signupBuyer(
           birthDate: v.birthDate!,
           broadcastNickname: nickname,
           gradeId: grade.id,
-          marketingConsentAt: agreedMarketing ? now : null,
+          // 마케팅 수신 동의 시각은 본인확인 시작 때 동의한 시각이다
+          marketingConsentAt: consent.marketing ? new Date(consent.agreedAt) : null,
           signupConsent: consent,
           rejoinRestrictionDaysAgreed: rejoinDays,
           rejoinRetentionAgreedAt: consent.rejoinRetention ? new Date(consent.agreedAt) : null,
@@ -325,13 +322,14 @@ export async function signupBuyer(
         after: {
           agreedTerms: true,
           agreedPrivacy: true,
-          agreedMarketing,
+          agreedMarketing: consent.marketing !== null,
+          ...(consent.marketing ? { marketingVersion: consent.marketing.version } : {}),
           termsVersion: consent.termsVersion,
           privacyVersion: consent.privacyVersion,
           ...(consent.rejoinRetention
             ? { agreedRejoinRetention: true, rejoinRetentionVersion: consent.rejoinRetention.version, rejoinRestrictionDays: consent.rejoinRetention.days }
             : {}),
-          // 필수 동의는 본인확인 시작 때(consentAgreedAt), 마케팅 동의는 가입 때(agreedAt)
+          // 동의(필수·선택)는 본인확인 시작 때(consentAgreedAt), agreedAt은 가입 시각
           consentAgreedAt: consent.agreedAt,
           agreedAt: now.toISOString(),
         },

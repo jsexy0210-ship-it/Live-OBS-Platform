@@ -12,6 +12,7 @@ import { FakeIdentityProvider } from "../../lib/server/identity/provider";
 import { identityProvider } from "../../lib/server/identity/registry";
 import { buyerSignupIdentityLimitReached, identityUsage, resendIdentityCode } from "../../lib/server/identity/verification";
 import { startSellerSignupVerification } from "../../lib/server/sellers/application";
+import { SIGNUP_CONSENT_VERSIONS } from "../../lib/server/buyers/consent";
 import { IDV_INPUT, SIGNUP_CONSENT, confirmIdv, createSeller, db, failingAudit, resetDb, startIdv } from "./helpers";
 
 beforeAll(() => {
@@ -41,7 +42,7 @@ async function shop() {
   const slug = seller.slug;
   const base = `/api/shop/${slug}/signup`;
   // 본인확인 시작 → 인증번호 확인까지 마친 브라우저(쿠키)와 요청 id
-  const verified = async (person: Partial<Record<keyof typeof IDV_INPUT, string>> = {}) => {
+  const verified = async (person: Partial<Record<keyof typeof IDV_INPUT, string>> & Record<string, unknown> = {}) => {
     const s = await startRoute(post(`${base}/verification`, { ...IDV_INPUT, ...SIGNUP_CONSENT, ...person }), ctx(slug));
     expect(s.status).toBe(200);
     const cookie = cookieOf(s, "lo_bidv");
@@ -117,7 +118,7 @@ describe("구매자 가입 HTTP", () => {
 
     const v = await s.verified();
     const consent = (await db.identityVerification.findUniqueOrThrow({ where: { id: v.verificationId } })).signupConsent;
-    expect(consent).toEqual({ termsVersion: SIGNUP_CONSENT.termsVersion, privacyVersion: SIGNUP_CONSENT.privacyVersion, rejoinRetention: null, agreedAt: expect.any(String) });
+    expect(consent).toEqual({ termsVersion: SIGNUP_CONSENT.termsVersion, privacyVersion: SIGNUP_CONSENT.privacyVersion, rejoinRetention: null, marketing: null, agreedAt: expect.any(String) });
     // 가입 본문에 약관 값이 없어도 본인확인 때 받은 동의로 가입된다
     const r = await signupRoute(post(s.base, { verificationId: v.verificationId, loginId: "c@example.com", password: "pw-123456", broadcastNickname: "동의" }, v.cookie), ctx(s.slug));
     expect(r.status).toBe(201);
@@ -242,35 +243,46 @@ describe("구매자 가입 HTTP", () => {
     expect(login.status).toBe(200);
   });
 
-  it("마케팅 수신 동의(선택): true면 동의 시각을 남기고, false·빠짐이면 남기지 않으며, 감사 로그에 동의 여부를 기록한다", async () => {
-    for (const [i, [body, agreed]] of ([
-      [{ agreedMarketing: true }, true],
-      [{ agreedMarketing: false }, false],
-      [{}, false],
+  it("마케팅 수신 동의(선택)는 본인확인 시작 때 받는다: true면 문서 버전과 동의 시각을 남기고, false·빠짐이면 남기지 않으며, 가입 본문의 값은 보지 않는다", async () => {
+    const MARKETING = { agreedMarketing: true, marketingVersion: SIGNUP_CONSENT_VERSIONS.marketing };
+    for (const [i, [start, signupBody, agreed]] of ([
+      [MARKETING, {}, true],
+      [{ agreedMarketing: false }, {}, false],
+      [{}, {}, false],
+      // 가입 본문에만 보낸 동의는 기록하지 않는다(본인확인 전에 받은 동의만 쓴다)
+      [{}, { agreedMarketing: true }, false],
     ] as const).entries()) {
       const s = await shop();
-      const v = await s.verified({ phone: `0109999000${i}` });
-      const res = await s.signup(v, body);
-      expect(res.status, JSON.stringify(body)).toBe(201);
+      const v = await s.verified({ phone: `0109999000${i}`, ...start });
+      const consent = (await db.identityVerification.findUniqueOrThrow({ where: { id: v.verificationId } })).signupConsent as { agreedAt: string; marketing: unknown };
+      expect(consent.marketing, JSON.stringify(start)).toEqual(agreed ? { version: SIGNUP_CONSENT_VERSIONS.marketing } : null);
+      const res = await s.signup(v, signupBody);
+      expect(res.status, JSON.stringify(start)).toBe(201);
       const member = await db.buyerMember.findFirstOrThrow({ where: { sellerId: s.seller.id } });
-      expect(member.marketingConsentAt === null, JSON.stringify(body)).toBe(!agreed);
-      if (agreed) expect(member.marketingConsentAt).toEqual(member.createdAt);
+      expect(member.marketingConsentAt, JSON.stringify(start)).toEqual(agreed ? new Date(consent.agreedAt) : null);
       expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.signup", actorId: member.id } })).toMatchObject({
-        after: { agreedTerms: true, agreedPrivacy: true, agreedMarketing: agreed },
+        after: { agreedTerms: true, agreedPrivacy: true, agreedMarketing: agreed, ...(agreed ? { marketingVersion: SIGNUP_CONSENT_VERSIONS.marketing } : {}) },
       });
     }
   });
 
-  it("마케팅 수신 동의 값이 불리언이 아니면 400과 문구를 주고 가입·본인확인을 쓰지 않는다", async () => {
+  it("마케팅 수신 동의 값이 불리언이 아니면 400, 동의했는데 문서 버전이 지금과 다르거나 빠지면 409로 본인확인을 시작하지 않는다(기록·문자 없음)", async () => {
     const s = await shop();
-    const v = await s.verified();
+    const fake = identityProvider() as FakeIdentityProvider;
+    const sentBefore = fake.sent.length;
+    const start = (body: Record<string, unknown>) => startRoute(post(`${s.base}/verification`, { ...IDV_INPUT, ...SIGNUP_CONSENT, ...body }), ctx(s.slug));
     for (const value of ["true", 1, null]) {
-      const r = await s.signup(v, { agreedMarketing: value });
+      const r = await start({ agreedMarketing: value });
       expect(r.status, JSON.stringify(value)).toBe(400);
       expect(await r.json()).toEqual({ error: "invalid_marketing_consent", message: BUYER_SIGNUP_MESSAGES.invalid_marketing_consent });
     }
-    expect(await db.buyerMember.count({ where: { sellerId: s.seller.id } })).toBe(0);
-    expect((await db.identityVerification.findUniqueOrThrow({ where: { id: v.verificationId } })).consumedAt).toBeNull();
+    for (const body of [{ agreedMarketing: true }, { agreedMarketing: true, marketingVersion: "2020-01-01.v0" }]) {
+      const r = await start(body);
+      expect(r.status, JSON.stringify(body)).toBe(409);
+      expect((await r.json()).error).toBe("consent_outdated");
+    }
+    expect(await db.identityVerification.count({ where: { sellerId: s.seller.id } })).toBe(0);
+    expect(fake.sent.length).toBe(sentBefore);
   });
 
   it("입력이 틀리면 400과 문구를 주고 본인확인을 쓰지 않는다(고친 뒤 같은 본인확인으로 가입할 수 있다)", async () => {
