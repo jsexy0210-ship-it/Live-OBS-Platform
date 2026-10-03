@@ -168,8 +168,6 @@ export async function confirmIdentityCode(
     await db.identityVerification.updateMany({ where: { id: v.id, status: "PENDING" }, data: { status: "EXPIRED" } });
     return { ok: false, reason: "expired" };
   }
-  if (!v.lastSentAt) return { ok: false, reason: "failed" };
-  if (v.lastSentAt.getTime() + OTP_TTL_MS <= now.getTime()) return { ok: false, reason: "code_expired" };
   // 운영에서는 가짜 공급자 기록을 완료 처리하지 않는다(공급자 객체를 우회해 만든 경우까지 막는다).
   if (v.provider === "fake" && process.env.NODE_ENV === "production") return { ok: false, reason: "failed" };
   const finalize = (r: IdentityResultOk) => finalizeIdentity(db, v, r, now);
@@ -203,6 +201,12 @@ export async function confirmIdentityCode(
     const current = await db.identityVerification.findUniqueOrThrow({ where: { id: v.id }, select: { status: true } });
     return { ok: false, reason: current.status === "PENDING" ? "too_many_attempts" : "failed" };
   };
+
+  // 횟수를 다 쓴 요청은 인증번호를 다시 확인하지 않고 결과만 조회하므로, 인증번호 유효 시간과 상관없이 먼저 복구를 시도한다
+  // (요청 자체의 만료는 위에서 이미 확인했다. 결과가 미인증이면 성공으로 치지 않는다).
+  if (v.otpFailCount >= MAX_OTP_FAILURES) return exhausted();
+  if (!v.lastSentAt) return { ok: false, reason: "failed" };
+  if (v.lastSentAt.getTime() + OTP_TTL_MS <= now.getTime()) return { ok: false, reason: "code_expired" };
 
   // 공급자를 부르기 전에 시도 1회를 조건부로 먼저 잡는다. 동시에 여러 번 보내도 남은 횟수만큼만 공급자를 부른다.
   const reserved = await db.identityVerification.updateMany({
