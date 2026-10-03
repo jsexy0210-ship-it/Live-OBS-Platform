@@ -33,6 +33,7 @@ export type SellerAccess = "trial" | "paid" | "charging" | "grace" | "expired";
 export type Me = { sellerId: string; userId: string; isOwner: boolean; permissions: string[]; access: SellerAccess;
   shop: { name: string; slug: string };
   user: { name: string; email: string };
+  trialEndsAt: string | null;
 };
 
 export type ProductStatus = "DRAFT" | "ON_SALE" | "SOLD_OUT" | "HIDDEN";

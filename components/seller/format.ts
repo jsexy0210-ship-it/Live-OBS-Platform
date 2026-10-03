@@ -2,8 +2,8 @@ import type { Product, ProductStatus } from "./api";
 
 export const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 
-// 서버와 같은 기준(NFKC 정규화 뒤 앞뒤 공백 제외)으로 글자 수를 센다
-export const textLength = (v: string) => v.normalize("NFKC").trim().length;
+// 글자 수는 서버와 같은 공용 함수로 센다(NFKC 정규화·앞뒤 공백 제외·코드포인트 기준, 이모지 하나 = 1자)
+export { textLength } from "../../lib/server/text/clean";
 
 export const INT4_MAX = 2147483647;
 export const LOW_STOCK = 3;

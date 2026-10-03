@@ -66,13 +66,10 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
       return;
     }
     setMe(r.data);
-    // 체험 남은 날은 구독 화면 API에서만 알 수 있어 대표자일 때만 보여 준다
-    if (r.data.access === "trial" && r.data.isOwner) {
-      const s = await api<{ trialEndsAt: string | null }>("/api/seller/subscription");
-      if (s.ok && s.data.trialEndsAt) {
-        const ms = new Date(s.data.trialEndsAt).getTime() - Date.now();
-        setTrialDaysLeft(Math.max(0, Math.ceil(ms / 86_400_000)));
-      }
+    // 체험 중이면 /me가 끝나는 시각을 준다(대표자·직원 모두)
+    if (r.data.access === "trial" && r.data.trialEndsAt) {
+      const ms = new Date(r.data.trialEndsAt).getTime() - Date.now();
+      setTrialDaysLeft(Math.max(0, Math.ceil(ms / 86_400_000)));
     }
   }, [router, pathname]);
 
@@ -128,7 +125,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
                 {n.h}
               </span>
             ) : n.href ? (
-              <Link key={i} className={`nav-i${pathname.startsWith(n.href) ? " on" : ""}`} href={n.href}>
+              <Link key={i} className={`nav-i${pathname.startsWith(n.href) ? " on" : ""}`} href={n.href} onClick={() => setNavOpen(false)}>
                 {n.label}
               </Link>
             ) : (

@@ -58,10 +58,10 @@ async function buyerCookie(sellerId: string, loginId: string) {
 }
 
 describe("입금 기한", () => {
-  it("주문 시각 + 10일(기본), 판매자가 바꾸면 다음 주문부터 그 시간으로 정하고 이미 만든 주문은 그대로", async () => {
+  it("주문 시각 + 24시간(기본), 판매자가 바꾸면 다음 주문부터 그 시간으로 정하고 이미 만든 주문은 그대로", async () => {
     const s = await shop();
     const a = await db.order.findUniqueOrThrow({ where: { id: await s.order() } });
-    expect(a.paymentDueAt!.getTime() - a.createdAt.getTime()).toBe(240 * HOUR);
+    expect(a.paymentDueAt!.getTime() - a.createdAt.getTime()).toBe(24 * HOUR);
     const c = await sellerCookie(s.owner.email);
     const put = await policyPut(new Request("http://localhost:3000/api/seller/order-policy", { method: "PUT", headers: { ...H, cookie: c }, body: JSON.stringify({ autoCancelEnabled: true, paymentDueHours: 2, unpaidRestrictionEnabled: true }) }));
     expect(put.status).toBe(200);
@@ -83,14 +83,14 @@ describe("입금 기한", () => {
     await db.order.update({ where: { id: before }, data: { paymentDueAt: new Date(Date.now() - HOUR) } });
     expect((await cancelOverdueOrders(db)).cancelled).toEqual([before]);
     expect(await db.order.findUniqueOrThrow({ where: { id: after } })).toMatchObject({ status: "PENDING_PAYMENT" });
-    expect(await listPaymentDueSoon(db, { withinMinutes: 60 * 24 * 365 })).toEqual([]);
+    expect((await listPaymentDueSoon(db)).map((o) => o.id)).not.toContain(after);
   });
 
-  it("주문 정책 API: 기본값 조회(사용·240시간), 1시간~30일(720시간) 정수·켜고 끄기 값만 받고, 쇼핑몰 설정 권한 없는 직원은 403", async () => {
+  it("주문 정책 API: 기본값 조회(사용·24시간), 1시간~30일(720시간) 정수·켜고 끄기 값만 받고, 쇼핑몰 설정 권한 없는 직원은 403", async () => {
     const s = await shop();
     const c = await sellerCookie(s.owner.email);
     const got = await (await policyGet(new Request("http://localhost:3000/api/seller/order-policy", { headers: { ...H, cookie: c } }))).json();
-    expect(got.policy).toEqual({ autoCancelEnabled: true, paymentDueHours: 240, unpaidRestrictionEnabled: true });
+    expect(got.policy).toEqual({ autoCancelEnabled: true, paymentDueHours: 24, unpaidRestrictionEnabled: true, restockOnCancel: true });
     const ok = { autoCancelEnabled: true, paymentDueHours: 240, unpaidRestrictionEnabled: true };
     for (const body of [
       { ...ok, paymentDueHours: 0 },
@@ -127,14 +127,14 @@ describe("미입금 자동 취소", () => {
     await db.order.update({ where: { id: paid }, data: { paymentDueAt: new Date(Date.now() - HOUR) } });
     const stockBefore = (await db.productOption.findUniqueOrThrow({ where: { id: s.option.id } })).stock;
 
-    expect(await cancelOverdueOrders(db)).toEqual({ cancelled: [overdue], restricted: [] });
+    expect(await cancelOverdueOrders(db)).toEqual({ cancelled: [overdue], restricted: [], failed: [] });
     expect(await db.order.findUniqueOrThrow({ where: { id: overdue } })).toMatchObject({ status: "CANCELLED", cancelledAt: expect.any(Date), autoCancelledAt: expect.any(Date) });
     expect(await db.order.findUniqueOrThrow({ where: { id: notYet } })).toMatchObject({ status: "PENDING_PAYMENT", autoCancelledAt: null });
     expect(await db.order.findUniqueOrThrow({ where: { id: paid } })).toMatchObject({ status: "PAID", autoCancelledAt: null });
     expect(await db.orderStatusHistory.findFirstOrThrow({ where: { orderId: overdue, toStatus: "CANCELLED" } })).toMatchObject({ actorType: "SYSTEM", reason: "payment_overdue" });
     expect(await db.auditLog.count({ where: { action: "order.auto_cancel", targetId: overdue } })).toBe(1);
     expect((await db.productOption.findUniqueOrThrow({ where: { id: s.option.id } })).stock).toBe(stockBefore);
-    expect(await cancelOverdueOrders(db)).toEqual({ cancelled: [], restricted: [] });
+    expect(await cancelOverdueOrders(db)).toEqual({ cancelled: [], restricted: [], failed: [] });
   });
 
   it("여러 번 동시에 돌려도 주문마다 한 번만 취소되고 이력·감사 로그도 한 건", async () => {
