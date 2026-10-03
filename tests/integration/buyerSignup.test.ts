@@ -247,4 +247,31 @@ describe("signupBuyer는 completeIdentityVerification을 거친다", () => {
     ).toEqual({ ok: false, reason: "verification_invalid" });
     expect(await db.buyerMember.count()).toBe(0);
   });
+  it("체험 중 본인확인 한도가 찼으면 시작·다시 보내기에서 문자를 보내기 전에 403 trial_limit_exceeded로 막는다", async () => {
+    const s = await shop();
+    await db.subscriptionPlan.upsert({
+      where: { code: "STANDARD" },
+      update: { trialIdentityLimit: 1 },
+      create: { code: "STANDARD", name: "스탠다드", listPrice: 300000, salePrice: 199000, trialIdentityLimit: 1 },
+    });
+    // 한도가 차기 전에 시작해 둔 본인확인(아직 확인 전)
+    const startA = await startRoute(post(`${s.base}/verification`, { ...IDV_INPUT, phone: "01011112222" }), ctx(s.slug));
+    expect(startA.status).toBe(200);
+    const a = { cookie: cookieOf(startA, "lo_bidv"), verificationId: (await startA.json()).verificationId as string };
+    // 다른 사람이 본인확인을 마쳐 한도(1건)가 찬다
+    await s.verified();
+    const rows = await db.identityVerification.count();
+    const blocked = await startRoute(post(`${s.base}/verification`, { ...IDV_INPUT, phone: "01033334444" }), ctx(s.slug));
+    expect(blocked.status).toBe(403);
+    expect(await blocked.json()).toEqual({ error: "trial_limit_exceeded", message: "지금은 가입할 수 없어요. 쇼핑몰에 문의해 주세요" });
+    // 본인확인 기록을 만들지 않아 문자를 보내지 않는다
+    expect(await db.identityVerification.count()).toBe(rows);
+    // 먼저 시작해 둔 본인확인도 다시 보내기를 막는다(보낸 횟수 그대로)
+    const before = await db.identityVerification.findUniqueOrThrow({ where: { id: a.verificationId } });
+    await db.identityVerification.update({ where: { id: a.verificationId }, data: { lastSentAt: new Date(Date.now() - 10 * 60_000) } });
+    const resend = await resendRoute(post(`${s.base}/verification/resend`, { verificationId: a.verificationId }, a.cookie), ctx(s.slug));
+    expect(resend.status).toBe(403);
+    expect(await resend.json()).toMatchObject({ error: "trial_limit_exceeded" });
+    expect((await db.identityVerification.findUniqueOrThrow({ where: { id: a.verificationId } })).sendCount).toBe(before.sendCount);
+  });
 });

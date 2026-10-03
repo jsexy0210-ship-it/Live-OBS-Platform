@@ -5,7 +5,7 @@ import { MAX_EMAIL_LENGTH, normalizeEmail } from "../auth/login";
 import { MIN_PASSWORD_LENGTH } from "../auth/passwordReset";
 import { sellerAccessFor } from "../billing/subscription";
 import type { IdentityProvider } from "../identity/provider";
-import { completeIdentityVerification, parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
+import { buyerSignupIdentityLimitReached, completeIdentityVerification, parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
 import { EMAIL } from "../sellers/application";
 import { cleanText } from "../text/clean";
 
@@ -45,6 +45,8 @@ export async function startBuyerSignupVerification(
   if (!(await shopOpen(db, sellerId))) return { ok: false as const, reason: "shop_unavailable" as const };
   const person = parseIdentityPerson(rawPerson);
   if (!person) return { ok: false as const, reason: "invalid_identity_input" as const };
+  // 체험하기 중 본인확인 한도가 찼으면 확정할 수 없으니 기록을 만들거나 문자를 보내지 않는다
+  if (await buyerSignupIdentityLimitReached(db, sellerId, meta.now)) return { ok: false as const, reason: "trial_limit_exceeded" as const };
   const ip = meta.ip ?? null;
   const started = await db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`buyer_signup:${sellerId}:${ip ?? "unknown"}`}))`;
