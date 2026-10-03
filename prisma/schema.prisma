@@ -108,6 +108,8 @@ model Seller {
   orderItems               OrderItem[]
   orderConsents            OrderConsent[]
   orderPolicy              SellerOrderPolicy?
+  memberPolicy             SellerMemberPolicy?
+  rejoinBlocks             BuyerRejoinBlock[]
   purchaseRestrictions     BuyerPurchaseRestriction[]
   shippingPolicy           SellerShippingPolicy?
   orderShippingAddresses   OrderShippingAddress[]
@@ -1120,4 +1122,29 @@ model OrderNotification {
 
   @@unique([orderId, kind])
   @@index([sellerId, kind, status])
+}
+
+// 판매자 회원 정책. 재가입 제한(대표님 결정 2026-10-03, 기본 꺼짐): 켜면 탈퇴한 사람(본인확인 기준)이 정한 기간(일) 동안 다시 가입할 수 없다.
+model SellerMemberPolicy {
+  sellerId                 String   @id @db.Uuid
+  rejoinRestrictionEnabled Boolean  @default(false)
+  rejoinRestrictionDays    Int      @default(30)
+  updatedAt                DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+}
+
+// 재가입 제한 목적으로만 남기는 탈퇴 회원의 본인확인 식별값 해시. 이름·휴대폰 등 다른 정보는 두지 않는다.
+// 재가입 제한이 켜진 쇼핑몰에서 탈퇴할 때만 만들고, expiresAt이 지나거나 판매자가 제한을 끄면 지운다(buyers/rejoin.ts).
+model BuyerRejoinBlock {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId  String   @db.Uuid
+  ciHash    String
+  expiresAt DateTime @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+
+  @@unique([sellerId, ciHash])
+  @@index([expiresAt])
 }

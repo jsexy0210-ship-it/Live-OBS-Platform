@@ -7,6 +7,7 @@ import { sellerAccessFor } from "../billing/subscription";
 import type { IdentityProvider } from "../identity/provider";
 import { buyerSignupIdentityLimitReached, completeIdentityVerification, parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
 import { EMAIL } from "../sellers/application";
+import { rejoinBlockedUntil } from "./rejoin";
 import { cleanText } from "../text/clean";
 
 
@@ -78,10 +79,14 @@ export type BuyerSignupFailure =
   | "already_member"
   | "login_id_taken"
   | "nickname_taken"
-  | "shop_unavailable";
+  | "shop_unavailable"
+  | "rejoin_restricted"; // 재가입 제한 기간 중(탈퇴한 같은 사람, buyers/rejoin.ts)
 
 // resumed: 응답이 끊겨 같은 요청을 다시 보낸 경우(새로 만들지 않고 이미 만든 회원을 돌려줌)
-export type BuyerSignupResult = { ok: true; memberId: string; broadcastNickname: string; resumed: boolean } | { ok: false; reason: BuyerSignupFailure };
+// rejoinAvailableAt: rejoin_restricted일 때 다시 가입할 수 있는 시각
+export type BuyerSignupResult =
+  | { ok: true; memberId: string; broadcastNickname: string; resumed: boolean }
+  | { ok: false; reason: BuyerSignupFailure; rejoinAvailableAt?: Date };
 
 // 구매자 회원가입. 휴대폰 본인확인(같은 쇼핑몰, 같은 공급자, 완료, 사용 기한·30분 안, 시작한 브라우저의 ownerToken,
 // 아직 안 쓴 건)이 있어야 하고, 같은 쇼핑몰에 같은 CI로 가입한 회원이 있으면 거부한다. 이름·휴대폰·생년월일은 인증 결과를 쓴다.
@@ -153,7 +158,10 @@ export async function signupBuyer(
 
   // 비밀번호 해시는 잠금 밖에서 미리 만든다(잠금을 짧게)
   const passwordHash = await hashPassword(input.password);
-  type Step = { kind: "resume"; subjectId: string | null } | { kind: "fail"; reason: BuyerSignupFailure } | { kind: "created"; id: string; broadcastNickname: string };
+  type Step =
+    | { kind: "resume"; subjectId: string | null }
+    | { kind: "fail"; reason: BuyerSignupFailure; rejoinAvailableAt?: Date }
+    | { kind: "created"; id: string; broadcastNickname: string };
   try {
     // 같은 본인확인 건의 가입 처리는 이 잠금 아래에서 한 줄로 한다(동시에 다시 보낸 요청이 서로 엇갈리지 않게).
     // 순서: 다시 읽기 → 이미 소진됐으면 재전송 판정 → 시도 예약 → 중복 확인 → 소진·회원 생성·회원 기록.
@@ -168,6 +176,8 @@ export async function signupBuyer(
       if (await tx.buyerMember.findFirst({ where: { ...live, OR: [{ ciHash: v.ciHash! }, { phone: v.phone! }] }, select: { id: true } })) {
         return { kind: "fail", reason: "already_member" };
       }
+      const blockedUntil = await rejoinBlockedUntil(tx, input.sellerId, v.ciHash!, now);
+      if (blockedUntil) return { kind: "fail", reason: "rejoin_restricted", rejoinAvailableAt: blockedUntil };
       if (await tx.buyerMember.findFirst({ where: { ...live, loginId }, select: { id: true } })) return { kind: "fail", reason: "login_id_taken" };
       if (await tx.buyerMember.findFirst({ where: { ...live, broadcastNickname: nickname }, select: { id: true } })) return { kind: "fail", reason: "nickname_taken" };
       await tx.identityVerification.update({ where: { id: v.id }, data: { consumedAt: now } });
@@ -202,7 +212,7 @@ export async function signupBuyer(
       return { kind: "created", id: created.id, broadcastNickname: created.broadcastNickname };
     });
     if (step.kind === "resume") return resume(step.subjectId);
-    if (step.kind === "fail") return { ok: false, reason: step.reason };
+    if (step.kind === "fail") return { ok: false, reason: step.reason, ...(step.rejoinAvailableAt ? { rejoinAvailableAt: step.rejoinAvailableAt } : {}) };
     return { ok: true, memberId: step.id, broadcastNickname: step.broadcastNickname, resumed: false };
   } catch (e) {
     // 다른 본인확인으로 같은 값이 동시에 가입된 경우(부분 유니크 인덱스 이름으로 어느 값인지 구분한다).
@@ -238,6 +248,7 @@ export const BUYER_SIGNUP_MESSAGES: Record<BuyerSignupFailure | "daily_limit_exc
   login_id_taken: "이미 가입한 이메일이에요. 다른 이메일로 가입해 주세요",
   nickname_taken: "이미 쓰고 있는 방송 닉네임이에요. 다른 닉네임으로 정해 주세요",
   shop_unavailable: "지금은 쇼핑몰을 이용할 수 없어요",
+  rejoin_restricted: "탈퇴한 뒤 다시 가입할 수 있는 날이 아직 안 됐어요",
   daily_limit_exceeded: "오늘은 본인확인을 더 할 수 없어요. 내일 다시 해 주세요",
 };
 
@@ -254,4 +265,5 @@ export const BUYER_SIGNUP_STATUS: Record<BuyerSignupFailure, number> = {
   login_id_taken: 409,
   nickname_taken: 409,
   shop_unavailable: 402,
+  rejoin_restricted: 403,
 };

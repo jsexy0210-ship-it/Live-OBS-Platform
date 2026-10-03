@@ -65,7 +65,11 @@ export const orderErrorBody = (code: OrderErrorCode) => ({ error: code, message:
 
 // 구매 제한 안내: 풀리는 시각을 KST로 알려 준다. 예) 「11월 2일 오후 3시 5분부터 다시 주문할 수 있어요」(정각이면 분은 뺀다)
 export function purchaseRestrictedMessage(endsAt: Date): string {
-  // 초·밀리초가 있으면 분을 올림한다(안내 시각이 실제로 풀리는 시각보다 이르지 않게)
+  return `${kstMinuteLabel(endsAt)}부터 다시 주문할 수 있어요`;
+}
+
+// 「11월 2일 오후 3시 5분」(KST, 정각이면 분은 뺀다). 초·밀리초가 있으면 분을 올림한다(안내 시각이 실제 시각보다 이르지 않게).
+export function kstMinuteLabel(endsAt: Date): string {
   const at = new Date(Math.ceil(endsAt.getTime() / 60_000) * 60_000);
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Seoul", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", hourCycle: "h23" })
@@ -75,5 +79,5 @@ export function purchaseRestrictedMessage(endsAt: Date): string {
   const h = Number(parts.hour);
   const m = Number(parts.minute);
   const clock = `${h < 12 ? "오전" : "오후"} ${h % 12 === 0 ? 12 : h % 12}시${m ? ` ${m}분` : ""}`;
-  return `${parts.month}월 ${parts.day}일 ${clock}부터 다시 주문할 수 있어요`;
+  return `${parts.month}월 ${parts.day}일 ${clock}`;
 }
