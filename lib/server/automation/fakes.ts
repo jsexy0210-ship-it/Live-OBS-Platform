@@ -93,7 +93,7 @@ export class FakeBrowserExecutor implements BrowserExecutor {
   }
   pageText: (scope: JobScope, secrets?: JobSecrets) => string = () => "Cafe24 관리자";
   // 관찰·현재 문서 주소(리다이렉트 흉내용). observe 때와 실행 직전 주소를 따로 바꿀 수 있다.
-  pageUrl: (scope: JobScope) => string | null = () => "https://admin.cafe24.com/";
+  pageUrl: (scope: JobScope) => string | null = () => "https://myshop.cafe24.com/disp/admin/shop1/";
   currentUrlOverride: ((scope: JobScope) => string | null) | null = null;
   // 이미 적용한 행동 키 → 결과(같은 키는 한 번만 적용)
   readonly applied = new Map<string, ActionOutcome>();

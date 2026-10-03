@@ -15,7 +15,7 @@ import {
   REINSTALL_PRICE,
 } from "./config";
 import type { Playbook } from "./playbook";
-import { findPlaybook, playbookForShopUrl } from "./playbooks";
+import { findPlaybook, playbookForShopUrl, shopHostOf } from "./playbooks";
 import { playbookReadiness } from "./practice";
 import { dbNow, lockJob, writeJobEvent } from "./queue";
 
@@ -93,6 +93,7 @@ type PaidJobInput = {
   kind: "INITIAL" | "REINSTALL";
   baseJobId?: string;
   obsTargetKey?: string;
+  shopHost: string | null;
 };
 
 // 판매자 대표자가 자동 연결을 산다(110,000원). 같은 Idempotency-Key로 다시 오면 처음 결과를 돌려준다(결제·작업을 새로 만들지 않음).
@@ -106,6 +107,7 @@ export async function purchaseAutomation(
   return buyPaidJob(db, provider, ctx, {
     ...input,
     kind: "INITIAL",
+    shopHost: shopHostOf(input.shopUrl),
     fingerprint: requestFingerprint("INITIAL", input.shopUrl),
     resolvePlaybook: () => supportedPlaybookFor(db, input.shopUrl),
   });
@@ -145,7 +147,9 @@ async function buyPaidJob(db: PrismaClient, provider: BillingProvider, ctx: Tena
           paymentId: payment.id,
           costLimit: plannerConfig().costLimitWon,
           playbookId: playbook.id,
-          playbookVersion: playbook.version,           baseJobId: input.baseJobId,
+          playbookVersion: playbook.version,
+          shopHost: input.shopHost,
+          baseJobId: input.baseJobId,
           obsTargetKey: input.obsTargetKey ?? `seller:${ctx.sellerId}`,
         },
       });
@@ -228,10 +232,12 @@ export async function reconnectAutomation(
   if (prior) return prior;
   const decision = await decideReconnect(db, ctx.sellerId, target);
   const obsTargetKey = `obs:${target.obsPairingId}`;
+  const base = decision.baseJobId ? await db.automationJob.findFirst({ where: { id: decision.baseJobId, sellerId: ctx.sellerId }, select: { playbookId: true, shopHost: true } }) : null;
+  // 비밀값을 넣을 쇼핑몰 호스트: 새 주소가 오면 그 주소, 없으면 이전 완료 작업의 것
+  const shopHost = input.shopUrl !== undefined ? shopHostOf(input.shopUrl) : (base?.shopHost ?? null);
   // 쇼핑몰 주소가 오면 그 주소로, 없으면 이전 완료 작업의 작업서로. 어느 쪽이든 지금 지원 목록에 있어야 한다.
   const resolvePlaybook = async (): Promise<Playbook | null> => {
     if (input.shopUrl !== undefined) return supportedPlaybookFor(db, input.shopUrl);
-    const base = decision.baseJobId ? await db.automationJob.findFirst({ where: { id: decision.baseJobId, sellerId: ctx.sellerId }, select: { playbookId: true } }) : null;
     const pb = findPlaybook(base?.playbookId);
     return pb && (await playbookReadiness(db, pb)).verified ? pb : null;
   };
@@ -239,13 +245,13 @@ export async function reconnectAutomation(
   if (!playbook) return { ok: false, reason: "shop_not_supported" };
   if (!decision.free) {
     if (input.consent === undefined) return { ok: false, reason: "payment_required", paidReason: decision.reason, price: REINSTALL_PRICE };
-    return buyPaidJob(db, provider, ctx, { idempotencyKey: input.idempotencyKey, consent: input.consent, fingerprint, resolvePlaybook: async () => playbook, kind: "REINSTALL", baseJobId: decision.baseJobId ?? undefined, obsTargetKey });
+    return buyPaidJob(db, provider, ctx, { idempotencyKey: input.idempotencyKey, consent: input.consent, fingerprint, resolvePlaybook: async () => playbook, kind: "REINSTALL", baseJobId: decision.baseJobId ?? undefined, obsTargetKey, shopHost });
   }
   try {
     const job = await db.$transaction(async (tx) => {
       const now = await dbNow(tx);
       const j = await tx.automationJob.create({
-        data: { sellerId: ctx.sellerId, kind: "RECONNECT_FREE", costLimit: plannerConfig().costLimitWon, playbookId: playbook.id, playbookVersion: playbook.version, baseJobId: decision.baseJobId, status: "QUEUED", runAfter: now, obsTargetKey, idempotencyKey: key, requestFingerprint: fingerprint },
+        data: { sellerId: ctx.sellerId, kind: "RECONNECT_FREE", costLimit: plannerConfig().costLimitWon, playbookId: playbook.id, playbookVersion: playbook.version, shopHost, baseJobId: decision.baseJobId, status: "QUEUED", runAfter: now, obsTargetKey, idempotencyKey: key, requestFingerprint: fingerprint },
       });
       await writeJobEvent(tx, j, null, "QUEUED", 0, { freeReconnectOf: decision.baseJobId });
       await writeAudit(tx, {

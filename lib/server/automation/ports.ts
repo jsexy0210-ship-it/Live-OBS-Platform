@@ -140,13 +140,13 @@ export function hostAllowed(raw: string): boolean {
   return ALLOWED_HOSTS.some((h) => u.hostname === h || u.hostname.endsWith(`.${h}`));
 }
 
-// 비밀값을 넣어도 되는 출처: 쇼핑몰 관리 화면 호스트만 정확히(하위 도메인 묶음 허용 아님).
-// 이동 허용 목록(*.cafe24.com)에는 판매자가 내용을 꾸미는 쇼핑몰 앞 화면(<몰>.cafe24.com)이 섞여 있어, 같은 칸 이름의 가짜 입력란에 비밀이 들어갈 수 있다.
-export const SECRET_FILL_HOSTS = ["admin.cafe24.com", "developers.cafe24.com"] as const;
-
-export function secretOriginAllowed(raw: string): boolean {
-  if (!hostAllowed(raw)) return false;
-  return (SECRET_FILL_HOSTS as readonly string[]).includes(new URL(raw).hostname);
+// 비밀값을 넣어도 되는 주소: 이동 허용 호스트이면서, 작업 대상 쇼핑몰 호스트와 정확히 같고, 경로가 관리자 경로 접두사로 시작해야 한다.
+// 관리자 화면이 쇼핑몰 자체 하위 도메인(<몰>.cafe24.com)에 있어 호스트만으로는 판매자가 꾸미는 쇼핑몰 앞 화면과 가를 수 없다.
+// 로그인 상태 단서는 엔진이 관찰 글로 따로 본다.
+export function secretOriginAllowed(raw: string, shopHost: string | null | undefined, pathPrefixes: readonly string[]): boolean {
+  if (!shopHost || !hostAllowed(raw)) return false;
+  const u = new URL(raw);
+  return u.hostname === shopHost && pathPrefixes.some((p) => p.startsWith("/") && u.pathname.startsWith(p));
 }
 
 // 판단 모델이 낸 행동을 실행 전에 검사한다. 화면 글에 숨은 지시(악성 페이지)를 따른 결과도 여기서 걸러진다:

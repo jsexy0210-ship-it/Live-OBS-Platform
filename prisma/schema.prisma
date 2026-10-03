@@ -1272,6 +1272,8 @@ model AutomationJob {
   lastError            String?
   // 연결 결과: 외부 쇼핑몰 식별자(예: Cafe24 몰 id)와 고객 PC의 OBS pairing id. 무료 재연결 판정에 쓴다.
   shopKey              String?
+  // 판매자가 낸 쇼핑몰 주소의 호스트(소문자). 비밀값은 이 호스트의 관리자 경로에서만 넣는다.
+  shopHost             String?
   obsPairingId         String?
   // 쇼핑몰 앱 권한 해제 등으로 연결이 끊긴 시각. 있으면 무료 재연결 대상이 아니다.
   connectionRevokedAt  DateTime?                 @db.Timestamptz(3)

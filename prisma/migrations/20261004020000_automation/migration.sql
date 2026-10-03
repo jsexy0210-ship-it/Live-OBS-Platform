@@ -58,6 +58,7 @@ CREATE TABLE "AutomationJob" (
     "fencingToken" INTEGER NOT NULL DEFAULT 0,
     "lastError" TEXT,
     "shopKey" TEXT,
+    "shopHost" TEXT,
     "obsPairingId" TEXT,
     "connectionRevokedAt" TIMESTAMPTZ(3),
     "verifiedAt" TIMESTAMPTZ(3),

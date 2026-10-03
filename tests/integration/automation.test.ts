@@ -70,7 +70,7 @@ export async function shopWithCard() {
 // 기본 관리 화면은 작업서 화면 단서와 맞는다(이탈이 생기면 그 작업서가 재검증 대상이 되어 구매가 막힌다)
 function runtime() {
   const rt = { planner: new FakePlanner(), browser: new FakeBrowserExecutor(), obs: new FakeObsBridge(), vault: new FakeSecretVault() };
-  rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장";
+  rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장 · 로그아웃";
   return rt;
 }
 
@@ -371,7 +371,7 @@ describe("격리·비밀값·악성 페이지", () => {
   it("비밀값은 판단 모델 입력에 들어가지 않는다", async () => {
     const rt = runtime();
     await bought();
-    rt.browser.pageText = (_s, secrets) => `웹훅 비밀: ${secrets?.webhook_secret ?? "없음"} / 주소: ${secrets?.webhook_url ?? "없음"}`;
+    rt.browser.pageText = (_s, secrets) => `로그아웃 · 웹훅 비밀: ${secrets?.webhook_secret ?? "없음"} / 주소: ${secrets?.webhook_url ?? "없음"}`;
     expect(await runOnce(db, rt, W)).toBe("succeeded");
     const all = JSON.stringify(rt.planner.inputs);
     const job0 = await db.automationJob.findFirstOrThrow();
@@ -704,7 +704,7 @@ describe("Codex 리뷰 반영", () => {
   it("외부 호출이 lease보다 오래 걸려도 heartbeat가 따로 연장해 회수되지 않는다", async () => {
     const a = await bought();
     const rt = { ...runtime(), browser: new FakeBrowserExecutor(80), obs: new FakeObsBridge(80) };
-    rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장";
+    rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장 · 로그아웃";
     let running = true;
     let reaped = 0;
     const reaper = (async () => {
@@ -725,7 +725,7 @@ describe("Codex 리뷰 반영", () => {
   it("실행 중 취소되면 heartbeat가 자리를 잃은 것을 알아채고 다음 외부 행동 전에 멈춘다", async () => {
     const a = await bought();
     const rt = { ...runtime(), browser: new FakeBrowserExecutor(50), obs: new FakeObsBridge(50) };
-    rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장";
+    rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장 · 로그아웃";
     const run = runOnce(db, rt, { ...W, leaseMs: 150 });
     await new Promise((r) => setTimeout(r, 120));
     expect(await cancelJob(db, a.ctx, a.jobId)).toMatchObject({ ok: true });
@@ -785,7 +785,7 @@ describe("Codex 리뷰 반영", () => {
     const r = await runSteps(
       runtime(),
       { sellerId: a.seller.id, jobId: a.jobId },
-      { startIndex: 0, verifying: false, stats: { costUsed: 0, plannerCalls: 0, playbookActions: 0, deviatedSteps: [] }, costLimit: 3000, maxActionsPerStep: 12, playbook: cafe24Playbook },
+      { startIndex: 0, verifying: false, stats: { costUsed: 0, plannerCalls: 0, playbookActions: 0, deviatedSteps: [] }, costLimit: 3000, maxActionsPerStep: 12, playbook: cafe24Playbook, shopHost: "myshop.cafe24.com" },
       {
         touch: (st) => touch(db, claimed.claim, st, 200),
         enterVerify: () => toVerifying(db, claimed.claim),
@@ -836,7 +836,7 @@ describe("Codex 리뷰 반영", () => {
       const a = await bought();
       // 해당 단계 화면이 작업서와 달라 판단 모델로 넘어가게 한다
       const rt = runtime();
-      rt.browser.pageText = () => (stepKey === "webhook_setup" ? "앱 설치 · 설치 완료 · 저장" : "다른 화면");
+      rt.browser.pageText = () => (stepKey === "webhook_setup" ? "앱 설치 · 설치 완료 · 저장 · 로그아웃" : "다른 화면");
       rt.planner.override = (input) =>
         input.step.key === stepKey ? { action: { type: "fill", target, value: { secretRef: "webhook_secret" } }, costWon: 10 } : undefined;
       expect(await runOnce(db, rt, W)).toBe("failed");
@@ -858,7 +858,7 @@ describe("Codex 리뷰 반영", () => {
       expect(await job(r.jobId)).toMatchObject({ status: "NEEDS_CUSTOMER", customerAction: "LOGIN" });
       // 고객이 로그인을 마쳤다
       rt.browser.shopKey.set(s.seller.id, shopAfterLogin === "same" ? s.target.shopKey : "other-mall");
-      rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장";
+      rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장 · 로그아웃";
       await resumeJob(db, s.ctx, r.jobId);
       const before = rt.browser.performed.length;
       if (shopAfterLogin === "same") {
@@ -876,7 +876,7 @@ describe("Codex 리뷰 반영", () => {
     for (let n = 0; n < 6; n++) {
       const a = await bought();
       const rt = { ...runtime(), browser: new FakeBrowserExecutor(15), obs: new FakeObsBridge(15) };
-      rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장";
+      rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장 · 로그아웃";
       const run = runOnce(db, rt, { ...W, leaseMs: 1000 });
       await new Promise((r) => setTimeout(r, 20 + n * 40));
       await cancelJob(db, a.ctx, a.jobId);
@@ -924,7 +924,10 @@ describe("고객 대기용 보관 세션(정본 4678efb)", () => {
     expect(a.rt.browser.restoreBlob(a.jobId, blob)?.get("session")).toBe(plain);
     const other = await bought();
     expect(a.rt.browser.restoreBlob(other.jobId, blob)).toBeNull();
-    expect(a.rt.browser.restoreBlob(a.jobId, blob.slice(0, -2) + "AA")).toBeNull();
+    // 암호문 본문 첫 글자를 항상 다른 글자로 바꿔 변조한다(끝 글자는 남는 비트라 바꿔도 같은 값일 수 있음)
+    const [iv, tag, body] = blob.split(".");
+    const tampered = [iv, tag, (body[0] === "A" ? "B" : "A") + body.slice(1)].join(".");
+    expect(a.rt.browser.restoreBlob(a.jobId, tampered)).toBeNull();
   });
 
   it("완료·취소·실패·고객 행동 마감 때마다 서버가 보관본 삭제를 요청하고, 끝나지 않은 작업은 건드리지 않는다", async () => {
@@ -1036,14 +1039,14 @@ describe("Codex 3차·정본 fc09f13 반영", () => {
   it("이탈 시각은 따로 기록한다: 이탈 뒤 연습 5회로 검증이 회복되면, 같은 작업이 나중에 재개·완료돼도 검증이 유지된다", async () => {
     const a = await bought();
     const rt = runtime();
-    rt.browser.pageText = () => "앱 설치 · 설치 완료 · 저장"; // 웹훅 단계 화면이 작업서와 다름
+    rt.browser.pageText = () => "앱 설치 · 설치 완료 · 저장 · 로그아웃"; // 웹훅 단계 화면이 작업서와 다름
     rt.obs.disconnected.add(a.seller.id);
     expect(await runOnce(db, rt, W)).toBe("needs_customer");
     const parked = await job(a.jobId);
     expect(parked.deviatedSteps).toEqual(["webhook_setup"]);
     expect(parked.lastDeviationAt).not.toBeNull();
     expect((await playbookReadiness(db, cafe24Playbook)).verified).toBe(false);
-    for (let i = 0; i < PRACTICE_STREAK_REQUIRED; i++) await runPractice(db, runtime(), cafe24Playbook);
+    for (let i = 0; i < PRACTICE_STREAK_REQUIRED; i++) await runPractice(db, runtime(), cafe24Playbook, { shopHost: "myshop.cafe24.com" });
     expect((await playbookReadiness(db, cafe24Playbook)).verified).toBe(true);
     rt.obs.disconnected.delete(a.seller.id);
     await resumeJob(db, a.ctx, a.jobId);
@@ -1089,7 +1092,7 @@ describe("정본 d6e22c4: 실행 시간 6시간 마감·시작 뒤 취소", () =
   it("고객 대기를 뺀 실행 시간은 실행 자리를 놓을 때마다 합산되고, 고객 대기 시간은 넣지 않는다", async () => {
     const a = await bought();
     const rt = { ...runtime(), browser: new FakeBrowserExecutor(20), obs: new FakeObsBridge(20) };
-    rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장";
+    rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장 · 로그아웃";
     rt.obs.disconnected.add(a.seller.id);
     expect(await runOnce(db, rt, W)).toBe("needs_customer");
     const parked = await job(a.jobId);
@@ -1109,7 +1112,7 @@ describe("정본 d6e22c4: 실행 시간 6시간 마감·시작 뒤 취소", () =
   it("실행 시간 합계가 6시간을 넘으면 실패로 끝내고 결제를 전액 환불 처리 대기로 두며, 보관 자료도 지운다", async () => {
     const a = await bought();
     const rt = { ...runtime(), browser: new FakeBrowserExecutor(30), obs: new FakeObsBridge(30) };
-    rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장";
+    rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장 · 로그아웃";
     // 로그인 대기로 보관 자료가 생긴 작업
     let asked = false;
     rt.browser.outcome = (_s, action) => (action.type === "click" && !asked ? ((asked = true), { kind: "needs_customer", action: "LOGIN" }) : undefined);
@@ -1146,7 +1149,7 @@ describe("정본 d6e22c4: 실행 시간 6시간 마감·시작 뒤 취소", () =
     // 실행 중에 취소
     const running = await bought();
     const rt2 = { ...runtime(), browser: new FakeBrowserExecutor(40), obs: new FakeObsBridge(40) };
-    rt2.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장";
+    rt2.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장 · 로그아웃";
     const run = runOnce(db, rt2, { ...W, leaseMs: 150 });
     await new Promise((r) => setTimeout(r, 150));
     await cancelJob(db, running.ctx, running.jobId);
@@ -1311,11 +1314,12 @@ describe("MASTER 요청 시험(26c2974 Codex 3건)", () => {
   it("외부 행동 도중 실행 시간 6시간을 넘기면 그 결과(고객 대기)를 기록하지 않고 FAILED·REFUND_PENDING으로 끝낸다", async () => {
     const a = await bought();
     const rt = { ...runtime(), browser: new FakeBrowserExecutor(500), obs: new FakeObsBridge(0) };
-    rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장";
+    rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장 · 로그아웃";
     rt.browser.outcome = (_s, action) => (action.type === "click" ? { kind: "needs_customer", action: "LOGIN" } : undefined);
     // 이동(관찰 500 + 실행 500) 뒤 클릭 직전 기록(약 1.5초)까지는 상한 안, 클릭 실행(약 1.5~2.0초) 도중 상한을 넘는다
     await db.automationJob.update({ where: { id: a.jobId }, data: { activeMsUsed: 6 * 60 * 60_000 - 1800 } });
-    expect(await runOnce(db, rt, { ...W, leaseMs: 60 })).toBe("failed");
+    // lease는 DB 응답이 잠깐 늦어도 끊기지 않을 만큼(heartbeat 200ms 간격) 둔다. 너무 짧으면 상한 초과 전에 lease가 끊겨 fenced로 갈린다.
+    expect(await runOnce(db, rt, { ...W, leaseMs: 600 })).toBe("failed");
     expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "run_time_limit", customerAction: null, browserStateHeld: false });
     expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "REFUND_PENDING", refundReason: "run_time_limit" });
     expect(rt.browser.saved.size).toBe(0);
@@ -1324,7 +1328,7 @@ describe("MASTER 요청 시험(26c2974 Codex 3건)", () => {
   it("heartbeat 갱신이 DB 오류로 실패하면 그 뒤 외부 행동은 0회(진행 중이던 1회만 끝남)", async () => {
     const a = await bought();
     const rt = { ...runtime(), browser: new FakeBrowserExecutor(40), obs: new FakeObsBridge(40) };
-    rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장";
+    rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장 · 로그아웃";
     let failing = false;
     const beat = startHeartbeat(async () => {
       if (failing) throw new Error("db connection lost");
@@ -1360,7 +1364,7 @@ describe("MASTER 요청 시험(26c2974 Codex 3건)", () => {
     // A: 첫 설치(판매자 키로 시작) — OBS 단계에서 실제 PC로 잠금을 옮긴다
     const a = await bought();
     const rtA = { ...runtime(), browser: new FakeBrowserExecutor(0), obs: new FakeObsBridge(150) };
-    rtA.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장";
+    rtA.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장 · 로그아웃";
     rtA.obs.pairing.set(a.seller.id, "pc-shared");
     const runA = runOnce(db, rtA, { ...W, leaseMs: 2000 });
     for (let i = 0; i < 100 && (await job(a.jobId)).obsTargetKey !== "obs:pc-shared"; i++) await new Promise((r) => setTimeout(r, 20));
@@ -1484,6 +1488,30 @@ describe("Codex 7차 반영(6325051)", () => {
     const cases: [string, (rt: ReturnType<typeof runtime>) => void][] = [
       ["redirect", (rt) => (rt.browser.currentUrlOverride = () => "https://myshop.cafe24.com/product/detail.html")],
       ["observed", (rt) => (rt.browser.pageUrl = () => "https://myshop.cafe24.com/board/free")],
+    ];
+    for (const [name, setup] of cases) {
+      const a = await bought();
+      const rt = runtime();
+      setup(rt);
+      expect(await runOnce(db, rt, W), name).toBe("failed");
+      expect(await job(a.jobId), name).toMatchObject({ status: "FAILED", lastError: "unsafe_action:secret_origin_not_allowed" });
+      expect(rt.browser.performed.filter((p) => p.type === "fill"), name).toHaveLength(0);
+      await db.automationJob.updateMany({ data: { deviatedSteps: [], lastDeviationAt: null } });
+    }
+  });
+
+  it("관리자 화면이 쇼핑몰 자체 하위 도메인에 있어도: 작업 대상 쇼핑몰 호스트 + 관리자 경로 + 로그인 단서가 모두 맞을 때만 비밀값을 넣는다", async () => {
+    const ok = await bought();
+    const rt0 = runtime();
+    expect(await runOnce(db, rt0, W)).toBe("succeeded");
+    expect(rt0.browser.performed.filter((p) => p.scope.jobId === ok.jobId && p.type === "fill")).toHaveLength(1);
+    expect(await job(ok.jobId)).toMatchObject({ shopHost: "myshop.cafe24.com" });
+
+    const cases: [string, (rt: ReturnType<typeof runtime>) => void][] = [
+      ["other_mall_admin", (rt) => (rt.browser.pageUrl = () => "https://othershop.cafe24.com/disp/admin/shop1/")],
+      ["same_host_front", (rt) => (rt.browser.pageUrl = () => "https://myshop.cafe24.com/order/basket.html")],
+      ["no_login_cue", (rt) => (rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장")],
+      ["central_host", (rt) => (rt.browser.pageUrl = () => "https://admin.cafe24.com/disp/admin/shop1/")],
     ];
     for (const [name, setup] of cases) {
       const a = await bought();

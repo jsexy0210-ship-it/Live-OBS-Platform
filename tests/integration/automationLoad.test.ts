@@ -71,7 +71,7 @@ async function seedQueued(n: number) {
     const sellerId = randomUUID();
     const p = await db.automationPayment.create({ data: { sellerId, amount: 110000, idempotencyKey: `load-${i}`, requestFingerprint: "load", consentNoticeVersion: "load", consentAgreedAt: new Date(), status: "PAID", paidAt: new Date() } });
     await db.automationJob.create({
-      data: { sellerId, paymentId: p.id, status: "QUEUED", obsTargetKey: `seller:${sellerId}`, playbookId: cafe24Playbook.id, playbookVersion: cafe24Playbook.version },
+      data: { sellerId, paymentId: p.id, status: "QUEUED", obsTargetKey: `seller:${sellerId}`, playbookId: cafe24Playbook.id, playbookVersion: cafe24Playbook.version, shopHost: "myshop.cafe24.com" },
     });
   }
 }
@@ -93,7 +93,7 @@ describe("자동 연결 모의 부하와 주문 API 지연", () => {
         await seedQueued(n);
         const rt = { planner: new FakePlanner(), browser: new FakeBrowserExecutor(ACTION_DELAY_MS), obs: new FakeObsBridge(ACTION_DELAY_MS), vault: new FakeSecretVault() };
         // 작업서 화면 단서와 맞는 관리 화면(시험용 쇼핑몰 흉내)
-        rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장";
+        rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장 · 로그아웃";
         let peakRunning = 0;
         let done = false;
         const t0 = performance.now();

@@ -41,6 +41,9 @@ export type Playbook = {
   hostSuffixes: readonly string[];
   // draft = 연습 검증 전. 지원 목록 여부는 이 값이 아니라 연습 기록(practice.ts)으로 정한다.
   status: "draft" | "ready";
+  // 비밀값을 넣어도 되는 화면: 작업 대상 쇼핑몰 호스트와 정확히 같고, 경로가 관리자 경로 접두사로 시작하며,
+  // 관리자 로그인 상태 단서가 보여야 한다(같은 호스트의 쇼핑몰 앞 화면은 판매자가 꾸미는 내용이라 거부).
+  secretOrigin: { pathPrefixes: readonly string[]; adminCue: ScreenCue };
   steps: Readonly<Record<string, PlaybookStep>>;
 };
 
@@ -68,6 +71,9 @@ export function validatePlaybook(p: Playbook): string[] {
       continue;
     }
     if (!s.guide.trim()) problems.push(`empty_guide:${step.key}`);
+    if (Object.keys(s.secretTargets).length > 0 && (p.secretOrigin.pathPrefixes.length === 0 || !p.secretOrigin.adminCue.textIncludes?.length)) {
+      problems.push(`secret_origin_missing:${step.key}`);
+    }
     s.actions.forEach(({ action }, i) => {
       const v = validateDecision(step, { action, costWon: 0 }, probe, s.secretTargets);
       if (!v.ok) problems.push(`${step.key}[${i}]:${v.reason}`);

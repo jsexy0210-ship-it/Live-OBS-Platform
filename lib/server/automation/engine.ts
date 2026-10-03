@@ -78,6 +78,8 @@ export type EngineOptions = {
   targetVerified?: boolean;
   // 비밀값을 넣어도 되는 칸을 정하는 작업서(작업 중 버전이 바뀌어 정해진 행동은 안 쓰더라도 비밀 칸 목록은 그 작업서 것을 쓴다). 없으면 playbook
   secretPlaybook?: Playbook | null;
+  // 작업 대상 쇼핑몰 호스트(판매자가 낸 주소). 비밀값은 이 호스트의 관리자 경로에서만 넣는다. 없으면 비밀값을 쓰지 못한다.
+  shopHost?: string | null;
   startIndex: number;
   verifying: boolean;
   stats: EngineStats;
@@ -240,12 +242,14 @@ async function runAll(
           }
         }
       }
-      // 비밀값 입력은 승인 때 관찰한 주소와 실행 직전 실제 문서 주소가 모두 관리 화면 출처여야 한다
-      // (리다이렉트로 다른 출처나 판매자가 꾸미는 쇼핑몰 앞 화면에 간 경우 차단)
+      // 비밀값 입력은 승인 때 관찰한 주소와 실행 직전 실제 문서 주소가 모두 작업 대상 쇼핑몰의 관리자 경로여야 하고,
+      // 관찰한 화면에 관리자 로그인 상태 단서가 있어야 한다(리다이렉트로 다른 출처·같은 호스트의 쇼핑몰 앞 화면에 간 경우 차단)
       if (action.type === "fill" && "secretRef" in action.value) {
         guard();
         const here = session ? await session.currentUrl() : null;
-        if (!raw.url || !secretOriginAllowed(raw.url) || !here || !secretOriginAllowed(here)) return { kind: "failed", reason: "unsafe_action:secret_origin_not_allowed" };
+        const origin = secretBook?.secretOrigin;
+        const ok = (u: string | null) => !!u && !!origin && secretOriginAllowed(u, opts.shopHost, origin.pathPrefixes);
+        if (!origin || !ok(raw.url) || !ok(here) || !cueMatches(origin.adminCue, raw)) return { kind: "failed", reason: "unsafe_action:secret_origin_not_allowed" };
       }
       guard();
       // 변경 행동의 고정 키: 작업·단계와 행동의 의미(종류·대상·값)의 해시. 순번과 무관해 같은 행동은 몇 번째로 오든 한 번만,

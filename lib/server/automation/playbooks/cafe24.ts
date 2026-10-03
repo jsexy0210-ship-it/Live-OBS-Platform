@@ -8,6 +8,9 @@ export const cafe24Playbook: Playbook = {
   platform: "Cafe24",
   hostSuffixes: ["cafe24.com"],
   status: "draft",
+  // 관리자 화면은 쇼핑몰 자체 하위 도메인(<몰>.cafe24.com/admin, /disp/admin/…)에 있다(공개 자료 기준, 공식 문서 직접 열람 불가 — 연습 때 확인).
+  // 같은 호스트에 쇼핑몰 앞 화면이 있으므로 경로 접두사와 로그인 상태 단서(로그아웃 버튼)를 함께 본다. 단서 문구는 가정값.
+  secretOrigin: { pathPrefixes: ["/disp/admin/", "/admin/"], adminCue: { textIncludes: ["로그아웃"] } },
   steps: {
     shop_connect: {
       guide: "앱 설치 화면에서 우리 앱 설치를 누르고, 권한 승인은 고객이 직접 한다. 설치 완료 표시가 보이면 단계 끝.",

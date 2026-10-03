@@ -18,7 +18,8 @@ export async function runPractice(
   db: PrismaClient,
   rt: AutomationRuntime,
   playbook: Playbook,
-  opts: { maxActionsPerStep?: number; costLimitWon?: number } = {},
+  // shopHost: 연습용 시험 쇼핑몰 호스트(비밀값은 이 호스트의 관리자 경로에서만 넣는다)
+  opts: { shopHost: string; maxActionsPerStep?: number; costLimitWon?: number },
 ): Promise<AutomationPracticeRun> {
   const startedAt = new Date();
   const t0 = performance.now();
@@ -36,6 +37,7 @@ export async function runPractice(
         costLimit: opts.costLimitWon ?? plannerConfig().costLimitWon,
         maxActionsPerStep: opts.maxActionsPerStep ?? AUTOMATION_LIMITS.maxActionsPerStep,
         playbook,
+        shopHost: opts.shopHost,
         // 연습은 고객 대기로 멈추면 그대로 끝낸다(보관하지 않음)
         keepBrowserStateOnWait: false,
       },
