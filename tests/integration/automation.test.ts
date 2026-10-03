@@ -2021,3 +2021,18 @@ describe("Codex 13차 반영(d47b9f0)", () => {
     expect(await db.automationJob.count({ where: { sellerId: a.seller.id, kind: "REINSTALL" } })).toBe(0);
   });
 });
+
+describe("MASTER 지시(4ad65d7 Codex worker.ts:81): 구매 때 작업서 버전으로만 실행", () => {
+  it("구매 때 버전이 더 이상 검증 상태가 아니면(그 뒤 화면 이탈 기록) 변경 전에 멈추고 시작 전 실패·전액 환불 대기로 끝낸다", async () => {
+    const a = await bought();
+    const other = await bought();
+    await db.automationJob.update({ where: { id: other.jobId }, data: { status: "CANCELED", finishedAt: new Date(), lastDeviationAt: new Date(), deviatedSteps: ["webhook_setup"] } });
+    const rt = runtime();
+    expect(await runOnce(db, rt, W)).toBe("failed");
+    expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "playbook_not_verified" });
+    expect(rt.browser.performed).toHaveLength(0);
+    expect(rt.obs.performed).toHaveLength(0);
+    expect(rt.planner.inputs).toHaveLength(0);
+    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "REFUND_PENDING", refundReason: "playbook_not_verified" });
+  });
+});

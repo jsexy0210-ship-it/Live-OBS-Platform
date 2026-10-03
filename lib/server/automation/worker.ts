@@ -4,7 +4,7 @@ import { AUTOMATION_LIMITS } from "./config";
 import { EngineAborted, runSteps } from "./engine";
 import { findPlaybook } from "./playbooks";
 import type { AutomationRuntime, JobScope } from "./ports";
-import { cleanupPracticeArtifacts } from "./practice";
+import { cleanupPracticeArtifacts, playbookReadiness } from "./practice";
 import { reconcileAutomationPayments } from "./purchase";
 import { FencingError, RunTimeExceeded, advanceStep, claimNext, claimObsTarget, extendLease, failWithRefund, markBrowserStateHeld, markTargetVerified, finishJob, parkForCustomer, reapExpired, retryLater, toVerifying, touch, type Claimed } from "./queue";
 
@@ -60,9 +60,17 @@ export async function executeJob(db: PrismaClient, rt: AutomationRuntime, { job,
     const found = findPlaybook(job.playbookId);
     // 작업 중 작업서 버전이 바뀌었으면(새 버전은 연습 검증 전) 새 버전의 허용 규칙·행동으로 실행하지 않는다.
     // 구매 때 검증된 버전을 다시 쓸 수 없으므로 외부 행동 없이 실패·전액 환불 처리 대기로 끝낸다(고객 잘못이 아님).
-    if (job.playbookId && (!found || job.playbookVersion !== found.version)) {
+    // 같은 버전이어도 그 뒤 화면 이탈로 더 이상 검증 상태가 아니면 같은 방식으로 멈춘다(실행 시작마다 확인).
+    // 되돌리기 경로(E3-W)가 생기면 이미 변경한 작업은 그쪽으로 보낸다. 지금은 둘 다 실패·전액 환불 처리 대기.
+    const stop =
+      job.playbookId && (!found || job.playbookVersion !== found.version)
+        ? "playbook_version_changed"
+        : found && !(await playbookReadiness(db, found)).verified
+          ? "playbook_not_verified"
+          : null;
+    if (stop) {
       try {
-        await failWithRefund(db, claim, "playbook_version_changed");
+        await failWithRefund(db, claim, stop);
         return "failed";
       } catch (inner) {
         if (inner instanceof FencingError) return "fenced";

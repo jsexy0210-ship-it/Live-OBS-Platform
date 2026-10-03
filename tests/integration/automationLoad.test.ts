@@ -4,6 +4,7 @@ import { POST as orderRoute } from "../../app/api/shop/[slug]/orders/route";
 import { loginBuyer } from "../../lib/server/auth/login";
 import { FakeBrowserExecutor, FakeObsBridge, FakePlanner, FakeSecretVault } from "../../lib/server/automation/fakes";
 import { cafe24Playbook } from "../../lib/server/automation/playbooks/cafe24";
+import { PRACTICE_STREAK_REQUIRED } from "../../lib/server/automation/practice";
 import { runOnce } from "../../lib/server/automation/worker";
 import { prisma } from "../../lib/server/db";
 import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
@@ -67,6 +68,21 @@ const pct = (xs: number[], p: number) => {
 
 // 결제가 확인된(PAID) 작업을 바로 대기열에 넣는다. 자동 연결 테이블은 Seller에 외래키가 없어 임의 판매자 id로 만든다.
 async function seedQueued(n: number) {
+  // 작업은 구매 때 버전이 검증 상태일 때만 실행된다(연습 연속 성공 기록)
+  if ((await db.automationPracticeRun.count()) === 0) {
+    await db.automationPracticeRun.createMany({
+      data: Array.from({ length: PRACTICE_STREAK_REQUIRED }, () => ({
+        playbookId: cafe24Playbook.id,
+        playbookVersion: cafe24Playbook.version,
+        outcome: "SUCCEEDED" as const,
+        durationMs: 1,
+        plannerCalls: 0,
+        playbookActions: 13,
+        costWon: 0,
+        startedAt: new Date(),
+      })),
+    });
+  }
   for (let i = 0; i < n; i++) {
     const sellerId = randomUUID();
     const p = await db.automationPayment.create({ data: { sellerId, amount: 110000, idempotencyKey: `load-${i}`, requestFingerprint: "load", consentNoticeVersion: "load", consentAgreedAt: new Date(), status: "PAID", paidAt: new Date() } });
