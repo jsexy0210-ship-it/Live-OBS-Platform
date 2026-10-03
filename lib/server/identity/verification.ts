@@ -265,7 +265,9 @@ export async function confirmIdentityCode(
 
 // 대행사 결과를 대조하고 VERIFIED로 확정한다(한 번만). 다른 요청·다른 용도·요청 때와 다른 휴대폰번호의 결과면 실패로 끝낸다.
 async function finalizeIdentity(db: PrismaClient, v: IdentityVerification, r: IdentityResultOk, now: Date): Promise<ConfirmResult> {
-  if (r.requestId !== v.requestId || r.purpose !== v.purpose || r.phone.replace(/\D/g, "") !== v.requestedPhone) {
+  // 공급자 결과도 입력과 같은 규칙으로 정리해 저장한다(이름: NFKC·앞뒤 공백·글자 검사, 휴대폰: 숫자만). 이름이 비거나 쓸 수 없으면 실패.
+  const name = cleanText(r.name, 30);
+  if (!name || r.requestId !== v.requestId || r.purpose !== v.purpose || r.phone.replace(/\D/g, "") !== v.requestedPhone) {
     await db.identityVerification.updateMany({ where: { id: v.id, status: "PENDING" }, data: { status: "FAILED" } });
     return { ok: false, reason: "failed" };
   }
@@ -290,7 +292,7 @@ async function finalizeIdentity(db: PrismaClient, v: IdentityVerification, r: Id
       data: {
         status: "VERIFIED",
         ciHash: hashCi(r.ci),
-        name: r.name,
+        name,
         phone: r.phone.replace(/\D/g, ""),
         birthDate: r.birthDate,
         verifiedAt: now,
