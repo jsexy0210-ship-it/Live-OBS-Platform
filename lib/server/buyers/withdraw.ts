@@ -12,7 +12,9 @@ import { lockBuyerAddresses } from "./addresses";
 //   회원별 advisory lock 아래에서 세고·확인하고·기록해 동시 요청에도 한도를 넘지 않는다).
 // - 진행 중인 주문(결제 대기, 결제 완료 뒤 배송 완료 전 = 발송 전·배송 중·재고 부족 환불 대기)이 있으면 막는다.
 // - 주문·결제·환불 기록과 주문의 받는 사람 스냅숏은 그대로 둔다(전자상거래법 보관 의무).
-// - 이름·휴대폰·방송 닉네임·아이디(이메일)를 비식별 값으로 바꾸고 CI 해시는 비운다(같은 사람·같은 아이디·닉네임으로 다시 가입 가능).
+// - 이름·휴대폰·방송 닉네임·아이디(이메일)를 비식별 값으로 바꾸고 CI 해시·생년월일은 비운다(같은 사람·같은 아이디·닉네임으로 다시 가입 가능).
+//   그 회원의 본인확인 기록(가입·비밀번호 찾기: 이 쇼핑몰에서 이 회원과 이어졌거나 같은 CI 해시)도 이름·휴대폰·생년월일·CI 해시·요청 IP를
+//   지우고 anonymizedAt을 남긴다(PRODUCT_SCOPE 「구매자 탈퇴·재가입」).
 //   비밀번호는 아무도 모르는 값으로 바꾼다.
 // - 적립금 잔액은 건드리지 않는다(처리 규칙은 대표님 결정 대기).
 // - 저장 배송지를 지우고, 이 회원의 세션을 모두 폐기한다.
@@ -77,11 +79,16 @@ export async function withdrawBuyer(
         broadcastNickname: `탈퇴회원-${tag}`,
         loginId: `withdrawn-${tag}@withdrawn.invalid`,
         ciHash: "",
+        birthDate: null,
         passwordHash: unusable,
         marketingConsentAt: null,
       },
     });
     if (moved.count !== 1) return "not_found" as const;
+    const identities = await tx.identityVerification.updateMany({
+      where: { sellerId: scope.sellerId, OR: [{ subjectId: member.id }, ...(member.ciHash ? [{ ciHash: member.ciHash }] : [])] },
+      data: { name: null, phone: null, birthDate: null, ciHash: null, requestIp: null, requestedPhone: null, anonymizedAt: now },
+    });
     const addresses = await tx.buyerAddress.deleteMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id } });
     const sessions = await tx.buyerSession.updateMany({ where: { buyerMemberId: member.id, revokedAt: null }, data: { revokedAt: now } });
     await writeAudit(tx, {
@@ -93,7 +100,7 @@ export async function withdrawBuyer(
       targetId: member.id,
       ip: input.meta?.ip,
       userAgent: input.meta?.userAgent,
-      after: { status: "WITHDRAWN", deletedAddresses: addresses.count, revokedSessions: sessions.count },
+      after: { status: "WITHDRAWN", deletedAddresses: addresses.count, revokedSessions: sessions.count, anonymizedVerifications: identities.count },
     });
     return null;
   });

@@ -1,5 +1,5 @@
 import type { OrderStatus, PrismaClient } from "@prisma/client";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { GET as addressesRoute } from "../../app/api/shop/[slug]/addresses/route";
 import { POST as loginRoute } from "../../app/api/shop/[slug]/auth/login/route";
 import { POST as withdrawRoute } from "../../app/api/shop/[slug]/me/withdraw/route";
@@ -9,9 +9,14 @@ import { prisma } from "../../lib/server/db";
 import { loginBuyer, loginSeller } from "../../lib/server/auth/login";
 import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
 import { createOrder } from "../../lib/server/orders/create";
-import { PASSWORD, createLoginBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
+import { signupBuyer } from "../../lib/server/buyers/signup";
+import { identityProvider } from "../../lib/server/identity/registry";
+import { PASSWORD, confirmIdv, createLoginBuyer, createSeller, createSellerUser, db, resetDb, startIdv } from "./helpers";
 
 beforeEach(resetDb);
+beforeAll(() => {
+  process.env.IDENTITY_HASH_KEY = "test-identity-hash-key-0123456789abcdef";
+});
 afterAll(async () => {
   await db.$disconnect();
   await prisma.$disconnect();
@@ -64,7 +69,7 @@ describe("구매자 탈퇴", () => {
     expect(await db.buyerAddress.count({ where: { buyerMemberId: s.buyer.id } })).toBe(0);
     expect(await db.buyerSession.count({ where: { buyerMemberId: s.buyer.id, revokedAt: null } })).toBe(0);
     expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.withdraw", actorId: s.buyer.id } })).toMatchObject({
-      after: { status: "WITHDRAWN", deletedAddresses: 1, revokedSessions: 1 },
+      after: { status: "WITHDRAWN", deletedAddresses: 1, revokedSessions: 1, anonymizedVerifications: 0 },
     });
     // 주문은 회원 id로 남는다
     expect(await db.order.count({ where: { buyerMemberId: s.buyer.id } })).toBe(2);
@@ -78,6 +83,44 @@ describe("구매자 탈퇴", () => {
     // 같은 CI·휴대폰·아이디·닉네임으로 다시 가입할 수 있다(부분 유니크 인덱스는 탈퇴 회원을 보지 않음)
     const { id: _id, createdAt: _c, deletedAt: _d, status: _st, ...again } = s.buyer;
     await expect(db.buyerMember.create({ data: again })).resolves.toMatchObject({ status: "ACTIVE" });
+  });
+
+  it("거래 없는 회원이 탈퇴하면 회원 행의 생년월일·CI 해시와 그 회원의 본인확인 기록(이름·휴대폰·생년월일·CI 해시·요청 IP)을 모두 지운다. 다른 사람·다른 쇼핑몰 기록은 그대로", async () => {
+    const provider = identityProvider()!;
+    const { seller } = await createSeller();
+    const other = await createSeller();
+    const verified = async (sellerId: string, person: Record<string, string> = {}) => {
+      const st = await startIdv(provider, { purpose: "BUYER_SIGNUP", sellerId, person });
+      await db.identityVerification.update({ where: { id: st.verification.id }, data: { requestIp: "203.0.113.7" } });
+      expect((await confirmIdv(provider, st.verification, st.ownerToken)).ok).toBe(true);
+      return st;
+    };
+    const mine = await verified(seller.id);
+    const r = await signupBuyer(db, provider, {
+      sellerId: seller.id, verificationId: mine.verification.id, ownerToken: mine.ownerToken,
+      loginId: "me@example.com", password: "pw-123456", broadcastNickname: "나", agreedTerms: true, agreedPrivacy: true,
+    });
+    if (!r.ok) throw new Error(r.reason);
+    // 가입 뒤 같은 사람이 다시 한 본인확인(회원과 이어지지 않음), 다른 사람·다른 쇼핑몰의 같은 사람 기록
+    const again = await verified(seller.id);
+    const stranger = await verified(seller.id, { name: "김남", birth7: "9001011", phone: "01077776666" });
+    const elsewhere = await verified(other.seller.id);
+    const member = await db.buyerMember.findUniqueOrThrow({ where: { id: r.memberId } });
+    expect(member.birthDate).not.toBeNull();
+
+    expect(await withdrawBuyer(db, { sellerId: seller.id, buyerMemberId: member.id }, { password: "pw-123456" })).toEqual({ ok: true });
+    expect(await db.buyerMember.findUniqueOrThrow({ where: { id: member.id } })).toMatchObject({ birthDate: null, ciHash: "" });
+    for (const id of [mine.verification.id, again.verification.id]) {
+      expect(await db.identityVerification.findUniqueOrThrow({ where: { id } })).toMatchObject({
+        status: "VERIFIED", name: null, phone: null, birthDate: null, ciHash: null, requestIp: null, requestedPhone: null, anonymizedAt: expect.any(Date),
+      });
+    }
+    for (const id of [stranger.verification.id, elsewhere.verification.id]) {
+      expect(await db.identityVerification.findUniqueOrThrow({ where: { id } })).toMatchObject({ name: expect.any(String), ciHash: expect.any(String), requestIp: "203.0.113.7", anonymizedAt: null });
+    }
+    expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.withdraw", actorId: member.id } })).toMatchObject({ after: { anonymizedVerifications: 2 } });
+    // 비식별하지 않은 확인됨 기록은 지금처럼 CI 해시가 있어야 한다(CHECK)
+    await expect(db.identityVerification.update({ where: { id: stranger.verification.id }, data: { ciHash: null } })).rejects.toThrow(/IdentityVerification_verified_check/);
   });
 
   it("비밀번호가 틀리면 구매자 로그인 실패와 같은 401과 문구, 아무것도 바뀌지 않고 실패를 기록한다", async () => {

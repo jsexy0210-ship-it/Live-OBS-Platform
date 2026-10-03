@@ -266,8 +266,8 @@ model BuyerMember {
   // PASS 본인인증 CI의 HMAC-SHA256 값(원문 CI는 저장하지 않음). 같은 쇼핑몰 중복 가입 차단 기준.
   ciHash             String
   identityVerifiedAt DateTime          @db.Timestamptz(3)
-  // PASS 생년월일. 미성년자 구매 정책 판정에 쓴다.
-  birthDate          DateTime          @db.Date
+  // PASS 생년월일. 미성년자 구매 정책 판정에 쓴다. 탈퇴하면 지운다(null).
+  birthDate          DateTime?         @db.Date
   broadcastNickname  String
   gradeId            String            @db.Uuid
   status             BuyerMemberStatus @default(ACTIVE)
@@ -366,6 +366,8 @@ model IdentityVerification {
   requestIp       String?
   // 이 인증으로 가입·재설정 권한을 이미 발급했으면 기록(한 번만 쓰임)
   consumedAt      DateTime?                   @db.Timestamptz(3)
+  // 회원 탈퇴로 개인정보(이름·휴대폰·생년월일·CI 해시·요청 IP)를 지운 시각. 있으면 VERIFIED여도 CI 해시가 없을 수 있다(CHECK 예외).
+  anonymizedAt    DateTime?                   @db.Timestamptz(3)
   expiresAt       DateTime                    @db.Timestamptz(3)
   createdAt       DateTime                    @default(now()) @db.Timestamptz(3)
 
