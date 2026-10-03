@@ -76,6 +76,37 @@ describe("구매자 가입 HTTP", () => {
     expect(login.status).toBe(200);
   });
 
+  it("마케팅 수신 동의(선택): true면 동의 시각을 남기고, false·빠짐이면 남기지 않으며, 감사 로그에 동의 여부를 기록한다", async () => {
+    for (const [i, [body, agreed]] of ([
+      [{ agreedMarketing: true }, true],
+      [{ agreedMarketing: false }, false],
+      [{}, false],
+    ] as const).entries()) {
+      const s = await shop();
+      const v = await s.verified({ phone: `0109999000${i}` });
+      const res = await s.signup(v, body);
+      expect(res.status, JSON.stringify(body)).toBe(201);
+      const member = await db.buyerMember.findFirstOrThrow({ where: { sellerId: s.seller.id } });
+      expect(member.marketingConsentAt === null, JSON.stringify(body)).toBe(!agreed);
+      if (agreed) expect(member.marketingConsentAt).toEqual(member.createdAt);
+      expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.signup", actorId: member.id } })).toMatchObject({
+        after: { agreedTerms: true, agreedPrivacy: true, agreedMarketing: agreed },
+      });
+    }
+  });
+
+  it("마케팅 수신 동의 값이 불리언이 아니면 400과 문구를 주고 가입·본인확인을 쓰지 않는다", async () => {
+    const s = await shop();
+    const v = await s.verified();
+    for (const value of ["true", 1, null]) {
+      const r = await s.signup(v, { agreedMarketing: value });
+      expect(r.status, JSON.stringify(value)).toBe(400);
+      expect(await r.json()).toEqual({ error: "invalid_marketing_consent", message: BUYER_SIGNUP_MESSAGES.invalid_marketing_consent });
+    }
+    expect(await db.buyerMember.count({ where: { sellerId: s.seller.id } })).toBe(0);
+    expect((await db.identityVerification.findUniqueOrThrow({ where: { id: v.verificationId } })).consumedAt).toBeNull();
+  });
+
   it("입력이 틀리면 400과 문구를 주고 본인확인을 쓰지 않는다(고친 뒤 같은 본인확인으로 가입할 수 있다)", async () => {
     const s = await shop();
     const v = await s.verified();
