@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import type { IdentityVerificationPurpose } from "@prisma/client";
 import { POST as applyRoute } from "../../app/api/seller-signup/apply/route";
 import { POST as signupConfirmRoute } from "../../app/api/seller-signup/verification/confirm/route";
 import { POST as signupResendRoute } from "../../app/api/seller-signup/verification/resend/route";
@@ -39,7 +40,7 @@ afterAll(async () => {
 });
 
 const provider = new FakeIdentityProvider();
-const ownerOf = (v: { sellerId: string | null; purpose: "BUYER_SIGNUP" | "SELLER_REPRESENTATIVE" | "PASSWORD_RESET" }, ownerToken: string) => ({
+const ownerOf = (v: { sellerId: string | null; purpose: IdentityVerificationPurpose }, ownerToken: string) => ({
   sellerId: v.sellerId,
   purpose: v.purpose,
   ownerToken,
