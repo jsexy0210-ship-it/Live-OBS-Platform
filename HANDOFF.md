@@ -39,8 +39,8 @@
   - 종료된 PR #1~#6: 이전 프로젝트 제목·본문. GitHub에서 PR 삭제 불가.
   - Actions 실행 기록과 빌드 아티팩트 `lifeleft-production-static` (2026-10-06 08:24 KST 자동 만료). 실행 기록 삭제는 Actions 화면에서 가능.
   - Git 커밋 이력: 이력 재작성 금지로 유지.
-- 기존 self-hosted 러너, 저장소 Secrets·Environments: 미확인, 유지. 단 `GEMINI_API_KEY`(Actions Secret)는 2026-10-02 대표님 등록 완료(대표님 보고 기준, 값 미기록). 실서버 사용 시 서버 환경변수 등록은 배포 단계에서 별도 승인.
-- 카카오클라우드 실제 자원(프로젝트·VM·버킷·DNS): 미확인, 변경 없음. 기존 VM에서 이전 사이트가 계속 서비스 중일 수 있음.
+- 기존 self-hosted 러너 `lifeleft-kakao`(오프라인)는 2026-10-03 대표님이 제거함. Environment `obs-test`는 대표님이 만듦(보호 규칙은 대표님 조치 대기 ⑤). 그 밖의 저장소 Secrets: 아래 값 이름만 기록. 단 `GEMINI_API_KEY`(Actions Secret)는 2026-10-02 대표님 등록 완료(대표님 보고 기준, 값 미기록). 실서버 사용 시 서버 환경변수 등록은 배포 단계에서 별도 승인.
+- 카카오클라우드: 테스트 VM `obs-web-test`와 Cloudflare DNS `test.on-aircue.com`은 대표님 보고로 확인(PROJECT_STATUS 「인프라 방향」). 이전(Leftlife) VM·버킷·보안 그룹과 Object Storage 버킷 상태는 미확인이며, 새 서버가 뜬 것을 확인한 뒤 삭제 여부를 정한다(PROJECT_STATUS).
 
 ## 미완료·블로커
 
@@ -90,10 +90,6 @@
 
 ## 다음 작업
 
-1. 카카오클라우드 재사용 확인 (운영자 콘솔 화면 필요, 키는 가림):
-   - 기존 이름이 IAM 프로젝트인지 Object Storage 버킷인지 식별
-   - 프로젝트: 이름 변경 불가 → 유지, 설명만 변경
-   - 버킷: 새 버킷 생성 → 필요한 파일만 복사 → 연결·검증 → 기존 버킷 삭제는 별도 결정 (객체 URL에 버킷명 포함 주의)
-   - 기존 VM의 이전 사이트 종료 여부 결정
+1. 테스트 서버 준비(대표님 조치 대기의 서버 준비 순서) → 첫 배포 → `https://test.on-aircue.com/api/health` 확인. 그 뒤 이전(Leftlife) 자원 삭제 여부 결정(PROJECT_STATUS)
 2. 디자인 수정 중 (깨짐 수정 → 쇼핑몰 PC판). 화면 구현은 디자인 확정 후 시작한다. 클로드디자인 프롬프트: `docs/DESIGN_PROMPT.md`
 3. 개발 1단계(화면과 무관한 기반)는 디자인과 병행한다 (대표님 결정 2026-10-02 21:15 KST): 설계(`docs/ARCHITECTURE.md`) → 데이터 모델·DB·권한·주문대기 도메인(`docs/REFERENCE_MANGOTCG.md` 7절)·로그인·테스트. 담당: 개발 전담 (기반).

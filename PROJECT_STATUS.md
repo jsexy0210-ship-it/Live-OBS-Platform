@@ -27,7 +27,7 @@
 
 - 테스트 VM 이름·IP: 대표님 보고로 확인(위). 서버 안 설정(Docker·runner·.env)은 대표님 조치 대기(HANDOFF)
 - Object Storage 버킷: 존재 여부·이름 미확인
-- 이번 작업에서 서버·DNS·러너는 변경하지 않음
+- DNS `test.on-aircue.com`(Cloudflare, DNS only)은 대표님이 등록함. 서버 안 설정·runner 등록은 대표님 조치 대기(HANDOFF)
 
 ## 미확정·미확인
 
