@@ -194,6 +194,10 @@ export default function StockPage() {
       return out;
     });
 
+  // 적용할 옵션 중 지금 화면에 그려지지 않은 것(「N개 모두 선택」·걸러 보기 밖). 확인 창에서 따로 알린다
+  const shownKeys = new Set(shown.map((r) => r.key));
+  const hiddenCount = valid.filter((r) => !shownKeys.has(r.key)).length;
+
   const applyLabel = applying ? "적용하고 있어요" : `변경 ${valid.length}건 적용`;
 
   if (!can("PRODUCT_MANAGE")) {
@@ -467,6 +471,11 @@ export default function StockPage() {
               <h3 id="apply-title" className="t-hl1">
                 재고 {valid.length}건을 적용할까요?
               </h3>
+              {hiddenCount > 0 && (
+                <p className="t-l2 fw6 c-cau" data-testid="apply-hidden">
+                  화면에 안 보이는 {hiddenCount.toLocaleString("ko-KR")}개 포함
+                </p>
+              )}
               <p className="t-b2 c-neu">
                 쇼핑몰에 바로 반영돼요.{invalid.length ? ` 고칠 칸 ${invalid.length}개는 빼고 적용해요.` : ""} 그사이 주문으로 재고가 바뀐 옵션은 바꾸지 않고 알려 드려요.
               </p>

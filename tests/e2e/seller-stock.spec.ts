@@ -480,6 +480,39 @@ test("걸러 본 옵션이 200개를 넘으면 「선택 n개 · 전체 N개」�
   await expect(info).toHaveCount(0);
 });
 
+test("「N개 모두 선택」 뒤 한꺼번에 적으면 적용 확인 창에 「화면에 안 보이는 n개 포함」이 나온다", async ({ page }) => {
+  // 상품 250개(가짜 응답). 확인 창만 열고 적용하지 않는다
+  await page.route("**/api/seller/products?limit=200**", (route) =>
+    route.fulfill({
+      json: {
+        products: Array.from({ length: 250 }, (_, i) => ({
+          id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+          name: `대량 상품 ${i + 1}`,
+          price: 1000,
+          status: "ON_SALE",
+          stockDeductMode: "ON_PAYMENT",
+          options: [{ id: `10000000-0000-4000-8000-${String(i).padStart(12, "0")}`, name: "기본", stock: 10, sortOrder: 0 }],
+        })),
+        nextCursor: null,
+      },
+    }),
+  );
+  await openAs(page);
+  await page.getByTestId("stock-selinfo").getByRole("button", { name: "250개 모두 선택" }).click();
+  await page.getByLabel("선택한 옵션에 더하거나 뺄 수량").fill("+1");
+  await page.getByRole("button", { name: "한꺼번에 적기" }).click();
+  await expect(page.getByTestId("sum-count")).toHaveText("250개");
+  await page.getByRole("button", { name: "변경 250건 적용" }).last().click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByTestId("apply-hidden")).toHaveText("화면에 안 보이는 50개 포함");
+  await dialog.getByRole("button", { name: "취소" }).click();
+  // 다 펼치면 안 보이는 옵션이 없으니 문구도 없다
+  await page.getByRole("button", { name: /50개 더 보기/ }).click();
+  await page.getByRole("button", { name: "변경 250건 적용" }).last().click();
+  await expect(page.getByRole("dialog").getByTestId("apply-hidden")).toHaveCount(0);
+  await page.getByRole("dialog").getByRole("button", { name: "취소" }).click();
+});
+
 test("행의 「이력」은 그 옵션의 재고 이력만 보여 준다", async ({ page }) => {
   await openAs(page);
   // 1440에서 「이력」·「빼기 · 더하기」 두 버튼이 칸 안에 다 보인다
