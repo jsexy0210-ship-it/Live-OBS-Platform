@@ -164,3 +164,28 @@ export const confirmIdv = (
   code: string = FAKE_IDENTITY_OTP,
   now?: Date,
 ) => confirmIdentityCode(db, provider, v.id, { sellerId: v.sellerId, purpose: v.purpose, ownerToken }, code, now);
+
+// 감사 로그 쓰기 실패 재현: 이 db로(트랜잭션 안팎 모두) action 감사 로그를 쓰면 예외를 던진다.
+export function failingAudit(target: PrismaClient, action: string): PrismaClient {
+  const wrapAudit = (audit: object) =>
+    new Proxy(audit, {
+      get(d, m, r) {
+        const f = Reflect.get(d, m, r);
+        if (m !== "create") return f;
+        return (args: { data?: { action?: string } }) => {
+          if (args?.data?.action === action) throw new Error(`감사 로그 쓰기 실패(테스트): ${action}`);
+          return (f as (a: unknown) => unknown).call(d, args);
+        };
+      },
+    });
+  const wrap = (client: object) =>
+    new Proxy(client, { get: (t, p, r) => (p === "auditLog" ? wrapAudit(Reflect.get(t, p, r)) : Reflect.get(t, p, r)) });
+  return new Proxy(target, {
+    get(t, p) {
+      const v = Reflect.get(t, p);
+      if (p === "auditLog") return wrapAudit(v);
+      if (p === "$transaction") return (fn: (tx: object) => unknown, o?: unknown) => t.$transaction((tx) => fn(wrap(tx)) as Promise<unknown>, o as never);
+      return typeof v === "function" ? v.bind(t) : v;
+    },
+  }) as PrismaClient;
+}
