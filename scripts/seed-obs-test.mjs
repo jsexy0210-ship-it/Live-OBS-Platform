@@ -59,11 +59,17 @@ async function main() {
         { sellerId: seller.id, displayName: "VIP", sortOrder: 4, systemKey: "VIP" },
       ],
     });
-    await tx.sellerUser.create({ data: { sellerId: seller.id, email: loginId, passwordHash, name: "대표자", isOwner: true, permissions: [] } });
+    const owner = await tx.sellerUser.create({ data: { sellerId: seller.id, email: loginId, passwordHash, name: "대표자", isOwner: true, permissions: [] } });
     for (const [i, p] of PRODUCTS.entries()) {
       const product = await tx.product.create({ data: { sellerId: seller.id, name: p.name, price: p.price, status: "ON_SALE", sortOrder: i } });
       for (const [j, [name, priceDelta, stock]] of p.options.entries()) {
-        await tx.productOption.create({ data: { sellerId: seller.id, productId: product.id, name, priceDelta, stock, sortOrder: j } });
+        const option = await tx.productOption.create({ data: { sellerId: seller.id, productId: product.id, name, priceDelta, stock, sortOrder: j } });
+        // 상품 등록(products/manage.ts)과 같이 처음 재고를 재고 이동 기록에 남긴다(재고 이력·합계가 표시 재고와 맞게)
+        if (stock > 0) {
+          await tx.stockMovement.create({
+            data: { sellerId: seller.id, optionId: option.id, delta: stock, reason: "MANUAL", note: "처음 재고", actorType: "SELLER_USER", actorId: owner.id },
+          });
+        }
       }
     }
   });

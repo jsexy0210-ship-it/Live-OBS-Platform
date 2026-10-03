@@ -74,6 +74,14 @@ describe("테스트 서버 시험 데이터 명령(scripts/seed-obs-test.mjs)", 
     expect(shop.users[0]).toMatchObject({ email: "test", isOwner: true, status: "ACTIVE" });
     expect(shop.grades).toHaveLength(5);
     expect(await db.product.count({ where: { sellerId: shop.id } })).toBe(3);
+    // 처음 재고는 상품 등록처럼 재고 이동(MANUAL, 「처음 재고」)으로 남고, 이동 합계·마지막 stockAfter가 표시 재고와 같다
+    const options = await db.productOption.findMany({ where: { sellerId: shop.id } });
+    expect(options).toHaveLength(4);
+    for (const o of options) {
+      const moves = await db.stockMovement.findMany({ where: { optionId: o.id } });
+      expect(moves.map((m) => [m.reason, m.note, m.delta, m.actorId])).toEqual([["MANUAL", "처음 재고", o.stock, shop.users[0].id]]);
+      expect(moves[0].stockAfter).toBe(o.stock);
+    }
     const login = await loginSeller(db, { email: "test", password: "1234" }, {});
     expect(login.ok).toBe(true);
 
