@@ -16,7 +16,7 @@ describe("이벤트 할인 계산", () => {
     expect(orderUnitPrice(10000, null, at("2026-10-05T00:00:00Z"))).toBe(10000);
     const mid = at("2026-10-05T00:00:00Z");
     expect(eventFits({ ...e, type: "AMOUNT", value: 1000 }, 1000, [0], mid)).toBe(false);
-    expect(eventFits({ ...e, type: "AMOUNT", value: 999 }, 1000, [0, 500], mid)).toBe(true);
+    expect(eventFits({ ...e, type: "AMOUNT", value: 900 }, 1000, [0, 500], mid)).toBe(true);
     expect(eventFits(rate(90), 1, [0], mid)).toBe(false); // 1원 × 10% → 0원
     // 시작 전은 검증하고, 끝난 뒤는 보지 않는다
     expect(eventFits({ ...e, type: "AMOUNT", value: 1000 }, 1000, [0], at("2026-09-01T00:00:00Z"))).toBe(false);
@@ -33,5 +33,22 @@ describe("이벤트 할인 계산", () => {
     expect(eventView(e, 10000, at("2026-09-30T00:00:00Z"))).toMatchObject({ active: false, badge: null, remainingSeconds: null });
     expect(eventView(e, 10000, at("2026-10-11T00:00:00Z"))).toMatchObject({ active: false, badge: null });
     expect(eventView(null, 10000, at("2026-10-05T00:00:00Z"))).toBeNull();
+  });
+
+  it("[MASTER 검수] KST 자정 종료는 마지막 날 「오늘 마감」, 남은 시간은 「0분」을 빼고 24시간 이상이면 문구 없음, 1% 미만 할인율은 표시하지 않음", () => {
+    // 10/10까지(KST 10/11 00:00 = 10/10 15:00Z)
+    const midnight = rate(10, "2026-10-01T00:00:00Z", "2026-10-10T15:00:00Z");
+    expect(eventView(midnight, 10000, at("2026-10-10T02:00:00Z"))).toMatchObject({ badge: "오늘 마감" }); // KST 10/10 11:00
+    expect(eventView(midnight, 10000, at("2026-10-09T02:00:00Z"))).toMatchObject({ badge: "D-1" });
+    const e = rate(10, "2026-10-01T00:00:00Z", "2026-10-10T14:00:00Z");
+    expect(eventView(e, 10000, at("2026-10-10T13:00:30Z"))).toMatchObject({ remainingLabel: "1시간 남았어요" }); // 59분 30초
+    expect(eventView(e, 10000, at("2026-10-10T12:00:00Z"))).toMatchObject({ remainingLabel: "2시간 남았어요" });
+    expect(eventView(e, 10000, at("2026-10-09T14:00:30Z"))).toMatchObject({ remainingLabel: null }); // 23시간 59분 30초 → 24시간
+    const tiny = { ...e, type: "AMOUNT" as const, value: 50 };
+    expect(eventView(tiny, 10000, at("2026-10-05T00:00:00Z"))).toMatchObject({ discountRate: null });
+    expect(eventView({ ...e, type: "AMOUNT" as const, value: 150 }, 10000, at("2026-10-05T00:00:00Z"))).toMatchObject({ discountRate: 1 });
+    // 금액 할인도 정가의 90%까지(넘으면 맞지 않음)
+    expect(eventFits({ ...e, type: "AMOUNT", value: 9000 }, 10000, [0], at("2026-10-05T00:00:00Z"))).toBe(true);
+    expect(eventFits({ ...e, type: "AMOUNT", value: 9001 }, 10000, [0], at("2026-10-05T00:00:00Z"))).toBe(false);
   });
 });

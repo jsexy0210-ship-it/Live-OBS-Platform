@@ -105,7 +105,9 @@ describe("이벤트 할인 설정 검증", () => {
       expect(r.status).toBe(400);
       expect((await r.json()).error).toBe("invalid_event_period");
     }
-    const tooLow = await put(s.cookie, s.productId, { type: "AMOUNT", value: 10000, ...period });
+    // 상품 가격의 90%(9000원) 안이어도, 추가금이 음수인 옵션의 단가(1500원)보다 크면 할인 뒤 1원 미만
+    expect((await createOption(db, s.ctx, s.productId, { name: "싼 옵션", priceDelta: -8500, stock: 1 })).ok).toBe(true);
+    const tooLow = await put(s.cookie, s.productId, { type: "AMOUNT", value: 9000, ...period });
     expect(tooLow.status).toBe(400);
     expect(await tooLow.json()).toEqual({ error: "event_price_too_low", message: ORDER_ERROR_MESSAGES.event_price_too_low });
     expect((await db.product.findUniqueOrThrow({ where: { id: s.productId } })).eventDiscountType).toBeNull();
@@ -117,7 +119,7 @@ describe("이벤트 할인 설정 검증", () => {
     expect(await updateProduct(db, s.ctx, s.productId, { price: 9000 })).toEqual({ ok: false, reason: "event_price_too_low" });
     expect(await updateOption(db, s.ctx, s.productId, s.base, { priceDelta: -1000 })).toEqual({ ok: false, reason: "event_price_too_low" });
     expect(await createOption(db, s.ctx, s.productId, { name: "할인 옵션", priceDelta: -1500, stock: 1 })).toEqual({ ok: false, reason: "event_price_too_low" });
-    expect((await updateProduct(db, s.ctx, s.productId, { price: 9001 })).ok).toBe(true);
+    expect((await updateProduct(db, s.ctx, s.productId, { price: 10001 })).ok).toBe(true);
     // DB도 넷 다 있거나 넷 다 없는 것만 받는다
     await expect(db.product.update({ where: { id: s.productId }, data: { eventEndsAt: null } })).rejects.toThrow();
   });
@@ -127,7 +129,7 @@ describe("이벤트 할인 설정 검증", () => {
     await put(s.cookie, s.productId, { type: "RATE", value: 20, startsAt: iso(-HOUR), endsAt: iso(3 * HOUR) });
     const list = await (await productsRoute(new Request("http://localhost:3000/api/seller/products", { headers: { ...H, cookie: s.cookie } }))).json();
     expect(list.products[0].event).toMatchObject({ active: true, discountedPrice: 8000, discountRate: 20 });
-    expect(list.products[0].event.remainingLabel).toMatch(/^[23]시간 \d+분 남았어요$/);
+    expect(list.products[0].event.remainingLabel).toMatch(/^[23]시간( \d+분)? 남았어요$/);
     const other = await shop();
     expect((await put(other.cookie, s.productId, { type: "RATE", value: 10, startsAt: iso(-HOUR), endsAt: iso(HOUR) })).status).toBe(404);
     expect((await put(s.cookie, "not-a-uuid", { type: "RATE", value: 10, startsAt: iso(-HOUR), endsAt: iso(HOUR) })).status).toBe(404);
@@ -156,7 +158,8 @@ describe("Codex 검수 후속(#105)", () => {
     await wait(100);
     const r = await setProductEvent(db, s.ctx, s.productId, { type: "AMOUNT", value: 5000, startsAt: iso(-HOUR), endsAt: iso(HOUR) });
     await hold;
-    expect(r).toEqual({ ok: false, reason: "event_price_too_low" });
+    // 바뀐 가격(1000원) 기준으로 검증해 거부한다(금액 할인 90% 상한). 옛 가격(10000원)으로 검증하면 저장됐다.
+    expect(r).toEqual({ ok: false, reason: "invalid_event" });
     expect((await db.product.findUniqueOrThrow({ where: { id: s.productId } })).eventDiscountType).toBeNull();
   });
 
@@ -177,5 +180,30 @@ describe("Codex 검수 후속(#105)", () => {
     const r = await setProductEvent(db, s.ctx, s.productId, { type: "RATE", value: 10, startsAt: iso(-HOUR), endsAt: iso(300) });
     await hold;
     expect(r).toEqual({ ok: false, reason: "invalid_event_period" });
+  });
+
+  it("[MASTER P1] 시각은 오프셋이 붙은 ISO 8601(Z 또는 ±HH:MM)만 받는다. 날짜만·오프셋 없음·영문 날짜는 400", async () => {
+    const s = await shop();
+    const end = new Date(Date.now() + 2 * HOUR);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const local = `${end.getUTCFullYear()}-${pad(end.getUTCMonth() + 1)}-${pad(end.getUTCDate())}T${pad(end.getUTCHours())}:${pad(end.getUTCMinutes())}`;
+    for (const endsAt of [local, `${local}:00`, end.toISOString().slice(0, 10), end.toUTCString(), "2099-01-01"]) {
+      const r = await put(s.cookie, s.productId, { type: "RATE", value: 10, startsAt: iso(-HOUR), endsAt });
+      expect(r.status, endsAt).toBe(400);
+      expect((await r.json()).error).toBe("invalid_event_period");
+    }
+    const kst = new Date(end.getTime() + 9 * HOUR);
+    const withOffset = `${kst.getUTCFullYear()}-${pad(kst.getUTCMonth() + 1)}-${pad(kst.getUTCDate())}T${pad(kst.getUTCHours())}:${pad(kst.getUTCMinutes())}:00+09:00`;
+    const ok = await put(s.cookie, s.productId, { type: "RATE", value: 10, startsAt: iso(-HOUR), endsAt: withOffset });
+    expect(ok.status).toBe(200);
+    expect(Math.abs(new Date((await ok.json()).event.endsAt).getTime() - end.getTime())).toBeLessThan(60_000);
+  });
+
+  it("[MASTER P2] 금액 할인은 상품 가격의 90%까지", async () => {
+    const s = await shop();
+    const r = await put(s.cookie, s.productId, { type: "AMOUNT", value: 9001, startsAt: iso(-HOUR), endsAt: iso(HOUR) });
+    expect(r.status).toBe(400);
+    expect(await r.json()).toEqual({ error: "invalid_event", message: ORDER_ERROR_MESSAGES.invalid_event });
+    expect((await put(s.cookie, s.productId, { type: "AMOUNT", value: 9000, startsAt: iso(-HOUR), endsAt: iso(HOUR) })).status).toBe(200);
   });
 });

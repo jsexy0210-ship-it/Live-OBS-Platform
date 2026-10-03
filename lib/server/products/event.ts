@@ -14,6 +14,7 @@ export const MAX_EVENT_RATE = 90;
 export const MAX_EVENT_DAYS = 365;
 export const DEADLINE_BADGE_DAYS = 7;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const ISO_WITH_OFFSET = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type ProductEvent = { type: EventDiscountType; value: number; startsAt: Date; endsAt: Date };
@@ -36,8 +37,11 @@ export const orderUnitPrice = (unit: number, e: ProductEvent | null, now: Date) 
 
 // 할인을 걸어도 모든 옵션의 단가가 1원 이상인지(가격·옵션 추가금을 바꿀 때도 확인한다).
 // 이미 끝난 이벤트(종료 ≤ 지금)는 다시 적용되지 않으므로 보지 않는다. 시작 전 이벤트는 앞으로 적용되므로 본다.
+// 금액 할인은 단가의 90%(MAX_EVENT_RATE)를 넘지 못한다(할인율 상한과 같게).
 export const eventFits = (e: ProductEvent | null, price: number, deltas: number[], now: Date) =>
-  !e || e.endsAt <= now || deltas.every((d) => discountedUnit(price + d, e) >= 1);
+  !e ||
+  e.endsAt <= now ||
+  deltas.every((d) => discountedUnit(price + d, e) >= 1 && (e.type !== "AMOUNT" || e.value * 100 <= (price + d) * MAX_EVENT_RATE));
 
 const kstDate = (d: Date) => new Date(d.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
@@ -46,11 +50,16 @@ export function eventView(e: ProductEvent | null, price: number, now: Date) {
   if (!e) return null;
   const active = isEventActive(e, now);
   const remainingMs = Math.max(0, e.endsAt.getTime() - now.getTime());
-  const daysLeft = Math.round((Date.parse(kstDate(e.endsAt)) - Date.parse(kstDate(now))) / DAY_MS);
+  // 종료 시각에서 1ms를 뺀 날이 마지막 날이다(KST 자정 종료 = 그 전날까지)
+  const daysLeft = Math.round((Date.parse(kstDate(new Date(e.endsAt.getTime() - 1))) - Date.parse(kstDate(now))) / DAY_MS);
   const badge = !active ? null : daysLeft === 0 ? "오늘 마감" : daysLeft <= DEADLINE_BADGE_DAYS ? `D-${daysLeft}` : null;
+  // 남은 시간(분 올림)이 24시간보다 짧을 때만 보여 준다. 「0분」은 빼고 「1시간 남았어요」처럼 쓴다.
   const minutes = Math.ceil(remainingMs / 60_000);
+  const hours = Math.floor(minutes / 60);
   const remainingLabel =
-    active && remainingMs < DAY_MS ? (minutes >= 60 ? `${Math.floor(minutes / 60)}시간 ${minutes % 60}분 남았어요` : `${minutes}분 남았어요`) : null;
+    !active || minutes >= 24 * 60 ? null : hours === 0 ? `${minutes}분 남았어요` : minutes % 60 === 0 ? `${hours}시간 남았어요` : `${hours}시간 ${minutes % 60}분 남았어요`;
+  // 할인율 표시(버림). 금액 할인이 1%에 못 미치면 할인율은 보여 주지 않는다(null).
+  const rate = e.type === "RATE" ? e.value : Math.floor((e.value / price) * 100);
   return {
     type: e.type,
     value: e.value,
@@ -59,7 +68,7 @@ export function eventView(e: ProductEvent | null, price: number, now: Date) {
     active,
     // 상품 가격 기준 할인가(옵션 추가금이 있으면 옵션마다 다르다)
     discountedPrice: discountedUnit(price, e),
-    discountRate: e.type === "RATE" ? e.value : Math.floor((e.value / price) * 100),
+    discountRate: rate >= 1 ? rate : null,
     badge,
     remainingSeconds: active ? Math.floor(remainingMs / 1000) : null,
     remainingLabel,
@@ -76,7 +85,9 @@ function parseEvent(raw: unknown, now: Date): ProductEvent | EventFailure {
   if (!type || typeof value !== "number" || !Number.isInteger(value) || value < 1 || (type === "RATE" && value > MAX_EVENT_RATE) || value > 2147483647) {
     return "invalid_event";
   }
-  const at = (v: unknown) => (typeof v === "string" && v.length <= 40 && !Number.isNaN(Date.parse(v)) ? new Date(v) : null);
+  // 오프셋이 붙은 ISO 8601만 받는다(Z 또는 ±HH:MM). 날짜만·오프셋 없는 시각은 서버 시간대로 해석돼 9시간 어긋날 수 있다.
+  const at = (v: unknown) =>
+    typeof v === "string" && ISO_WITH_OFFSET.test(v) && !Number.isNaN(Date.parse(v)) ? new Date(v) : null;
   const startsAt = at(b.startsAt);
   const endsAt = at(b.endsAt);
   if (!startsAt || !endsAt || endsAt <= startsAt || endsAt <= now || endsAt.getTime() - startsAt.getTime() > MAX_EVENT_DAYS * DAY_MS) return "invalid_event_period";
@@ -96,6 +107,8 @@ export async function setProductEvent(db: PrismaClient, ctx: TenantContext, prod
     const now = await dbClock(tx);
     const e = parseEvent(raw, now);
     if (typeof e === "string") return { ok: false as const, reason: e };
+    // 금액 할인은 상품 가격의 90%까지(할인율 상한과 같게). 옵션마다의 단가는 아래 eventFits가 본다.
+    if (e.type === "AMOUNT" && e.value * 100 > product.price * MAX_EVENT_RATE) return { ok: false as const, reason: "invalid_event" as const };
     const options = await tx.productOption.findMany({ where: { sellerId: ctx.sellerId, productId, deletedAt: null }, select: { priceDelta: true } });
     if (!eventFits(e, product.price, [0, ...options.map((o) => o.priceDelta)], now)) return { ok: false as const, reason: "event_price_too_low" as const };
     await tx.product.update({

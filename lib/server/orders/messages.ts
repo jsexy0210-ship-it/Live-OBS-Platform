@@ -26,7 +26,7 @@ export const ORDER_ERROR_MESSAGES = {
   invalid_option: "옵션 정보를 다시 확인해 주세요",
   invalid_price: "가격은 1원 이상, 21억 원 이하로 입력해 주세요. 옵션 추가금을 더한 가격도 같아요",
   // 이벤트 할인
-  invalid_event: "할인율은 1~90%, 할인 금액은 1원 이상으로 정해 주세요",
+  invalid_event: "할인율은 1~90%, 할인 금액은 1원 이상 가격의 90% 이하로 정해 주세요",
   invalid_event_period: "할인 기간을 다시 확인해 주세요. 끝나는 때는 지금보다 뒤, 시작부터 1년 안이어야 해요",
   event_price_too_low: "할인한 가격이 1원보다 낮아져요. 할인이나 가격을 다시 확인해 주세요",
   too_many_options: "옵션은 상품 하나에 100개까지 만들 수 있어요",
