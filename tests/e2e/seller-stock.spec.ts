@@ -212,7 +212,9 @@ test("재고 차감 기준 안내는 주문 설정의 「취소·반품하면 �
   await page.getByLabel("이메일").fill("demo-owner@example.com");
   await page.getByLabel("비밀번호").fill(PASSWORD);
   await page.getByRole("button", { name: "로그인" }).click();
-  await expect(page.getByText("취소·반품하면 재고가 돌아와요(주문 설정에서 켜져 있어요)", { exact: false })).toBeVisible();
+  // 서버와 같이: 취소·발송 전 환불은 돌아오고, 발송 뒤 환불·개봉 상품은 돌아오지 않는다
+  await expect(page.getByText("주문 취소·발송 전 환불이면 재고가 돌아와요(주문 설정에서 켜져 있어요)", { exact: false })).toBeVisible();
+  await expect(page.getByText("발송 뒤 환불이나 개봉한 상품은 돌아오지 않아요", { exact: false })).toBeVisible();
   await expect(page.getByText("미입금으로 취소되면", { exact: false })).toHaveCount(0);
 });
 
@@ -348,4 +350,322 @@ test("재고 이력: 「이력 더 보기」 응답이 늦게 와도 새로 불�
   await expect(page.getByTestId("stock-history")).not.toContainText("늦게 온 옛 이력");
   await expect(page.getByTestId("history-item").first()).toContainText(`남은 재고 ${before - 1}`);
   await putBack(page, label, before);
+});
+
+test("상품명·옵션명은 숫자·단어 중간에서 줄을 바꾸지 않는다(「3 / 60장」)", async ({ page }) => {
+  await openAs(page);
+  const name = row(page, "탑로더 25장").locator(".c-name .clamp2").first();
+  const style = await name.evaluate((el) => ({ wb: getComputedStyle(el).wordBreak, ow: getComputedStyle(el).overflowWrap }));
+  expect(style).toEqual({ wb: "keep-all", ow: "anywhere" });
+  const hist = page.getByTestId("history-item").first().locator(".clamp2");
+  expect(await hist.evaluate((el) => getComputedStyle(el).wordBreak)).toBe("keep-all");
+});
+
+test("390: 아래 고정 적용 바가 맨 아래 「이력 더 보기」를 가리지 않는다", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  // 다음 쪽이 있는 것처럼 커서를 붙여 「이력 더 보기」를 보이게 한다
+  await page.route("**/api/seller/products/stock-movements**", async (route) => {
+    const res = await route.fetch();
+    return route.fulfill({ response: res, json: { ...(await res.json()), nextCursor: "e2e-more" } });
+  });
+  await openAs(page);
+  await nextInput(page, "탑로더 25장 1팩").fill("99");
+  await expect(page.getByTestId("stock-mbar")).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  const more = page.getByRole("button", { name: "이력 더 보기" });
+  await expect(more).toBeVisible();
+  const btn = (await more.boundingBox())!;
+  const bar = (await page.getByTestId("stock-mbar").boundingBox())!;
+  expect(btn.y + btn.height).toBeLessThanOrEqual(bar.y);
+});
+
+test("「이력 더 보기」가 실패하면 지금 목록은 두고 그 자리에서 다시 불러온다", async ({ page }) => {
+  let failOnce = true;
+  let firstCount = 0;
+  await page.route("**/api/seller/products/stock-movements**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("cursor") === "e2e-next") {
+      if (failOnce) {
+        failOnce = false;
+        return route.fulfill({ status: 500, json: { error: "internal" } });
+      }
+      return route.fulfill({
+        json: {
+          movements: [{ id: "e2e-next-1", productName: "다음 쪽 이력", optionName: "옵션", delta: 1, stockAfter: null, type: "MANUAL", typeLabel: "직접 변경", note: null, actor: { name: "대표자" }, createdAt: new Date().toISOString() }],
+          nextCursor: null,
+        },
+      });
+    }
+    const res = await route.fetch();
+    const body = await res.json();
+    firstCount = body.movements.length;
+    return route.fulfill({ response: res, json: { ...body, nextCursor: "e2e-next" } });
+  });
+  await openAs(page);
+  await expect(page.getByTestId("history-item").first()).toBeVisible();
+  await page.getByRole("button", { name: "이력 더 보기" }).click();
+  await expect(page.getByText("이력을 더 불러오지 못했어요")).toBeVisible();
+  // 목록은 그대로, 전체 오류 화면으로 바뀌지 않는다
+  await expect(page.getByTestId("history-item")).toHaveCount(firstCount);
+  await expect(page.getByText("재고 이력을 불러오지 못했어요")).toHaveCount(0);
+  await page.getByRole("button", { name: "다시 불러오기" }).click();
+  await expect(page.getByTestId("history-item")).toHaveCount(firstCount + 1);
+  await expect(page.getByTestId("history-item").last()).toContainText("다음 쪽 이력");
+  await expect(page.getByRole("button", { name: "이력 더 보기" })).toHaveCount(0);
+});
+
+test("올해가 아닌 이력은 연도를 붙여 보여 준다", async ({ page }) => {
+  await page.route("**/api/seller/products/stock-movements**", async (route) => {
+    const res = await route.fetch();
+    const body = await res.json();
+    const old = { id: "e2e-old", productName: "작년 이력", optionName: "옵션", delta: -1, stockAfter: 4, type: "MANUAL", typeLabel: "직접 변경", note: "재고 조사", actor: { name: "대표자" }, createdAt: "2024-12-31T03:00:00Z" };
+    return route.fulfill({ response: res, json: { movements: [...body.movements, old], nextCursor: null } });
+  });
+  await openAs(page);
+  await expect(page.getByTestId("history-item").first()).not.toContainText("2024");
+  await expect(page.getByTestId("history-item").filter({ hasText: "작년 이력" })).toContainText("2024. 12. 31. 12:00");
+});
+
+test("직접 쓴 사유는 서버와 같은 기준(코드포인트 100자)으로 검사한다", async ({ page }) => {
+  await openAs(page);
+  await page.getByRole("button", { name: "탑로더 25장 1팩 빼기 · 더하기" }).click();
+  const sheet = page.getByRole("dialog");
+  await sheet.getByLabel("수량").fill("1");
+  await sheet.getByRole("radio", { name: "직접 입력" }).click();
+  // 두 칸짜리 글자 100개(UTF-16 200칸)는 100자로 센다
+  await sheet.getByLabel("사유 메모").fill("𠀀".repeat(100));
+  await expect(sheet.getByText("사유는 100자까지 쓸 수 있어요")).toHaveCount(0);
+  await expect(sheet.getByRole("button", { name: "1개 빼기" })).toBeEnabled();
+  await sheet.getByLabel("사유 메모").fill("𠀀".repeat(101));
+  await expect(sheet.getByText("사유는 100자까지 쓸 수 있어요")).toBeVisible();
+  await expect(sheet.getByRole("button", { name: "1개 빼기" })).toBeDisabled();
+  await sheet.getByRole("button", { name: "취소" }).click();
+  // 한 번에 적용 확인 창도 같은 기준
+  await nextInput(page, "탑로더 25장 1팩").fill("99");
+  await page.getByRole("button", { name: /^변경 \d+건 적용$/ }).last().click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("radio", { name: "직접 입력" }).click();
+  await dialog.getByLabel("사유 메모").fill("𠀀".repeat(101));
+  await expect(dialog.getByText("사유는 100자까지 쓸 수 있어요")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "적용", exact: true })).toBeDisabled();
+  await dialog.getByLabel("사유 메모").fill("𠀀".repeat(100));
+  await expect(dialog.getByRole("button", { name: "적용", exact: true })).toBeEnabled();
+  await dialog.getByRole("button", { name: "취소" }).click();
+});
+
+test("걸러 본 옵션이 200개를 넘으면 「선택 n개 · 전체 N개」와 「N개 모두 선택」이 보인다", async ({ page }) => {
+  // 상품 250개(옵션 1개씩)를 돌려줘 그린 줄(200)보다 많게 만든다. 적용은 하지 않는다
+  await page.route("**/api/seller/products?limit=200**", (route) =>
+    route.fulfill({
+      json: {
+        products: Array.from({ length: 250 }, (_, i) => ({
+          id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+          name: `대량 상품 ${i + 1}`,
+          price: 1000,
+          status: "ON_SALE",
+          stockDeductMode: "ON_PAYMENT",
+          options: [{ id: `10000000-0000-4000-8000-${String(i).padStart(12, "0")}`, name: "기본", stock: 10, sortOrder: 0 }],
+        })),
+        nextCursor: null,
+      },
+    }),
+  );
+  await openAs(page);
+  const info = page.getByTestId("stock-selinfo");
+  await expect(info).toContainText("선택 0개 · 전체 250개");
+  await page.getByLabel("보이는 옵션 모두 선택").check();
+  await expect(info).toContainText("선택 200개 · 전체 250개");
+  await info.getByRole("button", { name: "250개 모두 선택" }).click();
+  await expect(info).toContainText("선택 250개 · 전체 250개");
+  await expect(info.getByRole("button", { name: "250개 모두 선택" })).toHaveCount(0);
+  // 걸러 보면 그 결과 기준으로 센다
+  await page.getByLabel("재고 검색").fill("대량 상품 1");
+  await expect(info).toHaveCount(0);
+});
+
+test("「N개 모두 선택」 뒤 한꺼번에 적으면 적용 확인 창에 「화면에 안 보이는 n개 포함」이 나온다", async ({ page }) => {
+  // 상품 250개(가짜 응답). 확인 창만 열고 적용하지 않는다
+  await page.route("**/api/seller/products?limit=200**", (route) =>
+    route.fulfill({
+      json: {
+        products: Array.from({ length: 250 }, (_, i) => ({
+          id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+          name: `대량 상품 ${i + 1}`,
+          price: 1000,
+          status: "ON_SALE",
+          stockDeductMode: "ON_PAYMENT",
+          options: [{ id: `10000000-0000-4000-8000-${String(i).padStart(12, "0")}`, name: "기본", stock: 10, sortOrder: 0 }],
+        })),
+        nextCursor: null,
+      },
+    }),
+  );
+  await openAs(page);
+  await page.getByTestId("stock-selinfo").getByRole("button", { name: "250개 모두 선택" }).click();
+  await page.getByLabel("선택한 옵션에 더하거나 뺄 수량").fill("+1");
+  await page.getByRole("button", { name: "한꺼번에 적기" }).click();
+  await expect(page.getByTestId("sum-count")).toHaveText("250개");
+  await page.getByRole("button", { name: "변경 250건 적용" }).last().click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByTestId("apply-hidden")).toHaveText("화면에 안 보이는 50개 포함");
+  await dialog.getByRole("button", { name: "취소" }).click();
+  // 다 펼치면 안 보이는 옵션이 없으니 문구도 없다
+  await page.getByRole("button", { name: /50개 더 보기/ }).click();
+  await page.getByRole("button", { name: "변경 250건 적용" }).last().click();
+  await expect(page.getByRole("dialog").getByTestId("apply-hidden")).toHaveCount(0);
+  await page.getByRole("dialog").getByRole("button", { name: "취소" }).click();
+});
+
+test("행의 「이력」은 그 옵션의 재고 이력만 보여 준다", async ({ page }) => {
+  await openAs(page);
+  // 1440에서 「이력」·「빼기 · 더하기」 두 버튼이 칸 안에 다 보인다
+  const act = row(page, "탑로더 25장").locator(".c-act");
+  const cell = (await act.boundingBox())!;
+  const adj = (await act.getByRole("button", { name: /빼기 · 더하기/ }).boundingBox())!;
+  expect(adj.x + adj.width).toBeLessThanOrEqual(cell.x + cell.width);
+  const req = page.waitForRequest((r) => r.url().includes("/stock-movements") && r.url().includes("optionId="));
+  await page.getByRole("button", { name: "탑로더 25장 1팩 이력" }).click();
+  const url = new URL((await req).url());
+  expect(url.searchParams.get("productId")).toBeTruthy();
+  expect(url.searchParams.get("optionId")).toBeTruthy();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByTestId("history-item").first()).toBeVisible();
+  const texts = await dialog.getByTestId("history-item").allInnerTexts();
+  expect(texts.length).toBeGreaterThan(0);
+  for (const t of texts) expect(t).toContain("탑로더 25장 · 1팩");
+  await shot(page, "SA-014-stock-option-history");
+  await dialog.getByRole("button", { name: "닫기" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
+test("검색을 바꾸면 이전 선택은 지금 결과와 겹치는 것만 남는다(표시·한꺼번에 적기 대상)", async ({ page }) => {
+  // 「가방」 250개 + 「나무」 220개(가짜 응답, 겹치지 않는 이름). 적용은 하지 않는다
+  const fake = (prefix: string, n: number, base: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      id: `00000000-0000-4000-8000-${String(base + i).padStart(12, "0")}`,
+      name: `${prefix} ${i + 1}`,
+      price: 1000,
+      status: "ON_SALE",
+      stockDeductMode: "ON_PAYMENT",
+      options: [{ id: `10000000-0000-4000-8000-${String(base + i).padStart(12, "0")}`, name: "기본", stock: 10, sortOrder: 0 }],
+    }));
+  await page.route("**/api/seller/products?limit=200**", (route) => route.fulfill({ json: { products: [...fake("가방", 250, 0), ...fake("나무", 220, 1000)], nextCursor: null } }));
+  await openAs(page);
+  const info = page.getByTestId("stock-selinfo");
+  await page.getByLabel("재고 검색").fill("가방");
+  await info.getByRole("button", { name: "250개 모두 선택" }).click();
+  await expect(info).toContainText("선택 250개 · 전체 250개");
+  // 겹치지 않는 검색으로 바꾸면 이전 선택은 빠진다
+  await page.getByLabel("재고 검색").fill("나무");
+  await expect(info).toContainText("선택 0개 · 전체 220개");
+  await info.getByRole("button", { name: "220개 모두 선택" }).click();
+  await expect(info).toContainText("선택 220개 · 전체 220개");
+  await page.getByLabel("선택한 옵션에 더하거나 뺄 수량").fill("+1");
+  await page.getByRole("button", { name: "한꺼번에 적기" }).click();
+  // 바뀐 옵션은 지금 결과 220개뿐(이전 검색의 250개는 그대로)
+  await expect(page.getByTestId("sum-count")).toHaveText("220개");
+  await page.getByLabel("재고 검색").fill("가방");
+  await expect(nextInput(page, "가방 1 기본")).toHaveValue("10");
+});
+
+test("검색을 바꿔 다시 모두 선택해 적용하면 이전 검색 결과의 재고는 바뀌지 않는다", async ({ page }) => {
+  await openAs(page);
+  const cur = async (name: string) => Number((await row(page, name).locator(".c-cur").innerText()).replace(/\D/g, ""));
+  const topBefore = await cur("탑로더 25장");
+  const moonBefore = await cur("문라이트 컬렉션 박스");
+  // 1) 「탑로더」를 모두 선택
+  await page.getByLabel("재고 검색").fill("탑로더");
+  await page.getByLabel("보이는 옵션 모두 선택").check();
+  // 2) 겹치지 않는 「문라이트 컬렉션」으로 바꿔 모두 선택하고 +1 적용
+  await page.getByLabel("재고 검색").fill("문라이트 컬렉션");
+  await page.getByLabel("보이는 옵션 모두 선택").check();
+  await page.getByLabel("선택한 옵션에 더하거나 뺄 수량").fill("+1");
+  await page.getByRole("button", { name: "한꺼번에 적기" }).click();
+  await expect(page.getByTestId("sum-count")).toHaveText("1개");
+  await applyAll(page);
+  await expect(page.getByText("재고 1건을 바꿨어요")).toBeVisible();
+  // 3) 서버에서 다시 읽어도 탑로더는 그대로, 문라이트만 +1
+  await page.reload();
+  await expect(row(page, "문라이트 컬렉션 박스").locator(".c-cur")).toContainText(String(moonBefore + 1));
+  expect(await cur("탑로더 25장")).toBe(topBefore);
+  // 되돌려 둔다
+  await nextInput(page, "문라이트 컬렉션 박스 1박스").fill(String(moonBefore));
+  await applyAll(page);
+  await expect(page.getByText("재고 1건을 바꿨어요")).toBeVisible();
+});
+
+test("390·360 카드형 행: 상태 배지가 잘리지 않고 「이력」·「빼기 · 더하기」 버튼과 겹치지 않는다", async ({ page }) => {
+  await openAs(page);
+  for (const width of [390, 360]) {
+    await page.setViewportSize({ width, height: 844 });
+    const rows = page.getByTestId("stock-row");
+    const n = Math.min(await rows.count(), 8);
+    for (let i = 0; i < n; i++) {
+      const r = rows.nth(i);
+      const badge = (await r.locator(".c-state .bdg").boundingBox())!;
+      const cell = (await r.locator(".c-state").boundingBox())!;
+      // 배지가 칸 밖으로 잘리지 않는다
+      expect(badge.x + badge.width, `${width} ${i}행 배지 잘림`).toBeLessThanOrEqual(cell.x + cell.width + 0.5);
+      for (const b of await r.locator(".c-act .btn").all()) {
+        const bb = (await b.boundingBox())!;
+        const overlap = badge.x < bb.x + bb.width && bb.x < badge.x + badge.width && badge.y < bb.y + bb.height && bb.y < badge.y + badge.height;
+        expect(overlap, `${width} ${i}행 배지·버튼 겹침`).toBe(false);
+      }
+    }
+  }
+});
+
+test("사유 메모는 실제로 보내는 값(앞뒤 공백 뺀 값)으로 검사한다", async ({ page }) => {
+  await openAs(page);
+  await page.getByRole("button", { name: "탑로더 25장 1팩 빼기 · 더하기" }).click();
+  const sheet = page.getByRole("dialog");
+  await sheet.getByLabel("수량").fill("1");
+  await sheet.getByRole("radio", { name: "직접 입력" }).click();
+  // 앞에 붙은 BOM은 보낼 때 빠지므로 막지 않는다
+  await sheet.getByLabel("사유 메모").fill("﻿창고 정리");
+  await expect(sheet.getByText("쓸 수 없는 글자가 있어요")).toHaveCount(0);
+  await expect(sheet.getByRole("button", { name: "1개 빼기" })).toBeEnabled();
+  // 가운데 낀 보이지 않는 글자는 서버도 막으므로 화면에서 막는다
+  await sheet.getByLabel("사유 메모").fill("창고\u0007정리");
+  await expect(sheet.getByText("쓸 수 없는 글자가 있어요")).toBeVisible();
+  await sheet.getByRole("button", { name: "취소" }).click();
+});
+
+test("옵션 이력 창 제목은 2줄까지 보인다", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openAs(page);
+  // 데모 상품 중 이름이 가장 긴 것(390에서 제목이 2줄을 넘는다)
+  await page.getByRole("button", { name: /^포켓몬 카드 게임.* 이력$/ }).first().click();
+  const title = page.getByRole("dialog").locator("#opt-hist-title");
+  await expect(title).toBeVisible();
+  expect(await title.evaluate((el) => getComputedStyle(el).webkitLineClamp)).toBe("2");
+  expect(await title.evaluate((el) => el.getBoundingClientRect().height)).toBeLessThanOrEqual(2 * 32);
+});
+
+test("한 번에 적용하는 동안 「n/N 적용 중」으로 진행 상황을 보여 준다", async ({ page }) => {
+  // 한 건씩 늦게 처리되게 해 진행 표시를 본다(실제로 적용하고 되돌린다)
+  await page.route("**/stock-adjust", async (route) => {
+    await new Promise((r) => setTimeout(r, 400));
+    return route.continue();
+  });
+  await openAs(page);
+  const top = Number((await row(page, "탑로더 25장").locator(".c-cur").innerText()).replace(/\D/g, ""));
+  const moon = Number((await row(page, "문라이트 컬렉션 박스").locator(".c-cur").innerText()).replace(/\D/g, ""));
+  await nextInput(page, "탑로더 25장 1팩").fill(String(top + 1));
+  await nextInput(page, "문라이트 컬렉션 박스 1박스").fill(String(moon + 1));
+  await applyAll(page);
+  await expect(page.getByRole("button", { name: /^[01]\/2 적용 중$/ }).first()).toBeVisible();
+  await expect(page.getByText("재고 2건을 바꿨어요")).toBeVisible();
+  // 서버에서 다시 읽어 둘 다 +1인지 본다
+  await page.reload();
+  await expect(nextInput(page, "탑로더 25장 1팩")).toHaveValue(String(top + 1));
+  await expect(nextInput(page, "문라이트 컬렉션 박스 1박스")).toHaveValue(String(moon + 1));
+  // 되돌려 둔다. 앞 안내가 남아 있을 수 있어, 적용이 끝난 뒤 다시 불러와 실제 재고로 확인한다
+  await nextInput(page, "탑로더 25장 1팩").fill(String(top));
+  await nextInput(page, "문라이트 컬렉션 박스 1박스").fill(String(moon));
+  await applyAll(page);
+  await expect(page.getByRole("button", { name: "변경 0건 적용" }).first()).toBeVisible({ timeout: 10_000 });
+  await page.reload();
+  await expect(nextInput(page, "탑로더 25장 1팩")).toHaveValue(String(top));
+  await expect(nextInput(page, "문라이트 컬렉션 박스 1박스")).toHaveValue(String(moon));
 });
