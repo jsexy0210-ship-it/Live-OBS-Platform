@@ -592,6 +592,8 @@ model Order {
   @@index([sellerId, status])
   @@index([status, paymentDueAt])
   @@index([sellerId, buyerMemberId, autoCancelledAt])
+  // 판매자 주문 목록(주문 시각 내림차순 + id 커서)
+  @@index([sellerId, createdAt(sort: Desc), id(sort: Desc)])
 }
 
 model OrderItem {
