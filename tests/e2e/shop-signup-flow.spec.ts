@@ -486,6 +486,16 @@ test("필수 동의 전에는 인증번호 받기를 누를 수 없고, 하나�
   await expect(page.getByText("재가입 제한 정보 보관", { exact: false })).toHaveCount(0);
 });
 
+test("본인확인 시작이 만 14세 미만(403)이면 생년월일 칸에 알리고 포커스를 옮긴다", async ({ page }) => {
+  await mockApi(page, { verification: fail(403, "under_age", BUYER_SIGNUP_MESSAGES.under_age) });
+  await page.goto(`/shop/${SLUG}/signup`);
+  await fillIdentity(page, "김어린");
+  await page.getByRole("button", { name: "인증번호 받기" }).click();
+  await expect(page.locator("#idv-birth-err")).toHaveText("만 14세 미만은 가입할 수 없어요");
+  await expect(page.getByLabel("생년월일")).toHaveAttribute("aria-invalid", "true");
+  await expect.poll(() => focusedId(page)).toBe("idv-birth");
+});
+
 test("본인확인 시작이 동의 오류(약관 없음·문서 바뀜)면 동의 칸으로 포커스를 옮기고 오류를 연결한다", async ({ page }) => {
   for (const [code, status] of [["terms_required", 400], ["consent_outdated", 409]] as const) {
     await page.unrouteAll();
