@@ -318,6 +318,7 @@ $C logs --tail 100 obs-web-proxy        # 프록시
 | `db-restore.sh <파일>` | 파일 검사 → 지금 DB 안전 백업 → 앱 중지 → DB 다시 만들기 → 복원 → **지금 버전 마이그레이션 적용**(백업이 더 오래된 스키마여도 앱과 맞춤) → 앱 시작 → 앱마다 healthy 확인(가용성 on이면 2개 모두) → health. **DB 이름을 직접 입력해야 진행** | 아니요 |
 | `rollback-app.sh [SHA] [--force-unchecked]` | 앱만 이전 이미지로(DB 그대로, 빌드 없음). 되돌릴 버전이 모르는 마이그레이션이 DB에 있으면 경고 → health version 확인 → 배포 기록에 남김. 그 버전의 migrate 이미지가 없으면 스키마 호환을 확인할 수 없어 멈추고, `--force-unchecked`일 때만 경고 후 진행 | 아니요 |
 | `availability.sh on\|off\|status` | 가용성 프로파일 켜기·끄기 | 예 |
+| `deploy-mark.sh on "<사유>"\|off` | 배포 진행 표시 켜기·끄기(감시가 표시가 있는 동안 버전 불일치 경고를 미룸). 여러 단계 배포가 한 줄씩 부르는 용도. **Deploy obs-test 워크플로 연결은 운영자 승인 뒤**(배포 시작 전 `on`, 끝에 `if: always()`로 `off`) | 아니요 |
 | `rolling-deploy.sh [SHA]` | 가용성 프로파일에서 앱을 하나씩 교체 | 예 |
 | `chaos.sh ...` | 장애 주입(앱 멈춤·강제 종료·충돌·얼림, DB 얼림·재시작) | 예 |
 | `measure.sh <이름표> [초] [초당 요청]` | 가용률·오류율·p50/p95/p99·장애 구간·복구 시간 측정(JSON) | 예 |

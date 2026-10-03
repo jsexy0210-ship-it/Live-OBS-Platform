@@ -72,9 +72,12 @@ wait_health() {
 }
 
 # 배포(앱 교체) 동안 표시를 두고, 끝나거나 실패·중단되면 지운다.
+deploy_mark_set() { mkdir -p "$(dirname "$DEPLOY_MARK")" && echo "$(kst '+%F %T KST') $1 pid=$$" > "$DEPLOY_MARK"; }
+deploy_mark_clear() { rm -f "$DEPLOY_MARK"; }
+# 이 스크립트가 끝날 때(실패 포함) 표시를 지운다. 여러 단계에 걸친 배포(워크플로)는 deploy-mark.sh on/off를 쓴다.
 mark_deploying() {
-  mkdir -p "$(dirname "$DEPLOY_MARK")" && echo "$(kst '+%F %T KST') $1 pid=$$" > "$DEPLOY_MARK"
-  trap 'rm -f "$DEPLOY_MARK"' EXIT
+  deploy_mark_set "$1"
+  trap deploy_mark_clear EXIT
 }
 # 감시 수집기가 떠 있으면 지금 compose 정의(가용성 여부 포함)로 다시 만든다(감시 대상이 앱 수에 맞게 바뀜).
 refresh_monitor() {
