@@ -178,7 +178,8 @@ sudo -u obs nano /opt/obs/.env
 | `POSTGRES_DB` | 필수 | DB 이름 |
 | `IDENTITY_HASH_KEY` | 필수 | 본인확인 CI 해시 키(32자 이상) |
 | `BILLING_KEY_SECRET` | 필수 | 빌링키 암호화 키(32자 이상) |
-| `BILLING_PROVIDER` | 필수 | obs-test는 **`fake`**(실제 결제 금지, 2026-10-03 결정). **주의**: 지금 코드는 운영 빌드(`NODE_ENV=production`)에서 가짜 결제 공급자 생성을 막아요(`lib/server/billing/provider.ts`). 그래서 obs-test에서는 카드 등록·구독 결제가 오류로 멈춰요(비워도 같음). 실제 결제는 일어나지 않아요. **obs-test에서는 카드 등록·구독 결제가 동작하지 않는 것이 의도예요**(2026-10-03 결정) |
+| `BILLING_PROVIDER` | 선택 | obs-test는 비워도 돼요(아래 `OBS_TEST_MODE=1`이면 가짜 결제 공급자를 써요). 운영 빌드에서 `fake`만 넣으면 가짜 결제 공급자 생성이 막혀 카드 등록·구독 결제가 오류로 멈춰요 |
+| `OBS_TEST_MODE` | **obs-test만** | `1`이면 테스트 서버 모드예요(대표님 지시 2026-10-03). 휴대폰 본인확인은 가짜 공급자(인증번호 `000000`, 문자·과금 없음, 포트원 설정이 있어도 테스트 모드가 우선), 구독 결제는 가짜 결제 공급자(실제 돈 이동 없음, 결제 번호 `fake-pay-…`)로 처리하고, 「시험 데이터 넣기」 명령을 쓸 수 있어요. 켜지면 서버 로그에 경고 한 줄이 남고 `GET /api/health`에 `"testMode": true`가 붙어요. **운영 서버에는 절대 넣지 않아요** |
 | `OBS_SITE_ADDRESS` | 필수(HTTPS) | obs-test는 `test.on-aircue.com`. 비우면 `:80`(HTTP만, 로그인 유지 안 됨). 아래 「HTTPS」 |
 | `BUSINESS_STATUS_PROVIDER`, `NTS_BUSINESS_STATUS_API_KEY` | 선택 | 판매자 가입 사업자 상태 점검 |
 | `MAIL_ORDER_PROVIDER`, `FTC_MAIL_ORDER_API_KEY` | 선택 | 통신판매업 점검 |
@@ -234,6 +235,21 @@ cd /opt/obs/src && C="docker compose -p obs-web -f deploy/docker-compose.yml --e
 export APP_VERSION=$(docker ps -a --filter label=com.docker.compose.project=obs-web --filter label=com.docker.compose.service=obs-web-app --format '{{.Image}}' | head -1 | cut -d: -f2)
 echo "현재 버전: ${APP_VERSION:-없음}"
 ```
+
+## 시험 데이터 넣기(obs-test 전용)
+
+테스트 서버에 시험 판매자(대표자) 계정 1개, 시험 쇼핑몰(`/shop/test-shop`) 1개, 상품 3개를 넣어요(`scripts/seed-obs-test.mjs`). 판매자가 이미 있으면 아무것도 하지 않아요(다시 실행해도 중복 없음). 실제 결제·문자는 없어요.
+로그인 아이디·비밀번호는 실행할 때 직접 입력해요(저장소·문서·로그에 남지 않아요). 이 명령에서만 아이디 형식·비밀번호 8자 규칙을 건너뛰어요(대표님 허용 2026-10-03, 운영 규칙은 그대로).
+위 「서버 명령 준비」 줄을 먼저 실행하고, 아래를 붙여 넣은 뒤 아이디·비밀번호를 입력해요.
+
+```bash
+read -p "아이디: " SEED_SELLER_LOGIN && read -s -p "비밀번호: " SEED_SELLER_PASSWORD && echo && export SEED_SELLER_LOGIN SEED_SELLER_PASSWORD && OBS_TEST_MODE="$(sed -n 's/^OBS_TEST_MODE=//p' /opt/obs/.env)" IDENTITY_HASH_KEY="$(sed -n 's/^IDENTITY_HASH_KEY=//p' /opt/obs/.env)" $C run --rm --no-deps -e OBS_TEST_MODE -e SEED_SELLER_LOGIN -e SEED_SELLER_PASSWORD -e IDENTITY_HASH_KEY obs-web-migrate node scripts/seed-obs-test.mjs; unset SEED_SELLER_LOGIN SEED_SELLER_PASSWORD
+```
+
+- 마이그레이션 이미지(`obs-web-migrate`)를 써요. 이 기능이 들어간 버전으로 한 번 배포한 뒤에 실행해요.
+- 테스트 모드 여부는 이 서버의 `/opt/obs/.env`에 적힌 `OBS_TEST_MODE` 값을 그대로 넘겨요(명령에 1을 박아 두지 않아요). 운영 서버처럼 `.env`에 `OBS_TEST_MODE=1`이 없으면 명령이 아무것도 넣지 않고 실패해요.
+- 끝나면 파트너스 로그인 화면에서 넣은 아이디·비밀번호로 로그인해요.
+- 대표자 본인확인 정보는 시험용 인물로 채워요. 비밀번호 찾기에서 이름 「테스트대표」, 생년월일 1990년 1월 1일(남), 아무 휴대폰번호, 인증번호 `000000`을 넣으면 대표자로 확인돼요. 서버의 `IDENTITY_HASH_KEY`로 해시를 만들어서 이 값이 없으면 명령이 실패해요. `obs-web-migrate` 컨테이너에는 DB 주소만 들어가므로, 위 줄이 `/opt/obs/.env`의 `IDENTITY_HASH_KEY` 값을 읽어 이 명령에만 넘겨요(화면·명령 기록에 값이 남지 않아요). `.env`에서 이 값은 따옴표 없이 적어 둬요.
 
 ## 수동 배포(서버에서 직접, 워크플로를 쓸 수 없을 때)
 

@@ -6,6 +6,7 @@ import { cleanText } from "../text/clean";
 import { STAFF_NAME_MAX } from "../sellers/staffName";
 import { hashCi } from "./ciHash";
 import { CARRIERS, DEVICES, birthDateOf, type Carrier, type Device, type IdentityPerson, type IdentityProvider, type IdentityResult, type ProviderFailure } from "./provider";
+import { isTestMode } from "../testMode";
 
 type IdentityResultOk = Extract<IdentityResult, { ok: true }>;
 
@@ -203,8 +204,8 @@ export async function confirmIdentityCode(
     await db.identityVerification.updateMany({ where: { id: v.id, status: "PENDING" }, data: { status: "EXPIRED" } });
     return { ok: false, reason: "expired" };
   }
-  // 운영에서는 가짜 공급자 기록을 완료 처리하지 않는다(공급자 객체를 우회해 만든 경우까지 막는다).
-  if (v.provider === "fake" && process.env.NODE_ENV === "production") return { ok: false, reason: "failed" };
+  // 운영에서는 가짜 공급자 기록을 완료 처리하지 않는다(공급자 객체를 우회해 만든 경우까지 막는다). 테스트 서버 모드(OBS_TEST_MODE=1)만 예외.
+  if (v.provider === "fake" && process.env.NODE_ENV === "production" && !isTestMode()) return { ok: false, reason: "failed" };
   const finalize = (r: IdentityResultOk) => finalizeIdentity(db, v, r, now);
 
   // 틀린 시도: 잡아 둔 1회를 그대로 두고, 한도에 닿았으면 요청을 실패로 끝낸다.
