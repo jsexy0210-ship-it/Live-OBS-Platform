@@ -3,6 +3,7 @@
 # 사용: scripts/ops/measure.sh <이름표> [초=60] [초당 요청=20] [주소=http://127.0.0.1/api/health]
 . "$(dirname "$0")/lib.sh"
 
+require_test_env
 label="${1:?사용법: measure.sh <이름표> [초] [초당 요청] [주소]}"
 dur="${2:-60}"; rps="${3:-20}"; url="${4:-$HEALTH_URL}"
 mkdir -p "$CHECK_DIR"

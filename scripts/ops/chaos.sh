@@ -26,14 +26,33 @@ app_container() {
   echo "$c"
 }
 wait_healthy() { local c="$1" t0=$SECONDS; until healthy "$c"; do [ $((SECONDS - t0)) -gt 120 ] && die "120초 안에 healthy로 돌아오지 않았어요."; sleep 1; done; echo $((SECONDS - t0)); }
+check_seconds() { [[ "$1" =~ ^[0-9]+$ ]] && [ "$1" -ge 1 ] && [ "$1" -le 600 ] || die "초는 1~600 사이 숫자로 넣어 주세요: $1"; }
+# 얼린 뒤 중간에 끊겨도(Ctrl+C·오류) 반드시 풀리게 한다.
+pause_for() {
+  local c="$1" s="$2"
+  trap 'docker unpause "'"$c"'" >/dev/null 2>&1 || true' EXIT INT TERM
+  docker pause "$c" >/dev/null
+  sleep "$s"
+  docker unpause "$c" >/dev/null
+  trap - EXIT INT TERM
+}
+# 멈춘 뒤 중간에 끊겨도 반드시 다시 켠다.
+down_for() {
+  local c="$1" s="$2" how="$3"
+  trap 'docker start "'"$c"'" >/dev/null 2>&1 || true' EXIT INT TERM
+  if [ "$how" = kill ]; then docker kill -s KILL "$c" >/dev/null; else docker stop "$c" >/dev/null; fi
+  sleep "$s"
+  docker start "$c" >/dev/null
+  trap - EXIT INT TERM
+}
 mark() { echo "$(kst '+%F %T KST') chaos $*" >> "$CHECK_DIR/chaos.log"; log "장애 주입: $*"; }
 mkdir -p "$CHECK_DIR"
 case "$action" in
-  stop-app)  c="$(app_container "${1:-1}")"; s="${2:-30}"; mark "stop-app ${1:-1} ${s}s"; docker stop "$c" >/dev/null; sleep "$s"; docker start "$c" >/dev/null; mark "start-app ${1:-1} healthy_after=$(wait_healthy "$c")s" ;;
-  kill-app)  c="$(app_container "${1:-1}")"; s="${2:-10}"; mark "kill-app ${1:-1} ${s}s"; docker kill -s KILL "$c" >/dev/null; sleep "$s"; docker start "$c" >/dev/null; mark "start-app ${1:-1} healthy_after=$(wait_healthy "$c")s" ;;
+  stop-app)  c="$(app_container "${1:-1}")"; s="${2:-30}"; check_seconds "$s"; mark "stop-app ${1:-1} ${s}s"; down_for "$c" "$s" stop; mark "start-app ${1:-1} healthy_after=$(wait_healthy "$c")s" ;;
+  kill-app)  c="$(app_container "${1:-1}")"; s="${2:-10}"; check_seconds "$s"; mark "kill-app ${1:-1} ${s}s"; down_for "$c" "$s" kill; mark "start-app ${1:-1} healthy_after=$(wait_healthy "$c")s" ;;
   crash-app) c="$(app_container "${1:-1}")"; mark "crash-app ${1:-1}"; docker exec "$c" sh -c 'kill -TERM 1'; sleep 1; mark "crash-app ${1:-1} healthy_after=$(wait_healthy "$c")s" ;;
-  pause-app) c="$(app_container "${1:-1}")"; s="${2:-15}"; mark "pause-app ${1:-1} ${s}s"; docker pause "$c" >/dev/null; sleep "$s"; docker unpause "$c" >/dev/null; mark "unpause-app ${1:-1} healthy_after=$(wait_healthy "$c")s" ;;
-  pause-db)  c="$(db_container)"; s="${1:-10}"; mark "pause-db ${s}s"; docker pause "$c" >/dev/null; sleep "$s"; docker unpause "$c" >/dev/null; mark "unpause-db" ;;
+  pause-app) c="$(app_container "${1:-1}")"; s="${2:-15}"; check_seconds "$s"; mark "pause-app ${1:-1} ${s}s"; pause_for "$c" "$s"; mark "unpause-app ${1:-1} healthy_after=$(wait_healthy "$c")s" ;;
+  pause-db)  c="$(db_container)"; s="${1:-10}"; check_seconds "$s"; mark "pause-db ${s}s"; pause_for "$c" "$s"; mark "unpause-db" ;;
   restart-db) mark "restart-db"; docker restart "$(db_container)" >/dev/null ;;
   *) die "사용법: chaos.sh stop-app|kill-app|pause-app [1|2] [초] | crash-app [1|2] | pause-db [초] | restart-db" ;;
 esac

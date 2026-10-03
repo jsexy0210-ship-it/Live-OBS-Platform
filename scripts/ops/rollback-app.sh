@@ -29,6 +29,8 @@ fi
 log "앱 롤백: ${cur:-없음} → $want (DB 그대로)"
 for svc in $(app_services); do
   APP_VERSION="$want" compose up -d --no-build --no-deps --wait "$svc"
+  # 앱 2개(가용성 프로파일)면 프록시가 교체 중 실패로 기억한 이 앱(5초)을 다시 넣을 때까지 기다린 뒤 다음 앱을 바꾼다(rolling-deploy.sh와 같은 이유).
+  if availability_on; then sleep 8; fi
 done
 wait_health "$want" >/dev/null || die "롤백 뒤 health 확인 실패(version=$want)."
 echo "$(kst '+%F %T KST') sha=$want rollback_from=${cur:-none} actor=$(id -un)" >> "$HISTORY"

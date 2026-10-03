@@ -67,15 +67,22 @@ function probe({ url, host }) {
   });
 }
 
-function certDaysLeft(host) {
+// "호스트" 또는 "호스트:포트"(기본 443)
+function certDaysLeft(target) {
+  const [host, port = "443"] = target.split(":");
   return new Promise((resolve) => {
-    const s = tls.connect({ host, port: 443, servername: host, timeout: cfg.timeoutMs }, () => {
+    const s = tls.connect({ host, port: Number(port), servername: host, timeout: cfg.timeoutMs }, () => {
       const c = s.getPeerCertificate();
       s.end();
       resolve(c?.valid_to ? Math.floor((new Date(c.valid_to).getTime() - Date.now()) / 86400_000) : null);
     });
-    s.on("timeout", () => s.destroy());
+    // 핸드셰이크가 멈춰도 결과를 돌려준다(안 그러면 tick이 영원히 멈춰 heartbeat가 끊김).
+    s.on("timeout", () => {
+      s.destroy();
+      resolve(null);
+    });
     s.on("error", () => resolve(null));
+    s.on("close", () => resolve(null));
   });
 }
 

@@ -315,7 +315,7 @@ $C logs --tail 100 obs-web-proxy        # 프록시
 | --- | --- | --- |
 | `data-snapshot.sh [이름표]` | 표마다 행 수·적용된 마이그레이션 수·DB 볼륨 생성 시각을 파일로 남겨요(읽기만) | 아니요 |
 | `db-backup.sh [이름표]` | 지금 DB를 그대로 깨워 백업. 끝까지 성공하고 파일 검사(`pg_restore -l`)를 통과해야 `.dump`가 돼요 | 아니요 |
-| `db-restore.sh <파일>` | 파일 검사 → 지금 DB 안전 백업 → 앱 중지 → DB 다시 만들기 → 복원 → 앱 시작 → health. **DB 이름을 직접 입력해야 진행** | 아니요 |
+| `db-restore.sh <파일>` | 파일 검사 → 지금 DB 안전 백업 → 앱 중지 → DB 다시 만들기 → 복원 → **지금 버전 마이그레이션 적용**(백업이 더 오래된 스키마여도 앱과 맞춤) → 앱 시작 → health. **DB 이름을 직접 입력해야 진행** | 아니요 |
 | `rollback-app.sh [SHA]` | 앱만 이전 이미지로(DB 그대로, 빌드 없음). 되돌릴 버전이 모르는 마이그레이션이 DB에 있으면 경고 → health version 확인 → 배포 기록에 남김 | 아니요 |
 | `availability.sh on\|off\|status` | 가용성 프로파일 켜기·끄기 | 예 |
 | `rolling-deploy.sh [SHA]` | 가용성 프로파일에서 앱을 하나씩 교체 | 예 |
@@ -389,7 +389,7 @@ scripts/ops/measure.sh rolling 90 20 & sleep 10; scripts/ops/rolling-deploy.sh <
 scripts/ops/measure.sh pausedb 60 20 & sleep 10; scripts/ops/chaos.sh pause-db 5; wait
 scripts/ops/availability.sh off
 ```
-`chaos.sh`는 다른 앱이 healthy가 아니면(둘 다 내려가는 경우) 실행을 거부해요. 결과 JSON의 `availabilityPct`·`errorRatePct`·`latencyMs`·`outages[].recoveryS`를 봐요. 큐 적체는 작업 큐가 생기면 함께 재요.
+`chaos.sh`는 다른 앱이 healthy가 아니면(둘 다 내려가는 경우) 실행을 거부하고, 중간에 끊겨도(Ctrl+C·오류) 얼리거나 멈춘 컨테이너를 반드시 되돌려요. 결과 JSON의 `availabilityPct`·`errorRatePct`·`latencyMs`·`outages[].recoveryS`를 봐요. 큐 적체는 작업 큐가 생기면 함께 재요.
 
 이 컨테이너(로컬 Docker, 4 vCPU, 자원 제한 적용)에서 잰 값(2026-10-04, 초당 20건 GET `/api/health`, 시험 숫자이지 서버 용량 보장 아님):
 
