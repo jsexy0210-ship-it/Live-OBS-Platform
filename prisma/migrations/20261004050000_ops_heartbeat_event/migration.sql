@@ -15,6 +15,7 @@ CREATE TABLE "OpsHeartbeat" (
 -- CreateTable
 CREATE TABLE "OpsEvent" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "seq" BIGSERIAL NOT NULL,
     "source" TEXT NOT NULL,
     "eventId" TEXT NOT NULL,
     "kind" TEXT NOT NULL,
@@ -36,4 +37,7 @@ CREATE INDEX "OpsEvent_key_occurredAt_idx" ON "OpsEvent"("key", "occurredAt");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "OpsEvent_source_eventId_key" ON "OpsEvent"("source", "eventId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "OpsEvent_seq_key" ON "OpsEvent"("seq");
 

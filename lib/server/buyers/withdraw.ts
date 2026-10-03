@@ -5,6 +5,7 @@ import { loginErrorBody } from "../auth/messages";
 import { hashPassword, verifyPassword } from "../auth/password";
 import { lockBuyerAddresses } from "./addresses";
 import { purgeExpiredRejoinBlocks, recordRejoinBlock } from "./rejoin";
+import { purgeSignupVerificationsForShop } from "./signup";
 
 // 구매자 탈퇴(ARCHITECTURE 「구매자 회원」: WITHDRAWN과 deletedAt을 같은 트랜잭션에서, 개인정보 비식별).
 // 기준(MASTER 결정 2026-10-03):
@@ -59,6 +60,7 @@ export async function withdrawBuyer(
   const unusable = await hashPassword(randomBytes(32).toString("hex"));
   // 이 쇼핑몰의 기간이 끝난 재가입 제한 기록을 먼저 지운다(정기 실행 연결 전 파기 경로)
   await purgeExpiredRejoinBlocks(db, now, scope.sellerId);
+  await purgeSignupVerificationsForShop(db, scope.sellerId);
   const tag = member.id.replace(/-/g, "").slice(0, 12);
   const result = await db.$transaction(async (tx) => {
     // 같은 회원 행을 잠가 주문 생성(FOR SHARE)·다른 탈퇴 요청과 겹치지 않게 한다. FOR UPDATE가 아닌 이유: 배송지 저장이

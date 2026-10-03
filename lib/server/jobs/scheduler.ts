@@ -1,6 +1,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { purgeExpiredRejoinBlocks } from "../buyers/rejoin";
-import { recordHeartbeat } from "../ops/metrics";
+import { purgeOldSignupVerificationIps, purgeUnfinishedSignupVerifications } from "../buyers/signup";
+import { purgeRetiredHeartbeats, recordHeartbeat } from "../ops/metrics";
 
 // 앱 안 정기 실행(MASTER 결정 2026-10-03: 외부 cron 대신). instrumentation.ts register(nodejs 런타임)에서 startScheduler를 부른다.
 // - 일정 간격(기본 1시간)으로 SCHEDULED_JOBS를 차례로 돈다. 작업마다 pg advisory xact lock을 시도해 여러 인스턴스 중 하나만 실행한다.
@@ -14,6 +15,12 @@ export type ScheduledJob = { name: string; run: (tx: Prisma.TransactionClient, n
 export const SCHEDULED_JOBS: ScheduledJob[] = [
   // 기간이 끝난 재가입 제한 기록(모든 쇼핑몰, buyers/rejoin.ts)
   { name: "buyer_rejoin_block.purge_expired", run: (tx, now) => purgeExpiredRejoinBlocks(tx, now) },
+  // 가입을 끝내지 않고 유효 시간이 지난 본인확인 기록 비식별(모든 쇼핑몰, buyers/signup.ts)
+  { name: "identity_verification.anonymize_unfinished_signup", run: (tx, now) => purgeUnfinishedSignupVerifications(tx, now) },
+  // 3개월 지난 가입 본인확인 요청 IP 비우기
+  { name: "identity_verification.purge_old_signup_ip", run: (tx, now) => purgeOldSignupVerificationIps(tx, now) },
+  // 7일 넘게 실행하지 않은(종료된) 인스턴스의 heartbeat 지우기(ops/metrics.ts)
+  { name: "ops_heartbeat.purge_retired", run: (tx, now) => purgeRetiredHeartbeats(tx, now) },
 ];
 
 export const SCHEDULER_INTERVAL_MS = 3600_000;

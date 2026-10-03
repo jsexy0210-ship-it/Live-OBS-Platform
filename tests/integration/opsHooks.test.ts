@@ -5,7 +5,7 @@ import { GET as healthRoute } from "../../app/api/health/route";
 import { createAdminSession } from "../../lib/server/auth/session";
 import { prisma } from "../../lib/server/db";
 import { runScheduledJobs, type ScheduledJob } from "../../lib/server/jobs/scheduler";
-import { opsInstanceName } from "../../lib/server/ops/metrics";
+import { HEARTBEAT_RETIRED_AFTER_MS, opsInstanceName, opsMetrics, purgeRetiredHeartbeats, recordHeartbeat } from "../../lib/server/ops/metrics";
 import { createAdmin, db, resetDb } from "./helpers";
 
 beforeEach(async () => {
@@ -53,6 +53,43 @@ describe("정기 실행 heartbeat", () => {
     await runScheduledJobs(db, new Date("2026-10-04T02:00:00Z"), jobs);
     expect(await db.opsHeartbeat.findUniqueOrThrow({ where: { instance_job: { instance: "web-1", job: "test.job" } } })).toMatchObject({ lastStatus: "done", lastError: null });
     expect(opsInstanceName()).toBe("web-1");
+  });
+});
+
+describe("heartbeat 보완(Codex)", () => {
+  it("건너뛴 실행(다른 인스턴스가 잠금)은 마지막 실행 시각만 남기고 상태·성공 시각·오류는 그대로 둔다", async () => {
+    const t = (h: number) => new Date(Date.UTC(2026, 9, 4, h));
+    await recordHeartbeat(db, "job", "done", t(0), undefined, "web-1");
+    await recordHeartbeat(db, "job", "failed", t(1), "boom", "web-1");
+    await recordHeartbeat(db, "job", "skipped", t(2), undefined, "web-1");
+    expect(await db.opsHeartbeat.findUniqueOrThrow({ where: { instance_job: { instance: "web-1", job: "job" } } })).toMatchObject({
+      lastRunAt: t(2), lastStatus: "failed", lastError: "boom", lastOkAt: t(0),
+    });
+    // 처음부터 건너뛴 작업은 성공 시각이 없다
+    await recordHeartbeat(db, "other", "skipped", t(3), undefined, "web-1");
+    expect(await db.opsHeartbeat.findUniqueOrThrow({ where: { instance_job: { instance: "web-1", job: "other" } } })).toMatchObject({ lastStatus: "skipped", lastOkAt: null });
+  });
+
+  it("오래 실행하지 않은 인스턴스는 지표에서 종료된 인스턴스로 따로 보이고, 7일 지난 행은 정기 실행이 지운다", async () => {
+    const now = new Date("2026-10-10T00:00:00Z");
+    await recordHeartbeat(db, "scheduler.tick", "done", new Date(now.getTime() - 3600_000), undefined, "web-new");
+    await recordHeartbeat(db, "scheduler.tick", "done", new Date(now.getTime() - HEARTBEAT_RETIRED_AFTER_MS - 1000), undefined, "web-old");
+    await recordHeartbeat(db, "scheduler.tick", "done", new Date(now.getTime() - 8 * 86_400_000), undefined, "web-gone");
+    const m = await opsMetrics(db, now);
+    expect(m.heartbeats.map((h) => h.instance)).toEqual(["web-new"]);
+    expect(m.retiredHeartbeats.map((h) => h.instance)).toEqual(["web-gone", "web-old"]);
+    expect(await purgeRetiredHeartbeats(db, now)).toBe(1);
+    expect((await db.opsHeartbeat.findMany()).map((h) => h.instance).sort()).toEqual(["web-new", "web-old"]);
+    expect((await import("../../lib/server/jobs/scheduler")).SCHEDULED_JOBS.map((j) => j.name)).toContain("ops_heartbeat.purge_retired");
+  });
+
+  it("같은 occurredAt의 열기·닫기는 늦게 들어온 쪽으로 정한다(한 번에 보내도, 따로 보내도)", async () => {
+    vi.stubEnv("OPS_INGEST_TOKEN", TOKEN);
+    const at = "2026-10-04T03:00:00Z";
+    await ingest({ events: [ev({ eventId: "a1", key: "health", kind: "incident_open", occurredAt: at }), ev({ eventId: "a2", key: "health", kind: "incident_close", occurredAt: at })] }, TOKEN);
+    await ingest({ events: [ev({ eventId: "b1", key: "cert", kind: "incident_close", occurredAt: at })] }, TOKEN);
+    await ingest({ events: [ev({ eventId: "b2", key: "cert", kind: "incident_open", occurredAt: at })] }, TOKEN);
+    for (let i = 0; i < 5; i++) expect((await opsMetrics(db)).incidents.open.map((e) => e.key)).toEqual(["cert"]);
   });
 });
 
