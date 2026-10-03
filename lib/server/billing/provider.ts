@@ -26,9 +26,9 @@ export class FakeBillingProvider implements BillingProvider {
   // 테스트용: 다음 결제 요청을 어떻게 망가뜨릴지(결제 전 타임아웃 / 결제 후 응답 유실)
   failNext: "timeout_before_charge" | "timeout_after_charge" | null = null;
 
-  // 운영 환경에서는 만들 수 없다.
-  constructor(env: string | undefined = process.env.NODE_ENV) {
-    if (env === "production") throw new Error("운영 환경에서는 가짜 결제 공급자를 쓸 수 없어요.");
+  // 운영 환경에서는 만들 수 없다. 테스트 서버 모드(OBS_TEST_MODE=1, testMode.ts)만 예외로 허용한다.
+  constructor(env: string | undefined = process.env.NODE_ENV, opts: { testMode?: boolean } = {}) {
+    if (env === "production" && !opts.testMode) throw new Error("운영 환경에서는 가짜 결제 공급자를 쓸 수 없어요.");
   }
 
   async issueBillingKey({ authKey }: { authKey: string; customerKey: string }): Promise<IssueResult> {
