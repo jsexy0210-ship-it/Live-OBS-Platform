@@ -274,7 +274,7 @@ export default function SignupForm({ slug }: { slug: string }) {
   const checkJoined = async (account: { loginId: string; password: string; nickname: string }) => {
     const r = await api(`/api/shop/${encodeURIComponent(slug)}/auth/login`, { method: "POST", body: { loginId: account.loginId, password: account.password } });
     if (r.ok) finish(account.nickname);
-    else showNotice({ kind: "neg", text: "가입 결과를 확인하지 못했어요. 잠시 뒤 다시 시도해 주세요" });
+    else showNotice({ kind: "neg", text: "가입이 끝났는지 확인하지 못했어요. 다시 시도해 주세요" });
   };
 
   const recheck = async () => {
@@ -313,7 +313,7 @@ export default function SignupForm({ slug }: { slug: string }) {
           <span className="grow">{notice.text}</span>
           {unconfirmed && (
             <button type="button" className="btn btn-sm btn-out" disabled={busy} onClick={recheck}>
-              가입 결과 다시 확인
+              다시 시도
             </button>
           )}
         </div>

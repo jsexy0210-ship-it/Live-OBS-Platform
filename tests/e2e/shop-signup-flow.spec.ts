@@ -373,6 +373,7 @@ test("체험 한도로 본인확인이 막히면 처음부터 다시 하게 하�
     }
     await expect(page.getByRole("heading", { name: "지금은 가입할 수 없어요" })).toBeVisible();
     await expect(page.getByRole("button", { name: "인증번호 받기" })).toHaveCount(0);
+    await expect.poll(() => focusedId(page)).toBe("shop-state-title");
   }
 });
 
@@ -396,12 +397,12 @@ test("가입 응답을 못 받으면 같은 본인확인으로 다시 보내지 
   await fillAccount(page, "x9", "별빛");
   await page.getByRole("button", { name: "가입하기" }).click();
   // 로그인으로 확인했지만 아직 계정이 없으면: 확인하지 못했다고 알리고 가입은 다시 보내지 않는다
-  await expect(page.getByText("가입 결과를 확인하지 못했어요. 잠시 뒤 다시 시도해 주세요")).toBeVisible();
+  await expect(page.getByText("가입이 끝났는지 확인하지 못했어요. 다시 시도해 주세요")).toBeVisible();
   await expect(page.getByRole("button", { name: "가입하기" })).toBeDisabled();
   expect(logins).toEqual([{ loginId: "buyer-x9@example.com", password: "pw-x9-long" }]);
   // 다시 확인: 이번에는 가입돼 있어 로그인 성공 → 완료 화면
   loginOk = true;
-  await page.getByRole("button", { name: "가입 결과 다시 확인" }).click();
+  await page.getByRole("button", { name: "다시 시도" }).click();
   await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
   expect(signups).toBe(1);
   expect(logins).toHaveLength(2);
