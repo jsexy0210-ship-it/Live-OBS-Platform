@@ -2,7 +2,7 @@ import type { AutomationJob, AutomationPayment, PrismaClient } from "@prisma/cli
 import { writeAudit } from "../audit/log";
 import { notFound } from "../authz/errors";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
-import { dbNow, lockJob, markRefundPending, writeJobEvent } from "./queue";
+import { dbNow, flagCleanupIfChanged, lockJob, markRefundPending, writeJobEvent } from "./queue";
 import { sourcesOf } from "./states";
 import { STEPS } from "./steps";
 
@@ -133,6 +133,7 @@ async function change(
       });
       await writeJobEvent(tx, failed, "NEEDS_CUSTOMER", "FAILED", failed.fencingToken, { reason: "customer_action_timeout" });
       await markRefundPending(tx, failed, "customer_action_timeout", now);
+      await flagCleanupIfChanged(tx, failed, "customer_action_timeout", now);
       return "expired" as const;
     }
     const r = await tx.automationJob.updateMany({
@@ -141,6 +142,8 @@ async function change(
     });
     if (r.count !== 1) return false;
     const after = await tx.automationJob.findUniqueOrThrow({ where: { id: jobId } });
+    // 바꾼 뒤 취소면 정리 필요 표시·마스터 알림(사람이 쇼핑몰 앱·웹훅·OBS를 정리)
+    if (to === "CANCELED") await flagCleanupIfChanged(tx, cur, "canceled", now);
     await writeJobEvent(tx, after, cur.status, to, after.fencingToken, { by: ctx.actorId });
     await writeAudit(tx, { actorType: ctx.actorType, actorId: ctx.actorId, sellerId: ctx.sellerId, action, targetType: "AutomationJob", targetId: jobId, before: { status: cur.status }, after: { status: to } });
     return true;

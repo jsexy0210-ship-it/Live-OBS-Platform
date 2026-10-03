@@ -2164,3 +2164,38 @@ describe("Codex(4ad65d7~) 진행 중 연습", () => {
     expect((await playbookReadiness(db, cafe24Playbook)).verified).toBe(false);
   });
 });
+
+describe("MASTER 최소 안전 동작: 변경 뒤 실패는 정리 필요·알림", () => {
+  it("변경이 있었던 작업이 다른 이유(비용 상한)로 실패하면 정리 필요 표시와 마스터 알림 1건, 변경 전 실패면 둘 다 없다", async () => {
+    // 변경 전: 첫 판단에서 비용 상한
+    const fresh = await bought();
+    await db.automationJob.update({ where: { id: fresh.jobId }, data: { costLimit: 5, playbookId: null, playbookVersion: null } });
+    expect(await runOnce(db, runtime(), W)).toBe("failed");
+    expect(await job(fresh.jobId)).toMatchObject({ status: "FAILED", lastError: "cost_limit", cleanupNeededAt: null });
+    expect(await db.auditLog.count({ where: { action: "automation.job_cleanup_needed", targetId: fresh.jobId } })).toBe(0);
+
+    // 변경 뒤: 쇼핑몰 연결·웹훅까지 마친 작업이 비용 상한으로 실패
+    const changed = await bought();
+    await db.automationJob.update({ where: { id: changed.jobId }, data: { costLimit: 5, playbookId: null, playbookVersion: null, stepIndex: 2, playbookActions: 5 } });
+    expect(await runOnce(db, runtime(), W)).toBe("failed");
+    const j = await job(changed.jobId);
+    expect(j).toMatchObject({ status: "FAILED", lastError: "cost_limit" });
+    expect(j.cleanupNeededAt).toBeInstanceOf(Date);
+    expect(await db.auditLog.count({ where: { action: "automation.job_cleanup_needed", targetId: changed.jobId } })).toBe(1);
+  });
+
+  it("변경 뒤 고객 행동 마감(회수)으로 실패해도 정리 필요·알림이 남는다", async () => {
+    const a = await bought();
+    const rt = runtime();
+    // 쇼핑몰 연결·웹훅을 마친 뒤 OBS 단계에서 로컬 도구 연결을 기다린다
+    rt.obs.disconnected.add(a.seller.id);
+    await db.automationJob.update({ where: { id: a.jobId }, data: { stepIndex: 2, playbookActions: 5 } });
+    expect(await runOnce(db, rt, W)).toBe("needs_customer");
+    await db.automationJob.update({ where: { id: a.jobId }, data: { actionDeadlineAt: new Date(Date.now() - 1000) } });
+    await reapExpired(db);
+    const j = await job(a.jobId);
+    expect(j).toMatchObject({ status: "FAILED", lastError: "customer_action_timeout" });
+    expect(j.cleanupNeededAt).toBeInstanceOf(Date);
+    expect(await db.auditLog.count({ where: { action: "automation.job_cleanup_needed", targetId: a.jobId } })).toBe(1);
+  });
+});

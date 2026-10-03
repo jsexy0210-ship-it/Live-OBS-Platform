@@ -118,7 +118,8 @@ async function fencedWrite(
   db: PrismaClient,
   c: Claim,
   build: (now: Date, cur: AutomationJob) => FencedChange,
-  opts: { allowExpiredLease?: boolean } = {},
+  // cleanupDone: 되돌리기를 마쳤다(실패로 끝나도 정리 필요 표시를 남기지 않음)
+  opts: { allowExpiredLease?: boolean; cleanupDone?: boolean } = {},
 ): Promise<void> {
   await db.$transaction(async (tx) => {
     await lockJob(tx, c.jobId);
@@ -140,7 +141,24 @@ async function fencedWrite(
     });
     if (r.count !== 1) throw new FencingError();
     if (change.to && change.to !== cur.status) await writeJobEvent(tx, cur, cur.status, change.to, c.token, change.detail);
+    if (change.to === "FAILED" && !opts.cleanupDone) await flagCleanupIfChanged(tx, cur, change.detail?.reason ?? "failed", now);
     await change.after?.(tx, cur, now);
+  });
+}
+
+// 이 작업이 무언가를 바꿨을 수 있는가: 변경 행동을 시작했거나(changedAt) 끝낸 단계가 있으면(판단 호출·이동만으로는 아님)
+export const hasChanges = (j: Pick<AutomationJob, "stepIndex" | "changedAt">) => j.stepIndex > 0 || j.changedAt !== null;
+
+// 첫 변경 행동 직전 기록(이미 있으면 그대로)
+export const markChanged = (db: PrismaClient, c: Claim) => fencedWrite(db, c, (now, cur) => ({ data: { changedAt: cur.changedAt ?? now } }));
+
+// 바꾼 뒤 실패·취소로 끝나면 조용히 끝내지 않는다: 정리 필요 표시와 마스터 관리자 알림(감사 기록 운영 이벤트)을 같은 트랜잭션에서 남긴다.
+// 사람이 쇼핑몰 앱·웹훅·OBS를 정리할 수 있게 하기 위해서다. 자동 되돌리기 전체(E3-W)는 다음 PR.
+export async function flagCleanupIfChanged(tx: Tx, job: AutomationJob, reason: unknown, now: Date) {
+  if (!hasChanges(job) || job.cleanupNeededAt) return;
+  await tx.automationJob.update({ where: { id: job.id }, data: { cleanupNeededAt: now } });
+  await tx.auditLog.create({
+    data: { actorType: "SYSTEM", sellerId: job.sellerId, action: "automation.job_cleanup_needed", targetType: "AutomationJob", targetId: job.id, after: { reason: String(reason).slice(0, 200) } },
   });
 }
 
@@ -197,7 +215,7 @@ export async function markRefundPending(tx: Tx, job: { id: string; sellerId: str
 
 // 실패로 끝내고 결제를 전액 환불 처리 대기로(실행 시간 상한 초과 등)
 // (실행 시간 상한 초과 뒤에는 heartbeat가 연장을 멈추므로 lease가 막 끝났어도 토큰이 그대로면 마무리한다)
-export const failWithRefund = (db: PrismaClient, c: Claim, reason: string) =>
+export const failWithRefund = (db: PrismaClient, c: Claim, reason: string, opts: { cleanupDone?: boolean } = {}) =>
   fencedWrite(
     db,
     c,
@@ -207,7 +225,7 @@ export const failWithRefund = (db: PrismaClient, c: Claim, reason: string) =>
       detail: { reason },
       after: (tx, cur, at) => markRefundPending(tx, cur, reason, at),
     }),
-    { allowExpiredLease: true },
+    { allowExpiredLease: true, cleanupDone: opts.cleanupDone },
   );
 
 // 「정리 필요」: 작업이 만든 변경을 되돌리지 못했다. 실행 자리를 놓고, 같은 트랜잭션에서 마스터 관리자 알림(감사 기록 운영 이벤트)을 남긴다.
@@ -218,7 +236,7 @@ export const markCleanupNeeded = (db: PrismaClient, c: Claim, reason: string) =>
     c,
     () => ({
       to: "CLEANUP_NEEDED",
-      data: { ...RELEASE, lastError: reason.slice(0, 200) },
+      data: { ...RELEASE, lastError: reason.slice(0, 200), cleanupNeededAt: new Date() },
       detail: { reason: reason.slice(0, 200) },
       after: async (tx, cur) => {
         await tx.auditLog.create({
@@ -318,6 +336,7 @@ export async function reapExpired(db: PrismaClient, random: () => number = Math.
         },
       });
       await writeJobEvent(tx, job, cur.status, job.status, job.fencingToken, { reason: "lease_expired" });
+      if (give) await flagCleanupIfChanged(tx, cur, "lease_expired", now);
       if (give) failed++;
       else requeued++;
     }
@@ -333,6 +352,7 @@ export async function reapExpired(db: PrismaClient, random: () => number = Math.
       await writeJobEvent(tx, job, "NEEDS_CUSTOMER", "FAILED", job.fencingToken, { reason: "customer_action_timeout" });
       // 마감으로 끝난 작업은 성공 기준을 통과하지 못했으므로 확정 ②대로 전액 환불 처리 대기로 둔다(실제 환불 실행은 승인 뒤)
       await markRefundPending(tx, job, "customer_action_timeout", now);
+      await flagCleanupIfChanged(tx, job, "customer_action_timeout", now);
       failed++;
     }
     return { requeued, failed };

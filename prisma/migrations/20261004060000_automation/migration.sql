@@ -61,6 +61,8 @@ CREATE TABLE "AutomationJob" (
     "lastError" TEXT,
     "shopKey" TEXT,
     "shopHost" TEXT,
+    "cleanupNeededAt" TIMESTAMPTZ(3),
+    "changedAt" TIMESTAMPTZ(3),
     "obsPairingId" TEXT,
     "connectionRevokedAt" TIMESTAMPTZ(3),
     "verifiedAt" TIMESTAMPTZ(3),

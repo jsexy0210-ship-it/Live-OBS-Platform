@@ -1358,6 +1358,10 @@ model AutomationJob {
   shopKey              String?
   // 판매자가 낸 쇼핑몰 주소의 호스트(소문자). 비밀값은 이 호스트의 관리자 경로에서만 넣는다.
   shopHost             String?
+  // 정리 필요 표시: 무언가를 바꾼 뒤 실패·취소로 끝났다(쇼핑몰 앱·웹훅·OBS가 남았을 수 있음). 이때 마스터 관리자 알림을 남긴다.
+  cleanupNeededAt      DateTime?                 @db.Timestamptz(3)
+  // 처음으로 변경 행동(클릭·입력·OBS 설정·테스트 주문)을 하기 직전에 남긴 시각. 변경 뒤 실패면 정리 필요로 본다.
+  changedAt            DateTime?                 @db.Timestamptz(3)
   obsPairingId         String?
   // 쇼핑몰 앱 권한 해제 등으로 연결이 끊긴 시각. 있으면 무료 재연결 대상이 아니다.
   connectionRevokedAt  DateTime?                 @db.Timestamptz(3)

@@ -27,6 +27,8 @@ export type EngineHooks = {
   // 행동마다(비용·통계 기록 + lease 연장). 실행 자리를 잃었으면 던진다.
   touch(stats: EngineStats): Promise<void>;
   enterVerify(): Promise<void>;
+  // 변경 행동(클릭·입력·OBS 설정·테스트 주문)을 이번 실행에서 처음 하기 직전(변경 뒤 실패면 정리 필요로 보기 위해)
+  markChanged?(): Promise<void>;
   // OBS를 처음 바꾸기 직전: 같은 PC 잠금을 실제 PC(OBS pairing)로 옮긴다. 다른 작업이 그 PC에서 실행 중이면 던진다.
   claimObsTarget?(pairingId: string): Promise<void>;
   // 브라우저 상태를 보관하기 직전(「보관 중」 표시를 먼저 남긴다). 실패하면 보관하지 않는다.
@@ -167,6 +169,7 @@ async function runAll(
   const secretBook = opts.secretPlaybook === undefined ? opts.playbook : opts.secretPlaybook;
   // 같은 PC 잠금은 실행마다 OBS를 처음 바꾸기 전에 로컬 도구로 확인한 실제 PC로 잡는다(요청 값·이전 기록을 믿지 않음)
   let obsTargetClaimed = false;
+  let changeMarked = false;
   // 이 작업이 OBS를 바꾼 PC. 다른 PC가 보이면 한 작업이 두 PC에 나뉘어 설치되지 않게 멈춘다.
   let obsPairing: string | null = opts.obsPairingDone ?? null;
   const touchStats = async () => {
@@ -266,6 +269,10 @@ async function runAll(
         const origin = secretBook?.secretOrigin;
         const ok = (u: string | null) => !!u && !!origin && secretOriginAllowed(u, opts.shopHost, origin.pathPrefixes);
         if (!origin || !ok(raw.url) || !ok(here) || !cueMatches(origin.adminCue, raw)) return { kind: "failed", reason: "unsafe_action:secret_origin_not_allowed" };
+      }
+      if (MUTATING.includes(action.type) && !changeMarked && hooks.markChanged) {
+        await hooks.markChanged();
+        changeMarked = true;
       }
       guard();
       // 변경 행동의 고정 키: 작업·단계와 행동의 의미(종류·대상·값)의 해시. 순번과 무관해 같은 행동은 몇 번째로 오든 한 번만,
