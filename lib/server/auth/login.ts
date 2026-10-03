@@ -20,6 +20,11 @@ export type LoginResult = ({ ok: true } & IssuedSession) | { ok: false; reason: 
 const fail = (reason: LoginFailure): LoginResult => ({ ok: false, reason });
 
 export const normalizeEmail = (email: string) => email.trim().toLowerCase();
+// 이메일 아이디 길이 상한(RFC 5321 경로 길이). 구매자 가입·로그인이 같은 기준을 쓴다.
+export const MAX_EMAIL_LENGTH = 254;
+// 길이와 함께 제어·서식 문자(NUL 등)도 막는다. Postgres는 NUL이 든 문자열을 받지 못해 조회가 500으로 끝난다.
+export const isEmailLengthOk = (v: unknown): v is string =>
+  typeof v === "string" && !/\p{C}/u.test(v) && normalizeEmail(v).length > 0 && normalizeEmail(v).length <= MAX_EMAIL_LENGTH;
 
 // ───────────── 마스터 ─────────────
 
@@ -129,7 +134,8 @@ export async function loginBuyer(
     });
 
   const member = await db.buyerMember.findFirst({
-    where: { sellerId: input.sellerId, loginId: input.loginId.trim(), deletedAt: null },
+    // 구매자 아이디는 이메일이라 가입 때처럼 소문자로 맞춰 찾는다
+    where: { sellerId: input.sellerId, loginId: normalizeEmail(input.loginId), deletedAt: null },
   });
   if (!member) {
     await burnPasswordCheck(input.password);

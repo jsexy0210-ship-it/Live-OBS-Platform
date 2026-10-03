@@ -55,6 +55,10 @@ tests/unit/**, tests/integration/**           테스트
 - 로그인 실패 잠금 없음(대표님 결정 2026-10-02). 실패는 감사 로그에 기록. IP 허용 목록·IP 기준 제한도 두지 않는다.
 - 접속 IP는 감사 로그 기록용으로만 쓰고, 신뢰 프록시를 거친 경우에만 `X-Forwarded-For`에서 얻는다(환경변수 `TRUSTED_PROXY_HOPS`, 기본 0 = 믿지 않음).
 - 로그인 성공·실패·차단은 감사 로그.
+- 구매자 가입(쇼핑몰 단위, `lib/server/buyers/signup.ts`):
+  - `POST /api/shop/{slug}/signup/verification` `{ name, phone, birth7, carrier, device? }`: 운영 중·잠기지 않은 쇼핑몰만(없으면 404, 잠기면 402). 같은 IP·같은 쇼핑몰 하루 10회(KST, 넘으면 429 `daily_limit_exceeded`). 첫 인증번호를 보내고 시작한 브라우저에만 `lo_bidv` 쿠키(경로 `/api/shop/{slug}/signup`)를 준다. 운영에 본인확인 설정이 없으면 503.
+  - `…/verification/resend`·`…/verification/confirm` `{ verificationId, code? }`: 판매자 가입과 같은 본인확인 단계(체험 중 성공 건수 한도 포함).
+  - `POST /api/shop/{slug}/signup` `{ verificationId, loginId, password, broadcastNickname, agreedTerms: true, agreedPrivacy: true }`: `completeIdentityVerification`(공급자·용도·쇼핑몰·ownerToken)을 거친 본인확인만 쓴다. 아이디는 이메일(형식 검사, 254자까지, 소문자로 맞춰 저장해 대소문자만 다른 중복을 막음, 로그인도 소문자로 맞춰 찾음), 비밀번호 8~200자, 방송 닉네임 1~20자, 필수 약관 동의(감사 로그 `buyer.signup`에 동의 기록). 이름·휴대폰·생년월일은 본인확인 결과. 같은 CI·아이디·닉네임은 409. 성공하면 201과 구매자 세션 쿠키(바로 로그인).
 - 판매자 비밀번호 찾기(대표님 지시 2026-10-02): 메일 링크 없이 **대표자 휴대폰 본인확인(문자)**으로만 한다.
   - 이메일+쇼핑몰+대표자 인적사항으로 시작(첫 인증번호 발송) → 인증번호 확인(`/confirm`) → `/verify`에서 결과 CI가 그 쇼핑몰 `Seller.representativeCiHash`와 같고 계정이 대표자(`isOwner`)일 때만 일회용·10분 재설정 권한(`PasswordResetGrant`, 토큰 해시 저장) 발급 → 새 비밀번호 저장, 그 계정의 기존 세션 모두 폐기.
   - 본인인증 건은 시작한 브라우저에만 준 일회용 값(`IdentityVerification.ownerTokenHash`, HttpOnly 쿠키)과 묶고, 한 번 쓰면 `consumedAt`으로 소진한다(구매자 가입도 같음).
@@ -155,7 +159,7 @@ tests/unit/**, tests/integration/**           테스트
 - 판매자 상품·옵션 API(`PRODUCT_MANAGE`, 잠긴 판매자는 402, 마스터 대리 조회는 목록·조회만 되고 변경은 403): `GET·POST /api/seller/products`, `GET·PATCH·DELETE /api/seller/products/{productId}`, `POST /api/seller/products/{productId}/options`, `PATCH·DELETE /api/seller/products/{productId}/options/{optionId}`.
   - 다른 판매자 상품·옵션, 다른 상품의 옵션은 404. 상품 행을 잠근 뒤 가격·옵션을 검사한다.
   - 목록은 커서 페이지(`?cursor·limit`, 기본 50·최대 200, 응답 `{ products, nextCursor }`, 정렬 진열 순서 → 최근 등록 → id). 커서는 이 판매자 상품 id만 받고(아니면 `400 invalid_cursor`), 그 행의 (sortOrder, createdAt, id) 값 바로 뒤부터 keyset으로 고른다 — 기준 상품이 그사이 지워지거나 필터 밖이 되어도 다음 상품을 건너뛰지 않는다. limit은 숫자만 있는 값 1~200만 받고 아니면 `400 invalid_limit`.
-  - 이름 검색 `?q`: 상품 이름이나 지우지 않은 옵션 이름에 들어 있으면 나온다(대소문자 무시, 부분 일치, NFKC로 맞춤, `%`·`_`도 글자 그대로). 앞뒤 공백을 지우고 50자까지, 비었으면 검색 안 함. 쓸 수 없는 글자·50자 초과는 `400 invalid_search`. 상태·재고 필터·커서와 함께 쓴다.
+  - 이름 검색 `?q`: 상품 이름이나 지우지 않은 옵션 이름에 들어 있으면 나온다(대소문자 무시, 부분 일치, NFKC로 맞춤, `%`·`_`도 글자 그대로). 앞뒤 공백을 지우고 50자까지, 비었으면 검색 안 함. 쓸 수 없는 글자·50자 초과는 `400 invalid_search`. 상태·재고 필터·커서와 함께 쓴다. 필터·정렬·커서는 SQL 안에서 걸러 그 쪽의 상품 id만 고른다(결과가 많아도 바인드 변수 한도에 걸리지 않음). 대소문자 무시는 `lower()`라 운영 DB는 UTF-8 계열 collation(예: `ko_KR.UTF-8`·`en_US.UTF-8`)으로 만들어야 한다(「C」이면 ASCII만 소문자가 된다).
   - 가격은 1원~2,147,483,647원 정수. 살아 있는 옵션의 단가(가격 + 추가금)도 1원~정수 범위여야 하고, 상품 가격·추가금을 바꿀 때 다시 확인한다. 틀리면 `400 invalid_price`.
   - 재고는 0 이상 정수. 바꿀 때는 `{ stock, expectedStock }`을 함께 보내고, 지금 재고가 expectedStock과 다르면(결제 차감과 겹침) `409 stock_conflict`로 덮어쓰지 않는다. 차이와 등록 때 재고는 `MANUAL` 재고 이력.
   - 상태는 `DRAFT | ON_SALE | SOLD_OUT | HIDDEN`. 판매 중은 살아 있는 옵션이 하나 이상 있어야 하고(`400 no_sellable_option`), 판매 중 상품의 마지막 옵션은 지울 수 없다. 옵션은 상품당 100개까지.
