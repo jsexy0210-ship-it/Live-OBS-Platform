@@ -1,10 +1,12 @@
-import { Prisma, type PrismaClient } from "@prisma/client";
+import { Prisma, type IdentityVerification, type PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { hashPassword, verifyPassword } from "../auth/password";
 import { MAX_EMAIL_LENGTH, normalizeEmail } from "../auth/login";
 import { MIN_PASSWORD_LENGTH } from "../auth/passwordReset";
-import { sellerAccessFor } from "../billing/subscription";
+import { dbNow, sellerAccessFor } from "../billing/subscription";
 import type { IdentityProvider } from "../identity/provider";
+import { createHash, randomUUID } from "node:crypto";
+import { hashToken } from "../auth/token";
 import { buyerSignupIdentityLimitReached, completeIdentityVerification, parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
 import { EMAIL } from "../sellers/application";
 import { REJOIN_RETENTION_CONSENT_VERSION, purgeExpiredRejoinBlocks, rejoinBlockedUntil, rejoinDaysToAgree } from "./rejoin";
@@ -34,31 +36,97 @@ export async function shopOpen(db: PrismaClient, sellerId: string) {
   return !!seller && seller.status === "ACTIVE" && (await sellerAccessFor(db, sellerId)) !== "expired";
 }
 
+// 첫 문자를 보내는 중으로 보는 시간. 공급자 호출 제한시간(10초)보다 넉넉하게 잡는다. 이 시간이 지나도 보낸 기록이 없으면
+// 앞 요청이 멈춘 것으로 보고 같은 키 재요청이 그 기록을 버리고 새로 시작한다.
+export const FIRST_SEND_WINDOW_MS = 20_000;
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// attemptKey로 시작한 기록의 ownerToken은 키와 기록 id로 정해진다. 같은 키 재요청이 몇 번 겹쳐도 모두 같은 토큰을 받으므로
+// 응답이 어떤 순서로 도착해도 브라우저 쿠키가 무효가 되지 않는다. 키를 가진 쪽만 만들 수 있고(키는 브라우저만 안다),
+// DB에는 키·토큰 모두 해시만 있다.
+function keyedOwnerToken(attemptKey: string, verificationId: string) {
+  return createHash("sha256").update(`buyer_signup_owner\0${attemptKey.toLowerCase()}\0${verificationId}`).digest("base64url");
+}
+
 // 구매자 가입 1단계: 휴대폰 본인확인 시작(같은 IP·같은 쇼핑몰 하루 10회까지). 첫 인증번호를 보내고 ownerToken을 돌려준다.
+// 기록 생성은 짧은 트랜잭션에서 커밋하고(sendStartedAt 기록), 첫 문자는 트랜잭션 밖에서 보낸다. 공급자를 기다리는 동안
+// 잠금·DB 연결을 쥐지 않는다. 보내면 sendCount 0→1, 실패하면 FAILED로 바꾸고 attemptKey를 비워 같은 키로 다시 시작할 수 있게 한다.
+// attemptKey(선택, 클라이언트가 만든 UUID): 응답이 끊겨 같은 키로 다시 보내면 키별 잠금 아래에서 같은 쇼핑몰·같은 키의 기록을 찾는다.
+// - 확인 전(PENDING)이고 첫 문자를 보냈으면 그대로 쓰고 같은 ownerToken을 다시 준다(토큰을 바꾸지 않음). 일일 횟수·체험 한도는 다시 세지 않는다.
+// - 아직 보내는 중이면(FIRST_SEND_WINDOW_MS 안) 기다리지 않고 start_in_progress로 돌려준다.
+// - 보내는 중으로 둔 채 그 시간이 지났으면(앞 요청이 멈춤) 공급자가 문자를 받았는지 알 수 없어 같은 요청 id로 다시 보내지 않는다.
+//   그 기록을 FAILED로 버리고(키 비움) 새 기록·새 요청 id로 처음부터 시작한다(일일 횟수에 1회 더 들어감).
+// - 확인 전이 아니면(확인됨·만료·실패) 그 상태의 오류를 돌려준다.
 export async function startBuyerSignupVerification(
   db: PrismaClient,
   provider: IdentityProvider,
   sellerId: string,
   rawPerson: unknown,
-  meta: { ip?: string | null; userAgent?: string | null; now?: Date } = {},
+  meta: { ip?: string | null; userAgent?: string | null; now?: Date; attemptKey?: unknown } = {},
 ) {
   if (!(await shopOpen(db, sellerId))) return { ok: false as const, reason: "shop_unavailable" as const };
+  if (meta.attemptKey !== undefined && (typeof meta.attemptKey !== "string" || !UUID_RE.test(meta.attemptKey))) {
+    return { ok: false as const, reason: "invalid_identity_input" as const };
+  }
+  const attemptKey = typeof meta.attemptKey === "string" ? meta.attemptKey.toLowerCase() : null;
+  const keyHash = attemptKey ? hashToken(attemptKey) : null;
   const person = parseIdentityPerson(rawPerson);
   if (!person) return { ok: false as const, reason: "invalid_identity_input" as const };
-  // 체험하기 중 본인확인 한도가 찼으면 확정할 수 없으니 기록을 만들거나 문자를 보내지 않는다
-  if (await buyerSignupIdentityLimitReached(db, sellerId, meta.now)) return { ok: false as const, reason: "trial_limit_exceeded" as const };
   const ip = meta.ip ?? null;
-  const started = await db.$transaction(async (tx) => {
+  type Started =
+    | { kind: "reused"; verificationId: string; ownerToken: string }
+    | { kind: "refused"; reason: "already_verified" | "expired" | "failed" | "trial_limit_exceeded" | "start_in_progress" }
+    | { kind: "limited" }
+    | { kind: "send"; verification: IdentityVerification; ownerToken: string };
+  const started = await db.$transaction(async (tx): Promise<Started> => {
+    const now = meta.now ?? (await dbNow(tx));
+    if (keyHash) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`buyer_signup_key:${sellerId}:${keyHash}`}))`;
+      const same = await tx.identityVerification.findUnique({ where: { sellerId_attemptKeyHash: { sellerId, attemptKeyHash: keyHash } } });
+      if (same) {
+        if (same.status === "PENDING" && same.expiresAt > now) {
+          if (same.sendCount > 0) return { kind: "reused", verificationId: same.id, ownerToken: keyedOwnerToken(attemptKey!, same.id) };
+          if (same.sendStartedAt && now.getTime() - same.sendStartedAt.getTime() < FIRST_SEND_WINDOW_MS) return { kind: "refused", reason: "start_in_progress" };
+          // 앞 요청이 멈췄다. 보낸 시작 시각이 그대로일 때만 버린다(compare-and-set). 늦게 끝난 앞 요청은 실패로 돌려받는다.
+          const dropped = await tx.identityVerification.updateMany({
+            where: { id: same.id, status: "PENDING", sendCount: 0, sendStartedAt: same.sendStartedAt },
+            data: { status: "FAILED", attemptKeyHash: null },
+          });
+          if (dropped.count !== 1) return { kind: "refused", reason: "start_in_progress" };
+        } else {
+          if (same.status === "VERIFIED") return { kind: "refused", reason: "already_verified" };
+          if (same.status === "FAILED") return { kind: "refused", reason: "failed" };
+          return { kind: "refused", reason: "expired" };
+        }
+      }
+    }
+    // 체험하기 중 본인확인 한도가 찼으면 확정할 수 없으니 기록을 만들거나 문자를 보내지 않는다
+    if (await buyerSignupIdentityLimitReached(tx, sellerId, meta.now)) return { kind: "refused", reason: "trial_limit_exceeded" };
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`buyer_signup:${sellerId}:${ip ?? "unknown"}`}))`;
     const [{ count }] = await tx.$queryRaw<{ count: bigint }[]>`
       SELECT count(*)::bigint AS count FROM "IdentityVerification"
       WHERE "purpose" = 'BUYER_SIGNUP' AND "sellerId" = ${sellerId}::uuid
         AND "requestIp" IS NOT DISTINCT FROM ${ip}
         AND "createdAt" >= (date_trunc('day', now() AT TIME ZONE 'Asia/Seoul') AT TIME ZONE 'Asia/Seoul')`;
-    if (Number(count) >= BUYER_SIGNUP_VERIFY_DAILY_LIMIT_PER_IP) return null;
-    return startIdentityVerification(tx, provider, { purpose: "BUYER_SIGNUP", sellerId, person, requestIp: ip, now: meta.now });
+    if (Number(count) >= BUYER_SIGNUP_VERIFY_DAILY_LIMIT_PER_IP) return { kind: "limited" };
+    const id = randomUUID();
+    const created = await startIdentityVerification(tx, provider, {
+      purpose: "BUYER_SIGNUP",
+      sellerId,
+      person,
+      requestIp: ip,
+      attemptKeyHash: keyHash,
+      sendStartedAt: now,
+      id,
+      ownerToken: attemptKey ? keyedOwnerToken(attemptKey, id) : undefined,
+      now: meta.now,
+    });
+    return { kind: "send", verification: created.verification, ownerToken: created.ownerToken };
   });
-  if (!started) {
+  if (started.kind === "reused") return { ok: true as const, verificationId: started.verificationId, ownerToken: started.ownerToken };
+  if (started.kind === "refused") return { ok: false as const, reason: started.reason };
+  if (started.kind === "limited") {
     await writeAudit(db, { actorType: "SYSTEM", sellerId, action: "buyer.signup.verify_limited", reason: "daily_limit_exceeded", ip, userAgent: meta.userAgent });
     return { ok: false as const, reason: "daily_limit_exceeded" as const };
   }
@@ -257,7 +325,7 @@ export async function signupBuyer(
 }
 
 // 가입 실패 문구(해요체). 화면은 error 코드로 분기하고 message를 그대로 보여 준다.
-export const BUYER_SIGNUP_MESSAGES: Record<BuyerSignupFailure | "daily_limit_exceeded", string> = {
+export const BUYER_SIGNUP_MESSAGES: Record<BuyerSignupFailure | "daily_limit_exceeded" | "start_in_progress", string> = {
   invalid_login_id: "아이디로 쓸 이메일 주소를 다시 확인해 주세요",
   weak_password: "비밀번호는 8자 이상으로 정해 주세요",
   invalid_nickname: "방송 닉네임은 20자까지, 쓸 수 있는 글자로 정해 주세요",
@@ -274,6 +342,7 @@ export const BUYER_SIGNUP_MESSAGES: Record<BuyerSignupFailure | "daily_limit_exc
   rejoin_consent_required: "재가입 제한 정보 보관에 동의해 주세요",
   rejoin_policy_changed: "재가입 제한 기간이 바뀌었어요. 바뀐 내용을 확인하고 다시 동의해 주세요",
   daily_limit_exceeded: "오늘은 본인확인을 더 할 수 없어요. 내일 다시 해 주세요",
+  start_in_progress: "인증번호를 보내고 있어요. 잠시 뒤 다시 시도해 주세요",
 };
 
 export const BUYER_SIGNUP_STATUS: Record<BuyerSignupFailure, number> = {

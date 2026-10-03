@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, failMessage } from "../seller/api";
 import { textLength } from "../seller/format";
 import ShopState from "./ShopState";
@@ -99,6 +99,9 @@ export default function SignupForm({ slug, rejoin = null }: { slug: string; rejo
   const [idvAgreed, setIdvAgreed] = useState(false);
   const [birthError, setBirthError] = useState<string | null>(null);
   const [verificationId, setVerificationId] = useState<string | null>(null);
+  // 본인확인 시작 한 번(같은 인적사항)의 멱등 키. 응답이 끊겨 다시 누르면 같은 키로 보내 문자·하루 횟수를 다시 쓰지 않는다.
+  // 인적사항을 바꾸거나, 시작에 성공했거나, 그 키로는 다시 시작할 수 없다는 답(확인됨·만료·실패)을 받으면 새 키를 만든다.
+  const attempt = useRef<{ fp: string; key: string } | null>(null);
   // 본인확인을 요청한 값(요청 뒤 화면은 이 값을 보여 준다)
   const [sent, setSent] = useState<{ name: string; phone: string } | null>(null);
   // 이미 확인됐다는 응답을 받았지만 확인 결과(서버가 확인한 이름·휴대폰)를 아직 못 불러옴
@@ -174,11 +177,16 @@ export default function SignupForm({ slug, rejoin = null }: { slug: string; rejo
     setBirthError(null);
     const device = window.matchMedia("(min-width: 768px)").matches ? "PC" : "MOBILE";
     const person = { name: name.trim(), phone };
+    const input = { ...person, birth7, carrier, device };
+    const fp = JSON.stringify(input);
+    if (attempt.current?.fp !== fp) attempt.current = { fp, key: crypto.randomUUID() };
     const r = await api<{ verificationId: string }>(`${base}/verification`, {
       method: "POST",
-      body: { ...person, birth7, carrier, device },
+      body: { ...input, attemptKey: attempt.current.key },
     });
     setBusy(false);
+    // 409 start_in_progress(앞 요청이 아직 문자를 보내는 중)·연결 끊김·일시 오류는 키를 두어 다시 누르면 같은 시도로 이어 간다
+    if (r.ok || r.error === "already_verified" || r.error === "expired" || r.error === "failed") attempt.current = null;
     if (r.ok) {
       setVerificationId(r.data.verificationId);
       setSent(person);
