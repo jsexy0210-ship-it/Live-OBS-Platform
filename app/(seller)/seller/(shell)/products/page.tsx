@@ -17,6 +17,15 @@ const FILTERS: { key: ProductStatus | "ALL"; label: string }[] = [
   { key: "DRAFT", label: "임시 저장" },
 ];
 
+type StockFilter = "out" | "low";
+// 서버 기준과 같다: 재고 없음 = 옵션 재고 합계 0, 재고 부족 = 1~5(목록 배지 「재고 없음」·「재고 부족」과 같은 기준)
+const STOCK_FILTERS: { key: StockFilter; label: string }[] = [
+  { key: "out", label: "재고 없음" },
+  { key: "low", label: "재고 부족" },
+];
+const query = (f: ProductStatus | "ALL", sf: StockFilter | null) =>
+  [f === "ALL" ? "" : `status=${f}`, sf ? `stock=${sf}` : ""].filter(Boolean).join("&");
+
 const TOASTS: Record<string, string> = { created: "상품을 등록했어요", draft: "임시 저장했어요", deleted: "상품을 삭제했어요" };
 
 type Page = { products: Product[]; nextCursor: string | null };
@@ -27,23 +36,26 @@ const optionSummary = (p: Product) => (p.options.length === 0 ? "옵션 없음" 
 export default function ProductListPage() {
   const { can } = useSeller();
   const [filter, setFilter] = useState<ProductStatus | "ALL">("ALL");
+  // 재고 기준 걸러 보기(서버 ?stock=out|low, 판매 상태 탭과 함께 쓸 수 있다)
+  const [stockFilter, setStockFilter] = useState<StockFilter | null>(null);
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [more, setMore] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   // 탭을 빨리 바꾸면 이전 탭 응답이 늦게 올 수 있다. 마지막으로 보낸 요청의 응답만 화면에 반영한다
   const reqId = useRef(0);
-  const load = useCallback(async (f: ProductStatus | "ALL") => {
+  const load = useCallback(async (f: ProductStatus | "ALL", sf: StockFilter | null) => {
     const id = ++reqId.current;
     setState({ kind: "loading" });
-    const r = await api<Page>(`/api/seller/products${f === "ALL" ? "" : `?status=${f}`}`);
+    const qs = query(f, sf);
+    const r = await api<Page>(`/api/seller/products${qs ? `?${qs}` : ""}`);
     if (id !== reqId.current) return;
     setState(r.ok ? { kind: "ok", items: r.data.products, next: r.data.nextCursor } : { kind: "error", status: r.status });
   }, []);
 
   useEffect(() => {
-    void load(filter);
-  }, [filter, load]);
+    void load(filter, stockFilter);
+  }, [filter, stockFilter, load]);
 
   // 등록·삭제 뒤 돌아오면 한 번 알려 주고 주소에서 지운다
   useEffect(() => {
@@ -58,7 +70,7 @@ export default function ProductListPage() {
     if (state.kind !== "ok" || !state.next) return;
     setMore(true);
     const id = reqId.current;
-    const qs = new URLSearchParams({ cursor: state.next, ...(filter === "ALL" ? {} : { status: filter }) });
+    const qs = `${query(filter, stockFilter)}${query(filter, stockFilter) ? "&" : ""}cursor=${state.next}`;
     const r = await api<Page>(`/api/seller/products?${qs}`);
     setMore(false);
     if (id !== reqId.current) return;
@@ -102,6 +114,17 @@ export default function ProductListPage() {
                 </button>
               ))}
             </div>
+            {STOCK_FILTERS.map((sf) => (
+              <button
+                key={sf.key}
+                type="button"
+                className={`chip${stockFilter === sf.key ? " on" : ""}`}
+                aria-pressed={stockFilter === sf.key}
+                onClick={() => setStockFilter(stockFilter === sf.key ? null : sf.key)}
+              >
+                {sf.label}
+              </button>
+            ))}
           </div>
 
           {state.kind === "loading" && <LoadingRows />}
@@ -111,12 +134,12 @@ export default function ProductListPage() {
             ) : state.status === 402 ? (
               <Locked />
             ) : (
-              <ErrorState title="상품을 불러오지 못했어요" onRetry={() => void load(filter)} />
+              <ErrorState title="상품을 불러오지 못했어요" onRetry={() => void load(filter, stockFilter)} />
             ))}
           {state.kind === "ok" && items.length === 0 && (
             <div className="st" style={{ boxShadow: "none" }}>
               <div className="st-ic">+</div>
-              {filter === "ALL" ? (
+              {filter === "ALL" && !stockFilter ? (
                 <>
                   <span className="t">아직 등록된 상품이 없어요</span>
                   <span className="s">첫 상품을 등록하면 쇼핑몰에 바로 보여요.</span>
@@ -128,8 +151,17 @@ export default function ProductListPage() {
                 </>
               ) : (
                 <>
-                  <span className="t">「{FILTERS.find((f) => f.key === filter)?.label}」에 해당하는 상품이 없어요</span>
-                  <button className="btn btn-sm btn-text" type="button" onClick={() => setFilter("ALL")}>
+                  <span className="t">
+                    「{[filter === "ALL" ? null : FILTERS.find((f) => f.key === filter)?.label, STOCK_FILTERS.find((f) => f.key === stockFilter)?.label].filter(Boolean).join(" · ")}」에 해당하는 상품이 없어요
+                  </span>
+                  <button
+                    className="btn btn-sm btn-text"
+                    type="button"
+                    onClick={() => {
+                      setFilter("ALL");
+                      setStockFilter(null);
+                    }}
+                  >
                     전체 보기
                   </button>
                 </>
