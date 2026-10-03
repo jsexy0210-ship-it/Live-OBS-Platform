@@ -34,6 +34,8 @@ export type PlannerInput = { step: Step; observation: SafeObservation; history: 
 export type PlannerDecision = { action: AutomationAction; costWon: number };
 
 export interface AutomationPlanner {
+  // 쓰는 모델 이름(config.ts plannerConfig). 비용 산정·기록용
+  readonly model: string;
   decide(input: PlannerInput): Promise<PlannerDecision>;
 }
 

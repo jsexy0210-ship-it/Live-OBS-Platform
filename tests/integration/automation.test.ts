@@ -93,6 +93,7 @@ describe("자동 연결 결제와 실행 권한", () => {
     expect(j.verifiedAt).toEqual(j.finishedAt);
     expect(j.verificationEvidence).toEqual({ testEvent: `test-${jobId}`, shownOnOverlay: true });
     expect(j.costUsed).toBeGreaterThan(0);
+    expect(j.costLimit).toBe(3000);
     expect(await statuses(jobId)).toEqual(["->AWAITING_PAYMENT", "AWAITING_PAYMENT>QUEUED", "QUEUED>RUNNING", "RUNNING>VERIFYING", "VERIFYING>SUCCEEDED"]);
     expect((await db.automationPayment.findFirstOrThrow()).status).toBe("PAID");
   });

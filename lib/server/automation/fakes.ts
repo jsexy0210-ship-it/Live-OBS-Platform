@@ -31,6 +31,7 @@ const SCRIPT: Record<string, AutomationAction[]> = {
 };
 
 export class FakePlanner implements AutomationPlanner {
+  readonly model = "fake";
   readonly inputs: PlannerInput[] = [];
   // 테스트용: 특정 입력에서 다른 결정을 내게 한다(예: 화면의 악성 지시를 따른 결정)
   override: ((input: PlannerInput) => PlannerDecision | undefined) | null = null;

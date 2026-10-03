@@ -30,3 +30,17 @@ export const AUTOMATION_LIMITS = {
   reconcileAfterMs: 60_000,
   notChargedAfterMs: 30 * 60_000,
 } as const;
+
+// 판단 모델 설정(2026-10-04 대표님 확정 ⑦: Pro급, 작업당 약 500원 추정, 작업당 비용 상한을 두고 실측 후 조정).
+// 모델 이름·비용 상한은 환경변수로 바꾼다. 실제 키 연결·호출·대규모 부하 시험은 시작 전에 MASTER 경유로 다시 승인받는다.
+// 기본 모델 이름은 연결할 때 공식 모델 목록으로 다시 확인한다.
+export const DEFAULT_PLANNER_MODEL = "gemini-2.5-pro";
+export const DEFAULT_COST_LIMIT_WON = 3_000;
+
+export function plannerConfig(env: Record<string, string | undefined> = process.env): { model: string; costLimitWon: number } {
+  const model = env.AUTOMATION_PLANNER_MODEL?.trim() || DEFAULT_PLANNER_MODEL;
+  const n = Number(env.AUTOMATION_COST_LIMIT_WON);
+  // 잘못된 값이면 기본값(상한을 끄는 설정은 받지 않는다)
+  const costLimitWon = Number.isInteger(n) && n > 0 && n <= 100_000 ? n : DEFAULT_COST_LIMIT_WON;
+  return { model, costLimitWon };
+}

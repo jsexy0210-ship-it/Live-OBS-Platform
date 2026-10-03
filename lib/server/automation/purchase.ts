@@ -9,6 +9,7 @@ import {
   AUTOMATION_ORDER_NAME,
   AUTOMATION_PRICE,
   FREE_RECONNECT_DAYS,
+  plannerConfig,
   REINSTALL_ORDER_NAME,
   REINSTALL_PRICE,
 } from "./config";
@@ -96,7 +97,7 @@ async function buyPaidJob(db: PrismaClient, provider: BillingProvider, ctx: Tena
       });
       const job = await tx.automationJob.create({
         // OBS 대상 키: 처음 연결은 판매자 단위(아직 PC를 모름), 재설치는 알고 있는 pairing 단위
-        data: { sellerId: ctx.sellerId, kind: input.kind, paymentId: payment.id, baseJobId: input.baseJobId, obsTargetKey: input.obsTargetKey ?? `seller:${ctx.sellerId}` },
+        data: { sellerId: ctx.sellerId, kind: input.kind, paymentId: payment.id, costLimit: plannerConfig().costLimitWon, baseJobId: input.baseJobId, obsTargetKey: input.obsTargetKey ?? `seller:${ctx.sellerId}` },
       });
       await writeJobEvent(tx, job, null, "AWAITING_PAYMENT", 0);
       await writeAudit(tx, {
@@ -188,7 +189,7 @@ export async function reconnectAutomation(
     const job = await db.$transaction(async (tx) => {
       const now = await dbNow(tx);
       const j = await tx.automationJob.create({
-        data: { sellerId: ctx.sellerId, kind: "RECONNECT_FREE", baseJobId: decision.baseJobId, status: "QUEUED", runAfter: now, obsTargetKey },
+        data: { sellerId: ctx.sellerId, kind: "RECONNECT_FREE", costLimit: plannerConfig().costLimitWon, baseJobId: decision.baseJobId, status: "QUEUED", runAfter: now, obsTargetKey },
       });
       await writeJobEvent(tx, j, null, "QUEUED", 0, { freeReconnectOf: decision.baseJobId });
       await writeAudit(tx, {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DEFAULT_COST_LIMIT_WON, DEFAULT_PLANNER_MODEL, plannerConfig } from "../../lib/server/automation/config";
 import { FakeBrowserExecutor, FakePlanner } from "../../lib/server/automation/fakes";
 import { publicError } from "../../lib/server/automation/jobs";
 import { sanitizeObservation, validateDecision, type AutomationAction } from "../../lib/server/automation/ports";
@@ -80,5 +81,13 @@ describe("화면용 실패 사유", () => {
     expect(publicError("step_action_limit:test_event_verify")).toBe("step_action_limit:test_event_verify");
     expect(publicError("step_action_limit:Cafe24")).toBe("step_failed");
     expect(publicError("Cafe24 관리자 오류")).toBe("step_failed");
+  });
+});
+
+describe("판단 모델 설정(확정 ⑦)", () => {
+  it("모델 이름·작업당 비용 상한을 환경변수로 바꾸고, 잘못된 상한(0·음수·소수·과대)은 기본값", () => {
+    expect(plannerConfig({})).toEqual({ model: DEFAULT_PLANNER_MODEL, costLimitWon: DEFAULT_COST_LIMIT_WON });
+    expect(plannerConfig({ AUTOMATION_PLANNER_MODEL: "pro-next", AUTOMATION_COST_LIMIT_WON: "2000" })).toEqual({ model: "pro-next", costLimitWon: 2000 });
+    for (const v of ["0", "-1", "1.5", "abc", "1000000"]) expect(plannerConfig({ AUTOMATION_COST_LIMIT_WON: v }).costLimitWon).toBe(DEFAULT_COST_LIMIT_WON);
   });
 });
