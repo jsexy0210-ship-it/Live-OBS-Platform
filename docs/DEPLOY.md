@@ -75,6 +75,23 @@ CI의 「No deploy workflows」 검사가 self-hosted runner를 이 워크플로
 
 - 실패해도 이전 컨테이너가 그대로 떠 있거나 일부만 바뀌었을 수 있어요. 아래 「로그」로 상태를 보고, 필요하면 「롤백」을 따라요.
 
+#### runner 보안: 이 저장소는 공개(public)예요 — 결정 필요
+
+워크플로의 `if`(main만)와 Environment `obs-test`는 **배포 워크플로 job만** 막아요. 다른 워크플로가 `runs-on: [self-hosted, obs-kakao]`를 쓰면 같은 runner로 갈 수 있어요. 예를 들어 PR이 `ci.yml`(pull_request로 실행)을 고쳐 이 라벨을 고르면, 그 PR 코드가 VM에서 `obs` 계정(docker 그룹 = root와 같은 권한)으로 실행돼 `/opt/obs/.env`를 읽을 수 있어요. CI의 「No deploy workflows」 검사도 PR이 함께 고칠 수 있어서 막지 못해요. GitHub도 공개 저장소에 self-hosted runner를 두지 말라고 안내해요.
+
+개인 계정 저장소에서는 runner를 특정 워크플로·브랜치에만 쓰게 묶는 runner 그룹을 쓸 수 없어요(조직 계정 기능).
+
+선택지(대표님 결정 전에는 runner를 상시 등록해 두지 않아요):
+
+| 선택지 | 내용 | 비용·불편 |
+| --- | --- | --- |
+| ① 저장소를 비공개로 전환 | 쓰기 권한이 있는 사람만 PR·워크플로를 실행. 외부 fork PR이 없어져요 | 비공개 저장소 Actions는 무료 한도(월 2,000분) 안에서 무료. 공개 범위 변경은 대표님 결정 |
+| ② 배포할 때만 1회용 runner 등록 | 배포 직전에 `config.sh ... --ephemeral`로 등록 → job 하나만 받고 자동 해제 | 배포마다 GitHub 화면에서 토큰 발급·서버 접속 필요. 등록~실행 사이 짧은 노출은 남아요 |
+| ③ 조직 계정으로 옮기고 runner 그룹 제한 | 그룹을 「선택한 워크플로 `deploy-obs-test.yml@refs/heads/main`」으로 묶어요 | 저장소 이전 필요. 그룹 제한 기능이 무료 조직에서 되는지는 확인 필요 |
+| ④ GitHub 호스팅 러너 + SSH(아래) | Environment 비밀값은 main 배포 job에만 전달돼요 | 22번 포트를 GitHub 러너 IP 대역(넓음)에 열어야 해요 |
+
+어느 쪽이든 함께 해요: Settings → Actions → General → 「Fork pull request workflows from outside collaborators」를 **Require approval for all outside collaborators**로 바꿔요.
+
 ### 대안: GitHub 호스팅 러너 + SSH
 
 GitHub 러너가 SSH로 VM에 접속해 같은 compose 명령을 실행하는 방식이에요.
@@ -219,9 +236,10 @@ cd /opt/obs/src && C="docker compose -p obs-web -f deploy/docker-compose.yml --e
 # 백업
 $C exec -T obs-web-db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > /opt/obs/backups/obs-$(TZ=Asia/Seoul date +%Y%m%d-%H%M).dump
 chmod 600 /opt/obs/backups/*.dump
-# 복구(현재 DB 내용을 백업 시점으로 덮어써요)
+# 복구(현재 DB를 지우고 백업 시점으로 다시 만들어요. 백업 뒤에 생긴 표·데이터도 남지 않아요)
 $C stop obs-web-app
-$C exec -T obs-web-db sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists' < /opt/obs/backups/<파일>.dump
+$C exec -T obs-web-db sh -c 'psql -U "$POSTGRES_USER" -d postgres -v ON_ERROR_STOP=1 -c "DROP DATABASE \"$POSTGRES_DB\" WITH (FORCE)" -c "CREATE DATABASE \"$POSTGRES_DB\""'
+$C exec -T obs-web-db sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --no-owner --exit-on-error' < /opt/obs/backups/<파일>.dump
 $C start obs-web-app
 ```
 
