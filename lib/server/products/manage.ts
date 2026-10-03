@@ -1,4 +1,4 @@
-import type { EventDiscountType, Prisma, PrismaClient, ProductStatus, StockDeductMode } from "@prisma/client";
+import { Prisma, type EventDiscountType, type PrismaClient, type ProductStatus, type StockDeductMode } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { notFound } from "../authz/errors";
 import { dbNow } from "../billing/subscription";
@@ -122,54 +122,57 @@ export async function listProducts(
   const limit =
     opts.limit === undefined ? DEFAULT_PAGE_SIZE : typeof opts.limit === "string" && /^\d+$/.test(opts.limit) ? Number(opts.limit) : typeof opts.limit === "number" ? opts.limit : NaN;
   if (!Number.isInteger(limit) || limit < 1 || limit > MAX_PAGE_SIZE) return { ok: false, reason: "invalid_limit" };
-  let stockScope: Prisma.ProductWhereInput = {};
+  // 필터·정렬·커서는 모두 SQL 안에서 걸러 이번 쪽의 상품 id(최대 limit + 1개)만 고른다. 걸러진 id 목록을 IN으로 넘기면
+  // 결과가 Postgres 바인드 변수 한도(32,767)를 넘을 때 오류가 나므로 쓰지 않는다.
+  const where: Prisma.Sql[] = [Prisma.sql`p."sellerId" = ${ctx.sellerId}::uuid`, Prisma.sql`p."deletedAt" IS NULL`];
+  if (status) where.push(Prisma.sql`p."status" = ${status}::"ProductStatus"`);
+  let stockJoin = Prisma.empty;
   if (opts.stock !== undefined && opts.stock !== "") {
     if (opts.stock !== "out" && opts.stock !== "low") return { ok: false, reason: "invalid_stock_filter" };
     const [lo, hi] = STOCK_FILTERS[opts.stock];
-    const rows = await db.$queryRaw<{ id: string }[]>`
-      SELECT p."id" FROM "Product" p
-      LEFT JOIN "ProductOption" o ON o."productId" = p."id" AND o."sellerId" = p."sellerId" AND o."deletedAt" IS NULL
-      WHERE p."sellerId" = ${ctx.sellerId}::uuid AND p."deletedAt" IS NULL
-      GROUP BY p."id"
-      HAVING COALESCE(SUM(o."stock"), 0) BETWEEN ${lo} AND ${hi}`;
-    stockScope = { id: { in: rows.map((r) => r.id) } };
+    // 판매자 옵션 재고를 상품별로 한 번만 더해 붙인다(상관 서브쿼리에 BETWEEN을 걸면 합계를 두 번 계산해 느려진다).
+    // 옵션이 없는 상품은 합계 0.
+    stockJoin = Prisma.sql`LEFT JOIN (
+      SELECT o."productId", SUM(o."stock") AS "total" FROM "ProductOption" o
+      WHERE o."sellerId" = ${ctx.sellerId}::uuid AND o."deletedAt" IS NULL
+      GROUP BY o."productId") st ON st."productId" = p."id"`;
+    where.push(Prisma.sql`COALESCE(st."total", 0) BETWEEN ${lo} AND ${hi}`);
   }
   // 이름 검색 q: 상품 이름이나 (지우지 않은) 옵션 이름에 들어 있으면(대소문자 무시, 부분 일치). 저장할 때처럼 NFKC로 맞추고
   // 앞뒤 공백을 지운 뒤 50자까지. 비었거나 일반 공백(U+0020)뿐이면 검색하지 않는다. 탭·줄바꿈·BOM·폭 없는 공백 같은
   // 제어·서식 문자만 있으면(trim으로 지워져도) cleanText가 막아 400. %·_ 같은 글자도 그대로 찾는다(LIKE 패턴으로 쓰지 않음).
-  let searchScope: Prisma.ProductWhereInput = {};
+  // 옵션은 판매자 범위((sellerId, productId) 인덱스)로 좁혀서 본다.
   if (opts.q !== undefined && !(typeof opts.q === "string" && /^ *$/.test(opts.q))) {
     const term = cleanText(opts.q, MAX_SEARCH_LENGTH);
     if (!term) return { ok: false, reason: "invalid_search" };
-    const rows = await db.$queryRaw<{ id: string }[]>`
-      SELECT p."id" FROM "Product" p
-      WHERE p."sellerId" = ${ctx.sellerId}::uuid AND p."deletedAt" IS NULL
-        AND (strpos(lower(p."name"), lower(${term})) > 0
-          OR EXISTS (SELECT 1 FROM "ProductOption" o
-                     WHERE o."productId" = p."id" AND o."sellerId" = p."sellerId" AND o."deletedAt" IS NULL
-                       AND strpos(lower(o."name"), lower(${term})) > 0))`;
-    searchScope = { id: { in: rows.map((r) => r.id) } };
+    where.push(Prisma.sql`(strpos(lower(p."name"), lower(${term})) > 0
+      OR EXISTS (SELECT 1 FROM "ProductOption" o
+                 WHERE o."sellerId" = ${ctx.sellerId}::uuid AND o."productId" = p."id" AND o."deletedAt" IS NULL
+                   AND strpos(lower(o."name"), lower(${term})) > 0))`);
   }
-  let after: Prisma.ProductWhereInput = {};
   if (opts.cursor !== undefined && opts.cursor !== "") {
     if (typeof opts.cursor !== "string" || !UUID.test(opts.cursor)) return { ok: false, reason: "invalid_cursor" };
     const c = await db.product.findFirst({ where: { id: opts.cursor, sellerId: ctx.sellerId }, select: { id: true, sortOrder: true, createdAt: true } });
     if (!c) return { ok: false, reason: "invalid_cursor" };
-    after = {
-      OR: [
-        { sortOrder: { gt: c.sortOrder } },
-        { sortOrder: c.sortOrder, createdAt: { lt: c.createdAt } },
-        { sortOrder: c.sortOrder, createdAt: c.createdAt, id: { gt: c.id } },
-      ],
-    };
+    where.push(Prisma.sql`(p."sortOrder" > ${c.sortOrder}
+      OR (p."sortOrder" = ${c.sortOrder} AND p."createdAt" < ${c.createdAt})
+      OR (p."sortOrder" = ${c.sortOrder} AND p."createdAt" = ${c.createdAt} AND p."id" > ${c.id}::uuid))`);
   }
-  const rows = await db.product.findMany({
-    where: { sellerId: ctx.sellerId, deletedAt: null, ...(status ? { status } : {}), AND: [stockScope, searchScope, after] },
-    orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }, { id: "asc" }],
-    take: limit + 1,
+  const ids = await db.$queryRaw<{ id: string }[]>`
+    SELECT p."id" FROM "Product" p
+    ${stockJoin}
+    WHERE ${Prisma.join(where, " AND ")}
+    ORDER BY p."sortOrder" ASC, p."createdAt" DESC, p."id" ASC
+    LIMIT ${limit + 1}`;
+  // 두 조회 사이에 지워졌거나 상태가 바뀐 상품이 응답에 섞이지 않게 같은 조건을 다시 건다
+  const found = await db.product.findMany({
+    where: { sellerId: ctx.sellerId, deletedAt: null, ...(status ? { status } : {}), id: { in: ids.map((r) => r.id) } },
     include: { options: { where: { deletedAt: null }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }] } },
   });
-  const page = rows.slice(0, limit);
+  const byId = new Map(found.map((p) => [p.id, p]));
+  // 고른 순서대로. 두 조회 사이에 지워진 상품은 빠지지만, 다음 쪽 커서는 고른 id 기준이라 뒤 상품을 건너뛰지 않는다.
+  const pageIds = ids.slice(0, limit).map((r) => r.id);
+  const page = pageIds.map((id) => byId.get(id)).filter((p): p is (typeof found)[number] => p !== undefined);
   const now = await dbNow(db);
   return {
     ok: true,
@@ -179,7 +182,7 @@ export async function listProducts(
         event: eventView(eventOf(p), p.price, now),
         options: options.map(({ deletedAt: _o, ...o }) => o),
       })),
-      nextCursor: rows.length > limit ? page[page.length - 1].id : null,
+      nextCursor: ids.length > limit ? pageIds[pageIds.length - 1] : null,
     },
   };
 }
