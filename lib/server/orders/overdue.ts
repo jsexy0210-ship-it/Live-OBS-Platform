@@ -112,16 +112,16 @@ async function restrictionAnchor(tx: Prisma.TransactionClient, sellerId: string,
   return new Date(Math.max(...anchors.map((d) => d.getTime())));
 }
 
-// 횟수에 들어가는 사건(미입금 자동 취소·환불)의 시각. 주문 생성 잠금 아래에서 부른다. 기준 시각을 만드는 일(설정 켜기·제한 풀기·
-// 제한 생성)도 같은 잠금 아래라 이 사건은 늘 기준 뒤에 일어나지만, 시각은 밀리초 단위라 같은 밀리초가 되면 「기준 뒤(>)」 비교에서
-// 빠진다. 그래서 DB 시계가 기준 시각보다 늦지 않으면 기준 + 1ms로 기록한다.
-// 규칙이 꺼져 있으면 보정하지 않는다(꺼진 동안의 사건은 세지 않으므로, 밀어 두면 나중에 같은 밀리초에 켤 때 켠 뒤 사건으로 보인다).
-export async function eventClockAfterAnchor(tx: Prisma.TransactionClient, sellerId: string, buyerMemberId: string, kind: RestrictionKind): Promise<Date> {
+// 판매자별 단조 시계. 구매 제한 횟수의 기준이나 사건이 되는 시각(환불 refundedAt, 미입금 자동 취소 autoCancelledAt,
+// 제한 시작 startsAt, 제한 풀기 liftedAt, 설정 켜기 enabledAt)은 모두 이 시계로 찍는다. 주문 생성 잠금(lockSellerOrders) 아래에서만 부른다.
+// max(DB 시계, 마지막으로 찍은 시각 + 1ms)를 찍고 저장하므로, 같은 판매자 안에서는 찍은 순서가 곧 시각 순서다(같은 밀리초 문제 없음).
+export async function sellerEventClock(tx: Prisma.TransactionClient, sellerId: string): Promise<Date> {
   const clock = await dbClock(tx);
-  const rule = ruleOf(await getOrderPolicy(tx, sellerId), kind);
-  if (!rule.enabled) return clock;
-  const anchor = await restrictionAnchor(tx, sellerId, buyerMemberId, rule.enabledAt);
-  return clock.getTime() > anchor.getTime() ? clock : new Date(anchor.getTime() + 1);
+  const row = await tx.sellerOrderPolicy.findUnique({ where: { sellerId }, select: { lastEventClockAt: true } });
+  const last = row?.lastEventClockAt;
+  const at = last && last.getTime() >= clock.getTime() ? new Date(last.getTime() + 1) : clock;
+  await tx.sellerOrderPolicy.upsert({ where: { sellerId }, create: { sellerId, lastEventClockAt: at }, update: { lastEventClockAt: at } });
+  return at;
 }
 
 export async function maybeRestrict(tx: Prisma.TransactionClient, sellerId: string, buyerMemberId: string, now: Date, kind: RestrictionKind = "unpaid") {
@@ -170,8 +170,8 @@ export async function cancelOverdueOrders(db: PrismaClient, opts: { now?: Date; 
         await lockSellerOrders(tx, o.sellerId);
         // 잠금을 잡은 뒤의 실제 DB 시각으로 처리한다. 제한은 이 트랜잭션이 끝나야 보이고, 주문 생성도 같은 잠금을 잡으므로
         // 제한이 생긴 뒤 잠금을 얻은 주문은 반드시 제한을 본다(시각 비교에 기대지 않음).
-        // 기준 시각과 같은 밀리초가 되지 않게 기준 뒤 시각으로 남긴다(eventClockAfterAnchor)
-        const now = opts.now ?? (await eventClockAfterAnchor(tx, o.sellerId, o.buyerMemberId, "unpaid"));
+        // 판매자 시계로 찍는다(기준 시각과 순서가 뒤집히지 않게)
+        const now = opts.now ?? (await sellerEventClock(tx, o.sellerId));
         // 그사이 결제·취소된 주문은 건드리지 않는다
         const moved = await tx.order.updateMany({
           where: { id: o.id, sellerId: o.sellerId, status: "PENDING_PAYMENT", paymentDueAt: { lte: now } },
@@ -248,7 +248,8 @@ export async function liftRestriction(db: PrismaClient, ctx: TenantContext, buye
   if (reason === null) return { ok: false as const, reason: "invalid_reason" as const };
   return db.$transaction(async (tx) => {
     await lockSellerOrders(tx, ctx.sellerId);
-    const now = await dbClock(tx);
+    // 판매자 시계로 찍어 푼 시각이 그 제한을 만든 사건들보다 늘 뒤가 되게 한다
+    const now = await sellerEventClock(tx, ctx.sellerId);
     const active = await activeRestriction(tx, ctx.sellerId, buyerMemberId, now);
     if (!active) return { ok: false as const, reason: "no_restriction" as const };
     // 사유가 다른 제한이 겹쳐 있을 수 있으니(미입금·결제 후 취소) 걸려 있는 제한을 모두 푼다
@@ -319,18 +320,15 @@ export async function updateOrderPolicy(db: PrismaClient, ctx: TenantContext, ra
     };
     const { unpaidRestrictionEnabledAt: _u, paidCancelRestrictionEnabledAt: _p, ...before } = current;
     // 꺼져 있다가 켜면 켠 시각을 남긴다(그 뒤의 횟수만 센다). 끄더라도 이미 걸린 제한은 그대로 둔다.
-    // 켠 시각은 DB 시계와 이 판매자의 해당 종류 마지막 사건 시각 중 늦은 쪽(켜기 전 사건이 늘 켠 시각 이하가 되게, 같은 잠금 아래).
+    // 켠 시각은 판매자 시계로 찍는다(켜기 전 사건은 늘 이보다 앞, 켠 뒤 사건은 늘 이보다 뒤).
     const turnedOn = (was: boolean, is: boolean) => !was && is;
-    const at = await dbClock(tx);
-    const notBefore = (last: Date | null | undefined) => (last && last.getTime() > at.getTime() ? last : at);
+    const unpaidOn = turnedOn(before.unpaidRestrictionEnabled, policy.unpaidRestrictionEnabled);
+    const paidOn = turnedOn(before.paidCancelRestrictionEnabled, policy.paidCancelRestrictionEnabled);
+    const at = unpaidOn || paidOn ? await sellerEventClock(tx, ctx.sellerId) : null;
     const data = {
       ...policy,
-      ...(turnedOn(before.unpaidRestrictionEnabled, policy.unpaidRestrictionEnabled)
-        ? { unpaidRestrictionEnabledAt: notBefore((await tx.order.aggregate({ where: { sellerId: ctx.sellerId }, _max: { autoCancelledAt: true } }))._max.autoCancelledAt) }
-        : {}),
-      ...(turnedOn(before.paidCancelRestrictionEnabled, policy.paidCancelRestrictionEnabled)
-        ? { paidCancelRestrictionEnabledAt: notBefore((await tx.order.aggregate({ where: { sellerId: ctx.sellerId }, _max: { refundedAt: true } }))._max.refundedAt) }
-        : {}),
+      ...(unpaidOn ? { unpaidRestrictionEnabledAt: at } : {}),
+      ...(paidOn ? { paidCancelRestrictionEnabledAt: at } : {}),
     };
     await tx.sellerOrderPolicy.upsert({ where: { sellerId: ctx.sellerId }, create: { sellerId: ctx.sellerId, ...data }, update: data });
     await writeAudit(tx, {

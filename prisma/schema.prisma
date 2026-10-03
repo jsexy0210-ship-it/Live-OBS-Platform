@@ -592,9 +592,6 @@ model Order {
   @@index([sellerId, status])
   @@index([status, paymentDueAt])
   @@index([sellerId, buyerMemberId, autoCancelledAt])
-  // 결제 후 취소·미입금 제한을 켤 때 판매자의 마지막 사건 시각(_max)을 인덱스 끝 한 번 읽기로 찾는다(orders/overdue.ts updateOrderPolicy)
-  @@index([sellerId, refundedAt])
-  @@index([sellerId, autoCancelledAt])
 }
 
 model OrderItem {
@@ -1068,6 +1065,8 @@ model SellerOrderPolicy {
   paidCancelRestrictionEnabled   Boolean   @default(false)
   // 켠 시각. 이 뒤의 환불만 센다(켜기 전 환불은 넣지 않음).
   paidCancelRestrictionEnabledAt DateTime? @db.Timestamptz(3)
+  // 판매자별 단조 시계(orders/overdue.ts sellerEventClock)가 마지막으로 찍은 시각. 주문 생성 잠금 아래에서만 바꾼다.
+  lastEventClockAt               DateTime? @db.Timestamptz(3)
   updatedAt                      DateTime  @default(now()) @updatedAt @db.Timestamptz(3)
 
   seller Seller @relation(fields: [sellerId], references: [id])

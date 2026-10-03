@@ -1,7 +1,7 @@
 import { Prisma, type PaymentMethod, type PrismaClient, type QueueItem, type RefundFault } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { notifySellerChanged } from "../realtime/notify";
-import { dbClock, eventClockAfterAnchor, lockSellerOrders, maybeRestrict } from "../orders/overdue";
+import { lockSellerOrders, maybeRestrict, sellerEventClock } from "../orders/overdue";
 import { getShippingPolicy } from "../orders/shipping";
 import { earnQuote } from "../rewards/earn";
 import { requireSellerPermission, type TenantContext } from "../tenant/context";
@@ -508,10 +508,9 @@ export async function refundOrder(
     // 주문 생성과 같은 잠금을 주문 행·재고 행보다 먼저 잡는다. 주문 생성은 이 잠금 → 재고 행 순서라, 재고를 되돌린 뒤에
     // 잡으면 같은 옵션 주문과 교착한다. 구매 제한 횟수(아래 maybeRestrict)도 이 잠금 아래에서 센다.
     await lockSellerOrders(tx, ctx.sellerId);
-    // 잠금을 잡은 뒤의 실제 시각(now()는 트랜잭션 시작 시각이라, 기다리는 사이 켠 설정·푼 제한보다 이른 환불 시각이 남는다).
-    // 구매 제한 기준 시각과 같은 밀리초가 되지 않게 기준 뒤 시각으로 남긴다(eventClockAfterAnchor).
-    const target = await tx.order.findFirst({ where: { id: orderId, sellerId: ctx.sellerId }, select: { buyerMemberId: true } });
-    const now = opts.now ?? (target ? await eventClockAfterAnchor(tx, ctx.sellerId, target.buyerMemberId, "paid_cancel") : await dbClock(tx));
+    // 잠금을 잡은 뒤 판매자 시계로 찍는다(now()는 트랜잭션 시작 시각이라 기다리는 사이 켠 설정·푼 제한보다 이를 수 있고,
+    // DB 시계만 쓰면 같은 밀리초에 순서가 뒤집힐 수 있다).
+    const now = opts.now ?? (await sellerEventClock(tx, ctx.sellerId));
     const moved = await tx.order.updateMany({
       where: { id: orderId, sellerId: ctx.sellerId, status: "PAID" },
       data: { status: "REFUNDED", refundedAt: now },

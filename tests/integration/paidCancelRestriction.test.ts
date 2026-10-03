@@ -215,9 +215,9 @@ describe("결제 후 취소 5회 → 30일 구매 제한", () => {
   it("기준 시각(켠 시각)과 같거나 늦은 시계로 들어온 환불도 기준 뒤로 기록되어 횟수에 들어간다", async () => {
     const s = await shop();
     await updateOrderPolicy(db, s.ctx, { ...BASE, paidCancelRestrictionEnabled: true });
-    // 켠 시각이 DB 시계와 같은 밀리초(또는 그보다 뒤)인 경우를 강제로 만든다
+    // 켠 시각(판매자 시계)이 DB 시계와 같은 밀리초(또는 그보다 뒤)인 경우를 강제로 만든다
     const enabledAt = new Date(Date.now() + 2000);
-    await db.sellerOrderPolicy.update({ where: { sellerId: s.seller.id }, data: { paidCancelRestrictionEnabledAt: enabledAt } });
+    await db.sellerOrderPolicy.update({ where: { sellerId: s.seller.id }, data: { paidCancelRestrictionEnabledAt: enabledAt, lastEventClockAt: enabledAt } });
     for (let i = 0; i < PAID_CANCEL_LIMIT; i++) await s.refund("BUYER");
     const refunded = await db.order.findMany({ where: { sellerId: s.seller.id, status: "REFUNDED" }, select: { refundedAt: true } });
     expect(refunded.every((o) => o.refundedAt!.getTime() > enabledAt.getTime())).toBe(true);
@@ -227,7 +227,7 @@ describe("결제 후 취소 5회 → 30일 구매 제한", () => {
   it("미입금 자동 취소도 기준 시각과 같거나 늦은 시계로 들어오면 기준 뒤로 기록되어 횟수에 들어간다", async () => {
     const s = await shop();
     const enabledAt = new Date(Date.now() + 2000);
-    await db.sellerOrderPolicy.create({ data: { sellerId: s.seller.id, unpaidRestrictionEnabledAt: enabledAt } });
+    await db.sellerOrderPolicy.create({ data: { sellerId: s.seller.id, unpaidRestrictionEnabledAt: enabledAt, lastEventClockAt: enabledAt } });
     for (let i = 0; i < UNPAID_CANCEL_LIMIT; i++) {
       await db.order.create({
         data: { sellerId: s.seller.id, orderNo: 9000 + i, buyerMemberId: s.buyer.id, broadcastNicknameSnapshot: "닉", totalAmount: 1000, status: "PENDING_PAYMENT", paymentDueAt: new Date(Date.now() - 60_000) },
@@ -241,10 +241,12 @@ describe("결제 후 취소 5회 → 30일 구매 제한", () => {
   });
   it("꺼져 있을 때 생긴 환불은 기준과 같은 밀리초에 켜더라도 세지 않는다(꺼진 동안에는 시각을 보정하지 않음)", async () => {
     const s = await shop();
-    // 꺼진 상태에서 마지막 제한을 푼 시각이 DB 시계와 같거나 뒤인 경우를 강제로 만든다
+    // 꺼진 상태에서 마지막 제한을 푼 시각(판매자 시계)이 DB 시계와 같거나 뒤인 경우를 강제로 만든다
+    const liftedAt = new Date(Date.now() + 2000);
     await db.buyerPurchaseRestriction.create({
-      data: { sellerId: s.seller.id, buyerMemberId: s.buyer.id, reason: "UNPAID_AUTO_CANCEL", startsAt: new Date(Date.now() - 60_000), endsAt: new Date(Date.now() + 60_000), liftedAt: new Date(Date.now() + 2000) },
+      data: { sellerId: s.seller.id, buyerMemberId: s.buyer.id, reason: "UNPAID_AUTO_CANCEL", startsAt: new Date(Date.now() - 60_000), endsAt: new Date(Date.now() + 60_000), liftedAt },
     });
+    await db.sellerOrderPolicy.create({ data: { sellerId: s.seller.id, lastEventClockAt: liftedAt } });
     for (let i = 0; i < PAID_CANCEL_LIMIT; i++) await s.refund("BUYER");
     await updateOrderPolicy(db, s.ctx, { ...BASE, paidCancelRestrictionEnabled: true });
     // 켠 뒤 환불 1건: 꺼진 동안 5건을 함께 세면 제한이 걸린다
@@ -258,11 +260,28 @@ describe("결제 후 취소 5회 → 30일 구매 제한", () => {
     const { order } = await createPaidOrderItem(s.seller.id, s.buyer.id);
     const late = new Date(Date.now() + 2000);
     await db.order.update({ where: { id: order.id }, data: { status: "REFUNDED", refundedAt: late, refundFault: "BUYER" } });
+    await db.sellerOrderPolicy.create({ data: { sellerId: s.seller.id, lastEventClockAt: late } });
     await updateOrderPolicy(db, s.ctx, { ...BASE, paidCancelRestrictionEnabled: true });
     const policy = await db.sellerOrderPolicy.findUniqueOrThrow({ where: { sellerId: s.seller.id } });
     expect(policy.paidCancelRestrictionEnabledAt!.getTime()).toBeGreaterThanOrEqual(late.getTime());
     for (let i = 0; i < PAID_CANCEL_LIMIT - 1; i++) await s.refund("BUYER");
     expect(await s.restrictions()).toEqual([]);
+    await s.refund("BUYER");
+    expect(await s.restrictions()).toHaveLength(1);
+  });
+  it("같은 밀리초에 몰린 환불로 제한이 걸린 뒤 바로 풀어도, 푼 시각이 그 사건들 뒤라 다음 환불 1회로 다시 걸리지 않는다", async () => {
+    const s = await shop();
+    await updateOrderPolicy(db, s.ctx, { ...BASE, paidCancelRestrictionEnabled: true });
+    for (let i = 0; i < PAID_CANCEL_LIMIT; i++) await s.refund("BUYER");
+    const [r] = await s.restrictions();
+    // 환불·제한 시각이 DB 시계보다 뒤(같은 밀리초로 밀린 경우)인 상태를 강제로 만든다
+    const late = new Date(Date.now() + 2000);
+    await db.order.updateMany({ where: { sellerId: s.seller.id, status: "REFUNDED" }, data: { refundedAt: late } });
+    await db.buyerPurchaseRestriction.update({ where: { id: r.id }, data: { startsAt: late } });
+    await db.sellerOrderPolicy.update({ where: { sellerId: s.seller.id }, data: { lastEventClockAt: late } });
+    expect(await liftRestriction(db, s.ctx, s.buyer.id)).toMatchObject({ ok: true });
+    const lifted = await db.buyerPurchaseRestriction.findUniqueOrThrow({ where: { id: r.id } });
+    expect(lifted.liftedAt!.getTime()).toBeGreaterThan(late.getTime());
     await s.refund("BUYER");
     expect(await s.restrictions()).toHaveLength(1);
   });
