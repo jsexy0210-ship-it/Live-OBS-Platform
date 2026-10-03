@@ -289,7 +289,7 @@ test("권한이 하나도 없는 직원에게는 권한이 필요한 메뉴가 �
   await page.getByLabel("비밀번호").fill(PASSWORD);
   await page.getByRole("button", { name: "로그인" }).click();
   await expect(page.getByText("이 기능은 권한이 필요해요")).toBeVisible();
-  const side = page.getByRole("complementary", { name: "판매자 메뉴" });
+  const side = page.getByRole("complementary", { name: "파트너스 메뉴" });
   for (const hidden of ["방송 대시보드", "상품", "주문", "입금 확인", "배송", "영수증 · 세금계산서", "적립금", "회원", "구매 제한", "구매자 문의", "오버레이 편집기", "HIT 카드 이력", "방송 이력", "쇼핑몰 설정", "결제(PG) 연결", "주문자 알림", "구독 · 결제", "직원 계정"]) {
     await expect(side.getByText(hidden, { exact: true })).toHaveCount(0);
   }
@@ -303,7 +303,7 @@ test("상품 권한이 없는 직원은 권한 안내를 본다", async ({ page 
   await expect(page.getByText("이 기능은 권한이 필요해요")).toBeVisible();
   await expect(page.getByRole("link", { name: "상품 등록" })).toHaveCount(0);
   // 권한이 없는 메뉴는 숨기고, 가진 권한(배송)과 대표자 전용 메뉴 구분을 따른다
-  const side = page.getByRole("complementary", { name: "판매자 메뉴" });
+  const side = page.getByRole("complementary", { name: "파트너스 메뉴" });
   await expect(side.getByText("상품", { exact: true })).toHaveCount(0);
   await expect(side.getByText("배송", { exact: true })).toBeVisible();
   await expect(side.getByText("직원 계정", { exact: true })).toHaveCount(0);

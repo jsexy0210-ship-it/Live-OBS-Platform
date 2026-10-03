@@ -15,7 +15,7 @@ import { longTime, type OrderDetail, type RefundFault as Fault, type RefundPrevi
 // 서버 계산과 다르면(refund_amount_changed, 상태 그대로) 상세를 다시 읽어 새 금액을 다시 확인받는다.
 const FAULTS: { key: Fault; label: string; desc: string }[] = [
   { key: "BUYER", label: "구매자 사정", desc: "변심 · 잘못 주문" },
-  { key: "SELLER", label: "판매자 사정", desc: "품절 · 오류" },
+  { key: "SELLER", label: "파트너스 사정", desc: "품절 · 오류" },
 ];
 const REASONS = ["품절 · 재고 없음", "결제 오류 · 중복 결제", "기타"];
 
