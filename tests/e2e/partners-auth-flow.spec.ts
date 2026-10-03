@@ -331,4 +331,20 @@ test("직원: 로그인하면 본인확인 연결 안내가 뜨고, 나중에 �
   await expect(page.getByRole("heading", { name: "가입한 계정을 찾았어요" })).toBeVisible();
   await expect(page.getByTestId("fi-account")).toHaveCount(1);
   await expect(page.getByTestId("fi-account")).toContainText(s.email);
+
+  // 연결한 직원은 비밀번호 찾기(직원 탭, 이메일·쇼핑몰 주소)로 새 비밀번호를 정할 수 있다
+  await signOut(page);
+  await page.goto("/seller/password-reset?type=staff");
+  await page.getByLabel("이메일").fill(s.email);
+  await page.getByLabel("쇼핑몰 주소").fill(a.slug);
+  await fillIdentity(page, s.name, randomPhone());
+  await verify(page, false, "/api/seller/password-reset/start");
+  await expect(page.getByRole("heading", { name: "새 비밀번호를 정해요" })).toBeVisible();
+  const next = `${s.password}-new`;
+  await page.getByLabel("새 비밀번호", { exact: true }).fill(next);
+  await page.getByLabel("새 비밀번호 확인").fill(next);
+  await page.getByRole("button", { name: "비밀번호 바꾸기" }).click();
+  await expect(page.getByRole("heading", { name: "비밀번호를 바꿨어요" })).toBeVisible();
+  await login(page, "직원", s.email, next);
+  await expect(page).toHaveURL(/\/seller\/products$/);
 });
