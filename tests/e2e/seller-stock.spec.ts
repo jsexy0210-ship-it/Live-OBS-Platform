@@ -174,8 +174,10 @@ test("상품 재고 차감 기준을 정하고 바꿀 수 있다(주문하면 �
 
 test("로그인이 풀린 뒤 재고를 바꾸면 로그인으로 보낸다", async ({ page }) => {
   await openAs(page);
-  // 첫 화면 데이터를 다 받은 뒤 로그인을 끊는다
+  // 첫 화면 데이터(상품·재고 이력)를 다 받은 뒤 로그인을 끊는다. 이력 요청이 남아 있으면 그 401로 먼저 로그인 화면으로 가 버린다
   await expect(page.getByTestId("stock-row").first()).toBeVisible();
+  await expect(page.getByTestId("history-item").first().or(page.getByText("아직 재고를 바꾼 기록이 없어요"))).toBeVisible();
+  await expect(page.getByTestId("stock-loading-more")).toHaveCount(0);
   await page.context().clearCookies();
   await page.getByRole("button", { name: "탑로더 25장 1팩 빼기 · 더하기" }).click();
   const sheet = page.getByRole("dialog");
