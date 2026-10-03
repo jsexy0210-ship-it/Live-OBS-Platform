@@ -8,6 +8,7 @@ import type { IdentityProvider } from "../identity/provider";
 import { completeIdentityVerification, parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
 import type { TenantContext } from "../tenant/context";
 import { cleanText } from "../text/clean";
+import { STAFF_NAME_MAX } from "./staff";
 
 // 직원 본인확인 연결(2026-10-03 대표님 결정, PRODUCT_SCOPE 로그인): 직원이 로그인한 뒤 본인 휴대폰 본인확인을 한 번 해 그 CI 해시를
 // 계정에 연결한다. 대표자가 등록한 이름·휴대폰 번호와 본인확인 결과가 맞을 때만 연결한다. 연결은 직원 셀프 아이디·비밀번호 찾기에만 쓰고,
@@ -42,7 +43,7 @@ async function loadSelf(db: PrismaClient, ctx: TenantContext) {
   return user;
 }
 
-const sameName = (a: string | null, b: string) => !!a && cleanText(a, 30) === cleanText(b, 30);
+const sameName = (a: string | null, b: string) => !!a && cleanText(a, STAFF_NAME_MAX) === cleanText(b, STAFF_NAME_MAX);
 
 // 연결 상태(화면의 첫 로그인 안내·건너뛰기용)
 export async function staffLinkStatus(db: PrismaClient, ctx: TenantContext) {
@@ -62,7 +63,7 @@ export async function startStaffLink(
   const user = await loadSelf(db, ctx);
   const attemptKey = parseAttemptKey(meta.attemptKey);
   if (attemptKey === false) return { ok: false, reason: "invalid_identity_input" };
-  const person = parseIdentityPerson(rawPerson);
+  const person = parseIdentityPerson(rawPerson, STAFF_NAME_MAX);
   if (!person) return { ok: false, reason: "invalid_identity_input" };
   if (!user.phone) return { ok: false, reason: "phone_not_registered" };
   if (person.phone !== user.phone || !sameName(person.name, user.name)) return { ok: false, reason: "identity_mismatch" };

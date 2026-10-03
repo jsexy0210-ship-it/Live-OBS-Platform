@@ -12,6 +12,9 @@ import { requireSellerPermission, type TenantContext } from "../tenant/context";
 
 type Meta = { ip?: string | null; userAgent?: string | null; now?: Date };
 
+// 직원 이름 최대 글자 수. 만들기·고치기·본인확인 연결 비교가 모두 이 값을 쓴다(sellers/staffIdentity.ts).
+export const STAFF_NAME_MAX = 50;
+
 const STAFF_FIELDS = { id: true, email: true, name: true, phone: true, identityLinkedAt: true, permissions: true, status: true, lastLoginAt: true, createdAt: true } as const;
 
 export type StaffFailure = "invalid_permissions" | "weak_password" | "email_taken" | "bad_request" | "invalid_phone";
@@ -57,7 +60,7 @@ export async function createStaff(
   if (input.password.length < MIN_PASSWORD_LENGTH) return { ok: false, reason: "weak_password" };
   const email = normalizeEmail(input.email);
   const name = input.name.trim();
-  if (!email.includes("@") || !name) return { ok: false, reason: "bad_request" };
+  if (!email.includes("@") || !name || name.length > STAFF_NAME_MAX) return { ok: false, reason: "bad_request" };
   const phone = normalizeStaffPhone(input.phone);
   if (phone === false) return { ok: false, reason: "invalid_phone" };
   const passwordHash = await hashPassword(input.password);
@@ -132,7 +135,7 @@ export async function updateStaffProfile(
   meta: Meta = {},
 ): Promise<StaffResult<{ name: string; phone: string | null; identityLinked: boolean }>> {
   requireSellerPermission(ctx, "STAFF_MANAGE");
-  if (input.name !== undefined && (typeof input.name !== "string" || !input.name.trim() || input.name.trim().length > 50)) return { ok: false, reason: "bad_request" };
+  if (input.name !== undefined && (typeof input.name !== "string" || !input.name.trim() || input.name.trim().length > STAFF_NAME_MAX)) return { ok: false, reason: "bad_request" };
   const phone = input.phone === undefined ? undefined : normalizeStaffPhone(input.phone);
   if (phone === false) return { ok: false, reason: "invalid_phone" };
   const value = await db.$transaction(async (tx) => {

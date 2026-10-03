@@ -221,6 +221,21 @@ describe("비밀번호 찾기(이메일+쇼핑몰) 직원", () => {
     expect((await done.json()).error).toBe("already_verified");
   });
 
+  it("직원 이름 상한은 만들기·고치기·연결에 같은 50자: 40자 이름 직원도 연결을 시작하고, 51자는 만들 때·고칠 때 400", async () => {
+    const { seller, owner } = await shop();
+    const ownerCookie = await sessionOf(owner.email);
+    const long = "가".repeat(40);
+    const created = await staffCreate(post("/api/seller/staff", { email: "long@example.com", name: long, password: PASSWORD, permissions: [], phone: "01055556666" }, ownerCookie));
+    expect(created.status).toBe(201);
+    const tooLong = await staffCreate(post("/api/seller/staff", { email: "too@example.com", name: "가".repeat(51), password: PASSWORD, permissions: [] }, ownerCookie));
+    expect(tooLong.status).toBe(400);
+    const { id } = await created.json();
+    expect((await staffPatch(req(`/api/seller/staff/${id}`, "PATCH", { name: "가".repeat(51) }, ownerCookie), ctxOf(id))).status).toBe(400);
+    const staffCookie = await sessionOf("long@example.com", seller.slug);
+    const s = await linkStart(post("/api/seller/me/identity/start", { ...IDV_INPUT, name: long, phone: "01055556666" }, staffCookie));
+    expect(s.status).toBe(200);
+  });
+
   it("연결 CI가 맞는 직원은 재설정 권한을 받아 새 비밀번호로 로그인된다. CI가 다르거나·연결 전이거나·탭이 다르면 같은 거부", async () => {
     const { seller } = await shop();
     const { staff } = await linkedStaff(seller.id, "STAFF-CI");
@@ -287,9 +302,14 @@ describe("아이디 찾기·계정 고르기 비밀번호 찾기", () => {
     expect(a.owner.id).not.toBe(b.owner.id);
   });
 
-  it("재설정 권한 응답을 잃으면 같은 본인확인·같은 계정으로 10분 안에 다시 받아 새 권한으로 바꾸고, 이전 권한은 거부된다. 다른 계정·10분 뒤·유효 시간 지난 뒤에도 같은 기준", async () => {
+  it("재설정 권한 응답을 잃으면 같은 본인확인·같은 계정으로 10분 안에 다시 요청해 같은 권한을 받는다(동시 재시도도 같은 토큰). 다른 흐름의 권한은 그대로이고, 다른 계정·쓴 뒤·10분 뒤는 거부", async () => {
     const me = await shop("ME");
     const other = await shop("OTHER");
+    // 같은 계정의 다른 아이디 찾기 흐름이 먼저 받은 권한
+    const b = await begin();
+    await confirmWith(findConfirm, "/api/seller/find-id/confirm", b.verificationId, b.flow, { ci: "ME" });
+    const otherFlow = cookieOf(await findReset(post("/api/seller/find-id/reset", { verificationId: b.verificationId, accountType: "owner", accountId: me.owner.id }, b.flow)), "lo_pwreset");
+
     const { flow, verificationId } = await begin();
     await confirmWith(findConfirm, "/api/seller/find-id/confirm", verificationId, flow, { ci: "ME" });
     const reset = (accountId: string, cookie = flow) => findReset(post("/api/seller/find-id/reset", { verificationId, accountType: "owner", accountId }, cookie));
@@ -297,32 +317,41 @@ describe("아이디 찾기·계정 고르기 비밀번호 찾기", () => {
     expect(first.status).toBe(200);
     // 성공 응답이 흐름 쿠키를 지우지 않는다(잃은 응답을 다시 받으려면 필요)
     expect(first.headers.getSetCookie().filter((c) => c.startsWith("lo_fidv="))).toEqual([]);
-    const lost = cookieOf(first, "lo_pwreset");
-    // 응답을 잃었다고 보고 다시 요청: 새 권한
-    const again = await reset(me.owner.id);
-    expect(again.status).toBe(200);
-    const fresh = cookieOf(again, "lo_pwreset");
-    expect(fresh).not.toBe(lost);
+    const token = cookieOf(first, "lo_pwreset");
+    // 응답을 잃었다고 보고 다시 요청(동시 2건): 모두 같은 토큰, 권한 행은 하나
+    const retries = await Promise.all([reset(me.owner.id), reset(me.owner.id)]);
+    expect(retries.map((r) => r.status)).toEqual([200, 200]);
+    expect(retries.map((r) => cookieOf(r, "lo_pwreset"))).toEqual([token, token]);
+    expect(await db.passwordResetGrant.count({ where: { verificationId } })).toBe(1);
     // 다른 계정·쿠키 없는 재시도는 거부
     expect((await reset(other.owner.id)).status).toBe(400);
     expect((await reset(me.owner.id, "")).status).toBe(400);
-    // 이전 권한은 거부, 새 권한으로 바뀐다
-    expect((await resetComplete(post("/api/seller/password-reset/complete", { newPassword: NEW_PASSWORD }, lost))).status).toBe(400);
-    expect((await resetComplete(post("/api/seller/password-reset/complete", { newPassword: NEW_PASSWORD }, fresh))).status).toBe(200);
-    expect((await loginSeller(db, { email: me.owner.email, password: NEW_PASSWORD, shopSlug: me.seller.slug }, {})).ok).toBe(true);
-    // 권한으로 비밀번호를 바꾼 뒤에는 다시 받을 수 없다
-    expect((await reset(me.owner.id)).status).toBe(400);
+    // 다른 흐름의 권한은 재시도에 영향받지 않는다(그 권한으로 바꿀 수 있다)
+    expect((await resetComplete(post("/api/seller/password-reset/complete", { newPassword: "other-flow-pass-1" }, otherFlow))).status).toBe(200);
+    expect((await loginSeller(db, { email: me.owner.email, password: "other-flow-pass-1", shopSlug: me.seller.slug }, {})).ok).toBe(true);
 
-    // 유효 시간이 지났어도 10분 안이면 다시 받고, 10분이 지나면 거부
-    const b = await begin();
-    await confirmWith(findConfirm, "/api/seller/find-id/confirm", b.verificationId, b.flow, { ci: "OTHER" });
-    const resetB = () => findReset(post("/api/seller/find-id/reset", { verificationId: b.verificationId, accountType: "owner", accountId: other.owner.id }, b.flow));
-    expect((await resetB()).status).toBe(200);
-    await db.identityVerification.update({ where: { id: b.verificationId }, data: { expiresAt: new Date(Date.now() - 60_000), consumedAt: new Date(Date.now() - 5 * 60_000) } });
-    await db.passwordResetGrant.updateMany({ where: { sellerUserId: other.owner.id }, data: { createdAt: new Date(Date.now() - 5 * 60_000) } });
-    expect((await resetB()).status).toBe(200);
-    await db.identityVerification.update({ where: { id: b.verificationId }, data: { consumedAt: new Date(Date.now() - 11 * 60_000) } });
-    expect((await resetB()).status).toBe(400);
+    // 새 흐름: 같은 토큰으로 한 번 바꾸면 다시 받을 수도, 다시 쓸 수도 없다
+    const c = await begin();
+    await confirmWith(findConfirm, "/api/seller/find-id/confirm", c.verificationId, c.flow, { ci: "OTHER" });
+    const resetC = () => findReset(post("/api/seller/find-id/reset", { verificationId: c.verificationId, accountType: "owner", accountId: other.owner.id }, c.flow));
+    const [c1, c2] = await Promise.all([resetC(), resetC()]);
+    const tokenC = cookieOf(c1, "lo_pwreset");
+    expect(cookieOf(c2, "lo_pwreset")).toBe(tokenC);
+    expect((await resetComplete(post("/api/seller/password-reset/complete", { newPassword: NEW_PASSWORD }, tokenC))).status).toBe(200);
+    expect((await resetComplete(post("/api/seller/password-reset/complete", { newPassword: "again-pass-123" }, cookieOf(c2, "lo_pwreset")))).status).toBe(400);
+    expect((await resetC()).status).toBe(400);
+
+    // 본인확인 유효 시간이 지났어도 소진 뒤 10분 안이면 같은 권한을 다시 받고, 10분이 지나면 거부
+    const d = await begin();
+    await confirmWith(findConfirm, "/api/seller/find-id/confirm", d.verificationId, d.flow, { ci: "OTHER" });
+    const resetD = () => findReset(post("/api/seller/find-id/reset", { verificationId: d.verificationId, accountType: "owner", accountId: other.owner.id }, d.flow));
+    const tokenD = cookieOf(await resetD(), "lo_pwreset");
+    await db.identityVerification.update({ where: { id: d.verificationId }, data: { expiresAt: new Date(Date.now() - 60_000), consumedAt: new Date(Date.now() - 5 * 60_000) } });
+    const late = await resetD();
+    expect(late.status).toBe(200);
+    expect(cookieOf(late, "lo_pwreset")).toBe(tokenD);
+    await db.identityVerification.update({ where: { id: d.verificationId }, data: { consumedAt: new Date(Date.now() - 11 * 60_000) } });
+    expect((await resetD()).status).toBe(400);
   });
 
   it("직원 탭: 여러 쇼핑몰에 연결된 직원 계정을 쇼핑몰 이름과 함께 모두 보여 준다", async () => {
