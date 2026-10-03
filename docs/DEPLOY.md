@@ -98,7 +98,7 @@ GitHub 러너가 SSH로 VM에 접속해 같은 compose 명령을 실행하는 �
 | 포트 | 출발지 | 비고 |
 | --- | --- | --- |
 | 80/tcp | 0.0.0.0/0 | 서비스 |
-| 443/tcp | HTTPS를 쓸 때 0.0.0.0/0 | 「HTTPS」 단계에서 열어요. 로그인 확인에 필요해요 |
+| 443/tcp | 0.0.0.0/0 | HTTPS(`test.on-aircue.com`). 로그인 확인과 인증서 발급에 필요해요 |
 | 22/tcp | 대표님 IP/32만 | 서버 관리 |
 | 5432, 3000 등 | 막음 | DB·앱은 compose 안에서만 쓰고 호스트에도 열지 않음 |
 
@@ -147,7 +147,7 @@ sudo -u obs nano /opt/obs/.env
 | `IDENTITY_HASH_KEY` | 필수 | 본인확인 CI 해시 키(32자 이상) |
 | `BILLING_KEY_SECRET` | 필수 | 빌링키 암호화 키(32자 이상) |
 | `BILLING_PROVIDER` | 필수 | obs-test는 **`fake`**(실제 결제 금지, 2026-10-03 결정). **주의**: 지금 코드는 운영 빌드(`NODE_ENV=production`)에서 가짜 결제 공급자 생성을 막아요(`lib/server/billing/provider.ts`). 그래서 obs-test에서는 카드 등록·구독 결제가 오류로 멈춰요(비워도 같음). 실제 결제는 일어나지 않아요. **obs-test에서는 카드 등록·구독 결제가 동작하지 않는 것이 의도예요**(2026-10-03 결정) |
-| `OBS_SITE_ADDRESS` | 선택 | 프록시 사이트 주소. 비우면 `:80`(HTTP). HTTPS는 아래 「HTTPS」 |
+| `OBS_SITE_ADDRESS` | 필수(HTTPS) | obs-test는 `test.on-aircue.com`. 비우면 `:80`(HTTP만, 로그인 유지 안 됨). 아래 「HTTPS」 |
 | `BUSINESS_STATUS_PROVIDER`, `NTS_BUSINESS_STATUS_API_KEY` | 선택 | 판매자 가입 사업자 상태 점검 |
 | `MAIL_ORDER_PROVIDER`, `FTC_MAIL_ORDER_API_KEY` | 선택 | 통신판매업 점검 |
 | `PORTONE_API_SECRET`, `PORTONE_STORE_ID`, `PORTONE_IDENTITY_CHANNEL_KEY` | 선택 | 휴대폰 본인확인. 없으면 가입 본인확인은 503 「준비 중」 |
@@ -265,23 +265,30 @@ $C logs --tail 100 obs-web-proxy        # 프록시
 
 운영 빌드는 로그인 쿠키에 `Secure`를 붙여요(`lib/server/http/route.ts`). 그래서 **HTTP 주소(`http://210.109.15.68`)에서는 브라우저가 로그인 쿠키를 저장하지 않아 로그인이 유지되지 않아요.** 로그인까지 확인하려면 HTTPS가 필요해요.
 
-### 도메인 구입 전: sslip.io(무료)
+### 시험 서버 주소: `test.on-aircue.com`
 
-`210-109-15-68.sslip.io`처럼 IP를 넣은 이름은 따로 등록하지 않아도 그 IP로 연결돼요(sslip.io 무료 공용 DNS).
+도메인 `on-aircue.com`은 Cloudflare에 등록돼 있고 DNS도 Cloudflare에서 관리해요.
 
-1. `/opt/obs/.env`에 `OBS_SITE_ADDRESS=210-109-15-68.sslip.io`를 넣어요.
-2. 보안 그룹 `obs-web-sg`에서 443/tcp를 0.0.0.0/0으로 열어요(80도 열려 있어야 해요).
-3. 재배포해요(또는 서버에서 「서버 명령 준비」 뒤 `$C up -d obs-web-proxy`). **보안 그룹 443을 열면 Caddy가 Let's Encrypt 무료 인증서를 자동으로 받아요**(`obs-web-caddy-data` 볼륨에 보관, 자동 갱신).
-4. `https://210-109-15-68.sslip.io`로 접속해요. `http://`로 들어오면 HTTPS로 넘어가요.
+1. Cloudflare → `on-aircue.com` → DNS → Records에서 레코드를 추가해요.
+   - Type `A`, Name `test`, IPv4 address `210.109.15.68`
+   - Proxy status: **DNS only(회색 구름)**. Caddy가 Let's Encrypt 인증서를 직접 받아야 해서예요. 주황 구름(Proxied)으로 두면 Cloudflare가 중간에서 TLS를 끊어 인증서 발급이 꼬이거나 리디렉션이 반복될 수 있고, 실시간(SSE) 연결이 끊기거나 늦게 올 수 있어요.
+2. 확인: `dig +short test.on-aircue.com`이 `210.109.15.68`을 돌려줘요.
+3. 보안 그룹 `obs-web-sg`에서 80/tcp·443/tcp를 0.0.0.0/0으로 열어요. 인증서 발급과 자동 갱신에 둘 다 필요해요.
+4. `/opt/obs/.env`에 `OBS_SITE_ADDRESS=test.on-aircue.com`을 넣어요.
+5. 재배포해요(또는 서버에서 「서버 명령 준비」 뒤 `$C up -d obs-web-proxy`). Caddy가 Let's Encrypt 무료 인증서를 자동으로 받아요(`obs-web-caddy-data` 볼륨에 보관, 자동 갱신).
+6. `https://test.on-aircue.com`으로 접속해요. `http://`로 들어오면 HTTPS로 넘어가요.
 
-한계:
-- sslip.io는 남이 운영하는 공용 서비스예요. 장애가 나면 접속이 안 되고, 같은 상위 도메인을 많은 사람이 써서 인증서 발급 한도에 걸릴 수 있어요. **시험용으로만** 쓰고 실제 판매자·구매자에게 주소를 알리지 않아요.
-- 서버 IP가 바뀌면 주소도 바뀌어요.
-- 인증서를 받기 전(443이 막혀 있거나 발급 실패)에는 `https://` 접속이 안 돼요. `$C logs obs-web-proxy`에서 발급 결과를 볼 수 있어요.
+인증서를 받기 전(DNS가 아직 안 퍼졌거나 80·443이 막혀 있을 때)에는 `https://` 접속이 안 돼요. `$C logs obs-web-proxy`에서 발급 결과를 볼 수 있어요. 실패를 반복하면 Let's Encrypt 발급 한도에 걸릴 수 있으니 DNS·보안 그룹을 먼저 확인한 뒤 다시 띄워요.
 
-### 도메인 확정 뒤
+### 대안: sslip.io(도메인에 문제가 있을 때만)
 
-1. 도메인 DNS A 레코드를 `210.109.15.68`로 지정해요.
-2. `/opt/obs/.env`의 `OBS_SITE_ADDRESS`를 그 도메인으로 바꾸고 재배포해요. 코드·설정 파일은 바꾸지 않아도 돼요.
+`210-109-15-68.sslip.io`처럼 IP를 넣은 이름은 등록 없이 그 IP로 연결돼요(무료 공용 DNS). 위 4번에서 `OBS_SITE_ADDRESS=210-109-15-68.sslip.io`로 바꾸면 같은 방식으로 HTTPS가 돼요. 남이 운영하는 공용 서비스라 장애·발급 한도 위험이 있어 **시험용 임시 대안**으로만 써요.
+
+### 운영 전환 때(지금은 하지 않음)
+
+운영 주소(`on-aircue.com`, `www`, `admin`, 와일드카드 `*.on-aircue.com`)는 운영 서버(obs-web-prod) 전환 때 별도 단계로 정해요.
+
+- 하위 주소 전체를 한 번에 받는 와일드카드 인증서(`*.on-aircue.com`)는 Let's Encrypt DNS 인증이 필요해요. Caddy에 Cloudflare DNS 플러그인과 Cloudflare DNS API 토큰(해당 영역 DNS 편집 권한만)이 있어야 해요. 토큰은 비밀값이라 서버 `.env`에만 둬요.
+- 운영 전환 계획을 세울 때 함께 정해요: Caddy 이미지(플러그인 포함), 운영 DNS 레코드, 주황 구름 사용 여부.
 
 배포 워크플로의 health check는 서버 안에서 `http://127.0.0.1`로 부르고, Caddyfile에 이 주소를 따로 두어서 사이트 주소를 바꿔도 그대로 동작해요.
