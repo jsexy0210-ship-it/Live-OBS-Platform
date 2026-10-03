@@ -26,6 +26,8 @@ for svc in obs-web-app obs-web-app-2; do
   # 기다리지 않으면 두 앱이 함께 빠져 장애가 난다(2026-10-04 측정).
   sleep 8
 done
+# 프록시 health는 앱 하나만 살아도 통과하므로, 앱마다 컨테이너 healthcheck를 따로 확인한다.
+wait_services_healthy obs-web-app obs-web-app-2 || die "교체 뒤 앱이 healthy가 아니에요(availability.sh status로 확인)."
 wait_health "$new" >/dev/null || die "교체 뒤 health version 확인 실패."
 echo "$(kst '+%F %T KST') sha=$new rolling=1 actor=$(id -un)" >> "$HISTORY"
 log "무중단 배포 완료: version=$new"
