@@ -185,4 +185,31 @@ describe("결제 후 취소 5회 → 30일 구매 제한", () => {
     await s.refund("BUYER");
     expect(await s.restrictions()).toHaveLength(1);
   });
+  it("다른 제한(미입금)이 걸려 있는 동안 5회째 환불이 와도 새 30일 제한을 만들어, 앞 제한이 끝나도 주문을 막는다", async () => {
+    const s = await shop();
+    await updateOrderPolicy(db, s.ctx, { ...BASE, paidCancelRestrictionEnabled: true });
+    const unpaid = await db.buyerPurchaseRestriction.create({
+      data: { sellerId: s.seller.id, buyerMemberId: s.buyer.id, reason: "UNPAID_AUTO_CANCEL", startsAt: new Date(Date.now() - 1000), endsAt: new Date(Date.now() + 60 * 60 * 1000) },
+    });
+    for (let i = 0; i < PAID_CANCEL_LIMIT; i++) await s.refund("BUYER");
+    const all = await s.restrictions();
+    expect(all.map((r) => r.reason)).toEqual(["UNPAID_AUTO_CANCEL", "PAID_CANCEL"]);
+    // 미입금 제한이 끝난 뒤에도 결제 후 취소 제한으로 막는다
+    await db.buyerPurchaseRestriction.update({ where: { id: unpaid.id }, data: { endsAt: new Date(Date.now() - 1000) } });
+    expect(await s.place()).toMatchObject({ ok: false, reason: "purchase_restricted", endsAt: all[1].endsAt });
+  });
+
+  it("제한이 겹쳐 있으면 풀기 한 번에 모두 풀어 바로 주문할 수 있다", async () => {
+    const s = await shop();
+    await updateOrderPolicy(db, s.ctx, { ...BASE, paidCancelRestrictionEnabled: true });
+    await db.buyerPurchaseRestriction.create({
+      data: { sellerId: s.seller.id, buyerMemberId: s.buyer.id, reason: "UNPAID_AUTO_CANCEL", startsAt: new Date(Date.now() - 1000), endsAt: new Date(Date.now() + 60 * 60 * 1000) },
+    });
+    for (let i = 0; i < PAID_CANCEL_LIMIT; i++) await s.refund("BUYER");
+    expect(await s.restrictions()).toHaveLength(2);
+    expect(await liftRestriction(db, s.ctx, s.buyer.id)).toMatchObject({ ok: true });
+    expect((await s.restrictions()).every((r) => r.liftedAt !== null)).toBe(true);
+    expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.purchase_restriction.lift", targetId: s.buyer.id } })).toMatchObject({ after: { lifted: 2 } });
+    expect((await s.place()).ok).toBe(true);
+  });
 });

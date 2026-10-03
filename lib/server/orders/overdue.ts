@@ -104,7 +104,7 @@ export async function maybeRestrict(tx: Prisma.TransactionClient, sellerId: stri
       ? { enabled: policy.unpaidRestrictionEnabled, enabledAt: policy.unpaidRestrictionEnabledAt, limit: UNPAID_CANCEL_LIMIT, reason: RESTRICTION_REASON_UNPAID }
       : { enabled: policy.paidCancelRestrictionEnabled, enabledAt: policy.paidCancelRestrictionEnabledAt, limit: PAID_CANCEL_LIMIT, reason: RESTRICTION_REASON_PAID_CANCEL };
   if (!rule.enabled) return null;
-  if (await activeRestriction(tx, sellerId, buyerMemberId, now)) return null;
+  // 다른 제한이 걸려 있어도 기준에 닿으면 새 제한을 만든다(앞 제한이 먼저 끝나도 막히게). 새 제한이 기준 시각이 되므로 겹쳐 만들지 않는다.
   const last = await tx.buyerPurchaseRestriction.findFirst({ where: { sellerId, buyerMemberId }, orderBy: { startsAt: "desc" } });
   const anchors = [new Date(0), rule.enabledAt, last ? (last.liftedAt ?? last.startsAt) : null].filter((d): d is Date => d !== null);
   const anchor = new Date(Math.max(...anchors.map((d) => d.getTime())));
@@ -229,7 +229,11 @@ export async function liftRestriction(db: PrismaClient, ctx: TenantContext, buye
     const now = await dbClock(tx);
     const active = await activeRestriction(tx, ctx.sellerId, buyerMemberId, now);
     if (!active) return { ok: false as const, reason: "no_restriction" as const };
-    await tx.buyerPurchaseRestriction.update({ where: { id: active.id }, data: { liftedAt: now, liftedById: ctx.actorId } });
+    // 사유가 다른 제한이 겹쳐 있을 수 있으니(미입금·결제 후 취소) 걸려 있는 제한을 모두 푼다
+    const lifted = await tx.buyerPurchaseRestriction.updateMany({
+      where: { sellerId: ctx.sellerId, buyerMemberId, liftedAt: null, endsAt: { gt: now } },
+      data: { liftedAt: now, liftedById: ctx.actorId },
+    });
     await writeAudit(tx, {
       actorType: ctx.actorType,
       actorId: ctx.actorId,
@@ -239,7 +243,7 @@ export async function liftRestriction(db: PrismaClient, ctx: TenantContext, buye
       targetId: buyerMemberId,
       reason,
       before: { endsAt: active.endsAt },
-      after: { liftedAt: now },
+      after: { liftedAt: now, lifted: lifted.count },
     });
     return { ok: true as const, value: { buyerMemberId, liftedAt: now } };
   });
