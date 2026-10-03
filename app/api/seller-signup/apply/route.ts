@@ -45,7 +45,7 @@ export const POST = mutation(async (req: Request) => {
     }
     return NextResponse.json({ error: r.reason }, { status: r.reason === "slug_taken" ? 409 : 400 });
   }
-  const res = NextResponse.json({ approved: r.approved, reviewReasons: r.reviewReasons });
+  const res = NextResponse.json({ approved: r.approved, reviewReasons: r.reviewReasons, resumed: r.resumed });
   clearFlowCookie(res, SELLER_SIGNUP_IDV_COOKIE, SELLER_SIGNUP_PATH);
   return res;
 });

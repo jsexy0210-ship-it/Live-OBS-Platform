@@ -249,7 +249,7 @@ describe("HTTP: 가입 신청", () => {
     expect((await applyRoute(post("/api/seller-signup/apply", body))).status).toBe(400);
     const res = await applyRoute(post("/api/seller-signup/apply", body, cookie));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ approved: true, reviewReasons: [] });
+    expect(await res.json()).toEqual({ approved: true, reviewReasons: [], resumed: false });
     expect((await db.seller.findUniqueOrThrow({ where: { slug: "http-card" } })).status).toBe("ACTIVE");
 
     // 같은 대표자가 또 신청하면 409와 정해진 문구(다른 쇼핑몰 이름 없음)
@@ -262,6 +262,92 @@ describe("HTTP: 가입 신청", () => {
     const dupBody = await dup.json();
     expect(dupBody).toEqual({ error: "representative_has_shop", message: "이미 운영 중인 쇼핑몰이 있어요 · 한 대표자는 쇼핑몰 하나만 열 수 있어요" });
     expect(JSON.stringify(dupBody)).not.toContain("HTTP 카드");
+  });
+
+  it("attemptKey로 다시 시작하면 같은 본인확인·같은 쿠키 값을 돌려주고 문자·하루 횟수를 다시 쓰지 않는다. 확인을 마친 뒤 같은 키는 409, 키 형식이 틀리면 400", async () => {
+    const key = crypto.randomUUID();
+    const sentBefore = (identityProvider() as FakeIdentityProvider).sent.length;
+    const first = await startRoute(post("/api/seller-signup/verification", { ...rep, attemptKey: key }));
+    expect(first.status).toBe(200);
+    const cookie = (first.headers.get("set-cookie") ?? "").split(";")[0];
+    const { verificationId } = await first.json();
+    // 응답이 끊겨 쿠키 없이 같은 키로 다시 보낸다
+    const again = await startRoute(post("/api/seller-signup/verification", { ...rep, attemptKey: key }));
+    expect(again.status).toBe(200);
+    expect(await again.json()).toEqual({ verificationId });
+    expect((again.headers.get("set-cookie") ?? "").split(";")[0]).toBe(cookie);
+    expect(await db.identityVerification.count({ where: { purpose: "SELLER_REPRESENTATIVE" } })).toBe(1);
+    expect((identityProvider() as FakeIdentityProvider).sent.length - sentBefore).toBe(1);
+    await confirmHttp(verificationId, cookie);
+    const done = await startRoute(post("/api/seller-signup/verification", { ...rep, attemptKey: key }));
+    expect(done.status).toBe(409);
+    expect((await done.json()).error).toBe("already_verified");
+    // 다른 키면 새로 시작하고, 형식이 틀린 키는 400
+    expect((await startRoute(post("/api/seller-signup/verification", { ...rep, attemptKey: crypto.randomUUID() }))).status).toBe(200);
+    expect(await db.identityVerification.count({ where: { purpose: "SELLER_REPRESENTATIVE" } })).toBe(2);
+    expect((await startRoute(post("/api/seller-signup/verification", { ...rep, attemptKey: "abc" }))).status).toBe(400);
+  });
+
+  it("같은 attemptKey로 동시에 시작해도 기록·문자는 한 번이다(보내는 중에 온 요청은 409 start_in_progress와 문구)", async () => {
+    const key = crypto.randomUUID();
+    const rs = await Promise.all([1, 2, 3].map(() => startRoute(post("/api/seller-signup/verification", { ...rep, attemptKey: key }))));
+    const bodies = await Promise.all(rs.map((r) => r.json()));
+    expect(rs.every((r) => r.status === 200 || r.status === 409)).toBe(true);
+    for (const [i, r] of rs.entries()) if (r.status === 409) expect(bodies[i]).toEqual({ error: "start_in_progress", message: "인증번호를 보내고 있어요. 잠시 뒤 다시 시도해 주세요" });
+    expect(new Set(bodies.filter((_, i) => rs[i].status === 200).map((x) => x.verificationId)).size).toBe(1);
+    const all = await db.identityVerification.findMany({ where: { purpose: "SELLER_REPRESENTATIVE" } });
+    expect(all).toHaveLength(1);
+    expect(all[0].sendCount).toBe(1);
+  });
+
+  it("신청이 커밋된 뒤 응답이 끊겨 같은 요청을 다시 보내면 새로 만들지 않고 같은 결과(200·resumed)를 준다. 비밀번호·주소가 다르거나 다른 브라우저면 verification_invalid", async () => {
+    const start = await startRoute(post("/api/seller-signup/verification", rep));
+    const cookie = (start.headers.get("set-cookie") ?? "").split(";")[0];
+    const { verificationId } = await start.json();
+    await confirmHttp(verificationId, cookie);
+    const body = {
+      openedOn: "20200101",
+      verificationId,
+      email: "retry-owner@example.com",
+      password: "seller-pass-1",
+      shopName: "재시도 카드",
+      slug: "retry-card",
+      businessNumber: "124-81-00998",
+      companyName: "재시도 상사",
+      mailOrderNumber: "제2025-부산해운대-00077호",
+    };
+    const first = await applyRoute(post("/api/seller-signup/apply", body, cookie));
+    expect(first.status).toBe(200);
+    expect(await first.json()).toEqual({ approved: true, reviewReasons: [], resumed: false });
+    const again = await applyRoute(post("/api/seller-signup/apply", body, cookie));
+    expect(again.status).toBe(200);
+    expect(await again.json()).toEqual({ approved: true, reviewReasons: [], resumed: true });
+    expect(await db.seller.count()).toBe(1);
+    expect(await db.sellerUser.count()).toBe(1);
+    expect(await db.auditLog.count({ where: { action: "seller.apply" } })).toBe(1);
+    for (const [b, c] of [
+      [{ ...body, password: "other-pass-1" }, cookie],
+      [{ ...body, slug: "retry-card-2" }, cookie],
+      [{ ...body, email: "someone@example.com" }, cookie],
+      [body, undefined],
+    ] as const) {
+      const r = await applyRoute(post("/api/seller-signup/apply", b, c));
+      expect(r.status, JSON.stringify(b)).toBe(400);
+      expect(await r.json()).toEqual({ error: "verification_invalid" });
+    }
+  });
+
+  it("확인 필요(승인 대기)로 끝난 신청의 재시도는 그 사유를 그대로 돌려준다", async () => {
+    const start = await startRoute(post("/api/seller-signup/verification", rep));
+    const cookie = (start.headers.get("set-cookie") ?? "").split(";")[0];
+    const { verificationId } = await start.json();
+    await confirmHttp(verificationId, cookie);
+    const body = { openedOn: "20200101", verificationId, email: "wait@example.com", password: "seller-pass-1", shopName: "대기 카드", slug: "wait-card", businessNumber: "124-81-00998", companyName: "대기 상사" };
+    const first = await (await applyRoute(post("/api/seller-signup/apply", body, cookie))).json();
+    expect(first.approved).toBe(false);
+    expect(first.reviewReasons.length).toBeGreaterThan(0);
+    const again = await applyRoute(post("/api/seller-signup/apply", body, cookie));
+    expect(await again.json()).toEqual({ ...first, resumed: true });
   });
 });
 
