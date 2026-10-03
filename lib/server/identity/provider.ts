@@ -38,7 +38,12 @@ export interface IdentityProvider {
 // 가짜 공급자의 인증번호. 이 번호로만 확인에 성공한다(개발·테스트 전용).
 export const FAKE_IDENTITY_OTP = "000000";
 
-type FakeRequest = { purpose: IdentityPurposeTag; person: IdentityPerson; confirmed: boolean };
+type FakeRequest = { purpose: IdentityPurposeTag; person: IdentityPerson; confirmed: boolean; at: number };
+
+// 테스트 서버 모드(오래 도는 서버)에서 가짜 공급자가 메모리에 들고 있는 요청의 수명과 보낸 기록 개수 상한.
+// 본인확인 요청은 10분이면 끝나므로 1시간 지난 요청은 지우고, 보낸 기록은 최근 것만 남긴다.
+export const FAKE_REQUEST_TTL_MS = 3600_000;
+export const FAKE_SENT_KEEP = 1000;
 type FakePerson = { ci: string; name: string; phone: string; birthDate: Date };
 
 export class FakeIdentityProvider implements IdentityProvider {
@@ -60,6 +65,27 @@ export class FakeIdentityProvider implements IdentityProvider {
   // 테스트 서버 모드(OBS_TEST_MODE=1, testMode.ts)만 예외로 허용한다.
   constructor(env: string | undefined = process.env.NODE_ENV, opts: { testMode?: boolean } = {}) {
     if (env === "production" && !opts.testMode) throw new Error("운영 환경에서는 가짜 본인확인 공급자를 쓸 수 없어요.");
+    this.bounded = !!opts.testMode;
+  }
+
+  // 테스트 서버 모드면 요청을 보낼 때마다 오래된 요청을 지우고 보낸 기록 개수를 줄인다(공개 서버에서 메모리가 끝없이 늘지 않게).
+  private readonly bounded: boolean;
+  private prune(now = Date.now()) {
+    if (!this.bounded) return;
+    for (const [id, r] of this.requests) {
+      if (now - r.at <= FAKE_REQUEST_TTL_MS) break; // 넣은 순서대로라 처음으로 남길 요청에서 멈춘다
+      this.requests.delete(id);
+      this.people.delete(id);
+    }
+  }
+  private record(requestId: string) {
+    this.sent.push(requestId);
+    if (this.bounded && this.sent.length > FAKE_SENT_KEEP) this.sent.splice(0, this.sent.length - FAKE_SENT_KEEP);
+  }
+
+  // 메모리에 남아 있는 요청 수(테스트용)
+  get pendingRequestCount() {
+    return this.requests.size;
   }
 
   failNext(kind: "error" | "hang" | "afterHang") {
@@ -89,8 +115,9 @@ export class FakeIdentityProvider implements IdentityProvider {
   async sendCode(requestId: string, purpose: IdentityPurposeTag, person: IdentityPerson) {
     const f = await this.fault();
     if (f) return f;
-    this.requests.set(requestId, { purpose, person, confirmed: false });
-    this.sent.push(requestId);
+    this.prune();
+    this.requests.set(requestId, { purpose, person, confirmed: false, at: Date.now() });
+    this.record(requestId);
     return { ok: true as const };
   }
 
@@ -98,7 +125,7 @@ export class FakeIdentityProvider implements IdentityProvider {
     const f = await this.fault();
     if (f) return f;
     if (!this.requests.has(requestId)) return { ok: false as const, reason: "provider_error" as const };
-    this.sent.push(requestId);
+    this.record(requestId);
     return { ok: true as const };
   }
 
