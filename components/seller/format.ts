@@ -16,7 +16,8 @@ export const totalStock = (p: Product) => p.options.reduce((s, o) => s + o.stock
 export function statusBadge(p: Product): { label: string; cls: string } {
   if (p.status === "ON_SALE") {
     const stock = totalStock(p);
-    if (stock === 0) return { label: "품절", cls: "b-fail" };
+    // 판매 상태는 「판매 중」인데 재고가 다 떨어진 것. 판매자가 「품절」로 설정한 상품과 구분한다
+    if (stock === 0) return { label: "재고 없음", cls: "b-fail" };
     if (stock <= LOW_STOCK) return { label: "재고 부족", cls: "b-warn" };
     return { label: "판매 중", cls: "b-done" };
   }

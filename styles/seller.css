@@ -43,6 +43,9 @@ body {
 .side-logout {
   margin: 16px 12px 0;
 }
+.side-logout-err {
+  margin: 6px 12px 0;
+}
 .nav-dim {
   display: none;
 }
