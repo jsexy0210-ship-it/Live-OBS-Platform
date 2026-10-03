@@ -22,7 +22,7 @@ export const PERMS: { key: StaffPerm; label: string; desc: string }[] = [
   { key: "OVERLAY_EDIT", label: "오버레이 편집", desc: "오버레이 설정 · URL" },
   { key: "PRODUCT_MANAGE", label: "상품", desc: "등록 · 재고 · 카테고리" },
   { key: "ORDER_SHIPPING", label: "주문·배송", desc: "주문 처리 · 입금 확인 · 송장" },
-  { key: "CUSTOMER_PII_VIEW", label: "고객 정보 보기", desc: "이름 · 연락처 · 주소" },
+  { key: "CUSTOMER_PII_VIEW", label: "고객 정보 보기", desc: "고객 이름·연락처·주소를 볼 수 있어요" },
   { key: "MEMBER_POINTS", label: "회원·적립금", desc: "회원 · 구매 제한 · 적립금" },
   { key: "INQUIRY_REPLY", label: "문의 답변", desc: "구매자 문의" },
   { key: "RECEIPT_TAX", label: "영수증·세금계산서", desc: "발행 · 재발행" },
@@ -30,10 +30,10 @@ export const PERMS: { key: StaffPerm; label: string; desc: string }[] = [
   { key: "SHOP_SETTINGS", label: "쇼핑몰 설정", desc: "쇼핑몰 · 배송비 · 법정 고지 · 알림" },
 ];
 const OWNER_ONLY = ["결제(PG) 연결", "구독 · 결제", "직원 관리", "적립금 실지급"];
-// 묶음: 누른 뒤 개별로 고칠 수 있다
+// 묶음: 누른 뒤 개별로 고칠 수 있다. 「운영 전체」에 고객 정보 보기는 넣지 않는다(개인정보는 꼭 필요한 직원에게만 대표자가 따로 켬, MASTER 결정 2026-10-04)
 const BUNDLES: { label: string; perms: StaffPerm[] }[] = [
   { label: "방송만", perms: ["BROADCAST_RUN", "OVERLAY_EDIT"] },
-  { label: "운영 전체", perms: PERMS.map((p) => p.key) },
+  { label: "운영 전체", perms: PERMS.map((p) => p.key).filter((k) => k !== "CUSTOMER_PII_VIEW") },
 ];
 
 export type Staff = {

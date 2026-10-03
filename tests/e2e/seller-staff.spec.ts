@@ -69,6 +69,13 @@ test("대표자: 메뉴에서 직원 계정으로 들어가 목록을 보고, �
   await expect(page.getByRole("checkbox", { name: "방송 진행", exact: true })).toBeChecked();
   await expect(page.getByRole("checkbox", { name: "오버레이 편집", exact: true })).toBeChecked();
   await expect(page.getByRole("checkbox", { name: "상품", exact: true })).not.toBeChecked();
+  // 「운영 전체」는 고객 정보 보기를 켜지 않는다(개인정보는 대표자가 따로 켬)
+  await page.getByRole("button", { name: "운영 전체" }).click();
+  await expect(page.getByRole("checkbox", { name: "상품", exact: true })).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "쇼핑몰 설정", exact: true })).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "고객 정보 보기", exact: true })).not.toBeChecked();
+  await expect(page.getByText("고객 이름·연락처·주소를 볼 수 있어요").first()).toBeVisible();
+  await page.getByRole("button", { name: "방송만" }).click();
   const sent = page.waitForRequest((r) => r.url().endsWith("/api/seller/staff") && r.method() === "POST");
   await page.getByRole("button", { name: "계정 만들기" }).click();
   // 하이픈은 빼고 숫자만 보낸다
