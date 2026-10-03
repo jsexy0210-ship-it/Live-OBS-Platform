@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { describe, expect, it } from "vitest";
-import { MEMBER_DATA_POLICY } from "../../lib/server/buyers/memberData";
+import { MEMBER_DATA_POLICY, MEMBER_REFERENCE_POLICY } from "../../lib/server/buyers/memberData";
 
 // 회원과 이어진 표: BuyerMember 관계가 있거나 buyerMemberId 칸이 있는 모델, 그리고 직접 칸이 없어도 회원 정보를 담는 표
 // (본인확인 기록 subjectId, 주문대기는 주문을 거쳐 이어짐). 새 표를 만들고 탈퇴 처리 방식을 정하지 않으면 여기서 실패한다.
@@ -28,5 +28,12 @@ describe("탈퇴 때 회원 데이터 처리 목록", () => {
     expect(linked.sort()).toEqual(
       ["BuyerAddress", "BuyerMember", "BuyerPurchaseRestriction", "BuyerSession", "HitCard", "Order", "RewardBalance", "RewardLedger"].sort(),
     );
+  });
+
+  it("행위자·대상 공용 칸(actorId·targetId)을 가진 모든 표가 구매자 행 처리 방식으로 분류되어 있다", () => {
+    const shared = models.flatMap((m) => m.fields.filter((f) => f.name === "actorId" || f.name === "targetId").map((f) => `${m.name}.${f.name}`));
+    expect(shared.length).toBeGreaterThan(0);
+    expect(shared.filter((k) => !(k in MEMBER_REFERENCE_POLICY))).toEqual([]);
+    expect(Object.keys(MEMBER_REFERENCE_POLICY).filter((k) => !shared.includes(k))).toEqual([]);
   });
 });

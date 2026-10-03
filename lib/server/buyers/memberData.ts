@@ -18,5 +18,16 @@ export const MEMBER_DATA_POLICY: Record<string, { policy: MemberDataPolicy; note
   RewardBalance: { policy: "anonymize", note: "잔액을 소멸 원장으로 0(개인정보 없음)" },
 };
 
+// 회원 전용 칸이 아니라 여러 행위자가 함께 쓰는 칸(행위자 유형이 구매자인 행에 구매자 회원 id가 들어간다).
+// 「모델.칸」마다 탈퇴 때 처리. 행위자·대상 칸을 가진 표를 새로 만들면 여기에 넣어야 한다(tests/unit/memberData.test.ts).
+// 법정 보관 기록의 보관 기간 뒤 비식별(행위자 id를 비식별 값으로)은 별도 파기 함수(⑩)에서 한다.
+export const MEMBER_REFERENCE_POLICY: Record<string, { policy: MemberDataPolicy; note: string }> = {
+  "AuditLog.actorId": { policy: "retain_legal", note: "actorType=BUYER 행. 동의·탈퇴 등 계약 기록이라 보관, 기간(거래 기록 5년, 거래 없으면 3개월) 뒤 행위자 id 비식별" },
+  "AuditLog.targetId": { policy: "retain_legal", note: "targetType=BuyerMember 행. 위와 같음" },
+  "StockMovement.actorId": { policy: "retain_legal", note: "actorType=BUYER 행(주문으로 생긴 재고 증감). 거래 기록" },
+  "OrderStatusHistory.actorId": { policy: "retain_legal", note: "actorType=BUYER 행(구매자 취소 등). 거래 기록" },
+  "QueueItemStatusHistory.actorId": { policy: "retain_legal", note: "actorType=BUYER 행. 주문 이행 기록" },
+};
+
 // 탈퇴 회원 표시 이름(닉네임 스냅숏 비식별 값)
 export const WITHDRAWN_DISPLAY_NAME = "탈퇴한 회원";
