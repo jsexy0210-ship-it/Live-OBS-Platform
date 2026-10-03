@@ -17,7 +17,7 @@ const NAV: Nav[] = [
   { label: "방송 대시보드", perm: "BROADCAST_RUN" },
   { h: "판매" },
   { label: "상품", href: "/seller/products", perm: "PRODUCT_MANAGE" },
-  { label: "주문", perm: "ORDER_SHIPPING" },
+  { label: "주문", href: "/seller/orders", perm: "ORDER_SHIPPING" },
   { label: "입금 확인", perm: "ORDER_SHIPPING" },
   { label: "배송", perm: "ORDER_SHIPPING" },
   { label: "영수증 · 세금계산서", perm: "RECEIPT_TAX" },
