@@ -127,7 +127,7 @@ test("반품 · 교환 배송비: 기본 3,000원 · 6,000원, 바꾸면 저장�
   await expect(page.getByText("무료 배송 주문(배송비 0원)은 반품 배송비 × 2를 빼요.")).toBeVisible();
   await expect(page.getByText("도서산간 추가 배송비를 낸 주문은 한 번만 빼요.", { exact: false })).toBeVisible();
   // 「알아 두세요」도 같은 환불 규칙으로 안내한다
-  await expect(page.getByText("발송 뒤 상품 불량 · 오배송이면 상품값과 처음 낸 배송비를 돌려주고, 단순 변심이면 반품 배송비를 빼고 돌려줘요.", { exact: false })).toBeVisible();
+  await expect(page.getByText("배송 전 취소는 전액 돌려주고, 배송 후에는 판매자 잘못이면 처음 낸 배송비도 돌려줘요. 구매자 사정이면 반품 배송비를 빼고 돌려줘요.", { exact: false })).toBeVisible();
   // 교환 배송비는 아직 쓰이는 곳이 없어 「교환 접수가 열리면 적용돼요」로 안내한다
   await expect(page.getByText("기본 6,000원 · 교환 접수가 열리면 적용돼요")).toBeVisible();
   const before = { ret: await ret.inputValue(), exc: await exc.inputValue() };
