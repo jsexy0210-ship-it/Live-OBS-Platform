@@ -91,18 +91,30 @@ deploy_mark_clear() { rm -f "$DEPLOY_MARK"; }
 # 이 스크립트가 끝날 때(실패 포함) 표시를 지운다. 여러 단계에 걸친 배포(워크플로)는 deploy-mark.sh on/off를 쓴다.
 # 15분이 넘게 걸리는 작업(복원 등)에서도 오래된 표시로 무시되지 않게, 도는 동안 표시 시각을 주기적으로 갱신한다.
 # 스크립트가 SIGKILL 등으로 죽으면 갱신도 멈춰(다음 주기에 부모가 없음을 확인) 표시가 15분 뒤 오래된 것으로 처리된다.
+# 갱신은 최대 OBS_DEPLOY_MARK_MAX_S(기본 1시간)까지만 한다. 스크립트가 멈춰 끝나지 않아도 그 뒤 15분이 지나면
+# 표시가 오래된 것으로 처리돼 감시가 다시 장애를 판단한다(스크립트는 죽이지 않고 로그만 남긴다).
 mark_deploying() {
   deploy_mark_set "$1"
-  local every="${OBS_DEPLOY_MARK_REFRESH_S:-60}" parent=$$
+  local every="${OBS_DEPLOY_MARK_REFRESH_S:-60}" max="${OBS_DEPLOY_MARK_MAX_S:-3600}" parent=$$
+  [[ "$every" =~ ^[1-9][0-9]*$ && "$max" =~ ^[1-9][0-9]*$ ]] || die "OBS_DEPLOY_MARK_REFRESH_S·OBS_DEPLOY_MARK_MAX_S는 1 이상 정수여야 해요."
   (
+    start=$SECONDS
     while sleep "$every"; do
       kill -0 "$parent" 2>/dev/null || exit 0
+      if [ $((SECONDS - start)) -ge "$max" ]; then
+        log "배포 표시 갱신을 멈췄어요(${max}초 상한). 작업이 아직 안 끝났다면 확인해 주세요. 15분 뒤 감시가 다시 장애를 판단해요." >&2
+        exit 0
+      fi
       [ -e "$DEPLOY_MARK" ] && touch "$DEPLOY_MARK"
     done
-  ) </dev/null >/dev/null 2>&1 &
+  ) </dev/null >/dev/null &
   DEPLOY_MARK_KEEPER=$!
   # 갱신 루프와 그 안의 sleep까지 끝낸 뒤 표시를 지운다.
   trap 'pkill -P "$DEPLOY_MARK_KEEPER" 2>/dev/null; kill "$DEPLOY_MARK_KEEPER" 2>/dev/null; deploy_mark_clear' EXIT
+  # TERM·INT·HUP로 끝날 때도 EXIT trap이 돌게 한다(기본 동작으로 죽으면 EXIT trap이 돌지 않아 표시가 15분 남음).
+  trap 'exit 143' TERM
+  trap 'exit 130' INT
+  trap 'exit 129' HUP
 }
 # 감시 수집기가 떠 있으면 지금 compose 정의(가용성 여부 포함)로 다시 만든다(감시 대상이 앱 수에 맞게 바뀜).
 refresh_monitor() {
