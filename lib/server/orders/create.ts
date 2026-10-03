@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
+import { saveAddressFromOrder } from "../buyers/addresses";
 import { sellerAccessFor } from "../billing/subscription";
 import { OPENED_NO_REFUND_CONSENT } from "./consent";
 import { activeRestriction, dbClock, getOrderPolicy, lockSellerOrders } from "./overdue";
@@ -12,6 +13,7 @@ import { computeShippingFee, getShippingPolicy, INT4_MAX, isRemoteAddress, parse
 // - 재고는 주문 수량만큼 있는지 확인한다(차감은 결제 때, 선점 없음 — 대표님 확정, ARCHITECTURE 4.4).
 // - 즉시 발송: 배송지는 주문 때 받아 스냅숏으로 남기고, 배송비는 판매자 배송비 설정으로 계산한다(shipping.ts).
 // - 적립금 사용은 방식이 정해지기 전이라 받지 않는다(요청이 오면 거부).
+// - 입력한 배송지는 구매자 배송지 목록에 저장한다(saveAddress: false면 저장 안 함, 기본 저장. buyers/addresses.ts).
 
 export const MAX_ORDER_LINES = 20;
 export const MAX_LINE_QUANTITY = 99;
@@ -26,6 +28,7 @@ export type CreateOrderInput = {
   consent: { agreed?: unknown; noticeVersion?: unknown } | undefined;
   rewardUseAmount?: unknown;
   shippingAddress: unknown;
+  saveAddress?: unknown;
   meta?: { ip?: string | null; userAgent?: string | null };
 };
 
@@ -77,6 +80,7 @@ export async function createOrder(db: PrismaClient, input: CreateOrderInput): Pr
   if (!lines) return { ok: false, reason: "invalid_items" };
   const address = parseShippingAddress(input.shippingAddress);
   if (!address) return { ok: false, reason: "invalid_shipping_address" };
+  if (input.saveAddress !== undefined && typeof input.saveAddress !== "boolean") return { ok: false, reason: "invalid_shipping_address" };
 
   return db.$transaction(async (tx) => {
     // 같은 판매자의 주문 번호를 한 줄로 매긴다
@@ -143,6 +147,7 @@ export async function createOrder(db: PrismaClient, input: CreateOrderInput): Pr
       },
     });
     await tx.orderShippingAddress.create({ data: { sellerId: input.sellerId, orderId: order.id, ...address, isRemote } });
+    if (input.saveAddress !== false) await saveAddressFromOrder(tx, { sellerId: input.sellerId, buyerMemberId: member.id }, address, now);
     await tx.orderItem.createMany({
       data: priced.map((p) => ({
         sellerId: input.sellerId,
