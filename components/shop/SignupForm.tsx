@@ -83,6 +83,8 @@ export default function SignupForm({ slug }: { slug: string }) {
   const [nickname, setNickname] = useState("");
   const [agreedTerms, setAgreedTerms] = useState(false);
   const [agreedPrivacy, setAgreedPrivacy] = useState(false);
+  // 선택 동의(기본 해제). 체크 여부를 그대로 agreedMarketing으로 보낸다.
+  const [agreedMarketing, setAgreedMarketing] = useState(false);
   // 가입을 요청한 닉네임(완료 문구는 이 값을 쓴다)
   const [joinedNickname, setJoinedNickname] = useState("");
   // 가입 응답을 못 받았을 때 가입 여부를 로그인으로 확인할 값. 있으면 같은 본인확인으로 가입을 다시 보내지 않는다.
@@ -213,7 +215,7 @@ export default function SignupForm({ slug }: { slug: string }) {
     const account = { loginId: loginId.trim(), password, nickname: broadcastNickname };
     const r = await api(base, {
       method: "POST",
-      body: { verificationId, loginId: account.loginId, password, broadcastNickname, agreedTerms, agreedPrivacy },
+      body: { verificationId, loginId: account.loginId, password, broadcastNickname, agreedTerms, agreedPrivacy, agreedMarketing },
     });
     if (r.ok) {
       setBusy(false);
@@ -549,13 +551,14 @@ export default function SignupForm({ slug }: { slug: string }) {
                 type="checkbox"
                 className="cbx"
                 {...termsAria}
-                checked={agreedTerms && agreedPrivacy}
+                checked={agreedTerms && agreedPrivacy && agreedMarketing}
                 onChange={(e) => {
                   setAgreedTerms(e.target.checked);
                   setAgreedPrivacy(e.target.checked);
+                  setAgreedMarketing(e.target.checked);
                 }}
               />
-              필수 약관에 모두 동의해요
+              약관에 모두 동의해요
             </label>
             <label className="chk">
               <input type="checkbox" className="cbx" {...termsAria} checked={agreedTerms} onChange={(e) => setAgreedTerms(e.target.checked)} />
@@ -564,6 +567,10 @@ export default function SignupForm({ slug }: { slug: string }) {
             <label className="chk">
               <input type="checkbox" className="cbx" {...termsAria} checked={agreedPrivacy} onChange={(e) => setAgreedPrivacy(e.target.checked)} />
               개인정보 수집 · 이용 (필수)
+            </label>
+            <label className="chk">
+              <input type="checkbox" className="cbx" checked={agreedMarketing} onChange={(e) => setAgreedMarketing(e.target.checked)} />
+              (선택) 마케팅 정보 수신
             </label>
             {fieldErrors.terms && (
               <span id="acc-terms-err" className="err" role="alert">

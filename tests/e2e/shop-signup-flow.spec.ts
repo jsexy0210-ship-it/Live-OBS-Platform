@@ -36,7 +36,7 @@ async function fillAccount(page: Page, id: string, nickname: string) {
   await page.getByLabel("아이디 (이메일)").fill(`buyer-${id}@example.com`);
   await page.getByLabel("비밀번호").fill(`pw-${id}-long`);
   await page.getByLabel("방송 닉네임").fill(nickname);
-  await page.getByLabel("필수 약관에 모두 동의해요").check();
+  await page.getByLabel("약관에 모두 동의해요", { exact: true }).check();
 }
 
 type Reply = { status: number; body: unknown };
@@ -351,8 +351,8 @@ test("위쪽 안내가 뜨면 안내로, 약관 오류면 약관 체크박스로
   await expect.poll(() => focusedId(page)).toBe("signup-notice");
   await page.getByRole("button", { name: "가입하기" }).click();
   await expect.poll(() => focusedId(page)).toBe("acc-terms-all");
-  for (const label of ["필수 약관에 모두 동의해요", "이용약관 (필수)", "개인정보 수집 · 이용 (필수)"]) {
-    const box = page.getByLabel(label);
+  for (const label of ["약관에 모두 동의해요", "이용약관 (필수)", "개인정보 수집 · 이용 (필수)"]) {
+    const box = page.getByLabel(label, { exact: true });
     await expect(box).toHaveAttribute("aria-invalid", "true");
     await expect(box).toHaveAttribute("aria-describedby", "acc-terms-err");
   }
@@ -405,4 +405,33 @@ test("가입 응답을 못 받으면 같은 본인확인으로 다시 보내지 
   await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
   expect(signups).toBe(1);
   expect(logins).toHaveLength(2);
+});
+
+test("마케팅 정보 수신은 선택이고, 체크 여부를 agreedMarketing으로 그대로 보낸다", async ({ page }) => {
+  for (const agree of [false, true]) {
+    await page.unrouteAll();
+    await mockApi(page);
+    await page.goto(`/shop/${SLUG}/signup`);
+    await toVerified(page);
+    await page.getByLabel("아이디 (이메일)").fill("buyer-mk@example.com");
+    await page.getByLabel("비밀번호").fill("pw-mk-long");
+    await page.getByLabel("방송 닉네임").fill("별빛");
+    const marketing = page.getByLabel("(선택) 마케팅 정보 수신");
+    // 기본은 해제
+    await expect(marketing).not.toBeChecked();
+    if (agree) {
+      // 전체 동의에 선택 항목도 들어간다
+      await page.getByLabel("약관에 모두 동의해요", { exact: true }).check();
+      await expect(marketing).toBeChecked();
+    } else {
+      // 필수만 동의해도 가입할 수 있다
+      await page.getByLabel("이용약관 (필수)").check();
+      await page.getByLabel("개인정보 수집 · 이용 (필수)").check();
+      await expect(page.getByLabel("약관에 모두 동의해요", { exact: true })).not.toBeChecked();
+    }
+    const req = page.waitForRequest((r) => r.url().endsWith(API) && r.method() === "POST");
+    await page.getByRole("button", { name: "가입하기" }).click();
+    expect((await req).postDataJSON().agreedMarketing).toBe(agree);
+    await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
+  }
 });
