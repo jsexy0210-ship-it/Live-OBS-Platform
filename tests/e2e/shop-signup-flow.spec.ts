@@ -203,3 +203,45 @@ test("중간에 본인확인 서비스가 막히면(503) 준비 중 상태 화�
   await expect(page.getByRole("heading", { name: "본인확인 서비스 준비 중이에요" })).toBeVisible();
   await expect(page.getByLabel("이름", { exact: true })).toHaveCount(0);
 });
+
+// 응답을 붙잡아 두었다가 release()로 돌려준다(요청 중 상태를 확인하려고)
+async function hold(page: Page, path: string, reply: Reply) {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  await page.route((u) => u.pathname === path, async (route) => {
+    await gate;
+    await route.fulfill({ status: reply.status, contentType: "application/json", body: JSON.stringify(reply.body) });
+  });
+  return release;
+}
+
+test("인증번호를 요청하는 동안에는 인적사항을 고칠 수 없고, 보낸 값으로 본인확인을 마친다", async ({ page }) => {
+  await mockApi(page);
+  const release = await hold(page, `${API}/verification`, { status: 200, body: { verificationId: "00000000-0000-4000-8000-000000000000" } });
+  await page.goto(`/shop/${SLUG}/signup`);
+  await fillIdentity(page, "김구매", "01011112222");
+  await page.getByRole("button", { name: "인증번호 받기" }).click();
+  // 요청 중: 보낸 값과 화면 값이 달라지지 않게 칸을 잠근다
+  await expect(page.getByLabel("이름", { exact: true })).toBeDisabled();
+  await expect(page.getByLabel("휴대폰번호", { exact: true })).toBeDisabled();
+  await expect(page.getByLabel("생년월일")).toBeDisabled();
+  await expect(page.getByLabel("통신사")).toBeDisabled();
+  release();
+  await page.getByLabel("인증번호").fill("000000");
+  await page.getByRole("button", { name: "확인", exact: true }).click();
+  await expect(page.locator("#v-name")).toHaveValue("김구매");
+  await expect(page.locator("#v-phone")).toHaveValue("010-1111-2222");
+});
+
+test("가입을 요청하는 동안에는 계정 칸을 고칠 수 없고, 완료 문구는 보낸 닉네임을 쓴다", async ({ page }) => {
+  await mockApi(page);
+  const release = await hold(page, API, { status: 201, body: { ok: true } });
+  await page.goto(`/shop/${SLUG}/signup`);
+  await toVerified(page);
+  await fillAccount(page, "x3", "보낸닉네임");
+  await page.getByRole("button", { name: "가입하기" }).click();
+  await expect(page.getByLabel("방송 닉네임")).toBeDisabled();
+  await expect(page.getByLabel("아이디 (이메일)")).toBeDisabled();
+  release();
+  await expect(page.getByText("첫 주문부터 적립돼요. 방송에서는 보낸닉네임 닉네임으로 보여요.")).toBeVisible();
+});

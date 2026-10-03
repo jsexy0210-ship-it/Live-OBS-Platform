@@ -52,6 +52,8 @@ export default function SignupForm({ slug }: { slug: string }) {
   const [idvAgreed, setIdvAgreed] = useState(false);
   const [birthError, setBirthError] = useState<string | null>(null);
   const [verificationId, setVerificationId] = useState<string | null>(null);
+  // 본인확인을 요청한 값(요청 뒤 화면은 이 값을 보여 준다)
+  const [sent, setSent] = useState<{ name: string; phone: string } | null>(null);
   const [code, setCode] = useState("");
   const [codeError, setCodeError] = useState<string | null>(null);
 
@@ -61,6 +63,8 @@ export default function SignupForm({ slug }: { slug: string }) {
   const [nickname, setNickname] = useState("");
   const [agreedTerms, setAgreedTerms] = useState(false);
   const [agreedPrivacy, setAgreedPrivacy] = useState(false);
+  // 가입을 요청한 닉네임(완료 문구는 이 값을 쓴다)
+  const [joinedNickname, setJoinedNickname] = useState("");
   const [fieldErrors, setFieldErrors] = useState<{ loginId?: string; password?: string; nickname?: string; terms?: string }>({});
 
   const identityReady = name.trim() !== "" && birth.length === 8 && gender !== null && carrier !== "" && phone.length >= 10 && idvAgreed;
@@ -69,6 +73,7 @@ export default function SignupForm({ slug }: { slug: string }) {
   // 처음부터 다시: 입력한 인적사항은 두고 본인확인 요청만 버린다
   const restart = (n: Notice | null) => {
     setVerificationId(null);
+    setSent(null);
     setCode("");
     setCodeError(null);
     setStep("identity");
@@ -100,13 +105,15 @@ export default function SignupForm({ slug }: { slug: string }) {
     setNotice(null);
     setBirthError(null);
     const device = window.matchMedia("(min-width: 768px)").matches ? "PC" : "MOBILE";
+    const person = { name: name.trim(), phone };
     const r = await api<{ verificationId: string }>(`${base}/verification`, {
       method: "POST",
-      body: { name: name.trim(), phone, birth7, carrier, device },
+      body: { ...person, birth7, carrier, device },
     });
     setBusy(false);
     if (r.ok) {
       setVerificationId(r.data.verificationId);
+      setSent(person);
       setCode("");
       setCodeError(null);
       setStep("code");
@@ -156,12 +163,14 @@ export default function SignupForm({ slug }: { slug: string }) {
     setBusy(true);
     setNotice(null);
     setFieldErrors({});
+    const broadcastNickname = nickname.trim();
     const r = await api(base, {
       method: "POST",
-      body: { verificationId, loginId: loginId.trim(), password, broadcastNickname: nickname.trim(), agreedTerms, agreedPrivacy },
+      body: { verificationId, loginId: loginId.trim(), password, broadcastNickname, agreedTerms, agreedPrivacy },
     });
     setBusy(false);
     if (r.ok) {
+      setJoinedNickname(broadcastNickname);
       setStep("done");
       return;
     }
@@ -200,10 +209,12 @@ export default function SignupForm({ slug }: { slug: string }) {
   }
 
   if (step === "done") {
-    return <ShopState done title="가입했어요" body={`첫 주문부터 적립돼요. 방송에서는 ${nickname.trim()} 닉네임으로 보여요.`} />;
+    return <ShopState done title="가입했어요" body={`첫 주문부터 적립돼요. 방송에서는 ${joinedNickname} 닉네임으로 보여요.`} />;
   }
 
-  const locked = step !== "identity";
+  // 요청 중에도 잠가 보낸 값과 화면 값이 달라지지 않게 한다
+  const locked = step !== "identity" || busy;
+  const shown = sent ?? { name: name.trim(), phone };
   return (
     <div className="card shop-card col signup">
       <div className="col" style={{ gap: 4 }}>
@@ -223,7 +234,7 @@ export default function SignupForm({ slug }: { slug: string }) {
             <span className="tdot" aria-hidden />
             <span className="grow">
               <b>본인확인을 마쳤어요</b>
-              <span className="c-alt"> · {name.trim()} · {phoneText(phone)}</span>
+              <span className="c-alt"> · {shown.name} · {phoneText(shown.phone)}</span>
             </span>
             <button type="button" className="btn btn-sm btn-out" onClick={() => restart(null)}>
               다시 확인
@@ -232,11 +243,11 @@ export default function SignupForm({ slug }: { slug: string }) {
           <div className="signup-two">
             <div className="fld">
               <label htmlFor="v-name">이름</label>
-              <input id="v-name" className="inp" value={name.trim()} readOnly />
+              <input id="v-name" className="inp" value={shown.name} readOnly />
             </div>
             <div className="fld">
               <label htmlFor="v-phone">휴대폰번호</label>
-              <input id="v-phone" className="inp" value={phoneText(phone)} readOnly />
+              <input id="v-phone" className="inp" value={phoneText(shown.phone)} readOnly />
             </div>
           </div>
           <span className="help">본인확인에서 받은 정보라 여기서는 고칠 수 없어요</span>
@@ -380,7 +391,7 @@ export default function SignupForm({ slug }: { slug: string }) {
       )}
 
       <form className="col signup-sec" aria-label="계정 정보" onSubmit={signup} noValidate>
-        <fieldset className="col signup-fs" disabled={step !== "verified"}>
+        <fieldset className={`col signup-fs${step !== "verified" ? " is-waiting" : ""}`} disabled={step !== "verified" || busy}>
           <div className="fld">
             <label htmlFor="acc-id">아이디 (이메일)</label>
             <input
