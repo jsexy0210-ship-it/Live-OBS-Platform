@@ -1,6 +1,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { dbNow } from "../billing/subscription";
+import { restoreOrderStock } from "../products/stock";
 import { cleanText } from "../text/clean";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 
@@ -17,11 +18,11 @@ export const MAX_PAYMENT_DUE_HOURS = 720;
 export const UNPAID_CANCEL_LIMIT = 3;
 export const RESTRICTION_DAYS = 30;
 export const RESTRICTION_REASON_UNPAID = "UNPAID_AUTO_CANCEL";
-export const PAYMENT_REMINDER_MINUTES = 60;
 
 type Db = PrismaClient | Prisma.TransactionClient;
 // autoCancelEnabled가 꺼져 있으면 새 주문에 입금 기한을 두지 않아 자동 취소되지 않는다(이미 기한이 붙은 주문은 그대로).
-export type OrderPolicy = { autoCancelEnabled: boolean; paymentDueHours: number; unpaidRestrictionEnabled: boolean };
+// restockOnCancel: 취소·반품 때 재고 자동 복구(기본 켜짐, lib/server/products/stock.ts).
+export type OrderPolicy = { autoCancelEnabled: boolean; paymentDueHours: number; unpaidRestrictionEnabled: boolean; restockOnCancel: boolean };
 
 export async function getOrderPolicy(db: Db, sellerId: string): Promise<OrderPolicy & { unpaidRestrictionEnabledAt: Date | null }> {
   const p = await db.sellerOrderPolicy.findUnique({ where: { sellerId } });
@@ -31,8 +32,9 @@ export async function getOrderPolicy(db: Db, sellerId: string): Promise<OrderPol
         paymentDueHours: p.paymentDueHours,
         unpaidRestrictionEnabled: p.unpaidRestrictionEnabled,
         unpaidRestrictionEnabledAt: p.unpaidRestrictionEnabledAt,
+        restockOnCancel: p.restockOnCancel,
       }
-    : { autoCancelEnabled: true, paymentDueHours: DEFAULT_PAYMENT_DUE_HOURS, unpaidRestrictionEnabled: true, unpaidRestrictionEnabledAt: null };
+    : { autoCancelEnabled: true, paymentDueHours: DEFAULT_PAYMENT_DUE_HOURS, unpaidRestrictionEnabled: true, unpaidRestrictionEnabledAt: null, restockOnCancel: true };
 }
 
 export const lockSellerOrders = (tx: Prisma.TransactionClient, sellerId: string) =>
@@ -104,6 +106,8 @@ export async function cancelOverdueOrders(db: PrismaClient, opts: { now?: Date; 
       await tx.orderStatusHistory.create({
         data: { sellerId: o.sellerId, orderId: o.id, fromStatus: "PENDING_PAYMENT", toStatus: "CANCELLED", actorType: "SYSTEM", reason: "payment_overdue", createdAt: now },
       });
+      // 주문 때 뺀 재고(ORDER 상품)가 있으면 되돌린다(판매자 설정 restockOnCancel)
+      await restoreOrderStock(tx, { sellerId: o.sellerId, orderId: o.id, reason: "CANCEL", now, actor: { actorType: "SYSTEM", actorId: null } });
       await writeAudit(tx, {
         actorType: "SYSTEM",
         sellerId: o.sellerId,
@@ -122,15 +126,15 @@ export async function cancelOverdueOrders(db: PrismaClient, opts: { now?: Date; 
   return { cancelled, restricted };
 }
 
-// 입금 기한 1시간 전 알림 대상(기한이 지금 뒤, 1시간 안). 발송 연동 전이라 대상 조회만 한다.
-export async function listPaymentDueSoon(db: PrismaClient, opts: { now?: Date; withinMinutes?: number } = {}) {
+// 미입금 알림 대상(대표님 결정 2026-10-03, PRODUCT_SCOPE): 알림 시각이 지났고 기한은 아직 안 지난 결제 대기 주문.
+// 알림 시각 = 기한 하루 전. 입금 기간(기한 − 주문 시각)이 하루 이하면 기한 1시간 전. 발송 연동 전이라 대상 조회만 한다.
+export async function listPaymentDueSoon(db: PrismaClient, opts: { now?: Date } = {}) {
   const now = opts.now ?? (await dbNow(db));
-  const until = new Date(now.getTime() + (opts.withinMinutes ?? PAYMENT_REMINDER_MINUTES) * 60 * 1000);
-  return db.order.findMany({
-    where: { status: "PENDING_PAYMENT", paymentDueAt: { gt: now, lte: until } },
-    orderBy: { paymentDueAt: "asc" },
-    select: { id: true, sellerId: true, buyerMemberId: true, orderNo: true, totalAmount: true, paymentDueAt: true },
-  });
+  return db.$queryRaw<{ id: string; sellerId: string; buyerMemberId: string; orderNo: number; totalAmount: number; paymentDueAt: Date }[]>`
+    SELECT "id", "sellerId", "buyerMemberId", "orderNo", "totalAmount", "paymentDueAt" FROM "Order"
+    WHERE "status" = 'PENDING_PAYMENT' AND "paymentDueAt" > ${now}
+      AND "paymentDueAt" - CASE WHEN "paymentDueAt" - "createdAt" > INTERVAL '1 day' THEN INTERVAL '1 day' ELSE INTERVAL '1 hour' END <= ${now}
+    ORDER BY "paymentDueAt" ASC`;
 }
 
 // 판매자: 지금 걸려 있는 구매 제한 목록(MEMBER_POINTS)
@@ -174,8 +178,8 @@ export async function liftRestriction(db: PrismaClient, ctx: TenantContext, buye
 
 export async function readOrderPolicy(db: PrismaClient, ctx: TenantContext): Promise<OrderPolicy> {
   requireSellerRead(ctx, "SHOP_SETTINGS");
-  const { autoCancelEnabled, paymentDueHours, unpaidRestrictionEnabled } = await getOrderPolicy(db, ctx.sellerId);
-  return { autoCancelEnabled, paymentDueHours, unpaidRestrictionEnabled };
+  const { autoCancelEnabled, paymentDueHours, unpaidRestrictionEnabled, restockOnCancel } = await getOrderPolicy(db, ctx.sellerId);
+  return { autoCancelEnabled, paymentDueHours, unpaidRestrictionEnabled, restockOnCancel };
 }
 
 // 판매자 주문 정책 변경(SHOP_SETTINGS). 자동 취소 사용 여부, 기간은 1~720시간(30일) 정수. 바꾼 설정은 다음 주문부터.
@@ -190,14 +194,22 @@ export async function updateOrderPolicy(db: PrismaClient, ctx: TenantContext, ra
     !Number.isInteger(h) ||
     h < 1 ||
     h > MAX_PAYMENT_DUE_HOURS ||
-    typeof b.unpaidRestrictionEnabled !== "boolean"
+    typeof b.unpaidRestrictionEnabled !== "boolean" ||
+    (b.restockOnCancel !== undefined && typeof b.restockOnCancel !== "boolean")
   ) {
     return { ok: false as const, reason: "invalid_order_policy" as const };
   }
-  const policy: OrderPolicy = { autoCancelEnabled: b.autoCancelEnabled, paymentDueHours: h, unpaidRestrictionEnabled: b.unpaidRestrictionEnabled };
   return db.$transaction(async (tx) => {
     // 같은 판매자의 자동 취소·주문과 순서를 맞춘다
     await lockSellerOrders(tx, ctx.sellerId);
+    // restockOnCancel은 빼고 보내면 지금 값을 그대로 둔다
+    const current = await getOrderPolicy(tx, ctx.sellerId);
+    const policy: OrderPolicy = {
+      autoCancelEnabled: b.autoCancelEnabled as boolean,
+      paymentDueHours: h,
+      unpaidRestrictionEnabled: b.unpaidRestrictionEnabled as boolean,
+      restockOnCancel: typeof b.restockOnCancel === "boolean" ? b.restockOnCancel : current.restockOnCancel,
+    };
     const { unpaidRestrictionEnabledAt: _at, ...before } = await getOrderPolicy(tx, ctx.sellerId);
     // 꺼져 있다가 켜면 켠 시각을 남긴다(그 뒤 자동 취소만 센다). 끄더라도 이미 걸린 제한은 그대로 둔다.
     const reEnabled = !before.unpaidRestrictionEnabled && policy.unpaidRestrictionEnabled;

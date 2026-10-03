@@ -83,14 +83,14 @@ describe("입금 기한", () => {
     await db.order.update({ where: { id: before }, data: { paymentDueAt: new Date(Date.now() - HOUR) } });
     expect((await cancelOverdueOrders(db)).cancelled).toEqual([before]);
     expect(await db.order.findUniqueOrThrow({ where: { id: after } })).toMatchObject({ status: "PENDING_PAYMENT" });
-    expect(await listPaymentDueSoon(db, { withinMinutes: 60 * 24 * 365 })).toEqual([]);
+    expect((await listPaymentDueSoon(db)).map((o) => o.id)).not.toContain(after);
   });
 
   it("주문 정책 API: 기본값 조회(사용·240시간), 1시간~30일(720시간) 정수·켜고 끄기 값만 받고, 쇼핑몰 설정 권한 없는 직원은 403", async () => {
     const s = await shop();
     const c = await sellerCookie(s.owner.email);
     const got = await (await policyGet(new Request("http://localhost:3000/api/seller/order-policy", { headers: { ...H, cookie: c } }))).json();
-    expect(got.policy).toEqual({ autoCancelEnabled: true, paymentDueHours: 240, unpaidRestrictionEnabled: true });
+    expect(got.policy).toEqual({ autoCancelEnabled: true, paymentDueHours: 240, unpaidRestrictionEnabled: true, restockOnCancel: true });
     const ok = { autoCancelEnabled: true, paymentDueHours: 240, unpaidRestrictionEnabled: true };
     for (const body of [
       { ...ok, paymentDueHours: 0 },

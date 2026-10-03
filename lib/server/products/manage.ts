@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient, ProductStatus } from "@prisma/client";
+import type { Prisma, PrismaClient, ProductStatus, StockDeductMode } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { notFound } from "../authz/errors";
 import { dbNow } from "../billing/subscription";
@@ -15,7 +15,23 @@ import { requireSellerPermission, requireSellerRead, type TenantContext } from "
 export const PRODUCT_STATUSES: readonly ProductStatus[] = ["DRAFT", "ON_SALE", "SOLD_OUT", "HIDDEN"];
 export const MAX_OPTIONS_PER_PRODUCT = 100;
 
-export type ProductFailure = "invalid_product" | "invalid_option" | "invalid_price" | "too_many_options" | "no_sellable_option" | "stock_conflict";
+export type ProductFailure =
+  | "invalid_product"
+  | "product_name_too_long"
+  | "invalid_option"
+  | "invalid_price"
+  | "too_many_options"
+  | "no_sellable_option"
+  | "stock_conflict";
+
+// 상품명은 공백 포함 100자(코드포인트, 대표님 결정 2026-10-03). 글자 검사는 통과하는데 길기만 하면 따로 알려 준다.
+export const PRODUCT_NAME_MAX = 100;
+function productName(v: unknown): { ok: true; name: string } | { ok: false; reason: "invalid_product" | "product_name_too_long" } {
+  const name = line(v, PRODUCT_NAME_MAX);
+  if (name) return { ok: true, name };
+  return { ok: false, reason: line(v, Number.MAX_SAFE_INTEGER) ? "product_name_too_long" : "invalid_product" };
+}
+const STOCK_DEDUCT_MODES: readonly StockDeductMode[] = ["ORDER", "PAYMENT"];
 export type ProductResult<T> = { ok: true; value: T } | { ok: false; reason: ProductFailure };
 
 type Tx = Prisma.TransactionClient;
@@ -124,11 +140,19 @@ export async function createProduct(db: PrismaClient, ctx: TenantContext, raw: u
   requireSellerPermission(ctx, "PRODUCT_MANAGE");
   if (!raw || typeof raw !== "object") return fail("invalid_product");
   const b = raw as Record<string, unknown>;
-  const name = line(b.name, 100);
+  const named = productName(b.name);
+  if (!named.ok) return fail(named.reason);
+  const name = named.name;
   const description = multiline(b.description, 5000);
   const status = b.status ?? "DRAFT";
   const sortOrder = b.sortOrder ?? 0;
-  if (!name || description === undefined || !PRODUCT_STATUSES.includes(status as ProductStatus) || !isInt(sortOrder, -100000, 100000)) {
+  const stockDeductMode = b.stockDeductMode ?? "PAYMENT";
+  if (
+    description === undefined ||
+    !PRODUCT_STATUSES.includes(status as ProductStatus) ||
+    !isInt(sortOrder, -100000, 100000) ||
+    !STOCK_DEDUCT_MODES.includes(stockDeductMode as StockDeductMode)
+  ) {
     return fail("invalid_product");
   }
   if (!isInt(b.price, 1, INT4_MAX)) return fail("invalid_price");
@@ -148,7 +172,7 @@ export async function createProduct(db: PrismaClient, ctx: TenantContext, raw: u
   return db.$transaction(async (tx) => {
     const now = await dbNow(tx);
     const product = await tx.product.create({
-      data: { sellerId: ctx.sellerId, name, description, price, status: status as ProductStatus, sortOrder, createdAt: now },
+      data: { sellerId: ctx.sellerId, name, description, price, status: status as ProductStatus, sortOrder, stockDeductMode: stockDeductMode as StockDeductMode, createdAt: now },
     });
     for (const o of options) {
       const created = await tx.productOption.create({ data: { sellerId: ctx.sellerId, productId: product.id, ...o, createdAt: now } });
@@ -178,9 +202,14 @@ export async function updateProduct(
   const b = raw as Record<string, unknown>;
   const data: Prisma.ProductUpdateInput = {};
   if (b.name !== undefined) {
-    const name = line(b.name, 100);
-    if (!name) return fail("invalid_product");
-    data.name = name;
+    const named = productName(b.name);
+    if (!named.ok) return fail(named.reason);
+    data.name = named.name;
+  }
+  if (b.stockDeductMode !== undefined) {
+    // 바꾸면 다음 주문부터 적용된다. 이미 받은 주문은 품목마다 남긴 차감 시각(stockDeductedAt)대로 처리한다.
+    if (!STOCK_DEDUCT_MODES.includes(b.stockDeductMode as StockDeductMode)) return fail("invalid_product");
+    data.stockDeductMode = b.stockDeductMode as StockDeductMode;
   }
   if (b.description !== undefined) {
     const description = multiline(b.description, 5000);

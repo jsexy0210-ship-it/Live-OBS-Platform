@@ -147,7 +147,7 @@ tests/unit/**, tests/integration/**           테스트
 - `Product`: id, sellerId, name, description, price, status(`DRAFT | ON_SALE | SOLD_OUT | HIDDEN`), sortOrder, deletedAt
 - `ProductImage`: id, sellerId, productId, storageKey, sortOrder — 저장소 구성은 미확정(PRODUCT_SCOPE)
 - `ProductOption`: id, sellerId, productId, name(예: 「1팩」), priceDelta, stock(**CHECK stock >= 0**), sku, sortOrder, deletedAt(소프트 삭제) — 옵션 없는 상품도 기본 옵션 1개를 둬 재고를 한 곳에서 관리
-- `StockMovement`: id, sellerId, optionId, delta, reason(`ORDER | CANCEL | REFUND | MANUAL`), orderId, actor, createdAt — 재고 변경 이력
+- `StockMovement`: id, sellerId, optionId, delta, reason(`ORDER | CANCEL | REFUND | MANUAL`), orderId, note(수동 증감 사유), actor, createdAt — 재고 변경 이력
 - 재고 차감은 `UPDATE … SET stock = stock - n WHERE id = ? AND sellerId = ? AND stock >= n`의 영향 행 수로 판정(초과 판매 방지).
 - 주문의 모든 품목 차감은 **한 트랜잭션**에서 처리한다. 품목 하나라도 영향 행 수가 0이면 그 트랜잭션의 모든 차감을 되돌리고(롤백), 별도 트랜잭션에서 주문에 `stockShortageAt`만 기록한다. 일부 품목만 차감된 상태는 생기지 않는다.
 - 판매자 상품·옵션 API(`PRODUCT_MANAGE`, 잠긴 판매자는 402, 마스터 대리 조회는 목록·조회만 되고 변경은 403): `GET·POST /api/seller/products`, `GET·PATCH·DELETE /api/seller/products/{productId}`, `POST /api/seller/products/{productId}/options`, `PATCH·DELETE /api/seller/products/{productId}/options/{optionId}`.
@@ -157,8 +157,13 @@ tests/unit/**, tests/integration/**           테스트
   - 재고는 0 이상 정수. 바꿀 때는 `{ stock, expectedStock }`을 함께 보내고, 지금 재고가 expectedStock과 다르면(결제 차감과 겹침) `409 stock_conflict`로 덮어쓰지 않는다. 차이와 등록 때 재고는 `MANUAL` 재고 이력.
   - 상태는 `DRAFT | ON_SALE | SOLD_OUT | HIDDEN`. 판매 중은 살아 있는 옵션이 하나 이상 있어야 하고(`400 no_sellable_option`), 판매 중 상품의 마지막 옵션은 지울 수 없다. 옵션은 상품당 100개까지.
   - 삭제는 소프트 삭제(`deletedAt`). 지운 상품·옵션은 목록·조회·새 주문에서 빠지고, 지난 주문 품목은 그대로 둔다. 글자 검사는 배송지와 같은 `lib/server/text/clean.ts`: NFKC 정규화 후 제어·서식·짝 없는 서로게이트·사용자 정의·미할당·줄 구분 문자를 거부하고, 이름·SKU는 한글 채움 문자·점자 빈칸을 거부하며 눈에 보이는 글자(문자·숫자·기호·문장부호)가 하나 이상 있어야 한다. 설명은 줄바꿈만 허용한다. 등록·수정·삭제는 감사 로그.
+  - 글자 수는 코드포인트로 센다(이모지 1자). 상품명은 공백 포함 100자, 넘으면 `400 product_name_too_long`(대표님 결정 2026-10-03). 상품 응답에 `stockDeductMode`가 있고 등록·수정에서 `ORDER | PAYMENT`를 받는다.
   - 상품 이미지는 저장소가 정해지지 않아 이번에 만들지 않았다.
-- [확정] 재고 차감 시점: **결제 완료 시 차감**(선점 없음, 결제 완료 순). 동시 결제로 재고가 모자라면 늦게 결제된 주문은 `PAID`로 기록하되 `stockShortageAt`을 남겨 「취소·환불 대상」으로 표시하고, 주문대기는 만들지 않는다. 실제 PG 환불 연동은 다음 단계.
+- [확정] 재고 차감 시점(카페24 방식, 대표님 결정 2026-10-03): 상품마다 `stockDeductMode`로 고른다. `PAYMENT`(기본) = 결제 확인 때 차감, `ORDER` = 주문할 때 차감. 품목마다 뺀 시각(`OrderItem.stockDeductedAt`)과 되돌린 시각(`stockRestoredAt`)을 남겨, 결제 때는 아직 안 뺀 품목만 빼고 같은 품목을 두 번 빼거나 되돌리지 않는다. 차감 기준을 바꿔도 이미 받은 주문은 품목에 남은 기록대로 처리한다.
+  - 주문 때 차감: 주문 트랜잭션 안에서 조건부 UPDATE(stock >= 수량)로 빼고, 모자라면 주문 전체를 되돌려 `400 out_of_stock`(동시 주문은 마지막 1개를 한 명만 가져간다). 이력 `ORDER`.
+  - 취소·반품 때 자동 복구(`SellerOrderPolicy.restockOnCancel`, 기본 켜짐, `PUT /api/seller/order-policy`의 `restockOnCancel`, 빼면 지금 값 유지): 결제 전 취소·미입금 자동 취소·발송 전 환불에서 실제로 뺀 품목만 되돌린다(이력 `CANCEL`·`REFUND`). 발송 후 환불·개봉한 품목은 되돌리지 않는다.
+  - 수동 증감 `POST /api/seller/products/{productId}/options/{optionId}/stock-adjust` `{ delta, reason }`(`PRODUCT_MANAGE`): delta는 0이 아닌 정수, 사유 필수(글자 검사, 100자). 조건부 UPDATE(stock + delta >= 0)라 결제 차감과 겹쳐도 음수가 되거나 차감이 사라지지 않고, 모자라면 `409 insufficient_stock`. 이력 `MANUAL`(수량·사유 `note`·직원·시각)과 감사 로그 `product_option.stock_adjust`. 값 직접 설정(`expectedStock`)은 그대로 둔다.
+- 결제 때 차감의 동시 결제: 재고가 모자라면 늦게 결제된 주문은 `PAID`로 기록하되 `stockShortageAt`을 남겨 「취소·환불 대상」으로 표시하고, 주문대기는 만들지 않는다. 실제 PG 환불 연동은 다음 단계.
 
 ### 4.5 주문·주문 품목
 
@@ -171,7 +176,7 @@ tests/unit/**, tests/integration/**           테스트
   - 동의 필수: `consent.agreed === true`(체크 기본 해제)와 화면이 보여 준 문구 버전(`noticeVersion`)이 지금 버전과 같아야 한다. 아니면 `400 consent_required`·`consent_outdated`, 주문을 만들지 않는다. 동의는 주문과 같은 트랜잭션에 기록.
   - 잠긴 판매자(체험하기·구독 끝)는 `402 shop_unavailable`, 문구 「지금은 쇼핑몰을 이용할 수 없어요」(판매자 사정은 드러내지 않음).
   - 금액은 서버가 계산(단가 = 상품 가격 + 옵션 추가금, 합계 = 단가 × 수량). 본문의 금액·상태 값은 쓰지 않는다. 적립금 사용은 방식이 정해지기 전이라 요청이 오면 `400 reward_use_not_supported`(rewardUsedAmount = 0).
-  - 재고는 주문 수량만큼 있는지 확인(차감은 결제 때). 부족하면 `400 out_of_stock`. 선점 없음(확정 그대로).
+  - 재고는 주문 수량만큼 있는지 확인하고, 주문 때 차감 상품은 이때 뺀다(4.4). 부족하면 `400 out_of_stock`.
   - 단가가 1원 미만(음수 추가금 등)이거나 합계(상품 + 배송비)가 정수 범위(2,147,483,647원)를 넘으면 `400 invalid_amount`, 주문을 만들지 않는다.
   - 배송지 필수(받는 분·연락처·우편번호 5자리·주소, 상세 주소·메모 선택). 틀리면 `400 invalid_shipping_address`. 4.10 참고.
   - 400·402·409 응답은 `{ error, message }`. `message`는 화면에 그대로 보여 줄 해요체 문구이고, 사유 코드별 문구는 `lib/server/orders/messages.ts` 한 곳에서만 고친다.
@@ -313,10 +318,10 @@ PG 연결 정보, 구매자 문의·공지, 알림 발송 기록, 도우미 자�
 ### 4.10 배송(즉시 발송, PRODUCT_SCOPE MVP)
 
 - `Order.fulfillmentType`(`IMMEDIATE | STORAGE`, 지금은 `IMMEDIATE`만), `Order.shippingFee`(주문 때 계산한 배송비, `totalAmount`에 포함).
-- `SellerShippingPolicy`(판매자당 1개, 없으면 기본값): baseFee(기본 3,000원), freeOverAmount(상품 합계가 이 금액 이상이면 기본 배송비 0원, null이면 무료 배송 없음), remoteSurcharge(도서산간 추가비, 기본 3,000원, 무료 배송이어도 붙음), remoteZipRanges(우편번호 범위, 기본 제주 63000~63644·울릉 40200~40240).
+- `SellerShippingPolicy`(판매자당 1개, 없으면 기본값): freeShipping(무료 0원 유형, 기본 꺼짐, 대표님 결정 2026-10-03), baseFee(기본 3,000원), freeOverAmount(상품 합계가 이 금액 이상이면 기본 배송비 0원, null이면 무료 배송 없음), remoteSurcharge(도서산간 추가비, 기본 3,000원, 무료 배송이어도 붙음), remoteZipRanges(우편번호 범위, 기본 제주 63000~63644·울릉 40200~40240).
   - 도서산간 판정: 우편번호가 범위에 들거나, NFKC로 정규화하고 공백을 모두 지운 주소에 제주특별자치도·제주도·제주시·서귀포시·울릉군·울릉도가 들어 있으면 도서산간(붙여 쓴 「경상북도울릉군」도 잡힘). 둘 중 하나라도 맞으면 추가비를 붙인다(구매자가 보낸 우편번호만 믿지 않음). 영문은 Jeju·Seogwipo·Ulleung(-do·-si·-gun) 토큰이 어디에 있든 본다. 「제주로」·「울릉길」 같은 도로명은 해당하지 않고, 「제주도로」처럼 잘못 잡히는 경우는 추가비가 붙는 쪽이라 허용한다.
   - `GET·PUT /api/seller/shipping-policy`(`SHOP_SETTINGS`). 금액은 0~100,000원 정수, 무료 기준은 1~1억 원, 범위는 50개까지. 틀리면 `400 invalid_shipping_policy`. 변경은 감사 로그.
-  - 배송비 = (무료 기준 이상이면 0, 아니면 baseFee) + (도서산간이면 remoteSurcharge). 바꾼 설정은 다음 주문부터(이미 만든 주문은 그대로).
+  - 배송비 = (무료 배송 유형이거나 무료 기준 이상이면 0, 아니면 baseFee) + (도서산간이면 remoteSurcharge, 무료여도 붙음). 바꾼 설정은 다음 주문부터(이미 만든 주문은 그대로).
 - `OrderShippingAddress`(주문당 1개, 스냅숏): 받는 분, 연락처(숫자만), 우편번호, 주소, 상세 주소, 메모, 도서산간 여부. 값은 NFKC로 정규화해 저장한다(전각 공백·NBSP는 일반 공백). 제어(Cc)·서식(Cf: 방향 바꿈·폭 없는 공백 등)·짝 없는 서로게이트(Cs)·사용자 정의(Co)·미할당(Cn)·줄·문단 구분(Zl·Zp) 문자가 든 값, 받는 분·주소의 한글 채움 문자(U+115F·U+1160·U+3164·U+FFA0)·점자 빈칸(U+2800), 눈에 보이는 글자가 없는 받는 분·주소는 `400 invalid_shipping_address`(`lib/server/text/clean.ts`, 상품과 같은 규칙). 메모만 이모지용 ZWJ·변형 선택자를 허용하고, 태그 문자는 깃발 시퀀스(U+1F3F4 + 태그 + U+E007F) 안에서만 허용하며, 비문자(U+FDD0–FDEF, 각 평면의 xFFFE·xFFFF)는 거부한다. 또 서버가 모르는 최신 이모지로 주문이 막히지 않게 미할당(Cn) 검사를 하지 않는다. 연락처·우편번호도 NFKC 정규화 뒤 검사한다(전각 숫자 허용). 판매자 주문 조회에서는 `CUSTOMER_PII_VIEW`가 있을 때만 주소를 주고(열람 기록), 없으면 도서산간 여부만 준다.
 - `Shipment`(주문당 1개): 택배사 코드(`CJ | HANJIN | LOTTE | LOGEN | EPOST`), 송장번호(영문·숫자 8~30자, 하이픈·공백 제거), 상태, 발송 시각(DB 시계), 배송 완료 시각.
   - `POST /api/seller/orders/{orderId}/ship`(`ORDER_SHIPPING`, 잠금 중에도 가능): 결제 완료(`PAID`) 즉시 발송 주문만 `IN_TRANSIT`로 만든다. 재고 부족(`stockShortageAt`) 주문, 배송지가 없는 주문도 `409 not_shippable`. 배송 중에는 송장을 고쳐 다시 넣을 수 있고(첫 발송 시각 유지, `order.shipment.update` 기록), 배송 완료 뒤에는 바꾸지 않는다. 주문 상태는 `PAID` 그대로.
@@ -329,8 +334,8 @@ PG 연결 정보, 구매자 문의·공지, 알림 발송 기록, 도우미 자�
 - 주문할 때 `Order.paymentDueAt` = 주문 시각 + paymentDueHours. 주문 시각은 판매자 주문 잠금을 잡은 뒤의 `clock_timestamp()`(트랜잭션 시작 시각인 `now()`가 아님). 설정을 바꿔도 이미 만든 주문은 그대로. 이 기능 전에 만든 결제 대기 주문은 마이그레이션에서 주문 시각 + 10일로 채운다. 자동 취소를 끈 쇼핑몰의 새 주문은 기한이 없다(이미 기한이 붙은 주문은 그대로 자동 취소 대상). PG 연동 때 무통장 입금 주문에만 두도록 바꾼다(MASTER 결정).
 - 자동 취소 `cancelOverdueOrders`(lib/server/orders/overdue.ts): 기한이 지난 결제 대기 주문을 판매자별 주문 잠금(order_no) 아래에서 `status = PENDING_PAYMENT` 조건으로 취소하고 `autoCancelledAt`, 시스템 상태 이력(reason `payment_overdue`), 감사 로그 `order.auto_cancel`을 남긴다. 재고는 결제 때 빼므로 되돌릴 것이 없다. 여러 번·동시에 돌려도 주문마다 한 번만 취소(멱등). 정기 실행 연결은 인프라 승인 대기.
   - 결제 확인(`markOrderPaid`)도 `status = PENDING_PAYMENT` 조건으로 바꿔, 자동 취소와 겹치면 둘 중 하나만 된다.
-- 기한 1시간 전 알림 대상 `listPaymentDueSoon`: 발송 연동 전이라 대상 조회만.
-- 자동 구매 제한 `BuyerPurchaseRestriction`: 같은 쇼핑몰에서 기준 시각 뒤 자동 취소가 3회 쌓이면 30일 제한을 만든다(감사 로그 `buyer.purchase_restriction.create`). 기준 시각은 마지막 제한(풀었으면 푼 시각, 아니면 시작 시각)과 자동 제한을 다시 켠 시각(`SellerOrderPolicy.unpaidRestrictionEnabledAt`) 중 늦은 쪽이다. 끄더라도 이미 걸린 제한은 그대로 두고 판매자가 직접 푼다(MASTER 결정). 걸려 있는 제한 = 풀지 않았고 끝나는 시각 전(시작 시각은 보지 않음). 제한 중 새 주문은 `403 purchase_restricted`와 `endsAt`, 풀리는 KST 날짜·시각 안내(「11월 2일 오후 3시부터 다시 주문할 수 있어요」). 판매자 목록 `GET /api/seller/purchase-restrictions`, 풀기 `POST /api/seller/purchase-restrictions/{buyerMemberId}/lift`(`MEMBER_POINTS`, 잠금 중에도 가능, 감사 로그, 사유는 200자 이하·글자 검사를 통과해야 하며 아니면 `400 invalid_reason`). 「결제 후 취소 5회 → 30일」(기본 꺼짐)은 아직 없다.
+- 미입금 알림 대상 `listPaymentDueSoon`(대표님 결정 2026-10-03): 알림 시각이 지났고 기한 전인 결제 대기 주문. 알림 시각은 기한 하루 전, 입금 기간(기한 − 주문 시각)이 하루 이하면 1시간 전. 발송 연동 전이라 대상 조회만.
+- 자동 구매 제한 `BuyerPurchaseRestriction`: 같은 쇼핑몰에서 기준 시각 뒤 자동 취소가 3회 쌓이면 30일 제한을 만든다(감사 로그 `buyer.purchase_restriction.create`). 기준 시각은 마지막 제한(풀었으면 푼 시각, 아니면 시작 시각)과 자동 제한을 다시 켠 시각(`SellerOrderPolicy.unpaidRestrictionEnabledAt`) 중 늦은 쪽이다. 끄더라도 이미 걸린 제한은 그대로 두고 판매자가 직접 푼다(MASTER 결정). 걸려 있는 제한 = 풀지 않았고 끝나는 시각 전(시작 시각은 보지 않음). 제한 중 새 주문은 `403 purchase_restricted`와 `endsAt`, 풀리는 KST 날짜·시각 안내(「11월 2일 오후 3시부터 다시 주문할 수 있어요」, 초가 있으면 분을 올림해 실제보다 이르게 안내하지 않음). 판매자 목록 `GET /api/seller/purchase-restrictions`, 풀기 `POST /api/seller/purchase-restrictions/{buyerMemberId}/lift`(`MEMBER_POINTS`, 잠금 중에도 가능, 감사 로그, 사유는 200자 이하·글자 검사를 통과해야 하며 아니면 `400 invalid_reason`). 「결제 후 취소 5회 → 30일」(기본 꺼짐)은 아직 없다.
 - 주문 생성 횟수 제한: 같은 구매자는 쇼핑몰당 1분에 10건까지(`429 order_rate_limited`). 구매 제한·횟수 제한은 주문 생성과 같은 잠금 아래에서 세므로 동시 주문에도 넘지 않는다.
 - 구매자 주문 조회 응답은 `Cache-Control: no-store`. 재고 부족으로 환불 대상인 결제 주문은 `needsRefund: true`와 안내 문구(`ORDER_NOTICES`)만 주고 `stockShortageAt`은 숨긴다. 입금 기한(`paymentDueAt`)도 준다. 폐업한 쇼핑몰이어도 본인 주문 조회는 열린다.
 
