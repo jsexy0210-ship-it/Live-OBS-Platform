@@ -5,7 +5,7 @@ import { POST as signupRoute } from "../../app/api/shop/[slug]/signup/route";
 import { POST as confirmRoute } from "../../app/api/shop/[slug]/signup/verification/confirm/route";
 import { POST as resendRoute } from "../../app/api/shop/[slug]/signup/verification/resend/route";
 import { POST as startRoute } from "../../app/api/shop/[slug]/signup/verification/route";
-import { BUYER_SIGNUP_MESSAGES, BUYER_SIGNUP_STATUS, BUYER_SIGNUP_VERIFY_DAILY_LIMIT_PER_IP, MAX_SIGNUP_ATTEMPTS_PER_VERIFICATION, purgeUnfinishedSignupVerifications, signupBuyer, startBuyerSignupVerification } from "../../lib/server/buyers/signup";
+import { BUYER_SIGNUP_MESSAGES, BUYER_SIGNUP_STATUS, BUYER_SIGNUP_VERIFY_DAILY_LIMIT_PER_IP, MAX_SIGNUP_ATTEMPTS_PER_VERIFICATION, purgeOldSignupVerificationIps, purgeUnfinishedSignupVerifications, signupBuyer, startBuyerSignupVerification } from "../../lib/server/buyers/signup";
 import { prisma } from "../../lib/server/db";
 import { startSellerPasswordReset } from "../../lib/server/auth/passwordReset";
 import { FakeIdentityProvider } from "../../lib/server/identity/provider";
@@ -98,6 +98,34 @@ describe("구매자 가입 HTTP", () => {
     const r = await s.signup(v);
     expect(r.status).toBe(400);
     expect((await r.json()).error).toBe("verification_invalid");
+  });
+
+  it("가입을 마친 본인확인의 요청 IP는 3개월이 지나면 비우고, 가입 처리 때 그 쇼핑몰 것을 함께 정리한다(다른 쇼핑몰·3개월 안은 그대로)", async () => {
+    const s = await shop();
+    const other = await shop();
+    const ago = (months: number) => {
+      const d = new Date();
+      d.setUTCMonth(d.getUTCMonth() - months);
+      return d;
+    };
+    const made = async (sh: typeof s, phone: string, name: string, months: number) => {
+      const v = await sh.verified({ phone, name });
+      expect((await sh.signup(v, { loginId: `${phone}@example.com`, broadcastNickname: name })).status).toBe(201);
+      await db.identityVerification.update({ where: { id: v.verificationId }, data: { requestIp: "203.0.113.9", createdAt: ago(months) } });
+      return v.verificationId;
+    };
+    const old = await made(s, "01011110001", "오래됨", 4);
+    const recent = await made(s, "01011110002", "최근", 2);
+    const otherOld = await made(other, "01011110003", "다른곳", 4);
+    // 같은 쇼핑몰에서 새 가입 요청이 오면 그 쇼핑몰의 3개월 지난 IP만 비운다
+    const v = await s.verified({ phone: "01011110004", name: "새가입" });
+    expect((await s.signup(v, { loginId: "new@example.com", broadcastNickname: "새가입" })).status).toBe(201);
+    expect((await db.identityVerification.findUniqueOrThrow({ where: { id: old } })).requestIp).toBeNull();
+    expect((await db.identityVerification.findUniqueOrThrow({ where: { id: recent } })).requestIp).toBe("203.0.113.9");
+    expect((await db.identityVerification.findUniqueOrThrow({ where: { id: otherOld } })).requestIp).toBe("203.0.113.9");
+    // 쇼핑몰을 정하지 않으면 전체
+    expect(await purgeOldSignupVerificationIps(db)).toBe(1);
+    expect((await db.identityVerification.findUniqueOrThrow({ where: { id: otherOld } })).requestIp).toBeNull();
   });
 
   it("가입을 끝내지 않은 본인확인은 유효 시간이 지나면 개인정보·동의를 지우고 만료로 두며, 그날(KST)이 지나면 행을 지운다. 하루 시작 횟수는 그날 그대로 센다", async () => {

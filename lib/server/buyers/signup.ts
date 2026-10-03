@@ -194,8 +194,9 @@ export async function signupBuyer(
   if (!nickname) return { ok: false, reason: "invalid_nickname" };
   if (input.agreedMarketing !== undefined && typeof input.agreedMarketing !== "boolean") return { ok: false, reason: "invalid_marketing_consent" };
   const agreedMarketing = input.agreedMarketing === true;
-  // 이 쇼핑몰의 기간이 끝난 재가입 제한 기록을 먼저 지운다(정기 실행 연결 전 파기 경로)
+  // 이 쇼핑몰의 기간이 끝난 재가입 제한 기록·끝난 미가입 본인확인·3개월 지난 요청 IP를 먼저 정리한다(정기 실행 연결 전 파기 경로)
   await purgeExpiredRejoinBlocks(db, now, input.sellerId);
+  await purgeSignupVerificationsForShop(db, input.sellerId);
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.verificationId)) return { ok: false, reason: "verification_invalid" };
 
   const done = await completeIdentityVerification(db, provider, input.verificationId, { sellerId: input.sellerId, purpose: "BUYER_SIGNUP", ownerToken: input.ownerToken }, now);
@@ -373,9 +374,9 @@ export const BUYER_SIGNUP_STATUS: Record<BuyerSignupFailure, number> = {
 // - 유효 시간이 지나면 바로 이름·휴대폰·생년월일·CI 해시·요청 휴대폰·동의 기록을 지우고 상태를 만료(EXPIRED)로 둔다.
 // - 행 자체는 같은 IP 하루 시작 횟수(부정 이용 방지)를 세는 데 쓰여 그날(KST)이 끝난 뒤 지운다.
 // 지운 수를 돌려준다.
-export async function purgeUnfinishedSignupVerifications(db: PrismaClient, now?: Date): Promise<{ cleared: number; deleted: number }> {
+export async function purgeUnfinishedSignupVerifications(db: PrismaClient, now?: Date, sellerId?: string): Promise<{ cleared: number; deleted: number }> {
   const at = now ?? (await dbNow(db));
-  const unfinished = { purpose: "BUYER_SIGNUP" as const, consumedAt: null, expiresAt: { lte: at } };
+  const unfinished = { purpose: "BUYER_SIGNUP" as const, consumedAt: null, expiresAt: { lte: at }, ...(sellerId ? { sellerId } : {}) };
   const cleared = await db.identityVerification.updateMany({
     where: { ...unfinished, OR: [{ name: { not: null } }, { phone: { not: null } }, { birthDate: { not: null } }, { ciHash: { not: null } }, { requestedPhone: { not: null } }, { status: { in: ["PENDING", "VERIFIED"] } }] },
     data: { status: "EXPIRED", name: null, phone: null, birthDate: null, ciHash: null, requestedPhone: null, signupConsent: Prisma.DbNull },
@@ -384,4 +385,24 @@ export async function purgeUnfinishedSignupVerifications(db: PrismaClient, now?:
     SELECT (date_trunc('day', ${at}::timestamptz AT TIME ZONE 'Asia/Seoul') AT TIME ZONE 'Asia/Seoul') AS "start"`;
   const deleted = await db.identityVerification.deleteMany({ where: { ...unfinished, createdAt: { lt: start } } });
   return { cleared: cleared.count, deleted: deleted.count };
+}
+
+// 가입을 마친 본인확인 기록의 요청 IP는 3개월 뒤 비운다(접속 기록 보관 3개월, PRODUCT_SCOPE 「구매자 탈퇴·재가입」).
+// sellerId를 주면 그 쇼핑몰만. 정기 실행 연결 전이라 가입·탈퇴 처리 때 그 쇼핑몰 것을 함께 정리한다. 비운 수를 돌려준다.
+export const SIGNUP_IP_RETENTION_MONTHS = 3;
+export async function purgeOldSignupVerificationIps(db: PrismaClient, now?: Date, sellerId?: string): Promise<number> {
+  const at = now ?? (await dbNow(db));
+  const [{ before }] = await db.$queryRaw<{ before: Date }[]>`SELECT (${at}::timestamptz - make_interval(months => ${SIGNUP_IP_RETENTION_MONTHS}::int)) AS "before"`;
+  const r = await db.identityVerification.updateMany({
+    where: { purpose: "BUYER_SIGNUP", consumedAt: { not: null }, requestIp: { not: null }, createdAt: { lte: before }, ...(sellerId ? { sellerId } : {}) },
+    data: { requestIp: null },
+  });
+  return r.count;
+}
+
+// 정기 실행 연결 전 파기 경로: 가입·탈퇴 처리 때 그 쇼핑몰의 끝난 미가입 본인확인과 3개월 지난 요청 IP를 정리한다.
+export async function purgeSignupVerificationsForShop(db: PrismaClient, sellerId: string, now?: Date) {
+  const at = now ?? (await dbNow(db));
+  await purgeUnfinishedSignupVerifications(db, at, sellerId);
+  await purgeOldSignupVerificationIps(db, at, sellerId);
 }
