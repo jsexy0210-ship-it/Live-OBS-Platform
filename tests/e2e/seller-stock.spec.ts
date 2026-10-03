@@ -898,3 +898,26 @@ test("재고 칩(품절·5 이하)은 서버에서 옵션 단위로 걸러, 아�
   await expect(page.getByTestId("stock-row")).toHaveCount(1);
   await expect(page.getByTestId("stock-row").first()).toContainText("뒤쪽 2");
 });
+
+test("품절 칩을 켠 채 빼기·더하기로 재고를 더하면 조건에 안 맞게 된 줄은 목록에서 빠진다", async ({ page }) => {
+  await openAs(page);
+  await page.getByRole("button", { name: "품절", exact: true }).click();
+  await expect(row(page, "드래곤 소울 부스터")).toBeVisible();
+  const label = "드래곤 소울 부스터 1팩";
+  await page.getByRole("button", { name: `${label} 빼기 · 더하기` }).click();
+  const sheet = page.getByRole("dialog");
+  await sheet.getByRole("radio", { name: "더하기" }).click();
+  await sheet.getByLabel("수량").fill("3");
+  await sheet.getByRole("radio", { name: "서비스" }).click();
+  await sheet.getByRole("button", { name: "3개 더하기" }).click();
+  // 재고 3이 되어 품절 조건에 안 맞으니 목록에서 빠진다
+  await expect(row(page, "드래곤 소울 부스터")).toHaveCount(0);
+  // 되돌려 둔다(칩을 끄고 3개 빼기)
+  await page.getByRole("button", { name: "품절", exact: true }).click();
+  await expect(row(page, "드래곤 소울 부스터").locator(".c-cur")).toContainText("3");
+  await page.getByRole("button", { name: `${label} 빼기 · 더하기` }).click();
+  await sheet.getByLabel("수량").fill("3");
+  await sheet.getByRole("radio", { name: "서비스" }).click();
+  await sheet.getByRole("button", { name: "3개 빼기" }).click();
+  await expect(row(page, "드래곤 소울 부스터").locator(".c-cur")).toContainText("0");
+});

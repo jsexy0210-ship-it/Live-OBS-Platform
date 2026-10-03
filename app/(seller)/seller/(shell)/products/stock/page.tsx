@@ -39,6 +39,8 @@ const fetchOptions = (q: string, f: Filter, cursor: string | null) =>
     `/api/seller/products/options?limit=${OPTION_PAGE}${q ? `&q=${encodeURIComponent(q)}` : ""}${f !== "all" ? `&stock=${f}` : ""}${cursor ? `&cursor=${cursor}` : ""}`,
   );
 const SEARCH_DELAY_MS = 300;
+// 서버 재고 조건과 같은 기준(out=0, low=1~5). 빼기·더하기로 바뀐 줄이 켜 둔 조건에 안 맞으면 목록에서 뺀다
+const fitsFilter = (f: Filter, stock: number) => (f === "out" ? stock === 0 : f === "low" ? stock >= 1 && stock <= LOW : true);
 
 const toRows = (options: OptionStock[]): Row[] =>
   options.map((o) => ({ key: o.optionId, productId: o.productId, productName: o.productName, optionId: o.optionId, optionName: o.optionName, stock: o.stock }));
@@ -593,7 +595,7 @@ export default function StockPage() {
           row={rows.find((r) => r.key === sheet.key) ?? sheet}
           onClose={() => setSheet(null)}
           onDone={(row, stock, text) => {
-            setRows((rs) => rs.map((r) => (r.key === row.key ? { ...r, stock } : r)));
+            setRows((rs) => rs.map((r) => (r.key === row.key ? { ...r, stock } : r)).filter((r) => r.key !== row.key || fitsFilter(loadedFilter, stock)));
             setPool((p) => (p[row.key] ? { ...p, [row.key]: { ...p[row.key], stock } } : p));
             setNext((m) => {
               const out = { ...m };
