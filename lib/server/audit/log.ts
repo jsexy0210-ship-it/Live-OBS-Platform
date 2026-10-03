@@ -1,4 +1,5 @@
 import type { ActorType, Prisma, PrismaClient } from "@prisma/client";
+import { memberAuditRetainMonths } from "../buyers/memberData";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -31,8 +32,11 @@ export type AuditEntry = {
   userAgent?: string | null;
 };
 
+// 구매자 회원이 행위자·대상인 행은 기록 시각 기준 보관 기한(retainUntil)을 함께 단다(거래 관련 5년, 거래 무관 3개월,
+// buyers/memberData.ts MEMBER_AUDIT_RETENTION). 기한이 지나면 회원 id를 비식별한다(⑩). 탈퇴와 상관없이 모든 회원에 적용한다.
 export async function writeAudit(db: Db, e: AuditEntry): Promise<void> {
-  await db.auditLog.create({
+  const memberRow = (e.actorType === "BUYER" && !!e.actorId) || (e.targetType === "BuyerMember" && !!e.targetId);
+  const row = await db.auditLog.create({
     data: {
       actorType: e.actorType,
       actorId: e.actorId ?? null,
@@ -46,5 +50,9 @@ export async function writeAudit(db: Db, e: AuditEntry): Promise<void> {
       ip: e.ip ?? null,
       userAgent: e.userAgent ?? null,
     },
+    select: { id: true },
   });
+  if (memberRow) {
+    await db.$executeRaw`UPDATE "AuditLog" SET "retainUntil" = "createdAt" + make_interval(months => ${memberAuditRetainMonths(e.action)}::int) WHERE "id" = ${row.id}::uuid`;
+  }
 }

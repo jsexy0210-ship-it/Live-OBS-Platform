@@ -1,5 +1,8 @@
 // 판매자 화면에서 쓰는 API 호출. 같은 출처 요청이라 쿠키·Origin은 브라우저가 붙인다.
-export type ApiResult<T> = { ok: true; status: number; data: T } | { ok: false; status: number; error: string; message?: string };
+// 실패 응답의 본문 전체는 body에 둔다(error·message 밖의 값, 예: 재가입 제한의 rejoinAvailableAt).
+export type ApiResult<T> =
+  | { ok: true; status: number; data: T }
+  | { ok: false; status: number; error: string; message?: string; body?: Record<string, unknown> };
 
 export async function api<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<ApiResult<T>> {
   let res: Response;
@@ -19,8 +22,8 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
   if (res.status === 401 && path.startsWith("/api/seller/") && !path.startsWith("/api/seller/auth/")) {
     window.location.assign(`/seller/login?next=${encodeURIComponent(window.location.pathname)}`);
   }
-  const body = data as { error?: string; message?: string };
-  return { ok: false, status: res.status, error: body.error ?? "unknown", message: body.message };
+  const body = data as { error?: string; message?: string } & Record<string, unknown>;
+  return { ok: false, status: res.status, error: body.error ?? "unknown", message: body.message, body };
 }
 
 // 서버가 준 안내 문구가 있으면 그대로, 없으면 상태별 기본 문구
