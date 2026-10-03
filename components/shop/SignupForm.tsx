@@ -19,13 +19,22 @@ const CARRIERS: { value: Carrier; label: string }[] = [
 
 type Step = "identity" | "code" | "verified" | "done";
 type Notice = { kind: "neg" | "info"; text: string };
-type Fail = { status: number; error: string; message?: string };
+type Fail = { status: number; error: string; message?: string; body?: Record<string, unknown> };
 type SignupBody = {
   verificationId: string;
   loginId: string;
   password: string;
   broadcastNickname: string;
   agreedMarketing: boolean;
+};
+
+// rejoinAvailableAt(ISO) → 「11월 2일」(KST)
+const kstDate = (iso: unknown): string | null => {
+  if (typeof iso !== "string") return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Seoul", month: "numeric", day: "numeric" }).formatToParts(d).map((x) => [x.type, x.value]));
+  return `${p.month}월 ${p.day}일`;
 };
 
 // 가입 필수 동의 문서 버전과 재가입 제한 기간(서버 페이지가 lib/server/buyers/consent.ts·rejoin.ts에서 넘긴다).
@@ -330,6 +339,12 @@ export default function SignupForm({ slug, consent }: { slug: string; consent: S
       case "too_many_signup_attempts":
         restart({ kind: "neg", text });
         break;
+      case "rejoin_restricted": {
+        // 「지금은 다시 가입할 수 없어요」 뒤에 다시 가입할 수 있는 날(KST)을 붙인다
+        const day = kstDate(r.body?.rejoinAvailableAt);
+        showNotice({ kind: "neg", text: day ? `${text}. ${day}부터 다시 가입할 수 있어요` : text });
+        break;
+      }
       default:
         showNotice({ kind: r.error === "already_member" ? "info" : "neg", text });
     }
@@ -535,10 +550,23 @@ export default function SignupForm({ slug, consent }: { slug: string; consent: S
                   개인정보 수집 · 이용 (필수)
                 </label>
                 {rejoinRequired && (
-                  <label className="chk">
-                    <input type="checkbox" className="cbx" {...termsAria} checked={agreedRejoin} onChange={(e) => setAgreedRejoin(e.target.checked)} />
-                    재가입 제한 정보 보관 (필수) · 탈퇴하면 {consent.rejoinDays}일 동안 다시 가입할 수 없어요
-                  </label>
+                  <>
+                    <label className="chk">
+                      <input type="checkbox" className="cbx" {...termsAria} checked={agreedRejoin} onChange={(e) => setAgreedRejoin(e.target.checked)} />
+                      재가입 제한 정보 보관 (필수)
+                    </label>
+                    {/* 본문: docs/terms/PRIVACY_CONSENT_TEMPLATE.md 하단 「재가입 제한 정보 보관 동의」 */}
+                    <details className="signup-terms-doc">
+                      <summary>보기</summary>
+                      <p>탈퇴한 회원이 정해진 기간 안에 다시 가입하지 못하게 하려고 아래 정보를 보관해요.</p>
+                      <ul>
+                        <li>보관 목적: 탈퇴 회원의 재가입 제한</li>
+                        <li>보관 항목: 본인확인 식별값(CI)을 바꾼 값</li>
+                        <li>보관 기간: 탈퇴한 날부터 {consent.rejoinDays}일</li>
+                      </ul>
+                      <p>이 동의를 하지 않을 수 있어요. 다만 이 쇼핑몰은 재가입 제한을 운영해서, 동의하지 않으면 가입할 수 없어요.</p>
+                    </details>
+                  </>
                 )}
                 <label className="chk">
                   <input type="checkbox" className="cbx" {...termsAria} checked={idvAgreed} onChange={(e) => setIdvAgreed(e.target.checked)} />

@@ -10,7 +10,7 @@ import { hashToken } from "../auth/token";
 import { buyerSignupIdentityLimitReached, completeIdentityVerification, parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
 import { EMAIL } from "../sellers/application";
 import { type ConsentFailure, parseSignupConsent, readSignupConsent } from "./consent";
-import { rejoinBlockedUntil, rejoinDaysToAgree } from "./rejoin";
+import { purgeExpiredRejoinBlocks, rejoinBlockedUntil, rejoinDaysToAgree } from "./rejoin";
 import { cleanText } from "../text/clean";
 
 
@@ -194,6 +194,8 @@ export async function signupBuyer(
   if (!nickname) return { ok: false, reason: "invalid_nickname" };
   if (input.agreedMarketing !== undefined && typeof input.agreedMarketing !== "boolean") return { ok: false, reason: "invalid_marketing_consent" };
   const agreedMarketing = input.agreedMarketing === true;
+  // 이 쇼핑몰의 기간이 끝난 재가입 제한 기록을 먼저 지운다(정기 실행 연결 전 파기 경로)
+  await purgeExpiredRejoinBlocks(db, now, input.sellerId);
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.verificationId)) return { ok: false, reason: "verification_invalid" };
 
   const done = await completeIdentityVerification(db, provider, input.verificationId, { sellerId: input.sellerId, purpose: "BUYER_SIGNUP", ownerToken: input.ownerToken }, now);
