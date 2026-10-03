@@ -4,7 +4,9 @@ import { generateToken, hashToken } from "../auth/token";
 import { checkTrialLimit } from "../billing/trialLimits";
 import { cleanText } from "../text/clean";
 import { hashCi } from "./ciHash";
-import { CARRIERS, DEVICES, birthDateOf, type Carrier, type Device, type IdentityPerson, type IdentityProvider, type ProviderFailure } from "./provider";
+import { CARRIERS, DEVICES, birthDateOf, type Carrier, type Device, type IdentityPerson, type IdentityProvider, type IdentityResult, type ProviderFailure } from "./provider";
+
+type IdentityResultOk = Extract<IdentityResult, { ok: true }>;
 
 // 휴대폰 본인확인(문자) 흐름(PRODUCT_SCOPE 「휴대폰 본인확인 방식」).
 // 시작(인적사항 → 요청 기록, 시작한 브라우저에만 ownerToken) → 인증번호 보내기 → (다시 보내기) → 인증번호 확인
@@ -171,22 +173,51 @@ export async function confirmIdentityCode(
   if (v.lastSentAt.getTime() + OTP_TTL_MS <= now.getTime()) return { ok: false, reason: "code_expired" };
   // 운영에서는 가짜 공급자 기록을 완료 처리하지 않는다(공급자 객체를 우회해 만든 경우까지 막는다).
   if (v.provider === "fake" && process.env.NODE_ENV === "production") return { ok: false, reason: "failed" };
+  const finalize = (r: IdentityResultOk) => finalizeIdentity(db, v, r, now);
 
+  // 틀린 시도: 잡아 둔 1회를 그대로 두고, 한도에 닿았으면 요청을 실패로 끝낸다.
   const wrong = async (): Promise<ConfirmResult> => {
-    const counted = await db.identityVerification.updateMany({
-      where: { id: v.id, status: "PENDING", otpFailCount: { lt: MAX_OTP_FAILURES } },
-      data: { otpFailCount: { increment: 1 } },
-    });
     const after = await db.identityVerification.findUniqueOrThrow({ where: { id: v.id }, select: { otpFailCount: true } });
-    if (counted.count === 1 && after.otpFailCount >= MAX_OTP_FAILURES) {
+    if (after.otpFailCount >= MAX_OTP_FAILURES) {
       await db.identityVerification.updateMany({ where: { id: v.id, status: "PENDING" }, data: { status: "FAILED" } });
       return { ok: false, reason: "too_many_attempts" };
     }
-    return { ok: false, reason: counted.count === 1 ? "wrong_code" : "too_many_attempts" };
+    return { ok: false, reason: "wrong_code" };
   };
+  // 잡아 둔 1회를 돌려준다(공급자 장애이거나 이미 확정된 경우)
+  const release = () => db.identityVerification.updateMany({ where: { id: v.id, otpFailCount: { gt: 0 } }, data: { otpFailCount: { decrement: 1 } } });
+  // 이미 확정됐는지 다시 본다: 같은 요청의 다른 확인이 먼저 끝났거나(중복 클릭), 앞선 확인이 시간 초과 뒤 실제로는 성공한 경우.
+  // DB가 VERIFIED면 그 결과, 아니면 대행사 결과 조회로 확인해 확정한다. 확인되지 않으면 null.
+  const recover = async (): Promise<ConfirmResult | null> => {
+    const current = await db.identityVerification.findUniqueOrThrow({ where: { id: v.id } });
+    if (current.status === "VERIFIED") return { ok: true, verification: current };
+    if (current.status !== "PENDING") return null;
+    const r = await call(provider.fetchResult(v.requestId));
+    return r.ok ? finalize(r) : null;
+  };
+
+  // 공급자를 부르기 전에 시도 1회를 조건부로 먼저 잡는다. 동시에 여러 번 보내도 남은 횟수만큼만 공급자를 부른다.
+  const reserved = await db.identityVerification.updateMany({
+    where: { id: v.id, status: "PENDING", otpFailCount: { lt: MAX_OTP_FAILURES } },
+    data: { otpFailCount: { increment: 1 } },
+  });
+  if (reserved.count !== 1) {
+    const current = await db.identityVerification.findUniqueOrThrow({ where: { id: v.id } });
+    if (current.status === "VERIFIED") return { ok: true, verification: current };
+    return { ok: false, reason: current.status === "PENDING" || current.otpFailCount >= MAX_OTP_FAILURES ? "too_many_attempts" : "failed" };
+  }
   if (typeof otp !== "string" || !/^\d{4,8}$/.test(otp)) return wrong();
   const confirmed = await call(provider.confirmCode(v.requestId, otp));
-  if (!confirmed.ok) return confirmed.reason === "wrong_code" ? wrong() : { ok: false, reason: "provider_error" };
+  if (!confirmed.ok) {
+    const recovered = await recover();
+    if (recovered) {
+      await release();
+      return recovered;
+    }
+    if (confirmed.reason === "wrong_code") return wrong();
+    await release();
+    return { ok: false, reason: "provider_error" };
+  }
 
   const r = await call(provider.fetchResult(v.requestId));
   if (!r.ok) {
@@ -196,7 +227,11 @@ export async function confirmIdentityCode(
     }
     return { ok: false, reason: "provider_error" };
   }
-  // 결과 대조: 다른 요청·다른 용도의 결과이거나 요청 때와 다른 휴대폰번호면 믿지 않는다.
+  return finalize(r);
+}
+
+// 대행사 결과를 대조하고 VERIFIED로 확정한다(한 번만). 다른 요청·다른 용도·요청 때와 다른 휴대폰번호의 결과면 실패로 끝낸다.
+async function finalizeIdentity(db: PrismaClient, v: IdentityVerification, r: IdentityResultOk, now: Date): Promise<ConfirmResult> {
   if (r.requestId !== v.requestId || r.purpose !== v.purpose || r.phone.replace(/\D/g, "") !== v.requestedPhone) {
     await db.identityVerification.updateMany({ where: { id: v.id, status: "PENDING" }, data: { status: "FAILED" } });
     return { ok: false, reason: "failed" };

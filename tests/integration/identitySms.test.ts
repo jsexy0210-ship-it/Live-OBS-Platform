@@ -294,4 +294,40 @@ describe("Codex 검수 후속(#95)", () => {
     expect(rs.map((r) => r.ok)).toEqual([true, true, true, true]);
     expect(await identityUsage(db, seller.id)).toBe(1);
   });
+
+  it("[MASTER P1] 동시에 여러 번 추측해도 공급자 확인 호출은 남은 횟수 이하이고, 한도를 넘는 추측으로는 확정되지 않는다", async () => {
+    const { seller } = await createSeller();
+    const a = await buyerIdv(seller.id);
+    for (let i = 0; i < MAX_OTP_FAILURES - 1; i++) expect((await confirmIdv(provider, a.verification, a.ownerToken, "111111")).ok).toBe(false);
+    const before = provider.confirmCalls;
+    const guesses = Array.from({ length: 20 }, (_, i) => (i === 19 ? "000000" : String(200000 + i)));
+    const rs = await Promise.all(guesses.map((g) => confirmIdv(provider, a.verification, a.ownerToken, g)));
+    expect(provider.confirmCalls - before).toBeLessThanOrEqual(1);
+    expect(rs.filter((r) => r.ok).length).toBeLessThanOrEqual(1);
+    expect((await row(a.verification.id)).otpFailCount).toBeLessThanOrEqual(MAX_OTP_FAILURES);
+
+    // 처음부터 20개를 동시에 틀려도 공급자는 최대 5번만 불리고 요청은 실패로 끝난다
+    const b = await buyerIdv(seller.id);
+    const start = provider.confirmCalls;
+    await Promise.all(Array.from({ length: 20 }, (_, i) => confirmIdv(provider, b.verification, b.ownerToken, String(300000 + i))));
+    expect(provider.confirmCalls - start).toBeLessThanOrEqual(MAX_OTP_FAILURES);
+    expect(await row(b.verification.id)).toMatchObject({ status: "FAILED", otpFailCount: MAX_OTP_FAILURES });
+  });
+
+  it("[MASTER P2] 이미 확인된 요청을 다시 확인하거나(대행사 400) 확인 응답이 시간 초과된 뒤 실제로 성공했으면 성공을 돌려주고 틀린 횟수로 세지 않는다", async () => {
+    const { seller } = await createSeller();
+    const a = await buyerIdv(seller.id);
+    expect((await confirmIdv(provider, a.verification, a.ownerToken)).ok).toBe(true);
+    // DB에 확정 전이라고 보이는 늦은 요청: 대행사는 같은 요청 두 번째 확인을 400으로 거절한다 → 결과 조회로 성공 확인
+    await db.identityVerification.update({ where: { id: a.verification.id }, data: { status: "PENDING", ciHash: null, verifiedAt: null } });
+    expect((await confirmIdv(provider, a.verification, a.ownerToken)).ok).toBe(true);
+    expect(await row(a.verification.id)).toMatchObject({ status: "VERIFIED", otpFailCount: 1 });
+
+    const b = await buyerIdv(seller.id);
+    IDENTITY_PROVIDER_TIMEOUT.ms = 50;
+    provider.failNext("afterHang");
+    const r = await confirmIdv(provider, b.verification, b.ownerToken);
+    expect(r.ok).toBe(true);
+    expect(await row(b.verification.id)).toMatchObject({ status: "VERIFIED", otpFailCount: 0 });
+  });
 });

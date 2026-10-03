@@ -46,7 +46,10 @@ export class FakeIdentityProvider implements IdentityProvider {
   private requests = new Map<string, FakeRequest>();
   private people = new Map<string, FakePerson | "failed">();
   // 테스트: 다음 호출을 장애(error)나 응답 없음(hang, 타임아웃 시험)으로 만든다.
-  private nextFault: "error" | "hang" | null = null;
+  // afterHang: 대행사에서는 처리됐지만 응답이 오지 않는 경우(인증번호 확인에만 적용).
+  private nextFault: "error" | "hang" | "afterHang" | null = null;
+  // 테스트: 인증번호 확인 호출 횟수
+  confirmCalls = 0;
   // 테스트: 다음 결과 조회에 다른 요청 id·용도를 실어 보낸다(위조·뒤바뀐 결과 시험).
   private nextResultOverride: Partial<{ requestId: string; purpose: IdentityPurposeTag }> | null = null;
   readonly sent: string[] = [];
@@ -56,7 +59,7 @@ export class FakeIdentityProvider implements IdentityProvider {
     if (env === "production") throw new Error("운영 환경에서는 가짜 본인확인 공급자를 쓸 수 없어요.");
   }
 
-  failNext(kind: "error" | "hang") {
+  failNext(kind: "error" | "hang" | "afterHang") {
     this.nextFault = kind;
   }
 
@@ -74,8 +77,8 @@ export class FakeIdentityProvider implements IdentityProvider {
   }
 
   private async fault(): Promise<ProviderFailure | null> {
-    const f = this.nextFault;
-    this.nextFault = null;
+    const f = this.nextFault === "afterHang" ? null : this.nextFault;
+    if (f) this.nextFault = null;
     if (f === "hang") return new Promise(() => undefined);
     return f === "error" ? { ok: false, reason: "provider_error" } : null;
   }
@@ -97,12 +100,18 @@ export class FakeIdentityProvider implements IdentityProvider {
   }
 
   async confirmCode(requestId: string, otp: string) {
+    this.confirmCalls++;
     const f = await this.fault();
     if (f) return f;
     const r = this.requests.get(requestId);
     if (!r) return { ok: false as const, reason: "provider_error" as const };
-    if (otp !== FAKE_IDENTITY_OTP) return { ok: false as const, reason: "wrong_code" as const };
+    // 포트원처럼 같은 요청은 한 번만 성공한다(이미 확인된 요청에 다시 보내면 400 → wrong_code)
+    if (otp !== FAKE_IDENTITY_OTP || r.confirmed) return { ok: false as const, reason: "wrong_code" as const };
     r.confirmed = true;
+    if (this.nextFault === "afterHang") {
+      this.nextFault = null;
+      return new Promise<never>(() => undefined);
+    }
     return { ok: true as const };
   }
 
