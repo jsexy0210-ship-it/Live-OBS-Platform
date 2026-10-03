@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoImage, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, type Product, type ProductStatus } from "../../../../../components/seller/api";
@@ -11,7 +11,8 @@ import { LOW_STOCK, statusBadge, totalStock, won } from "../../../../../componen
 const FILTERS: { key: ProductStatus | "ALL"; label: string }[] = [
   { key: "ALL", label: "전체" },
   { key: "ON_SALE", label: "판매 중" },
-  { key: "SOLD_OUT", label: "품절" },
+  // 판매 상태를 「품절」로 정한 상품만. 판매 중인데 재고가 0인 상품은 「판매 중」 탭에 「재고 없음」 배지로 보인다
+  { key: "SOLD_OUT", label: "품절로 설정" },
   { key: "HIDDEN", label: "숨김" },
   { key: "DRAFT", label: "임시 저장" },
 ];
@@ -30,9 +31,13 @@ export default function ProductListPage() {
   const [more, setMore] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
+  // 탭을 빨리 바꾸면 이전 탭 응답이 늦게 올 수 있다. 마지막으로 보낸 요청의 응답만 화면에 반영한다
+  const reqId = useRef(0);
   const load = useCallback(async (f: ProductStatus | "ALL") => {
+    const id = ++reqId.current;
     setState({ kind: "loading" });
     const r = await api<Page>(`/api/seller/products${f === "ALL" ? "" : `?status=${f}`}`);
+    if (id !== reqId.current) return;
     setState(r.ok ? { kind: "ok", items: r.data.products, next: r.data.nextCursor } : { kind: "error", status: r.status });
   }, []);
 
@@ -52,9 +57,11 @@ export default function ProductListPage() {
   const loadMore = async () => {
     if (state.kind !== "ok" || !state.next) return;
     setMore(true);
+    const id = reqId.current;
     const qs = new URLSearchParams({ cursor: state.next, ...(filter === "ALL" ? {} : { status: filter }) });
     const r = await api<Page>(`/api/seller/products?${qs}`);
     setMore(false);
+    if (id !== reqId.current) return;
     if (r.ok) setState({ kind: "ok", items: [...state.items, ...r.data.products], next: r.data.nextCursor });
     else setToast("더 불러오지 못했어요. 다시 눌러 주세요");
   };
@@ -121,7 +128,7 @@ export default function ProductListPage() {
                 </>
               ) : (
                 <>
-                  <span className="t">{FILTERS.find((f) => f.key === filter)?.label} 상품이 없어요</span>
+                  <span className="t">「{FILTERS.find((f) => f.key === filter)?.label}」에 해당하는 상품이 없어요</span>
                   <button className="btn btn-sm btn-text" type="button" onClick={() => setFilter("ALL")}>
                     전체 보기
                   </button>

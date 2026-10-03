@@ -66,13 +66,10 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
       return;
     }
     setMe(r.data);
-    // 체험 남은 날은 구독 화면 API에서만 알 수 있어 대표자일 때만 보여 준다
-    if (r.data.access === "trial" && r.data.isOwner) {
-      const s = await api<{ trialEndsAt: string | null }>("/api/seller/subscription");
-      if (s.ok && s.data.trialEndsAt) {
-        const ms = new Date(s.data.trialEndsAt).getTime() - Date.now();
-        setTrialDaysLeft(Math.max(0, Math.ceil(ms / 86_400_000)));
-      }
+    // 체험 중이면 /me가 끝나는 시각을 준다(대표자·직원 모두)
+    if (r.data.access === "trial" && r.data.trialEndsAt) {
+      const ms = new Date(r.data.trialEndsAt).getTime() - Date.now();
+      setTrialDaysLeft(Math.max(0, Math.ceil(ms / 86_400_000)));
     }
   }, [router, pathname]);
 
@@ -83,9 +80,13 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => setNavOpen(false), [pathname]);
 
+  // 세션을 실제로 끊었을 때만 로그인 화면으로 보낸다. 실패하면 화면에 남아 다시 시도하게 한다(공용 기기에서 로그아웃된 줄 착각하지 않게).
+  const [logoutError, setLogoutError] = useState(false);
   const logout = async () => {
-    await api("/api/seller/auth/logout", { method: "POST" });
-    router.replace("/seller/login");
+    setLogoutError(false);
+    const r = await api("/api/seller/auth/logout", { method: "POST" });
+    if (r.ok) router.replace("/seller/login");
+    else setLogoutError(true);
   };
 
   if (failed) {
@@ -128,7 +129,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
                 {n.h}
               </span>
             ) : n.href ? (
-              <Link key={i} className={`nav-i${pathname.startsWith(n.href) ? " on" : ""}`} href={n.href}>
+              <Link key={i} className={`nav-i${pathname.startsWith(n.href) ? " on" : ""}`} href={n.href} onClick={() => setNavOpen(false)}>
                 {n.label}
               </Link>
             ) : (
@@ -140,6 +141,11 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
           <button className="btn btn-sm btn-ghost side-logout" type="button" onClick={() => void logout()}>
             로그아웃
           </button>
+          {logoutError && (
+            <span className="err side-logout-err" role="alert">
+              로그아웃하지 못했어요. 다시 시도해 주세요
+            </span>
+          )}
         </aside>
         <button className="nav-dim" type="button" aria-label="메뉴 닫기" onClick={() => setNavOpen(false)} />
         <div className="col shell-body">{children}</div>

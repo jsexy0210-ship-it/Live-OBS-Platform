@@ -134,12 +134,29 @@ test("상품 등록 → 목록에 바로 보인다", async ({ page }) => {
   await expect(row).toContainText("판매 중");
 });
 
-test("상품명 100자를 넘기면 글자 수가 빨갛게 바뀌고 안내한다", async ({ page }) => {
+test("상품명 100자를 넘기면 글자 수가 빨갛게 바뀌고 안내한다(이모지도 1자, 서버와 같은 기준)", async ({ page }) => {
   await login(page);
   await page.goto("/seller/products/new");
   await page.getByLabel("상품명").fill("가".repeat(101));
   await expect(page.getByTestId("name-count")).toHaveText("101/100");
   await expect(page.getByText("상품명은 100자까지 쓸 수 있어요")).toBeVisible();
+
+  // 👍 101개는 101자로 세고 막는다
+  await page.getByLabel("상품명").fill("👍".repeat(101));
+  await expect(page.getByTestId("name-count")).toHaveText("101/100");
+  await expect(page.getByText("상품명은 100자까지 쓸 수 있어요")).toBeVisible();
+
+  // 이모지 96개 + 실행마다 다른 글자 4개 = 100자라 서버도 받는다(실제로 등록해 목록에서 확인)
+  const name100 = "👍".repeat(96) + stamp.slice(-4);
+  await page.getByLabel("상품명").fill(name100);
+  await expect(page.getByTestId("name-count")).toHaveText("100/100");
+  await expect(page.getByText("상품명은 100자까지 쓸 수 있어요")).toHaveCount(0);
+  await page.getByLabel("판매가").fill("1000");
+  await page.getByRole("button", { name: "임시 저장" }).first().click();
+  await expect(page).toHaveURL(/\/seller\/products$/);
+  await expect(page.getByText("임시 저장했어요")).toBeVisible();
+  await page.getByRole("tab", { name: "임시 저장" }).click();
+  await expect(page.getByTestId("product-row").filter({ hasText: name100 })).toHaveCount(1);
 });
 
 test("상품 수정: 가격·재고를 바꾸면 저장되고 목록에도 반영된다", async ({ page }) => {
@@ -303,6 +320,55 @@ test("휴대폰 폭(390)에서는 메뉴가 서랍으로 열리고 상품이 카
   if (SHOTS) await page.screenshot({ path: "tests/e2e/screenshots/SA-shell-drawer-390.png" });
   await page.getByRole("button", { name: "메뉴 닫기" }).click();
   await expect(page.getByRole("link", { name: "상품", exact: true })).not.toBeInViewport();
+
+  // 지금 보고 있는 메뉴(상품)를 눌러도 서랍이 닫힌다
+  await page.getByRole("button", { name: "메뉴 열기" }).click();
+  await expect(page.getByRole("link", { name: "상품", exact: true })).toBeInViewport();
+  await page.getByRole("link", { name: "상품", exact: true }).click();
+  await expect(page.getByRole("link", { name: "상품", exact: true })).not.toBeInViewport();
+});
+
+test("로그아웃 요청이 실패하면 화면에 남아 다시 시도하게 한다", async ({ page }) => {
+  await login(page);
+  await page.route("**/api/seller/auth/logout", (r) => r.fulfill({ status: 500, contentType: "application/json", body: "{}" }));
+  await page.getByRole("button", { name: "로그아웃" }).click();
+  await expect(page.getByText("로그아웃하지 못했어요. 다시 시도해 주세요")).toBeVisible();
+  await expect(page).toHaveURL(/\/seller\/products$/);
+  await page.unroute("**/api/seller/auth/logout");
+  await page.getByRole("button", { name: "로그아웃" }).click();
+  await expect(page).toHaveURL(/\/seller\/login$/);
+});
+
+test("로그인이 풀린 뒤 다른 탭·화면을 열면 로그인으로 보낸다", async ({ page }) => {
+  await login(page);
+  await page.context().clearCookies();
+  await page.getByRole("tab", { name: "숨김" }).click();
+  await expect(page).toHaveURL(/\/seller\/login\?next=%2Fseller%2Fproducts$/);
+});
+
+test("탭을 빨리 바꾸면 마지막으로 고른 탭 결과만 보인다", async ({ page }) => {
+  await login(page);
+  // 「숨김」 응답을 늦게 돌려준다
+  await page.route("**/api/seller/products?status=HIDDEN", async (r) => {
+    await new Promise((res) => setTimeout(res, 1500));
+    await r.continue();
+  });
+  await page.getByRole("tab", { name: "숨김" }).click();
+  await page.getByRole("tab", { name: "판매 중" }).click();
+  await expect(page.getByTestId("product-row").filter({ hasText: "스타라이트 부스터 박스" })).toBeVisible();
+  await page.waitForTimeout(2000);
+  await expect(page.getByTestId("product-row").filter({ hasText: "스타라이트 부스터 박스" })).toBeVisible();
+  await expect(page.getByTestId("product-row").filter({ hasText: "문라이트 1탄 박스" })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "판매 중" })).toHaveAttribute("aria-selected", "true");
+});
+
+test("「품절로 설정」 탭은 판매 상태가 품절인 상품만, 배지와 이름이 맞는다", async ({ page }) => {
+  await login(page);
+  await page.getByRole("tab", { name: "품절로 설정" }).click();
+  const row = page.getByTestId("product-row").filter({ hasText: "드래곤 소울 부스터" });
+  await expect(row).toBeVisible();
+  await expect(row.locator(".bdg")).toHaveText("품절");
+  await expect(page.getByTestId("product-row").filter({ hasText: "스타라이트 부스터 박스" })).toHaveCount(0);
 });
 
 test("로그아웃하면 로그인 화면으로 가고 다시 들어갈 수 없다", async ({ page }) => {

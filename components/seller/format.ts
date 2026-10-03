@@ -2,8 +2,8 @@ import type { Product, ProductStatus } from "./api";
 
 export const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 
-// 서버와 같은 기준(NFKC 정규화 뒤 앞뒤 공백 제외)으로 글자 수를 센다
-export const textLength = (v: string) => v.normalize("NFKC").trim().length;
+// 글자 수는 서버와 같은 공용 함수로 센다(NFKC 정규화·앞뒤 공백 제외·코드포인트 기준, 이모지 하나 = 1자)
+export { textLength } from "../../lib/server/text/clean";
 
 export const INT4_MAX = 2147483647;
 export const LOW_STOCK = 3;
@@ -16,7 +16,8 @@ export const totalStock = (p: Product) => p.options.reduce((s, o) => s + o.stock
 export function statusBadge(p: Product): { label: string; cls: string } {
   if (p.status === "ON_SALE") {
     const stock = totalStock(p);
-    if (stock === 0) return { label: "품절", cls: "b-fail" };
+    // 판매 상태는 「판매 중」인데 재고가 다 떨어진 것. 판매자가 「품절」로 설정한 상품과 구분한다
+    if (stock === 0) return { label: "재고 없음", cls: "b-fail" };
     if (stock <= LOW_STOCK) return { label: "재고 부족", cls: "b-warn" };
     return { label: "판매 중", cls: "b-done" };
   }

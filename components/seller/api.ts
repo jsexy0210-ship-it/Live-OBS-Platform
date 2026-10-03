@@ -15,6 +15,10 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
   }
   const data = await res.json().catch(() => ({}));
   if (res.ok) return { ok: true, status: res.status, data: data as T };
+  // 로그인이 풀렸으면(만료·로그아웃·비밀번호 변경) 어느 화면에서든 로그인으로 보낸다. 로그인·로그아웃 요청 자체의 401은 화면이 처리한다.
+  if (res.status === 401 && path.startsWith("/api/seller/") && !path.startsWith("/api/seller/auth/")) {
+    window.location.assign(`/seller/login?next=${encodeURIComponent(window.location.pathname)}`);
+  }
   const body = data as { error?: string; message?: string };
   return { ok: false, status: res.status, error: body.error ?? "unknown", message: body.message };
 }
@@ -33,6 +37,7 @@ export type SellerAccess = "trial" | "paid" | "charging" | "grace" | "expired";
 export type Me = { sellerId: string; userId: string; isOwner: boolean; permissions: string[]; access: SellerAccess;
   shop: { name: string; slug: string };
   user: { name: string; email: string };
+  trialEndsAt: string | null;
 };
 
 export type ProductStatus = "DRAFT" | "ON_SALE" | "SOLD_OUT" | "HIDDEN";
