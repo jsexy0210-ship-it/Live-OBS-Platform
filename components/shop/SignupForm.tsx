@@ -19,7 +19,7 @@ const CARRIERS: { value: Carrier; label: string }[] = [
 
 type Step = "identity" | "code" | "verified" | "done";
 type Notice = { kind: "neg" | "info"; text: string };
-type Fail = { status: number; error: string; message?: string };
+type Fail = { status: number; error: string; message?: string; body?: Record<string, unknown> };
 type SignupBody = {
   verificationId: string;
   loginId: string;
@@ -28,6 +28,20 @@ type SignupBody = {
   agreedTerms: boolean;
   agreedPrivacy: boolean;
   agreedMarketing: boolean;
+  agreedRejoinRetention?: boolean;
+};
+
+// 재가입 제한을 켠 쇼핑몰의 제한 기간(일). 꺼진 쇼핑몰은 null(서버 페이지가 lib/server/buyers/rejoin.ts에서 넘긴다).
+// 켠 쇼핑몰은 「재가입 제한 정보 보관 동의」를 개인정보 수집·이용 동의와 따로 받는다(docs/terms/PRIVACY_CONSENT_TEMPLATE.md 하단).
+type RejoinInfo = { days: number } | null;
+
+// rejoinAvailableAt(ISO) → 「11월 2일」(KST)
+const kstDate = (iso: unknown): string | null => {
+  if (typeof iso !== "string") return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Seoul", month: "numeric", day: "numeric" }).formatToParts(d).map((x) => [x.type, x.value]));
+  return `${p.month}월 ${p.day}일`;
 };
 
 // 방송 닉네임 최대 글자 수. 서버(lib/server/buyers/signup.ts MAX_NICKNAME_LENGTH)와 같은 값, 같은 셈법(코드포인트, textLength).
@@ -52,7 +66,7 @@ function toBirth7(birth: string, gender: "M" | "F", foreigner: boolean): string 
 
 const phoneText = (p: string) => (p.length === 11 ? `${p.slice(0, 3)}-${p.slice(3, 7)}-${p.slice(7)}` : `${p.slice(0, 3)}-${p.slice(3, 6)}-${p.slice(6)}`);
 
-export default function SignupForm({ slug }: { slug: string }) {
+export default function SignupForm({ slug, rejoin = null }: { slug: string; rejoin?: RejoinInfo }) {
   const base = `/api/shop/${encodeURIComponent(slug)}/signup`;
   const [step, setStep] = useState<Step>("identity");
   const [unavailable, setUnavailable] = useState(false);
@@ -97,6 +111,7 @@ export default function SignupForm({ slug }: { slug: string }) {
   const [nickname, setNickname] = useState("");
   const [agreedTerms, setAgreedTerms] = useState(false);
   const [agreedPrivacy, setAgreedPrivacy] = useState(false);
+  const [agreedRejoin, setAgreedRejoin] = useState(false);
   // 선택 동의(기본 해제). 체크 여부를 그대로 agreedMarketing으로 보낸다.
   const [agreedMarketing, setAgreedMarketing] = useState(false);
   // 가입을 요청한 닉네임(완료 문구는 이 값을 쓴다)
@@ -107,7 +122,7 @@ export default function SignupForm({ slug }: { slug: string }) {
 
   const identityReady = name.trim() !== "" && birth.length === 8 && gender !== null && carrier !== "" && phone.length >= 10 && idvAgreed;
   const nicknameTooLong = textLength(nickname) > MAX_NICKNAME_LENGTH;
-  const accountReady = loginId.trim() !== "" && password !== "" && nickname.trim() !== "" && !nicknameTooLong && agreedTerms && agreedPrivacy;
+  const accountReady = loginId.trim() !== "" && password !== "" && nickname.trim() !== "" && !nicknameTooLong && agreedTerms && agreedPrivacy && (!rejoin || agreedRejoin);
 
   // 처음부터 다시: 입력한 인적사항은 두고 본인확인 요청만 버린다
   const restart = (n: Notice | null) => {
@@ -254,7 +269,7 @@ export default function SignupForm({ slug }: { slug: string }) {
     setBusy(true);
     setNotice(null);
     setFieldErrors({});
-    const body: SignupBody = { verificationId, loginId: loginId.trim(), password, broadcastNickname: nickname.trim(), agreedTerms, agreedPrivacy, agreedMarketing };
+    const body: SignupBody = { verificationId, loginId: loginId.trim(), password, broadcastNickname: nickname.trim(), agreedTerms, agreedPrivacy, agreedMarketing, ...(rejoin ? { agreedRejoinRetention: agreedRejoin } : {}) };
     // 응답에 닉네임이 없을 때 쓸 값: 서버(cleanText)가 저장하는 형태(NFKC 정규화 + 앞뒤 공백 제거)
     const pending = { body, nickname: body.broadcastNickname.normalize("NFKC").trim() };
     const r = await api<{ broadcastNickname?: string }>(base, { method: "POST", body });
@@ -295,6 +310,7 @@ export default function SignupForm({ slug }: { slug: string }) {
         focus("acc-nick");
         break;
       case "terms_required":
+      case "rejoin_consent_required":
         setFieldErrors({ terms: text });
         focus("acc-terms-all");
         break;
@@ -306,6 +322,12 @@ export default function SignupForm({ slug }: { slug: string }) {
       case "too_many_signup_attempts":
         restart({ kind: "neg", text });
         break;
+      case "rejoin_restricted": {
+        // 「지금은 다시 가입할 수 없어요」 뒤에 다시 가입할 수 있는 날(KST)을 붙인다
+        const day = kstDate(r.body?.rejoinAvailableAt);
+        showNotice({ kind: "neg", text: day ? `${text}. ${day}부터 다시 가입할 수 있어요` : text });
+        break;
+      }
       default:
         showNotice({ kind: r.error === "already_member" ? "info" : "neg", text });
     }
@@ -610,10 +632,11 @@ export default function SignupForm({ slug }: { slug: string }) {
                 type="checkbox"
                 className="cbx"
                 {...termsAria}
-                checked={agreedTerms && agreedPrivacy && agreedMarketing}
+                checked={agreedTerms && agreedPrivacy && agreedMarketing && (!rejoin || agreedRejoin)}
                 onChange={(e) => {
                   setAgreedTerms(e.target.checked);
                   setAgreedPrivacy(e.target.checked);
+                  setAgreedRejoin(e.target.checked);
                   setAgreedMarketing(e.target.checked);
                 }}
               />
@@ -627,6 +650,24 @@ export default function SignupForm({ slug }: { slug: string }) {
               <input type="checkbox" className="cbx" {...termsAria} checked={agreedPrivacy} onChange={(e) => setAgreedPrivacy(e.target.checked)} />
               개인정보 수집 · 이용 (필수)
             </label>
+            {rejoin && (
+              <>
+                <label className="chk">
+                  <input type="checkbox" className="cbx" {...termsAria} checked={agreedRejoin} onChange={(e) => setAgreedRejoin(e.target.checked)} />
+                  재가입 제한 정보 보관 (필수)
+                </label>
+                <details className="signup-terms-doc">
+                  <summary>보기</summary>
+                  <p>탈퇴한 회원이 정해진 기간 안에 다시 가입하지 못하게 하려고 아래 정보를 보관해요.</p>
+                  <ul>
+                    <li>보관 목적: 탈퇴 회원의 재가입 제한</li>
+                    <li>보관 항목: 본인확인 식별값(CI)을 바꾼 값</li>
+                    <li>보관 기간: 탈퇴한 날부터 {rejoin.days}일</li>
+                  </ul>
+                  <p>이 동의를 하지 않을 수 있어요. 다만 이 쇼핑몰은 재가입 제한을 운영해서, 동의하지 않으면 가입할 수 없어요.</p>
+                </details>
+              </>
+            )}
             <label className="chk">
               <input type="checkbox" className="cbx" checked={agreedMarketing} onChange={(e) => setAgreedMarketing(e.target.checked)} />
               (선택) 마케팅 정보 수신

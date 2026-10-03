@@ -117,7 +117,8 @@ describe("구매자 재가입 제한", () => {
     }
     await db.buyerRejoinBlock.updateMany({ where: { sellerId: s.seller.id }, data: { expiresAt: new Date(Date.now() - 1000) } });
     expect((await s.signup({}, "back@example.com", "돌아옴")).status).toBe(201);
-    expect(await purgeExpiredRejoinBlocks(db)).toBe(1);
+    // 가입 처리 때 이 쇼핑몰의 끝난 기록은 이미 지웠다
+    expect(await purgeExpiredRejoinBlocks(db)).toBe(0);
     expect(await db.buyerRejoinBlock.count({ where: { sellerId: s.seller.id } })).toBe(0);
     expect(await db.buyerRejoinBlock.count({ where: { sellerId: t.seller.id } })).toBe(1);
     expect((await t.signup({}, "back@example.com", "돌아옴")).status).toBe(403);
@@ -178,6 +179,26 @@ describe("구매자 재가입 제한", () => {
     [b] = await db.buyerRejoinBlock.findMany({ where: { sellerId: s.seller.id } });
     expect(b.expiresAt.getTime() - t).toBeGreaterThanOrEqual(30 * DAY - 1000);
     expect(b.expiresAt.getTime() - t).toBeLessThan(30 * DAY + 5000);
+  });
+
+  it("가입·탈퇴 처리 때 그 쇼핑몰의 기간이 끝난 제한 기록을 먼저 지운다(다른 쇼핑몰·안 끝난 기록은 그대로)", async () => {
+    const s = await shop();
+    const t = await shop();
+    const past = new Date(Date.now() - 1000);
+    const future = new Date(Date.now() + 86400_000);
+    await db.buyerRejoinBlock.createMany({
+      data: [
+        { sellerId: s.seller.id, ciHash: "expired-a", expiresAt: past },
+        { sellerId: s.seller.id, ciHash: "live-a", expiresAt: future },
+        { sellerId: t.seller.id, ciHash: "expired-b", expiresAt: past },
+      ],
+    });
+    expect((await s.signup({}, "a@example.com", "가")).status).toBe(201);
+    expect((await db.buyerRejoinBlock.findMany({ orderBy: { ciHash: "asc" } })).map((b) => b.ciHash)).toEqual(["expired-b", "live-a"]);
+    await db.buyerRejoinBlock.create({ data: { sellerId: t.seller.id, ciHash: "expired-c", expiresAt: past } });
+    expect((await t.signup({}, "b@example.com", "나")).status).toBe(201);
+    await t.withdraw("b@example.com");
+    expect((await db.buyerRejoinBlock.findMany({ orderBy: { ciHash: "asc" } })).map((b) => b.ciHash)).toEqual(["live-a"]);
   });
 
   it("꺼진 쇼핑몰(기본): 탈퇴해도 CI 해시를 남기지 않고 같은 사람이 바로 다시 가입된다", async () => {

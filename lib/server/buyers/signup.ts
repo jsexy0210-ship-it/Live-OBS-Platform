@@ -7,7 +7,7 @@ import { sellerAccessFor } from "../billing/subscription";
 import type { IdentityProvider } from "../identity/provider";
 import { buyerSignupIdentityLimitReached, completeIdentityVerification, parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
 import { EMAIL } from "../sellers/application";
-import { REJOIN_RETENTION_CONSENT_VERSION, rejoinBlockedUntil, rejoinDaysToAgree } from "./rejoin";
+import { REJOIN_RETENTION_CONSENT_VERSION, purgeExpiredRejoinBlocks, rejoinBlockedUntil, rejoinDaysToAgree } from "./rejoin";
 import { cleanText } from "../text/clean";
 
 
@@ -127,6 +127,8 @@ export async function signupBuyer(
   const agreedMarketing = input.agreedMarketing === true;
   // 재가입 제한을 켠 쇼핑몰은 보관 동의를 따로 받는다. 이때 본 기간을 회원에 남긴다(가입 처리 중 설정이 바뀌어도 동의한 값 기준).
   const rejoinDays = await rejoinDaysToAgree(db, input.sellerId);
+  // 이 쇼핑몰의 기간이 끝난 재가입 제한 기록을 먼저 지운다(정기 실행 연결 전 파기 경로)
+  await purgeExpiredRejoinBlocks(db, now, input.sellerId);
   if (rejoinDays !== null && input.agreedRejoinRetention !== true) return { ok: false, reason: "rejoin_consent_required" };
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.verificationId)) return { ok: false, reason: "verification_invalid" };
 
