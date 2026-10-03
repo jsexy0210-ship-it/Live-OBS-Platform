@@ -391,9 +391,18 @@ test("직원: 로그인하면 본인확인 연결 안내가 뜨고, 나중에 �
   await fillIdentity(page, s.name, s.phone);
   // 직원 연결도 첫 시작 응답을 잃고 다시 누르면 같은 attemptKey로 같은 본인확인에 이어진다
   const linkSent = await dropFirstStart(page, "/api/seller/me/identity/start");
+  // 연결(link)은 서버에 저장되고 응답만 끊긴다: 화면은 본인확인을 버리지 않고 상태를 다시 읽어 완료로 이어 간다
+  let linkCalls = 0;
+  await page.route((u) => u.pathname === "/api/seller/me/identity/link", async (route) => {
+    linkCalls += 1;
+    await route.fetch();
+    return route.abort("connectionreset");
+  });
   await retryAfterDrop(page, linkSent);
   await page.unroute((u) => u.pathname === "/api/seller/me/identity/start");
   await expect(page.getByRole("heading", { name: "계정을 연결했어요" })).toBeVisible();
+  expect(linkCalls).toBe(1);
+  await page.unroute((u) => u.pathname === "/api/seller/me/identity/link");
   await shot(page, "AU-012-done");
   await page.getByRole("button", { name: "계속하기" }).click();
   await expect(page).toHaveURL(/\/seller\/products$/);

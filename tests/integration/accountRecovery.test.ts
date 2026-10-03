@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { POST as loginRoute } from "../../app/api/seller/auth/login/route";
 import { POST as findAccounts } from "../../app/api/seller/find-id/accounts/route";
@@ -208,6 +209,88 @@ describe("직원 본인확인 연결", () => {
 });
 
 describe("직원 연결 상태 GET /api/seller/me/identity", () => {
+  it("본인확인 사용 가능 여부·등록 번호 끝 4자리·연결 여부를 주고, 번호 변경으로 풀리면 relinkRequired, 다시 연결하면 해제된다. 다른 직원·대표자에게는 새지 않는다", async () => {
+    const { seller, owner } = await shop();
+    const other = await shop("OTHER-REP");
+    const status = async (cookie: string) => (await linkStatus(req("/api/seller/me/identity", "GET", undefined, cookie))).json();
+    // 다른 쇼핑몰 직원(번호 01077778888)
+    const otherStaff = await createSellerUser(other.seller.id, "MANAGER");
+    await db.sellerUser.update({ where: { id: otherStaff.id }, data: { phone: "01077778888" } });
+    // 처음 미연결: 다시 연결 필요 아님
+    const fresh = await createSellerUser(seller.id, "MANAGER");
+    await db.sellerUser.update({ where: { id: fresh.id }, data: { phone: "01055556666" } });
+    expect(await status(await sessionOf(fresh.email))).toEqual({ available: true, phoneRegistered: true, registeredPhoneLast4: "6666", linked: false, relinkRequired: false });
+    // 연결 → 대표자가 번호 변경 → 다시 연결 필요 → 다시 연결하면 해제
+    const { staff, cookie } = await linkedStaff(seller.id, "STAFF-CI");
+    expect(await status(cookie)).toMatchObject({ linked: true, relinkRequired: false, registeredPhoneLast4: "6666" });
+    await staffPatch(req(`/api/seller/staff/${staff.id}`, "PATCH", { phone: "01055550000" }, await sessionOf(owner.email)), ctxOf(staff.id));
+    const after = await status(cookie);
+    expect(after).toEqual({ available: true, phoneRegistered: true, registeredPhoneLast4: "0000", linked: false, relinkRequired: true });
+    expect(JSON.stringify(after)).not.toContain("01055550000");
+    expect(JSON.stringify(after)).not.toContain("7777");
+    await db.sellerUser.update({ where: { id: staff.id }, data: { phone: "01055556666" } });
+    const s = await linkStart(post("/api/seller/me/identity/start", { ...IDV_INPUT, name: "직원", phone: "01055556666" }, cookie));
+    const flow = cookieOf(s, "lo_lidv");
+    const { verificationId } = await s.json();
+    await confirmWith(linkConfirm, "/api/seller/me/identity/confirm", verificationId, flow, { ci: "STAFF-CI" });
+    expect((await linkRoute(post("/api/seller/me/identity/link", { verificationId }, `${cookie}; ${flow}`))).status).toBe(200);
+    expect(await status(cookie)).toMatchObject({ linked: true, relinkRequired: false });
+    // 대표자는 403(다른 직원 값을 볼 수 없음)
+    expect((await linkStatus(req("/api/seller/me/identity", "GET", undefined, await sessionOf(owner.email)))).status).toBe(403);
+  });
+});
+
+describe("직원 연결 상태 GET /api/seller/me/identity", () => {
+  it("대표자의 번호 변경이 직원 정보를 읽은 뒤 직원이 연결을 마쳐도, 번호 변경은 연결을 지우면서 relinkRequired를 남긴다(직원 행을 잠그고 다시 읽음)", async () => {
+    const { seller, owner } = await shop();
+    const staff = await createSellerUser(seller.id, "MANAGER");
+    await db.sellerUser.update({ where: { id: staff.id }, data: { phone: "01055556666" } });
+    const { updateStaffProfile } = await import("../../lib/server/sellers/staff");
+    const { requireSeller } = await import("../../lib/server/authz/guards");
+    const ownerCtx = await requireSeller(db, (await sessionOf(owner.email)).replace("lo_seller=", ""));
+    // 번호 변경 트랜잭션이 직원을 처음 읽은 직후, 다른 연결에서 직원의 연결이 끝난다
+    let raced = false;
+    const racing = new Proxy(db, {
+      get(t, p) {
+        const v = Reflect.get(t, p);
+        if (p !== "$transaction") return typeof v === "function" ? v.bind(t) : v;
+        return (fn: (tx: Prisma.TransactionClient) => unknown, o?: unknown) =>
+          t.$transaction(
+            (tx) =>
+              fn(
+                new Proxy(tx, {
+                  get(x, k, r) {
+                    const m = Reflect.get(x, k, r);
+                    if (k !== "sellerUser") return m;
+                    return new Proxy(m, {
+                      get: (d, f) =>
+                        f !== "findFirst"
+                          ? Reflect.get(d, f)
+                          : async (args: unknown) => {
+                              const row = await (d as { findFirst: (a: unknown) => Promise<unknown> }).findFirst(args);
+                              if (!raced) {
+                                raced = true;
+                                await db.sellerUser.update({ where: { id: staff.id }, data: { identityCiHash: hashCi("STAFF-CI"), identityLinkedAt: new Date() } });
+                              }
+                              return row;
+                            },
+                    });
+                  },
+                }) as Prisma.TransactionClient,
+              ) as Promise<unknown>,
+            o as never,
+          );
+      },
+    }) as typeof db;
+    const r = await updateStaffProfile(racing, ownerCtx, { staffUserId: staff.id, phone: "01077778888" });
+    expect(r.ok).toBe(true);
+    const after = await db.sellerUser.findUniqueOrThrow({ where: { id: staff.id } });
+    expect(after.identityCiHash).toBeNull();
+    expect(after.identityUnlinkedAt).not.toBeNull();
+    const status = await (await linkStatus(req("/api/seller/me/identity", "GET", undefined, await sessionOf(staff.email)))).json();
+    expect(status).toMatchObject({ linked: false, relinkRequired: true });
+  });
+
   it("본인확인 사용 가능 여부·등록 번호 끝 4자리·연결 여부를 주고, 번호 변경으로 풀리면 relinkRequired, 다시 연결하면 해제된다. 다른 직원·대표자에게는 새지 않는다", async () => {
     const { seller, owner } = await shop();
     const other = await shop("OTHER-REP");

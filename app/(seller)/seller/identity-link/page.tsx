@@ -71,6 +71,19 @@ export default function IdentityLinkPage() {
       return focus("il-title");
     }
     if (r.status === 503) return setUnavailable(true);
+    // 응답을 놓쳤거나(연결 끊김) 잠깐의 서버 오류면 저장됐을 수 있다: 본인확인을 버리지 않고 연결 상태를 다시 읽는다.
+    // 연결됐으면 완료로, 아니면 같은 본인확인으로 다시 누를 수 있게 둔다(유료 문자 본인확인을 다시 하지 않게)
+    if (r.status === 0 || r.status >= 500) {
+      const st = await api<Status>(BASE, { authRedirect: false });
+      if (st.ok && st.data.linked) {
+        setPending(null);
+        setView("done");
+        return focus("il-title");
+      }
+      setPending(verificationId);
+      setNotice("연결 결과를 확인하지 못했어요. 다시 눌러 주세요");
+      return focus("pa-notice");
+    }
     if (isMismatch(r)) return toMismatch();
     if (r.error === "verification_pending") {
       setPending(verificationId);
