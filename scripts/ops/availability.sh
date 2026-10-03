@@ -39,7 +39,8 @@ guard() {
   ROLLBACK="$1"
   trap interrupted TERM HUP INT
 }
-unguard() { trap - TERM HUP INT; }
+# 가드를 풀면 mark_deploying의 신호 처리(종료 → EXIT trap으로 배포 표시 삭제)로 돌아간다.
+unguard() { exit_on_signals; }
 interrupted() {
   unguard
   if [ -n "$CHILD" ]; then stop_child_group; fi
@@ -91,9 +92,11 @@ abort_reapply() {
   unguard
   die "구성을 다시 맞추지 못했어요($1). availability.sh status로 확인한 뒤 같은 명령을 다시 실행해 주세요."
 }
-# 표시에 맞는 정의를 적용한다. 전환과 같은 상태 재적용이 함께 쓴다: 신호 가드 → setsid 그룹으로 compose → 실패·중단 시 $1 → 가드 해제 → 확인 → 감시 새로 고침.
+# 표시에 맞는 정의를 적용한다. 전환과 같은 상태 재적용이 함께 쓴다: 배포 표시 → 신호 가드 → setsid 그룹으로 compose → 실패·중단 시 $1 → 가드 해제 → 확인 → 감시 새로 고침.
+# 앱·프록시를 다시 만드는 동안 감시가 장애를 열지 않게 배포 표시를 두고, 성공·실패·중단 어느 쪽으로 끝나도 스크립트 종료 때(EXIT trap) 지운다.
 apply_profile() {
   local on_fail="$1" want="$2"
+  mark_deploying "availability $want"
   guard "$on_fail"
   if [ "$want" = on ]; then touch "$AVAIL_MARK"; else rm -f "$AVAIL_MARK"; fi
   run_compose up -d --no-build --wait --remove-orphans || "$on_fail" "compose 실패"

@@ -101,6 +101,8 @@ deploy_mark_clear() { rm -f "$DEPLOY_MARK"; }
 # 스크립트가 SIGKILL 등으로 죽으면 갱신도 멈춰(다음 주기에 부모가 없음을 확인) 표시가 15분 뒤 오래된 것으로 처리된다.
 # 갱신은 최대 OBS_DEPLOY_MARK_MAX_S(기본 1시간)까지만 한다. 스크립트가 멈춰 끝나지 않아도 그 뒤 15분이 지나면
 # 표시가 오래된 것으로 처리돼 감시가 다시 장애를 판단한다(스크립트는 죽이지 않고 로그만 남긴다).
+# TERM·INT·HUP로 끝날 때도 EXIT trap이 돌게 한다(기본 동작으로 죽으면 EXIT trap이 돌지 않아 표시가 15분 남음).
+exit_on_signals() { trap 'exit 143' TERM; trap 'exit 130' INT; trap 'exit 129' HUP; }
 mark_deploying() {
   # 순서: 설정 검사 → 정리 trap 설치 → 표시 생성 → 갱신 시작. 표시를 만든 뒤에 실패해 표시만 남는 일이 없게 한다.
   local every="${OBS_DEPLOY_MARK_REFRESH_S:-60}" max="${OBS_DEPLOY_MARK_MAX_S:-3600}" parent=$$
@@ -111,10 +113,7 @@ mark_deploying() {
   # 루프의 자식(sleep)을 먼저 적어 두고 루프 → 자식 순으로 끝낸다(루프를 먼저 죽이면 sleep이 고아로 남음).
   # 루프가 먼저 끝났으면(상한·부모 확인) 그 PID를 다른 프로세스가 다시 쓸 수 있으므로, 아직 이 셸의 자식인지 확인한 뒤에만 신호를 보낸다.
   trap 'if [ -n "$DEPLOY_MARK_KEEPER" ] && [ "$(ps -o ppid= -p "$DEPLOY_MARK_KEEPER" 2>/dev/null | tr -d " ")" = "$$" ]; then _kids="$(pgrep -P "$DEPLOY_MARK_KEEPER" || true)"; kill "$DEPLOY_MARK_KEEPER" 2>/dev/null || true; [ -z "$_kids" ] || kill $_kids 2>/dev/null || true; fi; DEPLOY_MARK_KEEPER=""; deploy_mark_clear' EXIT
-  # TERM·INT·HUP로 끝날 때도 EXIT trap이 돌게 한다(기본 동작으로 죽으면 EXIT trap이 돌지 않아 표시가 15분 남음).
-  trap 'exit 143' TERM
-  trap 'exit 130' INT
-  trap 'exit 129' HUP
+  exit_on_signals
   deploy_mark_set "$1"
   (
     start=$SECONDS
