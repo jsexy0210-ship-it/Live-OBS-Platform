@@ -12,6 +12,9 @@ import { requireSellerPermission, type TenantContext } from "../tenant/context";
 
 type Meta = { ip?: string | null; userAgent?: string | null; now?: Date };
 
+export { STAFF_NAME_MAX, cleanStaffName } from "./staffName";
+import { cleanStaffName } from "./staffName";
+
 const STAFF_FIELDS = { id: true, email: true, name: true, phone: true, identityLinkedAt: true, permissions: true, status: true, lastLoginAt: true, createdAt: true } as const;
 
 export type StaffFailure = "invalid_permissions" | "weak_password" | "email_taken" | "bad_request" | "invalid_phone";
@@ -56,7 +59,7 @@ export async function createStaff(
   if (!permissions) return { ok: false, reason: "invalid_permissions" };
   if (input.password.length < MIN_PASSWORD_LENGTH) return { ok: false, reason: "weak_password" };
   const email = normalizeEmail(input.email);
-  const name = input.name.trim();
+  const name = cleanStaffName(input.name);
   if (!email.includes("@") || !name) return { ok: false, reason: "bad_request" };
   const phone = normalizeStaffPhone(input.phone);
   if (phone === false) return { ok: false, reason: "invalid_phone" };
@@ -132,12 +135,13 @@ export async function updateStaffProfile(
   meta: Meta = {},
 ): Promise<StaffResult<{ name: string; phone: string | null; identityLinked: boolean }>> {
   requireSellerPermission(ctx, "STAFF_MANAGE");
-  if (input.name !== undefined && (typeof input.name !== "string" || !input.name.trim() || input.name.trim().length > 50)) return { ok: false, reason: "bad_request" };
+  const cleanName = input.name === undefined ? undefined : cleanStaffName(input.name);
+  if (cleanName === null) return { ok: false, reason: "bad_request" };
   const phone = input.phone === undefined ? undefined : normalizeStaffPhone(input.phone);
   if (phone === false) return { ok: false, reason: "invalid_phone" };
   const value = await db.$transaction(async (tx) => {
     const staff = await loadStaff(tx, ctx, input.staffUserId);
-    const name = typeof input.name === "string" ? input.name.trim() : staff.name;
+    const name = cleanName ?? staff.name;
     const nextPhone = phone === undefined ? staff.phone : phone;
     const phoneChanged = nextPhone !== staff.phone;
     const unlink = phoneChanged && staff.identityCiHash !== null;

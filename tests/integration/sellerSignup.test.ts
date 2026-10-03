@@ -77,6 +77,39 @@ async function adminCtx(role: "SUPER_ADMIN" | "CS" | "READ_ONLY" = "SUPER_ADMIN"
   return (await resolveAdminSession(db, s.token))!;
 }
 
+describe("같은 신청 동시 재시도", () => {
+  it("같은 본문을 동시에 두 번 보내 둘 다 점검을 지나도 둘 다 성공(하나는 resumed)하고 판매자는 1명이다. 본문이 다르면 늦은 쪽은 거부", async () => {
+    for (const changed of [false, true]) {
+      await resetDb();
+      // 두 요청이 모두 점검(국세청 조회)에 들어온 뒤에야 진행하게 붙잡는다(둘 다 쓰지 않은 본인확인을 읽은 상태)
+      let arrived = 0;
+      let open!: () => void;
+      const both = new Promise<void>((r) => (open = r));
+      const inner = new FakeBusinessStatusProvider();
+      const business = {
+        name: inner.name,
+        verify: async (q: Parameters<FakeBusinessStatusProvider["verify"]>[0]) => {
+          if (++arrived === 2) open();
+          await both;
+          return inner.verify(q);
+        },
+      };
+      const f = form(await verified("CI-RACE"));
+      const second = changed ? { ...f, password: "other-pass-1" } : f;
+      const [a, b] = await Promise.all([applyForSeller(db, { business, mailOrder }, f), applyForSeller(db, { business, mailOrder }, second)]);
+      if (changed) {
+        expect([a, b].filter((r) => r.ok)).toHaveLength(1);
+        expect([a, b].find((r) => !r.ok)).toEqual({ ok: false, reason: "verification_invalid" });
+      } else {
+        expect([a.ok, b.ok]).toEqual([true, true]);
+        expect([a, b].map((r) => r.ok && r.resumed).sort()).toEqual([false, true]);
+      }
+      expect(await db.seller.count()).toBe(1);
+      expect(await db.sellerUser.count()).toBe(1);
+    }
+  });
+});
+
 describe("자동 점검 통과 → 자동 승인", () => {
   it("모두 통과하면 바로 운영 중, 체험하기 = 승인 + 14일, 기본 등급 5개, 대표자 계정으로 로그인된다", async () => {
     const business = new FakeBusinessStatusProvider();

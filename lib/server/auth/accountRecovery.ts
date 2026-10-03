@@ -1,5 +1,5 @@
 import type { IdentityVerification, Prisma, PrismaClient } from "@prisma/client";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import { writeAudit } from "../audit/log";
 import { dbNow } from "../billing/subscription";
 import { keyedOwnerToken, parseAttemptKey, reuseKeyedAttempt, scopedAttemptKeyHash } from "../identity/attempt";
@@ -7,7 +7,7 @@ import type { IdentityProvider } from "../identity/provider";
 import { completeIdentityVerification, parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
 import { GRANT_TTL_MS } from "./passwordReset";
 import { recoveryLimitReached } from "./recoveryLimit";
-import { generateToken, hashToken } from "./token";
+import { hashToken } from "./token";
 
 // 파트너스 아이디 찾기·계정 고르기 비밀번호 찾기(AU-011·AU-003, 2026-10-03 대표님 결정). 쇼핑몰을 몰라도 본인 휴대폰 본인확인으로 시작한다.
 // 1) start: 본인확인 시작(같은 휴대폰 하루 10회·같은 IP 하루 30회, 비밀번호 찾기와 합산) → resend·confirm(공통 단계)
@@ -133,8 +133,9 @@ export const RECOVERY_RESET_RETRY_MS = 10 * 60_000;
 
 // 계정 고르기 비밀번호 찾기: 목록에서 고른 계정 하나에 재설정 권한. 고른 계정이 목록에 없으면(다른 사람 계정·종류 다름·연결 풀림) 거부.
 // 본인확인은 권한을 줄 때 소진한다(같은 확인으로 두 계정을 바꾸지 못함).
-// 응답을 잃은 재시도: 시작한 브라우저(쿠키)가 같은 본인확인·같은 계정으로 소진 뒤 10분 안에 다시 요청하면 새 권한을 주고, 그 본인확인으로
-// 준 이전 권한은 무효로 바꾼다(회전, 원래 토큰은 저장하지 않음). 이미 그 권한으로 비밀번호를 바꿨거나 다른 계정·기간이 지난 요청은 거부한다.
+// 응답을 잃은 재시도: 시작한 브라우저(쿠키)가 같은 본인확인·같은 계정으로 소진 뒤 10분 안에 다시 요청하면 그 본인확인으로 준 권한의
+// 같은 토큰을 다시 만들어 돌려준다(권한 행의 nonce로 재생성, 원문은 저장하지 않음). 그래서 동시에 겹친 재시도도 같은 토큰을 받고,
+// 다른 복구 흐름의 권한은 건드리지 않는다. 그 권한을 이미 썼거나, 다른 계정·기간이 지난 요청은 거부한다.
 export async function issueRecoveryResetGrant(
   db: PrismaClient,
   provider: IdentityProvider,
@@ -169,28 +170,30 @@ export async function issueRecoveryResetGrant(
   };
   const user = (await matchingAccounts(db, ciHash, input.accountType)).find((u) => u.id === input.accountId);
   if (!user) return fail("account_not_matched");
-  const grantToken = generateToken();
-  const expiresAt = new Date(now.getTime() + GRANT_TTL_MS);
-  const issued = await db.$transaction(async (tx) => {
-    // 같은 본인확인의 권한 발급을 한 줄로 세운다(처음 발급·재시도가 겹쳐도 하나씩)
+  const issued = await db.$transaction(async (tx): Promise<{ grantToken: string; expiresAt: Date } | string | null> => {
+    // 같은 본인확인의 권한 발급을 한 줄로 세운다(처음 발급·재시도가 겹쳐도 하나씩, 늦은 쪽은 먼저 만든 권한을 다시 받음)
     const [cur] = await tx.$queryRaw<{ consumedAt: Date | null; subjectId: string | null }[]>`
       SELECT "consumedAt", "subjectId" FROM "IdentityVerification" WHERE "id" = ${verification.id}::uuid FOR UPDATE`;
     if (!cur) return null;
-    let rotated = false;
-    if (!cur.consumedAt) {
-      if (!done.ok) return null;
-      await tx.identityVerification.update({ where: { id: verification.id }, data: { consumedAt: now, subjectId: user.id } });
-    } else {
+    if (cur.consumedAt) {
       if (cur.subjectId !== user.id) return "account_not_matched";
       if (now.getTime() - cur.consumedAt.getTime() > RECOVERY_RESET_RETRY_MS) return "retry_window_passed";
-      // 이 본인확인으로 준 권한(소진 뒤 이 계정·이 CI로 만든 것)
-      const prior = { sellerUserId: user.id, ciHash, createdAt: { gte: cur.consumedAt } };
-      if (await tx.passwordResetGrant.count({ where: { ...prior, usedAt: { not: null } } })) return "grant_already_used";
-      await tx.passwordResetGrant.updateMany({ where: { ...prior, usedAt: null, expiresAt: { gt: now } }, data: { expiresAt: now } });
-      rotated = true;
+      const [prior] = await tx.$queryRaw<{ nonce: string | null; usedAt: Date | null; expiresAt: Date }[]>`
+        SELECT "nonce", "usedAt", "expiresAt" FROM "PasswordResetGrant"
+        WHERE "verificationId" = ${verification.id}::uuid AND "sellerUserId" = ${user.id}::uuid
+        ORDER BY "createdAt" DESC LIMIT 1 FOR UPDATE`;
+      if (!prior?.nonce) return "verification_already_used";
+      if (prior.usedAt) return "grant_already_used";
+      if (prior.expiresAt <= now) return "retry_window_passed";
+      return { grantToken: grantTokenOf(prior.nonce), expiresAt: prior.expiresAt };
     }
+    if (!done.ok) return null;
+    await tx.identityVerification.update({ where: { id: verification.id }, data: { consumedAt: now, subjectId: user.id } });
+    const nonce = randomBytes(32).toString("base64url");
+    const grantToken = grantTokenOf(nonce);
+    const expiresAt = new Date(now.getTime() + GRANT_TTL_MS);
     await tx.passwordResetGrant.create({
-      data: { sellerId: user.sellerId, sellerUserId: user.id, tokenHash: hashToken(grantToken), ciHash, expiresAt, createdAt: now },
+      data: { sellerId: user.sellerId, sellerUserId: user.id, tokenHash: hashToken(grantToken), ciHash, expiresAt, createdAt: now, verificationId: verification.id, nonce },
     });
     await writeAudit(tx, {
       actorType: "SELLER_USER",
@@ -199,14 +202,21 @@ export async function issueRecoveryResetGrant(
       action: "auth.seller.password_reset.granted",
       targetType: "SellerUser",
       targetId: user.id,
-      after: { via: "account_recovery", accountType: input.accountType, ...(rotated ? { rotated: true } : {}) },
+      after: { via: "account_recovery", accountType: input.accountType },
       ip: meta.ip,
       userAgent: meta.userAgent,
     });
-    return true;
+    return { grantToken, expiresAt };
   });
-  if (issued !== true) return fail(issued ?? "verification_already_used");
-  return { ok: true, grantToken, expiresAt };
+  if (!issued || typeof issued === "string") return fail(issued ?? "verification_already_used");
+  return { ok: true, ...issued };
+}
+
+// 아이디 찾기 재설정 권한 토큰: 서버 비밀키(IDENTITY_HASH_KEY)로 만든 HMAC(용도 구분 + nonce). 같은 nonce면 같은 토큰이라 재시도에 다시 만든다.
+function grantTokenOf(nonce: string): string {
+  const key = process.env.IDENTITY_HASH_KEY;
+  if (!key || key.length < 32) throw new Error("IDENTITY_HASH_KEY가 없거나 너무 짧아요(32자 이상).");
+  return createHmac("sha256", key).update(`password_reset_grant\0${nonce}`).digest("base64url");
 }
 
 // 아이디 찾기(ACCOUNT_RECOVERY)·직원 연결(STAFF_LINK) 본인확인 기록 비식별(MASTER 2026-10-04, 가입 기록과 같은 기준).
