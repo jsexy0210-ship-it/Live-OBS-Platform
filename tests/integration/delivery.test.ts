@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { POST as deliverRoute } from "../../app/api/seller/orders/[orderId]/deliver/route";
 import { GET as orderPolicyGet, PUT as orderPolicyPut } from "../../app/api/seller/order-policy/route";
@@ -175,6 +176,54 @@ describe("자동 배송 완료·자동 구매 확정", () => {
     await deliveredAgo(id, 30 * DAY);
     await db.sellerOrderPolicy.create({ data: { sellerId: s.seller.id, autoConfirmEnabled: false } });
     expect(await autoConfirmPurchases(db)).toEqual({ done: [], failed: [] });
+  });
+});
+
+// 후보를 고른 뒤, 첫 주문 트랜잭션이 시작되기 직전에 change를 실행하는 db(판매자가 그사이 설정을 바꾼 상황)
+function changeBeforeFirstTransaction(change: () => Promise<unknown>): typeof db {
+  let first = true;
+  return new Proxy(db, {
+    get(target, prop) {
+      if (prop === "$transaction") {
+        return async (fn: (tx: Prisma.TransactionClient) => Promise<unknown>) => {
+          if (first) {
+            first = false;
+            await change();
+          }
+          return target.$transaction(fn);
+        };
+      }
+      const v = Reflect.get(target, prop);
+      return typeof v === "function" ? v.bind(target) : v;
+    },
+  });
+}
+
+describe("자동 처리: 후보를 고른 뒤 바뀐 설정을 따른다", () => {
+  it("자동 배송 완료: 후보를 고른 뒤 설정을 끄거나 기간을 늘리면 처리하지 않는다", async () => {
+    for (const change of [{ autoDeliverEnabled: false }, { autoDeliverDays: 14 }]) {
+      await resetDb();
+      const s = await shop();
+      const id = await s.shipped();
+      await shippedAgo(id, 8 * DAY);
+      const changed = changeBeforeFirstTransaction(() => db.sellerOrderPolicy.create({ data: { sellerId: s.seller.id, ...change } }));
+      expect(await autoCompleteDeliveries(changed), JSON.stringify(change)).toEqual({ done: [], failed: [] });
+      expect((await db.shipment.findUniqueOrThrow({ where: { orderId: id } })).status).toBe("IN_TRANSIT");
+      expect(await earns(id)).toHaveLength(0);
+    }
+  });
+
+  it("자동 구매 확정: 후보를 고른 뒤 설정을 끄거나 기간을 늘리면 처리하지 않는다", async () => {
+    for (const change of [{ autoConfirmEnabled: false }, { autoConfirmDays: 14 }]) {
+      await resetDb();
+      const s = await shop();
+      const id = await s.shipped();
+      await completeDelivery(db, s.ctx, id);
+      await deliveredAgo(id, 8 * DAY);
+      const changed = changeBeforeFirstTransaction(() => db.sellerOrderPolicy.create({ data: { sellerId: s.seller.id, ...change } }));
+      expect(await autoConfirmPurchases(changed), JSON.stringify(change)).toEqual({ done: [], failed: [] });
+      expect((await db.order.findUniqueOrThrow({ where: { id } })).purchaseConfirmedAt).toBeNull();
+    }
   });
 });
 
