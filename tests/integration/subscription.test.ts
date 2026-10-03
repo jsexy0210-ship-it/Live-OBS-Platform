@@ -569,7 +569,7 @@ describe("잠금 중 허용 범위", () => {
     expect((await orderRoute(new Request(`http://localhost:3000/api/seller/orders/${order.id}`, { headers }), params)).status).toBe(200);
     const version = (await db.seller.findUniqueOrThrow({ where: { id: seller.id } })).liveVersion;
     const refund = await refundRoute(
-      new Request(`http://localhost:3000/api/seller/orders/${order.id}/refund`, { method: "POST", headers, body: JSON.stringify({ reason: "요청", expectedVersion: version }) }),
+      new Request(`http://localhost:3000/api/seller/orders/${order.id}/refund`, { method: "POST", headers, body: JSON.stringify({ reason: "요청", expectedVersion: version, expectedRefundAmount: 5000 }) }),
       params,
     );
     expect(refund.status).toBe(200);

@@ -9,6 +9,8 @@ import { prisma } from "../../lib/server/db";
 import { loginBuyer, loginSeller } from "../../lib/server/auth/login";
 import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
 import { createOrder } from "../../lib/server/orders/create";
+import { refundOrder } from "../../lib/server/queue/service";
+import type { TenantContext } from "../../lib/server/tenant/context";
 import { PASSWORD, createLoginBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
 beforeEach(resetDb);
@@ -58,13 +60,13 @@ describe("구매자 탈퇴", () => {
     }
     // CI 해시는 비운다
     expect(m.ciHash).toBe("");
-    // 적립금 잔액은 건드리지 않는다(대표님 결정 대기)
-    expect((await db.rewardBalance.findUniqueOrThrow({ where: { sellerId_buyerMemberId: { sellerId: s.seller.id, buyerMemberId: s.buyer.id } } })).balance).toBe(500);
-    expect(await db.rewardLedger.count({ where: { buyerMemberId: s.buyer.id } })).toBe(0);
+    // 남은 적립금은 소멸 원장을 남기고 0이 된다
+    expect((await db.rewardBalance.findUniqueOrThrow({ where: { sellerId_buyerMemberId: { sellerId: s.seller.id, buyerMemberId: s.buyer.id } } })).balance).toBe(0);
+    expect(await db.rewardLedger.findMany({ where: { buyerMemberId: s.buyer.id } })).toMatchObject([{ type: "EXPIRE", amount: -500, status: "SUCCEEDED", testMode: false, orderId: null }]);
     expect(await db.buyerAddress.count({ where: { buyerMemberId: s.buyer.id } })).toBe(0);
     expect(await db.buyerSession.count({ where: { buyerMemberId: s.buyer.id, revokedAt: null } })).toBe(0);
     expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.withdraw", actorId: s.buyer.id } })).toMatchObject({
-      after: { status: "WITHDRAWN", deletedAddresses: 1, revokedSessions: 1 },
+      after: { status: "WITHDRAWN", deletedAddresses: 1, revokedSessions: 1, expiredPoints: 500, closedPendingRewards: 0 },
     });
     // 주문은 회원 id로 남는다
     expect(await db.order.count({ where: { buyerMemberId: s.buyer.id } })).toBe(2);
@@ -78,6 +80,61 @@ describe("구매자 탈퇴", () => {
     // 같은 CI·휴대폰·아이디·닉네임으로 다시 가입할 수 있다(부분 유니크 인덱스는 탈퇴 회원을 보지 않음)
     const { id: _id, createdAt: _c, deletedAt: _d, status: _st, ...again } = s.buyer;
     await expect(db.buyerMember.create({ data: again })).resolves.toMatchObject({ status: "ACTIVE" });
+  });
+
+  it("탈퇴하면 처리 전 적립 원장(지급·회수 대기)은 실패(member_withdrawn)로 닫히고, 잔액이 없으면 소멸 원장을 남기지 않으며, 같은 사람이 다시 가입해도 적립금은 0", async () => {
+    const s = await shop();
+    const done = await s.order("PAID", { purchaseConfirmedAt: new Date() });
+    await db.shipment.create({ data: { sellerId: s.seller.id, orderId: done.id, courier: "CJ", trackingNumber: "123456789012", status: "DELIVERED", shippedAt: new Date(), deliveredAt: new Date() } });
+    const pending = await db.rewardLedger.create({
+      data: { sellerId: s.seller.id, buyerMemberId: s.buyer.id, orderId: done.id, type: "EARN", amount: 300, status: "PENDING", testMode: false, idempotencyKey: `earn:${done.id}` },
+    });
+    expect((await s.withdraw(PASSWORD)).status).toBe(200);
+    expect(await db.rewardLedger.findUniqueOrThrow({ where: { id: pending.id } })).toMatchObject({ status: "FAILED", failureReason: "member_withdrawn", processedAt: expect.any(Date) });
+    expect(await db.rewardLedger.count({ where: { buyerMemberId: s.buyer.id, type: "EXPIRE" } })).toBe(0);
+    expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.withdraw", actorId: s.buyer.id } })).toMatchObject({ after: { expiredPoints: 0, closedPendingRewards: 1 } });
+    const { id: _id, createdAt: _c, deletedAt: _d, status: _st, ...again } = s.buyer;
+    const back = await db.buyerMember.create({ data: again });
+    expect(await db.rewardBalance.findUnique({ where: { sellerId_buyerMemberId: { sellerId: s.seller.id, buyerMemberId: back.id } } })).toBeNull();
+    expect(await db.rewardLedger.count({ where: { buyerMemberId: back.id } })).toBe(0);
+  });
+
+  // 배송 완료한 결제 완료 주문 + 지급 대기 적립(EARN 300)
+  async function deliveredWithEarn(s: Awaited<ReturnType<typeof shop>>) {
+    const o = await s.order("PAID", { purchaseConfirmedAt: null });
+    await db.shipment.create({ data: { sellerId: s.seller.id, orderId: o.id, courier: "CJ", trackingNumber: "123456789012", status: "DELIVERED", shippedAt: new Date(), deliveredAt: new Date() } });
+    await db.rewardLedger.create({ data: { sellerId: s.seller.id, buyerMemberId: s.buyer.id, orderId: o.id, type: "EARN", amount: 300, status: "PENDING", testMode: false, idempotencyKey: `earn:${o.id}` } });
+    const owner = await createSellerUser(s.seller.id, "OWNER");
+    const ctx: TenantContext = { sellerId: s.seller.id, actorType: "SELLER_USER", actorId: owner.id, isOwner: true, permissions: [], readOnly: false };
+    const refund = async () =>
+      refundOrder(db, ctx, o.id, { reason: "불량", expectedLiveVersion: (await db.seller.findUniqueOrThrow({ where: { id: s.seller.id } })).liveVersion, fault: "SELLER" });
+    return { order: o, refund };
+  }
+
+  it("탈퇴한 회원의 주문을 나중에 환불해도 회수 원장은 처리 대기가 아니라 실패(member_withdrawn)로 남는다", async () => {
+    const s = await shop();
+    const { order, refund } = await deliveredWithEarn(s);
+    expect((await s.withdraw(PASSWORD)).status).toBe(200);
+    expect(await refund()).toMatchObject({ ok: true, value: { rewardRevoke: "revoked" } });
+    expect(await db.rewardLedger.findUniqueOrThrow({ where: { sellerId_idempotencyKey: { sellerId: s.seller.id, idempotencyKey: `revoke:${order.id}` } } })).toMatchObject({
+      status: "FAILED",
+      failureReason: "member_withdrawn",
+    });
+    expect(await db.rewardLedger.count({ where: { buyerMemberId: s.buyer.id, status: "PENDING" } })).toBe(0);
+  });
+
+  it("탈퇴와 환불이 동시에 와도 처리 대기 원장이 남지 않고 잔액은 0", async () => {
+    for (let i = 0; i < 5; i++) {
+      await resetDb();
+      const s = await shop();
+      await db.rewardBalance.create({ data: { sellerId: s.seller.id, buyerMemberId: s.buyer.id, balance: 300 } });
+      const { refund } = await deliveredWithEarn(s);
+      const [w, r] = await Promise.all([s.withdraw(PASSWORD), refund()]);
+      expect(w.status).toBe(200);
+      expect(r.ok).toBe(true);
+      expect(await db.rewardLedger.count({ where: { buyerMemberId: s.buyer.id, status: "PENDING" } })).toBe(0);
+      expect((await db.rewardBalance.findUniqueOrThrow({ where: { sellerId_buyerMemberId: { sellerId: s.seller.id, buyerMemberId: s.buyer.id } } })).balance).toBe(0);
+    }
   });
 
   it("비밀번호가 틀리면 구매자 로그인 실패와 같은 401과 문구, 아무것도 바뀌지 않고 실패를 기록한다", async () => {

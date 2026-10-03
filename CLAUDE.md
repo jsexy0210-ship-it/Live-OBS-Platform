@@ -12,7 +12,7 @@
 - 기획·작업지시·검수 기준 저장소: `jsexy0210-ship-it/Live-OBS-Platform` (유일)
 - 참조 전용: `jsexy0210-ship-it/obs-order-queue-cafe24-webhook` (망고TCG). 수정 금지. 분석: `docs/REFERENCE_MANGOTCG.md`
 - 시간 표기: 모든 문서·보고는 KST 기준.
-- 호칭: 대표님. 보고는 한국어로 결론부터 간결하게.
+- 호칭: 대표님. 보고는 한국어로 결론부터 간결하게, 「~했습니다」 합니다체로 쓴다(2026-10-03 대표님 지시). 화면 문구는 그대로 토스식 해요체.
 - 상태 정본: `PROJECT_STATUS.md`, `HANDOFF.md`, `docs/PRODUCT_SCOPE.md`
 - 디자인 요청문: `docs/DESIGN_PROMPT.md` · 정보구조(IA): `docs/IA.md`
 

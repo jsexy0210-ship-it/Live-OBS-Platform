@@ -4,7 +4,8 @@ import { notifySellerChanged } from "../realtime/notify";
 import { lockSellerOrders, maybeRestrict, sellerEventClock } from "../orders/overdue";
 import { getShippingPolicy } from "../orders/shipping";
 import { earnQuote } from "../rewards/earn";
-import { requireSellerPermission, type TenantContext } from "../tenant/context";
+import { createPendingRewardLedger } from "../rewards/ledger";
+import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 import { restoreOrderStock } from "../products/stock";
 import { checkTransition, isCompletePermutation, isValidTimer, type QueueAction, type QueueRejection } from "./rules";
 
@@ -362,18 +363,15 @@ export function rewardBase(items: { unitPrice: number; quantity: number }[]): nu
 
 // 적립금 지급 대기(EARN) 기록. 실지급 스위치가 꺼져 있으면 testMode. 지급·잔액 반영은 다음 단계.
 async function createEarn(tx: Tx, e: { sellerId: string; buyerMemberId: string; orderId: string; amount: number; testMode: boolean; now: Date }) {
-  await tx.rewardLedger.create({
-    data: {
-      sellerId: e.sellerId,
-      buyerMemberId: e.buyerMemberId,
-      orderId: e.orderId,
-      type: "EARN",
-      amount: e.amount,
-      status: "PENDING",
-      testMode: e.testMode,
-      idempotencyKey: `earn:${e.orderId}`,
-      createdAt: e.now,
-    },
+  await createPendingRewardLedger(tx, {
+    sellerId: e.sellerId,
+    buyerMemberId: e.buyerMemberId,
+    orderId: e.orderId,
+    type: "EARN",
+    amount: e.amount,
+    testMode: e.testMode,
+    idempotencyKey: `earn:${e.orderId}`,
+    createdAt: e.now,
   });
 }
 
@@ -488,6 +486,37 @@ export function computeRefund(input: {
   return { refundAmount: Math.max(0, gross - returnFeeDeducted), returnFeeDeducted };
 }
 
+// 개봉을 시작했거나 마친 주문대기 품목(환불·재고 복구에서 「개봉한 상품」)
+const isOpened = (q: Pick<QueueItem, "openingStartedAt" | "status"> | undefined) =>
+  !!q && (q.openingStartedAt !== null || q.status === "OPENING" || q.status === "DONE");
+
+export type RefundPreview = {
+  shipped: boolean;
+  openedItems: { orderItemId: string; amount: number }[];
+  // 사유 주체별 환불액. blocked: 이 사유 주체로는 환불할 수 없다(refundOrder가 opened_items_unshipped로 막는다)
+  byFault: Record<RefundFault, { refundAmount: number; returnFeeDeducted: number; blocked: boolean }>;
+};
+
+// 환불 미리보기(계산만, 상태 변경 없음). refundOrder와 같은 개봉 판정·반품 배송비·computeRefund를 쓴다.
+// 결제 완료 주문만 돌려주고, 그 밖에는 null.
+export async function previewRefund(db: PrismaClient, ctx: TenantContext, orderId: string): Promise<RefundPreview | null> {
+  requireSellerRead(ctx, "ORDER_SHIPPING");
+  const order = await db.order.findFirst({
+    where: { id: orderId, sellerId: ctx.sellerId, status: "PAID" },
+    include: { items: true, queueItems: true, shipment: { select: { status: true } } },
+  });
+  if (!order) return null;
+  const shipped = order.shipment !== null;
+  const items = order.items.map((i) => ({ id: i.id, unitPrice: i.unitPrice, quantity: i.quantity, opened: isOpened(order.queueItems.find((x) => x.orderItemId === i.id)) }));
+  const returnFee = order.returnFeeSnapshot ?? (await getShippingPolicy(db, ctx.sellerId)).returnFee;
+  const byFault = {} as RefundPreview["byFault"];
+  for (const fault of ["BUYER", "SELLER"] as const) {
+    const r = computeRefund({ items, shippingFee: order.shippingFee, totalAmount: order.totalAmount, shipped, fault, returnFee });
+    byFault[fault] = { ...r, blocked: fault === "BUYER" && !shipped && items.some((i) => i.opened) };
+  }
+  return { shipped, openedItems: items.filter((i) => i.opened).map((i) => ({ orderItemId: i.id, amount: i.unitPrice * i.quantity })), byFault };
+}
+
 // 결제 완료 주문 환불: 결제 완료 → 환불. 주문 품목마다
 // - 연결된 주문대기가 「대기」·「개봉 중」이면 자동 취소
 // - 개봉 전(대기였거나 개봉 전에 취소됨)이면 재고 복구, 개봉을 시작했거나 완료했으면 복구 안 함
@@ -498,7 +527,7 @@ export async function refundOrder(
   db: PrismaClient,
   ctx: TenantContext,
   orderId: string,
-  opts: { reason?: string; expectedLiveVersion: number; confirmOpened?: boolean; fault?: RefundFault; now?: Date },
+  opts: { reason?: string; expectedLiveVersion: number; confirmOpened?: boolean; fault?: RefundFault; expectedRefundAmount?: number; now?: Date },
 ): Promise<QueueResult<RefundOutcome>> {
   requireSellerPermission(ctx, "ORDER_SHIPPING");
   if (!opts.reason?.trim()) return { ok: false, reason: "reason_required" };
@@ -521,8 +550,6 @@ export async function refundOrder(
     const order = await tx.order.findUniqueOrThrow({ where: { id: orderId }, include: { items: true, queueItems: true, shipment: { select: { status: true } } } });
     // 발송한 주문은 상품이 구매자에게 가 있으므로 재고를 되돌리지 않는다(회수는 판매자가 MANUAL로). 배송 기록은 그대로 둔다.
     const shippedBeforeRefund = order.shipment !== null;
-    const isOpened = (q: (typeof order.queueItems)[number] | undefined) =>
-      !!q && (q.openingStartedAt !== null || q.status === "OPENING" || q.status === "DONE");
     const openedItemCount = order.items.filter((i) => isOpened(order.queueItems.find((x) => x.orderItemId === i.id))).length;
     // 트랜잭션을 되돌리므로 주문 상태도 결제 완료로 남는다
     if (openedItemCount > 0 && opts.confirmOpened !== true) throw new Rejected("opened_items_present");
@@ -541,6 +568,8 @@ export async function refundOrder(
       fault: refundFault,
       returnFee,
     });
+    // 화면에서 확인받은 금액과 다르면(그사이 발송·개봉 등) 아무것도 바꾸지 않고 되돌린다
+    if (opts.expectedRefundAmount !== undefined && opts.expectedRefundAmount !== refundAmount) throw new Rejected("refund_amount_changed");
     await tx.order.update({ where: { id: orderId }, data: { refundAmount, refundFault, returnFeeDeducted } });
     await tx.orderStatusHistory.create({
       data: { sellerId: ctx.sellerId, orderId, fromStatus: "PAID", toStatus: "REFUNDED", actorType: ctx.actorType, actorId: ctx.actorId, reason, createdAt: now },
@@ -582,18 +611,16 @@ export async function refundOrder(
     const policy = earn ? await tx.rewardPolicy.findUnique({ where: { sellerId: ctx.sellerId }, select: { revokeMode: true } }) : null;
     const rewardRevoke: RewardRevokeOutcome = !earn ? "none" : policy?.revokeMode === "MANUAL" ? "manual_review" : "revoked";
     if (earn && rewardRevoke === "revoked") {
-      await tx.rewardLedger.create({
-        data: {
-          sellerId: ctx.sellerId,
-          buyerMemberId: earn.buyerMemberId,
-          orderId,
-          type: "REVOKE",
-          amount: -earn.amount,
-          status: "PENDING",
-          testMode: earn.testMode,
-          idempotencyKey: `revoke:${orderId}`,
-          createdAt: now,
-        },
+      // 탈퇴한 회원이면 FAILED(member_withdrawn)로 남는다(잔액은 탈퇴 때 이미 소멸)
+      await createPendingRewardLedger(tx, {
+        sellerId: ctx.sellerId,
+        buyerMemberId: earn.buyerMemberId,
+        orderId,
+        type: "REVOKE",
+        amount: -earn.amount,
+        testMode: earn.testMode,
+        idempotencyKey: `revoke:${orderId}`,
+        createdAt: now,
       });
     }
     await writeAudit(tx, {
