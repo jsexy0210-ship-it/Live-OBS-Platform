@@ -245,3 +245,26 @@ test("가입을 요청하는 동안에는 계정 칸을 고칠 수 없고, 완�
   release();
   await expect(page.getByText("첫 주문부터 적립돼요. 방송에서는 보낸닉네임 닉네임으로 보여요.")).toBeVisible();
 });
+
+test("방송 닉네임은 서버처럼 글자(코드포인트) 기준으로 20자까지 잘리지 않고 보낸다", async ({ page }) => {
+  await mockApi(page);
+  await page.goto(`/shop/${SLUG}/signup`);
+  await toVerified(page);
+  // 이모지 20개 = 서버 기준 20자, UTF-16으로는 40단위
+  await fillAccount(page, "x4", "🎮".repeat(20));
+  await expect(page.getByText("닉네임은 20자까지 쓸 수 있어요")).toHaveCount(0);
+  const req = page.waitForRequest((r) => r.url().endsWith(API) && r.method() === "POST");
+  await page.getByRole("button", { name: "가입하기" }).click();
+  expect((await req).postDataJSON().broadcastNickname).toBe("🎮".repeat(20));
+  await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
+});
+
+test("방송 닉네임이 20자를 넘으면 칸 아래에 알려 주고 가입하기를 막는다", async ({ page }) => {
+  await mockApi(page);
+  await page.goto(`/shop/${SLUG}/signup`);
+  await toVerified(page);
+  await fillAccount(page, "x5", "🎮".repeat(21));
+  await expect(page.getByText("닉네임은 20자까지 쓸 수 있어요")).toBeVisible();
+  await expect(page.getByLabel("방송 닉네임")).toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByRole("button", { name: "가입하기" })).toBeDisabled();
+});

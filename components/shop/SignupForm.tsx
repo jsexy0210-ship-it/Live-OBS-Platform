@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { api, failMessage } from "../seller/api";
+import { textLength } from "../seller/format";
 import ShopState from "./ShopState";
 
 // SH-011 구매자 회원가입: 휴대폰 본인확인(인증번호 받기 → 확인) → 아이디·비밀번호·방송 닉네임·필수 약관 → 가입.
@@ -19,6 +20,10 @@ const CARRIERS: { value: Carrier; label: string }[] = [
 type Step = "identity" | "code" | "verified" | "done";
 type Notice = { kind: "neg" | "info"; text: string };
 type Fail = { status: number; error: string; message?: string };
+
+// 방송 닉네임 최대 글자 수. 서버(lib/server/buyers/signup.ts MAX_NICKNAME_LENGTH)와 같은 값, 같은 셈법(코드포인트, textLength).
+// 입력 칸 maxLength는 UTF-16 단위라 이모지가 절반에서 잘리므로 쓰지 않는다.
+const MAX_NICKNAME_LENGTH = 20;
 
 const digits = (v: string, max: number) => v.replace(/\D/g, "").slice(0, max);
 
@@ -68,7 +73,8 @@ export default function SignupForm({ slug }: { slug: string }) {
   const [fieldErrors, setFieldErrors] = useState<{ loginId?: string; password?: string; nickname?: string; terms?: string }>({});
 
   const identityReady = name.trim() !== "" && birth.length === 8 && gender !== null && carrier !== "" && phone.length >= 10 && idvAgreed;
-  const accountReady = loginId.trim() !== "" && password !== "" && nickname.trim() !== "" && agreedTerms && agreedPrivacy;
+  const nicknameTooLong = textLength(nickname) > MAX_NICKNAME_LENGTH;
+  const accountReady = loginId.trim() !== "" && password !== "" && nickname.trim() !== "" && !nicknameTooLong && agreedTerms && agreedPrivacy;
 
   // 처음부터 다시: 입력한 인적사항은 두고 본인확인 요청만 버린다
   const restart = (n: Notice | null) => {
@@ -214,6 +220,7 @@ export default function SignupForm({ slug }: { slug: string }) {
 
   // 요청 중에도 잠가 보낸 값과 화면 값이 달라지지 않게 한다
   const locked = step !== "identity" || busy;
+  const nicknameError = nicknameTooLong ? `닉네임은 ${MAX_NICKNAME_LENGTH}자까지 쓸 수 있어요` : fieldErrors.nickname;
   const shown = sent ?? { name: name.trim(), phone };
   return (
     <div className="card shop-card col signup">
@@ -437,16 +444,15 @@ export default function SignupForm({ slug }: { slug: string }) {
             <label htmlFor="acc-nick">방송 닉네임</label>
             <input
               id="acc-nick"
-              className={`inp${fieldErrors.nickname ? " is-error" : ""}`}
-              maxLength={20}
+              className={`inp${nicknameError ? " is-error" : ""}`}
               value={nickname}
               onChange={(e) => setNickname(e.target.value)}
-              aria-invalid={!!fieldErrors.nickname}
-              aria-describedby={fieldErrors.nickname ? "acc-nick-err" : "acc-nick-help"}
+              aria-invalid={!!nicknameError}
+              aria-describedby={nicknameError ? "acc-nick-err" : "acc-nick-help"}
             />
-            {fieldErrors.nickname ? (
+            {nicknameError ? (
               <span id="acc-nick-err" className="err" role="alert">
-                {fieldErrors.nickname}
+                {nicknameError}
               </span>
             ) : (
               <span id="acc-nick-help" className="help">
