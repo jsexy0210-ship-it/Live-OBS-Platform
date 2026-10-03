@@ -186,14 +186,8 @@ export default function OrderDetailPage() {
               <dl className="kv">
                 <dt>방송 닉네임</dt>
                 <dd className="fw6">{nick}</dd>
-                {pii && (
-                  <>
-                    <dt>이름</dt>
-                    <dd>{o.buyer.name}</dd>
-                    <dt>연락처</dt>
-                    <dd className="num">{o.buyer.phone && phoneText(o.buyer.phone)}</dd>
-                  </>
-                )}
+                <dt>회원</dt>
+                <dd>{nick}</dd>
               </dl>
               {!pii && <span className="t-c1 c-alt">닉네임과 주문 내용만 보여요</span>}
             </section>

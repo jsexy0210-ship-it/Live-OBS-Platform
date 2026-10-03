@@ -25,7 +25,8 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
   const [needOpened, setNeedOpened] = useState(false);
   const [openedOk, setOpenedOk] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<{ title?: string; text: string } | null>(null);
+  // retry: 원인을 모르는 실패(서버 오류·연결 끊김)는 「다시 시도」로 같은 내용을 다시 보낸다
+  const [error, setError] = useState<{ title?: string; text: string; retry?: boolean } | null>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -69,11 +70,11 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
     if (f.error === "opened_items_present") {
       setNeedOpened(true);
       setError({ text: failMessage(f) });
-    } else if (f.status === 403) setError({ text: "이 기능은 권한이 필요해요. 대표자에게 요청해 주세요 · 필요한 권한: 주문·배송" });
+    } else if (f.status === 403) setError({ title: "이 기능은 권한이 필요해요", text: "대표자에게 요청해 주세요 · 필요한 권한: 주문·배송" });
     else if (f.error === "invalid_transition") setError({ text: "이미 환불했거나 지금은 환불할 수 없는 주문이에요" });
     else if (f.error === "conflict") setError({ text: "그사이 주문대기가 바뀌었어요. 다시 눌러 주세요" });
     else if (f.message) setError({ text: f.message });
-    else setError({ title: "환불하지 못했어요.", text: "결제는 그대로예요. 잠시 뒤 다시 시도해 주세요." });
+    else setError({ title: "환불하지 못했어요.", text: "결제는 그대로예요. 잠시 뒤 다시 시도해 주세요.", retry: true });
   };
 
   return (
@@ -93,7 +94,7 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
           <div className="refund-opt on">
             <span className="col">
               <span className="t-l1 fw6">전액 환불</span>
-              <span className="t-c1 c-alt">{won(order.totalAmount)}</span>
+              <span className="t-c1 c-alt">{order.paymentMethod === "CARD" ? `${won(order.totalAmount)} · 카드 승인 취소` : won(order.totalAmount)}</span>
             </span>
           </div>
         </section>
@@ -160,9 +161,26 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
             위 금액으로 환불해요. 승인 취소 후 되돌릴 수 없어요.
           </label>
           {error && (
-            <div className="msg msg-neg" role="alert" style={{ display: "block" }}>
-              {error.title && <b>{error.title} </b>}
-              {error.text}
+            <div className="col" style={{ gap: 8, alignItems: "flex-start" }}>
+              <div className="msg msg-neg" role="alert" style={{ display: "block", alignSelf: "stretch" }}>
+                {error.retry ? (
+                  <>
+                    <b>{error.title}</b> {error.text}
+                  </>
+                ) : error.title ? (
+                  <span className="col" style={{ gap: 2 }}>
+                    <b>{error.title}</b>
+                    <span>{error.text}</span>
+                  </span>
+                ) : (
+                  error.text
+                )}
+              </div>
+              {error.retry && (
+                <button className="btn btn-sm" type="button" disabled={!ready} onClick={() => void submit()}>
+                  다시 시도
+                </button>
+              )}
             </div>
           )}
         </section>

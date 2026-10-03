@@ -36,6 +36,7 @@ test("주문 목록: 20건씩 보이고 「주문 더 불러오기」로 나머�
   await login(page);
   await first;
   await expect(page.getByRole("heading", { name: "주문" })).toBeVisible();
+  await expect(page.getByText("결제 완료된 주문만 주문대기에 올라가요. 미결제 주문은 「결제 대기」로 보여요.")).toBeVisible();
   await expect(rows(page)).toHaveCount(20);
   await expect(page.getByText("20건 넘게")).toBeVisible();
   // 메뉴 「주문」이 이 화면을 가리킨다
@@ -79,7 +80,7 @@ test("상태 필터·검색·기간으로 걸러 보고, 결과가 없으면 알
   const none = listResponse(page, "q=");
   await page.getByLabel("주문 검색").fill("없는닉네임");
   await none;
-  await expect(page.getByText("「없는닉네임」와 맞는 주문이 없어요")).toBeVisible();
+  await expect(page.getByText("「없는닉네임」 검색 결과가 없어요")).toBeVisible();
   await expect(page.getByText("기간 필터 「오늘」을 해제하면 전체 기간에서 찾아요.")).toBeVisible();
   await page.getByRole("button", { name: "전체 기간에서 검색" }).click();
   await expect(page.getByText("조건에 맞는 주문이 없어요")).toBeVisible();
@@ -98,7 +99,11 @@ test("주문 상세: 상품·결제·구매자·배송을 보여 주고, 없는 
   await expect(page.locator(".bdg-lg").first()).toHaveText("결제 완료");
   await expect(page.getByRole("heading", { name: "주문 상품" })).toBeVisible();
   await expect(page.getByText("결제 금액")).toBeVisible();
-  // 대표자는 고객 정보 보기 권한이 있어 받는 분·연락처가 보인다
+  // 구매자 카드는 실명 없이 회원 닉네임만, 받는 분 실명·연락처는 배송 카드에만(고객 정보 보기 권한이 있는 대표자)
+  const buyerCard = page.locator("section", { has: page.getByRole("heading", { name: "구매자" }) });
+  await expect(buyerCard.getByText("회원")).toBeVisible();
+  await expect(buyerCard.getByText(/데모구매자/)).toHaveCount(0);
+  await expect(buyerCard.getByText(/010-/)).toHaveCount(0);
   await expect(page.getByText("받는 분")).toBeVisible();
   await expect(page.getByRole("button", { name: "취소 · 환불" })).toBeVisible();
   await shot(page, "SA-022");
@@ -165,4 +170,30 @@ test("주문·배송 권한이 없는 직원은 메뉴에 주문이 없고, 주�
   await page.goto("/seller/orders");
   await expect(page.getByText("이 기능은 권한이 필요해요")).toBeVisible();
   await expect(page.getByText("필요한 권한: 주문·배송")).toBeVisible();
+});
+
+test("환불 모달: 결제 수단이 카드면 「카드 승인 취소」를 보여 주고, 실패하면 「다시 시도」로 다시 보내며, 권한 오류는 두 줄로 알린다", async ({ page }) => {
+  await login(page);
+  let calls = 0;
+  await page.route(/\/api\/seller\/orders\/[0-9a-f-]{36}\/refund$/, (route) => {
+    calls++;
+    if (calls === 1) return route.fulfill({ status: 500, contentType: "application/json", body: "{}" });
+    if (calls === 2) return route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ error: "forbidden" }) });
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ refundAmount: 2000, version: 1 }) });
+  });
+  // 카드 결제 주문(데모 주문의 최근 결제 완료 건)
+  await page.getByRole("link", { name: "환불 처리" }).first().click();
+  const dialog = page.getByRole("dialog", { name: "취소 · 환불 처리" });
+  await expect(dialog.locator(".refund-opt.on").first()).toContainText("· 카드 승인 취소");
+  await dialog.getByRole("radio", { name: /판매자 사정/ }).check();
+  await dialog.getByLabel("처리 사유").selectOption("기타");
+  await dialog.getByLabel("위 금액으로 환불해요. 승인 취소 후 되돌릴 수 없어요.").check();
+  await dialog.getByRole("button", { name: /환불 실행/ }).click();
+  await expect(dialog.getByRole("alert")).toHaveText("환불하지 못했어요. 결제는 그대로예요. 잠시 뒤 다시 시도해 주세요.");
+  await dialog.getByRole("button", { name: "다시 시도" }).click();
+  await expect(dialog.getByRole("alert")).toContainText("이 기능은 권한이 필요해요");
+  await expect(dialog.getByRole("alert")).toContainText("대표자에게 요청해 주세요 · 필요한 권한: 주문·배송");
+  await dialog.getByRole("button", { name: /환불 실행/ }).click();
+  await expect(page.getByText("2,000원 환불을 완료했어요")).toBeVisible();
+  expect(calls).toBe(3);
 });

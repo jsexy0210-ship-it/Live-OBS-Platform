@@ -105,7 +105,7 @@ export default function OrderListPage() {
         <div className="ph">
           <div className="col" style={{ gap: 4 }}>
             <h1 className="t-t3">주문</h1>
-            <span className="t-l2 c-alt">결제 완료된 주문만 주문대기에 올라가요. 미결제 주문은 「결제 대기」로 표시.</span>
+            <span className="t-l2 c-alt">결제 완료된 주문만 주문대기에 올라가요. 미결제 주문은 「결제 대기」로 보여요.</span>
           </div>
         </div>
 
@@ -186,7 +186,7 @@ export default function OrderListPage() {
               ) : q && period ? (
                 <>
                   <div className="st-ic">?</div>
-                  <span className="t">「{q}」와 맞는 주문이 없어요</span>
+                  <span className="t">「{q}」 검색 결과가 없어요</span>
                   <span className="s">기간 필터 「{periodLabel}」을 해제하면 전체 기간에서 찾아요.</span>
                   <button className="btn btn-sm btn-out" type="button" onClick={() => setPeriod(null)}>
                     전체 기간에서 검색
