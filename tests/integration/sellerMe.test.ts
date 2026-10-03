@@ -93,9 +93,33 @@ describe("GET /api/seller/me", () => {
     await db.seller.update({ where: { id: s.seller.id }, data: { trialEndsAt: new Date(Date.now() - 1000) } });
     const res = await me(c);
     expect(res.status).toBe(200);
-    expect((await res.json()).access).toBe("expired");
+    expect(await res.json()).toMatchObject({ access: "expired", trialEndsAt: null });
     const anon = await me();
     expect(anon.status).toBe(401);
     expect(anon.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("체험 중이면 직원 세션에도 trialEndsAt(날짜만)을 주고, 다른 쇼핑몰 값은 섞이지 않는다. 체험이 아니면 null", async () => {
+    const a = await createSeller();
+    const b = await createSeller();
+    const endsA = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000);
+    const endsB = new Date(Date.now() + 9 * 24 * 60 * 60 * 1000);
+    await db.seller.update({ where: { id: a.seller.id }, data: { trialEndsAt: endsA } });
+    await db.seller.update({ where: { id: b.seller.id }, data: { trialEndsAt: endsB } });
+    const shared = "trial@example.com";
+    await createSellerUser(a.seller.id, { permissions: ["PRODUCT_MANAGE"] }, shared);
+    await createSellerUser(b.seller.id, "OWNER", shared);
+    const ca = cookieOf(await login({ email: shared, password: PASSWORD, shopSlug: a.seller.slug }));
+    const cb = cookieOf(await login({ email: shared, password: PASSWORD, shopSlug: b.seller.slug }));
+    const bodyA = await (await me(ca)).json();
+    expect(bodyA).toMatchObject({ isOwner: false, access: "trial", trialEndsAt: endsA.toISOString() });
+    expect(JSON.stringify(bodyA)).not.toContain(endsB.toISOString());
+    // 금액·결제 정보는 주지 않는다
+    expect(Object.keys(bodyA).sort()).toEqual(["access", "isOwner", "permissions", "sellerId", "shop", "trialEndsAt", "user", "userId"]);
+    expect(await (await me(cb)).json()).toMatchObject({ isOwner: true, trialEndsAt: endsB.toISOString() });
+    // 결제한 기간이 남아 체험이 아닌 상태면 null
+    const plan = await db.subscriptionPlan.upsert({ where: { code: "STANDARD" }, update: {}, create: { code: "STANDARD", name: "스탠다드", listPrice: 30000, salePrice: 30000 } });
+    await db.sellerSubscription.create({ data: { sellerId: a.seller.id, planId: plan.id, status: "ACTIVE", currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) } });
+    expect(await (await me(ca)).json()).toMatchObject({ access: "paid", trialEndsAt: null });
   });
 });

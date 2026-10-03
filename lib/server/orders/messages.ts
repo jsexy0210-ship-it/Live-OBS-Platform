@@ -15,6 +15,7 @@ export const ORDER_ERROR_MESSAGES = {
   invalid_shipping_policy: "배송비 설정을 다시 확인해 주세요",
   // 판매자 상품·옵션
   invalid_product: "상품 정보를 다시 확인해 주세요",
+  product_name_too_long: "상품명은 100자까지 쓸 수 있어요",
   invalid_option: "옵션 정보를 다시 확인해 주세요",
   invalid_price: "가격은 1원 이상, 21억 원 이하로 입력해 주세요. 옵션 추가금을 더한 가격도 같아요",
   too_many_options: "옵션은 상품 하나에 100개까지 만들 수 있어요",
@@ -28,6 +29,10 @@ export const ORDER_ERROR_MESSAGES = {
   invalid_order_policy: "자동 취소 기간은 1시간에서 30일 사이로 정해 주세요",
   no_restriction: "주문 제한이 걸려 있지 않아요",
   invalid_reason: "사유를 다시 확인해 주세요",
+  // 수동 재고 증감
+  invalid_stock_adjust: "바꿀 수량(0이 아닌 정수)과 사유(100자 이내)를 확인해 주세요",
+  insufficient_stock: "재고가 모자라서 뺄 수 없어요",
+  stock_too_large: "재고는 21억 개까지 넣을 수 있어요",
 } as const;
 
 // 구매자 주문 화면 안내 문구(해요체)
@@ -41,9 +46,11 @@ export const orderErrorBody = (code: OrderErrorCode) => ({ error: code, message:
 
 // 구매 제한 안내: 풀리는 시각을 KST로 알려 준다. 예) 「11월 2일 오후 3시 5분부터 다시 주문할 수 있어요」(정각이면 분은 뺀다)
 export function purchaseRestrictedMessage(endsAt: Date): string {
+  // 초·밀리초가 있으면 분을 올림한다(안내 시각이 실제로 풀리는 시각보다 이르지 않게)
+  const at = new Date(Math.ceil(endsAt.getTime() / 60_000) * 60_000);
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Seoul", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", hourCycle: "h23" })
-      .formatToParts(endsAt)
+      .formatToParts(at)
       .map((p) => [p.type, p.value]),
   );
   const h = Number(parts.hour);

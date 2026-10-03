@@ -3,6 +3,7 @@ import { writeAudit } from "../audit/log";
 import { notifySellerChanged } from "../realtime/notify";
 import { earnAmount } from "../rewards/earn";
 import { requireSellerPermission, type TenantContext } from "../tenant/context";
+import { restoreOrderStock } from "../products/stock";
 import { checkTransition, isCompletePermutation, isValidTimer, type QueueAction, type QueueRejection } from "./rules";
 
 type Tx = Prisma.TransactionClient;
@@ -259,8 +260,8 @@ class StockShortage extends Error {}
 
 export type PaidOutcome = { orderId: string; stockShortage: boolean; queueItemIds: string[] };
 
-// 결제 완료 처리(이번 단계는 내부 함수, PG 연동 전). 전 품목 재고 차감을 한 트랜잭션에서 하고,
-// 하나라도 모자라면 모두 되돌린 뒤 주문에 stockShortageAt만 기록한다(주문대기·적립 원장 없음).
+// 결제 완료 처리(이번 단계는 내부 함수, PG 연동 전). 아직 재고를 안 뺀 품목(결제 때 차감 상품)을 한 트랜잭션에서 빼고,
+// 하나라도 모자라면 모두 되돌린 뒤 주문에 stockShortageAt만 기록한다(주문대기·적립 원장 없음). 주문 때 뺀 품목은 그대로 둔다.
 export async function markOrderPaid(
   db: PrismaClient,
   input: { sellerId: string; orderId: string; paymentMethod?: PaymentMethod; now?: Date },
@@ -280,7 +281,8 @@ export async function markOrderPaid(
         data: { sellerId, orderId, fromStatus: "PENDING_PAYMENT", toStatus: "PAID", ...system, createdAt: now },
       });
 
-      for (const item of order.items) {
+      // 주문 때 이미 뺀 품목(ORDER 상품)은 건너뛰고, 아직 안 뺀 품목(PAYMENT 상품)만 뺀다
+      for (const item of order.items.filter((i) => i.stockDeductedAt === null)) {
         const dec = await tx.productOption.updateMany({
           where: { id: item.optionId, sellerId, stock: { gte: item.quantity } },
           data: { stock: { decrement: item.quantity } },
@@ -289,6 +291,7 @@ export async function markOrderPaid(
         await tx.stockMovement.create({
           data: { sellerId, optionId: item.optionId, delta: -item.quantity, reason: "ORDER", orderId, ...system, createdAt: now },
         });
+        await tx.orderItem.update({ where: { id: item.id }, data: { stockDeductedAt: now } });
       }
 
       const live = await tx.broadcastSession.findFirst({ where: { sellerId, status: "LIVE" }, select: { id: true } });
@@ -404,6 +407,8 @@ export async function cancelPendingOrder(
     await tx.orderStatusHistory.create({
       data: { sellerId: ctx.sellerId, orderId, fromStatus: "PENDING_PAYMENT", toStatus: "CANCELLED", actorType: ctx.actorType, actorId: ctx.actorId, reason, createdAt: now },
     });
+    // 주문 때 뺀 재고(ORDER 상품)가 있으면 되돌린다(판매자 설정 restockOnCancel)
+    const restocked = await restoreOrderStock(tx, { sellerId: ctx.sellerId, orderId, reason: "CANCEL", now, actor: { actorType: ctx.actorType, actorId: ctx.actorId } });
     await writeAudit(tx, {
       actorType: ctx.actorType,
       actorId: ctx.actorId,
@@ -413,7 +418,7 @@ export async function cancelPendingOrder(
       targetId: orderId,
       reason,
       before: { status: "PENDING_PAYMENT" },
-      after: { status: "CANCELLED" },
+      after: { status: "CANCELLED", restockedItems: restocked.length },
     });
     return { orderId };
   });
@@ -468,6 +473,7 @@ export async function refundOrder(
     });
 
     const restockedItemIds: string[] = [];
+    const restoreCandidateIds: string[] = [];
     const cancelledQueueItemIds: string[] = [];
     for (const item of order.items) {
       const q = order.queueItems.find((x) => x.orderItemId === item.id);
@@ -481,14 +487,21 @@ export async function refundOrder(
         });
         cancelledQueueItemIds.push(q.id);
       }
-      if (order.stockShortageAt || shippedBeforeRefund) continue;
-      if (!q || isOpened(q)) continue;
-      await tx.productOption.update({ where: { id: item.optionId }, data: { stock: { increment: item.quantity } } });
-      await tx.stockMovement.create({
-        data: { sellerId: ctx.sellerId, optionId: item.optionId, delta: item.quantity, reason: "REFUND", orderId, actorType: ctx.actorType, actorId: ctx.actorId, createdAt: now },
-      });
-      restockedItemIds.push(item.id);
+      // 발송 후 환불·개봉한 품목은 되돌리지 않는다. 그 밖에는 실제로 재고를 뺀 품목만 되돌린다(판매자 설정 restockOnCancel).
+      if (shippedBeforeRefund) continue;
+      if (q && isOpened(q)) continue;
+      restoreCandidateIds.push(item.id);
     }
+    restockedItemIds.push(
+      ...(await restoreOrderStock(tx, {
+        sellerId: ctx.sellerId,
+        orderId,
+        reason: "REFUND",
+        now,
+        actor: { actorType: ctx.actorType, actorId: ctx.actorId },
+        itemIds: restoreCandidateIds,
+      })),
+    );
 
     // 적립금 회수(지급 기록이 있을 때만, 한 번만). 회수 방식이 MANUAL이면 자동 기록하지 않는다.
     const earn = await tx.rewardLedger.findUnique({ where: { sellerId_idempotencyKey: { sellerId: ctx.sellerId, idempotencyKey: `earn:${orderId}` } } });
