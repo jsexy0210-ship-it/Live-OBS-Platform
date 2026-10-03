@@ -1,6 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { recordOrderAddress } from "../buyers/addresses";
+import { eventOf, orderUnitPrice } from "../products/event";
 import { sellerAccessFor } from "../billing/subscription";
 import { OPENED_NO_REFUND_CONSENT } from "./consent";
 import { activeRestriction, dbClock, getOrderPolicy, lockSellerOrders } from "./overdue";
@@ -128,11 +129,13 @@ async function createInTransaction(
       if (o.stock < l.quantity) return { ok: false as const, reason: "out_of_stock" as const };
     }
 
-    // 금액은 서버 값으로만: 단가 = 상품 가격 + 옵션 추가금, 합계 = 단가 × 수량 + 배송비. 적립금 사용 없음.
+    // 금액은 서버 값으로만: 단가 = 상품 가격 + 옵션 추가금(이벤트 할인 기간이면 할인 뒤 단가), 합계 = 단가 × 수량 + 배송비. 적립금 사용 없음.
     // 단가가 1원 미만이거나 합계가 저장 범위(INT4)를 넘으면 주문을 만들지 않는다(500 대신 invalid_amount).
     const priced = lines.map((l) => {
       const o = byId.get(l.optionId)!;
-      return { line: l, option: o, unitPrice: o.product.price + o.priceDelta };
+      // 이벤트 할인 기간(시작 ≤ 지금 < 종료, 잠금 뒤 DB 시계)이면 할인 뒤 단가, 아니면 정가. 정가는 listUnitPrice로 남긴다.
+      const listUnitPrice = o.product.price + o.priceDelta;
+      return { line: l, option: o, listUnitPrice, unitPrice: orderUnitPrice(listUnitPrice, eventOf(o.product), now) };
     });
     if (priced.some((p) => p.unitPrice < 1)) return { ok: false as const, reason: "invalid_amount" as const };
     const itemsSubtotal = priced.reduce((sum, p) => sum + p.unitPrice * p.line.quantity, 0);
@@ -173,6 +176,7 @@ async function createInTransaction(
         productNameSnapshot: p.option.product.name,
         optionNameSnapshot: p.option.name,
         unitPrice: p.unitPrice,
+        listUnitPrice: p.listUnitPrice,
         quantity: p.line.quantity,
       })),
     });
