@@ -30,6 +30,7 @@ export const ORDER_ERROR_MESSAGES = {
   stock_conflict: "그사이 재고가 바뀌었어요. 새로 불러온 뒤 다시 입력해 주세요",
   invalid_cursor: "목록을 처음부터 다시 불러와 주세요",
   invalid_limit: "한 번에 볼 개수는 1~200개로 정해 주세요",
+  invalid_stock_filter: "재고 조건을 다시 확인해 주세요",
   // 무통장 입금·구매 제한
   purchase_restricted: "입금하지 않은 주문이 쌓여서 지금은 주문할 수 없어요. 판매자에게 문의해 주세요",
   order_rate_limited: "잠시 뒤 다시 주문해 주세요",

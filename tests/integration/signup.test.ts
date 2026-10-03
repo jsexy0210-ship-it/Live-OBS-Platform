@@ -2,8 +2,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { signupBuyer } from "../../lib/server/buyers/signup";
 import { hashCi } from "../../lib/server/identity/ciHash";
 import { FakeIdentityProvider } from "../../lib/server/identity/provider";
-import { completeIdentityVerification, startIdentityVerification } from "../../lib/server/identity/verification";
-import { createSeller, db, resetDb } from "./helpers";
+import { completeIdentityVerification } from "../../lib/server/identity/verification";
+import { confirmIdv, createSeller, db, resetDb, startIdv } from "./helpers";
 
 beforeAll(() => {
   process.env.IDENTITY_HASH_KEY = "test-identity-hash-key-0123456789abcdef";
@@ -16,13 +16,13 @@ const person = (ci: string) => ({ ci, name: "홍길동", phone: "01012345678", b
 const owner = (sellerId: string, ownerToken: string) => ({ sellerId, purpose: "BUYER_SIGNUP" as const, ownerToken });
 
 async function start(sellerId: string, now?: Date) {
-  return startIdentityVerification(db, provider, { purpose: "BUYER_SIGNUP", sellerId, now });
+  return startIdv(provider, { purpose: "BUYER_SIGNUP", sellerId, now });
 }
 
 async function verified(sellerId: string, ci: string) {
   const { verification, ownerToken } = await start(sellerId);
   provider.complete(verification.requestId, person(ci));
-  const r = await completeIdentityVerification(db, provider, verification.id, owner(sellerId, ownerToken));
+  const r = await confirmIdv(provider, verification, ownerToken);
   if (!r.ok) throw new Error(r.reason);
   return { verification: r.verification, ownerToken };
 }
@@ -39,7 +39,7 @@ const signup = (sellerId: string, v: { verification: { id: string }; ownerToken:
     ...extra,
   });
 
-describe("PASS 본인인증 기록", () => {
+describe("휴대폰 본인확인 기록", () => {
   it("CI 원문은 저장하지 않고 HMAC 값만 남긴다, 시작한 브라우저 값도 해시로만 저장", async () => {
     const { seller } = await createSeller();
     const v = await verified(seller.id, "RAW-CI-VALUE");
@@ -82,13 +82,13 @@ describe("PASS 본인인증 기록", () => {
     const { seller } = await createSeller();
     const failed = await start(seller.id);
     provider.fail(failed.verification.requestId);
-    expect(await completeIdentityVerification(db, provider, failed.verification.id, owner(seller.id, failed.ownerToken))).toEqual({
+    expect(await confirmIdv(provider, failed.verification, failed.ownerToken)).toEqual({
       ok: false,
       reason: "failed",
     });
     const old = await start(seller.id, new Date(Date.now() - 3_600_000));
     provider.complete(old.verification.requestId, person("x"));
-    expect(await completeIdentityVerification(db, provider, old.verification.id, owner(seller.id, old.ownerToken))).toEqual({
+    expect(await confirmIdv(provider, old.verification, old.ownerToken)).toEqual({
       ok: false,
       reason: "expired",
     });
@@ -103,7 +103,7 @@ describe("운영 환경 차단", () => {
     const prev = process.env.NODE_ENV;
     (process.env as Record<string, string | undefined>).NODE_ENV = "production";
     try {
-      expect(await completeIdentityVerification(db, provider, verification.id, owner(seller.id, ownerToken))).toEqual({
+      expect(await confirmIdv(provider, verification, ownerToken)).toEqual({
         ok: false,
         reason: "failed",
       });
