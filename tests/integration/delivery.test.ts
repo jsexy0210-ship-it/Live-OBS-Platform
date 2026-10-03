@@ -42,14 +42,14 @@ async function shop(earnTiming?: "ON_PAYMENT" | "ON_DELIVERY") {
   const product = await db.product.create({ data: { sellerId: seller.id, name: "부스터 팩", price: 5000, status: "ON_SALE" } });
   const option = await db.productOption.create({ data: { sellerId: seller.id, productId: product.id, name: "1박스", stock: 50 } });
   await db.rewardPolicy.create({ data: { sellerId: seller.id, rates: { [grade.id]: { card: 1 } }, ...(earnTiming ? { earnTiming } : {}) } });
-  const paid = async () => {
+  const paid = async (now?: Date) => {
     const r = await createOrder(db, { sellerId: seller.id, buyerMemberId: buyer.id, items: [{ optionId: option.id, quantity: 2 }], consent, shippingAddress: addr });
     if (!r.ok) throw new Error(r.reason);
-    await markOrderPaid(db, { sellerId: seller.id, orderId: r.orderId, paymentMethod: "CARD" });
+    await markOrderPaid(db, { sellerId: seller.id, orderId: r.orderId, paymentMethod: "CARD", now });
     return r.orderId;
   };
-  const shipped = async () => {
-    const id = await paid();
+  const shipped = async (now?: Date) => {
+    const id = await paid(now);
     const s = await shipOrder(db, ctx, id, { courier: "CJ", trackingNumber: "123456789012" });
     if (!s.ok) throw new Error(s.reason);
     return id;
@@ -122,6 +122,54 @@ describe("배송 완료와 적립금 지급 시점", () => {
       ["EARN", 100],
       ["REVOKE", -100],
     ]);
+  });
+});
+
+describe("적립은 결제 시점 스냅숏으로 판정한다", () => {
+  const setPolicy = (sellerId: string, data: Prisma.RewardPolicyUpdateInput) => db.rewardPolicy.update({ where: { sellerId }, data });
+
+  it("결제 즉시 지급: 결제 때 지급 시작일 전이라 0원이면, 시작일이 지난 뒤 배송 완료해도 적립하지 않는다", async () => {
+    const s = await shop("ON_PAYMENT");
+    await setPolicy(s.seller.id, { earnStartsAt: new Date(Date.now() + DAY) });
+    const id = await s.shipped();
+    expect(await db.order.findUniqueOrThrow({ where: { id } })).toMatchObject({ rewardEarnTiming: "ON_PAYMENT", rewardEarnAmount: 0 });
+    await setPolicy(s.seller.id, { earnStartsAt: new Date(Date.now() - DAY) });
+    expect(await completeDelivery(db, s.ctx, id)).toMatchObject({ ok: true, rewardEarned: 0 });
+    expect(await earns(id)).toHaveLength(0);
+  });
+
+  it("결제 즉시 지급: 결제 때 적립률 0%였으면, 배송 전에 5%로 바꿔도 배송 완료 때 적립하지 않는다", async () => {
+    const s = await shop("ON_PAYMENT");
+    await setPolicy(s.seller.id, { rates: { [s.grade.id]: { card: 0 } } });
+    const id = await s.shipped();
+    await setPolicy(s.seller.id, { rates: { [s.grade.id]: { card: 5 } } });
+    expect(await completeDelivery(db, s.ctx, id)).toMatchObject({ ok: true, rewardEarned: 0 });
+    expect(await earns(id)).toHaveLength(0);
+  });
+
+  it("배송 완료 후 지급: 결제 뒤 적립률·등급·지급 시점을 바꿔도 결제 때 남긴 예정액(1%, 100원)으로 기록한다", async () => {
+    const s = await shop();
+    const id = await s.shipped();
+    expect(await db.order.findUniqueOrThrow({ where: { id } })).toMatchObject({ rewardEarnTiming: "ON_DELIVERY", rewardGradeId: s.grade.id, rewardRate: 1, rewardEarnAmount: 100 });
+    const vip = await db.memberGrade.create({ data: { sellerId: s.seller.id, displayName: "VIP", sortOrder: 9 } });
+    await db.buyerMember.update({ where: { id: s.buyer.id }, data: { gradeId: vip.id } });
+    await setPolicy(s.seller.id, { rates: { [s.grade.id]: { card: 5 }, [vip.id]: { card: 10 } }, earnTiming: "ON_PAYMENT" });
+    expect(await completeDelivery(db, s.ctx, id)).toMatchObject({ ok: true, rewardEarned: 100 });
+    expect(await earns(id)).toMatchObject([{ amount: 100 }]);
+  });
+
+  it("지급 시작일은 결제 시각과 비교한다: 결제 시각과 같으면 적립, 1ms 뒤면 적립하지 않는다", async () => {
+    const s = await shop();
+    const paidAt = new Date(Date.now() - 1000);
+    await setPolicy(s.seller.id, { earnStartsAt: paidAt });
+    const same = await s.shipped(paidAt);
+    await setPolicy(s.seller.id, { earnStartsAt: new Date(paidAt.getTime() + 1) });
+    const before = await s.shipped(paidAt);
+    expect((await db.order.findUniqueOrThrow({ where: { id: same } })).rewardEarnAmount).toBe(100);
+    expect((await db.order.findUniqueOrThrow({ where: { id: before } })).rewardEarnAmount).toBe(0);
+    // 배송 완료 때(시작일이 지난 뒤)도 결제 때 판정을 따른다
+    expect(await completeDelivery(db, s.ctx, same)).toMatchObject({ rewardEarned: 100 });
+    expect(await completeDelivery(db, s.ctx, before)).toMatchObject({ rewardEarned: 0 });
   });
 });
 
@@ -198,6 +246,48 @@ function changeBeforeFirstTransaction(change: () => Promise<unknown>): typeof db
     },
   });
 }
+
+// 첫 n번의 주문 트랜잭션을 실패시키는 db(계속 실패하는 주문)
+function failFirstTransactions(n: number): typeof db {
+  let left = n;
+  return new Proxy(db, {
+    get(target, prop) {
+      if (prop === "$transaction") {
+        return async (fn: (tx: Prisma.TransactionClient) => Promise<unknown>) => {
+          if (left > 0) {
+            left--;
+            throw new Error("simulated failure");
+          }
+          return target.$transaction(fn);
+        };
+      }
+      const v = Reflect.get(target, prop);
+      return typeof v === "function" ? v.bind(target) : v;
+    },
+  });
+}
+
+describe("자동 처리: 실패하는 주문이 한도를 막지 않는다", () => {
+  it("자동 배송 완료: 한도(limit)만큼 실패해도 다음 후보로 넘어가 처리한다", async () => {
+    const s = await shop();
+    const stuck = await s.shipped();
+    const next = await s.shipped();
+    await shippedAgo(stuck, 9 * DAY);
+    await shippedAgo(next, 8 * DAY);
+    expect(await autoCompleteDeliveries(failFirstTransactions(1), { limit: 1 })).toEqual({ done: [next], failed: [stuck] });
+    expect(await db.auditLog.count({ where: { action: "order.auto_deliver_failed", targetId: stuck } })).toBe(1);
+  });
+
+  it("자동 구매 확정: 한도(limit)만큼 실패해도 다음 후보로 넘어가 처리한다", async () => {
+    const s = await shop();
+    const stuck = await s.shipped();
+    const next = await s.shipped();
+    for (const id of [stuck, next]) await completeDelivery(db, s.ctx, id);
+    await deliveredAgo(stuck, 9 * DAY);
+    await deliveredAgo(next, 8 * DAY);
+    expect(await autoConfirmPurchases(failFirstTransactions(1), { limit: 1 })).toEqual({ done: [next], failed: [stuck] });
+  });
+});
 
 describe("자동 처리: 후보를 고른 뒤 바뀐 설정을 따른다", () => {
   it("자동 배송 완료: 후보를 고른 뒤 설정을 끄거나 기간을 늘리면 처리하지 않는다", async () => {

@@ -2,7 +2,7 @@ import { Prisma, type PaymentMethod, type PrismaClient, type QueueItem, type Ref
 import { writeAudit } from "../audit/log";
 import { notifySellerChanged } from "../realtime/notify";
 import { getShippingPolicy } from "../orders/shipping";
-import { earnAmount } from "../rewards/earn";
+import { earnQuote } from "../rewards/earn";
 import { requireSellerPermission, type TenantContext } from "../tenant/context";
 import { restoreOrderStock } from "../products/stock";
 import { checkTransition, isCompletePermutation, isValidTimer, type QueueAction, type QueueRejection } from "./rules";
@@ -316,9 +316,26 @@ export async function markOrderPaid(
         });
         queueItemIds.push(q.id);
       }
-      // 적립금 지급 시점이 「결제 즉시」인 쇼핑몰만 지금 기록한다. 「배송 완료 후」(기본)는 배송 완료 때 기록한다(orders/delivery.ts).
-      const timing = await tx.rewardPolicy.findUnique({ where: { sellerId }, select: { earnTiming: true } });
-      if (timing?.earnTiming === "ON_PAYMENT") await recordOrderEarn(tx, { sellerId, orderId, now });
+      // 적립은 결제 시점 스냅숏으로 판정한다(지급 시점·등급·적립률·예정액, 지급 시작일은 결제 시각과 비교).
+      // 「결제 즉시」면 지금 기록하고, 「배송 완료 후」(기본)는 배송 완료 때 남겨 둔 예정액으로 기록한다(orders/delivery.ts).
+      const policy = await tx.rewardPolicy.findUnique({ where: { sellerId } });
+      if (policy) {
+        const quote = earnQuote({
+          rates: policy.rates,
+          earnStartsAt: policy.earnStartsAt,
+          gradeId: order.buyerMember.gradeId,
+          paymentMethod,
+          base: rewardBase(order.items),
+          now,
+        });
+        await tx.order.update({
+          where: { id: orderId },
+          data: { rewardEarnTiming: policy.earnTiming, rewardGradeId: order.buyerMember.gradeId, rewardRate: quote.rate, rewardEarnAmount: quote.amount },
+        });
+        if (policy.earnTiming === "ON_PAYMENT" && quote.amount > 0) {
+          await createEarn(tx, { sellerId, buyerMemberId: order.buyerMemberId, orderId, amount: quote.amount, testMode: !policy.livePayoutEnabled, now });
+        }
+      }
       await writeAudit(tx, { ...system, sellerId, action: "order.paid", targetType: "Order", targetId: orderId });
       return { orderId, stockShortage: false, queueItemIds };
     });
@@ -342,38 +359,34 @@ export function rewardBase(items: { unitPrice: number; quantity: number }[]): nu
   return items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
 }
 
-// 적립금 지급 대기(EARN) 기록. 주문당 한 번(idempotencyKey earn:{orderId}), 이미 있으면 그대로 둔다.
-// 등급은 기록하는 때의 회원 등급, 결제수단은 주문에 저장된 값으로 적립률을 고른다. 실지급 스위치가 꺼져 있으면 testMode.
-// 지급·잔액 반영은 다음 단계. 기록했으면 금액, 아니면 0을 돌려준다.
-export async function recordOrderEarn(tx: Tx, input: { sellerId: string; orderId: string; now: Date }): Promise<number> {
-  const { sellerId, orderId, now } = input;
-  const policy = await tx.rewardPolicy.findUnique({ where: { sellerId } });
-  if (!policy) return 0;
-  const key = `earn:${orderId}`;
-  if (await tx.rewardLedger.findUnique({ where: { sellerId_idempotencyKey: { sellerId, idempotencyKey: key } }, select: { id: true } })) return 0;
-  const order = await tx.order.findUniqueOrThrow({ where: { id: orderId }, include: { items: true, buyerMember: { select: { gradeId: true } } } });
-  const amount = earnAmount({
-    rates: policy.rates,
-    earnStartsAt: policy.earnStartsAt,
-    gradeId: order.buyerMember.gradeId,
-    paymentMethod: order.paymentMethod,
-    base: rewardBase(order.items),
-    now,
-  });
-  if (amount <= 0) return 0;
+// 적립금 지급 대기(EARN) 기록. 실지급 스위치가 꺼져 있으면 testMode. 지급·잔액 반영은 다음 단계.
+async function createEarn(tx: Tx, e: { sellerId: string; buyerMemberId: string; orderId: string; amount: number; testMode: boolean; now: Date }) {
   await tx.rewardLedger.create({
     data: {
-      sellerId,
-      buyerMemberId: order.buyerMemberId,
-      orderId,
+      sellerId: e.sellerId,
+      buyerMemberId: e.buyerMemberId,
+      orderId: e.orderId,
       type: "EARN",
-      amount,
+      amount: e.amount,
       status: "PENDING",
-      testMode: !policy.livePayoutEnabled,
-      idempotencyKey: key,
-      createdAt: now,
+      testMode: e.testMode,
+      idempotencyKey: `earn:${e.orderId}`,
+      createdAt: e.now,
     },
   });
+}
+
+// 배송 완료 때 적립: 결제 때 남긴 스냅숏의 지급 시점이 「배송 완료 후」이고 예정액이 0원보다 클 때만 그 금액으로 한 번 기록한다
+// (결제 뒤 적립률·지급 시작일·등급·지급 시점을 바꿔도 결과는 같다). 이미 기록이 있으면 그대로 둔다. 기록했으면 금액, 아니면 0.
+export async function recordOrderEarn(tx: Tx, input: { sellerId: string; orderId: string; now: Date }): Promise<number> {
+  const { sellerId, orderId, now } = input;
+  const order = await tx.order.findUniqueOrThrow({ where: { id: orderId }, select: { buyerMemberId: true, rewardEarnTiming: true, rewardEarnAmount: true } });
+  const amount = order.rewardEarnAmount ?? 0;
+  if (order.rewardEarnTiming !== "ON_DELIVERY" || amount <= 0) return 0;
+  if (await tx.rewardLedger.findUnique({ where: { sellerId_idempotencyKey: { sellerId, idempotencyKey: `earn:${orderId}` } }, select: { id: true } })) return 0;
+  // 실지급 스위치는 기록하는 때의 값을 따른다(지급 여부 스위치라 금액 판정과 별개)
+  const policy = await tx.rewardPolicy.findUnique({ where: { sellerId }, select: { livePayoutEnabled: true } });
+  await createEarn(tx, { sellerId, buyerMemberId: order.buyerMemberId, orderId, amount, testMode: !policy?.livePayoutEnabled, now });
   return amount;
 }
 

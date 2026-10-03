@@ -241,7 +241,7 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 - `RewardLedger`: id, sellerId, buyerMemberId, orderId(nullable), type(`EARN | REVOKE | USE | RANKING_BONUS | ADJUST`), amount(부호 포함), status(`PENDING | SUCCEEDED | FAILED`), testMode(bool), failureReason, idempotencyKey, createdAt, processedAt — **(sellerId, idempotencyKey) 유니크**(같은 주문 지급·회수 중복 방지)
 - `RewardBalance`: (sellerId, buyerMemberId) PK, balance(**CHECK balance >= 0**), updatedAt — `SUCCEEDED`이고 `testMode = false`인 원장만 잔액에 반영(같은 트랜잭션)
 - 실지급 스위치가 꺼져 있으면 원장은 `testMode = true`로 기록만 하고 잔액은 바꾸지 않는다. 스위치 변경은 대표(OWNER)만, 감사 로그 필수.
-- 지급 시점 `RewardPolicy.earnTiming`(대표님 결정 2026-10-03): `ON_PAYMENT`(결제 즉시) 또는 `ON_DELIVERY`(배송 완료 후, 기본). `GET·PUT /api/seller/reward-policy` `{ earnTiming }`(`MEMBER_POINTS`, 감사 로그 `reward_policy.earn_timing`, 틀리면 `400 invalid_reward_policy`). 배송 완료 때 아직 `EARN`이 없으면 기록하므로 결제 뒤 설정을 바꿔도 주문당 한 번 기록된다. 등급은 기록하는 때의 회원 등급을 쓴다.
+- 지급 시점 `RewardPolicy.earnTiming`(대표님 결정 2026-10-03): `ON_PAYMENT`(결제 즉시) 또는 `ON_DELIVERY`(배송 완료 후, 기본). `GET·PUT /api/seller/reward-policy` `{ earnTiming }`(`MEMBER_POINTS`, 감사 로그 `reward_policy.earn_timing`, 틀리면 `400 invalid_reward_policy`). 적립은 결제 시점 스냅숏으로 판정한다(MASTER 결정 2026-10-03): 결제 때 주문에 지급 시점·회원 등급·적립률·적립 예정액(`Order.rewardEarnTiming·rewardGradeId·rewardRate·rewardEarnAmount`)을 남기고, 지급 시작일(`earnStartsAt`)은 결제 시각과 비교한다. 배송 완료 때는 스냅숏 지급 시점이 `ON_DELIVERY`이고 예정액이 0원보다 큰 주문만 그 금액으로 한 번 기록한다. 결제 때 0원이면 나중에도 적립하지 않고, 결제 뒤 적립률·등급·지급 시점을 바꿔도 결과는 같다. 실지급 스위치(`testMode`)만 기록하는 때의 값을 쓴다.
 - `EARN`(PENDING), 환불 때 회수: `revokeMode = AUTO`면 `REVOKE`(PENDING)를 기록하고, `MANUAL`이면 기록하지 않는다. MANUAL에서 「환불된 주문에 `EARN`은 있고 `REVOKE`가 없는 상태」가 수동 확인 대기다(감사 로그 `rewardRevoke: manual_review`).
 - 결제 확인에 결제수단이 없으면 주문에 저장된 결제수단으로 적립률을 정한다.
 - 원장의 실제 처리(SUCCEEDED·잔액 반영), 주문에 쓴 적립금(`USE`)을 환불·취소 때 돌려주는 것은 다음 단계(적립금 사용 기능과 함께).
@@ -332,7 +332,7 @@ PG 연결 정보, 구매자 문의·공지, 알림 발송 기록, 도우미 자�
   - `POST /api/seller/orders/{orderId}/ship`(`ORDER_SHIPPING`, 잠금 중에도 가능): 결제 완료(`PAID`) 즉시 발송 주문만 `IN_TRANSIT`로 만든다. 재고 부족(`stockShortageAt`) 주문, 배송지가 없는 주문도 `409 not_shippable`. 배송 중에는 송장을 고쳐 다시 넣을 수 있고(첫 발송 시각 유지, `order.shipment.update` 기록), 배송 완료 뒤에는 바꾸지 않는다. 주문 상태는 `PAID` 그대로.
   - 발송한(Shipment가 있는) 주문을 환불하면 재고를 되돌리지 않고 배송 기록도 그대로 둔다. 감사 로그 `order.refund`에 `shippedBeforeRefund: true`와 배송 상태를 남긴다. 배송비 환불 금액 규칙은 대표님 결정 대기(지금은 주문 전체 금액 기준 그대로).
   - 배송 완료 `POST /api/seller/orders/{orderId}/deliver`(`ORDER_SHIPPING`, 잠금 중에도 가능): 결제 완료·배송 중(`IN_TRANSIT`)인 주문만 `DELIVERED`·`deliveredAt`(DB 시계)로 바꾸고 아직 없으면 `EARN`을 기록한다. 아니면 `409 not_deliverable`. 주문 행을 잠가 발송·환불과 겹치지 않는다. 감사 로그 `order.deliver`.
-  - 자동 처리(`lib/server/orders/delivery.ts`, 정기 실행 연결은 인프라 승인 대기): `autoCompleteDeliveries`는 발송 뒤 `autoDeliverDays`가 지난 배송 중 주문을 배송 완료(`order.auto_deliver`), `autoConfirmPurchases`는 배송 완료 뒤 `autoConfirmDays`가 지난 결제 완료 주문에 `Order.purchaseConfirmedAt`을 남긴다(`order.purchase_confirmed`). 주문 상태는 `PAID` 그대로. 멱등이고 한 건 실패해도 나머지는 계속한다(`*_failed` 감사 로그).
+  - 자동 처리(`lib/server/orders/delivery.ts`, 정기 실행 연결은 인프라 승인 대기): `autoCompleteDeliveries`는 발송 뒤 `autoDeliverDays`가 지난 배송 중 주문을 배송 완료(`order.auto_deliver`), `autoConfirmPurchases`는 배송 완료 뒤 `autoConfirmDays`가 지난 결제 완료 주문에 `Order.purchaseConfirmedAt`을 남긴다(`order.purchase_confirmed`). 주문 상태는 `PAID` 그대로. 멱등이고 한 건 실패해도 나머지는 계속한다(`*_failed` 감사 로그). 후보를 오래된 순(시각, 주문 id) keyset으로 이어 가져와, 실패하거나 그사이 조건이 바뀐 주문은 건너뛰고 처리 건수가 한도(기본 100)에 찰 때까지 다음 후보로 넘어간다(한 번에 한도 × 10건까지 살핀다). 주문마다 트랜잭션 안에서 주문을 잠그고 상태·판매자 설정(켜짐·기간)을 DB 시계로 다시 확인한다.
   - 배송 추적·발송 알림은 아직 없다.
 
 ### 4.11 입금 기한·미입금 자동 취소·구매 제한 (PRODUCT_SCOPE 「무통장 입금·구매 제한 기본값」, MASTER 결정)

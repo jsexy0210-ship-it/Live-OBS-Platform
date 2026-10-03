@@ -534,37 +534,43 @@ enum PaymentMethod {
 }
 
 model Order {
-  id                        String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerId                  String          @db.Uuid
+  id                        String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId                  String            @db.Uuid
   orderNo                   Int
-  buyerMemberId             String          @db.Uuid
-  status                    OrderStatus     @default(PENDING_PAYMENT)
+  buyerMemberId             String            @db.Uuid
+  status                    OrderStatus       @default(PENDING_PAYMENT)
   broadcastNicknameSnapshot String
   totalAmount               Int
-  rewardUsedAmount          Int             @default(0)
+  rewardUsedAmount          Int               @default(0)
   // 배송(MVP는 즉시 발송만). 배송비는 주문할 때 판매자 배송비 정책으로 계산해 고정한다(totalAmount에 포함, 적립 기준에서는 제외).
-  fulfillmentType           FulfillmentType @default(IMMEDIATE)
-  shippingFee               Int             @default(0)
+  fulfillmentType           FulfillmentType   @default(IMMEDIATE)
+  shippingFee               Int               @default(0)
   paymentMethod             PaymentMethod?
   pgProvider                String?
   pgTxId                    String?
-  paidAt                    DateTime?       @db.Timestamptz(3)
-  stockShortageAt           DateTime?       @db.Timestamptz(3)
-  cancelledAt               DateTime?       @db.Timestamptz(3)
-  refundedAt                DateTime?       @db.Timestamptz(3)
+  paidAt                    DateTime?         @db.Timestamptz(3)
+  stockShortageAt           DateTime?         @db.Timestamptz(3)
+  cancelledAt               DateTime?         @db.Timestamptz(3)
+  refundedAt                DateTime?         @db.Timestamptz(3)
   // 구매 확정 시각(배송 완료 n일 뒤 자동). 주문 상태(status)는 결제 완료(PAID) 그대로 둔다.
-  purchaseConfirmedAt       DateTime?       @db.Timestamptz(3)
+  purchaseConfirmedAt       DateTime?         @db.Timestamptz(3)
+  // 적립 스냅숏(결제 때 판정, MASTER 결정 2026-10-03): 지급 시점·회원 등급·적립률(%)·적립 예정액. 결제 때 0원이면 나중에도 적립하지 않는다.
+  // 배송 완료 때는 rewardEarnTiming이 ON_DELIVERY인 주문만 rewardEarnAmount로 기록한다. 적립 정책이 없던 주문·이 기능 전 주문은 null.
+  rewardEarnTiming          RewardEarnTiming?
+  rewardGradeId             String?           @db.Uuid
+  rewardRate                Float?
+  rewardEarnAmount          Int?
   // 주문할 때 판매자 반품 배송비(편도). 정책을 나중에 바꿔도 이 주문은 그대로다. 이 기능 전 주문은 null(환불 때 현재 정책을 쓴다).
   returnFeeSnapshot         Int?
   // 환불 결과: 돌려준 금액, 사유 주체(구매자·판매자 사정, 발송 전 환불은 null일 수 있음), 환불액에서 뺀 반품 배송비
   refundAmount              Int?
   refundFault               RefundFault?
   returnFeeDeducted         Int?
-  createdAt                 DateTime        @default(now()) @db.Timestamptz(3)
+  createdAt                 DateTime          @default(now()) @db.Timestamptz(3)
   // 입금 기한(주문 시각 + 판매자 설정 시간, 기본 24시간). 지나면 결제 대기 주문을 자동 취소한다(lib/server/orders/overdue.ts).
-  paymentDueAt              DateTime?       @db.Timestamptz(3)
+  paymentDueAt              DateTime?         @db.Timestamptz(3)
   // 입금 기한이 지나 시스템이 자동 취소한 시각. 자동 구매 제한 횟수를 셀 때 쓴다.
-  autoCancelledAt           DateTime?       @db.Timestamptz(3)
+  autoCancelledAt           DateTime?         @db.Timestamptz(3)
 
   seller          Seller                @relation(fields: [sellerId], references: [id])
   buyerMember     BuyerMember           @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id])
