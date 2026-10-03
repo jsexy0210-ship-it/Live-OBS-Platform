@@ -24,8 +24,14 @@ case "${1:-status}" in
     require_test_env
     rm -f "$AVAIL_MARK"
     if ! compose up -d --no-build --wait --remove-orphans; then
+      # 표시만 되돌리면 실제 구성과 어긋날 수 있으니 가용성 정의로 앱 2개 구성을 다시 올린다.
       touch "$AVAIL_MARK"
-      die "끄기 실패. 앱 2개 정의가 남아 있을 수 있어 표시를 되돌렸어요(availability.sh status로 확인 후 다시 off)."
+      if compose up -d --no-build --wait; then
+        refresh_monitor
+        die "끄기 실패. 앱 2개 구성으로 되돌렸어요. 원인을 확인한 뒤 다시 off해 주세요."
+      fi
+      rm -f "$AVAIL_MARK"
+      die "끄기 실패, 되돌리기도 실패했어요. 구성이 불확실해요, availability.sh status로 확인해 주세요."
     fi
     refresh_monitor
     log "가용성 프로파일 꺼짐: 기본 정의(obs-web-app 1개)"

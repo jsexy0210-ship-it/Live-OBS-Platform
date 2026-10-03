@@ -13,6 +13,7 @@
 //   받는 쪽이 2xx가 아니면 alert_failed를 남기고 한도를 쓰지 않은 채 다음 주기에 다시 보낸다(최대 5번).
 //   전송은 동시 5건·틱마다 간격의 1/3 안에서만 해 감시 주기를 막지 않는다.
 // 감시 상태(실패 횟수·열린 장애·경고 쿨다운·알림 한도·보낼 목록)는 monitor-state.json에 남겨 재시작해도 이어진다.
+// 감시 대상에서 빠진 이름의 상태는 틱마다 지우고, 열린 장애는 incident_close(reason: target_removed)로 닫는다.
 // 아직 못 재는 것(앱 쪽 훅 필요, MASTER 요청): DB pool 사용량, worker·scheduler heartbeat, 작업 큐 적체.
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync, existsSync, statSync } from "node:fs";
 import http from "node:http";
@@ -206,7 +207,24 @@ async function warnOnce(key, ev, cooldownMs = 3600_000) {
   await event({ level: "warn", ...ev });
 }
 
+// 감시 대상에서 빠진 이름(가용성 off로 빠진 app2 등)의 상태를 지운다. 열린 장애는 「대상 제외」로 닫는다.
+async function pruneRemovedTargets() {
+  const names = new Set(cfg.targets.map((t) => t.name));
+  for (const [name, open] of Object.entries(state.incidents)) {
+    if (names.has(name)) continue;
+    delete state.incidents[name];
+    await event({ level: "info", kind: "incident_close", target: name, reason: "target_removed", openedAt: open.openedKst, durationS: Math.round((Date.now() - open.openedAt) / 1000) });
+  }
+  for (const m of [state.fails, state.mismatchTicks]) for (const name of Object.keys(m)) if (!names.has(name)) delete m[name];
+  // 대상별 경고 키: slow:<이름>, version:<이름>:...
+  for (const key of Object.keys(state.warned)) {
+    const [kind, name] = key.split(":");
+    if ((kind === "slow" || kind === "version") && !names.has(name)) delete state.warned[key];
+  }
+}
+
 async function tick() {
+  await pruneRemovedTargets();
   const at = kst();
   const results = {};
   // 대상을 동시에 확인한다(여러 대상이 시간 초과여도 한 틱이 timeoutMs 정도로 끝나게).
