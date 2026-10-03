@@ -168,9 +168,6 @@ export async function confirmIdentityCode(
     await db.identityVerification.updateMany({ where: { id: v.id, status: "PENDING" }, data: { status: "EXPIRED" } });
     return { ok: false, reason: "expired" };
   }
-  if (v.otpFailCount >= MAX_OTP_FAILURES) return { ok: false, reason: "too_many_attempts" };
-  if (!v.lastSentAt) return { ok: false, reason: "failed" };
-  if (v.lastSentAt.getTime() + OTP_TTL_MS <= now.getTime()) return { ok: false, reason: "code_expired" };
   // 운영에서는 가짜 공급자 기록을 완료 처리하지 않는다(공급자 객체를 우회해 만든 경우까지 막는다).
   if (v.provider === "fake" && process.env.NODE_ENV === "production") return { ok: false, reason: "failed" };
   const finalize = (r: IdentityResultOk) => finalizeIdentity(db, v, r, now);
@@ -196,16 +193,27 @@ export async function confirmIdentityCode(
     return r.ok ? finalize(r) : null;
   };
 
+  // 시도를 잡지 못함(횟수를 다 씀): 마지막 시도에서 대행사 확인은 됐는데 결과 조회만 실패했을 수 있으니,
+  // 아직 PENDING이면 결과를 한 번 다시 조회해 확정한다. 아니면 too_many_attempts.
+  const exhausted = async (): Promise<ConfirmResult> => {
+    const recovered = await recover();
+    if (recovered) return recovered;
+    const current = await db.identityVerification.findUniqueOrThrow({ where: { id: v.id }, select: { status: true } });
+    return { ok: false, reason: current.status === "PENDING" ? "too_many_attempts" : "failed" };
+  };
+
+  // 횟수를 다 쓴 요청은 인증번호를 다시 확인하지 않고 결과만 조회하므로, 인증번호 유효 시간과 상관없이 먼저 복구를 시도한다
+  // (요청 자체의 만료는 위에서 이미 확인했다. 결과가 미인증이면 성공으로 치지 않는다).
+  if (v.otpFailCount >= MAX_OTP_FAILURES) return exhausted();
+  if (!v.lastSentAt) return { ok: false, reason: "failed" };
+  if (v.lastSentAt.getTime() + OTP_TTL_MS <= now.getTime()) return { ok: false, reason: "code_expired" };
+
   // 공급자를 부르기 전에 시도 1회를 조건부로 먼저 잡는다. 동시에 여러 번 보내도 남은 횟수만큼만 공급자를 부른다.
   const reserved = await db.identityVerification.updateMany({
     where: { id: v.id, status: "PENDING", otpFailCount: { lt: MAX_OTP_FAILURES } },
     data: { otpFailCount: { increment: 1 } },
   });
-  if (reserved.count !== 1) {
-    const current = await db.identityVerification.findUniqueOrThrow({ where: { id: v.id } });
-    if (current.status === "VERIFIED") return { ok: true, verification: current };
-    return { ok: false, reason: current.status === "PENDING" || current.otpFailCount >= MAX_OTP_FAILURES ? "too_many_attempts" : "failed" };
-  }
+  if (reserved.count !== 1) return exhausted();
   if (typeof otp !== "string" || !/^\d{4,8}$/.test(otp)) return wrong();
   const confirmed = await call(provider.confirmCode(v.requestId, otp));
   if (!confirmed.ok) {

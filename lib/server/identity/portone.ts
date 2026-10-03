@@ -71,8 +71,17 @@ export class PortOneIdentityProvider implements IdentityProvider {
     const r = await this.call("POST", this.path(requestId, "confirm"), { storeId: this.config.storeId, otp });
     if (!r) return FAILURE;
     if (r.status >= 200 && r.status < 300) return { ok: true as const };
-    // 인증번호 불일치 등 사용자 입력 오류(4xx)는 wrong_code, 그 밖은 장애로 본다
-    return r.status === 400 ? { ok: false as const, reason: "wrong_code" as const } : FAILURE;
+    const type = r.json && typeof r.json === "object" ? (r.json as { type?: unknown }).type : undefined;
+    // 오류 본문의 type 값은 포트원 V2 OpenAPI(portone-io/developers.portone.io src/schema/v2.openapi.json,
+    // components.schemas.ConfirmIdentityVerificationError.discriminator.mapping) 기준이다(스키마 이름이 아니라 discriminator 값).
+    // 이미 확인된 요청(409 IDENTITY_VERIFICATION_ALREADY_VERIFIED): 확인은 끝났으므로 결과 조회로 넘어간다
+    if (r.status === 409 && type === "IDENTITY_VERIFICATION_ALREADY_VERIFIED") return { ok: true as const };
+    // 502 PG_PROVIDER: KCP가 돌려준 오류(인증번호 불일치일 가능성이 커서 틀린 횟수로 센다. 장애로 보면 예약한 1회를 돌려줘
+    // 5회 제한이 무력해진다). pgCode 표는 계약 뒤 대행사 규격으로 좁힌다.
+    // 400 INVALID_REQUEST: 스펙상 형식 오류다. 우리는 인증번호를 숫자 4~8자리로 먼저 검사한 뒤에만 보내므로, 그 뒤의 400은
+    // 사용자가 넣은 번호를 대행사가 받지 않은 경우로 보고 틀린 번호로 센다(장애로 돌려주면 5회 제한을 우회할 수 있다).
+    if (r.status === 400 || (r.status === 502 && type === "PG_PROVIDER")) return { ok: false as const, reason: "wrong_code" as const };
+    return FAILURE;
   }
 
   async fetchResult(requestId: string): Promise<IdentityResult | ProviderFailure> {

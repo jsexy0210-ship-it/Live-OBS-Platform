@@ -50,6 +50,8 @@ export class FakeIdentityProvider implements IdentityProvider {
   private nextFault: "error" | "hang" | "afterHang" | null = null;
   // 테스트: 인증번호 확인 호출 횟수
   confirmCalls = 0;
+  // 테스트: 다음 결과 조회 한 번만 장애로 만든다(확인은 성공한 뒤 조회만 실패하는 경우)
+  failNextResult = false;
   // 테스트: 다음 결과 조회에 다른 요청 id·용도를 실어 보낸다(위조·뒤바뀐 결과 시험).
   private nextResultOverride: Partial<{ requestId: string; purpose: IdentityPurposeTag }> | null = null;
   readonly sent: string[] = [];
@@ -118,6 +120,10 @@ export class FakeIdentityProvider implements IdentityProvider {
   async fetchResult(requestId: string): Promise<IdentityResult | ProviderFailure> {
     const f = await this.fault();
     if (f) return f;
+    if (this.failNextResult) {
+      this.failNextResult = false;
+      return { ok: false, reason: "provider_error" };
+    }
     const r = this.requests.get(requestId);
     const set = this.people.get(requestId);
     if (set === "failed") return { ok: false, reason: "failed" };

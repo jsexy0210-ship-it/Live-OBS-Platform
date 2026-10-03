@@ -330,4 +330,36 @@ describe("Codex 검수 후속(#95)", () => {
     expect(r.ok).toBe(true);
     expect(await row(b.verification.id)).toMatchObject({ status: "VERIFIED", otpFailCount: 0 });
   });
+
+  it("[MASTER 후속] 마지막(5번째) 시도에서 대행사 확인은 됐는데 결과 조회가 실패하면, 다음 시도에서 결과를 다시 조회해 확정한다", async () => {
+    const { seller } = await createSeller();
+    const a = await buyerIdv(seller.id);
+    for (let i = 0; i < MAX_OTP_FAILURES - 1; i++) expect(await confirmIdv(provider, a.verification, a.ownerToken, "111111")).toEqual({ ok: false, reason: "wrong_code" });
+    provider.failNextResult = true;
+    expect(await confirmIdv(provider, a.verification, a.ownerToken)).toEqual({ ok: false, reason: "provider_error" });
+    expect(await row(a.verification.id)).toMatchObject({ status: "PENDING", otpFailCount: MAX_OTP_FAILURES });
+    const again = await confirmIdv(provider, a.verification, a.ownerToken);
+    expect(again.ok).toBe(true);
+    expect((await row(a.verification.id)).status).toBe("VERIFIED");
+  });
+
+  it("[Codex P2] 마지막 시도 뒤 결과 조회만 실패했다면, 인증번호 유효 시간(3분)이 지나도 요청 만료(10분) 전이면 다시 시도해 확정한다. 결과가 미인증이면 성공으로 치지 않는다", async () => {
+    const { seller } = await createSeller();
+    const a = await buyerIdv(seller.id);
+    for (let i = 0; i < MAX_OTP_FAILURES - 1; i++) await confirmIdv(provider, a.verification, a.ownerToken, "111111");
+    provider.failNextResult = true;
+    expect(await confirmIdv(provider, a.verification, a.ownerToken)).toEqual({ ok: false, reason: "provider_error" });
+    const sentAt = (await row(a.verification.id)).lastSentAt!;
+    const later = new Date(sentAt.getTime() + OTP_TTL_MS + 60_000);
+    expect(later.getTime()).toBeLessThan(a.verification.expiresAt.getTime());
+    expect((await confirmIdv(provider, a.verification, a.ownerToken, "123456", later)).ok).toBe(true);
+    expect((await row(a.verification.id)).status).toBe("VERIFIED");
+
+    // 마지막 시도까지 틀린(대행사에서도 미인증) 요청은 유효 시간이 지나도 성공이 되지 않는다
+    const b = await buyerIdv(seller.id);
+    for (let i = 0; i < MAX_OTP_FAILURES; i++) await confirmIdv(provider, b.verification, b.ownerToken, "111111");
+    await db.identityVerification.update({ where: { id: b.verification.id }, data: { status: "PENDING" } });
+    const bSent = (await row(b.verification.id)).lastSentAt!;
+    expect(await confirmIdv(provider, b.verification, b.ownerToken, "000000", new Date(bSent.getTime() + OTP_TTL_MS + 60_000))).toEqual({ ok: false, reason: "too_many_attempts" });
+  });
 });
