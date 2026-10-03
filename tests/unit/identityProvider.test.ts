@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PortOneIdentityProvider } from "../../lib/server/identity/portone";
-import { FAKE_REQUEST_TTL_MS, FAKE_SENT_KEEP, FakeIdentityProvider } from "../../lib/server/identity/provider";
+import { FAKE_REQUEST_KEEP, FAKE_REQUEST_TTL_MS, FAKE_SENT_KEEP, FakeIdentityProvider } from "../../lib/server/identity/provider";
 import { newIdentityRequestId, parseIdentityPerson } from "../../lib/server/identity/verification";
 import { identityProvider } from "../../lib/server/identity/registry";
 
@@ -118,13 +118,17 @@ describe("테스트 서버 모드의 가짜 공급자 메모리", () => {
   afterEach(() => vi.useRealTimers());
   const person = { name: "홍길동", phone: "01012345678", birth7: "9505051", carrier: "SKT" as const, device: "MOBILE" as const };
 
-  it("1시간 지난 요청은 다음 요청 때 지우고, 보낸 기록은 최근 1000건만 남긴다", async () => {
+  it("1시간 지난 요청은 다음 요청 때 지우고, 1시간 안에 몰려도 요청은 최근 2000건·보낸 기록은 최근 1000건만 남긴다", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-04T00:00:00Z"));
     const p = new FakeIdentityProvider("production", { testMode: true });
-    for (let i = 0; i < FAKE_SENT_KEEP + 500; i++) await p.sendCode(`old-${i}`, "BUYER_SIGNUP", person);
+    const burst = FAKE_REQUEST_KEEP + 500;
+    for (let i = 0; i < burst; i++) await p.sendCode(`old-${i}`, "BUYER_SIGNUP", person);
     expect(p.sent.length).toBeLessThanOrEqual(FAKE_SENT_KEEP);
-    expect(p.pendingRequestCount).toBe(FAKE_SENT_KEEP + 500);
+    expect(p.pendingRequestCount).toBe(FAKE_REQUEST_KEEP);
+    // 가장 오래된 요청이 먼저 지워지고, 최근 요청은 그대로 확인된다
+    expect(await p.confirmCode("old-0", "000000")).toEqual({ ok: false, reason: "provider_error" });
+    expect(await p.confirmCode(`old-${burst - 1}`, "000000")).toEqual({ ok: true });
     vi.setSystemTime(new Date(Date.now() + FAKE_REQUEST_TTL_MS + 1000));
     await p.sendCode("new", "BUYER_SIGNUP", person);
     expect(p.pendingRequestCount).toBe(1);

@@ -41,9 +41,11 @@ export const FAKE_IDENTITY_OTP = "000000";
 type FakeRequest = { purpose: IdentityPurposeTag; person: IdentityPerson; confirmed: boolean; at: number };
 
 // 테스트 서버 모드(오래 도는 서버)에서 가짜 공급자가 메모리에 들고 있는 요청의 수명과 보낸 기록 개수 상한.
-// 본인확인 요청은 10분이면 끝나므로 1시간 지난 요청은 지우고, 보낸 기록은 최근 것만 남긴다.
+// 본인확인 요청은 10분이면 끝나므로 1시간 지난 요청은 지우고, 요청 수와 보낸 기록은 최근 것만 남긴다.
 export const FAKE_REQUEST_TTL_MS = 3600_000;
 export const FAKE_SENT_KEEP = 1000;
+// 메모리에 들고 있는 요청 수 상한. 1시간 안에 이보다 많이 오면 가장 오래된 요청부터 지운다(짧은 시간에 몰려도 메모리가 정해진 크기 안).
+export const FAKE_REQUEST_KEEP = 2000;
 type FakePerson = { ci: string; name: string; phone: string; birthDate: Date };
 
 export class FakeIdentityProvider implements IdentityProvider {
@@ -117,6 +119,14 @@ export class FakeIdentityProvider implements IdentityProvider {
     if (f) return f;
     this.prune();
     this.requests.set(requestId, { purpose, person, confirmed: false, at: Date.now() });
+    if (this.bounded) {
+      // 넣은 순서대로라 맨 앞이 가장 오래된 요청이다
+      for (const id of this.requests.keys()) {
+        if (this.requests.size <= FAKE_REQUEST_KEEP) break;
+        this.requests.delete(id);
+        this.people.delete(id);
+      }
+    }
     this.record(requestId);
     return { ok: true as const };
   }
