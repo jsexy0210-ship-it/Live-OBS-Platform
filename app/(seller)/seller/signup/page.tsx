@@ -222,7 +222,7 @@ export default function PartnersSignupPage() {
                   key={idvKey}
                   label="대표자 휴대폰 본인확인"
                   base={BASE}
-                  start={(person) => api<{ verificationId: string }>(BASE, { method: "POST", body: person })}
+                  start={(person, attemptKey) => api<{ verificationId: string }>(BASE, { method: "POST", body: { ...person, attemptKey } })}
                   onUnavailable={toUnavailable}
                   onVerified={(id, who) => {
                     setVerification({ id, who });

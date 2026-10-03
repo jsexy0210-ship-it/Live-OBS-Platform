@@ -35,7 +35,7 @@ describe("앱 안 정기 실행", () => {
     const live = await db.identityVerification.create({ data: { ...base, sellerId: b.id, requestId: "r-b", status: "PENDING", name: "나", requestedPhone: "01022223333", expiresAt: new Date(now.getTime() + 600_000) } });
     const signedUp = await db.identityVerification.create({ data: { ...base, sellerId: b.id, requestId: "r-c", status: "VERIFIED", ciHash: "ci", verifiedAt: old, consumedAt: old, createdAt: old, expiresAt: old } });
     const out = await runScheduledJobs(db, now);
-    expect(out.filter((r) => r.name.startsWith("identity_verification.")).map((r) => r.status)).toEqual(["done", "done"]);
+    expect(out.filter((r) => r.name.startsWith("identity_verification.")).map((r) => r.status)).toEqual(["done", "done", "done"]);
     expect(await db.identityVerification.findUniqueOrThrow({ where: { id: expired.id } })).toMatchObject({ name: null, phone: null, requestedPhone: null, anonymizedAt: now, status: "PENDING", requestIp: "203.0.113.9" });
     expect(await db.identityVerification.findUniqueOrThrow({ where: { id: live.id } })).toMatchObject({ name: "나", anonymizedAt: null });
     expect((await db.identityVerification.findUniqueOrThrow({ where: { id: signedUp.id } })).requestIp).toBeNull();
