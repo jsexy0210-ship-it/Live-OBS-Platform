@@ -20,7 +20,8 @@ export type QueueRejection =
   | "reason_required"
   | "opened_items_present"
   | "fault_required"
-  | "opened_items_unshipped";
+  | "opened_items_unshipped"
+  | "purchase_confirmed";
 
 export type TransitionInput = {
   status: QueueItemStatus;

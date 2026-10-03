@@ -517,6 +517,8 @@ export async function refundOrder(
       throw new Rejected((await tx.order.count({ where: { id: orderId, sellerId: ctx.sellerId } })) ? "invalid_transition" : "not_found");
     }
     const order = await tx.order.findUniqueOrThrow({ where: { id: orderId }, include: { items: true, queueItems: true, shipment: { select: { status: true } } } });
+    // 구매 확정한 주문은 바로 환불하지 않는다. 판매자가 구매 확정을 먼저 취소해야 한다(대표님 결정 2026-10-03, orders/delivery.ts unconfirmPurchase).
+    if (order.purchaseConfirmedAt) throw new Rejected("purchase_confirmed");
     // 발송한 주문은 상품이 구매자에게 가 있으므로 재고를 되돌리지 않는다(회수는 판매자가 MANUAL로). 배송 기록은 그대로 둔다.
     const shippedBeforeRefund = order.shipment !== null;
     const isOpened = (q: (typeof order.queueItems)[number] | undefined) =>

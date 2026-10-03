@@ -52,6 +52,9 @@ export const ORDER_ERROR_MESSAGES = {
   fault_required: "구매자 사정인지 판매자 사정인지 골라 주세요",
   opened_items_present: "개봉한 상품이 있어요. 확인한 뒤 다시 환불해 주세요",
   opened_items_unshipped: "개봉한 상품이 있어서 지금은 환불할 수 없어요. 개봉한 상품을 보낸 뒤 나머지를 처리해 주세요",
+  purchase_confirmed: "구매 확정한 주문이에요. 구매 확정을 먼저 취소해 주세요",
+  // 구매 확정 취소
+  not_confirmed: "구매 확정한 주문만 확정을 취소할 수 있어요",
 } as const;
 
 // 구매자 주문 화면 안내 문구(해요체)
