@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { POST as adjustRoute } from "../../app/api/seller/products/[productId]/options/[optionId]/stock-adjust/route";
+import { GET as productsRoute } from "../../app/api/seller/products/route";
 import { GET as movementsRoute } from "../../app/api/seller/products/stock-movements/route";
 import { loginSeller } from "../../lib/server/auth/login";
 import { prisma } from "../../lib/server/db";
@@ -170,5 +171,46 @@ describe("수동 증감 expectedStock(화면이 본 재고)", () => {
     expect(await adjustStock(db, s.ctx, p.productId, p.optionId, { delta: -12, reason: "폐기", expectedStock: 12 })).toEqual({ ok: false, reason: "stock_conflict", currentStock: 11 });
     expect((await db.productOption.findUniqueOrThrow({ where: { id: p.optionId } })).stock).toBe(11);
     expect(await db.stockMovement.count({ where: { optionId: p.optionId } })).toBe(3);
+  });
+});
+
+describe("상품 목록 재고 필터(stock=out·low)", () => {
+  const products = (cookie: string, q: Record<string, string>) =>
+    productsRoute(new Request(`http://localhost:3000/api/seller/products?${new URLSearchParams(q)}`, { headers: { ...H, cookie } }));
+
+  it("out은 판매 상태와 상관없이 살아 있는 옵션 재고 합계 0(지운 옵션 재고는 빼고), low는 1~5. 다른 쇼핑몰은 섞이지 않고 커서로 끝까지 넘긴다", async () => {
+    const s = await shop();
+    const empty = await s.product("품절", 0);
+    const draft = await createProduct(db, s.ctx, { name: "준비 중 품절", price: 1000, options: [{ name: "기본", stock: 0 }] });
+    if (!draft.ok) throw new Error(draft.reason);
+    const deletedStock = await s.product("지운 옵션만 재고", 0);
+    const extra = await db.productOption.create({ data: { sellerId: s.seller.id, productId: deletedStock.productId, name: "지운 옵션", stock: 9, deletedAt: new Date() } });
+    expect(extra.stock).toBe(9);
+    const low1 = await s.product("1개", 1);
+    const low5 = await s.product("5개", 5);
+    await s.product("6개", 6);
+    const other = await shop();
+    await other.product("남의 품절", 0);
+    await other.product("남의 적음", 2);
+
+    const names = async (q: Record<string, string>) => {
+      const all: string[] = [];
+      let cursor: string | null = null;
+      do {
+        const r = await products(s.cookie, { ...q, limit: "1", ...(cursor ? { cursor } : {}) });
+        expect(r.status).toBe(200);
+        const body: { products: { name: string }[]; nextCursor: string | null } = await r.json();
+        all.push(...body.products.map((p) => p.name));
+        cursor = body.nextCursor;
+      } while (cursor);
+      return all.sort();
+    };
+    expect(await names({ stock: "out" })).toEqual(["준비 중 품절", "지운 옵션만 재고", "품절"].sort());
+    expect(await names({ stock: "low" })).toEqual(["1개", "5개"].sort());
+    expect(await names({ stock: "out", status: "ON_SALE" })).toEqual(["지운 옵션만 재고", "품절"].sort());
+    expect(empty.productId && low1.productId && low5.productId).toBeTruthy();
+    const bad = await products(s.cookie, { stock: "none" });
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toEqual({ error: "invalid_stock_filter", message: "재고 조건을 다시 확인해 주세요" });
   });
 });
