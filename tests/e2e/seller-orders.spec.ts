@@ -245,6 +245,8 @@ test("환불 모달: 확인한 금액을 함께 보내고, 그사이 금액이 �
   await run.click();
   await expect(page.getByText("120,000원 환불을 완료했어요")).toBeVisible();
   expect(bodies.map((b) => b.expectedRefundAmount)).toEqual([129000, 120000]);
+  // 환불 뒤 상세를 다시 읽는 요청이 아직 route.fetch 중일 수 있다. 테스트가 끝나 페이지가 닫히면 그 콜백이 오류를 내므로 라우트를 정리한다
+  await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
 test("실제 환불: 판매자 사정으로 환불하면 완료 알림이 뜨고 주문이 환불됨으로 바뀐다", async ({ page }) => {
