@@ -182,7 +182,7 @@ test("환불 모달: 개봉한 상품이 있으면 사유 주체를 바꿀 때�
   await expect(run).toBeEnabled();
   await shot(page, "SA-023-opened");
   // 판매자 사정으로 바꾸면 개봉한 상품·배송비까지 모두 돌려주고, 금액 확인을 다시 받는다
-  await dialog.getByRole("radio", { name: /판매자 사정/ }).check();
+  await dialog.getByRole("radio", { name: /파트너스 사정/ }).check();
   await expect(amount).toHaveText("324,000원");
   await expect(dialog.locator("dt", { hasText: "반품 배송비" })).toHaveCount(0);
   await expect(dialog.locator("dt", { hasText: "개봉한 상품" })).toHaveCount(0);
@@ -200,7 +200,7 @@ test("환불 모달: 개봉한 상품이 있으면 사유 주체를 바꿀 때�
   await expect(dialog.getByRole("button", { name: /환불 실행/ })).toHaveCount(0);
   await expect(dialog.getByLabel("위 금액으로 환불해요. 승인 취소 후 되돌릴 수 없어요.")).toHaveCount(0);
   await shot(page, "SA-023-nothing");
-  await dialog.getByRole("radio", { name: /판매자 사정/ }).check();
+  await dialog.getByRole("radio", { name: /파트너스 사정/ }).check();
   await expect(dialog.getByTestId("refund-amount")).toHaveText("15,000원");
   await expect(dialog.getByText("환불할 금액이 없어요")).toHaveCount(0);
   await expect(dialog.getByRole("button", { name: /환불 실행/ })).toHaveText("15,000원 환불 실행");
@@ -259,7 +259,7 @@ test("실제 환불: 판매자 사정으로 환불하면 완료 알림이 뜨고
   const target = rows(page).filter({ has: page.locator("td:nth-child(6)", { hasText: "—" }) }).first();
   await target.getByRole("link", { name: "환불 처리" }).click();
   const dialog = page.getByRole("dialog", { name: "취소 · 환불 처리" });
-  await dialog.getByRole("radio", { name: /판매자 사정/ }).check();
+  await dialog.getByRole("radio", { name: /파트너스 사정/ }).check();
   await dialog.getByLabel("처리 사유").selectOption("품절 · 재고 없음");
   await dialog.getByLabel("위 금액으로 환불해요. 승인 취소 후 되돌릴 수 없어요.").check();
   const refund = page.waitForResponse((r) => r.url().endsWith("/refund") && r.request().method() === "POST");
@@ -267,7 +267,7 @@ test("실제 환불: 판매자 사정으로 환불하면 완료 알림이 뜨고
   expect((await refund).status()).toBe(200);
   await expect(page.getByText(/원 환불을 완료했어요/)).toBeVisible();
   await expect(page.locator(".bdg-lg").first()).toHaveText("환불됨");
-  await expect(page.getByText("판매자 사정")).toBeVisible();
+  await expect(page.getByText("파트너스 사정")).toBeVisible();
   await expect(page.getByRole("button", { name: "취소 · 환불" })).toHaveCount(0);
   await shot(page, "SA-022-refunded");
 });
@@ -293,7 +293,7 @@ test("환불 모달: 결제 수단이 카드면 「카드 승인 취소」를 �
   await page.getByRole("link", { name: "환불 처리" }).first().click();
   const dialog = page.getByRole("dialog", { name: "취소 · 환불 처리" });
   await expect(dialog.locator(".refund-opt.on").first()).toContainText("카드 승인 취소");
-  await dialog.getByRole("radio", { name: /판매자 사정/ }).check();
+  await dialog.getByRole("radio", { name: /파트너스 사정/ }).check();
   // 사유 주체를 고르면 실제 환불액이 카드 승인 취소 금액으로 보인다
   await expect(dialog.locator(".refund-opt.on").first()).toContainText(/\d원 · 카드 승인 취소$/);
   await dialog.getByLabel("처리 사유").selectOption("기타");
@@ -317,7 +317,7 @@ test("주문·배송 권한만 있는 직원(방송 진행 권한 없음)도 실
   const target = rows(page).filter({ has: page.locator("td:nth-child(6)", { hasText: "—" }) }).first();
   await target.getByRole("link", { name: "환불 처리" }).click();
   const dialog = page.getByRole("dialog", { name: "취소 · 환불 처리" });
-  await dialog.getByRole("radio", { name: /판매자 사정/ }).check();
+  await dialog.getByRole("radio", { name: /파트너스 사정/ }).check();
   await dialog.getByLabel("처리 사유").selectOption("품절 · 재고 없음");
   await dialog.getByLabel("위 금액으로 환불해요. 승인 취소 후 되돌릴 수 없어요.").check();
   const refund = page.waitForResponse((r) => r.url().endsWith("/refund") && r.request().method() === "POST");
