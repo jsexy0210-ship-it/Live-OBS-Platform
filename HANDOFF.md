@@ -82,7 +82,7 @@
 ## 대표님 조치 대기
 
 - 플랫폼 운영사 정보(대표님 사업자): 배포 때 마스터 콘솔 설정에 입력(대표님 확인). 저장소·문서에는 값을 적지 않음
-- 테스트 서버(obs-web-test, 210.109.15.68) 준비: `docs/DEPLOY.md` 순서대로 ① GitHub 외부 기여자 워크플로 승인 설정 ② 보안 그룹(80·443 열기, 22는 대표님 IP만, 5432·3000 닫기) ③ Docker·obs 계정·/opt/obs·`.env`(OBS_SITE_ADDRESS=test.on-aircue.com) ④ 상시 runner 등록 ⑤ Environment obs-test 보호 ⑥ Run workflow ⑦ https://test.on-aircue.com/api/health 확인
+- 테스트 서버(obs-web-test, 210.109.15.68) 준비: (DNS: Cloudflare `test.on-aircue.com` A → 210.109.15.68, DNS only는 2026-10-03 대표님이 등록함, 바뀌면 `docs/DEPLOY.md` 「HTTPS」대로 다시 확인) `docs/DEPLOY.md` 순서대로 ① GitHub 외부 기여자 워크플로 승인 설정 ② 보안 그룹(80·443 열기, 22는 대표님 IP만, 5432·3000 닫기) ③ Docker·obs 계정·/opt/obs·`.env`(OBS_SITE_ADDRESS=test.on-aircue.com) ④ 상시 runner 등록 ⑤ Environment obs-test 보호 ⑥ Run workflow ⑦ https://test.on-aircue.com/api/health 확인
 - 브랜치 `fix/shipping-refund-note` 삭제 지시(2026-10-03): 이 환경에서 원격 브랜치 삭제가 막혀 GitHub 화면에서 지워야 함
 - 휴대폰 본인확인 대행사 선정·계약(유료): 포트원 V2 + NHN KCP API 방식 우선 검토. 계약 전 대행사에 확인할 것: ① API 방식(자체 화면) 허용·심사 ② PASS 없이 문자만 제공해도 되는지 ③ CI 제공 설정 ④ 건당 요금·최소 이용료·포트원 수수료 ⑤ 계약 전 테스트 채널과 실제 문자·과금 여부 ⑥ 인증번호 유효시간·재전송·실패 제한 ⑦ 문자 발신번호·문구 등록
 - 본인확인 대행사 계약 때 성별·내외국인 구분·이동통신사·접속 기기 종류의 대행사 보관 기간을 확인(수집·이용 동의 서식 `{{본인확인 대행사 보관 기간}}`에 채움)
