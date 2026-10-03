@@ -4,7 +4,7 @@ import { updateTrialLimits } from "../../../../../../lib/server/billing/trialLim
 import { prisma } from "../../../../../../lib/server/db";
 import { mutation, readJson, requestMeta, sessionToken } from "../../../../../../lib/server/http/route";
 
-// 체험하기 한도 변경(알림톡·문자 건수, 구매자 PASS 건수, 저장 용량 MB).
+// 체험하기 한도 변경(알림톡·문자 건수, 구매자 휴대폰 본인확인 건수, 저장 용량 MB).
 export const POST = mutation(async (req: Request, { params }: { params: Promise<{ code: string }> }) => {
   const admin = await requireAdmin(prisma, sessionToken(req, "admin"), "billing.manage");
   const { code } = await params;

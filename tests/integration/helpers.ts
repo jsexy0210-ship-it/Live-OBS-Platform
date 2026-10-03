@@ -1,5 +1,7 @@
-import { PrismaClient, type SellerStaffPermission } from "@prisma/client";
+import { PrismaClient, type IdentityVerificationPurpose, type SellerStaffPermission } from "@prisma/client";
 import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
+import { FAKE_IDENTITY_OTP, type IdentityPerson, type IdentityProvider } from "../../lib/server/identity/provider";
+import { confirmIdentityCode, sendFirstIdentityCode, startIdentityVerification } from "../../lib/server/identity/verification";
 
 // 모듈을 불러오는 순간 테스트 DB인지 확인한다.
 const url = assertTestDatabaseUrl(process.env.DATABASE_URL);
@@ -138,3 +140,27 @@ export async function createLoginBuyer(sellerId: string, gradeId: string) {
   const m = await createBuyer(sellerId, gradeId);
   return db.buyerMember.update({ where: { id: m.id }, data: { passwordHash: await passwordHash() } });
 }
+
+// 휴대폰 본인확인(가짜 공급자) 테스트 도우미. 인적사항 기본값은 아래, 필요한 항목만 바꿔 쓴다.
+export const IDV_INPUT = { name: "홍길동", phone: "01012345678", birth7: "9505051", carrier: "SKT" } as const;
+
+// 시작 + 첫 인증번호 보내기
+export async function startIdv(
+  provider: IdentityProvider,
+  input: { purpose: IdentityVerificationPurpose; sellerId: string | null; subjectId?: string | null; now?: Date; person?: Partial<IdentityPerson> },
+) {
+  const person: IdentityPerson = { ...IDV_INPUT, ...input.person };
+  const started = await startIdentityVerification(db, provider, { ...input, person });
+  const sent = await sendFirstIdentityCode(db, provider, started.verification, person, input.now);
+  if (!sent.ok) throw new Error(sent.reason);
+  return started;
+}
+
+// 가짜 공급자의 인증번호로 확인
+export const confirmIdv = (
+  provider: IdentityProvider,
+  v: { id: string; sellerId: string | null; purpose: IdentityVerificationPurpose },
+  ownerToken: string | undefined,
+  code: string = FAKE_IDENTITY_OTP,
+  now?: Date,
+) => confirmIdentityCode(db, provider, v.id, { sellerId: v.sellerId, purpose: v.purpose, ownerToken }, code, now);

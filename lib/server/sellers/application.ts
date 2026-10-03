@@ -5,7 +5,7 @@ import { hashPassword } from "../auth/password";
 import { MIN_PASSWORD_LENGTH } from "../auth/passwordReset";
 import { hashToken } from "../auth/token";
 import type { IdentityProvider } from "../identity/provider";
-import { startIdentityVerification } from "../identity/verification";
+import { parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
 import { activateSeller } from "./approval";
 import {
   normalizeBusinessNumber,
@@ -16,7 +16,7 @@ import {
 } from "./businessCheck";
 
 // 판매자 가입 신청과 자동 점검(대표님 결정 2026-10-02, PRODUCT_SCOPE 「판매자 가입 자동 승인」).
-// 점검: 대표자 PASS 본인인증(필수) · 대표자 CI 중복(1인 1쇼핑몰) · 국세청 진위확인(대표자명·개업일 대조)·「계속사업자」 ·
+// 점검: 대표자 휴대폰 본인확인(필수) · 대표자 CI 중복(1인 1쇼핑몰) · 국세청 진위확인(대표자명·개업일 대조)·「계속사업자」 ·
 // 같은 사업자번호로 운영·신청 중인 쇼핑몰 없음 · 통신판매업 신고 조회(공정위, 등록·사업자번호 일치·영업 정상).
 // 모두 통과하면 바로 승인(체험하기 시작), 하나라도 걸리면 승인 대기로 두고 걸린 항목을 「확인 필요」 사유로 남긴다.
 // 로그인 이메일·비밀번호는 신청자가 정한다.
@@ -26,19 +26,22 @@ const SLUG = /^[a-z0-9](?:[a-z0-9-]{1,28}[a-z0-9])$/;
 const RESERVED_SLUGS = new Set(["admin", "api", "app", "www", "master", "seller", "shop", "static", "help", "support", "login", "signup", "overlay"]);
 const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/;
 
-// 가입용 PASS는 건당 비용이 들어 같은 접속 IP에서 하루(KST 자정 초기화) 10회까지만 시작한다(MASTER 결정 2026-10-03).
+// 가입용 휴대폰 본인확인은 건당 비용이 들어 같은 접속 IP에서 하루(KST 자정 초기화) 10회까지만 시작한다(MASTER 결정 2026-10-03).
 export const SIGNUP_VERIFY_DAILY_LIMIT_PER_IP = 10;
 
 // 대표자 1인 1쇼핑몰 위반 때 보여 줄 문구(다른 쇼핑몰 이름은 보여 주지 않음, MASTER 결정)
 export const REPRESENTATIVE_HAS_SHOP_MESSAGE = "이미 운영 중인 쇼핑몰이 있어요 · 한 대표자는 쇼핑몰 하나만 열 수 있어요";
 
-// 판매자 가입 PASS 시작. IP별로 줄을 세워(advisory lock) 오늘(KST) 시작 건수를 DB 시계로 센 뒤 한도 안일 때만 시작한다.
+// 판매자 가입 휴대폰 본인확인 시작(인적사항 검사 → 요청 기록 → 첫 인증번호). IP별로 줄을 세워(advisory lock) 오늘(KST) 시작 건수를 DB 시계로 센 뒤 한도 안일 때만 시작한다.
 // IP를 알 수 없으면(신뢰 프록시 미설정) 하나의 묶음으로 센다.
 export async function startSellerSignupVerification(
   db: PrismaClient,
   provider: IdentityProvider,
+  rawPerson: unknown,
   meta: { ip?: string | null; userAgent?: string | null; now?: Date } = {},
 ) {
+  const person = parseIdentityPerson(rawPerson);
+  if (!person) return { ok: false as const, reason: "invalid_identity_input" as const };
   const ip = meta.ip ?? null;
   const started = await db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`seller_signup:${ip ?? "unknown"}`}))`;
@@ -48,7 +51,7 @@ export async function startSellerSignupVerification(
         AND "requestIp" IS NOT DISTINCT FROM ${ip}
         AND "createdAt" >= (date_trunc('day', now() AT TIME ZONE 'Asia/Seoul') AT TIME ZONE 'Asia/Seoul')`;
     if (Number(count) >= SIGNUP_VERIFY_DAILY_LIMIT_PER_IP) return null;
-    return startIdentityVerification(tx, provider, { purpose: "SELLER_REPRESENTATIVE", sellerId: null, requestIp: ip, now: meta.now });
+    return startIdentityVerification(tx, provider, { purpose: "SELLER_REPRESENTATIVE", sellerId: null, person, requestIp: ip, now: meta.now });
   });
   if (!started) {
     await writeAudit(db, {
@@ -60,7 +63,9 @@ export async function startSellerSignupVerification(
     });
     return { ok: false as const, reason: "daily_limit_exceeded" as const };
   }
-  return { ok: true as const, verificationId: started.verification.id, requestId: started.verification.requestId, ownerToken: started.ownerToken };
+  const sent = await sendFirstIdentityCode(db, provider, started.verification, person, meta.now);
+  if (!sent.ok) return { ok: false as const, reason: sent.reason };
+  return { ok: true as const, verificationId: started.verification.id, ownerToken: started.ownerToken };
 }
 
 // 자동 점검에서 걸린 항목(「확인 필요」 사유)
@@ -125,7 +130,7 @@ export async function applyForSeller(
   const openedOn = normalizeOpenedOn(input.openedOn ?? "");
   if (!openedOn) return { ok: false, reason: "invalid_input" };
 
-  // 대표자 PASS: 이 신청을 시작한 브라우저의 인증, 완료, 30분 안, 아직 안 쓴 것
+  // 대표자 휴대폰 본인확인: 이 신청을 시작한 브라우저의 인증, 완료, 30분 안, 아직 안 쓴 것
   const v = await db.identityVerification.findUnique({ where: { id: input.verificationId } });
   if (
     !v ||
@@ -151,7 +156,7 @@ export async function applyForSeller(
 
   // 자동 점검: 걸린 항목은 「확인 필요」 사유가 된다
   const reasons: ReviewReason[] = [];
-  // 국세청 진위확인: 사업자번호·대표자명(PASS로 확인한 이름)·개업일자 대조 + 계속사업자
+  // 국세청 진위확인: 사업자번호·대표자명(휴대폰 본인확인으로 확인한 이름)·개업일자 대조 + 계속사업자
   const nts = await providers.business.verify({ businessNumber, representativeName: v.name, openedOn });
   if (!nts.ok) reasons.push("business_lookup_failed");
   else {

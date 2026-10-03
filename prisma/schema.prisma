@@ -294,6 +294,11 @@ enum IdentityVerificationPurpose {
   PASSWORD_RESET
 }
 
+enum IdentityVerificationMethod {
+  PASS_APP
+  SMS
+}
+
 enum IdentityVerificationStatus {
   PENDING
   VERIFIED
@@ -308,8 +313,16 @@ model IdentityVerification {
   sellerId       String?                     @db.Uuid
   purpose        IdentityVerificationPurpose
   provider       String
+  // 본인확인 방식. 기존 행은 실제 쓴 방식(PASS_APP) 그대로 두고, 휴대폰 본인확인(문자)부터 SMS로 남긴다.
+  method         IdentityVerificationMethod
   requestId      String
   status         IdentityVerificationStatus  @default(PENDING)
+  // 문자 본인확인: 요청 때 받은 휴대폰번호(숫자만). 대행사 결과의 번호가 이와 다르면 실패로 본다.
+  requestedPhone String?
+  // 인증번호 보낸 횟수(처음 포함)·마지막으로 보낸 시각·틀린 횟수. 한도는 identity/verification.ts 상수.
+  sendCount      Int                         @default(0)
+  lastSentAt     DateTime?                   @db.Timestamptz(3)
+  otpFailCount   Int                         @default(0)
   ciHash         String?
   name           String?
   phone          String?

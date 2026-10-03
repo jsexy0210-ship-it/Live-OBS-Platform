@@ -1,12 +1,12 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { POST as applyRoute } from "../../app/api/seller-signup/apply/route";
+import { POST as confirmRoute } from "../../app/api/seller-signup/verification/confirm/route";
 import { POST as startRoute } from "../../app/api/seller-signup/verification/route";
 import { loginSeller } from "../../lib/server/auth/login";
 import { createAdminSession, resolveAdminSession } from "../../lib/server/auth/session";
 import { prisma } from "../../lib/server/db";
 import { FakeIdentityProvider } from "../../lib/server/identity/provider";
 import { identityProvider } from "../../lib/server/identity/registry";
-import { completeIdentityVerification, startIdentityVerification } from "../../lib/server/identity/verification";
 import { SIGNUP_VERIFY_DAILY_LIMIT_PER_IP, applyForSeller, startSellerSignupVerification, type ApplyInput } from "../../lib/server/sellers/application";
 import { TRIAL_DAYS, approveSeller, listSellersToReview, rejectSeller } from "../../lib/server/sellers/approval";
 import {
@@ -15,7 +15,7 @@ import {
   UnavailableBusinessStatusProvider,
   UnavailableMailOrderProvider,
 } from "../../lib/server/sellers/businessCheck";
-import { createAdmin, db, resetDb } from "./helpers";
+import { IDV_INPUT, confirmIdv, createAdmin, db, resetDb, startIdv } from "./helpers";
 
 beforeAll(() => {
   process.env.IDENTITY_HASH_KEY = "test-identity-hash-key-0123456789abcdef";
@@ -31,11 +31,11 @@ afterAll(async () => {
 const DAY = 86_400_000;
 const identity = new FakeIdentityProvider();
 
-// 대표자 PASS를 마친 인증 기록과 시작한 브라우저 값
+// 대표자 휴대폰 본인확인을 마친 인증 기록과 시작한 브라우저 값
 async function verified(ci: string, name = "김대표") {
-  const { verification, ownerToken } = await startIdentityVerification(db, identity, { purpose: "SELLER_REPRESENTATIVE", sellerId: null });
+  const { verification, ownerToken } = await startIdv(identity, { purpose: "SELLER_REPRESENTATIVE", sellerId: null, person: { name, phone: "01011112222" } });
   identity.complete(verification.requestId, { ci, name, phone: "01011112222", birthDate: new Date("1985-01-01") });
-  const r = await completeIdentityVerification(db, identity, verification.id, { sellerId: null, purpose: "SELLER_REPRESENTATIVE", ownerToken });
+  const r = await confirmIdv(identity, verification, ownerToken);
   if (!r.ok) throw new Error(r.reason);
   return { verificationId: verification.id, ownerToken };
 }
@@ -186,9 +186,9 @@ describe("거부되는 신청", () => {
     expect((await applyForSeller(db, { business, mailOrder }, form(v))).ok).toBe(true);
     expect(await applyForSeller(db, { business, mailOrder }, form(v))).toEqual({ ok: false, reason: "verification_invalid" });
 
-    const { verification, ownerToken } = await startIdentityVerification(db, identity, { purpose: "PASSWORD_RESET", sellerId: null });
+    const { verification, ownerToken } = await startIdv(identity, { purpose: "PASSWORD_RESET", sellerId: null, person: { phone: "01000000000" } });
     identity.complete(verification.requestId, { ci: "CI-11", name: "x", phone: "01000000000", birthDate: new Date("1990-01-01") });
-    await completeIdentityVerification(db, identity, verification.id, { sellerId: null, purpose: "PASSWORD_RESET", ownerToken });
+    expect((await confirmIdv(identity, verification, ownerToken)).ok).toBe(true);
     expect(await applyForSeller(db, { business, mailOrder }, form({ verificationId: verification.id, ownerToken }))).toEqual({ ok: false, reason: "verification_invalid" });
   });
 
@@ -216,15 +216,24 @@ describe("HTTP: 가입 신청", () => {
       body: JSON.stringify(body),
     });
 
-  it("PASS 시작 → 인증 완료 → 신청하면 자동 승인되고, 쿠키 없이는 거부", async () => {
-    const start = await startRoute(post("/api/seller-signup/verification", {}));
+  const rep = { ...IDV_INPUT, name: "박대표", phone: "010-3333-4444" };
+  // 시작 응답의 요청 기록에 가짜 공급자 명의를 정하고, 인증번호 확인 라우트로 확정한다
+  const confirmHttp = async (verificationId: string, cookie: string) => {
+    const { requestId } = await db.identityVerification.findUniqueOrThrow({ where: { id: verificationId } });
+    (identityProvider() as FakeIdentityProvider).complete(requestId, { ci: "CI-HTTP", name: "박대표", phone: "01033334444", birthDate: new Date("1980-02-02") });
+    const r = await confirmRoute(post("/api/seller-signup/verification/confirm", { verificationId, code: "000000" }, cookie));
+    expect(r.status).toBe(200);
+  };
+
+  it("휴대폰 본인확인 시작 → 인증번호 확인 → 신청하면 자동 승인되고, 쿠키 없이는 거부", async () => {
+    const start = await startRoute(post("/api/seller-signup/verification", rep));
     expect(start.status).toBe(200);
     const setCookie = start.headers.get("set-cookie") ?? "";
     expect(setCookie).toMatch(/^lo_sidv=/);
     expect(setCookie.toLowerCase()).toContain("path=/api/seller-signup");
     const cookie = setCookie.split(";")[0];
-    const { verificationId, requestId } = await start.json();
-    (identityProvider() as FakeIdentityProvider).complete(requestId, { ci: "CI-HTTP", name: "박대표", phone: "01033334444", birthDate: new Date("1980-02-02") });
+    const { verificationId } = await start.json();
+    await confirmHttp(verificationId, cookie);
 
     const body = {
       openedOn: "20200101",
@@ -244,10 +253,10 @@ describe("HTTP: 가입 신청", () => {
     expect((await db.seller.findUniqueOrThrow({ where: { slug: "http-card" } })).status).toBe("ACTIVE");
 
     // 같은 대표자가 또 신청하면 409와 정해진 문구(다른 쇼핑몰 이름 없음)
-    const again = await startRoute(post("/api/seller-signup/verification", {}));
+    const again = await startRoute(post("/api/seller-signup/verification", rep));
     const cookie2 = (again.headers.get("set-cookie") ?? "").split(";")[0];
     const second = await again.json();
-    (identityProvider() as FakeIdentityProvider).complete(second.requestId, { ci: "CI-HTTP", name: "박대표", phone: "01033334444", birthDate: new Date("1980-02-02") });
+    await confirmHttp(second.verificationId, cookie2);
     const dup = await applyRoute(post("/api/seller-signup/apply", { ...body, verificationId: second.verificationId, slug: "http-card-2" }, cookie2));
     expect(dup.status).toBe(409);
     const dupBody = await dup.json();
@@ -262,20 +271,20 @@ describe("MASTER 결정 반영", () => {
     expect(r).toMatchObject({ ok: true, approved: false, reviewReasons: ["business_lookup_failed"] });
   });
 
-  it("가입 PASS 시작은 같은 IP에서 하루 10회까지, 다른 IP는 따로 센다", async () => {
+  it("가입 휴대폰 본인확인 시작은 같은 IP에서 하루 10회까지, 다른 IP는 따로 센다", async () => {
     for (let i = 0; i < SIGNUP_VERIFY_DAILY_LIMIT_PER_IP; i++) {
-      expect((await startSellerSignupVerification(db, identity, { ip: "203.0.113.7" })).ok).toBe(true);
+      expect((await startSellerSignupVerification(db, identity, IDV_INPUT, { ip: "203.0.113.7" })).ok).toBe(true);
     }
-    expect(await startSellerSignupVerification(db, identity, { ip: "203.0.113.7" })).toEqual({ ok: false, reason: "daily_limit_exceeded" });
-    expect((await startSellerSignupVerification(db, identity, { ip: "203.0.113.8" })).ok).toBe(true);
+    expect(await startSellerSignupVerification(db, identity, IDV_INPUT, { ip: "203.0.113.7" })).toEqual({ ok: false, reason: "daily_limit_exceeded" });
+    expect((await startSellerSignupVerification(db, identity, IDV_INPUT, { ip: "203.0.113.8" })).ok).toBe(true);
     expect(await db.auditLog.count({ where: { action: "seller.signup.verify_limited" } })).toBe(1);
     // 어제 시작한 건은 세지 않는다(KST 자정 초기화)
     await db.identityVerification.updateMany({ where: { requestIp: "203.0.113.7" }, data: { createdAt: new Date(Date.now() - 2 * DAY) } });
-    expect((await startSellerSignupVerification(db, identity, { ip: "203.0.113.7" })).ok).toBe(true);
+    expect((await startSellerSignupVerification(db, identity, IDV_INPUT, { ip: "203.0.113.7" })).ok).toBe(true);
   });
 
   it("같은 IP에서 동시에 시작해도 10회를 넘지 않는다", async () => {
-    const rs = await Promise.all(Array.from({ length: 15 }, () => startSellerSignupVerification(db, identity, { ip: "198.51.100.1" })));
+    const rs = await Promise.all(Array.from({ length: 15 }, () => startSellerSignupVerification(db, identity, IDV_INPUT, { ip: "198.51.100.1" })));
     expect(rs.filter((r) => r.ok)).toHaveLength(SIGNUP_VERIFY_DAILY_LIMIT_PER_IP);
   });
 });

@@ -1,12 +1,13 @@
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import type { AdminSessionContext } from "../auth/session";
 import { writeAudit } from "../audit/log";
 import { forbidden } from "../authz/errors";
 import { adminCan } from "../authz/permissions";
 import { DEFAULT_PLAN_CODE, sellerAccessFor } from "./subscription";
 
-// 체험하기 중 한도(대표님 결정 2026-10-02): 알림톡·문자 100건, 구매자 PASS 50건, 저장 용량 1GB.
-// 값은 SubscriptionPlan에 있고 마스터가 코드 수정 없이 바꾼다. 알림톡·PASS·업로드 기능을 붙일 때 이 확인 함수를 부른다.
+// 체험하기 중 한도(대표님 결정 2026-10-02): 알림톡·문자 100건, 구매자 휴대폰 본인확인 50건, 저장 용량 1GB.
+// 값은 SubscriptionPlan에 있고 마스터가 코드 수정 없이 바꾼다. 알림톡·업로드 기능을 붙일 때 이 확인 함수를 부른다.
+// 휴대폰 본인확인(identity)은 성공 1건을 1로 세고(identity/verification.ts identityUsage), 주문 알림 문자(message)와 따로 센다.
 
 export type TrialLimitKind = "message" | "identity" | "storageMb";
 
@@ -16,7 +17,7 @@ export type TrialLimitResult = { ok: true } | { ok: false; reason: "trial_limit_
 
 // 체험하기 중인 판매자만 한도를 본다. used = 지금까지 쓴 양, adding = 이번에 더할 양.
 export async function checkTrialLimit(
-  db: PrismaClient,
+  db: PrismaClient | Prisma.TransactionClient,
   sellerId: string,
   kind: TrialLimitKind,
   usage: { used: number; adding: number },
