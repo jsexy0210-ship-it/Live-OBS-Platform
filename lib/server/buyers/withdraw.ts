@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { writeAudit } from "../audit/log";
 import { loginErrorBody } from "../auth/messages";
 import { hashPassword, verifyPassword } from "../auth/password";
+import { lockBuyerAddresses } from "./addresses";
 
 // 구매자 탈퇴(ARCHITECTURE 「구매자 회원」: WITHDRAWN과 deletedAt을 같은 트랜잭션에서, 개인정보 비식별).
 // 기준(MASTER 결정 2026-10-03):
@@ -53,8 +54,11 @@ export async function withdrawBuyer(
   const unusable = await hashPassword(randomBytes(32).toString("hex"));
   const tag = member.id.replace(/-/g, "").slice(0, 12);
   const result = await db.$transaction(async (tx) => {
-    // 같은 회원 행을 잠가 주문 생성·다른 탈퇴 요청과 겹치지 않게 한다
-    await tx.$queryRaw`SELECT "id" FROM "BuyerMember" WHERE "id" = ${member.id}::uuid FOR UPDATE`;
+    // 같은 회원 행을 잠가 주문 생성(FOR SHARE)·다른 탈퇴 요청과 겹치지 않게 한다. FOR UPDATE가 아닌 이유: 배송지 저장이
+    // 배송지 잠금을 쥔 채 외래 키 확인(FOR KEY SHARE)으로 회원 행을 기다리면 아래 배송지 잠금과 교착이 생긴다.
+    await tx.$queryRaw`SELECT "id" FROM "BuyerMember" WHERE "id" = ${member.id}::uuid FOR NO KEY UPDATE`;
+    // 배송지 저장·수정과 같은 잠금을 잡아, 겹쳐 저장된 배송지가 탈퇴 뒤에 남지 않게 한다
+    await lockBuyerAddresses(tx, scope);
     const busy = await tx.order.count({
       where: {
         sellerId: scope.sellerId,

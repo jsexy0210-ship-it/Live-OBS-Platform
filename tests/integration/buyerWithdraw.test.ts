@@ -1,11 +1,14 @@
-import type { OrderStatus } from "@prisma/client";
+import type { OrderStatus, PrismaClient } from "@prisma/client";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { GET as addressesRoute } from "../../app/api/shop/[slug]/addresses/route";
 import { POST as loginRoute } from "../../app/api/shop/[slug]/auth/login/route";
 import { POST as withdrawRoute } from "../../app/api/shop/[slug]/me/withdraw/route";
-import { WITHDRAW_FAIL_LIMIT, WITHDRAW_MESSAGES } from "../../lib/server/buyers/withdraw";
+import { createAddress } from "../../lib/server/buyers/addresses";
+import { WITHDRAW_FAIL_LIMIT, WITHDRAW_MESSAGES, withdrawBuyer } from "../../lib/server/buyers/withdraw";
 import { prisma } from "../../lib/server/db";
 import { loginSeller } from "../../lib/server/auth/login";
+import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
+import { createOrder } from "../../lib/server/orders/create";
 import { PASSWORD, createLoginBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
 beforeEach(resetDb);
@@ -15,6 +18,7 @@ afterAll(async () => {
 });
 
 const H = { "content-type": "application/json", host: "localhost:3000", origin: "http://localhost:3000" };
+const ADDR = { recipientName: "김구매", phone: "01012345678", zipCode: "06236", address1: "서울 강남구 테헤란로 1" };
 const ctx = (slug: string) => ({ params: Promise.resolve({ slug }) });
 
 async function shop() {
@@ -151,5 +155,80 @@ describe("구매자 탈퇴", () => {
     );
     expect(cross.status).toBe(403);
     expect((await db.buyerMember.findUniqueOrThrow({ where: { id: s.buyer.id } })).status).toBe("ACTIVE");
+  });
+});
+
+// 경합 재현: 트랜잭션 안에서 model.method를 부르기 직전에 gate가 풀릴 때까지 멈춘다.
+function pauseBefore(target: PrismaClient, model: string, method: string, gate: Promise<unknown>): PrismaClient {
+  const wrapTx = (tx: object) =>
+    new Proxy(tx, {
+      get(t, p, r) {
+        const v = Reflect.get(t, p, r);
+        if (p !== model) return v;
+        return new Proxy(v, {
+          get(d, m, dr) {
+            const f = Reflect.get(d, m, dr);
+            return m === method ? async (...a: unknown[]) => (await gate, f.apply(d, a)) : f;
+          },
+        });
+      },
+    });
+  return new Proxy(target, {
+    get(t, p) {
+      const v = Reflect.get(t, p);
+      if (p === "$transaction") return (fn: (tx: object) => unknown, o?: unknown) => t.$transaction((tx) => fn(wrapTx(tx)) as Promise<unknown>, o as never);
+      return typeof v === "function" ? v.bind(t) : v;
+    },
+  });
+}
+
+// 탈퇴가 끝나거나(잠금에 막히면) 0.5초가 지나면 풀린다
+const settleOrTimeout = (p: Promise<unknown>) => Promise.race([p.catch(() => null), new Promise((r) => setTimeout(r, 500))]);
+
+describe("탈퇴와 동시 요청", () => {
+  it("배송지 저장이 탈퇴와 겹쳐도 탈퇴 회원에게 배송지가 남지 않는다", async () => {
+    const s = await shop();
+    const scope = { sellerId: s.seller.id, buyerMemberId: s.buyer.id };
+    let release!: (v: unknown) => void;
+    const gate = new Promise((r) => (release = r));
+    // 배송지 저장이 잠금·확인을 마치고 저장 직전에 멈춘 사이 탈퇴한다
+    const saving = createAddress(pauseBefore(db, "buyerAddress", "findFirst", gate), scope, ADDR);
+    await new Promise((r) => setTimeout(r, 100));
+    const withdrawing = withdrawBuyer(db, scope, { password: PASSWORD });
+    settleOrTimeout(withdrawing).then(release);
+    const [saved, withdrawn] = await Promise.all([saving, withdrawing]);
+    expect(withdrawn).toEqual({ ok: true });
+    expect(await db.buyerAddress.count({ where: { buyerMemberId: s.buyer.id } })).toBe(0);
+    // 탈퇴한 뒤(예전 세션으로 범위를 이미 얻은 요청)에는 배송지를 저장·수정·삭제할 수 없다
+    expect(saved.ok).toBe(true);
+    expect(await createAddress(db, scope, ADDR)).toEqual({ ok: false, reason: "address_not_found" });
+    expect(await db.buyerAddress.count({ where: { buyerMemberId: s.buyer.id } })).toBe(0);
+  });
+
+  it("주문 생성이 탈퇴와 겹쳐도 탈퇴 회원에게 결제 대기 주문이 생기지 않는다", async () => {
+    const s = await shop();
+    const product = await db.product.create({ data: { sellerId: s.seller.id, name: "부스터 팩", price: 5000, status: "ON_SALE" } });
+    const option = await db.productOption.create({ data: { sellerId: s.seller.id, productId: product.id, name: "1박스", stock: 10 } });
+    const scope = { sellerId: s.seller.id, buyerMemberId: s.buyer.id };
+    let release!: (v: unknown) => void;
+    const gate = new Promise((r) => (release = r));
+    // 주문이 회원을 확인하고 주문 행을 쓰기 직전에 멈춘 사이 탈퇴한다
+    const ordering = createOrder(pauseBefore(db, "order", "create", gate), {
+      ...scope,
+      items: [{ optionId: option.id, quantity: 1 }],
+      consent: { agreed: true, noticeVersion: OPENED_NO_REFUND_CONSENT.version },
+      shippingAddress: ADDR,
+    });
+    await new Promise((r) => setTimeout(r, 100));
+    const withdrawing = withdrawBuyer(db, scope, { password: PASSWORD });
+    settleOrTimeout(withdrawing).then(release);
+    const [ordered, withdrawn] = await Promise.all([ordering, withdrawing]);
+    const member = await db.buyerMember.findUniqueOrThrow({ where: { id: s.buyer.id } });
+    const pending = await db.order.count({ where: { buyerMemberId: s.buyer.id, status: "PENDING_PAYMENT" } });
+    // 주문이 먼저 끝나므로 탈퇴는 진행 중 주문으로 막힌다
+    expect(ordered.ok).toBe(true);
+    expect(withdrawn).toEqual({ ok: false, reason: "orders_in_progress" });
+    expect(member.status).toBe("ACTIVE");
+    expect(pending).toBe(1);
   });
 });

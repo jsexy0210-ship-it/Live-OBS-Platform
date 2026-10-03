@@ -35,7 +35,14 @@ const VIEW = { id: true, label: true, recipientName: true, phone: true, zipCode:
 const RECENT: Prisma.BuyerAddressOrderByWithRelationInput[] = [{ lastUsedAt: { sort: "desc", nulls: "last" } }, { createdAt: "desc" }, { id: "desc" }];
 const ORDER: Prisma.BuyerAddressOrderByWithRelationInput[] = [{ isDefault: "desc" }, ...RECENT];
 
-const lockBuyerAddresses = (tx: Tx, s: AddressScope) => tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`buyer_address:${s.sellerId}:${s.buyerMemberId}`}))`;
+// 같은 구매자의 배송지 변경을 한 줄로 세운다. 탈퇴(buyers/withdraw)도 같은 잠금을 잡고 배송지를 지운다.
+export const lockBuyerAddresses = (tx: Tx, s: AddressScope) => tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`buyer_address:${s.sellerId}:${s.buyerMemberId}`}))`;
+
+// 잠근 뒤 회원이 아직 활성인지 다시 본다(세션을 확인한 뒤 탈퇴했으면 배송지를 바꾸지 않는다)
+async function lockActive(tx: Tx, s: AddressScope): Promise<boolean> {
+  await lockBuyerAddresses(tx, s);
+  return (await tx.buyerMember.count({ where: { id: s.buyerMemberId, sellerId: s.sellerId, status: "ACTIVE", deletedAt: null } })) === 1;
+}
 
 // 이름(선택): 없거나 빈 값이면 null. 글자 수는 cleanText 기준(코드포인트)이고, 길기만 하면 too_long, 쓸 수 없는 글자면 invalid.
 function parseLabel(v: unknown): string | null | "invalid_address_label" | "address_label_too_long" {
@@ -91,7 +98,7 @@ export async function createAddress(db: PrismaClient, s: AddressScope, raw: unkn
   if (isDefault !== undefined && typeof isDefault !== "boolean") return { ok: false, reason: "invalid_shipping_address" };
   const wantDefault = isDefault === true;
   return db.$transaction(async (tx) => {
-    await lockBuyerAddresses(tx, s);
+    if (!(await lockActive(tx, s))) return { ok: false as const, reason: "address_not_found" as const };
     const now = await dbNow(tx);
     const r = await insert(tx, s, f, wantDefault, now, null);
     if (r === "too_many_addresses") return { ok: false as const, reason: r };
@@ -110,7 +117,7 @@ export async function updateAddress(db: PrismaClient, s: AddressScope, id: strin
   if (!EDITABLE.some((k) => k in body)) return { ok: false, reason: "invalid_shipping_address" };
   if (body.isDefault !== undefined && typeof body.isDefault !== "boolean") return { ok: false, reason: "invalid_shipping_address" };
   return db.$transaction(async (tx) => {
-    await lockBuyerAddresses(tx, s);
+    if (!(await lockActive(tx, s))) return { ok: false as const, reason: "address_not_found" as const };
     const cur = await tx.buyerAddress.findFirst({ where: { id, sellerId: s.sellerId, buyerMemberId: s.buyerMemberId } });
     if (!cur) return { ok: false as const, reason: "address_not_found" as const };
     if (cur.isDefault && body.isDefault === false) return { ok: false as const, reason: "default_address_required" as const };
@@ -140,7 +147,7 @@ export async function updateAddress(db: PrismaClient, s: AddressScope, id: strin
 
 export async function deleteAddress(db: PrismaClient, s: AddressScope, id: string): Promise<AddressResult<null>> {
   return db.$transaction(async (tx) => {
-    await lockBuyerAddresses(tx, s);
+    if (!(await lockActive(tx, s))) return { ok: false as const, reason: "address_not_found" as const };
     const cur = await tx.buyerAddress.findFirst({ where: { id, sellerId: s.sellerId, buyerMemberId: s.buyerMemberId }, select: { isDefault: true } });
     if (!cur) return { ok: false as const, reason: "address_not_found" as const };
     await tx.buyerAddress.delete({ where: { id } });
@@ -156,7 +163,7 @@ export async function deleteAddress(db: PrismaClient, s: AddressScope, id: strin
 // 주문에 쓴 배송지 기록(주문 트랜잭션 안). 같은 배송지가 이미 있으면 사용 시각만 바꾼다(저장을 꺼도 바꿈).
 // 없으면 save일 때만 새로 저장하고, 20개가 차 있으면 저장하지 않는다. 어느 경우든 주문은 그대로 진행한다.
 export async function recordOrderAddress(tx: Tx, s: AddressScope, address: ShippingAddressInput, save: boolean, now: Date): Promise<void> {
-  await lockBuyerAddresses(tx, s);
+  if (!(await lockActive(tx, s))) return;
   const used = await tx.buyerAddress.updateMany({ where: { sellerId: s.sellerId, buyerMemberId: s.buyerMemberId, ...sameAddress(address) }, data: { lastUsedAt: now } });
   if (used.count > 0 || !save) return;
   const r = await insert(tx, s, { ...address, label: null }, false, now, now);
