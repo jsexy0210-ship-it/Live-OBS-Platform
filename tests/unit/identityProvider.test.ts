@@ -94,6 +94,13 @@ describe("포트원 휴대폰 본인확인 어댑터(실제 호출 미검증, �
     expect(await down.confirmCode("idv-1", "123456")).toEqual({ ok: false, reason: "provider_error" });
   });
 
+  it("[MASTER 후속] 인증번호 확인: 502 PgProviderError는 wrong_code(틀린 횟수로 셈), 409 이미 확인됨은 성공, 그 밖의 502는 장애", async () => {
+    expect(await new PortOneIdentityProvider(config, async () => json(502, { type: "PgProviderError", pgCode: "x" })).confirmCode("idv-1", "111111")).toEqual({ ok: false, reason: "wrong_code" });
+    expect(await new PortOneIdentityProvider(config, async () => json(409, { type: "IdentityVerificationAlreadyVerifiedError" })).confirmCode("idv-1", "111111")).toEqual({ ok: true });
+    expect(await new PortOneIdentityProvider(config, async () => json(409, { type: "Other" })).confirmCode("idv-1", "111111")).toEqual({ ok: false, reason: "provider_error" });
+    expect(await new PortOneIdentityProvider(config, async () => json(502, { type: "Other" })).confirmCode("idv-1", "111111")).toEqual({ ok: false, reason: "provider_error" });
+  });
+
   it("인증번호 확인: 400은 wrong_code, 그 밖의 실패는 provider_error", async () => {
     expect(await new PortOneIdentityProvider(config, async () => json(400, {})).confirmCode("idv-1", "111111")).toEqual({ ok: false, reason: "wrong_code" });
     expect(await new PortOneIdentityProvider(config, async () => json(503, {})).confirmCode("idv-1", "111111")).toEqual({ ok: false, reason: "provider_error" });

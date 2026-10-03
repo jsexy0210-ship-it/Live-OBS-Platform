@@ -330,4 +330,16 @@ describe("Codex 검수 후속(#95)", () => {
     expect(r.ok).toBe(true);
     expect(await row(b.verification.id)).toMatchObject({ status: "VERIFIED", otpFailCount: 0 });
   });
+
+  it("[MASTER 후속] 마지막(5번째) 시도에서 대행사 확인은 됐는데 결과 조회가 실패하면, 다음 시도에서 결과를 다시 조회해 확정한다", async () => {
+    const { seller } = await createSeller();
+    const a = await buyerIdv(seller.id);
+    for (let i = 0; i < MAX_OTP_FAILURES - 1; i++) expect(await confirmIdv(provider, a.verification, a.ownerToken, "111111")).toEqual({ ok: false, reason: "wrong_code" });
+    provider.failNextResult = true;
+    expect(await confirmIdv(provider, a.verification, a.ownerToken)).toEqual({ ok: false, reason: "provider_error" });
+    expect(await row(a.verification.id)).toMatchObject({ status: "PENDING", otpFailCount: MAX_OTP_FAILURES });
+    const again = await confirmIdv(provider, a.verification, a.ownerToken);
+    expect(again.ok).toBe(true);
+    expect((await row(a.verification.id)).status).toBe("VERIFIED");
+  });
 });

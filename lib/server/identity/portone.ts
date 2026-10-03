@@ -71,8 +71,13 @@ export class PortOneIdentityProvider implements IdentityProvider {
     const r = await this.call("POST", this.path(requestId, "confirm"), { storeId: this.config.storeId, otp });
     if (!r) return FAILURE;
     if (r.status >= 200 && r.status < 300) return { ok: true as const };
-    // 인증번호 불일치 등 사용자 입력 오류(4xx)는 wrong_code, 그 밖은 장애로 본다
-    return r.status === 400 ? { ok: false as const, reason: "wrong_code" as const } : FAILURE;
+    const type = r.json && typeof r.json === "object" ? (r.json as { type?: unknown }).type : undefined;
+    // 이미 확인된 요청(409 IdentityVerificationAlreadyVerifiedError): 확인은 끝났으므로 결과 조회로 넘어간다
+    if (r.status === 409 && type === "IdentityVerificationAlreadyVerifiedError") return { ok: true as const };
+    // 인증번호 불일치: 포트원 400, 또는 KCP가 돌려준 오류를 감싼 502 PgProviderError(인증번호 불일치일 가능성이 커서
+    // 틀린 횟수로 센다. 장애로 보면 예약한 1회를 돌려줘 5회 제한이 무력해진다). pgCode 표는 계약 뒤 대행사 규격으로 좁힌다.
+    if (r.status === 400 || (r.status === 502 && type === "PgProviderError")) return { ok: false as const, reason: "wrong_code" as const };
+    return FAILURE;
   }
 
   async fetchResult(requestId: string): Promise<IdentityResult | ProviderFailure> {
