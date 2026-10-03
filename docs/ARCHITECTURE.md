@@ -64,6 +64,7 @@ tests/unit/**, tests/integration/**           테스트
   - 본인인증 건은 시작한 브라우저에만 준 일회용 값(`IdentityVerification.ownerTokenHash`, HttpOnly 쿠키)과 묶고, 한 번 쓰면 `consumedAt`으로 소진한다(구매자 가입도 같음).
   - CI 불일치·직원 계정·없는 계정은 모두 같은 거부 응답(계정 존재 비노출). 시작·발급·완료·실패는 감사 로그.
   - 시작 횟수: 쇼핑몰 하나당 하루 10회(KST 자정 초기화, DB 시계로 집계, 쇼핑몰별 직렬화). 넘으면 429 `reset_limit_exceeded`와 감사 로그(대표님 결정 2026-10-02). 없는 쇼핑몰 주소는 한 묶음으로 센다.
+  - 시작 재시도(`POST /api/seller/password-reset/start` `{ email, shopSlug, person, attemptKey? }`, 2026-10-04): attemptKey(클라이언트 UUID)로 다시 보내면 같은 쇼핑몰 주소·같은 아이디 범위의 같은 키 기록을 찾아 같은 `verificationId`·같은 쿠키 값을 준다(문자·하루 10회·감사 로그 다시 안 씀, 계정 유무와 상관없이 같은 응답). 첫 문자를 보내는 중이면 `409 start_in_progress`, 이미 확인됐거나 끝난 기록이면 `already_verified`·`expired`·`failed`, 키 형식이 틀리면 400. 판정은 구매자 가입과 같은 `lib/server/identity/attempt.ts`(`reuseKeyedAttempt`, 보내는 중 20초 넘게 멈춘 기록은 버리고 새로 시작).
   - 직원(매니저·방송 담당) 비밀번호는 대표가 직원 관리에서 재설정하고, 직원의 기존 세션을 폐기한다.
 
 ### 3.2 마스터 역할
@@ -301,7 +302,7 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 
 ### 4.8.2 판매자 가입 신청·자동 승인 (대표님 결정 2026-10-02)
 
-- 흐름: `POST /api/seller-signup/verification`(대표자 휴대폰 본인확인 시작·첫 인증번호, 같은 접속 IP 하루(KST 자정 초기화) 10회까지 — 건당 비용, 넘으면 `429 daily_limit_exceeded`, 시작한 브라우저에만 `lo_sidv` 쿠키, 경로 `/api/seller-signup`) → `…/verification/resend`·`…/verification/confirm`(인증번호 확인) → `POST /api/seller-signup/apply`(로그인 이메일·비밀번호는 신청자가 정함, 쇼핑몰 이름·주소 이름(slug)·사업자등록번호·상호·개업일자·통신판매업 신고번호).
+- 흐름: `POST /api/seller-signup/verification`(대표자 휴대폰 본인확인 시작·첫 인증번호, 같은 접속 IP 하루(KST 자정 초기화) 10회까지 — 건당 비용, 넘으면 `429 daily_limit_exceeded`, 시작한 브라우저에만 `lo_sidv` 쿠키, 경로 `/api/seller-signup`, `attemptKey?`(클라이언트 UUID)로 다시 보내면 같은 `verificationId`·같은 쿠키 값을 주고 문자·하루 횟수를 다시 쓰지 않음 — 보내는 중이면 `409 start_in_progress`, 확인 뒤 같은 키는 `409 already_verified`, 쇼핑몰이 없는 기록이라 `(purpose, attemptKeyHash) WHERE sellerId IS NULL` 부분 유니크) → `…/verification/resend`·`…/verification/confirm`(인증번호 확인) → `POST /api/seller-signup/apply`(로그인 이메일·비밀번호는 신청자가 정함, 쇼핑몰 이름·주소 이름(slug)·사업자등록번호·상호·개업일자·통신판매업 신고번호). 응답 `{ approved, reviewReasons, resumed }`. 신청이 커밋된 뒤 응답이 끊겨 같은 브라우저(쿠키)가 같은 본인확인·이메일·비밀번호·주소 이름으로 다시 보내면 새로 만들지 않고 그 신청의 지금 상태를 `resumed: true`로 준다(본인확인 `subjectId` = 만든 대표자 계정). 하나라도 다르면 지금처럼 `400 verification_invalid`.
 - 신청을 받지 않는 경우(입력 오류로 응답): 본인인증 무효(다른 브라우저·이미 씀·30분 지남·다른 용도), 대표자 1명당 쇼핑몰 1개 위반(해지·반려 제외, `409 representative_has_shop`, 문구 「이미 운영 중인 쇼핑몰이 있어요 · 한 대표자는 쇼핑몰 하나만 열 수 있어요」, 다른 쇼핑몰 이름은 보여 주지 않음, DB 부분 유니크로도 막음), 주소 이름 형식·예약어·중복, 사업자등록번호 검증 숫자 틀림, 비밀번호 8자 미만. 이 경우 본인인증은 소진되지 않는다.
 - 자동 점검(`reviewReasons`, 하나라도 걸리면 자동 승인하지 않음):
   - 국세청 「사업자등록정보 진위확인 및 상태조회」: 사업자번호·대표자명(휴대폰 본인확인으로 확인한 이름)·개업일자(신청 항목) 대조 불일치(`business_info_mismatch`), 계속사업자 아님(`business_not_active`), 조회 실패·키 없음(`business_lookup_failed`). 키 `NTS_BUSINESS_STATUS_API_KEY` 하나로 진위확인·상태조회를 함께 쓴다.

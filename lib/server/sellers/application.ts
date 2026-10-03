@@ -1,9 +1,12 @@
-import { Prisma, type PrismaClient } from "@prisma/client";
+import { Prisma, type IdentityVerification, type PrismaClient } from "@prisma/client";
+import { randomUUID } from "node:crypto";
 import { writeAudit } from "../audit/log";
 import { normalizeEmail } from "../auth/login";
-import { hashPassword } from "../auth/password";
+import { hashPassword, verifyPassword } from "../auth/password";
 import { MIN_PASSWORD_LENGTH } from "../auth/passwordReset";
 import { hashToken } from "../auth/token";
+import { dbNow } from "../billing/subscription";
+import { keyedOwnerToken, parseAttemptKey, reuseKeyedAttempt, scopedAttemptKeyHash } from "../identity/attempt";
 import type { IdentityProvider } from "../identity/provider";
 import { parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
 import { activateSeller } from "./approval";
@@ -29,22 +32,41 @@ export const EMAIL = /^[^\s@\p{C}]{1,64}@[^\s@\p{C}]{1,190}\.[^\s@\p{C}]{2,}$/u;
 
 // 가입용 휴대폰 본인확인은 건당 비용이 들어 같은 접속 IP에서 하루(KST 자정 초기화) 10회까지만 시작한다(MASTER 결정 2026-10-03).
 export const SIGNUP_VERIFY_DAILY_LIMIT_PER_IP = 10;
+const OWNER_SCOPE = "seller_signup_owner";
 
 // 대표자 1인 1쇼핑몰 위반 때 보여 줄 문구(다른 쇼핑몰 이름은 보여 주지 않음, MASTER 결정)
 export const REPRESENTATIVE_HAS_SHOP_MESSAGE = "이미 운영 중인 쇼핑몰이 있어요 · 한 대표자는 쇼핑몰 하나만 열 수 있어요";
 
 // 판매자 가입 휴대폰 본인확인 시작(인적사항 검사 → 요청 기록 → 첫 인증번호). IP별로 줄을 세워(advisory lock) 오늘(KST) 시작 건수를 DB 시계로 센 뒤 한도 안일 때만 시작한다.
 // IP를 알 수 없으면(신뢰 프록시 미설정) 하나의 묶음으로 센다.
+// attemptKey(선택, 클라이언트 UUID): 응답이 끊겨 같은 키로 다시 보내면 같은 기록·같은 ownerToken을 돌려주고 문자·일일 횟수를 다시 쓰지 않는다
+// (identity/attempt.ts reuseKeyedAttempt, 보내는 중이면 409 start_in_progress).
 export async function startSellerSignupVerification(
   db: PrismaClient,
   provider: IdentityProvider,
   rawPerson: unknown,
-  meta: { ip?: string | null; userAgent?: string | null; now?: Date } = {},
+  meta: { ip?: string | null; userAgent?: string | null; now?: Date; attemptKey?: unknown } = {},
 ) {
+  const attemptKey = parseAttemptKey(meta.attemptKey);
+  if (attemptKey === false) return { ok: false as const, reason: "invalid_identity_input" as const };
   const person = parseIdentityPerson(rawPerson);
   if (!person) return { ok: false as const, reason: "invalid_identity_input" as const };
   const ip = meta.ip ?? null;
-  const started = await db.$transaction(async (tx) => {
+  const keyHash = attemptKey ? scopedAttemptKeyHash("SELLER_REPRESENTATIVE", "", attemptKey) : null;
+  type Started =
+    | null
+    | { kind: "reused"; verificationId: string; ownerToken: string }
+    | { kind: "refused"; reason: "already_verified" | "expired" | "failed" | "start_in_progress" }
+    | { kind: "send"; verification: IdentityVerification; ownerToken: string };
+  const started = await db.$transaction(async (tx): Promise<Started> => {
+    if (keyHash) {
+      const now = meta.now ?? (await dbNow(tx));
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`idv_key:${keyHash}`}))`;
+      const same = await tx.identityVerification.findFirst({ where: { purpose: "SELLER_REPRESENTATIVE", sellerId: null, attemptKeyHash: keyHash } });
+      const r = await reuseKeyedAttempt(tx, same, now);
+      if (r?.kind === "reused") return { ...r, ownerToken: keyedOwnerToken(OWNER_SCOPE, attemptKey!, r.verificationId) };
+      if (r) return r;
+    }
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`seller_signup:${ip ?? "unknown"}`}))`;
     const [{ count }] = await tx.$queryRaw<{ count: bigint }[]>`
       SELECT count(*)::bigint AS count FROM "IdentityVerification"
@@ -52,8 +74,22 @@ export async function startSellerSignupVerification(
         AND "requestIp" IS NOT DISTINCT FROM ${ip}
         AND "createdAt" >= (date_trunc('day', now() AT TIME ZONE 'Asia/Seoul') AT TIME ZONE 'Asia/Seoul')`;
     if (Number(count) >= SIGNUP_VERIFY_DAILY_LIMIT_PER_IP) return null;
-    return startIdentityVerification(tx, provider, { purpose: "SELLER_REPRESENTATIVE", sellerId: null, person, requestIp: ip, now: meta.now });
+    const id = randomUUID();
+    const created = await startIdentityVerification(tx, provider, {
+      purpose: "SELLER_REPRESENTATIVE",
+      sellerId: null,
+      person,
+      requestIp: ip,
+      attemptKeyHash: keyHash,
+      sendStartedAt: keyHash ? (meta.now ?? (await dbNow(tx))) : null,
+      id,
+      ownerToken: attemptKey ? keyedOwnerToken(OWNER_SCOPE, attemptKey, id) : undefined,
+      now: meta.now,
+    });
+    return { kind: "send", ...created };
   });
+  if (started?.kind === "reused") return { ok: true as const, verificationId: started.verificationId, ownerToken: started.ownerToken };
+  if (started?.kind === "refused") return { ok: false as const, reason: started.reason };
   if (!started) {
     await writeAudit(db, {
       actorType: "SYSTEM",
@@ -105,7 +141,8 @@ export type ApplyFailure =
   | "invalid_business_number"
   | "representative_has_shop";
 
-export type ApplyResult = { ok: true; sellerId: string; approved: boolean; reviewReasons: ReviewReason[] } | { ok: false; reason: ApplyFailure };
+// resumed: 응답이 끊겨 같은 요청을 다시 보낸 경우(새로 만들지 않고 이미 만든 신청의 지금 상태를 돌려줌)
+export type ApplyResult = { ok: true; sellerId: string; approved: boolean; reviewReasons: ReviewReason[]; resumed: boolean } | { ok: false; reason: ApplyFailure };
 
 class Fail extends Error {
   constructor(readonly reason: ApplyFailure) {
@@ -133,6 +170,16 @@ export async function applyForSeller(
 
   // 대표자 휴대폰 본인확인: 이 신청을 시작한 브라우저의 인증, 완료, 30분 안, 아직 안 쓴 것
   const v = await db.identityVerification.findUnique({ where: { id: input.verificationId } });
+  // 응답 유실 뒤 다시 보낸 같은 요청: 시작한 브라우저(ownerToken)의 이미 쓴 본인확인이 만든 대표자 계정(subjectId)이고
+  // 아이디·비밀번호·쇼핑몰 주소가 같으면 새로 만들지 않고 그 신청의 지금 상태(승인 여부·확인 필요 사유)를 돌려준다. 아니면 지금처럼 verification_invalid.
+  if (v?.consumedAt && v.purpose === "SELLER_REPRESENTATIVE" && v.sellerId === null && input.ownerToken && v.ownerTokenHash === hashToken(input.ownerToken)) {
+    const owner = v.subjectId ? await db.sellerUser.findUnique({ where: { id: v.subjectId }, include: { seller: { select: { id: true, slug: true, status: true, reviewReasons: true } } } }) : null;
+    if (owner?.isOwner && owner.email === email && owner.seller.slug === slug && (await verifyPassword(owner.passwordHash, input.password))) {
+      const approved = owner.seller.status === "ACTIVE";
+      return { ok: true, sellerId: owner.seller.id, approved, reviewReasons: approved ? [] : (owner.seller.reviewReasons as ReviewReason[]), resumed: true };
+    }
+    return { ok: false, reason: "verification_invalid" };
+  }
   if (
     !v ||
     v.purpose !== "SELLER_REPRESENTATIVE" ||
@@ -224,6 +271,8 @@ export async function applyForSeller(
       const owner = await tx.sellerUser.create({
         data: { sellerId: seller.id, email, passwordHash, name: v.name!, isOwner: true, permissions: [] },
       });
+      // 이 본인확인으로 만든 대표자 계정을 남긴다(응답이 끊겨 다시 보낸 요청을 알아보는 데 쓴다)
+      await tx.identityVerification.update({ where: { id: v.id }, data: { subjectId: owner.id } });
       const audit = { sellerId: seller.id, targetType: "Seller", targetId: seller.id, ip: input.meta?.ip, userAgent: input.meta?.userAgent };
       await writeAudit(tx, { ...audit, actorType: "SELLER_USER", actorId: owner.id, action: "seller.apply", after: { reviewReasons: reasons } });
       let approved = false;
@@ -234,7 +283,7 @@ export async function applyForSeller(
       }
       return { sellerId: seller.id, approved };
     });
-    return { ok: true, ...result, reviewReasons: reasons };
+    return { ok: true, ...result, reviewReasons: reasons, resumed: false };
   } catch (e) {
     if (e instanceof Fail) return { ok: false, reason: e.reason };
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
