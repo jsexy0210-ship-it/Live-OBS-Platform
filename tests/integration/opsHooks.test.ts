@@ -28,7 +28,9 @@ const adminCookie = async (role: "SUPER_ADMIN" | "OPERATIONS" | "CS" | "READ_ONL
 const metrics = (cookie?: string) => metricsRoute(new Request(`${BASE}/api/admin/ops/metrics`, { headers: cookie ? { cookie } : {} }));
 const ingest = (body: unknown, token?: string) =>
   eventsRoute(new Request(`${BASE}/api/internal/ops/events`, { method: "POST", headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body) }));
-const ev = (over: Record<string, unknown> = {}) => ({ source: "monitor", eventId: "e1", kind: "incident_open", key: "health", severity: "critical", message: "앱 응답 없음", occurredAt: "2026-10-04T01:00:00Z", ...over });
+// 사건 시각은 지금 기준(받은 시각보다 5분 넘게 미래면 거부)
+const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
+const ev = (over: Record<string, unknown> = {}) => ({ source: "monitor", eventId: "e1", kind: "incident_open", key: "health", severity: "critical", message: "앱 응답 없음", occurredAt: ago(60), ...over });
 
 describe("정기 실행 heartbeat", () => {
   it("작업마다 결과와 마지막 실행·성공 시각을 남기고, 루프 자체도 scheduler.tick으로 남긴다. 실패가 이어져도 마지막 성공 시각은 그대로다", async () => {
@@ -246,11 +248,37 @@ describe("heartbeat 보완(Codex)", () => {
 
   it("같은 occurredAt의 열기·닫기는 늦게 들어온 쪽으로 정한다(한 번에 보내도, 따로 보내도)", async () => {
     vi.stubEnv("OPS_INGEST_TOKEN", TOKEN);
-    const at = "2026-10-04T03:00:00Z";
+    const at = ago(10);
     await ingest({ events: [ev({ eventId: "a1", key: "health", kind: "incident_open", occurredAt: at }), ev({ eventId: "a2", key: "health", kind: "incident_close", occurredAt: at })] }, TOKEN);
     await ingest({ events: [ev({ eventId: "b1", key: "cert", kind: "incident_close", occurredAt: at })] }, TOKEN);
     await ingest({ events: [ev({ eventId: "b2", key: "cert", kind: "incident_open", occurredAt: at })] }, TOKEN);
     for (let i = 0; i < 5; i++) expect((await opsMetrics(db)).incidents.open.map((e) => e.key)).toEqual(["cert"]);
+  });
+});
+
+describe("운영 지표 보완(Codex)", () => {
+  it("열림·닫힘은 서버가 받은 순서로 정한다: 조금 미래 시각(5분 안)의 열림 뒤에 정상 시각의 닫힘이 오면 닫힌다. 1시간 뒤 시각은 전체 거부", async () => {
+    vi.stubEnv("OPS_INGEST_TOKEN", TOKEN);
+    const soon = new Date(Date.now() + 3 * 60_000).toISOString();
+    expect((await ingest({ events: [ev({ eventId: "f1", key: "disk", kind: "incident_open", occurredAt: soon })] }, TOKEN)).status).toBe(200);
+    expect((await opsMetrics(db)).incidents.open.map((e) => e.key)).toEqual(["disk"]);
+    expect((await ingest({ events: [ev({ eventId: "f2", key: "disk", kind: "incident_close", occurredAt: ago(0) })] }, TOKEN)).status).toBe(200);
+    expect((await opsMetrics(db)).incidents.open).toEqual([]);
+    const later = new Date(Date.now() + 3600_000).toISOString();
+    const bad = await ingest({ events: [ev({ eventId: "f3", key: "disk", kind: "incident_open", occurredAt: ago(1) }), ev({ eventId: "f4", key: "cpu", occurredAt: later })] }, TOKEN);
+    expect(bad.status).toBe(400);
+    expect(await db.opsEvent.count({ where: { eventId: { in: ["f3", "f4"] } } })).toBe(0);
+  });
+
+  it("등록만 하고 heartbeat가 없는 인스턴스도 heartbeats에 「시작 후 신호 없음」과 등록 시각으로 나온다", async () => {
+    await registerInstance(db, "web-quiet");
+    const gen = await registerInstance(db, "web-busy");
+    await recordHeartbeat(db, "scheduler.tick", "done", new Date(), undefined, "web-busy", gen);
+    const m = await opsMetrics(db);
+    const quiet = m.heartbeats.find((h) => h.instance === "web-quiet");
+    expect(quiet).toMatchObject({ job: null, lastRunAt: null, lastStatus: "no_signal", retiredAt: null });
+    expect(quiet?.registeredAt).toBeInstanceOf(Date);
+    expect(m.heartbeats.find((h) => h.instance === "web-busy")).toMatchObject({ job: "scheduler.tick", lastStatus: "done" });
   });
 });
 
@@ -259,7 +287,7 @@ describe("운영 지표 GET /api/admin/ops/metrics", () => {
     expect((await metrics()).status).toBe(401);
     for (const role of ["OPERATIONS", "CS", "READ_ONLY"] as const) expect((await metrics(await adminCookie(role))).status, role).toBe(403);
     vi.stubEnv("OPS_INGEST_TOKEN", TOKEN);
-    await ingest({ events: [ev(), ev({ eventId: "e2", key: "cert", kind: "incident_open", occurredAt: "2026-10-04T01:01:00Z" }), ev({ eventId: "e3", kind: "incident_close", occurredAt: "2026-10-04T01:05:00Z", message: "복구" })] }, TOKEN);
+    await ingest({ events: [ev(), ev({ eventId: "e2", key: "cert", kind: "incident_open", occurredAt: ago(59) }), ev({ eventId: "e3", kind: "incident_close", occurredAt: ago(55), message: "복구" })] }, TOKEN);
     await registerInstance(db);
     await runScheduledJobs(db, new Date(), [{ name: "test.ok", run: async () => 0 }]);
     const r = await metrics(await adminCookie("SUPER_ADMIN"));
