@@ -1,0 +1,38 @@
+-- 재고 이력(결과 재고·기록 순서 seq). seq는 옵션 행 잠금 뒤 INSERT에서 매겨져 옵션마다 실제 적용 순서와 같다.
+-- 운영 중 배포해도 ALTER·seq 채우기·setval·인덱스·트리거 사이에 새 이력이 끼어들지 않게 한 트랜잭션으로 묶는다
+-- (Prisma는 PostgreSQL 마이그레이션을 트랜잭션으로 감싸지 않는다. ALTER TABLE 잠금이 COMMIT까지 쓰기를 막는다).
+BEGIN;
+
+-- AlterTable
+ALTER TABLE "StockMovement" ADD COLUMN     "seq" BIGSERIAL NOT NULL,
+ADD COLUMN     "stockAfter" INTEGER;
+
+-- 기존 이력의 seq는 저장된 순서가 아니라 기록 시각 순(createdAt, id)으로 다시 매기고, 새 이력은 그 뒤 번호부터 받는다
+UPDATE "StockMovement" m SET "seq" = o.rn
+FROM (SELECT "id", row_number() OVER (ORDER BY "createdAt", "id") AS rn FROM "StockMovement") o
+WHERE m."id" = o."id";
+SELECT setval(pg_get_serial_sequence('"StockMovement"', 'seq'), COALESCE((SELECT max("seq") FROM "StockMovement"), 0) + 1, false);
+
+-- CreateIndex
+CREATE UNIQUE INDEX "StockMovement_seq_key" ON "StockMovement"("seq");
+
+-- CreateIndex
+CREATE INDEX "StockMovement_sellerId_seq_idx" ON "StockMovement"("sellerId", "seq" DESC);
+
+
+-- 이동 뒤 옵션 재고를 기록한다. 재고 이동은 언제나 ProductOption.stock을 바꾼 뒤 같은 트랜잭션에서 기록하므로
+-- 그 시점의 재고가 이 이동의 결과 재고다(옵션 행은 그 트랜잭션이 잠그고 있다). 코드가 값을 직접 넣으면 그 값을 쓴다.
+CREATE FUNCTION "StockMovement_set_stock_after"() RETURNS trigger AS $$
+BEGIN
+  IF NEW."stockAfter" IS NULL THEN
+    SELECT "stock" INTO NEW."stockAfter" FROM "ProductOption" WHERE "id" = NEW."optionId" AND "sellerId" = NEW."sellerId";
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER "StockMovement_set_stock_after"
+  BEFORE INSERT ON "StockMovement"
+  FOR EACH ROW EXECUTE FUNCTION "StockMovement_set_stock_after"();
+
+COMMIT;
