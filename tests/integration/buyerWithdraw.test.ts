@@ -5,7 +5,8 @@ import { POST as loginRoute } from "../../app/api/shop/[slug]/auth/login/route";
 import { POST as withdrawRoute } from "../../app/api/shop/[slug]/me/withdraw/route";
 import { WITHDRAW_MESSAGES } from "../../lib/server/buyers/withdraw";
 import { prisma } from "../../lib/server/db";
-import { PASSWORD, createLoginBuyer, createSeller, db, resetDb } from "./helpers";
+import { loginSeller } from "../../lib/server/auth/login";
+import { PASSWORD, createLoginBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
 beforeEach(resetDb);
 afterAll(async () => {
@@ -39,20 +40,25 @@ describe("구매자 탈퇴", () => {
       data: { sellerId: s.seller.id, buyerMemberId: s.buyer.id, recipientName: "김구매", phone: "01012345678", zipCode: "06236", address1: "주소 1", isDefault: true },
     });
     await s.order("REFUNDED");
-    await s.order("PAID", { purchaseConfirmedAt: new Date() });
+    const done = await s.order("PAID", { purchaseConfirmedAt: new Date() });
+    await db.shipment.create({ data: { sellerId: s.seller.id, orderId: done.id, courier: "CJ", trackingNumber: "123456789012", status: "DELIVERED", shippedAt: new Date(), deliveredAt: new Date() } });
+    await db.rewardBalance.create({ data: { sellerId: s.seller.id, buyerMemberId: s.buyer.id, balance: 500 } });
     const res = await s.withdraw(PASSWORD);
     expect(res.status).toBe(200);
     expect(res.headers.get("cache-control")).toContain("no-store");
     expect(res.headers.getSetCookie().find((c) => c.startsWith("lo_buyer="))).toMatch(/^lo_buyer=;/);
     const m = await db.buyerMember.findUniqueOrThrow({ where: { id: s.buyer.id } });
     expect(m).toMatchObject({ status: "WITHDRAWN", deletedAt: expect.any(Date), name: "탈퇴한 회원", marketingConsentAt: null });
-    for (const v of [s.buyer.name, s.buyer.phone, s.buyer.broadcastNickname, s.buyer.loginId]) {
-      expect(JSON.stringify([m.name, m.phone, m.broadcastNickname, m.loginId])).not.toContain(v);
+    for (const v of [s.buyer.name, s.buyer.phone, s.buyer.broadcastNickname, s.buyer.loginId, s.buyer.ciHash]) {
+      expect(JSON.stringify([m.name, m.phone, m.broadcastNickname, m.loginId, m.ciHash])).not.toContain(v);
     }
+    // 남은 적립금은 소멸(잔액 0, 원장에 음수 조정)
+    expect((await db.rewardBalance.findUniqueOrThrow({ where: { sellerId_buyerMemberId: { sellerId: s.seller.id, buyerMemberId: s.buyer.id } } })).balance).toBe(0);
+    expect(await db.rewardLedger.findMany({ where: { buyerMemberId: s.buyer.id } })).toMatchObject([{ type: "ADJUST", amount: -500, status: "SUCCEEDED" }]);
     expect(await db.buyerAddress.count({ where: { buyerMemberId: s.buyer.id } })).toBe(0);
     expect(await db.buyerSession.count({ where: { buyerMemberId: s.buyer.id, revokedAt: null } })).toBe(0);
     expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.withdraw", actorId: s.buyer.id } })).toMatchObject({
-      after: { status: "WITHDRAWN", deletedAddresses: 1, revokedSessions: 1 },
+      after: { status: "WITHDRAWN", deletedAddresses: 1, revokedSessions: 1, expiredReward: 500 },
     });
     // 주문은 회원 id로 남는다
     expect(await db.order.count({ where: { buyerMemberId: s.buyer.id } })).toBe(2);
@@ -68,41 +74,59 @@ describe("구매자 탈퇴", () => {
     await expect(db.buyerMember.create({ data: again })).resolves.toMatchObject({ status: "ACTIVE" });
   });
 
-  it("비밀번호가 틀리면 400과 문구, 아무것도 바뀌지 않고 실패를 기록한다", async () => {
+  it("비밀번호가 틀리면 구매자 로그인 실패와 같은 401과 문구, 아무것도 바뀌지 않고 실패를 기록한다", async () => {
     const s = await shop();
     const res = await s.withdraw("wrong-password");
-    expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ error: "wrong_password", message: WITHDRAW_MESSAGES.wrong_password });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "invalid_credentials", message: "아이디나 비밀번호가 맞지 않아요" });
+    expect(WITHDRAW_MESSAGES.invalid_credentials).toBe("아이디나 비밀번호가 맞지 않아요");
     expect(await db.buyerMember.findUniqueOrThrow({ where: { id: s.buyer.id } })).toMatchObject({ status: "ACTIVE", deletedAt: null, name: s.buyer.name });
     expect(await db.auditLog.count({ where: { action: "buyer.withdraw_failed", actorId: s.buyer.id } })).toBe(1);
-    expect((await s.withdraw(123)).status).toBe(400);
+    expect((await s.withdraw(123)).status).toBe(401);
   });
 
-  it("결제 대기·결제 완료(구매 확정 전) 주문이 있으면 409, 끝난 주문(취소·환불·구매 확정)만 있으면 탈퇴된다", async () => {
-    for (const [status, extra, expected] of [
-      ["PENDING_PAYMENT", {}, 409],
-      ["PAID", {}, 409],
-      ["PAID", { purchaseConfirmedAt: new Date() }, 200],
-      ["CANCELLED", {}, 200],
-      ["REFUNDED", {}, 200],
+  it("진행 중인 주문(결제 대기·발송 전·배송 중)이 있으면 409, 배송 완료·구매 확정·취소·환불된 주문만 있으면 탈퇴된다", async () => {
+    for (const [status, extra, shipment, expected] of [
+      ["PENDING_PAYMENT", {}, null, 409],
+      ["PAID", {}, null, 409],
+      ["PAID", {}, "IN_TRANSIT", 409],
+      ["PAID", { stockShortageAt: new Date() }, null, 409],
+      ["PAID", {}, "DELIVERED", 200],
+      ["PAID", { purchaseConfirmedAt: new Date() }, "DELIVERED", 200],
+      ["CANCELLED", {}, null, 200],
+      ["REFUNDED", {}, "IN_TRANSIT", 200],
     ] as const) {
       await resetDb();
       const s = await shop();
-      await s.order(status, extra);
+      const o = await s.order(status, extra);
+      if (shipment) {
+        await db.shipment.create({
+          data: { sellerId: s.seller.id, orderId: o.id, courier: "CJ", trackingNumber: "123456789012", status: shipment, shippedAt: new Date(), deliveredAt: shipment === "DELIVERED" ? new Date() : null },
+        });
+      }
       const res = await s.withdraw(PASSWORD);
-      expect(res.status, `${status} ${JSON.stringify(extra)}`).toBe(expected);
+      expect(res.status, `${status} ${JSON.stringify(extra)} ${shipment}`).toBe(expected);
       if (expected === 409) {
-        expect(await res.json()).toEqual({ error: "orders_in_progress", message: WITHDRAW_MESSAGES.orders_in_progress });
+        expect(await res.json()).toEqual({ error: "orders_in_progress", message: "진행 중인 주문이 끝나면 탈퇴할 수 있어요" });
         expect((await db.buyerMember.findUniqueOrThrow({ where: { id: s.buyer.id } })).status).toBe("ACTIVE");
       }
     }
   });
 
-  it("로그인하지 않았거나 다른 쇼핑몰 주소로 부르면 401, 다른 출처는 403", async () => {
+  it("로그인하지 않았거나, 다른 쇼핑몰 세션·판매자 세션이면 401, 다른 출처는 403", async () => {
     const s = await shop();
-    const other = await createSeller();
+    const other = await shop();
     expect((await s.withdraw(PASSWORD, "")).status).toBe(401);
+    // 다른 쇼핑몰 구매자 세션으로 이 쇼핑몰 주소를 부름
+    expect((await s.withdraw(PASSWORD, other.cookie)).status).toBe(401);
+    // 이 쇼핑몰 세션으로 다른 쇼핑몰 주소를 부름
     expect((await s.withdraw(PASSWORD, s.cookie, other.seller.slug)).status).toBe(401);
+    // 판매자 세션(구매자 세션 없음)
+    const owner = await createSellerUser(s.seller.id, "OWNER");
+    const sellerLogin = await loginSeller(db, { email: owner.email, password: PASSWORD }, {});
+    if (!sellerLogin.ok) throw new Error(sellerLogin.reason);
+    expect((await s.withdraw(PASSWORD, `lo_seller=${sellerLogin.token}`)).status).toBe(401);
+    expect((await db.buyerMember.findUniqueOrThrow({ where: { id: other.buyer.id } })).status).toBe("ACTIVE");
     const cross = await withdrawRoute(
       new Request(`http://localhost:3000/api/shop/${s.seller.slug}/me/withdraw`, { method: "POST", headers: { ...H, origin: "https://evil.example", cookie: s.cookie }, body: JSON.stringify({ password: PASSWORD }) }),
       ctx(s.seller.slug),
