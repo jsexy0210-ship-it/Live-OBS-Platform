@@ -1,13 +1,14 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
-import { kstMinuteLabel } from "../orders/messages";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
 // 재가입 제한(대표님 결정 2026-10-03, PRODUCT_SCOPE 「구매자 탈퇴·재가입」). 판매자 설정, 기본 꺼짐.
 // 켜진 쇼핑몰에서 탈퇴하면 그 회원의 CI 해시 하나만 「재가입 제한」 목적으로 제한 기간 동안 남기고(BuyerRejoinBlock),
-// 기간이 끝나면 지운다. 꺼진 쇼핑몰은 남기지 않는다. 기간은 탈퇴할 때 값으로 정하고, 나중에 기간을 바꿔도 이미 남긴 기록은 그대로다.
+// 기간이 끝나면 지운다. 꺼진 쇼핑몰은 남기지 않는다. 기간은 가입 때 안내받은 기간(BuyerMember.rejoinRestrictionDaysAgreed)과
+// 탈퇴 때 설정 중 짧은 쪽이다(동의하지 않은 더 긴 기간으로 보관하지 않음). 가입 때 제한이 꺼져 있었으면 적용하지 않는다.
+// 나중에 기간을 바꿔도 이미 남긴 기록은 그대로다.
 // 판매자가 제한을 끄면 남긴 기록을 모두 지운다(목적이 없어짐).
 export const REJOIN_DAYS_MIN = 1;
 export const REJOIN_DAYS_MAX = 365;
@@ -17,9 +18,6 @@ const DAY_MS = 24 * 3600_000;
 export const MEMBER_POLICY_MESSAGES = {
   invalid_member_policy: `재가입 제한 기간은 ${REJOIN_DAYS_MIN}일에서 ${REJOIN_DAYS_MAX}일 사이로 정해 주세요`,
 } as const;
-
-// 가입 거절 문구: 「탈퇴한 뒤 다시 가입할 수 있는 날이 아직 안 됐어요. 11월 2일 오후 3시부터 가입할 수 있어요」
-export const rejoinRestrictedMessage = (availableAt: Date) => `탈퇴한 뒤 다시 가입할 수 있는 날이 아직 안 됐어요. ${kstMinuteLabel(availableAt)}부터 가입할 수 있어요`;
 
 export type MemberPolicy = { rejoinRestrictionEnabled: boolean; rejoinRestrictionDays: number };
 
@@ -70,18 +68,31 @@ async function lockRejoin(tx: Prisma.TransactionClient, sellerId: string) {
 
 // 탈퇴 트랜잭션 안에서 부른다. 제한이 켜져 있으면 CI 해시를 제한 기간 동안 남기고(다시 탈퇴했으면 기간을 새로), 아니면 남기지 않는다.
 // 남겼으면 끝나는 시각, 아니면 null.
-export async function recordRejoinBlock(tx: Prisma.TransactionClient, sellerId: string, ciHash: string, now: Date): Promise<Date | null> {
-  if (!ciHash) return null;
+export async function recordRejoinBlock(
+  tx: Prisma.TransactionClient,
+  sellerId: string,
+  member: { ciHash: string; rejoinRestrictionDaysAgreed: number | null },
+  now: Date,
+): Promise<Date | null> {
+  if (!member.ciHash || member.rejoinRestrictionDaysAgreed == null) return null;
   await lockRejoin(tx, sellerId);
   const p = await policyOf(tx, sellerId);
   if (!p.rejoinRestrictionEnabled) return null;
-  const expiresAt = new Date(now.getTime() + p.rejoinRestrictionDays * DAY_MS);
+  const days = Math.min(p.rejoinRestrictionDays, member.rejoinRestrictionDaysAgreed);
+  const ciHash = member.ciHash;
+  const expiresAt = new Date(now.getTime() + days * DAY_MS);
   await tx.buyerRejoinBlock.upsert({
     where: { sellerId_ciHash: { sellerId, ciHash } },
     create: { sellerId, ciHash, expiresAt, createdAt: now },
     update: { expiresAt, createdAt: now },
   });
   return expiresAt;
+}
+
+// 가입 때 남길 재가입 제한 기간(일): 지금 제한이 켜져 있으면 그 기간, 아니면 null
+export async function rejoinDaysToAgree(db: Db, sellerId: string): Promise<number | null> {
+  const p = await policyOf(db, sellerId);
+  return p.rejoinRestrictionEnabled ? p.rejoinRestrictionDays : null;
 }
 
 // 가입 때 확인: 이 쇼핑몰에서 같은 사람의 제한이 아직 끝나지 않았으면 끝나는 시각, 아니면 null.

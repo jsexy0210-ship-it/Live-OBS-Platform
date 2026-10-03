@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { loginBuyer } from "../../../../../lib/server/auth/login";
 import { SHOP_NOT_FOUND_MESSAGE } from "../../../../../lib/server/auth/messages";
-import { rejoinRestrictedMessage } from "../../../../../lib/server/buyers/rejoin";
 import { BUYER_SIGNUP_IDV_COOKIE, BUYER_SIGNUP_MESSAGES, BUYER_SIGNUP_STATUS, signupBuyer } from "../../../../../lib/server/buyers/signup";
 import { prisma } from "../../../../../lib/server/db";
 import { mutation, readCookie, readJson, requestMeta, setSessionCookie } from "../../../../../lib/server/http/route";
@@ -34,14 +33,9 @@ export const POST = mutation(async (req: Request, { params }: { params: Promise<
     meta: requestMeta(req),
   });
   if (!r.ok) {
-    // 재가입 제한 중이면 다시 가입할 수 있는 시각(KST 문구·ISO)을 함께 준다
-    if (r.reason === "rejoin_restricted" && r.rejoinAvailableAt) {
-      return NextResponse.json(
-        { error: r.reason, message: rejoinRestrictedMessage(r.rejoinAvailableAt), rejoinAvailableAt: r.rejoinAvailableAt.toISOString() },
-        { status: BUYER_SIGNUP_STATUS[r.reason], headers: NO_STORE },
-      );
-    }
-    return NextResponse.json({ error: r.reason, message: BUYER_SIGNUP_MESSAGES[r.reason] }, { status: BUYER_SIGNUP_STATUS[r.reason], headers: NO_STORE });
+    // 재가입 제한 중이면 다시 가입할 수 있는 시각(ISO)을 함께 준다. 화면이 「…부터 가입할 수 있어요」를 붙인다(SH-011).
+    const extra = r.rejoinAvailableAt ? { rejoinAvailableAt: r.rejoinAvailableAt.toISOString() } : {};
+    return NextResponse.json({ error: r.reason, message: BUYER_SIGNUP_MESSAGES[r.reason], ...extra }, { status: BUYER_SIGNUP_STATUS[r.reason], headers: NO_STORE });
   }
   const res = NextResponse.json({ ok: true, broadcastNickname: r.broadcastNickname }, { status: 201, headers: NO_STORE });
   // 본인확인 쿠키(lo_bidv)는 지우지 않는다. 응답 헤더만 도착하고 본문이 끊겨도 같은 가입 요청을 다시 보내 같은 회원을 받을 수 있게.

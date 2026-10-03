@@ -14,7 +14,8 @@ import { recordRejoinBlock } from "./rejoin";
 // - 진행 중인 주문(결제 대기, 결제 완료 뒤 배송 완료 전 = 발송 전·배송 중·재고 부족 환불 대기)이 있으면 막는다.
 // - 주문·결제·환불 기록과 주문의 받는 사람 스냅숏은 그대로 둔다(전자상거래법 보관 의무).
 // - 이름·휴대폰·방송 닉네임·아이디(이메일)를 비식별 값으로 바꾸고 회원 행의 CI 해시는 비운다(같은 아이디·닉네임으로 다시 가입 가능).
-//   재가입 제한이 켜진 쇼핑몰이면 CI 해시 하나만 제한 기간 동안 따로 남겨(buyers/rejoin.ts) 그동안 같은 사람의 가입을 막는다.
+//   재가입 제한이 켜진 쇼핑몰이고 가입 때 제한 기간을 안내받은 회원이면 CI 해시 하나만 제한 기간 동안 따로 남겨(buyers/rejoin.ts)
+//   그동안 같은 사람의 가입을 막는다.
 //   비밀번호는 아무도 모르는 값으로 바꾼다.
 // - 적립금 잔액은 건드리지 않는다(처리 규칙은 대표님 결정 대기).
 // - 저장 배송지를 지우고, 이 회원의 세션을 모두 폐기한다.
@@ -84,7 +85,7 @@ export async function withdrawBuyer(
       },
     });
     if (moved.count !== 1) return "not_found" as const;
-    const rejoinBlockedUntil = await recordRejoinBlock(tx, scope.sellerId, member.ciHash, now);
+    const rejoinBlockedUntil = await recordRejoinBlock(tx, scope.sellerId, member, now);
     const addresses = await tx.buyerAddress.deleteMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id } });
     const sessions = await tx.buyerSession.updateMany({ where: { buyerMemberId: member.id, revokedAt: null }, data: { revokedAt: now } });
     await writeAudit(tx, {

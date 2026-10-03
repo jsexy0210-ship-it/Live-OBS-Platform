@@ -25,3 +25,6 @@ CREATE INDEX "BuyerRejoinBlock_expiresAt_idx" ON "BuyerRejoinBlock"("expiresAt")
 
 ALTER TABLE "SellerMemberPolicy" ADD CONSTRAINT "SellerMemberPolicy_sellerId_fkey" FOREIGN KEY ("sellerId") REFERENCES "Seller"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "BuyerRejoinBlock" ADD CONSTRAINT "BuyerRejoinBlock_sellerId_fkey" FOREIGN KEY ("sellerId") REFERENCES "Seller"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- 가입 때 안내받은 재가입 제한 기간(일). 제한이 꺼져 있을 때 가입했으면 null.
+ALTER TABLE "BuyerMember" ADD COLUMN "rejoinRestrictionDaysAgreed" INTEGER;

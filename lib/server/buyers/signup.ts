@@ -7,7 +7,7 @@ import { sellerAccessFor } from "../billing/subscription";
 import type { IdentityProvider } from "../identity/provider";
 import { buyerSignupIdentityLimitReached, completeIdentityVerification, parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
 import { EMAIL } from "../sellers/application";
-import { rejoinBlockedUntil } from "./rejoin";
+import { rejoinBlockedUntil, rejoinDaysToAgree } from "./rejoin";
 import { cleanText } from "../text/clean";
 
 
@@ -194,6 +194,7 @@ export async function signupBuyer(
           broadcastNickname: nickname,
           gradeId: grade.id,
           marketingConsentAt: agreedMarketing ? now : null,
+          rejoinRestrictionDaysAgreed: await rejoinDaysToAgree(tx, input.sellerId),
           createdAt: now,
         },
       });
@@ -248,7 +249,7 @@ export const BUYER_SIGNUP_MESSAGES: Record<BuyerSignupFailure | "daily_limit_exc
   login_id_taken: "이미 가입한 이메일이에요. 다른 이메일로 가입해 주세요",
   nickname_taken: "이미 쓰고 있는 방송 닉네임이에요. 다른 닉네임으로 정해 주세요",
   shop_unavailable: "지금은 쇼핑몰을 이용할 수 없어요",
-  rejoin_restricted: "탈퇴한 뒤 다시 가입할 수 있는 날이 아직 안 됐어요",
+  rejoin_restricted: "지금은 다시 가입할 수 없어요",
   daily_limit_exceeded: "오늘은 본인확인을 더 할 수 없어요. 내일 다시 해 주세요",
 };
 

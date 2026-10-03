@@ -274,6 +274,9 @@ model BuyerMember {
   gradeId            String            @db.Uuid
   status             BuyerMemberStatus @default(ACTIVE)
   marketingConsentAt DateTime?         @db.Timestamptz(3)
+  // 가입 때 재가입 제한이 켜져 있었으면 그때 기간(일). 가입하며 안내받은(동의한) 기간보다 길게 CI 해시를 보관하지 않으려고 남긴다.
+  // 없으면(제한이 꺼져 있을 때 가입) 탈퇴해도 재가입을 제한하지 않는다(buyers/rejoin.ts).
+  rejoinRestrictionDaysAgreed Int?
   lastLoginAt        DateTime?         @db.Timestamptz(3)
   createdAt          DateTime          @default(now()) @db.Timestamptz(3)
   deletedAt          DateTime?         @db.Timestamptz(3)

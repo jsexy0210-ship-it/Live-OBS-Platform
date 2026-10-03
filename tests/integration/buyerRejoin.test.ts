@@ -101,7 +101,7 @@ describe("구매자 재가입 제한", () => {
     expect(again.status).toBe(403);
     const body = await again.json();
     expect(body).toMatchObject({ error: "rejoin_restricted", rejoinAvailableAt: blocks[0].expiresAt.toISOString() });
-    expect(body.message).toMatch(/^탈퇴한 뒤 다시 가입할 수 있는 날이 아직 안 됐어요\. \d+월 \d+일 오[전후] \d+시( \d+분)?부터 가입할 수 있어요$/);
+    expect(body.message).toBe("지금은 다시 가입할 수 없어요");
     expect(await db.buyerMember.count({ where: { sellerId: s.seller.id, deletedAt: null } })).toBe(0);
 
     expect((await s.signup({ name: "김다른", phone: "01099998888", birth7: "9001011" }, "other@example.com", "남닉")).status).toBe(201);
@@ -121,6 +121,39 @@ describe("구매자 재가입 제한", () => {
     expect(await db.buyerRejoinBlock.count({ where: { sellerId: s.seller.id } })).toBe(0);
     expect(await db.buyerRejoinBlock.count({ where: { sellerId: t.seller.id } })).toBe(1);
     expect((await t.signup({}, "back@example.com", "돌아옴")).status).toBe(403);
+  });
+
+  it("가입 때 제한이 꺼져 있었던 회원은 나중에 켠 뒤 탈퇴해도 CI 해시를 남기지 않고 바로 다시 가입된다", async () => {
+    const s = await shop();
+    expect((await s.signup()).status).toBe(201);
+    expect((await db.buyerMember.findFirstOrThrow({ where: { sellerId: s.seller.id } })).rejoinRestrictionDaysAgreed).toBeNull();
+    await s.setPolicy({ rejoinRestrictionEnabled: true, rejoinRestrictionDays: 30 });
+    await s.withdraw();
+    expect(await db.buyerRejoinBlock.count()).toBe(0);
+    expect((await s.signup({}, "again@example.com", "다시")).status).toBe(201);
+  });
+
+  it("제한 기간은 가입 때 안내받은 기간과 탈퇴 때 설정 중 짧은 쪽이다", async () => {
+    const s = await shop();
+    await s.setPolicy({ rejoinRestrictionEnabled: true, rejoinRestrictionDays: 90 });
+    expect((await s.signup()).status).toBe(201);
+    expect((await db.buyerMember.findFirstOrThrow({ where: { sellerId: s.seller.id, loginId: "buyer01@example.com" } })).rejoinRestrictionDaysAgreed).toBe(90);
+    expect((await s.signup({ name: "김둘", birth7: "9001011", phone: "01022223333" }, "two@example.com", "둘")).status).toBe(201);
+    // 가입 뒤 더 길게 바꿔도 동의한 90일까지만
+    await s.setPolicy({ rejoinRestrictionEnabled: true, rejoinRestrictionDays: 180 });
+    let t = Date.now();
+    await s.withdraw();
+    let [b] = await db.buyerRejoinBlock.findMany({ where: { sellerId: s.seller.id } });
+    expect(b.expiresAt.getTime() - t).toBeGreaterThanOrEqual(90 * DAY - 1000);
+    expect(b.expiresAt.getTime() - t).toBeLessThan(90 * DAY + 5000);
+    // 더 짧게 바꾸면 짧은 30일
+    await s.setPolicy({ rejoinRestrictionEnabled: true, rejoinRestrictionDays: 30 });
+    await db.buyerRejoinBlock.deleteMany();
+    t = Date.now();
+    await s.withdraw("two@example.com");
+    [b] = await db.buyerRejoinBlock.findMany({ where: { sellerId: s.seller.id } });
+    expect(b.expiresAt.getTime() - t).toBeGreaterThanOrEqual(30 * DAY - 1000);
+    expect(b.expiresAt.getTime() - t).toBeLessThan(30 * DAY + 5000);
   });
 
   it("꺼진 쇼핑몰(기본): 탈퇴해도 CI 해시를 남기지 않고 같은 사람이 바로 다시 가입된다", async () => {
