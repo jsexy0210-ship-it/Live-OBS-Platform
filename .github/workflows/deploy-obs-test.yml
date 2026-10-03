@@ -64,8 +64,12 @@ jobs:
               sleep 2
             done
             f="$BACKUP_DIR/obs-$(TZ=Asia/Seoul date +%Y%m%d-%H%M%S)-before-${GITHUB_SHA:0:7}.dump"
-            docker exec "$db" sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$f"
-            chmod 600 "$f"
+            # 중간에 실패해도 잘린 파일이 정상 백업 이름으로 남지 않게 .part에 먼저 쓴다
+            if ! docker exec "$db" sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$f.part"; then
+              rm -f "$f.part"; echo "백업에 실패해 배포를 멈춰요."; exit 1
+            fi
+            chmod 600 "$f.part"
+            mv "$f.part" "$f"
             echo "백업: $(basename "$f")"
           elif docker volume inspect obs-web_obs-web-pgdata >/dev/null 2>&1; then
             echo "DB 볼륨은 있는데 DB 컨테이너가 없어요. docs/DEPLOY.md 「백업·복구」로 수동 백업한 뒤 다시 실행해 주세요."
