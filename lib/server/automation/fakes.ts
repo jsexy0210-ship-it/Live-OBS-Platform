@@ -90,6 +90,11 @@ export class FakeBrowserExecutor implements BrowserExecutor {
     this.discarded.push(scope.jobId);
   }
   pageText: (scope: JobScope, secrets?: JobSecrets) => string = () => "Cafe24 관리자";
+  // 관찰·현재 문서 주소(리다이렉트 흉내용). observe 때와 실행 직전 주소를 따로 바꿀 수 있다.
+  pageUrl: (scope: JobScope) => string | null = () => "https://admin.cafe24.com/";
+  currentUrlOverride: ((scope: JobScope) => string | null) | null = null;
+  // currentShopKey를 몇 번 읽었는지(재연결 대조 횟수 확인용)
+  shopKeyReads = 0;
   // 판매자별로 연결된 쇼핑몰(기본: mall-<판매자 id>). 쇼핑몰 교체를 흉내 낼 때 바꾼다. null이면 알 수 없음.
   readonly shopKey = new Map<string, string | null>();
   // 실행한 행동(변경 행동이 몇 번 있었는지 테스트가 센다)
@@ -118,9 +123,13 @@ export class FakeBrowserExecutor implements BrowserExecutor {
       id,
       async observe(): Promise<Observation> {
         await sleep(self.delayMs);
-        return { url: "https://admin.cafe24.com/", text: self.pageText(scope, secretsSeen) };
+        return { url: self.pageUrl(scope), text: self.pageText(scope, secretsSeen) };
+      },
+      async currentUrl() {
+        return self.currentUrlOverride ? self.currentUrlOverride(scope) : self.pageUrl(scope);
       },
       async currentShopKey() {
+        self.shopKeyReads++;
         const v = self.shopKey.get(scope.sellerId);
         return v === undefined ? `mall-${scope.sellerId}` : v;
       },
@@ -164,6 +173,15 @@ export class FakeObsBridge implements ObsBridge {
     return { url: null, text: this.disconnected.has(scope.sellerId) ? "OBS 연결 안 됨" : "OBS 연결됨" };
   }
 
+  // 지운 작업(OBS 연결 정보 삭제 요청을 받은 작업)
+  readonly discarded: string[] = [];
+  // 실패 흉내: 이 판매자의 OBS 행동은 처음 한 번 재시도 가능한 오류를 낸다
+  readonly failOnce = new Set<string>();
+
+  async discard(scope: JobScope): Promise<void> {
+    this.discarded.push(scope.jobId);
+  }
+
   async currentPairingId(scope: JobScope): Promise<string | null> {
     if (this.disconnected.has(scope.sellerId)) return null;
     const v = this.pairing.get(scope.sellerId);
@@ -173,6 +191,7 @@ export class FakeObsBridge implements ObsBridge {
   async perform(scope: JobScope, action: AutomationAction): Promise<ActionOutcome> {
     await sleep(this.delayMs);
     this.performed.push({ scope, type: action.type });
+    if (this.failOnce.delete(scope.sellerId)) return { kind: "retryable", reason: "obs_busy" };
     if (this.disconnected.has(scope.sellerId)) return { kind: "needs_customer", action: "LOCAL_TOOL" };
     if (action.type === "check_overlay_shows_test_event") {
       if (this.notShowing.has(scope.sellerId)) return { kind: "ok", stepDone: false, verified: false };

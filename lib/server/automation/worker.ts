@@ -5,7 +5,7 @@ import { EngineAborted, runSteps } from "./engine";
 import { findPlaybook } from "./playbooks";
 import type { AutomationRuntime, JobScope } from "./ports";
 import { reconcileAutomationPayments } from "./purchase";
-import { FencingError, advanceStep, claimNext, extendLease, finishJob, parkForCustomer, reapExpired, retryLater, toVerifying, touch, type Claimed } from "./queue";
+import { FencingError, advanceStep, claimNext, extendLease, markTargetVerified, finishJob, parkForCustomer, reapExpired, retryLater, toVerifying, touch, type Claimed } from "./queue";
 
 // 자동 연결 작업자 진입점. 웹 서버(주문 API)와 다른 프로세스로 띄우는 것을 전제로 한다.
 // 실제 프로세스 실행(배포)은 운영 승인 사항이라 1차에는 이 모듈과 테스트만 있다.
@@ -59,12 +59,14 @@ export async function executeJob(db: PrismaClient, rt: AutomationRuntime, { job,
         playbook: usable,
         secretPlaybook: playbook,
         expectFacts,
+        targetVerified: job.targetVerifiedAt !== null,
         signal: lost.signal,
       },
       {
         touch: (stats) => touch(db, claim, stats, leaseMs),
         enterVerify: () => toVerifying(db, claim),
         stepDone: (next, facts) => advanceStep(db, claim, next, facts),
+        targetVerified: (target) => markTargetVerified(db, claim, target),
       },
     );
     switch (result.kind) {
@@ -94,9 +96,9 @@ export async function executeJob(db: PrismaClient, rt: AutomationRuntime, { job,
   }
 }
 
-// 끝난 작업(완료·취소·실패·고객 행동 마감)의 브라우저 보관본 삭제를 실행기에 요청한다.
+// 끝난 작업(완료·취소·실패·고객 행동 마감)의 보관본(브라우저 상태·임시 파일·OBS 연결 정보) 삭제를 실행기·로컬 도구에 요청한다.
 // 판매자 취소·마감 회수처럼 작업자 밖에서 끝난 작업도 여기서 지운다. 삭제 요청이 실패하면 표시가 남아 다음 반복에서 다시 한다.
-export async function purgeEndedBrowserState(db: PrismaClient, browser: AutomationRuntime["browser"], limit = 50): Promise<number> {
+export async function purgeEndedBrowserState(db: PrismaClient, rt: Pick<AutomationRuntime, "browser" | "obs">, limit = 50): Promise<number> {
   const ended = await db.automationJob.findMany({
     where: { browserStateHeld: true, status: { in: ["SUCCEEDED", "FAILED", "CANCELED"] } },
     select: { id: true, sellerId: true },
@@ -104,8 +106,10 @@ export async function purgeEndedBrowserState(db: PrismaClient, browser: Automati
   });
   let purged = 0;
   for (const j of ended) {
+    const scope = { sellerId: j.sellerId, jobId: j.id };
     try {
-      await browser.discard({ sellerId: j.sellerId, jobId: j.id });
+      await rt.browser.discard(scope);
+      await rt.obs.discard(scope);
     } catch {
       continue;
     }
@@ -123,7 +127,7 @@ export async function runWorkerLoop(
   const idleMs = opts.idleMs ?? 1_000;
   while (!opts.signal.aborted) {
     await reapExpired(db, opts.random);
-    await purgeEndedBrowserState(db, rt.browser);
+    await purgeEndedBrowserState(db, rt);
     if (opts.billing) await reconcileAutomationPayments(db, opts.billing);
     const r = await runOnce(db, rt, opts);
     if (r === "idle") await new Promise((res) => setTimeout(res, idleMs));

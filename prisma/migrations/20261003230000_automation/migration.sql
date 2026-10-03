@@ -69,6 +69,8 @@ CREATE TABLE "AutomationJob" (
     "plannerCalls" INTEGER NOT NULL DEFAULT 0,
     "playbookActions" INTEGER NOT NULL DEFAULT 0,
     "deviatedSteps" TEXT[] DEFAULT ARRAY[]::TEXT[],
+    "lastDeviationAt" TIMESTAMPTZ(3),
+    "targetVerifiedAt" TIMESTAMPTZ(3),
     "startedAt" TIMESTAMPTZ(3),
     "finishedAt" TIMESTAMPTZ(3),
     "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,

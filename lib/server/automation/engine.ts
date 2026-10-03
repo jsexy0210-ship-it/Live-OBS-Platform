@@ -1,5 +1,6 @@
 import { cueMatches, matchException, type Playbook } from "./playbook";
 import {
+  hostAllowed,
   sanitizeObservation,
   validateDecision,
   type ActionOutcome,
@@ -18,12 +19,15 @@ import type { AutomationCustomerAction } from "@prisma/client";
 // → 단서가 다르면(화면 이탈) 그 단계 남은 부분은 판단 모델이 작업서 설명·성공 사례를 참고해 고른다.
 // 어느 쪽이든 실행 전에 같은 검사(validateDecision)를 거친다.
 
-export type EngineStats = { costUsed: number; plannerCalls: number; playbookActions: number; deviatedSteps: string[] };
+// deviatedNow: 이번 행동에서 화면 이탈이 새로 생겼다(다음 기록 때 lastDeviationAt을 남기고 지운다)
+export type EngineStats = { costUsed: number; plannerCalls: number; playbookActions: number; deviatedSteps: string[]; deviatedNow?: boolean };
 
 export type EngineHooks = {
   // 행동마다(비용·통계 기록 + lease 연장). 실행 자리를 잃었으면 던진다.
   touch(stats: EngineStats): Promise<void>;
   enterVerify(): Promise<void>;
+  // 무료 재연결 대조를 통과했다(그때의 쇼핑몰·PC). 재시도 때 브라우저 단계를 다시 하지 않으면 이 기록을 쓴다.
+  targetVerified?(target: { shopKey: string; obsPairingId: string }): Promise<void>;
   stepDone(nextIndex: number, facts: ConnectionFacts): Promise<void>;
 };
 
@@ -49,6 +53,8 @@ export type EngineOptions = {
   signal?: AbortSignal;
   // 고객 행동 대기로 멈출 때 브라우저 상태를 보관할지(기본 true). 연습 실행은 보관하지 않는다.
   keepBrowserStateOnWait?: boolean;
+  // 이전 실행에서 무료 재연결 대조를 통과했다(작업 행 기록). 브라우저 단계부터 다시 하지 않으면 다시 대조하지 않는다.
+  targetVerified?: boolean;
   // 비밀값을 넣어도 되는 칸을 정하는 작업서(작업 중 버전이 바뀌어 정해진 행동은 안 쓰더라도 비밀 칸 목록은 그 작업서 것을 쓴다). 없으면 playbook
   secretPlaybook?: Playbook | null;
   startIndex: number;
@@ -103,7 +109,7 @@ async function runAll(
   // 무료 재연결: 무엇이든 바꾸기 전에 실제로 연결된 쇼핑몰·PC가 기준 작업과 같은지 읽기만으로 확인한다.
   // 고객 로그인 전에는 쇼핑몰을 알 수 없으므로, 첫 변경 행동 바로 전에 한다. 알 수 없으면 무료로 진행하지 않는다.
   const want = opts.expectFacts;
-  let targetChecked = !want;
+  let targetChecked = !want || (opts.targetVerified === true && STEPS[opts.startIndex]?.kind !== "browser");
   const checkTarget = async (): Promise<EngineResult | null> => {
     if (targetChecked || !want) return null;
     const session = await browser();
@@ -112,9 +118,14 @@ async function runAll(
     if (!shopKey || !obsPairingId || !want.shopKey || !want.obsPairingId) return { kind: "failed", reason: "reconnect_target_unverified" };
     if (shopKey !== want.shopKey || obsPairingId !== want.obsPairingId) return { kind: "failed", reason: "reconnect_target_mismatch" };
     targetChecked = true;
+    await hooks.targetVerified?.({ shopKey, obsPairingId });
     return null;
   };
   const secretBook = opts.secretPlaybook === undefined ? opts.playbook : opts.secretPlaybook;
+  const touchStats = async () => {
+    await hooks.touch(stats);
+    stats.deviatedNow = false;
+  };
   for (let stepIndex = opts.startIndex; stepIndex < STEPS.length; stepIndex++) {
     const step = STEPS[stepIndex];
     if (step.kind === "verify" && !verifying) {
@@ -135,7 +146,7 @@ async function runAll(
       const raw = session ? await session.observe() : await rt.obs.observe(scope);
       const exception = pb ? matchException(pb, raw) : null;
       if (exception) {
-        await hooks.touch(stats);
+        await touchStats();
         if ("customerAction" in exception) return { kind: "needs_customer", action: exception.customerAction };
         if ("retry" in exception) return { kind: "retry", reason: exception.retry };
         return { kind: "failed", reason: exception.fail };
@@ -150,6 +161,7 @@ async function runAll(
           // 화면이 작업서와 다르다: 관리 화면 변경 신호. 재검증 대상이 된다(practice.ts).
           deviated = true;
           if (!stats.deviatedSteps.includes(step.key)) stats.deviatedSteps.push(step.key);
+          stats.deviatedNow = true;
         }
       }
       if (!action) {
@@ -160,14 +172,14 @@ async function runAll(
         costWon = Number.isInteger(decision.costWon) && decision.costWon > 0 ? decision.costWon : 0;
         const check = validateDecision(step, decision, secrets, secretTargets);
         stats.costUsed += costWon;
-        await hooks.touch(stats);
+        await touchStats();
         if (stats.costUsed > opts.costLimit) return { kind: "failed", reason: "cost_limit" };
         if (!check.ok) return { kind: "failed", reason: `unsafe_action:${check.reason}` };
         action = decision.action;
       } else {
         // 작업서 행동도 같은 검사를 거친다(작업서가 잘못돼도 허용 밖 행동은 하지 않음)
         const check = validateDecision(step, { action, costWon: 0 }, secrets, secretTargets);
-        await hooks.touch(stats);
+        await touchStats();
         if (!check.ok) return { kind: "failed", reason: `unsafe_action:${check.reason}` };
       }
       history.push(action.type);
@@ -175,6 +187,12 @@ async function runAll(
       if (MUTATING.includes(action.type)) {
         const blocked = await checkTarget();
         if (blocked) return blocked;
+      }
+      // 비밀값 입력은 승인 때 관찰한 주소와 실행 직전 실제 문서 주소가 모두 허용 호스트여야 한다(리다이렉트로 다른 출처에 간 경우 차단)
+      if (action.type === "fill" && "secretRef" in action.value) {
+        guard();
+        const here = session ? await session.currentUrl() : null;
+        if (!raw.url || !hostAllowed(raw.url) || !here || !hostAllowed(here)) return { kind: "failed", reason: "unsafe_action:secret_origin_not_allowed" };
       }
       guard();
       const out: ActionOutcome = session ? await session.perform(action, secrets) : await rt.obs.perform(scope, action);

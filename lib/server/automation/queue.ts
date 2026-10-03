@@ -113,7 +113,7 @@ async function fencedWrite(db: PrismaClient, c: Claim, build: (now: Date, cur: A
 const RELEASE = { leaseOwner: null, leaseExpiresAt: null } as const;
 
 // lease 연장 + 쓴 비용·실행 통계(판단 호출 수·작업서 행동 수·화면 이탈 단계) 기록
-export type TouchStats = { costUsed: number; plannerCalls?: number; playbookActions?: number; deviatedSteps?: string[] };
+export type TouchStats = { costUsed: number; plannerCalls?: number; playbookActions?: number; deviatedSteps?: string[]; deviatedNow?: boolean };
 export const touch = (db: PrismaClient, c: Claim, stats: TouchStats, leaseMs: number = AUTOMATION_LIMITS.leaseMs) =>
   fencedWrite(db, c, (now) => ({
     data: {
@@ -121,6 +121,7 @@ export const touch = (db: PrismaClient, c: Claim, stats: TouchStats, leaseMs: nu
       ...(stats.plannerCalls !== undefined ? { plannerCalls: stats.plannerCalls } : {}),
       ...(stats.playbookActions !== undefined ? { playbookActions: stats.playbookActions } : {}),
       ...(stats.deviatedSteps !== undefined ? { deviatedSteps: stats.deviatedSteps } : {}),
+      ...(stats.deviatedNow ? { lastDeviationAt: now } : {}),
       leaseExpiresAt: plus(now, leaseMs),
     },
   }));
@@ -129,6 +130,10 @@ export const touch = (db: PrismaClient, c: Claim, stats: TouchStats, leaseMs: nu
 // lease만 연장(작업자 heartbeat). 외부 호출이 오래 걸려도 다른 작업자가 가져가지 않게 따로 주기적으로 부른다.
 export const extendLease = (db: PrismaClient, c: Claim, leaseMs: number = AUTOMATION_LIMITS.leaseMs) =>
   fencedWrite(db, c, (now) => ({ data: { leaseExpiresAt: plus(now, leaseMs) } }));
+
+// 무료 재연결 대조 통과 기록(그때의 쇼핑몰·PC와 시각)
+export const markTargetVerified = (db: PrismaClient, c: Claim, target: { shopKey: string; obsPairingId: string }) =>
+  fencedWrite(db, c, (now) => ({ data: { targetVerifiedAt: now, shopKey: target.shopKey.slice(0, 200), obsPairingId: target.obsPairingId.slice(0, 200) } }));
 
 export const advanceStep = (db: PrismaClient, c: Claim, stepIndex: number, facts: ConnectionFacts = {}) =>
   fencedWrite(db, c, () => ({
@@ -208,6 +213,18 @@ export async function reapExpired(db: PrismaClient, random: () => number = Math.
         data: { status: "FAILED", lastError: "customer_action_timeout", finishedAt: now, customerAction: null, actionDeadlineAt: null },
       });
       await writeJobEvent(tx, job, "NEEDS_CUSTOMER", "FAILED", job.fencingToken, { reason: "customer_action_timeout" });
+      // 마감으로 끝난 작업은 성공 기준을 통과하지 못했으므로 확정 ②대로 전액 환불 처리 대기로 둔다(실제 환불 실행은 승인 뒤)
+      if (job.paymentId) {
+        const r = await tx.automationPayment.updateMany({
+          where: { id: job.paymentId, status: "PAID" },
+          data: { status: "REFUND_PENDING", refundReason: "customer_action_timeout", refundRequestedAt: now },
+        });
+        if (r.count === 1) {
+          await tx.auditLog.create({
+            data: { actorType: "SYSTEM", sellerId: job.sellerId, action: "automation.refund_request", targetType: "AutomationPayment", targetId: job.paymentId, after: { jobId: job.id, reason: "customer_action_timeout" } },
+          });
+        }
+      }
       failed++;
     }
     return { requeued, failed };

@@ -1257,6 +1257,10 @@ model AutomationJob {
   plannerCalls         Int                       @default(0)
   playbookActions      Int                       @default(0)
   deviatedSteps        String[]                  @default([])
+  // 화면이 작업서와 마지막으로 달랐던 시각. 연습 연속 성공은 이 시각 뒤의 연습만 센다(practice.ts).
+  lastDeviationAt      DateTime?                 @db.Timestamptz(3)
+  // 무료 재연결의 쇼핑몰·PC 대조를 통과한 시각(그때의 쇼핑몰·PC는 shopKey·obsPairingId). 재시도 때 브라우저 단계를 다시 하지 않으면 이 기록을 쓴다.
+  targetVerifiedAt     DateTime?                 @db.Timestamptz(3)
   startedAt            DateTime?                 @db.Timestamptz(3)
   finishedAt           DateTime?                 @db.Timestamptz(3)
   createdAt            DateTime                  @default(now()) @db.Timestamptz(3)

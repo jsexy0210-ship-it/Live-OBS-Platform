@@ -57,8 +57,11 @@ export interface BrowserSession {
   perform(action: AutomationAction, secrets: JobSecrets): Promise<ActionOutcome>;
   // 지금 로그인된 관리 화면의 쇼핑몰 식별자(읽기만, 아무것도 바꾸지 않음). 알 수 없으면 null
   currentShopKey(): Promise<string | null>;
+  // 지금 문서의 주소(리다이렉트 뒤 실제 출처, 읽기만). 알 수 없으면 null. 비밀값을 넣기 직전에 확인한다.
+  currentUrl(): Promise<string | null>;
   // 기본: 쿠키·저장소·임시파일까지 지운다.
-  // keepForResume: 고객 행동(로그인·2단계 인증·CAPTCHA·권한 승인) 대기로 멈출 때. 실행기는 이 작업의 쿠키·저장소·자격증명을
+  // keepForResume: 고객 행동(로그인·2단계 인증·CAPTCHA·권한 승인) 대기로 멈출 때. 실행기는 이 작업의 쿠키·저장소·자격증명과
+  // 임시 파일(화면 캡처·내려받은 파일·실행 기록)을
   // 암호화하고 작업 id에만 묶어 보관한다(다른 작업 id로는 풀리지 않음). 다음 open(같은 작업)에서 복원한 뒤 보관본을 지운다.
   // 작업이 끝나면(완료·취소·실패·마감) 서버가 discard로 바로 지운다(worker.ts purgeEndedBrowserState).
   close(opts?: { keepForResume?: boolean }): Promise<void>;
@@ -76,6 +79,9 @@ export interface ObsBridge {
   perform(scope: JobScope, action: AutomationAction): Promise<ActionOutcome>;
   // 연결된 로컬 도구의 OBS pairing id(읽기만). 연결 안 됐거나 알 수 없으면 null
   currentPairingId(scope: JobScope): Promise<string | null>;
+  // 이 작업의 OBS 연결 정보(로컬 도구 연결 토큰 등)를 지운다. 고객 대기 중에는 암호화해 작업에만 묶어 두고,
+  // 작업이 끝나면(완료·취소·실패·마감) 서버가 이것으로 바로 지운다. 지운 뒤에는 다시 쓸 수 없다.
+  discard(scope: JobScope): Promise<void>;
 }
 
 export interface SecretVault {
@@ -110,7 +116,7 @@ export const ALLOWED_ACTIONS: Record<StepKind, readonly AutomationAction["type"]
 const SECRET_REFS: readonly SecretRef[] = ["webhook_url", "webhook_secret"];
 const CUSTOMER_ACTIONS: readonly AutomationCustomerAction[] = ["LOGIN", "TWO_FACTOR", "CAPTCHA", "PERMISSION_GRANT", "LOCAL_TOOL"];
 
-function hostAllowed(raw: string): boolean {
+export function hostAllowed(raw: string): boolean {
   let u: URL;
   try {
     u = new URL(raw);

@@ -9,7 +9,7 @@ import { POST as refundRoute } from "../../app/api/automation/jobs/[jobId]/refun
 import { loginSeller } from "../../lib/server/auth/login";
 import { AUTOMATION_CONSENT, AUTOMATION_PRICE, REINSTALL_PRICE } from "../../lib/server/automation/config";
 import { cafe24Playbook } from "../../lib/server/automation/playbooks/cafe24";
-import { PRACTICE_STREAK_REQUIRED } from "../../lib/server/automation/practice";
+import { PRACTICE_STREAK_REQUIRED, playbookReadiness, runPractice } from "../../lib/server/automation/practice";
 import { FakeBrowserExecutor, FakeObsBridge, FakePlanner, FakeSecretVault } from "../../lib/server/automation/fakes";
 import { markConnectionRevoked } from "../../lib/server/automation/connection";
 import { cancelJob, requestRefund, resumeJob } from "../../lib/server/automation/jobs";
@@ -660,7 +660,7 @@ describe("지원 목록 밖 쇼핑몰 구매 차단(MASTER 판단 2026-10-04)", 
     const other = await shopWithCard();
     const first = await purchaseAutomation(db, provider, other.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP });
     if (!first.ok) throw new Error(first.reason);
-    await db.automationJob.update({ where: { id: first.jobId }, data: { deviatedSteps: ["webhook_setup"] } });
+    await db.automationJob.update({ where: { id: first.jobId }, data: { deviatedSteps: ["webhook_setup"], lastDeviationAt: new Date() } });
     expect(await buy(SHOP)).toEqual({ ok: false, reason: "shop_not_supported" });
 
     expect(await db.automationPayment.count({ where: { sellerId: s.seller.id } })).toBe(0);
@@ -829,7 +829,7 @@ describe("Codex 리뷰 반영", () => {
   it("판단 모델이 비밀값을 정해 둔 칸 밖(다른 칸·다른 단계)에 넣으려 하면 실행하지 않고 멈춘다", async () => {
     for (const [stepKey, target] of [["webhook_setup", "메모"], ["shop_connect", "주문 알림 주소"]] as const) {
       // 앞 반복의 화면 이탈로 작업서가 재검증 대상이 되므로 시험용으로 이탈 기록을 지운다
-      await db.automationJob.updateMany({ data: { deviatedSteps: [] } });
+      await db.automationJob.updateMany({ data: { deviatedSteps: [], lastDeviationAt: null } });
       const a = await bought();
       // 해당 단계 화면이 작업서와 달라 판단 모델로 넘어가게 한다
       const rt = runtime();
@@ -928,11 +928,13 @@ describe("고객 대기용 보관 세션(정본 4678efb)", () => {
     // 취소
     const canceled = await parked();
     // 끝나지 않은 작업(대기 중)은 지우지 않는다
-    expect(await purgeEndedBrowserState(db, canceled.rt.browser)).toBe(0);
+    expect(await purgeEndedBrowserState(db, canceled.rt)).toBe(0);
     expect(canceled.rt.browser.saved.has(canceled.jobId)).toBe(true);
     await cancelJob(db, canceled.ctx, canceled.jobId);
-    expect(await purgeEndedBrowserState(db, canceled.rt.browser)).toBe(1);
+    expect(await purgeEndedBrowserState(db, canceled.rt)).toBe(1);
     expect(canceled.rt.browser.saved.has(canceled.jobId)).toBe(false);
+    // OBS 연결 정보도 같이 지운다(정본 fc09f13)
+    expect(canceled.rt.obs.discarded).toContain(canceled.jobId);
     expect(await job(canceled.jobId)).toMatchObject({ browserStateHeld: false });
 
     // 고객 행동 마감
@@ -940,7 +942,7 @@ describe("고객 대기용 보관 세션(정본 4678efb)", () => {
     await db.automationJob.update({ where: { id: expired.jobId }, data: { actionDeadlineAt: new Date(Date.now() - 1000) } });
     await reapExpired(db);
     expect((await job(expired.jobId)).status).toBe("FAILED");
-    await purgeEndedBrowserState(db, expired.rt.browser);
+    await purgeEndedBrowserState(db, expired.rt);
     expect(expired.rt.browser.discarded).toContain(expired.jobId);
     expect(expired.rt.browser.saved.size).toBe(0);
 
@@ -949,7 +951,7 @@ describe("고객 대기용 보관 세션(정본 4678efb)", () => {
     await resumeJob(db, failed.ctx, failed.jobId);
     failed.rt.browser.outcome = (_s, action) => (action.type === "click" ? { kind: "fatal", reason: "admin_error" } : undefined);
     expect(await runOnce(db, failed.rt, W)).toBe("failed");
-    await purgeEndedBrowserState(db, failed.rt.browser);
+    await purgeEndedBrowserState(db, failed.rt);
     expect(failed.rt.browser.discarded).toContain(failed.jobId);
     expect(await job(failed.jobId)).toMatchObject({ browserStateHeld: false });
 
@@ -958,7 +960,7 @@ describe("고객 대기용 보관 세션(정본 4678efb)", () => {
     await resumeJob(db, done.ctx, done.jobId);
     done.rt.browser.outcome = null;
     expect(await runOnce(db, done.rt, W)).toBe("succeeded");
-    await purgeEndedBrowserState(db, done.rt.browser);
+    await purgeEndedBrowserState(db, done.rt);
     expect(done.rt.browser.discarded).toContain(done.jobId);
     expect(done.rt.browser.saved.size).toBe(0);
     expect(await db.automationJob.count({ where: { browserStateHeld: true } })).toBe(0);
@@ -982,5 +984,100 @@ describe("고객 대기용 보관 세션(정본 4678efb)", () => {
     // 끝난 작업은 다시 실행 자리를 받지 못한다
     expect(await claimNext(db, "w9")).toBeNull();
     expect(blob.length).toBeGreaterThan(0);
+  });
+});
+
+describe("Codex 3차·정본 fc09f13 반영", () => {
+  async function completedJob() {
+    const s = await bought();
+    expect(await runOnce(db, runtime(), W)).toBe("succeeded");
+    return { ...s, target: { shopKey: `mall-${s.seller.id}`, obsPairingId: `pc-${s.seller.id}` } };
+  }
+
+  it("비밀값 입력 직전 문서 출처가 허용 호스트가 아니거나(리다이렉트) 알 수 없거나, 관찰 주소가 다른 출처면 실행 0회로 멈춘다", async () => {
+    const cases: [string, (rt: ReturnType<typeof runtime>) => void][] = [
+      ["redirect", (rt) => (rt.browser.currentUrlOverride = () => "https://evil.test/collect")],
+      ["unknown", (rt) => (rt.browser.currentUrlOverride = () => null)],
+      ["observed", (rt) => (rt.browser.pageUrl = () => "https://cafe24.com.evil.test/")],
+    ];
+    for (const [name, setup] of cases) {
+      await db.automationJob.updateMany({ data: { deviatedSteps: [], lastDeviationAt: null } });
+      const a = await bought();
+      const rt = runtime();
+      setup(rt);
+      expect(await runOnce(db, rt, W), name).toBe("failed");
+      expect(await job(a.jobId), name).toMatchObject({ status: "FAILED", lastError: "unsafe_action:secret_origin_not_allowed" });
+      expect(rt.browser.performed.filter((p) => p.type === "fill"), name).toHaveLength(0);
+    }
+  });
+
+  it("무료 재연결 대조를 통과한 뒤 OBS 단계에서 재시도해도, 대조 기록을 써서 다시 대조하지 않고 성공한다", async () => {
+    const s = await completedJob();
+    const r = await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: newKey(), target: s.target });
+    if (!r.ok) throw new Error(r.reason);
+    const rt = runtime();
+    rt.obs.failOnce.add(s.seller.id);
+    expect(await runOnce(db, rt, { ...W, random: () => 0 })).toBe("retry");
+    const mid = await job(r.jobId);
+    expect(mid.targetVerifiedAt).not.toBeNull();
+    expect(mid).toMatchObject({ stepIndex: 2, shopKey: s.target.shopKey, obsPairingId: s.target.obsPairingId });
+    expect(rt.browser.shopKeyReads).toBe(1);
+    await db.automationJob.update({ where: { id: r.jobId }, data: { runAfter: new Date(Date.now() - 1000) } });
+    // 새 실행: 브라우저 세션이 새로 열려 쇼핑몰을 알 수 없어도 대조 기록으로 이어 간다
+    rt.browser.shopKey.set(s.seller.id, null);
+    rt.browser.shopKeyReads = 0;
+    expect(await runOnce(db, rt, W)).toBe("succeeded");
+    expect(rt.browser.shopKeyReads).toBe(0);
+  });
+
+  it("이탈 시각은 따로 기록한다: 이탈 뒤 연습 5회로 검증이 회복되면, 같은 작업이 나중에 재개·완료돼도 검증이 유지된다", async () => {
+    const a = await bought();
+    const rt = runtime();
+    rt.browser.pageText = () => "앱 설치 · 설치 완료 · 저장"; // 웹훅 단계 화면이 작업서와 다름
+    rt.obs.disconnected.add(a.seller.id);
+    expect(await runOnce(db, rt, W)).toBe("needs_customer");
+    const parked = await job(a.jobId);
+    expect(parked.deviatedSteps).toEqual(["webhook_setup"]);
+    expect(parked.lastDeviationAt).not.toBeNull();
+    expect((await playbookReadiness(db, cafe24Playbook)).verified).toBe(false);
+    for (let i = 0; i < PRACTICE_STREAK_REQUIRED; i++) await runPractice(db, runtime(), cafe24Playbook);
+    expect((await playbookReadiness(db, cafe24Playbook)).verified).toBe(true);
+    rt.obs.disconnected.delete(a.seller.id);
+    await resumeJob(db, a.ctx, a.jobId);
+    expect(await runOnce(db, rt, W)).toBe("succeeded");
+    expect((await job(a.jobId)).lastDeviationAt).toEqual(parked.lastDeviationAt);
+    expect(await playbookReadiness(db, cafe24Playbook)).toMatchObject({ verified: true, needsReverify: false });
+  });
+
+  it("고객 행동 마감(24시간)이 지나면 작업은 실패로 끝나고 결제는 전액 환불 처리 대기가 된다(110,000원·33,000원)", async () => {
+    // 처음 연결(110,000원)
+    const a = await bought();
+    const rt = runtime();
+    rt.obs.disconnected.add(a.seller.id);
+    expect(await runOnce(db, rt, W)).toBe("needs_customer");
+    await db.automationJob.update({ where: { id: a.jobId }, data: { actionDeadlineAt: new Date(Date.now() - 1000) } });
+    await reapExpired(db);
+    expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "customer_action_timeout" });
+    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({
+      status: "REFUND_PENDING",
+      refundReason: "customer_action_timeout",
+      amount: AUTOMATION_PRICE,
+    });
+    expect(await db.auditLog.count({ where: { action: "automation.refund_request", sellerId: a.seller.id } })).toBe(1);
+
+    // 재설치(33,000원)
+    const s = await completedJob();
+    const paid = await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: newKey(), target: { ...s.target, obsPairingId: "new-pc" }, consent });
+    if (!paid.ok) throw new Error(paid.reason);
+    const rt2 = runtime();
+    rt2.obs.pairing.set(s.seller.id, "new-pc");
+    rt2.obs.disconnected.add(s.seller.id);
+    expect(await runOnce(db, rt2, W)).toBe("needs_customer");
+    await db.automationJob.update({ where: { id: paid.jobId }, data: { actionDeadlineAt: new Date(Date.now() - 1000) } });
+    await reapExpired(db);
+    const reinstallPayment = await db.automationPayment.findFirstOrThrow({ where: { job: { id: paid.jobId } } });
+    expect(reinstallPayment).toMatchObject({ status: "REFUND_PENDING", refundReason: "customer_action_timeout", amount: REINSTALL_PRICE });
+    // 실제 환불은 하지 않는다
+    expect(await db.automationPayment.count({ where: { status: "REFUNDED" } })).toBe(0);
   });
 });

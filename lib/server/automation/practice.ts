@@ -83,11 +83,11 @@ export async function playbookReadiness(db: PrismaClient, playbook: Playbook, re
   const runs = await db.automationPracticeRun.findMany({ where, orderBy: { finishedAt: "desc" }, take: 100 });
   // 고객 작업에서 화면이 작업서와 달랐던 가장 최근 시각. 그 전의 연습 성공은 바뀐 화면을 검증하지 못했으므로 세지 않는다.
   const drifted = await db.automationJob.findFirst({
-    where: { ...where, NOT: { deviatedSteps: { isEmpty: true } } },
-    orderBy: { updatedAt: "desc" },
-    select: { updatedAt: true },
+    where: { ...where, lastDeviationAt: { not: null } },
+    orderBy: { lastDeviationAt: "desc" },
+    select: { lastDeviationAt: true },
   });
-  const driftAt = drifted?.updatedAt ?? null;
+  const driftAt = drifted?.lastDeviationAt ?? null;
   let streak = 0;
   for (const r of runs) {
     if (driftAt && r.finishedAt <= driftAt) break;
