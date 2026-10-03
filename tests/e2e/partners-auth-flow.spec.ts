@@ -355,7 +355,7 @@ test("직원: 로그인하면 본인확인 연결 안내가 뜨고, 나중에 �
   await expect(page.getByRole("heading", { name: "본인확인으로 계정을 연결해요" })).toBeVisible();
   await expect(page.getByTestId("il-account")).toContainText(s.email);
   await expect(page.getByTestId("il-account")).toContainText(s.name);
-  await expect(page.getByTestId("il-account")).toContainText(`010-****-${s.phone.slice(-4)}`);
+  await expect(page.getByTestId("il-account")).toContainText(`휴대폰 끝자리 ${s.phone.slice(-4)}`);
   await expect(page.getByText("다음 로그인 때 다시 안내해요", { exact: false })).toBeVisible();
   await shot(page, "AU-012");
   await page.getByRole("button", { name: "나중에 할게요" }).click();
@@ -435,7 +435,7 @@ test("직원: 로그인하면 본인확인 연결 안내가 뜨고, 나중에 �
   await login(page, "대표자", a.email, a.password);
   await expect(page).toHaveURL(/\/seller\/products$/);
   // 직원 계정 화면(SA-100)의 수정 창에서 번호를 바꾼다: 연결된 직원이라 다시 본인확인해야 한다고 알려 준다
-  const nextPhone = randomPhone();
+  const nextPhone = `011${String(Math.floor(Math.random() * 1e7)).padStart(7, "0")}`;
   await page.goto("/seller/staff");
   await page.getByRole("button", { name: `${s.name} 정보 · 권한 수정` }).click();
   const dialog = page.getByRole("dialog");
@@ -448,7 +448,9 @@ test("직원: 로그인하면 본인확인 연결 안내가 뜨고, 나중에 �
   await login(page, "직원", s.email, next);
   await expect(page).toHaveURL(/\/seller\/identity-link\?next=/);
   await expect(page.locator("#il-state")).toContainText("휴대폰 번호가 바뀌어서 본인확인을 다시 해야 아이디 · 비밀번호를 스스로 찾을 수 있어요.");
-  await expect(page.getByTestId("il-account")).toContainText(`010-****-${nextPhone.slice(-4)}`);
+  await expect(page.getByTestId("il-account")).toContainText(`휴대폰 끝자리 ${nextPhone.slice(-4)}`);
+  // 앞자리는 서버가 주지 않으므로 010 같은 앞자리를 지어내 보여 주지 않는다(011 번호 직원)
+  await expect(page.getByTestId("il-account")).not.toContainText("010-");
   await expect(page.getByLabel("휴대폰번호", { exact: true })).toHaveCount(0);
   // 휴대폰 폭(390)에서도 안내 문장이 줄바꿈되어 가로로 넘치지 않는다
   await page.setViewportSize({ width: 390, height: 844 });

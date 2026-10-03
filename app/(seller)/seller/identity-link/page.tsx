@@ -144,7 +144,7 @@ export default function IdentityLinkPage() {
               {status.registeredPhoneLast4 && (
                 <>
                   {" · "}
-                  <span className="nw">010-****-{status.registeredPhoneLast4}</span>
+                  <span className="nw">휴대폰 끝자리 {status.registeredPhoneLast4}</span>
                 </>
               )}
             </span>
