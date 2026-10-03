@@ -92,6 +92,8 @@ export async function signupBuyer(
     // 필수 약관 동의(true여야 한다). 생략하면 동의한 것으로 보지 않는다.
     agreedTerms?: boolean;
     agreedPrivacy?: boolean;
+    // 감사 로그에 남길 요청 정보
+    meta?: { ip?: string | null; userAgent?: string | null };
     now?: Date;
   },
 ): Promise<BuyerSignupResult> {
@@ -161,6 +163,8 @@ export async function signupBuyer(
       actorId: member.id,
       sellerId: input.sellerId,
       action: "buyer.signup",
+      ip: input.meta?.ip ?? null,
+      userAgent: input.meta?.userAgent ?? null,
       after: { agreedTerms: true, agreedPrivacy: true, agreedAt: now.toISOString() },
     });
     return { ok: true, memberId: member.id };

@@ -22,6 +22,13 @@ const H = { "content-type": "application/json", host: "localhost:3000", origin: 
 const post = (url: string, body: unknown, cookie?: string) =>
   new Request(`http://localhost:3000${url}`, { method: "POST", headers: { ...H, ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body) });
 const ctx = (slug: string) => ({ params: Promise.resolve({ slug }) });
+// 가입 요청에는 User-Agent를 붙여 감사 로그에 남는지 본다
+const withAgent = (url: string, body: unknown, cookie?: string) =>
+  new Request(`http://localhost:3000${url}`, {
+    method: "POST",
+    headers: { ...H, "user-agent": "signup-test-agent", ...(cookie ? { cookie } : {}) },
+    body: JSON.stringify(body),
+  });
 const cookieOf = (res: Response, name: string) => (res.headers.getSetCookie().find((c) => c.startsWith(`${name}=`)) ?? "").split(";")[0];
 
 async function shop() {
@@ -40,7 +47,7 @@ async function shop() {
   };
   const signup = (v: { cookie?: string; verificationId: string }, body: Record<string, unknown> = {}) =>
     signupRoute(
-      post(base, { verificationId: v.verificationId, loginId: "buyer01@example.com", password: "pw-123456", broadcastNickname: "카드왕", agreedTerms: true, agreedPrivacy: true, ...body }, v.cookie),
+      withAgent(base, { verificationId: v.verificationId, loginId: "buyer01@example.com", password: "pw-123456", broadcastNickname: "카드왕", agreedTerms: true, agreedPrivacy: true, ...body }, v.cookie),
       ctx(slug),
     );
   return { seller, slug, base, verified, signup };
@@ -61,6 +68,7 @@ describe("구매자 가입 HTTP", () => {
     const member = await db.buyerMember.findFirstOrThrow({ where: { sellerId: s.seller.id } });
     expect(member).toMatchObject({ loginId: "buyer01@example.com", name: "김구매", phone: "01099998888", broadcastNickname: "카드왕" });
     expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.signup", actorId: member.id } })).toMatchObject({
+      userAgent: "signup-test-agent",
       after: { agreedTerms: true, agreedPrivacy: true },
     });
     // 로그인도 이메일 대소문자를 가리지 않는다
@@ -102,6 +110,18 @@ describe("구매자 가입 HTTP", () => {
     const login = (loginId: string) => loginRoute(post(`/api/shop/${s.slug}/auth/login`, { loginId, password: "pw-123456" }), ctx(s.slug));
     expect((await login(email(254).toUpperCase())).status).toBe(200);
     expect((await login(email(255))).status).toBe(400);
+  });
+
+  it("아이디에 NUL 같은 제어문자가 있으면 가입·로그인 모두 500이 아니라 400", async () => {
+    const s = await shop();
+    const v = await s.verified();
+    for (const loginId of ["x\u0000@example.com", "x@exa\u0007mple.com", "x\u200b@example.com"]) {
+      const r = await s.signup(v, { loginId });
+      expect(r.status, JSON.stringify(loginId)).toBe(400);
+      expect((await r.json()).error).toBe("invalid_login_id");
+      const login = await loginRoute(post(`/api/shop/${s.slug}/auth/login`, { loginId, password: "pw-123456" }), ctx(s.slug));
+      expect(login.status, JSON.stringify(loginId)).toBe(400);
+    }
   });
 
   it("본인확인을 마치지 않았거나, 시작한 브라우저가 아니거나, 이미 쓴 본인확인이면 가입할 수 없다", async () => {

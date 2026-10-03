@@ -29,6 +29,7 @@ export const POST = mutation(async (req: Request, { params }: { params: Promise<
     broadcastNickname: str(body.broadcastNickname, 200),
     agreedTerms: body.agreedTerms === true,
     agreedPrivacy: body.agreedPrivacy === true,
+    meta: requestMeta(req),
   });
   if (!r.ok) return NextResponse.json({ error: r.reason, message: BUYER_SIGNUP_MESSAGES[r.reason] }, { status: BUYER_SIGNUP_STATUS[r.reason], headers: NO_STORE });
   const res = NextResponse.json({ ok: true }, { status: 201, headers: NO_STORE });
