@@ -130,7 +130,10 @@ describe("재고 이력 조회", () => {
     expect(seen.slice(0, 2)).toEqual([7, 6]);
     expect([...seen].sort((x, y) => x - y)).toEqual([1, 2, 3, 4, 5, 6, 7]);
 
-    const bad: Record<string, string>[] = [{ cursor: "garbage" }, { cursor: Buffer.from("2026-10-01T00:00:00.000Z|nope").toString("base64url") }, { limit: "0" }, { limit: "201" }, { limit: "abc" }];
+    const bad: Record<string, string>[] = [{ cursor: "garbage" }, { cursor: Buffer.from("2026-10-01T00:00:00.000Z|nope").toString("base64url") },
+      // BIGINT 범위를 넘는 seq(500이 아니라 400)
+      { cursor: Buffer.from("s9999999999999999999").toString("base64url") },
+      { cursor: Buffer.from("s9223372036854775808").toString("base64url") }, { limit: "0" }, { limit: "201" }, { limit: "abc" }];
     for (const q of bad) {
       const r = await list(s.cookie, q);
       expect(r.status).toBe(400);

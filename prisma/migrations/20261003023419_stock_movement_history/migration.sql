@@ -3,6 +3,12 @@
 ALTER TABLE "StockMovement" ADD COLUMN     "seq" BIGSERIAL NOT NULL,
 ADD COLUMN     "stockAfter" INTEGER;
 
+-- 기존 이력의 seq는 저장된 순서가 아니라 기록 시각 순(createdAt, id)으로 다시 매기고, 새 이력은 그 뒤 번호부터 받는다
+UPDATE "StockMovement" m SET "seq" = o.rn
+FROM (SELECT "id", row_number() OVER (ORDER BY "createdAt", "id") AS rn FROM "StockMovement") o
+WHERE m."id" = o."id";
+SELECT setval(pg_get_serial_sequence('"StockMovement"', 'seq'), COALESCE((SELECT max("seq") FROM "StockMovement"), 0) + 1, false);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "StockMovement_seq_key" ON "StockMovement"("seq");
 

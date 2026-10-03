@@ -27,11 +27,15 @@ const ACTOR_LABELS: Record<Exclude<ActorType, "SELLER_USER">, string> = {
   PLATFORM_ADMIN: "플랫폼 관리자",
 };
 
+const BIGINT_MAX = BigInt("9223372036854775807");
 const encodeCursor = (seq: bigint) => Buffer.from(`s${seq}`).toString("base64url");
 
 function decodeCursor(raw: string): bigint | null {
   const m = /^s([1-9]\d{0,18})$/.exec(Buffer.from(raw, "base64url").toString("utf8"));
-  return m ? BigInt(m[1]) : null;
+  if (!m) return null;
+  const seq = BigInt(m[1]);
+  // seq는 BIGINT라 그 범위를 넘으면 잘못된 커서로 본다(DB 오류 500 대신 400)
+  return seq <= BIGINT_MAX ? seq : null;
 }
 
 export async function listStockMovements(
