@@ -10,7 +10,8 @@
     "postinstall": "prisma generate",
     "test": "vitest run --dir tests/unit",
     "test:integration": "vitest run --dir tests/integration --no-file-parallelism",
-    "db:migrate": "prisma migrate deploy"
+    "db:migrate": "prisma migrate deploy",
+    "test:e2e": "playwright test -c tests/e2e/playwright.config.ts"
   },
   "dependencies": {
     "@node-rs/argon2": "2.2.1",
@@ -21,6 +22,7 @@
     "react-dom": "19.3.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.56.1",
     "@types/node": "^24.0.0",
     "@types/pg": "8.23.1",
     "@types/react": "^19.0.0",
