@@ -265,7 +265,7 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 
 화면·메일·API 메시지의 무료 체험 기간 표기는 「체험하기」다(「무료 이용」이라고 쓰지 않음). 코드 이름(`trialEndsAt` 등)은 그대로 둔다.
 
-- `Seller.trialEndsAt`: 마스터 승인 때 DB 시계로 `approvedAt + 14일`(상수 `TRIAL_DAYS`, 대표님 결정 2026-10-02 3일 → 14일)을 채운다(승인 대기인 쇼핑몰만, 동시 승인은 한 번만 반영).
+- (2026-10-04 대체 예정: 플랜 2종·오버레이 전용만 7일 체험·통합 체험 없음, 정본 `docs/PRODUCT_SCOPE.md` 「가격」·확정 ①③, 계획 `docs/ONQ_PLAN.md` 1단계) `Seller.trialEndsAt`: 마스터 승인 때 DB 시계로 `approvedAt + 14일`(상수 `TRIAL_DAYS`, 대표님 결정 2026-10-02 3일 → 14일)을 채운다(승인 대기인 쇼핑몰만, 동시 승인은 한 번만 반영).
 - 이용 가능 여부(`sellerAccess`): 아래 중 하나면 쓸 수 있다. 아니면 판매자 API는 `402 subscription_required`, 오버레이 공개 주소(`state`·`version`·`stream`)는 404, 열려 있는 오버레이 SSE는 다음 핑 재확인 때 닫힌다.
   - `paid`: 결제한 이용 기간 안(`currentPeriodEnd > 지금`). 해지 예약·자동결제 실패여도 기간 끝까지.
   - `trial`: 체험하기 중.
@@ -275,7 +275,7 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
   - 잠겨도 열리는 것(대표님 결정, PRODUCT_SCOPE 「잠금 중 허용 범위」): 내 정보(`/api/seller/me`, 이용 상태 포함), 구독·결제(`/api/seller/subscription/**`), 로그아웃, 이미 받은 주문의 처리(주문 조회·취소·환불, 배송·구매자 문의 답변·영수증은 기능을 만들 때 같은 방식으로 연다). 막는 것은 새 판매(쇼핑몰 주문 생성·오버레이·방송 시작·상품 등록·수정·도메인 신규 연결)와 그 밖의 판매자 API다. 판정은 서버 가드(`requireSeller`, 예외는 `allowUnpaid`)에서 한다.
 - 잠금 30일 뒤 자동 해지(`closeLongLockedSellers`, 예약 실행): 잠기기 시작한 시각(체험하기 끝·기간 끝·유예 끝 중 가장 늦은 시각)에서 30일이 지나면 `Seller.serviceEndedAt`을 기록하고 구독을 `CANCELED`, 연결 도메인을 비활성(`SellerDomain.suspendedAt`)으로 바꾼다. 데이터는 지우지 않는다(90일 보관 뒤 삭제·5년 주문·결제 기록 보관은 별도 작업). 보관 기간 안에 다시 결제하면 해지 표시를 지우고 해지 때 푼 도메인을 되살린다.
 - 체험하기 한도(대표님 결정): 알림톡·문자 100건, 구매자 휴대폰 본인확인 50건, 저장 용량 1GB. `SubscriptionPlan`의 `trialMessageLimit`·`trialIdentityLimit`·`trialStorageMb`에 두고 마스터 API(`POST /api/admin/plans/{code}/trial-limits`, `billing.manage`, 감사 로그)로 바꾼다. 확인 함수 `checkTrialLimit`은 체험하기 중인 판매자에게만 적용하며, 알림톡·업로드 기능을 만들 때 연결한다. 휴대폰 본인확인은 연결됨: 구매자 가입 본인확인 성공 1건을 1로 세고(`identityUsage`, 중복 확인은 세지 않음), 주문 알림 문자와 따로 센다. 한도가 이미 찼으면 구매자 가입 본인확인 시작·인증번호 다시 보내기에서 문자를 보내기 전에 `403 trial_limit_exceeded`로 막는다(`buyerSignupIdentityLimitReached`). 확정 때 잠금 아래 최종 확인은 그대로 둔다.
-- `SubscriptionPlan`: 정가(`listPrice`)·판매가(`salePrice`), 원 단위 부가세 포함, 청구액은 판매가. 기본값 300,000원 / 199,000원은 마이그레이션 데이터로 넣는다(배포 전 운영 판매자 없음 전제로 기존 판매자 백필 포함).
+- (2026-10-04 대체 예정: 플랜 2종·오버레이 전용만 7일 체험·통합 체험 없음, 정본 `docs/PRODUCT_SCOPE.md` 「가격」·확정 ①③, 계획 `docs/ONQ_PLAN.md` 1단계) `SubscriptionPlan`: 정가(`listPrice`)·판매가(`salePrice`), 원 단위 부가세 포함, 청구액은 판매가. 기본값 300,000원 / 199,000원은 마이그레이션 데이터로 넣는다(배포 전 운영 판매자 없음 전제로 기존 판매자 백필 포함).
 - 가격 변경(대표님 결정): 최고관리자만(`billing.price`), 가격 변경·가격 기록(`SubscriptionPriceChange`)·감사 기록은 한 트랜잭션.
   - 청구 금액(`priceFor`) = 가격 기록 중 「구독을 시작할 때(`SellerSubscription.subscribedAt`) 이미 적용되던 것」 또는 「변경 + 30일이 지난 것」 가운데 가장 최근 가격. 그래서 새 가입자는 지금 가격, 기존 구독자는 고지 기간(30일)이 끝난 뒤 첫 결제부터 새 가격을 낸다. 30일 안에 두 번 바꿔도 구독 시작 때 가격(또는 고지가 끝난 가격)을 유지한다.
   - 해지 뒤 다시 구독하면 새 구독자다(`subscribedAt`을 새로 기록, 기간도 결제 시각부터).
@@ -301,6 +301,8 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
   - 키 교체 절차: ① 새 키를 `BILLING_KEY_SECRET_NEXT`로 배포(읽기는 새 키 → 이전 키 순으로 시도하는 코드를 그때 추가) ② 일괄 작업으로 모든 `billingKeyCipher`를 이전 키로 풀어 새 키로 다시 암호화(판매자 행 잠금 아래, 진행 중 청구가 없을 때) ③ 남은 행이 없는지 확인한 뒤 `BILLING_KEY_SECRET`을 새 키로 바꾸고 이전 키 제거 ④ 감사 로그에 교체 기록. 키 값은 저장소·로그에 남기지 않는다.
 
 ### 4.8.2 판매자 가입 신청·자동 승인 (대표님 결정 2026-10-02)
+
+- (2026-10-04 대체 예정: 오버레이 전용은 사업자 정보 없이 최소 가입, 통합 전환 때 사업자·정산 정보. 정본 `docs/PRODUCT_SCOPE.md` 「ONQ 통합 지시」, 계획 `docs/ONQ_PLAN.md` 2단계)
 
 - 흐름: `POST /api/seller-signup/verification`(대표자 휴대폰 본인확인 시작·첫 인증번호, 같은 접속 IP 하루(KST 자정 초기화) 10회까지 — 건당 비용, 넘으면 `429 daily_limit_exceeded`, 시작한 브라우저에만 `lo_sidv` 쿠키, 경로 `/api/seller-signup`) → `…/verification/resend`·`…/verification/confirm`(인증번호 확인) → `POST /api/seller-signup/apply`(로그인 이메일·비밀번호는 신청자가 정함, 쇼핑몰 이름·주소 이름(slug)·사업자등록번호·상호·개업일자·통신판매업 신고번호).
 - 신청을 받지 않는 경우(입력 오류로 응답): 본인인증 무효(다른 브라우저·이미 씀·30분 지남·다른 용도), 대표자 1명당 쇼핑몰 1개 위반(해지·반려 제외, `409 representative_has_shop`, 문구 「이미 운영 중인 쇼핑몰이 있어요 · 한 대표자는 쇼핑몰 하나만 열 수 있어요」, 다른 쇼핑몰 이름은 보여 주지 않음, DB 부분 유니크로도 막음), 주소 이름 형식·예약어·중복, 사업자등록번호 검증 숫자 틀림, 비밀번호 8자 미만. 이 경우 본인인증은 소진되지 않는다.
