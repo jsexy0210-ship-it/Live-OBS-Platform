@@ -20,6 +20,7 @@ import { executeJob, purgeEndedBrowserState, runOnce, runWorkerLoop, startHeartb
 import { FakeBillingProvider } from "../../lib/server/billing/provider";
 import { billingProvider } from "../../lib/server/billing/registry";
 import { sealBillingKey } from "../../lib/server/billing/secret";
+import type { AutomationAction } from "../../lib/server/automation/ports";
 import { prisma } from "../../lib/server/db";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { PASSWORD, createSeller, createSellerUser, db, resetDb } from "./helpers";
@@ -1367,4 +1368,103 @@ describe("MASTER 요청 시험(26c2974 Codex 3건)", () => {
     const claimedB = await claimNext(db, "w-b");
     expect(claimedB?.job.id).toBe(re.jobId);
   }, 20_000);
+});
+
+describe("Codex 6차 반영(9144f55)", () => {
+  async function completedJob() {
+    const s = await bought();
+    expect(await runOnce(db, runtime(), W)).toBe("succeeded");
+    return { ...s, target: { shopKey: `mall-${s.seller.id}`, obsPairingId: `pc-${s.seller.id}` } };
+  }
+  const noHooks = { touch: async () => {}, enterVerify: async () => {}, stepDone: async () => {} };
+  const freshStats = () => ({ costUsed: 0, plannerCalls: 0, playbookActions: 0, deviatedSteps: [] as string[] });
+
+  it("재설치도 첫 OBS 변경 전에 로컬 도구로 확인한 실제 PC로 잠금을 옮긴다(요청한 PC 값이 달라도), 그 PC에서 다른 작업이 돌면 OBS 변경 0회", async () => {
+    const s = await completedJob();
+    const paid = await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: newKey(), target: { ...s.target, obsPairingId: "requested-pc" }, consent });
+    if (!paid.ok) throw new Error(paid.reason);
+    expect(await job(paid.jobId)).toMatchObject({ kind: "REINSTALL", obsTargetKey: "obs:requested-pc" });
+
+    // 실제 PC(actual-pc)에서 다른 작업이 실행 중
+    const other = await bought();
+    await db.automationJob.update({
+      where: { id: other.jobId },
+      data: { status: "RUNNING", leaseOwner: "other", leaseExpiresAt: new Date(Date.now() + 60_000), obsTargetKey: "obs:actual-pc", runStartedAt: new Date() },
+    });
+    const rt = runtime();
+    rt.obs.pairing.set(s.seller.id, "actual-pc");
+    expect(await runOnce(db, rt, { ...W, random: () => 0 })).toBe("retry");
+    expect(await job(paid.jobId)).toMatchObject({ lastError: "obs_target_busy", obsTargetKey: "obs:requested-pc" });
+    expect(rt.obs.performed.filter((p) => p.scope.jobId === paid.jobId)).toHaveLength(0);
+
+    await db.automationJob.update({ where: { id: other.jobId }, data: { status: "CANCELED", leaseOwner: null, leaseExpiresAt: null, finishedAt: new Date(), runStartedAt: null } });
+    await db.automationJob.update({ where: { id: paid.jobId }, data: { runAfter: new Date(Date.now() - 1000) } });
+    expect(await runOnce(db, rt, W)).toBe("succeeded");
+    expect(await job(paid.jobId)).toMatchObject({ obsTargetKey: "obs:actual-pc", obsPairingId: "actual-pc" });
+  });
+
+  it("행동 고정 키는 순번이 아니라 행동의 의미(단계·종류·대상·값)로 만든다: 같은 순번의 다른 행동은 실행, 다른 순번의 같은 행동은 한 번만", async () => {
+    const a = await bought();
+    const scope = { sellerId: a.seller.id, jobId: a.jobId };
+    const opts = { verifying: false, costLimit: 3000, maxActionsPerStep: 12, playbook: null, startIndex: 0, stats: freshStats() };
+    // 1회차: 0번째에 「A」 클릭 성공 뒤 작업자가 죽음
+    const rt = runtime();
+    let script: AutomationAction[] = [{ type: "click", target: "A" }, { type: "step_done" }];
+    rt.planner.override = (input) => (input.step.key === "shop_connect" ? { action: script[input.history.length] ?? { type: "step_done" }, costWon: 0 } : undefined);
+    await expect(
+      runSteps(rt, scope, opts, {
+        ...noHooks,
+        stepDone: async () => {
+          throw new Error("crash");
+        },
+      }),
+    ).rejects.toThrow("crash");
+    // 2회차: 같은 0번째 순번에 다른 행동(「B」 클릭)은 실행된다
+    script = [{ type: "click", target: "B" }, { type: "step_done" }];
+    await expect(
+      runSteps(rt, scope, { ...opts, stats: freshStats() }, {
+        ...noHooks,
+        stepDone: async () => {
+          throw new Error("crash");
+        },
+      }),
+    ).rejects.toThrow("crash");
+    const clicks = () => rt.browser.performed.filter((p) => p.type === "click").length;
+    expect(clicks()).toBe(2);
+    // 3회차: 같은 행동(「A」 클릭)이 다른 순번(1번째)으로 와도 다시 적용하지 않는다
+    script = [{ type: "navigate", url: "https://admin.cafe24.com/apps" }, { type: "click", target: "A" }, { type: "step_done" }];
+    await expect(
+      runSteps(rt, scope, { ...opts, stats: freshStats() }, {
+        ...noHooks,
+        stepDone: async () => {
+          throw new Error("crash");
+        },
+      }),
+    ).rejects.toThrow("crash");
+    expect(clicks()).toBe(2);
+  });
+
+  it("끝난 모든 작업(고객 대기 없이 완료·OBS 대기만 있던 취소)에서 행동 키 기록과 OBS 연결 정보를 지운다", async () => {
+    const rt = runtime();
+    const done = await bought();
+    expect(await runOnce(db, rt, W)).toBe("succeeded");
+    const obsWait = await bought();
+    rt.obs.disconnected.add(obsWait.seller.id);
+    expect(await runOnce(db, rt, W)).toBe("needs_customer");
+    rt.obs.disconnected.delete(obsWait.seller.id);
+    await rt.obs.currentPairingId({ sellerId: obsWait.seller.id, jobId: obsWait.jobId });
+    await cancelJob(db, obsWait.ctx, obsWait.jobId);
+    expect([...rt.browser.applied.keys()].some((k) => k.startsWith(done.jobId))).toBe(true);
+    expect(rt.obs.connections.has(done.jobId)).toBe(true);
+    expect(rt.obs.connections.has(obsWait.jobId)).toBe(true);
+
+    await purgeEndedBrowserState(db, rt);
+    for (const id of [done.jobId, obsWait.jobId]) {
+      expect([...rt.browser.applied.keys()].filter((k) => k.startsWith(id))).toHaveLength(0);
+      expect([...rt.obs.applied.keys()].filter((k) => k.startsWith(id))).toHaveLength(0);
+      expect(rt.obs.connections.has(id)).toBe(false);
+    }
+    // 한 번 정리한 작업은 다시 고르지 않는다
+    expect(await purgeEndedBrowserState(db, rt)).toBe(0);
+  });
 });

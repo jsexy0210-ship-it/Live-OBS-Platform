@@ -72,7 +72,6 @@ export async function executeJob(db: PrismaClient, rt: AutomationRuntime, { job,
         secretPlaybook: playbook,
         expectFacts,
         targetVerified: job.targetVerifiedAt !== null,
-        obsTargetClaimed: job.obsTargetKey.startsWith("obs:"),
         signal: lost.signal,
       },
       {
@@ -130,12 +129,14 @@ export async function executeJob(db: PrismaClient, rt: AutomationRuntime, { job,
   }
 }
 
-// 끝난 작업(완료·취소·실패·고객 행동 마감)의 보관본(브라우저 상태·임시 파일·OBS 연결 정보) 삭제를 실행기·로컬 도구에 요청한다.
-// 판매자 취소·마감 회수처럼 작업자 밖에서 끝난 작업도 여기서 지운다. 삭제 요청이 실패하면 표시가 남아 다음 반복에서 다시 한다.
+// 끝난 모든 작업(완료·취소·실패·고객 행동 마감·실행 시간 마감)의 보관 자료(브라우저 상태·임시 파일·행동 키 기록·OBS 연결 정보)
+// 삭제를 실행기·로컬 도구에 요청한다. 고객 대기가 없었던 작업도 포함한다. 판매자 취소처럼 작업자 밖에서 끝난 작업도 여기서 지운다.
+// 삭제 요청이 실패하면 표시가 남아 다음 반복에서 다시 한다.
 export async function purgeEndedBrowserState(db: PrismaClient, rt: Pick<AutomationRuntime, "browser" | "obs">, limit = 50): Promise<number> {
   const ended = await db.automationJob.findMany({
-    where: { browserStateHeld: true, status: { in: ["SUCCEEDED", "FAILED", "CANCELED"] } },
+    where: { artifactsPurgedAt: null, status: { in: ["SUCCEEDED", "FAILED", "CANCELED"] } },
     select: { id: true, sellerId: true },
+    orderBy: { updatedAt: "asc" },
     take: limit,
   });
   let purged = 0;
@@ -147,7 +148,12 @@ export async function purgeEndedBrowserState(db: PrismaClient, rt: Pick<Automati
     } catch {
       continue;
     }
-    purged += (await db.automationJob.updateMany({ where: { id: j.id, browserStateHeld: true }, data: { browserStateHeld: false } })).count;
+    purged += (
+      await db.automationJob.updateMany({
+        where: { id: j.id, artifactsPurgedAt: null, status: { in: ["SUCCEEDED", "FAILED", "CANCELED"] } },
+        data: { artifactsPurgedAt: new Date(), browserStateHeld: false },
+      })
+    ).count;
   }
   return purged;
 }

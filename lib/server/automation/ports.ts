@@ -54,7 +54,7 @@ export type ActionOutcome =
 export interface BrowserSession {
   readonly id: string;
   observe(): Promise<Observation>;
-  // actionKey: 변경 행동(클릭·입력·OBS 설정·테스트 주문)에만 붙는 고정 키(작업 id·단계·순번·행동 종류). 실행기는 같은 키로
+  // actionKey: 변경 행동(클릭·입력·OBS 설정·테스트 주문)에만 붙는 고정 키(작업 id·단계·행동 의미의 해시, 순번과 무관). 실행기는 같은 키로
   // 이미 성공한 행동을 다시 적용하지 않고 그때 결과를 돌려준다(작업자가 죽은 뒤 회수·재실행해도 중복 적용 없음).
   // 키 기록도 보관 자료처럼 작업에만 묶고 작업이 끝나면 지운다. 키가 없는 행동(이동·확인)은 매번 실행한다.
   perform(action: AutomationAction, secrets: JobSecrets, actionKey?: string): Promise<ActionOutcome>;
@@ -80,7 +80,8 @@ export interface BrowserSession {
 export interface BrowserExecutor {
   // 작업마다 새 browser context. 다른 작업·판매자와 쿠키·저장소를 나누지 않는다(같은 작업의 보관본만 복원).
   open(scope: JobScope): Promise<BrowserSession>;
-  // 그 작업의 보관본을 지운다(완료·취소·실패·고객 행동 마감 때 서버가 요청). 없으면 아무것도 안 한다. 지운 뒤에는 복원할 수 없다.
+  // 그 작업의 보관본(쿠키·저장소·자격증명·임시 파일)과 행동 키 기록을 지운다. 끝난 모든 작업(완료·취소·실패·마감)에 서버가
+  // 한 번씩 요청한다(고객 대기가 없었던 작업 포함). 없으면 아무것도 안 한다. 지운 뒤에는 복원할 수 없다.
   discard(scope: JobScope): Promise<void>;
 }
 
@@ -90,8 +91,8 @@ export interface ObsBridge {
   perform(scope: JobScope, action: AutomationAction, actionKey?: string): Promise<ActionOutcome>;
   // 연결된 로컬 도구의 OBS pairing id(읽기만). 연결 안 됐거나 알 수 없으면 null
   currentPairingId(scope: JobScope): Promise<string | null>;
-  // 이 작업의 OBS 연결 정보(로컬 도구 연결 토큰 등)를 지운다. 고객 대기 중에는 암호화해 작업에만 묶어 두고,
-  // 작업이 끝나면(완료·취소·실패·마감) 서버가 이것으로 바로 지운다. 지운 뒤에는 다시 쓸 수 없다.
+  // 이 작업의 OBS 연결 정보(로컬 도구 연결 토큰 등)와 행동 키 기록을 지운다. 고객 대기 중에는 암호화해 작업에만 묶어 두고,
+  // 작업이 끝나면(완료·취소·실패·마감, 고객 대기가 없었던 작업 포함) 서버가 이것으로 바로 지운다. 지운 뒤에는 다시 쓸 수 없다.
   discard(scope: JobScope): Promise<void>;
 }
 

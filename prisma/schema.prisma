@@ -1282,6 +1282,9 @@ model AutomationJob {
   // 고객 행동 대기로 실행기에 브라우저 상태(암호화 보관본)를 맡겼는가. 작업이 끝나면(완료·취소·실패·마감) 작업자가
   // 실행기에 삭제를 요청하고 false로 돌린다(purgeEndedBrowserState). 삭제 요청이 끝나기 전까지 true로 남아 다시 시도된다.
   browserStateHeld     Boolean                   @default(false)
+  // 끝난 작업의 보관 자료(브라우저 상태·임시 파일·행동 키 기록·OBS 연결 정보) 삭제를 실행기·로컬 도구에 요청한 시각.
+  // 고객 대기가 없었던 작업도 포함해 끝난 모든 작업을 한 번씩 정리한다(worker.ts purgeEndedBrowserState).
+  artifactsPurgedAt    DateTime?                 @db.Timestamptz(3)
   // 무료 재연결(결제 없음) 요청의 Idempotency-Key·요청 지문. 유료 작업의 키는 결제 행에 있다.
   idempotencyKey       String?
   requestFingerprint   String?

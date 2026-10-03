@@ -87,6 +87,8 @@ export class FakeBrowserExecutor implements BrowserExecutor {
 
   async discard(scope: JobScope): Promise<void> {
     this.saved.delete(scope.jobId);
+    // 행동 키 기록도 그 작업 것을 지운다
+    for (const k of [...this.applied.keys()]) if (k.startsWith(`${scope.jobId}:`)) this.applied.delete(k);
     this.discarded.push(scope.jobId);
   }
   pageText: (scope: JobScope, secrets?: JobSecrets) => string = () => "Cafe24 관리자";
@@ -187,12 +189,18 @@ export class FakeObsBridge implements ObsBridge {
   // 실패 흉내: 이 판매자의 OBS 행동은 처음 한 번 재시도 가능한 오류를 낸다
   readonly failOnce = new Set<string>();
 
+  // 작업별로 로컬 도구가 들고 있는 OBS 연결 정보(연결 토큰). discard로 지운다.
+  readonly connections = new Set<string>();
+
   async discard(scope: JobScope): Promise<void> {
+    this.connections.delete(scope.jobId);
+    for (const k of [...this.applied.keys()]) if (k.startsWith(`${scope.jobId}:`)) this.applied.delete(k);
     this.discarded.push(scope.jobId);
   }
 
   async currentPairingId(scope: JobScope): Promise<string | null> {
     if (this.disconnected.has(scope.sellerId)) return null;
+    this.connections.add(scope.jobId);
     const v = this.pairing.get(scope.sellerId);
     return v === undefined ? `pc-${scope.sellerId}` : v;
   }
@@ -212,6 +220,7 @@ export class FakeObsBridge implements ObsBridge {
 
   private async apply(scope: JobScope, action: AutomationAction): Promise<ActionOutcome> {
     this.performed.push({ scope, type: action.type });
+    if (!this.disconnected.has(scope.sellerId)) this.connections.add(scope.jobId);
     if (action.type === "obs_add_overlay_source" && !this.disconnected.has(scope.sellerId) && !this.failOnce.has(scope.sellerId)) {
       this.sources.set(scope.sellerId, (this.sources.get(scope.sellerId) ?? 0) + 1);
     }

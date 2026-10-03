@@ -64,6 +64,7 @@ CREATE TABLE "AutomationJob" (
     "playbookId" TEXT,
     "playbookVersion" INTEGER,
     "browserStateHeld" BOOLEAN NOT NULL DEFAULT false,
+    "artifactsPurgedAt" TIMESTAMPTZ(3),
     "idempotencyKey" TEXT,
     "requestFingerprint" TEXT,
     "plannerCalls" INTEGER NOT NULL DEFAULT 0,
@@ -168,5 +169,5 @@ ALTER TABLE "AutomationJob" ADD CONSTRAINT "AutomationJob_lease_matches_status" 
 ALTER TABLE "AutomationJob" ADD CONSTRAINT "AutomationJob_payment_matches_kind" CHECK (("kind" = 'RECONNECT_FREE') = ("paymentId" IS NULL));
 ALTER TABLE "AutomationJob" ADD CONSTRAINT "AutomationJob_stats_valid" CHECK ("plannerCalls" >= 0 AND "playbookActions" >= 0 AND ("playbookId" IS NULL) = ("playbookVersion" IS NULL));
 ALTER TABLE "AutomationPracticeRun" ADD CONSTRAINT "AutomationPracticeRun_counters_valid" CHECK ("playbookVersion" > 0 AND "durationMs" >= 0 AND "plannerCalls" >= 0 AND "playbookActions" >= 0 AND "costWon" >= 0);
--- 끝난 작업 중 브라우저 보관본 삭제를 아직 요청하지 않은 것만 빠르게 찾는다
-CREATE INDEX "AutomationJob_browser_state_purge" ON "AutomationJob"("updatedAt") WHERE "browserStateHeld" = true AND "status" IN ('SUCCEEDED', 'FAILED', 'CANCELED');
+-- 끝난 작업 중 보관 자료 삭제를 아직 요청하지 않은 것만 빠르게 찾는다
+CREATE INDEX "AutomationJob_artifacts_purge" ON "AutomationJob"("updatedAt") WHERE "artifactsPurgedAt" IS NULL AND "status" IN ('SUCCEEDED', 'FAILED', 'CANCELED');

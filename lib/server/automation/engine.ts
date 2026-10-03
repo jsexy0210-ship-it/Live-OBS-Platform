@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { cueMatches, matchException, type Playbook } from "./playbook";
 import {
   hostAllowed,
@@ -42,6 +43,22 @@ export type EngineResult =
   | { kind: "retry"; reason: string }
   | { kind: "failed"; reason: string };
 
+// 키 순서와 무관한 직렬화(같은 의미의 행동이면 같은 문자열)
+function stableJson(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(stableJson).join(",")}]`;
+  if (v && typeof v === "object") {
+    return `{${Object.keys(v as Record<string, unknown>)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${stableJson((v as Record<string, unknown>)[k])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(v);
+}
+
+export function actionKeyOf(jobId: string, stepIndex: number, action: AutomationAction): string {
+  return `${jobId}:${stepIndex}:${createHash("sha256").update(stableJson(action)).digest("hex").slice(0, 32)}`;
+}
+
 // 실행 자리를 잃었을 때(heartbeat 실패·취소) 다음 외부 행동 전에 멈추려고 던진다.
 export class EngineAborted extends Error {
   constructor() {
@@ -57,8 +74,6 @@ export type EngineOptions = {
   signal?: AbortSignal;
   // 고객 행동 대기로 멈출 때 브라우저 상태를 보관할지(기본 true). 연습 실행은 보관하지 않는다.
   keepBrowserStateOnWait?: boolean;
-  // 같은 PC 잠금 키가 이미 실제 PC 기준인가(obs:<pairing>). 아니면 OBS를 처음 바꾸기 전에 옮긴다.
-  obsTargetClaimed?: boolean;
   // 이전 실행에서 무료 재연결 대조를 통과했다(작업 행 기록). 브라우저 단계부터 다시 하지 않으면 다시 대조하지 않는다.
   targetVerified?: boolean;
   // 비밀값을 넣어도 되는 칸을 정하는 작업서(작업 중 버전이 바뀌어 정해진 행동은 안 쓰더라도 비밀 칸 목록은 그 작업서 것을 쓴다). 없으면 playbook
@@ -148,7 +163,8 @@ async function runAll(
     return null;
   };
   const secretBook = opts.secretPlaybook === undefined ? opts.playbook : opts.secretPlaybook;
-  let obsTargetClaimed = opts.obsTargetClaimed === true;
+  // 같은 PC 잠금은 실행마다 OBS를 처음 바꾸기 전에 로컬 도구로 확인한 실제 PC로 잡는다(요청 값·이전 기록을 믿지 않음)
+  let obsTargetClaimed = false;
   const touchStats = async () => {
     await hooks.touch(stats);
     stats.deviatedNow = false;
@@ -230,9 +246,9 @@ async function runAll(
         if (!raw.url || !hostAllowed(raw.url) || !here || !hostAllowed(here)) return { kind: "failed", reason: "unsafe_action:secret_origin_not_allowed" };
       }
       guard();
-      // 변경 행동의 고정 키: 작업·단계·순번·행동 종류. 실행기·로컬 도구는 같은 키를 한 번만 적용한다(다시 실행돼도 중복 없음).
-      // 이동·확인 같은 바꾸지 않는 행동은 새 세션에서 다시 해야 하므로 키를 붙이지 않는다.
-      const actionKey = MUTATING.includes(action.type) ? `${scope.jobId}:${stepIndex}:${i}:${action.type}` : undefined;
+      // 변경 행동의 고정 키: 작업·단계와 행동의 의미(종류·대상·값)의 해시. 순번과 무관해 같은 행동은 몇 번째로 오든 한 번만,
+      // 다른 행동은 같은 순번이라도 실행된다. 이동·확인 같은 바꾸지 않는 행동은 새 세션에서 다시 해야 하므로 키를 붙이지 않는다.
+      const actionKey = MUTATING.includes(action.type) ? actionKeyOf(scope.jobId, stepIndex, action) : undefined;
       const out: ActionOutcome = session ? await session.perform(action, secrets, actionKey) : await rt.obs.perform(scope, action, actionKey);
       // 외부 행동이 끝나는 사이 자리를 잃었거나 실행 시간 상한을 넘었으면 결과를 쓰지 않고 멈춘다(작업자가 상황에 맞게 정리)
       guard();

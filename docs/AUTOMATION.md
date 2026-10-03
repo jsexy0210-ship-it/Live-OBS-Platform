@@ -35,7 +35,7 @@
 | SUCCEEDED·FAILED·CANCELED | 없음 | 끝 |
 
 - 고객 행동 종류: `LOGIN`, `TWO_FACTOR`, `CAPTCHA`, `PERMISSION_GRANT`, `LOCAL_TOOL`. 완전 무인을 약속하지 않는다.
-- 변경 행동(클릭·입력·OBS 설정·테스트 주문)에는 작업 id·단계·순번·행동 종류로 만든 고정 키(`actionKey`)를 붙여 실행기·로컬 도구에 넘기고, 같은 키는 한 번만 적용한다(작업자가 행동 성공 직후 죽고 회수·재실행돼도 중복 없음). 이동·확인은 새 세션에서 다시 해야 하므로 키를 붙이지 않는다.
+- 변경 행동(클릭·입력·OBS 설정·테스트 주문)에는 작업 id·단계와 행동의 의미(종류·대상·값, 키 순서와 무관한 해시)로 만든 고정 키(`actionKey`, 순번과 무관)를 붙여 실행기·로컬 도구에 넘기고, 같은 키는 한 번만 적용한다(같은 행동은 몇 번째로 오든 한 번, 다른 행동은 같은 순번이라도 실행)(작업자가 행동 성공 직후 죽고 회수·재실행돼도 중복 없음). 이동·확인은 새 세션에서 다시 해야 하므로 키를 붙이지 않는다.
 - 진행 위치는 `stepIndex`(단계 목록 `steps.ts`: 쇼핑몰 연결 → 웹훅 설정 → OBS 오버레이 설치 → 표시 설정 → 테스트 이벤트 검증). 재개·재시도는 멈춘 단계부터 이어 간다.
 - 모든 전이는 `AutomationJobEvent`에 (전, 후, fencing 토큰, 사유)로 남긴다. 상태를 바꾸는 쓰기(작업자·판매자 취소·재개)는 작업 행을 잠그고 읽어, 기록의 이전 상태가 실제 상태와 어긋나지 않는다. 구매·취소·재개는 `AuditLog`에도 남긴다.
 
@@ -70,7 +70,7 @@
 
 ## 5. 격리·비밀값·악성 페이지 방어
 
-- 고객별 격리: 작업마다 `BrowserExecutor.open({sellerId, jobId})`로 새 context(쿠키·저장소·임시파일 분리), 작업이 끝나면 `close()`로 모두 지운다. 고객 행동(로그인·2단계 인증·CAPTCHA·권한 승인) 대기로 멈출 때만 `close({ keepForResume: true })`로 그 작업의 쿠키·저장소·자격증명과 임시 파일(화면 캡처·내려받은 파일·실행 기록), 로컬 도구의 OBS 연결 정보를 **암호화해 작업 id에만 묶어** 보관하고(다른 작업 id로는 풀리지 않음), 재개 때 같은 작업에만 복원한 뒤 보관본을 지운다. 보관하기 **전에** 작업에 `browserStateHeld`(보관 중)를 fenced 쓰기로 먼저 표시하고(표시를 못 하면 보관하지 않고 바로 지움), 작업이 끝나면(완료·취소·실패·고객 행동 마감) 작업자 반복의 `purgeEndedBrowserState`가 실행기와 로컬 도구에 `discard`를 요청해 바로 지운다(판매자 취소·마감 회수처럼 작업자 밖에서 끝난 경우 포함, 요청이 실패하면 다음 반복에서 다시). 지운 뒤에는 같은 작업으로도 복원되지 않고, 끝난 작업은 실행 자리를 다시 받지 않는다. 연습 실행은 보관하지 않는다(정본 4678efb). OBS 대상 키(`obsTargetKey`, 지금은 `seller:<id>`, 로컬 도구 pairing을 붙이면 기기 id)로 OBS 연결을 나눈다.
+- 고객별 격리: 작업마다 `BrowserExecutor.open({sellerId, jobId})`로 새 context(쿠키·저장소·임시파일 분리), 작업이 끝나면 `close()`로 모두 지운다. 고객 행동(로그인·2단계 인증·CAPTCHA·권한 승인) 대기로 멈출 때만 `close({ keepForResume: true })`로 그 작업의 쿠키·저장소·자격증명과 임시 파일(화면 캡처·내려받은 파일·실행 기록), 로컬 도구의 OBS 연결 정보를 **암호화해 작업 id에만 묶어** 보관하고(다른 작업 id로는 풀리지 않음), 재개 때 같은 작업에만 복원한 뒤 보관본을 지운다. 보관하기 **전에** 작업에 `browserStateHeld`(보관 중)를 fenced 쓰기로 먼저 표시하고(표시를 못 하면 보관하지 않고 바로 지움), 작업이 끝나면(완료·취소·실패·고객 행동 마감·실행 시간 마감) 고객 대기가 없었던 작업까지 **끝난 모든 작업**에 대해 작업자 반복의 `purgeEndedBrowserState`가 실행기와 로컬 도구에 `discard`를 한 번씩 요청해(행동 키 기록·OBS 연결 정보 포함) 바로 지우고 `artifactsPurgedAt`을 남긴다(판매자 취소·마감 회수처럼 작업자 밖에서 끝난 경우 포함, 요청이 실패하면 다음 반복에서 다시). 지운 뒤에는 같은 작업으로도 복원되지 않고, 끝난 작업은 실행 자리를 다시 받지 않는다. 연습 실행은 보관하지 않는다(정본 4678efb). OBS 대상 키(`obsTargetKey`, 지금은 `seller:<id>`, 로컬 도구 pairing을 붙이면 기기 id)로 OBS 연결을 나눈다.
 - 비밀값: 모델은 `SecretRef`(`webhook_url`·`webhook_secret`) 이름만 쓰고, 실행기가 실행 직전에만 값을 넣는다. 비밀값을 넣어도 되는 칸은 작업서가 단계마다 정한다(`secretTargets`, 예: 웹훅 단계의 「주문 알림 주소」 칸에 `webhook_url`만). 작업서 행동이든 판단 모델 행동이든 목록 밖의 비밀 참조·칸·단계면 `secret_target_not_allowed`로 실행하지 않고 멈춘다. 작업서가 없으면 비밀값을 쓰지 못한다. 비밀값 입력은 승인 때 관찰한 주소와 실행 직전 실행기가 알려 주는 실제 문서 주소(`currentUrl`, 리다이렉트 뒤 출처)가 모두 허용 호스트여야 하고, 아니거나 알 수 없으면 `secret_origin_not_allowed`로 실행하지 않는다. 모델 입력은 `sanitizeObservation`이 비밀값을 `[비밀값]`으로 지우고 8,000자로 자른다. 작업 기록·감사 기록에 비밀값을 넣지 않는다. 고객 쇼핑몰 비밀번호는 받지도 저장하지도 않는다.
 - 악성 페이지 지시: 화면 글은 `untrustedPageText`(신뢰하지 않는 데이터)로만 넘긴다. 실행 전 `validateDecision`이 단계별 허용 행동, https·허용 호스트(`cafe24.com`, `cafe24api.com`과 하위 도메인), 비밀값을 글자로 적기, 모르는 비밀 참조·고객 행동, 음수 비용을 거부한다. 거부되면 실행하지 않고 작업을 `FAILED(unsafe_action:…)`로 멈춘다(무한 재시도 방지).
 
@@ -104,7 +104,7 @@
 
 - 분리: 자동 연결은 전용 테이블·전용 잠금(advisory lock `automation_claim`)만 쓰고 판매자 행을 잠그지 않는다. 작업자는 웹 서버와 다른 프로세스로 띄운다(진입 모듈 `lib/server/automation/worker.ts`의 `runWorkerLoop`).
 - idempotency: 판매자별 `Idempotency-Key`(`@@unique([sellerId, idempotencyKey])`), 판매자당 열린 작업 1개(부분 유니크 `AutomationJob_one_open_per_seller`), 결제별 PG 요청 id = 청구 id, 결제 1건에 작업 1개(`@@unique([sellerId, paymentId])`), 작업별 쓰기는 fencing 토큰.
-- 같은 OBS 대상 잠금: 고르기에서 제외 + 부분 유니크 `AutomationJob_one_running_per_obs_target`. 처음 연결은 판매자 키(`seller:<id>`)로 시작하고, OBS를 처음 바꾸기 직전에 로컬 도구가 알려 준 실제 PC로 잠금 키(`obs:<pairing>`)를 옮긴다. 그 PC에서 다른 작업이 실행 중이면 OBS 변경 0회로 `obs_target_busy` 재시도.
+- 같은 OBS 대상 잠금: 고르기에서 제외 + 부분 유니크 `AutomationJob_one_running_per_obs_target`. 처음 연결은 판매자 키(`seller:<id>`), 재연결·재설치는 요청한 PC 키로 시작하고, 실행마다 OBS를 처음 바꾸기 직전에 로컬 도구가 알려 준 실제 PC로 잠금 키(`obs:<pairing>`)를 옮긴다(요청 값·이전 기록을 믿지 않음). 그 PC에서 다른 작업이 실행 중이면 OBS 변경 0회로 `obs_target_busy` 재시도.
 - lease·fencing: 자리를 잡을 때마다 토큰 +1. 작업자 쓰기는 `토큰 일치 AND 실행 중 상태 AND lease 살아 있음`일 때만. 만료 회수·취소도 토큰을 올린다.
 - 동시성 상한: 전체 실행 수(기본 20)를 잠금 안에서 세고 고른다. 공정 처리: 판매자당 열린 작업 1개 + `runAfter` 순(FIFO)이라 한 판매자가 자리를 독차지하지 못한다.
 - 고객 행동 대기 중에는 lease를 반납한다(다른 작업이 그 자리를 쓴다).
