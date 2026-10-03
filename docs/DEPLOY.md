@@ -187,6 +187,8 @@ sudo -u obs nano /opt/obs/.env
 | `OBS_MONITOR_TLS_HOST` | 선택 | 서버 감시가 인증서 만료일을 볼 주소(obs-test는 `test.on-aircue.com`) |
 | `OBS_ALERT_URL` | 선택 | 장애 알림을 받을 주소(웹훅). 알림 채널이 정해지기 전에는 비워 둬요(기록만 남아요) |
 | `OBS_MONITOR_INTERVAL_S` | 선택 | 감시 간격(기본 15초, 1~60초. 범위 밖이거나 숫자가 아니면 감시가 시작하지 않고 로그에 이유를 남겨요) |
+| `OBS_MONITOR_KEEP_DAYS` | 선택 | 일별 표본 파일(`samples-YYYYMMDD.jsonl`)을 오늘 포함 며칠 치 남길지(기본 14, 1~3650). 지난 파일은 날짜가 바뀔 때 지워요. 상태·사건·heartbeat 파일은 지우지 않아요 |
+| `OBS_MONITOR_DIR`·`OBS_HISTORY_FILE` | 선택 | 감시 폴더(기본 `/opt/obs/monitor`)·배포 기록 파일(기본 `/opt/obs/deploy-history.log`). 운영 스크립트도 compose와 같은 순서(셸 값 → `.env` → 기본값)로 읽어요. 절대 경로만 받아요 |
 
 `DATABASE_URL`과 `TRUSTED_PROXY_HOPS`(=1)는 compose가 만들어 넣어요. `.env`에 적지 않아요.
 `.env`를 바꾼 뒤에는 재배포(또는 `up -d`)해야 반영돼요.

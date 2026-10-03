@@ -15,7 +15,7 @@
 // 감시 상태(실패 횟수·열린 장애·경고 쿨다운·알림 한도·보낼 목록)는 monitor-state.json에 남겨 재시작해도 이어진다.
 // 감시 대상에서 빠진 이름의 상태는 틱마다 지우고, 열린 장애는 incident_close(reason: target_removed)로 닫는다.
 // 아직 못 재는 것(앱 쪽 훅 필요, MASTER 요청): DB pool 사용량, worker·scheduler heartbeat, 작업 큐 적체.
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync, existsSync, statSync, openSync, writeSync, fsyncSync, closeSync, renameSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync, existsSync, statSync, openSync, writeSync, fsyncSync, closeSync, renameSync, readdirSync, unlinkSync } from "node:fs";
 import http from "node:http";
 import https from "node:https";
 import tls from "node:tls";
@@ -60,6 +60,8 @@ const cfg = {
   tlsWarnDays: num("MONITOR_TLS_WARN_DAYS", 14, 0),
   alertUrl: env("MONITOR_ALERT_URL", ""),
   alertMaxPerHour: num("MONITOR_ALERT_MAX_PER_HOUR", 10, 1, { int: true }),
+  // 일별 표본 파일(samples-YYYYMMDD.jsonl)을 오늘 포함 며칠 치 남길지. 상태·사건·heartbeat 파일은 지우지 않는다.
+  keepDays: num("MONITOR_KEEP_DAYS", 14, 1, { int: true, max: 3650 }),
   once: process.argv.includes("--once"),
 };
 
@@ -181,8 +183,30 @@ function saveState() {
 
 let state = emptyState();
 
+// 기록 쓰기가 실패해도(디스크 가득 참 등) 감시 주기·heartbeat·상태 저장을 막지 않는다. 실패는 로그로만 남긴다.
 function record(file, obj) {
-  appendFileSync(`${cfg.dir}/${file}`, JSON.stringify(obj) + "\n");
+  try {
+    appendFileSync(`${cfg.dir}/${file}`, JSON.stringify(obj) + "\n");
+  } catch (e) {
+    console.error(`[monitor] ${file} 기록 실패: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
+// 보관 기간이 지난 일별 표본 파일을 지운다(날짜가 바뀔 때와 시작할 때 한 번).
+let prunedFor = "";
+function pruneSamples() {
+  const day = today();
+  if (day === prunedFor) return;
+  prunedFor = day;
+  const cutoff = kst(new Date(Date.now() - (cfg.keepDays - 1) * 86400_000)).slice(0, 10).replaceAll("-", "");
+  try {
+    for (const f of readdirSync(cfg.dir)) {
+      const m = /^samples-(\d{8})\.jsonl$/.exec(f);
+      if (m && m[1] < cutoff) unlinkSync(`${cfg.dir}/${f}`);
+    }
+  } catch (e) {
+    console.error(`[monitor] 오래된 표본 정리 실패: ${e instanceof Error ? e.message : String(e)}`);
+  }
 }
 
 // 알림 한 건을 보낸다. 2xx가 아니거나 연결이 실패하면 ok=false.
@@ -288,7 +312,6 @@ async function tick() {
     const r = probed[i];
     const ok = r.status === 200 && r.db === "ok";
     results[t.name] = { ...r, ok };
-    record(`samples-${today()}.jsonl`, { at, target: t.name, ...r, ok });
 
     state.fails[t.name] = ok ? 0 : (state.fails[t.name] ?? 0) + 1;
     const open = state.incidents[t.name];
@@ -328,6 +351,9 @@ async function tick() {
   // heartbeat는 알림 전송과 상관없이 매 틱 먼저 남긴다.
   writeFileSync(`${cfg.dir}/heartbeat.json`, JSON.stringify({ at, epochMs: Date.now(), intervalS: cfg.intervalS }) + "\n");
   saveState();
+  // 표본은 heartbeat·상태를 남긴 뒤에 쓴다(표본 쓰기가 실패해도 감시가 살아 있다는 신호는 남게).
+  pruneSamples();
+  for (const [name, r] of Object.entries(results)) record(`samples-${today()}.jsonl`, { at, target: name, ...r });
   await flushAlerts(); // 이번 틱의 새 알림 + 지난 틱에 실패한 알림(시간 상한 안에서)
   saveState();
   return status;

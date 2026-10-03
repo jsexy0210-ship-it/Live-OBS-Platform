@@ -96,6 +96,7 @@ services:
     environment:
       MONITOR_TARGETS: ${OBS_MONITOR_TARGETS:-app=http://obs-web-app:3000/api/health,proxy=http://obs-web-proxy/api/health#127.0.0.1}
       MONITOR_INTERVAL_S: ${OBS_MONITOR_INTERVAL_S:-15}
+      MONITOR_KEEP_DAYS: ${OBS_MONITOR_KEEP_DAYS:-14}
       MONITOR_TLS_HOST: ${OBS_MONITOR_TLS_HOST:-}
       MONITOR_ALERT_URL: ${OBS_ALERT_URL:-}
       TZ: Asia/Seoul

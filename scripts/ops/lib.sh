@@ -7,11 +7,8 @@ OPS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ENV_FILE="${OBS_ENV_FILE:-/opt/obs/.env}"
 BACKUP_DIR="${OBS_BACKUP_DIR:-/opt/obs/backups}"
 CHECK_DIR="${OBS_CHECK_DIR:-/opt/obs/checks}"
-HISTORY="${OBS_HISTORY:-/opt/obs/deploy-history.log}"
 HEALTH_URL="${OBS_HEALTH_URL:-http://127.0.0.1/api/health}"
 AVAIL_MARK="${OBS_AVAIL_MARK:-/opt/obs/availability.on}"
-# 배포 진행 표시. 감시 수집기(/data = OBS_MONITOR_DIR)가 이 파일이 있는 동안 버전 불일치 경고를 미룬다.
-DEPLOY_MARK="${OBS_DEPLOY_MARK:-${OBS_MONITOR_DIR:-/opt/obs/monitor}/deploy-in-progress}"
 export OBS_ENV_FILE="$ENV_FILE"
 
 kst() { TZ=Asia/Seoul date "$@"; }
@@ -19,6 +16,23 @@ log() { printf '%s %s\n' "$(kst '+%F %T KST')" "$*"; }
 die() { log "중단: $*" >&2; exit 1; }
 
 [ -f "$ENV_FILE" ] || die "$ENV_FILE 이 없어요(docs/DEPLOY.md 「서버 .env」)."
+
+# .env에서 KEY=값 한 줄만 읽는다(source하지 않음: 비밀값이 셸 변수로 퍼지거나 명령이 실행되지 않게). 마지막 줄이 이기고, 감싼 따옴표는 벗긴다.
+env_value() {
+  sed -n "s/^[[:space:]]*$1=//p" "$ENV_FILE" | tail -n1 | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'$/\1/"
+}
+# compose가 마운트에 쓰는 경로와 같은 순서로 정한다: 셸 값 → .env → 기본값. 절대 경로만 받는다.
+abs_path_setting() {
+  local key="$1" def="$2" v
+  v="${!key:-}"; [ -n "$v" ] || v="$(env_value "$key")"; [ -n "$v" ] || v="$def"
+  case "$v" in /*) ;; *) die "$key 값은 절대 경로여야 해요: $v" ;; esac
+  case "$v" in *$'\n'*|*..*) die "$key 값이 올바르지 않아요." ;; esac
+  printf '%s' "$v"
+}
+# 배포 진행 표시. 감시 수집기(/data = OBS_MONITOR_DIR)가 이 파일이 있는 동안 장애·버전 불일치 판단을 미룬다.
+DEPLOY_MARK="${OBS_DEPLOY_MARK:-$(abs_path_setting OBS_MONITOR_DIR /opt/obs/monitor)/deploy-in-progress}"
+# 배포 기록. 감시 수집기가 읽는 파일(compose의 OBS_HISTORY_FILE 마운트)과 같아야 한다. OBS_HISTORY는 예전 이름(로컬 시험용).
+HISTORY="${OBS_HISTORY:-$(abs_path_setting OBS_HISTORY_FILE /opt/obs/deploy-history.log)}"
 
 # 가용성 프로파일을 켜 두었으면(availability.sh on) 그 정의도 함께 쓴다.
 availability_on() { [ -f "$AVAIL_MARK" ]; }
