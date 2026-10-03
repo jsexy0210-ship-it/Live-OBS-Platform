@@ -445,12 +445,12 @@ export type RefundOutcome = {
 // - 발송 후 구매자 사정(단순 변심): 개봉하지 않은 상품 − 반품 배송비(편도). 처음 배송비는 돌려주지 않는다.
 //   처음 배송비가 0원(무료 배송)이었으면 왕복(편도 × 2)으로 뺀다. 돌려줄 상품이 없으면 빼지 않는다. 0원 아래로 내려가지 않는다.
 // - 개봉한 상품은 구매자 사정이면 환불하지 않는다(OPENED_NO_REFUND 동의). 판매자 사정이면 판매자가 확인(confirmOpened)하고 돌려준다.
-// - 적립금으로 낸 금액은 현금으로 돌려주지 않는다(환불액 상한 = 결제 금액 − 적립금 사용액).
+// - 돈으로 돌려주는 환불액은 실제 결제액(totalAmount, 적립금 사용액을 이미 뺀 금액)을 넘지 않는다.
+//   쓴 적립금을 되돌리는 규칙은 아직 없다(PRODUCT_SCOPE 「적립금 사용(결제 차감) 방식」 미정). 지금은 주문에서 적립금을 쓸 수 없다.
 export function computeRefund(input: {
   items: { unitPrice: number; quantity: number; opened: boolean }[];
   shippingFee: number;
   totalAmount: number;
-  rewardUsedAmount: number;
   shipped: boolean;
   fault: RefundFault | null;
   returnFee: number;
@@ -459,7 +459,7 @@ export function computeRefund(input: {
   const items = input.items.reduce((sum, i) => sum + (buyerFault && i.opened ? 0 : i.unitPrice * i.quantity), 0);
   const shipping = !input.shipped || input.fault === "SELLER" ? input.shippingFee : 0;
   const fee = input.shipped && buyerFault && items > 0 ? input.returnFee * (input.shippingFee === 0 ? 2 : 1) : 0;
-  const gross = Math.min(items + shipping, input.totalAmount - input.rewardUsedAmount);
+  const gross = Math.min(items + shipping, input.totalAmount);
   const returnFeeDeducted = Math.min(fee, Math.max(0, gross));
   return { refundAmount: Math.max(0, gross - returnFeeDeducted), returnFeeDeducted };
 }
@@ -505,7 +505,6 @@ export async function refundOrder(
       items: order.items.map((i) => ({ unitPrice: i.unitPrice, quantity: i.quantity, opened: isOpened(order.queueItems.find((x) => x.orderItemId === i.id)) })),
       shippingFee: order.shippingFee,
       totalAmount: order.totalAmount,
-      rewardUsedAmount: order.rewardUsedAmount,
       shipped: shippedBeforeRefund,
       fault: refundFault,
       returnFee,

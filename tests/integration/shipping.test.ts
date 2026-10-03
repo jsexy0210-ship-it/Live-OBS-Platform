@@ -420,6 +420,27 @@ describe("반품·교환 배송비(환불액)", () => {
     expect(await refund(s, o.orderId, "BUYER")).toMatchObject({ ok: true, value: { refundAmount: 7000, returnFeeDeducted: 3000 } });
   });
 
+  // 적립금을 쓴 주문: totalAmount는 적립금을 뺀 실제 결제액이다(상품 10,000 + 배송비 3,000 − 적립금 2,000 = 11,000).
+  // 지금은 주문에서 적립금을 쓸 수 없어 DB 값을 직접 넣는다.
+  const useReward = (orderId: string) => db.order.update({ where: { id: orderId }, data: { rewardUsedAmount: 2000, totalAmount: 11000 } });
+
+  it("적립금을 쓴 주문을 발송 전에 환불하면 실제 결제액을 모두 돌려준다(적립금을 두 번 빼지 않음)", async () => {
+    const s = await shop();
+    const o = await s.order(2);
+    await useReward(o.orderId);
+    await markOrderPaid(db, { sellerId: s.seller.id, orderId: o.orderId, paymentMethod: "CARD" });
+    expect(await refund(s, o.orderId)).toMatchObject({ ok: true, value: { refundAmount: 11000, returnFeeDeducted: 0 } });
+  });
+
+  it("적립금을 쓴 주문을 발송 후 구매자 사정으로 반품하면 상품 금액 − 반품 배송비(결제액 안에서)를 돌려준다", async () => {
+    const s = await shop();
+    const o = await s.order(2);
+    await useReward(o.orderId);
+    await markOrderPaid(db, { sellerId: s.seller.id, orderId: o.orderId, paymentMethod: "CARD" });
+    await shipOrder(db, s.ctx, o.orderId, { courier: "CJ", trackingNumber: "123456789012" });
+    expect(await refund(s, o.orderId, "BUYER")).toMatchObject({ ok: true, value: { refundAmount: 7000, returnFeeDeducted: 3000 } });
+  });
+
   it("반품·교환 배송비를 저장하고 그대로 돌려준다", async () => {
     const s = await shop();
     const cookie = await sellerCookie(s.owner.email);

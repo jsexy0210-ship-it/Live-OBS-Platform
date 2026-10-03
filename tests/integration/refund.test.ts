@@ -95,6 +95,21 @@ describe("환불: 개봉 전 품목만 재고 복구, 연결된 대기·개봉 �
     expect(await stockOf(options[0].id)).toBe(9);
   });
 
+  it("적립금을 쓴 주문을 일부 환불하면(개봉 품목 제외) 실제 결제액 안에서 돌려준다", async () => {
+    const s = await setup();
+    await startBroadcast(db, s.ctx);
+    // 상품 5,000원 × 2 = 10,000원 중 적립금 6,000원 사용, 실제 결제액 4,000원
+    const p = await s.pendingOrder([[10, 1], [10, 1]], 4000);
+    await db.order.update({ where: { id: p.order.id }, data: { rewardUsedAmount: 6000 } });
+    const r = await markOrderPaid(db, { sellerId: s.seller.id, orderId: p.order.id, paymentMethod: "CARD" });
+    if (!r.ok) throw new Error(r.reason);
+    const [first] = r.value.queueItemIds;
+    await applyQueueAction(db, s.ctx, first, "start", { expectedVersion: await v(first) });
+    const res = await refundOrder(db, s.ctx, p.order.id, { reason: "요청", expectedLiveVersion: await lv(s.ctx.sellerId), confirmOpened: true, fault: "BUYER" });
+    // 개봉하지 않은 품목 5,000원이지만 돈으로는 실제 결제액 4,000원까지만 돌려준다
+    expect(res).toMatchObject({ ok: true, value: { refundAmount: 4000, openedItemCount: 1 } });
+  });
+
   it("개봉 전에 취소된 항목은 재고를 되돌리고, 개봉을 시작한 뒤 취소된 항목은 되돌리지 않는다", async () => {
     const s = await setup();
     await startBroadcast(db, s.ctx);
