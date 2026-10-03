@@ -9,7 +9,7 @@ import { api, type Me } from "./api";
 // 아직 만들지 않은 화면은 메뉴에서 흐리게 두고 누를 수 없게 한다.
 
 // perm: 그 권한이 있어야 메뉴가 보인다. OWNER는 대표자 전용.
-type Nav = { h: string } | { label: string; href?: string; perm?: string };
+type Nav = { h: string } | { label: string; href?: string; perm?: string; match?: string };
 const NAV: Nav[] = [
   { h: "홈" },
   { label: "홈" },
@@ -30,7 +30,7 @@ const NAV: Nav[] = [
   { label: "HIT 카드 이력", perm: "BROADCAST_RUN" },
   { label: "방송 이력", perm: "BROADCAST_RUN" },
   { h: "설정" },
-  { label: "쇼핑몰 설정", perm: "SHOP_SETTINGS" },
+  { label: "쇼핑몰 설정", href: "/seller/settings/shipping", match: "/seller/settings", perm: "SHOP_SETTINGS" },
   { label: "결제(PG) 연결", perm: "OWNER" },
   { label: "주문자 알림", perm: "SHOP_SETTINGS" },
   { label: "구독 · 결제", perm: "OWNER" },
@@ -125,7 +125,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
                 {n.h}
               </span>
             ) : n.href ? (
-              <Link key={i} className={`nav-i${pathname.startsWith(n.href) ? " on" : ""}`} href={n.href} onClick={() => setNavOpen(false)}>
+              <Link key={i} className={`nav-i${pathname.startsWith(n.match ?? n.href) ? " on" : ""}`} href={n.href} onClick={() => setNavOpen(false)}>
                 {n.label}
               </Link>
             ) : (

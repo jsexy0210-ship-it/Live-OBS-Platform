@@ -75,6 +75,37 @@ test("무료·고정으로 바꿔도 저장되고, 잘못된 금액은 막는다
   await expect(page.getByTestId("fee-preview")).toHaveText("배송비 3,000원");
 });
 
+test("무료로 바꿨다가 되돌리면 이전에 넣은 배송비·무료 기준이 그대로 있다", async ({ page }) => {
+  await openAs(page, "demo-owner@example.com");
+  await page.getByRole("radio", { name: "일정 금액 이상 무료" }).check();
+  await page.getByLabel("배송비", { exact: true }).fill("2500");
+  await page.getByLabel("무료 배송 기준").fill("70000");
+  await save(page);
+  await saved(page);
+
+  await page.getByRole("radio", { name: "무료", exact: true }).check();
+  await save(page);
+  await saved(page);
+  await page.reload();
+  await expect(page.getByRole("radio", { name: "무료", exact: true })).toBeChecked();
+  await page.getByRole("radio", { name: "일정 금액 이상 무료" }).check();
+  await expect(page.getByLabel("배송비", { exact: true })).toHaveValue("2500");
+  await expect(page.getByLabel("무료 배송 기준")).toHaveValue("70000");
+
+  // 기본값으로 되돌려 둔다
+  await page.getByRole("radio", { name: "고정" }).check();
+  await page.getByLabel("배송비", { exact: true }).fill("3000");
+  await save(page);
+  await saved(page);
+});
+
+test("1440에서 도움말이 단어 중간에서 끊기지 않는다", async ({ page }) => {
+  await openAs(page, "demo-owner@example.com");
+  const help = page.getByText("제주와 그 밖의 도서지역에 같은 금액이 붙어요", { exact: false });
+  await expect(help).toBeVisible();
+  expect(await help.evaluate((el) => getComputedStyle(el).wordBreak)).toBe("keep-all");
+});
+
 test("쇼핑몰 설정 권한이 없는 직원은 권한 안내를 본다", async ({ page }) => {
   await openAs(page, "demo-viewer@example.com");
   await expect(page.getByText("필요한 권한: 쇼핑몰 설정")).toBeVisible();

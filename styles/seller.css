@@ -7,6 +7,9 @@ body {
 }
 .seller-app {
   min-height: 100vh;
+  /* 한국어 문장이 단어 중간(「도서지/역」)에서 끊기지 않게 하고, 띄어쓰기 없는 긴 글자만 아무 데서나 줄을 바꾼다 */
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
 /* 로그인 */
@@ -285,4 +288,12 @@ body {
   .opt-lbl {
     display: block;
   }
+}
+
+/* 링크로 만든 탭은 글자색을 탭 규칙대로 */
+.app a.tab {
+  color: var(--wds-label-alternative);
+}
+.app a.tab.on {
+  color: var(--wds-label-normal);
 }

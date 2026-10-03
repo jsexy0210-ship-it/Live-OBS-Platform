@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
+import { SettingsTabs } from "../../../../../../components/seller/SettingsTabs";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
 import { parseAmount } from "../../../../../../components/seller/format";
@@ -9,7 +10,7 @@ import { parseAmount } from "../../../../../../components/seller/format";
 // SA-063 주문 설정. 지금 API가 받는 항목(미입금 자동 취소·입금 기한·자동 구매 제한)만 보여 준다.
 // 기한 하루 전 알림·재고 되돌리기·자동 배송 완료·구매 확정·반품 배송비는 API가 생기면 붙인다.
 
-type Policy = { autoCancelEnabled: boolean; paymentDueHours: number; unpaidRestrictionEnabled: boolean };
+type Policy = { autoCancelEnabled: boolean; paymentDueHours: number; unpaidRestrictionEnabled: boolean; restockOnCancel: boolean };
 type Unit = "day" | "hour";
 
 const DEFAULT_DUE_HOURS = 24; // 대표님 결정 2026-10-03(#87): 기본은 주문 후 24시간
@@ -26,6 +27,7 @@ export default function OrderSettingsPage() {
   const [due, setDue] = useState("");
   const [unit, setUnit] = useState<Unit>("hour");
   const [restriction, setRestriction] = useState(true);
+  const [restock, setRestock] = useState(true);
   const [showError, setShowError] = useState(false);
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -36,6 +38,7 @@ export default function OrderSettingsPage() {
     setUnit(unitFor(p.paymentDueHours));
     setDue(String(unitFor(p.paymentDueHours) === "day" ? p.paymentDueHours / 24 : p.paymentDueHours));
     setRestriction(p.unpaidRestrictionEnabled);
+    setRestock(p.restockOnCancel);
   };
 
   const load = useCallback(async () => {
@@ -56,7 +59,7 @@ export default function OrderSettingsPage() {
     n === null ? "숫자만 입력해 주세요" : n < 1 ? "1 이상으로 적어 주세요 · 자동 취소를 끄려면 위 스위치를 꺼 주세요" : hours! > MAX_DUE_HOURS ? "입금 기한은 30일(720시간)까지 정할 수 있어요" : null;
   const saved = state.kind === "ok" ? state.saved : null;
   const dirty =
-    !!saved && (saved.autoCancelEnabled !== autoCancel || saved.unpaidRestrictionEnabled !== restriction || saved.paymentDueHours !== hours);
+    !!saved && (saved.autoCancelEnabled !== autoCancel || saved.unpaidRestrictionEnabled !== restriction || saved.restockOnCancel !== restock || saved.paymentDueHours !== hours);
 
   // 입금 기한 칸은 자동 취소를 꺼도 값을 남겨 둔다(다시 켤 때 그대로 쓰도록). 꺼져 있으면 검사하지 않고 저장된 값을 보낸다.
   const save = async () => {
@@ -71,6 +74,7 @@ export default function OrderSettingsPage() {
       autoCancelEnabled: autoCancel,
       paymentDueHours: autoCancel || !dueError ? hours! : saved.paymentDueHours,
       unpaidRestrictionEnabled: restriction,
+      restockOnCancel: restock,
     };
     const r = await api<{ policy: Policy }>("/api/seller/order-policy", { method: "PUT", body });
     setSaving(false);
@@ -101,6 +105,7 @@ export default function OrderSettingsPage() {
         )}
       </Topbar>
       <main className="main">
+        <SettingsTabs />
         <div className="ph">
           <div className="col" style={{ gap: 6 }}>
             <h1 className="t-t3">주문 설정</h1>
@@ -212,6 +217,27 @@ export default function OrderSettingsPage() {
                   />
                 </div>
                 <span className="t-c1 c-alt">꺼도 이미 막힌 구매자는 그대로예요. 풀어 주려면 구매 제한 화면에서 해제해요.</span>
+              </section>
+
+              <section className="card pad col" style={{ gap: 10 }}>
+                <h2 className="t-hl2">재고</h2>
+                <div className="row between" style={SET_ROW}>
+                  <span className="col" style={{ gap: 2 }}>
+                    <span className="t-l1 fw6" id="rc-label">
+                      취소·반품하면 재고 되돌리기
+                    </span>
+                    <span className="t-c1 c-alt">결제 전 취소·미입금 자동 취소·발송 전 환불이 끝나면 그 수량만큼 재고가 돌아와요 · 기본 켜짐</span>
+                  </span>
+                  <button
+                    className={`sw${restock ? " on" : ""}`}
+                    type="button"
+                    role="switch"
+                    aria-checked={restock}
+                    aria-labelledby="rc-label"
+                    onClick={() => setRestock((v) => !v)}
+                  />
+                </div>
+                <span className="t-c1 c-alt">재고를 언제 줄일지는 상품마다 「재고 차감 기준」에서 정해요(결제하면 차감 · 주문하면 바로 차감).</span>
               </section>
             </div>
 

@@ -29,6 +29,23 @@ async function openAs(page: Page, email: string) {
 
 const save = (page: Page) => page.getByRole("button", { name: "저장", exact: true }).last().click();
 
+test("저장한 적 없는 판매자도 입금 기한이 기본 24시간으로 보이고, 메뉴로 들어갈 수 있다", async ({ page }) => {
+  // 새 DB에서 처음 돌릴 때는 주문 설정 행이 없어서 서버 기본값(24시간)이 그대로 보인다. 다시 돌려도 앞 테스트가 24시간으로 되돌려 둔다
+  await page.goto("/seller/login");
+  await page.getByLabel("이메일").fill("demo-owner@example.com");
+  await page.getByLabel("비밀번호").fill(PASSWORD);
+  await page.getByRole("button", { name: "로그인" }).click();
+  await expect(page).toHaveURL(/\/seller\/products$/);
+  await page.getByRole("link", { name: "쇼핑몰 설정" }).click();
+  await expect(page).toHaveURL(/\/seller\/settings\/shipping$/);
+  await page.getByRole("link", { name: "주문 설정" }).click();
+  await expect(page).toHaveURL(/\/seller\/settings\/order$/);
+  await expect(page.getByRole("link", { name: "쇼핑몰 설정" })).toHaveClass(/\bon\b/);
+  await expect(page.getByLabel("입금 기한", { exact: true })).toHaveValue("24");
+  await expect(page.getByRole("radio", { name: "시간" })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByTestId("buyer-preview")).toContainText("주문 후 24시간 안에 입금");
+});
+
 test("입금 기한을 3일·24시간으로 바꿔 저장하면 다시 열어도 그대로이고 구매자 안내에 보인다", async ({ page }) => {
   await openAs(page, "demo-owner@example.com");
   await expect(page.getByText("기본 24시간", { exact: false })).toBeVisible();
@@ -76,6 +93,7 @@ test("자동 취소·주문 막기를 끄면 저장되고, 다시 켤 수 있다
   await page.getByRole("switch", { name: "기한이 지나면 자동 취소" }).click();
   await expect(page.getByText("미입금 주문이 쌓이면 재고가 묶여요")).toBeVisible();
   await page.getByRole("switch", { name: "미입금으로 3번 취소되면 30일 동안 주문 막기" }).click();
+  await page.getByRole("switch", { name: "취소·반품하면 재고 되돌리기" }).click();
   await save(page);
   await expect(page.getByText("주문 설정을 저장했어요", { exact: false })).toBeVisible();
   await shot(page, "SA-063-order-off");
@@ -83,12 +101,15 @@ test("자동 취소·주문 막기를 끄면 저장되고, 다시 켤 수 있다
   await page.reload();
   await expect(page.getByRole("switch", { name: "기한이 지나면 자동 취소" })).toHaveAttribute("aria-checked", "false");
   await expect(page.getByRole("switch", { name: "미입금으로 3번 취소되면 30일 동안 주문 막기" })).toHaveAttribute("aria-checked", "false");
+  await expect(page.getByRole("switch", { name: "취소·반품하면 재고 되돌리기" })).toHaveAttribute("aria-checked", "false");
 
   await page.getByRole("switch", { name: "기한이 지나면 자동 취소" }).click();
   await page.getByRole("switch", { name: "미입금으로 3번 취소되면 30일 동안 주문 막기" }).click();
+  await page.getByRole("switch", { name: "취소·반품하면 재고 되돌리기" }).click();
   await save(page);
   await expect(page.getByText("주문 설정을 저장했어요", { exact: false })).toBeVisible();
   await page.reload();
+  await expect(page.getByRole("switch", { name: "취소·반품하면 재고 되돌리기" })).toHaveAttribute("aria-checked", "true");
   await expect(page.getByRole("switch", { name: "기한이 지나면 자동 취소" })).toHaveAttribute("aria-checked", "true");
 });
 

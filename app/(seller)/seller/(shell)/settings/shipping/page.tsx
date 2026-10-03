@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
+import { SettingsTabs } from "../../../../../../components/seller/SettingsTabs";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
 import { parseAmount, won } from "../../../../../../components/seller/format";
@@ -9,7 +10,7 @@ import { parseAmount, won } from "../../../../../../components/seller/format";
 // SA-061 배송비 정책. 지금 API가 받는 항목(배송비 방식·배송비·무료 기준·제주·도서산간 추가 배송비)만 보여 준다.
 // 받는 방법·발송 기간·기본 택배사, 제주와 그 밖의 도서지역을 나눈 금액은 API가 생기면 붙인다.
 
-type Policy = { baseFee: number; freeOverAmount: number | null; remoteSurcharge: number; remoteZipRanges: [number, number][] };
+type Policy = { freeShipping: boolean; baseFee: number; freeOverAmount: number | null; remoteSurcharge: number; remoteZipRanges: [number, number][] };
 type Mode = "free" | "fixed" | "threshold";
 
 const MAX_FEE = 100_000;
@@ -20,7 +21,8 @@ const MODES: { key: Mode; title: string; desc: string }[] = [
   { key: "threshold", title: "일정 금액 이상 무료", desc: "기준 금액보다 적게 사면 배송비를 받고, 넘으면 0원이에요" },
 ];
 
-const modeOf = (p: Policy): Mode => (p.baseFee === 0 ? "free" : p.freeOverAmount === null ? "fixed" : "threshold");
+// 무료는 freeShipping 플래그로 저장한다(#84). 배송비·무료 기준은 그대로 남겨 두어 다른 방식으로 되돌리면 이전 값이 다시 보인다.
+const modeOf = (p: Policy): Mode => (p.freeShipping ? "free" : p.freeOverAmount === null ? "fixed" : "threshold");
 
 function feeError(v: string, max: number, min = 0): string | null {
   const n = parseAmount(v);
@@ -43,7 +45,7 @@ export default function ShippingSettingsPage() {
 
   const apply = (p: Policy) => {
     setMode(modeOf(p));
-    setFee(String(p.baseFee === 0 ? 3000 : p.baseFee));
+    setFee(String(p.baseFee));
     setFreeOver(p.freeOverAmount === null ? "" : String(p.freeOverAmount));
     setRemote(String(p.remoteSurcharge));
   };
@@ -72,8 +74,17 @@ export default function ShippingSettingsPage() {
     !saved || !valid
       ? null
       : {
-          baseFee: mode === "free" ? 0 : parseAmount(fee)!,
-          freeOverAmount: mode === "threshold" ? parseAmount(freeOver)! : null,
+          freeShipping: mode === "free",
+          // 무료일 때는 칸에 남은 값이 올바르면 그 값, 아니면 저장된 값을 그대로 보낸다
+          baseFee: mode !== "free" ? parseAmount(fee)! : feeError(fee, MAX_FEE) ? saved.baseFee : parseAmount(fee)!,
+          freeOverAmount:
+            mode === "threshold"
+              ? parseAmount(freeOver)!
+              : mode === "free"
+                ? freeOver.trim() === "" || feeError(freeOver, MAX_FREE_OVER, 1)
+                  ? saved.freeOverAmount
+                  : parseAmount(freeOver)!
+                : null,
           remoteSurcharge: parseAmount(remote)!,
           // 도서산간 우편번호 구간은 이 화면에서 바꾸지 않고 저장된 값을 그대로 보낸다
           remoteZipRanges: saved.remoteZipRanges,
@@ -82,6 +93,7 @@ export default function ShippingSettingsPage() {
   const dirty =
     !!saved &&
     (!candidate ||
+      candidate.freeShipping !== saved.freeShipping ||
       candidate.baseFee !== saved.baseFee ||
       candidate.freeOverAmount !== saved.freeOverAmount ||
       candidate.remoteSurcharge !== saved.remoteSurcharge);
@@ -144,6 +156,7 @@ export default function ShippingSettingsPage() {
         )}
       </Topbar>
       <main className="main">
+        <SettingsTabs />
         <div className="ph">
           <div className="col" style={{ gap: 6 }}>
             <h1 className="t-t3">배송비 정책</h1>
