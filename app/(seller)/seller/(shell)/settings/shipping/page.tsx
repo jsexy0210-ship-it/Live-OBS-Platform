@@ -195,11 +195,11 @@ export default function ShippingSettingsPage() {
               </section>
 
               <section className="card pad col" style={{ gap: 14 }}>
-                <h2 className="t-hl2">제주 · 도서산간 추가 배송비</h2>
+                <h2 className="t-hl2">제주·도서산간 추가 배송비</h2>
                 <span className="t-c1 c-alt">
                   <b>무료 배송이어도 붙어요.</b> 우편번호로 자동 판별해요. 주문서와 주문 완료 화면에 「도서산간 추가」 줄로 따로 보여요.
                 </span>
-                <div className="g3">{amountInput("remote", "추가 배송비", remote, setRemote, shown.remote, "원 · 제주와 그 밖의 도서지역에 같은 금액이 붙어요")}</div>
+                <div className="g3">{amountInput("remote", "제주·도서산간 추가 배송비", remote, setRemote, shown.remote, "원 · 기본 3,000원 · 제주와 그 밖의 도서지역에 같은 금액이 붙어요")}</div>
               </section>
             </div>
 

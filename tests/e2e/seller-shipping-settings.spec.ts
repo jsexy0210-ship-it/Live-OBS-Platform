@@ -35,7 +35,7 @@ test("일정 금액 이상 무료로 바꾸면 저장되고 주문서 미리보�
   await page.getByRole("radio", { name: "일정 금액 이상 무료" }).check();
   await page.getByLabel("배송비", { exact: true }).fill("3,500");
   await page.getByLabel("무료 배송 기준").fill("50000");
-  await page.getByLabel("추가 배송비").fill("4000");
+  await page.getByLabel("제주·도서산간 추가 배송비").fill("4000");
   await expect(page.getByTestId("fee-preview")).toHaveText("배송비 3,500원 · 50,000원 이상 무료");
   await save(page);
   await saved(page);
@@ -45,7 +45,7 @@ test("일정 금액 이상 무료로 바꾸면 저장되고 주문서 미리보�
   await expect(page.getByRole("radio", { name: "일정 금액 이상 무료" })).toBeChecked();
   await expect(page.getByLabel("배송비", { exact: true })).toHaveValue("3500");
   await expect(page.getByLabel("무료 배송 기준")).toHaveValue("50000");
-  await expect(page.getByLabel("추가 배송비")).toHaveValue("4000");
+  await expect(page.getByLabel("제주·도서산간 추가 배송비")).toHaveValue("4000");
 });
 
 test("무료·고정으로 바꿔도 저장되고, 잘못된 금액은 막는다", async ({ page }) => {
@@ -67,7 +67,7 @@ test("무료·고정으로 바꿔도 저장되고, 잘못된 금액은 막는다
 
   // 기본값으로 되돌려 둔다
   await page.getByLabel("배송비", { exact: true }).fill("3000");
-  await page.getByLabel("추가 배송비").fill("3000");
+  await page.getByLabel("제주·도서산간 추가 배송비").fill("3000");
   await save(page);
   await saved(page);
   await page.reload();
