@@ -122,7 +122,7 @@ export function errorResponse(e: unknown): NextResponse {
 // 로그인 실패 사유별 상태 코드. 승인 대기·정지 등은 403.
 export function loginFailureStatus(reason: string): number {
   if (reason === "invalid_credentials") return 401;
-  if (reason === "shop_required") return 409;
+  if (reason === "shop_required" || reason === "wrong_account_type") return 409;
   return 403;
 }
 
