@@ -1,4 +1,4 @@
-import type { RefundFault } from "@prisma/client";
+import type { PrismaClient, RefundFault } from "@prisma/client";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
 import { createOrder } from "../../lib/server/orders/create";
@@ -101,5 +101,60 @@ describe("결제 후 취소 5회 → 30일 구매 제한", () => {
     expect(await s.restrictions()).toEqual([]);
     await s.refund("BUYER");
     expect(await s.restrictions()).toHaveLength(1);
+  });
+  it("같은 옵션으로 주문 생성과 그 옵션 주문 환불이 동시에 와도 교착 없이 둘 다 끝난다", async () => {
+    const s = await shop();
+    await updateOrderPolicy(db, s.ctx, { ...BASE, paidCancelRestrictionEnabled: true });
+    const product = await db.product.create({ data: { sellerId: s.seller.id, name: "부스터 팩", price: 5000, status: "ON_SALE", stockDeductMode: "ORDER" } });
+    const option = await db.productOption.create({ data: { sellerId: s.seller.id, productId: product.id, name: "1박스", stock: 10 } });
+    const input = {
+      sellerId: s.seller.id,
+      buyerMemberId: s.buyer.id,
+      items: [{ optionId: option.id, quantity: 1 }],
+      consent: { agreed: true, noticeVersion: OPENED_NO_REFUND_CONSENT.version },
+      shippingAddress: addr,
+    };
+    // 주문할 때 재고를 뺀 결제 완료 주문(환불하면 같은 옵션 재고를 되돌린다)
+    const first = await createOrder(db, input);
+    if (!first.ok) throw new Error(first.reason);
+    await db.order.update({ where: { id: first.orderId }, data: { status: "PAID", paidAt: new Date() } });
+    const lv = (await db.seller.findUniqueOrThrow({ where: { id: s.seller.id } })).liveVersion;
+    let release!: (v: unknown) => void;
+    const gate = new Promise((r) => (release = r));
+    // 주문 생성이 주문 번호 잠금을 잡은 직후 멈춘 사이 환불을 보낸다
+    const paused = new Proxy(db, {
+      get(t, p) {
+        const v = Reflect.get(t, p);
+        if (p === "$transaction") {
+          return (fn: (tx: object) => unknown, o?: unknown) =>
+            t.$transaction((tx) => {
+              let first = true;
+              const wrapped = new Proxy(tx, {
+                get(x, k, r) {
+                  const f = Reflect.get(x, k, r);
+                  if (k !== "$queryRaw" || !first) return f;
+                  return async (...a: unknown[]) => {
+                    first = false;
+                    await gate;
+                    return (f as (...b: unknown[]) => unknown).apply(x, a);
+                  };
+                },
+              });
+              return fn(wrapped) as Promise<unknown>;
+            }, o as never);
+        }
+        return typeof v === "function" ? v.bind(t) : v;
+      },
+    }) as PrismaClient;
+    const ordering = createOrder(paused, input);
+    await new Promise((r) => setTimeout(r, 200));
+    const refunding = refundOrder(db, s.ctx, first.orderId, { reason: "취소 요청", expectedLiveVersion: lv, fault: "BUYER" });
+    await new Promise((r) => setTimeout(r, 500));
+    release(null);
+    const [ordered, refunded] = await Promise.all([ordering, refunding]);
+    expect(ordered.ok).toBe(true);
+    expect(refunded.ok).toBe(true);
+    // 처음 10 − 주문 2 + 환불 1
+    expect((await db.productOption.findUniqueOrThrow({ where: { id: option.id } })).stock).toBe(9);
   });
 });

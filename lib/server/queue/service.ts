@@ -505,6 +505,9 @@ export async function refundOrder(
   const reason = opts.reason.trim();
   return run(db, ctx.sellerId, async (tx, version) => {
     if (version - 1 !== opts.expectedLiveVersion) throw new Rejected("conflict");
+    // 주문 생성과 같은 잠금을 주문 행·재고 행보다 먼저 잡는다. 주문 생성은 이 잠금 → 재고 행 순서라, 재고를 되돌린 뒤에
+    // 잡으면 같은 옵션 주문과 교착한다. 구매 제한 횟수(아래 maybeRestrict)도 이 잠금 아래에서 센다.
+    await lockSellerOrders(tx, ctx.sellerId);
     const now = opts.now ?? (await dbNow(tx));
     const moved = await tx.order.updateMany({
       where: { id: orderId, sellerId: ctx.sellerId, status: "PAID" },
@@ -613,8 +616,7 @@ export async function refundOrder(
         ...(order.shipment ? { shipmentStatus: order.shipment.status } : {}),
       },
     });
-    // 「결제 후 취소 5회 → 30일」(판매자 설정, 기본 꺼짐). 주문 생성과 같은 잠금 아래에서 세어 제한과 새 주문이 엇갈리지 않게 한다.
-    await lockSellerOrders(tx, ctx.sellerId);
+    // 「결제 후 취소 5회 → 30일」(판매자 설정, 기본 꺼짐). 맨 앞에서 잡은 주문 생성 잠금 아래에서 센다.
     await maybeRestrict(tx, ctx.sellerId, order.buyerMemberId, now, "paid_cancel");
     return { orderId, restockedItemIds, cancelledQueueItemIds, openedItemCount, rewardRevoke, refundAmount, refundFault, returnFeeDeducted };
   });
