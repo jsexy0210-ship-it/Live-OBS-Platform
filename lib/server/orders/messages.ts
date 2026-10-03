@@ -25,7 +25,7 @@ export const ORDER_ERROR_MESSAGES = {
   // 무통장 입금·구매 제한
   purchase_restricted: "입금하지 않은 주문이 쌓여서 지금은 주문할 수 없어요. 판매자에게 문의해 주세요",
   order_rate_limited: "잠시 뒤 다시 주문해 주세요",
-  invalid_order_policy: "입금 기한은 1~168시간으로 정해 주세요",
+  invalid_order_policy: "자동 취소 기간은 1시간에서 30일 사이로 정해 주세요",
   no_restriction: "주문 제한이 걸려 있지 않아요",
   invalid_reason: "사유를 다시 확인해 주세요",
 } as const;

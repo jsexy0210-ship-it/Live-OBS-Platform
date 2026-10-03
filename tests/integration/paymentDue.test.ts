@@ -58,12 +58,12 @@ async function buyerCookie(sellerId: string, loginId: string) {
 }
 
 describe("입금 기한", () => {
-  it("주문 시각 + 24시간(기본), 판매자가 바꾸면 다음 주문부터 그 시간으로 정하고 이미 만든 주문은 그대로", async () => {
+  it("주문 시각 + 10일(기본), 판매자가 바꾸면 다음 주문부터 그 시간으로 정하고 이미 만든 주문은 그대로", async () => {
     const s = await shop();
     const a = await db.order.findUniqueOrThrow({ where: { id: await s.order() } });
-    expect(a.paymentDueAt!.getTime() - a.createdAt.getTime()).toBe(24 * HOUR);
+    expect(a.paymentDueAt!.getTime() - a.createdAt.getTime()).toBe(240 * HOUR);
     const c = await sellerCookie(s.owner.email);
-    const put = await policyPut(new Request("http://localhost:3000/api/seller/order-policy", { method: "PUT", headers: { ...H, cookie: c }, body: JSON.stringify({ paymentDueHours: 2, unpaidRestrictionEnabled: true }) }));
+    const put = await policyPut(new Request("http://localhost:3000/api/seller/order-policy", { method: "PUT", headers: { ...H, cookie: c }, body: JSON.stringify({ autoCancelEnabled: true, paymentDueHours: 2, unpaidRestrictionEnabled: true }) }));
     expect(put.status).toBe(200);
     const b = await db.order.findUniqueOrThrow({ where: { id: await s.order() } });
     expect(b.paymentDueAt!.getTime() - b.createdAt.getTime()).toBe(2 * HOUR);
@@ -71,20 +71,48 @@ describe("입금 기한", () => {
     expect(await db.auditLog.count({ where: { action: "order_policy.update" } })).toBe(1);
   });
 
-  it("주문 정책 API: 기본값 조회, 1~168시간 정수·켜고 끄기 값만 받고, 쇼핑몰 설정 권한 없는 직원은 403", async () => {
+  it("자동 취소를 「사용 안 함」으로 끄면 새 주문에 기한이 없어 자동 취소되지 않고, 끄기 전 주문은 기한대로 취소된다", async () => {
+    const s = await shop();
+    const before = await s.order();
+    const c = await sellerCookie(s.owner.email);
+    const put = await policyPut(new Request("http://localhost:3000/api/seller/order-policy", { method: "PUT", headers: { ...H, cookie: c }, body: JSON.stringify({ autoCancelEnabled: false, paymentDueHours: 240, unpaidRestrictionEnabled: true }) }));
+    expect(put.status).toBe(200);
+    const after = await s.order();
+    expect(await db.order.findUniqueOrThrow({ where: { id: after } })).toMatchObject({ paymentDueAt: null });
+    await db.order.updateMany({ where: { id: { in: [before, after] } }, data: { createdAt: new Date(Date.now() - 40 * 24 * HOUR) } });
+    await db.order.update({ where: { id: before }, data: { paymentDueAt: new Date(Date.now() - HOUR) } });
+    expect((await cancelOverdueOrders(db)).cancelled).toEqual([before]);
+    expect(await db.order.findUniqueOrThrow({ where: { id: after } })).toMatchObject({ status: "PENDING_PAYMENT" });
+    expect(await listPaymentDueSoon(db, { withinMinutes: 60 * 24 * 365 })).toEqual([]);
+  });
+
+  it("주문 정책 API: 기본값 조회(사용·240시간), 1시간~30일(720시간) 정수·켜고 끄기 값만 받고, 쇼핑몰 설정 권한 없는 직원은 403", async () => {
     const s = await shop();
     const c = await sellerCookie(s.owner.email);
     const got = await (await policyGet(new Request("http://localhost:3000/api/seller/order-policy", { headers: { ...H, cookie: c } }))).json();
-    expect(got.policy).toEqual({ paymentDueHours: 24, unpaidRestrictionEnabled: true });
-    for (const body of [{ paymentDueHours: 0, unpaidRestrictionEnabled: true }, { paymentDueHours: 169, unpaidRestrictionEnabled: true }, { paymentDueHours: 1.5, unpaidRestrictionEnabled: true }, { paymentDueHours: "24", unpaidRestrictionEnabled: true }, { paymentDueHours: 24 }]) {
+    expect(got.policy).toEqual({ autoCancelEnabled: true, paymentDueHours: 240, unpaidRestrictionEnabled: true });
+    const ok = { autoCancelEnabled: true, paymentDueHours: 240, unpaidRestrictionEnabled: true };
+    for (const body of [
+      { ...ok, paymentDueHours: 0 },
+      { ...ok, paymentDueHours: 721 },
+      { ...ok, paymentDueHours: 1.5 },
+      { ...ok, paymentDueHours: "24" },
+      { autoCancelEnabled: true, paymentDueHours: 24 },
+      { paymentDueHours: 24, unpaidRestrictionEnabled: true },
+      { ...ok, autoCancelEnabled: "false" },
+    ]) {
       const r = await policyPut(new Request("http://localhost:3000/api/seller/order-policy", { method: "PUT", headers: { ...H, cookie: c }, body: JSON.stringify(body) }));
       expect(r.status, JSON.stringify(body)).toBe(400);
       expect(await r.json()).toEqual({ error: "invalid_order_policy", message: ORDER_ERROR_MESSAGES.invalid_order_policy });
     }
     const staff = await createSellerUser(s.seller.id, { permissions: ["ORDER_SHIPPING"] });
-    const r = await policyPut(new Request("http://localhost:3000/api/seller/order-policy", { method: "PUT", headers: { ...H, cookie: await sellerCookie(staff.email) }, body: JSON.stringify({ paymentDueHours: 2, unpaidRestrictionEnabled: true }) }));
+    const r = await policyPut(new Request("http://localhost:3000/api/seller/order-policy", { method: "PUT", headers: { ...H, cookie: await sellerCookie(staff.email) }, body: JSON.stringify({ ...ok, paymentDueHours: 2 }) }));
     expect(r.status).toBe(403);
     expect(await db.sellerOrderPolicy.count()).toBe(0);
+    for (const h of [1, 720]) {
+      const res = await policyPut(new Request("http://localhost:3000/api/seller/order-policy", { method: "PUT", headers: { ...H, cookie: c }, body: JSON.stringify({ ...ok, paymentDueHours: h }) }));
+      expect(res.status, String(h)).toBe(200);
+    }
   });
 });
 
@@ -286,7 +314,7 @@ describe("검수 후속(#82)", () => {
     const s = await shop();
     const c = await sellerCookie(s.owner.email);
     const setEnabled = (enabled: boolean) =>
-      policyPut(new Request("http://localhost:3000/api/seller/order-policy", { method: "PUT", headers: { ...H, cookie: c }, body: JSON.stringify({ paymentDueHours: 24, unpaidRestrictionEnabled: enabled }) }));
+      policyPut(new Request("http://localhost:3000/api/seller/order-policy", { method: "PUT", headers: { ...H, cookie: c }, body: JSON.stringify({ autoCancelEnabled: true, paymentDueHours: 240, unpaidRestrictionEnabled: enabled }) }));
     expect((await setEnabled(false)).status).toBe(200);
     for (let i = 0; i < 3; i++) await makeOverdue(await s.order());
     expect((await cancelOverdueOrders(db)).restricted).toEqual([]);

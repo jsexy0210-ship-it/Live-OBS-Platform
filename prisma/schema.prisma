@@ -939,8 +939,10 @@ model Shipment {
 // 판매자 주문 정책(판매자당 1행, 없으면 기본값). PRODUCT_SCOPE 「무통장 입금·구매 제한 기본값」.
 model SellerOrderPolicy {
   sellerId                   String    @id @db.Uuid
-  // 입금 기한(시간). 주문할 때 paymentDueAt을 정하는 데만 쓰고, 이미 만든 주문은 바꾸지 않는다.
-  paymentDueHours            Int       @default(24)
+  // 미입금 자동 취소 사용 여부와 기간(시간). 기본 사용·240시간(10일), 1~720시간(카페24 방식, 대표님 결정 2026-10-03).
+  // 주문할 때 paymentDueAt을 정하는 데만 쓰고(끄면 기한 없음), 이미 만든 주문은 바꾸지 않는다.
+  autoCancelEnabled          Boolean   @default(true)
+  paymentDueHours            Int       @default(240)
   // 「미입금 자동 취소 3회 → 30일 주문 막기」
   unpaidRestrictionEnabled   Boolean   @default(true)
   // 꺼져 있다가 다시 켠 시각. 이 뒤의 자동 취소만 센다(MASTER 결정).

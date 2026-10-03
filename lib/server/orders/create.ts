@@ -122,8 +122,9 @@ export async function createOrder(db: PrismaClient, input: CreateOrderInput): Pr
     const totalAmount = itemsSubtotal + shippingFee;
     if (!Number.isSafeInteger(totalAmount) || totalAmount > INT4_MAX) return { ok: false as const, reason: "invalid_amount" as const };
 
-    // 입금 기한: 주문 시각 + 판매자 설정(기본 24시간). 이미 만든 주문은 설정을 바꿔도 그대로다.
-    const paymentDueAt = new Date(now.getTime() + (await getOrderPolicy(tx, input.sellerId)).paymentDueHours * 60 * 60 * 1000);
+    // 입금 기한: 주문 시각 + 판매자 설정(기본 사용·10일). 자동 취소를 끈 쇼핑몰은 기한을 두지 않는다. 이미 만든 주문은 설정을 바꿔도 그대로다.
+    const orderPolicy = await getOrderPolicy(tx, input.sellerId);
+    const paymentDueAt = orderPolicy.autoCancelEnabled ? new Date(now.getTime() + orderPolicy.paymentDueHours * 60 * 60 * 1000) : null;
     const last = await tx.order.aggregate({ where: { sellerId: input.sellerId }, _max: { orderNo: true } });
     const orderNo = (last._max.orderNo ?? 0) + 1;
     const order = await tx.order.create({

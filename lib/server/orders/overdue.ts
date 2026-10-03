@@ -5,27 +5,34 @@ import { cleanText } from "../text/clean";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 
 // 무통장 입금 기한·미입금 자동 취소·자동 구매 제한(PRODUCT_SCOPE 「무통장 입금·구매 제한 기본값」, MASTER 결정).
-// - 입금 기한: 주문 시각 + 판매자 설정(기본 24시간). 주문할 때 Order.paymentDueAt에 고정한다.
+// - 입금 기한: 주문 시각 + 판매자 설정(기본 사용·10일, 1시간~30일, 끌 수 있음). 주문할 때 Order.paymentDueAt에 고정한다.
 // - 자동 취소: 기한이 지난 결제 대기 주문을 취소한다. 재고는 결제 때 차감하므로 되돌릴 것이 없다. 여러 번 돌려도 같은 결과(멱등).
 //   정기 실행(cron) 연결은 인프라 승인 대기라 함수만 둔다.
 // - 자동 구매 제한: 같은 쇼핑몰에서 미입금 자동 취소가 3회 쌓이면 30일 동안 새 주문을 막는다(판매자 설정으로 끌 수 있음).
 // 같은 판매자의 주문 생성과 같은 advisory lock(order_no:{sellerId}) 아래에서 처리해, 제한이 생기는 순간과 주문이 엇갈리지 않게 한다.
 
-export const DEFAULT_PAYMENT_DUE_HOURS = 24;
-export const MAX_PAYMENT_DUE_HOURS = 168;
+// 미입금 자동 취소 기간: 기본 사용·10일(240시간), 1시간~30일(카페24 방식, 대표님 결정 2026-10-03)
+export const DEFAULT_PAYMENT_DUE_HOURS = 240;
+export const MAX_PAYMENT_DUE_HOURS = 720;
 export const UNPAID_CANCEL_LIMIT = 3;
 export const RESTRICTION_DAYS = 30;
 export const RESTRICTION_REASON_UNPAID = "UNPAID_AUTO_CANCEL";
 export const PAYMENT_REMINDER_MINUTES = 60;
 
 type Db = PrismaClient | Prisma.TransactionClient;
-export type OrderPolicy = { paymentDueHours: number; unpaidRestrictionEnabled: boolean };
+// autoCancelEnabled가 꺼져 있으면 새 주문에 입금 기한을 두지 않아 자동 취소되지 않는다(이미 기한이 붙은 주문은 그대로).
+export type OrderPolicy = { autoCancelEnabled: boolean; paymentDueHours: number; unpaidRestrictionEnabled: boolean };
 
 export async function getOrderPolicy(db: Db, sellerId: string): Promise<OrderPolicy & { unpaidRestrictionEnabledAt: Date | null }> {
   const p = await db.sellerOrderPolicy.findUnique({ where: { sellerId } });
   return p
-    ? { paymentDueHours: p.paymentDueHours, unpaidRestrictionEnabled: p.unpaidRestrictionEnabled, unpaidRestrictionEnabledAt: p.unpaidRestrictionEnabledAt }
-    : { paymentDueHours: DEFAULT_PAYMENT_DUE_HOURS, unpaidRestrictionEnabled: true, unpaidRestrictionEnabledAt: null };
+    ? {
+        autoCancelEnabled: p.autoCancelEnabled,
+        paymentDueHours: p.paymentDueHours,
+        unpaidRestrictionEnabled: p.unpaidRestrictionEnabled,
+        unpaidRestrictionEnabledAt: p.unpaidRestrictionEnabledAt,
+      }
+    : { autoCancelEnabled: true, paymentDueHours: DEFAULT_PAYMENT_DUE_HOURS, unpaidRestrictionEnabled: true, unpaidRestrictionEnabledAt: null };
 }
 
 export const lockSellerOrders = (tx: Prisma.TransactionClient, sellerId: string) =>
@@ -167,20 +174,27 @@ export async function liftRestriction(db: PrismaClient, ctx: TenantContext, buye
 
 export async function readOrderPolicy(db: PrismaClient, ctx: TenantContext): Promise<OrderPolicy> {
   requireSellerRead(ctx, "SHOP_SETTINGS");
-  const { paymentDueHours, unpaidRestrictionEnabled } = await getOrderPolicy(db, ctx.sellerId);
-  return { paymentDueHours, unpaidRestrictionEnabled };
+  const { autoCancelEnabled, paymentDueHours, unpaidRestrictionEnabled } = await getOrderPolicy(db, ctx.sellerId);
+  return { autoCancelEnabled, paymentDueHours, unpaidRestrictionEnabled };
 }
 
-// 판매자 주문 정책 변경(SHOP_SETTINGS). 입금 기한은 1~168시간 정수. 바꾼 기한은 다음 주문부터.
+// 판매자 주문 정책 변경(SHOP_SETTINGS). 자동 취소 사용 여부, 기간은 1~720시간(30일) 정수. 바꾼 설정은 다음 주문부터.
 export async function updateOrderPolicy(db: PrismaClient, ctx: TenantContext, raw: unknown) {
   requireSellerPermission(ctx, "SHOP_SETTINGS");
   if (!raw || typeof raw !== "object") return { ok: false as const, reason: "invalid_order_policy" as const };
   const b = raw as Record<string, unknown>;
   const h = b.paymentDueHours;
-  if (typeof h !== "number" || !Number.isInteger(h) || h < 1 || h > MAX_PAYMENT_DUE_HOURS || typeof b.unpaidRestrictionEnabled !== "boolean") {
+  if (
+    typeof b.autoCancelEnabled !== "boolean" ||
+    typeof h !== "number" ||
+    !Number.isInteger(h) ||
+    h < 1 ||
+    h > MAX_PAYMENT_DUE_HOURS ||
+    typeof b.unpaidRestrictionEnabled !== "boolean"
+  ) {
     return { ok: false as const, reason: "invalid_order_policy" as const };
   }
-  const policy: OrderPolicy = { paymentDueHours: h, unpaidRestrictionEnabled: b.unpaidRestrictionEnabled };
+  const policy: OrderPolicy = { autoCancelEnabled: b.autoCancelEnabled, paymentDueHours: h, unpaidRestrictionEnabled: b.unpaidRestrictionEnabled };
   return db.$transaction(async (tx) => {
     // 같은 판매자의 자동 취소·주문과 순서를 맞춘다
     await lockSellerOrders(tx, ctx.sellerId);
