@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST as httpComplete } from "../../app/api/seller/password-reset/complete/route";
+import { POST as httpConfirm } from "../../app/api/seller/password-reset/confirm/route";
 import { POST as httpStart } from "../../app/api/seller/password-reset/start/route";
 import { POST as httpVerify } from "../../app/api/seller/password-reset/verify/route";
 import { loginSeller } from "../../lib/server/auth/login";
@@ -16,7 +17,7 @@ import { hashCi } from "../../lib/server/identity/ciHash";
 import { FakeIdentityProvider } from "../../lib/server/identity/provider";
 import { identityProvider } from "../../lib/server/identity/registry";
 import type { TenantContext } from "../../lib/server/tenant/context";
-import { PASSWORD, createSeller, createSellerUser, db, resetDb } from "./helpers";
+import { IDV_INPUT, PASSWORD, confirmIdv, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
 beforeAll(() => {
   process.env.IDENTITY_HASH_KEY = "test-identity-hash-key-0123456789abcdef";
@@ -30,12 +31,23 @@ afterAll(async () => {
 const provider = new FakeIdentityProvider();
 const person = (ci: string) => ({ ci, name: "대표", phone: "01011112222", birthDate: new Date("1980-01-01") });
 const NEW_PASSWORD = "new-password-123";
+// 대표자 인적사항(휴대폰 본인확인 입력). 가짜 공급자 명의(person)의 번호와 같다.
+const REP = { ...IDV_INPUT, name: "대표", phone: "01011112222" };
 
-// 시작이 성공했다고 보고 결과를 꺼낸다(한도 테스트는 따로)
+// 시작이 성공했다고 보고 결과와 요청 id를 꺼낸다(한도 테스트는 따로)
 async function startOk(input: { email: string; shopSlug: string }, meta: { now?: Date } = {}) {
-  const r = await startSellerPasswordReset(db, provider, input, meta);
+  const r = await startSellerPasswordReset(db, provider, { ...input, person: REP }, meta);
   if (!r.ok) throw new Error(r.reason);
-  return r;
+  const { requestId } = await db.identityVerification.findUniqueOrThrow({ where: { id: r.verificationId } });
+  return { ...r, requestId };
+}
+
+// 가짜 공급자 명의(ci)를 정하고 인증번호를 확인한다
+async function confirmReset(s: { verificationId: string; ownerToken: string; requestId: string }, ci: string, now?: Date) {
+  provider.complete(s.requestId, person(ci));
+  const v = await db.identityVerification.findUniqueOrThrow({ where: { id: s.verificationId } });
+  const r = await confirmIdv(provider, v, s.ownerToken, undefined, now);
+  if (!r.ok) throw new Error(r.reason);
 }
 
 // 대표자 CI가 등록된 쇼핑몰과 대표·직원 계정
@@ -50,11 +62,11 @@ async function shop(repCi = "REP-CI") {
 // 시작 → PASS 완료(ci) → 재설정 권한 요청
 async function grantFor(email: string, shopSlug: string, ci: string, now?: Date) {
   const s = await startOk({ email, shopSlug }, { now });
-  provider.complete(s.requestId, person(ci));
+  await confirmReset(s, ci, now);
   return { start: s, grant: await issueSellerPasswordResetGrant(db, provider, { verificationId: s.verificationId, ownerToken: s.ownerToken }, { now }) };
 }
 
-describe("판매자 비밀번호 찾기 (대표자 PASS)", () => {
+describe("판매자 비밀번호 찾기 (대표자 휴대폰 본인확인)", () => {
   it("대표자 CI가 맞으면 재설정되고, 기존 로그인은 모두 끊기며, 새 비밀번호로만 로그인된다", async () => {
     const { seller, owner } = await shop();
     const before = await loginSeller(db, { email: owner.email, password: PASSWORD }, {});
@@ -190,7 +202,7 @@ describe("판매자 비밀번호 찾기 (대표자 PASS)", () => {
     const noShop = await startOk({ email: owner.email, shopSlug: "no-such-shop" });
     expect(Object.keys(fake).sort()).toEqual(Object.keys(real).sort());
     expect(Object.keys(noShop).sort()).toEqual(Object.keys(real).sort());
-    provider.complete(fake.requestId, person("REP-CI"));
+    await confirmReset(fake, "REP-CI");
     expect(await issueSellerPasswordResetGrant(db, provider, { verificationId: fake.verificationId, ownerToken: fake.ownerToken })).toEqual({
       ok: false,
       reason: "reset_not_allowed",
@@ -242,7 +254,7 @@ describe("판매자 비밀번호 찾기 (대표자 PASS)", () => {
   it("시작한 브라우저가 아니면(소유 값 불일치) 거부", async () => {
     const { seller, owner } = await shop();
     const s = await startOk({ email: owner.email, shopSlug: seller.slug });
-    provider.complete(s.requestId, person("REP-CI"));
+    await confirmReset(s, "REP-CI");
     expect(await issueSellerPasswordResetGrant(db, provider, { verificationId: s.verificationId, ownerToken: "stolen" })).toEqual({
       ok: false,
       reason: "reset_not_allowed",
@@ -285,9 +297,9 @@ describe("비밀번호 찾기 시작 횟수 (쇼핑몰당 하루 10회, KST 자�
   it("10회까지는 시작되고 11회째는 거부, 감사 로그를 남긴다", async () => {
     const { seller, owner } = await shop();
     for (let i = 0; i < 10; i++) {
-      expect((await startSellerPasswordReset(db, provider, { email: owner.email, shopSlug: seller.slug })).ok).toBe(true);
+      expect((await startSellerPasswordReset(db, provider, { email: owner.email, shopSlug: seller.slug, person: REP })).ok).toBe(true);
     }
-    expect(await startSellerPasswordReset(db, provider, { email: "other@example.com", shopSlug: seller.slug })).toEqual({
+    expect(await startSellerPasswordReset(db, provider, { email: "other@example.com", shopSlug: seller.slug, person: REP })).toEqual({
       ok: false,
       reason: "reset_limit_exceeded",
     });
@@ -301,15 +313,15 @@ describe("비밀번호 찾기 시작 횟수 (쇼핑몰당 하루 10회, KST 자�
   it("다른 쇼핑몰은 영향이 없다", async () => {
     const a = await shop("CI-A");
     const b = await shop("CI-B");
-    for (let i = 0; i < 10; i++) await startSellerPasswordReset(db, provider, { email: a.owner.email, shopSlug: a.seller.slug });
-    expect((await startSellerPasswordReset(db, provider, { email: a.owner.email, shopSlug: a.seller.slug })).ok).toBe(false);
-    expect((await startSellerPasswordReset(db, provider, { email: b.owner.email, shopSlug: b.seller.slug })).ok).toBe(true);
+    for (let i = 0; i < 10; i++) await startSellerPasswordReset(db, provider, { email: a.owner.email, shopSlug: a.seller.slug, person: REP });
+    expect((await startSellerPasswordReset(db, provider, { email: a.owner.email, shopSlug: a.seller.slug, person: REP })).ok).toBe(false);
+    expect((await startSellerPasswordReset(db, provider, { email: b.owner.email, shopSlug: b.seller.slug, person: REP })).ok).toBe(true);
   });
 
   it("동시에 몰려도 10회를 넘지 않는다", async () => {
     const { seller, owner } = await shop();
     const results = await Promise.all(
-      Array.from({ length: 15 }, () => startSellerPasswordReset(db, provider, { email: owner.email, shopSlug: seller.slug })),
+      Array.from({ length: 15 }, () => startSellerPasswordReset(db, provider, { email: owner.email, shopSlug: seller.slug, person: REP })),
     );
     expect(results.filter((r) => r.ok)).toHaveLength(10);
     expect(await db.identityVerification.count({ where: { sellerId: seller.id } })).toBe(10);
@@ -318,8 +330,8 @@ describe("비밀번호 찾기 시작 횟수 (쇼핑몰당 하루 10회, KST 자�
   it("어제(KST) 시작한 건은 세지 않는다", async () => {
     const { seller, owner } = await shop();
     const yesterday = new Date(Date.now() - 26 * 3_600_000);
-    for (let i = 0; i < 10; i++) await startSellerPasswordReset(db, provider, { email: owner.email, shopSlug: seller.slug }, { now: yesterday });
-    expect((await startSellerPasswordReset(db, provider, { email: owner.email, shopSlug: seller.slug })).ok).toBe(true);
+    for (let i = 0; i < 10; i++) await startSellerPasswordReset(db, provider, { email: owner.email, shopSlug: seller.slug, person: REP }, { now: yesterday });
+    expect((await startSellerPasswordReset(db, provider, { email: owner.email, shopSlug: seller.slug, person: REP })).ok).toBe(true);
   });
 
   it("HTTP: 11회째는 429 reset_limit_exceeded", async () => {
@@ -329,7 +341,7 @@ describe("비밀번호 찾기 시작 횟수 (쇼핑몰당 하루 10회, KST 자�
       new Request(BASE + "/api/seller/password-reset/start", {
         method: "POST",
         headers: { "content-type": "application/json", host: "localhost:3000", origin: BASE },
-        body: JSON.stringify({ email: owner.email, shopSlug: seller.slug }),
+        body: JSON.stringify({ email: owner.email, shopSlug: seller.slug, person: REP }),
       });
     for (let i = 0; i < 10; i++) expect((await httpStart(req())).status).toBe(200);
     const res = await httpStart(req());
@@ -379,11 +391,15 @@ describe("HTTP: 비밀번호 찾기 흐름", () => {
 
   it("시작 → PASS → 확인 → 새 비밀번호, 재설정 권한 재사용은 400", async () => {
     const { seller, owner } = await shop();
-    const s = await httpStart(post("/api/seller/password-reset/start", { email: owner.email, shopSlug: seller.slug }));
+    const s = await httpStart(post("/api/seller/password-reset/start", { email: owner.email, shopSlug: seller.slug, person: REP }));
     expect(s.status).toBe(200);
     expect(s.headers.get("set-cookie")).toMatch(/^lo_idv=.*Path=\/api\/seller\/password-reset.*HttpOnly/i);
-    const { verificationId, requestId } = await s.json();
+    const { verificationId } = await s.json();
+    const { requestId } = await db.identityVerification.findUniqueOrThrow({ where: { id: verificationId } });
     (identityProvider() as FakeIdentityProvider).complete(requestId, person("REP-CI"));
+    // 인증번호 확인(다른 브라우저면 404, 시작한 브라우저면 200)
+    expect((await httpConfirm(post("/api/seller/password-reset/confirm", { verificationId, code: "000000" }))).status).toBe(404);
+    expect((await httpConfirm(post("/api/seller/password-reset/confirm", { verificationId, code: "000000" }, cookieOf(s)))).status).toBe(200);
 
     // id 형식이 틀리면 서버 오류가 아니라 같은 거부(400 reset_not_allowed)
     const badId = await httpVerify(post("/api/seller/password-reset/verify", { verificationId: "not-a-uuid" }, cookieOf(s)));

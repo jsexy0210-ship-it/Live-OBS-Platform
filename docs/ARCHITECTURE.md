@@ -55,8 +55,8 @@ tests/unit/**, tests/integration/**           테스트
 - 로그인 실패 잠금 없음(대표님 결정 2026-10-02). 실패는 감사 로그에 기록. IP 허용 목록·IP 기준 제한도 두지 않는다.
 - 접속 IP는 감사 로그 기록용으로만 쓰고, 신뢰 프록시를 거친 경우에만 `X-Forwarded-For`에서 얻는다(환경변수 `TRUSTED_PROXY_HOPS`, 기본 0 = 믿지 않음).
 - 로그인 성공·실패·차단은 감사 로그.
-- 판매자 비밀번호 찾기(대표님 지시 2026-10-02): 메일 링크 없이 **대표자 PASS 본인인증**으로만 한다.
-  - 이메일+쇼핑몰로 시작 → PASS 완료 → 결과 CI가 그 쇼핑몰 `Seller.representativeCiHash`와 같고 계정이 대표자(`isOwner`)일 때만 일회용·10분 재설정 권한(`PasswordResetGrant`, 토큰 해시 저장) 발급 → 새 비밀번호 저장, 그 계정의 기존 세션 모두 폐기.
+- 판매자 비밀번호 찾기(대표님 지시 2026-10-02): 메일 링크 없이 **대표자 휴대폰 본인확인(문자)**으로만 한다.
+  - 이메일+쇼핑몰+대표자 인적사항으로 시작(첫 인증번호 발송) → 인증번호 확인(`/confirm`) → `/verify`에서 결과 CI가 그 쇼핑몰 `Seller.representativeCiHash`와 같고 계정이 대표자(`isOwner`)일 때만 일회용·10분 재설정 권한(`PasswordResetGrant`, 토큰 해시 저장) 발급 → 새 비밀번호 저장, 그 계정의 기존 세션 모두 폐기.
   - 본인인증 건은 시작한 브라우저에만 준 일회용 값(`IdentityVerification.ownerTokenHash`, HttpOnly 쿠키)과 묶고, 한 번 쓰면 `consumedAt`으로 소진한다(구매자 가입도 같음).
   - CI 불일치·직원 계정·없는 계정은 모두 같은 거부 응답(계정 존재 비노출). 시작·발급·완료·실패는 감사 로그.
   - 시작 횟수: 쇼핑몰 하나당 하루 10회(KST 자정 초기화, DB 시계로 집계, 쇼핑몰별 직렬화). 넘으면 429 `reset_limit_exceeded`와 감사 로그(대표님 결정 2026-10-02). 없는 쇼핑몰 주소는 한 묶음으로 센다.
@@ -123,7 +123,7 @@ tests/unit/**, tests/integration/**           테스트
 
 ### 4.2 판매자(쇼핑몰)·직원
 
-- `Seller` (테넌트 = 쇼핑몰 1개): id, slug(기본 주소 하위 이름, **유니크**), shopName, status(`PENDING | ACTIVE | SUSPENDED | REJECTED | CLOSED`), businessInfo(JSON), approvedAt, approvedByAdminId, suspendedReason, representativeCiHash(대표자 PASS CI의 HMAC), representativeVerifiedAt(둘은 함께 기록), liveVersion(실시간 version 카운터, 기본 0), createdAt — **대표자 1명당 쇼핑몰 1개**: representativeCiHash 부분 유니크(해지 `CLOSED`·반려 `REJECTED` 제외)
+- `Seller` (테넌트 = 쇼핑몰 1개): id, slug(기본 주소 하위 이름, **유니크**), shopName, status(`PENDING | ACTIVE | SUSPENDED | REJECTED | CLOSED`), businessInfo(JSON), approvedAt, approvedByAdminId, suspendedReason, representativeCiHash(대표자 휴대폰 본인확인 CI의 HMAC), representativeVerifiedAt(둘은 함께 기록), liveVersion(실시간 version 카운터, 기본 0), createdAt — **대표자 1명당 쇼핑몰 1개**: representativeCiHash 부분 유니크(해지 `CLOSED`·반려 `REJECTED` 제외)
 - `SellerDomain`: id, sellerId, hostname(**유니크**), verifiedAt, certStatus — 개인 도메인 연결용 자리만
 - `SellerUser`: id, sellerId, email, passwordHash, name, isOwner, permissions(권한 항목 배열, 3.3), status(`ACTIVE | DISABLED`), lastLoginAt — **(sellerId, email) 유니크**, 판매자당 OWNER 1명 이상
 - `SellerSession`: id, sellerUserId, sellerId, tokenHash(**유니크**), expiresAt, lastSeenAt, revokedAt
@@ -131,16 +131,18 @@ tests/unit/**, tests/integration/**           테스트
 
 ### 4.3 구매자 회원 (판매자 쇼핑몰별)
 
-- `BuyerMember`: id, sellerId, loginId, passwordHash, name, phone, ciHash(PASS 본인인증 CI의 HMAC-SHA256, 원문 CI 미저장), identityVerifiedAt, birthDate(PASS 생년월일, 미성년자 판정용), broadcastNickname, gradeId, status(`ACTIVE | DORMANT | WITHDRAWN`), marketingConsentAt, createdAt, deletedAt — **(sellerId, ciHash) 유니크**(같은 쇼핑몰 중복 가입 차단), **(sellerId, phone) 유니크**, **(sellerId, loginId) 유니크**, **(sellerId, broadcastNickname) 유니크**(방송 화면에서 구분 가능하게). 네 유니크는 `deletedAt IS NULL`인 행에만 적용(부분 유니크 인덱스)
+- `BuyerMember`: id, sellerId, loginId, passwordHash, name, phone, ciHash(휴대폰 본인확인 CI의 HMAC-SHA256, 원문 CI 미저장), identityVerifiedAt, birthDate(본인확인 생년월일, 미성년자 판정용), broadcastNickname, gradeId, status(`ACTIVE | DORMANT | WITHDRAWN`), marketingConsentAt, createdAt, deletedAt — **(sellerId, ciHash) 유니크**(같은 쇼핑몰 중복 가입 차단), **(sellerId, phone) 유니크**, **(sellerId, loginId) 유니크**, **(sellerId, broadcastNickname) 유니크**(방송 화면에서 구분 가능하게). 네 유니크는 `deletedAt IS NULL`인 행에만 적용(부분 유니크 인덱스)
   - 탈퇴하면 `status = WITHDRAWN`과 `deletedAt`을 같은 트랜잭션에서 함께 기록하고 개인정보(이름·휴대폰·닉네임)를 비식별 처리한다. `DORMANT`는 삭제가 아니므로 `deletedAt`이 비어 있다. 주문·원장은 회원 id로 남는다.
 - `MemberGrade`: id, sellerId, displayName, sortOrder, systemKey(nullable: `BASIC | SPROUT | SILVER | GOLD | VIP`) — 등급은 **id·displayName·sortOrder로 식별**한다. 판매자 생성 시 일반·새싹·실버·골드·VIP 5개를 기본으로 만들고 `systemKey`로 표시만 한다. 판매자가 추가한 등급은 `systemKey = null`. **(sellerId, displayName) 유니크**, **(sellerId, systemKey) 유니크(null 제외)**. 디자인 지시(`docs/DESIGN_PROMPT.md` 245줄) 「이름·개수는 판매자가 정한다」에 맞춰 고정 enum으로 식별하지 않는다. 적립률(`RewardPolicy.rates`)도 등급 id 기준. [확정]
-- `IdentityVerification` (PASS 본인인증 요청·결과): id, sellerId(nullable, 판매자 대표자 인증은 null), purpose(`BUYER_SIGNUP | SELLER_REPRESENTATIVE | PASSWORD_RESET`), provider, requestId, status(`PENDING | VERIFIED | FAILED | EXPIRED`), ciHash, name, phone, birthDate, verifiedAt, expiresAt — **(provider, requestId) 유니크**, `VERIFIED`면 ciHash·verifiedAt 필수(CHECK)
+- `IdentityVerification` (휴대폰 본인확인 요청·결과): id, sellerId(nullable, 판매자 대표자 인증은 null), purpose(`BUYER_SIGNUP | SELLER_REPRESENTATIVE | PASSWORD_RESET`), provider, method(`PASS_APP | SMS`, 2026-10-03 전환 전 기록은 `PASS_APP` 그대로), requestId, status(`PENDING | VERIFIED | FAILED | EXPIRED`), requestedPhone, sendCount, lastSentAt, otpFailCount, ciHash, name, phone, birthDate, verifiedAt, expiresAt — **(provider, requestId) 유니크**, `VERIFIED`면 ciHash·verifiedAt 필수(CHECK)
   - CI 원문은 저장하지 않는다. 서버 비밀키(환경변수 `IDENTITY_HASH_KEY`)로 만든 HMAC-SHA256 값만 저장한다.
-  - 연동은 `IdentityProvider` 인터페이스 뒤에 둔다. 개발·테스트는 가짜 공급자만 쓰고, 실제 PASS 대행사 연동은 계약 후(이번 범위 아님).
+  - 방식(대표님 결정 2026-10-03, PRODUCT_SCOPE 「휴대폰 본인확인 방식」): 본인확인기관 대행사의 「문자로 본인확인」. 인적사항(이름·휴대폰번호·생년월일+성별 자리 7자리·통신사) → 인증번호 보내기 → (다시 보내기) → 인증번호 확인 → 서버 결과 조회로만 `VERIFIED` 확정. 결과의 요청 id·용도·휴대폰번호가 요청 기록과 다르면 실패.
+  - 제한(`lib/server/identity/verification.ts` 상수, 대행사 규격을 알게 되면 맞춤): 인증번호 3분, 다시 보내기 30초 간격·처음 포함 4번, 5번 틀리면 실패, 시작부터 10분, 확인 뒤 10분 안에 사용. 공급자 호출 10초 넘으면 장애로 처리.
+  - 연동은 `IdentityProvider` 인터페이스 뒤에 둔다. 개발·테스트는 가짜 공급자만 쓴다(운영에서 만들 수 없음). 운영 후보는 포트원 V2 + KCP 「API 방식」(`lib/server/identity/portone.ts`, 키 `PORTONE_API_SECRET`·`PORTONE_STORE_ID`·`PORTONE_IDENTITY_CHANNEL_KEY`, 계약 전이라 실제 호출 미검증). 운영에서 키가 없으면 본인확인 라우트는 `503 identity_unavailable` 「본인확인 서비스 준비 중이에요」.
 - `BuyerSession`: id, buyerMemberId, sellerId, tokenHash(**유니크**), expiresAt, revokedAt
 - 같은 사람이 다른 판매자 쇼핑몰에 가입하면 별도 회원이다(데이터 공유 없음).
-- [확정] 구매자 로그인 수단은 「아이디+비밀번호」, 가입 시 PASS 본인인증 필수(2026-10-02 대표님 지시). 휴대폰 번호 로그인·카카오 로그인은 보류.
-- [비용] PASS 본인인증 대행사 계약·건당 비용 (MASTER가 대표님께 보고).
+- [확정] 구매자 로그인 수단은 「아이디+비밀번호」, 가입 시 휴대폰 본인확인 필수(2026-10-02 대표님 지시, 2026-10-03 PASS 앱 → 문자 방식 전환). 휴대폰 번호 로그인·카카오 로그인은 보류.
+- [비용] 휴대폰 본인확인 대행사 계약·건당 비용 (MASTER가 대표님께 보고).
 
 ### 4.4 상품·옵션·재고
 
@@ -262,7 +264,7 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
   - 판단 시각은 DB 시계(`requireSeller`·오버레이 토큰·체험 한도 모두). 테스트만 시각을 넘긴다.
   - 잠겨도 열리는 것(대표님 결정, PRODUCT_SCOPE 「잠금 중 허용 범위」): 내 정보(`/api/seller/me`, 이용 상태 포함), 구독·결제(`/api/seller/subscription/**`), 로그아웃, 이미 받은 주문의 처리(주문 조회·취소·환불, 배송·구매자 문의 답변·영수증은 기능을 만들 때 같은 방식으로 연다). 막는 것은 새 판매(쇼핑몰 주문 생성·오버레이·방송 시작·상품 등록·수정·도메인 신규 연결)와 그 밖의 판매자 API다. 판정은 서버 가드(`requireSeller`, 예외는 `allowUnpaid`)에서 한다.
 - 잠금 30일 뒤 자동 해지(`closeLongLockedSellers`, 예약 실행): 잠기기 시작한 시각(체험하기 끝·기간 끝·유예 끝 중 가장 늦은 시각)에서 30일이 지나면 `Seller.serviceEndedAt`을 기록하고 구독을 `CANCELED`, 연결 도메인을 비활성(`SellerDomain.suspendedAt`)으로 바꾼다. 데이터는 지우지 않는다(90일 보관 뒤 삭제·5년 주문·결제 기록 보관은 별도 작업). 보관 기간 안에 다시 결제하면 해지 표시를 지우고 해지 때 푼 도메인을 되살린다.
-- 체험하기 한도(대표님 결정): 알림톡·문자 100건, 구매자 PASS 50건, 저장 용량 1GB. `SubscriptionPlan`의 `trialMessageLimit`·`trialIdentityLimit`·`trialStorageMb`에 두고 마스터 API(`POST /api/admin/plans/{code}/trial-limits`, `billing.manage`, 감사 로그)로 바꾼다. 확인 함수 `checkTrialLimit`은 체험하기 중인 판매자에게만 적용하며, 알림톡·PASS·업로드 기능을 만들 때 연결한다.
+- 체험하기 한도(대표님 결정): 알림톡·문자 100건, 구매자 휴대폰 본인확인 50건, 저장 용량 1GB. `SubscriptionPlan`의 `trialMessageLimit`·`trialIdentityLimit`·`trialStorageMb`에 두고 마스터 API(`POST /api/admin/plans/{code}/trial-limits`, `billing.manage`, 감사 로그)로 바꾼다. 확인 함수 `checkTrialLimit`은 체험하기 중인 판매자에게만 적용하며, 알림톡·업로드 기능을 만들 때 연결한다. 휴대폰 본인확인은 연결됨: 구매자 가입 본인확인 성공 1건을 1로 세고(`identityUsage`, 중복 확인은 세지 않음), 주문 알림 문자와 따로 센다.
 - `SubscriptionPlan`: 정가(`listPrice`)·판매가(`salePrice`), 원 단위 부가세 포함, 청구액은 판매가. 기본값 300,000원 / 199,000원은 마이그레이션 데이터로 넣는다(배포 전 운영 판매자 없음 전제로 기존 판매자 백필 포함).
 - 가격 변경(대표님 결정): 최고관리자만(`billing.price`), 가격 변경·가격 기록(`SubscriptionPriceChange`)·감사 기록은 한 트랜잭션.
   - 청구 금액(`priceFor`) = 가격 기록 중 「구독을 시작할 때(`SellerSubscription.subscribedAt`) 이미 적용되던 것」 또는 「변경 + 30일이 지난 것」 가운데 가장 최근 가격. 그래서 새 가입자는 지금 가격, 기존 구독자는 고지 기간(30일)이 끝난 뒤 첫 결제부터 새 가격을 낸다. 30일 안에 두 번 바꿔도 구독 시작 때 가격(또는 고지가 끝난 가격)을 유지한다.
@@ -290,15 +292,15 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 
 ### 4.8.2 판매자 가입 신청·자동 승인 (대표님 결정 2026-10-02)
 
-- 흐름: `POST /api/seller-signup/verification`(대표자 PASS 시작, 같은 접속 IP 하루(KST 자정 초기화) 10회까지 — 가입 PASS는 건당 비용, 넘으면 `429 daily_limit_exceeded`, 시작한 브라우저에만 `lo_sidv` 쿠키, 경로 `/api/seller-signup`) → PASS 완료 → `POST /api/seller-signup/apply`(로그인 이메일·비밀번호는 신청자가 정함, 쇼핑몰 이름·주소 이름(slug)·사업자등록번호·상호·개업일자·통신판매업 신고번호).
+- 흐름: `POST /api/seller-signup/verification`(대표자 휴대폰 본인확인 시작·첫 인증번호, 같은 접속 IP 하루(KST 자정 초기화) 10회까지 — 건당 비용, 넘으면 `429 daily_limit_exceeded`, 시작한 브라우저에만 `lo_sidv` 쿠키, 경로 `/api/seller-signup`) → `…/verification/resend`·`…/verification/confirm`(인증번호 확인) → `POST /api/seller-signup/apply`(로그인 이메일·비밀번호는 신청자가 정함, 쇼핑몰 이름·주소 이름(slug)·사업자등록번호·상호·개업일자·통신판매업 신고번호).
 - 신청을 받지 않는 경우(입력 오류로 응답): 본인인증 무효(다른 브라우저·이미 씀·30분 지남·다른 용도), 대표자 1명당 쇼핑몰 1개 위반(해지·반려 제외, `409 representative_has_shop`, 문구 「이미 운영 중인 쇼핑몰이 있어요 · 한 대표자는 쇼핑몰 하나만 열 수 있어요」, 다른 쇼핑몰 이름은 보여 주지 않음, DB 부분 유니크로도 막음), 주소 이름 형식·예약어·중복, 사업자등록번호 검증 숫자 틀림, 비밀번호 8자 미만. 이 경우 본인인증은 소진되지 않는다.
 - 자동 점검(`reviewReasons`, 하나라도 걸리면 자동 승인하지 않음):
-  - 국세청 「사업자등록정보 진위확인 및 상태조회」: 사업자번호·대표자명(PASS로 확인한 이름)·개업일자(신청 항목) 대조 불일치(`business_info_mismatch`), 계속사업자 아님(`business_not_active`), 조회 실패·키 없음(`business_lookup_failed`). 키 `NTS_BUSINESS_STATUS_API_KEY` 하나로 진위확인·상태조회를 함께 쓴다.
+  - 국세청 「사업자등록정보 진위확인 및 상태조회」: 사업자번호·대표자명(휴대폰 본인확인으로 확인한 이름)·개업일자(신청 항목) 대조 불일치(`business_info_mismatch`), 계속사업자 아님(`business_not_active`), 조회 실패·키 없음(`business_lookup_failed`). 키 `NTS_BUSINESS_STATUS_API_KEY` 하나로 진위확인·상태조회를 함께 쓴다.
   - 같은 사업자번호로 운영 중이거나 신청 중인(해지·반려 제외) 쇼핑몰이 있음(`business_duplicate`). 번호별 advisory lock으로 동시 신청도 한 건만 자동 승인.
   - 공정위 「통신판매사업자 등록상세」 조회(기준은 조회, MASTER 결정): 신고번호 없음·형식 틀림(`mail_order_number_invalid`), 조회 실패·키 없음(`mail_order_lookup_failed`), 등록 없음·사업자번호 불일치(`mail_order_not_registered`), 영업 상태 정상 아님(`mail_order_not_active`). 키 `FTC_MAIL_ORDER_API_KEY`.
   - 하나도 없으면 같은 트랜잭션에서 자동 승인(`approvedByAdminId = null`, 체험하기 시작, 감사 로그 `seller.auto_approve`).
   - 하나라도 있으면 승인 대기(`PENDING`)로 두고 마스터 「확인 필요」(`GET /api/admin/sellers/review`)에 올린다. 대표님이 승인(`approve`, 사유 비움)·반려(`reject`, 사유 필수, `rejectedReason`·`rejectedAt` 전용 컬럼 — 정지 사유와 섞지 않음)한다. 보완 요청은 화면 단계에서.
-- 신청 때 쇼핑몰·대표자 계정(PASS 이름)·기본 등급 5개를 만든다. 사업자 정보는 `Seller.businessInfo`(사업자등록번호·상호·대표자명·개업일자·통신판매업 신고번호·국세청·공정위 조회 결과·점검 시각)에 둔다.
+- 신청 때 쇼핑몰·대표자 계정(본인확인 이름)·기본 등급 5개를 만든다. 사업자 정보는 `Seller.businessInfo`(사업자등록번호·상호·대표자명·개업일자·통신판매업 신고번호·국세청·공정위 조회 결과·점검 시각)에 둔다.
 - 국세청·공정위 조회는 공급자 인터페이스(`lib/server/sellers/businessCheck.ts`)로만 부른다. `BUSINESS_STATUS_PROVIDER=fake`·`MAIL_ORDER_PROVIDER=fake`를 명시했을 때만 가짜(운영 불가). 그 밖에는 실제 조회 자리이며, 실제 연동 전이거나 키가 없으면 조회 실패로 처리해 자동 승인하지 않는다. 환경변수 이름은 `.env.example`.
 
 ### 4.9 이번 초안에서 뺀 것 (다음 단계)
@@ -311,7 +313,7 @@ PG 연결 정보, 구매자 문의·공지, 알림 발송 기록, 도우미 자�
 - 배송: 즉시 발송은 4.10에서 만들었다. 보관(`STORAGE`)·합배송은 출시 후 1차.
 - 무통장 입금: 4.11에서 만들었다.
 - 법정 동의 기록: 회원 가입 시 약관·처리방침 버전과 마케팅 동의 시각·철회 시각(`MemberConsent`). 주문 단위 「개봉하면 취소·환불 불가」 결제 전 동의를 기록한다(`OrderConsent`: 주문, 동의 시각, 고지 문구 버전. 대표님 결정 2026-10-02, 개봉 전 취소 규칙은 그대로). 구매자 「내 차례 N건 전」 알림도 두지 않는다(주문·결제·발송 알림만).
-- 미성년자 정책: `Seller` 설정 `minorPurchasePolicy`(`BLOCK | NOTICE`), `BuyerMember.birthDate`(PASS)로 판정.
+- 미성년자 정책: `Seller` 설정 `minorPurchasePolicy`(`BLOCK | NOTICE`), `BuyerMember.birthDate`(휴대폰 본인확인)로 판정.
 - 판매자 직원 개인정보 접속기록: 기존 `AuditLog`를 확장해 기록하고 1년 보관.
 - 보존 기간: 거래기록(주문·결제·원장)은 5년 보존, 탈퇴 회원 개인정보는 탈퇴 시 비식별(4.3)하고 거래기록과 분리해 파기 일정 적용.
 - 1인 구매 수량 제한(상품·옵션별), 상품 카테고리, 구매 제한 회원.
@@ -404,7 +406,7 @@ PG 연결 정보, 구매자 문의·공지, 알림 발송 기록, 도우미 자�
 | 1 | 운영·CS 세부 권한 경계 | 3.2 표 | MASTER |
 | 2 | 판매자 직원 권한 | 고정 역할 대신 권한 항목 10개(3.3, 대표님 결정 2026-10-02로 변경) | 대표님 |
 | 3 | 직원이 여러 판매자 소속일 때 | 판매자별 별도 계정 | MASTER |
-| 4 | 구매자 로그인 수단 | 아이디+비밀번호, 가입 시 PASS 본인인증 필수(2026-10-02 대표님 지시로 변경) | MASTER |
+| 4 | 구매자 로그인 수단 | 아이디+비밀번호, 가입 시 휴대폰 본인확인 필수(2026-10-02 대표님 지시로 변경, 2026-10-03 문자 방식) | MASTER |
 | 5 | 재고 차감 시점 | 결제 완료 시. 재고 부족한 늦은 결제는 취소·환불 대상 표시 | 대표님 |
 | 6 | 부분 취소·환불 | 이번 단계 미지원 | MASTER |
 | 7 | 주문대기 단위 | 주문 품목 1개 = 대기 1건, 수량 표시 | 대표님 |

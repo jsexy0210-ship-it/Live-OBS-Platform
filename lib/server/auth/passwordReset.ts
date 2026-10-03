@@ -2,14 +2,14 @@ import type { PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { forbidden, notFound } from "../authz/errors";
 import type { IdentityProvider } from "../identity/provider";
-import { completeIdentityVerification, startIdentityVerification } from "../identity/verification";
+import { completeIdentityVerification, parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
 import { requireSellerPermission, type TenantContext } from "../tenant/context";
 import { hashPassword } from "./password";
 import { generateToken, hashToken } from "./token";
 import { normalizeEmail } from "./login";
 
-// 판매자 비밀번호 찾기: 대표자 PASS 본인인증으로만 한다(메일 링크 없음, 대표님 지시 2026-10-02).
-// 1) 이메일+쇼핑몰로 시작 → 2) PASS 완료 후 CI가 쇼핑몰 대표자 CI와 같고 계정이 대표(OWNER)면 일회용·10분 재설정 권한 발급
+// 판매자 비밀번호 찾기: 대표자 휴대폰 본인확인으로만 한다(메일 링크 없음, 대표님 지시 2026-10-02).
+// 1) 이메일+쇼핑몰로 시작 → 2) 휴대폰 본인확인 완료 후 CI가 쇼핑몰 대표자 CI와 같고 계정이 대표(OWNER)면 일회용·10분 재설정 권한 발급
 // → 3) 새 비밀번호 저장, 그 계정의 기존 세션 모두 폐기. 계정이 있는지 없는지는 응답으로 드러나지 않는다.
 
 const GRANT_TTL_MS = 10 * 60_000;
@@ -25,19 +25,21 @@ export const MIN_PASSWORD_LENGTH = 8;
 
 type Meta = { ip?: string | null; userAgent?: string | null; now?: Date };
 
-// 쇼핑몰 하나당 하루(한국 시간 자정 초기화) 비밀번호 찾기 시작 횟수. 실제 PASS는 호출마다 비용이 든다(대표님 결정 2026-10-02).
+// 쇼핑몰 하나당 하루(한국 시간 자정 초기화) 비밀번호 찾기 시작 횟수. 실제 휴대폰 본인확인은 호출마다 비용이 든다(대표님 결정 2026-10-02).
 export const RESET_DAILY_LIMIT_PER_SHOP = 10;
 
 export type StartResult =
-  | { ok: true; verificationId: string; requestId: string; ownerToken: string }
-  | { ok: false; reason: "reset_limit_exceeded" };
+  | { ok: true; verificationId: string; ownerToken: string }
+  | { ok: false; reason: "reset_limit_exceeded" | "invalid_identity_input" | "provider_error" };
 
 export async function startSellerPasswordReset(
   db: PrismaClient,
   provider: IdentityProvider,
-  input: { email: string; shopSlug: string },
+  input: { email: string; shopSlug: string; person: unknown },
   meta: Meta = {},
 ): Promise<StartResult> {
+  const person = parseIdentityPerson(input.person);
+  if (!person) return { ok: false, reason: "invalid_identity_input" };
   const seller = await db.seller.findUnique({ where: { slug: input.shopSlug }, select: { id: true } });
   const sellerId = seller?.id ?? null;
   const user = seller
@@ -57,7 +59,7 @@ export async function startSellerPasswordReset(
         AND "sellerId" IS NOT DISTINCT FROM ${sellerId}::uuid
         AND "createdAt" >= (date_trunc('day', now() AT TIME ZONE 'Asia/Seoul') AT TIME ZONE 'Asia/Seoul')`;
     if (Number(count) >= RESET_DAILY_LIMIT_PER_SHOP) return null;
-    return startIdentityVerification(tx, provider, { purpose: "PASSWORD_RESET", sellerId, subjectId: user?.id ?? null, now: meta.now });
+    return startIdentityVerification(tx, provider, { purpose: "PASSWORD_RESET", sellerId, person, subjectId: user?.id ?? null, now: meta.now });
   });
 
   if (!started) {
@@ -83,12 +85,14 @@ export async function startSellerPasswordReset(
     ip: meta.ip,
     userAgent: meta.userAgent,
   });
-  return { ok: true, verificationId: verification.id, requestId: verification.requestId, ownerToken };
+  const sent = await sendFirstIdentityCode(db, provider, verification, person, meta.now);
+  if (!sent.ok) return { ok: false, reason: sent.reason };
+  return { ok: true, verificationId: verification.id, ownerToken };
 }
 
 export type GrantResult = { ok: true; grantToken: string; expiresAt: Date } | { ok: false; reason: "reset_not_allowed" | "pending" };
 
-// PASS 완료 확인 → 대표자 CI 비교 → 재설정 권한 발급. 실패 사유는 하나로 묶는다(계정 존재·CI 일치 여부 비노출).
+// 휴대폰 본인확인 완료 확인 → 대표자 CI 비교 → 재설정 권한 발급. 실패 사유는 하나로 묶는다(계정 존재·CI 일치 여부 비노출).
 export async function issueSellerPasswordResetGrant(
   db: PrismaClient,
   provider: IdentityProvider,

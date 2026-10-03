@@ -17,7 +17,7 @@ export type BuyerSignupFailure =
 
 export type BuyerSignupResult = { ok: true; memberId: string } | { ok: false; reason: BuyerSignupFailure };
 
-// 구매자 회원가입. PASS 본인인증(같은 쇼핑몰, 완료, 30분 안, 시작한 브라우저의 ownerToken, 아직 안 쓴 건)이 있어야 하고,
+// 구매자 회원가입. 휴대폰 본인확인(같은 쇼핑몰, 완료, 30분 안, 시작한 브라우저의 ownerToken, 아직 안 쓴 건)이 있어야 하고,
 // 같은 쇼핑몰에 같은 CI로 가입한 회원이 있으면 거부한다. 이름·휴대폰·생년월일은 인증 결과를 쓴다.
 export async function signupBuyer(
   db: PrismaClient,
@@ -49,6 +49,7 @@ export async function signupBuyer(
     !v.name ||
     !v.phone ||
     !v.birthDate ||
+    v.expiresAt <= now ||
     now.getTime() - v.verifiedAt.getTime() > SIGNUP_WINDOW_MS
   ) {
     return { ok: false, reason: "verification_invalid" };
