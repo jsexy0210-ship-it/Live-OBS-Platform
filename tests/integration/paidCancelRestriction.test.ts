@@ -239,4 +239,31 @@ describe("결제 후 취소 5회 → 30일 구매 제한", () => {
     expect(cancelled.every((o) => o.autoCancelledAt!.getTime() > enabledAt.getTime())).toBe(true);
     expect((await s.restrictions()).map((x) => x.reason)).toEqual(["UNPAID_AUTO_CANCEL"]);
   });
+  it("꺼져 있을 때 생긴 환불은 기준과 같은 밀리초에 켜더라도 세지 않는다(꺼진 동안에는 시각을 보정하지 않음)", async () => {
+    const s = await shop();
+    // 꺼진 상태에서 마지막 제한을 푼 시각이 DB 시계와 같거나 뒤인 경우를 강제로 만든다
+    await db.buyerPurchaseRestriction.create({
+      data: { sellerId: s.seller.id, buyerMemberId: s.buyer.id, reason: "UNPAID_AUTO_CANCEL", startsAt: new Date(Date.now() - 60_000), endsAt: new Date(Date.now() + 60_000), liftedAt: new Date(Date.now() + 2000) },
+    });
+    for (let i = 0; i < PAID_CANCEL_LIMIT; i++) await s.refund("BUYER");
+    await updateOrderPolicy(db, s.ctx, { ...BASE, paidCancelRestrictionEnabled: true });
+    // 켠 뒤 환불 1건: 꺼진 동안 5건을 함께 세면 제한이 걸린다
+    await s.refund("BUYER");
+    expect((await s.restrictions()).filter((r) => r.reason === "PAID_CANCEL")).toEqual([]);
+  });
+
+  it("켤 때 기준 시각은 그 판매자의 마지막 사건 시각보다 앞서지 않아, 켜기 전 사건은 세지 않고 켠 뒤 사건만 센다", async () => {
+    const s = await shop();
+    // 켜기 전 환불이 DB 시계보다 뒤 시각으로 남은 경우(예: 앞선 보정)를 강제로 만든다
+    const { order } = await createPaidOrderItem(s.seller.id, s.buyer.id);
+    const late = new Date(Date.now() + 2000);
+    await db.order.update({ where: { id: order.id }, data: { status: "REFUNDED", refundedAt: late, refundFault: "BUYER" } });
+    await updateOrderPolicy(db, s.ctx, { ...BASE, paidCancelRestrictionEnabled: true });
+    const policy = await db.sellerOrderPolicy.findUniqueOrThrow({ where: { sellerId: s.seller.id } });
+    expect(policy.paidCancelRestrictionEnabledAt!.getTime()).toBeGreaterThanOrEqual(late.getTime());
+    for (let i = 0; i < PAID_CANCEL_LIMIT - 1; i++) await s.refund("BUYER");
+    expect(await s.restrictions()).toEqual([]);
+    await s.refund("BUYER");
+    expect(await s.restrictions()).toHaveLength(1);
+  });
 });

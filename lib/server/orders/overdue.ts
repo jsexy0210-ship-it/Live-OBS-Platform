@@ -115,9 +115,12 @@ async function restrictionAnchor(tx: Prisma.TransactionClient, sellerId: string,
 // 횟수에 들어가는 사건(미입금 자동 취소·환불)의 시각. 주문 생성 잠금 아래에서 부른다. 기준 시각을 만드는 일(설정 켜기·제한 풀기·
 // 제한 생성)도 같은 잠금 아래라 이 사건은 늘 기준 뒤에 일어나지만, 시각은 밀리초 단위라 같은 밀리초가 되면 「기준 뒤(>)」 비교에서
 // 빠진다. 그래서 DB 시계가 기준 시각보다 늦지 않으면 기준 + 1ms로 기록한다.
+// 규칙이 꺼져 있으면 보정하지 않는다(꺼진 동안의 사건은 세지 않으므로, 밀어 두면 나중에 같은 밀리초에 켤 때 켠 뒤 사건으로 보인다).
 export async function eventClockAfterAnchor(tx: Prisma.TransactionClient, sellerId: string, buyerMemberId: string, kind: RestrictionKind): Promise<Date> {
   const clock = await dbClock(tx);
-  const anchor = await restrictionAnchor(tx, sellerId, buyerMemberId, ruleOf(await getOrderPolicy(tx, sellerId), kind).enabledAt);
+  const rule = ruleOf(await getOrderPolicy(tx, sellerId), kind);
+  if (!rule.enabled) return clock;
+  const anchor = await restrictionAnchor(tx, sellerId, buyerMemberId, rule.enabledAt);
   return clock.getTime() > anchor.getTime() ? clock : new Date(anchor.getTime() + 1);
 }
 
@@ -316,12 +319,18 @@ export async function updateOrderPolicy(db: PrismaClient, ctx: TenantContext, ra
     };
     const { unpaidRestrictionEnabledAt: _u, paidCancelRestrictionEnabledAt: _p, ...before } = current;
     // 꺼져 있다가 켜면 켠 시각을 남긴다(그 뒤의 횟수만 센다). 끄더라도 이미 걸린 제한은 그대로 둔다.
+    // 켠 시각은 DB 시계와 이 판매자의 해당 종류 마지막 사건 시각 중 늦은 쪽(켜기 전 사건이 늘 켠 시각 이하가 되게, 같은 잠금 아래).
     const turnedOn = (was: boolean, is: boolean) => !was && is;
     const at = await dbClock(tx);
+    const notBefore = (last: Date | null | undefined) => (last && last.getTime() > at.getTime() ? last : at);
     const data = {
       ...policy,
-      ...(turnedOn(before.unpaidRestrictionEnabled, policy.unpaidRestrictionEnabled) ? { unpaidRestrictionEnabledAt: at } : {}),
-      ...(turnedOn(before.paidCancelRestrictionEnabled, policy.paidCancelRestrictionEnabled) ? { paidCancelRestrictionEnabledAt: at } : {}),
+      ...(turnedOn(before.unpaidRestrictionEnabled, policy.unpaidRestrictionEnabled)
+        ? { unpaidRestrictionEnabledAt: notBefore((await tx.order.aggregate({ where: { sellerId: ctx.sellerId }, _max: { autoCancelledAt: true } }))._max.autoCancelledAt) }
+        : {}),
+      ...(turnedOn(before.paidCancelRestrictionEnabled, policy.paidCancelRestrictionEnabled)
+        ? { paidCancelRestrictionEnabledAt: notBefore((await tx.order.aggregate({ where: { sellerId: ctx.sellerId }, _max: { refundedAt: true } }))._max.refundedAt) }
+        : {}),
     };
     await tx.sellerOrderPolicy.upsert({ where: { sellerId: ctx.sellerId }, create: { sellerId: ctx.sellerId, ...data }, update: data });
     await writeAudit(tx, {
