@@ -62,8 +62,8 @@ function parseZipRanges(raw: unknown): ZipRange[] | null {
   return out;
 }
 
-// 판매자 정책 입력 검증. 잘못된 값은 null.
-export function parseShippingPolicy(raw: unknown): ShippingPolicy | null {
+// 판매자 정책 입력 검증. 잘못된 값은 null. 반품·교환 배송비를 빼고 보내면 current(지금 설정) 값을 그대로 둔다.
+export function parseShippingPolicy(raw: unknown, current: ShippingPolicy = DEFAULT_SHIPPING_POLICY): ShippingPolicy | null {
   if (!raw || typeof raw !== "object") return null;
   const b = raw as Record<string, unknown>;
   if (!isFee(b.baseFee, MAX_FEE) || !isFee(b.remoteSurcharge, MAX_FEE)) return null;
@@ -74,9 +74,9 @@ export function parseShippingPolicy(raw: unknown): ShippingPolicy | null {
   // 무료 배송 유형은 빼고 보내면 꺼짐(유료)
   const freeShipping = b.freeShipping ?? false;
   if (typeof freeShipping !== "boolean") return null;
-  // 반품·교환 배송비는 빼고 보내면 기본값(이 기능 전 화면과 호환)
-  const returnFee = b.returnFee ?? DEFAULT_SHIPPING_POLICY.returnFee;
-  const exchangeFee = b.exchangeFee ?? DEFAULT_SHIPPING_POLICY.exchangeFee;
+  // 반품·교환 배송비 칸이 없는 화면이 저장해도 지운 것처럼 기본값으로 돌아가지 않게 한다
+  const returnFee = b.returnFee ?? current.returnFee;
+  const exchangeFee = b.exchangeFee ?? current.exchangeFee;
   if (!isFee(returnFee, MAX_FEE) || !isFee(exchangeFee, MAX_FEE)) return null;
   return { freeShipping, baseFee: b.baseFee, freeOverAmount, remoteSurcharge: b.remoteSurcharge, remoteZipRanges, returnFee, exchangeFee };
 }

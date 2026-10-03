@@ -76,10 +76,10 @@ export async function updateShippingPolicy(
   raw: unknown,
 ): Promise<{ ok: true; policy: ShippingPolicy } | { ok: false; reason: "invalid_shipping_policy" }> {
   requireSellerPermission(ctx, "SHOP_SETTINGS");
-  const policy = parseShippingPolicy(raw);
-  if (!policy) return { ok: false, reason: "invalid_shipping_policy" };
   return db.$transaction(async (tx) => {
     const before = await getShippingPolicy(tx, ctx.sellerId);
+    const policy = parseShippingPolicy(raw, before);
+    if (!policy) return { ok: false as const, reason: "invalid_shipping_policy" as const };
     await tx.sellerShippingPolicy.upsert({
       where: { sellerId: ctx.sellerId },
       create: { sellerId: ctx.sellerId, ...policy },

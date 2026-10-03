@@ -436,5 +436,10 @@ describe("반품·교환 배송비(환불액)", () => {
     // 이 설정 뒤 주문은 새 반품 배송비로 기록된다
     const o = await s.order(1);
     expect(await db.order.findUniqueOrThrow({ where: { id: o.orderId } })).toMatchObject({ returnFeeSnapshot: 4000 });
+    // 반품·교환 배송비 칸이 없는 화면이 저장해도 지금 값을 그대로 둔다(기본값으로 돌아가지 않음)
+    const again = await putPolicyRoute(
+      new Request("http://localhost:3000/api/seller/shipping-policy", { method: "PUT", headers: { ...H, cookie }, body: JSON.stringify({ baseFee: 2500, remoteSurcharge: 3000, remoteZipRanges: [] }) }),
+    );
+    expect((await again.json()).policy).toMatchObject({ baseFee: 2500, returnFee: 4000, exchangeFee: 0 });
   });
 });
