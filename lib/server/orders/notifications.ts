@@ -2,7 +2,8 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { dbNow } from "../billing/subscription";
 
 // 주문 알림 「보냈음」 기록(중복 발송 방지). 발송 연동(알림톡·문자)은 비용·외부 키가 필요해 아직 없다.
-// 발송하는 쪽은 claim으로 보낼 주문을 먼저 잡고(OrderNotification PENDING), 보낸 뒤 markNotificationSent·Failed로 결과를 남긴다.
+// 발송하는 쪽은 claim으로 보낼 주문을 먼저 잡고(OrderNotification PENDING), 보낸 뒤 잡을 때 받은 값(시도 번호 포함)으로
+// markNotificationSent·Failed를 불러 결과를 남긴다.
 // - 주문·종류마다 1행((orderId, kind) 유니크)이라 여러 곳에서 동시에 돌려도 한 주문을 한 번만 잡는다.
 // - 실패했거나(FAILED) PENDING으로 오래(10분) 멈춘 기록은 시도 횟수(3번) 안에서 다시 잡는다. SENT는 다시 잡지 않는다.
 // - 대상이 아니게 된 주문(입금·취소·기한 지남)은 잡지 않는다.
@@ -41,17 +42,18 @@ export async function claimPaymentDueSoon(db: PrismaClient, opts: { now?: Date; 
       ORDER BY o."paymentDueAt" ASC LIMIT ${limit}) d
     ON CONFLICT ("orderId", "kind") DO NOTHING
     RETURNING "id"`;
-  // 다시 잡는 주문: 실패했거나 PENDING으로 오래 멈췄고 시도 횟수가 남은 기록을 기한 이른 순으로 한도만큼
-  // (조건부 갱신이라 동시에 돌려도 한 번만 잡힌다)
+  // 다시 잡는 주문: 실패했거나 PENDING으로 오래 멈췄고 시도 횟수가 남은 기록을 기한 이른 순으로, 처음 잡은 수를 뺀
+  // 남은 한도만큼(합쳐 limit개까지). 조건부 갱신이라 동시에 돌려도 한 번만 잡힌다.
+  const remaining = limit - fresh.length;
   const retryable = Prisma.sql`n."kind" = 'PAYMENT_DUE_SOON' AND n."attempts" < ${MAX_NOTIFICATION_ATTEMPTS}
       AND (n."status" = 'FAILED' OR (n."status" = 'PENDING' AND n."claimedAt" <= ${staleBefore}))`;
-  const retried = await db.$queryRaw<{ id: string }[]>`
+  const retried = remaining <= 0 ? [] : await db.$queryRaw<{ id: string }[]>`
     UPDATE "OrderNotification" n
     SET "status" = 'PENDING', "attempts" = n."attempts" + 1, "claimedAt" = ${now}, "failureReason" = NULL
     WHERE ${retryable} AND n."id" IN (
       SELECT n."id" FROM "OrderNotification" n JOIN (${due}) d ON d."id" = n."orderId"
       WHERE ${retryable}
-      ORDER BY d."paymentDueAt" ASC LIMIT ${limit})
+      ORDER BY d."paymentDueAt" ASC LIMIT ${remaining})
     RETURNING n."id"`;
   const ids = [...fresh, ...retried].map((r) => r.id);
   if (ids.length === 0) return [];
@@ -73,17 +75,21 @@ export async function claimPaymentDueSoon(db: PrismaClient, opts: { now?: Date; 
     .sort((a, b) => a.paymentDueAt.getTime() - b.paymentDueAt.getTime());
 }
 
-// 보냈음. 잡혀 있던(PENDING) 기록만 바꾼다. 바꿨으면 true.
-export async function markNotificationSent(db: PrismaClient, notificationId: string, now?: Date): Promise<boolean> {
+// 결과 기록은 잡을 때 받은 시도 번호(attempts)가 지금 기록과 같을 때만 한다. 10분 넘게 멈췄다 돌아온 옛 작업자가
+// 그사이 다시 잡힌 새 시도의 결과를 덮어쓰지 못하게 한다.
+type Claim = Pick<ClaimedNotification, "notificationId" | "attempts">;
+
+// 보냈음. 잡혀 있던(PENDING) 같은 시도만 바꾼다. 바꿨으면 true.
+export async function markNotificationSent(db: PrismaClient, claim: Claim, now?: Date): Promise<boolean> {
   const at = now ?? (await dbNow(db));
-  const r = await db.orderNotification.updateMany({ where: { id: notificationId, status: "PENDING" }, data: { status: "SENT", sentAt: at } });
+  const r = await db.orderNotification.updateMany({ where: { id: claim.notificationId, status: "PENDING", attempts: claim.attempts }, data: { status: "SENT", sentAt: at } });
   return r.count === 1;
 }
 
-// 보내지 못함. 잡혀 있던(PENDING) 기록만 바꾼다. 사유는 200자까지(비밀값·개인정보를 넣지 않는다). 바꿨으면 true.
-export async function markNotificationFailed(db: PrismaClient, notificationId: string, reason: string): Promise<boolean> {
+// 보내지 못함. 잡혀 있던(PENDING) 같은 시도만 바꾼다. 사유는 200자까지(비밀값·개인정보를 넣지 않는다). 바꿨으면 true.
+export async function markNotificationFailed(db: PrismaClient, claim: Claim, reason: string): Promise<boolean> {
   const r = await db.orderNotification.updateMany({
-    where: { id: notificationId, status: "PENDING" },
+    where: { id: claim.notificationId, status: "PENDING", attempts: claim.attempts },
     data: { status: "FAILED", failureReason: reason.slice(0, 200) },
   });
   return r.count === 1;

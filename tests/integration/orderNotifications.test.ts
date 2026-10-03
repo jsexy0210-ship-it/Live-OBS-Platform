@@ -65,14 +65,14 @@ describe("입금 기한 알림 「보냈음」 기록", () => {
     const sent = await s.order(6 * HOUR);
     const flaky = await s.order(6 * HOUR);
     const claimed = await claimPaymentDueSoon(db);
-    const idOf = (orderId: string) => claimed.find((c) => c.orderId === orderId)!.notificationId;
-    expect(await markNotificationSent(db, idOf(sent.id))).toBe(true);
-    expect(await markNotificationSent(db, idOf(sent.id))).toBe(false);
-    expect(await markNotificationFailed(db, idOf(flaky.id), "provider timeout")).toBe(true);
+    const claimOf = (orderId: string) => claimed.find((c) => c.orderId === orderId)!;
+    expect(await markNotificationSent(db, claimOf(sent.id))).toBe(true);
+    expect(await markNotificationSent(db, claimOf(sent.id))).toBe(false);
+    expect(await markNotificationFailed(db, claimOf(flaky.id), "provider timeout")).toBe(true);
     for (let attempt = 2; attempt <= MAX_NOTIFICATION_ATTEMPTS; attempt++) {
       const again = await claimPaymentDueSoon(db);
       expect(again.map((c) => [c.orderId, c.attempts])).toEqual([[flaky.id, attempt]]);
-      await markNotificationFailed(db, again[0].notificationId, "provider timeout");
+      await markNotificationFailed(db, again[0], "provider timeout");
     }
     expect(await claimPaymentDueSoon(db)).toEqual([]);
     expect(await db.orderNotification.findFirstOrThrow({ where: { orderId: sent.id } })).toMatchObject({ status: "SENT", sentAt: expect.any(Date) });
@@ -90,6 +90,7 @@ describe("입금 기한 알림 「보냈음」 기록", () => {
     await db.order.update({ where: { id: paidLater.id }, data: { status: "PAID" } });
     expect((await claimPaymentDueSoon(db)).map((c) => [c.orderId, c.attempts])).toEqual([[stuck.id, 2]]);
   });
+
   it("기한이 이른 주문에 기록이 이미 있어도 한도(limit) 안에서 새 주문을 잡고, 다시 잡기도 한도를 지킨다", async () => {
     const s = await shop();
     const sent = await s.order(1 * HOUR);
@@ -102,7 +103,30 @@ describe("입금 기한 알림 「보냈음」 기록", () => {
     expect(ids(await claimPaymentDueSoon(db, { limit: 2 }))).toEqual([fresh.id]);
     // 다시 잡을 기록이 3개여도 한도만큼만 잡는다(기한 이른 순)
     const more = await Promise.all([s.order(3 * HOUR), s.order(4 * HOUR), s.order(5 * HOUR)]);
-    for (const o of await claimPaymentDueSoon(db, { limit: 3 })) await markNotificationFailed(db, o.notificationId, "실패");
+    for (const o of await claimPaymentDueSoon(db, { limit: 3 })) await markNotificationFailed(db, o, "실패");
     expect(ids(await claimPaymentDueSoon(db, { limit: 2 }))).toEqual([more[0].id, more[1].id].sort());
+  });
+  it("멈췄다 돌아온 옛 시도는 다시 잡힌 새 시도의 결과를 덮어쓰지 못한다", async () => {
+    const s = await shop();
+    await s.order(6 * HOUR);
+    const [old] = await claimPaymentDueSoon(db);
+    await db.orderNotification.updateMany({ data: { claimedAt: new Date(Date.now() - 11 * 60_000) } });
+    const [renewed] = await claimPaymentDueSoon(db);
+    expect(renewed).toMatchObject({ notificationId: old.notificationId, attempts: 2 });
+    expect(await markNotificationFailed(db, old, "옛 작업자 시간 초과")).toBe(false);
+    expect(await markNotificationSent(db, old)).toBe(false);
+    expect(await db.orderNotification.findUniqueOrThrow({ where: { id: old.notificationId } })).toMatchObject({ status: "PENDING", attempts: 2, failureReason: null, sentAt: null });
+    expect(await markNotificationSent(db, renewed)).toBe(true);
+  });
+
+  it("처음 잡기와 다시 잡기를 합쳐 한 번에 limit개까지만 잡는다(처음 잡기 먼저)", async () => {
+    const s = await shop();
+    const retry = await Promise.all([s.order(1 * HOUR), s.order(2 * HOUR)]);
+    for (const c of await claimPaymentDueSoon(db)) await markNotificationFailed(db, c, "실패");
+    const fresh = await Promise.all([s.order(3 * HOUR), s.order(4 * HOUR)]);
+    const first = await claimPaymentDueSoon(db, { limit: 3 });
+    expect(first).toHaveLength(3);
+    expect(ids(first)).toEqual([...fresh.map((o) => o.id), retry[0].id].sort());
+    expect(ids(await claimPaymentDueSoon(db, { limit: 3 }))).toEqual([retry[1].id]);
   });
 });
