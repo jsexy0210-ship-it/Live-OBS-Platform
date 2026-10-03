@@ -163,6 +163,7 @@ export default function PasswordResetPage() {
                 </>
               ) : (
                 <NewPasswordForm
+                  loginHref={withType("/seller/login", staff)}
                   onDone={() => {
                     setStep("done");
                     focus("pa-done-title");

@@ -195,6 +195,7 @@ export default function FindIdPage() {
             ))}
           {step === "password" && (
             <NewPasswordForm
+              loginHref={withType("/seller/login", staff)}
               onDone={() => {
                 setStep("done");
                 focus("pa-done-title");
