@@ -204,8 +204,16 @@ export async function signupBuyer(
     });
     return { ok: true, memberId: step.id, broadcastNickname: step.broadcastNickname, resumed: false };
   } catch (e) {
-    // 다른 본인확인으로 같은 값이 동시에 가입된 경우(부분 유니크 인덱스 이름으로 어느 값인지 구분한다)
+    // 다른 본인확인으로 같은 값이 동시에 가입된 경우(부분 유니크 인덱스 이름으로 어느 값인지 구분한다).
+    // 트랜잭션이 되돌려져 시도 예약도 사라졌으니, 같은 잠금 아래 짧은 트랜잭션으로 시도 횟수를 따로 남긴다.
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      await db.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`buyer_signup_v:${v.id}`}))`;
+        await tx.identityVerification.updateMany({
+          where: { id: v.id, consumedAt: null, useAttemptCount: { lt: MAX_SIGNUP_ATTEMPTS_PER_VERIFICATION } },
+          data: { useAttemptCount: { increment: 1 } },
+        });
+      });
       const target = String((e.meta as { target?: unknown } | undefined)?.target ?? e.message);
       if (target.includes("ciHash") || target.includes("phone")) return { ok: false, reason: "already_member" };
       if (target.includes("loginId")) return { ok: false, reason: "login_id_taken" };

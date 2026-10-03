@@ -5,7 +5,7 @@ import { POST as signupRoute } from "../../app/api/shop/[slug]/signup/route";
 import { POST as confirmRoute } from "../../app/api/shop/[slug]/signup/verification/confirm/route";
 import { POST as resendRoute } from "../../app/api/shop/[slug]/signup/verification/resend/route";
 import { POST as startRoute } from "../../app/api/shop/[slug]/signup/verification/route";
-import { BUYER_SIGNUP_MESSAGES, BUYER_SIGNUP_VERIFY_DAILY_LIMIT_PER_IP, MAX_SIGNUP_ATTEMPTS_PER_VERIFICATION, signupBuyer } from "../../lib/server/buyers/signup";
+import { BUYER_SIGNUP_MESSAGES, BUYER_SIGNUP_STATUS, BUYER_SIGNUP_VERIFY_DAILY_LIMIT_PER_IP, MAX_SIGNUP_ATTEMPTS_PER_VERIFICATION, signupBuyer } from "../../lib/server/buyers/signup";
 import { prisma } from "../../lib/server/db";
 import { startSellerPasswordReset } from "../../lib/server/auth/passwordReset";
 import { FakeIdentityProvider } from "../../lib/server/identity/provider";
@@ -461,5 +461,47 @@ describe("signupBuyer는 completeIdentityVerification을 거친다", () => {
     if (a.ok && b.ok) expect(b.memberId).toBe(a.memberId);
     expect(await db.buyerMember.count({ where: { sellerId: seller.id } })).toBe(1);
     expect((await db.identityVerification.findUniqueOrThrow({ where: { id: verification.id } })).useAttemptCount).toBe(MAX_SIGNUP_ATTEMPTS_PER_VERIFICATION);
+  });
+  it("다른 본인확인으로 같은 아이디가 동시에 가입돼 회원 생성이 유니크 충돌로 실패해도 409이고 시도 횟수는 남는다", async () => {
+    const provider = new FakeIdentityProvider();
+    const { seller } = await createSeller();
+    const a = await startIdv(provider, { purpose: "BUYER_SIGNUP", sellerId: seller.id, person: { name: "가", phone: "01011110001" } });
+    const b = await startIdv(provider, { purpose: "BUYER_SIGNUP", sellerId: seller.id, person: { name: "나", phone: "01011110002" } });
+    expect((await confirmIdv(provider, a.verification, a.ownerToken)).ok).toBe(true);
+    expect((await confirmIdv(provider, b.verification, b.ownerToken)).ok).toBe(true);
+    const base = { sellerId: seller.id, loginId: "same@example.com", password: "pw-123456", agreedTerms: true, agreedPrivacy: true };
+    let release!: (v: unknown) => void;
+    const gate = new Promise((r) => (release = r));
+    // B는 중복 확인을 통과한 뒤 회원을 만들기 직전에 멈춘다
+    const paused = new Proxy(db, {
+      get(t, p) {
+        const v = Reflect.get(t, p);
+        if (p === "$transaction") {
+          return (fn: (tx: object) => unknown, o?: unknown) =>
+            t.$transaction(
+              (tx) =>
+                fn(
+                  new Proxy(tx, {
+                    get(x, k, r) {
+                      const m = Reflect.get(x, k, r);
+                      if (k !== "buyerMember") return m;
+                      return new Proxy(m, { get: (d, f) => (f === "create" ? async (q: never) => (await gate, d.create(q)) : Reflect.get(d, f)) });
+                    },
+                  }),
+                ) as Promise<unknown>,
+              o as never,
+            );
+        }
+        return typeof v === "function" ? v.bind(t) : v;
+      },
+    }) as PrismaClient;
+    const slow = signupBuyer(paused, provider, { ...base, verificationId: b.verification.id, ownerToken: b.ownerToken, broadcastNickname: "나" });
+    await new Promise((r) => setTimeout(r, 400));
+    expect((await signupBuyer(db, provider, { ...base, verificationId: a.verification.id, ownerToken: a.ownerToken, broadcastNickname: "가" })).ok).toBe(true);
+    release(null);
+    expect(await slow).toEqual({ ok: false, reason: "login_id_taken" });
+    expect(BUYER_SIGNUP_STATUS.login_id_taken).toBe(409);
+    expect((await db.identityVerification.findUniqueOrThrow({ where: { id: b.verification.id } })).useAttemptCount).toBe(1);
+    expect((await db.identityVerification.findUniqueOrThrow({ where: { id: b.verification.id } })).consumedAt).toBeNull();
   });
 });
