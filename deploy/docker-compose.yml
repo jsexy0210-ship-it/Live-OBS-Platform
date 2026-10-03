@@ -86,6 +86,36 @@ services:
       obs-web-app:
         condition: service_healthy
 
+  # 서버 감시 수집기(화면·앱과 따로 돈다). 기본 배포에는 안 뜨고 `--profile monitor`로 켠다(docs/DEPLOY.md 「서버 감시」).
+  # 비밀값(.env)은 넘기지 않는다. 기록은 /opt/obs/monitor, 배포 기록은 읽기만 한다.
+  obs-web-monitor:
+    image: node:22-bookworm-slim
+    profiles: ["monitor"]
+    restart: unless-stopped
+    command: ["node", "/ops/monitor.mjs"]
+    environment:
+      MONITOR_TARGETS: ${OBS_MONITOR_TARGETS:-app=http://obs-web-app:3000/api/health,proxy=http://obs-web-proxy/api/health#127.0.0.1}
+      MONITOR_INTERVAL_S: ${OBS_MONITOR_INTERVAL_S:-15}
+      MONITOR_TLS_HOST: ${OBS_MONITOR_TLS_HOST:-}
+      MONITOR_ALERT_URL: ${OBS_ALERT_URL:-}
+      TZ: Asia/Seoul
+    volumes:
+      - ../scripts/ops:/ops:ro
+      - ${OBS_MONITOR_DIR:-/opt/obs/monitor}:/data
+      - type: bind
+        source: ${OBS_HISTORY_FILE:-/opt/obs/deploy-history.log}
+        target: /deploy-history.log
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      # heartbeat가 2분 넘게 안 바뀌면 감시가 멈춘 것
+      test: ["CMD", "node", "-e", "const h=require('/data/heartbeat.json');process.exit(Date.now()-h.epochMs<120000?0:1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
 volumes:
   obs-web-pgdata:
   obs-web-caddy-data:
