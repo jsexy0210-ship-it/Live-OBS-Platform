@@ -6,7 +6,7 @@ import { POST as withdrawRoute } from "../../app/api/shop/[slug]/me/withdraw/rou
 import { createAddress } from "../../lib/server/buyers/addresses";
 import { WITHDRAW_FAIL_LIMIT, WITHDRAW_MESSAGES, withdrawBuyer } from "../../lib/server/buyers/withdraw";
 import { prisma } from "../../lib/server/db";
-import { loginSeller } from "../../lib/server/auth/login";
+import { loginBuyer, loginSeller } from "../../lib/server/auth/login";
 import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
 import { createOrder } from "../../lib/server/orders/create";
 import { PASSWORD, createLoginBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
@@ -158,24 +158,20 @@ describe("구매자 탈퇴", () => {
   });
 });
 
-// 경합 재현: 트랜잭션 안에서 model.method를 부르기 직전에 gate가 풀릴 때까지 멈춘다.
+// 경합 재현: model.method를 부르기 직전에(트랜잭션 안팎 모두) gate가 풀릴 때까지 멈춘다.
 function pauseBefore(target: PrismaClient, model: string, method: string, gate: Promise<unknown>): PrismaClient {
-  const wrapTx = (tx: object) =>
-    new Proxy(tx, {
-      get(t, p, r) {
-        const v = Reflect.get(t, p, r);
-        if (p !== model) return v;
-        return new Proxy(v, {
-          get(d, m, dr) {
-            const f = Reflect.get(d, m, dr);
-            return m === method ? async (...a: unknown[]) => (await gate, f.apply(d, a)) : f;
-          },
-        });
+  const wrapModel = (v: object) =>
+    new Proxy(v, {
+      get(d, m, dr) {
+        const f = Reflect.get(d, m, dr);
+        return m === method ? async (...a: unknown[]) => (await gate, f.apply(d, a)) : f;
       },
     });
+  const wrapTx = (tx: object) => new Proxy(tx, { get: (t, p, r) => (p === model ? wrapModel(Reflect.get(t, p, r)) : Reflect.get(t, p, r)) });
   return new Proxy(target, {
     get(t, p) {
       const v = Reflect.get(t, p);
+      if (p === model) return wrapModel(v);
       if (p === "$transaction") return (fn: (tx: object) => unknown, o?: unknown) => t.$transaction((tx) => fn(wrapTx(tx)) as Promise<unknown>, o as never);
       return typeof v === "function" ? v.bind(t) : v;
     },
@@ -230,5 +226,22 @@ describe("탈퇴와 동시 요청", () => {
     expect(withdrawn).toEqual({ ok: false, reason: "orders_in_progress" });
     expect(member.status).toBe("ACTIVE");
     expect(pending).toBe(1);
+  });
+  it("로그인이 탈퇴와 겹쳐도 탈퇴 회원에게 살아 있는 세션이 남지 않는다", async () => {
+    const s = await shop();
+    const scope = { sellerId: s.seller.id, buyerMemberId: s.buyer.id };
+    let release!: (v: unknown) => void;
+    const gate = new Promise((r) => (release = r));
+    // 로그인이 비밀번호를 확인하고 세션을 만들기 직전에 멈춘 사이 탈퇴한다
+    const logging = loginBuyer(pauseBefore(db, "buyerSession", "create", gate), { sellerId: s.seller.id, loginId: s.buyer.loginId!, password: PASSWORD }, {});
+    await new Promise((r) => setTimeout(r, 300));
+    const withdrawing = withdrawBuyer(db, scope, { password: PASSWORD });
+    settleOrTimeout(withdrawing).then(release);
+    const [logged, withdrawn] = await Promise.all([logging, withdrawing]);
+    expect(withdrawn).toEqual({ ok: true });
+    // 로그인이 먼저 세션을 만들었으면 탈퇴가 그 세션까지 폐기한다
+    expect(logged.ok).toBe(true);
+    expect(await db.buyerSession.count({ where: { buyerMemberId: s.buyer.id, revokedAt: null } })).toBe(0);
+    expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.withdraw", actorId: s.buyer.id } })).toMatchObject({ after: { revokedSessions: 2 } });
   });
 });
