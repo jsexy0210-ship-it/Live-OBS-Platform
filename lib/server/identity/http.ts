@@ -1,5 +1,6 @@
 import type { IdentityVerificationPurpose } from "@prisma/client";
 import { NextResponse } from "next/server";
+import { BUYER_SIGNUP_MESSAGES, shopOpen } from "../buyers/signup";
 import { prisma } from "../db";
 import { mutation, readCookie, readJson } from "../http/route";
 import { IDENTITY_ERROR_STATUS, identityErrorBody, type IdentityErrorCode } from "./messages";
@@ -14,8 +15,10 @@ export const identityFailure = (reason: IdentityErrorCode) =>
 
 // 인증번호 다시 보내기·확인 라우트. 본문 { verificationId, code? }. 시작한 브라우저의 쿠키(cookieName)가 있어야 한다.
 // 쇼핑몰(sellerId)은 요청 기록에서 읽고, ownerToken·용도가 맞아야만 쓴다(다른 세션의 요청 id는 없는 것으로 본다).
+// 쇼핑몰 경로(/api/shop/{slug}/…)에서 쓰면 URL의 쇼핑몰이 기록의 쇼핑몰과 같아야 하고(다르면 404),
+// 운영 중·잠기지 않은 쇼핑몰이어야 한다(잠기면 402, 가입 시작과 같은 기준).
 export function identityStepRoute(step: "resend" | "confirm", purpose: IdentityVerificationPurpose, cookieName: string) {
-  return mutation(async (req: Request) => {
+  return mutation(async (req: Request, ctx?: { params: Promise<{ slug?: string }> }) => {
     const provider = identityProvider();
     if (!provider) return identityUnavailable();
     const body = await readJson<{ verificationId: string; code: string }>(req);
@@ -23,6 +26,14 @@ export function identityStepRoute(step: "resend" | "confirm", purpose: IdentityV
     if (!id) return identityFailure("not_found");
     const v = await prisma.identityVerification.findUnique({ where: { id }, select: { sellerId: true } });
     if (!v) return identityFailure("not_found");
+    const slug = ctx ? (await ctx.params).slug : undefined;
+    if (slug !== undefined) {
+      const shop = await prisma.seller.findUnique({ where: { slug }, select: { id: true } });
+      if (!shop || shop.id !== v.sellerId) return identityFailure("not_found");
+      if (!(await shopOpen(prisma, shop.id))) {
+        return NextResponse.json({ error: "shop_unavailable", message: BUYER_SIGNUP_MESSAGES.shop_unavailable }, { status: 402, headers: { "cache-control": "no-store" } });
+      }
+    }
     const owner = { sellerId: v.sellerId, purpose, ownerToken: readCookie(req, cookieName) };
     const r = step === "resend" ? await resendIdentityCode(prisma, provider, id, owner) : await confirmIdentityCode(prisma, provider, id, owner, body.code);
     if (!r.ok) return identityFailure(r.reason);

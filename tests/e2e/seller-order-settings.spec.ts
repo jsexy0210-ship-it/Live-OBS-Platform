@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// SA-063 주문 설정: 입금 기한·자동 취소·자동 구매 제한을 실제로 바꾸고 저장해 확인한다.
+// SA-063 주문 설정: 입금 기한·자동 취소·자동 구매 제한·자동 배송 완료·자동 구매 확정을 실제로 바꾸고 저장해 확인한다.
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
 const SHOTS = process.env.E2E_SCREENSHOTS === "1";
 
@@ -25,7 +25,16 @@ async function resetPolicy(page: Page) {
     const res = await fetch("/api/seller/order-policy", {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ autoCancelEnabled: true, paymentDueHours: 24, unpaidRestrictionEnabled: true, restockOnCancel: true }),
+      body: JSON.stringify({
+        autoCancelEnabled: true,
+        paymentDueHours: 24,
+        unpaidRestrictionEnabled: true,
+        restockOnCancel: true,
+        autoDeliverEnabled: true,
+        autoDeliverDays: 7,
+        autoConfirmEnabled: true,
+        autoConfirmDays: 7,
+      }),
     });
     return res.status;
   });
@@ -165,4 +174,64 @@ test("쇼핑몰 설정 권한이 없는 직원은 권한 안내를 본다", asyn
   await expect(page.getByText("이 기능은 권한이 필요해요")).toBeVisible();
   await expect(page.getByText("필요한 권한: 쇼핑몰 설정")).toBeVisible();
   await expect(page.getByRole("button", { name: "저장", exact: true })).toHaveCount(0);
+});
+
+test("자동 배송 완료·자동 구매 확정: 기본 7일, 기간을 바꾸거나 끄면 저장되고 다시 열어도 그대로다", async ({ page }) => {
+  await openAs(page, "demo-owner@example.com");
+  await expect(page.getByTestId("auto-deliver-pending")).toBeVisible();
+  // 기간은 주문마다 따로 저장되지 않아, 바꾸면 진행 중인 주문에도 적용된다고 알린다
+  await expect(page.getByTestId("delivery-existing")).toHaveText("기간을 바꾸면 이미 배송 중이거나 배송 완료된 주문도 바뀐 기간으로 계산해요.");
+  await expect(page.getByLabel("자동 배송 완료 기간")).toHaveValue("7");
+  await expect(page.getByLabel("자동 구매 확정 기간")).toHaveValue("7");
+  await expect(page.getByTestId("delivery-preview")).toContainText("배송 중 7일이 지나면 배송 완료로 바뀌어요 · 배송 완료 7일 뒤 자동으로 구매 확정돼요");
+  await shot(page, "SA-063-delivery");
+
+  // 기간 검사: 1~30일
+  await page.getByLabel("자동 배송 완료 기간").fill("31");
+  await save(page);
+  await expect(page.getByText("1일부터 30일까지 정할 수 있어요")).toBeVisible();
+  await page.getByLabel("자동 배송 완료 기간").fill("0");
+  await expect(page.getByText("1일부터 30일까지 정할 수 있어요")).toBeVisible();
+  // 빈칸은 따로 안내한다
+  await page.getByLabel("자동 배송 완료 기간").fill("");
+  await expect(page.getByText("기간을 적어 주세요")).toBeVisible();
+
+  // 3일·끄기로 저장 → 다시 열어도 그대로
+  await page.getByLabel("자동 배송 완료 기간").fill("3");
+  await page.getByRole("switch", { name: "배송 완료 뒤 일정 기간이 지나면 자동 구매 확정" }).click();
+  await expect(page.getByLabel("자동 구매 확정 기간")).toHaveCount(0);
+  await expect(page.getByTestId("delivery-preview")).toContainText("배송 중 3일이 지나면 배송 완료로 바뀌어요");
+  await expect(page.getByTestId("delivery-preview")).not.toContainText("구매 확정돼요");
+  await saveOk(page);
+  await page.reload();
+  await expect(page.getByLabel("자동 배송 완료 기간")).toHaveValue("3");
+  await expect(page.getByRole("switch", { name: "배송 완료 뒤 일정 기간이 지나면 자동 구매 확정" })).toHaveAttribute("aria-checked", "false");
+
+  // 다시 켜면 이전 기간(7일)이 그대로 있다
+  await page.getByRole("switch", { name: "배송 완료 뒤 일정 기간이 지나면 자동 구매 확정" }).click();
+  await expect(page.getByLabel("자동 구매 확정 기간")).toHaveValue("7");
+  await page.getByLabel("자동 구매 확정 기간").fill("14");
+  await saveOk(page);
+  await page.reload();
+  await expect(page.getByLabel("자동 구매 확정 기간")).toHaveValue("14");
+  // 원래 값(7일·7일)으로 되돌려 둔다
+  await page.getByLabel("자동 배송 완료 기간").fill("7");
+  await page.getByLabel("자동 구매 확정 기간").fill("7");
+  await saveOk(page);
+});
+
+test("자동 구매 확정을 꺼 둔 상태에서는 숨겨진 기간 값이 틀려도 저장할 수 있다", async ({ page }) => {
+  await openAs(page, "demo-owner@example.com");
+  await page.getByLabel("자동 구매 확정 기간").fill("99");
+  await page.getByRole("switch", { name: "배송 완료 뒤 일정 기간이 지나면 자동 구매 확정" }).click();
+  // 꺼짐으로 바뀐 것만 저장되고, 기간은 저장된 7일 그대로 보낸다
+  await saveOk(page);
+  await page.reload();
+  await expect(page.getByRole("switch", { name: "배송 완료 뒤 일정 기간이 지나면 자동 구매 확정" })).toHaveAttribute("aria-checked", "false");
+  await page.getByRole("switch", { name: "배송 완료 뒤 일정 기간이 지나면 자동 구매 확정" }).click();
+  await expect(page.getByLabel("자동 구매 확정 기간")).toHaveValue("7");
+  // 켜진 상태로 되돌려 저장해 둔다
+  await saveOk(page);
+  await page.reload();
+  await expect(page.getByRole("switch", { name: "배송 완료 뒤 일정 기간이 지나면 자동 구매 확정" })).toHaveAttribute("aria-checked", "true");
 });
