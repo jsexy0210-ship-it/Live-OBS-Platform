@@ -176,7 +176,10 @@ async function runAll(
     if (want && ((facts.shopKey && facts.shopKey !== want.shopKey) || (facts.obsPairingId && facts.obsPairingId !== want.obsPairingId))) {
       return { kind: "failed", reason: "reconnect_target_mismatch" };
     }
-    await hooks.stepDone(stepIndex + 1, facts);
+    // 마지막(검증) 단계는 여기서 진행 위치를 넘기지 않는다. 완료 기록(finishJob)이 검증 증거와 함께 한 번에 넘긴다
+    // (그 사이 작업자가 멈춰도 다시 잡은 작업자가 검증 단계부터 다시 해 증거를 다시 얻는다).
+    if (stepIndex < STEPS.length - 1) await hooks.stepDone(stepIndex + 1, facts);
+    else if (facts.shopKey || facts.obsPairingId) await hooks.stepDone(stepIndex, facts);
   }
   // 검증 단계를 이번 실행에서 통과했어야 완료다(증거 없이 완료하지 않는다)
   if (!evidence) return { kind: "retry", reason: "verification_missing" };

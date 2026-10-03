@@ -14,7 +14,8 @@ import { FakeBrowserExecutor, FakeObsBridge, FakePlanner, FakeSecretVault } from
 import { markConnectionRevoked } from "../../lib/server/automation/connection";
 import { cancelJob, requestRefund, resumeJob } from "../../lib/server/automation/jobs";
 import { purchaseAutomation, reconcileAutomationPayments, reconnectAutomation } from "../../lib/server/automation/purchase";
-import { FencingError, advanceStep, claimNext, finishJob, reapExpired, touch } from "../../lib/server/automation/queue";
+import { runSteps } from "../../lib/server/automation/engine";
+import { FencingError, advanceStep, claimNext, finishJob, reapExpired, toVerifying, touch } from "../../lib/server/automation/queue";
 import { executeJob, runOnce } from "../../lib/server/automation/worker";
 import { FakeBillingProvider } from "../../lib/server/billing/provider";
 import { billingProvider } from "../../lib/server/billing/registry";
@@ -769,5 +770,58 @@ describe("Codex 리뷰 반영", () => {
     expect(await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: k, target: { ...s.target, obsPairingId: "other-pc" }, consent })).toEqual({ ok: false, reason: "idempotency_key_reused" });
     expect(await purchaseAutomation(db, s.provider, s.ctx, { idempotencyKey: k, consent, shopUrl: SHOP })).toEqual({ ok: false, reason: "idempotency_key_reused" });
     expect(await db.automationJob.count({ where: { kind: "RECONNECT_FREE" } })).toBe(1);
+  });
+
+  it("검증 단계를 마친 뒤 완료 기록 전에 작업자가 멈춰도, 다시 잡은 작업자가 검증부터 다시 해 증거와 함께 완료한다", async () => {
+    const a = await bought();
+    const claimed = await claimNext(db, "crashing", { leaseMs: 200 });
+    if (!claimed) throw new Error("no claim");
+    const nextIndexes: number[] = [];
+    // 완료 기록(finishJob) 없이 엔진만 돌리고 멈춘 작업자
+    const r = await runSteps(
+      runtime(),
+      { sellerId: a.seller.id, jobId: a.jobId },
+      { startIndex: 0, verifying: false, stats: { costUsed: 0, plannerCalls: 0, playbookActions: 0, deviatedSteps: [] }, costLimit: 3000, maxActionsPerStep: 12, playbook: cafe24Playbook },
+      {
+        touch: (st) => touch(db, claimed.claim, st, 200),
+        enterVerify: () => toVerifying(db, claimed.claim),
+        stepDone: (next, facts) => (nextIndexes.push(next), advanceStep(db, claimed.claim, next, facts)),
+      },
+    );
+    expect(r.kind).toBe("succeeded");
+    expect(Math.max(...nextIndexes)).toBe(4);
+    expect(await job(a.jobId)).toMatchObject({ status: "VERIFYING", stepIndex: 4, verifiedAt: null });
+    await new Promise((res) => setTimeout(res, 250));
+    expect((await reapExpired(db, () => 0)).requeued).toBe(1);
+    await db.automationJob.update({ where: { id: a.jobId }, data: { runAfter: new Date(Date.now() - 1000) } });
+    expect(await runOnce(db, runtime(), W)).toBe("succeeded");
+    const j = await job(a.jobId);
+    expect(j).toMatchObject({ status: "SUCCEEDED", stepIndex: 5 });
+    expect(j.verificationEvidence).toMatchObject({ shownOnOverlay: true });
+  });
+
+  it("카드 거절된 구매를 같은 키로 다시 보내도 실패로 돌려준다(라우트 402)", async () => {
+    const s = await shopWithCard();
+    const fake = billingProvider() as FakeBillingProvider;
+    // 전역 가짜 공급자를 쓰므로 이 판매자 전용 카드만 거절한다(다른 테스트에 영향 없게)
+    const declined = `fake-bk-declined-${s.seller.id}`;
+    await db.sellerSubscription.update({ where: { sellerId: s.seller.id }, data: { billingKeyCipher: sealBillingKey(declined, s.seller.id) } });
+    fake.decline(declined);
+    const cookie = await cookieFor(s.owner.email);
+    const k = newKey();
+    const call = () =>
+      purchaseRoute(
+        new Request("http://localhost:3000/api/automation/purchase", {
+          method: "POST",
+          headers: H(cookie, { "idempotency-key": k, "content-type": "application/json" }),
+          body: JSON.stringify({ consent, shopUrl: SHOP }),
+        }),
+      );
+    const first = await call();
+    expect(first.status).toBe(402);
+    const again = await call();
+    expect(again.status).toBe(402);
+    expect(await again.json()).toMatchObject({ error: "payment_failed" });
+    expect(await purchaseAutomation(db, fake, s.ctx, { idempotencyKey: k, consent, shopUrl: SHOP })).toMatchObject({ ok: false, reason: "payment_failed" });
   });
 });

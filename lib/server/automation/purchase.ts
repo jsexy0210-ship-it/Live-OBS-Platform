@@ -54,10 +54,11 @@ export async function supportedPlaybookFor(db: PrismaClient, shopUrl: unknown): 
 // 거부 안내 문구(화면 문구 정본은 디자인 쪽). 플랫폼 이름을 넣지 않는다.
 export const SHOP_NOT_SUPPORTED_MESSAGE = "아직 자동 연결할 수 없는 쇼핑몰이에요. 직접 설정으로 연결해 주세요";
 
+// 결제가 실패한 요청은 재전송해도 실패로 돌려준다(처음 응답과 같게)
 const view = (p: AutomationPayment & { job: AutomationJob | null }, replayed: boolean): PurchaseResult =>
-  p.job
+  p.job && p.status !== "FAILED"
     ? { ok: true, jobId: p.job.id, kind: p.job.kind, paymentStatus: p.status, jobStatus: p.job.status, replayed }
-    : { ok: false, reason: "payment_failed" };
+    : { ok: false, reason: "payment_failed", jobId: p.job?.id };
 
 // 결제 전 고지 동의 확인. 체크 해제·문자열 true·예전 문구 버전은 거부한다.
 function consentProblem(consent: unknown): "consent_required" | "consent_outdated" | null {

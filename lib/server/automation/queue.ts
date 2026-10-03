@@ -2,6 +2,7 @@ import type { AutomationCustomerAction, AutomationJob, AutomationJobStatus, Pris
 import { AUTOMATION_LIMITS } from "./config";
 import type { ConnectionFacts, VerificationEvidence } from "./ports";
 import { LEASED, sourcesOf } from "./states";
+import { STEPS } from "./steps";
 
 // 작업 큐: 실행 자리 잡기(lease) · fencing 토큰 · 만료 회수 · 다시 시도 간격.
 // 주문 처리와 테이블·잠금을 나눈다(판매자 행을 잠그지 않는다). 그래서 자동 연결이 몰려도 주문 API를 막지 않는다.
@@ -155,7 +156,8 @@ export const finishJob = (db: PrismaClient, c: Claim, to: "SUCCEEDED" | "FAILED"
       ...RELEASE,
       finishedAt: now,
       ...(reason ? { lastError: reason.slice(0, 200) } : {}),
-      ...(evidence ? { verifiedAt: now, verificationEvidence: evidence as Prisma.InputJsonValue } : {}),
+      // 성공은 검증 증거와 마지막 진행 위치를 같은 쓰기로 남긴다
+      ...(evidence ? { verifiedAt: now, verificationEvidence: evidence as Prisma.InputJsonValue, stepIndex: STEPS.length } : {}),
     },
     ...(reason ? { detail: { reason: reason.slice(0, 200) } } : {}),
   }));
