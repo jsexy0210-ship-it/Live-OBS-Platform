@@ -57,6 +57,16 @@ export async function getQueueSnapshot(db: PrismaClient, ctx: TenantContext) {
 
 export async function getLiveVersion(db: PrismaClient, ctx: TenantContext): Promise<number> {
   requireSellerRead(ctx, "BROADCAST_RUN");
-  const s = await db.seller.findUniqueOrThrow({ where: { id: ctx.sellerId }, select: { liveVersion: true } });
+  return readLiveVersion(db, ctx.sellerId);
+}
+
+// 환불(ORDER_SHIPPING)에 보낼 expectedVersion. 환불과 같은 권한으로 읽게 해 방송 진행 권한이 없는 주문·배송 담당도 환불할 수 있다.
+export async function getRefundVersion(db: PrismaClient, ctx: TenantContext): Promise<number> {
+  requireSellerRead(ctx, "ORDER_SHIPPING");
+  return readLiveVersion(db, ctx.sellerId);
+}
+
+async function readLiveVersion(db: PrismaClient, sellerId: string) {
+  const s = await db.seller.findUniqueOrThrow({ where: { id: sellerId }, select: { liveVersion: true } });
   return s.liveVersion;
 }
