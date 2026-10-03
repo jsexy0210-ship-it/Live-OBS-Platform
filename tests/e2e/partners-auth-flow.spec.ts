@@ -402,6 +402,16 @@ test("직원: 로그인하면 본인확인 연결 안내가 뜨고, 나중에 �
   await shot(page, "AU-012");
   await page.getByRole("button", { name: "나중에 할게요" }).click();
   await expect(page).toHaveURL(/\/seller\/products$/);
+  // 원래 가려던 곳이 있으면 「다른 계정으로 로그인」해도 그곳을 잃지 않는다
+  await page.goto("/seller/identity-link?next=%2Fseller%2Forders");
+  await page.getByRole("link", { name: "다른 계정으로 로그인" }).click();
+  await expect(page).toHaveURL(/\/seller\/login\?type=staff&next=%2Fseller%2Forders$/);
+  await page.getByLabel("이메일").fill(s.email);
+  await page.getByLabel("비밀번호").fill(s.password);
+  await page.getByRole("button", { name: "로그인" }).click();
+  await expect(page).toHaveURL(/\/seller\/identity-link\?next=%2Fseller%2Forders/);
+  await page.getByRole("button", { name: "나중에 할게요" }).click();
+  await expect(page).toHaveURL(/\/seller\/orders$/);
 
   // 연결 전에는 아이디 찾기에서 계정이 나오지 않는다
   await signOut(page);

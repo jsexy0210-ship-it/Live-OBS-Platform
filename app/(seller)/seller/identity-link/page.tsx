@@ -115,7 +115,8 @@ export default function IdentityLinkPage() {
       <button className="btn btn-sm btn-text" type="button" onClick={later}>
         나중에 할게요
       </button>
-      <Link href="/seller/login?type=staff">다른 계정으로 로그인</Link>
+      {/* 상태를 받은 뒤(브라우저)에만 그려지므로 safeNext()로 원래 가려던 곳을 함께 넘긴다 */}
+      <Link href={`/seller/login?type=staff&next=${encodeURIComponent(safeNext())}`}>다른 계정으로 로그인</Link>
     </div>
   );
 
