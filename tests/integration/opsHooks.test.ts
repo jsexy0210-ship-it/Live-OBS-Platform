@@ -1,0 +1,104 @@
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { GET as metricsRoute } from "../../app/api/admin/ops/metrics/route";
+import { POST as eventsRoute } from "../../app/api/internal/ops/events/route";
+import { GET as healthRoute } from "../../app/api/health/route";
+import { createAdminSession } from "../../lib/server/auth/session";
+import { prisma } from "../../lib/server/db";
+import { runScheduledJobs, type ScheduledJob } from "../../lib/server/jobs/scheduler";
+import { opsInstanceName } from "../../lib/server/ops/metrics";
+import { createAdmin, db, resetDb } from "./helpers";
+
+beforeEach(async () => {
+  vi.unstubAllEnvs();
+  await resetDb();
+});
+afterAll(async () => {
+  vi.unstubAllEnvs();
+  await db.$disconnect();
+  await prisma.$disconnect();
+});
+
+const BASE = "http://localhost:3000";
+const TOKEN = "ops-ingest-token-0123456789abcdef-xyz";
+const adminCookie = async (role: "SUPER_ADMIN" | "OPERATIONS" | "CS" | "READ_ONLY") => {
+  const admin = await createAdmin(role);
+  const s = await createAdminSession(db, admin.id, {});
+  return `lo_admin=${s.token}`;
+};
+const metrics = (cookie?: string) => metricsRoute(new Request(`${BASE}/api/admin/ops/metrics`, { headers: cookie ? { cookie } : {} }));
+const ingest = (body: unknown, token?: string) =>
+  eventsRoute(new Request(`${BASE}/api/internal/ops/events`, { method: "POST", headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body) }));
+const ev = (over: Record<string, unknown> = {}) => ({ source: "monitor", eventId: "e1", kind: "incident_open", key: "health", severity: "critical", message: "앱 응답 없음", occurredAt: "2026-10-04T01:00:00Z", ...over });
+
+describe("정기 실행 heartbeat", () => {
+  it("작업마다 결과와 마지막 실행·성공 시각을 남기고, 루프 자체도 scheduler.tick으로 남긴다. 실패가 이어져도 마지막 성공 시각은 그대로다", async () => {
+    vi.stubEnv("OPS_INSTANCE_NAME", "web-1");
+    let fail = false;
+    const jobs: ScheduledJob[] = [{ name: "test.job", run: async () => { if (fail) throw new Error("boom"); return 1; } }];
+    const t1 = new Date("2026-10-04T00:00:00Z");
+    await runScheduledJobs(db, t1, jobs);
+    fail = true;
+    const t2 = new Date("2026-10-04T01:00:00Z");
+    await runScheduledJobs(db, t2, jobs);
+    const rows = await db.opsHeartbeat.findMany({ orderBy: { job: "asc" } });
+    expect(rows.map((r) => [r.instance, r.job, r.lastStatus])).toEqual([
+      ["web-1", "scheduler.tick", "failed"],
+      ["web-1", "test.job", "failed"],
+    ]);
+    const job = rows.find((r) => r.job === "test.job")!;
+    expect(job.lastRunAt).toEqual(t2);
+    expect(job.lastOkAt).toEqual(t1);
+    expect(job.lastError).toBe("boom");
+    fail = false;
+    await runScheduledJobs(db, new Date("2026-10-04T02:00:00Z"), jobs);
+    expect(await db.opsHeartbeat.findUniqueOrThrow({ where: { instance_job: { instance: "web-1", job: "test.job" } } })).toMatchObject({ lastStatus: "done", lastError: null });
+    expect(opsInstanceName()).toBe("web-1");
+  });
+});
+
+describe("운영 지표 GET /api/admin/ops/metrics", () => {
+  it("최고관리자만 본다(운영·CS·조회 전용 403, 로그인 없음 401). DB 지연·연결 수·heartbeat·큐(not_measured)·열린 사건을 준다. 공개 health에는 없다", async () => {
+    expect((await metrics()).status).toBe(401);
+    for (const role of ["OPERATIONS", "CS", "READ_ONLY"] as const) expect((await metrics(await adminCookie(role))).status, role).toBe(403);
+    vi.stubEnv("OPS_INGEST_TOKEN", TOKEN);
+    await ingest({ events: [ev(), ev({ eventId: "e2", key: "cert", kind: "incident_open", occurredAt: "2026-10-04T01:01:00Z" }), ev({ eventId: "e3", kind: "incident_close", occurredAt: "2026-10-04T01:05:00Z", message: "복구" })] }, TOKEN);
+    await runScheduledJobs(db, new Date(), [{ name: "test.ok", run: async () => 0 }]);
+    const r = await metrics(await adminCookie("SUPER_ADMIN"));
+    expect(r.status).toBe(200);
+    const body = await r.json();
+    expect(body.db.latencyMs).toEqual(expect.any(Number));
+    expect(body.db.connections.total).toBeGreaterThanOrEqual(1);
+    expect(body.db.connections.max).toBeGreaterThan(0);
+    expect(body.queueBacklog).toBe("not_measured");
+    expect(body.heartbeats.map((h: { job: string }) => h.job).sort()).toEqual(["scheduler.tick", "test.ok"]);
+    // health는 닫혔고 cert만 열려 있다
+    expect(body.incidents.open.map((e: { key: string }) => e.key)).toEqual(["cert"]);
+    expect(body.incidents.recent).toHaveLength(3);
+    const health = await (await healthRoute()).json();
+    expect(JSON.stringify(health)).not.toMatch(/connections|heartbeats|incidents/);
+  });
+});
+
+describe("수집기 사건 기록 POST /api/internal/ops/events", () => {
+  it("토큰이 설정되지 않으면 503, 틀리거나 없으면 401로 저장하지 않는다", async () => {
+    expect((await ingest({ events: [ev()] }, TOKEN)).status).toBe(503);
+    vi.stubEnv("OPS_INGEST_TOKEN", "short");
+    expect((await ingest({ events: [ev()] }, "short")).status).toBe(503);
+    vi.stubEnv("OPS_INGEST_TOKEN", TOKEN);
+    expect((await ingest({ events: [ev()] })).status).toBe(401);
+    expect((await ingest({ events: [ev()] }, `${TOKEN}x`)).status).toBe(401);
+    expect(await db.opsEvent.count()).toBe(0);
+  });
+
+  it("같은 source·eventId는 한 번만 저장하고(재전송 안전), 형식이 틀리면 전체를 거부한다", async () => {
+    vi.stubEnv("OPS_INGEST_TOKEN", TOKEN);
+    const first = await ingest({ events: [ev(), ev({ eventId: "e2" })] }, TOKEN);
+    expect(await first.json()).toEqual({ stored: 2 });
+    expect(await (await ingest({ events: [ev(), ev({ eventId: "e3" })] }, TOKEN)).json()).toEqual({ stored: 1 });
+    expect(await db.opsEvent.count()).toBe(3);
+    for (const bad of [{}, { events: [] }, { events: [ev({ kind: "delete_all" })] }, { events: [ev({ occurredAt: "nope" })] }, { events: [ev(), ev({ eventId: "" })] }, { events: Array.from({ length: 51 }, (_, i) => ev({ eventId: `b${i}` })) }]) {
+      expect((await ingest(bad, TOKEN)).status, JSON.stringify(bad).slice(0, 60)).toBe(400);
+    }
+    expect(await db.opsEvent.count()).toBe(3);
+  });
+});

@@ -1,10 +1,13 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { purgeExpiredRejoinBlocks } from "../buyers/rejoin";
+import { recordHeartbeat } from "../ops/metrics";
 
 // 앱 안 정기 실행(MASTER 결정 2026-10-03: 외부 cron 대신). instrumentation.ts register(nodejs 런타임)에서 startScheduler를 부른다.
 // - 일정 간격(기본 1시간)으로 SCHEDULED_JOBS를 차례로 돈다. 작업마다 pg advisory xact lock을 시도해 여러 인스턴스 중 하나만 실행한다.
 // - 작업 하나가 실패해도 다른 작업과 앱은 계속 동작한다(오류는 로그만).
 // - SCHEDULER_DISABLED=1이면 시작하지 않는다(테스트·로컬).
+// - 돌 때마다 인스턴스·작업별 heartbeat(OpsHeartbeat)를 남긴다. 작업은 실행한 결과(done·skipped·failed), 루프 자체는 "scheduler.tick".
+//   감시는 앱 밖 수집기가 이 표를 읽어 판단한다(앱과 같이 죽는 감시를 두지 않음, ops/metrics.ts).
 // 정리 작업을 새로 만들면 여기에 넣는다. run은 트랜잭션 안에서 불리고 처리한 건수를 돌려준다.
 export type ScheduledJob = { name: string; run: (tx: Prisma.TransactionClient, now: Date) => Promise<number> };
 
@@ -37,7 +40,18 @@ export async function runScheduledJobs(db: PrismaClient, now = new Date(), jobs:
       out.push({ name: job.name, status: "failed", error });
     }
   }
+  // heartbeat는 작업 결과와 따로 남긴다(heartbeat 쓰기가 실패해도 작업 결과는 그대로, 로그만)
+  for (const o of out) await beat(db, o.name, o.status, now, o.status === "failed" ? o.error : undefined);
+  await beat(db, "scheduler.tick", out.some((o) => o.status === "failed") ? "failed" : "done", now, out.filter((o) => o.status === "failed").map((o) => o.name).join(", ") || undefined);
   return out;
+}
+
+async function beat(db: PrismaClient, job: string, status: "done" | "skipped" | "failed", now: Date, error?: string) {
+  try {
+    await recordHeartbeat(db, job, status, now, error);
+  } catch (e) {
+    console.error(`[scheduler] heartbeat ${job} failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
 }
 
 const state = globalThis as unknown as { liveObsScheduler?: ReturnType<typeof setInterval> };

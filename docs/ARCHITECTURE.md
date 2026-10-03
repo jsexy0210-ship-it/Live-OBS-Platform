@@ -415,6 +415,10 @@ PG 연결 정보, 구매자 문의·공지, 알림 발송 기록, 도우미 자�
 - [비용] 운영 Postgres 위치: 카카오클라우드 기존 VM에 직접 설치(추가 비용 적음, 백업·운영 부담) vs 관리형 DB(유료, 백업·장애 대응 포함). 배포 단계에서 대표님 결정.
 - [비용] 문자·알림톡·본인인증 업체 — PRODUCT_SCOPE 미확정 항목.
 - 비밀값(DB 접속 문자열, CI 해시 키)은 환경변수로만. 저장소·문서·로그 기록 금지.
+- 앱 감시 훅(ONQ 단계 6 서버 몫, PR #159 요청, `lib/server/ops/metrics.ts`). 감시는 앱과 같이 죽지 않게 앱 밖 수집기(`scripts/ops/monitor.mjs`)가 하고, 앱은 값만 남긴다.
+  - `OpsHeartbeat`(instance·job 기본키, lastRunAt·lastStatus `done|skipped|failed`·lastError·lastOkAt): 앱 안 정기 실행(`jobs/scheduler.ts`)이 돌 때마다 작업별 결과와 루프 자체(`scheduler.tick`)를 남긴다. 인스턴스 이름은 `OPS_INSTANCE_NAME` 또는 호스트 이름. heartbeat 쓰기가 실패해도 작업 결과는 그대로다. 멈춤 판단(lastRunAt이 간격 1시간보다 오래됨 등)은 수집기 몫이다(인프라 세션).
+  - `GET /api/admin/ops/metrics`(최고관리자만, `system.manage`): DB `SELECT 1` 지연, 이 DB의 연결 수(활성·유휴·트랜잭션 중 유휴·잠금 대기, max_connections — 풀 사용량을 DB 쪽에서 본 값), heartbeat, 작업 큐 적체(`not_measured`, 자동연결 큐가 생기면 넣음), 인프라 사건(열린 사건 = key별 마지막이 incident_open, 최근 50개). 공개 `/api/health`에는 넣지 않는다.
+  - `OpsEvent`(source·eventId 유니크, kind `incident_open|incident_close|info|warning`, key, severity `info|warning|critical`, message, detail, occurredAt): 수집기가 `POST /api/internal/ops/events`로 쓴다. 인증은 `Authorization: Bearer <OPS_INGEST_TOKEN>`(서버 환경변수, 32자 이상, 없으면 503으로 꺼짐, 틀리면 401, 해시 비교). 브라우저용이 아니라 Origin 검사 대신 토큰을 쓴다. 한 번에 1~50건, 하나라도 틀리면 400, 같은 (source, eventId) 재전송은 건너뛴다. 수집기 전용 DB 계정으로 직접 쓰는 방식은 계정·권한 관리가 늘어 택하지 않았다.
 
 ## 9. 확정 결과 (2026-10-02 21:50 KST)
 

@@ -259,30 +259,30 @@ enum BuyerMemberStatus {
 
 // CI·휴대폰·아이디·방송 닉네임 유니크는 deletedAt IS NULL 행에만 적용 (마이그레이션 SQL 부분 유니크 인덱스).
 model BuyerMember {
-  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerId           String            @db.Uuid
-  loginId            String
-  passwordHash       String
-  name               String
-  phone              String
+  id                          String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId                    String            @db.Uuid
+  loginId                     String
+  passwordHash                String
+  name                        String
+  phone                       String
   // PASS 본인인증 CI의 HMAC-SHA256 값(원문 CI는 저장하지 않음). 같은 쇼핑몰 중복 가입 차단 기준.
-  ciHash             String
-  identityVerifiedAt DateTime          @db.Timestamptz(3)
+  ciHash                      String
+  identityVerifiedAt          DateTime          @db.Timestamptz(3)
   // PASS 생년월일. 미성년자 구매 정책 판정에 쓴다.
-  birthDate          DateTime          @db.Date
-  broadcastNickname  String
-  gradeId            String            @db.Uuid
-  status             BuyerMemberStatus @default(ACTIVE)
-  marketingConsentAt DateTime?         @db.Timestamptz(3)
+  birthDate                   DateTime          @db.Date
+  broadcastNickname           String
+  gradeId                     String            @db.Uuid
+  status                      BuyerMemberStatus @default(ACTIVE)
+  marketingConsentAt          DateTime?         @db.Timestamptz(3)
   // 가입 때 재가입 제한이 켜져 있었으면 그때 기간(일). 가입하며 안내받은(동의한) 기간보다 길게 CI 해시를 보관하지 않으려고 남긴다.
   // 없으면(제한이 꺼져 있을 때 가입) 탈퇴해도 재가입을 제한하지 않는다(buyers/rejoin.ts).
   rejoinRestrictionDaysAgreed Int?
   // 「재가입 제한 정보 보관 동의」(개인정보 수집·이용 동의와 별도, 재가입 제한을 켠 쇼핑몰에서만 받음) 시각·문서 버전
-  rejoinRetentionAgreedAt     DateTime? @db.Timestamptz(3)
+  rejoinRetentionAgreedAt     DateTime?         @db.Timestamptz(3)
   rejoinRetentionVersion      String?
-  lastLoginAt        DateTime?         @db.Timestamptz(3)
-  createdAt          DateTime          @default(now()) @db.Timestamptz(3)
-  deletedAt          DateTime?         @db.Timestamptz(3)
+  lastLoginAt                 DateTime?         @db.Timestamptz(3)
+  createdAt                   DateTime          @default(now()) @db.Timestamptz(3)
+  deletedAt                   DateTime?         @db.Timestamptz(3)
 
   seller               Seller                     @relation(fields: [sellerId], references: [id])
   grade                MemberGrade                @relation(fields: [sellerId, gradeId], references: [sellerId, id])
@@ -1160,4 +1160,42 @@ model BuyerRejoinBlock {
 
   @@unique([sellerId, ciHash])
   @@index([expiresAt])
+}
+
+// 앱 안 정기 실행 heartbeat(인스턴스·작업별 마지막 실행). 감시는 앱 밖 수집기(scripts/ops/monitor.mjs)가 이 표를 읽어 판단한다.
+// 작업 이름 "scheduler.tick"은 정기 실행 루프 자체(작업을 잠금 때문에 건너뛰어도 남음).
+model OpsHeartbeat {
+  instance   String
+  job        String
+  lastRunAt  DateTime  @db.Timestamptz(3)
+  // done | skipped | failed
+  lastStatus String
+  lastError  String?
+  // 마지막 성공 시각(실패가 이어져도 언제부터인지 알 수 있게)
+  lastOkAt   DateTime? @db.Timestamptz(3)
+  updatedAt  DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@id([instance, job])
+}
+
+// 인프라 감시 사건(수집기가 남기는 incident 열기·닫기 등). 마스터 관리자(최고관리자)가 읽는다.
+// 쓰기는 내부 토큰(OPS_INGEST_TOKEN)으로 인증한 POST /api/internal/ops/events만. 같은 (source, eventId)는 한 번만 저장한다(재전송 안전).
+model OpsEvent {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  source     String
+  // 수집기가 붙인 사건 id(재전송 중복 제거)
+  eventId    String
+  // incident_open | incident_close | info 등
+  kind       String
+  // 같은 사건을 묶는 키(예: health, cert, version_mismatch)
+  key        String
+  severity   String
+  message    String
+  detail     Json?
+  occurredAt DateTime @db.Timestamptz(3)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([source, eventId])
+  @@index([occurredAt])
+  @@index([key, occurredAt])
 }
