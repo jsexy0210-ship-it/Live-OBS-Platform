@@ -1601,3 +1601,61 @@ describe("Codex 7차 반영(6325051)", () => {
     expect(rt.browser.saved.has(a.jobId)).toBe(false);
   });
 });
+
+describe("Codex 8차 반영(748f1ff)", () => {
+  // 결제 요청이 PG에 닿은 뒤 조회에 바로 보이지 않는(반영 지연) PG
+  class LaggyProvider extends FakeBillingProvider {
+    lag = 0;
+    override async charge(input: Parameters<FakeBillingProvider["charge"]>[0]) {
+      const r = await super.charge(input);
+      this.lag = 1;
+      return r;
+    }
+    override async getPayment(orderId: string) {
+      if (this.lag > 0) {
+        this.lag--;
+        return { status: "NOT_FOUND" as const };
+      }
+      return super.getPayment(orderId);
+    }
+  }
+
+  it("30분이 지난 결제를 다시 보낸 회차에는 조회가 NOT_FOUND여도 실패로 확정하지 않고, 다음 회차에 PAID로 대사한다", async () => {
+    const provider = new LaggyProvider();
+    const a = await shopWithCard();
+    provider.failNext = "timeout_before_charge";
+    const r = await purchaseAutomation(db, provider, a.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP });
+    if (!r.ok) throw new Error(r.reason);
+    const old = new Date(Date.now() - 31 * 60_000);
+    await db.automationPayment.updateMany({ where: { sellerId: a.seller.id }, data: { createdAt: old, chargeSubmittedAt: old } });
+
+    await reconcileAutomationPayments(db, provider, { olderThanMs: 0 });
+    expect(provider.charges).toHaveLength(1);
+    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "PENDING" });
+    expect(await job(r.jobId)).toMatchObject({ status: "AWAITING_PAYMENT" });
+
+    await reconcileAutomationPayments(db, provider, { olderThanMs: 0 });
+    expect(provider.charges).toHaveLength(1);
+    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "PAID" });
+    expect(await job(r.jobId)).toMatchObject({ status: "QUEUED" });
+  });
+
+  it("첫 설치도 OBS를 바꾸기 직전마다 실제 PC를 다시 읽는다: OBS 변경 사이에 PC가 A에서 B로 바뀌면 B에는 변경 0회로 멈춘다", async () => {
+    const a = await bought();
+    const rt = runtime();
+    const onB: string[] = [];
+    const obs = rt.obs;
+    const perform = obs.perform.bind(obs);
+    obs.perform = async (scope, action, actionKey) => {
+      if (obs.pairing.get(scope.sellerId) === "pc-B") onB.push(action.type);
+      const out = await perform(scope, action, actionKey);
+      // 첫 OBS 변경(소스 추가) 직후 로컬 도구가 다른 PC로 바뀐다
+      if (action.type === "obs_add_overlay_source") obs.pairing.set(scope.sellerId, "pc-B");
+      return out;
+    };
+    obs.pairing.set(a.seller.id, "pc-A");
+    expect(await runOnce(db, rt, W)).toBe("failed");
+    expect(onB.filter((t) => t !== "step_done")).toHaveLength(0);
+    expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "obs_target_changed", obsTargetKey: "obs:pc-A" });
+  });
+});

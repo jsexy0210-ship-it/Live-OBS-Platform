@@ -282,19 +282,21 @@ export async function verifyAndSettle(
   db: PrismaClient,
   provider: BillingProvider,
   paymentId: string,
-  opts: { notChargedAfterMs?: number } = {},
+  // resentNow: 이번 회차에 결제 요청을 (다시) 보냈다. PG 반영이 늦을 수 있어 이번 회차에는 「결제 안 됨」으로 확정하지 않는다.
+  opts: { notChargedAfterMs?: number; resentNow?: boolean } = {},
 ): Promise<AutomationPayment["status"]> {
   const found = await provider.getPayment(paymentId);
   return db.$transaction(async (tx) => {
     const now = await dbNow(tx);
     const payment = await tx.automationPayment.findUniqueOrThrow({ where: { id: paymentId }, include: { job: true } });
     if (payment.status !== "PENDING") return payment.status;
-    const ageMs = now.getTime() - payment.createdAt.getTime();
+    // 「결제 안 됨」 마감은 마지막으로 결제 요청을 보낸 시각부터 센다(다시 보냈으면 그때부터 다시)
+    const ageMs = now.getTime() - (payment.chargeSubmittedAt ?? payment.createdAt).getTime();
     let status: "PAID" | "FAILED" | null = null;
     let failureReason: string | null = null;
     if (found.status === "PAID") status = "PAID";
     else if (found.status === "FAILED") [status, failureReason] = ["FAILED", found.reason.slice(0, 200)];
-    else if (ageMs >= (opts.notChargedAfterMs ?? AUTOMATION_LIMITS.notChargedAfterMs)) [status, failureReason] = ["FAILED", "not_charged"];
+    else if (!opts.resentNow && ageMs >= (opts.notChargedAfterMs ?? AUTOMATION_LIMITS.notChargedAfterMs)) [status, failureReason] = ["FAILED", "not_charged"];
     if (!status) return "PENDING";
 
     const claimed = await tx.automationPayment.updateMany({
@@ -332,7 +334,7 @@ export async function verifyAndSettle(
 // 결제 요청 보내기(outbox). 작업이 결제 대기(AWAITING_PAYMENT)이고 청구가 PENDING이며, 보낸 적이 없거나(null)
 // 마지막으로 보낸 지 resendBefore보다 오래됐을 때만 「보냄」을 먼저 기록하고 같은 청구 id(orderId)로 보낸다.
 // 같은 청구 id는 PG가 한 번만 결제하므로(공통 billing 계약) 다시 보내도 이중 결제가 없다. 작업자 둘이 동시에 보내지 않게 작업 행을 잠근다.
-async function submitCharge(db: PrismaClient, provider: BillingProvider, paymentId: string, billingKey: string, resendBefore: Date | null): Promise<void> {
+async function submitCharge(db: PrismaClient, provider: BillingProvider, paymentId: string, billingKey: string, resendBefore: Date | null): Promise<boolean> {
   const claimed = await db.$transaction(async (tx) => {
     const p = await tx.automationPayment.findUniqueOrThrow({ where: { id: paymentId }, include: { job: { select: { id: true, kind: true } } } });
     if (!p.job) return null;
@@ -348,7 +350,7 @@ async function submitCharge(db: PrismaClient, provider: BillingProvider, payment
     });
     return r.count === 1 ? { sellerId: p.sellerId, amount: p.amount, kind: p.job.kind } : null;
   });
-  if (!claimed) return;
+  if (!claimed) return false;
   try {
     await provider.charge({
       billingKey,
@@ -360,6 +362,7 @@ async function submitCharge(db: PrismaClient, provider: BillingProvider, payment
   } catch {
     // 결과를 모른다. PENDING으로 두고 대사(reconcile)가 같은 청구 id로 PG에 확인한다.
   }
+  return true;
 }
 
 // 결과를 못 받은(PENDING) 청구를 PG에 다시 묻는다. 작업자 반복에서 부른다. 확정한 건수를 돌려준다.
@@ -370,15 +373,16 @@ export async function reconcileAutomationPayments(db: PrismaClient, provider: Bi
   let settled = 0;
   for (const p of stale) {
     // 한 건 조회가 실패해도 나머지는 계속 확인한다
+    let resentNow = false;
     try {
       if ((await provider.getPayment(p.id)).status === "NOT_FOUND") {
         const sub = await db.sellerSubscription.findUnique({ where: { sellerId: p.sellerId }, select: { billingKeyCipher: true } });
-        if (sub?.billingKeyCipher) await submitCharge(db, provider, p.id, openBillingKey(sub.billingKeyCipher, p.sellerId), cutoff);
+        if (sub?.billingKeyCipher) resentNow = await submitCharge(db, provider, p.id, openBillingKey(sub.billingKeyCipher, p.sellerId), cutoff);
       }
     } catch {
       // 조회·다시 보내기가 실패해도 아래 확인(마감 처리 포함)은 한다
     }
-    const status = await verifyAndSettle(db, provider, p.id).catch(() => "PENDING" as const);
+    const status = await verifyAndSettle(db, provider, p.id, { resentNow }).catch(() => "PENDING" as const);
     if (status !== "PENDING") settled++;
   }
   return settled;

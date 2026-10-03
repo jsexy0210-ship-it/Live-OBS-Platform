@@ -71,6 +71,8 @@ export async function executeJob(db: PrismaClient, rt: AutomationRuntime, { job,
         playbook: usable,
         secretPlaybook: playbook,
         shopHost: job.shopHost,
+        // 이전 실행에서 이 작업이 OBS를 바꾼 PC(단계 기록). 재설치의 요청 PC 값과는 다르다(실행에서 확인한 값만).
+        obsPairingDone: job.kind === "RECONNECT_FREE" ? null : job.obsPairingId,
         expectFacts,
         targetVerified: job.targetVerifiedAt !== null,
         signal: lost.signal,

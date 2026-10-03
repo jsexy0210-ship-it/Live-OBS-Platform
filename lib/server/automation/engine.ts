@@ -80,6 +80,8 @@ export type EngineOptions = {
   secretPlaybook?: Playbook | null;
   // 작업 대상 쇼핑몰 호스트(판매자가 낸 주소). 비밀값은 이 호스트의 관리자 경로에서만 넣는다. 없으면 비밀값을 쓰지 못한다.
   shopHost?: string | null;
+  // 이 작업이 이전 실행에서 이미 OBS를 바꾼 PC(작업 행 기록). 이번 실행에서 다른 PC가 보이면 두 PC에 나눠 설치하지 않게 멈춘다.
+  obsPairingDone?: string | null;
   startIndex: number;
   verifying: boolean;
   stats: EngineStats;
@@ -164,6 +166,8 @@ async function runAll(
   const secretBook = opts.secretPlaybook === undefined ? opts.playbook : opts.secretPlaybook;
   // 같은 PC 잠금은 실행마다 OBS를 처음 바꾸기 전에 로컬 도구로 확인한 실제 PC로 잡는다(요청 값·이전 기록을 믿지 않음)
   let obsTargetClaimed = false;
+  // 이 작업이 OBS를 바꾼 PC. 다른 PC가 보이면 한 작업이 두 PC에 나뉘어 설치되지 않게 멈춘다.
+  let obsPairing: string | null = opts.obsPairingDone ?? null;
   const touchStats = async () => {
     await hooks.touch(stats);
     stats.deviatedNow = false;
@@ -229,17 +233,20 @@ async function runAll(
       if (MUTATING.includes(action.type)) {
         const blocked = await checkTarget();
         if (blocked) return blocked;
-        // OBS를 바꾸기 직전마다 실제 PC를 새로 읽는다. 무료 재연결은 기준 PC와 다르면 바꾸지 않고 멈춘다(앞선 대조 기록을 믿지 않음).
-        // 처음 바꾸기 전에는 같은 PC 잠금을 그 PC로 옮긴다(다른 판매자·작업이 같은 PC를 동시에 바꾸지 못하게)
-        if (!session && (want || (!obsTargetClaimed && hooks.claimObsTarget))) {
+        // OBS를 바꾸기 직전마다(모든 작업) 실제 PC를 새로 읽는다. 무료 재연결은 기준 PC와 다르면 바꾸지 않고 멈춘다(앞선 대조 기록을 믿지 않음).
+        // 이미 한 PC에 바꾼 뒤 PC가 바뀌었으면 두 PC에 나눠 설치하지 않게 멈춘다.
+        // 이번 실행에서 처음 바꾸기 전에는 같은 PC 잠금을 그 PC로 옮긴다(다른 작업이 그 PC를 쓰고 있으면 claimObsTarget이 던져 obs_target_busy)
+        if (!session) {
           guard();
           const pairingId = await rt.obs.currentPairingId(scope);
           if (!pairingId) return want ? { kind: "failed", reason: "reconnect_target_unverified" } : { kind: "needs_customer", action: "LOCAL_TOOL" };
           if (want && pairingId !== want.obsPairingId) return { kind: "failed", reason: "reconnect_target_mismatch" };
+          if (obsPairing && pairingId !== obsPairing) return { kind: "failed", reason: "obs_target_changed" };
           if (!obsTargetClaimed && hooks.claimObsTarget) {
             await hooks.claimObsTarget(pairingId);
             obsTargetClaimed = true;
           }
+          obsPairing = pairingId;
         }
       }
       // 비밀값 입력은 승인 때 관찰한 주소와 실행 직전 실제 문서 주소가 모두 작업 대상 쇼핑몰의 관리자 경로여야 하고,
