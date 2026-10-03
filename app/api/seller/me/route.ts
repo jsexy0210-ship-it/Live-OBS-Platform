@@ -11,7 +11,7 @@ export async function GET(req: Request) {
     const access = await sellerAccessFor(prisma, ctx.sellerId);
     // 상단바용 쇼핑몰·직원 정보. 세션의 sellerId·actorId로만 찾는다(요청 값 사용 안 함).
     const [seller, user] = await Promise.all([
-      prisma.seller.findUniqueOrThrow({ where: { id: ctx.sellerId }, select: { shopName: true, slug: true } }),
+      prisma.seller.findUniqueOrThrow({ where: { id: ctx.sellerId }, select: { shopName: true, slug: true, trialEndsAt: true } }),
       prisma.sellerUser.findFirstOrThrow({ where: { id: ctx.actorId, sellerId: ctx.sellerId }, select: { name: true, email: true } }),
     ]);
     return noStore(
@@ -21,6 +21,8 @@ export async function GET(req: Request) {
         isOwner: ctx.isOwner,
         permissions: ctx.permissions,
         access,
+        // 체험 중일 때만 끝나는 시각(직원 화면도 남은 날을 보여 줄 수 있게). 금액·결제 정보는 넣지 않는다.
+        trialEndsAt: access === "trial" ? seller.trialEndsAt : null,
         shop: { name: seller.shopName, slug: seller.slug },
         user: { name: user.name, email: user.email },
       }),
