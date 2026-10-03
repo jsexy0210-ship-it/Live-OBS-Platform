@@ -19,12 +19,27 @@ async function shot(page: Page, name: string) {
   await page.setViewportSize({ width: 1440, height: 900 });
 }
 
+// 다른 테스트·이전 실행이 바꾼 값에 기대지 않게, 시작할 때 주문 설정을 기본값으로 맞춘다(대표자로 로그인한 뒤)
+async function resetPolicy(page: Page) {
+  const status = await page.evaluate(async () => {
+    const res = await fetch("/api/seller/order-policy", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ autoCancelEnabled: true, paymentDueHours: 24, unpaidRestrictionEnabled: true, restockOnCancel: true }),
+    });
+    return res.status;
+  });
+  expect(status).toBe(200);
+  await page.reload();
+}
+
 async function openAs(page: Page, email: string) {
   await page.goto("/seller/login?next=%2Fseller%2Fsettings%2Forder");
   await page.getByLabel("이메일").fill(email);
   await page.getByLabel("비밀번호").fill(PASSWORD);
   await page.getByRole("button", { name: "로그인" }).click();
   await expect(page).toHaveURL(/\/seller\/settings\/order$/);
+  if (email === "demo-owner@example.com") await resetPolicy(page);
 }
 
 const save = (page: Page) => page.getByRole("button", { name: "저장", exact: true }).last().click();
@@ -46,6 +61,8 @@ test("저장한 적 없는 판매자도 입금 기한이 기본 24시간으로 �
   await page.getByRole("link", { name: "주문 설정" }).click();
   await expect(page).toHaveURL(/\/seller\/settings\/order$/);
   await expect(page.getByRole("link", { name: "쇼핑몰 설정" })).toHaveClass(/\bon\b/);
+  // 새 DB 첫 실행에서는 저장한 적 없는 상태(서버 기본값)를 그대로 본다. 다시 돌릴 때는 이전 실행이 남긴 값이 있을 수 있어 기본값으로 맞춘 뒤 본다
+  if ((await page.getByLabel("입금 기한", { exact: true }).inputValue()) !== "24") await resetPolicy(page);
   await expect(page.getByLabel("입금 기한", { exact: true })).toHaveValue("24");
   await expect(page.getByRole("radio", { name: "시간" })).toHaveAttribute("aria-checked", "true");
   await expect(page.getByTestId("buyer-preview")).toContainText("주문 후 24시간 안에 입금");
@@ -129,6 +146,18 @@ test("로그인이 풀린 뒤 저장하면 로그인으로 보내고, 로그아�
   await page.getByRole("switch", { name: "미입금으로 3번 취소되면 30일 동안 주문 막기" }).click();
   await save(page);
   await expect(page).toHaveURL(/\/seller\/login\?next=%2Fseller%2Fsettings%2Forder$/);
+});
+
+test("자동 취소를 꺼 둔 상태에서는 숨겨진 입금 기한 값이 틀려도 저장 버튼이 켜지지 않는다", async ({ page }) => {
+  await openAs(page, "demo-owner@example.com");
+  await page.getByRole("switch", { name: "기한이 지나면 자동 취소" }).click();
+  await saveOk(page);
+  // 다시 켜서 틀린 값을 적고 끄면, 저장된 상태와 같으므로 저장 버튼은 꺼져 있다
+  await page.getByRole("switch", { name: "기한이 지나면 자동 취소" }).click();
+  await page.getByLabel("입금 기한", { exact: true }).fill("0");
+  await page.getByRole("switch", { name: "기한이 지나면 자동 취소" }).click();
+  await expect(page.getByRole("button", { name: "저장", exact: true }).last()).toBeDisabled();
+  await resetPolicy(page);
 });
 
 test("쇼핑몰 설정 권한이 없는 직원은 권한 안내를 본다", async ({ page }) => {

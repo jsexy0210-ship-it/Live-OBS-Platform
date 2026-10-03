@@ -341,6 +341,8 @@ test("로그아웃 요청이 실패하면 화면에 남아 다시 시도하게 �
 
 test("로그인이 풀린 뒤 다른 탭·화면을 열면 로그인으로 보낸다", async ({ page }) => {
   await login(page);
+  // 첫 화면 데이터를 다 받은 뒤 로그인을 끊는다(받는 도중에 끊으면 그 요청이 먼저 로그인으로 보낸다)
+  await expect(page.getByTestId("product-row").first()).toBeVisible();
   await page.context().clearCookies();
   await page.getByRole("tab", { name: "숨김" }).click();
   await expect(page).toHaveURL(/\/seller\/login\?next=%2Fseller%2Fproducts$/);

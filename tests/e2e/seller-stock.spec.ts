@@ -163,6 +163,8 @@ test("상품 재고 차감 기준을 정하고 바꿀 수 있다(주문하면 �
 
 test("로그인이 풀린 뒤 재고를 바꾸면 로그인으로 보낸다", async ({ page }) => {
   await openAs(page);
+  // 첫 화면 데이터를 다 받은 뒤 로그인을 끊는다
+  await expect(page.getByTestId("stock-row").first()).toBeVisible();
   await page.context().clearCookies();
   await page.getByRole("button", { name: "탑로더 25장 1팩 빼기 · 더하기" }).click();
   const sheet = page.getByRole("dialog");

@@ -300,3 +300,12 @@ body {
 .app a.tab.on {
   color: var(--wds-label-normal);
 }
+
+/* 금액 칸 안쪽 오른쪽 단위(원) */
+.amount-unit {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
