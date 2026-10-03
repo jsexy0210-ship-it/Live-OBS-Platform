@@ -15,6 +15,7 @@ if [ -z "$new" ]; then
 fi
 docker image inspect "obs-web-app:$new" >/dev/null 2>&1 || die "obs-web-app:$new 이미지가 없어요."
 export APP_VERSION="$new"
+mark_deploying "rolling-deploy $new"
 log "마이그레이션"
 compose up --no-build --no-deps obs-web-migrate
 [ "$(docker inspect -f '{{.State.ExitCode}}' "$(container_of obs-web-migrate)")" = 0 ] || die "마이그레이션 실패. 앱은 바꾸지 않았어요."

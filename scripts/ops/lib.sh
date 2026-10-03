@@ -10,6 +10,8 @@ CHECK_DIR="${OBS_CHECK_DIR:-/opt/obs/checks}"
 HISTORY="${OBS_HISTORY:-/opt/obs/deploy-history.log}"
 HEALTH_URL="${OBS_HEALTH_URL:-http://127.0.0.1/api/health}"
 AVAIL_MARK="${OBS_AVAIL_MARK:-/opt/obs/availability.on}"
+# 배포 진행 표시. 감시 수집기(/data = OBS_MONITOR_DIR)가 이 파일이 있는 동안 버전 불일치 경고를 미룬다.
+DEPLOY_MARK="${OBS_DEPLOY_MARK:-${OBS_MONITOR_DIR:-/opt/obs/monitor}/deploy-in-progress}"
 export OBS_ENV_FILE="$ENV_FILE"
 
 kst() { TZ=Asia/Seoul date "$@"; }
@@ -49,6 +51,19 @@ wait_health() {
   done
   echo "health 실패: ${body:-응답 없음}" >&2
   return 1
+}
+
+# 배포(앱 교체) 동안 표시를 두고, 끝나거나 실패·중단되면 지운다.
+mark_deploying() {
+  mkdir -p "$(dirname "$DEPLOY_MARK")" && echo "$(kst '+%F %T KST') $1 pid=$$" > "$DEPLOY_MARK"
+  trap 'rm -f "$DEPLOY_MARK"' EXIT
+}
+# 감시 수집기가 떠 있으면 지금 compose 정의(가용성 여부 포함)로 다시 만든다(감시 대상이 앱 수에 맞게 바뀜).
+refresh_monitor() {
+  if [ -n "$(docker ps -q --filter label=com.docker.compose.project=obs-web --filter label=com.docker.compose.service=obs-web-monitor)" ]; then
+    compose --profile monitor up -d --no-build --no-deps --force-recreate obs-web-monitor >/dev/null
+    log "감시 수집기를 다시 만들었어요(감시 대상: $(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$(container_of obs-web-monitor)" | grep '^MONITOR_TARGETS=' | cut -d= -f2- | tr ',' '\n' | cut -d= -f1 | paste -sd, -))"
+  fi
 }
 
 db_name() { docker exec "$1" printenv POSTGRES_DB; }

@@ -12,7 +12,7 @@
 //   같은 사건은 한 번만, 시간당 MONITOR_ALERT_MAX_PER_HOUR건까지만 보낸다(알림 폭주 방지).
 //   받는 쪽이 2xx가 아니면 alert_failed를 남기고 한도를 쓰지 않은 채 다음 주기에 다시 보낸다(최대 5번).
 // 아직 못 재는 것(앱 쪽 훅 필요, MASTER 요청): DB pool 사용량, worker·scheduler heartbeat, 작업 큐 적체.
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync, existsSync, statSync } from "node:fs";
 import http from "node:http";
 import https from "node:https";
 import tls from "node:tls";
@@ -34,6 +34,9 @@ const cfg = {
   failThreshold: Number(env("MONITOR_FAIL_THRESHOLD", "3")),
   // 배포 기록과 실행 버전이 이 횟수만큼 연속으로 다를 때만 경고(무중단 배포 중 잠깐 다른 것은 정상)
   versionMismatchTicks: Number(env("MONITOR_VERSION_MISMATCH_TICKS", "3")),
+  // 배포 진행 표시(rolling-deploy.sh·rollback-app.sh가 만들고 끝나면 지움). 있는 동안 버전 불일치 경고를 미룬다.
+  deployMark: env("MONITOR_DEPLOY_MARK", "/data/deploy-in-progress"),
+  deployMarkStaleMin: Number(env("MONITOR_DEPLOY_MARK_STALE_MIN", "15")),
   slowMs: Number(env("MONITOR_SLOW_MS", "1000")),
   dir: env("MONITOR_DIR", "/data"),
   deployLog: env("MONITOR_DEPLOY_LOG", "/deploy-history.log"),
@@ -138,12 +141,12 @@ async function flushAlerts() {
   state.outbox = rest;
 }
 
+// 보낼 목록에 넣기만 한다. 실제 전송은 틱 끝에 한 번(flushAlerts) — 한 틱에 알림이 여러 건이어도 항목마다 시도는 1번.
 async function alert(ev) {
   // 경고·장애와 복구만 보낸다(감시 시작 같은 정보성 사건은 기록만: 재시작 반복 때 알림 폭주 방지).
   if (!cfg.alertUrl || (ev.level === "info" && ev.kind !== "incident_close")) return;
   state.outbox.push({ ev, attempts: 0 });
   if (state.outbox.length > OUTBOX_MAX) record("events.jsonl", { at: kst(), kind: "alert_dropped", ref: state.outbox.shift().ev.kind });
-  await flushAlerts();
 }
 
 async function event(ev) {
@@ -162,7 +165,6 @@ async function warnOnce(key, ev, cooldownMs = 3600_000) {
 }
 
 async function tick() {
-  await flushAlerts(); // 지난 주기에 실패한 알림 재시도
   const at = kst();
   const results = {};
   for (const t of cfg.targets) {
@@ -185,7 +187,16 @@ async function tick() {
 
   const deployed = lastDeployedSha();
   const running = Object.values(results).find((r) => r.ok && r.version)?.version ?? null;
-  if (deployed && running && deployed !== running) {
+  // 배포 중이면(표시 파일) 불일치를 세지 않는다. 표시가 너무 오래 남으면(스크립트가 죽는 등) 따로 경고한다.
+  let deploying = false;
+  try {
+    const ageMin = (Date.now() - statSync(cfg.deployMark).mtimeMs) / 60_000;
+    deploying = true;
+    if (ageMin > cfg.deployMarkStaleMin) await warnOnce("deploy_mark_stale", { kind: "deploy_mark_stale", ageMin: Math.round(ageMin) }, 3600_000);
+  } catch {}
+  if (deploying) {
+    state.mismatchTicks = 0;
+  } else if (deployed && running && deployed !== running) {
     state.mismatchTicks += 1;
     if (state.mismatchTicks >= cfg.versionMismatchTicks)
       await warnOnce(`version:${deployed}:${running}`, { kind: "version_mismatch", deployed, running, ticks: state.mismatchTicks }, 86400_000);
@@ -203,6 +214,7 @@ async function tick() {
   const status = { at, targets: results, openIncidents: Object.keys(state.incidents), deployedSha: deployed, runningVersion: running, certDaysLeft: certDays };
   writeFileSync(`${cfg.dir}/status.json`, JSON.stringify(status, null, 2) + "\n");
   writeFileSync(`${cfg.dir}/heartbeat.json`, JSON.stringify({ at, epochMs: Date.now(), intervalS: cfg.intervalS }) + "\n");
+  await flushAlerts(); // 이번 틱의 새 알림 + 지난 틱에 실패한 알림을 한 번에
   return status;
 }
 

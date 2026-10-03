@@ -17,6 +17,7 @@ case "${1:-status}" in
       compose up -d --no-build --wait --remove-orphans || true
       die "켜기 실패. 표시를 지우고 기본 정의로 되돌렸어요(availability.sh status로 확인)."
     fi
+    refresh_monitor
     log "가용성 프로파일 켜짐: $(app_services), version=$APP_VERSION"
     ;;
   off)
@@ -25,6 +26,7 @@ case "${1:-status}" in
       touch "$AVAIL_MARK"
       die "끄기 실패. 앱 2개 정의가 남아 있을 수 있어 표시를 되돌렸어요(availability.sh status로 확인 후 다시 off)."
     fi
+    refresh_monitor
     log "가용성 프로파일 꺼짐: 기본 정의(obs-web-app 1개)"
     ;;
   status)

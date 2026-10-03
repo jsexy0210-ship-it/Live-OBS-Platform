@@ -26,6 +26,7 @@ if [ -n "$db" ] && docker image inspect "obs-web-migrate:$want" >/dev/null 2>&1;
   fi
 fi
 
+mark_deploying "rollback $want"
 log "앱 롤백: ${cur:-없음} → $want (DB 그대로)"
 for svc in $(app_services); do
   APP_VERSION="$want" compose up -d --no-build --no-deps --wait "$svc"
