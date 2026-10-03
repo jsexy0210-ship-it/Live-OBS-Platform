@@ -154,7 +154,61 @@ test("인적사항을 서버 형식(birth7·통신사)으로 바꿔 보낸다", 
   const req = page.waitForRequest((r) => r.url().endsWith(`${API}/verification`));
   await page.getByRole("button", { name: "인증번호 받기" }).click();
   // 2001년생 외국인 여성 → 8, 화면 폭 1440 → PC
-  expect((await req).postDataJSON()).toEqual({ name: "김구매", phone: "01012345678", birth7: "0103058", carrier: "LGU_MVNO", device: "PC" });
+  expect((await req).postDataJSON()).toEqual({ name: "김구매", phone: "01012345678", birth7: "0103058", carrier: "LGU_MVNO", device: "PC", attemptKey: expect.stringMatching(UUID) });
+});
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+test("본인확인 시작은 같은 인적사항의 재시도에 같은 attemptKey를 쓰고, 보내는 중(409)이면 서버 문구를 보여 준다. 인적사항을 바꾸거나 시작에 성공하면 새 키", async ({ page }) => {
+  const keys: string[] = [];
+  const replies: Array<"abort" | Reply> = [
+    "abort", // 응답이 끊김
+    fail(409, "start_in_progress", "인증번호를 보내고 있어요. 잠시 뒤 다시 시도해 주세요"),
+    { status: 200, body: { verificationId: "00000000-0000-4000-8000-000000000000" } },
+  ];
+  await page.route((u) => u.pathname === `${API}/verification`, (route) => {
+    keys.push(route.request().postDataJSON().attemptKey);
+    const reply = replies.shift() ?? { status: 200, body: { verificationId: "00000000-0000-4000-8000-000000000001" } };
+    return reply === "abort" ? route.abort("connectionreset") : route.fulfill({ status: reply.status, contentType: "application/json", body: JSON.stringify(reply.body) });
+  });
+  await page.goto(`/shop/${SLUG}/signup`);
+  await fillIdentity(page, "김구매");
+  const send = page.getByRole("button", { name: "인증번호 받기" });
+  await send.click();
+  await expect.poll(() => keys.length).toBe(1);
+  await expect(send).toBeEnabled();
+  await send.click();
+  await expect(page.getByText("인증번호를 보내고 있어요. 잠시 뒤 다시 시도해 주세요")).toBeVisible();
+  await send.click();
+  await expect(page.getByLabel("인증번호")).toBeVisible();
+  expect(keys).toHaveLength(3);
+  expect(keys[0]).toMatch(UUID);
+  expect(new Set(keys).size).toBe(1);
+  // 처음부터 다시 하고 같은 값으로 시작해도 앞 시작은 끝났으니 새 키
+  await page.getByRole("button", { name: "정보 다시 입력" }).click();
+  await send.click();
+  await expect.poll(() => keys.length).toBe(4);
+  expect(keys[3]).not.toBe(keys[0]);
+});
+
+test("본인확인 시작 응답이 끊긴 뒤 휴대폰번호를 바꾸면 새 attemptKey로 보낸다", async ({ page }) => {
+  const keys: string[] = [];
+  await page.route((u) => u.pathname === `${API}/verification`, (route) => {
+    keys.push(route.request().postDataJSON().attemptKey);
+    return keys.length === 1
+      ? route.abort("connectionreset")
+      : route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ verificationId: "00000000-0000-4000-8000-000000000000" }) });
+  });
+  await page.goto(`/shop/${SLUG}/signup`);
+  await fillIdentity(page, "김구매");
+  const send = page.getByRole("button", { name: "인증번호 받기" });
+  await send.click();
+  await expect.poll(() => keys.length).toBe(1);
+  await page.getByLabel("휴대폰번호", { exact: true }).fill("01099998888");
+  await send.click();
+  await expect.poll(() => keys.length).toBe(2);
+  expect(keys[1]).toMatch(UUID);
+  expect(keys[1]).not.toBe(keys[0]);
 });
 
 test("인증번호를 여러 번 틀리면 처음부터 다시 하게 한다", async ({ page }) => {
