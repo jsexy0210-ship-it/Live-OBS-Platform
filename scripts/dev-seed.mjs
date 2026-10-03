@@ -56,6 +56,17 @@ async function main() {
     update: { status: "ACTIVE", trialEndsAt },
     create: { slug: "demo-shop", shopName: "카드숍 별빛", status: "ACTIVE", approvedAt: new Date(), trialEndsAt },
   });
+  // 회원 등급: 실제 판매자는 입점 신청 때 만든다(lib/server/sellers/application.ts). 없으면 구매자 가입이 shop_unavailable로 막힌다.
+  await db.memberGrade.createMany({
+    data: [
+      { sellerId: seller.id, displayName: "일반", sortOrder: 0, systemKey: "BASIC" },
+      { sellerId: seller.id, displayName: "새싹", sortOrder: 1, systemKey: "SPROUT" },
+      { sellerId: seller.id, displayName: "실버", sortOrder: 2, systemKey: "SILVER" },
+      { sellerId: seller.id, displayName: "골드", sortOrder: 3, systemKey: "GOLD" },
+      { sellerId: seller.id, displayName: "VIP", sortOrder: 4, systemKey: "VIP" },
+    ],
+    skipDuplicates: true,
+  });
   const users = [
     { email: "demo-owner@example.com", name: "대표자", isOwner: true, permissions: [] },
     { email: "demo-staff@example.com", name: "상품 담당 직원", isOwner: false, permissions: ["PRODUCT_MANAGE"] },
