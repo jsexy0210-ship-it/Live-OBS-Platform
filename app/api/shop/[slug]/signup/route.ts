@@ -12,7 +12,7 @@ const str = (v: unknown, max: number) => (typeof v === "string" && v.length <= m
 const raw = (v: unknown) => (typeof v === "string" && v.length <= 4096 ? v : "");
 
 // 구매자 가입 2단계: 휴대폰 본인확인을 마친 브라우저에서 가입. 본문 { verificationId, loginId, password, broadcastNickname,
-// agreedTerms: true, agreedPrivacy: true, agreedMarketing?: boolean(선택, 기본 false), agreedRejoinRetention?: boolean(선택), rejoinRestrictionDaysShown?: number, rejoinRetentionVersionShown?: string(보관에 동의했을 때만 보고, 기간이 지금과 다르면 409 rejoin_policy_changed, 문서 버전이 다르면 409 consent_outdated) }. 이름·휴대폰·생년월일은 본인확인 결과를 쓴다. 가입하면 바로 로그인된다(세션 쿠키).
+// }. 필수 약관·재가입 제한 보관·마케팅 수신 동의는 본인확인 시작 때 받은 기록을 쓴다(가입 본문의 동의 값은 보지 않음). 이름·휴대폰·생년월일은 본인확인 결과를 쓴다. 가입하면 바로 로그인된다(세션 쿠키).
 export const POST = mutation(async (req: Request, { params }: { params: Promise<{ slug: string }> }) => {
   const { slug } = await params;
   const seller = await prisma.seller.findUnique({ where: { slug }, select: { id: true, status: true } });
@@ -27,12 +27,6 @@ export const POST = mutation(async (req: Request, { params }: { params: Promise<
     loginId: raw(body.loginId),
     password: str(body.password, 400),
     broadcastNickname: str(body.broadcastNickname, 200),
-    agreedTerms: body.agreedTerms === true,
-    agreedPrivacy: body.agreedPrivacy === true,
-    agreedMarketing: body.agreedMarketing,
-    agreedRejoinRetention: body.agreedRejoinRetention,
-    rejoinRestrictionDaysShown: body.rejoinRestrictionDaysShown,
-    rejoinRetentionVersionShown: body.rejoinRetentionVersionShown,
     meta: requestMeta(req),
   });
   if (!r.ok) {

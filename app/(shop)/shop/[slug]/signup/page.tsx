@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import ShopFrame from "../../../../../components/shop/ShopFrame";
 import SignupForm from "../../../../../components/shop/SignupForm";
 import ShopState from "../../../../../components/shop/ShopState";
-import { REJOIN_RETENTION_CONSENT_VERSION, rejoinDaysToAgree } from "../../../../../lib/server/buyers/rejoin";
+import { SIGNUP_CONSENT_VERSIONS } from "../../../../../lib/server/buyers/consent";
+import { rejoinDaysToAgree } from "../../../../../lib/server/buyers/rejoin";
 import { shopOpen } from "../../../../../lib/server/buyers/signup";
 import { prisma } from "../../../../../lib/server/db";
 import { identityProvider } from "../../../../../lib/server/identity/registry";
@@ -30,8 +31,14 @@ export default async function ShopSignupPage({ params }: Params) {
   if (!shop) notFound();
   const open = await shopOpen(prisma, shop.id);
   const identityReady = identityProvider() !== null;
-  // 재가입 제한을 켠 쇼핑몰은 가입 때 보관 동의를 따로 받는다(기간을 안내)
-  const rejoinDays = await rejoinDaysToAgree(prisma, shop.id);
+  // 가입 필수 동의 문서 버전과 재가입 제한 기간(켠 쇼핑몰만). 화면은 본인확인 전에 동의를 받아 함께 보낸다.
+  const consent = {
+    termsVersion: SIGNUP_CONSENT_VERSIONS.terms,
+    privacyVersion: SIGNUP_CONSENT_VERSIONS.privacy,
+    rejoinRetentionVersion: SIGNUP_CONSENT_VERSIONS.rejoinRetention,
+    marketingVersion: SIGNUP_CONSENT_VERSIONS.marketing,
+    rejoinDays: await rejoinDaysToAgree(prisma, shop.id),
+  };
   return (
     <ShopFrame shopName={shop.shopName}>
       {!open ? (
@@ -39,7 +46,7 @@ export default async function ShopSignupPage({ params }: Params) {
       ) : !identityReady ? (
         <ShopState title="본인확인 서비스 준비 중이에요" body="휴대폰 본인확인을 할 수 있게 되면 바로 가입할 수 있어요. 잠시 뒤 다시 와 주세요." />
       ) : (
-        <SignupForm slug={slug} rejoin={rejoinDays === null ? null : { days: rejoinDays, version: REJOIN_RETENTION_CONSENT_VERSION }} />
+        <SignupForm slug={slug} consent={consent} />
       )}
     </ShopFrame>
   );

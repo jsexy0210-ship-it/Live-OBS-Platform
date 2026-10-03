@@ -177,6 +177,14 @@ model SellerUser {
   credentialVersion Int                     @default(0)
   status            SellerUserStatus        @default(ACTIVE)
   lastLoginAt       DateTime?               @db.Timestamptz(3)
+  // 직원 휴대폰 번호(숫자만, 대표자가 직원 관리에서 등록, 기존 행은 null). 직원 본인확인 연결 때 결과와 대조한다.
+  phone             String?
+  // 직원이 본인확인으로 연결한 CI의 HMAC 해시(등록한 이름·휴대폰과 결과가 맞을 때만). 직원 셀프 아이디·비밀번호 찾기에만 쓴다.
+  // 대표자가 휴대폰 번호를 바꾸면 지운다. 대표자는 쇼핑몰 대표자 CI(Seller.representativeCiHash)를 쓰고 여기는 비워 둔다.
+  identityCiHash    String?
+  identityLinkedAt  DateTime?               @db.Timestamptz(3)
+  // 연결돼 있다가 대표자가 휴대폰 번호를 바꿔 연결이 풀린 시각(다시 연결하면 비움). 처음부터 미연결인 직원과 구별한다.
+  identityUnlinkedAt DateTime?              @db.Timestamptz(3)
   createdAt         DateTime                @default(now()) @db.Timestamptz(3)
 
   seller      Seller               @relation(fields: [sellerId], references: [id])
@@ -185,6 +193,7 @@ model SellerUser {
 
   @@unique([sellerId, id])
   @@unique([sellerId, email])
+  @@index([identityCiHash])
 }
 
 // 판매자 대표 비밀번호 재설정 권한(일회용·10분). 토큰은 해시만 저장한다.
@@ -193,15 +202,20 @@ model PasswordResetGrant {
   sellerId     String    @db.Uuid
   sellerUserId String    @db.Uuid
   tokenHash    String    @unique
-  // 발급 때 확인한 대표자 CI 해시. 쓸 때 쇼핑몰 대표자 CI가 바뀌었으면 거부한다.
+  // 발급 때 확인한 CI 해시(대표자는 쇼핑몰 대표자 CI, 직원은 연결 CI). 쓸 때 그 값이 바뀌었으면 거부한다.
   ciHash       String
   expiresAt    DateTime  @db.Timestamptz(3)
   usedAt       DateTime? @db.Timestamptz(3)
   createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  // 아이디 찾기로 준 권한: 발급에 쓴 본인확인과 토큰을 다시 만드는 무작위 값(토큰 = 서버 비밀키 HMAC(nonce), 원문은 저장하지 않음).
+  // 응답을 잃은 재시도에 같은 토큰을 다시 돌려준다(auth/accountRecovery.ts).
+  verificationId String?   @db.Uuid
+  nonce          String?
 
   seller     Seller     @relation(fields: [sellerId], references: [id])
   sellerUser SellerUser @relation(fields: [sellerId, sellerUserId], references: [sellerId, id])
 
+  @@index([verificationId])
   @@index([sellerId, sellerUserId])
 }
 
@@ -268,8 +282,8 @@ model BuyerMember {
   // PASS 본인인증 CI의 HMAC-SHA256 값(원문 CI는 저장하지 않음). 같은 쇼핑몰 중복 가입 차단 기준.
   ciHash             String
   identityVerifiedAt DateTime          @db.Timestamptz(3)
-  // PASS 생년월일. 미성년자 구매 정책 판정에 쓴다.
-  birthDate          DateTime          @db.Date
+  // PASS 생년월일. 미성년자 구매 정책 판정에 쓴다. 탈퇴하면 지운다(null).
+  birthDate          DateTime?         @db.Date
   broadcastNickname  String
   gradeId            String            @db.Uuid
   status             BuyerMemberStatus @default(ACTIVE)
@@ -280,6 +294,8 @@ model BuyerMember {
   // 「재가입 제한 정보 보관 동의」(개인정보 수집·이용 동의와 별도, 재가입 제한을 켠 쇼핑몰에서만 받음) 시각·문서 버전
   rejoinRetentionAgreedAt     DateTime? @db.Timestamptz(3)
   rejoinRetentionVersion      String?
+  // 가입 필수 동의 기록(본인확인 시작 때 받은 문서 버전·시각, buyers/consent.ts SignupConsent)
+  signupConsent               Json?
   lastLoginAt        DateTime?         @db.Timestamptz(3)
   createdAt          DateTime          @default(now()) @db.Timestamptz(3)
   deletedAt          DateTime?         @db.Timestamptz(3)
@@ -328,6 +344,8 @@ enum IdentityVerificationPurpose {
   BUYER_SIGNUP
   SELLER_REPRESENTATIVE
   PASSWORD_RESET
+  STAFF_LINK // 직원 본인확인 연결(로그인한 직원, subjectId = 직원 계정)
+  ACCOUNT_RECOVERY // 쇼핑몰을 모르는 아이디 찾기·계정 고르기 비밀번호 찾기
 }
 
 enum IdentityVerificationMethod {
@@ -368,6 +386,8 @@ model IdentityVerification {
   verifiedAt      DateTime?                   @db.Timestamptz(3)
   // 인증을 시작한 브라우저에 준 일회용 값의 해시. 완료할 때 같은 값이 있어야 한다(다른 사람이 id만 알아서는 못 씀).
   ownerTokenHash  String?
+  // 구매자 가입: 본인확인 전에 받은 필수 동의(buyers/consent.ts SignupConsent). 가입하면 회원으로 옮긴다.
+  signupConsent   Json?
   // 비밀번호 찾기: 재설정 대상 계정(없는 계정이면 null, 응답은 같게)
   subjectId       String?                     @db.Uuid
   // 구매자 가입 시작 멱등 키(클라이언트가 만든 attemptKey의 해시). 같은 쇼핑몰·같은 키로 다시 시작하면 새로 만들지 않는다.
@@ -378,6 +398,9 @@ model IdentityVerification {
   requestIp       String?
   // 이 인증으로 가입·재설정 권한을 이미 발급했으면 기록(한 번만 쓰임)
   consumedAt      DateTime?                   @db.Timestamptz(3)
+  // 식별 항목(이름·휴대폰·요청 휴대폰·생년월일·CI 해시·subjectId·동의·대행사 요청 id)을 비운 시각. 행은 한도 계산에 쓰여 남긴다
+  // (쇼핑몰·상태·요청 시각·요청 IP). 비식별된 VERIFIED 행은 CI 해시가 없어도 된다(CHECK).
+  anonymizedAt    DateTime?                   @db.Timestamptz(3)
   expiresAt       DateTime                    @db.Timestamptz(3)
   createdAt       DateTime                    @default(now()) @db.Timestamptz(3)
 
@@ -586,6 +609,10 @@ model Order {
   paymentDueAt              DateTime?         @db.Timestamptz(3)
   // 입금 기한이 지나 시스템이 자동 취소한 시각. 자동 구매 제한 횟수를 셀 때 쓴다.
   autoCancelledAt           DateTime?         @db.Timestamptz(3)
+  // 법정 보관(buyers/legalHold.ts): 끝난 주문의 보관 만료일(끝난 날 + 5년, 모든 회원)과, 탈퇴 회원의 끝난 주문에 다는 분리 보관 표시.
+  // 분리된 주문은 판매자·구매자 일반 조회(목록·검색·상세)에서 뺀다. 보관 만료 뒤 파기는 별도 함수.
+  legalHoldAt               DateTime?         @db.Timestamptz(3)
+  legalRetainUntil          DateTime?         @db.Timestamptz(3)
 
   seller          Seller                @relation(fields: [sellerId], references: [id])
   buyerMember     BuyerMember           @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id])
@@ -853,19 +880,23 @@ model OverlayToken {
 
 // 추가만 한다. 수정·삭제하지 않는다. 비밀번호 해시·토큰·TOTP 비밀키는 before/after에 넣지 않는다.
 model AuditLog {
-  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  actorType  ActorType
-  actorId    String?   @db.Uuid
-  sellerId   String?   @db.Uuid
-  action     String
-  targetType String?
-  targetId   String?
-  before     Json?
-  after      Json?
-  reason     String?
-  ip         String?
-  userAgent  String?
-  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actorType   ActorType
+  actorId     String?   @db.Uuid
+  sellerId    String?   @db.Uuid
+  action      String
+  targetType  String?
+  targetId    String?
+  before      Json?
+  after       Json?
+  reason      String?
+  ip          String?
+  userAgent   String?
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  // 구매자 회원이 행위자·대상인 행: 회원 id를 둘 기한(retainUntil, 기록 시각 + 거래 관련 5년·거래 무관 3개월, audit/log.ts)과
+  // 탈퇴 때 거래 관련 행에 다는 분리 보관 표시(legalHoldAt, buyers/legalHold.ts). 기한 뒤 회원 id 비식별은 별도 함수.
+  legalHoldAt DateTime? @db.Timestamptz(3)
+  retainUntil DateTime? @db.Timestamptz(3)
 
   seller Seller? @relation(fields: [sellerId], references: [id])
 
@@ -1160,4 +1191,60 @@ model BuyerRejoinBlock {
 
   @@unique([sellerId, ciHash])
   @@index([expiresAt])
+}
+
+// 앱 안 정기 실행 heartbeat(인스턴스·작업별 마지막 실행). 감시는 앱 밖 수집기(scripts/ops/monitor.mjs)가 이 표를 읽어 판단한다.
+// 작업 이름 "scheduler.tick"은 정기 실행 루프 자체(작업을 잠금 때문에 건너뛰어도 남음).
+// 앱 인스턴스(이름별) 상태의 유일한 기준(ops/metrics.ts). 프로세스가 시작할 때 등록하며 새 세대 값(uuid)을 쓰고 종료 표시를 비운다.
+model OpsInstance {
+  name         String    @id
+  generation   String
+  // 정상 종료(SIGTERM·SIGINT) 때 자기 세대일 때만 남기는 종료 시각. 없으면 아무리 오래돼도 살아 있는 인스턴스로 본다.
+  retiredAt    DateTime? @db.Timestamptz(3)
+  registeredAt DateTime  @db.Timestamptz(3)
+}
+
+// 정기 실행 heartbeat(인스턴스·세대·작업별). 지표는 OpsInstance의 지금 세대 행만 본다.
+model OpsHeartbeat {
+  instance   String
+  generation String
+  job        String
+  lastRunAt  DateTime  @db.Timestamptz(3)
+  // done | skipped | failed
+  lastStatus String
+  lastError  String?
+  // 마지막 성공 시각(실패가 이어져도 언제부터인지 알 수 있게)
+  lastOkAt   DateTime? @db.Timestamptz(3)
+  updatedAt  DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@id([instance, generation, job])
+}
+
+// 인프라 감시 사건(수집기가 남기는 incident 열기·닫기 등). 마스터 관리자(최고관리자)가 읽는다.
+// 쓰기는 내부 토큰(OPS_INGEST_TOKEN)으로 인증한 POST /api/internal/ops/events만. 같은 (source, eventId)는 한 번만 저장한다(재전송 안전).
+model OpsEvent {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  // 들어온 순서(같은 occurredAt끼리 정할 때 늦게 들어온 쪽이 뒤)
+  seq        BigInt   @default(autoincrement())
+  source     String
+  // 수집기가 붙인 사건 id(재전송 중복 제거)
+  eventId    String
+  // incident_open | incident_close | info 등
+  kind       String
+  // 같은 사건을 묶는 키(예: health, cert, version_mismatch)
+  key        String
+  severity   String
+  message    String
+  detail     Json?
+  occurredAt DateTime @db.Timestamptz(3)
+  // 서버가 받은 시각(보존 기간 기준)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([source, eventId])
+  @@unique([seq])
+  @@index([occurredAt])
+  // 열린 사건 계산(수집기·key별 마지막으로 받은 사건)
+  @@index([source, key, seq])
+  // 보존 기간 정리(받은 시각)
+  @@index([createdAt])
 }

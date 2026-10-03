@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import type { IdentityVerificationPurpose } from "@prisma/client";
 import { POST as applyRoute } from "../../app/api/seller-signup/apply/route";
 import { POST as signupConfirmRoute } from "../../app/api/seller-signup/verification/confirm/route";
 import { POST as signupResendRoute } from "../../app/api/seller-signup/verification/resend/route";
@@ -39,7 +40,7 @@ afterAll(async () => {
 });
 
 const provider = new FakeIdentityProvider();
-const ownerOf = (v: { sellerId: string | null; purpose: "BUYER_SIGNUP" | "SELLER_REPRESENTATIVE" | "PASSWORD_RESET" }, ownerToken: string) => ({
+const ownerOf = (v: { sellerId: string | null; purpose: IdentityVerificationPurpose }, ownerToken: string) => ({
   sellerId: v.sellerId,
   purpose: v.purpose,
   ownerToken,
@@ -122,7 +123,7 @@ describe("위조·재사용 결과 차단", () => {
     expect(await completeIdentityVerification(db, provider, v.id, { sellerId: b.seller.id, purpose: "BUYER_SIGNUP", ownerToken })).toEqual({ ok: false, reason: "not_found" });
     expect(await completeIdentityVerification(db, provider, v.id, { sellerId: a.seller.id, purpose: "PASSWORD_RESET", ownerToken })).toEqual({ ok: false, reason: "not_found" });
     const signup = (loginId: string) =>
-      signupBuyer(db, provider, { sellerId: a.seller.id, verificationId: v.id, ownerToken, loginId, password: "pw-123456", broadcastNickname: loginId.split("@")[0], agreedTerms: true, agreedPrivacy: true });
+      signupBuyer(db, provider, { sellerId: a.seller.id, verificationId: v.id, ownerToken, loginId, password: "pw-123456", broadcastNickname: loginId.split("@")[0] });
     expect((await signup("first@example.com")).ok).toBe(true);
     expect(await signup("second@example.com")).toEqual({ ok: false, reason: "verification_invalid" });
   });
@@ -259,7 +260,7 @@ describe("Codex 검수 후속(#95)", () => {
     const after = new Date(done.verification.expiresAt.getTime() + 1000);
     expect(after.getTime() - done.verification.verifiedAt!.getTime()).toBeLessThan(30 * 60_000);
     expect(
-      await signupBuyer(db, provider, { sellerId: seller.id, verificationId: b.verification.id, ownerToken: b.ownerToken, loginId: "late@example.com", password: "pw-123456", broadcastNickname: "늦음", agreedTerms: true, agreedPrivacy: true, now: after }),
+      await signupBuyer(db, provider, { sellerId: seller.id, verificationId: b.verification.id, ownerToken: b.ownerToken, loginId: "late@example.com", password: "pw-123456", broadcastNickname: "늦음", now: after }),
     ).toEqual({ ok: false, reason: "verification_invalid" });
 
     const rep = await startIdv(provider, { purpose: "SELLER_REPRESENTATIVE", sellerId: null });
