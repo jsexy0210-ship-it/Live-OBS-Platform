@@ -126,11 +126,17 @@ export async function listProducts(
   // 결과가 Postgres 바인드 변수 한도(32,767)를 넘을 때 오류가 나므로 쓰지 않는다.
   const where: Prisma.Sql[] = [Prisma.sql`p."sellerId" = ${ctx.sellerId}::uuid`, Prisma.sql`p."deletedAt" IS NULL`];
   if (status) where.push(Prisma.sql`p."status" = ${status}::"ProductStatus"`);
+  let stockJoin = Prisma.empty;
   if (opts.stock !== undefined && opts.stock !== "") {
     if (opts.stock !== "out" && opts.stock !== "low") return { ok: false, reason: "invalid_stock_filter" };
     const [lo, hi] = STOCK_FILTERS[opts.stock];
-    where.push(Prisma.sql`(SELECT COALESCE(SUM(o."stock"), 0) FROM "ProductOption" o
-      WHERE o."sellerId" = p."sellerId" AND o."productId" = p."id" AND o."deletedAt" IS NULL) BETWEEN ${lo} AND ${hi}`);
+    // 판매자 옵션 재고를 상품별로 한 번만 더해 붙인다(상관 서브쿼리에 BETWEEN을 걸면 합계를 두 번 계산해 느려진다).
+    // 옵션이 없는 상품은 합계 0.
+    stockJoin = Prisma.sql`LEFT JOIN (
+      SELECT o."productId", SUM(o."stock") AS "total" FROM "ProductOption" o
+      WHERE o."sellerId" = ${ctx.sellerId}::uuid AND o."deletedAt" IS NULL
+      GROUP BY o."productId") st ON st."productId" = p."id"`;
+    where.push(Prisma.sql`COALESCE(st."total", 0) BETWEEN ${lo} AND ${hi}`);
   }
   // 이름 검색 q: 상품 이름이나 (지우지 않은) 옵션 이름에 들어 있으면(대소문자 무시, 부분 일치). 저장할 때처럼 NFKC로 맞추고
   // 앞뒤 공백을 지운 뒤 50자까지. 비었거나 일반 공백(U+0020)뿐이면 검색하지 않는다. 탭·줄바꿈·BOM·폭 없는 공백 같은
@@ -154,6 +160,7 @@ export async function listProducts(
   }
   const ids = await db.$queryRaw<{ id: string }[]>`
     SELECT p."id" FROM "Product" p
+    ${stockJoin}
     WHERE ${Prisma.join(where, " AND ")}
     ORDER BY p."sortOrder" ASC, p."createdAt" DESC, p."id" ASC
     LIMIT ${limit + 1}`;
