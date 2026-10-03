@@ -20,6 +20,10 @@ const VISIBLE_MEMO = /[\p{L}\p{N}\p{S}\p{P}\p{Cn}]/u;
 
 export type TextKind = "name" | "memo" | "multiline";
 
+// 글자 수: NFKC 정규화·앞뒤 공백 정리 뒤 코드포인트 수. 이모지 하나(👍)도 1자다. 서버 검사(cleanText)와 같은 기준이라
+// 화면의 글자 수 표시·입력 제한도 이 함수를 쓴다(의존성 없음).
+export const textLength = (v: string): number => [...v.normalize("NFKC").trim()].length;
+
 export function cleanText(v: unknown, max: number, kind: TextKind = "name"): string | null {
   if (typeof v !== "string") return null;
   const n = v.normalize("NFKC");
@@ -27,7 +31,6 @@ export function cleanText(v: unknown, max: number, kind: TextKind = "name"): str
   if ((kind === "memo" ? DISALLOWED_MEMO : DISALLOWED).test(checked) || NONCHARACTER.test(checked)) return null;
   if (kind === "name" && (BLANK_LOOKALIKE.test(v) || BLANK_LOOKALIKE.test(n))) return null;
   const t = (kind === "multiline" ? n.replace(/\r\n/g, "\n") : n).trim();
-  // 글자 수는 화면에 보이는 단위(코드포인트)로 센다. 이모지 하나도 1자다.
-  if (t.length === 0 || [...t].length > max || !(kind === "memo" ? VISIBLE_MEMO : VISIBLE).test(t)) return null;
+  if (t.length === 0 || textLength(t) > max || !(kind === "memo" ? VISIBLE_MEMO : VISIBLE).test(t)) return null;
   return t;
 }
