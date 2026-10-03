@@ -1,0 +1,236 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { Topbar } from "../../../../../../components/seller/SellerShell";
+import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
+import { api, failMessage } from "../../../../../../components/seller/api";
+import { parseAmount, won } from "../../../../../../components/seller/format";
+
+// SA-061 배송비 정책. 지금 API가 받는 항목(배송비 방식·배송비·무료 기준·제주·도서산간 추가 배송비)만 보여 준다.
+// 받는 방법·발송 기간·기본 택배사, 제주와 그 밖의 도서지역을 나눈 금액은 API가 생기면 붙인다.
+
+type Policy = { baseFee: number; freeOverAmount: number | null; remoteSurcharge: number; remoteZipRanges: [number, number][] };
+type Mode = "free" | "fixed" | "threshold";
+
+const MAX_FEE = 100_000;
+const MAX_FREE_OVER = 100_000_000;
+const MODES: { key: Mode; title: string; desc: string }[] = [
+  { key: "free", title: "무료", desc: "모든 주문 배송비 0원 · 제주 · 도서산간 추가는 따로 붙어요" },
+  { key: "fixed", title: "고정", desc: "금액과 상관없이 정한 배송비를 받아요" },
+  { key: "threshold", title: "일정 금액 이상 무료", desc: "기준 금액보다 적게 사면 배송비를 받고, 넘으면 0원이에요" },
+];
+
+const modeOf = (p: Policy): Mode => (p.baseFee === 0 ? "free" : p.freeOverAmount === null ? "fixed" : "threshold");
+
+function feeError(v: string, max: number, min = 0): string | null {
+  const n = parseAmount(v);
+  if (n === null) return "숫자만 입력해 주세요";
+  if (n < min) return `${min.toLocaleString("ko-KR")}원 이상으로 적어 주세요`;
+  if (n > max) return `${won(max)}까지 정할 수 있어요`;
+  return null;
+}
+
+export default function ShippingSettingsPage() {
+  const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; saved: Policy }>({ kind: "loading" });
+  const [mode, setMode] = useState<Mode>("fixed");
+  const [fee, setFee] = useState("");
+  const [freeOver, setFreeOver] = useState("");
+  const [remote, setRemote] = useState("");
+  const [showErrors, setShowErrors] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const apply = (p: Policy) => {
+    setMode(modeOf(p));
+    setFee(String(p.baseFee === 0 ? 3000 : p.baseFee));
+    setFreeOver(p.freeOverAmount === null ? "" : String(p.freeOverAmount));
+    setRemote(String(p.remoteSurcharge));
+  };
+
+  const load = useCallback(async () => {
+    setState({ kind: "loading" });
+    const r = await api<{ policy: Policy }>("/api/seller/shipping-policy");
+    if (!r.ok) return setState({ kind: "error", status: r.status });
+    apply(r.data.policy);
+    setState({ kind: "ok", saved: r.data.policy });
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const errors = {
+    fee: mode === "free" ? null : feeError(fee, MAX_FEE, 1),
+    freeOver: mode === "threshold" ? (freeOver.trim() === "" ? "무료 배송 기준 금액을 적어 주세요" : feeError(freeOver, MAX_FREE_OVER, 1)) : null,
+    remote: feeError(remote, MAX_FEE),
+  };
+  const valid = !errors.fee && !errors.freeOver && !errors.remote;
+  const saved = state.kind === "ok" ? state.saved : null;
+
+  const next = (): Policy | null =>
+    !saved || !valid
+      ? null
+      : {
+          baseFee: mode === "free" ? 0 : parseAmount(fee)!,
+          freeOverAmount: mode === "threshold" ? parseAmount(freeOver)! : null,
+          remoteSurcharge: parseAmount(remote)!,
+          // 도서산간 우편번호 구간은 이 화면에서 바꾸지 않고 저장된 값을 그대로 보낸다
+          remoteZipRanges: saved.remoteZipRanges,
+        };
+  const candidate = next();
+  const dirty =
+    !!saved &&
+    (!candidate ||
+      candidate.baseFee !== saved.baseFee ||
+      candidate.freeOverAmount !== saved.freeOverAmount ||
+      candidate.remoteSurcharge !== saved.remoteSurcharge);
+
+  const save = async () => {
+    if (!candidate) {
+      setShowErrors(true);
+      return;
+    }
+    setSaving(true);
+    setFailure(null);
+    const r = await api<{ policy: Policy }>("/api/seller/shipping-policy", { method: "PUT", body: candidate });
+    setSaving(false);
+    if (!r.ok) return setFailure(failMessage(r, "저장하지 못했어요. 잠시 뒤 다시 시도해 주세요"));
+    apply(r.data.policy);
+    setState({ kind: "ok", saved: r.data.policy });
+    setShowErrors(false);
+    setToast("배송비 정책을 저장했어요 · 다음 주문부터 적용돼요");
+  };
+
+  const shown = showErrors ? errors : { fee: null, freeOver: null, remote: null };
+  const feeNum = parseAmount(fee);
+  const overNum = parseAmount(freeOver);
+  const remoteNum = parseAmount(remote);
+  const summary =
+    mode === "free"
+      ? "배송비 무료"
+      : mode === "fixed"
+        ? feeNum !== null && !errors.fee
+          ? `배송비 ${won(feeNum)}`
+          : null
+        : feeNum !== null && overNum !== null && !errors.fee && !errors.freeOver
+          ? `배송비 ${won(feeNum)} · ${won(overNum)} 이상 무료`
+          : null;
+
+  const amountInput = (id: string, label: string, value: string, set: (v: string) => void, err: string | null, help: string) => (
+    <div className="fld">
+      <label htmlFor={id}>{label}</label>
+      <input
+        id={id}
+        className={`inp num${err ? " is-error" : ""}`}
+        type="text"
+        inputMode="numeric"
+        value={value}
+        onChange={(e) => set(e.target.value)}
+        style={{ textAlign: "right" }}
+        aria-invalid={!!err}
+      />
+      {err ? <span className="err">{err}</span> : <span className="help">{help}</span>}
+    </div>
+  );
+
+  return (
+    <>
+      <Topbar crumb="설정 › 쇼핑몰 설정 › 배송비 정책">
+        {saved && (
+          <button className="btn btn-sm" type="button" onClick={() => void save()} disabled={saving || !dirty}>
+            {saving ? "저장하고 있어요" : "저장"}
+          </button>
+        )}
+      </Topbar>
+      <main className="main">
+        <div className="ph">
+          <div className="col" style={{ gap: 6 }}>
+            <h1 className="t-t3">배송비 정책</h1>
+            <span className="t-l2 c-alt">주문서의 배송비가 이 설정대로 보여요. 저장하면 다음 주문부터 적용돼요.</span>
+          </div>
+        </div>
+
+        {state.kind !== "ok" ? (
+          <div className="card">
+            {state.kind === "loading" && <LoadingRows rows={5} />}
+            {state.kind === "error" &&
+              (state.status === 403 ? (
+                <NoPermission need="쇼핑몰 설정" />
+              ) : state.status === 402 ? (
+                <Locked />
+              ) : (
+                <ErrorState title="배송비 정책을 불러오지 못했어요" onRetry={() => void load()} />
+              ))}
+          </div>
+        ) : (
+          <div className="form-grid">
+            <div className="col" style={{ gap: 20 }}>
+              {failure && (
+                <div className="msg msg-neg" role="alert">
+                  <span>
+                    <b>저장할 수 없어요.</b> {failure}
+                  </span>
+                </div>
+              )}
+              <section className="card pad col" style={{ gap: 12 }} role="radiogroup" aria-label="배송비 방식">
+                <h2 className="t-hl2">배송비 방식</h2>
+                {MODES.map((m) => (
+                  <div key={m.key} className={`col choice${mode === m.key ? " on" : ""}`} style={{ gap: 10 }}>
+                    <label className="row" style={{ gap: 10, cursor: "pointer" }}>
+                      <input className="rdo" type="radio" name="fee-mode" checked={mode === m.key} onChange={() => setMode(m.key)} aria-label={m.title} />
+                      <span className="col" style={{ gap: 2, flex: 1, minWidth: 0 }}>
+                        <span className="t-l1 fw6">{m.title}</span>
+                        <span className="t-c1 c-alt">{m.desc}</span>
+                      </span>
+                    </label>
+                    {mode === m.key && m.key !== "free" && (
+                      <div className="g3" style={{ paddingLeft: 30 }}>
+                        {amountInput("fee", "배송비", fee, setFee, shown.fee, "원")}
+                        {m.key === "threshold" && amountInput("free-over", "무료 배송 기준", freeOver, setFreeOver, shown.freeOver, "원 이상 주문이면 배송비 0원")}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </section>
+
+              <section className="card pad col" style={{ gap: 14 }}>
+                <h2 className="t-hl2">제주 · 도서산간 추가 배송비</h2>
+                <span className="t-c1 c-alt">
+                  <b>무료 배송이어도 붙어요.</b> 우편번호로 자동 판별해요. 주문서와 주문 완료 화면에 「도서산간 추가」 줄로 따로 보여요.
+                </span>
+                <div className="g3">{amountInput("remote", "추가 배송비", remote, setRemote, shown.remote, "원 · 제주와 그 밖의 도서지역에 같은 금액이 붙어요")}</div>
+              </section>
+            </div>
+
+            <aside className="col aside-sticky" style={{ gap: 16 }}>
+              <div className="card pad col" style={{ gap: 10 }}>
+                <span className="t-hl2">주문서에 이렇게 보여요</span>
+                <div className="col" style={{ gap: 6, padding: 12, borderRadius: 10, background: "var(--wds-fill-alternative)" }}>
+                  <div className="row between t-l2" style={{ gap: 12 }}>
+                    <span className="c-alt">배송</span>
+                    <span className="num" data-testid="fee-preview" style={{ textAlign: "right" }}>
+                      {summary ?? "금액을 입력하면 여기에 보여요"}
+                    </span>
+                  </div>
+                  <div className="row between t-l2" style={{ gap: 12 }}>
+                    <span className="c-alt">도서산간 추가</span>
+                    <span className="num c-alt">{remoteNum !== null && !errors.remote ? (remoteNum === 0 ? "받지 않아요" : `+${won(remoteNum)} · 해당 주소만`) : "—"}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="card pad col" style={{ gap: 6 }}>
+                <span className="t-hl2">알아 두세요</span>
+                <span className="t-l2 c-neu">배송비는 결제 금액에 합산되고 환불 시 함께 돌려줘요. 이미 받은 주문의 배송비는 바뀌지 않아요.</span>
+              </div>
+              <button className="btn btn-lg btn-block" type="button" onClick={() => void save()} disabled={saving || !dirty}>
+                {saving ? "저장하고 있어요" : "저장"}
+              </button>
+            </aside>
+          </div>
+        )}
+      </main>
+      {toast && <Toast text={toast} onDone={() => setToast(null)} />}
+    </>
+  );
+}
