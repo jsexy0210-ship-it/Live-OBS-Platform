@@ -358,3 +358,51 @@ test("위쪽 안내가 뜨면 안내로, 약관 오류면 약관 체크박스로
   }
   await expect(page.locator("#acc-terms-err")).toHaveText(BUYER_SIGNUP_MESSAGES.terms_required);
 });
+
+test("체험 한도로 본인확인이 막히면 처음부터 다시 하게 하지 않고 가입할 수 없음 상태를 보여 준다", async ({ page }) => {
+  for (const step of ["verification", "confirm"] as const) {
+    await page.unrouteAll();
+    const blocked = fail(403, "trial_limit_exceeded", IDENTITY_ERROR_MESSAGES.trial_limit_exceeded);
+    await mockApi(page, step === "verification" ? { verification: blocked } : { confirm: blocked });
+    await page.goto(`/shop/${SLUG}/signup`);
+    await fillIdentity(page, "김구매");
+    await page.getByRole("button", { name: "인증번호 받기" }).click();
+    if (step === "confirm") {
+      await page.getByLabel("인증번호").fill("000000");
+      await page.getByRole("button", { name: "확인", exact: true }).click();
+    }
+    await expect(page.getByRole("heading", { name: "지금은 가입할 수 없어요" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "인증번호 받기" })).toHaveCount(0);
+  }
+});
+
+test("가입 응답을 못 받으면 같은 본인확인으로 다시 보내지 않고 로그인으로 가입 여부를 확인한다", async ({ page }) => {
+  await mockApi(page);
+  let signups = 0;
+  await page.route((u) => u.pathname === API, (route) => {
+    signups++;
+    return route.abort();
+  });
+  const logins: unknown[] = [];
+  let loginOk = false;
+  await page.route((u) => u.pathname === `/api/shop/${SLUG}/auth/login`, (route) => {
+    logins.push(route.request().postDataJSON());
+    return loginOk
+      ? route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) })
+      : route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ error: "invalid_credentials", message: "x" }) });
+  });
+  await page.goto(`/shop/${SLUG}/signup`);
+  await toVerified(page);
+  await fillAccount(page, "x9", "별빛");
+  await page.getByRole("button", { name: "가입하기" }).click();
+  // 로그인으로 확인했지만 아직 계정이 없으면: 확인하지 못했다고 알리고 가입은 다시 보내지 않는다
+  await expect(page.getByText("가입 결과를 확인하지 못했어요. 잠시 뒤 다시 시도해 주세요")).toBeVisible();
+  await expect(page.getByRole("button", { name: "가입하기" })).toBeDisabled();
+  expect(logins).toEqual([{ loginId: "buyer-x9@example.com", password: "pw-x9-long" }]);
+  // 다시 확인: 이번에는 가입돼 있어 로그인 성공 → 완료 화면
+  loginOk = true;
+  await page.getByRole("button", { name: "가입 결과 다시 확인" }).click();
+  await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
+  expect(signups).toBe(1);
+  expect(logins).toHaveLength(2);
+});

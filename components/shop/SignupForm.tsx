@@ -44,6 +44,8 @@ export default function SignupForm({ slug }: { slug: string }) {
   const base = `/api/shop/${encodeURIComponent(slug)}/signup`;
   const [step, setStep] = useState<Step>("identity");
   const [unavailable, setUnavailable] = useState(false);
+  // 체험 중인 쇼핑몰의 본인확인 한도를 넘어 가입이 막힘(처음부터 다시 해도 같아 상태 화면으로 보여 준다)
+  const [blocked, setBlocked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   // 요청이 끝나면 포커스를 옮길 곳(버튼이 잠기거나 사라져 포커스가 본문으로 빠지지 않게). 같은 칸도 다시 옮기도록 객체로 둔다.
@@ -83,6 +85,8 @@ export default function SignupForm({ slug }: { slug: string }) {
   const [agreedPrivacy, setAgreedPrivacy] = useState(false);
   // 가입을 요청한 닉네임(완료 문구는 이 값을 쓴다)
   const [joinedNickname, setJoinedNickname] = useState("");
+  // 가입 응답을 못 받았을 때 가입 여부를 로그인으로 확인할 값. 있으면 같은 본인확인으로 가입을 다시 보내지 않는다.
+  const [unconfirmed, setUnconfirmed] = useState<{ loginId: string; password: string; nickname: string } | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{ loginId?: string; password?: string; nickname?: string; terms?: string }>({});
 
   const identityReady = name.trim() !== "" && birth.length === 8 && gender !== null && carrier !== "" && phone.length >= 10 && idvAgreed;
@@ -96,6 +100,7 @@ export default function SignupForm({ slug }: { slug: string }) {
     setCode("");
     setCodeError(null);
     setStep("identity");
+    setUnconfirmed(null);
     setNotice(n);
     focus(n ? "signup-notice" : "idv-name");
   };
@@ -104,6 +109,11 @@ export default function SignupForm({ slug }: { slug: string }) {
   const commonFail = (r: Fail): boolean => {
     if (r.status === 503) {
       setUnavailable(true);
+      focus("shop-state-title");
+      return true;
+    }
+    if (r.error === "trial_limit_exceeded") {
+      setBlocked(true);
       focus("shop-state-title");
       return true;
     }
@@ -200,17 +210,24 @@ export default function SignupForm({ slug }: { slug: string }) {
     setNotice(null);
     setFieldErrors({});
     const broadcastNickname = nickname.trim();
+    const account = { loginId: loginId.trim(), password, nickname: broadcastNickname };
     const r = await api(base, {
       method: "POST",
-      body: { verificationId, loginId: loginId.trim(), password, broadcastNickname, agreedTerms, agreedPrivacy },
+      body: { verificationId, loginId: account.loginId, password, broadcastNickname, agreedTerms, agreedPrivacy },
     });
-    setBusy(false);
     if (r.ok) {
-      setJoinedNickname(broadcastNickname);
-      setStep("done");
-      focus("shop-state-title");
+      setBusy(false);
+      finish(broadcastNickname);
       return;
     }
+    // 응답이 끊김: 서버에서는 가입됐을 수 있다. 같은 본인확인으로 다시 보내지 않고 로그인으로 확인한다(성공하면 세션도 이때 받는다).
+    if (r.status === 0) {
+      setUnconfirmed(account);
+      await checkJoined(account);
+      setBusy(false);
+      return;
+    }
+    setBusy(false);
     if (commonFail(r)) return;
     const text = failMessage(r);
     switch (r.error) {
@@ -245,6 +262,30 @@ export default function SignupForm({ slug }: { slug: string }) {
     }
   };
 
+  const finish = (joined: string) => {
+    setJoinedNickname(joined);
+    setUnconfirmed(null);
+    setStep("done");
+    focus("shop-state-title");
+  };
+
+  const checkJoined = async (account: { loginId: string; password: string; nickname: string }) => {
+    const r = await api(`/api/shop/${encodeURIComponent(slug)}/auth/login`, { method: "POST", body: { loginId: account.loginId, password: account.password } });
+    if (r.ok) finish(account.nickname);
+    else showNotice({ kind: "neg", text: "가입 결과를 확인하지 못했어요. 잠시 뒤 다시 시도해 주세요" });
+  };
+
+  const recheck = async () => {
+    if (!unconfirmed || busy) return;
+    setBusy(true);
+    await checkJoined(unconfirmed);
+    setBusy(false);
+  };
+
+  if (blocked) {
+    return <ShopState title="지금은 가입할 수 없어요" body="쇼핑몰에 문의해 주세요." />;
+  }
+
   if (unavailable) {
     return <ShopState title="본인확인 서비스 준비 중이에요" body="휴대폰 본인확인을 할 수 있게 되면 바로 가입할 수 있어요. 잠시 뒤 다시 와 주세요." />;
   }
@@ -267,7 +308,12 @@ export default function SignupForm({ slug }: { slug: string }) {
 
       {notice && (
         <div id="signup-notice" tabIndex={-1} className={`msg msg-${notice.kind}`} role={notice.kind === "neg" ? "alert" : "status"}>
-          <span>{notice.text}</span>
+          <span className="grow">{notice.text}</span>
+          {unconfirmed && (
+            <button type="button" className="btn btn-sm btn-out" disabled={busy} onClick={recheck}>
+              가입 결과 다시 확인
+            </button>
+          )}
         </div>
       )}
 
@@ -434,7 +480,7 @@ export default function SignupForm({ slug }: { slug: string }) {
       )}
 
       <form className="col signup-sec" aria-label="계정 정보" onSubmit={signup} noValidate>
-        <fieldset className={`col signup-fs${step !== "verified" ? " is-waiting" : ""}`} disabled={step !== "verified" || busy}>
+        <fieldset className={`col signup-fs${step !== "verified" ? " is-waiting" : ""}`} disabled={step !== "verified" || busy || unconfirmed !== null}>
           <div className="fld">
             <label htmlFor="acc-id">아이디 (이메일)</label>
             <input
