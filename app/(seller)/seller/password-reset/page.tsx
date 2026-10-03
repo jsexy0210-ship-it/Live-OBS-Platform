@@ -190,6 +190,7 @@ export default function PasswordResetPage() {
                     <label htmlFor="pw-new">새 비밀번호</label>
                     <input
                       id="pw-new"
+                      disabled={busy}
                       className={`inp${pwError ? " is-error" : ""}`}
                       type="password"
                       autoComplete="new-password"
@@ -218,6 +219,7 @@ export default function PasswordResetPage() {
                     <label htmlFor="pw-again">새 비밀번호 확인</label>
                     <input
                       id="pw-again"
+                      disabled={busy}
                       className={`inp${pw2Error ? " is-error" : ""}`}
                       type="password"
                       autoComplete="new-password"

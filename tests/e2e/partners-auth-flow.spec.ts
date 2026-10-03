@@ -123,7 +123,17 @@ test("파트너스 가입 신청 → 바로 승인 → 로그인 → 비밀번�
   await expect(page.getByText("위에 적은 비밀번호와 달라요")).toBeVisible();
   await shot(page, "AU-004");
   await page.getByLabel("새 비밀번호 확인").fill(next);
+  // 저장 중에는 두 칸을 바꿀 수 없다(보낸 값과 화면 값이 달라지지 않게)
+  let release: () => void = () => {};
+  const held = new Promise<void>((r) => (release = r));
+  await page.route("**/api/seller/password-reset/complete", async (route) => {
+    await held;
+    await route.continue();
+  });
   await page.getByRole("button", { name: "비밀번호 바꾸기" }).click();
+  await expect(page.getByLabel("새 비밀번호", { exact: true })).toBeDisabled();
+  await expect(page.getByLabel("새 비밀번호 확인")).toBeDisabled();
+  release();
   await expect(page.getByRole("heading", { name: "비밀번호를 바꿨어요" })).toBeVisible();
   await shot(page, "AU-004-done");
 
