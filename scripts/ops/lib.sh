@@ -109,7 +109,14 @@ deploy_mark_set() { # $1=키 $2=사유 $3=종류(kept|detached) $4=유효 초
     && printf 'kind=%s\nreason=%s\npid=%s\nstarted=%s\nexpiresEpoch=%s\n' "${3:-detached}" "${2:-$1}" "$$" "$(kst '+%F %T KST')" "$(( $(date +%s) + ttl ))" > "$tmp" \
     && mv -f "$tmp" "$f"
 }
-deploy_mark_clear() { deploy_mark_key_ok "$1" && rm -f "$DEPLOY_MARK_DIR/$1"; }
+# 끝낼 때는 바로 지우지 않고 「끝남」 기록(.ended-<키>, 끝난 시각 포함)으로 바꾼다. 감시가 탐침하는 사이에 시작해 끝난
+# 짧은 작업도 놓치지 않게 하려는 것이다(감시가 탐침 시간 제한 + 간격 안의 기록을 배포 중으로 보고, 그보다 오래되면 지움).
+deploy_mark_clear() {
+  deploy_mark_key_ok "$1" || return 1
+  local f="$DEPLOY_MARK_DIR/$1"
+  [ -e "$f" ] || return 0
+  printf 'endedEpoch=%s\n' "$(date +%s)" >> "$f" && mv -f "$f" "$DEPLOY_MARK_DIR/.ended-$1" || rm -f "$f"
+}
 # 이 스크립트가 끝날 때(실패 포함) 표시를 지운다. 여러 단계에 걸친 배포(워크플로)는 deploy-mark.sh on/off를 쓴다.
 # 15분이 넘게 걸리는 작업(복원 등)에서도 오래된 표시로 무시되지 않게, 도는 동안 표시 시각을 주기적으로 갱신한다.
 # 스크립트가 SIGKILL 등으로 죽으면 갱신도 멈춰(다음 주기에 부모가 없음을 확인) 표시가 15분 뒤 오래된 것으로 처리된다.

@@ -329,7 +329,9 @@ async function pruneRemovedTargets() {
 // 유효: 만료 시각(expiresEpoch)이 지나지 않음. 종류가 kept(도는 동안 갱신하는 표시)거나 적혀 있지 않으면 마지막 갱신이 기준 시간
 // (deployMarkStaleMin) 안이어야 한다. detached(deploy-mark.sh on, 갱신하는 프로세스 없음)는 만료 시각만 본다.
 // 지난 파일(SIGKILL·재부팅으로 남은 고아)은 판단에서 빼고 지운 뒤 한 번 경고한다.
-// .으로 시작하는 파일은 쓰는 도중의 임시 파일이라(키는 영문·숫자로 시작) 판단에서 빼고, 기준 시간이 지나면 지운다.
+// .ended-<키>는 끝난 표시의 기록이다(지울 때 바로 없애지 않고 끝난 시각 endedEpoch를 적어 옮김). 끝난 지 탐침 시간 제한 + 간격 안이면
+// 배포 중으로 본다(탐침하는 사이 시작해 끝난 짧은 작업도 그 회차에 반영). 그보다 오래되면 조용히 지운다.
+// 그 밖에 .으로 시작하는 파일은 쓰는 도중의 임시 파일이라(키는 영문·숫자로 시작) 판단에서 빼고, 기준 시간이 지나면 지운다.
 // 예전 단일 파일(deployMark)도 계속 읽는다(호환. 지난 것은 경고만 하고 그대로 둠).
 async function activeDeployMarks() {
   const now = Date.now();
@@ -340,6 +342,12 @@ async function activeDeployMarks() {
     const p = `${cfg.deployMarkDir}/${f}`;
     try {
       const ageMin = (now - statSync(p).mtimeMs) / 60_000;
+      if (f.startsWith(".ended-")) {
+        const ended = Number(/^endedEpoch=(\d+)$/m.exec(readFileSync(p, "utf8"))?.[1] ?? 0) * 1000 || statSync(p).mtimeMs;
+        if (now - ended <= cfg.timeoutMs + cfg.intervalS * 1000) active.push(f);
+        else unlinkSync(p);
+        continue;
+      }
       const tmp = f.startsWith(".");
       const body = tmp ? "" : readFileSync(p, "utf8");
       const exp = Number(/^expiresEpoch=(\d+)$/m.exec(body)?.[1] ?? 0);
