@@ -719,6 +719,10 @@ test("상품이 200개를 넘으면 「상품 더 불러오기」로 다음 쪽�
   await openAs(page);
   await expect(page.getByTestId("stock-row")).toHaveCount(200);
   await expect(page.getByText("불러온 옵션 200개 · 상품이 더 있어요", { exact: false })).toBeVisible();
+  // 다음 쪽이 남아 있으면 칩 안내에 「상품 더 불러오기」를 함께 알린다
+  await page.getByRole("button", { name: "재고 5 이하" }).click();
+  await expect(page.getByTestId("chip-scope")).toHaveText("불러온 상품 중에서 보여 줘요 · 상품이 더 있으면 「상품 더 불러오기」로 이어서 찾아요");
+  await page.getByRole("button", { name: "재고 5 이하" }).click();
   await page.getByRole("button", { name: "상품 더 불러오기" }).click();
   await expect(page.getByTestId("stock-row")).toHaveCount(200);
   await expect(page.getByRole("button", { name: /30개 더 보기/ })).toBeVisible();
@@ -726,6 +730,10 @@ test("상품이 200개를 넘으면 「상품 더 불러오기」로 다음 쪽�
   await expect(page.getByTestId("stock-row")).toHaveCount(230);
   await expect(page.getByRole("button", { name: "상품 더 불러오기" })).toHaveCount(0);
   await expect(page.getByText("불러온 옵션 230개 · 바뀐 옵션", { exact: false })).toBeVisible();
+  // 재고 조건 칩은 불러온 상품에서만 거른다고 안내한다
+  await expect(page.getByTestId("chip-scope")).toHaveCount(0);
+  await page.getByRole("button", { name: "품절", exact: true }).click();
+  await expect(page.getByTestId("chip-scope")).toHaveText("불러온 상품 중에서 보여 줘요");
 });
 
 test("검색 결과가 오기 전에는 모두 선택·한꺼번에 적기를 막아 옛 결과에 적용하지 않는다", async ({ page }) => {

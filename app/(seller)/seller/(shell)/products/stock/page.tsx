@@ -337,6 +337,14 @@ export default function StockPage() {
                   </button>
                 </div>
               </div>
+              {/* 재고 조건(5 이하·품절)은 옵션 단위라 서버가 아닌 불러온 줄에서 거른다(옵션 단위 서버 필터는 HANDOFF 미완료) */}
+              {filter !== "all" && (
+                <div className="row stock-selinfo" data-testid="chip-scope">
+                  <span className="t-l2 c-alt">
+                    불러온 상품 중에서 보여 줘요{cursor ? " · 상품이 더 있으면 「상품 더 불러오기」로 이어서 찾아요" : ""}
+                  </span>
+                </div>
+              )}
               {visible.length > shown.length && (
                 <div className="row stock-selinfo" data-testid="stock-selinfo">
                   <span className="t-l2 c-alt num">
