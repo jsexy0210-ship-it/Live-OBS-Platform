@@ -38,6 +38,9 @@ describe("이미 탈퇴한 회원 정리 마이그레이션", () => {
     const goneRetry = await idv(seller.id, null, "ci-gone", before);
     // 탈퇴 뒤 같은 사람이 다시 가입 중인 시도는 건드리지 않는다(가입이 끊기지 않게)
     const rejoining = await idv(seller.id, null, "ci-gone");
+    // 탈퇴 전에 시작했지만 탈퇴 뒤에 가입을 마쳐 새 회원과 이어진 같은 CI 기록도 건드리지 않는다
+    const rejoined = await createBuyer(seller.id, grade.id, undefined, "ci-gone");
+    const rejoinedIdv = await idv(seller.id, rejoined.id, "ci-gone", before);
     const liveIdv = await idv(seller.id, live.id, live.ciHash);
     const otherIdv = await idv(other.seller.id, null, "ci-gone");
     let no = 0;
@@ -69,6 +72,7 @@ describe("이미 탈퇴한 회원 정리 마이그레이션", () => {
     expect(g).toMatchObject({ name: null, phone: null, ciHash: null, subjectId: null, status: "VERIFIED", anonymizedAt: deletedAt });
     expect(g.requestId).toMatch(/^anonymized:/);
     expect(await db.identityVerification.findUniqueOrThrow({ where: { id: goneRetry.id } })).toMatchObject({ name: null, ciHash: null, anonymizedAt: deletedAt });
+    expect(await db.identityVerification.findUniqueOrThrow({ where: { id: rejoinedIdv.id } })).toMatchObject({ subjectId: rejoined.id, ciHash: "ci-gone", ownerTokenHash: "h", anonymizedAt: null });
     expect(await db.identityVerification.findUniqueOrThrow({ where: { id: rejoining.id } })).toMatchObject({ name: "김구매", ciHash: "ci-gone", ownerTokenHash: "h", anonymizedAt: null });
     for (const id of [liveIdv.id, otherIdv.id]) expect((await db.identityVerification.findUniqueOrThrow({ where: { id } })).anonymizedAt).toBeNull();
     const held = async (id: string) => (await db.order.findUniqueOrThrow({ where: { id } })).legalHoldAt;
