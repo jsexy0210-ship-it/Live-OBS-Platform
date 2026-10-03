@@ -89,9 +89,10 @@ export const kstDaysAgo = (n: number, now = new Date()) => kstDate(new Date(now.
 export const itemSummaryText = (s: OrderRow["itemSummary"]) =>
   `${s.firstProductName ?? "상품 정보 없음"}${s.otherCount > 0 ? ` 외 ${s.otherCount}건` : ""}`;
 
-// 휴대폰 번호 하이픈(010-1234-5678). 형식이 다르면 그대로 둔다.
+// 전화번호 하이픈(010-1234-5678). 서울 02 번호는 02-XXX(X)-XXXX. 형식이 다르면 그대로 둔다.
 export const phoneText = (p: string) => {
   const d = p.replace(/\D/g, "");
+  if (d.startsWith("02") && (d.length === 9 || d.length === 10)) return `02-${d.slice(2, d.length - 4)}-${d.slice(-4)}`;
   if (d.length === 11) return `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`;
   if (d.length === 10) return `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
   return p;
