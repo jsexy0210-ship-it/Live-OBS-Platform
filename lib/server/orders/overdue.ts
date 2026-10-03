@@ -91,39 +91,57 @@ export async function cancelOverdueOrders(db: PrismaClient, opts: { now?: Date; 
   });
   const cancelled: string[] = [];
   const restricted: { sellerId: string; buyerMemberId: string; endsAt: Date }[] = [];
+  const failed: string[] = [];
   for (const o of due) {
-    await db.$transaction(async (tx) => {
-      await lockSellerOrders(tx, o.sellerId);
-      // 잠금을 잡은 뒤의 실제 DB 시각으로 처리한다. 제한은 이 트랜잭션이 끝나야 보이고, 주문 생성도 같은 잠금을 잡으므로
-      // 제한이 생긴 뒤 잠금을 얻은 주문은 반드시 제한을 본다(시각 비교에 기대지 않음).
-      const now = opts.now ?? (await dbClock(tx));
-      // 그사이 결제·취소된 주문은 건드리지 않는다
-      const moved = await tx.order.updateMany({
-        where: { id: o.id, sellerId: o.sellerId, status: "PENDING_PAYMENT", paymentDueAt: { lte: now } },
-        data: { status: "CANCELLED", cancelledAt: now, autoCancelledAt: now },
+    // 한 건이 실패해도 나머지 주문은 계속 처리한다. 실패한 건은 오류 로그와 감사 로그로 남기고 다음 실행에서 다시 시도한다.
+    try {
+      const outcome = await db.$transaction(async (tx) => {
+        await lockSellerOrders(tx, o.sellerId);
+        // 잠금을 잡은 뒤의 실제 DB 시각으로 처리한다. 제한은 이 트랜잭션이 끝나야 보이고, 주문 생성도 같은 잠금을 잡으므로
+        // 제한이 생긴 뒤 잠금을 얻은 주문은 반드시 제한을 본다(시각 비교에 기대지 않음).
+        const now = opts.now ?? (await dbClock(tx));
+        // 그사이 결제·취소된 주문은 건드리지 않는다
+        const moved = await tx.order.updateMany({
+          where: { id: o.id, sellerId: o.sellerId, status: "PENDING_PAYMENT", paymentDueAt: { lte: now } },
+          data: { status: "CANCELLED", cancelledAt: now, autoCancelledAt: now },
+        });
+        if (moved.count !== 1) return null;
+        await tx.orderStatusHistory.create({
+          data: { sellerId: o.sellerId, orderId: o.id, fromStatus: "PENDING_PAYMENT", toStatus: "CANCELLED", actorType: "SYSTEM", reason: "payment_overdue", createdAt: now },
+        });
+        // 주문 때 뺀 재고(ORDER 상품)가 있으면 되돌린다(판매자 설정 restockOnCancel)
+        await restoreOrderStock(tx, { sellerId: o.sellerId, orderId: o.id, reason: "CANCEL", now, actor: { actorType: "SYSTEM", actorId: null } });
+        await writeAudit(tx, {
+          actorType: "SYSTEM",
+          sellerId: o.sellerId,
+          action: "order.auto_cancel",
+          targetType: "Order",
+          targetId: o.id,
+          reason: "payment_overdue",
+          before: { status: "PENDING_PAYMENT" },
+          after: { status: "CANCELLED" },
+        });
+        return { restriction: await maybeRestrict(tx, o.sellerId, o.buyerMemberId, now) };
       });
-      if (moved.count !== 1) return;
-      await tx.orderStatusHistory.create({
-        data: { sellerId: o.sellerId, orderId: o.id, fromStatus: "PENDING_PAYMENT", toStatus: "CANCELLED", actorType: "SYSTEM", reason: "payment_overdue", createdAt: now },
-      });
-      // 주문 때 뺀 재고(ORDER 상품)가 있으면 되돌린다(판매자 설정 restockOnCancel)
-      await restoreOrderStock(tx, { sellerId: o.sellerId, orderId: o.id, reason: "CANCEL", now, actor: { actorType: "SYSTEM", actorId: null } });
-      await writeAudit(tx, {
+      // 커밋된 뒤에만 결과에 넣는다
+      if (outcome) {
+        cancelled.push(o.id);
+        if (outcome.restriction) restricted.push({ sellerId: o.sellerId, buyerMemberId: o.buyerMemberId, endsAt: outcome.restriction.endsAt });
+      }
+    } catch (e) {
+      console.error("[cancelOverdueOrders] 자동 취소 실패", o.id, e);
+      failed.push(o.id);
+      await writeAudit(db, {
         actorType: "SYSTEM",
         sellerId: o.sellerId,
-        action: "order.auto_cancel",
+        action: "order.auto_cancel_failed",
         targetType: "Order",
         targetId: o.id,
-        reason: "payment_overdue",
-        before: { status: "PENDING_PAYMENT" },
-        after: { status: "CANCELLED" },
-      });
-      cancelled.push(o.id);
-      const r = await maybeRestrict(tx, o.sellerId, o.buyerMemberId, now);
-      if (r) restricted.push({ sellerId: o.sellerId, buyerMemberId: o.buyerMemberId, endsAt: r.endsAt });
-    });
+        reason: e instanceof Error ? e.message.slice(0, 200) : "unknown",
+      }).catch((logError) => console.error("[cancelOverdueOrders] 감사 로그 실패", o.id, logError));
+    }
   }
-  return { cancelled, restricted };
+  return { cancelled, restricted, failed };
 }
 
 // 미입금 알림 대상(대표님 결정 2026-10-03, PRODUCT_SCOPE): 알림 시각이 지났고 기한은 아직 안 지난 결제 대기 주문.

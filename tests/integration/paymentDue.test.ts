@@ -127,14 +127,14 @@ describe("미입금 자동 취소", () => {
     await db.order.update({ where: { id: paid }, data: { paymentDueAt: new Date(Date.now() - HOUR) } });
     const stockBefore = (await db.productOption.findUniqueOrThrow({ where: { id: s.option.id } })).stock;
 
-    expect(await cancelOverdueOrders(db)).toEqual({ cancelled: [overdue], restricted: [] });
+    expect(await cancelOverdueOrders(db)).toEqual({ cancelled: [overdue], restricted: [], failed: [] });
     expect(await db.order.findUniqueOrThrow({ where: { id: overdue } })).toMatchObject({ status: "CANCELLED", cancelledAt: expect.any(Date), autoCancelledAt: expect.any(Date) });
     expect(await db.order.findUniqueOrThrow({ where: { id: notYet } })).toMatchObject({ status: "PENDING_PAYMENT", autoCancelledAt: null });
     expect(await db.order.findUniqueOrThrow({ where: { id: paid } })).toMatchObject({ status: "PAID", autoCancelledAt: null });
     expect(await db.orderStatusHistory.findFirstOrThrow({ where: { orderId: overdue, toStatus: "CANCELLED" } })).toMatchObject({ actorType: "SYSTEM", reason: "payment_overdue" });
     expect(await db.auditLog.count({ where: { action: "order.auto_cancel", targetId: overdue } })).toBe(1);
     expect((await db.productOption.findUniqueOrThrow({ where: { id: s.option.id } })).stock).toBe(stockBefore);
-    expect(await cancelOverdueOrders(db)).toEqual({ cancelled: [], restricted: [] });
+    expect(await cancelOverdueOrders(db)).toEqual({ cancelled: [], restricted: [], failed: [] });
   });
 
   it("여러 번 동시에 돌려도 주문마다 한 번만 취소되고 이력·감사 로그도 한 건", async () => {

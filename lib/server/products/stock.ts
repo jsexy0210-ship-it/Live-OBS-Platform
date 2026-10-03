@@ -38,7 +38,24 @@ export async function restoreOrderStock(
     // 같은 품목을 동시에 되돌리려 해도 한 번만 되돌린다
     const claimed = await tx.orderItem.updateMany({ where: { id: item.id, stockRestoredAt: null }, data: { stockRestoredAt: input.now } });
     if (claimed.count !== 1) continue;
-    await tx.productOption.update({ where: { id: item.optionId }, data: { stock: { increment: item.quantity } } });
+    // 수동 증감과 같은 상한: 되돌리면 정수 범위를 넘는 품목은 되돌리지 않고(복구 표시도 되돌림) 기록만 남긴다
+    const inc = await tx.productOption.updateMany({
+      where: { id: item.optionId, sellerId: input.sellerId, stock: { lte: INT4_MAX - item.quantity } },
+      data: { stock: { increment: item.quantity } },
+    });
+    if (inc.count !== 1) {
+      await tx.orderItem.update({ where: { id: item.id }, data: { stockRestoredAt: null } });
+      await writeAudit(tx, {
+        ...input.actor,
+        sellerId: input.sellerId,
+        action: "stock.restore_skipped",
+        targetType: "OrderItem",
+        targetId: item.id,
+        reason: "stock_too_large",
+        after: { optionId: item.optionId, quantity: item.quantity },
+      });
+      continue;
+    }
     await tx.stockMovement.create({
       data: {
         sellerId: input.sellerId,
@@ -57,7 +74,7 @@ export async function restoreOrderStock(
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export type StockAdjustFailure = "invalid_stock_adjust" | "insufficient_stock";
+export type StockAdjustFailure = "invalid_stock_adjust" | "insufficient_stock" | "stock_too_large";
 
 // 판매자 수동 증감(방송 이벤트 증정·서비스 등, PRODUCT_MANAGE). delta는 0이 아닌 정수, 사유 필수(최대 100자).
 // 조건부 UPDATE(stock + delta >= 0, 정수 범위 안)라서 결제 차감과 겹쳐도 음수가 되거나 차감이 사라지지 않는다.
@@ -86,7 +103,8 @@ export async function adjustStock(
       where: { id: optionId, sellerId: ctx.sellerId, stock: delta < 0 ? { gte: -delta } : { lte: INT4_MAX - delta } },
       data: { stock: { increment: delta } },
     });
-    if (moved.count !== 1) return { ok: false as const, reason: "insufficient_stock" as const };
+    // 빼다가 모자라면 insufficient_stock, 더하다가 정수 상한을 넘으면 stock_too_large
+    if (moved.count !== 1) return { ok: false as const, reason: delta < 0 ? ("insufficient_stock" as const) : ("stock_too_large" as const) };
     const now = await dbNow(tx);
     await tx.stockMovement.create({
       data: { sellerId: ctx.sellerId, optionId, delta, reason: "MANUAL", note: reason, actorType: ctx.actorType, actorId: ctx.actorId, createdAt: now },

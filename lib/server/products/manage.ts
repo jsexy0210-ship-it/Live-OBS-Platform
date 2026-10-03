@@ -46,7 +46,8 @@ function multiline(v: unknown, max: number): string | null | undefined {
 const isInt = (v: unknown, min: number, max: number): v is number => typeof v === "number" && Number.isInteger(v) && v >= min && v <= max;
 const unitOk = (price: number, delta: number) => price + delta >= 1 && price + delta <= INT4_MAX;
 
-type OptionInput = { name: string; priceDelta: number; stock: number; sku: string | null; sortOrder: number };
+// sortOrder가 없으면 null: 상품 등록 때는 입력 순서, 옵션 추가 때는 맨 뒤로 매긴다(같은 시각에 만든 옵션 순서가 흔들리지 않게)
+type OptionInput = { name: string; priceDelta: number; stock: number; sku: string | null; sortOrder: number | null };
 
 function parseNewOption(raw: unknown): OptionInput | null {
   if (!raw || typeof raw !== "object") return null;
@@ -54,11 +55,11 @@ function parseNewOption(raw: unknown): OptionInput | null {
   const name = line(b.name, 100);
   const priceDelta = b.priceDelta ?? 0;
   const stock = b.stock ?? 0;
-  const sortOrder = b.sortOrder ?? 0;
+  const sortOrder = b.sortOrder ?? null;
   const noSku = b.sku === undefined || b.sku === null || b.sku === "";
   const sku = noSku ? null : line(b.sku, 64);
   if (!name || (!noSku && sku === null)) return null;
-  if (!isInt(priceDelta, -INT4_MAX, INT4_MAX) || !isInt(stock, 0, INT4_MAX) || !isInt(sortOrder, -100000, 100000)) return null;
+  if (!isInt(priceDelta, -INT4_MAX, INT4_MAX) || !isInt(stock, 0, INT4_MAX) || (sortOrder !== null && !isInt(sortOrder, -100000, 100000))) return null;
   return { name, priceDelta, stock, sku, sortOrder };
 }
 
@@ -72,7 +73,7 @@ async function lockProduct(tx: Tx, sellerId: string, productId: string) {
 }
 
 const liveOptions = (tx: Tx | PrismaClient, sellerId: string, productId: string) =>
-  tx.productOption.findMany({ where: { sellerId, productId, deletedAt: null }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] });
+  tx.productOption.findMany({ where: { sellerId, productId, deletedAt: null }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }] });
 
 async function productView(tx: Tx | PrismaClient, sellerId: string, productId: string) {
   const p = await tx.product.findFirstOrThrow({ where: { id: productId, sellerId } });
@@ -117,7 +118,7 @@ export async function listProducts(
     where: { sellerId: ctx.sellerId, deletedAt: null, ...(status ? { status } : {}), ...after },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }, { id: "asc" }],
     take: limit + 1,
-    include: { options: { where: { deletedAt: null }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] } },
+    include: { options: { where: { deletedAt: null }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }] } },
   });
   const page = rows.slice(0, limit);
   return {
@@ -160,12 +161,12 @@ export async function createProduct(db: PrismaClient, ctx: TenantContext, raw: u
   const rawOptions = b.options ?? [];
   if (!Array.isArray(rawOptions)) return fail("invalid_option");
   if (rawOptions.length > MAX_OPTIONS_PER_PRODUCT) return fail("too_many_options");
-  const options: OptionInput[] = [];
-  for (const r of rawOptions) {
+  const options: (OptionInput & { sortOrder: number })[] = [];
+  for (const [index, r] of rawOptions.entries()) {
     const o = parseNewOption(r);
     if (!o) return fail("invalid_option");
     if (!unitOk(price, o.priceDelta)) return fail("invalid_price");
-    options.push(o);
+    options.push({ ...o, sortOrder: o.sortOrder ?? index });
   }
   if (status === "ON_SALE" && options.length === 0) return fail("no_sellable_option");
 
@@ -272,7 +273,9 @@ export async function createOption(db: PrismaClient, ctx: TenantContext, product
       return fail("too_many_options");
     }
     const now = await dbNow(tx);
-    const option = await tx.productOption.create({ data: { sellerId: ctx.sellerId, productId, ...o, createdAt: now } });
+    const last = await tx.productOption.aggregate({ where: { sellerId: ctx.sellerId, productId, deletedAt: null }, _max: { sortOrder: true } });
+    const sortOrder = o.sortOrder ?? Math.min((last._max.sortOrder ?? -1) + 1, 100000);
+    const option = await tx.productOption.create({ data: { sellerId: ctx.sellerId, productId, ...o, sortOrder, createdAt: now } });
     if (o.stock > 0) await stockLog(tx, ctx, option.id, o.stock, now);
     await writeAudit(tx, {
       actorType: ctx.actorType,

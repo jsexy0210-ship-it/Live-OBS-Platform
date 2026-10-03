@@ -9,8 +9,10 @@ import { createOrder } from "../../lib/server/orders/create";
 import { ORDER_ERROR_MESSAGES, purchaseRestrictedMessage } from "../../lib/server/orders/messages";
 import { cancelOverdueOrders, listPaymentDueSoon } from "../../lib/server/orders/overdue";
 import { shipOrder } from "../../lib/server/orders/ship";
-import { createProduct, updateProduct } from "../../lib/server/products/manage";
+import { createOption, createProduct, updateProduct } from "../../lib/server/products/manage";
 import { adjustStock, restoreOrderStock } from "../../lib/server/products/stock";
+import { INT4_MAX } from "../../lib/server/orders/shipping";
+import type { PrismaClient } from "@prisma/client";
 import { cancelPendingOrder, markOrderPaid, refundOrder } from "../../lib/server/queue/service";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { PASSWORD, createLoginBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
@@ -321,3 +323,70 @@ describe("검수 후속 P2·배송비 무료 유형", () => {
     expect(await s.place([{ optionId: p.optionId, quantity: 1 }])).toMatchObject({ ok: true, shippingFee: 3000 });
   });
 });
+
+describe("검수 후속(#84)", () => {
+  it("복구하면 정수 상한을 넘는 품목은 500 없이 건너뛰고(기록 남김) 취소는 끝난다. 수동으로 상한을 넘겨 더하면 409 stock_too_large", async () => {
+    const s = await shop();
+    const ord = await s.product("ORDER", 10);
+    const id = await s.order([{ optionId: ord.optionId, quantity: 3 }]);
+    await db.productOption.update({ where: { id: ord.optionId }, data: { stock: INT4_MAX - 1 } });
+    expect(await cancelPendingOrder(db, s.ctx, id, { reason: "요청", expectedLiveVersion: await s.lv() })).toMatchObject({ ok: true });
+    expect(await db.order.findUniqueOrThrow({ where: { id } })).toMatchObject({ status: "CANCELLED" });
+    expect(await stockOf(ord.optionId)).toBe(INT4_MAX - 1);
+    expect(await db.orderItem.findFirstOrThrow({ where: { orderId: id } })).toMatchObject({ stockRestoredAt: null });
+    expect(await db.auditLog.count({ where: { action: "stock.restore_skipped" } })).toBe(1);
+
+    const r = await adjustStock(db, s.ctx, ord.productId, ord.optionId, { delta: 2, reason: "입고" });
+    expect(r).toEqual({ ok: false, reason: "stock_too_large" });
+    const c = await sellerCookie(s.owner.email);
+    const res = await adjustRoute(
+      new Request(`http://localhost:3000/api/seller/products/${ord.productId}/options/${ord.optionId}/stock-adjust`, { method: "POST", headers: { ...H, cookie: c }, body: JSON.stringify({ delta: 2, reason: "입고" }) }),
+      { params: Promise.resolve({ productId: ord.productId, optionId: ord.optionId }) },
+    );
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "stock_too_large", message: "재고는 21억 개까지 넣을 수 있어요" });
+    expect(await adjustStock(db, s.ctx, ord.productId, ord.optionId, { delta: 1, reason: "입고" })).toMatchObject({ ok: true, value: { stock: INT4_MAX } });
+  });
+
+  it("자동 취소에서 한 건이 실패해도 나머지 주문은 계속 처리하고, 실패한 건은 감사 로그를 남긴 뒤 다음 실행에서 처리된다", async () => {
+    const s = await shop();
+    const p = await s.product("PAYMENT", 100);
+    const ids = [];
+    for (let i = 0; i < 3; i++) ids.push(await s.order([{ optionId: p.optionId, quantity: 1 }]));
+    for (const [i, id] of ids.entries()) {
+      await db.order.update({ where: { id }, data: { paymentDueAt: new Date(Date.now() - (3 - i) * HOUR), createdAt: new Date(Date.now() - 2 * 24 * HOUR) } });
+    }
+    // 첫 주문의 트랜잭션만 실패하게 한다(DB 장애 흉내)
+    let calls = 0;
+    const flaky = new Proxy(db, {
+      get(target, prop, receiver) {
+        if (prop === "$transaction") {
+          return (fn: unknown) => {
+            calls += 1;
+            if (calls === 1) return Promise.reject(new Error("simulated failure"));
+            return (target.$transaction as (f: unknown) => Promise<unknown>)(fn);
+          };
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    }) as PrismaClient;
+    const run = await cancelOverdueOrders(flaky);
+    expect(run.failed).toEqual([ids[0]]);
+    expect(run.cancelled.sort()).toEqual([ids[1], ids[2]].sort());
+    expect(await db.order.findUniqueOrThrow({ where: { id: ids[0] } })).toMatchObject({ status: "PENDING_PAYMENT" });
+    expect(await db.auditLog.findFirstOrThrow({ where: { action: "order.auto_cancel_failed", targetId: ids[0] } })).toMatchObject({ reason: "simulated failure" });
+    // 같은 구매자의 세 번째 자동 취소라 구매 제한도 함께 생긴다
+    expect(await cancelOverdueOrders(db)).toMatchObject({ cancelled: [ids[0]], restricted: [{ buyerMemberId: s.buyer.id }], failed: [] });
+  });
+
+  it("함께 등록한 옵션은 입력 순서대로 나오고(같은 시각이어도), 나중에 추가한 옵션은 맨 뒤", async () => {
+    const s = await shop();
+    const r = await createProduct(db, s.ctx, { name: "순서", price: 1000, options: Array.from({ length: 8 }, (_, i) => ({ name: `옵션${i}` })) });
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.value.options.map((o) => o.name)).toEqual(Array.from({ length: 8 }, (_, i) => `옵션${i}`));
+    expect(r.value.options.map((o) => o.sortOrder)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    const added = await createOption(db, s.ctx, r.value.id, { name: "추가" });
+    expect(added.ok && added.value.options.at(-1)).toMatchObject({ name: "추가", sortOrder: 8 });
+  });
+});
+
