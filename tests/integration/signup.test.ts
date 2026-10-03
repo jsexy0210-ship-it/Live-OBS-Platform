@@ -29,13 +29,15 @@ async function verified(sellerId: string, ci: string) {
 
 let n = 0;
 const signup = (sellerId: string, v: { verification: { id: string }; ownerToken: string | undefined }, extra: { now?: Date } = {}) =>
-  signupBuyer(db, {
+  signupBuyer(db, provider, {
     sellerId,
     verificationId: v.verification.id,
     ownerToken: v.ownerToken,
     loginId: `user${++n}`,
     password: "pw-123456",
     broadcastNickname: `닉${n}`,
+    agreedTerms: true,
+    agreedPrivacy: true,
     ...extra,
   });
 

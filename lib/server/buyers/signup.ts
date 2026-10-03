@@ -1,14 +1,70 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { hashPassword } from "../auth/password";
-import { hashToken } from "../auth/token";
+import { MIN_PASSWORD_LENGTH } from "../auth/passwordReset";
+import { sellerAccessFor } from "../billing/subscription";
+import type { IdentityProvider } from "../identity/provider";
+import { completeIdentityVerification, parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
+import { cleanText } from "../text/clean";
 
 class VerificationUsed extends Error {}
 
 // 본인인증 후 가입에 쓸 수 있는 시간
 const SIGNUP_WINDOW_MS = 30 * 60_000;
 
+// 구매자 가입 흐름의 쿠키(휴대폰 본인확인을 시작한 브라우저 확인용). 그 쇼핑몰 가입 경로에서만 보낸다.
+export const BUYER_SIGNUP_IDV_COOKIE = "lo_bidv";
+export const buyerSignupPath = (slug: string) => `/api/shop/${slug}/signup`;
+// 같은 IP에서 하루(KST)에 시작할 수 있는 구매자 가입 본인확인 수(쇼핑몰마다). 판매자 가입과 같은 10회.
+export const BUYER_SIGNUP_VERIFY_DAILY_LIMIT_PER_IP = 10;
+
+// 가입 입력 규칙: 아이디 4~100자(영문·숫자와 . _ @ + -, 이메일도 됨), 비밀번호 8~200자, 방송 닉네임 1~20자(보이는 글자).
+export const LOGIN_ID_PATTERN = /^[A-Za-z0-9._@+-]{4,100}$/;
+export const MAX_NICKNAME_LENGTH = 20;
+
+// 운영 중이고 잠기지 않은 쇼핑몰만 가입을 받는다(주문과 같은 기준, DB 시계)
+async function shopOpen(db: PrismaClient, sellerId: string) {
+  const seller = await db.seller.findUnique({ where: { id: sellerId }, select: { status: true } });
+  return !!seller && seller.status === "ACTIVE" && (await sellerAccessFor(db, sellerId)) !== "expired";
+}
+
+// 구매자 가입 1단계: 휴대폰 본인확인 시작(같은 IP·같은 쇼핑몰 하루 10회까지). 첫 인증번호를 보내고 ownerToken을 돌려준다.
+export async function startBuyerSignupVerification(
+  db: PrismaClient,
+  provider: IdentityProvider,
+  sellerId: string,
+  rawPerson: unknown,
+  meta: { ip?: string | null; userAgent?: string | null; now?: Date } = {},
+) {
+  if (!(await shopOpen(db, sellerId))) return { ok: false as const, reason: "shop_unavailable" as const };
+  const person = parseIdentityPerson(rawPerson);
+  if (!person) return { ok: false as const, reason: "invalid_identity_input" as const };
+  const ip = meta.ip ?? null;
+  const started = await db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`buyer_signup:${sellerId}:${ip ?? "unknown"}`}))`;
+    const [{ count }] = await tx.$queryRaw<{ count: bigint }[]>`
+      SELECT count(*)::bigint AS count FROM "IdentityVerification"
+      WHERE "purpose" = 'BUYER_SIGNUP' AND "sellerId" = ${sellerId}::uuid
+        AND "requestIp" IS NOT DISTINCT FROM ${ip}
+        AND "createdAt" >= (date_trunc('day', now() AT TIME ZONE 'Asia/Seoul') AT TIME ZONE 'Asia/Seoul')`;
+    if (Number(count) >= BUYER_SIGNUP_VERIFY_DAILY_LIMIT_PER_IP) return null;
+    return startIdentityVerification(tx, provider, { purpose: "BUYER_SIGNUP", sellerId, person, requestIp: ip, now: meta.now });
+  });
+  if (!started) {
+    await writeAudit(db, { actorType: "SYSTEM", sellerId, action: "buyer.signup.verify_limited", reason: "daily_limit_exceeded", ip, userAgent: meta.userAgent });
+    return { ok: false as const, reason: "daily_limit_exceeded" as const };
+  }
+  const sent = await sendFirstIdentityCode(db, provider, started.verification, person, meta.now);
+  if (!sent.ok) return { ok: false as const, reason: sent.reason };
+  return { ok: true as const, verificationId: started.verification.id, ownerToken: started.ownerToken };
+}
+
 export type BuyerSignupFailure =
+  | "invalid_login_id"
+  | "weak_password"
+  | "invalid_nickname"
+  | "terms_required"
+  | "verification_pending"
   | "verification_invalid"
   | "already_member"
   | "login_id_taken"
@@ -17,10 +73,13 @@ export type BuyerSignupFailure =
 
 export type BuyerSignupResult = { ok: true; memberId: string } | { ok: false; reason: BuyerSignupFailure };
 
-// 구매자 회원가입. 휴대폰 본인확인(같은 쇼핑몰, 완료, 30분 안, 시작한 브라우저의 ownerToken, 아직 안 쓴 건)이 있어야 하고,
-// 같은 쇼핑몰에 같은 CI로 가입한 회원이 있으면 거부한다. 이름·휴대폰·생년월일은 인증 결과를 쓴다.
+// 구매자 회원가입. 휴대폰 본인확인(같은 쇼핑몰, 같은 공급자, 완료, 사용 기한·30분 안, 시작한 브라우저의 ownerToken,
+// 아직 안 쓴 건)이 있어야 하고, 같은 쇼핑몰에 같은 CI로 가입한 회원이 있으면 거부한다. 이름·휴대폰·생년월일은 인증 결과를 쓴다.
+// 본인확인은 completeIdentityVerification으로 확인한다(공급자·용도·쇼핑몰·ownerToken이 모두 맞아야 한다).
+// 필수 약관(이용약관·개인정보 수집·이용) 동의가 있어야 하고, 동의는 감사 로그에 남긴다.
 export async function signupBuyer(
   db: PrismaClient,
+  provider: IdentityProvider,
   input: {
     sellerId: string;
     verificationId: string;
@@ -28,22 +87,27 @@ export async function signupBuyer(
     loginId: string;
     password: string;
     broadcastNickname: string;
+    // 필수 약관 동의(true여야 한다). 생략하면 동의한 것으로 보지 않는다.
+    agreedTerms?: boolean;
+    agreedPrivacy?: boolean;
     now?: Date;
   },
 ): Promise<BuyerSignupResult> {
   const now = input.now ?? new Date();
-  const seller = await db.seller.findUnique({ where: { id: input.sellerId }, select: { status: true } });
-  if (!seller || seller.status !== "ACTIVE") return { ok: false, reason: "shop_unavailable" };
+  if (!(await shopOpen(db, input.sellerId))) return { ok: false, reason: "shop_unavailable" };
+  const loginId = typeof input.loginId === "string" ? input.loginId.trim() : "";
+  if (!LOGIN_ID_PATTERN.test(loginId)) return { ok: false, reason: "invalid_login_id" };
+  if (typeof input.password !== "string" || input.password.length < MIN_PASSWORD_LENGTH || input.password.length > 200) return { ok: false, reason: "weak_password" };
+  const nickname = cleanText(input.broadcastNickname, MAX_NICKNAME_LENGTH);
+  if (!nickname) return { ok: false, reason: "invalid_nickname" };
+  if (input.agreedTerms !== true || input.agreedPrivacy !== true) return { ok: false, reason: "terms_required" };
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.verificationId)) return { ok: false, reason: "verification_invalid" };
 
-  const v = await db.identityVerification.findUnique({ where: { id: input.verificationId } });
+  const done = await completeIdentityVerification(db, provider, input.verificationId, { sellerId: input.sellerId, purpose: "BUYER_SIGNUP", ownerToken: input.ownerToken }, now);
+  if (!done.ok) return { ok: false, reason: done.reason === "pending" ? "verification_pending" : "verification_invalid" };
+  const v = done.verification;
   if (
-    !v ||
-    v.sellerId !== input.sellerId ||
-    !input.ownerToken ||
-    v.ownerTokenHash !== hashToken(input.ownerToken) ||
     v.consumedAt ||
-    v.purpose !== "BUYER_SIGNUP" ||
-    v.status !== "VERIFIED" ||
     !v.ciHash ||
     !v.verifiedAt ||
     !v.name ||
@@ -77,20 +141,26 @@ export async function signupBuyer(
       return tx.buyerMember.create({
         data: {
           sellerId: input.sellerId,
-          loginId: input.loginId.trim(),
+          loginId,
           passwordHash,
           name: v.name!,
           phone: v.phone!,
           ciHash: v.ciHash!,
           identityVerifiedAt: v.verifiedAt!,
           birthDate: v.birthDate!,
-          broadcastNickname: input.broadcastNickname.trim(),
+          broadcastNickname: nickname,
           gradeId: grade.id,
           createdAt: now,
         },
       });
     });
-    await writeAudit(db, { actorType: "BUYER", actorId: member.id, sellerId: input.sellerId, action: "buyer.signup" });
+    await writeAudit(db, {
+      actorType: "BUYER",
+      actorId: member.id,
+      sellerId: input.sellerId,
+      action: "buyer.signup",
+      after: { agreedTerms: true, agreedPrivacy: true, agreedAt: now.toISOString() },
+    });
     return { ok: true, memberId: member.id };
   } catch (e) {
     if (e instanceof VerificationUsed) return { ok: false, reason: "verification_invalid" };
@@ -104,3 +174,31 @@ export async function signupBuyer(
     throw e;
   }
 }
+
+// 가입 실패 문구(해요체). 화면은 error 코드로 분기하고 message를 그대로 보여 준다.
+export const BUYER_SIGNUP_MESSAGES: Record<BuyerSignupFailure | "daily_limit_exceeded", string> = {
+  invalid_login_id: "아이디는 영문·숫자로 4~100자 안에서 정해 주세요. 마침표, 밑줄, @, +, -도 쓸 수 있어요",
+  weak_password: "비밀번호는 8자 이상으로 정해 주세요",
+  invalid_nickname: "방송 닉네임은 20자까지, 쓸 수 있는 글자로 정해 주세요",
+  terms_required: "필수 약관에 동의해 주세요",
+  verification_pending: "인증번호 확인을 먼저 마쳐 주세요",
+  verification_invalid: "본인확인을 처음부터 다시 해 주세요",
+  already_member: "이미 이 쇼핑몰에 가입했어요. 로그인해 주세요",
+  login_id_taken: "이미 쓰고 있는 아이디예요. 다른 아이디로 정해 주세요",
+  nickname_taken: "이미 쓰고 있는 방송 닉네임이에요. 다른 닉네임으로 정해 주세요",
+  shop_unavailable: "지금은 쇼핑몰을 이용할 수 없어요",
+  daily_limit_exceeded: "오늘은 본인확인을 더 할 수 없어요. 내일 다시 해 주세요",
+};
+
+export const BUYER_SIGNUP_STATUS: Record<BuyerSignupFailure, number> = {
+  invalid_login_id: 400,
+  weak_password: 400,
+  invalid_nickname: 400,
+  terms_required: 400,
+  verification_pending: 409,
+  verification_invalid: 400,
+  already_member: 409,
+  login_id_taken: 409,
+  nickname_taken: 409,
+  shop_unavailable: 402,
+};

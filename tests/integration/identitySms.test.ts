@@ -122,7 +122,7 @@ describe("위조·재사용 결과 차단", () => {
     expect(await completeIdentityVerification(db, provider, v.id, { sellerId: b.seller.id, purpose: "BUYER_SIGNUP", ownerToken })).toEqual({ ok: false, reason: "not_found" });
     expect(await completeIdentityVerification(db, provider, v.id, { sellerId: a.seller.id, purpose: "PASSWORD_RESET", ownerToken })).toEqual({ ok: false, reason: "not_found" });
     const signup = (loginId: string) =>
-      signupBuyer(db, { sellerId: a.seller.id, verificationId: v.id, ownerToken, loginId, password: "pw-123456", broadcastNickname: loginId });
+      signupBuyer(db, provider, { sellerId: a.seller.id, verificationId: v.id, ownerToken, loginId, password: "pw-123456", broadcastNickname: loginId, agreedTerms: true, agreedPrivacy: true });
     expect((await signup("first")).ok).toBe(true);
     expect(await signup("second")).toEqual({ ok: false, reason: "verification_invalid" });
   });
@@ -259,7 +259,7 @@ describe("Codex 검수 후속(#95)", () => {
     const after = new Date(done.verification.expiresAt.getTime() + 1000);
     expect(after.getTime() - done.verification.verifiedAt!.getTime()).toBeLessThan(30 * 60_000);
     expect(
-      await signupBuyer(db, { sellerId: seller.id, verificationId: b.verification.id, ownerToken: b.ownerToken, loginId: "late", password: "pw-123456", broadcastNickname: "늦음", now: after }),
+      await signupBuyer(db, provider, { sellerId: seller.id, verificationId: b.verification.id, ownerToken: b.ownerToken, loginId: "late", password: "pw-123456", broadcastNickname: "늦음", agreedTerms: true, agreedPrivacy: true, now: after }),
     ).toEqual({ ok: false, reason: "verification_invalid" });
 
     const rep = await startIdv(provider, { purpose: "SELLER_REPRESENTATIVE", sellerId: null });
