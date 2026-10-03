@@ -52,8 +52,10 @@ const cfg = {
   failThreshold: num("MONITOR_FAIL_THRESHOLD", 3, 1, { int: true }),
   // 배포 기록과 실행 버전이 이 횟수만큼 연속으로 다를 때만 경고(무중단 배포 중 잠깐 다른 것은 정상)
   versionMismatchTicks: num("MONITOR_VERSION_MISMATCH_TICKS", 3, 1, { int: true }),
-  // 배포 진행 표시(rolling-deploy.sh·rollback-app.sh가 만들고 끝나면 지움). 있는 동안 버전 불일치 경고를 미룬다.
+  // 예전 단일 배포 진행 표시(호환). 지금 스크립트는 아래 폴더에 작업별 파일을 둔다. 유효한 표시가 있는 동안 새 장애·버전 불일치 경고를 미룬다.
   deployMark: env("MONITOR_DEPLOY_MARK", "/data/deploy-in-progress"),
+  // 작업별 표시 파일 폴더(기본: 위 경로 + ".d")
+  deployMarkDir: env("MONITOR_DEPLOY_MARK_DIR", `${env("MONITOR_DEPLOY_MARK", "/data/deploy-in-progress")}.d`),
   deployMarkStaleMin: num("MONITOR_DEPLOY_MARK_STALE_MIN", 15, 1),
   slowMs: num("MONITOR_SLOW_MS", 1000, 1),
   dir: env("MONITOR_DIR", "/data"),
@@ -323,6 +325,35 @@ async function pruneRemovedTargets() {
   }
 }
 
+// 유효한 배포 진행 표시 목록. 작업마다 자기 파일(deployMarkDir/<키>)을 두고, 하나라도 유효하면 배포 중이다.
+// 유효: 마지막 갱신이 기준 시간(deployMarkStaleMin) 안이고 파일에 적힌 만료 시각(expiresEpoch)이 지나지 않음.
+// 지난 파일(SIGKILL·재부팅으로 남은 고아)은 판단에서 빼고 지운 뒤 한 번 경고한다. 쓰다 남은 .tmp도 기준 시간이 지나면 지운다.
+// 예전 단일 파일(deployMark)도 계속 읽는다(호환. 지난 것은 경고만 하고 그대로 둠).
+async function activeDeployMarks() {
+  const now = Date.now();
+  const active = [];
+  let names = [];
+  try { names = readdirSync(cfg.deployMarkDir); } catch {}
+  for (const f of names) {
+    const p = `${cfg.deployMarkDir}/${f}`;
+    try {
+      const ageMin = (now - statSync(p).mtimeMs) / 60_000;
+      const tmp = f.endsWith(".tmp");
+      const exp = tmp ? 0 : Number(/^expiresEpoch=(\d+)$/m.exec(readFileSync(p, "utf8"))?.[1] ?? 0);
+      if (!tmp && ageMin <= cfg.deployMarkStaleMin && !(exp > 0 && now >= exp * 1000)) { active.push(f); continue; }
+      if (tmp && ageMin <= cfg.deployMarkStaleMin) continue;
+      unlinkSync(p);
+      if (!tmp) await event({ level: "warn", kind: "deploy_mark_stale", mark: f, ageMin: Math.round(ageMin), expired: exp > 0 && now >= exp * 1000 });
+    } catch {}
+  }
+  try {
+    const ageMin = (now - statSync(cfg.deployMark).mtimeMs) / 60_000;
+    if (ageMin > cfg.deployMarkStaleMin) await warnOnce("deploy_mark_stale", { kind: "deploy_mark_stale", ageMin: Math.round(ageMin) }, 3600_000);
+    else active.push("(legacy)");
+  } catch {}
+  return active;
+}
+
 async function tick() {
   await pruneRemovedTargets();
   const at = kst();
@@ -331,13 +362,8 @@ async function tick() {
   // 인증서 확인도 함께 돌린다(순서대로 하면 틱이 길어져 주기가 밀림).
   const [probed, certDays] = await Promise.all([Promise.all(cfg.targets.map((t) => probe(t))), cfg.tlsHost ? certDaysLeft(cfg.tlsHost) : Promise.resolve(null)]);
   // 배포 중이면(표시 파일) 새 장애를 열지 않고(실패 횟수는 셈) 버전 불일치도 세지 않는다. 표시가 너무 오래 남으면(스크립트가 죽는 등) 따로 경고한다.
-  let deploying = false;
-  try {
-    const ageMin = (Date.now() - statSync(cfg.deployMark).mtimeMs) / 60_000;
-    // 기준 시간이 지난 표시(SIGKILL·재부팅으로 남은 것)는 배포 중으로 보지 않는다. 파일은 그대로 두고 판단에서만 뺀다.
-    if (ageMin > cfg.deployMarkStaleMin) await warnOnce("deploy_mark_stale", { kind: "deploy_mark_stale", ageMin: Math.round(ageMin) }, 3600_000);
-    else deploying = true;
-  } catch {}
+  const deployMarks = await activeDeployMarks();
+  const deploying = deployMarks.length > 0;
   for (const [i, t] of cfg.targets.entries()) {
     const r = probed[i];
     const ok = r.status === 200 && r.db === "ok";
@@ -376,7 +402,7 @@ async function tick() {
     else if (certDays < cfg.tlsWarnDays) await warnOnce("tls:expiry", { kind: "tls_expiring", host: cfg.tlsHost, daysLeft: certDays }, 86400_000);
   }
 
-  const status = { at, targets: results, openIncidents: Object.keys(state.incidents), deploying, deployedSha: deployed, runningVersion: running, versionMismatch, certDaysLeft: certDays };
+  const status = { at, targets: results, openIncidents: Object.keys(state.incidents), deploying, deployMarks, deployedSha: deployed, runningVersion: running, versionMismatch, certDaysLeft: certDays };
   writeFileSync(`${cfg.dir}/status.json`, JSON.stringify(status, null, 2) + "\n");
   // heartbeat는 알림 전송과 상관없이 매 틱 먼저 남긴다.
   writeFileSync(`${cfg.dir}/heartbeat.json`, JSON.stringify({ at, epochMs: Date.now(), intervalS: cfg.intervalS }) + "\n");

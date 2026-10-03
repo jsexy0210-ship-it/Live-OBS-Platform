@@ -94,8 +94,20 @@ wait_health() {
 }
 
 # 배포(앱 교체) 동안 표시를 두고, 끝나거나 실패·중단되면 지운다.
-deploy_mark_set() { mkdir -p "$(dirname "$DEPLOY_MARK")" && echo "$(kst '+%F %T KST') $1 pid=$$" > "$DEPLOY_MARK"; }
-deploy_mark_clear() { rm -f "$DEPLOY_MARK"; }
+# 작업마다 자기 표시 파일 하나($DEPLOY_MARK_DIR/<키>)를 둔다. 여러 작업이 겹쳐도 먼저 끝난 작업은 자기 파일만 지운다.
+# 감시는 유효한 파일이 하나라도 있으면 배포 중으로 본다(예전 단일 파일 $DEPLOY_MARK도 계속 읽음).
+# 파일에는 사유와 만료 시각(시작 + OBS_DEPLOY_MARK_MAX_S)을 적는다. 만료가 지났거나 갱신이 끊긴 파일은 감시가 무시하고 지운다.
+DEPLOY_MARK_DIR="$DEPLOY_MARK.d"
+deploy_mark_key_ok() { [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]]; }
+deploy_mark_set() { # $1=키 $2=사유
+  deploy_mark_key_ok "$1" || die "배포 표시 키는 영문·숫자로 시작하고 영문·숫자·.-_만 쓸 수 있어요(받은 값: $1)."
+  local max="${OBS_DEPLOY_MARK_MAX_S:-3600}" f="$DEPLOY_MARK_DIR/$1"
+  [[ "$max" =~ ^[1-9][0-9]*$ ]] || die "OBS_DEPLOY_MARK_MAX_S는 1 이상 정수여야 해요."
+  mkdir -p "$DEPLOY_MARK_DIR" \
+    && printf 'reason=%s\npid=%s\nstarted=%s\nexpiresEpoch=%s\n' "${2:-$1}" "$$" "$(kst '+%F %T KST')" "$(( $(date +%s) + max ))" > "$f.tmp" \
+    && mv -f "$f.tmp" "$f"
+}
+deploy_mark_clear() { deploy_mark_key_ok "$1" && rm -f "$DEPLOY_MARK_DIR/$1"; }
 # 이 스크립트가 끝날 때(실패 포함) 표시를 지운다. 여러 단계에 걸친 배포(워크플로)는 deploy-mark.sh on/off를 쓴다.
 # 15분이 넘게 걸리는 작업(복원 등)에서도 오래된 표시로 무시되지 않게, 도는 동안 표시 시각을 주기적으로 갱신한다.
 # 스크립트가 SIGKILL 등으로 죽으면 갱신도 멈춰(다음 주기에 부모가 없음을 확인) 표시가 15분 뒤 오래된 것으로 처리된다.
@@ -112,18 +124,23 @@ mark_deploying() {
   # (set -e 아래에서 trap이 돌므로, 이미 끝난 프로세스를 kill하다 실패해도 표시 삭제까지 가도록 || true를 붙인다.)
   # 루프의 자식(sleep)을 먼저 적어 두고 루프 → 자식 순으로 끝낸다(루프를 먼저 죽이면 sleep이 고아로 남음).
   # 루프가 먼저 끝났으면(상한·부모 확인) 그 PID를 다른 프로세스가 다시 쓸 수 있으므로, 아직 이 셸의 자식인지 확인한 뒤에만 신호를 보낸다.
-  trap 'if [ -n "$DEPLOY_MARK_KEEPER" ] && [ "$(ps -o ppid= -p "$DEPLOY_MARK_KEEPER" 2>/dev/null | tr -d " ")" = "$$" ]; then _kids="$(pgrep -P "$DEPLOY_MARK_KEEPER" || true)"; kill "$DEPLOY_MARK_KEEPER" 2>/dev/null || true; [ -z "$_kids" ] || kill $_kids 2>/dev/null || true; fi; DEPLOY_MARK_KEEPER=""; deploy_mark_clear' EXIT
+  # 표시 키: <종류>-<pid>-<시작 시각>(종류는 사유의 첫 단어). EXIT 때 이 키의 파일만 지운다.
+  local kind; kind="$(printf '%s' "${1%% *}" | tr -c 'A-Za-z0-9.-' '-' | tr -s '-')"
+  kind="${kind#-}"; kind="${kind%-}"
+  [[ "$kind" =~ ^[A-Za-z0-9] ]] || kind="job"
+  DEPLOY_MARK_KEY="${kind:0:60}-$$-$(date +%s)"
+  trap 'if [ -n "$DEPLOY_MARK_KEEPER" ] && [ "$(ps -o ppid= -p "$DEPLOY_MARK_KEEPER" 2>/dev/null | tr -d " ")" = "$$" ]; then _kids="$(pgrep -P "$DEPLOY_MARK_KEEPER" || true)"; kill "$DEPLOY_MARK_KEEPER" 2>/dev/null || true; [ -z "$_kids" ] || kill $_kids 2>/dev/null || true; fi; DEPLOY_MARK_KEEPER=""; deploy_mark_clear "$DEPLOY_MARK_KEY" || true' EXIT
   exit_on_signals
-  deploy_mark_set "$1"
+  deploy_mark_set "$DEPLOY_MARK_KEY" "$1"
   (
     start=$SECONDS
     while sleep "$every"; do
       kill -0 "$parent" 2>/dev/null || exit 0
       if [ $((SECONDS - start)) -ge "$max" ]; then
-        log "배포 표시 갱신을 멈췄어요(${max}초 상한). 작업이 아직 안 끝났다면 확인해 주세요. 15분 뒤 감시가 다시 장애를 판단해요." >&2
+        log "배포 표시 갱신을 멈췄어요(${max}초 상한). 작업이 아직 안 끝났다면 확인해 주세요. 표시가 만료돼 감시가 다시 장애를 판단해요." >&2
         exit 0
       fi
-      [ -e "$DEPLOY_MARK" ] && touch "$DEPLOY_MARK"
+      [ -e "$DEPLOY_MARK_DIR/$DEPLOY_MARK_KEY" ] && touch "$DEPLOY_MARK_DIR/$DEPLOY_MARK_KEY"
     done
   ) </dev/null >/dev/null &
   DEPLOY_MARK_KEEPER=$!
