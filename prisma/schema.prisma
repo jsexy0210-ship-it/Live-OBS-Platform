@@ -1068,6 +1068,8 @@ model SellerOrderPolicy {
   paidCancelRestrictionEnabled   Boolean   @default(false)
   // 켠 시각. 이 뒤의 환불만 센다(켜기 전 환불은 넣지 않음).
   paidCancelRestrictionEnabledAt DateTime? @db.Timestamptz(3)
+  // 판매자별 단조 시계(orders/overdue.ts sellerEventClock)가 마지막으로 찍은 시각. 주문 생성 잠금 아래에서만 바꾼다.
+  lastEventClockAt               DateTime? @db.Timestamptz(3)
   updatedAt                      DateTime  @default(now()) @updatedAt @db.Timestamptz(3)
 
   seller Seller @relation(fields: [sellerId], references: [id])
