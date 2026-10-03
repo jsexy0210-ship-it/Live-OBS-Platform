@@ -4,6 +4,7 @@ import { writeAudit } from "../audit/log";
 import { loginErrorBody } from "../auth/messages";
 import { hashPassword, verifyPassword } from "../auth/password";
 import { lockBuyerAddresses } from "./addresses";
+import { WITHDRAWN_DISPLAY_NAME } from "./memberData";
 
 // 구매자 탈퇴(ARCHITECTURE 「구매자 회원」: WITHDRAWN과 deletedAt을 같은 트랜잭션에서, 개인정보 비식별).
 // 기준(MASTER 결정 2026-10-03):
@@ -13,13 +14,14 @@ import { lockBuyerAddresses } from "./addresses";
 // - 진행 중인 주문(결제 대기, 결제 완료 뒤 배송 완료 전 = 발송 전·배송 중·재고 부족 환불 대기)이 있으면 막는다.
 // - 주문·결제·환불 기록과 주문의 받는 사람 스냅숏은 그대로 둔다(전자상거래법 보관 의무).
 // - 이름·휴대폰·방송 닉네임·아이디(이메일)를 비식별 값으로 바꾸고 CI 해시·생년월일은 비운다(같은 사람·같은 아이디·닉네임으로 다시 가입 가능).
-//   그 회원의 본인확인 기록(가입·비밀번호 찾기: 이 쇼핑몰에서 이 회원과 이어졌거나 같은 CI 해시)도 이름·휴대폰·생년월일·CI 해시·요청 IP를
-//   지우고 anonymizedAt을 남긴다(PRODUCT_SCOPE 「구매자 탈퇴·재가입」).
+//   그 회원의 본인확인 기록(이 쇼핑몰에서 이 회원과 이어졌거나 같은 CI 해시)은 행을 지운다.
+//   주문·주문대기·히트 카드의 방송 닉네임 스냅숏은 「탈퇴한 회원」으로 바꾸고, 받는 사람 스냅숏 등 법정 거래 기록은 그대로 둔다.
+//   표마다 처리 방식은 buyers/memberData.ts MEMBER_DATA_POLICY에 둔다(PRODUCT_SCOPE 「구매자 탈퇴·재가입」).
 //   비밀번호는 아무도 모르는 값으로 바꾼다.
 // - 남은 적립금은 소멸한다(대표님 결정 2026-10-03, PRODUCT_SCOPE 「구매자 탈퇴·재가입」). 잔액(RewardBalance)이 있으면 그만큼
 //   소멸(EXPIRE, 음수, SUCCEEDED) 원장을 남기고 잔액을 0으로 만든다. 아직 처리 전(PENDING)인 이 회원의 원장(지급·회수 대기)은
 //   FAILED(member_withdrawn)로 닫아 나중에 잔액에 들어가지 않게 한다. 재가입하면 새 회원이라 되살아나지 않는다.
-// - 저장 배송지를 지우고, 이 회원의 세션을 모두 폐기한다.
+// - 저장 배송지·구매 제한·세션 행을 지운다.
 
 export const WITHDRAW_FAIL_LIMIT = 5;
 export const WITHDRAW_FAIL_WINDOW_MS = 15 * 60_000;
@@ -76,7 +78,7 @@ export async function withdrawBuyer(
       data: {
         status: "WITHDRAWN",
         deletedAt: now,
-        name: "탈퇴한 회원",
+        name: WITHDRAWN_DISPLAY_NAME,
         phone: `withdrawn-${tag}`,
         broadcastNickname: `탈퇴회원-${tag}`,
         loginId: `withdrawn-${tag}@withdrawn.invalid`,
@@ -88,12 +90,19 @@ export async function withdrawBuyer(
     });
     if (moved.count !== 1) return "not_found" as const;
     const forfeited = await forfeitRewards(tx, scope.sellerId, member.id, now);
-    const identities = await tx.identityVerification.updateMany({
+    const identities = await tx.identityVerification.deleteMany({
       where: { sellerId: scope.sellerId, OR: [{ subjectId: member.id }, ...(member.ciHash ? [{ ciHash: member.ciHash }] : [])] },
-      data: { name: null, phone: null, birthDate: null, ciHash: null, requestIp: null, requestedPhone: null, anonymizedAt: now },
     });
+    // 방송 화면·주문 목록에 남는 닉네임 스냅숏(주문·주문대기·히트 카드). 받는 사람 스냅숏은 법정 보관이라 그대로.
+    const orders = await tx.order.updateMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id }, data: { broadcastNicknameSnapshot: WITHDRAWN_DISPLAY_NAME } });
+    const queueItems = await tx.queueItem.updateMany({
+      where: { sellerId: scope.sellerId, order: { buyerMemberId: member.id } },
+      data: { nicknameSnapshot: WITHDRAWN_DISPLAY_NAME },
+    });
+    const hitCards = await tx.hitCard.updateMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id }, data: { nicknameSnapshot: WITHDRAWN_DISPLAY_NAME } });
+    const restrictions = await tx.buyerPurchaseRestriction.deleteMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id } });
     const addresses = await tx.buyerAddress.deleteMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id } });
-    const sessions = await tx.buyerSession.updateMany({ where: { buyerMemberId: member.id, revokedAt: null }, data: { revokedAt: now } });
+    const sessions = await tx.buyerSession.deleteMany({ where: { buyerMemberId: member.id } });
     await writeAudit(tx, {
       actorType: "BUYER",
       actorId: member.id,
@@ -103,7 +112,7 @@ export async function withdrawBuyer(
       targetId: member.id,
       ip: input.meta?.ip,
       userAgent: input.meta?.userAgent,
-      after: { status: "WITHDRAWN", deletedAddresses: addresses.count, revokedSessions: sessions.count, anonymizedVerifications: identities.count, ...forfeited },
+      after: { status: "WITHDRAWN", deletedAddresses: addresses.count, deletedSessions: sessions.count, deletedVerifications: identities.count, anonymizedOrders: orders.count, anonymizedQueueItems: queueItems.count, anonymizedHitCards: hitCards.count, deletedRestrictions: restrictions.count, ...forfeited },
     });
     return null;
   });

@@ -13,7 +13,7 @@ import { signupBuyer } from "../../lib/server/buyers/signup";
 import { identityProvider } from "../../lib/server/identity/registry";
 import { refundOrder } from "../../lib/server/queue/service";
 import type { TenantContext } from "../../lib/server/tenant/context";
-import { PASSWORD, confirmIdv, createLoginBuyer, createSeller, createSellerUser, db, resetDb, startIdv } from "./helpers";
+import { PASSWORD, confirmIdv, createLoginBuyer, createPaidOrderItem, createSeller, createSellerUser, db, resetDb, startIdv } from "./helpers";
 
 beforeEach(resetDb);
 beforeAll(() => {
@@ -69,9 +69,10 @@ describe("구매자 탈퇴", () => {
     expect((await db.rewardBalance.findUniqueOrThrow({ where: { sellerId_buyerMemberId: { sellerId: s.seller.id, buyerMemberId: s.buyer.id } } })).balance).toBe(0);
     expect(await db.rewardLedger.findMany({ where: { buyerMemberId: s.buyer.id } })).toMatchObject([{ type: "EXPIRE", amount: -500, status: "SUCCEEDED", testMode: false, orderId: null }]);
     expect(await db.buyerAddress.count({ where: { buyerMemberId: s.buyer.id } })).toBe(0);
-    expect(await db.buyerSession.count({ where: { buyerMemberId: s.buyer.id, revokedAt: null } })).toBe(0);
+    // 세션은 폐기 표시가 아니라 행을 지운다
+    expect(await db.buyerSession.count({ where: { buyerMemberId: s.buyer.id } })).toBe(0);
     expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.withdraw", actorId: s.buyer.id } })).toMatchObject({
-      after: { status: "WITHDRAWN", deletedAddresses: 1, revokedSessions: 1, anonymizedVerifications: 0, expiredPoints: 500, closedPendingRewards: 0 },
+      after: { status: "WITHDRAWN", deletedAddresses: 1, deletedSessions: 1, deletedVerifications: 0, anonymizedOrders: 2, expiredPoints: 500, closedPendingRewards: 0 },
     });
     // 주문은 회원 id로 남는다
     expect(await db.order.count({ where: { buyerMemberId: s.buyer.id } })).toBe(2);
@@ -87,7 +88,7 @@ describe("구매자 탈퇴", () => {
     await expect(db.buyerMember.create({ data: again })).resolves.toMatchObject({ status: "ACTIVE" });
   });
 
-  it("거래 없는 회원이 탈퇴하면 회원 행의 생년월일·CI 해시와 그 회원의 본인확인 기록(이름·휴대폰·생년월일·CI 해시·요청 IP)을 모두 지운다. 다른 사람·다른 쇼핑몰 기록은 그대로", async () => {
+  it("거래 없는 회원이 탈퇴하면 회원 행의 생년월일·CI 해시를 지우고 그 회원의 본인확인 기록은 행을 지운다. 다른 사람·다른 쇼핑몰 기록은 그대로", async () => {
     const provider = identityProvider()!;
     const { seller } = await createSeller();
     const other = await createSeller();
@@ -112,17 +113,12 @@ describe("구매자 탈퇴", () => {
 
     expect(await withdrawBuyer(db, { sellerId: seller.id, buyerMemberId: member.id }, { password: "pw-123456" })).toEqual({ ok: true });
     expect(await db.buyerMember.findUniqueOrThrow({ where: { id: member.id } })).toMatchObject({ birthDate: null, ciHash: "" });
-    for (const id of [mine.verification.id, again.verification.id]) {
-      expect(await db.identityVerification.findUniqueOrThrow({ where: { id } })).toMatchObject({
-        status: "VERIFIED", name: null, phone: null, birthDate: null, ciHash: null, requestIp: null, requestedPhone: null, anonymizedAt: expect.any(Date),
-      });
-    }
+    // 이 회원의 본인확인 기록은 행을 지운다(이어진 기록·같은 CI 해시 기록)
+    expect(await db.identityVerification.count({ where: { id: { in: [mine.verification.id, again.verification.id] } } })).toBe(0);
     for (const id of [stranger.verification.id, elsewhere.verification.id]) {
-      expect(await db.identityVerification.findUniqueOrThrow({ where: { id } })).toMatchObject({ name: expect.any(String), ciHash: expect.any(String), requestIp: "203.0.113.7", anonymizedAt: null });
+      expect(await db.identityVerification.findUniqueOrThrow({ where: { id } })).toMatchObject({ name: expect.any(String), ciHash: expect.any(String), requestIp: "203.0.113.7" });
     }
-    expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.withdraw", actorId: member.id } })).toMatchObject({ after: { anonymizedVerifications: 2 } });
-    // 비식별하지 않은 확인됨 기록은 지금처럼 CI 해시가 있어야 한다(CHECK)
-    await expect(db.identityVerification.update({ where: { id: stranger.verification.id }, data: { ciHash: null } })).rejects.toThrow(/IdentityVerification_verified_check/);
+    expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.withdraw", actorId: member.id } })).toMatchObject({ after: { deletedVerifications: 2 } });
   });
 
   it("탈퇴하면 처리 전 적립 원장(지급·회수 대기)은 실패(member_withdrawn)로 닫히고, 잔액이 없으면 소멸 원장을 남기지 않으며, 같은 사람이 다시 가입해도 적립금은 0", async () => {
@@ -178,6 +174,40 @@ describe("구매자 탈퇴", () => {
       expect(await db.rewardLedger.count({ where: { buyerMemberId: s.buyer.id, status: "PENDING" } })).toBe(0);
       expect((await db.rewardBalance.findUniqueOrThrow({ where: { sellerId_buyerMemberId: { sellerId: s.seller.id, buyerMemberId: s.buyer.id } } })).balance).toBe(0);
     }
+  });
+
+  it("탈퇴하면 그 회원의 주문·주문대기·히트 카드 닉네임 스냅숏은 「탈퇴한 회원」으로 바꾸고 구매 제한은 지운다. 받는 사람 스냅숏과 다른 회원 기록은 그대로", async () => {
+    const s = await shop();
+    const other = await createLoginBuyer(s.seller.id, s.grade.id);
+    const mk = async (buyerMemberId: string, nickname: string) => {
+      const { order, item } = await createPaidOrderItem(s.seller.id, buyerMemberId);
+      await db.order.update({ where: { id: order.id }, data: { broadcastNicknameSnapshot: nickname } });
+      await db.shipment.create({ data: { sellerId: s.seller.id, orderId: order.id, courier: "CJ", trackingNumber: "123456789012", status: "DELIVERED", shippedAt: new Date(), deliveredAt: new Date() } });
+      await db.orderShippingAddress.create({ data: { sellerId: s.seller.id, orderId: order.id, recipientName: "김받음", phone: "01000000000", zipCode: "00000", address1: "주소" } });
+      const q = await db.queueItem.create({
+        data: { sellerId: s.seller.id, orderId: order.id, orderItemId: item.id, position: 1, receivedAt: new Date(), nicknameSnapshot: nickname, productLabel: "팩", quantity: 1, status: "DONE" },
+      });
+      const card = await db.hitCard.create({ data: { sellerId: s.seller.id, queueItemId: q.id, buyerMemberId, nicknameSnapshot: nickname, cardName: "레어" } });
+      return { order, q, card };
+    };
+    const mine = await mk(s.buyer.id, "내닉");
+    const theirs = await mk(other.id, "남닉");
+    await db.buyerPurchaseRestriction.create({ data: { sellerId: s.seller.id, buyerMemberId: s.buyer.id, reason: "UNPAID", startsAt: new Date(), endsAt: new Date(Date.now() + 86400_000) } });
+
+    expect((await s.withdraw(PASSWORD)).status).toBe(200);
+    expect((await db.order.findUniqueOrThrow({ where: { id: mine.order.id } })).broadcastNicknameSnapshot).toBe("탈퇴한 회원");
+    expect((await db.queueItem.findUniqueOrThrow({ where: { id: mine.q.id } })).nicknameSnapshot).toBe("탈퇴한 회원");
+    expect((await db.hitCard.findUniqueOrThrow({ where: { id: mine.card.id } })).nicknameSnapshot).toBe("탈퇴한 회원");
+    // 법정 보관 거래 기록(받는 사람 스냅숏)은 그대로
+    expect((await db.orderShippingAddress.findUniqueOrThrow({ where: { orderId: mine.order.id } })).recipientName).toBe("김받음");
+    expect(await db.buyerPurchaseRestriction.count({ where: { buyerMemberId: s.buyer.id } })).toBe(0);
+    // 다른 회원 것은 그대로
+    expect((await db.order.findUniqueOrThrow({ where: { id: theirs.order.id } })).broadcastNicknameSnapshot).toBe("남닉");
+    expect((await db.queueItem.findUniqueOrThrow({ where: { id: theirs.q.id } })).nicknameSnapshot).toBe("남닉");
+    expect((await db.hitCard.findUniqueOrThrow({ where: { id: theirs.card.id } })).nicknameSnapshot).toBe("남닉");
+    expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.withdraw", actorId: s.buyer.id } })).toMatchObject({
+      after: { anonymizedOrders: 1, anonymizedQueueItems: 1, anonymizedHitCards: 1, deletedRestrictions: 1 },
+    });
   });
 
   it("비밀번호가 틀리면 구매자 로그인 실패와 같은 401과 문구, 아무것도 바뀌지 않고 실패를 기록한다", async () => {
@@ -341,7 +371,7 @@ describe("탈퇴와 동시 요청", () => {
     expect(withdrawn).toEqual({ ok: true });
     // 로그인이 먼저 세션을 만들었으면 탈퇴가 그 세션까지 폐기한다
     expect(logged.ok).toBe(true);
-    expect(await db.buyerSession.count({ where: { buyerMemberId: s.buyer.id, revokedAt: null } })).toBe(0);
-    expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.withdraw", actorId: s.buyer.id } })).toMatchObject({ after: { revokedSessions: 2 } });
+    expect(await db.buyerSession.count({ where: { buyerMemberId: s.buyer.id } })).toBe(0);
+    expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.withdraw", actorId: s.buyer.id } })).toMatchObject({ after: { deletedSessions: 2 } });
   });
 });
