@@ -67,28 +67,57 @@ rollback_off() {
   die "끄기 실패($1), 되돌리기도 실패했어요. 구성이 불확실해요, availability.sh status로 확인해 주세요."
 }
 
+# 실제 구성이 표시와 맞는지 확인한다: 프록시(Caddy)가 실제로 가리키는 앱과 app2 컨테이너·이미지.
+# (배포 워크플로처럼 기본 정의만으로 up하면 표시는 켜짐인데 프록시가 앱 1개만 가리키거나 app2가 옛 이미지로 남을 수 있다.)
+verify_profile() {
+  local want="$1" proxy dials app_img app2 app2_img
+  proxy="$(container_of obs-web-proxy)"; [ -n "$proxy" ] || die "프록시 컨테이너가 없어요."
+  dials="$(docker exec "$proxy" wget -qO- http://localhost:2019/config/apps/http/servers 2>/dev/null | grep -o '"dial":"[^"]*"' | sed 's/"dial"://;s/"//g' | sort -u | paste -sd, - || true)"
+  [ -n "$dials" ] || die "프록시 설정을 읽지 못했어요(Caddy 관리 API). availability.sh status로 확인해 주세요."
+  app2="$(docker ps -q --filter label=com.docker.compose.project=obs-web --filter label=com.docker.compose.service=obs-web-app-2)"
+  if [ "$want" = on ]; then
+    case ",$dials," in *,obs-web-app:3000,*) ;; *) die "프록시가 obs-web-app을 가리키지 않아요(지금: $dials)." ;; esac
+    case ",$dials," in *,obs-web-app-2:3000,*) ;; *) die "프록시가 앱 2개를 가리키지 않아요(지금: $dials). 같은 명령을 다시 실행해 주세요." ;; esac
+    [ -n "$app2" ] || die "obs-web-app-2가 떠 있지 않아요."
+    app_img="$(docker inspect -f '{{.Config.Image}}' "$(container_of obs-web-app)")"; app2_img="$(docker inspect -f '{{.Config.Image}}' "$app2")"
+    [ "$app_img" = "$app2_img" ] || die "app2 이미지($app2_img)가 app($app_img)과 달라요. 같은 명령을 다시 실행해 주세요."
+  else
+    case ",$dials," in *,obs-web-app-2:3000,*) die "프록시가 아직 app2를 가리켜요(지금: $dials). 같은 명령을 다시 실행해 주세요." ;; esac
+    [ -z "$app2" ] || die "obs-web-app-2가 아직 떠 있어요. 같은 명령을 다시 실행해 주세요."
+  fi
+}
+# 이미 요청한 상태일 때: 그 상태의 정의(on이면 기본+가용성, off면 기본)를 다시 적용해 실제 구성을 표시에 맞춘다.
+reapply() {
+  [ -n "$APP_VERSION" ] || die "떠 있는 앱 버전을 찾지 못했어요. 먼저 배포해 주세요."
+  compose up -d --no-build --wait --remove-orphans || die "구성을 다시 맞추지 못했어요. availability.sh status로 확인한 뒤 다시 실행해 주세요."
+  verify_profile "$1"
+  refresh_monitor
+}
+
 case "${1:-status}" in
   on)
     require_test_env
     # 이미 켜져 있으면 아무것도 바꾸지 않는다(되돌리기가 시작 때와 다른 상태로 가지 않게).
     # 감시 수집기 새로 고침은 다시 실행한다(지난번에 전환만 되고 새로 고침이 실패했으면 여기서 복구).
-    if availability_on; then refresh_monitor; log "이미 켜져 있어요(실제 구성은 availability.sh status로 확인)."; exit 0; fi
+    if availability_on; then reapply on; log "이미 켜져 있어요. 실제 구성(앱 2개·프록시·감시)을 다시 맞췄어요."; exit 0; fi
     [ -n "$APP_VERSION" ] || die "떠 있는 앱 버전을 찾지 못했어요. 먼저 배포해 주세요."
     # 표시 파일은 compose가 가용성 정의를 읽게 하는 스위치다.
     guard rollback_on
     touch "$AVAIL_MARK"
-    run_compose up -d --no-build --wait || rollback_on "compose 실패"
+    run_compose up -d --no-build --wait --remove-orphans || rollback_on "compose 실패"
     unguard
+    verify_profile on
     refresh_monitor
     log "가용성 프로파일 켜짐: $(app_services), version=$APP_VERSION"
     ;;
   off)
     require_test_env
-    if ! availability_on; then refresh_monitor; log "이미 꺼져 있어요(실제 구성은 availability.sh status로 확인)."; exit 0; fi
+    if ! availability_on; then reapply off; log "이미 꺼져 있어요. 실제 구성(앱 1개·프록시·감시)을 다시 맞췄어요."; exit 0; fi
     guard rollback_off
     rm -f "$AVAIL_MARK"
     run_compose up -d --no-build --wait --remove-orphans || rollback_off "compose 실패"
     unguard
+    verify_profile off
     refresh_monitor
     log "가용성 프로파일 꺼짐: 기본 정의(obs-web-app 1개)"
     ;;

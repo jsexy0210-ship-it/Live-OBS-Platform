@@ -109,7 +109,8 @@ mark_deploying() {
   # 갱신 루프와 그 안의 sleep까지 끝낸 뒤 표시를 지운다.
   # (set -e 아래에서 trap이 돌므로, 이미 끝난 프로세스를 kill하다 실패해도 표시 삭제까지 가도록 || true를 붙인다.)
   # 루프의 자식(sleep)을 먼저 적어 두고 루프 → 자식 순으로 끝낸다(루프를 먼저 죽이면 sleep이 고아로 남음).
-  trap 'if [ -n "$DEPLOY_MARK_KEEPER" ]; then _kids="$(pgrep -P "$DEPLOY_MARK_KEEPER" || true)"; kill "$DEPLOY_MARK_KEEPER" 2>/dev/null || true; [ -z "$_kids" ] || kill $_kids 2>/dev/null || true; fi; deploy_mark_clear' EXIT
+  # 루프가 먼저 끝났으면(상한·부모 확인) 그 PID를 다른 프로세스가 다시 쓸 수 있으므로, 아직 이 셸의 자식인지 확인한 뒤에만 신호를 보낸다.
+  trap 'if [ -n "$DEPLOY_MARK_KEEPER" ] && [ "$(ps -o ppid= -p "$DEPLOY_MARK_KEEPER" 2>/dev/null | tr -d " ")" = "$$" ]; then _kids="$(pgrep -P "$DEPLOY_MARK_KEEPER" || true)"; kill "$DEPLOY_MARK_KEEPER" 2>/dev/null || true; [ -z "$_kids" ] || kill $_kids 2>/dev/null || true; fi; DEPLOY_MARK_KEEPER=""; deploy_mark_clear' EXIT
   # TERM·INT·HUP로 끝날 때도 EXIT trap이 돌게 한다(기본 동작으로 죽으면 EXIT trap이 돌지 않아 표시가 15분 남음).
   trap 'exit 143' TERM
   trap 'exit 130' INT
