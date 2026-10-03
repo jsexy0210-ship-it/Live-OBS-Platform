@@ -1,6 +1,9 @@
 import type { IdentityVerification, PrismaClient } from "@prisma/client";
+import { randomUUID } from "node:crypto";
 import { writeAudit } from "../audit/log";
+import { dbNow } from "../billing/subscription";
 import { forbidden } from "../authz/errors";
+import { keyedOwnerToken, parseAttemptKey, reuseKeyedAttempt, scopedAttemptKeyHash } from "../identity/attempt";
 import type { IdentityProvider } from "../identity/provider";
 import { completeIdentityVerification, parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
 import type { TenantContext } from "../tenant/context";
@@ -12,11 +15,24 @@ import { cleanText } from "../text/clean";
 // 시작은 직원 계정당 하루 10회(KST, 건당 비용). 등록한 이름·번호와 입력이 다르면 문자를 보내기 전에 거부한다.
 
 type Meta = { ip?: string | null; userAgent?: string | null; now?: Date };
+const OWNER_SCOPE = "staff_link_owner";
 export const STAFF_LINK_DAILY_LIMIT = 10;
 
 export type StaffLinkStartResult =
   | { ok: true; verificationId: string; ownerToken: string }
-  | { ok: false; reason: "phone_not_registered" | "identity_mismatch" | "link_limit_exceeded" | "invalid_identity_input" | "provider_error" };
+  | {
+      ok: false;
+      reason:
+        | "phone_not_registered"
+        | "identity_mismatch"
+        | "link_limit_exceeded"
+        | "invalid_identity_input"
+        | "provider_error"
+        | "already_verified"
+        | "expired"
+        | "failed"
+        | "start_in_progress";
+    };
 
 async function loadSelf(db: PrismaClient, ctx: TenantContext) {
   // 마스터 대리 조회·대표자는 연결 대상이 아니다
@@ -44,22 +60,60 @@ export async function staffLinkStatus(db: PrismaClient, ctx: TenantContext, avai
   };
 }
 
-export async function startStaffLink(db: PrismaClient, provider: IdentityProvider, ctx: TenantContext, rawPerson: unknown, meta: Meta = {}): Promise<StaffLinkStartResult> {
+// attemptKey(선택, 클라이언트 UUID): 응답이 끊겨 같은 직원·같은 키로 다시 보내면 같은 기록·같은 ownerToken을 돌려주고
+// 문자·하루 횟수를 다시 쓰지 않는다(다른 시작 흐름과 같은 방식, identity/attempt.ts). 보내는 중이면 start_in_progress.
+export async function startStaffLink(
+  db: PrismaClient,
+  provider: IdentityProvider,
+  ctx: TenantContext,
+  rawPerson: unknown,
+  meta: Meta & { attemptKey?: unknown } = {},
+): Promise<StaffLinkStartResult> {
   const user = await loadSelf(db, ctx);
+  const attemptKey = parseAttemptKey(meta.attemptKey);
+  if (attemptKey === false) return { ok: false, reason: "invalid_identity_input" };
   const person = parseIdentityPerson(rawPerson);
   if (!person) return { ok: false, reason: "invalid_identity_input" };
   if (!user.phone) return { ok: false, reason: "phone_not_registered" };
   if (person.phone !== user.phone || !sameName(person.name, user.name)) return { ok: false, reason: "identity_mismatch" };
-  const started = await db.$transaction(async (tx): Promise<{ verification: IdentityVerification; ownerToken: string } | null> => {
+  // 키는 직원별로 나눈다(같은 키를 다른 직원이 써도 다른 기록)
+  const keyHash = attemptKey ? scopedAttemptKeyHash("STAFF_LINK", user.id, attemptKey) : null;
+  type Started =
+    | null
+    | { kind: "reused"; verificationId: string; ownerToken: string }
+    | { kind: "refused"; reason: "already_verified" | "expired" | "failed" | "start_in_progress" }
+    | { kind: "send"; verification: IdentityVerification; ownerToken: string };
+  const started = await db.$transaction(async (tx): Promise<Started> => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`staff_link:${user.id}`}))`;
+    if (keyHash) {
+      const same = await tx.identityVerification.findFirst({ where: { purpose: "STAFF_LINK", sellerId: user.sellerId, subjectId: user.id, attemptKeyHash: keyHash } });
+      const r = await reuseKeyedAttempt(tx, same, meta.now ?? (await dbNow(tx)));
+      if (r?.kind === "reused") return { ...r, ownerToken: keyedOwnerToken(OWNER_SCOPE, attemptKey!, r.verificationId) };
+      if (r) return r;
+    }
     const [{ count }] = await tx.$queryRaw<{ count: bigint }[]>`
       SELECT count(*)::bigint AS count FROM "IdentityVerification"
       WHERE "purpose" = 'STAFF_LINK' AND "subjectId" = ${user.id}::uuid
         AND "createdAt" >= (date_trunc('day', now() AT TIME ZONE 'Asia/Seoul') AT TIME ZONE 'Asia/Seoul')`;
     if (Number(count) >= STAFF_LINK_DAILY_LIMIT) return null;
-    return startIdentityVerification(tx, provider, { purpose: "STAFF_LINK", sellerId: user.sellerId, subjectId: user.id, person, requestIp: meta.ip ?? null, now: meta.now });
+    const id = randomUUID();
+    const created = await startIdentityVerification(tx, provider, {
+      purpose: "STAFF_LINK",
+      sellerId: user.sellerId,
+      subjectId: user.id,
+      person,
+      requestIp: meta.ip ?? null,
+      attemptKeyHash: keyHash,
+      sendStartedAt: keyHash ? (meta.now ?? (await dbNow(tx))) : null,
+      id,
+      ownerToken: attemptKey ? keyedOwnerToken(OWNER_SCOPE, attemptKey, id) : undefined,
+      now: meta.now,
+    });
+    return { kind: "send", ...created };
   });
   if (!started) return { ok: false, reason: "link_limit_exceeded" };
+  if (started.kind === "reused") return { ok: true, verificationId: started.verificationId, ownerToken: started.ownerToken };
+  if (started.kind === "refused") return { ok: false, reason: started.reason };
   const sent = await sendFirstIdentityCode(db, provider, started.verification, person, meta.now);
   if (!sent.ok) return { ok: false, reason: sent.reason };
   return { ok: true, verificationId: started.verification.id, ownerToken: started.ownerToken };

@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 // 파트너스 가입 신청(PF-007) → 로그인 → 비밀번호 찾기(AU-003·004)를 실제 API로 끝까지 확인한다.
 // 개발 서버(playwright.config.ts 「dev」)에서 돈다: 가짜 본인확인 공급자(인증번호 000000)와
 // 가짜 사업자·통신판매업 조회(BUSINESS_STATUS_PROVIDER=fake, MAIL_ORDER_PROVIDER=fake → 처음 보는 번호는 정상으로 본다)가 필요하다.
-// 실행마다 가입용 본인확인 4회를 쓴다(같은 IP 하루 10회 한도라 DB를 새로 만들지 않으면 두 번까지 돈다. DB를 새로 만들면 풀린다).
+// 실행마다 가입용 본인확인 6회를 쓴다(같은 IP 하루 10회 한도라 DB를 새로 만들지 않으면 한 번만 돈다. DB를 새로 만들면 풀린다).
 const SHOTS = process.env.E2E_SCREENSHOTS === "1";
 
 async function shot(page: Page, name: string) {
@@ -150,6 +150,58 @@ test("파트너스 가입 신청 → 바로 승인 → 로그인 → 비밀번�
   await page.getByLabel("비밀번호").fill(next);
   await page.getByRole("button", { name: "로그인" }).click();
   await expect(page).toHaveURL(/\/seller\/products$/);
+});
+
+// 시작 요청은 서버가 처리하게 두고 첫 응답만 끊는다(서버에서는 문자를 보내고 횟수를 쓴 상태). 다시 누르면 같은 attemptKey로 보내고
+// 서버는 같은 본인확인을 돌려준다(문자·하루 횟수를 다시 쓰지 않는 것은 integration sellerSignup·passwordReset에서 확인).
+async function dropFirstStart(page: Page, path: string) {
+  const sent: { key: string; id?: string }[] = [];
+  await page.route((u) => u.pathname === path, async (route) => {
+    const body = route.request().postDataJSON() as { attemptKey: string };
+    const res = await route.fetch();
+    const json = (await res.json()) as { verificationId?: string };
+    sent.push({ key: body.attemptKey, id: json.verificationId });
+    return sent.length === 1 ? route.abort("connectionreset") : route.fulfill({ response: res });
+  });
+  return sent;
+}
+
+async function retryAfterDrop(page: Page, sent: { key: string; id?: string }[]) {
+  await page.getByRole("button", { name: "인증번호 받기" }).click();
+  await expect.poll(() => sent.length).toBe(1);
+  await expect(page.getByLabel("인증번호")).toHaveCount(0);
+  await page.getByRole("button", { name: "인증번호 받기" }).click();
+  await expect(page.getByText("인증번호를 보냈어요. 문자로 받은 6자리를 넣어 주세요")).toBeVisible();
+  expect(sent).toHaveLength(2);
+  expect(sent[0].key).toMatch(/^[0-9a-f-]{36}$/);
+  expect(sent[1].key).toBe(sent[0].key);
+  expect(sent[0].id).toBeTruthy();
+  expect(sent[1].id).toBe(sent[0].id);
+  await page.getByLabel("인증번호").fill("000000");
+  await page.getByRole("button", { name: "확인", exact: true }).click();
+}
+
+test("본인확인 시작 응답을 잃고 다시 누르면 같은 attemptKey로 보내 같은 본인확인으로 이어 간다(가입 신청·비밀번호 찾기)", async ({ page }) => {
+  // 가입 신청
+  const id = uniq();
+  const name = `이${letters(id)}`;
+  await page.goto("/seller/signup");
+  await fillIdentity(page, name);
+  const signupSent = await dropFirstStart(page, "/api/seller-signup/verification");
+  await retryAfterDrop(page, signupSent);
+  await expect(page.getByText("본인확인을 마쳤어요")).toBeVisible();
+  await page.unroute((u) => u.pathname === "/api/seller-signup/verification");
+
+  // 비밀번호 찾기: 가입을 마친 계정으로
+  const a = await signup(page, { mailOrderNumber: "제2024-서울강남-05678호" });
+  await page.context().clearCookies();
+  await page.goto("/seller/password-reset");
+  await page.getByLabel("이메일").fill(a.email);
+  await page.getByLabel("쇼핑몰 주소").fill(a.slug);
+  await fillIdentity(page, a.name);
+  const resetSent = await dropFirstStart(page, "/api/seller/password-reset/start");
+  await retryAfterDrop(page, resetSent);
+  await expect(page.getByRole("heading", { name: "새 비밀번호를 정해요" })).toBeVisible();
 });
 
 test("통신판매업 신고번호를 확인하지 못하면 승인 대기로 받고, 걸린 항목을 알려 준다(개업일 오늘은 한국 날짜 기준)", async ({ page }) => {
