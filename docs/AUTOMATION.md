@@ -77,6 +77,7 @@
 - 연습 실행은 실행 전에 기록(정리 대상 범위 `cleanupScopeId`, 정리 예정 `cleanupPendingAt`)부터 남기고, 끝날 때마다(성공·실패 모두) 그 실행의 브라우저·OBS 보관 자료를 `discard`로 지운다. 정리에 실패하면 기록에 남겨 작업자 반복의 `cleanupPracticeArtifacts`가 백오프로 다시 한다(도중에 죽은 연습은 실행 시간 상한 뒤 정리). 10회 모두 실패하면 자동 정리를 멈추고 「정리 필요」(`cleanupNeededAt`)로 바꾸며, 같은 트랜잭션에서 마스터 관리자 알림(감사 기록 운영 이벤트 `automation.practice_cleanup_needed`) 1건을 남긴다. 조용히 버리지 않는다.
 - 구매 확정 직전 재확인: 결제·작업 생성 트랜잭션은 판매자 단위 잠금(`lockSellerAutomation`)과 작업서 공유 잠금(`lockPlaybook` shared)을 잡고, 커밋 직전에 작업서 준비 상태와(유료 재설치면) 무료 재연결 판정을 다시 계산한다. 준비가 풀렸으면 `shop_not_supported`, 무료 재연결 조건이 됐으면 `free_reconnect_available`(409)로 결제를 만들지 않는다. 화면 이탈 기록은 작업서 배타 잠금, 설치 완료 기록은 판매자 잠금을 행 변경 전에 잡아 같은 순서로 직렬화한다.
 - 정리와 늦은 실행: 실행기·로컬 도구는 `discard`한 범위에 tombstone을 남기고, 그 뒤 늦게 끝난 행동·닫기가 보관 자료·행동 키·연결 정보를 다시 쓰는 것을 거부한다(`fatal scope_discarded`, ports.ts 계약).
+- 작업서 버전 고정: 실행 중 작업서 버전이 구매 때 버전과 달라지면(새 버전은 연습 검증 전) 새 버전의 허용 규칙·행동으로 실행하지 않고, 외부 행동 없이 `FAILED(playbook_version_changed)`·결제 `REFUND_PENDING`으로 끝낸다.
 - 화면 이탈은 판단 모델을 부르기 전에 `lastDeviationAt`으로 기록한다. 판단 모델 호출이 계속 실패해 작업이 닫혀도 작업서는 다시 검증 대상이 되어 새 구매가 막힌다.
 - 악성 페이지 지시: 화면 글은 `untrustedPageText`(신뢰하지 않는 데이터)로만 넘긴다. 실행 전 `validateDecision`이 단계별 허용 행동, 이동은 https·기본 포트이고 호스트가 이 작업의 쇼핑몰 호스트(`shopHost`)와 정확히 같으며 경로가 작업서 단계별 허용 경로 접두(`allowedUrls.pathPrefixes`)로 시작하고 쿼리는 정한 키만·조각(#) 없음(다른 몰·중앙 호스트는 `host_not_allowed`, 그 밖은 `target_not_allowed`; 작업서 이동 주소는 호스트 자리에 `{shop}`), 비밀값을 글자로 적기, 모르는 비밀 참조·고객 행동, 음수 비용을 거부한다. 거부되면 실행하지 않고 작업을 `FAILED(unsafe_action:…)`로 멈춘다(무한 재시도 방지).
 

@@ -76,7 +76,8 @@ export type EngineOptions = {
   keepBrowserStateOnWait?: boolean;
   // 이전 실행에서 무료 재연결 대조를 통과했다(작업 행 기록). 브라우저 단계부터 다시 하지 않으면 다시 대조하지 않는다.
   targetVerified?: boolean;
-  // 비밀값을 넣어도 되는 칸을 정하는 작업서(작업 중 버전이 바뀌어 정해진 행동은 안 쓰더라도 비밀 칸 목록은 그 작업서 것을 쓴다). 없으면 playbook
+  // 허용 규칙(비밀값 칸·누를 대상·이동 경로·판단 모델 어휘)을 정하는 작업서. 정해진 행동 없이 판단 모델로만 돌릴 때 규칙만 따로 줄 수 있다. 없으면 playbook.
+  // 작업자는 구매 때 검증된 버전만 넘긴다(버전이 바뀐 작업은 실행하지 않음, worker.ts)
   secretPlaybook?: Playbook | null;
   // 작업 대상 쇼핑몰 호스트(판매자가 낸 주소). 비밀값은 이 호스트의 관리자 경로에서만 넣는다. 없으면 비밀값을 쓰지 못한다.
   shopHost?: string | null;

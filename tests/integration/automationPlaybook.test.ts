@@ -96,12 +96,15 @@ describe("작업서 우선 실행", () => {
     expect(await job(a.jobId)).toMatchObject({ status: "NEEDS_CUSTOMER", customerAction: "LOGIN", plannerCalls: 0 });
   });
 
-  it("작업 중 작업서 버전이 바뀌었으면 작업서를 쓰지 않고 판단 모델로만 진행한다", async () => {
+  it("작업 중 작업서 버전이 바뀌었으면(검증 안 된 새 버전) 새 버전 규칙으로 실행하지 않고 외부 행동 0회로 실패·전액 환불 대기로 끝낸다", async () => {
     const rt = runtime();
     const a = await boughtWithShop();
     await db.automationJob.update({ where: { id: a.jobId }, data: { playbookVersion: cafe24Playbook.version + 100 } });
-    expect(await runOnce(db, rt, W)).toBe("succeeded");
-    expect(await job(a.jobId)).toMatchObject({ playbookActions: 0 });
+    expect(await runOnce(db, rt, W)).toBe("failed");
+    expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "playbook_version_changed", playbookActions: 0, plannerCalls: 0 });
+    expect(rt.browser.performed).toHaveLength(0);
+    expect(rt.obs.performed).toHaveLength(0);
+    expect(await db.automationPayment.findFirstOrThrow({ where: { job: { id: a.jobId } } })).toMatchObject({ status: "REFUND_PENDING", refundReason: "playbook_version_changed" });
   });
 
   it("작업 조회 응답에 작업서·플랫폼 이름이 나가지 않는다", async () => {

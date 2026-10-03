@@ -41,6 +41,7 @@ const PUBLIC_ERRORS = new Set([
   "run_time_limit",
   "obs_target_busy",
   "obs_target_changed",
+  "playbook_version_changed",
 ]);
 const STEP_KEYS = new Set(STEPS.map((s) => s.key));
 
