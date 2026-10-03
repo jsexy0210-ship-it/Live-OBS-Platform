@@ -78,7 +78,7 @@ describe("구매자 탈퇴", () => {
     );
     expect(login.status).toBe(401);
     // 같은 CI·휴대폰·아이디·닉네임으로 다시 가입할 수 있다(부분 유니크 인덱스는 탈퇴 회원을 보지 않음)
-    const { id: _id, createdAt: _c, deletedAt: _d, status: _st, ...again } = s.buyer;
+    const { id: _id, createdAt: _c, deletedAt: _d, status: _st, signupConsent: _sc, ...again } = s.buyer;
     await expect(db.buyerMember.create({ data: again })).resolves.toMatchObject({ status: "ACTIVE" });
   });
 
@@ -93,7 +93,7 @@ describe("구매자 탈퇴", () => {
     expect(await db.rewardLedger.findUniqueOrThrow({ where: { id: pending.id } })).toMatchObject({ status: "FAILED", failureReason: "member_withdrawn", processedAt: expect.any(Date) });
     expect(await db.rewardLedger.count({ where: { buyerMemberId: s.buyer.id, type: "EXPIRE" } })).toBe(0);
     expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.withdraw", actorId: s.buyer.id } })).toMatchObject({ after: { expiredPoints: 0, closedPendingRewards: 1 } });
-    const { id: _id, createdAt: _c, deletedAt: _d, status: _st, ...again } = s.buyer;
+    const { id: _id, createdAt: _c, deletedAt: _d, status: _st, signupConsent: _sc, ...again } = s.buyer;
     const back = await db.buyerMember.create({ data: again });
     expect(await db.rewardBalance.findUnique({ where: { sellerId_buyerMemberId: { sellerId: s.seller.id, buyerMemberId: back.id } } })).toBeNull();
     expect(await db.rewardLedger.count({ where: { buyerMemberId: back.id } })).toBe(0);
