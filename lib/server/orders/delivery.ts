@@ -92,6 +92,35 @@ async function autoDeliverOrder(tx: Tx, o: { orderId: string; sellerId: string }
   return (await deliverLocked(tx, o.sellerId, o.orderId, SYSTEM, true)).ok;
 }
 
+// 구매 확정 취소(대표님 결정 2026-10-03, PRODUCT_SCOPE 「구매 확정 뒤 환불」, 카페24 방식). 구매 확정한 결제 완료 주문만.
+// ORDER_SHIPPING 권한(환불과 같음), 사유 필수, 감사 로그 order.purchase_unconfirm. 확정을 풀면 환불할 수 있고, 이 주문으로 지급한
+// 적립금은 환불 때 기존 회수 정책(판매자 설정 자동·수동)대로 회수한다(구매 확정 때 따로 지급하는 적립금은 없음).
+// 푼 주문은 purchaseUnconfirmedAt을 남겨 자동 구매 확정이 다시 확정하지 않는다.
+export async function unconfirmPurchase(db: PrismaClient, ctx: TenantContext, orderId: string, input: { reason?: unknown }) {
+  requireSellerPermission(ctx, "ORDER_SHIPPING");
+  const reason = typeof input.reason === "string" ? input.reason.trim() : "";
+  if (!reason || reason.length > 200) return { ok: false as const, reason: "invalid_reason" as const };
+  return db.$transaction(async (tx) => {
+    const locked = await lockOrder(tx, ctx.sellerId, orderId);
+    if (!locked) return { ok: false as const, reason: "not_found" as const };
+    const order = await tx.order.findUniqueOrThrow({ where: { id: orderId }, select: { purchaseConfirmedAt: true } });
+    if (locked.status !== "PAID" || !order.purchaseConfirmedAt) return { ok: false as const, reason: "not_confirmed" as const };
+    await tx.order.update({ where: { id: orderId }, data: { purchaseConfirmedAt: null, purchaseUnconfirmedAt: locked.now } });
+    await writeAudit(tx, {
+      actorType: ctx.actorType,
+      actorId: ctx.actorId,
+      sellerId: ctx.sellerId,
+      action: "order.purchase_unconfirm",
+      targetType: "Order",
+      targetId: orderId,
+      reason,
+      before: { purchaseConfirmedAt: order.purchaseConfirmedAt.toISOString() },
+      after: { purchaseConfirmedAt: null },
+    });
+    return { ok: true as const, purchaseUnconfirmedAt: locked.now };
+  });
+}
+
 // 자동 구매 확정 대상: 결제 완료·배송 완료이고 아직 확정 전이며, 배송 완료 시각 + 판매자 설정 일수가 지난 주문.
 export async function autoConfirmPurchases(db: PrismaClient, opts: { now?: Date; limit?: number } = {}) {
   const asOf = opts.now ?? (await dbClock(db));
@@ -102,6 +131,7 @@ export async function autoConfirmPurchases(db: PrismaClient, opts: { now?: Date;
       JOIN "Order" o ON o."id" = s."orderId"
       LEFT JOIN "SellerOrderPolicy" p ON p."sellerId" = s."sellerId"
       WHERE s."status" = 'DELIVERED' AND s."deliveredAt" IS NOT NULL AND o."status" = 'PAID' AND o."purchaseConfirmedAt" IS NULL
+        AND o."purchaseUnconfirmedAt" IS NULL
         AND COALESCE(p."autoConfirmEnabled", true)
         AND s."deliveredAt" + make_interval(days => COALESCE(p."autoConfirmDays", 7)) <= ${asOf}
         ${after(cursor, Prisma.sql`s."deliveredAt"`)}
@@ -118,9 +148,13 @@ export async function autoConfirmPurchases(db: PrismaClient, opts: { now?: Date;
 async function autoConfirmOrder(tx: Tx, o: { orderId: string; sellerId: string }) {
   const locked = await lockOrder(tx, o.sellerId, o.orderId);
   if (!locked || locked.status !== "PAID") return false;
-  const order = await tx.order.findUniqueOrThrow({ where: { id: o.orderId }, select: { purchaseConfirmedAt: true, shipment: { select: { status: true, deliveredAt: true } } } });
+  const order = await tx.order.findUniqueOrThrow({
+    where: { id: o.orderId },
+    select: { purchaseConfirmedAt: true, purchaseUnconfirmedAt: true, shipment: { select: { status: true, deliveredAt: true } } },
+  });
   const deliveredAt = order.shipment?.status === "DELIVERED" ? order.shipment.deliveredAt : null;
-  if (order.purchaseConfirmedAt || !deliveredAt) return false;
+  // 판매자가 구매 확정을 취소한 주문은 다시 자동 확정하지 않는다
+  if (order.purchaseConfirmedAt || order.purchaseUnconfirmedAt || !deliveredAt) return false;
   const policy = await getOrderPolicy(tx, o.sellerId);
   if (!policy.autoConfirmEnabled || deliveredAt.getTime() + policy.autoConfirmDays * DAY_MS > locked.now.getTime()) return false;
   await tx.order.update({ where: { id: o.orderId }, data: { purchaseConfirmedAt: locked.now } });
