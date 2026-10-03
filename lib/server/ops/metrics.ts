@@ -158,6 +158,31 @@ export async function opsMetrics(db: PrismaClient) {
   };
 }
 
+// 사건 보존: 서버가 받은 지 OPS_EVENT_RETENTION_DAYS(30일)가 지난 사건을 지운다(정기 실행 ops_event.purge_old).
+// 단 (source, key)별 마지막 열림·닫힘 사건은 열린 사건 계산에 필요해 오래돼도 남긴다(그보다 늦게 받은 열림·닫힘이 있을 때만 지움).
+// 한 번에 OPS_EVENT_PURGE_BATCH(1000)건씩, 한 번 실행에 최대 OPS_EVENT_PURGE_MAX_BATCHES(100)묶음까지 나눠 지운다. 지운 수를 돌려준다.
+export const OPS_EVENT_RETENTION_DAYS = 30;
+export const OPS_EVENT_PURGE_BATCH = 1000;
+const OPS_EVENT_PURGE_MAX_BATCHES = 100;
+
+export async function purgeOldOpsEvents(db: Db, now: Date, batch = OPS_EVENT_PURGE_BATCH): Promise<number> {
+  const before = new Date(now.getTime() - OPS_EVENT_RETENTION_DAYS * 86_400_000);
+  let total = 0;
+  for (let i = 0; i < OPS_EVENT_PURGE_MAX_BATCHES; i++) {
+    const n = await db.$executeRaw`
+      DELETE FROM "OpsEvent" WHERE "id" IN (
+        SELECT e."id" FROM "OpsEvent" e
+        WHERE e."createdAt" < ${before}
+          AND (e."kind" NOT IN ('incident_open', 'incident_close')
+               OR EXISTS (SELECT 1 FROM "OpsEvent" n WHERE n."source" = e."source" AND n."key" = e."key"
+                          AND n."kind" IN ('incident_open', 'incident_close') AND n."seq" > e."seq"))
+        LIMIT ${batch})`;
+    total += n;
+    if (n < batch) break;
+  }
+  return total;
+}
+
 // 수집기 쓰기 인증: Authorization: Bearer <OPS_INGEST_TOKEN>. 값이 없거나 32자 미만이면 쓰기 경로를 끈다(503).
 export type IngestAuth = "ok" | "disabled" | "unauthorized";
 export function checkIngestToken(header: string | null, env: NodeJS.ProcessEnv = process.env): IngestAuth {

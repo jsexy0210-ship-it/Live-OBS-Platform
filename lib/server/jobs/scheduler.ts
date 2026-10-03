@@ -1,7 +1,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { purgeExpiredRejoinBlocks } from "../buyers/rejoin";
 import { purgeOldSignupVerificationIps, purgeUnfinishedSignupVerifications } from "../buyers/signup";
-import { markInstanceRetired, purgeRetiredHeartbeats, recordHeartbeat, registerInstance } from "../ops/metrics";
+import { markInstanceRetired, purgeOldOpsEvents, purgeRetiredHeartbeats, recordHeartbeat, registerInstance } from "../ops/metrics";
 
 // 앱 안 정기 실행(MASTER 결정 2026-10-03: 외부 cron 대신). instrumentation.ts register(nodejs 런타임)에서 startScheduler를 부른다.
 // - 일정 간격(기본 1시간)으로 SCHEDULED_JOBS를 차례로 돈다. 작업마다 pg advisory xact lock을 시도해 여러 인스턴스 중 하나만 실행한다.
@@ -21,6 +21,8 @@ export const SCHEDULED_JOBS: ScheduledJob[] = [
   { name: "identity_verification.purge_old_signup_ip", run: (tx, now) => purgeOldSignupVerificationIps(tx, now) },
   // 정상 종료하고 7일 지난 인스턴스의 heartbeat 지우기(ops/metrics.ts)
   { name: "ops_heartbeat.purge_retired", run: (tx, now) => purgeRetiredHeartbeats(tx, now) },
+  // 받은 지 30일 지난 감시 사건 지우기((source, key)별 마지막 열림·닫힘은 남김, ops/metrics.ts)
+  { name: "ops_event.purge_old", run: (tx, now) => purgeOldOpsEvents(tx, now) },
 ];
 
 export const SCHEDULER_INTERVAL_MS = 3600_000;

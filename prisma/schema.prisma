@@ -1221,6 +1221,7 @@ model OpsEvent {
   message    String
   detail     Json?
   occurredAt DateTime @db.Timestamptz(3)
+  // 서버가 받은 시각(보존 기간 기준)
   createdAt  DateTime @default(now()) @db.Timestamptz(3)
 
   @@unique([source, eventId])
@@ -1228,4 +1229,6 @@ model OpsEvent {
   @@index([occurredAt])
   // 열린 사건 계산(수집기·key별 마지막으로 받은 사건)
   @@index([source, key, seq])
+  // 보존 기간 정리(받은 시각)
+  @@index([createdAt])
 }

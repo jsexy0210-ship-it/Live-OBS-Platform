@@ -47,6 +47,9 @@ CREATE INDEX "OpsEvent_occurredAt_idx" ON "OpsEvent"("occurredAt");
 CREATE INDEX "OpsEvent_source_key_seq_idx" ON "OpsEvent"("source", "key", "seq");
 
 -- CreateIndex
+CREATE INDEX "OpsEvent_createdAt_idx" ON "OpsEvent"("createdAt");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "OpsEvent_source_eventId_key" ON "OpsEvent"("source", "eventId");
 
 -- CreateIndex

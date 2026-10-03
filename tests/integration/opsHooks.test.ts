@@ -5,7 +5,7 @@ import { GET as healthRoute } from "../../app/api/health/route";
 import { createAdminSession } from "../../lib/server/auth/session";
 import { prisma } from "../../lib/server/db";
 import { registerUntilDone, resetShutdownForTests, retireInstance, runScheduledJobs, type ScheduledJob } from "../../lib/server/jobs/scheduler";
-import { markInstanceRetired, opsInstanceName, opsMetrics, purgeRetiredHeartbeats, recordHeartbeat, registerInstance } from "../../lib/server/ops/metrics";
+import { markInstanceRetired, opsInstanceName, opsMetrics, purgeOldOpsEvents, purgeRetiredHeartbeats, recordHeartbeat, registerInstance } from "../../lib/server/ops/metrics";
 import { createAdmin, db, resetDb } from "./helpers";
 
 beforeEach(async () => {
@@ -276,6 +276,25 @@ describe("운영 지표 보완(Codex)", () => {
     await ingest({ events: [ev({ source: "monitor-a", eventId: "g2", key: "health", kind: "incident_open", occurredAt: ago(4) })] }, TOKEN);
     await ingest({ events: [ev({ source: "monitor-a", eventId: "g3", key: "health", kind: "incident_close", occurredAt: ago(3) })] }, TOKEN);
     expect((await opsMetrics(db)).incidents.open.map((e) => [e.source, e.key])).toEqual([["monitor-b", "health"]]);
+  });
+
+  it("받은 지 30일 지난 사건은 정리하되 (source, key)별 마지막 열림·닫힘은 남아 열린 상태가 유지된다. 1000건씩 나눠 지운다", async () => {
+    const days = (d: number) => new Date(Date.now() - d * 86_400_000);
+    const row = (source: string, eventId: string, kind: string, key: string, receivedDaysAgo: number) => ({
+      source, eventId, kind, key, severity: "critical", message: "m", occurredAt: days(receivedDaysAgo), createdAt: days(receivedDaysAgo),
+    });
+    // A/health: 40일 전 열림 하나뿐 → 남아서 계속 열림
+    await db.opsEvent.create({ data: row("monitor-a", "a1", "incident_open", "health", 40) });
+    // B/cert: 40일 전 열림 → 35일 전 닫힘(마지막) → 열림만 지워지고 닫힘은 남음
+    await db.opsEvent.create({ data: row("monitor-b", "b1", "incident_open", "cert", 40) });
+    await db.opsEvent.create({ data: row("monitor-b", "b2", "incident_close", "cert", 35) });
+    // 오래된 정보 사건 2500건(묶음 여러 번), 최근 정보 사건 1건
+    await db.opsEvent.createMany({ data: Array.from({ length: 2500 }, (_, i) => row("monitor-a", `old-${i}`, "info", "note", 31)) });
+    await db.opsEvent.create({ data: row("monitor-a", "recent", "info", "note", 1) });
+    expect(await purgeOldOpsEvents(db, new Date())).toBe(2501);
+    expect((await db.opsEvent.findMany({ orderBy: { eventId: "asc" } })).map((e) => e.eventId)).toEqual(["a1", "b2", "recent"]);
+    expect((await opsMetrics(db)).incidents.open.map((e) => [e.source, e.key])).toEqual([["monitor-a", "health"]]);
+    expect((await import("../../lib/server/jobs/scheduler")).SCHEDULED_JOBS.map((j) => j.name)).toContain("ops_event.purge_old");
   });
 
   it("등록만 하고 heartbeat가 없는 인스턴스도 heartbeats에 「시작 후 신호 없음」과 등록 시각으로 나온다", async () => {
