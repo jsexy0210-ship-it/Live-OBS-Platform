@@ -9,7 +9,8 @@
 | Live-OBS-Platform MASTER (2) | `session_018xa8SC5evpEFNVcQBwcN5t` | 요구사항 접수 · 작업 배정 · 독립 검수 · main 병합 · 상태 문서 관리. 2026-10-02 17:21 KST 교체 생성 |
 | (이전) MASTER | `session_01XqBPGTKiEMmRSMB5SfFp3C` | 컨텍스트 50% 도달로 교체. PR #15 병합 후 보관 완료 (2026-10-02 KST) |
 | 디자인 전담 (2) | `session_01DCQ38rPYwPnVCZJbhLgJnc` | 디자인 아티팩트 https://claude.ai/artifact/YYGXZ3u4QvjQpEMUHnN4tS 이어서 작업 (아티팩트 `project/` 파일만 소유). 우선순위: ① 오버레이 9:16·16:9 기본 템플릿 3종 ② 기존 아트보드 A안·화면 문구·도메인·도우미·구매자 문의 반영 ③ 남은 화면. 2026-10-02 18:45 KST MASTER 생성 |
-| 개발 전담 (기반) | `session_01Lhh5mXm1mdLnACzpHDNLUw` | 개발 1단계(화면 제외): 설계 문서 `docs/ARCHITECTURE.md` → 스키마·권한·테넌트 격리·주문대기 도메인·로그인·테스트·CI 테스트 단계. 소유: `prisma/**`, `lib/server/**`, `app/api/**`, `tests/**`, `docs/ARCHITECTURE.md`, `package*.json`, `ci.yml` 테스트 단계. 2026-10-02 21:30 KST MASTER 생성 |
+| 개발 전담 (기반) (2) | `session_01Ud86wDnEPvsi8jPbo4zGCi` | 이전 기반 세션을 이어받음(서버·DB·API·테스트). 소유: `prisma/**`, `lib/server/**`, `app/api/**`, `tests/**`, `docs/ARCHITECTURE.md`, `package*.json`, `ci.yml` 테스트 단계. 2026-10-03 20:18 KST MASTER 생성 |
+| (이전) 개발 전담 (기반) | `session_01Lhh5mXm1mdLnACzpHDNLUw` | 개발 1단계(화면 제외): 설계 문서 `docs/ARCHITECTURE.md` → 스키마·권한·테넌트 격리·주문대기 도메인·로그인·테스트·CI 테스트 단계. 소유: `prisma/**`, `lib/server/**`, `app/api/**`, `tests/**`, `docs/ARCHITECTURE.md`, `package*.json`, `ci.yml` 테스트 단계. 2026-10-02 21:30 KST MASTER 생성. 컨텍스트 70% 초과로 2026-10-03 교체 |
 | 개발 전담 (화면) | `session_01U3TpR6Kgg8zZnxyS48PegW` | 2026-10-03 대표님 결정 「판매자 화면부터 실제로 만들어 눌러 볼 수 있게」. 화면 라우트·components·스타일·dev-seed·e2e만 소유. 서버 API·lib/server·prisma는 개발 전담 (기반) 소유 |
 | (이전) 디자인 전담 | `session_011K2Cw69VDhwYpPegzFpXoK` | 작업 기억 72% 도달·수정 지시 미반영으로 교체. 약 130장 제작(아티팩트에 보존). 2026-10-02 18:45 KST 보관 |
 
@@ -42,7 +43,7 @@
 
 ## 미완료·블로커
 
-- 개발 전담 (기반) 교체 인계(2026-10-03 20:20 KST): 열린 PR은 #131(가입 본인확인 시작 멱등 `attemptKey`, 첫 문자는 트랜잭션 밖 발송·`409 start_in_progress`, 판단 필요 3건)과 #135(판매자 주문 목록 `GET /api/seller/orders`)예요. 대표님 결정(#136) 작업 3건은 아직 시작하지 않았고 각각 별도 PR로 해요: ① 탈퇴 시 남은 적립금 소멸 원장(재가입해도 되살리지 않음) ② 재가입 제한 판매자 설정(기본 꺼짐, 기간, `ciHash` 기준, 거절 코드·문구는 화면 세션에 전달) ③ 구매 확정 취소 뒤 환불(권한·감사 로그, 확정 때 지급한 적립금 되돌리기는 미정이라 409로 막고 판단 필요에 적기)
+- 개발 전담 (기반) 교체 인계(2026-10-03 20:20 KST): 열린 PR은 #131(가입 본인확인 시작 멱등 `attemptKey`, 첫 문자는 트랜잭션 밖 발송·`409 start_in_progress`, 판단 필요 3건)과 #135(판매자 주문 목록 `GET /api/seller/orders`)예요. 대표님 결정(#136) 작업 3건은 아직 시작하지 않았고 각각 별도 PR로 해요: ① 탈퇴 시 남은 적립금 소멸 원장(재가입해도 되살리지 않음) ② 재가입 제한 판매자 설정(기본 꺼짐, 기간, `ciHash` 기준, 거절 코드·문구는 화면 세션에 전달) ③ 구매 확정 취소 뒤 환불(권한·감사 로그, 이 주문으로 이미 지급한 적립금은 기존 자동·수동 회수 정책대로 회수) ④ 마지막 적립 뒤 3년 미적립 시 적립금 소멸(함수만)
 - 운영 DB 생성 때 collation을 UTF-8 계열(`ko_KR.UTF-8` 등)로 만들 것. 「C」 collation이면 상품 이름 검색의 대소문자 무시(`lower()`)가 ASCII에만 적용된다
 - 재고 이력 `stockAfter`는 이 기능 전 이력에서 null(화면은 표시하지 않음)
 - 휴대폰 본인확인: 포트원 V2 + KCP 어댑터(`lib/server/identity/portone.ts`)는 실제 호출 미검증(계약 전). 계약 뒤 요청·응답 필드, 인증번호 자릿수·유효시간·재전송 규칙, 오류 코드(`wrong_code` 판정)를 대행사 규격으로 맞추고 `lib/server/identity/verification.ts` 상수를 바꾼다
