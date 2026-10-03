@@ -12,6 +12,7 @@
 
 결제 `AutomationPayment.status`: `PENDING → PAID | FAILED`, `PAID → REFUND_PENDING(환불 처리 대기) → REFUNDED`.
 - `REFUNDED`로 바꾸는 실제 환불 실행은 대표님 승인 대상이라 1차 코드에 없다(billing 공통 `BillingProvider`에 환불 API도 아직 없음).
+- 결제 방식(확정 ②, PRODUCT_SCOPE 8a06dfe): 연결 시작 전에 결제를 받고(승인·매입 = `PAID`), 실패 확정 때 전액 환불(카드 승인 취소) 요청 = `REFUND_PENDING`. 「승인만 받고 성공 뒤 매입」은 PG 지원 확인 뒤 결제 상태에 `AUTHORIZED`(승인)·`CAPTURED`(매입) 단계를 더하는 방식으로 바꿀 수 있다. 실행 권한을 주는 조건(서버가 확인한 결제 성공)과 작업 상태는 그대로 두고 결제 상태만 늘리면 되게 결제·작업 상태를 분리해 두었다.
 
 ### 환불·재설치 정책 (2026-10-04 대표님 확정 ②, 정본 PRODUCT_SCOPE 「미확정 → 확정 ②」)
 
