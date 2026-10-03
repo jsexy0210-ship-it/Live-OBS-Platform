@@ -10,13 +10,21 @@ case "${1:-status}" in
   on)
     require_test_env
     [ -n "$APP_VERSION" ] || die "떠 있는 앱 버전을 찾지 못했어요. 먼저 배포해 주세요."
+    # 표시 파일은 compose가 가용성 정의를 읽게 하는 스위치다. 실패하면 지우고 기본 정의로 되돌려 「켜짐」으로 남지 않게 한다.
     touch "$AVAIL_MARK"
-    compose up -d --no-build --wait
+    if ! compose up -d --no-build --wait; then
+      rm -f "$AVAIL_MARK"
+      compose up -d --no-build --wait --remove-orphans || true
+      die "켜기 실패. 표시를 지우고 기본 정의로 되돌렸어요(availability.sh status로 확인)."
+    fi
     log "가용성 프로파일 켜짐: $(app_services), version=$APP_VERSION"
     ;;
   off)
     rm -f "$AVAIL_MARK"
-    compose up -d --no-build --wait --remove-orphans
+    if ! compose up -d --no-build --wait --remove-orphans; then
+      touch "$AVAIL_MARK"
+      die "끄기 실패. 앱 2개 정의가 남아 있을 수 있어 표시를 되돌렸어요(availability.sh status로 확인 후 다시 off)."
+    fi
     log "가용성 프로파일 꺼짐: 기본 정의(obs-web-app 1개)"
     ;;
   status)
