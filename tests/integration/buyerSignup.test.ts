@@ -8,6 +8,7 @@ import { BUYER_SIGNUP_MESSAGES, BUYER_SIGNUP_VERIFY_DAILY_LIMIT_PER_IP, MAX_SIGN
 import { prisma } from "../../lib/server/db";
 import { startSellerPasswordReset } from "../../lib/server/auth/passwordReset";
 import { FakeIdentityProvider } from "../../lib/server/identity/provider";
+import { resendIdentityCode } from "../../lib/server/identity/verification";
 import { startSellerSignupVerification } from "../../lib/server/sellers/application";
 import { IDV_INPUT, confirmIdv, createSeller, db, resetDb, startIdv } from "./helpers";
 
@@ -310,8 +311,13 @@ describe("signupBuyer는 completeIdentityVerification을 거친다", () => {
     expect(await db.identityVerification.count({ where: { purpose: "BUYER_SIGNUP", sellerId: s.seller.id } })).toBe(2);
     // 판매자 본인확인 경로(대표자 가입·비밀번호 재설정)는 이 한도를 보지 않는다
     const provider = new FakeIdentityProvider();
-    expect((await startSellerSignupVerification(db, provider, { ...IDV_INPUT, phone: "01055556666" }, { ip: "203.0.113.9" })).ok).toBe(true);
-    expect((await startSellerPasswordReset(db, provider, { email: "owner@example.com", shopSlug: s.slug, person: IDV_INPUT })).ok).toBe(true);
+    const rep = await startSellerSignupVerification(db, provider, { ...IDV_INPUT, phone: "01055556666" }, { ip: "203.0.113.9" });
+    const reset = await startSellerPasswordReset(db, provider, { email: "owner@example.com", shopSlug: s.slug, person: IDV_INPUT });
+    if (!rep.ok || !reset.ok) throw new Error("판매자 본인확인 시작 실패");
+    // 판매자 쪽 다시 보내기도 막히지 않는다(한도가 찬 체험 판매자의 비밀번호 재설정 포함)
+    await db.identityVerification.updateMany({ where: { id: { in: [rep.verificationId, reset.verificationId] } }, data: { lastSentAt: new Date(Date.now() - 10 * 60_000) } });
+    expect(await resendIdentityCode(db, provider, rep.verificationId, { sellerId: null, purpose: "SELLER_REPRESENTATIVE", ownerToken: rep.ownerToken })).toEqual({ ok: true });
+    expect(await resendIdentityCode(db, provider, reset.verificationId, { sellerId: s.seller.id, purpose: "PASSWORD_RESET", ownerToken: reset.ownerToken })).toEqual({ ok: true });
   });
 
   it("체험이 아닌(구독 중) 쇼핑몰은 체험 한도와 상관없이 본인확인을 시작한다", async () => {
