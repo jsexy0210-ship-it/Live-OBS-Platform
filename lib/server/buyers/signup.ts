@@ -9,7 +9,6 @@ import { buyerSignupIdentityLimitReached, completeIdentityVerification, parseIde
 import { EMAIL } from "../sellers/application";
 import { cleanText } from "../text/clean";
 
-class VerificationUsed extends Error {}
 
 // 본인인증 후 가입에 쓸 수 있는 시간
 const SIGNUP_WINDOW_MS = 30 * 60_000;
@@ -133,15 +132,6 @@ export async function signupBuyer(
     return { ok: false, reason: "verification_invalid" };
   };
   if (v.consumedAt) return resume(v.subjectId);
-  // 같은 요청이 동시에 와서 다른 쪽이 먼저 가입시켰는지 다시 본다(소진됐으면 재전송과 같은 기준으로 판정).
-  // 같은 회원으로 끝나면 이 요청이 올린 시도 횟수는 되돌린다(가입 한 번에 한 번만 센다). 소진 전이면 null.
-  const lostRace = async (counted: boolean): Promise<BuyerSignupResult | null> => {
-    const after = await db.identityVerification.findUniqueOrThrow({ where: { id: v.id }, select: { consumedAt: true, subjectId: true } });
-    if (!after.consumedAt) return null;
-    const r = await resume(after.subjectId);
-    if (r.ok && counted) await db.identityVerification.updateMany({ where: { id: v.id, useAttemptCount: { gt: 0 } }, data: { useAttemptCount: { decrement: 1 } } });
-    return r;
-  };
   if (
     !v.ciHash ||
     !v.verifiedAt ||
@@ -154,19 +144,6 @@ export async function signupBuyer(
     return { ok: false, reason: "verification_invalid" };
   }
 
-  // 시도 횟수를 먼저 센다(가입이 중복으로 롤백돼도 남도록 별도 갱신). 한도에 닿으면 이 본인확인으로는 더 가입할 수 없다.
-  const counted = await db.identityVerification.updateMany({
-    where: { id: v.id, consumedAt: null, useAttemptCount: { lt: MAX_SIGNUP_ATTEMPTS_PER_VERIFICATION } },
-    data: { useAttemptCount: { increment: 1 } },
-  });
-  if (counted.count !== 1) return (await lostRace(false)) ?? { ok: false, reason: "too_many_signup_attempts" };
-
-  const existing = await db.buyerMember.findFirst({
-    where: { sellerId: input.sellerId, ciHash: v.ciHash, deletedAt: null },
-    select: { id: true },
-  });
-  if (existing) return (await lostRace(true)) ?? { ok: false, reason: "already_member" };
-
   const grade = await db.memberGrade.findFirst({
     where: { sellerId: input.sellerId },
     orderBy: [{ sortOrder: "asc" }],
@@ -174,12 +151,26 @@ export async function signupBuyer(
   });
   if (!grade) return { ok: false, reason: "shop_unavailable" };
 
+  // 비밀번호 해시는 잠금 밖에서 미리 만든다(잠금을 짧게)
   const passwordHash = await hashPassword(input.password);
+  type Step = { kind: "resume"; subjectId: string | null } | { kind: "fail"; reason: BuyerSignupFailure } | { kind: "created"; id: string; broadcastNickname: string };
   try {
-    const member = await db.$transaction(async (tx) => {
-      // 같은 본인인증으로 두 번 가입하지 못하게 먼저 소진 처리한다.
-      const used = await tx.identityVerification.updateMany({ where: { id: v.id, consumedAt: null }, data: { consumedAt: now } });
-      if (used.count !== 1) throw new VerificationUsed();
+    // 같은 본인확인 건의 가입 처리는 이 잠금 아래에서 한 줄로 한다(동시에 다시 보낸 요청이 서로 엇갈리지 않게).
+    // 순서: 다시 읽기 → 이미 소진됐으면 재전송 판정 → 시도 예약 → 중복 확인 → 소진·회원 생성·회원 기록.
+    // 시도 횟수는 같은 트랜잭션에서 올리고, 중복 같은 실패는 값으로 돌려줘 커밋되게 해서 실패한 시도도 남긴다.
+    const step = await db.$transaction(async (tx): Promise<Step> => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`buyer_signup_v:${v.id}`}))`;
+      const cur = await tx.identityVerification.findUniqueOrThrow({ where: { id: v.id }, select: { consumedAt: true, subjectId: true, useAttemptCount: true } });
+      if (cur.consumedAt) return { kind: "resume", subjectId: cur.subjectId };
+      if (cur.useAttemptCount >= MAX_SIGNUP_ATTEMPTS_PER_VERIFICATION) return { kind: "fail", reason: "too_many_signup_attempts" };
+      await tx.identityVerification.update({ where: { id: v.id }, data: { useAttemptCount: { increment: 1 } } });
+      const live = { sellerId: input.sellerId, deletedAt: null };
+      if (await tx.buyerMember.findFirst({ where: { ...live, OR: [{ ciHash: v.ciHash! }, { phone: v.phone! }] }, select: { id: true } })) {
+        return { kind: "fail", reason: "already_member" };
+      }
+      if (await tx.buyerMember.findFirst({ where: { ...live, loginId }, select: { id: true } })) return { kind: "fail", reason: "login_id_taken" };
+      if (await tx.buyerMember.findFirst({ where: { ...live, broadcastNickname: nickname }, select: { id: true } })) return { kind: "fail", reason: "nickname_taken" };
+      await tx.identityVerification.update({ where: { id: v.id }, data: { consumedAt: now } });
       const created = await tx.buyerMember.create({
         data: {
           sellerId: input.sellerId,
@@ -208,13 +199,22 @@ export async function signupBuyer(
         userAgent: input.meta?.userAgent ?? null,
         after: { agreedTerms: true, agreedPrivacy: true, agreedMarketing, agreedAt: now.toISOString() },
       });
-      return created;
+      return { kind: "created", id: created.id, broadcastNickname: created.broadcastNickname };
     });
-    return { ok: true, memberId: member.id, broadcastNickname: member.broadcastNickname, resumed: false };
+    if (step.kind === "resume") return resume(step.subjectId);
+    if (step.kind === "fail") return { ok: false, reason: step.reason };
+    return { ok: true, memberId: step.id, broadcastNickname: step.broadcastNickname, resumed: false };
   } catch (e) {
-    if (e instanceof VerificationUsed) return (await lostRace(true)) ?? { ok: false, reason: "verification_invalid" };
+    // 다른 본인확인으로 같은 값이 동시에 가입된 경우(부분 유니크 인덱스 이름으로 어느 값인지 구분한다).
+    // 트랜잭션이 되돌려져 시도 예약도 사라졌으니, 같은 잠금 아래 짧은 트랜잭션으로 시도 횟수를 따로 남긴다.
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      // 부분 유니크 인덱스 이름으로 어느 값이 겹쳤는지 구분한다(동시에 가입한 경우 포함).
+      await db.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`buyer_signup_v:${v.id}`}))`;
+        await tx.identityVerification.updateMany({
+          where: { id: v.id, consumedAt: null, useAttemptCount: { lt: MAX_SIGNUP_ATTEMPTS_PER_VERIFICATION } },
+          data: { useAttemptCount: { increment: 1 } },
+        });
+      });
       const target = String((e.meta as { target?: unknown } | undefined)?.target ?? e.message);
       if (target.includes("ciHash") || target.includes("phone")) return { ok: false, reason: "already_member" };
       if (target.includes("loginId")) return { ok: false, reason: "login_id_taken" };
