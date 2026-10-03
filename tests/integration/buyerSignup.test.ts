@@ -1,3 +1,4 @@
+import type { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { POST as loginRoute } from "../../app/api/shop/[slug]/auth/login/route";
 import { POST as signupRoute } from "../../app/api/shop/[slug]/signup/route";
@@ -8,7 +9,7 @@ import { BUYER_SIGNUP_MESSAGES, BUYER_SIGNUP_VERIFY_DAILY_LIMIT_PER_IP, MAX_SIGN
 import { prisma } from "../../lib/server/db";
 import { startSellerPasswordReset } from "../../lib/server/auth/passwordReset";
 import { FakeIdentityProvider } from "../../lib/server/identity/provider";
-import { resendIdentityCode } from "../../lib/server/identity/verification";
+import { buyerSignupIdentityLimitReached, resendIdentityCode } from "../../lib/server/identity/verification";
 import { startSellerSignupVerification } from "../../lib/server/sellers/application";
 import { IDV_INPUT, confirmIdv, createSeller, db, resetDb, startIdv } from "./helpers";
 
@@ -330,5 +331,21 @@ describe("signupBuyer는 completeIdentityVerification을 거친다", () => {
     const plan = await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "STANDARD" } });
     await db.sellerSubscription.create({ data: { sellerId: s.seller.id, planId: plan.id, status: "ACTIVE", currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) } });
     expect((await startRoute(post(`${s.base}/verification`, IDV_INPUT), ctx(s.slug))).status).toBe(200);
+    // 체험이 아니면 본인확인 사용량(전체 건수 COUNT)을 세지 않는다. 체험이면 센다.
+    let counts = 0;
+    const counting = new Proxy(db, {
+      get(t, p) {
+        const v = Reflect.get(t, p);
+        if (p === "identityVerification") {
+          return new Proxy(v, { get: (d, m) => (m === "count" ? (...a: unknown[]) => (counts++, d.count(...(a as [never]))) : Reflect.get(d, m)) });
+        }
+        return typeof v === "function" ? v.bind(t) : v;
+      },
+    }) as PrismaClient;
+    expect(await buyerSignupIdentityLimitReached(counting, s.seller.id)).toBe(false);
+    expect(counts).toBe(0);
+    await db.sellerSubscription.deleteMany({ where: { sellerId: s.seller.id } });
+    expect(await buyerSignupIdentityLimitReached(counting, s.seller.id)).toBe(true);
+    expect(counts).toBe(1);
   });
 });

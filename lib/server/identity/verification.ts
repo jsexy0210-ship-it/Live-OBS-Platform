@@ -129,7 +129,7 @@ export type ResendResult =
 
 // 체험하기 중 구매자 가입 본인확인 한도가 이미 찼는지(문자를 보내기 전 미리 확인). 최종 확인은 확정할 때(finalizeIdentity) 잠금 아래에서 다시 한다.
 export async function buyerSignupIdentityLimitReached(db: Db, sellerId: string, now?: Date): Promise<boolean> {
-  return !(await checkTrialLimit(db, sellerId, "identity", { used: await identityUsage(db, sellerId), adding: 1 }, now)).ok;
+  return !(await checkTrialLimit(db, sellerId, "identity", { used: () => identityUsage(db, sellerId), adding: 1 }, now)).ok;
 }
 
 // 인증번호 다시 보내기. 간격·횟수 제한은 조건부 갱신으로 지켜 동시에 눌러도 한 번만 보낸다.
@@ -262,8 +262,8 @@ async function finalizeIdentity(db: PrismaClient, v: IdentityVerification, r: Id
       const current = await tx.identityVerification.findUniqueOrThrow({ where: { id: v.id } });
       if (current.status === "VERIFIED") return { ok: true as const, verification: current };
       if (current.status !== "PENDING") return { ok: false as const, reason: current.status === "EXPIRED" ? ("expired" as const) : ("failed" as const) };
-      const used = await identityUsage(tx, v.sellerId);
-      const limit = await checkTrialLimit(tx, v.sellerId, "identity", { used, adding: 1 }, now);
+      const sellerId = v.sellerId;
+      const limit = await checkTrialLimit(tx, sellerId, "identity", { used: () => identityUsage(tx, sellerId), adding: 1 }, now);
       if (!limit.ok) {
         await tx.identityVerification.updateMany({ where: { id: v.id, status: "PENDING" }, data: { status: "FAILED" } });
         return { ok: false as const, reason: "trial_limit_exceeded" as const };
