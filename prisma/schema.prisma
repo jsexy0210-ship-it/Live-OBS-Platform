@@ -362,6 +362,10 @@ model IdentityVerification {
   ownerTokenHash  String?
   // 비밀번호 찾기: 재설정 대상 계정(없는 계정이면 null, 응답은 같게)
   subjectId       String?                     @db.Uuid
+  // 구매자 가입 시작 멱등 키(클라이언트가 만든 attemptKey의 해시). 같은 쇼핑몰·같은 키로 다시 시작하면 새로 만들지 않는다.
+  attemptKeyHash  String?
+  // 첫 인증번호를 보내기 시작한 시각(구매자 가입). sendCount가 0인 채 오래 지나면 같은 attemptKey 재요청이 발송을 넘겨받는다.
+  sendStartedAt   DateTime?                   @db.Timestamptz(3)
   // 인증을 시작한 접속 IP(신뢰 프록시 기준, 없으면 null). 판매자 가입 PASS 시작 하루 횟수 제한에 쓴다.
   requestIp       String?
   // 이 인증으로 가입·재설정 권한을 이미 발급했으면 기록(한 번만 쓰임)
@@ -372,6 +376,7 @@ model IdentityVerification {
   seller Seller? @relation(fields: [sellerId], references: [id])
 
   @@unique([provider, requestId])
+  @@unique([sellerId, attemptKeyHash])
   @@index([purpose, requestIp, createdAt])
   @@index([sellerId, ciHash])
 }
@@ -592,6 +597,8 @@ model Order {
   @@index([sellerId, status])
   @@index([status, paymentDueAt])
   @@index([sellerId, buyerMemberId, autoCancelledAt])
+  // 판매자 주문 목록(주문 시각 내림차순 + id 커서)
+  @@index([sellerId, createdAt(sort: Desc), id(sort: Desc)])
 }
 
 model OrderItem {
@@ -777,6 +784,8 @@ enum RewardLedgerType {
   USE
   RANKING_BONUS
   ADJUST
+  // 소멸(탈퇴 때 남은 잔액, 마지막 적립 뒤 3년). 음수 금액, 바로 SUCCEEDED로 잔액에 반영한다.
+  EXPIRE
 }
 
 enum RewardLedgerStatus {
