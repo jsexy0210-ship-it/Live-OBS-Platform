@@ -1,4 +1,8 @@
 -- 재고 이력(결과 재고·기록 순서 seq). seq는 옵션 행 잠금 뒤 INSERT에서 매겨져 옵션마다 실제 적용 순서와 같다.
+-- 운영 중 배포해도 ALTER·seq 채우기·setval·인덱스·트리거 사이에 새 이력이 끼어들지 않게 한 트랜잭션으로 묶는다
+-- (Prisma는 PostgreSQL 마이그레이션을 트랜잭션으로 감싸지 않는다. ALTER TABLE 잠금이 COMMIT까지 쓰기를 막는다).
+BEGIN;
+
 -- AlterTable
 ALTER TABLE "StockMovement" ADD COLUMN     "seq" BIGSERIAL NOT NULL,
 ADD COLUMN     "stockAfter" INTEGER;
@@ -30,3 +34,5 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER "StockMovement_set_stock_after"
   BEFORE INSERT ON "StockMovement"
   FOR EACH ROW EXECUTE FUNCTION "StockMovement_set_stock_after"();
+
+COMMIT;
