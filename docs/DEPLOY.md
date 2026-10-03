@@ -8,7 +8,8 @@
 | --- | --- |
 | `Dockerfile` | 앱 이미지(Next.js standalone, `node server.js`) + 마이그레이션 이미지(`migrator` 단계) |
 | `deploy/docker-compose.yml` | 프로젝트 `obs-web`: DB·마이그레이션·앱·프록시 |
-| `deploy/Caddyfile` | 80 포트를 받아 앱으로 넘기는 리버스 프록시 |
+| `deploy/Caddyfile` | 80·443을 받아 앱으로 넘기는 리버스 프록시 |
+| `.github/workflows/deploy-obs-test.yml` | 수동 배포 워크플로(VM 안의 self-hosted runner에서 실행) |
 | `app/api/health/route.ts` | `GET /api/health` 기동·DB 확인 |
 
 | 서비스 | 내용 | 밖으로 여는 포트 |
@@ -16,7 +17,7 @@
 | `obs-web-db` | PostgreSQL 16. 데이터는 이름 있는 볼륨 `obs-web_obs-web-pgdata`에 보존 | 없음 |
 | `obs-web-migrate` | `prisma migrate deploy`를 한 번 실행하고 끝남. 실패하면 앱이 뜨지 않음 | 없음 |
 | `obs-web-app` | 앱(3000, compose 네트워크 안에서만). healthcheck가 `/api/health`를 봄 | 없음 |
-| `obs-web-proxy` | Caddy. 앱이 healthy가 된 뒤 시작 | 80 |
+| `obs-web-proxy` | Caddy. 앱이 healthy가 된 뒤 시작. 주소는 `.env`의 `OBS_SITE_ADDRESS`(기본 `:80`) | 80, 443 |
 
 - 실시간(SSE)은 DB `LISTEN/NOTIFY`로 전달돼요. 앱 컨테이너 하나 기준이고, 여러 개로 늘려도 DB를 통해 전달돼요.
 - 이미지는 `obs-web-app:<커밋 SHA>`, `obs-web-migrate:<커밋 SHA>`로 남아요(롤백용).
@@ -39,8 +40,40 @@ VM에 GitHub Actions runner(라벨 `obs-kakao`)를 설치하고, Actions 화면�
 - 레지스트리(GHCR 용량 과금 가능성) 없이 동작해요.
 - 주의: runner가 받은 코드를 VM에서 그대로 실행해요. 그래서 배포 워크플로는 `workflow_dispatch`만, main만, Environment `obs-test`로 묶어야 하고, PR·다른 브랜치·fork에서는 절대 runner로 가지 않아야 해요.
 
-**배포 워크플로 파일(`.github/workflows/deploy-obs-test.yml`)은 아직 없어요.** 이 작업 세션에서 작성하려 했지만 세션 권한 검사가 「운영 배포」로 분류해 막았어요. 대표님이 승인 범위를 다시 확인해 주시면 추가해요. 그 전까지는 아래 「수동 배포」로 같은 일을 할 수 있어요.
-CI의 「No deploy workflows」 검사도 그대로 두었어요(워크플로를 넣을 때 `deploy-obs-test.yml` 하나만, `workflow_dispatch` 전용일 때만 허용하도록 같이 좁혀요).
+워크플로 `Deploy obs-test`가 하는 일:
+
+1. 입력한 커밋 SHA가 실행 시점의 main과 같은지, `/opt/obs/.env`가 있는지 확인
+2. main 체크아웃
+3. DB가 있으면 배포 전 백업(`/opt/obs/backups/obs-<KST 시각>-before-<SHA 7자리>.dump`)
+4. `docker compose ... up -d --build --wait`(마이그레이션 → 앱 healthy → 프록시)
+5. `http://127.0.0.1/api/health`의 `version`이 배포 SHA이고 `db`가 `ok`인지 확인
+6. 성공하면 `/opt/obs/deploy-history.log`에 KST 시각·SHA·실행 번호·실행자를 남기고 실행 요약에 표시
+
+CI의 「No deploy workflows」 검사가 self-hosted runner를 이 워크플로 하나에만 허용하고, `workflow_dispatch` 말고 다른 트리거가 생기면 실패해요.
+
+#### 배포 실행 순서
+
+1. 배포할 main 커밋을 확인해요(저장소 첫 화면 또는 Commits에서 맨 위 커밋의 앞 7자리).
+2. Actions → **Deploy obs-test** → **Run workflow**를 눌러요.
+3. Branch는 **main** 그대로 두고, `confirm_sha`에 1의 앞 7자리를 넣고 실행해요.
+   - 다른 브랜치를 고르면 job이 건너뛰어져요. 입력한 SHA가 main과 다르면(그새 병합이 있었으면) 멈춰요.
+4. Environment `obs-test`에 Required reviewers가 있으면 **Review deployments → Approve**를 눌러요.
+5. 끝나면 실행 요약의 「obs-test 배포 완료」와 커밋을 확인하고, 브라우저로 주소를 열어 봐요.
+
+#### 실패했을 때
+
+- 실행 화면에서 빨간 단계를 열어요. 실패하면 마지막 「Show status on failure」 단계가 컨테이너 상태와 마이그레이션·앱 로그 80줄을 보여 줘요.
+- 단계별로 흔한 원인:
+
+| 실패한 단계 | 확인할 것 |
+| --- | --- |
+| Check target commit | `confirm_sha`가 지금 main 맨 위 커밋과 같은지. `/opt/obs/.env`가 있는지 |
+| Waiting for a runner(시작 안 함) | 서버에서 `sudo systemctl status 'actions.runner.*'`. runner가 꺼졌거나 라벨 `obs-kakao`가 없음 |
+| Backup / Build and start에서 permission denied | `obs` 계정이 `docker` 그룹인지(`id obs`), 그룹 추가 뒤 runner를 재시작했는지 |
+| Build and start | 마이그레이션 실패(`obs-web-migrate` 로그), `.env` 값 누락(`POSTGRES_*`), 디스크 부족(`df -h`) |
+| Health check | `db":"error"`면 DB 컨테이너 상태, version이 다르면 이전 컨테이너가 남았는지(`docker ps`) |
+
+- 실패해도 이전 컨테이너가 그대로 떠 있거나 일부만 바뀌었을 수 있어요. 아래 「로그」로 상태를 보고, 필요하면 「롤백」을 따라요.
 
 ### 대안: GitHub 호스팅 러너 + SSH
 
@@ -65,7 +98,7 @@ GitHub 러너가 SSH로 VM에 접속해 같은 compose 명령을 실행하는 �
 | 포트 | 출발지 | 비고 |
 | --- | --- | --- |
 | 80/tcp | 0.0.0.0/0 | 서비스 |
-| 443/tcp | 막음 | 도메인·HTTPS 설정 뒤 0.0.0.0/0 허용 |
+| 443/tcp | HTTPS를 쓸 때 0.0.0.0/0 | 「HTTPS」 단계에서 열어요. 로그인 확인에 필요해요 |
 | 22/tcp | 대표님 IP/32만 | 서버 관리 |
 | 5432, 3000 등 | 막음 | DB·앱은 compose 안에서만 쓰고 호스트에도 열지 않음 |
 
@@ -94,7 +127,8 @@ sudo chown -R obs:obs /opt/obs
 sudo chmod 700 /opt/obs /opt/obs/backups
 ```
 
-`docker` 그룹은 root와 같은 권한이에요. 이 계정에는 다른 용도를 주지 않아요.
+- runner가 `obs` 계정으로 `docker compose`를 실행하므로 `docker` 그룹이 꼭 필요해요. 그룹을 추가한 뒤에는 runner 서비스를 다시 시작해야 반영돼요(`sudo systemctl restart 'actions.runner.*'`).
+- `docker` 그룹은 서버에서 root와 같은 권한이에요. 이 계정에는 다른 용도를 주지 않고, 비밀번호 로그인·sudo 권한도 주지 않아요.
 
 ### 4. 서버 `.env`(`/opt/obs/.env`, 권한 600)
 
@@ -112,7 +146,8 @@ sudo -u obs nano /opt/obs/.env
 | `POSTGRES_DB` | 필수 | DB 이름 |
 | `IDENTITY_HASH_KEY` | 필수 | 본인확인 CI 해시 키(32자 이상) |
 | `BILLING_KEY_SECRET` | 필수 | 빌링키 암호화 키(32자 이상) |
-| `BILLING_PROVIDER` | 결정 필요 | 결제 공급자. 실제 업체 연동 전이라 지금 값은 `fake`뿐이에요. 비우면 결제 경로는 오류로 멈춰요 |
+| `BILLING_PROVIDER` | 필수 | obs-test는 **`fake`**(실제 결제 금지, 2026-10-03 결정) |
+| `OBS_SITE_ADDRESS` | 선택 | 프록시 사이트 주소. 비우면 `:80`(HTTP). HTTPS는 아래 「HTTPS」 |
 | `BUSINESS_STATUS_PROVIDER`, `NTS_BUSINESS_STATUS_API_KEY` | 선택 | 판매자 가입 사업자 상태 점검 |
 | `MAIL_ORDER_PROVIDER`, `FTC_MAIL_ORDER_API_KEY` | 선택 | 통신판매업 점검 |
 | `PORTONE_API_SECRET`, `PORTONE_STORE_ID`, `PORTONE_IDENTITY_CHANNEL_KEY` | 선택 | 휴대폰 본인확인. 없으면 가입 본인확인은 503 「준비 중」 |
@@ -120,7 +155,7 @@ sudo -u obs nano /opt/obs/.env
 `DATABASE_URL`과 `TRUSTED_PROXY_HOPS`(=1)는 compose가 만들어 넣어요. `.env`에 적지 않아요.
 `.env`를 바꾼 뒤에는 재배포(또는 `up -d`)해야 반영돼요.
 
-### 5. runner 등록(배포 워크플로 추가 뒤)
+### 5. runner 등록
 
 1. GitHub 저장소 → Settings → Actions → Runners → New self-hosted runner → Linux x64. 화면의 다운로드·`config.sh` 명령을 그대로 써요. **토큰은 화면에서 복사해 서버에서만 입력해요.**
 2. 서버에서 `obs` 계정으로 `/opt/obs/actions-runner`에 설치하고 등록할 때 라벨 `obs-kakao`를 추가해요.
@@ -132,12 +167,15 @@ sudo -u obs nano /opt/obs/.env
    exit
    cd /opt/obs/actions-runner && sudo ./svc.sh install obs && sudo ./svc.sh start
    ```
-3. Settings → Environments → `obs-test` → Deployment branches를 `main`만 허용으로 바꿔요. 필요하면 Required reviewers에 대표님을 넣어요.
-4. Settings → Actions → General → Fork pull request workflows는 승인 필요(기본값)로 둬요.
+3. Settings → Environments → `obs-test`를 이렇게 설정하길 권해요.
+   - Deployment branches and tags: **Selected branches** → `main`만
+   - Required reviewers: **대표님** (실행할 때마다 승인 한 번)
+4. 서버에서 `sudo systemctl status 'actions.runner.*'`가 active이고, GitHub Runners 화면에 `obs-web-test`가 Idle로 보이면 준비 끝이에요.
+5. Settings → Actions → General → Fork pull request workflows는 승인 필요(기본값)로 둬요.
 
 GitHub Secrets·Variables는 이 방식에서 필요 없어요(비밀값은 서버 `.env`에만).
 
-## 수동 배포(서버에서 직접)
+## 수동 배포(서버에서 직접, 워크플로를 쓸 수 없을 때)
 
 ```bash
 sudo -u obs -i
@@ -198,12 +236,27 @@ $C logs --tail 100 obs-web-migrate      # 마이그레이션 결과
 $C logs --tail 100 obs-web-proxy        # 프록시
 ```
 
-## HTTPS(도메인 확정 뒤)
+## HTTPS
+
+운영 빌드는 로그인 쿠키에 `Secure`를 붙여요(`lib/server/http/route.ts`). 그래서 **HTTP 주소(`http://210.109.15.68`)에서는 브라우저가 로그인 쿠키를 저장하지 않아 로그인이 유지되지 않아요.** 로그인까지 확인하려면 HTTPS가 필요해요.
+
+### 도메인 구입 전: sslip.io(무료)
+
+`210-109-15-68.sslip.io`처럼 IP를 넣은 이름은 따로 등록하지 않아도 그 IP로 연결돼요(sslip.io 무료 공용 DNS).
+
+1. `/opt/obs/.env`에 `OBS_SITE_ADDRESS=210-109-15-68.sslip.io`를 넣어요.
+2. 보안 그룹 `obs-web-sg`에서 443/tcp를 0.0.0.0/0으로 열어요(80도 열려 있어야 해요).
+3. 재배포해요(또는 서버에서 `$C up -d obs-web-proxy`). **보안 그룹 443을 열면 Caddy가 Let's Encrypt 무료 인증서를 자동으로 받아요**(`obs-web-caddy-data` 볼륨에 보관, 자동 갱신).
+4. `https://210-109-15-68.sslip.io`로 접속해요. `http://`로 들어오면 HTTPS로 넘어가요.
+
+한계:
+- sslip.io는 남이 운영하는 공용 서비스예요. 장애가 나면 접속이 안 되고, 같은 상위 도메인을 많은 사람이 써서 인증서 발급 한도에 걸릴 수 있어요. **시험용으로만** 쓰고 실제 판매자·구매자에게 주소를 알리지 않아요.
+- 서버 IP가 바뀌면 주소도 바뀌어요.
+- 인증서를 받기 전(443이 막혀 있거나 발급 실패)에는 `https://` 접속이 안 돼요. `$C logs obs-web-proxy`에서 발급 결과를 볼 수 있어요.
+
+### 도메인 확정 뒤
 
 1. 도메인 DNS A 레코드를 `210.109.15.68`로 지정해요.
-2. `deploy/Caddyfile`의 `:80`을 도메인 이름으로 바꾸고, compose 프록시에 `443:443`을 추가하는 PR을 올려요.
-3. 보안 그룹에서 443을 열어요. Caddy가 인증서를 자동으로 받아요(무료, `obs-web-caddy-data` 볼륨에 보관).
+2. `/opt/obs/.env`의 `OBS_SITE_ADDRESS`를 그 도메인으로 바꾸고 재배포해요. 코드·설정 파일은 바꾸지 않아도 돼요.
 
-## 알려진 문제
-
-- **HTTP(IP:80)에서는 로그인이 유지되지 않아요.** 운영 빌드는 로그인 쿠키에 `Secure`를 붙여서 브라우저가 HTTP 주소에서는 저장하지 않아요(`lib/server/http/route.ts`). 화면·API 확인은 되지만 로그인 흐름은 HTTPS(도메인) 뒤에 확인할 수 있어요.
+배포 워크플로의 health check는 서버 안에서 `http://127.0.0.1`로 부르고, Caddyfile에 이 주소를 따로 두어서 사이트 주소를 바꿔도 그대로 동작해요.
