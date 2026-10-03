@@ -107,6 +107,8 @@ test("1440에서 도움말이 단어 중간에서 끊기지 않는다", async ({
 
 test("로그인이 풀린 뒤 다른 설정 탭으로 가면 로그인으로 보낸다", async ({ page }) => {
   await openAs(page, "demo-owner@example.com");
+  // 첫 화면 데이터를 다 받은 뒤 로그인을 끊는다
+  await expect(page.getByTestId("fee-preview")).toBeVisible();
   await page.context().clearCookies();
   await page.getByRole("link", { name: "주문 설정" }).click();
   await expect(page).toHaveURL(/\/seller\/login\?next=%2Fseller%2Fsettings%2Forder$/);
