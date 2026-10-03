@@ -40,6 +40,8 @@ export type Me = { sellerId: string; userId: string; isOwner: boolean; permissio
   trialEndsAt: string | null;
 };
 
+// 재고 차감 시점: ORDER=주문하면 바로, PAYMENT=결제하면(기본)
+export type StockDeductMode = "ORDER" | "PAYMENT";
 export type ProductStatus = "DRAFT" | "ON_SALE" | "SOLD_OUT" | "HIDDEN";
 export type ProductOption = { id: string; name: string; priceDelta: number; stock: number; sku: string | null; sortOrder: number };
 export type Product = {
@@ -48,6 +50,7 @@ export type Product = {
   description: string | null;
   price: number;
   status: ProductStatus;
+  stockDeductMode: StockDeductMode;
   sortOrder: number;
   createdAt: string;
   options: ProductOption[];

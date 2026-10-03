@@ -138,3 +138,36 @@ test("390에서는 옵션이 카드처럼 쌓이고 가로로 넘치지 않는�
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await expect(page.getByRole("button", { name: "스타라이트 부스터 박스 1박스 (36팩) 빼기 · 더하기" })).toBeVisible();
 });
+
+test("상품 재고 차감 기준을 정하고 바꿀 수 있다(주문하면 바로 차감 ↔ 결제하면 차감)", async ({ page }) => {
+  const name = `e2e ${Date.now().toString(36)} 차감 기준`;
+  await page.goto("/seller/login?next=%2Fseller%2Fproducts%2Fnew");
+  await page.getByLabel("이메일").fill("demo-owner@example.com");
+  await page.getByLabel("비밀번호").fill(PASSWORD);
+  await page.getByRole("button", { name: "로그인" }).click();
+  await expect(page).toHaveURL(/\/seller\/products\/new$/);
+  await expect(page.getByRole("radio", { name: "결제하면 차감" })).toHaveAttribute("aria-checked", "true");
+  await page.getByLabel("상품명").fill(name);
+  await page.getByLabel("판매가").fill("5000");
+  await page.getByRole("radio", { name: "주문하면 바로 차감" }).click();
+  await page.getByRole("button", { name: "등록", exact: true }).first().click();
+  await expect(page).toHaveURL(/\/seller\/products$/);
+  await page.getByTestId("product-row").filter({ hasText: name }).getByRole("link").first().click();
+  await expect(page.getByRole("radio", { name: "주문하면 바로 차감" })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("radio", { name: "결제하면 차감" }).click();
+  await page.getByRole("button", { name: "저장", exact: true }).first().click();
+  await expect(page.getByText("저장했어요", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("radio", { name: "결제하면 차감" })).toHaveAttribute("aria-checked", "true");
+});
+
+test("로그인이 풀린 뒤 재고를 바꾸면 로그인으로 보낸다", async ({ page }) => {
+  await openAs(page);
+  await page.context().clearCookies();
+  await page.getByRole("button", { name: "탑로더 25장 1팩 빼기 · 더하기" }).click();
+  const sheet = page.getByRole("dialog");
+  await sheet.getByLabel("수량").fill("1");
+  await sheet.getByRole("radio", { name: "서비스" }).click();
+  await sheet.getByRole("button", { name: "1개 빼기" }).click();
+  await expect(page).toHaveURL(/\/seller\/login\?next=%2Fseller%2Fproducts%2Fstock$/);
+});

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { Topbar } from "./SellerShell";
 import { NoImage, Toast } from "./States";
-import { api, failMessage, type Product, type ProductOption, type ProductStatus } from "./api";
+import { api, failMessage, type Product, type ProductOption, type ProductStatus, type StockDeductMode } from "./api";
 import { INT4_MAX, STATUS_LABEL, parseAmount, statusBadge, textLength, won } from "./format";
 import { cleanText } from "../../lib/server/text/clean";
 
@@ -103,6 +103,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
   const [description, setDescription] = useState(initial?.description ?? "");
   const [price, setPrice] = useState(initial ? String(initial.price) : "");
   const [status, setStatus] = useState<ProductStatus>(initial?.status ?? "ON_SALE");
+  const [deduct, setDeduct] = useState<StockDeductMode>(initial?.stockDeductMode ?? "PAYMENT");
   const [rows, setRows] = useState<OptRow[]>(() => (initial ? initial.options.map(toRow) : [blankRow("기본")]));
   const [removed, setRemoved] = useState<string[]>([]);
   const [showErrors, setShowErrors] = useState(false);
@@ -151,6 +152,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
         description: description.trim() === "" ? null : description.trim(),
         price: priceNum,
         status: st,
+        stockDeductMode: deduct,
         options: rows.map((o, i) => ({ name: o.name.trim(), priceDelta: parseAmount(o.priceDelta), stock: parseAmount(o.stock), sortOrder: i })),
       },
     });
@@ -175,6 +177,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
     if (desc !== (current.description ?? null)) early.description = desc;
     if (priceNum !== current.price) (priceNum! > current.price ? early : late).price = priceNum;
     if (status !== current.status) (status === "ON_SALE" ? late : early).status = status;
+    if (deduct !== current.stockDeductMode) early.stockDeductMode = deduct;
 
     const patchProduct = async (patch: Record<string, unknown>) => {
       if (Object.keys(patch).length === 0) return true;
@@ -425,6 +428,25 @@ export function ProductForm({ initial }: { initial?: Product }) {
               ))}
             </div>
             <span className="help">{STATUS_HELP[status]}</span>
+          </section>
+
+          <section className="card pad-l col" style={{ gap: 12 }}>
+            <h2 className="t-hl1">재고 차감 기준</h2>
+            <div className="seg" role="radiogroup" aria-label="재고 차감 기준" style={{ alignSelf: "flex-start" }}>
+              {(
+                [
+                  ["PAYMENT", "결제하면 차감"],
+                  ["ORDER", "주문하면 바로 차감"],
+                ] as const
+              ).map(([v, label]) => (
+                <button key={v} type="button" role="radio" aria-checked={deduct === v} className={deduct === v ? "on" : ""} onClick={() => setDeduct(v)}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            <span className="help">
+              기본은 결제하면 차감이에요 · 「주문하면 바로 차감」은 선착순·한정 판매에 좋아요(미입금으로 취소되면 재고가 돌아와요){isEdit ? " · 바꾸면 다음 주문부터 적용돼요" : ""}
+            </span>
           </section>
 
           {isEdit && (
