@@ -236,4 +236,22 @@ describe("검수 후속(#91)", () => {
     }
     expect(await db.auditLog.count({ where: { action: "buyer_address.update", targetId: saved.id } })).toBe(0);
   });
+
+  it("[Codex P2] 받는 분·주소 등 배송지를 가르는 항목을 고치면 사용 시각을 지우고(이름·메모만 고치면 유지), 길이는 연속 공백을 줄인 값으로 잰다", async () => {
+    const s = await shop();
+    expect((await order(s.seller.slug, s.cookie, s.option.id, home)).status).toBe(200);
+    const [a] = await addressesOf(s.buyer.id);
+    expect(a.lastUsedAt).not.toBeNull();
+    expect((await patch(s.seller.slug, s.cookie, a.id, { label: "집", memo: "문 앞" })).status).toBe(200);
+    expect((await db.buyerAddress.findUniqueOrThrow({ where: { id: a.id } })).lastUsedAt).toEqual(a.lastUsedAt);
+    expect((await patch(s.seller.slug, s.cookie, a.id, { zipCode: "04524" })).status).toBe(200);
+    expect((await db.buyerAddress.findUniqueOrThrow({ where: { id: a.id } })).lastUsedAt).toBeNull();
+    // 공백을 줄이면 200자·30자·100자 안에 드는 값은 받는다(쓸 수 없는 글자는 그대로 거부)
+    const spaced = { ...office, recipientName: `김${" ".repeat(40)}구매`, address1: `서울${" ".repeat(250)}중구 세종대로 110`, address2: `1${" ".repeat(120)}층` };
+    expect((await order(s.seller.slug, s.cookie, s.option.id, spaced)).status).toBe(200);
+    const saved = (await addressesOf(s.buyer.id)).find((x) => x.zipCode === "04524" && x.id !== a.id)!;
+    expect(saved).toMatchObject({ recipientName: "김 구매", address1: "서울 중구 세종대로 110", address2: "1 층" });
+    expect((await order(s.seller.slug, s.cookie, s.option.id, { ...office, address1: "가".repeat(201) })).status).toBe(400);
+    expect((await order(s.seller.slug, s.cookie, s.option.id, { ...office, address1: `서울 \u2028 중구` })).status).toBe(400);
+  });
 });

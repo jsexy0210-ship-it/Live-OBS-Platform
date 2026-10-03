@@ -128,7 +128,10 @@ export async function updateAddress(db: PrismaClient, s: AddressScope, id: strin
     const dup = await tx.buyerAddress.findFirst({ where: { sellerId: s.sellerId, buyerMemberId: s.buyerMemberId, id: { not: id }, ...sameAddress(f) }, select: { id: true } });
     if (dup) return { ok: false as const, reason: "duplicate_address" as const };
     const now = await dbNow(tx);
-    await tx.buyerAddress.update({ where: { id }, data: { ...f, updatedAt: now } });
+    // 배송지를 가르는 항목(받는 분·연락처·주소)이 바뀌면 아직 주문에 쓰지 않은 배송지이므로 사용 시각을 지운다(이름·메모만 바꾸면 유지)
+    const before = sameAddress(cur);
+    const changed = (Object.keys(before) as (keyof typeof before)[]).some((k) => before[k] !== sameAddress(f)[k]);
+    await tx.buyerAddress.update({ where: { id }, data: { ...f, updatedAt: now, ...(changed ? { lastUsedAt: null } : {}) } });
     if (body.isDefault === true && !cur.isDefault) await makeDefault(tx, s, id, now);
     await writeAudit(tx, { actorType: "BUYER", actorId: s.buyerMemberId, sellerId: s.sellerId, action: "buyer_address.update", targetType: "BuyerAddress", targetId: id });
     return { ok: true as const, value: await tx.buyerAddress.findUniqueOrThrow({ where: { id }, select: VIEW }) };

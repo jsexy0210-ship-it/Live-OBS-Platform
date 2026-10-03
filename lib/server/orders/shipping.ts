@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
-import { cleanText, type TextKind } from "../text/clean";
+import { cleanText, textLength, type TextKind } from "../text/clean";
 
 // 즉시 발송 배송비·배송지(PRODUCT_SCOPE MVP 「즉시 발송」).
 // 배송비 = 기본 배송비(상품 합계가 무료 기준 이상이면 0) + 도서산간 추가비(무료 배송이어도 붙음).
@@ -116,19 +116,28 @@ const optionalText = (v: unknown, max: number, kind: TextKind = "name"): string 
   return cleanText(v, max, kind) ?? undefined;
 };
 
-// 연속 공백은 하나로 줄인다(같은 배송지 판정·송장 출력)
-const oneSpace = <T extends string | null | undefined>(v: T): T => (typeof v === "string" ? (v.replace(/\s+/g, " ") as T) : v);
+// 받는 분·주소: 쓸 수 없는 글자를 먼저 검사하고, 연속 공백을 하나로 줄인 뒤(같은 배송지 판정·송장 출력) 그 값으로 길이를 잰다.
+const spacedText = (v: unknown, max: number): string | null => {
+  const t = cleanText(v, Number.MAX_SAFE_INTEGER);
+  if (!t) return null;
+  const one = t.replace(/\s+/g, " ");
+  return textLength(one) <= max ? one : null;
+};
+const optionalSpaced = (v: unknown, max: number): string | null | undefined => {
+  if (v === undefined || v === null || (typeof v === "string" && v.trim() === "")) return null;
+  return spacedText(v, max) ?? undefined;
+};
 
 // 받는 분·연락처(숫자만 저장)·우편번호(5자리)·주소. 잘못된 값은 null.
 export function parseShippingAddress(raw: unknown): ShippingAddressInput | null {
   if (!raw || typeof raw !== "object") return null;
   const b = raw as Record<string, unknown>;
-  const recipientName = oneSpace(cleanText(b.recipientName, 30));
+  const recipientName = spacedText(b.recipientName, 30);
   // 전각 숫자·하이픈도 받도록 NFKC 정규화 뒤 검사한다
   const phone = typeof b.phone === "string" ? b.phone.normalize("NFKC").replace(/[ -]/g, "") : "";
   const zipCode = typeof b.zipCode === "string" ? b.zipCode.normalize("NFKC").trim() : "";
-  const address1 = oneSpace(cleanText(b.address1, 200));
-  const address2 = oneSpace(optionalText(b.address2, 100));
+  const address1 = spacedText(b.address1, 200);
+  const address2 = optionalSpaced(b.address2, 100);
   const memo = optionalText(b.memo, 100, "memo");
   if (!recipientName || !address1 || address2 === undefined || memo === undefined) return null;
   if (!/^0\d{8,10}$/.test(phone) || !/^\d{5}$/.test(zipCode)) return null;
