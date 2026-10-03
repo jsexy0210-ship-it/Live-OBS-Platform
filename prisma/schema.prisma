@@ -177,6 +177,14 @@ model SellerUser {
   credentialVersion Int                     @default(0)
   status            SellerUserStatus        @default(ACTIVE)
   lastLoginAt       DateTime?               @db.Timestamptz(3)
+  // 직원 휴대폰 번호(숫자만, 대표자가 직원 관리에서 등록, 기존 행은 null). 직원 본인확인 연결 때 결과와 대조한다.
+  phone             String?
+  // 직원이 본인확인으로 연결한 CI의 HMAC 해시(등록한 이름·휴대폰과 결과가 맞을 때만). 직원 셀프 아이디·비밀번호 찾기에만 쓴다.
+  // 대표자가 휴대폰 번호를 바꾸면 지운다. 대표자는 쇼핑몰 대표자 CI(Seller.representativeCiHash)를 쓰고 여기는 비워 둔다.
+  identityCiHash    String?
+  identityLinkedAt  DateTime?               @db.Timestamptz(3)
+  // 연결돼 있다가 대표자가 휴대폰 번호를 바꿔 연결이 풀린 시각(다시 연결하면 비움). 처음부터 미연결인 직원과 구별한다.
+  identityUnlinkedAt DateTime?              @db.Timestamptz(3)
   createdAt         DateTime                @default(now()) @db.Timestamptz(3)
 
   seller      Seller               @relation(fields: [sellerId], references: [id])
@@ -185,6 +193,7 @@ model SellerUser {
 
   @@unique([sellerId, id])
   @@unique([sellerId, email])
+  @@index([identityCiHash])
 }
 
 // 판매자 대표 비밀번호 재설정 권한(일회용·10분). 토큰은 해시만 저장한다.
@@ -193,15 +202,20 @@ model PasswordResetGrant {
   sellerId     String    @db.Uuid
   sellerUserId String    @db.Uuid
   tokenHash    String    @unique
-  // 발급 때 확인한 대표자 CI 해시. 쓸 때 쇼핑몰 대표자 CI가 바뀌었으면 거부한다.
+  // 발급 때 확인한 CI 해시(대표자는 쇼핑몰 대표자 CI, 직원은 연결 CI). 쓸 때 그 값이 바뀌었으면 거부한다.
   ciHash       String
   expiresAt    DateTime  @db.Timestamptz(3)
   usedAt       DateTime? @db.Timestamptz(3)
   createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  // 아이디 찾기로 준 권한: 발급에 쓴 본인확인과 토큰을 다시 만드는 무작위 값(토큰 = 서버 비밀키 HMAC(nonce), 원문은 저장하지 않음).
+  // 응답을 잃은 재시도에 같은 토큰을 다시 돌려준다(auth/accountRecovery.ts).
+  verificationId String?   @db.Uuid
+  nonce          String?
 
   seller     Seller     @relation(fields: [sellerId], references: [id])
   sellerUser SellerUser @relation(fields: [sellerId, sellerUserId], references: [sellerId, id])
 
+  @@index([verificationId])
   @@index([sellerId, sellerUserId])
 }
 
@@ -330,6 +344,8 @@ enum IdentityVerificationPurpose {
   BUYER_SIGNUP
   SELLER_REPRESENTATIVE
   PASSWORD_RESET
+  STAFF_LINK // 직원 본인확인 연결(로그인한 직원, subjectId = 직원 계정)
+  ACCOUNT_RECOVERY // 쇼핑몰을 모르는 아이디 찾기·계정 고르기 비밀번호 찾기
 }
 
 enum IdentityVerificationMethod {

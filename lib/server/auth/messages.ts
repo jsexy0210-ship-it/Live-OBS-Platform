@@ -10,6 +10,7 @@ export const LOGIN_ERROR_MESSAGES: Record<LoginFailure | "bad_request", string> 
   seller_suspended: "지금은 쇼핑몰을 이용할 수 없어요. 고객센터에 문의해 주세요",
   seller_closed: "지금은 이 쇼핑몰로 로그인할 수 없어요. 고객센터에 문의해 주세요",
   dormant: "오래 쓰지 않아 쉬고 있는 계정이에요. 본인 확인 뒤 다시 쓸 수 있어요",
+  wrong_account_type: "고른 탭과 계정 종류가 달라요. 다른 탭에서 로그인해 주세요",
 };
 
 // 구매자는 아이디로 로그인하고, 마스터는 판매자와 문의처가 다르다. 그 밖의 사유는 판매자 문구를 그대로 쓴다.

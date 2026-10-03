@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
+import { purgeOldRecoveryVerifications } from "../auth/accountRecovery";
 import { purgeExpiredRejoinBlocks } from "../buyers/rejoin";
 import { purgeOldSignupVerificationIps, purgeUnfinishedSignupVerifications } from "../buyers/signup";
 
@@ -16,6 +17,8 @@ export const SCHEDULED_JOBS: ScheduledJob[] = [
   { name: "identity_verification.anonymize_unfinished_signup", run: (tx, now) => purgeUnfinishedSignupVerifications(tx, now) },
   // 3개월 지난 가입 본인확인 요청 IP 비우기
   { name: "identity_verification.purge_old_signup_ip", run: (tx, now) => purgeOldSignupVerificationIps(tx, now) },
+  // 하루 횟수 기간이 지난 아이디 찾기·직원 연결 본인확인 기록 비식별(auth/accountRecovery.ts)
+  { name: "identity_verification.anonymize_old_recovery", run: (tx, now) => purgeOldRecoveryVerifications(tx, now) },
 ];
 
 export const SCHEDULER_INTERVAL_MS = 3600_000;
