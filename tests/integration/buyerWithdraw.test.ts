@@ -9,6 +9,8 @@ import { prisma } from "../../lib/server/db";
 import { loginBuyer, loginSeller } from "../../lib/server/auth/login";
 import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
 import { createOrder } from "../../lib/server/orders/create";
+import { refundOrder } from "../../lib/server/queue/service";
+import type { TenantContext } from "../../lib/server/tenant/context";
 import { PASSWORD, createLoginBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
 beforeEach(resetDb);
@@ -95,6 +97,44 @@ describe("구매자 탈퇴", () => {
     const back = await db.buyerMember.create({ data: again });
     expect(await db.rewardBalance.findUnique({ where: { sellerId_buyerMemberId: { sellerId: s.seller.id, buyerMemberId: back.id } } })).toBeNull();
     expect(await db.rewardLedger.count({ where: { buyerMemberId: back.id } })).toBe(0);
+  });
+
+  // 배송 완료한 결제 완료 주문 + 지급 대기 적립(EARN 300)
+  async function deliveredWithEarn(s: Awaited<ReturnType<typeof shop>>) {
+    const o = await s.order("PAID", { purchaseConfirmedAt: null });
+    await db.shipment.create({ data: { sellerId: s.seller.id, orderId: o.id, courier: "CJ", trackingNumber: "123456789012", status: "DELIVERED", shippedAt: new Date(), deliveredAt: new Date() } });
+    await db.rewardLedger.create({ data: { sellerId: s.seller.id, buyerMemberId: s.buyer.id, orderId: o.id, type: "EARN", amount: 300, status: "PENDING", testMode: false, idempotencyKey: `earn:${o.id}` } });
+    const owner = await createSellerUser(s.seller.id, "OWNER");
+    const ctx: TenantContext = { sellerId: s.seller.id, actorType: "SELLER_USER", actorId: owner.id, isOwner: true, permissions: [], readOnly: false };
+    const refund = async () =>
+      refundOrder(db, ctx, o.id, { reason: "불량", expectedLiveVersion: (await db.seller.findUniqueOrThrow({ where: { id: s.seller.id } })).liveVersion, fault: "SELLER" });
+    return { order: o, refund };
+  }
+
+  it("탈퇴한 회원의 주문을 나중에 환불해도 회수 원장은 처리 대기가 아니라 실패(member_withdrawn)로 남는다", async () => {
+    const s = await shop();
+    const { order, refund } = await deliveredWithEarn(s);
+    expect((await s.withdraw(PASSWORD)).status).toBe(200);
+    expect(await refund()).toMatchObject({ ok: true, value: { rewardRevoke: "revoked" } });
+    expect(await db.rewardLedger.findUniqueOrThrow({ where: { sellerId_idempotencyKey: { sellerId: s.seller.id, idempotencyKey: `revoke:${order.id}` } } })).toMatchObject({
+      status: "FAILED",
+      failureReason: "member_withdrawn",
+    });
+    expect(await db.rewardLedger.count({ where: { buyerMemberId: s.buyer.id, status: "PENDING" } })).toBe(0);
+  });
+
+  it("탈퇴와 환불이 동시에 와도 처리 대기 원장이 남지 않고 잔액은 0", async () => {
+    for (let i = 0; i < 5; i++) {
+      await resetDb();
+      const s = await shop();
+      await db.rewardBalance.create({ data: { sellerId: s.seller.id, buyerMemberId: s.buyer.id, balance: 300 } });
+      const { refund } = await deliveredWithEarn(s);
+      const [w, r] = await Promise.all([s.withdraw(PASSWORD), refund()]);
+      expect(w.status).toBe(200);
+      expect(r.ok).toBe(true);
+      expect(await db.rewardLedger.count({ where: { buyerMemberId: s.buyer.id, status: "PENDING" } })).toBe(0);
+      expect((await db.rewardBalance.findUniqueOrThrow({ where: { sellerId_buyerMemberId: { sellerId: s.seller.id, buyerMemberId: s.buyer.id } } })).balance).toBe(0);
+    }
   });
 
   it("비밀번호가 틀리면 구매자 로그인 실패와 같은 401과 문구, 아무것도 바뀌지 않고 실패를 기록한다", async () => {
