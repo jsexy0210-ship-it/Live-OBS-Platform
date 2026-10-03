@@ -268,3 +268,81 @@ test("재고 이력: 빼기·한 번에 적용이 사유·처리자·남은 재�
   await expect(page.getByTestId("history-item").first()).toContainText("+1");
   await expect(page.getByTestId("history-item").first()).toContainText(`남은 재고 ${before}`);
 });
+
+// 빼기 시트로 1개 빼고, 맨 위 이력이 방금 남긴 것인지 본다(재고는 테스트 끝에 되돌린다)
+async function takeOne(page: Page, label: string, reason = "서비스") {
+  await page.getByRole("button", { name: `${label} 빼기 · 더하기` }).click();
+  const sheet = page.getByRole("dialog");
+  await sheet.getByLabel("수량").fill("1");
+  await sheet.getByRole("radio", { name: reason }).click();
+  await sheet.getByRole("button", { name: "1개 빼기" }).click();
+}
+
+async function putBack(page: Page, label: string, stock: number) {
+  await nextInput(page, label).fill(String(stock));
+  await applyAll(page);
+  await expect(page.getByText("재고 1건을 바꿨어요")).toBeVisible();
+}
+
+test("재고 이력: 늦게 온 옛 첫 쪽 응답이 방금 남긴 이력을 덮지 않는다", async ({ page }) => {
+  let delayed = false;
+  await page.route("**/api/seller/products/stock-movements**", async (route) => {
+    // 화면을 열 때 부르는 첫 쪽만 늦게 돌려준다
+    if (!delayed) {
+      delayed = true;
+      const res = await route.fetch();
+      await new Promise((r) => setTimeout(r, 3000));
+      return route.fulfill({ response: res });
+    }
+    return route.continue();
+  });
+  await openAs(page);
+  const label = "탑로더 25장 1팩";
+  const before = Number(await row(page, "탑로더 25장").locator(".c-cur").innerText().then((t) => t.replace(/\D/g, "")));
+  await takeOne(page, label, "서비스");
+  await expect(page.getByTestId("history-item").first()).toContainText(`남은 재고 ${before - 1}`);
+  // 옛 응답이 도착할 때까지 기다려도 맨 위는 그대로
+  await page.waitForTimeout(3500);
+  await expect(page.getByTestId("history-item").first()).toContainText(`남은 재고 ${before - 1}`);
+  await expect(page.getByTestId("history-item").first()).toContainText("사유: 서비스");
+  await putBack(page, label, before);
+});
+
+test("재고 이력: 「이력 더 보기」 응답이 늦게 와도 새로 불러온 목록 뒤에 붙지 않는다", async ({ page }) => {
+  let first = true;
+  await page.route("**/api/seller/products/stock-movements**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("cursor") === "e2e-stale") {
+      // 옛 커서로 부른 다음 쪽: 늦게, 알아보기 쉬운 가짜 이력으로 돌려준다
+      await new Promise((r) => setTimeout(r, 3000));
+      return route.fulfill({
+        json: {
+          movements: [
+            { id: "e2e-stale-1", productId: "x", optionId: "x", productName: "늦게 온 옛 이력", optionName: "옛 쪽", delta: 1, stockAfter: null, type: "MANUAL", typeLabel: "직접 변경", note: null, actor: { name: "대표자" }, createdAt: new Date().toISOString(), orderId: null },
+          ],
+          nextCursor: null,
+        },
+      });
+    }
+    if (first) {
+      // 처음 첫 쪽에만 다음 쪽이 있는 것처럼 커서를 붙인다
+      first = false;
+      const res = await route.fetch();
+      const body = await res.json();
+      return route.fulfill({ response: res, json: { ...body, nextCursor: "e2e-stale" } });
+    }
+    return route.continue();
+  });
+  await openAs(page);
+  const label = "탑로더 25장 1팩";
+  const before = Number(await row(page, "탑로더 25장").locator(".c-cur").innerText().then((t) => t.replace(/\D/g, "")));
+  await expect(page.getByTestId("history-item").first()).toBeVisible();
+  await page.getByRole("button", { name: "이력 더 보기" }).click();
+  // 다음 쪽을 기다리는 사이 재고를 바꾸면 이력을 첫 쪽부터 다시 불러온다
+  await takeOne(page, label, "서비스");
+  await expect(page.getByTestId("history-item").first()).toContainText(`남은 재고 ${before - 1}`);
+  await page.waitForTimeout(3500);
+  await expect(page.getByTestId("stock-history")).not.toContainText("늦게 온 옛 이력");
+  await expect(page.getByTestId("history-item").first()).toContainText(`남은 재고 ${before - 1}`);
+  await putBack(page, label, before);
+});

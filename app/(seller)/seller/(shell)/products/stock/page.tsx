@@ -610,8 +610,14 @@ function StockHistory({ refreshKey }: { refreshKey: number }) {
   const [error, setError] = useState(false);
   const [more, setMore] = useState(false);
 
+  // 첫 쪽을 다시 부를 때마다 세대를 올린다. 늦게 온 옛 응답(새로고침 전 첫 쪽·「더 보기」)은 버려 새 목록을 덮거나 뒤에 붙지 않게 한다
+  const gen = useRef(0);
   const load = useCallback(async (cursor?: string) => {
+    const id = cursor ? gen.current : ++gen.current;
+    // 새로고침 중에는 옛 커서로 「더 보기」를 누르지 못하게 숨긴다
+    if (!cursor) setNext(null);
     const r = await api<{ movements: Movement[]; nextCursor: string | null }>(`/api/seller/products/stock-movements?limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`);
+    if (id !== gen.current) return;
     if (!r.ok) return setError(true);
     setError(false);
     setItems((prev) => (cursor && prev ? [...prev, ...r.data.movements] : r.data.movements));
