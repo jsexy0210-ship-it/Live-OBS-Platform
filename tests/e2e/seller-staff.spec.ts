@@ -1,0 +1,196 @@
+import { expect, test, type Page } from "@playwright/test";
+
+// SA-100 직원 계정(대표자 전용): 목록 · 직원 추가(이름·휴대폰·이메일·초기 비밀번호·권한) · 정보·권한 수정 · 비밀번호 재설정 · 비활성화,
+// 직원이 주소로 들어오면 「대표자만 볼 수 있어요」. 실행마다 새 이메일로 직원을 만든다(폐기용 DB).
+const PASSWORD = process.env.E2E_PASSWORD ?? "";
+const SHOTS = process.env.E2E_SCREENSHOTS === "1";
+
+test.beforeAll(() => {
+  if (!PASSWORD) throw new Error("E2E_PASSWORD가 없어요. dev-seed가 출력한 데모 비밀번호를 넣어 주세요");
+});
+
+async function shot(page: Page, name: string) {
+  if (!SHOTS) return;
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForTimeout(150);
+    await page.screenshot({ path: `tests/e2e/screenshots/${name}-${width}.png`, fullPage: true });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+}
+
+// 로그인 화면에 대표자·직원 탭이 있으면(#161) 계정 종류에 맞는 탭을 고른다
+async function login(page: Page, email: string, password = PASSWORD, next = "/seller/staff") {
+  await page.goto(`/seller/login?next=${encodeURIComponent(next)}`);
+  const tab = page.getByRole("tab", { name: email === "demo-owner@example.com" ? "대표자" : "직원" });
+  if (await tab.count()) await tab.click();
+  await page.getByLabel("이메일").fill(email);
+  await page.getByLabel("비밀번호").fill(password);
+  await page.getByRole("button", { name: "로그인" }).click();
+}
+
+const uniq = () => `${Date.now().toString(36).slice(-5)}${Math.floor(Math.random() * 36 ** 2).toString(36)}`;
+const row = (page: Page, email: string) => page.getByTestId("staff-row").filter({ hasText: email });
+
+async function addStaff(page: Page, s: { name: string; phone: string; email: string; password: string }) {
+  await page.getByLabel("이름", { exact: true }).fill(s.name);
+  await page.getByLabel("휴대폰 번호").fill(s.phone);
+  await page.getByLabel("이메일 (로그인 아이디)").fill(s.email);
+  await page.getByLabel("초기 비밀번호").fill(s.password);
+}
+
+test("대표자: 메뉴에서 직원 계정으로 들어가 목록을 보고, 직원을 추가하면 목록에 권한과 함께 나온다", async ({ page }) => {
+  await login(page, "demo-owner@example.com", PASSWORD, "/seller/products");
+  await expect(page).toHaveURL(/\/seller\/products$/);
+  await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "직원 계정" }).click();
+  await expect(page).toHaveURL(/\/seller\/staff$/);
+  await expect(page.getByRole("heading", { name: /직원 계정/ })).toBeVisible();
+  // 대표자 줄과 데모 직원(dev-seed 3명)
+  await expect(page.getByText("대표자 · 모든 권한")).toBeVisible();
+  await expect(row(page, "demo-staff@example.com")).toContainText("상품");
+  await expect(row(page, "demo-none@example.com")).toContainText("켜진 권한 없음");
+  // 대표자만 하는 일은 고를 수 없다
+  for (const label of ["결제(PG) 연결", "구독 · 결제", "직원 관리", "적립금 실지급"]) await expect(page.getByLabel(`${label} · 대표자만`)).toBeDisabled();
+  await shot(page, "SA-100");
+
+  // 빈 칸으로 만들기 → 칸마다 안내, 첫 칸으로 포커스
+  await page.getByRole("button", { name: "계정 만들기" }).click();
+  await expect(page.getByText("이름을 적어 주세요")).toBeVisible();
+  await expect(page.getByText("01로 시작하는 휴대폰 번호를 숫자로 적어 주세요")).toBeVisible();
+  await expect(page.getByText("로그인에 쓸 이메일을 적어 주세요")).toBeVisible();
+  await expect(page.getByLabel("이름", { exact: true })).toBeFocused();
+
+  const id = uniq();
+  const s = { name: `방송보조${id}`, phone: "010-1234-5678", email: `staff-${id}@example.com`, password: `pw-${id}-init` };
+  await addStaff(page, s);
+  // 묶음 「방송만」은 방송 진행·오버레이 편집만 켠다
+  await page.getByRole("button", { name: "방송만" }).click();
+  await expect(page.getByRole("checkbox", { name: "방송 진행", exact: true })).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "오버레이 편집", exact: true })).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "상품", exact: true })).not.toBeChecked();
+  const sent = page.waitForRequest((r) => r.url().endsWith("/api/seller/staff") && r.method() === "POST");
+  await page.getByRole("button", { name: "계정 만들기" }).click();
+  // 하이픈은 빼고 숫자만 보낸다
+  expect((await sent).postDataJSON()).toMatchObject({ name: s.name, phone: "01012345678", email: s.email, permissions: ["BROADCAST_RUN", "OVERLAY_EDIT"] });
+  await expect(page.getByText(`${s.name} 계정을 만들었어요`, { exact: false })).toBeVisible();
+  await expect(row(page, s.email)).toContainText("방송 진행");
+  await expect(row(page, s.email)).toContainText("010-1234-5678 · 본인확인 전");
+  // 입력 칸은 비워진다
+  await expect(page.getByLabel("이메일 (로그인 아이디)")).toHaveValue("");
+
+  // 같은 이메일은 다시 만들 수 없다
+  await addStaff(page, { ...s, name: "다른 사람" });
+  await page.getByRole("button", { name: "계정 만들기" }).click();
+  await expect(page.getByText("이미 쓰고 있는 이메일이에요")).toBeVisible();
+  await expect(page.getByLabel("이메일 (로그인 아이디)")).toBeFocused();
+});
+
+test("대표자: 직원 이름·휴대폰·권한을 고치면 바로 목록에 반영되고, 연결된 직원 번호를 바꾸면 다시 본인확인해야 한다고 알려 준다", async ({ page }) => {
+  await login(page, "demo-owner@example.com");
+  await expect(page).toHaveURL(/\/seller\/staff$/);
+  const id = uniq();
+  const s = { name: `포장${id}`, phone: "01011112222", email: `pack-${id}@example.com`, password: `pw-${id}-init` };
+  await addStaff(page, s);
+  await page.getByRole("button", { name: "계정 만들기" }).click();
+  await expect(row(page, s.email)).toContainText("켜진 권한 없음");
+
+  await page.getByRole("button", { name: `${s.name} 정보 · 권한 수정` }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("heading", { name: `${s.name} 정보 · 권한 수정` })).toBeVisible();
+  await expect(dialog.getByText("본인확인 전")).toBeVisible();
+  // 바꾼 것이 없으면 저장할 수 없다
+  await expect(dialog.getByRole("button", { name: "저장" })).toBeDisabled();
+  await dialog.getByLabel("이름").fill(`${s.name}팀장`);
+  await dialog.getByLabel("휴대폰 번호").fill("0101");
+  await dialog.getByRole("checkbox", { name: "상품", exact: true }).check();
+  await dialog.getByRole("checkbox", { name: "주문·배송", exact: true }).check();
+  await dialog.getByRole("button", { name: "저장" }).click();
+  await expect(dialog.getByText("01로 시작하는 휴대폰 번호를 숫자로 적어 주세요")).toBeVisible();
+  await dialog.getByLabel("휴대폰 번호").fill("01033334444");
+  await shot(page, "SA-100-edit");
+  await dialog.getByRole("button", { name: "저장" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByText(`${s.name}팀장 정보를 저장했어요`)).toBeVisible();
+  await expect(row(page, s.email)).toContainText(`${s.name}팀장`);
+  await expect(row(page, s.email)).toContainText("010-3333-4444");
+  await expect(row(page, s.email)).toContainText("상품");
+  await expect(row(page, s.email)).toContainText("주문·배송");
+
+  // 본인확인을 연결한 직원(목록 응답의 연결 여부만 바꿔 화면 상태를 본다): 번호를 바꾸면 다시 본인확인해야 한다고 알려 준다
+  await page.route("**/api/seller/staff", async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    const res = await route.fetch();
+    const body = (await res.json()) as { staff: { email: string; identityLinked: boolean }[] };
+    await route.fulfill({ response: res, json: { staff: body.staff.map((x) => (x.email === s.email ? { ...x, identityLinked: true } : x)) } });
+  });
+  await page.reload();
+  await expect(row(page, s.email)).toContainText("본인확인 연결됨");
+  await page.getByRole("button", { name: `${s.name}팀장 정보 · 권한 수정` }).click();
+  await expect(dialog.getByText("연결됨", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("번호를 바꾸면 직원이 다시 본인확인을 해야 해요.")).toHaveCount(0);
+  await dialog.getByLabel("휴대폰 번호").fill("01055556666");
+  await expect(dialog.getByText("번호를 바꾸면 직원이 다시 본인확인을 해야 해요.")).toBeVisible();
+  await expect(dialog.getByText("본인확인 전")).toBeVisible();
+  await shot(page, "SA-100-phone-change");
+  await dialog.getByRole("button", { name: "취소" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("대표자: 직원 비밀번호를 재설정하면 새 비밀번호로만 로그인되고, 비활성화하면 로그인할 수 없다", async ({ page }) => {
+  await login(page, "demo-owner@example.com");
+  await expect(page).toHaveURL(/\/seller\/staff$/);
+  const id = uniq();
+  const s = { name: `퇴사${id}`, phone: "01077778888", email: `bye-${id}@example.com`, password: `pw-${id}-init` };
+  await addStaff(page, s);
+  await page.getByRole("checkbox", { name: "상품", exact: true }).check();
+  await page.getByRole("button", { name: "계정 만들기" }).click();
+  await expect(row(page, s.email)).toBeVisible();
+
+  await page.getByRole("button", { name: `${s.name} 비밀번호 재설정` }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("새 비밀번호").fill("short");
+  await dialog.getByRole("button", { name: "재설정" }).click();
+  await expect(dialog.getByText("8자 이상으로 정해 주세요")).toBeVisible();
+  const next = `pw-${id}-reset`;
+  await dialog.getByLabel("새 비밀번호").fill(next);
+  await shot(page, "SA-100-password");
+  await dialog.getByRole("button", { name: "재설정" }).click();
+  await expect(page.getByText(`${s.name} 비밀번호를 바꿨어요`, { exact: false })).toBeVisible();
+
+  // 예전 비밀번호는 안 되고 새 비밀번호로 직원 로그인
+  const staffPage = await page.context().browser()!.newPage();
+  await login(staffPage, s.email, s.password, "/seller/products");
+  await expect(staffPage.locator("#login-err")).toBeVisible();
+  await login(staffPage, s.email, next, "/seller/products");
+  await expect(staffPage).toHaveURL(/\/seller\/products$/);
+
+  // 비활성화: 목록에서 비활성으로 바뀌고 관리 버튼이 없어지며, 그 직원은 다시 로그인할 수 없다
+  await page.getByRole("button", { name: `${s.name} 비활성화` }).click();
+  await expect(dialog.getByRole("heading", { name: `${s.name} 계정을 비활성화할까요?` })).toBeVisible();
+  await shot(page, "SA-100-disable");
+  await dialog.getByRole("button", { name: "비활성화" }).click();
+  await expect(page.getByText(`${s.name} 계정을 비활성화했어요`)).toBeVisible();
+  await expect(row(page, s.email)).toContainText("비활성");
+  await expect(page.getByRole("button", { name: `${s.name} 비밀번호 재설정` })).toHaveCount(0);
+  await staffPage.context().clearCookies();
+  await login(staffPage, s.email, next, "/seller/products");
+  await expect(staffPage).toHaveURL(/\/seller\/login/);
+  await staffPage.close();
+});
+
+test("직원: 메뉴에 직원 계정이 없고, 주소로 들어오면 대표자만 볼 수 있다고 안내한다", async ({ page }) => {
+  const listed = page.waitForRequest((r) => r.url().endsWith("/api/seller/staff"), { timeout: 3000 }).then(
+    () => true,
+    () => false,
+  );
+  await login(page, "demo-staff@example.com", PASSWORD, "/seller/staff");
+  await expect(page).toHaveURL(/\/seller\/staff$/);
+  await expect(page.getByText("대표자만 볼 수 있어요")).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "직원 계정" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "계정 만들기" })).toHaveCount(0);
+  // 직원 화면은 직원 목록을 부르지 않는다
+  expect(await listed).toBe(false);
+  await shot(page, "SA-100-staff");
+});

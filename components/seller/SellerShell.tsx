@@ -34,7 +34,7 @@ const NAV: Nav[] = [
   { label: "결제(PG) 연결", perm: "OWNER" },
   { label: "주문자 알림", perm: "SHOP_SETTINGS" },
   { label: "구독 · 결제", perm: "OWNER" },
-  { label: "직원 계정", perm: "OWNER" },
+  { label: "직원 계정", href: "/seller/staff", perm: "OWNER" },
   { label: "공지 · 문의" },
   { label: "도우미" },
   { label: "내 계정" },
