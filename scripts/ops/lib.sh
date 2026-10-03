@@ -125,7 +125,9 @@ mark_deploying() {
 # 감시를 끄려면 컨테이너를 지운다(compose --profile monitor rm -sf obs-web-monitor). 실패하면 0이 아닌 코드로 끝난다.
 refresh_monitor() {
   if [ -n "$(docker ps -aq --filter label=com.docker.compose.project=obs-web --filter label=com.docker.compose.service=obs-web-monitor)" ]; then
-    compose --profile monitor up -d --no-build --no-deps --force-recreate obs-web-monitor >/dev/null \
+    # --wait: 감시 healthcheck(heartbeat)가 healthy가 될 때까지 기다린다. 설정 오류 등으로 시작 직후 죽으면
+    # (재시작을 반복하면) 실패로 끝난다. healthcheck 첫 검사가 30초 뒤라 보통 30초쯤 걸린다.
+    compose --profile monitor up -d --no-build --no-deps --force-recreate --wait --wait-timeout 90 obs-web-monitor >/dev/null \
       || die "감시 수집기를 다시 만들지 못했어요. 같은 명령을 다시 실행해 주세요(구성 전환은 끝났어요)."
     log "감시 수집기를 다시 만들었어요(감시 대상: $(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$(container_of obs-web-monitor)" | grep '^MONITOR_TARGETS=' | cut -d= -f2- | tr ',' '\n' | cut -d= -f1 | paste -sd, -))"
   fi
