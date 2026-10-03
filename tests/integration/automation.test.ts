@@ -552,7 +552,8 @@ describe("재연결·재설치(확정 ②)", () => {
       setup(rt, s.seller.id);
       expect(await runOnce(db, rt, W)).toBe("failed");
       expect(await job(r.jobId)).toMatchObject({ status: "FAILED", lastError: reason, verifiedAt: null, stepIndex: 0 });
-      expect(rt.browser.performed).toHaveLength(0);
+      // 바꾸지 않는 이동만 하고, 바꾸는 행동은 0회
+      expect(rt.browser.performed.map((p) => p.type)).toEqual(["navigate"]);
       expect(rt.obs.performed).toHaveLength(0);
     }
   });
@@ -823,5 +824,70 @@ describe("Codex 리뷰 반영", () => {
     expect(again.status).toBe(402);
     expect(await again.json()).toMatchObject({ error: "payment_failed" });
     expect(await purchaseAutomation(db, fake, s.ctx, { idempotencyKey: k, consent, shopUrl: SHOP })).toMatchObject({ ok: false, reason: "payment_failed" });
+  });
+
+  it("판단 모델이 비밀값을 정해 둔 칸 밖(다른 칸·다른 단계)에 넣으려 하면 실행하지 않고 멈춘다", async () => {
+    for (const [stepKey, target] of [["webhook_setup", "메모"], ["shop_connect", "주문 알림 주소"]] as const) {
+      // 앞 반복의 화면 이탈로 작업서가 재검증 대상이 되므로 시험용으로 이탈 기록을 지운다
+      await db.automationJob.updateMany({ data: { deviatedSteps: [] } });
+      const a = await bought();
+      // 해당 단계 화면이 작업서와 달라 판단 모델로 넘어가게 한다
+      const rt = runtime();
+      rt.browser.pageText = () => (stepKey === "webhook_setup" ? "앱 설치 · 설치 완료 · 저장" : "다른 화면");
+      rt.planner.override = (input) =>
+        input.step.key === stepKey ? { action: { type: "fill", target, value: { secretRef: "webhook_secret" } }, costWon: 10 } : undefined;
+      expect(await runOnce(db, rt, W)).toBe("failed");
+      expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "unsafe_action:secret_target_not_allowed" });
+      expect(rt.browser.performed.filter((p) => p.type === "fill")).toHaveLength(0);
+    }
+  });
+
+  it("무료 재연결: 로그인 전에는 쇼핑몰을 몰라도 고객 로그인 대기로 넘기고, 재개 뒤 첫 변경 행동 전에 대조해 같으면 성공·다르면 변경 0회로 실패", async () => {
+    for (const shopAfterLogin of ["same", "other"] as const) {
+      const s = await completed();
+      const r = await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: newKey(), target: s.target });
+      if (!r.ok) throw new Error(r.reason);
+      const rt = runtime();
+      // 새 세션: 로그인 전이라 쇼핑몰을 알 수 없고 로그인 화면이 보인다
+      rt.browser.shopKey.set(s.seller.id, null);
+      rt.browser.pageText = () => "로그인이 필요해요";
+      expect(await runOnce(db, rt, W)).toBe("needs_customer");
+      expect(await job(r.jobId)).toMatchObject({ status: "NEEDS_CUSTOMER", customerAction: "LOGIN" });
+      // 고객이 로그인을 마쳤다
+      rt.browser.shopKey.set(s.seller.id, shopAfterLogin === "same" ? s.target.shopKey : "other-mall");
+      rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장";
+      await resumeJob(db, s.ctx, r.jobId);
+      const before = rt.browser.performed.length;
+      if (shopAfterLogin === "same") {
+        expect(await runOnce(db, rt, W)).toBe("succeeded");
+      } else {
+        expect(await runOnce(db, rt, W)).toBe("failed");
+        expect(await job(r.jobId)).toMatchObject({ lastError: "reconnect_target_mismatch" });
+        expect(rt.browser.performed.slice(before).map((p) => p.type)).toEqual(["navigate"]);
+        expect(rt.obs.performed).toHaveLength(0);
+      }
+    }
+  });
+
+  it("작업자 전이와 취소가 겹쳐도 전이 기록이 실제 상태를 따라 한 줄로 이어진다", async () => {
+    for (let n = 0; n < 6; n++) {
+      const a = await bought();
+      const rt = { ...runtime(), browser: new FakeBrowserExecutor(15), obs: new FakeObsBridge(15) };
+      rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장";
+      const run = runOnce(db, rt, { ...W, leaseMs: 1000 });
+      await new Promise((r) => setTimeout(r, 20 + n * 40));
+      await cancelJob(db, a.ctx, a.jobId);
+      await run;
+      const events = await db.automationJobEvent.findMany({ where: { jobId: a.jobId } });
+      // null에서 시작해 「이전 상태 = 직전 기록의 다음 상태」로 모든 기록이 빠짐없이 한 줄로 이어져야 한다
+      let cur: string | null = null;
+      const left = [...events];
+      while (left.length) {
+        const i = left.findIndex((e) => e.fromStatus === cur);
+        expect(i).toBeGreaterThanOrEqual(0);
+        cur = left.splice(i, 1)[0].toStatus;
+      }
+      expect(cur).toBe((await job(a.jobId)).status);
+    }
   });
 });

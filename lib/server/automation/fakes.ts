@@ -24,7 +24,7 @@ const sleep = (ms: number) => (ms > 0 ? new Promise((r) => setTimeout(r, ms)) : 
 // 단계별 기본 행동 순서. 행동 하나마다 판단 비용 costWon을 쓴다.
 const SCRIPT: Record<string, AutomationAction[]> = {
   shop_connect: [{ type: "navigate", url: "https://admin.cafe24.com/apps" }, { type: "click", target: "앱 설치" }, { type: "step_done" }],
-  webhook_setup: [{ type: "fill", target: "웹훅 주소", value: { secretRef: "webhook_url" } }, { type: "step_done" }],
+  webhook_setup: [{ type: "fill", target: "주문 알림 주소", value: { secretRef: "webhook_url" } }, { type: "step_done" }],
   obs_overlay_install: [{ type: "obs_add_overlay_source" }, { type: "step_done" }],
   display_settings: [{ type: "obs_apply_display_settings" }, { type: "step_done" }],
   test_event_verify: [{ type: "send_test_event" }, { type: "check_overlay_shows_test_event" }, { type: "step_done" }],

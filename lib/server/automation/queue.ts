@@ -23,6 +23,11 @@ export async function dbNow(db: Tx | PrismaClient): Promise<Date> {
   return rows[0].now;
 }
 
+// 작업 행 잠금(트랜잭션 안에서). 상태를 읽고 바꾸는 사이에 다른 쓰기가 끼지 않게 한다.
+export async function lockJob(tx: Tx, jobId: string): Promise<void> {
+  await tx.$queryRaw`SELECT id FROM "AutomationJob" WHERE id = ${jobId}::uuid FOR UPDATE`;
+}
+
 const plus = (d: Date, ms: number) => new Date(d.getTime() + ms);
 
 // 다시 시도 간격: 지수 증가(5초·10초·20초…, 상한 10분)에 50~100% 지터. 같은 순간 실패한 작업들이 같이 몰리지 않게 한다.
@@ -90,6 +95,7 @@ type FencedChange = { to?: AutomationJobStatus; data: Prisma.AutomationJobUpdate
 // 작업자의 모든 쓰기는 여기를 거친다. 토큰이 같고, 실행 중 상태이고, lease가 아직 살아 있을 때만 쓴다.
 async function fencedWrite(db: PrismaClient, c: Claim, build: (now: Date, cur: AutomationJob) => FencedChange): Promise<void> {
   await db.$transaction(async (tx) => {
+    await lockJob(tx, c.jobId);
     const now = await dbNow(tx);
     const cur = await tx.automationJob.findUnique({ where: { id: c.jobId } });
     if (!cur) throw new FencingError();

@@ -3,13 +3,14 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { POST as orderRoute } from "../../app/api/shop/[slug]/orders/route";
 import { loginBuyer } from "../../lib/server/auth/login";
 import { FakeBrowserExecutor, FakeObsBridge, FakePlanner, FakeSecretVault } from "../../lib/server/automation/fakes";
+import { cafe24Playbook } from "../../lib/server/automation/playbooks/cafe24";
 import { runOnce } from "../../lib/server/automation/worker";
 import { prisma } from "../../lib/server/db";
 import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
 import { PASSWORD, createLoginBuyer, createSeller, db, resetDb } from "./helpers";
 
 // 모의 부하: 자동 연결 작업 10 → 50 → 100개를 작업자 10개가 도는 동안 주문 API 지연을 잰다.
-// 판단·브라우저·로컬 도구는 가짜(행동마다 5ms 지연)다. 실제 외부 호출 지연·CPU는 반영하지 않는다(docs/AUTOMATION.md 7절).
+// 작업은 연결 작업서로 실행하고, 판단·브라우저·로컬 도구는 가짜(행동마다 5ms 지연)다. 실제 외부 호출 지연·CPU는 반영하지 않는다(docs/AUTOMATION.md 7절).
 // 지연 값은 실행 환경마다 달라 단언하지 않고 출력만 한다. 단언은 정확성(모두 1번씩 완료, 주문 모두 성공)만.
 
 beforeEach(resetDb);
@@ -69,7 +70,9 @@ async function seedQueued(n: number) {
   for (let i = 0; i < n; i++) {
     const sellerId = randomUUID();
     const p = await db.automationPayment.create({ data: { sellerId, amount: 110000, idempotencyKey: `load-${i}`, requestFingerprint: "load", consentNoticeVersion: "load", consentAgreedAt: new Date(), status: "PAID", paidAt: new Date() } });
-    await db.automationJob.create({ data: { sellerId, paymentId: p.id, status: "QUEUED", obsTargetKey: `seller:${sellerId}` } });
+    await db.automationJob.create({
+      data: { sellerId, paymentId: p.id, status: "QUEUED", obsTargetKey: `seller:${sellerId}`, playbookId: cafe24Playbook.id, playbookVersion: cafe24Playbook.version },
+    });
   }
 }
 
@@ -89,6 +92,8 @@ describe("자동 연결 모의 부하와 주문 API 지연", () => {
         await db.automationPayment.deleteMany();
         await seedQueued(n);
         const rt = { planner: new FakePlanner(), browser: new FakeBrowserExecutor(ACTION_DELAY_MS), obs: new FakeObsBridge(ACTION_DELAY_MS), vault: new FakeSecretVault() };
+        // 작업서 화면 단서와 맞는 관리 화면(시험용 쇼핑몰 흉내)
+        rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장";
         let peakRunning = 0;
         let done = false;
         const t0 = performance.now();

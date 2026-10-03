@@ -121,7 +121,16 @@ function hostAllowed(raw: string): boolean {
 
 // 판단 모델이 낸 행동을 실행 전에 검사한다. 화면 글에 숨은 지시(악성 페이지)를 따른 결과도 여기서 걸러진다:
 // 단계에 없는 행동, 허용 밖 주소, 비밀값을 화면 글로 옮겨 적기, 모르는 고객 행동은 모두 거부한다.
-export function validateDecision(step: Step, d: PlannerDecision, secrets: JobSecrets): { ok: true } | { ok: false; reason: string } {
+// 비밀값을 넣어도 되는 칸: 비밀 참조 → 이 단계에서 허용된 입력 칸 이름 목록. 작업서가 단계마다 미리 정한다.
+// 목록에 없는 비밀 참조·칸은 거부한다(악성 화면 지시로 다른 칸·다른 단계에 비밀을 넣지 못하게). 작업서가 없으면 비밀값을 쓰지 못한다.
+export type SecretTargets = Readonly<Partial<Record<SecretRef, readonly string[]>>>;
+
+export function validateDecision(
+  step: Step,
+  d: PlannerDecision,
+  secrets: JobSecrets,
+  secretTargets: SecretTargets = {},
+): { ok: true } | { ok: false; reason: string } {
   const a = d.action;
   if (!Number.isInteger(d.costWon) || d.costWon < 0) return { ok: false, reason: "bad_cost" };
   if (!a || !ALLOWED_ACTIONS[step.kind].includes(a.type)) return { ok: false, reason: "action_not_allowed" };
@@ -132,7 +141,10 @@ export function validateDecision(step: Step, d: PlannerDecision, secrets: JobSec
       return typeof a.target === "string" && a.target.length > 0 && a.target.length <= 200 ? { ok: true } : { ok: false, reason: "bad_target" };
     case "fill": {
       if (typeof a.target !== "string" || !a.target || a.target.length > 200) return { ok: false, reason: "bad_target" };
-      if ("secretRef" in a.value) return SECRET_REFS.includes(a.value.secretRef) ? { ok: true } : { ok: false, reason: "bad_secret_ref" };
+      if ("secretRef" in a.value) {
+        if (!SECRET_REFS.includes(a.value.secretRef)) return { ok: false, reason: "bad_secret_ref" };
+        return secretTargets[a.value.secretRef]?.includes(a.target) ? { ok: true } : { ok: false, reason: "secret_target_not_allowed" };
+      }
       const text = a.value.text;
       if (typeof text !== "string" || text.length > 200) return { ok: false, reason: "bad_text" };
       // 모델이 어떤 경로로든 비밀값을 알아내 직접 적으려 하면 막는다

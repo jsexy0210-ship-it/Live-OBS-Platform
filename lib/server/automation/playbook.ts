@@ -1,5 +1,5 @@
 import type { AutomationCustomerAction } from "@prisma/client";
-import { validateDecision, type AutomationAction, type JobSecrets, type Observation } from "./ports";
+import { validateDecision, type AutomationAction, type JobSecrets, type Observation, type SecretTargets } from "./ports";
 import { STEPS } from "./steps";
 
 // 연결 작업서(확정 ⑦-1, 2026-10-04 대표님 지시 「Gemini가 미리 학습하게 한다」).
@@ -28,6 +28,8 @@ export type PlaybookStep = {
   exceptions: readonly PlaybookException[];
   // 성공 사례 요약(연습에서 성공한 행동 순서). 판단 모델 입력에 함께 넣는다.
   examples: readonly string[];
+  // 이 단계에서 비밀값을 넣어도 되는 칸(비밀 참조 → 칸 이름). 작업서·판단 모델 행동 모두 이 목록으로만 비밀을 넣는다.
+  secretTargets: SecretTargets;
 };
 
 export type Playbook = {
@@ -67,7 +69,7 @@ export function validatePlaybook(p: Playbook): string[] {
     }
     if (!s.guide.trim()) problems.push(`empty_guide:${step.key}`);
     s.actions.forEach(({ action }, i) => {
-      const v = validateDecision(step, { action, costWon: 0 }, probe);
+      const v = validateDecision(step, { action, costWon: 0 }, probe, s.secretTargets);
       if (!v.ok) problems.push(`${step.key}[${i}]:${v.reason}`);
     });
     if (s.actions.length === 0 || s.actions[s.actions.length - 1].action.type !== "step_done") problems.push(`no_step_done:${step.key}`);

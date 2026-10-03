@@ -40,9 +40,14 @@ export class EngineAborted extends Error {
   }
 }
 
+// 바꾸는 행동. 무료 재연결의 쇼핑몰·PC 대조는 이 행동을 처음 하기 바로 전에 한다(이동·고객 로그인 대기·관찰·확인은 대조 전에 허용).
+const MUTATING: readonly AutomationAction["type"][] = ["click", "fill", "obs_add_overlay_source", "obs_apply_display_settings", "send_test_event"];
+
 export type EngineOptions = {
   // 실행 자리를 잃으면 abort된다. 외부 호출(관찰·판단·실행) 직전마다 확인한다.
   signal?: AbortSignal;
+  // 비밀값을 넣어도 되는 칸을 정하는 작업서(작업 중 버전이 바뀌어 정해진 행동은 안 쓰더라도 비밀 칸 목록은 그 작업서 것을 쓴다). 없으면 playbook
+  secretPlaybook?: Playbook | null;
   startIndex: number;
   verifying: boolean;
   stats: EngineStats;
@@ -91,15 +96,20 @@ async function runAll(
   let evidence: VerificationEvidence | undefined;
   const secrets = await rt.vault.forJob(scope);
   // 무료 재연결: 무엇이든 바꾸기 전에 실제로 연결된 쇼핑몰·PC가 기준 작업과 같은지 읽기만으로 확인한다.
-  // 알 수 없으면(실행기가 값을 못 주면) 무료로 진행하지 않는다.
+  // 고객 로그인 전에는 쇼핑몰을 알 수 없으므로, 첫 변경 행동 바로 전에 한다. 알 수 없으면 무료로 진행하지 않는다.
   const want = opts.expectFacts;
-  if (want) {
+  let targetChecked = !want;
+  const checkTarget = async (): Promise<EngineResult | null> => {
+    if (targetChecked || !want) return null;
     const session = await browser();
     guard();
     const [shopKey, obsPairingId] = await Promise.all([session.currentShopKey(), rt.obs.currentPairingId(scope)]);
     if (!shopKey || !obsPairingId || !want.shopKey || !want.obsPairingId) return { kind: "failed", reason: "reconnect_target_unverified" };
     if (shopKey !== want.shopKey || obsPairingId !== want.obsPairingId) return { kind: "failed", reason: "reconnect_target_mismatch" };
-  }
+    targetChecked = true;
+    return null;
+  };
+  const secretBook = opts.secretPlaybook === undefined ? opts.playbook : opts.secretPlaybook;
   for (let stepIndex = opts.startIndex; stepIndex < STEPS.length; stepIndex++) {
     const step = STEPS[stepIndex];
     if (step.kind === "verify" && !verifying) {
@@ -107,6 +117,7 @@ async function runAll(
       verifying = true;
     }
     const pb = opts.playbook?.steps[step.key] ?? null;
+    const secretTargets = secretBook?.steps[step.key]?.secretTargets ?? {};
     const scripted = pb ? [...pb.actions] : [];
     let deviated = !pb;
     const history: string[] = [];
@@ -142,7 +153,7 @@ async function runAll(
         const decision = await rt.planner.decide({ step, observation: sanitizeObservation(raw, secrets), history, reference });
         stats.plannerCalls++;
         costWon = Number.isInteger(decision.costWon) && decision.costWon > 0 ? decision.costWon : 0;
-        const check = validateDecision(step, decision, secrets);
+        const check = validateDecision(step, decision, secrets, secretTargets);
         stats.costUsed += costWon;
         await hooks.touch(stats);
         if (stats.costUsed > opts.costLimit) return { kind: "failed", reason: "cost_limit" };
@@ -150,12 +161,16 @@ async function runAll(
         action = decision.action;
       } else {
         // 작업서 행동도 같은 검사를 거친다(작업서가 잘못돼도 허용 밖 행동은 하지 않음)
-        const check = validateDecision(step, { action, costWon: 0 }, secrets);
+        const check = validateDecision(step, { action, costWon: 0 }, secrets, secretTargets);
         await hooks.touch(stats);
         if (!check.ok) return { kind: "failed", reason: `unsafe_action:${check.reason}` };
       }
       history.push(action.type);
       if (action.type === "request_customer") return { kind: "needs_customer", action: action.action };
+      if (MUTATING.includes(action.type)) {
+        const blocked = await checkTarget();
+        if (blocked) return blocked;
+      }
       guard();
       const out: ActionOutcome = session ? await session.perform(action, secrets) : await rt.obs.perform(scope, action);
       if (out.kind === "needs_customer") return { kind: "needs_customer", action: out.action };

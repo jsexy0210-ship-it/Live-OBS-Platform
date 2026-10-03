@@ -2,7 +2,7 @@ import type { AutomationJob, AutomationPayment, PrismaClient } from "@prisma/cli
 import { writeAudit } from "../audit/log";
 import { notFound } from "../authz/errors";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
-import { dbNow, writeJobEvent } from "./queue";
+import { dbNow, lockJob, writeJobEvent } from "./queue";
 import { sourcesOf } from "./states";
 import { STEPS } from "./steps";
 
@@ -111,6 +111,8 @@ async function change(
 ): Promise<ChangeResult> {
   const from = to === "QUEUED" ? (["NEEDS_CUSTOMER"] as const) : sourcesOf(to);
   const result = await db.$transaction(async (tx) => {
+    // 행을 잠가 읽은 상태와 실제로 바꾸는 상태를 같게 한다(작업자 전이와 겹쳐도 기록의 이전 상태가 맞도록)
+    await lockJob(tx, jobId);
     const cur = await tx.automationJob.findFirst({ where: { id: jobId, sellerId: ctx.sellerId } });
     if (!cur) throw notFound();
     const now = await dbNow(tx);

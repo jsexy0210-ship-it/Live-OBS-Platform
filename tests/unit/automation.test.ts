@@ -60,7 +60,12 @@ describe("모델 입력 정리와 행동 검사", () => {
     expect(validateDecision(step("browser"), d({ type: "send_test_event" }), secrets)).toEqual({ ok: false, reason: "action_not_allowed" });
     expect(validateDecision(step("browser"), d({ type: "fill", target: "메모", value: { text: `x ${secrets.webhook_secret}` } }), secrets)).toEqual({ ok: false, reason: "secret_in_text" });
     expect(validateDecision(step("browser"), d({ type: "fill", target: "웹훅", value: { secretRef: "admin_password" as never } }), secrets)).toEqual({ ok: false, reason: "bad_secret_ref" });
-    expect(validateDecision(step("browser"), d({ type: "fill", target: "웹훅", value: { secretRef: "webhook_url" } }), secrets)).toEqual({ ok: true });
+    // 비밀값은 정해 둔 칸에만(작업서가 단계마다 정함). 목록이 없거나 다른 칸·다른 비밀이면 거부
+    const allowed = { webhook_url: ["주문 알림 주소"] } as const;
+    expect(validateDecision(step("browser"), d({ type: "fill", target: "주문 알림 주소", value: { secretRef: "webhook_url" } }), secrets, allowed)).toEqual({ ok: true });
+    expect(validateDecision(step("browser"), d({ type: "fill", target: "주문 알림 주소", value: { secretRef: "webhook_url" } }), secrets)).toEqual({ ok: false, reason: "secret_target_not_allowed" });
+    expect(validateDecision(step("browser"), d({ type: "fill", target: "메모", value: { secretRef: "webhook_url" } }), secrets, allowed)).toEqual({ ok: false, reason: "secret_target_not_allowed" });
+    expect(validateDecision(step("browser"), d({ type: "fill", target: "주문 알림 주소", value: { secretRef: "webhook_secret" } }), secrets, allowed)).toEqual({ ok: false, reason: "secret_target_not_allowed" });
     expect(validateDecision(step("verify"), d({ type: "request_customer", action: "PAY" as never }), secrets)).toEqual({ ok: false, reason: "bad_customer_action" });
     expect(validateDecision(step("verify"), d({ type: "send_test_event" }, -1), secrets)).toEqual({ ok: false, reason: "bad_cost" });
   });

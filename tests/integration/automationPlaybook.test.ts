@@ -64,15 +64,15 @@ describe("작업서 우선 실행", () => {
     expect((await job(a.jobId)).verificationEvidence).toMatchObject({ shownOnOverlay: true });
   });
 
-  it("작업서가 없는 작업(작업서 정보가 지워진 경우)은 판단 모델로만 진행한다", async () => {
+  it("작업서가 없는 작업은 비밀값을 넣을 칸이 정해져 있지 않아 웹훅 단계에서 멈춘다(판단 모델이 비밀을 아무 칸에나 넣지 못함)", async () => {
     const rt = runtime();
     const a = await boughtWithShop();
     await db.automationJob.update({ where: { id: a.jobId }, data: { playbookId: null, playbookVersion: null } });
-    expect(await runOnce(db, rt, W)).toBe("succeeded");
+    expect(await runOnce(db, rt, W)).toBe("failed");
     const j = await job(a.jobId);
-    expect(j.playbookActions).toBe(0);
-    expect(j.plannerCalls).toBeGreaterThan(0);
+    expect(j).toMatchObject({ lastError: "unsafe_action:secret_target_not_allowed", playbookActions: 0, stepIndex: 1 });
     expect(rt.planner.inputs.every((i) => i.reference === null)).toBe(true);
+    expect(rt.browser.performed.filter((p) => p.type === "fill")).toHaveLength(0);
   });
 
   it("화면이 작업서와 다르면 그 단계만 판단 모델이 작업서 설명·사례를 참고해 이어 가고, 이탈 단계를 남긴다", async () => {
