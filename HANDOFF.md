@@ -12,6 +12,7 @@
 | 개발 전담 (기반) (2) | `session_01Ud86wDnEPvsi8jPbo4zGCi` | 이전 기반 세션을 이어받음(서버·DB·API·테스트). 소유: `prisma/**`, `lib/server/**`, `app/api/**`, `tests/**`, `docs/ARCHITECTURE.md`, `package*.json`, `ci.yml` 테스트 단계. 2026-10-03 20:18 KST MASTER 생성 |
 | (이전) 개발 전담 (기반) | `session_01Lhh5mXm1mdLnACzpHDNLUw` | 개발 1단계(화면 제외): 설계 문서 `docs/ARCHITECTURE.md` → 스키마·권한·테넌트 격리·주문대기 도메인·로그인·테스트·CI 테스트 단계. 소유: `prisma/**`, `lib/server/**`, `app/api/**`, `tests/**`, `docs/ARCHITECTURE.md`, `package*.json`, `ci.yml` 테스트 단계. 2026-10-02 21:30 KST MASTER 생성. 컨텍스트 70% 초과로 2026-10-03 교체 |
 | 개발 전담 (화면) | `session_01U3TpR6Kgg8zZnxyS48PegW` | 2026-10-03 대표님 결정 「판매자 화면부터 실제로 만들어 눌러 볼 수 있게」. 화면 라우트·components·스타일·dev-seed·e2e만 소유. 서버 API·lib/server·prisma는 개발 전담 (기반) 소유 |
+| 인프라 전담 | `session_016ErhcGpbBooDx8a9sYYUmK` | 이슈 #137 테스트 서버 배포 구성(Docker Compose·Caddy·`/api/health`·`docs/DEPLOY.md`). #145 병합(2026-10-03). 배포 워크플로 파일은 MASTER 소유. 2026-10-03 MASTER 생성 |
 | (이전) 디자인 전담 | `session_011K2Cw69VDhwYpPegzFpXoK` | 작업 기억 72% 도달·수정 지시 미반영으로 교체. 약 130장 제작(아티팩트에 보존). 2026-10-02 18:45 KST 보관 |
 
 전담 세션 태그: `live-obs` + `lo-master` / `lo-design` / `lo-dev` / `lo-dev-ui`. 새 전담 세션은 이 표에 추가하고 `docs/session-prompt.md`를 지시에 넣는다.
@@ -27,7 +28,7 @@
 
 - Next.js 최소 앱 (`app/layout.tsx`, `app/page.tsx`)
 - CI: typecheck + build, self-hosted 배포 워크플로 재유입 검사
-- 배포 워크플로: 없음
+- 배포 워크플로: `.github/workflows/deploy-obs-test.yml`(테스트 서버 obs-test, 수동 실행만, main만, Environment `obs-test` 승인, 상시 self-hosted runner `obs-kakao`. 대표님 결정 2026-10-03: 공개 저장소 + 상시 runner, 「Require approval for all external contributors」 필수). 테스트 도메인 `test.on-aircue.com`(Cloudflare DNS 전용). 절차: `docs/DEPLOY.md`
 - GitHub Secrets(대표님 등록, 값은 기록하지 않음): `NICEPAY_CLIENT_KEY`, `NICEPAY_SECRET_KEY`, `SWEETTRACKER_API_KEY`(스마트택배 배송 조회, 연동은 출시 후), `RESEND_MAIL_API`(Resend 메일 발송. 개발·테스트용, 운영 발송은 AWS SES 예정. 하루·월 무료 한도에 가까워지면 미리 알리고 넘으면 MASTER에 보고), `BAROBILL_API_KEY`(바로빌 세금계산서·현금영수증 발행. 연동 전, 요금·판매자 명의 발행 조건 확인 필요), `YOUTUBE_API_KEY`(YouTube Data API v3, 방송·실시간 채팅 조회. 하루 무료 할당량에 가까워지면 미리 알리고, 넘으면 MASTER에 보고)
 - 테스트: 없음
 
@@ -43,7 +44,6 @@
 
 ## 미완료·블로커
 
-- 개발 전담 (기반) 교체 인계(2026-10-03 20:20 KST): 열린 PR은 #131(가입 본인확인 시작 멱등 `attemptKey`, 첫 문자는 트랜잭션 밖 발송·`409 start_in_progress`, 판단 필요 3건)과 #135(판매자 주문 목록 `GET /api/seller/orders`)예요. 대표님 결정(#136) 작업 5건은 아직 시작하지 않았고 각각 별도 PR로 해요: ① 탈퇴 시 남은 적립금 소멸 원장(재가입해도 되살리지 않음) ② 재가입 제한 판매자 설정(기본 꺼짐, 기간, `ciHash` 기준, 거절 코드·문구는 화면 세션에 전달) ③ 구매 확정 취소 뒤 환불(권한·감사 로그, 이 주문으로 이미 지급한 적립금은 기존 자동·수동 회수 정책대로 회수) ④ 마지막 적립 뒤 3년 미적립 시 적립금 소멸(함수만) ⑤ 만 14세 미만 가입 차단
 - 운영 DB 생성 때 collation을 UTF-8 계열(`ko_KR.UTF-8` 등)로 만들 것. 「C」 collation이면 상품 이름 검색의 대소문자 무시(`lower()`)가 ASCII에만 적용된다
 - 재고 이력 `stockAfter`는 이 기능 전 이력에서 null(화면은 표시하지 않음)
 - 휴대폰 본인확인: 포트원 V2 + KCP 어댑터(`lib/server/identity/portone.ts`)는 실제 호출 미검증(계약 전). 계약 뒤 요청·응답 필드, 인증번호 자릿수·유효시간·재전송 규칙, 오류 코드(`wrong_code` 판정)를 대행사 규격으로 맞추고 `lib/server/identity/verification.ts` 상수를 바꾼다
@@ -82,7 +82,7 @@
 ## 대표님 조치 대기
 
 - 플랫폼 운영사 정보(대표님 사업자): 배포 때 마스터 콘솔 설정에 입력(대표님 확인). 저장소·문서에는 값을 적지 않음
-- 카카오 테스트 VM: 대기(대표님 지시 2026-10-03)
+- 테스트 서버(obs-web-test, 210.109.15.68) 준비: `docs/DEPLOY.md` 순서대로 ① GitHub 외부 기여자 워크플로 승인 설정 ② 보안 그룹(80·443 열기, 22는 대표님 IP만, 5432·3000 닫기) ③ Docker·obs 계정·/opt/obs·`.env`(OBS_SITE_ADDRESS=test.on-aircue.com) ④ 상시 runner 등록 ⑤ Environment obs-test 보호 ⑥ Run workflow ⑦ https://test.on-aircue.com/api/health 확인
 - 브랜치 `fix/shipping-refund-note` 삭제 지시(2026-10-03): 이 환경에서 원격 브랜치 삭제가 막혀 GitHub 화면에서 지워야 함
 - 휴대폰 본인확인 대행사 선정·계약(유료): 포트원 V2 + NHN KCP API 방식 우선 검토. 계약 전 대행사에 확인할 것: ① API 방식(자체 화면) 허용·심사 ② PASS 없이 문자만 제공해도 되는지 ③ CI 제공 설정 ④ 건당 요금·최소 이용료·포트원 수수료 ⑤ 계약 전 테스트 채널과 실제 문자·과금 여부 ⑥ 인증번호 유효시간·재전송·실패 제한 ⑦ 문자 발신번호·문구 등록
 - 본인확인 대행사 계약 때 성별·내외국인 구분·이동통신사·접속 기기 종류의 대행사 보관 기간을 확인(수집·이용 동의 서식 `{{본인확인 대행사 보관 기간}}`에 채움)
