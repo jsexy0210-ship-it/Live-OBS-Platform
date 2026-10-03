@@ -1,7 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 
 // 모든 화면 서체는 원티드 산스(대표님 지시 2026-10-03, 정본: docs/DESIGN_PROMPT.md 「디자인 판단 확정」).
-// 가변 woff2를 저장소(public/fonts/wanted-sans)에서 내려주고, 외부 글꼴 CDN(Google Fonts)은 부르지 않는다.
+// 글자 범위별 가변 woff2(unicode-range)를 저장소(public/fonts/wanted-sans/split)에서 내려주고, 외부 글꼴 CDN(Google Fonts)은 부르지 않는다.
+// 첫 화면에서 받는 서체 용량 합계는 400KB 이하(휴대폰 첫 화면이 느려지지 않게, MASTER 결정 2026-10-03).
+const FIRST_SCREEN_FONT_LIMIT = 400 * 1024;
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
 const SHOTS = process.env.E2E_SCREENSHOTS === "1";
 
@@ -35,16 +37,22 @@ async function expectWantedSans(page: Page) {
 
 test("파트너스 로그인·주문 화면과 쇼핑몰 화면이 원티드 산스로 그려지고, 외부 글꼴 CDN을 부르지 않는다", async ({ page }) => {
   const external: string[] = [];
-  const font: number[] = [];
+  const font: { url: string; status: number; size: Promise<number> }[] = [];
   page.on("request", (r) => {
     if (/fonts\.(googleapis|gstatic)\.com/.test(r.url())) external.push(r.url());
   });
   page.on("response", (r) => {
-    if (r.url().endsWith("/fonts/wanted-sans/WantedSansVariable.woff2")) font.push(r.status());
+    if (r.url().includes("/fonts/wanted-sans/split/")) font.push({ url: r.url(), status: r.status(), size: r.body().then((b) => b.length, () => 0) });
   });
 
   await page.goto("/seller/login");
   await expectWantedSans(page);
+  await page.waitForLoadState("networkidle");
+  // 첫 화면(로그인)에서 받은 서체 파일 용량 합계
+  const first = (await Promise.all(font.map((f) => f.size))).reduce((a, b) => a + b, 0);
+  console.log(`첫 화면 서체: 파일 ${font.length}개, ${Math.round(first / 1024)}KB`);
+  expect(font.length).toBeGreaterThan(0);
+  expect(first).toBeLessThanOrEqual(FIRST_SCREEN_FONT_LIMIT);
   await shot(page, "FONT-login");
 
   await page.getByLabel("이메일").fill("demo-owner@example.com");
@@ -62,6 +70,5 @@ test("파트너스 로그인·주문 화면과 쇼핑몰 화면이 원티드 산
   await shot(page, "FONT-shop");
 
   expect(external).toEqual([]);
-  expect(font.length).toBeGreaterThan(0);
-  expect(font.every((s) => s === 200 || s === 304)).toBe(true);
+  expect(font.every((f) => f.status === 200 || f.status === 304)).toBe(true);
 });

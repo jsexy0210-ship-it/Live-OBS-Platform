@@ -1,8 +1,5 @@
 /* ONQ(가칭) — Live OBS Platform 공통 스타일. A안: Montage(WDS) 구조·변수 이름은 유지하고 색(큐 바이올렛 · 웜 뉴트럴 · 마스터 틸)과 서체(원티드 산스, 대표님 지시 2026-10-03)는 자체 제안값으로 덮어씀.
    브랜드 교체 지점: 아래 .app 의 --brand-name / --brand-ko / --brand / --brand-ink 네 줄. 오버레이는 ov.css */
-/* 원티드 산스 가변 서체(SIL OFL 1.1, public/fonts/wanted-sans/OFL.txt). 외부 CDN 없이 저장소에서 내려준다. */
-@font-face{font-family:"Wanted Sans Variable";font-style:normal;font-display:swap;font-weight:400 1000;
-  src:url("/fonts/wanted-sans/WantedSansVariable.woff2") format("woff2-variations"),url("/fonts/wanted-sans/WantedSansVariable.woff2") format("woff2")}
 .app{
   --brand-name:"ONQ"; --brand-ko:"온큐";
   --brand:#5b3df6; --brand-ink:#ffffff; --onair:#e8382d;
