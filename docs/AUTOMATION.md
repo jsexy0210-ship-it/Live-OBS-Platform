@@ -1,7 +1,7 @@
 # 자동 설치·연결 상품 설계 (1차: 백엔드 골격, 실제 Gemini·브라우저·결제 없음)
 
 정본 요구사항: `docs/PRODUCT_SCOPE.md` 「자동 설치·연결 상품」「동시 실행·급성장 대응」, `docs/ONQ_PLAN.md` 단계 4·5, 종단 흐름 E3.
-작성 2026-10-03 KST. 코드: `lib/server/automation/**`, `app/api/automation/**`, 스키마 `prisma/schema.prisma` 「자동 설치·연결 상품」 블록, 마이그레이션 `20261003220000_automation`.
+작성 2026-10-03 KST, 환불·재설치 확정 ② 반영 2026-10-04 KST. 코드: `lib/server/automation/**`, `app/api/automation/**`, 스키마 `prisma/schema.prisma` 「자동 설치·연결 상품」 블록, 마이그레이션 `20261003220000_automation`.
 
 ## 1. 1차 범위와 아닌 것
 
@@ -10,7 +10,16 @@
 
 ## 2. 상태기계 — 결제와 작업을 나눈다
 
-결제 `AutomationPayment.status`: `PENDING → PAID | FAILED` (한 번 확정되면 바뀌지 않음).
+결제 `AutomationPayment.status`: `PENDING → PAID | FAILED`, `PAID → REFUND_PENDING(환불 처리 대기) → REFUNDED`.
+- `REFUNDED`로 바꾸는 실제 환불 실행은 대표님 승인 대상이라 1차 코드에 없다(billing 공통 `BillingProvider`에 환불 API도 아직 없음).
+
+### 환불·재설치 정책 (2026-10-04 대표님 확정 ②, 정본 PRODUCT_SCOPE 「미확정 → 확정 ②」)
+
+- **결제 전 고지·동의**: 구매·재설치 결제는 `consent: { agreed: true, noticeVersion }`가 서버 문구 버전(`AUTOMATION_CONSENT.version`)과 맞을 때만 만든다. 동의 시각(DB 시계)·문구 버전을 결제 행에 남긴다. 체크 해제·값 없음·문자열 `"true"`·예전 버전은 거부(결제·작업 없음).
+- **성공 기준**: 테스트 주문이 고객 OBS 오버레이에 실제 표시됨. 검증 단계에서 로컬 도구가 확인한 증거를 `verificationEvidence`·`verifiedAt`에 저장하고, 증거 없이 `SUCCEEDED`로 두지 않는다.
+- **환불**: 「실패 확정 → 환불 요청」. 판매자 대표자가 `POST /api/automation/jobs/[jobId]/refund-request`로 요청하면 결제가 `PAID → REFUND_PENDING`(사유 `failed`). 대상은 ① 작업이 `FAILED`(기준 미통과, 지원으로도 해결 안 됨) ② 연결을 시작하기 전(`startedAt` 없음) 취소한 작업(`canceled_before_start`). 연결 시작 뒤 취소(단순 변심)·완료 작업·무료 재연결은 대상이 아니다. 결제 확정 전에 취소했는데 결제가 들어오면 자동으로 `REFUND_PENDING`. 지원(재시도·안내)으로 해결할지는 환불 처리 대기 단계에서 마스터가 본다(마스터 화면·API는 다음 범위).
+- **재연결·재설치**: `POST /api/automation/reconnect` `{ target: { shopKey, obsPairingId } }`. 기준 = 가장 최근에 돈을 내고(처음 연결·재설치) 완료한 작업. 그 완료 시각(DB 시계)부터 30일 안 + 같은 쇼핑몰(`shopKey`) + 같은 PC(`obsPairingId`, OBS pairing) + 연결 권한 해제(`connectionRevokedAt`) 없음 → 무료(`RECONNECT_FREE`, 결제 없이 바로 대기열). 아니면 사유(`no_completed_install`·`window_expired`·`shop_changed`·`pc_changed`·`connection_revoked`)와 33,000원을 돌려주고, 동의를 붙여 다시 오면 `REINSTALL`로 결제한다. 무료 재연결의 완료는 30일을 늘리지 않는다(연달아 무료로 이어 붙이기 방지). `shopKey`·`obsPairingId`는 연결 단계 결과로 작업에 남는다.
+- 작업 종류 `kind`: `INITIAL`(110,000원) · `REINSTALL`(33,000원) · `RECONNECT_FREE`(결제 없음, DB CHECK로 결제 없음과 짝).
 
 작업 `AutomationJob.status` (전이표 정본: `lib/server/automation/states.ts`):
 
@@ -32,7 +41,7 @@
 - 재개: `NEEDS_CUSTOMER`에서만. 고객 행동 정보·마감을 지우고 `QUEUED`(즉시 실행 가능).
 - 재시도: 일시 오류마다 `attempts+1`, `runAfter = now + min(10분, 5초×2^(n-1)) × (0.5~1.0 지터)`. `maxAttempts`(기본 5) 도달 시 `FAILED`. 고객 대기·재개는 시도 횟수를 쓰지 않는다.
 - 취소: 끝나지 않은 모든 상태에서 가능. 실행 중이어도 즉시 `CANCELED` + fencing 토큰 증가 → 작업자의 다음 쓰기부터 거부된다(진행 중인 외부 행동 1개는 끝까지 갈 수 있다; 단계 경계에서 멈춤).
-- 환불은 자동으로 하지 않는다. 결제 확정 전에 취소했는데 결제가 들어오면 작업은 다시 열지 않고 `automation.paid_after_cancel` 감사 기록을 남긴다(환불 조건은 판단 필요, 7절).
+- 환불은 위 「환불·재설치 정책」대로 요청·처리 대기까지만 한다. 결제 확정 전에 취소했는데 결제가 들어오면 작업은 다시 열지 않고 `REFUND_PENDING` + `automation.paid_after_cancel` 감사 기록.
 
 ## 3. 세 구성요소 경계 (`ports.ts`)
 
@@ -77,17 +86,19 @@
 
 | 상황 | 자동 연결 처리 | 주문 API p50 / p95 / 최대 |
 |---|---|---|
-| 부하 없음(40건) | — | 33.4 / 44.7 / 45.1ms |
-| 작업 10개 | 545ms, 18.3건/초, 최대 동시 10 | 34.4 / 70.1 / 92.1ms |
-| 작업 50개 | 1,773ms, 28.2건/초, 최대 동시 10 | 47.0 / 66.9 / 74.0ms |
-| 작업 100개 | 3,072ms, 32.6건/초, 최대 동시 10 | 40.2 / 53.0 / 64.8ms |
+| 부하 없음(40건) | — | 32.8 / 46.1 / 51.9ms |
+| 작업 10개 | 522ms, 19.2건/초, 최대 동시 10 | 31.6 / 58.8 / 95.1ms |
+| 작업 50개 | 1,719ms, 29.1건/초, 최대 동시 10 | 42.3 / 65.7 / 72.9ms |
+| 작업 100개 | 3,229ms, 31.0건/초, 최대 동시 10 | 43.8 / 59.3 / 69.0ms |
 
 - 한계: 같은 프로세스·같은 DB의 모의 측정이다. 실제 Gemini·브라우저 지연, 작업자 CPU·메모리(브라우저 context당 수백 MB 예상), 운영 DB 연결 수는 반영하지 않았다. 실제 용량 목표는 실행기 연결 후 다시 잰다. VM 한 대 구성을 고가용성으로 보지 않는다.
 
 ## 8. 판단 필요 (미확정)
 
 - 실제 Gemini 모델·키·호출 비용(PR 본문에 추정), 비용 상한 값.
-- 환불 조건(실패·취소·결제 후 취소), 재설치 추가 과금.
+- 실제 환불 실행(REFUND_PENDING → REFUNDED): PG 환불 API와 승인 절차(대표님 승인 대상).
+- 「권한 해제」 감지: Cafe24 앱 삭제·권한 회수 알림을 받아 `connectionRevokedAt`을 채우는 경로(외부 연동 단계). 지금은 필드와 판정만 있다.
+- 재연결 대상 확인: 무료 판정은 요청 값(`shopKey`·`obsPairingId`)으로 하고, 작업자가 실제로 연결된 쇼핑몰·PC가 기준 작업과 다르면 `FAILED(reconnect_target_mismatch)`로 멈춘다. 실제 로컬 도구·OAuth 연결 뒤 이 값이 서버가 확인한 값인지 다시 검증해야 한다.
 - 결제 수단: 1차는 구독용 등록 카드(빌링키)로 일회 결제한다. 카드 없는 판매자의 일회 결제창(PG 결제창)은 billing 공통 코드 확장이 필요하다. PG 결과 조회에 금액이 없어(`PaymentLookup`) 금액 대조를 못 한다.
 - 직원(대표자 아님)에게 조회·재개를 열지. 지금은 대표자 전용.
 - `sellerId` 외래키: Seller 모델에 역관계 한 줄이 필요해(다른 모델 수정 금지) 두지 않았다. 판매자 삭제 시 정리 정책과 함께 결정.

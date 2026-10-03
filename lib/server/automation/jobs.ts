@@ -11,8 +11,10 @@ import { STEPS } from "./steps";
 
 export type JobView = {
   id: string;
+  kind: AutomationJob["kind"];
   status: AutomationJob["status"];
-  paymentStatus: AutomationPayment["status"];
+  // 무료 재연결은 결제가 없다(null, 금액 0)
+  paymentStatus: AutomationPayment["status"] | null;
   amount: number;
   step: string | null;
   stepNumber: number;
@@ -20,21 +22,24 @@ export type JobView = {
   customerAction: AutomationJob["customerAction"];
   actionDeadlineAt: Date | null;
   lastError: string | null;
+  verifiedAt: Date | null;
   createdAt: Date;
   finishedAt: Date | null;
 };
 
-const toView = (j: AutomationJob & { payment: AutomationPayment }): JobView => ({
+const toView = (j: AutomationJob & { payment: AutomationPayment | null }): JobView => ({
   id: j.id,
+  kind: j.kind,
   status: j.status,
-  paymentStatus: j.payment.status,
-  amount: j.payment.amount,
+  paymentStatus: j.payment?.status ?? null,
+  amount: j.payment?.amount ?? 0,
   step: STEPS[j.stepIndex]?.key ?? null,
   stepNumber: Math.min(j.stepIndex + 1, STEPS.length),
   stepCount: STEPS.length,
   customerAction: j.customerAction,
   actionDeadlineAt: j.actionDeadlineAt,
   lastError: j.lastError,
+  verifiedAt: j.verifiedAt,
   createdAt: j.createdAt,
   finishedAt: j.finishedAt,
 });
@@ -94,4 +99,36 @@ async function change(
     return true;
   });
   return result ? { ok: true, job: await getJob(db, ctx, jobId) } : { ok: false, reason: "invalid_state" };
+}
+
+export type RefundRequestResult = { ok: true; job: JobView } | { ok: false; reason: "not_refundable" };
+
+// 환불 요청(확정 ②). 대상: 결제 완료(PAID)이고, 작업이 실패로 끝났거나(성공 기준 미통과 — 지원으로도 해결 안 됨)
+// 연결을 시작하기 전에 취소된 경우. 연결을 시작한 뒤 취소(단순 변심)와 완료된 작업은 환불하지 않는다.
+// 결과는 환불 처리 대기(REFUND_PENDING)까지다. 실제 PG 환불 실행은 대표님 승인 대상이라 여기서 하지 않는다.
+export async function requestRefund(db: PrismaClient, ctx: TenantContext, jobId: string): Promise<RefundRequestResult> {
+  requireSellerPermission(ctx, "SUBSCRIPTION_MANAGE");
+  const ok = await db.$transaction(async (tx) => {
+    const j = await tx.automationJob.findFirst({ where: { id: jobId, sellerId: ctx.sellerId }, include: { payment: true } });
+    if (!j) throw notFound();
+    const reason = j.status === "FAILED" ? "failed" : j.status === "CANCELED" && !j.startedAt ? "canceled_before_start" : null;
+    if (!reason || !j.payment) return false;
+    const now = await dbNow(tx);
+    const r = await tx.automationPayment.updateMany({
+      where: { id: j.payment.id, sellerId: ctx.sellerId, status: "PAID" },
+      data: { status: "REFUND_PENDING", refundReason: reason, refundRequestedAt: now },
+    });
+    if (r.count !== 1) return false;
+    await writeAudit(tx, {
+      actorType: ctx.actorType,
+      actorId: ctx.actorId,
+      sellerId: ctx.sellerId,
+      action: "automation.refund_request",
+      targetType: "AutomationPayment",
+      targetId: j.payment.id,
+      after: { jobId, reason, amount: j.payment.amount },
+    });
+    return true;
+  });
+  return ok ? { ok: true, job: await getJob(db, ctx, jobId) } : { ok: false, reason: "not_refundable" };
 }

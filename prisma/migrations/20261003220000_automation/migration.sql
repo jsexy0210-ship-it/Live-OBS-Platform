@@ -1,5 +1,8 @@
 -- CreateEnum
-CREATE TYPE "AutomationPaymentStatus" AS ENUM ('PENDING', 'PAID', 'FAILED');
+CREATE TYPE "AutomationPaymentStatus" AS ENUM ('PENDING', 'PAID', 'FAILED', 'REFUND_PENDING', 'REFUNDED');
+
+-- CreateEnum
+CREATE TYPE "AutomationJobKind" AS ENUM ('INITIAL', 'REINSTALL', 'RECONNECT_FREE');
 
 -- CreateEnum
 CREATE TYPE "AutomationJobStatus" AS ENUM ('AWAITING_PAYMENT', 'QUEUED', 'RUNNING', 'NEEDS_CUSTOMER', 'VERIFYING', 'SUCCEEDED', 'FAILED', 'CANCELED');
@@ -14,9 +17,14 @@ CREATE TABLE "AutomationPayment" (
     "amount" INTEGER NOT NULL,
     "status" "AutomationPaymentStatus" NOT NULL DEFAULT 'PENDING',
     "idempotencyKey" TEXT NOT NULL,
+    "consentNoticeVersion" TEXT NOT NULL,
+    "consentAgreedAt" TIMESTAMPTZ(3) NOT NULL,
     "providerPaymentId" TEXT,
     "failureReason" TEXT,
     "paidAt" TIMESTAMPTZ(3),
+    "refundReason" TEXT,
+    "refundRequestedAt" TIMESTAMPTZ(3),
+    "refundedAt" TIMESTAMPTZ(3),
     "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMPTZ(3) NOT NULL,
 
@@ -27,7 +35,9 @@ CREATE TABLE "AutomationPayment" (
 CREATE TABLE "AutomationJob" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "sellerId" UUID NOT NULL,
-    "paymentId" UUID NOT NULL,
+    "kind" "AutomationJobKind" NOT NULL DEFAULT 'INITIAL',
+    "paymentId" UUID,
+    "baseJobId" UUID,
     "status" "AutomationJobStatus" NOT NULL DEFAULT 'AWAITING_PAYMENT',
     "obsTargetKey" TEXT NOT NULL,
     "stepIndex" INTEGER NOT NULL DEFAULT 0,
@@ -42,6 +52,11 @@ CREATE TABLE "AutomationJob" (
     "leaseExpiresAt" TIMESTAMPTZ(3),
     "fencingToken" INTEGER NOT NULL DEFAULT 0,
     "lastError" TEXT,
+    "shopKey" TEXT,
+    "obsPairingId" TEXT,
+    "connectionRevokedAt" TIMESTAMPTZ(3),
+    "verifiedAt" TIMESTAMPTZ(3),
+    "verificationEvidence" JSONB,
     "startedAt" TIMESTAMPTZ(3),
     "finishedAt" TIMESTAMPTZ(3),
     "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -80,6 +95,9 @@ CREATE INDEX "AutomationJob_status_runAfter_idx" ON "AutomationJob"("status", "r
 CREATE INDEX "AutomationJob_sellerId_createdAt_idx" ON "AutomationJob"("sellerId", "createdAt");
 
 -- CreateIndex
+CREATE INDEX "AutomationJob_sellerId_status_finishedAt_idx" ON "AutomationJob"("sellerId", "status", "finishedAt");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "AutomationJob_sellerId_id_key" ON "AutomationJob"("sellerId", "id");
 
 -- CreateIndex
@@ -105,3 +123,5 @@ ALTER TABLE "AutomationPayment" ADD CONSTRAINT "AutomationPayment_amount_positiv
 ALTER TABLE "AutomationJob" ADD CONSTRAINT "AutomationJob_counters_valid" CHECK ("attempts" >= 0 AND "maxAttempts" > 0 AND "costUsed" >= 0 AND "costLimit" > 0 AND "stepIndex" >= 0 AND "fencingToken" >= 0);
 -- 실행 중이면 실행 자리(lease)가 있고, 실행 중이 아니면 없다.
 ALTER TABLE "AutomationJob" ADD CONSTRAINT "AutomationJob_lease_matches_status" CHECK (("status" IN ('RUNNING', 'VERIFYING')) = ("leaseOwner" IS NOT NULL AND "leaseExpiresAt" IS NOT NULL));
+-- 무료 재연결만 결제가 없고, 나머지는 결제가 있어야 한다.
+ALTER TABLE "AutomationJob" ADD CONSTRAINT "AutomationJob_payment_matches_kind" CHECK (("kind" = 'RECONNECT_FREE') = ("paymentId" IS NULL));

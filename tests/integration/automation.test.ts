@@ -4,11 +4,13 @@ import { POST as resumeRoute } from "../../app/api/automation/jobs/[jobId]/resum
 import { GET as jobRoute } from "../../app/api/automation/jobs/[jobId]/route";
 import { GET as jobsRoute } from "../../app/api/automation/jobs/route";
 import { POST as purchaseRoute } from "../../app/api/automation/purchase/route";
+import { POST as reconnectRoute } from "../../app/api/automation/reconnect/route";
+import { POST as refundRoute } from "../../app/api/automation/jobs/[jobId]/refund-request/route";
 import { loginSeller } from "../../lib/server/auth/login";
-import { AUTOMATION_PRICE } from "../../lib/server/automation/config";
+import { AUTOMATION_CONSENT, AUTOMATION_PRICE, REINSTALL_PRICE } from "../../lib/server/automation/config";
 import { FakeBrowserExecutor, FakeObsBridge, FakePlanner, FakeSecretVault } from "../../lib/server/automation/fakes";
-import { cancelJob, resumeJob } from "../../lib/server/automation/jobs";
-import { purchaseAutomation, reconcileAutomationPayments } from "../../lib/server/automation/purchase";
+import { cancelJob, requestRefund, resumeJob } from "../../lib/server/automation/jobs";
+import { purchaseAutomation, reconcileAutomationPayments, reconnectAutomation } from "../../lib/server/automation/purchase";
 import { FencingError, advanceStep, claimNext, finishJob, reapExpired, touch } from "../../lib/server/automation/queue";
 import { executeJob, runOnce } from "../../lib/server/automation/worker";
 import { FakeBillingProvider } from "../../lib/server/billing/provider";
@@ -29,6 +31,7 @@ afterAll(async () => {
 });
 
 const BK = "fake-bk-automation";
+const consent = { agreed: true, noticeVersion: AUTOMATION_CONSENT.version };
 
 export async function shopWithCard() {
   const { seller } = await createSeller();
@@ -61,7 +64,7 @@ const newKey = () => `key-${Date.now()}-${++key}`;
 
 async function bought(provider = new FakeBillingProvider()) {
   const s = await shopWithCard();
-  const r = await purchaseAutomation(db, provider, s.ctx, { idempotencyKey: newKey() });
+  const r = await purchaseAutomation(db, provider, s.ctx, { idempotencyKey: newKey(), consent });
   if (!r.ok) throw new Error(r.reason);
   return { ...s, jobId: r.jobId, provider };
 }
@@ -85,7 +88,10 @@ describe("자동 연결 결제와 실행 권한", () => {
     expect((await job(jobId)).status).toBe("QUEUED");
     expect(await runOnce(db, runtime(), W)).toBe("succeeded");
     const j = await job(jobId);
-    expect(j).toMatchObject({ status: "SUCCEEDED", stepIndex: 5, leaseOwner: null, leaseExpiresAt: null, attempts: 0 });
+    expect(j).toMatchObject({ status: "SUCCEEDED", stepIndex: 5, leaseOwner: null, leaseExpiresAt: null, attempts: 0, shopKey: `mall-${j.sellerId}`, obsPairingId: `pc-${j.sellerId}` });
+    // 성공 기준 검증 증거(테스트 주문 표시)가 남는다
+    expect(j.verifiedAt).toEqual(j.finishedAt);
+    expect(j.verificationEvidence).toEqual({ testEvent: `test-${jobId}`, shownOnOverlay: true });
     expect(j.costUsed).toBeGreaterThan(0);
     expect(await statuses(jobId)).toEqual(["->AWAITING_PAYMENT", "AWAITING_PAYMENT>QUEUED", "QUEUED>RUNNING", "RUNNING>VERIFYING", "VERIFYING>SUCCEEDED"]);
     expect((await db.automationPayment.findFirstOrThrow()).status).toBe("PAID");
@@ -95,13 +101,13 @@ describe("자동 연결 결제와 실행 권한", () => {
     const provider = new FlakyLookupProvider();
     const first = await shopWithCard();
     provider.failNext = "timeout_after_charge";
-    expect(await purchaseAutomation(db, provider, first.ctx, { idempotencyKey: newKey() })).toMatchObject({ ok: true, paymentStatus: "PAID", jobStatus: "QUEUED" });
+    expect(await purchaseAutomation(db, provider, first.ctx, { idempotencyKey: newKey(), consent })).toMatchObject({ ok: true, paymentStatus: "PAID", jobStatus: "QUEUED" });
     await db.automationJob.updateMany({ data: { status: "CANCELED", finishedAt: new Date() } });
 
     const s = await shopWithCard();
     provider.failNext = "timeout_after_charge";
     provider.lookupDown = 1;
-    const r = await purchaseAutomation(db, provider, s.ctx, { idempotencyKey: newKey() });
+    const r = await purchaseAutomation(db, provider, s.ctx, { idempotencyKey: newKey(), consent });
     expect(r).toMatchObject({ ok: true, paymentStatus: "PENDING", jobStatus: "AWAITING_PAYMENT" });
     expect(await runOnce(db, runtime(), W)).toBe("idle");
     expect(await reconcileAutomationPayments(db, provider, { olderThanMs: 0 })).toBe(1);
@@ -113,38 +119,53 @@ describe("자동 연결 결제와 실행 권한", () => {
     const provider = new FakeBillingProvider();
     const a = await shopWithCard();
     provider.failNext = "timeout_before_charge";
-    expect(await purchaseAutomation(db, provider, a.ctx, { idempotencyKey: newKey() })).toMatchObject({ ok: true, paymentStatus: "PENDING" });
+    expect(await purchaseAutomation(db, provider, a.ctx, { idempotencyKey: newKey(), consent })).toMatchObject({ ok: true, paymentStatus: "PENDING" });
     await reconcileAutomationPayments(db, provider, { olderThanMs: 0 });
     expect((await db.automationPayment.findFirstOrThrow()).status).toBe("PENDING");
 
     const b = await shopWithCard();
     provider.decline(BK);
-    const r = await purchaseAutomation(db, provider, b.ctx, { idempotencyKey: newKey() });
+    const r = await purchaseAutomation(db, provider, b.ctx, { idempotencyKey: newKey(), consent });
     expect(r).toMatchObject({ ok: false, reason: "payment_failed" });
     expect(await db.automationJob.findFirstOrThrow({ where: { sellerId: b.seller.id } })).toMatchObject({ status: "FAILED", lastError: "payment_failed" });
     expect(await runOnce(db, runtime(), W)).toBe("idle");
   });
 
-  it("카드가 없으면 결제·작업을 만들지 않고, 키 형식이 틀리면 거부한다", async () => {
+  it("결제 전 고지에 동의하지 않으면(체크 해제·값 없음·문자열 true·예전 문구) 결제·작업을 만들지 않는다. 카드가 없거나 키가 틀려도 거부", async () => {
+    const provider = new FakeBillingProvider();
+    const s = await shopWithCard();
+    for (const c of [undefined, { agreed: false, noticeVersion: AUTOMATION_CONSENT.version }, { agreed: "true", noticeVersion: AUTOMATION_CONSENT.version }]) {
+      expect(await purchaseAutomation(db, provider, s.ctx, { idempotencyKey: newKey(), consent: c })).toEqual({ ok: false, reason: "consent_required" });
+    }
+    expect(await purchaseAutomation(db, provider, s.ctx, { idempotencyKey: newKey(), consent: { agreed: true, noticeVersion: "old" } })).toEqual({ ok: false, reason: "consent_outdated" });
+    expect(await purchaseAutomation(db, provider, s.ctx, { idempotencyKey: "x", consent })).toEqual({ ok: false, reason: "bad_idempotency_key" });
+
     const { seller } = await createSeller();
     const owner = await createSellerUser(seller.id, "OWNER");
-    const ctx: TenantContext = { sellerId: seller.id, actorType: "SELLER_USER", actorId: owner.id, isOwner: true, permissions: [], readOnly: false };
-    expect(await purchaseAutomation(db, new FakeBillingProvider(), ctx, { idempotencyKey: newKey() })).toEqual({ ok: false, reason: "card_required" });
-    expect(await purchaseAutomation(db, new FakeBillingProvider(), ctx, { idempotencyKey: "x" })).toEqual({ ok: false, reason: "bad_idempotency_key" });
+    const noCard: TenantContext = { sellerId: seller.id, actorType: "SELLER_USER", actorId: owner.id, isOwner: true, permissions: [], readOnly: false };
+    expect(await purchaseAutomation(db, provider, noCard, { idempotencyKey: newKey(), consent })).toEqual({ ok: false, reason: "card_required" });
     expect(await db.automationPayment.count()).toBe(0);
+    expect(provider.charges).toHaveLength(0);
+
+    const r = await purchaseAutomation(db, provider, s.ctx, { idempotencyKey: newKey(), consent });
+    expect(r).toMatchObject({ ok: true, kind: "INITIAL" });
+    const p = await db.automationPayment.findFirstOrThrow();
+    expect(p).toMatchObject({ consentNoticeVersion: AUTOMATION_CONSENT.version, amount: AUTOMATION_PRICE });
+    // 동의 시각(DB 시계)은 결제 확정보다 앞선다
+    expect(p.consentAgreedAt.getTime()).toBeLessThanOrEqual(p.paidAt!.getTime());
   });
 
-  it("결제 확정 전에 취소한 작업에 결제가 들어오면 작업은 다시 열지 않고 환불 판단 기록을 남긴다", async () => {
+  it("결제 확정 전에 취소한 작업에 결제가 들어오면 작업은 다시 열지 않고 환불 처리 대기로 둔다", async () => {
     const provider = new FlakyLookupProvider();
     const s = await shopWithCard();
     provider.failNext = "timeout_after_charge";
     provider.lookupDown = 1;
-    const r = await purchaseAutomation(db, provider, s.ctx, { idempotencyKey: newKey() });
+    const r = await purchaseAutomation(db, provider, s.ctx, { idempotencyKey: newKey(), consent });
     if (!r.ok) throw new Error(r.reason);
     expect(await cancelJob(db, s.ctx, r.jobId)).toMatchObject({ ok: true, job: { status: "CANCELED" } });
     await reconcileAutomationPayments(db, provider, { olderThanMs: 0 });
     expect((await job(r.jobId)).status).toBe("CANCELED");
-    expect((await db.automationPayment.findFirstOrThrow()).status).toBe("PAID");
+    expect(await db.automationPayment.findFirstOrThrow()).toMatchObject({ status: "REFUND_PENDING", refundReason: "canceled_before_start" });
     expect(await db.auditLog.count({ where: { action: "automation.paid_after_cancel" } })).toBe(1);
   });
 });
@@ -154,8 +175,8 @@ describe("중복 결제·재전송·버튼 연타", () => {
     const provider = new FakeBillingProvider();
     const s = await shopWithCard();
     const k = newKey();
-    const first = await purchaseAutomation(db, provider, s.ctx, { idempotencyKey: k });
-    const again = await purchaseAutomation(db, provider, s.ctx, { idempotencyKey: k });
+    const first = await purchaseAutomation(db, provider, s.ctx, { idempotencyKey: k, consent });
+    const again = await purchaseAutomation(db, provider, s.ctx, { idempotencyKey: k, consent });
     expect(first).toMatchObject({ ok: true, replayed: false });
     expect(again).toMatchObject({ ok: true, replayed: true, jobId: first.ok ? first.jobId : "" });
     expect(provider.charges).toHaveLength(1);
@@ -165,11 +186,11 @@ describe("중복 결제·재전송·버튼 연타", () => {
     const provider = new FakeBillingProvider();
     const s = await shopWithCard();
     const k = newKey();
-    const same = await Promise.all(Array.from({ length: 10 }, () => purchaseAutomation(db, provider, s.ctx, { idempotencyKey: k })));
+    const same = await Promise.all(Array.from({ length: 10 }, () => purchaseAutomation(db, provider, s.ctx, { idempotencyKey: k, consent })));
     expect(new Set(same.map((r) => (r.ok ? r.jobId : r.reason))).size).toBe(1);
 
     const t = await shopWithCard();
-    const mash = await Promise.all(Array.from({ length: 10 }, () => purchaseAutomation(db, provider, t.ctx, { idempotencyKey: newKey() })));
+    const mash = await Promise.all(Array.from({ length: 10 }, () => purchaseAutomation(db, provider, t.ctx, { idempotencyKey: newKey(), consent })));
     expect(mash.filter((r) => r.ok)).toHaveLength(1);
     expect(mash.filter((r) => !r.ok && r.reason === "job_in_progress")).toHaveLength(9);
     expect(await db.automationJob.count()).toBe(2);
@@ -182,7 +203,8 @@ describe("중복 결제·재전송·버튼 연타", () => {
     const cookie = await cookieFor(s.owner.email);
     const fake = billingProvider() as FakeBillingProvider;
     const before = fake.charges.length;
-    const call = (h: Record<string, string>) => purchaseRoute(new Request("http://localhost:3000/api/automation/purchase", { method: "POST", headers: h }));
+    const call = (h: Record<string, string>) =>
+      purchaseRoute(new Request("http://localhost:3000/api/automation/purchase", { method: "POST", headers: { ...h, "content-type": "application/json" }, body: JSON.stringify({ consent }) }));
     expect((await call(H(cookie))).status).toBe(400);
     expect((await call({ ...H(cookie, { "idempotency-key": newKey() }), origin: "http://evil.test" })).status).toBe(403);
     const k = newKey();
@@ -373,7 +395,9 @@ describe("다른 판매자·직원 접근", () => {
 
     const staff = await createSellerUser(a.seller.id, "MANAGER");
     const cookieStaff = await cookieFor(staff.email);
-    const buy = await purchaseRoute(new Request("http://localhost:3000/api/automation/purchase", { method: "POST", headers: H(cookieStaff, { "idempotency-key": newKey() }) }));
+    const buy = await purchaseRoute(
+      new Request("http://localhost:3000/api/automation/purchase", { method: "POST", headers: H(cookieStaff, { "idempotency-key": newKey() }), body: JSON.stringify({ consent }) }),
+    );
     expect(buy.status).toBe(403);
     expect((await jobsRoute(new Request("http://localhost:3000/api/automation/jobs", { headers: H(cookieStaff) }))).status).toBe(403);
 
@@ -384,5 +408,134 @@ describe("다른 판매자·직원 접근", () => {
     expect(body).toMatchObject({ id: a.jobId, status: "QUEUED", paymentStatus: "PAID", amount: AUTOMATION_PRICE, stepNumber: 1, stepCount: 5 });
     expect(body).not.toHaveProperty("fencingToken");
     expect(body).not.toHaveProperty("leaseOwner");
+  });
+});
+
+describe("환불 요청(확정 ②)", () => {
+  it("실패한 작업은 환불 처리 대기로, 완료·연결 시작 뒤 취소·이미 요청한 건은 거부한다. 연결 시작 전 취소는 환불 대상", async () => {
+    const failed = await bought();
+    await db.automationJob.update({ where: { id: failed.jobId }, data: { status: "FAILED", startedAt: new Date(), finishedAt: new Date(), lastError: "step_action_limit:test_event_verify" } });
+    expect(await requestRefund(db, failed.ctx, failed.jobId)).toMatchObject({ ok: true, job: { paymentStatus: "REFUND_PENDING" } });
+    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: failed.seller.id } })).toMatchObject({ refundReason: "failed" });
+    expect(await requestRefund(db, failed.ctx, failed.jobId)).toEqual({ ok: false, reason: "not_refundable" });
+
+    const done = await bought();
+    expect(await runOnce(db, runtime(), W)).toBe("succeeded");
+    expect(await requestRefund(db, done.ctx, done.jobId)).toEqual({ ok: false, reason: "not_refundable" });
+
+    const started = await bought();
+    const claimed = await claimNext(db, "w1");
+    expect(claimed?.job.id).toBe(started.jobId);
+    await cancelJob(db, started.ctx, started.jobId);
+    expect(await requestRefund(db, started.ctx, started.jobId)).toEqual({ ok: false, reason: "not_refundable" });
+
+    const early = await bought();
+    await cancelJob(db, early.ctx, early.jobId);
+    expect(await requestRefund(db, early.ctx, early.jobId)).toMatchObject({ ok: true, job: { status: "CANCELED", paymentStatus: "REFUND_PENDING" } });
+    expect(await db.auditLog.count({ where: { action: "automation.refund_request" } })).toBe(2);
+    // 실제 환불은 하지 않는다(REFUNDED 없음)
+    expect(await db.automationPayment.count({ where: { status: "REFUNDED" } })).toBe(0);
+  });
+
+  it("다른 판매자 작업의 환불 요청은 404", async () => {
+    const a = await bought();
+    await db.automationJob.update({ where: { id: a.jobId }, data: { status: "FAILED", finishedAt: new Date() } });
+    const b = await shopWithCard();
+    const res = await refundRoute(new Request(`http://localhost:3000/api/automation/jobs/${a.jobId}/refund-request`, { method: "POST", headers: H(await cookieFor(b.owner.email)) }), params(a.jobId));
+    expect(res.status).toBe(404);
+    expect((await db.automationPayment.findFirstOrThrow()).status).toBe("PAID");
+  });
+});
+
+describe("재연결·재설치(확정 ②)", () => {
+  async function completed() {
+    const s = await bought();
+    expect(await runOnce(db, runtime(), W)).toBe("succeeded");
+    return { ...s, target: { shopKey: `mall-${s.seller.id}`, obsPairingId: `pc-${s.seller.id}` } };
+  }
+
+  it("완료 뒤 30일 안 같은 쇼핑몰·같은 PC면 결제 없이 바로 대기열에 넣고, 검증까지 마친다", async () => {
+    const s = await completed();
+    const r = await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: newKey(), target: s.target });
+    expect(r).toMatchObject({ ok: true, kind: "RECONNECT_FREE", paymentStatus: null, jobStatus: "QUEUED" });
+    if (!r.ok) return;
+    expect(await job(r.jobId)).toMatchObject({ paymentId: null, baseJobId: s.jobId, obsTargetKey: `obs:${s.target.obsPairingId}` });
+    expect(s.provider.charges).toHaveLength(1);
+    expect(await runOnce(db, runtime(), W)).toBe("succeeded");
+    expect((await job(r.jobId)).verifiedAt).not.toBeNull();
+    // 무료 재연결은 결제가 없어 환불 대상도 아니다
+    await db.automationJob.update({ where: { id: r.jobId }, data: { status: "FAILED" } });
+    expect(await requestRefund(db, s.ctx, r.jobId)).toEqual({ ok: false, reason: "not_refundable" });
+  });
+
+  it("쇼핑몰·PC가 바뀌었거나, 권한이 해제됐거나, 30일이 지났거나, 완료한 적이 없으면 33,000원 재설치다(사유를 알려 준다)", async () => {
+    const none = await shopWithCard();
+    expect(await reconnectAutomation(db, new FakeBillingProvider(), none.ctx, { idempotencyKey: newKey(), target: { shopKey: "m", obsPairingId: "p" } })).toEqual({
+      ok: false,
+      reason: "payment_required",
+      paidReason: "no_completed_install",
+      price: REINSTALL_PRICE,
+    });
+
+    const s = await completed();
+    const ask = (target: { shopKey: string; obsPairingId: string }) => reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: newKey(), target });
+    expect(await ask({ ...s.target, shopKey: "other-mall" })).toMatchObject({ reason: "payment_required", paidReason: "shop_changed" });
+    expect(await ask({ ...s.target, obsPairingId: "other-pc" })).toMatchObject({ reason: "payment_required", paidReason: "pc_changed" });
+    await db.automationJob.update({ where: { id: s.jobId }, data: { connectionRevokedAt: new Date() } });
+    expect(await ask(s.target)).toMatchObject({ reason: "payment_required", paidReason: "connection_revoked" });
+    await db.automationJob.update({ where: { id: s.jobId }, data: { connectionRevokedAt: null, finishedAt: new Date(Date.now() - 31 * 86_400_000) } });
+    expect(await ask(s.target)).toMatchObject({ reason: "payment_required", paidReason: "window_expired" });
+    await db.automationJob.update({ where: { id: s.jobId }, data: { finishedAt: new Date(Date.now() - 29 * 86_400_000) } });
+    expect(await ask(s.target)).toMatchObject({ ok: true, kind: "RECONNECT_FREE" });
+    expect(await db.automationPayment.count()).toBe(1);
+  });
+
+  it("무료 재연결 완료는 30일을 늘리지 않고, 재설치 결제는 동의를 받아 33,000원으로 한다", async () => {
+    const s = await completed();
+    const free = await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: newKey(), target: s.target });
+    expect(free).toMatchObject({ ok: true, kind: "RECONNECT_FREE" });
+    expect(await runOnce(db, runtime(), W)).toBe("succeeded");
+    await db.automationJob.update({ where: { id: s.jobId }, data: { finishedAt: new Date(Date.now() - 31 * 86_400_000) } });
+    expect(await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: newKey(), target: s.target })).toMatchObject({ paidReason: "window_expired" });
+
+    expect(await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: newKey(), target: s.target, consent: { agreed: false } })).toEqual({ ok: false, reason: "consent_required" });
+    const paid = await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: newKey(), target: s.target, consent });
+    expect(paid).toMatchObject({ ok: true, kind: "REINSTALL", paymentStatus: "PAID", jobStatus: "QUEUED" });
+    expect(s.provider.charges.map((c) => c.amount)).toEqual([AUTOMATION_PRICE, REINSTALL_PRICE]);
+    if (!paid.ok) return;
+    expect(await job(paid.jobId)).toMatchObject({ baseJobId: s.jobId, obsTargetKey: `obs:${s.target.obsPairingId}` });
+    // 재설치를 마치면 그 완료가 새 30일 기준이 된다
+    expect(await runOnce(db, runtime(), W)).toBe("succeeded");
+    expect(await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: newKey(), target: s.target })).toMatchObject({ ok: true, kind: "RECONNECT_FREE" });
+  });
+
+  it("무료 재연결인데 실제로 연결된 PC·쇼핑몰이 기준과 다르면 실패로 멈춘다(요청 값만 믿지 않음)", async () => {
+    const s = await completed();
+    const r = await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: newKey(), target: s.target });
+    if (!r.ok) throw new Error(r.reason);
+    const rt = runtime();
+    rt.obs.pairing.set(s.seller.id, "different-pc");
+    expect(await runOnce(db, rt, W)).toBe("failed");
+    expect(await job(r.jobId)).toMatchObject({ status: "FAILED", lastError: "reconnect_target_mismatch", verifiedAt: null });
+  });
+
+  it("라우트: 대상 형식이 틀리면 400, 유료 대상이면 402와 금액·사유, 동의를 붙이면 결제 후 201", async () => {
+    const s = await completed();
+    const cookie = await cookieFor(s.owner.email);
+    const call = (body: unknown) =>
+      reconnectRoute(
+        new Request("http://localhost:3000/api/automation/reconnect", {
+          method: "POST",
+          headers: H(cookie, { "idempotency-key": newKey(), "content-type": "application/json" }),
+          body: JSON.stringify(body),
+        }),
+      );
+    expect((await call({ target: { shopKey: "" } })).status).toBe(400);
+    const ask = await call({ target: { ...s.target, obsPairingId: "new-pc" } });
+    expect(ask.status).toBe(402);
+    expect(await ask.json()).toEqual({ error: "payment_required", paidReason: "pc_changed", price: REINSTALL_PRICE });
+    const pay = await call({ target: { ...s.target, obsPairingId: "new-pc" }, consent });
+    expect(pay.status).toBe(201);
+    expect(await pay.json()).toMatchObject({ kind: "REINSTALL", paymentStatus: "PAID" });
   });
 });

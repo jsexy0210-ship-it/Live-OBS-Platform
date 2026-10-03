@@ -1,7 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 import type { BillingProvider } from "../billing/provider";
 import { AUTOMATION_LIMITS } from "./config";
-import { sanitizeObservation, validateDecision, type ActionOutcome, type AutomationRuntime, type BrowserSession, type JobScope } from "./ports";
+import { sanitizeObservation, validateDecision, type ActionOutcome, type ConnectionFacts, type VerificationEvidence, type AutomationRuntime, type BrowserSession, type JobScope } from "./ports";
 import { reconcileAutomationPayments } from "./purchase";
 import { FencingError, advanceStep, claimNext, finishJob, parkForCustomer, reapExpired, retryLater, toVerifying, touch, type Claimed } from "./queue";
 import { STEPS } from "./steps";
@@ -32,12 +32,18 @@ export async function executeJob(db: PrismaClient, rt: AutomationRuntime, { job,
   let session: BrowserSession | null = null;
   let verifying = job.status === "VERIFYING";
   let cost = job.costUsed;
+  let evidence: VerificationEvidence | undefined;
 
   const fail = async (reason: string): Promise<RunResult> => (await finishJob(db, claim, "FAILED", reason), "failed");
   const retry = async (reason: string): Promise<RunResult> => (await retryLater(db, claim, reason, opts.random), "retry");
 
   try {
     const secrets = await rt.vault.forJob(scope);
+    // 무료 재연결은 실제로 연결된 쇼핑몰·PC가 기준 작업과 같아야 한다(요청 값만 믿지 않는다)
+    const base =
+      job.kind === "RECONNECT_FREE" && job.baseJobId
+        ? await db.automationJob.findFirst({ where: { id: job.baseJobId, sellerId: job.sellerId }, select: { shopKey: true, obsPairingId: true } })
+        : null;
     for (let stepIndex = job.stepIndex; stepIndex < STEPS.length; stepIndex++) {
       const step = STEPS[stepIndex];
       if (step.kind === "verify" && !verifying) {
@@ -45,6 +51,7 @@ export async function executeJob(db: PrismaClient, rt: AutomationRuntime, { job,
         verifying = true;
       }
       const history: string[] = [];
+      const facts: ConnectionFacts = {};
       let verified = false;
       let done = false;
       for (let i = 0; i < maxActions && !done; i++) {
@@ -69,14 +76,23 @@ export async function executeJob(db: PrismaClient, rt: AutomationRuntime, { job,
         }
         if (out.kind === "retryable") return await retry(out.reason);
         if (out.kind === "fatal") return await fail(out.reason);
-        if (out.verified) verified = true;
+        Object.assign(facts, out.facts);
+        if (out.verified) {
+          verified = true;
+          evidence = out.evidence ?? { verified: true };
+        }
         // 검증 단계는 테스트 표시를 실제로 확인한 뒤에만 끝낸다(모델이 끝났다고 해도 넘어가지 않는다)
         if (out.stepDone && (step.kind !== "verify" || verified)) done = true;
       }
       if (!done) return await retry(`step_action_limit:${step.key}`);
-      await advanceStep(db, claim, stepIndex + 1);
+      if (base && ((facts.shopKey && facts.shopKey !== base.shopKey) || (facts.obsPairingId && facts.obsPairingId !== base.obsPairingId))) {
+        return await fail("reconnect_target_mismatch");
+      }
+      await advanceStep(db, claim, stepIndex + 1, facts);
     }
-    await finishJob(db, claim, "SUCCEEDED");
+    // 검증 단계를 이번 실행에서 통과했어야 완료다(증거 없이 완료하지 않는다)
+    if (!evidence) return await retry("verification_missing");
+    await finishJob(db, claim, "SUCCEEDED", undefined, evidence);
     return "succeeded";
   } catch (e) {
     // 자리를 잃었으면(만료·취소·다른 작업자) 아무것도 쓰지 않고 멈춘다

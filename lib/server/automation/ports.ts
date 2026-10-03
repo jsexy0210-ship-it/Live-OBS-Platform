@@ -37,8 +37,12 @@ export interface AutomationPlanner {
   decide(input: PlannerInput): Promise<PlannerDecision>;
 }
 
+// 연결 결과로 알게 된 값(무료 재연결 판정용)과 검증 증거. 비밀값을 넣지 않는다.
+export type ConnectionFacts = { shopKey?: string; obsPairingId?: string };
+export type VerificationEvidence = Readonly<Record<string, string | number | boolean>>;
+
 export type ActionOutcome =
-  | { kind: "ok"; stepDone: boolean; verified?: boolean }
+  | { kind: "ok"; stepDone: boolean; verified?: boolean; facts?: ConnectionFacts; evidence?: VerificationEvidence }
   | { kind: "needs_customer"; action: AutomationCustomerAction }
   | { kind: "retryable"; reason: string }
   | { kind: "fatal"; reason: string };

@@ -58,6 +58,8 @@ export class FakeBrowserExecutor implements BrowserExecutor {
   // 세션별 쿠키 저장소. 세션끼리 나눠 쓰지 않는지 테스트가 확인한다.
   readonly cookies = new Map<string, Map<string, string>>();
   pageText: (scope: JobScope, secrets?: JobSecrets) => string = () => "Cafe24 관리자";
+  // 판매자별로 연결된 쇼핑몰(기본: mall-<판매자 id>). 쇼핑몰 교체를 흉내 낼 때 바꾼다.
+  readonly shopKey = new Map<string, string>();
   // 테스트용: 행동 결과를 바꾼다
   outcome: ((scope: JobScope, action: AutomationAction) => ActionOutcome | undefined) | null = null;
 
@@ -88,7 +90,8 @@ export class FakeBrowserExecutor implements BrowserExecutor {
         const o = self.outcome?.(scope, action);
         if (o) return o;
         if (action.type === "navigate") jar.set("session", `${scope.sellerId}:${scope.jobId}`);
-        return { kind: "ok", stepDone: action.type === "step_done" };
+        if (action.type === "step_done") return { kind: "ok", stepDone: true, facts: { shopKey: self.shopKey.get(scope.sellerId) ?? `mall-${scope.sellerId}` } };
+        return { kind: "ok", stepDone: false };
       },
       async close() {
         self.live.delete(id);
@@ -104,6 +107,8 @@ export class FakeObsBridge implements ObsBridge {
   // 테스트 이벤트가 오버레이에 보이지 않는 판매자
   readonly notShowing = new Set<string>();
   readonly performed: { scope: JobScope; type: AutomationAction["type"] }[] = [];
+  // 판매자별 OBS pairing(PC). 기본: pc-<판매자 id>. PC 교체를 흉내 낼 때 바꾼다.
+  readonly pairing = new Map<string, string>();
 
   constructor(
     private readonly delayMs = 0,
@@ -121,8 +126,12 @@ export class FakeObsBridge implements ObsBridge {
     await sleep(this.delayMs);
     this.performed.push({ scope, type: action.type });
     if (this.disconnected.has(scope.sellerId)) return { kind: "needs_customer", action: "LOCAL_TOOL" };
-    if (action.type === "check_overlay_shows_test_event") return { kind: "ok", stepDone: false, verified: !this.notShowing.has(scope.sellerId) };
-    return { kind: "ok", stepDone: action.type === "step_done" };
+    if (action.type === "check_overlay_shows_test_event") {
+      if (this.notShowing.has(scope.sellerId)) return { kind: "ok", stepDone: false, verified: false };
+      return { kind: "ok", stepDone: false, verified: true, evidence: { testEvent: `test-${scope.jobId}`, shownOnOverlay: true } };
+    }
+    if (action.type === "step_done") return { kind: "ok", stepDone: true, facts: { obsPairingId: this.pairing.get(scope.sellerId) ?? `pc-${scope.sellerId}` } };
+    return { kind: "ok", stepDone: false };
   }
 }
 

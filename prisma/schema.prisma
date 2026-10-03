@@ -1131,14 +1131,26 @@ model OrderNotification {
 
 // ───────────── 자동 설치·연결 상품 (docs/AUTOMATION.md) ─────────────
 // 결제 상태(AutomationPayment)와 연결 작업 상태(AutomationJob)를 따로 둔다. 작업은 서버가 결제를 PAID로 확정한
-// 같은 트랜잭션에서만 QUEUED가 된다. 판매자 테이블과는 Prisma 관계를 두지 않는다(Seller 모델을 고치지 않기 위해,
+// 같은 트랜잭션에서만 QUEUED가 된다(무료 재연결은 서버가 대상 판정 뒤 바로 QUEUED). 판매자 테이블과는 Prisma 관계를 두지 않는다(Seller 모델을 고치지 않기 위해,
 // sellerId는 세션에서만 얻고 모든 조회에 조건으로 붙인다). 블록 안 자식은 (sellerId, 부모 id) 복합 외래키로 묶는다.
 // 부분 유니크(판매자당 열린 작업 1개, 같은 OBS 대상 실행 1개)와 CHECK는 마이그레이션 SQL에 있다.
 
+// 환불(2026-10-04 대표님 확정 ②): 성공 기준(테스트 주문이 고객 OBS 오버레이에 표시)을 통과하지 못하고 지원으로도 해결되지 않으면 전액 환불.
+// 연결 시작 뒤 단순 변심 환불은 없다. REFUND_PENDING = 환불 요청을 받아 처리 대기. 실제 환불 실행은 대표님 승인 대상이라 1차 코드에는 없다.
 enum AutomationPaymentStatus {
   PENDING
   PAID
   FAILED
+  REFUND_PENDING
+  REFUNDED
+}
+
+// INITIAL = 처음 자동 연결(110,000원), REINSTALL = 무료 대상이 아닌 재설치(33,000원),
+// RECONNECT_FREE = 완료 뒤 30일 안 같은 쇼핑몰·같은 PC(OBS pairing) 재연결(무료, 결제 없음)
+enum AutomationJobKind {
+  INITIAL
+  REINSTALL
+  RECONNECT_FREE
 }
 
 enum AutomationJobStatus {
@@ -1162,17 +1174,23 @@ enum AutomationCustomerAction {
 }
 
 model AutomationPayment {
-  id                String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerId          String                  @db.Uuid
-  amount            Int
-  status            AutomationPaymentStatus @default(PENDING)
+  id                   String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId             String                  @db.Uuid
+  amount               Int
+  status               AutomationPaymentStatus @default(PENDING)
   // 판매자가 보낸 Idempotency-Key. 같은 키로 다시 요청하면 같은 결제·작업을 돌려준다.
-  idempotencyKey    String
-  providerPaymentId String?
-  failureReason     String?
-  paidAt            DateTime?               @db.Timestamptz(3)
-  createdAt         DateTime                @default(now()) @db.Timestamptz(3)
-  updatedAt         DateTime                @updatedAt @db.Timestamptz(3)
+  idempotencyKey       String
+  // 결제 전 고지(연결 시작 뒤 단순 변심 환불 없음, 실패 시 전액 환불) 동의 기록. 동의가 없으면 결제를 만들지 않는다. 시각은 DB 시계.
+  consentNoticeVersion String
+  consentAgreedAt      DateTime                @db.Timestamptz(3)
+  providerPaymentId    String?
+  failureReason        String?
+  paidAt               DateTime?               @db.Timestamptz(3)
+  refundReason         String?
+  refundRequestedAt    DateTime?               @db.Timestamptz(3)
+  refundedAt           DateTime?               @db.Timestamptz(3)
+  createdAt            DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime                @updatedAt @db.Timestamptz(3)
 
   job AutomationJob?
 
@@ -1182,34 +1200,46 @@ model AutomationPayment {
 }
 
 model AutomationJob {
-  id               String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerId         String                    @db.Uuid
-  paymentId        String                    @db.Uuid
-  status           AutomationJobStatus       @default(AWAITING_PAYMENT)
+  id                   String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId             String                    @db.Uuid
+  kind                 AutomationJobKind         @default(INITIAL)
+  // 무료 재연결(RECONNECT_FREE)만 결제가 없다(마이그레이션 CHECK)
+  paymentId            String?                   @db.Uuid
+  // 재연결·재설치가 기준으로 삼은 이전 완료 작업
+  baseJobId            String?                   @db.Uuid
+  status               AutomationJobStatus       @default(AWAITING_PAYMENT)
   // 같은 OBS에 동시에 두 작업이 붙지 않게 잠그는 대상 키(판매자 OBS 연결 단위)
-  obsTargetKey     String
+  obsTargetKey         String
   // 진행 중인 단계 순번(0부터). 단계 목록은 lib/server/automation/steps.ts
-  stepIndex        Int                       @default(0)
-  customerAction   AutomationCustomerAction?
+  stepIndex            Int                       @default(0)
+  customerAction       AutomationCustomerAction?
   // 고객 행동 대기 마감. 지나면 FAILED(customer_action_timeout)
-  actionDeadlineAt DateTime?                 @db.Timestamptz(3)
-  attempts         Int                       @default(0)
-  maxAttempts      Int                       @default(5)
+  actionDeadlineAt     DateTime?                 @db.Timestamptz(3)
+  attempts             Int                       @default(0)
+  maxAttempts          Int                       @default(5)
   // 판단 모델 호출 비용(원 단위 추정). 상한을 넘기면 멈춘다.
-  costUsed         Int                       @default(0)
-  costLimit        Int                       @default(3000)
-  runAfter         DateTime                  @default(now()) @db.Timestamptz(3)
-  leaseOwner       String?
-  leaseExpiresAt   DateTime?                 @db.Timestamptz(3)
+  costUsed             Int                       @default(0)
+  costLimit            Int                       @default(3000)
+  runAfter             DateTime                  @default(now()) @db.Timestamptz(3)
+  leaseOwner           String?
+  leaseExpiresAt       DateTime?                 @db.Timestamptz(3)
   // 실행 자리를 잡을 때마다 1씩 오른다. 작업자는 이 값이 같을 때만 쓴다(fencing).
-  fencingToken     Int                       @default(0)
-  lastError        String?
-  startedAt        DateTime?                 @db.Timestamptz(3)
-  finishedAt       DateTime?                 @db.Timestamptz(3)
-  createdAt        DateTime                  @default(now()) @db.Timestamptz(3)
-  updatedAt        DateTime                  @updatedAt @db.Timestamptz(3)
+  fencingToken         Int                       @default(0)
+  lastError            String?
+  // 연결 결과: 외부 쇼핑몰 식별자(예: Cafe24 몰 id)와 고객 PC의 OBS pairing id. 무료 재연결 판정에 쓴다.
+  shopKey              String?
+  obsPairingId         String?
+  // 쇼핑몰 앱 권한 해제 등으로 연결이 끊긴 시각. 있으면 무료 재연결 대상이 아니다.
+  connectionRevokedAt  DateTime?                 @db.Timestamptz(3)
+  // 성공 기준 검증 증거(테스트 주문 표시 확인 결과). 비밀값은 넣지 않는다.
+  verifiedAt           DateTime?                 @db.Timestamptz(3)
+  verificationEvidence Json?
+  startedAt            DateTime?                 @db.Timestamptz(3)
+  finishedAt           DateTime?                 @db.Timestamptz(3)
+  createdAt            DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime                  @updatedAt @db.Timestamptz(3)
 
-  payment AutomationPayment    @relation(fields: [sellerId, paymentId], references: [sellerId, id])
+  payment AutomationPayment?   @relation(fields: [sellerId, paymentId], references: [sellerId, id])
   events  AutomationJobEvent[]
 
   @@unique([sellerId, id])
@@ -1217,6 +1247,7 @@ model AutomationJob {
   @@unique([sellerId, paymentId])
   @@index([status, runAfter])
   @@index([sellerId, createdAt])
+  @@index([sellerId, status, finishedAt])
 }
 
 // 작업 상태 전이 기록(누가·언제·어느 fencing 토큰으로). 비밀값은 넣지 않는다.

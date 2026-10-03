@@ -1,5 +1,6 @@
 import type { AutomationCustomerAction, AutomationJob, AutomationJobStatus, Prisma, PrismaClient } from "@prisma/client";
 import { AUTOMATION_LIMITS } from "./config";
+import type { ConnectionFacts, VerificationEvidence } from "./ports";
 import { LEASED, sourcesOf } from "./states";
 
 // 작업 큐: 실행 자리 잡기(lease) · fencing 토큰 · 만료 회수 · 다시 시도 간격.
@@ -108,7 +109,11 @@ const RELEASE = { leaseOwner: null, leaseExpiresAt: null } as const;
 export const touch = (db: PrismaClient, c: Claim, costUsed: number, leaseMs: number = AUTOMATION_LIMITS.leaseMs) =>
   fencedWrite(db, c, (now) => ({ data: { costUsed, leaseExpiresAt: plus(now, leaseMs) } }));
 
-export const advanceStep = (db: PrismaClient, c: Claim, stepIndex: number) => fencedWrite(db, c, () => ({ data: { stepIndex } }));
+// 다음 단계로. 이 단계에서 알게 된 연결 결과(쇼핑몰·OBS pairing)를 함께 남긴다.
+export const advanceStep = (db: PrismaClient, c: Claim, stepIndex: number, facts: ConnectionFacts = {}) =>
+  fencedWrite(db, c, () => ({
+    data: { stepIndex, ...(facts.shopKey ? { shopKey: facts.shopKey.slice(0, 200) } : {}), ...(facts.obsPairingId ? { obsPairingId: facts.obsPairingId.slice(0, 200) } : {}) },
+  }));
 
 export const toVerifying = (db: PrismaClient, c: Claim) => fencedWrite(db, c, () => ({ to: "VERIFYING", data: {} }));
 
@@ -129,10 +134,16 @@ export const retryLater = (db: PrismaClient, c: Claim, reason: string, random: (
     return { to: "QUEUED", data: { ...RELEASE, attempts, lastError, runAfter: plus(now, backoffMs(attempts, random)) }, detail: { reason: lastError } };
   });
 
-export const finishJob = (db: PrismaClient, c: Claim, to: "SUCCEEDED" | "FAILED", reason?: string) =>
+// 완료는 검증 증거와 함께만 남긴다(성공 기준: 테스트 주문이 고객 OBS 오버레이에 표시됨).
+export const finishJob = (db: PrismaClient, c: Claim, to: "SUCCEEDED" | "FAILED", reason?: string, evidence?: VerificationEvidence) =>
   fencedWrite(db, c, (now) => ({
     to,
-    data: { ...RELEASE, finishedAt: now, ...(reason ? { lastError: reason.slice(0, 200) } : {}) },
+    data: {
+      ...RELEASE,
+      finishedAt: now,
+      ...(reason ? { lastError: reason.slice(0, 200) } : {}),
+      ...(evidence ? { verifiedAt: now, verificationEvidence: evidence as Prisma.InputJsonValue } : {}),
+    },
     ...(reason ? { detail: { reason: reason.slice(0, 200) } } : {}),
   }));
 
