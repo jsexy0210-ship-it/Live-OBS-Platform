@@ -2,10 +2,10 @@
 
 import "../../../../../../styles/seller-stock.css";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
-import { api, failMessage, type Product } from "../../../../../../components/seller/api";
+import { api, failMessage } from "../../../../../../components/seller/api";
 import { INT4_MAX, MAX_SEARCH_LENGTH, parseAmount, textLength } from "../../../../../../components/seller/format";
 import { cleanText } from "../../../../../../lib/server/text/clean";
 
@@ -29,21 +29,19 @@ function memoError(memo: string): string | null {
   return cleanText(sent, 100, "name") ? null : "쓸 수 없는 글자가 있어요";
 }
 
-// 상품은 200개씩 불러온다. 검색은 서버 이름 검색(q: 상품·옵션 이름, 대소문자 무시)으로 하고, 다음 쪽은 「상품 더 불러오기」로 이어 붙인다.
-// 재고 조건(5 이하·품절)은 옵션 단위라 불러온 줄에서 거른다.
-type Page = { products: Product[]; nextCursor: string | null };
-const PRODUCT_PAGE = 200;
-const fetchProducts = (q: string, cursor: string | null) =>
-  api<Page>(`/api/seller/products?limit=${PRODUCT_PAGE}${q ? `&q=${encodeURIComponent(q)}` : ""}${cursor ? `&cursor=${cursor}` : ""}`);
-// 서버 검색과 같은 기준(NFKC, 대소문자 무시)으로 줄을 다시 거른다. 상품 이름이 맞으면 그 상품의 옵션은 모두, 옵션 이름만 맞으면 그 옵션만 보인다
-const norm = (v: string) => v.normalize("NFKC").trim().toLowerCase();
+// 옵션 단위 재고 목록(GET /api/seller/products/options)을 200개씩 불러온다. 검색(q: 상품·옵션 이름, 대소문자 무시)과
+// 재고 조건(stock: out=0, low=1~5, 옵션마다)은 서버에서 거르고, 다음 쪽은 「옵션 더 불러오기」로 이어 붙인다.
+type OptionStock = { productId: string; productName: string; optionId: string; optionName: string; stock: number };
+type Page = { options: OptionStock[]; nextCursor: string | null };
+const OPTION_PAGE = 200;
+const fetchOptions = (q: string, f: Filter, cursor: string | null) =>
+  api<Page>(
+    `/api/seller/products/options?limit=${OPTION_PAGE}${q ? `&q=${encodeURIComponent(q)}` : ""}${f !== "all" ? `&stock=${f}` : ""}${cursor ? `&cursor=${cursor}` : ""}`,
+  );
 const SEARCH_DELAY_MS = 300;
 
-// 한 번에 그리는 줄 수. 옵션이 수만 개여도 화면이 멈추지 않게 이만큼씩 늘려 그린다
-const PAGE_ROWS = 200;
-
-const toRows = (products: Product[]): Row[] =>
-  products.flatMap((p) => p.options.map((o) => ({ key: o.id, productId: p.id, productName: p.name, optionId: o.id, optionName: o.name, stock: o.stock })));
+const toRows = (options: OptionStock[]): Row[] =>
+  options.map((o) => ({ key: o.optionId, productId: o.productId, productName: o.productName, optionId: o.optionId, optionName: o.optionName, stock: o.stock }));
 
 function signed(n: number) {
   return n > 0 ? `+${n.toLocaleString("ko-KR")}` : n < 0 ? `−${Math.abs(n).toLocaleString("ko-KR")}` : "—";
@@ -72,6 +70,7 @@ export default function StockPage() {
   const [pool, setPool] = useState<Record<string, Row>>({});
   const [cursor, setCursor] = useState<string | null>(null);
   const [loadedQ, setLoadedQ] = useState("");
+  const [loadedFilter, setLoadedFilter] = useState<Filter>("all");
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   // 검색 요청이 실패하면(400 말고) 같은 검색어로 다시 부를 수 있게 한다
@@ -81,13 +80,13 @@ export default function StockPage() {
   const loadId = useRef(0);
   const loadedOnce = useRef(false);
   // keep: 다시 불러온 뒤 남겨 둘 바꾼 값(적용 중에 새로 적은 값은 지우지 않는다). 없으면 reset일 때 모두 지운다
-  const load = useCallback(async (q: string, reset: boolean, keep?: (prev: Record<string, string>) => Record<string, string>) => {
+  const load = useCallback(async (q: string, f: Filter, reset: boolean, keep?: (prev: Record<string, string>) => Record<string, string>) => {
     const id = ++loadId.current;
     if (reset) setState((s) => (s.kind === "ok" ? s : { kind: "loading" }));
     setSearching(true);
     setSearchFailed(false);
     setLoadingMore(false);
-    const r = await fetchProducts(q, null);
+    const r = await fetchOptions(q, f, null);
     if (id !== loadId.current) return;
     setSearching(false);
     if (!r.ok) {
@@ -98,10 +97,11 @@ export default function StockPage() {
     }
     loadedOnce.current = true;
     setSearchError(null);
-    const got = toRows(r.data.products);
+    const got = toRows(r.data.options);
     setRows(got);
     setCursor(r.data.nextCursor);
     setLoadedQ(q);
+    setLoadedFilter(f);
     setPool((p) => ({ ...(reset && !keep ? {} : p), ...Object.fromEntries(got.map((x) => [x.key, x])) }));
     if (reset) {
       setNext((prev) => (keep ? keep(prev) : {}));
@@ -110,22 +110,22 @@ export default function StockPage() {
     setState({ kind: "ok" });
   }, []);
 
-  const loadMoreProducts = async () => {
+  const loadMoreOptions = async () => {
     if (!cursor) return;
     const id = loadId.current;
     setLoadingMore(true);
-    const r = await fetchProducts(loadedQ, cursor);
+    const r = await fetchOptions(loadedQ, loadedFilter, cursor);
     if (id !== loadId.current) return;
     setLoadingMore(false);
-    if (!r.ok) return setNotice({ kind: "neg", text: "상품을 더 불러오지 못했어요. 다시 눌러 주세요" });
-    const got = toRows(r.data.products);
+    if (!r.ok) return setNotice({ kind: "neg", text: "옵션을 더 불러오지 못했어요. 다시 눌러 주세요" });
+    const got = toRows(r.data.options);
     setRows((rs) => [...rs, ...got]);
     setCursor(r.data.nextCursor);
     setPool((p) => ({ ...p, ...Object.fromEntries(got.map((x) => [x.key, x])) }));
   };
 
   useEffect(() => {
-    void load("", true);
+    void load("", "all", true);
   }, [load]);
 
   // 검색어를 멈추고 잠시 뒤 서버에서 다시 찾는다
@@ -133,15 +133,26 @@ export default function StockPage() {
   // 적용이 끝난 뒤 다시 불러올 때는 그사이 바뀐 검색어를 쓴다(적용 중에 검색을 바꿔도 새 결과를 옛 검색어로 덮지 않게)
   const searchQRef = useRef(searchQ);
   searchQRef.current = searchQ;
+  const filterRef = useRef(filter);
+  filterRef.current = filter;
   const firstSearch = useRef(true);
   useEffect(() => {
     if (firstSearch.current) {
       firstSearch.current = false;
       return;
     }
-    const t = setTimeout(() => void load(searchQ, false), SEARCH_DELAY_MS);
+    const t = setTimeout(() => void load(searchQ, filterRef.current, false), SEARCH_DELAY_MS);
     return () => clearTimeout(t);
   }, [searchQ, load]);
+  // 재고 조건 칩을 바꾸면 바로 서버에서 다시 거른다
+  const firstFilter = useRef(true);
+  useEffect(() => {
+    if (firstFilter.current) {
+      firstFilter.current = false;
+      return;
+    }
+    void load(searchQRef.current, filter, false);
+  }, [filter, load]);
 
   const target = (r: Row) => (next[r.key] === undefined ? r.stock : parseAmount(next[r.key]));
   const rowError = (r: Row): string | null => {
@@ -152,21 +163,12 @@ export default function StockPage() {
     return null;
   };
 
-  // 검색어를 바꾼 뒤 결과가 오기 전에는 지금 보이는 줄이 옛 결과라, 모두 선택·한꺼번에 적기를 막는다
-  const pending = searching || searchQ !== loadedQ;
-  // 서버가 돌려준 결과(rows)를, 그 결과를 찾은 검색어(loadedQ)와 재고 조건으로 거른다
-  const visible = useMemo(() => {
-    const q = norm(loadedQ);
-    return rows.filter((r) => {
-      if (filter === "low" && !(r.stock > 0 && r.stock <= LOW)) return false;
-      if (filter === "out" && r.stock !== 0) return false;
-      return !q || norm(r.productName).includes(q) || norm(r.optionName).includes(q);
-    });
-  }, [rows, loadedQ, filter]);
-  // 그리는 줄은 PAGE_ROWS개씩. 검색·걸러 보기를 바꾸면 처음부터 다시 센다
-  const [shownCount, setShownCount] = useState(PAGE_ROWS);
-  useEffect(() => setShownCount(PAGE_ROWS), [loadedQ, filter]);
-  const shown = visible.slice(0, shownCount);
+  // 검색어·재고 조건을 바꾼 뒤 결과가 오기 전에는 지금 보이는 줄이 옛 결과라, 모두 선택·한꺼번에 적기를 막는다
+  const pending = searching || searchQ !== loadedQ || filter !== loadedFilter;
+  // 검색·재고 조건은 서버가 걸러 준 결과 그대로다
+  const visible = rows;
+  // 불러온 줄(200개씩)은 모두 그린다. 더 그릴 줄은 「옵션 더 불러오기」로만 늘어난다
+  const shown = visible;
   // 검색·걸러 보기를 바꾸면 선택은 지금 결과와 겹치는 것만 남긴다(조건 밖 옵션이 「한꺼번에 적기」에 섞이지 않게)
   useEffect(() => {
     setSelected((s) => {
@@ -231,7 +233,7 @@ export default function StockPage() {
     setProgress(null);
     setBulkReason(null);
     setBulkMemo("");
-    await load(searchQRef.current, true, (prev) => Object.fromEntries(Object.entries(prev).filter(([k, v]) => sentValues[k] !== v)));
+    await load(searchQRef.current, filterRef.current, true, (prev) => Object.fromEntries(Object.entries(prev).filter(([k, v]) => sentValues[k] !== v)));
     setHistKey((k) => k + 1);
     if (done) setToast(`재고 ${done}건을 바꿨어요`);
     if (conflicts.length || failed.length) {
@@ -242,15 +244,8 @@ export default function StockPage() {
     }
   };
 
-  // 「모두 선택」은 지금 화면에 그려진 옵션만 고른다. 걸러 본 결과가 그린 줄보다 많으면 「N개 모두 선택」으로 전부 고를 수 있다
+  // 「모두 선택」은 지금 불러온 옵션을 모두 고른다(서버 결과가 더 있으면 「옵션 더 불러오기」 뒤에 고른다)
   const allVisibleSelected = shown.length > 0 && shown.every((r) => selected.has(r.key));
-  const allFilteredSelected = visible.length > 0 && visible.every((r) => selected.has(r.key));
-  const selectAllFiltered = () =>
-    setSelected((s) => {
-      const out = new Set(s);
-      visible.forEach((r) => out.add(r.key));
-      return out;
-    });
   const toggleAll = () =>
     setSelected((s) => {
       const out = new Set(s);
@@ -309,7 +304,7 @@ export default function StockPage() {
               ) : state.status === 402 ? (
                 <Locked />
               ) : (
-                <ErrorState title="재고를 불러오지 못했어요" onRetry={() => void load(searchQ, true)} />
+                <ErrorState title="재고를 불러오지 못했어요" onRetry={() => void load(searchQ, filter, true)} />
               ))}
           </div>
         ) : (
@@ -360,39 +355,18 @@ export default function StockPage() {
               {searchFailed && (
                 <div className="row stock-selinfo" role="alert" data-testid="search-failed">
                   <span className="t-l2 c-neg">「{searchQ || "전체"}」 결과를 불러오지 못했어요</span>
-                  <button className="btn btn-sm btn-out" type="button" onClick={() => void load(searchQRef.current, false)}>
+                  <button className="btn btn-sm btn-out" type="button" onClick={() => void load(searchQRef.current, filterRef.current, false)}>
                     다시 시도
                   </button>
                 </div>
               )}
-              {/* 재고 조건(5 이하·품절)은 옵션 단위라 서버가 아닌 불러온 줄에서 거른다(옵션 단위 서버 필터는 HANDOFF 미완료) */}
-              {filter !== "all" && (
-                <div className="row stock-selinfo" data-testid="chip-scope">
-                  <span className="t-l2 c-alt">
-                    불러온 상품 중에서 보여 줘요{cursor ? " · 상품이 더 있으면 「상품 더 불러오기」로 이어서 찾아요" : ""}
-                  </span>
-                </div>
-              )}
-              {!searchError && visible.length > shown.length && (
-                <div className="row stock-selinfo" data-testid="stock-selinfo">
-                  <span className="t-l2 c-alt num">
-                    선택 {selected.size.toLocaleString("ko-KR")}개 · 전체 {visible.length.toLocaleString("ko-KR")}개
-                  </span>
-                  {!allFilteredSelected && (
-                    <button className="btn btn-sm btn-text" type="button" onClick={selectAllFiltered} disabled={pending}>
-                      {visible.length.toLocaleString("ko-KR")}개 모두 선택
-                    </button>
-                  )}
-                </div>
-              )}
-
               {searchError ? null : visible.length === 0 ? (
                 <div className="st" style={{ boxShadow: "none" }}>
                   <div className="st-ic">?</div>
                   <span className="t">
-                    {rows.length > 0 ? "조건에 맞는 옵션이 없어요" : loadedQ ? `「${loadedQ}」에 해당하는 상품이 없어요` : "아직 재고를 관리할 상품이 없어요"}
+                    {loadedFilter !== "all" ? "조건에 맞는 옵션이 없어요" : loadedQ ? `「${loadedQ}」에 해당하는 상품이 없어요` : "아직 재고를 관리할 상품이 없어요"}
                   </span>
-                  {(rows.length > 0 || loadedQ) && (
+                  {(loadedFilter !== "all" || loadedQ) && (
                     <button
                       className="btn btn-sm btn-text"
                       type="button"
@@ -502,27 +476,19 @@ export default function StockPage() {
                   </tbody>
                 </table>
               )}
-              {searchError ? null : visible.length > shown.length ? (
+              {!searchError && cursor && (
                 <div className="row center" style={{ padding: "12px 20px" }}>
-                  <button className="btn btn-sm btn-out" type="button" onClick={() => setShownCount((c) => c + PAGE_ROWS)}>
-                    {Math.min(PAGE_ROWS, visible.length - shown.length).toLocaleString("ko-KR")}개 더 보기 ({(visible.length - shown.length).toLocaleString("ko-KR")}개 남음)
+                  <button className="btn btn-sm btn-out" type="button" onClick={() => void loadMoreOptions()} disabled={loadingMore}>
+                    {loadingMore ? "불러오고 있어요" : "옵션 더 불러오기"}
                   </button>
                 </div>
-              ) : (
-                cursor && (
-                  <div className="row center" style={{ padding: "12px 20px" }}>
-                    <button className="btn btn-sm btn-out" type="button" onClick={() => void loadMoreProducts()} disabled={loadingMore}>
-                      {loadingMore ? "불러오고 있어요" : "상품 더 불러오기"}
-                    </button>
-                  </div>
-                )
               )}
               <div className="row between" style={{ padding: "12px 20px", gap: 12, flexWrap: "wrap" }}>
                 <span className="t-l2 c-alt">
                   {searching ? (
                     <span data-testid="stock-searching">찾고 있어요 · </span>
                   ) : null}
-                  불러온 옵션 {rows.length.toLocaleString("ko-KR")}개{cursor ? " · 상품이 더 있어요" : ""} · 바뀐 옵션 {changed.length}개 · 적용하기 전에는 반영되지 않아요
+                  불러온 옵션 {rows.length.toLocaleString("ko-KR")}개{cursor ? " · 옵션이 더 있어요" : ""} · 바뀐 옵션 {changed.length}개 · 적용하기 전에는 반영되지 않아요
                   {loadingMore && <span data-testid="stock-loading-more"> · 상품을 더 불러오고 있어요</span>}
                 </span>
                 {invalid.length > 0 && <span className="err">고칠 칸이 {invalid.length}개 있어요. 그 칸은 빼고 적용해요</span>}
