@@ -1179,8 +1179,19 @@ model BuyerRejoinBlock {
 
 // 앱 안 정기 실행 heartbeat(인스턴스·작업별 마지막 실행). 감시는 앱 밖 수집기(scripts/ops/monitor.mjs)가 이 표를 읽어 판단한다.
 // 작업 이름 "scheduler.tick"은 정기 실행 루프 자체(작업을 잠금 때문에 건너뛰어도 남음).
+// 앱 인스턴스(이름별) 상태의 유일한 기준(ops/metrics.ts). 프로세스가 시작할 때 등록하며 새 세대 값(uuid)을 쓰고 종료 표시를 비운다.
+model OpsInstance {
+  name         String    @id
+  generation   String
+  // 정상 종료(SIGTERM·SIGINT) 때 자기 세대일 때만 남기는 종료 시각. 없으면 아무리 오래돼도 살아 있는 인스턴스로 본다.
+  retiredAt    DateTime? @db.Timestamptz(3)
+  registeredAt DateTime  @db.Timestamptz(3)
+}
+
+// 정기 실행 heartbeat(인스턴스·세대·작업별). 지표는 OpsInstance의 지금 세대 행만 본다.
 model OpsHeartbeat {
   instance   String
+  generation String
   job        String
   lastRunAt  DateTime  @db.Timestamptz(3)
   // done | skipped | failed
@@ -1188,14 +1199,9 @@ model OpsHeartbeat {
   lastError  String?
   // 마지막 성공 시각(실패가 이어져도 언제부터인지 알 수 있게)
   lastOkAt   DateTime? @db.Timestamptz(3)
-  // 인스턴스가 정상 종료(SIGTERM·SIGINT)할 때 자기 행에 남기는 종료 시각. 없으면 아무리 오래돼도 살아 있는 인스턴스로 보고
-  // 멈춤 판단 대상으로 둔다(heartbeat만 고장 난 인스턴스를 놓치지 않게). 같은 이름으로 새로 시작해 등록할 때만 비운다.
-  retiredAt  DateTime? @db.Timestamptz(3)
-  // 프로세스가 시작할 때 등록하며 정한 세대 값(uuid). 종료 표시는 자기 세대 행에만 건다(같은 이름의 후속 프로세스 행을 건드리지 않게).
-  generation String?
   updatedAt  DateTime  @updatedAt @db.Timestamptz(3)
 
-  @@id([instance, job])
+  @@id([instance, generation, job])
 }
 
 // 인프라 감시 사건(수집기가 남기는 incident 열기·닫기 등). 마스터 관리자(최고관리자)가 읽는다.

@@ -33,6 +33,7 @@ const ev = (over: Record<string, unknown> = {}) => ({ source: "monitor", eventId
 describe("정기 실행 heartbeat", () => {
   it("작업마다 결과와 마지막 실행·성공 시각을 남기고, 루프 자체도 scheduler.tick으로 남긴다. 실패가 이어져도 마지막 성공 시각은 그대로다", async () => {
     vi.stubEnv("OPS_INSTANCE_NAME", "web-1");
+    const gen = await registerInstance(db);
     let fail = false;
     const jobs: ScheduledJob[] = [{ name: "test.job", run: async () => { if (fail) throw new Error("boom"); return 1; } }];
     const t1 = new Date("2026-10-04T00:00:00Z");
@@ -41,9 +42,9 @@ describe("정기 실행 heartbeat", () => {
     const t2 = new Date("2026-10-04T01:00:00Z");
     await runScheduledJobs(db, t2, jobs);
     const rows = await db.opsHeartbeat.findMany({ orderBy: { job: "asc" } });
-    expect(rows.map((r) => [r.instance, r.job, r.lastStatus])).toEqual([
-      ["web-1", "scheduler.tick", "failed"],
-      ["web-1", "test.job", "failed"],
+    expect(rows.map((r) => [r.instance, r.generation, r.job, r.lastStatus])).toEqual([
+      ["web-1", gen, "scheduler.tick", "failed"],
+      ["web-1", gen, "test.job", "failed"],
     ]);
     const job = rows.find((r) => r.job === "test.job")!;
     expect(job.lastRunAt).toEqual(t2);
@@ -51,120 +52,180 @@ describe("정기 실행 heartbeat", () => {
     expect(job.lastError).toBe("boom");
     fail = false;
     await runScheduledJobs(db, new Date("2026-10-04T02:00:00Z"), jobs);
-    expect(await db.opsHeartbeat.findUniqueOrThrow({ where: { instance_job: { instance: "web-1", job: "test.job" } } })).toMatchObject({ lastStatus: "done", lastError: null });
+    expect(await db.opsHeartbeat.findUniqueOrThrow({ where: { instance_generation_job: { instance: "web-1", generation: gen, job: "test.job" } } })).toMatchObject({ lastStatus: "done", lastError: null });
     expect(opsInstanceName()).toBe("web-1");
+  });
+
+  it("등록하지 않은 프로세스는 heartbeat를 쓰지 않는다", async () => {
+    expect(await recordHeartbeat(db, "job", "done", new Date(), undefined, "web-none", "never-registered")).toBe(0);
+    expect(await db.opsHeartbeat.count()).toBe(0);
   });
 });
 
 describe("heartbeat 보완(Codex)", () => {
+  const t = (m: number) => new Date(Date.UTC(2026, 9, 4, 0, m));
+  const live = async () => (await opsMetrics(db)).heartbeats.map((h) => `${h.instance}:${h.job}`).sort();
+  const retired = async () => (await opsMetrics(db)).retiredHeartbeats.map((h) => `${h.instance}:${h.job}`).sort();
+
   it("건너뛴 실행(다른 인스턴스가 잠금)은 마지막 실행 시각만 남기고 상태·성공 시각·오류는 그대로 둔다", async () => {
-    const t = (h: number) => new Date(Date.UTC(2026, 9, 4, h));
-    await recordHeartbeat(db, "job", "done", t(0), undefined, "web-1");
-    await recordHeartbeat(db, "job", "failed", t(1), "boom", "web-1");
-    await recordHeartbeat(db, "job", "skipped", t(2), undefined, "web-1");
-    expect(await db.opsHeartbeat.findUniqueOrThrow({ where: { instance_job: { instance: "web-1", job: "job" } } })).toMatchObject({
-      lastRunAt: t(2), lastStatus: "failed", lastError: "boom", lastOkAt: t(0),
-    });
-    // 처음부터 건너뛴 작업은 성공 시각이 없다
-    await recordHeartbeat(db, "other", "skipped", t(3), undefined, "web-1");
-    expect(await db.opsHeartbeat.findUniqueOrThrow({ where: { instance_job: { instance: "web-1", job: "other" } } })).toMatchObject({ lastStatus: "skipped", lastOkAt: null });
+    const gen = await registerInstance(db, "web-1");
+    await recordHeartbeat(db, "job", "done", t(0), undefined, "web-1", gen);
+    await recordHeartbeat(db, "job", "failed", t(1), "boom", "web-1", gen);
+    await recordHeartbeat(db, "job", "skipped", t(2), undefined, "web-1", gen);
+    const row = await db.opsHeartbeat.findUniqueOrThrow({ where: { instance_generation_job: { instance: "web-1", generation: gen, job: "job" } } });
+    expect(row).toMatchObject({ lastStatus: "failed", lastError: "boom", lastOkAt: t(0), lastRunAt: t(2) });
+    // 처음부터 건너뛴 작업은 상태 skipped, 성공 시각 없음
+    await recordHeartbeat(db, "other", "skipped", t(3), undefined, "web-1", gen);
+    expect(await db.opsHeartbeat.findUniqueOrThrow({ where: { instance_generation_job: { instance: "web-1", generation: gen, job: "other" } } })).toMatchObject({ lastStatus: "skipped", lastOkAt: null });
   });
 
   it("종료 표시(정상 종료 신호)가 없는 인스턴스는 아무리 오래돼도 heartbeats에 남고, 표시가 있는 인스턴스만 retiredHeartbeats로 가며 표시 7일 뒤 지워진다. 늦게 도착한 heartbeat는 표시를 풀지 못하고, 새로 시작해 등록하면 풀린다", async () => {
-    const now = new Date("2026-10-10T00:00:00Z");
+    const now = new Date();
     const ago = (ms: number) => new Date(now.getTime() - ms);
-    await recordHeartbeat(db, "scheduler.tick", "done", ago(3600_000), undefined, "web-new");
-    // heartbeat만 고장 난 살아 있는 인스턴스(10일째 기록 없음, 종료 표시 없음)
-    await recordHeartbeat(db, "scheduler.tick", "done", ago(10 * 86_400_000), undefined, "web-stuck");
-    await recordHeartbeat(db, "scheduler.tick", "done", ago(9 * 86_400_000), undefined, "web-gone");
-    await recordHeartbeat(db, "job.a", "done", ago(9 * 86_400_000), undefined, "web-gone");
-    await recordHeartbeat(db, "scheduler.tick", "done", ago(2 * 86_400_000), undefined, "web-old");
-    expect(await markInstanceRetired(db, ago(8 * 86_400_000), "web-gone")).toBe(2);
-    expect(await markInstanceRetired(db, ago(86_400_000), "web-old")).toBe(1);
-    const m = await opsMetrics(db);
-    expect(m.heartbeats.map((h) => h.instance).sort()).toEqual(["web-new", "web-stuck"]);
-    expect(m.retiredHeartbeats.map((h) => h.instance).sort()).toEqual(["web-gone", "web-gone", "web-old"]);
+    const gens: Record<string, string> = {};
+    for (const name of ["web-new", "web-stuck", "web-gone", "web-old"]) gens[name] = await registerInstance(db, name);
+    await recordHeartbeat(db, "scheduler.tick", "done", ago(3600_000), undefined, "web-new", gens["web-new"]);
+    // 10일째 기록이 없지만 종료 표시도 없다(heartbeat만 고장 난 인스턴스일 수 있다)
+    await recordHeartbeat(db, "scheduler.tick", "done", ago(10 * 86_400_000), undefined, "web-stuck", gens["web-stuck"]);
+    await recordHeartbeat(db, "scheduler.tick", "done", ago(9 * 86_400_000), undefined, "web-gone", gens["web-gone"]);
+    await recordHeartbeat(db, "job.a", "done", ago(9 * 86_400_000), undefined, "web-gone", gens["web-gone"]);
+    await recordHeartbeat(db, "scheduler.tick", "done", ago(2 * 86_400_000), undefined, "web-old", gens["web-old"]);
+    expect(await markInstanceRetired(db, ago(8 * 86_400_000), "web-gone", gens["web-gone"])).toBe(1);
+    expect(await markInstanceRetired(db, ago(86_400_000), "web-old", gens["web-old"])).toBe(1);
+    expect(await live()).toEqual(["web-new:scheduler.tick", "web-stuck:scheduler.tick"]);
+    expect(await retired()).toEqual(["web-gone:job.a", "web-gone:scheduler.tick", "web-old:scheduler.tick"]);
     // 표시 뒤 7일 지난 web-gone만 지운다(종료 표시 없는 web-stuck은 오래돼도 남는다)
     expect(await purgeRetiredHeartbeats(db, now)).toBe(2);
-    expect((await db.opsHeartbeat.findMany()).map((h) => h.instance).sort()).toEqual(["web-new", "web-old", "web-stuck"]);
-    // 종료 표시 뒤 늦게 도착한 heartbeat 쓰기(종료 직전에 시작된 실행)는 표시를 되돌리지 않는다
-    for (const st of ["done", "failed", "skipped"] as const) await recordHeartbeat(db, "scheduler.tick", st, now, "late", "web-old");
-    expect((await opsMetrics(db)).heartbeats.map((h) => h.instance).sort()).toEqual(["web-new", "web-stuck"]);
-    // 같은 이름으로 새로 시작해 등록하면 살아 있는 인스턴스로 돌아온다
-    await registerInstance(db, "web-old");
-    expect((await opsMetrics(db)).heartbeats.map((h) => h.instance).sort()).toEqual(["web-new", "web-old", "web-stuck"]);
+    expect((await db.opsInstance.findMany()).map((i) => i.name).sort()).toEqual(["web-new", "web-old", "web-stuck"]);
+    // 종료 뒤 늦게 도착한 heartbeat(종료 직전에 시작된 실행)는 표시를 되돌리지 않는다
+    for (const st of ["done", "failed", "skipped"] as const) await recordHeartbeat(db, "scheduler.tick", st, now, "late", "web-old", gens["web-old"]);
+    expect(await live()).toEqual(["web-new:scheduler.tick", "web-stuck:scheduler.tick"]);
+    // 같은 이름으로 새로 시작해 등록하면 살아 있는 인스턴스로 돌아오고, 이전 세대 행은 빠진다
+    const again = await registerInstance(db, "web-old");
+    expect(await retired()).toEqual([]);
+    await recordHeartbeat(db, "scheduler.tick", "done", now, undefined, "web-old", again);
+    expect(await live()).toEqual(["web-new:scheduler.tick", "web-old:scheduler.tick", "web-stuck:scheduler.tick"]);
     expect((await import("../../lib/server/jobs/scheduler")).SCHEDULED_JOBS.map((j) => j.name)).toContain("ops_heartbeat.purge_retired");
   });
 
-  it("같은 이름의 새 프로세스가 등록한 뒤 이전 프로세스가 종료돼도 새 프로세스 행은 살아 있는 쪽에 남는다(종료 표시는 자기 세대 행에만)", async () => {
+  it("같은 이름의 새 프로세스가 등록한 뒤 이전 프로세스가 종료돼도 새 프로세스는 살아 있는 쪽에 남는다(종료 표시는 자기 세대에만)", async () => {
     const now = new Date();
     const oldGen = await registerInstance(db, "web-x");
     await recordHeartbeat(db, "scheduler.tick", "done", now, undefined, "web-x", oldGen);
-    // 같은 이름(OPS_INSTANCE_NAME 고정)으로 새 프로세스가 뜨고 등록한다
     const newGen = await registerInstance(db, "web-x");
     expect(newGen).not.toBe(oldGen);
     await recordHeartbeat(db, "scheduler.tick", "done", now, undefined, "web-x", newGen);
-    // 이전 프로세스가 늦게 종료 신호를 받는다
     expect(await markInstanceRetired(db, now, "web-x", oldGen)).toBe(0);
-    expect((await opsMetrics(db)).heartbeats.map((h) => h.instance)).toEqual(["web-x"]);
-    // 새 프로세스의 종료는 자기 행에 걸린다
+    expect(await live()).toEqual(["web-x:scheduler.tick"]);
     expect(await markInstanceRetired(db, now, "web-x", newGen)).toBe(1);
-    expect((await opsMetrics(db)).retiredHeartbeats.map((h) => h.instance)).toEqual(["web-x"]);
+    expect(await retired()).toEqual(["web-x:scheduler.tick"]);
   });
 
-  it("새 세대가 등록한 뒤 이전 세대의 늦은 heartbeat는 새 행의 상태·시각·오류를 덮지 않고, 다른 세대가 쓰는 이름에 새 행도 만들지 않는다", async () => {
-    const t = (m: number) => new Date(Date.UTC(2026, 9, 4, 0, m));
+  it("새 세대가 등록한 뒤 이전 세대의 늦은 heartbeat는 쓰지 않고 새 세대의 상태·시각·오류는 그대로다", async () => {
     const oldGen = await registerInstance(db, "web-y");
     await recordHeartbeat(db, "scheduler.tick", "done", t(0), undefined, "web-y", oldGen);
     const newGen = await registerInstance(db, "web-y");
     await recordHeartbeat(db, "scheduler.tick", "done", t(1), undefined, "web-y", newGen);
-    // 이전 세대의 늦은 기록(실패·건너뜀·새 작업)
-    await recordHeartbeat(db, "scheduler.tick", "failed", t(2), "old boom", "web-y", oldGen);
-    await recordHeartbeat(db, "scheduler.tick", "skipped", t(3), undefined, "web-y", oldGen);
-    await recordHeartbeat(db, "old.job", "done", t(3), undefined, "web-y", oldGen);
-    const rows = await db.opsHeartbeat.findMany({ where: { instance: "web-y" } });
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ job: "scheduler.tick", generation: newGen, lastStatus: "done", lastError: null, lastRunAt: t(1), lastOkAt: t(1) });
-    // 내 세대 기록은 그대로 쓴다(실패는 성공 시각을 두고, 건너뜀은 실행 시각만)
+    expect(await recordHeartbeat(db, "scheduler.tick", "failed", t(2), "old boom", "web-y", oldGen)).toBe(0);
+    expect(await recordHeartbeat(db, "scheduler.tick", "skipped", t(3), undefined, "web-y", oldGen)).toBe(0);
+    expect(await recordHeartbeat(db, "old.job", "done", t(3), undefined, "web-y", oldGen)).toBe(0);
+    const [h] = (await opsMetrics(db)).heartbeats;
+    expect(h).toMatchObject({ instance: "web-y", job: "scheduler.tick", lastStatus: "done", lastError: null, lastRunAt: t(1), lastOkAt: t(1) });
+    expect(await live()).toEqual(["web-y:scheduler.tick"]);
     await recordHeartbeat(db, "scheduler.tick", "failed", t(4), "new boom", "web-y", newGen);
     await recordHeartbeat(db, "scheduler.tick", "skipped", t(5), undefined, "web-y", newGen);
-    await recordHeartbeat(db, "new.job", "done", t(5), undefined, "web-y", newGen);
-    const after = await db.opsHeartbeat.findMany({ where: { instance: "web-y" }, orderBy: { job: "asc" } });
-    expect(after.map((r) => r.job)).toEqual(["new.job", "scheduler.tick"]);
-    expect(after[1]).toMatchObject({ lastStatus: "failed", lastError: "new boom", lastRunAt: t(5), lastOkAt: t(1) });
+    expect((await opsMetrics(db)).heartbeats[0]).toMatchObject({ lastStatus: "failed", lastError: "new boom", lastRunAt: t(5), lastOkAt: t(1) });
+  });
+
+  it("배포로 사라진 작업의 행은 새 세대 등록 뒤 heartbeats에서 빠지고 정리가 지운다", async () => {
+    const a = await registerInstance(db, "web-z");
+    await recordHeartbeat(db, "kept.job", "done", t(0), undefined, "web-z", a);
+    await recordHeartbeat(db, "removed.job", "done", t(0), undefined, "web-z", a);
+    const b = await registerInstance(db, "web-z");
+    await recordHeartbeat(db, "kept.job", "done", t(1), undefined, "web-z", b);
+    expect(await live()).toEqual(["web-z:kept.job"]);
+    expect(await purgeRetiredHeartbeats(db, new Date())).toBe(2);
+    expect((await db.opsHeartbeat.findMany()).map((r) => [r.generation, r.job])).toEqual([[b, "kept.job"]]);
+  });
+
+  it("등록과 이전 세대 heartbeat가 겹쳐도 새 세대의 heartbeat는 막히지 않고, 지표에는 지금 세대만 보인다", async () => {
+    const oldGen = await registerInstance(db, "web-r");
+    // 이전 세대가 새 작업 행을 넣는 것과 새 프로세스 등록을 동시에
+    const results = await Promise.all([
+      ...Array.from({ length: 10 }, (_, i) => recordHeartbeat(db, `old.job.${i}`, "done", t(0), undefined, "web-r", oldGen)),
+      registerInstance(db, "web-r", "gen-new"),
+      ...Array.from({ length: 10 }, (_, i) => recordHeartbeat(db, `old.job.late.${i}`, "done", t(0), undefined, "web-r", oldGen)),
+    ]);
+    expect(results).toContain("gen-new");
+    // 경합 결과로 이전 세대 행이 남아 있어도(직접 넣어 둔다) 새 세대는 쓰고, 지표는 새 세대만 본다
+    await db.opsHeartbeat.create({ data: { instance: "web-r", generation: oldGen, job: "orphan.job", lastRunAt: t(0), lastStatus: "done" } });
+    expect(await recordHeartbeat(db, "scheduler.tick", "done", t(1), undefined, "web-r", "gen-new")).toBe(1);
+    expect(await live()).toEqual(["web-r:scheduler.tick"]);
   });
 
   it("시작 때 DB가 잠깐 실패해도 등록을 다시 시도해 성공하고, 그 뒤 실행의 heartbeat가 살아 있는 쪽에 들어간다", async () => {
     vi.stubEnv("OPS_INSTANCE_NAME", "web-retry");
     let fails = 2;
     const flaky = new Proxy(db, {
-      get(t, p) {
-        const v = Reflect.get(t, p);
-        if (p !== "opsHeartbeat") return typeof v === "function" ? v.bind(t) : v;
-        return new Proxy(v, {
-          get: (d, f) =>
-            f === "updateMany" && fails > 0
-              ? async () => {
-                  fails--;
-                  throw new Error("연결 실패(테스트)");
-                }
-              : Reflect.get(d, f),
-        });
+      get(target, p) {
+        const v = Reflect.get(target, p);
+        if (p === "$executeRaw" && fails > 0) {
+          return async () => {
+            fails--;
+            throw new Error("연결 실패(테스트)");
+          };
+        }
+        return typeof v === "function" ? v.bind(target) : v;
       },
     }) as typeof db;
     const gen = await registerUntilDone(flaky, 10);
     expect(fails).toBe(0);
     expect(gen).toEqual(expect.any(String));
     await runScheduledJobs(db, new Date(), [{ name: "job", run: async () => 0 }]);
-    const live = (await opsMetrics(db)).heartbeats.filter((h) => h.instance === "web-retry");
-    expect(live.map((h) => h.job).sort()).toEqual(["job", "scheduler.tick"]);
+    expect((await live()).filter((x) => x.startsWith("web-retry:"))).toEqual(["web-retry:job", "web-retry:scheduler.tick"]);
     expect((await db.opsHeartbeat.findMany({ where: { instance: "web-retry" } })).every((r) => r.generation === gen)).toBe(true);
+  });
+
+  it("등록 중에 종료 신호를 받으면 등록이 끝난 뒤 스케줄러를 시작하지 않고 새 세대로 바로 종료 표시를 남긴다", async () => {
+    vi.stubEnv("OPS_INSTANCE_NAME", "web-boot");
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let entered!: () => void;
+    const started = new Promise<void>((r) => (entered = r));
+    let first = true;
+    const slow = new Proxy(db, {
+      get(target, p) {
+        const v = Reflect.get(target, p);
+        if (p === "$executeRaw" && first) {
+          first = false;
+          return async (...args: unknown[]) => {
+            entered();
+            await gate;
+            return (v as (...a: unknown[]) => Promise<number>).apply(target, args);
+          };
+        }
+        return typeof v === "function" ? v.bind(target) : v;
+      },
+    }) as typeof db;
+    try {
+      const registering = registerUntilDone(slow, 10);
+      await started;
+      const retiring = retireInstance(db, 2000);
+      setTimeout(release, 100);
+      const [gen] = await Promise.all([registering, retiring]);
+      expect(gen).toBeNull();
+      const inst = await db.opsInstance.findUniqueOrThrow({ where: { name: "web-boot" } });
+      expect(inst.retiredAt).not.toBeNull();
+      expect(await runScheduledJobs(db, new Date(), [{ name: "job", run: async () => 1 }])).toEqual([]);
+    } finally {
+      resetShutdownForTests();
+    }
   });
 
   it("종료 처리 중에 진행 중이던 실행이 끝나도 종료 표시가 되돌아가지 않고, 종료 뒤에는 새 실행·heartbeat를 쓰지 않는다", async () => {
     vi.stubEnv("OPS_INSTANCE_NAME", "web-1");
+    await registerInstance(db);
     try {
-      // 앞선 실행으로 heartbeat 행이 있다
       await runScheduledJobs(db, new Date(), [{ name: "slow", run: async () => 0 }]);
       let release!: () => void;
       const gate = new Promise<void>((r) => (release = r));
@@ -175,12 +236,9 @@ describe("heartbeat 보완(Codex)", () => {
       const retiring = retireInstance(db, 2000);
       setTimeout(release, 100);
       await Promise.all([running, retiring]);
-      const rows = await db.opsHeartbeat.findMany({ where: { instance: "web-1" } });
-      expect(rows.length).toBeGreaterThan(0);
-      for (const r of rows) expect(r.retiredAt, r.job).not.toBeNull();
-      // 종료 뒤에는 돌지 않는다
+      expect((await db.opsInstance.findUniqueOrThrow({ where: { name: "web-1" } })).retiredAt).not.toBeNull();
+      expect(await live()).toEqual([]);
       expect(await runScheduledJobs(db, new Date(), [{ name: "slow", run: async () => 1 }])).toEqual([]);
-      expect((await db.opsHeartbeat.findMany({ where: { instance: "web-1" } })).every((r) => r.retiredAt !== null)).toBe(true);
     } finally {
       resetShutdownForTests();
     }
@@ -202,6 +260,7 @@ describe("운영 지표 GET /api/admin/ops/metrics", () => {
     for (const role of ["OPERATIONS", "CS", "READ_ONLY"] as const) expect((await metrics(await adminCookie(role))).status, role).toBe(403);
     vi.stubEnv("OPS_INGEST_TOKEN", TOKEN);
     await ingest({ events: [ev(), ev({ eventId: "e2", key: "cert", kind: "incident_open", occurredAt: "2026-10-04T01:01:00Z" }), ev({ eventId: "e3", kind: "incident_close", occurredAt: "2026-10-04T01:05:00Z", message: "복구" })] }, TOKEN);
+    await registerInstance(db);
     await runScheduledJobs(db, new Date(), [{ name: "test.ok", run: async () => 0 }]);
     const r = await metrics(await adminCookie("SUPER_ADMIN"));
     expect(r.status).toBe(200);

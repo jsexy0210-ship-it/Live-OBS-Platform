@@ -11,63 +11,75 @@ type Db = PrismaClient | Prisma.TransactionClient;
 // 인스턴스 이름: OPS_INSTANCE_NAME이 있으면 그 값, 없으면 호스트 이름(컨테이너 id)
 export const opsInstanceName = () => (process.env.OPS_INSTANCE_NAME || hostname()).slice(0, 100);
 
+// 인스턴스 상태의 유일한 기준은 OpsInstance(이름별 현재 세대·종료 시각)다. heartbeat는 (인스턴스, 세대, 작업)별로 쌓이고,
+// 지표는 인스턴스의 현재 세대와 같은 행만 「현재」로 본다. 그래서 이전 세대 프로세스의 늦은 기록, 배포로 사라진 작업의 행은
+// 자동으로 빠지고 정기 정리가 지운다. 종료는 명시 신호(SIGTERM·SIGINT)로만 판단한다: 나이만으로 종료로 보면 heartbeat만 고장 난
+// 살아 있는 인스턴스를 놓친다. 종료 표시가 없는 인스턴스의 행은 오래돼도 heartbeats에 남아 멈춤으로 보인다.
+
 // 이 프로세스의 세대 값. registerInstance가 성공하면 정한다(개발 핫 리로드에도 하나만 두도록 globalThis).
 const generationState = globalThis as unknown as { liveObsOpsGeneration?: string };
 export const currentGeneration = (): string | null => generationState.liveObsOpsGeneration ?? null;
 
-// 정기 실행 heartbeat 남기기. 실패해도 정기 실행을 멈추지 않는다(호출한 쪽이 잡는다).
+// 정기 실행 heartbeat 남기기. 실패해도 정기 실행을 멈추지 않는다(호출한 쪽이 잡는다). 쓴 행 수(0 또는 1)를 돌려준다.
 // - done: 마지막 실행·성공 시각을 갱신하고 오류를 비운다.
 // - failed: 마지막 실행·상태·오류를 남기고 성공 시각은 그대로.
 // - skipped(다른 인스턴스가 잠금을 잡음): 실행 결과를 모르므로 마지막 실행 시각만 남긴다(상태·성공 시각·오류는 그대로).
+// 같은 트랜잭션에서 OpsInstance 행을 FOR SHARE로 읽어 내 세대가 지금 세대일 때만 쓴다(등록의 FOR UPDATE와 줄을 세움).
+// 등록하지 않았거나 다른 세대가 등록했으면 쓰지 않는다.
 export async function recordHeartbeat(
-  db: Db,
+  db: PrismaClient,
   job: string,
   status: "done" | "skipped" | "failed",
   now: Date,
   error?: string,
   instance = opsInstanceName(),
   generation = currentGeneration(),
-) {
+): Promise<number> {
+  if (!generation) return 0;
   const err = status === "failed" ? (error?.slice(0, 500) ?? null) : null;
-  // 갱신은 내 세대 행에만 한다(세대가 다르면 0행으로 조용히 무시): 이전 세대 프로세스의 늦은 heartbeat가 같은 이름으로 새로 등록한
-  // 프로세스의 상태·시각·오류를 덮지 못하게. 새 행도 같은 이름에 다른 세대 행이 있으면 만들지 않는다(그 이름은 다른 세대가 쓰는 중).
-  // 종료 표시(retiredAt)는 여기서 절대 건드리지 않는다(종료 뒤 늦게 커밋돼도 그대로). 표시를 비우는 곳은 registerInstance뿐이다.
-  const set =
-    status === "skipped"
-      ? Prisma.sql`"lastRunAt" = EXCLUDED."lastRunAt", "updatedAt" = EXCLUDED."updatedAt"`
-      : Prisma.sql`"lastRunAt" = EXCLUDED."lastRunAt", "lastStatus" = EXCLUDED."lastStatus", "lastError" = EXCLUDED."lastError",
-          "lastOkAt" = ${status === "done" ? Prisma.sql`EXCLUDED."lastOkAt"` : Prisma.sql`"OpsHeartbeat"."lastOkAt"`}, "updatedAt" = EXCLUDED."updatedAt"`;
-  await db.$executeRaw`
-    INSERT INTO "OpsHeartbeat" ("instance", "job", "generation", "lastRunAt", "lastStatus", "lastError", "lastOkAt", "updatedAt")
-    SELECT ${instance}, ${job}, ${generation}::text, ${now}::timestamptz(3), ${status}, ${err}::text, ${status === "done" ? now : null}::timestamptz(3), now()
-    WHERE NOT EXISTS (SELECT 1 FROM "OpsHeartbeat" WHERE "instance" = ${instance} AND "generation" IS DISTINCT FROM ${generation}::text)
-    ON CONFLICT ("instance", "job") DO UPDATE SET ${set}
-    WHERE "OpsHeartbeat"."generation" IS NOT DISTINCT FROM EXCLUDED."generation"`;
+  return db.$transaction(async (tx) => {
+    const [cur] = await tx.$queryRaw<{ generation: string }[]>`SELECT "generation" FROM "OpsInstance" WHERE "name" = ${instance} FOR SHARE`;
+    if (cur?.generation !== generation) return 0;
+    await tx.opsHeartbeat.upsert({
+      where: { instance_generation_job: { instance, generation, job } },
+      create: { instance, generation, job, lastRunAt: now, lastStatus: status, lastError: err, lastOkAt: status === "done" ? now : null },
+      update:
+        status === "skipped"
+          ? { lastRunAt: now }
+          : { lastRunAt: now, lastStatus: status, lastError: err, ...(status === "done" ? { lastOkAt: now } : {}) },
+    });
+    return 1;
+  });
 }
 
-// 인스턴스 등록: 프로세스가 새로 시작할 때 한 번(jobs/scheduler.ts startScheduler, 성공할 때까지 다시 시도). 새 세대 값을 정해
-// 같은 이름의 행 모두에 기록하고 종료 표시를 비운다. 이후 이 프로세스의 종료 표시는 이 세대 행에만 걸린다.
-export async function registerInstance(db: Db, instance = opsInstanceName(), generation: string = randomUUID()): Promise<string> {
-  await db.opsHeartbeat.updateMany({ where: { instance }, data: { generation, retiredAt: null } });
+// 인스턴스 등록: 프로세스가 새로 시작할 때 한 번(jobs/scheduler.ts, 성공할 때까지 다시 시도). OpsInstance 행을 잠그고(없으면 만든다)
+// 새 세대 값을 쓰고 종료 표시를 비운다. heartbeat 행은 건드리지 않는다(이전 세대 행은 지표에서 빠지고 정리가 지운다).
+export async function registerInstance(db: PrismaClient, instance = opsInstanceName(), generation: string = randomUUID()): Promise<string> {
+  await db.$executeRaw`
+    INSERT INTO "OpsInstance" ("name", "generation", "retiredAt", "registeredAt") VALUES (${instance}, ${generation}, NULL, now())
+    ON CONFLICT ("name") DO UPDATE SET "generation" = EXCLUDED."generation", "retiredAt" = NULL, "registeredAt" = EXCLUDED."registeredAt"`;
   generationState.liveObsOpsGeneration = generation;
   return generation;
 }
 
-// 종료 표시: 인스턴스가 정상 종료할 때 자기 행 모두에 retiredAt을 남긴다(jobs/scheduler.ts 종료 신호 처리).
-// 배포마다 컨테이너 이름(인스턴스)이 바뀌어 옛 행이 남는데, 나이만으로 종료로 보면 heartbeat만 고장 난 살아 있는 인스턴스를 놓친다.
-// 그래서 종료는 명시 신호로만 판단한다. 표시가 없는 행은 오래돼도 지표 heartbeats에 남아 멈춤으로 보인다.
-// 자기 세대 행에만 건다: 같은 이름으로 먼저 등록한 후속 프로세스가 있으면 이전 프로세스의 종료가 그 행을 종료 처리하지 않는다.
+// 종료 표시: 인스턴스가 정상 종료할 때(jobs/scheduler.ts 종료 신호 처리) 자기 세대일 때만 OpsInstance에 남긴다.
+// 같은 이름으로 먼저 등록한 후속 프로세스가 있으면 이전 프로세스의 종료는 아무것도 바꾸지 않는다.
 export async function markInstanceRetired(db: Db, now: Date, instance = opsInstanceName(), generation = currentGeneration()): Promise<number> {
-  const r = await db.opsHeartbeat.updateMany({ where: { instance, generation, retiredAt: null }, data: { retiredAt: now } });
-  return r.count;
+  if (!generation) return 0;
+  return db.$executeRaw`UPDATE "OpsInstance" SET "retiredAt" = ${now} WHERE "name" = ${instance} AND "generation" = ${generation} AND "retiredAt" IS NULL`;
 }
 
-// 종료 표시가 있고 그 뒤 7일이 지난 행은 정기 실행이 지운다(jobs/scheduler.ts)
+// 정리(정기 실행 ops_heartbeat.purge_retired): ① 인스턴스의 지금 세대가 아닌 heartbeat 행(이전 세대·배포로 사라진 작업 포함)과
+// ② 종료 표시 뒤 7일이 지난 인스턴스와 그 행을 지운다. 지운 heartbeat 행 수를 돌려준다.
 export const HEARTBEAT_PURGE_AFTER_MS = 7 * 24 * 3600_000;
 
 export async function purgeRetiredHeartbeats(db: Db, now: Date): Promise<number> {
-  const r = await db.opsHeartbeat.deleteMany({ where: { retiredAt: { lt: new Date(now.getTime() - HEARTBEAT_PURGE_AFTER_MS) } } });
-  return r.count;
+  const before = new Date(now.getTime() - HEARTBEAT_PURGE_AFTER_MS);
+  const stale = await db.$executeRaw`
+    DELETE FROM "OpsHeartbeat" h
+    WHERE NOT EXISTS (SELECT 1 FROM "OpsInstance" i WHERE i."name" = h."instance" AND i."generation" = h."generation" AND (i."retiredAt" IS NULL OR i."retiredAt" >= ${before}))`;
+  await db.$executeRaw`DELETE FROM "OpsInstance" WHERE "retiredAt" < ${before}`;
+  return stale;
 }
 
 // 최고관리자용 운영 지표. 공개 /api/health에는 넣지 않는다.
@@ -87,7 +99,13 @@ export async function opsMetrics(db: PrismaClient) {
            count(*) FILTER (WHERE wait_event_type = 'Lock')::bigint AS "waitingLock",
            current_setting('max_connections')::int AS max
     FROM pg_stat_activity WHERE datname = current_database()`;
-  const heartbeats = await db.opsHeartbeat.findMany({ orderBy: [{ instance: "asc" }, { job: "asc" }] });
+  // 인스턴스의 지금 세대 행만(이전 세대·사라진 작업 행은 빠짐). 종료 표시는 인스턴스 기준.
+  const heartbeats = await db.$queryRaw<
+    { instance: string; job: string; lastRunAt: Date; lastStatus: string; lastOkAt: Date | null; lastError: string | null; retiredAt: Date | null }[]
+  >`
+    SELECT h."instance", h."job", h."lastRunAt", h."lastStatus", h."lastOkAt", h."lastError", i."retiredAt"
+    FROM "OpsHeartbeat" h JOIN "OpsInstance" i ON i."name" = h."instance" AND i."generation" = h."generation"
+    ORDER BY h."instance", h."job"`;
   const recent = await db.opsEvent.findMany({ orderBy: [{ occurredAt: "desc" }, { seq: "desc" }], take: 50 });
   // 같은 key의 마지막 열기·닫기. 같은 occurredAt이면 늦게 들어온 사건(seq)이 이긴다.
   const latestByKey = await db.$queryRaw<{ key: string; kind: string; occurredAt: Date; message: string; severity: string }[]>`

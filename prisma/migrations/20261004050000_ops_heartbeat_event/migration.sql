@@ -1,17 +1,26 @@
 -- 앱 감시 훅(ONQ 단계 6 서버 몫, PR #159 요청): 정기 실행 heartbeat와 인프라 감시 사건
 -- CreateTable
+CREATE TABLE "OpsInstance" (
+    "name" TEXT NOT NULL,
+    "generation" TEXT NOT NULL,
+    "retiredAt" TIMESTAMPTZ(3),
+    "registeredAt" TIMESTAMPTZ(3) NOT NULL,
+
+    CONSTRAINT "OpsInstance_pkey" PRIMARY KEY ("name")
+);
+
+-- CreateTable
 CREATE TABLE "OpsHeartbeat" (
     "instance" TEXT NOT NULL,
+    "generation" TEXT NOT NULL,
     "job" TEXT NOT NULL,
     "lastRunAt" TIMESTAMPTZ(3) NOT NULL,
     "lastStatus" TEXT NOT NULL,
     "lastError" TEXT,
     "lastOkAt" TIMESTAMPTZ(3),
-    "retiredAt" TIMESTAMPTZ(3),
-    "generation" TEXT,
     "updatedAt" TIMESTAMPTZ(3) NOT NULL,
 
-    CONSTRAINT "OpsHeartbeat_pkey" PRIMARY KEY ("instance","job")
+    CONSTRAINT "OpsHeartbeat_pkey" PRIMARY KEY ("instance","generation","job")
 );
 
 -- CreateTable

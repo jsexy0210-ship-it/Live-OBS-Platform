@@ -27,9 +27,9 @@ export const SCHEDULER_INTERVAL_MS = 3600_000;
 
 export type JobOutcome = { name: string; status: "done"; count: number } | { name: string; status: "skipped" } | { name: string; status: "failed"; error: string };
 
-// 종료 중 상태: 종료 신호를 받으면 새 실행과 heartbeat 쓰기를 막고, 진행 중인 실행이 끝나기를 기다린 뒤 종료 표시를 남긴다
-// (진행 중이던 실행이 나중에 heartbeat를 써서 종료 표시를 되돌리지 않게).
-const shutdown = { requested: false, inflight: new Set<Promise<unknown>>() };
+// 종료 중 상태: 종료 신호를 받으면 새 실행과 heartbeat 쓰기를 막고, 진행 중인 실행·등록이 끝나기를 기다린 뒤 종료 표시를 남긴다.
+// registering: 진행 중인 등록(끝난 뒤 종료 요청이 와 있으면 스케줄러를 시작하지 않고 새 세대로 바로 종료 표시).
+const shutdown = { requested: false, inflight: new Set<Promise<unknown>>(), registering: null as Promise<string | null> | null };
 
 // 한 번 돈다. 다른 인스턴스가 같은 작업을 돌고 있으면(잠금을 못 잡으면) 건너뛴다. 종료 중이면 돌지 않는다.
 export async function runScheduledJobs(db: PrismaClient, now = new Date(), jobs: ScheduledJob[] = SCHEDULED_JOBS): Promise<JobOutcome[]> {
@@ -84,16 +84,28 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms).unref?.
 export const REGISTER_RETRY_MS = 5_000;
 
 // 인스턴스 등록(세대 값, ops/metrics.ts)을 성공할 때까지 짧은 간격으로 다시 시도한다. 종료 중이면 그만둔다(null).
-export async function registerUntilDone(db: PrismaClient, retryMs = REGISTER_RETRY_MS): Promise<string | null> {
-  while (!shutdown.requested) {
-    try {
-      return await registerInstance(db);
-    } catch (e) {
-      console.error(`[scheduler] register failed, retrying: ${e instanceof Error ? e.message : String(e)}`);
-      await sleep(retryMs);
+// 등록이 끝났을 때 종료 요청이 와 있으면(등록 중에 SIGTERM) 새 세대로 바로 종료 표시를 남기고 null(스케줄러를 시작하지 않음).
+export function registerUntilDone(db: PrismaClient, retryMs = REGISTER_RETRY_MS): Promise<string | null> {
+  const run = (async () => {
+    while (!shutdown.requested) {
+      let generation: string;
+      try {
+        generation = await registerInstance(db);
+      } catch (e) {
+        console.error(`[scheduler] register failed, retrying: ${e instanceof Error ? e.message : String(e)}`);
+        await sleep(retryMs);
+        continue;
+      }
+      if (!shutdown.requested) return generation;
+      await markInstanceRetired(db, new Date(), undefined, generation);
+      return null;
     }
-  }
-  return null;
+    return null;
+  })();
+  shutdown.registering = run;
+  return run.finally(() => {
+    if (shutdown.registering === run) shutdown.registering = null;
+  });
 }
 
 // 서버 시작 때 한 번. 같은 프로세스에서 다시 불러도(개발 핫 리로드) 하나만 둔다.
@@ -116,11 +128,11 @@ export function startScheduler(db: PrismaClient, intervalMs = SCHEDULER_INTERVAL
   return true;
 }
 
-// 종료 처리: 새 실행·heartbeat 쓰기를 막고, 진행 중인 실행을 최대 waitMs 기다린 뒤 이 인스턴스의 heartbeat에 종료 표시를 남긴다.
-// 이미 시작돼 나중에 커밋되는 heartbeat 쓰기가 있어도 recordHeartbeat는 종료 표시를 건드리지 않으므로 표시는 그대로 남는다.
+// 종료 처리: 새 실행·heartbeat 쓰기를 막고, 진행 중인 실행·등록을 최대 waitMs 기다린 뒤 이 프로세스 세대의 인스턴스에 종료 표시를 남긴다.
+// 진행 중이던 등록은 끝나면서 스스로 새 세대에 종료 표시를 남긴다(registerUntilDone). 늦게 커밋되는 heartbeat는 종료 표시를 건드리지 않는다.
 export async function retireInstance(db: PrismaClient, waitMs = 2000): Promise<void> {
   shutdown.requested = true;
-  await Promise.race([Promise.allSettled([...shutdown.inflight]), sleep(waitMs)]);
+  await Promise.race([Promise.allSettled([...shutdown.inflight, ...(shutdown.registering ? [shutdown.registering] : [])]), sleep(waitMs)]);
   await Promise.race([markInstanceRetired(db, new Date()), sleep(waitMs)]);
 }
 
