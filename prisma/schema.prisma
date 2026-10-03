@@ -1128,3 +1128,109 @@ model OrderNotification {
   @@unique([orderId, kind])
   @@index([sellerId, kind, status])
 }
+
+// ───────────── 자동 설치·연결 상품 (docs/AUTOMATION.md) ─────────────
+// 결제 상태(AutomationPayment)와 연결 작업 상태(AutomationJob)를 따로 둔다. 작업은 서버가 결제를 PAID로 확정한
+// 같은 트랜잭션에서만 QUEUED가 된다. 판매자 테이블과는 Prisma 관계를 두지 않는다(Seller 모델을 고치지 않기 위해,
+// sellerId는 세션에서만 얻고 모든 조회에 조건으로 붙인다). 블록 안 자식은 (sellerId, 부모 id) 복합 외래키로 묶는다.
+// 부분 유니크(판매자당 열린 작업 1개, 같은 OBS 대상 실행 1개)와 CHECK는 마이그레이션 SQL에 있다.
+
+enum AutomationPaymentStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+enum AutomationJobStatus {
+  AWAITING_PAYMENT
+  QUEUED
+  RUNNING
+  NEEDS_CUSTOMER
+  VERIFYING
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
+// 고객이 직접 해야 하는 일. 이 동안 작업은 실행 자리(lease)를 반납한다.
+enum AutomationCustomerAction {
+  LOGIN
+  TWO_FACTOR
+  CAPTCHA
+  PERMISSION_GRANT
+  LOCAL_TOOL
+}
+
+model AutomationPayment {
+  id                String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId          String                  @db.Uuid
+  amount            Int
+  status            AutomationPaymentStatus @default(PENDING)
+  // 판매자가 보낸 Idempotency-Key. 같은 키로 다시 요청하면 같은 결제·작업을 돌려준다.
+  idempotencyKey    String
+  providerPaymentId String?
+  failureReason     String?
+  paidAt            DateTime?               @db.Timestamptz(3)
+  createdAt         DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime                @updatedAt @db.Timestamptz(3)
+
+  job AutomationJob?
+
+  @@unique([sellerId, idempotencyKey])
+  @@unique([sellerId, id])
+  @@index([status, createdAt])
+}
+
+model AutomationJob {
+  id               String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId         String                    @db.Uuid
+  paymentId        String                    @db.Uuid
+  status           AutomationJobStatus       @default(AWAITING_PAYMENT)
+  // 같은 OBS에 동시에 두 작업이 붙지 않게 잠그는 대상 키(판매자 OBS 연결 단위)
+  obsTargetKey     String
+  // 진행 중인 단계 순번(0부터). 단계 목록은 lib/server/automation/steps.ts
+  stepIndex        Int                       @default(0)
+  customerAction   AutomationCustomerAction?
+  // 고객 행동 대기 마감. 지나면 FAILED(customer_action_timeout)
+  actionDeadlineAt DateTime?                 @db.Timestamptz(3)
+  attempts         Int                       @default(0)
+  maxAttempts      Int                       @default(5)
+  // 판단 모델 호출 비용(원 단위 추정). 상한을 넘기면 멈춘다.
+  costUsed         Int                       @default(0)
+  costLimit        Int                       @default(3000)
+  runAfter         DateTime                  @default(now()) @db.Timestamptz(3)
+  leaseOwner       String?
+  leaseExpiresAt   DateTime?                 @db.Timestamptz(3)
+  // 실행 자리를 잡을 때마다 1씩 오른다. 작업자는 이 값이 같을 때만 쓴다(fencing).
+  fencingToken     Int                       @default(0)
+  lastError        String?
+  startedAt        DateTime?                 @db.Timestamptz(3)
+  finishedAt       DateTime?                 @db.Timestamptz(3)
+  createdAt        DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime                  @updatedAt @db.Timestamptz(3)
+
+  payment AutomationPayment    @relation(fields: [sellerId, paymentId], references: [sellerId, id])
+  events  AutomationJobEvent[]
+
+  @@unique([sellerId, id])
+  // 결제 1건에 작업 1개
+  @@unique([sellerId, paymentId])
+  @@index([status, runAfter])
+  @@index([sellerId, createdAt])
+}
+
+// 작업 상태 전이 기록(누가·언제·어느 fencing 토큰으로). 비밀값은 넣지 않는다.
+model AutomationJobEvent {
+  id           String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId     String               @db.Uuid
+  jobId        String               @db.Uuid
+  fromStatus   AutomationJobStatus?
+  toStatus     AutomationJobStatus
+  fencingToken Int
+  detail       Json?
+  createdAt    DateTime             @default(now()) @db.Timestamptz(3)
+
+  job AutomationJob @relation(fields: [sellerId, jobId], references: [sellerId, id])
+
+  @@index([jobId, createdAt])
+}
