@@ -146,7 +146,7 @@ sudo -u obs nano /opt/obs/.env
 | `POSTGRES_DB` | 필수 | DB 이름 |
 | `IDENTITY_HASH_KEY` | 필수 | 본인확인 CI 해시 키(32자 이상) |
 | `BILLING_KEY_SECRET` | 필수 | 빌링키 암호화 키(32자 이상) |
-| `BILLING_PROVIDER` | 필수 | obs-test는 **`fake`**(실제 결제 금지, 2026-10-03 결정) |
+| `BILLING_PROVIDER` | 필수 | obs-test는 **`fake`**(실제 결제 금지, 2026-10-03 결정). **주의**: 지금 코드는 운영 빌드(`NODE_ENV=production`)에서 가짜 결제 공급자 생성을 막아요(`lib/server/billing/provider.ts`). 그래서 obs-test에서는 카드 등록·구독 결제가 오류로 멈춰요(비워도 같음). 실제 결제는 일어나지 않아요. 결제 흐름을 obs-test에서 시험할지는 결정 필요 |
 | `OBS_SITE_ADDRESS` | 선택 | 프록시 사이트 주소. 비우면 `:80`(HTTP). HTTPS는 아래 「HTTPS」 |
 | `BUSINESS_STATUS_PROVIDER`, `NTS_BUSINESS_STATUS_API_KEY` | 선택 | 판매자 가입 사업자 상태 점검 |
 | `MAIL_ORDER_PROVIDER`, `FTC_MAIL_ORDER_API_KEY` | 선택 | 통신판매업 점검 |
@@ -175,6 +175,15 @@ sudo -u obs nano /opt/obs/.env
 
 GitHub Secrets·Variables는 이 방식에서 필요 없어요(비밀값은 서버 `.env`에만).
 
+## 서버 명령 준비
+
+아래 섹션의 서버 명령은 `obs` 계정(`sudo -u obs -i`)에서 먼저 이 줄을 실행했다고 보고 `$C`를 써요. 새로 접속할 때마다 다시 실행해요.
+`/opt/obs/src`가 아직 없으면(워크플로로만 배포한 경우) 먼저 `git clone https://github.com/jsexy0210-ship-it/Live-OBS-Platform.git /opt/obs/src`로 받아 두고, 쓰기 전에 `git -C /opt/obs/src fetch origin main && git -C /opt/obs/src checkout --detach origin/main`으로 main을 최신으로 맞춰요(compose 파일만 쓰고 이미지는 서버에 남은 것을 써요).
+
+```bash
+cd /opt/obs/src && C="docker compose -p obs-web -f deploy/docker-compose.yml --env-file /opt/obs/.env"
+```
+
 ## 수동 배포(서버에서 직접, 워크플로를 쓸 수 없을 때)
 
 ```bash
@@ -192,8 +201,7 @@ echo "$(TZ=Asia/Seoul date '+%F %T KST') sha=$APP_VERSION" >> /opt/obs/deploy-hi
 ## 백업·복구
 
 ```bash
-cd /opt/obs/src
-C="docker compose -p obs-web -f deploy/docker-compose.yml --env-file /opt/obs/.env"
+cd /opt/obs/src && C="docker compose -p obs-web -f deploy/docker-compose.yml --env-file /opt/obs/.env"
 # 백업
 $C exec -T obs-web-db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > /opt/obs/backups/obs-$(TZ=Asia/Seoul date +%Y%m%d-%H%M).dump
 chmod 600 /opt/obs/backups/*.dump
@@ -211,6 +219,7 @@ $C start obs-web-app
 - **`down -v`와 `docker volume rm`은 DB를 지워요. 쓰지 않아요.**
 - 확인: 재배포 전후로 같은 행 수를 비교해요.
   ```bash
+  cd /opt/obs/src && C="docker compose -p obs-web -f deploy/docker-compose.yml --env-file /opt/obs/.env"
   $C exec -T obs-web-db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT count(*) FROM \"Seller\""'
   ```
 
@@ -219,6 +228,7 @@ $C start obs-web-app
 이전 커밋의 이미지가 서버에 남아 있으면 빌드 없이 되돌려요.
 
 ```bash
+cd /opt/obs/src && C="docker compose -p obs-web -f deploy/docker-compose.yml --env-file /opt/obs/.env"
 docker image ls obs-web-app                 # 남아 있는 SHA 확인
 APP_VERSION=<이전 SHA> $C up -d --no-build --wait
 ```
@@ -230,6 +240,7 @@ APP_VERSION=<이전 SHA> $C up -d --no-build --wait
 ## 로그
 
 ```bash
+cd /opt/obs/src && C="docker compose -p obs-web -f deploy/docker-compose.yml --env-file /opt/obs/.env"
 $C ps                                   # 상태·healthy 여부
 $C logs -f --tail 200 obs-web-app       # 앱
 $C logs --tail 100 obs-web-migrate      # 마이그레이션 결과
@@ -246,7 +257,7 @@ $C logs --tail 100 obs-web-proxy        # 프록시
 
 1. `/opt/obs/.env`에 `OBS_SITE_ADDRESS=210-109-15-68.sslip.io`를 넣어요.
 2. 보안 그룹 `obs-web-sg`에서 443/tcp를 0.0.0.0/0으로 열어요(80도 열려 있어야 해요).
-3. 재배포해요(또는 서버에서 `$C up -d obs-web-proxy`). **보안 그룹 443을 열면 Caddy가 Let's Encrypt 무료 인증서를 자동으로 받아요**(`obs-web-caddy-data` 볼륨에 보관, 자동 갱신).
+3. 재배포해요(또는 서버에서 「서버 명령 준비」 뒤 `$C up -d obs-web-proxy`). **보안 그룹 443을 열면 Caddy가 Let's Encrypt 무료 인증서를 자동으로 받아요**(`obs-web-caddy-data` 볼륨에 보관, 자동 갱신).
 4. `https://210-109-15-68.sslip.io`로 접속해요. `http://`로 들어오면 HTTPS로 넘어가요.
 
 한계:
