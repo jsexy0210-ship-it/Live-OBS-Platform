@@ -25,6 +25,7 @@ export const POST = mutation(async (req: Request, { params }: { params: Promise<
   });
   if (!r.ok) {
     if (r.reason === "daily_limit_exceeded") return NextResponse.json({ error: r.reason, message: BUYER_SIGNUP_MESSAGES.daily_limit_exceeded }, { status: 429, headers: NO_STORE });
+    if (r.reason === "start_in_progress") return NextResponse.json({ error: r.reason, message: BUYER_SIGNUP_MESSAGES.start_in_progress }, { status: 409, headers: NO_STORE });
     if (r.reason === "shop_unavailable") return NextResponse.json({ error: r.reason, message: BUYER_SIGNUP_MESSAGES.shop_unavailable }, { status: 402, headers: NO_STORE });
     return identityFailure(r.reason);
   }

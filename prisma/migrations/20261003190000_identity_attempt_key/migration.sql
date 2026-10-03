@@ -2,7 +2,8 @@
 BEGIN;
 
 -- AlterTable
-ALTER TABLE "IdentityVerification" ADD COLUMN     "attemptKeyHash" TEXT;
+ALTER TABLE "IdentityVerification" ADD COLUMN     "attemptKeyHash" TEXT,
+ADD COLUMN     "sendStartedAt" TIMESTAMPTZ(3);
 
 -- CreateIndex
 CREATE UNIQUE INDEX "IdentityVerification_sellerId_attemptKeyHash_key" ON "IdentityVerification"("sellerId", "attemptKeyHash");

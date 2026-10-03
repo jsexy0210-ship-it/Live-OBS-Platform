@@ -75,6 +75,7 @@ export async function startIdentityVerification(
     subjectId?: string | null;
     requestIp?: string | null;
     attemptKeyHash?: string | null;
+    sendStartedAt?: Date | null;
     now?: Date;
   },
 ): Promise<{ verification: IdentityVerification; ownerToken: string }> {
@@ -87,6 +88,7 @@ export async function startIdentityVerification(
       subjectId: input.subjectId ?? null,
       requestIp: input.requestIp ?? null,
       attemptKeyHash: input.attemptKeyHash ?? null,
+      sendStartedAt: input.sendStartedAt ?? null,
       provider: provider.name,
       method: "SMS",
       requestId: newIdentityRequestId(),
@@ -106,7 +108,8 @@ export async function reissueOwnerToken(db: Db, id: string): Promise<string | nu
   return r.count === 1 ? ownerToken : null;
 }
 
-// 첫 인증번호 보내기. 공급자 장애·타임아웃이면 이 요청은 실패로 끝낸다(처음부터 다시).
+// 첫 인증번호 보내기(트랜잭션 밖에서 부른다). 공급자 장애·타임아웃이면 이 요청은 실패로 끝낸다(처음부터 다시).
+// 실패하면 attemptKey를 비워 같은 키로 새로 시작할 수 있게 한다. 성공 기록은 아직 보내지 않은(sendCount 0) 확인 전 기록에만 남긴다.
 export async function sendFirstIdentityCode(
   db: Db,
   provider: IdentityProvider,
@@ -116,10 +119,10 @@ export async function sendFirstIdentityCode(
 ): Promise<{ ok: true } | { ok: false; reason: "provider_error" }> {
   const r = await call(provider.sendCode(v.requestId, v.purpose, person));
   if (!r.ok) {
-    await db.identityVerification.updateMany({ where: { id: v.id, status: "PENDING" }, data: { status: "FAILED" } });
+    await db.identityVerification.updateMany({ where: { id: v.id, status: "PENDING", sendCount: 0 }, data: { status: "FAILED", attemptKeyHash: null } });
     return { ok: false, reason: "provider_error" };
   }
-  await db.identityVerification.update({ where: { id: v.id }, data: { sendCount: 1, lastSentAt: now } });
+  await db.identityVerification.updateMany({ where: { id: v.id, status: "PENDING", sendCount: 0 }, data: { sendCount: 1, lastSentAt: now } });
   return { ok: true };
 }
 

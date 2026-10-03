@@ -380,13 +380,16 @@ describe("signupBuyer는 completeIdentityVerification을 거친다", () => {
     expect((await startRoute(post(`${s.base}/verification`, { ...IDV_INPUT, attemptKey: "abc" }), ctx(s.slug))).status).toBe(400);
   });
 
-  it("같은 attemptKey로 동시에 시작해도 기록·문자는 한 번이고, 다른 쇼핑몰의 같은 키는 따로 만든다", async () => {
+  it("같은 attemptKey로 동시에 시작해도 기록·문자는 한 번이고(보내는 중에 온 요청은 409), 다른 쇼핑몰의 같은 키는 따로 만든다", async () => {
     const a = await shop();
     const b = await shop();
     const key = crypto.randomUUID();
     const rs = await Promise.all([1, 2, 3].map(() => startRoute(post(`${a.base}/verification`, { ...IDV_INPUT, attemptKey: key }), ctx(a.slug))));
-    expect(rs.map((r) => r.status)).toEqual([200, 200, 200]);
-    const ids = new Set(await Promise.all(rs.map(async (r) => (await r.json()).verificationId)));
+    const bodies = await Promise.all(rs.map((r) => r.json()));
+    expect(rs.every((r) => r.status === 200 || r.status === 409)).toBe(true);
+    expect(rs.filter((r) => r.status === 200).length).toBeGreaterThanOrEqual(1);
+    for (const [i, r] of rs.entries()) if (r.status === 409) expect(bodies[i].error).toBe("start_in_progress");
+    const ids = new Set(bodies.filter((_, i) => rs[i].status === 200).map((x) => x.verificationId));
     expect(ids.size).toBe(1);
     const [v] = await db.identityVerification.findMany({ where: { sellerId: a.seller.id } });
     expect(v.sendCount).toBe(1);
@@ -406,57 +409,100 @@ describe("signupBuyer는 completeIdentityVerification을 거친다", () => {
     expect((await confirmRoute(post(`${s.base}/verification/confirm`, { verificationId, code: "000000" }, cookie), ctx(s.slug))).status).toBe(200);
   });
 
-  it("첫 요청이 문자를 보내는 사이 같은 attemptKey로 다시 오면 발송이 끝날 때까지 기다렸다 같은 기록을 받고 문자는 한 번이다", async () => {
-    const s = await shop();
-    const key = crypto.randomUUID();
+  // 첫 문자 발송을 게이트로 멈출 수 있는 공급자. entered는 sendCode에 들어온 횟수.
+  function gatedProvider() {
     const fake = identityProvider() as FakeIdentityProvider;
-    let entered!: () => void;
-    const sending = new Promise<void>((r) => (entered = r));
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
-    let sends = 0;
-    const slow = new Proxy(fake, {
+    const state = { entered: 0, release };
+    const provider = new Proxy(fake, {
       get(t, p, r) {
         if (p !== "sendCode") return Reflect.get(t, p, r);
         return async (...args: Parameters<FakeIdentityProvider["sendCode"]>) => {
-          sends++;
-          entered();
+          state.entered++;
           await gate;
           return t.sendCode(...args);
         };
       },
     });
-    const first = startBuyerSignupVerification(db, slow, s.seller.id, IDV_INPUT, { attemptKey: key });
-    await sending;
-    const second = startBuyerSignupVerification(db, slow, s.seller.id, IDV_INPUT, { attemptKey: key });
-    // 재요청이 키 잠금에서 기다리는지 DB에서 확인한다
-    for (let i = 0; ; i++) {
-      const [{ n }] = await db.$queryRaw<{ n: bigint }[]>`SELECT count(*)::bigint AS n FROM pg_locks WHERE locktype = 'advisory' AND NOT granted`;
-      if (n > 0n) break;
-      if (i > 200) throw new Error("재요청이 키 잠금에서 기다리지 않았어요");
+    return { provider, state };
+  }
+  async function until(cond: () => boolean | Promise<boolean>, what: string) {
+    for (let i = 0; i < 300; i++) {
+      if (await cond()) return;
       await new Promise((r) => setTimeout(r, 10));
     }
-    release();
-    const [a, b] = await Promise.all([first, second]);
-    expect(a.ok && b.ok).toBe(true);
-    if (!a.ok || !b.ok) return;
-    expect(b.verificationId).toBe(a.verificationId);
-    expect(sends).toBe(1);
+    throw new Error(what);
+  }
+
+  it("첫 요청이 문자를 보내는 사이 같은 attemptKey로 다시 오면 기다리지 않고 409 start_in_progress, 발송이 끝난 뒤에는 같은 기록·발송 1회", async () => {
+    const s = await shop();
+    const key = crypto.randomUUID();
+    const { provider, state } = gatedProvider();
+    const first = startBuyerSignupVerification(db, provider, s.seller.id, IDV_INPUT, { attemptKey: key });
+    await until(() => state.entered === 1, "첫 요청이 발송에 들어가지 않았어요");
+    // 발송 중인 첫 요청은 트랜잭션·잠금을 쥐고 있지 않다
+    const [{ n }] = await db.$queryRaw<{ n: bigint }[]>`SELECT count(*)::bigint AS n FROM pg_locks WHERE locktype = 'advisory'`;
+    expect(n).toBe(0n);
+    expect(await startBuyerSignupVerification(db, provider, s.seller.id, IDV_INPUT, { attemptKey: key })).toEqual({ ok: false, reason: "start_in_progress" });
+    const res = await startRoute(post(`${s.base}/verification`, { ...IDV_INPUT, attemptKey: key }), ctx(s.slug));
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "start_in_progress", message: BUYER_SIGNUP_MESSAGES.start_in_progress });
+    state.release();
+    const a = await first;
+    expect(a.ok).toBe(true);
+    if (!a.ok) return;
+    const again = await startBuyerSignupVerification(db, provider, s.seller.id, IDV_INPUT, { attemptKey: key });
+    expect(again).toMatchObject({ ok: true, verificationId: a.verificationId });
+    expect(state.entered).toBe(1);
     expect((await db.identityVerification.findUniqueOrThrow({ where: { id: a.verificationId } })).sendCount).toBe(1);
   });
 
-  it("첫 문자 발송이 실패하면 기록을 남기지 않고, 같은 attemptKey로 다시 시작하면 새로 만들어 한 번 보낸다", async () => {
+  it("첫 문자 발송이 실패하면 기록은 실패로 남고 키를 비워, 같은 attemptKey로 다시 시작하면 새로 만들어 한 번 보낸다", async () => {
     const s = await shop();
     const key = crypto.randomUUID();
     const fake = identityProvider() as FakeIdentityProvider;
     fake.failNext("error");
     expect(await startBuyerSignupVerification(db, fake, s.seller.id, IDV_INPUT, { attemptKey: key })).toEqual({ ok: false, reason: "provider_error" });
-    expect(await db.identityVerification.count({ where: { sellerId: s.seller.id } })).toBe(0);
+    expect(await db.identityVerification.findMany({ where: { sellerId: s.seller.id } })).toMatchObject([{ status: "FAILED", attemptKeyHash: null, sendCount: 0 }]);
+    const sentBefore = fake.sent.length;
     const again = await startBuyerSignupVerification(db, fake, s.seller.id, IDV_INPUT, { attemptKey: key });
     expect(again.ok).toBe(true);
-    const rows = await db.identityVerification.findMany({ where: { sellerId: s.seller.id } });
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ status: "PENDING", sendCount: 1 });
+    if (!again.ok) return;
+    expect(fake.sent.length - sentBefore).toBe(1);
+    expect(await db.identityVerification.findUniqueOrThrow({ where: { id: again.verificationId } })).toMatchObject({ status: "PENDING", sendCount: 1 });
+  });
+
+  it("보내는 중으로 남은 채 앞 요청이 멈춘 기록은 같은 attemptKey 재요청이 넘겨받아 한 번 보내고 새 쿠키를 준다", async () => {
+    const s = await shop();
+    const key = crypto.randomUUID();
+    const first = await startRoute(post(`${s.base}/verification`, { ...IDV_INPUT, attemptKey: key }), ctx(s.slug));
+    const oldCookie = cookieOf(first, "lo_bidv");
+    const { verificationId } = await first.json();
+    // 앞 요청이 발송 전에 멈춘 상태로 되돌린다(20초보다 오래 전에 보내기 시작, 보낸 기록 없음)
+    await db.identityVerification.update({ where: { id: verificationId }, data: { sendCount: 0, lastSentAt: null, sendStartedAt: new Date(Date.now() - 30_000) } });
+    const fake = identityProvider() as FakeIdentityProvider;
+    const sentBefore = fake.sent.length;
+    const r = await startRoute(post(`${s.base}/verification`, { ...IDV_INPUT, attemptKey: key }, oldCookie), ctx(s.slug));
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ verificationId });
+    expect(fake.sent.length - sentBefore).toBe(1);
+    expect((await db.identityVerification.findUniqueOrThrow({ where: { id: verificationId } })).sendCount).toBe(1);
+    const cookie = cookieOf(r, "lo_bidv");
+    expect(cookie).not.toBe(oldCookie);
+    expect((await confirmRoute(post(`${s.base}/verification/confirm`, { verificationId, code: "000000" }, oldCookie), ctx(s.slug))).status).toBe(404);
+    expect((await confirmRoute(post(`${s.base}/verification/confirm`, { verificationId, code: "000000" }, cookie), ctx(s.slug))).status).toBe(200);
+  });
+
+  it("같은 IP에서 5건이 동시에 시작해 발송이 느려도 잠금을 기다리지 않고 모두 발송에 들어가며 timeout 없이 끝난다", async () => {
+    const s = await shop();
+    const { provider, state } = gatedProvider();
+    const runs = Array.from({ length: 5 }, () => startBuyerSignupVerification(db, provider, s.seller.id, IDV_INPUT, { ip: "203.0.113.9", attemptKey: crypto.randomUUID() }));
+    await until(() => state.entered === 5, "발송 중인 요청이 다른 요청을 막았어요");
+    state.release();
+    const rs = await Promise.all(runs);
+    expect(rs.every((r) => r.ok)).toBe(true);
+    expect(await db.identityVerification.count({ where: { sellerId: s.seller.id, sendCount: 1 } })).toBe(5);
   });
 
   it("인증번호 확인에 성공하면 저장된 본인확인 결과(NFKC 정규화한 이름·휴대폰·생년월일)를 돌려준다", async () => {
