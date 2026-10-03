@@ -1,4 +1,4 @@
-import type { PlatformAdmin, PrismaClient, Seller, SellerUser, BuyerMember } from "@prisma/client";
+import type { PlatformAdmin, Prisma, PrismaClient, Seller, SellerUser, BuyerMember } from "@prisma/client";
 import { generateToken, hashToken } from "./token";
 import { isSessionActive, sessionExpiry, type BroadcastActivity, type Realm } from "./policy";
 
@@ -57,7 +57,7 @@ export async function createSellerSession(
 }
 
 export async function createBuyerSession(
-  db: PrismaClient,
+  db: PrismaClient | Prisma.TransactionClient,
   sellerId: string,
   buyerMemberId: string,
   meta: SessionMeta,

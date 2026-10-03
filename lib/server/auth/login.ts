@@ -149,8 +149,19 @@ export async function loginBuyer(
   if (member.status === "DORMANT") return fail("dormant");
   if (member.status !== "ACTIVE") return fail("account_disabled");
 
-  await db.buyerMember.update({ where: { id: member.id }, data: { lastLoginAt: now } });
-  const session = await createBuyerSession(db, input.sellerId, member.id, { ...meta, now });
+  // 회원 행을 잠그고 아직 활성인지 다시 본 뒤 세션을 만든다. 비밀번호를 확인하는 사이 탈퇴(buyers/withdraw, 같은 행
+  // FOR NO KEY UPDATE)가 끝났으면 세션을 만들지 않는다. 마지막 로그인 시각을 바로 갱신하므로 FOR SHARE가 아니라 같은 잠금을 쓴다.
+  const session = await db.$transaction(async (tx) => {
+    const locked = await tx.$queryRaw<{ id: string }[]>`
+      SELECT "id" FROM "BuyerMember" WHERE "id" = ${member.id}::uuid AND "status" = 'ACTIVE' AND "deletedAt" IS NULL FOR NO KEY UPDATE`;
+    if (locked.length === 0) return null;
+    await tx.buyerMember.update({ where: { id: member.id }, data: { lastLoginAt: now } });
+    return createBuyerSession(tx, input.sellerId, member.id, { ...meta, now });
+  });
+  if (!session) {
+    await audit("auth.buyer.login_failed", member.id, "account_withdrawn");
+    return fail("invalid_credentials");
+  }
   await audit("auth.buyer.login", member.id);
   return { ok: true, ...session };
 }
