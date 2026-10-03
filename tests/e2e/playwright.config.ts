@@ -24,7 +24,7 @@ export default defineConfig({
     timezoneId: "Asia/Seoul",
   },
   projects: [
-    { name: "start", testIgnore: /(shop-signup-flow|partners-auth-flow)\.spec\.ts$/ },
-    { name: "dev", testMatch: /(shop-signup-flow|partners-auth-flow)\.spec\.ts$/, use: { baseURL: process.env.E2E_DEV_BASE_URL ?? "http://localhost:3101" } },
+    { name: "start", testIgnore: /(shop-signup-flow|partners-auth-flow|test-mode-flow)\.spec\.ts$/ },
+    { name: "dev", testMatch: /(shop-signup-flow|partners-auth-flow|test-mode-flow)\.spec\.ts$/, use: { baseURL: process.env.E2E_DEV_BASE_URL ?? "http://localhost:3101" } },
   ],
 });
