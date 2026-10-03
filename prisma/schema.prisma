@@ -284,6 +284,7 @@ model BuyerMember {
   hitCards             HitCard[]
   rewardLedger         RewardLedger[]
   rewardBalances       RewardBalance[]
+  rewardExpiryNotices  RewardExpiryNotice[]
   addresses            BuyerAddress[]
 
   @@unique([sellerId, id])
@@ -1122,4 +1123,24 @@ model OrderNotification {
 
   @@unique([orderId, kind])
   @@index([sellerId, kind, status])
+}
+
+// 적립금 소멸 30일 전 안내 「보냈음」 기록(PRODUCT_SCOPE 「적립금 소멸」, 알림톡·실패하면 문자, 메일 없음). 발송 연동 전이라 기록만.
+// 회원·마지막 적립 시각마다 1행이라 같은 소멸 예정을 두 번 안내하지 않고, 새로 적립하면(기준일이 바뀜) 다음 소멸 때 다시 안내한다.
+model RewardExpiryNotice {
+  id            String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String                  @db.Uuid
+  buyerMemberId String                  @db.Uuid
+  lastEarnAt    DateTime                @db.Timestamptz(3)
+  status        OrderNotificationStatus @default(PENDING)
+  attempts      Int                     @default(1)
+  claimedAt     DateTime                @db.Timestamptz(3)
+  sentAt        DateTime?               @db.Timestamptz(3)
+  failureReason String?
+  createdAt     DateTime                @default(now()) @db.Timestamptz(3)
+
+  buyerMember BuyerMember @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id])
+
+  @@unique([buyerMemberId, lastEarnAt])
+  @@index([sellerId, status])
 }

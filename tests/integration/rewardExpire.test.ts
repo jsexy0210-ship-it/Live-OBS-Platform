@@ -1,6 +1,6 @@
 import type { RewardLedgerStatus, RewardLedgerType } from "@prisma/client";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { expireDormantRewards } from "../../lib/server/rewards/expire";
+import { claimRewardExpiryNotices, expireDormantRewards, markRewardExpiryNoticeFailed, markRewardExpiryNoticeSent } from "../../lib/server/rewards/expire";
 import { createLoginBuyer, createSeller, db, resetDb } from "./helpers";
 
 beforeEach(resetDb);
@@ -85,5 +85,59 @@ describe("적립금 3년 소멸", () => {
     expect((await expireDormantRewards(db, { now: NOW })).done.map((d) => d.buyerMemberId)).toEqual([newer.buyer.id]);
     expect(await noEarn.bal()).toBe(100);
     expect(await db.rewardLedger.count({ where: { type: "EXPIRE", buyerMemberId: { in: [zero.buyer.id, noEarn.buyer.id] } } })).toBe(0);
+  });
+});
+
+describe("적립금 소멸 30일 전 안내 대상 잡기", () => {
+  const DAY = 86400_000;
+  // 마지막 적립이 NOW 기준 (3년 - d일) 전이면 소멸까지 d일 남음
+  const earnedLeft = (days: number) => ms(THREE_YEARS_AGO, days * DAY);
+
+  it("소멸 30일 전부터 소멸 전까지인 회원을 소멸 예정 금액·시각과 함께 한 번만 잡는다", async () => {
+    const in30 = await member(500);
+    await in30.ledger("EARN", 500, earnedLeft(30));
+    const in31 = await member(500);
+    await in31.ledger("EARN", 500, earnedLeft(31));
+    const past = await member(500);
+    await past.ledger("EARN", 500, earnedLeft(0));
+    const zero = await member(0);
+    await zero.ledger("EARN", 500, earnedLeft(10));
+    const claimed = await claimRewardExpiryNotices(db, { now: NOW });
+    expect(claimed).toEqual([
+      { noticeId: expect.any(String), idempotencyKey: claimed[0]?.noticeId, sellerId: in30.seller.id, buyerMemberId: in30.buyer.id, amount: 500, expiresAt: ms(NOW, 30 * DAY), attempts: 1 },
+    ]);
+    // 같은 소멸 예정은 다시 잡지 않는다(보내는 중이어도, 보낸 뒤에도)
+    expect(await claimRewardExpiryNotices(db, { now: ms(NOW, 60_000) })).toEqual([]);
+    expect(await markRewardExpiryNoticeSent(db, claimed[0])).toBe(true);
+    expect(await claimRewardExpiryNotices(db, { now: ms(NOW, 3600_000) })).toEqual([]);
+  });
+
+  it("실패하면 시도 3번까지 다시 잡고, 그사이 새로 적립했으면 잡지 않으며 새 기준으로 다음에 다시 안내한다", async () => {
+    const m = await member(500);
+    await m.ledger("EARN", 500, earnedLeft(20));
+    let [c] = await claimRewardExpiryNotices(db, { now: NOW });
+    expect(await markRewardExpiryNoticeFailed(db, c, "alimtalk_and_sms_failed")).toBe(true);
+    [c] = await claimRewardExpiryNotices(db, { now: ms(NOW, 1000) });
+    expect(c.attempts).toBe(2);
+    expect(await markRewardExpiryNoticeFailed(db, c, "x")).toBe(true);
+    [c] = await claimRewardExpiryNotices(db, { now: ms(NOW, 2000) });
+    expect(c.attempts).toBe(3);
+    expect(await markRewardExpiryNoticeFailed(db, c, "x")).toBe(true);
+    expect(await claimRewardExpiryNotices(db, { now: ms(NOW, 3000) })).toEqual([]);
+    // 새로 적립하면 지금 소멸 예정은 없어지고, 3년 뒤 기준으로 다시 안내 대상이 된다
+    await m.ledger("EARN", 10, ms(NOW, 4000));
+    expect(await claimRewardExpiryNotices(db, { now: ms(NOW, 5000) })).toEqual([]);
+    const later = ms(ms(NOW, 4000), 3 * 365 * DAY - 10 * DAY);
+    expect((await claimRewardExpiryNotices(db, { now: later })).map((x) => x.buyerMemberId)).toEqual([m.buyer.id]);
+  });
+
+  it("옛 시도 번호로는 결과를 남기지 못한다(멈췄다 돌아온 작업자가 새 시도를 덮어쓰지 않음)", async () => {
+    const m = await member(500);
+    await m.ledger("EARN", 500, earnedLeft(20));
+    const [first] = await claimRewardExpiryNotices(db, { now: NOW });
+    const [second] = await claimRewardExpiryNotices(db, { now: ms(NOW, 11 * 60_000) });
+    expect(second.attempts).toBe(2);
+    expect(await markRewardExpiryNoticeSent(db, first)).toBe(false);
+    expect(await markRewardExpiryNoticeSent(db, second)).toBe(true);
   });
 });

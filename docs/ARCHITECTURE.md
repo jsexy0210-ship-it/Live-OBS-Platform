@@ -251,7 +251,7 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 - 처리 대기 원장(지급·회수 등)은 `lib/server/rewards/ledger.ts` `createPendingRewardLedger`로만 만든다. 회원 행을 `FOR SHARE`로 잠가 탈퇴(`FOR NO KEY UPDATE`)와 순서를 맞추고, 탈퇴한 회원이면 처음부터 `FAILED`(`member_withdrawn`)로 남긴다.
 - `EARN`(PENDING), 환불 때 회수: `revokeMode = AUTO`면 `REVOKE`(PENDING)를 기록하고, `MANUAL`이면 기록하지 않는다. MANUAL에서 「환불된 주문에 `EARN`은 있고 `REVOKE`가 없는 상태」가 수동 확인 대기다(감사 로그 `rewardRevoke: manual_review`).
 - 결제 확인에 결제수단이 없으면 주문에 저장된 결제수단으로 적립률을 정한다.
-- 적립금 3년 소멸(대표님 결정 2026-10-03, `lib/server/rewards/expire.ts` `expireDormantRewards`, 정기 실행 연결은 인프라 승인 대기): 마지막 적립일(실지급·실패 아닌 양수 `EARN`·`RANKING_BONUS`·`ADJUST` 원장의 가장 늦은 `createdAt`)부터 3년이 지난 잔액을 `EXPIRE`(음수, `SUCCEEDED`)로 남기고 0으로 만든다(감사 로그 `reward.expire`, 사유 `no_earn_3_years`). 적립 기록이 없는 잔액은 소멸하지 않는다. 오래된 순으로 limit(기본 100)건, 회원마다 잔액 행을 잠그고 다시 확인한다(멱등, 한 건 실패해도 계속). 소멸 30일 전 안내 발송은 알림 연동 때.
+- 적립금 3년 소멸(대표님 결정 2026-10-03, `lib/server/rewards/expire.ts` `expireDormantRewards`, 정기 실행 연결은 인프라 승인 대기): 마지막 적립일(실지급·실패 아닌 양수 `EARN`·`RANKING_BONUS`·`ADJUST` 원장의 가장 늦은 `createdAt`)부터 3년이 지난 잔액을 `EXPIRE`(음수, `SUCCEEDED`)로 남기고 0으로 만든다(감사 로그 `reward.expire`, 사유 `no_earn_3_years`). 적립 기록이 없는 잔액은 소멸하지 않는다. 오래된 순으로 limit(기본 100)건, 회원마다 잔액 행을 잠그고 다시 확인한다(멱등, 한 건 실패해도 계속). 소멸 30일 전 안내(알림톡, 실패하면 문자, 메일 없음): `claimRewardExpiryNotices`가 소멸 예정 30일 전~소멸 전인 회원을 `RewardExpiryNotice`((buyerMemberId, lastEarnAt) 유니크, 상태 PENDING·SENT·FAILED, 시도 3번·10분 멈춤 다시 잡기)로 한 번만 잡아 소멸 예정 금액·시각을 돌려주고, 보내는 쪽이 `markRewardExpiryNoticeSent·Failed`(같은 시도 번호만)로 결과를 남긴다. 실제 발송·정기 실행은 연동·인프라 승인 뒤.
 - 원장의 실제 처리(SUCCEEDED·잔액 반영), 주문에 쓴 적립금(`USE`)을 환불·취소 때 돌려주는 것은 다음 단계(적립금 사용 기능과 함께).
 
 ### 4.8 오버레이·감사 로그
