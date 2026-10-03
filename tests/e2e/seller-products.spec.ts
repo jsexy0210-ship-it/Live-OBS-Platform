@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { submitSellerLogin } from "./sellerLogin";
 import { RUN, cleanupProducts, track } from "./cleanup";
 
 // 판매자 로그인 → 상품 목록 → 등록 → 수정 → 숨김·삭제를 실제로 눌러 확인한다.
@@ -36,9 +37,7 @@ async function searchFor(page: Page, text: string) {
 
 async function login(page: Page, email = OWNER) {
   await page.goto("/seller/login");
-  await page.getByLabel("이메일").fill(email);
-  await page.getByLabel("비밀번호").fill(PASSWORD);
-  await page.getByRole("button", { name: "로그인" }).click();
+  await submitSellerLogin(page, email, PASSWORD);
   await expect(page).toHaveURL(/\/seller\/products$/);
 }
 
@@ -285,9 +284,7 @@ test("숫자·글자 입력: 전각 숫자는 받고, 음수 가격과 보이지
 
 test("권한이 하나도 없는 직원에게는 권한이 필요한 메뉴가 보이지 않는다", async ({ page }) => {
   await page.goto("/seller/login");
-  await page.getByLabel("이메일").fill("demo-none@example.com");
-  await page.getByLabel("비밀번호").fill(PASSWORD);
-  await page.getByRole("button", { name: "로그인" }).click();
+  await submitSellerLogin(page, "demo-none@example.com", PASSWORD);
   await expect(page.getByText("이 기능은 권한이 필요해요")).toBeVisible();
   const side = page.getByRole("complementary", { name: "파트너스 메뉴" });
   for (const hidden of ["방송 대시보드", "상품", "주문", "입금 확인", "배송", "영수증 · 세금계산서", "적립금", "회원", "구매 제한", "구매자 문의", "오버레이 편집기", "HIT 카드 이력", "방송 이력", "쇼핑몰 설정", "결제(PG) 연결", "주문자 알림", "구독 · 결제", "직원 계정"]) {

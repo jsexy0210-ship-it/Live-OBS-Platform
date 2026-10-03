@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { submitSellerLogin } from "./sellerLogin";
 
 // SA-063 주문 설정: 입금 기한·자동 취소·자동 구매 제한·자동 배송 완료·자동 구매 확정을 실제로 바꾸고 저장해 확인한다.
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
@@ -45,9 +46,7 @@ async function resetPolicy(page: Page) {
 
 async function openAs(page: Page, email: string) {
   await page.goto("/seller/login?next=%2Fseller%2Fsettings%2Forder");
-  await page.getByLabel("이메일").fill(email);
-  await page.getByLabel("비밀번호").fill(PASSWORD);
-  await page.getByRole("button", { name: "로그인" }).click();
+  await submitSellerLogin(page, email, PASSWORD);
   await expect(page).toHaveURL(/\/seller\/settings\/order$/);
   if (email === "demo-owner@example.com") await resetPolicy(page);
 }

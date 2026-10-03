@@ -143,7 +143,13 @@ export async function updateStaffProfile(
     const unlink = phoneChanged && staff.identityCiHash !== null;
     const updated = await tx.sellerUser.update({
       where: { id: staff.id },
-      data: { name, phone: nextPhone, ...(phoneChanged ? { identityCiHash: null, identityLinkedAt: null } : {}) },
+      data: {
+        name,
+        phone: nextPhone,
+        ...(phoneChanged ? { identityCiHash: null, identityLinkedAt: null } : {}),
+        // 연결돼 있던 직원만 「다시 연결 필요」로 남긴다
+        ...(unlink ? { identityUnlinkedAt: new Date() } : {}),
+      },
       select: { name: true, phone: true, identityLinkedAt: true },
     });
     await writeAudit(tx, {

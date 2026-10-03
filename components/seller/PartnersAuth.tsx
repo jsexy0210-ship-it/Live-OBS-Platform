@@ -1,10 +1,28 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
+
+// 로그인 화면 직원 탭에서 들어오면 ?type=staff. 계정 찾기 → 비밀번호 찾기 → 로그인 복귀까지 이어 붙인다(정본: docs/IA.md AU-002·003·011).
+export function useStaffType(): boolean {
+  const [staff, setStaff] = useState(false);
+  useEffect(() => setStaff(new URLSearchParams(window.location.search).get("type") === "staff"), []);
+  return staff;
+}
+export const withType = (path: string, staff: boolean) => (staff ? `${path}?type=staff` : path);
+
+// 로그인 뒤 돌아갈 주소(?next=). 파트너스 화면 안의 주소로만 돌려보낸다(다른 사이트로 넘기지 않음)
+export function safeNext(): string {
+  const next = new URLSearchParams(window.location.search).get("next");
+  return next && /^\/seller(\/[\w\-/]*)?$/.test(next) && next !== "/seller/login" && next !== "/seller/identity-link" ? next : "/seller/products";
+}
 
 // 로그인 밖 파트너스 화면(로그인 · 가입 신청 · 비밀번호 찾기) 공통 틀: 가운데 로고와 카드
 export function AuthFrame({ children, wide = false }: { children: React.ReactNode; wide?: boolean }) {
+  const staff = useStaffType();
   return (
     <div className="login-page">
-      <Link className="logo" href="/seller/login" style={{ fontSize: 22 }} aria-label="파트너스 로그인으로">
+      <Link className="logo" href={withType("/seller/login", staff)} style={{ fontSize: 22 }} aria-label="파트너스 로그인으로">
         <span className="logo-sym" />
         <span className="logo-word" />
         <span className="t-l1 c-alt" style={{ marginLeft: 6 }}>
@@ -33,6 +51,7 @@ export function Steps({ steps, current }: { steps: string[]; current: number }) 
 // 본인확인 대행사 연결 전(API 503 「본인확인 서비스 준비 중이에요」) 상태 화면
 // action: 「가입을 신청할」·「비밀번호를 찾을」
 export function IdentityUnavailable({ action }: { action: string }) {
+  const staff = useStaffType();
   return (
     <div className="st" style={{ boxShadow: "none", padding: "24px 0" }}>
       <div className="st-ic">!</div>
@@ -40,7 +59,7 @@ export function IdentityUnavailable({ action }: { action: string }) {
         본인확인 서비스 준비 중이에요
       </h2>
       <span className="s">휴대폰 본인확인을 연결하고 있어요. 준비되면 바로 {action} 수 있어요.</span>
-      <Link className="btn btn-sm btn-out" href="/seller/login">
+      <Link className="btn btn-sm btn-out" href={withType("/seller/login", staff)}>
         로그인으로 돌아가기
       </Link>
     </div>

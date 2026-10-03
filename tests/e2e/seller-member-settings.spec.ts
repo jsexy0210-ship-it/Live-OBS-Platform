@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { submitSellerLogin } from "./sellerLogin";
 import { setMemberPolicyInDb } from "./memberPolicyDb";
 
 // SA-043 회원 정책(재가입 제한): 동의 철회 기능 전에는 켤 수 없고(스위치 비활성·409), 이미 켜진 쇼핑몰은 끌 수 있다. 저장 실패는 화면 위에 보인다.
@@ -75,9 +76,7 @@ test("이미 켜진 쇼핑몰은 끄기만 할 수 있고, 끄기 저장에 실�
 
 test("회원·적립금 권한이 없는 직원은 권한 안내를 본다", async ({ page }) => {
   await page.goto("/seller/login?next=%2Fseller%2Fsettings%2Fmember");
-  await page.getByLabel("이메일").fill("demo-staff@example.com");
-  await page.getByLabel("비밀번호").fill(PASSWORD);
-  await page.getByRole("button", { name: "로그인" }).click();
+  await submitSellerLogin(page, "demo-staff@example.com", PASSWORD);
   await expect(page).toHaveURL(/\/seller\/settings\/member$/);
   await expect(page.getByText("회원·적립금", { exact: false }).first()).toBeVisible();
   await expect(page.getByRole("switch", { name: "탈퇴한 사람의 재가입 막기" })).toHaveCount(0);
