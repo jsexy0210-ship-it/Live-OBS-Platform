@@ -215,6 +215,8 @@ async function runAll(
       if (!action) {
         const reference = pb ? { guide: pb.guide, examples: pb.examples, referenceImages: pb.referenceImages } : null;
         guard();
+        // 화면 이탈은 판단 모델을 부르기 전에 기록한다(호출이 계속 실패해 작업이 닫혀도 작업서가 재검증 대상이 되게)
+        if (stats.deviatedNow) await touchStats();
         const vocabulary = plannerVocabulary(pb ?? secretBook?.steps[step.key]);
         const decision = await rt.planner.decide({ step, observation: sanitizeObservation(raw, secrets, vocabulary), history, reference });
         stats.plannerCalls++;

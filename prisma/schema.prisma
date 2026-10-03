@@ -1371,6 +1371,10 @@ model AutomationPracticeRun {
   deviatedSteps   String[]                  @default([])
   startedAt       DateTime                  @db.Timestamptz(3)
   finishedAt      DateTime                  @default(now()) @db.Timestamptz(3)
+  // 실행기 보관 자료 정리(연습 실행의 작업 범위 id). 정리가 끝나지 않았으면 cleanupPendingAt에 다음 정리 시각을 둔다(null = 정리 끝).
+  cleanupScopeId   String?                  @db.Uuid
+  cleanupPendingAt DateTime?                @db.Timestamptz(3)
+  cleanupAttempts  Int                      @default(0)
 
   @@index([playbookId, playbookVersion, finishedAt])
 }

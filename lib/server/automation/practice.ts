@@ -2,9 +2,10 @@ import { randomUUID } from "node:crypto";
 import type { AutomationPracticeRun, PrismaClient } from "@prisma/client";
 import { AUTOMATION_LIMITS, plannerConfig } from "./config";
 import { runSteps, type EngineStats } from "./engine";
+import { backoffMs } from "./queue";
 import type { Playbook } from "./playbook";
 import { PLAYBOOKS } from "./playbooks";
-import type { AutomationRuntime } from "./ports";
+import type { AutomationRuntime, JobScope } from "./ports";
 import { STEPS } from "./steps";
 
 // 연습 모드(확정 ⑦-1): 시험용 쇼핑몰에서 작업서를 처음부터 끝까지 실행하고 성공 여부·소요 시간·판단 호출 수·비용·화면 이탈을 남긴다.
@@ -13,6 +14,14 @@ import { STEPS } from "./steps";
 
 // 지원 목록 기준: 같은 작업서 버전의 최근 연습이 연속 이만큼 성공(화면 이탈 없이)
 export const PRACTICE_STREAK_REQUIRED = 5;
+// 정리 다시 시도 상한(넘으면 운영 확인 대상으로 남긴다)
+const CLEANUP_MAX_ATTEMPTS = 10;
+
+// 연습 실행 범위의 보관 자료(행동 키 기록·OBS 연결 정보)를 두 실행기에 지우라고 요청한다. 둘 다 성공해야 정리 끝이다.
+async function discardScope(rt: Pick<AutomationRuntime, "browser" | "obs">, scope: JobScope): Promise<boolean> {
+  const results = await Promise.allSettled([rt.browser.discard(scope), rt.obs.discard(scope)]);
+  return results.every((r) => r.status === "fulfilled");
+}
 
 export async function runPractice(
   db: PrismaClient,
@@ -27,6 +36,22 @@ export async function runPractice(
   let stepIndex = 0;
   let result: Awaited<ReturnType<typeof runSteps>>;
   const scope = { sellerId: "practice", jobId: randomUUID() };
+  // 실행 전에 기록부터 남긴다(정리 대상 범위 포함). 도중에 죽으면 실패로 남고, 정리는 실행 시간 상한 뒤 정기 정리가 한다.
+  const run = await db.automationPracticeRun.create({
+    data: {
+      playbookId: playbook.id,
+      playbookVersion: playbook.version,
+      outcome: "FAILED",
+      reason: "practice_incomplete",
+      durationMs: 0,
+      plannerCalls: 0,
+      playbookActions: 0,
+      costWon: 0,
+      startedAt,
+      cleanupScopeId: scope.jobId,
+      cleanupPendingAt: new Date(startedAt.getTime() + AUTOMATION_LIMITS.maxRunMs),
+    },
+  });
   try {
     result = await runSteps(
       rt,
@@ -46,16 +71,15 @@ export async function runPractice(
     );
   } catch {
     result = { kind: "failed", reason: "practice_error" };
-  } finally {
-    // 연습 실행의 보관 자료(행동 키 기록·OBS 연결 정보)는 실행마다 바로 지운다(삭제 실패는 결과 기록을 막지 않음)
-    await rt.browser.discard(scope).catch(() => undefined);
-    await rt.obs.discard(scope).catch(() => undefined);
   }
+  // 보관 자료는 실행마다 바로 지운다. 실패하면 기록에 남겨 정기 정리(cleanupPracticeArtifacts)가 백오프로 다시 한다.
+  const cleaned = await discardScope(rt, scope);
   const outcome = result.kind === "succeeded" ? "SUCCEEDED" : result.kind === "needs_customer" ? "NEEDS_CUSTOMER" : "FAILED";
-  return db.automationPracticeRun.create({
+  return db.automationPracticeRun.update({
+    where: { id: run.id },
     data: {
-      playbookId: playbook.id,
-      playbookVersion: playbook.version,
+      ...(cleaned ? { cleanupPendingAt: null } : { cleanupAttempts: 1, cleanupPendingAt: new Date(Date.now() + backoffMs(1)) }),
+      finishedAt: new Date(),
       outcome,
       failedStep: outcome === "SUCCEEDED" ? null : (STEPS[stepIndex]?.key ?? null),
       reason: result.kind === "succeeded" ? null : result.kind === "needs_customer" ? result.action : result.reason.slice(0, 200),
@@ -64,9 +88,28 @@ export async function runPractice(
       playbookActions: stats.playbookActions,
       costWon: stats.costUsed,
       deviatedSteps: stats.deviatedSteps,
-      startedAt,
     },
   });
+}
+
+// 정리가 끝나지 않은 연습 실행의 보관 자료를 다시 지운다(작업자 반복에서 부른다). 실패하면 백오프로 미루고, 상한을 넘으면 그대로 남긴다.
+export async function cleanupPracticeArtifacts(db: PrismaClient, rt: Pick<AutomationRuntime, "browser" | "obs">, limit = 20): Promise<number> {
+  const due = await db.automationPracticeRun.findMany({
+    where: { cleanupPendingAt: { lte: new Date() }, cleanupScopeId: { not: null }, cleanupAttempts: { lt: CLEANUP_MAX_ATTEMPTS } },
+    orderBy: { cleanupPendingAt: "asc" },
+    take: limit,
+  });
+  let cleaned = 0;
+  for (const r of due) {
+    const ok = await discardScope(rt, { sellerId: "practice", jobId: r.cleanupScopeId! });
+    const attempts = r.cleanupAttempts + 1;
+    await db.automationPracticeRun.update({
+      where: { id: r.id },
+      data: ok ? { cleanupPendingAt: null, cleanupAttempts: attempts } : { cleanupAttempts: attempts, cleanupPendingAt: new Date(Date.now() + backoffMs(attempts)) },
+    });
+    if (ok) cleaned++;
+  }
+  return cleaned;
 }
 
 export type Readiness = {

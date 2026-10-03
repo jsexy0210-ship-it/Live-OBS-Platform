@@ -4,6 +4,7 @@ import { AUTOMATION_LIMITS } from "./config";
 import { EngineAborted, runSteps } from "./engine";
 import { findPlaybook } from "./playbooks";
 import type { AutomationRuntime, JobScope } from "./ports";
+import { cleanupPracticeArtifacts } from "./practice";
 import { reconcileAutomationPayments } from "./purchase";
 import { FencingError, RunTimeExceeded, advanceStep, claimNext, claimObsTarget, extendLease, failWithRefund, markBrowserStateHeld, markTargetVerified, finishJob, parkForCustomer, reapExpired, retryLater, toVerifying, touch, type Claimed } from "./queue";
 
@@ -171,6 +172,7 @@ export async function runWorkerLoop(
   while (!opts.signal.aborted) {
     await reapExpired(db, opts.random);
     await purgeEndedBrowserState(db, rt);
+    await cleanupPracticeArtifacts(db, rt);
     if (opts.billing) await reconcileAutomationPayments(db, opts.billing);
     const r = await runOnce(db, rt, opts);
     if (r === "idle") await new Promise((res) => setTimeout(res, idleMs));

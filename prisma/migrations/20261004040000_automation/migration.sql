@@ -115,6 +115,9 @@ CREATE TABLE "AutomationPracticeRun" (
     "deviatedSteps" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "startedAt" TIMESTAMPTZ(3) NOT NULL,
     "finishedAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "cleanupScopeId" UUID,
+    "cleanupPendingAt" TIMESTAMPTZ(3),
+    "cleanupAttempts" INTEGER NOT NULL DEFAULT 0,
 
     CONSTRAINT "AutomationPracticeRun_pkey" PRIMARY KEY ("id")
 );

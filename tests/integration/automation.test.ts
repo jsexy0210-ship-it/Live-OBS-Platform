@@ -1888,3 +1888,48 @@ describe("Codex 11차 반영(002ed20)", () => {
     expect(await db.automationPayment.findUniqueOrThrow({ where: { id: rest[0] } })).toMatchObject({ status: "PAID" });
   });
 });
+
+describe("Codex 12차 반영(6706ed2)", () => {
+  it("연습 실행의 보관 자료 정리가 한 번 실패해도 기록에 남아, 다음 정리 회차에서 0건이 된다", async () => {
+    const practice = await import("../../lib/server/automation/practice");
+    const rt = runtime();
+    const discard = rt.browser.discard.bind(rt.browser);
+    let failOnce = true;
+    rt.browser.discard = async (scope) => {
+      if (failOnce) {
+        failOnce = false;
+        throw new Error("executor unavailable");
+      }
+      return discard(scope);
+    };
+    const run = await runPractice(db, rt, cafe24Playbook, { shopHost: "myshop.cafe24.com" });
+    const runId = rt.browser.opened[0].scope.jobId;
+    expect([...rt.browser.applied.keys()].some((k) => k.startsWith(runId))).toBe(true);
+    const saved = await db.automationPracticeRun.findUniqueOrThrow({ where: { id: run.id } });
+    expect(saved).toMatchObject({ outcome: "SUCCEEDED", cleanupAttempts: 1 });
+    expect(saved.cleanupPendingAt).not.toBeNull();
+    // 다음 정리 회차(백오프 시각이 지남)
+    await db.automationPracticeRun.update({ where: { id: run.id }, data: { cleanupPendingAt: new Date(Date.now() - 1000) } });
+    expect(await practice.cleanupPracticeArtifacts(db, rt)).toBe(1);
+    expect([...rt.browser.applied.keys()].filter((k) => k.startsWith(runId))).toHaveLength(0);
+    expect(rt.obs.connections.has(runId)).toBe(false);
+    expect(await db.automationPracticeRun.findUniqueOrThrow({ where: { id: run.id } })).toMatchObject({ cleanupPendingAt: null });
+    expect(await practice.cleanupPracticeArtifacts(db, rt)).toBe(0);
+  });
+
+  it("화면 이탈은 판단 모델을 부르기 전에 기록한다: 판단 모델 호출이 계속 실패해 작업이 닫혀도 이탈 시각이 남고 새 구매가 막힌다", async () => {
+    const a = await bought();
+    await db.automationJob.update({ where: { id: a.jobId }, data: { maxAttempts: 1 } });
+    const rt = runtime();
+    rt.browser.pageText = () => "앱 설치 · 설치 완료 · 저장 · 로그아웃"; // 웹훅 단계 화면이 작업서와 다름
+    rt.planner.decide = async () => {
+      throw new Error("planner unavailable");
+    };
+    expect(await runOnce(db, rt, { ...W, random: () => 0 })).toBe("retry");
+    const j = await job(a.jobId);
+    expect(j.status).toBe("FAILED");
+    expect(j.lastDeviationAt).not.toBeNull();
+    const s = await shopWithCard();
+    expect(await purchaseAutomation(db, new FakeBillingProvider(), s.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP })).toEqual({ ok: false, reason: "shop_not_supported" });
+  });
+});
