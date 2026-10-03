@@ -129,8 +129,9 @@ export default function SignupForm({ slug, consent }: { slug: string; consent: S
   const [unconfirmed, setUnconfirmed] = useState<{ body: SignupBody; nickname: string } | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{ loginId?: string; password?: string; nickname?: string; terms?: string }>({});
 
-  const rejoinRequired = consent.rejoinDays !== null;
-  const consentReady = agreedTerms && agreedPrivacy && (!rejoinRequired || agreedRejoin) && idvAgreed;
+  // 재가입 제한을 켠 쇼핑몰만 보관 동의 칸을 보여 준다(선택, 대표님 결정 2026-10-03)
+  const rejoinShown = consent.rejoinDays !== null;
+  const consentReady = agreedTerms && agreedPrivacy && idvAgreed;
   const identityReady = name.trim() !== "" && birth.length === 8 && gender !== null && carrier !== "" && phone.length >= 10 && consentReady;
   const nicknameTooLong = textLength(nickname) > MAX_NICKNAME_LENGTH;
   const accountReady = loginId.trim() !== "" && password !== "" && nickname.trim() !== "" && !nicknameTooLong;
@@ -186,7 +187,9 @@ export default function SignupForm({ slug, consent }: { slug: string; consent: S
       agreedPrivacy,
       termsVersion: consent.termsVersion,
       privacyVersion: consent.privacyVersion,
-      ...(rejoinRequired ? { agreedRejoinRetention: agreedRejoin, rejoinRetentionVersion: consent.rejoinRetentionVersion, rejoinRestrictionDaysShown: consent.rejoinDays } : {}),
+      ...(rejoinShown
+        ? { agreedRejoinRetention: agreedRejoin, ...(agreedRejoin ? { rejoinRetentionVersion: consent.rejoinRetentionVersion, rejoinRestrictionDaysShown: consent.rejoinDays } : {}) }
+        : {}),
     };
     const input = { ...person, birth7, carrier, device, ...agreed };
     const fp = JSON.stringify(input);
@@ -216,9 +219,9 @@ export default function SignupForm({ slug, consent }: { slug: string; consent: S
       return;
     }
     // 동의가 빠졌거나 문서·재가입 제한 기간이 바뀌었으면 동의 칸으로 보낸다.
-    // 화면을 연 뒤 바뀐 경우(문서 버전·재가입 제한을 새로 켬·기간 변경)는 입력은 두고 동의 정보만 새로 받아 다시 동의하게 한다.
-    if (r.error === "terms_required" || r.error === "rejoin_consent_required" || r.error === "rejoin_policy_changed" || r.error === "consent_outdated") {
-      if (r.error !== "terms_required") router.refresh();
+    // 화면을 연 뒤 바뀐 경우(문서 버전·재가입 제한 기간 변경)는 입력은 두고 동의 정보만 새로 받아 다시 동의하게 한다.
+    if (r.error === "terms_required" || r.error === "invalid_rejoin_consent" || r.error === "rejoin_policy_changed" || r.error === "consent_outdated") {
+      if (r.error === "rejoin_policy_changed" || r.error === "consent_outdated") router.refresh();
       setFieldErrors({ terms: failMessage(r) });
       focus("idv-terms-all");
       return;
@@ -551,7 +554,6 @@ export default function SignupForm({ slug, consent }: { slug: string; consent: S
                     onChange={(e) => {
                       setAgreedTerms(e.target.checked);
                       setAgreedPrivacy(e.target.checked);
-                      setAgreedRejoin(e.target.checked);
                       setIdvAgreed(e.target.checked);
                     }}
                   />
@@ -565,11 +567,11 @@ export default function SignupForm({ slug, consent }: { slug: string; consent: S
                   <input type="checkbox" className="cbx" {...termsAria} checked={agreedPrivacy} onChange={(e) => setAgreedPrivacy(e.target.checked)} />
                   개인정보 수집 · 이용 (필수)
                 </label>
-                {rejoinRequired && (
+                {rejoinShown && (
                   <>
                     <label className="chk">
                       <input type="checkbox" className="cbx" {...termsAria} checked={agreedRejoin} onChange={(e) => setAgreedRejoin(e.target.checked)} />
-                      재가입 제한 정보 보관 (필수)
+                      재가입 제한 정보 보관 (선택)
                     </label>
                     {/* 본문: docs/terms/PRIVACY_CONSENT_TEMPLATE.md 하단 「재가입 제한 정보 보관 동의」 */}
                     <details className="signup-terms-doc">
@@ -580,7 +582,7 @@ export default function SignupForm({ slug, consent }: { slug: string; consent: S
                         <li>보관 항목: 본인확인 식별값(CI)을 바꾼 값</li>
                         <li>보관 기간: 탈퇴한 날부터 {consent.rejoinDays}일</li>
                       </ul>
-                      <p>이 동의를 하지 않을 수 있어요. 다만 이 쇼핑몰은 재가입 제한을 운영해서, 동의하지 않으면 가입할 수 없어요.</p>
+                      <p>동의하지 않아도 가입할 수 있어요. 동의하지 않으면 이 정보를 보관하지 않고, 탈퇴한 뒤 다시 가입할 때 기간 제한을 받지 않아요.</p>
                     </details>
                   </>
                 )}

@@ -13,6 +13,8 @@ import { type ConsentFailure, parseSignupConsent, readSignupConsent } from "./co
 import { purgeExpiredRejoinBlocks, rejoinBlockedUntil, rejoinDaysToAgree } from "./rejoin";
 import { cleanText } from "../text/clean";
 
+type Db = PrismaClient | Prisma.TransactionClient;
+
 
 // 본인인증 후 가입에 쓸 수 있는 시간
 const SIGNUP_WINDOW_MS = 30 * 60_000;
@@ -168,9 +170,9 @@ export type BuyerSignupFailure =
   | "shop_unavailable"
   | "under_age" // 만 14세 미만(본인확인 시작 때 입력한 생년월일, 가입 때 본인확인 결과 생년월일)
   | "rejoin_restricted" // 재가입 제한 기간 중(탈퇴한 같은 사람, buyers/rejoin.ts)
-  | "rejoin_consent_required" // 재가입 제한을 켠 쇼핑몰에서 「재가입 제한 정보 보관 동의」가 없음(본인확인 시작)
-  | "rejoin_policy_changed" // 화면에 보여 준 재가입 제한 기간이 지금 정책과 다름(본인확인 시작, 화면을 다시 불러와 다시 동의)
-  | "consent_outdated"; // 화면이 보여 준 동의 문서 버전이 지금과 다름(본인확인 시작)
+  | "invalid_rejoin_consent" // 재가입 제한 정보 보관 동의 값이 불리언이 아님(본인확인 시작)
+  | "rejoin_policy_changed" // 보관에 동의한 경우: 화면에 보여 준 재가입 제한 기간이 지금 정책과 다름(본인확인 시작, 화면을 다시 불러와 다시 동의)
+  | "consent_outdated"; // 화면이 보여 준 동의 문서 버전(필수 약관, 동의한 경우 재가입 제한 보관)이 지금과 다름(본인확인 시작)
 
 // resumed: 응답이 끊겨 같은 요청을 다시 보낸 경우(새로 만들지 않고 이미 만든 회원을 돌려줌)
 // rejoinAvailableAt: rejoin_restricted일 때 다시 가입할 수 있는 시각
@@ -226,6 +228,7 @@ export async function signupBuyer(
     }
     return { ok: false, reason: "verification_invalid" };
   };
+  // 이미 가입을 마친 같은 요청의 재시도는 정책 대조보다 먼저 본다(그사이 정책이 바뀌어도 만든 계정의 201·세션을 받는다)
   if (v.consumedAt) return resume(v.subjectId);
   // 본인확인 시작 때 받은 동의. 없으면(이 변경 전 요청) 처음부터 다시 한다.
   const consent = readSignupConsent(v.signupConsent);
@@ -364,7 +367,7 @@ export const BUYER_SIGNUP_MESSAGES: Record<BuyerSignupFailure | "daily_limit_exc
   shop_unavailable: "지금은 쇼핑몰을 이용할 수 없어요",
   under_age: "만 14세 미만은 가입할 수 없어요",
   rejoin_restricted: "지금은 다시 가입할 수 없어요",
-  rejoin_consent_required: "재가입 제한 정보 보관에 동의해 주세요",
+  invalid_rejoin_consent: "재가입 제한 정보 보관 동의 값을 다시 확인해 주세요",
   consent_outdated: "약관이 바뀌었어요. 다시 확인하고 동의해 주세요",
   rejoin_policy_changed: "재가입 제한 기간이 바뀌었어요. 바뀐 내용을 확인하고 다시 동의해 주세요",
   daily_limit_exceeded: "오늘은 본인확인을 더 할 수 없어요. 내일 다시 해 주세요",
@@ -386,44 +389,42 @@ export const BUYER_SIGNUP_STATUS: Record<BuyerSignupFailure, number> = {
   shop_unavailable: 402,
   under_age: 403,
   rejoin_restricted: 403,
-  rejoin_consent_required: 400,
+  invalid_rejoin_consent: 400,
   consent_outdated: 409,
   rejoin_policy_changed: 409,
 };
 
-// 가입을 끝내지 않은 본인확인 기록 파기(PRODUCT_SCOPE 「동의 순서」·PRIVACY_CONSENT_TEMPLATE: 확인 시간이 끝나면 바로 지움).
-// 정기 실행 연결은 인프라 승인 뒤라 함수만 둔다. 대상: 구매자 가입용이고 가입에 쓰지 않았으며(consumedAt 없음) 유효 시간(expiresAt)이 지난 기록.
-// - 유효 시간이 지나면 바로 이름·휴대폰·생년월일·CI 해시·요청 휴대폰·동의 기록을 지우고 상태를 만료(EXPIRED)로 둔다.
-// - 행 자체는 같은 IP 하루 시작 횟수(부정 이용 방지)를 세는 데 쓰여 그날(KST)이 끝난 뒤 지운다.
-// 지운 수를 돌려준다.
-export async function purgeUnfinishedSignupVerifications(db: PrismaClient, now?: Date, sellerId?: string): Promise<{ cleared: number; deleted: number }> {
+// 가입을 끝내지 않은 본인확인 기록 비식별(PRODUCT_SCOPE 「동의 순서」·PRIVACY_CONSENT_TEMPLATE: 확인 시간이 끝나면 바로 지움).
+// 대상: 구매자 가입용이고 가입에 쓰지 않았으며(consumedAt 없음) 유효 시간(expiresAt)이 지났고 아직 비식별하지 않은 기록.
+// 이름·휴대폰·요청 휴대폰·생년월일·CI 해시·subjectId·동의·시작 브라우저 값(ownerTokenHash)을 비우고, 대행사에서 결과를 다시 조회하는
+// 열쇠인 requestId는 겹치지 않는 무작위 값으로 바꾼다. 행은 지우지 않는다(MASTER 결정 2026-10-03, Codex P1): 쇼핑몰·상태·요청 시각·요청 IP로
+// 같은 IP 하루 시작 횟수와 체험 한도(VERIFIED 건수)를 세므로, 지우거나 상태를 바꾸면 만료를 기다려 유료 문자를 다시 받는 남용이 된다.
+// 요청 IP는 purgeOldSignupVerificationIps가 3개월 뒤 비운다. 정기 실행(jobs/scheduler.ts)과 가입·탈퇴 처리 때 부른다. 비식별한 수를 돌려준다.
+export async function purgeUnfinishedSignupVerifications(db: Db, now?: Date, sellerId?: string): Promise<number> {
   const at = now ?? (await dbNow(db));
-  const unfinished = { purpose: "BUYER_SIGNUP" as const, consumedAt: null, expiresAt: { lte: at }, ...(sellerId ? { sellerId } : {}) };
-  const cleared = await db.identityVerification.updateMany({
-    where: { ...unfinished, OR: [{ name: { not: null } }, { phone: { not: null } }, { birthDate: { not: null } }, { ciHash: { not: null } }, { requestedPhone: { not: null } }, { status: { in: ["PENDING", "VERIFIED"] } }] },
-    data: { status: "EXPIRED", name: null, phone: null, birthDate: null, ciHash: null, requestedPhone: null, signupConsent: Prisma.DbNull },
-  });
-  const [{ start }] = await db.$queryRaw<{ start: Date }[]>`
-    SELECT (date_trunc('day', ${at}::timestamptz AT TIME ZONE 'Asia/Seoul') AT TIME ZONE 'Asia/Seoul') AS "start"`;
-  const deleted = await db.identityVerification.deleteMany({ where: { ...unfinished, createdAt: { lt: start } } });
-  return { cleared: cleared.count, deleted: deleted.count };
+  return db.$executeRaw`
+    UPDATE "IdentityVerification"
+    SET "name" = NULL, "phone" = NULL, "requestedPhone" = NULL, "birthDate" = NULL, "ciHash" = NULL, "subjectId" = NULL,
+        "signupConsent" = NULL, "ownerTokenHash" = NULL, "requestId" = 'anonymized:' || gen_random_uuid()::text, "anonymizedAt" = ${at}
+    WHERE "purpose" = 'BUYER_SIGNUP' AND "consumedAt" IS NULL AND "anonymizedAt" IS NULL AND "expiresAt" <= ${at}
+      AND (${sellerId ?? null}::uuid IS NULL OR "sellerId" = ${sellerId ?? null}::uuid)`;
 }
 
-// 가입을 마친 본인확인 기록의 요청 IP는 3개월 뒤 비운다(접속 기록 보관 3개월, PRODUCT_SCOPE 「구매자 탈퇴·재가입」).
-// sellerId를 주면 그 쇼핑몰만. 정기 실행 연결 전이라 가입·탈퇴 처리 때 그 쇼핑몰 것을 함께 정리한다. 비운 수를 돌려준다.
+// 구매자 가입 본인확인 기록의 요청 IP는 3개월 뒤 비운다(접속 기록 보관 3개월, PRODUCT_SCOPE 「구매자 탈퇴·재가입」).
+// 가입을 마친 기록과 비식별한 미가입 기록이 대상이다. sellerId를 주면 그 쇼핑몰만. 정기 실행(jobs/scheduler.ts)과 가입·탈퇴 처리 때 부른다. 비운 수를 돌려준다.
 export const SIGNUP_IP_RETENTION_MONTHS = 3;
-export async function purgeOldSignupVerificationIps(db: PrismaClient, now?: Date, sellerId?: string): Promise<number> {
+export async function purgeOldSignupVerificationIps(db: Db, now?: Date, sellerId?: string): Promise<number> {
   const at = now ?? (await dbNow(db));
   const [{ before }] = await db.$queryRaw<{ before: Date }[]>`SELECT (${at}::timestamptz - make_interval(months => ${SIGNUP_IP_RETENTION_MONTHS}::int)) AS "before"`;
   const r = await db.identityVerification.updateMany({
-    where: { purpose: "BUYER_SIGNUP", consumedAt: { not: null }, requestIp: { not: null }, createdAt: { lte: before }, ...(sellerId ? { sellerId } : {}) },
+    where: { purpose: "BUYER_SIGNUP", OR: [{ consumedAt: { not: null } }, { anonymizedAt: { not: null } }], requestIp: { not: null }, createdAt: { lte: before }, ...(sellerId ? { sellerId } : {}) },
     data: { requestIp: null },
   });
   return r.count;
 }
 
-// 정기 실행 연결 전 파기 경로: 가입·탈퇴 처리 때 그 쇼핑몰의 끝난 미가입 본인확인과 3개월 지난 요청 IP를 정리한다.
-export async function purgeSignupVerificationsForShop(db: PrismaClient, sellerId: string, now?: Date) {
+// 가입·탈퇴 처리 때 그 쇼핑몰의 끝난 미가입 본인확인과 3개월 지난 요청 IP를 정리한다(모든 쇼핑몰은 정기 실행).
+export async function purgeSignupVerificationsForShop(db: Db, sellerId: string, now?: Date) {
   const at = now ?? (await dbNow(db));
   await purgeUnfinishedSignupVerifications(db, at, sellerId);
   await purgeOldSignupVerificationIps(db, at, sellerId);

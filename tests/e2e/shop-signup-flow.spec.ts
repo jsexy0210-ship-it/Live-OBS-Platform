@@ -462,7 +462,7 @@ test("필수 동의 전에는 인증번호 받기를 누를 수 없고, 하나�
     await expect(send).toBeEnabled();
   }
   // 재가입 제한을 끈 쇼핑몰이라 보관 동의 칸은 없다
-  await expect(page.getByText("재가입 제한 정보 보관 (필수)")).toHaveCount(0);
+  await expect(page.getByText("재가입 제한 정보 보관", { exact: false })).toHaveCount(0);
 });
 
 test("본인확인 시작이 만 14세 미만(403)이면 생년월일 칸에 알리고 포커스를 옮긴다", async ({ page }) => {
@@ -763,34 +763,41 @@ test("재가입 제한을 끈 쇼핑몰은 보관 동의 줄이 없다", async (
   await mockApi(page);
   await page.goto(`/shop/${SLUG}/signup`);
   await toVerified(page);
-  await expect(page.getByLabel("재가입 제한 정보 보관 (필수)")).toHaveCount(0);
+  await expect(page.getByText("재가입 제한 정보 보관", { exact: false })).toHaveCount(0);
 });
 
-test("재가입 제한을 켠 쇼핑몰은 본인확인 전에 보관 동의를 따로 체크해야 인증번호를 받을 수 있고, 「보기」에 실제 기간을 보여 준다", async ({ page, baseURL }) => {
+test("재가입 제한을 켠 쇼핑몰의 보관 동의는 선택(본인확인 전): 체크하지 않아도 인증번호를 받고 가입되며, 체크하면 보여 준 기간·문서 버전을 함께 보낸다. 「보기」에 실제 기간을 보여 준다", async ({ page, baseURL }) => {
   if (!PASSWORD) throw new Error("E2E_PASSWORD가 없어요. dev-seed가 출력한 데모 비밀번호를 넣어 주세요");
   await setRejoin(baseURL!, true, 90);
   try {
-    const id = uniq();
-    await page.goto(`/shop/${SLUG}/signup`);
-    await fillIdentity(page, `제한${id}`, uniqPhone());
-    const send = page.getByRole("button", { name: "인증번호 받기" });
-    const rejoinBox = page.getByLabel("재가입 제한 정보 보관 (필수)");
-    // 전체 동의에 보관 동의도 들어가고, 보관 동의를 풀면 인증번호를 받을 수 없다
-    await expect(rejoinBox).toBeChecked();
-    await rejoinBox.uncheck();
-    await expect(send).toBeDisabled();
-    await page.getByText("보기").click();
-    await expect(page.getByText("보관 기간: 탈퇴한 날부터 90일")).toBeVisible();
-    await rejoinBox.check();
-    const req = page.waitForRequest((r) => r.url().endsWith(`${API}/verification`));
-    await send.click();
-    expect((await req).postDataJSON()).toMatchObject({ agreedRejoinRetention: true, rejoinRetentionVersion: SIGNUP_CONSENT_VERSIONS.rejoinRetention, rejoinRestrictionDaysShown: 90 });
-    await page.getByLabel("인증번호").fill("000000");
-    await page.getByRole("button", { name: "확인", exact: true }).click();
-    await expect(page.getByText("본인확인을 마쳤어요")).toBeVisible();
-    await fillAccount(page, id, `제한${id}`);
-    await page.getByRole("button", { name: "가입하기" }).click();
-    await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
+    for (const agree of [false, true]) {
+      const id = uniq();
+      await page.goto(`/shop/${SLUG}/signup`);
+      await fillIdentity(page, `제한${id}`, uniqPhone());
+      const send = page.getByRole("button", { name: "인증번호 받기" });
+      const rejoinBox = page.getByLabel("재가입 제한 정보 보관 (선택)");
+      // 필수 약관 전체 동의에 들어가지 않고 기본은 체크 안 함, 체크하지 않아도 인증번호를 받을 수 있다
+      await expect(rejoinBox).not.toBeChecked();
+      await expect(send).toBeEnabled();
+      await page.getByText("보기").click();
+      await expect(page.getByText("보관 기간: 탈퇴한 날부터 90일")).toBeVisible();
+      await expect(page.getByText("동의하지 않아도 가입할 수 있어요. 동의하지 않으면 이 정보를 보관하지 않고, 탈퇴한 뒤 다시 가입할 때 기간 제한을 받지 않아요.")).toBeVisible();
+      if (agree) await rejoinBox.check();
+      const req = page.waitForRequest((r) => r.url().endsWith(`${API}/verification`));
+      await send.click();
+      const body = (await req).postDataJSON();
+      if (agree) expect(body).toMatchObject({ agreedRejoinRetention: true, rejoinRetentionVersion: SIGNUP_CONSENT_VERSIONS.rejoinRetention, rejoinRestrictionDaysShown: 90 });
+      else {
+        expect(body.agreedRejoinRetention).toBe(false);
+        expect(body).not.toHaveProperty("rejoinRestrictionDaysShown");
+      }
+      await page.getByLabel("인증번호").fill("000000");
+      await page.getByRole("button", { name: "확인", exact: true }).click();
+      await expect(page.getByText("본인확인을 마쳤어요")).toBeVisible();
+      await fillAccount(page, id, `제한${id}`);
+      await page.getByRole("button", { name: "가입하기" }).click();
+      await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
+    }
   } finally {
     await setRejoin(baseURL!, false);
   }
@@ -806,8 +813,8 @@ test("재가입 제한 중이면 문구 뒤에 다시 가입할 수 있는 날(K
   await expect(page.getByText("지금은 다시 가입할 수 없어요. 11월 3일부터 다시 가입할 수 있어요")).toBeVisible();
 });
 
-test("본인확인 시작 때 동의 정보가 바뀌었으면(문서·재가입 제한 켬·기간 변경) 입력은 두고 동의 정보를 새로 받아 다시 동의하게 한다", async ({ page }) => {
-  for (const [code, status] of [["consent_outdated", 409], ["rejoin_consent_required", 400], ["rejoin_policy_changed", 409]] as const) {
+test("본인확인 시작 때 동의 정보가 바뀌었으면(문서 버전·재가입 제한 기간 변경) 입력은 두고 동의 정보를 새로 받아 다시 동의하게 한다", async ({ page }) => {
+  for (const [code, status] of [["consent_outdated", 409], ["rejoin_policy_changed", 409]] as const) {
     await page.unrouteAll();
     await mockApi(page, { verification: fail(status, code, BUYER_SIGNUP_MESSAGES[code]) });
     await page.goto(`/shop/${SLUG}/signup`);

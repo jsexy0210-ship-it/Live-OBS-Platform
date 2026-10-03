@@ -10,7 +10,7 @@ import { prisma } from "../../lib/server/db";
 import { startSellerPasswordReset } from "../../lib/server/auth/passwordReset";
 import { FakeIdentityProvider } from "../../lib/server/identity/provider";
 import { identityProvider } from "../../lib/server/identity/registry";
-import { buyerSignupIdentityLimitReached, resendIdentityCode } from "../../lib/server/identity/verification";
+import { buyerSignupIdentityLimitReached, identityUsage, resendIdentityCode } from "../../lib/server/identity/verification";
 import { startSellerSignupVerification } from "../../lib/server/sellers/application";
 import { IDV_INPUT, SIGNUP_CONSENT, confirmIdv, createSeller, db, failingAudit, resetDb, startIdv } from "./helpers";
 
@@ -165,26 +165,58 @@ describe("구매자 가입 HTTP", () => {
     expect((await db.identityVerification.findUniqueOrThrow({ where: { id: otherOld } })).requestIp).toBeNull();
   });
 
-  it("가입을 끝내지 않은 본인확인은 유효 시간이 지나면 개인정보·동의를 지우고 만료로 두며, 그날(KST)이 지나면 행을 지운다. 하루 시작 횟수는 그날 그대로 센다", async () => {
+  it("가입을 끝내지 않은 본인확인은 유효 시간이 지나면 행을 지우지 않고 식별 항목만 비우며(requestId 무작위), 상태·쇼핑몰·요청 시각·요청 IP는 남겨 같은 IP 하루 횟수와 체험 한도를 그대로 센다", async () => {
     const s = await shop();
     const used = await s.verified({ phone: "01010101010", name: "가입함" });
     expect((await s.signup(used, { loginId: "used@example.com", broadcastNickname: "가입함" })).status).toBe(201);
     const stale = await s.verified({ phone: "01020202020", name: "안함" });
     const fresh = await s.verified({ phone: "01030303030", name: "진행중" });
-    const old = await s.verified({ phone: "01040404040", name: "어제" });
+    const pendingStart = await startRoute(post(`${s.base}/verification`, { ...IDV_INPUT, ...SIGNUP_CONSENT, phone: "01040404040", name: "확인전" }), ctx(s.slug));
+    const pending = (await pendingStart.json()).verificationId as string;
     const now = new Date();
-    await db.identityVerification.update({ where: { id: stale.verificationId }, data: { expiresAt: new Date(now.getTime() - 1000) } });
-    await db.identityVerification.update({ where: { id: old.verificationId }, data: { expiresAt: new Date(now.getTime() - 1000), createdAt: new Date(now.getTime() - 2 * 86400_000) } });
+    for (const id of [stale.verificationId, pending]) await db.identityVerification.update({ where: { id }, data: { expiresAt: new Date(now.getTime() - 1000), subjectId: crypto.randomUUID() } });
+    const before = new Map((await db.identityVerification.findMany()).map((r) => [r.id, r]));
+    const usage = await identityUsage(db, s.seller.id);
+    expect(usage).toBe(3);
 
-    expect(await purgeUnfinishedSignupVerifications(db, now)).toEqual({ cleared: 2, deleted: 1 });
-    expect(await db.identityVerification.findUnique({ where: { id: old.verificationId } })).toBeNull();
-    expect(await db.identityVerification.findUniqueOrThrow({ where: { id: stale.verificationId } })).toMatchObject({
-      status: "EXPIRED", name: null, phone: null, birthDate: null, ciHash: null, requestedPhone: null, signupConsent: null,
-    });
-    expect(await db.identityVerification.findUniqueOrThrow({ where: { id: fresh.verificationId } })).toMatchObject({ status: "VERIFIED", name: "진행중" });
-    expect(await db.identityVerification.findUniqueOrThrow({ where: { id: used.verificationId } })).toMatchObject({ consumedAt: expect.any(Date), name: "가입함" });
+    expect(await purgeUnfinishedSignupVerifications(db, now)).toBe(2);
+    for (const id of [stale.verificationId, pending]) {
+      const r = await db.identityVerification.findUniqueOrThrow({ where: { id } });
+      const was = before.get(id)!;
+      expect(r).toMatchObject({
+        name: null, phone: null, birthDate: null, ciHash: null, requestedPhone: null, subjectId: null, signupConsent: null, ownerTokenHash: null,
+        anonymizedAt: now, status: was.status, sellerId: was.sellerId, createdAt: was.createdAt, requestIp: was.requestIp,
+      });
+      expect(r.requestId).not.toBe(was.requestId);
+      expect(r.requestId).toMatch(/^anonymized:/);
+    }
+    // 비식별한 확인 완료 기록(CI 해시 없음)도 CHECK를 지키며 남고, 체험 한도 사용량은 그대로
+    expect((await db.identityVerification.findUniqueOrThrow({ where: { id: stale.verificationId } })).status).toBe("VERIFIED");
+    expect(await identityUsage(db, s.seller.id)).toBe(usage);
+    expect(await db.identityVerification.findUniqueOrThrow({ where: { id: fresh.verificationId } })).toMatchObject({ status: "VERIFIED", name: "진행중", anonymizedAt: null });
+    expect(await db.identityVerification.findUniqueOrThrow({ where: { id: used.verificationId } })).toMatchObject({ consumedAt: expect.any(Date), name: "가입함", anonymizedAt: null });
     // 다시 돌려도 같은 결과(멱등)
-    expect(await purgeUnfinishedSignupVerifications(db, now)).toEqual({ cleared: 0, deleted: 0 });
+    expect(await purgeUnfinishedSignupVerifications(db, now)).toBe(0);
+    // 같은 IP 하루 횟수도 정리 전과 같이 센다: 이미 4건이라 6건만 더 시작되고 다음은 429
+    for (let i = 0; i < BUYER_SIGNUP_VERIFY_DAILY_LIMIT_PER_IP - 4; i++) {
+      expect((await startRoute(post(`${s.base}/verification`, { ...IDV_INPUT, ...SIGNUP_CONSENT, phone: `0105555${String(i).padStart(4, "0")}` }), ctx(s.slug))).status).toBe(200);
+    }
+    expect((await startRoute(post(`${s.base}/verification`, { ...IDV_INPUT, ...SIGNUP_CONSENT, phone: "01066660000" }), ctx(s.slug))).status).toBe(429);
+  });
+
+  it("체험 한도가 찬 쇼핑몰은 확인 완료 기록을 비식별해도 한도가 다시 생기지 않는다", async () => {
+    const s = await shop();
+    await db.subscriptionPlan.upsert({
+      where: { code: "STANDARD" },
+      update: { trialIdentityLimit: 1 },
+      create: { code: "STANDARD", name: "스탠다드", listPrice: 300000, salePrice: 199000, trialIdentityLimit: 1 },
+    });
+    const v = await s.verified();
+    await db.identityVerification.update({ where: { id: v.verificationId }, data: { expiresAt: new Date(Date.now() - 1000) } });
+    expect(await purgeUnfinishedSignupVerifications(db)).toBe(1);
+    const again = await startRoute(post(`${s.base}/verification`, { ...IDV_INPUT, ...SIGNUP_CONSENT, phone: "01077778888" }), ctx(s.slug));
+    expect(again.status).toBe(403);
+    expect((await again.json()).error).toBe("trial_limit_exceeded");
   });
 
   it("본인확인 시작 → 인증번호 확인 → 가입하면 201로 바로 로그인되고, 이름·휴대폰은 본인확인 결과를 쓰며 동의를 기록한다", async () => {
