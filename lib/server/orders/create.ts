@@ -8,7 +8,7 @@ import { activeRestriction, dbClock, getOrderPolicy, lockSellerOrders } from "./
 import { computeShippingFee, getShippingPolicy, INT4_MAX, isRemoteAddress, parseShippingAddress } from "./shipping";
 
 // 구매자 주문 생성(결제 대기까지). 실제 PG 결제 호출은 없다.
-// - 결제 전 「개봉하면 취소·환불이 안 돼요」 동의 필수(체크 기본 해제, 동의 없으면 주문을 만들지 않음). 동의 시각(DB 시계)·문구 버전을 기록.
+// - 결제 전 개봉 고지(OPENED_NO_REFUND_CONSENT) 동의 필수(체크 기본 해제, 동의 없으면 주문을 만들지 않음). 동의 시각(DB 시계)·문구 버전을 기록.
 // - 잠긴 판매자(체험하기·구독 끝)는 새 주문을 받지 않는다.
 // - 금액은 서버가 상품·옵션 가격으로 계산한다. 화면이 보낸 금액은 받지 않는다.
 // - 재고는 주문 수량만큼 있는지 확인한다(차감은 결제 때, 선점 없음 — 대표님 확정, ARCHITECTURE 4.4).
