@@ -1,0 +1,26 @@
+import type { PrismaClient } from "@prisma/client";
+import { writeAudit } from "../audit/log";
+import { dbNow } from "./queue";
+
+// 쇼핑몰 연결 권한이 해제됐음을 기록한다(앱 삭제·권한 회수). 기록된 연결은 무료 재연결 대상이 아니다(확정 ②).
+// TODO(외부 연동 단계): 쇼핑몰 앱 삭제·권한 회수 알림(웹훅)·정기 토큰 확인에서 이 함수를 부른다. 지금은 호출 경로가 없다.
+// 감지 경로가 생기기 전에는 30일 안 같은 쇼핑몰·PC면 무료로 판정되므로 실제 판매를 열지 않는다(MASTER 검수 2026-10-04).
+export async function markConnectionRevoked(db: PrismaClient, input: { sellerId: string; shopKey: string; reason: string }): Promise<number> {
+  return db.$transaction(async (tx) => {
+    const now = await dbNow(tx);
+    const r = await tx.automationJob.updateMany({
+      where: { sellerId: input.sellerId, shopKey: input.shopKey, status: "SUCCEEDED", connectionRevokedAt: null },
+      data: { connectionRevokedAt: now },
+    });
+    if (r.count > 0) {
+      await writeAudit(tx, {
+        actorType: "SYSTEM",
+        sellerId: input.sellerId,
+        action: "automation.connection_revoked",
+        targetType: "AutomationJob",
+        after: { jobs: r.count, reason: input.reason.slice(0, 100) },
+      });
+    }
+    return r.count;
+  });
+}

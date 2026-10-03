@@ -51,6 +51,15 @@ export async function runSteps(rt: AutomationRuntime, scope: JobScope, opts: Eng
   let session: BrowserSession | null = null;
   try {
     const secrets = await rt.vault.forJob(scope);
+    // 무료 재연결: 무엇이든 바꾸기 전에 실제로 연결된 쇼핑몰·PC가 기준 작업과 같은지 읽기만으로 확인한다.
+    // 알 수 없으면(실행기가 값을 못 주면) 무료로 진행하지 않는다.
+    const want = opts.expectFacts;
+    if (want) {
+      session = await rt.browser.open(scope);
+      const [shopKey, obsPairingId] = await Promise.all([session.currentShopKey(), rt.obs.currentPairingId(scope)]);
+      if (!shopKey || !obsPairingId || !want.shopKey || !want.obsPairingId) return { kind: "failed", reason: "reconnect_target_unverified" };
+      if (shopKey !== want.shopKey || obsPairingId !== want.obsPairingId) return { kind: "failed", reason: "reconnect_target_mismatch" };
+    }
     for (let stepIndex = opts.startIndex; stepIndex < STEPS.length; stepIndex++) {
       const step = STEPS[stepIndex];
       if (step.kind === "verify" && !verifying) {
@@ -119,7 +128,7 @@ export async function runSteps(rt: AutomationRuntime, scope: JobScope, opts: Eng
         if (!done && !deviated && scripted.length === 0) deviated = true;
       }
       if (!done) return { kind: "retry", reason: `step_action_limit:${step.key}` };
-      const want = opts.expectFacts;
+      // 단계 결과로도 다시 확인(진행 중 다른 쇼핑몰·PC로 바뀐 경우)
       if (want && ((facts.shopKey && facts.shopKey !== want.shopKey) || (facts.obsPairingId && facts.obsPairingId !== want.obsPairingId))) {
         return { kind: "failed", reason: "reconnect_target_mismatch" };
       }

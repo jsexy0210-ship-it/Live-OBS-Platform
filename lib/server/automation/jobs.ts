@@ -35,6 +35,7 @@ const PUBLIC_ERRORS = new Set([
   "customer_action_timeout",
   "cost_limit",
   "reconnect_target_mismatch",
+  "reconnect_target_unverified",
   "verification_missing",
   "worker_error",
 ]);

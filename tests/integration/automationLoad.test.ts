@@ -68,7 +68,7 @@ const pct = (xs: number[], p: number) => {
 async function seedQueued(n: number) {
   for (let i = 0; i < n; i++) {
     const sellerId = randomUUID();
-    const p = await db.automationPayment.create({ data: { sellerId, amount: 110000, idempotencyKey: `load-${i}`, consentNoticeVersion: "load", consentAgreedAt: new Date(), status: "PAID", paidAt: new Date() } });
+    const p = await db.automationPayment.create({ data: { sellerId, amount: 110000, idempotencyKey: `load-${i}`, requestFingerprint: "load", consentNoticeVersion: "load", consentAgreedAt: new Date(), status: "PAID", paidAt: new Date() } });
     await db.automationJob.create({ data: { sellerId, paymentId: p.id, status: "QUEUED", obsTargetKey: `seller:${sellerId}` } });
   }
 }

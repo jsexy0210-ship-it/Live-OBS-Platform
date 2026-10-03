@@ -1180,6 +1180,8 @@ model AutomationPayment {
   status               AutomationPaymentStatus @default(PENDING)
   // 판매자가 보낸 Idempotency-Key. 같은 키로 다시 요청하면 같은 결제·작업을 돌려준다.
   idempotencyKey       String
+  // 같은 키를 다른 요청(구매 ↔ 재설치, 다른 쇼핑몰 주소·대상)에 다시 쓰는지 가리는 요청 지문(종류·주소·대상의 해시)
+  requestFingerprint   String
   // 결제 전 고지(연결 시작 뒤 단순 변심 환불 없음, 실패 시 전액 환불) 동의 기록. 동의가 없으면 결제를 만들지 않는다. 시각은 DB 시계.
   consentNoticeVersion String
   consentAgreedAt      DateTime                @db.Timestamptz(3)

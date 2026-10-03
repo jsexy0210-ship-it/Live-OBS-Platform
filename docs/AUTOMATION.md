@@ -20,6 +20,7 @@
 - **성공 기준**: 테스트 주문이 고객 OBS 오버레이에 실제 표시됨. 검증 단계에서 로컬 도구가 확인한 증거를 `verificationEvidence`·`verifiedAt`에 저장하고, 증거 없이 `SUCCEEDED`로 두지 않는다.
 - **환불**: 「실패 확정 → 환불 요청」. 판매자 대표자가 `POST /api/automation/jobs/[jobId]/refund-request`로 요청하면 결제가 `PAID → REFUND_PENDING`(사유 `failed`). 대상은 ① 작업이 `FAILED`(기준 미통과, 지원으로도 해결 안 됨) ② 연결을 시작하기 전(`startedAt` 없음) 취소한 작업(`canceled_before_start`). 연결 시작 뒤 취소(단순 변심)·완료 작업·무료 재연결은 대상이 아니다. 결제 확정 전에 취소했는데 결제가 들어오면 자동으로 `REFUND_PENDING`. 지원(재시도·안내)으로 해결할지는 환불 처리 대기 단계에서 마스터가 본다(마스터 화면·API는 다음 범위).
 - **재연결·재설치**: `POST /api/automation/reconnect` `{ target: { shopKey, obsPairingId } }`. 기준 = 가장 최근에 돈을 내고(처음 연결·재설치) 완료한 작업. 그 완료 시각(DB 시계)부터 30일 안 + 같은 쇼핑몰(`shopKey`) + 같은 PC(`obsPairingId`, OBS pairing) + 연결 권한 해제(`connectionRevokedAt`) 없음 → 무료(`RECONNECT_FREE`, 결제 없이 바로 대기열). 아니면 사유(`no_completed_install`·`window_expired`·`shop_changed`·`pc_changed`·`connection_revoked`)와 33,000원을 돌려주고, 동의를 붙여 다시 오면 `REINSTALL`로 결제한다. 무료 재연결의 완료는 30일을 늘리지 않는다(연달아 무료로 이어 붙이기 방지). `shopKey`·`obsPairingId`는 연결 단계 결과로 작업에 남는다.
+- Idempotency-Key 재사용: 결제 행에 요청 지문(종류·쇼핑몰 주소·재설치 대상의 해시)을 남겨, 같은 키라도 다른 요청이면 `idempotency_key_reused`(409)로 거부한다(예전 작업을 돌려주지 않음).
 - 작업 종류 `kind`: `INITIAL`(110,000원) · `REINSTALL`(33,000원) · `RECONNECT_FREE`(결제 없음, DB CHECK로 결제 없음과 짝).
 
 작업 `AutomationJob.status` (전이표 정본: `lib/server/automation/states.ts`):
@@ -120,8 +121,8 @@
 
 - Gemini 키 연결·실제 호출·대규모 부하 시험(확정 ⑦: 시작 전 재승인), 비용 상한 실측 조정.
 - 실제 환불 실행(REFUND_PENDING → REFUNDED): PG 환불 API와 승인 절차(대표님 승인 대상).
-- 「권한 해제」 감지: Cafe24 앱 삭제·권한 회수 알림을 받아 `connectionRevokedAt`을 채우는 경로(외부 연동 단계). 지금은 필드와 판정만 있다.
-- 재연결 대상 확인: 무료 판정은 요청 값(`shopKey`·`obsPairingId`)으로 하고, 작업자가 실제로 연결된 쇼핑몰·PC가 기준 작업과 다르면 `FAILED(reconnect_target_mismatch)`로 멈춘다. 실제 로컬 도구·OAuth 연결 뒤 이 값이 서버가 확인한 값인지 다시 검증해야 한다.
+- 「권한 해제」 감지: 기록 함수 `markConnectionRevoked`(`connection.ts`)는 있고, 앱 삭제·권한 회수 알림에서 부르는 경로는 외부 연동 단계(TODO). **감지 경로가 생기기 전에는 30일 안 같은 쇼핑몰·PC면 무료로 판정되므로 실제 판매를 열지 않는다**(MASTER 검수 2026-10-04).
+- 재연결 대상 확인: 무료 판정은 요청 값(`shopKey`·`obsPairingId`)으로 하되, 작업자가 **무엇이든 바꾸기 전에** 실행기·로컬 도구에서 읽기만으로 지금 연결된 쇼핑몰(`currentShopKey`)·PC(`currentPairingId`)를 받아 기준 작업과 대조한다. 다르면 `reconnect_target_mismatch`, 알 수 없으면 `reconnect_target_unverified`로 변경 행동 0회에 실패한다. 서버가 따로 아는 PC 등록 정보(pairing 목록)는 로컬 연결 도구가 생기면 판정 시점 대조에 더한다.
 - 결제 수단: 1차는 구독용 등록 카드(빌링키)로 일회 결제한다. 카드 없는 판매자의 일회 결제창(PG 결제창)은 billing 공통 코드 확장이 필요하다. PG 결과 조회에 금액이 없어(`PaymentLookup`) 금액 대조를 못 한다.
 - 직원(대표자 아님)에게 조회·재개를 열지. 지금은 대표자 전용.
 - `sellerId` 외래키: Seller 모델에 역관계 한 줄이 필요해(다른 모델 수정 금지) 두지 않았다. 판매자 삭제 시 정리 정책과 함께 결정.

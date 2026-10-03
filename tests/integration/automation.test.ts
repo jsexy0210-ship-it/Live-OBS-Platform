@@ -11,6 +11,7 @@ import { AUTOMATION_CONSENT, AUTOMATION_PRICE, REINSTALL_PRICE } from "../../lib
 import { cafe24Playbook } from "../../lib/server/automation/playbooks/cafe24";
 import { PRACTICE_STREAK_REQUIRED } from "../../lib/server/automation/practice";
 import { FakeBrowserExecutor, FakeObsBridge, FakePlanner, FakeSecretVault } from "../../lib/server/automation/fakes";
+import { markConnectionRevoked } from "../../lib/server/automation/connection";
 import { cancelJob, requestRefund, resumeJob } from "../../lib/server/automation/jobs";
 import { purchaseAutomation, reconcileAutomationPayments, reconnectAutomation } from "../../lib/server/automation/purchase";
 import { FencingError, advanceStep, claimNext, finishJob, reapExpired, touch } from "../../lib/server/automation/queue";
@@ -508,7 +509,7 @@ describe("재연결·재설치(확정 ②)", () => {
     const ask = (target: { shopKey: string; obsPairingId: string }) => reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: newKey(), target });
     expect(await ask({ ...s.target, shopKey: "other-mall" })).toMatchObject({ reason: "payment_required", paidReason: "shop_changed" });
     expect(await ask({ ...s.target, obsPairingId: "other-pc" })).toMatchObject({ reason: "payment_required", paidReason: "pc_changed" });
-    await db.automationJob.update({ where: { id: s.jobId }, data: { connectionRevokedAt: new Date() } });
+    await markConnectionRevoked(db, { sellerId: s.seller.id, shopKey: s.target.shopKey, reason: "app_uninstalled" });
     expect(await ask(s.target)).toMatchObject({ reason: "payment_required", paidReason: "connection_revoked" });
     await db.automationJob.update({ where: { id: s.jobId }, data: { connectionRevokedAt: null, finishedAt: new Date(Date.now() - 31 * 86_400_000) } });
     expect(await ask(s.target)).toMatchObject({ reason: "payment_required", paidReason: "window_expired" });
@@ -536,14 +537,58 @@ describe("재연결·재설치(확정 ②)", () => {
     expect(await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: newKey(), target: s.target })).toMatchObject({ ok: true, kind: "RECONNECT_FREE" });
   });
 
-  it("무료 재연결인데 실제로 연결된 PC·쇼핑몰이 기준과 다르면 실패로 멈춘다(요청 값만 믿지 않음)", async () => {
+  it("무료 재연결은 무엇이든 바꾸기 전에 실제 PC·쇼핑몰을 확인한다: 다르면 변경 행동 0회로 실패, 알 수 없으면 실패", async () => {
+    for (const [kind, setup, reason] of [
+      ["pc", (rt: ReturnType<typeof runtime>, id: string) => rt.obs.pairing.set(id, "different-pc"), "reconnect_target_mismatch"],
+      ["shop", (rt: ReturnType<typeof runtime>, id: string) => rt.browser.shopKey.set(id, "different-mall"), "reconnect_target_mismatch"],
+      ["pc-unknown", (rt: ReturnType<typeof runtime>, id: string) => rt.obs.pairing.set(id, null), "reconnect_target_unverified"],
+      ["shop-unknown", (rt: ReturnType<typeof runtime>, id: string) => rt.browser.shopKey.set(id, null), "reconnect_target_unverified"],
+    ] as const) {
+      const s = await completed();
+      const r = await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: newKey(), target: s.target });
+      if (!r.ok) throw new Error(`${kind}:${r.reason}`);
+      const rt = runtime();
+      setup(rt, s.seller.id);
+      expect(await runOnce(db, rt, W)).toBe("failed");
+      expect(await job(r.jobId)).toMatchObject({ status: "FAILED", lastError: reason, verifiedAt: null, stepIndex: 0 });
+      expect(rt.browser.performed).toHaveLength(0);
+      expect(rt.obs.performed).toHaveLength(0);
+    }
+  });
+
+  it("연결 권한 해제를 기록하면(내부 함수) 그 쇼핑몰은 무료 재연결 대상이 아니다. 다른 쇼핑몰 기록은 그대로", async () => {
     const s = await completed();
-    const r = await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: newKey(), target: s.target });
-    if (!r.ok) throw new Error(r.reason);
-    const rt = runtime();
-    rt.obs.pairing.set(s.seller.id, "different-pc");
-    expect(await runOnce(db, rt, W)).toBe("failed");
-    expect(await job(r.jobId)).toMatchObject({ status: "FAILED", lastError: "reconnect_target_mismatch", verifiedAt: null });
+    expect(await markConnectionRevoked(db, { sellerId: s.seller.id, shopKey: "other-mall", reason: "app_uninstalled" })).toBe(0);
+    expect(await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: newKey(), target: s.target, shopUrl: SHOP })).toMatchObject({ ok: true, kind: "RECONNECT_FREE" });
+    await db.automationJob.updateMany({ where: { kind: "RECONNECT_FREE" }, data: { status: "CANCELED", finishedAt: new Date() } });
+    expect(await markConnectionRevoked(db, { sellerId: s.seller.id, shopKey: s.target.shopKey, reason: "app_uninstalled" })).toBe(1);
+    expect(await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: newKey(), target: s.target })).toMatchObject({ reason: "payment_required", paidReason: "connection_revoked" });
+    expect(await db.auditLog.count({ where: { action: "automation.connection_revoked" } })).toBe(1);
+  });
+
+  it("같은 Idempotency-Key를 다른 요청(구매 ↔ 재설치, 다른 쇼핑몰 주소)에 다시 쓰면 409로 거부하고 예전 작업을 돌려주지 않는다", async () => {
+    const s = await completed();
+    const used = await db.automationPayment.findFirstOrThrow({ where: { sellerId: s.seller.id } });
+    const k = used.idempotencyKey;
+    expect(await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: k, target: s.target })).toEqual({ ok: false, reason: "idempotency_key_reused" });
+    expect(await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: k, target: { ...s.target, obsPairingId: "new-pc" }, consent })).toEqual({ ok: false, reason: "idempotency_key_reused" });
+    expect(await purchaseAutomation(db, s.provider, s.ctx, { idempotencyKey: k, consent, shopUrl: "https://othershop.cafe24.com" })).toEqual({ ok: false, reason: "idempotency_key_reused" });
+    // 같은 요청 재전송은 그대로 처음 결과
+    expect(await purchaseAutomation(db, s.provider, s.ctx, { idempotencyKey: k, consent, shopUrl: SHOP })).toMatchObject({ ok: true, replayed: true, jobId: s.jobId });
+    expect(await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: "bad" , target: s.target })).toEqual({ ok: false, reason: "bad_idempotency_key" });
+    expect(s.provider.charges).toHaveLength(1);
+    expect(await db.automationJob.count({ where: { sellerId: s.seller.id } })).toBe(1);
+
+    const cookie = await cookieFor(s.owner.email);
+    const res = await reconnectRoute(
+      new Request("http://localhost:3000/api/automation/reconnect", {
+        method: "POST",
+        headers: H(cookie, { "idempotency-key": k, "content-type": "application/json" }),
+        body: JSON.stringify({ target: s.target }),
+      }),
+    );
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "idempotency_key_reused" });
   });
 
   it("라우트: 대상 형식이 틀리면 400, 유료 대상이면 402와 금액·사유, 동의를 붙이면 결제 후 201", async () => {

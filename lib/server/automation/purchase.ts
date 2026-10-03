@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Prisma, type AutomationJob, type AutomationPayment, type PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import type { BillingProvider } from "../billing/provider";
@@ -26,7 +27,7 @@ const KEY_RE = /^[A-Za-z0-9_-]{8,100}$/;
 const isUniqueViolation = (e: unknown) => e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
 const OPEN = { notIn: ["SUCCEEDED", "FAILED", "CANCELED"] as AutomationJob["status"][] };
 
-type Failure = "bad_idempotency_key" | "shop_not_supported" | "consent_required" | "consent_outdated" | "card_required" | "job_in_progress" | "payment_failed";
+type Failure = "bad_idempotency_key" | "idempotency_key_reused" | "shop_not_supported" | "consent_required" | "consent_outdated" | "card_required" | "job_in_progress" | "payment_failed";
 export type PurchaseResult =
   | { ok: true; jobId: string; kind: AutomationJob["kind"]; paymentStatus: AutomationPayment["status"] | null; jobStatus: AutomationJob["status"]; replayed: boolean }
   | { ok: false; reason: Failure; jobId?: string };
@@ -34,6 +35,7 @@ export type PurchaseResult =
 // 실패 사유별 HTTP 상태(라우트용)
 export const PURCHASE_FAILURE_STATUS: Record<Failure, number> = {
   bad_idempotency_key: 400,
+  idempotency_key_reused: 409,
   shop_not_supported: 409,
   consent_required: 400,
   consent_outdated: 409,
@@ -64,8 +66,17 @@ function consentProblem(consent: unknown): "consent_required" | "consent_outdate
   return c.noticeVersion === AUTOMATION_CONSENT.version ? null : "consent_outdated";
 }
 
+// 요청 지문: 같은 Idempotency-Key가 같은 요청(종류·쇼핑몰 주소·재설치 대상)에서 온 재전송인지 가린다.
+export function requestFingerprint(kind: "INITIAL" | "REINSTALL" | "RECONNECT", shopUrl: unknown, target?: { shopKey: string; obsPairingId: string }): string {
+  const url = typeof shopUrl === "string" ? shopUrl.trim() : "";
+  return createHash("sha256")
+    .update(JSON.stringify([kind, url, target?.shopKey ?? null, target?.obsPairingId ?? null]))
+    .digest("hex");
+}
+
 type PaidJobInput = {
   idempotencyKey: unknown;
+  fingerprint: string;
   consent: unknown;
   // 지원 목록 작업서 고르기(결제 전에 부른다). 없으면 shop_not_supported
   resolvePlaybook: () => Promise<Playbook | null>;
@@ -82,7 +93,12 @@ export async function purchaseAutomation(
   ctx: TenantContext,
   input: { idempotencyKey: unknown; consent: unknown; shopUrl?: unknown },
 ): Promise<PurchaseResult> {
-  return buyPaidJob(db, provider, ctx, { ...input, kind: "INITIAL", resolvePlaybook: () => supportedPlaybookFor(db, input.shopUrl) });
+  return buyPaidJob(db, provider, ctx, {
+    ...input,
+    kind: "INITIAL",
+    fingerprint: requestFingerprint("INITIAL", input.shopUrl),
+    resolvePlaybook: () => supportedPlaybookFor(db, input.shopUrl),
+  });
 }
 
 async function buyPaidJob(db: PrismaClient, provider: BillingProvider, ctx: TenantContext, input: PaidJobInput): Promise<PurchaseResult> {
@@ -90,9 +106,11 @@ async function buyPaidJob(db: PrismaClient, provider: BillingProvider, ctx: Tena
   const key = input.idempotencyKey;
   if (typeof key !== "string" || !KEY_RE.test(key)) return { ok: false, reason: "bad_idempotency_key" };
 
-  const replay = async () => {
+  // 같은 키 재전송이면 처음 결과를 돌려준다. 같은 키를 다른 요청에 다시 쓰면 거부한다(엉뚱한 예전 작업을 돌려주지 않게).
+  const replay = async (): Promise<PurchaseResult | null> => {
     const p = await db.automationPayment.findUnique({ where: { sellerId_idempotencyKey: { sellerId: ctx.sellerId, idempotencyKey: key } }, include: { job: true } });
-    return p ? view(p, true) : null;
+    if (!p) return null;
+    return p.requestFingerprint === input.fingerprint ? view(p, true) : { ok: false, reason: "idempotency_key_reused" };
   };
   const existing = await replay();
   if (existing) return existing;
@@ -111,7 +129,7 @@ async function buyPaidJob(db: PrismaClient, provider: BillingProvider, ctx: Tena
     created = await db.$transaction(async (tx) => {
       const now = await dbNow(tx);
       const payment = await tx.automationPayment.create({
-        data: { sellerId: ctx.sellerId, amount, idempotencyKey: key, consentNoticeVersion: AUTOMATION_CONSENT.version, consentAgreedAt: now },
+        data: { sellerId: ctx.sellerId, amount, idempotencyKey: key, requestFingerprint: input.fingerprint, consentNoticeVersion: AUTOMATION_CONSENT.version, consentAgreedAt: now },
       });
       const job = await tx.automationJob.create({
         // OBS 대상 키: 처음 연결은 판매자 단위(아직 PC를 모름), 재설치는 알고 있는 pairing 단위
@@ -205,6 +223,12 @@ export async function reconnectAutomation(
   requireSellerPermission(ctx, "SUBSCRIPTION_MANAGE");
   if (!isTarget(input.target)) return { ok: false, reason: "bad_target" };
   const target = input.target;
+  const key = input.idempotencyKey;
+  if (typeof key !== "string" || !KEY_RE.test(key)) return { ok: false, reason: "bad_idempotency_key" };
+  const fingerprint = requestFingerprint("REINSTALL", input.shopUrl, target);
+  // 이 키가 이미 다른 요청(예: 처음 구매)에 쓰였으면 무료·유료 판정 전에 거부한다
+  const used = await db.automationPayment.findUnique({ where: { sellerId_idempotencyKey: { sellerId: ctx.sellerId, idempotencyKey: key } }, select: { requestFingerprint: true } });
+  if (used && used.requestFingerprint !== fingerprint) return { ok: false, reason: "idempotency_key_reused" };
   const decision = await decideReconnect(db, ctx.sellerId, target);
   const obsTargetKey = `obs:${target.obsPairingId}`;
   // 쇼핑몰 주소가 오면 그 주소로, 없으면 이전 완료 작업의 작업서로. 어느 쪽이든 지금 지원 목록에 있어야 한다.
@@ -218,7 +242,7 @@ export async function reconnectAutomation(
   if (!playbook) return { ok: false, reason: "shop_not_supported" };
   if (!decision.free) {
     if (input.consent === undefined) return { ok: false, reason: "payment_required", paidReason: decision.reason, price: REINSTALL_PRICE };
-    return buyPaidJob(db, provider, ctx, { idempotencyKey: input.idempotencyKey, consent: input.consent, resolvePlaybook: async () => playbook, kind: "REINSTALL", baseJobId: decision.baseJobId ?? undefined, obsTargetKey });
+    return buyPaidJob(db, provider, ctx, { idempotencyKey: input.idempotencyKey, consent: input.consent, fingerprint, resolvePlaybook: async () => playbook, kind: "REINSTALL", baseJobId: decision.baseJobId ?? undefined, obsTargetKey });
   }
   try {
     const job = await db.$transaction(async (tx) => {

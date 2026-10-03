@@ -20,6 +20,7 @@ CREATE TABLE "AutomationPayment" (
     "amount" INTEGER NOT NULL,
     "status" "AutomationPaymentStatus" NOT NULL DEFAULT 'PENDING',
     "idempotencyKey" TEXT NOT NULL,
+    "requestFingerprint" TEXT NOT NULL,
     "consentNoticeVersion" TEXT NOT NULL,
     "consentAgreedAt" TIMESTAMPTZ(3) NOT NULL,
     "providerPaymentId" TEXT,

@@ -55,6 +55,8 @@ export interface BrowserSession {
   readonly id: string;
   observe(): Promise<Observation>;
   perform(action: AutomationAction, secrets: JobSecrets): Promise<ActionOutcome>;
+  // 지금 로그인된 관리 화면의 쇼핑몰 식별자(읽기만, 아무것도 바꾸지 않음). 알 수 없으면 null
+  currentShopKey(): Promise<string | null>;
   // 쿠키·저장소·임시파일까지 지운다
   close(): Promise<void>;
 }
@@ -67,6 +69,8 @@ export interface BrowserExecutor {
 export interface ObsBridge {
   observe(scope: JobScope): Promise<Observation>;
   perform(scope: JobScope, action: AutomationAction): Promise<ActionOutcome>;
+  // 연결된 로컬 도구의 OBS pairing id(읽기만). 연결 안 됐거나 알 수 없으면 null
+  currentPairingId(scope: JobScope): Promise<string | null>;
 }
 
 export interface SecretVault {

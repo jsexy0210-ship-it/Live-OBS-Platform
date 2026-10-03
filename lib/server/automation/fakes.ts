@@ -59,8 +59,10 @@ export class FakeBrowserExecutor implements BrowserExecutor {
   // 세션별 쿠키 저장소. 세션끼리 나눠 쓰지 않는지 테스트가 확인한다.
   readonly cookies = new Map<string, Map<string, string>>();
   pageText: (scope: JobScope, secrets?: JobSecrets) => string = () => "Cafe24 관리자";
-  // 판매자별로 연결된 쇼핑몰(기본: mall-<판매자 id>). 쇼핑몰 교체를 흉내 낼 때 바꾼다.
-  readonly shopKey = new Map<string, string>();
+  // 판매자별로 연결된 쇼핑몰(기본: mall-<판매자 id>). 쇼핑몰 교체를 흉내 낼 때 바꾼다. null이면 알 수 없음.
+  readonly shopKey = new Map<string, string | null>();
+  // 실행한 행동(변경 행동이 몇 번 있었는지 테스트가 센다)
+  readonly performed: { scope: JobScope; type: AutomationAction["type"] }[] = [];
   // 테스트용: 행동 결과를 바꾼다
   outcome: ((scope: JobScope, action: AutomationAction) => ActionOutcome | undefined) | null = null;
 
@@ -85,8 +87,13 @@ export class FakeBrowserExecutor implements BrowserExecutor {
         await sleep(self.delayMs);
         return { url: "https://admin.cafe24.com/", text: self.pageText(scope, secretsSeen) };
       },
+      async currentShopKey() {
+        const v = self.shopKey.get(scope.sellerId);
+        return v === undefined ? `mall-${scope.sellerId}` : v;
+      },
       async perform(action, secrets): Promise<ActionOutcome> {
         secretsSeen = secrets;
+        self.performed.push({ scope, type: action.type });
         await sleep(self.delayMs);
         const o = self.outcome?.(scope, action);
         if (o) return o;
@@ -108,8 +115,8 @@ export class FakeObsBridge implements ObsBridge {
   // 테스트 이벤트가 오버레이에 보이지 않는 판매자
   readonly notShowing = new Set<string>();
   readonly performed: { scope: JobScope; type: AutomationAction["type"] }[] = [];
-  // 판매자별 OBS pairing(PC). 기본: pc-<판매자 id>. PC 교체를 흉내 낼 때 바꾼다.
-  readonly pairing = new Map<string, string>();
+  // 판매자별 OBS pairing(PC). 기본: pc-<판매자 id>. PC 교체를 흉내 낼 때 바꾼다. null이면 알 수 없음.
+  readonly pairing = new Map<string, string | null>();
 
   constructor(
     private readonly delayMs = 0,
@@ -121,6 +128,12 @@ export class FakeObsBridge implements ObsBridge {
   async observe(scope: JobScope): Promise<Observation> {
     await sleep(this.delayMs);
     return { url: null, text: this.disconnected.has(scope.sellerId) ? "OBS 연결 안 됨" : "OBS 연결됨" };
+  }
+
+  async currentPairingId(scope: JobScope): Promise<string | null> {
+    if (this.disconnected.has(scope.sellerId)) return null;
+    const v = this.pairing.get(scope.sellerId);
+    return v === undefined ? `pc-${scope.sellerId}` : v;
   }
 
   async perform(scope: JobScope, action: AutomationAction): Promise<ActionOutcome> {
