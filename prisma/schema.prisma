@@ -108,6 +108,8 @@ model Seller {
   orderItems               OrderItem[]
   orderConsents            OrderConsent[]
   orderPolicy              SellerOrderPolicy?
+  memberPolicy             SellerMemberPolicy?
+  rejoinBlocks             BuyerRejoinBlock[]
   purchaseRestrictions     BuyerPurchaseRestriction[]
   shippingPolicy           SellerShippingPolicy?
   orderShippingAddresses   OrderShippingAddress[]
@@ -272,6 +274,14 @@ model BuyerMember {
   gradeId            String            @db.Uuid
   status             BuyerMemberStatus @default(ACTIVE)
   marketingConsentAt DateTime?         @db.Timestamptz(3)
+  // 가입 때 재가입 제한이 켜져 있었으면 그때 기간(일). 가입하며 안내받은(동의한) 기간보다 길게 CI 해시를 보관하지 않으려고 남긴다.
+  // 없으면(제한이 꺼져 있을 때 가입) 탈퇴해도 재가입을 제한하지 않는다(buyers/rejoin.ts).
+  rejoinRestrictionDaysAgreed Int?
+  // 「재가입 제한 정보 보관 동의」(개인정보 수집·이용 동의와 별도, 재가입 제한을 켠 쇼핑몰에서만 받음) 시각·문서 버전
+  rejoinRetentionAgreedAt     DateTime? @db.Timestamptz(3)
+  rejoinRetentionVersion      String?
+  // 가입 필수 동의 기록(본인확인 시작 때 받은 문서 버전·시각, buyers/consent.ts SignupConsent)
+  signupConsent               Json?
   lastLoginAt        DateTime?         @db.Timestamptz(3)
   createdAt          DateTime          @default(now()) @db.Timestamptz(3)
   deletedAt          DateTime?         @db.Timestamptz(3)
@@ -360,8 +370,14 @@ model IdentityVerification {
   verifiedAt      DateTime?                   @db.Timestamptz(3)
   // 인증을 시작한 브라우저에 준 일회용 값의 해시. 완료할 때 같은 값이 있어야 한다(다른 사람이 id만 알아서는 못 씀).
   ownerTokenHash  String?
+  // 구매자 가입: 본인확인 전에 받은 필수 동의(buyers/consent.ts SignupConsent). 가입하면 회원으로 옮긴다.
+  signupConsent   Json?
   // 비밀번호 찾기: 재설정 대상 계정(없는 계정이면 null, 응답은 같게)
   subjectId       String?                     @db.Uuid
+  // 구매자 가입 시작 멱등 키(클라이언트가 만든 attemptKey의 해시). 같은 쇼핑몰·같은 키로 다시 시작하면 새로 만들지 않는다.
+  attemptKeyHash  String?
+  // 첫 인증번호를 보내기 시작한 시각(구매자 가입). sendCount가 0인 채 오래 지나면 같은 attemptKey 재요청이 발송을 넘겨받는다.
+  sendStartedAt   DateTime?                   @db.Timestamptz(3)
   // 인증을 시작한 접속 IP(신뢰 프록시 기준, 없으면 null). 판매자 가입 PASS 시작 하루 횟수 제한에 쓴다.
   requestIp       String?
   // 이 인증으로 가입·재설정 권한을 이미 발급했으면 기록(한 번만 쓰임)
@@ -372,6 +388,7 @@ model IdentityVerification {
   seller Seller? @relation(fields: [sellerId], references: [id])
 
   @@unique([provider, requestId])
+  @@unique([sellerId, attemptKeyHash])
   @@index([purpose, requestIp, createdAt])
   @@index([sellerId, ciHash])
 }
@@ -1122,4 +1139,29 @@ model OrderNotification {
 
   @@unique([orderId, kind])
   @@index([sellerId, kind, status])
+}
+
+// 판매자 회원 정책. 재가입 제한(대표님 결정 2026-10-03, 기본 꺼짐): 켜면 탈퇴한 사람(본인확인 기준)이 정한 기간(일) 동안 다시 가입할 수 없다.
+model SellerMemberPolicy {
+  sellerId                 String   @id @db.Uuid
+  rejoinRestrictionEnabled Boolean  @default(false)
+  rejoinRestrictionDays    Int      @default(30)
+  updatedAt                DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+}
+
+// 재가입 제한 목적으로만 남기는 탈퇴 회원의 본인확인 식별값 해시. 이름·휴대폰 등 다른 정보는 두지 않는다.
+// 재가입 제한이 켜진 쇼핑몰에서 탈퇴할 때만 만들고, expiresAt이 지나거나 판매자가 제한을 끄면 지운다(buyers/rejoin.ts).
+model BuyerRejoinBlock {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId  String   @db.Uuid
+  ciHash    String
+  expiresAt DateTime @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+
+  @@unique([sellerId, ciHash])
+  @@index([expiresAt])
 }
