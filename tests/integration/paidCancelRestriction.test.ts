@@ -2,7 +2,7 @@ import type { PrismaClient, RefundFault } from "@prisma/client";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
 import { createOrder } from "../../lib/server/orders/create";
-import { PAID_CANCEL_LIMIT, RESTRICTION_DAYS, liftRestriction, readOrderPolicy, updateOrderPolicy } from "../../lib/server/orders/overdue";
+import { PAID_CANCEL_LIMIT, RESTRICTION_DAYS, liftRestriction, lockSellerOrders, readOrderPolicy, updateOrderPolicy } from "../../lib/server/orders/overdue";
 import { refundOrder } from "../../lib/server/queue/service";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { createLoginBuyer, createPaidOrderItem, createSeller, createSellerUser, db, resetDb } from "./helpers";
@@ -156,5 +156,33 @@ describe("결제 후 취소 5회 → 30일 구매 제한", () => {
     expect(refunded.ok).toBe(true);
     // 처음 10 − 주문 2 + 환불 1
     expect((await db.productOption.findUniqueOrThrow({ where: { id: option.id } })).stock).toBe(9);
+  });
+  it("설정을 켜는 사이 시작된 환불도 켠 뒤 시각으로 기록되어 횟수에 들어간다", async () => {
+    const s = await shop();
+    const { order } = await createPaidOrderItem(s.seller.id, s.buyer.id);
+    const lv = (await db.seller.findUniqueOrThrow({ where: { id: s.seller.id } })).liveVersion;
+    let release!: (v: unknown) => void;
+    const gate = new Promise((r) => (release = r));
+    let refunding!: ReturnType<typeof refundOrder>;
+    // 주문 생성 잠금을 쥔 채 설정을 켜는 동안, 먼저 시작한 환불은 잠금을 기다린다
+    const enabling = db.$transaction(async (tx) => {
+      await lockSellerOrders(tx, s.seller.id);
+      refunding = refundOrder(db, s.ctx, order.id, { reason: "취소 요청", expectedLiveVersion: lv, fault: "BUYER" });
+      await new Promise((r) => setTimeout(r, 300));
+      await tx.$executeRaw`INSERT INTO "SellerOrderPolicy" ("sellerId", "paidCancelRestrictionEnabled", "paidCancelRestrictionEnabledAt")
+        VALUES (${s.seller.id}::uuid, true, clock_timestamp())`;
+      release(null);
+    });
+    await gate;
+    await enabling;
+    expect((await refunding).ok).toBe(true);
+    const policy = await db.sellerOrderPolicy.findUniqueOrThrow({ where: { sellerId: s.seller.id } });
+    const refunded = await db.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect(refunded.refundedAt!.getTime()).toBeGreaterThan(policy.paidCancelRestrictionEnabledAt!.getTime());
+    // 이 환불을 포함해 5회째에 제한이 걸린다
+    for (let i = 0; i < PAID_CANCEL_LIMIT - 2; i++) await s.refund("BUYER");
+    expect(await s.restrictions()).toEqual([]);
+    await s.refund("BUYER");
+    expect(await s.restrictions()).toHaveLength(1);
   });
 });
