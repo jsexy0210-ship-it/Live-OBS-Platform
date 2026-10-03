@@ -6,6 +6,7 @@ import IdentityCheck from "../../../../components/seller/IdentityCheck";
 import NewPasswordForm from "../../../../components/seller/NewPasswordForm";
 import { AuthFrame, IdentityUnavailable, useStaffType, withType } from "../../../../components/seller/PartnersAuth";
 import { api, failMessage } from "../../../../components/seller/api";
+import { RETRY_TEXT, stepOutcome } from "../../../../components/seller/stepFailure";
 
 // AU-003 비밀번호 찾기 → AU-004 새 비밀번호. 쇼핑몰 대표자 본인만 할 수 있다(대표자 휴대폰 본인확인, 메일 링크 없음).
 // API: POST /api/seller/password-reset/start(·/resend·/confirm) → /verify(재설정 권한) → /complete(새 비밀번호).
@@ -62,13 +63,9 @@ export default function PasswordResetPage() {
       setStep("password");
       return;
     }
-    if (r.status === 503) return toUnavailable();
-    // 본인확인 결과를 아직 받는 중: 같은 요청으로 다시 누르게 한다
-    if (r.error === "pending") {
-      setPending(verificationId);
-      setNotice({ text: "본인확인 결과를 확인하고 있어요. 잠시 뒤 다시 눌러 주세요" });
-      return focus("pa-notice");
-    }
+    const out = stepOutcome(r);
+    if (out === "unavailable") return toUnavailable();
+    // 결과를 아직 받는 중이거나 잠깐의 오류(연결 끊김·서버 오류): 본인확인을 버리지 않고 같은 요청으로 다시 누르게 한다
     if (r.error === "reset_not_allowed") {
       return restart(
         staff
@@ -76,7 +73,11 @@ export default function PasswordResetPage() {
           : { title: "비밀번호를 바꿀 수 없어요", text: "이메일 · 쇼핑몰 주소와 대표자 본인인지 확인해 주세요." },
       );
     }
-    restart({ text: failMessage(r, "확인하지 못했어요. 처음부터 다시 해 주세요") });
+    if (out === "restart") return restart({ text: "본인확인을 처음부터 다시 해 주세요" });
+    // 결과를 아직 받는 중이거나 그 밖의 오류(연결 끊김·서버 오류·요청 제한 등): 본인확인을 버리지 않고 같은 요청으로 다시 누르게 한다
+    setPending(verificationId);
+    setNotice({ text: r.error === "pending" ? "본인확인 결과를 확인하고 있어요. 잠시 뒤 다시 눌러 주세요" : failMessage(r, RETRY_TEXT) });
+    focus("pa-notice");
   };
 
   const findReady = email.trim() !== "" && shopSlug.trim() !== "";
