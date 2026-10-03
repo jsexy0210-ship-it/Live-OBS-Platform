@@ -28,7 +28,12 @@ async function openAs(page: Page, email: string) {
 }
 
 const save = (page: Page) => page.getByRole("button", { name: "저장", exact: true }).last().click();
-const saved = (page: Page) => expect(page.getByText("배송비 정책을 저장했어요 · 다음 주문부터 적용돼요")).toBeVisible();
+const saved = (page: Page) => expect(page.getByText("배송비 정책을 저장했어요 · 다음 주문부터 적용돼요").first()).toBeVisible();
+// 저장이 실제로 끝날 때까지(PUT 응답) 기다린다. 앞서 띄운 같은 알림이 남아 있어도 다음 단계로 먼저 넘어가지 않게
+async function saveOk(page: Page) {
+  await Promise.all([page.waitForResponse((r) => r.request().method() === "PUT" && r.url().includes("/api/seller/shipping-policy") && r.ok()), save(page)]);
+  await saved(page);
+}
 
 test("일정 금액 이상 무료로 바꾸면 저장되고 주문서 미리보기에 보인다", async ({ page }) => {
   await openAs(page, "demo-owner@example.com");
@@ -37,8 +42,7 @@ test("일정 금액 이상 무료로 바꾸면 저장되고 주문서 미리보�
   await page.getByLabel("무료 배송 기준").fill("50000");
   await page.getByLabel("제주·도서산간 추가 배송비").fill("4000");
   await expect(page.getByTestId("fee-preview")).toHaveText("배송비 3,500원 · 50,000원 이상 무료");
-  await save(page);
-  await saved(page);
+  await saveOk(page);
   await shot(page, "SA-061-shipping");
 
   await page.reload();
@@ -52,8 +56,7 @@ test("무료·고정으로 바꿔도 저장되고, 잘못된 금액은 막는다
   await openAs(page, "demo-owner@example.com");
   await page.getByRole("radio", { name: "무료", exact: true }).check();
   await expect(page.getByTestId("fee-preview")).toHaveText("배송비 무료");
-  await save(page);
-  await saved(page);
+  await saveOk(page);
   await page.reload();
   await expect(page.getByRole("radio", { name: "무료", exact: true })).toBeChecked();
 
@@ -68,8 +71,7 @@ test("무료·고정으로 바꿔도 저장되고, 잘못된 금액은 막는다
   // 기본값으로 되돌려 둔다
   await page.getByLabel("배송비", { exact: true }).fill("3000");
   await page.getByLabel("제주·도서산간 추가 배송비").fill("3000");
-  await save(page);
-  await saved(page);
+  await saveOk(page);
   await page.reload();
   await expect(page.getByRole("radio", { name: "고정" })).toBeChecked();
   await expect(page.getByTestId("fee-preview")).toHaveText("배송비 3,000원");
@@ -80,12 +82,10 @@ test("무료로 바꿨다가 되돌리면 이전에 넣은 배송비·무료 기
   await page.getByRole("radio", { name: "일정 금액 이상 무료" }).check();
   await page.getByLabel("배송비", { exact: true }).fill("2500");
   await page.getByLabel("무료 배송 기준").fill("70000");
-  await save(page);
-  await saved(page);
+  await saveOk(page);
 
   await page.getByRole("radio", { name: "무료", exact: true }).check();
-  await save(page);
-  await saved(page);
+  await saveOk(page);
   await page.reload();
   await expect(page.getByRole("radio", { name: "무료", exact: true })).toBeChecked();
   await page.getByRole("radio", { name: "일정 금액 이상 무료" }).check();
@@ -95,8 +95,7 @@ test("무료로 바꿨다가 되돌리면 이전에 넣은 배송비·무료 기
   // 기본값으로 되돌려 둔다
   await page.getByRole("radio", { name: "고정" }).check();
   await page.getByLabel("배송비", { exact: true }).fill("3000");
-  await save(page);
-  await saved(page);
+  await saveOk(page);
 });
 
 test("1440에서 도움말이 단어 중간에서 끊기지 않는다", async ({ page }) => {

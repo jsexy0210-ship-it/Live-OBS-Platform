@@ -28,6 +28,11 @@ async function openAs(page: Page, email: string) {
 }
 
 const save = (page: Page) => page.getByRole("button", { name: "저장", exact: true }).last().click();
+// 저장이 실제로 끝날 때까지(PUT 응답) 기다린다. 앞서 띄운 같은 알림이 남아 있어도 다음 단계로 먼저 넘어가지 않게
+async function saveOk(page: Page) {
+  await Promise.all([page.waitForResponse((r) => r.request().method() === "PUT" && r.url().includes("/api/seller/order-policy") && r.ok()), save(page)]);
+  await expect(page.getByText("주문 설정을 저장했어요", { exact: false }).first()).toBeVisible();
+}
 
 test("저장한 적 없는 판매자도 입금 기한이 기본 24시간으로 보이고, 메뉴로 들어갈 수 있다", async ({ page }) => {
   // 새 DB에서 처음 돌릴 때는 주문 설정 행이 없어서 서버 기본값(24시간)이 그대로 보인다. 다시 돌려도 앞 테스트가 24시간으로 되돌려 둔다
@@ -57,8 +62,7 @@ test("입금 기한을 3일·24시간으로 바꿔 저장하면 다시 열어도
   await page.getByRole("radio", { name: "일" }).click();
   await page.getByLabel("입금 기한", { exact: true }).fill("3");
   await expect(page.getByTestId("buyer-preview")).toContainText("주문 후 3일 안에 입금");
-  await save(page);
-  await expect(page.getByText("주문 설정을 저장했어요", { exact: false })).toBeVisible();
+  await saveOk(page);
   await page.reload();
   await expect(page.getByLabel("입금 기한", { exact: true })).toHaveValue("3");
   await expect(page.getByRole("radio", { name: "일" })).toHaveAttribute("aria-checked", "true");
@@ -68,8 +72,7 @@ test("입금 기한을 3일·24시간으로 바꿔 저장하면 다시 열어도
   await expect(page.getByLabel("입금 기한", { exact: true })).toHaveValue("72");
   await page.getByLabel("입금 기한", { exact: true }).fill("24");
   await expect(page.getByTestId("buyer-preview")).toHaveText("주문서 · 무통장 입금: 「주문 후 24시간 안에 입금하면 주문대기에 올라가요」");
-  await save(page);
-  await expect(page.getByText("주문 설정을 저장했어요 · 다음 주문부터 적용돼요")).toBeVisible();
+  await saveOk(page);
   await shot(page, "SA-063-order");
 
   await page.reload();
@@ -97,8 +100,7 @@ test("자동 취소·주문 막기를 끄면 저장되고, 다시 켤 수 있다
   await expect(page.getByText("미입금 주문이 쌓이면 재고가 묶여요")).toBeVisible();
   await page.getByRole("switch", { name: "미입금으로 3번 취소되면 30일 동안 주문 막기" }).click();
   await page.getByRole("switch", { name: "취소·반품하면 재고 되돌리기" }).click();
-  await save(page);
-  await expect(page.getByText("주문 설정을 저장했어요", { exact: false })).toBeVisible();
+  await saveOk(page);
   await shot(page, "SA-063-order-off");
 
   await page.reload();
@@ -109,8 +111,7 @@ test("자동 취소·주문 막기를 끄면 저장되고, 다시 켤 수 있다
   await page.getByRole("switch", { name: "기한이 지나면 자동 취소" }).click();
   await page.getByRole("switch", { name: "미입금으로 3번 취소되면 30일 동안 주문 막기" }).click();
   await page.getByRole("switch", { name: "취소·반품하면 재고 되돌리기" }).click();
-  await save(page);
-  await expect(page.getByText("주문 설정을 저장했어요", { exact: false })).toBeVisible();
+  await saveOk(page);
   await page.reload();
   await expect(page.getByRole("switch", { name: "취소·반품하면 재고 되돌리기" })).toHaveAttribute("aria-checked", "true");
   await expect(page.getByRole("switch", { name: "기한이 지나면 자동 취소" })).toHaveAttribute("aria-checked", "true");
