@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, failMessage, type ApiResult } from "./api";
 
 // 파트너스 가입(PF-007)·비밀번호 찾기(AU-003)에서 함께 쓰는 대표자 휴대폰 본인확인 칸.
@@ -46,8 +46,10 @@ function toBirth7(birth: string, gender: "M" | "F", foreigner: boolean): string 
 
 type Props = {
   label: string;
-  // 인증번호 받기. 성공하면 verificationId
-  start: (person: IdentityPerson) => Promise<ApiResult<{ verificationId: string }>>;
+  // 인증번호 받기. 성공하면 verificationId. attemptKey는 시작 요청 본문에 함께 보낸다(응답을 잃고 다시 보내도 문자·하루 횟수를 다시 쓰지 않게)
+  start: (person: IdentityPerson, attemptKey: string) => Promise<ApiResult<{ verificationId: string }>>;
+  // 인적사항 밖에서 시작 요청에 함께 보내는 값(예: 이메일·쇼핑몰 주소). 바뀌면 새 시도로 본다
+  scope?: string;
   // 다시 받기·확인 API 앞부분(…/verification, …/password-reset)
   base: string;
   // 인증번호 받기 전에 채워야 하는 다른 칸이 비었으면 true(버튼을 끈다)
@@ -58,7 +60,7 @@ type Props = {
   onSentChange?: (sent: boolean) => void;
 };
 
-export default function IdentityCheck({ label, start, base, blocked = false, onVerified, onUnavailable, onSentChange }: Props) {
+export default function IdentityCheck({ label, start, scope = "", base, blocked = false, onVerified, onUnavailable, onSentChange }: Props) {
   const [step, setStep] = useState<"identity" | "code">("identity");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ kind: "neg" | "info"; text: string } | null>(null);
@@ -71,6 +73,9 @@ export default function IdentityCheck({ label, start, base, blocked = false, onV
   const [agreed, setAgreed] = useState(false);
   const [birthError, setBirthError] = useState<string | null>(null);
   const [verificationId, setVerificationId] = useState<string | null>(null);
+  // 본인확인 시작 한 번(같은 입력)의 멱등 키(구매자 가입 SignupForm과 같은 방식). 응답이 끊겨 다시 누르면 같은 키로 보낸다.
+  // 입력을 바꾸거나, 시작에 성공했거나, 그 키로는 다시 시작할 수 없다는 답(확인됨·만료·실패)을 받으면 새 키를 만든다.
+  const attempt = useRef<{ fp: string; key: string } | null>(null);
   const [sent, setSent] = useState<{ name: string; phone: string } | null>(null);
   const [code, setCode] = useState("");
   const [codeError, setCodeError] = useState<string | null>(null);
@@ -118,8 +123,13 @@ export default function IdentityCheck({ label, start, base, blocked = false, onV
     setBirthError(null);
     const person = { name: name.trim(), phone };
     const device = window.matchMedia("(min-width: 768px)").matches ? "PC" : "MOBILE";
-    const r = await start({ ...person, birth7, carrier, device });
+    const input: IdentityPerson = { ...person, birth7, carrier, device };
+    const fp = JSON.stringify([scope, input]);
+    if (attempt.current?.fp !== fp) attempt.current = { fp, key: crypto.randomUUID() };
+    const r = await start(input, attempt.current.key);
     setBusy(false);
+    // 409 start_in_progress(앞 요청이 아직 문자를 보내는 중)·연결 끊김·일시 오류는 키를 두어 다시 누르면 같은 시도로 이어 간다
+    if (r.ok || r.error === "already_verified" || r.error === "expired" || r.error === "failed") attempt.current = null;
     if (!r.ok) return fail(r);
     setVerificationId(r.data.verificationId);
     setSent(person);
