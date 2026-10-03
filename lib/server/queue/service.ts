@@ -5,7 +5,7 @@ import { lockSellerOrders, maybeRestrict, sellerEventClock } from "../orders/ove
 import { getShippingPolicy } from "../orders/shipping";
 import { earnQuote } from "../rewards/earn";
 import { createPendingRewardLedger } from "../rewards/ledger";
-import { requireSellerPermission, type TenantContext } from "../tenant/context";
+import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 import { restoreOrderStock } from "../products/stock";
 import { checkTransition, isCompletePermutation, isValidTimer, type QueueAction, type QueueRejection } from "./rules";
 
@@ -486,6 +486,37 @@ export function computeRefund(input: {
   return { refundAmount: Math.max(0, gross - returnFeeDeducted), returnFeeDeducted };
 }
 
+// 개봉을 시작했거나 마친 주문대기 품목(환불·재고 복구에서 「개봉한 상품」)
+const isOpened = (q: Pick<QueueItem, "openingStartedAt" | "status"> | undefined) =>
+  !!q && (q.openingStartedAt !== null || q.status === "OPENING" || q.status === "DONE");
+
+export type RefundPreview = {
+  shipped: boolean;
+  openedItems: { orderItemId: string; amount: number }[];
+  // 사유 주체별 환불액. blocked: 이 사유 주체로는 환불할 수 없다(refundOrder가 opened_items_unshipped로 막는다)
+  byFault: Record<RefundFault, { refundAmount: number; returnFeeDeducted: number; blocked: boolean }>;
+};
+
+// 환불 미리보기(계산만, 상태 변경 없음). refundOrder와 같은 개봉 판정·반품 배송비·computeRefund를 쓴다.
+// 결제 완료 주문만 돌려주고, 그 밖에는 null.
+export async function previewRefund(db: PrismaClient, ctx: TenantContext, orderId: string): Promise<RefundPreview | null> {
+  requireSellerRead(ctx, "ORDER_SHIPPING");
+  const order = await db.order.findFirst({
+    where: { id: orderId, sellerId: ctx.sellerId, status: "PAID" },
+    include: { items: true, queueItems: true, shipment: { select: { status: true } } },
+  });
+  if (!order) return null;
+  const shipped = order.shipment !== null;
+  const items = order.items.map((i) => ({ id: i.id, unitPrice: i.unitPrice, quantity: i.quantity, opened: isOpened(order.queueItems.find((x) => x.orderItemId === i.id)) }));
+  const returnFee = order.returnFeeSnapshot ?? (await getShippingPolicy(db, ctx.sellerId)).returnFee;
+  const byFault = {} as RefundPreview["byFault"];
+  for (const fault of ["BUYER", "SELLER"] as const) {
+    const r = computeRefund({ items, shippingFee: order.shippingFee, totalAmount: order.totalAmount, shipped, fault, returnFee });
+    byFault[fault] = { ...r, blocked: fault === "BUYER" && !shipped && items.some((i) => i.opened) };
+  }
+  return { shipped, openedItems: items.filter((i) => i.opened).map((i) => ({ orderItemId: i.id, amount: i.unitPrice * i.quantity })), byFault };
+}
+
 // 결제 완료 주문 환불: 결제 완료 → 환불. 주문 품목마다
 // - 연결된 주문대기가 「대기」·「개봉 중」이면 자동 취소
 // - 개봉 전(대기였거나 개봉 전에 취소됨)이면 재고 복구, 개봉을 시작했거나 완료했으면 복구 안 함
@@ -519,8 +550,6 @@ export async function refundOrder(
     const order = await tx.order.findUniqueOrThrow({ where: { id: orderId }, include: { items: true, queueItems: true, shipment: { select: { status: true } } } });
     // 발송한 주문은 상품이 구매자에게 가 있으므로 재고를 되돌리지 않는다(회수는 판매자가 MANUAL로). 배송 기록은 그대로 둔다.
     const shippedBeforeRefund = order.shipment !== null;
-    const isOpened = (q: (typeof order.queueItems)[number] | undefined) =>
-      !!q && (q.openingStartedAt !== null || q.status === "OPENING" || q.status === "DONE");
     const openedItemCount = order.items.filter((i) => isOpened(order.queueItems.find((x) => x.orderItemId === i.id))).length;
     // 트랜잭션을 되돌리므로 주문 상태도 결제 완료로 남는다
     if (openedItemCount > 0 && opts.confirmOpened !== true) throw new Rejected("opened_items_present");

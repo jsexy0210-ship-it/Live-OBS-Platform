@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// SA-021 주문 목록 · SA-022 주문 상세 · SA-023 환불 모달. dev-seed의 데모 주문 25건(결제 대기·완료·발송·환불됨·취소)으로 확인한다.
+// SA-021 주문 목록 · SA-022 주문 상세 · SA-023 환불 모달. dev-seed의 데모 주문 27건(결제 대기·완료·발송·환불됨·취소, 개봉한 상품이 있는 발송 주문 2건)으로 확인한다.
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
 const SHOTS = process.env.E2E_SCREENSHOTS === "1";
 
@@ -46,7 +46,7 @@ test("주문 목록: 20건씩 보이고 「주문 더 불러오기」로 나머�
   await page.getByRole("button", { name: "주문 더 불러오기" }).click();
   await next;
   // 다시 돌릴 때 앞선 실행의 실제 환불로 상태만 바뀔 뿐 건수는 같다
-  await expect(rows(page)).toHaveCount(25);
+  await expect(rows(page)).toHaveCount(27);
   await expect(page.getByRole("button", { name: "주문 더 불러오기" })).toHaveCount(0);
 });
 
@@ -130,18 +130,80 @@ test("환불 모달: 사유 주체를 고르지 않으면 환불할 수 없고, 
   const run = dialog.getByRole("button", { name: /환불 실행/ });
   await expect(run).toBeDisabled();
   await dialog.getByLabel("처리 사유").selectOption("결제 오류 · 중복 결제");
-  await dialog.getByLabel("위 금액으로 환불해요. 승인 취소 후 되돌릴 수 없어요.").check();
+  const agree = dialog.getByLabel("위 금액으로 환불해요. 승인 취소 후 되돌릴 수 없어요.");
+  await agree.check();
   // 사유 주체를 아직 고르지 않았다
   await expect(run).toBeDisabled();
   await expect(dialog.getByText("구매자 사정만 결제 후 취소 횟수에 들어가요 · 고르지 않으면 환불할 수 없어요")).toBeVisible();
   await dialog.getByRole("radio", { name: /구매자 사정/ }).check();
   await expect(dialog.getByText("이 취소는 구매자의 결제 후 취소 횟수에 들어가요")).toBeVisible();
+  // 사유 주체를 고르면 금액이 바뀔 수 있어 금액 확인을 다시 받는다
+  await expect(agree).not.toBeChecked();
+  await expect(run).toBeDisabled();
+  await agree.check();
   await expect(run).toBeEnabled();
   await shot(page, "SA-023");
   await run.click();
   await expect(page.getByText("1,000원 환불을 완료했어요")).toBeVisible();
   expect(body).toMatchObject({ fault: "BUYER", reason: "결제 오류 · 중복 결제", confirmOpened: false });
   expect(Number.isInteger((body as unknown as { expectedVersion: number }).expectedVersion)).toBe(true);
+});
+
+test("환불 모달: 개봉한 상품이 있으면 사유 주체를 바꿀 때마다 실제 환불 금액과 뺀 항목을 다시 보여 주고, 다 개봉했으면 「환불할 금액이 없어요」", async ({ page }) => {
+  // dev-seed: 2번(카드왕, 스타라이트 1박스 189,000원 개봉 + 문라이트 컬렉션 1박스 132,000원, 배송비 3,000원, 발송함, 반품 배송비 3,000원)
+  //           1번(민트컨디션, 스타라이트 낱개 1팩 ×2 = 12,000원 개봉, 배송비 3,000원, 발송함)
+  const openOrder = async (has: (r: ReturnType<typeof rows>) => ReturnType<typeof rows>) => {
+    await page.goto("/seller/orders");
+    await page.getByRole("button", { name: "주문 더 불러오기" }).click();
+    await has(rows(page)).getByRole("link", { name: "환불 처리" }).click();
+    const dialog = page.getByRole("dialog", { name: "취소 · 환불 처리" });
+    await expect(dialog).toBeVisible();
+    return dialog;
+  };
+  const kv = (dialog: ReturnType<Page["getByRole"]>, label: string) => dialog.locator("dt", { hasText: label }).locator("xpath=following-sibling::dd[1]");
+  await login(page);
+
+  let dialog = await openOrder((r) => r.filter({ hasText: "외 1건" }).filter({ hasText: "카드왕" }));
+  const amount = dialog.getByTestId("refund-amount");
+  const agree = dialog.getByLabel("위 금액으로 환불해요. 승인 취소 후 되돌릴 수 없어요.");
+  const run = dialog.getByRole("button", { name: /환불 실행/ });
+  // 사유 주체에 따라 금액이 달라서 고르기 전에는 금액을 단정하지 않는다. 개봉 확인은 처음부터 받는다
+  await expect(amount).toHaveText("사유 주체를 고르면 보여요");
+  await expect(dialog.getByLabel("개봉한 상품이 있는 걸 확인했어요")).toBeVisible();
+  await dialog.getByRole("radio", { name: /구매자 사정/ }).check();
+  await expect(amount).toHaveText("129,000원");
+  await expect(kv(dialog, "개봉한 상품 · 스타라이트 부스터 박스")).toHaveText("−189,000원");
+  await expect(kv(dialog, "처음 배송비")).toHaveText("−3,000원");
+  await expect(kv(dialog, "반품 배송비")).toHaveText("−3,000원");
+  await expect(run).toHaveText("129,000원 환불 실행");
+  await dialog.getByLabel("처리 사유").selectOption("기타");
+  await dialog.getByLabel("개봉한 상품이 있는 걸 확인했어요").check();
+  await agree.check();
+  await expect(run).toBeEnabled();
+  await shot(page, "SA-023-opened");
+  // 판매자 사정으로 바꾸면 개봉한 상품·배송비까지 모두 돌려주고, 금액 확인을 다시 받는다
+  await dialog.getByRole("radio", { name: /판매자 사정/ }).check();
+  await expect(amount).toHaveText("324,000원");
+  await expect(dialog.locator("dt", { hasText: "반품 배송비" })).toHaveCount(0);
+  await expect(dialog.locator("dt", { hasText: "개봉한 상품" })).toHaveCount(0);
+  await expect(agree).not.toBeChecked();
+  await expect(run).toBeDisabled();
+  await expect(run).toHaveText("324,000원 환불 실행");
+  await dialog.getByRole("button", { name: "닫기" }).click();
+
+  // 하나뿐인 상품을 개봉했으면 구매자 사정으로는 돌려줄 금액이 0원이라 환불 버튼 대신 안내만 보인다
+  dialog = await openOrder((r) => r.filter({ hasText: "민트컨디션" }).filter({ hasText: "15,000원" }));
+  await dialog.getByRole("radio", { name: /구매자 사정/ }).check();
+  await expect(dialog.getByTestId("refund-amount")).toHaveText("0원");
+  await expect(dialog.getByText("환불할 금액이 없어요")).toBeVisible();
+  await expect(kv(dialog, "개봉한 상품 · 스타라이트 부스터 박스")).toHaveText("−12,000원");
+  await expect(dialog.getByRole("button", { name: /환불 실행/ })).toHaveCount(0);
+  await expect(dialog.getByLabel("위 금액으로 환불해요. 승인 취소 후 되돌릴 수 없어요.")).toHaveCount(0);
+  await shot(page, "SA-023-nothing");
+  await dialog.getByRole("radio", { name: /판매자 사정/ }).check();
+  await expect(dialog.getByTestId("refund-amount")).toHaveText("15,000원");
+  await expect(dialog.getByText("환불할 금액이 없어요")).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: /환불 실행/ })).toHaveText("15,000원 환불 실행");
 });
 
 test("실제 환불: 판매자 사정으로 환불하면 완료 알림이 뜨고 주문이 환불됨으로 바뀐다", async ({ page }) => {
@@ -187,8 +249,10 @@ test("환불 모달: 결제 수단이 카드면 「카드 승인 취소」를 �
   // 카드 결제 주문(데모 주문의 최근 결제 완료 건)
   await page.getByRole("link", { name: "환불 처리" }).first().click();
   const dialog = page.getByRole("dialog", { name: "취소 · 환불 처리" });
-  await expect(dialog.locator(".refund-opt.on").first()).toContainText("· 카드 승인 취소");
+  await expect(dialog.locator(".refund-opt.on").first()).toContainText("카드 승인 취소");
   await dialog.getByRole("radio", { name: /판매자 사정/ }).check();
+  // 사유 주체를 고르면 실제 환불액이 카드 승인 취소 금액으로 보인다
+  await expect(dialog.locator(".refund-opt.on").first()).toContainText(/\d원 · 카드 승인 취소$/);
   await dialog.getByLabel("처리 사유").selectOption("기타");
   await dialog.getByLabel("위 금액으로 환불해요. 승인 취소 후 되돌릴 수 없어요.").check();
   await dialog.getByRole("button", { name: /환불 실행/ }).click();

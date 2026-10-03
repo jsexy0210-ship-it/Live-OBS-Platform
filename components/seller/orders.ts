@@ -41,6 +41,15 @@ export type OrderDetail = {
   buyer: { id: string; broadcastNickname: string; name?: string; phone?: string };
   // 환불 API의 expectedVersion(주문대기 버전). 상세를 읽은 때의 값이다.
   queueVersion: number;
+  // 결제 완료 주문만 온다. 사유 주체별 실제 환불액(서버 계산), 개봉한 상품, 이 사유로 환불할 수 없는지(blocked)
+  refundPreview: RefundPreview | null;
+};
+
+export type RefundFault = "BUYER" | "SELLER";
+export type RefundPreview = {
+  shipped: boolean;
+  openedItems: { orderItemId: string; amount: number }[];
+  byFault: Record<RefundFault, { refundAmount: number; returnFeeDeducted: number; blocked: boolean }>;
 };
 
 // 결제 상태 배지. 시안 결제 배지(완료·결제 대기·환불됨)에 맞추고, 시안에 없는 취소는 「취소」로 보인다.
