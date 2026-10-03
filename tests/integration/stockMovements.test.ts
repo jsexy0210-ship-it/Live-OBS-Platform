@@ -139,6 +139,32 @@ describe("재고 이력 조회", () => {
   });
 });
 
+describe("[MASTER P1] 이력 순서 = 실제 적용 순서(seq)", () => {
+  it("수동 증감·주문 차감을 동시에 섞어도 맨 위 결과 재고가 지금 재고와 같고, 순서대로 늘어놓으면 결과 재고가 증감과 이어진다", async () => {
+    const s = await shop();
+    const p = await s.product("A", 500);
+    const jobs = Array.from({ length: 40 }, (_, i) =>
+      i % 4 === 0
+        ? createOrder(db, { sellerId: s.seller.id, buyerMemberId: s.buyer.id, items: [{ optionId: p.optionId, quantity: 1 }], consent, shippingAddress: addr }).then(() => undefined)
+        : adjustStock(db, s.ctx, p.productId, p.optionId, { delta: i % 2 === 0 ? 3 : -2, reason: `조정 ${i}` }).then(() => undefined),
+    );
+    await Promise.all(jobs);
+    const all: { delta: number; stockAfter: number }[] = [];
+    let cursor: string | null = null;
+    do {
+      const body: { movements: { delta: number; stockAfter: number }[]; nextCursor: string | null } = await (
+        await list(s.cookie, { optionId: p.optionId, limit: "7", ...(cursor ? { cursor } : {}) })
+      ).json();
+      all.push(...body.movements);
+      cursor = body.nextCursor;
+    } while (cursor);
+    const current = (await db.productOption.findUniqueOrThrow({ where: { id: p.optionId } })).stock;
+    expect(all[0].stockAfter).toBe(current);
+    for (let i = 0; i < all.length - 1; i++) expect(all[i].stockAfter - all[i].delta).toBe(all[i + 1].stockAfter);
+    expect(all[all.length - 1]).toMatchObject({ delta: 500, stockAfter: 500 });
+  });
+});
+
 describe("수동 증감 expectedStock(화면이 본 재고)", () => {
   it("화면이 본 재고와 같으면 사유와 함께 반영하고, 다르면 409 stock_conflict와 지금 재고를 주며 바꾸지 않는다. 형식이 틀리면 400", async () => {
     const s = await shop();

@@ -3,7 +3,9 @@ import { notFound } from "../authz/errors";
 import { requireSellerRead, type TenantContext } from "../tenant/context";
 
 // 재고 이력 조회(화면 SA-014 재고 관리, PRODUCT_MANAGE). 판매자 범위 안만 보이고, 다른 쇼핑몰 상품·옵션은 404.
-// 최근순(createdAt·id 내림차순) keyset 커서. 커서는 마지막 항목의 「시각|id」를 base64url로 감싼 값이다.
+// 최근순(seq 내림차순) keyset 커서. seq는 기록 순서로, 옵션마다 실제 적용 순서와 같다(createdAt은 트랜잭션 시작 시각이라
+// 동시 처리에서 뒤바뀔 수 있어 정렬에 쓰지 않는다). 커서는 마지막 항목의 seq를 base64url로 감싼 값이다.
+// stockAfter(결과 재고)는 이 기능 전에 쌓인 이력에서 null이다. 화면은 null이면 표시하지 않는다.
 
 export const DEFAULT_MOVEMENT_PAGE = 50;
 export const MAX_MOVEMENT_PAGE = 200;
@@ -25,13 +27,11 @@ const ACTOR_LABELS: Record<Exclude<ActorType, "SELLER_USER">, string> = {
   PLATFORM_ADMIN: "플랫폼 관리자",
 };
 
-const encodeCursor = (createdAt: Date, id: string) => Buffer.from(`${createdAt.toISOString()}|${id}`).toString("base64url");
+const encodeCursor = (seq: bigint) => Buffer.from(`s${seq}`).toString("base64url");
 
-function decodeCursor(raw: string): { createdAt: Date; id: string } | null {
-  const [at, id, ...rest] = Buffer.from(raw, "base64url").toString("utf8").split("|");
-  const createdAt = new Date(at ?? "");
-  if (rest.length || !id || !UUID.test(id) || Number.isNaN(createdAt.getTime()) || createdAt.toISOString() !== at) return null;
-  return { createdAt, id };
+function decodeCursor(raw: string): bigint | null {
+  const m = /^s([1-9]\d{0,18})$/.exec(Buffer.from(raw, "base64url").toString("utf8"));
+  return m ? BigInt(m[1]) : null;
 }
 
 export async function listStockMovements(
@@ -45,8 +45,8 @@ export async function listStockMovements(
   let after: Prisma.StockMovementWhereInput = {};
   if (q.cursor) {
     const c = decodeCursor(q.cursor);
-    if (!c) return { ok: false as const, reason: "invalid_cursor" as const };
-    after = { OR: [{ createdAt: { lt: c.createdAt } }, { createdAt: c.createdAt, id: { lt: c.id } }] };
+    if (c === null) return { ok: false as const, reason: "invalid_cursor" as const };
+    after = { seq: { lt: c } };
   }
   // 상품·옵션을 정하면 이 판매자 것인지 먼저 본다(지운 상품·옵션의 이력도 볼 수 있다). 다른 쇼핑몰 것은 없는 것과 같다.
   const scope: Prisma.StockMovementWhereInput = { sellerId: ctx.sellerId };
@@ -63,7 +63,7 @@ export async function listStockMovements(
   }
   const rows = await db.stockMovement.findMany({
     where: { ...scope, ...after },
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    orderBy: { seq: "desc" },
     take: limit + 1,
     include: { option: { select: { name: true, productId: true, product: { select: { name: true } } } } },
   });
@@ -94,7 +94,7 @@ export async function listStockMovements(
         orderId: m.orderId,
         createdAt: m.createdAt,
       })),
-      nextCursor: rows.length > limit ? encodeCursor(page[page.length - 1].createdAt, page[page.length - 1].id) : null,
+      nextCursor: rows.length > limit ? encodeCursor(page[page.length - 1].seq) : null,
     },
   };
 }
