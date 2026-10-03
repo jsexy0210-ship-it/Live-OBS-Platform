@@ -7,14 +7,24 @@
 // 큐 적체: 아직 작업 큐가 없어 재지 않는다(작업 큐가 생기면 --queue-url로 적체 수를 함께 읽게 넓힌다).
 import { writeFileSync } from "node:fs";
 
+// 숫자 옵션 범위. 무한대·숫자 아님·범위 밖이면 요청을 하나도 보내지 않고 종료 코드 2로 끝낸다.
+const LIMITS = { duration: [0, 600], rps: [0, 200], timeout: [1, 60000], gapMs: [0, 60000] }; // duration·rps는 0 초과
+
+class ArgError extends Error {}
+
 function args(argv) {
   const out = { url: "http://127.0.0.1/api/health", duration: 60, rps: 20, timeout: 3000, out: "", label: "", gapMs: 2000 };
   for (let i = 0; i < argv.length; i += 2) {
     const k = argv[i].replace(/^--/, "");
-    if (!(k in out)) throw new Error(`모르는 옵션: ${argv[i]}`);
+    if (!(k in out)) throw new ArgError(`모르는 옵션: ${argv[i]}`);
+    if (argv[i + 1] === undefined) throw new ArgError(`${argv[i]} 값이 없어요.`);
     out[k] = typeof out[k] === "number" ? Number(argv[i + 1]) : argv[i + 1];
   }
-  if (!(out.duration > 0 && out.rps > 0 && out.timeout > 0)) throw new Error("duration·rps·timeout은 0보다 커야 해요.");
+  for (const [k, [min, max]] of Object.entries(LIMITS)) {
+    const v = out[k];
+    const okMin = k === "duration" || k === "rps" ? v > min : v >= min;
+    if (!Number.isFinite(v) || !okMin || v > max) throw new ArgError(`--${k} 값이 올바르지 않아요(${k === "duration" || k === "rps" ? "0 초과" : `${min} 이상`} ${max} 이하): ${v}`);
+  }
   return out;
 }
 
@@ -107,6 +117,6 @@ async function main() {
 if (import.meta.url === `file://${process.argv[1]}`) {
   main().catch((e) => {
     console.error(e instanceof Error ? e.message : String(e));
-    process.exit(1);
+    process.exit(e instanceof ArgError ? 2 : 1);
   });
 }
