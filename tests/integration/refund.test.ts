@@ -221,8 +221,9 @@ describe("화면이 본 상태(version) 확인", () => {
 });
 
 describe("적립금 원장", () => {
+  // 이 묶음은 「결제 즉시 지급」 쇼핑몰로 결제 때 기록을 본다(배송 완료 후 지급은 delivery.test.ts)
   async function withPolicy(s: Awaited<ReturnType<typeof setup>>, livePayoutEnabled = false) {
-    await db.rewardPolicy.create({ data: { sellerId: s.seller.id, rates: { [s.grade.id]: { card: 1, bankTransfer: 3 } }, livePayoutEnabled } });
+    await db.rewardPolicy.create({ data: { sellerId: s.seller.id, rates: { [s.grade.id]: { card: 1, bankTransfer: 3 } }, livePayoutEnabled, earnTiming: "ON_PAYMENT" } });
   }
 
   it("결제 완료 시 등급·결제수단 적립률로 지급 대기(EARN, 실지급 꺼짐이면 testMode)를 기록한다", async () => {
@@ -249,7 +250,7 @@ describe("적립금 원장", () => {
 
   it("회수 방식이 MANUAL이면 환불해도 REVOKE를 만들지 않고 수동 확인 대기로 남긴다", async () => {
     const s = await setup();
-    await db.rewardPolicy.create({ data: { sellerId: s.seller.id, rates: { [s.grade.id]: { card: 1 } }, revokeMode: "MANUAL" } });
+    await db.rewardPolicy.create({ data: { sellerId: s.seller.id, rates: { [s.grade.id]: { card: 1 } }, revokeMode: "MANUAL", earnTiming: "ON_PAYMENT" } });
     const { order } = await s.paid([[10, 1]], "CARD");
     expect(await refundOrder(db, s.ctx, order.id, { reason: "요청", expectedLiveVersion: await lv(s.ctx.sellerId) })).toMatchObject({
       ok: true,
@@ -271,15 +272,15 @@ describe("적립금 원장", () => {
     expect((await db.rewardLedger.findFirstOrThrow({ where: { orderId: order.id } })).amount).toBe(150);
   });
 
-  it("적립 기준액 = 상품 금액(단가×수량, 배송비 제외) − 적립금 사용액, 적립금을 두 번 빼지 않는다", async () => {
+  it("적립 기준액 = 할인 후 상품 금액(단가×수량), 배송비도 적립금 사용액도 빼지 않는다(대표님 결정)", async () => {
     const s = await setup();
     await withPolicy(s);
     // 상품 2 × 5,000 = 10,000원, 적립금 2,000원 사용 → 결제액(totalAmount, 배송비 3,000 포함) 11,000원
     const { order } = await s.pendingOrder([[10, 2]], 11000);
     await db.order.update({ where: { id: order.id }, data: { rewardUsedAmount: 2000 } });
     expect((await markOrderPaid(db, { sellerId: s.seller.id, orderId: order.id, paymentMethod: "BANK_TRANSFER" })).ok).toBe(true);
-    // 기준액 8,000원 × 3% = 240원 (totalAmount를 기준으로 쓰면 270, 적립금을 두 번 빼면 180)
-    expect((await db.rewardLedger.findFirstOrThrow({ where: { orderId: order.id } })).amount).toBe(240);
+    // 기준액 10,000원 × 3% = 300원 (적립금 사용액을 빼면 240, totalAmount를 기준으로 쓰면 330)
+    expect((await db.rewardLedger.findFirstOrThrow({ where: { orderId: order.id } })).amount).toBe(300);
   });
 
   it("정책이 없거나 재고 부족이면 기록하지 않는다", async () => {

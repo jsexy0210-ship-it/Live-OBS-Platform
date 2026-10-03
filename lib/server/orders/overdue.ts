@@ -22,7 +22,19 @@ export const RESTRICTION_REASON_UNPAID = "UNPAID_AUTO_CANCEL";
 type Db = PrismaClient | Prisma.TransactionClient;
 // autoCancelEnabled가 꺼져 있으면 새 주문에 입금 기한을 두지 않아 자동 취소되지 않는다(이미 기한이 붙은 주문은 그대로).
 // restockOnCancel: 취소·반품 때 재고 자동 복구(기본 켜짐, lib/server/products/stock.ts).
-export type OrderPolicy = { autoCancelEnabled: boolean; paymentDueHours: number; unpaidRestrictionEnabled: boolean; restockOnCancel: boolean };
+// autoDeliver*: 배송 중 n일 뒤 자동 배송 완료, autoConfirm*: 배송 완료 n일 뒤 자동 구매 확정(기본 사용·7일, 1~30일, orders/delivery.ts).
+export type OrderPolicy = {
+  autoCancelEnabled: boolean;
+  paymentDueHours: number;
+  unpaidRestrictionEnabled: boolean;
+  restockOnCancel: boolean;
+  autoDeliverEnabled: boolean;
+  autoDeliverDays: number;
+  autoConfirmEnabled: boolean;
+  autoConfirmDays: number;
+};
+export const DEFAULT_AUTO_DAYS = 7;
+export const MAX_AUTO_DAYS = 30;
 
 export async function getOrderPolicy(db: Db, sellerId: string): Promise<OrderPolicy & { unpaidRestrictionEnabledAt: Date | null }> {
   const p = await db.sellerOrderPolicy.findUnique({ where: { sellerId } });
@@ -33,8 +45,22 @@ export async function getOrderPolicy(db: Db, sellerId: string): Promise<OrderPol
         unpaidRestrictionEnabled: p.unpaidRestrictionEnabled,
         unpaidRestrictionEnabledAt: p.unpaidRestrictionEnabledAt,
         restockOnCancel: p.restockOnCancel,
+        autoDeliverEnabled: p.autoDeliverEnabled,
+        autoDeliverDays: p.autoDeliverDays,
+        autoConfirmEnabled: p.autoConfirmEnabled,
+        autoConfirmDays: p.autoConfirmDays,
       }
-    : { autoCancelEnabled: true, paymentDueHours: DEFAULT_PAYMENT_DUE_HOURS, unpaidRestrictionEnabled: true, unpaidRestrictionEnabledAt: null, restockOnCancel: true };
+    : {
+        autoCancelEnabled: true,
+        paymentDueHours: DEFAULT_PAYMENT_DUE_HOURS,
+        unpaidRestrictionEnabled: true,
+        unpaidRestrictionEnabledAt: null,
+        restockOnCancel: true,
+        autoDeliverEnabled: true,
+        autoDeliverDays: DEFAULT_AUTO_DAYS,
+        autoConfirmEnabled: true,
+        autoConfirmDays: DEFAULT_AUTO_DAYS,
+      };
 }
 
 export const lockSellerOrders = (tx: Prisma.TransactionClient, sellerId: string) =>
@@ -196,9 +222,11 @@ export async function liftRestriction(db: PrismaClient, ctx: TenantContext, buye
 
 export async function readOrderPolicy(db: PrismaClient, ctx: TenantContext): Promise<OrderPolicy> {
   requireSellerRead(ctx, "SHOP_SETTINGS");
-  const { autoCancelEnabled, paymentDueHours, unpaidRestrictionEnabled, restockOnCancel } = await getOrderPolicy(db, ctx.sellerId);
-  return { autoCancelEnabled, paymentDueHours, unpaidRestrictionEnabled, restockOnCancel };
+  const { unpaidRestrictionEnabledAt: _at, ...policy } = await getOrderPolicy(db, ctx.sellerId);
+  return policy;
 }
+
+const isAutoDays = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= MAX_AUTO_DAYS;
 
 // 판매자 주문 정책 변경(SHOP_SETTINGS). 자동 취소 사용 여부, 기간은 1~720시간(30일) 정수. 바꾼 설정은 다음 주문부터.
 export async function updateOrderPolicy(db: PrismaClient, ctx: TenantContext, raw: unknown) {
@@ -213,20 +241,28 @@ export async function updateOrderPolicy(db: PrismaClient, ctx: TenantContext, ra
     h < 1 ||
     h > MAX_PAYMENT_DUE_HOURS ||
     typeof b.unpaidRestrictionEnabled !== "boolean" ||
-    (b.restockOnCancel !== undefined && typeof b.restockOnCancel !== "boolean")
+    (b.restockOnCancel !== undefined && typeof b.restockOnCancel !== "boolean") ||
+    (b.autoDeliverEnabled !== undefined && typeof b.autoDeliverEnabled !== "boolean") ||
+    (b.autoConfirmEnabled !== undefined && typeof b.autoConfirmEnabled !== "boolean") ||
+    (b.autoDeliverDays !== undefined && !isAutoDays(b.autoDeliverDays)) ||
+    (b.autoConfirmDays !== undefined && !isAutoDays(b.autoConfirmDays))
   ) {
     return { ok: false as const, reason: "invalid_order_policy" as const };
   }
   return db.$transaction(async (tx) => {
     // 같은 판매자의 자동 취소·주문과 순서를 맞춘다
     await lockSellerOrders(tx, ctx.sellerId);
-    // restockOnCancel은 빼고 보내면 지금 값을 그대로 둔다
+    // restockOnCancel·자동 배송 완료·자동 구매 확정은 빼고 보내면 지금 값을 그대로 둔다
     const current = await getOrderPolicy(tx, ctx.sellerId);
     const policy: OrderPolicy = {
       autoCancelEnabled: b.autoCancelEnabled as boolean,
       paymentDueHours: h,
       unpaidRestrictionEnabled: b.unpaidRestrictionEnabled as boolean,
       restockOnCancel: typeof b.restockOnCancel === "boolean" ? b.restockOnCancel : current.restockOnCancel,
+      autoDeliverEnabled: typeof b.autoDeliverEnabled === "boolean" ? b.autoDeliverEnabled : current.autoDeliverEnabled,
+      autoDeliverDays: isAutoDays(b.autoDeliverDays) ? b.autoDeliverDays : current.autoDeliverDays,
+      autoConfirmEnabled: typeof b.autoConfirmEnabled === "boolean" ? b.autoConfirmEnabled : current.autoConfirmEnabled,
+      autoConfirmDays: isAutoDays(b.autoConfirmDays) ? b.autoConfirmDays : current.autoConfirmDays,
     };
     const { unpaidRestrictionEnabledAt: _at, ...before } = await getOrderPolicy(tx, ctx.sellerId);
     // 꺼져 있다가 켜면 켠 시각을 남긴다(그 뒤 자동 취소만 센다). 끄더라도 이미 걸린 제한은 그대로 둔다.

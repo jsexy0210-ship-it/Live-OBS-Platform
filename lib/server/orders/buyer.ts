@@ -20,6 +20,11 @@ const summarySelect = {
   paidAt: true,
   cancelledAt: true,
   refundedAt: true,
+  // 환불 금액·사유 주체(구매자·판매자 사정)·뺀 반품 배송비, 구매 확정 시각
+  refundAmount: true,
+  refundFault: true,
+  returnFeeDeducted: true,
+  purchaseConfirmedAt: true,
   paymentDueAt: true,
   stockShortageAt: true,
   items: { select: { productNameSnapshot: true, optionNameSnapshot: true, unitPrice: true, quantity: true }, orderBy: { id: "asc" } },

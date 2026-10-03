@@ -90,7 +90,16 @@ describe("입금 기한", () => {
     const s = await shop();
     const c = await sellerCookie(s.owner.email);
     const got = await (await policyGet(new Request("http://localhost:3000/api/seller/order-policy", { headers: { ...H, cookie: c } }))).json();
-    expect(got.policy).toEqual({ autoCancelEnabled: true, paymentDueHours: 24, unpaidRestrictionEnabled: true, restockOnCancel: true });
+    expect(got.policy).toEqual({
+      autoCancelEnabled: true,
+      paymentDueHours: 24,
+      unpaidRestrictionEnabled: true,
+      restockOnCancel: true,
+      autoDeliverEnabled: true,
+      autoDeliverDays: 7,
+      autoConfirmEnabled: true,
+      autoConfirmDays: 7,
+    });
     const ok = { autoCancelEnabled: true, paymentDueHours: 240, unpaidRestrictionEnabled: true };
     for (const body of [
       { ...ok, paymentDueHours: 0 },
