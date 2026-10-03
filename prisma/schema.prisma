@@ -337,35 +337,37 @@ enum IdentityVerificationStatus {
 // PASS 본인인증 요청·결과. 연동은 IdentityProvider 인터페이스 뒤에 둔다(개발·테스트는 가짜 공급자).
 // CI 원문은 저장하지 않고 서버 비밀키(IDENTITY_HASH_KEY) HMAC-SHA256 값만 저장한다. 판매자 대표자 인증은 sellerId가 없다.
 model IdentityVerification {
-  id             String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerId       String?                     @db.Uuid
-  purpose        IdentityVerificationPurpose
-  provider       String
+  id              String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId        String?                     @db.Uuid
+  purpose         IdentityVerificationPurpose
+  provider        String
   // 본인확인 방식. 기존 행은 실제 쓴 방식(PASS_APP) 그대로 두고, 휴대폰 본인확인(문자)부터 SMS로 남긴다.
-  method         IdentityVerificationMethod
-  requestId      String
-  status         IdentityVerificationStatus  @default(PENDING)
+  method          IdentityVerificationMethod
+  requestId       String
+  status          IdentityVerificationStatus  @default(PENDING)
   // 문자 본인확인: 요청 때 받은 휴대폰번호(숫자만). 대행사 결과의 번호가 이와 다르면 실패로 본다.
-  requestedPhone String?
+  requestedPhone  String?
   // 인증번호 보낸 횟수(처음 포함)·마지막으로 보낸 시각·틀린 횟수. 한도는 identity/verification.ts 상수.
-  sendCount      Int                         @default(0)
-  lastSentAt     DateTime?                   @db.Timestamptz(3)
-  otpFailCount   Int                         @default(0)
-  ciHash         String?
-  name           String?
-  phone          String?
-  birthDate      DateTime?                   @db.Date
-  verifiedAt     DateTime?                   @db.Timestamptz(3)
+  sendCount       Int                         @default(0)
+  lastSentAt      DateTime?                   @db.Timestamptz(3)
+  otpFailCount    Int                         @default(0)
+  // 확인을 마친 뒤 이 본인확인으로 가입을 시도한 횟수(실패 포함). 한도를 넘으면 처음부터 다시(buyers/signup.ts).
+  useAttemptCount Int                         @default(0)
+  ciHash          String?
+  name            String?
+  phone           String?
+  birthDate       DateTime?                   @db.Date
+  verifiedAt      DateTime?                   @db.Timestamptz(3)
   // 인증을 시작한 브라우저에 준 일회용 값의 해시. 완료할 때 같은 값이 있어야 한다(다른 사람이 id만 알아서는 못 씀).
-  ownerTokenHash String?
+  ownerTokenHash  String?
   // 비밀번호 찾기: 재설정 대상 계정(없는 계정이면 null, 응답은 같게)
-  subjectId      String?                     @db.Uuid
+  subjectId       String?                     @db.Uuid
   // 인증을 시작한 접속 IP(신뢰 프록시 기준, 없으면 null). 판매자 가입 PASS 시작 하루 횟수 제한에 쓴다.
-  requestIp      String?
+  requestIp       String?
   // 이 인증으로 가입·재설정 권한을 이미 발급했으면 기록(한 번만 쓰임)
-  consumedAt     DateTime?                   @db.Timestamptz(3)
-  expiresAt      DateTime                    @db.Timestamptz(3)
-  createdAt      DateTime                    @default(now()) @db.Timestamptz(3)
+  consumedAt      DateTime?                   @db.Timestamptz(3)
+  expiresAt       DateTime                    @db.Timestamptz(3)
+  createdAt       DateTime                    @default(now()) @db.Timestamptz(3)
 
   seller Seller? @relation(fields: [sellerId], references: [id])
 
