@@ -59,6 +59,8 @@ test("상태 필터·검색·기간으로 걸러 보고, 결과가 없으면 알
   const refunded = listResponse(page, "status=REFUNDED");
   await page.getByRole("button", { name: "적용" }).click();
   await refunded;
+  // 응답 뒤 화면이 새 결과로 바뀐 다음에 센다(불러오는 동안은 행이 0개)
+  await expect(rows(page).first().locator(".bdg").first()).toHaveText("환불됨");
   const n = await rows(page).count();
   expect(n).toBeGreaterThanOrEqual(3);
   for (let i = 0; i < n; i++) await expect(rows(page).nth(i).locator(".bdg").first()).toHaveText("환불됨");
@@ -71,6 +73,7 @@ test("상태 필터·검색·기간으로 걸러 보고, 결과가 없으면 알
   const searched = listResponse(page, `q=${encodeURIComponent("카드왕")}`);
   await page.getByLabel("주문 검색").fill("카드왕");
   await searched;
+  await expect(rows(page).first().locator("td").nth(1)).toHaveText("카드왕");
   const m = await rows(page).count();
   expect(m).toBeGreaterThan(0);
   for (let i = 0; i < m; i++) await expect(rows(page).nth(i).locator("td").nth(1)).toHaveText("카드왕");

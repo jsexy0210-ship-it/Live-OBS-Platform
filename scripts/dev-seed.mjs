@@ -108,6 +108,11 @@ async function seedOrders(sellerId, passwordHash) {
     include: { product: { select: { name: true, price: true } } },
     orderBy: [{ product: { sortOrder: "asc" } }, { sortOrder: "asc" }],
   });
+  // 데모 상품이 없으면(이미 있던 DB에서 상품을 지웠거나 바꾼 경우) 주문을 만들 수 없다. 건너뛰고 알린다.
+  if (options.length === 0 || !grade) {
+    console.log("데모 상품이나 회원 등급이 없어 데모 주문은 만들지 않았어요");
+    return;
+  }
   const buyers = [];
   for (const [i, nick] of ["별빛사냥꾼", "카드왕", "민트컨디션"].entries()) {
     const loginId = `demo-buyer${i + 1}@example.com`;
