@@ -96,16 +96,17 @@ wait_health() {
 # 배포(앱 교체) 동안 표시를 두고, 끝나거나 실패·중단되면 지운다.
 # 작업마다 자기 표시 파일 하나($DEPLOY_MARK_DIR/<키>)를 둔다. 여러 작업이 겹쳐도 먼저 끝난 작업은 자기 파일만 지운다.
 # 감시는 유효한 파일이 하나라도 있으면 배포 중으로 본다(예전 단일 파일 $DEPLOY_MARK도 계속 읽음).
-# 파일에는 사유와 만료 시각(시작 + OBS_DEPLOY_MARK_MAX_S)을 적는다. 만료가 지났거나 갱신이 끊긴 파일은 감시가 무시하고 지운다.
+# 파일에는 종류·사유·만료 시각을 적는다. 종류 kept는 도는 동안 갱신하는 표시(mark_deploying)라 갱신이 끊기면(15분) 감시가 무시하고,
+# detached는 갱신하는 프로세스가 없는 표시(deploy-mark.sh on)라 만료 시각만으로 판단한다. 만료가 지난 파일은 감시가 지운다.
 DEPLOY_MARK_DIR="$DEPLOY_MARK.d"
 deploy_mark_key_ok() { [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]]; }
-deploy_mark_set() { # $1=키 $2=사유
+deploy_mark_set() { # $1=키 $2=사유 $3=종류(kept|detached) $4=유효 초
   deploy_mark_key_ok "$1" || die "배포 표시 키는 영문·숫자로 시작하고 영문·숫자·.-_만 쓸 수 있어요(받은 값: $1)."
   # 임시 파일은 키로 만들 수 없는 이름(.으로 시작)을 써서 감시가 키와 헷갈리지 않게 한다.
-  local max="${OBS_DEPLOY_MARK_MAX_S:-3600}" f="$DEPLOY_MARK_DIR/$1" tmp="$DEPLOY_MARK_DIR/.tmp-$$-$RANDOM"
-  [[ "$max" =~ ^[1-9][0-9]*$ ]] || die "OBS_DEPLOY_MARK_MAX_S는 1 이상 정수여야 해요."
+  local ttl="${4:-${OBS_DEPLOY_MARK_MAX_S:-3600}}" f="$DEPLOY_MARK_DIR/$1" tmp="$DEPLOY_MARK_DIR/.tmp-$$-$RANDOM"
+  [[ "$ttl" =~ ^[1-9][0-9]*$ ]] || die "표시 유효 시간(OBS_DEPLOY_MARK_MAX_S 등)은 1 이상 정수(초)여야 해요."
   mkdir -p "$DEPLOY_MARK_DIR" \
-    && printf 'reason=%s\npid=%s\nstarted=%s\nexpiresEpoch=%s\n' "${2:-$1}" "$$" "$(kst '+%F %T KST')" "$(( $(date +%s) + max ))" > "$tmp" \
+    && printf 'kind=%s\nreason=%s\npid=%s\nstarted=%s\nexpiresEpoch=%s\n' "${3:-detached}" "${2:-$1}" "$$" "$(kst '+%F %T KST')" "$(( $(date +%s) + ttl ))" > "$tmp" \
     && mv -f "$tmp" "$f"
 }
 deploy_mark_clear() { deploy_mark_key_ok "$1" && rm -f "$DEPLOY_MARK_DIR/$1"; }
@@ -132,7 +133,7 @@ mark_deploying() {
   DEPLOY_MARK_KEY="${kind:0:60}-$$-$(date +%s)"
   trap 'if [ -n "$DEPLOY_MARK_KEEPER" ] && [ "$(ps -o ppid= -p "$DEPLOY_MARK_KEEPER" 2>/dev/null | tr -d " ")" = "$$" ]; then _kids="$(pgrep -P "$DEPLOY_MARK_KEEPER" || true)"; kill "$DEPLOY_MARK_KEEPER" 2>/dev/null || true; [ -z "$_kids" ] || kill $_kids 2>/dev/null || true; fi; DEPLOY_MARK_KEEPER=""; deploy_mark_clear "$DEPLOY_MARK_KEY" || true' EXIT
   exit_on_signals
-  deploy_mark_set "$DEPLOY_MARK_KEY" "$1"
+  deploy_mark_set "$DEPLOY_MARK_KEY" "$1" kept "$max"
   (
     start=$SECONDS
     while sleep "$every"; do

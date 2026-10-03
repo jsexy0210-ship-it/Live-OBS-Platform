@@ -326,7 +326,8 @@ async function pruneRemovedTargets() {
 }
 
 // 유효한 배포 진행 표시 목록. 작업마다 자기 파일(deployMarkDir/<키>)을 두고, 하나라도 유효하면 배포 중이다.
-// 유효: 마지막 갱신이 기준 시간(deployMarkStaleMin) 안이고 파일에 적힌 만료 시각(expiresEpoch)이 지나지 않음.
+// 유효: 만료 시각(expiresEpoch)이 지나지 않음. 종류가 kept(도는 동안 갱신하는 표시)거나 적혀 있지 않으면 마지막 갱신이 기준 시간
+// (deployMarkStaleMin) 안이어야 한다. detached(deploy-mark.sh on, 갱신하는 프로세스 없음)는 만료 시각만 본다.
 // 지난 파일(SIGKILL·재부팅으로 남은 고아)은 판단에서 빼고 지운 뒤 한 번 경고한다.
 // .으로 시작하는 파일은 쓰는 도중의 임시 파일이라(키는 영문·숫자로 시작) 판단에서 빼고, 기준 시간이 지나면 지운다.
 // 예전 단일 파일(deployMark)도 계속 읽는다(호환. 지난 것은 경고만 하고 그대로 둠).
@@ -340,11 +341,15 @@ async function activeDeployMarks() {
     try {
       const ageMin = (now - statSync(p).mtimeMs) / 60_000;
       const tmp = f.startsWith(".");
-      const exp = tmp ? 0 : Number(/^expiresEpoch=(\d+)$/m.exec(readFileSync(p, "utf8"))?.[1] ?? 0);
-      if (!tmp && ageMin <= cfg.deployMarkStaleMin && !(exp > 0 && now >= exp * 1000)) { active.push(f); continue; }
+      const body = tmp ? "" : readFileSync(p, "utf8");
+      const exp = Number(/^expiresEpoch=(\d+)$/m.exec(body)?.[1] ?? 0);
+      const detached = /^kind=detached$/m.test(body);
+      const expired = exp > 0 && now >= exp * 1000;
+      const fresh = detached ? exp > 0 : ageMin <= cfg.deployMarkStaleMin;
+      if (!tmp && fresh && !expired) { active.push(f); continue; }
       if (tmp && ageMin <= cfg.deployMarkStaleMin) continue;
       unlinkSync(p);
-      if (!tmp) await event({ level: "warn", kind: "deploy_mark_stale", mark: f, ageMin: Math.round(ageMin), expired: exp > 0 && now >= exp * 1000 });
+      if (!tmp) await event({ level: "warn", kind: "deploy_mark_stale", mark: f, ageMin: Math.round(ageMin), expired });
     } catch {}
   }
   try {
@@ -361,9 +366,11 @@ async function tick() {
   const results = {};
   // 대상을 동시에 확인한다(여러 대상이 시간 초과여도 한 틱이 timeoutMs 정도로 끝나게).
   // 인증서 확인도 함께 돌린다(순서대로 하면 틱이 길어져 주기가 밀림).
-  const [probed, certDays] = await Promise.all([Promise.all(cfg.targets.map((t) => probe(t))), cfg.tlsHost ? certDaysLeft(cfg.tlsHost) : Promise.resolve(null)]);
   // 배포 중이면(표시 파일) 새 장애를 열지 않고(실패 횟수는 셈) 버전 불일치도 세지 않는다. 표시가 너무 오래 남으면(스크립트가 죽는 등) 따로 경고한다.
-  const deployMarks = await activeDeployMarks();
+  // 표시는 탐침 전과 후에 모두 읽고, 둘 중 하나라도 배포 중이면 배포 중으로 본다(탐침 도중 배포가 끝나 표시가 사라져도 그 회차 실패로 장애를 열지 않음).
+  const marksBefore = await activeDeployMarks();
+  const [probed, certDays] = await Promise.all([Promise.all(cfg.targets.map((t) => probe(t))), cfg.tlsHost ? certDaysLeft(cfg.tlsHost) : Promise.resolve(null)]);
+  const deployMarks = [...new Set([...marksBefore, ...(await activeDeployMarks())])];
   const deploying = deployMarks.length > 0;
   for (const [i, t] of cfg.targets.entries()) {
     const r = probed[i];
