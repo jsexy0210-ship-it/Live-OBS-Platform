@@ -146,7 +146,7 @@ sudo -u obs nano /opt/obs/.env
 | `POSTGRES_DB` | 필수 | DB 이름 |
 | `IDENTITY_HASH_KEY` | 필수 | 본인확인 CI 해시 키(32자 이상) |
 | `BILLING_KEY_SECRET` | 필수 | 빌링키 암호화 키(32자 이상) |
-| `BILLING_PROVIDER` | 필수 | obs-test는 **`fake`**(실제 결제 금지, 2026-10-03 결정). **주의**: 지금 코드는 운영 빌드(`NODE_ENV=production`)에서 가짜 결제 공급자 생성을 막아요(`lib/server/billing/provider.ts`). 그래서 obs-test에서는 카드 등록·구독 결제가 오류로 멈춰요(비워도 같음). 실제 결제는 일어나지 않아요. 결제 흐름을 obs-test에서 시험할지는 결정 필요 |
+| `BILLING_PROVIDER` | 필수 | obs-test는 **`fake`**(실제 결제 금지, 2026-10-03 결정). **주의**: 지금 코드는 운영 빌드(`NODE_ENV=production`)에서 가짜 결제 공급자 생성을 막아요(`lib/server/billing/provider.ts`). 그래서 obs-test에서는 카드 등록·구독 결제가 오류로 멈춰요(비워도 같음). 실제 결제는 일어나지 않아요. **obs-test에서는 카드 등록·구독 결제가 동작하지 않는 것이 의도예요**(2026-10-03 결정) |
 | `OBS_SITE_ADDRESS` | 선택 | 프록시 사이트 주소. 비우면 `:80`(HTTP). HTTPS는 아래 「HTTPS」 |
 | `BUSINESS_STATUS_PROVIDER`, `NTS_BUSINESS_STATUS_API_KEY` | 선택 | 판매자 가입 사업자 상태 점검 |
 | `MAIL_ORDER_PROVIDER`, `FTC_MAIL_ORDER_API_KEY` | 선택 | 통신판매업 점검 |
