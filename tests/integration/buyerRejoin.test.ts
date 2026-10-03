@@ -5,12 +5,14 @@ import { POST as confirmRoute } from "../../app/api/shop/[slug]/signup/verificat
 import { POST as startRoute } from "../../app/api/shop/[slug]/signup/verification/route";
 import { loginSeller } from "../../lib/server/auth/login";
 import { BUYER_SIGNUP_STATUS } from "../../lib/server/buyers/signup";
-import { REJOIN_RETENTION_CONSENT_VERSION, purgeExpiredRejoinBlocks } from "../../lib/server/buyers/rejoin";
+import { REJOIN_RESTRICTION_CONFIG, REJOIN_RETENTION_CONSENT_VERSION, purgeExpiredRejoinBlocks } from "../../lib/server/buyers/rejoin";
 import { withdrawBuyer } from "../../lib/server/buyers/withdraw";
 import { prisma } from "../../lib/server/db";
 import { IDV_INPUT, PASSWORD, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
 beforeAll(() => {
+  // 동의 철회 기능 전에는 켤 수 없게 막아 두었다(rejoin.ts). 켜진 쇼핑몰 동작을 확인하려고 이 파일에서만 켠다.
+  REJOIN_RESTRICTION_CONFIG.available = true;
   process.env.IDENTITY_HASH_KEY = "test-identity-hash-key-0123456789abcdef";
 });
 beforeEach(resetDb);
@@ -78,9 +80,24 @@ async function shop() {
 }
 
 describe("구매자 재가입 제한", () => {
+  it("동의 철회 기능 전(기본)에는 켤 수 없다: 켜기는 409 rejoin_restriction_unavailable이고 저장되지 않으며, 끄기는 된다. 조회는 켤 수 있는지 알려 준다", async () => {
+    const s = await shop();
+    REJOIN_RESTRICTION_CONFIG.available = false;
+    try {
+      expect(await (await s.getPolicy()).json()).toEqual({ policy: { rejoinRestrictionEnabled: false, rejoinRestrictionDays: 30 }, restrictionAvailable: false });
+      const r = await s.setPolicy({ rejoinRestrictionEnabled: true, rejoinRestrictionDays: 90 });
+      expect(r.status).toBe(409);
+      expect(await r.json()).toEqual({ error: "rejoin_restriction_unavailable", message: "회원이 동의를 철회할 수 있는 화면이 준비되면 켤 수 있어요" });
+      expect(await db.sellerMemberPolicy.count({ where: { sellerId: s.seller.id } })).toBe(0);
+      expect((await s.setPolicy({ rejoinRestrictionEnabled: false, rejoinRestrictionDays: 30 })).status).toBe(200);
+    } finally {
+      REJOIN_RESTRICTION_CONFIG.available = true;
+    }
+  });
+
   it("설정은 기본 꺼짐·30일, 켜고 기간을 바꾸면 감사 로그를 남기고, 기간 1~365일 밖·켜기 값 없음은 400, 회원 권한 없는 직원은 403", async () => {
     const s = await shop();
-    expect(await (await s.getPolicy()).json()).toEqual({ policy: { rejoinRestrictionEnabled: false, rejoinRestrictionDays: 30 } });
+    expect(await (await s.getPolicy()).json()).toEqual({ policy: { rejoinRestrictionEnabled: false, rejoinRestrictionDays: 30 }, restrictionAvailable: true });
     const r = await s.setPolicy({ rejoinRestrictionEnabled: true, rejoinRestrictionDays: 7 });
     expect(r.status).toBe(200);
     expect(await r.json()).toEqual({ policy: { rejoinRestrictionEnabled: true, rejoinRestrictionDays: 7 } });

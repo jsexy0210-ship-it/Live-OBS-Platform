@@ -1,6 +1,7 @@
 import { expect, request, test, type Page } from "@playwright/test";
 import { REJOIN_RETENTION_CONSENT_VERSION } from "../../lib/server/buyers/rejoin";
 import { BUYER_SIGNUP_MESSAGES } from "../../lib/server/buyers/signup";
+import { setMemberPolicyInDb } from "./memberPolicyDb";
 import { IDENTITY_ERROR_MESSAGES } from "../../lib/server/identity/messages";
 
 // SH-011 구매자 회원가입 흐름 — 개발 서버(가짜 본인확인 공급자, 인증번호 000000)에서 돈다(playwright.config.ts 「dev」).
@@ -707,16 +708,9 @@ test("다시 받기가 이미 확인됨이면 확인 결과를 다시 불러와 
 // 재가입 제한(SH-011·SA-043). 켠 쇼핑몰 확인은 판매자 API로 잠시 켰다가 끈다(데모 대표자 비밀번호 E2E_PASSWORD 필요).
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
 
-async function setRejoin(baseURL: string, enabled: boolean, days = 90) {
-  const ctx = await request.newContext({ baseURL, extraHTTPHeaders: { Origin: baseURL } });
-  try {
-    const login = await ctx.post("/api/seller/auth/login", { data: { email: "demo-owner@example.com", password: PASSWORD } });
-    if (!login.ok()) throw new Error(`판매자 로그인 실패(${login.status()})`);
-    const r = await ctx.put("/api/seller/member-policy", { data: { rejoinRestrictionEnabled: enabled, rejoinRestrictionDays: days } });
-    if (!r.ok()) throw new Error(`재가입 제한 설정 실패(${r.status()})`);
-  } finally {
-    await ctx.dispose();
-  }
+// 재가입 제한은 지금 API로 켤 수 없어 테스트 DB에 직접 넣는다(memberPolicyDb.ts). baseURL은 호출 모양을 맞추려고 둔다.
+async function setRejoin(_baseURL: string, enabled: boolean, days = 90) {
+  await setMemberPolicyInDb(SLUG, enabled, days);
 }
 
 test("재가입 제한을 끈 쇼핑몰은 보관 동의 줄이 없다", async ({ page }) => {
