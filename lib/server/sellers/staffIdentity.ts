@@ -5,9 +5,10 @@ import { dbNow } from "../billing/subscription";
 import { forbidden } from "../authz/errors";
 import { keyedOwnerToken, parseAttemptKey, reuseKeyedAttempt, scopedAttemptKeyHash } from "../identity/attempt";
 import type { IdentityProvider } from "../identity/provider";
-import { completeIdentityVerification, parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
+import { completeIdentityVerification, identityNameMax, parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
 import type { TenantContext } from "../tenant/context";
 import { cleanText } from "../text/clean";
+import { STAFF_NAME_MAX } from "./staffName";
 
 // 직원 본인확인 연결(2026-10-03 대표님 결정, PRODUCT_SCOPE 로그인): 직원이 로그인한 뒤 본인 휴대폰 본인확인을 한 번 해 그 CI 해시를
 // 계정에 연결한다. 대표자가 등록한 이름·휴대폰 번호와 본인확인 결과가 맞을 때만 연결한다. 연결은 직원 셀프 아이디·비밀번호 찾기에만 쓰고,
@@ -42,7 +43,14 @@ async function loadSelf(db: PrismaClient, ctx: TenantContext) {
   return user;
 }
 
-const sameName = (a: string | null, b: string) => !!a && cleanText(a, 30) === cleanText(b, 30);
+// 이름 비교: 저장값·본인확인 결과 모두 같은 정규화(NFKC·앞뒤 공백·코드포인트 50자)를 거친다. 정규화 전에 들어간 예전 이름에
+// 제어·서식 문자(폭 없는 공백 등)가 섞여 있어도 비교가 영영 실패하지 않게, 비교할 때는 그 문자를 빼고 본다.
+const comparableName = (v: string) => cleanText(v.replace(/[\p{Cc}\p{Cf}]/gu, ""), STAFF_NAME_MAX);
+const sameName = (a: string | null, b: string) => {
+  if (!a) return false;
+  const x = comparableName(a);
+  return x !== null && x === comparableName(b);
+};
 
 // 연결 상태(화면의 첫 로그인 안내·건너뛰기용, 로그인한 직원 본인만)
 // - available: 본인확인을 쓸 수 있는지(공급자 설정 또는 테스트 서버 모드)
@@ -72,19 +80,27 @@ export async function startStaffLink(
   const user = await loadSelf(db, ctx);
   const attemptKey = parseAttemptKey(meta.attemptKey);
   if (attemptKey === false) return { ok: false, reason: "invalid_identity_input" };
-  const person = parseIdentityPerson(rawPerson);
+  const person = parseIdentityPerson(rawPerson, identityNameMax("STAFF_LINK"));
   if (!person) return { ok: false, reason: "invalid_identity_input" };
-  if (!user.phone) return { ok: false, reason: "phone_not_registered" };
-  if (person.phone !== user.phone || !sameName(person.name, user.name)) return { ok: false, reason: "identity_mismatch" };
+  const mismatch = (u: { phone: string | null; name: string }) =>
+    !u.phone ? ("phone_not_registered" as const) : person.phone !== u.phone || !sameName(person.name, u.name) ? ("identity_mismatch" as const) : null;
+  const early = mismatch(user);
+  if (early) return { ok: false, reason: early };
   // 키는 직원별로 나눈다(같은 키를 다른 직원이 써도 다른 기록)
   const keyHash = attemptKey ? scopedAttemptKeyHash("STAFF_LINK", user.id, attemptKey) : null;
   type Started =
     | null
     | { kind: "reused"; verificationId: string; ownerToken: string }
-    | { kind: "refused"; reason: "already_verified" | "expired" | "failed" | "start_in_progress" }
+    | { kind: "refused"; reason: "already_verified" | "expired" | "failed" | "start_in_progress" | "phone_not_registered" | "identity_mismatch" }
     | { kind: "send"; verification: IdentityVerification; ownerToken: string };
   const started = await db.$transaction(async (tx): Promise<Started> => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`staff_link:${user.id}`}))`;
+    // 문자를 보내기 전에 직원 행을 잠그고 다시 읽어 비교한다(그사이 대표자가 이름·번호를 바꾸거나 계정을 끄면 기록·문자·하루 횟수를 쓰지 않음)
+    const [cur] = await tx.$queryRaw<{ name: string; phone: string | null; status: string }[]>`
+      SELECT "name", "phone", "status"::text AS "status" FROM "SellerUser" WHERE "id" = ${user.id}::uuid FOR UPDATE`;
+    if (!cur || cur.status !== "ACTIVE") return { kind: "refused", reason: "identity_mismatch" };
+    const changed = mismatch(cur);
+    if (changed) return { kind: "refused", reason: changed };
     if (keyHash) {
       const same = await tx.identityVerification.findFirst({ where: { purpose: "STAFF_LINK", sellerId: user.sellerId, subjectId: user.id, attemptKeyHash: keyHash } });
       const r = await reuseKeyedAttempt(tx, same, meta.now ?? (await dbNow(tx)));
@@ -134,14 +150,14 @@ export async function linkStaffIdentity(
   if (!done.ok) return { ok: false, reason: done.reason === "pending" ? "pending" : "verification_invalid" };
   const v = done.verification;
   if (v.subjectId !== user.id || v.consumedAt || !v.ciHash) return { ok: false, reason: "verification_invalid" };
-  const matches = !!user.phone && v.phone === user.phone && sameName(v.name, user.name);
   return db.$transaction(async (tx) => {
     const used = await tx.identityVerification.updateMany({ where: { id: v.id, consumedAt: null }, data: { consumedAt: now } });
     if (used.count !== 1) return { ok: false as const, reason: "verification_invalid" as const };
-    // 그사이 대표자가 번호나 이름을 바꿨으면 연결하지 않는다(비교한 번호·이름 그대로일 때만 갱신)
-    const linked = matches
-      ? await tx.sellerUser.updateMany({ where: { id: user.id, phone: user.phone, name: user.name, status: "ACTIVE" }, data: { identityCiHash: v.ciHash, identityLinkedAt: now, identityUnlinkedAt: null } })
-      : { count: 0 };
+    // 직원 행을 잠그고 다시 읽어 그 자리에서 이름·휴대폰·상태를 비교한다(그사이 대표자가 이름·번호를 바꾸거나 계정을 끄면 연결하지 않음)
+    const [cur] = await tx.$queryRaw<{ name: string; phone: string | null; status: string }[]>`
+      SELECT "name", "phone", "status"::text AS "status" FROM "SellerUser" WHERE "id" = ${user.id}::uuid FOR UPDATE`;
+    const matches = !!cur && cur.status === "ACTIVE" && !!cur.phone && v.phone === cur.phone && sameName(v.name, cur.name);
+    const linked = matches ? await tx.sellerUser.updateMany({ where: { id: user.id }, data: { identityCiHash: v.ciHash, identityLinkedAt: now, identityUnlinkedAt: null } }) : { count: 0 };
     await writeAudit(tx, {
       actorType: "SELLER_USER",
       actorId: user.id,

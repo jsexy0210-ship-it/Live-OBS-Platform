@@ -13,3 +13,10 @@ ADD COLUMN     "phone" TEXT;
 -- CreateIndex
 CREATE INDEX "SellerUser_identityCiHash_idx" ON "SellerUser"("identityCiHash");
 
+
+-- 아이디 찾기 재설정 권한: 발급에 쓴 본인확인과 토큰 재생성용 무작위 값(응답 유실 재시도에 같은 토큰)
+ALTER TABLE "PasswordResetGrant" ADD COLUMN     "nonce" TEXT,
+ADD COLUMN     "verificationId" UUID;
+
+-- CreateIndex
+CREATE INDEX "PasswordResetGrant_verificationId_idx" ON "PasswordResetGrant"("verificationId");
