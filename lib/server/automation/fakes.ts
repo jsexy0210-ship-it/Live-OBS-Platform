@@ -58,6 +58,8 @@ export class FakeBrowserExecutor implements BrowserExecutor {
   readonly live = new Set<string>();
   // 세션별 쿠키 저장소. 세션끼리 나눠 쓰지 않는지 테스트가 확인한다.
   readonly cookies = new Map<string, Map<string, string>>();
+  // 고객 행동 대기로 보관한 작업별 쿠키(작업 id → 쿠키). 같은 작업이 다시 열 때만 복원한다.
+  readonly saved = new Map<string, Map<string, string>>();
   pageText: (scope: JobScope, secrets?: JobSecrets) => string = () => "Cafe24 관리자";
   // 판매자별로 연결된 쇼핑몰(기본: mall-<판매자 id>). 쇼핑몰 교체를 흉내 낼 때 바꾼다. null이면 알 수 없음.
   readonly shopKey = new Map<string, string | null>();
@@ -77,7 +79,8 @@ export class FakeBrowserExecutor implements BrowserExecutor {
     const id = `ctx-${++this.seq}`;
     this.opened.push({ id, scope });
     this.live.add(id);
-    const jar = new Map<string, string>();
+    const jar = this.saved.get(scope.jobId) ?? new Map<string, string>();
+    this.saved.delete(scope.jobId);
     this.cookies.set(id, jar);
     const self = this;
     let secretsSeen: JobSecrets | undefined;
@@ -101,9 +104,10 @@ export class FakeBrowserExecutor implements BrowserExecutor {
         if (action.type === "step_done") return { kind: "ok", stepDone: true, facts: { shopKey: self.shopKey.get(scope.sellerId) ?? `mall-${scope.sellerId}` } };
         return { kind: "ok", stepDone: false };
       },
-      async close() {
+      async close(opts) {
         self.live.delete(id);
         self.cookies.delete(id);
+        if (opts?.keepForResume) self.saved.set(scope.jobId, jar);
       },
     };
   }

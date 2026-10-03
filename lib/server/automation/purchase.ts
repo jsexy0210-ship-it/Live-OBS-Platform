@@ -74,6 +74,15 @@ export function requestFingerprint(kind: "INITIAL" | "REINSTALL" | "RECONNECT", 
     .digest("hex");
 }
 
+// 키가 이미 쓰였는지: 유료 요청은 결제 행에, 무료 재연결은 작업 행에 키·지문이 있다. 같은 지문이면 처음 결과, 다르면 재사용 거부.
+async function priorUse(db: PrismaClient, sellerId: string, key: string, fingerprint: string): Promise<PurchaseResult | null> {
+  const p = await db.automationPayment.findUnique({ where: { sellerId_idempotencyKey: { sellerId, idempotencyKey: key } }, include: { job: true } });
+  if (p) return p.requestFingerprint === fingerprint ? view(p, true) : { ok: false, reason: "idempotency_key_reused" };
+  const j = await db.automationJob.findUnique({ where: { sellerId_idempotencyKey: { sellerId, idempotencyKey: key } } });
+  if (j) return j.requestFingerprint === fingerprint ? { ok: true, jobId: j.id, kind: j.kind, paymentStatus: null, jobStatus: j.status, replayed: true } : { ok: false, reason: "idempotency_key_reused" };
+  return null;
+}
+
 type PaidJobInput = {
   idempotencyKey: unknown;
   fingerprint: string;
@@ -107,11 +116,7 @@ async function buyPaidJob(db: PrismaClient, provider: BillingProvider, ctx: Tena
   if (typeof key !== "string" || !KEY_RE.test(key)) return { ok: false, reason: "bad_idempotency_key" };
 
   // 같은 키 재전송이면 처음 결과를 돌려준다. 같은 키를 다른 요청에 다시 쓰면 거부한다(엉뚱한 예전 작업을 돌려주지 않게).
-  const replay = async (): Promise<PurchaseResult | null> => {
-    const p = await db.automationPayment.findUnique({ where: { sellerId_idempotencyKey: { sellerId: ctx.sellerId, idempotencyKey: key } }, include: { job: true } });
-    if (!p) return null;
-    return p.requestFingerprint === input.fingerprint ? view(p, true) : { ok: false, reason: "idempotency_key_reused" };
-  };
+  const replay = () => priorUse(db, ctx.sellerId, key, input.fingerprint);
   const existing = await replay();
   if (existing) return existing;
   const playbook = await input.resolvePlaybook();
@@ -226,9 +231,9 @@ export async function reconnectAutomation(
   const key = input.idempotencyKey;
   if (typeof key !== "string" || !KEY_RE.test(key)) return { ok: false, reason: "bad_idempotency_key" };
   const fingerprint = requestFingerprint("REINSTALL", input.shopUrl, target);
-  // 이 키가 이미 다른 요청(예: 처음 구매)에 쓰였으면 무료·유료 판정 전에 거부한다
-  const used = await db.automationPayment.findUnique({ where: { sellerId_idempotencyKey: { sellerId: ctx.sellerId, idempotencyKey: key } }, select: { requestFingerprint: true } });
-  if (used && used.requestFingerprint !== fingerprint) return { ok: false, reason: "idempotency_key_reused" };
+  // 같은 요청 재전송이면 처음 결과(무료·유료 모두), 다른 요청에 쓰인 키면 무료·유료 판정 전에 거부한다
+  const prior = await priorUse(db, ctx.sellerId, key, fingerprint);
+  if (prior) return prior;
   const decision = await decideReconnect(db, ctx.sellerId, target);
   const obsTargetKey = `obs:${target.obsPairingId}`;
   // 쇼핑몰 주소가 오면 그 주소로, 없으면 이전 완료 작업의 작업서로. 어느 쪽이든 지금 지원 목록에 있어야 한다.
@@ -248,7 +253,7 @@ export async function reconnectAutomation(
     const job = await db.$transaction(async (tx) => {
       const now = await dbNow(tx);
       const j = await tx.automationJob.create({
-        data: { sellerId: ctx.sellerId, kind: "RECONNECT_FREE", costLimit: plannerConfig().costLimitWon, playbookId: playbook.id, playbookVersion: playbook.version, baseJobId: decision.baseJobId, status: "QUEUED", runAfter: now, obsTargetKey },
+        data: { sellerId: ctx.sellerId, kind: "RECONNECT_FREE", costLimit: plannerConfig().costLimitWon, playbookId: playbook.id, playbookVersion: playbook.version, baseJobId: decision.baseJobId, status: "QUEUED", runAfter: now, obsTargetKey, idempotencyKey: key, requestFingerprint: fingerprint },
       });
       await writeJobEvent(tx, j, null, "QUEUED", 0, { freeReconnectOf: decision.baseJobId });
       await writeAudit(tx, {
@@ -265,6 +270,9 @@ export async function reconnectAutomation(
     return { ok: true, jobId: job.id, kind: job.kind, paymentStatus: null, jobStatus: job.status, replayed: false };
   } catch (e) {
     if (!isUniqueViolation(e)) throw e;
+    // 같은 키가 동시에 들어왔으면 먼저 만든 쪽을 돌려준다
+    const again = await priorUse(db, ctx.sellerId, key, fingerprint);
+    if (again) return again;
     const open = await db.automationJob.findFirst({ where: { sellerId: ctx.sellerId, status: OPEN }, select: { id: true } });
     return { ok: false, reason: "job_in_progress", jobId: open?.id };
   }

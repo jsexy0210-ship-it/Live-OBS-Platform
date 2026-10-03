@@ -63,6 +63,8 @@ CREATE TABLE "AutomationJob" (
     "verificationEvidence" JSONB,
     "playbookId" TEXT,
     "playbookVersion" INTEGER,
+    "idempotencyKey" TEXT,
+    "requestFingerprint" TEXT,
     "plannerCalls" INTEGER NOT NULL DEFAULT 0,
     "playbookActions" INTEGER NOT NULL DEFAULT 0,
     "deviatedSteps" TEXT[] DEFAULT ARRAY[]::TEXT[],
@@ -130,6 +132,9 @@ CREATE UNIQUE INDEX "AutomationJob_sellerId_id_key" ON "AutomationJob"("sellerId
 
 -- CreateIndex
 CREATE UNIQUE INDEX "AutomationJob_sellerId_paymentId_key" ON "AutomationJob"("sellerId", "paymentId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "AutomationJob_sellerId_idempotencyKey_key" ON "AutomationJob"("sellerId", "idempotencyKey");
 
 -- CreateIndex
 CREATE INDEX "AutomationJobEvent_jobId_createdAt_idx" ON "AutomationJobEvent"("jobId", "createdAt");

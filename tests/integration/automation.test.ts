@@ -688,3 +688,86 @@ describe("지원 목록 밖 쇼핑몰 구매 차단(MASTER 판단 2026-10-04)", 
     expect(await reconnectAutomation(db, done.provider, done.ctx, { idempotencyKey: newKey(), target })).toMatchObject({ ok: true, kind: "RECONNECT_FREE" });
   });
 });
+
+describe("Codex 리뷰 반영", () => {
+  async function completed() {
+    const s = await bought();
+    expect(await runOnce(db, runtime(), W)).toBe("succeeded");
+    return { ...s, target: { shopKey: `mall-${s.seller.id}`, obsPairingId: `pc-${s.seller.id}` } };
+  }
+
+  it("외부 호출이 lease보다 오래 걸려도 heartbeat가 따로 연장해 회수되지 않는다", async () => {
+    const a = await bought();
+    const rt = { ...runtime(), browser: new FakeBrowserExecutor(80), obs: new FakeObsBridge(80) };
+    rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장";
+    let running = true;
+    let reaped = 0;
+    const reaper = (async () => {
+      while (running) {
+        reaped += (await reapExpired(db)).requeued;
+        await new Promise((r) => setTimeout(r, 40));
+      }
+    })();
+    const t0 = Date.now();
+    expect(await runOnce(db, rt, { ...W, leaseMs: 300 })).toBe("succeeded");
+    running = false;
+    await reaper;
+    expect(Date.now() - t0).toBeGreaterThan(600);
+    expect(reaped).toBe(0);
+    expect(await job(a.jobId)).toMatchObject({ status: "SUCCEEDED", attempts: 0 });
+  });
+
+  it("실행 중 취소되면 heartbeat가 자리를 잃은 것을 알아채고 다음 외부 행동 전에 멈춘다", async () => {
+    const a = await bought();
+    const rt = { ...runtime(), browser: new FakeBrowserExecutor(50), obs: new FakeObsBridge(50) };
+    rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장";
+    const run = runOnce(db, rt, { ...W, leaseMs: 150 });
+    await new Promise((r) => setTimeout(r, 120));
+    expect(await cancelJob(db, a.ctx, a.jobId)).toMatchObject({ ok: true });
+    const atCancel = rt.browser.performed.length + rt.obs.performed.length;
+    expect(await run).toBe("fenced");
+    const total = rt.browser.performed.length + rt.obs.performed.length;
+    // 진행 중이던 외부 호출 1개 + heartbeat 주기 사이 1개까지만
+    expect(total - atCancel).toBeLessThanOrEqual(2);
+    expect(total).toBeLessThan(13);
+    expect((await job(a.jobId)).status).toBe("CANCELED");
+  });
+
+  it("고객 행동(로그인) 대기 동안 그 작업의 브라우저 로그인 상태를 보관하고, 재개 때 같은 작업에만 복원한 뒤 끝나면 지운다", async () => {
+    const a = await bought();
+    const rt = runtime();
+    let asked = false;
+    let restored: string | undefined;
+    rt.browser.outcome = (scope, action) => {
+      if (action.type === "click" && !asked) {
+        asked = true;
+        return { kind: "needs_customer", action: "LOGIN" };
+      }
+      if (asked && action.type === "navigate" && restored === undefined) {
+        const latest = rt.browser.opened.filter((o) => o.scope.jobId === scope.jobId).at(-1)!;
+        restored = rt.browser.cookies.get(latest.id)?.get("session") ?? "";
+      }
+      return undefined;
+    };
+    expect(await runOnce(db, rt, W)).toBe("needs_customer");
+    expect(rt.browser.saved.has(a.jobId)).toBe(true);
+    expect(rt.browser.live.size).toBe(0);
+    await resumeJob(db, a.ctx, a.jobId);
+    expect(await runOnce(db, rt, W)).toBe("succeeded");
+    expect(restored).toBe(`${a.seller.id}:${a.jobId}`);
+    expect(rt.browser.saved.size).toBe(0);
+  });
+
+  it("무료 재연결도 같은 키 재전송이면 처음 결과(진행 중·완료 뒤 모두), 같은 키를 다른 대상에 쓰면 409", async () => {
+    const s = await completed();
+    const k = newKey();
+    const first = await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: k, target: s.target });
+    if (!first.ok) throw new Error(first.reason);
+    expect(await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: k, target: s.target })).toMatchObject({ ok: true, replayed: true, jobId: first.jobId });
+    expect(await runOnce(db, runtime(), W)).toBe("succeeded");
+    expect(await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: k, target: s.target })).toMatchObject({ ok: true, replayed: true, jobId: first.jobId, jobStatus: "SUCCEEDED" });
+    expect(await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: k, target: { ...s.target, obsPairingId: "other-pc" }, consent })).toEqual({ ok: false, reason: "idempotency_key_reused" });
+    expect(await purchaseAutomation(db, s.provider, s.ctx, { idempotencyKey: k, consent, shopUrl: SHOP })).toEqual({ ok: false, reason: "idempotency_key_reused" });
+    expect(await db.automationJob.count({ where: { kind: "RECONNECT_FREE" } })).toBe(1);
+  });
+});

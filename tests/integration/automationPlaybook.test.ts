@@ -146,7 +146,10 @@ describe("연습 모드와 지원 목록", () => {
     await boughtWithShop();
     expect(await runOnce(db, runtime("앱 설치 · 설치 완료 · 저장"), W)).toBe("succeeded");
     expect(await playbookReadiness(db, cafe24Playbook)).toMatchObject({ verified: false, needsReverify: true });
-    for (let i = 0; i < PRACTICE_STREAK_REQUIRED; i++) await runPractice(db, runtime(), cafe24Playbook);
+    // 이탈 전 성공은 바뀐 화면을 검증하지 못했으므로 다시 센다: 1번 성공으로는 복귀하지 않는다
+    await runPractice(db, runtime(), cafe24Playbook);
+    expect(await playbookReadiness(db, cafe24Playbook)).toMatchObject({ streak: 1, verified: false, needsReverify: true });
+    for (let i = 1; i < PRACTICE_STREAK_REQUIRED; i++) await runPractice(db, runtime(), cafe24Playbook);
     expect(await playbookReadiness(db, cafe24Playbook)).toMatchObject({ verified: true, needsReverify: false });
   });
 

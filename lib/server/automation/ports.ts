@@ -57,8 +57,11 @@ export interface BrowserSession {
   perform(action: AutomationAction, secrets: JobSecrets): Promise<ActionOutcome>;
   // 지금 로그인된 관리 화면의 쇼핑몰 식별자(읽기만, 아무것도 바꾸지 않음). 알 수 없으면 null
   currentShopKey(): Promise<string | null>;
-  // 쿠키·저장소·임시파일까지 지운다
-  close(): Promise<void>;
+  // 기본: 쿠키·저장소·임시파일까지 지운다.
+  // keepForResume: 고객 행동(로그인·2단계 인증·CAPTCHA·권한 승인) 대기로 멈출 때. 실행기는 이 작업의 쿠키·저장소를
+  // 작업 id에만 묶어 암호화 보관하고 다음 open(같은 작업)에서 복원한 뒤 보관본을 지운다. 보관본은 고객 행동 마감
+  // (AUTOMATION_LIMITS.customerActionMs)이 지나면 실행기가 지운다(취소·마감 실패 작업의 상태가 남지 않게).
+  close(opts?: { keepForResume?: boolean }): Promise<void>;
 }
 
 export interface BrowserExecutor {

@@ -1239,6 +1239,9 @@ model AutomationJob {
   // 연결 작업서(확정 ⑦-1). 쇼핑몰 주소로 서버가 고른 작업서 id·버전(내부용, 화면 비노출). 없으면 판단 모델로만 진행.
   playbookId           String?
   playbookVersion      Int?
+  // 무료 재연결(결제 없음) 요청의 Idempotency-Key·요청 지문. 유료 작업의 키는 결제 행에 있다.
+  idempotencyKey       String?
+  requestFingerprint   String?
   // 실행 통계: 판단 모델 호출 수, 작업서대로 실행한 행동 수, 화면이 작업서와 달랐던 단계(관리 화면 변경 신호)
   plannerCalls         Int                       @default(0)
   playbookActions      Int                       @default(0)
@@ -1254,6 +1257,7 @@ model AutomationJob {
   @@unique([sellerId, id])
   // 결제 1건에 작업 1개
   @@unique([sellerId, paymentId])
+  @@unique([sellerId, idempotencyKey])
   @@index([status, runAfter])
   @@index([sellerId, createdAt])
   @@index([sellerId, status, finishedAt])

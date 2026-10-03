@@ -119,6 +119,10 @@ export const touch = (db: PrismaClient, c: Claim, stats: TouchStats, leaseMs: nu
   }));
 
 // 다음 단계로. 이 단계에서 알게 된 연결 결과(쇼핑몰·OBS pairing)를 함께 남긴다.
+// lease만 연장(작업자 heartbeat). 외부 호출이 오래 걸려도 다른 작업자가 가져가지 않게 따로 주기적으로 부른다.
+export const extendLease = (db: PrismaClient, c: Claim, leaseMs: number = AUTOMATION_LIMITS.leaseMs) =>
+  fencedWrite(db, c, (now) => ({ data: { leaseExpiresAt: plus(now, leaseMs) } }));
+
 export const advanceStep = (db: PrismaClient, c: Claim, stepIndex: number, facts: ConnectionFacts = {}) =>
   fencedWrite(db, c, () => ({
     data: { stepIndex, ...(facts.shopKey ? { shopKey: facts.shopKey.slice(0, 200) } : {}), ...(facts.obsPairingId ? { obsPairingId: facts.obsPairingId.slice(0, 200) } : {}) },

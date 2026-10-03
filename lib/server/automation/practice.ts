@@ -67,7 +67,7 @@ export type Readiness = {
   required: number;
   // 지원 목록에 올릴 수 있는가: 연속 성공 기준 통과 + 그 뒤 고객 작업에서 화면 이탈 없음
   verified: boolean;
-  // 마지막 연습 뒤 고객 작업에서 화면이 작업서와 달랐다(관리 화면 변경 의심) → 다시 연습해 검증
+  // 고객 작업에서 화면이 작업서와 달랐고(관리 화면 변경 의심) 그 뒤 연속 성공이 기준에 못 미침 → 다시 연습해 검증
   needsReverify: boolean;
   runs: number;
   successRate: number | null;
@@ -79,21 +79,30 @@ export type Readiness = {
 export async function playbookReadiness(db: PrismaClient, playbook: Playbook, required = PRACTICE_STREAK_REQUIRED): Promise<Readiness> {
   const where = { playbookId: playbook.id, playbookVersion: playbook.version };
   const runs = await db.automationPracticeRun.findMany({ where, orderBy: { finishedAt: "desc" }, take: 100 });
+  // 고객 작업에서 화면이 작업서와 달랐던 가장 최근 시각. 그 전의 연습 성공은 바뀐 화면을 검증하지 못했으므로 세지 않는다.
+  const drifted = await db.automationJob.findFirst({
+    where: { ...where, NOT: { deviatedSteps: { isEmpty: true } } },
+    orderBy: { updatedAt: "desc" },
+    select: { updatedAt: true },
+  });
+  const driftAt = drifted?.updatedAt ?? null;
   let streak = 0;
   for (const r of runs) {
+    if (driftAt && r.finishedAt <= driftAt) break;
     if (r.outcome !== "SUCCEEDED" || r.deviatedSteps.length > 0) break;
     streak++;
   }
   const last = runs[0]?.finishedAt;
-  const drift = last ? await db.automationJob.count({ where: { ...where, NOT: { deviatedSteps: { isEmpty: true } }, updatedAt: { gt: last } } }) : 0;
+  // 마지막 연습 뒤에 이탈이 있었다(또는 이탈 뒤 연습이 아직 기준 횟수에 못 미침) → 다시 연습해 검증
+  const needsReverify = !!driftAt && (!last || driftAt >= last || streak < required);
   const avg = (f: (r: AutomationPracticeRun) => number) => (runs.length ? Math.round(runs.reduce((a, r) => a + f(r), 0) / runs.length) : null);
   return {
     playbookId: playbook.id,
     version: playbook.version,
     streak,
     required,
-    verified: streak >= required && drift === 0,
-    needsReverify: drift > 0,
+    verified: streak >= required,
+    needsReverify,
     runs: runs.length,
     successRate: runs.length ? runs.filter((r) => r.outcome === "SUCCEEDED").length / runs.length : null,
     avgDurationMs: avg((r) => r.durationMs),

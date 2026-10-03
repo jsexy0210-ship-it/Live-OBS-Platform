@@ -20,7 +20,7 @@
 - **성공 기준**: 테스트 주문이 고객 OBS 오버레이에 실제 표시됨. 검증 단계에서 로컬 도구가 확인한 증거를 `verificationEvidence`·`verifiedAt`에 저장하고, 증거 없이 `SUCCEEDED`로 두지 않는다.
 - **환불**: 「실패 확정 → 환불 요청」. 판매자 대표자가 `POST /api/automation/jobs/[jobId]/refund-request`로 요청하면 결제가 `PAID → REFUND_PENDING`(사유 `failed`). 대상은 ① 작업이 `FAILED`(기준 미통과, 지원으로도 해결 안 됨) ② 연결을 시작하기 전(`startedAt` 없음) 취소한 작업(`canceled_before_start`). 연결 시작 뒤 취소(단순 변심)·완료 작업·무료 재연결은 대상이 아니다. 결제 확정 전에 취소했는데 결제가 들어오면 자동으로 `REFUND_PENDING`. 지원(재시도·안내)으로 해결할지는 환불 처리 대기 단계에서 마스터가 본다(마스터 화면·API는 다음 범위).
 - **재연결·재설치**: `POST /api/automation/reconnect` `{ target: { shopKey, obsPairingId } }`. 기준 = 가장 최근에 돈을 내고(처음 연결·재설치) 완료한 작업. 그 완료 시각(DB 시계)부터 30일 안 + 같은 쇼핑몰(`shopKey`) + 같은 PC(`obsPairingId`, OBS pairing) + 연결 권한 해제(`connectionRevokedAt`) 없음 → 무료(`RECONNECT_FREE`, 결제 없이 바로 대기열). 아니면 사유(`no_completed_install`·`window_expired`·`shop_changed`·`pc_changed`·`connection_revoked`)와 33,000원을 돌려주고, 동의를 붙여 다시 오면 `REINSTALL`로 결제한다. 무료 재연결의 완료는 30일을 늘리지 않는다(연달아 무료로 이어 붙이기 방지). `shopKey`·`obsPairingId`는 연결 단계 결과로 작업에 남는다.
-- Idempotency-Key 재사용: 결제 행에 요청 지문(종류·쇼핑몰 주소·재설치 대상의 해시)을 남겨, 같은 키라도 다른 요청이면 `idempotency_key_reused`(409)로 거부한다(예전 작업을 돌려주지 않음).
+- Idempotency-Key: 무료 재연결도 키를 받아 작업 행에 남기고 재전송이면 처음 결과를 돌려준다. 결제 행·작업 행에 요청 지문(종류·쇼핑몰 주소·재설치 대상의 해시)을 남겨, 같은 키라도 다른 요청이면 `idempotency_key_reused`(409)로 거부한다(예전 작업을 돌려주지 않음).
 - 작업 종류 `kind`: `INITIAL`(110,000원) · `REINSTALL`(33,000원) · `RECONNECT_FREE`(결제 없음, DB CHECK로 결제 없음과 짝).
 
 작업 `AutomationJob.status` (전이표 정본: `lib/server/automation/states.ts`):
@@ -66,7 +66,7 @@
 
 ## 5. 격리·비밀값·악성 페이지 방어
 
-- 고객별 격리: 작업마다 `BrowserExecutor.open({sellerId, jobId})`로 새 context(쿠키·저장소·임시파일 분리), 작업이 어떻게 끝나든 `close()`. OBS 대상 키(`obsTargetKey`, 지금은 `seller:<id>`, 로컬 도구 pairing을 붙이면 기기 id)로 OBS 연결을 나눈다.
+- 고객별 격리: 작업마다 `BrowserExecutor.open({sellerId, jobId})`로 새 context(쿠키·저장소·임시파일 분리), 작업이 끝나면 `close()`로 모두 지운다. 고객 행동(로그인·2단계 인증·CAPTCHA·권한 승인) 대기로 멈출 때만 `close({ keepForResume: true })`로 그 작업의 로그인·승인 상태를 작업 id에 묶어 보관하고, 재개 때 같은 작업에만 복원한 뒤 보관본을 지운다. 보관본은 고객 행동 마감(24시간)이 지나면 실행기가 지운다. OBS 대상 키(`obsTargetKey`, 지금은 `seller:<id>`, 로컬 도구 pairing을 붙이면 기기 id)로 OBS 연결을 나눈다.
 - 비밀값: 모델은 `SecretRef`(`webhook_url`·`webhook_secret`) 이름만 쓰고, 실행기가 실행 직전에만 값을 넣는다. 모델 입력은 `sanitizeObservation`이 비밀값을 `[비밀값]`으로 지우고 8,000자로 자른다. 작업 기록·감사 기록에 비밀값을 넣지 않는다. 고객 쇼핑몰 비밀번호는 받지도 저장하지도 않는다.
 - 악성 페이지 지시: 화면 글은 `untrustedPageText`(신뢰하지 않는 데이터)로만 넘긴다. 실행 전 `validateDecision`이 단계별 허용 행동, https·허용 호스트(`cafe24.com`, `cafe24api.com`과 하위 도메인), 비밀값을 글자로 적기, 모르는 비밀 참조·고객 행동, 음수 비용을 거부한다. 거부되면 실행하지 않고 작업을 `FAILED(unsafe_action:…)`로 멈춘다(무한 재시도 방지).
 
@@ -85,7 +85,7 @@
 - **판별**: 판매자가 낸 쇼핑몰 주소(`shopUrl`)로 서버가 작업서를 고른다(`playbookForShopUrl`). 작업서 id·플랫폼 이름은 응답에 나가지 않는다.
 - **실행 순서** (`engine.ts`, 고객 작업·연습이 같이 씀): 관찰 → 예외 화면이면 바로 고객 행동/재시도/실패(판단 호출 없음) → 다음 정해진 행동의 화면 단서가 맞으면 그대로 실행(판단 호출 없음, 비용 0) → 단서가 다르면 「화면 이탈」로 기록하고 그 단계 나머지는 판단 모델이 작업서 설명·성공 사례(`PlannerInput.reference`)를 참고해 고른다. 어느 쪽이든 실행 전 같은 검사(`validateDecision`). 프롬프트는 `buildPlannerPrompt`가 작업서·사례(지시)와 화면 글(신뢰하지 않는 데이터)을 나눠 만든다.
 - **통계**: 작업마다 `plannerCalls`·`playbookActions`·`deviatedSteps`를 남긴다.
-- **연습 모드** (`practice.ts`): `runPractice`가 시험용 쇼핑몰·시험용 PC에 연결된 실행기로 작업서를 처음부터 끝까지 실행하고 `AutomationPracticeRun`(결과·멈춘 단계·사유 코드·소요 시간·판단 호출 수·작업서 행동 수·비용·이탈 단계)을 남긴다. `playbookReadiness`: 같은 버전의 최근 연습이 **연속 5회(`PRACTICE_STREAK_REQUIRED`) 화면 이탈 없이 성공**하고 그 뒤 고객 작업에서 이탈이 없어야 `verified`. 고객 작업에서 이탈이 생기면(관리 화면 변경 의심) `needsReverify`가 되고 지원 목록(`supportedPlaybookIds`)에서 빠진다 → 다시 연습해 검증.
+- **연습 모드** (`practice.ts`): `runPractice`가 시험용 쇼핑몰·시험용 PC에 연결된 실행기로 작업서를 처음부터 끝까지 실행하고 `AutomationPracticeRun`(결과·멈춘 단계·사유 코드·소요 시간·판단 호출 수·작업서 행동 수·비용·이탈 단계)을 남긴다. `playbookReadiness`: 같은 버전의 최근 연습이 **연속 5회(`PRACTICE_STREAK_REQUIRED`) 화면 이탈 없이 성공**해야 `verified`. 연속 횟수는 고객 작업에서 마지막으로 이탈이 난 뒤의 연습만 센다(이탈 전 성공은 바뀐 화면을 검증하지 못했으므로). 고객 작업에서 이탈이 생기면(관리 화면 변경 의심) `needsReverify`가 되고 지원 목록(`supportedPlaybookIds`)에서 빠진다 → 다시 연습해 검증.
 - 비밀값은 작업서·연습 기록에 넣지 않는다(작업서는 secretRef 이름만, 기록은 사유 코드만).
 - 현재 작업서: `cafe24` v1 **초안(draft)** — 화면 단서·기준 이미지·성공 사례는 시험용 쇼핑몰 연습 전이라 가정값·빈 값이다. 연습으로 채운다.
 - **지원 목록 밖 구매 차단**(MASTER 판단 2026-10-04, 대표님 원지시 「개별 검증 후 지원 목록에 추가」): 구매·재설치·무료 재연결 모두 결제 전에 쇼핑몰 주소(재연결은 주소가 없으면 이전 작업의 작업서)로 작업서를 고르고, 그 작업서가 지금 `verified`가 아니면 `shop_not_supported`(409, 안내 「아직 자동 연결할 수 없는 쇼핑몰이에요. 직접 설정으로 연결해 주세요」)로 거부한다. 재검증 대상이 되면 다시 검증될 때까지 막힌다.
@@ -99,7 +99,7 @@
 - lease·fencing: 자리를 잡을 때마다 토큰 +1. 작업자 쓰기는 `토큰 일치 AND 실행 중 상태 AND lease 살아 있음`일 때만. 만료 회수·취소도 토큰을 올린다.
 - 동시성 상한: 전체 실행 수(기본 20)를 잠금 안에서 세고 고른다. 공정 처리: 판매자당 열린 작업 1개 + `runAfter` 순(FIFO)이라 한 판매자가 자리를 독차지하지 못한다.
 - 고객 행동 대기 중에는 lease를 반납한다(다른 작업이 그 자리를 쓴다).
-- timeout: lease(기본 60초)를 행동마다 연장, 못 하면 회수. 단계당 행동 12번 상한. 고객 행동 마감 24시간.
+- timeout: lease(기본 60초). 작업자는 행동마다 연장하고, 따로 heartbeat가 lease의 1/3마다 연장해 관찰·판단·실행 호출이 오래 걸려도 회수되지 않는다. 연장이 거부되면(만료·취소·다른 작업자) 다음 외부 행동 전에 멈춘다(진행 중이던 호출 1개는 끝까지 갈 수 있다). 연장을 못 하면 회수. 단계당 행동 12번 상한. 고객 행동 마감 24시간.
 - 판단 모델(확정 ⑦, 2026-10-04): Pro급. 모델 이름은 `AUTOMATION_PLANNER_MODEL`(기본 `gemini-2.5-pro`, 연결 때 공식 목록으로 재확인)로 바꾼다. 실제 키 연결·호출·대규모 부하 시험은 시작 전에 MASTER 경유 재승인.
 - 비용 상한: 판단 호출 비용을 `costUsed`에 쌓고 작업 생성 때 정한 `costLimit`(`AUTOMATION_COST_LIMIT_WON`, 기본 3,000원 = 예상 약 500원의 6배, 실측 후 조정) 초과 시 멈춘다. 상한을 끄는 값은 받지 않는다.
 - 결제 대사: 결과를 못 받은 PENDING 청구는 작업자 반복이 1분 뒤부터 PG에 다시 묻고, 기록 없음이 30분 이어지면 실패로 닫는다.

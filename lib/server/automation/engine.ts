@@ -33,7 +33,16 @@ export type EngineResult =
   | { kind: "retry"; reason: string }
   | { kind: "failed"; reason: string };
 
+// 실행 자리를 잃었을 때(heartbeat 실패·취소) 다음 외부 행동 전에 멈추려고 던진다.
+export class EngineAborted extends Error {
+  constructor() {
+    super("engine_aborted");
+  }
+}
+
 export type EngineOptions = {
+  // 실행 자리를 잃으면 abort된다. 외부 호출(관찰·판단·실행) 직전마다 확인한다.
+  signal?: AbortSignal;
   startIndex: number;
   verifying: boolean;
   stats: EngineStats;
@@ -45,99 +54,131 @@ export type EngineOptions = {
 };
 
 export async function runSteps(rt: AutomationRuntime, scope: JobScope, opts: EngineOptions, hooks: EngineHooks): Promise<EngineResult> {
+  let session: BrowserSession | null = null;
+  let result: EngineResult | null = null;
+  const guard = () => {
+    if (opts.signal?.aborted) throw new EngineAborted();
+  };
+  try {
+    result = await runAll(rt, scope, opts, hooks, guard, (s) => (session = s), () => session);
+    return result;
+  } finally {
+    // 고객 행동 대기면 이 작업의 로그인·승인 상태를 보관해 재개 때 이어 간다. 그 밖에는 모두 지운다.
+    await (session as BrowserSession | null)?.close({ keepForResume: result?.kind === "needs_customer" });
+  }
+}
+
+async function runAll(
+  rt: AutomationRuntime,
+  scope: JobScope,
+  opts: EngineOptions,
+  hooks: EngineHooks,
+  guard: () => void,
+  setSession: (s: BrowserSession) => void,
+  getSession: () => BrowserSession | null,
+): Promise<EngineResult> {
   const stats = opts.stats;
+  const browser = async () => {
+    let s = getSession();
+    if (!s) {
+      guard();
+      s = await rt.browser.open(scope);
+      setSession(s);
+    }
+    return s;
+  };
   let verifying = opts.verifying;
   let evidence: VerificationEvidence | undefined;
-  let session: BrowserSession | null = null;
-  try {
-    const secrets = await rt.vault.forJob(scope);
-    // 무료 재연결: 무엇이든 바꾸기 전에 실제로 연결된 쇼핑몰·PC가 기준 작업과 같은지 읽기만으로 확인한다.
-    // 알 수 없으면(실행기가 값을 못 주면) 무료로 진행하지 않는다.
-    const want = opts.expectFacts;
-    if (want) {
-      session = await rt.browser.open(scope);
-      const [shopKey, obsPairingId] = await Promise.all([session.currentShopKey(), rt.obs.currentPairingId(scope)]);
-      if (!shopKey || !obsPairingId || !want.shopKey || !want.obsPairingId) return { kind: "failed", reason: "reconnect_target_unverified" };
-      if (shopKey !== want.shopKey || obsPairingId !== want.obsPairingId) return { kind: "failed", reason: "reconnect_target_mismatch" };
-    }
-    for (let stepIndex = opts.startIndex; stepIndex < STEPS.length; stepIndex++) {
-      const step = STEPS[stepIndex];
-      if (step.kind === "verify" && !verifying) {
-        await hooks.enterVerify();
-        verifying = true;
-      }
-      const pb = opts.playbook?.steps[step.key] ?? null;
-      const scripted = pb ? [...pb.actions] : [];
-      let deviated = !pb;
-      const history: string[] = [];
-      const facts: ConnectionFacts = {};
-      let verified = false;
-      let done = false;
-      for (let i = 0; i < opts.maxActionsPerStep && !done; i++) {
-        const raw = step.kind === "browser" ? await (session ??= await rt.browser.open(scope)).observe() : await rt.obs.observe(scope);
-        const exception = pb ? matchException(pb, raw) : null;
-        if (exception) {
-          await hooks.touch(stats);
-          if ("customerAction" in exception) return { kind: "needs_customer", action: exception.customerAction };
-          if ("retry" in exception) return { kind: "retry", reason: exception.retry };
-          return { kind: "failed", reason: exception.fail };
-        }
-        let action: AutomationAction | null = null;
-        let costWon = 0;
-        if (!deviated && scripted.length > 0) {
-          if (cueMatches(scripted[0].expect, raw)) {
-            action = scripted.shift()!.action;
-            stats.playbookActions++;
-          } else {
-            // 화면이 작업서와 다르다: 관리 화면 변경 신호. 재검증 대상이 된다(practice.ts).
-            deviated = true;
-            if (!stats.deviatedSteps.includes(step.key)) stats.deviatedSteps.push(step.key);
-          }
-        }
-        if (!action) {
-          const reference = pb ? { guide: pb.guide, examples: pb.examples, referenceImages: pb.referenceImages } : null;
-          const decision = await rt.planner.decide({ step, observation: sanitizeObservation(raw, secrets), history, reference });
-          stats.plannerCalls++;
-          costWon = Number.isInteger(decision.costWon) && decision.costWon > 0 ? decision.costWon : 0;
-          const check = validateDecision(step, decision, secrets);
-          stats.costUsed += costWon;
-          await hooks.touch(stats);
-          if (stats.costUsed > opts.costLimit) return { kind: "failed", reason: "cost_limit" };
-          if (!check.ok) return { kind: "failed", reason: `unsafe_action:${check.reason}` };
-          action = decision.action;
-        } else {
-          // 작업서 행동도 같은 검사를 거친다(작업서가 잘못돼도 허용 밖 행동은 하지 않음)
-          const check = validateDecision(step, { action, costWon: 0 }, secrets);
-          await hooks.touch(stats);
-          if (!check.ok) return { kind: "failed", reason: `unsafe_action:${check.reason}` };
-        }
-        history.push(action.type);
-        if (action.type === "request_customer") return { kind: "needs_customer", action: action.action };
-        const out: ActionOutcome = step.kind === "browser" ? await session!.perform(action, secrets) : await rt.obs.perform(scope, action);
-        if (out.kind === "needs_customer") return { kind: "needs_customer", action: out.action };
-        if (out.kind === "retryable") return { kind: "retry", reason: out.reason };
-        if (out.kind === "fatal") return { kind: "failed", reason: out.reason };
-        Object.assign(facts, out.facts);
-        if (out.verified) {
-          verified = true;
-          evidence = out.evidence ?? { verified: true };
-        }
-        // 검증 단계는 테스트 표시를 실제로 확인한 뒤에만 끝낸다(모델·작업서가 끝났다고 해도 넘어가지 않는다)
-        if (out.stepDone && (step.kind !== "verify" || verified)) done = true;
-        // 작업서 끝 행동(step_done)까지 했는데 끝나지 않았다면 남은 부분은 판단 모델로
-        if (!done && !deviated && scripted.length === 0) deviated = true;
-      }
-      if (!done) return { kind: "retry", reason: `step_action_limit:${step.key}` };
-      // 단계 결과로도 다시 확인(진행 중 다른 쇼핑몰·PC로 바뀐 경우)
-      if (want && ((facts.shopKey && facts.shopKey !== want.shopKey) || (facts.obsPairingId && facts.obsPairingId !== want.obsPairingId))) {
-        return { kind: "failed", reason: "reconnect_target_mismatch" };
-      }
-      await hooks.stepDone(stepIndex + 1, facts);
-    }
-    // 검증 단계를 이번 실행에서 통과했어야 완료다(증거 없이 완료하지 않는다)
-    if (!evidence) return { kind: "retry", reason: "verification_missing" };
-    return { kind: "succeeded", evidence };
-  } finally {
-    await session?.close();
+  const secrets = await rt.vault.forJob(scope);
+  // 무료 재연결: 무엇이든 바꾸기 전에 실제로 연결된 쇼핑몰·PC가 기준 작업과 같은지 읽기만으로 확인한다.
+  // 알 수 없으면(실행기가 값을 못 주면) 무료로 진행하지 않는다.
+  const want = opts.expectFacts;
+  if (want) {
+    const session = await browser();
+    guard();
+    const [shopKey, obsPairingId] = await Promise.all([session.currentShopKey(), rt.obs.currentPairingId(scope)]);
+    if (!shopKey || !obsPairingId || !want.shopKey || !want.obsPairingId) return { kind: "failed", reason: "reconnect_target_unverified" };
+    if (shopKey !== want.shopKey || obsPairingId !== want.obsPairingId) return { kind: "failed", reason: "reconnect_target_mismatch" };
   }
+  for (let stepIndex = opts.startIndex; stepIndex < STEPS.length; stepIndex++) {
+    const step = STEPS[stepIndex];
+    if (step.kind === "verify" && !verifying) {
+      await hooks.enterVerify();
+      verifying = true;
+    }
+    const pb = opts.playbook?.steps[step.key] ?? null;
+    const scripted = pb ? [...pb.actions] : [];
+    let deviated = !pb;
+    const history: string[] = [];
+    const facts: ConnectionFacts = {};
+    let verified = false;
+    let done = false;
+    for (let i = 0; i < opts.maxActionsPerStep && !done; i++) {
+      const session = step.kind === "browser" ? await browser() : null;
+      guard();
+      const raw = session ? await session.observe() : await rt.obs.observe(scope);
+      const exception = pb ? matchException(pb, raw) : null;
+      if (exception) {
+        await hooks.touch(stats);
+        if ("customerAction" in exception) return { kind: "needs_customer", action: exception.customerAction };
+        if ("retry" in exception) return { kind: "retry", reason: exception.retry };
+        return { kind: "failed", reason: exception.fail };
+      }
+      let action: AutomationAction | null = null;
+      let costWon = 0;
+      if (!deviated && scripted.length > 0) {
+        if (cueMatches(scripted[0].expect, raw)) {
+          action = scripted.shift()!.action;
+          stats.playbookActions++;
+        } else {
+          // 화면이 작업서와 다르다: 관리 화면 변경 신호. 재검증 대상이 된다(practice.ts).
+          deviated = true;
+          if (!stats.deviatedSteps.includes(step.key)) stats.deviatedSteps.push(step.key);
+        }
+      }
+      if (!action) {
+        const reference = pb ? { guide: pb.guide, examples: pb.examples, referenceImages: pb.referenceImages } : null;
+        guard();
+        const decision = await rt.planner.decide({ step, observation: sanitizeObservation(raw, secrets), history, reference });
+        stats.plannerCalls++;
+        costWon = Number.isInteger(decision.costWon) && decision.costWon > 0 ? decision.costWon : 0;
+        const check = validateDecision(step, decision, secrets);
+        stats.costUsed += costWon;
+        await hooks.touch(stats);
+        if (stats.costUsed > opts.costLimit) return { kind: "failed", reason: "cost_limit" };
+        if (!check.ok) return { kind: "failed", reason: `unsafe_action:${check.reason}` };
+        action = decision.action;
+      } else {
+        // 작업서 행동도 같은 검사를 거친다(작업서가 잘못돼도 허용 밖 행동은 하지 않음)
+        const check = validateDecision(step, { action, costWon: 0 }, secrets);
+        await hooks.touch(stats);
+        if (!check.ok) return { kind: "failed", reason: `unsafe_action:${check.reason}` };
+      }
+      history.push(action.type);
+      if (action.type === "request_customer") return { kind: "needs_customer", action: action.action };
+      guard();
+      const out: ActionOutcome = session ? await session.perform(action, secrets) : await rt.obs.perform(scope, action);
+      if (out.kind === "needs_customer") return { kind: "needs_customer", action: out.action };
+      if (out.kind === "retryable") return { kind: "retry", reason: out.reason };
+      if (out.kind === "fatal") return { kind: "failed", reason: out.reason };
+      Object.assign(facts, out.facts);
+      if (out.verified) {
+        verified = true;
+        evidence = out.evidence ?? { verified: true };
+      }
+      // 검증 단계는 테스트 표시를 실제로 확인한 뒤에만 끝낸다(모델·작업서가 끝났다고 해도 넘어가지 않는다)
+      if (out.stepDone && (step.kind !== "verify" || verified)) done = true;
+      // 작업서 끝 행동(step_done)까지 했는데 끝나지 않았다면 남은 부분은 판단 모델로
+      if (!done && !deviated && scripted.length === 0) deviated = true;
+    }
+    if (!done) return { kind: "retry", reason: `step_action_limit:${step.key}` };
+    // 단계 결과로도 다시 확인(진행 중 다른 쇼핑몰·PC로 바뀐 경우)
+    if (want && ((facts.shopKey && facts.shopKey !== want.shopKey) || (facts.obsPairingId && facts.obsPairingId !== want.obsPairingId))) {
+      return { kind: "failed", reason: "reconnect_target_mismatch" };
+    }
+    await hooks.stepDone(stepIndex + 1, facts);
+  }
+  // 검증 단계를 이번 실행에서 통과했어야 완료다(증거 없이 완료하지 않는다)
+  if (!evidence) return { kind: "retry", reason: "verification_missing" };
+  return { kind: "succeeded", evidence };
 }
