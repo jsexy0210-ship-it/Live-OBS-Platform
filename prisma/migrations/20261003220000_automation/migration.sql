@@ -10,6 +10,9 @@ CREATE TYPE "AutomationJobStatus" AS ENUM ('AWAITING_PAYMENT', 'QUEUED', 'RUNNIN
 -- CreateEnum
 CREATE TYPE "AutomationCustomerAction" AS ENUM ('LOGIN', 'TWO_FACTOR', 'CAPTCHA', 'PERMISSION_GRANT', 'LOCAL_TOOL');
 
+-- CreateEnum
+CREATE TYPE "AutomationPracticeOutcome" AS ENUM ('SUCCEEDED', 'FAILED', 'NEEDS_CUSTOMER');
+
 -- CreateTable
 CREATE TABLE "AutomationPayment" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),
@@ -57,6 +60,11 @@ CREATE TABLE "AutomationJob" (
     "connectionRevokedAt" TIMESTAMPTZ(3),
     "verifiedAt" TIMESTAMPTZ(3),
     "verificationEvidence" JSONB,
+    "playbookId" TEXT,
+    "playbookVersion" INTEGER,
+    "plannerCalls" INTEGER NOT NULL DEFAULT 0,
+    "playbookActions" INTEGER NOT NULL DEFAULT 0,
+    "deviatedSteps" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "startedAt" TIMESTAMPTZ(3),
     "finishedAt" TIMESTAMPTZ(3),
     "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -77,6 +85,25 @@ CREATE TABLE "AutomationJobEvent" (
     "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "AutomationJobEvent_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "AutomationPracticeRun" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "playbookId" TEXT NOT NULL,
+    "playbookVersion" INTEGER NOT NULL,
+    "outcome" "AutomationPracticeOutcome" NOT NULL,
+    "failedStep" TEXT,
+    "reason" TEXT,
+    "durationMs" INTEGER NOT NULL,
+    "plannerCalls" INTEGER NOT NULL,
+    "playbookActions" INTEGER NOT NULL,
+    "costWon" INTEGER NOT NULL,
+    "deviatedSteps" TEXT[] DEFAULT ARRAY[]::TEXT[],
+    "startedAt" TIMESTAMPTZ(3) NOT NULL,
+    "finishedAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "AutomationPracticeRun_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateIndex
@@ -106,6 +133,9 @@ CREATE UNIQUE INDEX "AutomationJob_sellerId_paymentId_key" ON "AutomationJob"("s
 -- CreateIndex
 CREATE INDEX "AutomationJobEvent_jobId_createdAt_idx" ON "AutomationJobEvent"("jobId", "createdAt");
 
+-- CreateIndex
+CREATE INDEX "AutomationPracticeRun_playbookId_playbookVersion_finishedAt_idx" ON "AutomationPracticeRun"("playbookId", "playbookVersion", "finishedAt");
+
 -- AddForeignKey
 ALTER TABLE "AutomationJob" ADD CONSTRAINT "AutomationJob_sellerId_paymentId_fkey" FOREIGN KEY ("sellerId", "paymentId") REFERENCES "AutomationPayment"("sellerId", "id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
@@ -125,3 +155,5 @@ ALTER TABLE "AutomationJob" ADD CONSTRAINT "AutomationJob_counters_valid" CHECK 
 ALTER TABLE "AutomationJob" ADD CONSTRAINT "AutomationJob_lease_matches_status" CHECK (("status" IN ('RUNNING', 'VERIFYING')) = ("leaseOwner" IS NOT NULL AND "leaseExpiresAt" IS NOT NULL));
 -- 무료 재연결만 결제가 없고, 나머지는 결제가 있어야 한다.
 ALTER TABLE "AutomationJob" ADD CONSTRAINT "AutomationJob_payment_matches_kind" CHECK (("kind" = 'RECONNECT_FREE') = ("paymentId" IS NULL));
+ALTER TABLE "AutomationJob" ADD CONSTRAINT "AutomationJob_stats_valid" CHECK ("plannerCalls" >= 0 AND "playbookActions" >= 0 AND ("playbookId" IS NULL) = ("playbookVersion" IS NULL));
+ALTER TABLE "AutomationPracticeRun" ADD CONSTRAINT "AutomationPracticeRun_counters_valid" CHECK ("playbookVersion" > 0 AND "durationMs" >= 0 AND "plannerCalls" >= 0 AND "playbookActions" >= 0 AND "costWon" >= 0);

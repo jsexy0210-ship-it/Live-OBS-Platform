@@ -105,9 +105,18 @@ async function fencedWrite(db: PrismaClient, c: Claim, build: (now: Date, cur: A
 
 const RELEASE = { leaseOwner: null, leaseExpiresAt: null } as const;
 
-// lease 연장 + 쓴 비용 기록
-export const touch = (db: PrismaClient, c: Claim, costUsed: number, leaseMs: number = AUTOMATION_LIMITS.leaseMs) =>
-  fencedWrite(db, c, (now) => ({ data: { costUsed, leaseExpiresAt: plus(now, leaseMs) } }));
+// lease 연장 + 쓴 비용·실행 통계(판단 호출 수·작업서 행동 수·화면 이탈 단계) 기록
+export type TouchStats = { costUsed: number; plannerCalls?: number; playbookActions?: number; deviatedSteps?: string[] };
+export const touch = (db: PrismaClient, c: Claim, stats: TouchStats, leaseMs: number = AUTOMATION_LIMITS.leaseMs) =>
+  fencedWrite(db, c, (now) => ({
+    data: {
+      costUsed: stats.costUsed,
+      ...(stats.plannerCalls !== undefined ? { plannerCalls: stats.plannerCalls } : {}),
+      ...(stats.playbookActions !== undefined ? { playbookActions: stats.playbookActions } : {}),
+      ...(stats.deviatedSteps !== undefined ? { deviatedSteps: stats.deviatedSteps } : {}),
+      leaseExpiresAt: plus(now, leaseMs),
+    },
+  }));
 
 // 다음 단계로. 이 단계에서 알게 된 연결 결과(쇼핑몰·OBS pairing)를 함께 남긴다.
 export const advanceStep = (db: PrismaClient, c: Claim, stepIndex: number, facts: ConnectionFacts = {}) =>

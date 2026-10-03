@@ -1234,6 +1234,13 @@ model AutomationJob {
   // 성공 기준 검증 증거(테스트 주문 표시 확인 결과). 비밀값은 넣지 않는다.
   verifiedAt           DateTime?                 @db.Timestamptz(3)
   verificationEvidence Json?
+  // 연결 작업서(확정 ⑦-1). 쇼핑몰 주소로 서버가 고른 작업서 id·버전(내부용, 화면 비노출). 없으면 판단 모델로만 진행.
+  playbookId           String?
+  playbookVersion      Int?
+  // 실행 통계: 판단 모델 호출 수, 작업서대로 실행한 행동 수, 화면이 작업서와 달랐던 단계(관리 화면 변경 신호)
+  plannerCalls         Int                       @default(0)
+  playbookActions      Int                       @default(0)
+  deviatedSteps        String[]                  @default([])
   startedAt            DateTime?                 @db.Timestamptz(3)
   finishedAt           DateTime?                 @db.Timestamptz(3)
   createdAt            DateTime                  @default(now()) @db.Timestamptz(3)
@@ -1264,4 +1271,31 @@ model AutomationJobEvent {
   job AutomationJob @relation(fields: [sellerId, jobId], references: [sellerId, id])
 
   @@index([jobId, createdAt])
+}
+
+// 연결 작업서 연습 실행 기록(확정 ⑦-1). 시험용 쇼핑몰에서 작업서를 반복 실행한 결과. 판매자 데이터가 아니다.
+// 같은 작업서 id·버전의 최근 연습이 연속으로 기준 횟수만큼 성공(화면 이탈 없이)해야 지원 목록에 오른다(lib/server/automation/practice.ts).
+enum AutomationPracticeOutcome {
+  SUCCEEDED
+  FAILED
+  NEEDS_CUSTOMER
+}
+
+model AutomationPracticeRun {
+  id              String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  playbookId      String
+  playbookVersion Int
+  outcome         AutomationPracticeOutcome
+  // 멈춘 단계와 사유(코드). 비밀값·화면 원문은 넣지 않는다.
+  failedStep      String?
+  reason          String?
+  durationMs      Int
+  plannerCalls    Int
+  playbookActions Int
+  costWon         Int
+  deviatedSteps   String[]                  @default([])
+  startedAt       DateTime                  @db.Timestamptz(3)
+  finishedAt      DateTime                  @default(now()) @db.Timestamptz(3)
+
+  @@index([playbookId, playbookVersion, finishedAt])
 }

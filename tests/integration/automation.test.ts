@@ -266,7 +266,7 @@ describe("lease·fencing·잠금·동시성", () => {
     const a = await bought();
     const old = await claimNext(db, "old", { leaseMs: 30 });
     await new Promise((r) => setTimeout(r, 60));
-    await expect(touch(db, old!.claim, 1)).rejects.toBeInstanceOf(FencingError);
+    await expect(touch(db, old!.claim, { costUsed: 1 })).rejects.toBeInstanceOf(FencingError);
     expect(await reapExpired(db, () => 0)).toEqual({ requeued: 1, failed: 0 });
     expect(await job(a.jobId)).toMatchObject({ status: "QUEUED", attempts: 1, lastError: "lease_expired" });
     await db.automationJob.update({ where: { id: a.jobId }, data: { runAfter: new Date(Date.now() - 1000) } });

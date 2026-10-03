@@ -13,6 +13,7 @@ import {
   REINSTALL_ORDER_NAME,
   REINSTALL_PRICE,
 } from "./config";
+import { playbookForShopUrl } from "./playbooks";
 import { dbNow, writeJobEvent } from "./queue";
 
 // 자동 연결 결제. 결제는 기존 billing 공통 구조(BillingProvider, 등록된 카드 빌링키, 청구 id = orderId로 PG 중복 방지)를 그대로 쓴다.
@@ -38,6 +39,11 @@ export const PURCHASE_FAILURE_STATUS: Record<Failure, number> = {
   payment_failed: 402,
 };
 
+const playbookFields = (shopUrl: unknown) => {
+  const pb = typeof shopUrl === "string" && shopUrl.length <= 300 ? playbookForShopUrl(shopUrl) : null;
+  return pb ? { playbookId: pb.id, playbookVersion: pb.version } : {};
+};
+
 const view = (p: AutomationPayment & { job: AutomationJob | null }, replayed: boolean): PurchaseResult =>
   p.job
     ? { ok: true, jobId: p.job.id, kind: p.job.kind, paymentStatus: p.status, jobStatus: p.job.status, replayed }
@@ -53,6 +59,8 @@ function consentProblem(consent: unknown): "consent_required" | "consent_outdate
 type PaidJobInput = {
   idempotencyKey: unknown;
   consent: unknown;
+  // 쇼핑몰 주소. 서버가 연결 작업서를 고른다(판매자는 플랫폼을 고르지 않음). 모르는 주소면 작업서 없이 진행.
+  shopUrl?: unknown;
   kind: "INITIAL" | "REINSTALL";
   baseJobId?: string;
   obsTargetKey?: string;
@@ -64,7 +72,7 @@ export async function purchaseAutomation(
   db: PrismaClient,
   provider: BillingProvider,
   ctx: TenantContext,
-  input: { idempotencyKey: unknown; consent: unknown },
+  input: { idempotencyKey: unknown; consent: unknown; shopUrl?: unknown },
 ): Promise<PurchaseResult> {
   return buyPaidJob(db, provider, ctx, { ...input, kind: "INITIAL" });
 }
@@ -97,7 +105,14 @@ async function buyPaidJob(db: PrismaClient, provider: BillingProvider, ctx: Tena
       });
       const job = await tx.automationJob.create({
         // OBS 대상 키: 처음 연결은 판매자 단위(아직 PC를 모름), 재설치는 알고 있는 pairing 단위
-        data: { sellerId: ctx.sellerId, kind: input.kind, paymentId: payment.id, costLimit: plannerConfig().costLimitWon, baseJobId: input.baseJobId, obsTargetKey: input.obsTargetKey ?? `seller:${ctx.sellerId}` },
+        data: {
+          sellerId: ctx.sellerId,
+          kind: input.kind,
+          paymentId: payment.id,
+          costLimit: plannerConfig().costLimitWon,
+          ...playbookFields(input.shopUrl),           baseJobId: input.baseJobId,
+          obsTargetKey: input.obsTargetKey ?? `seller:${ctx.sellerId}`,
+        },
       });
       await writeJobEvent(tx, job, null, "AWAITING_PAYMENT", 0);
       await writeAudit(tx, {
@@ -174,7 +189,7 @@ export async function reconnectAutomation(
   db: PrismaClient,
   provider: BillingProvider,
   ctx: TenantContext,
-  input: { idempotencyKey: unknown; consent?: unknown; target: unknown },
+  input: { idempotencyKey: unknown; consent?: unknown; target: unknown; shopUrl?: unknown },
 ): Promise<ReconnectResult> {
   requireSellerPermission(ctx, "SUBSCRIPTION_MANAGE");
   if (!isTarget(input.target)) return { ok: false, reason: "bad_target" };
@@ -183,13 +198,13 @@ export async function reconnectAutomation(
   const obsTargetKey = `obs:${target.obsPairingId}`;
   if (!decision.free) {
     if (input.consent === undefined) return { ok: false, reason: "payment_required", paidReason: decision.reason, price: REINSTALL_PRICE };
-    return buyPaidJob(db, provider, ctx, { idempotencyKey: input.idempotencyKey, consent: input.consent, kind: "REINSTALL", baseJobId: decision.baseJobId ?? undefined, obsTargetKey });
+    return buyPaidJob(db, provider, ctx, { idempotencyKey: input.idempotencyKey, consent: input.consent, shopUrl: input.shopUrl, kind: "REINSTALL", baseJobId: decision.baseJobId ?? undefined, obsTargetKey });
   }
   try {
     const job = await db.$transaction(async (tx) => {
       const now = await dbNow(tx);
       const j = await tx.automationJob.create({
-        data: { sellerId: ctx.sellerId, kind: "RECONNECT_FREE", costLimit: plannerConfig().costLimitWon, baseJobId: decision.baseJobId, status: "QUEUED", runAfter: now, obsTargetKey },
+        data: { sellerId: ctx.sellerId, kind: "RECONNECT_FREE", costLimit: plannerConfig().costLimitWon, ...playbookFields(input.shopUrl), baseJobId: decision.baseJobId, status: "QUEUED", runAfter: now, obsTargetKey },
       });
       await writeJobEvent(tx, j, null, "QUEUED", 0, { freeReconnectOf: decision.baseJobId });
       await writeAudit(tx, {

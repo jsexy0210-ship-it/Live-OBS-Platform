@@ -10,8 +10,8 @@ import { mutation, noStore, readJson, sessionToken } from "../../../../lib/serve
 // consent를 붙여 다시 오면 33,000원 재설치로 결제한다.
 export const POST = mutation(async (req: Request) => {
   const ctx = await requireSeller(prisma, sessionToken(req, "seller"));
-  const body = await readJson<{ target: unknown; consent: unknown }>(req);
-  const r = await reconnectAutomation(prisma, billingProvider(), ctx, { idempotencyKey: req.headers.get("idempotency-key"), consent: body.consent, target: body.target });
+  const body = await readJson<{ target: unknown; consent: unknown; shopUrl: unknown }>(req);
+  const r = await reconnectAutomation(prisma, billingProvider(), ctx, { idempotencyKey: req.headers.get("idempotency-key"), consent: body.consent, target: body.target, shopUrl: body.shopUrl });
   if (r.ok) return noStore(NextResponse.json(r, { status: r.paymentStatus === "PENDING" ? 202 : r.replayed ? 200 : 201 }));
   if (r.reason === "bad_target") return noStore(NextResponse.json({ error: r.reason }, { status: 400 }));
   if (r.reason === "payment_required") return noStore(NextResponse.json({ error: r.reason, paidReason: r.paidReason, price: r.price }, { status: 402 }));

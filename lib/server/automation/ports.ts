@@ -29,7 +29,9 @@ export type Observation = { url: string | null; text: string };
 // 모델에 넘기는 관찰. 비밀값을 지우고, 화면 글은 신뢰하지 않는 데이터로만 넘긴다.
 export type SafeObservation = { url: string | null; untrustedPageText: string };
 
-export type PlannerInput = { step: Step; observation: SafeObservation; history: readonly string[] };
+// reference: 연결 작업서의 단계 설명·성공 사례(확정 ⑦-1). 작업서가 없거나 화면이 작업서와 다를 때 판단 모델이 참고한다.
+export type PlannerReference = { guide: string; examples: readonly string[]; referenceImages: readonly string[] };
+export type PlannerInput = { step: Step; observation: SafeObservation; history: readonly string[]; reference: PlannerReference | null };
 // costWon: 이 판단 호출에 든 비용(원 추정). 작업당 비용 상한 계산에 쓴다.
 export type PlannerDecision = { action: AutomationAction; costWon: number };
 
@@ -90,7 +92,7 @@ export function sanitizeObservation(o: Observation, secrets: JobSecrets): SafeOb
 // 관리 화면 이동은 이 호스트(와 하위 도메인)만. https만 허용한다.
 export const ALLOWED_HOSTS = ["cafe24.com", "cafe24api.com"] as const;
 
-const ALLOWED_ACTIONS: Record<StepKind, readonly AutomationAction["type"][]> = {
+export const ALLOWED_ACTIONS: Record<StepKind, readonly AutomationAction["type"][]> = {
   browser: ["navigate", "click", "fill", "request_customer", "step_done"],
   obs: ["obs_add_overlay_source", "obs_apply_display_settings", "request_customer", "step_done"],
   verify: ["send_test_event", "check_overlay_shows_test_event", "request_customer", "step_done"],
