@@ -17,11 +17,16 @@ case "${1:-}" in
   on)
     ttl="${4:-3600}"
     [[ "$ttl" =~ ^[1-9][0-9]*$ ]] && [ "$ttl" -le 86400 ] || die "유효 초는 1~86400 정수여야 해요(받은 값: $ttl). $usage"
+    # 확인과 생성을 표시 폴더 잠금(flock) 안에서 한다. 같은 키 on이 동시에 들어와도(만료된 파일을 바꾸는 경우 포함) 하나만 차지한다.
+    mkdir -p "$DEPLOY_MARK_DIR"
+    exec 9<"$DEPLOY_MARK_DIR"
+    flock -x -w 10 9 || die "배포 표시 폴더 잠금을 얻지 못했어요(10초). 잠시 뒤 다시 실행해 주세요."
     exp="$(sed -n 's/^expiresEpoch=//p' "$DEPLOY_MARK_DIR/$key" 2>/dev/null | head -1 || true)"
     if [[ "$exp" =~ ^[0-9]+$ ]] && [ "$exp" -gt "$(date +%s)" ]; then
       die "같은 키($key)의 배포 표시가 이미 켜져 있어요. 실행마다 다른 키(예: workflow-\$GITHUB_RUN_ID-\$GITHUB_RUN_ATTEMPT)를 쓰거나, 먼저 off $key 해 주세요."
     fi
-    deploy_mark_set "$key" "${3:-$key}" detached "$ttl"; log "배포 표시 켬: $DEPLOY_MARK_DIR/$key(${ttl}초 뒤 만료)" ;;
+    deploy_mark_set "$key" "${3:-$key}" detached "$ttl"
+    exec 9<&-; log "배포 표시 켬: $DEPLOY_MARK_DIR/$key(${ttl}초 뒤 만료)" ;;
   off) deploy_mark_clear "$key"; log "배포 표시 끔: $key" ;;
   *) die "$usage" ;;
 esac
