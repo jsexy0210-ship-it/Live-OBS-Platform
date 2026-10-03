@@ -1,0 +1,168 @@
+import { expect, test, type Page } from "@playwright/test";
+
+// SA-021 주문 목록 · SA-022 주문 상세 · SA-023 환불 모달. dev-seed의 데모 주문 25건(결제 대기·완료·발송·환불됨·취소)으로 확인한다.
+const PASSWORD = process.env.E2E_PASSWORD ?? "";
+const SHOTS = process.env.E2E_SCREENSHOTS === "1";
+
+test.beforeAll(() => {
+  if (!PASSWORD) throw new Error("E2E_PASSWORD가 없어요. dev-seed가 출력한 데모 비밀번호를 넣어 주세요");
+});
+
+async function shot(page: Page, name: string) {
+  if (!SHOTS) return;
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForTimeout(150);
+    await page.screenshot({ path: `tests/e2e/screenshots/${name}-${width}.png`, fullPage: true });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+}
+
+async function login(page: Page, email = "demo-owner@example.com", next = "/seller/orders") {
+  await page.goto(`/seller/login?next=${encodeURIComponent(next)}`);
+  await page.getByLabel("이메일").fill(email);
+  await page.getByLabel("비밀번호").fill(PASSWORD);
+  await page.getByRole("button", { name: "로그인" }).click();
+  await expect(page).toHaveURL(new RegExp(`${next.replace(/\//g, "\\/")}$`));
+}
+
+const rows = (page: Page) => page.getByTestId("order-row");
+const listResponse = (page: Page, has?: string) =>
+  page.waitForResponse((r) => r.url().includes("/api/seller/orders?") && r.request().method() === "GET" && (!has || r.url().includes(has)));
+
+test("주문 목록: 20건씩 보이고 「주문 더 불러오기」로 나머지를 이어서 불러온다", async ({ page }) => {
+  const first = listResponse(page);
+  await login(page);
+  await first;
+  await expect(page.getByRole("heading", { name: "주문" })).toBeVisible();
+  await expect(rows(page)).toHaveCount(20);
+  await expect(page.getByText("20건 넘게")).toBeVisible();
+  // 메뉴 「주문」이 이 화면을 가리킨다
+  await expect(page.getByRole("link", { name: "주문", exact: true })).toHaveAttribute("href", "/seller/orders");
+  await shot(page, "SA-021");
+  const next = listResponse(page, "cursor=");
+  await page.getByRole("button", { name: "주문 더 불러오기" }).click();
+  await next;
+  // 다시 돌릴 때 앞선 실행의 실제 환불로 상태만 바뀔 뿐 건수는 같다
+  await expect(rows(page)).toHaveCount(25);
+  await expect(page.getByRole("button", { name: "주문 더 불러오기" })).toHaveCount(0);
+});
+
+test("상태 필터·검색·기간으로 걸러 보고, 결과가 없으면 알맞은 안내를 보여 준다", async ({ page }) => {
+  await login(page);
+  await expect(rows(page)).toHaveCount(20);
+  // 상태: 환불됨만
+  await page.getByRole("button", { name: /상태: 전체/ }).click();
+  await page.getByRole("group", { name: "결제 상태" }).getByLabel("환불됨").check();
+  const refunded = listResponse(page, "status=REFUNDED");
+  await page.getByRole("button", { name: "적용" }).click();
+  await refunded;
+  const n = await rows(page).count();
+  expect(n).toBeGreaterThanOrEqual(3);
+  for (let i = 0; i < n; i++) await expect(rows(page).nth(i).locator(".bdg").first()).toHaveText("환불됨");
+  await expect(page.getByRole("button", { name: /상태: 환불됨/ })).toBeVisible();
+  await shot(page, "SA-021-filter");
+  await page.getByRole("button", { name: "필터 초기화" }).first().click();
+  await expect(rows(page)).toHaveCount(20);
+
+  // 검색: 닉네임
+  const searched = listResponse(page, `q=${encodeURIComponent("카드왕")}`);
+  await page.getByLabel("주문 검색").fill("카드왕");
+  await searched;
+  const m = await rows(page).count();
+  expect(m).toBeGreaterThan(0);
+  for (let i = 0; i < m; i++) await expect(rows(page).nth(i).locator("td").nth(1)).toHaveText("카드왕");
+
+  // 기간 + 없는 검색어: 기간을 풀면 전체 기간에서 찾는다고 안내
+  await page.getByRole("button", { name: "오늘", exact: true }).click();
+  const none = listResponse(page, "q=");
+  await page.getByLabel("주문 검색").fill("없는닉네임");
+  await none;
+  await expect(page.getByText("「없는닉네임」와 맞는 주문이 없어요")).toBeVisible();
+  await expect(page.getByText("기간 필터 「오늘」을 해제하면 전체 기간에서 찾아요.")).toBeVisible();
+  await page.getByRole("button", { name: "전체 기간에서 검색" }).click();
+  await expect(page.getByText("조건에 맞는 주문이 없어요")).toBeVisible();
+});
+
+test("주문 상세: 상품·결제·구매자·배송을 보여 주고, 없는 주문은 안내한다", async ({ page }) => {
+  await login(page);
+  await page.getByRole("button", { name: /상태: 전체/ }).click();
+  await page.getByRole("group", { name: "결제 상태" }).getByLabel("완료").check();
+  await page.getByRole("button", { name: "적용" }).click();
+  await expect(rows(page).first()).toBeVisible();
+  const nick = (await rows(page).first().locator("td").nth(1).textContent())!;
+  await rows(page).first().locator("a.ord-link").click();
+  await expect(page).toHaveURL(/\/seller\/orders\/[0-9a-f-]{36}$/);
+  await expect(page.getByRole("heading", { level: 1 })).toContainText(`${nick} · `);
+  await expect(page.locator(".bdg-lg").first()).toHaveText("결제 완료");
+  await expect(page.getByRole("heading", { name: "주문 상품" })).toBeVisible();
+  await expect(page.getByText("결제 금액")).toBeVisible();
+  // 대표자는 고객 정보 보기 권한이 있어 받는 분·연락처가 보인다
+  await expect(page.getByText("받는 분")).toBeVisible();
+  await expect(page.getByRole("button", { name: "취소 · 환불" })).toBeVisible();
+  await shot(page, "SA-022");
+
+  await page.goto("/seller/orders/00000000-0000-4000-8000-000000000000");
+  await expect(page.getByText("주문을 찾을 수 없어요")).toBeVisible();
+  await expect(page.getByRole("link", { name: "주문 목록으로" })).toBeVisible();
+});
+
+test("환불 모달: 사유 주체를 고르지 않으면 환불할 수 없고, 구매자 사정을 고르면 fault=BUYER로 보낸다", async ({ page }) => {
+  await login(page);
+  // 서버 환불은 흉내 내 요청 본문만 확인한다(실제 환불은 아래 테스트에서 한 번)
+  let body: Record<string, unknown> | null = null;
+  await page.route(/\/api\/seller\/orders\/[0-9a-f-]{36}\/refund$/, async (route) => {
+    body = route.request().postDataJSON();
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ refundAmount: 1000, version: 1 }) });
+  });
+  await page.getByRole("link", { name: "환불 처리" }).first().click();
+  const dialog = page.getByRole("dialog", { name: "취소 · 환불 처리" });
+  await expect(dialog).toBeVisible();
+  const run = dialog.getByRole("button", { name: /환불 실행/ });
+  await expect(run).toBeDisabled();
+  await dialog.getByLabel("처리 사유").selectOption("결제 오류 · 중복 결제");
+  await dialog.getByLabel("위 금액으로 환불해요. 승인 취소 후 되돌릴 수 없어요.").check();
+  // 사유 주체를 아직 고르지 않았다
+  await expect(run).toBeDisabled();
+  await expect(dialog.getByText("구매자 사정만 결제 후 취소 횟수에 들어가요 · 고르지 않으면 환불할 수 없어요")).toBeVisible();
+  await dialog.getByRole("radio", { name: /구매자 사정/ }).check();
+  await expect(dialog.getByText("이 취소는 구매자의 결제 후 취소 횟수에 들어가요")).toBeVisible();
+  await expect(run).toBeEnabled();
+  await shot(page, "SA-023");
+  await run.click();
+  await expect(page.getByText("1,000원 환불을 완료했어요")).toBeVisible();
+  expect(body).toMatchObject({ fault: "BUYER", reason: "결제 오류 · 중복 결제", confirmOpened: false });
+  expect(Number.isInteger((body as unknown as { expectedVersion: number }).expectedVersion)).toBe(true);
+});
+
+test("실제 환불: 판매자 사정으로 환불하면 완료 알림이 뜨고 주문이 환불됨으로 바뀐다", async ({ page }) => {
+  await login(page);
+  await page.getByRole("button", { name: /상태: 전체/ }).click();
+  await page.getByRole("group", { name: "결제 상태" }).getByLabel("완료").check();
+  await page.getByRole("button", { name: "적용" }).click();
+  await expect(rows(page).first()).toBeVisible();
+  // 발송 전 주문(배송 「—」)을 고른다
+  const target = rows(page).filter({ has: page.locator("td:nth-child(6)", { hasText: "—" }) }).first();
+  await target.getByRole("link", { name: "환불 처리" }).click();
+  const dialog = page.getByRole("dialog", { name: "취소 · 환불 처리" });
+  await dialog.getByRole("radio", { name: /판매자 사정/ }).check();
+  await dialog.getByLabel("처리 사유").selectOption("품절 · 재고 없음");
+  await dialog.getByLabel("위 금액으로 환불해요. 승인 취소 후 되돌릴 수 없어요.").check();
+  const refund = page.waitForResponse((r) => r.url().endsWith("/refund") && r.request().method() === "POST");
+  await dialog.getByRole("button", { name: /환불 실행/ }).click();
+  expect((await refund).status()).toBe(200);
+  await expect(page.getByText(/원 환불을 완료했어요/)).toBeVisible();
+  await expect(page.locator(".bdg-lg").first()).toHaveText("환불됨");
+  await expect(page.getByText("판매자 사정")).toBeVisible();
+  await expect(page.getByRole("button", { name: "취소 · 환불" })).toHaveCount(0);
+  await shot(page, "SA-022-refunded");
+});
+
+test("주문·배송 권한이 없는 직원은 메뉴에 주문이 없고, 주소로 들어오면 권한 안내를 본다", async ({ page }) => {
+  await login(page, "demo-staff@example.com", "/seller/products");
+  await expect(page.getByRole("link", { name: "주문", exact: true })).toHaveCount(0);
+  await page.goto("/seller/orders");
+  await expect(page.getByText("이 기능은 권한이 필요해요")).toBeVisible();
+  await expect(page.getByText("필요한 권한: 주문·배송")).toBeVisible();
+});

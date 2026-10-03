@@ -1,0 +1,94 @@
+/* SA-021 주문 목록 · SA-022 주문 상세 · SA-023 환불 모달 */
+.ord-toolbar {
+  padding: 14px 20px;
+  box-shadow: inset 0 -1px 0 var(--wds-line-normal-alternative);
+  position: relative;
+}
+.ord-search {
+  width: 280px;
+  max-width: 100%;
+}
+.ord-count {
+  margin-left: auto;
+}
+.ord-menu-wrap {
+  position: relative;
+}
+.ord-menu {
+  position: absolute;
+  left: 0;
+  top: 40px;
+  width: 220px;
+  z-index: 4;
+}
+.ord-menu-i {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.ord-menu-i:hover {
+  background: var(--wds-fill-normal);
+}
+.ord-scroll {
+  overflow-x: auto;
+}
+.ord-tbl {
+  min-width: 760px;
+}
+.ord-link {
+  color: inherit;
+  text-decoration: none;
+}
+.ord-link:hover {
+  text-decoration: underline;
+}
+.ord-product {
+  max-width: 260px;
+}
+.ord-detail {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+.refund-modal {
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+}
+.refund-faults {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.refund-opt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px var(--wds-line-normal-normal);
+  cursor: pointer;
+}
+.refund-opt.on {
+  box-shadow: inset 0 0 0 2px var(--brand);
+}
+@media (max-width: 767px) {
+  .ord-search {
+    width: 100%;
+  }
+  .ord-count {
+    margin-left: 0;
+  }
+  .ord-detail {
+    grid-template-columns: 1fr;
+  }
+  .refund-faults {
+    grid-template-columns: 1fr;
+  }
+  .ord-detail .kv {
+    grid-template-columns: 96px 1fr;
+  }
+}
