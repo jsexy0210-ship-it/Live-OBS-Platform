@@ -15,7 +15,7 @@
 // 감시 상태(실패 횟수·열린 장애·경고 쿨다운·알림 한도·보낼 목록)는 monitor-state.json에 남겨 재시작해도 이어진다.
 // 감시 대상에서 빠진 이름의 상태는 틱마다 지우고, 열린 장애는 incident_close(reason: target_removed)로 닫는다.
 // 아직 못 재는 것(앱 쪽 훅 필요, MASTER 요청): DB pool 사용량, worker·scheduler heartbeat, 작업 큐 적체.
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync, existsSync, statSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync, existsSync, statSync, openSync, writeSync, fsyncSync, closeSync, renameSync } from "node:fs";
 import http from "node:http";
 import https from "node:https";
 import tls from "node:tls";
@@ -159,8 +159,24 @@ function loadState() {
   }
   return st;
 }
+// 같은 폴더의 임시 파일에 다 쓰고 fsync한 뒤 rename으로 바꿔 넣는다. 쓰는 도중 강제 종료돼도 이전 또는 새 상태 중 하나가 온전히 남는다.
 function saveState() {
-  writeFileSync(STATE_FILE(), JSON.stringify(state) + "\n");
+  const tmp = `${STATE_FILE()}.tmp`;
+  const fd = openSync(tmp, "w");
+  try {
+    writeSync(fd, JSON.stringify(state) + "\n");
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+  renameSync(tmp, STATE_FILE());
+  // rename 자체도 디스크에 남도록 폴더를 fsync한다.
+  const dfd = openSync(cfg.dir, "r");
+  try {
+    fsyncSync(dfd);
+  } finally {
+    closeSync(dfd);
+  }
 }
 
 let state = emptyState();
