@@ -54,13 +54,15 @@ jobs:
         run: |
           set -euo pipefail
           C="docker compose -p obs-web -f deploy/docker-compose.yml --env-file $ENV_FILE"
-          if [ -n "$($C ps -q obs-web-db 2>/dev/null)" ]; then
+          # 컨테이너가 멈춰 있어도 볼륨에 데이터가 있으면 DB를 띄워 백업한다(실행 중인 컨테이너만 보면 down 뒤에 백업을 건너뜀)
+          if docker volume inspect obs-web_obs-web-pgdata >/dev/null 2>&1; then
+            $C up -d --wait obs-web-db
             f="$BACKUP_DIR/obs-$(TZ=Asia/Seoul date +%Y%m%d-%H%M%S)-before-${GITHUB_SHA:0:7}.dump"
             $C exec -T obs-web-db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$f"
             chmod 600 "$f"
             echo "백업: $(basename "$f")"
           else
-            echo "DB가 아직 없어 백업을 건너뛰어요(첫 배포)."
+            echo "DB 볼륨이 아직 없어 백업을 건너뛰어요(첫 배포)."
           fi
 
       - name: Build and start
