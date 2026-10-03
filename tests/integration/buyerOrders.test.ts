@@ -169,7 +169,7 @@ describe("결제 전 동의 문구 API", () => {
     const res = await consentRoute(new Request(`http://localhost:3000/api/shop/${s.seller.slug}/order-consent`), { params: Promise.resolve({ slug: s.seller.slug }) });
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toEqual({ consents: [{ kind: "OPENED_NO_REFUND", version: OPENED_NO_REFUND_CONSENT.version, text: "개봉하면 취소·환불이 안 돼요" }] });
+    expect(body).toEqual({ consents: [{ kind: "OPENED_NO_REFUND", version: OPENED_NO_REFUND_CONSENT.version, text: "개봉하면 단순 변심으로는 취소·환불이 안 돼요. 상품이 설명과 다르거나 잘못 왔으면 환불받을 수 있어요" }] });
     const r = await createOrder(db, {
       sellerId: s.seller.id,
       buyerMemberId: s.a.id,

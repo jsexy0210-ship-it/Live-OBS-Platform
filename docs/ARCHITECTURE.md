@@ -180,7 +180,7 @@ tests/unit/**, tests/integration/**           테스트
   - `totalAmount`: 구매자가 실제로 결제한 금액(적립금 사용액을 **뺀 뒤**, 배송비가 생기면 포함). `rewardUsedAmount`: 이 주문에 쓴 적립금.
   - 적립 기준액은 `totalAmount`를 쓰지 않고 「할인 후 상품 금액(주문 품목 단가 × 수량 합)」으로 계산한다. 배송비는 빼고, 적립금으로 낸 금액은 빼지 않는다(대표님 결정 2026-10-03).
 - `OrderItem`: id, sellerId, orderId, productId, optionId, productNameSnapshot, optionNameSnapshot, unitPrice, quantity
-- `OrderConsent`: id, sellerId, orderId, kind(`OPENED_NO_REFUND`), noticeVersion, agreedAt(DB 시계) — **(orderId, kind) 유니크**. 결제 전 「개봉하면 취소·환불이 안 돼요」 동의 기록(대표님 결정 2026-10-02).
+- `OrderConsent`: id, sellerId, orderId, kind(`OPENED_NO_REFUND`), noticeVersion, agreedAt(DB 시계) — **(orderId, kind) 유니크**. 결제 전 개봉 고지 동의 기록(대표님 결정 2026-10-02, 문구 v2 「개봉하면 단순 변심으로는 취소·환불이 안 돼요. 상품이 설명과 다르거나 잘못 왔으면 환불받을 수 있어요」 2026-10-03 확정).
 - 주문 생성(`POST /api/shop/{slug}/orders`, 구매자 세션, 결제 대기까지 — 실제 PG 결제 호출 없음):
   - 동의 필수: `consent.agreed === true`(체크 기본 해제)와 화면이 보여 준 문구 버전(`noticeVersion`)이 지금 버전과 같아야 한다. 아니면 `400 consent_required`·`consent_outdated`, 주문을 만들지 않는다. 동의는 주문과 같은 트랜잭션에 기록.
   - 잠긴 판매자(체험하기·구독 끝)는 `402 shop_unavailable`, 문구 「지금은 쇼핑몰을 이용할 수 없어요」(판매자 사정은 드러내지 않음).
