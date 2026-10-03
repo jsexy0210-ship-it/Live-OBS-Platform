@@ -113,6 +113,20 @@ test("자동 취소·주문 막기를 끄면 저장되고, 다시 켤 수 있다
   await expect(page.getByRole("switch", { name: "기한이 지나면 자동 취소" })).toHaveAttribute("aria-checked", "true");
 });
 
+test("로그인이 풀린 뒤 저장하면 로그인으로 보내고, 로그아웃이 실패하면 화면에 남는다", async ({ page }) => {
+  await openAs(page, "demo-owner@example.com");
+  await page.route("**/api/seller/auth/logout", (r) => r.fulfill({ status: 500, contentType: "application/json", body: "{}" }));
+  await page.getByRole("button", { name: "로그아웃" }).click();
+  await expect(page.getByText("로그아웃하지 못했어요. 다시 시도해 주세요")).toBeVisible();
+  await expect(page).toHaveURL(/\/seller\/settings\/order$/);
+  await page.unroute("**/api/seller/auth/logout");
+
+  await page.context().clearCookies();
+  await page.getByRole("switch", { name: "미입금으로 3번 취소되면 30일 동안 주문 막기" }).click();
+  await save(page);
+  await expect(page).toHaveURL(/\/seller\/login\?next=%2Fseller%2Fsettings%2Forder$/);
+});
+
 test("쇼핑몰 설정 권한이 없는 직원은 권한 안내를 본다", async ({ page }) => {
   await openAs(page, "demo-viewer@example.com");
   await expect(page.getByText("이 기능은 권한이 필요해요")).toBeVisible();
