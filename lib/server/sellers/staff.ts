@@ -140,14 +140,23 @@ export async function updateStaffProfile(
   const phone = input.phone === undefined ? undefined : normalizeStaffPhone(input.phone);
   if (phone === false) return { ok: false, reason: "invalid_phone" };
   const value = await db.$transaction(async (tx) => {
-    const staff = await loadStaff(tx, ctx, input.staffUserId);
+    const found = await loadStaff(tx, ctx, input.staffUserId);
+    // 직원 행을 잠그고 다시 읽는다(직원 본인확인 연결과 같은 행 잠금). 그사이 연결이 끝났으면 그 상태를 보고 「다시 연결 필요」를 남긴다.
+    await tx.$queryRaw`SELECT 1 FROM "SellerUser" WHERE "id" = ${found.id}::uuid FOR UPDATE`;
+    const staff = await loadStaff(tx, ctx, found.id);
     const name = cleanName ?? staff.name;
     const nextPhone = phone === undefined ? staff.phone : phone;
     const phoneChanged = nextPhone !== staff.phone;
     const unlink = phoneChanged && staff.identityCiHash !== null;
     const updated = await tx.sellerUser.update({
       where: { id: staff.id },
-      data: { name, phone: nextPhone, ...(phoneChanged ? { identityCiHash: null, identityLinkedAt: null } : {}) },
+      data: {
+        name,
+        phone: nextPhone,
+        ...(phoneChanged ? { identityCiHash: null, identityLinkedAt: null } : {}),
+        // 연결돼 있던 직원만 「다시 연결 필요」로 남긴다
+        ...(unlink ? { identityUnlinkedAt: new Date() } : {}),
+      },
       select: { name: true, phone: true, identityLinkedAt: true },
     });
     await writeAudit(tx, {

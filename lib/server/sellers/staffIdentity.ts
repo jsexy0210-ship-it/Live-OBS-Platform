@@ -52,10 +52,20 @@ const sameName = (a: string | null, b: string) => {
   return x !== null && x === comparableName(b);
 };
 
-// 연결 상태(화면의 첫 로그인 안내·건너뛰기용)
-export async function staffLinkStatus(db: PrismaClient, ctx: TenantContext) {
+// 연결 상태(화면의 첫 로그인 안내·건너뛰기용, 로그인한 직원 본인만)
+// - available: 본인확인을 쓸 수 있는지(공급자 설정 또는 테스트 서버 모드)
+// - relinkRequired: 연결돼 있다가 대표자가 휴대폰 번호를 바꿔 풀린 상태
+// - registeredPhoneLast4: 대표자가 등록한 휴대폰 끝 4자리(전체 번호는 내보내지 않음)
+export async function staffLinkStatus(db: PrismaClient, ctx: TenantContext, available: boolean) {
   const user = await loadSelf(db, ctx);
-  return { phoneRegistered: user.phone !== null, linked: user.identityCiHash !== null };
+  const linked = user.identityCiHash !== null;
+  return {
+    available,
+    phoneRegistered: user.phone !== null,
+    registeredPhoneLast4: user.phone ? user.phone.slice(-4) : null,
+    linked,
+    relinkRequired: !linked && user.identityUnlinkedAt !== null,
+  };
 }
 
 // attemptKey(선택, 클라이언트 UUID): 응답이 끊겨 같은 직원·같은 키로 다시 보내면 같은 기록·같은 ownerToken을 돌려주고
@@ -147,7 +157,7 @@ export async function linkStaffIdentity(
     const [cur] = await tx.$queryRaw<{ name: string; phone: string | null; status: string }[]>`
       SELECT "name", "phone", "status"::text AS "status" FROM "SellerUser" WHERE "id" = ${user.id}::uuid FOR UPDATE`;
     const matches = !!cur && cur.status === "ACTIVE" && !!cur.phone && v.phone === cur.phone && sameName(v.name, cur.name);
-    const linked = matches ? await tx.sellerUser.updateMany({ where: { id: user.id }, data: { identityCiHash: v.ciHash, identityLinkedAt: now } }) : { count: 0 };
+    const linked = matches ? await tx.sellerUser.updateMany({ where: { id: user.id }, data: { identityCiHash: v.ciHash, identityLinkedAt: now, identityUnlinkedAt: null } }) : { count: 0 };
     await writeAudit(tx, {
       actorType: "SELLER_USER",
       actorId: user.id,
