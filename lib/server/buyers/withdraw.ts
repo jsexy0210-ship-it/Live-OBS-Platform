@@ -9,7 +9,7 @@ import { hashPassword, verifyPassword } from "../auth/password";
 // - 본인 확인으로 비밀번호를 다시 받는다. 틀리면 구매자 로그인 실패와 같은 문구·상태(401 invalid_credentials).
 //   같은 회원이 15분 안에 5번 틀리면 429 too_many_attempts로 막는다(buyer.withdraw_failed 감사 로그로 세고,
 //   회원별 advisory lock 아래에서 세고·확인하고·기록해 동시 요청에도 한도를 넘지 않는다).
-// - 진행 중인 주문(결제 대기, 결제 완료 뒤 구매 확정 전)이 있으면 막는다.
+// - 진행 중인 주문(결제 대기, 결제 완료 뒤 배송 완료 전 = 발송 전·배송 중·재고 부족 환불 대기)이 있으면 막는다.
 // - 주문·결제·환불 기록과 주문의 받는 사람 스냅숏은 그대로 둔다(전자상거래법 보관 의무).
 // - 이름·휴대폰·방송 닉네임·아이디(이메일)를 비식별 값으로 바꾸고 CI 해시는 비운다(같은 사람·같은 아이디·닉네임으로 다시 가입 가능).
 //   비밀번호는 아무도 모르는 값으로 바꾼다.
@@ -59,7 +59,7 @@ export async function withdrawBuyer(
       where: {
         sellerId: scope.sellerId,
         buyerMemberId: member.id,
-        OR: [{ status: "PENDING_PAYMENT" }, { status: "PAID", purchaseConfirmedAt: null }],
+        OR: [{ status: "PENDING_PAYMENT" }, { status: "PAID", OR: [{ shipment: null }, { shipment: { status: { not: "DELIVERED" } } }] }],
       },
     });
     if (busy > 0) return "orders_in_progress" as const;

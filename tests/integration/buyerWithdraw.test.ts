@@ -40,7 +40,8 @@ describe("구매자 탈퇴", () => {
       data: { sellerId: s.seller.id, buyerMemberId: s.buyer.id, recipientName: "김구매", phone: "01012345678", zipCode: "06236", address1: "주소 1", isDefault: true },
     });
     await s.order("REFUNDED");
-    await s.order("PAID", { purchaseConfirmedAt: new Date() });
+    const done = await s.order("PAID", { purchaseConfirmedAt: new Date() });
+    await db.shipment.create({ data: { sellerId: s.seller.id, orderId: done.id, courier: "CJ", trackingNumber: "123456789012", status: "DELIVERED", shippedAt: new Date(), deliveredAt: new Date() } });
     await db.rewardBalance.create({ data: { sellerId: s.seller.id, buyerMemberId: s.buyer.id, balance: 500 } });
     const res = await s.withdraw(PASSWORD);
     expect(res.status).toBe(200);
@@ -102,13 +103,13 @@ describe("구매자 탈퇴", () => {
     expect((await s.withdraw(PASSWORD)).status).toBe(200);
   });
 
-  it("진행 중인 주문(결제 대기, 결제 완료 뒤 구매 확정 전)이 있으면 409, 구매 확정·취소·환불된 주문만 있으면 탈퇴된다", async () => {
+  it("진행 중인 주문(결제 대기·발송 전·배송 중·재고 부족 환불 대기)이 있으면 409, 배송 완료·구매 확정·취소·환불된 주문만 있으면 탈퇴된다", async () => {
     for (const [status, extra, shipment, expected] of [
       ["PENDING_PAYMENT", {}, null, 409],
       ["PAID", {}, null, 409],
       ["PAID", {}, "IN_TRANSIT", 409],
       ["PAID", { stockShortageAt: new Date() }, null, 409],
-      ["PAID", {}, "DELIVERED", 409],
+      ["PAID", {}, "DELIVERED", 200],
       ["PAID", { purchaseConfirmedAt: new Date() }, "DELIVERED", 200],
       ["CANCELLED", {}, null, 200],
       ["REFUNDED", {}, "IN_TRANSIT", 200],
