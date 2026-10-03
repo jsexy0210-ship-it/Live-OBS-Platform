@@ -312,6 +312,7 @@ async function finalizeIdentity(db: PrismaClient, v: IdentityVerification, r: Id
 }
 
 // 휴대폰 본인확인 사용량: 이 쇼핑몰에서 성공한 구매자 가입 본인확인 건수(성공 1건 = 1). 주문 알림 문자 발송량과 따로 센다.
+// 비식별한(anonymizedAt) 성공 기록도 그대로 센다(정리해도 한도가 다시 차지 않게, buyers/signup.ts purgeUnfinishedSignupVerifications).
 export async function identityUsage(db: Db, sellerId: string): Promise<number> {
   return db.identityVerification.count({ where: { sellerId, purpose: "BUYER_SIGNUP", status: "VERIFIED" } });
 }
