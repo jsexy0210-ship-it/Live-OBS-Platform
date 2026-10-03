@@ -129,20 +129,26 @@ export default function ShippingSettingsPage() {
           ? `배송비 ${won(feeNum)} · ${won(overNum)} 이상 무료`
           : null;
 
-  const amountInput = (id: string, label: string, value: string, set: (v: string) => void, err: string | null, help: string) => (
+  // 금액 칸: 단위 「원」은 칸 안 오른쪽에 붙인다
+  const amountInput = (id: string, label: string, value: string, set: (v: string) => void, err: string | null, help?: string) => (
     <div className="fld">
       <label htmlFor={id}>{label}</label>
-      <input
-        id={id}
-        className={`inp num${err ? " is-error" : ""}`}
-        type="text"
-        inputMode="numeric"
-        value={value}
-        onChange={(e) => set(e.target.value)}
-        style={{ textAlign: "right" }}
-        aria-invalid={!!err}
-      />
-      {err ? <span className="err">{err}</span> : <span className="help">{help}</span>}
+      <div style={{ position: "relative" }}>
+        <input
+          id={id}
+          className={`inp num${err ? " is-error" : ""}`}
+          type="text"
+          inputMode="numeric"
+          value={value}
+          onChange={(e) => set(e.target.value)}
+          style={{ textAlign: "right", paddingRight: 36 }}
+          aria-invalid={!!err}
+        />
+        <span className="t-l2 c-alt amount-unit" aria-hidden="true">
+          원
+        </span>
+      </div>
+      {err ? <span className="err">{err}</span> : help ? <span className="help">{help}</span> : null}
     </div>
   );
 
@@ -199,8 +205,8 @@ export default function ShippingSettingsPage() {
                     </label>
                     {mode === m.key && m.key !== "free" && (
                       <div className="g3" style={{ paddingLeft: 30 }}>
-                        {amountInput("fee", "배송비", fee, setFee, shown.fee, "원")}
-                        {m.key === "threshold" && amountInput("free-over", "무료 배송 기준", freeOver, setFreeOver, shown.freeOver, "원 이상 주문이면 배송비 0원")}
+                        {amountInput("fee", "배송비", fee, setFee, shown.fee)}
+                        {m.key === "threshold" && amountInput("free-over", "무료 배송 기준", freeOver, setFreeOver, shown.freeOver, "이상 주문이면 배송비 0원")}
                       </div>
                     )}
                   </div>
@@ -212,7 +218,7 @@ export default function ShippingSettingsPage() {
                 <span className="t-c1 c-alt">
                   <b>무료 배송이어도 붙어요.</b> 우편번호로 자동 판별해요. 주문서와 주문 완료 화면에 「도서산간 추가」 줄로 따로 보여요.
                 </span>
-                <div className="g3">{amountInput("remote", "제주·도서산간 추가 배송비", remote, setRemote, shown.remote, "원 · 기본 3,000원 · 제주와 그 밖의 도서지역에 같은 금액이 붙어요")}</div>
+                <div className="g3">{amountInput("remote", "제주·도서산간 추가 배송비", remote, setRemote, shown.remote, "기본 3,000원 · 제주와 그 밖의 도서지역에 같은 금액이 붙어요")}</div>
               </section>
             </div>
 

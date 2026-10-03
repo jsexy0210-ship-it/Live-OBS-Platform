@@ -27,7 +27,7 @@
 - Next.js 최소 앱 (`app/layout.tsx`, `app/page.tsx`)
 - CI: typecheck + build, self-hosted 배포 워크플로 재유입 검사
 - 배포 워크플로: 없음
-- GitHub Secrets(대표님 등록, 값은 기록하지 않음): `NICEPAY_CLIENT_KEY`, `NICEPAY_SECRET_KEY`, `SWEETTRACKER_API_KEY`(스마트택배 배송 조회, 연동은 출시 후), `RESEND_MAIL_API`(Resend 메일 발송. 개발·테스트용, 운영 발송은 AWS SES 예정. 하루·월 무료 한도에 가까워지면 미리 알리고 넘으면 MASTER에 보고), `YOUTUBE_API_KEY`(YouTube Data API v3, 방송·실시간 채팅 조회. 하루 무료 할당량에 가까워지면 미리 알리고, 넘으면 MASTER에 보고)
+- GitHub Secrets(대표님 등록, 값은 기록하지 않음): `NICEPAY_CLIENT_KEY`, `NICEPAY_SECRET_KEY`, `SWEETTRACKER_API_KEY`(스마트택배 배송 조회, 연동은 출시 후), `RESEND_MAIL_API`(Resend 메일 발송. 개발·테스트용, 운영 발송은 AWS SES 예정. 하루·월 무료 한도에 가까워지면 미리 알리고 넘으면 MASTER에 보고), `BAROBILL_API_KEY`(바로빌 세금계산서·현금영수증 발행. 연동 전, 요금·판매자 명의 발행 조건 확인 필요), `YOUTUBE_API_KEY`(YouTube Data API v3, 방송·실시간 채팅 조회. 하루 무료 할당량에 가까워지면 미리 알리고, 넘으면 MASTER에 보고)
 - 테스트: 없음
 
 ## 미확인·미변경 (권한/범위 밖)
@@ -44,6 +44,9 @@
 
 - 상품 목록 재고 필터(`stock=out·low`)는 판매자 상품 전체를 GROUP BY로 고른 뒤 `id IN (...)`으로 거른다. 상품이 많아지면 SQL 하나로 합친다
 - 재고 이력 `stockAfter`는 이 기능 전 이력에서 null(화면은 표시하지 않음)
+- 휴대폰 본인확인: 포트원 V2 + KCP 어댑터(`lib/server/identity/portone.ts`)는 실제 호출 미검증(계약 전). 계약 뒤 요청·응답 필드, 인증번호 자릿수·유효시간·재전송 규칙, 오류 코드(`wrong_code` 판정)를 대행사 규격으로 맞추고 `lib/server/identity/verification.ts` 상수를 바꾼다
+- 구매자 가입 HTTP 라우트(본인확인 시작·확인·가입)가 아직 없음(`lib/server/buyers/signup.ts`·본인확인 함수만 있음). 붙일 때 `signupBuyer`가 공급자·방식을 확인하지 않으므로 `completeIdentityVerification`을 거치게 한다
+- 휴대폰 본인확인 다시 보내기는 공급자 실패 때도 1회가 소진됨(MASTER 검수에서 받아들임)
 - 실제 국세청·공정위 연동 때 정상 일치 사례로 대표자 이름·개업일 비교를 시험해야 함(지금은 가짜 공급자로만 검증)
 - 남의 사업자번호로 먼저 신청하면 진짜 대표는 같은 번호 중복으로 수동 검토로 감(앞 신청을 반려하면 풀림)
 - `reconcileStalePayments` 정기 실행 미연결(그 전까지 결제 확인이 안 된 청구가 남으면 해지가 409로 막힘)

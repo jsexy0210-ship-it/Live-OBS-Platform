@@ -58,8 +58,10 @@ export default function OrderSettingsPage() {
   const dueError =
     n === null ? "숫자만 입력해 주세요" : n < 1 ? "1 이상으로 적어 주세요 · 자동 취소를 끄려면 위 스위치를 꺼 주세요" : hours! > MAX_DUE_HOURS ? "입금 기한은 30일(720시간)까지 정할 수 있어요" : null;
   const saved = state.kind === "ok" ? state.saved : null;
+  // 자동 취소를 끄면 입금 기한 칸은 숨기고 검사하지 않는다. 틀린 값이면 저장된 값을 그대로 쓴다(버튼 상태도 같은 기준)
+  const effectiveHours = autoCancel || !dueError ? hours : saved?.paymentDueHours ?? null;
   const dirty =
-    !!saved && (saved.autoCancelEnabled !== autoCancel || saved.unpaidRestrictionEnabled !== restriction || saved.restockOnCancel !== restock || saved.paymentDueHours !== hours);
+    !!saved && (saved.autoCancelEnabled !== autoCancel || saved.unpaidRestrictionEnabled !== restriction || saved.restockOnCancel !== restock || saved.paymentDueHours !== effectiveHours);
 
   // 입금 기한 칸은 자동 취소를 꺼도 값을 남겨 둔다(다시 켤 때 그대로 쓰도록). 꺼져 있으면 검사하지 않고 저장된 값을 보낸다.
   const save = async () => {
@@ -72,7 +74,7 @@ export default function OrderSettingsPage() {
     setFailure(null);
     const body: Policy = {
       autoCancelEnabled: autoCancel,
-      paymentDueHours: autoCancel || !dueError ? hours! : saved.paymentDueHours,
+      paymentDueHours: effectiveHours!,
       unpaidRestrictionEnabled: restriction,
       restockOnCancel: restock,
     };
@@ -225,7 +227,7 @@ export default function OrderSettingsPage() {
                 <span className="t-c1 c-alt">꺼도 이미 막힌 구매자는 그대로예요. 풀어 주려면 구매 제한 화면에서 해제해요.</span>
                 {/* 3회 판정은 미입금 자동 취소가 돌아야 생긴다. 정기 실행이 연결되면 지운다 */}
                 <span className="t-c1 c-cau" data-testid="restriction-pending">
-                  아직 자동 취소가 돌지 않아서 주문 막기도 시작되지 않았어요. 자동 취소가 시작되면 함께 적용돼요.
+                  아직 자동 취소가 시작되지 않아서 주문 막기도 시작되지 않았어요. 자동 취소가 시작되면 함께 적용돼요.
                 </span>
               </section>
 

@@ -247,7 +247,7 @@ describe("판매자 대표자 제약 (대표자 1명당 쇼핑몰 1개)", () => 
 
 describe("본인인증 기록", () => {
   it("완료(VERIFIED) 기록에는 CI 해시와 완료 시각이 있어야 한다", async () => {
-    const base = { purpose: "BUYER_SIGNUP" as const, provider: "fake", expiresAt: new Date(Date.now() + 600_000) };
+    const base = { purpose: "BUYER_SIGNUP" as const, provider: "fake", method: "SMS" as const, expiresAt: new Date(Date.now() + 600_000) };
     await expect(db.identityVerification.create({ data: { ...base, requestId: "r1", status: "VERIFIED" } })).rejects.toThrow();
     await expect(
       db.identityVerification.create({
@@ -257,7 +257,7 @@ describe("본인인증 기록", () => {
   });
 
   it("같은 공급자의 같은 요청 id는 한 번만 기록", async () => {
-    const data = { purpose: "SELLER_REPRESENTATIVE" as const, provider: "fake", requestId: "dup", expiresAt: new Date() };
+    const data = { purpose: "SELLER_REPRESENTATIVE" as const, provider: "fake", method: "SMS" as const, requestId: "dup", expiresAt: new Date() };
     await db.identityVerification.create({ data });
     await expect(db.identityVerification.create({ data })).rejects.toMatchObject({ code: "P2002" });
   });

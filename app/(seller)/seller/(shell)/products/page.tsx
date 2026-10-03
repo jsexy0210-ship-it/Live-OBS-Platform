@@ -83,6 +83,9 @@ export default function ProductListPage() {
           </div>
           {canManage && (
             <div className="row" style={{ gap: 8 }}>
+              <Link className="btn btn-out" href="/seller/products/stock">
+                재고 관리
+              </Link>
               <Link className="btn" href="/seller/products/new">
                 상품 등록
               </Link>
