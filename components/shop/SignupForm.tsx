@@ -239,6 +239,11 @@ export default function SignupForm({ slug }: { slug: string }) {
       return;
     }
     setBusy(false);
+    signupFail(r);
+  };
+
+  // 가입 실패 처리(처음 요청과 재전송 공통): 칸 오류·안내·처음부터 다시
+  const signupFail = (r: Fail) => {
     if (commonFail(r)) return;
     const text = failMessage(r);
     switch (r.error) {
@@ -280,11 +285,18 @@ export default function SignupForm({ slug }: { slug: string }) {
     focus("shop-state-title");
   };
 
-  // 201이 아니면(다시 끊김·400 등) 완료로 보지 않는다. 기존 계정에 로그인되는지로 판단하지 않는다.
+  // 201이면 완료. 또 끊기거나 5xx면 결과를 알 수 없어 같은 요청으로 다시 시도하게 한다(기존 계정 로그인으로 판단하지 않는다).
+  // 그 밖의 4xx는 처음 요청이 처리되기 전에 끊긴 경우라 잠금을 풀고 처음 가입과 같은 오류 처리로 넘긴다.
   const resubmit = async (pending: { body: SignupBody; nickname: string }) => {
     const r = await api<{ broadcastNickname?: string }>(base, { method: "POST", body: pending.body });
+    // 포커스를 옮길 칸이 잠긴 채로 남지 않게 먼저 푼다
+    setBusy(false);
     if (r.ok) finish(r.data.broadcastNickname ?? pending.nickname);
-    else showNotice({ kind: "neg", text: "가입이 끝났는지 확인하지 못했어요. 다시 시도해 주세요" });
+    else if (r.status === 0 || r.status >= 500) showNotice({ kind: "neg", text: "가입이 끝났는지 확인하지 못했어요. 다시 시도해 주세요" });
+    else {
+      setUnconfirmed(null);
+      signupFail(r);
+    }
   };
 
   const retry = async () => {

@@ -402,29 +402,72 @@ test("가입 응답이 끊기면 같은 요청을 한 번 다시 보내고, 201�
   expect(logins).toBe(0);
 });
 
-test("재전송도 처리되지 않으면(400) 같은 아이디·비밀번호 계정이 있어도 완료로 가지 않는다", async ({ page }) => {
+test("재전송이 또 끊기거나 5xx면 완료로 가지 않고 같은 요청으로 다시 시도하게 한다", async ({ page }) => {
   await mockApi(page);
-  let signups = 0;
+  const bodies: unknown[] = [];
   await page.route((u) => u.pathname === API, (route) => {
-    signups++;
-    return signups === 1 ? route.abort() : route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ error: "verification_invalid", message: BUYER_SIGNUP_MESSAGES.verification_invalid }) });
+    bodies.push(route.request().postDataJSON());
+    return bodies.length === 1 ? route.abort() : route.fulfill({ status: 500, contentType: "application/json", body: "{}" });
   });
   // 예전 계정이 같은 비밀번호로 로그인되는 상황이어도 이번 가입 완료로 보지 않는다
-  await page.route((u) => u.pathname === `/api/shop/${SLUG}/auth/login`, (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) }),
-  );
+  let logins = 0;
+  await page.route((u) => u.pathname === `/api/shop/${SLUG}/auth/login`, (route) => {
+    logins++;
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
+  });
   await page.goto(`/shop/${SLUG}/signup`);
   await toVerified(page);
   await fillAccount(page, "xb", "별빛");
   await page.getByRole("button", { name: "가입하기" }).click();
   await expect(page.getByText("가입이 끝났는지 확인하지 못했어요. 다시 시도해 주세요")).toBeVisible();
   await expect(page.getByRole("button", { name: "가입하기" })).toBeDisabled();
-  expect(signups).toBe(2);
-  // 다시 시도도 같은 요청 재전송이고, 400이면 그대로 완료로 가지 않는다
   await page.getByRole("button", { name: "다시 시도" }).click();
-  await expect.poll(() => signups).toBe(3);
+  await expect.poll(() => bodies.length).toBe(3);
+  expect(bodies[2]).toEqual(bodies[0]);
   await expect(page.getByText("가입이 끝났는지 확인하지 못했어요. 다시 시도해 주세요")).toBeVisible();
   await expect(page.getByRole("heading", { name: "가입했어요" })).toHaveCount(0);
+  expect(logins).toBe(0);
+});
+
+test("재전송이 보통의 가입 오류(409 아이디 중복)면 칸 오류로 보여 주고 고쳐서 다시 가입할 수 있다", async ({ page }) => {
+  await mockApi(page);
+  const bodies: { loginId: string }[] = [];
+  await page.route((u) => u.pathname === API, (route) => {
+    bodies.push(route.request().postDataJSON());
+    if (bodies.length === 1) return route.abort();
+    if (bodies.length === 2) return route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ error: "login_id_taken", message: BUYER_SIGNUP_MESSAGES.login_id_taken }) });
+    return route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ ok: true, broadcastNickname: "별빛" }) });
+  });
+  await page.goto(`/shop/${SLUG}/signup`);
+  await toVerified(page);
+  await fillAccount(page, "xd", "별빛");
+  await page.getByRole("button", { name: "가입하기" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: BUYER_SIGNUP_MESSAGES.login_id_taken })).toBeVisible();
+  await expect(page.getByText("가입이 끝났는지 확인하지 못했어요")).toHaveCount(0);
+  const id = page.getByLabel("아이디 (이메일)");
+  await expect(id).toBeEnabled();
+  await expect.poll(() => focusedId(page)).toBe("acc-id");
+  await id.fill("buyer-xd2@example.com");
+  await page.getByRole("button", { name: "가입하기" }).click();
+  await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
+  expect(bodies[2].loginId).toBe("buyer-xd2@example.com");
+});
+
+test("재전송이 본인확인 무효(400)면 처음부터 다시 하게 한다", async ({ page }) => {
+  await mockApi(page);
+  let signups = 0;
+  await page.route((u) => u.pathname === API, (route) => {
+    signups++;
+    return signups === 1 ? route.abort() : route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ error: "verification_invalid", message: BUYER_SIGNUP_MESSAGES.verification_invalid }) });
+  });
+  await page.goto(`/shop/${SLUG}/signup`);
+  await toVerified(page);
+  await fillAccount(page, "xe", "별빛");
+  await page.getByRole("button", { name: "가입하기" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: BUYER_SIGNUP_MESSAGES.verification_invalid })).toBeVisible();
+  await expect(page.getByRole("button", { name: "인증번호 받기" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "가입했어요" })).toHaveCount(0);
+  expect(signups).toBe(2);
 });
 
 test("본인확인 결과 영역은 확인 응답이 준 이름·휴대폰을 보여 준다", async ({ page }) => {
