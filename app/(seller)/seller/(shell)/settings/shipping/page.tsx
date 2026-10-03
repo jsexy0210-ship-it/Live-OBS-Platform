@@ -283,7 +283,7 @@ export default function ShippingSettingsPage() {
               </div>
               <div className="card pad col" style={{ gap: 6 }}>
                 <span className="t-hl2">알아 두세요</span>
-                <span className="t-l2 c-neu">배송비는 결제 금액에 합산돼요. 발송 전에 환불하면 배송비까지 모두 돌려줘요. 발송 뒤 상품 불량 · 오배송이면 상품값과 처음 낸 배송비를 돌려주고, 단순 변심이면 반품 배송비를 빼고 돌려줘요. 이미 받은 주문의 배송비는 바뀌지 않아요.</span>
+                <span className="t-l2 c-neu">배송비는 결제 금액에 합산돼요. 배송 전 취소는 전액 돌려주고, 배송 후에는 판매자 잘못이면 처음 낸 배송비도 돌려줘요. 구매자 사정이면 반품 배송비를 빼고 돌려줘요. 이미 받은 주문의 배송비는 바뀌지 않아요.</span>
               </div>
               <button className="btn btn-lg btn-block" type="button" onClick={() => void save()} disabled={saving || !dirty}>
                 {saving ? "저장하고 있어요" : "저장"}
