@@ -4,7 +4,7 @@ import { POST as eventsRoute } from "../../app/api/internal/ops/events/route";
 import { GET as healthRoute } from "../../app/api/health/route";
 import { createAdminSession } from "../../lib/server/auth/session";
 import { prisma } from "../../lib/server/db";
-import { runScheduledJobs, type ScheduledJob } from "../../lib/server/jobs/scheduler";
+import { resetShutdownForTests, retireInstance, runScheduledJobs, type ScheduledJob } from "../../lib/server/jobs/scheduler";
 import { markInstanceRetired, opsInstanceName, opsMetrics, purgeRetiredHeartbeats, recordHeartbeat } from "../../lib/server/ops/metrics";
 import { createAdmin, db, resetDb } from "./helpers";
 
@@ -91,6 +91,31 @@ describe("heartbeat 보완(Codex)", () => {
     await recordHeartbeat(db, "scheduler.tick", "skipped", now, undefined, "web-old");
     expect((await opsMetrics(db)).heartbeats.map((h) => h.instance).sort()).toEqual(["web-new", "web-old", "web-stuck"]);
     expect((await import("../../lib/server/jobs/scheduler")).SCHEDULED_JOBS.map((j) => j.name)).toContain("ops_heartbeat.purge_retired");
+  });
+
+  it("종료 처리 중에 진행 중이던 실행이 끝나도 종료 표시가 되돌아가지 않고, 종료 뒤에는 새 실행·heartbeat를 쓰지 않는다", async () => {
+    vi.stubEnv("OPS_INSTANCE_NAME", "web-1");
+    try {
+      // 앞선 실행으로 heartbeat 행이 있다
+      await runScheduledJobs(db, new Date(), [{ name: "slow", run: async () => 0 }]);
+      let release!: () => void;
+      const gate = new Promise<void>((r) => (release = r));
+      let entered!: () => void;
+      const started = new Promise<void>((r) => (entered = r));
+      const running = runScheduledJobs(db, new Date(), [{ name: "slow", run: async () => { entered(); await gate; return 1; } }]);
+      await started;
+      const retiring = retireInstance(db, 2000);
+      setTimeout(release, 100);
+      await Promise.all([running, retiring]);
+      const rows = await db.opsHeartbeat.findMany({ where: { instance: "web-1" } });
+      expect(rows.length).toBeGreaterThan(0);
+      for (const r of rows) expect(r.retiredAt, r.job).not.toBeNull();
+      // 종료 뒤에는 돌지 않는다
+      expect(await runScheduledJobs(db, new Date(), [{ name: "slow", run: async () => 1 }])).toEqual([]);
+      expect((await db.opsHeartbeat.findMany({ where: { instance: "web-1" } })).every((r) => r.retiredAt !== null)).toBe(true);
+    } finally {
+      resetShutdownForTests();
+    }
   });
 
   it("같은 occurredAt의 열기·닫기는 늦게 들어온 쪽으로 정한다(한 번에 보내도, 따로 보내도)", async () => {

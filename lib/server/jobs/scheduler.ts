@@ -27,8 +27,23 @@ export const SCHEDULER_INTERVAL_MS = 3600_000;
 
 export type JobOutcome = { name: string; status: "done"; count: number } | { name: string; status: "skipped" } | { name: string; status: "failed"; error: string };
 
-// 한 번 돈다. 다른 인스턴스가 같은 작업을 돌고 있으면(잠금을 못 잡으면) 건너뛴다.
+// 종료 중 상태: 종료 신호를 받으면 새 실행과 heartbeat 쓰기를 막고, 진행 중인 실행이 끝나기를 기다린 뒤 종료 표시를 남긴다
+// (진행 중이던 실행이 나중에 heartbeat를 써서 종료 표시를 되돌리지 않게).
+const shutdown = { requested: false, inflight: new Set<Promise<unknown>>() };
+
+// 한 번 돈다. 다른 인스턴스가 같은 작업을 돌고 있으면(잠금을 못 잡으면) 건너뛴다. 종료 중이면 돌지 않는다.
 export async function runScheduledJobs(db: PrismaClient, now = new Date(), jobs: ScheduledJob[] = SCHEDULED_JOBS): Promise<JobOutcome[]> {
+  if (shutdown.requested) return [];
+  const run = runJobs(db, now, jobs);
+  shutdown.inflight.add(run);
+  try {
+    return await run;
+  } finally {
+    shutdown.inflight.delete(run);
+  }
+}
+
+async function runJobs(db: PrismaClient, now: Date, jobs: ScheduledJob[]): Promise<JobOutcome[]> {
   const out: JobOutcome[] = [];
   for (const job of jobs) {
     try {
@@ -54,6 +69,7 @@ export async function runScheduledJobs(db: PrismaClient, now = new Date(), jobs:
 }
 
 async function beat(db: PrismaClient, job: string, status: "done" | "skipped" | "failed", now: Date, error?: string) {
+  if (shutdown.requested) return;
   try {
     await recordHeartbeat(db, job, status, now, error);
   } catch (e) {
@@ -77,12 +93,27 @@ export function startScheduler(db: PrismaClient, intervalMs = SCHEDULER_INTERVAL
   return true;
 }
 
-// 정상 종료 신호를 받으면 이 인스턴스의 heartbeat에 종료 표시를 남긴다(최대 2초, 실패해도 종료는 막지 않음).
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms).unref?.());
+
+// 종료 처리: 새 실행·heartbeat 쓰기를 막고, 진행 중인 실행을 최대 waitMs 기다린 뒤 이 인스턴스의 heartbeat에 종료 표시를 남긴다.
+// 기다리는 동안 끝나지 않은 실행도 heartbeat를 쓰지 못하므로 표시는 그대로 남는다.
+export async function retireInstance(db: PrismaClient, waitMs = 2000): Promise<void> {
+  shutdown.requested = true;
+  await Promise.race([Promise.allSettled([...shutdown.inflight]), sleep(waitMs)]);
+  await Promise.race([markInstanceRetired(db, new Date()), sleep(waitMs)]);
+}
+
+// 시험에서만: 종료 상태를 처음으로 되돌린다
+export function resetShutdownForTests() {
+  shutdown.requested = false;
+}
+
+// 정상 종료 신호를 받으면 종료 처리(최대 약 4초, 실패해도 종료는 막지 않음).
 // 다른 종료 처리기(Next.js 등)가 없으면 표시를 남긴 뒤 같은 신호를 다시 보내 기본 동작(프로세스 종료)을 따른다.
 export async function retireOnSignal(db: PrismaClient, signal: NodeJS.Signals) {
   const others = process.listenerCount(signal) > 0;
   try {
-    await Promise.race([markInstanceRetired(db, new Date()), new Promise((r) => setTimeout(r, 2000).unref?.())]);
+    await retireInstance(db);
   } catch (e) {
     console.error(`[scheduler] retire mark failed: ${e instanceof Error ? e.message : String(e)}`);
   }
