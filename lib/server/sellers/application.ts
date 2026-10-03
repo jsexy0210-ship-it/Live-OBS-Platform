@@ -24,7 +24,8 @@ import {
 const VERIFY_WINDOW_MS = 30 * 60_000;
 const SLUG = /^[a-z0-9](?:[a-z0-9-]{1,28}[a-z0-9])$/;
 const RESERVED_SLUGS = new Set(["admin", "api", "app", "www", "master", "seller", "shop", "static", "help", "support", "login", "signup", "overlay"]);
-const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/;
+// 이메일 형식. 공백·제어·서식 문자(\p{C}, NUL 포함)는 받지 않는다(DB 오류 500 대신 형식 오류로).
+export const EMAIL = /^[^\s@\p{C}]{1,64}@[^\s@\p{C}]{1,190}\.[^\s@\p{C}]{2,}$/u;
 
 // 가입용 휴대폰 본인확인은 건당 비용이 들어 같은 접속 IP에서 하루(KST 자정 초기화) 10회까지만 시작한다(MASTER 결정 2026-10-03).
 export const SIGNUP_VERIFY_DAILY_LIMIT_PER_IP = 10;

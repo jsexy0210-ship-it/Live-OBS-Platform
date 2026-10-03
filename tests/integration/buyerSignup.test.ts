@@ -1,0 +1,212 @@
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { POST as loginRoute } from "../../app/api/shop/[slug]/auth/login/route";
+import { POST as signupRoute } from "../../app/api/shop/[slug]/signup/route";
+import { POST as confirmRoute } from "../../app/api/shop/[slug]/signup/verification/confirm/route";
+import { POST as resendRoute } from "../../app/api/shop/[slug]/signup/verification/resend/route";
+import { POST as startRoute } from "../../app/api/shop/[slug]/signup/verification/route";
+import { BUYER_SIGNUP_MESSAGES, BUYER_SIGNUP_VERIFY_DAILY_LIMIT_PER_IP, signupBuyer } from "../../lib/server/buyers/signup";
+import { prisma } from "../../lib/server/db";
+import { FakeIdentityProvider } from "../../lib/server/identity/provider";
+import { IDV_INPUT, confirmIdv, createSeller, db, resetDb, startIdv } from "./helpers";
+
+beforeAll(() => {
+  process.env.IDENTITY_HASH_KEY = "test-identity-hash-key-0123456789abcdef";
+});
+beforeEach(resetDb);
+afterAll(async () => {
+  await db.$disconnect();
+  await prisma.$disconnect();
+});
+
+const H = { "content-type": "application/json", host: "localhost:3000", origin: "http://localhost:3000" };
+const post = (url: string, body: unknown, cookie?: string) =>
+  new Request(`http://localhost:3000${url}`, { method: "POST", headers: { ...H, ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body) });
+const ctx = (slug: string) => ({ params: Promise.resolve({ slug }) });
+// 가입 요청에는 User-Agent를 붙여 감사 로그에 남는지 본다
+const withAgent = (url: string, body: unknown, cookie?: string) =>
+  new Request(`http://localhost:3000${url}`, {
+    method: "POST",
+    headers: { ...H, "user-agent": "signup-test-agent", ...(cookie ? { cookie } : {}) },
+    body: JSON.stringify(body),
+  });
+const cookieOf = (res: Response, name: string) => (res.headers.getSetCookie().find((c) => c.startsWith(`${name}=`)) ?? "").split(";")[0];
+
+async function shop() {
+  const { seller } = await createSeller();
+  const slug = seller.slug;
+  const base = `/api/shop/${slug}/signup`;
+  // 본인확인 시작 → 인증번호 확인까지 마친 브라우저(쿠키)와 요청 id
+  const verified = async (person: Partial<Record<keyof typeof IDV_INPUT, string>> = {}) => {
+    const s = await startRoute(post(`${base}/verification`, { ...IDV_INPUT, ...person }), ctx(slug));
+    expect(s.status).toBe(200);
+    const cookie = cookieOf(s, "lo_bidv");
+    const { verificationId } = await s.json();
+    const c = await confirmRoute(post(`${base}/verification/confirm`, { verificationId, code: "000000" }, cookie));
+    expect(c.status).toBe(200);
+    return { cookie, verificationId };
+  };
+  const signup = (v: { cookie?: string; verificationId: string }, body: Record<string, unknown> = {}) =>
+    signupRoute(
+      withAgent(base, { verificationId: v.verificationId, loginId: "buyer01@example.com", password: "pw-123456", broadcastNickname: "카드왕", agreedTerms: true, agreedPrivacy: true, ...body }, v.cookie),
+      ctx(slug),
+    );
+  return { seller, slug, base, verified, signup };
+}
+
+describe("구매자 가입 HTTP", () => {
+  it("본인확인 시작 → 인증번호 확인 → 가입하면 201로 바로 로그인되고, 이름·휴대폰은 본인확인 결과를 쓰며 동의를 기록한다", async () => {
+    const s = await shop();
+    const start = await startRoute(post(`${s.base}/verification`, IDV_INPUT), ctx(s.slug));
+    const flow = start.headers.getSetCookie().find((c) => c.startsWith("lo_bidv="))!;
+    expect(flow).toContain(`Path=/api/shop/${s.slug}/signup`);
+    expect(flow).toContain("HttpOnly");
+    const v = await s.verified({ name: "김구매", phone: "01099998888" });
+    const res = await s.signup(v);
+    expect(res.status).toBe(201);
+    expect(cookieOf(res, "lo_buyer")).toMatch(/^lo_buyer=.+/);
+    expect(cookieOf(res, "lo_bidv")).toBe("lo_bidv=");
+    const member = await db.buyerMember.findFirstOrThrow({ where: { sellerId: s.seller.id } });
+    expect(member).toMatchObject({ loginId: "buyer01@example.com", name: "김구매", phone: "01099998888", broadcastNickname: "카드왕" });
+    expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.signup", actorId: member.id } })).toMatchObject({
+      userAgent: "signup-test-agent",
+      after: { agreedTerms: true, agreedPrivacy: true },
+    });
+    // 로그인도 이메일 대소문자를 가리지 않는다
+    const login = await loginRoute(post(`/api/shop/${s.slug}/auth/login`, { loginId: "Buyer01@Example.COM", password: "pw-123456" }), ctx(s.slug));
+    expect(login.status).toBe(200);
+  });
+
+  it("입력이 틀리면 400과 문구를 주고 본인확인을 쓰지 않는다(고친 뒤 같은 본인확인으로 가입할 수 있다)", async () => {
+    const s = await shop();
+    const v = await s.verified();
+    for (const [body, code] of [
+      [{ loginId: "buyer01" }, "invalid_login_id"],
+      [{ loginId: "buyer@nodot" }, "invalid_login_id"],
+      [{ loginId: "a b@example.com" }, "invalid_login_id"],
+      [{ loginId: `${"a".repeat(250)}@example.com` }, "invalid_login_id"],
+      [{ password: "short" }, "weak_password"],
+      [{ broadcastNickname: "​" }, "invalid_nickname"],
+      [{ broadcastNickname: "닉".repeat(21) }, "invalid_nickname"],
+      [{ agreedTerms: false }, "terms_required"],
+      [{ agreedPrivacy: "true" }, "terms_required"],
+    ] as const) {
+      const r = await s.signup(v, body);
+      expect(r.status, JSON.stringify(body)).toBe(400);
+      expect(await r.json()).toEqual({ error: code, message: BUYER_SIGNUP_MESSAGES[code] });
+    }
+    expect((await db.identityVerification.findUniqueOrThrow({ where: { id: v.verificationId } })).consumedAt).toBeNull();
+    expect((await s.signup(v)).status).toBe(201);
+  });
+
+  it("254자 이메일은 가입·로그인 모두 되고, 255자는 가입 400(invalid_login_id)·로그인 400", async () => {
+    const s = await shop();
+    const email = (len: number) => `${"a".repeat(64)}@${"b".repeat(len - 64 - 1 - 5)}.test`;
+    expect(email(254)).toHaveLength(254);
+    const tooLong = await s.signup(await s.verified(), { loginId: email(255) });
+    expect(tooLong.status).toBe(400);
+    expect((await tooLong.json()).error).toBe("invalid_login_id");
+    const ok = await s.signup(await s.verified(), { loginId: email(254) });
+    expect(ok.status).toBe(201);
+    const login = (loginId: string) => loginRoute(post(`/api/shop/${s.slug}/auth/login`, { loginId, password: "pw-123456" }), ctx(s.slug));
+    expect((await login(email(254).toUpperCase())).status).toBe(200);
+    expect((await login(email(255))).status).toBe(400);
+  });
+
+  it("아이디에 NUL 같은 제어문자가 있으면 가입·로그인 모두 500이 아니라 400", async () => {
+    const s = await shop();
+    const v = await s.verified();
+    for (const loginId of ["x\u0000@example.com", "x@exa\u0007mple.com", "x\u200b@example.com"]) {
+      const r = await s.signup(v, { loginId });
+      expect(r.status, JSON.stringify(loginId)).toBe(400);
+      expect((await r.json()).error).toBe("invalid_login_id");
+      const login = await loginRoute(post(`/api/shop/${s.slug}/auth/login`, { loginId, password: "pw-123456" }), ctx(s.slug));
+      expect(login.status, JSON.stringify(loginId)).toBe(400);
+    }
+  });
+
+  it("본인확인을 마치지 않았거나, 시작한 브라우저가 아니거나, 이미 쓴 본인확인이면 가입할 수 없다", async () => {
+    const s = await shop();
+    const start = await startRoute(post(`${s.base}/verification`, IDV_INPUT), ctx(s.slug));
+    const pending = { cookie: cookieOf(start, "lo_bidv"), verificationId: (await start.json()).verificationId };
+    const r1 = await s.signup(pending);
+    expect(r1.status).toBe(409);
+    expect((await r1.json()).error).toBe("verification_pending");
+    const v = await s.verified({ name: "다른사람", birth7: "9001011" });
+    expect((await s.signup({ verificationId: v.verificationId })).status).toBe(400);
+    expect((await s.signup({ verificationId: v.verificationId, cookie: "lo_bidv=someone-else" })).status).toBe(400);
+    expect((await s.signup({ verificationId: "not-a-uuid", cookie: v.cookie })).status).toBe(400);
+    expect((await s.signup(v, { loginId: "first01@example.com" })).status).toBe(201);
+    const again = await s.signup(v, { loginId: "second01@example.com", broadcastNickname: "다른닉" });
+    expect(again.status).toBe(400);
+    expect((await again.json()).error).toBe("verification_invalid");
+  });
+
+  it("같은 사람(CI)은 같은 쇼핑몰에 한 번만, 아이디·방송 닉네임이 겹치면 409와 문구", async () => {
+    const s = await shop();
+    expect((await s.signup(await s.verified())).status).toBe(201);
+    const dup = await s.signup(await s.verified(), { loginId: "other01@example.com", broadcastNickname: "다른닉" });
+    expect(dup.status).toBe(409);
+    expect(await dup.json()).toEqual({ error: "already_member", message: BUYER_SIGNUP_MESSAGES.already_member });
+    // 대소문자만 다른 이메일도 같은 아이디로 본다(소문자로 맞춰 저장)
+    const idTaken = await s.signup(await s.verified({ name: "이몽룡", phone: "01011112222" }), { loginId: " BUYER01@example.com ", broadcastNickname: "새닉" });
+    expect(idTaken.status).toBe(409);
+    expect((await idTaken.json()).error).toBe("login_id_taken");
+    const nickTaken = await s.signup(await s.verified({ name: "성춘향", phone: "01033334444" }), { loginId: "new01@example.com" });
+    expect(nickTaken.status).toBe(409);
+    expect((await nickTaken.json()).error).toBe("nickname_taken");
+  });
+
+  it("인증번호 다시 보내기·확인은 이 쇼핑몰 가입 경로의 쿠키로만, 다른 브라우저의 요청 id는 404", async () => {
+    const s = await shop();
+    const start = await startRoute(post(`${s.base}/verification`, IDV_INPUT), ctx(s.slug));
+    const cookie = cookieOf(start, "lo_bidv");
+    const { verificationId } = await start.json();
+    expect((await resendRoute(post(`${s.base}/verification/resend`, { verificationId }, cookie))).status).toBe(429);
+    expect((await confirmRoute(post(`${s.base}/verification/confirm`, { verificationId, code: "000000" }, "lo_bidv=someone-else"))).status).toBe(404);
+    const wrong = await confirmRoute(post(`${s.base}/verification/confirm`, { verificationId, code: "987654" }, cookie));
+    expect(wrong.status).toBe(400);
+  });
+
+  it("없는 쇼핑몰은 404, 잠긴 쇼핑몰은 402, 인적사항이 틀리면 400, 같은 IP·같은 쇼핑몰 하루 10회를 넘으면 429", async () => {
+    const s = await shop();
+    expect((await startRoute(post(`/api/shop/nope/signup/verification`, IDV_INPUT), ctx("nope"))).status).toBe(404);
+    expect((await startRoute(post(`${s.base}/verification`, { ...IDV_INPUT, carrier: "SKY" }), ctx(s.slug))).status).toBe(400);
+    for (let i = 0; i < BUYER_SIGNUP_VERIFY_DAILY_LIMIT_PER_IP; i++) {
+      expect((await startRoute(post(`${s.base}/verification`, IDV_INPUT), ctx(s.slug))).status).toBe(200);
+    }
+    const limited = await startRoute(post(`${s.base}/verification`, IDV_INPUT), ctx(s.slug));
+    expect(limited.status).toBe(429);
+    expect(await limited.json()).toEqual({ error: "daily_limit_exceeded", message: BUYER_SIGNUP_MESSAGES.daily_limit_exceeded });
+    // 다른 쇼핑몰은 따로 센다
+    const other = await shop();
+    expect((await startRoute(post(`${other.base}/verification`, IDV_INPUT), ctx(other.slug))).status).toBe(200);
+    // 잠긴 쇼핑몰(체험 종료·구독 없음)
+    await db.seller.update({ where: { id: other.seller.id }, data: { trialEndsAt: new Date("2000-01-01T00:00:00Z") } });
+    const locked = await startRoute(post(`${other.base}/verification`, IDV_INPUT), ctx(other.slug));
+    expect(locked.status).toBe(402);
+  });
+});
+
+describe("signupBuyer는 completeIdentityVerification을 거친다", () => {
+  it("다른 공급자로 만든 본인확인 기록으로는 가입할 수 없다(공급자 확인)", async () => {
+    const provider = new FakeIdentityProvider();
+    const { seller } = await createSeller();
+    const { verification, ownerToken } = await startIdv(provider, { purpose: "BUYER_SIGNUP", sellerId: seller.id });
+    const done = await confirmIdv(provider, verification, ownerToken);
+    expect(done.ok).toBe(true);
+    await db.identityVerification.update({ where: { id: verification.id }, data: { provider: "portone" } });
+    expect(
+      await signupBuyer(db, provider, {
+        sellerId: seller.id,
+        verificationId: verification.id,
+        ownerToken,
+        loginId: "buyer01@example.com",
+        password: "pw-123456",
+        broadcastNickname: "닉",
+        agreedTerms: true,
+        agreedPrivacy: true,
+      }),
+    ).toEqual({ ok: false, reason: "verification_invalid" });
+    expect(await db.buyerMember.count()).toBe(0);
+  });
+});

@@ -55,6 +55,10 @@ tests/unit/**, tests/integration/**           테스트
 - 로그인 실패 잠금 없음(대표님 결정 2026-10-02). 실패는 감사 로그에 기록. IP 허용 목록·IP 기준 제한도 두지 않는다.
 - 접속 IP는 감사 로그 기록용으로만 쓰고, 신뢰 프록시를 거친 경우에만 `X-Forwarded-For`에서 얻는다(환경변수 `TRUSTED_PROXY_HOPS`, 기본 0 = 믿지 않음).
 - 로그인 성공·실패·차단은 감사 로그.
+- 구매자 가입(쇼핑몰 단위, `lib/server/buyers/signup.ts`):
+  - `POST /api/shop/{slug}/signup/verification` `{ name, phone, birth7, carrier, device? }`: 운영 중·잠기지 않은 쇼핑몰만(없으면 404, 잠기면 402). 같은 IP·같은 쇼핑몰 하루 10회(KST, 넘으면 429 `daily_limit_exceeded`). 첫 인증번호를 보내고 시작한 브라우저에만 `lo_bidv` 쿠키(경로 `/api/shop/{slug}/signup`)를 준다. 운영에 본인확인 설정이 없으면 503.
+  - `…/verification/resend`·`…/verification/confirm` `{ verificationId, code? }`: 판매자 가입과 같은 본인확인 단계(체험 중 성공 건수 한도 포함).
+  - `POST /api/shop/{slug}/signup` `{ verificationId, loginId, password, broadcastNickname, agreedTerms: true, agreedPrivacy: true }`: `completeIdentityVerification`(공급자·용도·쇼핑몰·ownerToken)을 거친 본인확인만 쓴다. 아이디는 이메일(형식 검사, 254자까지, 소문자로 맞춰 저장해 대소문자만 다른 중복을 막음, 로그인도 소문자로 맞춰 찾음), 비밀번호 8~200자, 방송 닉네임 1~20자, 필수 약관 동의(감사 로그 `buyer.signup`에 동의 기록). 이름·휴대폰·생년월일은 본인확인 결과. 같은 CI·아이디·닉네임은 409. 성공하면 201과 구매자 세션 쿠키(바로 로그인).
 - 판매자 비밀번호 찾기(대표님 지시 2026-10-02): 메일 링크 없이 **대표자 휴대폰 본인확인(문자)**으로만 한다.
   - 이메일+쇼핑몰+대표자 인적사항으로 시작(첫 인증번호 발송) → 인증번호 확인(`/confirm`) → `/verify`에서 결과 CI가 그 쇼핑몰 `Seller.representativeCiHash`와 같고 계정이 대표자(`isOwner`)일 때만 일회용·10분 재설정 권한(`PasswordResetGrant`, 토큰 해시 저장) 발급 → 새 비밀번호 저장, 그 계정의 기존 세션 모두 폐기.
   - 본인인증 건은 시작한 브라우저에만 준 일회용 값(`IdentityVerification.ownerTokenHash`, HttpOnly 쿠키)과 묶고, 한 번 쓰면 `consumedAt`으로 소진한다(구매자 가입도 같음).
