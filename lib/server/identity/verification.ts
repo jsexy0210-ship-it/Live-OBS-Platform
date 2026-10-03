@@ -123,7 +123,14 @@ async function ownedVerification(db: Db, provider: IdentityProvider, id: string,
   return v;
 }
 
-export type ResendResult = { ok: true } | { ok: false; reason: "not_found" | "expired" | "failed" | "already_verified" | "resend_too_soon" | "resend_limit" | "provider_error" };
+export type ResendResult =
+  | { ok: true }
+  | { ok: false; reason: "not_found" | "expired" | "failed" | "already_verified" | "resend_too_soon" | "resend_limit" | "provider_error" | "trial_limit_exceeded" };
+
+// 체험하기 중 구매자 가입 본인확인 한도가 이미 찼는지(문자를 보내기 전 미리 확인). 최종 확인은 확정할 때(finalizeIdentity) 잠금 아래에서 다시 한다.
+export async function buyerSignupIdentityLimitReached(db: Db, sellerId: string, now?: Date): Promise<boolean> {
+  return !(await checkTrialLimit(db, sellerId, "identity", { used: () => identityUsage(db, sellerId), adding: 1 }, now)).ok;
+}
 
 // 인증번호 다시 보내기. 간격·횟수 제한은 조건부 갱신으로 지켜 동시에 눌러도 한 번만 보낸다.
 export async function resendIdentityCode(db: PrismaClient, provider: IdentityProvider, id: string, owner: Owner, now = new Date()): Promise<ResendResult> {
@@ -138,6 +145,8 @@ export async function resendIdentityCode(db: PrismaClient, provider: IdentityPro
   if (v.sendCount === 0) return { ok: false, reason: "failed" };
   if (v.sendCount >= MAX_CODE_SENDS) return { ok: false, reason: "resend_limit" };
   if (v.lastSentAt && v.lastSentAt.getTime() + RESEND_INTERVAL_MS > now.getTime()) return { ok: false, reason: "resend_too_soon" };
+  // 한도가 찬 쇼핑몰이면 확정할 수 없으니 문자를 다시 보내지 않는다
+  if (v.purpose === "BUYER_SIGNUP" && v.sellerId && (await buyerSignupIdentityLimitReached(db, v.sellerId, now))) return { ok: false, reason: "trial_limit_exceeded" };
   const reserved = await db.identityVerification.updateMany({
     where: { id: v.id, status: "PENDING", sendCount: v.sendCount, lastSentAt: v.lastSentAt },
     data: { sendCount: { increment: 1 }, lastSentAt: now },
@@ -253,8 +262,8 @@ async function finalizeIdentity(db: PrismaClient, v: IdentityVerification, r: Id
       const current = await tx.identityVerification.findUniqueOrThrow({ where: { id: v.id } });
       if (current.status === "VERIFIED") return { ok: true as const, verification: current };
       if (current.status !== "PENDING") return { ok: false as const, reason: current.status === "EXPIRED" ? ("expired" as const) : ("failed" as const) };
-      const used = await identityUsage(tx, v.sellerId);
-      const limit = await checkTrialLimit(tx, v.sellerId, "identity", { used, adding: 1 }, now);
+      const sellerId = v.sellerId;
+      const limit = await checkTrialLimit(tx, sellerId, "identity", { used: () => identityUsage(tx, sellerId), adding: 1 }, now);
       if (!limit.ok) {
         await tx.identityVerification.updateMany({ where: { id: v.id, status: "PENDING" }, data: { status: "FAILED" } });
         return { ok: false as const, reason: "trial_limit_exceeded" as const };

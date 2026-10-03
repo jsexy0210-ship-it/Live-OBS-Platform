@@ -15,19 +15,20 @@ const COLUMN = { message: "trialMessageLimit", identity: "trialIdentityLimit", s
 
 export type TrialLimitResult = { ok: true } | { ok: false; reason: "trial_limit_exceeded"; limit: number };
 
-// 체험하기 중인 판매자만 한도를 본다. used = 지금까지 쓴 양, adding = 이번에 더할 양.
+// 체험하기 중인 판매자만 한도를 본다. used = 지금까지 쓴 양(세는 데 비용이 들면 함수로 넘겨 체험일 때만 센다), adding = 이번에 더할 양.
 export async function checkTrialLimit(
   db: PrismaClient | Prisma.TransactionClient,
   sellerId: string,
   kind: TrialLimitKind,
-  usage: { used: number; adding: number },
+  usage: { used: number | (() => Promise<number>); adding: number },
   now?: Date,
 ): Promise<TrialLimitResult> {
   if ((await sellerAccessFor(db, sellerId, now)) !== "trial") return { ok: true };
   const plan = await db.subscriptionPlan.findUnique({ where: { code: DEFAULT_PLAN_CODE } });
   if (!plan) return { ok: true };
   const limit = plan[COLUMN[kind]];
-  return usage.used + usage.adding <= limit ? { ok: true } : { ok: false, reason: "trial_limit_exceeded", limit };
+  const used = typeof usage.used === "function" ? await usage.used() : usage.used;
+  return used + usage.adding <= limit ? { ok: true } : { ok: false, reason: "trial_limit_exceeded", limit };
 }
 
 const isLimit = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 10_000_000;
