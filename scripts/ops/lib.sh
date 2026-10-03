@@ -94,9 +94,19 @@ deploy_mark_clear() { rm -f "$DEPLOY_MARK"; }
 # 갱신은 최대 OBS_DEPLOY_MARK_MAX_S(기본 1시간)까지만 한다. 스크립트가 멈춰 끝나지 않아도 그 뒤 15분이 지나면
 # 표시가 오래된 것으로 처리돼 감시가 다시 장애를 판단한다(스크립트는 죽이지 않고 로그만 남긴다).
 mark_deploying() {
-  deploy_mark_set "$1"
+  # 순서: 설정 검사 → 정리 trap 설치 → 표시 생성 → 갱신 시작. 표시를 만든 뒤에 실패해 표시만 남는 일이 없게 한다.
   local every="${OBS_DEPLOY_MARK_REFRESH_S:-60}" max="${OBS_DEPLOY_MARK_MAX_S:-3600}" parent=$$
   [[ "$every" =~ ^[1-9][0-9]*$ && "$max" =~ ^[1-9][0-9]*$ ]] || die "OBS_DEPLOY_MARK_REFRESH_S·OBS_DEPLOY_MARK_MAX_S는 1 이상 정수여야 해요."
+  DEPLOY_MARK_KEEPER=""
+  # 갱신 루프와 그 안의 sleep까지 끝낸 뒤 표시를 지운다.
+  # (set -e 아래에서 trap이 돌므로, 이미 끝난 프로세스를 kill하다 실패해도 표시 삭제까지 가도록 || true를 붙인다.)
+  # 루프의 자식(sleep)을 먼저 적어 두고 루프 → 자식 순으로 끝낸다(루프를 먼저 죽이면 sleep이 고아로 남음).
+  trap 'if [ -n "$DEPLOY_MARK_KEEPER" ]; then _kids="$(pgrep -P "$DEPLOY_MARK_KEEPER" || true)"; kill "$DEPLOY_MARK_KEEPER" 2>/dev/null || true; [ -z "$_kids" ] || kill $_kids 2>/dev/null || true; fi; deploy_mark_clear' EXIT
+  # TERM·INT·HUP로 끝날 때도 EXIT trap이 돌게 한다(기본 동작으로 죽으면 EXIT trap이 돌지 않아 표시가 15분 남음).
+  trap 'exit 143' TERM
+  trap 'exit 130' INT
+  trap 'exit 129' HUP
+  deploy_mark_set "$1"
   (
     start=$SECONDS
     while sleep "$every"; do
@@ -109,12 +119,6 @@ mark_deploying() {
     done
   ) </dev/null >/dev/null &
   DEPLOY_MARK_KEEPER=$!
-  # 갱신 루프와 그 안의 sleep까지 끝낸 뒤 표시를 지운다.
-  trap 'pkill -P "$DEPLOY_MARK_KEEPER" 2>/dev/null; kill "$DEPLOY_MARK_KEEPER" 2>/dev/null; deploy_mark_clear' EXIT
-  # TERM·INT·HUP로 끝날 때도 EXIT trap이 돌게 한다(기본 동작으로 죽으면 EXIT trap이 돌지 않아 표시가 15분 남음).
-  trap 'exit 143' TERM
-  trap 'exit 130' INT
-  trap 'exit 129' HUP
 }
 # 감시 수집기가 떠 있으면 지금 compose 정의(가용성 여부 포함)로 다시 만든다(감시 대상이 앱 수에 맞게 바뀜).
 refresh_monitor() {
