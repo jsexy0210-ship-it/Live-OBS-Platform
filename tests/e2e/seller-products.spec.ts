@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { RUN, cleanupProducts, track } from "./cleanup";
 
 // 판매자 로그인 → 상품 목록 → 등록 → 수정 → 숨김·삭제를 실제로 눌러 확인한다.
 // E2E_SCREENSHOTS=1이면 390·1440 화면을 tests/e2e/screenshots에 남긴다.
@@ -6,11 +7,13 @@ const PASSWORD = process.env.E2E_PASSWORD ?? "";
 const OWNER = "demo-owner@example.com";
 const VIEWER = "demo-viewer@example.com";
 const SHOTS = process.env.E2E_SCREENSHOTS === "1";
-const stamp = Date.now().toString(36);
+// 실행마다 다른 표식. 만든 상품은 track()으로 남겨 테스트가 끝나면 지운다
+const stamp = RUN;
 
 test.beforeAll(() => {
   if (!PASSWORD) throw new Error("E2E_PASSWORD가 없어요. dev-seed가 출력한 데모 비밀번호를 넣어 주세요");
 });
+test.afterAll(() => cleanupProducts(PASSWORD));
 
 async function shot(page: Page, name: string) {
   if (!SHOTS) return;
@@ -100,7 +103,7 @@ test("옵션 이름이 길고 많아도 목록 표가 카드 밖으로 넘치지
 });
 
 test("상품 등록 → 목록에 바로 보인다", async ({ page }) => {
-  const name = `e2e 부스터 팩 ${stamp}`;
+  const name = track(`e2e 부스터 팩 ${stamp}`);
   await login(page);
   await page.getByRole("link", { name: "상품 등록" }).first().click();
   await expect(page).toHaveURL(/\/seller\/products\/new$/);
@@ -147,7 +150,7 @@ test("상품명 100자를 넘기면 글자 수가 빨갛게 바뀌고 안내한�
   await expect(page.getByText("상품명은 100자까지 쓸 수 있어요")).toBeVisible();
 
   // 이모지 96개 + 실행마다 다른 글자 4개 = 100자라 서버도 받는다(실제로 등록해 목록에서 확인)
-  const name100 = "👍".repeat(96) + stamp.slice(-4);
+  const name100 = track("👍".repeat(96) + stamp.slice(-4));
   await page.getByLabel("상품명").fill(name100);
   await expect(page.getByTestId("name-count")).toHaveText("100/100");
   await expect(page.getByText("상품명은 100자까지 쓸 수 있어요")).toHaveCount(0);
@@ -188,7 +191,7 @@ test("상품 수정: 가격·재고를 바꾸면 저장되고 목록에도 반�
 });
 
 test("상품 삭제: 숨김을 먼저 권하고, 완전 삭제는 상품명을 넣어야 한다", async ({ page }) => {
-  const name = `e2e ${stamp} 삭제용`;
+  const name = track(`e2e ${stamp} 삭제용`);
   await login(page);
   await page.goto("/seller/products/new");
   await page.getByLabel("상품명").fill(name);
@@ -217,7 +220,7 @@ test("상품 삭제: 숨김을 먼저 권하고, 완전 삭제는 상품명을 �
 });
 
 test("판매가를 내리면서 추가 금액을 바꿔도 저장된다(중간 상태가 늘 올바른 순서)", async ({ page }) => {
-  const name = `e2e ${stamp} 가격 순서`;
+  const name = track(`e2e ${stamp} 가격 순서`);
   await login(page);
   await page.goto("/seller/products/new");
   await page.getByLabel("상품명").fill(name);
