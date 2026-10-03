@@ -351,6 +351,11 @@ model BuyerSession {
 
 // ───────────── 상품·옵션·재고 ─────────────
 
+enum StockDeductMode {
+  ORDER
+  PAYMENT
+}
+
 enum ProductStatus {
   DRAFT
   ON_SALE
@@ -359,15 +364,17 @@ enum ProductStatus {
 }
 
 model Product {
-  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerId    String        @db.Uuid
-  name        String
-  description String?
-  price       Int
-  status      ProductStatus @default(DRAFT)
-  sortOrder   Int           @default(0)
-  createdAt   DateTime      @default(now()) @db.Timestamptz(3)
-  deletedAt   DateTime?     @db.Timestamptz(3)
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId        String          @db.Uuid
+  name            String
+  description     String?
+  price           Int
+  status          ProductStatus   @default(DRAFT)
+  // 재고 차감 시점(카페24 방식, 대표님 결정 2026-10-03): ORDER=주문할 때, PAYMENT=결제 확인 때(기본)
+  stockDeductMode StockDeductMode @default(PAYMENT)
+  sortOrder       Int             @default(0)
+  createdAt       DateTime        @default(now()) @db.Timestamptz(3)
+  deletedAt       DateTime?       @db.Timestamptz(3)
 
   seller     Seller          @relation(fields: [sellerId], references: [id])
   images     ProductImage[]
@@ -435,6 +442,8 @@ model StockMovement {
   delta     Int
   reason    StockMovementReason
   orderId   String?             @db.Uuid
+  // 수동 증감 사유(MANUAL). 예) 「이벤트 증정」
+  note      String?
   actorType ActorType
   actorId   String?             @db.Uuid
   createdAt DateTime            @default(now()) @db.Timestamptz(3)
@@ -505,16 +514,19 @@ model Order {
 }
 
 model OrderItem {
-  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerId            String   @db.Uuid
-  orderId             String   @db.Uuid
-  productId           String   @db.Uuid
-  optionId            String   @db.Uuid
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId            String    @db.Uuid
+  orderId             String    @db.Uuid
+  productId           String    @db.Uuid
+  optionId            String    @db.Uuid
   productNameSnapshot String
   optionNameSnapshot  String
   unitPrice           Int
   quantity            Int
-  createdAt           DateTime @default(now()) @db.Timestamptz(3)
+  createdAt           DateTime  @default(now()) @db.Timestamptz(3)
+  // 이 품목의 재고를 뺀 시각(주문 때 또는 결제 때)과 되돌린 시각. 두 번 빼거나 두 번 되돌리지 않게 품목마다 남긴다.
+  stockDeductedAt     DateTime? @db.Timestamptz(3)
+  stockRestoredAt     DateTime? @db.Timestamptz(3)
 
   seller     Seller        @relation(fields: [sellerId], references: [id])
   order      Order         @relation(fields: [sellerId, orderId], references: [sellerId, id])
@@ -884,6 +896,8 @@ enum FulfillmentType {
 // 도서산간은 우편번호 범위 목록(remoteZipRanges: [[시작, 끝], ...])으로 판정한다.
 model SellerShippingPolicy {
   sellerId        String   @id @db.Uuid
+  // 무료 배송(0원) 유형. 켜면 기본 배송비·무료 기준을 쓰지 않고, 도서산간 추가비는 그대로 붙는다.
+  freeShipping    Boolean  @default(false)
   baseFee         Int      @default(3000)
   freeOverAmount  Int?
   remoteSurcharge Int      @default(3000)
@@ -939,10 +953,12 @@ model Shipment {
 // 판매자 주문 정책(판매자당 1행, 없으면 기본값). PRODUCT_SCOPE 「무통장 입금·구매 제한 기본값」.
 model SellerOrderPolicy {
   sellerId                   String    @id @db.Uuid
-  // 미입금 자동 취소 사용 여부와 기간(시간). 기본 사용·240시간(10일), 1~720시간(카페24 방식, 대표님 결정 2026-10-03).
+  // 미입금 자동 취소 사용 여부와 기간(시간). 기본 사용·24시간, 1~720시간(대표님 결정 2026-10-03).
   // 주문할 때 paymentDueAt을 정하는 데만 쓰고(끄면 기한 없음), 이미 만든 주문은 바꾸지 않는다.
   autoCancelEnabled          Boolean   @default(true)
-  paymentDueHours            Int       @default(240)
+  paymentDueHours            Int       @default(24)
+  // 취소·반품 때 재고 자동 복구(기본 켜짐). 결제 전 취소·미입금 자동 취소·발송 전 환불에 적용한다.
+  restockOnCancel            Boolean   @default(true)
   // 「미입금 자동 취소 3회 → 30일 주문 막기」
   unpaidRestrictionEnabled   Boolean   @default(true)
   // 꺼져 있다가 다시 켠 시각. 이 뒤의 자동 취소만 센다(MASTER 결정).
