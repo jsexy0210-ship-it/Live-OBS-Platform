@@ -86,7 +86,11 @@ export class FakeBrowserExecutor implements BrowserExecutor {
     }
   }
 
+  // 지운 작업 범위(tombstone). 지운 뒤 늦게 끝난 행동·닫기가 보관 자료를 되살리지 못하게 거부한다(계약).
+  readonly tombstones = new Set<string>();
+
   async discard(scope: JobScope): Promise<void> {
+    this.tombstones.add(scope.jobId);
     this.saved.delete(scope.jobId);
     // 행동 키 기록도 그 작업 것을 지운다
     for (const k of [...this.applied.keys()]) if (k.startsWith(`${scope.jobId}:`)) this.applied.delete(k);
@@ -145,6 +149,7 @@ export class FakeBrowserExecutor implements BrowserExecutor {
       },
       async perform(action, secrets, actionKey?: string): Promise<ActionOutcome> {
         secretsSeen = secrets;
+        if (self.tombstones.has(scope.jobId)) return { kind: "fatal", reason: "scope_discarded" };
         // 같은 키로 이미 성공한 행동은 다시 적용하지 않는다(계약)
         const done = actionKey ? self.applied.get(actionKey) : undefined;
         if (done) return done;
@@ -152,6 +157,8 @@ export class FakeBrowserExecutor implements BrowserExecutor {
         await sleep(self.delayMs);
         const o = self.outcome?.(scope, action);
         if (o) return o;
+        // 처리하는 사이 지워졌으면 결과를 남기지 않는다
+        if (self.tombstones.has(scope.jobId)) return { kind: "fatal", reason: "scope_discarded" };
         if (action.type === "navigate") jar.set("session", `${scope.sellerId}:${scope.jobId}`);
         const out: ActionOutcome =
           action.type === "step_done"
@@ -163,7 +170,7 @@ export class FakeBrowserExecutor implements BrowserExecutor {
       async close(opts) {
         self.live.delete(id);
         self.cookies.delete(id);
-        if (opts?.keepForResume) self.saved.set(scope.jobId, self.seal(scope.jobId, jar));
+        if (opts?.keepForResume && !self.tombstones.has(scope.jobId)) self.saved.set(scope.jobId, self.seal(scope.jobId, jar));
       },
     };
   }
@@ -199,7 +206,11 @@ export class FakeObsBridge implements ObsBridge {
   // 작업별로 로컬 도구가 들고 있는 OBS 연결 정보(연결 토큰). discard로 지운다.
   readonly connections = new Set<string>();
 
+  // 지운 작업 범위(tombstone). 지운 뒤에는 연결 정보·행동 키를 다시 남기지 않는다(계약).
+  readonly tombstones = new Set<string>();
+
   async discard(scope: JobScope): Promise<void> {
+    this.tombstones.add(scope.jobId);
     this.connections.delete(scope.jobId);
     for (const k of [...this.applied.keys()]) if (k.startsWith(`${scope.jobId}:`)) this.applied.delete(k);
     this.discarded.push(scope.jobId);
@@ -207,7 +218,7 @@ export class FakeObsBridge implements ObsBridge {
 
   async currentPairingId(scope: JobScope): Promise<string | null> {
     if (this.disconnected.has(scope.sellerId)) return null;
-    this.connections.add(scope.jobId);
+    if (!this.tombstones.has(scope.jobId)) this.connections.add(scope.jobId);
     const v = this.pairing.get(scope.sellerId);
     return v === undefined ? `pc-${scope.sellerId}` : v;
   }
@@ -218,6 +229,7 @@ export class FakeObsBridge implements ObsBridge {
 
   async perform(scope: JobScope, action: AutomationAction, actionKey?: string): Promise<ActionOutcome> {
     await sleep(this.delayMs);
+    if (this.tombstones.has(scope.jobId)) return { kind: "fatal", reason: "scope_discarded" };
     const done = actionKey ? this.applied.get(actionKey) : undefined;
     if (done) return done;
     const out = await this.apply(scope, action);

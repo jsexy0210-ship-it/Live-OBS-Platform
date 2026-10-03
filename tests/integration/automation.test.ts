@@ -1957,3 +1957,67 @@ describe("MASTER 보강(d47b9f0): 연습 정리 상한", () => {
     expect(await db.auditLog.count({ where: { action: "automation.practice_cleanup_needed" } })).toBe(1);
   });
 });
+
+describe("Codex 13차 반영(d47b9f0)", () => {
+  // 결제 행을 만드는 순간(구매 판단과 커밋 사이)에 다른 일이 끼어들게 한다
+  const interleaved = (before: () => Promise<void>) =>
+    db.$extends({
+      query: {
+        automationPayment: {
+          async create({ args, query }) {
+            await before();
+            return query(args);
+          },
+        },
+      },
+    }) as unknown as typeof db;
+
+  it("준비 상태 확인과 커밋 사이에 작업서 화면 이탈이 기록되면 결제를 제출하지 않고 shop_not_supported로 끝난다", async () => {
+    const other = await bought();
+    const s = await shopWithCard();
+    const provider = new FakeBillingProvider();
+    const raced = interleaved(async () => {
+      await db.automationJob.update({ where: { id: other.jobId }, data: { lastDeviationAt: new Date(), deviatedSteps: ["webhook_setup"] } });
+    });
+    expect(await purchaseAutomation(raced, provider, s.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP })).toEqual({ ok: false, reason: "shop_not_supported" });
+    expect(provider.charges).toHaveLength(0);
+    expect(await db.automationPayment.count({ where: { sellerId: s.seller.id } })).toBe(0);
+  });
+
+  it("진행 중인 외부 행동이 취소·정리 뒤에 끝나도 정리된 보관 자료(행동 키 기록·OBS 연결 정보)가 되살아나지 않는다", async () => {
+    const a = await bought();
+    const rt = runtime();
+    const perform = rt.obs.perform.bind(rt.obs);
+    rt.obs.perform = async (scope, action, actionKey) => {
+      if (action.type === "obs_add_overlay_source") {
+        // 실행기가 행동을 처리하는 도중에 판매자가 취소하고 서버가 보관 자료를 정리했다
+        await cancelJob(db, a.ctx, a.jobId);
+        expect(await purgeEndedBrowserState(db, rt)).toBe(1);
+      }
+      return perform(scope, action, actionKey);
+    };
+    await runOnce(db, rt, W);
+    expect([...rt.obs.applied.keys()].filter((k) => k.startsWith(a.jobId))).toHaveLength(0);
+    expect(rt.obs.connections.has(a.jobId)).toBe(false);
+    expect([...rt.browser.applied.keys()].filter((k) => k.startsWith(a.jobId))).toHaveLength(0);
+    expect(rt.browser.saved.has(a.jobId)).toBe(false);
+  });
+
+  it("유료 재설치 판단과 커밋 사이에 기존 설치가 완료돼 무료 재연결이 가능해지면 결제하지 않고 무료 재연결 안내로 바뀐다", async () => {
+    const a = await bought();
+    const target = { shopKey: `mall-${a.seller.id}`, obsPairingId: `pc-${a.seller.id}` };
+    const raced = interleaved(async () => {
+      await db.automationJob.update({
+        where: { id: a.jobId },
+        data: { status: "SUCCEEDED", finishedAt: new Date(), verifiedAt: new Date(), shopKey: target.shopKey, obsPairingId: target.obsPairingId, stepIndex: 5, leaseOwner: null, leaseExpiresAt: null, runStartedAt: null },
+      });
+    });
+    // 판단 시점: 첫 설치가 검증 중이라 완료된 설치가 없다 → 유료 재설치로 판단. 결제 행을 만드는 사이 첫 설치가 완료된다.
+    await db.automationJob.update({ where: { id: a.jobId }, data: { status: "VERIFYING", leaseOwner: "w", leaseExpiresAt: new Date(Date.now() + 60_000), runStartedAt: new Date() } });
+    const provider = new FakeBillingProvider();
+    const r = await reconnectAutomation(raced, provider, a.ctx, { idempotencyKey: newKey(), target, consent, shopUrl: SHOP });
+    expect(r).toEqual({ ok: false, reason: "free_reconnect_available" });
+    expect(provider.charges).toHaveLength(0);
+    expect(await db.automationJob.count({ where: { sellerId: a.seller.id, kind: "REINSTALL" } })).toBe(0);
+  });
+});

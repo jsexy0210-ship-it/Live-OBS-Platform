@@ -107,6 +107,8 @@ type FencedChange = {
   detail?: Record<string, unknown>;
   // 같은 트랜잭션에서 이어서 할 쓰기(예: 결제를 환불 처리 대기로)
   after?: (tx: Tx, cur: AutomationJob, now: Date) => Promise<void>;
+  // 행을 바꾸기 전에 잡을 잠금(구매 트랜잭션과 같은 순서로 잡아 교착을 피한다)
+  before?: (tx: Tx, cur: AutomationJob) => Promise<void>;
 };
 
 // 작업자의 모든 쓰기는 여기를 거친다. 토큰이 같고, 실행 중 상태이고, lease가 아직 살아 있을 때만 쓴다.
@@ -127,6 +129,7 @@ async function fencedWrite(
     const from = change.to ? sourcesOf(change.to).filter((s) => LEASED.includes(s)) : [...LEASED];
     // 실행 자리를 놓는 전이(대기·재시도·끝)면 이번에 쓴 실행 시간을 합계에 더한다
     const releasing = change.to && !LEASED.includes(change.to);
+    await change.before?.(tx, cur);
     const r = await tx.automationJob.updateMany({
       where: { id: c.jobId, fencingToken: c.token, status: { in: from }, ...(opts.allowExpiredLease ? {} : { leaseExpiresAt: { gt: now } }) },
       data: {
@@ -142,6 +145,15 @@ async function fencedWrite(
 }
 
 const RELEASE = { leaseOwner: null, leaseExpiresAt: null } as const;
+
+// 작업서 준비 상태 직렬화: 구매는 공유 잠금으로 준비 상태를 다시 계산하고, 화면 이탈 기록은 배타 잠금으로 쓴다(트랜잭션 끝까지).
+export const lockPlaybook = (tx: Tx, playbookId: string, mode: "shared" | "exclusive") =>
+  mode === "shared"
+    ? tx.$executeRaw`SELECT pg_advisory_xact_lock_shared(hashtext(${`automation_playbook:${playbookId}`}))`
+    : tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`automation_playbook:${playbookId}`}))`;
+
+// 판매자 단위 자동연결 직렬화: 유료 재설치 결제와 설치 완료 기록이 서로 끼어들지 않게 한다(무료 재연결 판정을 같은 잠금 안에서 다시 계산).
+export const lockSellerAutomation = (tx: Tx, sellerId: string) => tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`automation_seller:${sellerId}`}))`;
 
 // lease 연장 + 쓴 비용·실행 통계(판단 호출 수·작업서 행동 수·화면 이탈 단계) 기록
 export type TouchStats = { costUsed: number; plannerCalls?: number; playbookActions?: number; deviatedSteps?: string[]; deviatedNow?: boolean };
@@ -160,6 +172,8 @@ export const touch = (db: PrismaClient, c: Claim, stats: TouchStats, leaseMs: nu
       ...(stats.deviatedNow ? { lastDeviationAt: now } : {}),
       leaseExpiresAt: plus(now, leaseMs),
     },
+    // 화면 이탈 기록은 그 작업서의 배타 잠금을 잡고 커밋한다(진행 중인 구매가 준비 상태를 다시 계산하는 동안 끼어들지 않게)
+    ...(stats.deviatedNow && cur.playbookId ? { before: async (tx: Tx) => void (await lockPlaybook(tx, cur.playbookId!, "exclusive")) } : {}),
   }));
 
 // 다음 단계로. 이 단계에서 알게 된 연결 결과(쇼핑몰·OBS pairing)를 함께 남긴다.
@@ -254,6 +268,8 @@ export const finishJob = (db: PrismaClient, c: Claim, to: "SUCCEEDED" | "FAILED"
       ...(evidence ? { verifiedAt: now, verificationEvidence: evidence as Prisma.InputJsonValue, stepIndex: STEPS.length } : {}),
     },
     ...(reason ? { detail: { reason: reason.slice(0, 200) } } : {}),
+    // 설치 완료는 판매자 잠금을 잡고 커밋한다(유료 재설치 결제가 무료 재연결 판정을 다시 계산하는 동안 끼어들지 않게)
+    ...(to === "SUCCEEDED" ? { before: async (tx: Tx, cur: AutomationJob) => void (await lockSellerAutomation(tx, cur.sellerId)) } : {}),
   }));
 
 // lease가 끝난 실행 중 작업을 회수한다(작업자 중단·멈춤). 토큰을 올려 이전 작업자의 늦은 쓰기를 막는다.

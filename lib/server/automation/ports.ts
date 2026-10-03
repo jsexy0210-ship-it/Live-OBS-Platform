@@ -86,6 +86,8 @@ export interface BrowserExecutor {
   open(scope: JobScope): Promise<BrowserSession>;
   // 그 작업의 보관본(쿠키·저장소·자격증명·임시 파일)과 행동 키 기록을 지운다. 끝난 모든 작업(완료·취소·실패·마감)에 서버가
   // 한 번씩 요청한다(고객 대기가 없었던 작업 포함). 없으면 아무것도 안 한다. 지운 뒤에는 복원할 수 없다.
+  // 지운 범위에는 tombstone을 남겨, 그 뒤 늦게 끝난 행동·닫기(keepForResume 포함)가 보관본·행동 키를 다시 쓰는 것을 거부한다
+  // (행동 결과는 fatal "scope_discarded"). 정리가 진행 중인 실행보다 먼저 끝나도 자료가 되살아나지 않게 하는 규칙이다.
   discard(scope: JobScope): Promise<void>;
 }
 
@@ -97,6 +99,7 @@ export interface ObsBridge {
   currentPairingId(scope: JobScope): Promise<string | null>;
   // 이 작업의 OBS 연결 정보(로컬 도구 연결 토큰 등)와 행동 키 기록을 지운다. 고객 대기 중에는 암호화해 작업에만 묶어 두고,
   // 작업이 끝나면(완료·취소·실패·마감, 고객 대기가 없었던 작업 포함) 서버가 이것으로 바로 지운다. 지운 뒤에는 다시 쓸 수 없다.
+  // 지운 범위에는 tombstone을 남겨, 늦게 끝난 행동이 연결 정보·행동 키를 다시 남기지 않게 거부한다(결과는 fatal "scope_discarded").
   discard(scope: JobScope): Promise<void>;
 }
 

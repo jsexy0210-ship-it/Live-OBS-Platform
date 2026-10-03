@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { AutomationPracticeRun, PrismaClient } from "@prisma/client";
+import type { AutomationPracticeRun, Prisma, PrismaClient } from "@prisma/client";
 import { AUTOMATION_LIMITS, plannerConfig } from "./config";
 import { writeAudit } from "../audit/log";
 import { runSteps, type EngineStats } from "./engine";
@@ -148,7 +148,7 @@ export type Readiness = {
   avgCostWon: number | null;
 };
 
-export async function playbookReadiness(db: PrismaClient, playbook: Playbook, required = PRACTICE_STREAK_REQUIRED): Promise<Readiness> {
+export async function playbookReadiness(db: PrismaClient | Prisma.TransactionClient, playbook: Playbook, required = PRACTICE_STREAK_REQUIRED): Promise<Readiness> {
   const where = { playbookId: playbook.id, playbookVersion: playbook.version };
   const runs = await db.automationPracticeRun.findMany({ where, orderBy: { finishedAt: "desc" }, take: 100 });
   // 고객 작업에서 화면이 작업서와 달랐던 가장 최근 시각. 그 전의 연습 성공은 바뀐 화면을 검증하지 못했으므로 세지 않는다.
