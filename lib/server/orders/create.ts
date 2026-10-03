@@ -104,10 +104,11 @@ async function createInTransaction(
     await lockSellerOrders(tx, input.sellerId);
     // 잠금을 잡은 뒤의 실제 DB 시각(주문 시각·입금 기한·횟수 제한 창의 기준)
     const now = await dbClock(tx);
-    const member = await tx.buyerMember.findFirst({
-      where: { id: input.buyerMemberId, sellerId: input.sellerId, status: "ACTIVE", deletedAt: null },
-      select: { id: true, broadcastNickname: true },
-    });
+    // 회원 행을 공유 잠금으로 잡아, 주문을 쓰는 동안 탈퇴(buyers/withdraw, FOR UPDATE)가 끼어들지 못하게 한다
+    const [member] = await tx.$queryRaw<{ id: string; broadcastNickname: string }[]>`
+      SELECT "id", "broadcastNickname" FROM "BuyerMember"
+      WHERE "id" = ${input.buyerMemberId}::uuid AND "sellerId" = ${input.sellerId}::uuid AND "status" = 'ACTIVE' AND "deletedAt" IS NULL
+      FOR SHARE`;
     if (!member) return { ok: false as const, reason: "shop_unavailable" as const };
     // 구매 제한·횟수 제한은 같은 잠금 아래에서 세므로 동시 주문에도 한도를 넘지 않는다
     const restriction = await activeRestriction(tx, input.sellerId, member.id, now);
