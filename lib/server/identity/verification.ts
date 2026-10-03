@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { generateToken, hashToken } from "../auth/token";
 import { checkTrialLimit } from "../billing/trialLimits";
 import { cleanText } from "../text/clean";
+import { STAFF_NAME_MAX } from "../sellers/staffName";
 import { hashCi } from "./ciHash";
 import { CARRIERS, DEVICES, birthDateOf, type Carrier, type Device, type IdentityPerson, type IdentityProvider, type IdentityResult, type ProviderFailure } from "./provider";
 
@@ -52,7 +53,10 @@ export const newIdentityRequestId = () => randomBytes(16).toString("hex");
 
 // 인적사항 검사. 휴대폰번호는 숫자만 남긴다. 생년월일+성별 자리 7자리, 통신사(알뜰폰 포함), 화면 기기(PC·MOBILE, 없으면 MOBILE).
 // 주민번호 전체는 받지 않는다.
-// nameMax: 이름 최대 글자 수(기본 30, 직원 연결은 직원 이름 상한 STAFF_NAME_MAX와 같게).
+// 본인확인 이름 최대 글자 수: 직원 연결은 직원 이름 상한(STAFF_NAME_MAX), 나머지는 30. 시작(인적사항 검사)과 확인(결과 정리)이 같은 값을 쓴다.
+export const identityNameMax = (purpose: IdentityVerificationPurpose): number => (purpose === "STAFF_LINK" ? STAFF_NAME_MAX : 30);
+
+// nameMax: 이름 최대 글자 수(기본 30, 직원 연결은 identityNameMax("STAFF_LINK")).
 export function parseIdentityPerson(raw: unknown, nameMax = 30): IdentityPerson | null {
   if (!raw || typeof raw !== "object") return null;
   const b = raw as Record<string, unknown>;
@@ -272,7 +276,7 @@ export async function confirmIdentityCode(
 // 대행사 결과를 대조하고 VERIFIED로 확정한다(한 번만). 다른 요청·다른 용도·요청 때와 다른 휴대폰번호의 결과면 실패로 끝낸다.
 async function finalizeIdentity(db: PrismaClient, v: IdentityVerification, r: IdentityResultOk, now: Date): Promise<ConfirmResult> {
   // 공급자 결과도 입력과 같은 규칙으로 정리해 저장한다(이름: NFKC·앞뒤 공백·글자 검사, 휴대폰: 숫자만). 이름이 비거나 쓸 수 없으면 실패.
-  const name = cleanText(r.name, 30);
+  const name = cleanText(r.name, identityNameMax(v.purpose));
   if (!name || r.requestId !== v.requestId || r.purpose !== v.purpose || r.phone.replace(/\D/g, "") !== v.requestedPhone) {
     await db.identityVerification.updateMany({ where: { id: v.id, status: "PENDING" }, data: { status: "FAILED" } });
     return { ok: false, reason: "failed" };
