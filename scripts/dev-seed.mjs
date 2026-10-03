@@ -15,13 +15,15 @@ if (!dbName.endsWith("_test") || process.env.NODE_ENV === "production") {
 const password = process.env.DEV_SEED_PASSWORD || randomBytes(9).toString("base64url");
 const db = new PrismaClient();
 
+// 첫 상품은 짧은 이름(1줄), 다섯째는 100자 이름 — 줄 맞춤을 함께 확인한다
 const PRODUCTS = [
   { name: "스타라이트 부스터 박스", price: 189000, status: "ON_SALE", options: [["1박스 (36팩)", 0, 12], ["낱개 1팩", -183000, 260]] },
   { name: "문라이트 컬렉션 박스", price: 132000, status: "ON_SALE", options: [["1박스", 0, 5]] },
   { name: "드래곤 소울 부스터", price: 15000, status: "SOLD_OUT", options: [["1팩", 0, 0]] },
   { name: "탑로더 25장", price: 6000, status: "ON_SALE", options: [["1팩", 0, 3]] },
   {
-    name: "포켓몬 카드 게임 스칼렛 바이올렛 확장팩 레이징 서프 부스터 박스 30팩 세트 한글판 정품 미개봉 초회 생산 한정 프로모 카드 1장 동봉",
+    // 100자(최대 길이) 이름: 목록·카드 3줄 말줄임 확인용
+    name: "포켓몬 카드 게임 스칼렛 바이올렛 확장팩 레이징 서프 부스터 박스 30팩 세트 한글판 정품 미개봉 초회 생산 한정 프로모 카드 1장 동봉 특별 사은품 증정 2026 한정 추가 구성",
     price: 54000,
     status: "ON_SALE",
     options: [["1박스", 0, 40]],

@@ -88,21 +88,23 @@ body {
   box-shadow: inset 0 0 0 2px var(--brand);
 }
 
-/* 상품 목록: 한 줄 높이 고정. 상품명은 2줄까지, 넘치면 말줄임(가장 긴 이름 기준으로 줄 맞춤) */
+/* 상품 목록: 높이 고정. 상품명은 3줄까지, 넘치면 말줄임. 짧은 이름도 3줄 자리를 차지해 이미지·상품명·가격 시작 위치가 같다
+   (대표님 결정 2026-10-03) */
 .p-name {
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
   line-height: 20px;
-  min-height: 40px;
+  min-height: 60px;
   word-break: break-all;
 }
 .app a.p-name:hover {
   color: var(--wds-primary-normal);
 }
 .p-row td {
-  height: 76px;
+  height: 96px;
+  vertical-align: top;
 }
 .p-cards {
   display: none;
@@ -115,7 +117,7 @@ body {
   gap: 12px;
   align-items: flex-start;
   padding: 14px 16px;
-  min-height: 110px;
+  min-height: 126px;
   color: inherit;
   text-decoration: none;
   box-shadow: inset 0 -1px 0 var(--wds-line-normal-alternative);

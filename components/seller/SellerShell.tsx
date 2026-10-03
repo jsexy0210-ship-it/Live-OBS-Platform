@@ -8,32 +8,33 @@ import { api, type Me } from "./api";
 // 판매자 관리자 공통 틀: 왼쪽 메뉴(좁은 화면에서는 서랍) + 상단 바 + 이용 상태 배너.
 // 아직 만들지 않은 화면은 메뉴에서 흐리게 두고 누를 수 없게 한다.
 
-type Nav = { h: string } | { label: string; href?: string };
+// perm: 그 권한이 있어야 메뉴가 보인다. OWNER는 대표자 전용.
+type Nav = { h: string } | { label: string; href?: string; perm?: string };
 const NAV: Nav[] = [
   { h: "홈" },
   { label: "홈" },
   { h: "방송" },
-  { label: "방송 대시보드" },
+  { label: "방송 대시보드", perm: "BROADCAST_RUN" },
   { h: "판매" },
-  { label: "상품", href: "/seller/products" },
-  { label: "주문" },
-  { label: "입금 확인" },
-  { label: "배송" },
-  { label: "영수증 · 세금계산서" },
-  { label: "적립금" },
+  { label: "상품", href: "/seller/products", perm: "PRODUCT_MANAGE" },
+  { label: "주문", perm: "ORDER_SHIPPING" },
+  { label: "입금 확인", perm: "ORDER_SHIPPING" },
+  { label: "배송", perm: "ORDER_SHIPPING" },
+  { label: "영수증 · 세금계산서", perm: "RECEIPT_TAX" },
+  { label: "적립금", perm: "MEMBER_POINTS" },
   { label: "회원" },
   { label: "구매 제한" },
-  { label: "구매자 문의" },
+  { label: "구매자 문의", perm: "INQUIRY_REPLY" },
   { h: "방송 · 오버레이" },
-  { label: "오버레이 편집기" },
+  { label: "오버레이 편집기", perm: "OVERLAY_EDIT" },
   { label: "HIT 카드 이력" },
   { label: "방송 이력" },
   { h: "설정" },
-  { label: "쇼핑몰 설정" },
-  { label: "결제(PG) 연결" },
-  { label: "주문자 알림" },
-  { label: "구독 · 결제" },
-  { label: "직원 계정" },
+  { label: "쇼핑몰 설정", perm: "SHOP_SETTINGS" },
+  { label: "결제(PG) 연결", perm: "OWNER" },
+  { label: "주문자 알림", perm: "SHOP_SETTINGS" },
+  { label: "구독 · 결제", perm: "OWNER" },
+  { label: "직원 계정", perm: "OWNER" },
   { label: "공지 · 문의" },
   { label: "도우미" },
   { label: "내 계정" },
@@ -106,7 +107,9 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const can = (perm: string) => me.isOwner || me.permissions.includes(perm);
+  const can = (perm: string) => me.isOwner || (perm !== "OWNER" && me.permissions.includes(perm));
+  // 권한이 없는 메뉴는 숨기고, 안에 메뉴가 하나도 안 남은 묶음 제목도 숨긴다
+  const nav = NAV.filter((n) => !("label" in n) || !n.perm || can(n.perm)).filter((n, i, all) => !("h" in n) || (all[i + 1] !== undefined && !("h" in all[i + 1])));
 
   return (
     <Ctx.Provider value={{ me, trialDaysLeft, openNav: () => setNavOpen(true), can }}>
@@ -119,7 +122,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
               판매자
             </span>
           </Link>
-          {NAV.map((n, i) =>
+          {nav.map((n, i) =>
             "h" in n ? (
               <span key={i} className="nav-h">
                 {n.h}

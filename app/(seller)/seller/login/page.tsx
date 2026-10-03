@@ -5,14 +5,8 @@ import { useState } from "react";
 import { api } from "../../../../components/seller/api";
 
 // AU-002 판매자 로그인
-type Notice = { kind: "neg" | "info"; title: string; body?: string };
-
-const NOTICES: Record<string, Notice> = {
-  seller_pending: { kind: "info", title: "아직 가입 심사 중이에요.", body: "결과를 메일로 알려 드려요. 보통 2영업일 안에 끝나요." },
-  seller_suspended: { kind: "neg", title: "이용이 정지된 계정이에요.", body: "자세한 내용은 플랫폼 고객센터에 문의해 주세요." },
-  seller_closed: { kind: "neg", title: "이용이 끝난 쇼핑몰이에요.", body: "다시 쓰려면 플랫폼 고객센터에 문의해 주세요." },
-  account_disabled: { kind: "neg", title: "사용이 멈춘 계정이에요.", body: "대표자에게 계정을 다시 켜 달라고 요청해 주세요." },
-};
+// 실패 문구는 서버가 주는 message를 그대로 쓴다(정본: lib/server/auth/messages.ts). 심사 중만 안내 색으로 보여 준다.
+type Notice = { kind: "neg" | "info"; text: string };
 
 // 로그인 뒤에는 판매자 화면 안의 주소로만 돌려보낸다(다른 사이트로 넘기지 않음)
 function nextPath(): string {
@@ -47,10 +41,12 @@ export default function SellerLoginPage() {
       return;
     }
     setBusy(false);
-    if (r.error === "invalid_credentials") setFieldError("이메일 또는 비밀번호가 맞지 않아요");
-    else if (r.error === "shop_required") setNeedShop(true);
-    else if (NOTICES[r.error]) setNotice(NOTICES[r.error]);
-    else setNotice({ kind: "neg", title: "로그인하지 못했어요.", body: r.status === 0 ? "인터넷 연결을 확인해 주세요." : (r.message ?? "잠시 뒤 다시 시도해 주세요.") });
+    const text = r.message ?? (r.status === 0 ? "연결이 끊겼어요. 인터넷 연결을 확인해 주세요" : "로그인하지 못했어요. 잠시 뒤 다시 시도해 주세요");
+    if (r.error === "invalid_credentials") setFieldError(text);
+    else if (r.error === "shop_required") {
+      setNeedShop(true);
+      setNotice({ kind: "info", text });
+    } else setNotice({ kind: r.error === "seller_pending" ? "info" : "neg", text });
   };
 
   return (
@@ -69,9 +65,7 @@ export default function SellerLoginPage() {
         </div>
         {notice && (
           <div className={`msg msg-${notice.kind}`} role="alert">
-            <span>
-              <b>{notice.title}</b> {notice.body}
-            </span>
+            <span>{notice.text}</span>
           </div>
         )}
         <div className="fld">

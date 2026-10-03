@@ -42,7 +42,7 @@ test("비밀번호가 틀리면 안내하고 로그인하지 않는다", async (
   await page.getByLabel("이메일").fill(OWNER);
   await page.getByLabel("비밀번호").fill("wrong-password-x");
   await page.getByRole("button", { name: "로그인" }).click();
-  await expect(page.getByText("이메일 또는 비밀번호가 맞지 않아요")).toBeVisible();
+  await expect(page.getByText("이메일이나 비밀번호가 맞지 않아요")).toBeVisible();
   await expect(page).toHaveURL(/\/seller\/login/);
   await shot(page, "AU-002-error");
 });
@@ -55,9 +55,28 @@ test("상품 목록: 데모 상품·상태 배지·필터, 체험 배너가 보�
   await expect(rows.filter({ hasText: "스타라이트 부스터 박스" })).toBeVisible();
   await expect(rows.filter({ hasText: "탑로더 25장" }).getByText("재고 부족")).toBeVisible();
   await expect(rows.filter({ hasText: "드래곤 소울 부스터" }).getByText("품절")).toBeVisible();
-  // 목록 행 높이는 상품명 길이와 관계없이 같다
-  const heights = await rows.evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().height)));
-  expect(new Set(heights).size).toBe(1);
+  // 목록 행 높이와 상품명·가격 시작 위치는 상품명 길이(1줄 ~ 100자)와 관계없이 같고, 100자 이름은 3줄에서 말줄임된다
+  const layout = await rows.evaluateAll((els) =>
+    els.map((e) => {
+      const top = e.getBoundingClientRect().top;
+      const name = e.querySelector(".p-name")!;
+      const price = e.querySelector("td.num")!;
+      return {
+        h: Math.round(e.getBoundingClientRect().height),
+        name: Math.round(name.getBoundingClientRect().top - top),
+        price: Math.round(price.getBoundingClientRect().top - top),
+        nameH: Math.round(name.getBoundingClientRect().height),
+        len: name.textContent!.length,
+      };
+    }),
+  );
+  expect(new Set(layout.map((l) => l.h)).size).toBe(1);
+  expect(new Set(layout.map((l) => l.name)).size).toBe(1);
+  expect(new Set(layout.map((l) => l.price)).size).toBe(1);
+  // 상품명 칸은 짧은 이름도 100자 이름도 3줄(60px) 높이
+  expect(new Set(layout.map((l) => l.nameH))).toEqual(new Set([60]));
+  expect(layout.some((l) => l.len === 100)).toBe(true);
+  expect(layout.some((l) => l.len <= 12)).toBe(true);
   await shot(page, "SA-011-list");
 
   await page.getByRole("tab", { name: "숨김" }).click();
@@ -169,6 +188,11 @@ test("상품 권한이 없는 직원은 권한 안내를 본다", async ({ page 
   await login(page, VIEWER);
   await expect(page.getByText("이 기능은 권한이 필요해요")).toBeVisible();
   await expect(page.getByRole("link", { name: "상품 등록" })).toHaveCount(0);
+  // 권한이 없는 메뉴는 숨기고, 가진 권한(배송)과 대표자 전용 메뉴 구분을 따른다
+  const side = page.getByRole("complementary", { name: "판매자 메뉴" });
+  await expect(side.getByText("상품", { exact: true })).toHaveCount(0);
+  await expect(side.getByText("배송", { exact: true })).toBeVisible();
+  await expect(side.getByText("직원 계정", { exact: true })).toHaveCount(0);
   await shot(page, "SA-011-no-permission");
 });
 
@@ -179,8 +203,21 @@ test("휴대폰 폭(390)에서는 메뉴가 서랍으로 열리고 상품이 카
   await expect(page.getByTestId("product-row").first()).toBeHidden();
   // 가로 스크롤이 생기지 않는다
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
-  const heights = await page.getByTestId("product-card").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().height)));
-  expect(new Set(heights).size).toBe(1);
+  const cards = await page.getByTestId("product-card").evaluateAll((els) =>
+    els.map((e) => {
+      const name = e.querySelector(".p-name")!;
+      return {
+        h: Math.round(e.getBoundingClientRect().height),
+        name: Math.round(name.getBoundingClientRect().top - e.getBoundingClientRect().top),
+        len: name.textContent!.length,
+        clamped: name.scrollHeight > name.clientHeight + 1,
+      };
+    }),
+  );
+  expect(new Set(cards.map((c) => c.h)).size).toBe(1);
+  expect(new Set(cards.map((c) => c.name)).size).toBe(1);
+  // 100자 이름은 3줄에서 말줄임된다
+  expect(cards.find((c) => c.len === 100)?.clamped).toBe(true);
 
   await expect(page.getByRole("link", { name: "상품", exact: true })).not.toBeInViewport();
   await page.getByRole("button", { name: "메뉴 열기" }).click();
