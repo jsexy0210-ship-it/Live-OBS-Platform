@@ -109,7 +109,7 @@ services:
         bind:
           create_host_path: false
     healthcheck:
-      # heartbeat가 2분 넘게 안 바뀌면 감시가 멈춘 것
+      # heartbeat가 2분 넘게 안 바뀌면 감시가 멈춘 것(monitor.mjs가 간격을 60초, 확인 시간 제한을 30초 이하로 제한해 정상 틱은 그 안에 끝남)
       test: ["CMD", "node", "-e", "const h=require('/data/heartbeat.json');process.exit(Date.now()-h.epochMs<120000?0:1)"]
       interval: 30s
       timeout: 5s

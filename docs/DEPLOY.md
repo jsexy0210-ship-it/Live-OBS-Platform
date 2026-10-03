@@ -186,7 +186,7 @@ sudo -u obs nano /opt/obs/.env
 | `OBS_ENVIRONMENT` | 필수(obs-test) | **`test`**. 장애 주입·가용성 프로파일·무중단 배포 스크립트는 이 줄이 있을 때만 돌아요. 운영 서버에는 넣지 않아요 |
 | `OBS_MONITOR_TLS_HOST` | 선택 | 서버 감시가 인증서 만료일을 볼 주소(obs-test는 `test.on-aircue.com`) |
 | `OBS_ALERT_URL` | 선택 | 장애 알림을 받을 주소(웹훅). 알림 채널이 정해지기 전에는 비워 둬요(기록만 남아요) |
-| `OBS_MONITOR_INTERVAL_S` | 선택 | 감시 간격(기본 15초, 1 이상. 0·음수·숫자가 아니면 감시가 시작하지 않고 로그에 이유를 남겨요) |
+| `OBS_MONITOR_INTERVAL_S` | 선택 | 감시 간격(기본 15초, 1~60초. 범위 밖이거나 숫자가 아니면 감시가 시작하지 않고 로그에 이유를 남겨요) |
 
 `DATABASE_URL`과 `TRUSTED_PROXY_HOPS`(=1)는 compose가 만들어 넣어요. `.env`에 적지 않아요.
 `.env`를 바꾼 뒤에는 재배포(또는 `up -d`)해야 반영돼요.

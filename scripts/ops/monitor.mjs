@@ -23,11 +23,13 @@ import tls from "node:tls";
 const env = (k, d) => process.env[k] ?? d;
 // 숫자 설정: 비었으면 기본값, 숫자가 아니거나 최솟값보다 작으면 시작을 거부한다
 // (간격 0·음수면 쉬지 않고 확인을 반복하고, 시간 제한 0이면 모든 확인이 바로 실패하기 때문).
-function num(k, d, min, { int = false } = {}) {
+// 간격·시간 제한에는 상한도 둔다: compose healthcheck가 heartbeat 120초 경과를 멈춤으로 보므로
+// 한 틱(간격 ≤60초, 확인 ≤30초 + 알림 ≤간격/3)이 그 안에 끝나야 한다.
+function num(k, d, min, { int = false, max = Infinity } = {}) {
   const raw = process.env[k];
   const v = raw === undefined || raw.trim() === "" ? d : Number(raw);
-  if (!Number.isFinite(v) || v < min || (int && !Number.isInteger(v))) {
-    console.error(`[monitor] ${k}=${JSON.stringify(raw)} 값이 올바르지 않아 시작하지 않아요(${int ? "정수, " : ""}${min} 이상).`);
+  if (!Number.isFinite(v) || v < min || v > max || (int && !Number.isInteger(v))) {
+    console.error(`[monitor] ${k}=${JSON.stringify(raw)} 값이 올바르지 않아 시작하지 않아요(${int ? "정수, " : ""}${min} 이상${max < Infinity ? ` ${max} 이하` : ""}).`);
     process.exit(2);
   }
   return v;
@@ -43,8 +45,8 @@ const cfg = {
       const [url, host] = rest.split("#");
       return { name, url, host };
     }),
-  intervalS: num("MONITOR_INTERVAL_S", 15, 1),
-  timeoutMs: num("MONITOR_TIMEOUT_MS", 5000, 100),
+  intervalS: num("MONITOR_INTERVAL_S", 15, 1, { max: 60 }),
+  timeoutMs: num("MONITOR_TIMEOUT_MS", 5000, 100, { max: 30000 }),
   failThreshold: num("MONITOR_FAIL_THRESHOLD", 3, 1, { int: true }),
   // 배포 기록과 실행 버전이 이 횟수만큼 연속으로 다를 때만 경고(무중단 배포 중 잠깐 다른 것은 정상)
   versionMismatchTicks: num("MONITOR_VERSION_MISMATCH_TICKS", 3, 1, { int: true }),
