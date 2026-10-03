@@ -20,12 +20,19 @@ export async function recordHeartbeat(db: Db, job: string, status: "done" | "ski
   await db.opsHeartbeat.upsert({
     where: { instance_job: { instance, job } },
     create: { instance, job, lastRunAt: now, lastStatus: status, lastError: err, lastOkAt: status === "done" ? now : null },
-    // 다시 실행했으면 살아 있는 인스턴스다(종료 표시를 비운다)
+    // 종료 표시(retiredAt)는 여기서 절대 건드리지 않는다. 종료 뒤 늦게 커밋된 heartbeat가 표시를 되돌리지 않게,
+    // 표시를 비우는 곳은 인스턴스가 새로 시작할 때 한 번 부르는 registerInstance뿐이다.
     update:
       status === "skipped"
-        ? { lastRunAt: now, retiredAt: null }
-        : { lastRunAt: now, lastStatus: status, lastError: err, retiredAt: null, ...(status === "done" ? { lastOkAt: now } : {}) },
+        ? { lastRunAt: now }
+        : { lastRunAt: now, lastStatus: status, lastError: err, ...(status === "done" ? { lastOkAt: now } : {}) },
   });
+}
+
+// 인스턴스 등록: 프로세스가 새로 시작할 때 한 번(jobs/scheduler.ts startScheduler). 같은 이름으로 다시 뜬 인스턴스의 종료 표시를 비운다.
+export async function registerInstance(db: Db, instance = opsInstanceName()): Promise<number> {
+  const r = await db.opsHeartbeat.updateMany({ where: { instance, retiredAt: { not: null } }, data: { retiredAt: null } });
+  return r.count;
 }
 
 // 종료 표시: 인스턴스가 정상 종료할 때 자기 행 모두에 retiredAt을 남긴다(jobs/scheduler.ts 종료 신호 처리).

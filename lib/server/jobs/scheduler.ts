@@ -1,7 +1,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { purgeExpiredRejoinBlocks } from "../buyers/rejoin";
 import { purgeOldSignupVerificationIps, purgeUnfinishedSignupVerifications } from "../buyers/signup";
-import { markInstanceRetired, purgeRetiredHeartbeats, recordHeartbeat } from "../ops/metrics";
+import { markInstanceRetired, purgeRetiredHeartbeats, recordHeartbeat, registerInstance } from "../ops/metrics";
 
 // 앱 안 정기 실행(MASTER 결정 2026-10-03: 외부 cron 대신). instrumentation.ts register(nodejs 런타임)에서 startScheduler를 부른다.
 // - 일정 간격(기본 1시간)으로 SCHEDULED_JOBS를 차례로 돈다. 작업마다 pg advisory xact lock을 시도해 여러 인스턴스 중 하나만 실행한다.
@@ -82,6 +82,8 @@ const state = globalThis as unknown as { liveObsScheduler?: ReturnType<typeof se
 // 서버 시작 때 한 번. 같은 프로세스에서 다시 불러도(개발 핫 리로드) 하나만 둔다.
 export function startScheduler(db: PrismaClient, intervalMs = SCHEDULER_INTERVAL_MS): boolean {
   if (process.env.SCHEDULER_DISABLED === "1" || state.liveObsScheduler) return false;
+  // 같은 이름으로 다시 뜬 인스턴스면 종료 표시를 비운다(heartbeat 쓰기는 표시를 건드리지 않는다, ops/metrics.ts)
+  registerInstance(db).catch((e) => console.error(`[scheduler] register failed: ${e instanceof Error ? e.message : String(e)}`));
   const tick = () => {
     runScheduledJobs(db).catch((e) => console.error(`[scheduler] run failed: ${e instanceof Error ? e.message : String(e)}`));
   };
@@ -96,7 +98,7 @@ export function startScheduler(db: PrismaClient, intervalMs = SCHEDULER_INTERVAL
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms).unref?.());
 
 // 종료 처리: 새 실행·heartbeat 쓰기를 막고, 진행 중인 실행을 최대 waitMs 기다린 뒤 이 인스턴스의 heartbeat에 종료 표시를 남긴다.
-// 기다리는 동안 끝나지 않은 실행도 heartbeat를 쓰지 못하므로 표시는 그대로 남는다.
+// 이미 시작돼 나중에 커밋되는 heartbeat 쓰기가 있어도 recordHeartbeat는 종료 표시를 건드리지 않으므로 표시는 그대로 남는다.
 export async function retireInstance(db: PrismaClient, waitMs = 2000): Promise<void> {
   shutdown.requested = true;
   await Promise.race([Promise.allSettled([...shutdown.inflight]), sleep(waitMs)]);
