@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { safeNext } from "../../../../components/seller/PartnersAuth";
 import { api } from "../../../../components/seller/api";
 
 // AU-002 파트너스 관리자 로그인(정본: docs/IA.md AU-002, 대표님 결정 2026-10-03).
@@ -18,12 +19,6 @@ const TABS: { key: AccountType; label: string }[] = [
   { key: "owner", label: "대표자" },
   { key: "staff", label: "직원" },
 ];
-
-// 로그인 뒤에는 파트너스 화면 안의 주소로만 돌려보낸다(다른 사이트로 넘기지 않음)
-function nextPath(): string {
-  const next = new URLSearchParams(window.location.search).get("next");
-  return next && /^\/seller(\/[\w\-/]*)?$/.test(next) && next !== "/seller/login" ? next : "/seller/products";
-}
 
 export default function SellerLoginPage() {
   const router = useRouter();
@@ -71,7 +66,15 @@ export default function SellerLoginPage() {
       body: { email: email.trim(), password, accountType: tab, ...(needShop ? { shopSlug: shopSlug.trim() } : {}) },
     });
     if (r.ok) {
-      router.replace(nextPath());
+      // 직원은 본인확인을 연결하지 않았으면 연결 안내(AU-012)로 먼저 보낸다. 건너뛸 수 있고, 상태를 못 읽으면 그냥 들어간다
+      if (tab === "staff") {
+        const s = await api<{ phoneRegistered: boolean; linked: boolean }>("/api/seller/me/identity");
+        if (s.ok && !s.data.linked) {
+          router.replace(`/seller/identity-link?next=${encodeURIComponent(safeNext())}`);
+          return;
+        }
+      }
+      router.replace(safeNext());
       return;
     }
     setBusy(false);

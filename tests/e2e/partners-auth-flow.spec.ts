@@ -30,14 +30,16 @@ function businessNumber(): string {
   return [...n, (10 - (sum % 10)) % 10].join("");
 }
 
-async function fillIdentity(page: Page, name: string) {
+async function fillIdentity(page: Page, name: string, phone = "01012345678") {
   await page.getByLabel("이름", { exact: true }).fill(name);
   await page.getByLabel("생년월일").fill("19900101");
   await page.getByRole("button", { name: "남", exact: true }).click();
   await page.getByLabel("통신사").selectOption("SKT");
-  await page.getByLabel("휴대폰번호", { exact: true }).fill("01012345678");
+  await page.getByLabel("휴대폰번호", { exact: true }).fill(phone);
   await page.getByLabel("본인확인 약관에 모두 동의해요").check();
 }
+// 아이디·비밀번호 찾기 시작은 같은 휴대폰 하루 10회 한도라 찾기 확인마다 다른 번호를 쓴다(가짜 공급자 CI는 이름·생년월일로만 정해진다)
+const randomPhone = () => `010${String(Math.floor(Math.random() * 1e8)).padStart(8, "0")}`;
 
 // 인증번호 받기 → (틀린 번호 한 번) → 000000 확인
 async function verify(page: Page, wrongFirst = false, startPath = "/api/seller-signup/verification") {
@@ -208,4 +210,125 @@ test("비밀번호 찾기(직원 탭에서 옴): 본인확인이 등록된 직�
   expect((await res).status()).toBe(400);
   await expect(page.locator("#pa-notice")).toContainText("등록된 직원 정보와 맞지 않아요. 대표자에게 물어봐 주세요");
   await shot(page, "AU-003-staff-not-allowed");
+});
+
+// 대표자로 로그인한 화면에서 직원 계정을 만든다(SA-100 화면은 아직 없어 API로 만든다)
+async function createStaff(page: Page, staff: { email: string; name: string; password: string; phone: string }) {
+  const status = await page.evaluate(async (body) => {
+    const r = await fetch("/api/seller/staff", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    return r.status;
+  }, { ...staff, permissions: ["PRODUCT_MANAGE"] });
+  expect(status).toBe(201);
+}
+
+// 로그인 화면이 남아 있으면 로그아웃 뒤 401로 로그인 화면 이동이 다음 이동과 겹치므로 빈 화면으로 먼저 옮긴다
+async function signOut(page: Page) {
+  await page.goto("about:blank");
+  await page.context().clearCookies();
+}
+
+async function login(page: Page, tab: "대표자" | "직원", email: string, password: string) {
+  await page.goto("/seller/login");
+  await page.getByRole("tab", { name: tab }).click();
+  await page.getByLabel("이메일").fill(email);
+  await page.getByLabel("비밀번호").fill(password);
+  await page.getByRole("button", { name: "로그인" }).click();
+}
+
+test("아이디 찾기(대표자): 본인확인하면 가입한 이메일과 쇼핑몰 이름을 보여 주고, 고른 계정 비밀번호를 바꿀 수 있다", async ({ page }) => {
+  const a = await signup(page, { mailOrderNumber: "제2024-서울강남-01234호" });
+  await expect(page.getByRole("heading", { name: "가입을 마쳤어요" })).toBeVisible();
+  await page.context().clearCookies();
+
+  await page.goto("/seller/login");
+  await page.getByRole("link", { name: "아이디 찾기" }).click();
+  await expect(page).toHaveURL(/\/seller\/find-id$/);
+  await expect(page.getByText("쇼핑몰 대표자 본인 명의의 휴대폰으로 확인해요.")).toBeVisible();
+  await fillIdentity(page, a.name, randomPhone());
+  await shot(page, "AU-011");
+  const started = page.waitForRequest((r) => r.url().endsWith("/api/seller/find-id/start"));
+  await verify(page, false, "/api/seller/find-id/start");
+  expect(((await started).postDataJSON() as { accountType: string }).accountType).toBe("owner");
+  await expect(page.getByRole("heading", { name: "가입한 계정을 찾았어요" })).toBeVisible();
+  const row = page.getByTestId("fi-account");
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText(a.email);
+  await expect(row).toContainText(`카드숍 `);
+  // 계정이 하나면 미리 골라 둔다
+  await expect(row.getByRole("radio")).toBeChecked();
+  await shot(page, "AU-011-accounts");
+  await page.getByRole("button", { name: "고른 계정 비밀번호 바꾸기" }).click();
+  await expect(page.getByRole("heading", { name: "새 비밀번호를 정해요" })).toBeVisible();
+  await expect(page.getByText(a.email)).toBeVisible();
+  const next = `${a.password}-found`;
+  await page.getByLabel("새 비밀번호", { exact: true }).fill(next);
+  await page.getByLabel("새 비밀번호 확인").fill(next);
+  await page.getByRole("button", { name: "비밀번호 바꾸기" }).click();
+  await expect(page.getByRole("heading", { name: "비밀번호를 바꿨어요" })).toBeVisible();
+
+  await login(page, "대표자", a.email, next);
+  await expect(page).toHaveURL(/\/seller\/products$/);
+});
+
+test("직원: 로그인하면 본인확인 연결 안내가 뜨고, 나중에 할 수 있고, 연결하면 아이디 찾기에서 계정이 보인다", async ({ page }) => {
+  const a = await signup(page, { mailOrderNumber: "제2024-서울강남-01234호" });
+  await expect(page.getByRole("heading", { name: "가입을 마쳤어요" })).toBeVisible();
+  await page.getByRole("link", { name: "로그인하기" }).click();
+  await expect(page).toHaveURL(/\/seller\/login$/);
+  await login(page, "대표자", a.email, a.password);
+  await expect(page).toHaveURL(/\/seller\/products$/);
+  const id = uniq();
+  const s = { email: `staff-${id}@example.com`, name: `이${letters(id)}`, password: `pw-${id}-staff`, phone: randomPhone() };
+  await createStaff(page, s);
+  await signOut(page);
+
+  // 연결 전 직원은 로그인 뒤 연결 안내로 간다 → 나중에 할게요면 원래 가려던 화면으로
+  await login(page, "직원", s.email, s.password);
+  await expect(page).toHaveURL(/\/seller\/identity-link\?next=/);
+  await expect(page.getByRole("heading", { name: "본인확인을 연결해 주세요" })).toBeVisible();
+  await expect(page.getByText("휴대폰 번호가 바뀌면 다시 연결해 주세요.")).toBeVisible();
+  await shot(page, "AU-012");
+  await page.getByRole("button", { name: "나중에 할게요" }).click();
+  await expect(page).toHaveURL(/\/seller\/products$/);
+
+  // 연결 전에는 아이디 찾기에서 계정이 나오지 않는다
+  await signOut(page);
+  await page.goto("/seller/find-id?type=staff");
+  await expect(page.getByText("직원 본인 명의의 휴대폰으로 확인해요.")).toBeVisible();
+  await fillIdentity(page, s.name, s.phone);
+  await verify(page, false, "/api/seller/find-id/start");
+  await expect(page.getByRole("heading", { name: "맞는 계정이 없어요" })).toBeVisible();
+  await expect(page.getByText("등록된 직원 정보와 맞는 계정이 없어요. 대표자에게 물어봐 주세요")).toBeVisible();
+  await shot(page, "AU-011-staff-empty");
+
+  // 다시 로그인 → 등록 정보와 다른 이름은 문자 없이 거절 → 맞는 정보로 연결
+  await login(page, "직원", s.email, s.password);
+  await expect(page).toHaveURL(/\/seller\/identity-link\?next=/);
+  await fillIdentity(page, `박${letters(uniq())}`, s.phone);
+  const mismatch = page.waitForResponse((r) => r.url().endsWith("/api/seller/me/identity/start"));
+  await page.getByRole("button", { name: "인증번호 받기" }).click();
+  expect((await mismatch).status()).toBe(409);
+  await expect(page.getByText("등록된 직원 정보와 맞지 않아요. 대표자에게 물어봐 주세요")).toBeVisible();
+  await page.getByLabel("이름", { exact: true }).fill(s.name);
+  await verify(page, false, "/api/seller/me/identity/start");
+  await expect(page.getByRole("heading", { name: "본인확인을 연결했어요" })).toBeVisible();
+  await shot(page, "AU-012-done");
+  await page.getByRole("button", { name: "계속하기" }).click();
+  await expect(page).toHaveURL(/\/seller\/products$/);
+
+  // 연결한 뒤에는 로그인해도 안내가 뜨지 않는다
+  await signOut(page);
+  await login(page, "직원", s.email, s.password);
+  await expect(page).toHaveURL(/\/seller\/products$/);
+
+  // 아이디 찾기(직원 탭)에서 이 직원 계정이 쇼핑몰 이름과 함께 보인다
+  await signOut(page);
+  await page.goto("/seller/find-id?type=staff");
+  await fillIdentity(page, s.name, randomPhone());
+  const started = page.waitForRequest((r) => r.url().endsWith("/api/seller/find-id/start"));
+  await verify(page, false, "/api/seller/find-id/start");
+  expect(((await started).postDataJSON() as { accountType: string }).accountType).toBe("staff");
+  await expect(page.getByRole("heading", { name: "가입한 계정을 찾았어요" })).toBeVisible();
+  await expect(page.getByTestId("fi-account")).toHaveCount(1);
+  await expect(page.getByTestId("fi-account")).toContainText(s.email);
 });

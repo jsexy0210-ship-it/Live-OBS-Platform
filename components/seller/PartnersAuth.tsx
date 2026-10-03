@@ -11,6 +11,12 @@ export function useStaffType(): boolean {
 }
 export const withType = (path: string, staff: boolean) => (staff ? `${path}?type=staff` : path);
 
+// 로그인 뒤 돌아갈 주소(?next=). 파트너스 화면 안의 주소로만 돌려보낸다(다른 사이트로 넘기지 않음)
+export function safeNext(): string {
+  const next = new URLSearchParams(window.location.search).get("next");
+  return next && /^\/seller(\/[\w\-/]*)?$/.test(next) && next !== "/seller/login" && next !== "/seller/identity-link" ? next : "/seller/products";
+}
+
 // 로그인 밖 파트너스 화면(로그인 · 가입 신청 · 비밀번호 찾기) 공통 틀: 가운데 로고와 카드
 export function AuthFrame({ children, wide = false }: { children: React.ReactNode; wide?: boolean }) {
   const staff = useStaffType();
