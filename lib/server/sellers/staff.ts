@@ -6,15 +6,33 @@ import { MIN_PASSWORD_LENGTH } from "../auth/passwordReset";
 import { hashPassword } from "../auth/password";
 import { normalizeEmail } from "../auth/login";
 import { requireSellerPermission, type TenantContext } from "../tenant/context";
+import { cleanText } from "../text/clean";
 
 // 직원 관리(대표자 전용, STAFF_MANAGE). 대표자가 직원 계정을 직접 만들고 권한 항목을 켜고 끈다.
 // 같은 쇼핑몰 직원만 다루고(다른 쇼핑몰은 없음으로 처리), 대표자 계정은 대상이 아니다. 생성·권한 변경·비활성화는 감사 로그.
 
 type Meta = { ip?: string | null; userAgent?: string | null; now?: Date };
 
-const STAFF_FIELDS = { id: true, email: true, name: true, permissions: true, status: true, lastLoginAt: true, createdAt: true } as const;
+// 직원 이름 최대 글자 수(코드포인트). 만들기·고치기·본인확인 연결 비교가 모두 이 값을 쓴다(sellers/staffIdentity.ts).
+export const STAFF_NAME_MAX = 50;
+// 직원 이름 정규화: NFKC·앞뒤 공백 정리, 제어·서식 문자(폭 없는 공백 등)·빈칸처럼 보이는 글자 거부, 코드포인트 50자까지.
+// 저장하는 값과 연결 비교가 같은 기준이라, 저장한 이름은 본인확인 결과와 항상 같은 방식으로 비교된다. 맞지 않으면 null.
+export const cleanStaffName = (v: unknown): string | null => cleanText(v, STAFF_NAME_MAX);
 
-export type StaffFailure = "invalid_permissions" | "weak_password" | "email_taken" | "bad_request";
+const STAFF_FIELDS = { id: true, email: true, name: true, phone: true, identityLinkedAt: true, permissions: true, status: true, lastLoginAt: true, createdAt: true } as const;
+
+export type StaffFailure = "invalid_permissions" | "weak_password" | "email_taken" | "bad_request" | "invalid_phone";
+
+// 직원 휴대폰 번호: 숫자만 남겨 01로 시작하는 10~11자리. 빈 값·null은 「등록 안 함」(null), 형식이 틀리면 false.
+export function normalizeStaffPhone(raw: unknown): string | null | false {
+  if (raw === undefined || raw === null || raw === "") return null;
+  if (typeof raw !== "string") return false;
+  const digits = raw.normalize("NFKC").replace(/[ -]/g, "");
+  return /^01\d{8,9}$/.test(digits) ? digits : false;
+}
+
+// 감사 로그에는 번호 원문을 남기지 않는다(끝 4자리만)
+const maskPhone = (p: string | null) => (p ? `***${p.slice(-4)}` : null);
 export type StaffResult<T> = { ok: true; value: T } | { ok: false; reason: StaffFailure };
 
 function cleanPermissions(input: unknown): SellerStaffPermission[] | null {
@@ -24,17 +42,20 @@ function cleanPermissions(input: unknown): SellerStaffPermission[] | null {
 
 export async function listStaff(db: PrismaClient, ctx: TenantContext) {
   requireSellerPermission(ctx, "STAFF_MANAGE");
-  return db.sellerUser.findMany({
+  const rows = await db.sellerUser.findMany({
     where: { sellerId: ctx.sellerId, isOwner: false },
     orderBy: { createdAt: "asc" },
     select: STAFF_FIELDS,
   });
+  // 연결 CI 해시는 내보내지 않고 연결 여부만 준다
+  return rows.map(({ identityLinkedAt, ...r }) => ({ ...r, identityLinked: identityLinkedAt !== null }));
 }
 
 export async function createStaff(
   db: PrismaClient,
   ctx: TenantContext,
-  input: { email: string; name: string; password: string; permissions: unknown },
+  // phone: 직원 휴대폰(선택). 직원 셀프 아이디·비밀번호 찾기를 쓰려면 등록하고 직원이 본인확인으로 연결해야 한다.
+  input: { email: string; name: string; password: string; permissions: unknown; phone?: unknown },
   meta: Meta = {},
 ): Promise<StaffResult<{ id: string }>> {
   requireSellerPermission(ctx, "STAFF_MANAGE");
@@ -42,13 +63,15 @@ export async function createStaff(
   if (!permissions) return { ok: false, reason: "invalid_permissions" };
   if (input.password.length < MIN_PASSWORD_LENGTH) return { ok: false, reason: "weak_password" };
   const email = normalizeEmail(input.email);
-  const name = input.name.trim();
+  const name = cleanStaffName(input.name);
   if (!email.includes("@") || !name) return { ok: false, reason: "bad_request" };
+  const phone = normalizeStaffPhone(input.phone);
+  if (phone === false) return { ok: false, reason: "invalid_phone" };
   const passwordHash = await hashPassword(input.password);
   try {
     const staff = await db.$transaction(async (tx) => {
       const created = await tx.sellerUser.create({
-        data: { sellerId: ctx.sellerId, email, name, passwordHash, isOwner: false, permissions, createdAt: meta.now },
+        data: { sellerId: ctx.sellerId, email, name, phone, passwordHash, isOwner: false, permissions, createdAt: meta.now },
         select: STAFF_FIELDS,
       });
       await writeAudit(tx, {
@@ -58,7 +81,7 @@ export async function createStaff(
         action: "seller.staff.create",
         targetType: "SellerUser",
         targetId: created.id,
-        after: { email, name, permissions },
+        after: { email, name, phone: maskPhone(phone), permissions },
         ip: meta.ip,
         userAgent: meta.userAgent,
       });
@@ -104,6 +127,48 @@ export async function updateStaffPermissions(
     });
   });
   return { ok: true, value: { permissions } };
+}
+
+// 직원 이름·휴대폰 고치기(대표자 전용). 기존 직원(휴대폰 없음)도 나중에 채울 수 있다. 보낸 칸만 바꾼다(phone: null·""이면 지움).
+// 휴대폰 번호가 바뀌면 연결된 CI를 지워 직원이 다시 본인확인으로 연결해야 한다(번호가 다른 사람에게 넘어가도 복구되지 않게).
+// 로그인·권한은 그대로다(연결은 셀프 찾기에만 쓴다, MASTER 2026-10-04).
+export async function updateStaffProfile(
+  db: PrismaClient,
+  ctx: TenantContext,
+  input: { staffUserId: string; name?: unknown; phone?: unknown },
+  meta: Meta = {},
+): Promise<StaffResult<{ name: string; phone: string | null; identityLinked: boolean }>> {
+  requireSellerPermission(ctx, "STAFF_MANAGE");
+  const cleanName = input.name === undefined ? undefined : cleanStaffName(input.name);
+  if (cleanName === null) return { ok: false, reason: "bad_request" };
+  const phone = input.phone === undefined ? undefined : normalizeStaffPhone(input.phone);
+  if (phone === false) return { ok: false, reason: "invalid_phone" };
+  const value = await db.$transaction(async (tx) => {
+    const staff = await loadStaff(tx, ctx, input.staffUserId);
+    const name = cleanName ?? staff.name;
+    const nextPhone = phone === undefined ? staff.phone : phone;
+    const phoneChanged = nextPhone !== staff.phone;
+    const unlink = phoneChanged && staff.identityCiHash !== null;
+    const updated = await tx.sellerUser.update({
+      where: { id: staff.id },
+      data: { name, phone: nextPhone, ...(phoneChanged ? { identityCiHash: null, identityLinkedAt: null } : {}) },
+      select: { name: true, phone: true, identityLinkedAt: true },
+    });
+    await writeAudit(tx, {
+      actorType: ctx.actorType,
+      actorId: ctx.actorId,
+      sellerId: ctx.sellerId,
+      action: "seller.staff.profile",
+      targetType: "SellerUser",
+      targetId: staff.id,
+      before: { name: staff.name, phone: maskPhone(staff.phone), identityLinked: staff.identityCiHash !== null },
+      after: { name, phone: maskPhone(nextPhone), identityLinked: updated.identityLinkedAt !== null, identityUnlinked: unlink },
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+    });
+    return { name: updated.name, phone: updated.phone, identityLinked: updated.identityLinkedAt !== null };
+  });
+  return { ok: true, value };
 }
 
 // 비활성화: 로그인할 수 없게 하고 기존 세션을 모두 끊는다.

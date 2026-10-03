@@ -52,10 +52,11 @@ export const newIdentityRequestId = () => randomBytes(16).toString("hex");
 
 // 인적사항 검사. 휴대폰번호는 숫자만 남긴다. 생년월일+성별 자리 7자리, 통신사(알뜰폰 포함), 화면 기기(PC·MOBILE, 없으면 MOBILE).
 // 주민번호 전체는 받지 않는다.
-export function parseIdentityPerson(raw: unknown): IdentityPerson | null {
+// nameMax: 이름 최대 글자 수(기본 30, 직원 연결은 직원 이름 상한 STAFF_NAME_MAX와 같게).
+export function parseIdentityPerson(raw: unknown, nameMax = 30): IdentityPerson | null {
   if (!raw || typeof raw !== "object") return null;
   const b = raw as Record<string, unknown>;
-  const name = cleanText(b.name, 30);
+  const name = cleanText(b.name, nameMax);
   const phone = typeof b.phone === "string" ? b.phone.normalize("NFKC").replace(/[ -]/g, "") : "";
   const birth7 = typeof b.birth7 === "string" ? b.birth7.normalize("NFKC").replace(/[ -]/g, "") : "";
   const carrier = typeof b.carrier === "string" && (CARRIERS as readonly string[]).includes(b.carrier) ? (b.carrier as Carrier) : null;

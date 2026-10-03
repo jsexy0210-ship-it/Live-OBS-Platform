@@ -147,7 +147,8 @@ describe("판매자 비밀번호 찾기 (대표자 휴대폰 본인확인)", () 
       expect(await resetSellerPassword(db, { grantToken, newPassword: NEW_PASSWORD })).toEqual({ ok: false, reason: "invalid_grant" });
       await db.sellerUser.update({ where: { id: owner.id }, data: { isOwner: true } });
       await passwordUnchanged(owner.email);
-      expect((await db.auditLog.findFirstOrThrow({ where: { action: "auth.seller.password_reset.failed", reason: "not_owner" } })).actorId).toBe(owner.id);
+      // 대표자가 아니게 되면 직원 기준(연결 CI)으로 보는데, 연결 CI가 없어 거부된다
+      expect((await db.auditLog.findFirstOrThrow({ where: { action: "auth.seller.password_reset.failed", reason: "staff_not_linked" } })).actorId).toBe(owner.id);
     });
 
     it("그사이 계정이 비활성화되면 거부", async () => {
@@ -188,11 +189,11 @@ describe("판매자 비밀번호 찾기 (대표자 휴대폰 본인확인)", () 
     expect(await db.passwordResetGrant.count()).toBe(0);
   });
 
-  it("직원 계정은 대표자 CI로 인증해도 거부", async () => {
+  it("직원 계정은 대표자 CI로 인증해도 거부(본인확인을 연결하지 않은 직원은 셀프 재설정 불가)", async () => {
     const { seller, manager } = await shop();
     const { grant } = await grantFor(manager.email, seller.slug, "REP-CI");
     expect(grant).toEqual({ ok: false, reason: "reset_not_allowed" });
-    expect((await db.auditLog.findFirstOrThrow({ where: { action: "auth.seller.password_reset.failed" } })).reason).toBe("not_owner");
+    expect((await db.auditLog.findFirstOrThrow({ where: { action: "auth.seller.password_reset.failed" } })).reason).toBe("staff_not_linked");
   });
 
   it("없는 계정도 시작 응답 모양이 같고, 결과는 같은 거부", async () => {
@@ -315,7 +316,8 @@ describe("비밀번호 찾기 시작 횟수 (쇼핑몰당 하루 10회, KST 자�
     const b = await shop("CI-B");
     for (let i = 0; i < 10; i++) await startSellerPasswordReset(db, provider, { email: a.owner.email, shopSlug: a.seller.slug, person: REP });
     expect((await startSellerPasswordReset(db, provider, { email: a.owner.email, shopSlug: a.seller.slug, person: REP })).ok).toBe(false);
-    expect((await startSellerPasswordReset(db, provider, { email: b.owner.email, shopSlug: b.seller.slug, person: REP })).ok).toBe(true);
+    // 같은 휴대폰 하루 10회 한도(아이디 찾기와 합산)와 섞이지 않게 b는 다른 번호로 시작한다
+    expect((await startSellerPasswordReset(db, provider, { email: b.owner.email, shopSlug: b.seller.slug, person: { ...REP, phone: "01033334444" } })).ok).toBe(true);
   });
 
   it("동시에 몰려도 10회를 넘지 않는다", async () => {
