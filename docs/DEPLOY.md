@@ -258,8 +258,9 @@ DB 컨테이너가 없으면(`down` 뒤 등, 배포 워크플로가 「DB 컨테
 ```bash
 cd /opt/obs/src && C="docker compose -p obs-web -f deploy/docker-compose.yml --env-file /opt/obs/.env"
 # 백업
-$C exec -T obs-web-db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > /opt/obs/backups/obs-$(TZ=Asia/Seoul date +%Y%m%d-%H%M).dump
-chmod 600 /opt/obs/backups/*.dump
+# 끝까지 성공했을 때만 .dump 이름으로 바꿔요(중간에 실패하면 잘린 파일이 백업처럼 남지 않게)
+f=/opt/obs/backups/obs-$(TZ=Asia/Seoul date +%Y%m%d-%H%M).dump
+(umask 077; $C exec -T obs-web-db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$f.part") && mv "$f.part" "$f" && echo "백업: $f" || { rm -f "$f.part"; echo "백업 실패"; }
 # 복구(현재 DB를 지우고 백업 시점으로 다시 만들어요. 백업 뒤에 생긴 표·데이터도 남지 않아요)
 $C stop obs-web-app
 $C exec -T obs-web-db sh -c 'psql -U "$POSTGRES_USER" -d postgres -v ON_ERROR_STOP=1 -c "DROP DATABASE \"$POSTGRES_DB\" WITH (FORCE)" -c "CREATE DATABASE \"$POSTGRES_DB\""'
