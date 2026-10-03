@@ -1,6 +1,7 @@
 import { expect, request, test, type Page } from "@playwright/test";
 import { SIGNUP_CONSENT_VERSIONS } from "../../lib/server/buyers/consent";
 import { BUYER_SIGNUP_MESSAGES } from "../../lib/server/buyers/signup";
+import { setMemberPolicyInDb } from "./memberPolicyDb";
 import { IDENTITY_ERROR_MESSAGES } from "../../lib/server/identity/messages";
 
 // SH-011 구매자 회원가입 흐름 — 개발 서버(가짜 본인확인 공급자, 인증번호 000000)에서 돈다(playwright.config.ts 「dev」).
@@ -167,6 +168,8 @@ test("인적사항을 서버 형식(birth7·통신사)으로 바꿔 보낸다", 
     agreedPrivacy: true,
     termsVersion: SIGNUP_CONSENT_VERSIONS.terms,
     privacyVersion: SIGNUP_CONSENT_VERSIONS.privacy,
+    // 선택 마케팅 수신 동의도 본인확인 전에 받는다(체크 안 함)
+    agreedMarketing: false,
   });
 });
 
@@ -613,23 +616,30 @@ test("완료 문구의 닉네임은 가입 응답의 broadcastNickname을 쓴다
   await expect(page.getByText("이제 주문할 수 있어요. 방송에서는 서버닉네임 닉네임으로 보여요.")).toBeVisible();
 });
 
-test("마케팅 정보 수신은 선택이고, 체크 여부를 agreedMarketing으로 그대로 보낸다", async ({ page }) => {
+test("마케팅 정보 수신은 선택이고 본인확인 전에 받는다: 체크 여부를 본인확인 시작 요청의 agreedMarketing으로, 동의하면 문서 버전도 보낸다", async ({ page }) => {
   for (const agree of [false, true]) {
     await page.unrouteAll();
     await mockApi(page);
     await page.goto(`/shop/${SLUG}/signup`);
-    await toVerified(page);
-    await page.getByLabel("아이디 (이메일)").fill("buyer-mk@example.com");
-    await page.getByLabel("비밀번호").fill("pw-mk-long");
-    await page.getByLabel("방송 닉네임").fill("별빛");
+    await fillIdentity(page, "김구매");
     const marketing = page.getByLabel("(선택) 마케팅 정보 수신");
-    // 기본은 해제
+    // 기본은 해제이고, 「필수 약관에 모두 동의해요」로 같이 체크되지 않는다
     await expect(marketing).not.toBeChecked();
-    // 필수 동의는 본인확인 전에 받았고, 여기서는 선택 항목만 고른다
     if (agree) await marketing.check();
+    const startReq = page.waitForRequest((r) => r.url().endsWith(`${API}/verification`) && r.method() === "POST");
+    await page.getByRole("button", { name: "인증번호 받기" }).click();
+    const startBody = (await startReq).postDataJSON();
+    expect(startBody.agreedMarketing).toBe(agree);
+    expect(startBody.marketingVersion).toBe(agree ? SIGNUP_CONSENT_VERSIONS.marketing : undefined);
+    await page.getByLabel("인증번호").fill("000000");
+    await page.getByRole("button", { name: "확인", exact: true }).click();
+    await expect(page.getByText("본인확인을 마쳤어요")).toBeVisible();
+    // 계정 단계에는 마케팅 체크가 없고, 가입 본문에도 동의 값을 보내지 않는다
+    await expect(page.getByLabel("(선택) 마케팅 정보 수신")).toHaveCount(0);
+    await fillAccount(page, "mk", "별빛");
     const req = page.waitForRequest((r) => r.url().endsWith(API) && r.method() === "POST");
     await page.getByRole("button", { name: "가입하기" }).click();
-    expect((await req).postDataJSON().agreedMarketing).toBe(agree);
+    expect((await req).postDataJSON().agreedMarketing).toBeUndefined();
     await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
   }
 });
@@ -737,16 +747,9 @@ test("다시 받기가 이미 확인됨이면 확인 결과를 다시 불러와 
 // 재가입 제한(SH-011·SA-043). 켠 쇼핑몰 확인은 판매자 API로 잠시 켰다가 끈다(데모 대표자 비밀번호 E2E_PASSWORD 필요).
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
 
-async function setRejoin(baseURL: string, enabled: boolean, days = 90) {
-  const ctx = await request.newContext({ baseURL, extraHTTPHeaders: { Origin: baseURL } });
-  try {
-    const login = await ctx.post("/api/seller/auth/login", { data: { email: "demo-owner@example.com", password: PASSWORD } });
-    if (!login.ok()) throw new Error(`판매자 로그인 실패(${login.status()})`);
-    const r = await ctx.put("/api/seller/member-policy", { data: { rejoinRestrictionEnabled: enabled, rejoinRestrictionDays: days } });
-    if (!r.ok()) throw new Error(`재가입 제한 설정 실패(${r.status()})`);
-  } finally {
-    await ctx.dispose();
-  }
+// 재가입 제한은 지금 API로 켤 수 없어 테스트 DB에 직접 넣는다(memberPolicyDb.ts). baseURL은 호출 모양을 맞추려고 둔다.
+async function setRejoin(_baseURL: string, enabled: boolean, days = 90) {
+  await setMemberPolicyInDb(SLUG, enabled, days);
 }
 
 test("재가입 제한을 끈 쇼핑몰은 보관 동의 줄이 없다", async ({ page }) => {
