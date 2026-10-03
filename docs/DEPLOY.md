@@ -243,12 +243,12 @@ echo "현재 버전: ${APP_VERSION:-없음}"
 위 「서버 명령 준비」 줄을 먼저 실행하고, 아래를 붙여 넣은 뒤 아이디·비밀번호를 입력해요.
 
 ```bash
-read -p "아이디: " SEED_SELLER_LOGIN && read -s -p "비밀번호: " SEED_SELLER_PASSWORD && echo && export SEED_SELLER_LOGIN SEED_SELLER_PASSWORD && $C run --rm --no-deps -e OBS_TEST_MODE=1 -e SEED_SELLER_LOGIN -e SEED_SELLER_PASSWORD obs-web-migrate node scripts/seed-obs-test.mjs; unset SEED_SELLER_LOGIN SEED_SELLER_PASSWORD
+read -p "아이디: " SEED_SELLER_LOGIN && read -s -p "비밀번호: " SEED_SELLER_PASSWORD && echo && export SEED_SELLER_LOGIN SEED_SELLER_PASSWORD && IDENTITY_HASH_KEY="$(sed -n 's/^IDENTITY_HASH_KEY=//p' /opt/obs/.env)" $C run --rm --no-deps -e OBS_TEST_MODE=1 -e SEED_SELLER_LOGIN -e SEED_SELLER_PASSWORD -e IDENTITY_HASH_KEY obs-web-migrate node scripts/seed-obs-test.mjs; unset SEED_SELLER_LOGIN SEED_SELLER_PASSWORD
 ```
 
 - 마이그레이션 이미지(`obs-web-migrate`)를 써요. 이 기능이 들어간 버전으로 한 번 배포한 뒤에 실행해요.
 - 끝나면 파트너스 로그인 화면에서 넣은 아이디·비밀번호로 로그인해요.
-- 대표자 본인확인 정보는 시험용 인물로 채워요. 비밀번호 찾기에서 이름 「테스트대표」, 생년월일 1990년 1월 1일(남), 아무 휴대폰번호, 인증번호 `000000`을 넣으면 대표자로 확인돼요. 서버의 `IDENTITY_HASH_KEY`로 해시를 만들어서 이 값이 없으면 명령이 실패해요(`obs-web-migrate`는 앱과 같은 환경변수를 써요).
+- 대표자 본인확인 정보는 시험용 인물로 채워요. 비밀번호 찾기에서 이름 「테스트대표」, 생년월일 1990년 1월 1일(남), 아무 휴대폰번호, 인증번호 `000000`을 넣으면 대표자로 확인돼요. 서버의 `IDENTITY_HASH_KEY`로 해시를 만들어서 이 값이 없으면 명령이 실패해요. `obs-web-migrate` 컨테이너에는 DB 주소만 들어가므로, 위 줄이 `/opt/obs/.env`의 `IDENTITY_HASH_KEY` 값을 읽어 이 명령에만 넘겨요(화면·명령 기록에 값이 남지 않아요). `.env`에서 이 값은 따옴표 없이 적어 둬요.
 
 ## 수동 배포(서버에서 직접, 워크플로를 쓸 수 없을 때)
 
