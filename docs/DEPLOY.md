@@ -253,6 +253,8 @@ echo "$(TZ=Asia/Seoul date '+%F %T KST') sha=$APP_VERSION" >> /opt/obs/deploy-hi
 
 ## 백업·복구
 
+DB 컨테이너가 없으면(`down` 뒤 등, 배포 워크플로가 「DB 컨테이너가 없어요」로 멈췄을 때) 먼저 `/opt/obs/src`를 **지금 서버에 떠 있던 버전**으로 맞추고(`git -C /opt/obs/src checkout --detach <이전 배포 SHA>`, `/opt/obs/deploy-history.log` 마지막 줄) `$C up -d --wait obs-web-db`로 DB만 띄운 뒤 백업해요.
+
 ```bash
 cd /opt/obs/src && C="docker compose -p obs-web -f deploy/docker-compose.yml --env-file /opt/obs/.env"
 # 백업
