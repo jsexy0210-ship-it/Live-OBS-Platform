@@ -269,6 +269,45 @@ describe("목록 필터: 결과가 많아도 오류 없이 SQL에서 거른다",
   }, 120000);
 });
 
+describe("목록: id를 고른 뒤 상품을 불러오기 전에 바뀐 상품", () => {
+  // 첫 raw 조회(이번 쪽 id 고르기)가 끝난 직후 change를 실행하는 db
+  function changeAfterIdQuery(change: () => Promise<unknown>): typeof db {
+    let first = true;
+    return new Proxy(db, {
+      get(target, prop) {
+        if (prop === "$queryRaw") {
+          return async (...args: unknown[]) => {
+            const out = await (target.$queryRaw as (...a: unknown[]) => Promise<unknown>)(...args);
+            if (first) {
+              first = false;
+              await change();
+            }
+            return out;
+          };
+        }
+        const v = Reflect.get(target, prop);
+        return typeof v === "function" ? v.bind(target) : v;
+      },
+    });
+  }
+
+  it("그사이 지워지거나 상태가 바뀐 상품은 응답에 없고, 다음 쪽 커서는 그대로 이어진다", async () => {
+    const s = await seller();
+    const [a, b, c] = [await made(s.ctx, { name: "A", sortOrder: 0 }), await made(s.ctx, { name: "B", sortOrder: 1 }), await made(s.ctx, { name: "C", sortOrder: 2 })];
+    const deleted = await listProducts(changeAfterIdQuery(() => deleteProduct(db, s.ctx, a.id)), s.ctx, { limit: 2 });
+    expect(deleted.ok && deleted.value.products.map((p) => p.name)).toEqual(["B"]);
+    expect(deleted.ok && deleted.value.nextCursor).toBe(b.id);
+    const next = await listProducts(db, s.ctx, { limit: 2, cursor: b.id });
+    expect(next.ok && next.value.products.map((p) => p.name)).toEqual(["C"]);
+    const hidden = await listProducts(
+      changeAfterIdQuery(() => db.product.update({ where: { id: c.id }, data: { status: "HIDDEN" } })),
+      s.ctx,
+      { status: "ON_SALE", limit: 5 },
+    );
+    expect(hidden.ok && hidden.value.products.map((p) => p.name)).toEqual(["B"]);
+  });
+});
+
 describe("목록 페이지 넘김: 기준 상품이 그사이 바뀌어도 빠지지 않는다", () => {
   async function seven(ctx: TenantContext) {
     for (let i = 0; i < 7; i++) await made(ctx, { name: `상품${i}`, sortOrder: i % 2 });

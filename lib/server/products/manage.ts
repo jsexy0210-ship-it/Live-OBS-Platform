@@ -157,8 +157,9 @@ export async function listProducts(
     WHERE ${Prisma.join(where, " AND ")}
     ORDER BY p."sortOrder" ASC, p."createdAt" DESC, p."id" ASC
     LIMIT ${limit + 1}`;
+  // 두 조회 사이에 지워졌거나 상태가 바뀐 상품이 응답에 섞이지 않게 같은 조건을 다시 건다
   const found = await db.product.findMany({
-    where: { sellerId: ctx.sellerId, id: { in: ids.map((r) => r.id) } },
+    where: { sellerId: ctx.sellerId, deletedAt: null, ...(status ? { status } : {}), id: { in: ids.map((r) => r.id) } },
     include: { options: { where: { deletedAt: null }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }] } },
   });
   const byId = new Map(found.map((p) => [p.id, p]));
