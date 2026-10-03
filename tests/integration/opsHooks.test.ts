@@ -5,7 +5,7 @@ import { GET as healthRoute } from "../../app/api/health/route";
 import { createAdminSession } from "../../lib/server/auth/session";
 import { prisma } from "../../lib/server/db";
 import { runScheduledJobs, type ScheduledJob } from "../../lib/server/jobs/scheduler";
-import { HEARTBEAT_RETIRED_AFTER_MS, opsInstanceName, opsMetrics, purgeRetiredHeartbeats, recordHeartbeat } from "../../lib/server/ops/metrics";
+import { markInstanceRetired, opsInstanceName, opsMetrics, purgeRetiredHeartbeats, recordHeartbeat } from "../../lib/server/ops/metrics";
 import { createAdmin, db, resetDb } from "./helpers";
 
 beforeEach(async () => {
@@ -70,16 +70,26 @@ describe("heartbeat 보완(Codex)", () => {
     expect(await db.opsHeartbeat.findUniqueOrThrow({ where: { instance_job: { instance: "web-1", job: "other" } } })).toMatchObject({ lastStatus: "skipped", lastOkAt: null });
   });
 
-  it("오래 실행하지 않은 인스턴스는 지표에서 종료된 인스턴스로 따로 보이고, 7일 지난 행은 정기 실행이 지운다", async () => {
+  it("종료 표시(정상 종료 신호)가 없는 인스턴스는 아무리 오래돼도 heartbeats에 남고, 표시가 있는 인스턴스만 retiredHeartbeats로 가며 표시 7일 뒤 지워진다. 다시 실행하면 표시가 풀린다", async () => {
     const now = new Date("2026-10-10T00:00:00Z");
-    await recordHeartbeat(db, "scheduler.tick", "done", new Date(now.getTime() - 3600_000), undefined, "web-new");
-    await recordHeartbeat(db, "scheduler.tick", "done", new Date(now.getTime() - HEARTBEAT_RETIRED_AFTER_MS - 1000), undefined, "web-old");
-    await recordHeartbeat(db, "scheduler.tick", "done", new Date(now.getTime() - 8 * 86_400_000), undefined, "web-gone");
-    const m = await opsMetrics(db, now);
-    expect(m.heartbeats.map((h) => h.instance)).toEqual(["web-new"]);
-    expect(m.retiredHeartbeats.map((h) => h.instance)).toEqual(["web-gone", "web-old"]);
-    expect(await purgeRetiredHeartbeats(db, now)).toBe(1);
-    expect((await db.opsHeartbeat.findMany()).map((h) => h.instance).sort()).toEqual(["web-new", "web-old"]);
+    const ago = (ms: number) => new Date(now.getTime() - ms);
+    await recordHeartbeat(db, "scheduler.tick", "done", ago(3600_000), undefined, "web-new");
+    // heartbeat만 고장 난 살아 있는 인스턴스(10일째 기록 없음, 종료 표시 없음)
+    await recordHeartbeat(db, "scheduler.tick", "done", ago(10 * 86_400_000), undefined, "web-stuck");
+    await recordHeartbeat(db, "scheduler.tick", "done", ago(9 * 86_400_000), undefined, "web-gone");
+    await recordHeartbeat(db, "job.a", "done", ago(9 * 86_400_000), undefined, "web-gone");
+    await recordHeartbeat(db, "scheduler.tick", "done", ago(2 * 86_400_000), undefined, "web-old");
+    expect(await markInstanceRetired(db, ago(8 * 86_400_000), "web-gone")).toBe(2);
+    expect(await markInstanceRetired(db, ago(86_400_000), "web-old")).toBe(1);
+    const m = await opsMetrics(db);
+    expect(m.heartbeats.map((h) => h.instance).sort()).toEqual(["web-new", "web-stuck"]);
+    expect(m.retiredHeartbeats.map((h) => h.instance).sort()).toEqual(["web-gone", "web-gone", "web-old"]);
+    // 표시 뒤 7일 지난 web-gone만 지운다(종료 표시 없는 web-stuck은 오래돼도 남는다)
+    expect(await purgeRetiredHeartbeats(db, now)).toBe(2);
+    expect((await db.opsHeartbeat.findMany()).map((h) => h.instance).sort()).toEqual(["web-new", "web-old", "web-stuck"]);
+    // 같은 이름으로 다시 실행하면 살아 있는 인스턴스로 돌아온다
+    await recordHeartbeat(db, "scheduler.tick", "skipped", now, undefined, "web-old");
+    expect((await opsMetrics(db)).heartbeats.map((h) => h.instance).sort()).toEqual(["web-new", "web-old", "web-stuck"]);
     expect((await import("../../lib/server/jobs/scheduler")).SCHEDULED_JOBS.map((j) => j.name)).toContain("ops_heartbeat.purge_retired");
   });
 

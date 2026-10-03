@@ -20,21 +20,27 @@ export async function recordHeartbeat(db: Db, job: string, status: "done" | "ski
   await db.opsHeartbeat.upsert({
     where: { instance_job: { instance, job } },
     create: { instance, job, lastRunAt: now, lastStatus: status, lastError: err, lastOkAt: status === "done" ? now : null },
+    // 다시 실행했으면 살아 있는 인스턴스다(종료 표시를 비운다)
     update:
       status === "skipped"
-        ? { lastRunAt: now }
-        : { lastRunAt: now, lastStatus: status, lastError: err, ...(status === "done" ? { lastOkAt: now } : {}) },
+        ? { lastRunAt: now, retiredAt: null }
+        : { lastRunAt: now, lastStatus: status, lastError: err, retiredAt: null, ...(status === "done" ? { lastOkAt: now } : {}) },
   });
 }
 
-// 이 시간보다 오래 실행하지 않은 인스턴스는 종료된 것으로 본다(정기 실행 간격의 3배, 최소 24시간). 지표에서 따로 보여 주고
-// 멈춤 경보 대상에서 뺀다. 배포마다 컨테이너 이름(인스턴스)이 바뀌어 옛 행이 남기 때문이다.
-export const HEARTBEAT_RETIRED_AFTER_MS = Math.max(3 * 3600_000, 24 * 3600_000);
-// 이보다 오래된 heartbeat 행은 정기 실행이 지운다(jobs/scheduler.ts)
+// 종료 표시: 인스턴스가 정상 종료할 때 자기 행 모두에 retiredAt을 남긴다(jobs/scheduler.ts 종료 신호 처리).
+// 배포마다 컨테이너 이름(인스턴스)이 바뀌어 옛 행이 남는데, 나이만으로 종료로 보면 heartbeat만 고장 난 살아 있는 인스턴스를 놓친다.
+// 그래서 종료는 명시 신호로만 판단한다. 표시가 없는 행은 오래돼도 지표 heartbeats에 남아 멈춤으로 보인다.
+export async function markInstanceRetired(db: Db, now: Date, instance = opsInstanceName()): Promise<number> {
+  const r = await db.opsHeartbeat.updateMany({ where: { instance, retiredAt: null }, data: { retiredAt: now } });
+  return r.count;
+}
+
+// 종료 표시가 있고 그 뒤 7일이 지난 행은 정기 실행이 지운다(jobs/scheduler.ts)
 export const HEARTBEAT_PURGE_AFTER_MS = 7 * 24 * 3600_000;
 
 export async function purgeRetiredHeartbeats(db: Db, now: Date): Promise<number> {
-  const r = await db.opsHeartbeat.deleteMany({ where: { lastRunAt: { lt: new Date(now.getTime() - HEARTBEAT_PURGE_AFTER_MS) } } });
+  const r = await db.opsHeartbeat.deleteMany({ where: { retiredAt: { lt: new Date(now.getTime() - HEARTBEAT_PURGE_AFTER_MS) } } });
   return r.count;
 }
 
@@ -43,7 +49,7 @@ export async function purgeRetiredHeartbeats(db: Db, now: Date): Promise<number>
 // - heartbeats: 인스턴스·작업별 마지막 실행
 // - queueBacklog: 작업 큐가 아직 없어 not_measured(자동연결 큐가 생기면 여기에 넣는다)
 // - incidents: 열린 사건(같은 key의 마지막이 incident_open)과 최근 사건 50개
-export async function opsMetrics(db: PrismaClient, now = new Date()) {
+export async function opsMetrics(db: PrismaClient) {
   const t0 = performance.now();
   await db.$queryRaw`SELECT 1`;
   const latencyMs = Math.round((performance.now() - t0) * 10) / 10;
@@ -62,8 +68,15 @@ export async function opsMetrics(db: PrismaClient, now = new Date()) {
     SELECT DISTINCT ON ("key") "key", "kind", "occurredAt", "message", "severity"
     FROM "OpsEvent" WHERE "kind" IN ('incident_open', 'incident_close')
     ORDER BY "key", "occurredAt" DESC, "seq" DESC`;
-  const retiredBefore = now.getTime() - HEARTBEAT_RETIRED_AFTER_MS;
-  const beat = (h: (typeof heartbeats)[number]) => ({ instance: h.instance, job: h.job, lastRunAt: h.lastRunAt, lastStatus: h.lastStatus, lastOkAt: h.lastOkAt, lastError: h.lastError });
+  const beat = (h: (typeof heartbeats)[number]) => ({
+    instance: h.instance,
+    job: h.job,
+    lastRunAt: h.lastRunAt,
+    lastStatus: h.lastStatus,
+    lastOkAt: h.lastOkAt,
+    lastError: h.lastError,
+    retiredAt: h.retiredAt,
+  });
   return {
     checkedAt: new Date().toISOString(),
     db: {
@@ -77,9 +90,9 @@ export async function opsMetrics(db: PrismaClient, now = new Date()) {
         max: conn.max,
       },
     },
-    // 살아 있는 인스턴스(멈춤 판단 대상)와 종료된 것으로 보는 인스턴스(HEARTBEAT_RETIRED_AFTER_MS 넘게 실행 없음, 7일 뒤 지움)
-    heartbeats: heartbeats.filter((h) => h.lastRunAt.getTime() >= retiredBefore).map(beat),
-    retiredHeartbeats: heartbeats.filter((h) => h.lastRunAt.getTime() < retiredBefore).map(beat),
+    // 살아 있는 인스턴스(종료 표시 없음, 오래돼도 멈춤 판단 대상)와 정상 종료한 인스턴스(종료 표시 있음, 7일 뒤 지움)
+    heartbeats: heartbeats.filter((h) => !h.retiredAt).map(beat),
+    retiredHeartbeats: heartbeats.filter((h) => h.retiredAt).map(beat),
     queueBacklog: "not_measured" as const,
     incidents: {
       open: latestByKey.filter((e) => e.kind === "incident_open"),

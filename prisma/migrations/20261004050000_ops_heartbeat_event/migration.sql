@@ -7,6 +7,7 @@ CREATE TABLE "OpsHeartbeat" (
     "lastStatus" TEXT NOT NULL,
     "lastError" TEXT,
     "lastOkAt" TIMESTAMPTZ(3),
+    "retiredAt" TIMESTAMPTZ(3),
     "updatedAt" TIMESTAMPTZ(3) NOT NULL,
 
     CONSTRAINT "OpsHeartbeat_pkey" PRIMARY KEY ("instance","job")

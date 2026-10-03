@@ -1,7 +1,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { purgeExpiredRejoinBlocks } from "../buyers/rejoin";
 import { purgeOldSignupVerificationIps, purgeUnfinishedSignupVerifications } from "../buyers/signup";
-import { purgeRetiredHeartbeats, recordHeartbeat } from "../ops/metrics";
+import { markInstanceRetired, purgeRetiredHeartbeats, recordHeartbeat } from "../ops/metrics";
 
 // 앱 안 정기 실행(MASTER 결정 2026-10-03: 외부 cron 대신). instrumentation.ts register(nodejs 런타임)에서 startScheduler를 부른다.
 // - 일정 간격(기본 1시간)으로 SCHEDULED_JOBS를 차례로 돈다. 작업마다 pg advisory xact lock을 시도해 여러 인스턴스 중 하나만 실행한다.
@@ -19,7 +19,7 @@ export const SCHEDULED_JOBS: ScheduledJob[] = [
   { name: "identity_verification.anonymize_unfinished_signup", run: (tx, now) => purgeUnfinishedSignupVerifications(tx, now) },
   // 3개월 지난 가입 본인확인 요청 IP 비우기
   { name: "identity_verification.purge_old_signup_ip", run: (tx, now) => purgeOldSignupVerificationIps(tx, now) },
-  // 7일 넘게 실행하지 않은(종료된) 인스턴스의 heartbeat 지우기(ops/metrics.ts)
+  // 정상 종료하고 7일 지난 인스턴스의 heartbeat 지우기(ops/metrics.ts)
   { name: "ops_heartbeat.purge_retired", run: (tx, now) => purgeRetiredHeartbeats(tx, now) },
 ];
 
@@ -73,5 +73,18 @@ export function startScheduler(db: PrismaClient, intervalMs = SCHEDULER_INTERVAL
   state.liveObsScheduler.unref?.();
   // 시작 직후 한 번(서버가 뜨는 것을 막지 않게 조금 뒤에)
   setTimeout(tick, 30_000).unref?.();
+  for (const signal of ["SIGTERM", "SIGINT"] as const) process.once(signal, () => void retireOnSignal(db, signal));
   return true;
+}
+
+// 정상 종료 신호를 받으면 이 인스턴스의 heartbeat에 종료 표시를 남긴다(최대 2초, 실패해도 종료는 막지 않음).
+// 다른 종료 처리기(Next.js 등)가 없으면 표시를 남긴 뒤 같은 신호를 다시 보내 기본 동작(프로세스 종료)을 따른다.
+export async function retireOnSignal(db: PrismaClient, signal: NodeJS.Signals) {
+  const others = process.listenerCount(signal) > 0;
+  try {
+    await Promise.race([markInstanceRetired(db, new Date()), new Promise((r) => setTimeout(r, 2000).unref?.())]);
+  } catch (e) {
+    console.error(`[scheduler] retire mark failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  if (!others) process.kill(process.pid, signal);
 }
