@@ -5,6 +5,10 @@
 //   대표님 허용(2026-10-03): 아이디 형식·비밀번호 8자 규칙은 이 시험 데이터 명령에서만 건너뛴다(서비스의 가입·변경 규칙은 그대로).
 // - 판매자가 한 명이라도 있으면 아무것도 하지 않고 끝낸다(다시 실행해도 중복 없음).
 // - 실제 결제·문자 발송은 없다(DB에 행만 만든다).
+// - 대표자 본인확인 정보는 시험용 인물(TEST_REPRESENTATIVE)로 채운다. 테스트 서버 모드의 가짜 본인확인 공급자는
+//   CI를 `fake-ci:{이름}:{생년월일7자리}`로 만들므로, 비밀번호 찾기에서 이 이름·생년월일을 넣고 인증번호 000000을 쓰면 대표자로 확인된다.
+//   CI 해시는 서버와 같은 IDENTITY_HASH_KEY HMAC-SHA256(lib/server/identity/ciHash.ts)이라 그 키가 있어야 한다.
+import { createHmac } from "node:crypto";
 import { hash } from "@node-rs/argon2";
 import { PrismaClient } from "@prisma/client";
 
@@ -18,6 +22,15 @@ if (!loginId || !password) {
   console.error("SEED_SELLER_LOGIN과 SEED_SELLER_PASSWORD를 실행할 때 넣어 주세요.");
   process.exit(1);
 }
+
+const hashKey = process.env.IDENTITY_HASH_KEY ?? "";
+if (hashKey.length < 32) {
+  console.error("IDENTITY_HASH_KEY가 없거나 너무 짧아요(32자 이상). 서버와 같은 값이 있어야 대표자 비밀번호 찾기가 돼요.");
+  process.exit(1);
+}
+// 시험용 인물(실존 인물 아님). 휴대폰번호는 아무 번호나 넣어도 된다(CI에 들어가지 않음).
+const TEST_REPRESENTATIVE = { name: "테스트대표", birth7: "9001011", birthLabel: "1990년 1월 1일, 남" };
+const representativeCiHash = createHmac("sha256", hashKey).update(`fake-ci:${TEST_REPRESENTATIVE.name}:${TEST_REPRESENTATIVE.birth7}`, "utf8").digest("hex");
 
 const db = new PrismaClient();
 const SHOP = { slug: "test-shop", shopName: "테스트 쇼핑몰" };
@@ -36,7 +49,7 @@ async function main() {
   // 체험 기간을 넉넉히 둬 시험 중에 쇼핑몰이 잠기지 않게 한다
   const trialEndsAt = new Date(Date.now() + 365 * 86_400_000);
   await db.$transaction(async (tx) => {
-    const seller = await tx.seller.create({ data: { ...SHOP, status: "ACTIVE", approvedAt: new Date(), trialEndsAt } });
+    const seller = await tx.seller.create({ data: { ...SHOP, status: "ACTIVE", approvedAt: new Date(), trialEndsAt, representativeCiHash, representativeVerifiedAt: new Date() } });
     await tx.memberGrade.createMany({
       data: [
         { sellerId: seller.id, displayName: "일반", sortOrder: 0, systemKey: "BASIC" },
@@ -55,6 +68,7 @@ async function main() {
     }
   });
   console.log(`시험 쇼핑몰을 만들었어요: ${SHOP.shopName} (/shop/${SHOP.slug}). 대표자 계정 1개, 상품 ${PRODUCTS.length}개`);
+  console.log(`비밀번호 찾기 본인확인: 이름 ${TEST_REPRESENTATIVE.name}, 생년월일 ${TEST_REPRESENTATIVE.birthLabel}, 인증번호 000000`);
 }
 
 main()

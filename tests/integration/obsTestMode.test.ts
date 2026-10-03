@@ -1,6 +1,9 @@
 import { execFileSync } from "node:child_process";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { POST as resetCompleteRoute } from "../../app/api/seller/password-reset/complete/route";
+import { POST as resetConfirmRoute } from "../../app/api/seller/password-reset/confirm/route";
 import { POST as resetStartRoute } from "../../app/api/seller/password-reset/start/route";
+import { POST as resetVerifyRoute } from "../../app/api/seller/password-reset/verify/route";
 import { POST as cardRoute } from "../../app/api/seller/subscription/card/route";
 import { POST as signupRoute } from "../../app/api/shop/[slug]/signup/route";
 import { POST as confirmRoute } from "../../app/api/shop/[slug]/signup/verification/confirm/route";
@@ -39,7 +42,8 @@ function seed(extra: Record<string, string>) {
     return { code: err.status, out: `${err.stdout}${err.stderr}` };
   }
 }
-const SEED = { SEED_SELLER_LOGIN: "test", SEED_SELLER_PASSWORD: "1234" };
+const HASH_KEY = "test-identity-hash-key-0123456789abcdef";
+const SEED = { SEED_SELLER_LOGIN: "test", SEED_SELLER_PASSWORD: "1234", IDENTITY_HASH_KEY: HASH_KEY };
 
 describe("테스트 서버 시험 데이터 명령(scripts/seed-obs-test.mjs)", () => {
   it("OBS_TEST_MODE=1이 없으면 운영 빌드에서 아무것도 넣지 않고 실패한다", () => {
@@ -70,8 +74,12 @@ describe("테스트 서버 시험 데이터 명령(scripts/seed-obs-test.mjs)", 
     expect(await counts()).toEqual(before);
   });
 
-  it("판매자가 이미 있으면 아무것도 하지 않고, 아이디·비밀번호가 없으면 실패한다", async () => {
+  it("판매자가 이미 있으면 아무것도 하지 않고, 아이디·비밀번호나 본인확인 해시 키가 없으면 실패한다", async () => {
     expect(seed({ OBS_TEST_MODE: "1" }).code).toBe(1);
+    const noKey = seed({ OBS_TEST_MODE: "1", ...SEED, IDENTITY_HASH_KEY: "" });
+    expect(noKey.code).toBe(1);
+    expect(noKey.out).toContain("IDENTITY_HASH_KEY");
+    expect(await db.seller.count()).toBe(0);
     await createSeller();
     const r = seed({ OBS_TEST_MODE: "1", ...SEED });
     expect(r.code).toBe(0);
@@ -103,6 +111,34 @@ describe("테스트 서버 모드: 운영 빌드에서 본인확인 우회", () 
     );
     expect(signup.status).toBe(201);
     expect((await resetStartRoute(post("/api/seller/password-reset/start", { email: "owner@example.com", shopSlug: seller.slug, person: IDV_INPUT }))).status).not.toBe(503);
+  });
+});
+
+describe("테스트 서버 모드: 시험 대표자 계정의 비밀번호 찾기", () => {
+  it("시드가 안내한 시험 인물(이름·생년월일)과 인증번호 000000으로 본인확인하면 대표자로 확인돼 새 비밀번호로 로그인된다. 다른 사람이면 거부", async () => {
+    const out = seed({ OBS_TEST_MODE: "1", ...SEED });
+    expect(out.code).toBe(0);
+    expect(out.out).toContain("이름 테스트대표");
+    expect(out.out).toContain("인증번호 000000");
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("IDENTITY_HASH_KEY", HASH_KEY);
+    vi.stubEnv("OBS_TEST_MODE", "1");
+    for (const k of ["PORTONE_API_SECRET", "PORTONE_STORE_ID", "PORTONE_IDENTITY_CHANNEL_KEY"]) vi.stubEnv(k, "");
+    const flow = async (person: Record<string, string>) => {
+      const s = await resetStartRoute(post("/api/seller/password-reset/start", { email: "test", shopSlug: "test-shop", person }));
+      expect(s.status).toBe(200);
+      const cookie = cookieOf(s, "lo_idv");
+      const { verificationId } = await s.json();
+      expect((await resetConfirmRoute(post("/api/seller/password-reset/confirm", { verificationId, code: "000000" }, cookie))).status).toBe(200);
+      return resetVerifyRoute(post("/api/seller/password-reset/verify", { verificationId }, cookie));
+    };
+    // 다른 사람(홍길동)은 대표자 CI와 달라 거부
+    expect((await flow(IDV_INPUT)).status).toBe(400);
+    const v = await flow({ ...IDV_INPUT, name: "테스트대표", birth7: "9001011" });
+    expect(v.status).toBe(200);
+    const grant = cookieOf(v, "lo_pwreset");
+    expect((await resetCompleteRoute(post("/api/seller/password-reset/complete", { newPassword: "new-pass-5678" }, grant))).status).toBe(200);
+    expect((await loginSeller(db, { email: "test", password: "new-pass-5678" }, {})).ok).toBe(true);
   });
 });
 
