@@ -40,12 +40,30 @@ const fakeProducts = (prefix: string, n: number, base: number) =>
     stockDeductMode: "ON_PAYMENT",
     options: [{ id: `10000000-0000-4000-8000-${String(base + i).padStart(12, "0")}`, name: "기본", stock: 10, sortOrder: 0 }],
   }));
-// 상품 목록 응답을 가짜로 바꾼다. 서버처럼 q(상품·옵션 이름, 대소문자 무시)로 거르고 한 쪽에 모두 돌려준다
+// 상품·옵션 목록 응답을 가짜로 바꾼다. 서버처럼 q(상품·옵션 이름, 대소문자 무시)와 stock(옵션마다 out=0, low=1~5)으로 거르고,
+// 상품 목록은 상품 200개씩, 옵션 목록(GET /api/seller/products/options)은 옵션 200개씩 cursor로 나눠 돌려준다
 async function routeFakeProducts(page: Page, products: ReturnType<typeof fakeProducts>) {
+  const match = (q: string, name: string) => !q || name.toLowerCase().includes(q);
   await page.route("**/api/seller/products?limit=200**", (route) => {
-    const q = (new URL(route.request().url()).searchParams.get("q") ?? "").toLowerCase();
-    const list = q ? products.filter((p) => p.name.toLowerCase().includes(q) || p.options.some((o) => o.name.toLowerCase().includes(q))) : products;
-    return route.fulfill({ json: { products: list, nextCursor: null } });
+    const url = new URL(route.request().url());
+    const q = (url.searchParams.get("q") ?? "").toLowerCase();
+    const list = products.filter((p) => match(q, p.name) || p.options.some((o) => match(q, o.name)));
+    const from = Number(url.searchParams.get("cursor")?.replace("e2e-p", "") ?? 0) || 0;
+    const pageList = list.slice(from, from + 200);
+    return route.fulfill({ json: { products: pageList, nextCursor: from + 200 < list.length ? `e2e-p${from + 200}` : null } });
+  });
+  await page.route("**/api/seller/products/options?**", (route) => {
+    const url = new URL(route.request().url());
+    const q = (url.searchParams.get("q") ?? "").toLowerCase();
+    const stock = url.searchParams.get("stock");
+    const rows = products.flatMap((p) =>
+      p.options
+        .filter((o) => match(q, p.name) || match(q, o.name))
+        .filter((o) => (stock === "out" ? o.stock === 0 : stock === "low" ? o.stock >= 1 && o.stock <= 5 : true))
+        .map((o) => ({ productId: p.id, productName: p.name, productStatus: p.status, optionId: o.id, optionName: o.name, sku: null, stock: o.stock })),
+    );
+    const from = Number(url.searchParams.get("cursor")?.replace("e2e-o", "") ?? 0) || 0;
+    return route.fulfill({ json: { options: rows.slice(from, from + 200), nextCursor: from + 200 < rows.length ? `e2e-o${from + 200}` : null } });
   });
 }
 
@@ -478,36 +496,47 @@ test("직접 쓴 사유는 서버와 같은 기준(코드포인트 100자)으로
   await dialog.getByRole("button", { name: "취소" }).click();
 });
 
-test("걸러 본 옵션이 200개를 넘으면 「선택 n개 · 전체 N개」와 「N개 모두 선택」이 보인다", async ({ page }) => {
-  // 상품 250개(옵션 1개씩)를 돌려줘 그린 줄(200)보다 많게 만든다. 적용은 하지 않는다
+test("옵션이 200개를 넘으면 첫 쪽만 불러오고, 「모두 선택」은 불러온 옵션을 모두 고른다", async ({ page }) => {
+  // 상품 250개(옵션 1개씩, 가짜 응답). 옵션 목록은 200개씩 온다. 적용은 하지 않는다
   await routeFakeProducts(page, fakeProducts("대량 상품", 250, 0));
   await openAs(page);
-  const info = page.getByTestId("stock-selinfo");
-  await expect(info).toContainText("선택 0개 · 전체 250개");
+  await expect(page.getByTestId("stock-row")).toHaveCount(200);
   await page.getByLabel("보이는 옵션 모두 선택").check();
-  await expect(info).toContainText("선택 200개 · 전체 250개");
-  await info.getByRole("button", { name: "250개 모두 선택" }).click();
-  await expect(info).toContainText("선택 250개 · 전체 250개");
-  await expect(info.getByRole("button", { name: "250개 모두 선택" })).toHaveCount(0);
-  // 걸러 보면 그 결과 기준으로 센다
-  await page.getByLabel("재고 검색").fill("대량 상품 1");
-  await expect(info).toHaveCount(0);
-});
-
-test("「N개 모두 선택」 뒤 한꺼번에 적으면 적용 확인 창에 「화면에 안 보이는 n개 포함」이 나온다", async ({ page }) => {
-  // 상품 250개(가짜 응답). 확인 창만 열고 적용하지 않는다
-  await routeFakeProducts(page, fakeProducts("대량 상품", 250, 0));
-  await openAs(page);
-  await page.getByTestId("stock-selinfo").getByRole("button", { name: "250개 모두 선택" }).click();
+  await page.getByLabel("선택한 옵션에 더하거나 뺄 수량").fill("+1");
+  await page.getByRole("button", { name: "한꺼번에 적기" }).click();
+  await expect(page.getByTestId("sum-count")).toHaveText("200개");
+  // 더 불러오면 새 줄은 선택되지 않은 채로 붙고, 다시 모두 선택하면 250개 모두 고른다
+  await page.getByRole("button", { name: "옵션 더 불러오기" }).click();
+  await expect(page.getByTestId("stock-row")).toHaveCount(250);
+  await expect(page.getByLabel("보이는 옵션 모두 선택")).not.toBeChecked();
+  await page.getByLabel("보이는 옵션 모두 선택").check();
   await page.getByLabel("선택한 옵션에 더하거나 뺄 수량").fill("+1");
   await page.getByRole("button", { name: "한꺼번에 적기" }).click();
   await expect(page.getByTestId("sum-count")).toHaveText("250개");
+});
+
+test("모두 선택해 한꺼번에 적은 뒤 검색으로 좁히면 적용 확인 창에 「화면에 안 보이는 n개 포함」이 나온다", async ({ page }) => {
+  // 상품 250개(가짜 응답). 확인 창만 열고 적용하지 않는다
+  await routeFakeProducts(page, fakeProducts("대량 상품", 250, 0));
+  await openAs(page);
+  await page.getByRole("button", { name: "옵션 더 불러오기" }).click();
+  await expect(page.getByTestId("stock-row")).toHaveCount(250);
+  await page.getByLabel("보이는 옵션 모두 선택").check();
+  await page.getByLabel("선택한 옵션에 더하거나 뺄 수량").fill("+1");
+  await page.getByRole("button", { name: "한꺼번에 적기" }).click();
+  await expect(page.getByTestId("sum-count")).toHaveText("250개");
+  // 「대량 상품 1」로 좁히면 111개만 보이고, 바꿔 둔 나머지 139개는 화면에 안 보여도 함께 적용된다
+  await page.getByLabel("재고 검색").fill("대량 상품 1");
+  await expect(page.getByTestId("stock-row")).toHaveCount(111);
   await page.getByRole("button", { name: "변경 250건 적용" }).last().click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog.getByTestId("apply-hidden")).toHaveText("화면에 안 보이는 50개 포함");
+  await expect(dialog.getByTestId("apply-hidden")).toHaveText("화면에 안 보이는 139개 포함");
   await dialog.getByRole("button", { name: "취소" }).click();
-  // 다 펼치면 안 보이는 옵션이 없으니 문구도 없다
-  await page.getByRole("button", { name: /50개 더 보기/ }).click();
+  // 검색을 지워 모두 보이면 문구도 없다
+  await page.getByLabel("재고 검색").fill("");
+  await expect(page.getByTestId("stock-row")).toHaveCount(200);
+  await page.getByRole("button", { name: "옵션 더 불러오기" }).click();
+  await expect(page.getByTestId("stock-row")).toHaveCount(250);
   await page.getByRole("button", { name: "변경 250건 적용" }).last().click();
   await expect(page.getByRole("dialog").getByTestId("apply-hidden")).toHaveCount(0);
   await page.getByRole("dialog").getByRole("button", { name: "취소" }).click();
@@ -539,15 +568,20 @@ test("검색을 바꾸면 이전 선택은 지금 결과와 겹치는 것만 남
   // 「가방」 250개 + 「나무」 220개(가짜 응답, 겹치지 않는 이름). 적용은 하지 않는다
   await routeFakeProducts(page, [...fakeProducts("가방", 250, 0), ...fakeProducts("나무", 220, 1000)]);
   await openAs(page);
-  const info = page.getByTestId("stock-selinfo");
-  await page.getByLabel("재고 검색").fill("가방");
-  await info.getByRole("button", { name: "250개 모두 선택" }).click();
-  await expect(info).toContainText("선택 250개 · 전체 250개");
+  // 검색 응답이 온 뒤에 더 불러온다(검색 전 목록도 「가방」으로 시작해서 줄 글자만으로는 알 수 없다)
+  const searched = (q: string) => page.waitForResponse((r) => r.url().includes("/api/seller/products/options?") && new URL(r.url()).searchParams.get("q") === q);
+  await Promise.all([searched("가방"), page.getByLabel("재고 검색").fill("가방")]);
+  await page.getByRole("button", { name: "옵션 더 불러오기" }).click();
+  await expect(page.getByTestId("stock-row")).toHaveCount(250);
+  await page.getByLabel("보이는 옵션 모두 선택").check();
   // 겹치지 않는 검색으로 바꾸면 이전 선택은 빠진다
-  await page.getByLabel("재고 검색").fill("나무");
-  await expect(info).toContainText("선택 0개 · 전체 220개");
-  await info.getByRole("button", { name: "220개 모두 선택" }).click();
-  await expect(info).toContainText("선택 220개 · 전체 220개");
+  await Promise.all([searched("나무"), page.getByLabel("재고 검색").fill("나무")]);
+  await expect(page.getByTestId("stock-row").first()).toContainText("나무");
+  await expect(page.getByLabel("보이는 옵션 모두 선택")).not.toBeChecked();
+  await expect(page.getByRole("button", { name: "한꺼번에 적기" })).toBeDisabled();
+  await page.getByRole("button", { name: "옵션 더 불러오기" }).click();
+  await expect(page.getByTestId("stock-row")).toHaveCount(220);
+  await page.getByLabel("보이는 옵션 모두 선택").check();
   await page.getByLabel("선택한 옵션에 더하거나 뺄 수량").fill("+1");
   await page.getByRole("button", { name: "한꺼번에 적기" }).click();
   // 바뀐 옵션은 지금 결과 220개뿐(이전 검색의 250개는 그대로)
@@ -662,22 +696,32 @@ test("한 번에 적용하는 동안 「n/N 적용 중」으로 진행 상황을
   await expect(nextInput(page, "문라이트 컬렉션 박스 1박스")).toHaveValue(String(moon));
 });
 
-test("재고 검색은 서버 이름 검색(q)으로 찾고, 상품을 전부 불러오지 않는다", async ({ page }) => {
+test("재고 검색은 옵션 목록 API의 이름 검색(q)으로 찾고, 처음에는 첫 쪽만 불러온다", async ({ page }) => {
   const urls: string[] = [];
   page.on("request", (r) => {
-    if (r.url().includes("/api/seller/products?")) urls.push(r.url());
+    if (r.url().includes("/api/seller/products/options?")) urls.push(r.url());
   });
   await openAs(page);
   await expect(page.getByTestId("stock-row").first()).toBeVisible();
   // 처음에는 첫 쪽 한 번만(다음 쪽을 이어서 부르지 않음)
+  expect(urls).toHaveLength(1);
   expect(urls.filter((u) => new URL(u).searchParams.has("cursor"))).toHaveLength(0);
   await Promise.all([
-    page.waitForResponse((r) => r.url().includes("/api/seller/products?") && new URL(r.url()).searchParams.get("q") === "4포켓"),
+    page.waitForResponse((r) => r.url().includes("/api/seller/products/options?") && new URL(r.url()).searchParams.get("q") === "4포켓"),
     page.getByLabel("재고 검색").fill("4포켓"),
   ]);
   // 옵션 이름만 맞으면 그 옵션만 보인다
   await expect(page.getByTestId("stock-row")).toHaveCount(1);
   await expect(page.getByTestId("stock-row").first()).toContainText("4포켓 바인더");
+  // 재고 칩은 검색어와 함께 서버로 보낸다
+  await Promise.all([
+    page.waitForResponse((r) => {
+      const u = new URL(r.url());
+      return u.pathname.endsWith("/api/seller/products/options") && u.searchParams.get("stock") === "out" && u.searchParams.get("q") === "4포켓";
+    }),
+    page.getByRole("button", { name: "품절", exact: true }).click(),
+  ]);
+  await expect(page.getByText("조건에 맞는 옵션이 없어요")).toBeVisible();
 });
 
 test("다른 검색에서 바꿔 둔 재고도 함께 적용하고, 확인 창에 안 보이는 옵션 수를 알린다", async ({ page }) => {
@@ -709,35 +753,20 @@ test("다른 검색에서 바꿔 둔 재고도 함께 적용하고, 확인 창�
   await expect(nextInput(page, "문라이트 컬렉션 박스 1박스")).toHaveValue(String(moon));
 });
 
-test("상품이 200개를 넘으면 「상품 더 불러오기」로 다음 쪽을 이어 붙인다", async ({ page }) => {
+test("옵션이 200개를 넘으면 「옵션 더 불러오기」로 다음 쪽을 이어 붙인다", async ({ page }) => {
   // 첫 쪽 200개 + 다음 쪽 30개(가짜 응답). 적용은 하지 않는다
-  const all = fakeProducts("쪽 상품", 230, 0);
-  await page.route("**/api/seller/products?limit=200**", (route) => {
-    const cursor = new URL(route.request().url()).searchParams.get("cursor");
-    return route.fulfill({ json: cursor === "e2e-page-2" ? { products: all.slice(200), nextCursor: null } : { products: all.slice(0, 200), nextCursor: "e2e-page-2" } });
-  });
+  await routeFakeProducts(page, fakeProducts("쪽 상품", 230, 0));
   await openAs(page);
   await expect(page.getByTestId("stock-row")).toHaveCount(200);
-  await expect(page.getByText("불러온 옵션 200개 · 상품이 더 있어요", { exact: false })).toBeVisible();
-  // 다음 쪽이 남아 있으면 칩 안내에 「상품 더 불러오기」를 함께 알린다
-  await page.getByRole("button", { name: "재고 5 이하" }).click();
-  await expect(page.getByTestId("chip-scope")).toHaveText("불러온 상품 중에서 보여 줘요 · 상품이 더 있으면 「상품 더 불러오기」로 이어서 찾아요");
-  await page.getByRole("button", { name: "재고 5 이하" }).click();
-  await page.getByRole("button", { name: "상품 더 불러오기" }).click();
-  await expect(page.getByTestId("stock-row")).toHaveCount(200);
-  await expect(page.getByRole("button", { name: /30개 더 보기/ })).toBeVisible();
-  await page.getByRole("button", { name: /30개 더 보기/ }).click();
+  await expect(page.getByText("불러온 옵션 200개 · 옵션이 더 있어요", { exact: false })).toBeVisible();
+  await page.getByRole("button", { name: "옵션 더 불러오기" }).click();
   await expect(page.getByTestId("stock-row")).toHaveCount(230);
-  await expect(page.getByRole("button", { name: "상품 더 불러오기" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "옵션 더 불러오기" })).toHaveCount(0);
   await expect(page.getByText("불러온 옵션 230개 · 바뀐 옵션", { exact: false })).toBeVisible();
-  // 재고 조건 칩은 불러온 상품에서만 거른다고 안내한다
-  await expect(page.getByTestId("chip-scope")).toHaveCount(0);
-  await page.getByRole("button", { name: "품절", exact: true }).click();
-  await expect(page.getByTestId("chip-scope")).toHaveText("불러온 상품 중에서 보여 줘요");
 });
 
 test("검색 결과가 오기 전에는 모두 선택·한꺼번에 적기를 막아 옛 결과에 적용하지 않는다", async ({ page }) => {
-  await page.route("**/api/seller/products?**q=**", async (route) => {
+  await page.route("**/api/seller/products/options?**q=**", async (route) => {
     await new Promise((r) => setTimeout(r, 1200));
     return route.continue();
   });
@@ -752,7 +781,7 @@ test("검색 결과가 오기 전에는 모두 선택·한꺼번에 적기를 �
 
 test("검색 요청이 실패하면 「다시 시도」로 같은 검색어를 다시 불러온다", async ({ page }) => {
   let failOnce = true;
-  await page.route("**/api/seller/products?**q=**", (route) => {
+  await page.route("**/api/seller/products/options?**q=**", (route) => {
     if (failOnce) {
       failOnce = false;
       return route.fulfill({ status: 500, json: { error: "internal" } });
@@ -849,4 +878,46 @@ test("한 번에 적용하는 사이 새로 적은 재고는 적용 뒤에도 �
   await page.reload();
   await expect(nextInput(page, "탑로더 25장 1팩")).toHaveValue(String(top));
   await expect(nextInput(page, "문라이트 컬렉션 박스 1박스")).toHaveValue(String(moon));
+});
+
+test("재고 칩(품절·5 이하)은 서버에서 옵션 단위로 걸러, 아직 불러오지 않은 쪽의 옵션도 보여 준다", async ({ page }) => {
+  // 재고 10인 상품 230개 뒤에 품절 옵션 1개 · 재고 2인 옵션 1개(첫 쪽 200개 밖)
+  const all = fakeProducts("쪽 상품", 230, 0);
+  const tail = fakeProducts("뒤쪽", 2, 5000);
+  tail[0].options[0].stock = 0;
+  tail[1].options[0].stock = 2;
+  await routeFakeProducts(page, [...all, ...tail]);
+  await openAs(page);
+  await page.getByRole("button", { name: "품절", exact: true }).click();
+  await expect(page.getByTestId("stock-row")).toHaveCount(1);
+  await expect(page.getByTestId("stock-row").first()).toContainText("뒤쪽 1");
+  // 서버에서 거르므로 「불러온 상품 중에서」 안내는 없다
+  await expect(page.getByTestId("chip-scope")).toHaveCount(0);
+  await page.getByRole("button", { name: "품절", exact: true }).click();
+  await page.getByRole("button", { name: "재고 5 이하" }).click();
+  await expect(page.getByTestId("stock-row")).toHaveCount(1);
+  await expect(page.getByTestId("stock-row").first()).toContainText("뒤쪽 2");
+});
+
+test("품절 칩을 켠 채 빼기·더하기로 재고를 더하면 조건에 안 맞게 된 줄은 목록에서 빠진다", async ({ page }) => {
+  await openAs(page);
+  await page.getByRole("button", { name: "품절", exact: true }).click();
+  await expect(row(page, "드래곤 소울 부스터")).toBeVisible();
+  const label = "드래곤 소울 부스터 1팩";
+  await page.getByRole("button", { name: `${label} 빼기 · 더하기` }).click();
+  const sheet = page.getByRole("dialog");
+  await sheet.getByRole("radio", { name: "더하기" }).click();
+  await sheet.getByLabel("수량").fill("3");
+  await sheet.getByRole("radio", { name: "서비스" }).click();
+  await sheet.getByRole("button", { name: "3개 더하기" }).click();
+  // 재고 3이 되어 품절 조건에 안 맞으니 목록에서 빠진다
+  await expect(row(page, "드래곤 소울 부스터")).toHaveCount(0);
+  // 되돌려 둔다(칩을 끄고 3개 빼기)
+  await page.getByRole("button", { name: "품절", exact: true }).click();
+  await expect(row(page, "드래곤 소울 부스터").locator(".c-cur")).toContainText("3");
+  await page.getByRole("button", { name: `${label} 빼기 · 더하기` }).click();
+  await sheet.getByLabel("수량").fill("3");
+  await sheet.getByRole("radio", { name: "서비스" }).click();
+  await sheet.getByRole("button", { name: "3개 빼기" }).click();
+  await expect(row(page, "드래곤 소울 부스터").locator(".c-cur")).toContainText("0");
 });
