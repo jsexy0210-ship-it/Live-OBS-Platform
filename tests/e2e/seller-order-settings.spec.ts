@@ -46,6 +46,7 @@ test("저장한 적 없는 판매자도 입금 기한이 기본 24시간으로 �
   await expect(page.getByTestId("buyer-preview")).toContainText("주문 후 24시간 안에 입금");
   // 정기 실행이 연결되기 전까지는 자동 취소가 아직 돌지 않는다고 알려 준다
   await expect(page.getByTestId("auto-cancel-pending")).toContainText("아직 자동으로 취소되지 않아요");
+  await expect(page.getByTestId("restriction-pending")).toContainText("주문 막기도 시작되지 않았어요");
 });
 
 test("입금 기한을 3일·24시간으로 바꿔 저장하면 다시 열어도 그대로이고 구매자 안내에 보인다", async ({ page }) => {

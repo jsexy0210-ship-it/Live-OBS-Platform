@@ -223,6 +223,10 @@ export default function OrderSettingsPage() {
                   />
                 </div>
                 <span className="t-c1 c-alt">꺼도 이미 막힌 구매자는 그대로예요. 풀어 주려면 구매 제한 화면에서 해제해요.</span>
+                {/* 3회 판정은 미입금 자동 취소가 돌아야 생긴다. 정기 실행이 연결되면 지운다 */}
+                <span className="t-c1 c-cau" data-testid="restriction-pending">
+                  아직 자동 취소가 돌지 않아서 주문 막기도 시작되지 않았어요. 자동 취소가 시작되면 함께 적용돼요.
+                </span>
               </section>
 
               <section className="card pad col" style={{ gap: 10 }}>
