@@ -212,6 +212,12 @@ export default function SignupForm({ slug, consent }: { slug: string; consent: S
       return;
     }
     if (commonFail(r)) return;
+    // 입력한 생년월일로 만 14세 미만이면 생년월일 칸에 알린다
+    if (r.error === "under_age") {
+      setBirthError(failMessage(r));
+      focus("idv-birth");
+      return;
+    }
     // 동의가 빠졌거나 문서·재가입 제한 기간이 바뀌었으면 동의 칸으로 보낸다.
     // 화면을 연 뒤 바뀐 경우(문서 버전·재가입 제한 기간 변경)는 입력은 두고 동의 정보만 새로 받아 다시 동의하게 한다.
     if (r.error === "terms_required" || r.error === "invalid_rejoin_consent" || r.error === "rejoin_policy_changed" || r.error === "consent_outdated") {
