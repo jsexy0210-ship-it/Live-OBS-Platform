@@ -124,7 +124,10 @@ test("반품 · 교환 배송비: 기본 3,000원 · 6,000원, 바꾸면 저장�
   await openAs(page, "demo-owner@example.com");
   const ret = page.getByLabel("반품 배송비 (편도)");
   const exc = page.getByLabel("교환 배송비 (왕복)");
-  await expect(page.getByText("무료 배송 주문은 반품 배송비 × 2를 빼요.")).toBeVisible();
+  await expect(page.getByText("무료 배송 주문(배송비 0원)은 반품 배송비 × 2를 빼요.")).toBeVisible();
+  await expect(page.getByText("도서산간 추가 배송비를 낸 주문은 한 번만 빼요.", { exact: false })).toBeVisible();
+  // 교환 배송비는 아직 쓰이는 곳이 없어 「교환 접수가 열리면 적용돼요」로 안내한다
+  await expect(page.getByText("기본 6,000원 · 교환 접수가 열리면 적용돼요")).toBeVisible();
   const before = { ret: await ret.inputValue(), exc: await exc.inputValue() };
 
   // 잘못된 금액은 막는다

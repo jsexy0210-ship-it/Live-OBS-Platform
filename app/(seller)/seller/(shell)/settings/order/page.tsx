@@ -174,7 +174,7 @@ export default function OrderSettingsPage() {
     apply(r.data.policy);
     setState({ kind: "ok", saved: r.data.policy });
     setShowError(false);
-    setToast("주문 설정을 저장했어요 · 다음 주문부터 적용돼요");
+    setToast("주문 설정을 저장했어요");
   };
 
   const changeUnit = (u: Unit) => {
@@ -201,7 +201,7 @@ export default function OrderSettingsPage() {
         <div className="ph">
           <div className="col" style={{ gap: 6 }}>
             <h1 className="t-t3">주문 설정</h1>
-            <span className="t-l2 c-alt">미입금 취소 · 재고 · 배송 완료 · 구매 확정 규칙이에요. 저장하면 다음 주문부터 적용돼요.</span>
+            <span className="t-l2 c-alt">미입금 취소 · 재고 · 배송 완료 · 구매 확정 규칙이에요. 입금 기한은 다음 주문부터, 나머지는 저장하면 바로 적용돼요.</span>
           </div>
         </div>
 
@@ -372,6 +372,10 @@ export default function OrderSettingsPage() {
                   setValue: setConfirmDays,
                   err: showError && confirmOn ? confirmError : null,
                 })}
+                {/* 서버는 주문마다 기간을 따로 저장하지 않고 지금 설정으로 계산한다(orders/delivery.ts) */}
+                <span className="t-c1 c-alt" data-testid="delivery-existing">
+                  기간을 바꾸면 이미 배송 중이거나 배송 완료된 주문도 바뀐 기간으로 계산해요.
+                </span>
               </section>
             </div>
 

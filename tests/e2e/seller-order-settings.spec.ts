@@ -179,6 +179,8 @@ test("쇼핑몰 설정 권한이 없는 직원은 권한 안내를 본다", asyn
 test("자동 배송 완료·자동 구매 확정: 기본 7일, 기간을 바꾸거나 끄면 저장되고 다시 열어도 그대로다", async ({ page }) => {
   await openAs(page, "demo-owner@example.com");
   await expect(page.getByTestId("auto-deliver-pending")).toBeVisible();
+  // 기간은 주문마다 따로 저장되지 않아, 바꾸면 진행 중인 주문에도 적용된다고 알린다
+  await expect(page.getByTestId("delivery-existing")).toHaveText("기간을 바꾸면 이미 배송 중이거나 배송 완료된 주문도 바뀐 기간으로 계산해요.");
   await expect(page.getByLabel("자동 배송 완료 기간")).toHaveValue("7");
   await expect(page.getByLabel("자동 구매 확정 기간")).toHaveValue("7");
   await expect(page.getByTestId("delivery-preview")).toContainText("배송 중 7일이 지나면 배송 완료로 바뀌어요 · 배송 완료 7일 뒤 자동으로 구매 확정돼요");

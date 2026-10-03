@@ -245,12 +245,13 @@ export default function ShippingSettingsPage() {
                 <h2 className="t-hl2">반품 · 교환 배송비</h2>
                 <div className="g3">
                   {amountInput("return-fee", "반품 배송비 (편도)", returnFee, setReturnFee, shown.returnFee, "기본 3,000원")}
-                  {amountInput("exchange-fee", "교환 배송비 (왕복)", exchangeFee, setExchangeFee, shown.exchangeFee, "기본 6,000원")}
+                  {amountInput("exchange-fee", "교환 배송비 (왕복)", exchangeFee, setExchangeFee, shown.exchangeFee, "기본 6,000원 · 교환 접수가 열리면 적용돼요")}
                 </div>
                 <div className="msg msg-info t-l2" role="note">
                   <span>
                     단순 변심일 때만 받아요. 상품 불량 · 오배송은 판매자가 부담해요. 반품하면 처음 낸 배송비는 돌려주지 않고 반품 배송비를 빼고 환불해요.{" "}
-                    <b>무료 배송 주문은 반품 배송비 × 2를 빼요.</b>
+                    {/* 서버는 주문의 배송비가 0원일 때만 두 배로 뺀다(도서산간 추가비가 붙으면 0원이 아님, queue/service computeRefund) */}
+                    <b>무료 배송 주문(배송비 0원)은 반품 배송비 × 2를 빼요.</b> 도서산간 추가 배송비를 낸 주문은 한 번만 빼요. 교환 배송비는 교환 접수가 열리면 적용돼요.
                   </span>
                 </div>
               </section>
