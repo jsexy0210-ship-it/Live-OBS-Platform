@@ -185,6 +185,8 @@ $C up -d --wait         # 같은 버전 그대로, 앱·마이그레이션이 �
 
 ### 5. runner 등록
 
+**먼저 위 「runner 보안」 선택지를 정해요.** 아래는 상시 등록 방식이에요. ② 1회용 방식이면 `config.sh`에 `--ephemeral`을 붙이고, 서비스 등록(`svc.sh`) 대신 `./run.sh`로 배포 job 하나만 받아요.
+
 1. GitHub 저장소 → Settings → Actions → Runners → New self-hosted runner → Linux x64. 화면의 다운로드·`config.sh` 명령을 그대로 써요. **토큰은 화면에서 복사해 서버에서만 입력해요.**
 2. 서버에서 `obs` 계정으로 `/opt/obs/actions-runner`에 설치하고 등록할 때 라벨 `obs-kakao`를 추가해요.
    ```bash
