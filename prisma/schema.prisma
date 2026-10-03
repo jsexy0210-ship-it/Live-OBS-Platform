@@ -592,6 +592,8 @@ model Order {
   @@index([sellerId, status])
   @@index([status, paymentDueAt])
   @@index([sellerId, buyerMemberId, autoCancelledAt])
+  // 판매자 주문 목록(주문 시각 내림차순 + id 커서)
+  @@index([sellerId, createdAt(sort: Desc), id(sort: Desc)])
 }
 
 model OrderItem {
@@ -777,6 +779,8 @@ enum RewardLedgerType {
   USE
   RANKING_BONUS
   ADJUST
+  // 소멸(탈퇴 때 남은 잔액, 마지막 적립 뒤 3년). 음수 금액, 바로 SUCCEEDED로 잔액에 반영한다.
+  EXPIRE
 }
 
 enum RewardLedgerStatus {
