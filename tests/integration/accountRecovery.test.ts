@@ -249,6 +249,39 @@ describe("비밀번호 찾기(이메일+쇼핑몰) 직원", () => {
     return resetVerify(post("/api/seller/password-reset/verify", { verificationId }, flow));
   };
 
+  it("직원 본인확인 시작: 같은 직원·같은 attemptKey로 다시 보내면 같은 본인확인·같은 쿠키 값이고 문자·하루 횟수는 1회만 쓴다. 다른 직원은 같은 키여도 새로 시작, 확인 뒤 같은 키는 409", async () => {
+    const { seller } = await shop();
+    const staff = await createSellerUser(seller.id, "MANAGER");
+    const other = await createSellerUser(seller.id, "MANAGER");
+    for (const u of [staff, other]) await db.sellerUser.update({ where: { id: u.id }, data: { phone: "01055556666" } });
+    const cookie = await sessionOf(staff.email);
+    const key = "6f1c2b3a-4d5e-4f60-8a7b-9c0d1e2f3a4b";
+    const body = { ...IDV_INPUT, name: "직원", phone: "01055556666", attemptKey: key };
+    const sentBefore = fake().sent.length;
+    const first = await linkStart(post("/api/seller/me/identity/start", body, cookie));
+    expect(first.status).toBe(200);
+    const again = await linkStart(post("/api/seller/me/identity/start", body, cookie));
+    expect(again.status).toBe(200);
+    const { verificationId } = await first.json();
+    expect((await again.json()).verificationId).toBe(verificationId);
+    expect(cookieOf(again, "lo_lidv")).toBe(cookieOf(first, "lo_lidv"));
+    expect(fake().sent.length).toBe(sentBefore + 1);
+    expect(await db.identityVerification.count({ where: { purpose: "STAFF_LINK", subjectId: staff.id } })).toBe(1);
+    // 다른 직원이 같은 키를 쓰면 다른 기록
+    const otherStart = await linkStart(post("/api/seller/me/identity/start", body, await sessionOf(other.email)));
+    expect(otherStart.status).toBe(200);
+    expect((await otherStart.json()).verificationId).not.toBe(verificationId);
+    // 형식이 틀린 키는 400(문자 안 보냄)
+    const sentNow = fake().sent.length;
+    expect((await linkStart(post("/api/seller/me/identity/start", { ...body, attemptKey: "abc" }, cookie))).status).toBe(400);
+    expect(fake().sent.length).toBe(sentNow);
+    // 확인을 마친 뒤 같은 키는 409 already_verified
+    await confirmWith(linkConfirm, "/api/seller/me/identity/confirm", verificationId, cookieOf(first, "lo_lidv"), { ci: "STAFF-CI" });
+    const done = await linkStart(post("/api/seller/me/identity/start", body, cookie));
+    expect(done.status).toBe(409);
+    expect((await done.json()).error).toBe("already_verified");
+  });
+
   it("연결 CI가 맞는 직원은 재설정 권한을 받아 새 비밀번호로 로그인된다. CI가 다르거나·연결 전이거나·탭이 다르면 같은 거부", async () => {
     const { seller } = await shop();
     const { staff } = await linkedStaff(seller.id, "STAFF-CI");

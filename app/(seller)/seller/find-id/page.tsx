@@ -155,7 +155,8 @@ export default function FindIdPage() {
                 label="휴대폰 본인확인"
                 base={BASE}
                 blocked={busy}
-                start={(person) => api<{ verificationId: string }>(`${BASE}/start`, { method: "POST", body: { ...person, accountType } })}
+                scope={accountType}
+                start={(person, attemptKey) => api<{ verificationId: string }>(`${BASE}/start`, { method: "POST", body: { ...person, attemptKey, accountType } })}
                 onUnavailable={toUnavailable}
                 onVerified={(id) => void loadAccounts(id)}
               />

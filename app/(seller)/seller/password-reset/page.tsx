@@ -154,7 +154,8 @@ export default function PasswordResetPage() {
                     label="휴대폰 본인확인"
                     base={BASE}
                     blocked={!findReady || busy}
-                    start={(person) => api<{ verificationId: string }>(`${BASE}/start`, { method: "POST", body: { email: email.trim(), shopSlug: shopSlug.trim(), person, accountType: staff ? "staff" : "owner" } })}
+                    scope={JSON.stringify([email.trim(), shopSlug.trim(), staff])}
+                    start={(person, attemptKey) => api<{ verificationId: string }>(`${BASE}/start`, { method: "POST", body: { email: email.trim(), shopSlug: shopSlug.trim(), person, attemptKey, accountType: staff ? "staff" : "owner" } })}
                     onUnavailable={toUnavailable}
                     onSentChange={setCodeSent}
                     onVerified={(id) => void verify(id)}
