@@ -6,7 +6,9 @@ import { POST as resendRoute } from "../../app/api/shop/[slug]/signup/verificati
 import { POST as startRoute } from "../../app/api/shop/[slug]/signup/verification/route";
 import { BUYER_SIGNUP_MESSAGES, BUYER_SIGNUP_VERIFY_DAILY_LIMIT_PER_IP, MAX_SIGNUP_ATTEMPTS_PER_VERIFICATION, signupBuyer } from "../../lib/server/buyers/signup";
 import { prisma } from "../../lib/server/db";
+import { startSellerPasswordReset } from "../../lib/server/auth/passwordReset";
 import { FakeIdentityProvider } from "../../lib/server/identity/provider";
+import { startSellerSignupVerification } from "../../lib/server/sellers/application";
 import { IDV_INPUT, confirmIdv, createSeller, db, resetDb, startIdv } from "./helpers";
 
 beforeAll(() => {
@@ -304,5 +306,23 @@ describe("signupBuyer는 completeIdentityVerification을 거친다", () => {
     expect(resend.status).toBe(403);
     expect(await resend.json()).toMatchObject({ error: "trial_limit_exceeded" });
     expect((await db.identityVerification.findUniqueOrThrow({ where: { id: a.verificationId } })).sendCount).toBe(before.sendCount);
+    // 한도로 막힌 시작은 기록을 만들지 않으므로 같은 IP 하루 시작 횟수(기록 수로 셈)도 늘지 않는다
+    expect(await db.identityVerification.count({ where: { purpose: "BUYER_SIGNUP", sellerId: s.seller.id } })).toBe(2);
+    // 판매자 본인확인 경로(대표자 가입·비밀번호 재설정)는 이 한도를 보지 않는다
+    const provider = new FakeIdentityProvider();
+    expect((await startSellerSignupVerification(db, provider, { ...IDV_INPUT, phone: "01055556666" }, { ip: "203.0.113.9" })).ok).toBe(true);
+    expect((await startSellerPasswordReset(db, provider, { email: "owner@example.com", shopSlug: s.slug, person: IDV_INPUT })).ok).toBe(true);
+  });
+
+  it("체험이 아닌(구독 중) 쇼핑몰은 체험 한도와 상관없이 본인확인을 시작한다", async () => {
+    const s = await shop();
+    await db.subscriptionPlan.upsert({
+      where: { code: "STANDARD" },
+      update: { trialIdentityLimit: 0 },
+      create: { code: "STANDARD", name: "스탠다드", listPrice: 300000, salePrice: 199000, trialIdentityLimit: 0 },
+    });
+    const plan = await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "STANDARD" } });
+    await db.sellerSubscription.create({ data: { sellerId: s.seller.id, planId: plan.id, status: "ACTIVE", currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) } });
+    expect((await startRoute(post(`${s.base}/verification`, IDV_INPUT), ctx(s.slug))).status).toBe(200);
   });
 });
