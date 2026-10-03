@@ -43,7 +43,14 @@ async function loadSelf(db: PrismaClient, ctx: TenantContext) {
   return user;
 }
 
-const sameName = (a: string | null, b: string) => !!a && cleanText(a, STAFF_NAME_MAX) === cleanText(b, STAFF_NAME_MAX);
+// 이름 비교: 저장값·본인확인 결과 모두 같은 정규화(NFKC·앞뒤 공백·코드포인트 50자)를 거친다. 정규화 전에 들어간 예전 이름에
+// 제어·서식 문자(폭 없는 공백 등)가 섞여 있어도 비교가 영영 실패하지 않게, 비교할 때는 그 문자를 빼고 본다.
+const comparableName = (v: string) => cleanText(v.replace(/[\p{Cc}\p{Cf}]/gu, ""), STAFF_NAME_MAX);
+const sameName = (a: string | null, b: string) => {
+  if (!a) return false;
+  const x = comparableName(a);
+  return x !== null && x === comparableName(b);
+};
 
 // 연결 상태(화면의 첫 로그인 안내·건너뛰기용)
 export async function staffLinkStatus(db: PrismaClient, ctx: TenantContext) {
