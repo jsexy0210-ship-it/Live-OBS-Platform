@@ -21,6 +21,17 @@ import https from "node:https";
 import tls from "node:tls";
 
 const env = (k, d) => process.env[k] ?? d;
+// 숫자 설정: 비었으면 기본값, 숫자가 아니거나 최솟값보다 작으면 시작을 거부한다
+// (간격 0·음수면 쉬지 않고 확인을 반복하고, 시간 제한 0이면 모든 확인이 바로 실패하기 때문).
+function num(k, d, min, { int = false } = {}) {
+  const raw = process.env[k];
+  const v = raw === undefined || raw.trim() === "" ? d : Number(raw);
+  if (!Number.isFinite(v) || v < min || (int && !Number.isInteger(v))) {
+    console.error(`[monitor] ${k}=${JSON.stringify(raw)} 값이 올바르지 않아 시작하지 않아요(${int ? "정수, " : ""}${min} 이상).`);
+    process.exit(2);
+  }
+  return v;
+}
 const cfg = {
   // "이름=주소" 쉼표 구분. 주소 끝 "#호스트"는 Host 헤더로 보낸다(프록시의 http://127.0.0.1 블록에 맞추기).
   targets: env("MONITOR_TARGETS", "app=http://obs-web-app:3000/api/health,proxy=http://obs-web-proxy/api/health#127.0.0.1")
@@ -32,21 +43,21 @@ const cfg = {
       const [url, host] = rest.split("#");
       return { name, url, host };
     }),
-  intervalS: Number(env("MONITOR_INTERVAL_S", "15")),
-  timeoutMs: Number(env("MONITOR_TIMEOUT_MS", "5000")),
-  failThreshold: Number(env("MONITOR_FAIL_THRESHOLD", "3")),
+  intervalS: num("MONITOR_INTERVAL_S", 15, 1),
+  timeoutMs: num("MONITOR_TIMEOUT_MS", 5000, 100),
+  failThreshold: num("MONITOR_FAIL_THRESHOLD", 3, 1, { int: true }),
   // 배포 기록과 실행 버전이 이 횟수만큼 연속으로 다를 때만 경고(무중단 배포 중 잠깐 다른 것은 정상)
-  versionMismatchTicks: Number(env("MONITOR_VERSION_MISMATCH_TICKS", "3")),
+  versionMismatchTicks: num("MONITOR_VERSION_MISMATCH_TICKS", 3, 1, { int: true }),
   // 배포 진행 표시(rolling-deploy.sh·rollback-app.sh가 만들고 끝나면 지움). 있는 동안 버전 불일치 경고를 미룬다.
   deployMark: env("MONITOR_DEPLOY_MARK", "/data/deploy-in-progress"),
-  deployMarkStaleMin: Number(env("MONITOR_DEPLOY_MARK_STALE_MIN", "15")),
-  slowMs: Number(env("MONITOR_SLOW_MS", "1000")),
+  deployMarkStaleMin: num("MONITOR_DEPLOY_MARK_STALE_MIN", 15, 1),
+  slowMs: num("MONITOR_SLOW_MS", 1000, 1),
   dir: env("MONITOR_DIR", "/data"),
   deployLog: env("MONITOR_DEPLOY_LOG", "/deploy-history.log"),
   tlsHost: env("MONITOR_TLS_HOST", ""),
-  tlsWarnDays: Number(env("MONITOR_TLS_WARN_DAYS", "14")),
+  tlsWarnDays: num("MONITOR_TLS_WARN_DAYS", 14, 0),
   alertUrl: env("MONITOR_ALERT_URL", ""),
-  alertMaxPerHour: Number(env("MONITOR_ALERT_MAX_PER_HOUR", "10")),
+  alertMaxPerHour: num("MONITOR_ALERT_MAX_PER_HOUR", 10, 1, { int: true }),
   once: process.argv.includes("--once"),
 };
 
