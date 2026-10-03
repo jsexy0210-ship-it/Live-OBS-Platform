@@ -55,11 +55,77 @@ export const PURCHASE_FAILURE_STATUS: Record<Failure, number> = {
   free_reconnect_available: 409,
 };
 
-// 결제·작업 생성 트랜잭션 안에서 다시 확인해 거절할 때(트랜잭션을 되돌린다)
+// 작업 확정 트랜잭션 안에서 다시 계산해 거절할 때(트랜잭션을 되돌린다)
 class PurchaseAborted extends Error {
-  constructor(readonly reason: "shop_not_supported" | "free_reconnect_available") {
+  constructor(
+    readonly reason: "shop_not_supported" | "free_reconnect_available" | "payment_required",
+    readonly paidReason?: PaidReason,
+  ) {
     super(reason);
   }
+}
+
+type CommitPlan = {
+  kind: "INITIAL" | "REINSTALL" | "RECONNECT_FREE";
+  key: string;
+  fingerprint: string;
+  playbook: Playbook;
+  shopHost: string | null;
+  obsTargetKey: string;
+  // 재연결·재설치 대상. 있으면 잠금 안에서 무료 재연결 판정(기준 설치 포함)을 다시 계산하고 그 값으로 저장한다.
+  target?: ReconnectTarget;
+  // 유료만: 금액
+  amount?: number;
+};
+
+// 작업 확정(유료 첫 연결·유료 재설치·무료 재연결 공통). 한 트랜잭션에서 순서대로:
+// 판매자 잠금 → 작업서 공유 잠금 → 결제(유료만)·작업 행 → 무료 재연결 판정 재계산(기준 설치 포함) → 작업서 준비 상태 재계산.
+// 바깥에서 미리 계산한 값은 화면 안내용일 뿐이고, 저장은 여기서 다시 계산한 값으로만 한다. 결제 제출은 커밋 뒤 호출자가 한다(유료만).
+async function commitJob(db: PrismaClient, ctx: TenantContext, plan: CommitPlan): Promise<{ payment: AutomationPayment | null; job: AutomationJob }> {
+  return db.$transaction(async (tx) => {
+    await lockSellerAutomation(tx, ctx.sellerId);
+    await lockPlaybook(tx, plan.playbook.id, "shared");
+    const now = await dbNow(tx);
+    const paid = plan.kind !== "RECONNECT_FREE";
+    const payment = paid
+      ? await tx.automationPayment.create({
+          data: { sellerId: ctx.sellerId, amount: plan.amount!, idempotencyKey: plan.key, requestFingerprint: plan.fingerprint, consentNoticeVersion: AUTOMATION_CONSENT.version, consentAgreedAt: now },
+        })
+      : null;
+    let job = await tx.automationJob.create({
+      // OBS 대상 키: 처음 연결은 판매자 단위(아직 PC를 모름), 재설치·재연결은 요청한 pairing 단위(실행 때 실제 PC로 옮김)
+      data: {
+        sellerId: ctx.sellerId,
+        kind: plan.kind,
+        paymentId: payment?.id,
+        costLimit: plannerConfig().costLimitWon,
+        playbookId: plan.playbook.id,
+        playbookVersion: plan.playbook.version,
+        shopHost: plan.shopHost,
+        obsTargetKey: plan.obsTargetKey,
+        ...(paid ? {} : { status: "QUEUED" as const, runAfter: now, idempotencyKey: plan.key, requestFingerprint: plan.fingerprint }),
+      },
+    });
+    // 잠금 안에서 다시 계산한 판정으로만 저장한다
+    if (plan.target) {
+      const decision = await decideReconnect(tx, ctx.sellerId, plan.target);
+      if (plan.kind === "RECONNECT_FREE" && !decision.free) throw new PurchaseAborted("payment_required", decision.reason);
+      if (plan.kind === "REINSTALL" && decision.free) throw new PurchaseAborted("free_reconnect_available");
+      if (decision.baseJobId) job = await tx.automationJob.update({ where: { id: job.id }, data: { baseJobId: decision.baseJobId } });
+    }
+    if (!(await playbookReadiness(tx, plan.playbook)).verified) throw new PurchaseAborted("shop_not_supported");
+    await writeJobEvent(tx, job, null, job.status, 0, plan.kind === "RECONNECT_FREE" ? { freeReconnectOf: job.baseJobId } : undefined);
+    await writeAudit(tx, {
+      actorType: ctx.actorType,
+      actorId: ctx.actorId,
+      sellerId: ctx.sellerId,
+      action: plan.kind === "INITIAL" ? "automation.purchase" : plan.kind === "REINSTALL" ? "automation.reinstall_purchase" : "automation.reconnect_free",
+      targetType: "AutomationJob",
+      targetId: job.id,
+      after: payment ? { amount: payment.amount, paymentId: payment.id, consentNoticeVersion: AUTOMATION_CONSENT.version } : { baseJobId: job.baseJobId },
+    });
+    return { payment, job };
+  });
 }
 
 // 지원 목록(연습으로 검증된 작업서)에 있는 쇼핑몰인지. 판매자는 플랫폼을 고르지 않고 쇼핑몰 주소만 낸다.
@@ -109,7 +175,6 @@ type PaidJobInput = {
   // 지원 목록 작업서 고르기(결제 전에 부른다). 없으면 shop_not_supported
   resolvePlaybook: () => Promise<Playbook | null>;
   kind: "INITIAL" | "REINSTALL";
-  baseJobId?: string;
   obsTargetKey?: string;
   shopHost: string | null;
   // 유료 재설치: 커밋 직전 무료 재연결 판정을 다시 계산할 대상
@@ -154,45 +219,22 @@ async function buyPaidJob(db: PrismaClient, provider: BillingProvider, ctx: Tena
 
   let created: { payment: AutomationPayment; job: AutomationJob };
   try {
-    created = await db.$transaction(async (tx) => {
-      // 판매자 단위 직렬화 + 작업서 공유 잠금(준비 상태 재계산). 커밋 직전에 아래에서 다시 확인한다.
-      await lockSellerAutomation(tx, ctx.sellerId);
-      await lockPlaybook(tx, playbook.id, "shared");
-      const now = await dbNow(tx);
-      const payment = await tx.automationPayment.create({
-        data: { sellerId: ctx.sellerId, amount, idempotencyKey: key, requestFingerprint: input.fingerprint, consentNoticeVersion: AUTOMATION_CONSENT.version, consentAgreedAt: now },
-      });
-      const job = await tx.automationJob.create({
-        // OBS 대상 키: 처음 연결은 판매자 단위(아직 PC를 모름), 재설치는 알고 있는 pairing 단위
-        data: {
-          sellerId: ctx.sellerId,
-          kind: input.kind,
-          paymentId: payment.id,
-          costLimit: plannerConfig().costLimitWon,
-          playbookId: playbook.id,
-          playbookVersion: playbook.version,
-          shopHost: input.shopHost,
-          baseJobId: input.baseJobId,
-          obsTargetKey: input.obsTargetKey ?? `seller:${ctx.sellerId}`,
-        },
-      });
-      await writeJobEvent(tx, job, null, "AWAITING_PAYMENT", 0);
-      await writeAudit(tx, {
-        actorType: ctx.actorType,
-        actorId: ctx.actorId,
-        sellerId: ctx.sellerId,
-        action: input.kind === "INITIAL" ? "automation.purchase" : "automation.reinstall_purchase",
-        targetType: "AutomationJob",
-        targetId: job.id,
-        after: { amount, paymentId: payment.id, consentNoticeVersion: AUTOMATION_CONSENT.version },
-      });
-      // 커밋 직전 다시 확인: 그사이 작업서 화면 이탈이 기록돼 준비가 풀렸거나, 유료 재설치가 무료 재연결 조건이 됐으면 결제를 만들지 않는다
-      if (!(await playbookReadiness(tx, playbook)).verified) throw new PurchaseAborted("shop_not_supported");
-      if (input.reconnectTarget && (await decideReconnect(tx, ctx.sellerId, input.reconnectTarget)).free) throw new PurchaseAborted("free_reconnect_available");
-      return { payment, job };
+    const r = await commitJob(db, ctx, {
+      kind: input.kind,
+      key,
+      fingerprint: input.fingerprint,
+      playbook,
+      shopHost: input.shopHost,
+      obsTargetKey: input.obsTargetKey ?? `seller:${ctx.sellerId}`,
+      target: input.reconnectTarget,
+      amount,
     });
+    created = { payment: r.payment!, job: r.job };
   } catch (e) {
-    if (e instanceof PurchaseAborted) return { ok: false, reason: e.reason };
+    if (e instanceof PurchaseAborted) {
+      // 유료 첫 연결·재설치에서 payment_required는 나오지 않는다(무료 경로만)
+      return { ok: false, reason: e.reason === "payment_required" ? "shop_not_supported" : e.reason };
+    }
     if (!isUniqueViolation(e)) throw e;
     // 같은 키가 동시에 들어왔으면 먼저 만든 쪽을 돌려준다
     const again = await replay();
@@ -272,28 +314,17 @@ export async function reconnectAutomation(
   if (!playbook) return { ok: false, reason: "shop_not_supported" };
   if (!decision.free) {
     if (input.consent === undefined) return { ok: false, reason: "payment_required", paidReason: decision.reason, price: REINSTALL_PRICE };
-    return buyPaidJob(db, provider, ctx, { idempotencyKey: input.idempotencyKey, consent: input.consent, fingerprint, resolvePlaybook: async () => playbook, kind: "REINSTALL", baseJobId: decision.baseJobId ?? undefined, obsTargetKey, shopHost, reconnectTarget: target });
+    return buyPaidJob(db, provider, ctx, { idempotencyKey: input.idempotencyKey, consent: input.consent, fingerprint, resolvePlaybook: async () => playbook, kind: "REINSTALL", obsTargetKey, shopHost, reconnectTarget: target });
   }
   try {
-    const job = await db.$transaction(async (tx) => {
-      const now = await dbNow(tx);
-      const j = await tx.automationJob.create({
-        data: { sellerId: ctx.sellerId, kind: "RECONNECT_FREE", costLimit: plannerConfig().costLimitWon, playbookId: playbook.id, playbookVersion: playbook.version, shopHost, baseJobId: decision.baseJobId, status: "QUEUED", runAfter: now, obsTargetKey, idempotencyKey: key, requestFingerprint: fingerprint },
-      });
-      await writeJobEvent(tx, j, null, "QUEUED", 0, { freeReconnectOf: decision.baseJobId });
-      await writeAudit(tx, {
-        actorType: ctx.actorType,
-        actorId: ctx.actorId,
-        sellerId: ctx.sellerId,
-        action: "automation.reconnect_free",
-        targetType: "AutomationJob",
-        targetId: j.id,
-        after: { baseJobId: decision.baseJobId },
-      });
-      return j;
-    });
+    // 무료 재연결도 같은 확정 함수로: 잠금 안에서 판정(기준 설치 포함)·준비 상태를 다시 계산한 값으로만 저장한다
+    const { job } = await commitJob(db, ctx, { kind: "RECONNECT_FREE", key, fingerprint, playbook, shopHost, obsTargetKey, target });
     return { ok: true, jobId: job.id, kind: job.kind, paymentStatus: null, jobStatus: job.status, replayed: false };
   } catch (e) {
+    if (e instanceof PurchaseAborted) {
+      if (e.reason === "payment_required") return { ok: false, reason: "payment_required", paidReason: e.paidReason!, price: REINSTALL_PRICE };
+      return { ok: false, reason: e.reason === "free_reconnect_available" ? "shop_not_supported" : e.reason };
+    }
     if (!isUniqueViolation(e)) throw e;
     // 같은 키가 동시에 들어왔으면 먼저 만든 쪽을 돌려준다
     const again = await priorUse(db, ctx.sellerId, key, fingerprint);
@@ -404,7 +435,8 @@ export async function reconcileAutomationPayments(db: PrismaClient, provider: Bi
   const cutoff = new Date((await dbNow(db)).getTime() - (opts.olderThanMs ?? AUTOMATION_LIMITS.reconcileAfterMs));
   // 확인한 지 오래된 순(처음이면 먼저), 같으면 id 순. 확인 직전에 시각을 남겨 오류가 난 건도 다음 회차에는 뒤로 간다.
   const stale = await db.automationPayment.findMany({
-    where: { status: "PENDING", createdAt: { lte: cutoff } },
+    // 확인 간격(대사 간격)이 지난 건만: 작업자 반복이 짧아도 같은 결제의 PG 조회는 간격당 1회
+    where: { status: "PENDING", createdAt: { lte: cutoff }, OR: [{ lastCheckedAt: null }, { lastCheckedAt: { lte: cutoff } }] },
     select: { id: true, sellerId: true },
     orderBy: [{ lastCheckedAt: { sort: "asc", nulls: "first" } }, { id: "asc" }],
     take: 50,

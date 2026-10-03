@@ -1,12 +1,12 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import type { BillingProvider } from "../billing/provider";
 import { AUTOMATION_LIMITS } from "./config";
-import { EngineAborted, runSteps } from "./engine";
+import { EngineAborted, runRollback, runSteps } from "./engine";
 import { findPlaybook } from "./playbooks";
 import type { AutomationRuntime, JobScope } from "./ports";
 import { cleanupPracticeArtifacts, playbookReadiness } from "./practice";
 import { reconcileAutomationPayments } from "./purchase";
-import { FencingError, RunTimeExceeded, advanceStep, claimNext, claimObsTarget, extendLease, failWithRefund, markBrowserStateHeld, markTargetVerified, finishJob, parkForCustomer, reapExpired, retryLater, toVerifying, touch, type Claimed } from "./queue";
+import { FencingError, RunTimeExceeded, markCleanupNeeded, advanceStep, claimNext, claimObsTarget, extendLease, failWithRefund, markBrowserStateHeld, markTargetVerified, finishJob, parkForCustomer, reapExpired, retryLater, toVerifying, touch, type Claimed } from "./queue";
 
 // 자동 연결 작업자 진입점. 웹 서버(주문 API)와 다른 프로세스로 띄우는 것을 전제로 한다.
 // 실제 프로세스 실행(배포)은 운영 승인 사항이라 1차에는 이 모듈과 테스트만 있다.
@@ -70,7 +70,22 @@ export async function executeJob(db: PrismaClient, rt: AutomationRuntime, { job,
           : null;
     if (stop) {
       try {
-        await failWithRefund(db, claim, stop);
+        // 아직 아무것도 바꾸지 않았으면 시작 전 실패·전액 환불 대기
+        const changed = job.stepIndex > 0 || job.playbookActions > 0 || job.plannerCalls > 0 || job.obsPairingId !== null;
+        if (!changed) {
+          await failWithRefund(db, claim, stop);
+          return "failed";
+        }
+        // 이미 바꿨으면 되돌린 뒤 실패·환불. 되돌리기는 구매 때 버전의 정의로만 한다(없으면 사람이 정리)
+        const rolled =
+          found && job.playbookVersion === found.version
+            ? await runRollback(rt, scope, { playbook: found, shopHost: job.shopHost, stepIndex: job.stepIndex, obsPairingId: job.obsPairingId, signal: lost.signal }, { touch: () => extendLease(db, claim, leaseMs) })
+            : ({ kind: "cleanup_needed", reason: "rollback_definition_missing" } as const);
+        if (rolled.kind === "rolled_back") {
+          await failWithRefund(db, claim, stop);
+          return "failed";
+        }
+        await markCleanupNeeded(db, claim, `${stop}:${rolled.reason}`);
         return "failed";
       } catch (inner) {
         if (inner instanceof FencingError) return "fenced";

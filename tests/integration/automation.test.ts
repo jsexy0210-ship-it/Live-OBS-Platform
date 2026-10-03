@@ -2036,3 +2036,108 @@ describe("MASTER 지시(4ad65d7 Codex worker.ts:81): 구매 때 작업서 버전
     expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "REFUND_PENDING", refundReason: "playbook_not_verified" });
   });
 });
+
+describe("Codex 14차 반영(32fc6cd)·MASTER 되돌리기 경로", () => {
+  async function completedJob() {
+    const s = await bought();
+    expect(await runOnce(db, runtime(), W)).toBe("succeeded");
+    return { ...s, target: { shopKey: `mall-${s.seller.id}`, obsPairingId: `pc-${s.seller.id}` } };
+  }
+  // 작업 행을 만드는 순간(무료 재연결 판단과 커밋 사이)에 다른 일이 끼어들게 한다
+  const onJobCreate = (before: () => Promise<void>) =>
+    db.$extends({
+      query: {
+        automationJob: {
+          async create({ args, query }) {
+            await before();
+            return query(args);
+          },
+        },
+      },
+    }) as unknown as typeof db;
+
+  it("무료 재연결 판단과 커밋 사이에 작업서 화면 이탈이 생기면 작업을 만들지 않는다", async () => {
+    const s = await completedJob();
+    const other = await bought();
+    const raced = onJobCreate(async () => {
+      await db.automationJob.update({ where: { id: other.jobId }, data: { lastDeviationAt: new Date(), deviatedSteps: ["webhook_setup"] } });
+    });
+    const before = await db.automationJob.count({ where: { sellerId: s.seller.id } });
+    expect(await reconnectAutomation(raced, s.provider, s.ctx, { idempotencyKey: newKey(), target: s.target })).toEqual({ ok: false, reason: "shop_not_supported" });
+    expect(await db.automationJob.count({ where: { sellerId: s.seller.id } })).toBe(before);
+  });
+
+  it("무료 재연결 판단과 커밋 사이에 다른 PC로 유료 설치가 끝나 기준 설치가 바뀌면 새 기준으로 다시 판단해 무료로 만들지 않는다", async () => {
+    const s = await completedJob();
+    const raced = onJobCreate(async () => {
+      const p = await db.automationPayment.create({
+        data: { sellerId: s.seller.id, amount: REINSTALL_PRICE, idempotencyKey: `race-${Date.now()}-x`, requestFingerprint: "x", consentNoticeVersion: "x", consentAgreedAt: new Date(), status: "PAID", paidAt: new Date() },
+      });
+      await db.automationJob.create({
+        data: { sellerId: s.seller.id, kind: "REINSTALL", paymentId: p.id, status: "SUCCEEDED", finishedAt: new Date(Date.now() + 1000), shopKey: s.target.shopKey, obsPairingId: "pc-other", obsTargetKey: "obs:pc-other", playbookId: cafe24Playbook.id, playbookVersion: cafe24Playbook.version, stepIndex: 5 },
+      });
+    });
+    const r = await reconnectAutomation(raced, s.provider, s.ctx, { idempotencyKey: newKey(), target: s.target });
+    expect(r).toMatchObject({ ok: false, reason: "payment_required", paidReason: "pc_changed" });
+    expect(await db.automationJob.count({ where: { sellerId: s.seller.id, kind: "RECONNECT_FREE" } })).toBe(0);
+  });
+
+  it("작업자 반복을 짧게 여러 번 돌려도 같은 결제의 PG 조회는 대사 간격당 1회다", async () => {
+    let lookups = 0;
+    class Counting extends FakeBillingProvider {
+      override async getPayment(orderId: string) {
+        lookups++;
+        return super.getPayment(orderId);
+      }
+    }
+    const provider = new Counting();
+    const a = await shopWithCard();
+    provider.failNext = "timeout_before_charge";
+    const r = await purchaseAutomation(db, provider, a.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP });
+    if (!r.ok) throw new Error(r.reason);
+    await db.automationPayment.updateMany({ where: { sellerId: a.seller.id }, data: { createdAt: new Date(Date.now() - 10 * 60_000) } });
+    provider.failNext = "timeout_before_charge";
+    lookups = 0;
+    await reconcileAutomationPayments(db, provider);
+    const afterFirst = lookups;
+    expect(afterFirst).toBeGreaterThan(0);
+    for (let i = 0; i < 3; i++) await reconcileAutomationPayments(db, provider);
+    expect(lookups).toBe(afterFirst);
+  });
+
+  it("변경을 한 뒤 다시 시작한 작업이 작업서 검증 해제로 멈추면, 구매 때 버전의 되돌리기 단계로 쇼핑몰·OBS 변경을 되돌린 뒤 실패·환불 대기로 끝낸다", async () => {
+    const a = await bought();
+    const rt = runtime();
+    // 쇼핑몰 연결·웹훅·OBS 소스 추가까지 마친 상태(진행 위치 3)
+    await db.automationJob.update({ where: { id: a.jobId }, data: { stepIndex: 3, playbookActions: 8, obsPairingId: `pc-${a.seller.id}`, obsTargetKey: `obs:pc-${a.seller.id}` } });
+    rt.obs.sources.set(a.seller.id, 1);
+    const other = await bought();
+    await db.automationJob.update({ where: { id: other.jobId }, data: { status: "CANCELED", finishedAt: new Date(), lastDeviationAt: new Date(), deviatedSteps: ["webhook_setup"] } });
+    expect(await runOnce(db, rt, W)).toBe("failed");
+    const clicks = rt.browser.performed.filter((p) => p.type === "click").map((p) => p.type);
+    expect(clicks.length).toBeGreaterThanOrEqual(2);
+    expect(rt.obs.performed.filter((p) => p.type === "obs_remove_overlay_source")).toHaveLength(1);
+    expect(rt.obs.sources.get(a.seller.id)).toBe(0);
+    expect(rt.planner.inputs).toHaveLength(0);
+    expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "playbook_not_verified" });
+    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "REFUND_PENDING" });
+  });
+
+  it("되돌리기 중 화면이 되돌리기 단계와 달라 판단 모델이 필요하면 판단 모델을 부르지 않고 「정리 필요」로 두고 마스터 관리자에게 알린다(환불은 정리 뒤)", async () => {
+    const a = await bought();
+    const rt = runtime();
+    rt.browser.pageText = () => "화면이 바뀌었어요 · 로그아웃";
+    await db.automationJob.update({ where: { id: a.jobId }, data: { stepIndex: 2, playbookActions: 5 } });
+    const other = await bought();
+    await db.automationJob.update({ where: { id: other.jobId }, data: { status: "CANCELED", finishedAt: new Date(), lastDeviationAt: new Date(), deviatedSteps: ["webhook_setup"] } });
+    await runOnce(db, rt, W);
+    expect(rt.planner.inputs).toHaveLength(0);
+    expect(await job(a.jobId)).toMatchObject({ status: "CLEANUP_NEEDED", leaseOwner: null });
+    expect(await db.auditLog.count({ where: { action: "automation.job_cleanup_needed", targetId: a.jobId } })).toBe(1);
+    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "PAID" });
+    // 정리 전에는 이 작업의 보관 자료를 지우지 않는다(정리 전용 사본)
+    await purgeEndedBrowserState(db, rt);
+    expect(rt.browser.discarded).not.toContain(a.jobId);
+    expect(await job(a.jobId)).toMatchObject({ artifactsPurgedAt: null });
+  });
+});

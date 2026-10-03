@@ -210,6 +210,25 @@ export const failWithRefund = (db: PrismaClient, c: Claim, reason: string) =>
     { allowExpiredLease: true },
   );
 
+// 「정리 필요」: 작업이 만든 변경을 되돌리지 못했다. 실행 자리를 놓고, 같은 트랜잭션에서 마스터 관리자 알림(감사 기록 운영 이벤트)을 남긴다.
+// 결제는 그대로 둔다(사람이 정리한 뒤 실패·환불로 닫는다). 보관 자료는 정리 전용으로 남는다(끝난 작업이 아니라 정리 대상이 아님).
+export const markCleanupNeeded = (db: PrismaClient, c: Claim, reason: string) =>
+  fencedWrite(
+    db,
+    c,
+    () => ({
+      to: "CLEANUP_NEEDED",
+      data: { ...RELEASE, lastError: reason.slice(0, 200) },
+      detail: { reason: reason.slice(0, 200) },
+      after: async (tx, cur) => {
+        await tx.auditLog.create({
+          data: { actorType: "SYSTEM", sellerId: cur.sellerId, action: "automation.job_cleanup_needed", targetType: "AutomationJob", targetId: cur.id, after: { reason: reason.slice(0, 200) } },
+        });
+      },
+    }),
+    { allowExpiredLease: true },
+  );
+
 // 브라우저 상태 보관 직전 「보관 중」 표시(보관본을 놓치지 않게 보관보다 먼저 남긴다)
 export const markBrowserStateHeld = (db: PrismaClient, c: Claim) => fencedWrite(db, c, () => ({ data: { browserStateHeld: true } }));
 

@@ -19,6 +19,8 @@ export type AutomationAction =
   | { type: "fill"; target: string; value: { secretRef: SecretRef } | { text: string } }
   | { type: "request_customer"; action: AutomationCustomerAction }
   | { type: "obs_add_overlay_source" }
+  // 되돌리기 전용: 이 작업이 추가한 오버레이 소스를 뺀다
+  | { type: "obs_remove_overlay_source" }
   | { type: "obs_apply_display_settings" }
   | { type: "send_test_event" }
   | { type: "check_overlay_shows_test_event" }
@@ -160,7 +162,7 @@ export const ALLOWED_HOSTS = ["cafe24.com", "cafe24api.com"] as const;
 
 export const ALLOWED_ACTIONS: Record<StepKind, readonly AutomationAction["type"][]> = {
   browser: ["navigate", "click", "fill", "request_customer", "step_done"],
-  obs: ["obs_add_overlay_source", "obs_apply_display_settings", "request_customer", "step_done"],
+  obs: ["obs_add_overlay_source", "obs_apply_display_settings", "obs_remove_overlay_source", "request_customer", "step_done"],
   verify: ["send_test_event", "check_overlay_shows_test_event", "request_customer", "step_done"],
 };
 

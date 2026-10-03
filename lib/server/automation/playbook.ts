@@ -69,6 +69,17 @@ export type Playbook = {
   // 관리자 로그인 상태 단서가 보여야 한다(같은 호스트의 쇼핑몰 앞 화면은 판매자가 꾸미는 내용이라 거부).
   secretOrigin: { pathPrefixes: readonly string[]; adminCue: ScreenCue };
   steps: Readonly<Record<string, PlaybookStep>>;
+  // 되돌리기 단계(실행 순서대로). 실패로 끝날 때 작업이 마친 단계(forStep)의 변경을 정해 둔 행동으로만 되돌린다.
+  // 화면 단서가 맞지 않으면 판단 모델로 넘기지 않고 「정리 필요」로 사람에게 넘긴다.
+  rollback: readonly PlaybookRollbackStep[];
+};
+
+export type PlaybookRollbackStep = {
+  forStep: string;
+  kind: "browser" | "obs";
+  actions: readonly { action: AutomationAction; expect?: ScreenCue }[];
+  allowedTargets: readonly string[];
+  allowedUrls: { pathPrefixes: readonly string[]; queryKeys: readonly string[] };
 };
 
 export function cueMatches(cue: ScreenCue | undefined, o: Observation): boolean {
@@ -106,6 +117,14 @@ export function validatePlaybook(p: Playbook): string[] {
     if (s.actions.length === 0 || s.actions[s.actions.length - 1].action.type !== "step_done") problems.push(`no_step_done:${step.key}`);
   }
   for (const k of Object.keys(p.steps)) if (!STEPS.some((s) => s.key === k)) problems.push(`unknown_step:${k}`);
+  const probeHost = `probe.${p.hostSuffixes[0] ?? "invalid"}`;
+  for (const rb of p.rollback) {
+    if (!STEPS.some((st) => st.key === rb.forStep)) problems.push(`rollback_unknown_step:${rb.forStep}`);
+    rb.actions.forEach(({ action }, i) => {
+      const v = validateDecision({ key: `rollback:${rb.forStep}`, kind: rb.kind }, { action: resolveShop(action, probeHost), costWon: 0 }, probe, {}, rb.allowedTargets, { shopHost: probeHost, ...rb.allowedUrls });
+      if (!v.ok) problems.push(`rollback:${rb.forStep}[${i}]:${v.reason}`);
+    });
+  }
   return problems;
 }
 

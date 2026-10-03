@@ -243,6 +243,9 @@ export class FakeObsBridge implements ObsBridge {
     if (action.type === "obs_add_overlay_source" && !this.disconnected.has(scope.sellerId) && !this.failOnce.has(scope.sellerId)) {
       this.sources.set(scope.sellerId, (this.sources.get(scope.sellerId) ?? 0) + 1);
     }
+    if (action.type === "obs_remove_overlay_source" && !this.disconnected.has(scope.sellerId)) {
+      this.sources.set(scope.sellerId, Math.max(0, (this.sources.get(scope.sellerId) ?? 0) - 1));
+    }
     if (this.failOnce.delete(scope.sellerId)) return { kind: "retryable", reason: "obs_busy" };
     if (this.disconnected.has(scope.sellerId)) return { kind: "needs_customer", action: "LOCAL_TOOL" };
     if (action.type === "check_overlay_shows_test_event") {

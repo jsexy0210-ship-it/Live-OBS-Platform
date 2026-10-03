@@ -78,4 +78,34 @@ export const cafe24Playbook: Playbook = {
       allowedUrls: { pathPrefixes: [], queryKeys: [] },
     },
   },
+  // 되돌리기(초안 가정: 실제 버튼 문구·경로는 실습 때 확인). 위험 단어(삭제 등)를 쓰지 않는 문구로 적는다.
+  rollback: [
+    {
+      forStep: "obs_overlay_install",
+      kind: "obs",
+      actions: [{ action: { type: "obs_remove_overlay_source" }, expect: { textIncludes: ["OBS 연결됨"] } }],
+      allowedTargets: [],
+      allowedUrls: { pathPrefixes: [], queryKeys: [] },
+    },
+    {
+      forStep: "webhook_setup",
+      kind: "browser",
+      actions: [
+        { action: { type: "navigate", url: "https://{shop}/disp/admin/shop1/" } },
+        { action: { type: "click", target: "주문 알림 끄기" }, expect: { textIncludes: ["주문 알림"] } },
+      ],
+      allowedTargets: ["주문 알림 끄기"],
+      allowedUrls: { pathPrefixes: ["/disp/admin/", "/admin/"], queryKeys: [] },
+    },
+    {
+      forStep: "shop_connect",
+      kind: "browser",
+      actions: [
+        { action: { type: "navigate", url: "https://{shop}/disp/admin/shop1/" } },
+        { action: { type: "click", target: "앱 사용 중지" }, expect: { textIncludes: ["설치 완료"] } },
+      ],
+      allowedTargets: ["앱 사용 중지"],
+      allowedUrls: { pathPrefixes: ["/disp/admin/", "/admin/"], queryKeys: [] },
+    },
+  ],
 };

@@ -5,12 +5,14 @@ import type { AutomationJobStatus } from "@prisma/client";
 export const TRANSITIONS: Record<AutomationJobStatus, readonly AutomationJobStatus[]> = {
   AWAITING_PAYMENT: ["QUEUED", "FAILED", "CANCELED"],
   QUEUED: ["RUNNING", "CANCELED"],
-  RUNNING: ["VERIFYING", "NEEDS_CUSTOMER", "QUEUED", "FAILED", "CANCELED"],
+  RUNNING: ["VERIFYING", "NEEDS_CUSTOMER", "QUEUED", "FAILED", "CANCELED", "CLEANUP_NEEDED"],
   NEEDS_CUSTOMER: ["QUEUED", "FAILED", "CANCELED"],
-  VERIFYING: ["SUCCEEDED", "NEEDS_CUSTOMER", "QUEUED", "FAILED", "CANCELED"],
+  VERIFYING: ["SUCCEEDED", "NEEDS_CUSTOMER", "QUEUED", "FAILED", "CANCELED", "CLEANUP_NEEDED"],
   SUCCEEDED: [],
   FAILED: [],
   CANCELED: [],
+  // 사람이 정리한 뒤 실패로 닫는다(판매자 취소·재개 불가, 열린 작업이라 새 구매도 막힌다)
+  CLEANUP_NEEDED: ["FAILED"],
 };
 
 export const TERMINAL: readonly AutomationJobStatus[] = ["SUCCEEDED", "FAILED", "CANCELED"];

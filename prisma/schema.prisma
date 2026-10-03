@@ -1210,6 +1210,8 @@ enum AutomationJobStatus {
   SUCCEEDED
   FAILED
   CANCELED
+  // 정리 필요: 실패로 끝나야 하는데 작업이 만든 변경(쇼핑몰 앱·웹훅, OBS 소스)을 되돌리지 못했다. 사람이 정리한 뒤 FAILED·환불로 닫는다.
+  CLEANUP_NEEDED
 }
 
 // 고객이 직접 해야 하는 일. 이 동안 작업은 실행 자리(lease)를 반납한다.

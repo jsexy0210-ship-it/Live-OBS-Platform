@@ -67,7 +67,7 @@ export class EngineAborted extends Error {
 }
 
 // 바꾸는 행동. 무료 재연결의 쇼핑몰·PC 대조는 이 행동을 처음 하기 바로 전에 한다(이동·고객 로그인 대기·관찰·확인은 대조 전에 허용).
-const MUTATING: readonly AutomationAction["type"][] = ["click", "fill", "obs_add_overlay_source", "obs_apply_display_settings", "send_test_event"];
+const MUTATING: readonly AutomationAction["type"][] = ["click", "fill", "obs_add_overlay_source", "obs_apply_display_settings", "obs_remove_overlay_source", "send_test_event"];
 
 export type EngineOptions = {
   // 실행 자리를 잃으면 abort된다. 외부 호출(관찰·판단·실행) 직전마다 확인한다.
@@ -302,4 +302,55 @@ async function runAll(
   // 검증 단계를 이번 실행에서 통과했어야 완료다(증거 없이 완료하지 않는다)
   if (!evidence) return { kind: "retry", reason: "verification_missing" };
   return { kind: "succeeded", evidence };
+}
+
+// ───── 되돌리기 ─────
+// 실패로 끝나는 작업이 이미 바꾼 것(쇼핑몰 앱·웹훅, OBS 소스)을 구매 때 버전 작업서의 되돌리기 단계로만 되돌린다.
+// 화면 단서가 맞지 않거나(판단 모델이 필요), 검사에 걸리거나, 실행 결과가 성공이 아니거나, PC가 이 작업이 바꾼 PC가 아니면
+// 판단 모델을 부르지 않고 바로 「정리 필요」로 사람에게 넘긴다.
+export type RollbackResult = { kind: "rolled_back" } | { kind: "cleanup_needed"; reason: string };
+
+export async function runRollback(
+  rt: AutomationRuntime,
+  scope: JobScope,
+  opts: { playbook: Playbook; shopHost: string | null; stepIndex: number; obsPairingId: string | null; signal?: AbortSignal },
+  hooks: { touch(): Promise<void> },
+): Promise<RollbackResult> {
+  const guard = () => {
+    if (opts.signal?.aborted) throw new EngineAborted();
+  };
+  const secrets = await rt.vault.forJob(scope);
+  let session: BrowserSession | null = null;
+  try {
+    for (const rb of opts.playbook.rollback) {
+      const at = STEPS.findIndex((s) => s.key === rb.forStep);
+      // 이 작업이 시작한 단계까지만(진행 중이던 단계 포함) 되돌린다
+      if (at < 0 || at > opts.stepIndex) continue;
+      const step = { key: `rollback:${rb.forStep}`, kind: rb.kind } as const;
+      const nav = { shopHost: opts.shopHost, pathPrefixes: rb.allowedUrls.pathPrefixes, queryKeys: rb.allowedUrls.queryKeys };
+      for (let i = 0; i < rb.actions.length; i++) {
+        guard();
+        if (rb.kind === "browser" && !session) session = await rt.browser.open(scope);
+        const raw = session && rb.kind === "browser" ? await session.observe() : await rt.obs.observe(scope);
+        if (!cueMatches(rb.actions[i].expect, raw)) return { kind: "cleanup_needed", reason: `rollback_deviated:${rb.forStep}` };
+        const action = resolveShop(rb.actions[i].action, opts.shopHost);
+        const check = validateDecision(step, { action, costWon: 0 }, secrets, {}, rb.allowedTargets, nav);
+        if (!check.ok) return { kind: "cleanup_needed", reason: `rollback_unsafe:${check.reason}` };
+        if (rb.kind === "obs") {
+          guard();
+          const pairing = await rt.obs.currentPairingId(scope);
+          if (!pairing || (opts.obsPairingId && pairing !== opts.obsPairingId)) return { kind: "cleanup_needed", reason: "rollback_obs_target" };
+        }
+        await hooks.touch();
+        guard();
+        const actionKey = MUTATING.includes(action.type) ? actionKeyOf(scope.jobId, 100 + at, action) : undefined;
+        const out = rb.kind === "browser" ? await session!.perform(action, secrets, actionKey) : await rt.obs.perform(scope, action, actionKey);
+        guard();
+        if (out.kind !== "ok") return { kind: "cleanup_needed", reason: `rollback_failed:${rb.forStep}` };
+      }
+    }
+    return { kind: "rolled_back" };
+  } finally {
+    await (session as BrowserSession | null)?.close();
+  }
 }
