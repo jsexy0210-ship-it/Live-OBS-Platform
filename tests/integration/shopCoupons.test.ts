@@ -15,7 +15,7 @@ import { createOrder } from "../../lib/server/orders/create";
 import { cancelOverdueOrders } from "../../lib/server/orders/overdue";
 import { getOrder } from "../../lib/server/orders/read";
 import { cancelPendingOrder, markOrderPaid, refundOrder } from "../../lib/server/queue/service";
-import { CODE_ATTEMPT_LIMIT } from "../../lib/server/shop-coupons/service";
+import { CODE_ATTEMPT_LIMIT, buyerCouponBox } from "../../lib/server/shop-coupons/service";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { PASSWORD, createLoginBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
@@ -183,6 +183,44 @@ describe("만들기·수정·중지·삭제", () => {
     expect((await couponPut(json("/x", "PUT", s.owner, couponBody({ endsAt: iso(DAY) })), p({ couponId: c.id }))).status).toBe(200);
   });
 
+  it("발급이 진행 중이면 혜택 변경은 쿠폰 행 잠금을 기다렸다가 거절된다(Codex 4176380506)", async () => {
+    const s = await shop();
+    const c = await makeCoupon(s);
+    let put: Promise<Response> | null = null;
+    // 받기 트랜잭션처럼 쿠폰 행을 먼저 잠그고, 혜택 변경 요청이 기다리기 시작한 뒤에 발급을 쓴다
+    await db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT 1 FROM "Coupon" WHERE "id" = ${c.id}::uuid FOR UPDATE`;
+      put = couponPut(json("/x", "PUT", s.owner, couponBody({ value: 9000 })), p({ couponId: c.id }));
+      // 혜택 변경 요청이 이 잠금을 기다리기 시작할 때까지(최대 5초) 커밋하지 않는다
+      for (let i = 0; i < 100; i++) {
+        const [w] = await db.$queryRaw<{ n: bigint }[]>`SELECT count(*) AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`;
+        if (w.n > 0n) break;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      await tx.coupon.update({ where: { id: c.id }, data: { issuedCount: { increment: 1 } } });
+      await tx.buyerCoupon.create({ data: { sellerId: s.seller.id, couponId: c.id, buyerMemberId: s.buyer.id, issuedAt: new Date(), expiresAt: new Date(Date.now() + DAY) } });
+    });
+    const res = await put!;
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { error: string }).error).toBe("method_locked");
+    expect((await db.coupon.findUniqueOrThrow({ where: { id: c.id } })).value).toBe(5000);
+  });
+
+  it("종료를 앞당기면 쓴 쿠폰 만료도 줄어, 주문 취소로 되돌아와도 새 종료 뒤에는 쓸 수 없다(Codex 4176380507)", async () => {
+    const s = await shop();
+    const c = await makeCoupon(s);
+    await download(s, c.id);
+    const o = await order(s, c.id);
+    if (!o.ok) throw new Error(o.reason);
+    const soon = iso(1500);
+    expect((await couponPut(json("/x", "PUT", s.owner, couponBody({ endsAt: soon })), p({ couponId: c.id }))).status).toBe(200);
+    expect((await held(s, c.id)).expiresAt.getTime()).toBe(new Date(soon).getTime());
+    expect((await cancelPendingOrder(db, s.ctx, o.orderId, { reason: "요청", expectedLiveVersion: await lv(s.seller.id) })).ok).toBe(true);
+    expect((await held(s, c.id)).status).toBe("ISSUED");
+    await new Promise((r) => setTimeout(r, 1700));
+    expect(await order(s, c.id)).toEqual({ ok: false, reason: "coupon_unavailable" });
+  });
+
   it("발급 중지하면 더는 받을 수 없지만 받은 쿠폰은 쓸 수 있다. 발급한 쿠폰은 지울 수 없다", async () => {
     const s = await shop();
     const c = await makeCoupon(s);
@@ -254,6 +292,22 @@ describe("받기(내려받기·코드)", () => {
     expect(await db.buyerCoupon.count()).toBe(0);
     // 다른 회원은 영향 없음
     expect((await redeem(s, "LIVE2026", s.b2)).status).toBe(201);
+  });
+
+  it("받을 수 있는 쿠폰은 소진·이미 받음을 DB에서 먼저 거른 뒤 개수를 자르고, 더 있으면 알려 준다(Codex 4176380511)", async () => {
+    const s = await shop();
+    // 곧 끝나는(목록 앞자리) 소진 쿠폰 3개 + 받을 수 있는 쿠폰 3개
+    for (let i = 0; i < 3; i++) {
+      const sold = await makeCoupon(s, { name: `소진 ${i}`, issueLimit: 1, endsAt: iso((i + 1) * 3600_000) });
+      expect((await download(s, sold.id, s.b2)).status).toBe(201);
+    }
+    for (let i = 0; i < 3; i++) await makeCoupon(s, { name: `받을 ${i}`, endsAt: iso((i + 2) * DAY) });
+    const two = await buyerCouponBox(db, { sellerId: s.seller.id, buyerMemberId: s.buyer.id }, 2);
+    expect(two.claimable.map((c) => c.name)).toEqual(["받을 0", "받을 1"]);
+    expect(two.claimableMore).toBe(true);
+    const all = await buyerCouponBox(db, { sellerId: s.seller.id, buyerMemberId: s.buyer.id }, 50);
+    expect(all.claimable.map((c) => c.name)).toEqual(["받을 0", "받을 1", "받을 2"]);
+    expect(all.claimableMore).toBe(false);
   });
 
   it("내 쿠폰함: 쓸 수 있어요 · 받을 수 있어요 · 지난 쿠폰", async () => {
@@ -410,6 +464,12 @@ describe("직접 지급", () => {
     expect(over.status).toBe(409);
     expect((await db.coupon.findUniqueOrThrow({ where: { id: c.id } })).issuedCount).toBe(2);
     expect(await db.buyerCoupon.count({ where: { couponId: c.id } })).toBe(2);
+    // 사용 시작 전 쿠폰은 지급하지 않는다(받기·코드와 같은 기준, Codex 4176380508)
+    const later = await makeCoupon(s, { issueMethod: "MANUAL", startsAt: iso(DAY), endsAt: iso(2 * DAY) });
+    const early = await grantPost(json("/x", "POST", s.owner, { gradeIds: [s.grade.id] }), p({ couponId: later.id }));
+    expect(early.status).toBe(400);
+    expect(await early.json()).toMatchObject({ error: "not_started", message: expect.stringContaining("해 주십시오") });
+    expect(await db.buyerCoupon.count({ where: { couponId: later.id } })).toBe(0);
     // 내려받기 쿠폰·다른 쇼핑몰 등급은 지급할 수 없다
     const dl = await makeCoupon(s);
     expect((await grantPost(json("/x", "POST", s.owner, { gradeIds: [s.grade.id] }), p({ couponId: dl.id }))).status).toBe(400);

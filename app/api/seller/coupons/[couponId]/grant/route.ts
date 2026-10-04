@@ -9,7 +9,8 @@ import { GRANT_MAX, grantCoupon, type GrantFailure } from "../../../../../../lib
 const MESSAGES: Record<GrantFailure, string> = {
   invalid_target: "지급할 등급이나 회원을 골라 주십시오.",
   not_manual: "직접 지급 쿠폰만 지급할 수 있습니다.",
-  ended: "종료된 쿠폰은 지급할 수 없습니다.",
+  not_started: "사용 시작 전인 쿠폰은 지급할 수 없습니다. 사용 시작 뒤에 지급해 주십시오.",
+  ended: "종료되었거나 발급을 중지한 쿠폰은 지급할 수 없습니다.",
   issue_limit: "발급 수량 한도를 넘습니다. 한도를 올리거나 대상을 줄여 주십시오.",
   too_many_members: `한 번에 ${GRANT_MAX.toLocaleString("ko-KR")}명까지 지급할 수 있습니다.`,
 };

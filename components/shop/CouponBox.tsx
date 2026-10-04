@@ -21,7 +21,8 @@ type Coupon = {
   validDays: number | null;
 };
 type Mine = Coupon & { issuedAt: string; expiresAt: string; usedAt: string | null; state: "usable" | "upcoming" | "used" | "expired" };
-type Box = { usable: Mine[]; claimable: Coupon[]; past: Mine[]; now: string; shopOpen: boolean };
+type Box = { usable: Mine[]; claimable: Coupon[]; claimableMore: boolean; past: Mine[]; now: string; shopOpen: boolean };
+const PAGE = 50;
 type Tab = "usable" | "claimable" | "past";
 
 const DAY = 86_400_000;
@@ -95,12 +96,14 @@ export default function CouponBox({ slug }: { slug: string }) {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // 받을 수 있는 쿠폰을 몇 개까지 볼지(「더 보기」로 50개씩)
+  const [limit, setLimit] = useState(PAGE);
 
   const load = useCallback(async () => {
-    const r = await call<Box>(base);
+    const r = await call<Box>(`${base}?claimable=${limit}`);
     if (r.ok) return setView({ kind: "ok", box: r.data });
     setView(r.status === 401 || r.status === 404 ? { kind: "login" } : { kind: "error" });
-  }, [base]);
+  }, [base, limit]);
 
   useEffect(() => {
     void load();
@@ -229,6 +232,13 @@ export default function CouponBox({ slug }: { slug: string }) {
                 </div>
               </li>
             ))}
+            {box.claimableMore && (
+              <li>
+                <button className="btn btn-out btn-block" type="button" onClick={() => setLimit((n) => n + PAGE)}>
+                  더 보기
+                </button>
+              </li>
+            )}
           </ul>
         ))}
       {tab === "past" &&
