@@ -3,7 +3,7 @@ import type { AutomationPracticeRun, Prisma, PrismaClient } from "@prisma/client
 import { AUTOMATION_LIMITS, plannerConfig } from "./config";
 import { writeAudit } from "../audit/log";
 import { runSteps, type EngineStats } from "./engine";
-import { backoffMs, lockPlaybook } from "./queue";
+import { backoffMs, dbNow, lockPlaybook } from "./queue";
 import type { Playbook } from "./playbook";
 import { PLAYBOOKS } from "./playbooks";
 import type { AutomationRuntime, JobScope } from "./ports";
@@ -35,27 +35,30 @@ export async function runPractice(
   // shopHost: 연습용 시험 쇼핑몰 호스트(비밀값은 이 호스트의 관리자 경로에서만 넣는다)
   opts: { shopHost: string; maxActionsPerStep?: number; costLimitWon?: number },
 ): Promise<AutomationPracticeRun> {
-  const startedAt = new Date();
   const t0 = performance.now();
   const stats: EngineStats = { costUsed: 0, plannerCalls: 0, playbookActions: 0, deviatedSteps: [] };
   let stepIndex = 0;
   let result: Awaited<ReturnType<typeof runSteps>>;
   const scope = { sellerId: "practice", jobId: randomUUID() };
   // 실행 전에 기록부터 남긴다(정리 대상 범위 포함). 도중에 죽으면 실패로 남고, 정리는 실행 시간 상한 뒤 정기 정리가 한다.
-  const run = await db.automationPracticeRun.create({
-    data: {
-      playbookId: playbook.id,
-      playbookVersion: playbook.version,
-      outcome: "FAILED",
-      reason: PRACTICE_INCOMPLETE,
-      durationMs: 0,
-      plannerCalls: 0,
-      playbookActions: 0,
-      costWon: 0,
-      startedAt,
-      cleanupScopeId: scope.jobId,
-      cleanupPendingAt: new Date(startedAt.getTime() + AUTOMATION_LIMITS.maxRunMs),
-    },
+  // 시각은 DB 시계로만 남긴다(준비 상태 판정이 DB에 저장된 다른 시각과 비교한다). 실행 시간 측정(durationMs)만 프로세스 시계
+  const run = await db.$transaction(async (tx) => {
+    const startedAt = await dbNow(tx);
+    return tx.automationPracticeRun.create({
+      data: {
+        playbookId: playbook.id,
+        playbookVersion: playbook.version,
+        outcome: "FAILED",
+        reason: PRACTICE_INCOMPLETE,
+        durationMs: 0,
+        plannerCalls: 0,
+        playbookActions: 0,
+        costWon: 0,
+        startedAt,
+        cleanupScopeId: scope.jobId,
+        cleanupPendingAt: new Date(startedAt.getTime() + AUTOMATION_LIMITS.maxRunMs),
+      },
+    });
   });
   try {
     result = await runSteps(
@@ -81,14 +84,14 @@ export async function runPractice(
   // 결과(실패·이탈 포함)부터 작업서 배타 잠금 아래 기록한다: 구매·작업 확정은 공유 잠금으로 준비 상태를 다시 읽으므로,
   // 보관 자료 정리(외부 호출)를 기다리는 동안 이전 연속 성공을 근거로 결제·작업이 확정되지 않는다.
   // 기록과 함께 정리 대기 시각을 점유 시간만큼 미뤄 둬 정기 정리가 이 실행의 정리와 겹치지 않게 한다.
-  const claimedUntil = new Date(Date.now() + CLEANUP_CLAIM_MS);
   const recorded = await db.$transaction(async (tx) => {
     await lockPlaybook(tx, playbook.id, "exclusive");
+    const now = await dbNow(tx);
     return tx.automationPracticeRun.update({
       where: { id: run.id },
       data: {
-        cleanupPendingAt: claimedUntil,
-        finishedAt: new Date(),
+        cleanupPendingAt: new Date(now.getTime() + CLEANUP_CLAIM_MS),
+        finishedAt: now,
         outcome,
         failedStep: outcome === "SUCCEEDED" ? null : (STEPS[stepIndex]?.key ?? null),
         reason: result.kind === "succeeded" ? null : result.kind === "needs_customer" ? result.action : result.reason.slice(0, 200),
@@ -103,9 +106,10 @@ export async function runPractice(
   // 보관 자료는 결과를 기록한 뒤 지운다. 실패하면 정기 정리(cleanupPracticeArtifacts)가 백오프로 다시 한다.
   // 반영은 기록 때 점유한 상태 그대로일 때만(정기 정리가 먼저 가져갔으면 덮어쓰지 않음)
   const cleaned = await discardScope(rt, scope);
+  const afterCleanup = await dbNow(db);
   await db.automationPracticeRun.updateMany({
     where: { id: run.id, cleanupAttempts: recorded.cleanupAttempts, cleanupPendingAt: recorded.cleanupPendingAt },
-    data: cleaned ? { cleanupPendingAt: null } : { cleanupAttempts: recorded.cleanupAttempts + 1, cleanupPendingAt: new Date(Date.now() + backoffMs(1)) },
+    data: cleaned ? { cleanupPendingAt: null } : { cleanupAttempts: recorded.cleanupAttempts + 1, cleanupPendingAt: new Date(afterCleanup.getTime() + backoffMs(1)) },
   });
   return db.automationPracticeRun.findUniqueOrThrow({ where: { id: run.id } });
 }
@@ -129,11 +133,12 @@ export async function cleanupPracticeArtifacts(db: PrismaClient, rt: Pick<Automa
   for (const r of claimed) {
     const ok = await discardScope(rt, { sellerId: "practice", jobId: r.cleanupScopeId });
     const attempts = r.cleanupAttempts + 1;
+    const now = await dbNow(db);
     const mine = { id: r.id, cleanupAttempts: r.cleanupAttempts, cleanupPendingAt: r.cleanupPendingAt };
     if (ok || attempts < CLEANUP_MAX_ATTEMPTS) {
       const w = await db.automationPracticeRun.updateMany({
         where: mine,
-        data: ok ? { cleanupPendingAt: null, cleanupAttempts: attempts } : { cleanupAttempts: attempts, cleanupPendingAt: new Date(Date.now() + backoffMs(attempts)) },
+        data: ok ? { cleanupPendingAt: null, cleanupAttempts: attempts } : { cleanupAttempts: attempts, cleanupPendingAt: new Date(now.getTime() + backoffMs(attempts)) },
       });
       if (ok && w.count === 1) cleaned++;
       continue;
@@ -141,7 +146,7 @@ export async function cleanupPracticeArtifacts(db: PrismaClient, rt: Pick<Automa
     await db.$transaction(async (tx) => {
       const moved = await tx.automationPracticeRun.updateMany({
         where: { ...mine, cleanupNeededAt: null },
-        data: { cleanupAttempts: attempts, cleanupPendingAt: null, cleanupNeededAt: new Date() },
+        data: { cleanupAttempts: attempts, cleanupPendingAt: null, cleanupNeededAt: now },
       });
       if (moved.count === 1) {
         await writeAudit(tx, {
@@ -187,7 +192,7 @@ export async function playbookReadiness(db: PrismaClient | Prisma.TransactionCli
 async function computeReadiness(db: Prisma.TransactionClient, playbook: Playbook, required: number): Promise<Readiness> {
   const where = { playbookId: playbook.id, playbookVersion: playbook.version };
   // 진행 중인 연습(시작 때 남긴 기록, 아직 결과 없음)은 빼고 센다. 실행 시간 상한(6시간)을 넘겨도 끝나지 않은 기록은 죽은 것으로 보고 실패로 센다.
-  const runningSince = new Date(Date.now() - AUTOMATION_LIMITS.maxRunMs);
+  const runningSince = new Date((await dbNow(db)).getTime() - AUTOMATION_LIMITS.maxRunMs);
   const runs = (await db.automationPracticeRun.findMany({ where, orderBy: { finishedAt: "desc" }, take: 100 })).filter(
     (r) => !(r.reason === PRACTICE_INCOMPLETE && r.startedAt > runningSince),
   );

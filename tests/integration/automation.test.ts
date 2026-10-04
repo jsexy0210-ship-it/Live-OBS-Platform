@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST as cancelRoute } from "../../app/api/automation/jobs/[jobId]/cancel/route";
 import { POST as resumeRoute } from "../../app/api/automation/jobs/[jobId]/resume/route";
 import { GET as jobRoute } from "../../app/api/automation/jobs/[jobId]/route";
@@ -9,6 +9,7 @@ import { POST as refundRoute } from "../../app/api/automation/jobs/[jobId]/refun
 import { loginSeller } from "../../lib/server/auth/login";
 import { AUTOMATION_CONSENT, AUTOMATION_PRICE, REINSTALL_PRICE } from "../../lib/server/automation/config";
 import { cafe24Playbook } from "../../lib/server/automation/playbooks/cafe24";
+import { validatePlaybook } from "../../lib/server/automation/playbook";
 import { PRACTICE_STREAK_REQUIRED, playbookReadiness, runPractice } from "../../lib/server/automation/practice";
 import { FakeBrowserExecutor, FakeObsBridge, FakePlanner, FakeSecretVault } from "../../lib/server/automation/fakes";
 import { markConnectionRevoked } from "../../lib/server/automation/connection";
@@ -2579,6 +2580,85 @@ describe("Codex 23차 반영(55910fd)", () => {
     expect(url).toBe("https://{shop}/disp/admin/:id/:id/:id/:id/");
     for (const leak of ["hong", "%40", "%ED", "홍길동", "12345", "myshop"]) expect(url, leak).not.toContain(leak);
     expect(a.jobId).toBeTruthy();
+  });
+});
+
+describe("Codex 24차 반영(f466487)", () => {
+  const dbClock = async () => (await db.$queryRaw<{ now: Date }[]>`SELECT now() AS now`)[0].now.getTime();
+  // 프로세스 시계만 1시간 앞당긴다(DB 시계와 어긋난 서버)
+  const skewAppClock = () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 3_600_000);
+  };
+
+  it("바꾼 단계 중 하나라도 되돌리기 항목이 없으면(화면 설정) 되돌리기 행동 0건으로 「정리 필요」·알림, 결제는 정리 뒤", async () => {
+    const a = await bought();
+    const rt = runtime();
+    await db.automationJob.update({
+      where: { id: a.jobId },
+      data: { stepIndex: 4, playbookActions: 10, obsPairingId: `pc-${a.seller.id}`, obsTargetKey: `obs:pc-${a.seller.id}`, changedAt: new Date(), mutatedSteps: ["obs_overlay_install", "display_settings"] },
+    });
+    const other = await bought();
+    await db.automationJob.update({ where: { id: other.jobId }, data: { status: "CANCELED", finishedAt: new Date(), lastDeviationAt: new Date(), deviatedSteps: ["webhook_setup"] } });
+    await runOnce(db, rt, W);
+    expect(rt.obs.performed).toHaveLength(0);
+    expect(rt.browser.performed).toHaveLength(0);
+    expect(await job(a.jobId)).toMatchObject({ status: "CLEANUP_NEEDED", lastError: "playbook_not_verified:rollback_not_covered:display_settings" });
+    expect(await db.auditLog.count({ where: { action: "automation.job_cleanup_needed", targetId: a.jobId } })).toBe(1);
+    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "PAID" });
+  });
+
+  it("작업서 불변식: 모든 단계는 되돌리기 항목(행동 1개 이상)이 있거나 사람 정리 단계로 명시돼야 한다", () => {
+    expect(validatePlaybook(cafe24Playbook)).toEqual([]);
+    const missing = validatePlaybook({ ...cafe24Playbook, manualCleanupSteps: [] });
+    expect(missing).toEqual(expect.arrayContaining(["rollback_missing:display_settings", "rollback_missing:test_event_verify"]));
+    const empty = validatePlaybook({ ...cafe24Playbook, rollback: cafe24Playbook.rollback.map((rb) => (rb.forStep === "webhook_setup" ? { ...rb, actions: [] } : rb)) });
+    expect(empty).toEqual(expect.arrayContaining(["rollback_empty:webhook_setup", "rollback_missing:webhook_setup"]));
+  });
+
+  it("연습 기록 시각(시작·종료·정리 대기)은 프로세스 시계가 어긋나도 DB 시계로 남는다", async () => {
+    skewAppClock();
+    try {
+      const run = await runPractice(db, runtime(), cafe24Playbook, { shopHost: "myshop.cafe24.com" });
+      const now = await dbClock();
+      expect(Math.abs(run.startedAt.getTime() - now)).toBeLessThan(60_000);
+      expect(Math.abs(run.finishedAt.getTime() - now)).toBeLessThan(60_000);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("보관 자료 삭제 재시도 시각은 프로세스 시계가 어긋나도 DB 시계 기준(30초 뒤)이다", async () => {
+    const s = await bought();
+    await db.automationJob.update({ where: { id: s.jobId }, data: { status: "FAILED", finishedAt: new Date() } });
+    const rt = runtime();
+    rt.browser.discard = async () => {
+      throw new Error("executor refused");
+    };
+    skewAppClock();
+    try {
+      await purgeEndedBrowserState(db, rt);
+    } finally {
+      vi.useRealTimers();
+    }
+    const j = await job(s.jobId);
+    const now = await dbClock();
+    expect(j.artifactsPurgeAttempts).toBe(1);
+    expect(j.artifactsPurgeRetryAt!.getTime() - now).toBeLessThan(5 * 60_000);
+  });
+
+  it("연습 준비 상태의 「진행 중」 판정(6시간)은 DB 시계 기준이다: 프로세스 시계가 앞서도 방금 시작한 연습을 죽은 실패로 세지 않는다", async () => {
+    // 방금 시작한(결과 없는) 연습 기록 하나가 맨 위에 있다
+    await db.automationPracticeRun.create({
+      data: { playbookId: cafe24Playbook.id, playbookVersion: cafe24Playbook.version, outcome: "FAILED", reason: "practice_incomplete", durationMs: 0, plannerCalls: 0, playbookActions: 0, costWon: 0, startedAt: new Date(await dbClock()), finishedAt: new Date(await dbClock() + 1000) },
+    });
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 7 * 3_600_000);
+    try {
+      expect((await playbookReadiness(db, cafe24Playbook)).verified).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

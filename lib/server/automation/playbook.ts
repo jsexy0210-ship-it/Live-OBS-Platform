@@ -96,6 +96,9 @@ export type Playbook = {
   // 되돌리기 단계(실행 순서대로). 실패로 끝날 때 작업이 마친 단계(forStep)의 변경을 정해 둔 행동으로만 되돌린다.
   // 화면 단서가 맞지 않으면 판단 모델로 넘기지 않고 「정리 필요」로 사람에게 넘긴다.
   rollback: readonly PlaybookRollbackStep[];
+  // 자동 되돌리기가 없어 바꿨다면 사람이 정리해야 하는 단계. 모든 단계는 되돌리기 항목(행동 1개 이상)이 있거나 여기에 있어야 한다
+  // (validatePlaybook). 여기 있는 단계를 바꾼 작업은 되돌리기에서 바로 「정리 필요」가 된다.
+  manualCleanupSteps: readonly string[];
 };
 
 export type PlaybookRollbackStep = {
@@ -142,8 +145,14 @@ export function validatePlaybook(p: Playbook): string[] {
   }
   for (const k of Object.keys(p.steps)) if (!STEPS.some((s) => s.key === k)) problems.push(`unknown_step:${k}`);
   const probeHost = `probe.${p.hostSuffixes[0] ?? "invalid"}`;
+  // 모든 단계(바꾸는 행동을 할 수 있음)는 되돌리기 항목이 있거나 사람 정리로 명시돼야 한다
+  for (const st of STEPS) {
+    if (!p.rollback.some((rb) => rb.forStep === st.key && rb.actions.length > 0) && !p.manualCleanupSteps.includes(st.key)) problems.push(`rollback_missing:${st.key}`);
+  }
+  for (const k of p.manualCleanupSteps) if (!STEPS.some((st) => st.key === k)) problems.push(`manual_cleanup_unknown_step:${k}`);
   for (const rb of p.rollback) {
     if (!STEPS.some((st) => st.key === rb.forStep)) problems.push(`rollback_unknown_step:${rb.forStep}`);
+    if (rb.actions.length === 0) problems.push(`rollback_empty:${rb.forStep}`);
     rb.actions.forEach(({ action }, i) => {
       const v = validateDecision({ key: `rollback:${rb.forStep}`, kind: rb.kind }, { action: resolveShop(action, probeHost), costWon: 0 }, probe, {}, rb.allowedTargets, { shopHost: probeHost, ...rb.allowedUrls });
       if (!v.ok) problems.push(`rollback:${rb.forStep}[${i}]:${v.reason}`);

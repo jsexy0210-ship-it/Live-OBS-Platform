@@ -7,7 +7,7 @@ import { findPlaybook } from "./playbooks";
 import type { AutomationRuntime, JobScope } from "./ports";
 import { cleanupPracticeArtifacts, playbookReadiness } from "./practice";
 import { reconcileAutomationPayments } from "./purchase";
-import { FencingError, RunTimeExceeded, hasChanges, markChanged, markCleanupNeeded, advanceStep, claimNext, claimObsTarget, extendLease, failWithRefund, markBrowserStateHeld, markTargetVerified, finishJob, parkForCustomer, reapExpired, retryLater, toVerifying, touch, type Claimed } from "./queue";
+import { FencingError, RunTimeExceeded, dbNow, hasChanges, markChanged, markCleanupNeeded, advanceStep, claimNext, claimObsTarget, extendLease, failWithRefund, markBrowserStateHeld, markTargetVerified, finishJob, parkForCustomer, reapExpired, retryLater, toVerifying, touch, type Claimed } from "./queue";
 
 // 자동 연결 작업자 진입점. 웹 서버(주문 API)와 다른 프로세스로 띄우는 것을 전제로 한다.
 // 실제 프로세스 실행(배포)은 운영 승인 사항이라 1차에는 이 모듈과 테스트만 있다.
@@ -185,7 +185,7 @@ export async function executeJob(db: PrismaClient, rt: AutomationRuntime, { job,
 // 삭제를 실행기·로컬 도구에 요청한다. 고객 대기가 없었던 작업도 포함한다. 판매자 취소처럼 작업자 밖에서 끝난 작업도 여기서 지운다.
 // 삭제 요청이 실패하면 표시가 남아 다음 반복에서 다시 한다.
 export async function purgeEndedBrowserState(db: PrismaClient, rt: Pick<AutomationRuntime, "browser" | "obs">, limit = 50): Promise<number> {
-  const now = new Date();
+  const now = await dbNow(db);
   // 삭제가 실패한 작업은 다음 재시도 시각까지 고르지 않는다(실패 행만 계속 골라 뒤의 작업에 닿지 못하는 일 방지)
   const ended = await db.automationJob.findMany({
     where: {
@@ -210,7 +210,7 @@ export async function purgeEndedBrowserState(db: PrismaClient, rt: Pick<Automati
     purged += (
       await db.automationJob.updateMany({
         where: { id: j.id, artifactsPurgedAt: null, status: { in: ["SUCCEEDED", "FAILED", "CANCELED"] } },
-        data: { artifactsPurgedAt: new Date(), browserStateHeld: false, artifactsPurgeRetryAt: null },
+        data: { artifactsPurgedAt: await dbNow(db), browserStateHeld: false, artifactsPurgeRetryAt: null },
       })
     ).count;
   }
@@ -222,11 +222,12 @@ export const PURGE_ALERT_AFTER = 10;
 const PURGE_MAX_BACKOFF_MS = 60 * 60_000;
 
 async function recordPurgeFailure(db: PrismaClient, jobId: string, sellerId: string, attempts: number) {
-  const retryAt = new Date(Date.now() + Math.min(30_000 * 2 ** Math.min(attempts - 1, 10), PURGE_MAX_BACKOFF_MS));
   await db.$transaction(async (tx) => {
+    const now = await dbNow(tx);
+    const retryAt = new Date(now.getTime() + Math.min(30_000 * 2 ** Math.min(attempts - 1, 10), PURGE_MAX_BACKOFF_MS));
     await tx.automationJob.updateMany({ where: { id: jobId, artifactsPurgedAt: null }, data: { artifactsPurgeAttempts: attempts, artifactsPurgeRetryAt: retryAt } });
     if (attempts < PURGE_ALERT_AFTER) return;
-    const first = await tx.automationJob.updateMany({ where: { id: jobId, artifactsPurgedAt: null, artifactsPurgeAlertedAt: null }, data: { artifactsPurgeAlertedAt: new Date() } });
+    const first = await tx.automationJob.updateMany({ where: { id: jobId, artifactsPurgedAt: null, artifactsPurgeAlertedAt: null }, data: { artifactsPurgeAlertedAt: now } });
     if (first.count === 1) {
       await writeAudit(tx, {
         actorType: "SYSTEM",

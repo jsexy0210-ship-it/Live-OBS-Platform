@@ -238,9 +238,9 @@ export const markCleanupNeeded = (db: PrismaClient, c: Claim, reason: string) =>
   fencedWrite(
     db,
     c,
-    () => ({
+    (now) => ({
       to: "CLEANUP_NEEDED",
-      data: { ...RELEASE, lastError: reason.slice(0, 200), cleanupNeededAt: new Date() },
+      data: { ...RELEASE, lastError: reason.slice(0, 200), cleanupNeededAt: now },
       detail: { reason: reason.slice(0, 200) },
       after: async (tx, cur) => {
         await tx.auditLog.create({

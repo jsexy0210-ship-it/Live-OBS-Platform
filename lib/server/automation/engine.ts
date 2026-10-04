@@ -350,12 +350,17 @@ export async function runRollback(
   };
   const secrets = await rt.vault.forJob(scope);
   let session: BrowserSession | null = null;
+  // 바꾼 단계(mutatedSteps)마다 되돌리기 항목(행동 1개 이상)이 있어야 한다. 하나라도 없으면(사람 정리 단계·모르는 단계) 아무것도 하지 않고
+  // 「정리 필요」로 넘긴다(되돌리지 못한 변경을 남긴 채 되돌렸다고 하지 않음, fail-closed)
+  for (const step of opts.mutatedSteps) {
+    if (!opts.playbook.rollback.some((rb) => rb.forStep === step && rb.actions.length > 0)) return { kind: "cleanup_needed", reason: `rollback_not_covered:${step}` };
+  }
   try {
     for (const rb of opts.playbook.rollback) {
       const at = STEPS.findIndex((s) => s.key === rb.forStep);
-      // 변경 기록(mutatedSteps)이 있는 단계만 되돌린다(완료 여부와 무관). 기존 설정을 확인만 하고 끝낸 단계·아직 바꾸지 않은 현재 단계는
+      // 변경 기록(mutatedSteps)이 있는 단계만 되돌린다(완료 여부·진행 위치와 무관). 기존 설정을 확인만 하고 끝낸 단계·아직 바꾸지 않은 단계는
       // 판매자의 기존 앱·웹훅일 수 있어 건드리지 않는다
-      if (at < 0 || at > opts.stepIndex || !opts.mutatedSteps.includes(rb.forStep)) continue;
+      if (at < 0 || !opts.mutatedSteps.includes(rb.forStep)) continue;
       const step = { key: `rollback:${rb.forStep}`, kind: rb.kind } as const;
       const nav = { shopHost: opts.shopHost, pathPrefixes: rb.allowedUrls.pathPrefixes, queryKeys: rb.allowedUrls.queryKeys };
       for (let i = 0; i < rb.actions.length; i++) {

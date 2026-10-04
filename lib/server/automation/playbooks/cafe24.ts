@@ -85,6 +85,8 @@ export const cafe24Playbook: Playbook = {
       allowedUrls: { pathPrefixes: [], queryKeys: [] },
     },
   },
+  // 자동 되돌리기가 없는 단계: 화면 설정(이전 값을 알 수 없음)·테스트 이벤트(주문 알림 기록). 바꿨다면 사람이 정리한다.
+  manualCleanupSteps: ["display_settings", "test_event_verify"],
   // 되돌리기(초안 가정: 실제 버튼 문구·경로는 실습 때 확인). 위험 단어(삭제 등)를 쓰지 않는 문구로 적는다.
   rollback: [
     {
