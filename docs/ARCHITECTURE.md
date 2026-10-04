@@ -299,6 +299,7 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 | `POST /api/shop/{slug}/auth/login`·`…/logout`(구매자 로그인) | 없음 | 허용(기존 주문 조회·탈퇴용) |
 | `GET·POST /api/shop/{slug}/addresses`·`…/addresses/{id}`(배송지) | 없음 | 허용(기존 주문 배송·구매자 정보 관리) |
 | `GET·PUT /api/shop/{slug}/me/marketing-consent`·`POST …/me/withdraw` | 없음 | 허용(동의 철회·탈퇴는 언제든) |
+| `GET /api/shop/{slug}/me/rewards`(내 적립금 잔액) | 없음 | 허용(탈퇴 전 확인) |
 | `GET /api/overlay/{token}/state`·`…/version`·`…/stream`(오버레이 공개 주소) | 오버레이 | 오버레이 권한이 없으면 막음(통합 첫 결제 확정 전) |
 
   - 검사 위치 ③ 서버 렌더 쇼핑몰 화면(#174 Codex P2): 「새 거래 시작」 화면도 화면 단계에서 막는다(API 거절에만 기대지 않음). 지금은 `app/(shop)/shop/[slug]/signup/page.tsx`(구매자 가입, `/shop/{slug}/signup`)가 있고, 장바구니·주문서·상품 구매 버튼이 있는 화면이 생기면 같은 규칙이다. 스토어 운영 권한이 없으면 가입 폼·구매 버튼을 보여 주지 않고 안내 화면을 그린다. 이 검사는 `shopOpen`(운영 중·잠김)과 별도로 한다. 1-B 시험은 화면 경로마다 「렌더 결과가 안내 화면이고 폼·구매 버튼이 없음」을 확인한다(화면 파일은 화면 세션 소유라, 서버가 화면에 줄 판정 함수·값을 1-B에서 만들고 화면 연결은 화면 세션에 배정).
