@@ -401,6 +401,20 @@ describe("방송 통계 GET /api/seller/stats/broadcasts", () => {
     expect(byTitle.B.general.orders + byTitle.A.general.orders).toBe(0);
   });
 
+  it("A 종료 뒤 2시간 안에 B가 시작되면 A의 일반 주문 구간은 B 시작에서 끝나고, 한 주문은 한 방송에만 센다", async () => {
+    const s = await shop();
+    await db.broadcastSession.create({ data: { sellerId: s.seller.id, title: "A", status: "ENDED", startedAt: new Date("2026-10-02T11:00:00Z"), endedAt: new Date("2026-10-02T13:00:00Z") } });
+    await db.broadcastSession.create({ data: { sellerId: s.seller.id, title: "B", status: "ENDED", startedAt: new Date("2026-10-02T14:00:00Z"), endedAt: new Date("2026-10-02T15:00:00Z") } });
+    await s.order({ createdAt: "2026-10-02T13:30:00Z", total: 1000, items: [[1000, 1000, 1]] }); // A 종료 뒤, B 시작 전 → A 일반 주문
+    await s.order({ createdAt: "2026-10-02T14:30:00Z", total: 2000, items: [[2000, 2000, 1]] }); // A 종료 뒤 2시간 안이지만 B 방송 중 → B 방송 매출
+    await s.order({ createdAt: "2026-10-02T15:30:00Z", total: 4000, items: [[4000, 4000, 1]] }); // B 종료 뒤 → B 일반 주문
+    const r = await broadcastStats(db, s.ctx, WEEK());
+    const byTitle = Object.fromEntries(r.broadcasts.map((b) => [b.title, b]));
+    expect(byTitle.A).toMatchObject({ orders: 0, general: { orders: 1, paid: 1000 } });
+    expect(byTitle.B).toMatchObject({ orders: 1, paid: 2000, general: { orders: 1, paid: 4000 } });
+    expect(r.total.orders + r.general.orders).toBe(3);
+  });
+
   it("방송 중(LIVE)이면 지금까지를 방송 시간으로 보고, 시작 직전 주문은 넣지 않는다", async () => {
     const s = await shop();
     const live = await db.broadcastSession.create({ data: { sellerId: s.seller.id, title: "방송 중", status: "LIVE", startedAt: new Date("2026-10-03T11:00:00Z") } });
