@@ -1,0 +1,97 @@
+/* SA-035 쿠폰 관리 */
+.cp-stats {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.cp-tbl td {
+  vertical-align: top;
+}
+.cp-modal {
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+}
+.cp-edit {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 20px;
+}
+.cp-two {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+.cp-period {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cp-period .inp {
+  min-width: 0;
+}
+.cp-pick {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px var(--wds-line-normal-neutral);
+}
+.cp-pick button {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cp-pick button:hover {
+  background: var(--wds-fill-normal);
+}
+.chip button {
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+  color: var(--wds-label-alternative);
+}
+.cp-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: sticky;
+  top: 0;
+  align-self: start;
+}
+.cp-pv-card {
+  display: flex;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px var(--wds-line-normal-neutral);
+  background: var(--wds-background-normal-normal);
+}
+.cp-pv-amt {
+  flex: 0 0 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 6px;
+  background: var(--wds-primary-normal);
+  color: #fff;
+  font-weight: 700;
+  text-align: center;
+}
+@media (max-width: 767px) {
+  .cp-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .cp-edit,
+  .cp-two {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .cp-period {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

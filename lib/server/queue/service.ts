@@ -9,6 +9,7 @@ import { requireSellerPermission, requireSellerRead, type TenantContext } from "
 import { restoreOrderStock } from "../products/stock";
 import { checkTransition, isCompletePermutation, isValidTimer, type QueueAction, type QueueRejection } from "./rules";
 import { refreshOrderRetention } from "../buyers/legalHold";
+import { restoreOrderCoupon } from "../shop-coupons/service";
 
 type Tx = Prisma.TransactionClient;
 
@@ -445,6 +446,8 @@ export async function cancelPendingOrderInTx(
   });
   // 주문 때 뺀 재고(ORDER 상품)가 있으면 되돌린다(판매자 설정 restockOnCancel)
   const restocked = await restoreOrderStock(tx, { sellerId: o.sellerId, orderId: o.orderId, reason: "CANCEL", now: o.now, actor: { actorType: o.actorType, actorId: o.actorId } });
+  // 쓴 쿠폰은 전체 취소라 되돌린다(shop-coupons)
+  await restoreOrderCoupon(tx, { sellerId: o.sellerId, orderId: o.orderId, now: o.now, reason: o.reason });
   await writeAudit(tx, {
     actorType: o.actorType,
     actorId: o.actorId,
@@ -584,6 +587,8 @@ export async function refundOrder(
     // 화면에서 확인받은 금액과 다르면(그사이 발송·개봉 등) 아무것도 바꾸지 않고 되돌린다
     if (opts.expectedRefundAmount !== undefined && opts.expectedRefundAmount !== refundAmount) throw new Rejected("refund_amount_changed");
     await tx.order.update({ where: { id: orderId }, data: { refundAmount, refundFault, returnFeeDeducted } });
+    // 결제 금액 전부를 돌려주면 전체 취소로 보고 쓴 쿠폰을 되돌린다. 일부만 돌려주면 되돌리지 않는다(MASTER 2026-10-04).
+    if (refundAmount === order.totalAmount) await restoreOrderCoupon(tx, { sellerId: ctx.sellerId, orderId, now, reason: "refund_full" });
     await tx.orderStatusHistory.create({
       data: { sellerId: ctx.sellerId, orderId, fromStatus: "PAID", toStatus: "REFUNDED", actorType: ctx.actorType, actorId: ctx.actorId, reason, createdAt: now },
     });

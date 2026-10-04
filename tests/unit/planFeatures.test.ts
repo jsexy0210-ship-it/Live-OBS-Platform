@@ -54,6 +54,9 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/orders/[orderId]/ship": "ORDER_FOLLOWUP",
   "seller/purchase-restrictions": "ORDER_FOLLOWUP",
   "seller/purchase-restrictions/[buyerMemberId]/lift": "ORDER_FOLLOWUP",
+  "seller/coupons": "STORE_OPERATIONS",
+  "seller/coupons/[couponId]": "STORE_OPERATIONS",
+  "seller/coupons/[couponId]/grant": "STORE_OPERATIONS",
   "seller/broadcast/start": "OVERLAY",
   "seller/broadcast/end": "OVERLAY",
   "seller/overlay/token": "OVERLAY",
@@ -103,6 +106,9 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/og.png": "STORE_OPERATIONS",
   "shop/[slug]/shop-content": "STORE_OPERATIONS", // 홈 배너·이벤트 팝업
   "shop/[slug]/shop-content/images/[imageId]": "STORE_OPERATIONS",
+  "shop/[slug]/coupons/code": "STORE_OPERATIONS", // 쿠폰 받기(코드·내려받기)는 shopOpen으로 막음
+  "shop/[slug]/coupons/[couponId]/download": "STORE_OPERATIONS",
+  "shop/[slug]/coupons": "OPEN", // 내 쿠폰함(받은 쿠폰 조회는 열고, 받을 수 있는 쿠폰은 운영 중일 때만)
   "shop/[slug]/orders/[orderId]": "OPEN",
   "shop/[slug]/auth/login": "OPEN",
   "shop/[slug]/auth/logout": "OPEN",
@@ -122,6 +128,7 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
 const SHOP_PAGES: Record<string, "STORE_OPERATIONS" | "OPEN"> = {
   "shop/[slug]": "STORE_OPERATIONS", // 쇼핑몰 홈(홈 배너·이벤트 팝업)
   "shop/[slug]/signup": "STORE_OPERATIONS",
+  "shop/[slug]/coupons": "STORE_OPERATIONS", // SH-028 내 쿠폰함
   "shop/[slug]/me/notifications": "OPEN", // SH-025 알림 설정: 마케팅 수신 철회는 잠긴 쇼핑몰에서도 연다(API me/marketing-consent와 같은 기준)
 };
 
