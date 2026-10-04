@@ -70,7 +70,7 @@ const MENU: Group[] = [
     key: "member",
     label: "회원",
     items: [
-      { label: "회원 목록", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
+      { label: "회원 목록", href: "/seller/members", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
       { label: "회원 등급", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
       { label: "구매 제한", href: "/seller/purchase-restrictions", perm: "MEMBER_POINTS", plan: "FOLLOWUP" },
       { label: "회원 알림 발송", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
