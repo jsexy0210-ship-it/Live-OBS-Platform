@@ -6,7 +6,7 @@ import { DELETE as templateDelete } from "../../app/api/seller/overlay/templates
 import { GET as templatesGet, POST as templatesPost } from "../../app/api/seller/overlay/templates/route";
 import { loginSeller } from "../../lib/server/auth/login";
 import { prisma } from "../../lib/server/db";
-import { ASPECTS, BUILTIN_TEMPLATES, MAX_TEMPLATES, parseWidgets } from "../../lib/server/overlay/layout";
+import { ASPECTS, BUILTIN_TEMPLATES, DEFAULT_TEMPLATE, MAX_TEMPLATES, WIDGET_TYPES, parseWidgets } from "../../lib/server/overlay/layout";
 import { issueOverlayToken } from "../../lib/server/overlay/token";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { PASSWORD, createSeller, createSellerUser, db, resetDb } from "./helpers";
@@ -40,16 +40,45 @@ const pub = (token: string, qs = "") => publicLayout(new Request(`http://localho
 const widget = (over: Record<string, unknown> = {}) => ({ id: "current", type: "CURRENT_ORDER", visible: true, x: 3, y: 2, w: 94, h: 10, z: 3, props: { glow: true, accentColor: "#FF8800", titleBgOpacity: 0.9, appear: "flip", appearSec: 0.7 }, ...over });
 
 describe("기본 템플릿", () => {
-  it("비율마다 3종이고 모두 검사를 통과한다. 오픈 타이머는 기본 꺼짐, 세로형 위젯은 위쪽 40% 안", () => {
+  it("비율마다 3종이고 모두 검사를 통과한다. 7종 위젯을 하나씩, 화면 안에 둔다", () => {
     expect(Object.keys(BUILTIN_TEMPLATES)).toEqual(["queue_focus", "spotlight", "minimal"]);
+    expect(Object.values(BUILTIN_TEMPLATES).map((t) => t.name)).toEqual(["줄서기형", "스포트라이트형", "미니형"]);
+    expect(DEFAULT_TEMPLATE).toBe("queue_focus");
     for (const t of Object.values(BUILTIN_TEMPLATES)) {
       for (const aspect of ASPECTS) {
         const ws = t.layouts[aspect];
         expect(parseWidgets(ws)).toEqual(ws);
-        expect(ws.find((w) => w.type === "OPEN_TIMER")?.visible).toBe(false);
-        if (aspect === "9x16") expect(ws.every((w) => w.y + w.h <= 40)).toBe(true);
+        expect(ws.map((w) => w.type).sort()).toEqual([...WIDGET_TYPES].sort());
+        expect(ws.every((w) => w.x + w.w <= 100 && w.y + w.h <= 100)).toBe(true);
+        expect(ws.every((w) => w.props.radius === 16 && w.props.flowSec === 20 && w.props.appear === "up")).toBe(true);
       }
     }
+  });
+
+  it("신규 주문 알림은 공지 자리·맨 위(z9)·첫 주문·6초, 시작 타이머는 기본 숨김이고 나머지는 보인다", () => {
+    for (const t of Object.values(BUILTIN_TEMPLATES)) {
+      for (const aspect of ASPECTS) {
+        const ws = t.layouts[aspect];
+        const notice = ws.find((w) => w.type === "NOTICE")!;
+        const alert = ws.find((w) => w.type === "NEW_ORDER_ALERT")!;
+        expect([alert.x, alert.y, alert.w, alert.h]).toEqual([notice.x, notice.y, notice.w, notice.h]);
+        expect(alert).toMatchObject({ z: 9, visible: true, props: { variant: "first", durationSec: 6 } });
+        expect(Math.max(...ws.filter((w) => w !== alert).map((w) => w.z))).toBeLessThan(9);
+        expect(ws.filter((w) => !w.visible).map((w) => w.type)).toEqual(["OPEN_TIMER"]);
+      }
+    }
+  });
+
+  it("줄서기형 세로는 디자인 수치표 그대로", () => {
+    const rect = (type: string) => {
+      const w = BUILTIN_TEMPLATES.queue_focus.layouts["9x16"].find((v) => v.type === type)!;
+      return [w.x, w.y, w.w, w.h, w.z];
+    };
+    expect(rect("HALL_OF_FAME")).toEqual([56.7, 23.4, 38.9, 19.9, 2]);
+    expect(rect("CURRENT_ORDER")).toEqual([4.4, 23.4, 50.7, 10.8, 3]);
+    expect(rect("QUEUE")).toEqual([4.4, 34.9, 50.7, 8.4, 2]);
+    expect(rect("OPEN_TIMER")).toEqual([56.7, 43.9, 38.9, 4, 5]);
+    expect(rect("NEW_ORDER_ALERT")).toEqual([4.4, 18, 91.2, 4.8, 9]);
   });
 });
 

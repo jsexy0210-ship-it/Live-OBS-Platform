@@ -142,8 +142,9 @@ export function parseWidgets(raw: unknown): Widget[] | null {
   return out;
 }
 
-// ---- 기본 템플릿 3종(비율마다). 이름은 디자인이 정하면 바꾼다 ----
-// 세로형은 위쪽 약 40% 안에 모으고(아래 절반은 유튜브 채팅이 덮음), 가로형은 가운데(약 860px)를 비운다.
+// ---- 기본 템플릿 3종(비율마다). 값은 디자인 OV-008 「기본 템플릿 3종 수치표」 그대로 ----
+// 7종 위젯을 모두 둔다. 시작 타이머는 기본 숨김. 신규 주문 알림은 공지 자리에 겹쳐 맨 위(z9)에 durationSec 동안 뜬다.
+// 세로형은 위쪽 절반 안에 모으고(아래는 유튜브 채팅이 덮음), 가로형은 가운데를 비운다. 저장된 판매자 레이아웃에는 영향 없음.
 const w = (id: string, type: WidgetType, x: number, y: number, wd: number, h: number, z: number, props: Record<string, PropValue> = {}, visible = true): Widget => ({
   id,
   type,
@@ -153,59 +154,76 @@ const w = (id: string, type: WidgetType, x: number, y: number, wd: number, h: nu
   w: wd,
   h,
   z,
-  props: { flowSec: 20, appear: "up", appearSec: 0.7, cardBgOpacity: 0.9, titleBgOpacity: 0.94, ...props },
+  props: { flowSec: 20, appear: "up", appearSec: 0.7, cardBgOpacity: 0.9, titleBgOpacity: 0.94, radius: 16, ...props },
 });
 const timerOff = (x: number, y: number, wd: number, h: number) => w("open_timer", "OPEN_TIMER", x, y, wd, h, 5, {}, false);
+const notice = (x: number, y: number, wd: number, h: number) => [
+  w("notice", "NOTICE", x, y, wd, h, 1),
+  w("alert_first", "NEW_ORDER_ALERT", x, y, wd, h, 9, { variant: "first", durationSec: 6 }),
+];
 
 export const BUILTIN_TEMPLATES: Record<string, { name: string; layouts: Record<Aspect, Widget[]> }> = {
   queue_focus: {
-    name: "주문대기 중심",
+    name: "줄서기형",
     layouts: {
       "9x16": [
-        w("current", "CURRENT_ORDER", 3, 2, 94, 10, 3, { glow: true, marquee: true }),
-        w("queue", "QUEUE", 3, 13, 94, 18, 2, { rows: 4 }),
-        w("shop", "SHOP_INFO", 3, 32, 94, 4, 1),
-        timerOff(70, 2, 27, 6),
+        w("hall", "HALL_OF_FAME", 56.7, 23.4, 38.9, 19.9, 2, { rows: 5, ticker: true }),
+        ...notice(4.4, 18, 91.2, 4.8),
+        w("shop", "SHOP_INFO", 4.4, 15.1, 91.2, 2.3, 1),
+        w("current", "CURRENT_ORDER", 4.4, 23.4, 50.7, 10.8, 3, { glow: true, marquee: true }),
+        w("queue", "QUEUE", 4.4, 34.9, 50.7, 8.4, 2, { rows: 3 }),
+        timerOff(56.7, 43.9, 38.9, 4),
       ],
       "16x9": [
-        w("current", "CURRENT_ORDER", 2, 4, 26, 18, 3, { glow: true, marquee: true }),
-        w("queue", "QUEUE", 2, 24, 26, 56, 2, { rows: 5 }),
-        w("shop", "SHOP_INFO", 2, 88, 26, 8, 1),
-        timerOff(72, 4, 26, 12),
+        w("hall", "HALL_OF_FAME", 72.4, 12.6, 25.1, 38.9, 2, { rows: 6, ticker: true }),
+        ...notice(72.4, 52.6, 25.1, 14.1),
+        w("shop", "SHOP_INFO", 2.5, 12.6, 25.1, 4.1, 1),
+        w("current", "CURRENT_ORDER", 2.5, 17.8, 25.1, 19.3, 3, { glow: true, marquee: true }),
+        w("queue", "QUEUE", 2.5, 38.1, 25.1, 36.3, 2, { rows: 6 }),
+        timerOff(72.4, 67.8, 25.1, 8),
       ],
     },
   },
   spotlight: {
-    name: "현재 주문·명예의 전당 강조",
+    name: "스포트라이트형",
     layouts: {
       "9x16": [
-        w("current", "CURRENT_ORDER", 3, 2, 94, 14, 3, { glow: true, marquee: true, fontSize: 56 }),
-        w("hall", "HALL_OF_FAME", 3, 17, 46, 18, 2, { rows: 5, ticker: true }),
-        w("queue", "QUEUE", 51, 17, 46, 18, 2, { rows: 3 }),
-        w("notice", "NOTICE", 3, 36, 94, 4, 1),
-        timerOff(70, 2, 27, 6),
+        w("hall", "HALL_OF_FAME", 4.4, 18, 37, 23.1, 2, { rows: 6, ticker: true }),
+        ...notice(43, 35.3, 52.6, 5.8),
+        w("shop", "SHOP_INFO", 4.4, 15.1, 91.2, 2.3, 1),
+        w("current", "CURRENT_ORDER", 43, 18, 52.6, 13.1, 3, { glow: true, marquee: true, fontSize: 56 }),
+        // 한 줄로 흘려 보여 줌
+        w("queue", "QUEUE", 43, 31.8, 52.6, 2.9, 2, { rows: 1, ticker: true }),
+        timerOff(43, 41.7, 52.6, 4),
       ],
       "16x9": [
-        w("current", "CURRENT_ORDER", 2, 4, 26, 24, 3, { glow: true, marquee: true, fontSize: 56 }),
-        w("hall", "HALL_OF_FAME", 72, 4, 26, 52, 2, { rows: 6, ticker: true }),
-        w("queue", "QUEUE", 2, 30, 26, 50, 2, { rows: 4 }),
-        w("notice", "NOTICE", 72, 60, 26, 20, 1),
-        timerOff(72, 84, 26, 12),
+        w("hall", "HALL_OF_FAME", 72.3, 38.5, 25.2, 44.4, 2, { rows: 7, ticker: true }),
+        ...notice(2.5, 17.8, 25, 13.9),
+        w("shop", "SHOP_INFO", 2.5, 12.6, 25, 4.1, 1),
+        w("current", "CURRENT_ORDER", 72.3, 12.6, 25.2, 24.8, 3, { glow: true, marquee: true, fontSize: 56 }),
+        w("queue", "QUEUE", 2.5, 32.8, 25, 23.3, 2, { rows: 4 }),
+        timerOff(2.5, 57.2, 25, 8),
       ],
     },
   },
   minimal: {
-    name: "작은 패널만",
+    name: "미니형",
     layouts: {
       "9x16": [
-        w("current", "CURRENT_ORDER", 3, 2, 60, 7, 2, { marquee: true }),
-        w("queue", "QUEUE", 65, 2, 32, 12, 1, { rows: 3 }),
-        timerOff(3, 10, 30, 5),
+        w("hall", "HALL_OF_FAME", 4.4, 29.3, 48.1, 5.8, 1, { rows: 2, title: "" }),
+        ...notice(4.4, 35.7, 48.1, 4.4),
+        w("shop", "SHOP_INFO", 4.4, 15.1, 48.1, 2.1, 1),
+        w("current", "CURRENT_ORDER", 4.4, 17.8, 48.1, 7.7, 2, { marquee: true }),
+        w("queue", "QUEUE", 4.4, 26.1, 48.1, 2.5, 1, { rows: 1, ticker: true }),
+        timerOff(4.4, 40.7, 48.1, 3.5),
       ],
       "16x9": [
-        w("current", "CURRENT_ORDER", 2, 4, 22, 12, 2, { marquee: true }),
-        w("queue", "QUEUE", 2, 18, 22, 30, 1, { rows: 3 }),
-        timerOff(76, 4, 22, 10),
+        w("hall", "HALL_OF_FAME", 76.7, 12.6, 20.8, 11.5, 1, { rows: 2, title: "" }),
+        ...notice(76.7, 25.2, 20.8, 8.5),
+        w("shop", "SHOP_INFO", 2.5, 12.6, 22.9, 3.7, 1),
+        w("current", "CURRENT_ORDER", 2.5, 17.4, 25, 13.7, 2, { marquee: true }),
+        w("queue", "QUEUE", 2.5, 32.2, 25, 4.4, 1, { rows: 1 }),
+        timerOff(2.5, 37.7, 25, 6),
       ],
     },
   },
