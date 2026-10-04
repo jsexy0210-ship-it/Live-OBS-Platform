@@ -10,14 +10,18 @@ function chunk(type: string, data: Buffer): Buffer {
   return Buffer.concat([len, body, crc]);
 }
 
-export function png(width: number, height: number, rgb: [number, number, number] = [91, 61, 246]): Buffer {
+// opts: depth 8(기본)·16, color 2(RGB, 기본)·6(RGBA). 16비트·RGBA는 채널마다 같은 값을 채운다.
+export function png(width: number, height: number, rgb: [number, number, number] = [91, 61, 246], opts: { depth?: 8 | 16; color?: 2 | 6 } = {}): Buffer {
+  const depth = opts.depth ?? 8;
+  const color = opts.color ?? 2;
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(width, 0);
   ihdr.writeUInt32BE(height, 4);
-  ihdr[8] = 8; // 비트 깊이
-  ihdr[9] = 2; // RGB
-  const row = Buffer.alloc(1 + width * 3);
-  for (let x = 0; x < width; x++) row.set(rgb, 1 + x * 3);
+  ihdr[8] = depth; // 비트 깊이
+  ihdr[9] = color; // 2=RGB, 6=RGBA
+  const px = Buffer.from((color === 6 ? [...rgb, 255] : rgb).flatMap((v) => (depth === 16 ? [v, v] : [v])));
+  const row = Buffer.alloc(1 + width * px.length);
+  for (let x = 0; x < width; x++) row.set(px, 1 + x * px.length);
   const raw = Buffer.concat(Array.from({ length: height }, () => row));
   return Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
