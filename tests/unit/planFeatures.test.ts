@@ -220,6 +220,7 @@ const SHOP_PAGES: Record<string, "STORE_OPERATIONS" | "OPEN"> = {
   "shop/[slug]/coupons": "OPEN", // SH-028 내 쿠폰함: 잠긴 쇼핑몰도 받은 쿠폰은 읽기 전용(받기는 API에서 막음)
   "shop/[slug]/products": "STORE_OPERATIONS", // SH-002 전체 상품(상품 격자)
   "shop/[slug]/search": "STORE_OPERATIONS", // SH-002 상품 검색
+  "shop/[slug]/products/[productId]": "STORE_OPERATIONS", // SH-003 상품 상세: shopOpen으로 막고, 막히면 안내 화면
   "shop/[slug]/login": "OPEN", // SH-010 로그인: 잠긴 쇼핑몰에서도 받은 쿠폰·알림 설정에 들어갈 수 있게 연다
   "shop/[slug]/me": "OPEN", // SH-020 내 정보(메뉴 링크만)
   "shop/[slug]/cart": "STORE_OPERATIONS", // SH-004 장바구니: shopOpen으로 막고, 막히면 안내 화면

@@ -1,0 +1,182 @@
+/* SH-003 상품 상세: PC 사진 480 + 정보, 휴대폰은 위아래. 바탕은 흰색, 구분은 1px 선 */
+.pd {
+  padding: 32px 0 64px;
+}
+.pd-top {
+  display: flex;
+  gap: 40px;
+  align-items: flex-start;
+}
+.pd-gallery {
+  flex: none;
+  width: 480px;
+  max-width: 100%;
+}
+.pd-hero {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 1 / 1;
+  border: 1px solid var(--wds-line-solid-neutral);
+  background: var(--wds-background-normal-alternative) center / 25% no-repeat
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23c2c4c8' stroke-width='1.2'%3E%3Crect x='3' y='5' width='18' height='14' rx='1'/%3E%3Ccircle cx='9' cy='10' r='1.6'/%3E%3Cpath d='m4 18 5-5 4 4 2-2 5 5'/%3E%3C/svg%3E");
+}
+.pd-hero img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #fff;
+}
+.pd-thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.pd-thumbs button {
+  width: 72px;
+  height: 72px;
+  padding: 0;
+  border: 1px solid var(--wds-line-solid-neutral);
+  border-radius: 2px;
+  background: #fff;
+  cursor: pointer;
+}
+.pd-thumbs button[aria-current="true"] {
+  border-color: var(--wds-label-normal);
+}
+.pd-thumbs img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.pd-info {
+  flex: 1;
+  min-width: 0;
+}
+.pd-info h1 {
+  margin: 0 0 8px;
+  font-size: 22px;
+  line-height: 30px;
+  font-weight: 800;
+}
+.pd-desc {
+  margin: 0 0 16px;
+  color: var(--wds-label-alternative);
+  white-space: pre-wrap;
+}
+.pd-form {
+  width: 100%;
+  border-collapse: collapse;
+  border-top: 1px solid var(--wds-line-solid-normal);
+}
+.pd-form th,
+.pd-form td {
+  padding: 12px 8px;
+  border-bottom: 1px solid var(--wds-line-solid-alternative);
+  text-align: left;
+  vertical-align: middle;
+  font-size: 14px;
+}
+.pd-form th {
+  width: 100px;
+  font-weight: 600;
+  color: var(--wds-label-neutral);
+}
+.pd-price {
+  font-size: 20px;
+}
+.pd-form del {
+  font-size: 12px;
+  color: var(--wds-label-assistive);
+}
+.pd-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--wds-label-alternative);
+}
+.pd-select {
+  width: 100%;
+  max-width: 100%;
+}
+.pd-sum {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--wds-line-solid-normal);
+  border-radius: var(--shop-r);
+  font-size: 14px;
+}
+.pd-sum > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+.pd-total {
+  padding-top: 8px;
+  border-top: 1px solid var(--wds-line-solid-alternative);
+}
+.pd-total b {
+  font-size: 20px;
+}
+.pd-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 12px;
+}
+.pd-actions .btn {
+  flex: 1;
+}
+.pd-actions .pd-wish {
+  flex: none;
+  width: 48px;
+  padding: 0;
+}
+.pd-msg {
+  margin: 12px 0 0;
+  font-size: 14px;
+}
+.pd-err {
+  color: var(--wds-status-negative);
+}
+.pd-detail {
+  margin-top: 48px;
+  border-top: 2px solid var(--wds-label-normal);
+}
+.pd-detail h2 {
+  margin: 0;
+  padding: 16px 0;
+  font-size: 16px;
+  border-bottom: 1px solid var(--wds-line-solid-normal);
+}
+.pd-text {
+  margin: 24px auto;
+  max-width: 860px;
+  white-space: pre-wrap;
+  line-height: 1.7;
+}
+.pd-dimg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+@media (max-width: 767px) {
+  .pd {
+    padding-top: 16px;
+  }
+  .pd-top {
+    flex-direction: column;
+    gap: 24px;
+  }
+  .pd-gallery {
+    width: 100%;
+  }
+  .pd-form th {
+    width: 72px;
+  }
+}

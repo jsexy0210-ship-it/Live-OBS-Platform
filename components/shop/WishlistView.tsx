@@ -85,7 +85,7 @@ export default function WishlistView({ slug }: { slug: string }) {
         )}
         <ul className="pc-grid" aria-label="찜한 상품">
           {items.map((i) => (
-            <ProductCard key={i.productId} p={card(i)}>
+            <ProductCard key={i.productId} p={card(i)} href={i.status === "unavailable" ? undefined : `${base}/products/${i.productId}`}>
               {i.status === "unavailable" && <p className="cart-tag">지금은 판매하지 않아요</p>}
               <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={() => void remove([i], "찜에서 뺐어요")}>
                 찜 빼기

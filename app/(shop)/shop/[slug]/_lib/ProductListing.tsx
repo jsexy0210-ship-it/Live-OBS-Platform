@@ -55,7 +55,7 @@ export default async function ProductListing(props: {
           </nav>
         )}
       </div>
-      {products.length === 0 ? <p className="shop-empty">{props.empty}</p> : <ProductGrid products={products} label={props.title} />}
+      {products.length === 0 ? <p className="shop-empty">{props.empty}</p> : <ProductGrid products={products} label={props.title} hrefBase={`/shop/${encodeURIComponent(props.slug)}/products`} />}
       {pages > 1 && (
         <nav className="shop-pager" aria-label="쪽 이동">
           {page > 1 && (
