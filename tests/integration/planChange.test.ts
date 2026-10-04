@@ -480,6 +480,55 @@ describe("플랜별 금액·변경 미리보기(GET /api/seller/subscription/pla
     expect((await previewThenChange(pending, "INTEGRATED", T0)).row.change).toEqual({ ok: false, reason: "payment_in_progress" });
   });
 
+  it("확인 금액(expectedAmount): 미리보기 금액과 같으면 바꾸고, 그사이 날짜가 바뀌어 금액이 달라지면 409 amount_changed로 아무것도 바꾸지 않는다", async () => {
+    const s = await shop("OVERLAY_ONLY", at(-30), paying);
+    // 전날(남은 2일) 본 금액으로 다음 날(남은 1일) 바꾸려 하면 금액이 다르다
+    const seen = (await previewPlanChanges(db, s.ctx, { now: at(8) })).plans.find((p) => p.planCode === "INTEGRATED")!.change as { chargeNow: number };
+    expect(seen.chargeNow).toBe(7333);
+    const audits = await db.auditLog.count();
+    expect(await changePlan(db, new FakeBillingProvider(), s.ctx, { planCode: "INTEGRATED", expectedAmount: seen.chargeNow, now: at(9) })).toEqual({ ok: false, reason: "amount_changed" });
+    expect(await payments(s.seller.id)).toEqual([]);
+    expect(await planOf(s.seller.id)).toBe("OVERLAY_ONLY");
+    expect(await db.auditLog.count()).toBe(audits);
+    // 결제 없는 변경(하위 변경 예약)은 0원이 맞을 때만
+    const down = await shop("INTEGRATED", at(-30), paying);
+    expect(await changePlan(db, new FakeBillingProvider(), down.ctx, { planCode: "OVERLAY_ONLY", expectedAmount: 100, now: T0 })).toEqual({ ok: false, reason: "amount_changed" });
+    expect((await subOf(down.seller.id)).pendingPlanId).toBeNull();
+    expect(await changePlan(db, new FakeBillingProvider(), down.ctx, { planCode: "OVERLAY_ONLY", expectedAmount: 0, now: T0 })).toMatchObject({ ok: true, applied: "next_payment" });
+    // 같은 날 다시 본 금액이면 바꾼다
+    const again = (await previewPlanChanges(db, s.ctx, { now: at(9) })).plans.find((p) => p.planCode === "INTEGRATED")!.change as { chargeNow: number };
+    expect(await changePlan(db, new FakeBillingProvider(), s.ctx, { planCode: "INTEGRATED", expectedAmount: again.chargeNow, now: at(9) })).toMatchObject({ ok: true, charged: 3666 });
+    // 실패 사유가 먼저다(같은 플랜이면 금액과 상관없이 same_plan)
+    expect(await changePlan(db, new FakeBillingProvider(), s.ctx, { planCode: "INTEGRATED", expectedAmount: 1, now: at(9) })).toEqual({ ok: false, reason: "same_plan" });
+  });
+
+  it("HTTP: expectedAmount 형식이 틀리면 400, 다르면 409 amount_changed(결제 0건)", async () => {
+    const s = await shop("OVERLAY_ONLY", at(-30), paying);
+    const login = await loginSeller(db, { email: s.owner.email, password: PASSWORD }, {});
+    if (!login.ok) throw new Error(login.reason);
+    const post = (body: unknown) =>
+      planRoute(
+        new Request("http://localhost:3000/api/seller/subscription/plan", {
+          method: "POST",
+          headers: { "content-type": "application/json", host: "localhost:3000", origin: "http://localhost:3000", cookie: `lo_seller=${login.token}` },
+          body: JSON.stringify(body),
+        }),
+      );
+    for (const expectedAmount of [-1, 1.5, "36666", null]) expect((await post({ planCode: "INTEGRATED", expectedAmount })).status).toBe(400);
+    // 확인 금액은 필수: 없으면 400 amount_required(아무것도 바꾸지 않음). 다른 거절 사유가 먼저다(같은 플랜 409 same_plan)
+    const missing = await post({ planCode: "INTEGRATED" });
+    expect(missing.status).toBe(400);
+    expect(await missing.json()).toEqual({ error: "amount_required" });
+    expect(await planOf(s.seller.id)).toBe("OVERLAY_ONLY");
+    const same = await post({ planCode: "OVERLAY_ONLY" });
+    expect(same.status).toBe(409);
+    expect(await same.json()).toEqual({ error: "same_plan" });
+    const r = await post({ planCode: "INTEGRATED", expectedAmount: 1 });
+    expect(r.status).toBe(409);
+    expect(await r.json()).toEqual({ error: "amount_changed" });
+    expect(await payments(s.seller.id)).toEqual([]);
+  });
+
   it("대표자 전용(직원 403), HTTP 경로는 로그인한 대표자에게 200, 로그인 없으면 401", async () => {
     const s = await shop("OVERLAY_ONLY", at(-30), paying);
     const staff = await createSellerUser(s.seller.id, "MANAGER");
