@@ -140,6 +140,10 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const ogInput = useRef<HTMLInputElement>(null);
+  // 고를 때마다 번호를 올린다. 크기 확인(비동기)이 끝났을 때 번호가 바뀌었으면 그 사이 다른 파일을 고른 것이라 결과를 버린다
+  // (늦게 끝난 앞 선택이 마지막 선택을 덮어쓰지 않게).
+  const faviconPick = useRef(0);
+  const ogPick = useRef(0);
 
   // 고른 파일 미리보기 주소는 바뀌거나 화면을 떠날 때 놓아 준다
   useEffect(() => () => void (favicon && URL.revokeObjectURL(favicon.url)), [favicon]);
@@ -163,24 +167,27 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
 
   const pickFavicon = async (file: File | undefined) => {
     // 새로 고른 파일이 거부되면 이전에 고른 파일도 지운다(안내와 다른 파일이 올라가지 않게)
+    const pick = ++faviconPick.current;
     setFaviconError(null);
     setFavicon(null);
     if (!file) return;
     if (file.size > FAVICON_MAX) return setFaviconError("파비콘이 256KB를 넘습니다. 256KB 이하 PNG로 줄여 주십시오.");
     const url = URL.createObjectURL(file);
     const size = await imageSize(url);
+    if (pick !== faviconPick.current) return URL.revokeObjectURL(url);
     const warn = size && size.w !== size.h ? "정사각형이 아니면 탭에서 찌그러져 보일 수 있습니다." : undefined;
     setFavicon({ file, url, warn });
   };
 
   const uploadFavicon = async () => {
     if (!favicon) return;
+    const pickAtUpload = faviconPick.current;
     setFaviconBusy(true);
     setFaviconError(null);
     const r = await adminApi<{ branding: Branding }>(`/api/admin/branding/${t}/favicon`, { method: "PUT", file: favicon.file });
     setFaviconBusy(false);
     if (!r.ok) return setFaviconError(failMessage(r, "파비콘을 변경하지 못했습니다. 잠시 후 다시 시도해 주십시오."));
-    setFavicon(null);
+    if (faviconPick.current === pickAtUpload) setFavicon(null);
     onSaved(r.data.branding, "파비콘을 변경했습니다.");
   };
 
@@ -194,12 +201,14 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
   };
 
   const pickOg = async (file: File | undefined) => {
+    const pick = ++ogPick.current;
     setOgError(null);
     setOgFile(null);
     if (!file) return;
     if (file.size > OG_MAX) return setOgError("공유 카드 이미지가 2MB를 넘습니다. 2MB 이하 PNG로 줄여 주십시오.");
     const url = URL.createObjectURL(file);
     const size = await imageSize(url);
+    if (pick !== ogPick.current) return URL.revokeObjectURL(url);
     // 브라우저가 열지 못하는 파일(잘린 파일 등)은 공유 서비스도 못 보여 준다
     if (!size) {
       URL.revokeObjectURL(url);
@@ -213,6 +222,8 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
   };
 
   const save = async () => {
+    // 저장하는 사이 다른 이미지를 고르면 새로 고른 것은 남겨 둔다
+    const pickAtSave = ogPick.current;
     setSaving(true);
     setFailure(null);
     let latest: Branding | null = null;
@@ -235,7 +246,7 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
         return setFailure(failMessage(r, "이미지를 저장하지 못했습니다. 잠시 후 다시 시도해 주십시오."));
       }
       latest = r.data.branding;
-      setOgFile(null);
+      if (ogPick.current === pickAtSave) setOgFile(null);
     }
     setSaving(false);
     if (latest) onSaved(latest, "공유 카드를 저장했습니다.");

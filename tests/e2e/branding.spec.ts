@@ -172,3 +172,52 @@ test("조회 전용 관리자는 지금 값만 보고 바꿀 수 없다", async 
   await expect(page.getByLabel("제목")).toBeDisabled();
   await page.screenshot({ path: "tests/e2e/screenshots/branding-readonly-1440.png", fullPage: true });
 });
+
+test("이미지를 연달아 고르면 앞 선택의 크기 확인이 늦게 끝나도 마지막 선택이 남는다(Codex 지적 7차)", async ({ page, request }) => {
+  // 이름이 slow로 시작하는 파일은 브라우저 크기 확인(new Image)을 1.5초 늦게 끝낸다
+  await page.addInitScript(() => {
+    const names = new Map<string, string>();
+    const create = URL.createObjectURL.bind(URL);
+    URL.createObjectURL = (o: Blob | MediaSource) => {
+      const u = create(o);
+      if (o instanceof File) names.set(u, o.name);
+      return u;
+    };
+    const Native = window.Image;
+    window.Image = function (this: unknown, w?: number, h?: number) {
+      const img = new Native(w, h);
+      let onload: ((e: Event) => void) | null = null;
+      Object.defineProperty(img, "onload", {
+        get: () => onload,
+        set: (fn) => {
+          onload = fn;
+          img.addEventListener("load", (e) => setTimeout(() => onload?.(e), (names.get(img.src) ?? "").startsWith("slow") ? 1500 : 0));
+        },
+      });
+      return img;
+    } as unknown as typeof Image;
+  });
+  await login(page, superEmail);
+
+  // 파비콘: 늦게 끝나는 앞 파일 → 바로 다음 파일
+  const red = await sharp({ create: { width: 64, height: 64, channels: 4, background: "#ff0000" } }).png().toBuffer();
+  const blue = await sharp({ create: { width: 48, height: 48, channels: 4, background: "#0000ff" } }).png().toBuffer();
+  await page.getByLabel("파비콘 파일").setInputFiles({ name: "slow-red.png", mimeType: "image/png", buffer: red });
+  await page.getByLabel("파비콘 파일").setInputFiles({ name: "blue.png", mimeType: "image/png", buffer: blue });
+  await page.waitForTimeout(2000);
+  await expect(page.getByText("blue.png")).toBeVisible();
+  await expect(page.getByText("slow-red.png")).toHaveCount(0);
+
+  // 공유 카드: 늦게 끝나는 크기가 틀린 앞 파일 → 맞는 다음 파일. 앞 결과의 안내가 뒤 선택을 덮어쓰지 않고, 저장하면 뒤 파일이 올라간다
+  await page.getByRole("radio", { name: "이미지 업로드" }).click();
+  const wrong = await sharp({ create: { width: 800, height: 600, channels: 3, background: "#222" } }).png().toBuffer();
+  const good = await sharp({ create: { width: 1200, height: 630, channels: 3, background: "#00aa55" } }).png().toBuffer();
+  await page.getByLabel("공유 카드 이미지 파일").setInputFiles({ name: "slow-wrong.png", mimeType: "image/png", buffer: wrong });
+  await page.getByLabel("공유 카드 이미지 파일").setInputFiles({ name: "good.png", mimeType: "image/png", buffer: good });
+  await page.waitForTimeout(2000);
+  await expect(page.getByText("선택한 이미지: 800×600")).toHaveCount(0);
+  await page.getByRole("button", { name: "공유 카드 저장" }).click();
+  await expect(page.getByText("공유 카드를 저장했습니다.")).toBeVisible();
+  const og = await request.get((await head(page, "/admin/login")).ogImage!);
+  expect(Buffer.from(await og.body()).equals(good)).toBe(true);
+});
