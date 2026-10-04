@@ -59,7 +59,8 @@ export async function shopProductList(
 ): Promise<{ ok: true; value: { products: ShopProductCard[]; total: number; page: number; hasMore: boolean } } | { ok: false; reason: ListFailure }> {
   const shop = await openShop(db, slug);
   if (!shop) return { ok: false, reason: "not_found" };
-  const sort = q.sort === undefined || q.sort === "" ? "new" : SHOP_SORTS.includes(q.sort as ShopSort) ? (q.sort as ShopSort) : null;
+  // 정렬을 빼면 판매자가 정한 목록 기본 정렬(상품 진열 SA-016, 없으면 new)
+  const sort = q.sort === undefined || q.sort === "" ? await defaultListSort(db, shop.id) : SHOP_SORTS.includes(q.sort as ShopSort) ? (q.sort as ShopSort) : null;
   const page = parseInt10(q.page, 1, 1, 10000);
   const limit = parseInt10(q.limit, SHOP_PAGE_DEFAULT, 1, SHOP_PAGE_MAX);
   const blankQ = q.q === undefined || (typeof q.q === "string" && /^ *$/.test(q.q));
@@ -135,6 +136,50 @@ export async function shopProductList(
       hasMore: page * limit < cards.length,
     },
   };
+}
+
+export async function defaultListSort(db: PrismaClient, sellerId: string): Promise<ShopSort> {
+  const row = await db.shopDisplaySetting.findUnique({ where: { sellerId }, select: { listSort: true } });
+  return SHOP_SORTS.includes(row?.listSort as ShopSort) ? (row!.listSort as ShopSort) : "new";
+}
+
+// 주어진 순서대로 보이는 상품만 상품 카드로(추천 상품 진열). 지웠거나 보이지 않는 상품은 빠진다.
+export async function shopCardsInOrder(db: PrismaClient, shop: { id: string; slug: string }, ids: string[]): Promise<ShopProductCard[]> {
+  if (!ids.length) return [];
+  const rows = await db.product.findMany({
+    where: { sellerId: shop.id, id: { in: ids }, deletedAt: null, status: { in: [...VISIBLE] } },
+    select: {
+      id: true,
+      codeNo: true,
+      name: true,
+      price: true,
+      status: true,
+      eventDiscountType: true,
+      eventDiscountValue: true,
+      eventStartsAt: true,
+      eventEndsAt: true,
+      options: { where: { deletedAt: null }, select: { stock: true } },
+    },
+  });
+  const now = await dbNow(db);
+  const thumbs = await thumbnails(db, shop.id, shop.slug, rows.map((r) => r.id));
+  const byId = new Map(rows.map((p) => [p.id, p]));
+  return ids.flatMap((id) => {
+    const p = byId.get(id);
+    if (!p) return [];
+    const shown = orderUnitPrice(p.price, eventOf(p), now);
+    return [
+      {
+        id: p.id,
+        code: productCode(p.codeNo),
+        name: p.name,
+        price: p.price,
+        salePrice: shown < p.price ? shown : null,
+        soldOut: p.status === "SOLD_OUT" || p.options.every((o) => o.stock <= 0),
+        thumbnailUrl: thumbs.get(p.id) ?? null,
+      },
+    ];
+  });
 }
 
 async function thumbnails(db: PrismaClient, sellerId: string, slug: string, ids: string[]) {

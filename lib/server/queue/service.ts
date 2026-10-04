@@ -11,6 +11,7 @@ import { checkTransition, isCompletePermutation, isValidTimer, type QueueAction,
 import { refreshOrderRetention } from "../buyers/legalHold";
 import { chargedShippingFee, itemCouponDiscount, restoreOrderCoupon } from "../shop-coupons/service";
 import { revokeReviewRewardsForOrder, type ReviewRewardRevoke } from "../product-reviews/service";
+import { requestPaymentCancel } from "../payments/service";
 
 type Tx = Prisma.TransactionClient;
 
@@ -615,6 +616,8 @@ export async function refundOrder(
     // 화면에서 확인받은 금액과 다르면(그사이 발송·개봉 등) 아무것도 바꾸지 않고 되돌린다
     if (opts.expectedRefundAmount !== undefined && opts.expectedRefundAmount !== refundAmount) throw new Rejected("refund_amount_changed");
     await tx.order.update({ where: { id: orderId }, data: { refundAmount, refundFault, returnFeeDeducted } });
+    // 카드 결제 주문이면 환불액만큼 PG 취소 요청을 같은 트랜잭션에 남긴다(PG 호출은 커밋 뒤, payments/service.ts)
+    await requestPaymentCancel(tx, { sellerId: ctx.sellerId, orderId, amount: refundAmount, reason, idempotencyKey: `refund:${orderId}` });
     // 결제 금액 전부를 돌려주면 전체 취소로 보고 쓴 쿠폰을 되돌린다. 일부만 돌려주면 되돌리지 않는다(MASTER 2026-10-04).
     // 개봉한 품목을 구매자 사정으로 남기는 환불은 금액이 결제 금액과 같아도 전체 취소가 아니다(Codex 4176403238).
     const keepsItems = refundFault === "BUYER" && openedItemCount > 0;
