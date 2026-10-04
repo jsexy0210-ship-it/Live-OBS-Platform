@@ -27,6 +27,8 @@ const summarySelect = {
   purchaseConfirmedAt: true,
   paymentDueAt: true,
   stockShortageAt: true,
+  // 쓴 쿠폰과 할인 금액(전체 취소로 되돌렸으면 restoredAt)
+  couponRedemption: { select: { discountAmount: true, restoredAt: true, coupon: { select: { name: true } } } },
   items: { select: { productNameSnapshot: true, optionNameSnapshot: true, unitPrice: true, quantity: true }, orderBy: { id: "asc" } },
   shipment: { select: { courier: true, trackingNumber: true, status: true, shippedAt: true, deliveredAt: true } },
 } as const;
@@ -53,12 +55,12 @@ export async function listBuyerOrders(
   let after = {};
   if (opts.cursor !== undefined && opts.cursor !== "") {
     if (typeof opts.cursor !== "string" || !UUID.test(opts.cursor)) return { ok: false as const, reason: "invalid_cursor" as const };
-    const c = await db.order.findFirst({ where: { id: opts.cursor, ...scope }, select: { id: true, createdAt: true } });
+    const c = await db.order.findFirst({ where: { id: opts.cursor, ...scope, legalHoldAt: null }, select: { id: true, createdAt: true } });
     if (!c) return { ok: false as const, reason: "invalid_cursor" as const };
     after = { OR: [{ createdAt: { lt: c.createdAt } }, { createdAt: c.createdAt, id: { lt: c.id } }] };
   }
   const rows = await db.order.findMany({
-    where: { ...scope, ...after },
+    where: { ...scope, legalHoldAt: null, ...after },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: limit + 1,
     select: summarySelect,
@@ -77,7 +79,7 @@ export async function listBuyerOrders(
 export async function getBuyerOrder(db: PrismaClient, scope: { sellerId: string; buyerMemberId: string }, orderId: string) {
   if (!UUID.test(orderId)) return null;
   const o = await db.order.findFirst({
-    where: { id: orderId, ...scope },
+    where: { id: orderId, ...scope, legalHoldAt: null },
     select: {
       ...summarySelect,
       paymentMethod: true,

@@ -11,7 +11,7 @@ import { getBuyerOrder } from "../../lib/server/orders/buyer";
 import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
 import { createOrder } from "../../lib/server/orders/create";
 import { autoCompleteDeliveries, autoConfirmPurchases, completeDelivery, unconfirmPurchase } from "../../lib/server/orders/delivery";
-import { ORDER_ERROR_MESSAGES } from "../../lib/server/orders/messages";
+import { ORDER_ERROR_MESSAGES, ORDER_ERROR_MESSAGES_FORMAL } from "../../lib/server/orders/messages";
 import { getOrder } from "../../lib/server/orders/read";
 import { shipOrder } from "../../lib/server/orders/ship";
 import { markOrderPaid, refundOrder } from "../../lib/server/queue/service";
@@ -84,7 +84,7 @@ describe("배송 완료와 적립금 지급 시점", () => {
     // 두 번째는 409와 문구, 적립도 한 번만
     const again = await s.deliver(id, cookie);
     expect(again.status).toBe(409);
-    expect(await again.json()).toEqual({ error: "not_deliverable", message: ORDER_ERROR_MESSAGES.not_deliverable });
+    expect(await again.json()).toEqual({ error: "not_deliverable", message: ORDER_ERROR_MESSAGES_FORMAL.not_deliverable });
     expect(await earns(id)).toHaveLength(1);
   });
 
@@ -332,7 +332,7 @@ describe("설정 API", () => {
     for (const bad of [{ autoDeliverDays: 0 }, { autoConfirmDays: 31 }, { autoDeliverDays: 1.5 }, { autoConfirmEnabled: "yes" }]) {
       const r = await put({ ...base, ...bad });
       expect(r.status).toBe(400);
-      expect(await r.json()).toEqual({ error: "invalid_order_policy", message: ORDER_ERROR_MESSAGES.invalid_order_policy });
+      expect(await r.json()).toEqual({ error: "invalid_order_policy", message: ORDER_ERROR_MESSAGES_FORMAL.invalid_order_policy });
     }
   });
 
@@ -351,7 +351,7 @@ describe("설정 API", () => {
     });
     const bad = await put(cookie, { earnTiming: "on_payment" });
     expect(bad.status).toBe(400);
-    expect(await bad.json()).toEqual({ error: "invalid_reward_policy", message: ORDER_ERROR_MESSAGES.invalid_reward_policy });
+    expect(await bad.json()).toEqual({ error: "invalid_reward_policy", message: ORDER_ERROR_MESSAGES_FORMAL.invalid_reward_policy });
     const staff = await createSellerUser(seller.id, { permissions: ["ORDER_SHIPPING"] });
     expect((await put(await sellerCookie(staff.email), { earnTiming: "ON_DELIVERY" })).status).toBe(403);
   });
@@ -386,10 +386,10 @@ describe("구매 확정 취소 뒤 환불", () => {
     const s = await shop();
     const id = await confirmed(s);
     const cookie = await sellerCookie(s.owner.email);
-    const refund = async () => post("refund", { reason: "불량", expectedVersion: await lv(s.seller.id), fault: "SELLER" }, cookie, id);
+    const refund = async () => post("refund", { reason: "불량", expectedRefundAmount: 13000, expectedVersion: await lv(s.seller.id), fault: "SELLER" }, cookie, id);
     const blocked = await refund();
     expect(blocked.status).toBe(409);
-    expect(await blocked.json()).toEqual({ error: "purchase_confirmed", message: ORDER_ERROR_MESSAGES.purchase_confirmed });
+    expect(await blocked.json()).toEqual({ error: "purchase_confirmed", message: ORDER_ERROR_MESSAGES_FORMAL.purchase_confirmed });
     expect((await db.order.findUniqueOrThrow({ where: { id } })).status).toBe("PAID");
 
     const un = await post("unconfirm", { reason: "구매자 불량 문의" }, cookie, id);
@@ -440,12 +440,12 @@ describe("구매 확정 취소 뒤 환불", () => {
     await completeDelivery(db, s.ctx, notYet);
     const r1 = await post("unconfirm", { reason: "사유" }, cookie, notYet);
     expect(r1.status).toBe(409);
-    expect(await r1.json()).toEqual({ error: "not_confirmed", message: ORDER_ERROR_MESSAGES.not_confirmed });
+    expect(await r1.json()).toEqual({ error: "not_confirmed", message: ORDER_ERROR_MESSAGES_FORMAL.not_confirmed });
     const id = await confirmed(s);
     for (const reason of [undefined, "  ", "가".repeat(201)]) {
       const r = await post("unconfirm", { reason }, cookie, id);
       expect(r.status).toBe(400);
-      expect(await r.json()).toEqual({ error: "invalid_reason", message: ORDER_ERROR_MESSAGES.invalid_reason });
+      expect(await r.json()).toEqual({ error: "invalid_reason", message: ORDER_ERROR_MESSAGES_FORMAL.invalid_reason });
     }
     const theirs = await confirmed(other);
     expect((await post("unconfirm", { reason: "사유" }, cookie, theirs)).status).toBe(404);

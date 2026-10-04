@@ -44,8 +44,8 @@ export function NoPermission({ need }: { need: string }) {
   return (
     <div className="st" style={{ boxShadow: "none" }}>
       <LockIcon />
-      <span className="t">이 기능은 권한이 필요해요</span>
-      <span className="s">대표자에게 요청해 주세요 · 필요한 권한: {need}</span>
+      <span className="t">이 기능은 권한이 필요합니다</span>
+      <span className="s">대표자에게 요청해 주십시오 · 필요한 권한: {need}</span>
     </div>
   );
 }
@@ -55,8 +55,8 @@ export function Locked() {
   return (
     <div className="st" style={{ boxShadow: "none" }}>
       <LockIcon />
-      <span className="t">이용 기간이 끝나서 지금은 쓸 수 없어요</span>
-      <span className="s">구독하면 바로 다시 쓸 수 있어요</span>
+      <span className="t">이용 기간이 끝나 지금은 사용할 수 없습니다</span>
+      <span className="s">구독하면 바로 다시 사용할 수 있습니다</span>
     </div>
   );
 }

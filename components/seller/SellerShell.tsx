@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { useLatestResponse, type ReadTicket } from "./latestResponse";
 import { api, type Me } from "./api";
 
 // 판매자 관리자 공통 틀: 왼쪽 메뉴(좁은 화면에서는 서랍) + 상단 바 + 이용 상태 배너.
@@ -13,15 +14,18 @@ type Nav = { h: string } | { label: string; href?: string; perm?: string; match?
 const NAV: Nav[] = [
   { h: "홈" },
   { label: "홈" },
+  { label: "통계", href: "/seller/stats", perm: "SALES_VIEW" },
   { h: "방송" },
-  { label: "방송 대시보드", perm: "BROADCAST_RUN" },
+  { label: "방송 대시보드", href: "/seller/broadcast", perm: "BROADCAST_RUN" },
   { h: "판매" },
   { label: "상품", href: "/seller/products", perm: "PRODUCT_MANAGE" },
-  { label: "주문", perm: "ORDER_SHIPPING" },
+  { label: "주문", href: "/seller/orders", perm: "ORDER_SHIPPING" },
   { label: "입금 확인", perm: "ORDER_SHIPPING" },
   { label: "배송", perm: "ORDER_SHIPPING" },
   { label: "영수증 · 세금계산서", perm: "RECEIPT_TAX" },
   { label: "적립금", href: "/seller/rewards", perm: "MEMBER_POINTS" },
+  // 쿠폰: 집계 조회는 파트너스 계정 누구나, 만들기·지급은 적립금(MEMBER_POINTS) 권한(화면에서 막음)
+  { label: "쿠폰", href: "/seller/coupons" },
   { label: "회원", perm: "MEMBER_POINTS" },
   { label: "구매 제한", perm: "MEMBER_POINTS" },
   { label: "구매자 문의", perm: "INQUIRY_REPLY" },
@@ -30,11 +34,12 @@ const NAV: Nav[] = [
   { label: "HIT 카드 이력", perm: "BROADCAST_RUN" },
   { label: "방송 이력", perm: "BROADCAST_RUN" },
   { h: "설정" },
-  { label: "쇼핑몰 설정", href: "/seller/settings/shipping", match: "/seller/settings", perm: "SHOP_SETTINGS" },
+  { label: "쇼핑몰 설정", href: "/seller/settings/shop", match: "/seller/settings" },
+  { label: "배너 · 팝업", href: "/seller/banners" },
   { label: "결제(PG) 연결", perm: "OWNER" },
   { label: "주문자 알림", perm: "SHOP_SETTINGS" },
   { label: "구독 · 결제", perm: "OWNER" },
-  { label: "직원 계정", perm: "OWNER" },
+  { label: "직원 계정", href: "/seller/staff", perm: "OWNER" },
   { label: "공지 · 문의" },
   { label: "도우미" },
   { label: "내 계정" },
@@ -57,26 +62,74 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null);
   const [navOpen, setNavOpen] = useState(false);
 
-  const load = useCallback(async () => {
+  const lastRead = useRef(0);
+  // /me 다시 읽기 반영 규칙(latestResponse.ts): 나중에 보낸 요청의 성공만 반영하고, 실패가 앞선 성공을 버리지 않는다.
+  // 반영할 때 파생 값(남은 체험 일수)도 함께 계산한다: 처음 읽기·다시 읽기 어느 쪽이 먼저 성공해도 같은 결과
+  const meReads = useLatestResponse();
+  const applyMe = (t: ReadTicket, data: Me) => {
+    if (meReads.accept(t) !== "apply") return;
     setFailed(false);
+    setMe(data);
+    // 체험 중이면 /me가 끝나는 시각을 준다(대표자·직원 모두)
+    setTrialDaysLeft(data.access === "trial" && data.trialEndsAt ? Math.max(0, Math.ceil((new Date(data.trialEndsAt).getTime() - Date.now()) / 86_400_000)) : null);
+  };
+  const load = useCallback(async () => {
+    lastRead.current = Date.now();
+    setFailed(false);
+    const t = meReads.next();
     const r = await api<Me>("/api/seller/me");
     if (!r.ok) {
       if (r.status === 401) router.replace(`/seller/login?next=${encodeURIComponent(pathname)}`);
-      else setFailed(true);
+      // 아직 한 번도 그리지 못했으면 다시 시도 화면을 보인다(이미 그린 화면은 그대로 둔다)
+      else if (!meReads.hasApplied() && meReads.failMatters(t)) setFailed(true);
       return;
     }
-    setMe(r.data);
-    // 체험 중이면 /me가 끝나는 시각을 준다(대표자·직원 모두)
-    if (r.data.access === "trial" && r.data.trialEndsAt) {
-      const ms = new Date(r.data.trialEndsAt).getTime() - Date.now();
-      setTrialDaysLeft(Math.max(0, Math.ceil(ms / 86_400_000)));
-    }
+    applyMe(t, r.data);
   }, [router, pathname]);
 
   useEffect(() => {
     void load();
-    // 처음 한 번만 불러온다(화면 이동마다 다시 부르지 않음)
+    // 처음 한 번 불러온다
   }, []);
+
+  // 화면을 옮길 때마다 권한·이용 상태를 조용히 다시 읽는다(대표자가 직원 권한을 바꾸면 다음 화면부터 메뉴에 반영).
+  // 로딩 화면은 띄우지 않고, 실패하면 지금 값을 그대로 둔다(401이면 공통 api()가 로그인으로 보낸다)
+  // 창으로 돌아올 때(포커스·화면이 다시 보일 때)도 다시 읽는다: 권한이 하나도 없는 직원은 옮길 화면이 없어 경로로는 새로 읽지 못한다.
+  // 짧은 간격으로 겹치면(포커스와 visibilitychange가 함께 오는 경우 등) 한 번만 읽는다
+  const refresh = useCallback(() => {
+    lastRead.current = Date.now();
+    const t = meReads.next();
+    void api<Me>("/api/seller/me").then((r) => {
+      if (r.ok) applyMe(t, r.data);
+    });
+  }, []);
+  const firstPath = useRef(pathname);
+  useEffect(() => {
+    if (pathname === firstPath.current) return;
+    firstPath.current = pathname;
+    refresh();
+  }, [pathname, refresh]);
+  useEffect(() => {
+    // 마지막으로 읽은 지 1초 안에 돌아오면 바로 읽지 않고 1초가 되는 때로 한 번 미룬다(버리면 그사이 바뀐 권한을 다음 포커스까지 못 본다)
+    let trailing: ReturnType<typeof setTimeout> | null = null;
+    const onBack = () => {
+      if (document.visibilityState !== "visible") return;
+      const wait = 1000 - (Date.now() - lastRead.current);
+      if (wait <= 0) return refresh();
+      if (trailing) return;
+      trailing = setTimeout(() => {
+        trailing = null;
+        refresh();
+      }, wait);
+    };
+    window.addEventListener("focus", onBack);
+    document.addEventListener("visibilitychange", onBack);
+    return () => {
+      if (trailing) clearTimeout(trailing);
+      window.removeEventListener("focus", onBack);
+      document.removeEventListener("visibilitychange", onBack);
+    };
+  }, [refresh]);
 
   useEffect(() => setNavOpen(false), [pathname]);
 
@@ -93,7 +146,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
     return (
       <div className="st" style={{ minHeight: "100vh", borderRadius: 0 }}>
         <div className="st-ic neg">!</div>
-        <span className="t">화면을 불러오지 못했어요</span>
+        <span className="t">화면을 불러오지 못했습니다</span>
         <button className="btn btn-sm" type="button" onClick={() => void load()}>
           다시 시도
         </button>
@@ -115,12 +168,12 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   return (
     <Ctx.Provider value={{ me, trialDaysLeft, openNav: () => setNavOpen(true), can }}>
       <div className={`shell${navOpen ? " nav-open" : ""}`}>
-        <aside className="side" aria-label="판매자 메뉴">
+        <aside className="side" aria-label="파트너스 메뉴">
           <Link className="logo" href="/seller/products" style={{ padding: "6px 12px 14px", fontSize: 18 }}>
             <span className="logo-sym" />
             <span className="logo-word" />
             <span className="t-c1 c-alt" style={{ marginLeft: 4 }}>
-              판매자
+              파트너스
             </span>
           </Link>
           {nav.map((n, i) =>
@@ -133,7 +186,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
                 {n.label}
               </Link>
             ) : (
-              <a key={i} className="nav-i off" aria-disabled="true" title="곧 열려요">
+              <a key={i} className="nav-i off" aria-disabled="true" title="준비 중입니다">
                 {n.label}
               </a>
             ),
@@ -143,7 +196,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
           </button>
           {logoutError && (
             <span className="err side-logout-err" role="alert">
-              로그아웃하지 못했어요. 다시 시도해 주세요
+              로그아웃하지 못했습니다. 다시 시도해 주십시오
             </span>
           )}
         </aside>
@@ -184,24 +237,24 @@ function AccessBanner() {
   if (me.access === "trial") {
     return (
       <div className="msg msg-info access-banner" role="status">
-        <b>{trialDaysLeft === null ? "체험 중이에요" : trialDaysLeft === 0 ? "체험이 오늘 끝나요" : `체험이 ${trialDaysLeft}일 남았어요`}</b>
-        <span>체험이 끝나기 전에 구독하면 그대로 이어서 쓸 수 있어요</span>
+        <b>{trialDaysLeft === null ? "체험 중입니다" : trialDaysLeft === 0 ? "체험이 오늘 끝납니다" : `체험이 ${trialDaysLeft}일 남았습니다`}</b>
+        <span>체험이 끝나기 전에 구독하면 그대로 이어서 사용할 수 있습니다</span>
       </div>
     );
   }
   if (me.access === "grace") {
     return (
       <div className="msg msg-cau access-banner" role="status">
-        <b>구독료 결제가 안 됐어요</b>
-        <span>결제 카드를 확인해 주세요. 며칠 안에 결제되지 않으면 새 판매가 멈춰요</span>
+        <b>구독료 결제가 되지 않았습니다</b>
+        <span>결제 카드를 확인해 주십시오. 며칠 안에 결제되지 않으면 새 판매가 중지됩니다</span>
       </div>
     );
   }
   if (me.access === "expired") {
     return (
       <div className="msg msg-neg access-banner" role="alert">
-        <b>이용 기간이 끝났어요</b>
-        <span>지금은 상품 등록·수정과 새 판매가 멈춰 있어요. {me.isOwner ? "구독하면 바로 다시 쓸 수 있어요" : "대표자에게 구독을 요청해 주세요"}</span>
+        <b>이용 기간이 끝났습니다</b>
+        <span>지금은 상품 등록·수정과 새 판매가 중지되어 있습니다. {me.isOwner ? "구독하면 바로 다시 사용할 수 있습니다" : "대표자에게 구독을 요청해 주십시오"}</span>
       </div>
     );
   }

@@ -10,7 +10,7 @@ import { COURIERS } from "../../../../lib/server/orders/shipping";
 // returnFee·exchangeFee는 빼고 보내면 지금 값을 그대로 둔다.
 export async function GET(req: Request) {
   try {
-    const ctx = await requireSeller(prisma, sessionToken(req, "seller"));
+    const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "STORE_OPERATIONS" });
     return NextResponse.json({ policy: await readShippingPolicy(prisma, ctx), couriers: COURIERS });
   } catch (e) {
     return errorResponse(e);
@@ -18,8 +18,8 @@ export async function GET(req: Request) {
 }
 
 export const PUT = mutation(async (req: Request) => {
-  const ctx = await requireSeller(prisma, sessionToken(req, "seller"));
+  const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "STORE_OPERATIONS" });
   const r = await updateShippingPolicy(prisma, ctx, await readJson(req));
-  if (!r.ok) return NextResponse.json(orderErrorBody(r.reason), { status: 400 });
+  if (!r.ok) return NextResponse.json(orderErrorBody(r.reason, "formal"), { status: 400 });
   return NextResponse.json({ policy: r.policy });
 });

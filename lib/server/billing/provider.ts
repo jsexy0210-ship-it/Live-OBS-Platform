@@ -17,6 +17,11 @@ export interface BillingProvider {
   getPayment(orderId: string): Promise<PaymentLookup>;
 }
 
+// 테스트 서버 모드(오래 도는 서버)에서 가짜 결제 공급자가 메모리에 들고 있는 결제 결과·결제 기록 개수 상한.
+// 결과는 결제 대조(같은 주문 재요청·조회)에 쓰이므로 넉넉히 두고, 넘으면 가장 오래된 것부터 지운다(실제 돈은 오가지 않음).
+export const FAKE_BILLING_RESULTS_KEEP = 5000;
+export const FAKE_BILLING_CHARGES_KEEP = 1000;
+
 export class FakeBillingProvider implements BillingProvider {
   readonly name = "fake";
   private seq = 0;
@@ -26,9 +31,32 @@ export class FakeBillingProvider implements BillingProvider {
   // 테스트용: 다음 결제 요청을 어떻게 망가뜨릴지(결제 전 타임아웃 / 결제 후 응답 유실)
   failNext: "timeout_before_charge" | "timeout_after_charge" | null = null;
 
-  // 운영 환경에서는 만들 수 없다.
-  constructor(env: string | undefined = process.env.NODE_ENV) {
-    if (env === "production") throw new Error("운영 환경에서는 가짜 결제 공급자를 쓸 수 없어요.");
+  // 운영 환경에서는 만들 수 없다. 테스트 서버 모드(OBS_TEST_MODE=1, testMode.ts)만 예외로 허용한다.
+  constructor(env: string | undefined = process.env.NODE_ENV, opts: { testMode?: boolean } = {}) {
+    if (env === "production" && !opts.testMode) throw new Error("운영 환경에서는 가짜 결제 공급자를 쓸 수 없어요.");
+    this.bounded = !!opts.testMode;
+  }
+
+  // 테스트 서버 모드면 결과·결제 기록을 정해진 개수 안에서만 들고 있는다(공개 서버에서 메모리가 끝없이 늘지 않게).
+  // 개발·시험용은 시험이 기록을 세므로 지우지 않는다.
+  private readonly bounded: boolean;
+  private setResult(orderId: string, r: PaymentLookup) {
+    this.results.delete(orderId); // 다시 넣어 가장 최근으로
+    this.results.set(orderId, r);
+    if (!this.bounded) return;
+    for (const id of this.results.keys()) {
+      if (this.results.size <= FAKE_BILLING_RESULTS_KEEP) break;
+      this.results.delete(id);
+    }
+  }
+  private recordCharge(c: { orderId: string; amount: number; billingKey: string }) {
+    this.charges.push(c);
+    if (this.bounded && this.charges.length > FAKE_BILLING_CHARGES_KEEP) this.charges.splice(0, this.charges.length - FAKE_BILLING_CHARGES_KEEP);
+  }
+
+  // 메모리에 남아 있는 결제 결과 수(테스트용)
+  get resultCount() {
+    return this.results.size;
   }
 
   async issueBillingKey({ authKey }: { authKey: string; customerKey: string }): Promise<IssueResult> {
@@ -49,11 +77,11 @@ export class FakeBillingProvider implements BillingProvider {
     let result: ChargeResult;
     if (prev?.status === "PAID") result = { ok: true, paymentId: prev.paymentId, receiptUrl: prev.receiptUrl };
     else if (this.declined.has(input.billingKey)) {
-      this.results.set(input.orderId, { status: "FAILED", reason: "card_declined" });
+      this.setResult(input.orderId, { status: "FAILED", reason: "card_declined" });
       result = { ok: false, reason: "card_declined" };
     } else {
-      this.charges.push({ orderId: input.orderId, amount: input.amount, billingKey: input.billingKey });
-      this.results.set(input.orderId, { status: "PAID", paymentId: `fake-pay-${input.orderId}`, receiptUrl: null });
+      this.recordCharge({ orderId: input.orderId, amount: input.amount, billingKey: input.billingKey });
+      this.setResult(input.orderId, { status: "PAID", paymentId: `fake-pay-${input.orderId}`, receiptUrl: null });
       result = { ok: true, paymentId: `fake-pay-${input.orderId}`, receiptUrl: null };
     }
     if (mode === "timeout_after_charge") throw new Error("PG 응답 시간 초과");

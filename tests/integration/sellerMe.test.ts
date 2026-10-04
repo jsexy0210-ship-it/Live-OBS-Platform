@@ -17,14 +17,14 @@ const cookieOf = (res: Response) => (res.headers.get("set-cookie") ?? "").split(
 const me = (cookie?: string) => meRoute(new Request("http://localhost:3000/api/seller/me", { headers: { ...H, ...(cookie ? { cookie } : {}) } }));
 
 describe("판매자 로그인 실패 응답", () => {
-  it("{ error, message } 해요체 문구로 주고, 이메일이 없을 때와 비밀번호가 틀릴 때 같은 응답이다", async () => {
+  it("{ error, message } 합니다체 문구로 주고, 이메일이 없을 때와 비밀번호가 틀릴 때 같은 응답이다", async () => {
     const { seller } = await createSeller();
     const owner = await createSellerUser(seller.id, "OWNER");
     const wrongPassword = await login({ email: owner.email, password: "wrong-password-1" });
     const unknownEmail = await login({ email: "nobody@example.com", password: PASSWORD });
     for (const res of [wrongPassword, unknownEmail]) {
       expect(res.status).toBe(401);
-      expect(await res.json()).toEqual({ error: "invalid_credentials", message: "이메일이나 비밀번호가 맞지 않아요" });
+      expect(await res.json()).toEqual({ error: "invalid_credentials", message: "이메일이나 비밀번호가 맞지 않습니다" });
     }
     const empty = await login({ email: owner.email });
     expect(empty.status).toBe(400);
@@ -115,7 +115,7 @@ describe("GET /api/seller/me", () => {
     expect(bodyA).toMatchObject({ isOwner: false, access: "trial", trialEndsAt: endsA.toISOString() });
     expect(JSON.stringify(bodyA)).not.toContain(endsB.toISOString());
     // 금액·결제 정보는 주지 않는다
-    expect(Object.keys(bodyA).sort()).toEqual(["access", "isOwner", "permissions", "sellerId", "shop", "trialEndsAt", "user", "userId"]);
+    expect(Object.keys(bodyA).sort()).toEqual(["access", "features", "isOwner", "permissions", "sellerId", "shop", "trialEndsAt", "user", "userId"]);
     expect(await (await me(cb)).json()).toMatchObject({ isOwner: true, trialEndsAt: endsB.toISOString() });
     // 결제한 기간이 남아 체험이 아닌 상태면 null
     const plan = await db.subscriptionPlan.upsert({ where: { code: "STANDARD" }, update: {}, create: { code: "STANDARD", name: "스탠다드", listPrice: 30000, salePrice: 30000 } });

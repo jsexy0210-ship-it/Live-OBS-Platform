@@ -5,6 +5,7 @@ import { errorResponse, mutation, noStore, readJson, requestMeta, sessionToken }
 import { listBuyerOrders } from "../../../../../lib/server/orders/buyer";
 import { createOrder, type CreateOrderFailure } from "../../../../../lib/server/orders/create";
 import { orderErrorBody, purchaseRestrictedMessage } from "../../../../../lib/server/orders/messages";
+import { isOrderCouponFailure, ORDER_COUPON_MESSAGES } from "../../../../../lib/server/shop-coupons/service";
 
 // 구매자 본인 주문 목록(?cursor·limit, 응답 { orders, nextCursor }). 잠긴 쇼핑몰이어도 기존 주문 조회는 연다.
 export async function GET(req: Request, { params }: { params: Promise<{ slug: string }> }) {
@@ -25,6 +26,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
 
 // 구매자 주문 생성(결제 대기까지). 본문: { items: [{ optionId, quantity }], consent: { agreed: true, noticeVersion },
 // shippingAddress: { recipientName, phone, zipCode, address1, address2?, memo? }, saveAddress?(기본 true: 배송지 목록에 저장) }. 실패 응답은 { error, message(화면 문구) }.
+// couponId?(받은 쿠폰, 주문당 1장): 할인 금액은 서버가 계산한다.
 // 금액은 서버가 계산하므로 본문의 금액 값은 쓰지 않는다. 잠긴 쇼핑몰은 402와 안내 문구(판매자 사정은 드러내지 않음).
 const createOrderStatus = (reason: CreateOrderFailure) =>
   reason === "shop_unavailable" ? 402 : reason === "purchase_restricted" ? 403 : reason === "order_rate_limited" ? 429 : 400;
@@ -44,6 +46,7 @@ export const POST = mutation(async (req: Request, { params }: { params: Promise<
     rewardUseAmount: body.rewardUseAmount,
     shippingAddress: body.shippingAddress,
     saveAddress: body.saveAddress,
+    couponId: (body as { couponId?: unknown }).couponId,
     meta: requestMeta(req),
   });
   if (!r.ok) {
@@ -51,6 +54,7 @@ export const POST = mutation(async (req: Request, { params }: { params: Promise<
     if (r.reason === "purchase_restricted" && r.endsAt) {
       return NextResponse.json({ error: r.reason, message: purchaseRestrictedMessage(r.endsAt), endsAt: r.endsAt }, { status: 403 });
     }
+    if (isOrderCouponFailure(r.reason)) return NextResponse.json({ error: r.reason, message: ORDER_COUPON_MESSAGES[r.reason] }, { status: 409 });
     return NextResponse.json(orderErrorBody(r.reason), { status: createOrderStatus(r.reason) });
   }
   return NextResponse.json(r);
