@@ -1,0 +1,14 @@
+/* SH-029 리뷰 쓰기 · 내 리뷰 */
+.rv{width:640px;max-width:100%;gap:16px}
+.rv-stars{display:flex;gap:4px;justify-content:center}
+.rv-star{border:0;background:none;padding:2px;font-size:34px;line-height:1;cursor:pointer;color:var(--wds-line-normal-normal)}
+.rv-star.on{color:#f5a524}
+.rv-photos{display:flex;gap:8px;flex-wrap:wrap}
+.rv-photo{position:relative;width:72px;height:72px;border-radius:10px;overflow:hidden;background:var(--wds-fill-normal)}
+.rv-photo img{width:100%;height:100%;object-fit:cover;display:block}
+.rv-photo button{position:absolute;top:2px;right:2px;width:22px;height:22px;border:0;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;cursor:pointer;font-size:13px;line-height:22px;padding:0}
+.rv-add{width:72px;height:72px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border-radius:10px;border:1px dashed var(--wds-line-normal-normal);background:none;cursor:pointer;font:inherit}
+.rv-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.rv-item{display:flex;flex-direction:column;gap:6px;padding:14px 0;box-shadow:inset 0 -1px 0 var(--wds-line-normal-alternative)}
+.rv-mini-stars{color:#f5a524;letter-spacing:1px;white-space:nowrap}
+.rv-reply{display:flex;flex-direction:column;gap:4px;padding:12px;border-radius:10px;background:var(--wds-fill-alternative)}
