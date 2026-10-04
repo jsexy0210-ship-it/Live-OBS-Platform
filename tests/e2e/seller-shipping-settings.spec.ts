@@ -155,3 +155,24 @@ test("반품 · 교환 배송비: 기본 3,000원 · 6,000원, 바꾸면 저장�
   await exc.fill(before.exc);
   await saveOk(page);
 });
+
+// 저장 응답이 늦는 동안 칸을 고치면 늦게 온 응답이 덮는다: 저장하는 동안은 칸을 잠근다(주문·회원 정책·공유 미리보기도 같은 방식)
+test("저장하는 동안에는 칸을 잠가 저장 중 수정이 응답으로 덮이지 않는다", async ({ page }) => {
+  await openAs(page, "demo-owner@example.com");
+  await page.getByLabel("배송비", { exact: true }).fill("3100");
+  let release: () => void = () => {};
+  const held = new Promise<void>((r) => (release = r));
+  await page.route("**/api/seller/shipping-policy", async (route) => {
+    if (route.request().method() === "PUT") await held;
+    await route.continue();
+  });
+  await save(page);
+  await expect(page.getByLabel("배송비", { exact: true })).toBeDisabled();
+  release();
+  await saved(page);
+  await expect(page.getByLabel("배송비", { exact: true })).toBeEnabled();
+  await expect(page.getByLabel("배송비", { exact: true })).toHaveValue("3100");
+  await page.unrouteAll();
+  await page.getByLabel("배송비", { exact: true }).fill("3000");
+  await saveOk(page);
+});

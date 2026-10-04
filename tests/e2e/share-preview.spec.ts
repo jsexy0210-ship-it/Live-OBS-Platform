@@ -49,7 +49,7 @@ test("대표자: 공유 미리보기 제목·설명을 저장하면 쇼핑몰 �
   const saved = page.waitForResponse((r) => r.url().endsWith("/api/seller/share-preview") && r.request().method() === "PUT");
   await page.getByRole("complementary").getByRole("button", { name: "저장" }).click();
   expect((await saved).status()).toBe(200);
-  await expect(page.getByText("공유 미리보기를 저장했어요")).toBeVisible();
+  await expect(page.getByText("공유 미리보기를 저장했습니다")).toBeVisible();
 
   // 쇼핑몰 공개 페이지: 저장한 제목·설명, 서버가 그린 카드 이미지, ONQ 기본 파비콘
   await page.goto("/shop/demo-shop/signup");
@@ -68,7 +68,7 @@ test("대표자: 공유 미리보기 제목·설명을 저장하면 쇼핑몰 �
   await page.getByLabel("설명").fill("");
   await expect(card).toContainText("카드숍 별빛");
   await page.getByRole("complementary").getByRole("button", { name: "저장" }).click();
-  await expect(page.getByText("공유 미리보기를 저장했어요")).toBeVisible();
+  await expect(page.getByText("공유 미리보기를 저장했습니다")).toBeVisible();
   await page.goto("/shop/demo-shop/signup");
   await expect(meta(page, "og:title")).toHaveAttribute("content", "카드숍 별빛");
   await expect(page.locator('head meta[property="og:description"]')).toHaveCount(0);
@@ -83,12 +83,12 @@ test("공유 미리보기: 길이를 넘으면 저장할 수 없고, 쇼핑몰 �
   // 글자 수는 서버와 같은 기준(NFKC 뒤)으로 센다: 합자 ﬃ 하나는 ffi 세 글자
   await page.getByLabel("제목").fill("ﬃ".repeat(30));
   await expect(page.getByText("90/60")).toBeVisible();
-  await expect(page.getByText("60자까지 적을 수 있어요")).toBeVisible();
+  await expect(page.getByText("60자까지 입력할 수 있습니다")).toBeVisible();
   await expect(page.getByRole("complementary").getByRole("button", { name: "저장" })).toBeDisabled();
   // 서버가 받지 않는 글자(줄바꿈)도 저장 전에 알린다
   await page.getByLabel("제목").fill("");
   await page.getByLabel("설명").fill("첫 줄\n둘째 줄");
-  await expect(page.getByText("줄을 바꾸지 않고 적어 주세요")).toBeVisible();
+  await expect(page.getByText("줄바꿈 없이 입력해 주십시오")).toBeVisible();
   await expect(page.getByLabel("설명")).toHaveAttribute("aria-invalid", "true");
   await expect(page.getByRole("complementary").getByRole("button", { name: "저장" })).toBeDisabled();
   await page.context().clearCookies();
@@ -115,4 +115,29 @@ test("없는 쇼핑몰 주소는 공유 정보를 만들지 않고 기본값을 
   await page.goto("/shop/no-such-shop-zz/signup");
   await expect(page.locator('head meta[property="og:image"]')).toHaveCount(0);
   await expect(page.locator('head link[rel="icon"]').first()).toHaveAttribute("href", /\/branding\/onq-32\.png/);
+});
+
+// 저장 응답이 늦는 동안 칸을 고치면, 늦게 온 응답(보낸 값)이 새로 고친 값을 덮는다: 저장하는 동안은 칸을 잠근다
+test("공유 미리보기: 저장하는 동안에는 칸을 잠가 저장 중 수정이 응답으로 덮이지 않는다", async ({ page }) => {
+  await loginSeller(page, "demo-owner@example.com", PASSWORD, "/seller/settings/share");
+  await expect(page).toHaveURL(/\/seller\/settings\/share$/);
+  await page.getByLabel("제목").fill("잠금 확인 제목");
+  let release: () => void = () => {};
+  const held = new Promise<void>((r) => (release = r));
+  await page.route("**/api/seller/share-preview", async (route) => {
+    if (route.request().method() === "PUT") await held;
+    await route.continue();
+  });
+  await page.getByRole("complementary").getByRole("button", { name: "저장" }).click();
+  await expect(page.getByLabel("제목")).toBeDisabled();
+  await expect(page.getByLabel("설명")).toBeDisabled();
+  release();
+  await expect(page.getByText("공유 미리보기를 저장했습니다")).toBeVisible();
+  await expect(page.getByLabel("제목")).toBeEnabled();
+  await expect(page.getByLabel("제목")).toHaveValue("잠금 확인 제목");
+  await page.unrouteAll();
+  // 끝: 기본값으로 되돌린다
+  await page.getByLabel("제목").fill("");
+  await page.getByRole("complementary").getByRole("button", { name: "저장" }).click();
+  await expect(page.getByLabel("제목")).toHaveValue("");
 });

@@ -19,8 +19,8 @@ type Preview = { title: string | null; description: string | null };
 const len = textLength;
 function problem(v: string, max: number, kind: TextKind): string | null {
   if (v.trim() === "" || cleanText(v, max, kind) !== null) return null;
-  if (textLength(v) > max) return `${max}자까지 적을 수 있어요`;
-  return /[\r\n]/.test(v) ? "줄을 바꾸지 않고 적어 주세요" : "쓸 수 없는 문자가 있어요";
+  if (textLength(v) > max) return `${max}자까지 입력할 수 있습니다`;
+  return /[\r\n]/.test(v) ? "줄바꿈 없이 입력해 주십시오" : "사용할 수 없는 문자가 있습니다";
 }
 
 export default function ShareSettingsPage() {
@@ -66,10 +66,10 @@ export default function ShareSettingsPage() {
       body: { title: title.trim() || null, description: description.trim() || null },
     });
     setSaving(false);
-    if (!r.ok) return setFailure(failMessage(r, "저장하지 못했어요. 잠시 뒤 다시 시도해 주세요"));
+    if (!r.ok) return setFailure(failMessage(r, "저장하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
     apply(r.data.preview);
     setState({ kind: "ok", saved: r.data.preview });
-    setToast("공유 미리보기를 저장했어요");
+    setToast("공유 미리보기를 저장했습니다");
   };
 
   const shownTitle = cleanText(title, TITLE_MAX, "name") ?? me.shop.name;
@@ -80,7 +80,7 @@ export default function ShareSettingsPage() {
       <Topbar crumb="설정 › 쇼핑몰 설정 › 공유 미리보기">
         {saved && (
           <button className="btn btn-sm" type="button" onClick={() => void save()} disabled={saving || !dirty || tooLong}>
-            {saving ? "저장하고 있어요" : "저장"}
+            {saving ? "저장 중" : "저장"}
           </button>
         )}
       </Topbar>
@@ -89,7 +89,7 @@ export default function ShareSettingsPage() {
         <div className="ph">
           <div className="col" style={{ gap: 6 }}>
             <h1 className="t-t3">공유 미리보기</h1>
-            <span className="t-l2 c-alt">쇼핑몰 주소를 메신저나 검색에 공유할 때 보이는 제목과 설명을 정해요.</span>
+            <span className="t-l2 c-alt">쇼핑몰 주소를 메신저나 검색에 공유할 때 표시되는 제목과 설명을 설정합니다.</span>
           </div>
         </div>
 
@@ -102,16 +102,17 @@ export default function ShareSettingsPage() {
               ) : state.status === 402 ? (
                 <Locked />
               ) : (
-                <ErrorState title="공유 미리보기를 불러오지 못했어요" onRetry={() => void load()} />
+                <ErrorState title="공유 미리보기를 불러오지 못했습니다" onRetry={() => void load()} />
               ))}
           </div>
         ) : (
           <div className="form-grid">
-            <div className="col" style={{ gap: 20 }}>
+            {/* 저장하는 동안은 칸을 잠근다: 보낸 값과 다른 수정이 응답으로 덮이지 않게 */}
+            <fieldset className="col settings-fields" style={{ gap: 20 }} disabled={saving}>
               {failure && (
                 <div className="msg msg-neg" role="alert">
                   <span>
-                    <b>저장할 수 없어요.</b> {failure}
+                    <b>저장할 수 없습니다.</b> {failure}
                   </span>
                 </div>
               )}
@@ -129,7 +130,7 @@ export default function ShareSettingsPage() {
                     aria-invalid={!!titleProblem}
                   />
                   <span id="sp-title-help" className="row between t-c1 c-alt">
-                    <span className={titleProblem ? "c-neg" : undefined}>{titleProblem ?? "비워 두면 쇼핑몰 이름을 써요"}</span>
+                    <span className={titleProblem ? "c-neg" : undefined}>{titleProblem ?? "비워 두면 쇼핑몰 이름을 사용합니다"}</span>
                     <span className={len(title) > TITLE_MAX ? "c-neg" : undefined}>
                       {len(title)}/{TITLE_MAX}
                     </span>
@@ -148,7 +149,7 @@ export default function ShareSettingsPage() {
                     aria-invalid={!!descriptionProblem}
                   />
                   <span id="sp-description-help" className="row between t-c1 c-alt">
-                    <span className={descriptionProblem ? "c-neg" : undefined}>{descriptionProblem ?? "비워 두면 설명 없이 보여요"}</span>
+                    <span className={descriptionProblem ? "c-neg" : undefined}>{descriptionProblem ?? "비워 두면 설명 없이 표시됩니다"}</span>
                     <span className={len(description) > DESCRIPTION_MAX ? "c-neg" : undefined}>
                       {len(description)}/{DESCRIPTION_MAX}
                     </span>
@@ -156,7 +157,7 @@ export default function ShareSettingsPage() {
                 </div>
               </section>
               <section className="card pad col" style={{ gap: 12 }}>
-                <h2 className="t-hl2">공유하면 이렇게 보여요</h2>
+                <h2 className="t-hl2">공유 화면 미리보기</h2>
                 <div className="sp-card" data-testid="sp-card">
                   <img className="sp-card-img" src={`/api/shop/${encodeURIComponent(me.shop.slug)}/og.png`} alt="" width={1200} height={630} />
                   <div className="sp-card-body col">
@@ -166,16 +167,16 @@ export default function ShareSettingsPage() {
                   </div>
                 </div>
               </section>
-            </div>
+            </fieldset>
             <aside className="col aside-sticky" style={{ gap: 16 }}>
               <div className="card pad col" style={{ gap: 8 }}>
-                <span className="t-hl2">알아 두세요</span>
+                <span className="t-hl2">참고</span>
                 <span className="t-c1 c-alt" style={{ lineHeight: 1.6 }}>
-                  상품 화면을 공유하면 상품 이름이 제목으로 먼저 보여요. 공유한 곳에서는 미리보기를 잠시 저장해 두어서, 바꾼 내용이 늦게 보일 수 있어요. 카드 이미지는 쇼핑몰 이름으로 만들어요.
+                  상품 화면을 공유하면 상품 이름이 제목으로 먼저 표시됩니다. 공유한 곳에서 미리보기를 잠시 저장해 두므로 변경 내용이 늦게 반영될 수 있습니다. 카드 이미지는 쇼핑몰 이름으로 만듭니다.
                 </span>
               </div>
               <button className="btn btn-lg btn-block" type="button" onClick={() => void save()} disabled={saving || !dirty || tooLong}>
-                {saving ? "저장하고 있어요" : "저장"}
+                {saving ? "저장 중" : "저장"}
               </button>
             </aside>
           </div>

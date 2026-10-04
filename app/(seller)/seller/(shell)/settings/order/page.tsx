@@ -225,7 +225,8 @@ export default function OrderSettingsPage() {
           </div>
         ) : (
           <div className="form-grid">
-            <div className="col" style={{ gap: 20 }}>
+            {/* 저장하는 동안은 칸을 잠근다: 보낸 값과 다른 수정이 응답으로 덮이지 않게 */}
+            <fieldset className="col settings-fields" style={{ gap: 20 }} disabled={saving}>
               {failure && (
                 <div className="msg msg-neg" role="alert">
                   <span>
@@ -406,7 +407,7 @@ export default function OrderSettingsPage() {
                   기간을 바꾸면 이미 배송 중이거나 배송 완료된 주문도 바뀐 기간으로 계산해요.
                 </span>
               </section>
-            </div>
+            </fieldset>
 
             <aside className="col aside-sticky" style={{ gap: 16 }}>
               <div className="card pad col" style={{ gap: 10 }}>

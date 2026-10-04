@@ -525,3 +525,11 @@ body {
   font-weight: 600;
   box-shadow: inset 0 -1px 0 var(--wds-line-normal-alternative);
 }
+
+/* 설정 화면 입력 묶음(저장 중 잠금용 fieldset): 기본 테두리·여백 없이 기존 칸 배치 그대로 */
+.settings-fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}

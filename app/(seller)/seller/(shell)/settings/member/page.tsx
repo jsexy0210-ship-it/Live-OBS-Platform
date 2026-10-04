@@ -92,7 +92,8 @@ export default function MemberSettingsPage() {
           </div>
         ) : (
           <div className="form-grid">
-            <div className="col" style={{ gap: 20 }}>
+            {/* 저장하는 동안은 칸을 잠근다: 보낸 값과 다른 수정이 응답으로 덮이지 않게 */}
+            <fieldset className="col settings-fields" style={{ gap: 20 }} disabled={saving}>
               {failure && (
                 <div className="msg msg-neg" role="alert">
                   <span>
@@ -141,7 +142,7 @@ export default function MemberSettingsPage() {
                   </div>
                 )}
               </section>
-            </div>
+            </fieldset>
             <aside className="col aside-sticky" style={{ gap: 16 }}>
               <div className="card pad col" style={{ gap: 8 }}>
                 <span className="t-hl2">알아 두세요</span>
