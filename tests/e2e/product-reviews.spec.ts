@@ -66,6 +66,8 @@ test.describe.serial("SH-029 리뷰 쓰기 · SA-048 리뷰 관리", () => {
     await expect(page.getByRole("button", { name: "리뷰 올리기" })).toBeDisabled();
     await page.getByRole("radio", { name: "5점" }).click();
     await expect(page.getByText("아주 좋아요")).toBeVisible();
+    await expect(page.getByText("JPG·PNG·WEBP, 한 장에 5MB까지 올릴 수 있어요")).toBeVisible();
+    await expect(page.getByLabel("리뷰 사진")).toHaveAttribute("accept", "image/jpeg,image/png,image/webp");
 
     const original = await phonePhoto(page);
     expect(original.includes(Buffer.from("GPSLatitude"))).toBe(true);

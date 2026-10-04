@@ -1,12 +1,14 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { checkReviewImage, hasImageMetadata, stripJpeg, stripPng } from "../../lib/server/product-reviews/image";
+import { stripJpeg } from "../../lib/server/products/imageFormats";
+import { checkReviewImage, hasImageMetadata, stripPng } from "../../lib/server/product-reviews/image";
 import { heldReason, parsePolicy, parseReview, rewardFor } from "../../lib/server/product-reviews/rules";
 import { png } from "./shopContentFixtures";
 import { fakeJpeg, multiScanJpeg, seg } from "./reviewFixtures";
+import { GPS_EXIF, jpeg, webp } from "./productImageFormatsFixtures";
 
-// 상품 리뷰: 입력 검사·자동 보류·사진 검사(JPEG·PNG, 메타데이터 제거)
+// 상품 리뷰: 입력 검사·자동 보류·사진 검사(상품 사진과 같은 기준: JPG·PNG·WEBP, 5MB, 메타데이터 제거)
 describe("리뷰 사진 검사", () => {
   it("JPEG 크기를 읽고 EXIF(APP1)·주석(COM)을 지운다. APP0(JFIF)과 그림 데이터는 남긴다", () => {
     const src = fakeJpeg(1200, 900, true);
@@ -51,10 +53,38 @@ describe("리뷰 사진 검사", () => {
     expect(checkReviewImage(bad)).toEqual({ ok: false, reason: "unsupported_image" });
   });
 
-  it("크기: 긴 변 1600px까지, 1MB까지, 빈 파일 거부", () => {
-    expect(checkReviewImage(fakeJpeg(1601, 100))).toEqual({ ok: false, reason: "wrong_image_size" });
+  it("크기: 가로·세로 100~4000px, 5MB까지, 빈 파일 거부(상품 사진과 같은 기준)", () => {
+    expect(checkReviewImage(fakeJpeg(4001, 200))).toEqual({ ok: false, reason: "wrong_image_size" });
+    expect(checkReviewImage(fakeJpeg(99, 200))).toEqual({ ok: false, reason: "wrong_image_size" });
+    expect(checkReviewImage(fakeJpeg(4000, 3000)).ok).toBe(true);
     expect(checkReviewImage(Buffer.alloc(0))).toEqual({ ok: false, reason: "empty_file" });
-    expect(checkReviewImage(Buffer.alloc(1024 * 1024 + 1, 1))).toEqual({ ok: false, reason: "file_too_large" });
+    expect(checkReviewImage(Buffer.alloc(5 * 1024 * 1024 + 1, 1))).toEqual({ ok: false, reason: "file_too_large" });
+    // 휴대폰 사진처럼 1MB를 넘는 큰 JPG도 5MB 안이면 받는다
+    const big = jpeg(3000, 2000, { exif: true, trailer: Buffer.alloc(2 * 1024 * 1024, 7) });
+    expect(big.length).toBeGreaterThan(1024 * 1024);
+    expect(checkReviewImage(big).ok).toBe(true);
+  });
+
+  it("JPG·WEBP 리뷰 사진: 위치정보(EXIF)가 든 파일은 저장본에 EXIF가 없고, 형식은 그대로", () => {
+    const j = jpeg(1600, 1200, { exif: true, comment: true, xmp: true });
+    expect(j.includes(GPS_EXIF.subarray(6, 20))).toBe(true);
+    const rj = checkReviewImage(j);
+    expect(rj.ok && [rj.image.type, rj.image.width, rj.image.height]).toEqual(["image/jpeg", 1600, 1200]);
+    if (rj.ok) {
+      expect(hasImageMetadata(rj.image.data)).toBe(false);
+      expect(rj.image.data.includes(Buffer.from("GPSLatitude"))).toBe(false);
+    }
+    const w = webp(800, 600, { exif: true });
+    expect(hasImageMetadata(w)).toBe(true);
+    const rw = checkReviewImage(w);
+    expect(rw.ok && [rw.image.type, rw.image.width, rw.image.height]).toEqual(["image/webp", 800, 600]);
+    if (rw.ok) {
+      expect(hasImageMetadata(rw.image.data)).toBe(false);
+      expect(rw.image.data.includes(Buffer.from("GPSLatitude"))).toBe(false);
+    }
+    // 움직이는 WEBP·GIF 같은 다른 형식은 거절
+    expect(checkReviewImage(webp(800, 600, { animated: true }))).toEqual({ ok: false, reason: "unsupported_image" });
+    expect(checkReviewImage(Buffer.from("GIF89a" + "x".repeat(100)))).toEqual({ ok: false, reason: "unsupported_image" });
   });
 
   it("PNG는 공용 PNG 검사를 거치고 텍스트·eXIf 덩어리를 지운다", () => {
@@ -70,7 +100,7 @@ describe("리뷰 사진 검사", () => {
     expect(stripped!.length).toBe(src.length);
     const r = checkReviewImage(src);
     expect(r.ok && [r.image.type, r.image.width, r.image.height]).toEqual(["image/png", 400, 300]);
-    expect(checkReviewImage(png(1700, 100))).toEqual({ ok: false, reason: "wrong_image_size" });
+    expect(checkReviewImage(png(4100, 200))).toEqual({ ok: false, reason: "wrong_image_size" });
   });
 });
 
