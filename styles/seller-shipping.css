@@ -1,0 +1,56 @@
+/* SA-027 배송 처리 화면 전용 */
+.ship-item {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-width: 420px;
+}
+.ship-tbl .ship-rcpt {
+  min-width: 180px;
+}
+.ship-input .inp:last-child {
+  min-width: 150px;
+}
+@media (max-width: 720px) {
+  /* 좁은 화면: 표 대신 주문마다 한 덩어리로 쌓는다(선택 · 주문 · 받는 분 · 송장). 선택 칸이 없는 탭(배송 완료)은 한 줄로만 쌓는다 */
+  .ship-tbl thead tr {
+    display: flex;
+    align-items: center;
+  }
+  .ship-tbl thead th:not(:first-child),
+  .ship-tbl:not(.ship-sel) thead {
+    display: none;
+  }
+  .ship-tbl tbody tr {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px 4px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--wds-line-normal-normal);
+  }
+  .ship-tbl.ship-sel tbody tr {
+    grid-template-columns: 36px 1fr;
+  }
+  .ship-tbl tbody td {
+    display: block;
+    padding: 0;
+    border: 0;
+  }
+  .ship-tbl.ship-sel tbody td:not(:first-child) {
+    grid-column: 2;
+  }
+  .ship-tbl.ship-sel tbody td:first-child {
+    grid-row: 1 / span 3;
+  }
+  .ship-tbl .ship-rcpt {
+    min-width: 0;
+  }
+  .ship-input .inp:last-child {
+    flex: 1;
+    min-width: 0;
+  }
+  .ship-item {
+    max-width: none;
+  }
+}
