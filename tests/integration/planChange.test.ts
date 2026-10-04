@@ -249,6 +249,17 @@ describe("하위 변경(통합 → 오버레이 전용)", () => {
     expect(await sellerFeatures(db, s.seller.id)).toEqual(OVERLAY);
   });
 
+  it("유예 중(PAST_DUE) 하위 변경을 예약한 뒤 카드를 바꾸면 즉시 재시도 결제도 예약한 플랜(69,000원)으로 청구한다(#186 Codex)", async () => {
+    const start = new Date("2026-09-30T00:00:00Z");
+    const pastDue = { status: "PAST_DUE", currentPeriodStart: start, currentPeriodEnd: at(-2), billingAnchorAt: start, nextChargeAt: at(1), graceUntil: at(6), retryCount: 1 };
+    const s = await shop("INTEGRATED", at(-60), pastDue);
+    expect(await changePlan(db, new FakeBillingProvider(), s.ctx, { planCode: "OVERLAY_ONLY", now: T0 })).toMatchObject({ applied: "next_payment" });
+    expect(await registerCardAndPay(db, new FakeBillingProvider(), s.ctx, { authKey: "new-card", now: T0 })).toMatchObject({ ok: true, charged: true });
+    expect(await payments(s.seller.id)).toEqual([{ amount: 69000, status: "PAID", kind: "PERIOD" }]);
+    expect(await subOf(s.seller.id)).toMatchObject({ status: "ACTIVE", pendingPlanId: null, plan: { code: "OVERLAY_ONLY" } });
+    expect(await planOf(s.seller.id)).toBe("OVERLAY_ONLY");
+  });
+
   it("예약한 하위 변경은 지금 플랜을 다시 고르면 거둔다(갱신은 179,000원)", async () => {
     const s = await shop("INTEGRATED", at(-30), paying);
     await changePlan(db, new FakeBillingProvider(), s.ctx, { planCode: "OVERLAY_ONLY", now: T0 });

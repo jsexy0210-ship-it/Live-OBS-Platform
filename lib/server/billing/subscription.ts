@@ -270,19 +270,9 @@ export async function registerCardAndPay(
       if (sub.billingAnchorAt?.getTime() !== period.anchor.getTime()) {
         await tx.sellerSubscription.update({ where: { id: sub.id }, data: { billingAnchorAt: period.anchor } });
       }
-      const payment = await tx.subscriptionPayment.create({
-        data: {
-          sellerId: ctx.sellerId,
-          subscriptionId: sub.id,
-          ...(await chargeFor(tx, plan, sub, now)),
-          periodStart: period.start,
-          periodEnd: period.end,
-          scheduled: false,
-          // 해지 시각과 비교하므로 같은 시계(now)로 남긴다
-          createdAt: now,
-        },
-      });
-      return { kind: "charge", payment, orderName: plan.name };
+      // 해지 시각과 비교하므로 같은 시계(now)로 남긴다
+      const { payment, plan: charged } = await createPeriodPayment(tx, sub.id, { period, now, scheduled: false });
+      return { kind: "charge", payment, orderName: charged.name };
     })
     .catch((e): Prepared => {
       // 예약 결제가 같은 순간 청구를 만들었으면(구독당 PENDING 1건) 진행 중으로 본다
@@ -487,13 +477,8 @@ export async function renewDueSubscriptions(db: PrismaClient, provider: BillingP
         .$transaction(async (tx) => {
           await lockSeller(tx, sellerId);
           // 잠근 뒤 다시 읽는다(그사이 결제·해지·카드 교체가 있었을 수 있음).
-          let sub = await tx.sellerSubscription.findUniqueOrThrow({ where: { id }, include: { plan: true } });
+          const sub = await tx.sellerSubscription.findUniqueOrThrow({ where: { id }, include: { plan: true } });
           if (sub.status === "CANCELED" || !sub.nextChargeAt || sub.nextChargeAt > now) return null;
-          // 예약된 하위 변경(ONQ 1-C-2)은 이 갱신 결제부터 새 플랜으로 청구한다
-          if (sub.pendingPlanId && !sub.cancelAtPeriodEnd) {
-            await switchPlan(tx, id, sellerId, sub.pendingPlanId);
-            sub = await tx.sellerSubscription.findUniqueOrThrow({ where: { id }, include: { plan: true } });
-          }
           if (sub.cancelAtPeriodEnd) {
             if (sub.currentPeriodEnd && sub.currentPeriodEnd > now) return null;
             await tx.sellerSubscription.update({ where: { id }, data: { status: "CANCELED", canceledAt: now, nextChargeAt: null, pendingPlanId: null } });
@@ -506,18 +491,8 @@ export async function renewDueSubscriptions(db: PrismaClient, provider: BillingP
           if (sub.billingAnchorAt?.getTime() !== period.anchor.getTime()) {
             await tx.sellerSubscription.update({ where: { id }, data: { billingAnchorAt: period.anchor } });
           }
-          const payment = await tx.subscriptionPayment.create({
-            data: {
-              sellerId,
-              subscriptionId: id,
-              ...(await chargeFor(tx, sub.plan, sub, now)),
-              periodStart: period.start,
-              periodEnd: period.end,
-              scheduled: true,
-              createdAt: now,
-            },
-          });
-          return { payment, billingKey: openBillingKey(sub.billingKeyCipher, sellerId), orderName: sub.plan.name };
+          const { payment, plan: charged } = await createPeriodPayment(tx, id, { period, now, scheduled: true });
+          return { payment, billingKey: openBillingKey(sub.billingKeyCipher, sellerId), orderName: charged.name };
         })
         .catch((e) => {
           if (isUniqueViolation(e)) return null; // 같은 기간 청구나 진행 중 청구가 이미 있음
@@ -703,4 +678,31 @@ export async function switchPlan(tx: Tx, subscriptionId: string | null, sellerId
     });
   }
   await tx.seller.update({ where: { id: sellerId }, data: { planId } });
+}
+
+// 이용 기간을 시작하는 청구(정기 갱신·재시도, 카드 등록·교체 때의 즉시 결제·재구독)는 모두 이 함수로 만든다(#186 Codex).
+// 이번 기간에 청구할 플랜을 한곳에서 정한다: 예약된 하위 변경이 있으면(해지 예약이 아니면) 먼저 옮기고, 금액은 chargeFor.
+// 상위 변경 청구(planChange.ts)는 대상 플랜이 정해진 따로의 청구이고, 대사(reconcileStalePayments)는 이미 만든 청구를 다시 확인할 뿐이다.
+export async function createPeriodPayment(
+  tx: Tx,
+  subscriptionId: string,
+  input: { period: { start: Date; end: Date }; now: Date; scheduled: boolean },
+): Promise<{ payment: SubscriptionPayment; plan: SubscriptionPlan }> {
+  let sub = await tx.sellerSubscription.findUniqueOrThrow({ where: { id: subscriptionId }, include: { plan: true } });
+  if (sub.pendingPlanId && !sub.cancelAtPeriodEnd) {
+    await switchPlan(tx, sub.id, sub.sellerId, sub.pendingPlanId);
+    sub = await tx.sellerSubscription.findUniqueOrThrow({ where: { id: subscriptionId }, include: { plan: true } });
+  }
+  const payment = await tx.subscriptionPayment.create({
+    data: {
+      sellerId: sub.sellerId,
+      subscriptionId: sub.id,
+      ...(await chargeFor(tx, sub.plan, sub, input.now)),
+      periodStart: input.period.start,
+      periodEnd: input.period.end,
+      scheduled: input.scheduled,
+      createdAt: input.now,
+    },
+  });
+  return { payment, plan: sub.plan };
 }
