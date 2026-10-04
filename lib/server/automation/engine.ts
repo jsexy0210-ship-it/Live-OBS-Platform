@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { cueMatches, matchException, navRulesFor, plannerPathSegments, plannerVocabulary, resolveShop, type Playbook } from "./playbook";
+import { cueMatches, matchException, navRulesFor, plannerPathSegments, plannerVocabulary, resolveShop, type DoneCheck, type Playbook } from "./playbook";
 import {
   sanitizeObservation,
   pageAllowedByNav,
@@ -12,6 +12,7 @@ import {
   type ConnectionFacts,
   type ExpectedPage,
   type JobScope,
+  type NavRules,
   type VerificationEvidence,
 } from "./ports";
 import { DB_INT_MAX, externalId, fromExecutor } from "./boundary";
@@ -96,6 +97,35 @@ export const ACTION_EFFECT: Record<AutomationAction["type"], "external" | "sessi
 const NOT_APPLIED: ReadonlySet<string> = new Set(["page_mismatch", "pairing_mismatch"]);
 // 변경 기록(markChanged)이 이번에 새로 남긴 것: 단계 추가 여부와 새로 남긴 첫 변경 시각(이미 있었으면 null)
 export type ChangeMark = { stepAdded: boolean; changedAt: Date | null };
+// 완료·되돌림 판정 공용 장치(본 단계·검증 단계·되돌리기 모두): 행동 전 대조와 같은 기준을 통과한 관찰에만 글 단서를 적용한다.
+// 브라우저는 관찰 주소 = 지금 문서 주소이고 이동 규칙 안이며 판정의 기대 경로로 시작해야 하고, OBS는 지금 PC가 이 작업이 확인한 PC여야 한다.
+async function verifiedOnExpected(
+  kind: "browser" | "obs",
+  session: BrowserSession | null,
+  rt: AutomationRuntime,
+  scope: JobScope,
+  check: DoneCheck,
+  nav: NavRules | null,
+  pairing: string | null | undefined,
+): Promise<boolean> {
+  if (kind === "browser") {
+    if (!session || !check.pagePath || !nav) return false;
+    const after = await session.observe();
+    const here = await session.currentUrl();
+    if (!after.url || !here || here !== after.url || !pageAllowedByNav(after.url, nav)) return false;
+    let path: string;
+    try {
+      path = new URL(after.url).pathname;
+    } catch {
+      return false;
+    }
+    return path.startsWith(check.pagePath) && cueMatches({ textIncludes: check.textIncludes }, after);
+  }
+  const now = externalId(await rt.obs.currentPairingId(scope));
+  if (!pairing || !now.ok || now.value !== pairing) return false;
+  return cueMatches({ textIncludes: check.textIncludes }, await rt.obs.observe(scope));
+}
+
 const MUTATING: readonly AutomationAction["type"][] = (Object.keys(ACTION_EFFECT) as AutomationAction["type"][]).filter((t) => ACTION_EFFECT[t] !== "none");
 // 고정 키를 붙이는 행동: 세션 밖에 남는 효과만
 const keyed = (a: AutomationAction) => ACTION_EFFECT[a.type] === "external";
@@ -396,8 +426,7 @@ async function runAll(
         const doneWhen = (opts.playbook ?? secretBook)?.steps[step.key]?.doneWhen;
         if (!doneWhen) return { kind: "failed", reason: "step_unverifiable" };
         guard();
-        const after = session ? await session.observe() : await rt.obs.observe(scope);
-        if (cueMatches(doneWhen, after)) done = true;
+        if (await verifiedOnExpected(session ? "browser" : "obs", session, rt, scope, doneWhen, nav, confirmedPairing)) done = true;
         else if (!deviated) {
           deviated = true;
           if (!stats.deviatedSteps.includes(step.key)) stats.deviatedSteps.push(step.key);
@@ -452,6 +481,8 @@ export async function runRollback(
       if (at < 0 || !opts.mutatedSteps.includes(rb.forStep)) continue;
       const step = { key: `rollback:${rb.forStep}`, kind: rb.kind } as const;
       const nav = { shopHost: opts.shopHost, pathPrefixes: rb.allowedUrls.pathPrefixes, queryKeys: rb.allowedUrls.queryKeys };
+      // 이 되돌리기 단계에서 OBS를 바꾼 PC(되돌림 확인도 같은 PC에서만)
+      let lastPairing: string | undefined;
       for (let i = 0; i < rb.actions.length; i++) {
         guard();
         if (rb.kind === "browser" && !session) session = await rt.browser.open(scope);
@@ -476,6 +507,7 @@ export async function runRollback(
           const current = read.ok ? read.value : null;
           if (!current || (opts.obsPairingId && current !== opts.obsPairingId)) return { kind: "cleanup_needed", reason: "rollback_obs_target" };
           pairing = current;
+          lastPairing = current;
         }
         await hooks.touch();
         guard();
@@ -487,8 +519,7 @@ export async function runRollback(
       // 실행 결과 신호만으로 되돌렸다고 보지 않는다: 다시 관찰한 상태가 되돌림 확인(doneWhen)과 맞아야 한다
       if (rb.actions.length > 0) {
         guard();
-        const after = session && rb.kind === "browser" ? await session.observe() : await rt.obs.observe(scope);
-        if (!cueMatches(rb.doneWhen, after)) return { kind: "cleanup_needed", reason: `rollback_unverified:${rb.forStep}` };
+        if (!(await verifiedOnExpected(rb.kind, session, rt, scope, rb.doneWhen, nav, lastPairing))) return { kind: "cleanup_needed", reason: `rollback_unverified:${rb.forStep}` };
       }
     }
     return { kind: "rolled_back" };

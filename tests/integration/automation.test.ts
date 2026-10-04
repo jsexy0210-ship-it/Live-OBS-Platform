@@ -1021,7 +1021,7 @@ describe("Codex 3차·정본 fc09f13 반영", () => {
     const cases: [string, (rt: ReturnType<typeof runtime>) => void][] = [
       ["redirect", (rt) => (rt.browser.currentUrlOverride = afterConnect(rt, "https://evil.test/collect"))],
       ["unknown", (rt) => (rt.browser.currentUrlOverride = afterConnect(rt, null))],
-      ["observed", (rt) => (rt.browser.pageUrl = afterConnect(rt, "https://cafe24.com.evil.test/"))],
+      ["observed", (rt) => (rt.browser.pageUrl = afterConnect(rt, "https://cafe24.com.evil.test/", 2))],
     ];
     for (const [name, setup] of cases) {
       await db.automationJob.updateMany({ data: { deviatedSteps: [], lastDeviationAt: null } });
@@ -1537,7 +1537,7 @@ describe("Codex 7차 반영(6325051)", () => {
   it("비밀값은 정해 둔 관리 화면 출처에서만 넣는다: 허용 이동 뒤 같은 칸 이름의 쇼핑몰 앞 화면(판매자가 꾸미는 화면)으로 넘어가면 입력 0회", async () => {
     const cases: [string, (rt: ReturnType<typeof runtime>) => void][] = [
       ["redirect", (rt) => (rt.browser.currentUrlOverride = afterConnect(rt, "https://myshop.cafe24.com/product/detail.html"))],
-      ["observed", (rt) => (rt.browser.pageUrl = afterConnect(rt, "https://myshop.cafe24.com/board/free"))],
+      ["observed", (rt) => (rt.browser.pageUrl = afterConnect(rt, "https://myshop.cafe24.com/board/free", 2))],
     ];
     for (const [name, setup] of cases) {
       const a = await bought();
@@ -1558,10 +1558,10 @@ describe("Codex 7차 반영(6325051)", () => {
     expect(await job(ok.jobId)).toMatchObject({ shopHost: "myshop.cafe24.com" });
 
     const cases: [string, (rt: ReturnType<typeof runtime>) => void][] = [
-      ["other_mall_admin", (rt) => (rt.browser.pageUrl = afterConnect(rt, "https://othershop.cafe24.com/disp/admin/shop1/"))],
-      ["same_host_front", (rt) => (rt.browser.pageUrl = afterConnect(rt, "https://myshop.cafe24.com/order/basket.html"))],
+      ["other_mall_admin", (rt) => (rt.browser.pageUrl = afterConnect(rt, "https://othershop.cafe24.com/disp/admin/shop1/", 2))],
+      ["same_host_front", (rt) => (rt.browser.pageUrl = afterConnect(rt, "https://myshop.cafe24.com/order/basket.html", 2))],
       ["no_login_cue", (rt) => (rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장")],
-      ["central_host", (rt) => (rt.browser.pageUrl = afterConnect(rt, "https://admin.cafe24.com/disp/admin/shop1/"))],
+      ["central_host", (rt) => (rt.browser.pageUrl = afterConnect(rt, "https://admin.cafe24.com/disp/admin/shop1/", 2))],
     ];
     for (const [name, setup] of cases) {
       const a = await bought();
@@ -3118,8 +3118,11 @@ describe("Codex 32차 반영(7d8ca50)", () => {
 
 // 쇼핑몰 연결 단계(「앱 설치」 누르기)를 마친 뒤에만 문서 주소가 바뀌게 한다: 웹훅 단계의 첫 변경 행동인 비밀값 입력 검사를 시험한다
 // (그 전부터 바뀌어 있으면 누르기 직전 주소 검사(page_not_allowed)가 먼저 멈춘다 — 19차 시험)
-function afterConnect(rt: { browser: FakeBrowserExecutor }, url: string | null) {
-  return () => (rt.browser.performed.some((p) => p.type === "click") ? url : "https://myshop.cafe24.com/disp/admin/shop1/");
+// 쇼핑몰 연결 단계가 완료 판정까지 마친 뒤에만 문서 주소가 바뀌게 한다(41차: 완료 판정도 관찰 주소·지금 문서 주소를 대조하므로,
+// 단계 끝 뒤 판정이 읽는 주소 skip회(관찰·지금 문서 주소를 같은 함수로 흉내 내면 2회)까지는 원래 주소)
+function afterConnect(rt: { browser: FakeBrowserExecutor }, url: string | null, skip = 1) {
+  let reads = 0;
+  return () => (rt.browser.performed.some((p) => p.type === "step_done") && reads++ >= skip ? url : "https://myshop.cafe24.com/disp/admin/shop1/");
 }
 
 describe("Codex 35차 반영(01bbaeb)", () => {
@@ -3414,5 +3417,65 @@ describe("Codex 40차 반영(c248d64)", () => {
     expect(rt.browser.performed.filter((p) => p.type === "click")).toHaveLength(0);
     expect(await job(a.jobId)).toMatchObject({ changedAt: null, mutatedSteps: [] });
     expect(await cancelJob(db, a.ctx, a.jobId)).toMatchObject({ ok: true, job: { status: "CANCELED" } });
+  });
+});
+
+describe("Codex 41차 반영(9415cd2)", () => {
+  it("완료 판정은 기대 문서 위에서만 본다: 「앱 설치」가 반영되지 않고 「앱 사용 중」 문구가 있는 다른 쇼핑몰 문서로 넘어가면 완료로 보지 않는다", async () => {
+    const a = await bought();
+    const rt = runtime();
+    let clicked = false;
+    rt.browser.outcome = (_s, action) => (action.type === "click" && action.target === "앱 설치" ? ((clicked = true), { kind: "ok", stepDone: false }) : undefined);
+    rt.browser.pageUrl = () => (clicked ? "https://othershop.cafe24.com/disp/admin/shop1/" : "https://myshop.cafe24.com/disp/admin/shop1/");
+    rt.browser.pageText = () => (clicked ? "앱 설치 · 설치 완료 · 앱 사용 중 · 로그아웃" : "앱 설치 · 설치 완료 · 주문 알림 · 저장 · 로그아웃");
+    expect(await runOnce(db, rt, W)).not.toBe("succeeded");
+    expect(rt.browser.performed.filter((p) => p.type === "fill")).toHaveLength(0);
+    expect((await job(a.jobId)).stepIndex).toBe(0);
+  });
+
+  it("기한 지난 연습은 회수(토큰 올림)한 뒤에만 새 연습이 시작되고, 판단 호출에서 깨어난 옛 실행은 행동 0회로 멈춘다", async () => {
+    await db.automationPracticeRun.deleteMany();
+    // 옛 회차: 화면이 작업서와 달라 판단 모델을 부르고, 그 호출에서 멈춘다
+    const old = runtime();
+    old.browser.pageText = () => "다른 화면 · 로그아웃";
+    let wake!: () => void;
+    const gate = new Promise<void>((r) => (wake = r));
+    let stuck!: () => void;
+    const inPlanner = new Promise<void>((r) => (stuck = r));
+    const decide = old.planner.decide.bind(old.planner);
+    old.planner.decide = async (input) => {
+      stuck();
+      await gate;
+      return decide(input);
+    };
+    const oldRun = runPractice(db, old, cafe24Playbook, { shopHost: "myshop.cafe24.com" });
+    await inPlanner;
+    // 진행 중에는 새 연습이 시작되지 않는다
+    await expect(runPractice(db, runtime(), cafe24Playbook, { shopHost: "myshop.cafe24.com" })).rejects.toBeInstanceOf(PracticeEnvironmentBusy);
+    // 옛 회차가 기한을 넘긴다 → 새 연습이 회수하고 시작해 끝난다
+    await db.automationPracticeRun.updateMany({ where: { reason: { in: ["practice_incomplete", "practice_deviated"] } }, data: { startedAt: new Date(Date.now() - 7 * 3600_000) } });
+    const fresh = await runPractice(db, runtime(), cafe24Playbook, { shopHost: "myshop.cafe24.com" });
+    expect(fresh.outcome).toBe("SUCCEEDED");
+    // 옛 실행이 깨어나도 외부 행동은 0회이고, 결과는 회수된 기록 그대로(성공으로 세지 않음)
+    const before = old.browser.performed.length + old.obs.performed.length;
+    wake();
+    const stale = await oldRun;
+    expect(old.browser.performed.length + old.obs.performed.length).toBe(before);
+    expect(stale).toMatchObject({ outcome: "FAILED", reason: "practice_expired", fencingToken: 1 });
+    expect(await db.automationPracticeRun.count({ where: { outcome: "SUCCEEDED" } })).toBe(1);
+  });
+
+  it("OBS 완료 판정도 이 작업이 확인한 PC에서만 본다: 소스를 추가한 직후 다른 PC로 바뀌면 그 단계를 완료로 보지 않는다", async () => {
+    const a = await bought();
+    const rt = runtime();
+    const perform = rt.obs.perform.bind(rt.obs);
+    rt.obs.perform = async (scope, action, key, pairing) => {
+      const out = await perform(scope, action, key, pairing);
+      // 소스 추가 단계의 「단계 끝」 결과가 돌아온 직후(완료 판정 전) 다른 PC로 바뀐다(그 PC에도 소스가 있다)
+      if (action.type === "step_done" && (rt.obs.sources.get(scope.sellerId) ?? 0) > 0 && !rt.obs.display.has(scope.sellerId)) rt.obs.pairing.set(scope.sellerId, "pc-other");
+      return out;
+    };
+    expect(await runOnce(db, rt, W)).not.toBe("succeeded");
+    expect((await job(a.jobId)).stepIndex).toBe(2);
   });
 });

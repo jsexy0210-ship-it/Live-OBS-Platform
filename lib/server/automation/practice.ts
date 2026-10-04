@@ -3,7 +3,7 @@ import type { AutomationPracticeRun, Prisma, PrismaClient } from "@prisma/client
 import { AUTOMATION_LIMITS, plannerConfig } from "./config";
 import { writeAudit } from "../audit/log";
 import { runSteps, type EngineStats } from "./engine";
-import { backoffMs, dbNow, lockPlaybook } from "./queue";
+import { FencingError, backoffMs, dbNow, lockPlaybook } from "./queue";
 import type { Playbook } from "./playbook";
 import { PLAYBOOKS } from "./playbooks";
 import { PRACTICE_SELLER_ID, type AutomationRuntime, type JobScope, type PracticeRuntime } from "./ports";
@@ -25,6 +25,8 @@ const PRACTICE_INCOMPLETE = "practice_incomplete";
 const PRACTICE_DEVIATED = "practice_deviated";
 // 결과가 아직 기록되지 않은(진행 중) 연습 기록의 사유
 const IN_PROGRESS = [PRACTICE_INCOMPLETE, PRACTICE_DEVIATED];
+// 기한이 지나 회수됐거나 늦게 끝나 세지 않는 회차
+const PRACTICE_EXPIRED = "practice_expired";
 
 // 연습 실행 범위의 보관 자료(행동 키 기록·OBS 연결 정보)를 두 실행기에 지우라고 요청한다. 둘 다 성공해야 정리 끝이다.
 async function discardScope(rt: Pick<AutomationRuntime, "browser" | "obs">, scope: JobScope): Promise<boolean> {
@@ -58,8 +60,15 @@ export async function runPractice(
   const run = await db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('automation_practice_env'))`;
     const startedAt = await dbNow(tx);
-    const busy = await tx.automationPracticeRun.count({ where: { reason: { in: IN_PROGRESS }, startedAt: { gt: new Date(startedAt.getTime() - AUTOMATION_LIMITS.maxRunMs) } } });
+    const cutoff = new Date(startedAt.getTime() - AUTOMATION_LIMITS.maxRunMs);
+    const busy = await tx.automationPracticeRun.count({ where: { reason: { in: IN_PROGRESS }, startedAt: { gt: cutoff } } });
     if (busy > 0) throw new PracticeEnvironmentBusy();
+    // 기한이 지난 진행 중 회차는 시간 경과만으로 내버려 두지 않고 토큰을 올려 회수한다: 그 실행은 다음 행동 직전 확인에서 멈춘다.
+    // 이미 시작한 행동이 남았을 수 있어 새 회차는 아래에서 기준 상태로 되돌리고 확인한 뒤 실행한다
+    await tx.automationPracticeRun.updateMany({
+      where: { reason: { in: IN_PROGRESS }, startedAt: { lte: cutoff } },
+      data: { fencingToken: { increment: 1 }, reason: PRACTICE_EXPIRED, finishedAt: startedAt },
+    });
     return tx.automationPracticeRun.create({
       data: {
         playbookId: playbook.id,
@@ -76,6 +85,13 @@ export async function runPractice(
       },
     });
   });
+  // 이 회차가 아직 환경을 점유하는지(토큰 그대로·진행 중). 실행기 행동 직전마다(touch)와 주기적으로(abort) 확인한다
+  const owned = { id: run.id, fencingToken: run.fencingToken, reason: { in: IN_PROGRESS } };
+  const assertOwner = async () => {
+    if ((await db.automationPracticeRun.count({ where: owned })) !== 1) throw new FencingError();
+  };
+  const lost = new AbortController();
+  const beat = setInterval(() => void assertOwner().catch(() => lost.abort()), Math.max(20, Math.floor(AUTOMATION_LIMITS.leaseMs / 3)));
   // 매 회차 시험용 쇼핑몰·PC를 기준 상태로 되돌리고 실제 상태로 확인한다. 되돌리기·확인이 실패하면 실행하지 않고 실패로 남긴다
   // (이전 회차가 남긴 앱·웹훅·소스 위에서 성공해도 작업서를 검증한 것이 아니므로 세지 않고, 실패 기록이 연속 성공을 끊는다)
   const baseline = await rt.practice
@@ -98,16 +114,20 @@ export async function runPractice(
           shopHost: opts.shopHost,
           // 연습은 고객 대기로 멈추면 그대로 끝낸다(보관하지 않음)
           keepBrowserStateOnWait: false,
+          // 회수되면(토큰이 오르면) 다음 외부 행동 전에 멈춘다
+          signal: lost.signal,
         },
         {
           // 화면 이탈은 보는 즉시(판단 모델 호출 전) 작업서 배타 잠금 아래 이 연습 기록에 남긴다: 진행 중 기록에서 빠져 연속 성공을 끊으므로
           // 연습이 끝날 때까지 이전 연속 성공으로 구매가 열려 있지 않다(고객 작업의 이탈 기록과 같은 방식)
           touch: async (s) => {
+            // 행동 직전마다 점유 확인: 회수된 회차는 외부 변경 없이 멈춘다
+            await assertOwner();
             if (!s.deviatedNow) return;
             await db.$transaction(async (tx) => {
               await lockPlaybook(tx, playbook.id, "exclusive");
               // 아직 진행 중인 이 회차일 때만(기한이 지나 이미 마감됐으면 되살리지 않는다)
-              await tx.automationPracticeRun.updateMany({ where: { id: run.id, reason: { in: IN_PROGRESS } }, data: { reason: PRACTICE_DEVIATED, deviatedSteps: s.deviatedSteps } });
+              await tx.automationPracticeRun.updateMany({ where: owned, data: { reason: PRACTICE_DEVIATED, deviatedSteps: s.deviatedSteps } });
             });
           },
           enterVerify: async () => {},
@@ -118,6 +138,7 @@ export async function runPractice(
       result = { kind: "failed", reason: "practice_error" };
     }
   }
+  clearInterval(beat);
   const outcome = result.kind === "succeeded" ? "SUCCEEDED" : result.kind === "needs_customer" ? "NEEDS_CUSTOMER" : "FAILED";
   // 결과(실패·이탈 포함)부터 작업서 배타 잠금 아래 기록한다: 구매·작업 확정은 공유 잠금으로 준비 상태를 다시 읽으므로,
   // 보관 자료 정리(외부 호출)를 기다리는 동안 이전 연속 성공을 근거로 결제·작업이 확정되지 않는다.
@@ -136,7 +157,7 @@ export async function runPractice(
     };
     const own = await tx.automationPracticeRun.updateMany({
       // DB에 저장된 시작 시각 기준 실행 시간 상한 안일 때만
-      where: { id: run.id, reason: { in: IN_PROGRESS }, startedAt: { gt: new Date(now.getTime() - AUTOMATION_LIMITS.maxRunMs) }, cleanupPendingAt: run.cleanupPendingAt, cleanupAttempts: run.cleanupAttempts },
+      where: { ...owned, startedAt: { gt: new Date(now.getTime() - AUTOMATION_LIMITS.maxRunMs) }, cleanupPendingAt: run.cleanupPendingAt, cleanupAttempts: run.cleanupAttempts },
       data: {
         cleanupPendingAt: new Date(now.getTime() + CLEANUP_CLAIM_MS),
         finishedAt: now,
@@ -147,7 +168,7 @@ export async function runPractice(
       },
     });
     if (own.count === 1) return tx.automationPracticeRun.findUniqueOrThrow({ where: { id: run.id } });
-    await tx.automationPracticeRun.updateMany({ where: { id: run.id, reason: { in: IN_PROGRESS } }, data: { finishedAt: now, outcome: "FAILED", reason: "practice_expired", ...measured } });
+    await tx.automationPracticeRun.updateMany({ where: owned, data: { finishedAt: now, outcome: "FAILED", reason: PRACTICE_EXPIRED, ...measured } });
     return null;
   });
   if (!recorded) return db.automationPracticeRun.findUniqueOrThrow({ where: { id: run.id } });

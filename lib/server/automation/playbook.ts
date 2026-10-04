@@ -11,6 +11,9 @@ import { STEPS } from "./steps";
 
 // 화면 단서: 관찰한 글·주소에 모두 들어 있어야 맞는 것으로 본다.
 export type ScreenCue = { textIncludes?: readonly string[]; urlIncludes?: string };
+// 완료·되돌림 판정: 허용된 기대 문서 위에서 관찰한 상태에만 적용한다. pagePath는 브라우저 단계의 기대 문서 경로(필수, OBS 단계만 null)다.
+// 엔진은 행동 전 대조와 같은 기준(관찰 주소 = 지금 문서 주소, 이동 규칙 안, 이 경로로 시작)을 통과한 관찰에만 글 단서를 본다.
+export type DoneCheck = { textIncludes: readonly string[]; pagePath: string | null };
 
 export type PlaybookException = {
   when: ScreenCue;
@@ -36,7 +39,7 @@ export type PlaybookStep = {
   allowedUrls: { pathPrefixes: readonly string[]; queryKeys: readonly string[] };
   // 단계 완료 판정(필수): 실행기·판단 모델의 「단계 끝」 신호 뒤 다시 관찰한 화면·상태가 이 단서와 맞아야 단계를 끝낸다.
   // 판정이 없는 단계는 끝낼 수 없다(신호만으로 완료하지 않음).
-  doneWhen: ScreenCue;
+  doneWhen: DoneCheck;
 };
 
 // 작업서 이동 주소의 {shop} 자리를 이 작업의 쇼핑몰 호스트로 바꾼다(호스트를 모르면 빈 값 → 검사에서 거부)
@@ -110,8 +113,8 @@ export type PlaybookRollbackStep = {
   actions: readonly { action: AutomationAction; expect?: ScreenCue }[];
   allowedTargets: readonly string[];
   allowedUrls: { pathPrefixes: readonly string[]; queryKeys: readonly string[] };
-  // 되돌림 확인(필수): 행동을 마친 뒤 다시 관찰한 화면·상태가 이 단서와 맞아야 되돌린 것으로 본다(실행 결과 신호만으로 끝내지 않음)
-  doneWhen: ScreenCue;
+  // 되돌림 확인(필수): 행동을 마친 뒤 기대 문서 위에서 다시 관찰한 화면·상태가 이 단서와 맞아야 되돌린 것으로 본다(실행 결과 신호만으로 끝내지 않음)
+  doneWhen: DoneCheck;
 };
 
 export function cueMatches(cue: ScreenCue | undefined, o: Observation): boolean {

@@ -40,7 +40,7 @@ export const cafe24Playbook: Playbook = {
       // 관리자 경로만(초안 가정: 실제 앱 설치 화면 경로·쿼리는 실습 때 확인)
       allowedUrls: { pathPrefixes: ["/disp/admin/", "/admin/"], queryKeys: [] },
       // 완료 판정(초안 가정: 실제 문구는 실습 때 확인)
-      doneWhen: { textIncludes: ["앱 사용 중"] },
+      doneWhen: { textIncludes: ["앱 사용 중"], pagePath: "/disp/admin/" },
     },
     webhook_setup: {
       guide: "주문 알림 주소 칸에 webhook_url 비밀 참조를 넣고 저장한다. 저장 완료 표시가 보이면 단계 끝.",
@@ -56,7 +56,7 @@ export const cafe24Playbook: Playbook = {
       allowedTargets: ["저장"],
       allowedUrls: { pathPrefixes: ["/disp/admin/", "/admin/"], queryKeys: [] },
       // 완료 판정(초안 가정: 실제 문구는 실습 때 확인)
-      doneWhen: { textIncludes: ["주문 알림 사용 중"] },
+      doneWhen: { textIncludes: ["주문 알림 사용 중"], pagePath: "/disp/admin/" },
     },
     obs_overlay_install: {
       guide: "로컬 연결 도구로 OBS에 주문 오버레이 브라우저 소스를 추가한다.",
@@ -68,7 +68,7 @@ export const cafe24Playbook: Playbook = {
       allowedTargets: [],
       allowedUrls: { pathPrefixes: [], queryKeys: [] },
       // 완료 판정(초안 가정: 실제 문구는 실습 때 확인)
-      doneWhen: { textIncludes: ["오버레이 소스 있음"] },
+      doneWhen: { textIncludes: ["오버레이 소스 있음"], pagePath: null },
     },
     display_settings: {
       guide: "오버레이 표시 설정(위치·크기)을 기본값으로 맞춘다.",
@@ -80,7 +80,7 @@ export const cafe24Playbook: Playbook = {
       allowedTargets: [],
       allowedUrls: { pathPrefixes: [], queryKeys: [] },
       // 완료 판정(초안 가정: 실제 문구는 실습 때 확인)
-      doneWhen: { textIncludes: ["표시 설정 적용됨"] },
+      doneWhen: { textIncludes: ["표시 설정 적용됨"], pagePath: null },
     },
     test_event_verify: {
       guide: "테스트 주문을 보내고 OBS 오버레이에 실제로 보이는지 확인한다. 보이지 않으면 끝내지 않는다.",
@@ -92,7 +92,7 @@ export const cafe24Playbook: Playbook = {
       allowedTargets: [],
       allowedUrls: { pathPrefixes: [], queryKeys: [] },
       // 완료 판정(초안 가정: 실제 문구는 실습 때 확인)
-      doneWhen: { textIncludes: ["테스트 주문 표시됨"] },
+      doneWhen: { textIncludes: ["테스트 주문 표시됨"], pagePath: null },
     },
   },
   // 자동 되돌리기가 없는 단계: 화면 설정(이전 값을 알 수 없음)·테스트 이벤트(주문 알림 기록). 바꿨다면 사람이 정리한다.
@@ -105,7 +105,7 @@ export const cafe24Playbook: Playbook = {
       actions: [{ action: { type: "obs_remove_overlay_source" }, expect: { textIncludes: ["OBS 연결됨"] } }],
       allowedTargets: [],
       allowedUrls: { pathPrefixes: [], queryKeys: [] },
-      doneWhen: { textIncludes: ["오버레이 소스 없음"] },
+      doneWhen: { textIncludes: ["오버레이 소스 없음"], pagePath: null },
     },
     {
       forStep: "webhook_setup",
@@ -116,7 +116,7 @@ export const cafe24Playbook: Playbook = {
       ],
       allowedTargets: ["주문 알림 끄기"],
       allowedUrls: { pathPrefixes: ["/disp/admin/", "/admin/"], queryKeys: [] },
-      doneWhen: { textIncludes: ["주문 알림 꺼짐"] },
+      doneWhen: { textIncludes: ["주문 알림 꺼짐"], pagePath: "/disp/admin/" },
     },
     {
       forStep: "shop_connect",
@@ -127,7 +127,7 @@ export const cafe24Playbook: Playbook = {
       ],
       allowedTargets: ["앱 사용 중지"],
       allowedUrls: { pathPrefixes: ["/disp/admin/", "/admin/"], queryKeys: [] },
-      doneWhen: { textIncludes: ["앱 사용 안 함"] },
+      doneWhen: { textIncludes: ["앱 사용 안 함"], pagePath: "/disp/admin/" },
     },
   ],
 };

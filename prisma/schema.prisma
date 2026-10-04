@@ -1766,6 +1766,8 @@ model AutomationPracticeRun {
   cleanupAttempts  Int                      @default(0)
   // 「정리 필요」: 다시 시도 상한을 넘겨 자동 정리를 멈춘 시각. 이때 마스터 관리자 알림(감사 기록 운영 이벤트)을 1건 남긴다.
   cleanupNeededAt  DateTime?                @db.Timestamptz(3)
+  // 연습 환경 점유 토큰: 다음 연습이 기한 지난 회차를 회수할 때 올린다. 실행 중 회차는 행동 직전마다 그대로인지 확인한다
+  fencingToken     Int                      @default(0)
 
   @@index([playbookId, playbookVersion, finishedAt])
 }
