@@ -80,6 +80,9 @@ model Seller {
   trialEndsAt              DateTime?    @db.Timestamptz(3)
   // 판매자 플랜(가입 신청 때 정함, ONQ 1-C). 구독 행이 생기면 구독의 planId가 청구 기준이다. 기존 판매자는 INTEGRATED로 옮겼다.
   planId                   String?      @db.Uuid
+  // 런칭 할인을 쓴 시각(런칭가 청구가 처음 확정된 때, 대표님 결정 2026-10-04). 이 뒤 해지하고 다시 구독하면 정가다.
+  // 이전 전 STANDARD 결제는 사용으로 세지 않는다(ONQ 1-C-2).
+  launchDiscountUsedAt     DateTime?    @db.Timestamptz(3)
   // 잠긴 지 30일이 지나 자동 해지된 시각. 이때부터 90일 보관 뒤 삭제 대상(삭제는 별도 작업). 다시 구독하면 비운다.
   serviceEndedAt           DateTime?    @db.Timestamptz(3)
   approvedByAdminId        String?      @db.Uuid
@@ -133,6 +136,9 @@ model Seller {
   subscription             SellerSubscription?
   subscriptionPayments     SubscriptionPayment[]
   auditLogs                AuditLog[]
+  shopBanners              ShopBanner[]
+  shopPopups               ShopPopup[]
+  shopContentImages        ShopContentImage[]
 }
 
 model SellerDomain {
@@ -329,6 +335,8 @@ model BuyerMember {
 
   @@unique([sellerId, id])
   @@index([sellerId, gradeId])
+  @@index([sellerId, createdAt])
+  @@index([sellerId, deletedAt])
 }
 
 // 구매자 저장 배송지(2026-10-03 대표님 결정). 주문 때 입력한 배송지를 저장하고(구매자가 끌 수 있음), 주문서에서 고른다.
@@ -566,6 +574,99 @@ model StockMovement {
 
   @@index([sellerId, optionId])
   @@index([sellerId, seq(sort: Desc)])
+}
+
+// ───────────── 쇼핑몰 꾸미기: 홈 배너·이벤트 팝업 (2026-10-04 대표님 지시) ─────────────
+// 파트너스 관리자에서 대표자·「쇼핑몰 설정」(SHOP_SETTINGS) 직원만 바꾼다(lib/server/shop-content). 노출 기간은 DB 시계로 판단한다.
+// 이미지는 대표님 저장 방식 결정 전이라 비용 없는 A안(DB bytea). 형식·크기·해시 CHECK는 마이그레이션 SQL.
+// 배너·팝업은 (sellerId, 이미지 id) 복합 외래키로 같은 쇼핑몰 이미지만 가리킨다.
+
+enum ShopPopupTarget {
+  HOME
+  ALL
+}
+
+// IMAGE=이미지 팝업(가운데), TEXT=글 팝업(가운데), BAR=상단 띠(화면 맨 위 한 줄)
+enum ShopPopupKind {
+  IMAGE
+  TEXT
+  BAR
+}
+
+model ShopContentImage {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId    String   @db.Uuid
+  data        Bytes
+  // 바이트로 확인한 형식(image/png만, 2026-10-04 MASTER 결정). 올린 쪽이 보낸 Content-Type은 쓰지 않는다.
+  contentType String
+  byteSize    Int
+  width       Int
+  height      Int
+  // 주소 버전(v=)과 캐시 판단용 SHA-256(hex)
+  sha256      String
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  seller        Seller       @relation(fields: [sellerId], references: [id])
+  bannersPc     ShopBanner[] @relation("ShopBannerPcImage")
+  bannersMobile ShopBanner[] @relation("ShopBannerMobileImage")
+  popups        ShopPopup[]
+
+  @@unique([sellerId, id])
+  @@index([sellerId, createdAt])
+}
+
+// 홈 배너 슬라이드. 모바일 이미지가 없으면 PC 이미지를 쓴다. linkUrl은 쇼핑몰 안 경로(/로 시작) 또는 http(s) 주소만.
+model ShopBanner {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String    @db.Uuid
+  // 관리용 이름이자 이미지 대체 글
+  title         String
+  pcImageId     String    @db.Uuid
+  mobileImageId String?   @db.Uuid
+  linkUrl       String?
+  // 게시 기간. 비어 있으면 그쪽 제한 없음.
+  startsAt      DateTime? @db.Timestamptz(3)
+  endsAt        DateTime? @db.Timestamptz(3)
+  showOnPc      Boolean   @default(true)
+  showOnMobile  Boolean   @default(true)
+  isActive      Boolean   @default(true)
+  sortOrder     Int       @default(0)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime  @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller      Seller            @relation(fields: [sellerId], references: [id])
+  pcImage     ShopContentImage  @relation("ShopBannerPcImage", fields: [sellerId, pcImageId], references: [sellerId, id], onDelete: Restrict)
+  mobileImage ShopContentImage? @relation("ShopBannerMobileImage", fields: [sellerId, mobileImageId], references: [sellerId, id], onDelete: Restrict)
+
+  @@index([sellerId, sortOrder])
+}
+
+// 이벤트 팝업. target HOME=쇼핑몰 홈만, ALL=모든 구매자 화면. 이미지 팝업은 이미지, 글 팝업은 내용이 있어야 한다(CHECK).
+// dismissDays: 구매자가 「보지 않기」를 고르면 숨기는 날 수(0=닫기만·매번 표시, 1=오늘 하루, 7=7일). 구매자 브라우저에 저장한다.
+model ShopPopup {
+  id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId       String          @db.Uuid
+  kind           ShopPopupKind   @default(IMAGE)
+  title          String
+  body           String?
+  imageId        String?         @db.Uuid
+  linkUrl        String?
+  linkLabel      String?
+  startsAt       DateTime?       @db.Timestamptz(3)
+  endsAt         DateTime?       @db.Timestamptz(3)
+  target         ShopPopupTarget @default(HOME)
+  showOnPc       Boolean         @default(true)
+  showOnMobile   Boolean         @default(true)
+  dismissDays    Int             @default(1)
+  isActive       Boolean         @default(true)
+  sortOrder      Int             @default(0)
+  createdAt      DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime        @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller            @relation(fields: [sellerId], references: [id])
+  image  ShopContentImage? @relation(fields: [sellerId, imageId], references: [sellerId, id], onDelete: Restrict)
+
+  @@index([sellerId, sortOrder])
 }
 
 // ───────────── 주문·주문 품목 ─────────────
@@ -942,6 +1043,8 @@ model SubscriptionPlan {
   subscriptions SellerSubscription[]
   priceChanges  SubscriptionPriceChange[]
   sellers       Seller[]
+  pendingFor    SellerSubscription[]  @relation("PendingPlan")
+  targetOf      SubscriptionPayment[] @relation("PaymentTargetPlan")
 }
 
 // 판매가 변경 기록(대표님 결정 2026-10-02). 새 가입자는 바로 새 가격, 기존 구독자는 구독을 시작할 때 적용되던 가격을 내다가
@@ -992,15 +1095,26 @@ model SellerSubscription {
   // 해지 뒤 다시 구독하면 비운다(새 가입자 가격).
   legacyPrice             Int?
   legacyPriceNoticeSentAt DateTime?             @db.Timestamptz(3)
+  // 다음 결제일에 바꿀 플랜(하위 변경, ONQ 1-C-2). 갱신 결제 직전에 planId로 옮기고 비운다. 다시 지금 플랜을 고르면 비운다.
+  pendingPlanId           String?               @db.Uuid
+  // 이 구독은 정가로 청구한다(런칭 할인을 이미 쓴 계정이 해지 뒤 다시 구독, 대표님 결정 2026-10-04). 구독이 이어지는 동안 그대로다.
+  regularPrice            Boolean               @default(false)
   createdAt          DateTime                 @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime                 @updatedAt @db.Timestamptz(3)
 
-  seller   Seller                @relation(fields: [sellerId], references: [id])
-  plan     SubscriptionPlan      @relation(fields: [planId], references: [id])
-  payments SubscriptionPayment[]
+  seller      Seller                @relation(fields: [sellerId], references: [id])
+  plan        SubscriptionPlan      @relation(fields: [planId], references: [id])
+  pendingPlan SubscriptionPlan?     @relation("PendingPlan", fields: [pendingPlanId], references: [id])
+  payments    SubscriptionPayment[]
 
   @@unique([sellerId, id])
   @@index([status, nextChargeAt])
+}
+
+// PERIOD: 이용 기간 결제(첫 결제·갱신·재시도·카드 등록·체험 중 상위 변경). PRORATION: 결제 중 상위 변경의 남은 기간 차액(기간을 바꾸지 않음).
+enum SubscriptionPaymentKind {
+  PERIOD
+  PRORATION
 }
 
 enum SubscriptionPaymentStatus {
@@ -1023,11 +1137,17 @@ model SubscriptionPayment {
   failureReason     String?
   // 예약 실행이 만든 청구(true)인지, 판매자가 카드 등록으로 직접 낸 청구(false)인지
   scheduled         Boolean                   @default(false)
+  kind              SubscriptionPaymentKind   @default(PERIOD)
+  // 상위 변경 청구면 결제가 확정될 때 옮길 플랜(실패·대기면 지금 플랜 유지, ONQ 1-C-2)
+  targetPlanId      String?                   @db.Uuid
+  // 런칭가(판매가)로 낸 청구인지. 확정되면 판매자에 런칭 할인 사용을 남긴다(정가·이전 전 가격 청구는 false)
+  launchDiscount    Boolean                   @default(false)
   paidAt            DateTime?                 @db.Timestamptz(3)
   createdAt         DateTime                  @default(now()) @db.Timestamptz(3)
 
   seller       Seller             @relation(fields: [sellerId], references: [id])
   subscription SellerSubscription @relation(fields: [sellerId, subscriptionId], references: [sellerId, id])
+  targetPlan   SubscriptionPlan?  @relation("PaymentTargetPlan", fields: [targetPlanId], references: [id])
 
   @@index([sellerId, createdAt])
 }

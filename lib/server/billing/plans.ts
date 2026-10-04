@@ -3,7 +3,7 @@ import type { AdminSessionContext } from "../auth/session";
 import { writeAudit } from "../audit/log";
 import { forbidden } from "../authz/errors";
 import { adminCan } from "../authz/permissions";
-import { DEFAULT_PLAN_CODE, PRICE_NOTICE_MS, dbNow, priceFor } from "./subscription";
+import { DEFAULT_PLAN_CODE, PRICE_NOTICE_MS, chargeFor, dbNow } from "./subscription";
 
 // 요금 안내·구독 화면에 보여 줄 가격(부가세 포함). 정가는 취소선, 판매가가 실제 청구액이다.
 // 기본은 신규 가입 기본 플랜. plans에는 지금 가입할 수 있는 두 플랜(오버레이 전용·쇼핑몰 통합)을 함께 준다(ONQ 1-C).
@@ -19,7 +19,7 @@ export async function getPublicPlan(db: PrismaClient, code: string = DEFAULT_PLA
 const isPrice = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v > 0 && v <= 100_000_000;
 
 // 가격 변경(최고관리자만, 대표님 결정 2026-10-02). 코드 수정 없이 바꾼다.
-// 새 가입자에게는 바로 새 판매가, 기존 구독자에게는 변경 시각 + 30일 이후 첫 결제부터 적용한다(priceFor가 가격 기록으로 계산).
+// 새 가입자에게는 바로 새 판매가, 기존 구독자에게는 변경 시각 + 30일 이후 첫 결제부터 적용한다(chargeFor가 가격 기록으로 계산, 정가 구독은 정가).
 // 가격 변경·가격 기록·감사 기록은 한 트랜잭션이다.
 export async function updatePlanPrice(
   db: PrismaClient,
@@ -80,7 +80,7 @@ export async function listPriceChangeNoticeTargets(db: PrismaClient, admin: Admi
   const now = await dbNow(db);
   const subs = await db.sellerSubscription.findMany({
     where: { planId: plan.id, status: { in: ["ACTIVE", "PAST_DUE"] }, cancelAtPeriodEnd: false, subscribedAt: { lt: latest.changedAt } },
-    select: { sellerId: true, subscribedAt: true, seller: { select: { shopName: true, users: { where: { isOwner: true }, select: { email: true } } } } },
+    select: { sellerId: true, subscribedAt: true, legacyPrice: true, legacyPriceNoticeSentAt: true, regularPrice: true, seller: { select: { shopName: true, users: { where: { isOwner: true }, select: { email: true } } } } },
   });
   const appliesFrom = new Date(latest.changedAt.getTime() + PRICE_NOTICE_MS);
   return Promise.all(
@@ -88,8 +88,9 @@ export async function listPriceChangeNoticeTargets(db: PrismaClient, admin: Admi
       sellerId: s.sellerId,
       shopName: s.seller.shopName,
       ownerEmails: s.seller.users.map((u) => u.email),
-      oldPrice: await priceFor(db, plan, s.subscribedAt, now),
-      newPrice: latest.salePrice,
+      oldPrice: (await chargeFor(db, plan, s, now)).amount,
+      // 정가 구독(regularPrice)은 정가가 바뀐다
+      newPrice: s.regularPrice ? latest.listPrice : latest.salePrice,
       appliesFrom,
     })),
   );
@@ -97,7 +98,7 @@ export async function listPriceChangeNoticeTargets(db: PrismaClient, admin: Admi
 
 // STANDARD → 쇼핑몰 통합 이전(ONQ 1-C)의 가격 변경 고지 대상: 이전 전 가격 스냅숏이 있고 아직 고지를 보내지 않은 구독의 대표자.
 // 발송 기능(메일·알림톡)이 생기면 보낸 뒤 SellerSubscription.legacyPriceNoticeSentAt에 발송 완료 시각을 남긴다.
-// 남기기 전에는 이전 전 가격으로 계속 청구한다(priceFor, 새 가격 청구 0건).
+// 남기기 전에는 이전 전 가격으로 계속 청구한다(chargeFor, 새 가격 청구 0건).
 export async function listPlanMigrationNoticeTargets(db: PrismaClient, admin: AdminSessionContext) {
   if (!adminCan(admin.admin.role, "billing.price")) throw forbidden();
   const subs = await db.sellerSubscription.findMany({

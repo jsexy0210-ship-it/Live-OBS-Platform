@@ -1,0 +1,28 @@
+/* 파트너스 관리자 통계 화면(components/seller/stats). 공통 모양(.card·.stat·.seg·.tbl·.st)은 lop.css를 쓴다. */
+.sts-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:14px 20px}
+.sts-bar .grow{flex:1}
+.sts-range{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}
+.sts-range .inp{width:150px}
+.sts-kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
+.sts-kpis .stat{background:var(--surface);border-radius:12px;box-shadow:inset 0 0 0 1px var(--wds-line-normal-alternative)}
+.sts-kpis .stat .v{font-size:22px;line-height:30px}
+.sts-up{color:var(--pos-text)}.sts-down{color:var(--neg-text)}
+.sts-chart{padding:16px 20px 12px 64px}
+.sts-plot{position:relative;height:200px}
+.sts-plot svg{display:block;width:100%;height:100%;overflow:visible}
+.sts-chart .grid{stroke:var(--wds-line-normal-alternative);stroke-width:1}
+.sts-y{position:absolute;left:-48px;width:40px;transform:translateY(-50%);text-align:right;font-size:11px;color:var(--wds-label-alternative);font-variant-numeric:tabular-nums}
+.sts-x{position:relative;height:20px;margin-top:6px}
+.sts-x span{position:absolute;transform:translateX(-50%);font-size:11px;color:var(--wds-label-alternative);white-space:nowrap;font-variant-numeric:tabular-nums}
+.sts-chart .bar{fill:var(--wds-primary-normal)}
+.sts-chart .hit{fill:transparent;cursor:default}
+.sts-chart .hit:hover+.bar,.sts-chart g.on .bar{opacity:.75}
+.sts-tip{position:absolute;pointer-events:none;transform:translate(-50%,-100%);padding:6px 10px;border-radius:8px;background:var(--wds-label-normal);color:var(--page);font-size:12px;line-height:16px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.sts-scroll{overflow-x:auto}
+.sts-share{display:flex;align-items:center;gap:8px;min-width:120px}
+.sts-share i{display:block;height:8px;border-radius:0 4px 4px 0;background:var(--wds-primary-normal)}
+.sts-soon{color:var(--wds-label-assistive)}
+.sts-h{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:16px 20px 0}
+@media (max-width:720px){.sts-bar{padding:12px 16px}.sts-range{width:100%}.sts-range .inp{flex:1;width:auto;min-width:0}.sts-range>.btn{width:100%}.sts-chart{padding:12px 16px 8px 56px}.sts-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.sts-scroll .tbl .sts-name{min-width:160px}
+.sts-scroll .tbl tr.sts-sub td{font-size:13px;padding-top:6px;padding-bottom:10px}
