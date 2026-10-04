@@ -167,4 +167,28 @@ test.describe.serial("SH-029 리뷰 쓰기 · SA-048 리뷰 관리", () => {
       await expect(page.getByTestId("my-review")).toHaveCount(1);
     }
   });
+
+  test("공통 모달: 지우는 중에는 X·Esc·바깥 클릭이 막히고 안내가 보이며, 지우기는 한 번만 보낸다", async ({ page, baseURL }) => {
+    await buyerLogin(page, baseURL!);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`/shop/${SLUG}/reviews`);
+    let deletes = 0;
+    await page.route(`**/api/shop/${SLUG}/reviews/*`, async (route) => {
+      if (route.request().method() !== "DELETE") return route.continue();
+      deletes += 1;
+      await new Promise((r) => setTimeout(r, 1500));
+      await route.continue();
+    });
+    await page.getByTestId("my-review").first().getByRole("button", { name: "지우기" }).click();
+    const dlg = page.getByRole("dialog", { name: "리뷰를 지울까요?" });
+    await dlg.getByRole("button", { name: "지우기" }).click();
+    await expect(dlg.getByRole("status")).toContainText("처리하고 있어요");
+    await expect(dlg.getByRole("button", { name: "닫기" })).toBeDisabled();
+    await expect(dlg.getByRole("button", { name: "지우기" })).toBeDisabled();
+    await page.keyboard.press("Escape");
+    await page.mouse.click(4, 4);
+    await expect(dlg).toBeVisible();
+    await expect(dlg).toBeHidden({ timeout: 10_000 });
+    expect(deletes).toBe(1);
+  });
 });
