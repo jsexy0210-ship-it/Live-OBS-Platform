@@ -19,7 +19,9 @@ import { assertBillingSecret, openBillingKey, sealBillingKey } from "./secret";
 type Tx = Prisma.TransactionClient;
 type Db = PrismaClient | Tx;
 
-export const DEFAULT_PLAN_CODE = "STANDARD";
+// 신규 가입 기본 플랜(ONQ 1-C, MASTER 결정 대기: A안 통합). 가입 신청에서 플랜을 고르지 않았거나(지금 화면) 판매자 플랜이 없으면 이 플랜이다.
+// STANDARD는 이전 전 플랜이라 신규 가입에 쓰지 않는다.
+export const DEFAULT_PLAN_CODE = "INTEGRATED";
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const RENEW_LEAD_MS = DAY_MS;
 export const RETRY_INTERVAL_MS = DAY_MS;
@@ -61,13 +63,29 @@ export async function sellerAccessFor(db: Db, sellerId: string, now?: Date): Pro
 // 이번 청구 금액(대표님 결정 2026-10-02). 가격 기록 중 「구독을 시작할 때 이미 적용되던 것」이거나
 // 「변경 + 30일이 지난 것」 가운데 가장 최근 가격이다. 그래서 기존 구독자는 고지 기간(30일)이 끝나기 전에는
 // 구독을 시작할 때의 가격(또는 그 뒤 고지가 끝난 가격)을 내고, 새 구독자는 지금 가격을 낸다.
-export async function priceFor(db: Db, plan: SubscriptionPlan, subscribedAt: Date, at: Date): Promise<number> {
+// legacy: STANDARD → INTEGRATED 이전 전 가격 스냅숏(ONQ 1-C). 고지 발송 완료 + 30일 전이거나 아직 보내지 않았으면(null) 그 금액이다.
+export async function priceFor(
+  db: Db,
+  plan: SubscriptionPlan,
+  subscribedAt: Date,
+  at: Date,
+  legacy?: Pick<SellerSubscription, "legacyPrice" | "legacyPriceNoticeSentAt"> | null,
+): Promise<number> {
+  if (legacy?.legacyPrice != null && (!legacy.legacyPriceNoticeSentAt || at < after(legacy.legacyPriceNoticeSentAt, PRICE_NOTICE_MS))) {
+    return legacy.legacyPrice;
+  }
   const row = await db.subscriptionPriceChange.findFirst({
     where: { planId: plan.id, OR: [{ changedAt: { lte: subscribedAt } }, { changedAt: { lte: after(at, -PRICE_NOTICE_MS) } }] },
     orderBy: { changedAt: "desc" },
     select: { salePrice: true },
   });
   return row?.salePrice ?? plan.salePrice;
+}
+
+// 구독 행이 없을 때 쓰는 판매자 플랜(가입 때 정한 플랜, 없으면 신규 가입 기본 플랜)
+export async function sellerPlanOf(db: Db, sellerId: string): Promise<SubscriptionPlan | null> {
+  const seller = await db.seller.findUnique({ where: { id: sellerId }, select: { plan: true } });
+  return seller?.plan ?? (await db.subscriptionPlan.findUnique({ where: { code: DEFAULT_PLAN_CODE } }));
 }
 
 type PeriodState = Pick<SellerSubscription, "status" | "currentPeriodEnd" | "billingAnchorAt" | "cancelAtPeriodEnd">;
@@ -95,7 +113,7 @@ export async function getSubscriptionView(db: PrismaClient, ctx: TenantContext, 
   const at = now ?? (await dbNow(db));
   const [seller, plan, payments] = await Promise.all([
     db.seller.findUniqueOrThrow({ where: { id: ctx.sellerId }, select: { trialEndsAt: true, subscription: { include: { plan: true } } } }),
-    db.subscriptionPlan.findUnique({ where: { code: DEFAULT_PLAN_CODE } }),
+    sellerPlanOf(db, ctx.sellerId),
     db.subscriptionPayment.findMany({ where: { sellerId: ctx.sellerId }, orderBy: { createdAt: "desc" }, take: 24 }),
   ]);
   const sub = seller.subscription;
@@ -108,7 +126,10 @@ export async function getSubscriptionView(db: PrismaClient, ctx: TenantContext, 
           name: shownPlan.name,
           listPrice: shownPlan.listPrice,
           salePrice: shownPlan.salePrice,
-          nextAmount: await priceFor(db, shownPlan, sub && !isEndedSubscription(sub, at) ? sub.subscribedAt : at, sub?.nextChargeAt ?? at),
+          nextAmount:
+            sub && !isEndedSubscription(sub, at)
+              ? await priceFor(db, shownPlan, sub.subscribedAt, sub.nextChargeAt ?? at, sub)
+              : await priceFor(db, shownPlan, at, at),
         }
       : null,
     subscription: sub
@@ -175,7 +196,7 @@ export async function registerCardAndPay(
       const before = seller.subscription;
       const plan = before
         ? await tx.subscriptionPlan.findUnique({ where: { id: before.planId } })
-        : await tx.subscriptionPlan.findUnique({ where: { code: DEFAULT_PLAN_CODE } });
+        : await sellerPlanOf(tx, ctx.sellerId);
       if (!plan) return { kind: "error", reason: "plan_missing" };
 
       const inTrial = !!seller.trialEndsAt && seller.trialEndsAt > now;
@@ -193,7 +214,8 @@ export async function registerCardAndPay(
           ...card,
           // 카드만 등록하는 경우(결제한 기간이 남음·체험하기 중)는 결제 없이도 정상 구독이다
           ...(cardOnly ? { status: "ACTIVE" as const, nextChargeAt, canceledAt: null } : {}),
-          ...(restart ? { subscribedAt: now } : {}),
+          // 다시 구독하면 새 가입자다: 이전 전 가격 스냅숏도 비운다(그때 플랜 가격, ONQ 1-C)
+          ...(restart ? { subscribedAt: now, legacyPrice: null, legacyPriceNoticeSentAt: null } : {}),
         },
       });
       await writeAudit(tx, {
@@ -218,7 +240,7 @@ export async function registerCardAndPay(
         data: {
           sellerId: ctx.sellerId,
           subscriptionId: sub.id,
-          amount: await priceFor(tx, plan, sub.subscribedAt, now),
+          amount: await priceFor(tx, plan, sub.subscribedAt, now, sub),
           periodStart: period.start,
           periodEnd: period.end,
           scheduled: false,
@@ -425,7 +447,7 @@ export async function renewDueSubscriptions(db: PrismaClient, provider: BillingP
             data: {
               sellerId,
               subscriptionId: id,
-              amount: await priceFor(tx, sub.plan, sub.subscribedAt, now),
+              amount: await priceFor(tx, sub.plan, sub.subscribedAt, now, sub),
               periodStart: period.start,
               periodEnd: period.end,
               scheduled: true,
