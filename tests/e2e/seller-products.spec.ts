@@ -287,10 +287,11 @@ test("권한이 하나도 없는 직원에게는 권한이 필요한 메뉴가 �
   await submitSellerLogin(page, "demo-none@example.com", PASSWORD);
   await expect(page.getByText("이 기능은 권한이 필요합니다")).toBeVisible();
   const side = page.getByRole("complementary", { name: "파트너스 메뉴" });
-  for (const hidden of ["방송 대시보드", "상품", "주문", "입금 확인", "배송", "영수증 · 세금계산서", "적립금", "회원", "구매 제한", "구매자 문의", "오버레이 편집기", "HIT 카드 이력", "방송 이력", "쇼핑몰 설정", "결제(PG) 연결", "주문자 알림", "구독 · 결제", "직원 계정"]) {
+  for (const hidden of ["방송 대시보드", "상품", "주문", "입금 확인", "배송", "영수증 · 세금계산서", "적립금", "회원", "구매 제한", "구매자 문의", "오버레이 편집기", "HIT 카드 이력", "방송 이력", "결제(PG) 연결", "주문자 알림", "구독 · 결제", "직원 계정"]) {
     await expect(side.getByText(hidden, { exact: true })).toHaveCount(0);
   }
-  for (const shown of ["홈", "공지 · 문의", "도우미", "내 계정"]) {
+  // 「쇼핑몰 설정」은 모든 직원이 볼 수 있는 탭(쇼핑몰 정보)이 있어 보인다(MASTER 결정 2026-10-04)
+  for (const shown of ["홈", "쇼핑몰 설정", "공지 · 문의", "도우미", "내 계정"]) {
     await expect(side.getByText(shown, { exact: true }).last()).toBeVisible();
   }
 });
