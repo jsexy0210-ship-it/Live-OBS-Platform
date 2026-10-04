@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { phoneText } from "../../../../../components/seller/IdentityCheck";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import {
@@ -54,8 +54,12 @@ export default function StaffPage() {
   const [modal, setModal] = useState<Modal>(null);
   const [toast, setToast] = useState<string | null>(null);
 
+  // 목록 다시 읽기가 겹치면(저장 직후·불분명 확인 등) 가장 마지막 요청의 응답만 반영한다
+  const listSeq = useRef(0);
   const load = useCallback(async () => {
+    const n = ++listSeq.current;
     const r = await api<{ staff: Staff[] }>("/api/seller/staff");
+    if (n !== listSeq.current) return;
     if (!r.ok) return setState({ kind: "error", status: r.status });
     setState({ kind: "ok", staff: r.data.staff });
   }, []);

@@ -60,10 +60,14 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   const [navOpen, setNavOpen] = useState(false);
 
   const lastRead = useRef(0);
+  // /me 요청 세대: 읽기가 겹치면 가장 마지막에 보낸 요청의 응답만 반영한다(늦게 온 옛 응답이 새 권한을 덮지 않게)
+  const meSeq = useRef(0);
   const load = useCallback(async () => {
     lastRead.current = Date.now();
     setFailed(false);
+    const n = ++meSeq.current;
     const r = await api<Me>("/api/seller/me");
+    if (n !== meSeq.current) return;
     if (!r.ok) {
       if (r.status === 401) router.replace(`/seller/login?next=${encodeURIComponent(pathname)}`);
       else setFailed(true);
@@ -88,7 +92,10 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   // 짧은 간격으로 겹치면(포커스와 visibilitychange가 함께 오는 경우 등) 한 번만 읽는다
   const refresh = useCallback(() => {
     lastRead.current = Date.now();
-    void api<Me>("/api/seller/me").then((r) => r.ok && setMe(r.data));
+    const n = ++meSeq.current;
+    void api<Me>("/api/seller/me").then((r) => {
+      if (n === meSeq.current && r.ok) setMe(r.data);
+    });
   }, []);
   const firstPath = useRef(pathname);
   useEffect(() => {

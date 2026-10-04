@@ -629,6 +629,59 @@ test("권한이 하나도 없는 직원도 창으로 돌아오면 대표자가 �
   await staffPage.close();
 });
 
+// 권한 다시 읽기가 겹칠 때 먼저 보낸 요청의 응답이 늦게 오면(옛 권한) 무시하고, 마지막 요청의 응답(새 권한)을 남긴다
+test("권한 다시 읽기가 겹치면 늦게 온 옛 응답이 새 권한을 덮지 않는다", async ({ page }) => {
+  await login(page, "demo-owner@example.com");
+  await expect(page).toHaveURL(/\/seller\/staff$/);
+  const id = uniq();
+  const s = { name: `겹침${id}`, phone: "01066667777", email: `race-${id}@example.com`, password: `pw-${id}-init` };
+  await addStaff(page, s);
+  await page.getByRole("button", { name: "계정 생성" }).click();
+  await expect(row(page, s.email)).toContainText("켜진 권한 없음");
+
+  const staffPage = await page.context().browser()!.newPage();
+  await login(staffPage, s.email, s.password, "/seller/products");
+  await skipIdentityLink(staffPage);
+  const staffMenu = staffPage.getByRole("complementary", { name: "파트너스 메뉴" });
+  const orders = staffMenu.getByRole("link", { name: "주문", exact: true });
+  await expect(orders).toHaveCount(0);
+
+  // 첫 다시 읽기: 서버에서 옛 권한(권한 없음)을 받아 두고 응답을 붙잡는다
+  let release: () => void = () => {};
+  const held = new Promise<void>((r) => (release = r));
+  let first = true;
+  let heldReady: () => void = () => {};
+  const fetched = new Promise<void>((r) => (heldReady = r));
+  await staffPage.route("**/api/seller/me", async (route) => {
+    if (!first) return route.continue();
+    first = false;
+    const res = await route.fetch();
+    heldReady();
+    await held;
+    return route.fulfill({ response: res });
+  });
+  await staffPage.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await fetched;
+
+  // 대표자가 「주문·배송」을 켠다 → 두 번째 다시 읽기는 새 권한을 받는다
+  await page.getByRole("button", { name: `${s.name} 정보 · 권한 수정` }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("checkbox", { name: "주문·배송", exact: true }).check();
+  await dialog.getByRole("button", { name: "저장" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await staffPage.waitForTimeout(1100);
+  await staffPage.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(orders).toBeVisible();
+
+  // 붙잡았던 옛 응답을 늦게 보낸다: 무시하고 새 권한을 그대로 둔다
+  const late = staffPage.waitForResponse((r) => r.url().endsWith("/api/seller/me"));
+  release();
+  await late;
+  await staffPage.waitForTimeout(300);
+  await expect(orders).toBeVisible();
+  await staffPage.close();
+});
+
 test("직원: 메뉴에 직원 계정이 없고, 주소로 들어오면 대표자만 볼 수 있다고 안내한다", async ({ page }) => {
   const listed = page.waitForRequest((r) => r.url().endsWith("/api/seller/staff"), { timeout: 3000 }).then(
     () => true,
