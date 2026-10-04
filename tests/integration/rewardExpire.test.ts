@@ -46,6 +46,38 @@ describe("적립금 3년 소멸", () => {
     expect(await db.rewardLedger.count({ where: { buyerMemberId: m.buyer.id, type: "EXPIRE" } })).toBe(1);
   });
 
+  it("[경합] 소멸이 잔액 잠금을 기다리는 사이 새 적립이 커밋되면 소멸하지 않는다(잠근 뒤 마지막 적립일을 새로 읽음)", async () => {
+    const m = await member(300);
+    await m.ledger("EARN", 300, THREE_YEARS_AGO);
+    let release!: () => void;
+    let locked!: () => void;
+    const hold = new Promise<void>((r) => (release = r));
+    const holding = new Promise<void>((r) => (locked = r));
+    // 적립 트랜잭션: 잔액 행을 잠그고 새 적립 원장·잔액 증가를 넣은 채 소멸이 잠금을 기다릴 때까지 커밋하지 않는다
+    const earn = db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT 1 FROM "RewardBalance" WHERE "sellerId" = ${m.seller.id}::uuid AND "buyerMemberId" = ${m.buyer.id}::uuid FOR UPDATE`;
+      await tx.rewardLedger.create({
+        data: { sellerId: m.seller.id, buyerMemberId: m.buyer.id, type: "EARN", amount: 50, status: "SUCCEEDED", testMode: false, idempotencyKey: "t:race", createdAt: NOW },
+      });
+      await tx.rewardBalance.update({ where: { sellerId_buyerMemberId: { sellerId: m.seller.id, buyerMemberId: m.buyer.id } }, data: { balance: { increment: 50 } } });
+      locked();
+      await hold;
+    }, { timeout: 15_000 });
+    await holding;
+    // 후보는 커밋 전 상태로 고르고(옛 적립일), 트랜잭션에서 잔액 잠금을 기다린다
+    const expiring = expireDormantRewards(db, { now: NOW });
+    for (let i = 0; i < 100; i++) {
+      const [w] = await db.$queryRaw<{ n: bigint }[]>`SELECT count(*) AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`;
+      if (w.n > 0n) break;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    release();
+    await earn;
+    expect(await expiring).toEqual({ done: [], failed: [] });
+    expect(await m.bal()).toBe(350);
+    expect(await db.rewardLedger.count({ where: { buyerMemberId: m.buyer.id, type: "EXPIRE" } })).toBe(0);
+  });
+
   it("3년이 1ms라도 안 됐거나, 그사이 새로 적립(지급 대기·랭킹 보너스·수동 지급 포함)했으면 소멸하지 않는다", async () => {
     const early = await member(100);
     await early.ledger("EARN", 100, ms(THREE_YEARS_AGO, 1));

@@ -6,7 +6,7 @@ import { dbNow } from "../billing/subscription";
 // 남은 잔액을 소멸 원장(EXPIRE, 음수, SUCCEEDED)으로 남기고 0으로 만든다. 정기 실행 연결은 인프라 승인 뒤라 함수만 둔다.
 // - 적립: 실지급(testMode 아님)이고 실패하지 않은(PENDING·SUCCEEDED) 양수 EARN·RANKING_BONUS·ADJUST 원장. 그중 가장 늦은 기록 시각이 마지막 적립일.
 // - 적립 기록이 하나도 없는 잔액은 기준일을 알 수 없어 소멸하지 않는다.
-// - 회원마다 트랜잭션에서 잔액 행을 잠그고(FOR UPDATE) 마지막 적립일·잔액을 다시 확인한다. 소멸하면 잔액이 0이 되므로 다시 돌려도
+// - 회원마다 트랜잭션에서 잔액 행을 잠근(FOR UPDATE) 뒤 별도 문장으로 마지막 적립일·잔액을 다시 확인한다. 소멸하면 잔액이 0이 되므로 다시 돌려도
 //   같은 결과다(멱등). 한 건이 실패해도 나머지는 계속한다.
 export const REWARD_EXPIRE_YEARS = 3;
 
@@ -27,11 +27,15 @@ export async function expireDormantRewards(db: PrismaClient, opts: { now?: Date;
   for (const c of candidates) {
     try {
       const r = await db.$transaction(async (tx) => {
+        // 잔액 행을 먼저 잠그고, 마지막 적립일은 잠근 뒤 별도 문장으로 읽는다. 한 문장으로 읽으면 잠금을 기다리다 풀린 뒤
+        // 잔액 행만 최신으로 다시 읽고 원장은 문장 시작 때 스냅숏이라, 그사이 커밋된 새 적립까지 소멸할 수 있다(READ COMMITTED).
+        const [bal] = await tx.$queryRaw<{ balance: number }[]>`
+          SELECT "balance" FROM "RewardBalance" WHERE "sellerId" = ${c.sellerId}::uuid AND "buyerMemberId" = ${c.buyerMemberId}::uuid FOR UPDATE`;
+        if (!bal || bal.balance <= 0) return 0;
         const [row] = await tx.$queryRaw<Check[]>`
           SELECT b."balance", e."at" AS "lastEarnAt", (e."at" + make_interval(years => ${REWARD_EXPIRE_YEARS}::int) <= ${now}) AS "due"
           FROM "RewardBalance" b CROSS JOIN LATERAL (${lastEarnSql()}) e
-          WHERE b."sellerId" = ${c.sellerId}::uuid AND b."buyerMemberId" = ${c.buyerMemberId}::uuid
-          FOR UPDATE OF b`;
+          WHERE b."sellerId" = ${c.sellerId}::uuid AND b."buyerMemberId" = ${c.buyerMemberId}::uuid`;
         // 그사이 새로 적립했거나 잔액을 썼으면 건너뛴다
         if (!row || row.balance <= 0 || !row.lastEarnAt || !row.due) return 0;
         await tx.rewardLedger.create({
