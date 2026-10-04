@@ -184,10 +184,17 @@ export default function SellerLoginPage() {
               "로그인"
             )}
           </button>
-          {/* 왼쪽 끝 「아이디/비밀번호 찾기」 하나(찾기 화면 위쪽에서 아이디·비밀번호를 바꾼다), 오른쪽 끝 「회원가입」은 대표자 탭만 */}
+          {/* 대표자 탭: 왼쪽 「아직 회원이 아니신가요? 회원가입」(회원가입만 링크·강조색), 오른쪽 끝 「아이디/비밀번호 찾기」.
+              직원 탭은 회원가입 없이 「아이디/비밀번호 찾기」만 오른쪽 끝(찾기 화면 위쪽에서 아이디·비밀번호를 바꾼다) */}
           <nav className="row t-l2 c-alt login-links" aria-label="계정 도움">
-            <Link href={`/seller/find-id${q}`}>아이디/비밀번호 찾기</Link>
-            {tab === "owner" && <Link href="/seller/signup">회원가입</Link>}
+            {tab === "owner" && (
+              <span className="login-join">
+                아직 회원이 아니신가요? <Link href="/seller/signup">회원가입</Link>
+              </span>
+            )}
+            <Link className="login-find" href={`/seller/find-id${q}`}>
+              아이디/비밀번호 찾기
+            </Link>
           </nav>
         </div>
       </form>
