@@ -74,3 +74,13 @@ export async function setOptionStockInDb(slug: string, productName: string, opti
     await db.$disconnect();
   }
 }
+
+// 주문 닉네임 e2e: 주문에 남은 방송 닉네임 스냅숏을 읽는다
+export async function orderNicknameInDb(orderId: string) {
+  const db = open();
+  try {
+    return (await db.order.findFirstOrThrow({ where: { id: orderId }, select: { broadcastNicknameSnapshot: true } })).broadcastNicknameSnapshot;
+  } finally {
+    await db.$disconnect();
+  }
+}
