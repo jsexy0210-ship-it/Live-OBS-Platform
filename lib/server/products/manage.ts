@@ -15,6 +15,14 @@ import { requireSellerPermission, requireSellerRead, type TenantContext } from "
 // - 삭제는 소프트 삭제(지난 주문 품목이 참조). 지운 상품·옵션은 목록·새 주문에서 빠진다.
 // - 판매 중(ON_SALE)은 살아 있는 옵션이 하나 이상 있어야 한다.
 
+// 상품 코드(카페24식): 판매자별 순번 codeNo를 「P」 + 7자리로 보인다(1000만 번째부터는 자릿수가 늘어난다).
+export const productCode = (codeNo: number) => `P${String(codeNo).padStart(7, "0")}`;
+// 검색어가 상품 코드 모양(P 생략 가능, 숫자만)이면 그 번호. 아니면 null.
+export function parseProductCode(term: string): number | null {
+  const m = /^p?(\d{1,9})$/i.exec(term);
+  return m && Number(m[1]) > 0 ? Number(m[1]) : null;
+}
+
 export const PRODUCT_STATUSES: readonly ProductStatus[] = ["DRAFT", "ON_SALE", "SOLD_OUT", "HIDDEN"];
 export const MAX_OPTIONS_PER_PRODUCT = 100;
 
@@ -94,7 +102,7 @@ async function productView(tx: Tx | PrismaClient, sellerId: string, productId: s
   const p = await tx.product.findFirstOrThrow({ where: { id: productId, sellerId } });
   const { deletedAt: _d, ...rest } = p;
   const event = eventView(eventOf(p), p.price, await dbNow(tx));
-  return { ...rest, event, options: (await liveOptions(tx, sellerId, productId)).map(({ deletedAt: _o, ...o }) => o) };
+  return { ...rest, code: productCode(p.codeNo), event, options: (await liveOptions(tx, sellerId, productId)).map(({ deletedAt: _o, ...o }) => o) };
 }
 
 export const DEFAULT_PAGE_SIZE = 50;
@@ -141,7 +149,7 @@ type ListFailure =
   | "invalid_sort"
   | "invalid_date_range"
   | "invalid_code"
-  | "invalid_sale_mode"
+  | "invalid_stock_deduct_mode"
   | "invalid_display"
   | "invalid_category";
 
@@ -151,7 +159,7 @@ export type ProductListQuery = {
   stock?: unknown;
   q?: unknown;
   code?: unknown;
-  saleMode?: unknown;
+  stockDeductMode?: unknown;
   createdFrom?: unknown;
   createdTo?: unknown;
   sort?: unknown;
@@ -195,10 +203,10 @@ export async function listProducts(
     if (opts.display !== "shown" && opts.display !== "hidden") return { ok: false, reason: "invalid_display" };
     display = DISPLAY_STATUSES[opts.display];
   }
-  let saleMode: StockDeductMode | undefined;
-  if (opts.saleMode !== undefined && opts.saleMode !== "") {
-    if (!STOCK_DEDUCT_MODES.includes(opts.saleMode as StockDeductMode)) return { ok: false, reason: "invalid_sale_mode" };
-    saleMode = opts.saleMode as StockDeductMode;
+  let deductMode: StockDeductMode | undefined;
+  if (opts.stockDeductMode !== undefined && opts.stockDeductMode !== "") {
+    if (!STOCK_DEDUCT_MODES.includes(opts.stockDeductMode as StockDeductMode)) return { ok: false, reason: "invalid_stock_deduct_mode" };
+    deductMode = opts.stockDeductMode as StockDeductMode;
   }
   const created = parseCreatedRange(opts.createdFrom, opts.createdTo);
   if (created === "invalid") return { ok: false, reason: "invalid_date_range" };
@@ -207,7 +215,7 @@ export async function listProducts(
   const where: Prisma.Sql[] = [Prisma.sql`p."sellerId" = ${ctx.sellerId}::uuid`, Prisma.sql`p."deletedAt" IS NULL`];
   if (status) where.push(Prisma.sql`p."status" = ${status}::"ProductStatus"`);
   if (display) where.push(Prisma.sql`p."status"::text IN (${Prisma.join(display)})`);
-  if (saleMode) where.push(Prisma.sql`p."stockDeductMode" = ${saleMode}::"StockDeductMode"`);
+  if (deductMode) where.push(Prisma.sql`p."stockDeductMode" = ${deductMode}::"StockDeductMode"`);
   if (created?.gte) where.push(Prisma.sql`p."createdAt" >= ${created.gte}`);
   if (created?.lt) where.push(Prisma.sql`p."createdAt" < ${created.lt}`);
   let stockJoin = Prisma.empty;
@@ -233,11 +241,12 @@ export async function listProducts(
                  WHERE o."sellerId" = ${ctx.sellerId}::uuid AND o."productId" = p."id" AND o."deletedAt" IS NULL
                    AND strpos(lower(o."name"), lower(${term})) > 0))`);
   }
-  // 상품 코드 code: 상품 id 전체가 같거나, (지우지 않은) 옵션 SKU에 들어 있으면(대소문자 무시, 부분 일치). 상품에는 따로 코드 칸이 없다.
+  // 상품 코드 code: 상품 코드(P0000012, P·앞자리 0 생략 가능)가 같거나, 상품 id 전체가 같거나, (지우지 않은) 옵션 SKU에 들어 있으면(대소문자 무시, 부분 일치).
   const code = opts.code === undefined || (typeof opts.code === "string" && /^ *$/.test(opts.code)) ? null : (cleanText(opts.code, MAX_CODE_LENGTH) ?? "invalid");
   if (code === "invalid") return { ok: false, reason: "invalid_code" };
   if (code) {
-    where.push(Prisma.sql`(p."id"::text = lower(${code})
+    const codeNo = parseProductCode(code);
+    where.push(Prisma.sql`(p."id"::text = lower(${code}) OR p."codeNo" = ${codeNo ?? -1}
       OR EXISTS (SELECT 1 FROM "ProductOption" o
                  WHERE o."sellerId" = ${ctx.sellerId}::uuid AND o."productId" = p."id" AND o."deletedAt" IS NULL
                    AND o."sku" IS NOT NULL AND strpos(lower(o."sku"), lower(${code})) > 0))`);
@@ -319,6 +328,7 @@ export async function listProducts(
     value: {
       products: page.map(({ deletedAt: _d, options, ...p }) => ({
         ...p,
+        code: productCode(p.codeNo),
         event: eventView(eventOf(p), p.price, now),
         soldQuantity: soldBy.get(p.id) ?? 0,
         options: options.map(({ deletedAt: _o, ...o }) => o),

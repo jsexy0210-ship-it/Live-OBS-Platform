@@ -501,6 +501,9 @@ model Product {
   eventStartsAt      DateTime?          @db.Timestamptz(3)
   eventEndsAt        DateTime?          @db.Timestamptz(3)
   sortOrder          Int                @default(0)
+  // 상품 코드 번호(카페24식 자동 상품 코드, MASTER 결정 2026-10-04). 판매자별 1부터 순번, 화면·API는 「P」 + 7자리(P0000001).
+  // 넣을 때 0(기본)이면 DB 트리거(product_assign_code_no)가 판매자별 잠금 아래 다음 번호를 매긴다. 지운 상품 번호도 다시 쓰지 않는다.
+  codeNo             Int                @default(0)
   createdAt          DateTime           @default(now()) @db.Timestamptz(3)
   deletedAt          DateTime?          @db.Timestamptz(3)
 
@@ -512,6 +515,7 @@ model Product {
   categories ProductCategory[]
 
   @@unique([sellerId, id])
+  @@unique([sellerId, codeNo])
 }
 
 model ProductImage {
