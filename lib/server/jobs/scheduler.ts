@@ -2,6 +2,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { purgeOldRecoveryVerifications } from "../auth/accountRecovery";
 import { purgeExpiredRejoinBlocks } from "../buyers/rejoin";
 import { purgeOldSignupVerificationIps, purgeUnfinishedSignupVerifications } from "../buyers/signup";
+import { kickPaymentWorker } from "../payments/worker";
 import { markInstanceRetired, purgeOldOpsEvents, purgeRetiredHeartbeats, recordHeartbeat, registerInstance } from "../ops/metrics";
 
 // 앱 안 정기 실행(MASTER 결정 2026-10-03: 외부 cron 대신). instrumentation.ts register(nodejs 런타임)에서 startScheduler를 부른다.
@@ -26,6 +27,8 @@ export const SCHEDULED_JOBS: ScheduledJob[] = [
   { name: "ops_heartbeat.purge_retired", run: (tx, now) => purgeRetiredHeartbeats(tx, now) },
   // 받은 지 30일 지난 감시 사건 지우기((source, key)별 마지막 열림·닫힘은 남김, ops/metrics.ts)
   { name: "ops_event.purge_old", run: (tx, now) => purgeOldOpsEvents(tx, now) },
+  // 남은 결제 취소 요청(환불)·승인 중 결제를 PG 조회로 확정(payments/worker.ts, PG 호출은 트랜잭션 밖에서 따로 돈다)
+  { name: "payment.process_pending", run: (_tx, now) => Promise.resolve(kickPaymentWorker(now)) },
 ];
 
 export const SCHEDULER_INTERVAL_MS = 3600_000;
