@@ -74,7 +74,10 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/reward-policy": "STORE_OPERATIONS",
   "seller/share-preview": "STORE_OPERATIONS",
   "seller/shipping-policy": "STORE_OPERATIONS",
+  "seller/stats/broadcasts": "OVERLAY",
+  "seller/stats/members": "STORE_OPERATIONS",
   "seller/stats/orders": "STORE_OPERATIONS",
+  "seller/stats/products": "STORE_OPERATIONS",
   "seller/stats/sales": "STORE_OPERATIONS",
 };
 

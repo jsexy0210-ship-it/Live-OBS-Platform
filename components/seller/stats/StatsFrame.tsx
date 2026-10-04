@@ -13,6 +13,9 @@ import { api } from "../api";
 export const STATS_TABS = [
   { href: "/seller/stats/orders", label: "주문" },
   { href: "/seller/stats/sales", label: "매출" },
+  { href: "/seller/stats/products", label: "상품" },
+  { href: "/seller/stats/members", label: "회원" },
+  { href: "/seller/stats/broadcasts", label: "방송" },
 ] as const;
 
 export type Unit = "day" | "week" | "month";
@@ -51,12 +54,14 @@ export function usePeriod() {
   return useState<Period>(() => presetPeriod("7d", "day"));
 }
 
-export function StatsFrame({ title, sub, period, setPeriod, onDownload, children }: {
+export function StatsFrame({ title, sub, period, setPeriod, onDownload, units = true, children }: {
   title: string;
   sub: string;
   period: Period;
   setPeriod: (p: Period) => void;
   onDownload?: () => void;
+  // 묶음 단위(일·주·월) 선택을 보일지. 기간 합계만 보는 화면(상품·방송)은 끈다
+  units?: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -74,7 +79,7 @@ export function StatsFrame({ title, sub, period, setPeriod, onDownload, children
     { key: "7d", label: "최근 7일" },
     { key: "30d", label: "최근 30일" },
   ] as const;
-  const units: { key: Unit; label: string }[] = [
+  const unitOptions: { key: Unit; label: string }[] = [
     { key: "day", label: "일" },
     { key: "week", label: "주" },
     { key: "month", label: "월" },
@@ -129,13 +134,15 @@ export function StatsFrame({ title, sub, period, setPeriod, onDownload, children
               </button>
             </div>
             <span className="grow" />
-            <div className="seg" role="group" aria-label="묶음 단위">
-              {units.map((u) => (
-                <button key={u.key} type="button" className={period.unit === u.key ? "on" : ""} aria-pressed={period.unit === u.key} onClick={() => setPeriod({ ...period, unit: u.key })}>
-                  {u.label}
-                </button>
-              ))}
-            </div>
+            {units && (
+              <div className="seg" role="group" aria-label="묶음 단위">
+                {unitOptions.map((u) => (
+                  <button key={u.key} type="button" className={period.unit === u.key ? "on" : ""} aria-pressed={period.unit === u.key} onClick={() => setPeriod({ ...period, unit: u.key })}>
+                    {u.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           {rangeError && (
             <div className="err" role="alert" style={{ padding: "0 20px 12px" }}>

@@ -104,3 +104,46 @@ test("통계 권한이 없는 직원은 메뉴가 없고, 주소로 들어와도
   await expect(page.getByText("통계 조회 권한이 필요합니다")).toBeVisible();
   await shot(page, "stats-forbidden");
 });
+
+test("상품 통계: 상위 상품·안 팔린 상품을 API 값으로 보여 준다", async ({ page }) => {
+  const first = statsResponse(page, "products");
+  await login(page, "demo-owner@example.com", "/seller/stats/products");
+  await first;
+  const r30 = statsResponse(page, "products");
+  await page.getByRole("button", { name: "최근 30일" }).click();
+  const body = await (await r30).json();
+  await expect(kpi(page, "상품 매출")).toHaveText(won(body.current.revenue));
+  if (body.top.length > 0) {
+    await expect(page.getByTestId("stats-top").locator("tbody tr")).toHaveCount(body.top.length);
+    await expect(page.getByTestId("stats-top").locator("tbody tr").first()).toContainText(body.top[0].name);
+  }
+  await expect(page.getByTestId("stats-unsold").locator("tbody tr")).toHaveCount(body.unsold.length);
+  // 상품·방송 통계는 기간 합계만 보여 묶음 단위가 없다
+  await expect(page.getByRole("group", { name: "묶음 단위" })).toHaveCount(0);
+  await shot(page, "stats-products");
+});
+
+test("회원 통계: 신규 가입·구매 회원·재구매율을 API 값으로 보여 준다", async ({ page }) => {
+  const first = statsResponse(page, "members");
+  await login(page, "demo-owner@example.com", "/seller/stats/members");
+  await first;
+  const r30 = statsResponse(page, "members");
+  await page.getByRole("button", { name: "최근 30일" }).click();
+  const body = await (await r30).json();
+  await expect(kpi(page, "신규 가입")).toHaveText(`${body.current.signups.toLocaleString("ko-KR")}명`);
+  await expect(kpi(page, "구매 회원")).toHaveText(`${body.current.buyers.toLocaleString("ko-KR")}명`);
+  await expect(page.getByTestId("stats-table").locator("tbody tr")).toHaveCount(30);
+  await shot(page, "stats-members");
+});
+
+test("방송 통계: 방송이 없으면 빈 상태를, 탭으로 다른 통계로 옮겨 간다", async ({ page }) => {
+  const first = statsResponse(page, "broadcasts");
+  await login(page, "demo-owner@example.com", "/seller/stats/broadcasts");
+  const body = await (await first).json();
+  expect(body.unavailable).toEqual(["viewers", "conversion"]);
+  if (body.total.broadcasts === 0) await expect(page.getByText("선택한 기간에 진행한 방송이 없습니다")).toBeVisible();
+  else await expect(page.getByTestId("stats-broadcasts").locator("tbody tr")).toHaveCount(body.broadcasts.length);
+  await shot(page, "stats-broadcasts");
+  await page.getByRole("navigation", { name: "통계 종류" }).getByRole("link", { name: "매출" }).click();
+  await expect(page).toHaveURL(/\/seller\/stats\/sales$/);
+});

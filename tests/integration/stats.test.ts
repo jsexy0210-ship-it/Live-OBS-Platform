@@ -2,8 +2,14 @@ import type { OrderStatus, PaymentMethod } from "@prisma/client";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { GET as ordersRoute } from "../../app/api/seller/stats/orders/route";
 import { GET as salesRoute } from "../../app/api/seller/stats/sales/route";
+import { GET as productsRoute } from "../../app/api/seller/stats/products/route";
+import { GET as membersRoute } from "../../app/api/seller/stats/members/route";
+import { GET as broadcastsRoute } from "../../app/api/seller/stats/broadcasts/route";
 import { loginSeller } from "../../lib/server/auth/login";
+import { broadcastStats } from "../../lib/server/stats/broadcasts";
+import { memberStats } from "../../lib/server/stats/members";
 import { orderStats } from "../../lib/server/stats/orders";
+import { productStats } from "../../lib/server/stats/products";
 import { parseStatsRange } from "../../lib/server/stats/range";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { PASSWORD, createBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
@@ -26,8 +32,9 @@ type OrderInput = {
   shippingFee?: number;
   refundAmount?: number | null;
   method?: PaymentMethod | null;
-  // 품목: [정가, 판매 단가, 수량]
-  items?: [number | null, number, number][];
+  // 품목: [정가, 판매 단가, 수량, 상품 id(없으면 기본 상품)]
+  items?: [number | null, number, number, string?][];
+  buyerId?: string;
 };
 
 async function shop() {
@@ -44,7 +51,7 @@ async function shop() {
       data: {
         sellerId: seller.id,
         orderNo: ++n,
-        buyerMemberId: buyer.id,
+        buyerMemberId: o.buyerId ?? buyer.id,
         broadcastNicknameSnapshot: "닉",
         status,
         totalAmount: o.total ?? 10000,
@@ -57,25 +64,35 @@ async function shop() {
         cancelledAt: status === "CANCELLED" ? new Date(o.createdAt) : null,
       },
     });
-    for (const [list, unit, qty] of o.items ?? []) {
-      await db.orderItem.create({
+    const items = [];
+    for (const [list, unit, qty, productId] of o.items ?? []) {
+      const pid = productId ?? product.id;
+      const opt = pid === product.id ? option : await db.productOption.findFirstOrThrow({ where: { productId: pid } });
+      items.push(await db.orderItem.create({
         data: {
           sellerId: seller.id,
           orderId: created.id,
-          productId: product.id,
-          optionId: option.id,
-          productNameSnapshot: product.name,
-          optionNameSnapshot: option.name,
+          productId: pid,
+          optionId: opt.id,
+          productNameSnapshot: "스냅숏",
+          optionNameSnapshot: opt.name,
           unitPrice: unit,
           listUnitPrice: list,
           quantity: qty,
         },
-      });
+      }));
     }
-    return created;
+    return { ...created, items };
   };
+  const newProduct = async (name: string, status: "ON_SALE" | "DRAFT" | "HIDDEN" | "SOLD_OUT" = "ON_SALE", deleted = false) => {
+    const p = await db.product.create({ data: { sellerId: seller.id, name, price: 1000, status, deletedAt: deleted ? new Date() : null } });
+    await db.productOption.create({ data: { sellerId: seller.id, productId: p.id, name: "기본", stock: 100 } });
+    return p;
+  };
+  const newBuyer = (createdAt?: string) =>
+    createBuyer(seller.id, grade.id).then((b) => (createdAt ? db.buyerMember.update({ where: { id: b.id }, data: { createdAt: new Date(createdAt) } }) : b));
   const ctx: TenantContext = { sellerId: seller.id, actorType: "SELLER_USER", actorId: owner.id, isOwner: true, permissions: [], readOnly: false };
-  return { seller, owner, order, ctx };
+  return { seller, owner, buyer, product, order, ctx, newProduct, newBuyer };
 }
 
 async function call(route: (req: Request) => Promise<Response>, path: string, cookie?: string) {
@@ -238,5 +255,144 @@ describe("매출 통계 GET /api/seller/stats/sales", () => {
     ]);
     expect(body.series.find((p: { bucket: string }) => p.bucket === "2026-10-03")).toEqual({ bucket: "2026-10-03", paid: 29000, refund: 4000, net: 25000 });
     expect(body.series).toHaveLength(7);
+  });
+});
+
+const WEEK = () => parseStatsRange({ from: "2026-10-01", to: "2026-10-07" })!;
+
+describe("상품 통계 GET /api/seller/stats/products", () => {
+  it("결제 완료 품목만 상품별로 더하고(환불·결제 대기·취소 제외), 매출순으로 주며, 안 팔린 상품(임시 저장·삭제 제외)을 준다", async () => {
+    const s = await shop();
+    const card = await s.newProduct("카드 박스");
+    const unsold = await s.newProduct("안 팔린 상품");
+    await s.newProduct("숨긴 상품", "HIDDEN");
+    await s.newProduct("임시 저장 상품", "DRAFT");
+    await s.newProduct("지운 상품", "ON_SALE", true);
+    const at = "2026-10-02T03:00:00Z";
+    await s.order({ createdAt: at, items: [[5000, 5000, 2], [30000, 30000, 1, card.id]] });
+    await s.order({ createdAt: at, items: [[30000, 30000, 2, card.id]] });
+    await s.order({ createdAt: at, status: "REFUNDED", items: [[30000, 30000, 5, card.id]] });
+    await s.order({ createdAt: at, status: "PENDING_PAYMENT", items: [[1000, 1000, 9, unsold.id]] });
+    await s.order({ createdAt: at, status: "CANCELLED", items: [[1000, 1000, 9, unsold.id]] });
+    await s.order({ createdAt: "2026-09-25T03:00:00Z", items: [[5000, 5000, 1]] });
+
+    const { status, body } = await call(productsRoute, "products?from=2026-10-01&to=2026-10-07", await cookieOf(s.owner.email));
+    expect(status).toBe(200);
+    expect(body.top).toEqual([
+      { productId: card.id, name: "카드 박스", deleted: false, quantity: 3, revenue: 90000, orders: 2 },
+      { productId: s.product.id, name: "부스터 팩", deleted: false, quantity: 2, revenue: 10000, orders: 1 },
+    ]);
+    expect(body.current).toEqual({ quantity: 5, revenue: 100000, products: 2 });
+    expect(body.previous).toEqual({ quantity: 1, revenue: 5000, products: 1 });
+    expect(body.unsold.map((p: { name: string }) => p.name)).toEqual(["안 팔린 상품", "숨긴 상품"]);
+    expect(body.unsoldCount).toBe(2);
+  });
+
+  it("다른 쇼핑몰 상품·판매는 섞이지 않는다", async () => {
+    const a = await shop();
+    const b = await shop();
+    await b.order({ createdAt: "2026-10-02T03:00:00Z", items: [[5000, 5000, 7]] });
+    const r = await productStats(db, a.ctx, WEEK());
+    expect(r.top).toEqual([]);
+    expect(r.unsold.map((p) => p.productId)).toEqual([a.product.id]);
+  });
+});
+
+describe("회원 통계 GET /api/seller/stats/members", () => {
+  it("신규 가입·탈퇴·구매 회원·재구매율(기간 끝까지 누적 결제 2건 이상)을 KST 경계로 센다", async () => {
+    const s = await shop();
+    // 기본 구매자(s.buyer)는 지금 가입 → 기간 밖으로 옮긴다
+    await db.buyerMember.update({ where: { id: s.buyer.id }, data: { createdAt: new Date("2026-01-01T00:00:00Z") } });
+    const early = await s.newBuyer("2026-09-30T14:59:59.999Z"); // 9/30 KST, 기간 밖
+    const b1 = await s.newBuyer("2026-09-30T15:00:00Z"); // 10/1 0시 KST
+    const b2 = await s.newBuyer("2026-10-03T03:00:00Z");
+    const gone = await s.newBuyer("2026-10-03T03:00:00Z");
+    await db.buyerMember.update({ where: { id: gone.id }, data: { status: "WITHDRAWN", deletedAt: new Date("2026-10-05T03:00:00Z") } });
+    // s.buyer: 9월에 1건 + 기간 안 1건 → 재구매. b1: 기간 안 2건 → 재구매. b2: 1건. early: 결제 대기만.
+    await s.order({ createdAt: "2026-09-10T03:00:00Z" });
+    await s.order({ createdAt: "2026-10-02T03:00:00Z" });
+    await s.order({ createdAt: "2026-10-02T03:00:00Z", buyerId: b1.id });
+    await s.order({ createdAt: "2026-10-04T03:00:00Z", buyerId: b1.id, status: "REFUNDED" });
+    await s.order({ createdAt: "2026-10-04T03:00:00Z", buyerId: b2.id });
+    await s.order({ createdAt: "2026-10-04T03:00:00Z", buyerId: early.id, status: "PENDING_PAYMENT" });
+    // 기간 뒤 주문은 재구매 판정에 쓰지 않는다
+    await s.order({ createdAt: "2026-10-09T03:00:00Z", buyerId: b2.id });
+
+    const { status, body } = await call(membersRoute, "members?from=2026-10-01&to=2026-10-07", await cookieOf(s.owner.email));
+    expect(status).toBe(200);
+    expect(body.current).toEqual({ signups: 3, withdrawals: 1, buyers: 3, repeatBuyers: 2, repeatRate: 0.6667 });
+    expect(body.previous).toMatchObject({ signups: 1, buyers: 0, repeatRate: null });
+    expect(body.series[0]).toEqual({ bucket: "2026-10-01", signups: 1, withdrawals: 0, buyers: 0 });
+    expect(body.series[2]).toEqual({ bucket: "2026-10-03", signups: 2, withdrawals: 0, buyers: 0 });
+    expect(body.series[3]).toEqual({ bucket: "2026-10-04", signups: 0, withdrawals: 0, buyers: 2 });
+    expect(body.series[4]).toMatchObject({ bucket: "2026-10-05", withdrawals: 1 });
+    expect(JSON.stringify(body)).not.toContain("구매자");
+  });
+
+  it("다른 쇼핑몰 회원·구매는 섞이지 않는다", async () => {
+    const a = await shop();
+    const b = await shop();
+    // a의 기본 구매자(오늘 가입)는 기간 밖으로 옮긴다
+    await db.buyerMember.update({ where: { id: a.buyer.id }, data: { createdAt: new Date("2026-01-01T00:00:00Z") } });
+    await b.newBuyer("2026-10-02T03:00:00Z");
+    await b.order({ createdAt: "2026-10-02T03:00:00Z" });
+    const r = await memberStats(db, a.ctx, WEEK());
+    expect(r.current).toMatchObject({ signups: 0, buyers: 0, withdrawals: 0 });
+  });
+});
+
+describe("방송 통계 GET /api/seller/stats/broadcasts", () => {
+  async function queue(sellerId: string, order: { id: string; items: { id: string }[] }, broadcastSessionId: string | null) {
+    let pos = 0;
+    for (const it of order.items) {
+      await db.queueItem.create({
+        data: { sellerId, orderId: order.id, orderItemId: it.id, broadcastSessionId, position: ++pos, receivedAt: new Date(), nicknameSnapshot: "닉", productLabel: "상품", quantity: 1 },
+      });
+    }
+  }
+
+  it("기간에 시작한 방송별로 주문(여러 품목도 1건)·결제액·환불을 세고, 시청자 값은 준비 중으로 둔다", async () => {
+    const s = await shop();
+    const live = await db.broadcastSession.create({ data: { sellerId: s.seller.id, title: "금요 방송", status: "ENDED", startedAt: new Date("2026-10-02T11:00:00Z"), endedAt: new Date("2026-10-02T13:00:00Z") } });
+    const quiet = await db.broadcastSession.create({ data: { sellerId: s.seller.id, title: null, status: "ENDED", startedAt: new Date("2026-10-03T11:00:00Z") } });
+    const old = await db.broadcastSession.create({ data: { sellerId: s.seller.id, status: "ENDED", startedAt: new Date("2026-09-30T14:00:00Z") } });
+    const at = "2026-10-02T12:00:00Z";
+    await queue(s.seller.id, await s.order({ createdAt: at, total: 20000, items: [[5000, 5000, 1], [5000, 5000, 1]] }), live.id);
+    await queue(s.seller.id, await s.order({ createdAt: at, total: 10000, status: "REFUNDED", refundAmount: 7000, items: [[5000, 5000, 1]] }), live.id);
+    await queue(s.seller.id, await s.order({ createdAt: at, total: 3000, items: [[3000, 3000, 1]] }), null);
+    await queue(s.seller.id, await s.order({ createdAt: at, total: 4000, items: [[4000, 4000, 1]] }), old.id);
+
+    const { status, body } = await call(broadcastsRoute, "broadcasts?from=2026-10-01&to=2026-10-07", await cookieOf(s.owner.email));
+    expect(status).toBe(200);
+    expect(body.broadcasts.map((b: { id: string }) => b.id)).toEqual([quiet.id, live.id]);
+    expect(body.broadcasts[1]).toMatchObject({ title: "금요 방송", orders: 2, paid: 30000, refunded: 1, refund: 7000, net: 23000 });
+    expect(body.broadcasts[0]).toMatchObject({ title: null, orders: 0, paid: 0, net: 0 });
+    expect(body.total).toEqual({ broadcasts: 2, orders: 2, paid: 30000, net: 23000 });
+    expect(body.unavailable).toEqual(["viewers", "conversion"]);
+  });
+
+  it("다른 쇼핑몰 방송·주문은 섞이지 않고, 플랜 기능은 OVERLAY를 따른다", async () => {
+    const a = await shop();
+    const b = await shop();
+    const bLive = await db.broadcastSession.create({ data: { sellerId: b.seller.id, status: "ENDED", startedAt: new Date("2026-10-02T11:00:00Z") } });
+    await queue(b.seller.id, await b.order({ createdAt: "2026-10-02T12:00:00Z", items: [[5000, 5000, 1]] }), bLive.id);
+    expect((await broadcastStats(db, a.ctx, WEEK())).broadcasts).toEqual([]);
+
+    // 오버레이 전용 플랜: 방송 통계는 열리고, 상품·회원 통계는 막힌다
+    const plan = await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "OVERLAY_ONLY" } });
+    await db.sellerSubscription.create({ data: { sellerId: a.seller.id, planId: plan.id, status: "ACTIVE" } });
+    const cookie = await cookieOf(a.owner.email);
+    expect((await call(broadcastsRoute, "broadcasts?from=2026-10-01&to=2026-10-07", cookie)).status).toBe(200);
+    expect((await call(productsRoute, "products?from=2026-10-01&to=2026-10-07", cookie)).body).toEqual({ error: "plan_feature_required" });
+    expect((await call(membersRoute, "members?from=2026-10-01&to=2026-10-07", cookie)).body).toEqual({ error: "plan_feature_required" });
+  });
+
+  it("통계 권한 없는 직원은 상품·회원·방송 통계도 403", async () => {
+    const s = await shop();
+    const staff = await createSellerUser(s.seller.id, { permissions: ["BROADCAST_RUN", "OVERLAY_EDIT", "PRODUCT_MANAGE", "MEMBER_POINTS"] });
+    const cookie = await cookieOf(staff.email);
+    for (const [route, path] of [[productsRoute, "products"], [membersRoute, "members"], [broadcastsRoute, "broadcasts"]] as const) {
+      expect((await call(route, `${path}?from=2026-10-01&to=2026-10-07`, cookie)).status, path).toBe(403);
+    }
   });
 });
