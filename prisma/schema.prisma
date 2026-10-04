@@ -517,6 +517,7 @@ model Product {
   orderItems OrderItem[]
   reviews    ProductReview[]
   categories ProductCategory[]
+  detail     ProductDetail?
   wishItems  WishItem[]
 
   @@unique([sellerId, id])
@@ -535,6 +536,8 @@ model ProductImage {
   width       Int
   height      Int
   sha256      String
+  // GALLERY: 상품 사진(10장, 첫 장이 대표), DETAIL: 상세 페이지 블록에 쓰는 사진(30장, ProductDetail.blocks가 가리킴)
+  kind        ProductImageKind @default(GALLERY)
   sortOrder   Int      @default(0)
   createdAt   DateTime @default(now()) @db.Timestamptz(3)
 
@@ -2057,4 +2060,22 @@ model WishItem {
   @@unique([buyerMemberId, productId])
   @@index([sellerId, buyerMemberId, createdAt])
   @@index([sellerId, productId])
+}
+
+enum ProductImageKind {
+  GALLERY
+  DETAIL
+}
+
+// 상품 상세 페이지(PR-B, 2026-10-04 대표님 지시). 카페24처럼 글·사진 블록을 순서대로 둔다. HTML은 저장하지 않는다.
+// blocks: [{ type: "text", text } | { type: "image", imageId }] 최대 30개. 검사·모양은 lib/server/products/detail.ts.
+model ProductDetail {
+  productId String   @id @db.Uuid
+  sellerId  String   @db.Uuid
+  blocks    Json
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  product Product @relation(fields: [sellerId, productId], references: [sellerId, id])
+
+  @@unique([sellerId, productId])
 }
