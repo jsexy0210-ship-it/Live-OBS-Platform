@@ -272,6 +272,14 @@ async function runAll(
         const ok = (u: string | null) => !!u && !!origin && secretOriginAllowed(u, opts.shopHost, origin.pathPrefixes);
         if (!origin || !ok(raw.url) || !ok(here) || !cueMatches(origin.adminCue, raw)) return { kind: "failed", reason: "unsafe_action:secret_origin_not_allowed" };
       }
+      // 브라우저의 모든 변경 행동(누르기·입력)은 관찰한 주소와 실행 직전 실제 문서 주소가 모두 이 작업의 쇼핑몰 호스트(정확히 일치)와
+      // 단계 허용 경로 안이어야 한다(같은 플랫폼의 다른 쇼핑몰·같은 호스트의 쇼핑몰 앞 화면으로 넘어간 경우 행동 0건)
+      if (session && mutating) {
+        guard();
+        const here = await session.currentUrl();
+        const onPage = (u: string | null) => !!u && !!nav && secretOriginAllowed(u, nav.shopHost, nav.pathPrefixes);
+        if (!onPage(raw.url) || !onPage(here)) return { kind: "failed", reason: "unsafe_action:page_not_allowed" };
+      }
       if (MUTATING.includes(action.type) && !markedSteps.has(step.key) && hooks.markChanged) {
         await hooks.markChanged(step.key);
         markedSteps.add(step.key);
@@ -348,6 +356,12 @@ export async function runRollback(
         const action = resolveShop(rb.actions[i].action, opts.shopHost);
         const check = validateDecision(step, { action, costWon: 0 }, secrets, {}, rb.allowedTargets, nav);
         if (!check.ok) return { kind: "cleanup_needed", reason: `rollback_unsafe:${check.reason}` };
+        if (session && rb.kind === "browser" && MUTATING.includes(action.type)) {
+          guard();
+          const here = await session.currentUrl();
+          const onPage = (u: string | null) => !!u && secretOriginAllowed(u, nav.shopHost, nav.pathPrefixes);
+          if (!onPage(raw.url) || !onPage(here)) return { kind: "cleanup_needed", reason: "rollback_unsafe:page_not_allowed" };
+        }
         let pairing: string | undefined;
         if (rb.kind === "obs") {
           guard();

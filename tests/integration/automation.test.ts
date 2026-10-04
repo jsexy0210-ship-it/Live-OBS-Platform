@@ -1003,9 +1003,9 @@ describe("Codex 3차·정본 fc09f13 반영", () => {
 
   it("비밀값 입력 직전 문서 출처가 허용 호스트가 아니거나(리다이렉트) 알 수 없거나, 관찰 주소가 다른 출처면 실행 0회로 멈춘다", async () => {
     const cases: [string, (rt: ReturnType<typeof runtime>) => void][] = [
-      ["redirect", (rt) => (rt.browser.currentUrlOverride = () => "https://evil.test/collect")],
-      ["unknown", (rt) => (rt.browser.currentUrlOverride = () => null)],
-      ["observed", (rt) => (rt.browser.pageUrl = () => "https://cafe24.com.evil.test/")],
+      ["redirect", (rt) => (rt.browser.currentUrlOverride = afterConnect(rt, "https://evil.test/collect"))],
+      ["unknown", (rt) => (rt.browser.currentUrlOverride = afterConnect(rt, null))],
+      ["observed", (rt) => (rt.browser.pageUrl = afterConnect(rt, "https://cafe24.com.evil.test/"))],
     ];
     for (const [name, setup] of cases) {
       await db.automationJob.updateMany({ data: { deviatedSteps: [], lastDeviationAt: null } });
@@ -1489,8 +1489,8 @@ describe("Codex 7차 반영(6325051)", () => {
 
   it("비밀값은 정해 둔 관리 화면 출처에서만 넣는다: 허용 이동 뒤 같은 칸 이름의 쇼핑몰 앞 화면(판매자가 꾸미는 화면)으로 넘어가면 입력 0회", async () => {
     const cases: [string, (rt: ReturnType<typeof runtime>) => void][] = [
-      ["redirect", (rt) => (rt.browser.currentUrlOverride = () => "https://myshop.cafe24.com/product/detail.html")],
-      ["observed", (rt) => (rt.browser.pageUrl = () => "https://myshop.cafe24.com/board/free")],
+      ["redirect", (rt) => (rt.browser.currentUrlOverride = afterConnect(rt, "https://myshop.cafe24.com/product/detail.html"))],
+      ["observed", (rt) => (rt.browser.pageUrl = afterConnect(rt, "https://myshop.cafe24.com/board/free"))],
     ];
     for (const [name, setup] of cases) {
       const a = await bought();
@@ -1511,10 +1511,10 @@ describe("Codex 7차 반영(6325051)", () => {
     expect(await job(ok.jobId)).toMatchObject({ shopHost: "myshop.cafe24.com" });
 
     const cases: [string, (rt: ReturnType<typeof runtime>) => void][] = [
-      ["other_mall_admin", (rt) => (rt.browser.pageUrl = () => "https://othershop.cafe24.com/disp/admin/shop1/")],
-      ["same_host_front", (rt) => (rt.browser.pageUrl = () => "https://myshop.cafe24.com/order/basket.html")],
+      ["other_mall_admin", (rt) => (rt.browser.pageUrl = afterConnect(rt, "https://othershop.cafe24.com/disp/admin/shop1/"))],
+      ["same_host_front", (rt) => (rt.browser.pageUrl = afterConnect(rt, "https://myshop.cafe24.com/order/basket.html"))],
       ["no_login_cue", (rt) => (rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장")],
-      ["central_host", (rt) => (rt.browser.pageUrl = () => "https://admin.cafe24.com/disp/admin/shop1/")],
+      ["central_host", (rt) => (rt.browser.pageUrl = afterConnect(rt, "https://admin.cafe24.com/disp/admin/shop1/"))],
     ];
     for (const [name, setup] of cases) {
       const a = await bought();
@@ -2356,3 +2356,67 @@ describe("Codex 18차 반영(353d28c)", () => {
     expect(await job(a.jobId)).toMatchObject({ obsPairingId: `pc-${a.seller.id}` });
   });
 });
+
+describe("Codex 19차 반영(83b6897)", () => {
+  it("누르기 직전 문서가 같은 플랫폼의 다른 쇼핑몰(허용 호스트)로 넘어가 있으면 「앱 설치」 누르기 0건·실패", async () => {
+    const cases: [string, (rt: ReturnType<typeof runtime>) => void][] = [
+      ["redirect", (rt) => (rt.browser.currentUrlOverride = () => "https://othershop.cafe24.com/disp/admin/shop1/")],
+      ["observed", (rt) => (rt.browser.pageUrl = () => "https://othershop.cafe24.com/disp/admin/shop1/")],
+      ["same_host_front", (rt) => (rt.browser.currentUrlOverride = () => "https://myshop.cafe24.com/product/detail.html")],
+    ];
+    for (const [name, setup] of cases) {
+      const a = await bought();
+      const rt = runtime();
+      setup(rt);
+      expect(await runOnce(db, rt, W), name).toBe("failed");
+      expect(await job(a.jobId), name).toMatchObject({ status: "FAILED", lastError: "unsafe_action:page_not_allowed" });
+      expect(rt.browser.performed.filter((p) => p.type === "click" || p.type === "fill"), name).toHaveLength(0);
+      await db.automationJob.updateMany({ data: { deviatedSteps: [], lastDeviationAt: null } });
+    }
+  });
+
+  it("연결 해제 기록이 먼저 시작돼 커밋 전이면, 겹친 무료 재연결은 그 기록을 기다렸다가 무료가 아님(connection_revoked)으로 거절한다", async () => {
+    const s = await bought();
+    expect(await runOnce(db, runtime(), W)).toBe("succeeded");
+    const target = { shopKey: `mall-${s.seller.id}`, obsPairingId: `pc-${s.seller.id}` };
+    let updated!: () => void;
+    const started = new Promise<void>((r) => (updated = r));
+    // 해제 기록이 행을 바꾼 뒤 커밋 전에 잠시 머문다
+    const slow = db.$extends({
+      query: {
+        automationJob: {
+          async updateMany({ args, query }) {
+            const r = await query(args);
+            updated();
+            await new Promise((res) => setTimeout(res, 400));
+            return r;
+          },
+        },
+      },
+    }) as unknown as typeof db;
+    const revoking = markConnectionRevoked(slow, { sellerId: s.seller.id, shopKey: target.shopKey, reason: "app_uninstalled" });
+    await started;
+    const r = await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: newKey(), target });
+    expect(await revoking).toBe(1);
+    expect(r).toMatchObject({ ok: false, reason: "payment_required", paidReason: "connection_revoked" });
+    expect(await db.automationJob.count({ where: { sellerId: s.seller.id, kind: "RECONNECT_FREE" } })).toBe(0);
+  });
+
+  it("되돌리기의 누르기도 실행 직전 문서가 다른 쇼핑몰이면 누르기 0건으로 멈추고 「정리 필요」로 둔다", async () => {
+    const a = await bought();
+    const rt = runtime();
+    rt.browser.currentUrlOverride = () => "https://othershop.cafe24.com/disp/admin/shop1/";
+    await db.automationJob.update({ where: { id: a.jobId }, data: { stepIndex: 2, playbookActions: 5, changedAt: new Date(), mutatedSteps: ["shop_connect", "webhook_setup"] } });
+    const other = await bought();
+    await db.automationJob.update({ where: { id: other.jobId }, data: { status: "CANCELED", finishedAt: new Date(), lastDeviationAt: new Date(), deviatedSteps: ["webhook_setup"] } });
+    await runOnce(db, rt, W);
+    expect(rt.browser.performed.filter((p) => p.type === "click" || p.type === "fill")).toHaveLength(0);
+    expect(await job(a.jobId)).toMatchObject({ status: "CLEANUP_NEEDED" });
+  });
+});
+
+// 쇼핑몰 연결 단계(「앱 설치」 누르기)를 마친 뒤에만 문서 주소가 바뀌게 한다: 웹훅 단계의 첫 변경 행동인 비밀값 입력 검사를 시험한다
+// (그 전부터 바뀌어 있으면 누르기 직전 주소 검사(page_not_allowed)가 먼저 멈춘다 — 19차 시험)
+function afterConnect(rt: { browser: FakeBrowserExecutor }, url: string | null) {
+  return () => (rt.browser.performed.some((p) => p.type === "click") ? url : "https://myshop.cafe24.com/disp/admin/shop1/");
+}
