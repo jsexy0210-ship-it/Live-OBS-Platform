@@ -1,4 +1,4 @@
-/* 구매자 화면 공통 틀(카페24식) + SH-011 회원가입 */
+/* 구매자 화면 공통 틀(일반 쇼핑몰 구성) + SH-011 회원가입 */
 html,
 body {
   margin: 0;
@@ -14,7 +14,7 @@ body {
   flex-direction: column;
   background: var(--wds-background-normal-normal);
 }
-/* 카페24식 공통 틀: 흰 바탕·옅은 회색 구분선, 모서리 작게. 판매자 대표 색(--brand)은 강조(가격·선택 표시·버튼)에만 */
+/* 일반 쇼핑몰 공통 틀: 흰 바탕·옅은 회색 구분선, 모서리 작게. 판매자 대표 색(--brand)은 강조(가격·선택 표시·버튼)에만 */
 .shop-wrap {
   width: 1200px;
   max-width: 100%;

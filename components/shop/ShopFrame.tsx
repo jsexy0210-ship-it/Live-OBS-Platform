@@ -68,7 +68,7 @@ async function FrameFoot({ slug, shopName }: { slug: string; shopName: string })
   return <Foot shopName={shopName} rows={(await loadFrame(slug)).rows} />;
 }
 
-// 구매자 쇼핑몰 공통 틀(카페24 기본 스킨 구성, docs/DESIGN_PROMPT.md 「구매자 쇼핑몰(SH)」): 머리·바닥글·휴대폰 아래 고정 바.
+// 구매자 쇼핑몰 공통 틀(일반 쇼핑몰 기본 구성, docs/DESIGN_PROMPT.md 「구매자 쇼핑몰(SH)」): 머리·바닥글·휴대폰 아래 고정 바.
 // 로그인 상태는 이 쇼핑몰의 구매자 세션으로 판단한다(다른 쇼핑몰 세션은 로그인 안 함으로 본다).
 export default function ShopFrame({ slug, shopName, children }: { slug: string; shopName: string; children: React.ReactNode }) {
   return (
