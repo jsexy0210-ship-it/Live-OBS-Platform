@@ -114,6 +114,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/shop-content/images/[imageId]": "STORE_OPERATIONS",
   "seller/shop-content/logo": "STORE_OPERATIONS",
   "seller/shop-content/logo/image": "STORE_OPERATIONS",
+  "seller/broadcast/summary": "OVERLAY",
   "seller/stats/broadcasts": "OVERLAY",
   "seller/stats/members": "STORE_OPERATIONS",
   "seller/stats/orders": "STORE_OPERATIONS",
