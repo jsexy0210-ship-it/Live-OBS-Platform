@@ -83,6 +83,8 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/shop-content/popups/reorder": "STORE_OPERATIONS",
   "seller/shop-content/images": "STORE_OPERATIONS",
   "seller/shop-content/images/[imageId]": "STORE_OPERATIONS",
+  "seller/stats/orders": "STORE_OPERATIONS",
+  "seller/stats/sales": "STORE_OPERATIONS",
 };
 
 // 공개·구매자 경로(ARCHITECTURE 4.8.0 표): 기능 권한이 없을 때 막는지. 막는 검사는 lib 쪽(shopOpen·createOrder·resolveOverlayToken)이나

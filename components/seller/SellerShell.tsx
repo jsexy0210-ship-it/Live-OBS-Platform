@@ -13,6 +13,7 @@ type Nav = { h: string } | { label: string; href?: string; perm?: string; match?
 const NAV: Nav[] = [
   { h: "홈" },
   { label: "홈" },
+  { label: "통계", href: "/seller/stats/orders", match: "/seller/stats", perm: "SALES_VIEW" },
   { h: "방송" },
   { label: "방송 대시보드", perm: "BROADCAST_RUN" },
   { h: "판매" },
