@@ -99,6 +99,8 @@ export function ImagePicker({
   const working = useRef(false);
 
   const upload = async (file: File) => {
+    // 고른 파일은 이미 받았으니 입력 칸을 바로 비운다. 화면에서 거절(2MB 초과 등)해도 같은 파일을 다시 고를 수 있다(Codex 4176481022).
+    if (input.current) input.current.value = "";
     if (working.current) return;
     setError(null);
     // 서버도 다시 확인한다. 큰 파일은 보내기 전에 알려 준다.
@@ -111,7 +113,6 @@ export function ImagePicker({
     working.current = false;
     setBusy(false);
     onBusy?.(false);
-    if (input.current) input.current.value = "";
     if (r.ok) onChange(r.data.image);
     else if (r.status !== 401)
       setError(r.message ?? IMAGE_ERRORS[r.error] ?? (r.status === 0 ? "연결이 끊겼습니다. 인터넷 연결을 확인해 주십시오" : r.status === 403 ? "변경 권한이 없습니다" : "이미지를 올리지 못했습니다"));

@@ -157,6 +157,33 @@ test.describe.serial("SA-060 쇼핑몰 로고", () => {
     expect(imagePosts).toBe(1);
   });
 
+  test("2MB를 넘어 화면에서 거절하면 입력 칸을 비워 같은 칸에 다시 고를 수 있다(로고·배너 이미지, Codex 4176481022)", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/seller/login?next=%2Fseller%2Fsettings%2Fshop");
+    await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
+    await expect(page).toHaveURL(/\/seller\/settings\/shop$/);
+    const big = Buffer.alloc(2 * 1024 * 1024 + 1, 1);
+    const logoInput = page.getByLabel("로고 파일");
+    await logoInput.setInputFiles(file("big.png", big));
+    await expect(page.getByText("2MB를 넘었습니다")).toBeVisible();
+    expect(await logoInput.evaluate((el) => (el as HTMLInputElement).value)).toBe("");
+    const put = page.waitForRequest((r) => r.url().endsWith("/api/seller/shop-content/logo") && r.method() === "PUT");
+    await logoInput.setInputFiles(file("logo.png", png(512, 512)));
+    await put;
+    await expect(page.getByText("로고를 바꿨습니다")).toBeVisible();
+    await clearLogo();
+
+    await page.goto("/seller/banners");
+    await page.getByRole("button", { name: "배너 추가" }).first().click();
+    const pcInput = page.getByRole("dialog", { name: "배너 추가" }).getByLabel("PC 이미지", { exact: true });
+    await pcInput.setInputFiles(file("big.png", big));
+    await expect(page.getByRole("dialog").getByText("2MB를 넘었습니다")).toBeVisible();
+    expect(await pcInput.evaluate((el) => (el as HTMLInputElement).value)).toBe("");
+    const post = page.waitForRequest((r) => r.url().endsWith("/api/seller/shop-content/images") && r.method() === "POST");
+    await pcInput.setInputFiles(file("pc.png", png(1200, 400)));
+    await post;
+  });
+
   test("「쇼핑몰 설정」 권한 없는 직원: 메뉴 → 쇼핑몰 정보 탭으로 들어가 보기만(올리기·지우기 없음, 볼 수 없는 탭은 안 보임)", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/seller/login");
