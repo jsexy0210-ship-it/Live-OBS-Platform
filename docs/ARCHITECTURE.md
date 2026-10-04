@@ -257,6 +257,7 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 - `RewardPolicy` (판매자당 1행): sellerId(**PK**), rates(JSON: 등급별 `{card, bankTransfer}` 퍼센트), earnStartsAt, revokeMode(`AUTO | MANUAL`), **livePayoutEnabled 기본 false**, livePayoutChangedAt, livePayoutChangedBy, rankingBonusEnabled(기본 false), rankingBonusAmount
 - `RewardLedger`: id, sellerId, buyerMemberId, orderId(nullable), type(`EARN | REVOKE | USE | RANKING_BONUS | ADJUST | EXPIRE`), amount(부호 포함), status(`PENDING | SUCCEEDED | FAILED`), testMode(bool), failureReason, idempotencyKey, createdAt, processedAt — **(sellerId, idempotencyKey) 유니크**(같은 주문 지급·회수 중복 방지)
 - `RewardBalance`: (sellerId, buyerMemberId) PK, balance(**CHECK balance >= 0**), updatedAt — `SUCCEEDED`이고 `testMode = false`인 원장만 잔액에 반영(같은 트랜잭션)
+- 구매자 본인 적립금(SH-023, 탈퇴 화면 안내): `GET /api/shop/{slug}/me/rewards` → `{ balance, pendingEarn }`(`lib/server/rewards/balance.ts`, 로그인한 회원 본인만, 잠긴 쇼핑몰·기능 권한과 관계없이 열림, 캐시 안 함). `balance`는 `RewardBalance`(없으면 0), `pendingEarn`은 처리 전(`PENDING`)·실지급(`testMode = false`) 원장 중 양수 금액의 합(회수 같은 음수는 넣지 않음)
 - 실지급 스위치가 꺼져 있으면 원장은 `testMode = true`로 기록만 하고 잔액은 바꾸지 않는다. 스위치 변경은 대표(OWNER)만, 감사 로그 필수.
 - 지급 시점 `RewardPolicy.earnTiming`(대표님 결정 2026-10-03): `ON_PAYMENT`(결제 즉시) 또는 `ON_DELIVERY`(배송 완료 후, 기본). `GET·PUT /api/seller/reward-policy` `{ earnTiming }`(`MEMBER_POINTS`, 감사 로그 `reward_policy.earn_timing`, 틀리면 `400 invalid_reward_policy`). 적립은 결제 시점 스냅숏으로 판정한다(MASTER 결정 2026-10-03): 결제 때 주문에 지급 시점·회원 등급·적립률·적립 예정액(`Order.rewardEarnTiming·rewardGradeId·rewardRate·rewardEarnAmount`)을 남기고, 지급 시작일(`earnStartsAt`)은 결제 시각과 비교한다. 배송 완료 때는 스냅숏 지급 시점이 `ON_DELIVERY`이고 예정액이 0원보다 큰 주문만 그 금액으로 한 번 기록한다. 결제 때 0원이면 나중에도 적립하지 않고, 결제 뒤 적립률·등급·지급 시점을 바꿔도 결과는 같다. 실지급 스위치(`testMode`)만 기록하는 때의 값을 쓴다.
 - 처리 대기 원장(지급·회수 등)은 `lib/server/rewards/ledger.ts` `createPendingRewardLedger`로만 만든다. 회원 행을 `FOR SHARE`로 잠가 탈퇴(`FOR NO KEY UPDATE`)와 순서를 맞추고, 탈퇴한 회원이면 처음부터 `FAILED`(`member_withdrawn`)로 남긴다.
@@ -298,6 +299,7 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 | `POST /api/shop/{slug}/auth/login`·`…/logout`(구매자 로그인) | 없음 | 허용(기존 주문 조회·탈퇴용) |
 | `GET·POST /api/shop/{slug}/addresses`·`…/addresses/{id}`(배송지) | 없음 | 허용(기존 주문 배송·구매자 정보 관리) |
 | `GET·PUT /api/shop/{slug}/me/marketing-consent`·`POST …/me/withdraw` | 없음 | 허용(동의 철회·탈퇴는 언제든) |
+| `GET /api/shop/{slug}/me/rewards`(내 적립금 잔액) | 없음 | 허용(탈퇴 전 확인) |
 | `GET /api/overlay/{token}/state`·`…/version`·`…/stream`(오버레이 공개 주소) | 오버레이 | 오버레이 권한이 없으면 막음(통합 첫 결제 확정 전) |
 
   - 검사 위치 ③ 서버 렌더 쇼핑몰 화면(#174 Codex P2): 「새 거래 시작」 화면도 화면 단계에서 막는다(API 거절에만 기대지 않음). 지금은 `app/(shop)/shop/[slug]/signup/page.tsx`(구매자 가입, `/shop/{slug}/signup`)가 있고, 장바구니·주문서·상품 구매 버튼이 있는 화면이 생기면 같은 규칙이다. 스토어 운영 권한이 없으면 가입 폼·구매 버튼을 보여 주지 않고 안내 화면을 그린다. 이 검사는 `shopOpen`(운영 중·잠김)과 별도로 한다. 1-B 시험은 화면 경로마다 「렌더 결과가 안내 화면이고 폼·구매 버튼이 없음」을 확인한다(화면 파일은 화면 세션 소유라, 서버가 화면에 줄 판정 함수·값을 1-B에서 만들고 화면 연결은 화면 세션에 배정).
