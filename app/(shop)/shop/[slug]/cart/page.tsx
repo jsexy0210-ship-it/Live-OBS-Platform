@@ -1,11 +1,22 @@
 import type { Metadata } from "next";
-import ComingSoon from "../_lib/ComingSoon";
+import { notFound } from "next/navigation";
+import CartView from "../../../../../components/shop/CartView";
+import ShopState from "../../../../../components/shop/ShopState";
+import { shopOpen } from "../../../../../lib/server/buyers/signup";
+import { prisma } from "../../../../../lib/server/db";
+import { findActiveShop } from "../_lib/shop";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = { title: "장바구니" };
 
-// SH-004 장바구니: 장바구니 기능(API)이 생기면 표 형태 목록과 단계 표시(장바구니 → 주문서 → 완료)로 바꾼다.
+// SH-004 장바구니: 로그인 구매자의 장바구니(/api/shop/{slug}/cart)를 표 형태로 보여 준다. 배송비·적립 예정은 장바구니 API가 주지 않아 보이지 않는다.
 export default async function Page({ params }: { params: Promise<{ slug: string }> }) {
-  return <ComingSoon slug={(await params).slug} title="장바구니는 준비 중이에요" body="곧 상품을 담아 한 번에 주문할 수 있어요." />;
+  const shop = await findActiveShop((await params).slug);
+  if (!shop) notFound();
+  return (await shopOpen(prisma, shop.id)) ? (
+    <CartView slug={shop.slug} />
+  ) : (
+    <ShopState title="지금은 쇼핑몰을 이용할 수 없어요" body="쇼핑몰이 다시 문을 열면 이용할 수 있어요." />
+  );
 }
