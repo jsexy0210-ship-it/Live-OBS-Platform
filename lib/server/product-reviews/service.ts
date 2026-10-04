@@ -73,7 +73,7 @@ async function grantReward(tx: Tx, r: ProductReview, now: Date): Promise<number>
   if (amount <= 0) return 0;
   const round = r.rewardRound + 1;
   const rp = await tx.rewardPolicy.findUnique({ where: { sellerId: r.sellerId }, select: { livePayoutEnabled: true } });
-  await createPendingRewardLedger(tx, {
+  const earn = await createPendingRewardLedger(tx, {
     sellerId: r.sellerId,
     buyerMemberId: r.buyerMemberId,
     orderId: r.orderId,
@@ -83,17 +83,19 @@ async function grantReward(tx: Tx, r: ProductReview, now: Date): Promise<number>
     idempotencyKey: `review_reward:${r.id}:${round}`,
     createdAt: now,
   });
-  await tx.productReview.update({ where: { id: r.id }, data: { rewardedAmount: amount, rewardRound: round } });
-  return amount;
+  // 결과는 돌려받은 원장 상태로 판단한다. 실패(탈퇴 회원 등)면 지급으로 기록하지 않고(회수도 하지 않음), 회차만 넘겨 같은 키를 다시 쓰지 않게 한다.
+  const paid = earn.status !== "FAILED";
+  await tx.productReview.update({ where: { id: r.id }, data: { rewardedAmount: paid ? amount : 0, rewardRound: round } });
+  return paid ? amount : 0;
 }
 
 // 숨김·삭제 때 회수(지급된 금액이 있을 때만, 회차마다 한 번).
 // testMode는 지금 실지급 스위치가 아니라 원래 적립 원장을 따른다(주문 환불 회수와 같은 방식). 적립 원장이 없으면 회수하지 않는다.
 async function revokeReward(tx: Tx, r: ProductReview, now: Date): Promise<number> {
   if (r.rewardedAmount <= 0) return 0;
-  const earn = await tx.rewardLedger.findUnique({ where: { sellerId_idempotencyKey: { sellerId: r.sellerId, idempotencyKey: `review_reward:${r.id}:${r.rewardRound}` } }, select: { testMode: true } });
-  if (!earn) return 0;
-  await createPendingRewardLedger(tx, {
+  const earn = await tx.rewardLedger.findUnique({ where: { sellerId_idempotencyKey: { sellerId: r.sellerId, idempotencyKey: `review_reward:${r.id}:${r.rewardRound}` } }, select: { testMode: true, status: true } });
+  if (!earn || earn.status === "FAILED") return 0;
+  const revoke = await createPendingRewardLedger(tx, {
     sellerId: r.sellerId,
     buyerMemberId: r.buyerMemberId,
     orderId: r.orderId,
@@ -103,8 +105,9 @@ async function revokeReward(tx: Tx, r: ProductReview, now: Date): Promise<number
     idempotencyKey: `review_revoke:${r.id}:${r.rewardRound}`,
     createdAt: now,
   });
+  // 이 회차는 닫는다. 회수 원장이 실패했으면(탈퇴 회원) 회수한 금액은 0으로 돌려준다.
   await tx.productReview.updateMany({ where: { id: r.id }, data: { rewardedAmount: 0 } });
-  return r.rewardedAmount;
+  return revoke.status === "FAILED" ? 0 : r.rewardedAmount;
 }
 
 // ───────── 파트너스 관리자 ─────────
@@ -275,7 +278,8 @@ export async function publishReview(db: PrismaClient, ctx: TenantContext, id: st
     if (!before) throw notFound();
     const now = await lockedNow(tx);
     if (before.status === "VISIBLE") return { ok: true as const, grantedReward: 0 };
-    await tx.productReview.update({ where: { id }, data: { status: "VISIBLE", hiddenReason: null, hiddenNote: null, heldBy: null, updatedAt: now } });
+    // 판매자가 확인해 공개하면 그때까지의 신고는 확인한 것으로 보고 신고 수를 0으로 되돌린다(신고 기록은 남는다)
+    await tx.productReview.update({ where: { id }, data: { status: "VISIBLE", hiddenReason: null, hiddenNote: null, heldBy: null, reportCount: 0, updatedAt: now } });
     const granted = await grantReward(tx, before, now);
     await sellerAudit(tx, ctx, meta, "review.publish", id, { status: before.status }, { status: "VISIBLE", grantedReward: granted });
     return { ok: true as const, grantedReward: granted };
@@ -368,10 +372,13 @@ export async function buyerReviewImage(db: PrismaClient, scope: BuyerScope, imag
   return db.productReviewImage.findFirst({ where: { id: imageId, sellerId: scope.sellerId, buyerMemberId: scope.buyerMemberId }, select: { data: true, contentType: true } });
 }
 
-// 공개 사진: 공개 리뷰에 붙은 사진만
+// 공개 범위: 매장에 보이는 상품(판매 중·품절, 지우지 않음)의 공개 리뷰만. 공개 목록과 공개 사진이 같은 조건을 쓴다(shop/sharePreview.ts와 같은 조건).
+export const SHOP_VISIBLE_PRODUCT = { deletedAt: null, status: { in: ["ON_SALE", "SOLD_OUT"] } } satisfies Prisma.ProductWhereInput;
+
+// 공개 사진: 매장에 보이는 상품의 공개 리뷰에 붙은 사진만
 export async function publicReviewImage(db: PrismaClient, sellerId: string, imageId: string) {
   if (!isUuid(imageId)) return null;
-  return db.productReviewImage.findFirst({ where: { id: imageId, sellerId, review: { status: "VISIBLE" } }, select: { data: true, contentType: true } });
+  return db.productReviewImage.findFirst({ where: { id: imageId, sellerId, review: { status: "VISIBLE", product: SHOP_VISIBLE_PRODUCT } }, select: { data: true, contentType: true } });
 }
 
 // 쓸 수 있는 주문 품목: 본인 주문, 결제 완료(취소·환불 아님), 배송 완료 뒤 설정 기간 안, 리뷰 없음
@@ -528,15 +535,17 @@ export async function updateReview(db: PrismaClient, scope: BuyerScope, id: stri
       if (before.status === "HIDDEN" || now.getTime() >= before.createdAt.getTime() + REVIEW_EDIT_DAYS * DAY) return { ok: false as const, reason: "not_editable" as const };
       const policy = await policyOf(tx, scope.sellerId);
       const held = heldReason(p.v.body, policy.bannedWords);
-      // 신고 누적 보류·공개 대기는 판매자가 풀 때까지 그대로 둔다
-      const status: ProductReviewStatus = held
+      // 신고 누적 보류·공개 대기는 판매자가 풀 때까지 그대로 둔다. 신고 보류는 바뀔 수 있는 표시값(heldBy)이 아니라
+      // 판매자가 아직 확인하지 않은 신고 수(reportCount, 공개하면 0)로 판단해, 본문을 어떻게 고쳐도 풀리지 않는다.
+      const reportHeld = before.status === "HELD" && before.reportCount >= REVIEW_REPORT_HOLD;
+      const status: ProductReviewStatus = reportHeld || held
         ? "HELD"
-        : before.status === "HELD" && before.heldBy !== "reports"
+        : before.status === "HELD"
           ? policy.publishMode === "REVIEW"
             ? "PENDING"
             : "VISIBLE"
           : before.status;
-      const heldBy = held ?? (status === "HELD" ? before.heldBy : null);
+      const heldBy = reportHeld ? "reports" : (held ?? null);
       await tx.productReviewImage.updateMany({ where: { sellerId: scope.sellerId, reviewId: id, id: { notIn: p.v.imageIds } }, data: { reviewId: null } });
       if (!(await attachImages(tx, scope, id, p.v.imageIds))) throw new BadImages();
       await tx.productReview.update({ where: { id }, data: { rating: p.v.rating, body: p.v.body, status, heldBy, updatedAt: now } });
@@ -598,7 +607,7 @@ export const PUBLIC_PAGE = 20;
 export async function productReviews(db: PrismaClient, slug: string, productId: string, cursor?: string | null) {
   const seller = await db.seller.findUnique({ where: { slug: slug.slice(0, 60) }, select: { id: true } });
   if (!seller || !isUuid(productId) || !(await shopOpen(db, seller.id))) return null;
-  const product = await db.product.findFirst({ where: { id: productId, sellerId: seller.id, deletedAt: null }, select: { id: true } });
+  const product = await db.product.findFirst({ where: { id: productId, sellerId: seller.id, ...SHOP_VISIBLE_PRODUCT }, select: { id: true } });
   if (!product) return null;
   const base = { sellerId: seller.id, productId, status: "VISIBLE" as const };
   let after = {};

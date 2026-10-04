@@ -186,6 +186,20 @@ describe("공개 방식·자동 보류·적립금", () => {
     expect((await ledger(s)).map((x) => [x.type, x.amount])).toEqual([["EARN", 1000]]);
   });
 
+  it("탈퇴 회원의 리뷰를 공개하면 적립 원장은 실패로 남고, 지급으로 기록하지 않으며 숨겨도 회수하지 않는다(Codex 4176768630)", async () => {
+    const s = await shop();
+    await setPolicy(s, { publishMode: "REVIEW", rewardText: 500 });
+    const r = await created(s, (await s.delivered()).id);
+    expect(r.status).toBe("PENDING");
+    expect(await withdrawBuyer(db, { sellerId: s.seller.id, buyerMemberId: s.buyer.id }, { password: PASSWORD })).toEqual({ ok: true });
+    expect((await publishPost(json("/x", "POST", s.owner, {}), p({ reviewId: r.reviewId }))).status).toBe(200);
+    expect((await db.productReview.findUniqueOrThrow({ where: { id: r.reviewId } })).rewardedAmount).toBe(0);
+    const audit = await db.auditLog.findFirstOrThrow({ where: { action: "review.publish", targetId: r.reviewId } });
+    expect((audit.after as { grantedReward: number }).grantedReward).toBe(0);
+    expect((await hidePost(json("/x", "POST", s.cs, { reason: "OTHER" }), p({ reviewId: r.reviewId }))).status).toBe(200);
+    expect((await ledger(s)).map((x) => [x.type, x.status, x.failureReason])).toEqual([["EARN", "FAILED", "member_withdrawn"]]);
+  });
+
   it("적립금 기본값은 0원(끔)이라 공개돼도 원장을 만들지 않는다", async () => {
     const s = await shop();
     const r = await created(s, (await s.delivered()).id);
@@ -242,6 +256,33 @@ describe("고치기·지우기·신고", () => {
     const pub = (await (await productReviewsGet(get("/x"), p({ slug: s.slug, productId: s.product.id }))).json()) as { total: number; reviews: unknown[] };
     expect([pub.total, pub.reviews.length]).toEqual([0, 0]);
   });
+
+  it("신고로 보류된 리뷰는 금지어를 넣었다 빼도 판매자가 공개하기 전까지 보류로 남는다(Codex 4176768623)", async () => {
+    const s = await shop();
+    await setPolicy(s, { bannedWords: ["사기"] });
+    const r = await created(s, (await s.delivered()).id);
+    for (let i = 0; i < 3; i++) {
+      const m = await createLoginBuyer(s.seller.id, s.grade.id);
+      await reportPost(json("/x", "POST", await buyerCookie(s.seller.id, m.loginId!), { reason: "AD" }), p({ slug: s.slug, reviewId: r.reviewId }));
+    }
+    const edit = (body: string) => reviewPut(json("/x", "PUT", s.b1, { rating: 5, body }), p({ slug: s.slug, reviewId: r.reviewId }));
+    const state = async () => {
+      const row = await db.productReview.findUniqueOrThrow({ where: { id: r.reviewId } });
+      return [row.status, row.heldBy];
+    };
+    expect(await state()).toEqual(["HELD", "reports"]);
+    expect((await edit("사기 아니에요 카드 상태 정말 좋아요")).status).toBe(200);
+    expect(await state()).toEqual(["HELD", "reports"]);
+    expect((await edit(BODY)).status).toBe(200);
+    expect(await state()).toEqual(["HELD", "reports"]);
+    // 판매자가 확인해 공개하면 신고 수가 0이 되고, 그 뒤 고치기는 보통 규칙(금지어면 보류, 깨끗하면 공개)
+    expect((await publishPost(json("/x", "POST", s.owner, {}), p({ reviewId: r.reviewId }))).status).toBe(200);
+    expect((await db.productReview.findUniqueOrThrow({ where: { id: r.reviewId } })).reportCount).toBe(0);
+    await edit("사기 아니에요 카드 상태 정말 좋아요");
+    expect(await state()).toEqual(["HELD", "banned_word"]);
+    await edit(BODY);
+    expect(await state()).toEqual(["VISIBLE", null]);
+  });
 });
 
 describe("권한·테넌트·공개 목록", () => {
@@ -291,6 +332,23 @@ describe("권한·테넌트·공개 목록", () => {
     expect((await publicImageGet(get("/x"), p({ slug: s.slug, imageId: img.image.id }))).status).toBe(404);
     const after = (await (await productReviewsGet(get("/x"), p({ slug: s.slug, productId: s.product.id }))).json()) as { average: number; total: number };
     expect([after.average, after.total]).toEqual([3, 1]);
+  });
+});
+
+describe("공개 범위", () => {
+  it("매장에 보이지 않는 상품(숨김·임시 저장·삭제)의 공개 리뷰 목록과 사진은 404(Codex 4176768626)", async () => {
+    const s = await shop();
+    const img = (await (await upload(s, fakeJpeg(800, 600))).json()) as { image: { id: string } };
+    await created(s, (await s.delivered()).id, { rating: 5, body: BODY, imageIds: [img.image.id] });
+    const list = () => productReviewsGet(get("/x"), p({ slug: s.slug, productId: s.product.id }));
+    const photo = () => publicImageGet(get("/x"), p({ slug: s.slug, imageId: img.image.id }));
+    expect([(await list()).status, (await photo()).status]).toEqual([200, 200]);
+    for (const data of [{ status: "HIDDEN" as const }, { status: "DRAFT" as const }, { status: "ON_SALE" as const, deletedAt: new Date() }]) {
+      await db.product.update({ where: { id: s.product.id }, data: { deletedAt: null, ...data } });
+      expect([(await list()).status, (await photo()).status]).toEqual([404, 404]);
+    }
+    await db.product.update({ where: { id: s.product.id }, data: { status: "SOLD_OUT", deletedAt: null } });
+    expect([(await list()).status, (await photo()).status]).toEqual([200, 200]);
   });
 });
 
