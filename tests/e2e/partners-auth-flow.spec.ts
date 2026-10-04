@@ -130,6 +130,17 @@ test("파트너스 가입 신청 → 바로 승인 → 로그인 → 비밀번�
   await verify(page, false, "/api/seller/password-reset/start");
   await expect(page.locator("#pa-notice")).toContainText("잠시 후 다시 시도해 주세요");
   await expect(page.locator("#idv-name")).toHaveValue(a.name);
+  // 다시 확인한 요청은 서버가 권한을 발급했는데 응답만 끊긴다: 한 번 더 누르면 서버가 같은 본인확인에 같은 권한을 돌려줘 이어 간다(#170)
+  await page.route(
+    (u) => u.pathname === "/api/seller/password-reset/verify",
+    async (route) => {
+      await route.fetch();
+      return route.abort("connectionreset");
+    },
+    { times: 1 },
+  );
+  await page.getByRole("button", { name: "다시 확인하기" }).click();
+  await expect(page.locator("#pa-notice")).toContainText("연결이 끊겼어요");
   await page.getByRole("button", { name: "다시 확인하기" }).click();
   await expect(page.getByRole("heading", { name: "새 비밀번호를 정해요" })).toBeVisible();
   await expect(page.getByText(`${a.email} · 휴대폰 본인확인 완료`)).toBeVisible();

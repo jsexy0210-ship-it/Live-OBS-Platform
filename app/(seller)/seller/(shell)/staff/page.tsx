@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { phoneText } from "../../../../../components/seller/IdentityCheck";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import {
@@ -13,7 +13,10 @@ import {
   SecretInput,
   STAFF_ERRORS,
   cleanPhone,
+  isUnclear,
   phoneOk,
+  readStaffList,
+  sameSet,
   staffFail,
   staffNameError,
   type Staff,
@@ -191,7 +194,7 @@ export default function StaffPage() {
           </div>
         )}
       </main>
-      {modal?.kind === "edit" && <EditStaffModal staff={modal.staff} onClose={() => setModal(null)} onSaved={done} />}
+      {modal?.kind === "edit" && <EditStaffModal staff={modal.staff} onClose={() => setModal(null)} onSaved={done} onChanged={() => void load()} />}
       {modal?.kind === "password" && <ResetPasswordModal staff={modal.staff} onClose={() => setModal(null)} onDone={done} />}
       {modal?.kind === "disable" && <DisableStaffModal staff={modal.staff} onClose={() => setModal(null)} onDone={done} />}
       {toast && <Toast text={toast} onDone={() => setToast(null)} />}
@@ -211,6 +214,8 @@ function AddStaff({ onAdded }: { onAdded: (name: string) => void }) {
   const [errors, setErrors] = useState<Errors>({});
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // 앞 요청의 결과가 불분명했는지(연결 끊김·5xx). 그 뒤 다시 보내 email_taken이 오면 방금 만든 계정일 수 있다
+  const unclear = useRef(false);
   // 보내는 동안 칸이 잠겨 있으므로 다시 그린 뒤에 포커스를 옮긴다
   const [focusTo, setFocusTo] = useState<{ id: string } | null>(null);
   useEffect(() => {
@@ -237,16 +242,30 @@ function AddStaff({ onAdded }: { onAdded: (name: string) => void }) {
       method: "POST",
       body: { name: name.trim(), phone: cleanPhone(phone), email: email.trim(), password, permissions: perms },
     });
-    setBusy(false);
-    if (r.ok) {
+    const succeed = () => {
+      setBusy(false);
+      unclear.current = false;
       const added = name.trim();
       setName("");
       setPhone("");
       setEmail("");
       setPassword("");
       setPerms([]);
-      return onAdded(added);
+      onAdded(added);
+    };
+    if (r.ok) return succeed();
+    // 결과가 불분명하거나, 불분명했던 요청 뒤 email_taken이면 목록을 다시 읽어 방금 보낸 계정(같은 이메일·이름·휴대폰·권한)이 있으면 만든 것으로 본다
+    if (isUnclear(r) || (r.error === "email_taken" && unclear.current)) {
+      if (isUnclear(r)) unclear.current = true;
+      const list = await readStaffList();
+      const mine = list?.find((s) => s.email.toLowerCase() === email.trim().toLowerCase());
+      if (mine && mine.name === name.trim() && mine.phone === cleanPhone(phone) && sameSet(mine.permissions, perms)) return succeed();
+      if (isUnclear(r)) {
+        setBusy(false);
+        return setFailure(list ? "계정을 만들지 못했어요. 잠시 뒤 다시 시도해 주세요" : "계정을 만들었는지 확인하지 못했어요. 목록을 확인한 뒤 다시 시도해 주세요");
+      }
     }
+    setBusy(false);
     const field = ({ email_taken: "email", weak_password: "password", invalid_phone: "phone" } as const)[r.error as "email_taken"];
     if (field) {
       setErrors({ [field]: STAFF_ERRORS[r.error] });

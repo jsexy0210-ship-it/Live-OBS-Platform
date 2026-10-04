@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { cleanText, textLength } from "../../lib/server/text/clean";
 import { api, failMessage } from "./api";
+import { stepOutcome } from "./stepFailure";
 
 // SA-100 직원 계정(대표자 전용)에서 쓰는 권한 고르기·수정·비밀번호 재설정·비활성화 창.
 // 권한 이름·설명은 디자인 SA-100과 같고, 키는 서버(lib/server/authz/permissions.ts STAFF_PERMISSIONS)와 같다.
@@ -153,10 +154,20 @@ function Dialog({ title, labelId, busy, onClose, children, wide }: { title: stri
   );
 }
 
-const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
+export const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
+
+// 저장 결과가 불분명할 때(연결 끊김·5xx, stepFailure.ts 기준) 지금 직원 목록을 다시 읽어 실제 상태를 확인한다. 읽지 못하면 null
+export async function readStaffList(): Promise<Staff[] | null> {
+  const r = await api<{ staff: Staff[] }>("/api/seller/staff");
+  return r.ok ? r.data.staff : null;
+}
+export const isUnclear = (r: { status: number; error: string }) => stepOutcome(r) === "retry";
 
 // 직원 정보·권한 수정: 이름·휴대폰은 PATCH, 권한은 permissions로 보낸다(바뀐 것만)
-export function EditStaffModal({ staff, onClose, onSaved }: { staff: Staff; onClose: () => void; onSaved: (text: string) => void }) {
+// 저장 응답을 놓치거나 서버 오류(결과 불분명)면 직원을 다시 읽어, 보낸 값과 같으면 저장한 것으로 보고 다르면 창과 목록에 지금 값을 보여 준다
+export function EditStaffModal({ staff, onClose, onSaved, onChanged }: { staff: Staff; onClose: () => void; onSaved: (text: string) => void; onChanged?: () => void }) {
+  // 비교 기준(서버의 지금 값). 결과가 불분명해 다시 읽으면 바뀐다
+  const [base, setBase] = useState(staff);
   const [name, setName] = useState(staff.name);
   const [phone, setPhone] = useState(staff.phone ?? "");
   const [perms, setPerms] = useState<StaffPerm[]>(staff.permissions);
@@ -164,9 +175,23 @@ export function EditStaffModal({ staff, onClose, onSaved }: { staff: Staff; onCl
   const [error, setError] = useState<string | null>(null);
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const nextPhone = phone.trim() === "" ? null : cleanPhone(phone);
-  const phoneChanged = nextPhone !== staff.phone;
-  const profileChanged = name.trim() !== staff.name || phoneChanged;
-  const permsChanged = !sameSet(perms, staff.permissions);
+  const phoneChanged = nextPhone !== base.phone;
+  const profileChanged = name.trim() !== base.name || phoneChanged;
+  const permsChanged = !sameSet(perms, base.permissions);
+  const savedText = () => (phoneChanged && base.identityLinked ? `${name.trim()} 정보를 저장했어요 · 다음 로그인 때 본인확인을 다시 안내해요` : `${name.trim()} 정보를 저장했어요`);
+
+  const checkUnclear = async () => {
+    const cur = (await readStaffList())?.find((s) => s.id === base.id);
+    setBusy(false);
+    if (!cur) return setError("저장했는지 확인하지 못했어요. 잠시 뒤 목록에서 확인해 주세요");
+    onChanged?.();
+    if (cur.name === name.trim() && cur.phone === nextPhone && sameSet(cur.permissions, perms)) return onSaved(savedText());
+    setBase(cur);
+    setName(cur.name);
+    setPhone(cur.phone ?? "");
+    setPerms(cur.permissions);
+    setError("저장되지 않았어요. 지금 정보와 권한을 확인해 주세요");
+  };
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -180,6 +205,7 @@ export function EditStaffModal({ staff, onClose, onSaved }: { staff: Staff; onCl
     if (profileChanged) {
       const r = await api(`/api/seller/staff/${staff.id}`, { method: "PATCH", body: { name: name.trim(), phone: nextPhone } });
       if (!r.ok) {
+        if (isUnclear(r)) return checkUnclear();
         setBusy(false);
         if (r.error === "invalid_phone") return setPhoneError(STAFF_ERRORS.invalid_phone);
         return setError(staffFail(r, "저장하지 못했어요. 잠시 뒤 다시 시도해 주세요"));
@@ -188,12 +214,13 @@ export function EditStaffModal({ staff, onClose, onSaved }: { staff: Staff; onCl
     if (permsChanged) {
       const r = await api(`/api/seller/staff/${staff.id}/permissions`, { method: "POST", body: { permissions: perms } });
       if (!r.ok) {
+        if (isUnclear(r)) return checkUnclear();
         setBusy(false);
         return setError(profileChanged ? `이름·휴대폰은 저장했지만 권한은 바꾸지 못했어요. ${staffFail(r, "다시 시도해 주세요")}` : staffFail(r, "저장하지 못했어요. 잠시 뒤 다시 시도해 주세요"));
       }
     }
     setBusy(false);
-    onSaved(phoneChanged && staff.identityLinked ? `${name.trim()} 정보를 저장했어요 · 다음 로그인 때 본인확인을 다시 안내해요` : `${name.trim()} 정보를 저장했어요`);
+    onSaved(savedText());
   };
 
   return (
@@ -235,18 +262,18 @@ export function EditStaffModal({ staff, onClose, onSaved }: { staff: Staff; onCl
             )}
           </div>
         </div>
-        {phoneChanged && staff.identityLinked ? (
+        {phoneChanged && base.identityLinked ? (
           <div className="msg msg-cau" role="status" style={{ display: "block" }}>
             <b>번호를 바꾸면 직원이 다시 본인확인을 해야 해요.</b> 저장하면 연결만 풀려요. 다시 연결하기 전까지는 아이디 · 비밀번호를 스스로 찾을 수 없고, 다른 메뉴는 그대로 써요.
           </div>
         ) : (
           <span className="t-c1 c-alt">
-            {staff.phone === null ? "예전에 만든 직원은 비어 있어요 · 채우면 직원이 다음 로그인 때 휴대폰 본인확인으로 계정을 연결해요" : "직원이 아이디 · 비밀번호를 찾을 때 본인확인에 써요"}
+            {base.phone === null ? "예전에 만든 직원은 비어 있어요 · 채우면 직원이 다음 로그인 때 휴대폰 본인확인으로 계정을 연결해요" : "직원이 아이디 · 비밀번호를 찾을 때 본인확인에 써요"}
           </span>
         )}
         <div className="row between staff-link">
           <span className="t-l1">계정 연결</span>
-          <span className={`bdg ${staff.identityLinked && !phoneChanged ? "b-done" : "b-cancel"}`}>{staff.identityLinked && !phoneChanged ? "연결됨" : "본인확인 전"}</span>
+          <span className={`bdg ${base.identityLinked && !phoneChanged ? "b-done" : "b-cancel"}`}>{base.identityLinked && !phoneChanged ? "연결됨" : "본인확인 전"}</span>
         </div>
         <PermissionPicker value={perms} onChange={setPerms} disabled={busy} />
         <span className="t-c1 c-alt">저장하면 바로 적용돼요 · 직원이 로그인 중이면 다음 화면부터 바뀌어요 · 변경 기록은 감사 로그에 남아요</span>

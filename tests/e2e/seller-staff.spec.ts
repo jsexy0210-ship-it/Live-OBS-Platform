@@ -235,6 +235,62 @@ test("대표자: 직원 비밀번호를 재설정하면 새 비밀번호로만 �
   await staffPage.close();
 });
 
+test("저장 응답을 놓치면 직원 목록을 다시 읽어 실제 결과를 보여 준다(직원 추가·정보·권한 수정)", async ({ page }) => {
+  await login(page, "demo-owner@example.com");
+  await expect(page).toHaveURL(/\/seller\/staff$/);
+  const id = uniq();
+  const s = { name: `유실${id}`, phone: "01033334444", email: `lost-${id}@example.com`, password: `pw-${id}-init` };
+
+  // 직원 추가: 서버는 만들었는데 응답이 끊기고, 확인용 목록 읽기도 한 번 실패한다 → 실패라고 단정하지 않고 확인하지 못했다고 알린다
+  await addStaff(page, s);
+  await page.getByRole("checkbox", { name: "상품", exact: true }).check();
+  await page.route(
+    (u) => u.pathname === "/api/seller/staff",
+    async (route) => {
+      if (route.request().method() === "POST") {
+        await route.fetch();
+        return route.abort("connectionreset");
+      }
+      return route.fulfill({ status: 500, json: { error: "internal" } });
+    },
+    { times: 2 },
+  );
+  await page.getByRole("button", { name: "계정 만들기" }).click();
+  await expect(page.getByText("계정을 만들었는지 확인하지 못했어요. 목록을 확인한 뒤 다시 시도해 주세요")).toBeVisible();
+  // 다시 누르면 서버는 email_taken이지만, 목록에 방금 보낸 그대로의 계정이 있으므로 만든 것으로 본다
+  const retried = page.waitForResponse((r) => r.url().endsWith("/api/seller/staff") && r.request().method() === "POST");
+  await page.getByRole("button", { name: "계정 만들기" }).click();
+  expect((await retried).status()).toBe(409);
+  await expect(page.getByText(`${s.name} 계정을 만들었어요`, { exact: false })).toBeVisible();
+  await expect(page.getByLabel("이메일 (로그인 아이디)")).toHaveValue("");
+  await expect(row(page, s.email)).toContainText("상품");
+
+  // 권한 수정: 서버는 저장했는데 응답이 끊긴다 → 다시 읽어 보낸 값과 같으므로 저장했다고 알리고 목록에 반영
+  await page.getByRole("button", { name: `${s.name} 정보 · 권한 수정` }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("checkbox", { name: "주문·배송", exact: true }).check();
+  await page.route(
+    (u) => u.pathname.endsWith("/permissions"),
+    async (route) => {
+      await route.fetch();
+      return route.abort("connectionreset");
+    },
+    { times: 1 },
+  );
+  await dialog.getByRole("button", { name: "저장" }).click();
+  await expect(page.getByText(`${s.name} 정보를 저장했어요`)).toBeVisible();
+  await expect(row(page, s.email)).toContainText("주문·배송");
+
+  // 이름 수정: 서버 오류로 저장되지 않았다 → 다시 읽어 저장되지 않았다고 알리고 창에 지금 값을 보여 준다
+  await page.getByRole("button", { name: `${s.name} 정보 · 권한 수정` }).click();
+  await dialog.getByLabel("이름").fill(`${s.name}바꿈`);
+  await page.route((u) => /\/api\/seller\/staff\/[^/]+$/.test(u.pathname), (route) => route.fulfill({ status: 500, json: { error: "internal" } }), { times: 1 });
+  await dialog.getByRole("button", { name: "저장" }).click();
+  await expect(dialog.getByText("저장되지 않았어요. 지금 정보와 권한을 확인해 주세요")).toBeVisible();
+  await expect(dialog.getByLabel("이름")).toHaveValue(s.name);
+  await expect(dialog.getByRole("checkbox", { name: "주문·배송", exact: true })).toBeChecked();
+});
+
 test("권한이 하나도 없는 직원도 창으로 돌아오면 대표자가 켠 권한이 메뉴에 나온다(새로고침 없이)", async ({ page }) => {
   await login(page, "demo-owner@example.com");
   await expect(page).toHaveURL(/\/seller\/staff$/);
