@@ -139,6 +139,9 @@ model Seller {
   shopBanners              ShopBanner[]
   shopPopups               ShopPopup[]
   shopContentImages        ShopContentImage[]
+  coupons                  Coupon[]
+  buyerCoupons             BuyerCoupon[]
+  couponRedemptions        CouponRedemption[]
   logo                     SellerLogo?
 }
 
@@ -333,6 +336,7 @@ model BuyerMember {
   rewardLedger         RewardLedger[]
   rewardBalances       RewardBalance[]
   addresses            BuyerAddress[]
+  coupons              BuyerCoupon[]
 
   @@unique([sellerId, id])
   @@index([sellerId, gradeId])
@@ -670,6 +674,117 @@ model ShopPopup {
   @@index([sellerId, sortOrder])
 }
 
+// ───────────── 쿠폰 (SA-035 쿠폰 관리 · SH-028 내 쿠폰함, 2026-10-04 대표님 확정 11건 중 1) ─────────────
+// 대표자·적립금(MEMBER_POINTS) 권한 직원이 만들고 고친다(lib/server/shop-coupons). 할인 금액은 주문 생성 때 서버가 계산한다.
+// 규칙(MASTER 2026-10-04): 주문당 1장, 1인 1장, 적립금 병용은 쿠폰별 옵션, 전체 취소면 복구·부분 취소는 복구 없음.
+// 발급 수량·사용 여부는 조건부 UPDATE로 막아 동시 요청에도 한도를 넘지 않는다. 형식·범위 CHECK는 마이그레이션 SQL.
+
+// AMOUNT=금액 할인(원), RATE=비율 할인(%, 최대 할인 선택), FREE_SHIPPING=배송비 무료
+enum CouponBenefit {
+  AMOUNT
+  RATE
+  FREE_SHIPPING
+}
+
+// DOWNLOAD=쇼핑몰에서 내려받기, CODE=코드 입력, MANUAL=직접 지급(등급·회원 선택)
+enum CouponIssueMethod {
+  DOWNLOAD
+  CODE
+  MANUAL
+}
+
+// ISSUED=쓸 수 있음(기간은 expiresAt), USED=주문에 씀. 전체 취소면 ISSUED로 되돌린다.
+enum BuyerCouponStatus {
+  ISSUED
+  USED
+}
+
+model Coupon {
+  id                String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId          String            @db.Uuid
+  name              String
+  issueMethod       CouponIssueMethod
+  // 코드 입력 방식의 코드(대문자 영문·숫자 4~16자). 쇼핑몰 안에서 겹치지 않는다(부분 유니크 인덱스, 마이그레이션 SQL).
+  code              String?
+  benefit           CouponBenefit
+  // AMOUNT: 할인 금액(원), RATE: 할인율(1~90 %), FREE_SHIPPING: 없음
+  value             Int?
+  // RATE만: 최대 할인 금액(원, 비우면 제한 없음)
+  maxDiscount       Int?
+  // 최소 주문 금액(적용 상품 금액 기준, 배송비 제외)
+  minOrderAmount    Int               @default(0)
+  // 받을 수 있고 쓸 수 있는 기간. validDays가 있으면 받은 쿠폰은 받은 때부터 그 날 수까지(사용 종료를 넘지 않음).
+  startsAt          DateTime          @db.Timestamptz(3)
+  endsAt            DateTime          @db.Timestamptz(3)
+  validDays         Int?
+  // 발급 수량 한도(비우면 제한 없음)와 지금까지 발급한 수
+  issueLimit        Int?
+  issuedCount       Int               @default(0)
+  // 적용 상품: productIds가 비어 있으면 전체 상품
+  productIds        String[]          @default([]) @db.Uuid
+  // 이벤트 할인 중인 상품은 할인 대상에서 뺀다
+  excludeDiscounted Boolean           @default(true)
+  // 적립금과 함께 쓰기 허용(적립금 사용 기능이 생기면 주문 생성에서 판정)
+  allowWithReward   Boolean           @default(true)
+  // 발급 중지(false)여도 이미 받은 쿠폰은 기간 안에 쓸 수 있다
+  isActive          Boolean           @default(true)
+  createdAt         DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime          @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller      Seller             @relation(fields: [sellerId], references: [id])
+  issued      BuyerCoupon[]
+  redemptions CouponRedemption[]
+
+  @@unique([sellerId, id])
+  @@index([sellerId, createdAt])
+}
+
+// 구매자가 받은 쿠폰(1인 1장). 탈퇴하면 쓰지 않은 쿠폰은 지우고, 쓴 쿠폰은 주문 할인 기록이라 주문과 함께 남긴다.
+model BuyerCoupon {
+  id            String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String            @db.Uuid
+  couponId      String            @db.Uuid
+  buyerMemberId String            @db.Uuid
+  status        BuyerCouponStatus @default(ISSUED)
+  issuedAt      DateTime          @db.Timestamptz(3)
+  expiresAt     DateTime          @db.Timestamptz(3)
+  usedAt        DateTime?         @db.Timestamptz(3)
+
+  seller      Seller             @relation(fields: [sellerId], references: [id])
+  coupon      Coupon             @relation(fields: [sellerId, couponId], references: [sellerId, id])
+  buyerMember BuyerMember        @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id])
+  redemptions CouponRedemption[]
+
+  @@unique([couponId, buyerMemberId])
+  @@unique([sellerId, id])
+  @@index([sellerId, buyerMemberId, status])
+}
+
+// 주문에 쓴 쿠폰과 할인 금액(주문당 1장). 전체 취소로 쿠폰을 되돌리면 restoredAt을 남긴다(기록은 지우지 않음).
+model CouponRedemption {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId       String        @db.Uuid
+  orderId        String        @unique @db.Uuid
+  couponId       String        @db.Uuid
+  buyerCouponId  String        @db.Uuid
+  benefit        CouponBenefit
+  discountAmount Int
+  // 상품 할인 쿠폰의 품목별 배분액 { 옵션 id: 원 }(적용 품목 금액 비율, 원 단위 끝수는 마지막 품목). 부분 환불·적립 기준에 쓴다.
+  // 배송비 무료 쿠폰은 빈 값({}).
+  itemDiscounts  Json          @default("{}")
+  restoredAt     DateTime?     @db.Timestamptz(3)
+  createdAt      DateTime      @default(now()) @db.Timestamptz(3)
+
+  seller      Seller      @relation(fields: [sellerId], references: [id])
+  order       Order       @relation(fields: [sellerId, orderId], references: [sellerId, id])
+  coupon      Coupon      @relation(fields: [sellerId, couponId], references: [sellerId, id])
+  buyerCoupon BuyerCoupon @relation(fields: [sellerId, buyerCouponId], references: [sellerId, id])
+
+  @@unique([sellerId, orderId])
+  @@index([sellerId, couponId])
+  @@index([sellerId, buyerCouponId])
+}
+
 // 쇼핑몰 로고(SA-060 쇼핑몰 정보, 2026-10-04 대표님 지시). 쇼핑몰당 1개. PNG만, 2MB 이하, 정사각형 512~1440px(마이그레이션 CHECK).
 // 구매자 쇼핑몰 머리(ShopFrame)에 보이고, 없으면 쇼핑몰 이름 첫 글자를 보인다. 저장은 대표님 결정 전까지 A안(DB bytea).
 model SellerLogo {
@@ -760,6 +875,7 @@ model Order {
   queueItems      QueueItem[]
   rewardLedger    RewardLedger[]
   notifications   OrderNotification[]
+  couponRedemption CouponRedemption?
 
   @@unique([sellerId, id])
   @@unique([sellerId, orderNo])

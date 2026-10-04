@@ -4,7 +4,7 @@ import { EmptyStats, StatsFrame, StatsState, usePeriod, useStats, type Unit } fr
 import { BarChart, Kpis, bucketLabel, count, downloadCsv, won } from "../../../../../../components/seller/stats/parts";
 
 // SA-056 통계 · 매출(GET /api/seller/stats/sales). 주문 시각(KST) 기준, 결제된 주문만.
-type Summary = { gross: number; discount: number; rewardUsed: number; shippingFee: number; paid: number; refund: number; net: number; paidOrders: number };
+type Summary = { gross: number; discount: number; couponDiscount: number; rewardUsed: number; shippingFee: number; paid: number; refund: number; net: number; paidOrders: number };
 type Method = { method: string; paidOrders: number; paid: number; refund: number; net: number };
 type Point = { bucket: string; paid: number; refund: number; net: number };
 type Data = { range: { from: string; to: string; unit: Unit }; current: Summary; previous: Summary; byMethod: Method[]; series: Point[] };
@@ -25,6 +25,7 @@ export default function SalesStatsPage() {
       [
         ["합계", "판매액", null, c.gross, null, null],
         ["합계", "할인", null, -c.discount, null, null],
+        ["합계", "쿠폰 할인", null, -c.couponDiscount, null, null],
         ["합계", "적립금 사용", null, -c.rewardUsed, null, null],
         ["합계", "배송비", null, c.shippingFee, null, null],
         ["합계", "전체", c.paidOrders, c.paid, c.refund, c.net],
@@ -62,6 +63,10 @@ export default function SalesStatsPage() {
                 <tr>
                   <td>할인</td>
                   <td className="r num">−{won(data.current.discount)}</td>
+                </tr>
+                <tr>
+                  <td>쿠폰 할인</td>
+                  <td className="r num">−{won(data.current.couponDiscount)}</td>
                 </tr>
                 <tr>
                   <td>적립금 사용</td>

@@ -27,6 +27,8 @@ const summarySelect = {
   purchaseConfirmedAt: true,
   paymentDueAt: true,
   stockShortageAt: true,
+  // 쓴 쿠폰과 할인 금액(전체 취소로 되돌렸으면 restoredAt)
+  couponRedemption: { select: { discountAmount: true, restoredAt: true, coupon: { select: { name: true } } } },
   items: { select: { productNameSnapshot: true, optionNameSnapshot: true, unitPrice: true, quantity: true }, orderBy: { id: "asc" } },
   shipment: { select: { courier: true, trackingNumber: true, status: true, shippedAt: true, deliveredAt: true } },
 } as const;

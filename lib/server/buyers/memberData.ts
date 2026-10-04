@@ -8,6 +8,7 @@ export type MemberDataPolicy = "delete" | "anonymize" | "retain_legal";
 export const MEMBER_DATA_POLICY: Record<string, { policy: MemberDataPolicy; note: string }> = {
   BuyerMember: { policy: "anonymize", note: "이름·휴대폰·닉네임·아이디·CI 해시·생년월일·비밀번호·마케팅 동의(시각·문서 버전·철회 시각)·가입 동의 기록(signupConsent)·재가입 제한 보관 동의 스냅숏 비식별, WITHDRAWN·deletedAt" },
   BuyerAddress: { policy: "delete", note: "저장 배송지" },
+  BuyerCoupon: { policy: "delete", note: "받은 쿠폰. 쓰지 않은 쿠폰은 지우고, 주문에 쓴(쓴 뒤 전체 취소로 되돌린) 쿠폰은 주문 할인 기록(CouponRedemption)과 이어져 주문과 함께 남긴다(shop-coupons)" },
   BuyerSession: { policy: "delete", note: "로그인 세션" },
   BuyerPurchaseRestriction: { policy: "delete", note: "구매 제한(개인정보 없음, 탈퇴하면 쓸 일 없음)" },
   IdentityVerification: { policy: "anonymize", note: "이 쇼핑몰에서 회원과 이어진(subjectId) 또는 같은 CI 해시의 본인확인 기록. 식별 항목·requestId만 비우고 쇼핑몰·상태·요청 시각·요청 IP는 한도 계산에 남김(요청 IP는 3개월 뒤 비움)" },
@@ -47,6 +48,10 @@ export const MEMBER_AUDIT_RETENTION: Record<string, MemberAuditRetention> = {
   "buyer_address.delete": "non_transaction",
   "buyer.withdraw": "non_transaction",
   "buyer.withdraw_failed": "non_transaction",
+  // 쿠폰 받기(내려받기·코드 입력)·틀린 코드 입력. 쿠폰 사용·되돌림은 주문 기록(order.coupon.*)이라 거래 관련.
+  "buyer_coupon.download": "non_transaction",
+  "buyer_coupon.code": "non_transaction",
+  "buyer_coupon.code_failed": "non_transaction",
   // 마케팅 수신 동의 철회·다시 동의(회원 정보 수정과 같은 분류)
   "buyer.marketing_consent.withdraw": "non_transaction",
   "buyer.marketing_consent.agree": "non_transaction",
