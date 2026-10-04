@@ -19,7 +19,7 @@ const MENU: Group[] = [
     key: "broadcast",
     label: "방송",
     items: [
-      { label: "방송 대시보드", perm: "BROADCAST_RUN" },
+      { label: "방송 대시보드", href: "/seller/broadcast", perm: "BROADCAST_RUN" },
       { label: "오버레이 편집기", perm: "OVERLAY_EDIT" },
       { label: "HIT 카드 이력", perm: "BROADCAST_RUN" },
       { label: "방송 이력", perm: "BROADCAST_RUN" },
@@ -71,7 +71,7 @@ const MENU: Group[] = [
       { label: "결제(PG) 연결", perm: "OWNER" },
       { label: "주문자 알림", perm: "SHOP_SETTINGS" },
       { label: "직원 계정", href: "/seller/staff", perm: "OWNER" },
-      { label: "구독 · 결제", perm: "OWNER" },
+      { label: "구독 · 결제", href: "/seller/subscription", perm: "OWNER" },
     ],
   },
 ];
