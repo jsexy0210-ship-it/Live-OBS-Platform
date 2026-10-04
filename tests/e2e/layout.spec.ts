@@ -77,6 +77,27 @@ test("왼쪽 메뉴 제목 줄과 본문 첫 줄(경로 줄)은 위 시작선과
   }
 });
 
+test("파트너스 관리자 화면 바탕(body·본문 영역)은 흰색이다", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await login(page, "demo-owner@example.com", "/seller/products");
+  for (const path of ["/seller/products", "/seller/orders", "/seller/stats", "/seller/settings/shop"]) {
+    await page.goto(path);
+    await expect(page.locator("main.main").first()).toBeVisible();
+    // 본문 영역에서 위로 올라가며 처음 만나는 칠한 배경(투명 제외)
+    const bg = await page.evaluate(() => {
+      const paint = (el: Element | null) => {
+        for (let n = el; n; n = n.parentElement) {
+          const c = getComputedStyle(n).backgroundColor;
+          if (c !== "rgba(0, 0, 0, 0)" && c !== "transparent") return c;
+        }
+        return "none";
+      };
+      return { body: getComputedStyle(document.body).backgroundColor, main: paint(document.querySelector("main.main")) };
+    });
+    expect({ path, ...bg }).toEqual({ path, body: "rgb(255, 255, 255)", main: "rgb(255, 255, 255)" });
+  }
+});
+
 test("권한 없는 직원에게는 메뉴와, 하위 메뉴가 모두 숨겨진 대분류가 보이지 않는다", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   // 상품 권한만 있는 직원(리뷰·쿠폰은 권한 없이 조회라 회원·프로모션 대분류는 남는다)

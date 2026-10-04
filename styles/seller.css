@@ -1,9 +1,12 @@
 /* 판매자 화면 실제 구현용 보조 스타일. 색·글꼴·부품 모양은 시안(tokens.css · lop.css)을 그대로 쓰고,
    여기에는 실제 브라우저 폭(390~1440)에 맞추는 배치만 둔다. */
+:root {
+  --cs-page: #ffffff;
+}
 html,
 body {
   margin: 0;
-  background: #f1f2f4;
+  background: var(--cs-page);
 }
 .seller-app {
   min-height: 100vh;
@@ -638,7 +641,8 @@ body {
    여기서 다시 정의해 화면 파일을 고치지 않아도 같은 모양이 된다. 마스터 관리자도 .seller-app 이라 함께 바뀐다.
    ─────────────────────────────────────────────────────────────── */
 .seller-app {
-  --cs-page: #f1f2f4;
+  /* 페이지 바탕은 흰색(대표님 지시 2026-10-04): 구역은 1px 선과 여백으로 나눈다. 바탕을 바꾸려면 이 토큰 하나만 고친다 */
+  --cs-page: #ffffff;
   --cs-surface: #ffffff;
   --cs-line: #dcdfe4;
   --cs-line-strong: #b8bdc6;
