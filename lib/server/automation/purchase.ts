@@ -359,6 +359,10 @@ export async function verifyAndSettle(
 ): Promise<AutomationPayment["status"]> {
   const found = await provider.getPayment(paymentId);
   return db.$transaction(async (tx) => {
+    // 잠금 순서(작업 행 → 결제 행)대로 잡은 뒤의 실제 시각으로 마감을 판단한다(잠금 대기 중 흐른 시간 포함)
+    const head = await tx.automationPayment.findUniqueOrThrow({ where: { id: paymentId }, select: { job: { select: { id: true } } } });
+    if (head.job) await lockJob(tx, head.job.id);
+    await tx.$queryRaw`SELECT id FROM "AutomationPayment" WHERE id = ${paymentId}::uuid FOR UPDATE`;
     const now = await dbNow(tx);
     const payment = await tx.automationPayment.findUniqueOrThrow({ where: { id: paymentId }, include: { job: true } });
     if (payment.status !== "PENDING") return payment.status;
@@ -452,7 +456,7 @@ export async function reconcileAutomationPayments(db: PrismaClient, provider: Bi
   // 확인 시각을 남기고 그 행만 돌려준다(다른 작업자가 잠근 행은 건너뜀). 여러 작업자가 동시에 돌아도 같은 청구는 한 작업자만 PG에 묻고,
   // 오류가 난 건도 다음 회차에는 뒤로 간다.
   const stale = await db.$queryRaw<{ id: string; sellerId: string }[]>`
-    UPDATE "AutomationPayment" SET "lastCheckedAt" = now()
+    UPDATE "AutomationPayment" SET "lastCheckedAt" = clock_timestamp()
     WHERE id IN (
       SELECT id FROM "AutomationPayment"
       WHERE status = 'PENDING' AND "createdAt" <= ${cutoff} AND ("lastCheckedAt" IS NULL OR "lastCheckedAt" <= ${cutoff})

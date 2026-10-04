@@ -28,8 +28,10 @@ export type Claim = { readonly jobId: string; readonly token: number };
 const runningMs = (cur: { runStartedAt: Date | null }, now: Date) => (cur.runStartedAt ? Math.max(0, now.getTime() - cur.runStartedAt.getTime()) : 0);
 export type Claimed = { job: AutomationJob; claim: Claim };
 
+// 지금 시각(DB 시계). now()는 트랜잭션 시작 시각이라 잠금을 기다리는 사이 흐른 시간이 빠진다(그 사이 lease·마감이 지나도 옛 시각으로 통과).
+// 그래서 실제 시각(clock_timestamp)을 쓰고, 시간 판단·연장은 잠금을 잡은 뒤에 이 값으로 한다. SQL 안의 시간 조건도 clock_timestamp()를 쓴다.
 export async function dbNow(db: Tx | PrismaClient): Promise<Date> {
-  const rows = await db.$queryRaw<{ now: Date }[]>`SELECT now() AS now`;
+  const rows = await db.$queryRaw<{ now: Date }[]>`SELECT clock_timestamp() AS now`;
   return rows[0].now;
 }
 
@@ -75,7 +77,7 @@ export async function claimNext(
     if (running >= maxRunning) return null;
     const rows = await tx.$queryRaw<{ id: string }[]>`
       SELECT j.id FROM "AutomationJob" j
-      WHERE j.status = 'QUEUED' AND j."runAfter" <= now()
+      WHERE j.status = 'QUEUED' AND j."runAfter" <= clock_timestamp()
         AND NOT EXISTS (
           SELECT 1 FROM "AutomationJob" r
           WHERE r."obsTargetKey" = j."obsTargetKey" AND r.status IN ('RUNNING', 'VERIFYING'))
@@ -336,7 +338,7 @@ export async function reapExpired(db: PrismaClient, random: () => number = Math.
     let failed = 0;
     const expired = await tx.$queryRaw<{ id: string }[]>`
       SELECT id FROM "AutomationJob"
-      WHERE status IN ('RUNNING', 'VERIFYING') AND "leaseExpiresAt" <= now()
+      WHERE status IN ('RUNNING', 'VERIFYING') AND "leaseExpiresAt" <= clock_timestamp()
       LIMIT 100 FOR UPDATE SKIP LOCKED`;
     for (const { id } of expired) {
       const cur = await tx.automationJob.findUniqueOrThrow({ where: { id } });
@@ -360,7 +362,7 @@ export async function reapExpired(db: PrismaClient, random: () => number = Math.
     }
     const waiting = await tx.$queryRaw<{ id: string }[]>`
       SELECT id FROM "AutomationJob"
-      WHERE status = 'NEEDS_CUSTOMER' AND "actionDeadlineAt" <= now()
+      WHERE status = 'NEEDS_CUSTOMER' AND "actionDeadlineAt" <= clock_timestamp()
       LIMIT 100 FOR UPDATE SKIP LOCKED`;
     for (const { id } of waiting) {
       const job = await tx.automationJob.update({

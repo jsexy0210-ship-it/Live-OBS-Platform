@@ -17,7 +17,7 @@ import { markConnectionRevoked } from "../../lib/server/automation/connection";
 import { cancelJob, getJob, requestRefund, resumeJob } from "../../lib/server/automation/jobs";
 import { purchaseAutomation, reconcileAutomationPayments, reconnectAutomation } from "../../lib/server/automation/purchase";
 import { EngineAborted, actionKeyOf, runSteps } from "../../lib/server/automation/engine";
-import { FencingError, RunTimeExceeded, advanceStep, claimNext, finishJob, markBrowserStateHeld, parkForCustomer, reapExpired, toVerifying, touch } from "../../lib/server/automation/queue";
+import { FencingError, RunTimeExceeded, advanceStep, claimNext, extendLease, finishJob, lockJob, markBrowserStateHeld, parkForCustomer, reapExpired, toVerifying, touch } from "../../lib/server/automation/queue";
 import { executeJob, purgeEndedBrowserState, runOnce, runWorkerLoop, startHeartbeat } from "../../lib/server/automation/worker";
 import { FakeBillingProvider } from "../../lib/server/billing/provider";
 import { billingProvider } from "../../lib/server/billing/registry";
@@ -2933,6 +2933,30 @@ describe("Codex 29차 반영(d3e5fa2)", () => {
       { params: Promise.resolve({ jobId: bad }) },
     );
     expect(res.status).toBe(404);
+  });
+});
+
+describe("Codex 30차 반영(a96e3ef)", () => {
+  it("작업 행 잠금을 기다리는 사이 lease가 끝나면, 잠금 뒤 실제 시각으로 판단해 쓰기를 거절하고 lease를 늘리지 않는다", async () => {
+    const a = await bought();
+    const got = await claimNext(db, "w1", { leaseMs: 300 });
+    if (!got) throw new Error("not claimed");
+    let locked!: () => void;
+    const holding = new Promise<void>((r) => (locked = r));
+    // 다른 트랜잭션이 작업 행을 잡고 lease가 끝날 때까지 놓지 않는다
+    const holder = db.$transaction(
+      async (tx) => {
+        await lockJob(tx, a.jobId);
+        locked();
+        await new Promise((r) => setTimeout(r, 900));
+      },
+      { timeout: 10_000 },
+    );
+    await holding;
+    const before = (await job(a.jobId)).leaseExpiresAt!;
+    await expect(extendLease(db, got.claim, 60_000)).rejects.toBeInstanceOf(FencingError);
+    await holder;
+    expect((await job(a.jobId)).leaseExpiresAt).toEqual(before);
   });
 });
 
