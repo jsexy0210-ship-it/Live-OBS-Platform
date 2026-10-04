@@ -139,7 +139,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             <div className="lnb-util">{utilities}</div>
           </aside>
           <button className="cs-dim" type="button" aria-label="메뉴 닫기" onClick={() => setNavOpen(false)} />
-          <div className="col cs-body">{children}</div>
+          <div className="col cs-body">{route && !itemAllowed(me.role, route.item) ? <NoAccess /> : children}</div>
         </div>
       </div>
     </Ctx.Provider>
@@ -169,18 +169,28 @@ export function AdminTopbar({ crumb, children }: { crumb: string; children?: Rea
   );
 }
 
-// 화면이 아직 없는 메뉴: 한 줄 안내. 그 역할이 못 보는 메뉴 주소로 들어오면 권한 안내를 보인다
+// 화면이 아직 없는 메뉴: 한 줄 안내
 export function ComingSoon() {
-  const { me } = useAdmin();
-  const pathname = usePathname();
-  const r = routeNav(pathname);
-  const allowed = r ? itemAllowed(me.role, r.item) : false;
   return (
     <>
       <AdminTopbar crumb="준비 중" />
       <main className="main">
         <div className="card st" style={{ boxShadow: "none" }} data-testid="admin-coming-soon">
-          <span className="t">{allowed ? "준비 중입니다" : "이 화면을 볼 권한이 없습니다"}</span>
+          <span className="t">준비 중입니다</span>
+        </div>
+      </main>
+    </>
+  );
+}
+
+// 그 역할이 못 보는 메뉴 주소로 직접 들어온 경우(화면은 그리지 않는다)
+function NoAccess() {
+  return (
+    <>
+      <AdminTopbar crumb="권한 없음" />
+      <main className="main">
+        <div className="card st" style={{ boxShadow: "none" }} data-testid="admin-no-access">
+          <span className="t">이 화면을 볼 권한이 없습니다</span>
         </div>
       </main>
     </>
