@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useLatestResponse, type ReadTicket } from "./latestResponse";
-import { api, PLAN_FEATURE_EVENT, type Me, type PlanFeatureEventDetail } from "./api";
+import { api, currentNavGeneration, nextNavGeneration, PLAN_FEATURE_EVENT, type Me, type PlanFeatureEventDetail } from "./api";
 
 // 판매자 관리자 공통 틀: 왼쪽 메뉴(좁은 화면에서는 서랍) + 상단 바 + 이용 상태 배너.
 // 아직 만들지 않은 화면은 메뉴에서 흐리게 두고 누를 수 없게 한다.
@@ -181,15 +181,21 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => setNavOpen(false), [pathname]);
 
+  // 화면 방문 번호: 경로가 바뀌면 화면(자식)을 그리기 전에 올린다. 자식의 첫 요청도 새 번호를 갖도록 렌더 중에 한 번만 올린다
+  const visitPath = useRef<string | null>(null);
+  if (visitPath.current !== pathname) {
+    visitPath.current = pathname;
+    nextNavGeneration();
+  }
   // 화면이 부른 API가 403 plan_feature_required면(그사이 요금제가 바뀐 경우 등) 그 화면을 안내 화면으로 바꾸고 메뉴를 다시 읽는다.
-  // 요청을 보낸 화면과 지금 화면이 다르면(옮긴 뒤 늦게 온 응답) 무시한다. 차단은 화면을 떠나면 지우고,
+  // 요청을 보낸 방문과 지금 방문이 다르면(옮긴 뒤 늦게 온 응답, 같은 경로로 돌아온 경우 포함) 무시한다. 차단은 화면을 떠나면 지우고,
   // 차단 뒤 다시 읽은 /me(gen 이후 세대)가 이 화면을 허용하면 지운다(그사이 요금제를 올린 경우)
-  const [planBlocked, setPlanBlocked] = useState<{ path: string; gen: number } | null>(null);
+  const [planBlocked, setPlanBlocked] = useState<{ path: string; visit: number; gen: number } | null>(null);
   useEffect(() => {
     const onBlocked = (e: Event) => {
-      const page = (e as CustomEvent<PlanFeatureEventDetail>).detail?.page;
-      if (page !== window.location.pathname) return;
-      setPlanBlocked({ path: page, gen: refresh() });
+      const visit = (e as CustomEvent<PlanFeatureEventDetail>).detail?.visit;
+      if (visit !== currentNavGeneration()) return;
+      setPlanBlocked({ path: window.location.pathname, visit, gen: refresh() });
     };
     window.addEventListener(PLAN_FEATURE_EVENT, onBlocked);
     return () => window.removeEventListener(PLAN_FEATURE_EVENT, onBlocked);
@@ -232,7 +238,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   const can = (perm: string) => canFor(me, perm);
   const features = me.features ?? [];
   const nav = visibleNav(me);
-  const blocked = planBlocked?.path === pathname || !planAllows(features, routePlan(pathname));
+  const blocked = (planBlocked?.path === pathname && planBlocked.visit === currentNavGeneration()) || !planAllows(features, routePlan(pathname));
   // 안내 화면에서 갈 수 있는 첫 화면(만든 메뉴 중 지금 열리는 것)
   const nextNav = nav.find((n): n is NavItem => "label" in n && !!n.href && !pathname.startsWith(n.href));
 

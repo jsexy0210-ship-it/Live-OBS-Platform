@@ -171,3 +171,39 @@ test("화면을 옮긴 뒤 늦게 온 403 plan_feature_required는 지금 화면
   await expect(page.getByTestId("plan-feature-required")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "주문", exact: true })).toBeVisible();
 });
+
+test("같은 화면으로 돌아온 뒤 첫 방문에서 보낸 요청의 늦은 403이 와도 지금 방문을 막지 않는다", async ({ page }) => {
+  await login(page, OVERLAY, "/seller/orders");
+  // 메뉴·화면 판정은 쇼핑몰 기능이 있는 것처럼(/me), 상품 API는 첫 요청만 늦게 실제 서버(403), 다시 방문한 요청은 바로 빈 목록
+  await page.route("**/api/seller/me", async (route) => {
+    const res = await route.fetch();
+    await route.fulfill({ response: res, json: { ...(await res.json()), features: STORE_ME } });
+  });
+  let first = true;
+  await page.route("**/api/seller/products*", async (route) => {
+    if (!first) return route.fulfill({ json: { products: [], nextCursor: null } });
+    first = false;
+    await new Promise((r) => setTimeout(r, 2500));
+    await route.continue();
+  });
+  const late = page.waitForResponse((r) => r.url().includes("/api/seller/products") && r.status() === 403);
+  await page.goto("/seller/products");
+  // 상품 → 주문 → 다시 상품(첫 방문의 상품 요청은 아직 응답 전)
+  await menu(page).getByRole("link", { name: "주문", exact: true }).click();
+  await expect(page).toHaveURL(/\/seller\/orders$/);
+  await menu(page).getByRole("link", { name: "상품", exact: true }).click();
+  await expect(page).toHaveURL(/\/seller\/products$/);
+  await expect(page.getByRole("heading", { name: /^상품/ })).toBeVisible();
+  // 안내 화면이 잠깐이라도 나타나는지 기록한다(다시 읽은 /me가 허용해 곧 지워지는 경우도 잡게)
+  await page.evaluate(() => {
+    const w = window as unknown as { __planShown: boolean };
+    w.__planShown = false;
+    new MutationObserver(() => {
+      if (document.querySelector('[data-testid="plan-feature-required"]')) w.__planShown = true;
+    }).observe(document.body, { childList: true, subtree: true });
+  });
+  await late;
+  await page.waitForTimeout(500);
+  expect(await page.evaluate(() => (window as unknown as { __planShown: boolean }).__planShown)).toBe(false);
+  await expect(page.getByTestId("plan-feature-required")).toHaveCount(0);
+});
