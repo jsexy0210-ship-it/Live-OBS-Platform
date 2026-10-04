@@ -68,7 +68,7 @@ export async function applyVideoState(db: PrismaClient, link: YoutubeLiveLink, v
       }
     }
   }
-  return save(db, link, { ...base, status: "ENDED", liveChatId: null });
+  return save(db, link, { ...base, status: "ENDED", liveChatId: null, chatPageToken: null, chatNextPollAt: null });
 }
 
 export type SyncReport = { checked: number; discovered: number; quotaRatio: number; stopped?: string };

@@ -136,6 +136,8 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/youtube/channel": "OVERLAY",
   "seller/youtube/live": "OVERLAY",
   "seller/youtube/live/find": "OVERLAY",
+  "seller/youtube/live/chat": "OVERLAY",
+  "seller/youtube/live/chat-matches": "OVERLAY",
   "seller/hit-cards": "OVERLAY",
   "seller/hit-cards/[hitCardId]": "OVERLAY",
   "seller/stats/broadcasts": "OVERLAY",
