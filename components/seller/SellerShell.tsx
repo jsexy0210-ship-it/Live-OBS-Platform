@@ -103,8 +103,10 @@ function routeCrumb(pathname: string): string {
   if (!r) return "파트너스";
   return r.group.label !== r.item.label ? `${r.group.label} › ${r.item.label}` : r.item.label;
 }
+// FOLLOWUP은 메뉴를 숨길 때만 쓴다. 주소로 들어온 화면은 서버(ORDER_FOLLOWUP 경로는 기능 권한이 하나라도 있으면 열림)가 막는지에 따른다
 function routePlan(pathname: string): PlanNeed | undefined {
-  return ROUTE_PLAN.find(([p]) => pathname.startsWith(p))?.[1] ?? routeNav(pathname)?.item.plan;
+  const need = ROUTE_PLAN.find(([p]) => pathname.startsWith(p))?.[1] ?? routeNav(pathname)?.item.plan;
+  return need === "FOLLOWUP" ? "ANY" : need;
 }
 
 // 요금제 기능 권한만 보는 판단(통계 탭 등). FOLLOWUP은 후속 처리 여부(orderFollowup)가 필요해 menuAllows가 본다
