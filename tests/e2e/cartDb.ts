@@ -45,3 +45,19 @@ export async function deleteBuyerOrdersSince(slug: string, loginId: string, sinc
     await db.$disconnect();
   }
 }
+
+// 찜 e2e 준비·정리: 데모 구매자의 찜을 비우고 상품 이름으로 고른 상품을 넣는다(품절 상품도 DB에 바로 넣는다).
+export async function resetWishlistInDb(slug: string, loginId: string, productNames: string[]) {
+  const db = open();
+  try {
+    const seller = await db.seller.findUniqueOrThrow({ where: { slug } });
+    const buyer = await db.buyerMember.findFirstOrThrow({ where: { sellerId: seller.id, loginId, deletedAt: null } });
+    await db.wishItem.deleteMany({ where: { sellerId: seller.id, buyerMemberId: buyer.id } });
+    for (const name of productNames) {
+      const product = await db.product.findFirstOrThrow({ where: { sellerId: seller.id, name, deletedAt: null } });
+      await db.wishItem.create({ data: { sellerId: seller.id, buyerMemberId: buyer.id, productId: product.id } });
+    }
+  } finally {
+    await db.$disconnect();
+  }
+}

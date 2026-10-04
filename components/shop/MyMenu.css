@@ -1,0 +1,40 @@
+/* 내 정보 왼쪽 메뉴(MyMenu.tsx). 휴대폰에서는 본문 위에 가로 줄로 쌓는다 */
+.my-wrap {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
+}
+.my-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-top: 1px solid var(--wds-label-normal);
+}
+.my-menu-h {
+  margin: 0;
+  padding: 12px 0;
+  font-weight: 700;
+  border-bottom: 1px solid var(--wds-line-solid-neutral);
+}
+.my-menu-g {
+  margin: 12px 0 4px;
+  font-size: 12px;
+  color: var(--wds-label-alternative);
+}
+.shop-app .my-menu a {
+  display: block;
+  padding: 8px 0;
+  color: var(--wds-label-normal);
+  text-decoration: none;
+}
+.shop-app .my-menu a[aria-current="page"] {
+  font-weight: 700;
+  color: var(--brand);
+}
+@media (max-width: 767px) {
+  .my-wrap {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+}
