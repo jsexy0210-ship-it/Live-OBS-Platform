@@ -4,6 +4,7 @@ import { GET as ordersRoute } from "../../app/api/seller/stats/orders/route";
 import { GET as salesRoute } from "../../app/api/seller/stats/sales/route";
 import { loginSeller } from "../../lib/server/auth/login";
 import { orderStats } from "../../lib/server/stats/orders";
+import { salesStats } from "../../lib/server/stats/sales";
 import { parseStatsRange } from "../../lib/server/stats/range";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { PASSWORD, createBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
@@ -238,5 +239,68 @@ describe("매출 통계 GET /api/seller/stats/sales", () => {
     ]);
     expect(body.series.find((p: { bucket: string }) => p.bucket === "2026-10-03")).toEqual({ bucket: "2026-10-03", paid: 29000, refund: 4000, net: 25000 });
     expect(body.series).toHaveLength(7);
+  });
+});
+
+describe("한 응답의 집계는 같은 시점의 데이터로 맞는다", () => {
+  // 첫 집계 쿼리가 끝난 뒤, 나머지 집계 쿼리가 돌기 전에 다른 연결로 결제 주문을 넣는다(동시 결제 흉내).
+  // 한 스냅숏으로 읽으면 같은 응답 안의 합계·시계열·결제 수단별이 서로 맞아야 한다.
+  function racing(sellerId: string, buyerId: string) {
+    let calls = 0;
+    let firstDone!: () => void;
+    const first = new Promise<void>((r) => (firstDone = r));
+    const insert = () =>
+      db.order.create({
+        data: { sellerId, orderNo: 9999, buyerMemberId: buyerId, broadcastNicknameSnapshot: "닉", status: "PAID", totalAmount: 77000, createdAt: new Date("2026-10-03T03:00:00Z"), paidAt: new Date("2026-10-03T03:00:00Z"), paymentMethod: "CARD" },
+      });
+    // 첫 쿼리가 끝난 뒤에 한 번 넣는다
+    const inserted = first.then(insert);
+    const wrapQuery = <T extends object>(target: T): T =>
+      new Proxy(target, {
+        get(t, key, recv) {
+          const v = Reflect.get(t, key, recv);
+          if (key !== "$queryRaw") return typeof v === "function" ? v.bind(t) : v;
+          return async (...args: unknown[]) => {
+            const run = () => (v as (...a: unknown[]) => Promise<unknown>).apply(t, args);
+            if (++calls === 1) {
+              try {
+                return await run();
+              } finally {
+                firstDone();
+              }
+            }
+            await inserted;
+            return run();
+          };
+        },
+      });
+    return new Proxy(db, {
+      get(t, key, recv) {
+        if (key === "$queryRaw") return Reflect.get(wrapQuery(t), key, recv);
+        if (key === "$transaction") {
+          return (fn: (tx: unknown) => Promise<unknown>, opts?: unknown) =>
+            t.$transaction((tx) => fn(wrapQuery(tx as object)), opts as Parameters<typeof t.$transaction>[1]);
+        }
+        const v = Reflect.get(t, key, recv);
+        return typeof v === "function" ? v.bind(t) : v;
+      },
+    }) as typeof db;
+  }
+
+  it("주문 통계: 집계 사이에 결제가 들어와도 합계와 시계열이 맞는다", async () => {
+    const s = await shop();
+    const o = await s.order({ createdAt: "2026-10-02T03:00:00Z", total: 10000 });
+    const r = await orderStats(racing(s.seller.id, o.buyerMemberId), s.ctx, parseStatsRange({ from: "2026-10-01", to: "2026-10-07" })!);
+    expect(r.series.reduce((a, p) => a + p.revenue, 0)).toBe(r.current.revenue);
+    expect(r.series.reduce((a, p) => a + p.orders, 0)).toBe(r.current.orders);
+  });
+
+  it("매출 통계: 집계 사이에 결제가 들어와도 결제액·결제 수단별·시계열·구성이 맞는다", async () => {
+    const s = await shop();
+    const o = await s.order({ createdAt: "2026-10-02T03:00:00Z", total: 10000, items: [[10000, 10000, 1]] });
+    const r = await salesStats(racing(s.seller.id, o.buyerMemberId), s.ctx, parseStatsRange({ from: "2026-10-01", to: "2026-10-07" })!);
+    expect(r.byMethod.reduce((a, m) => a + m.paid, 0)).toBe(r.current.paid);
+    expect(r.series.reduce((a, p) => a + p.paid, 0)).toBe(r.current.paid);
+    expect(r.current.gross - r.current.discount + r.current.shippingFee - r.current.rewardUsed).toBe(r.current.paid);
   });
 });

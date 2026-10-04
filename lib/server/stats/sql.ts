@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import type { StatsUnit } from "./range";
 
 // 통계 공통 SQL 조각. 모든 집계는 DB에서 하고(행을 앱으로 읽어 세지 않음), where에는 항상 판매자 id가 들어간다.
@@ -20,3 +20,17 @@ export const bucketOf = (unit: StatsUnit, col: Prisma.Sql) => Prisma.sql`date_tr
 
 // bigint·numeric 결과를 숫자로(금액 합계는 int 범위를 넘을 수 있어 bigint로 더한다)
 export const num = (v: unknown) => (v === null || v === undefined ? 0 : Number(v));
+
+export type StatsDb = Prisma.TransactionClient;
+
+// 한 응답의 집계 쿼리를 같은 스냅숏으로 읽는다(REPEATABLE READ·읽기 전용 트랜잭션 하나).
+// 따로 읽으면 쿼리 사이에 결제·환불이 커밋될 때 합계와 시계열·결제 수단별이 서로 어긋난다.
+export function statsSnapshot<T>(db: PrismaClient, run: (tx: StatsDb) => Promise<T>): Promise<T> {
+  return db.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`SET TRANSACTION READ ONLY`;
+      return run(tx);
+    },
+    { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 20_000 },
+  );
+}

@@ -1,7 +1,7 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { requireSellerRead, type TenantContext } from "../tenant/context";
 import { ratio, type StatsRange } from "./range";
-import { bucketOf, bucketSeries, num } from "./sql";
+import { bucketOf, bucketSeries, num, statsSnapshot, type StatsDb } from "./sql";
 
 // 주문 통계(SALES_VIEW). 기준은 주문 시각(createdAt, KST)이다. 그 기간에 들어온 주문을 지금 상태로 센다.
 // - 주문 수: 모든 상태(결제 대기·결제 완료·취소·환불)
@@ -61,7 +61,7 @@ function toSummary(r: AggRow | undefined): OrderSummary {
   };
 }
 
-async function summary(db: PrismaClient, sellerId: string, start: Date, end: Date) {
+async function summary(db: StatsDb, sellerId: string, start: Date, end: Date) {
   const rows = await db.$queryRaw<AggRow[]>`
     SELECT ${AGG} FROM "Order"
     WHERE "sellerId" = ${sellerId}::uuid AND "createdAt" >= ${start} AND "createdAt" < ${end}`;
@@ -70,25 +70,27 @@ async function summary(db: PrismaClient, sellerId: string, start: Date, end: Dat
 
 export async function orderStats(db: PrismaClient, ctx: TenantContext, range: StatsRange) {
   requireSellerRead(ctx, "SALES_VIEW");
-  const [current, previous, series] = await Promise.all([
-    summary(db, ctx.sellerId, range.start, range.end),
-    summary(db, ctx.sellerId, range.prev.start, range.prev.end),
-    db.$queryRaw<(AggRow & { bucket: string })[]>`
-      WITH s AS (${bucketSeries(range.unit, range.start, range.end)}),
-      o AS (
-        SELECT ${bucketOf(range.unit, Prisma.sql`"createdAt"`)} AS b, ${AGG}
-        FROM "Order"
-        WHERE "sellerId" = ${ctx.sellerId}::uuid AND "createdAt" >= ${range.start} AND "createdAt" < ${range.end}
-        GROUP BY 1
-      )
-      SELECT to_char(s.b, 'YYYY-MM-DD') AS bucket, o.orders, o.paid, o.revenue, o.cancelled, o.refunded, o.refund_amount
-      FROM s LEFT JOIN o ON o.b = s.b
-      ORDER BY s.b`,
-  ]);
-  return {
-    range: { from: range.from, to: range.to, unit: range.unit, previous: { from: range.prev.from, to: range.prev.to } },
-    current,
-    previous,
-    series: series.map((r): OrderPoint => ({ bucket: r.bucket, ...toPoint(r) })),
-  };
+  return statsSnapshot(db, async (tx) => {
+    const [current, previous, series] = await Promise.all([
+      summary(tx, ctx.sellerId, range.start, range.end),
+      summary(tx, ctx.sellerId, range.prev.start, range.prev.end),
+      tx.$queryRaw<(AggRow & { bucket: string })[]>`
+        WITH s AS (${bucketSeries(range.unit, range.start, range.end)}),
+        o AS (
+          SELECT ${bucketOf(range.unit, Prisma.sql`"createdAt"`)} AS b, ${AGG}
+          FROM "Order"
+          WHERE "sellerId" = ${ctx.sellerId}::uuid AND "createdAt" >= ${range.start} AND "createdAt" < ${range.end}
+          GROUP BY 1
+        )
+        SELECT to_char(s.b, 'YYYY-MM-DD') AS bucket, o.orders, o.paid, o.revenue, o.cancelled, o.refunded, o.refund_amount
+        FROM s LEFT JOIN o ON o.b = s.b
+        ORDER BY s.b`,
+    ]);
+    return {
+      range: { from: range.from, to: range.to, unit: range.unit, previous: { from: range.prev.from, to: range.prev.to } },
+      current,
+      previous,
+      series: series.map((r): OrderPoint => ({ bucket: r.bucket, ...toPoint(r) })),
+    };
+  });
 }

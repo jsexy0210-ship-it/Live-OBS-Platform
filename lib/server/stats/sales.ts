@@ -1,7 +1,7 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { requireSellerRead, type TenantContext } from "../tenant/context";
 import type { StatsRange } from "./range";
-import { bucketOf, bucketSeries, num } from "./sql";
+import { bucketOf, bucketSeries, num, statsSnapshot, type StatsDb } from "./sql";
 
 // 매출 통계(SALES_VIEW). 주문 통계와 같은 기준: 주문 시각(KST)의 기간에 들어온 주문 중 결제된 적 있는 주문(paidAt 있음).
 // - 판매액: 할인 전 금액(품목 정가 × 수량, 정가가 없던 옛 품목은 판매 단가)
@@ -35,7 +35,7 @@ const ORDER_AGG = Prisma.sql`
 const PAID_IN = (sellerId: string, start: Date, end: Date) =>
   Prisma.sql`"sellerId" = ${sellerId}::uuid AND "paidAt" IS NOT NULL AND "createdAt" >= ${start} AND "createdAt" < ${end}`;
 
-async function summary(db: PrismaClient, sellerId: string, start: Date, end: Date): Promise<SalesSummary> {
+async function summary(db: StatsDb, sellerId: string, start: Date, end: Date): Promise<SalesSummary> {
   const [o, i] = await Promise.all([
     db.$queryRaw<OrderAgg[]>`SELECT ${ORDER_AGG} FROM "Order" WHERE ${PAID_IN(sellerId, start, end)}`,
     db.$queryRaw<ItemAgg[]>`
@@ -64,37 +64,39 @@ async function summary(db: PrismaClient, sellerId: string, start: Date, end: Dat
 export async function salesStats(db: PrismaClient, ctx: TenantContext, range: StatsRange) {
   requireSellerRead(ctx, "SALES_VIEW");
   const sid = ctx.sellerId;
-  const [current, previous, byMethod, series] = await Promise.all([
-    summary(db, sid, range.start, range.end),
-    summary(db, sid, range.prev.start, range.prev.end),
-    db.$queryRaw<({ method: string } & OrderAgg)[]>`
-      SELECT coalesce("paymentMethod"::text, 'OTHER') AS method, ${ORDER_AGG}
-      FROM "Order" WHERE ${PAID_IN(sid, range.start, range.end)}
-      GROUP BY 1 ORDER BY 1`,
-    db.$queryRaw<{ bucket: string; paid: bigint | null; refund: bigint | null }[]>`
-      WITH s AS (${bucketSeries(range.unit, range.start, range.end)}),
-      o AS (
-        SELECT ${bucketOf(range.unit, Prisma.sql`"createdAt"`)} AS b, ${ORDER_AGG}
+  return statsSnapshot(db, async (tx) => {
+    const [current, previous, byMethod, series] = await Promise.all([
+      summary(tx, sid, range.start, range.end),
+      summary(tx, sid, range.prev.start, range.prev.end),
+      tx.$queryRaw<({ method: string } & OrderAgg)[]>`
+        SELECT coalesce("paymentMethod"::text, 'OTHER') AS method, ${ORDER_AGG}
         FROM "Order" WHERE ${PAID_IN(sid, range.start, range.end)}
-        GROUP BY 1
-      )
-      SELECT to_char(s.b, 'YYYY-MM-DD') AS bucket, o.paid, o.refund
-      FROM s LEFT JOIN o ON o.b = s.b
-      ORDER BY s.b`,
-  ]);
-  return {
-    range: { from: range.from, to: range.to, unit: range.unit, previous: { from: range.prev.from, to: range.prev.to } },
-    current,
-    previous,
-    byMethod: byMethod.map((r) => {
-      const paid = num(r.paid);
-      const refund = num(r.refund);
-      return { method: r.method, paidOrders: num(r.paid_orders), paid, refund, net: paid - refund };
-    }),
-    series: series.map((r) => {
-      const paid = num(r.paid);
-      const refund = num(r.refund);
-      return { bucket: r.bucket, paid, refund, net: paid - refund };
-    }),
-  };
+        GROUP BY 1 ORDER BY 1`,
+      tx.$queryRaw<{ bucket: string; paid: bigint | null; refund: bigint | null }[]>`
+        WITH s AS (${bucketSeries(range.unit, range.start, range.end)}),
+        o AS (
+          SELECT ${bucketOf(range.unit, Prisma.sql`"createdAt"`)} AS b, ${ORDER_AGG}
+          FROM "Order" WHERE ${PAID_IN(sid, range.start, range.end)}
+          GROUP BY 1
+        )
+        SELECT to_char(s.b, 'YYYY-MM-DD') AS bucket, o.paid, o.refund
+        FROM s LEFT JOIN o ON o.b = s.b
+        ORDER BY s.b`,
+    ]);
+    return {
+      range: { from: range.from, to: range.to, unit: range.unit, previous: { from: range.prev.from, to: range.prev.to } },
+      current,
+      previous,
+      byMethod: byMethod.map((r) => {
+        const paid = num(r.paid);
+        const refund = num(r.refund);
+        return { method: r.method, paidOrders: num(r.paid_orders), paid, refund, net: paid - refund };
+      }),
+      series: series.map((r) => {
+        const paid = num(r.paid);
+        const refund = num(r.refund);
+        return { bucket: r.bucket, paid, refund, net: paid - refund };
+      }),
+    };
+  });
 }
