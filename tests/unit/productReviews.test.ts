@@ -1,3 +1,5 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { checkReviewImage, hasImageMetadata, stripJpeg, stripPng } from "../../lib/server/product-reviews/image";
 import { heldReason, parsePolicy, parseReview, rewardFor } from "../../lib/server/product-reviews/rules";
@@ -100,5 +102,16 @@ describe("리뷰 입력", () => {
     expect(parsePolicy({ publishMode: "IMMEDIATE", rewardText: 0, rewardPhoto: 0, writableDays: 30, bannedWords: ["가".repeat(21)] }).ok).toBe(false);
     expect(rewardFor({ rewardText: 500, rewardPhoto: 1000 }, 0)).toBe(500);
     expect(rewardFor({ rewardText: 500, rewardPhoto: 1000 }, 2)).toBe(1000);
+  });
+});
+
+describe("리뷰 사진 저장소 어댑터(대표님 결정 2026-10-04: 사진은 별도 저장소로)", () => {
+  it("사진 바이트 쓰기·읽기·지우기는 store.ts(ReviewImageStore) 밖에서 직접 하지 않는다", () => {
+    const dir = "lib/server/product-reviews";
+    for (const f of readdirSync(dir).filter((x) => x.endsWith(".ts") && x !== "store.ts")) {
+      const src = readFileSync(join(dir, f), "utf8");
+      expect(src, f).not.toMatch(/productReviewImage\.(create|createMany|delete|deleteMany)\(/);
+      expect(src, f).not.toMatch(/productReviewImage\.find\w*\([^)]*data: true/s);
+    }
   });
 });

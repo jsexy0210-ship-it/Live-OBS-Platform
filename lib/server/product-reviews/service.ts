@@ -6,6 +6,7 @@ import { shopOpen } from "../buyers/signup";
 import { createPendingRewardLedger } from "../rewards/ledger";
 import { requireSellerPermission, type TenantContext } from "../tenant/context";
 import { checkReviewImage, REVIEW_IMAGES_PER_REVIEW, type ReviewImageRejection } from "./image";
+import { reviewImageStore } from "./store";
 import {
   cleanReply,
   DEFAULT_POLICY,
@@ -352,7 +353,7 @@ export async function updateReviewPolicy(db: PrismaClient, ctx: TenantContext, r
 
 export async function sellerReviewImage(db: PrismaClient, ctx: TenantContext, imageId: string) {
   if (!isUuid(imageId)) return null;
-  return db.productReviewImage.findFirst({ where: { id: imageId, sellerId: ctx.sellerId, reviewId: { not: null } }, select: { data: true, contentType: true } });
+  return reviewImageStore.get(db, { id: imageId, sellerId: ctx.sellerId, reviewId: { not: null } });
 }
 
 // ───────── 구매자 ─────────
@@ -403,11 +404,8 @@ export async function uploadReviewImage(db: PrismaClient, scope: BuyerScope, byt
       SELECT "id" FROM "BuyerMember" WHERE "id" = ${scope.buyerMemberId}::uuid AND "sellerId" = ${scope.sellerId}::uuid AND "status" = 'ACTIVE' AND "deletedAt" IS NULL FOR UPDATE`;
     if (!member) return { ok: false as const, reason: "shop_unavailable" as const };
     const old = await tx.productReviewImage.findMany({ where: { ...scope, reviewId: null }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: UNATTACHED_KEEP - 1, select: { id: true } });
-    if (old.length > 0) await tx.productReviewImage.deleteMany({ where: { id: { in: old.map((o) => o.id) } } });
-    const img = await tx.productReviewImage.create({
-      data: { ...scope, data: new Uint8Array(c.image.data), contentType: c.image.type, byteSize: c.image.data.length, width: c.image.width, height: c.image.height },
-      select: { id: true, width: true, height: true },
-    });
+    if (old.length > 0) await reviewImageStore.delete(tx, { id: { in: old.map((o) => o.id) } });
+    const img = await reviewImageStore.put(tx, { ...scope, image: c.image });
     await buyerAudit(tx, scope, meta, "buyer_review.image_upload", undefined, { imageId: img.id, byteSize: c.image.data.length });
     return { ok: true as const, image: img };
   });
@@ -416,7 +414,7 @@ export async function uploadReviewImage(db: PrismaClient, scope: BuyerScope, byt
 // 내가 볼 수 있는 사진(내가 올린 사진, 내 리뷰에 붙은 사진)
 export async function buyerReviewImage(db: PrismaClient, scope: BuyerScope, imageId: string) {
   if (!isUuid(imageId)) return null;
-  return db.productReviewImage.findFirst({ where: { id: imageId, sellerId: scope.sellerId, buyerMemberId: scope.buyerMemberId }, select: { data: true, contentType: true } });
+  return reviewImageStore.get(db, { id: imageId, sellerId: scope.sellerId, buyerMemberId: scope.buyerMemberId });
 }
 
 // 공개 범위: 매장에 보이는 상품(판매 중·품절, 지우지 않음)의 공개 리뷰만. 공개 목록과 공개 사진이 같은 조건을 쓴다(shop/sharePreview.ts와 같은 조건).
@@ -425,7 +423,7 @@ export const SHOP_VISIBLE_PRODUCT = { deletedAt: null, status: { in: ["ON_SALE",
 // 공개 사진: 매장에 보이는 상품의 공개 리뷰에 붙은 사진만
 export async function publicReviewImage(db: PrismaClient, sellerId: string, imageId: string) {
   if (!isUuid(imageId)) return null;
-  return db.productReviewImage.findFirst({ where: { id: imageId, sellerId, review: { status: "VISIBLE", product: SHOP_VISIBLE_PRODUCT } }, select: { data: true, contentType: true } });
+  return reviewImageStore.get(db, { id: imageId, sellerId, review: { status: "VISIBLE", deletedAt: null, product: SHOP_VISIBLE_PRODUCT } });
 }
 
 // 쓸 수 있는 주문 품목: 본인 주문, 결제 완료(취소·환불 아님), 배송 완료 뒤 설정 기간 안, 리뷰 없음(지운 리뷰의 묘비가 있으면 작성 완료로 본다)
@@ -628,7 +626,7 @@ export async function updateReview(db: PrismaClient, scope: BuyerScope, id: stri
           : before.status;
       const heldBy = reportHeld ? "reports" : (held ?? null);
       // 사진은 한 번 리뷰에 붙으면 소진된다. 리뷰에서 뗀 사진은 지워 다른 리뷰에 다시 붙일 수 없게 한다(같은 사진으로 적립을 거듭 받지 못하게).
-      await tx.productReviewImage.deleteMany({ where: { sellerId: scope.sellerId, reviewId: id, id: { notIn: p.v.imageIds } } });
+      await reviewImageStore.delete(tx, { sellerId: scope.sellerId, reviewId: id, id: { notIn: p.v.imageIds } });
       if (!(await attachImages(tx, scope, id, p.v.imageIds))) throw new BadImages();
       await tx.productReview.update({ where: { id }, data: { rating: p.v.rating, body: p.v.body, status, heldBy, updatedAt: now } });
       // 적립은 바뀐 상태(공개 여부·사진 자격)에 맞춘다
@@ -652,7 +650,7 @@ export async function deleteReview(db: PrismaClient, scope: BuyerScope, id: stri
     if (!locked || locked.review.buyerMemberId !== scope.buyerMemberId) throw notFound();
     const before = locked.review;
     const now = await lockedNow(tx);
-    await tx.productReviewImage.deleteMany({ where: { sellerId: scope.sellerId, reviewId: id } });
+    await reviewImageStore.delete(tx, { sellerId: scope.sellerId, reviewId: id });
     await tx.productReviewReport.deleteMany({ where: { sellerId: scope.sellerId, reviewId: id } });
     await tx.productReview.update({ where: { id }, data: { deletedAt: now, body: "", reply: null, repliedAt: null, updatedAt: now } });
     const { revoked } = await settleReward(tx, { ...before, deletedAt: now }, now, locked.orderPaid);
@@ -744,8 +742,8 @@ export async function anonymizeMemberReviews(tx: Tx, scope: BuyerScope) {
   }
   const reviews = await tx.productReview.updateMany({ where: scope, data: { authorNickname: WITHDRAWN_AUTHOR } });
   const reports = await tx.productReviewReport.deleteMany({ where: scope });
-  const images = await tx.productReviewImage.deleteMany({ where: { ...scope, reviewId: null } });
-  return { reviews: reviews.count, reports: reports.count, images: images.count };
+  const images = await reviewImageStore.delete(tx, { ...scope, reviewId: null });
+  return { reviews: reviews.count, reports: reports.count, images };
 }
 
 // 파트너스 관리자 문구(합니다체)
