@@ -38,12 +38,19 @@ test("대표자: 송장 저장 → 배송 중 → 배송 완료로 옮겨 가고
 
   // a는 올바른 송장, b는 너무 짧은 송장 → a만 저장되고 b 줄에 실패 사유가 남는다
   const tracking = `E2E${Date.now()}`;
-  await page.getByLabel("택배사").selectOption("HANJIN");
+  // 일괄로 한진택배를 고른 뒤 a 줄만 롯데택배로 바꾼다
+  await page.getByLabel("택배사 일괄 선택").selectOption("HANJIN");
+  await expect(page.getByLabel(`주문 ${b.orderNo} 택배사`)).toHaveValue("HANJIN");
+  await page.getByLabel(`주문 ${a.orderNo} 택배사`).selectOption("LOTTE");
   await page.getByLabel(`주문 ${a.orderNo} 송장번호`).fill(tracking);
   await page.getByLabel(`주문 ${b.orderNo} 송장번호`).fill("12");
   const shipped = post(page, "/api/seller/shipments");
   await page.getByRole("button", { name: "송장 저장 (2)" }).click();
-  const results = (await (await shipped).json()).results as { orderId: string; ok: boolean }[];
+  const shippedRes = await shipped;
+  const sent = shippedRes.request().postDataJSON().items as { orderId: string; courier: string }[];
+  expect(sent.find((x) => x.orderId === a.orderId)?.courier).toBe("LOTTE");
+  expect(sent.find((x) => x.orderId === b.orderId)?.courier).toBe("HANJIN");
+  const results = (await shippedRes.json()).results as { orderId: string; ok: boolean }[];
   expect(results.find((r) => r.orderId === a.orderId)?.ok).toBe(true);
   expect(results.find((r) => r.orderId === b.orderId)?.ok).toBe(false);
   await expect(page.getByText("1건 송장 저장 · 1건 실패")).toBeVisible();
@@ -56,7 +63,7 @@ test("대표자: 송장 저장 → 배송 중 → 배송 완료로 옮겨 가고
   await page.getByLabel("배송 검색").fill(tracking);
   const row = rows.filter({ hasText: tracking });
   await expect(row).toHaveCount(1);
-  await expect(row).toContainText("한진택배");
+  await expect(row).toContainText("롯데택배");
   await shot(page, "SA-027-shipping-in-transit");
   await row.getByRole("checkbox").check();
   const delivered = post(page, "/api/seller/shipments/deliver");
@@ -68,6 +75,7 @@ test("대표자: 송장 저장 → 배송 중 → 배송 완료로 옮겨 가고
   await page.getByRole("button", { name: "배송 완료", exact: true }).click();
   await expect(rows.filter({ hasText: tracking })).toHaveCount(1);
   await expect(page.getByRole("checkbox")).toHaveCount(0);
+  await shot(page, "SA-027-shipping-delivered");
 });
 
 test("주문·배송 권한이 없는 직원은 메뉴가 안 보이고, 주소로 들어와도 권한 안내를 본다", async ({ page }) => {
