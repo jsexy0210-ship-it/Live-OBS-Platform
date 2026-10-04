@@ -53,6 +53,21 @@ const PLAN_FAIL: Record<string, string> = {
   not_activated: "결제는 되었지만 플랜에 반영되지 않았습니다. 문의하기로 알려 주십시오",
 };
 
+// 플랜 변경 확인 창 안내. 서버(planChange.ts)가 나누는 기준을 그대로 따른다:
+// 결제한 기간 중(paid)·결제 실패 유예(PAST_DUE)·체험 중·그 밖(잠김·첫 결제 전)에 따라 적용 시점과 결제가 다르다.
+function planChangeNote(v: View, target: string, now = Date.now()): string {
+  const s = v.subscription;
+  const paid = !!s && s.status === "ACTIVE" && !!s.currentPeriodStart && !!s.currentPeriodEnd && new Date(s.currentPeriodEnd).getTime() > now;
+  const pastDue = !!s && s.status === "PAST_DUE" && v.access !== "expired";
+  const trial = v.access === "trial" && !paid;
+  const up = (RANK[target] ?? 0) > (RANK[v.plan?.code ?? ""] ?? 0);
+  if (!up) return paid || pastDue ? "다음 결제일부터 적용됩니다. 그 전까지는 지금 플랜을 그대로 이용합니다." : "바로 적용됩니다. 결제는 없습니다.";
+  if (paid) return "남은 이용 기간의 차액을 등록한 카드로 바로 결제합니다.";
+  if (pastDue) return "이번 기간 요금과 남은 기간 차액을 등록한 카드로 바로 결제합니다.";
+  if (trial) return "새 플랜 요금을 등록한 카드로 바로 결제하고, 오늘부터 새 이용 기간이 시작됩니다.";
+  return "바로 적용되고 지금은 결제되지 않습니다. 다음 결제부터 새 플랜 요금이 청구됩니다.";
+}
+
 function statusOf(v: View): { label: string; cls: string } {
   const s = v.subscription;
   if (v.access === "trial") return { label: "체험 중", cls: "b-info" };
@@ -85,7 +100,11 @@ export default function SubscriptionPage() {
         if (!reads.hasApplied()) setState({ kind: "error", status: r.status });
         return false;
       }
-      if (reads.accept(t) === "apply") setState({ kind: "ok", view: r.data });
+      if (reads.accept(t) === "apply") {
+        setState({ kind: "ok", view: r.data });
+        // 확인 중이던 결제가 서버에서 끝났으면(PENDING 결제가 없음) 「확인하고 있습니다」 안내를 거둔다
+        if (!r.data.payments.some((p) => p.status === "PENDING")) setPending(null);
+      }
       return true;
     },
     [reads],
@@ -171,6 +190,7 @@ export default function SubscriptionPage() {
   const sub = view?.subscription ?? null;
   const live = !!sub && sub.status !== "CANCELED" && !sub.cancelAtPeriodEnd && view?.access !== "expired";
   const current = view?.plan?.code ?? null;
+  const canceling = !!sub?.cancelAtPeriodEnd;
   const pendingPlan = sub?.pendingPlanCode && !sub.cancelAtPeriodEnd ? plans.find((p) => p.code === sub.pendingPlanCode) ?? { code: sub.pendingPlanCode, name: "다른 플랜" } : null;
 
   return (
@@ -332,7 +352,7 @@ export default function SubscriptionPage() {
                         {on ? (
                           <span className="bdg b-info nodot">이용 중</span>
                         ) : (
-                          <button className="btn btn-sm btn-out" type="button" disabled={busy || pendingPlan?.code === p.code} onClick={() => setConfirm({ kind: "plan", plan: p })}>
+                          <button className="btn btn-sm btn-out" type="button" disabled={busy || canceling || pendingPlan?.code === p.code} onClick={() => setConfirm({ kind: "plan", plan: p })}>
                             {pendingPlan?.code === p.code ? "변경 예정" : "변경"}
                           </button>
                         )}
@@ -340,7 +360,9 @@ export default function SubscriptionPage() {
                     );
                   })}
                 </div>
-                <span className="t-c1 c-alt">올리면 남은 기간 차액을 바로 결제하고, 내리면 다음 결제일부터 적용됩니다.</span>
+                <span className="t-c1 c-alt">
+                  {canceling ? "해지 예정인 구독은 플랜을 바꿀 수 없습니다." : "올리면 남은 기간 차액을 바로 결제하고, 내리면 다음 결제일부터 적용됩니다."}
+                </span>
               </section>
             )}
 
@@ -373,9 +395,7 @@ export default function SubscriptionPage() {
               <span className="t-l2 c-alt">
                 {confirm.kind === "cancel"
                   ? `${DAY(sub?.currentPeriodEnd ?? null)}까지 이용할 수 있고, 그 뒤에는 결제되지 않습니다.`
-                  : (RANK[confirm.plan.code] ?? 0) > (RANK[current ?? ""] ?? 0)
-                    ? "남은 이용 기간의 차액을 등록한 카드로 바로 결제합니다."
-                    : "다음 결제일부터 적용됩니다. 그 전까지는 지금 플랜을 그대로 이용합니다."}
+                  : planChangeNote(view, confirm.plan.code)}
               </span>
             </div>
             <div className="modal-f">

@@ -112,6 +112,9 @@ test("대표자: 카드 등록·결제, 하위 플랜 변경 예약과 취소, �
   await page.reload();
   await expect(page.getByTestId("sub-status")).toHaveText("해지 예정");
   await expect(page.getByRole("button", { name: "해지", exact: true })).toHaveCount(0);
+  // 해지 예정이면 플랜을 바꿀 수 없다(예약해도 해지로 끝나 적용되지 않는다)
+  await expect(overlay.getByRole("button", { name: "변경" })).toBeDisabled();
+  await expect(page.getByText("해지 예정인 구독은 플랜을 바꿀 수 없습니다.")).toBeVisible();
 });
 
 test("거절된 카드는 실패로 알리고 카드를 등록한 것처럼 보이지 않는다", async ({ page }) => {
@@ -127,6 +130,10 @@ test("거절된 카드는 실패로 알리고 카드를 등록한 것처럼 보�
   await expect(page.getByRole("alert").filter({ hasText: "처리하지 못했습니다" })).toContainText("카드를 등록할 수 없습니다");
   await expect(page.getByTestId("sub-card-label")).toHaveText("등록된 카드가 없습니다");
   await expect(page.getByTestId("sub-status")).toHaveText("이용 기간 끝");
+  // 결제한 기간이 없으면 하위 변경은 「다음 결제일부터」가 아니라 바로 적용·결제 없음으로 안내한다(서버 planChange와 같은 기준)
+  await page.getByTestId("sub-plan").filter({ hasText: "오버레이 전용" }).getByRole("button", { name: "변경" }).click();
+  await expect(page.getByRole("dialog")).toContainText("바로 적용됩니다. 결제는 없습니다.");
+  await page.getByRole("dialog").getByRole("button", { name: "취소" }).click();
 });
 
 test("직원은 메뉴가 안 보이고, 주소로 들어와도 대표자 전용 안내를 본다", async ({ page }) => {
