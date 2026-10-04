@@ -73,8 +73,10 @@ export async function markReleaseStarted(db: PrismaClient, c: Claim): Promise<{ 
 }
 // 종료 확인(돌아온 호출·늦게 끝난 호출 모두): 자기 시작 기록이 그대로일 때만 남긴다(뒤에 시작한 행동을 끝났다고 하지 않음).
 // 같은 작업에 끝나지 않은 호출이 남아 있으면 부르지 않는다(engine.ts trackedWindow)
+// 종료 시각은 DB에서 한 문장으로 쓰고 시작보다 앞서지 않게 한다(시작 기록의 clock_timestamp()는 밀리초 열에 반올림돼 들어가므로,
+// JS 시각으로 쓴 종료가 같은 밀리초 안에서 버림으로 시작보다 앞서면 창이 풀리지 않는다)
 export async function markActionEnded(db: PrismaClient, jobId: string, startedAt: Date): Promise<void> {
-  await db.automationJob.updateMany({ where: { id: jobId, lastActionStartedAt: startedAt }, data: { lastActionEndedAt: await dbNow(db) } });
+  await db.$executeRaw`UPDATE "AutomationJob" SET "lastActionEndedAt" = GREATEST(clock_timestamp(), "lastActionStartedAt") WHERE id = ${jobId}::uuid AND "lastActionStartedAt" = ${startedAt}`;
 }
 
 // 지금 넘긴 마감(시작·전체)이 있으면 그 사유

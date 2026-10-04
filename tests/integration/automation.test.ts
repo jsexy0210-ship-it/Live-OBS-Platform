@@ -4001,6 +4001,23 @@ describe("검수 전담 반영: 옛 소유자의 늦은 기록이 새 소유자�
     expect(await open(a.jobId)).toBe(true);
   });
 
+  it("종료 기록은 시작 기록보다 앞서지 않는다(시작이 밀리초 반올림으로 앞서 있어도 창이 풀린다): 작업·연습 모두", async () => {
+    const a = await bought();
+    const got = await claimNext(db, "w-old");
+    if (!got) throw new Error("no claim");
+    // 시작 기록이 지금보다 조금 뒤(DB의 clock_timestamp()가 반올림으로 앞선 경우를 흉내)여도, 자기 시작에 묶인 종료 기록이 창을 푼다
+    const start = new Date(Date.now() + 50);
+    await db.automationJob.update({ where: { id: a.jobId }, data: { lastActionStartedAt: start, lastActionEndedAt: null } });
+    await markActionEnded(db, a.jobId, start);
+    expect(await open(a.jobId)).toBe(false);
+    // 연습: 같은 규칙으로 새 연습이 격리 중으로 남지 않는다
+    await db.automationPracticeRun.deleteMany();
+    const rt = runtime();
+    const first = await runPractice(db, rt, cafe24Playbook, { shopHost: "myshop.cafe24.com" });
+    const second = await runPractice(db, rt, cafe24Playbook, { shopHost: "myshop.cafe24.com" });
+    expect([first.outcome, second.outcome]).toEqual(["SUCCEEDED", "SUCCEEDED"]);
+  });
+
   it("두 작업자: 자리를 잃은 A가 세션을 닫아도(시작만 기록, 종료 확인 없음) 새 소유자 B의 진행 중 행동 창은 풀리지 않아 C가 이어받지 못하고, 보관 자료도 지우지 않으며, 강제 상한 뒤에만 풀린다", async () => {
     const a = await bought();
     const A = await claimNext(db, "w-A");
