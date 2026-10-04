@@ -494,6 +494,7 @@ PG 연결 정보, 구매자 문의·공지, 알림 발송 기록, 도우미 자�
 **권고: SSE.**
 - 채널: 판매자별 `seller:{sellerId}`. 오버레이는 `OverlayToken`으로 판매자를 찾고, 대시보드는 판매자 세션으로 찾는다. 다른 판매자 채널은 구독할 수 없다.
 - 오버레이로 보내는 데이터는 표시용 최소 필드만(닉네임·등급·상품명·수량·상태). 회원 ID·휴대폰·주문 금액은 보내지 않는다(망고TCG `liveOverlayPrivacy` 개념 재사용).
+  - `GET /api/overlay/{token}/state` → `{ version, live, shop: { name, url(공개 쇼핑몰 주소, 요청 주소를 모르면 null) }, opening, waiting, hits(명예의 전당: 지금 방송 HIT 카드 최근 등록 순 10건), orderEvents }`. `orderEvents`는 신규 주문 알림용이다. 방송 중, 방송 시작 뒤 최근 30초에 들어온 주문(취소 제외)을 최근 순으로 10건까지 준다. 주문당 한 건 `{ id(첫 주문대기 항목 id, 주문 id는 안 보냄), kind: FIRST|REPEAT|VIP, nickname, productLabel(첫 품목), quantity(합), moreItems, occurredAt }`. kind는 구매자 등급이 기본 VIP 등급이면 VIP, 이 쇼핑몰에서 더 먼저 결제한 주문이 있으면 REPEAT, 아니면 FIRST다. stream은 지금처럼 version만 보내고, 화면은 version이 바뀌면 state를 다시 받는다(새 주문도 version을 올린다).
 - 다중 인스턴스: 상태 변경 트랜잭션 커밋 후 Postgres `NOTIFY live_obs, '{sellerId, version}'` → 각 서버 인스턴스가 `LISTEN`해 해당 판매자 연결에 전달. Redis 등 추가 자원 불필요.
 - 메시지는 「바뀌었다 + version」만 보내고 화면이 최신 상태를 다시 받는 방식 → 순서 꼬임에 강함. 25초마다 ping.
 - version은 판매자별 카운터(`Seller.liveVersion`)로, 주문대기·HIT·방송 변경 트랜잭션 안에서 +1 한다.
