@@ -34,7 +34,7 @@ const lnb = (page: Page) => page.getByRole("complementary", { name: "파트너�
 // 왼쪽 메뉴의 하위 메뉴(대분류 제목은 제외). 고르지 않은 대분류는 화면에서 접혀 있어 있는지(개수)로 확인한다
 const lnbItem = (page: Page, label: string) => lnb(page).locator(".lnb-i").filter({ hasText: new RegExp(`^${label.replace(/[()]/g, "\\$&")}$`) });
 // 스토어 운영(쇼핑몰 기능) 권한이 있어야 보이는 하위 메뉴
-const STORE_MENUS = ["상품 목록", "적립금", "쿠폰", "회원", "배너 · 팝업", "결제(PG) 연결", "주문자 알림"];
+const STORE_MENUS = ["상품 목록", "적립금", "쿠폰", "회원 목록", "배너 · 팝업", "결제(PG) 연결", "주문자 알림"];
 // 오버레이 전용에서도 보이는 하위 메뉴(오버레이 권한·기존 주문 처리·계정·구독)
 const COMMON_MENUS = ["전체 주문", "구매 제한", "방송 대시보드", "오버레이 편집기", "방송 이력", "구독 · 결제", "직원 계정"];
 const overlayMe = (orderFollowup: boolean) => async (route: import("@playwright/test").Route) => {
@@ -48,7 +48,7 @@ test("쇼핑몰 통합은 쇼핑몰 기능 메뉴가 모두 보인다", async ({
   const me = await (await page.request.get("/api/seller/me")).json();
   expect(me.features).toContain("STORE_OPERATIONS");
   for (const label of [...STORE_MENUS, ...COMMON_MENUS]) await expect(lnbItem(page, label)).toHaveCount(1);
-  await expect(gnb(page).locator(".gnb-i")).toHaveText(["홈", "방송", "주문", "상품", "회원", "프로모션", "디자인", "통계", "쇼핑몰 설정"]);
+  await expect(gnb(page).locator(".gnb-i")).toHaveText(["홈", "방송", "주문", "상품", "회원", "게시판", "프로모션", "디자인", "통계", "쇼핑몰 설정"]);
   await expect(gnb(page).getByRole("link", { name: "통계", exact: true })).toHaveAttribute("href", "/seller/stats");
   await expect(page.getByTestId("plan-feature-required")).toHaveCount(0);
   await shot(page, "plan-menu-integrated");
@@ -64,7 +64,7 @@ test("오버레이 전용은 쇼핑몰 기능 메뉴를 숨기고, 오버레이�
   for (const label of COMMON_MENUS) await expect(lnbItem(page, label)).toHaveCount(1);
   for (const label of STORE_MENUS) await expect(lnbItem(page, label)).toHaveCount(0);
   // 상품·프로모션·디자인 대분류는 하위 메뉴가 모두 숨어 GNB에서도 사라진다
-  await expect(gnb(page).locator(".gnb-i")).toHaveText(["홈", "방송", "주문", "회원", "통계", "쇼핑몰 설정"]);
+  await expect(gnb(page).locator(".gnb-i")).toHaveText(["홈", "방송", "주문", "회원", "게시판", "통계", "쇼핑몰 설정"]);
   // 통계는 방송 통계만 연다(매출·상품 등은 숨김)
   await expect(gnb(page).getByRole("link", { name: "통계", exact: true })).toHaveAttribute("href", "/seller/stats/broadcasts");
   await shot(page, "plan-menu-overlay");
@@ -228,7 +228,7 @@ test("같은 화면으로 돌아온 뒤 첫 방문에서 보낸 요청의 늦은
 test("오버레이 전용: 후속 처리 대상이 남아 있으면 주문·회원 대분류가 보이고, 다 끝나면 GNB에서 숨는다", async ({ page }) => {
   await page.route("**/api/seller/me", overlayMe(true));
   await login(page, OVERLAY, "/seller/orders");
-  await expect(gnb(page).locator(".gnb-i")).toHaveText(["홈", "방송", "주문", "회원", "통계", "쇼핑몰 설정"]);
+  await expect(gnb(page).locator(".gnb-i")).toHaveText(["홈", "방송", "주문", "회원", "게시판", "통계", "쇼핑몰 설정"]);
   await expect(lnbItem(page, "전체 주문")).toHaveCount(1);
   await expect(lnbItem(page, "구매 제한")).toHaveCount(1);
   await expect(lnbItem(page, "구매자 문의")).toHaveCount(1);
