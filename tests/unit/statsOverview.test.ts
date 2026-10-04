@@ -20,4 +20,8 @@ describe("overviewHasData", () => {
     expect(overviewHasData({ ...empty, summary: { ...empty.summary, previous: { ...empty.summary.previous, revenue: 1000 } } })).toBe(true);
     expect(overviewHasData({ ...empty, products: { ...empty.products, unsoldCount: 3 } })).toBe(true);
   });
+  it("직전 기간은 화면에 보이지 않는 값(취소·환불 제외 건수)만 있으면 빈 화면", () => {
+    expect(overviewHasData({ ...empty, summary: { ...empty.summary, previous: { ...empty.summary.previous, excluded: 2 } } })).toBe(false);
+    expect(overviewHasData({ ...empty, summary: { ...empty.summary, previous: { ...empty.summary.previous, orders: 1 } } })).toBe(true);
+  });
 });

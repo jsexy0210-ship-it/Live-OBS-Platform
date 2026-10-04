@@ -1,4 +1,4 @@
-// 통계 요약(SA-056)의 빈 화면 판정. 표시할 항목이 하나라도 있으면 요약을 그리고(주문 지표는 0), 모두 비었을 때만 「아직 집계할 주문이 없습니다」.
+// 통계 요약(SA-056)의 빈 화면 판정. 화면에 보이는 항목이 하나라도 있으면 요약을 그리고(주문 지표는 0), 모두 비었을 때만 「아직 집계할 주문이 없습니다」.
 type Kpi = { orders: number; excluded: number; revenue: number; signups: number };
 export type OverviewPresence = {
   summary: { current: Kpi; previous: Kpi };
@@ -9,10 +9,14 @@ export type OverviewPresence = {
 };
 
 export function overviewHasData(d: OverviewPresence): boolean {
-  const kpi = (k: Kpi) => k.orders + k.excluded + k.signups > 0 || k.revenue !== 0;
+  const c = d.summary.current;
+  const p = d.summary.previous;
   return (
-    kpi(d.summary.current) ||
-    kpi(d.summary.previous) ||
+    c.orders + c.excluded + c.signups > 0 ||
+    c.revenue !== 0 ||
+    // 직전 기간은 화면에 보이는 값(매출·주문·신규 회원)만 본다
+    p.orders + p.signups > 0 ||
+    p.revenue !== 0 ||
     d.broadcasts.rows.length > 0 ||
     d.broadcasts.general.orders + d.broadcasts.outside.orders > 0 ||
     d.products.total.products + d.products.unsoldCount > 0 ||

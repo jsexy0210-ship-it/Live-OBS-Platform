@@ -141,13 +141,12 @@ async function broadcastsInRange(tx: StatsDb, sid: string, range: StatsRange) {
 export async function overviewStats(db: PrismaClient, ctx: TenantContext, range: StatsRange) {
   requireSellerRead(ctx, "SALES_VIEW");
   return statsSnapshot(db, async (tx) => {
-    const [orders, products, members, broadcasts, current, previous] = await Promise.all([
+    const [orders, products, members, broadcasts, current] = await Promise.all([
       orderStatsIn(tx, ctx, range),
       productStatsIn(tx, ctx, range),
       memberStatsIn(tx, ctx, range),
       broadcastsInRange(tx, ctx.sellerId, range),
       extras(tx, ctx.sellerId, range.start, range.end),
-      extras(tx, ctx.sellerId, range.prev.start, range.prev.end),
     ]);
     // 요약 지표: 매출은 순매출(결제액 − 환불액), 주문은 결제 완료로 남은 주문(취소·환불 제외)
     const kpi = (o: typeof orders.current) => {
