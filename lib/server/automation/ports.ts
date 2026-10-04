@@ -44,7 +44,8 @@ export type PlannerDecision = { action: AutomationAction; costWon: number };
 export interface AutomationPlanner {
   // 쓰는 모델 이름(config.ts plannerConfig). 비용 산정·기록용
   readonly model: string;
-  decide(input: PlannerInput): Promise<PlannerDecision>;
+  // 엔진의 격리 창 장치(boundedAction) 안에서만 부른다. 상한(actionTimeoutMs)에 이르면 signal이 중단되며, 받은 쪽은 호출을 끊는다(계약).
+  decide(input: PlannerInput, signal?: AbortSignal): Promise<PlannerDecision>;
 }
 
 // 연결 결과로 알게 된 값(무료 재연결 판정용)과 검증 증거. 비밀값을 넣지 않는다.
@@ -96,7 +97,9 @@ export interface BrowserSession {
   // 임시 파일(화면 캡처·내려받은 파일·실행 기록)을
   // 암호화하고 작업 id에만 묶어 보관한다(다른 작업 id로는 풀리지 않음). 다음 open(같은 작업)에서 복원한 뒤 보관본을 지운다.
   // 작업이 끝나면(완료·취소·실패·마감) 서버가 discard로 바로 지운다(worker.ts purgeEndedBrowserState).
-  close(opts?: { keepForResume?: boolean }): Promise<void>;
+  // 보관(keepForResume)은 외부 상태 변경이라 격리 창 장치 안에서만 부른다. signal이 중단되면(상한 초과) 보관하지 않고 끝낸다(계약,
+  // 다음 소유자는 새 세션으로 시작한다).
+  close(opts?: { keepForResume?: boolean; signal?: AbortSignal }): Promise<void>;
 }
 
 // 실제 실행기가 지켜야 할 접속 조건(정본 c4cc711). 서버 쪽 검사(validateDecision의 허용 호스트·https·기본 포트)만으로는

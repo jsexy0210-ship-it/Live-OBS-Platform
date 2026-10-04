@@ -14,6 +14,7 @@ import {
   type ExpectedPage,
   type JobScope,
   type NavRules,
+  type PlannerDecision,
   type VerificationEvidence,
 } from "./ports";
 import { DB_INT_MAX, externalId, fromExecutor } from "./boundary";
@@ -40,6 +41,8 @@ export type EngineHooks = {
   // 외부 행동 격리 창: 행동 직전 시작 기록(점유를 잃었으면 던져 행동하지 않음)과 행동이 돌아온 뒤 종료 확인
   actionStarted?(): Promise<void>;
   actionEnded?(): Promise<void>;
+  // 자리를 잃었어도 해야 하는 정리 연산(브라우저 세션 닫기·보관)의 시작 기록: 점유 확인 없이 남긴다(기록은 다음 소유자를 늦추는 보수적인 쪽)
+  releaseStarted?(): Promise<void>;
   // OBS를 처음 바꾸기 직전: 같은 PC 잠금을 실제 PC(OBS pairing)로 옮긴다. 다른 작업이 그 PC에서 실행 중이면 던진다.
   claimObsTarget?(pairingId: string): Promise<void>;
   // 브라우저 상태를 보관하기 직전(「보관 중」 표시를 먼저 남긴다). 실패하면 보관하지 않는다.
@@ -132,6 +135,22 @@ export async function boundedAction<T>(hooks: ActionWindowHooks, run: (signal: A
 }
 const ACTION_TIMEOUT: ActionOutcome = { kind: "retryable", reason: "timeout" };
 
+// 읽기 포트 호출(관찰·현재 주소·쇼핑몰·PC 읽기·세션 열기·비밀값 읽기)도 같은 상한을 둔다: 외부 상태를 바꾸지 않아 격리 창 기록은 하지 않지만,
+// 작업자가 한 호출에 영구히 묶이지 않게 상한에서 끊고(ExternalReadTimeout) 작업자는 이 작업을 다시 시도로 돌린다.
+export class ExternalReadTimeout extends Error {
+  constructor() {
+    super("read_timeout");
+  }
+}
+async function boundedRead<T>(p: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([p, new Promise<never>((_, reject) => (timer = setTimeout(() => reject(new ExternalReadTimeout()), AUTOMATION_LIMITS.actionTimeoutMs)))]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // 완료·되돌림 판정 공용 장치(본 단계·검증 단계·되돌리기 모두): 행동 전 대조와 같은 기준을 통과한 관찰에만 글 단서를 적용한다.
 // 브라우저는 관찰 주소 = 지금 문서 주소이고 이동 규칙 안이며 판정의 기대 경로로 시작해야 하고, OBS는 지금 PC가 이 작업이 확인한 PC여야 한다.
 async function verifiedOnExpected(
@@ -145,8 +164,8 @@ async function verifiedOnExpected(
 ): Promise<boolean> {
   if (kind === "browser") {
     if (!session || !check.pagePath || !nav) return false;
-    const after = await session.observe();
-    const here = await session.currentUrl();
+    const after = await boundedRead(session.observe());
+    const here = await boundedRead(session.currentUrl());
     if (!after.url || !here || here !== after.url || !pageAllowedByNav(after.url, nav)) return false;
     let path: string;
     try {
@@ -156,9 +175,9 @@ async function verifiedOnExpected(
     }
     return path.startsWith(check.pagePath) && cueMatches({ textIncludes: check.textIncludes }, after);
   }
-  const now = externalId(await rt.obs.currentPairingId(scope));
+  const now = externalId(await boundedRead(rt.obs.currentPairingId(scope)));
   if (!pairing || !now.ok || now.value !== pairing) return false;
-  return cueMatches({ textIncludes: check.textIncludes }, await rt.obs.observe(scope));
+  return cueMatches({ textIncludes: check.textIncludes }, await boundedRead(rt.obs.observe(scope)));
 }
 
 const MUTATING: readonly AutomationAction["type"][] = (Object.keys(ACTION_EFFECT) as AutomationAction["type"][]).filter((t) => ACTION_EFFECT[t] !== "none");
@@ -211,7 +230,9 @@ export async function runSteps(rt: AutomationRuntime, scope: JobScope, opts: Eng
     return result;
   } finally {
     // 고객 행동 대기면 이 작업의 로그인·승인 상태를 암호화 보관해 재개 때 이어 간다. 그 밖에는 모두 지운다.
-    await (session as BrowserSession | null)?.close({ keepForResume: held });
+    // 닫기·보관도 외부 상태 변경이라 격리 창 장치를 거친다(상한을 넘기면 중단 신호로 보관하지 않음). 자리를 잃었어도 닫아야 하므로 시작 기록은 점유 확인 없이 남긴다
+    const s = session as BrowserSession | null;
+    if (s) await boundedAction({ actionStarted: hooks.releaseStarted ?? hooks.actionStarted, actionEnded: hooks.actionEnded }, (signal) => s.close({ keepForResume: held, signal }), undefined);
   }
 }
 
@@ -229,14 +250,14 @@ async function runAll(
     let s = getSession();
     if (!s) {
       guard();
-      s = await rt.browser.open(scope);
+      s = await boundedRead(rt.browser.open(scope));
       setSession(s);
     }
     return s;
   };
   let verifying = opts.verifying;
   let evidence: VerificationEvidence | undefined;
-  const secrets = await rt.vault.forJob(scope);
+  const secrets = await boundedRead(rt.vault.forJob(scope));
   // 무료 재연결: 무엇이든 바꾸기 전에 실제로 연결된 쇼핑몰·PC가 기준 작업과 같은지 읽기만으로 확인한다.
   // 고객 로그인 전에는 쇼핑몰을 알 수 없으므로, 첫 변경 행동 바로 전에 한다. 알 수 없으면 무료로 진행하지 않는다.
   const want = opts.expectFacts;
@@ -251,12 +272,12 @@ async function runAll(
     if (!shopChecked) {
       const session = await browser();
       guard();
-      const shop = externalId(await session.currentShopKey());
+      const shop = externalId(await boundedRead(session.currentShopKey()));
       if (!shop.ok) return { kind: "failed", reason: "shop_identity_invalid" };
       shopKey = shop.value;
     }
     guard();
-    const pc = externalId(await rt.obs.currentPairingId(scope));
+    const pc = externalId(await boundedRead(rt.obs.currentPairingId(scope)));
     if (!pc.ok) return { kind: "failed", reason: "pc_identity_invalid" };
     const obsPairingId = pc.value;
     if (opts.waitForUnknownTarget && !shopKey) return { kind: "needs_customer", action: "LOGIN" };
@@ -297,7 +318,7 @@ async function runAll(
     for (let i = 0; i < opts.maxActionsPerStep && !done; i++) {
       const session = step.kind === "browser" ? await browser() : null;
       guard();
-      const raw = session ? await session.observe() : await rt.obs.observe(scope);
+      const raw = session ? await boundedRead(session.observe()) : await boundedRead(rt.obs.observe(scope));
       const exception = pb ? matchException(pb, raw) : null;
       if (exception) {
         await touchStats();
@@ -327,7 +348,10 @@ async function runAll(
         // 화면 이탈은 판단 모델을 부르기 전에 기록한다(호출이 계속 실패해 작업이 닫혀도 작업서가 재검증 대상이 되게)
         if (stats.deviatedNow) await touchStats();
         const vocabulary = plannerVocabulary(pb ?? secretBook?.steps[step.key]);
-        const decision = await rt.planner.decide({ step, observation: sanitizeObservation(raw, secrets, vocabulary, { shopHost: opts.shopHost, pathSegments: plannerPathSegments(secretBook) }), history, reference });
+        // 판단 호출도 격리 창 장치 안에서 한다: 상한을 넘기면 중단 신호를 보내고 이 작업을 실패로 끝내 작업자가 한 호출에 묶이지 않게 한다
+        const observation = sanitizeObservation(raw, secrets, vocabulary, { shopHost: opts.shopHost, pathSegments: plannerPathSegments(secretBook) });
+        const decision = await boundedAction<PlannerDecision | null>(hooks, (signal) => rt.planner.decide({ step, observation, history, reference }, signal), null);
+        if (!decision) return { kind: "failed", reason: "planner_timeout" };
         stats.plannerCalls++;
         // 모델이 낸 비용 원값부터 검사한다(음수·소수·숫자 아님은 바꿔 넘기지 않고 bad_cost로 멈춤). 통과한 비용만 누적한다
         const check = validateDecision(step, decision, secrets, secretTargets, allowedTargets, nav);
@@ -362,7 +386,7 @@ async function runAll(
       let confirmedPairing: string | undefined;
       if (!session) {
         guard();
-        const read = externalId(await rt.obs.currentPairingId(scope));
+        const read = externalId(await boundedRead(rt.obs.currentPairingId(scope)));
         // 형식에 맞지 않는 PC 식별자(200자 초과 등)는 자르지 않고 바꾸기 전에 멈춘다
         if (!read.ok) return { kind: "failed", reason: "pc_identity_invalid" };
         const pairingId = read.value;
@@ -382,7 +406,7 @@ async function runAll(
       // 관찰한 화면에 관리자 로그인 상태 단서가 있어야 한다(리다이렉트로 다른 출처·같은 호스트의 쇼핑몰 앞 화면에 간 경우 차단)
       if (action.type === "fill" && "secretRef" in action.value) {
         guard();
-        const here = session ? await session.currentUrl() : null;
+        const here = session ? await boundedRead(session.currentUrl()) : null;
         const origin = secretBook?.secretOrigin;
         const ok = (u: string | null) => !!u && !!origin && secretOriginAllowed(u, opts.shopHost, origin.pathPrefixes);
         if (!origin || !ok(raw.url) || !ok(here) || !cueMatches(origin.adminCue, raw)) return { kind: "failed", reason: "unsafe_action:secret_origin_not_allowed" };
@@ -393,7 +417,7 @@ async function runAll(
       let expectedPage: ExpectedPage | undefined;
       if (session && mutating) {
         guard();
-        const here = await session.currentUrl();
+        const here = await boundedRead(session.currentUrl());
         if (!nav || !here || !pageAllowedByNav(raw.url, nav) || !pageAllowedByNav(here, nav)) return { kind: "failed", reason: "unsafe_action:page_not_allowed" };
         // 관찰한 문서와 지금 문서가 다르면(관찰과 확인 사이 이동) 판단 근거가 지금 화면이 아니다: 행동 0건으로 다시 관찰한다
         if (here !== raw.url) {
@@ -505,12 +529,12 @@ export async function runRollback(
   rt: AutomationRuntime,
   scope: JobScope,
   opts: { playbook: Playbook; shopHost: string | null; stepIndex: number; mutatedSteps: readonly string[]; obsPairingId: string | null; signal?: AbortSignal },
-  hooks: { touch(): Promise<void> } & ActionWindowHooks,
+  hooks: { touch(): Promise<void>; releaseStarted?(): Promise<void> } & ActionWindowHooks,
 ): Promise<RollbackResult> {
   const guard = () => {
     if (opts.signal?.aborted) throw new EngineAborted();
   };
-  const secrets = await rt.vault.forJob(scope);
+  const secrets = await boundedRead(rt.vault.forJob(scope));
   let session: BrowserSession | null = null;
   // 바꾼 단계(mutatedSteps)마다 되돌리기 항목(행동 1개 이상)이 있어야 한다. 하나라도 없으면(사람 정리 단계·모르는 단계) 아무것도 하지 않고
   // 「정리 필요」로 넘긴다(되돌리지 못한 변경을 남긴 채 되돌렸다고 하지 않음, fail-closed)
@@ -529,8 +553,8 @@ export async function runRollback(
       let lastPairing: string | undefined;
       for (let i = 0; i < rb.actions.length; i++) {
         guard();
-        if (rb.kind === "browser" && !session) session = await rt.browser.open(scope);
-        const raw = session && rb.kind === "browser" ? await session.observe() : await rt.obs.observe(scope);
+        if (rb.kind === "browser" && !session) session = await boundedRead(rt.browser.open(scope));
+        const raw = session && rb.kind === "browser" ? await boundedRead(session.observe()) : await boundedRead(rt.obs.observe(scope));
         if (!cueMatches(rb.actions[i].expect, raw)) return { kind: "cleanup_needed", reason: `rollback_deviated:${rb.forStep}` };
         const action = resolveShop(rb.actions[i].action, opts.shopHost);
         const check = validateDecision(step, { action, costWon: 0 }, secrets, {}, rb.allowedTargets, nav);
@@ -538,7 +562,7 @@ export async function runRollback(
         let expectedPage: ExpectedPage | undefined;
         if (session && rb.kind === "browser" && MUTATING.includes(action.type)) {
           guard();
-          const here = await session.currentUrl();
+          const here = await boundedRead(session.currentUrl());
           if (!here || !pageAllowedByNav(raw.url, nav) || !pageAllowedByNav(here, nav)) return { kind: "cleanup_needed", reason: "rollback_unsafe:page_not_allowed" };
           // 관찰한 문서와 지금 문서가 다르면 되돌리기를 이어 가지 않는다(판단 모델 없이는 다시 맞출 수 없음)
           if (here !== raw.url) return { kind: "cleanup_needed", reason: "rollback_unsafe:page_changed" };
@@ -547,7 +571,7 @@ export async function runRollback(
         let pairing: string | undefined;
         if (rb.kind === "obs") {
           guard();
-          const read = externalId(await rt.obs.currentPairingId(scope));
+          const read = externalId(await boundedRead(rt.obs.currentPairingId(scope)));
           const current = read.ok ? read.value : null;
           if (!current || (opts.obsPairingId && current !== opts.obsPairingId)) return { kind: "cleanup_needed", reason: "rollback_obs_target" };
           pairing = current;
@@ -571,6 +595,8 @@ export async function runRollback(
     }
     return { kind: "rolled_back" };
   } finally {
-    await (session as BrowserSession | null)?.close();
+    // 되돌리기 세션 닫기도 격리 창 장치를 거친다(자리를 잃었어도 닫으므로 시작 기록은 점유 확인 없이)
+    const s = session as BrowserSession | null;
+    if (s) await boundedAction({ actionStarted: hooks.releaseStarted ?? hooks.actionStarted, actionEnded: hooks.actionEnded }, (signal) => s.close({ signal }), undefined);
   }
 }

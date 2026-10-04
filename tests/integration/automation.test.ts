@@ -3456,8 +3456,11 @@ describe("Codex 41차 반영(9415cd2)", () => {
     await inPlanner;
     // 진행 중에는 새 연습이 시작되지 않는다
     await expect(runPractice(db, runtime(), cafe24Playbook, { shopHost: "myshop.cafe24.com" })).rejects.toBeInstanceOf(PracticeEnvironmentBusy);
-    // 옛 회차가 기한을 넘긴다 → 새 연습이 회수하고 시작해 끝난다
+    // 옛 회차가 기한을 넘긴다 → 새 연습은 회수하지만, 옛 판단 호출(격리 창 안, 45차)이 끝났다고 볼 수 없어 아직 시작하지 않는다
     await db.automationPracticeRun.updateMany({ where: { reason: { in: ["practice_incomplete", "practice_deviated"] } }, data: { startedAt: new Date(Date.now() - 7 * 3600_000) } });
+    await expect(runPractice(db, runtime(), cafe24Playbook, { shopHost: "myshop.cafe24.com" })).rejects.toMatchObject({ reason: "quiescing" });
+    // 옛 판단 호출의 상한 + 여유가 지나면 시작해 끝난다
+    await db.automationPracticeRun.updateMany({ where: { reason: "practice_expired" }, data: { lastActionStartedAt: new Date(Date.now() - 3 * 60_000) } });
     const fresh = await runPractice(db, runtime(), cafe24Playbook, { shopHost: "myshop.cafe24.com" });
     expect(fresh.outcome).toBe("SUCCEEDED");
     // 옛 실행이 깨어나도 외부 행동은 0회이고, 결과는 회수된 기록 그대로(성공으로 세지 않음)
@@ -3614,6 +3617,95 @@ describe("Codex 43차 반영(b41e744)", () => {
       expect(rt.obs.sources.get("practice")).toBe(1);
     } finally {
       limits.actionTimeoutMs = saved;
+    }
+  });
+});
+
+describe("Codex 45차 반영(6da016b)", () => {
+  const limits = AUTOMATION_LIMITS as { actionTimeoutMs: number };
+
+  it("세션 닫기·보관이 멈추면 상한에서 중단돼 보관하지 않고, 격리 창 전에는 다른 작업자가 이어받지 않으며, 옛 닫기가 늦게 끝나도 보관본이 생기지 않는다", async () => {
+    const saved = limits.actionTimeoutMs;
+    limits.actionTimeoutMs = 100;
+    try {
+      const a = await bought();
+      const rt = runtime();
+      rt.browser.outcome = (_s, action) => (action.type === "click" ? { kind: "needs_customer", action: "LOGIN" } : undefined);
+      let release!: () => void;
+      const gate = new Promise<void>((r) => (release = r));
+      let lateClose!: Promise<void>;
+      const open = rt.browser.open.bind(rt.browser);
+      rt.browser.open = async (scope) => {
+        const s = await open(scope);
+        const close = s.close.bind(s);
+        s.close = (opts) => (lateClose = gate.then(() => close(opts)));
+        return s;
+      };
+      expect(await runOnce(db, rt, W)).toBe("needs_customer");
+      expect(rt.browser.saved.has(a.jobId)).toBe(false);
+      await resumeJob(db, a.ctx, a.jobId);
+      // 닫기·보관이 끝났다고 볼 수 없으면(종료 확인 없음·창 안) 다른 작업자가 이어받지 않는다
+      expect(await claimNext(db, "w-other")).toBeNull();
+      await db.automationJob.update({ where: { id: a.jobId }, data: { lastActionStartedAt: new Date(Date.now() - 3 * 60_000) } });
+      expect((await claimNext(db, "w-other"))?.job.id).toBe(a.jobId);
+      // 옛 닫기가 늦게 끝나도 중단 신호를 받았으므로 보관하지 않는다(다음 소유자는 새 세션)
+      release();
+      await lateClose;
+      expect(rt.browser.saved.has(a.jobId)).toBe(false);
+    } finally {
+      limits.actionTimeoutMs = saved;
+    }
+  });
+
+  it("판단 호출이 영원히 멈춰도 상한 뒤 그 작업은 실패(planner_timeout)로 끝나고, 작업자는 다른 작업을 처리한다", async () => {
+    const saved = limits.actionTimeoutMs;
+    limits.actionTimeoutMs = 100;
+    try {
+      const a = await bought();
+      // 다음 작업은 미리 산다(앞 작업의 화면 이탈로 작업서가 재검증 대상이 되면 새 구매는 막히므로)
+      const b = await bought();
+      const rt = runtime();
+      rt.browser.pageText = () => "다른 화면 · 로그아웃";
+      rt.planner.decide = () => new Promise(() => {});
+      expect(await runOnce(db, rt, W)).toBe("failed");
+      expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "planner_timeout" });
+      // 작업자는 묶이지 않고 다음 작업을 처리한다(작업서가 재검증 대상이 돼 외부 행동 없이 끝남)
+      expect(await runOnce(db, runtime(), W)).toBe("failed");
+      expect(await job(b.jobId)).toMatchObject({ status: "FAILED", lastError: "playbook_not_verified" });
+    } finally {
+      limits.actionTimeoutMs = saved;
+    }
+  });
+
+  it("읽기 포트 호출(관찰)이 영원히 멈춰도 상한 뒤 그 작업은 다시 시도(read_timeout)로 돌아가고 작업자는 풀린다", async () => {
+    const saved = limits.actionTimeoutMs;
+    limits.actionTimeoutMs = 100;
+    try {
+      const a = await bought();
+      const rt = runtime();
+      rt.obs.observe = () => new Promise(() => {});
+      rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장 · 로그아웃";
+      // 브라우저 단계는 지나고 OBS 관찰에서 멈춘다
+      expect(await runOnce(db, rt, W)).toBe("retry");
+      expect(await job(a.jobId)).toMatchObject({ status: "QUEUED", lastError: "read_timeout" });
+    } finally {
+      limits.actionTimeoutMs = saved;
+    }
+  });
+
+  it("엄격 스위치를 켜면 판단 호출·세션 닫기도 격리 창 장치 밖에서 거부된다(장치 안에서만 불림)", async () => {
+    actionWindowGuard.strict = true;
+    try {
+      const a = await bought();
+      const rt = runtime();
+      // 화면이 달라 판단 모델을 부르고, 고객 대기로 세션을 보관하며 닫는다
+      rt.browser.pageText = () => "다른 화면 · 로그아웃";
+      rt.planner.override = () => ({ action: { type: "request_customer", action: "LOGIN" }, costWon: 0 });
+      expect(await runOnce(db, rt, W)).toBe("needs_customer");
+      expect(rt.planner.inputs.length).toBeGreaterThan(0);
+      expect(rt.browser.saved.has(a.jobId)).toBe(true);
+    } finally {
+      actionWindowGuard.strict = false;
     }
   });
 });

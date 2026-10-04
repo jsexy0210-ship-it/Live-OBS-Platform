@@ -55,6 +55,7 @@ export class FakePlanner implements AutomationPlanner {
   }
 
   async decide(input: PlannerInput): Promise<PlannerDecision> {
+    assertInWindow("planner.decide");
     this.inputs.push(input);
     const o = this.override?.(input);
     if (o) return o;
@@ -201,9 +202,11 @@ export class FakeBrowserExecutor implements BrowserExecutor {
         return out;
       },
       async close(opts) {
+        assertInWindow("browser.close");
         self.live.delete(id);
         self.cookies.delete(id);
-        if (opts?.keepForResume && !self.tombstones.has(scope.jobId)) self.saved.set(scope.jobId, self.seal(scope.jobId, jar));
+        // 상한을 넘겨 중단됐으면 보관하지 않는다(계약)
+        if (opts?.keepForResume && !opts.signal?.aborted && !self.tombstones.has(scope.jobId)) self.saved.set(scope.jobId, self.seal(scope.jobId, jar));
       },
     };
   }

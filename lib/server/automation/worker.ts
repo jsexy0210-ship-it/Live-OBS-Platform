@@ -2,12 +2,12 @@ import { writeAudit } from "../audit/log";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import type { BillingProvider } from "../billing/provider";
 import { AUTOMATION_LIMITS } from "./config";
-import { EngineAborted, runRollback, runSteps } from "./engine";
+import { EngineAborted, ExternalReadTimeout, runRollback, runSteps } from "./engine";
 import { findPlaybook } from "./playbooks";
 import type { AutomationRuntime, JobScope } from "./ports";
 import { cleanupPracticeArtifacts, playbookReadiness } from "./practice";
 import { reconcileAutomationPayments } from "./purchase";
-import { FencingError, RunTimeExceeded, dbNow, hasChanges, markChanged, unmarkChanged, markActionStarted, markActionEnded, quiescent, markCleanupNeeded, advanceStep, claimNext, claimObsTarget, extendLease, failWithRefund, markBrowserStateHeld, markTargetVerified, finishJob, parkForCustomer, reapExpired, retryLater, toVerifying, touch, type Claimed } from "./queue";
+import { FencingError, RunTimeExceeded, dbNow, hasChanges, markChanged, unmarkChanged, markActionStarted, markActionEnded, markReleaseStarted, quiescent, markCleanupNeeded, advanceStep, claimNext, claimObsTarget, extendLease, failWithRefund, markBrowserStateHeld, markTargetVerified, finishJob, parkForCustomer, reapExpired, retryLater, toVerifying, touch, type Claimed } from "./queue";
 
 // 자동 연결 작업자 진입점. 웹 서버(주문 API)와 다른 프로세스로 띄우는 것을 전제로 한다.
 // 실제 프로세스 실행(배포)은 운영 승인 사항이라 1차에는 이 모듈과 테스트만 있다.
@@ -89,7 +89,12 @@ export async function executeJob(db: PrismaClient, rt: AutomationRuntime, { job,
                 rt,
                 scope,
                 { playbook: found, shopHost: job.shopHost, stepIndex: job.stepIndex, mutatedSteps: job.mutatedSteps, obsPairingId: job.obsPairingId, signal: lost.signal },
-                { touch: () => extendLease(db, claim, leaseMs), actionStarted: () => markActionStarted(db, claim), actionEnded: async () => void (await markActionEnded(db, claim.jobId)) },
+                {
+                  touch: () => extendLease(db, claim, leaseMs),
+                  actionStarted: () => markActionStarted(db, claim),
+                  actionEnded: async () => void (await markActionEnded(db, claim.jobId)),
+                  releaseStarted: async () => void (await markReleaseStarted(db, claim.jobId)),
+                },
               )
             : ({ kind: "cleanup_needed", reason: uncertain ? "rollback_uncertain" : "rollback_definition_missing" } as const);
         if (rolled.kind === "rolled_back") {
@@ -131,6 +136,7 @@ export async function executeJob(db: PrismaClient, rt: AutomationRuntime, { job,
         markChanged: (stepKey) => markChanged(db, claim, stepKey),
         actionStarted: () => markActionStarted(db, claim),
         actionEnded: async () => void (await markActionEnded(db, claim.jobId)),
+        releaseStarted: async () => void (await markReleaseStarted(db, claim.jobId)),
         unmarkChanged: (stepKey, mark) => unmarkChanged(db, claim, stepKey, mark),
         claimObsTarget: (pairingId) => claimObsTarget(db, claim, pairingId),
       },
@@ -162,6 +168,15 @@ export async function executeJob(db: PrismaClient, rt: AutomationRuntime, { job,
       try {
         await failWithRefund(db, claim, e instanceof RunTimeExceeded ? e.message : (beat.overTime() ?? "run_time_limit"));
         return "failed";
+      } catch (inner) {
+        if (inner instanceof FencingError) return "fenced";
+        throw inner;
+      }
+    }
+    // 읽기 포트 호출이 상한을 넘겼다: 이 작업은 다시 시도로 돌리고 작업자는 다음 일을 한다
+    if (e instanceof ExternalReadTimeout) {
+      try {
+        return await retry("read_timeout");
       } catch (inner) {
         if (inner instanceof FencingError) return "fenced";
         throw inner;

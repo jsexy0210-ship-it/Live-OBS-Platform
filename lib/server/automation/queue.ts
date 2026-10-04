@@ -55,6 +55,8 @@ export const quiescentSql = (alias: string) =>
 
 // 외부 행동 시작 기록(점유 확인 포함: 자리를 잃었으면 던져 행동하지 않는다)과 종료 확인(자리를 잃었어도 남긴다: 끝났다는 사실이므로)
 export const markActionStarted = (db: PrismaClient, c: Claim) => fencedWrite(db, c, (now) => ({ data: { lastActionStartedAt: now } }));
+// 자리를 잃었어도 해야 하는 정리 연산(세션 닫기·보관)의 시작 기록(점유 확인 없음, 다음 소유자를 늦추는 보수적인 기록)
+export const markReleaseStarted = (db: PrismaClient, jobId: string) => db.$executeRaw`UPDATE "AutomationJob" SET "lastActionStartedAt" = clock_timestamp() WHERE id = ${jobId}::uuid`;
 export const markActionEnded = (db: PrismaClient, jobId: string) => db.$executeRaw`UPDATE "AutomationJob" SET "lastActionEndedAt" = clock_timestamp() WHERE id = ${jobId}::uuid`;
 
 // 지금 넘긴 마감(시작·전체)이 있으면 그 사유

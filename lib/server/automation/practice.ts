@@ -104,6 +104,8 @@ export async function runPractice(
     if ((await db.automationPracticeRun.updateMany({ where: owned, data: { lastActionStartedAt: await dbNow(db) } })).count !== 1) throw new FencingError();
   };
   const actionEnded = async () => void (await db.$executeRaw`UPDATE "AutomationPracticeRun" SET "lastActionEndedAt" = clock_timestamp() WHERE id = ${run.id}::uuid`);
+  // 회수됐어도 해야 하는 세션 닫기의 시작 기록(점유 확인 없음)
+  const releaseStarted = async () => void (await db.$executeRaw`UPDATE "AutomationPracticeRun" SET "lastActionStartedAt" = clock_timestamp() WHERE id = ${run.id}::uuid`);
   const lost = new AbortController();
   const beat = setInterval(() => void assertOwner().catch(() => lost.abort()), Math.max(20, Math.floor(AUTOMATION_LIMITS.leaseMs / 3)));
   // 매 회차 시험용 쇼핑몰·PC를 기준 상태로 되돌리고 실제 상태로 확인한다. 되돌리기·확인이 실패하면 실행하지 않고 실패로 남긴다
@@ -153,6 +155,7 @@ export async function runPractice(
           enterVerify: async () => {},
           actionStarted,
           actionEnded,
+          releaseStarted,
           stepDone: async (next) => void (stepIndex = next),
         },
       );
