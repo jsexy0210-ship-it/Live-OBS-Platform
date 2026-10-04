@@ -33,7 +33,7 @@ function check(f: Form) {
   return e;
 }
 
-export default function CheckoutView({ slug }: { slug: string }) {
+export default function CheckoutView({ slug, memberNickname = "" }: { slug: string; memberNickname?: string }) {
   const base = `/shop/${encodeURIComponent(slug)}`;
   const api = `/api/shop/${encodeURIComponent(slug)}`;
   const router = useRouter();
@@ -44,6 +44,7 @@ export default function CheckoutView({ slug }: { slug: string }) {
   const [form, setForm] = useState<Form>(EMPTY);
   const [save, setSave] = useState(true);
   const [couponId, setCouponId] = useState("");
+  const [nickname, setNickname] = useState(memberNickname); // 기본값은 회원 방송 닉네임
   const [agreed, setAgreed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [tried, setTried] = useState(false);
@@ -143,8 +144,9 @@ export default function CheckoutView({ slug }: { slug: string }) {
     );
 
   const { checkout, addresses, coupons, consent } = view.data;
+  const nickOk = nickname.trim().length <= 20;
   const addrOk = addrId !== NEW || Object.keys(errors).length === 0;
-  const canSubmit = addrOk && agreed && !busy;
+  const canSubmit = addrOk && nickOk && agreed && !busy;
 
   async function submit() {
     setTried(true);
@@ -157,7 +159,7 @@ export default function CheckoutView({ slug }: { slug: string }) {
       : { recipientName: form.recipientName.trim(), phone: form.phone.replace(/[ -]/g, ""), zipCode: form.zipCode.trim(), address1: form.address1.trim(), address2: form.address2.trim() || undefined, memo: form.memo.trim() || undefined };
     const r = await call<{ orderId: string }>(`${api}/orders`, {
       method: "POST",
-      body: { items: checkout.items, consent: { agreed: true, noticeVersion: consent.version }, shippingAddress, saveAddress: picked ? false : save, ...(couponId ? { couponId } : {}) },
+      body: { items: checkout.items, consent: { agreed: true, noticeVersion: consent.version }, shippingAddress, saveAddress: picked ? false : save, ...(nickname.trim() ? { orderNickname: nickname.trim() } : {}), ...(couponId ? { couponId } : {}) },
     });
     if (!r.ok) {
       setError(r.message ?? "주문하지 못했어요. 잠시 뒤 다시 해 주세요");
@@ -242,6 +244,16 @@ export default function CheckoutView({ slug }: { slug: string }) {
               </label>
             </div>
           )}
+        </section>
+
+        <section className="co-box" aria-labelledby="co-nick">
+          <h2 id="co-nick">방송 닉네임</h2>
+          <div className="co-field">
+            <label htmlFor="co-nickname">이 주문의 닉네임</label>
+            <input id="co-nickname" className={`inp${tried && !nickOk ? " is-error" : ""}`} value={nickname} onChange={(e) => setNickname(e.target.value)} maxLength={20} aria-invalid={tried && !nickOk} />
+            {tried && !nickOk && <span className="co-err">닉네임은 20자까지 쓸 수 있어요</span>}
+          </div>
+          <span className="cart-hint">방송 화면에 이 닉네임으로 나와요. 이 주문에만 쓰고 회원 닉네임은 바뀌지 않아요.</span>
         </section>
 
         <section className="co-box" aria-labelledby="co-coupon">
