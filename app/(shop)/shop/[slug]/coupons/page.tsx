@@ -24,7 +24,7 @@ export default async function ShopCouponsPage({ params }: Params) {
   const shop = await findShop((await params).slug);
   if (!shop) notFound();
   return (
-    <ShopFrame shopName={shop.shopName}>
+    <ShopFrame slug={shop.slug} shopName={shop.shopName}>
       <CouponBox slug={shop.slug} />
     </ShopFrame>
   );
