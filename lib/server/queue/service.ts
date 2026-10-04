@@ -7,6 +7,7 @@ import { earnQuote } from "../rewards/earn";
 import { createPendingRewardLedger } from "../rewards/ledger";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 import { restoreOrderStock } from "../products/stock";
+import { closeReturnsOnRefund } from "../shop-returns/hooks";
 import { checkTransition, isCompletePermutation, isValidTimer, type QueueAction, type QueueRejection } from "./rules";
 import { refreshOrderRetention } from "../buyers/legalHold";
 import { chargedShippingFee, itemCouponDiscount, restoreOrderCoupon } from "../shop-coupons/service";
@@ -673,6 +674,8 @@ export async function refundOrder(
     }
     // 이 주문의 상품 리뷰 적립도 같은 회수 방식으로 회수한다(주문 잠금 뒤 회원 → 리뷰 → 원장, product-reviews/service.ts)
     const reviewRewardRevoke = await revokeReviewRewardsForOrder(tx, ctx.sellerId, orderId, now);
+    // 이 주문의 진행 중인 교환·반품 신청을 닫는다(shop-returns: 반품 회수 완료분은 완료, 그 밖은 철회)
+    await closeReturnsOnRefund(tx, { sellerId: ctx.sellerId, orderId, refundAmount, now, actor: { actorType: ctx.actorType, actorId: ctx.actorId } });
     await writeAudit(tx, {
       actorType: ctx.actorType,
       actorId: ctx.actorId,

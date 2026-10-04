@@ -18,6 +18,7 @@ export const STOCK_MOVEMENT_TYPE_LABELS: Record<StockMovementReason, string> = {
   CANCEL: "취소",
   REFUND: "환불",
   MANUAL: "직접 변경",
+  EXCHANGE: "교환 발송",
 };
 
 // 처리자 이름(직원이 아닌 경우). 직원은 직원 이름을 쓴다.

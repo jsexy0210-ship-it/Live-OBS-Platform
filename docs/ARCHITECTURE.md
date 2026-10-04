@@ -228,6 +228,7 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
   - 구매 확정 뒤 환불(대표님 결정 2026-10-03, 카페24 방식): 구매 확정한 주문(`purchaseConfirmedAt`)은 환불이 `409 purchase_confirmed`(「구매 확정한 주문입니다. 구매 확정을 먼저 취소해 주십시오」). 판매자가 `POST /api/seller/orders/{orderId}/unconfirm` `{ reason }`(1~200자, `ORDER_SHIPPING`·`ORDER_FOLLOWUP`, 잠금 중에도 가능, `lib/server/orders/delivery.ts` `unconfirmPurchase`)로 확정을 풀면 `purchaseConfirmedAt = null`, `purchaseUnconfirmedAt = 지금`(감사 로그 `order.purchase_unconfirm`), 그 뒤 환불할 수 있다. 확정 전·환불된 주문은 `409 not_confirmed`, 사유가 없거나 길면 `400 invalid_reason`. 이 주문으로 지급한 적립금은 환불의 기존 회수 규칙(`revokeMode` AUTO → `REVOKE`, MANUAL → 수동 확인 대기)대로 회수한다. 구매 확정 때 따로 지급하는 적립금은 없다. 실제 PG 환불 호출은 아직 없다. 확정을 취소하고 환불하지 않는 주문은 판매자가 `POST /api/seller/orders/{orderId}/reconfirm`(본문 없음, 같은 권한, `reconfirmPurchase`)으로 다시 확정하거나(`purchaseConfirmedAt = 지금`, `purchaseUnconfirmedAt = null`, 감사 로그 `order.purchase_reconfirm`, 응답 `{ purchaseConfirmedAt }`, 확정을 취소한 결제 완료 주문이 아니면 `409 not_unconfirmed`), 취소한 때부터 자동 구매 확정 기간이 지나면 자동 구매 확정이 다시 확정한다. 확정을 취소한 채 남은 주문은 후속 처리 대상(`hasOrderFollowup`)에 든다.
   - 재고 부족(`stockShortageAt`)으로 차감되지 않은 주문 → 복원할 것 없음.
   - 그 밖의 조정은 판매자가 직접 `MANUAL` 이력으로 한다. 환불 API에 복원 여부 입력은 두지 않는다.
+  - 교환·반품(`lib/server/shop-returns/**`, SA-029 · SH-022-R, 2026-10-04): 구매자는 배송 완료 뒤 구매 확정 전의 결제 완료 주문에 신청한다(반품은 주문 전체, 교환은 품목 선택). 주문당 진행 중인 신청은 1건(부분 유니크 인덱스 `ReturnRequest_one_active_per_order`). 흐름 `REQUESTED → ACCEPTED(접수, 사유 주체 정함) → RECEIVED(회수 완료, 재고 되돌리기 선택) → COMPLETED`, 신청 단계는 거절(`REJECTED`), 신청·접수 단계는 구매자 철회(`CANCELLED`). 반품 완료는 기존 `refundOrder`를 호출하고(같은 트랜잭션에서 `closeReturnsOnRefund`가 신청을 완료로 닫음, 실제 PG 취소는 결제 연결 담당), 교환 완료는 교환 상품 재고를 빼고(`StockMovement` `EXCHANGE`, 부족하면 409 `insufficient_stock`) 송장을 남긴다. 진행 중인 신청이 있는 주문은 자동 구매 확정이 확정하지 않는다(`hasActiveReturn`). 직접 환불하면 진행 중인 신청을 닫는다(회수 완료한 반품은 완료, 그 밖은 철회). 구매자 API `/api/shop/{slug}/returns/**`(신청·철회·송장·사진), 파트너스 API `/api/seller/returns/**`(`ORDER_SHIPPING`, `ORDER_FOLLOWUP`). 신청 사진은 리뷰 사진과 같은 검사·어댑터 방식(`ReturnImageStore`).
   - 주문 상태를 결제 완료 → 환불로 원자적으로 바꿔 같은 주문을 두 번 환불하거나 재고를 두 번 복원하지 않는다. 결제 대기 주문은 「취소」(재고 변화 없음), 결제 완료 주문은 「환불」만 가능. 둘 다 사유 필수, `ORDER_SHIPPING` 권한, 화면이 받은 `expectedVersion`(판매자 liveVersion) 필수 — 다르면 `409 conflict`(주문대기 조작과 같은 규칙).
 - [확정] 부분 취소·부분 환불: 이번 단계 미지원(주문 전체 단위).
 
@@ -300,7 +301,7 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 |---|---|---|
 | `BILLING` | 구독·결제(`/api/seller/subscription`·`…/card`·`…/cancel`), 내 정보(`/api/seller/me`) | 항상(기능 권한과 무관, 잠금 허용 범위는 지금처럼) |
 | `ACCOUNT` | 직원 관리(`/api/seller/staff/**`), 직원 본인확인 연결(`/api/seller/me/identity/**`, 다시 받기·확인은 본인확인 기록의 쇼핑몰로 검사) | 기능 권한이 하나라도 있을 때. **통합 첫 결제 확정 전 막음** |
-| `ORDER_FOLLOWUP` | 이미 받은 주문 처리(`/api/seller/orders/**`·`/api/seller/shipments/**`), 구매 제한(`/api/seller/purchase-restrictions/**`), 회원 조회(`/api/seller/members/**`) | 기능 권한이 하나라도 있을 때(하위 변경 뒤에도 기존 주문 처리). **통합 첫 결제 확정 전 막음** |
+| `ORDER_FOLLOWUP` | 이미 받은 주문 처리(`/api/seller/orders/**`·`/api/seller/shipments/**`·`/api/seller/returns/**`), 구매 제한(`/api/seller/purchase-restrictions/**`), 회원 조회(`/api/seller/members/**`) | 기능 권한이 하나라도 있을 때(하위 변경 뒤에도 기존 주문 처리). **통합 첫 결제 확정 전 막음** |
 | `OVERLAY` | 방송·주문대기·오버레이 토큰·방송 실시간 채널(`/api/seller/broadcast/**`·`queue/**`·`overlay/token`·`stream`) | 오버레이 권한 |
 | `STORE_OPERATIONS` | 상품·옵션·재고, 배송비·주문·회원·적립 정책, 공유 미리보기 설정 | 스토어 운영 권한 |
 | `EXTERNAL_INTEGRATION` | (아직 경로 없음, 외부 연동 경로가 생기면 지정) | 외부 연동 권한 |

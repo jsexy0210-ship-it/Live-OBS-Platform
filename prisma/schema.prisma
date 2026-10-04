@@ -150,6 +150,9 @@ model Seller {
   cartItems                CartItem[]
   wishItems                WishItem[]
   shopNotices              ShopNotice[]
+  returnRequests           ReturnRequest[]
+  returnRequestItems       ReturnRequestItem[]
+  returnRequestImages      ReturnRequestImage[]
 }
 
 model SellerDomain {
@@ -350,6 +353,8 @@ model BuyerMember {
   productReviewReports ProductReviewReport[]
   cartItems            CartItem[]
   wishItems            WishItem[]
+  returnRequests       ReturnRequest[]
+  returnRequestImages  ReturnRequestImage[]
 
   @@unique([sellerId, id])
   @@index([sellerId, gradeId])
@@ -577,6 +582,8 @@ enum StockMovementReason {
   CANCEL
   REFUND
   MANUAL
+  // 교환 상품을 다시 보낼 때 뺀 재고(교환·반품, shop-returns)
+  EXCHANGE
 }
 
 enum ActorType {
@@ -1039,6 +1046,7 @@ model Order {
   notifications   OrderNotification[]
   couponRedemption CouponRedemption?
   productReviews   ProductReview[]
+  returnRequests   ReturnRequest[]
 
   @@unique([sellerId, id])
   @@unique([sellerId, orderNo])
@@ -1073,6 +1081,7 @@ model OrderItem {
   option     ProductOption @relation(fields: [sellerId, optionId], references: [sellerId, id])
   queueItems QueueItem[]
   review     ProductReview?
+  returnItems ReturnRequestItem[]
 
   @@unique([sellerId, id])
   @@index([sellerId, orderId])
@@ -2106,4 +2115,111 @@ model ShopNotice {
   seller Seller @relation(fields: [sellerId], references: [id])
 
   @@index([sellerId, kind, createdAt])
+}
+
+// ───────────── 교환·반품(shop-returns, SA-029 · SH-022-R) ─────────────
+
+enum ReturnKind {
+  RETURN
+  EXCHANGE
+}
+
+// 신청 → 접수 → 회수 완료 → 완료(반품은 환불 연결, 교환은 교환 발송). 신청 단계에서 거절하거나 구매자가 철회할 수 있다.
+enum ReturnStatus {
+  REQUESTED
+  ACCEPTED
+  RECEIVED
+  COMPLETED
+  REJECTED
+  CANCELLED
+}
+
+enum ReturnReason {
+  CHANGE_OF_MIND
+  DEFECTIVE
+  WRONG_ITEM
+  NOT_AS_DESCRIBED
+  OTHER
+}
+
+// 교환·반품 신청(주문당 진행 중인 신청은 1건: 부분 유니크 인덱스 ReturnRequest_one_active_per_order, 마이그레이션 SQL).
+// 반품은 주문 전체, 교환은 품목 단위(품목의 수량 전체). 환불은 기존 환불(refundOrder)을 부르고 실제 PG 취소는 결제 연결이 맡는다.
+model ReturnRequest {
+  id                     String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId               String       @db.Uuid
+  orderId                String       @db.Uuid
+  buyerMemberId          String       @db.Uuid
+  kind                   ReturnKind
+  status                 ReturnStatus @default(REQUESTED)
+  reason                 ReturnReason
+  reasonText             String       @default("")
+  // 접수할 때 판매자가 정한 사유 주체(구매자 사정이면 반품 배송비를 받는다)
+  fault                  RefundFault?
+  rejectReason           String?
+  // 구매자가 돌려보낸 송장
+  returnCourier          String?
+  returnTrackingNumber   String?
+  // 회수 완료 때 재고를 되돌렸는지
+  restocked              Boolean      @default(false)
+  // 교환 발송 송장
+  exchangeCourier        String?
+  exchangeTrackingNumber String?
+  // 반품 환불 결과(환불한 금액)
+  refundAmount           Int?
+  acceptedAt             DateTime?    @db.Timestamptz(3)
+  receivedAt             DateTime?    @db.Timestamptz(3)
+  completedAt            DateTime?    @db.Timestamptz(3)
+  rejectedAt             DateTime?    @db.Timestamptz(3)
+  cancelledAt            DateTime?    @db.Timestamptz(3)
+  createdAt              DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime     @default(now()) @db.Timestamptz(3)
+
+  seller      Seller               @relation(fields: [sellerId], references: [id])
+  order       Order                @relation(fields: [sellerId, orderId], references: [sellerId, id])
+  buyerMember BuyerMember          @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id])
+  items       ReturnRequestItem[]
+  images      ReturnRequestImage[]
+
+  @@unique([sellerId, id])
+  @@index([sellerId, status, createdAt])
+  @@index([sellerId, orderId])
+  @@index([sellerId, buyerMemberId, createdAt])
+}
+
+model ReturnRequestItem {
+  id              String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId        String @db.Uuid
+  returnRequestId String @db.Uuid
+  orderItemId     String @db.Uuid
+  quantity        Int
+
+  seller        Seller        @relation(fields: [sellerId], references: [id])
+  returnRequest ReturnRequest @relation(fields: [sellerId, returnRequestId], references: [sellerId, id], onDelete: Cascade)
+  orderItem     OrderItem     @relation(fields: [sellerId, orderItemId], references: [sellerId, id])
+
+  @@unique([returnRequestId, orderItemId])
+  @@index([sellerId, orderItemId])
+}
+
+// 신청 사진. 먼저 올리고(returnRequestId 없음) 신청할 때 붙인다. 붙지 않은 사진은 회원당 10장까지 두고 오래된 것부터 지운다.
+model ReturnRequestImage {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId        String   @db.Uuid
+  buyerMemberId   String   @db.Uuid
+  returnRequestId String?  @db.Uuid
+  data            Bytes
+  contentType     String
+  byteSize        Int
+  width           Int
+  height          Int
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+
+  seller        Seller         @relation(fields: [sellerId], references: [id])
+  buyerMember   BuyerMember    @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id], onDelete: Cascade)
+  returnRequest ReturnRequest? @relation(fields: [sellerId, returnRequestId], references: [sellerId, id], onDelete: Cascade)
+
+  @@unique([sellerId, id])
+  @@index([sellerId, returnRequestId])
+  @@index([sellerId, buyerMemberId, returnRequestId])
 }
