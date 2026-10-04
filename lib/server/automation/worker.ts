@@ -7,7 +7,7 @@ import { findPlaybook } from "./playbooks";
 import type { AutomationRuntime, JobScope } from "./ports";
 import { cleanupPracticeArtifacts, playbookReadiness } from "./practice";
 import { reconcileAutomationPayments } from "./purchase";
-import { FencingError, RunTimeExceeded, dbNow, hasChanges, markChanged, markCleanupNeeded, advanceStep, claimNext, claimObsTarget, extendLease, failWithRefund, markBrowserStateHeld, markTargetVerified, finishJob, parkForCustomer, reapExpired, retryLater, toVerifying, touch, type Claimed } from "./queue";
+import { FencingError, RunTimeExceeded, dbNow, hasChanges, markChanged, unmarkChanged, markCleanupNeeded, advanceStep, claimNext, claimObsTarget, extendLease, failWithRefund, markBrowserStateHeld, markTargetVerified, finishJob, parkForCustomer, reapExpired, retryLater, toVerifying, touch, type Claimed } from "./queue";
 
 // 자동 연결 작업자 진입점. 웹 서버(주문 API)와 다른 프로세스로 띄우는 것을 전제로 한다.
 // 실제 프로세스 실행(배포)은 운영 승인 사항이라 1차에는 이 모듈과 테스트만 있다.
@@ -128,6 +128,7 @@ export async function executeJob(db: PrismaClient, rt: AutomationRuntime, { job,
         targetVerified: (target) => markTargetVerified(db, claim, target),
         holdBrowserState: () => markBrowserStateHeld(db, claim),
         markChanged: (stepKey) => markChanged(db, claim, stepKey),
+        unmarkChanged: (stepKey, mark) => unmarkChanged(db, claim, stepKey, mark),
         claimObsTarget: (pairingId) => claimObsTarget(db, claim, pairingId),
       },
     );

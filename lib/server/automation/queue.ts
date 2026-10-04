@@ -1,5 +1,6 @@
 import type { AutomationCustomerAction, AutomationJob, AutomationJobStatus, Prisma, PrismaClient } from "@prisma/client";
 import { AUTOMATION_LIMITS } from "./config";
+import type { ChangeMark } from "./engine";
 import type { ConnectionFacts, VerificationEvidence } from "./ports";
 import { LEASED, sourcesOf } from "./states";
 import { STEPS } from "./steps";
@@ -165,10 +166,24 @@ async function fencedWrite(
 export const hasChanges = (j: Pick<AutomationJob, "changedAt" | "mutatedSteps">) => j.changedAt !== null || j.mutatedSteps.length > 0;
 
 // 단계마다 첫 변경 행동 직전 기록: 작업의 첫 변경 시각(changedAt, 이미 있으면 그대로)과 변경을 시작한 단계(mutatedSteps)를 같은 쓰기로
-export const markChanged = (db: PrismaClient, c: Claim, stepKey: string) =>
-  fencedWrite(db, c, (now, cur) => ({
-    data: { changedAt: cur.changedAt ?? now, ...(cur.mutatedSteps.includes(stepKey) ? {} : { mutatedSteps: [...cur.mutatedSteps, stepKey] }) },
-  }));
+// 돌려주는 값은 이번 기록이 새로 남긴 것(단계 추가 여부, 새로 남긴 첫 변경 시각). 실행기가 「적용 안 함」으로 거절하면 이것만 되돌린다(unmarkChanged).
+export async function markChanged(db: PrismaClient, c: Claim, stepKey: string): Promise<ChangeMark> {
+  let mark: ChangeMark = { stepAdded: false, changedAt: null };
+  await fencedWrite(db, c, (now, cur) => {
+    mark = { stepAdded: !cur.mutatedSteps.includes(stepKey), changedAt: cur.changedAt ? null : now };
+    return { data: { changedAt: cur.changedAt ?? now, ...(mark.stepAdded ? { mutatedSteps: [...cur.mutatedSteps, stepKey] } : {}) } };
+  });
+  return mark;
+}
+
+// 실행기가 행동 0회를 보장하는 거절(page_mismatch·pairing_mismatch)을 돌려줬다: 그 행동 직전에 남긴 변경 기록만 같은 작업 행 잠금 아래 되돌린다.
+// 이 기록이 새로 남긴 단계·시각만 지우고, 그 전부터 있던 기록(이전 단계·이전 실행의 변경)은 그대로 둔다.
+export const unmarkChanged = (db: PrismaClient, c: Claim, stepKey: string, mark: ChangeMark) =>
+  fencedWrite(db, c, (_now, cur) => {
+    const steps = mark.stepAdded ? cur.mutatedSteps.filter((s) => s !== stepKey) : cur.mutatedSteps;
+    const ownChangedAt = mark.changedAt !== null && cur.changedAt?.getTime() === mark.changedAt.getTime();
+    return { data: { mutatedSteps: steps, changedAt: ownChangedAt && steps.length === 0 ? null : cur.changedAt } };
+  });
 
 // 바꾼 뒤 실패·취소로 끝나면 조용히 끝내지 않는다: 정리 필요 표시와 마스터 관리자 알림(감사 기록 운영 이벤트)을 같은 트랜잭션에서 남긴다.
 // 사람이 쇼핑몰 앱·웹훅·OBS를 정리할 수 있게 하기 위해서다. 자동 되돌리기 전체(E3-W)는 다음 PR.

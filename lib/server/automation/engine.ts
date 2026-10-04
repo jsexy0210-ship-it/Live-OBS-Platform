@@ -30,7 +30,9 @@ export type EngineHooks = {
   touch(stats: EngineStats): Promise<void>;
   enterVerify(): Promise<void>;
   // 변경 행동(클릭·입력·OBS 설정·테스트 주문)을 이번 실행에서 처음 하기 직전(변경 뒤 실패면 정리 필요로 보기 위해)
-  markChanged?(stepKey: string): Promise<void>;
+  markChanged?(stepKey: string): Promise<ChangeMark>;
+  // 실행기가 「적용 안 함」(행동 0회)을 보장하는 결과로 거절했다: 바로 앞 markChanged가 새로 남긴 기록만 되돌린다
+  unmarkChanged?(stepKey: string, mark: ChangeMark): Promise<void>;
   // OBS를 처음 바꾸기 직전: 같은 PC 잠금을 실제 PC(OBS pairing)로 옮긴다. 다른 작업이 그 PC에서 실행 중이면 던진다.
   claimObsTarget?(pairingId: string): Promise<void>;
   // 브라우저 상태를 보관하기 직전(「보관 중」 표시를 먼저 남긴다). 실패하면 보관하지 않는다.
@@ -89,6 +91,10 @@ export const ACTION_EFFECT: Record<AutomationAction["type"], "external" | "sessi
 };
 
 // 바꾸는 행동(외부·세션 모두). 무료 재연결의 쇼핑몰·PC 대조는 이 행동을 처음 하기 바로 전에 한다(이동·고객 로그인 대기·관찰·확인은 대조 전에 허용).
+// 실행기 계약상 행동을 0회 하고 거절한 결과(확인과 실행 사이 문서·PC가 바뀜, ports.ts). 이 결과면 그 행동으로 바뀐 것이 없다.
+const NOT_APPLIED: ReadonlySet<string> = new Set(["page_mismatch", "pairing_mismatch"]);
+// 변경 기록(markChanged)이 이번에 새로 남긴 것: 단계 추가 여부와 새로 남긴 첫 변경 시각(이미 있었으면 null)
+export type ChangeMark = { stepAdded: boolean; changedAt: Date | null };
 const MUTATING: readonly AutomationAction["type"][] = (Object.keys(ACTION_EFFECT) as AutomationAction["type"][]).filter((t) => ACTION_EFFECT[t] !== "none");
 // 고정 키를 붙이는 행동: 세션 밖에 남는 효과만
 const keyed = (a: AutomationAction) => ACTION_EFFECT[a.type] === "external";
@@ -326,8 +332,10 @@ async function runAll(
         const secretFill = action.type === "fill" && "secretRef" in action.value;
         expectedPage = { url: raw.url, nav, ...(secretFill ? { secretOrigin: { shopHost: opts.shopHost, pathPrefixes: secretBook?.secretOrigin.pathPrefixes ?? [], adminCueText: secretBook?.secretOrigin.adminCue.textIncludes ?? [] } } : {}) };
       }
+      // 이번 행동 직전에 새로 남긴 변경 기록(실행기가 행동 0회로 거절하면 이것만 되돌린다)
+      let freshMark: ChangeMark | null = null;
       if (MUTATING.includes(action.type) && !markedSteps.has(step.key) && hooks.markChanged) {
-        await hooks.markChanged(step.key);
+        freshMark = await hooks.markChanged(step.key);
         markedSteps.add(step.key);
       }
       guard();
@@ -342,7 +350,14 @@ async function runAll(
       guard();
       if (out.kind === "needs_customer") return { kind: "needs_customer", action: out.action };
       if (out.kind === "retryable") return { kind: "retry", reason: out.reason };
-      if (out.kind === "fatal") return { kind: "failed", reason: out.reason };
+      if (out.kind === "fatal") {
+        // 행동 0회가 보장된 거절이면 바꾼 것이 없으므로 이번에 남긴 변경 기록을 되돌린다(변경 전 실패로 끝남)
+        if (NOT_APPLIED.has(out.reason) && freshMark && hooks.unmarkChanged) {
+          await hooks.unmarkChanged(step.key, freshMark);
+          markedSteps.delete(step.key);
+        }
+        return { kind: "failed", reason: out.reason };
+      }
       // 실행기가 알려 준 PC가 이 작업이 바꾼 PC와 다르면 그 결과(증거·PC)를 저장하지 않고 멈춘다
       if (!session && obsPairing && out.facts?.obsPairingId && out.facts.obsPairingId !== obsPairing) return { kind: "failed", reason: "obs_target_changed" };
       Object.assign(facts, out.facts);

@@ -2394,7 +2394,8 @@ describe("Codex 18차 반영(353d28c)", () => {
     };
     expect(await runOnce(db, rt, W)).toBe("failed");
     expect(obs.performed).toHaveLength(0);
-    expect(await job(a.jobId)).toMatchObject({ status: "CLEANUP_NEEDED", lastError: "pairing_mismatch" });
+    // 브라우저 단계에서 이미 바꿨으므로 정리 필요, 거절된 OBS 단계의 변경 기록만 되돌린다(34차)
+    expect(await job(a.jobId)).toMatchObject({ status: "CLEANUP_NEEDED", lastError: "pairing_mismatch", mutatedSteps: ["shop_connect", "webhook_setup"] });
   });
 
   it("정상 경로에서는 로컬 도구가 실제 실행한 PC를 돌려주고 엔진이 대조해 그대로 완료한다", async () => {
@@ -2539,7 +2540,10 @@ describe("Codex 22차 반영(917980f)", () => {
       };
       expect(await runOnce(db, rt, W), to).toBe("failed");
       expect(rt.browser.performed.filter((p) => p.type === "click" || p.type === "fill"), to).toHaveLength(0);
-      expect(await job(a.jobId), to).toMatchObject({ status: "CLEANUP_NEEDED", lastError: "page_mismatch" });
+      // 34차: 첫 변경 행동이 행동 0회로 거절됐으니 바꾼 것이 없다 → 변경 기록을 되돌리고 변경 전 실패(FAILED, 환불 요청 가능)
+      expect(await job(a.jobId), to).toMatchObject({ status: "FAILED", lastError: "page_mismatch", changedAt: null, mutatedSteps: [], cleanupNeededAt: null });
+      // 실패로 끝났으니 판매자가 환불을 요청할 수 있다(정리 필요였다면 막힘)
+      expect(await requestRefund(db, a.ctx, a.jobId), to).toMatchObject({ ok: true });
       await db.automationJob.updateMany({ data: { deviatedSteps: [], lastDeviationAt: null } });
     }
   });
@@ -2553,7 +2557,10 @@ describe("Codex 22차 반영(917980f)", () => {
     };
     expect(await runOnce(db, rt, W)).toBe("failed");
     expect(rt.browser.performed.filter((p) => p.type === "fill")).toHaveLength(0);
-    expect(await job(a.jobId)).toMatchObject({ status: "CLEANUP_NEEDED", lastError: "page_mismatch" });
+    // 앞 단계(쇼핑몰 연결)에서 이미 바꿨으므로 정리 필요는 그대로, 거절된 웹훅 단계의 변경 기록만 되돌린다(34차)
+    const j = await job(a.jobId);
+    expect(j).toMatchObject({ status: "CLEANUP_NEEDED", lastError: "page_mismatch", mutatedSteps: ["shop_connect"] });
+    expect(j.changedAt).not.toBeNull();
   });
 
   it("정리 필요는 변경 기록(changedAt·mutatedSteps)으로만 판단한다: 기존 설치를 확인만 하고 진행한 작업(진행 위치 2, 변경 기록 없음)이 실패해도 정리 필요·알림 없음", async () => {
