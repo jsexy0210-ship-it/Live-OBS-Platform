@@ -28,7 +28,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/password-reset/resend": null,
   "seller/password-reset/start": null,
   "seller/password-reset/verify": null,
-  // 본인확인 다시 받기·확인은 시작(ACCOUNT)한 흐름의 쿠키로만 쓴다
+  // 본인확인 다시 받기·확인은 시작(ACCOUNT)한 흐름의 쿠키로 쓰고, 기능 권한(ACCOUNT)은 identityStepRoute가 기록의 쇼핑몰로 다시 본다
   "seller/me/identity/confirm": null,
   "seller/me/identity/resend": null,
   "seller/me": "BILLING",

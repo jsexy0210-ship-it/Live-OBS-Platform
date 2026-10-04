@@ -2,6 +2,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { GET as overlayState } from "../../app/api/overlay/[token]/state/route";
 import { GET as overlayStream } from "../../app/api/overlay/[token]/stream/route";
 import { GET as overlayVersion } from "../../app/api/overlay/[token]/version/route";
+import { POST as linkConfirm } from "../../app/api/seller/me/identity/confirm/route";
+import { POST as linkResend } from "../../app/api/seller/me/identity/resend/route";
+import { POST as linkStart } from "../../app/api/seller/me/identity/start/route";
 import { GET as sellerMe } from "../../app/api/seller/me/route";
 import { GET as sellerOrders } from "../../app/api/seller/orders/route";
 import { POST as overlayTokenRoute } from "../../app/api/seller/overlay/token/route";
@@ -200,6 +203,27 @@ describe("판매자 API: 통합 첫 결제 확정 전", () => {
     await db.subscriptionPayment.updateMany({ where: { subscriptionId: sub.id }, data: { status: "PAID", paidAt: new Date() } });
     expect((await productsPost(req("/api/seller/products", "POST", s.cookie, { name: "x", price: 1000 }))).status).toBe(201);
     expect((await sellerOrders(req("/api/seller/orders", "GET", s.cookie))).status).toBe(200);
+  });
+
+  it("직원 본인확인 연결을 시작한 뒤 통합 결제 대기로 바뀌면 다시 받기·확인도 403이고 기록은 그대로다(#176 Codex P2)", async () => {
+    const s = await shop();
+    const staff = await createSellerUser(s.seller.id, "MANAGER");
+    await db.sellerUser.update({ where: { id: staff.id }, data: { phone: "01055556666" } });
+    const cookie = await sellerCookie(staff.email);
+    const start = await linkStart(req("/api/seller/me/identity/start", "POST", cookie, { ...IDV_INPUT, name: "직원", phone: "010-5555-6666" }));
+    expect(start.status).toBe(200);
+    const flow = (start.headers.getSetCookie().find((c) => c.startsWith("lo_lidv=")) ?? "").split(";")[0];
+    const { verificationId } = (await start.json()) as { verificationId: string };
+    await integratedAwaitingFirstPayment(s.seller.id);
+    const before = await db.identityVerification.findUniqueOrThrow({ where: { id: verificationId } });
+    for (const res of [
+      await linkResend(req("/api/seller/me/identity/resend", "POST", flow, { verificationId })),
+      await linkConfirm(req("/api/seller/me/identity/confirm", "POST", flow, { verificationId, code: "000000" })),
+    ]) {
+      expect(res.status).toBe(403);
+      expect(await errorOf(res)).toBe("plan_feature_required");
+    }
+    expect(await db.identityVerification.findUniqueOrThrow({ where: { id: verificationId } })).toEqual(before);
   });
 
   it("잠금이 먼저다: 잠긴 판매자는 기능 권한과 관계없이 402", async () => {
