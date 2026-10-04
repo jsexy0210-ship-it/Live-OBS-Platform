@@ -16,7 +16,7 @@ export const POST = mutation(async (req: Request, { params }: { params: Promise<
   const r = await completeDelivery(prisma, ctx, orderId);
   if (!r.ok) {
     if (r.reason === "not_found") return NextResponse.json({ error: "not_found" }, { status: 404 });
-    return NextResponse.json(orderErrorBody(r.reason), { status: 409 });
+    return NextResponse.json(orderErrorBody(r.reason, "formal"), { status: 409 });
   }
   return NextResponse.json({ deliveredAt: r.deliveredAt, rewardEarned: r.rewardEarned });
 });

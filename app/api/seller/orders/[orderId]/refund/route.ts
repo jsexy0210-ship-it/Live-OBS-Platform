@@ -35,7 +35,7 @@ export const POST = mutation(async (req: Request, { params }: { params: Promise<
   });
   if (!result.ok) {
     const status = queueRejectionStatus(result.reason);
-    return NextResponse.json(REFUND_MESSAGE_CODES.has(result.reason) ? orderErrorBody(result.reason as RefundMessageCode) : { error: result.reason }, { status });
+    return NextResponse.json(REFUND_MESSAGE_CODES.has(result.reason) ? orderErrorBody(result.reason as RefundMessageCode, "formal") : { error: result.reason }, { status });
   }
   return NextResponse.json({ ...result.value, version: result.version });
 });

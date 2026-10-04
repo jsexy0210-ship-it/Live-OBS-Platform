@@ -154,7 +154,7 @@ tests/unit/**, tests/integration/**           테스트
   - CI 원문은 저장하지 않는다. 서버 비밀키(환경변수 `IDENTITY_HASH_KEY`)로 만든 HMAC-SHA256 값만 저장한다.
   - 방식(대표님 결정 2026-10-03, PRODUCT_SCOPE 「휴대폰 본인확인 방식」): 본인확인기관 대행사의 「문자로 본인확인」. 인적사항(이름·휴대폰번호·생년월일+성별 자리 7자리·통신사) → 인증번호 보내기 → (다시 보내기) → 인증번호 확인 → 서버 결과 조회로만 `VERIFIED` 확정. 결과의 요청 id·용도·휴대폰번호가 요청 기록과 다르면 실패.
   - 제한(`lib/server/identity/verification.ts` 상수, 대행사 규격을 알게 되면 맞춤): 인증번호 3분, 다시 보내기 30초 간격·처음 포함 4번, 5번 틀리면 실패, 시작부터 10분, 확인 뒤 10분 안에 사용. 공급자 호출 10초 넘으면 장애로 처리.
-  - 연동은 `IdentityProvider` 인터페이스 뒤에 둔다. 개발·테스트는 가짜 공급자만 쓴다(운영에서 만들 수 없음). 운영 후보는 포트원 V2 + KCP 「API 방식」(`lib/server/identity/portone.ts`, 키 `PORTONE_API_SECRET`·`PORTONE_STORE_ID`·`PORTONE_IDENTITY_CHANNEL_KEY`, 계약 전이라 실제 호출 미검증). 운영에서 키가 없으면 본인확인 라우트는 `503 identity_unavailable` 「본인확인 서비스 준비 중이에요」.
+  - 연동은 `IdentityProvider` 인터페이스 뒤에 둔다. 개발·테스트는 가짜 공급자만 쓴다(운영에서 만들 수 없음). 운영 후보는 포트원 V2 + KCP 「API 방식」(`lib/server/identity/portone.ts`, 키 `PORTONE_API_SECRET`·`PORTONE_STORE_ID`·`PORTONE_IDENTITY_CHANNEL_KEY`, 계약 전이라 실제 호출 미검증). 운영에서 키가 없으면 본인확인 라우트는 `503 identity_unavailable`: 구매자 가입·파트너스 가입 신청은 「본인확인 서비스 준비 중이에요」, 파트너스 아이디·비밀번호 찾기·직원 본인확인 연결은 「본인확인 서비스를 준비하고 있습니다」.
 - `BuyerSession`: id, buyerMemberId, sellerId, tokenHash(**유니크**), expiresAt, revokedAt
 - 같은 사람이 다른 판매자 쇼핑몰에 가입하면 별도 회원이다(데이터 공유 없음).
 - [확정] 구매자 로그인 수단은 「아이디+비밀번호」, 가입 시 휴대폰 본인확인 필수(2026-10-02 대표님 지시, 2026-10-03 PASS 앱 → 문자 방식 전환). 휴대폰 번호 로그인·카카오 로그인은 보류.
@@ -200,7 +200,7 @@ tests/unit/**, tests/integration/**           테스트
   - 재고는 주문 수량만큼 있는지 확인하고, 주문 때 차감 상품은 이때 뺀다(4.4). 부족하면 `400 out_of_stock`.
   - 단가가 1원 미만(음수 추가금 등)이거나 합계(상품 + 배송비)가 정수 범위(2,147,483,647원)를 넘으면 `400 invalid_amount`, 주문을 만들지 않는다.
   - 배송지 필수(받는 분·연락처·우편번호 5자리·주소, 상세 주소·메모 선택). 틀리면 `400 invalid_shipping_address`. 4.10 참고.
-  - 400·402·409 응답은 `{ error, message }`. `message`는 화면에 그대로 보여 줄 해요체 문구이고, 사유 코드별 문구는 `lib/server/orders/messages.ts` 한 곳에서만 고친다.
+  - 400·402·409 응답은 `{ error, message }`. `message`는 화면에 그대로 보여 줄 문구이고, 사유 코드별 문구는 `lib/server/orders/messages.ts` 한 곳에서만 고친다. 말투는 부르는 API 대상으로 정한다(`lib/server/text/tone.ts`, 대표님 지시 2026-10-04): 파트너스·마스터 관리자 API(`app/api/seller/**`·`app/api/admin/**`)는 합니다체(요청은 「~해 주십시오」), 구매자 쇼핑몰·공개·오버레이 API와 파트너스 가입 신청(`app/api/seller-signup/**`)은 해요체. 같은 사유를 두 쪽이 쓰는 문구표(주문·로그인·본인확인)는 두 벌을 두고, `tests/unit/messageTone.test.ts`가 표의 말투와 경로별 호출을 확인한다.
   - 주문 번호는 판매자별 advisory lock 아래에서 매긴다(동시 주문에도 겹치지 않음). 판매 중(`ON_SALE`)이 아니거나 다른 쇼핑몰 옵션이면 `400 product_unavailable`.
 - 입금 기한·자동 취소·구매 제한·주문 횟수 제한: 4.11.
 - 결제 전 동의 문구(`GET /api/shop/{slug}/order-consent`, 로그인 없이): `{ consents: [{ kind, version, text }] }`. 화면은 이 version을 주문 요청의 `consent.noticeVersion`으로 보낸다. 문구는 아직 코드 상수(`lib/server/orders/consent.ts`)에만 있다.
@@ -218,7 +218,7 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
   - 연결된 주문대기가 「대기」(환불과 함께 취소됨)이거나 개봉 전에 「취소」된 경우 → 자동 복원(`StockMovement.reason = REFUND`).
   - 「개봉 중」(환불과 함께 취소됨)·개봉을 시작한 뒤 취소됨·「완료」 → 이미 개봉했으므로 복원하지 않는다.
   - 개봉한 품목이 있는 주문도 환불할 수 있다(배송 사고·판매자 판단). 대신 요청에 `confirmOpened: true`가 있어야 하고, 없으면 `409 opened_items_present`. 감사 로그에 개봉 품목 수를 남긴다.
-  - 환불액(PRODUCT_SCOPE 「반품·교환 배송비」): 발송했거나 개봉한 품목이 있으면 `fault: "BUYER" | "SELLER"`(구매자·판매자 사정)를 꼭 보낸다(없으면 `400 fault_required`). 발송 전은 결제 금액 전부, 발송 후 판매자 사정은 상품 + 처음 배송비, 발송 후 구매자 사정은 상품 − 반품 배송비(처음 배송비 0원이면 × 2, 처음 배송비는 안 돌려줌, 0원 아래로 안 내려감). 구매자 사정이면 개봉한 품목은 빼고 계산한다. 발송 전 주문에 개봉 품목이 있으면 구매자 사정 환불은 `409 opened_items_unshipped`로 막는다(부분 환불 구조 전까지 임시, MASTER 결정 2026-10-03). 판매자 사정은 전액. 거부 응답에는 해요체 `message`가 붙는다. 반품 배송비는 주문할 때 값(`Order.returnFeeSnapshot`)을 쓴다. 돈으로 돌려주는 환불액은 실제 결제액(`totalAmount`, 적립금을 이미 뺀 금액)을 넘지 않는다. 쓴 적립금을 되돌리는 규칙은 아직 없다(적립금 사용 방식 미정). 결과는 `Order.refundAmount·refundFault·returnFeeDeducted`와 응답·감사 로그에 남는다. 실제 PG 환불 호출은 아직 없다.
+  - 환불액(PRODUCT_SCOPE 「반품·교환 배송비」): 발송했거나 개봉한 품목이 있으면 `fault: "BUYER" | "SELLER"`(구매자·판매자 사정)를 꼭 보낸다(없으면 `400 fault_required`). 발송 전은 결제 금액 전부, 발송 후 판매자 사정은 상품 + 처음 배송비, 발송 후 구매자 사정은 상품 − 반품 배송비(처음 배송비 0원이면 × 2, 처음 배송비는 안 돌려줌, 0원 아래로 안 내려감). 구매자 사정이면 개봉한 품목은 빼고 계산한다. 발송 전 주문에 개봉 품목이 있으면 구매자 사정 환불은 `409 opened_items_unshipped`로 막는다(부분 환불 구조 전까지 임시, MASTER 결정 2026-10-03). 판매자 사정은 전액. 거부 응답에는 합니다체 `message`가 붙는다(파트너스 API, 예: 「개봉한 상품이 있습니다. 확인한 뒤 다시 환불해 주십시오」). 반품 배송비는 주문할 때 값(`Order.returnFeeSnapshot`)을 쓴다. 돈으로 돌려주는 환불액은 실제 결제액(`totalAmount`, 적립금을 이미 뺀 금액)을 넘지 않는다. 쓴 적립금을 되돌리는 규칙은 아직 없다(적립금 사용 방식 미정). 결과는 `Order.refundAmount·refundFault·returnFeeDeducted`와 응답·감사 로그에 남는다. 실제 PG 환불 호출은 아직 없다.
   - 재고 부족(`stockShortageAt`)으로 차감되지 않은 주문 → 복원할 것 없음.
   - 그 밖의 조정은 판매자가 직접 `MANUAL` 이력으로 한다. 환불 API에 복원 여부 입력은 두지 않는다.
   - 주문 상태를 결제 완료 → 환불로 원자적으로 바꿔 같은 주문을 두 번 환불하거나 재고를 두 번 복원하지 않는다. 결제 대기 주문은 「취소」(재고 변화 없음), 결제 완료 주문은 「환불」만 가능. 둘 다 사유 필수, `ORDER_SHIPPING` 권한, 화면이 받은 `expectedVersion`(판매자 liveVersion) 필수 — 다르면 `409 conflict`(주문대기 조작과 같은 규칙).
@@ -379,7 +379,7 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
   - 첫 결제(체험하기 종료 시각), 다음 달 결제(기간 끝 하루 전).
   - 실패: 처음 실패면 `PAST_DUE` + 유예 7일, 하루 간격으로 최대 3번 다시 시도, 그 뒤에는 시도하지 않는다. 판매자가 카드를 바꾸면 바로 다시 결제한다.
   - 해지 예약은 기간이 끝나면 결제 없이 `CANCELED`.
-- 해지: 결제를 처리하는 중(`PENDING` 청구)에는 `409 payment_in_progress`(「결제를 처리하고 있어요. 잠시 뒤 다시 시도해 주세요」). 결제한 기간이 남아 있으면 기간 끝까지 쓰고 다음 결제를 하지 않는다. 결제한 기간이 없으면(체험하기 중 카드만 등록, 유예 중) 바로 해지하고 청구하지 않는다. 즉시 환불은 하지 않는다.
+- 해지: 결제를 처리하는 중(`PENDING` 청구)에는 `409 payment_in_progress`(「결제를 처리하고 있습니다. 잠시 뒤 다시 시도해 주십시오」). 결제한 기간이 남아 있으면 기간 끝까지 쓰고 다음 결제를 하지 않는다. 결제한 기간이 없으면(체험하기 중 카드만 등록, 유예 중) 바로 해지하고 청구하지 않는다. 즉시 환불은 하지 않는다.
 - 결제 공급자는 인터페이스(`lib/server/billing/provider.ts`: 빌링키 발급·결제·같은 청구 id 조회)로만 부르고, 업체(후보 NICEPAY·페이플)는 바꿔 끼운다. `BILLING_PROVIDER` 환경변수로 고른다. 지금은 `fake`만 있고 명시했을 때만 쓴다(운영 환경에서는 만들 수 없음, 실제 결제 없음). 예약 실행을 주기적으로 돌리는 인프라는 승인 후 연결한다.
 - 빌링키 암호화: AES-256-GCM, 판매자 id를 AAD로 묶어 다른 판매자 행으로 옮기면 풀리지 않는다. `BILLING_KEY_SECRET`이 없으면 PG를 부르기 전에 실패한다.
   - 키 교체 절차: ① 새 키를 `BILLING_KEY_SECRET_NEXT`로 배포(읽기는 새 키 → 이전 키 순으로 시도하는 코드를 그때 추가) ② 일괄 작업으로 모든 `billingKeyCipher`를 이전 키로 풀어 새 키로 다시 암호화(판매자 행 잠금 아래, 진행 중 청구가 없을 때) ③ 남은 행이 없는지 확인한 뒤 `BILLING_KEY_SECRET`을 새 키로 바꾸고 이전 키 제거 ④ 감사 로그에 교체 기록. 키 값은 저장소·로그에 남기지 않는다.

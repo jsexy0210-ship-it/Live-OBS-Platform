@@ -74,7 +74,7 @@ describe("구매자 재가입 제한", () => {
       expect(await (await s.getPolicy()).json()).toEqual({ policy: { rejoinRestrictionEnabled: false, rejoinRestrictionDays: 30 }, restrictionAvailable: false });
       const r = await s.setPolicy({ rejoinRestrictionEnabled: true, rejoinRestrictionDays: 90 });
       expect(r.status).toBe(409);
-      expect(await r.json()).toEqual({ error: "rejoin_restriction_unavailable", message: "회원이 동의를 철회할 수 있는 화면이 준비되면 켤 수 있어요" });
+      expect(await r.json()).toEqual({ error: "rejoin_restriction_unavailable", message: "회원이 동의를 철회할 수 있는 화면이 준비되면 켤 수 있습니다" });
       expect(await db.sellerMemberPolicy.count({ where: { sellerId: s.seller.id } })).toBe(0);
       expect((await s.setPolicy({ rejoinRestrictionEnabled: false, rejoinRestrictionDays: 30 })).status).toBe(200);
     } finally {
@@ -97,7 +97,7 @@ describe("구매자 재가입 제한", () => {
     for (const bad of [{ rejoinRestrictionEnabled: true, rejoinRestrictionDays: 0 }, { rejoinRestrictionEnabled: true, rejoinRestrictionDays: 366 }, { rejoinRestrictionEnabled: true, rejoinRestrictionDays: 1.5 }, { rejoinRestrictionDays: 7 }, { rejoinRestrictionEnabled: "true" }]) {
       const res = await s.setPolicy(bad);
       expect(res.status).toBe(400);
-      expect(await res.json()).toEqual({ error: "invalid_member_policy", message: "재가입 제한 기간은 1일에서 365일 사이로 정해 주세요" });
+      expect(await res.json()).toEqual({ error: "invalid_member_policy", message: "재가입 제한 기간은 1일에서 365일 사이로 정해 주십시오" });
     }
     const staff = await createSellerUser(s.seller.id, { permissions: ["ORDER_SHIPPING"] });
     const staffLogin = await loginSeller(db, { email: staff.email, password: PASSWORD }, {});

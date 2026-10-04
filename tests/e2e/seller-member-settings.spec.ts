@@ -43,7 +43,7 @@ test("쇼핑몰 설정 탭에서 회원 정책으로 들어가면, 동의 철회
     const res = await fetch("/api/seller/member-policy", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ rejoinRestrictionEnabled: true, rejoinRestrictionDays: 90 }) });
     return { status: res.status, body: await res.json() };
   });
-  expect(status).toEqual({ status: 409, body: { error: "rejoin_restriction_unavailable", message: "회원이 동의를 철회할 수 있는 화면이 준비되면 켤 수 있어요" } });
+  expect(status).toEqual({ status: 409, body: { error: "rejoin_restriction_unavailable", message: "회원이 동의를 철회할 수 있는 화면이 준비되면 켤 수 있습니다" } });
 });
 
 test("이미 켜진 쇼핑몰은 끄기만 할 수 있고, 끄기 저장에 실패하면 화면 위에 이유를 보여 주고 바꾼 값은 그대로 둔다", async ({ page }) => {
@@ -57,13 +57,13 @@ test("이미 켜진 쇼핑몰은 끄기만 할 수 있고, 끄기 저장에 실�
     await expect(page.getByRole("radio", { name: "90일" })).toHaveAttribute("aria-checked", "true");
     await page.route("**/api/seller/member-policy", (route) =>
       route.request().method() === "PUT"
-        ? route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ error: "invalid_member_policy", message: "재가입 제한 기간은 1일에서 365일 사이로 정해 주세요" }) })
+        ? route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ error: "invalid_member_policy", message: "재가입 제한 기간은 1일에서 365일 사이로 정해 주십시오" }) })
         : route.continue(),
     );
     await sw.click();
     await expect(sw).toHaveAttribute("aria-checked", "false");
     await saveButton(page).click();
-    await expect(page.getByRole("alert").filter({ hasText: "저장할 수 없어요." })).toContainText("재가입 제한 기간은 1일에서 365일 사이로 정해 주세요");
+    await expect(page.getByRole("alert").filter({ hasText: "저장할 수 없어요." })).toContainText("재가입 제한 기간은 1일에서 365일 사이로 정해 주십시오");
     await expect(sw).toHaveAttribute("aria-checked", "false");
     await page.unrouteAll({ behavior: "ignoreErrors" });
     // 실제로 끄면 저장된다

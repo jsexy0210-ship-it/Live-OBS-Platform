@@ -8,7 +8,7 @@ import { loginBuyer, loginSeller } from "../../lib/server/auth/login";
 import { prisma } from "../../lib/server/db";
 import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
 import { createOrder, ORDER_RATE_LIMIT } from "../../lib/server/orders/create";
-import { ORDER_ERROR_MESSAGES, ORDER_NOTICES, purchaseRestrictedMessage } from "../../lib/server/orders/messages";
+import { ORDER_ERROR_MESSAGES, ORDER_ERROR_MESSAGES_FORMAL, ORDER_NOTICES, purchaseRestrictedMessage } from "../../lib/server/orders/messages";
 import { cancelOverdueOrders, liftRestriction, listPaymentDueSoon } from "../../lib/server/orders/overdue";
 import { markOrderPaid } from "../../lib/server/queue/service";
 import type { TenantContext } from "../../lib/server/tenant/context";
@@ -113,7 +113,7 @@ describe("입금 기한", () => {
     ]) {
       const r = await policyPut(new Request("http://localhost:3000/api/seller/order-policy", { method: "PUT", headers: { ...H, cookie: c }, body: JSON.stringify(body) }));
       expect(r.status, JSON.stringify(body)).toBe(400);
-      expect(await r.json()).toEqual({ error: "invalid_order_policy", message: ORDER_ERROR_MESSAGES.invalid_order_policy });
+      expect(await r.json()).toEqual({ error: "invalid_order_policy", message: ORDER_ERROR_MESSAGES_FORMAL.invalid_order_policy });
     }
     const staff = await createSellerUser(s.seller.id, { permissions: ["ORDER_SHIPPING"] });
     const r = await policyPut(new Request("http://localhost:3000/api/seller/order-policy", { method: "PUT", headers: { ...H, cookie: await sellerCookie(staff.email) }, body: JSON.stringify({ ...ok, paymentDueHours: 2 }) }));
@@ -249,7 +249,7 @@ describe("자동 구매 제한", () => {
     expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.purchase_restriction.lift", targetId: s.buyer.id } })).toMatchObject({ reason: "입금 확인" });
     const again = await lift(c);
     expect(again.status).toBe(404);
-    expect(await again.json()).toEqual({ error: "no_restriction", message: ORDER_ERROR_MESSAGES.no_restriction });
+    expect(await again.json()).toEqual({ error: "no_restriction", message: ORDER_ERROR_MESSAGES_FORMAL.no_restriction });
 
     // 풀린 뒤에는 예전 3회를 세지 않는다
     for (let i = 0; i < 2; i++) await makeOverdue(await s.order());
@@ -309,7 +309,7 @@ describe("검수 후속(#82)", () => {
     for (const body of ['{"reason":"확인\\u0000"}', '{"reason":"확인\\ud800"}', JSON.stringify({ reason: "가".repeat(201) })]) {
       const res = await lift(body);
       expect(res.status, body).toBe(400);
-      expect(await res.json()).toEqual({ error: "invalid_reason", message: ORDER_ERROR_MESSAGES.invalid_reason });
+      expect(await res.json()).toEqual({ error: "invalid_reason", message: ORDER_ERROR_MESSAGES_FORMAL.invalid_reason });
     }
     expect(await db.buyerPurchaseRestriction.count({ where: { liftedAt: null } })).toBe(1);
     expect((await lift(JSON.stringify({ reason: "입금 확인\n통화함" }))).status).toBe(200);
