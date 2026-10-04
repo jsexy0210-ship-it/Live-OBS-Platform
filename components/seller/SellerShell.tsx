@@ -13,6 +13,7 @@ type Nav = { h: string } | { label: string; href?: string; perm?: string; match?
 const NAV: Nav[] = [
   { h: "홈" },
   { label: "홈" },
+  { label: "통계", href: "/seller/stats/orders", match: "/seller/stats", perm: "SALES_VIEW" },
   { h: "방송" },
   { label: "방송 대시보드", perm: "BROADCAST_RUN" },
   { h: "판매" },
@@ -31,6 +32,7 @@ const NAV: Nav[] = [
   { label: "방송 이력", perm: "BROADCAST_RUN" },
   { h: "설정" },
   { label: "쇼핑몰 설정", href: "/seller/settings/shipping", match: "/seller/settings", perm: "SHOP_SETTINGS" },
+  { label: "배너 · 팝업", href: "/seller/banners", perm: "SHOP_SETTINGS" },
   { label: "결제(PG) 연결", perm: "OWNER" },
   { label: "주문자 알림", perm: "SHOP_SETTINGS" },
   { label: "구독 · 결제", perm: "OWNER" },

@@ -74,6 +74,16 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/reward-policy": "STORE_OPERATIONS",
   "seller/share-preview": "STORE_OPERATIONS",
   "seller/shipping-policy": "STORE_OPERATIONS",
+  "seller/shop-content/banners": "STORE_OPERATIONS",
+  "seller/shop-content/banners/[bannerId]": "STORE_OPERATIONS",
+  "seller/shop-content/banners/reorder": "STORE_OPERATIONS",
+  "seller/shop-content/popups": "STORE_OPERATIONS",
+  "seller/shop-content/popups/[popupId]": "STORE_OPERATIONS",
+  "seller/shop-content/popups/reorder": "STORE_OPERATIONS",
+  "seller/shop-content/images": "STORE_OPERATIONS",
+  "seller/shop-content/images/[imageId]": "STORE_OPERATIONS",
+  "seller/stats/orders": "STORE_OPERATIONS",
+  "seller/stats/sales": "STORE_OPERATIONS",
 };
 
 // 공개·구매자 경로(ARCHITECTURE 4.8.0 표): 기능 권한이 없을 때 막는지. 막는 검사는 lib 쪽(shopOpen·createOrder·resolveOverlayToken)이나
@@ -87,6 +97,8 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/signup/verification/confirm": "STORE_OPERATIONS",
   "shop/[slug]/share": "STORE_OPERATIONS",
   "shop/[slug]/og.png": "STORE_OPERATIONS",
+  "shop/[slug]/shop-content": "STORE_OPERATIONS", // 홈 배너·이벤트 팝업
+  "shop/[slug]/shop-content/images/[imageId]": "STORE_OPERATIONS",
   "shop/[slug]/orders/[orderId]": "OPEN",
   "shop/[slug]/auth/login": "OPEN",
   "shop/[slug]/auth/logout": "OPEN",
@@ -104,6 +116,7 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
 // 서버 렌더 쇼핑몰 화면(ARCHITECTURE 4.8.0 ③). 「새 거래 시작」 화면은 스토어 운영 권한이 없으면 폼·구매 버튼 없이 안내 화면을 그린다.
 // 판정은 shopOpen(운영 중·잠김·스토어 운영 권한)이 하고, 렌더 결과는 tests/integration/planFeatures.test.ts가 확인한다.
 const SHOP_PAGES: Record<string, "STORE_OPERATIONS" | "OPEN"> = {
+  "shop/[slug]": "STORE_OPERATIONS", // 쇼핑몰 홈(홈 배너·이벤트 팝업)
   "shop/[slug]/signup": "STORE_OPERATIONS",
   "shop/[slug]/me/notifications": "OPEN", // SH-025 알림 설정: 마케팅 수신 철회는 잠긴 쇼핑몰에서도 연다(API me/marketing-consent와 같은 기준)
 };
