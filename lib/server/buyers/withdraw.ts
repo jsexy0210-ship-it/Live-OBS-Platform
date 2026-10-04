@@ -91,6 +91,8 @@ export async function withdrawBuyer(
       pending.push(o.id);
     }
     await tx.$queryRaw`SELECT "id" FROM "BuyerMember" WHERE "id" = ${member.id}::uuid FOR NO KEY UPDATE`;
+    // 재가입 제한은 지금 동의 상태로 정한다(PRODUCT_SCOPE, 개인정보 보호법 제37조). 잠금 전에 읽은 값은 그사이 철회됐을 수 있다.
+    const { rejoinRestrictionDaysAgreed } = await tx.buyerMember.findUniqueOrThrow({ where: { id: member.id }, select: { rejoinRestrictionDaysAgreed: true } });
     // 배송지 저장·수정과 같은 잠금을 잡아, 겹쳐 저장된 배송지가 탈퇴 뒤에 남지 않게 한다
     await lockBuyerAddresses(tx, scope);
     const busy = await tx.order.count({
@@ -126,6 +128,7 @@ export async function withdrawBuyer(
         rejoinRestrictionDaysAgreed: null,
         rejoinRetentionAgreedAt: null,
         rejoinRetentionVersion: null,
+        rejoinRetentionWithdrawnAt: null,
       },
     });
     if (moved.count !== 1) return "not_found" as const;
@@ -146,7 +149,7 @@ export async function withdrawBuyer(
     });
     const hitCards = await tx.hitCard.updateMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id }, data: { nicknameSnapshot: WITHDRAWN_DISPLAY_NAME } });
     const restrictions = await tx.buyerPurchaseRestriction.deleteMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id } });
-    const rejoinBlockedUntil = await recordRejoinBlock(tx, scope.sellerId, member, now);
+    const rejoinBlockedUntil = await recordRejoinBlock(tx, scope.sellerId, { ciHash: member.ciHash, rejoinRestrictionDaysAgreed }, now);
     const addresses = await tx.buyerAddress.deleteMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id } });
     const sessions = await tx.buyerSession.deleteMany({ where: { buyerMemberId: member.id } });
     const heldOrders = await refreshOrderRetention(tx, scope.sellerId, now, { buyerMemberId: member.id });

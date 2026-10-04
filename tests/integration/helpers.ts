@@ -1,5 +1,6 @@
 import { PrismaClient, type IdentityVerificationPurpose, type SellerStaffPermission } from "@prisma/client";
 import { SIGNUP_CONSENT_VERSIONS } from "../../lib/server/buyers/consent";
+import { SELLER_SIGNUP_CONSENT_VERSIONS } from "../../lib/server/sellers/signupConsent";
 import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
 import { FAKE_IDENTITY_OTP, type IdentityPerson, type IdentityProvider } from "../../lib/server/identity/provider";
 import { confirmIdentityCode, sendFirstIdentityCode, startIdentityVerification } from "../../lib/server/identity/verification";
@@ -151,6 +152,13 @@ export const SIGNUP_CONSENT = {
   termsVersion: SIGNUP_CONSENT_VERSIONS.terms,
   privacyVersion: SIGNUP_CONSENT_VERSIONS.privacy,
 } as const;
+// 파트너스 가입 본인확인 시작 본문에 함께 보내는 필수 동의(sellers/signupConsent.ts)
+export const SELLER_SIGNUP_CONSENT = {
+  agreedTerms: true,
+  agreedPrivacy: true,
+  termsVersion: SELLER_SIGNUP_CONSENT_VERSIONS.terms,
+  privacyVersion: SELLER_SIGNUP_CONSENT_VERSIONS.privacy,
+} as const;
 export const REJOIN_CONSENT = { agreedRejoinRetention: true, rejoinRetentionVersion: SIGNUP_CONSENT_VERSIONS.rejoinRetention } as const;
 
 // 시작 + 첫 인증번호 보내기
@@ -159,11 +167,13 @@ export async function startIdv(
   input: { purpose: IdentityVerificationPurpose; sellerId: string | null; subjectId?: string | null; now?: Date; person?: Partial<IdentityPerson> },
 ) {
   const person: IdentityPerson = { ...IDV_INPUT, ...input.person };
-  // 구매자 가입용이면 본인확인 시작 때 받는 필수 동의를 함께 남긴다(실제 시작 API와 같게)
+  // 구매자·파트너스 가입용이면 본인확인 시작 때 받는 필수 동의를 함께 남긴다(실제 시작 API와 같게)
   const signupConsent =
     input.purpose === "BUYER_SIGNUP"
       ? { termsVersion: SIGNUP_CONSENT_VERSIONS.terms, privacyVersion: SIGNUP_CONSENT_VERSIONS.privacy, rejoinRetention: null, agreedAt: new Date().toISOString() }
-      : undefined;
+      : input.purpose === "SELLER_REPRESENTATIVE"
+        ? { termsVersion: SELLER_SIGNUP_CONSENT_VERSIONS.terms, privacyVersion: SELLER_SIGNUP_CONSENT_VERSIONS.privacy, agreedAt: new Date().toISOString() }
+        : undefined;
   const started = await startIdentityVerification(db, provider, { ...input, person, signupConsent });
   const sent = await sendFirstIdentityCode(db, provider, started.verification, person, input.now);
   if (!sent.ok) throw new Error(sent.reason);
