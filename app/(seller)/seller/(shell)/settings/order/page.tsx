@@ -28,10 +28,10 @@ const MAX_DUE_HOURS = 720;
 const MAX_AUTO_DAYS = 30; // 자동 배송 완료·구매 확정 기간 1~30일, 기본 7일
 
 function daysError(v: string): string | null {
-  if (v.trim() === "") return "기간을 적어 주세요";
+  if (v.trim() === "") return "기간을 입력해 주십시오";
   const n = parseAmount(v);
-  if (n === null) return "숫자만 입력해 주세요";
-  if (n < 1 || n > MAX_AUTO_DAYS) return `1일부터 ${MAX_AUTO_DAYS}일까지 정할 수 있어요`;
+  if (n === null) return "숫자만 입력해 주십시오";
+  if (n < 1 || n > MAX_AUTO_DAYS) return `1일부터 ${MAX_AUTO_DAYS}일까지 정할 수 있습니다`;
   return null;
 }
 const SET_ROW = { padding: "12px 0", gap: 12, boxShadow: "inset 0 -1px 0 var(--wds-line-normal-alternative)" };
@@ -133,7 +133,7 @@ export default function OrderSettingsPage() {
   const n = parseAmount(due);
   const hours = n === null ? null : unit === "day" ? n * 24 : n;
   const dueError =
-    n === null ? "숫자만 입력해 주세요" : n < 1 ? "1 이상으로 적어 주세요 · 자동 취소를 끄려면 위 스위치를 꺼 주세요" : hours! > MAX_DUE_HOURS ? "입금 기한은 30일(720시간)까지 정할 수 있어요" : null;
+    n === null ? "숫자만 입력해 주십시오" : n < 1 ? "1 이상으로 입력해 주십시오 · 자동 취소를 끄려면 위 스위치를 꺼 주십시오" : hours! > MAX_DUE_HOURS ? "입금 기한은 30일(720시간)까지 정할 수 있습니다" : null;
   const saved = state.kind === "ok" ? state.saved : null;
   // 자동 취소를 끄면 입금 기한 칸은 숨기고 검사하지 않는다. 틀린 값이면 저장된 값을 그대로 쓴다(버튼 상태도 같은 기준)
   const effectiveHours = autoCancel || !dueError ? hours : saved?.paymentDueHours ?? null;
@@ -176,11 +176,11 @@ export default function OrderSettingsPage() {
     };
     const r = await api<{ policy: Policy }>("/api/seller/order-policy", { method: "PUT", body });
     setSaving(false);
-    if (!r.ok) return setFailure(failMessage(r, "저장하지 못했어요. 잠시 뒤 다시 시도해 주세요"));
+    if (!r.ok) return setFailure(failMessage(r, "admin", "저장하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
     apply(r.data.policy);
     setState({ kind: "ok", saved: r.data.policy });
     setShowError(false);
-    setToast("주문 설정을 저장했어요");
+    setToast("주문 설정을 저장했습니다");
   };
 
   const changeUnit = (u: Unit) => {
@@ -198,7 +198,7 @@ export default function OrderSettingsPage() {
       <Topbar crumb="설정 › 쇼핑몰 설정 › 주문 설정">
         {saved && (
           <button className="btn btn-sm" type="button" onClick={() => void save()} disabled={saving || !dirty}>
-            {saving ? "저장하고 있어요" : "저장"}
+            {saving ? "저장 중" : "저장"}
           </button>
         )}
       </Topbar>
@@ -207,7 +207,7 @@ export default function OrderSettingsPage() {
         <div className="ph">
           <div className="col" style={{ gap: 6 }}>
             <h1 className="t-t3">주문 설정</h1>
-            <span className="t-l2 c-alt">미입금 취소 · 재고 · 배송 완료 · 구매 확정 규칙이에요. 입금 기한은 다음 주문부터, 나머지는 저장하면 바로 적용돼요.</span>
+            <span className="t-l2 c-alt">미입금 취소 · 재고 · 배송 완료 · 구매 확정 규칙입니다. 입금 기한은 다음 주문부터, 나머지는 저장하면 바로 적용됩니다.</span>
           </div>
         </div>
 
@@ -220,7 +220,7 @@ export default function OrderSettingsPage() {
               ) : state.status === 402 ? (
                 <Locked />
               ) : (
-                <ErrorState title="주문 설정을 불러오지 못했어요" onRetry={() => void load()} />
+                <ErrorState title="주문 설정을 불러오지 못했습니다" onRetry={() => void load()} />
               ))}
           </div>
         ) : (
@@ -230,7 +230,7 @@ export default function OrderSettingsPage() {
               {failure && (
                 <div className="msg msg-neg" role="alert">
                   <span>
-                    <b>저장할 수 없어요.</b> {failure}
+                    <b>저장할 수 없습니다.</b> {failure}
                   </span>
                 </div>
               )}
@@ -239,7 +239,7 @@ export default function OrderSettingsPage() {
                 {/* 자동 취소·주문 막기를 실제로 돌리는 정기 실행이 아직 연결되지 않았다(HANDOFF 「미입금 자동 취소 정기 실행 미연결」). 연결되면 이 안내를 지운다 */}
                 <div className="msg msg-cau" role="note" data-testid="auto-cancel-pending">
                   <span>
-                    <b>아직 자동으로 취소되지 않아요.</b> 정해 둔 설정은 저장되고, 자동 취소가 시작되면 그대로 적용돼요. 그 전까지는 기한이 지난 주문을 직접 취소해 주세요.
+                    <b>아직 자동으로 취소되지 않습니다.</b> 정해 둔 설정은 저장되고, 자동 취소가 시작되면 그대로 적용됩니다. 그 전까지는 기한이 지난 주문을 직접 취소해 주십시오.
                   </span>
                 </div>
                 <div className="row between" style={SET_ROW}>
@@ -249,8 +249,8 @@ export default function OrderSettingsPage() {
                     </span>
                     <span className="t-c1 c-alt">
                       {autoCancel
-                        ? "무통장 주문이 기한 안에 입금되지 않으면 취소돼요 · 기본 켜짐"
-                        : "꺼 두면 미입금 주문이 그대로 남아요 · 입금 확인에서 직접 취소해요"}
+                        ? "무통장 주문이 기한 안에 입금되지 않으면 취소됩니다 · 기본 켜짐"
+                        : "꺼 두면 미입금 주문이 그대로 남습니다 · 입금 확인에서 직접 취소합니다"}
                     </span>
                   </span>
                   <button
@@ -294,12 +294,12 @@ export default function OrderSettingsPage() {
                       <span className="err">{dueError}</span>
                     ) : (
                       <span className="help">
-                        기본 {DEFAULT_DUE_HOURS}시간 · 1시간부터 30일까지 정할 수 있어요{preview ? ` · 구매자에게 「주문 후 ${preview} 안에 입금」으로 보여요` : ""}
+                        기본 {DEFAULT_DUE_HOURS}시간 · 1시간부터 30일까지 정할 수 있습니다{preview ? ` · 구매자에게 「주문 후 ${preview} 안에 입금」으로 표시됩니다` : ""}
                       </span>
                     )}
                   </>
                 ) : (
-                  <span className="t-c1 c-cau">미입금 주문이 쌓이면 재고가 묶여요</span>
+                  <span className="t-c1 c-cau">미입금 주문이 쌓이면 재고가 묶입니다</span>
                 )}
               </section>
 
@@ -310,7 +310,7 @@ export default function OrderSettingsPage() {
                     <span className="t-l1 fw6" id="rs-label">
                       미입금으로 3번 취소되면 30일 동안 주문 막기
                     </span>
-                    <span className="t-c1 c-alt">같은 구매자의 주문이 입금 기한을 넘겨 3번 자동 취소되면 30일 동안 새 주문을 받지 않아요 · 기본 켜짐</span>
+                    <span className="t-c1 c-alt">같은 구매자의 주문이 입금 기한을 넘겨 3번 자동 취소되면 30일 동안 새 주문을 받지 않습니다 · 기본 켜짐</span>
                   </span>
                   <button
                     className={`sw${restriction ? " on" : ""}`}
@@ -321,10 +321,10 @@ export default function OrderSettingsPage() {
                     onClick={() => setRestriction((v) => !v)}
                   />
                 </div>
-                <span className="t-c1 c-alt">꺼도 이미 막힌 구매자는 그대로예요. 풀어 주려면 구매 제한 화면에서 해제해요.</span>
+                <span className="t-c1 c-alt">꺼도 이미 막힌 구매자는 그대로입니다. 풀어 주려면 구매 제한 화면에서 해제합니다.</span>
                 {/* 3회 판정은 미입금 자동 취소가 돌아야 생긴다. 정기 실행이 연결되면 지운다 */}
                 <span className="t-c1 c-cau" data-testid="restriction-pending">
-                  아직 자동 취소가 시작되지 않아서 주문 막기도 시작되지 않았어요. 자동 취소가 시작되면 함께 적용돼요.
+                  아직 자동 취소가 시작되지 않아 주문 막기도 시작되지 않았습니다. 자동 취소가 시작되면 함께 적용됩니다.
                 </span>
               </section>
 
@@ -336,7 +336,7 @@ export default function OrderSettingsPage() {
                       결제 후 5번 취소하면 30일 동안 주문 막기
                     </span>
                     <span className="t-c1 c-alt">
-                      {paidRestriction ? "결제 후 구매자 사정으로 5번 취소하면 30일 동안 주문을 막아요 · 켠 뒤부터 세요" : "결제 후 구매자 사정으로 5번 취소하면 30일 동안 주문을 막아요 · 기본 꺼짐"}
+                      {paidRestriction ? "결제 후 구매자 사정으로 5번 취소하면 30일 동안 주문을 막습니다 · 켠 뒤부터 집계합니다" : "결제 후 구매자 사정으로 5번 취소하면 30일 동안 주문을 막습니다 · 기본 꺼짐"}
                     </span>
                   </span>
                   <button
@@ -348,7 +348,7 @@ export default function OrderSettingsPage() {
                     onClick={() => setPaidRestriction((v) => !v)}
                   />
                 </div>
-                <span className="t-c1 c-alt">파트너스 사정으로 환불한 주문은 세지 않아요. 꺼도 이미 막힌 구매자는 그대로예요.</span>
+                <span className="t-c1 c-alt">파트너스 사정으로 환불한 주문은 집계하지 않습니다. 꺼도 이미 막힌 구매자는 그대로입니다.</span>
               </section>
 
               <section className="card pad col" style={{ gap: 10 }}>
@@ -358,7 +358,7 @@ export default function OrderSettingsPage() {
                     <span className="t-l1 fw6" id="rc-label">
                       취소·반품하면 재고 되돌리기
                     </span>
-                    <span className="t-c1 c-alt">결제 전 취소·미입금 자동 취소·발송 전 환불이 끝나면 그 수량만큼 재고가 돌아와요 · 기본 켜짐</span>
+                    <span className="t-c1 c-alt">결제 전 취소·미입금 자동 취소·발송 전 환불이 끝나면 그 수량만큼 재고가 돌아옵니다 · 기본 켜짐</span>
                   </span>
                   <button
                     className={`sw${restock ? " on" : ""}`}
@@ -369,7 +369,7 @@ export default function OrderSettingsPage() {
                     onClick={() => setRestock((v) => !v)}
                   />
                 </div>
-                <span className="t-c1 c-alt">재고를 언제 줄일지는 상품마다 「재고 차감 기준」에서 정해요(결제하면 차감 · 주문하면 바로 차감).</span>
+                <span className="t-c1 c-alt">재고를 언제 줄일지는 상품마다 「재고 차감 기준」에서 정합니다(결제하면 차감 · 주문하면 바로 차감).</span>
               </section>
 
               <section className="card pad col" style={{ gap: 10 }}>
@@ -377,14 +377,14 @@ export default function OrderSettingsPage() {
                 {/* 자동 배송 완료·구매 확정을 실제로 돌리는 정기 실행이 아직 연결되지 않았다(HANDOFF 「배송」). 연결되면 이 안내를 지운다 */}
                 <div className="msg msg-cau" role="note" data-testid="auto-deliver-pending">
                   <span>
-                    <b>아직 자동으로 바뀌지 않아요.</b> 정해 둔 설정은 저장되고, 자동 처리가 시작되면 그대로 적용돼요.
+                    <b>아직 자동으로 바뀌지 않습니다.</b> 정해 둔 설정은 저장되고, 자동 처리가 시작되면 그대로 적용됩니다.
                   </span>
                 </div>
                 {autoDaysRow({
                   id: "deliver",
                   title: "배송 중 일정 기간이 지나면 자동으로 배송 완료",
-                  desc: "송장을 올린 뒤 배송 중 상태로 이 기간이 지나면 자동으로 배송 완료로 바꿔요 · 기본 7일",
-                  offDesc: "꺼 두면 배송 완료는 직접 바꿔요",
+                  desc: "송장을 올린 뒤 배송 중 상태로 이 기간이 지나면 자동으로 배송 완료로 변경합니다 · 기본 7일",
+                  offDesc: "꺼 두면 배송 완료는 직접 변경합니다",
                   on: deliverOn,
                   setOn: setDeliverOn,
                   value: deliverDays,
@@ -394,8 +394,8 @@ export default function OrderSettingsPage() {
                 {autoDaysRow({
                   id: "confirm",
                   title: "배송 완료 뒤 일정 기간이 지나면 자동 구매 확정",
-                  desc: "구매자가 확정하지 않아도 이 기간이 지나면 구매 확정돼요 · 기본 7일",
-                  offDesc: "꺼 두면 구매자가 확정할 때까지 기다려요",
+                  desc: "구매자가 확정하지 않아도 이 기간이 지나면 구매 확정됩니다 · 기본 7일",
+                  offDesc: "꺼 두면 구매자가 확정할 때까지 기다립니다",
                   on: confirmOn,
                   setOn: setConfirmOn,
                   value: confirmDays,
@@ -404,42 +404,42 @@ export default function OrderSettingsPage() {
                 })}
                 {/* 서버는 주문마다 기간을 따로 저장하지 않고 지금 설정으로 계산한다(orders/delivery.ts) */}
                 <span className="t-c1 c-alt" data-testid="delivery-existing">
-                  기간을 바꾸면 이미 배송 중이거나 배송 완료된 주문도 바뀐 기간으로 계산해요.
+                  기간을 바꾸면 이미 배송 중이거나 배송 완료된 주문도 바뀐 기간으로 계산합니다.
                 </span>
               </section>
             </fieldset>
 
             <aside className="col aside-sticky" style={{ gap: 16 }}>
               <div className="card pad col" style={{ gap: 10 }}>
-                <span className="t-hl2">구매자에게 이렇게 보여요</span>
+                <span className="t-hl2">구매자 화면 미리보기</span>
                 <div className="col" style={{ gap: 8, padding: 12, borderRadius: 10, background: "var(--wds-fill-alternative)" }}>
                   <span className="t-l2" data-testid="buyer-preview">
                     {autoCancel
                       ? preview
                         ? `주문서 · 무통장 입금: 「주문 후 ${preview} 안에 입금하면 주문대기에 올라가요」`
-                        : "입금 기한을 입력하면 여기에 보여요"
-                      : "주문서 · 무통장 입금: 입금 기한 안내가 보이지 않아요"}
+                        : "입금 기한을 입력하면 여기에 표시됩니다"
+                      : "주문서 · 무통장 입금: 입금 기한 안내가 표시되지 않습니다"}
                   </span>
                   <span className="t-l2" data-testid="delivery-preview">
                     주문 상세: 「
                     {[
-                      deliverOn && !deliverError ? `배송 중 ${parseAmount(deliverDays)}일이 지나면 배송 완료로 바뀌어요` : null,
-                      confirmOn && !confirmError ? `배송 완료 ${parseAmount(confirmDays)}일 뒤 자동으로 구매 확정돼요` : null,
+                      deliverOn && !deliverError ? `배송 중 ${parseAmount(deliverDays)}일이 지나면 배송 완료로 바뀝니다` : null,
+                      confirmOn && !confirmError ? `배송 완료 ${parseAmount(confirmDays)}일 뒤 자동으로 구매 확정됩니다` : null,
                     ]
                       .filter(Boolean)
-                      .join(" · ") || "배송 완료 · 구매 확정은 직접 처리해요"}
+                      .join(" · ") || "배송 완료 · 구매 확정은 직접 처리합니다"}
                     」
                   </span>
                 </div>
               </div>
               <div className="card pad col" style={{ gap: 8 }}>
-                <span className="t-hl2">알아 두세요</span>
+                <span className="t-hl2">참고</span>
                 <span className="t-c1 c-alt" style={{ lineHeight: 1.6 }}>
-                  바꾼 기한은 저장한 뒤 들어오는 주문부터 적용돼요. 이미 받은 주문의 입금 기한은 그대로예요. 반품 · 교환 배송비는 「배송비 정책」에서 정해요.
+                  변경한 기한은 저장한 뒤 들어오는 주문부터 적용됩니다. 이미 받은 주문의 입금 기한은 그대로입니다. 반품 · 교환 배송비는 「배송비 정책」에서 정합니다.
                 </span>
               </div>
               <button className="btn btn-lg btn-block" type="button" onClick={() => void save()} disabled={saving || !dirty}>
-                {saving ? "저장하고 있어요" : "저장"}
+                {saving ? "저장 중" : "저장"}
               </button>
             </aside>
           </div>

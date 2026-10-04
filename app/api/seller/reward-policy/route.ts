@@ -18,6 +18,6 @@ export async function GET(req: Request) {
 export const PUT = mutation(async (req: Request) => {
   const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "STORE_OPERATIONS" });
   const r = await updateEarnTiming(prisma, ctx, await readJson(req));
-  if (!r.ok) return NextResponse.json(orderErrorBody(r.reason), { status: 400 });
+  if (!r.ok) return NextResponse.json(orderErrorBody(r.reason, "formal"), { status: 400 });
   return NextResponse.json({ policy: { earnTiming: r.earnTiming } });
 });

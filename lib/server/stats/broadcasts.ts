@@ -1,7 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 import { requireSellerRead, type TenantContext } from "../tenant/context";
 import type { StatsRange } from "./range";
-import { num, statsSnapshot } from "./sql";
+import { num, statsSnapshot, type StatsDb } from "./sql";
 
 // 방송 통계(SALES_VIEW). 그 기간(KST)에 시작한 방송별로, 바뀌지 않는 주문 시각(Order.createdAt)으로 귀속한다(MASTER 결정 2026-10-04).
 // - 방송 매출: 방송 [시작, 종료](방송 중이면 종료 = 지금) 안에 들어온 결제 주문
@@ -19,6 +19,7 @@ type Row = { id: string; title: string | null; status: string; started_at: Date;
   g_paid: bigint;
   g_refunded: number;
   g_refund: bigint;
+  hits: number;
 };
 
 const money = (orders: unknown, paid: unknown, refunded: unknown, refund: unknown) => {
@@ -29,69 +30,81 @@ const money = (orders: unknown, paid: unknown, refunded: unknown, refund: unknow
 
 export async function broadcastStats(db: PrismaClient, ctx: TenantContext, range: StatsRange) {
   requireSellerRead(ctx, "SALES_VIEW");
+  return statsSnapshot(db, (tx) => broadcastStatsIn(tx, ctx, range));
+}
+
+// 같은 스냅숏 안에서 다른 집계와 함께 부를 때(통계 요약). 권한 검사는 부르는 쪽이 한다.
+export async function broadcastStatsIn(tx: StatsDb, ctx: TenantContext, range: StatsRange) {
   const sid = ctx.sellerId;
-  return statsSnapshot(db, async (tx) => {
-    const rows = await tx.$queryRaw<Row[]>`
-      WITH b AS (
-        SELECT id, title, status::text AS status, "startedAt", "endedAt", coalesce("endedAt", now()) AS end_at
-        FROM "BroadcastSession"
-        WHERE "sellerId" = ${sid}::uuid AND "startedAt" >= ${range.start} AND "startedAt" < ${range.end}
-        ORDER BY "startedAt" DESC, id
-        LIMIT ${BROADCAST_LIMIT}
-      ),
-      -- 귀속 후보는 조회 기간과 상관없이 정한다: 나열할 방송의 [시작, 종료 + 2시간]과 겹칠 수 있는 이웃 방송까지 넣어
-      -- 먼저 귀속하고, 결과는 나열할 방송(b)만 남긴다. 그래야 기간 경계에서 다음 방송 중 주문이 앞 방송 일반 주문으로 새지 않는다.
-      span AS (SELECT min("startedAt") AS lo, max(end_at) + ${AFTER_BROADCAST_WINDOW}::interval AS hi FROM b),
-      cand AS (
-        SELECT id, "startedAt", coalesce("endedAt", now()) AS end_at FROM "BroadcastSession", span
-        WHERE "sellerId" = ${sid}::uuid AND "startedAt" < span.hi
-          AND coalesce("endedAt", now()) + ${AFTER_BROADCAST_WINDOW}::interval > span.lo
-      ),
-      pick AS (
-        SELECT DISTINCT ON (o.id) c.id AS bid, o."createdAt" <= c.end_at AS live,
-          o."totalAmount", o.status, o."refundAmount"
-        FROM "Order" o, span
-        JOIN cand c ON TRUE
-        WHERE o."sellerId" = ${sid}::uuid AND o."paidAt" IS NOT NULL
-          AND o."createdAt" >= span.lo AND o."createdAt" < span.hi
-          AND o."createdAt" >= c."startedAt" AND o."createdAt" < c.end_at + ${AFTER_BROADCAST_WINDOW}::interval
-        ORDER BY o.id, (o."createdAt" <= c.end_at) DESC, c."startedAt" DESC, c.id
-      ),
-      agg AS (
-        SELECT bid, live, count(*)::int AS orders, coalesce(sum("totalAmount"::bigint), 0) AS paid,
-          count(*) FILTER (WHERE status = 'REFUNDED')::int AS refunded,
-          coalesce(sum(coalesce("refundAmount", "totalAmount")::bigint) FILTER (WHERE status = 'REFUNDED'), 0) AS refund
-        FROM pick WHERE bid IN (SELECT id FROM b) GROUP BY bid, live
-      ),
-      q AS (SELECT * FROM agg WHERE live),
-      g AS (SELECT * FROM agg WHERE NOT live)
-      SELECT b.id, b.title, b.status, b."startedAt" AS started_at, b."endedAt" AS ended_at,
-        coalesce(q.orders, 0) AS orders, coalesce(q.paid, 0) AS paid, coalesce(q.refunded, 0) AS refunded, coalesce(q.refund, 0) AS refund,
-        coalesce(g.orders, 0) AS g_orders, coalesce(g.paid, 0) AS g_paid, coalesce(g.refunded, 0) AS g_refunded, coalesce(g.refund, 0) AS g_refund
-      FROM b LEFT JOIN q ON q.bid = b.id LEFT JOIN g ON g.bid = b.id
-      ORDER BY b."startedAt" DESC, b.id`;
-    const list = rows.map((r) => ({
-      id: r.id,
-      title: r.title,
-      status: r.status,
-      startedAt: r.started_at.toISOString(),
-      endedAt: r.ended_at?.toISOString() ?? null,
-      ...money(r.orders, r.paid, r.refunded, r.refund),
-      // 방송 시간 일반 주문(종료 뒤 2시간 안에 들어온 결제 주문)
-      general: money(r.g_orders, r.g_paid, r.g_refunded, r.g_refund),
-    }));
-    const sum = (pick: (r: (typeof list)[number]) => { orders: number; paid: number; net: number }) => ({
-      orders: list.reduce((s, r) => s + pick(r).orders, 0),
-      paid: list.reduce((s, r) => s + pick(r).paid, 0),
-      net: list.reduce((s, r) => s + pick(r).net, 0),
-    });
-    return {
-      range: { from: range.from, to: range.to, unit: range.unit },
-      total: { broadcasts: list.length, ...sum((r) => r) },
-      general: sum((r) => r.general),
-      broadcasts: list,
-      // 데이터가 없는 값(시청자 수·시청자 → 주문 전환)
-      unavailable: ["viewers", "conversion"],
-    };
+  const rows = await tx.$queryRaw<Row[]>`
+    WITH b AS (
+      SELECT id, title, status::text AS status, "startedAt", "endedAt", coalesce("endedAt", now()) AS end_at
+      FROM "BroadcastSession"
+      WHERE "sellerId" = ${sid}::uuid AND "startedAt" >= ${range.start} AND "startedAt" < ${range.end}
+      ORDER BY "startedAt" DESC, id
+      LIMIT ${BROADCAST_LIMIT}
+    ),
+    -- 귀속 후보는 조회 기간과 상관없이 정한다: 나열할 방송의 [시작, 종료 + 2시간]과 겹칠 수 있는 이웃 방송까지 넣어
+    -- 먼저 귀속하고, 결과는 나열할 방송(b)만 남긴다. 그래야 기간 경계에서 다음 방송 중 주문이 앞 방송 일반 주문으로 새지 않는다.
+    span AS (SELECT min("startedAt") AS lo, max(end_at) + ${AFTER_BROADCAST_WINDOW}::interval AS hi FROM b),
+    cand AS (
+      SELECT id, "startedAt", coalesce("endedAt", now()) AS end_at FROM "BroadcastSession", span
+      WHERE "sellerId" = ${sid}::uuid AND "startedAt" < span.hi
+        AND coalesce("endedAt", now()) + ${AFTER_BROADCAST_WINDOW}::interval > span.lo
+    ),
+    pick AS (
+      SELECT DISTINCT ON (o.id) c.id AS bid, o."createdAt" <= c.end_at AS live,
+        o."totalAmount", o.status, o."refundAmount"
+      FROM "Order" o, span
+      JOIN cand c ON TRUE
+      WHERE o."sellerId" = ${sid}::uuid AND o."paidAt" IS NOT NULL
+        AND o."createdAt" >= span.lo AND o."createdAt" < span.hi
+        AND o."createdAt" >= c."startedAt" AND o."createdAt" < c.end_at + ${AFTER_BROADCAST_WINDOW}::interval
+      ORDER BY o.id, (o."createdAt" <= c.end_at) DESC, c."startedAt" DESC, c.id
+    ),
+    agg AS (
+      SELECT bid, live, count(*)::int AS orders, coalesce(sum("totalAmount"::bigint), 0) AS paid,
+        count(*) FILTER (WHERE status = 'REFUNDED')::int AS refunded,
+        coalesce(sum(coalesce("refundAmount", "totalAmount")::bigint) FILTER (WHERE status = 'REFUNDED'), 0) AS refund
+      FROM pick WHERE bid IN (SELECT id FROM b) GROUP BY bid, live
+    ),
+    -- HIT 카드도 바뀌지 않는 생성 시각으로 방송 [시작, 종료]에 귀속한다(broadcastSessionId는 쓰지 않음)
+    hits AS (
+      SELECT b.id AS bid, count(h.id)::int AS n FROM b
+      JOIN "HitCard" h ON h."sellerId" = ${sid}::uuid AND h."createdAt" >= b."startedAt" AND h."createdAt" <= b.end_at
+      GROUP BY b.id
+    ),
+    q AS (SELECT * FROM agg WHERE live),
+    g AS (SELECT * FROM agg WHERE NOT live)
+    SELECT b.id, b.title, b.status, b."startedAt" AS started_at, b."endedAt" AS ended_at,
+      coalesce(q.orders, 0) AS orders, coalesce(q.paid, 0) AS paid, coalesce(q.refunded, 0) AS refunded, coalesce(q.refund, 0) AS refund,
+      coalesce(g.orders, 0) AS g_orders, coalesce(g.paid, 0) AS g_paid, coalesce(g.refunded, 0) AS g_refunded, coalesce(g.refund, 0) AS g_refund,
+      coalesce(hits.n, 0) AS hits
+    FROM b LEFT JOIN q ON q.bid = b.id LEFT JOIN g ON g.bid = b.id LEFT JOIN hits ON hits.bid = b.id
+    ORDER BY b."startedAt" DESC, b.id`;
+  const list = rows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    status: r.status,
+    startedAt: r.started_at.toISOString(),
+    endedAt: r.ended_at?.toISOString() ?? null,
+    ...money(r.orders, r.paid, r.refunded, r.refund),
+    // 방송 중 만든 HIT 카드 수
+    hits: num(r.hits),
+    // 방송 시간 일반 주문(종료 뒤 2시간 안에 들어온 결제 주문)
+    general: money(r.g_orders, r.g_paid, r.g_refunded, r.g_refund),
+  }));
+  const sum = (pick: (r: (typeof list)[number]) => { orders: number; paid: number; net: number }) => ({
+    orders: list.reduce((s, r) => s + pick(r).orders, 0),
+    paid: list.reduce((s, r) => s + pick(r).paid, 0),
+    net: list.reduce((s, r) => s + pick(r).net, 0),
   });
+  return {
+    range: { from: range.from, to: range.to, unit: range.unit },
+    total: { broadcasts: list.length, ...sum((r) => r) },
+    general: sum((r) => r.general),
+    broadcasts: list,
+    // 데이터가 없는 값(시청자 수·시청자 → 주문 전환)
+    unavailable: ["viewers", "conversion"],
+  };
 }

@@ -70,27 +70,30 @@ async function summary(db: StatsDb, sellerId: string, start: Date, end: Date) {
 
 export async function orderStats(db: PrismaClient, ctx: TenantContext, range: StatsRange) {
   requireSellerRead(ctx, "SALES_VIEW");
-  return statsSnapshot(db, async (tx) => {
-    const [current, previous, series] = await Promise.all([
-      summary(tx, ctx.sellerId, range.start, range.end),
-      summary(tx, ctx.sellerId, range.prev.start, range.prev.end),
-      tx.$queryRaw<(AggRow & { bucket: string })[]>`
-        WITH s AS (${bucketSeries(range.unit, range.start, range.end)}),
-        o AS (
-          SELECT ${bucketOf(range.unit, Prisma.sql`"createdAt"`)} AS b, ${AGG}
-          FROM "Order"
-          WHERE "sellerId" = ${ctx.sellerId}::uuid AND "createdAt" >= ${range.start} AND "createdAt" < ${range.end}
-          GROUP BY 1
-        )
-        SELECT to_char(s.b, 'YYYY-MM-DD') AS bucket, o.orders, o.paid, o.revenue, o.cancelled, o.refunded, o.refund_amount
-        FROM s LEFT JOIN o ON o.b = s.b
-        ORDER BY s.b`,
-    ]);
-    return {
-      range: { from: range.from, to: range.to, unit: range.unit, previous: { from: range.prev.from, to: range.prev.to } },
-      current,
-      previous,
-      series: series.map((r): OrderPoint => ({ bucket: r.bucket, ...toPoint(r) })),
-    };
-  });
+  return statsSnapshot(db, (tx) => orderStatsIn(tx, ctx, range));
+}
+
+// 같은 스냅숏 안에서 다른 집계와 함께 부를 때(통계 요약). 권한 검사는 부르는 쪽이 한다.
+export async function orderStatsIn(tx: StatsDb, ctx: TenantContext, range: StatsRange) {
+  const [current, previous, series] = await Promise.all([
+    summary(tx, ctx.sellerId, range.start, range.end),
+    summary(tx, ctx.sellerId, range.prev.start, range.prev.end),
+    tx.$queryRaw<(AggRow & { bucket: string })[]>`
+      WITH s AS (${bucketSeries(range.unit, range.start, range.end)}),
+      o AS (
+        SELECT ${bucketOf(range.unit, Prisma.sql`"createdAt"`)} AS b, ${AGG}
+        FROM "Order"
+        WHERE "sellerId" = ${ctx.sellerId}::uuid AND "createdAt" >= ${range.start} AND "createdAt" < ${range.end}
+        GROUP BY 1
+      )
+      SELECT to_char(s.b, 'YYYY-MM-DD') AS bucket, o.orders, o.paid, o.revenue, o.cancelled, o.refunded, o.refund_amount
+      FROM s LEFT JOIN o ON o.b = s.b
+      ORDER BY s.b`,
+  ]);
+  return {
+    range: { from: range.from, to: range.to, unit: range.unit, previous: { from: range.prev.from, to: range.prev.to } },
+    current,
+    previous,
+    series: series.map((r): OrderPoint => ({ bucket: r.bucket, ...toPoint(r) })),
+  };
 }
