@@ -59,7 +59,8 @@ const short = (n: number) => (n >= 100_000_000 ? `${+(n / 100_000_000).toFixed(1
 
 // 단일 계열 막대 그래프. 값 이름은 제목이 말하고, 막대에 올리면 값이 보인다. 같은 값은 아래 표에도 있다.
 // 막대는 늘어나는 SVG로, 축 글자는 HTML로 그린다(SVG를 가로로 늘리면 글자가 찌그러진다).
-export function BarChart({ title, points, fmt }: { title: string; points: { label: string; value: number }[]; fmt: (n: number) => string }) {
+// bare: 카드·제목 없이 그래프만(요약 화면의 칸 안에 넣을 때)
+export function BarChart({ title, points, fmt, bare }: { title: string; points: { label: string; value: number }[]; fmt: (n: number) => string; bare?: boolean }) {
   const [hover, setHover] = useState<number | null>(null);
   const W = 1000;
   const H = 200;
@@ -70,11 +71,7 @@ export function BarChart({ title, points, fmt }: { title: string; points: { labe
   const y = (v: number) => H * (1 - v / top);
   const every = Math.ceil(n / 8);
   const pctX = (i: number) => `${((slot * i + slot / 2) / W) * 100}%`;
-  return (
-    <div className="card">
-      <div className="sts-h">
-        <span className="fw6">{title}</span>
-      </div>
+  const chart = (
       <div className="sts-chart">
         <div className="sts-plot" onMouseLeave={() => setHover(null)}>
           {[0, 0.5, 1].map((f) => (
@@ -113,6 +110,14 @@ export function BarChart({ title, points, fmt }: { title: string; points: { labe
           )}
         </div>
       </div>
+  );
+  if (bare) return chart;
+  return (
+    <div className="card">
+      <div className="sts-h">
+        <span className="fw6">{title}</span>
+      </div>
+      {chart}
     </div>
   );
 }
