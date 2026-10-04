@@ -121,6 +121,8 @@ export type Product = {
   images?: ProductImageInfo[];
   // 목록에만 있다: 대표 이미지 주소(없으면 null)
   thumbnailUrl?: string | null;
+  // 목록에만 있다: 결제 완료 주문 품목 수량 합
+  soldQuantity?: number;
   name: string;
   description: string | null;
   price: number;
