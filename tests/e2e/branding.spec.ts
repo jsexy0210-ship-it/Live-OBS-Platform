@@ -221,3 +221,33 @@ test("이미지를 연달아 고르면 앞 선택의 크기 확인이 늦게 끝
   const og = await request.get((await head(page, "/admin/login")).ogImage!);
   expect(Buffer.from(await og.body()).equals(good)).toBe(true);
 });
+
+test("마스터 관리자 로고 색은 파트너스 관리자 로고 색과 다르다(대표님 지시 2026-10-04)", async ({ page }) => {
+  const logoColor = () => page.locator(".logo-sym").first().evaluate((el) => getComputedStyle(el).backgroundColor);
+  await page.goto("/seller/login");
+  const partners = await logoColor();
+  await page.goto("/admin/login");
+  const masterLogin = await logoColor();
+  expect(masterLogin).not.toBe(partners);
+  // 로그인 버튼(주요 버튼)도 같은 마스터 색
+  await page.getByLabel("이메일").fill(superEmail);
+  await page.getByLabel("비밀번호").fill(password);
+  expect(await page.getByRole("button", { name: "로그인" }).evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(masterLogin);
+  for (const width of [390, 1440]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await page.screenshot({ path: `tests/e2e/screenshots/branding-master-logo-login-${width}.png`, fullPage: true });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await login(page, superEmail);
+  const shell = await page.locator("aside.side .logo-sym").evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(shell).toBe(masterLogin);
+  expect(shell).not.toBe(partners);
+  const sideX = async () => (await page.locator("aside.side").boundingBox())?.x ?? -1;
+  await page.screenshot({ path: "tests/e2e/screenshots/branding-master-logo-shell-1440.png", fullPage: true });
+  // 좁은 화면: 메뉴 서랍을 열어 로고를 보인다(옮겨 가는 동안 찍지 않게 서랍이 멈출 때까지 기다림)
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(sideX).toBeLessThan(-200);
+  await page.getByRole("button", { name: "메뉴 열기" }).click();
+  await expect.poll(sideX).toBe(0);
+  await page.screenshot({ path: "tests/e2e/screenshots/branding-master-logo-shell-390.png" });
+});
