@@ -359,6 +359,31 @@ $C start obs-web-app
   $C exec -T obs-web-db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT count(*) FROM \"Seller\""'
   ```
 
+## 디스크 정리
+
+테스트 서버 디스크가 가득 차 배포가 빌드 도중 죽은 일(run 37214718838)을 막기 위한 장치입니다. 스크립트: `scripts/ops/disk-cleanup.sh`.
+
+| 시점 | 동작 |
+| --- | --- |
+| 배포 시작(Checkout 직후) | 도커 이미지·백업·러너 폴더 디스크의 남은 용량이 5GB 미만이면 배포를 멈추고 정리 방법을 안내합니다. |
+| 배포 성공 뒤 | 아래 기준으로 오래된 것만 정리합니다. 정리가 실패해도 배포 결과는 바뀌지 않습니다. |
+
+정리 기준(환경변수로 조정, 서버 값은 모두 추정치이므로 실제 사용량을 본 뒤 조정):
+
+- DB 백업: 배포 전 자동 백업(`obs-<날짜>-<시각>-before-<커밋7자리>.dump`)만 최근 10개(`OBS_BACKUP_KEEP`) 남기고 지웁니다. 수동·복원 안전 백업은 지우지 않고 개수만 알립니다. 24시간 넘은 `.part` 부분 파일은 지웁니다.
+- 도커 이미지: `deploy-history.log`의 최근 5개 버전(`OBS_IMAGE_KEEP`)과 실행 중인 이미지는 남기고, 나머지 `obs-web-app`·`obs-web-migrate` 버전 태그를 지웁니다. 배포 기록을 읽지 못하면 앱 이미지는 지우지 않습니다. 이름 없는 이미지와 24시간 넘게 안 쓴 빌드 캐시(`OBS_BUILDER_KEEP_H`)도 지웁니다.
+- 러너 `_diag` 로그: 14일(`OBS_DIAG_KEEP_DAYS`) 넘은 것만 지웁니다.
+- 볼륨·컨테이너·`docker system prune`은 쓰지 않습니다(DB 데이터 보호).
+
+서버에서 직접 확인·실행:
+
+```bash
+cd /opt/obs/src && scripts/ops/disk-cleanup.sh          # 지울 목록만 보기
+cd /opt/obs/src && scripts/ops/disk-cleanup.sh --apply  # 실제 정리
+```
+
+롤백은 남긴 5개 버전 안에서만 이미지 재빌드 없이 됩니다. 컨테이너 로그(json-file)는 크기 제한이 없어 따로 늘어날 수 있으며, 컴포즈 `logging`(max-size·max-file) 설정은 별도 승인 사항으로 제안합니다.
+
 ## 롤백
 
 이전 커밋의 이미지가 서버에 남아 있으면 빌드 없이 되돌려요.
