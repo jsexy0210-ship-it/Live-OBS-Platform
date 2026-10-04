@@ -408,7 +408,15 @@ function PlanFeatureRequired({ crumb, noFeatures, next }: { crumb: string; noFea
           <div className="st-ic lock">!</div>
           <h1 className="t">지금 요금제에서 사용할 수 없는 기능입니다</h1>
           <span className="s">{noFeatures ? "구독료 첫 결제가 확정되면 사용할 수 있습니다" : "쇼핑몰 통합 요금제에서 사용할 수 있습니다"}</span>
-          <span className="s">{me.isOwner ? "요금제는 구독 · 결제에서 바꿀 수 있습니다" : "요금제 변경은 대표자에게 요청해 주십시오"}</span>
+          <span className="s">
+            {me.isOwner ? (
+              <>
+                요금제는 <Link href="/seller/subscription">구독 · 결제</Link>에서 바꿀 수 있습니다
+              </>
+            ) : (
+              "요금제 변경은 대표자에게 요청해 주십시오"
+            )}
+          </span>
           {next?.href && (
             <Link className="btn btn-sm" href={next.href}>
               {next.label} 화면으로 이동

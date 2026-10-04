@@ -104,6 +104,7 @@ test("오버레이 전용이 쇼핑몰 기능 주소로 바로 들어오면 안�
   await expect(guide.getByRole("heading", { name: "지금 요금제에서 사용할 수 없는 기능입니다" })).toBeVisible();
   await expect(guide.getByText("쇼핑몰 통합 요금제에서 사용할 수 있습니다")).toBeVisible();
   await expect(guide.getByText("요금제는 구독 · 결제에서 바꿀 수 있습니다")).toBeVisible();
+  await expect(guide.getByRole("link", { name: "구독 · 결제" })).toHaveAttribute("href", "/seller/subscription");
   await expect(page.locator(".loc-bar")).toContainText("상품›상품 목록");
   // 상품 화면 내용(등록 버튼)은 그리지 않는다
   await expect(page.getByText("상품 등록")).toHaveCount(0);
