@@ -230,3 +230,29 @@ test("되돌리기는 지금 방송에서 완료한 주문에만 보인다(방�
   await expect(done).toBeVisible();
   await expect(done.getByRole("button", { name: "되돌리기" })).toHaveCount(0);
 });
+
+test("변경 뒤 다시 읽기가 실패하면 변경 조작을 모두 끄고, 다시 불러오기가 성공해야 다시 켠다", async ({ page }) => {
+  await openFirst(page);
+  const complete = page.getByRole("button", { name: /개봉 완료/ });
+  await page.route(isQueueGet, (r) => r.abort("connectionreset"));
+  await page.keyboard.press("Control+ArrowUp");
+  await expect(page.getByTestId("bc-stale")).toContainText("다시 불러오기 전까지 변경할 수 없습니다");
+  // 옛 version을 가진 화면에서는 버튼·단축키·창 확인이 모두 막힌다
+  await expect(complete).toBeDisabled();
+  await expect(page.getByRole("button", { name: "방송 종료" })).toBeDisabled();
+  await page.keyboard.press("Control+ArrowUp");
+  await page.keyboard.press("Control+Enter");
+  await page.waitForTimeout(300);
+  const s = await queueStatuses();
+  expect(s[A].status).toBe("OPENING");
+  expect(s[A].timerSeconds).toBe(30);
+  // 다시 불러오기가 성공하면 최신 상태로 켜진다
+  await page.unroute(isQueueGet);
+  await page.getByRole("button", { name: "다시 불러오기" }).click();
+  await expect(page.getByTestId("bc-stale")).toHaveCount(0);
+  await expect(complete).toBeEnabled();
+  await expect(page.getByTestId("bc-opening").locator(".num")).toHaveText(/^0:(2\d|30)$/);
+  await page.keyboard.press("Control+ArrowUp");
+  await expect(toast(page)).toContainText("타이머를 1:00로 정했습니다");
+  expect((await queueStatuses())[A].timerSeconds).toBe(60);
+});

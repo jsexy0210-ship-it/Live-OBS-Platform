@@ -124,6 +124,9 @@ export default function BroadcastDashboardPage() {
     [load, reads],
   );
 
+  // 변경 조작은 요청 처리 중(busy)이거나 보이는 내용이 서버에서 확인된 최신이 아닐 때(stale) 모두 막는다.
+  // 옛 version으로 보내 409가 나는 것을 원인에서 막는다. 「다시 불러오기」만 열어 둔다
+  const locked = busy || stale;
   const snap = state.kind === "ok" ? state.snap : null;
   const live = snap?.broadcast ?? null;
   const opening = snap?.opening ?? null;
@@ -148,7 +151,7 @@ export default function BroadcastDashboardPage() {
   // 단축키(모두 Ctrl 조합): 개봉 시작·완료 Ctrl+Enter, 타이머 +30초 Ctrl+↑, 취소 Ctrl+Backspace(확인 창)
   const keys = useRef<(e: KeyboardEvent) => void>(() => undefined);
   keys.current = (e: KeyboardEvent) => {
-    if (!e.ctrlKey || e.altKey || e.metaKey || modal || busy || !snap || typing(e.target)) return;
+    if (!e.ctrlKey || e.altKey || e.metaKey || modal || locked || !snap || typing(e.target)) return;
     if (e.key === "Enter") {
       e.preventDefault();
       if (opening) void act(opening, "complete", "개봉을 완료했습니다");
@@ -212,7 +215,7 @@ export default function BroadcastDashboardPage() {
             <div className="col" style={{ gap: 16, minWidth: 0 }}>
               {stale && (
                 <div className="msg msg-cau row between" role="status" data-testid="bc-stale" style={{ gap: 8, flexWrap: "wrap" }}>
-                  <span>최신 주문대기를 불러오지 못했습니다. 보이는 내용이 최신이 아닐 수 있습니다.</span>
+                  <span>최신 주문대기를 불러오지 못했습니다. 다시 불러오기 전까지 변경할 수 없습니다.</span>
                   <button className="btn btn-sm btn-out" type="button" onClick={() => void load()}>
                     다시 불러오기
                   </button>
@@ -232,7 +235,7 @@ export default function BroadcastDashboardPage() {
                       </span>
                       <span className="t-c1 c-alt">{kstTime(live.startedAt)} 시작</span>
                     </div>
-                    <button className="btn btn-out" type="button" disabled={busy} onClick={() => setModal({ kind: "end" })}>
+                    <button className="btn btn-out" type="button" disabled={locked} onClick={() => setModal({ kind: "end" })}>
                       방송 종료
                     </button>
                   </div>
@@ -247,8 +250,8 @@ export default function BroadcastDashboardPage() {
                     <label className="sr" htmlFor="bc-title-input">
                       방송 제목
                     </label>
-                    <input id="bc-title-input" className="inp" placeholder="방송 제목 (선택)" maxLength={100} value={title} disabled={busy} onChange={(e) => setTitle(e.target.value)} />
-                    <button className="btn" type="submit" disabled={busy}>
+                    <input id="bc-title-input" className="inp" placeholder="방송 제목 (선택)" maxLength={100} value={title} disabled={locked} onChange={(e) => setTitle(e.target.value)} />
+                    <button className="btn" type="submit" disabled={locked}>
                       방송 시작
                     </button>
                   </form>
@@ -264,7 +267,7 @@ export default function BroadcastDashboardPage() {
                   <OpeningPanel
                     item={opening}
                     now={now}
-                    busy={busy}
+                    busy={locked}
                     onComplete={() => void act(opening, "complete", "개봉을 완료했습니다")}
                     onTimer={() => setModal({ kind: "timer", item: opening })}
                     onCancel={() => setModal({ kind: "cancel", item: opening })}
@@ -274,7 +277,7 @@ export default function BroadcastDashboardPage() {
                     <span className="t-l2 c-alt">
                       다음 순서: <b className="c-pri">{next.nicknameSnapshot}</b> · {next.productLabel} ×{next.quantity}
                     </span>
-                    <button className="btn btn-xl btn-block bc-big" type="button" disabled={busy} onClick={() => void act(next, "start", "개봉을 시작했습니다")}>
+                    <button className="btn btn-xl btn-block bc-big" type="button" disabled={locked} onClick={() => void act(next, "start", "개봉을 시작했습니다")}>
                       개봉 시작 <span className="kbd">Ctrl+Enter</span>
                     </button>
                   </div>
@@ -301,16 +304,16 @@ export default function BroadcastDashboardPage() {
                         <ItemText item={w} />
                         <span className="row bc-acts">
                           {w.timerSeconds > 0 && <span className="t-c1 c-alt num">⏱ {clock(w.timerSeconds)}</span>}
-                          <button className="btn btn-sm btn-ghost" type="button" aria-label={`${w.nicknameSnapshot} 위로`} disabled={busy || i === 0} onClick={() => move(i, -1)}>
+                          <button className="btn btn-sm btn-ghost" type="button" aria-label={`${w.nicknameSnapshot} 위로`} disabled={locked || i === 0} onClick={() => move(i, -1)}>
                             ↑
                           </button>
-                          <button className="btn btn-sm btn-ghost" type="button" aria-label={`${w.nicknameSnapshot} 아래로`} disabled={busy || i === waiting.length - 1} onClick={() => move(i, 1)}>
+                          <button className="btn btn-sm btn-ghost" type="button" aria-label={`${w.nicknameSnapshot} 아래로`} disabled={locked || i === waiting.length - 1} onClick={() => move(i, 1)}>
                             ↓
                           </button>
-                          <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={() => setModal({ kind: "timer", item: w })}>
+                          <button className="btn btn-sm btn-out" type="button" disabled={locked} onClick={() => setModal({ kind: "timer", item: w })}>
                             타이머
                           </button>
-                          <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={() => setModal({ kind: "cancel", item: w })}>
+                          <button className="btn btn-sm btn-out" type="button" disabled={locked} onClick={() => setModal({ kind: "cancel", item: w })}>
                             취소
                           </button>
                         </span>
@@ -338,7 +341,7 @@ export default function BroadcastDashboardPage() {
                           <span className="row bc-acts">
                             {d.doneAt && <span className="t-c1 c-alt num">{kstTime(d.doneAt)}</span>}
                             {canRevert && (
-                              <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={() => void act(d, "revert", "완료를 되돌렸습니다")}>
+                              <button className="btn btn-sm btn-out" type="button" disabled={locked} onClick={() => void act(d, "revert", "완료를 되돌렸습니다")}>
                                 되돌리기
                               </button>
                             )}
@@ -379,12 +382,13 @@ export default function BroadcastDashboardPage() {
         <EndBroadcastModal
           waiting={snap?.waiting.length ?? 0}
           busy={busy}
+          blocked={stale}
           onClose={() => setModal(null)}
           onConfirm={() => void mutate("/api/seller/broadcast/end", {}, "방송을 종료했습니다")}
         />
       )}
-      {modal?.kind === "cancel" && <CancelItemModal item={modal.item} busy={busy} onClose={() => setModal(null)} onConfirm={(reason) => void cancel(modal.item, reason)} />}
-      {modal?.kind === "timer" && <TimerModal item={modal.item} busy={busy} onClose={() => setModal(null)} onConfirm={(s) => void setTimer(modal.item, s)} />}
+      {modal?.kind === "cancel" && <CancelItemModal item={modal.item} busy={busy} blocked={stale} onClose={() => setModal(null)} onConfirm={(reason) => void cancel(modal.item, reason)} />}
+      {modal?.kind === "timer" && <TimerModal item={modal.item} busy={busy} blocked={stale} onClose={() => setModal(null)} onConfirm={(s) => void setTimer(modal.item, s)} />}
       {toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}
     </>
   );
