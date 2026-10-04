@@ -4,6 +4,7 @@ import "./ProductPreview.css";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { FormRow, FormSection } from "../admin-ui";
 import { Topbar } from "./SellerShell";
 import { NoImage, Toast } from "./States";
 import { api, failMessage, type Product, type ProductOption, type ProductStatus, type StockDeductMode } from "./api";
@@ -302,53 +303,49 @@ export function ProductForm({ initial }: { initial?: Product }) {
             </div>
           )}
 
-          <section className="card pad-l col" style={{ gap: 16 }}>
-            <h2 className="t-hl1">기본 정보</h2>
-            <div className="fld">
-              <label htmlFor="p-name" className="req">
-                상품명
-              </label>
-              <div style={{ position: "relative" }}>
-                <input
-                  id="p-name"
-                  className={`inp${shown.name || nameLen > NAME_MAX ? " is-error" : ""}`}
-                  type="text"
-                  placeholder="예: 스타라이트 부스터 박스"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  style={{ paddingRight: 80 }}
-                  aria-invalid={!!shown.name}
-                />
-                <span className={`t-c1 num name-count ${nameLen > NAME_MAX ? "c-neg" : "c-alt"}`} data-testid="name-count">
-                  {nameLen}/{NAME_MAX}
-                </span>
+          <FormSection title="기본 정보">
+            <FormRow
+              label="상품명"
+              required
+              htmlFor="p-name"
+              help={shown.name || nameLen > NAME_MAX ? undefined : "목록에서 잘 보이려면 50자 이내가 좋습니다 · 공백 포함 최대 100자 · 쇼핑몰과 오버레이에 그대로 표시됩니다"}
+            >
+              <div className="col" style={{ gap: 4, width: "100%" }}>
+                <div style={{ position: "relative" }}>
+                  <input
+                    id="p-name"
+                    className={`inp${shown.name || nameLen > NAME_MAX ? " is-error" : ""}`}
+                    type="text"
+                    placeholder="예: 스타라이트 부스터 박스"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    style={{ paddingRight: 80 }}
+                    aria-invalid={!!shown.name}
+                  />
+                  <span className={`t-c1 num name-count ${nameLen > NAME_MAX ? "c-neg" : "c-alt"}`} data-testid="name-count">
+                    {nameLen}/{NAME_MAX}
+                  </span>
+                </div>
+                {(shown.name || nameLen > NAME_MAX) && <span className="err">{shown.name ?? `상품명은 ${NAME_MAX}자까지 입력할 수 있습니다`}</span>}
               </div>
-              {shown.name || nameLen > NAME_MAX ? (
-                <span className="err">{shown.name ?? `상품명은 ${NAME_MAX}자까지 입력할 수 있습니다`}</span>
-              ) : (
-                <span className="help">목록에서 잘 보이려면 50자 이내가 좋습니다 · 공백 포함 최대 100자 · 쇼핑몰과 오버레이에 그대로 표시됩니다</span>
-              )}
-            </div>
-            <div className="fld">
-              <label htmlFor="p-desc">상품 설명</label>
-              <textarea
-                id="p-desc"
-                className={`inp${shown.description ? " is-error" : ""}`}
-                placeholder="구성 · 상태 · 배송 안내를 입력해 주십시오"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              />
-              {shown.description && <span className="err">{shown.description}</span>}
-            </div>
-          </section>
+            </FormRow>
+            <FormRow label="상품 설명" htmlFor="p-desc">
+              <div className="col" style={{ gap: 4, width: "100%" }}>
+                <textarea
+                  id="p-desc"
+                  className={`inp${shown.description ? " is-error" : ""}`}
+                  placeholder="구성 · 상태 · 배송 안내를 입력해 주십시오"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+                {shown.description && <span className="err">{shown.description}</span>}
+              </div>
+            </FormRow>
+          </FormSection>
 
-          <section className="card pad-l col" style={{ gap: 16 }}>
-            <h2 className="t-hl1">가격</h2>
-            <div className="g3">
-              <div className="fld">
-                <label htmlFor="p-price" className="req">
-                  판매가
-                </label>
+          <FormSection title="가격 · 재고">
+            <FormRow label="판매가" required htmlFor="p-price" help={shown.price ? undefined : "원 · 부가세 포함"}>
+              <div className="col" style={{ gap: 4 }}>
                 <input
                   id="p-price"
                   className={`inp num${shown.price ? " is-error" : ""}`}
@@ -357,112 +354,116 @@ export function ProductForm({ initial }: { initial?: Product }) {
                   placeholder="0"
                   value={price}
                   onChange={(e) => setPrice(e.target.value)}
-                  style={{ textAlign: "right" }}
+                  style={{ textAlign: "right", maxWidth: 200 }}
                   aria-invalid={!!shown.price}
                 />
-                {shown.price ? <span className="err">{shown.price}</span> : <span className="help">원 · 부가세 포함</span>}
+                {shown.price && <span className="err">{shown.price}</span>}
               </div>
-            </div>
-          </section>
+            </FormRow>
+            <FormRow
+              label="재고 차감 기준"
+              help={
+                <>
+                  기본은 결제하면 차감입니다 · 「주문하면 바로 차감」은 선착순·한정 판매에 적합합니다 · {restockText}
+                  {isEdit ? " · 변경하면 다음 주문부터 적용됩니다" : ""}
+                </>
+              }
+            >
+              <div className="seg" role="radiogroup" aria-label="재고 차감 기준">
+                {(
+                  [
+                    ["PAYMENT", "결제하면 차감"],
+                    ["ORDER", "주문하면 바로 차감"],
+                  ] as const
+                ).map(([v, label]) => (
+                  <button key={v} type="button" role="radio" aria-checked={deduct === v} className={deduct === v ? "on" : ""} onClick={() => setDeduct(v)}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </FormRow>
+          </FormSection>
 
-          <section className="card pad-l col" style={{ gap: 12 }}>
-            <div className="row between">
-              <h2 className="t-hl1">
-                옵션 <span className="c-alt fw5 t-l2">{rows.length}</span>
-              </h2>
+          <FormSection
+            title={`옵션 ${rows.length}`}
+            actions={
               <button className="btn btn-sm btn-out" type="button" onClick={() => setRows((rs) => [...rs, blankRow()])} disabled={rows.length >= OPTION_MAX}>
                 + 옵션 추가
               </button>
-            </div>
-            <span className="help">재고는 옵션마다 따로 관리합니다. 재고가 0이 되면 그 옵션은 주문할 수 없습니다</span>
-            <div className="opt-head" aria-hidden="true">
-              <span>옵션명</span>
-              <span className="r">추가 금액</span>
-              <span className="r">재고</span>
-              <span />
-            </div>
-            {rows.map((o, i) => {
-              const re = shown.rows[o.key] ?? {};
-              return (
-                <div className="opt-row" key={o.key} data-testid="option-row">
-                  <div className="fld opt-name">
-                    <input
-                      className={`inp inp-sm${re.name ? " is-error" : ""}`}
-                      type="text"
-                      placeholder="예: 1박스 (36팩)"
-                      aria-label={`옵션 ${i + 1} 이름`}
-                      value={o.name}
-                      onChange={(e) => setRow(o.key, { name: e.target.value })}
-                    />
-                    {re.name && <span className="err">{re.name}</span>}
-                  </div>
-                  <div className="fld">
-                    <span className="opt-lbl">추가 금액</span>
-                    <input
-                      className={`inp inp-sm num${re.priceDelta ? " is-error" : ""}`}
-                      type="text"
-                      inputMode="numeric"
-                      aria-label={`옵션 ${i + 1} 추가 금액`}
-                      value={o.priceDelta}
-                      onChange={(e) => setRow(o.key, { priceDelta: e.target.value })}
-                      style={{ textAlign: "right" }}
-                    />
-                    {re.priceDelta && <span className="err">{re.priceDelta}</span>}
-                  </div>
-                  <div className="fld">
-                    <span className="opt-lbl">재고</span>
-                    <input
-                      className={`inp inp-sm num${re.stock ? " is-error" : ""}`}
-                      type="text"
-                      inputMode="numeric"
-                      aria-label={`옵션 ${i + 1} 재고`}
-                      value={o.stock}
-                      onChange={(e) => setRow(o.key, { stock: e.target.value })}
-                      style={{ textAlign: "right" }}
-                    />
-                    {re.stock && <span className="err">{re.stock}</span>}
-                  </div>
-                  <button className="icon-btn opt-del" type="button" aria-label={`옵션 ${i + 1} 삭제`} onClick={() => removeRow(o)} style={{ width: 32, height: 32 }}>
-                    ×
-                  </button>
+            }
+          >
+            <FormRow label="옵션 목록" help="재고는 옵션마다 따로 관리합니다. 재고가 0이 되면 그 옵션은 주문할 수 없습니다">
+              <div className="col" style={{ gap: 12, width: "100%" }}>
+                <div className="opt-head" aria-hidden="true">
+                  <span>옵션명</span>
+                  <span className="r">추가 금액</span>
+                  <span className="r">재고</span>
+                  <span />
                 </div>
-              );
-            })}
-            {rows.length === 0 && <span className="t-l2 c-alt">옵션이 없습니다. 옵션을 추가해야 판매할 수 있습니다</span>}
-            {shown.options && <span className="err">{shown.options}</span>}
-          </section>
+                {rows.map((o, i) => {
+                  const re = shown.rows[o.key] ?? {};
+                  return (
+                    <div className="opt-row" key={o.key} data-testid="option-row">
+                      <div className="fld opt-name">
+                        <input
+                          className={`inp inp-sm${re.name ? " is-error" : ""}`}
+                          type="text"
+                          placeholder="예: 1박스 (36팩)"
+                          aria-label={`옵션 ${i + 1} 이름`}
+                          value={o.name}
+                          onChange={(e) => setRow(o.key, { name: e.target.value })}
+                        />
+                        {re.name && <span className="err">{re.name}</span>}
+                      </div>
+                      <div className="fld">
+                        <span className="opt-lbl">추가 금액</span>
+                        <input
+                          className={`inp inp-sm num${re.priceDelta ? " is-error" : ""}`}
+                          type="text"
+                          inputMode="numeric"
+                          aria-label={`옵션 ${i + 1} 추가 금액`}
+                          value={o.priceDelta}
+                          onChange={(e) => setRow(o.key, { priceDelta: e.target.value })}
+                          style={{ textAlign: "right" }}
+                        />
+                        {re.priceDelta && <span className="err">{re.priceDelta}</span>}
+                      </div>
+                      <div className="fld">
+                        <span className="opt-lbl">재고</span>
+                        <input
+                          className={`inp inp-sm num${re.stock ? " is-error" : ""}`}
+                          type="text"
+                          inputMode="numeric"
+                          aria-label={`옵션 ${i + 1} 재고`}
+                          value={o.stock}
+                          onChange={(e) => setRow(o.key, { stock: e.target.value })}
+                          style={{ textAlign: "right" }}
+                        />
+                        {re.stock && <span className="err">{re.stock}</span>}
+                      </div>
+                      <button className="icon-btn opt-del" type="button" aria-label={`옵션 ${i + 1} 삭제`} onClick={() => removeRow(o)} style={{ width: 32, height: 32 }}>
+                        ×
+                      </button>
+                    </div>
+                  );
+                })}
+                {rows.length === 0 && <span className="t-l2 c-alt">옵션이 없습니다. 옵션을 추가해야 판매할 수 있습니다</span>}
+                {shown.options && <span className="err">{shown.options}</span>}
+              </div>
+            </FormRow>
+          </FormSection>
 
-          <section className="card pad-l col" style={{ gap: 12 }}>
-            <h2 className="t-hl1">판매 상태</h2>
-            <div className="seg" role="radiogroup" aria-label="판매 상태" style={{ alignSelf: "flex-start" }}>
-              {statusChoices.map((s) => (
-                <button key={s} type="button" role="radio" aria-checked={status === s} className={status === s ? "on" : ""} onClick={() => setStatus(s)}>
-                  {STATUS_LABEL[s]}
-                </button>
-              ))}
-            </div>
-            <span className="help">{STATUS_HELP[status]}</span>
-          </section>
-
-          <section className="card pad-l col" style={{ gap: 12 }}>
-            <h2 className="t-hl1">재고 차감 기준</h2>
-            <div className="seg" role="radiogroup" aria-label="재고 차감 기준" style={{ alignSelf: "flex-start" }}>
-              {(
-                [
-                  ["PAYMENT", "결제하면 차감"],
-                  ["ORDER", "주문하면 바로 차감"],
-                ] as const
-              ).map(([v, label]) => (
-                <button key={v} type="button" role="radio" aria-checked={deduct === v} className={deduct === v ? "on" : ""} onClick={() => setDeduct(v)}>
-                  {label}
-                </button>
-              ))}
-            </div>
-            <span className="help">
-              기본은 결제하면 차감입니다 · 「주문하면 바로 차감」은 선착순·한정 판매에 적합합니다 · {restockText}
-              {isEdit ? " · 변경하면 다음 주문부터 적용됩니다" : ""}
-            </span>
-          </section>
+          <FormSection title="노출 · 판매">
+            <FormRow label="판매 상태" help={STATUS_HELP[status]}>
+              <div className="seg" role="radiogroup" aria-label="판매 상태">
+                {statusChoices.map((s) => (
+                  <button key={s} type="button" role="radio" aria-checked={status === s} className={status === s ? "on" : ""} onClick={() => setStatus(s)}>
+                    {STATUS_LABEL[s]}
+                  </button>
+                ))}
+              </div>
+            </FormRow>
+          </FormSection>
 
           {isEdit && (
             <section className="card pad-l col" style={{ gap: 12, boxShadow: "inset 0 0 0 1px var(--wds-line-status-negative-normal)" }}>
