@@ -114,8 +114,9 @@ export async function runPractice(
       const rows = await db.$queryRaw<{ at: Date }[]>`UPDATE "AutomationPracticeRun" SET "lastActionStartedAt" = GREATEST(COALESCE("lastActionStartedAt", clock_timestamp()), clock_timestamp()) WHERE id = ${run.id}::uuid RETURNING "lastActionStartedAt" AS at`;
       return { at: rows[0]?.at ?? (await dbNow(db)), owned: false };
     },
+    // 종료 시각은 시작보다 앞서지 않게 DB에서 쓴다(시작의 반올림·종료의 버림 차이로 창이 풀리지 않는 일 방지)
     end: async (startedAt) =>
-      void (await db.automationPracticeRun.updateMany({ where: { id: run.id, lastActionStartedAt: startedAt }, data: { lastActionEndedAt: await dbNow(db) } })),
+      void (await db.$executeRaw`UPDATE "AutomationPracticeRun" SET "lastActionEndedAt" = GREATEST(clock_timestamp(), "lastActionStartedAt") WHERE id = ${run.id}::uuid AND "lastActionStartedAt" = ${startedAt}`),
   });
   const lost = new AbortController();
   const beat = setInterval(() => void assertOwner().catch(() => lost.abort()), Math.max(20, Math.floor(AUTOMATION_LIMITS.leaseMs / 3)));
