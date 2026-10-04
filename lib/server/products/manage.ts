@@ -142,7 +142,8 @@ type ListFailure =
   | "invalid_date_range"
   | "invalid_code"
   | "invalid_sale_mode"
-  | "invalid_display";
+  | "invalid_display"
+  | "invalid_category";
 
 export type ProductListQuery = {
   status?: unknown;
@@ -154,6 +155,7 @@ export type ProductListQuery = {
   createdFrom?: unknown;
   createdTo?: unknown;
   sort?: unknown;
+  categoryId?: unknown;
   cursor?: unknown;
   limit?: unknown;
 };
@@ -239,6 +241,14 @@ export async function listProducts(
       OR EXISTS (SELECT 1 FROM "ProductOption" o
                  WHERE o."sellerId" = ${ctx.sellerId}::uuid AND o."productId" = p."id" AND o."deletedAt" IS NULL
                    AND o."sku" IS NOT NULL AND strpos(lower(o."sku"), lower(${code})) > 0))`);
+  }
+  // 카테고리 categoryId: 그 카테고리에 지정한 상품. 대분류면 그 아래 소분류에 지정한 상품도 함께. 이 판매자 카테고리가 아니면 400.
+  if (opts.categoryId !== undefined && opts.categoryId !== "") {
+    if (typeof opts.categoryId !== "string" || !UUID.test(opts.categoryId)) return { ok: false, reason: "invalid_category" };
+    const cat = await db.shopCategory.findFirst({ where: { id: opts.categoryId, sellerId: ctx.sellerId }, select: { id: true } });
+    if (!cat) return { ok: false, reason: "invalid_category" };
+    where.push(Prisma.sql`EXISTS (SELECT 1 FROM "ProductCategory" pc JOIN "ShopCategory" c ON c."sellerId" = pc."sellerId" AND c."id" = pc."categoryId"
+      WHERE pc."sellerId" = ${ctx.sellerId}::uuid AND pc."productId" = p."id" AND (c."id" = ${cat.id}::uuid OR c."parentId" = ${cat.id}::uuid))`);
   }
   // 판매량: 결제 완료 주문 품목 수량을 상품별로 한 번만 더해 붙인다(판매량순 정렬·커서에만 쓴다)
   const soldJoin =

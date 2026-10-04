@@ -509,6 +509,7 @@ model Product {
   options    ProductOption[]
   orderItems OrderItem[]
   reviews    ProductReview[]
+  categories ProductCategory[]
 
   @@unique([sellerId, id])
 }
@@ -1948,4 +1949,38 @@ model AutomationShopRevocation {
   revokedAt DateTime @db.Timestamptz(3)
 
   @@id([sellerId, shopKey])
+}
+
+// 쇼핑몰 카테고리(SA-015, 2026-10-04 대표님 지시). 2단까지: 대분류(parentId 없음) 아래 소분류. 순서는 같은 부모 안에서 sortOrder.
+// visible=false면 구매자 쇼핑몰에 보이지 않는다(대분류를 끄면 그 아래 소분류도 안 보인다). 삭제는 행을 지운다(지난 주문이 참조하지 않음).
+// 판매자 격리: 부모·상품 연결은 (sellerId, id) 복합 키로만 잇는다. 값 범위는 lib/server/shop-category/rules.ts.
+model ShopCategory {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId  String   @db.Uuid
+  parentId  String?  @db.Uuid
+  name      String
+  visible   Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  parent   ShopCategory?     @relation("ShopCategoryTree", fields: [sellerId, parentId], references: [sellerId, id], onDelete: Restrict)
+  children ShopCategory[]    @relation("ShopCategoryTree")
+  products ProductCategory[]
+
+  @@unique([sellerId, id])
+  @@index([sellerId, parentId, sortOrder])
+}
+
+// 상품 ↔ 카테고리(여러 개 지정 가능). 카테고리를 지우면 연결도 지운다.
+model ProductCategory {
+  sellerId   String   @db.Uuid
+  productId  String   @db.Uuid
+  categoryId String   @db.Uuid
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  product  Product      @relation(fields: [sellerId, productId], references: [sellerId, id])
+  category ShopCategory @relation(fields: [sellerId, categoryId], references: [sellerId, id], onDelete: Cascade)
+
+  @@id([productId, categoryId])
+  @@index([sellerId, categoryId])
 }
