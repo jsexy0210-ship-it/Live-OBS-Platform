@@ -131,6 +131,9 @@ describe("파비콘", () => {
   it("DB 제약도 형식·크기를 막는다(코드를 거치지 않은 쓰기)", async () => {
     await expect(db.siteBranding.create({ data: { target: "admin", faviconData: Buffer.from("x"), faviconType: "image/svg+xml", faviconHash: "a" } })).rejects.toThrow();
     await expect(db.siteBranding.create({ data: { target: "shop" } })).rejects.toThrow();
+    // 형식만 비운 행(데이터·해시는 있음)도 막는다(Codex 지적 4차: NULL과 비교하면 CHECK를 통과하던 문제)
+    await expect(db.siteBranding.create({ data: { target: "admin", faviconData: Buffer.from("x"), faviconHash: "a" } })).rejects.toThrow();
+    await expect(db.siteBranding.create({ data: { target: "seller", ogImageData: Buffer.from("x"), ogImageHash: "a" } })).rejects.toThrow();
     await expect(db.siteBranding.create({ data: { target: "seller", ogImageData: Buffer.from("x"), ogImageType: "image/jpeg", ogImageHash: "a" } })).rejects.toThrow();
     await expect(db.siteBranding.create({ data: { target: "admin", faviconData: Buffer.alloc(262145), faviconType: "image/png", faviconHash: "a" } })).rejects.toThrow();
   });

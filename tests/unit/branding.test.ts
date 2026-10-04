@@ -31,7 +31,7 @@ function chunk(type: string, data: Buffer): Buffer {
   crc.writeUInt32BE(crc32(Buffer.concat([Buffer.from(type, "latin1"), data])));
   return Buffer.concat([head, data, crc]);
 }
-function rawPng(w: number, h: number, o: { color?: number; depth?: number; idat?: Buffer[]; plte?: Buffer } = {}): Buffer {
+function rawPng(w: number, h: number, o: { color?: number; depth?: number; idat?: Buffer[]; plte?: Buffer; extra?: Buffer[] } = {}): Buffer {
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(w, 0);
   ihdr.writeUInt32BE(h, 4);
@@ -43,6 +43,7 @@ function rawPng(w: number, h: number, o: { color?: number; depth?: number; idat?
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     chunk("IHDR", ihdr),
     ...(o.plte ? [chunk("PLTE", o.plte)] : []),
+    ...(o.extra ?? []),
     ...idat.map((d) => chunk("IDAT", d)),
     chunk("IEND", Buffer.alloc(0)),
   ]);
@@ -113,6 +114,43 @@ describe("브랜딩 이미지 형식 확인(파일 앞부분 바이트)", () => 
     expect(checkFavicon(indexed(Buffer.alloc(3 * 257)))).toEqual({ ok: false, reason: "unsupported_image" });
     // ICO 안의 PNG도 같은 검사를 거친다
     expect(checkFavicon(icoOf(rawPng(32, 32, { idat: [Buffer.alloc(0)] })))).toEqual({ ok: false, reason: "unsupported_image" });
+  });
+
+  it("색 번호 PNG: 필터를 되돌린 실제 색 번호가 PLTE 항목 수 밖이면 거부하고, 안이면 받는다(Codex 지적 4차)", async () => {
+    const plte4 = Buffer.alloc(3 * 4);
+    // 필터 없음(0): 8비트 색 번호 5는 항목 4개 밖
+    const row = (filter: number, bytes: number[]) => Buffer.from([filter, ...bytes, ...Array(16 - bytes.length).fill(0)]);
+    const indexed = (rows: Buffer[], depth = 8, plte = plte4) => rawPng(16, rows.length, { color: 3, depth, plte, idat: [deflateSync(Buffer.concat(rows))] });
+    expect(checkFavicon(indexed(Array.from({ length: 16 }, () => row(0, [5]))))).toEqual({ ok: false, reason: "unsupported_image" });
+    expect(checkFavicon(indexed(Array.from({ length: 16 }, () => row(0, [3]))))).toMatchObject({ ok: true });
+    // Sub 필터(1): 바이트는 모두 작지만 왼쪽 값을 더하면 1,2,3,4 → 넷째 화소가 범위 밖
+    expect(checkFavicon(indexed(Array.from({ length: 16 }, () => row(1, [1, 1, 1, 1]))))).toEqual({ ok: false, reason: "unsupported_image" });
+    expect(checkFavicon(indexed(Array.from({ length: 16 }, () => row(1, [1, 1, 1]))))).toMatchObject({ ok: true });
+    // Up 필터(2): 줄마다 1씩 쌓여 넷째 줄에서 4
+    expect(checkFavicon(indexed(Array.from({ length: 16 }, () => row(2, [1]))))).toEqual({ ok: false, reason: "unsupported_image" });
+    // 2비트 색 번호: 항목 3개인데 색 번호 3(0b11)
+    const packed = (b: number) => Buffer.from([0, b, 0, 0, 0]);
+    const indexed2 = (b: number) => rawPng(16, 16, { color: 3, depth: 2, plte: Buffer.alloc(9), idat: [deflateSync(Buffer.concat(Array.from({ length: 16 }, () => packed(b))))] });
+    expect(checkFavicon(indexed2(0b00_01_10_11))).toEqual({ ok: false, reason: "unsupported_image" });
+    expect(checkFavicon(indexed2(0b00_01_10_10))).toMatchObject({ ok: true });
+    // 실제 도구가 만든 색 번호 PNG(Average·Paeth 등 여러 필터, 인터레이스 포함)는 받는다
+    const gradient = sharp(Buffer.from(Array.from({ length: 64 * 64 * 3 }, (_, i) => (i * 7) % 256)), { raw: { width: 64, height: 64, channels: 3 } });
+    expect(checkFavicon(await gradient.clone().png({ palette: true, colours: 16 }).toBuffer())).toMatchObject({ ok: true });
+    expect(checkFavicon(await gradient.clone().png({ palette: true, colours: 4, progressive: true }).toBuffer())).toMatchObject({ ok: true });
+    expect(checkFavicon(await gradient.clone().png({ adaptiveFiltering: true }).toBuffer())).toMatchObject({ ok: true });
+  });
+
+  it("tRNS: 형식별 길이·위치 규칙을 어기면 거부한다", () => {
+    const rgb = (extra: Buffer[]) => rawPng(16, 16, { color: 2, extra, idat: [deflateSync(Buffer.alloc(16 * (1 + 16 * 3)))] });
+    expect(checkFavicon(rgb([chunk("tRNS", Buffer.alloc(6))]))).toMatchObject({ ok: true });
+    expect(checkFavicon(rgb([chunk("tRNS", Buffer.alloc(4))]))).toEqual({ ok: false, reason: "unsupported_image" });
+    expect(checkFavicon(rgb([chunk("tRNS", Buffer.alloc(6)), chunk("tRNS", Buffer.alloc(6))]))).toEqual({ ok: false, reason: "unsupported_image" });
+    // 알파가 있는 형식(RGBA)에는 tRNS가 없어야 한다
+    expect(checkFavicon(rawPng(16, 16, { extra: [chunk("tRNS", Buffer.alloc(6))] }))).toEqual({ ok: false, reason: "unsupported_image" });
+    // 색 번호 형식: PLTE 항목 수(4) 이하만
+    const pal = (n: number) => rawPng(16, 16, { color: 3, plte: Buffer.alloc(12), extra: [chunk("tRNS", Buffer.alloc(n))], idat: [deflateSync(Buffer.alloc(16 * 17))] });
+    expect(checkFavicon(pal(4))).toMatchObject({ ok: true });
+    expect(checkFavicon(pal(5))).toEqual({ ok: false, reason: "unsupported_image" });
   });
 
   it("인터레이스(Adam7) PNG는 단계별 길이로 확인해 받는다", async () => {

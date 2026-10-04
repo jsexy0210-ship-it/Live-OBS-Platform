@@ -20,7 +20,8 @@ const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0
 // - 구조: 첫 청크 IHDR(길이 13), 청크마다 범위·CRC, PLTE 규칙, IDAT는 이어져 있고 1개 이상, 길이 0인 IEND로 파일이 끝남
 // - IHDR: 색 형식·비트 깊이 조합, 압축·필터 방식 0, 인터레이스 0(없음)·1(Adam7)
 // - 내용: IDAT를 모두 이어 zlib으로 풀어(크기 상한을 둬 압축 폭탄을 막음) 풀린 길이가 IHDR로 계산한 길이와 같고,
-//   줄마다 앞의 필터 바이트가 0~4여야 한다.
+//   줄마다 앞의 필터 바이트가 0~4여야 한다. 필터를 되돌려 표본 값을 복원하고 색 번호는 PLTE 항목 수 안이어야 한다.
+// - tRNS: 그림 데이터 앞 한 번, 형식별 길이 규칙
 const PNG_DEPTHS: Record<number, number[]> = { 0: [1, 2, 4, 8, 16], 2: [8, 16], 3: [1, 2, 4, 8], 4: [8, 16], 6: [8, 16] };
 const PNG_CRITICAL = new Set(["IHDR", "PLTE", "IDAT", "IEND"]);
 const PNG_CHANNELS: Record<number, number> = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 };
@@ -37,14 +38,15 @@ const ADAM7 = [
 // 풀린 그림 데이터 상한(파비콘 1024×1024·카드 1200×630의 가장 큰 형식보다 넉넉함)
 const PNG_MAX_RAW = 16 * 1024 * 1024;
 
-// 풀린 데이터의 줄 목록: [줄 수, 줄 바이트 수(필터 바이트 제외)]
-function pngRows(width: number, height: number, bits: number, interlace: number): [number, number][] {
+// 풀린 데이터의 단계(인터레이스가 없으면 1개) 목록: [줄 수, 줄 바이트 수(필터 바이트 제외), 줄의 화소 수]
+type PngPass = [rows: number, rowBytes: number, pixels: number];
+function pngRows(width: number, height: number, bits: number, interlace: number): PngPass[] {
   const rowBytes = (w: number) => Math.ceil((w * bits) / 8);
-  if (interlace === 0) return [[height, rowBytes(width)]];
+  if (interlace === 0) return [[height, rowBytes(width), width]];
   return ADAM7.map(([x0, y0, dx, dy]) => {
     const w = width > x0 ? Math.ceil((width - x0) / dx) : 0;
     const h = height > y0 ? Math.ceil((height - y0) / dy) : 0;
-    return [w === 0 ? 0 : h, rowBytes(w)] as [number, number];
+    return [w === 0 ? 0 : h, rowBytes(w), w] as PngPass;
   });
 }
 
@@ -61,7 +63,8 @@ function png(b: Buffer, verify = true): ImageInfo | null {
 
   const idat: Buffer[] = [];
   let idatClosed = false;
-  let plte = false;
+  let plteEntries = 0;
+  let trns = false;
   let o = 8;
   while (o + 12 <= b.length) {
     const len = b.readUInt32BE(o);
@@ -76,23 +79,37 @@ function png(b: Buffer, verify = true): ImageInfo | null {
     if (type === "PLTE") {
       // 회색조에는 없어야 하고, 그림 데이터 앞에 한 번, 항목 수는 1~256(색 번호 형식은 비트 깊이 안)
       const entries = len / 3;
-      if (plte || idat.length > 0 || color === 0 || color === 4 || len % 3 !== 0 || entries < 1 || entries > (color === 3 ? 2 ** depth : 256)) return null;
-      plte = true;
+      if (plteEntries || trns || idat.length > 0 || color === 0 || color === 4 || len % 3 !== 0 || entries < 1 || entries > (color === 3 ? 2 ** depth : 256)) return null;
+      plteEntries = entries;
+    }
+    if (type === "tRNS") {
+      // 투명도: 그림 데이터 앞에 한 번. 색 번호 형식은 PLTE 뒤·항목 수 이하, 회색조는 2바이트, RGB는 6바이트, 알파가 있는 형식에는 없어야 한다
+      const ok = color === 3 ? plteEntries > 0 && len >= 1 && len <= plteEntries : color === 0 ? len === 2 : color === 2 ? len === 6 : false;
+      if (trns || idat.length > 0 || !ok) return null;
+      trns = true;
     }
     if (type === "IDAT") {
       if (idatClosed) return null;
       idat.push(b.subarray(o + 8, o + 8 + len));
     } else if (idat.length > 0) idatClosed = true;
     if (type === "IEND") {
-      if (len !== 0 || end !== b.length || idat.length === 0 || (color === 3 && !plte)) return null;
-      return !verify || pngPixelsOk(Buffer.concat(idat), rows, expected) ? { type: "image/png", width, height } : null;
+      if (len !== 0 || end !== b.length || idat.length === 0 || (color === 3 && !plteEntries)) return null;
+      const pixels = { bytesPerPixel: Math.ceil((PNG_CHANNELS[color] * depth) / 8), depth, paletteEntries: color === 3 ? plteEntries : 0 };
+      return !verify || pngPixelsOk(Buffer.concat(idat), rows, expected, pixels) ? { type: "image/png", width, height } : null;
     }
     o = end;
   }
   return null;
 }
 
-function pngPixelsOk(compressed: Buffer, rows: [number, number][], expected: number): boolean {
+// 풀린 데이터를 PNG 규격대로 줄마다 필터(None·Sub·Up·Average·Paeth, Adam7은 단계별)를 되돌려 실제 표본 값으로 복원한다.
+// 색 번호 형식은 모든 화소의 색 번호가 PLTE 항목 수보다 작아야 한다(밖이면 디코더가 그림을 버림).
+function pngPixelsOk(
+  compressed: Buffer,
+  passes: PngPass[],
+  expected: number,
+  px: { bytesPerPixel: number; depth: number; paletteEntries: number },
+): boolean {
   let raw: Buffer;
   try {
     raw = inflateSync(compressed, { maxOutputLength: expected + 1 });
@@ -100,11 +117,36 @@ function pngPixelsOk(compressed: Buffer, rows: [number, number][], expected: num
     return false;
   }
   if (raw.length !== expected) return false;
+  const bpp = px.bytesPerPixel;
   let o = 0;
-  for (const [h, w] of rows) {
+  for (const [h, rowBytes, pixels] of passes) {
+    let prev = Buffer.alloc(rowBytes);
     for (let y = 0; y < h; y++) {
-      if (raw[o] > 4) return false;
-      o += 1 + w;
+      const f = raw[o];
+      if (f > 4) return false;
+      const cur = Buffer.from(raw.subarray(o + 1, o + 1 + rowBytes));
+      for (let i = 0; i < rowBytes; i++) {
+        const left = i >= bpp ? cur[i - bpp] : 0;
+        const up = prev[i];
+        const upLeft = i >= bpp ? prev[i - bpp] : 0;
+        if (f === 1) cur[i] = (cur[i] + left) & 0xff;
+        else if (f === 2) cur[i] = (cur[i] + up) & 0xff;
+        else if (f === 3) cur[i] = (cur[i] + ((left + up) >> 1)) & 0xff;
+        else if (f === 4) {
+          const p = left + up - upLeft;
+          const [pa, pb, pc] = [Math.abs(p - left), Math.abs(p - up), Math.abs(p - upLeft)];
+          cur[i] = (cur[i] + (pa <= pb && pa <= pc ? left : pb <= pc ? up : upLeft)) & 0xff;
+        }
+      }
+      if (px.paletteEntries) {
+        const d = px.depth;
+        for (let x = 0; x < pixels; x++) {
+          const index = d === 8 ? cur[x] : (cur[(x * d) >> 3] >> (8 - d - ((x * d) & 7))) & ((1 << d) - 1);
+          if (index >= px.paletteEntries) return false;
+        }
+      }
+      prev = cur;
+      o += 1 + rowBytes;
     }
   }
   return true;
