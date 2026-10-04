@@ -246,7 +246,8 @@ test("본인확인 시작 응답을 잃고 다시 누르면 같은 attemptKey로
 
 test("가입 신청: 화면의 약관 버전이 서버와 다르면 문자를 보내지 않고, 동의를 비워 다시 동의하게 한다", async ({ page }) => {
   await page.goto("/seller/signup");
-  await fillIdentity(page, `최${letters(uniq())}`);
+  const who = `최${letters(uniq())}`;
+  await fillIdentity(page, who);
   await agreeSignupTerms(page);
   // 예전 화면이 보낸 것처럼 약관 버전만 바꿔 보낸다(한 번만)
   await page.route(
@@ -255,8 +256,12 @@ test("가입 신청: 화면의 약관 버전이 서버와 다르면 문자를 �
     { times: 1 },
   );
   const refused = page.waitForResponse((r) => r.url().endsWith("/api/seller-signup/verification") && r.request().method() === "POST");
+  // 거절되면 화면 데이터를 새로 받아 서버의 지금 약관 버전으로 바꾼다(열어 둔 예전 화면이 같은 버전을 계속 보내지 않게)
+  const refreshed = page.waitForRequest((r) => new URL(r.url()).pathname === "/seller/signup" && r.headers()["rsc"] === "1");
   await page.getByRole("button", { name: "인증번호 받기" }).click();
   expect((await refused).status()).toBe(409);
+  await refreshed;
+  await expect(page.locator("#idv-name")).toHaveValue(who);
   await expect(page.locator("#su-terms-err")).toHaveText("약관이 바뀌었어요. 다시 확인해 주세요");
   await expect(page.getByLabel("필수 약관에 모두 동의해요")).not.toBeChecked();
   await expect(page.getByLabel("필수 약관에 모두 동의해요")).toBeFocused();
