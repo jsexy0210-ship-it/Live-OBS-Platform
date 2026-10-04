@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { GET as previewRoute } from "../../app/api/seller/subscription/plan/preview/route";
 import { POST as planRoute } from "../../app/api/seller/subscription/plan/route";
 import { loginSeller } from "../../lib/server/auth/login";
 import { createAdminSession, resolveAdminSession } from "../../lib/server/auth/session";
 import { sellerFeatures } from "../../lib/server/billing/features";
-import { changePlan } from "../../lib/server/billing/planChange";
+import { changePlan, previewPlanChanges } from "../../lib/server/billing/planChange";
 import { listPriceChangeNoticeTargets } from "../../lib/server/billing/plans";
 import { FakeBillingProvider } from "../../lib/server/billing/provider";
 import { sealBillingKey } from "../../lib/server/billing/secret";
@@ -270,9 +271,13 @@ describe("하위 변경(통합 → 오버레이 전용)", () => {
     expect(await payments(s.seller.id)).toEqual([{ amount: 179000, status: "PAID", kind: "PERIOD" }]);
   });
 
-  it("해지 예약 구독은 기간 끝에 하위 변경 없이 해지(갱신 결제 0건)", async () => {
+  it("해지 예약 구독은 플랜을 바꿀 수 없고(409 cancel_scheduled, 상위·하위 모두), 기간 끝에 그대로 해지(갱신 결제 0건)", async () => {
     const s = await shop("INTEGRATED", at(-30), { ...paying, cancelAtPeriodEnd: true, nextChargeAt: at(10) });
-    await changePlan(db, new FakeBillingProvider(), s.ctx, { planCode: "OVERLAY_ONLY", now: T0 });
+    expect(await changePlan(db, new FakeBillingProvider(), s.ctx, { planCode: "OVERLAY_ONLY", now: T0 })).toEqual({ ok: false, reason: "cancel_scheduled" });
+    expect((await subOf(s.seller.id)).pendingPlanId).toBeNull();
+    const up = await shop("OVERLAY_ONLY", at(-30), { ...paying, cancelAtPeriodEnd: true, nextChargeAt: at(10) });
+    expect(await changePlan(db, new FakeBillingProvider(), up.ctx, { planCode: "INTEGRATED", now: T0 })).toEqual({ ok: false, reason: "cancel_scheduled" });
+    expect(await payments(up.seller.id)).toEqual([]);
     await renewDueSubscriptions(db, new FakeBillingProvider(), { now: at(10) });
     expect(await db.subscriptionPayment.count()).toBe(0);
     expect((await subOf(s.seller.id)).status).toBe("CANCELED");
@@ -405,5 +410,87 @@ describe("런칭 할인 계정당 1회(대표님 결정 2026-10-04)", () => {
     expect(await used(s.seller.id)).toBeNull();
     expect(await registerCardAndPay(db, new FakeBillingProvider(), s.ctx, { authKey: "auth", now: T0 })).toMatchObject({ ok: true });
     expect((await payments(s.seller.id)).map((p) => [p.amount, p.status])).toEqual([[179000, "FAILED"], [179000, "PAID"]]);
+  });
+});
+
+describe("플랜별 금액·변경 미리보기(GET /api/seller/subscription/plan/preview)", () => {
+  // 미리보기는 아무것도 바꾸지 않고, 같은 시각에 실제로 바꾸면 미리보기한 금액·적용 시점과 같아야 한다
+  async function previewThenChange(s: Awaited<ReturnType<typeof shop>>, planCode: PlanKey, now: Date) {
+    const counts = async () => [await db.subscriptionPayment.count(), await db.auditLog.count(), JSON.stringify(await subOf(s.seller.id).catch(() => null)), await planOf(s.seller.id)];
+    const before = await counts();
+    const preview = await previewPlanChanges(db, s.ctx, { now });
+    expect(await counts()).toEqual(before);
+    const row = preview.plans.find((p) => p.planCode === planCode)!;
+    const r = await changePlan(db, new FakeBillingProvider(), s.ctx, { planCode, now });
+    if (row.change.ok) {
+      expect(r).toMatchObject({ ok: true, applied: row.change.applied, charged: row.change.chargeNow });
+      if (row.change.remainingDays != null) expect(r).toMatchObject({ remainingDays: row.change.remainingDays });
+    } else expect(r).toEqual({ ok: false, reason: row.change.reason });
+    return { preview, row };
+  }
+
+  it("결제한 기간 중 상위 변경: 남은 10일분 차액 36,666원, 플랜별 다음 결제 금액(지금 69,000원·통합 179,000원)", async () => {
+    const s = await shop("OVERLAY_ONLY", at(-30), paying);
+    const { preview, row } = await previewThenChange(s, "INTEGRATED", T0);
+    expect(preview).toMatchObject({ currentPlanCode: "OVERLAY_ONLY", pendingPlanCode: null });
+    expect(preview.plans.map((p) => [p.planCode, p.current, p.price])).toEqual([
+      ["OVERLAY_ONLY", true, 69000],
+      ["INTEGRATED", false, 179000],
+    ]);
+    expect(preview.plans[0].change).toEqual({ ok: false, reason: "same_plan" });
+    expect(row.change).toEqual({ ok: true, applied: "now", chargeNow: 36666, remainingDays: 10, effectiveAt: T0 });
+  });
+
+  it("체험 중 상위 변경은 179,000원 바로 결제, 카드가 없으면 card_required. 잠김이면 결제 없이 바로", async () => {
+    expect((await previewThenChange(await shop("OVERLAY_ONLY", at(5), { status: "ACTIVE", nextChargeAt: at(5) }), "INTEGRATED", T0)).row.change).toMatchObject({
+      ok: true,
+      applied: "now",
+      chargeNow: 179000,
+      remainingDays: null,
+    });
+    expect((await previewThenChange(await shop("OVERLAY_ONLY", at(5)), "INTEGRATED", T0)).row.change).toEqual({ ok: false, reason: "card_required" });
+    expect((await previewThenChange(await shop("OVERLAY_ONLY", at(-30)), "INTEGRATED", T0)).row.change).toMatchObject({ ok: true, applied: "now", chargeNow: 0 });
+  });
+
+  it("유예 중 상위 변경은 밀린 금액 + 차액, 하위 변경은 다음 결제일부터, 예약 뒤 지금 플랜을 고르면 예약 취소", async () => {
+    const start = new Date("2026-09-30T00:00:00Z");
+    const pastDue = { status: "PAST_DUE", currentPeriodStart: start, currentPeriodEnd: at(-2), billingAnchorAt: start, nextChargeAt: at(1), graceUntil: at(6), retryCount: 1 };
+    const due = await previewThenChange(await shop("OVERLAY_ONLY", at(-60), pastDue), "INTEGRATED", T0);
+    expect(due.row.change).toMatchObject({ ok: true, applied: "now" });
+    expect((due.row.change as { chargeNow: number }).chargeNow).toBeGreaterThan(69000);
+
+    const s = await shop("INTEGRATED", at(-30), paying);
+    expect((await previewThenChange(s, "OVERLAY_ONLY", T0)).row.change).toEqual({ ok: true, applied: "next_payment", chargeNow: 0, remainingDays: null, effectiveAt: at(9) });
+    // 예약 뒤: 다음 결제는 오버레이 전용, 통합을 다시 고르면 예약 취소
+    const after = await previewThenChange(s, "INTEGRATED", T0);
+    expect(after.preview.pendingPlanCode).toBe("OVERLAY_ONLY");
+    expect(after.row.change).toEqual({ ok: true, applied: "canceled_pending", chargeNow: 0, remainingDays: null, effectiveAt: null });
+  });
+
+  it("해지 예약 중이면 두 플랜 모두 cancel_scheduled, 결제 대기 중이면 payment_in_progress", async () => {
+    const canceling = await shop("OVERLAY_ONLY", at(-30), { ...paying, cancelAtPeriodEnd: true });
+    expect((await previewPlanChanges(db, canceling.ctx, { now: T0 })).plans.map((p) => p.change)).toEqual([
+      { ok: false, reason: "cancel_scheduled" },
+      { ok: false, reason: "cancel_scheduled" },
+    ]);
+    const pending = await shop("OVERLAY_ONLY", at(-30), paying);
+    await db.subscriptionPayment.create({
+      data: { sellerId: pending.seller.id, subscriptionId: pending.subscription!.id, amount: 36666, status: "PENDING", kind: "PRORATION", periodStart: at(-20), periodEnd: at(10), createdAt: at(-1) },
+    });
+    expect((await previewThenChange(pending, "INTEGRATED", T0)).row.change).toEqual({ ok: false, reason: "payment_in_progress" });
+  });
+
+  it("대표자 전용(직원 403), HTTP 경로는 로그인한 대표자에게 200, 로그인 없으면 401", async () => {
+    const s = await shop("OVERLAY_ONLY", at(-30), paying);
+    const staff = await createSellerUser(s.seller.id, "MANAGER");
+    await expect(previewPlanChanges(db, { ...s.ctx, actorId: staff.id, isOwner: false, permissions: ["PRODUCT_MANAGE"] })).rejects.toMatchObject({ status: 403 });
+    const login = await loginSeller(db, { email: s.owner.email, password: PASSWORD }, {});
+    if (!login.ok) throw new Error(login.reason);
+    const get = (cookie?: string) =>
+      previewRoute(new Request("http://localhost:3000/api/seller/subscription/plan/preview", { headers: { host: "localhost:3000", ...(cookie ? { cookie } : {}) } }));
+    const ok = await get(`lo_seller=${login.token}`);
+    expect(ok.status).toBe(200);
+    expect(((await ok.json()) as { plans: unknown[] }).plans).toHaveLength(2);
+    expect((await get()).status).toBe(401);
   });
 });

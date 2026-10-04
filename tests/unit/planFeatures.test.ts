@@ -38,6 +38,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/subscription/card": "BILLING",
   "seller/subscription/cancel": "BILLING",
   "seller/subscription/plan": "BILLING",
+  "seller/subscription/plan/preview": "BILLING",
   "seller/me/identity": "ACCOUNT",
   "seller/me/identity/link": "ACCOUNT",
   "seller/me/identity/start": "ACCOUNT",
@@ -51,12 +52,22 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/orders/[orderId]/cancel": "ORDER_FOLLOWUP",
   "seller/orders/[orderId]/deliver": "ORDER_FOLLOWUP",
   "seller/orders/[orderId]/refund": "ORDER_FOLLOWUP",
+  "seller/orders/[orderId]/unconfirm": "ORDER_FOLLOWUP",
   "seller/orders/[orderId]/ship": "ORDER_FOLLOWUP",
   "seller/purchase-restrictions": "ORDER_FOLLOWUP",
+  "seller/shipments": "ORDER_FOLLOWUP",
+  "seller/shipments/deliver": "ORDER_FOLLOWUP",
   "seller/members": "ORDER_FOLLOWUP",
   "seller/members/[memberId]": "ORDER_FOLLOWUP",
   "seller/purchase-restrictions/[buyerMemberId]/lift": "ORDER_FOLLOWUP",
   "seller/coupons": "STORE_OPERATIONS",
+  "seller/reviews": "STORE_OPERATIONS",
+  "seller/reviews/[reviewId]": "STORE_OPERATIONS",
+  "seller/reviews/[reviewId]/reply": "STORE_OPERATIONS",
+  "seller/reviews/[reviewId]/hide": "STORE_OPERATIONS",
+  "seller/reviews/[reviewId]/publish": "STORE_OPERATIONS",
+  "seller/reviews/policy": "STORE_OPERATIONS",
+  "seller/reviews/images/[imageId]": "STORE_OPERATIONS",
   "seller/coupons/[couponId]": "STORE_OPERATIONS",
   "seller/coupons/[couponId]/grant": "STORE_OPERATIONS",
   "seller/coupons/products": "STORE_OPERATIONS",
@@ -116,6 +127,14 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/coupons/[couponId]/download": "STORE_OPERATIONS",
   "shop/[slug]/coupons": "OPEN", // 내 쿠폰함(받은 쿠폰 조회는 열고, 받을 수 있는 쿠폰은 운영 중일 때만)
   "shop/[slug]/shop-content/logo": "STORE_OPERATIONS", // 쇼핑몰 로고(없으면 404, 화면은 첫 글자)
+  "shop/[slug]/reviews": "OPEN", // 내 리뷰(받은 답글·숨김 사유는 잠긴 쇼핑몰에서도 본다)
+  "shop/[slug]/reviews/[reviewId]": "OPEN", // 내 리뷰 고치기·지우기
+  "shop/[slug]/reviews/images/[imageId]": "OPEN", // 내가 올린 사진
+  "shop/[slug]/reviews/items/[orderItemId]": "STORE_OPERATIONS", // 리뷰 쓰기(POST는 shopOpen으로 막음)
+  "shop/[slug]/reviews/images": "STORE_OPERATIONS",
+  "shop/[slug]/reviews/[reviewId]/report": "STORE_OPERATIONS",
+  "shop/[slug]/reviews/public-images/[imageId]": "STORE_OPERATIONS",
+  "shop/[slug]/products/[productId]/reviews": "STORE_OPERATIONS",
   "shop/[slug]/orders/[orderId]": "OPEN",
   "shop/[slug]/auth/login": "OPEN",
   "shop/[slug]/auth/logout": "OPEN",
@@ -135,7 +154,16 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
 const SHOP_PAGES: Record<string, "STORE_OPERATIONS" | "OPEN"> = {
   "shop/[slug]": "STORE_OPERATIONS", // 쇼핑몰 홈(홈 배너·이벤트 팝업)
   "shop/[slug]/signup": "STORE_OPERATIONS",
+  "shop/[slug]/reviews": "OPEN", // SH-029 내 리뷰(받은 답글·숨김 사유는 잠긴 쇼핑몰에서도)
+  "shop/[slug]/reviews/write": "STORE_OPERATIONS", // SH-029 리뷰 쓰기
   "shop/[slug]/coupons": "OPEN", // SH-028 내 쿠폰함: 잠긴 쇼핑몰도 받은 쿠폰은 읽기 전용(받기는 API에서 막음)
+  "shop/[slug]/products": "STORE_OPERATIONS", // SH-002 전체 상품(상품 격자)
+  "shop/[slug]/search": "STORE_OPERATIONS", // SH-002 상품 검색
+  "shop/[slug]/login": "OPEN", // SH-010 로그인: 잠긴 쇼핑몰에서도 받은 쿠폰·알림 설정에 들어갈 수 있게 연다
+  "shop/[slug]/me": "OPEN", // SH-020 내 정보(메뉴 링크만)
+  "shop/[slug]/cart": "OPEN", // SH-004 준비 중 안내(기능 없음)
+  "shop/[slug]/orders": "OPEN", // 주문 조회 준비 중 안내(기능 없음)
+  "shop/[slug]/help": "OPEN", // 고객센터 준비 중 안내(기능 없음)
   "shop/[slug]/me/notifications": "OPEN", // SH-025 알림 설정: 마케팅 수신 철회는 잠긴 쇼핑몰에서도 연다(API me/marketing-consent와 같은 기준)
 };
 

@@ -143,6 +143,10 @@ model Seller {
   buyerCoupons             BuyerCoupon[]
   couponRedemptions        CouponRedemption[]
   logo                     SellerLogo?
+  productReviews           ProductReview[]
+  productReviewImages      ProductReviewImage[]
+  productReviewReports     ProductReviewReport[]
+  productReviewPolicy      ProductReviewPolicy?
 }
 
 model SellerDomain {
@@ -335,8 +339,12 @@ model BuyerMember {
   hitCards             HitCard[]
   rewardLedger         RewardLedger[]
   rewardBalances       RewardBalance[]
+  rewardExpiryNotices  RewardExpiryNotice[]
   addresses            BuyerAddress[]
   coupons              BuyerCoupon[]
+  productReviews       ProductReview[]
+  productReviewImages  ProductReviewImage[]
+  productReviewReports ProductReviewReport[]
 
   @@unique([sellerId, id])
   @@index([sellerId, gradeId])
@@ -500,6 +508,7 @@ model Product {
   images     ProductImage[]
   options    ProductOption[]
   orderItems OrderItem[]
+  reviews    ProductReview[]
 
   @@unique([sellerId, id])
 }
@@ -801,6 +810,133 @@ model SellerLogo {
   seller Seller @relation(fields: [sellerId], references: [id])
 }
 
+// ───────────── 상품 리뷰 (SA-048 리뷰 관리 · SH-029 리뷰 쓰기, 2026-10-04 대표님 확정 11건 중 2) ─────────────
+// 구매자가 배송 완료된 주문 상품마다 1번 쓴다(작성 기간은 쇼핑몰 설정, 기본 30일). 답글·숨김·공개·설정은 대표자·구매자 문의(INQUIRY_REPLY) 직원.
+// 사진은 화면에서 JPEG로 다시 저장해 올리고, 서버는 JPEG·PNG 바이트를 확인한 뒤 위치 정보 등 메타데이터를 지우고 DB에 둔다(A안).
+// 리뷰 적립금은 쇼핑몰 설정(기본 0원=끔). 공개될 때 지급, 숨김·삭제 때 회수(적립금 원장 RewardLedger, idempotencyKey review_*).
+
+// VISIBLE=공개, PENDING=공개 대기(확인 뒤 공개 쇼핑몰), HELD=보류(금지어·신고 누적), HIDDEN=숨김(작성자에게만 보임, 별점 평균 제외)
+enum ProductReviewStatus {
+  VISIBLE
+  PENDING
+  HELD
+  HIDDEN
+}
+
+// 리뷰를 숨기거나 신고하는 사유
+enum ProductReviewReason {
+  PRIVACY
+  OFF_TOPIC
+  ABUSE
+  AD
+  OTHER
+}
+
+// 공개 방식: 바로 공개(금지어가 있으면 보류) · 확인 뒤 공개
+enum ProductReviewPublishMode {
+  IMMEDIATE
+  REVIEW
+}
+
+model ProductReviewPolicy {
+  sellerId     String                   @id @db.Uuid
+  publishMode  ProductReviewPublishMode @default(IMMEDIATE)
+  // 리뷰 적립금(원): 글만·사진 1장 이상. 0이면 지급하지 않는다.
+  rewardText   Int                      @default(0)
+  rewardPhoto  Int                      @default(0)
+  // 배송 완료 뒤 쓸 수 있는 날 수
+  writableDays Int                      @default(30)
+  // 판매자 금지어(연락처·외부 주소는 따로 자동 검사)
+  bannedWords  String[]                 @default([])
+  updatedAt    DateTime                 @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+}
+
+model ProductReview {
+  id             String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId       String               @db.Uuid
+  orderId        String               @db.Uuid
+  orderItemId    String               @unique @db.Uuid
+  productId      String               @db.Uuid
+  buyerMemberId  String               @db.Uuid
+  // 작성할 때 방송 닉네임. 탈퇴하면 「탈퇴 회원」으로 바꾼다(리뷰는 남김).
+  authorNickname String
+  rating         Int
+  body           String
+  status         ProductReviewStatus  @default(VISIBLE)
+  // 보류 이유(금지어·신고 누적)와 숨김 사유(작성자에게 보임)
+  heldBy         String?
+  hiddenReason   ProductReviewReason?
+  hiddenNote     String?
+  reply          String?
+  repliedAt      DateTime?            @db.Timestamptz(3)
+  // 지금 지급된 리뷰 적립금(회수하면 0)과 지급 회차(다시 공개하면 새 회차로 지급)
+  rewardRound    Int                  @default(0)
+  // 지금 회차 적립이 사진 리뷰 자격으로 지급됐는지(금액은 원장이 사실 기준). 자격이 그대로면 설정이 바뀌어도 그 지급을 유지한다
+  rewardForPhoto Boolean              @default(false)
+  // 지운 리뷰의 묘비(주문 상품 1개당 1번이라 행은 남기고 본문·사진은 지운다)
+  deletedAt      DateTime?            @db.Timestamptz(3)
+  createdAt      DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime             @default(now()) @db.Timestamptz(3)
+
+  seller      Seller                @relation(fields: [sellerId], references: [id])
+  order       Order                 @relation(fields: [sellerId, orderId], references: [sellerId, id])
+  orderItem   OrderItem             @relation(fields: [sellerId, orderItemId], references: [sellerId, id])
+  product     Product               @relation(fields: [sellerId, productId], references: [sellerId, id])
+  buyerMember BuyerMember           @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id])
+  images      ProductReviewImage[]
+  reports     ProductReviewReport[]
+
+  @@unique([sellerId, id])
+  @@unique([sellerId, orderItemId])
+  @@index([sellerId, status, createdAt])
+  @@index([sellerId, productId, status])
+  @@index([sellerId, buyerMemberId])
+}
+
+// 리뷰 사진. 먼저 올리고(reviewId 없음) 리뷰를 저장할 때 붙인다. 붙지 않은 사진은 회원당 10장까지 두고 오래된 것부터 지운다.
+model ProductReviewImage {
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String         @db.Uuid
+  buyerMemberId String         @db.Uuid
+  reviewId      String?        @db.Uuid
+  data          Bytes
+  contentType   String
+  byteSize      Int
+  width         Int
+  height        Int
+  sortOrder     Int            @default(0)
+  createdAt     DateTime       @default(now()) @db.Timestamptz(3)
+
+  seller      Seller         @relation(fields: [sellerId], references: [id])
+  buyerMember BuyerMember    @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id], onDelete: Cascade)
+  review      ProductReview? @relation(fields: [sellerId, reviewId], references: [sellerId, id], onDelete: Cascade)
+
+  @@unique([sellerId, id])
+  @@index([sellerId, reviewId])
+  @@index([sellerId, buyerMemberId, reviewId])
+}
+
+// 구매자 신고(리뷰당 1인 1번). 3건이 쌓이면 공개 리뷰를 보류한다.
+model ProductReviewReport {
+  id            String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String              @db.Uuid
+  reviewId      String              @db.Uuid
+  buyerMemberId String              @db.Uuid
+  reason        ProductReviewReason
+  createdAt     DateTime            @default(now()) @db.Timestamptz(3)
+  // 판매자가 확인해 공개한 시각. 현재 신고 수·보류 판정·사유 집계는 resolvedAt이 비어 있는 신고로만 계산한다
+  resolvedAt    DateTime?           @db.Timestamptz(3)
+
+  seller      Seller        @relation(fields: [sellerId], references: [id])
+  review      ProductReview @relation(fields: [sellerId, reviewId], references: [sellerId, id], onDelete: Cascade)
+  buyerMember BuyerMember   @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id], onDelete: Cascade)
+
+  @@unique([reviewId, buyerMemberId])
+  @@index([sellerId, reviewId])
+}
+
 // ───────────── 주문·주문 품목 ─────────────
 
 enum OrderStatus {
@@ -842,6 +978,8 @@ model Order {
   refundedAt                DateTime?         @db.Timestamptz(3)
   // 구매 확정 시각(배송 완료 n일 뒤 자동). 주문 상태(status)는 결제 완료(PAID) 그대로 둔다.
   purchaseConfirmedAt       DateTime?         @db.Timestamptz(3)
+  // 판매자가 구매 확정을 취소한 시각(대표님 결정 2026-10-03). 있으면 자동 구매 확정이 다시 확정하지 않는다(환불하려고 푼 주문).
+  purchaseUnconfirmedAt     DateTime?         @db.Timestamptz(3)
   // 적립 스냅숏(결제 때 판정, MASTER 결정 2026-10-03): 지급 시점·회원 등급·적립률(%)·적립 예정액. 결제 때 0원이면 나중에도 적립하지 않는다.
   // 배송 완료 때는 rewardEarnTiming이 ON_DELIVERY인 주문만 rewardEarnAmount로 기록한다. 적립 정책이 없던 주문·이 기능 전 주문은 null.
   rewardEarnTiming          RewardEarnTiming?
@@ -876,6 +1014,7 @@ model Order {
   rewardLedger    RewardLedger[]
   notifications   OrderNotification[]
   couponRedemption CouponRedemption?
+  productReviews   ProductReview[]
 
   @@unique([sellerId, id])
   @@unique([sellerId, orderNo])
@@ -909,6 +1048,7 @@ model OrderItem {
   product    Product       @relation(fields: [sellerId, productId], references: [sellerId, id])
   option     ProductOption @relation(fields: [sellerId, optionId], references: [sellerId, id])
   queueItems QueueItem[]
+  review     ProductReview?
 
   @@unique([sellerId, id])
   @@index([sellerId, orderId])
@@ -1446,6 +1586,26 @@ model OrderNotification {
   @@index([sellerId, kind, status])
 }
 
+// 적립금 소멸 30일 전 안내 「보냈음」 기록(PRODUCT_SCOPE 「적립금 소멸」, 알림톡·실패하면 문자, 메일 없음). 발송 연동 전이라 기록만.
+// 회원·마지막 적립 시각마다 1행이라 같은 소멸 예정을 두 번 안내하지 않고, 새로 적립하면(기준일이 바뀜) 다음 소멸 때 다시 안내한다.
+model RewardExpiryNotice {
+  id            String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String                  @db.Uuid
+  buyerMemberId String                  @db.Uuid
+  lastEarnAt    DateTime                @db.Timestamptz(3)
+  status        OrderNotificationStatus @default(PENDING)
+  attempts      Int                     @default(1)
+  claimedAt     DateTime                @db.Timestamptz(3)
+  sentAt        DateTime?               @db.Timestamptz(3)
+  failureReason String?
+  createdAt     DateTime                @default(now()) @db.Timestamptz(3)
+
+  buyerMember BuyerMember @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id])
+
+  @@unique([buyerMemberId, lastEarnAt])
+  @@index([sellerId, status])
+}
+
 // 판매자 회원 정책. 재가입 제한(대표님 결정 2026-10-03, 기본 꺼짐): 켜면 탈퇴한 사람(본인확인 기준)이 정한 기간(일) 동안 다시 가입할 수 없다.
 model SellerMemberPolicy {
   sellerId                 String   @id @db.Uuid
@@ -1543,4 +1703,249 @@ model SiteBranding {
   ogImageType   String?
   ogImageHash   String?
   updatedAt     DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+}
+
+// ───────────── 자동 설치·연결 상품 (docs/AUTOMATION.md) ─────────────
+// 결제 상태(AutomationPayment)와 연결 작업 상태(AutomationJob)를 따로 둔다. 작업은 서버가 결제를 PAID로 확정한
+// 같은 트랜잭션에서만 QUEUED가 된다(무료 재연결은 서버가 대상 판정 뒤 바로 QUEUED). 판매자 테이블과는 Prisma 관계를 두지 않는다(Seller 모델을 고치지 않기 위해,
+// sellerId는 세션에서만 얻고 모든 조회에 조건으로 붙인다). 블록 안 자식은 (sellerId, 부모 id) 복합 외래키로 묶는다.
+// 부분 유니크(판매자당 열린 작업 1개, 같은 OBS 대상 실행 1개)와 CHECK는 마이그레이션 SQL에 있다.
+
+// 환불(2026-10-04 대표님 확정 ②): 성공 기준(테스트 주문이 고객 OBS 오버레이에 표시)을 통과하지 못하고 지원으로도 해결되지 않으면 전액 환불.
+// 연결 시작 뒤 단순 변심 환불은 없다. REFUND_PENDING = 환불 요청을 받아 처리 대기. 실제 환불 실행은 대표님 승인 대상이라 1차 코드에는 없다.
+enum AutomationPaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUND_PENDING
+  REFUNDED
+}
+
+// INITIAL = 처음 자동 연결(110,000원), REINSTALL = 무료 대상이 아닌 재설치(33,000원),
+// RECONNECT_FREE = 완료 뒤 30일 안 같은 쇼핑몰·같은 PC(OBS pairing) 재연결(무료, 결제 없음)
+enum AutomationJobKind {
+  INITIAL
+  REINSTALL
+  RECONNECT_FREE
+}
+
+enum AutomationJobStatus {
+  AWAITING_PAYMENT
+  QUEUED
+  RUNNING
+  NEEDS_CUSTOMER
+  VERIFYING
+  SUCCEEDED
+  FAILED
+  CANCELED
+  // 정리 필요: 실패로 끝나야 하는데 작업이 만든 변경(쇼핑몰 앱·웹훅, OBS 소스)을 되돌리지 못했다. 사람이 정리한 뒤 FAILED·환불로 닫는다.
+  CLEANUP_NEEDED
+}
+
+// 고객이 직접 해야 하는 일. 이 동안 작업은 실행 자리(lease)를 반납한다.
+enum AutomationCustomerAction {
+  LOGIN
+  TWO_FACTOR
+  CAPTCHA
+  PERMISSION_GRANT
+  LOCAL_TOOL
+}
+
+model AutomationPayment {
+  id                   String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId             String                  @db.Uuid
+  amount               Int
+  status               AutomationPaymentStatus @default(PENDING)
+  // 판매자가 보낸 Idempotency-Key. 같은 키로 다시 요청하면 같은 결제·작업을 돌려준다.
+  idempotencyKey       String
+  // 같은 키를 다른 요청(구매 ↔ 재설치, 다른 쇼핑몰 주소·대상)에 다시 쓰는지 가리는 요청 지문(종류·주소·대상의 해시)
+  requestFingerprint   String
+  // 결제 전 고지(연결 시작 뒤 단순 변심 환불 없음, 실패 시 전액 환불) 동의 기록. 동의가 없으면 결제를 만들지 않는다. 시각은 DB 시계.
+  consentNoticeVersion String
+  consentAgreedAt      DateTime                @db.Timestamptz(3)
+  // 결제 요청 보낸 기록(outbox). null = 아직 PG에 보내지 않음(결제 행만 만들고 멈춤). 대사가 같은 청구 id로 다시 보낸다.
+  chargeSubmittedAt    DateTime?               @db.Timestamptz(3)
+  // 처음 결제 요청을 보낸 시각. 「결제 안 됨」 마감(이 시각 + 30분)을 고정하는 기준이다. 다시 보내도 바뀌지 않는다.
+  chargeFirstSubmittedAt DateTime?             @db.Timestamptz(3)
+  // 대사가 마지막으로 확인한 시각. 확인할 때마다 갱신해 오류가 난 건도 뒤로 돌린다(앞 건이 계속 실패해도 뒤 건이 확인된다).
+  lastCheckedAt        DateTime?               @db.Timestamptz(3)
+  // 오래 미확정인 청구(조회 안 됨)를 마스터 관리자에게 알린 시각(1회만)
+  unresolvedAlertedAt  DateTime?               @db.Timestamptz(3)
+  providerPaymentId    String?
+  failureReason        String?
+  paidAt               DateTime?               @db.Timestamptz(3)
+  refundReason         String?
+  refundRequestedAt    DateTime?               @db.Timestamptz(3)
+  refundedAt           DateTime?               @db.Timestamptz(3)
+  createdAt            DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime                @updatedAt @db.Timestamptz(3)
+
+  job AutomationJob?
+
+  @@unique([sellerId, idempotencyKey])
+  @@unique([sellerId, id])
+  @@index([status, createdAt])
+}
+
+model AutomationJob {
+  id                   String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId             String                    @db.Uuid
+  kind                 AutomationJobKind         @default(INITIAL)
+  // 무료 재연결(RECONNECT_FREE)만 결제가 없다(마이그레이션 CHECK)
+  paymentId            String?                   @db.Uuid
+  // 재연결·재설치가 기준으로 삼은 이전 완료 작업
+  baseJobId            String?                   @db.Uuid
+  // 재연결·재설치가 요청한 쇼핑몰·PC. 작업자는 실제로 연결된 쇼핑몰·PC가 이 값과 같은지 확인한다(다르면 reconnect_target_mismatch)
+  targetShopKey        String?
+  targetObsPairingId   String?
+  status               AutomationJobStatus       @default(AWAITING_PAYMENT)
+  // 같은 OBS에 동시에 두 작업이 붙지 않게 잠그는 대상 키(판매자 OBS 연결 단위)
+  obsTargetKey         String
+  // 진행 중인 단계 순번(0부터). 단계 목록은 lib/server/automation/steps.ts
+  stepIndex            Int                       @default(0)
+  customerAction       AutomationCustomerAction?
+  // 고객 행동 대기 마감. 지나면 FAILED(customer_action_timeout)
+  actionDeadlineAt     DateTime?                 @db.Timestamptz(3)
+  attempts             Int                       @default(0)
+  maxAttempts          Int                       @default(5)
+  // 판단 모델 호출 비용(원 단위 추정). 상한을 넘기면 멈춘다.
+  costUsed             Int                       @default(0)
+  costLimit            Int                       @default(3000)
+  runAfter             DateTime                  @default(now()) @db.Timestamptz(3)
+  leaseOwner           String?
+  leaseExpiresAt       DateTime?                 @db.Timestamptz(3)
+  // 실행 자리를 잡을 때마다 1씩 오른다. 작업자는 이 값이 같을 때만 쓴다(fencing).
+  fencingToken         Int                       @default(0)
+  // 대기열에서 실행 자리를 잡을 때만 1씩 오른다(취소·회수·종료로 fencingToken이 올라도 오르지 않음). 다른 작업자가 이어받았는지 가리는 데 쓴다.
+  claimSeq             Int                       @default(0)
+  lastError            String?
+  // 연결 결과: 외부 쇼핑몰 식별자(예: Cafe24 몰 id)와 고객 PC의 OBS pairing id. 무료 재연결 판정에 쓴다.
+  shopKey              String?
+  // 판매자가 낸 쇼핑몰 주소의 호스트(소문자). 비밀값은 이 호스트의 관리자 경로에서만 넣는다.
+  shopHost             String?
+  // 정리 필요 표시: 무언가를 바꾼 뒤 실패·취소로 끝났다(쇼핑몰 앱·웹훅·OBS가 남았을 수 있음). 이때 마스터 관리자 알림을 남긴다.
+  cleanupNeededAt      DateTime?                 @db.Timestamptz(3)
+  // 판매자가 취소를 요청한 시각(취소 출처). 정리 필요를 닫을 때 취소(환불 없음)와 실패(환불 대기)를 이 값으로만 가른다(오류 문구로 추론하지 않음).
+  cancelRequestedAt    DateTime?                 @db.Timestamptz(3)
+  // 처음으로 변경 행동(클릭·입력·OBS 설정·테스트 주문)을 하기 직전에 남긴 시각. 변경 뒤 실패면 정리 필요로 본다.
+  changedAt            DateTime?                 @db.Timestamptz(3)
+  // 변경 행동을 시작한 단계(단계마다 첫 변경 직전, changedAt과 같은 쓰기). 되돌리기는 끝낸 단계와 여기 있는 현재 단계만 한다.
+  mutatedSteps         String[]                  @default([])
+  obsPairingId         String?
+  // 쇼핑몰 앱 권한 해제 등으로 연결이 끊긴 시각. 있으면 무료 재연결 대상이 아니다.
+  connectionRevokedAt  DateTime?                 @db.Timestamptz(3)
+  // 성공 기준 검증 증거(테스트 주문 표시 확인 결과). 비밀값은 넣지 않는다.
+  verifiedAt           DateTime?                 @db.Timestamptz(3)
+  verificationEvidence Json?
+  // 연결 작업서(확정 ⑦-1). 쇼핑몰 주소로 서버가 고른 작업서 id·버전(내부용, 화면 비노출). 없으면 판단 모델로만 진행.
+  playbookId           String?
+  playbookVersion      Int?
+  // 고객 행동 대기로 실행기에 브라우저 상태(암호화 보관본)를 맡겼는가. 작업이 끝나면(완료·취소·실패·마감) 작업자가
+  // 실행기에 삭제를 요청하고 false로 돌린다(purgeEndedBrowserState). 삭제 요청이 끝나기 전까지 true로 남아 다시 시도된다.
+  browserStateHeld     Boolean                   @default(false)
+  // 끝난 작업의 보관 자료(브라우저 상태·임시 파일·행동 키 기록·OBS 연결 정보) 삭제를 실행기·로컬 도구에 요청한 시각.
+  // 고객 대기가 없었던 작업도 포함해 끝난 모든 작업을 한 번씩 정리한다(worker.ts purgeEndedBrowserState).
+  artifactsPurgedAt    DateTime?                 @db.Timestamptz(3)
+  // 보관 자료 삭제 요청이 실패한 횟수·다음 재시도 시각(실패 행만 계속 고르지 않게 미룬다)·반복 실패 알림 시각(작업당 1건)
+  artifactsPurgeAttempts  Int                    @default(0)
+  artifactsPurgeRetryAt   DateTime?              @db.Timestamptz(3)
+  artifactsPurgeAlertedAt DateTime?              @db.Timestamptz(3)
+  // 무료 재연결(결제 없음) 요청의 Idempotency-Key·요청 지문. 유료 작업의 키는 결제 행에 있다.
+  idempotencyKey       String?
+  requestFingerprint   String?
+  // 실행 통계: 판단 모델 호출 수, 작업서대로 실행한 행동 수, 화면이 작업서와 달랐던 단계(관리 화면 변경 신호)
+  plannerCalls         Int                       @default(0)
+  playbookActions      Int                       @default(0)
+  deviatedSteps        String[]                  @default([])
+  // 고객 대기를 뺀 실제 실행 시간 합계(ms)와 지금 실행 자리를 잡은 시각. 합계가 6시간을 넘으면 실패·전액 환불(정본 d6e22c4).
+  activeMsUsed         Int                       @default(0)
+  runStartedAt         DateTime?                 @db.Timestamptz(3)
+  // 화면이 작업서와 마지막으로 달랐던 시각. 연습 연속 성공은 이 시각 뒤의 연습만 센다(practice.ts).
+  lastDeviationAt      DateTime?                 @db.Timestamptz(3)
+  // 무료 재연결의 쇼핑몰·PC 대조를 통과한 시각(그때의 쇼핑몰·PC는 shopKey·obsPairingId). 재시도 때 브라우저 단계를 다시 하지 않으면 이 기록을 쓴다.
+  targetVerifiedAt     DateTime?                 @db.Timestamptz(3)
+  // 외부 행동 격리 창: 마지막 외부 행동 시작 시각과 종료 확인 시각. 소유권이 넘어가거나 닫히는 지점은 종료 확인 또는 시작 + 행동 상한 + 여유까지 기다린다(quiescent)
+  lastActionStartedAt  DateTime?                 @db.Timestamptz(3)
+  lastActionEndedAt    DateTime?                 @db.Timestamptz(3)
+  // 처음 대기열에 들어간 시각(결제 확인·무료 재연결 생성). 시작 마감 기준(deadlinesFor)
+  queuedAt             DateTime?                 @db.Timestamptz(3)
+  startedAt            DateTime?                 @db.Timestamptz(3)
+  finishedAt           DateTime?                 @db.Timestamptz(3)
+  createdAt            DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime                  @updatedAt @db.Timestamptz(3)
+
+  payment AutomationPayment?   @relation(fields: [sellerId, paymentId], references: [sellerId, id])
+  events  AutomationJobEvent[]
+
+  @@unique([sellerId, id])
+  // 결제 1건에 작업 1개
+  @@unique([sellerId, paymentId])
+  @@unique([sellerId, idempotencyKey])
+  @@index([status, runAfter])
+  @@index([sellerId, createdAt])
+  @@index([sellerId, status, finishedAt])
+}
+
+// 작업 상태 전이 기록(누가·언제·어느 fencing 토큰으로). 비밀값은 넣지 않는다.
+model AutomationJobEvent {
+  id           String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId     String               @db.Uuid
+  jobId        String               @db.Uuid
+  fromStatus   AutomationJobStatus?
+  toStatus     AutomationJobStatus
+  fencingToken Int
+  detail       Json?
+  createdAt    DateTime             @default(now()) @db.Timestamptz(3)
+
+  job AutomationJob @relation(fields: [sellerId, jobId], references: [sellerId, id])
+
+  @@index([jobId, createdAt])
+}
+
+// 연결 작업서 연습 실행 기록(확정 ⑦-1). 시험용 쇼핑몰에서 작업서를 반복 실행한 결과. 판매자 데이터가 아니다.
+// 같은 작업서 id·버전의 최근 연습이 연속으로 기준 횟수만큼 성공(화면 이탈 없이)해야 지원 목록에 오른다(lib/server/automation/practice.ts).
+enum AutomationPracticeOutcome {
+  SUCCEEDED
+  FAILED
+  NEEDS_CUSTOMER
+}
+
+model AutomationPracticeRun {
+  id              String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  playbookId      String
+  playbookVersion Int
+  outcome         AutomationPracticeOutcome
+  // 멈춘 단계와 사유(코드). 비밀값·화면 원문은 넣지 않는다.
+  failedStep      String?
+  reason          String?
+  durationMs      Int
+  plannerCalls    Int
+  playbookActions Int
+  costWon         Int
+  deviatedSteps   String[]                  @default([])
+  startedAt       DateTime                  @db.Timestamptz(3)
+  finishedAt      DateTime                  @default(now()) @db.Timestamptz(3)
+  // 실행기 보관 자료 정리(연습 실행의 작업 범위 id). 정리가 끝나지 않았으면 cleanupPendingAt에 다음 정리 시각을 둔다(null = 정리 끝).
+  cleanupScopeId   String?                  @db.Uuid
+  cleanupPendingAt DateTime?                @db.Timestamptz(3)
+  cleanupAttempts  Int                      @default(0)
+  // 「정리 필요」: 다시 시도 상한을 넘겨 자동 정리를 멈춘 시각. 이때 마스터 관리자 알림(감사 기록 운영 이벤트)을 1건 남긴다.
+  cleanupNeededAt  DateTime?                @db.Timestamptz(3)
+  // 연습 환경 점유 토큰: 다음 연습이 기한 지난 회차를 회수할 때 올린다. 실행 중 회차는 행동 직전마다 그대로인지 확인한다
+  fencingToken     Int                      @default(0)
+  // 외부 행동 격리 창(작업과 같은 규칙)
+  lastActionStartedAt DateTime?             @db.Timestamptz(3)
+  lastActionEndedAt   DateTime?             @db.Timestamptz(3)
+
+  @@index([playbookId, playbookVersion, finishedAt])
+}
+
+// 쇼핑몰 연결 권한 해제 기록(판매자·쇼핑몰마다 최신 시각). 작업 상태와 무관하게 남겨, 설치 작업이 진행 중일 때 온 해제도
+// 그 작업이 끝난 뒤 무료 재연결 판정(decideReconnect)에서 본다(해제 시각이 기준 작업 생성 뒤면 무료 아님).
+model AutomationShopRevocation {
+  sellerId  String   @db.Uuid
+  shopKey   String
+  revokedAt DateTime @db.Timestamptz(3)
+
+  @@id([sellerId, shopKey])
 }

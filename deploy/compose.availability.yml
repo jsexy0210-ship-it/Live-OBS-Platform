@@ -1,0 +1,52 @@
+# 테스트 환경 가용성 프로파일(ONQ 단계 8). 기본 정의(docker-compose.yml) 위에 덧붙여 쓴다.
+#   켜기·끄기: scripts/ops/availability.sh on|off|status   (절차: docs/DEPLOY.md 「가용성 프로파일」)
+# - 앱 2개(obs-web-app, obs-web-app-2) + health 기반 프록시(Caddyfile.availability) + 자원 제한.
+# - 같은 VM 안의 복제 프로세스다. 앱 프로세스 장애·무중단 배포는 시험할 수 있지만 호스트(VM)·DB 장애 내성은 증명하지 않는다.
+# - VM t1i.medium(2 vCPU·4GB) 기준 한도. 합계가 VM보다 작게 잡았다.
+services:
+  obs-web-db:
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 1024M }
+
+  obs-web-migrate:
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 512M }
+
+  obs-web-app:
+    deploy:
+      resources:
+        limits: { cpus: "0.75", memory: 768M }
+
+  obs-web-app-2:
+    extends:
+      file: docker-compose.yml
+      service: obs-web-app
+    depends_on:
+      obs-web-db:
+        condition: service_healthy
+      obs-web-migrate:
+        condition: service_completed_successfully
+    deploy:
+      resources:
+        limits: { cpus: "0.75", memory: 768M }
+
+  obs-web-proxy:
+    volumes:
+      - ./Caddyfile.availability:/etc/caddy/Caddyfile:ro
+    depends_on:
+      obs-web-app:
+        condition: service_healthy
+      obs-web-app-2:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits: { cpus: "0.25", memory: 128M }
+
+  obs-web-monitor:
+    environment:
+      MONITOR_TARGETS: ${OBS_MONITOR_TARGETS:-app=http://obs-web-app:3000/api/health,app2=http://obs-web-app-2:3000/api/health,proxy=http://obs-web-proxy/api/health#127.0.0.1}
+    deploy:
+      resources:
+        limits: { cpus: "0.1", memory: 96M }

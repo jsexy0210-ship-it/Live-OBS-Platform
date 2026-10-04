@@ -6,6 +6,7 @@ export type ApiResult<T> =
 
 // authRedirect: false면 401이어도 로그인으로 보내지 않는다(화면이 직접 로그인 주소를 만들 때)
 export async function api<T>(path: string, init: { method?: string; body?: unknown; authRedirect?: boolean } = {}): Promise<ApiResult<T>> {
+  const visit = navGeneration;
   let res: Response;
   try {
     res = await fetch(path, {
@@ -24,11 +25,13 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
     window.location.assign(`/seller/login?next=${encodeURIComponent(window.location.pathname)}`);
   }
   const body = data as { error?: string; message?: string } & Record<string, unknown>;
+  notifyPlanFeature(path, visit, res.status, body.error);
   return { ok: false, status: res.status, error: body.error ?? "unknown", message: body.message, body };
 }
 
 // 파일 바이트를 본문 그대로 올리는 요청(이미지 업로드 등). 응답 처리와 401 로그인 이동은 api()와 같다.
 export async function apiUpload<T>(path: string, file: Blob, init: { method?: "POST" | "PUT" } = {}): Promise<ApiResult<T>> {
+  const visit = navGeneration;
   let res: Response;
   try {
     res = await fetch(path, { method: init.method ?? "POST", body: file, cache: "no-store" });
@@ -41,7 +44,23 @@ export async function apiUpload<T>(path: string, file: Blob, init: { method?: "P
     window.location.assign(`/seller/login?next=${encodeURIComponent(window.location.pathname)}`);
   }
   const body = data as { error?: string; message?: string } & Record<string, unknown>;
+  notifyPlanFeature(path, visit, res.status, body.error);
   return { ok: false, status: res.status, error: body.error ?? "unknown", message: body.message, body };
+}
+
+// 지금 요금제에 없는 기능이라 서버가 막으면(403 plan_feature_required) 파트너스 틀(SellerShell)이 안내 화면으로 바꾸도록 알린다.
+// 요청을 보낼 때의 화면 방문 번호(visit)를 함께 보낸다: 화면을 옮긴 뒤(같은 경로로 돌아온 경우 포함) 늦게 온 응답이 지금 방문을 막지 않게.
+// 방문 번호는 SellerShell이 경로가 바뀔 때마다 화면을 그리기 전에 올린다(그 화면의 첫 요청도 새 번호를 가진다)
+export const PLAN_FEATURE_EVENT = "seller:plan-feature-required";
+export type PlanFeatureEventDetail = { visit: number };
+let navGeneration = 0;
+export const currentNavGeneration = () => navGeneration;
+export function nextNavGeneration(): number {
+  return ++navGeneration;
+}
+function notifyPlanFeature(path: string, visit: number, status: number, error: string | undefined) {
+  if (status === 403 && error === "plan_feature_required" && path.startsWith("/api/seller/"))
+    window.dispatchEvent(new CustomEvent<PlanFeatureEventDetail>(PLAN_FEATURE_EVENT, { detail: { visit } }));
 }
 
 // 화면 말투: admin=파트너스 관리자·관리자 인증 화면(합니다체), public=공개 화면(가입 신청 등, 해요체)
@@ -77,7 +96,12 @@ export function failMessage(r: { status: number; message?: string }, tone: Tone,
 }
 
 export type SellerAccess = "trial" | "paid" | "charging" | "grace" | "expired";
+// 요금제가 주는 기능 권한(lib/server/billing/features.ts). 화면은 메뉴를 고르는 데만 쓰고, 막는 것은 서버가 한다
+export type PlanFeature = "OVERLAY" | "EXTERNAL_INTEGRATION" | "STORE_OPERATIONS";
 export type Me = { sellerId: string; userId: string; isOwner: boolean; permissions: string[]; access: SellerAccess;
+  features: PlanFeature[];
+  // true면 STORE_OPERATIONS가 없어도(오버레이 전용으로 내린 뒤) 후속 처리할 주문·구매 제한이 남아 주문·배송·문의 메뉴를 계속 보인다
+  orderFollowup?: boolean;
   shop: { name: string; slug: string };
   user: { name: string; email: string };
   trialEndsAt: string | null;

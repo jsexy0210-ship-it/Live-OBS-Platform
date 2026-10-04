@@ -68,7 +68,7 @@ test("저장한 적 없는 판매자도 입금 기한이 기본 24시간으로 �
   await page.getByRole("link", { name: "쇼핑몰 설정" }).click();
   // 메뉴는 모든 직원이 볼 수 있는 첫 탭 「쇼핑몰 정보」로 들어간다(SA-060, MASTER 결정 2026-10-04)
   await expect(page).toHaveURL(/\/seller\/settings\/shop$/);
-  await page.getByRole("link", { name: "주문 설정" }).click();
+  await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "주문 설정" }).click();
   await expect(page).toHaveURL(/\/seller\/settings\/order$/);
   await expect(page.getByRole("link", { name: "쇼핑몰 설정" })).toHaveClass(/\bon\b/);
   // 새 DB 첫 실행에서는 저장한 적 없는 상태(서버 기본값)를 그대로 본다. 다시 돌릴 때는 이전 실행이 남긴 값이 있을 수 있어 기본값으로 맞춘 뒤 본다

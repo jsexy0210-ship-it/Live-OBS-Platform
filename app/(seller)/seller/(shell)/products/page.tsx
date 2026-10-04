@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ListHead, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoImage, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, type Product, type ProductStatus } from "../../../../../components/seller/api";
 import { LOW_STOCK, MAX_SEARCH_LENGTH, statusBadge, textLength, totalStock, won } from "../../../../../components/seller/format";
 
-// SA-011 상품 목록. 상태별로 걸러 보고, 한 번에 50개씩 이어서 불러온다.
+// SA-011 상품 목록(카페24식). 위쪽 표형 검색 상자에서 검색어·판매 상태·재고를 정해 「검색」을 누르면 걸러 보고, 한 번에 50개씩 이어서 불러온다.
 const FILTERS: { key: ProductStatus | "ALL"; label: string }[] = [
   { key: "ALL", label: "전체" },
   { key: "ON_SALE", label: "판매 중" },
@@ -26,27 +27,39 @@ const STOCK_FILTERS: { key: StockFilter; label: string }[] = [
 // q: 서버 이름 검색(상품·옵션 이름, 대소문자 무시, 50자까지)
 const query = (f: ProductStatus | "ALL", sf: StockFilter | null, q: string) =>
   [f === "ALL" ? "" : `status=${f}`, sf ? `stock=${sf}` : "", q ? `q=${encodeURIComponent(q)}` : ""].filter(Boolean).join("&");
-const SEARCH_DELAY_MS = 300;
 
 const TOASTS: Record<string, string> = { created: "상품을 등록했습니다", draft: "임시 저장했습니다", deleted: "상품을 삭제했습니다" };
 
 type Page = { products: Product[]; nextCursor: string | null };
 type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; items: Product[]; next: string | null };
 
+// 등록일은 한국 시간 기준 월/일
+const shortDate = (iso: string) => new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", month: "2-digit", day: "2-digit" }).format(new Date(iso)).replace(/\.\s*/g, "/").replace(/\/$/, "");
 const optionSummary = (p: Product) => (p.options.length === 0 ? "옵션 없음" : p.options.map((o) => o.name).join(" · "));
 
 export default function ProductListPage() {
   const { can } = useSeller();
+  // 검색 상자에 입력 중인 값(draft)과 「검색」을 눌러 적용한 값(filter·stockFilter·q)을 나눈다
   const [filter, setFilter] = useState<ProductStatus | "ALL">("ALL");
-  // 재고 기준 걸러 보기(서버 ?stock=out|low, 판매 상태 탭과 함께 쓸 수 있다)
+  // 재고 기준 걸러 보기(서버 ?stock=out|low, 판매 상태와 함께 쓸 수 있다)
   const [stockFilter, setStockFilter] = useState<StockFilter | null>(null);
-  // 검색어: 입력을 멈추고 잠시 뒤 서버에서 찾는다
-  const [search, setSearch] = useState("");
   const [q, setQ] = useState("");
-  useEffect(() => {
-    const t = setTimeout(() => setQ(search.trim()), SEARCH_DELAY_MS);
-    return () => clearTimeout(t);
-  }, [search]);
+  const [search, setSearch] = useState("");
+  const [draftFilter, setDraftFilter] = useState<ProductStatus | "ALL">("ALL");
+  const [draftStock, setDraftStock] = useState<StockFilter | null>(null);
+  const applyDraft = () => {
+    setFilter(draftFilter);
+    setStockFilter(draftStock);
+    setQ(search.trim());
+  };
+  const resetAll = () => {
+    setDraftFilter("ALL");
+    setDraftStock(null);
+    setSearch("");
+    setFilter("ALL");
+    setStockFilter(null);
+    setQ("");
+  };
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [more, setMore] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -90,55 +103,62 @@ export default function ProductListPage() {
 
   const canManage = can("PRODUCT_MANAGE");
   const items = state.kind === "ok" ? state.items : [];
-  const countText = state.kind === "ok" ? (state.next ? `${items.length}개 넘게` : `${items.length}`) : "";
+  const applied = filter !== "ALL" || !!stockFilter || !!q;
+  // 목록 위 「총 n건」: 이어서 불러오는 목록이라 다 불러오기 전에는 「이상」
+  const countUnit = state.kind === "ok" && state.next ? "건 이상" : "건";
 
   return (
     <>
-      <Topbar crumb="판매 › 상품" />
+      <Topbar crumb="상품 › 상품 목록" />
       <main className="main">
-        <div className="ph">
-          <div className="col" style={{ gap: 4 }}>
-            <h1 className="t-t3">
-              상품 <span className="c-alt fw5">{countText}</span>
-            </h1>
-            <span className="t-l2 c-alt">판매 중인 상품은 쇼핑몰과 방송 주문대기에 바로 연결됩니다.</span>
-          </div>
-          {canManage && (
-            <div className="row" style={{ gap: 8 }}>
-              <Link className="btn btn-out" href="/seller/products/stock">
-                재고 관리
-              </Link>
-              <Link className="btn" href="/seller/products/new">
-                상품 등록
-              </Link>
-            </div>
-          )}
-        </div>
+        <PageHead
+          title="상품 목록"
+          actions={
+            canManage && (
+              <>
+                <Link className="btn btn-out" href="/seller/products/stock">
+                  재고 관리
+                </Link>
+                <Link className="btn" href="/seller/products/new">
+                  상품 등록
+                </Link>
+              </>
+            )
+          }
+        />
 
-        <div className="card" style={{ overflow: "hidden" }}>
-          <div className="toolbar" style={{ padding: "14px 20px", boxShadow: "inset 0 -1px 0 var(--wds-line-normal-alternative)" }}>
-            <div className="seg seg-scroll" role="tablist" aria-label="판매 상태">
+        <SearchBox label="목록 조건" onSearch={applyDraft} onReset={resetAll}>
+          <SearchRow label="검색어">
+            <input className="inp inp-sm" type="search" placeholder="상품명 · 옵션명 입력" aria-label="상품 검색" value={search} onChange={(e) => setSearch(e.target.value)} maxLength={MAX_SEARCH_LENGTH} />
+          </SearchRow>
+          <SearchRow label="판매 상태">
+            <div role="radiogroup" aria-label="판매 상태" className="row" style={{ gap: 16, flexWrap: "wrap" }}>
               {FILTERS.map((f) => (
-                <button key={f.key} type="button" role="tab" aria-selected={filter === f.key} className={filter === f.key ? "on" : ""} onClick={() => setFilter(f.key)}>
+                <label key={f.key} className="chk">
+                  <input className="rdo" type="radio" name="status" checked={draftFilter === f.key} onChange={() => setDraftFilter(f.key)} />
                   {f.label}
-                </button>
+                </label>
               ))}
             </div>
-            <div className="search p-search">
-              <input className="inp inp-sm" type="search" placeholder="상품명 · 옵션명 검색" aria-label="상품 검색" value={search} onChange={(e) => setSearch(e.target.value)} maxLength={MAX_SEARCH_LENGTH} />
+          </SearchRow>
+          <SearchRow label="재고">
+            <div role="radiogroup" aria-label="재고" className="row" style={{ gap: 16, flexWrap: "wrap" }}>
+              <label className="chk">
+                <input className="rdo" type="radio" name="stock" checked={draftStock === null} onChange={() => setDraftStock(null)} />
+                전체
+              </label>
+              {STOCK_FILTERS.map((sf) => (
+                <label key={sf.key} className="chk">
+                  <input className="rdo" type="radio" name="stock" checked={draftStock === sf.key} onChange={() => setDraftStock(sf.key)} />
+                  {sf.label}
+                </label>
+              ))}
             </div>
-            {STOCK_FILTERS.map((sf) => (
-              <button
-                key={sf.key}
-                type="button"
-                className={`chip${stockFilter === sf.key ? " on" : ""}`}
-                aria-pressed={stockFilter === sf.key}
-                onClick={() => setStockFilter(stockFilter === sf.key ? null : sf.key)}
-              >
-                {sf.label}
-              </button>
-            ))}
-          </div>
+          </SearchRow>
+        </SearchBox>
+
+        <div className="card" style={{ overflow: "hidden" }}>
+          <ListHead total={items.length} unit={countUnit} />
 
           {state.kind === "loading" && <LoadingRows />}
           {state.kind === "error" &&
@@ -154,7 +174,11 @@ export default function ProductListPage() {
                   <span className="t">
                     {textLength(q.normalize("NFKC").trim()) > MAX_SEARCH_LENGTH ? `검색어는 ${MAX_SEARCH_LENGTH}자까지 입력할 수 있습니다` : "검색어에 사용할 수 없는 글자가 있습니다"}
                   </span>
-                  <button className="btn btn-sm btn-text" type="button" onClick={() => setSearch("")}>
+                  <button className="btn btn-sm btn-text" type="button" onClick={() => {
+                      setSearch("");
+                      setQ("");
+                    }}
+                  >
                     검색 지우기
                   </button>
                 </div>
@@ -165,10 +189,10 @@ export default function ProductListPage() {
           {state.kind === "ok" && items.length === 0 && (
             <div className="st" style={{ boxShadow: "none" }}>
               <div className="st-ic">+</div>
-              {filter === "ALL" && !stockFilter && !q ? (
+              {!applied ? (
                 <>
                   <span className="t">아직 등록된 상품이 없습니다</span>
-                  <span className="s">첫 상품을 등록하면 쇼핑몰에 바로 표시됩니다.</span>
+                  <span className="s">상품을 등록하면 쇼핑몰과 방송 주문대기에 바로 연결됩니다.</span>
                   {canManage && (
                     <Link className="btn btn-sm" href="/seller/products/new">
                       상품 등록
@@ -180,15 +204,7 @@ export default function ProductListPage() {
                   <span className="t">
                     「{[q || null, filter === "ALL" ? null : FILTERS.find((f) => f.key === filter)?.label, STOCK_FILTERS.find((f) => f.key === stockFilter)?.label].filter(Boolean).join(" · ")}」에 해당하는 상품이 없습니다
                   </span>
-                  <button
-                    className="btn btn-sm btn-text"
-                    type="button"
-                    onClick={() => {
-                      setFilter("ALL");
-                      setStockFilter(null);
-                      setSearch("");
-                    }}
-                  >
+                  <button className="btn btn-sm btn-text" type="button" onClick={resetAll}>
                     전체 보기
                   </button>
                 </>
@@ -197,47 +213,59 @@ export default function ProductListPage() {
           )}
           {state.kind === "ok" && items.length > 0 && (
             <>
-              <table className="tbl p-table">
-                <thead>
-                  <tr>
-                    <th style={{ width: 64 }} />
-                    <th>상품</th>
-                    <th className="r" style={{ width: 140 }}>
-                      판매가
-                    </th>
-                    <th className="r" style={{ width: 100 }}>
-                      재고
-                    </th>
-                    <th style={{ width: 110 }}>상태</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((p) => {
-                    const b = statusBadge(p);
-                    const stock = totalStock(p);
-                    return (
-                      <tr key={p.id} className="p-row" data-testid="product-row">
-                        <td>
-                          <div className="img" style={{ width: 44, height: 44, borderRadius: 8 }} title="이미지 없음">
-                            <NoImage />
-                          </div>
-                        </td>
-                        <td>
-                          <Link href={`/seller/products/${p.id}`} className="fw6 p-name" style={{ color: "inherit", textDecoration: "none" }}>
-                            {p.name}
-                          </Link>
-                          <div className="t-c1 c-alt ell">{optionSummary(p)}</div>
-                        </td>
-                        <td className="r num">{won(p.price)}</td>
-                        <td className={`r num${stock === 0 ? " c-neg fw6" : stock <= LOW_STOCK ? " c-cau fw6" : ""}`}>{stock.toLocaleString("ko-KR")}</td>
-                        <td>
-                          <span className={`bdg ${b.cls}`}>{b.label}</span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              <div className="au-lt-wrap">
+                <table className="tbl p-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: 64 }}>이미지</th>
+                      <th>상품명 · 옵션</th>
+                      <th className="r" style={{ width: 130 }}>
+                        판매가
+                      </th>
+                      <th className="r" style={{ width: 90 }}>
+                        재고
+                      </th>
+                      <th style={{ width: 110 }}>상태</th>
+                      <th style={{ width: 90 }}>등록일</th>
+                      {canManage && <th style={{ width: 80 }}>관리</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((p) => {
+                      const b = statusBadge(p);
+                      const stock = totalStock(p);
+                      return (
+                        <tr key={p.id} className="p-row" data-testid="product-row">
+                          <td>
+                            <div className="img" style={{ width: 44, height: 44, borderRadius: 8 }} title="이미지 없음">
+                              <NoImage />
+                            </div>
+                          </td>
+                          <td>
+                            <Link href={`/seller/products/${p.id}`} className="fw6 p-name" style={{ color: "inherit", textDecoration: "none" }}>
+                              {p.name}
+                            </Link>
+                            <div className="t-c1 c-alt ell">{optionSummary(p)}</div>
+                          </td>
+                          <td className="r num">{won(p.price)}</td>
+                          <td className={`r num${stock === 0 ? " c-neg fw6" : stock <= LOW_STOCK ? " c-cau fw6" : ""}`}>{stock.toLocaleString("ko-KR")}</td>
+                          <td>
+                            <span className={`bdg ${b.cls}`}>{b.label}</span>
+                          </td>
+                          <td className="num">{shortDate(p.createdAt)}</td>
+                          {canManage && (
+                            <td>
+                              <Link className="btn btn-sm btn-out" href={`/seller/products/${p.id}`}>
+                                수정
+                              </Link>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
               <ul className="p-cards">
                 {items.map((p) => {
                   const b = statusBadge(p);

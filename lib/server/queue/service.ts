@@ -10,6 +10,7 @@ import { restoreOrderStock } from "../products/stock";
 import { checkTransition, isCompletePermutation, isValidTimer, type QueueAction, type QueueRejection } from "./rules";
 import { refreshOrderRetention } from "../buyers/legalHold";
 import { chargedShippingFee, itemCouponDiscount, restoreOrderCoupon } from "../shop-coupons/service";
+import { revokeReviewRewardsForOrder, type ReviewRewardRevoke } from "../product-reviews/service";
 
 type Tx = Prisma.TransactionClient;
 
@@ -223,13 +224,15 @@ export async function startBroadcast(
 export async function endBroadcast(
   db: PrismaClient,
   ctx: TenantContext,
-  input: { now?: Date } = {},
+  input: { now?: Date; broadcastSessionId?: string } = {},
 ): Promise<QueueResult<{ broadcastSessionId: string; carriedOver: number }>> {
   requireSellerPermission(ctx, "BROADCAST_RUN");
   const now = input.now ?? new Date();
   return run(db, ctx.sellerId, async (tx) => {
     const live = await tx.broadcastSession.findFirst({ where: { sellerId: ctx.sellerId, status: "LIVE" } });
     if (!live) throw new Rejected("not_live");
+    // 화면이 확인한 방송(A)이 아닌 다른 방송(B)이 지금 LIVE이면 종료하지 않는다(A를 끝내려다 B를 끝내는 일 방지)
+    if (input.broadcastSessionId !== undefined && input.broadcastSessionId !== live.id) throw new Rejected("not_live");
     if (await tx.queueItem.count({ where: { sellerId: ctx.sellerId, broadcastSessionId: live.id, status: "OPENING" } })) {
       throw new Rejected("opening_in_progress");
     }
@@ -473,6 +476,8 @@ export type RefundOutcome = {
   cancelledQueueItemIds: string[];
   openedItemCount: number;
   rewardRevoke: RewardRevokeOutcome;
+  // 이 주문 상품 리뷰의 적립 회수(revokeMode를 따른다. MANUAL이면 manual_review와 회수할 금액)
+  reviewRewardRevoke: ReviewRewardRevoke;
   refundAmount: number;
   refundFault: RefundFault | null;
   returnFeeDeducted: number;
@@ -579,6 +584,8 @@ export async function refundOrder(
       throw new Rejected((await tx.order.count({ where: { id: orderId, sellerId: ctx.sellerId } })) ? "invalid_transition" : "not_found");
     }
     const order = await tx.order.findUniqueOrThrow({ where: { id: orderId }, include: { items: true, queueItems: true, shipment: { select: { status: true } }, couponRedemption: { select: { benefit: true, itemDiscounts: true } } } });
+    // 구매 확정한 주문은 바로 환불하지 않는다. 판매자가 구매 확정을 먼저 취소해야 한다(대표님 결정 2026-10-03, orders/delivery.ts unconfirmPurchase).
+    if (order.purchaseConfirmedAt) throw new Rejected("purchase_confirmed");
     // 발송한 주문은 상품이 구매자에게 가 있으므로 재고를 되돌리지 않는다(회수는 판매자가 MANUAL로). 배송 기록은 그대로 둔다.
     const shippedBeforeRefund = order.shipment !== null;
     const openedItemCount = order.items.filter((i) => isOpened(order.queueItems.find((x) => x.orderItemId === i.id))).length;
@@ -664,6 +671,8 @@ export async function refundOrder(
         createdAt: now,
       });
     }
+    // 이 주문의 상품 리뷰 적립도 같은 회수 방식으로 회수한다(주문 잠금 뒤 회원 → 리뷰 → 원장, product-reviews/service.ts)
+    const reviewRewardRevoke = await revokeReviewRewardsForOrder(tx, ctx.sellerId, orderId, now);
     await writeAudit(tx, {
       actorType: ctx.actorType,
       actorId: ctx.actorId,
@@ -679,6 +688,7 @@ export async function refundOrder(
         cancelledQueueItems: cancelledQueueItemIds.length,
         openedItems: openedItemCount,
         rewardRevoke,
+        reviewRewardRevoke,
         shippedBeforeRefund,
         refundAmount,
         refundFault,
@@ -690,7 +700,7 @@ export async function refundOrder(
     await maybeRestrict(tx, ctx.sellerId, order.buyerMemberId, now, "paid_cancel");
     // 끝난 날이 바뀌었으니 보관 만료일을 다시 계산하고(구매 확정 뒤 환불 포함), 탈퇴한 회원의 주문이면 분리 보관 표시를 단다(buyers/legalHold.ts)
     await refreshOrderRetention(tx, ctx.sellerId, now, { orderId });
-    return { orderId, restockedItemIds, cancelledQueueItemIds, openedItemCount, rewardRevoke, refundAmount, refundFault, returnFeeDeducted };
+    return { orderId, restockedItemIds, cancelledQueueItemIds, openedItemCount, rewardRevoke, reviewRewardRevoke, refundAmount, refundFault, returnFeeDeducted };
   });
 }
 

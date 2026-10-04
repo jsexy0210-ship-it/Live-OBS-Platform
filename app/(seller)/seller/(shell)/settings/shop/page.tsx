@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
-import { SettingsTabs } from "../../../../../../components/seller/SettingsTabs";
 import { Toast } from "../../../../../../components/seller/States";
 import { api, apiUpload } from "../../../../../../components/seller/api";
 import "./shop-info.css";
@@ -79,7 +78,6 @@ export default function ShopInfoPage() {
     <>
       <Topbar crumb="설정 › 쇼핑몰 설정 › 쇼핑몰 정보" />
       <main className="main">
-        <SettingsTabs />
         <div className="ph">
           <div className="col" style={{ gap: 6 }}>
             <h1 className="t-t3">쇼핑몰 정보</h1>

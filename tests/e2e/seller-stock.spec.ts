@@ -201,6 +201,7 @@ test("상품 재고 차감 기준을 정하고 바꿀 수 있다(주문하면 �
   await expect(page).toHaveURL(/\/seller\/products$/);
   // 만든 상품은 첫 쪽 목록에 기대지 않고 이름 검색(서버 q)으로 찾는다
   await page.getByLabel("상품 검색").fill(name);
+  await page.getByRole("search", { name: "목록 조건" }).getByRole("button", { name: "검색", exact: true }).click();
   await expect(page.getByTestId("product-row")).toHaveCount(1);
   await page.getByTestId("product-row").filter({ hasText: name }).getByRole("link").first().click();
   await expect(page.getByRole("radio", { name: "주문하면 바로 차감" })).toHaveAttribute("aria-checked", "true");

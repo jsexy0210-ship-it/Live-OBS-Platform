@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
-import { SettingsTabs } from "../../../../../../components/seller/SettingsTabs";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
 
@@ -70,7 +69,6 @@ export default function MemberSettingsPage() {
         )}
       </Topbar>
       <main className="main">
-        <SettingsTabs />
         <div className="ph">
           <div className="col" style={{ gap: 6 }}>
             <h1 className="t-t3">회원 정책</h1>

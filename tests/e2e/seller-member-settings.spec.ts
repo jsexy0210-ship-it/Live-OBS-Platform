@@ -33,7 +33,7 @@ const saveButton = (page: Page) => page.getByRole("button", { name: "저장", ex
 test("쇼핑몰 설정 탭에서 회원 정책으로 들어가면, 동의 철회 기능 전이라 재가입 제한 스위치는 꺼진 채 비활성이고 안내를 보여 준다. API로 켜도 409", async ({ page }) => {
   await openAsOwner(page);
   await expect(page.getByRole("heading", { name: "회원 정책" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "회원 정책" })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "회원 정책" })).toHaveAttribute("aria-current", "page");
   const sw = page.getByRole("switch", { name: "탈퇴한 사람의 재가입 막기" });
   await expect(sw).toHaveAttribute("aria-checked", "false");
   await expect(sw).toBeDisabled();

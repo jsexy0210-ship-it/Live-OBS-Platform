@@ -13,3 +13,25 @@
   --wds-line-primary-normal: #0f766e47;
   --info-bg: var(--master-tint);
 }
+
+/* 카페24식 틀(.cs·.gnb·.lnb·.loc-bar, styles/seller.css)의 색을 마스터 청록으로 바꾼다. GNB는 청록 바탕, 선택·강조는 같은 청록 계열.
+   GNB 선택 표시줄은 바탕과 같은 청록이면 안 보이므로 흰색으로 둔다. 새 색 값을 만들지 않고 --master 계열과 그 어두운 단계만 쓴다. */
+.app.admin-app {
+  --cs-gnb: var(--master);
+  --cs-gnb-line: #0d655e;
+  --cs-gnb-text: #e6f4f2;
+  --cs-accent: var(--master);
+  --cs-accent-strong: #0d655e;
+  --cs-accent-tint: var(--master-tint);
+}
+.app.admin-app .gnb-i.on {
+  box-shadow: inset 0 -3px 0 #fff;
+}
+.app.admin-app .gnb-shop {
+  max-width: 220px;
+}
+/* 청록 GNB 위 로고: 바탕 흰색, 안쪽 무늬 청록(청록 바탕에 청록 로고가 묻히지 않게) */
+.app.admin-app .gnb-logo {
+  --brand: #fff;
+  --brand-ink: var(--master);
+}

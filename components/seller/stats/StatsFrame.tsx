@@ -4,19 +4,20 @@ import "./stats.css";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Topbar } from "../SellerShell";
+import { Topbar, planAllows, useSeller } from "../SellerShell";
 import { LoadingRows } from "../States";
 import { api } from "../api";
 
 // SA-056 통계 화면 공통 틀: 통계 탭 · 기간 선택(오늘·최근 7일·최근 30일·직접 선택) · 묶음 단위 · 상태(로딩·데이터 없음·오류·권한 없음).
 // 날짜는 KST 기준. 서버가 최대 366일까지 받는다(lib/server/stats/range.ts).
+// plan: 그 탭을 여는 요금제 기능 권한(서버 stats API와 같은 기준). 없는 탭은 숨긴다(오버레이 전용은 방송만)
 export const STATS_TABS = [
-  { href: "/seller/stats", label: "요약" },
-  { href: "/seller/stats/orders", label: "주문" },
-  { href: "/seller/stats/sales", label: "매출" },
-  { href: "/seller/stats/products", label: "상품" },
-  { href: "/seller/stats/members", label: "회원" },
-  { href: "/seller/stats/broadcasts", label: "방송" },
+  { href: "/seller/stats", label: "요약", plan: "STORE_OPERATIONS" },
+  { href: "/seller/stats/orders", label: "주문", plan: "STORE_OPERATIONS" },
+  { href: "/seller/stats/sales", label: "매출", plan: "STORE_OPERATIONS" },
+  { href: "/seller/stats/products", label: "상품", plan: "STORE_OPERATIONS" },
+  { href: "/seller/stats/members", label: "회원", plan: "STORE_OPERATIONS" },
+  { href: "/seller/stats/broadcasts", label: "방송", plan: "OVERLAY" },
 ] as const;
 
 export type Unit = "day" | "week" | "month";
@@ -73,6 +74,7 @@ export function StatsFrame({ title, heading, sub, period, setPeriod, onDownload,
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const { me } = useSeller();
   const [draft, setDraft] = useState({ from: period.from, to: period.to });
   const [rangeError, setRangeError] = useState<string | null>(null);
   const applyCustom = () => {
@@ -111,7 +113,7 @@ export function StatsFrame({ title, heading, sub, period, setPeriod, onDownload,
           )}
         </div>
         <nav className="tabs" aria-label="통계 종류">
-          {STATS_TABS.map((t) => (
+          {STATS_TABS.filter((t) => planAllows(me.features, t.plan)).map((t) => (
             <Link key={t.href} href={t.href} className={`tab${(t.href === "/seller/stats" ? pathname === t.href : pathname.startsWith(t.href)) ? " on" : ""}`}>
               {t.label}
             </Link>
