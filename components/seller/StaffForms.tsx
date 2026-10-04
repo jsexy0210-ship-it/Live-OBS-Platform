@@ -90,7 +90,7 @@ export function SecretInput(props: React.InputHTMLAttributes<HTMLInputElement> &
   );
 }
 
-export const staffFail = (r: { status: number; error: string; message?: string }, fallback: string) => STAFF_ERRORS[r.error] ?? failMessage(r, fallback);
+export const staffFail = (r: { status: number; error: string; message?: string }, fallback: string) => STAFF_ERRORS[r.error] ?? failMessage(r, "admin", fallback);
 
 export function PermissionPicker({ value, onChange, disabled }: { value: StaffPerm[]; onChange: (v: StaffPerm[]) => void; disabled?: boolean }) {
   const toggle = (k: StaffPerm) => onChange(value.includes(k) ? value.filter((x) => x !== k) : [...value, k]);
@@ -444,8 +444,8 @@ export function DisableStaffModal({ staff, onClose, onDone, onChanged }: { staff
     }
     if (isUnclear(r)) return check();
     setBusy(false);
-    if (unclear) return setUnclear(failMessage(r, "재전송하지 못했습니다. 잠시 후 「확인」을 눌러 주십시오"));
-    setError(failMessage(r, "비활성화하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
+    if (unclear) return setUnclear(failMessage(r, "admin", "재전송하지 못했습니다. 잠시 후 「확인」을 눌러 주십시오"));
+    setError(failMessage(r, "admin", "비활성화하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
   };
 
   const close = () => (unclear ? onDone("이전 비활성화 요청이 처리되었을 수 있습니다 · 목록에서 상태를 확인해 주십시오") : onClose());

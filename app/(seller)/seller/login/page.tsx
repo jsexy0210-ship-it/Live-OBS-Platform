@@ -8,7 +8,7 @@ import { api } from "../../../../components/seller/api";
 
 // AU-002 파트너스 관리자 로그인(정본: docs/IA.md AU-002, 대표님 결정 2026-10-03).
 // 카드 안 맨 위 ONQ 로고 → 제목·부제 → 탭(대표자·직원, 기본 대표자) → 입력.
-// 대표자 탭: 회원가입·아이디 찾기·비밀번호 찾기 링크 / 직원 탭: 아이디 찾기·비밀번호 찾기 링크(회원가입 없음).
+// 대표자 탭: 왼쪽 끝 「아이디/비밀번호 찾기」·오른쪽 끝 「회원가입」 / 직원 탭: 「아이디/비밀번호 찾기」만(회원가입 없음).
 // 로그인 요청에 고른 탭(accountType: owner|staff)을 함께 보낸다. 서버가 wrong_account_type을 주면 맞는 탭으로 안내하고,
 // 아직 이 값을 모르는 서버는 그냥 무시하므로 지금처럼 로그인된다(하위 호환).
 // 실패 문구는 서버가 주는 message를 그대로 쓴다(정본: lib/server/auth/messages.ts). 심사 중만 안내 색으로 보여 준다.
@@ -82,13 +82,13 @@ export default function SellerLoginPage() {
       return;
     }
     setBusy(false);
-    const text = r.message ?? (r.status === 0 ? "연결이 끊겼어요. 인터넷 연결을 확인해 주세요" : "로그인하지 못했어요. 잠시 뒤 다시 시도해 주세요");
+    const text = r.message ?? (r.status === 0 ? "연결이 끊겼습니다. 인터넷 연결을 확인해 주십시오" : "로그인하지 못했습니다. 잠시 후 다시 시도해 주십시오");
     if (r.error === "wrong_account_type") {
       // 고른 탭과 계정 종류가 다르다: 맞는 탭으로 안내하고 전환 버튼을 준다
       const other: AccountType = tab === "owner" ? "staff" : "owner";
       setNotice({
         kind: "info",
-        text: other === "staff" ? "직원 계정이에요. 직원 탭에서 로그인해 주세요" : "대표자 계정이에요. 대표자 탭에서 로그인해 주세요",
+        text: other === "staff" ? "직원 계정입니다. 직원 탭에서 로그인해 주십시오" : "대표자 계정입니다. 대표자 탭에서 로그인해 주십시오",
         switchTo: other,
       });
     } else if (r.error === "invalid_credentials") setFieldError(text);
@@ -107,7 +107,7 @@ export default function SellerLoginPage() {
         </span>
         <div className="col login-head">
           <h1 className="t-t3">파트너스 관리자</h1>
-          <span className="t-l2 c-alt">쇼핑몰 운영과 방송 주문대기를 한곳에서 관리하세요.</span>
+          <span className="t-l2 c-alt">쇼핑몰 운영과 방송 주문대기를 한곳에서 관리합니다.</span>
         </div>
         <div className="tabs login-tabs" role="tablist" aria-label="계정 종류">
           {TABS.map((t, i) => (
@@ -171,29 +171,23 @@ export default function SellerLoginPage() {
             <div className="fld">
               <label htmlFor="shop">쇼핑몰 주소</label>
               <input id="shop" className="inp" type="text" placeholder="예: byulbit" value={shopSlug} onChange={(e) => setShopSlug(e.target.value)} />
-              <span className="help">이 이메일로 쓰는 쇼핑몰이 여러 곳이에요. 로그인할 쇼핑몰 주소를 넣어 주세요</span>
+              <span className="help">이 이메일로 사용하는 쇼핑몰이 여러 곳입니다. 로그인할 쇼핑몰 주소를 입력해 주십시오</span>
             </div>
           )}
           <button className={`btn btn-lg btn-block${busy ? " is-loading" : ""}`} type="submit" disabled={!ready || busy}>
             {busy ? (
               <>
                 <span className="spin" style={{ width: 18, height: 18 }} />
-                로그인하고 있어요
+                로그인 중
               </>
             ) : (
               "로그인"
             )}
           </button>
-          <nav className="row wrap t-l2 c-alt login-links" aria-label="계정 도움">
-            {tab === "owner" && (
-              <>
-                <Link href="/seller/signup">회원가입</Link>
-                <span aria-hidden>·</span>
-              </>
-            )}
-            <Link href={`/seller/find-id${q}`}>아이디 찾기</Link>
-            <span aria-hidden>·</span>
-            <Link href={`/seller/password-reset${q}`}>비밀번호 찾기</Link>
+          {/* 왼쪽 끝 「아이디/비밀번호 찾기」 하나(찾기 화면 위쪽에서 아이디·비밀번호를 바꾼다), 오른쪽 끝 「회원가입」은 대표자 탭만 */}
+          <nav className="row t-l2 c-alt login-links" aria-label="계정 도움">
+            <Link href={`/seller/find-id${q}`}>아이디/비밀번호 찾기</Link>
+            {tab === "owner" && <Link href="/seller/signup">회원가입</Link>}
           </nav>
         </div>
       </form>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { api, failMessage, type ApiResult } from "./api";
+import { api, failMessage, type ApiResult, type Tone } from "./api";
 
 // 파트너스 가입(PF-007)·비밀번호 찾기(AU-003)에서 함께 쓰는 대표자 휴대폰 본인확인 칸.
 // 인적사항 → 인증번호 받기(start) → 6자리 확인(base/confirm) → onVerified. 다시 받기는 base/resend.
@@ -21,11 +21,41 @@ export type IdentityPerson = { name: string; phone: string; birth7: string; carr
 type Fail = { status: number; error: string; message?: string; body?: Record<string, unknown> };
 
 // 서버가 문구를 주지 않는 하루 한도 응답(429)
-const LIMIT_MESSAGES: Record<string, string> = {
-  daily_limit_exceeded: "오늘은 본인확인을 더 할 수 없어요. 내일 다시 해 주세요",
-  reset_limit_exceeded: "오늘은 비밀번호 찾기를 더 할 수 없어요. 내일 다시 해 주세요",
+const LIMIT_MESSAGES: Record<Tone, Record<string, string>> = {
+  admin: {
+    daily_limit_exceeded: "오늘은 본인확인을 더 할 수 없습니다. 내일 다시 시도해 주십시오",
+    reset_limit_exceeded: "오늘은 비밀번호 찾기를 더 할 수 없습니다. 내일 다시 시도해 주십시오",
+  },
+  public: {
+    daily_limit_exceeded: "오늘은 본인확인을 더 할 수 없어요. 내일 다시 해 주세요",
+    reset_limit_exceeded: "오늘은 비밀번호 찾기를 더 할 수 없어요. 내일 다시 해 주세요",
+  },
 };
-export const identityFailText = (r: Fail) => LIMIT_MESSAGES[r.error] ?? failMessage(r);
+export const identityFailText = (r: Fail, tone: Tone) => LIMIT_MESSAGES[tone][r.error] ?? failMessage(r, tone);
+
+// 화면 문구. admin=관리자 인증 화면(합니다체, 기본) · public=가입 신청(해요체)
+const TEXT = {
+  admin: {
+    birthInvalid: "생년월일 8자리를 다시 확인해 주십시오",
+    codeSent: "인증번호를 보냈습니다. 문자로 받은 6자리를 입력해 주십시오",
+    codeResent: "인증번호를 다시 보냈습니다",
+    help: "본인 명의의 휴대폰으로 인증해 주십시오.",
+    carrierPick: "선택해 주십시오",
+    agree: "본인확인 약관에 모두 동의합니다",
+    sending: "인증번호 보내는 중",
+    done: "본인확인을 마쳤습니다",
+  },
+  public: {
+    birthInvalid: "생년월일 8자리를 다시 확인해 주세요",
+    codeSent: "인증번호를 보냈어요. 문자로 받은 6자리를 넣어 주세요",
+    codeResent: "인증번호를 다시 보냈어요",
+    help: "본인 명의의 휴대폰으로 인증해 주세요.",
+    carrierPick: "골라 주세요",
+    agree: "본인확인 약관에 모두 동의해요",
+    sending: "인증번호를 보내고 있어요",
+    done: "본인확인을 마쳤어요",
+  },
+} as const;
 
 const digits = (v: string, max: number) => v.replace(/\D/g, "").slice(0, max);
 // 한국 날짜(YYYYMMDD). 미래 날짜 검사는 한국 달력 기준(UTC로 비교하면 00:00~08:59 KST에 오늘을 미래로 본다)
@@ -61,9 +91,13 @@ type Props = {
   onSentChange?: (sent: boolean) => void;
   // 시작 거절을 부모가 자기 칸에서 안내하면 true(예: 가입 필수 동의). 그때는 이 칸에 안내를 따로 띄우지 않는다
   onStartRefused?: (r: Fail) => boolean;
+  // 말투(기본 admin). 가입 신청(PF-007)은 public
+  tone: Tone;
 };
 
-export default function IdentityCheck({ label, start, scope = "", base, blocked = false, onVerified, onUnavailable, onSentChange, onStartRefused }: Props) {
+export default function IdentityCheck({ label, start, scope = "", base, blocked = false, onVerified, onUnavailable, onSentChange, onStartRefused, tone }: Props) {
+  const T = TEXT[tone];
+  const failText = (r: Fail) => identityFailText(r, tone);
   const [step, setStep] = useState<"identity" | "code">("identity");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ kind: "neg" | "info"; text: string } | null>(null);
@@ -108,7 +142,7 @@ export default function IdentityCheck({ label, start, scope = "", base, blocked 
   // 503은 상태 화면으로, 나머지는 안내로
   const fail = (r: Fail) => {
     if (r.status === 503) return onUnavailable();
-    setNotice({ kind: "neg", text: identityFailText(r) });
+    setNotice({ kind: "neg", text: failText(r) });
     focus("idv-notice");
   };
 
@@ -117,7 +151,7 @@ export default function IdentityCheck({ label, start, scope = "", base, blocked 
     if (!ready || busy || gender === null) return;
     const birth7 = toBirth7(birth, gender, foreigner);
     if (!birth7) {
-      setBirthError("생년월일 8자리를 다시 확인해 주세요");
+      setBirthError(T.birthInvalid);
       focus("idv-birth");
       return;
     }
@@ -139,7 +173,7 @@ export default function IdentityCheck({ label, start, scope = "", base, blocked 
     setCode("");
     setCodeError(null);
     setStep("code");
-    setNotice({ kind: "info", text: "인증번호를 보냈어요. 문자로 받은 6자리를 넣어 주세요" });
+    setNotice({ kind: "info", text: T.codeSent });
     focus("idv-code");
   };
 
@@ -151,17 +185,17 @@ export default function IdentityCheck({ label, start, scope = "", base, blocked 
     setBusy(false);
     if (r.ok) {
       setCode("");
-      setNotice({ kind: "info", text: "인증번호를 다시 보냈어요" });
+      setNotice({ kind: "info", text: T.codeResent });
       focus("idv-code");
       return;
     }
     if (r.status === 503) return onUnavailable();
     if (r.error === "already_verified") return onVerified(verificationId, sent!);
     if (r.error === "resend_too_soon") {
-      setNotice({ kind: "info", text: identityFailText(r) });
+      setNotice({ kind: "info", text: failText(r) });
       focus("idv-code");
     } else if (r.status === 0 || r.error === "provider_error") fail(r);
-    else restart(identityFailText(r));
+    else restart(failText(r));
   };
 
   const confirm = async () => {
@@ -174,17 +208,17 @@ export default function IdentityCheck({ label, start, scope = "", base, blocked 
     if (r.status === 503) return onUnavailable();
     if (r.error === "wrong_code" || r.error === "code_expired") {
       setNotice(null);
-      setCodeError(identityFailText(r));
+      setCodeError(failText(r));
       focus("idv-code");
     } else if (r.status === 0 || r.error === "provider_error") fail(r);
-    else restart(identityFailText(r));
+    else restart(failText(r));
   };
 
   return (
     <form className="col pa-sec" aria-label={label} onSubmit={sendCode} noValidate>
       <div className="col" style={{ gap: 2 }}>
         <span className="lbl req">{label}</span>
-        <span className="help">본인 명의의 휴대폰으로 인증해 주세요.</span>
+        <span className="help">{T.help}</span>
       </div>
       {notice && (
         <div id="idv-notice" tabIndex={-1} className={`msg msg-${notice.kind}`} role={notice.kind === "neg" ? "alert" : "status"}>
@@ -251,7 +285,7 @@ export default function IdentityCheck({ label, start, scope = "", base, blocked 
             <label htmlFor="idv-carrier">통신사</label>
             <select id="idv-carrier" className="inp" value={carrier} disabled={locked} onChange={(e) => setCarrier(e.target.value as Carrier)}>
               <option value="" disabled>
-                골라 주세요
+                {T.carrierPick}
               </option>
               {CARRIERS.map((c) => (
                 <option key={c.value} value={c.value}>
@@ -278,10 +312,10 @@ export default function IdentityCheck({ label, start, scope = "", base, blocked 
           <>
             <label className="chk">
               <input type="checkbox" className="cbx" checked={agreed} disabled={busy} onChange={(e) => setAgreed(e.target.checked)} />
-              본인확인 약관에 모두 동의해요
+              {T.agree}
             </label>
             <button className={`btn btn-block${busy ? " is-loading" : ""}`} type="submit" disabled={!ready || busy}>
-              {busy ? "인증번호를 보내고 있어요" : "인증번호 받기"}
+              {busy ? T.sending : "인증번호 받기"}
             </button>
           </>
         ) : (
@@ -335,13 +369,23 @@ export default function IdentityCheck({ label, start, scope = "", base, blocked 
 }
 
 // 본인확인을 마친 뒤 보여 주는 칸(PF-007 「본인확인을 마쳤어요」)
-export function IdentityDone({ who, onAgain, disabled }: { who: { name: string; phone: string }; onAgain?: () => void; disabled?: boolean }) {
+export function IdentityDone({
+  who,
+  onAgain,
+  disabled,
+  tone,
+}: {
+  who: { name: string; phone: string };
+  onAgain?: () => void;
+  disabled?: boolean;
+  tone: Tone;
+}) {
   return (
     <div className="col pa-sec">
       <div className="pa-done" role="status">
         <span className="tdot" aria-hidden />
         <span className="pa-done-text">
-          <b>본인확인을 마쳤어요</b>
+          <b>{TEXT[tone].done}</b>
           <span className="c-alt pa-done-who">
             <span className="nw">{who.name} ·</span> <span className="nw num">{phoneText(who.phone)}</span>
           </span>

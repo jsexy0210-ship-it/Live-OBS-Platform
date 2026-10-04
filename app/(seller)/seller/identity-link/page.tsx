@@ -9,9 +9,9 @@ import { api, failMessage, type ApiResult, type Me } from "../../../../component
 import { stepOutcome } from "../../../../components/seller/stepFailure";
 
 // AU-012 직원 본인확인으로 계정 연결(정본: docs/IA.md AU-012, 디자인 AU-012). 연결 전 직원이 로그인하면 로그인 화면이 이리로 보낸다.
-// 연결은 직원이 아이디·비밀번호를 스스로 찾을 때만 쓴다. 연결 전이나 건너뛴 뒤에도 로그인·업무는 그대로다(「나중에 할게요」).
+// 연결은 직원이 아이디·비밀번호를 스스로 찾을 때만 쓴다. 연결 전이나 건너뛴 뒤에도 로그인·업무는 그대로다(「나중에 하기」).
 // 대표자가 SA-100에서 등록한 이름·휴대폰과 본인확인 결과가 같아야 연결된다. 다르면 대표자에게 정보 수정을 부탁하게 안내한다.
-// 대표자가 번호를 바꿔 연결이 풀렸으면(relinkRequired) 「본인확인 다시 하기」로 안내한다.
+// 대표자가 번호를 바꿔 연결이 풀렸으면(relinkRequired) 「본인확인 재시도」로 안내한다.
 // API: GET /api/seller/me/identity { available, phoneRegistered, registeredPhoneLast4, linked, relinkRequired } → POST start(·resend·confirm) → POST link { verificationId }.
 const BASE = "/api/seller/me/identity";
 
@@ -83,7 +83,7 @@ export default function IdentityLinkPage() {
         return focus("il-title");
       }
       setPending(verificationId);
-      setNotice("연결 결과를 확인하지 못했어요. 다시 눌러 주세요");
+      setNotice("연결 결과를 확인하지 못했습니다. 다시 눌러 주십시오");
       return focus("pa-notice");
     }
     if (isMismatch(r)) return toMismatch();
@@ -91,12 +91,12 @@ export default function IdentityLinkPage() {
     if (out === "restart") {
       setPending(null);
       setIdvKey((k) => k + 1);
-      setNotice(failMessage(r, "본인확인을 처음부터 다시 해 주세요"));
+      setNotice(failMessage(r, "admin", "본인확인을 처음부터 다시 해 주십시오"));
       return focus("pa-notice");
     }
     // 결과를 아직 받는 중이거나 그 밖의 거절: 본인확인을 버리지 않고 안내만 한다
     setPending(verificationId);
-    setNotice(r.error === "verification_pending" ? "본인확인 결과를 확인하고 있어요. 잠시 뒤 다시 눌러 주세요" : failMessage(r, "연결하지 못했어요. 잠시 뒤 다시 시도해 주세요"));
+    setNotice(r.error === "verification_pending" ? "본인확인 결과를 확인하고 있습니다. 잠시 후 다시 눌러 주십시오" : failMessage(r, "admin", "연결하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
     focus("pa-notice");
   };
 
@@ -104,7 +104,7 @@ export default function IdentityLinkPage() {
     return (
       <AuthFrame>
         <div className="row" style={{ justifyContent: "center", padding: 24 }}>
-          <span className="spin" aria-label="불러오고 있어요" />
+          <span className="spin" aria-label="불러오는 중" />
         </div>
       </AuthFrame>
     );
@@ -113,7 +113,7 @@ export default function IdentityLinkPage() {
   const laterLinks = (
     <div className="row t-l2 c-alt" style={{ justifyContent: "center", gap: 20 }}>
       <button className="btn btn-sm btn-text" type="button" onClick={later}>
-        나중에 할게요
+        나중에 하기
       </button>
       {/* 상태를 받은 뒤(브라우저)에만 그려지므로 safeNext()로 원래 가려던 곳을 함께 넘긴다 */}
       <Link href={`/seller/login?type=staff&next=${encodeURIComponent(safeNext())}`}>다른 계정으로 로그인</Link>
@@ -125,11 +125,11 @@ export default function IdentityLinkPage() {
       <AuthFrame>
         <div className="col" style={{ gap: 14, alignItems: "center", textAlign: "center" }}>
           <h1 className="t-t3" id="il-title" tabIndex={-1}>
-            계정을 연결했어요
+            계정을 연결했습니다
           </h1>
-          <span className="t-l2 c-alt">이제 아이디 · 비밀번호를 스스로 찾을 수 있어요. 다음 로그인부터는 이메일과 비밀번호만으로 들어와요.</span>
+          <span className="t-l2 c-alt">이제 아이디 · 비밀번호를 직접 찾을 수 있습니다. 다음 로그인부터는 이메일과 비밀번호만으로 로그인합니다.</span>
           <button className="btn btn-lg btn-block" type="button" onClick={later}>
-            계속하기
+            계속
           </button>
         </div>
       </AuthFrame>
@@ -140,9 +140,9 @@ export default function IdentityLinkPage() {
     <AuthFrame>
       <div className="col" style={{ gap: 4 }}>
         <h1 className="t-t3" id="il-title" tabIndex={-1}>
-          본인확인으로 계정을 연결해요
+          본인확인으로 계정 연결
         </h1>
-        <span className="t-l2 c-alt">처음 로그인할 때 한 번만 해요. 대표자가 등록한 직원 정보와 맞는지 휴대폰 본인확인으로 확인해요.</span>
+        <span className="t-l2 c-alt">처음 로그인할 때 한 번만 합니다. 대표자가 등록한 직원 정보와 맞는지 휴대폰 본인확인으로 확인합니다.</span>
       </div>
       {me && (
         <div className="col il-info t-l2" data-testid="il-account">
@@ -169,32 +169,32 @@ export default function IdentityLinkPage() {
         </div>
       )}
       {unavailable ? (
-        <IdentityUnavailable action="연결할" />
+        <IdentityUnavailable tone="admin" action="연결할" />
       ) : view === "mismatch" ? (
         <div className="col" style={{ gap: 10 }}>
           <div id="il-state" tabIndex={-1} className="msg msg-cau" role="alert" style={{ display: "block" }}>
             <span>
-              <b>대표자가 등록한 직원 정보와 맞지 않아요.</b> 이름이나 휴대폰 번호가 달라요. 대표자에게 정보 수정을 부탁해 주세요
+              <b>대표자가 등록한 직원 정보와 맞지 않습니다.</b> 이름이나 휴대폰 번호가 다릅니다. 대표자에게 정보 수정을 요청해 주십시오
             </span>
           </div>
-          <span className="t-c1 c-alt">본인확인 결과는 저장하지 않았어요 · 로그인 · 업무는 그대로예요 · 고쳐지면 다음 로그인 때 다시 연결해요</span>
+          <span className="t-c1 c-alt">본인확인 결과는 저장하지 않았습니다 · 로그인 · 업무는 그대로입니다 · 수정되면 다음 로그인 때 다시 연결합니다</span>
           <button className="btn btn-lg btn-block btn-out" type="button" onClick={later}>
-            나중에 할게요
+            나중에 하기
           </button>
         </div>
       ) : view === "relink" ? (
         <div className="col" style={{ gap: 10 }}>
           <div id="il-state" tabIndex={-1} className="msg msg-cau" role="status" style={{ display: "block" }}>
             <span>
-              <b>휴대폰 번호가 바뀌어서 본인확인을 다시 해야 아이디 · 비밀번호를 스스로 찾을 수 있어요.</b> 다시 연결하기 전까지는 대표자에게 요청해 주세요. 다른 메뉴는 그대로 써요.
+              <b>휴대폰 번호가 바뀌어 본인확인을 다시 해야 아이디 · 비밀번호를 직접 찾을 수 있습니다.</b> 다시 연결하기 전까지는 대표자에게 요청해 주십시오. 다른 메뉴는 그대로 사용할 수 있습니다.
             </span>
           </div>
           <div className="row" style={{ gap: 8 }}>
             <button className="btn btn-sm" type="button" onClick={() => setView("form")}>
-              본인확인 다시 하기
+              본인확인 재시도
             </button>
             <button className="btn btn-sm btn-out" type="button" onClick={later}>
-              나중에 할게요
+              나중에 하기
             </button>
           </div>
         </div>
@@ -206,13 +206,13 @@ export default function IdentityLinkPage() {
               {pending && (
                 <span className="row" style={{ marginTop: 8 }}>
                   <button className="btn btn-sm" type="button" disabled={busy} onClick={() => void link(pending)}>
-                    다시 확인하기
+                    다시 확인
                   </button>
                 </span>
               )}
             </div>
           )}
-          <IdentityCheck
+          <IdentityCheck tone="admin"
             key={idvKey}
             label="휴대폰 본인확인"
             base={BASE}
@@ -226,12 +226,12 @@ export default function IdentityLinkPage() {
             onUnavailable={() => setUnavailable(true)}
             onVerified={(id) => void link(id)}
           />
-          <span className="t-c1 c-alt">지금 연결하지 않아도 로그인 · 업무는 그대로예요 · 연결 전에는 아이디 · 비밀번호를 스스로 찾을 수 없어요 · 다음 로그인 때 다시 안내해요</span>
+          <span className="t-c1 c-alt">지금 연결하지 않아도 로그인 · 업무는 그대로입니다 · 연결 전에는 아이디 · 비밀번호를 직접 찾을 수 없습니다 · 다음 로그인 때 다시 안내합니다</span>
         </>
       ) : (
         <div className="msg msg-cau" role="status" style={{ display: "block" }}>
           <span>
-            <b>등록된 휴대폰 번호가 없어요.</b> 대표자에게 직원 계정 관리에서 번호 등록을 부탁해 주세요. 로그인 · 업무는 그대로예요.
+            <b>등록된 휴대폰 번호가 없습니다.</b> 대표자에게 직원 계정 관리에서 번호 등록을 요청해 주십시오. 로그인 · 업무는 그대로입니다.
           </span>
         </div>
       )}

@@ -10,8 +10,8 @@ import { api, failMessage } from "../../../../../components/seller/api";
 
 type EarnTiming = "ON_PAYMENT" | "ON_DELIVERY";
 const OPTIONS: { key: EarnTiming; title: string; desc: string }[] = [
-  { key: "ON_PAYMENT", title: "결제하면 바로 지급", desc: "결제 완료와 함께 쌓여요 · 취소 · 환불하면 지급한 적립금을 다시 가져와요" },
-  { key: "ON_DELIVERY", title: "배송 완료 후 지급 (기본)", desc: "배송이 완료된 뒤 쌓여요 · 그 전에 취소 · 환불된 주문은 지급되지 않아요" },
+  { key: "ON_PAYMENT", title: "결제하면 바로 지급", desc: "결제 완료와 함께 적립됩니다 · 취소 · 환불하면 지급한 적립금을 회수합니다" },
+  { key: "ON_DELIVERY", title: "배송 완료 후 지급 (기본)", desc: "배송이 완료된 뒤 적립됩니다 · 그 전에 취소 · 환불된 주문은 지급되지 않습니다" },
 ];
 
 export default function RewardPolicyPage() {
@@ -42,10 +42,10 @@ export default function RewardPolicyPage() {
     setFailure(null);
     const r = await api<{ policy: { earnTiming: EarnTiming } }>("/api/seller/reward-policy", { method: "PUT", body: { earnTiming: timing } });
     setSaving(false);
-    if (!r.ok) return setFailure(failMessage(r, "저장하지 못했어요. 잠시 뒤 다시 시도해 주세요"));
+    if (!r.ok) return setFailure(failMessage(r, "admin", "저장하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
     setTiming(r.data.policy.earnTiming);
     setState({ kind: "ok", saved: r.data.policy.earnTiming });
-    setToast("적립금 지급 시점을 저장했어요 · 다음 결제부터 적용돼요");
+    setToast("적립금 지급 시점을 저장했습니다 · 다음 결제부터 적용됩니다");
   };
 
   return (
@@ -53,7 +53,7 @@ export default function RewardPolicyPage() {
       <Topbar crumb="판매 › 적립금">
         {saved && (
           <button className="btn btn-sm" type="button" onClick={() => void save()} disabled={saving || !dirty}>
-            {saving ? "저장하고 있어요" : "저장"}
+            {saving ? "저장 중" : "저장"}
           </button>
         )}
       </Topbar>
@@ -66,7 +66,7 @@ export default function RewardPolicyPage() {
         <div className="ph">
           <div className="col" style={{ gap: 6 }}>
             <h1 className="t-t3">적립 정책</h1>
-            <span className="t-l2 c-alt">구매자 적립금을 언제 쌓을지 정해요. 저장하면 다음 결제부터 적용돼요.</span>
+            <span className="t-l2 c-alt">구매자 적립금의 지급 시점을 정합니다. 저장하면 다음 결제부터 적용됩니다.</span>
           </div>
         </div>
 
@@ -79,7 +79,7 @@ export default function RewardPolicyPage() {
               ) : state.status === 402 ? (
                 <Locked />
               ) : (
-                <ErrorState title="적립 정책을 불러오지 못했어요" onRetry={() => void load()} />
+                <ErrorState title="적립 정책을 불러오지 못했습니다" onRetry={() => void load()} />
               ))}
           </div>
         ) : (
@@ -88,7 +88,7 @@ export default function RewardPolicyPage() {
               {failure && (
                 <div className="msg msg-neg" role="alert">
                   <span>
-                    <b>저장할 수 없어요.</b> {failure}
+                    <b>저장할 수 없습니다.</b> {failure}
                   </span>
                 </div>
               )}
@@ -107,7 +107,7 @@ export default function RewardPolicyPage() {
                 </div>
                 <div className="msg msg-info t-l2" role="note">
                   <span>
-                    <b>적립금은 결제할 때 금액으로 정해져요.</b> 지급 시점을 바꿔도 적립 금액은 그대로이고, 언제 쌓이는지만 달라져요.
+                    <b>적립금은 결제할 때 금액으로 정해집니다.</b> 지급 시점을 변경해도 적립 금액은 그대로이고, 적립되는 시점만 달라집니다.
                   </span>
                 </div>
               </section>
@@ -115,11 +115,11 @@ export default function RewardPolicyPage() {
 
             <aside className="col aside-sticky" style={{ gap: 16 }}>
               <div className="card pad col" style={{ gap: 6 }}>
-                <span className="t-hl2">알아 두세요</span>
-                <span className="t-l2 c-neu">바꾼 지급 시점은 저장한 뒤 결제되는 주문부터 적용돼요. 이미 결제한 주문은 결제할 때의 설정을 따라요.</span>
+                <span className="t-hl2">참고</span>
+                <span className="t-l2 c-neu">변경한 지급 시점은 저장한 뒤 결제되는 주문부터 적용됩니다. 이미 결제한 주문은 결제할 때의 설정을 따릅니다.</span>
               </div>
               <button className="btn btn-lg btn-block" type="button" onClick={() => void save()} disabled={saving || !dirty}>
-                {saving ? "저장하고 있어요" : "저장"}
+                {saving ? "저장 중" : "저장"}
               </button>
             </aside>
           </div>
