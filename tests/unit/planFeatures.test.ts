@@ -144,6 +144,8 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/reviews/images": "STORE_OPERATIONS",
   "shop/[slug]/reviews/[reviewId]/report": "STORE_OPERATIONS",
   "shop/[slug]/reviews/public-images/[imageId]": "STORE_OPERATIONS",
+  "shop/[slug]/products": "STORE_OPERATIONS", // 구매자 상품 목록(운영 중 쇼핑몰만)
+  "shop/[slug]/products/[productId]": "STORE_OPERATIONS", // 구매자 상품 상세
   "shop/[slug]/products/[productId]/reviews": "STORE_OPERATIONS",
   "shop/[slug]/products/[productId]/images/[imageId]": "STORE_OPERATIONS", // 상품 사진(보이는 상품만)
   "shop/[slug]/orders/[orderId]": "OPEN",

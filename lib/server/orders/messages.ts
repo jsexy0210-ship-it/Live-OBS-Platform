@@ -52,6 +52,7 @@ export const ORDER_ERROR_MESSAGES = {
   invalid_category_order: "카테고리 목록이 바뀌었어요. 새로 불러온 뒤 다시 정해 주세요",
   too_many_product_categories: "상품 하나에 카테고리는 10개까지 지정할 수 있어요",
   invalid_detail: "상세 페이지를 다시 확인해 주세요. 글은 2000자까지, 블록은 30개까지예요",
+  invalid_query: "검색 조건을 다시 확인해 주세요",
   // 무통장 입금·구매 제한
   purchase_restricted: "입금하지 않은 주문이 쌓여서 지금은 주문할 수 없어요. 판매자에게 문의해 주세요",
   order_rate_limited: "잠시 뒤 다시 주문해 주세요",
@@ -126,6 +127,7 @@ export const ORDER_ERROR_MESSAGES_FORMAL: Record<OrderErrorCode, string> = {
   invalid_category_order: "카테고리 목록이 바뀌었습니다. 새로 불러온 뒤 다시 정해 주십시오",
   too_many_product_categories: "상품 하나에 카테고리는 10개까지 지정할 수 있습니다",
   invalid_detail: "상세 페이지를 다시 확인해 주십시오. 글은 2000자까지, 블록은 30개까지입니다",
+  invalid_query: "검색 조건을 다시 확인해 주십시오",
   purchase_restricted: "입금하지 않은 주문이 쌓여 지금은 주문할 수 없습니다",
   order_rate_limited: "잠시 뒤 다시 주문해 주십시오",
   invalid_order_policy: "자동 취소 기간은 1시간에서 30일, 자동 배송 완료·구매 확정은 1일에서 30일 사이로 정해 주십시오",
