@@ -363,6 +363,7 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
             <span className="t-l2 fw6" id={`mode-${t}`}>
               카드 이미지
             </span>
+            <span className="t-c1 c-alt">카드 이미지는 1200×630 크기예요. 직접 올릴 때는 이 크기 그대로 만들어 주세요.</span>
             <div className="seg" role="radiogroup" aria-labelledby={`mode-${t}`} style={{ alignSelf: "flex-start" }}>
               {(
                 [
@@ -388,7 +389,7 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
             </div>
             {mode === "uploaded" && (
               <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                <span className="t-c1 c-alt">PNG·JPG, 1200×630 크기, 2MB까지 올릴 수 있어요.</span>
+                <span className="t-c1 c-alt">PNG·JPG, 2MB까지 올릴 수 있어요.</span>
                 {canEdit && (
                   <>
                     <input
