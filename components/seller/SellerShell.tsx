@@ -6,46 +6,87 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { useLatestResponse, type ReadTicket } from "./latestResponse";
 import { api, type Me } from "./api";
 
-// 판매자 관리자 공통 틀: 왼쪽 메뉴(좁은 화면에서는 서랍) + 상단 바 + 이용 상태 배너.
+// 파트너스 관리자 공통 틀(업무용 관리 화면 틀, 대표님 지시 2026-10-04): 상단 고정 GNB(대분류) + 왼쪽 LNB(고른 대분류의 하위 메뉴) + 본문.
+// 메뉴 묶음은 docs/IA.md SA 「메뉴 그룹」 표를 따른다. 좁은 화면에서는 GNB가 햄버거로 접히고 LNB가 서랍으로 열린다(서랍에는 전체 메뉴).
 // 아직 만들지 않은 화면은 메뉴에서 흐리게 두고 누를 수 없게 한다.
 
-// perm: 그 권한이 있어야 메뉴가 보인다. OWNER는 대표자 전용.
-type Nav = { h: string } | { label: string; href?: string; perm?: string; match?: string };
-const NAV: Nav[] = [
-  { h: "홈" },
-  { label: "홈" },
-  { label: "통계", href: "/seller/stats", perm: "SALES_VIEW" },
-  { h: "방송" },
-  { label: "방송 대시보드", perm: "BROADCAST_RUN" },
-  { h: "판매" },
-  { label: "상품", href: "/seller/products", perm: "PRODUCT_MANAGE" },
-  { label: "주문", href: "/seller/orders", perm: "ORDER_SHIPPING" },
-  { label: "입금 확인", perm: "ORDER_SHIPPING" },
-  { label: "배송", perm: "ORDER_SHIPPING" },
-  { label: "영수증 · 세금계산서", perm: "RECEIPT_TAX" },
-  { label: "적립금", href: "/seller/rewards", perm: "MEMBER_POINTS" },
+// perm: 그 권한이 있어야 메뉴가 보인다. OWNER는 대표자 전용. 하위 메뉴가 모두 숨겨진 대분류는 GNB에서도 숨긴다.
+type Item = { label: string; href?: string; perm?: string };
+type Group = { key: string; label: string; items: Item[] };
+const MENU: Group[] = [
+  { key: "home", label: "홈", items: [{ label: "홈" }] },
+  {
+    key: "broadcast",
+    label: "방송",
+    items: [
+      { label: "방송 대시보드", perm: "BROADCAST_RUN" },
+      { label: "오버레이 편집기", perm: "OVERLAY_EDIT" },
+      { label: "HIT 카드 이력", perm: "BROADCAST_RUN" },
+      { label: "방송 이력", perm: "BROADCAST_RUN" },
+    ],
+  },
+  {
+    key: "order",
+    label: "주문",
+    items: [
+      { label: "전체 주문", href: "/seller/orders", perm: "ORDER_SHIPPING" },
+      { label: "입금 확인", perm: "ORDER_SHIPPING" },
+      { label: "배송", perm: "ORDER_SHIPPING" },
+      { label: "영수증 · 세금계산서", perm: "RECEIPT_TAX" },
+    ],
+  },
+  {
+    key: "product",
+    label: "상품",
+    items: [
+      { label: "상품 목록", href: "/seller/products", perm: "PRODUCT_MANAGE" },
+      { label: "상품 등록", href: "/seller/products/new", perm: "PRODUCT_MANAGE" },
+      { label: "재고 관리", href: "/seller/products/stock", perm: "PRODUCT_MANAGE" },
+    ],
+  },
+  {
+    key: "member",
+    label: "회원",
+    items: [
+      { label: "회원", perm: "MEMBER_POINTS" },
+      { label: "적립금", href: "/seller/rewards", perm: "MEMBER_POINTS" },
+      { label: "구매 제한", perm: "MEMBER_POINTS" },
+      { label: "구매자 문의", perm: "INQUIRY_REPLY" },
+    ],
+  },
   // 쿠폰: 집계 조회는 파트너스 계정 누구나, 만들기·지급은 적립금(MEMBER_POINTS) 권한(화면에서 막음)
-  { label: "쿠폰", href: "/seller/coupons" },
-  { label: "회원", perm: "MEMBER_POINTS" },
-  { label: "구매 제한", perm: "MEMBER_POINTS" },
-  { label: "구매자 문의", perm: "INQUIRY_REPLY" },
-  { h: "방송 · 오버레이" },
-  { label: "오버레이 편집기", perm: "OVERLAY_EDIT" },
-  { label: "HIT 카드 이력", perm: "BROADCAST_RUN" },
-  { label: "방송 이력", perm: "BROADCAST_RUN" },
-  { h: "설정" },
-  { label: "쇼핑몰 설정", href: "/seller/settings/shop", match: "/seller/settings" },
-  { label: "배너 · 팝업", href: "/seller/banners" },
-  { label: "결제(PG) 연결", perm: "OWNER" },
-  { label: "주문자 알림", perm: "SHOP_SETTINGS" },
-  { label: "구독 · 결제", perm: "OWNER" },
-  { label: "직원 계정", href: "/seller/staff", perm: "OWNER" },
-  { label: "공지 · 문의" },
-  { label: "도우미" },
-  { label: "내 계정" },
+  { key: "promotion", label: "프로모션", items: [{ label: "쿠폰", href: "/seller/coupons" }] },
+  { key: "design", label: "디자인", items: [{ label: "배너 · 팝업", href: "/seller/banners" }] },
+  { key: "stats", label: "통계", items: [{ label: "통계", href: "/seller/stats", perm: "SALES_VIEW" }] },
+  {
+    key: "settings",
+    label: "쇼핑몰 설정",
+    items: [
+      { label: "쇼핑몰 정보", href: "/seller/settings/shop" },
+      { label: "주문 설정", href: "/seller/settings/order", perm: "SHOP_SETTINGS" },
+      { label: "배송 설정", href: "/seller/settings/shipping", perm: "SHOP_SETTINGS" },
+      // 회원 정책: IA 표에는 없지만 이미 있는 화면이라 쇼핑몰 설정 안에 둔다
+      { label: "회원 정책", href: "/seller/settings/member", perm: "MEMBER_POINTS" },
+      { label: "공유 설정", href: "/seller/settings/share", perm: "SHOP_SETTINGS" },
+      { label: "결제(PG) 연결", perm: "OWNER" },
+      { label: "주문자 알림", perm: "SHOP_SETTINGS" },
+      { label: "직원 계정", href: "/seller/staff", perm: "OWNER" },
+      { label: "구독 · 결제", perm: "OWNER" },
+    ],
+  },
 ];
 
-type ShellCtx = { me: Me; trialDaysLeft: number | null; openNav: () => void; can: (perm: string) => boolean };
+// 지금 주소에 맞는 메뉴: 주소 앞부분이 가장 길게 맞는 메뉴(상품 상세 → 상품 목록, 이벤트 팝업 → 배너 · 팝업)
+function findActive(groups: Group[], pathname: string): { group: Group; item: Item } | null {
+  let best: { group: Group; item: Item } | null = null;
+  for (const group of groups)
+    for (const item of group.items)
+      if (item.href && (pathname === item.href || pathname.startsWith(`${item.href}/`)) && (!best || item.href.length > best.item.href!.length)) best = { group, item };
+  return best;
+}
+
+// loc: 지금 화면의 대분류 · 메뉴 이름(본문 위 경로 줄에 쓴다)
+type ShellCtx = { me: Me; trialDaysLeft: number | null; openNav: () => void; can: (perm: string) => boolean; loc: { group: string; item: string; exact: boolean } | null };
 const Ctx = createContext<ShellCtx | null>(null);
 
 export function useSeller(): ShellCtx {
@@ -61,6 +102,8 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   const [failed, setFailed] = useState(false);
   const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null);
   const [navOpen, setNavOpen] = useState(false);
+  // GNB에서 고른 대분류(화면을 옮기면 지금 화면의 대분류로 돌아간다)
+  const [picked, setPicked] = useState<string | null>(null);
 
   const lastRead = useRef(0);
   // /me 다시 읽기 반영 규칙(latestResponse.ts): 나중에 보낸 요청의 성공만 반영하고, 실패가 앞선 성공을 버리지 않는다.
@@ -131,7 +174,10 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
     };
   }, [refresh]);
 
-  useEffect(() => setNavOpen(false), [pathname]);
+  useEffect(() => {
+    setNavOpen(false);
+    setPicked(null);
+  }, [pathname]);
 
   // 세션을 실제로 끊었을 때만 로그인 화면으로 보낸다. 실패하면 화면에 남아 다시 시도하게 한다(공용 기기에서 로그아웃된 줄 착각하지 않게).
   const [logoutError, setLogoutError] = useState(false);
@@ -162,71 +208,131 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   }
 
   const can = (perm: string) => me.isOwner || (perm !== "OWNER" && me.permissions.includes(perm));
-  // 권한이 없는 메뉴는 숨기고, 안에 메뉴가 하나도 안 남은 묶음 제목도 숨긴다
-  const nav = NAV.filter((n) => !("label" in n) || !n.perm || can(n.perm)).filter((n, i, all) => !("h" in n) || (all[i + 1] !== undefined && !("h" in all[i + 1])));
+  // 권한이 없는 메뉴는 숨기고, 하위 메뉴가 하나도 안 남은 대분류도 숨긴다
+  const menu = MENU.map((g) => ({ ...g, items: g.items.filter((n) => !n.perm || can(n.perm)) })).filter((g) => g.items.length > 0);
+  const active = findActive(menu, pathname);
+  const shown = menu.find((g) => g.key === picked) ?? active?.group ?? menu[0];
+  const loc = active ? { group: active.group.label, item: active.item.label, exact: pathname === active.item.href } : null;
+
+  const utilities = (
+    <>
+      <a className="util-i" href={`/shop/${me.shop.slug}`} target="_blank" rel="noreferrer">
+        쇼핑몰 바로가기
+      </a>
+      <a className="util-i off" aria-disabled="true" title="준비 중입니다">
+        공지 · 문의
+      </a>
+      <a className="util-i off" aria-disabled="true" title="준비 중입니다">
+        도우미
+      </a>
+      <a className="util-i off" aria-disabled="true" title="준비 중입니다">
+        내 계정
+      </a>
+      <button className="util-i util-btn" type="button" onClick={() => void logout()}>
+        로그아웃
+      </button>
+    </>
+  );
 
   return (
-    <Ctx.Provider value={{ me, trialDaysLeft, openNav: () => setNavOpen(true), can }}>
-      <div className={`shell${navOpen ? " nav-open" : ""}`}>
-        <aside className="side" aria-label="파트너스 메뉴">
-          <Link className="logo" href="/seller/products" style={{ padding: "6px 12px 14px", fontSize: 18 }}>
+    <Ctx.Provider value={{ me, trialDaysLeft, openNav: () => setNavOpen(true), can, loc }}>
+      <div className={`cs${navOpen ? " nav-open" : ""}`}>
+        <header className="gnb">
+          <button className="gnb-menu" type="button" aria-label="메뉴 열기" onClick={() => setNavOpen(true)}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <path d="M4 7h16M4 12h16M4 17h16" />
+            </svg>
+          </button>
+          <Link className="logo gnb-logo" href="/seller/products">
             <span className="logo-sym" />
             <span className="logo-word" />
-            <span className="t-c1 c-alt" style={{ marginLeft: 4 }}>
-              파트너스
-            </span>
+            <span className="gnb-sub">파트너스</span>
           </Link>
-          {nav.map((n, i) =>
-            "h" in n ? (
-              <span key={i} className="nav-h">
-                {n.h}
-              </span>
-            ) : n.href ? (
-              <Link key={i} className={`nav-i${pathname.startsWith(n.match ?? n.href) ? " on" : ""}`} href={n.href} onClick={() => setNavOpen(false)}>
-                {n.label}
-              </Link>
-            ) : (
-              <a key={i} className="nav-i off" aria-disabled="true" title="준비 중입니다">
-                {n.label}
-              </a>
-            ),
-          )}
-          <button className="btn btn-sm btn-ghost side-logout" type="button" onClick={() => void logout()}>
-            로그아웃
-          </button>
-          {logoutError && (
-            <span className="err side-logout-err" role="alert">
-              로그아웃하지 못했습니다. 다시 시도해 주십시오
+          <nav className="gnb-nav" aria-label="주 메뉴">
+            {menu.map((g) => {
+              const first = g.items.find((n) => n.href)?.href;
+              const cls = `gnb-i${g.key === shown.key ? " on" : ""}`;
+              return first ? (
+                <Link key={g.key} className={cls} href={first} onClick={() => setPicked(null)}>
+                  {g.label}
+                </Link>
+              ) : (
+                <button key={g.key} className={cls} type="button" aria-pressed={g.key === shown.key} onClick={() => setPicked(g.key)}>
+                  {g.label}
+                </button>
+              );
+            })}
+          </nav>
+          <div className="gnb-util">
+            <span className="gnb-shop ell" title={`${me.user.name} · ${me.user.email}`}>
+              {me.shop.name}
             </span>
-          )}
-        </aside>
-        <button className="nav-dim" type="button" aria-label="메뉴 닫기" onClick={() => setNavOpen(false)} />
-        <div className="col shell-body">{children}</div>
+            <span className="util-desk">{utilities}</span>
+          </div>
+        </header>
+        {logoutError && (
+          <div className="msg msg-neg logout-err" role="alert">
+            로그아웃하지 못했습니다. 다시 시도해 주십시오
+          </div>
+        )}
+        <div className="cs-wrap">
+          <aside className="lnb" aria-label="파트너스 메뉴">
+            {menu.map((g) => (
+              <section key={g.key} className={`lnb-sec${g.key === shown.key ? " on" : ""}`}>
+                <strong className="lnb-h">{g.label}</strong>
+                {g.items.map((n) =>
+                  n.href ? (
+                    <Link
+                      key={n.label}
+                      className={`lnb-i${active?.item === n ? " on" : ""}`}
+                      href={n.href}
+                      aria-current={active?.item === n ? "page" : undefined}
+                      onClick={() => setNavOpen(false)}
+                    >
+                      {n.label}
+                    </Link>
+                  ) : (
+                    <a key={n.label} className="lnb-i off" aria-disabled="true" title="준비 중입니다">
+                      {n.label}
+                    </a>
+                  ),
+                )}
+              </section>
+            ))}
+            <div className="lnb-util">{utilities}</div>
+          </aside>
+          <button className="cs-dim" type="button" aria-label="메뉴 닫기" onClick={() => setNavOpen(false)} />
+          <div className="col cs-body">{children}</div>
+        </div>
       </div>
     </Ctx.Provider>
   );
 }
 
-// 화면마다 상단 바(경로·버튼)를 넣고, 그 아래에 이용 상태 배너를 붙인다.
+// 화면마다 본문 위에 경로 줄(대분류 › 메뉴 · 오른쪽 버튼)을 넣고, 그 아래에 이용 상태 배너를 붙인다.
+// crumb: 예전 경로 문구. 경로는 메뉴 구조에서 만들고, 하위 화면(주문 상세·이벤트 팝업 등)이면 crumb 마지막 칸을 덧붙인다.
 export function Topbar({ crumb, badge, children }: { crumb: string; badge?: React.ReactNode; children?: React.ReactNode }) {
-  const { me, openNav } = useSeller();
+  const { loc } = useSeller();
+  const parts = crumb.split("›").map((p) => p.trim());
+  const last = parts[parts.length - 1];
+  const path = loc ? [loc.group, loc.item] : parts;
+  if (loc && !loc.exact && parts.length > 2 && last !== loc.item && last !== loc.group) path.push(last);
+  // 대분류와 메뉴 이름이 같으면(통계 › 통계) 한 번만
+  const shownPath = path.filter((p, i) => i === 0 || p !== path[i - 1]);
   return (
     <>
-      <header className="topbar">
-        <button className="icon-btn menu-btn" type="button" aria-label="메뉴 열기" onClick={openNav}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-            <path d="M4 7h16M4 12h16M4 17h16" />
-          </svg>
-        </button>
-        <span className="crumb ell">{crumb}</span>
+      <div className="loc-bar">
+        <span className="crumb ell">
+          {shownPath.map((p, i) => (
+            <span key={i} className={i === shownPath.length - 1 ? "crumb-now" : undefined}>
+              {i > 0 && <span className="crumb-sep" aria-hidden="true">›</span>}
+              {p}
+            </span>
+          ))}
+        </span>
         {badge}
-        <div className="row tb-actions">
-          {children}
-          <span className="btn btn-sm btn-ghost tb-account" title={`${me.user.name} · ${me.user.email}`}>
-            {me.shop.name}
-          </span>
-        </div>
-      </header>
+        <div className="row tb-actions">{children}</div>
+      </div>
       <AccessBanner />
     </>
   );
