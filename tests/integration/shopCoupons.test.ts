@@ -169,15 +169,18 @@ describe("만들기·수정·중지·삭제", () => {
     expect((await held(s, c.id)).expiresAt.getTime()).toBe(new Date(sooner).getTime());
   });
 
-  it("사용 종료를 받은 시각보다 앞으로 당겨도 저장되고, 받은 쿠폰은 바로 기간 지남이 된다(Codex 4176358407)", async () => {
+  it("쓰지 않은 받은 쿠폰의 받은 시각보다 이른 종료는 409로 거절하고 아무것도 바꾸지 않는다(Codex 4176358407)", async () => {
     const s = await shop();
     const c = await makeCoupon(s);
     expect((await download(s, c.id)).status).toBe(201);
-    const res = await couponPut(json("/x", "PUT", s.owner, couponBody({ startsAt: iso(-3 * DAY), endsAt: iso(-2 * DAY) })), p({ couponId: c.id }));
-    expect(res.status).toBe(200);
-    const bc = await held(s, c.id);
-    expect(bc.expiresAt.getTime()).toBe(bc.issuedAt.getTime() + 1);
-    expect(await order(s, c.id)).toEqual({ ok: false, reason: "coupon_unavailable" });
+    const before = await held(s, c.id);
+    const res = await couponPut(json("/x", "PUT", s.owner, couponBody({ name: "바뀌면 안 됨", startsAt: iso(-3 * DAY), endsAt: iso(-2 * DAY) })), p({ couponId: c.id }));
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: "ends_before_issued", message: expect.stringContaining("해 주십시오") });
+    expect((await db.coupon.findUniqueOrThrow({ where: { id: c.id } })).name).toBe("오픈 기념");
+    expect((await held(s, c.id)).expiresAt).toEqual(before.expiresAt);
+    // 받은 시각 뒤로 앞당기는 것은 된다
+    expect((await couponPut(json("/x", "PUT", s.owner, couponBody({ endsAt: iso(DAY) })), p({ couponId: c.id }))).status).toBe(200);
   });
 
   it("발급 중지하면 더는 받을 수 없지만 받은 쿠폰은 쓸 수 있다. 발급한 쿠폰은 지울 수 없다", async () => {
@@ -243,9 +246,9 @@ describe("받기(내려받기·코드)", () => {
   it("틀린 코드를 동시에 많이 넣어도 10분 10회 한도를 넘지 않고, 한도에 걸린 뒤에는 맞는 코드도 막힌다(Codex 4176358406)", async () => {
     const s = await shop();
     await makeCoupon(s, { issueMethod: "CODE", code: "LIVE2026" });
-    const rs = await Promise.all(Array.from({ length: CODE_ATTEMPT_LIMIT + 5 }, (_, i) => redeem(s, `WRONG${i}`)));
+    const rs = await Promise.all(Array.from({ length: CODE_ATTEMPT_LIMIT + 10 }, (_, i) => redeem(s, `WRONG${i}`)));
     expect(rs.filter((r) => r.status === 404)).toHaveLength(CODE_ATTEMPT_LIMIT);
-    expect(rs.filter((r) => r.status === 429)).toHaveLength(5);
+    expect(rs.filter((r) => r.status === 429)).toHaveLength(10);
     expect(await db.auditLog.count({ where: { action: "buyer_coupon.code_failed", actorId: s.buyer.id } })).toBe(CODE_ATTEMPT_LIMIT);
     expect((await redeem(s, "LIVE2026")).status).toBe(429);
     expect(await db.buyerCoupon.count()).toBe(0);

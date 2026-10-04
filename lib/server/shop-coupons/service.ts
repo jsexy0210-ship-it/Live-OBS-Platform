@@ -172,13 +172,15 @@ export async function updateCoupon(db: PrismaClient, ctx: TenantContext, id: str
     if (p.v.issueLimit !== null && p.v.issueLimit < before.issuedCount) return { ok: false as const, reason: "issue_limit_below_issued" as const };
     if (!(await ownProducts(tx, ctx.sellerId, p.v.productIds))) return { ok: false as const, reason: "invalid_products" as const };
     if (await codeTaken(tx, ctx.sellerId, p.v.code, id)) return { ok: false as const, reason: "code_taken" as const };
+    // 쓰지 않은 받은 쿠폰보다 이른 종료는 거절한다(받은 시각 < 만료, BuyerCoupon_period_check). 쿠폰 행 잠금 아래라 그사이 새로 받은 쿠폰도 본다.
+    await tx.$queryRaw`SELECT 1 FROM "Coupon" WHERE "id" = ${id}::uuid FOR UPDATE`;
+    if (await tx.buyerCoupon.count({ where: { sellerId: ctx.sellerId, couponId: id, status: "ISSUED", issuedAt: { gte: p.v.endsAt } } })) {
+      return { ok: false as const, reason: "ends_before_issued" as const };
+    }
     // 받은 쿠폰의 만료는 받을 때 정해진다. 사용 종료를 앞당기면 이미 받은 쿠폰도 그때 끝나게 맞춘다.
     const row = await tx.coupon.update({ where: { id }, data: p.v });
-    // 새 종료가 받은 시각보다 이르면(이미 끝난 쿠폰으로) 받은 시각 + 1밀리초로 둔다(BuyerCoupon_period_check: 받은 시각 < 만료).
     if (row.endsAt < before.endsAt) {
-      await tx.$executeRaw`
-        UPDATE "BuyerCoupon" SET "expiresAt" = GREATEST(${row.endsAt}, "issuedAt" + interval '1 millisecond')
-        WHERE "sellerId" = ${ctx.sellerId}::uuid AND "couponId" = ${id}::uuid AND "status" = 'ISSUED' AND "expiresAt" > ${row.endsAt}`;
+      await tx.buyerCoupon.updateMany({ where: { sellerId: ctx.sellerId, couponId: id, status: "ISSUED", expiresAt: { gt: row.endsAt } }, data: { expiresAt: row.endsAt } });
     }
     await audit(tx, ctx, meta, "coupon.update", id, couponAudit(before), couponAudit(row));
     return { ok: true as const, coupon: couponView(row, await dbNow(tx), await statsOf(tx, ctx.sellerId, id)) };
@@ -334,6 +336,9 @@ export async function buyerCouponBox(db: PrismaClient, scope: BuyerScope) {
   };
 }
 
+// 받는 사이 판매자가 쿠폰을 중지·종료해 발급 수 증가를 되돌려야 할 때(트랜잭션 전체를 되돌림)
+class IssueRaced extends Error {}
+
 type IssueResult = { ok: true; coupon: ReturnType<typeof mineView> } | { ok: false; reason: BuyerCouponFailure };
 
 // 코드 입력: 같은 회원이 10분에 10번 넘게 틀리면 잠시 막는다(코드 맞히기 방지). 틀린 시도는 로그 추적에 남긴다.
@@ -375,12 +380,15 @@ async function issue(
       if (await tx.buyerCoupon.findFirst({ where: { couponId: coupon.id, buyerMemberId: member.id }, select: { id: true } })) {
         return { ok: false as const, reason: "already_issued" as const };
       }
-      const inc = await tx.$executeRaw`
+      // 수량 한도는 조건부 UPDATE로 지킨다. 그사이 판매자가 기간을 바꾸거나 중지했을 수 있어(쿠폰 행 잠금을 기다린 뒤) 바뀐 값으로 다시 본다.
+      const [cur] = await tx.$queryRaw<{ endsAt: Date; validDays: number | null; isActive: boolean; startsAt: Date }[]>`
         UPDATE "Coupon" SET "issuedCount" = "issuedCount" + 1
-        WHERE "id" = ${coupon.id}::uuid AND "sellerId" = ${scope.sellerId}::uuid AND ("issueLimit" IS NULL OR "issuedCount" < "issueLimit")`;
-      if (inc !== 1) return { ok: false as const, reason: "sold_out" as const };
+        WHERE "id" = ${coupon.id}::uuid AND "sellerId" = ${scope.sellerId}::uuid AND ("issueLimit" IS NULL OR "issuedCount" < "issueLimit")
+        RETURNING "endsAt", "validDays", "isActive", "startsAt"`;
+      if (!cur) return { ok: false as const, reason: "sold_out" as const };
+      if (statusOf(cur, now) !== "live") throw new IssueRaced();
       const bc = await tx.buyerCoupon.create({
-        data: { sellerId: scope.sellerId, couponId: coupon.id, buyerMemberId: member.id, issuedAt: now, expiresAt: couponExpiry(coupon, now) },
+        data: { sellerId: scope.sellerId, couponId: coupon.id, buyerMemberId: member.id, issuedAt: now, expiresAt: couponExpiry(cur, now) },
         include: { coupon: true },
       });
       await writeAudit(tx, { actorType: "BUYER", actorId: member.id, sellerId: scope.sellerId, action, targetType: "Coupon", targetId: coupon.id, ip: meta.ip, userAgent: meta.userAgent });
@@ -388,6 +396,7 @@ async function issue(
     });
   } catch (e) {
     if (isUniqueViolation(e)) return { ok: false, reason: "already_issued" };
+    if (e instanceof IssueRaced) return { ok: false, reason: "coupon_not_found" };
     throw e;
   }
 }

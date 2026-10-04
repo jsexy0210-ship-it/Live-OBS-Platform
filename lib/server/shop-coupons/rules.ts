@@ -33,6 +33,7 @@ export type CouponRejection =
   | "issue_limit_below_issued"
   | "invalid_products"
   | "method_locked"
+  | "ends_before_issued"
   | "too_many";
 
 // 파트너스 관리자 화면 문구(합니다체)
@@ -51,6 +52,7 @@ export const COUPON_MESSAGES: Record<CouponRejection, string> = {
   issue_limit_below_issued: "이미 발급한 수보다 적게 줄일 수 없습니다.",
   invalid_products: `적용 상품은 ${COUPON_PRODUCTS_MAX}개까지 이 쇼핑몰 상품에서 골라 주십시오.`,
   method_locked: "발급한 쿠폰은 발급 방식·혜택을 바꿀 수 없습니다. 새 쿠폰을 만들어 주십시오.",
+  ends_before_issued: "이미 받은 쿠폰의 받은 시각보다 이른 종료로 바꿀 수 없습니다. 종료를 늦추거나 발급을 중지해 주십시오.",
   too_many: `쿠폰은 ${COUPON_LIMIT}개까지 만들 수 있습니다.`,
 };
 

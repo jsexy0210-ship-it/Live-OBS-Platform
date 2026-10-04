@@ -12,7 +12,7 @@ type Ctx = { params: Promise<{ couponId: string }> };
 export const PUT = mutation(async (req: Request, { params }: Ctx) => {
   const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "STORE_OPERATIONS" });
   const r = await updateCoupon(prisma, ctx, (await params).couponId, await readJson(req), requestMeta(req));
-  if (!r.ok) return NextResponse.json({ error: r.reason, message: COUPON_MESSAGES[r.reason] }, { status: r.reason === "code_taken" || r.reason === "method_locked" ? 409 : 400 });
+  if (!r.ok) return NextResponse.json({ error: r.reason, message: COUPON_MESSAGES[r.reason] }, { status: r.reason === "code_taken" || r.reason === "method_locked" || r.reason === "ends_before_issued" ? 409 : 400 });
   return NextResponse.json({ coupon: r.coupon });
 });
 
