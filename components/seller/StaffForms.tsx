@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { cleanText, textLength } from "../../lib/server/text/clean";
 import { api, failMessage } from "./api";
-import { stepOutcome } from "./stepFailure";
 
 // SA-100 직원 계정(대표자 전용)에서 쓰는 권한 고르기·수정·비밀번호 재설정·비활성화 창.
 // 권한 이름·설명은 디자인 SA-100과 같고, 키는 서버(lib/server/authz/permissions.ts STAFF_PERMISSIONS)와 같다.
@@ -158,13 +157,15 @@ function Dialog({ title, labelId, busy, onClose, children, wide }: { title: stri
 
 export const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
 
-// 직원 변경(추가·정보·권한 수정·비밀번호 재설정·비활성화)의 결과가 불분명할 때(연결 끊김·5xx, stepFailure.ts 기준) 공통 처리:
+// 직원 변경(추가·정보·권한 수정·비밀번호 재설정·비활성화)의 결과가 불분명할 때(isUnclear) 공통 처리:
 // 실패라고 단정하지 않고 지금 직원 목록을 다시 읽어 실제 상태로 판정한다. 목록으로 알 수 없는 것(비밀번호)은 같은 값으로만 다시 보내게 한다.
 export async function readStaffList(): Promise<Staff[] | null> {
   const r = await api<{ staff: Staff[] }>("/api/seller/staff");
   return r.ok ? r.data.staff : null;
 }
-export const isUnclear = (r: { status: number; error: string }) => stepOutcome(r) === "retry";
+// 직원 변경 전용 판정: 응답 없음(연결 끊김)·모든 5xx(503 포함)·형식을 알 수 없는 응답(오류 코드 없음)은 서버가 처리했는지 알 수 없어 불분명.
+// 서버가 오류 코드로 거절한 4xx(처리하지 않았다고 확정)만 실패로 본다. 본인확인 단계용 stepOutcome(503=준비 중)은 쓰지 않는다
+export const isUnclear = (r: { status: number; error: string }) => r.status === 0 || r.status >= 500 || r.error === "unknown";
 // 결과가 불분명한 변경을 목록으로 확인한다: 목록을 읽어 판정 함수에 넘긴다. 목록을 읽지 못하면 null(아직 모름)
 export async function settleByList<T>(judge: (list: Staff[]) => T): Promise<T | null> {
   const list = await readStaffList();

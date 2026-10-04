@@ -506,6 +506,72 @@ test("결과가 불분명한 직원 변경은 늦게 반영돼도 실패로 단�
   await expect(row(page, s.email)).toContainText("비활성");
 });
 
+// 프록시·서버가 낸 503(본인확인 준비 중이 아님)이나 오류 코드 없는 응답도 처리됐는지 알 수 없다: 실패로 단정하지 않고 불분명으로 다룬다
+test("직원 변경이 503·형식 모를 응답이면 불분명으로 보고 실제 상태로 판정한다", async ({ page }) => {
+  await login(page, "demo-owner@example.com");
+  await expect(page).toHaveURL(/\/seller\/staff$/);
+  const id = uniq();
+  const s = { name: `오삼${id}`, phone: "01077778888", email: `svc-${id}@example.com`, password: `pw-${id}-init` };
+  // 서버는 처리하고, 응답은 503(코드 없음)으로 바뀐다
+  const after503 = async (match: (u: URL) => boolean, method: string, body: { contentType: string; body: string }) => {
+    let done = false;
+    const pred = (u: URL) => u.pathname.startsWith("/api/seller/staff") && match(u);
+    await page.route(pred, async (route) => {
+      if (done || route.request().method() !== method) return route.continue();
+      done = true;
+      await route.fetch();
+      return route.fulfill({ status: 503, ...body });
+    });
+    return () => page.unroute(pred);
+  };
+  const html = { contentType: "text/html", body: "<html>Service Unavailable</html>" };
+  const json503 = { contentType: "application/json", body: JSON.stringify({ error: "service_unavailable" }) };
+
+  // 직원 추가: 503이어도 목록에서 만든 계정을 확인해 성공으로 처리
+  await addStaff(page, s);
+  let off = await after503((u) => u.pathname === "/api/seller/staff", "POST", json503);
+  await page.getByRole("button", { name: "계정 생성" }).click();
+  await expect(page.getByText(`${s.name} 계정을 생성했습니다`, { exact: false })).toBeVisible();
+  await off();
+
+  // 비밀번호 재설정: 503(HTML)이면 「변경되었을 수 있음」으로 잠그고 같은 값으로만 재전송
+  const dialog = page.getByRole("dialog");
+  await page.getByRole("button", { name: `${s.name} 비밀번호 재설정` }).click();
+  await dialog.getByLabel("새 비밀번호").fill(`pw-${id}-503`);
+  off = await after503((u) => u.pathname.endsWith("/password"), "POST", html);
+  await dialog.getByRole("button", { name: "재설정" }).click();
+  await expect(dialog.getByTestId("sp-unclear")).toContainText("비밀번호가 변경되었을 수 있습니다.");
+  await expect(dialog.getByLabel("새 비밀번호")).toBeDisabled();
+  await off();
+  await dialog.getByRole("button", { name: "같은 비밀번호로 재전송" }).click();
+  await expect(page.getByText(`${s.name} 비밀번호를 변경했습니다`, { exact: false })).toBeVisible();
+
+  // 권한 수정: 형식을 알 수 없는 4xx(오류 코드 없음)도 불분명 → 다시 읽어 저장으로 판정
+  await page.getByRole("button", { name: `${s.name} 정보 · 권한 수정` }).click();
+  await dialog.getByRole("checkbox", { name: "상품", exact: true }).check();
+  let once = false;
+  await page.route(
+    (u) => u.pathname.endsWith("/permissions"),
+    async (route) => {
+      if (once) return route.continue();
+      once = true;
+      await route.fetch();
+      return route.fulfill({ status: 400, contentType: "text/html", body: "<html>Bad Request</html>" });
+    },
+  );
+  await dialog.getByRole("button", { name: "저장" }).click();
+  await expect(page.getByText(`${s.name} 정보를 저장했습니다`)).toBeVisible();
+  await expect(row(page, s.email)).toContainText("상품");
+
+  // 비활성화: 503이어도 다시 읽어 비활성으로 판정
+  await page.getByRole("button", { name: `${s.name} 비활성화` }).click();
+  off = await after503((u) => u.pathname.endsWith("/disable"), "POST", json503);
+  await dialog.getByRole("button", { name: "비활성화" }).click();
+  await expect(page.getByText(`${s.name} 계정을 비활성화했습니다`)).toBeVisible();
+  await expect(row(page, s.email)).toContainText("비활성");
+  await off();
+});
+
 test("권한이 하나도 없는 직원도 창으로 돌아오면 대표자가 켠 권한이 메뉴에 나온다(새로고침 없이)", async ({ page }) => {
   await login(page, "demo-owner@example.com");
   await expect(page).toHaveURL(/\/seller\/staff$/);

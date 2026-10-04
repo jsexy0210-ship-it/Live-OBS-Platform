@@ -464,10 +464,12 @@ test("아이디 찾기(대표자): 본인확인하면 가입한 이메일과 쇼
   await page.getByLabel("새 비밀번호 확인").fill(next);
   // 저장은 서버에서 끝났는데 응답만 끊긴다: 다시 누르면 권한이 이미 쓰여 invalid_grant가 오지만,
   // 처음부터(유료 본인확인) 보내지 않고 방금 정한 비밀번호로 로그인해 보게 한다
+  // 두 번째 요청은 프록시가 코드 없는 503으로 답한다: 본인확인 준비 중(identity_unavailable)이 아니므로 여전히 불분명으로 본다
   let completeCalls = 0;
   await page.route((u) => u.pathname === "/api/seller/password-reset/complete", async (route) => {
     completeCalls += 1;
-    if (completeCalls > 1) return route.continue();
+    if (completeCalls === 2) return route.fulfill({ status: 503, contentType: "text/html", body: "<html>Service Unavailable</html>" });
+    if (completeCalls > 2) return route.continue();
     await route.fetch();
     return route.abort("connectionreset");
   });
@@ -476,10 +478,14 @@ test("아이디 찾기(대표자): 본인확인하면 가입한 이메일과 쇼
   await expect(page.locator("#pw-notice")).toContainText("비밀번호가 바뀌었을 수 있어요.");
   await expect(page.locator("#pw-notice").getByRole("link", { name: "로그인하기" })).toBeVisible();
   await shot(page, "AU-004-maybe");
+  const proxied = page.waitForResponse((r) => r.url().endsWith("/api/seller/password-reset/complete") && r.status() === 503);
+  await page.getByRole("button", { name: "비밀번호 바꾸기" }).click();
+  await proxied;
+  await expect(page.locator("#pw-notice")).toContainText("비밀번호가 바뀌었을 수 있어요.");
   await page.getByRole("button", { name: "비밀번호 바꾸기" }).click();
   await expect(page.locator("#pw-maybe")).toContainText("비밀번호가 이미 바뀌었을 수 있어요.");
   await expect(page.getByLabel("인증번호")).toHaveCount(0);
-  expect(completeCalls).toBe(2);
+  expect(completeCalls).toBe(3);
   await page.unroute((u) => u.pathname === "/api/seller/password-reset/complete");
   await page.getByRole("link", { name: "로그인하기" }).click();
   await expect(page).toHaveURL(/\/seller\/login$/);
