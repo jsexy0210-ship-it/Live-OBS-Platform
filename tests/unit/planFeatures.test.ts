@@ -42,6 +42,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/message-balance": "BILLING",
   "seller/message-balance/consent": "BILLING",
   "seller/message-balance/ledger": "BILLING",
+  "seller/message-balance/charges": "BILLING",
   "seller/me/identity": "ACCOUNT",
   "seller/me/identity/link": "ACCOUNT",
   "seller/me/identity/start": "ACCOUNT",
@@ -94,6 +95,9 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/stream": "OVERLAY",
   "seller/member-policy": "STORE_OPERATIONS",
   "seller/order-policy": "STORE_OPERATIONS",
+  "seller/payments/bank-account": "STORE_OPERATIONS", // 무통장 입금 계좌
+  "seller/payments/deposits": "ORDER_FOLLOWUP", // 입금 대기 목록(잠금 중에도 이미 받은 주문 처리)
+  "seller/payments/deposits/confirm": "ORDER_FOLLOWUP", // 입금 확인
   "seller/products": "STORE_OPERATIONS",
   "seller/products/[productId]": "STORE_OPERATIONS",
   "seller/products/bulk": "STORE_OPERATIONS",
@@ -184,7 +188,8 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/products/[productId]/reviews": "STORE_OPERATIONS",
   "shop/[slug]/products/[productId]/images/[imageId]": "STORE_OPERATIONS", // 상품 사진(보이는 상품만)
   "shop/[slug]/orders/[orderId]": "OPEN",
-  "shop/[slug]/payments": "STORE_OPERATIONS", // 주문 카드 결제 시작(startPayment가 주문 생성과 같은 조건으로 막음)
+  "shop/[slug]/payments": "STORE_OPERATIONS",
+  "shop/[slug]/payments/bank-transfer": "STORE_OPERATIONS", // 무통장 입금 선택(shopOpenForPayment로 막음) // 주문 카드 결제 시작(startPayment가 주문 생성과 같은 조건으로 막음)
   "shop/[slug]/auth/login": "OPEN",
   "shop/[slug]/auth/logout": "OPEN",
   "shop/[slug]/addresses": "OPEN",
