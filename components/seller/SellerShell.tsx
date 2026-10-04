@@ -21,7 +21,7 @@ const NAV: Nav[] = [
   // 오버레이 전용은 방송 통계만(매출·상품 등은 스토어 운영, MASTER 결정 2026-10-04)
   { label: "통계", href: "/seller/stats", perm: "SALES_VIEW", plan: "STORE_OPERATIONS", alt: { plan: "OVERLAY", href: "/seller/stats/broadcasts" } },
   { h: "방송" },
-  { label: "방송 대시보드", perm: "BROADCAST_RUN", plan: "OVERLAY" },
+  { label: "방송 대시보드", href: "/seller/broadcast", perm: "BROADCAST_RUN", plan: "OVERLAY" },
   { h: "판매" },
   { label: "상품", href: "/seller/products", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
   { label: "주문", href: "/seller/orders", perm: "ORDER_SHIPPING", plan: "ANY" },
