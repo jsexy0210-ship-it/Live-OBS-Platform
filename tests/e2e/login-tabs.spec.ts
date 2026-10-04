@@ -46,6 +46,11 @@ test("로고는 카드 안 맨 위, 기본은 대표자 탭이고 한 줄에 왼
   });
   expect(colors.join).not.toBe(colors.find);
   expect(colors.text).toBe(colors.find);
+  // 시안: 밑줄 없음(마우스를 올렸을 때만)
+  for (const link of [join, find]) expect(await link.evaluate((el) => getComputedStyle(el).textDecorationLine)).toBe("none");
+  await find.hover();
+  expect(await find.evaluate((el) => getComputedStyle(el).textDecorationLine)).toBe("underline");
+  await page.mouse.move(0, 0);
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
     const box = (await nav.boundingBox())!;
