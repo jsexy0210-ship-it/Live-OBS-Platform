@@ -117,6 +117,30 @@ describe("배송 처리 목록 GET /api/seller/shipments", () => {
     for (const qs of ["?tab=shipped", "?cursor=bad", "?limit=0", "?from=2026-13-01", `?q=${"가".repeat(51)}`]) expect((await list(s.cookie, qs)).status, qs).toBe(400);
   });
 
+  it("기간 기준은 탭마다 다르다(발송 대기 = 주문 시각, 배송 중 = 발송 시각, 배송 완료 = 배송 완료 시각)와 KST 날짜 경계, 응답의 dateBasis", async () => {
+    const s = await shop();
+    const ordered = new Date("2026-10-01T10:00:00+09:00");
+    const transit = await s.order({ createdAt: ordered });
+    const done = await s.order({ createdAt: ordered });
+    // 발송 시각은 KST 10월 5일 0시 정각(경계), 배송 완료는 10월 8일 23:59:59.999
+    await db.shipment.create({ data: { sellerId: s.seller.id, orderId: transit.id, courier: "CJ", trackingNumber: "123456789012", status: "IN_TRANSIT", shippedAt: new Date("2026-10-05T00:00:00+09:00") } });
+    await db.shipment.create({
+      data: { sellerId: s.seller.id, orderId: done.id, courier: "CJ", trackingNumber: "123456789013", status: "DELIVERED", shippedAt: new Date("2026-10-05T00:00:00+09:00"), deliveredAt: new Date("2026-10-08T23:59:59.999+09:00") },
+    });
+    const r = async (qs: string) => (await list(s.cookie, qs)).body;
+    expect((await r("?tab=ready")).dateBasis).toBe("orderedAt");
+    expect((await r("?tab=in_transit")).dateBasis).toBe("shippedAt");
+    expect((await r("?tab=delivered")).dateBasis).toBe("deliveredAt");
+    // 배송 중: 발송일로 거른다(주문일로는 안 걸림)
+    expect(ids(await r("?tab=in_transit&from=2026-10-05&to=2026-10-05"))).toEqual([transit.id]);
+    expect(ids(await r("?tab=in_transit&to=2026-10-04"))).toEqual([]);
+    expect(ids(await r("?tab=in_transit&from=2026-10-01&to=2026-10-01"))).toEqual([]);
+    // 배송 완료: 완료일로 거른다(발송일로는 안 걸림)
+    expect(ids(await r("?tab=delivered&from=2026-10-08&to=2026-10-08"))).toEqual([done.id]);
+    expect(ids(await r("?tab=delivered&from=2026-10-09"))).toEqual([]);
+    expect(ids(await r("?tab=delivered&from=2026-10-05&to=2026-10-05"))).toEqual([]);
+  });
+
   it("받는 분 정보는 개인정보 권한이 있을 때만 넣고(열람 기록), 없으면 도서산간 여부만. 받는 분 이름 검색도 권한이 있을 때만", async () => {
     const s = await shop();
     const o = await s.order();

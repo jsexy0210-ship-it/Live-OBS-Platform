@@ -28,7 +28,7 @@ const meta = (page: Page, key: string) => page.locator(`meta[property="${key}"],
 test("대표자: 공유 미리보기 제목·설명을 저장하면 쇼핑몰 페이지의 공유 정보에 쓰이고, 비우면 쇼핑몰 이름으로 돌아간다", async ({ page }) => {
   await loginSeller(page, "demo-owner@example.com", PASSWORD, "/seller/settings/share");
   await expect(page).toHaveURL(/\/seller\/settings\/share$/);
-  await expect(page.getByRole("navigation", { name: "쇼핑몰 설정" }).getByRole("link", { name: "공유 미리보기" })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "공유 설정" })).toHaveAttribute("aria-current", "page");
   // 비어 있으면 미리보기 제목은 쇼핑몰 이름이다
   const card = page.getByTestId("sp-card");
   await expect(card).toContainText("카드숍 별빛");
@@ -43,7 +43,7 @@ test("대표자: 공유 미리보기 제목·설명을 저장하면 쇼핑몰 �
   await expect(card).toContainText(description);
   await expect(page.getByText(`${Array.from(title).length}/60`)).toBeVisible();
   await shot(page, "SA-060-share");
-  // 휴대폰 폭에서도 화면이 가로로 넘치지 않는다(설정 탭이 하나 늘었다)
+  // 휴대폰 폭에서도 화면이 가로로 넘치지 않는다
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -144,37 +144,24 @@ test("공유 미리보기: 저장하는 동안에는 칸을 잠가 저장 중 �
   await expect(page.getByLabel("제목")).toHaveValue("");
 });
 
-// 쇼핑몰 설정 탭이 늘어 390px에서는 탭 줄 안에서 가로로 넘긴다: 화면 전체는 넘치지 않고, 지금 탭(맨 끝 공유 미리보기)이 보인다
-test("390px에서 쇼핑몰 설정 탭은 탭 줄 안에서 넘기고, 지금 탭이 화면 안에 보인다", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await loginSeller(page, "demo-owner@example.com", PASSWORD, "/seller/settings/share");
-  await expect(page).toHaveURL(/\/seller\/settings\/share$/);
-  const current = page.getByRole("navigation", { name: "쇼핑몰 설정" }).getByRole("link", { name: "공유 미리보기" });
-  await expect(current).toHaveAttribute("aria-current", "page");
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
-  await expect.poll(async () => {
-    const box = await current.boundingBox();
-    return box !== null && box.x >= 0 && box.x + box.width <= 390;
-  }).toBe(true);
-});
-
-// 넓은 화면에서 연 뒤 폭을 줄여도(회전·창 크기 변경) 지금 탭이 다시 보이게 탭 줄을 넘긴다
-test("넓은 화면에서 연 뒤 390px로 줄여도 지금 탭이 화면 안에 보인다", async ({ page }) => {
+// 설정 화면 안에 탭 줄이 없고, 왼쪽 메뉴로 각 설정 화면에 갈 수 있다
+test("쇼핑몰 설정 화면에는 탭 줄이 없고, 왼쪽 메뉴로 각 설정 화면에 이동한다", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await loginSeller(page, "demo-owner@example.com", PASSWORD, "/seller/settings/share");
   await expect(page).toHaveURL(/\/seller\/settings\/share$/);
-  const current = page.getByRole("navigation", { name: "쇼핑몰 설정" }).getByRole("link", { name: "공유 미리보기" });
-  await expect(current).toHaveAttribute("aria-current", "page");
-  await page.setViewportSize({ width: 390, height: 844 });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
-  await expect.poll(async () => {
-    const box = await current.boundingBox();
-    return box !== null && box.x >= 0 && box.x + box.width <= 390;
-  }).toBe(true);
+  await expect(page.getByRole("navigation", { name: "쇼핑몰 설정" })).toHaveCount(0);
+  await expect(page.locator(".settings-tabs")).toHaveCount(0);
+  const lnb = page.getByRole("complementary", { name: "파트너스 메뉴" });
+  await expect(lnb.getByRole("link", { name: "공유 설정" })).toHaveAttribute("aria-current", "page");
+  for (const [name, path] of [["쇼핑몰 정보", "shop"], ["주문 설정", "order"], ["배송 설정", "shipping"], ["회원 정책", "member"], ["공유 설정", "share"]] as const) {
+    await lnb.getByRole("link", { name }).click();
+    await expect(page).toHaveURL(new RegExp(`/seller/settings/${path}$`));
+    await expect(page.getByRole("navigation", { name: "쇼핑몰 설정" })).toHaveCount(0);
+  }
 });
 
-// 1440px(넓은 화면)에서도 공유 미리보기·설정 탭 스타일이 적용된다(좁은 화면 전용 블록 안에 갇히지 않음)
-test("1440px에서 공유 미리보기 카드·설정 탭·입력 묶음 스타일이 적용된다", async ({ page }) => {
+// 1440px(넓은 화면)에서도 공유 미리보기 스타일이 적용된다(좁은 화면 전용 블록 안에 갇히지 않음)
+test("1440px에서 공유 미리보기 카드·입력 묶음 스타일이 적용된다", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await loginSeller(page, "demo-owner@example.com", PASSWORD, "/seller/settings/share");
   await expect(page).toHaveURL(/\/seller\/settings\/share$/);
@@ -183,9 +170,8 @@ test("1440px에서 공유 미리보기 카드·설정 탭·입력 묶음 스타�
     const get = (sel: string) => getComputedStyle(document.querySelector(sel)!);
     return {
       cardMaxWidth: get(".sp-card").maxWidth,
-      tabsOverflowX: get(".settings-tabs").overflowX,
       fieldsBorder: get(".settings-fields").borderTopWidth,
     };
   });
-  expect(styles).toEqual({ cardMaxWidth: "420px", tabsOverflowX: "auto", fieldsBorder: "0px" });
+  expect(styles).toEqual({ cardMaxWidth: "420px", fieldsBorder: "0px" });
 });

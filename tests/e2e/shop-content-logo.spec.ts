@@ -53,9 +53,9 @@ test.describe.serial("SA-060 쇼핑몰 로고", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/seller/login?next=%2Fseller%2Fsettings%2Fshipping");
     await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
-    await page.getByRole("link", { name: "쇼핑몰 정보" }).click();
+    await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "쇼핑몰 정보" }).click();
     await expect(page).toHaveURL(/\/seller\/settings\/shop$/);
-    await expect(page.getByRole("link", { name: "쇼핑몰 정보" })).toHaveAttribute("aria-current", "page");
+    await expect(page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "쇼핑몰 정보" })).toHaveAttribute("aria-current", "page");
     // 로고가 없으면 쇼핑몰 이름 첫 글자
     await expect(page.getByText("로고 없음 · 쇼핑몰 이름 첫 글자로 표시")).toBeVisible();
     await expect(page.getByTestId("logo-preview")).toContainText("카");
@@ -184,15 +184,16 @@ test.describe.serial("SA-060 쇼핑몰 로고", () => {
     await post;
   });
 
-  test("「쇼핑몰 설정」 권한 없는 직원: 메뉴 → 쇼핑몰 정보 탭으로 들어가 보기만(올리기·지우기 없음, 볼 수 없는 탭은 안 보임)", async ({ page }) => {
+  test("「쇼핑몰 설정」 권한 없는 직원: 메뉴 → 쇼핑몰 정보로 들어가 보기만(올리기·지우기 없음, 볼 수 없는 메뉴는 안 보임)", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/seller/login");
     await submitSellerLogin(page, "demo-staff@example.com", PASSWORD);
-    await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "쇼핑몰 설정" }).click();
+    await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "쇼핑몰 설정" }).click();
     await expect(page).toHaveURL(/\/seller\/settings\/shop$/);
-    const tabs = page.getByRole("navigation", { name: "쇼핑몰 설정" });
-    await expect(tabs.getByRole("link", { name: "쇼핑몰 정보" })).toHaveAttribute("aria-current", "page");
-    for (const hidden of ["배송비 정책", "주문 설정", "회원 정책"]) await expect(tabs.getByRole("link", { name: hidden })).toHaveCount(0);
+    await expect(page.getByRole("navigation", { name: "쇼핑몰 설정" })).toHaveCount(0);
+    const lnb = page.getByRole("complementary", { name: "파트너스 메뉴" });
+    await expect(lnb.getByRole("link", { name: "쇼핑몰 정보" })).toHaveAttribute("aria-current", "page");
+    for (const hidden of ["배송 설정", "주문 설정", "회원 정책"]) await expect(lnb.getByRole("link", { name: hidden })).toHaveCount(0);
     await expect(page.getByText("보기만 할 수 있습니다. 로고 변경은 대표자나 쇼핑몰 설정 권한이 있는 직원에게 요청해 주십시오.")).toBeVisible();
     await expect(page.getByRole("button", { name: "올리기" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "로고 올리기" })).toHaveCount(0);

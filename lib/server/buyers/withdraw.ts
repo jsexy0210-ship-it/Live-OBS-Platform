@@ -11,6 +11,7 @@ import { WITHDRAWN_DISPLAY_NAME } from "./memberData";
 import { purgeExpiredRejoinBlocks, recordRejoinBlock } from "./rejoin";
 import { purgeSignupVerificationsForShop } from "./signup";
 import { deleteUnusedBuyerCoupons } from "../shop-coupons/service";
+import { anonymizeMemberReviews } from "../product-reviews/service";
 
 // 구매자 탈퇴(ARCHITECTURE 「구매자 회원」: WITHDRAWN과 deletedAt을 같은 트랜잭션에서, 개인정보 비식별).
 // 기준(MASTER 결정 2026-10-03):
@@ -91,6 +92,9 @@ export async function withdrawBuyer(
       if (cur?.status !== "PENDING_PAYMENT") return "orders_in_progress" as const;
       pending.push(o.id);
     }
+    // 전역 잠금 순서(주문 → 회원 → 리뷰 → 원장): 아래에서 바꾸는 이 회원의 주문 행(닉네임 비식별·보관 기한 갱신)을 회원 행보다 먼저
+    // id 순으로 잠근다(결제 대기 주문 확인 뒤, 회원 행 앞). 상품 리뷰 쓰기는 주문(FOR SHARE) → 회원(FOR SHARE) 순서라, 회원을 쥔 채 주문을 기다리면 교착이 생긴다(product-reviews).
+    await tx.$queryRaw`SELECT "id" FROM "Order" WHERE "sellerId" = ${scope.sellerId}::uuid AND "buyerMemberId" = ${member.id}::uuid ORDER BY "id" FOR NO KEY UPDATE`;
     await tx.$queryRaw`SELECT "id" FROM "BuyerMember" WHERE "id" = ${member.id}::uuid FOR NO KEY UPDATE`;
     // 재가입 제한은 지금 동의 상태로 정한다(PRODUCT_SCOPE, 개인정보 보호법 제37조). 잠금 전에 읽은 값은 그사이 철회됐을 수 있다.
     const { rejoinRestrictionDaysAgreed } = await tx.buyerMember.findUniqueOrThrow({ where: { id: member.id }, select: { rejoinRestrictionDaysAgreed: true } });
@@ -154,7 +158,11 @@ export async function withdrawBuyer(
     const addresses = await tx.buyerAddress.deleteMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id } });
     // 쓰지 않은 쿠폰 삭제(결제 대기 주문을 위에서 취소해 되돌린 쿠폰은 주문 기록과 이어져 남는다, shop-coupons)
     const deletedCoupons = await deleteUnusedBuyerCoupons(tx, { sellerId: scope.sellerId, buyerMemberId: member.id });
+    // 상품 리뷰는 남기고 작성자 표시만 「탈퇴 회원」으로, 신고·붙지 않은 사진은 지운다(product-reviews)
+    const reviews = await anonymizeMemberReviews(tx, { sellerId: scope.sellerId, buyerMemberId: member.id });
     const sessions = await tx.buyerSession.deleteMany({ where: { buyerMemberId: member.id } });
+    // 적립금 소멸 안내 기록(잔액을 위에서 0으로 만들어 더 안내할 일이 없다, 개인정보 없음)
+    const expiryNotices = await tx.rewardExpiryNotice.deleteMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id } });
     const heldOrders = await refreshOrderRetention(tx, scope.sellerId, now, { buyerMemberId: member.id });
     await writeAudit(tx, {
       actorType: "BUYER",
@@ -165,7 +173,7 @@ export async function withdrawBuyer(
       targetId: member.id,
       ip: input.meta?.ip,
       userAgent: input.meta?.userAgent,
-      after: { status: "WITHDRAWN", deletedAddresses: addresses.count, deletedSessions: sessions.count, anonymizedVerifications: identities, anonymizedOrders: orders.count, anonymizedQueueItems: queueItems.count, anonymizedHitCards: hitCards.count, deletedRestrictions: restrictions.count, cancelledPendingOrders: pending.length, heldOrders, rejoinBlockedUntil, ...forfeited, deletedCoupons },
+      after: { status: "WITHDRAWN", deletedAddresses: addresses.count, deletedSessions: sessions.count, deletedRewardExpiryNotices: expiryNotices.count, anonymizedVerifications: identities, anonymizedOrders: orders.count, anonymizedQueueItems: queueItems.count, anonymizedHitCards: hitCards.count, deletedRestrictions: restrictions.count, cancelledPendingOrders: pending.length, heldOrders, rejoinBlockedUntil, ...forfeited, deletedCoupons, reviews },
     });
     // 방금 남긴 탈퇴 기록까지 포함해 기한을 단다
     await holdMemberAuditLogs(tx, scope.sellerId, member.id, now);

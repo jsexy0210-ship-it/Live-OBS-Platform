@@ -45,6 +45,10 @@ type Meta = { ip?: string | null; userAgent?: string | null };
 
 // 올린 파비콘이 없을 때 쓰는 기본 ONQ 아이콘(public/branding, 로고 심볼 .logo-sym과 같은 모양·색). 32px 탭 아이콘과 180px 홈 화면 아이콘.
 export const DEFAULT_FAVICON = { url: "/branding/onq-32.png", appleUrl: "/branding/onq-180.png", type: "image/png" } as const;
+// 마스터 관리자 기본 아이콘: 같은 모양을 마스터 식별색 틸(--master #0f766e)로 그린 것. 탭이 여러 개 열려 있어도 구분된다(대표님 지시 2026-10-04).
+export const DEFAULT_ADMIN_FAVICON = { url: "/branding/onq-admin-32.png", appleUrl: "/branding/onq-admin-180.png", type: "image/png" } as const;
+// 올린 파비콘이 없을 때 쓰는 기본 아이콘(대상별)
+export const defaultFavicon = (target: BrandingTarget) => (target === "admin" ? DEFAULT_ADMIN_FAVICON : DEFAULT_FAVICON);
 
 // 주소: 파비콘 /api/branding/{target}/favicon?v=해시, 공유 카드 /api/branding/{target}/og?v=버전
 export const faviconUrl = (target: BrandingTarget, hash: string) => `/api/branding/${target}/favicon?v=${hash}`;
@@ -59,6 +63,8 @@ export type BrandingView = {
   description: string | null;
   defaults: { title: string; description: string | null };
   favicon: { url: string; type: string } | null;
+  // 올린 파비콘이 없을 때 쓰는 기본 아이콘 주소(설정 화면 미리보기용)
+  defaultFaviconUrl: string;
   ogImage: { url: string; uploaded: boolean; width: 1200; height: 630 };
   updatedAt: string | null;
 };
@@ -75,6 +81,7 @@ async function view(db: PrismaClient, target: BrandingTarget): Promise<BrandingV
     description: row?.ogDescription ?? null,
     defaults: BRANDING_DEFAULTS[target],
     favicon: row?.faviconHash && row.faviconType ? { url: faviconUrl(target, row.faviconHash), type: row.faviconType } : null,
+    defaultFaviconUrl: defaultFavicon(target).url,
     ogImage: {
       url: ogImageUrl(target, row?.ogImageHash ?? generatedCardVersion(cardTitle)),
       uploaded: !!row?.ogImageHash,

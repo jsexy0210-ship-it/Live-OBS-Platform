@@ -40,7 +40,7 @@ export default async function ShopSignupPage({ params }: Params) {
     rejoinDays: await rejoinDaysToAgree(prisma, shop.id),
   };
   return (
-    <ShopFrame shopName={shop.shopName}>
+    <ShopFrame slug={slug} shopName={shop.shopName}>
       {!open ? (
         <ShopState title="지금은 쇼핑몰을 이용할 수 없어요" body="쇼핑몰이 다시 문을 열면 가입할 수 있어요." />
       ) : !identityReady ? (
