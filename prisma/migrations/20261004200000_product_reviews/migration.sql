@@ -40,6 +40,7 @@ CREATE TABLE "ProductReview" (
     "repliedAt" TIMESTAMPTZ(3),
     "reportCount" INTEGER NOT NULL DEFAULT 0,
     "rewardRound" INTEGER NOT NULL DEFAULT 0,
+    "deletedAt" TIMESTAMPTZ(3),
     "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -147,7 +148,7 @@ ALTER TABLE "ProductReviewReport" ADD CONSTRAINT "ProductReviewReport_sellerId_b
 
 -- 별점 1~5, 본문 10~1000자, 답글 300자, 신고 수·적립 0 이상
 ALTER TABLE "ProductReview" ADD CONSTRAINT "ProductReview_rating_check" CHECK ("rating" BETWEEN 1 AND 5);
-ALTER TABLE "ProductReview" ADD CONSTRAINT "ProductReview_body_check" CHECK (char_length("body") BETWEEN 10 AND 1000);
+ALTER TABLE "ProductReview" ADD CONSTRAINT "ProductReview_body_check" CHECK (char_length("body") BETWEEN 10 AND 1000 OR ("deletedAt" IS NOT NULL AND "body" = ''));
 ALTER TABLE "ProductReview" ADD CONSTRAINT "ProductReview_reply_check" CHECK ("reply" IS NULL OR char_length("reply") BETWEEN 1 AND 300);
 ALTER TABLE "ProductReview" ADD CONSTRAINT "ProductReview_counts_check" CHECK ("reportCount" >= 0 AND "rewardRound" >= 0);
 -- 숨긴 리뷰만 숨김 사유가 있다

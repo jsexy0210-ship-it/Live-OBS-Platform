@@ -29,7 +29,8 @@ import { cleanText } from "../text/clean";
 // - 구매자: 배송 완료된 주문 상품마다 1번(쇼핑몰 설정 기간 안, 기본 30일). 7일 안에 고치고, 언제든 지울 수 있다(숨긴 리뷰는 고치지 못함). 쓰기 경로(올리기·고치기·지우기·사진·신고)는 모두 쇼핑몰 이용 가능 검사(shopOpen)를 거친다.
 // - 파트너스: 조회는 누구나, 답글·숨김·공개·설정은 대표자·구매자 문의(INQUIRY_REPLY) 직원. 모든 변경은 로그 추적에 남는다.
 // - 공개 방식: 바로 공개(연락처·외부 주소·금지어가 있으면 보류) 또는 확인 뒤 공개. 신고가 3건 쌓이면 공개 리뷰를 보류한다.
-// - 리뷰 적립금(설정, 기본 0원): 공개될 때 지급, 숨김·삭제 때 회수(적립금 원장, 실지급 스위치가 꺼져 있으면 testMode).
+// - 리뷰 적립금(설정, 기본 0원): 모든 상태 전이의 끝에서 settleReward 하나로 원하는 상태(공개·회원 유효·주문 결제 완료면 사진 자격 금액, 아니면 0)와 원장을 맞춘다
+//   (실지급 스위치가 꺼져 있으면 testMode). 지운 리뷰는 묘비(deletedAt)로 남아 같은 주문 상품에 다시 쓸 수 없다.
 // - 잠금 순서(모든 쓰기 경로가 따른다, shop-coupons와 같은 원칙): 주문 행(FOR SHARE) → 회원 행(FOR SHARE) → 리뷰 행(FOR UPDATE) → 원장.
 //   · 환불은 주문 행을 바꾸고(NO KEY UPDATE), 탈퇴는 회원 행(NO KEY UPDATE) → 그 회원의 리뷰 행 순서라 같은 방향이다. 공유 잠금끼리는 서로 막지 않는다.
 //   · 새 리뷰는 주문 → 회원을 잠근 뒤 주문 품목 자격(결제 완료·배송 완료·기간)을 다시 보고, 주문 품목당 1개는 유니크 키가 막는다.
@@ -66,13 +67,15 @@ async function lockOrderPaid(tx: Tx, sellerId: string, orderId: string): Promise
 }
 
 // 기존 리뷰를 바꾸는 쓰기의 잠금: 주문(FOR SHARE) → 작성자 회원(FOR SHARE) → 리뷰(FOR UPDATE). 주문·작성자는 리뷰에서 바뀌지 않는 값이다.
-async function lockReviewChain(tx: Tx, sellerId: string, id: string): Promise<{ review: ProductReview; orderPaid: boolean } | null> {
-  const ref = await tx.productReview.findFirst({ where: { id, sellerId }, select: { orderId: true, buyerMemberId: true } });
+// 신고처럼 다른 회원(신고한 회원)도 함께 잠가야 하면 extraMemberId로 넘긴다(회원 잠금끼리는 id 순서). 지운 리뷰(묘비)는 없는 것으로 본다.
+async function lockReviewChain(tx: Tx, sellerId: string, id: string, extraMemberId?: string): Promise<{ review: ProductReview; orderPaid: boolean } | null> {
+  const ref = await tx.productReview.findFirst({ where: { id, sellerId, deletedAt: null }, select: { orderId: true, buyerMemberId: true } });
   if (!ref) return null;
   const orderPaid = await lockOrderPaid(tx, sellerId, ref.orderId);
-  await tx.$queryRaw`SELECT "id" FROM "BuyerMember" WHERE "id" = ${ref.buyerMemberId}::uuid AND "sellerId" = ${sellerId}::uuid FOR SHARE`;
+  for (const memberId of [...new Set([ref.buyerMemberId, ...(extraMemberId ? [extraMemberId] : [])])].sort())
+    await tx.$queryRaw`SELECT "id" FROM "BuyerMember" WHERE "id" = ${memberId}::uuid AND "sellerId" = ${sellerId}::uuid FOR SHARE`;
   const review = await lockReview(tx, sellerId, id);
-  return review ? { review, orderPaid } : null;
+  return review && !review.deletedAt ? { review, orderPaid } : null;
 }
 
 function sellerAudit(db: Db, ctx: TenantContext, meta: AuditMeta, action: string, targetId: string, before: unknown, after: unknown) {
@@ -100,50 +103,41 @@ export async function activeRewards(db: Db, sellerId: string, reviews: RewardRef
   return out;
 }
 
-// 공개될 때 지급(유효한 적립이 있으면 그대로). 다시 공개하면 새 회차로 지급한다. 리뷰 행 잠금 아래에서 부른다.
-// 결과는 돌려받은 원장 상태로 판단한다. 실패(탈퇴 회원 등)면 지급 0이고, 회차만 넘겨 같은 키를 다시 쓰지 않게 한다.
-async function grantReward(tx: Tx, r: ProductReview, now: Date, orderPaid: boolean): Promise<number> {
-  if (!orderPaid || (await activeRewards(tx, r.sellerId, [r])).has(r.id)) return 0;
-  const policy = await policyOf(tx, r.sellerId);
-  const photos = await tx.productReviewImage.count({ where: { sellerId: r.sellerId, reviewId: r.id } });
-  const amount = rewardFor(policy, photos);
-  if (amount <= 0) return 0;
-  const round = r.rewardRound + 1;
-  const rp = await tx.rewardPolicy.findUnique({ where: { sellerId: r.sellerId }, select: { livePayoutEnabled: true } });
-  const earn = await createPendingRewardLedger(tx, {
-    sellerId: r.sellerId,
-    buyerMemberId: r.buyerMemberId,
-    orderId: r.orderId,
-    type: "EARN",
-    amount,
-    testMode: !rp?.livePayoutEnabled,
-    idempotencyKey: `review_reward:${r.id}:${round}`,
-    createdAt: now,
-  });
-  await tx.productReview.update({ where: { id: r.id }, data: { rewardRound: round } });
-  return earn.status === "FAILED" ? 0 : amount;
-}
-
-// 숨김·삭제·사진 조건을 잃을 때 회수(유효한 적립이 있을 때만, 회차마다 한 번).
-// testMode는 지금 실지급 스위치가 아니라 원래 적립 원장을 따른다(주문 환불 회수와 같은 방식). 회수 원장이 실패했으면(탈퇴 회원) 회수액 0.
-async function revokeReward(tx: Tx, r: ProductReview, now: Date): Promise<number> {
-  const earn = (await activeRewards(tx, r.sellerId, [r])).get(r.id);
-  if (!earn) return 0;
-  const revoke = await createPendingRewardLedger(tx, {
-    sellerId: r.sellerId,
-    buyerMemberId: r.buyerMemberId,
-    orderId: r.orderId,
-    type: "REVOKE",
-    amount: -earn.amount,
-    testMode: earn.testMode,
-    idempotencyKey: `review_revoke:${r.id}:${r.rewardRound}`,
-    createdAt: now,
-  });
-  return revoke.status === "FAILED" ? 0 : earn.amount;
+// 리뷰 적립은 이 함수 하나로만 바꾼다(멱등, 모든 상태 전이의 끝에서 부른다). 리뷰 행 잠금 아래에서 부르고, r은 바뀐 뒤의 값이다.
+// 원하는 금액 = 리뷰가 공개(VISIBLE)이고 지우지 않았고, 작성 회원이 ACTIVE이고, 잠긴 주문이 결제 완료(PAID)이면 지금 사진 자격의 설정 금액, 아니면 0.
+// 지금 유효한 원장 금액(activeRewards)과 다르면 이번 회차를 회수하고(회수 testMode는 원래 적립 원장을 따른다) 원하는 금액이 있으면 새 회차로 지급한다.
+// 결과는 돌려받은 원장 상태로 판단한다(실패한 적립·회수는 0으로 센다). 같은 상태로 다시 불러도 원장은 바뀌지 않는다.
+export type Settled = { granted: number; revoked: number };
+async function settleReward(tx: Tx, r: ProductReview, now: Date, orderPaid: boolean): Promise<Settled> {
+  const active = (await activeRewards(tx, r.sellerId, [r])).get(r.id);
+  let want = 0;
+  if (r.status === "VISIBLE" && !r.deletedAt && orderPaid) {
+    const m = await tx.buyerMember.findUnique({ where: { id: r.buyerMemberId }, select: { status: true, deletedAt: true } });
+    if (m?.status === "ACTIVE" && !m.deletedAt) {
+      const photos = await tx.productReviewImage.count({ where: { sellerId: r.sellerId, reviewId: r.id } });
+      want = rewardFor(await policyOf(tx, r.sellerId), photos);
+    }
+  }
+  const out: Settled = { granted: 0, revoked: 0 };
+  if ((active?.amount ?? 0) === want) return out;
+  const base = { sellerId: r.sellerId, buyerMemberId: r.buyerMemberId, orderId: r.orderId, createdAt: now };
+  if (active) {
+    const revoke = await createPendingRewardLedger(tx, { ...base, type: "REVOKE", amount: -active.amount, testMode: active.testMode, idempotencyKey: `review_revoke:${r.id}:${r.rewardRound}` });
+    out.revoked = revoke.status === "FAILED" ? 0 : active.amount;
+  }
+  if (want > 0) {
+    const round = r.rewardRound + 1;
+    const rp = await tx.rewardPolicy.findUnique({ where: { sellerId: r.sellerId }, select: { livePayoutEnabled: true } });
+    const earn = await createPendingRewardLedger(tx, { ...base, type: "EARN", amount: want, testMode: !rp?.livePayoutEnabled, idempotencyKey: `review_reward:${r.id}:${round}` });
+    await tx.productReview.update({ where: { id: r.id }, data: { rewardRound: round } });
+    out.granted = earn.status === "FAILED" ? 0 : want;
+  }
+  return out;
 }
 
 // 환불(queue/service.ts refundOrder)에서 부른다. 주문 행은 환불이 이미 잠갔다(NO KEY UPDATE). 그 뒤 회원 → 리뷰 → 원장 순서로
-// 이 주문 리뷰의 유효한 적립을 회수한다. 회수 방식은 주문 적립과 같다: AUTO(기본)면 회수, MANUAL이면 주문 적립처럼 기록하지 않고 수동 확인 대상으로 둔다.
+// 이 주문 리뷰의 적립을 settleReward로 맞춘다(환불된 주문이라 원하는 금액은 0). 회수 방식은 주문 적립과 같다:
+// AUTO(기본)면 회수, MANUAL이면 주문 적립처럼 기록하지 않고 수동 확인 대상으로 둔다.
 export async function revokeReviewRewardsForOrder(tx: Tx, sellerId: string, orderId: string, now: Date): Promise<number> {
   const policy = await tx.rewardPolicy.findUnique({ where: { sellerId }, select: { revokeMode: true } });
   if (policy?.revokeMode === "MANUAL") return 0;
@@ -152,18 +146,9 @@ export async function revokeReviewRewardsForOrder(tx: Tx, sellerId: string, orde
   for (const ref of refs) {
     await tx.$queryRaw`SELECT "id" FROM "BuyerMember" WHERE "id" = ${ref.buyerMemberId}::uuid AND "sellerId" = ${sellerId}::uuid FOR SHARE`;
     const r = await lockReview(tx, sellerId, ref.id);
-    if (r) revoked += await revokeReward(tx, r, now);
+    if (r) revoked += (await settleReward(tx, r, now, false)).revoked;
   }
   return revoked;
-}
-
-// 사진 리뷰 자격이 바뀐 공개 리뷰의 적립 재조정: 지금 유효한 금액이 새 자격의 금액과 다르면 이번 회차를 회수하고 새 회차로 지급한다(같은 회수·지급 경로).
-async function reconcileReward(tx: Tx, r: ProductReview, now: Date, orderPaid: boolean): Promise<void> {
-  const active = (await activeRewards(tx, r.sellerId, [r])).get(r.id)?.amount ?? 0;
-  const photos = await tx.productReviewImage.count({ where: { sellerId: r.sellerId, reviewId: r.id } });
-  if (active === rewardFor(await policyOf(tx, r.sellerId), photos)) return;
-  await revokeReward(tx, r, now);
-  await grantReward(tx, r, now, orderPaid);
 }
 
 // ───────── 파트너스 관리자 ─────────
@@ -183,7 +168,7 @@ export async function listSellerReviews(db: PrismaClient, ctx: TenantContext, q:
     if (c) after = { OR: [{ createdAt: { lt: c.createdAt } }, { createdAt: c.createdAt, id: { lt: c.id } }] };
   }
   const where: Prisma.ProductReviewWhereInput = {
-    sellerId: ctx.sellerId,
+    sellerId: ctx.sellerId, deletedAt: null,
     ...(status ? { status } : {}),
     ...(rating !== undefined ? { rating } : {}),
     ...(q.waiting === "1" ? { reply: null, status: { not: "HIDDEN" as const } } : {}),
@@ -202,14 +187,14 @@ export async function listSellerReviews(db: PrismaClient, ctx: TenantContext, q:
         _count: { select: { images: true } },
       },
     }),
-    db.productReview.aggregate({ where: { sellerId: ctx.sellerId, status: "VISIBLE" }, _avg: { rating: true }, _count: { _all: true } }),
-    db.productReview.groupBy({ by: ["rating"], where: { sellerId: ctx.sellerId, status: "VISIBLE" }, _count: { _all: true } }),
-    db.productReview.count({ where: { sellerId: ctx.sellerId, createdAt: { gte: weekAgo } } }),
-    db.productReview.count({ where: { sellerId: ctx.sellerId, createdAt: { gte: weekAgo }, images: { some: {} } } }),
-    db.productReview.count({ where: { sellerId: ctx.sellerId, reply: null, status: { not: "HIDDEN" } } }),
-    db.productReview.count({ where: { sellerId: ctx.sellerId, reply: null, status: { not: "HIDDEN" }, createdAt: { lt: threeDaysAgo } } }),
-    db.productReview.count({ where: { sellerId: ctx.sellerId, status: { in: ["PENDING", "HELD"] } } }),
-    db.productReview.count({ where: { sellerId: ctx.sellerId, status: "HELD", heldBy: { in: ["contact", "url", "banned_word"] } } }),
+    db.productReview.aggregate({ where: { sellerId: ctx.sellerId, deletedAt: null, status: "VISIBLE" }, _avg: { rating: true }, _count: { _all: true } }),
+    db.productReview.groupBy({ by: ["rating"], where: { sellerId: ctx.sellerId, deletedAt: null, status: "VISIBLE" }, _count: { _all: true } }),
+    db.productReview.count({ where: { sellerId: ctx.sellerId, deletedAt: null, createdAt: { gte: weekAgo } } }),
+    db.productReview.count({ where: { sellerId: ctx.sellerId, deletedAt: null, createdAt: { gte: weekAgo }, images: { some: {} } } }),
+    db.productReview.count({ where: { sellerId: ctx.sellerId, deletedAt: null, reply: null, status: { not: "HIDDEN" } } }),
+    db.productReview.count({ where: { sellerId: ctx.sellerId, deletedAt: null, reply: null, status: { not: "HIDDEN" }, createdAt: { lt: threeDaysAgo } } }),
+    db.productReview.count({ where: { sellerId: ctx.sellerId, deletedAt: null, status: { in: ["PENDING", "HELD"] } } }),
+    db.productReview.count({ where: { sellerId: ctx.sellerId, deletedAt: null, status: "HELD", heldBy: { in: ["contact", "url", "banned_word"] } } }),
     policyOf(db, ctx.sellerId),
   ]);
   const page = rows.slice(0, SELLER_PAGE);
@@ -253,7 +238,7 @@ export async function listSellerReviews(db: PrismaClient, ctx: TenantContext, q:
 export async function getSellerReview(db: PrismaClient, ctx: TenantContext, id: string) {
   if (!isUuid(id)) throw notFound();
   const r = await db.productReview.findFirst({
-    where: { id, sellerId: ctx.sellerId },
+    where: { id, sellerId: ctx.sellerId, deletedAt: null },
     include: {
       product: { select: { name: true } },
       orderItem: { select: { optionNameSnapshot: true, quantity: true } },
@@ -323,14 +308,14 @@ export async function hideReview(db: PrismaClient, ctx: TenantContext, id: strin
     if (!locked) throw notFound();
     const before = locked.review;
     const now = await lockedNow(tx);
-    const revoked = await revokeReward(tx, before, now);
     await tx.productReview.update({ where: { id }, data: { status: "HIDDEN", hiddenReason: reason, hiddenNote: note, heldBy: null, updatedAt: now } });
+    const { revoked } = await settleReward(tx, { ...before, status: "HIDDEN" }, now, locked.orderPaid);
     await sellerAudit(tx, ctx, meta, "review.hide", id, { status: before.status }, { status: "HIDDEN", reason, note, revokedReward: revoked });
     return { ok: true as const, revokedReward: revoked };
   });
 }
 
-// 공개(공개 대기·보류·숨김 → 공개). 공개되면 리뷰 적립금을 지급한다(이미 지급된 회차가 있으면 그대로).
+// 공개(공개 대기·보류·숨김 → 공개). 적립은 settleReward로 원하는 상태에 맞춘다(신고 보류 해제 포함).
 export async function publishReview(db: PrismaClient, ctx: TenantContext, id: string, meta: AuditMeta = {}) {
   requireSellerPermission(ctx, "INQUIRY_REPLY");
   if (!isUuid(id)) throw notFound();
@@ -342,7 +327,7 @@ export async function publishReview(db: PrismaClient, ctx: TenantContext, id: st
     if (before.status === "VISIBLE") return { ok: true as const, grantedReward: 0 };
     // 판매자가 확인해 공개하면 그때까지의 신고는 확인한 것으로 보고 신고 수를 0으로 되돌린다(신고 기록은 남는다)
     await tx.productReview.update({ where: { id }, data: { status: "VISIBLE", hiddenReason: null, hiddenNote: null, heldBy: null, reportCount: 0, updatedAt: now } });
-    const granted = await grantReward(tx, before, now, locked.orderPaid);
+    const { granted } = await settleReward(tx, { ...before, status: "VISIBLE" }, now, locked.orderPaid);
     await sellerAudit(tx, ctx, meta, "review.publish", id, { status: before.status }, { status: "VISIBLE", grantedReward: granted });
     return { ok: true as const, grantedReward: granted };
   });
@@ -443,37 +428,49 @@ export async function publicReviewImage(db: PrismaClient, sellerId: string, imag
   return db.productReviewImage.findFirst({ where: { id: imageId, sellerId, review: { status: "VISIBLE", product: SHOP_VISIBLE_PRODUCT } }, select: { data: true, contentType: true } });
 }
 
-// 쓸 수 있는 주문 품목: 본인 주문, 결제 완료(취소·환불 아님), 배송 완료 뒤 설정 기간 안, 리뷰 없음
-async function writableItems(db: Db, scope: BuyerScope, now: Date, writableDays: number, orderItemId?: string) {
+// 쓸 수 있는 주문 품목: 본인 주문, 결제 완료(취소·환불 아님), 배송 완료 뒤 설정 기간 안, 리뷰 없음(지운 리뷰의 묘비가 있으면 작성 완료로 본다)
+// 목록은 (createdAt, id) 커서로 MY_PAGE개씩 준다.
+export const MY_PAGE = 50;
+type Cursor = { createdAt: Date; id: string } | null;
+const afterCursor = (c: Cursor) => (c ? { OR: [{ createdAt: { lt: c.createdAt } }, { createdAt: c.createdAt, id: { lt: c.id } }] } : {});
+async function writableItems(db: Db, scope: BuyerScope, now: Date, writableDays: number, opts: { orderItemId?: string; after?: Cursor } = {}) {
   const since = new Date(now.getTime() - writableDays * DAY);
   return db.orderItem.findMany({
     where: {
       sellerId: scope.sellerId,
-      ...(orderItemId ? { id: orderItemId } : {}),
+      ...(opts.orderItemId ? { id: opts.orderItemId } : {}),
+      ...afterCursor(opts.after ?? null),
       review: null,
       order: { buyerMemberId: scope.buyerMemberId, status: "PAID", legalHoldAt: null, shipment: { deliveredAt: { gt: since, lte: now } } },
     },
     include: { order: { select: { id: true, orderNo: true, createdAt: true, shipment: { select: { deliveredAt: true } } } }, product: { select: { id: true, name: true } } },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    take: 100,
+    take: MY_PAGE + 1,
   });
 }
 
 // 내 리뷰(SH-029 「내 리뷰 목록」): 쓸 수 있는 상품과 내가 쓴 리뷰(숨김 사유·답글 포함)
-export async function myReviews(db: PrismaClient, scope: BuyerScope, slug: string) {
+// cursor: 내가 쓴 리뷰 다음 쪽, writableCursor: 리뷰를 기다리는 상품 다음 쪽(각각 nextCursor·writableNextCursor로 받은 id).
+export async function myReviews(db: PrismaClient, scope: BuyerScope, slug: string, q: { cursor?: string | null; writableCursor?: string | null } = {}) {
   const now = await lockedNow(db);
   const policy = await policyOf(db, scope.sellerId);
-  const [items, mine] = await Promise.all([
-    writableItems(db, scope, now, policy.writableDays),
+  const reviewAfter = isUuid(q.cursor) ? await db.productReview.findFirst({ where: { ...scope, id: q.cursor }, select: { id: true, createdAt: true } }) : null;
+  const itemAfter = isUuid(q.writableCursor) ? await db.orderItem.findFirst({ where: { sellerId: scope.sellerId, id: q.writableCursor }, select: { id: true, createdAt: true } }) : null;
+  const [itemRows, mineRows] = await Promise.all([
+    writableItems(db, scope, now, policy.writableDays, { after: itemAfter }),
     db.productReview.findMany({
-      where: scope,
+      where: { ...scope, deletedAt: null, ...afterCursor(reviewAfter) },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      take: 100,
+      take: MY_PAGE + 1,
       include: { product: { select: { name: true } }, orderItem: { select: { optionNameSnapshot: true } }, images: { select: { id: true }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] } },
     }),
   ]);
+  const items = itemRows.slice(0, MY_PAGE);
+  const mine = mineRows.slice(0, MY_PAGE);
   const rewards = await activeRewards(db, scope.sellerId, mine);
   return {
+    writableNextCursor: itemRows.length > MY_PAGE ? items[items.length - 1].id : null,
+    nextCursor: mineRows.length > MY_PAGE ? mine[mine.length - 1].id : null,
     writable: items.map((i) => ({
       orderItemId: i.id,
       productName: i.productNameSnapshot,
@@ -510,7 +507,7 @@ export async function writableItem(db: PrismaClient, scope: BuyerScope, orderIte
   if (!isUuid(orderItemId)) return null;
   const now = await lockedNow(db);
   const policy = await policyOf(db, scope.sellerId);
-  const [i] = await writableItems(db, scope, now, policy.writableDays, orderItemId);
+  const [i] = await writableItems(db, scope, now, policy.writableDays, { orderItemId });
   return i
     ? { orderItemId: i.id, productName: i.productNameSnapshot, optionName: i.optionNameSnapshot, quantity: i.quantity, orderedAt: i.order.createdAt, deliveredAt: i.order.shipment?.deliveredAt ?? null, reward: { text: policy.rewardText, photo: policy.rewardPhoto } }
     : null;
@@ -552,7 +549,7 @@ export async function createReview(db: PrismaClient, scope: BuyerScope, orderIte
       if (!member) return { ok: false as const, reason: "shop_unavailable" as const };
       const now = await lockedNow(tx);
       const policy = await policyOf(tx, scope.sellerId);
-      const [item] = await writableItems(tx, scope, now, policy.writableDays, orderItemId);
+      const [item] = await writableItems(tx, scope, now, policy.writableDays, { orderItemId });
       if (!item) {
         const exists = await tx.productReview.count({ where: { sellerId: scope.sellerId, orderItemId } });
         return { ok: false as const, reason: exists ? ("already_written" as const) : ("not_writable" as const) };
@@ -575,7 +572,7 @@ export async function createReview(db: PrismaClient, scope: BuyerScope, orderIte
         },
       });
       if (!(await attachImages(tx, scope, review.id, p.v.imageIds))) throw new BadImages();
-      const granted = st.status === "VISIBLE" ? await grantReward(tx, review, now, orderPaid) : 0;
+      const { granted } = await settleReward(tx, review, now, orderPaid);
       await buyerAudit(tx, scope, meta, "buyer_review.create", review.id, { status: st.status, rating: p.v.rating, photos: p.v.imageIds.length, grantedReward: granted });
       return { ok: true as const, reviewId: review.id, status: st.status, grantedReward: granted };
     });
@@ -615,17 +612,11 @@ export async function updateReview(db: PrismaClient, scope: BuyerScope, id: stri
           : before.status;
       const heldBy = reportHeld ? "reports" : (held ?? null);
       // 사진은 한 번 리뷰에 붙으면 소진된다. 리뷰에서 뗀 사진은 지워 다른 리뷰에 다시 붙일 수 없게 한다(같은 사진으로 적립을 거듭 받지 못하게).
-      const photosBefore = await tx.productReviewImage.count({ where: { sellerId: scope.sellerId, reviewId: id } });
       await tx.productReviewImage.deleteMany({ where: { sellerId: scope.sellerId, reviewId: id, id: { notIn: p.v.imageIds } } });
       if (!(await attachImages(tx, scope, id, p.v.imageIds))) throw new BadImages();
       await tx.productReview.update({ where: { id }, data: { rating: p.v.rating, body: p.v.body, status, heldBy, updatedAt: now } });
-      if (status === "VISIBLE" && before.status !== "VISIBLE") {
-        // 보류에서 공개로 바뀌면 적립금을 지급한다(유효한 적립이 있으면 그대로)
-        await grantReward(tx, { ...before, status }, now, locked.orderPaid);
-      } else if (status === "VISIBLE" && photosBefore > 0 !== p.v.imageIds.length > 0) {
-        // 사진 리뷰 자격이 바뀌면(글 → 사진, 사진 → 글 어느 쪽이든) 같은 재조정을 탄다
-        await reconcileReward(tx, before, now, locked.orderPaid);
-      }
+      // 적립은 바뀐 상태(공개 여부·사진 자격)에 맞춘다
+      await settleReward(tx, { ...before, status, heldBy }, now, locked.orderPaid);
       await buyerAudit(tx, scope, meta, "buyer_review.update", id, { status, rating: p.v.rating, photos: p.v.imageIds.length });
       return { ok: true as const, status };
     });
@@ -635,7 +626,8 @@ export async function updateReview(db: PrismaClient, scope: BuyerScope, id: stri
   }
 }
 
-// 지우기(작성자만, 언제든, 쇼핑몰 이용이 막히면 안 됨). 지급한 리뷰 적립금은 회수한다. 사진·신고는 함께 지운다.
+// 지우기(작성자만, 언제든, 쇼핑몰 이용이 막히면 안 됨). 주문 상품 1개당 리뷰는 1번이라(MASTER 결정) 행은 묘비(deletedAt)로 남겨 다시 쓰지 못하게 하고,
+// 본문·답글·사진·신고는 지운다. 목록·집계·공개에서는 빠진다. 적립은 settleReward로 0원에 맞춘다.
 export async function deleteReview(db: PrismaClient, scope: BuyerScope, id: string, meta: AuditMeta = {}): Promise<Result<{ revokedReward: number }>> {
   if (!isUuid(id)) throw notFound();
   if (!(await shopOpen(db, scope.sellerId))) return { ok: false, reason: "shop_unavailable" };
@@ -644,8 +636,10 @@ export async function deleteReview(db: PrismaClient, scope: BuyerScope, id: stri
     if (!locked || locked.review.buyerMemberId !== scope.buyerMemberId) throw notFound();
     const before = locked.review;
     const now = await lockedNow(tx);
-    const revoked = await revokeReward(tx, before, now);
-    await tx.productReview.delete({ where: { id } });
+    await tx.productReviewImage.deleteMany({ where: { sellerId: scope.sellerId, reviewId: id } });
+    await tx.productReviewReport.deleteMany({ where: { sellerId: scope.sellerId, reviewId: id } });
+    await tx.productReview.update({ where: { id }, data: { deletedAt: now, body: "", reply: null, repliedAt: null, updatedAt: now } });
+    const { revoked } = await settleReward(tx, { ...before, deletedAt: now }, now, locked.orderPaid);
     await buyerAudit(tx, scope, meta, "buyer_review.delete", id, { status: before.status, revokedReward: revoked });
     return { ok: true as const, revokedReward: revoked };
   });
@@ -659,17 +653,18 @@ export async function reportReview(db: PrismaClient, scope: BuyerScope, id: stri
   if (!(await shopOpen(db, scope.sellerId))) return { ok: false, reason: "shop_unavailable" };
   try {
     return await db.$transaction(async (tx) => {
-      // 잠금 순서: 신고한 회원 → 리뷰
-      const [member] = await tx.$queryRaw<{ id: string }[]>`
-        SELECT "id" FROM "BuyerMember" WHERE "id" = ${scope.buyerMemberId}::uuid AND "sellerId" = ${scope.sellerId}::uuid AND "status" = 'ACTIVE' AND "deletedAt" IS NULL FOR SHARE`;
-      const before = await lockReview(tx, scope.sellerId, id);
-      if (!before || before.status !== "VISIBLE") throw notFound();
+      // 잠금 순서: 주문 → 회원(작성자·신고한 회원) → 리뷰. 신고 보류는 적립도 바꾸므로 같은 순서를 따른다.
+      const locked = await lockReviewChain(tx, scope.sellerId, id, scope.buyerMemberId);
+      if (!locked || locked.review.status !== "VISIBLE") throw notFound();
+      const before = locked.review;
       if (before.buyerMemberId === scope.buyerMemberId) return { ok: false as const, reason: "own_review" as const };
+      const member = await tx.buyerMember.findFirst({ where: { id: scope.buyerMemberId, sellerId: scope.sellerId, status: "ACTIVE", deletedAt: null }, select: { id: true } });
       if (!member) return { ok: false as const, reason: "shop_unavailable" as const };
       await tx.productReviewReport.create({ data: { sellerId: scope.sellerId, reviewId: id, buyerMemberId: member.id, reason } });
       const count = before.reportCount + 1;
       const held = count >= REVIEW_REPORT_HOLD;
       await tx.productReview.update({ where: { id }, data: { reportCount: count, ...(held ? { status: "HELD", heldBy: "reports" } : {}) } });
+      if (held) await settleReward(tx, { ...before, status: "HELD", heldBy: "reports" }, await lockedNow(tx), locked.orderPaid);
       await buyerAudit(tx, scope, meta, "buyer_review.report", id, { reason, held });
       return { ok: true as const, held };
     });
@@ -686,7 +681,7 @@ export async function productReviews(db: PrismaClient, slug: string, productId: 
   if (!seller || !isUuid(productId) || !(await shopOpen(db, seller.id))) return null;
   const product = await db.product.findFirst({ where: { id: productId, sellerId: seller.id, ...SHOP_VISIBLE_PRODUCT }, select: { id: true } });
   if (!product) return null;
-  const base = { sellerId: seller.id, productId, status: "VISIBLE" as const };
+  const base = { sellerId: seller.id, productId, status: "VISIBLE" as const, deletedAt: null };
   let after = {};
   if (cursor && isUuid(cursor)) {
     const c = await db.productReview.findFirst({ where: { ...base, id: cursor }, select: { id: true, createdAt: true } });
@@ -724,7 +719,13 @@ export async function productReviews(db: PrismaClient, slug: string, productId: 
 
 // 탈퇴: 리뷰는 남기고 작성자 표시를 「탈퇴 회원」으로, 신고·붙지 않은 사진은 지운다(buyers/withdraw.ts)
 export const WITHDRAWN_AUTHOR = "탈퇴 회원";
+// 탈퇴 트랜잭션이 회원 행(NO KEY UPDATE)을 잡은 뒤 부른다(회원 → 리뷰 → 원장 순서). 적립은 settleReward로 맞춘다(탈퇴 회원이라 원하는 금액 0).
 export async function anonymizeMemberReviews(tx: Tx, scope: BuyerScope) {
+  const now = await lockedNow(tx);
+  for (const { id } of await tx.productReview.findMany({ where: scope, select: { id: true }, orderBy: { id: "asc" } })) {
+    const r = await lockReview(tx, scope.sellerId, id);
+    if (r) await settleReward(tx, r, now, false);
+  }
   const reviews = await tx.productReview.updateMany({ where: scope, data: { authorNickname: WITHDRAWN_AUTHOR } });
   const reports = await tx.productReviewReport.deleteMany({ where: scope });
   const images = await tx.productReviewImage.deleteMany({ where: { ...scope, reviewId: null } });

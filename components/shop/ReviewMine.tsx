@@ -22,7 +22,7 @@ type Mine = {
   createdAt: string;
   editable: boolean;
 };
-type Data = { writable: Writable[]; reviews: Mine[]; reward: { text: number; photo: number } };
+type Data = { writable: Writable[]; writableNextCursor: string | null; reviews: Mine[]; nextCursor: string | null; reward: { text: number; photo: number } };
 const STATUS: Record<Mine["status"], { label: string; cls: string }> = {
   VISIBLE: { label: "공개", cls: "b-done" },
   PENDING: { label: "확인 중", cls: "b-wait" },
@@ -36,6 +36,7 @@ export default function ReviewMine({ slug }: { slug: string }) {
   const [view, setView] = useState<{ kind: "loading" } | { kind: "login" } | { kind: "error" } | { kind: "ok"; data: Data }>({ kind: "loading" });
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [deleting, setDeleting] = useState<Mine | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const load = useCallback(async () => {
     const r = await call<Data>(base);
@@ -46,6 +47,28 @@ export default function ReviewMine({ slug }: { slug: string }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // 더 보기: 리뷰를 기다리는 상품(writable) 또는 내가 쓴 리뷰(reviews)의 다음 쪽을 이어 붙인다
+  const more = async (list: "writable" | "reviews") => {
+    if (view.kind !== "ok" || loadingMore) return;
+    const cursor = list === "writable" ? view.data.writableNextCursor : view.data.nextCursor;
+    if (!cursor) return;
+    setLoadingMore(true);
+    const r = await call<Data>(`${base}?${list === "writable" ? "writableCursor" : "cursor"}=${cursor}`);
+    setLoadingMore(false);
+    if (!r.ok) return setMsg({ ok: false, text: r.message ?? "더 불러오지 못했어요. 잠시 뒤 다시 해 주세요" });
+    setView((v) =>
+      v.kind !== "ok"
+        ? v
+        : {
+            kind: "ok",
+            data:
+              list === "writable"
+                ? { ...v.data, writable: [...v.data.writable, ...r.data.writable], writableNextCursor: r.data.writableNextCursor }
+                : { ...v.data, reviews: [...v.data.reviews, ...r.data.reviews], nextCursor: r.data.nextCursor },
+          },
+    );
+  };
 
   const remove = async () => {
     if (!deleting) return;
@@ -98,6 +121,11 @@ export default function ReviewMine({ slug }: { slug: string }) {
               </li>
             ))}
           </ul>
+          {data.writableNextCursor && (
+            <button className="btn btn-sm" type="button" style={{ alignSelf: "center" }} disabled={loadingMore} onClick={() => void more("writable")}>
+              더 보기
+            </button>
+          )}
         </div>
       )}
       <div className="col" style={{ gap: 4 }}>
@@ -153,6 +181,11 @@ export default function ReviewMine({ slug }: { slug: string }) {
             ))}
           </ul>
         )}
+        {data.nextCursor && (
+          <button className="btn btn-sm" type="button" style={{ alignSelf: "center" }} disabled={loadingMore} onClick={() => void more("reviews")}>
+            더 보기
+          </button>
+        )}
       </div>
       {deleting && (
         <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="rv-del-title">
@@ -162,7 +195,7 @@ export default function ReviewMine({ slug }: { slug: string }) {
                 리뷰를 지울까요?
               </h2>
               <span className="t-l2 c-alt">
-                지운 리뷰는 되돌릴 수 없어요.{deleting.rewardedAmount > 0 ? ` 받은 적립금 ${won(deleting.rewardedAmount)}은 돌려받아요.` : ""}
+                지운 리뷰는 되돌릴 수 없고, 이 상품 리뷰는 다시 쓸 수 없어요.{deleting.rewardedAmount > 0 ? ` 받은 적립금 ${won(deleting.rewardedAmount)}은 돌려받아요.` : ""}
               </span>
             </div>
             <div className="modal-f">
