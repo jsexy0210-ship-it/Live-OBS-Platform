@@ -862,6 +862,10 @@ body {
   right: 12px;
   z-index: 41;
 }
+/* LNB 제목 줄과 본문 첫 줄(경로 줄)이 같은 높이 토큰을 써서 두 아래 선이 한 수평선이 된다 */
+.cs {
+  --cs-bar-h: 48px;
+}
 .cs-wrap {
   display: grid;
   grid-template-columns: 200px minmax(0, 1fr);
@@ -884,8 +888,11 @@ body {
   display: flex;
 }
 .app .lnb-h {
+  display: flex;
+  align-items: center;
+  height: var(--cs-bar-h);
   margin: 0 0 6px;
-  padding: 14px 16px 12px;
+  padding: 0 16px;
   font-size: 15px;
   line-height: 20px;
   font-weight: 700;
@@ -932,10 +939,15 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 40px;
-  padding: 4px 24px;
+  min-height: var(--cs-bar-h);
+  padding: 0 24px;
   background: var(--cs-surface);
   box-shadow: inset 0 -1px 0 var(--cs-line);
+}
+@media (min-width: 1024px) {
+  .loc-bar {
+    height: var(--cs-bar-h);
+  }
 }
 .loc-bar .crumb {
   min-width: 0;

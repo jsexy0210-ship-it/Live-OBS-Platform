@@ -62,6 +62,21 @@ test("대분류를 누르면 왼쪽 메뉴가 그 대분류의 하위 메뉴로 
   await expect(page.locator(".gnb").getByRole("button", { name: "로그아웃" })).toBeVisible();
 });
 
+test("왼쪽 메뉴 제목 줄과 본문 첫 줄(경로 줄)은 위 시작선과 아래 선이 같은 높이다(오차 0px)", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await login(page, "demo-owner@example.com", "/seller/products");
+  for (const path of ["/seller/products", "/seller/orders", "/seller/stats", "/seller/settings/shop"]) {
+    await page.goto(path);
+    const head = lnb(page).locator(".lnb-sec.on .lnb-h");
+    const bar = page.locator(".loc-bar").first();
+    await expect(head).toBeVisible();
+    await expect(bar).toBeVisible();
+    const h = (await head.boundingBox())!;
+    const b = (await bar.boundingBox())!;
+    expect({ path, top: h.y, bottom: h.y + h.height }).toEqual({ path, top: b.y, bottom: b.y + b.height });
+  }
+});
+
 test("권한 없는 직원에게는 메뉴와, 하위 메뉴가 모두 숨겨진 대분류가 보이지 않는다", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   // 상품 권한만 있는 직원(리뷰·쿠폰은 권한 없이 조회라 회원·프로모션 대분류는 남는다)
