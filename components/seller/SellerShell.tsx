@@ -21,7 +21,7 @@ const NAV: Nav[] = [
   { label: "상품", href: "/seller/products", perm: "PRODUCT_MANAGE" },
   { label: "주문", href: "/seller/orders", perm: "ORDER_SHIPPING" },
   { label: "입금 확인", perm: "ORDER_SHIPPING" },
-  { label: "배송", perm: "ORDER_SHIPPING" },
+  { label: "배송", href: "/seller/shipping", perm: "ORDER_SHIPPING" },
   { label: "영수증 · 세금계산서", perm: "RECEIPT_TAX" },
   { label: "적립금", href: "/seller/rewards", perm: "MEMBER_POINTS" },
   // 쿠폰: 집계 조회는 파트너스 계정 누구나, 만들기·지급은 적립금(MEMBER_POINTS) 권한(화면에서 막음)
