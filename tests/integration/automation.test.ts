@@ -16,7 +16,7 @@ import { FakeBrowserExecutor, FakeObsBridge, FakePlanner, FakeSecretVault } from
 import { markConnectionRevoked } from "../../lib/server/automation/connection";
 import { cancelJob, getJob, requestRefund, resumeJob } from "../../lib/server/automation/jobs";
 import { purchaseAutomation, reconcileAutomationPayments, reconnectAutomation } from "../../lib/server/automation/purchase";
-import { EngineAborted, runSteps } from "../../lib/server/automation/engine";
+import { EngineAborted, actionKeyOf, runSteps } from "../../lib/server/automation/engine";
 import { FencingError, RunTimeExceeded, advanceStep, claimNext, finishJob, markBrowserStateHeld, parkForCustomer, reapExpired, toVerifying, touch } from "../../lib/server/automation/queue";
 import { executeJob, purgeEndedBrowserState, runOnce, runWorkerLoop, startHeartbeat } from "../../lib/server/automation/worker";
 import { FakeBillingProvider } from "../../lib/server/billing/provider";
@@ -1428,7 +1428,12 @@ describe("Codex 6차 반영(9144f55)", () => {
     expect(await job(paid.jobId)).toMatchObject({ obsTargetKey: "obs:actual-pc", obsPairingId: "actual-pc" });
   });
 
-  it("행동 고정 키는 순번이 아니라 행동의 의미(단계·종류·대상·값)로 만든다: 같은 순번의 다른 행동은 실행, 다른 순번의 같은 행동은 한 번만", async () => {
+  it("행동 고정 키는 순번이 아니라 행동의 의미(단계·종류·대상·값)로 만든다. 누르기 같은 세션 안의 조작은 키 없이 새 세션에서 다시 한다(29차)", async () => {
+    // 키 만들기: 같은 단계·같은 행동이면 순번과 무관하게 같은 키, 다른 행동이면 다른 키
+    const k = (i: number, a: AutomationAction) => actionKeyOf("job-x", i, a);
+    expect(k(0, { type: "obs_add_overlay_source" })).toBe(k(0, { type: "obs_add_overlay_source" }));
+    expect(k(0, { type: "obs_add_overlay_source" })).not.toBe(k(0, { type: "obs_apply_display_settings" }));
+    expect(k(0, { type: "obs_add_overlay_source" })).not.toBe(k(1, { type: "obs_add_overlay_source" }));
     const a = await bought();
     const scope = { sellerId: a.seller.id, jobId: a.jobId };
     // 판단 모델만 쓰되(작업서 행동 없음) 누를 수 있는 대상(A·B)은 작업서가 정한다
@@ -1458,7 +1463,7 @@ describe("Codex 6차 반영(9144f55)", () => {
     ).rejects.toThrow("crash");
     const clicks = () => rt.browser.performed.filter((p) => p.type === "click").length;
     expect(clicks()).toBe(2);
-    // 3회차: 같은 행동(「A」 클릭)이 다른 순번(1번째)으로 와도 다시 적용하지 않는다
+    // 3회차: 누르기는 세션 안의 조작이라 새 세션에서는 다시 한다(입력값·화면 상태가 새 세션에 없으므로)
     script = [{ type: "navigate", url: "https://myshop.cafe24.com/disp/admin/shop1/" }, { type: "click", target: "A" }, { type: "step_done" }];
     await expect(
       runSteps(rt, scope, { ...opts, stats: freshStats() }, {
@@ -1468,7 +1473,7 @@ describe("Codex 6차 반영(9144f55)", () => {
         },
       }),
     ).rejects.toThrow("crash");
-    expect(clicks()).toBe(2);
+    expect(clicks()).toBe(3);
   });
 
   it("끝난 모든 작업(고객 대기 없이 완료·OBS 대기만 있던 취소)에서 행동 키 기록과 OBS 연결 정보를 지운다", async () => {
@@ -1481,7 +1486,8 @@ describe("Codex 6차 반영(9144f55)", () => {
     rt.obs.disconnected.delete(obsWait.seller.id);
     await rt.obs.currentPairingId({ sellerId: obsWait.seller.id, jobId: obsWait.jobId });
     await cancelJob(db, obsWait.ctx, obsWait.jobId);
-    expect([...rt.browser.applied.keys()].some((k) => k.startsWith(done.jobId))).toBe(true);
+    // 고정 키는 세션 밖에 남는 효과(OBS·테스트 주문)에만 붙는다(29차)
+    expect([...rt.obs.applied.keys()].some((k) => k.startsWith(done.jobId))).toBe(true);
     expect(rt.obs.connections.has(done.jobId)).toBe(true);
     expect(rt.obs.connections.has(obsWait.jobId)).toBe(true);
 
@@ -1920,14 +1926,15 @@ describe("Codex 12차 반영(6706ed2)", () => {
     };
     const run = await runPractice(db, rt, cafe24Playbook, { shopHost: "myshop.cafe24.com" });
     const runId = rt.browser.opened[0].scope.jobId;
-    expect([...rt.browser.applied.keys()].some((k) => k.startsWith(runId))).toBe(true);
+    // 브라우저 실행기 쪽 정리가 아직 되지 않았다(누르기·입력에는 고정 키가 없으므로 실행기의 정리 기록으로 본다, 29차)
+    expect(rt.browser.discarded).not.toContain(runId);
     const saved = await db.automationPracticeRun.findUniqueOrThrow({ where: { id: run.id } });
     expect(saved).toMatchObject({ outcome: "SUCCEEDED", cleanupAttempts: 1 });
     expect(saved.cleanupPendingAt).not.toBeNull();
     // 다음 정리 회차(백오프 시각이 지남)
     await db.automationPracticeRun.update({ where: { id: run.id }, data: { cleanupPendingAt: new Date(Date.now() - 1000) } });
     expect(await practice.cleanupPracticeArtifacts(db, rt)).toBe(1);
-    expect([...rt.browser.applied.keys()].filter((k) => k.startsWith(runId))).toHaveLength(0);
+    expect(rt.browser.discarded).toContain(runId);
     expect(rt.obs.connections.has(runId)).toBe(false);
     expect(await db.automationPracticeRun.findUniqueOrThrow({ where: { id: run.id } })).toMatchObject({ cleanupPendingAt: null });
     expect(await practice.cleanupPracticeArtifacts(db, rt)).toBe(0);
@@ -2877,6 +2884,55 @@ describe("Codex 28차 반영(3a3a286): 「정리 필요」 운영자 닫기", ()
     if (!r.ok) throw new Error(r.reason);
     expect((await close(r.jobId, ops)).status).toBe(409);
     expect(await db.auditLog.count({ where: { action: "automation.cleanup_closed" } })).toBe(0);
+  });
+});
+
+describe("Codex 29차 반영(d3e5fa2)", () => {
+  it("세션 안의 조작(입력·누르기)은 고정 키로 건너뛰지 않는다: 입력 성공 → 저장 누르기 시간 초과 → 재시도(새 세션)에서 입력을 다시 하고 저장 성공", async () => {
+    const a = await bought();
+    const rt = runtime();
+    let saveTried = 0;
+    rt.browser.outcome = (_scope, action) => (action.type === "click" && action.target === "저장" && saveTried++ === 0 ? { kind: "retryable", reason: "timeout" } : undefined);
+    expect(await runOnce(db, rt, { ...W, random: () => 0 })).toBe("retry");
+    const fillsFirst = rt.browser.performed.filter((p) => p.scope.jobId === a.jobId && p.type === "fill").length;
+    expect(fillsFirst).toBe(1);
+    await db.automationJob.update({ where: { id: a.jobId }, data: { runAfter: new Date(Date.now() - 1000) } });
+    expect(await runOnce(db, rt, W)).toBe("succeeded");
+    // 재시도(새 세션)에서 입력을 다시 한 뒤 저장했다
+    const ops = rt.browser.performed.filter((p) => p.scope.jobId === a.jobId).map((p) => p.type);
+    expect(ops.filter((t) => t === "fill")).toHaveLength(2);
+    expect(ops.lastIndexOf("fill")).toBeLessThan(ops.lastIndexOf("click"));
+  });
+
+  it("세션 밖에 남는 효과(OBS 설정·테스트 주문)는 재시도해도 고정 키로 한 번만 적용한다", async () => {
+    const a = await bought();
+    const rt = runtime();
+    let verifyTried = 0;
+    const perform = rt.obs.perform.bind(rt.obs);
+    rt.obs.perform = async (scope, action, key, pairing) =>
+      action.type === "check_overlay_shows_test_event" && verifyTried++ === 0 ? { kind: "retryable", reason: "timeout" } : perform(scope, action, key, pairing);
+    expect(await runOnce(db, rt, { ...W, random: () => 0 })).toBe("retry");
+    await db.automationJob.update({ where: { id: a.jobId }, data: { runAfter: new Date(Date.now() - 1000) } });
+    expect(await runOnce(db, rt, W)).toBe("succeeded");
+    const applied = rt.obs.performed.filter((p) => p.scope.jobId === a.jobId);
+    expect(applied.filter((p) => p.type === "obs_add_overlay_source")).toHaveLength(1);
+    expect(applied.filter((p) => p.type === "send_test_event")).toHaveLength(1);
+  });
+
+  it("작업 id 형식 검사는 자동연결 경로 전체가 같은 엄격한 검사를 쓴다: 길이만 맞는 형식 오류는 조회 없이 404", async () => {
+    const bad = "------------------------------------";
+    const admin = await createAdmin("SUPER_ADMIN");
+    const login = await loginAdmin(db, adminCredentials(admin), {});
+    if (!login.ok) throw new Error(login.reason);
+    const res = await cleanupCloseRoute(
+      new Request(`http://localhost:3000/api/automation/admin/jobs/${bad}/cleanup`, {
+        method: "POST",
+        headers: { host: "localhost:3000", origin: "http://localhost:3000", cookie: `lo_admin=${login.token}`, "content-type": "application/json" },
+        body: JSON.stringify({ note: "정리함" }),
+      }),
+      { params: Promise.resolve({ jobId: bad }) },
+    );
+    expect(res.status).toBe(404);
   });
 });
 

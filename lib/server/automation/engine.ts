@@ -70,8 +70,28 @@ export class EngineAborted extends Error {
   }
 }
 
-// 바꾸는 행동. 무료 재연결의 쇼핑몰·PC 대조는 이 행동을 처음 하기 바로 전에 한다(이동·고객 로그인 대기·관찰·확인은 대조 전에 허용).
-const MUTATING: readonly AutomationAction["type"][] = ["click", "fill", "obs_add_overlay_source", "obs_apply_display_settings", "obs_remove_overlay_source", "send_test_event"];
+// 행동 종류별 효과 범위(분류는 이곳 한 곳에서만 한다)
+// - external: 세션이 닫혀도 남는 외부 효과(고객 PC의 OBS 설정, 테스트 주문 이벤트). 고정 키(멱등 키)로 한 번만 적용한다.
+// - session: 브라우저 세션 안의 조작(누르기·입력). 재시도는 새 세션이라 입력값·화면 상태가 없으므로 고정 키로 건너뛰지 않고 다시 한다.
+//   쇼핑몰 쪽에 남는 결과(앱 설치·저장)는 단계 완료 기록(진행 위치)으로 한 번만 넘어가고, 같은 값으로 다시 저장해도 결과가 같다.
+// - none: 바꾸지 않는 행동(이동·확인·고객 요청·단계 끝)
+export const ACTION_EFFECT: Record<AutomationAction["type"], "external" | "session" | "none"> = {
+  navigate: "none",
+  click: "session",
+  fill: "session",
+  request_customer: "none",
+  obs_add_overlay_source: "external",
+  obs_remove_overlay_source: "external",
+  obs_apply_display_settings: "external",
+  send_test_event: "external",
+  check_overlay_shows_test_event: "none",
+  step_done: "none",
+};
+
+// 바꾸는 행동(외부·세션 모두). 무료 재연결의 쇼핑몰·PC 대조는 이 행동을 처음 하기 바로 전에 한다(이동·고객 로그인 대기·관찰·확인은 대조 전에 허용).
+const MUTATING: readonly AutomationAction["type"][] = (Object.keys(ACTION_EFFECT) as AutomationAction["type"][]).filter((t) => ACTION_EFFECT[t] !== "none");
+// 고정 키를 붙이는 행동: 세션 밖에 남는 효과만
+const keyed = (a: AutomationAction) => ACTION_EFFECT[a.type] === "external";
 
 export type EngineOptions = {
   // 실행 자리를 잃으면 abort된다. 외부 호출(관찰·판단·실행) 직전마다 확인한다.
@@ -311,9 +331,10 @@ async function runAll(
         markedSteps.add(step.key);
       }
       guard();
-      // 변경 행동의 고정 키: 작업·단계와 행동의 의미(종류·대상·값)의 해시. 순번과 무관해 같은 행동은 몇 번째로 오든 한 번만,
-      // 다른 행동은 같은 순번이라도 실행된다. 이동·확인 같은 바꾸지 않는 행동은 새 세션에서 다시 해야 하므로 키를 붙이지 않는다.
-      const actionKey = MUTATING.includes(action.type) ? actionKeyOf(scope.jobId, stepIndex, action) : undefined;
+      // 고정 키: 작업·단계와 행동의 의미(종류·대상·값)의 해시. 순번과 무관해 같은 행동은 몇 번째로 오든 한 번만,
+      // 다른 행동은 같은 순번이라도 실행된다. 세션 밖에 남는 효과(ACTION_EFFECT external)에만 붙이고, 세션 안의 조작(누르기·입력)과
+      // 바꾸지 않는 행동은 새 세션에서 다시 해야 하므로 붙이지 않는다.
+      const actionKey = keyed(action) ? actionKeyOf(scope.jobId, stepIndex, action) : undefined;
       // OBS 쪽은 확인한 PC를 넘겨 로컬 도구가 실행 직전에 비교하게 하고(다르면 행동 0건으로 거절), 결과의 실제 실행 PC를 다시 대조한다
       const out: ActionOutcome = session ? await session.perform(action, secrets, actionKey, expectedPage) : await rt.obs.perform(scope, action, actionKey, confirmedPairing);
       if (!session && out.kind === "ok" && out.pairingId !== confirmedPairing) return { kind: "failed", reason: "obs_target_changed" };
@@ -405,7 +426,7 @@ export async function runRollback(
         }
         await hooks.touch();
         guard();
-        const actionKey = MUTATING.includes(action.type) ? actionKeyOf(scope.jobId, 100 + at, action) : undefined;
+        const actionKey = keyed(action) ? actionKeyOf(scope.jobId, 100 + at, action) : undefined;
         const out = rb.kind === "browser" ? await session!.perform(action, secrets, actionKey, expectedPage) : await rt.obs.perform(scope, action, actionKey, pairing);
         guard();
         if (out.kind !== "ok" || (rb.kind === "obs" && out.pairingId !== pairing)) return { kind: "cleanup_needed", reason: `rollback_failed:${rb.forStep}` };

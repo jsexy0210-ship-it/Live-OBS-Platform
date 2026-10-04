@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { closeCleanupNeeded } from "../../../../../../../lib/server/automation/admin";
+import { isJobId } from "../../../../../../../lib/server/automation/ids";
 import { requireAdmin } from "../../../../../../../lib/server/authz/guards";
 import { prisma } from "../../../../../../../lib/server/db";
 import { mutation, noStore, readJson, requestMeta, sessionToken } from "../../../../../../../lib/server/http/route";
@@ -9,7 +10,7 @@ import { mutation, noStore, readJson, requestMeta, sessionToken } from "../../..
 export const POST = mutation(async (req: Request, { params }: { params: Promise<{ jobId: string }> }) => {
   const admin = await requireAdmin(prisma, sessionToken(req, "admin"), "billing.manage");
   const { jobId } = await params;
-  if (!/^[0-9a-f-]{36}$/i.test(jobId)) return noStore(NextResponse.json({ error: "not_found" }, { status: 404 }));
+  if (!isJobId(jobId)) return noStore(NextResponse.json({ error: "not_found" }, { status: 404 }));
   const body = await readJson<{ note: string }>(req);
   const r = await closeCleanupNeeded(prisma, admin, jobId, body.note, requestMeta(req));
   if (r.ok) return noStore(NextResponse.json(r));
