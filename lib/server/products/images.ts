@@ -4,11 +4,13 @@ import { writeAudit } from "../audit/log";
 import { notFound } from "../authz/errors";
 import { shopOpen } from "../buyers/signup";
 import { checkPng, imageVersion, type PngRejection } from "../shop-content/image";
-import { deleteImage, getImage, putImage } from "../storage";
+import { deleteImage, getImage, putImage, type ImageContentType } from "../storage";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
+import { isJpeg, isWebp, stripJpeg, stripWebp } from "./imageFormats";
 
 // 상품 사진(PR-A, 2026-10-04 대표님 지시, PRODUCT_MANAGE). 상품당 10장, 첫 번째(sortOrder 0)가 대표 사진(썸네일).
-// - 형식은 확장자·Content-Type이 아니라 바이트로 확인한다. 지금은 PNG만(쇼핑몰 이미지와 같은 검사기 checkPng: 구조·CRC·그림 데이터까지).
+// - 형식은 확장자·Content-Type이 아니라 바이트로 확인한다. PNG는 쇼핑몰 이미지와 같은 검사기 checkPng(구조·CRC·그림 데이터까지),
+//   JPG·WEBP는 파일 구조를 따라가며 위치정보 등 메타데이터를 잘라 낸 바이트를 저장한다(imageFormats.ts, MASTER 결정 2026-10-04).
 // - 장당 5MB, 가로·세로 100~4000px. 바이트는 공통 저장소(lib/server/storage)에, 형식·크기·해시는 ProductImage에 둔다.
 // - 주소는 저장 방식과 상관없는 우리 경로: 파트너스 관리자 /api/seller/products/{상품}/images/{사진}, 구매자 /api/shop/{slug}/products/{상품}/images/{사진}.
 //   ?v=해시 앞 12자가 붙어 사진이 바뀌면 주소도 바뀐다(1년 캐시).
@@ -23,7 +25,7 @@ export type ProductImageRejection = PngRejection | "wrong_image_size" | "too_man
 export const PRODUCT_IMAGE_MESSAGES: Record<ProductImageRejection | "invalid_image_order", string> = {
   empty_file: "빈 파일은 올릴 수 없습니다",
   file_too_large: "사진은 한 장에 5MB까지 올릴 수 있습니다",
-  unsupported_image: "PNG 파일만 올릴 수 있습니다",
+  unsupported_image: "PNG·JPG·WEBP 파일만 올릴 수 있습니다",
   wrong_image_size: `사진 가로·세로는 ${PRODUCT_IMAGE_MIN_SIDE}~${PRODUCT_IMAGE_MAX_SIDE}px여야 합니다`,
   png_16bit: "8비트(일반) PNG로 저장해 주십시오. 16비트 PNG는 올릴 수 없습니다",
   png_too_large: "사진 데이터가 너무 큽니다. 8비트(일반) PNG로 저장하거나 크기를 줄여 주십시오",
@@ -42,10 +44,23 @@ const view = (r: Row): ProductImageView => ({ id: r.id, url: sellerImageUrl(r), 
 const SELECT = { id: true, productId: true, sha256: true, sortOrder: true, width: true, height: true } as const;
 const ORDER = [{ sortOrder: "asc" as const }, { createdAt: "asc" as const }, { id: "asc" as const }];
 
-export function checkProductImage(b: Buffer) {
-  return checkPng(b, PRODUCT_IMAGE_MAX_BYTES, (w, h) =>
-    w >= PRODUCT_IMAGE_MIN_SIDE && w <= PRODUCT_IMAGE_MAX_SIDE && h >= PRODUCT_IMAGE_MIN_SIDE && h <= PRODUCT_IMAGE_MAX_SIDE ? null : ("wrong_image_size" as const),
-  );
+const sizeOk = (w: number, h: number) =>
+  w >= PRODUCT_IMAGE_MIN_SIDE && w <= PRODUCT_IMAGE_MAX_SIDE && h >= PRODUCT_IMAGE_MIN_SIDE && h <= PRODUCT_IMAGE_MAX_SIDE;
+
+// 형식 확인 후 저장할 바이트(JPG·WEBP는 메타데이터를 뺀 것)와 형식·크기
+export function checkProductImage(
+  b: Buffer,
+): { ok: true; bytes: Buffer; contentType: ImageContentType; width: number; height: number } | { ok: false; reason: PngRejection | "wrong_image_size" } {
+  if (b.length === 0) return { ok: false, reason: "empty_file" };
+  if (b.length > PRODUCT_IMAGE_MAX_BYTES) return { ok: false, reason: "file_too_large" };
+  if (isJpeg(b) || isWebp(b)) {
+    const r = isJpeg(b) ? stripJpeg(b) : stripWebp(b);
+    if (!r) return { ok: false, reason: "unsupported_image" };
+    if (!sizeOk(r.width, r.height)) return { ok: false, reason: "wrong_image_size" };
+    return { ok: true, bytes: r.bytes, contentType: isJpeg(b) ? "image/jpeg" : "image/webp", width: r.width, height: r.height };
+  }
+  const r = checkPng(b, PRODUCT_IMAGE_MAX_BYTES, (w, h) => (sizeOk(w, h) ? null : ("wrong_image_size" as const)));
+  return r.ok ? { ok: true, bytes: b, contentType: "image/png", width: r.width, height: r.height } : r;
 }
 
 // 지우지 않은 이 판매자 상품을 잠근다(사진 개수·순서 판정이 동시 요청에 깨지지 않게). 없으면 404.
@@ -73,19 +88,19 @@ export async function uploadProductImage(
   db: PrismaClient,
   ctx: TenantContext,
   productId: string,
-  bytes: Buffer,
+  raw: Buffer,
   meta: { ip?: string | null; userAgent?: string | null } = {},
 ): Promise<{ ok: true; image: ProductImageView } | { ok: false; reason: ProductImageRejection }> {
   requireSellerPermission(ctx, "PRODUCT_MANAGE");
-  const check = checkProductImage(bytes);
+  const check = checkProductImage(raw);
   if (!check.ok) return check;
+  const { bytes, contentType } = check;
   const sha256 = createHash("sha256").update(bytes).digest("hex");
   return db.$transaction(async (tx) => {
     await lockLiveProduct(tx, ctx.sellerId, productId);
     const count = await tx.productImage.count({ where: { sellerId: ctx.sellerId, productId } });
     if (count >= MAX_PRODUCT_IMAGES) return { ok: false as const, reason: "too_many_images" as const };
     const last = await tx.productImage.aggregate({ where: { sellerId: ctx.sellerId, productId }, _max: { sortOrder: true } });
-    const contentType = "image/png" as const;
     const storageKey = await putImage(tx, { sellerId: ctx.sellerId, bytes, contentType, sha256 });
     const row = await tx.productImage.create({
       data: {

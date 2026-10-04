@@ -8,6 +8,7 @@ import { prisma } from "../../lib/server/db";
 import { createProduct, deleteProduct, getProduct, listProducts, updateProduct } from "../../lib/server/products/manage";
 import { MAX_PRODUCT_IMAGES, PRODUCT_IMAGE_MESSAGES, deleteProductImage, reorderProductImages, uploadProductImage } from "../../lib/server/products/images";
 import type { TenantContext } from "../../lib/server/tenant/context";
+import { jpeg, webp } from "../unit/productImageFormatsFixtures";
 import { png } from "../unit/shopContentFixtures";
 import { PASSWORD, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
@@ -176,5 +177,35 @@ describe("HTTP·공개 주소", () => {
     expect((await pubAgain()).status).toBe(200);
     await db.seller.update({ where: { id: s.seller.id }, data: { status: "SUSPENDED" } });
     expect((await pubAgain()).status).toBe(404);
+  });
+});
+
+describe("JPG·WEBP", () => {
+  it("위치정보(EXIF GPS)가 든 JPG·WEBP를 올리면 저장본·응답에 메타데이터가 없고, 형식대로 응답한다", async () => {
+    const s = await seller();
+    const p = await product(s.ctx);
+    const src = jpeg(1200, 900, { xmp: true, comment: true });
+    expect(src.includes(Buffer.from("GPSLatitude"))).toBe(true);
+    const j = await uploadProductImage(db, s.ctx, p.id, src);
+    const w = await uploadProductImage(db, s.ctx, p.id, webp(800, 600));
+    if (!j.ok || !w.ok) throw new Error("upload");
+    expect(j.image).toMatchObject({ width: 1200, height: 900 });
+    for (const [id, type] of [
+      [j.image.id, "image/jpeg"],
+      [w.image.id, "image/webp"],
+    ] as const) {
+      const row = await db.productImage.findUniqueOrThrow({ where: { id } });
+      expect(row.contentType).toBe(type);
+      const stored = await db.storedImage.findUniqueOrThrow({ where: { id: row.storageKey.slice(3) } });
+      const bytes = Buffer.from(stored.data);
+      for (const t of ["GPS", "Exif", "EXIF", "xmpmeta", "made at home"]) expect(bytes.includes(Buffer.from(t)), t).toBe(false);
+      expect(stored.byteSize).toBe(bytes.length);
+      const res = await publicImage(new Request("http://localhost:3000/x"), { params: Promise.resolve({ slug: s.seller.slug, productId: p.id, imageId: id }) });
+      expect(res.headers.get("content-type")).toBe(type);
+      expect(Buffer.from(await res.arrayBuffer()).equals(bytes)).toBe(true);
+    }
+    // 깨진 JPG는 거절하고 남기지 않는다
+    expect(await uploadProductImage(db, s.ctx, p.id, jpeg(500, 500, { noEoi: true }))).toEqual({ ok: false, reason: "unsupported_image" });
+    expect(await db.storedImage.count({ where: { sellerId: s.seller.id } })).toBe(2);
   });
 });
