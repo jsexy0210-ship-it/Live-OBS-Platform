@@ -50,7 +50,7 @@ const Ctx = createContext<ShellCtx | null>(null);
 
 export function useSeller(): ShellCtx {
   const v = useContext(Ctx);
-  if (!v) throw new Error("SellerShell 안에서만 사용합니다");
+  if (!v) throw new Error("SellerShell 안에서만 써요");
   return v;
 }
 

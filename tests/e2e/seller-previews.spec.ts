@@ -36,6 +36,14 @@ test("상품 등록 미리보기: 상품명·판매가·설명·옵션·판매 �
   await expect(pv.getByTestId("preview-name")).toHaveText("미리보기 부스터 팩");
   await page.getByLabel("판매가").fill("15,000");
   await expect(pv.getByTestId("preview-price")).toHaveText("15,000원");
+  // 새 상품의 옵션 하나(「기본」, 재고 0): 목록은 숨겨도 품절과 추가 금액은 대표 가격·배지에 반영한다
+  await expect(pv.locator(".pbadge")).toHaveText("품절");
+  await page.getByLabel("옵션 1 추가 금액").fill("2000");
+  await expect(pv.getByTestId("preview-price")).toHaveText("17,000원");
+  await page.getByLabel("옵션 1 추가 금액").fill("0");
+  await page.getByLabel("옵션 1 재고").fill("3");
+  await expect(pv.locator(".pbadge")).toHaveCount(0);
+  await expect(pv.getByTestId("preview-price")).toHaveText("15,000원");
 
   // 설명: 줄바꿈을 지킨다
   await page.getByLabel("상품 설명").fill("1박스 36팩 구성\n미개봉 정품\n주문 다음 날 발송");

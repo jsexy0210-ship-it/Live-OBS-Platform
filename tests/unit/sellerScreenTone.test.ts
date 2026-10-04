@@ -17,6 +17,7 @@ const EXCLUDE = [
 const ALLOW = [
   "매주 금요일 밤 라이브로 만나요", // 공유 미리보기 설명 칸 예시(구매자가 보는 문구)
   "안에 입금하면 주문대기에 올라가요", // 주문 설정의 구매자 화면 미리보기
+  "SellerShell 안에서만 써요", // 개발자용 오류(화면에 보이지 않음). SellerShell.tsx는 레이아웃 전담 소유라 그쪽에서 고친다
 ];
 
 function files(dir: string): string[] {
@@ -27,8 +28,9 @@ function files(dir: string): string[] {
   });
 }
 
-// 따옴표·백틱 안이나 JSX 글자 끝의 「…요」(물음표·마침표 포함). 주석 줄은 뺀다. 「필요」「중요」처럼 요로 끝나는 명사는 뺀다.
-const FRIENDLY = /[가-힣](?<![필중주수])(?:요|요\.|요\?)(?=["'`<]|\s*$|\s*\}|\s*·)/;
+// 따옴표·백틱 안이나 JSX 글자 끝의 「…요」. 뒤에 붙는 문장부호(. ? ! … ~ 닫는 낫표·따옴표)는 따로 건너뛴다. 주석 줄은 뺀다.
+// 「필요」「중요」처럼 요로 끝나는 명사는 뺀다.
+const FRIENDLY = /[가-힣](?<![필중주수])요[.?!…~」』”’]*(?=["'`<]|\s*$|\s*\}|\s*·)/;
 
 describe("파트너스 관리자 화면 말투", () => {
   it("화면 소스에 해요체 문장이 없다", () => {
@@ -55,6 +57,11 @@ describe("파트너스 관리자 화면 말투", () => {
     expect(FRIENDLY.test(`<span>저장했어요</span>`)).toBe(true);
     expect(FRIENDLY.test(`setError("다시 시도해 주세요")`)).toBe(true);
     expect(FRIENDLY.test(`"저장할까요?"`)).toBe(true);
+    expect(FRIENDLY.test(`"저장했어요!"`)).toBe(true);
+    expect(FRIENDLY.test(`"다시 시도해 주세요!"`)).toBe(true);
+    expect(FRIENDLY.test(`<span>잠시만요…</span>`)).toBe(true);
+    expect(FRIENDLY.test(`"「좋아요」"`)).toBe(true);
+    expect(FRIENDLY.test(`{"끝났어요~"}`)).toBe(true);
     expect(FRIENDLY.test(`<span>저장했습니다</span>`)).toBe(false);
     expect(FRIENDLY.test(`"요금제"`)).toBe(false);
     expect(FRIENDLY.test(`["권한 필요", "중요"]`)).toBe(false);

@@ -1,5 +1,6 @@
 "use client";
 
+import "./ProductPreview.css";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -521,7 +522,10 @@ function ProductPreview({ name, description, price, status, rows }: { name: stri
     const delta = parseAmount(r.priceDelta) ?? 0;
     return price === null ? "—" : won(Math.max(0, price + delta));
   };
-  const soldOut = status === "SOLD_OUT";
+  // 옵션이 모두 재고 0이면 판매 상태와 관계없이 품절로 보인다. 옵션이 하나뿐이면(새 상품의 「기본」) 그 옵션 가격을 대표 가격으로 쓴다
+  const soldOut = status === "SOLD_OUT" || (options.length > 0 && options.every((r) => parseAmount(r.stock) === 0));
+  const single = options.length === 1 ? options[0] : null;
+  const shownPrice = single && price !== null ? Math.max(0, price + (parseAmount(single.priceDelta) ?? 0)) : price;
   return (
     <div className="card pad col pcard pv" style={{ gap: 10 }} data-testid="product-preview">
       <span className="t-hl2">쇼핑몰 미리보기</span>
@@ -542,8 +546,8 @@ function ProductPreview({ name, description, price, status, rows }: { name: stri
         {textLength(name) ? name.trim() : "상품명을 입력해 주십시오"}
       </span>
       <span className="pprice">
-        <span className={`t-hl1 num${price ? "" : " c-ast"}`} data-testid="preview-price">
-          {won(price ?? 0)}
+        <span className={`t-hl1 num${shownPrice ? "" : " c-ast"}`} data-testid="preview-price">
+          {won(shownPrice ?? 0)}
         </span>
       </span>
       {options.length > 1 || (options.length === 1 && options[0].name.trim() !== "기본") ? (
