@@ -28,6 +28,8 @@ test.beforeAll(async () => {
     data: { slug: slugA, shopName: nameA, status: "ACTIVE", approvedAt: new Date(), planId: plan?.id, businessInfo: { companyName: "시험상사", businessNumber: "123-45-67890", representativeName: "홍길동" } },
   });
   idA = a.id;
+  const overlay = await db.subscriptionPlan.findFirst({ where: { code: "OVERLAY_ONLY" } });
+  if (plan) await db.sellerSubscription.create({ data: { sellerId: a.id, planId: plan.id, pendingPlanId: overlay?.id, currentPeriodEnd: new Date(Date.now() + 20 * 86_400_000) } });
   await db.seller.create({ data: { slug: slugB, shopName: `대기몰 ${run}`, status: "PENDING", planId: plan?.id } });
 });
 test.afterAll(async () => {
@@ -89,6 +91,11 @@ test("상세: 기본 정보·대표자·사업자·구독·최근 30일 주문�
   for (const t of ["기본 정보", "대표자", "사업자 정보", "구독"]) await expect(page.getByRole("heading", { name: t, level: 2 })).toBeVisible();
   await expect(page.getByText("시험상사")).toBeVisible();
   await expect(page.getByTestId("partner-orders")).toHaveText("0건");
+  // 요금제는 코드가 아니라 이름으로 보인다(코드성 표기 금지)
+  const pending = page.locator("dl.kv dt", { hasText: "변경 예정 요금제" }).locator("xpath=following-sibling::dd[1]");
+  await expect(pending).toHaveText("오버레이 전용");
+  await expect(page.locator("main")).not.toContainText("OVERLAY_ONLY");
+  await expect(page.locator("main")).not.toContainText("INTEGRATED");
   await expect(page.locator(".loc-bar .crumb")).toContainText("파트너스 상세");
   const align = (sel: string) => page.locator(sel).first().evaluate((el) => getComputedStyle(el).textAlign);
   expect(["left", "start"]).toContain(await align("dl.kv dd"));
