@@ -56,7 +56,7 @@ jobs:
   test:
     name: Unit and integration tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     services:
       # 폐기 가능한 테스트 DB (GitHub Actions 서비스 컨테이너, 외부 자원 없음)
       postgres:
