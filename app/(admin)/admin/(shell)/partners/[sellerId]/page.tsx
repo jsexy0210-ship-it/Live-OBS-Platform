@@ -152,7 +152,8 @@ export default function PartnerDetailPage() {
                       ["현재 기간", `${day(s.subscription.currentPeriodStart)} ~ ${day(s.subscription.currentPeriodEnd)}`],
                       ["다음 결제", dayTime(s.subscription.nextChargeAt)],
                       ["기간 끝에 해지", s.subscription.cancelAtPeriodEnd ? "예" : "아니요"],
-                      ["변경 예정 요금제", s.subscription.pendingPlanCode ?? "-"],
+                      ["구독 요금제", s.subscription.planName],
+                      ["변경 예정 요금제", s.subscription.pendingPlanName ?? "-"],
                       ["연체 유예", dayTime(s.subscription.graceUntil)],
                       ["결제 재시도", `${s.subscription.retryCount}회`],
                     ]
