@@ -648,6 +648,13 @@ describe("환불과 리뷰 적립", () => {
     expect(rb.ok && rb.value.reviewRewardRevoke).toEqual({ outcome: "manual_review", amount: 500 });
     const audit = await db.auditLog.findFirstOrThrow({ where: { action: "order.refund", targetId: b.orderId } });
     expect((audit.after as { reviewRewardRevoke: unknown }).reviewRewardRevoke).toEqual({ outcome: "manual_review", amount: 500 });
+    // SA-048 목록·상세에 「적립금 수동 회수 필요」 금액이 나온다(자동 회수된 건은 0)
+    const lst = (await (await sellerList(get("/x", s.owner))).json()) as { reviews: { id: string; revokePending: number }[] };
+    const mine = await db.productReview.findFirstOrThrow({ where: { orderId: b.orderId } });
+    expect(lst.reviews.find((x) => x.id === mine.id)?.revokePending).toBe(500);
+    expect(lst.reviews.filter((x) => x.id !== mine.id).every((x) => x.revokePending === 0)).toBe(true);
+    const det = ((await (await sellerDetailGet(get("/x", s.owner), p({ reviewId: mine.id }))).json()) as { review: { revokePending: number } }).review;
+    expect(det.revokePending).toBe(500);
     const c = await s.delivered();
     const rc = await refund(s, c.orderId);
     expect(rc.ok && rc.value.reviewRewardRevoke).toEqual({ outcome: "none", amount: 0 });

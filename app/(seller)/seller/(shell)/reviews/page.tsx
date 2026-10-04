@@ -23,6 +23,7 @@ type Row = {
   photos: number;
   replied: boolean;
   reportCount: number;
+  revokePending: number;
   createdAt: string;
 };
 type Policy = { publishMode: "IMMEDIATE" | "REVIEW"; rewardText: number; rewardPhoto: number; writableDays: number; bannedWords: string[] };
@@ -55,6 +56,7 @@ type Detail = {
   reportCount: number;
   reportReasons: Partial<Record<Reason, number>>;
   rewardedAmount: number;
+  revokePending: number;
   images: { id: string; url: string }[];
   orderedAt: string;
   deliveredAt: string | null;
@@ -222,6 +224,7 @@ export default function ReviewsPage() {
                           {kstText(r.createdAt).slice(5, 10)} · {r.photos > 0 ? `사진 ${r.photos}장` : "사진 없음"}
                           {r.replied ? " · 답글 완료" : ""}
                           {r.reportCount > 0 ? ` · 신고 ${r.reportCount}건` : ""}
+                          {r.revokePending > 0 ? ` · 환불된 주문 · 적립금 수동 회수 필요 ${won(r.revokePending)}` : ""}
                         </span>
                       </span>
                       <span>
@@ -360,7 +363,13 @@ function ReviewDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit
             <p className="t-l1" style={{ whiteSpace: "pre-line", margin: 0 }}>
               {d.body}
             </p>
-            {d.rewardedAmount > 0 && <span className="t-c1 c-alt">리뷰 적립금 {won(d.rewardedAmount)} 지급</span>}
+            {d.revokePending > 0 ? (
+              <span className="t-c1" style={{ color: "var(--neg-text)" }} role="status">
+                환불된 주문 · 적립금 수동 회수 필요 {won(d.revokePending)}
+              </span>
+            ) : (
+              d.rewardedAmount > 0 && <span className="t-c1 c-alt">리뷰 적립금 {won(d.rewardedAmount)} 지급</span>
+            )}
             {d.status === "HIDDEN" && d.hiddenReason && (
               <span className="t-c1 c-alt">
                 숨김 사유: {reasonLabel(d.hiddenReason)}

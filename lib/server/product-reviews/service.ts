@@ -203,6 +203,7 @@ export async function listSellerReviews(db: PrismaClient, ctx: TenantContext, q:
       include: {
         product: { select: { name: true } },
         buyerMember: { select: { status: true, grade: { select: { displayName: true } } } },
+        order: { select: { status: true } },
         _count: { select: { images: true, reports: { where: { resolvedAt: null } } } },
       },
     }),
@@ -233,6 +234,8 @@ export async function listSellerReviews(db: PrismaClient, ctx: TenantContext, q:
       hiddenReason: r.hiddenReason,
       photos: r._count.images,
       rewardedAmount: rewards.get(r.id)?.amount ?? 0,
+      // 환불된 주문인데 리뷰 적립이 남아 있으면(회수 방식 MANUAL) 판매자가 수동으로 회수해야 한다
+      revokePending: r.order.status !== "PAID" ? (rewards.get(r.id)?.amount ?? 0) : 0,
       replied: r.reply !== null,
       reportCount: r._count.reports,
       createdAt: r.createdAt,
@@ -261,7 +264,7 @@ export async function getSellerReview(db: PrismaClient, ctx: TenantContext, id: 
     include: {
       product: { select: { name: true } },
       orderItem: { select: { optionNameSnapshot: true, quantity: true } },
-      order: { select: { orderNo: true, createdAt: true, shipment: { select: { deliveredAt: true } } } },
+      order: { select: { orderNo: true, status: true, createdAt: true, shipment: { select: { deliveredAt: true } } } },
       images: { select: { id: true, width: true, height: true }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
       reports: { where: { resolvedAt: null }, select: { reason: true } },
     },
@@ -287,6 +290,7 @@ export async function getSellerReview(db: PrismaClient, ctx: TenantContext, id: 
     reportCount: r.reports.length,
     reportReasons: reasons,
     rewardedAmount: reward,
+    revokePending: r.order.status !== "PAID" ? reward : 0,
     images: r.images.map((i) => ({ ...i, url: sellerImageUrl(i.id) })),
     orderedAt: r.order.createdAt,
     deliveredAt: r.order.shipment?.deliveredAt ?? null,
