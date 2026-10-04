@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { dbStorage } from "./db";
+import { kakaoStorage } from "./kakao";
 
 // 공통 이미지 저장소(대표님 결정 2026-10-04: 카카오 오브젝트 스토리지로 옮길 수 있게 하되 지금은 DB 저장).
 // 업로드 경로는 바이트를 검사한 뒤 여기로만 저장하고, 돌려받은 storageKey를 자기 표에 둔다. 화면에 주는 주소는 저장 방식과 상관없는
@@ -20,7 +21,7 @@ export interface ImageStorage {
   deleteImage(tx: Db, storageKey: string, sellerId: string): Promise<void>;
 }
 
-const DRIVERS: Record<string, ImageStorage> = { db: dbStorage };
+const DRIVERS: Record<string, ImageStorage> = { db: dbStorage, kakao: kakaoStorage };
 
 // 새로 저장할 드라이버. 모르는 값이면 저장하지 않고 오류(조용히 다른 곳에 저장하지 않음).
 export function imageStorage(): ImageStorage {
