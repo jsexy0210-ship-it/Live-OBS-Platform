@@ -572,6 +572,33 @@ test("직원 변경이 503·형식 모를 응답이면 불분명으로 보고 �
   await off();
 });
 
+// 정보는 저장됐는데 권한 저장만 확정 실패(예: 402)한 부분 성공: 목록을 다시 읽어 새 연락처가 바로 보인다
+test("정보 저장 뒤 권한 저장만 실패하면 저장된 정보는 목록에 바로 반영된다", async ({ page }) => {
+  await login(page, "demo-owner@example.com");
+  await expect(page).toHaveURL(/\/seller\/staff$/);
+  const id = uniq();
+  const s = { name: `부분${id}`, phone: "01011112222", email: `part-${id}@example.com`, password: `pw-${id}-init` };
+  await addStaff(page, s);
+  await page.getByRole("button", { name: "계정 생성" }).click();
+  await expect(row(page, s.email)).toContainText("010-1111-2222");
+  await page.getByRole("button", { name: `${s.name} 정보 · 권한 수정` }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("휴대폰 번호").fill("01033334444");
+  await dialog.getByRole("checkbox", { name: "상품", exact: true }).check();
+  await page.route(
+    (u) => u.pathname.endsWith("/permissions"),
+    (route) => route.fulfill({ status: 402, json: { error: "subscription_required", message: "이용 기간이 끝나 지금은 할 수 없습니다" } }),
+    { times: 1 },
+  );
+  await dialog.getByRole("button", { name: "저장" }).click();
+  await expect(dialog.getByText("이름·휴대폰은 저장했지만 권한은 변경하지 못했습니다", { exact: false })).toBeVisible();
+  // 창을 닫지 않아도 뒤 목록은 이미 새 연락처다
+  await expect(row(page, s.email)).toContainText("010-3333-4444");
+  await dialog.getByRole("button", { name: "취소" }).click();
+  await expect(row(page, s.email)).toContainText("010-3333-4444");
+  await expect(row(page, s.email)).not.toContainText("상품");
+});
+
 test("권한이 하나도 없는 직원도 창으로 돌아오면 대표자가 켠 권한이 메뉴에 나온다(새로고침 없이)", async ({ page }) => {
   await login(page, "demo-owner@example.com");
   await expect(page).toHaveURL(/\/seller\/staff$/);

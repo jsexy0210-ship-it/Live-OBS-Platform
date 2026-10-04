@@ -248,6 +248,8 @@ export function EditStaffModal({ staff, onClose, onSaved, onChanged }: { staff: 
       if (!r.ok) {
         if (isUnclear(r)) return check(sent);
         setBusy(false);
+        // 이름·휴대폰은 저장됐다(부분 성공): 목록을 다시 읽어 연락처·본인확인 연결 상태를 바로 맞춘다
+        if (sent.profile) onChanged?.();
         if (unclear) return setUnclear({ sent, text: staffFail(r, "재저장하지 못했습니다. 잠시 후 「확인」을 눌러 주십시오") });
         return setError(sent.profile ? `이름·휴대폰은 저장했지만 권한은 변경하지 못했습니다. ${staffFail(r, "다시 시도해 주십시오")}` : staffFail(r, "저장하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
       }
