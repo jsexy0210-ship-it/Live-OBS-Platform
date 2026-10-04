@@ -6,6 +6,7 @@ import { bucketOf, bucketSeries, num, statsSnapshot, type StatsDb } from "./sql"
 // 매출 통계(SALES_VIEW). 주문 통계와 같은 기준: 주문 시각(KST)의 기간에 들어온 주문 중 결제된 적 있는 주문(paidAt 있음).
 // - 판매액: 할인 전 금액(품목 정가 × 수량, 정가가 없던 옛 품목은 판매 단가)
 // - 할인: 이벤트 할인(정가 − 판매 단가) × 수량
+// - 쿠폰 할인: 그 주문에 쓴 쿠폰 할인(배송비 무료 쿠폰은 배송비만큼). 판매액 − 할인 − 쿠폰 할인 − 적립금 사용 + 배송비 = 결제액
 // - 적립금 사용·배송비: 주문에 고정된 값
 // - 결제액: 주문 금액(totalAmount = 상품 금액 + 배송비)
 // - 환불액: 환불 주문의 실제 환불 금액(없던 옛 주문은 결제액). 순매출 = 결제액 − 환불액
@@ -14,6 +15,7 @@ import { bucketOf, bucketSeries, num, statsSnapshot, type StatsDb } from "./sql"
 export type SalesSummary = {
   gross: number;
   discount: number;
+  couponDiscount: number;
   rewardUsed: number;
   shippingFee: number;
   paid: number;
@@ -36,7 +38,7 @@ const PAID_IN = (sellerId: string, start: Date, end: Date) =>
   Prisma.sql`"sellerId" = ${sellerId}::uuid AND "paidAt" IS NOT NULL AND "createdAt" >= ${start} AND "createdAt" < ${end}`;
 
 async function summary(db: StatsDb, sellerId: string, start: Date, end: Date): Promise<SalesSummary> {
-  const [o, i] = await Promise.all([
+  const [o, i, c] = await Promise.all([
     db.$queryRaw<OrderAgg[]>`SELECT ${ORDER_AGG} FROM "Order" WHERE ${PAID_IN(sellerId, start, end)}`,
     db.$queryRaw<ItemAgg[]>`
       SELECT
@@ -46,12 +48,19 @@ async function summary(db: StatsDb, sellerId: string, start: Date, end: Date): P
       JOIN "Order" o ON o.id = i."orderId" AND o."sellerId" = i."sellerId"
       WHERE i."sellerId" = ${sellerId}::uuid AND o."sellerId" = ${sellerId}::uuid AND o."paidAt" IS NOT NULL
         AND o."createdAt" >= ${start} AND o."createdAt" < ${end}`,
+    db.$queryRaw<{ coupon: bigint }[]>`
+      SELECT coalesce(sum(r."discountAmount"::bigint), 0) AS coupon
+      FROM "CouponRedemption" r
+      JOIN "Order" o ON o.id = r."orderId" AND o."sellerId" = r."sellerId"
+      WHERE r."sellerId" = ${sellerId}::uuid AND o."sellerId" = ${sellerId}::uuid AND o."paidAt" IS NOT NULL
+        AND o."createdAt" >= ${start} AND o."createdAt" < ${end}`,
   ]);
   const paid = num(o[0]?.paid);
   const refund = num(o[0]?.refund);
   return {
     gross: num(i[0]?.gross),
     discount: num(i[0]?.discount),
+    couponDiscount: num(c[0]?.coupon),
     rewardUsed: num(o[0]?.reward),
     shippingFee: num(o[0]?.shipping),
     paid,
