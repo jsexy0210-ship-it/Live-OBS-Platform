@@ -101,6 +101,9 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/reward-policy": "STORE_OPERATIONS",
   "seller/share-preview": "STORE_OPERATIONS",
   "seller/shipping-policy": "STORE_OPERATIONS",
+  "seller/notices": "STORE_OPERATIONS",
+  "seller/notices/[noticeId]": "STORE_OPERATIONS",
+  "seller/notices/faq-order": "STORE_OPERATIONS",
   "seller/shop-content/banners": "STORE_OPERATIONS",
   "seller/shop-content/banners/[bannerId]": "STORE_OPERATIONS",
   "seller/shop-content/banners/reorder": "STORE_OPERATIONS",
@@ -157,6 +160,9 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/cart/count": "OPEN", // 머리 배지 개수
   "shop/[slug]/wishlist": "STORE_OPERATIONS", // 찜: 찜하기(POST)는 shopOpen으로 막음, 목록은 열림
   "shop/[slug]/wishlist/[productId]": "OPEN", // 찜 빼기
+  "shop/[slug]/notices": "STORE_OPERATIONS", // 쇼핑몰 공지(운영 중이 아니면 404)
+  "shop/[slug]/notices/[noticeId]": "STORE_OPERATIONS",
+  "shop/[slug]/faqs": "STORE_OPERATIONS",
   "shop/[slug]/me/marketing-consent": "OPEN",
   "shop/[slug]/me/withdraw": "OPEN",
   "shop/[slug]/me/rewards": "OPEN", // 내 적립금 잔액(탈퇴 전 확인, #180)

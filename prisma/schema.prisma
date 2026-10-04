@@ -149,6 +149,7 @@ model Seller {
   productReviewPolicy      ProductReviewPolicy?
   cartItems                CartItem[]
   wishItems                WishItem[]
+  shopNotices              ShopNotice[]
 }
 
 model SellerDomain {
@@ -2080,4 +2081,29 @@ model ProductDetail {
   product Product @relation(fields: [sellerId, productId], references: [sellerId, id])
 
   @@unique([sellerId, productId])
+}
+
+enum ShopNoticeKind {
+  NOTICE
+  FAQ
+}
+
+// 쇼핑몰 공지·자주 묻는 질문(SA-066 관리, SH-030 구매자 조회). 공지는 최신순, 질문은 sortOrder순(분류 category는 질문만).
+// 홈 띠 고정 공지는 쇼핑몰당 1개(부분 유니크 인덱스 ShopNotice_one_pinned_per_seller, 마이그레이션 SQL). 바꿀 때마다 로그 추적(shop-notice/service.ts).
+model ShopNotice {
+  id          String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId    String         @db.Uuid
+  kind        ShopNoticeKind
+  title       String
+  body        String
+  category    String?
+  isPinned    Boolean        @default(false)
+  isPublished Boolean        @default(true)
+  sortOrder   Int            @default(0)
+  createdAt   DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime       @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+
+  @@index([sellerId, kind, createdAt])
 }
