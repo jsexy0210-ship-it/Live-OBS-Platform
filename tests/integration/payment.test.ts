@@ -18,6 +18,7 @@ import { POST as webhookRoute } from "../../app/api/payments/nicepay/webhook/rou
 import { loginBuyer } from "../../lib/server/auth/login";
 import { PAYMENT_MESSAGES } from "../../lib/server/payments/messages";
 import { setPaymentGatewayForTest } from "../../lib/server/payments/registry";
+import { kickPaymentCancels, runPaymentWorkerOnce } from "../../lib/server/payments/worker";
 import { PASSWORD, createBuyer, createLoginBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
 beforeEach(resetDb);
@@ -153,8 +154,10 @@ describe("승인: 서명·금액 검증, 두 번 승인 금지", () => {
     const s = await setup();
     const o = await s.order();
     const p1 = await s.start(o.id);
-    expect(await confirmAuthResult(db, s.gw, { ...s.gw.authorize(p1.orderId, 13000), authResultCode: "9999" })).toMatchObject({ ok: true, outcome: "failed" });
-    expect(await paymentOf(p1.paymentId)).toMatchObject({ status: "FAILED", failureCode: "auth_9999" });
+    // 인증 실패 결과에는 서명이 없어 상태를 바꾸지 않는다(READY 그대로, 버리는 시도)
+    expect(await confirmAuthResult(db, s.gw, { ...s.gw.authorize(p1.orderId, 13000), authResultCode: "9999", signature: "" })).toMatchObject({ ok: true, outcome: "failed" });
+    expect((await paymentOf(p1.paymentId)).status).toBe("READY");
+    expect(s.gw.approveCalls).toBe(0);
     const p2 = await s.start(o.id);
     s.gw.failNext = "reject";
     expect(await confirmAuthResult(db, s.gw, s.gw.authorize(p2.orderId, 13000))).toMatchObject({ ok: true, outcome: "failed" });
@@ -390,5 +393,48 @@ describe("경로", () => {
     expect(await hook.text()).toBe("OK");
     const bad = await webhookRoute(new Request(`${origin}/api/payments/nicepay/webhook`, { method: "POST", body: JSON.stringify({ tid, signature: "x" }) }));
     expect(bad.status).toBe(401);
+  });
+});
+
+describe("커밋 뒤 처리(worker)", () => {
+  it("환불 직후 그 주문의 취소를 바로 보낸다(kickPaymentCancels)", async () => {
+    const s = await setup();
+    setPaymentGatewayForTest(s.gw);
+    const o = await s.order();
+    const p = await s.start(o.id);
+    await confirmAuthResult(db, s.gw, s.gw.authorize(p.orderId, 13000));
+    await refundOrder(db, s.ctx, o.id, { reason: "구매자 요청", expectedLiveVersion: await lv(s.seller.id) });
+    await kickPaymentCancels(db, o.id);
+    expect(await paymentOf(p.paymentId)).toMatchObject({ status: "CANCELLED", cancelledAmount: 13000 });
+    expect(s.gw.payments.get(`fake-tid-${p.paymentId}`)?.balanceAmt).toBe(0);
+  });
+
+  it("정기 처리가 남은 취소 요청과 승인 중 결제를 확정한다(키가 없으면 아무것도 안 함)", async () => {
+    const s = await setup();
+    // 결제 1: 환불했지만 PG 취소를 아직 보내지 않음(바로 보내기가 실패한 경우와 같다)
+    const o1 = await s.order();
+    const p1 = await s.start(o1.id);
+    await confirmAuthResult(db, s.gw, s.gw.authorize(p1.orderId, 13000));
+    await refundOrder(db, s.ctx, o1.id, { reason: "구매자 요청", expectedLiveVersion: await lv(s.seller.id) });
+    // 결제 2: 승인 응답·망 취소 모두 모름 → APPROVING
+    const o2 = await s.order();
+    const p2 = await s.start(o2.id);
+    s.gw.failNext = "timeout_after";
+    const netCancel = s.gw.netCancel.bind(s.gw);
+    s.gw.netCancel = async () => ({ kind: "unknown", error: "timeout" });
+    await confirmAuthResult(db, s.gw, s.gw.authorize(p2.orderId, 13000));
+    s.gw.netCancel = netCancel;
+    expect((await paymentOf(p2.paymentId)).status).toBe("APPROVING");
+
+    setPaymentGatewayForTest(null);
+    expect(await runPaymentWorkerOnce(db)).toBeNull();
+    setPaymentGatewayForTest(s.gw);
+    const later = new Date(Date.now() + 5 * 60_000);
+    expect(await runPaymentWorkerOnce(db, later)).toEqual({ cancels: 1, reconciled: 1, failed: 0 });
+    expect(await paymentOf(p1.paymentId)).toMatchObject({ status: "CANCELLED", cancelledAmount: 13000 });
+    expect((await orderOf(o2.id)).status).toBe("PAID");
+    // 다시 돌려도 바뀌는 것 없음
+    expect(await runPaymentWorkerOnce(db, new Date(later.getTime() + 5 * 60_000))).toEqual({ cancels: 0, reconciled: 0, failed: 0 });
+    expect(s.gw.cancelCalls).toBe(1);
   });
 });

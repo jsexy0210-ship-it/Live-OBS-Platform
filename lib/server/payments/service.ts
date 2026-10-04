@@ -80,10 +80,8 @@ export async function confirmAuthResult(db: PrismaClient, gw: PaymentGateway, r:
   const p = await db.payment.findUnique({ where: { id: r.orderId } });
   if (!p || p.provider !== gw.name) return { ok: false, reason: "not_found" };
   const done = (outcome: ConfirmOutcome): ConfirmResult => ({ ok: true, outcome, sellerId: p.sellerId, orderId: p.orderId });
-  if (r.authResultCode !== "0000") {
-    await fail(db, p, `auth_${r.authResultCode}`, ["READY"]);
-    return done(p.status === "PAID" ? "paid" : "failed");
-  }
+  // 인증 실패 결과에는 서명이 없다(매뉴얼). 서명 없는 값으로 상태를 바꾸지 않는다: READY는 그대로 두고(버리는 시도) 지금 상태만 알린다.
+  if (r.authResultCode !== "0000") return done(p.status === "READY" ? "failed" : outcomeOf(p));
   if (!gw.verifyAuthResult(r)) return { ok: false, reason: "invalid_signature" };
   if (!/^\d+$/.test(r.amount) || Number(r.amount) !== p.amount || !r.tid) {
     await fail(db, p, "amount_mismatch", ["READY"]);
@@ -297,6 +295,14 @@ export async function processPaymentCancel(db: PrismaClient, gw: PaymentGateway,
     return "failed";
   }
   return "pending";
+}
+
+// 환불 직후 그 주문의 취소 요청을 바로 PG에 보낸다(환불 라우트에서 커밋 뒤 부른다). 실패·결과 모름은 정기 처리(worker.ts)가 다시 한다.
+export async function runPaymentCancelsForOrder(db: PrismaClient, gw: PaymentGateway, orderId: string): Promise<("done" | "failed" | "pending")[]> {
+  const cancels = await db.paymentCancel.findMany({ where: { status: "REQUESTED", payment: { orderId } }, select: { id: true } });
+  const out: ("done" | "failed" | "pending")[] = [];
+  for (const c of cancels) out.push(await processPaymentCancel(db, gw, c.id));
+  return out;
 }
 
 // 남은 취소 요청·승인 중 결제를 처리한다(환불 뒤·정기 실행에서 부른다). 한 건이 실패해도 나머지는 계속한다.
