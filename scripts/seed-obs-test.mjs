@@ -1,9 +1,10 @@
-// 테스트 서버(obs-test) 시험 데이터: 판매자(대표자) 계정 1개, 시험 쇼핑몰 1개, 상품 몇 개.
+// 테스트 서버(obs-test) 시험 데이터: 판매자(대표자) 계정 1개, 시험 쇼핑몰 1개, 상품 몇 개, 마스터 관리자(최고관리자) 시험 계정 1개.
 // 실행(서버, 저장소 루트): docs/DEPLOY.md 「시험 데이터 넣기」의 한 줄. 마이그레이션 이미지(obs-web-migrate) 안에서 돈다.
 // - OBS_TEST_MODE=1일 때만 실행한다(테스트 서버 전용, lib/server/testMode.ts와 같은 플래그). 운영 서버에는 이 값을 넣지 않는다.
-// - 로그인 아이디·비밀번호는 실행할 때 환경변수 SEED_SELLER_LOGIN·SEED_SELLER_PASSWORD로만 받고, 저장소·로그에 남기지 않는다.
-//   대표님 허용(2026-10-03): 아이디 형식·비밀번호 8자 규칙은 이 시험 데이터 명령에서만 건너뛴다(서비스의 가입·변경 규칙은 그대로).
-// - 판매자가 한 명이라도 있으면 아무것도 하지 않고 끝낸다(다시 실행해도 중복 없음).
+// - 로그인 아이디·비밀번호는 실행할 때 환경변수로만 받고, 저장소·로그에 남기지 않는다. 둘 중 한 쌍은 꼭 있어야 한다.
+//   판매자: SEED_SELLER_LOGIN·SEED_SELLER_PASSWORD, 마스터 관리자(대표님 지시 2026-10-04): SEED_ADMIN_LOGIN·SEED_ADMIN_PASSWORD.
+//   대표님 허용(2026-10-03, 2026-10-04): 아이디 형식·비밀번호 8자 규칙은 이 시험 데이터 명령에서만 건너뛴다(서비스의 가입·변경 규칙은 그대로).
+// - 판매자가 한 명이라도 있으면 판매자 부분은 건너뛴다. 같은 아이디의 마스터 관리자가 있으면 관리자는 만들지 않는다(다시 실행해도 중복 없음).
 // - 실제 결제·문자 발송은 없다(DB에 행만 만든다).
 // - 대표자 본인확인 정보는 시험용 인물(TEST_REPRESENTATIVE)로 채운다. 테스트 서버 모드의 가짜 본인확인 공급자는
 //   CI를 `fake-ci:{이름}:{생년월일7자리}`로 만들므로, 비밀번호 찾기에서 이 이름·생년월일을 넣고 인증번호 000000을 쓰면 대표자로 확인된다.
@@ -16,21 +17,32 @@ if (process.env.OBS_TEST_MODE !== "1") {
   console.error("테스트 서버 모드(OBS_TEST_MODE=1)가 아니에요. 테스트 서버에서만 시험 데이터를 넣어요.");
   process.exit(1);
 }
-const loginId = (process.env.SEED_SELLER_LOGIN ?? "").trim().toLowerCase();
-const password = process.env.SEED_SELLER_PASSWORD ?? "";
-if (!loginId || !password) {
-  console.error("SEED_SELLER_LOGIN과 SEED_SELLER_PASSWORD를 실행할 때 넣어 주세요.");
+// 아이디·비밀번호 한 쌍. 둘 다 없으면 null, 하나만 있으면 실패한다.
+function pair(loginKey, passwordKey) {
+  const login = (process.env[loginKey] ?? "").trim().toLowerCase();
+  const password = process.env[passwordKey] ?? "";
+  if (!login && !password) return null;
+  if (!login || !password) {
+    console.error(`${loginKey}와 ${passwordKey}는 함께 넣어 주세요.`);
+    process.exit(1);
+  }
+  return { login, password };
+}
+const sellerAccount = pair("SEED_SELLER_LOGIN", "SEED_SELLER_PASSWORD");
+const adminAccount = pair("SEED_ADMIN_LOGIN", "SEED_ADMIN_PASSWORD");
+if (!sellerAccount && !adminAccount) {
+  console.error("SEED_SELLER_LOGIN·SEED_SELLER_PASSWORD(판매자)나 SEED_ADMIN_LOGIN·SEED_ADMIN_PASSWORD(마스터 관리자)를 실행할 때 넣어 주세요.");
   process.exit(1);
 }
 
 const hashKey = process.env.IDENTITY_HASH_KEY ?? "";
-if (hashKey.length < 32) {
+if (sellerAccount && hashKey.length < 32) {
   console.error("IDENTITY_HASH_KEY가 없거나 너무 짧아요(32자 이상). 서버와 같은 값이 있어야 대표자 비밀번호 찾기가 돼요.");
   process.exit(1);
 }
 // 시험용 인물(실존 인물 아님). 휴대폰번호는 아무 번호나 넣어도 된다(CI에 들어가지 않음).
 const TEST_REPRESENTATIVE = { name: "테스트대표", birth7: "9001011", birthLabel: "1990년 1월 1일, 남" };
-const representativeCiHash = createHmac("sha256", hashKey).update(`fake-ci:${TEST_REPRESENTATIVE.name}:${TEST_REPRESENTATIVE.birth7}`, "utf8").digest("hex");
+const representativeCiHash = () => createHmac("sha256", hashKey).update(`fake-ci:${TEST_REPRESENTATIVE.name}:${TEST_REPRESENTATIVE.birth7}`, "utf8").digest("hex");
 
 const db = new PrismaClient();
 const SHOP = { slug: "test-shop", shopName: "테스트 쇼핑몰" };
@@ -41,8 +53,23 @@ const PRODUCTS = [
 ];
 
 async function main() {
+  if (sellerAccount) await seedSeller(sellerAccount);
+  if (adminAccount) await seedAdmin(adminAccount);
+}
+
+// 마스터 관리자 시험 계정(최고관리자). 같은 아이디가 있으면 만들지 않는다.
+async function seedAdmin({ login, password }) {
+  if (await db.platformAdmin.findUnique({ where: { email: login }, select: { id: true } })) {
+    console.log("이미 같은 아이디의 마스터 관리자가 있어 만들지 않았어요.");
+    return;
+  }
+  await db.platformAdmin.create({ data: { email: login, passwordHash: await hash(password), name: "최고관리자", role: "SUPER_ADMIN", status: "ACTIVE" } });
+  console.log("마스터 관리자(최고관리자) 시험 계정을 만들었어요.");
+}
+
+async function seedSeller({ login: loginId, password }) {
   if ((await db.seller.count()) > 0) {
-    console.log("이미 판매자가 있어 시험 데이터를 넣지 않았어요.");
+    console.log("이미 판매자가 있어 판매자 시험 데이터는 넣지 않았어요.");
     return;
   }
   const passwordHash = await hash(password);
@@ -52,7 +79,7 @@ async function main() {
     // 시험 쇼핑몰은 쇼핑몰 통합 플랜(ONQ 1-C, 마이그레이션이 넣은 행)이고, 시험용으로 1년 체험을 준다
     const plan = await tx.subscriptionPlan.findUnique({ where: { code: "INTEGRATED" }, select: { id: true } });
     const seller = await tx.seller.create({
-      data: { ...SHOP, status: "ACTIVE", approvedAt: new Date(), trialEndsAt, planId: plan?.id ?? null, representativeCiHash, representativeVerifiedAt: new Date() },
+      data: { ...SHOP, status: "ACTIVE", approvedAt: new Date(), trialEndsAt, planId: plan?.id ?? null, representativeCiHash: representativeCiHash(), representativeVerifiedAt: new Date() },
     });
     await tx.memberGrade.createMany({
       data: [
