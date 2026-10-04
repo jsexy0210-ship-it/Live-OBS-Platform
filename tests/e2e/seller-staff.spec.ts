@@ -927,9 +927,8 @@ test("확정된 수정보다 먼저 보낸 목록 응답이 늦게 와도 그 �
   await expect(row(page, s.email)).toContainText("상품");
   await expect(page.getByTestId("staff-stale")).toBeVisible();
   // 목록1이 늦게 성공한다(수정 B 전 상태): 덮지 않고 B를 그대로 두며 낡음 안내를 유지한다(자동 다시 읽기 1회도 실패)
-  const retried = page.waitForRequest((r) => r.url().endsWith("/api/seller/staff") && r.method() === "GET" && gets >= 3);
   release();
-  await retried;
+  await expect.poll(() => gets).toBeGreaterThanOrEqual(3);
   await page.waitForTimeout(300);
   await expect(row(page, s.email)).toContainText("상품");
   await expect(row(page, s.email)).toContainText(`${s.name}가`);
