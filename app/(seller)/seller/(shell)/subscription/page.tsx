@@ -85,7 +85,10 @@ function planChangeNote(v: View, target: string): { text: string; blocked: boole
 function cardNote(v: View, now = new Date()): string | null {
   const s = v.subscription;
   const charges = cardRegistrationCharges(toDate(v.trialEndsAt), s ? { status: s.status, currentPeriodEnd: toDate(s.currentPeriodEnd) } : null, now);
-  const scheduled = isCancelScheduled(s ? { status: s.status, cancelAtPeriodEnd: s.cancelAtPeriodEnd, currentPeriodEnd: toDate(s.currentPeriodEnd) } : null, now);
+  // 체험 중 해지는 서버가 바로 CANCELED로 바꾸므로, 「해지 예정」으로 보이는 상태(해지했지만 이용 기간 중)를 모두 포함한다
+  const scheduled =
+    isCancelScheduled(s ? { status: s.status, cancelAtPeriodEnd: s.cancelAtPeriodEnd, currentPeriodEnd: toDate(s.currentPeriodEnd) } : null, now) ||
+    (!!s && !canCancelSubscription(s) && (v.access === "trial" || v.access === "paid"));
   const parts: string[] = [];
   if (scheduled) parts.push("해지를 취소하고 자동결제가 다시 켜집니다.");
   if (charges) parts.push(`등록하면 바로 ${won(v.plan?.nextAmount ?? 0)}을 결제하고 이용 기간이 시작됩니다.`);

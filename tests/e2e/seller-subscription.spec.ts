@@ -224,6 +224,19 @@ test("카드를 등록한 체험을 해지하면 체험 끝 날짜까지 해지 
   await page.reload();
   await expect(page.getByTestId("sub-status")).toHaveText("해지 예정");
   await expect(page.getByText(`해지했습니다. ${endText}까지 이용할 수 있고, 그 뒤에는 결제되지 않습니다.`)).toBeVisible();
+
+  // 체험 중 해지 뒤 카드 변경은 해지가 풀린다고 먼저 묻고, 취소하면 서버 상태가 그대로다
+  let cardCalls = 0;
+  page.on("request", (r) => {
+    if (r.url().includes("/api/seller/subscription/card") && r.method() === "POST") cardCalls++;
+  });
+  await page.getByRole("button", { name: "테스트 카드로 변경" }).click();
+  await expect(page.getByRole("dialog")).toContainText("해지를 취소하고 자동결제가 다시 켜집니다.");
+  await page.getByRole("dialog").getByRole("button", { name: "취소", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(cardCalls).toBe(0);
+  const after = await withDb((db, sellerId) => db.sellerSubscription.findUniqueOrThrow({ where: { sellerId }, select: { status: true } }));
+  expect(after.status).toBe("CANCELED");
 });
 
 // 데모 쇼핑몰을 오버레이 전용 플랜으로 둔다(상위 변경 확인용)
