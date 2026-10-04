@@ -8,7 +8,7 @@ import { ErrorState, LoadingRows, Locked, NoImage, NoPermission, Toast } from ".
 import { api, type Product, type ProductStatus } from "../../../../../components/seller/api";
 import { LOW_STOCK, MAX_SEARCH_LENGTH, statusBadge, textLength, totalStock, won } from "../../../../../components/seller/format";
 
-// SA-011 상품 목록(카페24식). 위쪽 표형 검색 상자에서 검색어·판매 상태·재고를 정해 「검색」을 누르면 걸러 보고, 한 번에 50개씩 이어서 불러온다.
+// SA-011 상품 목록(업무용 관리 화면). 위쪽 표형 검색 상자에서 검색어·판매 상태·재고를 정해 「검색」을 누르면 걸러 보고, 한 번에 50개씩 이어서 불러온다.
 const FILTERS: { key: ProductStatus | "ALL"; label: string }[] = [
   { key: "ALL", label: "전체" },
   { key: "ON_SALE", label: "판매 중" },
