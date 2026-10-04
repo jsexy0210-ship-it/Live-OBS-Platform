@@ -870,7 +870,6 @@ model ProductReview {
   hiddenNote     String?
   reply          String?
   repliedAt      DateTime?            @db.Timestamptz(3)
-  reportCount    Int                  @default(0)
   // 지금 지급된 리뷰 적립금(회수하면 0)과 지급 회차(다시 공개하면 새 회차로 지급)
   rewardRound    Int                  @default(0)
   // 지운 리뷰의 묘비(주문 상품 1개당 1번이라 행은 남기고 본문·사진은 지운다)
@@ -924,6 +923,8 @@ model ProductReviewReport {
   buyerMemberId String              @db.Uuid
   reason        ProductReviewReason
   createdAt     DateTime            @default(now()) @db.Timestamptz(3)
+  // 판매자가 확인해 공개한 시각. 현재 신고 수·보류 판정·사유 집계는 resolvedAt이 비어 있는 신고로만 계산한다
+  resolvedAt    DateTime?           @db.Timestamptz(3)
 
   seller      Seller        @relation(fields: [sellerId], references: [id])
   review      ProductReview @relation(fields: [sellerId, reviewId], references: [sellerId, id], onDelete: Cascade)

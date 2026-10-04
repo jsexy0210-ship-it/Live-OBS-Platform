@@ -61,6 +61,9 @@ async function lockReview(tx: Tx, sellerId: string, id: string): Promise<Product
   return row ?? null;
 }
 
+// 판매자가 아직 확인하지 않은 신고 수(판매자가 공개하면 그때까지의 신고에 resolvedAt을 남긴다)
+const openReportCount = (db: Db, sellerId: string, reviewId: string) => db.productReviewReport.count({ where: { sellerId, reviewId, resolvedAt: null } });
+
 // 주문 행 공유 잠금. 결제 완료(PAID)인지 돌려준다(잠근 뒤의 상태).
 async function lockOrderPaid(tx: Tx, sellerId: string, orderId: string): Promise<boolean> {
   const [o] = await tx.$queryRaw<{ status: string }[]>`SELECT "status"::text AS "status" FROM "Order" WHERE "id" = ${orderId}::uuid AND "sellerId" = ${sellerId}::uuid FOR SHARE`;
@@ -185,7 +188,7 @@ export async function listSellerReviews(db: PrismaClient, ctx: TenantContext, q:
       include: {
         product: { select: { name: true } },
         buyerMember: { select: { status: true, grade: { select: { displayName: true } } } },
-        _count: { select: { images: true } },
+        _count: { select: { images: true, reports: { where: { resolvedAt: null } } } },
       },
     }),
     db.productReview.aggregate({ where: { sellerId: ctx.sellerId, deletedAt: null, status: "VISIBLE" }, _avg: { rating: true }, _count: { _all: true } }),
@@ -216,7 +219,7 @@ export async function listSellerReviews(db: PrismaClient, ctx: TenantContext, q:
       photos: r._count.images,
       rewardedAmount: rewards.get(r.id)?.amount ?? 0,
       replied: r.reply !== null,
-      reportCount: r.reportCount,
+      reportCount: r._count.reports,
       createdAt: r.createdAt,
     })),
     nextCursor: rows.length > SELLER_PAGE ? page[page.length - 1].id : null,
@@ -245,7 +248,7 @@ export async function getSellerReview(db: PrismaClient, ctx: TenantContext, id: 
       orderItem: { select: { optionNameSnapshot: true, quantity: true } },
       order: { select: { orderNo: true, createdAt: true, shipment: { select: { deliveredAt: true } } } },
       images: { select: { id: true, width: true, height: true }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
-      reports: { select: { reason: true } },
+      reports: { where: { resolvedAt: null }, select: { reason: true } },
     },
   });
   if (!r) throw notFound();
@@ -266,7 +269,7 @@ export async function getSellerReview(db: PrismaClient, ctx: TenantContext, id: 
     hiddenNote: r.hiddenNote,
     reply: r.reply,
     repliedAt: r.repliedAt,
-    reportCount: r.reportCount,
+    reportCount: r.reports.length,
     reportReasons: reasons,
     rewardedAmount: reward,
     images: r.images.map((i) => ({ ...i, url: sellerImageUrl(i.id) })),
@@ -326,8 +329,9 @@ export async function publishReview(db: PrismaClient, ctx: TenantContext, id: st
     const before = locked.review;
     const now = await lockedNow(tx);
     if (before.status === "VISIBLE") return { ok: true as const, grantedReward: 0 };
-    // 판매자가 확인해 공개하면 그때까지의 신고는 확인한 것으로 보고 신고 수를 0으로 되돌린다(신고 기록은 남는다)
-    await tx.productReview.update({ where: { id }, data: { status: "VISIBLE", hiddenReason: null, hiddenNote: null, heldBy: null, reportCount: 0, updatedAt: now } });
+    // 판매자가 확인해 공개하면 그때까지의 신고에 resolvedAt을 남긴다(신고 기록은 남고, 현재 신고 수·사유 집계에서 빠진다)
+    await tx.productReview.update({ where: { id }, data: { status: "VISIBLE", hiddenReason: null, hiddenNote: null, heldBy: null, updatedAt: now } });
+    await tx.productReviewReport.updateMany({ where: { sellerId: ctx.sellerId, reviewId: id, resolvedAt: null }, data: { resolvedAt: now } });
     const { granted } = await settleReward(tx, { ...before, status: "VISIBLE" }, now, locked.orderPaid);
     await sellerAudit(tx, ctx, meta, "review.publish", id, { status: before.status }, { status: "VISIBLE", grantedReward: granted });
     return { ok: true as const, grantedReward: granted };
@@ -615,8 +619,8 @@ export async function updateReview(db: PrismaClient, scope: BuyerScope, id: stri
       const policy = await policyOf(tx, scope.sellerId);
       const held = heldReason(p.v.body, policy.bannedWords);
       // 신고 누적 보류·공개 대기는 판매자가 풀 때까지 그대로 둔다. 신고 보류는 바뀔 수 있는 표시값(heldBy)이 아니라
-      // 판매자가 아직 확인하지 않은 신고 수(reportCount, 공개하면 0)로 판단해, 본문을 어떻게 고쳐도 풀리지 않는다.
-      const reportHeld = before.status === "HELD" && before.reportCount >= REVIEW_REPORT_HOLD;
+      // 판매자가 아직 확인하지 않은 신고(resolvedAt 없음) 수로 판단해, 본문을 어떻게 고쳐도 풀리지 않는다.
+      const reportHeld = before.status === "HELD" && (await openReportCount(tx, scope.sellerId, id)) >= REVIEW_REPORT_HOLD;
       const status: ProductReviewStatus = reportHeld || held
         ? "HELD"
         : before.status === "HELD"
@@ -675,9 +679,9 @@ export async function reportReview(db: PrismaClient, scope: BuyerScope, id: stri
       const member = await tx.buyerMember.findFirst({ where: { id: scope.buyerMemberId, sellerId: scope.sellerId, status: "ACTIVE", deletedAt: null }, select: { id: true } });
       if (!member) return { ok: false as const, reason: "shop_unavailable" as const };
       await tx.productReviewReport.create({ data: { sellerId: scope.sellerId, reviewId: id, buyerMemberId: member.id, reason } });
-      const count = before.reportCount + 1;
-      const held = count >= REVIEW_REPORT_HOLD;
-      await tx.productReview.update({ where: { id }, data: { reportCount: count, ...(held ? { status: "HELD", heldBy: "reports" } : {}) } });
+      // 현재 신고 수는 저장하지 않고 확인되지 않은 신고 행에서 센다(리뷰 행 잠금 아래라 겹친 신고도 차례로 센다)
+      const held = (await openReportCount(tx, scope.sellerId, id)) >= REVIEW_REPORT_HOLD;
+      if (held) await tx.productReview.update({ where: { id }, data: { status: "HELD", heldBy: "reports" } });
       if (held) await settleReward(tx, { ...before, status: "HELD", heldBy: "reports" }, await lockedNow(tx), locked.orderPaid);
       await buyerAudit(tx, scope, meta, "buyer_review.report", id, { reason, held });
       return { ok: true as const, held };

@@ -341,9 +341,29 @@ describe("고치기·지우기·신고", () => {
       expect((await reportPost(json("/x", "POST", c, { reason: "OFF_TOPIC" }), p({ slug: s.slug, reviewId: r.reviewId }))).status).toBe(201);
     }
     const row = await db.productReview.findUniqueOrThrow({ where: { id: r.reviewId } });
-    expect([row.status, row.heldBy, row.reportCount]).toEqual(["HELD", "reports", 3]);
+    expect([row.status, row.heldBy, await db.productReviewReport.count({ where: { reviewId: r.reviewId, resolvedAt: null } })]).toEqual(["HELD", "reports", 3]);
     const pub = (await (await productReviewsGet(get("/x"), p({ slug: s.slug, productId: s.product.id }))).json()) as { total: number; reviews: unknown[] };
     expect([pub.total, pub.reviews.length]).toEqual([0, 0]);
+  });
+
+  it("판매자가 공개하면 옛 신고는 확인 처리돼, 새 신고 1건 뒤 신고 수와 사유 합계가 모두 1(Codex 4177057980)", async () => {
+    const s = await shop();
+    const r = await created(s, (await s.delivered()).id);
+    const report = async (reason: string) => {
+      const m = await createLoginBuyer(s.seller.id, s.grade.id);
+      return reportPost(json("/x", "POST", await buyerCookie(s.seller.id, m.loginId!), { reason }), p({ slug: s.slug, reviewId: r.reviewId }));
+    };
+    for (const reason of ["AD", "AD", "ABUSE"]) await report(reason);
+    expect((await db.productReview.findUniqueOrThrow({ where: { id: r.reviewId } })).status).toBe("HELD");
+    expect((await publishPost(json("/x", "POST", s.owner, {}), p({ reviewId: r.reviewId }))).status).toBe(200);
+    expect((await report("OFF_TOPIC")).status).toBe(201);
+    const d = ((await (await sellerDetailGet(get("/x", s.owner), p({ reviewId: r.reviewId }))).json()) as { review: { status: string; reportCount: number; reportReasons: Record<string, number> } }).review;
+    const sum = Object.values(d.reportReasons).reduce((a, b) => a + b, 0);
+    expect([d.status, d.reportCount, sum, d.reportReasons]).toEqual(["VISIBLE", 1, 1, { OFF_TOPIC: 1 }]);
+    const l = (await (await sellerList(get("/x", s.owner))).json()) as { reviews: { id: string; reportCount: number }[] };
+    expect(l.reviews.find((x) => x.id === r.reviewId)?.reportCount).toBe(1);
+    // 옛 신고 기록은 남는다
+    expect(await db.productReviewReport.count({ where: { reviewId: r.reviewId } })).toBe(4);
   });
 
   it("신고로 보류된 리뷰는 금지어를 넣었다 빼도 판매자가 공개하기 전까지 보류로 남는다(Codex 4176768623)", async () => {
@@ -366,7 +386,7 @@ describe("고치기·지우기·신고", () => {
     expect(await state()).toEqual(["HELD", "reports"]);
     // 판매자가 확인해 공개하면 신고 수가 0이 되고, 그 뒤 고치기는 보통 규칙(금지어면 보류, 깨끗하면 공개)
     expect((await publishPost(json("/x", "POST", s.owner, {}), p({ reviewId: r.reviewId }))).status).toBe(200);
-    expect((await db.productReview.findUniqueOrThrow({ where: { id: r.reviewId } })).reportCount).toBe(0);
+    expect(await db.productReviewReport.count({ where: { reviewId: r.reviewId, resolvedAt: null } })).toBe(0);
     await edit("사기 아니에요 카드 상태 정말 좋아요");
     expect(await state()).toEqual(["HELD", "banned_word"]);
     await edit(BODY);
