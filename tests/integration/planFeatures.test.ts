@@ -20,6 +20,7 @@ import { GET as subscriptionGet } from "../../app/api/seller/subscription/route"
 import { GET as addressesGet, POST as addressesPost } from "../../app/api/shop/[slug]/addresses/route";
 import { POST as buyerLogin } from "../../app/api/shop/[slug]/auth/login/route";
 import { GET as consentGet, PUT as consentPut } from "../../app/api/shop/[slug]/me/marketing-consent/route";
+import { GET as rewardsGet } from "../../app/api/shop/[slug]/me/rewards/route";
 import { POST as withdrawRoute } from "../../app/api/shop/[slug]/me/withdraw/route";
 import { GET as ogRoute } from "../../app/api/shop/[slug]/og.png/route";
 import { GET as orderConsentRoute } from "../../app/api/shop/[slug]/order-consent/route";
@@ -324,6 +325,7 @@ describe("공개·구매자 경로: 스토어 운영 권한이 없는 쇼핑몰(
     expect((await addressesPost(req(`/api/shop/${slug}/addresses`, "POST", cookie, { ...addr, address1: "부산 해운대구 1" }), slugCtx(slug))).status).toBe(201);
     expect((await consentGet(req(`/api/shop/${slug}/me/marketing-consent`, "GET", cookie), slugCtx(slug))).status).toBe(200);
     expect((await consentPut(req(`/api/shop/${slug}/me/marketing-consent`, "PUT", cookie, { agreed: false }), slugCtx(slug))).status).toBe(200);
+    expect((await rewardsGet(req(`/api/shop/${slug}/me/rewards`, "GET", cookie), slugCtx(slug))).status).toBe(200);
     // 진행 중 주문이 없는 다른 구매자는 탈퇴할 수 있다
     const otherCookie = await s.login(s.other.loginId);
     expect((await withdrawRoute(req(`/api/shop/${slug}/me/withdraw`, "POST", otherCookie, { password: PASSWORD }), slugCtx(slug))).status).toBe(200);

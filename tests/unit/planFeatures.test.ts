@@ -94,6 +94,7 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/addresses/[addressId]": "OPEN",
   "shop/[slug]/me/marketing-consent": "OPEN",
   "shop/[slug]/me/withdraw": "OPEN",
+  "shop/[slug]/me/rewards": "OPEN", // 내 적립금 잔액(탈퇴 전 확인, #180)
   "overlay/[token]/state": "OVERLAY",
   "overlay/[token]/version": "OVERLAY",
   "overlay/[token]/stream": "OVERLAY",
