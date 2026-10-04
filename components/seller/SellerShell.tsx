@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { useLatestResponse, type ReadTicket } from "./latestResponse";
 import { api, type Me } from "./api";
 
 // 판매자 관리자 공통 틀: 왼쪽 메뉴(좁은 화면에서는 서랍) + 상단 바 + 이용 상태 배너.
@@ -38,7 +39,7 @@ const NAV: Nav[] = [
   { label: "결제(PG) 연결", perm: "OWNER" },
   { label: "주문자 알림", perm: "SHOP_SETTINGS" },
   { label: "구독 · 결제", perm: "OWNER" },
-  { label: "직원 계정", perm: "OWNER" },
+  { label: "직원 계정", href: "/seller/staff", perm: "OWNER" },
   { label: "공지 · 문의" },
   { label: "도우미" },
   { label: "내 계정" },
@@ -61,26 +62,74 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null);
   const [navOpen, setNavOpen] = useState(false);
 
-  const load = useCallback(async () => {
+  const lastRead = useRef(0);
+  // /me 다시 읽기 반영 규칙(latestResponse.ts): 나중에 보낸 요청의 성공만 반영하고, 실패가 앞선 성공을 버리지 않는다.
+  // 반영할 때 파생 값(남은 체험 일수)도 함께 계산한다: 처음 읽기·다시 읽기 어느 쪽이 먼저 성공해도 같은 결과
+  const meReads = useLatestResponse();
+  const applyMe = (t: ReadTicket, data: Me) => {
+    if (meReads.accept(t) !== "apply") return;
     setFailed(false);
+    setMe(data);
+    // 체험 중이면 /me가 끝나는 시각을 준다(대표자·직원 모두)
+    setTrialDaysLeft(data.access === "trial" && data.trialEndsAt ? Math.max(0, Math.ceil((new Date(data.trialEndsAt).getTime() - Date.now()) / 86_400_000)) : null);
+  };
+  const load = useCallback(async () => {
+    lastRead.current = Date.now();
+    setFailed(false);
+    const t = meReads.next();
     const r = await api<Me>("/api/seller/me");
     if (!r.ok) {
       if (r.status === 401) router.replace(`/seller/login?next=${encodeURIComponent(pathname)}`);
-      else setFailed(true);
+      // 아직 한 번도 그리지 못했으면 다시 시도 화면을 보인다(이미 그린 화면은 그대로 둔다)
+      else if (!meReads.hasApplied() && meReads.failMatters(t)) setFailed(true);
       return;
     }
-    setMe(r.data);
-    // 체험 중이면 /me가 끝나는 시각을 준다(대표자·직원 모두)
-    if (r.data.access === "trial" && r.data.trialEndsAt) {
-      const ms = new Date(r.data.trialEndsAt).getTime() - Date.now();
-      setTrialDaysLeft(Math.max(0, Math.ceil(ms / 86_400_000)));
-    }
+    applyMe(t, r.data);
   }, [router, pathname]);
 
   useEffect(() => {
     void load();
-    // 처음 한 번만 불러온다(화면 이동마다 다시 부르지 않음)
+    // 처음 한 번 불러온다
   }, []);
+
+  // 화면을 옮길 때마다 권한·이용 상태를 조용히 다시 읽는다(대표자가 직원 권한을 바꾸면 다음 화면부터 메뉴에 반영).
+  // 로딩 화면은 띄우지 않고, 실패하면 지금 값을 그대로 둔다(401이면 공통 api()가 로그인으로 보낸다)
+  // 창으로 돌아올 때(포커스·화면이 다시 보일 때)도 다시 읽는다: 권한이 하나도 없는 직원은 옮길 화면이 없어 경로로는 새로 읽지 못한다.
+  // 짧은 간격으로 겹치면(포커스와 visibilitychange가 함께 오는 경우 등) 한 번만 읽는다
+  const refresh = useCallback(() => {
+    lastRead.current = Date.now();
+    const t = meReads.next();
+    void api<Me>("/api/seller/me").then((r) => {
+      if (r.ok) applyMe(t, r.data);
+    });
+  }, []);
+  const firstPath = useRef(pathname);
+  useEffect(() => {
+    if (pathname === firstPath.current) return;
+    firstPath.current = pathname;
+    refresh();
+  }, [pathname, refresh]);
+  useEffect(() => {
+    // 마지막으로 읽은 지 1초 안에 돌아오면 바로 읽지 않고 1초가 되는 때로 한 번 미룬다(버리면 그사이 바뀐 권한을 다음 포커스까지 못 본다)
+    let trailing: ReturnType<typeof setTimeout> | null = null;
+    const onBack = () => {
+      if (document.visibilityState !== "visible") return;
+      const wait = 1000 - (Date.now() - lastRead.current);
+      if (wait <= 0) return refresh();
+      if (trailing) return;
+      trailing = setTimeout(() => {
+        trailing = null;
+        refresh();
+      }, wait);
+    };
+    window.addEventListener("focus", onBack);
+    document.addEventListener("visibilitychange", onBack);
+    return () => {
+      if (trailing) clearTimeout(trailing);
+      window.removeEventListener("focus", onBack);
+      document.removeEventListener("visibilitychange", onBack);
+    };
+  }, [refresh]);
 
   useEffect(() => setNavOpen(false), [pathname]);
 
