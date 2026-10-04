@@ -14,9 +14,9 @@ export type SlotImage = {
   error?: string;
 };
 
-// 서버가 받는 형식(기반-상품 계약). 지금은 PNG만이고, JPG·WEBP가 정해지면 여기와 IMAGE_LABEL만 바꾼다
-export const IMAGE_ACCEPT = ["image/png"] as const;
-export const IMAGE_LABEL = "PNG";
+// 서버가 받는 형식(기반-상품 계약: PNG·JPG·WEBP, 장당 5MB, 10장, 가로·세로 100~4000px). 바뀌면 여기와 IMAGE_LABEL만 바꾼다
+export const IMAGE_ACCEPT = ["image/png", "image/jpeg", "image/webp"] as const;
+export const IMAGE_LABEL = "PNG · JPG · WEBP";
 export const IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 export const IMAGE_MAX_COUNT = 10;
 
