@@ -284,6 +284,7 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 ### 4.8 오버레이·감사 로그
 
 - `OverlayToken`: id, sellerId, tokenHash(**유니크**), createdAt, revokedAt — 오버레이 URL용 추측 불가 토큰. 재발급 시 이전 토큰 폐기.
+- 오버레이 레이아웃(SA-051 편집기 → OV-001·002, `lib/server/overlay/layout.ts`, 마이그레이션 `20261004232000_overlay_layout`): `OverlayLayout`(판매자·비율 `9x16`|`16x9`마다 1행, templateKey, widgets JSON, version) — 저장한 적 없으면 기본 템플릿 `queue_focus`(version 0, `isDefault`). 위젯 `{ id([a-z0-9_-] 40자), type, visible, x, y, w, h(화면 대비 %, 0~100, x+w·y+h ≤ 100, w·h > 0), z(0~99), props }`, 20개까지. type은 `HALL_OF_FAME`·`NOTICE`·`SHOP_INFO`·`CURRENT_ORDER`·`QUEUE`·`OPEN_TIMER`·`NEW_ORDER_ALERT`이고 종류마다 하나(신규 주문 알림만 `variant` first·repeat·vip 각 하나). props는 허용 목록만: 공통 title·format(40·100자)·accentColor·titleColor·nicknameColor·bodyColor·titleBgColor·cardBgColor·borderColor(`#RRGGBB`·`#RRGGBBAA`)·titleBgOpacity·cardBgOpacity(0~1)·radius(0~64)·fontSize(8~200)·fontWeight(100~900, 100 단위)·glow·marquee·ticker·flowSec(1~120)·appear(none·fade·up·left·flip)·appearSec(0~10), NOTICE text(여러 줄 200자), QUEUE open*·wait* 색과 rows(1~10), HALL_OF_FAME rows, NEW_ORDER_ALERT variant·durationSec(1~30). 기본 템플릿 3종 `queue_focus`(주문대기 중심)·`spotlight`(현재 주문·명예의 전당 강조)·`minimal`(작은 패널만, 이름은 디자인 확정 때 바꿈), 오픈 타이머는 기본 숨김, 세로형은 위쪽 40% 안. 내 템플릿 `OverlayTemplate`(판매자당 20개). API(`OVERLAY_EDIT`): `GET /api/seller/overlay/layout?aspect=` → `{ aspect, templateKey, widgets, version, updatedAt, isDefault }`, `PUT …/layout { aspect, widgets, expectedVersion }`(다르면 `409 version_conflict` + `currentVersion`, 틀리면 `400 invalid_layout`, 판매자·비율 advisory 잠금, `overlay.layout.update`), `POST …/layout/reset { aspect, template(기본 키·내 템플릿 id), expectedVersion }`(없으면 404, `overlay.layout.reset`), `GET /api/seller/overlay/templates?aspect=` → `{ builtin: [{ key, name, widgets }], mine: [{ id, name, widgets, createdAt }] }`, `POST …/templates { name(30자), aspect, widgets }` 201(20개 넘으면 `409 too_many_templates`, `overlay.template.create`), `DELETE …/templates/{id}`(내 것만, `overlay.template.delete`). 오버레이 주소 `GET /api/overlay/{token}/layout?aspect=`(기본 9x16) → `{ aspect, version, widgets }`(토큰 폐기·잠김 404). 레이아웃 저장은 liveVersion을 올리지 않으므로(환불 등의 버전 확인과 무관) 오버레이 화면은 layout의 version을 따로 확인한다.
 - `AuditLog` (추가만, 수정·삭제 없음): id, actorType(`PLATFORM_ADMIN | SELLER_USER | BUYER | SYSTEM`), actorId, sellerId(nullable), action(예: `seller.suspend`, `queue.cancel`, `reward.live_payout.enable`, `admin.impersonate.view`), targetType, targetId, before(JSON), after(JSON), reason, ip, userAgent, createdAt
   - 비밀번호 해시·토큰·CI 해시·카드 정보는 before/after에 넣지 않는다(기록 전 제거).
   - DB 권한으로 UPDATE/DELETE를 막는 것은 운영 DB 계정 설계 때 적용(다음 단계).
@@ -308,7 +309,7 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 | `BILLING` | 구독·결제(`/api/seller/subscription`·`…/card`·`…/cancel`), 내 정보(`/api/seller/me`) | 항상(기능 권한과 무관, 잠금 허용 범위는 지금처럼) |
 | `ACCOUNT` | 직원 관리(`/api/seller/staff/**`), 직원 본인확인 연결(`/api/seller/me/identity/**`, 다시 받기·확인은 본인확인 기록의 쇼핑몰로 검사) | 기능 권한이 하나라도 있을 때. **통합 첫 결제 확정 전 막음** |
 | `ORDER_FOLLOWUP` | 이미 받은 주문 처리(`/api/seller/orders/**`·`/api/seller/shipments/**`·`/api/seller/returns/**`), 구매 제한(`/api/seller/purchase-restrictions/**`), 회원 조회(`/api/seller/members/**`) | 기능 권한이 하나라도 있을 때(하위 변경 뒤에도 기존 주문 처리). **통합 첫 결제 확정 전 막음** |
-| `OVERLAY` | 방송·주문대기·오버레이 토큰·방송 실시간 채널(`/api/seller/broadcast/**`·`queue/**`·`overlay/token`·`stream`) | 오버레이 권한 |
+| `OVERLAY` | 방송·주문대기·오버레이 토큰·레이아웃·템플릿·방송 실시간 채널(`/api/seller/broadcast/**`·`queue/**`·`overlay/token`·`overlay/layout/**`·`overlay/templates/**`·`stream`) | 오버레이 권한 |
 | `STORE_OPERATIONS` | 상품·옵션·재고, 배송비·주문·회원·적립 정책, 공유 미리보기 설정 | 스토어 운영 권한 |
 | `EXTERNAL_INTEGRATION` | (아직 경로 없음, 외부 연동 경로가 생기면 지정) | 외부 연동 권한 |
 
@@ -329,7 +330,7 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 | `GET·PUT /api/shop/{slug}/me/marketing-consent`·`POST …/me/withdraw` | 없음 | 허용(동의 철회·탈퇴는 언제든) |
 | `GET·PUT /api/shop/{slug}/me/rejoin-retention-consent`(재가입 제한 정보 보관 동의 철회) | 없음 | 허용(동의 철회는 언제든) |
 | `GET /api/shop/{slug}/me/rewards`(내 적립금 잔액) | 없음 | 허용(탈퇴 전 확인) |
-| `GET /api/overlay/{token}/state`·`…/version`·`…/stream`(오버레이 공개 주소) | 오버레이 | 오버레이 권한이 없으면 막음(통합 첫 결제 확정 전) |
+| `GET /api/overlay/{token}/state`·`…/version`·`…/stream`·`…/layout`(오버레이 공개 주소) | 오버레이 | 오버레이 권한이 없으면 막음(통합 첫 결제 확정 전) |
 
   - 검사 위치 ③ 서버 렌더 쇼핑몰 화면(#174 Codex P2): 「새 거래 시작」 화면도 화면 단계에서 막는다(API 거절에만 기대지 않음). 지금은 `app/(shop)/shop/[slug]/signup/page.tsx`(구매자 가입, `/shop/{slug}/signup`)가 있고, 장바구니·주문서·상품 구매 버튼이 있는 화면이 생기면 같은 규칙이다. 스토어 운영 권한이 없으면 가입 폼·구매 버튼을 보여 주지 않고 안내 화면을 그린다. 이 검사는 `shopOpen`(운영 중·잠김)과 별도로 한다. 1-B 시험은 화면 경로마다 「렌더 결과가 안내 화면이고 폼·구매 버튼이 없음」을 확인한다(화면 파일은 화면 세션 소유라, 서버가 화면에 줄 판정 함수·값을 1-B에서 만들고 화면 연결은 화면 세션에 배정). 1-B 구현: 판정 함수는 `shopOpen`(`lib/server/buyers/signup.ts`, 운영 중·잠김·스토어 운영 권한을 함께 봄)이고, 기능 권한만 따로 볼 때는 `sellerHasFeature(db, sellerId, "STORE_OPERATIONS")`(`lib/server/billing/features.ts`)를 쓴다. 지금 가입 화면은 이미 `shopOpen`으로 안내 화면을 그려 화면 수정 없이 막힌다. 파트너스 화면 메뉴용으로 `GET /api/seller/me`가 `features`를 준다.
 
