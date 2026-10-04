@@ -53,6 +53,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/orders/[orderId]/deliver": "ORDER_FOLLOWUP",
   "seller/orders/[orderId]/refund": "ORDER_FOLLOWUP",
   "seller/orders/[orderId]/unconfirm": "ORDER_FOLLOWUP",
+  "seller/orders/[orderId]/reconfirm": "ORDER_FOLLOWUP",
   "seller/orders/[orderId]/ship": "ORDER_FOLLOWUP",
   "seller/purchase-restrictions": "ORDER_FOLLOWUP",
   "seller/shipments": "ORDER_FOLLOWUP",
@@ -194,7 +195,8 @@ const SHOP_PAGES: Record<string, "STORE_OPERATIONS" | "OPEN"> = {
   "shop/[slug]/orders/[orderId]": "OPEN", // SH-007 주문 완료·상세: 기존 주문 조회는 잠긴 쇼핑몰에서도 열림(API와 같은 기준)
   "shop/[slug]/wishlist": "OPEN", // SH-034 찜: 목록·빼기는 잠긴 쇼핑몰에서도 열림(찜하기만 API가 막음)
   "shop/[slug]/orders": "OPEN", // 주문 조회 준비 중 안내(기능 없음)
-  "shop/[slug]/help": "OPEN", // 고객센터 준비 중 안내(기능 없음)
+  "shop/[slug]/help": "STORE_OPERATIONS", // SH-030 고객센터: 공지·FAQ API가 운영 중인 쇼핑몰만 열어 줌 → shopOpen으로 막고, 막히면 안내 화면
+  "shop/[slug]/help/notices/[noticeId]": "STORE_OPERATIONS", // 공지 상세(같은 기준)
   "shop/[slug]/me/notifications": "OPEN", // SH-025 알림 설정: 마케팅 수신 철회는 잠긴 쇼핑몰에서도 연다(API me/marketing-consent와 같은 기준)
 };
 
