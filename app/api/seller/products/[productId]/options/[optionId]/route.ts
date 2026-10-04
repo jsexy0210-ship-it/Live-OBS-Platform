@@ -15,7 +15,7 @@ export const PATCH = mutation(async (req: Request, { params }: Params) => {
   const { productId, optionId } = await params;
   if (!UUID.test(productId) || !UUID.test(optionId)) return NextResponse.json({ error: "not_found" }, { status: 404 });
   const r = await updateOption(prisma, ctx, productId, optionId, await readJson(req));
-  if (!r.ok) return NextResponse.json(orderErrorBody(r.reason), { status: status(r.reason) });
+  if (!r.ok) return NextResponse.json(orderErrorBody(r.reason, "formal"), { status: status(r.reason) });
   return NextResponse.json(r.value);
 });
 
@@ -25,6 +25,6 @@ export const DELETE = mutation(async (req: Request, { params }: Params) => {
   const { productId, optionId } = await params;
   if (!UUID.test(productId) || !UUID.test(optionId)) return NextResponse.json({ error: "not_found" }, { status: 404 });
   const r = await deleteOption(prisma, ctx, productId, optionId);
-  if (!r.ok) return NextResponse.json(orderErrorBody(r.reason), { status: status(r.reason) });
+  if (!r.ok) return NextResponse.json(orderErrorBody(r.reason, "formal"), { status: status(r.reason) });
   return NextResponse.json(r.value);
 });

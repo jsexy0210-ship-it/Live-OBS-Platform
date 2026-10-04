@@ -5,7 +5,7 @@ import { loginSeller } from "../../lib/server/auth/login";
 import { prisma } from "../../lib/server/db";
 import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
 import { createOrder } from "../../lib/server/orders/create";
-import { ORDER_ERROR_MESSAGES } from "../../lib/server/orders/messages";
+import { ORDER_ERROR_MESSAGES, ORDER_ERROR_MESSAGES_FORMAL } from "../../lib/server/orders/messages";
 import { createOption, createProduct, updateOption, updateProduct } from "../../lib/server/products/manage";
 import { setProductEvent } from "../../lib/server/products/event";
 import { rewardBase } from "../../lib/server/queue/service";
@@ -95,7 +95,7 @@ describe("이벤트 할인 설정 검증", () => {
     for (const body of [{ type: "RATE", value: 0, ...period }, { type: "RATE", value: 91, ...period }, { type: "RATE", value: "10", ...period }, { type: "FREE", value: 10, ...period }, { type: "AMOUNT", value: 1.5, ...period }]) {
       const r = await put(s.cookie, s.productId, body);
       expect(r.status, JSON.stringify(body)).toBe(400);
-      expect(await r.json()).toEqual({ error: "invalid_event", message: ORDER_ERROR_MESSAGES.invalid_event });
+      expect(await r.json()).toEqual({ error: "invalid_event", message: ORDER_ERROR_MESSAGES_FORMAL.invalid_event });
     }
     for (const p of [
       { startsAt: iso(HOUR, base), endsAt: iso(HOUR, base) },
@@ -111,7 +111,7 @@ describe("이벤트 할인 설정 검증", () => {
     expect((await createOption(db, s.ctx, s.productId, { name: "싼 옵션", priceDelta: -8500, stock: 1 })).ok).toBe(true);
     const tooLow = await put(s.cookie, s.productId, { type: "AMOUNT", value: 9000, ...period });
     expect(tooLow.status).toBe(400);
-    expect(await tooLow.json()).toEqual({ error: "event_price_too_low", message: ORDER_ERROR_MESSAGES.event_price_too_low });
+    expect(await tooLow.json()).toEqual({ error: "event_price_too_low", message: ORDER_ERROR_MESSAGES_FORMAL.event_price_too_low });
     expect((await db.product.findUniqueOrThrow({ where: { id: s.productId } })).eventDiscountType).toBeNull();
   });
 
@@ -205,7 +205,7 @@ describe("Codex 검수 후속(#105)", () => {
     const s = await shop();
     const r = await put(s.cookie, s.productId, { type: "AMOUNT", value: 9001, startsAt: iso(-HOUR), endsAt: iso(HOUR) });
     expect(r.status).toBe(400);
-    expect(await r.json()).toEqual({ error: "invalid_event", message: ORDER_ERROR_MESSAGES.invalid_event });
+    expect(await r.json()).toEqual({ error: "invalid_event", message: ORDER_ERROR_MESSAGES_FORMAL.invalid_event });
     expect((await put(s.cookie, s.productId, { type: "AMOUNT", value: 9000, startsAt: iso(-HOUR), endsAt: iso(HOUR) })).status).toBe(200);
   });
 });
