@@ -47,6 +47,9 @@ const PUBLIC_ERRORS = new Set([
   "pairing_mismatch",
   "page_mismatch",
   "pc_identity_unverified",
+  "pc_identity_invalid",
+  "shop_identity_invalid",
+  "executor_error",
 ]);
 const STEP_KEYS = new Set(STEPS.map((s) => s.key));
 

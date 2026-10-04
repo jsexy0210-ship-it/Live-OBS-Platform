@@ -207,7 +207,7 @@ const SECRET_REFS: readonly SecretRef[] = ["webhook_url", "webhook_secret"];
 // 설치와 무관하고 되돌리기 어려운 조작의 단어. 이런 대상은 작업서 허용 목록에 있어도 누르거나 입력하지 않는다(작업서 실수 방어).
 export const DANGEROUS_TARGET_WORDS = ["삭제", "탈퇴", "해지", "초기화", "권한", "계정", "비밀번호", "결제", "환불", "delete", "remove", "permission", "account", "password"] as const;
 const dangerous = (target: string) => DANGEROUS_TARGET_WORDS.some((w) => target.toLowerCase().includes(w));
-const CUSTOMER_ACTIONS: readonly AutomationCustomerAction[] = ["LOGIN", "TWO_FACTOR", "CAPTCHA", "PERMISSION_GRANT", "LOCAL_TOOL"];
+export const CUSTOMER_ACTIONS: readonly AutomationCustomerAction[] = ["LOGIN", "TWO_FACTOR", "CAPTCHA", "PERMISSION_GRANT", "LOCAL_TOOL"];
 
 export function hostAllowed(raw: string): boolean {
   let u: URL;

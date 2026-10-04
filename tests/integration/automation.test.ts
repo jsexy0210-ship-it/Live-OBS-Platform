@@ -647,11 +647,12 @@ describe("외부 쇼핑몰 플랫폼 이름 비노출(2026-10-04 대표님 결�
     rt.browser.outcome = () => ({ kind: "fatal", reason: "Cafe24 관리자 화면 오류" });
     expect(await runOnce(db, rt, W)).toBe("failed");
     const j = await db.automationJob.findFirstOrThrow();
-    expect(j.lastError).toContain("Cafe24");
+    // 실행기 원문은 저장하지 않고 고정 코드로만 남는다(35차)
+    expect(j.lastError).toBe("executor_error");
     texts.push(await (await jobsRoute(new Request("http://localhost:3000/api/automation/jobs", { headers: H(cookie) }))).text());
     const one = await (await jobRoute(new Request(`http://localhost:3000/api/automation/jobs/${j.id}`, { headers: H(cookie) }), params(j.id))).text();
     texts.push(one);
-    expect(JSON.parse(one).lastError).toBe("step_failed");
+    expect(JSON.parse(one).lastError).toBe("executor_error");
     const hits = texts.filter((t) => PLATFORM.test(t));
     expect(hits).toEqual([]);
   });
@@ -3082,7 +3083,8 @@ describe("Codex 32차 반영(7d8ca50)", () => {
     const rt = runtime();
     rt.browser.outcome = (_s, action) => (action.type === "fill" ? { kind: "fatal", reason: "canceled" } : undefined);
     expect(await runOnce(db, rt, W)).toBe("failed");
-    expect(await job(a.jobId)).toMatchObject({ status: "CLEANUP_NEEDED", lastError: "canceled", cancelRequestedAt: null });
+    // 실행기 원문은 고정 코드로 바뀌어 저장된다(35차). 취소 판정은 원문과 무관하게 cancelRequestedAt으로만
+    expect(await job(a.jobId)).toMatchObject({ status: "CLEANUP_NEEDED", lastError: "executor_error", cancelRequestedAt: null });
     expect((await close(a.jobId)).status).toBe(200);
     expect(await job(a.jobId)).toMatchObject({ status: "FAILED" });
     expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "REFUND_PENDING" });
@@ -3110,3 +3112,42 @@ describe("Codex 32차 반영(7d8ca50)", () => {
 function afterConnect(rt: { browser: FakeBrowserExecutor }, url: string | null) {
   return () => (rt.browser.performed.some((p) => p.type === "click") ? url : "https://myshop.cafe24.com/disp/admin/shop1/");
 }
+
+describe("Codex 35차 반영(01bbaeb)", () => {
+  it("실행기가 돌려준 실패 사유에 비밀값·웹훅 주소가 있어도 작업·전이 기록·감사 기록에는 고정 코드만 남는다", async () => {
+    const a = await bought();
+    const rt = runtime();
+    const sec = await rt.vault.forJob({ sellerId: a.seller.id, jobId: a.jobId });
+    rt.browser.outcome = (_s, action) => (action.type === "fill" ? { kind: "fatal", reason: `bad hook ${sec.webhook_url} secret=${sec.webhook_secret}` } : undefined);
+    expect(await runOnce(db, rt, W)).toBe("failed");
+    expect(await job(a.jobId)).toMatchObject({ lastError: "executor_error" });
+    const stored = JSON.stringify([await job(a.jobId), await db.automationJobEvent.findMany({ where: { jobId: a.jobId } }), await db.auditLog.findMany({ where: { targetId: a.jobId } })]);
+    expect(stored).not.toContain(sec.webhook_url);
+    expect(stored).not.toContain(sec.webhook_secret);
+  });
+
+  it("로컬 도구의 PC 식별자가 200자를 넘으면 자르지 않고 OBS를 바꾸기 전에 거절한다(pc_identity_invalid)", async () => {
+    const a = await bought();
+    const rt = runtime();
+    rt.obs.pairing.set(a.seller.id, "p".repeat(201));
+    expect(await runOnce(db, rt, W)).toBe("failed");
+    expect(rt.obs.performed).toHaveLength(0);
+    const j = await job(a.jobId);
+    expect(j).toMatchObject({ lastError: "pc_identity_invalid", obsPairingId: null });
+    expect(j.obsTargetKey?.startsWith("obs:")).toBe(false);
+    expect(j.mutatedSteps).not.toContain("obs_overlay_install");
+  });
+
+  it("판단 모델 비용이 남은 한도·DB 정수 범위를 넘으면(3,000,000,000원) 쓰기 실패 없이 바로 cost_limit, 판단 모델 재호출 없음", async () => {
+    const a = await bought();
+    const rt = runtime();
+    rt.browser.pageText = () => "화면이 바뀌었어요 · 로그아웃"; // 작업서 단서와 달라 판단 모델로 간다
+    let calls = 0;
+    rt.planner.decide = async () => (calls++, { action: { type: "click", target: "앱 설치" }, costWon: 3_000_000_000 });
+    expect(await runOnce(db, rt, W)).toBe("failed");
+    expect(await runOnce(db, rt, W)).toBe("idle");
+    expect(calls).toBe(1);
+    expect(rt.browser.performed.filter((p) => p.type === "click")).toHaveLength(0);
+    expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "cost_limit", costUsed: 2_147_483_647, attempts: 0 });
+  });
+});

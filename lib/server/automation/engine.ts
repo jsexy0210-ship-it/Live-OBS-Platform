@@ -14,6 +14,7 @@ import {
   type JobScope,
   type VerificationEvidence,
 } from "./ports";
+import { DB_INT_MAX, externalId, fromExecutor } from "./boundary";
 import { STEPS } from "./steps";
 import type { AutomationCustomerAction } from "@prisma/client";
 
@@ -185,10 +186,14 @@ async function runAll(
     if (!shopChecked) {
       const session = await browser();
       guard();
-      shopKey = await session.currentShopKey();
+      const shop = externalId(await session.currentShopKey());
+      if (!shop.ok) return { kind: "failed", reason: "shop_identity_invalid" };
+      shopKey = shop.value;
     }
     guard();
-    const obsPairingId = await rt.obs.currentPairingId(scope);
+    const pc = externalId(await rt.obs.currentPairingId(scope));
+    if (!pc.ok) return { kind: "failed", reason: "pc_identity_invalid" };
+    const obsPairingId = pc.value;
     if (opts.waitForUnknownTarget && !shopKey) return { kind: "needs_customer", action: "LOGIN" };
     if (opts.waitForUnknownTarget && !obsPairingId) return { kind: "needs_customer", action: "LOCAL_TOOL" };
     if (!shopKey || !obsPairingId) return { kind: "failed", reason: "reconnect_target_unverified" };
@@ -266,9 +271,11 @@ async function runAll(
           return { kind: "failed", reason: "unsafe_action:bad_cost" };
         }
         costWon = decision.costWon;
-        stats.costUsed += costWon;
+        // 남은 한도를 넘는 비용(DB 정수 범위 밖 포함)은 합계를 DB 최대값 안으로만 기록하고 바로 cost_limit으로 끝낸다(쓰기 실패로 재시도·재호출 반복 금지)
+        const overLimit = costWon > opts.costLimit - stats.costUsed;
+        stats.costUsed = Math.min(stats.costUsed + costWon, DB_INT_MAX);
         await touchStats();
-        if (stats.costUsed > opts.costLimit) return { kind: "failed", reason: "cost_limit" };
+        if (overLimit) return { kind: "failed", reason: "cost_limit" };
         if (!check.ok) return { kind: "failed", reason: `unsafe_action:${check.reason}` };
         action = decision.action;
       } else {
@@ -290,7 +297,10 @@ async function runAll(
       let confirmedPairing: string | undefined;
       if (!session) {
         guard();
-        const pairingId = await rt.obs.currentPairingId(scope);
+        const read = externalId(await rt.obs.currentPairingId(scope));
+        // 형식에 맞지 않는 PC 식별자(200자 초과 등)는 자르지 않고 바꾸기 전에 멈춘다
+        if (!read.ok) return { kind: "failed", reason: "pc_identity_invalid" };
+        const pairingId = read.value;
         if (!pairingId) return want && !opts.waitForUnknownTarget ? { kind: "failed", reason: "reconnect_target_unverified" } : { kind: "needs_customer", action: "LOCAL_TOOL" };
         if (want && pairingId !== want.obsPairingId) return { kind: "failed", reason: "reconnect_target_mismatch" };
         if (obsPairing && pairingId !== obsPairing) return { kind: "failed", reason: "obs_target_changed" };
@@ -344,7 +354,8 @@ async function runAll(
       // 바꾸지 않는 행동은 새 세션에서 다시 해야 하므로 붙이지 않는다.
       const actionKey = keyed(action) ? actionKeyOf(scope.jobId, stepIndex, action) : undefined;
       // OBS 쪽은 확인한 PC를 넘겨 로컬 도구가 실행 직전에 비교하게 하고(다르면 행동 0건으로 거절), 결과의 실제 실행 PC를 다시 대조한다
-      const out: ActionOutcome = session ? await session.perform(action, secrets, actionKey, expectedPage) : await rt.obs.perform(scope, action, actionKey, confirmedPairing);
+      // 결과는 경계(fromExecutor)에서 정규화한 값만 쓴다(사유는 정해 둔 코드로, 식별자는 형식 검사, 증거는 비밀값 가림)
+      const out: ActionOutcome = fromExecutor(session ? await session.perform(action, secrets, actionKey, expectedPage) : await rt.obs.perform(scope, action, actionKey, confirmedPairing), secrets);
       if (!session && out.kind === "ok" && out.pairingId !== confirmedPairing) return { kind: "failed", reason: "obs_target_changed" };
       // 외부 행동이 끝나는 사이 자리를 잃었거나 실행 시간 상한을 넘었으면 결과를 쓰지 않고 멈춘다(작업자가 상황에 맞게 정리)
       guard();
@@ -438,14 +449,15 @@ export async function runRollback(
         let pairing: string | undefined;
         if (rb.kind === "obs") {
           guard();
-          const current = await rt.obs.currentPairingId(scope);
+          const read = externalId(await rt.obs.currentPairingId(scope));
+          const current = read.ok ? read.value : null;
           if (!current || (opts.obsPairingId && current !== opts.obsPairingId)) return { kind: "cleanup_needed", reason: "rollback_obs_target" };
           pairing = current;
         }
         await hooks.touch();
         guard();
         const actionKey = keyed(action) ? actionKeyOf(scope.jobId, 100 + at, action) : undefined;
-        const out = rb.kind === "browser" ? await session!.perform(action, secrets, actionKey, expectedPage) : await rt.obs.perform(scope, action, actionKey, pairing);
+        const out = fromExecutor(rb.kind === "browser" ? await session!.perform(action, secrets, actionKey, expectedPage) : await rt.obs.perform(scope, action, actionKey, pairing), secrets);
         guard();
         if (out.kind !== "ok" || (rb.kind === "obs" && out.pairingId !== pairing)) return { kind: "cleanup_needed", reason: `rollback_failed:${rb.forStep}` };
       }
