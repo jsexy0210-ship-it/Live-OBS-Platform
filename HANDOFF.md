@@ -16,7 +16,7 @@
 | 브랜딩 전담 (2) | `session_01DKz4PdvKKdvcsgoBF1MJBU` | 아래 브랜딩 전담 교체(Sonnet). `AdminShell.tsx`는 레이아웃 전담으로 넘어감. 2026-10-04 KST MASTER 생성 |
 | (이전) MASTER | `session_01XqBPGTKiEMmRSMB5SfFp3C` | 컨텍스트 50% 도달로 교체. PR #15 병합 후 보관 완료 (2026-10-02 KST) |
 | 디자인 전담 (2) | `session_01DCQ38rPYwPnVCZJbhLgJnc` | 2026-10-04 추가 배정: 관리자 화면 명사형·합니다체(v153), 로그 추적·아이디/비밀번호 찾기 통합(v152), SA-064 홈 배너·SA-065 이벤트 팝업·SH-001 표시(v154), 외부 쇼핑몰 솔루션 대비 추가 기능 12건(대표님 2026-10-04 모두 확정) 디자인 v155~v157, SA-060 로고 칸을 이미지 업로드 영역으로(v155 우선). 디자인 아티팩트 https://claude.ai/artifact/YYGXZ3u4QvjQpEMUHnN4tS 이어서 작업 (아티팩트 `project/` 파일만 소유). 우선순위: ① 오버레이 9:16·16:9 기본 템플릿 3종 ② 기존 아트보드 A안·화면 문구·도메인·도우미·구매자 문의 반영 ③ 남은 화면. 2026-10-02 18:45 KST MASTER 생성 |
-| 개발 전담 (기반) (4) | `session_016QFa8qXJSQSLrSFqvKCtWi` | 2026-10-04 추가 배정: 파트너스·마스터 관리자에게 보이는 서버 응답 문구(`message`)를 명사형·합니다체로 바꾼다(구매자·공개 API 문구는 해요체 유지). 화면 세션의 문구 전환 PR과 같은 때에 맞춘다. 진행 중. (3)에서 #169·대기열 인수(「미완료·블로커」의 「기반 세션 인계」). 소유: `prisma/**`(브랜딩·쇼핑몰 운영(팝업·배너·로고) 모델 블록과 그 마이그레이션 제외), `lib/server/**`(branding·shop-content·stats 제외), `app/api/**`(automation·branding·shop-content·seller/stats 제외), `tests/**`(`tests/e2e/**`는 화면 세션 소유라 제외, branding·shopContent·stats·`tests/e2e/shop-content*`·`tests/e2e/seller-stats*` 제외. `tests/unit/planFeatures.test.ts`는 쇼핑몰 운영 전담이 자기 경로 줄만 더한다), `docs/ARCHITECTURE.md`, `package*.json`, `ci.yml` 테스트 단계, `scripts/seed-obs-test.mjs`. 아래 「추가 기능 11건 개발 배정」의 쇼핑몰 운영 전담 소유 경로·모델 블록·마이그레이션은 제외. 2026-10-04 KST MASTER 생성 |
+| 개발 전담 (기반) (4) | `session_016QFa8qXJSQSLrSFqvKCtWi` | **(5)에 인계함(2026-10-04 KST, 아래 「기반 세션 인계 (4) → (5)」)** 2026-10-04 추가 배정: 파트너스·마스터 관리자에게 보이는 서버 응답 문구(`message`)를 명사형·합니다체로 바꾼다(구매자·공개 API 문구는 해요체 유지). 화면 세션의 문구 전환 PR과 같은 때에 맞춘다. 진행 중. (3)에서 #169·대기열 인수(「미완료·블로커」의 「기반 세션 인계」). 소유: `prisma/**`(브랜딩·쇼핑몰 운영(팝업·배너·로고) 모델 블록과 그 마이그레이션 제외), `lib/server/**`(branding·shop-content·stats 제외), `app/api/**`(automation·branding·shop-content·seller/stats 제외), `tests/**`(`tests/e2e/**`는 화면 세션 소유라 제외, branding·shopContent·stats·`tests/e2e/shop-content*`·`tests/e2e/seller-stats*` 제외. `tests/unit/planFeatures.test.ts`는 쇼핑몰 운영 전담이 자기 경로 줄만 더한다), `docs/ARCHITECTURE.md`, `package*.json`, `ci.yml` 테스트 단계, `scripts/seed-obs-test.mjs`. 아래 「추가 기능 11건 개발 배정」의 쇼핑몰 운영 전담 소유 경로·모델 블록·마이그레이션은 제외. 2026-10-04 KST MASTER 생성 |
 | (이전) 개발 전담 (기반) (3) | `session_01CmfFhZdBNA3ojJFFrdTuJ3` | 교체됨 → (4), 보관 예정. 대화가 길어져 2026-10-04 KST 교체 |
 | (이전) 개발 전담 (기반) (2) | `session_01Ud86wDnEPvsi8jPbo4zGCi` | 교체됨(→ 3). 이전 기반 세션을 이어받음(서버·DB·API·테스트). 소유: `prisma/**`, `lib/server/**`, `app/api/**`, `tests/**`, `docs/ARCHITECTURE.md`, `package*.json`, `ci.yml` 테스트 단계. 2026-10-03 20:18 KST MASTER 생성 |
 | (이전) 개발 전담 (기반) | `session_01Lhh5mXm1mdLnACzpHDNLUw` | 개발 1단계(화면 제외): 설계 문서 `docs/ARCHITECTURE.md` → 스키마·권한·테넌트 격리·주문대기 도메인·로그인·테스트·CI 테스트 단계. 소유: `prisma/**`, `lib/server/**`, `app/api/**`, `tests/**`, `docs/ARCHITECTURE.md`, `package*.json`, `ci.yml` 테스트 단계. 2026-10-02 21:30 KST MASTER 생성. 컨텍스트 70% 초과로 2026-10-03 교체 |
@@ -80,6 +80,22 @@
 - 카카오클라우드: 테스트 VM `obs-web-test`와 Cloudflare DNS `test.on-aircue.com`은 대표님 보고로 확인(PROJECT_STATUS 「인프라 방향」). 이전(Leftlife) VM·버킷·보안 그룹과 Object Storage 버킷 상태는 미확인이며, 새 서버가 뜬 것을 확인한 뒤 삭제 여부를 정한다(PROJECT_STATUS).
 
 ## 미완료·블로커
+
+### 기반 세션 인계 (2026-10-04 KST, 개발 전담 (기반) (4) → (5))
+
+- 이 세션이 올린 PR(병합 여부는 GitHub 기준): #209 회원 목록·상세 API, #215 배송 처리 목록·송장 일괄 입력·배송 완료 API, #224 탈퇴 시험 속도, #227 DEPLOY.md 시드 명령, #230 `/api/seller/me` `orderFollowup`+방송 종료 `broadcastSessionId`. 검수·병합은 검수 전담(`session_01MHJsYfiTFZ8VWkM3xVF7wM`)이 한다. 열린 것에 지적이 오면 (5)가 한 번에 고쳐 한 번 푸시한다.
+- 대기열(순서대로, 각각 작은 PR)
+  1. 환불·탈퇴 잠금 순서 교착 반례 시험: #201(리뷰) 병합 뒤, 환불(주문 FOR UPDATE → 회원 FOR SHARE)과 탈퇴(주문 id 순 잠금 → 회원 NO KEY UPDATE → 리뷰 → 원장)를 동시에 돌려 교착(40P01)이 없는지 본다. 지금 main은 둘 다 `lockSellerOrders`를 먼저 잡아 교착이 없다(기존 「탈퇴와 환불 동시」 시험은 이 잠금을 빼도 통과해 약함 — 탈퇴가 회원 행을 잡은 채 멈추게 한 뒤 환불을 시작해 판매자 주문 잠금에서 기다리는지 보는 결정적 시험이 필요).
+  2. 쇼핑몰 기준 요금제별 금액·차액 미리보기 API: 출시 할인을 적용한 실제 금액, 하위·상위 변경 차액(`chargeFor`·`proration` 재사용, 화면-설정 #210의 플랜 카드가 사용).
+  3. 방송 목록·상세 `GET /api/seller/broadcasts`·`/{id}`(BROADCAST_RUN, 통계 집계 규칙 재사용하되 통계 파일은 고치지 않음), HIT 카드 등록·조회(오버레이가 읽는 `lib/server/overlay/state.ts`와 같은 원천), 오버레이 레이아웃 저장 `GET/PUT /api/seller/overlay/layout`(버전 낙관적 잠금, 공개 렌더 연결). 우선순위 방송 3 → 4 → 5.
+  4. 이전 대기열(#169·ONQ 1-B 후속 등)은 아래 「(3) → (4)」 절과 PROJECT_STATUS를 본다. 야간 광고 제한은 첫 광고 발송을 만들 때, 런칭 할인 종료일은 대표님 결정 뒤.
+- 알아 둘 규칙
+  - 서버 응답 `message` 말투는 API 대상으로 정한다(`lib/server/text/tone.ts`): 파트너스·마스터 API 합니다체, 구매자·공개·가입 신청 해요체. 새 응답 문구는 `tests/unit/messageTone.test.ts`가 본다.
+  - 가격은 `chargeFor`(lib/server/billing/subscription.ts) 한 곳에서만 정한다(가격 기록·30일 고지 규칙).
+  - 개인정보 열람 기록(`customer.pii.view`)은 개인정보로 찾았으면 결과가 0건이어도 남긴다(회원·배송·주문 목록 모두).
+  - 한 시험에서 `resetDb`를 반복하지 않는다(CI 5초 제한, 경우마다 `it.each`로 나눈다).
+  - Codex 한도가 찬 동안 병합 기준은 CI 통과 + 검수 전담 검수 + 미해결 스레드 0. PR 본문에는 「자체 검수」(동시성·권한·개인정보·격리·되돌리기)를 짧게 적는다.
+- 확인하지 못한 것: 실제 카카오톡·다음 공유 미리보기(#199 htmlLimitedBots)는 테스트 서버 배포 뒤 확인. 마스터 관리자 시험 계정 워크플로 실행은 MASTER가 한다.
 
 ### 기반 세션 인계 (2026-10-04 KST, 개발 전담 (기반) (3) → 담당 (4))
 
