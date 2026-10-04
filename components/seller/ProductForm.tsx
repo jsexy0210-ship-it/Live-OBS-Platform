@@ -354,7 +354,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
                   placeholder="0"
                   value={price}
                   onChange={(e) => setPrice(e.target.value)}
-                  style={{ textAlign: "right", maxWidth: 200 }}
+                  style={{ maxWidth: 200 }}
                   aria-invalid={!!shown.price}
                 />
                 {shown.price && <span className="err">{shown.price}</span>}
@@ -396,8 +396,8 @@ export function ProductForm({ initial }: { initial?: Product }) {
               <div className="col" style={{ gap: 12, width: "100%" }}>
                 <div className="opt-head" aria-hidden="true">
                   <span>옵션명</span>
-                  <span className="r">추가 금액</span>
-                  <span className="r">재고</span>
+                  <span>추가 금액</span>
+                  <span>재고</span>
                   <span />
                 </div>
                 {rows.map((o, i) => {
@@ -424,7 +424,6 @@ export function ProductForm({ initial }: { initial?: Product }) {
                           aria-label={`옵션 ${i + 1} 추가 금액`}
                           value={o.priceDelta}
                           onChange={(e) => setRow(o.key, { priceDelta: e.target.value })}
-                          style={{ textAlign: "right" }}
                         />
                         {re.priceDelta && <span className="err">{re.priceDelta}</span>}
                       </div>
@@ -437,7 +436,6 @@ export function ProductForm({ initial }: { initial?: Product }) {
                           aria-label={`옵션 ${i + 1} 재고`}
                           value={o.stock}
                           onChange={(e) => setRow(o.key, { stock: e.target.value })}
-                          style={{ textAlign: "right" }}
                         />
                         {re.stock && <span className="err">{re.stock}</span>}
                       </div>
