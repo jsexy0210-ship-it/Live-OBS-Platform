@@ -203,7 +203,7 @@ test.describe("휴대폰 390", () => {
       expect(await noSideScroll(page)).toBe(true);
     }
     await page.goto(`/shop/${SLUG}/checkout`);
-    await expect(page.getByRole("heading", { name: "주문서는 준비 중이에요" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "주문서", level: 1 })).toBeVisible();
     await page.goto(`/shop/${SLUG}/cart`);
     await expect(page.getByRole("heading", { name: "장바구니", level: 1 })).toBeVisible();
     await expect(page.getByRole("navigation", { name: "바로 가기" }).getByRole("link", { name: "장바구니" })).toHaveAttribute("aria-current", "page");
