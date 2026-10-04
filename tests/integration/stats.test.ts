@@ -5,10 +5,12 @@ import { GET as salesRoute } from "../../app/api/seller/stats/sales/route";
 import { GET as productsRoute } from "../../app/api/seller/stats/products/route";
 import { GET as membersRoute } from "../../app/api/seller/stats/members/route";
 import { GET as broadcastsRoute } from "../../app/api/seller/stats/broadcasts/route";
+import { GET as overviewRoute } from "../../app/api/seller/stats/overview/route";
 import { loginSeller } from "../../lib/server/auth/login";
 import { broadcastStats } from "../../lib/server/stats/broadcasts";
 import { memberStats } from "../../lib/server/stats/members";
 import { orderStats } from "../../lib/server/stats/orders";
+import { overviewStats } from "../../lib/server/stats/overview";
 import { productStats } from "../../lib/server/stats/products";
 import { salesStats } from "../../lib/server/stats/sales";
 import { parseStatsRange } from "../../lib/server/stats/range";
@@ -578,5 +580,76 @@ describe("한 응답의 집계는 같은 시점의 데이터로 맞는다", () =
     const o = await s.order({ createdAt: "2026-10-02T03:00:00Z" });
     const r = await memberStats(racing(s.seller.id, o.buyerMemberId, () => s.newBuyer("2026-10-03T03:00:00Z")), s.ctx, WEEK());
     expect(r.series.reduce((a, p) => a + p.signups, 0)).toBe(r.current.signups);
+  });
+
+  it("요약: 집계 사이에 결제가 들어와도 요약·시계열·신규 vs 기존 매출이 맞는다", async () => {
+    const s = await shop();
+    const o = await s.order({ createdAt: "2026-10-02T03:00:00Z", total: 10000 });
+    const r = await overviewStats(racing(s.seller.id, o.buyerMemberId), s.ctx, WEEK());
+    expect(r.series.reduce((a, p) => a + p.revenue, 0)).toBe(r.summary.current.revenue);
+    expect(r.members.newNet + r.members.returningNet).toBe(r.summary.current.revenue);
+  });
+});
+
+describe("통계 요약 GET /api/seller/stats/overview (SA-056)", () => {
+  it("요약 지표·신규 vs 기존 매출·적립금·발송 평균·미입금 자동 취소·방송별 HIT·방송 외 주문을 계산한다", async () => {
+    const s = await shop();
+    const at = "2026-10-02T03:00:00Z";
+    // s.buyer: 9월에 첫 결제(기존 회원), 신규 회원은 기간 안 첫 결제
+    await db.buyerMember.update({ where: { id: s.buyer.id }, data: { createdAt: new Date("2026-01-01T00:00:00Z") } });
+    const fresh = await s.newBuyer("2026-10-02T01:00:00Z");
+    await s.order({ createdAt: "2026-09-25T03:00:00Z", total: 99000 });
+    const paid = await s.order({ createdAt: at, total: 20000 });
+    await s.order({ createdAt: at, total: 10000, buyerId: fresh.id });
+    await s.order({ createdAt: at, status: "REFUNDED", total: 6000, refundAmount: 4000, buyerId: fresh.id });
+    await s.order({ createdAt: at, status: "CANCELLED", total: 5000 });
+    const overdue = await s.order({ createdAt: at, status: "CANCELLED", total: 7000 });
+    await db.order.update({ where: { id: overdue.id }, data: { autoCancelledAt: new Date("2026-10-03T03:00:00Z") } });
+    await s.order({ createdAt: at, status: "PENDING_PAYMENT", total: 3000 });
+    // 발송: 결제 뒤 30시간
+    await db.shipment.create({ data: { sellerId: s.seller.id, orderId: paid.id, courier: "CJ", trackingNumber: "1", shippedAt: new Date("2026-10-03T09:00:00Z") } });
+    // 적립금 원장(처리된 것만, 기간 안)
+    const led = (type: "EARN" | "REVOKE" | "USE" | "EXPIRE" | "RANKING_BONUS", amount: number, status: "SUCCEEDED" | "PENDING" = "SUCCEEDED", createdAt = at) =>
+      db.rewardLedger.create({ data: { sellerId: s.seller.id, buyerMemberId: s.buyer.id, type, amount, status, testMode: false, idempotencyKey: `${type}-${amount}-${createdAt}-${status}`, createdAt: new Date(createdAt) } });
+    await led("EARN", 300);
+    await led("RANKING_BONUS", 200);
+    await led("REVOKE", -100);
+    await led("USE", -1000);
+    await led("EXPIRE", -50);
+    await led("EARN", 9999, "PENDING");
+    await led("EARN", 7777, "SUCCEEDED", "2026-09-10T03:00:00Z");
+    // 방송: 10/2 11:00~13:00 UTC. 방송 중 주문 1건, HIT 2장(방송 밖 HIT 1장은 빼고)
+    await db.broadcastSession.create({ data: { sellerId: s.seller.id, title: "방송", status: "ENDED", startedAt: new Date("2026-10-02T11:00:00Z"), endedAt: new Date("2026-10-02T13:00:00Z") } });
+    await s.order({ createdAt: "2026-10-02T12:00:00Z", total: 8000, buyerId: fresh.id });
+    for (const h of ["2026-10-02T11:30:00Z", "2026-10-02T12:59:00Z", "2026-10-02T14:00:00Z"]) {
+      await db.hitCard.create({ data: { sellerId: s.seller.id, nicknameSnapshot: "닉", cardName: "카드", createdAt: new Date(h) } });
+    }
+
+    const { status, body } = await call(overviewRoute, "overview?from=2026-10-01&to=2026-10-07", await cookieOf(s.owner.email));
+    expect(status).toBe(200);
+    // 순매출 = 20000 + 10000 + (6000 − 4000) + 8000 = 40000, 남은 주문 3건(환불 1·취소 2 제외)
+    expect(body.summary.current).toMatchObject({ revenue: 40000, orders: 3, excluded: 3, averageOrderValue: 13333 });
+    expect(body.summary.previous).toMatchObject({ revenue: 99000, orders: 1 });
+    expect(body.members).toMatchObject({ newNet: 20000, returningNet: 20000 });
+    expect(body.rewards).toEqual({ earned: 500, revoked: 100, used: 1000, expired: 50, useRate: 0.025 });
+    expect(body.operations).toMatchObject({ shipping: { shipped: 1, avgHours: 30 }, autoCancelled: 1, cancelled: 2, refunded: 1, refundAmount: 4000 });
+    expect(body.operations.autoCancelRate).toBeCloseTo(1 / 7, 4);
+    expect(body.broadcasts.rows).toEqual([expect.objectContaining({ title: "방송", orders: 1, net: 8000, hits: 2 })]);
+    // 방송 외: 방송 [시작, 종료 + 2시간] 밖의 결제 주문(10/2 03:00 UTC 3건)
+    expect(body.broadcasts.outside).toEqual({ orders: 3, net: 32000 });
+    expect(body.series.reduce((a: number, p: { revenue: number }) => a + p.revenue, 0)).toBe(40000);
+    expect(body.unavailable).toEqual(expect.arrayContaining(["visitors", "coupons", "returns", "inquiries", "reviews", "memberGrades"]));
+  });
+
+  it("다른 쇼핑몰 숫자는 섞이지 않고, 통계 권한 없는 직원은 403", async () => {
+    const a = await shop();
+    const b = await shop();
+    await b.order({ createdAt: "2026-10-02T03:00:00Z", total: 50000 });
+    await db.rewardLedger.create({ data: { sellerId: b.seller.id, buyerMemberId: b.buyer.id, type: "EARN", amount: 500, status: "SUCCEEDED", testMode: false, idempotencyKey: "b", createdAt: new Date("2026-10-02T03:00:00Z") } });
+    const r = await overviewStats(db, a.ctx, WEEK());
+    expect(r.summary.current).toMatchObject({ revenue: 0, orders: 0 });
+    expect(r.rewards.earned).toBe(0);
+    const staff = await createSellerUser(a.seller.id, { permissions: ["ORDER_SHIPPING"] });
+    expect((await call(overviewRoute, "overview?from=2026-10-01&to=2026-10-07", await cookieOf(staff.email))).status).toBe(403);
   });
 });

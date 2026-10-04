@@ -11,6 +11,7 @@ import { api } from "../api";
 // SA-056 통계 화면 공통 틀: 통계 탭 · 기간 선택(오늘·최근 7일·최근 30일·직접 선택) · 묶음 단위 · 상태(로딩·데이터 없음·오류·권한 없음).
 // 날짜는 KST 기준. 서버가 최대 366일까지 받는다(lib/server/stats/range.ts).
 export const STATS_TABS = [
+  { href: "/seller/stats", label: "요약" },
   { href: "/seller/stats/orders", label: "주문" },
   { href: "/seller/stats/sales", label: "매출" },
   { href: "/seller/stats/products", label: "상품" },
@@ -57,8 +58,12 @@ export function usePeriod() {
   return useState<Period>(() => presetPeriod("7d", "day"));
 }
 
-export function StatsFrame({ title, sub, period, setPeriod, onDownload, units = true, children }: {
+export function StatsFrame({ title, heading, sub, period, setPeriod, onDownload, download, units = true, children }: {
   title: string;
+  // 제목을 따로 줄 때(요약은 「통계」). 없으면 「{title} 통계」
+  heading?: string;
+  // 내려받기 버튼 자리를 화면이 직접 그릴 때(요약의 표 고르기)
+  download?: React.ReactNode;
   sub: string;
   period: Period;
   setPeriod: (p: Period) => void;
@@ -73,7 +78,7 @@ export function StatsFrame({ title, sub, period, setPeriod, onDownload, units = 
   const applyCustom = () => {
     if (!draft.from || !draft.to) return setRangeError("시작일과 종료일 입력이 필요합니다");
     if (draft.to < draft.from) return setRangeError("종료일은 시작일 이후여야 합니다");
-    if (daysBetween(draft.from, draft.to) > MAX_DAYS) return setRangeError("기간은 최대 1년(366일)까지 조회할 수 있습니다");
+    if (daysBetween(draft.from, draft.to) > MAX_DAYS) return setRangeError(`직접 선택은 최대 12개월까지 가능합니다 · 선택: ${draft.from} ~ ${draft.to}`);
     setRangeError(null);
     setPeriod({ ...period, preset: "custom", from: draft.from, to: draft.to });
   };
@@ -91,13 +96,14 @@ export function StatsFrame({ title, sub, period, setPeriod, onDownload, units = 
 
   return (
     <>
-      <Topbar crumb={`통계 › ${title}`} />
+      <Topbar crumb={heading ? `홈 › ${heading}` : `통계 › ${title}`} />
       <main className="main">
         <div className="ph">
           <div className="col" style={{ gap: 4 }}>
-            <h1 className="t-t3">{title} 통계</h1>
+            <h1 className="t-t3">{heading ?? `${title} 통계`}</h1>
             <span className="t-l2 c-alt">{sub}</span>
           </div>
+          {download}
           {onDownload && (
             <button className="btn btn-sm btn-out" type="button" onClick={onDownload}>
               엑셀(CSV) 내려받기
@@ -106,7 +112,7 @@ export function StatsFrame({ title, sub, period, setPeriod, onDownload, units = 
         </div>
         <nav className="tabs" aria-label="통계 종류">
           {STATS_TABS.map((t) => (
-            <Link key={t.href} href={t.href} className={`tab${pathname.startsWith(t.href) ? " on" : ""}`}>
+            <Link key={t.href} href={t.href} className={`tab${(t.href === "/seller/stats" ? pathname === t.href : pathname.startsWith(t.href)) ? " on" : ""}`}>
               {t.label}
             </Link>
           ))}
@@ -179,7 +185,7 @@ export function StatsState<T>({ state, onRetry }: { state: Load<T>; onRetry: () 
         : state.status === 402
           ? ["이용 기간이 끝나 통계를 볼 수 없습니다", "구독 후 다시 이용할 수 있습니다"]
           : state.status === 400
-            ? ["조회할 수 없는 기간입니다", "기간은 최대 1년(366일)까지 조회할 수 있습니다"]
+            ? ["조회할 수 없는 기간입니다", "직접 선택은 최대 12개월까지 가능합니다"]
             : ["통계를 불러오지 못했습니다", "잠시 뒤 다시 시도해 주십시오"];
   return (
     <div className="card">
@@ -197,13 +203,13 @@ export function StatsState<T>({ state, onRetry }: { state: Load<T>; onRetry: () 
   );
 }
 
-export function EmptyStats({ text }: { text: string }) {
+export function EmptyStats({ text, sub = "기간을 바꿔 조회할 수 있습니다" }: { text: string; sub?: string }) {
   return (
     <div className="card">
       <div className="st" style={{ boxShadow: "none" }}>
         <div className="st-ic">0</div>
         <span className="t">{text}</span>
-        <span className="s">기간을 바꿔 조회할 수 있습니다</span>
+        <span className="s">{sub}</span>
       </div>
     </div>
   );

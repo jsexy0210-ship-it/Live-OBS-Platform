@@ -63,40 +63,43 @@ async function summary(db: StatsDb, sellerId: string, start: Date, end: Date): P
 
 export async function salesStats(db: PrismaClient, ctx: TenantContext, range: StatsRange) {
   requireSellerRead(ctx, "SALES_VIEW");
+  return statsSnapshot(db, (tx) => salesStatsIn(tx, ctx, range));
+}
+
+// 같은 스냅숏 안에서 다른 집계와 함께 부를 때(통계 요약). 권한 검사는 부르는 쪽이 한다.
+export async function salesStatsIn(tx: StatsDb, ctx: TenantContext, range: StatsRange) {
   const sid = ctx.sellerId;
-  return statsSnapshot(db, async (tx) => {
-    const [current, previous, byMethod, series] = await Promise.all([
-      summary(tx, sid, range.start, range.end),
-      summary(tx, sid, range.prev.start, range.prev.end),
-      tx.$queryRaw<({ method: string } & OrderAgg)[]>`
-        SELECT coalesce("paymentMethod"::text, 'OTHER') AS method, ${ORDER_AGG}
+  const [current, previous, byMethod, series] = await Promise.all([
+    summary(tx, sid, range.start, range.end),
+    summary(tx, sid, range.prev.start, range.prev.end),
+    tx.$queryRaw<({ method: string } & OrderAgg)[]>`
+      SELECT coalesce("paymentMethod"::text, 'OTHER') AS method, ${ORDER_AGG}
+      FROM "Order" WHERE ${PAID_IN(sid, range.start, range.end)}
+      GROUP BY 1 ORDER BY 1`,
+    tx.$queryRaw<{ bucket: string; paid: bigint | null; refund: bigint | null }[]>`
+      WITH s AS (${bucketSeries(range.unit, range.start, range.end)}),
+      o AS (
+        SELECT ${bucketOf(range.unit, Prisma.sql`"createdAt"`)} AS b, ${ORDER_AGG}
         FROM "Order" WHERE ${PAID_IN(sid, range.start, range.end)}
-        GROUP BY 1 ORDER BY 1`,
-      tx.$queryRaw<{ bucket: string; paid: bigint | null; refund: bigint | null }[]>`
-        WITH s AS (${bucketSeries(range.unit, range.start, range.end)}),
-        o AS (
-          SELECT ${bucketOf(range.unit, Prisma.sql`"createdAt"`)} AS b, ${ORDER_AGG}
-          FROM "Order" WHERE ${PAID_IN(sid, range.start, range.end)}
-          GROUP BY 1
-        )
-        SELECT to_char(s.b, 'YYYY-MM-DD') AS bucket, o.paid, o.refund
-        FROM s LEFT JOIN o ON o.b = s.b
-        ORDER BY s.b`,
-    ]);
-    return {
-      range: { from: range.from, to: range.to, unit: range.unit, previous: { from: range.prev.from, to: range.prev.to } },
-      current,
-      previous,
-      byMethod: byMethod.map((r) => {
-        const paid = num(r.paid);
-        const refund = num(r.refund);
-        return { method: r.method, paidOrders: num(r.paid_orders), paid, refund, net: paid - refund };
-      }),
-      series: series.map((r) => {
-        const paid = num(r.paid);
-        const refund = num(r.refund);
-        return { bucket: r.bucket, paid, refund, net: paid - refund };
-      }),
-    };
-  });
+        GROUP BY 1
+      )
+      SELECT to_char(s.b, 'YYYY-MM-DD') AS bucket, o.paid, o.refund
+      FROM s LEFT JOIN o ON o.b = s.b
+      ORDER BY s.b`,
+  ]);
+  return {
+    range: { from: range.from, to: range.to, unit: range.unit, previous: { from: range.prev.from, to: range.prev.to } },
+    current,
+    previous,
+    byMethod: byMethod.map((r) => {
+      const paid = num(r.paid);
+      const refund = num(r.refund);
+      return { method: r.method, paidOrders: num(r.paid_orders), paid, refund, net: paid - refund };
+    }),
+    series: series.map((r) => {
+      const paid = num(r.paid);
+      const refund = num(r.refund);
+      return { bucket: r.bucket, paid, refund, net: paid - refund };
+    }),
+  };
 }
