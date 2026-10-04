@@ -684,7 +684,7 @@ describe("아이디·비밀번호 찾기 한도(같은 휴대폰 하루 10회·�
     // HTTP는 429와 안내 문구
     const res = await findStart(post("/api/seller/find-id/start", person));
     expect(res.status).toBe(429);
-    expect(await res.json()).toEqual({ error: "recovery_limit_exceeded", message: "오늘은 더 인증할 수 없어요. 내일 다시 시도해 주세요" });
+    expect(await res.json()).toEqual({ error: "recovery_limit_exceeded", message: "오늘은 더 인증할 수 없습니다. 내일 다시 시도해 주십시오" });
   });
 
   it("같은 IP는 번호가 달라도 하루 30회까지", async () => {

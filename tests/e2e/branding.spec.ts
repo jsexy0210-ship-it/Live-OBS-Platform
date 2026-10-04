@@ -163,7 +163,7 @@ test("조회 전용 관리자는 지금 값만 보고 바꿀 수 없다", async 
   await page.getByLabel("이메일").fill(readOnlyEmail);
   await page.getByLabel("비밀번호").fill("wrong-password");
   await page.getByRole("button", { name: "로그인" }).click();
-  await expect(page.getByText("이메일 또는 비밀번호가 올바르지 않습니다.")).toBeVisible();
+  await expect(page.getByText("이메일이나 비밀번호가 맞지 않습니다")).toBeVisible();
   await page.screenshot({ path: "tests/e2e/screenshots/branding-login-error-1440.png" });
   await login(page, readOnlyEmail);
   await expect(page.getByText("최고관리자만 변경할 수 있습니다. 현재는 조회만 가능합니다.")).toBeVisible();

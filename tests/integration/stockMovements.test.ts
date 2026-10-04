@@ -6,7 +6,7 @@ import { loginSeller } from "../../lib/server/auth/login";
 import { prisma } from "../../lib/server/db";
 import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
 import { createOrder } from "../../lib/server/orders/create";
-import { ORDER_ERROR_MESSAGES } from "../../lib/server/orders/messages";
+import { ORDER_ERROR_MESSAGES, ORDER_ERROR_MESSAGES_FORMAL } from "../../lib/server/orders/messages";
 import { createProduct } from "../../lib/server/products/manage";
 import { adjustStock } from "../../lib/server/products/stock";
 import { cancelPendingOrder } from "../../lib/server/queue/service";
@@ -138,7 +138,7 @@ describe("재고 이력 조회", () => {
       const r = await list(s.cookie, q);
       expect(r.status).toBe(400);
     }
-    expect(await (await list(s.cookie, { limit: "0" })).json()).toEqual({ error: "invalid_limit", message: ORDER_ERROR_MESSAGES.invalid_limit });
+    expect(await (await list(s.cookie, { limit: "0" })).json()).toEqual({ error: "invalid_limit", message: ORDER_ERROR_MESSAGES_FORMAL.invalid_limit });
   });
 });
 
@@ -178,7 +178,7 @@ describe("수동 증감 expectedStock(화면이 본 재고)", () => {
     expect(await ok.json()).toEqual({ optionId: p.optionId, stock: 7 });
     const stale = await adjust(s.cookie, p.productId, p.optionId, { delta: 5, reason: "입고", expectedStock: 10 });
     expect(stale.status).toBe(409);
-    expect(await stale.json()).toEqual({ error: "stock_conflict", message: ORDER_ERROR_MESSAGES.stock_conflict, currentStock: 7 });
+    expect(await stale.json()).toEqual({ error: "stock_conflict", message: ORDER_ERROR_MESSAGES_FORMAL.stock_conflict, currentStock: 7 });
     expect((await adjust(s.cookie, p.productId, p.optionId, { delta: 1, reason: "입고", expectedStock: "7" })).status).toBe(400);
     expect((await adjust(s.cookie, p.productId, p.optionId, { delta: 1, reason: "입고", expectedStock: -1 })).status).toBe(400);
     // 맞는 값이어도 모자라면 기존처럼 insufficient_stock
@@ -240,6 +240,6 @@ describe("상품 목록 재고 필터(stock=out·low)", () => {
     expect(empty.productId && low1.productId && low5.productId).toBeTruthy();
     const bad = await products(s.cookie, { stock: "none" });
     expect(bad.status).toBe(400);
-    expect(await bad.json()).toEqual({ error: "invalid_stock_filter", message: "재고 조건을 다시 확인해 주세요" });
+    expect(await bad.json()).toEqual({ error: "invalid_stock_filter", message: "재고 조건을 다시 확인해 주십시오" });
   });
 });

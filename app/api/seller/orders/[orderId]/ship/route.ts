@@ -17,7 +17,7 @@ export const POST = mutation(async (req: Request, { params }: { params: Promise<
   const r = await shipOrder(prisma, ctx, orderId, { courier: body.courier, trackingNumber: body.trackingNumber });
   if (!r.ok) {
     if (r.reason === "not_found") return NextResponse.json({ error: "not_found" }, { status: 404 });
-    return NextResponse.json(orderErrorBody(r.reason), { status: r.reason === "not_shippable" ? 409 : 400 });
+    return NextResponse.json(orderErrorBody(r.reason, "formal"), { status: r.reason === "not_shippable" ? 409 : 400 });
   }
   return NextResponse.json(r.shipment);
 });

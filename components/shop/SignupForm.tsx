@@ -171,7 +171,7 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
       return true;
     }
     if (r.status === 0 || r.error === "shop_unavailable" || r.error === "provider_error" || r.error === "daily_limit_exceeded") {
-      showNotice({ kind: "neg", text: failMessage(r) });
+      showNotice({ kind: "neg", text: failMessage(r, "public") });
       return true;
     }
     return false;
@@ -225,7 +225,7 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
     if (commonFail(r)) return;
     // 입력한 생년월일로 만 14세 미만이면 생년월일 칸에 알린다
     if (r.error === "under_age") {
-      setBirthError(failMessage(r));
+      setBirthError(failMessage(r, "public"));
       focus("idv-birth");
       return;
     }
@@ -239,11 +239,11 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
     // 기간이 바뀐 경우는 입력은 두고 동의 정보만 새로 받아 다시 동의하게 한다(기간은 서버 값으로 글에 들어간다).
     if (r.error === "terms_required" || r.error === "invalid_rejoin_consent" || r.error === "invalid_marketing_consent" || r.error === "rejoin_policy_changed") {
       if (r.error === "rejoin_policy_changed") router.refresh();
-      setFieldErrors({ terms: failMessage(r) });
+      setFieldErrors({ terms: failMessage(r, "public") });
       focus("idv-terms-all");
       return;
     }
-    showNotice({ kind: "neg", text: failMessage(r) });
+    showNotice({ kind: "neg", text: failMessage(r, "public") });
   };
 
   const resend = async () => {
@@ -265,10 +265,10 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
       return;
     }
     if (r.error === "resend_too_soon") {
-      setNotice({ kind: "info", text: failMessage(r) });
+      setNotice({ kind: "info", text: failMessage(r, "public") });
       focus("idv-code");
     }
-    else restart({ kind: "neg", text: failMessage(r) });
+    else restart({ kind: "neg", text: failMessage(r, "public") });
   };
 
   const confirm = async () => {
@@ -289,9 +289,9 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
     if (commonFail(r)) return;
     if (r.error === "wrong_code" || r.error === "code_expired") {
       setNotice(null);
-      setCodeError(failMessage(r));
+      setCodeError(failMessage(r, "public"));
       focus("idv-code");
-    } else restart({ kind: "neg", text: failMessage(r) });
+    } else restart({ kind: "neg", text: failMessage(r, "public") });
   };
 
   const verified = (identity?: { name: string; phone: string }) => {
@@ -351,7 +351,7 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
   // 가입 실패 처리(처음 요청과 재전송 공통): 칸 오류·안내·처음부터 다시
   const signupFail = (r: Fail) => {
     if (commonFail(r)) return;
-    const text = failMessage(r);
+    const text = failMessage(r, "public");
     switch (r.error) {
       case "invalid_login_id":
       case "login_id_taken":

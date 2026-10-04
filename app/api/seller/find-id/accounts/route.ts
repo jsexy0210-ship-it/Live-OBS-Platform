@@ -13,7 +13,7 @@ const NO_STORE = { "cache-control": "no-store" };
 // 맞는 계정이 없으면 빈 목록(직원 미연결 포함, 화면은 「대표자에게 물어봐 주세요」). 본인확인 전이면 409 pending, 쓸 수 없는 본인확인이면 400 recovery_not_allowed.
 export const POST = mutation(async (req: Request) => {
   const provider = identityProvider();
-  if (!provider) return identityUnavailable();
+  if (!provider) return identityUnavailable("formal");
   const body = await readJson<{ verificationId: unknown; accountType: unknown }>(req);
   const accountType = parseAccountType(body.accountType);
   if (!accountType) return NextResponse.json({ error: "bad_request" }, { status: 400, headers: NO_STORE });

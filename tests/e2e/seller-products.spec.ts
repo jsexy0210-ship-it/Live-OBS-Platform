@@ -52,14 +52,14 @@ test("비밀번호가 틀리면 안내하고 로그인하지 않는다", async (
   await page.getByLabel("이메일").fill(OWNER);
   await page.getByLabel("비밀번호").fill("wrong-password-x");
   await page.getByRole("button", { name: "로그인" }).click();
-  await expect(page.getByText("이메일이나 비밀번호가 맞지 않아요")).toBeVisible();
+  await expect(page.getByText("이메일이나 비밀번호가 맞지 않습니다")).toBeVisible();
   await expect(page).toHaveURL(/\/seller\/login/);
   await shot(page, "AU-002-error");
 });
 
 test("상품 목록: 데모 상품·상태 배지·필터, 체험 배너가 보인다", async ({ page }) => {
   await login(page);
-  await expect(page.getByText(/체험이 \d+일 남았어요/)).toBeVisible();
+  await expect(page.getByText(/체험이 \d+일 남았습니다/)).toBeVisible();
   await expect(page.locator(".topbar")).toContainText("카드숍 별빛");
   const rows = page.getByTestId("product-row");
   await expect(rows.filter({ hasText: "스타라이트 부스터 박스" })).toBeVisible();
@@ -121,8 +121,8 @@ test("상품 등록 → 목록에 바로 보인다", async ({ page }) => {
   await expect(page.getByTestId("name-count")).toHaveText(`${name.length}/100`);
   await page.getByLabel("판매가").fill("만오천원");
   await page.getByRole("button", { name: "등록", exact: true }).first().click();
-  await expect(page.getByText("숫자만 입력해 주세요")).toBeVisible();
-  await expect(page.getByText(/아래 1개 항목을 확인해 주세요: 판매가/)).toBeVisible();
+  await expect(page.getByText("숫자만 입력해 주십시오")).toBeVisible();
+  await expect(page.getByText(/아래 1개 항목을 확인해 주십시오: 판매가/)).toBeVisible();
   await shot(page, "SA-012-new-error");
 
   await page.getByLabel("판매가").fill("15,000");
@@ -136,7 +136,7 @@ test("상품 등록 → 목록에 바로 보인다", async ({ page }) => {
   await page.getByRole("button", { name: "등록", exact: true }).first().click();
 
   await expect(page).toHaveURL(/\/seller\/products$/);
-  await expect(page.getByText("상품을 등록했어요")).toBeVisible();
+  await expect(page.getByText("상품을 등록했습니다")).toBeVisible();
   await searchFor(page, name);
   await expect(page.getByTestId("product-row")).toHaveCount(1);
   const row = page.getByTestId("product-row").filter({ hasText: name });
@@ -151,22 +151,22 @@ test("상품명 100자를 넘기면 글자 수가 빨갛게 바뀌고 안내한�
   await page.goto("/seller/products/new");
   await page.getByLabel("상품명").fill("가".repeat(101));
   await expect(page.getByTestId("name-count")).toHaveText("101/100");
-  await expect(page.getByText("상품명은 100자까지 쓸 수 있어요")).toBeVisible();
+  await expect(page.getByText("상품명은 100자까지 입력할 수 있습니다")).toBeVisible();
 
   // 👍 101개는 101자로 세고 막는다
   await page.getByLabel("상품명").fill("👍".repeat(101));
   await expect(page.getByTestId("name-count")).toHaveText("101/100");
-  await expect(page.getByText("상품명은 100자까지 쓸 수 있어요")).toBeVisible();
+  await expect(page.getByText("상품명은 100자까지 입력할 수 있습니다")).toBeVisible();
 
   // 이모지 96개 + 실행마다 다른 글자 4개 = 100자라 서버도 받는다(실제로 등록해 목록에서 확인)
   const name100 = track("👍".repeat(96) + stamp.slice(-4));
   await page.getByLabel("상품명").fill(name100);
   await expect(page.getByTestId("name-count")).toHaveText("100/100");
-  await expect(page.getByText("상품명은 100자까지 쓸 수 있어요")).toHaveCount(0);
+  await expect(page.getByText("상품명은 100자까지 입력할 수 있습니다")).toHaveCount(0);
   await page.getByLabel("판매가").fill("1000");
   await page.getByRole("button", { name: "임시 저장" }).first().click();
   await expect(page).toHaveURL(/\/seller\/products$/);
-  await expect(page.getByText("임시 저장했어요")).toBeVisible();
+  await expect(page.getByText("임시 저장했습니다")).toBeVisible();
   await page.getByRole("tab", { name: "임시 저장" }).click();
   // 검색어는 50자까지라 이름 끝 20자(👍 16개 + 실행 표식 4자)로 찾는다
   await searchFor(page, [...name100].slice(-20).join(""));
@@ -182,7 +182,7 @@ test("상품 수정: 가격·재고를 바꾸면 저장되고 목록에도 반�
   await page.getByLabel("판매가").fill("129000");
   await page.getByLabel("옵션 1 재고").fill("9");
   await page.getByRole("button", { name: "저장", exact: true }).first().click();
-  await expect(page.getByText("저장했어요")).toBeVisible();
+  await expect(page.getByText("저장했습니다")).toBeVisible();
 
   await page.reload();
   await expect(page.getByLabel("판매가")).toHaveValue("129000");
@@ -198,7 +198,7 @@ test("상품 수정: 가격·재고를 바꾸면 저장되고 목록에도 반�
   await page.getByLabel("판매가").fill("132000");
   await page.getByLabel("옵션 1 재고").fill("5");
   await page.getByRole("button", { name: "저장", exact: true }).first().click();
-  await expect(page.getByText("저장했어요")).toBeVisible();
+  await expect(page.getByText("저장했습니다")).toBeVisible();
 });
 
 test("상품 삭제: 숨김을 먼저 권하고, 완전 삭제는 상품명을 넣어야 한다", async ({ page }) => {
@@ -214,10 +214,10 @@ test("상품 삭제: 숨김을 먼저 권하고, 완전 삭제는 상품명을 �
 
   await page.getByRole("button", { name: "삭제", exact: true }).click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog.getByText(`「${name}」을 삭제할까요?`)).toBeVisible();
+  await expect(dialog.getByText(`「${name}」을 삭제하시겠습니까?`)).toBeVisible();
   await shot(page, "SA-012-D-delete");
-  await dialog.getByRole("button", { name: "숨김으로 바꾸기" }).click();
-  await expect(page.getByText("숨김으로 바꿨어요")).toBeVisible();
+  await dialog.getByRole("button", { name: "숨김으로 변경", exact: true }).click();
+  await expect(page.getByText("숨김으로 변경했습니다")).toBeVisible();
   await expect(page.locator(".topbar .bdg")).toHaveText("숨김");
 
   await page.getByRole("button", { name: "삭제", exact: true }).click();
@@ -227,9 +227,9 @@ test("상품 삭제: 숨김을 먼저 권하고, 완전 삭제는 상품명을 �
   await dialog.getByLabel("삭제할 상품명 입력").fill(name);
   await confirm.click();
   await expect(page).toHaveURL(/\/seller\/products$/);
-  await expect(page.getByText("상품을 삭제했어요")).toBeVisible();
+  await expect(page.getByText("상품을 삭제했습니다")).toBeVisible();
   await searchFor(page, name);
-  await expect(page.getByText(`「${name}」에 해당하는 상품이 없어요`)).toBeVisible();
+  await expect(page.getByText(`「${name}」에 해당하는 상품이 없습니다`)).toBeVisible();
   await expect(page.getByTestId("product-row").filter({ hasText: name })).toHaveCount(0);
 });
 
@@ -250,7 +250,7 @@ test("판매가를 내리면서 추가 금액을 바꿔도 저장된다(중간 �
   await page.getByLabel("판매가").fill("5000");
   await page.getByLabel("옵션 1 추가 금액").fill("-4000");
   await page.getByRole("button", { name: "저장", exact: true }).first().click();
-  await expect(page.getByText("저장했어요", { exact: true })).toBeVisible();
+  await expect(page.getByText("저장했습니다", { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByLabel("판매가")).toHaveValue("5000");
   await expect(page.getByLabel("옵션 1 추가 금액")).toHaveValue("-4000");
@@ -259,7 +259,7 @@ test("판매가를 내리면서 추가 금액을 바꿔도 저장된다(중간 �
   await page.getByLabel("판매가").fill("10000");
   await page.getByLabel("옵션 1 추가 금액").fill("-9000");
   await page.getByRole("button", { name: "저장", exact: true }).first().click();
-  await expect(page.getByText("저장했어요", { exact: true })).toBeVisible();
+  await expect(page.getByText("저장했습니다", { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByLabel("판매가")).toHaveValue("10000");
   await expect(page.getByLabel("옵션 1 추가 금액")).toHaveValue("-9000");
@@ -271,8 +271,8 @@ test("숫자·글자 입력: 전각 숫자는 받고, 음수 가격과 보이지
   await page.getByLabel("상품명").fill("부스터\u200b팩");
   await page.getByLabel("판매가").fill("-5");
   await page.getByRole("button", { name: "등록", exact: true }).first().click();
-  await expect(page.getByText("가격은 1원 이상, 21억 원 이하로 입력해 주세요")).toBeVisible();
-  await expect(page.getByText("쓸 수 없는 글자가 들어 있어요", { exact: false })).toBeVisible();
+  await expect(page.getByText("가격은 1원 이상, 21억 원 이하로 입력해 주십시오")).toBeVisible();
+  await expect(page.getByText("사용할 수 없는 글자가 들어 있습니다", { exact: false })).toBeVisible();
   // 판매가가 틀렸을 때 정상 옵션에는 단가 오류를 띄우지 않는다
   await expect(page.getByText("추가 금액을 더한 가격이", { exact: false })).toHaveCount(0);
 
@@ -285,7 +285,7 @@ test("숫자·글자 입력: 전각 숫자는 받고, 음수 가격과 보이지
 test("권한이 하나도 없는 직원에게는 권한이 필요한 메뉴가 보이지 않는다", async ({ page }) => {
   await page.goto("/seller/login");
   await submitSellerLogin(page, "demo-none@example.com", PASSWORD);
-  await expect(page.getByText("이 기능은 권한이 필요해요")).toBeVisible();
+  await expect(page.getByText("이 기능은 권한이 필요합니다")).toBeVisible();
   const side = page.getByRole("complementary", { name: "파트너스 메뉴" });
   for (const hidden of ["방송 대시보드", "상품", "주문", "입금 확인", "배송", "영수증 · 세금계산서", "적립금", "회원", "구매 제한", "구매자 문의", "오버레이 편집기", "HIT 카드 이력", "방송 이력", "결제(PG) 연결", "주문자 알림", "구독 · 결제", "직원 계정"]) {
     await expect(side.getByText(hidden, { exact: true })).toHaveCount(0);
@@ -298,7 +298,7 @@ test("권한이 하나도 없는 직원에게는 권한이 필요한 메뉴가 �
 
 test("상품 권한이 없는 직원은 권한 안내를 본다", async ({ page }) => {
   await login(page, VIEWER);
-  await expect(page.getByText("이 기능은 권한이 필요해요")).toBeVisible();
+  await expect(page.getByText("이 기능은 권한이 필요합니다")).toBeVisible();
   await expect(page.getByRole("link", { name: "상품 등록" })).toHaveCount(0);
   // 권한이 없는 메뉴는 숨기고, 가진 권한(배송)과 대표자 전용 메뉴 구분을 따른다
   const side = page.getByRole("complementary", { name: "파트너스 메뉴" });
@@ -349,7 +349,7 @@ test("로그아웃 요청이 실패하면 화면에 남아 다시 시도하게 �
   await login(page);
   await page.route("**/api/seller/auth/logout", (r) => r.fulfill({ status: 500, contentType: "application/json", body: "{}" }));
   await page.getByRole("button", { name: "로그아웃" }).click();
-  await expect(page.getByText("로그아웃하지 못했어요. 다시 시도해 주세요")).toBeVisible();
+  await expect(page.getByText("로그아웃하지 못했습니다. 다시 시도해 주십시오")).toBeVisible();
   await expect(page).toHaveURL(/\/seller\/products$/);
   await page.unroute("**/api/seller/auth/logout");
   await page.getByRole("button", { name: "로그아웃" }).click();
@@ -393,7 +393,7 @@ test("「재고 없음」·「재고 부족」으로 걸러 보면 서버 기준
   await expect(page.getByTestId("product-row").filter({ hasText: "드래곤 소울 부스터" })).toHaveCount(0);
   // 판매 상태 탭과 함께 쓴다: 「숨김」 + 「재고 부족」은 해당 없음
   await page.getByRole("tab", { name: "숨김" }).click();
-  await expect(page.getByText("「숨김 · 재고 부족」에 해당하는 상품이 없어요")).toBeVisible();
+  await expect(page.getByText("「숨김 · 재고 부족」에 해당하는 상품이 없습니다")).toBeVisible();
 });
 
 test("「품절로 설정」 탭은 판매 상태가 품절인 상품만, 배지와 이름이 맞는다", async ({ page }) => {
@@ -428,7 +428,7 @@ test("상품 검색: 상품·옵션 이름으로 서버에서 찾고(대소문�
   await expect(page.getByTestId("product-row").first()).toContainText("문라이트 1탄 박스");
   // 없는 이름은 안내하고, 「전체 보기」로 검색까지 지운다
   await searchFor(page, "없는상품이름");
-  await expect(page.getByText("「없는상품이름 · 숨김」에 해당하는 상품이 없어요")).toBeVisible();
+  await expect(page.getByText("「없는상품이름 · 숨김」에 해당하는 상품이 없습니다")).toBeVisible();
   await page.getByRole("button", { name: "전체 보기" }).click();
   await expect(page.getByLabel("상품 검색")).toHaveValue("");
   await expect(page.getByTestId("product-row").filter({ hasText: "스타라이트 부스터 박스" })).toBeVisible();
@@ -440,7 +440,7 @@ test("상품 검색어는 50자까지: 입력은 50자에서 멈추고, 바꾼 �
   await page.getByLabel("상품 검색").fill("가".repeat(51));
   await expect(page.getByLabel("상품 검색")).toHaveValue("가".repeat(50));
   await page.getByLabel("상품 검색").fill("㈜".repeat(50));
-  await expect(page.getByText("검색어는 50자까지 쓸 수 있어요")).toBeVisible();
+  await expect(page.getByText("검색어는 50자까지 입력할 수 있습니다")).toBeVisible();
   await page.getByRole("button", { name: "검색 지우기" }).click();
   await expect(page.getByLabel("상품 검색")).toHaveValue("");
   await expect(page.getByTestId("product-row").first()).toBeVisible();

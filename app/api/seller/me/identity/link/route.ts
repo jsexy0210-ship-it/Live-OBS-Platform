@@ -14,7 +14,7 @@ const NO_STORE = { "cache-control": "no-store" };
 export const POST = mutation(async (req: Request) => {
   const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "ACCOUNT" });
   const provider = identityProvider();
-  if (!provider) return identityUnavailable();
+  if (!provider) return identityUnavailable("formal");
   const body = await readJson<{ verificationId: unknown }>(req);
   if (!isString(body.verificationId) || !UUID.test(body.verificationId)) {
     return NextResponse.json({ error: "verification_invalid", message: STAFF_LINK_MESSAGES.verification_invalid }, { status: 400, headers: NO_STORE });
