@@ -6,6 +6,7 @@ import { api, failMessage } from "../seller/api";
 import { textLength } from "../seller/format";
 import MarketingConsentDoc, { MARKETING_DOC_VERSION } from "./MarketingConsentDoc";
 import ShopState from "./ShopState";
+import TestModeNotice from "../seller/TestModeNotice";
 
 // 아래 「재가입 제한 정보 보관」 글의 버전(서버 REJOIN_RETENTION_CONSENT_VERSION과 같은 값). 글을 바꾸면 함께 바꾼다.
 // 동의할 때는 서버가 준 버전이 아니라 화면에 보인 글과 묶인 이 버전을 보낸다(마케팅은 MARKETING_DOC_VERSION).
@@ -483,6 +484,7 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
             <h2 className="t-hl2">휴대폰 본인확인</h2>
             <span className="help">본인 명의의 휴대폰으로 인증해 주세요.</span>
           </div>
+          <TestModeNotice kind="identity" />
           <div className="fld">
             <label htmlFor="idv-name">이름</label>
             <input id="idv-name" className="inp" autoComplete="name" value={name} disabled={locked} onChange={(e) => setName(e.target.value)} />

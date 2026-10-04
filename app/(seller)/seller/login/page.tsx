@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { safeNext } from "../../../../components/seller/PartnersAuth";
-import { api } from "../../../../components/seller/api";
+import { landingFor } from "../../../../components/seller/SellerShell";
+import { api, type Me } from "../../../../components/seller/api";
 
 // AU-002 파트너스 관리자 로그인(정본: docs/IA.md AU-002, 대표님 결정 2026-10-03).
 // 카드 안 맨 위 ONQ 로고 → 제목·부제 → 탭(대표자·직원, 기본 대표자) → 입력.
@@ -69,16 +70,23 @@ export default function SellerLoginPage() {
       body: { email: email.trim(), password, accountType: tab, ...(needShop ? { shopSlug: shopSlug.trim() } : {}) },
     });
     if (r.ok) {
+      // 갈 곳(next)을 받지 않았고 기본 화면(상품)이 요금제에 없으면 지금 열 수 있는 첫 메뉴로 보낸다
+      // (오버레이 전용이 안내 화면부터 보지 않게, MASTER 결정 2026-10-04). /me를 못 읽으면 기본 화면
+      let target = safeNext();
+      if (!new URLSearchParams(window.location.search).get("next")) {
+        const m = await api<Me>("/api/seller/me");
+        if (m.ok) target = landingFor(m.data, target);
+      }
       // 직원은 본인확인을 연결하지 않았으면 로그인할 때마다 연결 안내(AU-012)로 먼저 보낸다. 건너뛸 수 있고, 상태를 못 읽으면 그냥 들어간다.
       // 본인확인을 실제로 할 수 없는 서버(대행사 미연결·테스트 모드 아님)에서는 띄우지 않는다: 서버가 available: true를 줄 때만
       if (tab === "staff") {
         const s = await api<{ linked: boolean; available: boolean }>("/api/seller/me/identity");
         if (s.ok && !s.data.linked && s.data.available === true) {
-          router.replace(`/seller/identity-link?next=${encodeURIComponent(safeNext())}`);
+          router.replace(`/seller/identity-link?next=${encodeURIComponent(target)}`);
           return;
         }
       }
-      router.replace(safeNext());
+      router.replace(target);
       return;
     }
     setBusy(false);

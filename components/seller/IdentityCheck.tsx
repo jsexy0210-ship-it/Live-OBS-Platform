@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { api, failMessage, type ApiResult, type Tone } from "./api";
+import TestModeNotice from "./TestModeNotice";
 
 // 파트너스 가입(PF-007)·비밀번호 찾기(AU-003)에서 함께 쓰는 대표자 휴대폰 본인확인 칸.
 // 인적사항 → 인증번호 받기(start) → 6자리 확인(base/confirm) → onVerified. 다시 받기는 base/resend.
@@ -220,6 +221,7 @@ export default function IdentityCheck({ label, start, scope = "", base, blocked 
         <span className="lbl req">{label}</span>
         <span className="help">{T.help}</span>
       </div>
+      <TestModeNotice kind="identity" formal />
       {notice && (
         <div id="idv-notice" tabIndex={-1} className={`msg msg-${notice.kind}`} role={notice.kind === "neg" ? "alert" : "status"}>
           <span>{notice.text}</span>
