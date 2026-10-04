@@ -293,6 +293,7 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 | `GET /api/shop/{slug}/order-consent`(주문서 동의 문구) | 스토어 운영 | 막음(주문서 진입) |
 | `POST /api/shop/{slug}/signup/verification`·`…/resend`·`…/confirm`·`POST /api/shop/{slug}/signup`(구매자 가입) | 스토어 운영 | 막음 |
 | `GET /api/shop/{slug}/share`·`GET /api/shop/{slug}/og.png`(공유 미리보기) | 스토어 운영 | 막음(공개 쇼핑몰 페이지와 함께 닫힘) |
+| 화면 `/shop/{slug}/signup`(구매자 가입 화면, 앞으로 생길 장바구니·주문서·상품 구매 버튼 화면도 같음, 아래 ③) | 스토어 운영 | 막음(안내 화면, 폼·구매 버튼 없음) |
 | `GET /api/shop/{slug}/orders`·`…/orders/{orderId}`(내 주문 조회) | 없음(기존 주문) | 허용 |
 | `POST /api/shop/{slug}/auth/login`·`…/logout`(구매자 로그인) | 없음 | 허용(기존 주문 조회·탈퇴용) |
 | `GET·POST /api/shop/{slug}/addresses`·`…/addresses/{id}`(배송지) | 없음 | 허용(기존 주문 배송·구매자 정보 관리) |
