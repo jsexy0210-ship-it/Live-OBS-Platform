@@ -9,7 +9,7 @@ import { prisma } from "../../lib/server/db";
 import { FakeIdentityProvider } from "../../lib/server/identity/provider";
 import { identityProvider } from "../../lib/server/identity/registry";
 import { SIGNUP_VERIFY_DAILY_LIMIT_PER_IP, applyForSeller, startSellerSignupVerification, type ApplyInput } from "../../lib/server/sellers/application";
-import { TRIAL_DAYS, approveSeller, listSellersToReview, rejectSeller } from "../../lib/server/sellers/approval";
+import { approveSeller, listSellersToReview, rejectSeller } from "../../lib/server/sellers/approval";
 import {
   FakeBusinessStatusProvider,
   FakeMailOrderProvider,
@@ -114,7 +114,24 @@ describe("같은 신청 동시 재시도", () => {
 });
 
 describe("자동 점검 통과 → 자동 승인", () => {
-  it("모두 통과하면 바로 운영 중, 체험하기 = 승인 + 14일, 기본 등급 5개, 대표자 계정으로 로그인된다", async () => {
+  it("플랜(ONQ 1-C): 오버레이 전용을 고르면 승인 + 7일 체험, STANDARD·모르는 값은 invalid_input이고 신청을 만들지 않는다", async () => {
+    const business = new FakeBusinessStatusProvider();
+    const r = await applyForSeller(db, { business, mailOrder }, form(await verified("CI-PLAN"), { planCode: "OVERLAY_ONLY" }));
+    expect(r).toMatchObject({ ok: true, approved: true });
+    if (!r.ok) return;
+    const seller = await db.seller.findUniqueOrThrow({ where: { id: r.sellerId }, include: { plan: true } });
+    expect(seller.plan?.code).toBe("OVERLAY_ONLY");
+    expect(seller.trialEndsAt!.getTime() - seller.approvedAt!.getTime()).toBe(7 * DAY);
+    for (const planCode of ["STANDARD", "PRO"]) {
+      expect(await applyForSeller(db, { business, mailOrder }, form(await verified(`CI-${planCode}`), { planCode, slug: `shop-${planCode.toLowerCase()}` }))).toEqual({
+        ok: false,
+        reason: "invalid_input",
+      });
+    }
+    expect(await db.seller.count()).toBe(1);
+  });
+
+  it("모두 통과하면 바로 운영 중, 플랜을 고르지 않으면 통합(체험 없음), 기본 등급 5개, 대표자 계정으로 로그인된다", async () => {
     const business = new FakeBusinessStatusProvider();
     const f = form(await verified("CI-1"));
     const r = await applyForSeller(db, { business, mailOrder }, f);
@@ -122,8 +139,9 @@ describe("자동 점검 통과 → 자동 승인", () => {
     if (!r.ok) return;
     const seller = await db.seller.findUniqueOrThrow({ where: { id: r.sellerId } });
     expect(seller).toMatchObject({ status: "ACTIVE", approvedByAdminId: null, reviewReasons: [] });
-    expect(seller.trialEndsAt!.getTime() - seller.approvedAt!.getTime()).toBe(TRIAL_DAYS * DAY);
-    expect(TRIAL_DAYS).toBe(14);
+    // ONQ 1-C: 신규 가입 기본 플랜은 통합이고 체험이 없다(STANDARD 14일 체험은 신규 가입에 쓰지 않음)
+    expect(seller.trialEndsAt).toBeNull();
+    expect((await db.subscriptionPlan.findUniqueOrThrow({ where: { id: seller.planId! } })).code).toBe("INTEGRATED");
     expect(seller.businessInfo).toMatchObject({
       businessNumber: f.businessNumber,
       representativeName: "김대표",
