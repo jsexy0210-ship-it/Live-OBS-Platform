@@ -7,7 +7,7 @@ import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
 import { createOrder } from "../../lib/server/orders/create";
 import { ORDER_ERROR_MESSAGES_FORMAL } from "../../lib/server/orders/messages";
 import { bulkProducts } from "../../lib/server/products/bulk";
-import { createProduct, listProducts, type ProductListQuery } from "../../lib/server/products/manage";
+import { createProduct, getProduct, listProducts, parseProductCode, type ProductListQuery } from "../../lib/server/products/manage";
 import { markOrderPaid } from "../../lib/server/queue/service";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { PASSWORD, createLoginBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
@@ -56,7 +56,7 @@ async function allPages(ctx: TenantContext, q: ProductListQuery) {
 }
 
 describe("목록 검색", () => {
-  it("노출 상태·판매 방식·등록일 기간(KST, 양 끝 포함)·상품 코드(id·SKU)로 고르고, 다른 쇼핑몰은 섞이지 않는다", async () => {
+  it("노출 상태·재고 차감 시점·등록일 기간(KST, 양 끝 포함)·상품 코드(id·SKU)로 고르고, 다른 쇼핑몰은 섞이지 않는다", async () => {
     const s = await seller();
     const other = await seller();
     const a = await made(s.ctx, { name: "A", status: "ON_SALE", stockDeductMode: "ORDER", options: [{ name: "o", sku: "MG-Pack-01" }] });
@@ -68,7 +68,7 @@ describe("목록 검색", () => {
     expect((await names(s.ctx, { display: "shown" })).sort()).toEqual(["A", "B"]);
     expect((await names(s.ctx, { display: "hidden" })).sort()).toEqual(["C", "D"]);
     expect(await names(s.ctx, { display: "hidden", status: "HIDDEN" })).toEqual(["D"]);
-    expect(await names(s.ctx, { saleMode: "ORDER" })).toEqual(["A"]);
+    expect(await names(s.ctx, { stockDeductMode: "ORDER" })).toEqual(["A"]);
     expect(await names(s.ctx, { code: "pack-0" })).toEqual(["A"]);
     expect(await names(s.ctx, { code: a.id.toUpperCase() })).toEqual(["A"]);
     expect(await names(s.ctx, { code: a.id.slice(0, 8) })).toEqual([]);
@@ -83,7 +83,7 @@ describe("목록 검색", () => {
 
     for (const [q, reason] of [
       [{ display: "all" }, "invalid_display"],
-      [{ saleMode: "LIVE" }, "invalid_sale_mode"],
+      [{ stockDeductMode: "LIVE" }, "invalid_stock_deduct_mode"],
       [{ createdFrom: "2026-10-02", createdTo: "2026-10-01" }, "invalid_date_range"],
       [{ createdFrom: "2026-02-30" }, "invalid_date_range"],
       [{ createdTo: "2026/10/01" }, "invalid_date_range"],
@@ -225,5 +225,30 @@ describe("선택 일괄 처리", () => {
     const wrong = await list("createdFrom=2026-13-01");
     expect(wrong.status).toBe(400);
     expect(await wrong.json()).toEqual({ error: "invalid_date_range", message: ORDER_ERROR_MESSAGES_FORMAL.invalid_date_range });
+  });
+});
+
+describe("자동 상품 코드", () => {
+  it("판매자별 1부터 순번(P + 7자리)이고, 동시에 등록해도 겹치지 않으며, 지운 상품 번호는 다시 쓰지 않고, 코드로 찾는다", async () => {
+    const s = await seller();
+    const other = await seller();
+    const first = await made(s.ctx, { name: "첫 상품" });
+    expect(first).toMatchObject({ codeNo: 1, code: "P0000001" });
+    expect((await made(other.ctx, { name: "남의 첫 상품" })).code).toBe("P0000001");
+    const parallel = await Promise.all(Array.from({ length: 8 }, (_, i) => made(s.ctx, { name: `동시 ${i}` })));
+    expect(parallel.map((p) => p.codeNo).sort((a, b) => a - b)).toEqual([2, 3, 4, 5, 6, 7, 8, 9]);
+    // 한 문장에 여러 행을 넣어도 이어 매긴다
+    await db.product.createMany({ data: [1, 2, 3].map((i) => ({ sellerId: s.seller.id, name: `묶음 ${i}`, price: 1000 })) });
+    expect((await db.product.findMany({ where: { sellerId: s.seller.id, name: { startsWith: "묶음" } }, orderBy: { codeNo: "asc" } })).map((p) => p.codeNo)).toEqual([10, 11, 12]);
+    await db.product.update({ where: { id: first.id }, data: { deletedAt: new Date() } });
+    await db.product.deleteMany({ where: { sellerId: s.seller.id, name: "묶음 3" } });
+    expect((await made(s.ctx, { name: "다음" })).codeNo).toBe(13); // 지운 번호(소프트 삭제·행 삭제 모두)는 다시 쓰지 않는다
+    const tenth = (await db.product.findFirstOrThrow({ where: { sellerId: s.seller.id, codeNo: 10 } })).id;
+    expect((await getProduct(db, s.ctx, tenth)).code).toBe("P0000010");
+
+    for (const code of ["P0000010", "p10", "0000010", "10"]) expect(await names(s.ctx, { code })).toEqual(["묶음 1"]);
+    expect(await names(s.ctx, { code: "P0000001" })).toEqual([]); // 지운 상품
+    expect(await names(other.ctx, { code: "P0000010" })).toEqual([]);
+    expect([parseProductCode("P0"), parseProductCode("PX1"), parseProductCode("P1234567890")]).toEqual([null, null, null]);
   });
 });

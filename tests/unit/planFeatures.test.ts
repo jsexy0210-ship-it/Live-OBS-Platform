@@ -84,6 +84,10 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/products": "STORE_OPERATIONS",
   "seller/products/[productId]": "STORE_OPERATIONS",
   "seller/products/bulk": "STORE_OPERATIONS",
+  "seller/categories": "STORE_OPERATIONS",
+  "seller/categories/[categoryId]": "STORE_OPERATIONS",
+  "seller/categories/order": "STORE_OPERATIONS",
+  "seller/products/[productId]/categories": "STORE_OPERATIONS",
   "seller/products/[productId]/event": "STORE_OPERATIONS",
   "seller/products/[productId]/options": "STORE_OPERATIONS",
   "seller/products/[productId]/options/[optionId]": "STORE_OPERATIONS",
@@ -127,6 +131,7 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/coupons/code": "STORE_OPERATIONS", // 쿠폰 받기(코드·내려받기)는 shopOpen으로 막음
   "shop/[slug]/coupons/[couponId]/download": "STORE_OPERATIONS",
   "shop/[slug]/coupons": "OPEN", // 내 쿠폰함(받은 쿠폰 조회는 열고, 받을 수 있는 쿠폰은 운영 중일 때만)
+  "shop/[slug]/categories": "STORE_OPERATIONS", // 카테고리 메뉴(SA-015)
   "shop/[slug]/shop-content/logo": "STORE_OPERATIONS", // 쇼핑몰 로고(없으면 404, 화면은 첫 글자)
   "shop/[slug]/reviews": "OPEN", // 내 리뷰(받은 답글·숨김 사유는 잠긴 쇼핑몰에서도 본다)
   "shop/[slug]/reviews/[reviewId]": "OPEN", // 내 리뷰 고치기·지우기
