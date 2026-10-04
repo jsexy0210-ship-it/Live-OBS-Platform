@@ -22,7 +22,7 @@ export const CANCEL_RETRY_AFTER_MS = 60_000;
 
 export type StartRejection = "shop_unavailable" | "not_found" | "order_not_payable" | "already_paid" | "amount_mismatch";
 export type StartResult =
-  | { ok: true; paymentId: string; clientId: string; method: "card"; orderId: string; amount: number; goodsName: string }
+  | { ok: true; paymentId: string; clientId: string; method: "card"; orderId: string; amount: number; goodsName: string; paymentDueAt: Date | null }
   | { ok: false; reason: StartRejection };
 
 export type ConfirmOutcome = "paid" | "failed" | "pending" | "cancelled";
@@ -69,7 +69,7 @@ export async function startPayment(
   const amount = payableAmount(order);
   if (amount < 1 || amount !== order.totalAmount) return { ok: false, reason: "amount_mismatch" };
   const payment = await db.payment.create({ data: { sellerId: order.sellerId, orderId: order.id, provider: gw.name, method: "CARD", amount } });
-  return { ok: true, paymentId: payment.id, clientId: gw.clientId, method: "card", orderId: payment.id, amount, goodsName: goodsNameOf(order.items) };
+  return { ok: true, paymentId: payment.id, clientId: gw.clientId, method: "card", orderId: payment.id, amount, goodsName: goodsNameOf(order.items), paymentDueAt: order.paymentDueAt };
 }
 
 async function fail(db: PrismaClient | Tx, p: Payment, code: string, from: ("READY" | "APPROVING")[] = ["READY", "APPROVING"]) {

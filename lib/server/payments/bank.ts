@@ -197,6 +197,9 @@ export async function confirmDeposits(
       if (order.status !== "PENDING_PAYMENT") return "not_payable" as const;
       if (await tx.payment.findFirst({ where: { orderId, status: { in: ["APPROVING", "PAID", "PARTIAL_CANCELLED"] } }, select: { id: true } }))
         return "card_in_progress" as const;
+      // 열려 있는 카드 결제 창(READY)은 여기서 닫는다: 카드 승인 잡기(claimApproval)도 같은 잠금을 잡으므로,
+      // 이 뒤에 인증이 돌아와도 승인을 잡지 못해 PG 승인 자체를 부르지 않는다.
+      await tx.payment.updateMany({ where: { orderId, status: "READY" }, data: { status: "FAILED", failureCode: "superseded_by_deposit" } });
       return null;
     });
     if (check) {

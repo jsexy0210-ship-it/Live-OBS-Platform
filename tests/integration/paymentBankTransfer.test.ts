@@ -217,7 +217,7 @@ describe("카드·무통장 이중 결제 방지", () => {
     expect(r).toEqual({ ok: true, results: [{ orderId: o.id, result: "card_in_progress" }] });
   });
 
-  it("입금 확인 뒤 열려 있던 카드 결제 창으로 인증해도 승인하지 않는다", async () => {
+  it("입금 확인은 열려 있던 카드 결제 창을 닫고, 그 창으로 인증해도 승인하지 않는다", async () => {
     const s = await setup();
     const gw = new FakePaymentGateway();
     const o = await s.order();
@@ -226,6 +226,7 @@ describe("카드·무통장 이중 결제 방지", () => {
     await confirmDeposits(db, s.ctx, { orderIds: [o.id], expectedVersion: await lv(s.seller.id) });
     expect(await confirmAuthResult(db, gw, gw.authorize(p.orderId, 13000))).toMatchObject({ ok: true, outcome: "failed" });
     expect(gw.approveCalls).toBe(0);
+    expect(await db.payment.findUniqueOrThrow({ where: { id: p.paymentId } })).toMatchObject({ status: "FAILED", failureCode: "superseded_by_deposit" });
     expect(await orderOf(o.id)).toMatchObject({ status: "PAID", paymentMethod: "BANK_TRANSFER" });
   });
 
