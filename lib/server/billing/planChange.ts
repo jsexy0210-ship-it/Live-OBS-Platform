@@ -28,6 +28,7 @@ export type PlanChangeFailure =
   | "payment_in_progress"
   | "payment_failed"
   | "payment_pending"
+  | "not_activated" // 결제는 됐지만 그사이 해지 등으로 반영되지 않음(환불 대상으로 감사 기록)
   | "plan_missing";
 
 export type PlanChangeResult =
@@ -42,6 +43,7 @@ export const PLAN_CHANGE_STATUS: Record<PlanChangeFailure, number> = {
   payment_in_progress: 409,
   payment_failed: 402,
   payment_pending: 202,
+  not_activated: 409,
   plan_missing: 409,
 };
 
@@ -187,6 +189,10 @@ export async function changePlan(
   }
   await settlePayment(db, prepared.payment.id, result, { actorType: ctx.actorType, actorId: ctx.actorId, now: input.now });
   if (!result.ok) return { ok: false, reason: "payment_failed" };
+  // 응답은 PG 결과가 아니라 반영된 뒤의 실제 구독으로 정한다(카드 등록과 같음, #186 Codex P1). 그사이 해지돼 정산이 환불 대상으로만
+  // 남기고 플랜을 바꾸지 않았으면 성공이 아니다.
+  const after = await db.sellerSubscription.findUnique({ where: { sellerId: ctx.sellerId }, select: { planId: true, status: true } });
+  if (!after || after.status === "CANCELED" || after.planId !== prepared.payment.targetPlanId) return { ok: false, reason: "not_activated" };
   const now = input.now ?? (await dbNow(db));
   return { ok: true, applied: "now", charged: prepared.payment.amount, planCode: prepared.planCode, effectiveAt: now, remainingDays: prepared.remainingDays };
 }

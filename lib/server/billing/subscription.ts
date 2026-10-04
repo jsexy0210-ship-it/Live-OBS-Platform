@@ -246,7 +246,10 @@ export async function registerCardAndPay(
           ...(cardOnly ? { status: "ACTIVE" as const, nextChargeAt, canceledAt: null } : {}),
           // 다시 구독하면 새 가입자다: 이전 전 가격 스냅숏도 비운다(그때 플랜 가격, ONQ 1-C)
           // 런칭 할인을 이미 쓴 계정이면 이 구독은 정가다(대표님 결정 2026-10-04, 이전 전 STANDARD 결제는 사용으로 세지 않음)
-          ...(restart ? { subscribedAt: now, legacyPrice: null, legacyPriceNoticeSentAt: null, regularPrice: !!seller.launchDiscountUsedAt } : {}),
+          // 해지 전에 예약한 하위 변경도 끝난 구독의 것이라 비운다(#186 Codex P2)
+          ...(restart
+            ? { subscribedAt: now, legacyPrice: null, legacyPriceNoticeSentAt: null, regularPrice: !!seller.launchDiscountUsedAt, pendingPlanId: null }
+            : {}),
         },
       });
       await writeAudit(tx, {
@@ -449,7 +452,7 @@ export async function cancelSubscription(db: PrismaClient, ctx: TenantContext, i
       where: { id: sub.id },
       data: paidThrough
         ? { cancelAtPeriodEnd: true, nextChargeAt: paidThrough, graceUntil: null, retryCount: 0 }
-        : { cancelAtPeriodEnd: true, status: "CANCELED", canceledAt: now, nextChargeAt: null, graceUntil: null, retryCount: 0 },
+        : { cancelAtPeriodEnd: true, status: "CANCELED", canceledAt: now, nextChargeAt: null, graceUntil: null, retryCount: 0, pendingPlanId: null },
     });
     await writeAudit(tx, {
       actorType: ctx.actorType,
@@ -493,7 +496,7 @@ export async function renewDueSubscriptions(db: PrismaClient, provider: BillingP
           }
           if (sub.cancelAtPeriodEnd) {
             if (sub.currentPeriodEnd && sub.currentPeriodEnd > now) return null;
-            await tx.sellerSubscription.update({ where: { id }, data: { status: "CANCELED", canceledAt: now, nextChargeAt: null } });
+            await tx.sellerSubscription.update({ where: { id }, data: { status: "CANCELED", canceledAt: now, nextChargeAt: null, pendingPlanId: null } });
             await writeAudit(tx, { actorType: "SYSTEM", sellerId, action: "subscription.canceled", targetType: "SellerSubscription", targetId: id });
             return "canceled" as const;
           }
@@ -655,7 +658,7 @@ export async function closeLongLockedSellers(db: PrismaClient, input: { now?: Da
       if (!since || since > cutoff) return false;
       await tx.seller.update({ where: { id }, data: { serviceEndedAt: now } });
       if (seller.subscription) {
-        await tx.sellerSubscription.update({ where: { id: seller.subscription.id }, data: { status: "CANCELED", canceledAt: now, nextChargeAt: null } });
+        await tx.sellerSubscription.update({ where: { id: seller.subscription.id }, data: { status: "CANCELED", canceledAt: now, nextChargeAt: null, pendingPlanId: null } });
       }
       const domains = await tx.sellerDomain.updateMany({ where: { sellerId: id, suspendedAt: null }, data: { suspendedAt: now } });
       await writeAudit(tx, {

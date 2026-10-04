@@ -178,6 +178,39 @@ describe("상위 변경(오버레이 전용 → 통합)", () => {
   });
 });
 
+describe("결제와 해지가 엇갈릴 때(#186 Codex)", () => {
+  it("상위 변경 결제 중 구독이 해지되면 결제가 성공해도 not_activated이고 플랜은 그대로(환불 대상 감사 기록)", async () => {
+    const s = await shop("OVERLAY_ONLY", at(-30), paying);
+    // PG 호출 중에 해지가 끝난 경우(해지 시각이 청구 생성 뒤)
+    const cancelingDuringCharge = new (class extends FakeBillingProvider {
+      async charge(input: Parameters<FakeBillingProvider["charge"]>[0]) {
+        await db.sellerSubscription.update({ where: { sellerId: s.seller.id }, data: { status: "CANCELED", canceledAt: new Date(T0.getTime() + 1000) } });
+        return super.charge(input);
+      }
+    })();
+    expect(await changePlan(db, cancelingDuringCharge, s.ctx, { planCode: "INTEGRATED", now: T0 })).toEqual({ ok: false, reason: "not_activated" });
+    expect(await planOf(s.seller.id)).toBe("OVERLAY_ONLY");
+    expect((await subOf(s.seller.id)).plan.code).toBe("OVERLAY_ONLY");
+    expect(await db.auditLog.count({ where: { action: "subscription.refund_required", sellerId: s.seller.id } })).toBe(1);
+  });
+
+  it("하위 변경을 예약한 뒤 해지하고 다시 구독하면 예약은 사라지고 다음 갱신도 지금 플랜(통합) 금액", async () => {
+    const s = await shop("INTEGRATED", at(-30), paying);
+    expect(await changePlan(db, new FakeBillingProvider(), s.ctx, { planCode: "OVERLAY_ONLY", now: T0 })).toMatchObject({ applied: "next_payment" });
+    await cancelSubscription(db, s.ctx, { now: T0 });
+    await renewDueSubscriptions(db, new FakeBillingProvider(), { now: at(10) });
+    expect(await subOf(s.seller.id)).toMatchObject({ status: "CANCELED", pendingPlanId: null });
+    // 예약이 남아 있었다면 재구독 직후·다음 갱신에 오버레이 전용으로 바뀐다
+    await db.sellerSubscription.update({ where: { sellerId: s.seller.id }, data: { pendingPlanId: plans.OVERLAY_ONLY.id } });
+    expect(await registerCardAndPay(db, new FakeBillingProvider(), s.ctx, { authKey: "auth", now: at(12) })).toMatchObject({ ok: true, charged: true });
+    const restarted = await subOf(s.seller.id);
+    expect(restarted).toMatchObject({ pendingPlanId: null, plan: { code: "INTEGRATED" } });
+    await renewDueSubscriptions(db, new FakeBillingProvider(), { now: restarted.nextChargeAt! });
+    expect((await payments(s.seller.id)).map((p) => p.amount)).toEqual([179000, 179000]);
+    expect(await planOf(s.seller.id)).toBe("INTEGRATED");
+  });
+});
+
 describe("하위 변경(통합 → 오버레이 전용)", () => {
   it("결제한 기간 중이면 다음 결제일부터: 그때까지 통합 권한·금액 그대로, 갱신 결제가 69,000원이고 그 뒤 오버레이 권한(환불 없음)", async () => {
     const s = await shop("INTEGRATED", at(-30), { ...paying, legacyPrice: 199000 });
