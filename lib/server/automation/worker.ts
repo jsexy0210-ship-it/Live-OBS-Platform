@@ -133,11 +133,11 @@ export async function executeJob(db: PrismaClient, rt: AutomationRuntime, { job,
     );
     switch (result.kind) {
       case "succeeded": {
-        // 성공 확정 전에 연결한 쇼핑몰 식별값이 저장됐는지 확인한다. 없으면 무료 재연결 판정을 할 수 없으므로 성공이 아니라 확인 실패다
-        // (변경이 있었으니 실패 경로의 정리 필요 표시·알림이 붙는다)
-        const saved = await db.automationJob.findUnique({ where: { id: job.id }, select: { shopKey: true } });
-        if (!saved?.shopKey) {
-          await finishJob(db, claim, "FAILED", "shop_identity_unverified");
+        // 성공 확정 전에 연결한 쇼핑몰과 PC 식별값이 둘 다 저장됐는지 확인한다. 하나라도 없으면 무료 재연결·재설치 판정을 할 수 없으므로
+        // 성공이 아니라 확인 실패다(변경이 있었으면 실패 경로의 정리 필요 표시·알림이 붙는다)
+        const saved = await db.automationJob.findUnique({ where: { id: job.id }, select: { shopKey: true, obsPairingId: true } });
+        if (!saved?.shopKey || !saved.obsPairingId) {
+          await finishJob(db, claim, "FAILED", saved?.shopKey ? "pc_identity_unverified" : "shop_identity_unverified");
           return "failed";
         }
         await finishJob(db, claim, "SUCCEEDED", undefined, result.evidence);

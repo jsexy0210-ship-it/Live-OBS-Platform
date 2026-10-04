@@ -2960,6 +2960,42 @@ describe("Codex 30차 반영(a96e3ef)", () => {
   });
 });
 
+describe("Codex 31차 반영(5a3cec1)", () => {
+  it("이미 설정된 OBS를 확인만 하고 끝난 첫 연결도 실제 실행 PC를 남기고, 같은 PC 재연결은 무료다", async () => {
+    const s = await bought();
+    const rt = runtime();
+    // OBS가 이미 설정돼 있어 OBS 단계는 바꾸지 않고 확인만 한다(작업서 화면과 달라 판단 모델이 끝냄)
+    rt.obs.observe = async () => ({ url: null, text: "이미 설정됨", elements: [{ kind: "notice", text: "이미 설정됨" }] });
+    rt.planner.override = (input) =>
+      input.step.kind === "obs"
+        ? { action: { type: "step_done" }, costWon: 0 }
+        : input.step.kind === "verify"
+          ? { action: input.history.length === 0 ? { type: "check_overlay_shows_test_event" } : { type: "step_done" }, costWon: 0 }
+          : undefined;
+    // 로컬 도구가 결과에 연결 결과(facts)를 따로 싣지 않아도(계약상 pairingId만) 실행 PC를 남겨야 한다
+    const perform = rt.obs.perform.bind(rt.obs);
+    rt.obs.perform = async (scope, action, key, pairing) => {
+      const out = await perform(scope, action, key, pairing);
+      return out.kind === "ok" ? { ...out, facts: undefined } : out;
+    };
+    // 검증 단계도 작업서 행동(테스트 주문 보내기) 대신 판단 모델로 확인만 하게 한다(이 시험에서만, 끝나면 되돌림)
+    const verifyFirst = cafe24Playbook.steps.test_event_verify.actions[0] as { expect?: { textIncludes?: readonly string[] } };
+    const saved = verifyFirst.expect;
+    verifyFirst.expect = { textIncludes: ["테스트 주문 보낼 준비"] };
+    try {
+      expect(await runOnce(db, rt, W)).toBe("succeeded");
+    } finally {
+      verifyFirst.expect = saved;
+    }
+    expect(rt.obs.performed.filter((p) => p.type === "obs_add_overlay_source" || p.type === "obs_apply_display_settings" || p.type === "send_test_event")).toHaveLength(0);
+    expect(await job(s.jobId)).toMatchObject({ status: "SUCCEEDED", obsPairingId: `pc-${s.seller.id}` });
+    // 시험을 위해 만든 화면 이탈 기록은 지운다(작업서 재검증 대상이 되어 재연결이 지원 밖으로 막히지 않게)
+    await db.automationJob.updateMany({ data: { lastDeviationAt: null, deviatedSteps: [] } });
+    const r = await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: newKey(), target: { shopKey: `mall-${s.seller.id}`, obsPairingId: `pc-${s.seller.id}` } });
+    expect(r).toMatchObject({ ok: true, kind: "RECONNECT_FREE" });
+  });
+});
+
 // 쇼핑몰 연결 단계(「앱 설치」 누르기)를 마친 뒤에만 문서 주소가 바뀌게 한다: 웹훅 단계의 첫 변경 행동인 비밀값 입력 검사를 시험한다
 // (그 전부터 바뀌어 있으면 누르기 직전 주소 검사(page_not_allowed)가 먼저 멈춘다 — 19차 시험)
 function afterConnect(rt: { browser: FakeBrowserExecutor }, url: string | null) {

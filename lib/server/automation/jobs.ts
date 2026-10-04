@@ -46,6 +46,7 @@ const PUBLIC_ERRORS = new Set([
   "shop_identity_unverified",
   "pairing_mismatch",
   "page_mismatch",
+  "pc_identity_unverified",
 ]);
 const STEP_KEYS = new Set(STEPS.map((s) => s.key));
 

@@ -346,6 +346,9 @@ async function runAll(
       // 실행기가 알려 준 PC가 이 작업이 바꾼 PC와 다르면 그 결과(증거·PC)를 저장하지 않고 멈춘다
       if (!session && obsPairing && out.facts?.obsPairingId && out.facts.obsPairingId !== obsPairing) return { kind: "failed", reason: "obs_target_changed" };
       Object.assign(facts, out.facts);
+      // OBS 쪽 성공 결과에는 실제로 실행한 PC가 반드시 담긴다(계약). 바꾸지 않고 확인만 한 경우도 그 PC를 연결 결과로 남긴다
+      // (이미 설정된 OBS를 확인만 하고 끝난 작업도 같은 PC 재연결 판정이 되도록)
+      if (!session && out.pairingId && !facts.obsPairingId) facts.obsPairingId = out.pairingId;
       if (out.verified) {
         verified = true;
         evidence = out.evidence ?? { verified: true };
