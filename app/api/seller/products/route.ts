@@ -11,7 +11,7 @@ export async function GET(req: Request) {
     const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "STORE_OPERATIONS" });
     const q = new URL(req.url).searchParams;
     const r = await listProducts(prisma, ctx, { status: q.get("status") ?? undefined, stock: q.get("stock") ?? undefined, q: q.get("q") ?? undefined, cursor: q.get("cursor") ?? undefined, limit: q.get("limit") ?? undefined });
-    if (!r.ok) return NextResponse.json(orderErrorBody(r.reason), { status: 400 });
+    if (!r.ok) return NextResponse.json(orderErrorBody(r.reason, "formal"), { status: 400 });
     return NextResponse.json(r.value);
   } catch (e) {
     return errorResponse(e);
@@ -22,6 +22,6 @@ export async function GET(req: Request) {
 export const POST = mutation(async (req: Request) => {
   const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "STORE_OPERATIONS" });
   const r = await createProduct(prisma, ctx, await readJson(req));
-  if (!r.ok) return NextResponse.json(orderErrorBody(r.reason), { status: 400 });
+  if (!r.ok) return NextResponse.json(orderErrorBody(r.reason, "formal"), { status: 400 });
   return NextResponse.json(r.value, { status: 201 });
 });

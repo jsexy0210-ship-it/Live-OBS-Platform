@@ -14,7 +14,7 @@ export const SHARE_DESCRIPTION_MAX = 160;
 export type SharePreview = { title: string | null; description: string | null };
 
 export const SHARE_PREVIEW_MESSAGES = {
-  invalid_share_preview: `제목은 ${SHARE_TITLE_MAX}자, 설명은 ${SHARE_DESCRIPTION_MAX}자까지 쓸 수 있어요`,
+  invalid_share_preview: `제목은 ${SHARE_TITLE_MAX}자, 설명은 ${SHARE_DESCRIPTION_MAX}자까지 쓸 수 있습니다`,
 } as const;
 
 export async function readSharePreview(db: PrismaClient, ctx: TenantContext): Promise<SharePreview> {

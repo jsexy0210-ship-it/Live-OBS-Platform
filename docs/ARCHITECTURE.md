@@ -200,7 +200,7 @@ tests/unit/**, tests/integration/**           테스트
   - 재고는 주문 수량만큼 있는지 확인하고, 주문 때 차감 상품은 이때 뺀다(4.4). 부족하면 `400 out_of_stock`.
   - 단가가 1원 미만(음수 추가금 등)이거나 합계(상품 + 배송비)가 정수 범위(2,147,483,647원)를 넘으면 `400 invalid_amount`, 주문을 만들지 않는다.
   - 배송지 필수(받는 분·연락처·우편번호 5자리·주소, 상세 주소·메모 선택). 틀리면 `400 invalid_shipping_address`. 4.10 참고.
-  - 400·402·409 응답은 `{ error, message }`. `message`는 화면에 그대로 보여 줄 해요체 문구이고, 사유 코드별 문구는 `lib/server/orders/messages.ts` 한 곳에서만 고친다.
+  - 400·402·409 응답은 `{ error, message }`. `message`는 화면에 그대로 보여 줄 문구이고, 사유 코드별 문구는 `lib/server/orders/messages.ts` 한 곳에서만 고친다. 말투는 부르는 API 대상으로 정한다(`lib/server/text/tone.ts`, 대표님 지시 2026-10-04): 파트너스·마스터 관리자 API(`app/api/seller/**`·`app/api/admin/**`)는 합니다체(요청은 「~해 주십시오」), 구매자 쇼핑몰·공개·오버레이 API와 파트너스 가입 신청(`app/api/seller-signup/**`)은 해요체. 같은 사유를 두 쪽이 쓰는 문구표(주문·로그인·본인확인)는 두 벌을 두고, `tests/unit/messageTone.test.ts`가 표의 말투와 경로별 호출을 확인한다.
   - 주문 번호는 판매자별 advisory lock 아래에서 매긴다(동시 주문에도 겹치지 않음). 판매 중(`ON_SALE`)이 아니거나 다른 쇼핑몰 옵션이면 `400 product_unavailable`.
 - 입금 기한·자동 취소·구매 제한·주문 횟수 제한: 4.11.
 - 결제 전 동의 문구(`GET /api/shop/{slug}/order-consent`, 로그인 없이): `{ consents: [{ kind, version, text }] }`. 화면은 이 version을 주문 요청의 `consent.noticeVersion`으로 보낸다. 문구는 아직 코드 상수(`lib/server/orders/consent.ts`)에만 있다.
