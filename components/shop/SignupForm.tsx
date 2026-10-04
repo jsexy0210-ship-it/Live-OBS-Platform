@@ -2,12 +2,14 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { api, failMessage as baseFailMessage } from "../seller/api";
+import { api, failMessage } from "../seller/api";
 import { textLength } from "../seller/format";
+import MarketingConsentDoc, { MARKETING_DOC_VERSION } from "./MarketingConsentDoc";
 import ShopState from "./ShopState";
 
-// 구매자 화면이라 공통 실패 문구도 해요체로 쓴다
-const failMessage = (r: { status: number; message?: string }, fallback?: string) => baseFailMessage(r, fallback, "public");
+// 아래 「재가입 제한 정보 보관」 글의 버전(서버 REJOIN_RETENTION_CONSENT_VERSION과 같은 값). 글을 바꾸면 함께 바꾼다.
+// 동의할 때는 서버가 준 버전이 아니라 화면에 보인 글과 묶인 이 버전을 보낸다(마케팅은 MARKETING_DOC_VERSION).
+const REJOIN_DOC_VERSION = "2026-10-03.v1";
 
 // SH-011 구매자 회원가입: 필수 약관 동의 → 휴대폰 본인확인(인증번호 받기 → 확인) → 아이디·비밀번호·방송 닉네임·(선택) 마케팅 → 가입.
 // 실패 문구는 서버 message를 그대로 쓴다(정본: lib/server/buyers/signup.ts BUYER_SIGNUP_MESSAGES, lib/server/identity/messages.ts).
@@ -66,7 +68,7 @@ function toBirth7(birth: string, gender: "M" | "F", foreigner: boolean): string 
 
 const phoneText = (p: string) => (p.length === 11 ? `${p.slice(0, 3)}-${p.slice(3, 7)}-${p.slice(7)}` : `${p.slice(0, 3)}-${p.slice(3, 6)}-${p.slice(6)}`);
 
-export default function SignupForm({ slug, consent }: { slug: string; consent: SignupConsentInfo }) {
+export default function SignupForm({ slug, shopName, consent }: { slug: string; shopName: string; consent: SignupConsentInfo }) {
   const base = `/api/shop/${encodeURIComponent(slug)}/signup`;
   const [step, setStep] = useState<Step>("identity");
   const [unavailable, setUnavailable] = useState(false);
@@ -116,6 +118,8 @@ export default function SignupForm({ slug, consent }: { slug: string; consent: S
   const [agreedPrivacy, setAgreedPrivacy] = useState(false);
   // 재가입 제한을 켠 쇼핑몰만 받는 「재가입 제한 정보 보관 동의」
   const [agreedRejoin, setAgreedRejoin] = useState(false);
+  // 화면을 연 뒤 동의 문서가 바뀌었다(consent_outdated): 이 화면의 글은 예전 것이라 새로고침해야 한다
+  const [docsOutdated, setDocsOutdated] = useState(false);
   const router = useRouter();
   // 동의 정보를 다시 불러와 문서 버전이나 재가입 제한 기간이 바뀌면 앞 동의는 다시 받는다
   useEffect(() => {
@@ -134,6 +138,8 @@ export default function SignupForm({ slug, consent }: { slug: string; consent: S
 
   // 재가입 제한을 켠 쇼핑몰만 보관 동의 칸을 보여 준다(선택, 대표님 결정 2026-10-03)
   const rejoinShown = consent.rejoinDays !== null;
+  // 화면에 보이는 동의 글(이 화면 코드에 묶인 글)이 서버의 지금 버전과 다르면 동의를 받지 않고 새로고침을 안내한다
+  const needsReload = docsOutdated || consent.marketingVersion !== MARKETING_DOC_VERSION || (rejoinShown && consent.rejoinRetentionVersion !== REJOIN_DOC_VERSION);
   const consentReady = agreedTerms && agreedPrivacy && idvAgreed;
   const identityReady = name.trim() !== "" && birth.length === 8 && gender !== null && carrier !== "" && phone.length >= 10 && consentReady;
   const nicknameTooLong = textLength(nickname) > MAX_NICKNAME_LENGTH;
@@ -165,7 +171,7 @@ export default function SignupForm({ slug, consent }: { slug: string; consent: S
       return true;
     }
     if (r.status === 0 || r.error === "shop_unavailable" || r.error === "provider_error" || r.error === "daily_limit_exceeded") {
-      showNotice({ kind: "neg", text: failMessage(r) });
+      showNotice({ kind: "neg", text: failMessage(r, "public") });
       return true;
     }
     return false;
@@ -191,10 +197,10 @@ export default function SignupForm({ slug, consent }: { slug: string; consent: S
       termsVersion: consent.termsVersion,
       privacyVersion: consent.privacyVersion,
       ...(rejoinShown
-        ? { agreedRejoinRetention: agreedRejoin, ...(agreedRejoin ? { rejoinRetentionVersion: consent.rejoinRetentionVersion, rejoinRestrictionDaysShown: consent.rejoinDays } : {}) }
+        ? { agreedRejoinRetention: agreedRejoin, ...(agreedRejoin ? { rejoinRetentionVersion: REJOIN_DOC_VERSION, rejoinRestrictionDaysShown: consent.rejoinDays } : {}) }
         : {}),
       agreedMarketing,
-      ...(agreedMarketing ? { marketingVersion: consent.marketingVersion } : {}),
+      ...(agreedMarketing ? { marketingVersion: MARKETING_DOC_VERSION } : {}),
     };
     const input = { ...person, birth7, carrier, device, ...agreed };
     const fp = JSON.stringify(input);
@@ -219,19 +225,25 @@ export default function SignupForm({ slug, consent }: { slug: string; consent: S
     if (commonFail(r)) return;
     // 입력한 생년월일로 만 14세 미만이면 생년월일 칸에 알린다
     if (r.error === "under_age") {
-      setBirthError(failMessage(r));
+      setBirthError(failMessage(r, "public"));
       focus("idv-birth");
       return;
     }
-    // 동의가 빠졌거나 문서·재가입 제한 기간이 바뀌었으면 동의 칸으로 보낸다.
-    // 화면을 연 뒤 바뀐 경우(문서 버전·재가입 제한 기간 변경)는 입력은 두고 동의 정보만 새로 받아 다시 동의하게 한다.
-    if (r.error === "terms_required" || r.error === "invalid_rejoin_consent" || r.error === "invalid_marketing_consent" || r.error === "rejoin_policy_changed" || r.error === "consent_outdated") {
-      if (r.error === "rejoin_policy_changed" || r.error === "consent_outdated") router.refresh();
-      setFieldErrors({ terms: failMessage(r) });
+    // 화면을 연 뒤 동의 문서가 바뀌었다: 이 화면의 글은 예전 것이라 새 버전 동의를 받지 않고 새로고침하게 한다
+    if (r.error === "consent_outdated") {
+      setDocsOutdated(true);
+      focus("idv-reload");
+      return;
+    }
+    // 동의가 빠졌거나 재가입 제한 기간이 바뀌었으면 동의 칸으로 보낸다.
+    // 기간이 바뀐 경우는 입력은 두고 동의 정보만 새로 받아 다시 동의하게 한다(기간은 서버 값으로 글에 들어간다).
+    if (r.error === "terms_required" || r.error === "invalid_rejoin_consent" || r.error === "invalid_marketing_consent" || r.error === "rejoin_policy_changed") {
+      if (r.error === "rejoin_policy_changed") router.refresh();
+      setFieldErrors({ terms: failMessage(r, "public") });
       focus("idv-terms-all");
       return;
     }
-    showNotice({ kind: "neg", text: failMessage(r) });
+    showNotice({ kind: "neg", text: failMessage(r, "public") });
   };
 
   const resend = async () => {
@@ -253,10 +265,10 @@ export default function SignupForm({ slug, consent }: { slug: string; consent: S
       return;
     }
     if (r.error === "resend_too_soon") {
-      setNotice({ kind: "info", text: failMessage(r) });
+      setNotice({ kind: "info", text: failMessage(r, "public") });
       focus("idv-code");
     }
-    else restart({ kind: "neg", text: failMessage(r) });
+    else restart({ kind: "neg", text: failMessage(r, "public") });
   };
 
   const confirm = async () => {
@@ -277,9 +289,9 @@ export default function SignupForm({ slug, consent }: { slug: string; consent: S
     if (commonFail(r)) return;
     if (r.error === "wrong_code" || r.error === "code_expired") {
       setNotice(null);
-      setCodeError(failMessage(r));
+      setCodeError(failMessage(r, "public"));
       focus("idv-code");
-    } else restart({ kind: "neg", text: failMessage(r) });
+    } else restart({ kind: "neg", text: failMessage(r, "public") });
   };
 
   const verified = (identity?: { name: string; phone: string }) => {
@@ -339,7 +351,7 @@ export default function SignupForm({ slug, consent }: { slug: string; consent: S
   // 가입 실패 처리(처음 요청과 재전송 공통): 칸 오류·안내·처음부터 다시
   const signupFail = (r: Fail) => {
     if (commonFail(r)) return;
-    const text = failMessage(r);
+    const text = failMessage(r, "public");
     switch (r.error) {
       case "invalid_login_id":
       case "login_id_taken":
@@ -596,6 +608,11 @@ export default function SignupForm({ slug, consent }: { slug: string; consent: S
                   <input type="checkbox" className="cbx" disabled={busy} checked={agreedMarketing} onChange={(e) => setAgreedMarketing(e.target.checked)} />
                   (선택) 마케팅 정보 수신
                 </label>
+                {/* 본문: docs/terms/MARKETING_CONSENT_TEMPLATE.md. 동의하기 전에 서식 전체를 볼 수 있게 한다 */}
+                <details className="signup-terms-doc">
+                  <summary>보기</summary>
+                  <MarketingConsentDoc shopName={shopName} />
+                </details>
                 <label className="chk">
                   <input type="checkbox" className="cbx" disabled={busy} {...termsAria} checked={idvAgreed} onChange={(e) => setIdvAgreed(e.target.checked)} />
                   본인확인 약관에 모두 동의해요
@@ -606,7 +623,19 @@ export default function SignupForm({ slug, consent }: { slug: string; consent: S
                   </span>
                 )}
               </div>
-              <button className={`btn btn-lg btn-block${busy ? " is-loading" : ""}`} type="submit" disabled={!identityReady || busy}>
+              {needsReload && (
+                <div className="msg msg-cau" role="alert" style={{ display: "block" }} data-testid="idv-reload-box">
+                  <span>
+                    <b>새로고침이 필요해요.</b> 동의 내용이 바뀌었어요. 새로고침한 뒤 바뀐 내용을 확인하고 동의해 주세요.
+                  </span>
+                  <span className="row" style={{ marginTop: 8 }}>
+                    <button id="idv-reload" className="btn btn-sm" type="button" onClick={() => window.location.reload()}>
+                      새로고침
+                    </button>
+                  </span>
+                </div>
+              )}
+              <button className={`btn btn-lg btn-block${busy ? " is-loading" : ""}`} type="submit" disabled={!identityReady || busy || needsReload}>
                 {busy ? "인증번호를 보내고 있어요" : "인증번호 받기"}
               </button>
             </>

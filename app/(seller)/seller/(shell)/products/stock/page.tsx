@@ -669,7 +669,7 @@ function AdjustSheet({ row, onClose, onDone }: { row: Row; onClose: () => void; 
       body: { delta: mode === "minus" ? -n! : n!, reason: note },
     });
     setBusy(false);
-    if (!r.ok) return setError(failMessage(r, "재고를 변경하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
+    if (!r.ok) return setError(failMessage(r, "admin", "재고를 변경하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
     onDone(row, r.data.stock, `${row.productName} 재고 ${n!.toLocaleString("ko-KR")}개를 ${mode === "minus" ? "뺐습니다" : "더했습니다"} · 남은 재고 ${r.data.stock.toLocaleString("ko-KR")}`);
   };
 

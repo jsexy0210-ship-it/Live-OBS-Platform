@@ -174,7 +174,7 @@ export default function PartnersSignupForm({ consentVersions }: { consentVersion
     // (서버는 같은 본인확인·같은 입력의 재신청에 이미 만든 신청 결과를 돌려준다)
     if (out === "restart") return restartIdentity("본인확인 시간이 지났거나 확인되지 않았어요. 본인확인을 다시 해 주세요");
     if (out === "retry" || r.error === "verification_pending") {
-      setNotice({ text: r.error === "verification_pending" ? "본인확인 결과를 확인하고 있어요. 잠시 뒤 다시 신청해 주세요" : failMessage(r, RETRY_TEXT_PUBLIC, "public") });
+      setNotice({ text: r.error === "verification_pending" ? "본인확인 결과를 확인하고 있어요. 잠시 뒤 다시 신청해 주세요" : failMessage(r, "public", RETRY_TEXT_PUBLIC) });
       return focus("pa-notice");
     }
     const field = (k: Field, text: string) => {
@@ -186,10 +186,10 @@ export default function PartnersSignupForm({ consentVersions }: { consentVersion
     if (r.error === "slug_taken") return field("slug", "이미 쓰고 있는 주소예요. 다른 주소를 정해 주세요");
     if (r.error === "invalid_business_number") return field("businessNumber", "사업자등록번호를 다시 확인해 주세요");
     if (r.error === "representative_has_shop") {
-      setNotice({ text: failMessage(r, undefined, "public"), login: true });
+      setNotice({ text: failMessage(r, "public"), login: true });
       return focus("pa-notice");
     }
-    setNotice({ text: r.error === "invalid_input" ? "입력한 정보를 다시 확인해 주세요" : failMessage(r, "신청하지 못했어요. 잠시 뒤 다시 시도해 주세요", "public") });
+    setNotice({ text: r.error === "invalid_input" ? "입력한 정보를 다시 확인해 주세요" : failMessage(r, "public", "신청하지 못했어요. 잠시 뒤 다시 시도해 주세요") });
     focus("pa-notice");
   };
 

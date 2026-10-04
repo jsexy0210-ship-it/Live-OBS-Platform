@@ -75,7 +75,7 @@ export default function FindIdPage() {
     // 결과를 아직 받는 중이거나 잠깐의 오류(연결 끊김·서버 오류 등): 본인확인을 버리지 않고 같은 요청으로 다시 누르게 한다
     setVerificationId(id);
     setPending(true);
-    setNotice({ text: r.error === "pending" ? "본인확인 결과를 확인하고 있습니다. 잠시 후 다시 눌러 주십시오" : failMessage(r, RETRY_TEXT) });
+    setNotice({ text: r.error === "pending" ? "본인확인 결과를 확인하고 있습니다. 잠시 후 다시 눌러 주십시오" : failMessage(r, "admin", RETRY_TEXT) });
     focus("pa-notice");
   };
 
@@ -91,7 +91,7 @@ export default function FindIdPage() {
     if (out === "unavailable") return toUnavailable();
     if (out === "restart") return restart({ text: "본인확인을 처음부터 다시 해 주십시오" });
     // 응답을 놓쳤거나(연결 끊김) 잠깐의 오류: 고른 계정을 그대로 두고 다시 누르게 한다(서버는 같은 본인확인의 재요청에 같은 권한을 돌려준다)
-    setNotice({ text: failMessage(r, RETRY_TEXT) });
+    setNotice({ text: failMessage(r, "admin", RETRY_TEXT) });
     focus("pa-notice");
   };
 
@@ -134,7 +134,7 @@ export default function FindIdPage() {
         </span>
       </div>
       {unavailable ? (
-        <IdentityUnavailable action="아이디를 찾을" />
+        <IdentityUnavailable tone="admin" action="아이디를 찾을" />
       ) : (
         <>
           {notice && (
@@ -155,7 +155,7 @@ export default function FindIdPage() {
               <div className="msg msg-info" style={{ display: "block" }}>
                 {staff ? "직원 본인 명의의 휴대폰으로 확인합니다." : "쇼핑몰 대표자 본인 명의의 휴대폰으로 확인합니다."}
               </div>
-              <IdentityCheck
+              <IdentityCheck tone="admin"
                 key={idvKey}
                 label="휴대폰 본인확인"
                 base={BASE}

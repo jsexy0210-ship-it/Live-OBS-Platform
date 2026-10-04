@@ -91,12 +91,12 @@ export default function IdentityLinkPage() {
     if (out === "restart") {
       setPending(null);
       setIdvKey((k) => k + 1);
-      setNotice(failMessage(r, "본인확인을 처음부터 다시 해 주십시오"));
+      setNotice(failMessage(r, "admin", "본인확인을 처음부터 다시 해 주십시오"));
       return focus("pa-notice");
     }
     // 결과를 아직 받는 중이거나 그 밖의 거절: 본인확인을 버리지 않고 안내만 한다
     setPending(verificationId);
-    setNotice(r.error === "verification_pending" ? "본인확인 결과를 확인하고 있습니다. 잠시 후 다시 눌러 주십시오" : failMessage(r, "연결하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
+    setNotice(r.error === "verification_pending" ? "본인확인 결과를 확인하고 있습니다. 잠시 후 다시 눌러 주십시오" : failMessage(r, "admin", "연결하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
     focus("pa-notice");
   };
 
@@ -169,7 +169,7 @@ export default function IdentityLinkPage() {
         </div>
       )}
       {unavailable ? (
-        <IdentityUnavailable action="연결할" />
+        <IdentityUnavailable tone="admin" action="연결할" />
       ) : view === "mismatch" ? (
         <div className="col" style={{ gap: 10 }}>
           <div id="il-state" tabIndex={-1} className="msg msg-cau" role="alert" style={{ display: "block" }}>
@@ -212,7 +212,7 @@ export default function IdentityLinkPage() {
               )}
             </div>
           )}
-          <IdentityCheck
+          <IdentityCheck tone="admin"
             key={idvKey}
             label="휴대폰 본인확인"
             base={BASE}

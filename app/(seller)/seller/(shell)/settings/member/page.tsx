@@ -51,7 +51,7 @@ export default function MemberSettingsPage() {
     setFailure(null);
     const r = await api<{ policy: Policy }>("/api/seller/member-policy", { method: "PUT", body: { rejoinRestrictionEnabled: enabled, rejoinRestrictionDays: days } });
     setSaving(false);
-    if (!r.ok) return setFailure(failMessage(r, "저장하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
+    if (!r.ok) return setFailure(failMessage(r, "admin", "저장하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
     apply(r.data.policy);
     setState({ kind: "ok", saved: r.data.policy });
     setToast("회원 정책을 저장했습니다");

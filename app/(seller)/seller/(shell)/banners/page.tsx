@@ -29,7 +29,7 @@ import {
 } from "./_shared/ui";
 
 // SA-064 홈 배너 관리(파트너스 관리자, 설정 › 배너 · 팝업). 쇼핑몰 홈 맨 위 슬라이드. 끌어서 순서 변경, PC·모바일 이미지,
-// 링크, 게시 기간, 표시 기기, 미리보기. API: /api/seller/shop-content/banners(대표자·「쇼핑몰 설정」 권한 직원만).
+// 링크, 게시 기간, 표시 기기, 미리보기. API: /api/seller/shop-content/banners(보기는 모든 직원, 바꾸기는 대표자·「쇼핑몰 설정」 권한 직원).
 
 type Banner = {
   id: string;
@@ -137,6 +137,11 @@ export default function BannersPage() {
             <span>
               <b>배너는 {LIMIT}장까지 등록할 수 있습니다.</b> 종료된 배너를 삭제하거나 기간을 조정해 주십시오.
             </span>
+          </div>
+        )}
+        {state.kind === "ok" && !editable && (
+          <div className="msg msg-info" role="status">
+            <span>목록만 볼 수 있습니다. 배너 추가 · 수정은 대표자나 쇼핑몰 설정 권한이 있는 직원에게 요청해 주십시오.</span>
           </div>
         )}
         <section className="card" style={{ overflow: "hidden" }}>
@@ -279,7 +284,7 @@ function BannerEditor({ draft: initial, onClose, onSaved }: { draft: Draft; onCl
               <input id="banner-title" className="inp" value={d.title} maxLength={40} onChange={(e) => set({ title: e.target.value })} placeholder="예: 10월 신상품 오픈" />
               <span className="help">화면 낭독기와 이미지가 안 뜰 때 표시 · 40자</span>
             </div>
-            <ImagePicker onBusy={onBusy} label="PC 이미지" recommend={{ width: 1200, height: 400 }} value={d.pcImage} onChange={(v) => set({ pcImage: v })} />
+            <ImagePicker onBusy={onBusy} label="PC 이미지" recommend={{ width: 1920, height: 600 }} value={d.pcImage} onChange={(v) => set({ pcImage: v })} />
             <ImagePicker onBusy={onBusy}
               label="모바일 이미지"
               optional

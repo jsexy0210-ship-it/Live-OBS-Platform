@@ -48,7 +48,8 @@ const FAIL_TEXT: Record<Tone, { network: string; expired: string; forbidden: str
 };
 
 // 서버가 준 안내 문구가 있으면 그대로, 없으면 상태별 기본 문구
-export function failMessage(r: { status: number; message?: string }, fallback?: string, tone: Tone = "admin"): string {
+// tone은 필수: 화면마다 관리자(admin, 합니다체)·공개(public, 해요체) 말투를 직접 고른다(빠진 곳은 타입 검사가 잡는다)
+export function failMessage(r: { status: number; message?: string }, tone: Tone, fallback?: string): string {
   if (r.message) return r.message;
   const t = FAIL_TEXT[tone];
   if (r.status === 0) return t.network;

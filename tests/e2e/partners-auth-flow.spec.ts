@@ -143,6 +143,8 @@ test("파트너스 가입 신청 → 바로 승인 → 로그인 → 비밀번�
   await page.getByLabel("비밀번호").fill(a.password);
   await page.getByRole("button", { name: "로그인" }).click();
   await expect(page).toHaveURL(/\/seller\/products$/);
+  // 새 파트너는 통합 요금제·체험 없음이라 첫 결제 전까지 잠겨 있다(#185)
+  await expect(page.getByText("이용 기간이 끝나서 지금은 쓸 수 없어요")).toBeVisible();
   await page.context().clearCookies();
 
   // 비밀번호 찾기: 대표자 본인확인 → 새 비밀번호
@@ -490,7 +492,7 @@ test("직원: 로그인하면 본인확인 연결 안내가 뜨고, 나중에 �
   await expect(page).toHaveURL(/\/seller\/products$/);
   const id = uniq();
   const s = { email: `staff-${id}@example.com`, name: `이${letters(id)}`, password: `pw-${id}-staff`, phone: randomPhone() };
-  // 직원 관리는 잠긴 파트너가 쓸 수 없다(새 파트너는 통합 요금제·체험 없음이라 첫 결제 전까지 잠김, #185): 시험 DB에 결제한 이용 기간을 넣는다
+  // 직원 관리는 잠긴 파트너가 쓸 수 없다: 시험 DB에 결제한 이용 기간을 넣는다
   await grantPaidPeriodInDb(a.email);
   await createStaff(page, s);
   await signOut(page);

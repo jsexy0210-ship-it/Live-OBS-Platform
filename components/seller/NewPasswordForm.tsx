@@ -56,7 +56,7 @@ export default function NewPasswordForm({ onDone, onExpired, loginHref }: Props)
     if (stepOutcome(r) === "retry") {
       uncertain.current = true;
       setNotice({ text: "새 비밀번호로 로그인해 보십시오. 되지 않으면 다시 변경해 주십시오", maybe: true });
-    } else setNotice({ text: failMessage(r, "변경하지 못했습니다. 잠시 후 다시 시도해 주십시오") });
+    } else setNotice({ text: failMessage(r, "admin", "변경하지 못했습니다. 잠시 후 다시 시도해 주십시오") });
     focus("pw-notice");
   };
 

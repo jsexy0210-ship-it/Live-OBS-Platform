@@ -70,7 +70,7 @@ export function Steps({ steps, current }: { steps: string[]; current: number }) 
 // 본인확인 대행사 연결 전(API 503 「본인확인 서비스 준비 중이에요」) 상태 화면
 // action: 「가입을 신청할」·「비밀번호를 찾을」
 // tone: admin(관리자 인증 화면, 기본) · public(가입 신청)
-export function IdentityUnavailable({ action, tone = "admin" }: { action: string; tone?: Tone }) {
+export function IdentityUnavailable({ action, tone }: { action: string; tone: Tone }) {
   const staff = useStaffType();
   const pub = tone === "public";
   return (

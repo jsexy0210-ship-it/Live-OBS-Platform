@@ -31,7 +31,7 @@ const LIMIT_MESSAGES: Record<Tone, Record<string, string>> = {
     reset_limit_exceeded: "오늘은 비밀번호 찾기를 더 할 수 없어요. 내일 다시 해 주세요",
   },
 };
-export const identityFailText = (r: Fail, tone: Tone = "admin") => LIMIT_MESSAGES[tone][r.error] ?? failMessage(r, undefined, tone);
+export const identityFailText = (r: Fail, tone: Tone) => LIMIT_MESSAGES[tone][r.error] ?? failMessage(r, tone);
 
 // 화면 문구. admin=관리자 인증 화면(합니다체, 기본) · public=가입 신청(해요체)
 const TEXT = {
@@ -92,10 +92,10 @@ type Props = {
   // 시작 거절을 부모가 자기 칸에서 안내하면 true(예: 가입 필수 동의). 그때는 이 칸에 안내를 따로 띄우지 않는다
   onStartRefused?: (r: Fail) => boolean;
   // 말투(기본 admin). 가입 신청(PF-007)은 public
-  tone?: Tone;
+  tone: Tone;
 };
 
-export default function IdentityCheck({ label, start, scope = "", base, blocked = false, onVerified, onUnavailable, onSentChange, onStartRefused, tone = "admin" }: Props) {
+export default function IdentityCheck({ label, start, scope = "", base, blocked = false, onVerified, onUnavailable, onSentChange, onStartRefused, tone }: Props) {
   const T = TEXT[tone];
   const failText = (r: Fail) => identityFailText(r, tone);
   const [step, setStep] = useState<"identity" | "code">("identity");
@@ -373,12 +373,12 @@ export function IdentityDone({
   who,
   onAgain,
   disabled,
-  tone = "admin",
+  tone,
 }: {
   who: { name: string; phone: string };
   onAgain?: () => void;
   disabled?: boolean;
-  tone?: Tone;
+  tone: Tone;
 }) {
   return (
     <div className="col pa-sec">

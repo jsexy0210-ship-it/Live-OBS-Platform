@@ -169,7 +169,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
         options: rows.map((o, i) => ({ name: o.name.trim(), priceDelta: parseAmount(o.priceDelta), stock: parseAmount(o.stock), sortOrder: i })),
       },
     });
-    if (!r.ok) return fail(failMessage(r, "상품을 등록하지 못했습니다. 입력한 내용은 그대로 있습니다"));
+    if (!r.ok) return fail(failMessage(r, "admin", "상품을 등록하지 못했습니다. 입력한 내용은 그대로 있습니다"));
     router.push(`/seller/products?toast=${st === "DRAFT" ? "draft" : "created"}`);
   };
 
@@ -196,7 +196,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
       if (Object.keys(patch).length === 0) return true;
       const r = await api<Product>(`/api/seller/products/${current.id}`, { method: "PATCH", body: patch });
       if (!r.ok) {
-        fail(failMessage(r, "저장하지 못했습니다"));
+        fail(failMessage(r, "admin", "저장하지 못했습니다"));
         return false;
       }
       current = r.data;
@@ -215,7 +215,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
           method: "POST",
           body: { name: o.name.trim(), priceDelta: delta, stock, sortOrder: i },
         });
-        if (!r.ok) return fail(failMessage(r, "옵션을 추가하지 못했습니다"));
+        if (!r.ok) return fail(failMessage(r, "admin", "옵션을 추가하지 못했습니다"));
         current = r.data;
         const made = current.options.find((x) => !known.has(x.id));
         list = list.map((x) => (x.key === o.key && made ? { ...x, id: made.id, orig: { name: made.name, priceDelta: made.priceDelta, stock: made.stock } } : x));
@@ -238,7 +238,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
             return fail(`그사이 「${o.name.trim()}」 재고가 변경되었습니다. 지금 재고는 ${now.stock.toLocaleString("ko-KR")}개입니다. 확인하고 다시 저장해 주십시오`);
           }
         }
-        return fail(failMessage(r, "옵션을 저장하지 못했습니다"));
+        return fail(failMessage(r, "admin", "옵션을 저장하지 못했습니다"));
       }
       current = r.data;
       list = list.map((x) => (x.key === o.key ? { ...x, orig: { name: o.name.trim(), priceDelta: delta, stock } } : x));
@@ -247,7 +247,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
 
     for (const id of removed) {
       const r = await api<Product>(`/api/seller/products/${current.id}/options/${id}`, { method: "DELETE" });
-      if (!r.ok && r.status !== 404) return fail(failMessage(r, "옵션을 삭제하지 못했습니다"));
+      if (!r.ok && r.status !== 404) return fail(failMessage(r, "admin", "옵션을 삭제하지 못했습니다"));
       if (r.ok) current = r.data;
       gone = gone.filter((x) => x !== id);
       setRemoved(gone);
@@ -539,13 +539,13 @@ function DeleteDialog({ product, onClose, onHidden }: { product: Product; onClos
     if (mode === "hide") {
       const r = await api<Product>(`/api/seller/products/${product.id}`, { method: "PATCH", body: { status: "HIDDEN" } });
       setBusy(false);
-      if (!r.ok) return setError(failMessage(r, "숨기지 못했습니다"));
+      if (!r.ok) return setError(failMessage(r, "admin", "숨기지 못했습니다"));
       return onHidden(r.data);
     }
     const r = await api(`/api/seller/products/${product.id}`, { method: "DELETE" });
     if (!r.ok) {
       setBusy(false);
-      return setError(failMessage(r, "삭제하지 못했습니다"));
+      return setError(failMessage(r, "admin", "삭제하지 못했습니다"));
     }
     router.push("/seller/products?toast=deleted");
   };

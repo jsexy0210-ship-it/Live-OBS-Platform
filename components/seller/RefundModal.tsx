@@ -115,7 +115,7 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
     const f = r.fail;
     if (f.error === "opened_items_present") {
       setNeedOpened(true);
-      setError({ text: failMessage(f) });
+      setError({ text: failMessage(f, "admin") });
     } else if (f.status === 403) setError({ title: "이 기능은 권한이 필요합니다", text: "대표자에게 요청해 주십시오 · 필요한 권한: 주문·배송" });
     else if (f.error === "invalid_transition") setError({ text: "이미 환불했거나 지금은 환불할 수 없는 주문입니다" });
     else if (f.error === "conflict") setError({ text: "그사이 주문대기가 변경되었습니다. 다시 눌러 주십시오" });

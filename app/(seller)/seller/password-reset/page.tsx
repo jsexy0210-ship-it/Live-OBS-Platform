@@ -76,7 +76,7 @@ export default function PasswordResetPage() {
     if (out === "restart") return restart({ text: "본인확인을 처음부터 다시 해 주십시오" });
     // 결과를 아직 받는 중이거나 그 밖의 오류(연결 끊김·서버 오류·요청 제한 등): 본인확인을 버리지 않고 같은 요청으로 다시 누르게 한다
     setPending(verificationId);
-    setNotice({ text: r.error === "pending" ? "본인확인 결과를 확인하고 있습니다. 잠시 후 다시 눌러 주십시오" : failMessage(r, RETRY_TEXT) });
+    setNotice({ text: r.error === "pending" ? "본인확인 결과를 확인하고 있습니다. 잠시 후 다시 눌러 주십시오" : failMessage(r, "admin", RETRY_TEXT) });
     focus("pa-notice");
   };
 
@@ -106,7 +106,7 @@ export default function PasswordResetPage() {
             </span>
           </div>
           {unavailable ? (
-            <IdentityUnavailable action="비밀번호를 찾을" />
+            <IdentityUnavailable tone="admin" action="비밀번호를 찾을" />
           ) : (
             <>
               {notice && (
@@ -151,7 +151,7 @@ export default function PasswordResetPage() {
                     />
                     <span className="help">가입할 때 정한 쇼핑몰 주소입니다</span>
                   </div>
-                  <IdentityCheck
+                  <IdentityCheck tone="admin"
                     key={idvKey}
                     label="휴대폰 본인확인"
                     base={BASE}
