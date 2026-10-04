@@ -1,9 +1,12 @@
 /* 판매자 화면 실제 구현용 보조 스타일. 색·글꼴·부품 모양은 시안(tokens.css · lop.css)을 그대로 쓰고,
    여기에는 실제 브라우저 폭(390~1440)에 맞추는 배치만 둔다. */
+:root {
+  --cs-page: #ffffff;
+}
 html,
 body {
   margin: 0;
-  background: #f1f2f4;
+  background: var(--cs-page);
 }
 .seller-app {
   min-height: 100vh;
@@ -621,16 +624,6 @@ body {
   min-width: 0;
 }
 
-/* 쇼핑몰 설정 탭: 좁은 화면에서는 탭 줄 안에서 가로로 넘겨 본다(화면 전체가 가로로 넘치지 않게) */
-.settings-tabs {
-  max-width: 100%;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.settings-tabs::-webkit-scrollbar {
-  display: none;
-}
-
 /* ───────────────────────────────────────────────────────────────
    업무용 관리자 틀·공통 부품 (대표님 지시 2026-10-04, docs/DESIGN_PROMPT.md 관리자 레이아웃 요구사항)
    업무용 관리 화면: 작은 모서리(2~4px), 그림자 최소, 흰 바탕·옅은 회색 배경, 진한 남색 GNB, 파란 강조색 하나,
@@ -638,7 +631,8 @@ body {
    여기서 다시 정의해 화면 파일을 고치지 않아도 같은 모양이 된다. 마스터 관리자도 .seller-app 이라 함께 바뀐다.
    ─────────────────────────────────────────────────────────────── */
 .seller-app {
-  --cs-page: #f1f2f4;
+  /* 페이지 바탕은 흰색(대표님 지시 2026-10-04): 구역은 1px 선과 여백으로 나눈다. 바탕을 바꾸려면 이 토큰 하나만 고친다 */
+  --cs-page: #ffffff;
   --cs-surface: #ffffff;
   --cs-line: #dcdfe4;
   --cs-line-strong: #b8bdc6;
@@ -862,6 +856,10 @@ body {
   right: 12px;
   z-index: 41;
 }
+/* LNB 제목 줄과 본문 첫 줄(경로 줄)이 같은 높이 토큰을 써서 두 아래 선이 한 수평선이 된다 */
+.cs {
+  --cs-bar-h: 48px;
+}
 .cs-wrap {
   display: grid;
   grid-template-columns: 200px minmax(0, 1fr);
@@ -884,8 +882,11 @@ body {
   display: flex;
 }
 .app .lnb-h {
+  display: flex;
+  align-items: center;
+  height: var(--cs-bar-h);
   margin: 0 0 6px;
-  padding: 14px 16px 12px;
+  padding: 0 16px;
   font-size: 15px;
   line-height: 20px;
   font-weight: 700;
@@ -932,10 +933,15 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 40px;
-  padding: 4px 24px;
+  min-height: var(--cs-bar-h);
+  padding: 0 24px;
   background: var(--cs-surface);
   box-shadow: inset 0 -1px 0 var(--cs-line);
+}
+@media (min-width: 1024px) {
+  .loc-bar {
+    height: var(--cs-bar-h);
+  }
 }
 .loc-bar .crumb {
   min-width: 0;

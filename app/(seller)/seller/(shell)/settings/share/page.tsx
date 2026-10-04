@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
-import { SettingsTabs } from "../../../../../../components/seller/SettingsTabs";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
 import { cleanText, textLength, type TextKind } from "../../../../../../lib/server/text/clean";
@@ -85,7 +84,6 @@ export default function ShareSettingsPage() {
         )}
       </Topbar>
       <main className="main">
-        <SettingsTabs />
         <div className="ph">
           <div className="col" style={{ gap: 6 }}>
             <h1 className="t-t3">공유 미리보기</h1>
