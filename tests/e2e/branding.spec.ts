@@ -221,3 +221,63 @@ test("이미지를 연달아 고르면 앞 선택의 크기 확인이 늦게 끝
   const og = await request.get((await head(page, "/admin/login")).ogImage!);
   expect(Buffer.from(await og.body()).equals(good)).toBe(true);
 });
+
+test("마스터 관리자 로고 색은 파트너스 관리자 로고 색과 다르다(대표님 지시 2026-10-04)", async ({ page }) => {
+  const logoColor = () => page.locator(".logo-sym").first().evaluate((el) => getComputedStyle(el).backgroundColor);
+  await page.goto("/seller/login");
+  const partners = await logoColor();
+  await page.goto("/admin/login");
+  const masterLogin = await logoColor();
+  expect(masterLogin).not.toBe(partners);
+  // 로그인 버튼(주요 버튼)도 같은 마스터 색
+  await page.getByLabel("이메일").fill(superEmail);
+  await page.getByLabel("비밀번호").fill(password);
+  expect(await page.getByRole("button", { name: "로그인" }).evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(masterLogin);
+  for (const width of [390, 1440]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await page.screenshot({ path: `tests/e2e/screenshots/branding-master-logo-login-${width}.png`, fullPage: true });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await login(page, superEmail);
+  const shell = await page.locator("aside.side .logo-sym").evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(shell).toBe(masterLogin);
+  expect(shell).not.toBe(partners);
+  const sideX = async () => (await page.locator("aside.side").boundingBox())?.x ?? -1;
+  await page.screenshot({ path: "tests/e2e/screenshots/branding-master-logo-shell-1440.png", fullPage: true });
+  // 좁은 화면: 메뉴 서랍을 열어 로고를 보인다(옮겨 가는 동안 찍지 않게 서랍이 멈출 때까지 기다림)
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(sideX).toBeLessThan(-200);
+  await page.getByRole("button", { name: "메뉴 열기" }).click();
+  await expect.poll(sideX).toBe(0);
+  await page.screenshot({ path: "tests/e2e/screenshots/branding-master-logo-shell-390.png" });
+});
+
+test("저장 전 입력값이 미리보기에 바로 반영된다(제목·설명·카드 이미지·파비콘, 대표님 지시 2026-10-04)", async ({ page }) => {
+  await login(page, superEmail);
+  await page.getByRole("tab", { name: "파트너스 관리자" }).click();
+  const card = page.getByLabel("공유 카드 미리보기");
+  const image = page.getByAltText("공유 카드 이미지 미리보기");
+  const icon = page.getByAltText("파비콘 미리보기");
+  // 제목·설명: 입력하는 대로 글자가 바뀌고, 제목으로 만든 카드 그림도 새 제목으로 다시 그린다
+  await page.getByLabel("제목").fill("미리보기 확인 제목");
+  await page.getByLabel("설명").fill("미리보기 확인 설명");
+  await expect(card.getByText("미리보기 확인 제목")).toBeVisible();
+  await expect(card.getByText("미리보기 확인 설명")).toBeVisible();
+  await expect(image).toHaveAttribute("src", `/api/admin/branding/card-preview?title=${encodeURIComponent("미리보기 확인 제목")}`);
+  await expect.poll(() => image.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(1200);
+  // 글자 수를 넘으면 마지막으로 그릴 수 있던 카드를 그대로 두고 깨진 그림을 보이지 않는다
+  await page.getByLabel("제목").fill("가".repeat(61));
+  await page.waitForTimeout(600);
+  await expect(image).toHaveAttribute("src", `/api/admin/branding/card-preview?title=${encodeURIComponent("미리보기 확인 제목")}`);
+  // 파비콘: 고르기만 해도 공유 카드의 사이트 아이콘이 고른 파일로 바뀐다(저장 전)
+  const iconBefore = await icon.getAttribute("src");
+  await page.getByLabel("파비콘 파일").setInputFiles({ name: "preview.png", mimeType: "image/png", buffer: await sharp({ create: { width: 64, height: 64, channels: 4, background: "#00aaff" } }).png().toBuffer() });
+  await expect(icon).toHaveAttribute("src", /^blob:/);
+  expect(await icon.getAttribute("src")).not.toBe(iconBefore);
+  // 카드 이미지 올리기: 고른 1200×630 PNG가 바로 미리보기에 나온다
+  await page.getByRole("radio", { name: "이미지 업로드" }).click();
+  await page.getByLabel("공유 카드 이미지 파일").setInputFiles({ name: "preview-card.png", mimeType: "image/png", buffer: await sharp({ create: { width: 1200, height: 630, channels: 3, background: "#aa00ff" } }).png().toBuffer() });
+  await expect(image).toHaveAttribute("src", /^blob:/);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.screenshot({ path: "tests/e2e/screenshots/branding-preview-live-1440.png", fullPage: true });
+});
