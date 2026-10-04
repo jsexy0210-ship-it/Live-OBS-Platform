@@ -333,6 +333,8 @@ model BuyerMember {
 
   @@unique([sellerId, id])
   @@index([sellerId, gradeId])
+  @@index([sellerId, createdAt])
+  @@index([sellerId, deletedAt])
 }
 
 // 구매자 저장 배송지(2026-10-03 대표님 결정). 주문 때 입력한 배송지를 저장하고(구매자가 끌 수 있음), 주문서에서 고른다.
