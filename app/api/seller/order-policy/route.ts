@@ -10,7 +10,7 @@ import { readOrderPolicy, updateOrderPolicy } from "../../../../lib/server/order
 // 바꾼 입금 기한은 다음 주문부터.
 export async function GET(req: Request) {
   try {
-    const ctx = await requireSeller(prisma, sessionToken(req, "seller"));
+    const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "STORE_OPERATIONS" });
     return NextResponse.json({ policy: await readOrderPolicy(prisma, ctx) });
   } catch (e) {
     return errorResponse(e);
@@ -18,7 +18,7 @@ export async function GET(req: Request) {
 }
 
 export const PUT = mutation(async (req: Request) => {
-  const ctx = await requireSeller(prisma, sessionToken(req, "seller"));
+  const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "STORE_OPERATIONS" });
   const r = await updateOrderPolicy(prisma, ctx, await readJson(req));
   if (!r.ok) return NextResponse.json(orderErrorBody(r.reason), { status: 400 });
   return NextResponse.json({ policy: r.policy });

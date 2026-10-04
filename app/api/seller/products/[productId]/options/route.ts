@@ -9,7 +9,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // 옵션 추가. 본문: { name, priceDelta?, stock?, sku?, sortOrder? }
 export const POST = mutation(async (req: Request, { params }: { params: Promise<{ productId: string }> }) => {
-  const ctx = await requireSeller(prisma, sessionToken(req, "seller"));
+  const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "STORE_OPERATIONS" });
   const { productId } = await params;
   if (!UUID.test(productId)) return NextResponse.json({ error: "not_found" }, { status: 404 });
   const r = await createOption(prisma, ctx, productId, await readJson(req));

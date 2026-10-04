@@ -9,7 +9,7 @@ import { errorResponse, mutation, readJson, sessionToken } from "../../../../lib
 // 동의 철회 기능 전에는 켤 수 없다(409 rejoin_restriction_unavailable). GET의 restrictionAvailable로 화면이 스위치를 막는다.
 export async function GET(req: Request) {
   try {
-    const ctx = await requireSeller(prisma, sessionToken(req, "seller"));
+    const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "STORE_OPERATIONS" });
     return NextResponse.json({ policy: await readMemberPolicy(prisma, ctx), restrictionAvailable: REJOIN_RESTRICTION_CONFIG.available });
   } catch (e) {
     return errorResponse(e);
@@ -17,7 +17,7 @@ export async function GET(req: Request) {
 }
 
 export const PUT = mutation(async (req: Request) => {
-  const ctx = await requireSeller(prisma, sessionToken(req, "seller"));
+  const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "STORE_OPERATIONS" });
   const r = await updateMemberPolicy(prisma, ctx, await readJson(req));
   if (!r.ok) return NextResponse.json({ error: r.reason, message: MEMBER_POLICY_MESSAGES[r.reason] }, { status: MEMBER_POLICY_STATUS[r.reason] });
   return NextResponse.json({ policy: r.policy });

@@ -12,7 +12,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // expectedVersion(화면이 가진 항목 version)은 필수다. 두 화면에서 같은 항목을 바꿀 때 나중 요청을 거부한다.
 export const POST = mutation(async (req: Request, { params }: { params: Promise<{ itemId: string; action: string }> }) => {
   const { itemId, action } = await params;
-  const ctx = await requireSeller(prisma, sessionToken(req, "seller"));
+  const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "OVERLAY" });
   if (!ACTIONS.includes(action as QueueAction) || !UUID.test(itemId)) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }

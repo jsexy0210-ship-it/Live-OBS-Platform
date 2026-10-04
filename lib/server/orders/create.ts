@@ -2,6 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { recordOrderAddress } from "../buyers/addresses";
 import { eventOf, orderUnitPrice } from "../products/event";
+import { sellerHasFeature } from "../billing/features";
 import { sellerAccessFor } from "../billing/subscription";
 import { OPENED_NO_REFUND_CONSENT } from "./consent";
 import { activeRestriction, dbClock, getOrderPolicy, lockSellerOrders } from "./overdue";
@@ -69,9 +70,14 @@ function parseItems(raw: unknown): Line[] | null {
 }
 
 export async function createOrder(db: PrismaClient, input: CreateOrderInput): Promise<CreateOrderResult> {
-  // 판매자: 운영 중이고 잠기지 않았어야 한다(이용 판단은 DB 시계)
+  // 판매자: 운영 중이고 잠기지 않았고 스토어 운영 기능 권한이 있어야 한다(이용 판단은 DB 시계, ARCHITECTURE 4.8.0)
   const seller = await db.seller.findUnique({ where: { id: input.sellerId }, select: { status: true } });
-  if (!seller || seller.status !== "ACTIVE" || (await sellerAccessFor(db, input.sellerId)) === "expired") {
+  if (
+    !seller ||
+    seller.status !== "ACTIVE" ||
+    (await sellerAccessFor(db, input.sellerId)) === "expired" ||
+    !(await sellerHasFeature(db, input.sellerId, "STORE_OPERATIONS"))
+  ) {
     return { ok: false, reason: "shop_unavailable" };
   }
   if (input.consent?.agreed !== true) return { ok: false, reason: "consent_required" };

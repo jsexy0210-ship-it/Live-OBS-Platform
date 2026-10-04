@@ -18,7 +18,7 @@ const CARRIERS: { value: Carrier; label: string }[] = [
 
 // device: 본인확인 대행사에 보내는 기기 구분(PC는 768px 이상, 구매자 가입과 같은 기준)
 export type IdentityPerson = { name: string; phone: string; birth7: string; carrier: Carrier; device: "PC" | "MOBILE" };
-type Fail = { status: number; error: string; message?: string };
+type Fail = { status: number; error: string; message?: string; body?: Record<string, unknown> };
 
 // 서버가 문구를 주지 않는 하루 한도 응답(429)
 const LIMIT_MESSAGES: Record<string, string> = {
@@ -56,11 +56,14 @@ type Props = {
   blocked?: boolean;
   onVerified: (verificationId: string, who: { name: string; phone: string }) => void;
   onUnavailable: () => void;
-  // 인증번호를 보낸 동안 true(부모는 인증 요청에 쓴 다른 칸을 잠근다)
+  // 인증번호 받기 요청을 보내는 중이거나 인증번호를 보낸 동안 true(부모는 인증 요청에 쓴 다른 칸을 잠근다).
+  // 보내는 중에도 잠가야 보낸 값(동의·이메일 등)과 화면이 어긋나지 않는다. 요청이 실패하면 다시 false
   onSentChange?: (sent: boolean) => void;
+  // 시작 거절을 부모가 자기 칸에서 안내하면 true(예: 가입 필수 동의). 그때는 이 칸에 안내를 따로 띄우지 않는다
+  onStartRefused?: (r: Fail) => boolean;
 };
 
-export default function IdentityCheck({ label, start, scope = "", base, blocked = false, onVerified, onUnavailable, onSentChange }: Props) {
+export default function IdentityCheck({ label, start, scope = "", base, blocked = false, onVerified, onUnavailable, onSentChange, onStartRefused }: Props) {
   const [step, setStep] = useState<"identity" | "code">("identity");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ kind: "neg" | "info"; text: string } | null>(null);
@@ -87,7 +90,7 @@ export default function IdentityCheck({ label, start, scope = "", base, blocked 
   }, [focusTo]);
   const focus = (id: string) => setFocusTo({ id });
 
-  useEffect(() => onSentChange?.(step === "code"), [step, onSentChange]);
+  useEffect(() => onSentChange?.(step === "code" || busy), [step, busy, onSentChange]);
 
   const ready = !blocked && name.trim() !== "" && birth.length === 8 && gender !== null && carrier !== "" && phone.length >= 10 && agreed;
   const locked = step === "code" || busy;
@@ -130,7 +133,7 @@ export default function IdentityCheck({ label, start, scope = "", base, blocked 
     setBusy(false);
     // 409 start_in_progress(앞 요청이 아직 문자를 보내는 중)·연결 끊김·일시 오류는 키를 두어 다시 누르면 같은 시도로 이어 간다
     if (r.ok || r.error === "already_verified" || r.error === "expired" || r.error === "failed") attempt.current = null;
-    if (!r.ok) return fail(r);
+    if (!r.ok) return onStartRefused?.(r) ? undefined : fail(r);
     setVerificationId(r.data.verificationId);
     setSent(person);
     setCode("");
