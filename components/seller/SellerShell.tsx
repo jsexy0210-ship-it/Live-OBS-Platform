@@ -57,7 +57,9 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null);
   const [navOpen, setNavOpen] = useState(false);
 
+  const lastRead = useRef(0);
   const load = useCallback(async () => {
+    lastRead.current = Date.now();
     setFailed(false);
     const r = await api<Me>("/api/seller/me");
     if (!r.ok) {
@@ -80,12 +82,30 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
 
   // 화면을 옮길 때마다 권한·이용 상태를 조용히 다시 읽는다(대표자가 직원 권한을 바꾸면 다음 화면부터 메뉴에 반영).
   // 로딩 화면은 띄우지 않고, 실패하면 지금 값을 그대로 둔다(401이면 공통 api()가 로그인으로 보낸다)
+  // 창으로 돌아올 때(포커스·화면이 다시 보일 때)도 다시 읽는다: 권한이 하나도 없는 직원은 옮길 화면이 없어 경로로는 새로 읽지 못한다.
+  // 짧은 간격으로 겹치면(포커스와 visibilitychange가 함께 오는 경우 등) 한 번만 읽는다
+  const refresh = useCallback(() => {
+    lastRead.current = Date.now();
+    void api<Me>("/api/seller/me").then((r) => r.ok && setMe(r.data));
+  }, []);
   const firstPath = useRef(pathname);
   useEffect(() => {
     if (pathname === firstPath.current) return;
     firstPath.current = pathname;
-    void api<Me>("/api/seller/me").then((r) => r.ok && setMe(r.data));
-  }, [pathname]);
+    refresh();
+  }, [pathname, refresh]);
+  useEffect(() => {
+    const onBack = () => {
+      if (document.visibilityState !== "visible" || Date.now() - lastRead.current < 1000) return;
+      refresh();
+    };
+    window.addEventListener("focus", onBack);
+    document.addEventListener("visibilitychange", onBack);
+    return () => {
+      window.removeEventListener("focus", onBack);
+      document.removeEventListener("visibilitychange", onBack);
+    };
+  }, [refresh]);
 
   useEffect(() => setNavOpen(false), [pathname]);
 

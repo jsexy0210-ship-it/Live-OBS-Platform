@@ -103,6 +103,9 @@ test("대표자: 메뉴에서 직원 계정으로 들어가 목록을 보고, �
   await expect(page.getByRole("checkbox", { name: "고객 정보 보기", exact: true })).not.toBeChecked();
   await expect(page.getByText("고객 이름·연락처·주소를 볼 수 있어요").first()).toBeVisible();
   await page.getByRole("button", { name: "방송만" }).click();
+  // 「보기」로 본 채 만들어도, 비워진 칸은 다시 가린다(다음 직원 비밀번호가 바로 보이지 않게)
+  await page.getByRole("button", { name: "보기" }).click();
+  await expect(page.getByLabel("초기 비밀번호")).toHaveAttribute("type", "text");
   const sent = page.waitForRequest((r) => r.url().endsWith("/api/seller/staff") && r.method() === "POST");
   await page.getByRole("button", { name: "계정 만들기" }).click();
   // 하이픈은 빼고 숫자만 보낸다
@@ -110,8 +113,10 @@ test("대표자: 메뉴에서 직원 계정으로 들어가 목록을 보고, �
   await expect(page.getByText(`${s.name} 계정을 만들었어요`, { exact: false })).toBeVisible();
   await expect(row(page, s.email)).toContainText("방송 진행");
   await expect(row(page, s.email)).toContainText("010-1234-5678 · 본인확인 전");
-  // 입력 칸은 비워진다
+  // 입력 칸은 비워지고 비밀번호 칸은 다시 가려진다
   await expect(page.getByLabel("이메일 (로그인 아이디)")).toHaveValue("");
+  await expect(page.getByLabel("초기 비밀번호")).toHaveAttribute("type", "password");
+  await expect(page.getByRole("button", { name: "보기" })).toBeVisible();
 
   // 같은 이메일은 다시 만들 수 없다
   await addStaff(page, { ...s, name: "다른 사람" });
@@ -227,6 +232,36 @@ test("대표자: 직원 비밀번호를 재설정하면 새 비밀번호로만 �
   await staffPage.context().clearCookies();
   await login(staffPage, s.email, next, "/seller/products");
   await expect(staffPage).toHaveURL(/\/seller\/login/);
+  await staffPage.close();
+});
+
+test("권한이 하나도 없는 직원도 창으로 돌아오면 대표자가 켠 권한이 메뉴에 나온다(새로고침 없이)", async ({ page }) => {
+  await login(page, "demo-owner@example.com");
+  await expect(page).toHaveURL(/\/seller\/staff$/);
+  const id = uniq();
+  const s = { name: `권한없음${id}`, phone: "01055556666", email: `none-${id}@example.com`, password: `pw-${id}-init` };
+  await addStaff(page, s);
+  await page.getByRole("button", { name: "계정 만들기" }).click();
+  await expect(row(page, s.email)).toContainText("켜진 권한 없음");
+
+  const staffPage = await page.context().browser()!.newPage();
+  await login(staffPage, s.email, s.password, "/seller/products");
+  await skipIdentityLink(staffPage);
+  const staffMenu = staffPage.getByRole("complementary", { name: "파트너스 메뉴" });
+  await expect(staffMenu.getByRole("link", { name: "주문", exact: true })).toHaveCount(0);
+
+  await page.getByRole("button", { name: `${s.name} 정보 · 권한 수정` }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("checkbox", { name: "주문·배송", exact: true }).check();
+  await dialog.getByRole("button", { name: "저장" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+
+  // 직원 창으로 돌아온다(포커스): 화면을 옮기지 않아도 권한을 다시 읽어 메뉴에 나온다
+  const orders = staffMenu.getByRole("link", { name: "주문", exact: true });
+  await expect(async () => {
+    await staffPage.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect(orders).toBeVisible({ timeout: 1000 });
+  }).toPass({ timeout: 10_000 });
   await staffPage.close();
 });
 
