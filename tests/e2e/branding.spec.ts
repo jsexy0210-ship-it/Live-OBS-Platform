@@ -113,6 +113,21 @@ test("최고관리자가 파트너스 관리자 파비콘·공유 카드를 바�
   const admin = await head(page, "/admin/login");
   expect(admin.icons.some((h) => h?.includes("/api/branding/"))).toBe(false);
   expect(admin.ogTitle).toBe("ONQ 마스터 관리자");
+  // 올린 파비콘이 없는 화면은 기본 ONQ 아이콘(Codex 지적 6차)
+  expect(admin.icons).toEqual(["/branding/onq-32.png"]);
+
+  // 「기본값으로 되돌리기」 뒤에는 파트너스 화면도 기본 아이콘으로 돌아오고, 그 주소가 실제 PNG를 준다
+  await page.goto("/admin/settings/branding");
+  await page.getByRole("tab", { name: "파트너스 관리자" }).click();
+  await page.getByRole("button", { name: "기본값으로 되돌리기" }).click();
+  await expect(page.getByText("기본 파비콘으로 되돌렸습니다.")).toBeVisible();
+  const reset = await head(page, "/seller/login");
+  expect(reset.icons).toEqual(["/branding/onq-32.png"]);
+  const def = await request.get(reset.icons[0]!);
+  expect(def.status()).toBe(200);
+  expect(def.headers()["content-type"]).toBe("image/png");
+  expect(await sharp(Buffer.from(await def.body())).metadata()).toMatchObject({ width: 32, height: 32 });
+  expect((await request.get("/branding/onq-180.png")).status()).toBe(200);
 });
 
 test("마스터 관리자 공유 카드에 1200×630 이미지를 올리면 og:image가 그 이미지가 되고, 크기가 틀리면 막힌다", async ({ page, request }) => {

@@ -266,7 +266,7 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
                 {favicon || branding.favicon ? (
                   <img src={favicon?.url ?? branding.favicon!.url} alt="현재 파비콘" width={32} height={32} />
                 ) : (
-                  <span className="logo-sym" aria-label="기본 아이콘" />
+                  <img src="/branding/onq-32.png" alt="기본 아이콘" width={32} height={32} />
                 )}
               </span>
               <span className="col" style={{ gap: 2 }}>

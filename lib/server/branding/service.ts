@@ -43,6 +43,9 @@ export const imageMessage = (slot: ImageSlot, reason: ImageRejection | "empty_fi
 
 type Meta = { ip?: string | null; userAgent?: string | null };
 
+// 올린 파비콘이 없을 때 쓰는 기본 ONQ 아이콘(public/branding, 로고 심볼 .logo-sym과 같은 모양·색). 32px 탭 아이콘과 180px 홈 화면 아이콘.
+export const DEFAULT_FAVICON = { url: "/branding/onq-32.png", appleUrl: "/branding/onq-180.png", type: "image/png" } as const;
+
 // 주소: 파비콘 /api/branding/{target}/favicon?v=해시, 공유 카드 /api/branding/{target}/og?v=버전
 export const faviconUrl = (target: BrandingTarget, hash: string) => `/api/branding/${target}/favicon?v=${hash}`;
 export const ogImageUrl = (target: BrandingTarget, version: string) => `/api/branding/${target}/og?v=${version}`;

@@ -204,7 +204,12 @@ describe("관리자 화면 head 값(generateMetadata)", () => {
     const c = await adminCookie("SUPER_ADMIN");
     const empty = await brandingMetadata("seller");
     expect(empty).toMatchObject({ title: "ONQ 파트너스 관리자", twitter: { card: "summary_large_image" } });
-    expect(empty.icons).toBeUndefined();
+    // 올린 파비콘이 없으면 기본 ONQ 아이콘(Codex 지적 6차)
+    expect(empty.icons).toEqual({
+      icon: [{ url: "/branding/onq-32.png", type: "image/png", sizes: "32x32" }],
+      shortcut: [{ url: "/branding/onq-32.png", type: "image/png" }],
+      apple: [{ url: "/branding/onq-180.png", sizes: "180x180" }],
+    });
     await upload(faviconPut, "seller", await png(48, 48), c);
     await putText("seller", { title: "파트너스 센터", description: "설명입니다" }, c);
     const m = await brandingMetadata("seller");
@@ -219,7 +224,10 @@ describe("관리자 화면 head 값(generateMetadata)", () => {
     // 마스터 관리자 쪽은 기본값 그대로
     const admin = await brandingMetadata("admin");
     expect(admin).toMatchObject({ title: "ONQ 마스터 관리자" });
-    expect(admin.icons).toBeUndefined();
+    expect(admin.icons).toEqual(empty.icons);
+    // 되돌리면 다시 기본 아이콘
+    await remove(faviconDelete, "seller", c);
+    expect((await brandingMetadata("seller")).icons).toEqual(empty.icons);
   });
 
   it("신뢰 프록시가 아니면 X-Forwarded-Host로 주소를 바꿀 수 없고, 호스트가 이상하면 og:image를 뺀다", async () => {

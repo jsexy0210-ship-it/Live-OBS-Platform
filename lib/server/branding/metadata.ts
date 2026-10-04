@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { prisma } from "../db";
-import { brandingMeta } from "./service";
+import { brandingMeta, DEFAULT_FAVICON } from "./service";
 import { requestOrigin } from "./siteUrl";
 import type { BrandingTarget } from "./store";
 
@@ -22,7 +22,14 @@ export async function brandingMetadata(target: BrandingTarget): Promise<Metadata
   return {
     title: meta.title,
     description,
-    ...(meta.favicon && { icons: { icon: [{ url: meta.favicon.url, type: meta.favicon.type }], shortcut: [{ url: meta.favicon.url, type: meta.favicon.type }] } }),
+    // 올린 파비콘이 없으면 기본 ONQ 아이콘을 직접 넣는다(파일 기반 app/icon.*에 기대지 않음)
+    icons: meta.favicon
+      ? { icon: [{ url: meta.favicon.url, type: meta.favicon.type }], shortcut: [{ url: meta.favicon.url, type: meta.favicon.type }], apple: [{ url: meta.favicon.url }] }
+      : {
+          icon: [{ url: DEFAULT_FAVICON.url, type: DEFAULT_FAVICON.type, sizes: "32x32" }],
+          shortcut: [{ url: DEFAULT_FAVICON.url, type: DEFAULT_FAVICON.type }],
+          apple: [{ url: DEFAULT_FAVICON.appleUrl, sizes: "180x180" }],
+        },
     openGraph: { type: "website", title: meta.title, description, ...(images && { images }) },
     twitter: { card: "summary_large_image", title: meta.title, description, ...(images && { images: images.map((i) => i.url) }) },
   };
