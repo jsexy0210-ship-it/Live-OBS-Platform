@@ -23,7 +23,23 @@
 
 병합 순서: 이미지 검사기 `lib/server/branding/image.ts`는 브랜딩 PR #182가 만든다. 쇼핑몰 운영 전담은 #182가 병합된 뒤 main을 머지해 그대로 import한다(복사하지 않는다. 그 전에는 검사기를 쓰지 않는 부분부터 만든다).
 
-추가 기능 11건 개발 배정(2026-10-04 대표님 확정 12건 중 통계 제외): 쇼핑몰 운영 전담이 팝업·배너·로고 PR 병합 뒤 아래 순서로 한 기능씩 별도 PR로 만든다. 각 기능은 그 디자인 화면(v155~v157)이 게시된 뒤 시작한다. 순서: ① 쿠폰 ② 상품 리뷰 ③ 교환·반품 ④ 상품 진열 ⑤ 회원 등급 ⑥ 쇼핑몰 FAQ ⑦ 검색 노출(SEO) ⑧ 찜·최근 본 상품 ⑨ 재입고 알림 ⑩ 회원 대상 발송 ⑪ 엑셀 일괄 등록·내보내기. 소유(기능마다 `<기능>`은 영문 이름, 예: `coupons`): `lib/server/shop-<기능>/**`, `app/api/seller/<기능>/**`, `app/api/shop/[slug]/<기능>/**`, `app/(seller)/seller/(shell)/<기능>/**`, `components/seller/<기능>/**`, `components/shop/<기능>/**`, `tests/**/<기능>*`, schema의 그 기능 모델 블록과 MASTER가 번호를 정해 주는 마이그레이션. 허용: 공용 통합 파일 자기 줄, 구매자 화면에 표시를 끼우는 몇 줄(병합 뒤 화면 세션 소유). 완료 기준: 파트너스 관리자에서 만들고 고치고, 구매자 화면에 실제로 반영되며, 권한(대표자·해당 직원 권한)·판매자 격리·로그 추적 기록을 통합 시험과 e2e로 확인한다. 회원 대상 발송은 실제 발송 채널이 대표님 결정(알림 채널) 전까지 발송 기록만 남긴다. 결제·적립금이 움직이는 부분(쿠폰 할인 적용, 교환·반품 환불)은 실제 결제·환불 실행 없이 금액 계산·상태까지만 만든다.
+추가 기능 11건 개발 배정(2026-10-04 대표님 확정 12건 중 통계 제외): 쇼핑몰 운영 전담이 팝업·배너·로고 PR 병합 뒤 아래 순서로 한 기능씩 별도 PR로 만든다. 각 기능은 그 디자인 화면(v155~v157)이 게시된 뒤 시작한다. 순서·경로 이름(`<name>`)·schema 모델 이름 접두어·직원 권한(새 권한을 만들지 않고 기존 항목을 쓴다. 대표자는 항상 가능):
+
+| 순서 | 기능 | `<name>` | 모델 접두어 | 직원 권한 |
+|---|---|---|---|---|
+| 1 | 쿠폰 | `coupons` | `Coupon` | `MEMBER_POINTS` |
+| 2 | 상품 리뷰 | `reviews` | `ProductReview` | `INQUIRY_REPLY`(답글·숨김) |
+| 3 | 교환·반품 | `returns` | `ReturnRequest` | `ORDER_SHIPPING` |
+| 4 | 상품 진열 | `product-display` | `ProductDisplay` | `PRODUCT_MANAGE` |
+| 5 | 회원 등급 | `member-grades` | `MemberGrade` | `MEMBER_POINTS` |
+| 6 | 쇼핑몰 FAQ | `faq` | `ShopFaq` | `INQUIRY_REPLY` |
+| 7 | 검색 노출(SEO) | `seo` | `ShopSeo` | `SHOP_SETTINGS` |
+| 8 | 찜·최근 본 상품 | `wishlist` | `Wishlist`, `RecentView` | 구매자 기능. 파트너스 쪽 찜 수 보기는 `PRODUCT_MANAGE` |
+| 9 | 재입고 알림 | `restock-alerts` | `RestockAlert` | `PRODUCT_MANAGE` |
+| 10 | 회원 대상 발송 | `member-messages` | `MemberMessage` | `MEMBER_POINTS`(받는 사람 연락처는 서버만 쓰고 응답에 넣지 않는다) |
+| 11 | 엑셀 일괄 등록·내보내기 | `bulk-io` | `BulkJob` | 상품 등록·내보내기 `PRODUCT_MANAGE`, 주문 내보내기 `ORDER_SHIPPING`(구매자 이름·연락처·주소 열은 `CUSTOMER_PII_VIEW`가 있을 때만) |
+
+소유(`<name>`는 위 표의 값): `lib/server/shop-<name>/**`, `app/api/seller/<name>/**`, `app/api/shop/[slug]/<name>/**`, `app/(seller)/seller/(shell)/<name>/**`, `components/seller/<name>/**`, `components/shop/<name>/**`, `tests/**/<name>*`, schema에서 위 접두어로 시작하는 모델 블록과 MASTER가 번호를 정해 주는 마이그레이션. 허용: 공용 통합 파일 자기 줄, 구매자 화면에 표시를 끼우는 몇 줄(병합 뒤 화면 세션 소유). 완료 기준: 파트너스 관리자에서 만들고 고치고, 구매자 화면에 실제로 반영되며, 권한(대표자·해당 직원 권한)·판매자 격리·로그 추적 기록을 통합 시험과 e2e로 확인한다. 회원 대상 발송은 실제 발송 채널이 대표님 결정(알림 채널) 전까지 발송 기록만 남긴다. 결제·적립금이 움직이는 부분(쿠폰 할인 적용, 교환·반품 환불)은 실제 결제·환불 실행 없이 금액 계산·상태까지만 만든다.
 
 공용 통합 파일(`components/seller/SellerShell.tsx` 메뉴, `tests/unit/planFeatures.test.ts` 경로 표)은 여러 전담 세션이 자기 줄만 더한다. 같은 때에 고치지 않도록, 먼저 병합된 PR 뒤에 다음 PR이 최신 main을 머지한 다음 자기 줄을 더한다(충돌은 양쪽 줄을 모두 남긴다). 다른 줄은 고치지 않는다.
 
