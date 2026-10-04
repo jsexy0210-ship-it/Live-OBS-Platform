@@ -1392,11 +1392,21 @@ describe("Codex 6차 반영(9144f55)", () => {
   const noHooks = { touch: async () => {}, enterVerify: async () => {}, stepDone: async () => {} };
   const freshStats = () => ({ costUsed: 0, plannerCalls: 0, playbookActions: 0, deviatedSteps: [] as string[] });
 
-  it("재설치도 첫 OBS 변경 전에 로컬 도구로 확인한 실제 PC로 잠금을 옮긴다(요청한 PC 값이 달라도), 그 PC에서 다른 작업이 돌면 OBS 변경 0회", async () => {
+  // 26차: 재설치는 요청한 PC와 실제 PC가 같아야 한다(다르면 reconnect_target_mismatch). 그래서 요청 PC = 실제 PC로 같은 PC 잠금을 시험한다
+  it("재설치도 첫 OBS 변경 전에 로컬 도구로 확인한 실제 PC로 같은 PC 잠금을 잡고, 그 PC에서 다른 작업이 돌면 OBS 변경 0회. 요청 PC와 실제 PC가 다르면 바꾸지 않고 실패", async () => {
+    const mismatch = await completedJob();
+    const wrong = await reconnectAutomation(db, mismatch.provider, mismatch.ctx, { idempotencyKey: newKey(), target: { ...mismatch.target, obsPairingId: "requested-pc" }, consent });
+    if (!wrong.ok) throw new Error(wrong.reason);
+    const rt0 = runtime();
+    rt0.obs.pairing.set(mismatch.seller.id, "actual-pc");
+    expect(await runOnce(db, rt0, W)).toBe("failed");
+    expect(await job(wrong.jobId)).toMatchObject({ status: "FAILED", lastError: "reconnect_target_mismatch" });
+    expect(rt0.obs.performed.filter((p) => p.scope.jobId === wrong.jobId)).toHaveLength(0);
+
     const s = await completedJob();
-    const paid = await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: newKey(), target: { ...s.target, obsPairingId: "requested-pc" }, consent });
+    const paid = await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: newKey(), target: { ...s.target, obsPairingId: "actual-pc" }, consent });
     if (!paid.ok) throw new Error(paid.reason);
-    expect(await job(paid.jobId)).toMatchObject({ kind: "REINSTALL", obsTargetKey: "obs:requested-pc" });
+    expect(await job(paid.jobId)).toMatchObject({ kind: "REINSTALL", obsTargetKey: "obs:actual-pc" });
 
     // 실제 PC(actual-pc)에서 다른 작업이 실행 중
     const other = await bought();
@@ -1406,8 +1416,9 @@ describe("Codex 6차 반영(9144f55)", () => {
     });
     const rt = runtime();
     rt.obs.pairing.set(s.seller.id, "actual-pc");
-    expect(await runOnce(db, rt, { ...W, random: () => 0 })).toBe("retry");
-    expect(await job(paid.jobId)).toMatchObject({ lastError: "obs_target_busy", obsTargetKey: "obs:requested-pc" });
+    // 요청 PC가 곧 실제 PC라 대기열에서부터 같은 PC 잠금에 걸려 집히지 않는다
+    expect(await runOnce(db, rt, { ...W, random: () => 0 })).toBe("idle");
+    expect(await job(paid.jobId)).toMatchObject({ status: "QUEUED", obsTargetKey: "obs:actual-pc" });
     expect(rt.obs.performed.filter((p) => p.scope.jobId === paid.jobId)).toHaveLength(0);
 
     await db.automationJob.update({ where: { id: other.jobId }, data: { status: "CANCELED", leaseOwner: null, leaseExpiresAt: null, finishedAt: new Date(), runStartedAt: null } });
@@ -2701,6 +2712,63 @@ describe("Codex 25차 반영(a32e65d)", () => {
       })),
     });
     expect((await playbookReadiness(db, cafe24Playbook)).verified).toBe(true);
+  });
+});
+
+describe("Codex 26차 반영(acd7e67)", () => {
+  async function installed() {
+    const s = await bought();
+    expect(await runOnce(db, runtime(), W)).toBe("succeeded");
+    return { ...s, target: { shopKey: `mall-${s.seller.id}`, obsPairingId: `pc-${s.seller.id}` } };
+  }
+
+  it("쇼핑몰이 바뀐 재설치는 새 쇼핑몰 주소가 있어야 결제한다: 주소 없이 동의하면 shop_url_required·결제 0건", async () => {
+    const s = await installed();
+    const before = await db.automationPayment.count({ where: { sellerId: s.seller.id } });
+    const r = await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: newKey(), consent, target: { ...s.target, shopKey: "newmall" } });
+    expect(r).toEqual({ ok: false, reason: "shop_url_required" });
+    expect(await db.automationPayment.count({ where: { sellerId: s.seller.id } })).toBe(before);
+  });
+
+  it("유료 재설치 작업은 요청한 쇼핑몰(target.shopKey)과 실제로 연결된 쇼핑몰이 다르면 바꾸지 않고 실패(reconnect_target_mismatch)", async () => {
+    const s = await installed();
+    const r = await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: newKey(), consent, target: { ...s.target, shopKey: "newmall" }, shopUrl: SHOP });
+    expect(r).toMatchObject({ ok: true, kind: "REINSTALL" });
+    const rt = runtime();
+    expect(await runOnce(db, rt, W)).toBe("failed");
+    expect(rt.browser.performed.filter((p) => p.type === "click" || p.type === "fill")).toHaveLength(0);
+    expect(await job((r as { jobId: string }).jobId)).toMatchObject({ status: "FAILED", lastError: "reconnect_target_mismatch" });
+  });
+
+  it("관찰한 문서 주소와 실행 직전 문서 주소가 다르면(둘 다 허용 범위여도) 행동 0건으로 다시 관찰한다", async () => {
+    const a = await bought();
+    const rt = runtime();
+    rt.browser.currentUrlOverride = () => "https://myshop.cafe24.com/disp/admin/shop1/other";
+    expect(await runOnce(db, rt, W)).toBe("retry");
+    expect(rt.browser.performed.filter((p) => p.type === "click" || p.type === "fill")).toHaveLength(0);
+    expect(await job(a.jobId)).toMatchObject({ lastError: "step_action_limit:shop_connect" });
+  });
+
+  it("잠금 순서: 설치 완료 기록은 판매자 잠금을 작업 행 잠금보다 먼저 잡는다(구매 확정과 같은 순서)", async () => {
+    await bought();
+    const ops: string[] = [];
+    const traced = db.$extends({
+      query: {
+        async $allOperations({ operation, args, query }) {
+          if (operation === "$executeRaw" || operation === "$queryRaw") {
+            const text = JSON.stringify(args);
+            if (text.includes("automation_seller")) ops.push("seller");
+            else if (text.includes("FOR UPDATE") && text.includes("AutomationJob") && !text.includes("SKIP LOCKED")) ops.push("job");
+          }
+          return query(args);
+        },
+      },
+    }) as unknown as typeof db;
+    expect(await runOnce(traced, runtime(), W)).toBe("succeeded");
+    // 마지막 기록(완료)의 잠금 순서
+    const lastSeller = ops.lastIndexOf("seller");
+    expect(lastSeller).toBeGreaterThanOrEqual(0);
+    expect(ops.slice(lastSeller + 1)).toEqual(["job"]);
   });
 });
 

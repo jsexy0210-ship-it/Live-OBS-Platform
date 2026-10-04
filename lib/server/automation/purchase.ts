@@ -37,7 +37,9 @@ type Failure =
   | "job_in_progress"
   | "payment_failed"
   // 유료 재설치를 결제하려는 사이 무료 재연결 조건이 됐다(결제하지 않음, 무료 재연결로 다시 요청)
-  | "free_reconnect_available";
+  | "free_reconnect_available"
+  // 쇼핑몰이 바뀐 재설치인데 새 쇼핑몰 주소가 없다(이전 쇼핑몰로 설치하지 않음, 결제하지 않음)
+  | "shop_url_required";
 export type PurchaseResult =
   | { ok: true; jobId: string; kind: AutomationJob["kind"]; paymentStatus: AutomationPayment["status"] | null; jobStatus: AutomationJob["status"]; replayed: boolean }
   | { ok: false; reason: Failure; jobId?: string };
@@ -53,12 +55,13 @@ export const PURCHASE_FAILURE_STATUS: Record<Failure, number> = {
   job_in_progress: 409,
   payment_failed: 402,
   free_reconnect_available: 409,
+  shop_url_required: 400,
 };
 
 // 작업 확정 트랜잭션 안에서 다시 계산해 거절할 때(트랜잭션을 되돌린다)
 class PurchaseAborted extends Error {
   constructor(
-    readonly reason: "shop_not_supported" | "free_reconnect_available" | "payment_required",
+    readonly reason: "shop_not_supported" | "free_reconnect_available" | "payment_required" | "shop_url_required",
     readonly paidReason?: PaidReason,
   ) {
     super(reason);
@@ -74,6 +77,8 @@ type CommitPlan = {
   obsTargetKey: string;
   // 재연결·재설치 대상. 있으면 잠금 안에서 무료 재연결 판정(기준 설치 포함)을 다시 계산하고 그 값으로 저장한다.
   target?: ReconnectTarget;
+  // 재설치 요청에 새 쇼핑몰 주소가 있었는가(쇼핑몰이 바뀐 재설치는 주소가 있어야 한다)
+  shopUrlGiven?: boolean;
   // 유료만: 금액
   amount?: number;
 };
@@ -98,6 +103,7 @@ async function commitJob(db: PrismaClient, ctx: TenantContext, plan: CommitPlan)
         sellerId: ctx.sellerId,
         kind: plan.kind,
         paymentId: payment?.id,
+        ...(plan.target ? { targetShopKey: plan.target.shopKey, targetObsPairingId: plan.target.obsPairingId } : {}),
         costLimit: plannerConfig().costLimitWon,
         playbookId: plan.playbook.id,
         playbookVersion: plan.playbook.version,
@@ -111,6 +117,8 @@ async function commitJob(db: PrismaClient, ctx: TenantContext, plan: CommitPlan)
       const decision = await decideReconnect(tx, ctx.sellerId, plan.target);
       if (plan.kind === "RECONNECT_FREE" && !decision.free) throw new PurchaseAborted("payment_required", decision.reason);
       if (plan.kind === "REINSTALL" && decision.free) throw new PurchaseAborted("free_reconnect_available");
+      // 쇼핑몰이 바뀐 재설치는 새 쇼핑몰 주소로만(주소가 없으면 이전 쇼핑몰 호스트로 설치하게 되므로 결제하지 않는다)
+      if (plan.kind === "REINSTALL" && !decision.free && decision.reason === "shop_changed" && !plan.shopUrlGiven) throw new PurchaseAborted("shop_url_required");
       if (decision.baseJobId) job = await tx.automationJob.update({ where: { id: job.id }, data: { baseJobId: decision.baseJobId } });
     }
     if (!(await playbookReadiness(tx, plan.playbook)).verified) throw new PurchaseAborted("shop_not_supported");
@@ -179,6 +187,7 @@ type PaidJobInput = {
   shopHost: string | null;
   // 유료 재설치: 커밋 직전 무료 재연결 판정을 다시 계산할 대상
   reconnectTarget?: ReconnectTarget;
+  shopUrlGiven?: boolean;
 };
 
 // 판매자 대표자가 자동 연결을 산다(110,000원). 같은 Idempotency-Key로 다시 오면 처음 결과를 돌려준다(결제·작업을 새로 만들지 않음).
@@ -227,6 +236,7 @@ async function buyPaidJob(db: PrismaClient, provider: BillingProvider, ctx: Tena
       shopHost: input.shopHost,
       obsTargetKey: input.obsTargetKey ?? `seller:${ctx.sellerId}`,
       target: input.reconnectTarget,
+      shopUrlGiven: input.shopUrlGiven,
       amount,
     });
     created = { payment: r.payment!, job: r.job };
@@ -317,7 +327,9 @@ export async function reconnectAutomation(
   if (!playbook) return { ok: false, reason: "shop_not_supported" };
   if (!decision.free) {
     if (input.consent === undefined) return { ok: false, reason: "payment_required", paidReason: decision.reason, price: REINSTALL_PRICE };
-    return buyPaidJob(db, provider, ctx, { idempotencyKey: input.idempotencyKey, consent: input.consent, fingerprint, resolvePlaybook: async () => playbook, kind: "REINSTALL", obsTargetKey, shopHost, reconnectTarget: target });
+    // 쇼핑몰이 바뀐 재설치는 올바른 새 쇼핑몰 주소가 있어야 결제한다(없으면 이전 쇼핑몰로 설치하게 됨). 결제 0건으로 거절
+    if (decision.reason === "shop_changed" && !shopHostOf(input.shopUrl)) return { ok: false, reason: "shop_url_required" };
+    return buyPaidJob(db, provider, ctx, { idempotencyKey: input.idempotencyKey, consent: input.consent, fingerprint, resolvePlaybook: async () => playbook, kind: "REINSTALL", obsTargetKey, shopHost, reconnectTarget: target, shopUrlGiven: !!shopHostOf(input.shopUrl) });
   }
   try {
     // 무료 재연결도 같은 확정 함수로: 잠금 안에서 판정(기준 설치 포함)·준비 상태를 다시 계산한 값으로만 저장한다

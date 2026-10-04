@@ -1362,6 +1362,9 @@ model AutomationJob {
   paymentId            String?                   @db.Uuid
   // 재연결·재설치가 기준으로 삼은 이전 완료 작업
   baseJobId            String?                   @db.Uuid
+  // 재연결·재설치가 요청한 쇼핑몰·PC. 작업자는 실제로 연결된 쇼핑몰·PC가 이 값과 같은지 확인한다(다르면 reconnect_target_mismatch)
+  targetShopKey        String?
+  targetObsPairingId   String?
   status               AutomationJobStatus       @default(AWAITING_PAYMENT)
   // 같은 OBS에 동시에 두 작업이 붙지 않게 잠그는 대상 키(판매자 OBS 연결 단위)
   obsTargetKey         String

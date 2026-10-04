@@ -93,8 +93,10 @@ export type EngineOptions = {
   costLimit: number;
   maxActionsPerStep: number;
   playbook: Playbook | null;
-  // 무료 재연결: 실제 연결된 쇼핑몰·PC가 이 값과 같아야 한다
+  // 재연결·재설치: 실제 연결된 쇼핑몰·PC가 이 값과 같아야 한다
   expectFacts?: { shopKey: string | null; obsPairingId: string | null } | null;
+  // 대상을 아직 알 수 없을 때(로그인 전·로컬 도구 미연결): true면 고객 행동 대기(유료 재설치), 아니면 실패(무료 재연결)
+  waitForUnknownTarget?: boolean;
 };
 
 export async function runSteps(rt: AutomationRuntime, scope: JobScope, opts: EngineOptions, hooks: EngineHooks): Promise<EngineResult> {
@@ -161,6 +163,8 @@ async function runAll(
     }
     guard();
     const obsPairingId = await rt.obs.currentPairingId(scope);
+    if (opts.waitForUnknownTarget && !shopKey) return { kind: "needs_customer", action: "LOGIN" };
+    if (opts.waitForUnknownTarget && !obsPairingId) return { kind: "needs_customer", action: "LOCAL_TOOL" };
     if (!shopKey || !obsPairingId) return { kind: "failed", reason: "reconnect_target_unverified" };
     if (shopKey !== want.shopKey || obsPairingId !== want.obsPairingId) return { kind: "failed", reason: "reconnect_target_mismatch" };
     if (!shopChecked) await hooks.targetVerified?.({ shopKey, obsPairingId });
@@ -207,9 +211,12 @@ async function runAll(
       }
       let action: AutomationAction | null = null;
       let costWon = 0;
+      // 이번에 꺼낸 작업서 행동(문서가 바뀌어 실행하지 않으면 되돌려 놓는다)
+      let fromScript: (typeof scripted)[number] | null = null;
       if (!deviated && scripted.length > 0) {
         if (cueMatches(scripted[0].expect, raw)) {
-          action = resolveShop(scripted.shift()!.action, opts.shopHost);
+          fromScript = scripted.shift()!;
+          action = resolveShop(fromScript.action, opts.shopHost);
           stats.playbookActions++;
         } else {
           // 화면이 작업서와 다르다: 관리 화면 변경 신호. 재검증 대상이 된다(practice.ts).
@@ -258,7 +265,7 @@ async function runAll(
       if (!session) {
         guard();
         const pairingId = await rt.obs.currentPairingId(scope);
-        if (!pairingId) return want ? { kind: "failed", reason: "reconnect_target_unverified" } : { kind: "needs_customer", action: "LOCAL_TOOL" };
+        if (!pairingId) return want && !opts.waitForUnknownTarget ? { kind: "failed", reason: "reconnect_target_unverified" } : { kind: "needs_customer", action: "LOCAL_TOOL" };
         if (want && pairingId !== want.obsPairingId) return { kind: "failed", reason: "reconnect_target_mismatch" };
         if (obsPairing && pairingId !== obsPairing) return { kind: "failed", reason: "obs_target_changed" };
         if (mutating) {
@@ -287,8 +294,17 @@ async function runAll(
         guard();
         const here = await session.currentUrl();
         if (!nav || !here || !pageAllowedByNav(raw.url, nav) || !pageAllowedByNav(here, nav)) return { kind: "failed", reason: "unsafe_action:page_not_allowed" };
+        // 관찰한 문서와 지금 문서가 다르면(관찰과 확인 사이 이동) 판단 근거가 지금 화면이 아니다: 행동 0건으로 다시 관찰한다
+        if (here !== raw.url) {
+          if (fromScript) {
+            scripted.unshift(fromScript);
+            stats.playbookActions--;
+          }
+          history.pop();
+          continue;
+        }
         const secretFill = action.type === "fill" && "secretRef" in action.value;
-        expectedPage = { url: here, nav, ...(secretFill ? { secretOrigin: { shopHost: opts.shopHost, pathPrefixes: secretBook?.secretOrigin.pathPrefixes ?? [], adminCueText: secretBook?.secretOrigin.adminCue.textIncludes ?? [] } } : {}) };
+        expectedPage = { url: raw.url, nav, ...(secretFill ? { secretOrigin: { shopHost: opts.shopHost, pathPrefixes: secretBook?.secretOrigin.pathPrefixes ?? [], adminCueText: secretBook?.secretOrigin.adminCue.textIncludes ?? [] } } : {}) };
       }
       if (MUTATING.includes(action.type) && !markedSteps.has(step.key) && hooks.markChanged) {
         await hooks.markChanged(step.key);
@@ -376,7 +392,9 @@ export async function runRollback(
           guard();
           const here = await session.currentUrl();
           if (!here || !pageAllowedByNav(raw.url, nav) || !pageAllowedByNav(here, nav)) return { kind: "cleanup_needed", reason: "rollback_unsafe:page_not_allowed" };
-          expectedPage = { url: here, nav };
+          // 관찰한 문서와 지금 문서가 다르면 되돌리기를 이어 가지 않는다(판단 모델 없이는 다시 맞출 수 없음)
+          if (here !== raw.url) return { kind: "cleanup_needed", reason: "rollback_unsafe:page_changed" };
+          expectedPage = { url: raw.url, nav };
         }
         let pairing: string | undefined;
         if (rb.kind === "obs") {

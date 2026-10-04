@@ -53,11 +53,14 @@ export async function executeJob(db: PrismaClient, rt: AutomationRuntime, { job,
   const beat = startHeartbeat(() => extendLease(db, claim, leaseMs), Math.max(20, Math.floor(leaseMs / 3)));
   const lost = { signal: beat.signal };
   try {
-    // 무료 재연결은 실제로 연결된 쇼핑몰·PC가 기준 작업과 같아야 한다(요청 값만 믿지 않는다)
+    // 무료 재연결은 실제로 연결된 쇼핑몰·PC가 기준 작업과 같아야 한다(요청 값만 믿지 않는다).
+    // 유료 재설치는 요청한 쇼핑몰·PC(targetShopKey·targetObsPairingId)와 같아야 한다(다른 쇼핑몰·PC에 설치하지 않음)
     const expectFacts =
       job.kind === "RECONNECT_FREE" && job.baseJobId
         ? await db.automationJob.findFirst({ where: { id: job.baseJobId, sellerId: job.sellerId }, select: { shopKey: true, obsPairingId: true } })
-        : null;
+        : job.kind === "REINSTALL" && job.targetShopKey && job.targetObsPairingId
+          ? { shopKey: job.targetShopKey, obsPairingId: job.targetObsPairingId }
+          : null;
     const found = findPlaybook(job.playbookId);
     // 작업 중 작업서 버전이 바뀌었으면(새 버전은 연습 검증 전) 새 버전의 허용 규칙·행동으로 실행하지 않는다.
     // 구매 때 검증된 버전을 다시 쓸 수 없으므로 외부 행동 없이 실패·전액 환불 처리 대기로 끝낸다(고객 잘못이 아님).
@@ -114,6 +117,7 @@ export async function executeJob(db: PrismaClient, rt: AutomationRuntime, { job,
         // 이전 실행에서 이 작업이 OBS를 바꾼 PC(단계 기록). 재설치의 요청 PC 값과는 다르다(실행에서 확인한 값만).
         obsPairingDone: job.kind === "RECONNECT_FREE" ? null : job.obsPairingId,
         expectFacts,
+        waitForUnknownTarget: job.kind === "REINSTALL",
         targetVerified: job.targetVerifiedAt !== null,
         signal: lost.signal,
       },

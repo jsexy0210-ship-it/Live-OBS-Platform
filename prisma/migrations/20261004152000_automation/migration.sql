@@ -45,6 +45,8 @@ CREATE TABLE "AutomationJob" (
     "kind" "AutomationJobKind" NOT NULL DEFAULT 'INITIAL',
     "paymentId" UUID,
     "baseJobId" UUID,
+    "targetShopKey" TEXT,
+    "targetObsPairingId" TEXT,
     "status" "AutomationJobStatus" NOT NULL DEFAULT 'AWAITING_PAYMENT',
     "obsTargetKey" TEXT NOT NULL,
     "stepIndex" INTEGER NOT NULL DEFAULT 0,

@@ -107,9 +107,12 @@ type FencedChange = {
   detail?: Record<string, unknown>;
   // 같은 트랜잭션에서 이어서 할 쓰기(예: 결제를 환불 처리 대기로)
   after?: (tx: Tx, cur: AutomationJob, now: Date) => Promise<void>;
-  // 행을 바꾸기 전에 잡을 잠금(구매 트랜잭션과 같은 순서로 잡아 교착을 피한다)
-  before?: (tx: Tx, cur: AutomationJob) => Promise<void>;
 };
+
+// 잠금 순서(자동연결 전체 공통, 교착 방지): 판매자 잠금(lockSellerAutomation) → 작업서 잠금(lockPlaybook) → 작업 행(lockJob·FOR UPDATE)
+// → 결제 행. 여러 잠금을 잡는 모든 경로는 이 순서만 쓴다(commitJob·markConnectionRevoked·finishJob·touch·연습 기록).
+// 작업 행을 잡은 뒤에 판매자·작업서 잠금을 잡지 않는다.
+export type PreLocks = { seller?: boolean; playbook?: "shared" | "exclusive" };
 
 // 작업자의 모든 쓰기는 여기를 거친다. 토큰이 같고, 실행 중 상태이고, lease가 아직 살아 있을 때만 쓴다.
 // allowExpiredLease: lease가 막 끝났어도 토큰이 그대로면(아무도 회수·재할당하지 않았으면) 쓴다. 실행 시간 상한 실패처럼
@@ -119,9 +122,16 @@ async function fencedWrite(
   c: Claim,
   build: (now: Date, cur: AutomationJob) => FencedChange,
   // cleanupDone: 되돌리기를 마쳤다(실패로 끝나도 정리 필요 표시를 남기지 않음)
-  opts: { allowExpiredLease?: boolean; cleanupDone?: boolean } = {},
+  // preLocks: 작업 행보다 먼저 잡을 잠금(잠금 순서: 판매자 → 작업서 → 작업 행). 판매자·작업서 id는 바뀌지 않는 값이라 잠그기 전에 읽는다
+  opts: { allowExpiredLease?: boolean; cleanupDone?: boolean; preLocks?: PreLocks } = {},
 ): Promise<void> {
   await db.$transaction(async (tx) => {
+    if (opts.preLocks) {
+      const head = await tx.automationJob.findUnique({ where: { id: c.jobId }, select: { sellerId: true, playbookId: true } });
+      if (!head) throw new FencingError();
+      if (opts.preLocks.seller) await lockSellerAutomation(tx, head.sellerId);
+      if (opts.preLocks.playbook && head.playbookId) await lockPlaybook(tx, head.playbookId, opts.preLocks.playbook);
+    }
     await lockJob(tx, c.jobId);
     const now = await dbNow(tx);
     const cur = await tx.automationJob.findUnique({ where: { id: c.jobId } });
@@ -130,7 +140,6 @@ async function fencedWrite(
     const from = change.to ? sourcesOf(change.to).filter((s) => LEASED.includes(s)) : [...LEASED];
     // 실행 자리를 놓는 전이(대기·재시도·끝)면 이번에 쓴 실행 시간을 합계에 더한다
     const releasing = change.to && !LEASED.includes(change.to);
-    await change.before?.(tx, cur);
     const r = await tx.automationJob.updateMany({
       where: { id: c.jobId, fencingToken: c.token, status: { in: from }, ...(opts.allowExpiredLease ? {} : { leaseExpiresAt: { gt: now } }) },
       data: {
@@ -185,7 +194,10 @@ function assertRunTime(cur: AutomationJob, now: Date) {
 }
 
 export const touch = (db: PrismaClient, c: Claim, stats: TouchStats, leaseMs: number = AUTOMATION_LIMITS.leaseMs) =>
-  fencedWrite(db, c, (now, cur) => (assertRunTime(cur, now), {
+  fencedWrite(
+    db,
+    c,
+    (now, cur) => (assertRunTime(cur, now), {
     data: {
       costUsed: stats.costUsed,
       ...(stats.plannerCalls !== undefined ? { plannerCalls: stats.plannerCalls } : {}),
@@ -194,9 +206,10 @@ export const touch = (db: PrismaClient, c: Claim, stats: TouchStats, leaseMs: nu
       ...(stats.deviatedNow ? { lastDeviationAt: now } : {}),
       leaseExpiresAt: plus(now, leaseMs),
     },
-    // 화면 이탈 기록은 그 작업서의 배타 잠금을 잡고 커밋한다(진행 중인 구매가 준비 상태를 다시 계산하는 동안 끼어들지 않게)
-    ...(stats.deviatedNow && cur.playbookId ? { before: async (tx: Tx) => void (await lockPlaybook(tx, cur.playbookId!, "exclusive")) } : {}),
-  }));
+  }),
+    // 화면 이탈 기록은 그 작업서의 배타 잠금을 잡고 커밋한다(진행 중인 구매가 준비 상태를 다시 계산하는 동안 끼어들지 않게). 작업 행보다 먼저
+    stats.deviatedNow ? { preLocks: { playbook: "exclusive" } } : {},
+  );
 
 // 다음 단계로. 이 단계에서 알게 된 연결 결과(쇼핑몰·OBS pairing)를 함께 남긴다.
 // lease만 연장(작업자 heartbeat). 외부 호출이 오래 걸려도 다른 작업자가 가져가지 않게 따로 주기적으로 부른다.
@@ -309,9 +322,10 @@ export const finishJob = (db: PrismaClient, c: Claim, to: "SUCCEEDED" | "FAILED"
       ...(evidence ? { verifiedAt: now, verificationEvidence: evidence as Prisma.InputJsonValue, stepIndex: STEPS.length } : {}),
     },
     ...(reason ? { detail: { reason: reason.slice(0, 200) } } : {}),
-    // 설치 완료는 판매자 잠금을 잡고 커밋한다(유료 재설치 결제가 무료 재연결 판정을 다시 계산하는 동안 끼어들지 않게)
-    ...(to === "SUCCEEDED" ? { before: async (tx: Tx, cur: AutomationJob) => void (await lockSellerAutomation(tx, cur.sellerId)) } : {}),
-  }));
+  }),
+    // 설치 완료는 판매자 잠금을 잡고 커밋한다(유료 재설치 결제가 무료 재연결 판정을 다시 계산하는 동안 끼어들지 않게). 작업 행보다 먼저
+    to === "SUCCEEDED" ? { preLocks: { seller: true } } : {},
+  );
 
 // lease가 끝난 실행 중 작업을 회수한다(작업자 중단·멈춤). 토큰을 올려 이전 작업자의 늦은 쓰기를 막는다.
 // 고객 행동 마감이 지난 작업은 실패로 닫는다.
