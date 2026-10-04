@@ -44,7 +44,7 @@ test("대표자: 메뉴에서 들어가 주소를 발급·복사하면 실제 �
   await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "방송", exact: true }).click();
   await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "오버레이 편집기" }).click();
   await expect(page).toHaveURL(/\/seller\/overlay$/);
-  await expect(page.getByTestId("ovu-edit-soon")).toContainText("준비 중입니다");
+  await expect(page.getByTestId("ove")).toBeVisible();
   await expect(page.getByTestId("ovu-urls")).toHaveCount(0);
   await shot(page, "SA-052-empty");
 

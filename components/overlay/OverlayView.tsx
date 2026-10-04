@@ -2,15 +2,18 @@
 
 import "../../styles/overlay.css";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { WidgetView } from "./WidgetView";
+import type { LiveData, Widget } from "./layout";
 
-// OBS 오버레이 기본 템플릿 「주문대기 중심」(OV-001 세로 1080×1920 · OV-002 가로 1920×1080, 배경 투명).
-// 위젯: 현재 주문 카드(개봉 중) · 주문대기 패널(다음 대기 주문, 건수 집계는 두지 않음 — DESIGN_PROMPT 「없애는 것」). 세로형은 위쪽 40% 안에, 가로형은 가운데를 비우고 왼쪽에 둔다.
+// OBS 오버레이(OV-001 세로 1080×1920 · OV-002 가로 1920×1080, 배경 투명). 위젯 배치는 판매자가 편집기(SA-051)에서 정한 레이아웃(GET /api/overlay/{token}/layout)대로 그린다.
 // 상태: GET /api/overlay/{token}/state. 실시간 채널(stream, SSE)의 version이 바뀌면 다시 읽고, 끊겨도 15초마다 version을 확인한다.
+// 레이아웃 저장은 version을 올리지 않으므로 레이아웃은 따로 읽는다: 처음 한 번, 그 뒤 15초마다 다시 읽어 레이아웃 version이 바뀌면 바꿔 그린다.
 // 토큰이 폐기(재발급)되거나 쇼핑몰이 잠기면 서버가 404를 준다 → 주문 표시를 지우고 주소 확인 안내만 남긴다(OV-006).
-// 명예의 전당·공지 배너·쇼핑몰 주소·시각·HIT 카드 연출은 편집기(SA-051)·HIT 카드 API가 생긴 뒤 붙인다.
+// 신규 주문 알림·쇼핑몰 정보 위젯은 보낼 데이터가 아직 없어 그리지 않는다(편집기 미리보기에만 보인다).
 
-type Item = { id: string; nickname: string; gradeSnapshot: string | null; productLabel: string; quantity: number };
-type State = { version: number; live: boolean; opening: Item | null; waiting: Item[] };
+type Item = { id: string; nickname: string; gradeSnapshot: string | null; productLabel: string; quantity: number; timerSeconds?: number | null; openingStartedAt?: string | null };
+type State = { version: number; live: boolean; opening: Item | null; waiting: Item[]; hits?: { id: string; cardName: string; nickname: string }[] };
+type Layout = { aspect: string; version: number; widgets: Widget[] };
 type View = { kind: "loading" } | { kind: "gone" } | { kind: "offline" } | { kind: "ok"; state: State; offline: boolean };
 
 const POLL_MS = 15_000;
@@ -20,12 +23,13 @@ const ERROR_RELOAD_MAX_MS = 30_000;
 
 // 연결 실패: 그린 화면이 있으면 그대로 두고 안내만 더하고, 아직 한 번도 못 그렸으면 안내만 보인다(OV-006). 주소가 바뀐 상태는 그대로 둔다
 const offline = (v: View): View => (v.kind === "ok" ? { ...v, offline: true } : v.kind === "gone" ? v : { kind: "offline" });
-const QUEUE_ROWS = { portrait: 4, landscape: 5 };
 
 export function OverlayView({ token, landscape }: { token: string; landscape: boolean }) {
   const base = `/api/overlay/${encodeURIComponent(token)}`;
   const [view, setView] = useState<View>({ kind: "loading" });
   const [scale, setScale] = useState(1);
+  const [layout, setLayout] = useState<Layout | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const W = landscape ? 1920 : 1080;
   const H = landscape ? 1080 : 1920;
 
@@ -65,8 +69,24 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
     setView({ kind: "ok", state, offline: false });
   }, [base, markOffline]);
 
+  const layoutVersion = useRef<number | null>(null);
+  const aspect = landscape ? "16x9" : "9x16";
+  const loadLayout = useCallback(async () => {
+    try {
+      const res = await fetch(`${base}/layout?aspect=${aspect}`, { cache: "no-store" });
+      if (!res.ok) return;
+      const l = (await res.json()) as Layout;
+      if (l.version === layoutVersion.current) return;
+      layoutVersion.current = l.version;
+      setLayout(l);
+    } catch {
+      /* 다음 확인 때 다시 */
+    }
+  }, [base, aspect]);
+
   useEffect(() => {
     void load();
+    void loadLayout();
     const onVersion = (v: unknown) => {
       if (typeof v !== "number" || v !== version.current || isOffline.current) void load();
     };
@@ -92,6 +112,7 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
       });
     }
     const poll = setInterval(() => {
+      void loadLayout();
       fetch(`${base}/version`, { cache: "no-store" })
         .then(async (r) => (r.status === 404 ? onVersion(null) : r.ok ? onVersion(((await r.json()) as { version?: unknown }).version) : undefined))
         .catch(markOffline);
@@ -100,7 +121,13 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
       es?.close();
       clearInterval(poll);
     };
-  }, [base, load, markOffline]);
+  }, [base, load, loadLayout, markOffline]);
+
+  // 개봉 타이머를 1초마다 갱신
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
 
   // OBS 브라우저 소스(1080×1920·1920×1080)에서는 1배, 다른 크기 창에서는 비율을 지켜 맞춘다
   useEffect(() => {
@@ -111,7 +138,11 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
   }, [W, H]);
 
   const state = view.kind === "ok" ? view.state : null;
-  const rows = state ? state.waiting.slice(0, landscape ? QUEUE_ROWS.landscape : QUEUE_ROWS.portrait) : [];
+  const data: LiveData | null = state ? { live: state.live, opening: state.opening, waiting: state.waiting, hits: state.hits ?? [] } : null;
+  // 주문이 없는 현재 주문 카드·방송이 아닐 때의 주문대기는 그리지 않는다(이전 화면과 같음). 신규 주문 알림·쇼핑몰 정보는 보낼 데이터가 없다
+  const shown = (layout?.widgets ?? []).filter(
+    (w) => w.visible && !(w.type === "CURRENT_ORDER" && !state?.opening) && !(w.type === "QUEUE" && !state?.live) && w.type !== "NEW_ORDER_ALERT" && w.type !== "SHOP_INFO",
+  );
 
   return (
     <div className="ovl-root">
@@ -126,50 +157,22 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
             지금은 오버레이를 보여 드릴 수 없어요. 파트너스 관리자에서 주소를 확인해 주세요
           </div>
         )}
-        {state && (
-          <div className="ovl-stack">
+        {state && data && (
+          <>
             {view.kind === "ok" && view.offline && (
-              <div className="ovl-pill" role="status" data-testid="overlay-offline">
+              <div className="ovl-pill ovl-top" role="status" data-testid="overlay-offline">
                 연결이 끊겼어요. 다시 연결하는 중이에요
               </div>
             )}
             {!state.live && !state.opening && (
-              <div className="ovl-pill" data-testid="overlay-idle">
+              <div className="ovl-pill ovl-top" data-testid="overlay-idle">
                 방송 준비 중이에요
               </div>
             )}
-            {state.opening && (
-              <section className="ovl-card" aria-label="현재 주문" data-testid="overlay-opening">
-                {state.opening.gradeSnapshot && <span className="ovl-grade">{state.opening.gradeSnapshot}</span>}
-                <span className="ovl-cur-nm">{state.opening.nickname}</span>
-                <span className="ovl-cur-pd">
-                  {state.opening.productLabel} ×{state.opening.quantity}
-                </span>
-              </section>
-            )}
-            {state.live && (
-              <section className="ovl-queue" aria-label="주문대기" data-testid="overlay-queue">
-                <span className="ovl-q-h">주문대기</span>
-                {rows.length === 0 ? (
-                  <span className="ovl-q-empty">대기 중인 주문이 없어요</span>
-                ) : (
-                  <ol className="ovl-q-list">
-                    {rows.map((w, i) => (
-                      <li key={w.id} className="ovl-q-row">
-                        <span className="ovl-q-no">{i + 1}</span>
-                        <span className="ovl-q-tx">
-                          <span className="ovl-q-nm">{w.nickname}</span>
-                          <span className="ovl-q-pd">
-                            {w.productLabel} ×{w.quantity}
-                          </span>
-                        </span>
-                      </li>
-                    ))}
-                  </ol>
-                )}
-              </section>
-            )}
-          </div>
+            {shown.map((w) => (
+              <WidgetView key={w.id} widget={w} data={data} now={now} />
+            ))}
+          </>
         )}
       </div>
     </div>
