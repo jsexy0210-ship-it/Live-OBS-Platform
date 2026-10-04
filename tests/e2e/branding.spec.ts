@@ -157,7 +157,7 @@ test("마스터 관리자 공유 카드에 1200×630 이미지를 올리면 og:i
   expect(back.headers()["content-type"]).toBe("image/png");
 });
 
-test("조회 전용 관리자는 지금 값만 보고 바꿀 수 없다", async ({ page }) => {
+test("조회 전용 관리자는 파비콘·공유 카드 화면을 볼 수 없다", async ({ page }) => {
   // 로그인 실패 문구도 합니다체(대표님 지시 2026-10-04)
   await page.goto("/admin/login");
   await page.getByLabel("이메일").fill(readOnlyEmail);
@@ -165,11 +165,14 @@ test("조회 전용 관리자는 지금 값만 보고 바꿀 수 없다", async 
   await page.getByRole("button", { name: "로그인" }).click();
   await expect(page.getByText("이메일이나 비밀번호가 맞지 않습니다")).toBeVisible();
   await page.screenshot({ path: "tests/e2e/screenshots/branding-login-error-1440.png" });
-  await login(page, readOnlyEmail);
-  await expect(page.getByText("최고관리자만 변경할 수 있습니다. 현재는 조회만 가능합니다.")).toBeVisible();
+  await page.getByLabel("비밀번호").fill(password);
+  await page.getByRole("button", { name: "로그인" }).click();
+  await expect(page).toHaveURL(/\/admin$/);
+  // 설정(MA-080대)은 최고관리자만 보인다(MASTER 결정 2026-10-04): 조회 전용은 메뉴가 없고 주소로 들어가도 권한 안내만 본다
+  await page.goto("/admin/settings/branding");
+  await expect(page.getByTestId("admin-no-access")).toBeVisible();
   await expect(page.getByRole("button", { name: "공유 카드 저장" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "파일 선택" })).toHaveCount(0);
-  await expect(page.getByLabel("제목")).toBeDisabled();
+  await expect(page.getByLabel("제목")).toHaveCount(0);
   await page.screenshot({ path: "tests/e2e/screenshots/branding-readonly-1440.png", fullPage: true });
 });
 
