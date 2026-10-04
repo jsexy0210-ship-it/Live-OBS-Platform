@@ -60,6 +60,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/shipments/deliver": "ORDER_FOLLOWUP",
   "seller/members": "ORDER_FOLLOWUP",
   "seller/members/[memberId]": "ORDER_FOLLOWUP",
+  "seller/reward-ledger": "ORDER_FOLLOWUP",
   "seller/purchase-restrictions/[buyerMemberId]/lift": "ORDER_FOLLOWUP",
   "seller/coupons": "STORE_OPERATIONS",
   "seller/reviews": "STORE_OPERATIONS",
@@ -91,6 +92,10 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/products/[productId]/categories": "STORE_OPERATIONS",
   "seller/products/[productId]/images": "STORE_OPERATIONS",
   "seller/products/[productId]/detail": "STORE_OPERATIONS",
+  "seller/display": "STORE_OPERATIONS",
+  "seller/display/sections": "STORE_OPERATIONS",
+  "seller/display/recommended": "STORE_OPERATIONS",
+  "seller/display/settings": "STORE_OPERATIONS",
   "seller/products/[productId]/images/order": "STORE_OPERATIONS",
   "seller/products/[productId]/images/[imageId]": "STORE_OPERATIONS",
   "seller/products/[productId]/event": "STORE_OPERATIONS",
@@ -116,6 +121,8 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/shop-content/logo": "STORE_OPERATIONS",
   "seller/shop-content/logo/image": "STORE_OPERATIONS",
   "seller/broadcast/summary": "OVERLAY",
+  "seller/hit-cards": "OVERLAY",
+  "seller/hit-cards/[hitCardId]": "OVERLAY",
   "seller/stats/broadcasts": "OVERLAY",
   "seller/stats/members": "STORE_OPERATIONS",
   "seller/stats/orders": "STORE_OPERATIONS",
@@ -149,11 +156,13 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/reviews/images": "STORE_OPERATIONS",
   "shop/[slug]/reviews/[reviewId]/report": "STORE_OPERATIONS",
   "shop/[slug]/reviews/public-images/[imageId]": "STORE_OPERATIONS",
+  "shop/[slug]/home": "STORE_OPERATIONS", // 홈 진열(SA-016)
   "shop/[slug]/products": "STORE_OPERATIONS", // 구매자 상품 목록(운영 중 쇼핑몰만)
   "shop/[slug]/products/[productId]": "STORE_OPERATIONS", // 구매자 상품 상세
   "shop/[slug]/products/[productId]/reviews": "STORE_OPERATIONS",
   "shop/[slug]/products/[productId]/images/[imageId]": "STORE_OPERATIONS", // 상품 사진(보이는 상품만)
   "shop/[slug]/orders/[orderId]": "OPEN",
+  "shop/[slug]/payments": "STORE_OPERATIONS", // 주문 카드 결제 시작(startPayment가 주문 생성과 같은 조건으로 막음)
   "shop/[slug]/auth/login": "OPEN",
   "shop/[slug]/auth/logout": "OPEN",
   "shop/[slug]/addresses": "OPEN",
