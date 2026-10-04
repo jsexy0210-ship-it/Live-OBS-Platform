@@ -305,6 +305,8 @@ model BuyerMember {
   // 「재가입 제한 정보 보관 동의」(개인정보 수집·이용 동의와 별도, 재가입 제한을 켠 쇼핑몰에서만 받음) 시각·문서 버전
   rejoinRetentionAgreedAt     DateTime? @db.Timestamptz(3)
   rejoinRetentionVersion      String?
+  // 위 보관 동의를 마지막으로 철회한 시각(회원 정보에서 언제든 철회, buyers/rejoinConsent.ts). 철회하면 위 세 칸을 비운다.
+  rejoinRetentionWithdrawnAt  DateTime? @db.Timestamptz(3)
   // 가입 필수 동의 기록(본인확인 시작 때 받은 문서 버전·시각, buyers/consent.ts SignupConsent)
   signupConsent               Json?
   lastLoginAt        DateTime?         @db.Timestamptz(3)
