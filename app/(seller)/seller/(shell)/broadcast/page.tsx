@@ -18,6 +18,7 @@ import {
   type QueueItem,
   type Snapshot,
 } from "../../../../../components/seller/broadcast/queue";
+import { won } from "../../../../../components/seller/format";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage, type ApiResult } from "../../../../../components/seller/api";
 import { useLatestResponse } from "../../../../../components/seller/latestResponse";
@@ -30,6 +31,11 @@ import { useLatestResponse } from "../../../../../components/seller/latestRespon
 // API: GET /api/seller/queue·queue/version·stream, POST queue/{id}/{start|complete|revert|cancel|timer}·queue/reorder·broadcast/start·broadcast/end
 
 type Load = { kind: "loading" } | { kind: "error"; status: number; error: string } | { kind: "ok"; snap: Snapshot };
+// 위쪽 요약: GET /api/seller/broadcast/summary(지금 방송, 없으면 오늘 마지막 방송). 못 읽어도 대시보드는 그대로 쓴다(칸에 「-」)
+type Summary = {
+  broadcast: { id: string; title: string | null; status: "live" | "ended"; startedAt: string; endedAt: string | null } | null;
+  summary: { orders: number; paidOrders: number; sales: number; completed: number; cancelled: number; hits: number };
+};
 type Modal = { kind: "end"; sessionId: string } | { kind: "cancel"; item: QueueItem } | { kind: "timer"; item: QueueItem } | null;
 
 const POLL_MS = 15_000;
@@ -47,6 +53,8 @@ export default function BroadcastDashboardPage() {
   const [stale, setStale] = useState(false);
   const [title, setTitle] = useState("");
   const [now, setNow] = useState(() => Date.now());
+  const [sum, setSum] = useState<Summary | null>(null);
+  const sumSeq = useRef(0);
 
   // 다시 읽기 반영 규칙(latestResponse.ts): 나중에 보낸 요청의 성공만 반영하고, 실패가 앞선 성공을 버리지 않는다
   const reads = useLatestResponse();
@@ -79,6 +87,11 @@ export default function BroadcastDashboardPage() {
     // 변경 전에 보낸 읽기가 늦게 왔으면 버린다(변경 뒤 다시 읽기가 반영한다. 그 읽기가 실패했으면 낡음 안내가 남는다)
     if (verdict !== "apply") return;
     applySnap(r.data);
+    // 요약은 보조 정보: 늦게 온 옛 응답은 버리고, 실패하면 이전 값을 지워 틀린 숫자를 남기지 않는다
+    const n = ++sumSeq.current;
+    void api<Summary>("/api/seller/broadcast/summary").then((s) => {
+      if (n === sumSeq.current) setSum(s.ok ? s.data : null);
+    });
   }, [reads, applySnap]);
 
   // 처음 읽기 + 실시간 채널 + 15초 확인
@@ -272,6 +285,16 @@ export default function BroadcastDashboardPage() {
                   </button>
                 </div>
               )}
+
+              <section className="bc-sum" aria-label="방송 요약" data-testid="bc-summary">
+                <div className="bc-sum-t t-c1 c-alt">{sum?.broadcast ? (sum.broadcast.status === "live" ? "지금 방송" : "오늘 마지막 방송") : "오늘 방송 없음"}</div>
+                <div className="bc-sum-g">
+                  <SumTile label="주문" value={sum ? `${sum.summary.orders.toLocaleString("ko-KR")}건` : "-"} />
+                  <SumTile label="매출" value={sum ? won(sum.summary.sales) : "-"} />
+                  <SumTile label="완료 / 취소" value={sum ? `${sum.summary.completed} / ${sum.summary.cancelled}` : "-"} />
+                  <SumTile label="HIT" value={sum ? `${sum.summary.hits}장` : "-"} />
+                </div>
+              </section>
 
               {/* 방송 시작·종료 */}
               <section className="card pad bc-live" aria-label="방송 상태">
@@ -488,6 +511,15 @@ export default function BroadcastDashboardPage() {
       {modal?.kind === "timer" && <TimerModal item={modal.item} busy={busy} blocked={stale} onClose={() => setModal(null)} onConfirm={(s) => void setTimer(modal.item, s)} />}
       {toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}
     </>
+  );
+}
+
+function SumTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="stat">
+      <span className="t-l2 c-alt">{label}</span>
+      <span className="v">{value}</span>
+    </div>
   );
 }
 
