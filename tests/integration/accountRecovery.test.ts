@@ -500,6 +500,7 @@ describe("비밀번호 찾기(이메일+쇼핑몰) 직원", () => {
 describe("아이디 찾기·계정 고르기 비밀번호 찾기", () => {
   const begin = async () => {
     const s = await findStart(post("/api/seller/find-id/start", { ...IDV_INPUT, name: "직원", phone: "01055556666" }));
+    expect(s.headers.getSetCookie().find((c) => c.startsWith("lo_fidv="))).toMatch(/Max-Age=1800/i);
     expect(s.status).toBe(200);
     return { flow: cookieOf(s, "lo_fidv"), verificationId: (await s.json()).verificationId as string };
   };
