@@ -244,6 +244,51 @@ describe("공개 방식·자동 보류·적립금", () => {
     expect((await ledger(s)).map((x) => [x.type, x.status])).toEqual([["EARN", "FAILED"]]);
   });
 
+  it("리뷰 300개(유효 적립 300건)인 회원도 탈퇴가 집합 단위로 끝난다: 쿼리 수가 리뷰 수에 비례하지 않는다(Codex 4177188519)", async () => {
+    const s = await shop();
+    const n = 300;
+    const base = 800000;
+    await db.order.createMany({ data: Array.from({ length: n }, (_, i) => ({ sellerId: s.seller.id, orderNo: base + i, buyerMemberId: s.buyer.id, status: "PAID" as const, broadcastNicknameSnapshot: "닉", totalAmount: 30000, paidAt: new Date(), purchaseConfirmedAt: new Date() })) });
+    const orders = await db.order.findMany({ where: { sellerId: s.seller.id, orderNo: { gte: base } }, select: { id: true } });
+    await db.shipment.createMany({ data: orders.map((o) => ({ sellerId: s.seller.id, orderId: o.id, courier: "CJ", trackingNumber: "123456789012", status: "DELIVERED" as const, shippedAt: new Date(Date.now() - 2 * DAY), deliveredAt: new Date(Date.now() - DAY) })) });
+    const option = await db.productOption.findFirstOrThrow({ where: { sellerId: s.seller.id } });
+    await db.orderItem.createMany({ data: orders.map((o) => ({ sellerId: s.seller.id, orderId: o.id, productId: s.product.id, optionId: option.id, productNameSnapshot: "상품", optionNameSnapshot: "옵션", unitPrice: 30000, quantity: 1 })) });
+    const items = await db.orderItem.findMany({ where: { sellerId: s.seller.id, orderId: { in: orders.map((o) => o.id) } }, select: { id: true, orderId: true } });
+    await db.productReview.createMany({ data: items.map((it) => ({ sellerId: s.seller.id, orderId: it.orderId, orderItemId: it.id, productId: s.product.id, buyerMemberId: s.buyer.id, authorNickname: "닉", rating: 5, body: BODY, status: "VISIBLE" as const, rewardRound: 1 })) });
+    const reviews = await db.productReview.findMany({ where: { sellerId: s.seller.id }, select: { id: true, orderId: true } });
+    await db.rewardLedger.createMany({ data: reviews.map((r, i) => ({ sellerId: s.seller.id, buyerMemberId: s.buyer.id, orderId: r.orderId, type: "EARN" as const, amount: 500, testMode: true, status: i % 2 ? ("SUCCEEDED" as const) : ("PENDING" as const), idempotencyKey: `review_reward:${r.id}:1` })) });
+    // 탈퇴 트랜잭션 안의 쿼리 수를 센다
+    let calls = 0;
+    const counting = new Proxy(db, {
+      get(t, k) {
+        const v = Reflect.get(t, k);
+        if (k !== "$transaction") return typeof v === "function" ? v.bind(t) : v;
+        return (fn: (tx: unknown) => unknown, opts?: unknown) =>
+          t.$transaction(
+            (tx) =>
+              fn(
+                new Proxy(tx, {
+                  get(x, kk, rr) {
+                    const m = Reflect.get(x, kk, rr);
+                    if (typeof m === "function") return (...a: unknown[]) => (calls++, (m as (...b: unknown[]) => unknown).apply(x, a));
+                    if (m && typeof m === "object") return new Proxy(m, { get: (d, f) => { const g = Reflect.get(d, f); return typeof g === "function" ? (...a: unknown[]) => (calls++, g.apply(d, a)) : g; } });
+                    return m;
+                  },
+                }),
+              ) as Promise<unknown>,
+            opts as never,
+          );
+      },
+    }) as typeof db;
+    expect(await withdrawBuyer(counting, { sellerId: s.seller.id, buyerMemberId: s.buyer.id }, { password: PASSWORD })).toEqual({ ok: true });
+    expect(calls).toBeLessThan(100);
+    const l = await db.rewardLedger.findMany({ where: { sellerId: s.seller.id, type: "REVOKE" } });
+    // 대기 중이던 적립은 탈퇴가 실패로 닫았으니 회수할 것이 없고, 이미 지급된 150건만 회수 원장(탈퇴 회원이라 실패)이 생긴다
+    expect([l.length, l.every((x) => x.status === "FAILED")]).toEqual([n / 2, true]);
+    const d = ((await (await sellerDetailGet(get("/x", s.owner), p({ reviewId: reviews[1].id }))).json()) as { review: { rewardedAmount: number } }).review;
+    expect(d.rewardedAmount).toBe(0);
+  }, 60_000);
+
   it("이미 지급(SUCCEEDED)된 리뷰 적립이 있는 회원이 탈퇴해도 settleReward로 맞춰 화면 금액은 0", async () => {
     const s = await shop();
     await setPolicy(s, { rewardText: 500 });
@@ -342,6 +387,9 @@ describe("고치기·지우기·신고", () => {
     }
     const row = await db.productReview.findUniqueOrThrow({ where: { id: r.reviewId } });
     expect([row.status, row.heldBy, await db.productReviewReport.count({ where: { reviewId: r.reviewId, resolvedAt: null } })]).toEqual(["HELD", "reports", 3]);
+    // 신고 누적 보류도 「자동 보류」 집계에 들어간다(Codex 4177247987)
+    const sum = (await (await sellerList(get("/x", s.owner))).json()) as { summary: { autoHeld: number } };
+    expect(sum.summary.autoHeld).toBe(1);
     const pub = (await (await productReviewsGet(get("/x"), p({ slug: s.slug, productId: s.product.id }))).json()) as { total: number; reviews: unknown[] };
     expect([pub.total, pub.reviews.length]).toEqual([0, 0]);
   });
@@ -567,6 +615,20 @@ describe("환불과 리뷰 적립", () => {
     expect((await ledger(s)).map((x) => x.type)).toEqual(["EARN"]);
   });
 
+  it("MANUAL로 환불된 주문의 리뷰를 구매자가 고쳐도 리뷰 적립을 자동 회수하지 않는다(수동 확인 대상 유지, Codex 4177247985)", async () => {
+    const s = await shop();
+    await setPolicy(s, { rewardText: 500 });
+    await db.rewardPolicy.upsert({ where: { sellerId: s.seller.id }, create: { sellerId: s.seller.id, revokeMode: "MANUAL" }, update: { revokeMode: "MANUAL" } });
+    const item = await s.delivered();
+    const r = await created(s, item.id);
+    expect((await refund(s, item.orderId)).ok).toBe(true);
+    expect((await reviewPut(json("/x", "PUT", s.b1, { rating: 3, body: "별점만 바꿔요. 카드 상태는 좋았어요" }), p({ slug: s.slug, reviewId: r.reviewId }))).status).toBe(200);
+    expect((await ledger(s)).map((x) => x.type)).toEqual(["EARN"]);
+    // 리뷰 쪽 사유(숨김)는 그 사유로 회수한다
+    expect((await hidePost(json("/x", "POST", s.cs, { reason: "OTHER" }), p({ reviewId: r.reviewId }))).status).toBe(200);
+    expect((await ledger(s)).map((x) => x.type)).toEqual(["EARN", "REVOKE"]);
+  });
+
   it("공개와 환불을 동시에 해도 교착·500 없이 끝나고, 환불된 주문의 리뷰에는 유효한 적립이 남지 않는다", async () => {
     const s = await shop();
     await setPolicy(s, { publishMode: "REVIEW", rewardText: 500 });
@@ -609,6 +671,25 @@ describe("적립은 settleReward 하나로(원하는 상태와 원장을 맞춤,
     expect(await amounts(s)).toEqual([1000, -1000]);
     expect((await publishPost(json("/x", "POST", s.owner, {}), p({ reviewId: r.reviewId }))).status).toBe(200);
     expect(await amounts(s)).toEqual([1000, -1000, 500]);
+  });
+
+  it("설정을 바꾼 뒤 별점·본문만 고치면 이미 준 적립을 그대로 두고, 사진 자격이 바뀔 때만 새 설정으로 맞춘다(Codex 4177188513)", async () => {
+    const s = await shop();
+    await setPolicy(s, { rewardText: 500, rewardPhoto: 1000 });
+    const r = await created(s, (await s.delivered()).id);
+    expect(r.grantedReward).toBe(500);
+    await setPolicy(s, { rewardText: 0, rewardPhoto: 300 });
+    expect((await edit(s, r.reviewId, "별점만 바꿔요. 카드 상태는 좋았어요", [])).status).toBe(200);
+    expect(await amounts(s)).toEqual([500]);
+    expect(await sellerReward(s, r.reviewId)).toEqual([500, 500]);
+    // 사진을 붙여 자격이 바뀌면 지금 설정(사진 300)으로
+    const img = (await (await upload(s, fakeJpeg(800, 600))).json()) as { image: { id: string } };
+    expect((await edit(s, r.reviewId, BODY, [img.image.id])).status).toBe(200);
+    expect(await amounts(s)).toEqual([500, -500, 300]);
+    // 다시 설정을 바꾸고 사진 그대로 고치면 300 유지
+    await setPolicy(s, { rewardText: 0, rewardPhoto: 2000 });
+    expect((await edit(s, r.reviewId, "사진은 그대로 두고 글만 고쳐요", [img.image.id])).status).toBe(200);
+    expect(await amounts(s)).toEqual([500, -500, 300]);
   });
 
   it("같은 상태로 여러 번 바꿔도(같은 내용 고치기·두 번 공개·두 번 숨김) 원장은 바뀌지 않는다", async () => {

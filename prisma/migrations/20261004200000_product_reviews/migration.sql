@@ -39,6 +39,7 @@ CREATE TABLE "ProductReview" (
     "reply" TEXT,
     "repliedAt" TIMESTAMPTZ(3),
     "rewardRound" INTEGER NOT NULL DEFAULT 0,
+    "rewardForPhoto" BOOLEAN NOT NULL DEFAULT false,
     "deletedAt" TIMESTAMPTZ(3),
     "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,

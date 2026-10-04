@@ -872,6 +872,8 @@ model ProductReview {
   repliedAt      DateTime?            @db.Timestamptz(3)
   // 지금 지급된 리뷰 적립금(회수하면 0)과 지급 회차(다시 공개하면 새 회차로 지급)
   rewardRound    Int                  @default(0)
+  // 지금 회차 적립이 사진 리뷰 자격으로 지급됐는지(금액은 원장이 사실 기준). 자격이 그대로면 설정이 바뀌어도 그 지급을 유지한다
+  rewardForPhoto Boolean              @default(false)
   // 지운 리뷰의 묘비(주문 상품 1개당 1번이라 행은 남기고 본문·사진은 지운다)
   deletedAt      DateTime?            @db.Timestamptz(3)
   createdAt      DateTime             @default(now()) @db.Timestamptz(3)

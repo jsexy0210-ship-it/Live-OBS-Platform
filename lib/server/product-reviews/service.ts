@@ -108,18 +108,27 @@ export async function activeRewards(db: Db, sellerId: string, reviews: RewardRef
 }
 
 // 리뷰 적립은 이 함수 하나로만 바꾼다(멱등, 모든 상태 전이의 끝에서 부른다). 리뷰 행 잠금 아래에서 부르고, r은 바뀐 뒤의 값이다.
-// 원하는 금액 = 리뷰가 공개(VISIBLE)이고 지우지 않았고, 작성 회원이 ACTIVE이고, 잠긴 주문이 결제 완료(PAID)이면 지금 사진 자격의 설정 금액, 아니면 0.
+// 원하는 금액 = 리뷰가 공개(VISIBLE)이고 지우지 않았고, 작성 회원이 ACTIVE이고, 잠긴 주문이 결제 완료(PAID)이면 지금 사진 자격의 금액, 아니면 0.
+//   지금 유효한 지급이 같은 사진 자격(rewardForPhoto)으로 나간 것이면 그 지급 금액(원장)을 그대로 원하는 금액으로 본다. 설정을 바꾼 뒤
+//   별점·본문만 고쳐도 이미 준 적립금을 다시 계산하지 않는다(Codex 4177188513). 자격이 바뀌거나 새로 지급할 때만 지금 설정 금액을 쓴다.
 // 지금 유효한 원장 금액(activeRewards)과 다르면 이번 회차를 회수하고(회수 testMode는 원래 적립 원장을 따른다) 원하는 금액이 있으면 새 회차로 지급한다.
 // 결과는 돌려받은 원장 상태로 판단한다(실패한 적립·회수는 0으로 센다). 같은 상태로 다시 불러도 원장은 바뀌지 않는다.
 export type Settled = { granted: number; revoked: number };
 async function settleReward(tx: Tx, r: ProductReview, now: Date, orderPaid: boolean): Promise<Settled> {
   const active = (await activeRewards(tx, r.sellerId, [r])).get(r.id);
   let want = 0;
+  if (r.status === "VISIBLE" && !r.deletedAt && !orderPaid && active) {
+    // 환불된 주문의 적립 회수는 주문 적립과 같은 회수 방식을 따른다. MANUAL이면 판매자의 수동 확인 대상으로 남기고,
+    // 그 뒤의 고치기 등 다른 전이가 자동으로 회수하지 않는다(Codex 4177247985). 숨김·삭제·탈퇴처럼 리뷰 쪽 사유가 있으면 그 사유로 회수한다.
+    const rp = await tx.rewardPolicy.findUnique({ where: { sellerId: r.sellerId }, select: { revokeMode: true } });
+    const m = await tx.buyerMember.findUnique({ where: { id: r.buyerMemberId }, select: { status: true, deletedAt: true } });
+    if (rp?.revokeMode === "MANUAL" && m?.status === "ACTIVE" && !m.deletedAt) return { granted: 0, revoked: 0 };
+  }
   if (r.status === "VISIBLE" && !r.deletedAt && orderPaid) {
     const m = await tx.buyerMember.findUnique({ where: { id: r.buyerMemberId }, select: { status: true, deletedAt: true } });
     if (m?.status === "ACTIVE" && !m.deletedAt) {
       const photos = await tx.productReviewImage.count({ where: { sellerId: r.sellerId, reviewId: r.id } });
-      want = rewardFor(await policyOf(tx, r.sellerId), photos);
+      want = active && r.rewardForPhoto === photos > 0 ? active.amount : rewardFor(await policyOf(tx, r.sellerId), photos);
     }
   }
   const out: Settled = { granted: 0, revoked: 0 };
@@ -131,9 +140,10 @@ async function settleReward(tx: Tx, r: ProductReview, now: Date, orderPaid: bool
   }
   if (want > 0) {
     const round = r.rewardRound + 1;
+    const forPhoto = (await tx.productReviewImage.count({ where: { sellerId: r.sellerId, reviewId: r.id } })) > 0;
     const rp = await tx.rewardPolicy.findUnique({ where: { sellerId: r.sellerId }, select: { livePayoutEnabled: true } });
     const earn = await createPendingRewardLedger(tx, { ...base, type: "EARN", amount: want, testMode: !rp?.livePayoutEnabled, idempotencyKey: `review_reward:${r.id}:${round}` });
-    await tx.productReview.update({ where: { id: r.id }, data: { rewardRound: round } });
+    await tx.productReview.update({ where: { id: r.id }, data: { rewardRound: round, rewardForPhoto: forPhoto } });
     out.granted = earn.status === "FAILED" ? 0 : want;
   }
   return out;
@@ -198,7 +208,7 @@ export async function listSellerReviews(db: PrismaClient, ctx: TenantContext, q:
     db.productReview.count({ where: { sellerId: ctx.sellerId, deletedAt: null, reply: null, status: { not: "HIDDEN" } } }),
     db.productReview.count({ where: { sellerId: ctx.sellerId, deletedAt: null, reply: null, status: { not: "HIDDEN" }, createdAt: { lt: threeDaysAgo } } }),
     db.productReview.count({ where: { sellerId: ctx.sellerId, deletedAt: null, status: { in: ["PENDING", "HELD"] } } }),
-    db.productReview.count({ where: { sellerId: ctx.sellerId, deletedAt: null, status: "HELD", heldBy: { in: ["contact", "url", "banned_word"] } } }),
+    db.productReview.count({ where: { sellerId: ctx.sellerId, deletedAt: null, status: "HELD", heldBy: { in: ["contact", "url", "banned_word", "reports"] } } }),
     policyOf(db, ctx.sellerId),
   ]);
   const page = rows.slice(0, SELLER_PAGE);
@@ -738,11 +748,32 @@ export async function productReviews(db: PrismaClient, slug: string, productId: 
 // 탈퇴: 리뷰는 남기고 작성자 표시를 「탈퇴 회원」으로, 신고·붙지 않은 사진은 지운다(buyers/withdraw.ts)
 export const WITHDRAWN_AUTHOR = "탈퇴 회원";
 // 탈퇴 트랜잭션이 회원 행(NO KEY UPDATE)을 잡은 뒤 부른다(회원 → 리뷰 → 원장 순서). 적립은 settleReward로 맞춘다(탈퇴 회원이라 원하는 금액 0).
+// 리뷰가 많은 회원도 시간 안에 끝나도록 집합 단위로 처리한다(Codex 4177188519): 유효 적립을 한 번에 조회하고 회수 원장을 한 번에 만든다.
+// 탈퇴 회원이라 원하는 금액은 모두 0이고(settleReward와 같은 규칙), 회수 원장 상태는 createPendingRewardLedger와 같다(탈퇴 회원이면 실패).
+// 리뷰 행을 하나씩 잠그지 않는 이유: 리뷰를 바꾸는 쓰기는 모두 작성자 회원 행을 공유 잠금으로 먼저 잡으므로, 탈퇴가 쥔 회원 행(NO KEY UPDATE)에서 막힌다.
 export async function anonymizeMemberReviews(tx: Tx, scope: BuyerScope) {
   const now = await lockedNow(tx);
-  for (const { id } of await tx.productReview.findMany({ where: scope, select: { id: true }, orderBy: { id: "asc" } })) {
-    const r = await lockReview(tx, scope.sellerId, id);
-    if (r) await settleReward(tx, r, now, false);
+  const mine = await tx.productReview.findMany({ where: scope, select: { id: true, rewardRound: true, orderId: true } });
+  const active = await activeRewards(tx, scope.sellerId, mine);
+  if (active.size > 0) {
+    const m = await tx.buyerMember.findUnique({ where: { id: scope.buyerMemberId }, select: { status: true } });
+    const failed = m?.status === "WITHDRAWN";
+    await tx.rewardLedger.createMany({
+      data: mine
+        .filter((r) => active.has(r.id))
+        .map((r) => ({
+          ...scope,
+          orderId: r.orderId,
+          type: "REVOKE" as const,
+          amount: -active.get(r.id)!.amount,
+          testMode: active.get(r.id)!.testMode,
+          idempotencyKey: `review_revoke:${r.id}:${r.rewardRound}`,
+          status: failed ? ("FAILED" as const) : ("PENDING" as const),
+          failureReason: failed ? "member_withdrawn" : null,
+          processedAt: failed ? now : null,
+          createdAt: now,
+        })),
+    });
   }
   const reviews = await tx.productReview.updateMany({ where: scope, data: { authorNickname: WITHDRAWN_AUTHOR } });
   const reports = await tx.productReviewReport.deleteMany({ where: scope });
