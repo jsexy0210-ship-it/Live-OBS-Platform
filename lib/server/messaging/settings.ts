@@ -6,6 +6,7 @@ import { adminCan } from "../authz/permissions";
 import { dbNow } from "../billing/subscription";
 import { MAIL_QUOTA_MAX, effectiveMailQuota, platformMailUsage, sellerMailUsage } from "../mail/quota";
 import { decodeCursor, encodeCursor } from "../orders/read";
+import { messageJobsHealthy } from "./jobs";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 import {
   MESSAGE_AMOUNT_MAX,
@@ -155,7 +156,8 @@ export async function getAdminMessageSettings(db: PrismaClient, admin: AdminSess
   };
 }
 
-// 빼고 보내면 지금 값 유지
+// 빼고 보내면 지금 값 유지. 충전 기능을 켤 때(꺼짐 → 켜짐)는 발송 충전 정기 작업(대조·멈춘 예약 정리)이 최근에 성공했어야 한다
+// (messaging/jobs.ts, 아니면 jobs_not_running). 끄기는 언제든 된다.
 export async function updateAdminMessageSettings(
   db: PrismaClient,
   admin: AdminSessionContext,
@@ -164,10 +166,11 @@ export async function updateAdminMessageSettings(
 ) {
   requireAdminPermission(admin, "billing.price");
   const ints = ["platformDailyLimit", "platformMonthlyLimit"] as const;
-  if (input.chargingEnabled === undefined && ints.every((k) => input[k] === undefined)) return { ok: false as const };
-  if (input.chargingEnabled !== undefined && typeof input.chargingEnabled !== "boolean") return { ok: false as const };
-  if (ints.some((k) => input[k] !== undefined && !isInt(input[k], MAIL_QUOTA_MAX))) return { ok: false as const };
-  await db.$transaction(async (tx) => {
+  const invalid = { ok: false as const, reason: "invalid_message_settings" as const };
+  if (input.chargingEnabled === undefined && ints.every((k) => input[k] === undefined)) return invalid;
+  if (input.chargingEnabled !== undefined && typeof input.chargingEnabled !== "boolean") return invalid;
+  if (ints.some((k) => input[k] !== undefined && !isInt(input[k], MAIL_QUOTA_MAX))) return invalid;
+  const done = await db.$transaction(async (tx) => {
     // 한도 판정(reserveMail)과 같은 잠금 아래에서 바꾼다
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('mail_quota'))`;
     const cur = await messageSettings(tx);
@@ -177,9 +180,12 @@ export async function updateAdminMessageSettings(
       platformDailyLimit: (input.platformDailyLimit as number | undefined) ?? before.platformDailyLimit,
       platformMonthlyLimit: (input.platformMonthlyLimit as number | undefined) ?? before.platformMonthlyLimit,
     };
+    if (after.chargingEnabled && !before.chargingEnabled && !(await messageJobsHealthy(tx, await dbNow(tx)))) return false;
     await tx.platformMessageSetting.upsert({ where: { id: 1 }, create: { id: 1, ...after }, update: after });
     await writeAudit(tx, { actorType: "PLATFORM_ADMIN", actorId: admin.admin.id, action: "admin.message_settings.update", targetType: "PlatformMessageSetting", targetId: "1", before, after, ip: meta.ip, userAgent: meta.userAgent });
+    return true;
   });
+  if (!done) return { ok: false as const, reason: "jobs_not_running" as const };
   return { ok: true as const, settings: await getAdminMessageSettings(db, admin) };
 }
 
