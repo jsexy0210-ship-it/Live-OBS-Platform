@@ -5,11 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { FormRow, FormSection } from "../admin-ui";
-import ProductDetailEditor, { type DetailBlock } from "./ProductDetailEditor";
 import ProductImages, { type SlotImage } from "./ProductImages";
 import { Topbar } from "./SellerShell";
 import { NoImage, Toast } from "./States";
-import { api, failMessage, type Product, type ProductOption, type ProductStatus, type StockDeductMode } from "./api";
+import { api, apiUpload, failMessage, type Product, type ProductImageInfo, type ProductOption, type ProductStatus, type StockDeductMode } from "./api";
 import { INT4_MAX, STATUS_LABEL, parseAmount, statusBadge, textLength, won } from "./format";
 import { cleanText } from "../../lib/server/text/clean";
 
@@ -105,6 +104,8 @@ function errorFields(e: Errors): string {
   return f.join(" · ");
 }
 
+// 폼이 들고 있는 이미지: 서버에 있는 것(server)과 아직 올리지 않은 새 파일(file)
+type FormImage = SlotImage & { server?: boolean; file?: File };
 // 카테고리 트리(GET /api/seller/categories). 2단까지
 type CategoryNode = {
   id: string;
@@ -147,13 +148,16 @@ export function ProductForm({ initial }: { initial?: Product }) {
       setCatBase(id);
     })();
   }, [initial]);
-  // 이미지·상세 페이지(SA-012). 업로드·저장 API가 병합되기 전이라 브라우저 안에서만 들고 있다(저장되지 않음)
-  const [images, setImages] = useState<SlotImage[]>([]);
-  const [blocks, setBlocks] = useState<DetailBlock[]>([]);
-  const localImage = (f: File): SlotImage => ({
+  // 이미지(SA-012): 저장할 때 올린다. 새로 고른 파일은 file을 들고 있고(미리보기는 브라우저 주소), 서버에 있는 것은 server=true.
+  // 지운 서버 이미지는 저장할 때 지운다. 순서는 저장할 때 서버에 맞춘다.
+  const [images, setImages] = useState<FormImage[]>(() => (initial?.images ?? []).map((i) => ({ id: i.id, url: i.url, state: "done" as const, server: true })));
+  const [removedImages, setRemovedImages] = useState<string[]>([]);
+  const [uploadNote, setUploadNote] = useState<string | null>(null);
+  const localImage = (f: File): FormImage => ({
     id: `i${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
     url: URL.createObjectURL(f),
     state: "done",
+    file: f,
   });
   const [status, setStatus] = useState<ProductStatus>(initial?.status ?? "ON_SALE");
   const [deduct, setDeduct] = useState<StockDeductMode>(initial?.stockDeductMode ?? "PAYMENT");
@@ -207,6 +211,50 @@ export function ProductForm({ initial }: { initial?: Product }) {
     return true;
   };
 
+  // 서버에 있는 이미지 순서(저장한 뒤 맞춰 둔다). 저장 때 화면 순서와 다르면 순서를 서버에 보낸다
+  const serverOrder = useRef<string[]>((initial?.images ?? []).map((i) => i.id));
+
+  // 이미지를 저장한다: 지운 것 삭제 → 새 파일을 화면 순서대로 올림 → 순서가 다르면 순서 맞춤. 실패하면 거기서 멈추고 이유를 돌려 준다
+  // (이미 처리한 단계는 화면 상태에 반영돼 다시 저장해도 되풀이하지 않는다)
+  const syncImages = async (productId: string): Promise<{ ok: true } | { ok: false; message: string }> => {
+    const base = `/api/seller/products/${productId}/images`;
+    for (const id of removedImages) {
+      const r = await api(`${base}/${id}`, { method: "DELETE" });
+      if (!r.ok && r.status !== 404) return { ok: false, message: failMessage(r, "admin", "이미지를 지우지 못했습니다") };
+      serverOrder.current = serverOrder.current.filter((x) => x !== id);
+      setRemovedImages((cur) => cur.filter((x) => x !== id));
+    }
+    let list = images;
+    const todo = list.filter((i) => i.file);
+    let n = 0;
+    for (const img of todo) {
+      n += 1;
+      setUploadNote(`이미지 ${todo.length}장 올리는 중 · ${n} / ${todo.length}`);
+      list = list.map((x) => (x.id === img.id ? { ...x, state: "uploading" as const, error: undefined } : x));
+      setImages(list);
+      const r = await apiUpload<{ image: ProductImageInfo }>(base, img.file!);
+      if (!r.ok) {
+        const message = failMessage(r, "admin", "이미지를 올리지 못했습니다");
+        list = list.map((x) => (x.id === img.id ? { ...x, state: "error" as const, error: message } : x));
+        setImages(list);
+        setUploadNote(null);
+        return { ok: false, message };
+      }
+      URL.revokeObjectURL(img.url);
+      serverOrder.current = [...serverOrder.current, r.data.image.id];
+      list = list.map((x) => (x.id === img.id ? { id: r.data.image.id, url: r.data.image.url, state: "done" as const, server: true } : x));
+      setImages(list);
+    }
+    setUploadNote(null);
+    const want = list.filter((i) => i.server).map((i) => i.id);
+    if (want.length > 1 && want.join() !== serverOrder.current.join()) {
+      const r = await api(`${base}/order`, { method: "PUT", body: { imageIds: want } });
+      if (!r.ok) return { ok: false, message: failMessage(r, "admin", "이미지 순서를 저장하지 못했습니다") };
+    }
+    serverOrder.current = want;
+    return { ok: true };
+  };
+
   const create = async (st: ProductStatus) => {
     if (!checkFirst(st)) return;
     setSaving(st === "DRAFT" ? "draft" : "save");
@@ -223,7 +271,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
       },
     });
     if (!r.ok) return fail(failMessage(r, "admin", "상품을 등록하지 못했습니다. 입력한 내용은 그대로 있습니다"));
-    // 카테고리는 상품이 만들어진 뒤에 지정한다. 실패해도 상품은 이미 등록됐으므로 목록으로 보내고 알려 준다(다시 눌러 중복 등록하지 않게)
+    // 카테고리·이미지는 상품이 만들어진 뒤에 저장한다. 실패해도 상품은 이미 등록됐으므로 목록으로 보내고 알려 준다(다시 눌러 중복 등록하지 않게)
     let catFailed = false;
     if (categoryId) {
       const c = await api(`/api/seller/products/${r.data.id}/categories`, {
@@ -232,7 +280,9 @@ export function ProductForm({ initial }: { initial?: Product }) {
       });
       catFailed = !c.ok;
     }
-    router.push(`/seller/products?toast=${catFailed ? "created_nocat" : st === "DRAFT" ? "draft" : "created"}`);
+    let imgFailed = false;
+    if (images.length > 0) imgFailed = !(await syncImages(r.data.id)).ok;
+    router.push(`/seller/products?toast=${catFailed || imgFailed ? "created_partial" : st === "DRAFT" ? "draft" : "created"}`);
   };
 
   // 수정: 바뀐 것만 하나씩 보낸다. 한 단계가 실패하면 거기서 멈추고, 이미 저장된 단계는 기준값에 반영해 다시 보내지 않는다.
@@ -346,6 +396,8 @@ export function ProductForm({ initial }: { initial?: Product }) {
       if (!c.ok) return fail(failMessage(c, "admin", "카테고리를 지정하지 못했습니다"));
       setCatBase(categoryId);
     }
+    const si = await syncImages(current.id);
+    if (!si.ok) return fail(si.message);
     setBase(current);
     setRows(current.options.map(toRow));
     setRemoved([]);
@@ -501,11 +553,24 @@ export function ProductForm({ initial }: { initial?: Product }) {
           </FormSection>
 
           <FormSection title="이미지" actions={<span className="t-c1 c-alt num">{images.length} / 10</span>}>
-            <FormRow label="상품 이미지" required>
+            <FormRow label="상품 이미지">
               <ProductImages
                 images={images}
+                disabled={busy}
                 onAdd={(files) => setImages((cur) => [...cur, ...files.map(localImage)])}
-                onRemove={(id) => setImages((cur) => cur.filter((x) => x.id !== id))}
+                onRemove={(id) => {
+                  const gone = images.find((x) => x.id === id);
+                  if (gone?.server) setRemovedImages((cur) => [...cur, id]);
+                  setImages((cur) => cur.filter((x) => x.id !== id));
+                }}
+                onRestore={(img, index) => {
+                  if ((img as FormImage).server) setRemovedImages((cur) => cur.filter((x) => x !== img.id));
+                  setImages((cur) => {
+                    const next = [...cur];
+                    next.splice(Math.min(index, next.length), 0, img as FormImage);
+                    return next;
+                  });
+                }}
                 onReorder={(from, to) =>
                   setImages((cur) => {
                     const next = [...cur];
@@ -514,16 +579,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
                     return next;
                   })
                 }
-              />
-            </FormRow>
-          </FormSection>
-
-          <FormSection title="상세 페이지">
-            <FormRow label="상세 내용">
-              <ProductDetailEditor
-                blocks={blocks}
-                onChange={setBlocks}
-                onPickImage={(blockId, file) => setBlocks((cur) => cur.map((b) => (b.id === blockId && b.type === "image" ? { ...b, image: localImage(file) } : b)))}
+                onRetry={(id) => setImages((cur) => cur.map((x) => (x.id === id ? { ...x, state: "done" as const, error: undefined } : x)))}
               />
             </FormRow>
           </FormSection>
@@ -662,13 +718,18 @@ export function ProductForm({ initial }: { initial?: Product }) {
         </div>
 
         <aside className="col aside-sticky" style={{ gap: 16 }}>
-          <ProductPreview name={name} description={description} price={priceNum} status={status} rows={rows} />
+          <ProductPreview name={name} description={description} price={priceNum} status={status} rows={rows} image={images.find((i) => i.state !== "error")?.url} />
           <div className="card pad col" style={{ gap: 8 }}>
             <span className="t-hl2">필수 입력 항목</span>
             <span className="t-l2 c-neu">상품명, 판매가, 옵션 이름은 비워 둘 수 없습니다</span>
           </div>
           <div className="col" style={{ gap: 8 }}>
             {saveButtons(true)}
+            {uploadNote && (
+              <span className="t-c1 c-alt" style={{ textAlign: "center" }} role="status">
+                {uploadNote}
+              </span>
+            )}
             {!required && (
               <span className="t-c1 c-alt" style={{ textAlign: "center" }}>
                 필수 항목을 채우면 {isEdit ? "저장" : "등록"}할 수 있습니다
@@ -697,7 +758,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
 // 쇼핑몰 미리보기: 저장 전 입력값(상품명·설명·판매가·옵션·판매 상태)을 그대로 그린다(저장된 서버 값을 쓰지 않음).
 // 설명은 구매자 화면처럼 줄바꿈을 지키고, 길면 몇 줄 뒤 접어 「더보기」로 편다. 사진 기능이 없어 사진 칸은 낮게 둔다.
 const DESC_PREVIEW_LINES = 6;
-function ProductPreview({ name, description, price, status, rows }: { name: string; description: string; price: number | null; status: ProductStatus; rows: OptRow[] }) {
+function ProductPreview({ name, description, price, status, rows, image }: { image?: string; name: string; description: string; price: number | null; status: ProductStatus; rows: OptRow[] }) {
   const [open, setOpen] = useState(false);
   const desc = description.trim();
   const long = desc.split("\n").length > DESC_PREVIEW_LINES || textLength(desc) > DESC_PREVIEW_LINES * 22;
@@ -718,8 +779,8 @@ function ProductPreview({ name, description, price, status, rows }: { name: stri
           {status === "HIDDEN" ? "숨김 상태라 쇼핑몰에 표시되지 않습니다" : "임시 저장 상태라 쇼핑몰에 표시되지 않습니다"}
         </span>
       )}
-      <div className="img pv-img" title="이미지 없음">
-        <NoImage size={32} />
+      <div className="img pv-img" title={image ? "대표 이미지" : "이미지 없음"}>
+        {image ? <img src={image} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "inherit" }} /> : <NoImage size={32} />}
       </div>
       {soldOut && (
         <span className="pbadge">

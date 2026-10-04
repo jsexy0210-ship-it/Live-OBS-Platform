@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { cleanupProducts, RUN, track } from "./cleanup";
 import { submitSellerLogin } from "./sellerLogin";
 
-// SA-012 상품 등록: 이미지 칸(대표 이미지·순서·삭제)과 상세 페이지 편집 칸(글·이미지 블록, 순서, 미리보기).
+// SA-012 상품 등록·수정: 이미지 칸(대표 이미지·순서·삭제·되돌리기·저장)·카테고리·상품 코드·짧은 설명.
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
 // 1×1 PNG
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
@@ -33,16 +33,18 @@ test("이미지 칸: 첫 이미지가 대표, 여러 장 올리고 순서를 바
   await tiles.nth(1).getByRole("button", { name: "이미지 2 앞으로" }).click({ force: true });
   await expect(tiles.nth(0).locator("img")).toHaveAttribute("src", third!);
   await expect(tiles.nth(0).getByText("대표")).toBeVisible();
-  // 지우기: 바로 지워지지 않고 「지웠습니다 · 되돌리기」가 보인다. 되돌리면 그대로 남는다
+  // 지우기: 바로 빠지고 그 자리에 「지웠습니다 · 되돌리기」가 보인다. 되돌리면 그 자리로 돌아온다
   await tiles.nth(1).getByRole("button", { name: "이미지 2 지우기" }).click({ force: true });
   await expect(page.getByTestId("product-image-removed")).toBeVisible();
+  await expect(tiles).toHaveCount(2);
+  await expect(page.getByText("2 / 10")).toBeVisible();
   await page.getByRole("button", { name: "되돌리기" }).click();
   await expect(tiles).toHaveCount(3);
-  // 되돌리지 않으면 5초 뒤 실제로 지워진다
-  await tiles.nth(1).getByRole("button", { name: "이미지 2 지우기" }).click({ force: true });
-  await expect(tiles).toHaveCount(2);
   await expect(page.getByText("3 / 10")).toBeVisible();
+  // 되돌리지 않으면 5초 뒤 자리 표시가 사라진다
+  await tiles.nth(1).getByRole("button", { name: "이미지 2 지우기" }).click({ force: true });
   await expect(page.getByTestId("product-image-removed")).toHaveCount(0, { timeout: 9000 });
+  await expect(tiles).toHaveCount(2);
   await expect(page.getByText("2 / 10")).toBeVisible();
 });
 
@@ -59,30 +61,6 @@ test("이미지 칸: 종류·크기가 맞지 않는 파일은 올리지 않고 
   await expect(page.getByRole("alert").filter({ hasText: "이미지는 10장까지 올릴 수 있습니다" })).toBeVisible();
   // 10장이 다 차면 올릴 빈 칸이 없다
   await expect(page.getByRole("button", { name: /^(대표 )?이미지( \d+)? 올리기$/ })).toHaveCount(0);
-});
-
-test("상세 페이지: 글·이미지 블록을 추가하고 순서를 바꾸고 미리보기로 순서대로 본다", async ({ page }) => {
-  await openNew(page);
-  const blocks = page.getByTestId("detail-block");
-  await page.getByRole("button", { name: "+ 글 블록" }).click();
-  await page.getByRole("button", { name: "+ 이미지 블록" }).click();
-  await page.getByRole("button", { name: "+ 글 블록" }).click();
-  await expect(blocks).toHaveCount(3);
-  await page.getByLabel("블록 1 글").fill("첫 번째 글");
-  await page.getByLabel("블록 3 글").fill("마지막 글");
-  await page.getByLabel("블록 2 이미지 파일").setInputFiles(png("d.png"));
-  await expect(blocks.nth(1).locator("img")).toBeVisible();
-  // 마지막 글을 맨 위로
-  await page.getByRole("button", { name: "블록 3 위로" }).click();
-  await page.getByRole("button", { name: "블록 2 위로" }).click();
-  await expect(page.getByLabel("블록 1 글")).toHaveValue("마지막 글");
-  await page.getByRole("button", { name: "미리보기" }).click();
-  const pv = page.getByTestId("detail-preview");
-  await expect(pv.locator("p").first()).toHaveText("마지막 글");
-  await expect(pv.locator("img")).toHaveCount(1);
-  await page.getByRole("button", { name: "편집으로 돌아가기" }).click();
-  await page.getByRole("button", { name: "블록 1 삭제" }).click();
-  await expect(blocks).toHaveCount(2);
 });
 
 test("빈 칸은 10칸 중 올리지 않은 만큼 번호로 보이고, 첫 빈 칸이 「대표 이미지」→「추가 이미지」다", async ({ page }) => {
@@ -137,4 +115,80 @@ test("카테고리·상품 코드·짧은 설명: 대분류·소분류를 골라
     for (const k of top?.children ?? []) await page.request.delete(`/api/seller/categories/${k.id}`, { headers: hdr });
     await page.request.delete(`/api/seller/categories/${parentId}`, { headers: hdr });
   }
+});
+
+// 실제 PNG(서버가 가로·세로 100~4000px를 확인한다). 크기로 어느 이미지인지 알아본다
+async function pngBytes(page: Page, size: number, color: string) {
+  const b64 = await page.evaluate(
+    ({ size, color }) => {
+      const cv = document.createElement("canvas");
+      cv.width = size;
+      cv.height = size;
+      const x = cv.getContext("2d")!;
+      x.fillStyle = color;
+      x.fillRect(0, 0, size, size);
+      return cv.toDataURL("image/png").split(",")[1]!;
+    },
+    { size, color },
+  );
+  return Buffer.from(b64, "base64");
+}
+const widths = async (page: Page, id: string) => ((await (await page.request.get(`/api/seller/products/${id}/images`)).json()) as { images: { width: number }[] }).images.map((i) => i.width);
+
+test("이미지 저장: 등록하면 고른 순서대로 올라가고, 목록에 대표 이미지가 보이며, 수정 화면에 같은 순서로 보인다", async ({ page }) => {
+  await openNew(page);
+  const name = track(`이미지상품 ${RUN}`);
+  await page.getByLabel("상품명").fill(name);
+  await page.getByLabel("판매가").fill("9000");
+  await page.getByLabel("옵션 1 재고").fill("3");
+  await page.getByLabel("상품 이미지 파일").setInputFiles([
+    { name: "a.png", mimeType: "image/png", buffer: await pngBytes(page, 200, "#4a7bd9") },
+    { name: "b.png", mimeType: "image/png", buffer: await pngBytes(page, 300, "#d9884a") },
+  ]);
+  // b를 대표로
+  await page.getByTestId("product-image").nth(1).getByRole("button", { name: "이미지 2 앞으로" }).click({ force: true });
+  await page.getByRole("button", { name: "등록", exact: true }).first().click();
+  await expect(page.getByText("상품을 등록했습니다")).toBeVisible();
+  const found = await page.request.get(`/api/seller/products?q=${encodeURIComponent(name)}`);
+  const item = ((await found.json()) as { products: { id: string; thumbnailUrl: string | null }[] }).products[0]!;
+  expect(await widths(page, item.id)).toEqual([300, 200]);
+  expect(item.thumbnailUrl).toBeTruthy();
+  // 목록: 검색해서 대표 이미지가 보인다
+  await page.getByLabel("상품 검색").fill(name);
+  await page.getByRole("search", { name: "목록 조건" }).getByRole("button", { name: "검색", exact: true }).click();
+  await expect(page.getByTestId("product-row").first().getByTestId("product-thumb")).toBeVisible();
+  // 수정 화면: 같은 순서로 2장
+  await page.goto(`/seller/products/${item.id}`);
+  const tiles = page.getByTestId("product-image");
+  await expect(tiles).toHaveCount(2);
+  await expect(page.getByText("2 / 10")).toBeVisible();
+  const first = await tiles.nth(0).locator("img").evaluate((el: HTMLImageElement) => el.naturalWidth);
+  expect(first).toBe(300);
+});
+
+test("이미지 수정 저장: 지우고 바로 저장해도 서버에서 지워지고, 새 파일은 올라가며, 바꾼 순서가 저장된다", async ({ page }) => {
+  await openNew(page);
+  const hdr = { Origin: new URL(page.url()).origin };
+  const name = track(`이미지수정 ${RUN}`);
+  const made = await page.request.post("/api/seller/products", { data: { name, price: 5000, status: "DRAFT", options: [{ name: "기본", priceDelta: 0, stock: 1, sortOrder: 0 }] }, headers: hdr });
+  expect(made.status()).toBe(201);
+  const { id } = (await made.json()) as { id: string };
+  for (const [size, color] of [[200, "#4a7bd9"], [300, "#d9884a"]] as const) {
+    const up = await page.request.post(`/api/seller/products/${id}/images`, { data: await pngBytes(page, size, color), headers: hdr });
+    expect(up.status()).toBe(201);
+  }
+  expect(await widths(page, id)).toEqual([200, 300]);
+  await page.goto(`/seller/products/${id}`);
+  const tiles = page.getByTestId("product-image");
+  await expect(tiles).toHaveCount(2);
+  // 첫 이미지(200)를 지우고(되돌리기 시간 안에) 새 이미지(400)를 올린 뒤 400을 맨 앞으로
+  await tiles.nth(0).getByRole("button", { name: "이미지 1 지우기" }).click({ force: true });
+  await page.getByLabel("상품 이미지 파일").setInputFiles({ name: "c.png", mimeType: "image/png", buffer: await pngBytes(page, 400, "#5aa86b") });
+  await expect(tiles).toHaveCount(2);
+  await tiles.nth(1).getByRole("button", { name: "이미지 2 앞으로" }).click({ force: true });
+  await page.getByRole("button", { name: "저장", exact: true }).first().click();
+  await expect(page.getByText("저장했습니다")).toBeVisible();
+  expect(await widths(page, id)).toEqual([400, 300]);
+  // 저장 뒤 화면도 서버 이미지로 바뀌어 다시 저장해도 되풀이하지 않는다
+  await expect(tiles).toHaveCount(2);
 });

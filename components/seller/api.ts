@@ -110,11 +110,17 @@ export type Me = { sellerId: string; userId: string; isOwner: boolean; permissio
 // 재고 차감 시점: ORDER=주문하면 바로, PAYMENT=결제하면(기본)
 export type StockDeductMode = "ORDER" | "PAYMENT";
 export type ProductStatus = "DRAFT" | "ON_SALE" | "SOLD_OUT" | "HIDDEN";
+// 서버에 올라간 상품 이미지(첫 번째가 대표)
+export type ProductImageInfo = { id: string; url: string; sortOrder: number; width: number; height: number };
 export type ProductOption = { id: string; name: string; priceDelta: number; stock: number; sku: string | null; sortOrder: number };
 export type Product = {
   id: string;
   // 판매자별 자동 상품 코드(P0000001)
   code?: string;
+  // 상품 한 건 조회에만 있다(목록은 thumbnailUrl)
+  images?: ProductImageInfo[];
+  // 목록에만 있다: 대표 이미지 주소(없으면 null)
+  thumbnailUrl?: string | null;
   name: string;
   description: string | null;
   price: number;

@@ -1,4 +1,4 @@
-/* 상품 이미지 칸·상세 페이지 편집 칸(SA-012). 공통 CSS는 건드리지 않고 pm- 접두어로 이 화면만 꾸민다. */
+/* 상품 이미지 칸(SA-012). 공통 CSS는 건드리지 않고 pm- 접두어로 이 화면만 꾸민다. */
 .pm {
   display: flex;
   flex-direction: column;
@@ -120,75 +120,6 @@
   font-size: 11px;
   min-width: 0;
 }
-.pm-count {
-  align-self: flex-start;
-  font-size: 12px;
-  color: var(--wds-label-alternative, #70737c);
-}
-.pm-detail {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  width: 100%;
-}
-.pm-blocks {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.pm-block {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px;
-  border-radius: 6px;
-  box-shadow: inset 0 0 0 1px var(--wds-line-normal-alternative, #e1e2e4);
-}
-.pm-block-h {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.pm-block textarea {
-  min-height: 96px;
-  width: 100%;
-}
-.pm-wide {
-  width: 240px;
-  height: 160px;
-}
-.pm-pv {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  max-width: 360px;
-  padding: 16px;
-  border-radius: 6px;
-  box-shadow: inset 0 0 0 1px var(--wds-line-normal-alternative, #e1e2e4);
-}
-.pm-pv p {
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-.pm-pv img {
-  width: 100%;
-  display: block;
-}
-@media (max-width: 480px) {
-  .pm-pv {
-    max-width: 100%;
-  }
-}
-
-.pm-add.is-first {
-  color: var(--wds-primary-normal, #0066ff);
-  box-shadow: inset 0 0 0 1px var(--wds-primary-normal, #0066ff);
-}
 .pm-undo {
   display: flex;
   flex-direction: column;
@@ -197,4 +128,8 @@
   gap: 6px;
   font-size: 12px;
   color: var(--wds-label-alternative, #70737c);
+}
+.pm-add.is-first {
+  color: var(--wds-primary-normal, #0066ff);
+  box-shadow: inset 0 0 0 1px var(--wds-primary-normal, #0066ff);
 }
