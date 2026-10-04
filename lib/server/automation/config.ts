@@ -38,6 +38,8 @@ export const AUTOMATION_LIMITS = {
   notChargedAfterMs: 30 * 60_000,
   // 마감 뒤에도 마지막 결제 요청에서 이만큼은 PG 반영 지연을 기다린 뒤 「결제 안 됨」으로 닫는다
   chargeLookupGraceMs: 2 * 60_000,
+  // PG가 결과를 확정해 주지 않은(조회 안 됨) 청구가 이만큼 지나도 미확정이면 마스터 관리자 알림 1건(대사는 계속)
+  paymentUnresolvedAlertMs: 24 * 60 * 60_000,
 } as const;
 
 // 판단 모델 설정(2026-10-04 대표님 확정 ⑦: Pro급, 작업당 약 500원 추정, 작업당 비용 상한을 두고 실측 후 조정).

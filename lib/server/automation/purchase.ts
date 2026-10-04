@@ -368,7 +368,8 @@ export async function verifyAndSettle(
     const now = await dbNow(tx);
     const payment = await tx.automationPayment.findUniqueOrThrow({ where: { id: paymentId }, include: { job: true } });
     if (payment.status !== "PENDING") return payment.status;
-    // 「결제 안 됨」 마감은 첫 제출 + 30분으로 고정한다(다시 보내도 늘지 않음). 마감 뒤에도 마지막 제출에서 반영 지연 유예(2분)가 지나야 닫는다.
+    // 「결제 안 됨」 마감은 첫 제출 + 30분으로 고정한다(다시 보내도 늘지 않음). 마감 뒤에도 마지막 제출에서 반영 지연 유예(2분)가 지나야 작업을 닫는다.
+    // PG가 결과를 확정해 주지 않으면(조회 안 됨) 결제는 실패로 확정하지 않는다: 늦게 승인될 수 있어 대사 대상(PENDING)으로 남긴다.
     const sinceFirst = now.getTime() - (payment.chargeFirstSubmittedAt ?? payment.createdAt).getTime();
     const sinceLast = now.getTime() - (payment.chargeSubmittedAt ?? payment.createdAt).getTime();
     const notCharged = sinceFirst >= (opts.notChargedAfterMs ?? AUTOMATION_LIMITS.notChargedAfterMs) && sinceLast >= AUTOMATION_LIMITS.chargeLookupGraceMs;
@@ -376,8 +377,19 @@ export async function verifyAndSettle(
     let failureReason: string | null = null;
     if (found.status === "PAID") status = "PAID";
     else if (found.status === "FAILED") [status, failureReason] = ["FAILED", found.reason.slice(0, 200)];
-    else if (notCharged) [status, failureReason] = ["FAILED", "not_charged"];
-    if (!status) return "PENDING";
+    if (!status) {
+      // 마감이 지났으면 작업만 닫아 열린 작업 칸을 푼다(다시 보내지 않음). 그 뒤 승인이 확인되면 아래에서 환불 처리 대기로 간다
+      if (notCharged && payment.job) {
+        const closed = await tx.automationJob.updateMany({ where: { id: payment.job.id, status: "AWAITING_PAYMENT" }, data: { status: "FAILED", lastError: "payment_unresolved", finishedAt: now } });
+        if (closed.count === 1) await writeJobEvent(tx, payment.job, "AWAITING_PAYMENT", "FAILED", payment.job.fencingToken, { paymentStatus: "PENDING" });
+      }
+      // 오래 미확정이면 마스터 관리자 알림 1건(대사는 계속)
+      if (!payment.unresolvedAlertedAt && now.getTime() - payment.createdAt.getTime() >= AUTOMATION_LIMITS.paymentUnresolvedAlertMs) {
+        await tx.automationPayment.update({ where: { id: paymentId }, data: { unresolvedAlertedAt: now } });
+        await writeAudit(tx, { actorType: "SYSTEM", sellerId: payment.sellerId, action: "automation.payment_unresolved", targetType: "AutomationPayment", targetId: payment.id, after: { amount: payment.amount } });
+      }
+      return "PENDING";
+    }
 
     const claimed = await tx.automationPayment.updateMany({
       where: { id: paymentId, status: "PENDING" },
@@ -393,13 +405,14 @@ export async function verifyAndSettle(
         data: to === "QUEUED" ? { status: to, runAfter: now, queuedAt: now } : { status: to, lastError: "payment_failed", finishedAt: now },
       });
       if (moved.count === 1) await writeJobEvent(tx, job, "AWAITING_PAYMENT", to, job.fencingToken, { paymentStatus: status });
-      // 결제 확정 전에 취소된(연결을 시작하지 않은) 작업에 결제가 들어왔다: 환불 처리 대기로 둔다(실제 환불은 승인 뒤)
+      // 결제 확정 전에 취소됐거나 미확정 마감으로 닫힌(연결을 시작하지 않은) 작업에 결제가 들어왔다: 환불 처리 대기로 둔다(실제 환불은 승인 뒤)
       else if (status === "PAID") {
-        await tx.automationPayment.update({ where: { id: paymentId }, data: { status: "REFUND_PENDING", refundReason: "canceled_before_start", refundRequestedAt: now } });
+        const canceled = job.status === "CANCELED";
+        await tx.automationPayment.update({ where: { id: paymentId }, data: { status: "REFUND_PENDING", refundReason: canceled ? "canceled_before_start" : "payment_unresolved", refundRequestedAt: now } });
         await writeAudit(tx, {
           actorType: "SYSTEM",
           sellerId: payment.sellerId,
-          action: "automation.paid_after_cancel",
+          action: canceled ? "automation.paid_after_cancel" : "automation.paid_after_close",
           targetType: "AutomationPayment",
           targetId: payment.id,
           after: { jobStatus: job.status, amount: payment.amount },

@@ -356,19 +356,17 @@ async function runAll(
       // OBS 쪽은 확인한 PC를 넘겨 로컬 도구가 실행 직전에 비교하게 하고(다르면 행동 0건으로 거절), 결과의 실제 실행 PC를 다시 대조한다
       // 결과는 경계(fromExecutor)에서 정규화한 값만 쓴다(사유는 정해 둔 코드로, 식별자는 형식 검사, 증거는 비밀값 가림)
       const out: ActionOutcome = fromExecutor(session ? await session.perform(action, secrets, actionKey, expectedPage) : await rt.obs.perform(scope, action, actionKey, confirmedPairing), secrets);
+      // 행동 0회가 보장된 거절이면 바꾼 것이 없으므로 이번에 남긴 변경 기록을 되돌린다. 자리를 잃었어도(취소·회수와 겹침) 먼저 한다(guard 전)
+      if (out.kind === "fatal" && NOT_APPLIED.has(out.reason) && freshMark && hooks.unmarkChanged) {
+        await hooks.unmarkChanged(step.key, freshMark);
+        markedSteps.delete(step.key);
+      }
       if (!session && out.kind === "ok" && out.pairingId !== confirmedPairing) return { kind: "failed", reason: "obs_target_changed" };
       // 외부 행동이 끝나는 사이 자리를 잃었거나 실행 시간 상한을 넘었으면 결과를 쓰지 않고 멈춘다(작업자가 상황에 맞게 정리)
       guard();
       if (out.kind === "needs_customer") return { kind: "needs_customer", action: out.action };
       if (out.kind === "retryable") return { kind: "retry", reason: out.reason };
-      if (out.kind === "fatal") {
-        // 행동 0회가 보장된 거절이면 바꾼 것이 없으므로 이번에 남긴 변경 기록을 되돌린다(변경 전 실패로 끝남)
-        if (NOT_APPLIED.has(out.reason) && freshMark && hooks.unmarkChanged) {
-          await hooks.unmarkChanged(step.key, freshMark);
-          markedSteps.delete(step.key);
-        }
-        return { kind: "failed", reason: out.reason };
-      }
+      if (out.kind === "fatal") return { kind: "failed", reason: out.reason };
       // 실행기가 알려 준 PC가 이 작업이 바꾼 PC와 다르면 그 결과(증거·PC)를 저장하지 않고 멈춘다
       if (!session && obsPairing && out.facts?.obsPairingId && out.facts.obsPairingId !== obsPairing) return { kind: "failed", reason: "obs_target_changed" };
       Object.assign(facts, out.facts);

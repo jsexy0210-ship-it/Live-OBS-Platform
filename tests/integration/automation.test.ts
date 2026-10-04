@@ -1833,7 +1833,7 @@ describe("Codex 10차 반영(38e24f1)", () => {
     expect(sent).toContain("[문구]");
   });
 
-  it("「결제 안 됨」 마감은 첫 제출 + 30분으로 고정: 계속 NOT_FOUND여도 마감 뒤 마지막 제출에서 2분이 지나면 실패로 닫고 열린 작업 칸이 풀린다", async () => {
+  it("「결제 안 됨」 마감은 첫 제출 + 30분으로 고정: 계속 NOT_FOUND여도 마감 뒤 마지막 제출에서 2분이 지나면 작업을 닫고 열린 작업 칸이 풀린다(결제는 37차부터 미확정으로 남아 대사 계속)", async () => {
     const provider = new FakeBillingProvider();
     const a = await shopWithCard();
     provider.failNext = "timeout_before_charge";
@@ -1845,8 +1845,9 @@ describe("Codex 10차 반영(38e24f1)", () => {
     await reconcileAutomationPayments(db, provider, { olderThanMs: 0 });
     // 마감 뒤에는 다시 보내지 않는다
     expect(provider.charges).toHaveLength(0);
-    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "FAILED", failureReason: "not_charged" });
-    expect(await job(r.jobId)).toMatchObject({ status: "FAILED", lastError: "payment_failed" });
+    // PG가 닫힘을 확정해 주지 않았으므로 결제는 실패로 확정하지 않고 대사 대상으로 남긴다(37차)
+    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "PENDING" });
+    expect(await job(r.jobId)).toMatchObject({ status: "FAILED", lastError: "payment_unresolved" });
     // 열린 작업 칸이 풀려 다시 살 수 있다
     expect(await purchaseAutomation(db, provider, a.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP })).toMatchObject({ ok: true, paymentStatus: "PAID" });
   });
@@ -3201,5 +3202,68 @@ describe("Codex 36차 반영(9cef14e)", () => {
     }
     expect(await db.automationPayment.count({ where: { sellerId: s.seller.id } })).toBe(0);
     expect(await db.automationJob.count({ where: { sellerId: s.seller.id } })).toBe(0);
+  });
+});
+
+describe("Codex 37차 반영(eab4486)", () => {
+  it("조회 안 됨(NOT_FOUND)이 마감·유예를 넘겨도 결제를 실패로 확정하지 않고 대사를 계속한다: 늦게 승인되면 환불 처리 대기, 24시간 미확정이면 알림 1건", async () => {
+    const provider = new FakeBillingProvider();
+    const a = await shopWithCard();
+    provider.failNext = "timeout_before_charge";
+    const r = await purchaseAutomation(db, provider, a.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP });
+    if (!r.ok) throw new Error(r.reason);
+    const ago = (m: number) => new Date(Date.now() - m * 60_000);
+    // 3분 넘게(마감·유예 지남) 계속 조회 안 됨
+    await db.automationPayment.updateMany({ where: { sellerId: a.seller.id }, data: { createdAt: ago(33), chargeFirstSubmittedAt: ago(33), chargeSubmittedAt: ago(3) } });
+    await reconcileAutomationPayments(db, provider, { olderThanMs: 0 });
+    const pay = () => db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } });
+    expect(await pay()).toMatchObject({ status: "PENDING" });
+    expect(await job(r.jobId)).toMatchObject({ status: "FAILED", lastError: "payment_unresolved" });
+    // 다시 돌아도 계속 대사 대상(알림은 24시간 전에는 없음)
+    await reconcileAutomationPayments(db, provider, { olderThanMs: 0 });
+    expect(await pay()).toMatchObject({ status: "PENDING" });
+    expect(await db.auditLog.count({ where: { action: "automation.payment_unresolved", sellerId: a.seller.id } })).toBe(0);
+    // 24시간 넘게 미확정이면 알림 1건(여러 번 돌아도 1건)
+    await db.automationPayment.updateMany({ where: { sellerId: a.seller.id }, data: { createdAt: ago(25 * 60) } });
+    await reconcileAutomationPayments(db, provider, { olderThanMs: 0 });
+    await reconcileAutomationPayments(db, provider, { olderThanMs: 0 });
+    expect(await db.auditLog.count({ where: { action: "automation.payment_unresolved", sellerId: a.seller.id } })).toBe(1);
+    // 늦게 승인이 확인되면 판매자 돈만 빠진 채 남지 않고 환불 처리 대기(작업은 다시 열지 않음)
+    provider.getPayment = async () => ({ status: "PAID", paymentId: "late-pay", receiptUrl: null });
+    await reconcileAutomationPayments(db, provider, { olderThanMs: 0 });
+    expect(await pay()).toMatchObject({ status: "REFUND_PENDING", refundReason: "payment_unresolved" });
+    expect(await job(r.jobId)).toMatchObject({ status: "FAILED" });
+    expect(await db.auditLog.count({ where: { action: "automation.paid_after_close", sellerId: a.seller.id } })).toBe(1);
+  });
+
+  it("마감 전 늦은 승인은 그대로 진행한다(대기열로)", async () => {
+    const provider = new FakeBillingProvider();
+    const a = await shopWithCard();
+    provider.failNext = "timeout_before_charge";
+    const r = await purchaseAutomation(db, provider, a.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP });
+    if (!r.ok) throw new Error(r.reason);
+    provider.getPayment = async () => ({ status: "PAID", paymentId: "late-pay", receiptUrl: null });
+    await reconcileAutomationPayments(db, provider, { olderThanMs: 0 });
+    expect(await job(r.jobId)).toMatchObject({ status: "QUEUED" });
+  });
+
+  it("행동 0회가 보장된 거절(page_mismatch)과 판매자 취소가 겹쳐도 정리 필요가 남지 않고 취소로 끝난다", async () => {
+    const a = await bought();
+    const rt = runtime();
+    const open = rt.browser.open.bind(rt.browser);
+    rt.browser.open = async (scope) => {
+      const s = await open(scope);
+      const perform = s.perform.bind(s);
+      s.perform = async (action, ...rest) => {
+        if (action.type !== "click") return perform(action, ...rest);
+        // 누르기 직전(변경 기록 뒤) 판매자가 취소하고, 실행기는 문서가 바뀌어 행동 0회로 거절
+        expect(await cancelJob(db, a.ctx, a.jobId)).toMatchObject({ ok: true, job: { status: "CLEANUP_NEEDED" } });
+        return { kind: "fatal", reason: "page_mismatch" };
+      };
+      return s;
+    };
+    expect(await runOnce(db, rt, W)).toBe("fenced");
+    expect(rt.browser.performed.filter((p) => p.type === "click")).toHaveLength(0);
+    expect(await job(a.jobId)).toMatchObject({ status: "CANCELED", changedAt: null, mutatedSteps: [], cleanupNeededAt: null });
   });
 });

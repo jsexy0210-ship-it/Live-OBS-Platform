@@ -215,12 +215,26 @@ export async function markChanged(db: PrismaClient, c: Claim, stepKey: string): 
 
 // 실행기가 행동 0회를 보장하는 거절(page_mismatch·pairing_mismatch)을 돌려줬다: 그 행동 직전에 남긴 변경 기록만 같은 작업 행 잠금 아래 되돌린다.
 // 이 기록이 새로 남긴 단계·시각만 지우고, 그 전부터 있던 기록(이전 단계·이전 실행의 변경)은 그대로 둔다.
-export const unmarkChanged = (db: PrismaClient, c: Claim, stepKey: string, mark: ChangeMark) =>
-  fencedWrite(db, c, (_now, cur) => {
+// 실행 자리(lease)를 잃었거나 취소·회수와 겹쳐도 한다(행동 0회는 실행기가 보장): fencing 없이 작업 행 잠금 아래에서 한다.
+// 단 그 사이 다른 작업자가 자리를 잡았으면(토큰이 회수·취소 1회보다 더 오름) 그 작업자의 기록일 수 있어 건드리지 않는다.
+// 이 기록 때문에 「정리 필요」로 갔는데 되돌린 뒤 바꾼 것이 없으면, 원래 끝(판매자 취소면 취소, 그 밖은 실패)으로 바꾼다.
+export async function unmarkChanged(db: PrismaClient, c: Claim, stepKey: string, mark: ChangeMark): Promise<void> {
+  await db.$transaction(async (tx) => {
+    await lockJob(tx, c.jobId);
+    const cur = await tx.automationJob.findUnique({ where: { id: c.jobId } });
+    if (!cur || cur.fencingToken > c.token + 1) return;
     const steps = mark.stepAdded ? cur.mutatedSteps.filter((s) => s !== stepKey) : cur.mutatedSteps;
     const ownChangedAt = mark.changedAt !== null && cur.changedAt?.getTime() === mark.changedAt.getTime();
-    return { data: { mutatedSteps: steps, changedAt: ownChangedAt && steps.length === 0 ? null : cur.changedAt } };
+    const changedAt = ownChangedAt && steps.length === 0 ? null : cur.changedAt;
+    const reopen = cur.status === "CLEANUP_NEEDED" && !hasChanges({ changedAt, mutatedSteps: steps });
+    const end = cur.cancelRequestedAt ? ("CANCELED" as const) : ("FAILED" as const);
+    const job = await tx.automationJob.update({
+      where: { id: c.jobId },
+      data: { mutatedSteps: steps, changedAt, ...(reopen ? { status: end, cleanupNeededAt: null } : {}) },
+    });
+    if (reopen) await writeJobEvent(tx, job, "CLEANUP_NEEDED", end, job.fencingToken, { reason: "not_applied" });
   });
+}
 
 // 바꾼 뒤 실패·취소로 끝나면 조용히 끝내지 않는다: 정리 필요 표시와 마스터 관리자 알림(감사 기록 운영 이벤트)을 같은 트랜잭션에서 남긴다.
 // 사람이 쇼핑몰 앱·웹훅·OBS를 정리할 수 있게 하기 위해서다. 자동 되돌리기 전체(E3-W)는 다음 PR.

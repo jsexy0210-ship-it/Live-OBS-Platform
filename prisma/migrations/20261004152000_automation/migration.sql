@@ -26,6 +26,7 @@ CREATE TABLE "AutomationPayment" (
     "chargeSubmittedAt" TIMESTAMPTZ(3),
     "chargeFirstSubmittedAt" TIMESTAMPTZ(3),
     "lastCheckedAt" TIMESTAMPTZ(3),
+    "unresolvedAlertedAt" TIMESTAMPTZ(3),
     "providerPaymentId" TEXT,
     "failureReason" TEXT,
     "paidAt" TIMESTAMPTZ(3),
