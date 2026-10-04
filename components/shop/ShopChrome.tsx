@@ -26,6 +26,7 @@ const ICON = {
   grid: "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z",
   user: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm-8 8c1-4 4.5-6 8-6s7 2 8 6",
   close: "M6 6l12 12M18 6 6 18",
+  heart: "M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.6-7 10-7 10z",
 };
 
 // 구매자 쇼핑몰 머리(띠·로고·검색·장바구니·카테고리)와 휴대폰 카테고리 서랍·아래 고정 바. 상품 분류(카테고리)가 생기면 「전체 상품」 뒤에 붙인다.
@@ -118,6 +119,12 @@ export default function ShopChrome({ slug, shopName, loggedIn, nickname }: Props
               {badge(cartCount)}
             </Link>
             <div className="shop-hics shop-pc">
+              <Link href={`${base}/wishlist`} className="shop-hic">
+                <span className="shop-hic-ico">
+                  <Icon d={ICON.heart} />
+                </span>
+                찜
+              </Link>
               <Link href={`${base}/cart`} className="shop-hic">
                 <span className="shop-hic-ico">
                   <Icon d={ICON.cart} />

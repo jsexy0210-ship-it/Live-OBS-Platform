@@ -101,6 +101,9 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/reward-policy": "STORE_OPERATIONS",
   "seller/share-preview": "STORE_OPERATIONS",
   "seller/shipping-policy": "STORE_OPERATIONS",
+  "seller/notices": "STORE_OPERATIONS",
+  "seller/notices/[noticeId]": "STORE_OPERATIONS",
+  "seller/notices/faq-order": "STORE_OPERATIONS",
   "seller/shop-content/banners": "STORE_OPERATIONS",
   "seller/shop-content/banners/[bannerId]": "STORE_OPERATIONS",
   "seller/shop-content/banners/reorder": "STORE_OPERATIONS",
@@ -158,6 +161,9 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/cart/count": "OPEN", // 머리 배지 개수
   "shop/[slug]/wishlist": "STORE_OPERATIONS", // 찜: 찜하기(POST)는 shopOpen으로 막음, 목록은 열림
   "shop/[slug]/wishlist/[productId]": "OPEN", // 찜 빼기
+  "shop/[slug]/notices": "STORE_OPERATIONS", // 쇼핑몰 공지(운영 중이 아니면 404)
+  "shop/[slug]/notices/[noticeId]": "STORE_OPERATIONS",
+  "shop/[slug]/faqs": "STORE_OPERATIONS",
   "shop/[slug]/me/marketing-consent": "OPEN",
   "shop/[slug]/me/withdraw": "OPEN",
   "shop/[slug]/me/rewards": "OPEN", // 내 적립금 잔액(탈퇴 전 확인, #180)
@@ -182,6 +188,7 @@ const SHOP_PAGES: Record<string, "STORE_OPERATIONS" | "OPEN"> = {
   "shop/[slug]/cart": "STORE_OPERATIONS", // SH-004 장바구니: shopOpen으로 막고, 막히면 안내 화면
   "shop/[slug]/checkout": "STORE_OPERATIONS", // SH-005 주문서: shopOpen으로 막고, 막히면 안내 화면
   "shop/[slug]/orders/[orderId]": "OPEN", // SH-007 주문 완료·상세: 기존 주문 조회는 잠긴 쇼핑몰에서도 열림(API와 같은 기준)
+  "shop/[slug]/wishlist": "OPEN", // SH-034 찜: 목록·빼기는 잠긴 쇼핑몰에서도 열림(찜하기만 API가 막음)
   "shop/[slug]/orders": "OPEN", // 주문 조회 준비 중 안내(기능 없음)
   "shop/[slug]/help": "OPEN", // 고객센터 준비 중 안내(기능 없음)
   "shop/[slug]/me/notifications": "OPEN", // SH-025 알림 설정: 마케팅 수신 철회는 잠긴 쇼핑몰에서도 연다(API me/marketing-consent와 같은 기준)
