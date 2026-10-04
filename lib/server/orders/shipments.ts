@@ -41,6 +41,7 @@ export async function listShipments(db: PrismaClient, ctx: TenantContext, query:
   if (q.length > 50) return { ok: false as const };
 
   const pii = canViewCustomerPii(ctx);
+  const searchesPii = q !== "" && pii;
   const and: Prisma.OrderWhereInput[] = [{ sellerId: ctx.sellerId, legalHoldAt: null }, TAB_WHERE[tab]];
   if (from) and.push({ createdAt: { gte: from } });
   if (toStart) and.push({ createdAt: { lt: new Date(toStart.getTime() + 24 * 3600_000) } });
@@ -51,7 +52,7 @@ export async function listShipments(db: PrismaClient, ctx: TenantContext, query:
       { shipment: { trackingNumber: q.replace(/[\s-]/g, "") } },
     ];
     if (/^\d{1,9}$/.test(q)) or.push({ orderNo: Number(q) });
-    if (pii) or.push({ shippingAddress: { recipientName: { contains: q, mode: "insensitive" } } });
+    if (searchesPii) or.push({ shippingAddress: { recipientName: { contains: q, mode: "insensitive" } } });
     and.push({ OR: or });
   }
   if (cursor) and.push({ OR: [{ createdAt: { lt: cursor.createdAt } }, { createdAt: cursor.createdAt, id: { lt: cursor.id } }] });
@@ -75,14 +76,15 @@ export async function listShipments(db: PrismaClient, ctx: TenantContext, query:
   });
   const page = rows.slice(0, take);
   const last = page[page.length - 1];
-  if (pii && page.length > 0) {
+  // 받는 분 정보를 내보냈거나 받는 분 이름으로 찾았으면 기록한다. 이름으로 찾았으면 결과가 0건이어도 남긴다(일치 여부도 개인정보 확인, #215 Codex).
+  if (searchesPii || (pii && page.length > 0)) {
     await writeAudit(db, {
       actorType: ctx.actorType,
       actorId: ctx.actorId,
       sellerId: ctx.sellerId,
       action: "customer.pii.view",
       targetType: "ShipmentList",
-      reason: q ? "shipment_list_search" : "shipment_list",
+      reason: searchesPii ? "shipment_list_search" : "shipment_list",
       after: { orderIds: page.map((o) => o.id), count: page.length },
     });
   }
