@@ -270,9 +270,13 @@ describe("하위 변경(통합 → 오버레이 전용)", () => {
     expect(await payments(s.seller.id)).toEqual([{ amount: 179000, status: "PAID", kind: "PERIOD" }]);
   });
 
-  it("해지 예약 구독은 기간 끝에 하위 변경 없이 해지(갱신 결제 0건)", async () => {
+  it("해지 예약 구독은 플랜을 바꿀 수 없고(409 cancel_scheduled, 상위·하위 모두), 기간 끝에 그대로 해지(갱신 결제 0건)", async () => {
     const s = await shop("INTEGRATED", at(-30), { ...paying, cancelAtPeriodEnd: true, nextChargeAt: at(10) });
-    await changePlan(db, new FakeBillingProvider(), s.ctx, { planCode: "OVERLAY_ONLY", now: T0 });
+    expect(await changePlan(db, new FakeBillingProvider(), s.ctx, { planCode: "OVERLAY_ONLY", now: T0 })).toEqual({ ok: false, reason: "cancel_scheduled" });
+    expect((await subOf(s.seller.id)).pendingPlanId).toBeNull();
+    const up = await shop("OVERLAY_ONLY", at(-30), { ...paying, cancelAtPeriodEnd: true, nextChargeAt: at(10) });
+    expect(await changePlan(db, new FakeBillingProvider(), up.ctx, { planCode: "INTEGRATED", now: T0 })).toEqual({ ok: false, reason: "cancel_scheduled" });
+    expect(await payments(up.seller.id)).toEqual([]);
     await renewDueSubscriptions(db, new FakeBillingProvider(), { now: at(10) });
     expect(await db.subscriptionPayment.count()).toBe(0);
     expect((await subOf(s.seller.id)).status).toBe("CANCELED");

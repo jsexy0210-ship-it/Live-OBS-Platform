@@ -1,0 +1,28 @@
+/* SA-052 오버레이 주소 발급·재발급 */
+.ovu-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.ovu-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--wds-line-normal-alternative);
+}
+.ovu-row:first-child {
+  border-top: 0;
+}
+.ovu-url {
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 600px) {
+  .ovu-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
