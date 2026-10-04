@@ -49,6 +49,8 @@ export default function StaffPage() {
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; staff: Staff[] }>({ kind: "loading" });
   const [modal, setModal] = useState<Modal>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // 변경 뒤 목록 다시 읽기가 실패해 보이는 목록이 최신이 아닐 수 있음(숨기지 않고 알리고 다시 불러오기를 둔다)
+  const [stale, setStale] = useState(false);
 
   // 목록 다시 읽기(저장 직후·불분명 확인 등) 반영 규칙(latestResponse.ts): 나중에 보낸 요청의 성공만 반영하고, 실패가 앞선 성공을 버리지 않는다
   const listReads = useLatestResponse();
@@ -56,9 +58,18 @@ export default function StaffPage() {
     const n = listReads.next();
     const r = await api<{ staff: Staff[] }>("/api/seller/staff");
     // 이미 목록을 보여 주는 중에 다시 읽기만 실패하면 지금 화면을 그대로 둔다(직원 추가의 불분명 상태 등 입력 중인 내용을 잃지 않게)
-    if (!r.ok) return setState((prev) => (prev.kind === "ok" ? prev : { kind: "error", status: r.status }));
-    if (listReads.accept(n)) setState({ kind: "ok", staff: r.data.staff });
+    if (!r.ok) {
+      if (listReads.hasApplied()) return setStale(true);
+      return setState({ kind: "error", status: r.status });
+    }
+    if (!listReads.accept(n)) return;
+    setStale(false);
+    setState({ kind: "ok", staff: r.data.staff });
   }, [listReads]);
+
+  // 서버가 성공으로 확정한 변경을 해당 행에 바로 반영한다
+  const applyRow = (id: string, changes: Partial<Staff>) =>
+    setState((prev) => (prev.kind === "ok" ? { kind: "ok", staff: prev.staff.map((s) => (s.id === id ? { ...s, ...changes } : s)) } : prev));
 
   useEffect(() => {
     if (me.isOwner) void load();
@@ -106,6 +117,14 @@ export default function StaffPage() {
         ) : (
           <div className="staff-grid">
             <div className="col" style={{ gap: 16, minWidth: 0 }}>
+              {stale && (
+                <div className="msg msg-cau row between" role="status" data-testid="staff-stale" style={{ gap: 8, flexWrap: "wrap" }}>
+                  <span>최신 목록을 불러오지 못했습니다. 보이는 목록이 최신이 아닐 수 있습니다.</span>
+                  <button className="btn btn-sm btn-out" type="button" onClick={() => void load()}>
+                    다시 불러오기
+                  </button>
+                </div>
+              )}
               <div className="card staff-table-wrap">
                 <table className="tbl staff-table">
                   <thead>
@@ -199,9 +218,9 @@ export default function StaffPage() {
           </div>
         )}
       </main>
-      {modal?.kind === "edit" && <EditStaffModal staff={modal.staff} onClose={() => setModal(null)} onSaved={done} onChanged={() => void load()} />}
+      {modal?.kind === "edit" && <EditStaffModal staff={modal.staff} onClose={() => setModal(null)} onSaved={done} onChanged={() => void load()} onApply={(c) => applyRow(modal.staff.id, c)} />}
       {modal?.kind === "password" && <ResetPasswordModal staff={modal.staff} onClose={() => setModal(null)} onDone={done} />}
-      {modal?.kind === "disable" && <DisableStaffModal staff={modal.staff} onClose={() => setModal(null)} onDone={done} onChanged={() => void load()} />}
+      {modal?.kind === "disable" && <DisableStaffModal staff={modal.staff} onClose={() => setModal(null)} onDone={done} onChanged={() => void load()} onApply={(c) => applyRow(modal.staff.id, c)} />}
       {toast && <Toast text={toast} onDone={() => setToast(null)} />}
     </>
   );

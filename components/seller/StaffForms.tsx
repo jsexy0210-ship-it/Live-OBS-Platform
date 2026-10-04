@@ -202,7 +202,8 @@ type EditSent = { name: string; phone: string | null; perms: StaffPerm[]; profil
 
 // 직원 정보·권한 수정: 이름·휴대폰은 PATCH, 권한은 permissions로 보낸다(바뀐 것만)
 // 결과가 불분명하면(연결 끊김·5xx) 칸을 잠그고, 목록에서 보낸 값과 같아진 것을 확인하거나 같은 값 재저장이 성공할 때만 저장으로 본다
-export function EditStaffModal({ staff, onClose, onSaved, onChanged }: { staff: Staff; onClose: () => void; onSaved: (text: string) => void; onChanged?: () => void }) {
+// onApply: 서버가 성공으로 돌려준 값(정보·권한)을 목록 행에 바로 반영한다(뒤이은 목록 다시 읽기가 실패해도 화면이 낡지 않게)
+export function EditStaffModal({ staff, onClose, onSaved, onChanged, onApply }: { staff: Staff; onClose: () => void; onSaved: (text: string) => void; onChanged?: () => void; onApply?: (changes: Partial<Staff>) => void }) {
   const [name, setName] = useState(staff.name);
   const [phone, setPhone] = useState(staff.phone ?? "");
   const [perms, setPerms] = useState<StaffPerm[]>(staff.permissions);
@@ -234,7 +235,8 @@ export function EditStaffModal({ staff, onClose, onSaved, onChanged }: { staff: 
     setError(null);
     setPhoneError(null);
     if (sent.profile) {
-      const r = await api(`/api/seller/staff/${staff.id}`, { method: "PATCH", body: { name: raw.name, phone: sent.phone } });
+      const r = await api<{ name: string; phone: string | null; identityLinked: boolean }>(`/api/seller/staff/${staff.id}`, { method: "PATCH", body: { name: raw.name, phone: sent.phone } });
+      if (r.ok) onApply?.({ name: r.data.name, phone: r.data.phone, identityLinked: r.data.identityLinked });
       if (!r.ok) {
         if (isUnclear(r)) return check(sent);
         setBusy(false);
@@ -244,7 +246,8 @@ export function EditStaffModal({ staff, onClose, onSaved, onChanged }: { staff: 
       }
     }
     if (sent.permissions) {
-      const r = await api(`/api/seller/staff/${staff.id}/permissions`, { method: "POST", body: { permissions: sent.perms } });
+      const r = await api<{ permissions: StaffPerm[] }>(`/api/seller/staff/${staff.id}/permissions`, { method: "POST", body: { permissions: sent.perms } });
+      if (r.ok) onApply?.({ permissions: r.data.permissions });
       if (!r.ok) {
         if (isUnclear(r)) return check(sent);
         setBusy(false);
@@ -417,7 +420,8 @@ export function ResetPasswordModal({ staff, onClose, onDone }: { staff: Staff; o
 }
 
 // 비활성화: 결과가 불분명하면 목록에서 DISABLED를 확인하거나 재전송이 성공할 때만 완료로 본다(서버의 비활성화는 다시 보내도 같은 결과)
-export function DisableStaffModal({ staff, onClose, onDone, onChanged }: { staff: Staff; onClose: () => void; onDone: (text: string) => void; onChanged?: () => void }) {
+// onApply: 서버가 비활성화를 확정하면 목록 행에 바로 반영한다(뒤이은 목록 다시 읽기가 실패해도 화면이 낡지 않게)
+export function DisableStaffModal({ staff, onClose, onDone, onChanged, onApply }: { staff: Staff; onClose: () => void; onDone: (text: string) => void; onChanged?: () => void; onApply?: (changes: Partial<Staff>) => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [unclear, setUnclear] = useState<string | null>(null);
@@ -440,6 +444,7 @@ export function DisableStaffModal({ staff, onClose, onDone, onChanged }: { staff
     const r = await api(`/api/seller/staff/${staff.id}/disable`, { method: "POST" });
     if (r.ok) {
       setBusy(false);
+      onApply?.({ status: "DISABLED" });
       return onDone(doneText);
     }
     if (isUnclear(r)) return check();

@@ -865,6 +865,30 @@ test("처음 화면 정보가 늦고 다시 읽기가 먼저 성공해도 남은
   await page.unrouteAll();
 });
 
+// 변경은 성공했는데 뒤이은 목록 다시 읽기가 실패하면: 서버가 확정한 변경은 행에 바로 반영하고, 목록이 낡았을 수 있음을 숨기지 않는다
+test("비활성화 성공 뒤 목록 다시 읽기가 실패해도 행은 비활성으로 보이고, 최신 목록을 불러오지 못했다고 알린다", async ({ page }) => {
+  await login(page, "demo-owner@example.com");
+  await expect(page).toHaveURL(/\/seller\/staff$/);
+  const id = uniq();
+  const s = { name: `낡음${id}`, phone: "01034343434", email: `stale-${id}@example.com`, password: `pw-${id}-init` };
+  await addStaff(page, s);
+  await page.getByRole("button", { name: "계정 생성" }).click();
+  await expect(row(page, s.email)).toContainText("활성");
+
+  await page.route("**/api/seller/staff", (route) => (route.request().method() === "GET" ? route.fulfill({ status: 500, json: { error: "internal" } }) : route.continue()));
+  await page.getByRole("button", { name: `${s.name} 비활성화` }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "비활성화" }).click();
+  await expect(page.getByText(`${s.name} 계정을 비활성화했습니다`)).toBeVisible();
+  await expect(row(page, s.email)).toContainText("비활성");
+  const stale = page.getByTestId("staff-stale");
+  await expect(stale).toContainText("최신 목록을 불러오지 못했습니다");
+  // 다시 불러오기가 성공하면 안내가 사라진다
+  await page.unrouteAll();
+  await stale.getByRole("button", { name: "다시 불러오기" }).click();
+  await expect(stale).toHaveCount(0);
+  await expect(row(page, s.email)).toContainText("비활성");
+});
+
 test("직원: 메뉴에 직원 계정이 없고, 주소로 들어오면 대표자만 볼 수 있다고 안내한다", async ({ page }) => {
   const listed = page.waitForRequest((r) => r.url().endsWith("/api/seller/staff"), { timeout: 3000 }).then(
     () => true,
