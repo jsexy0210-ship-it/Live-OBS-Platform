@@ -136,6 +136,7 @@ tests/unit/**, tests/integration/**           테스트
 ### 4.2 판매자(쇼핑몰)·직원
 
 - `Seller` (테넌트 = 쇼핑몰 1개): id, slug(기본 주소 하위 이름, **유니크**), shopName, status(`PENDING | ACTIVE | SUSPENDED | REJECTED | CLOSED`), businessInfo(JSON), approvedAt, approvedByAdminId, suspendedReason, representativeCiHash(대표자 휴대폰 본인확인 CI의 HMAC), representativeVerifiedAt(둘은 함께 기록), liveVersion(실시간 version 카운터, 기본 0), createdAt — **대표자 1명당 쇼핑몰 1개**: representativeCiHash 부분 유니크(해지 `CLOSED`·반려 `REJECTED` 제외)
+- 공유 미리보기(SA-060, 대기열 4번 C안): `Seller.shareTitle`(60자)·`shareDescription`(160자), `GET·PUT /api/seller/share-preview`(대표자·`SHOP_SETTINGS`). 공개 `GET /api/shop/{slug}/share`(제목·설명·카드 주소, 상품 상세는 상품 이름 우선)와 `GET /api/shop/{slug}/og.png`(쇼핑몰 이름 기본 카드, 원티드 산스로 서버에서 그림, `lib/server/shop/ogCard.ts`). 파비콘·카드 이미지·로고 업로드는 이미지 저장소 결정 뒤
 - `SellerDomain`: id, sellerId, hostname(**유니크**), verifiedAt, certStatus — 개인 도메인 연결용 자리만
 - `SellerUser`: id, sellerId, email, passwordHash, name, isOwner, permissions(권한 항목 배열, 3.3), status(`ACTIVE | DISABLED`), lastLoginAt, phone(직원 휴대폰, nullable), identityCiHash·identityLinkedAt(직원 본인확인 연결, 3.1) — **(sellerId, email) 유니크**, 판매자당 OWNER 1명 이상
 - `SellerSession`: id, sellerUserId, sellerId, tokenHash(**유니크**), expiresAt, lastSeenAt, revokedAt
