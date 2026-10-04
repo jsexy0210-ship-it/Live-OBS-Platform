@@ -43,11 +43,15 @@ export type OrderDetail = {
   queueVersion: number;
   // 결제 완료 주문만 온다. 사유 주체별 실제 환불액(서버 계산), 개봉한 상품, 이 사유로 환불할 수 없는지(blocked)
   refundPreview: RefundPreview | null;
+  // 쓴 쿠폰과 할인 금액(전체 취소로 되돌렸으면 restoredAt). 쿠폰을 쓰지 않았으면 null
+  couponRedemption: { benefit: "AMOUNT" | "RATE" | "FREE_SHIPPING"; discountAmount: number; restoredAt: string | null; coupon: { id: string; name: string } } | null;
 };
 
 export type RefundFault = "BUYER" | "SELLER";
 export type RefundPreview = {
   shipped: boolean;
+  // 구매자가 실제로 낸 처음 배송비(배송비 무료 쿠폰이면 0). 예전 응답에는 없다.
+  chargedShippingFee?: number;
   openedItems: { orderItemId: string; amount: number }[];
   byFault: Record<RefundFault, { refundAmount: number; returnFeeDeducted: number; blocked: boolean }>;
 };

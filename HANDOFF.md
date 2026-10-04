@@ -8,10 +8,42 @@
 |---|---|---|
 | Live-OBS-Platform MASTER (2) | `session_018xa8SC5evpEFNVcQBwcN5t` | 요구사항 접수 · 작업 배정 · 독립 검수 · main 병합 · 상태 문서 관리. 2026-10-02 17:21 KST 교체 생성 |
 | (이전) MASTER | `session_01XqBPGTKiEMmRSMB5SfFp3C` | 컨텍스트 50% 도달로 교체. PR #15 병합 후 보관 완료 (2026-10-02 KST) |
-| 디자인 전담 (2) | `session_01DCQ38rPYwPnVCZJbhLgJnc` | 디자인 아티팩트 https://claude.ai/artifact/YYGXZ3u4QvjQpEMUHnN4tS 이어서 작업 (아티팩트 `project/` 파일만 소유). 우선순위: ① 오버레이 9:16·16:9 기본 템플릿 3종 ② 기존 아트보드 A안·화면 문구·도메인·도우미·구매자 문의 반영 ③ 남은 화면. 2026-10-02 18:45 KST MASTER 생성 |
-| 개발 전담 (기반) | `session_01Lhh5mXm1mdLnACzpHDNLUw` | 개발 1단계(화면 제외): 설계 문서 `docs/ARCHITECTURE.md` → 스키마·권한·테넌트 격리·주문대기 도메인·로그인·테스트·CI 테스트 단계. 소유: `prisma/**`, `lib/server/**`, `app/api/**`, `tests/**`, `docs/ARCHITECTURE.md`, `package*.json`, `ci.yml` 테스트 단계. 2026-10-02 21:30 KST MASTER 생성 |
-| 개발 전담 (화면) | `session_01U3TpR6Kgg8zZnxyS48PegW` | 2026-10-03 대표님 결정 「판매자 화면부터 실제로 만들어 눌러 볼 수 있게」. 화면 라우트·components·스타일·dev-seed·e2e만 소유. 서버 API·lib/server·prisma는 개발 전담 (기반) 소유 |
+| 디자인 전담 (2) | `session_01DCQ38rPYwPnVCZJbhLgJnc` | 2026-10-04 추가 배정: 관리자 화면 명사형·합니다체(v153), 로그 추적·아이디/비밀번호 찾기 통합(v152), SA-064 홈 배너·SA-065 이벤트 팝업·SH-001 표시(v154), 외부 쇼핑몰 솔루션 대비 추가 기능 12건(대표님 2026-10-04 모두 확정) 디자인 v155~v157, SA-060 로고 칸을 이미지 업로드 영역으로(v155 우선). 디자인 아티팩트 https://claude.ai/artifact/YYGXZ3u4QvjQpEMUHnN4tS 이어서 작업 (아티팩트 `project/` 파일만 소유). 우선순위: ① 오버레이 9:16·16:9 기본 템플릿 3종 ② 기존 아트보드 A안·화면 문구·도메인·도우미·구매자 문의 반영 ③ 남은 화면. 2026-10-02 18:45 KST MASTER 생성 |
+| 개발 전담 (기반) (4) | `session_016QFa8qXJSQSLrSFqvKCtWi` | 2026-10-04 추가 배정: 파트너스·마스터 관리자에게 보이는 서버 응답 문구(`message`)를 명사형·합니다체로 바꾼다(구매자·공개 API 문구는 해요체 유지). 화면 세션의 문구 전환 PR과 같은 때에 맞춘다. 진행 중. (3)에서 #169·대기열 인수(「미완료·블로커」의 「기반 세션 인계」). 소유: `prisma/**`(브랜딩·쇼핑몰 운영(팝업·배너·로고) 모델 블록과 그 마이그레이션 제외), `lib/server/**`(branding·shop-content·stats 제외), `app/api/**`(automation·branding·shop-content·seller/stats 제외), `tests/**`(`tests/e2e/**`는 화면 세션 소유라 제외, branding·shopContent·stats·`tests/e2e/shop-content*`·`tests/e2e/seller-stats*` 제외. `tests/unit/planFeatures.test.ts`는 쇼핑몰 운영 전담이 자기 경로 줄만 더한다), `docs/ARCHITECTURE.md`, `package*.json`, `ci.yml` 테스트 단계, `scripts/seed-obs-test.mjs`. 아래 「추가 기능 11건 개발 배정」의 쇼핑몰 운영 전담 소유 경로·모델 블록·마이그레이션은 제외. 2026-10-04 KST MASTER 생성 |
+| (이전) 개발 전담 (기반) (3) | `session_01CmfFhZdBNA3ojJFFrdTuJ3` | 교체됨 → (4), 보관 예정. 대화가 길어져 2026-10-04 KST 교체 |
+| (이전) 개발 전담 (기반) (2) | `session_01Ud86wDnEPvsi8jPbo4zGCi` | 교체됨(→ 3). 이전 기반 세션을 이어받음(서버·DB·API·테스트). 소유: `prisma/**`, `lib/server/**`, `app/api/**`, `tests/**`, `docs/ARCHITECTURE.md`, `package*.json`, `ci.yml` 테스트 단계. 2026-10-03 20:18 KST MASTER 생성 |
+| (이전) 개발 전담 (기반) | `session_01Lhh5mXm1mdLnACzpHDNLUw` | 개발 1단계(화면 제외): 설계 문서 `docs/ARCHITECTURE.md` → 스키마·권한·테넌트 격리·주문대기 도메인·로그인·테스트·CI 테스트 단계. 소유: `prisma/**`, `lib/server/**`, `app/api/**`, `tests/**`, `docs/ARCHITECTURE.md`, `package*.json`, `ci.yml` 테스트 단계. 2026-10-02 21:30 KST MASTER 생성. 컨텍스트 70% 초과로 2026-10-03 교체 |
+| 개발 전담 (화면) (2) | `session_01QTBmZSoVE3FNH3UtSyYaWD` | (1)을 이어받음. 소유 범위는 아래 (이전) 개발 전담 (화면) 줄과 같다. 우선 배정: AU-002 로그인 링크 배치 변경(대표자 왼쪽 「아직 회원이 아니신가요? 회원가입」·오른쪽 끝 「아이디/비밀번호 찾기」, 직원 오른쪽 끝 「아이디/비밀번호 찾기」만, `tests/e2e/login-tabs.spec.ts` 새 기준, 대표님 지시 2026-10-04 2차). 그다음 배정: 요금제 기능(features)에 따른 파트너스 메뉴 숨김과 403 plan_feature_required 안내 화면. 대기 목록: SH-024 재가입 보관 동의 철회(MASTER 보고 먼저) → 구매자 적립금 잔액·pendingEarn 표시 → 가입 요금제 질문·구독 화면 두 요금제 → SH-001 추가분 → 파트너스 가입 약관 본문·동의 버전 묶기. 2026-10-04 KST MASTER 생성 |
+| (이전) 개발 전담 (화면) | `session_01U3TpR6Kgg8zZnxyS48PegW` | 교체됨(→ 2), 대화 40% 초과로 2026-10-04 KST 교체. #166·#178·#183·#193 병합.  2026-10-04 추가 배정(대표님 지시, 완료 기준): ① 파트너스 관리자 화면(`app/(seller)/seller/**`, 가입 PF 제외)과 파트너스 로그인·계정 화면(AU-002~004·011·012) 문구를 명사형·합니다체로 바꾸고 e2e 문구 확인도 함께 고친다(디자인 v153 기준) ② AU-002 로그인 링크를 왼쪽 끝 「아이디/비밀번호 찾기」 하나·오른쪽 끝 「회원가입」으로, AU-003·AU-011 위쪽에 「아이디 찾기 | 비밀번호 찾기」 전환을 넣고 `tests/e2e/login-tabs.spec.ts`를 새 기준으로 고친다 ③ 화면 이름 「감사 로그」 → 「로그 추적」. ①~③은 한 PR. 2026-10-03 대표님 결정 「판매자 화면부터 실제로 만들어 눌러 볼 수 있게」. 화면 라우트·components·스타일·dev-seed·e2e만 소유(브랜딩 전담 소유인 `app/(admin)/**`, `app/(seller)/layout.tsx` 메타데이터 부분, 브랜딩 e2e, 쇼핑몰 운영 전담 소유인 popups·banners 화면과 HomeBanner·EventPopup 컴포넌트, 「추가 기능 11건 개발 배정」의 기능 화면·컴포넌트와 그 시험(`tests/**/<name>*`), shop-content e2e, 통계 e2e(`tests/e2e/seller-stats*`) 제외. 쇼핑몰 운영 전담이 새로 만드는 `app/(shop)/shop/[slug]/page.tsx`·`app/(seller)/seller/(shell)/settings/shop/**`와 `components/shop/ShopFrame.tsx`의 팝업 줄, `components/seller/SellerShell.tsx` 메뉴 항목 줄(쇼핑몰 운영·통계 전담 추가분)과 통계 전담 소유인 `stats/**` 화면·`components/seller/stats/**`는 그 PR이 병합될 때까지 손대지 않고, 병합 뒤 화면 세션 소유로 돌아온다). 서버 API·lib/server·prisma는 개발 전담 (기반) 소유 |
+| 인프라 전담 | `session_016ErhcGpbBooDx8a9sYYUmK` | 이슈 #137 테스트 서버 배포 구성(Docker Compose·Caddy·`/api/health`·`docs/DEPLOY.md`). #145 병합(2026-10-03). 배포 워크플로 파일은 MASTER 소유. 2026-10-03 MASTER 생성 |
+| 자동연결 전담 | `session_01C4RiocfyZkV2VtLeUoCAmk` | ONQ 통합 지시 「자동 설치·연결 상품」(Gemini, 110,000원) 백엔드: 결제 검증 뒤 실행, 작업 상태기계·큐·lease·fencing, 판단/브라우저 실행기/로컬 OBS 연결 도구 분리(1차는 모의 구현, 실제 Gemini 호출은 비용 승인 후). 소유: `docs/AUTOMATION.md`, `lib/server/automation/**`, `app/api/automation/**`, schema의 자동연결 모델 블록. 2026-10-04 KST MASTER 생성 |
+| 브랜딩 전담 | `session_01W6Sz5vNHLksDXfTUorq6KJ` | 2026-10-04 추가: 마스터 관리자 로그인(AU-001)과 브랜딩 화면 문구를 명사형·합니다체로(#182에 포함). 대표님 지시(2026-10-04) 마스터 관리자에서 마스터 관리자·파트너스 관리자 파비콘·OG 카드 설정. 마스터 관리자 화면 최소 틀(로그인·설정)도 함께. 소유: `app/(admin)/**`, `app/api/admin/branding/**`, `app/api/branding/**`, `lib/server/branding/**`, `tests/**/branding*`, schema의 브랜딩 모델 블록과 마이그레이션 `20261004140000_site_branding`, `app/(seller)/layout.tsx` 메타데이터 부분. 2026-10-04 KST MASTER 생성 |
+| 쇼핑몰 운영 전담 | `session_01AKkKsTJjMHv2KaJLHh8u1y` | 대표님 지시(2026-10-04) 이벤트 팝업·홈 배너 관리(파트너스 관리자)와 구매자 쇼핑몰 표시. 소유: `lib/server/shop-content/**`, `app/api/seller/shop-content/**`, `app/api/shop/[slug]/shop-content/**`, `app/(seller)/seller/(shell)/popups/**`·`banners/**`, `components/shop/HomeBanner*`·`EventPopup*`, `tests/**/shopContent*`, `tests/e2e/shop-content*`, schema의 팝업·배너 모델 블록과 마이그레이션 `20261004160000_shop_content`, `Seller` 블록의 팝업·배너·이미지·로고 역관계 줄 추가(다른 줄은 고치지 않는다), 쇼핑몰 로고(2026-10-04 대표님 지시): schema의 로고 모델 블록·마이그레이션 `20261004170000_shop_logo`, `app/api/seller/shop-content/logo/**`, 새 화면 `app/(seller)/seller/(shell)/settings/shop/**`(SA-060 쇼핑몰 정보, 지금은 없음). 허용: 구매자 홈 `app/(shop)/shop/[slug]/page.tsx` 최소 화면 새로 만들기(병합 뒤 화면 세션 소유), 구매자 공통 머리 `components/shop/ShopFrame.tsx`에 EventPopup을 끼우는 몇 줄(모든 구매자 화면에 팝업 표시)과 올린 로고(없으면 첫 글자)를 보여 주는 몇 줄, 파트너스 메뉴 몇 줄, `tests/unit/planFeatures.test.ts` 경로 표 줄 추가. 2026-10-04 KST MASTER 생성 |
+| 통계 전담 | `session_013CH4KbJKN2cpDNBKtipGYL` | 대표님 지시(2026-10-04) 파트너스 관리자 「통계」(주문·매출·상품·회원·방송 통계 상세 화면, 서버 집계 API). 소유: `lib/server/stats/**`, `app/api/seller/stats/**`, `app/(seller)/seller/(shell)/stats/**`, `components/seller/stats/**`, `tests/**/stats*`, `tests/e2e/seller-stats*`. 허용: `SellerShell.tsx` 통계 메뉴 줄, `tests/unit/planFeatures.test.ts` 경로 표 줄. 스키마·의존성 변경은 MASTER 보고 먼저. 순서: 서버 집계 API는 바로 시작하고, 화면은 디자인 v155 통계 화면(화면 ID 포함)이 게시된 뒤 그 기준으로 만든다. 2026-10-04 KST MASTER 생성 |
+| 레이아웃 전담 | `session_01EUsuPTDFGiFwngwPKWScNv` | 대표님 지시(2026-10-04) 관리자 전체를 카페24식으로: 상단 GNB+좌측 LNB, 메뉴 그룹(`docs/IA.md` SA 「메뉴 그룹」), 공통 스타일·컴포넌트. 소유: `components/seller/SellerShell.tsx`, `styles/tokens.css`, `styles/seller.css` 공통 틀·공통 컴포넌트 부분, `components/admin-ui/**`, `tests/e2e/layout*`. `app/(admin)/admin/_components/AdminShell.tsx`는 브랜딩 전담의 마스터 로고 색상 PR 병합 뒤 인수. 화면별 적용은 병합 뒤 각 화면 소유 세션에 배정. 2026-10-04 KST MASTER 생성 |
 | (이전) 디자인 전담 | `session_011K2Cw69VDhwYpPegzFpXoK` | 작업 기억 72% 도달·수정 지시 미반영으로 교체. 약 130장 제작(아티팩트에 보존). 2026-10-02 18:45 KST 보관 |
+
+병합 순서: 이미지 검사기 `lib/server/branding/image.ts`는 브랜딩 PR #182가 만든다. 쇼핑몰 운영 전담은 #182가 병합된 뒤 main을 머지해 그대로 import한다(복사하지 않는다. 그 전에는 검사기를 쓰지 않는 부분부터 만든다).
+
+추가 기능 11건 개발 배정(2026-10-04 대표님 확정 12건 중 통계 제외): 쇼핑몰 운영 전담이 팝업·배너·로고 PR 병합 뒤 아래 순서로 한 기능씩 별도 PR로 만든다. 각 기능은 그 디자인 화면(v155~v157)이 게시된 뒤 시작한다. 순서·경로 이름(`<name>`)·schema 모델 이름 접두어·직원 권한(새 권한을 만들지 않고 기존 항목을 쓴다. 대표자는 항상 가능):
+
+| 순서 | 기능 | `<name>` | 모델 접두어 | 직원 권한 |
+|---|---|---|---|---|
+| 1 | 쿠폰 | `coupons` | `Coupon` | `MEMBER_POINTS` |
+| 2 | 상품 리뷰 | `reviews` | `ProductReview` | `INQUIRY_REPLY`(답글·숨김) |
+| 3 | 교환·반품 | `returns` | `ReturnRequest` | `ORDER_SHIPPING` |
+| 4 | 상품 진열 | `product-display` | `ProductDisplay` | `PRODUCT_MANAGE` |
+| 5 | 회원 등급 | `member-grades` | `MemberGrade` | `MEMBER_POINTS` |
+| 6 | 쇼핑몰 FAQ | `faq` | `ShopFaq` | `INQUIRY_REPLY` |
+| 7 | 검색 노출(SEO) | `seo` | `ShopSeo` | `SHOP_SETTINGS` |
+| 8 | 찜·최근 본 상품 | `wishlist` | `Wishlist`, `RecentView` | 구매자 기능. 파트너스 쪽 찜 수 보기는 `PRODUCT_MANAGE` |
+| 9 | 재입고 알림 | `restock-alerts` | `RestockAlert` | `PRODUCT_MANAGE` |
+| 10 | 회원 대상 발송 | `member-messages` | `MemberMessage` | `MEMBER_POINTS`(받는 사람 연락처는 서버만 쓰고 응답에 넣지 않는다) |
+| 11 | 엑셀 일괄 등록·내보내기 | `bulk-io` | `BulkJob` | 상품 등록·내보내기 `PRODUCT_MANAGE`, 주문 내보내기 `ORDER_SHIPPING`(구매자 이름·연락처·주소 열은 `CUSTOMER_PII_VIEW`가 있을 때만) |
+
+소유(`<name>`는 위 표의 값): `lib/server/shop-<name>/**`, `app/api/seller/<name>/**`, `app/api/shop/[slug]/<name>/**`, `app/(seller)/seller/(shell)/<name>/**`, `components/seller/<name>/**`, `components/shop/<name>/**`, `tests/**/<name>*`, schema에서 위 접두어로 시작하는 모델 블록과 MASTER가 번호를 정해 주는 마이그레이션. 허용: 공용 통합 파일 자기 줄, 구매자 화면에 표시를 끼우는 몇 줄(병합 뒤 화면 세션 소유), 새 모델과 이어지는 기존 모델 블록(`Seller`·`Product`·`BuyerMember` 등)의 역관계 줄 추가(다른 줄은 고치지 않는다). 쿠폰·교환·반품이 주문에 반영되도록 기존 주문 파일 `lib/server/orders/create.ts`(결제 금액 계산)와 `lib/server/queue/service.ts`(환불 금액·상태 전환)에 자기 기능을 부르는 연결 줄 추가(계산은 자기 `lib/server/shop-<name>/**`에 두고, 기존 줄은 고치지 않는다). 구매자와 이어지는 기능(리뷰·찜·최근 본 상품·재입고 알림·회원 대상 발송 등)은 회원 탈퇴 처리 `lib/server/buyers/memberData.ts`·`lib/server/buyers/withdraw.ts`와 분류 검사 시험 `tests/unit/memberData.test.ts`에 자기 모델·구매자 기록 항목의 분류·처리 줄을 더한다(탈퇴 회원 데이터 처리는 그 기능 PR의 완료 기준에 포함). 그 밖에 기반 소유 기존 파일에 연결이 필요하면 같은 방식으로 자기 기능을 부르는 줄만 더하고, 기존 줄을 바꿔야 하면 먼저 MASTER에 보고해 기반 세션에 배정한다. 구매자 화면(상품 상세·상품 카드·주문서 등 화면 세션 소유 기존 파일)에 표시를 끼울 때도 같다. 쇼핑몰 운영 전담은 각 기능을 시작할 때 연결할 기존 파일 목록을 MASTER에 먼저 보내고, MASTER가 화면 세션에 알린다. 그 PR이 병합될 때까지 화면 세션은 그 파일을 고치지 않는다. 이 연결 파일들은 아래 공용 통합 파일과 같은 순서 규칙을 따른다. 완료 기준: 파트너스 관리자에서 만들고 고치고, 구매자 화면에 실제로 반영되며, 권한(대표자·해당 직원 권한)·판매자 격리·로그 추적 기록을 통합 시험과 e2e로 확인한다. 회원 대상 발송은 실제 발송 채널이 대표님 결정(알림 채널) 전까지 발송 기록만 남긴다. 결제·적립금이 움직이는 부분(쿠폰 할인 적용, 교환·반품 환불)은 실제 결제·환불 실행 없이 금액 계산·상태까지만 만든다.
+
+공용 통합 파일(`components/seller/SellerShell.tsx` 메뉴, `tests/unit/planFeatures.test.ts` 경로 표, 추가 기능 11건의 연결 줄이 들어가는 `lib/server/orders/create.ts`·`lib/server/queue/service.ts`·`lib/server/buyers/memberData.ts`·`lib/server/buyers/withdraw.ts`·`tests/unit/memberData.test.ts`)은 여러 전담 세션이 자기 줄만 더한다. 같은 때에 고치지 않도록, 먼저 병합된 PR 뒤에 다음 PR이 최신 main을 머지한 다음 자기 줄을 더한다(충돌은 양쪽 줄을 모두 남긴다). 다른 줄은 고치지 않는다.
 
 전담 세션 태그: `live-obs` + `lo-master` / `lo-design` / `lo-dev` / `lo-dev-ui`. 새 전담 세션은 이 표에 추가하고 `docs/session-prompt.md`를 지시에 넣는다.
 
@@ -26,7 +58,7 @@
 
 - Next.js 최소 앱 (`app/layout.tsx`, `app/page.tsx`)
 - CI: typecheck + build, self-hosted 배포 워크플로 재유입 검사
-- 배포 워크플로: 없음
+- 배포 워크플로: `.github/workflows/deploy-obs-test.yml`(테스트 서버 obs-test, 수동 실행만, main만, Environment `obs-test`(main만, 승인자 대표님), 상시 self-hosted runner `obs-web-test`(라벨 `obs-kakao`, 서버의 `/home/obs`에 설치·서비스 등록). 2026-10-03 첫 배포 성공: `https://test.on-aircue.com/api/health` → status ok, db ok, version c37492f. 대표님 결정 2026-10-03: 공개 저장소 + 상시 runner, 「Require approval for all external contributors」 필수). 테스트 도메인 `test.on-aircue.com`(Cloudflare DNS 전용). 절차: `docs/DEPLOY.md`
 - GitHub Secrets(대표님 등록, 값은 기록하지 않음): `NICEPAY_CLIENT_KEY`, `NICEPAY_SECRET_KEY`, `SWEETTRACKER_API_KEY`(스마트택배 배송 조회, 연동은 출시 후), `RESEND_MAIL_API`(Resend 메일 발송. 개발·테스트용, 운영 발송은 AWS SES 예정. 하루·월 무료 한도에 가까워지면 미리 알리고 넘으면 MASTER에 보고), `BAROBILL_API_KEY`(바로빌 세금계산서·현금영수증 발행. 연동 전, 요금·판매자 명의 발행 조건 확인 필요), `YOUTUBE_API_KEY`(YouTube Data API v3, 방송·실시간 채팅 조회. 하루 무료 할당량에 가까워지면 미리 알리고, 넘으면 MASTER에 보고)
 - 테스트: 없음
 
@@ -37,10 +69,25 @@
   - 종료된 PR #1~#6: 이전 프로젝트 제목·본문. GitHub에서 PR 삭제 불가.
   - Actions 실행 기록과 빌드 아티팩트 `lifeleft-production-static` (2026-10-06 08:24 KST 자동 만료). 실행 기록 삭제는 Actions 화면에서 가능.
   - Git 커밋 이력: 이력 재작성 금지로 유지.
-- 기존 self-hosted 러너, 저장소 Secrets·Environments: 미확인, 유지. 단 `GEMINI_API_KEY`(Actions Secret)는 2026-10-02 대표님 등록 완료(대표님 보고 기준, 값 미기록). 실서버 사용 시 서버 환경변수 등록은 배포 단계에서 별도 승인.
-- 카카오클라우드 실제 자원(프로젝트·VM·버킷·DNS): 미확인, 변경 없음. 기존 VM에서 이전 사이트가 계속 서비스 중일 수 있음.
+- 기존 self-hosted 러너 `lifeleft-kakao`(오프라인)는 2026-10-03 대표님이 제거함. Environment `obs-test`는 대표님이 만들고 보호 규칙(main만, 승인자 대표님)과 외부 기여자 워크플로 승인 설정까지 마침(2026-10-03). 그 밖의 저장소 Secrets: 아래 값 이름만 기록. 단 `GEMINI_API_KEY`(Actions Secret)는 2026-10-02 대표님 등록 완료(대표님 보고 기준, 값 미기록). 실서버 사용 시 서버 환경변수 등록은 배포 단계에서 별도 승인.
+- 카카오클라우드: 테스트 VM `obs-web-test`와 Cloudflare DNS `test.on-aircue.com`은 대표님 보고로 확인(PROJECT_STATUS 「인프라 방향」). 이전(Leftlife) VM·버킷·보안 그룹과 Object Storage 버킷 상태는 미확인이며, 새 서버가 뜬 것을 확인한 뒤 삭제 여부를 정한다(PROJECT_STATUS).
 
 ## 미완료·블로커
+
+### 기반 세션 인계 (2026-10-04 KST, 개발 전담 (기반) (3) → 담당 (4))
+
+- 열린 PR
+  - #169 파트너스 가입 약관 동의 서버(PF-007-1): 화면 PR #172와 짝 병합(#169 → #172 연달아), 그 전까지 초안. 마이그레이션 `20261004110000_seller_signup_consent`(병합 순서상 마지막이어야 함, main이 바뀌면 다시 확인). Codex 스레드 4175479113(화면 동의 칸 없음)은 짝 병합 준비 때 해결
+  - #174 ONQ 1-A 설계 문서(ARCHITECTURE 4.8.0): 병합 전이면 Codex 결과 처리
+- 대기열(순서대로, 각각 별도 PR)
+  1. ONQ 1-B 권한 모델: #174 설계대로 플랜 → 기능 권한 3종 매핑, 판매자 API(`requireSeller` 뒤)와 공개·구매자 경로(4.8.0 「막음/허용」 표) 검사, 부정 시험, 기존 판매자는 동작 그대로(통합 권한). 결제 엔진은 건드리지 않음. 코드 이름·오류 코드는 이 PR에서 제안
+  2. 대기열 6번 나머지: 재가입 제한 정보 보관 동의 철회 API(생기면 `REJOIN_RESTRICTION_CONFIG.available` 판단) → 적립금 잔액 API → 야간 광고 제한(21~8시 KST)
+  3. ONQ 1-C 결제 엔진 전환·`STANDARD` 이전 백필: 범위는 MASTER가 지정(ONQ_PLAN E1-B·E1-C, 이전 전 가격 스냅숏)
+- 블로커·대표님 결정 대기
+  - 이미지 저장소(A: Postgres bytea / B: 오브젝트 스토리지, 유료) — 쇼핑몰 파비콘·로고·공유 카드 이미지 업로드, 상품 이미지가 기다림. 마스터·파트너스 관리자의 파비콘·공유 카드(플랫폼 공통)는 2026-10-04 대표님 지시에 따라 결정 전까지 비용이 들지 않는 A로 먼저 만든다. 쇼핑몰 로고·홈 배너·이벤트 팝업 업로드도 2026-10-04 대표님 지시로 같은 A(PNG)로 먼저 만든다(쇼핑몰 운영 전담). 쇼핑몰별 파비콘·공유 카드 이미지 업로드도 같은 방식으로 뒤따라 배정한다. B로 바꿀지는 대표님 결정
+  - 런칭 할인 기간·종료일, 오버레이 전용 체험 비용 한도, 청약철회·중도 해지 환불 법무 확인
+  - 파트너스 가입 필수 동의 원문: 이용약관(PF-008)과 개인정보 수집·이용 동의(처리방침과 별도 문서, `docs/PRODUCT_SCOPE.md` 동의 항목 참고). PF-009는 개인정보처리방침이다(`docs/IA.md`). 대표님 확정 문서가 필요하고, 지금은 버전 값만 있음
+  - 마케팅 수신 동의·철회 결과 통지: 알림 발송 채널 연동 때 붙임(처리 후 14일 이내)
 
 - 운영 DB 생성 때 collation을 UTF-8 계열(`ko_KR.UTF-8` 등)로 만들 것. 「C」 collation이면 상품 이름 검색의 대소문자 무시(`lower()`)가 ASCII에만 적용된다
 - 재고 이력 `stockAfter`는 이 기능 전 이력에서 null(화면은 표시하지 않음)
@@ -79,8 +126,7 @@
 
 ## 대표님 조치 대기
 
-- 플랫폼 운영사 정보(대표님 사업자): 배포 때 마스터 콘솔 설정에 입력(대표님 확인). 저장소·문서에는 값을 적지 않음
-- 카카오 테스트 VM: 대기(대표님 지시 2026-10-03)
+- 플랫폼 운영사 정보(대표님 사업자): 배포 때 마스터 관리자 설정에 입력(대표님 확인). 저장소·문서에는 값을 적지 않음
 - 브랜치 `fix/shipping-refund-note` 삭제 지시(2026-10-03): 이 환경에서 원격 브랜치 삭제가 막혀 GitHub 화면에서 지워야 함
 - 휴대폰 본인확인 대행사 선정·계약(유료): 포트원 V2 + NHN KCP API 방식 우선 검토. 계약 전 대행사에 확인할 것: ① API 방식(자체 화면) 허용·심사 ② PASS 없이 문자만 제공해도 되는지 ③ CI 제공 설정 ④ 건당 요금·최소 이용료·포트원 수수료 ⑤ 계약 전 테스트 채널과 실제 문자·과금 여부 ⑥ 인증번호 유효시간·재전송·실패 제한 ⑦ 문자 발신번호·문구 등록
 - 본인확인 대행사 계약 때 성별·내외국인 구분·이동통신사·접속 기기 종류의 대행사 보관 기간을 확인(수집·이용 동의 서식 `{{본인확인 대행사 보관 기간}}`에 채움)
@@ -88,10 +134,6 @@
 
 ## 다음 작업
 
-1. 카카오클라우드 재사용 확인 (운영자 콘솔 화면 필요, 키는 가림):
-   - 기존 이름이 IAM 프로젝트인지 Object Storage 버킷인지 식별
-   - 프로젝트: 이름 변경 불가 → 유지, 설명만 변경
-   - 버킷: 새 버킷 생성 → 필요한 파일만 복사 → 연결·검증 → 기존 버킷 삭제는 별도 결정 (객체 URL에 버킷명 포함 주의)
-   - 기존 VM의 이전 사이트 종료 여부 결정
+1. 테스트 서버 첫 배포 완료(2026-10-03). 다음: 이전(Leftlife) 자원 삭제 여부 결정(PROJECT_STATUS), 서버 22번 포트 출발지는 대표님 IP가 바뀌면 보안 그룹에서 고침
 2. 디자인 수정 중 (깨짐 수정 → 쇼핑몰 PC판). 화면 구현은 디자인 확정 후 시작한다. 클로드디자인 프롬프트: `docs/DESIGN_PROMPT.md`
 3. 개발 1단계(화면과 무관한 기반)는 디자인과 병행한다 (대표님 결정 2026-10-02 21:15 KST): 설계(`docs/ARCHITECTURE.md`) → 데이터 모델·DB·권한·주문대기 도메인(`docs/REFERENCE_MANGOTCG.md` 7절)·로그인·테스트. 담당: 개발 전담 (기반).

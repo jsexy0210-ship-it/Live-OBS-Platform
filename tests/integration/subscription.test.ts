@@ -27,7 +27,7 @@ import { GET as overlayVersion } from "../../app/api/overlay/[token]/version/rou
 import { issueOverlayToken } from "../../lib/server/overlay/token";
 import { liveHub } from "../../lib/server/realtime/hub";
 import { SSE_CONFIG } from "../../lib/server/realtime/sse";
-import { TRIAL_DAYS, approveSeller } from "../../lib/server/sellers/approval";
+import { approveSeller } from "../../lib/server/sellers/approval";
 import { POST as approveRoute } from "../../app/api/admin/sellers/[sellerId]/approve/route";
 import { GET as plansRoute } from "../../app/api/plans/route";
 import { POST as sellerLogin } from "../../app/api/seller/auth/login/route";
@@ -39,7 +39,7 @@ import { POST as cardRoute } from "../../app/api/seller/subscription/card/route"
 import { POST as cancelRoute } from "../../app/api/seller/subscription/cancel/route";
 import { POST as adminLogin } from "../../app/api/admin/auth/login/route";
 import { prisma } from "../../lib/server/db";
-import { PASSWORD, adminCredentials, createAdmin, createBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
+import { PASSWORD, adminCredentials, createAdmin, createBuyer, createSeller, createSellerUser, db, resetDb, seedPlans } from "./helpers";
 
 beforeAll(() => {
   process.env.BILLING_KEY_SECRET = "test-billing-key-secret-0123456789abcdef";
@@ -47,8 +47,9 @@ beforeAll(() => {
 });
 beforeEach(async () => {
   await resetDb();
-  await db.subscriptionPlan.create({ data: { code: "STANDARD", name: "월 구독", listPrice: 300000, salePrice: 199000 } });
+  plans = await seedPlans();
 });
+let plans: Awaited<ReturnType<typeof seedPlans>>;
 afterAll(async () => {
   await db.$disconnect();
   await prisma.$disconnect();
@@ -70,10 +71,11 @@ async function adminCtx(role: "SUPER_ADMIN" | "OPERATIONS" | "CS" | "READ_ONLY")
   return (await resolveAdminSession(db, s.token))!;
 }
 
-// 체험하기 종료 시각을 정한 쇼핑몰과 대표자
+// 체험하기 종료 시각을 정한 쇼핑몰과 대표자. 이 파일의 결제 엔진 시험(재시도·유예·가격 기록 등 플랜과 무관한 규칙)은
+// 이전 전 플랜 STANDARD(300,000/199,000원)로 돈다. 플랜별 규칙(ONQ 1-C)은 planMigration.test.ts가 본다.
 async function shop(trialEndsAt: Date | null) {
   const { seller } = await createSeller();
-  await db.seller.update({ where: { id: seller.id }, data: { trialEndsAt } });
+  await db.seller.update({ where: { id: seller.id }, data: { trialEndsAt, planId: plans.STANDARD.id } });
   const owner = await createSellerUser(seller.id, "OWNER");
   return { seller, owner, ctx: ownerCtx(seller.id, owner.id) };
 }
@@ -85,15 +87,21 @@ async function sessionToken(email: string) {
 }
 
 describe("판매자 승인과 체험하기", () => {
-  it("승인하면 ACTIVE가 되고 체험하기 종료 = 승인 시각 + 14일(DB 시계), 다시 승인할 수 없다", async () => {
+  it("승인하면 ACTIVE가 되고 체험은 판매자 플랜대로(오버레이 전용 = 승인 + 7일, 통합·플랜 없음 = 체험 없음, DB 시계), 다시 승인할 수 없다", async () => {
     const admin = await adminCtx("SUPER_ADMIN");
+    const overlay = await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "OVERLAY_ONLY" } });
+    const o = await db.seller.create({ data: { slug: "pending-overlay", shopName: "오버레이 쇼핑몰", planId: overlay.id } });
+    expect((await approveSeller(db, admin, o.id)).ok).toBe(true);
+    const savedO = await db.seller.findUniqueOrThrow({ where: { id: o.id } });
+    expect(savedO.trialEndsAt!.getTime() - savedO.approvedAt!.getTime()).toBe(7 * DAY);
     const seller = await db.seller.create({ data: { slug: "pending-shop", shopName: "대기 쇼핑몰" } });
     const r = await approveSeller(db, admin, seller.id);
     expect(r.ok).toBe(true);
     const saved = await db.seller.findUniqueOrThrow({ where: { id: seller.id } });
     expect(saved.status).toBe("ACTIVE");
-    expect(saved.trialEndsAt!.getTime() - saved.approvedAt!.getTime()).toBe(TRIAL_DAYS * DAY);
-    expect(TRIAL_DAYS).toBe(14);
+    // 플랜이 없던 판매자는 신규 가입 기본 플랜(통합)으로 정해 남기고 체험은 없다
+    expect(saved.trialEndsAt).toBeNull();
+    expect(saved.planId).toBe((await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "INTEGRATED" } })).id);
     expect(saved.approvedByAdminId).toBe(admin.admin.id);
     expect(await approveSeller(db, admin, seller.id)).toEqual({ ok: false, reason: "not_pending" });
     expect(await db.auditLog.count({ where: { action: "admin.seller.approve", targetId: seller.id } })).toBe(1);
@@ -532,20 +540,26 @@ describe("HTTP: 체험하기 종료 후 열리는 화면", () => {
     expect((await sellerLogout(req("/api/seller/auth/logout", { body: {}, cookie }))).status).toBe(200);
   });
 
-  it("요금 안내는 로그인 없이 DB 가격을 보여 준다", async () => {
+  it("요금 안내는 로그인 없이 DB 가격을 보여 준다(신규 가입 기본 플랜 통합과 가입할 수 있는 두 플랜, STANDARD는 빠짐)", async () => {
     const res = await plansRoute();
-    expect(await res.json()).toEqual({ code: "STANDARD", name: "월 구독", listPrice: 300000, salePrice: 199000 });
+    const integrated = { code: "INTEGRATED", name: "쇼핑몰 통합", listPrice: 249000, salePrice: 179000, trialDays: 0 };
+    expect(await res.json()).toEqual({
+      ...integrated,
+      plans: [{ code: "OVERLAY_ONLY", name: "오버레이 전용", listPrice: 99000, salePrice: 69000, trialDays: 7 }, integrated],
+    });
   });
 
-  it("마스터 승인 API: 승인하면 체험하기 종료 시각을 돌려준다", async () => {
+  it("마스터 승인 API: 승인하면 체험하기 종료 시각을 돌려준다(오버레이 전용은 시각, 통합은 null)", async () => {
     const admin = await createAdmin("SUPER_ADMIN");
     const cookie = cookieOf(await adminLogin(req("/api/admin/auth/login", { body: adminCredentials(admin) })));
-    const seller = await db.seller.create({ data: { slug: "route-pending", shopName: "승인 대기" } });
-    const res = await approveRoute(req(`/api/admin/sellers/${seller.id}/approve`, { body: {}, cookie }), {
-      params: Promise.resolve({ sellerId: seller.id }),
-    });
-    expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ ok: true, trialEndsAt: expect.any(String) });
+    const approve = async (planId: string) => {
+      const seller = await db.seller.create({ data: { slug: `route-pending-${planId.slice(0, 8)}`, shopName: "승인 대기", planId } });
+      const res = await approveRoute(req(`/api/admin/sellers/${seller.id}/approve`, { body: {}, cookie }), { params: Promise.resolve({ sellerId: seller.id }) });
+      expect(res.status).toBe(200);
+      return res.json();
+    };
+    expect(await approve(plans.OVERLAY_ONLY.id)).toMatchObject({ ok: true, trialEndsAt: expect.any(String) });
+    expect(await approve(plans.INTEGRATED.id)).toMatchObject({ ok: true, trialEndsAt: null });
   });
 });
 
@@ -875,6 +889,6 @@ describe("#67 재검수 P2: 결제를 처리하는 중의 해지", () => {
       }),
     );
     expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: "payment_in_progress", message: "결제를 처리하고 있어요. 잠시 뒤 다시 시도해 주세요" });
+    expect(await res.json()).toEqual({ error: "payment_in_progress", message: "결제를 처리하고 있습니다. 잠시 뒤 다시 시도해 주십시오" });
   });
 });

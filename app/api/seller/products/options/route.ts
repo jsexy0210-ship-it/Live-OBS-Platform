@@ -9,7 +9,7 @@ import { listOptionStock } from "../../../../../lib/server/products/optionStock"
 // 응답 { options: [{ productId, productName, productStatus, optionId, optionName, sku, stock }], nextCursor }.
 export async function GET(req: Request) {
   try {
-    const ctx = await requireSeller(prisma, sessionToken(req, "seller"));
+    const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "STORE_OPERATIONS" });
     const q = new URL(req.url).searchParams;
     const r = await listOptionStock(prisma, ctx, {
       status: q.get("status") ?? undefined,
@@ -18,7 +18,7 @@ export async function GET(req: Request) {
       cursor: q.get("cursor") ?? undefined,
       limit: q.get("limit") ?? undefined,
     });
-    if (!r.ok) return noStore(NextResponse.json(orderErrorBody(r.reason), { status: 400 }));
+    if (!r.ok) return noStore(NextResponse.json(orderErrorBody(r.reason, "formal"), { status: 400 }));
     return noStore(NextResponse.json(r.value));
   } catch (e) {
     return noStore(errorResponse(e));

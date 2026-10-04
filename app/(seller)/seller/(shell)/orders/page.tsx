@@ -68,7 +68,7 @@ export default function OrderListPage() {
     setMore(false);
     if (id !== reqId.current) return;
     if (r.ok) setState({ kind: "ok", items: [...state.items, ...r.data.orders], next: r.data.nextCursor });
-    else setToast("더 불러오지 못했어요. 다시 눌러 주세요");
+    else setToast("더 불러오지 못했습니다. 다시 눌러 주십시오");
   };
 
   const openMenu = () => {
@@ -105,7 +105,7 @@ export default function OrderListPage() {
         <div className="ph">
           <div className="col" style={{ gap: 4 }}>
             <h1 className="t-t3">주문</h1>
-            <span className="t-l2 c-alt">결제 완료된 주문만 주문대기에 올라가요. 미결제 주문은 「결제 대기」로 보여요.</span>
+            <span className="t-l2 c-alt">결제 완료된 주문만 주문대기에 올라갑니다. 미결제 주문은 「결제 대기」로 표시됩니다.</span>
           </div>
         </div>
 
@@ -174,20 +174,20 @@ export default function OrderListPage() {
 
           {state.kind === "loading" && <LoadingRows rows={5} />}
           {state.kind === "error" &&
-            (state.status === 403 ? <NoPermission need="주문·배송" /> : <ErrorState title="주문을 불러오지 못했어요" onRetry={() => void load(filters)} />)}
+            (state.status === 403 ? <NoPermission need="주문·배송" /> : <ErrorState title="주문을 불러오지 못했습니다" onRetry={() => void load(filters)} />)}
           {state.kind === "ok" && items.length === 0 && (
             <div className="st" style={{ boxShadow: "none" }}>
               {!filtered ? (
                 <>
                   <div className="st-ic">0</div>
-                  <span className="t">아직 주문이 없어요</span>
-                  <span className="s">첫 방송을 시작하고 쇼핑몰 링크를 공유해 보세요.</span>
+                  <span className="t">아직 주문이 없습니다</span>
+                  <span className="s">첫 방송을 시작하고 쇼핑몰 링크를 공유해 보십시오.</span>
                 </>
               ) : q && period ? (
                 <>
                   <div className="st-ic">?</div>
-                  <span className="t">「{q}」 검색 결과가 없어요</span>
-                  <span className="s">기간 필터 「{periodLabel}」을 해제하면 전체 기간에서 찾아요.</span>
+                  <span className="t">「{q}」 검색 결과가 없습니다</span>
+                  <span className="s">기간 필터 「{periodLabel}」을 해제하면 전체 기간에서 찾습니다.</span>
                   <button className="btn btn-sm btn-out" type="button" onClick={() => setPeriod(null)}>
                     전체 기간에서 검색
                   </button>
@@ -195,7 +195,7 @@ export default function OrderListPage() {
               ) : (
                 <>
                   <div className="st-ic">?</div>
-                  <span className="t">조건에 맞는 주문이 없어요</span>
+                  <span className="t">조건에 맞는 주문이 없습니다</span>
                   <button className="btn btn-sm btn-text" type="button" onClick={reset}>
                     필터 초기화
                   </button>

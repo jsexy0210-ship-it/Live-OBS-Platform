@@ -12,8 +12,9 @@ COPY package.json package-lock.json ./
 COPY prisma ./prisma
 RUN npm ci --no-audit --no-fund
 
-# DB 마이그레이션 전용(앱 기동 전에 compose의 obs-web-migrate가 한 번 실행)
+# DB 마이그레이션 전용(앱 기동 전에 compose의 obs-web-migrate가 한 번 실행). 테스트 서버 시험 데이터 명령(scripts/seed-obs-test.mjs)도 이 이미지에서 돈다.
 FROM deps AS migrator
+COPY scripts ./scripts
 USER node
 CMD ["npx", "prisma", "migrate", "deploy"]
 
@@ -27,6 +28,7 @@ ENV NODE_ENV=production \
     PORT=3000
 COPY --from=builder --chown=node:node /app/.next/standalone ./
 COPY --from=builder --chown=node:node /app/.next/static ./.next/static
+COPY --from=builder --chown=node:node /app/public ./public
 # 배포한 커밋 SHA. /api/health가 돌려준다(빌드 마지막 단계라 바뀌어도 앞 단계 캐시는 그대로).
 ARG APP_VERSION=""
 ENV APP_VERSION=$APP_VERSION

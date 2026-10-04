@@ -9,11 +9,11 @@ import { adjustStock } from "../../../../../../../../lib/server/products/stock";
 // 모자라면 409 insufficient_stock, 정수 상한을 넘으면 409 stock_too_large, 그사이 재고가 바뀌었으면 409 stock_conflict(+ currentStock),
 // 다른 판매자 옵션은 404.
 export const POST = mutation(async (req: Request, { params }: { params: Promise<{ productId: string; optionId: string }> }) => {
-  const ctx = await requireSeller(prisma, sessionToken(req, "seller"));
+  const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "STORE_OPERATIONS" });
   const { productId, optionId } = await params;
   const r = await adjustStock(prisma, ctx, productId, optionId, await readJson(req));
   if (!r.ok) {
-    const body = r.currentStock === undefined ? orderErrorBody(r.reason) : { ...orderErrorBody(r.reason), currentStock: r.currentStock };
+    const body = r.currentStock === undefined ? orderErrorBody(r.reason, "formal") : { ...orderErrorBody(r.reason, "formal"), currentStock: r.currentStock };
     return NextResponse.json(body, { status: r.reason === "invalid_stock_adjust" ? 400 : 409 });
   }
   return NextResponse.json(r.value);

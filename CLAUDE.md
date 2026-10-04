@@ -12,14 +12,16 @@
 - 기획·작업지시·검수 기준 저장소: `jsexy0210-ship-it/Live-OBS-Platform` (유일)
 - 참조 전용: `jsexy0210-ship-it/obs-order-queue-cafe24-webhook` (망고TCG). 수정 금지. 분석: `docs/REFERENCE_MANGOTCG.md`
 - 시간 표기: 모든 문서·보고는 KST 기준.
-- 호칭: 대표님. 보고는 한국어로 결론부터 간결하게, 「~했습니다」 합니다체로 쓴다(2026-10-03 대표님 지시). 화면 문구는 그대로 토스식 해요체.
+- 호칭: 대표님. 보고는 한국어로 결론부터 간결하게, 「~했습니다」 합니다체로 쓴다(2026-10-03 대표님 지시). 화면 문구는 아래 「화면 문구」 원칙을 따른다.
 - 상태 정본: `PROJECT_STATUS.md`, `HANDOFF.md`, `docs/PRODUCT_SCOPE.md`
 - 디자인 요청문: `docs/DESIGN_PROMPT.md` · 정보구조(IA): `docs/IA.md`
 
 ## 제품 원칙
 
-- **플랫폼 마스터 관리자가 최상위 권한이다. 권한 계층: 마스터 관리자 > 판매자 > 구매자·시청자. 마스터 콘솔은 모든 판매자·쇼핑몰·구독·설정을 다루며, 판매자 권한으로 마스터 콘솔 기능에 접근할 수 없다. 마스터 콘솔 안에서도 역할별 권한을 나눈다: 무제한 조회·변경은 최고관리자(대표님)만, 운영·CS는 담당 기능만, 조회 전용은 변경 불가.** (2026-10-02 대표님 지시) 권한 설계·API·화면 구현 모두 이 계층을 따른다.
-- **화면 문구는 토스식 UX 라이팅(해요체, 짧게, 행동·결과 중심)으로 쓴다. 「#12」 같은 코드성 표기와 AI가 쓴 것 같은 문구는 절대 금지.** (2026-10-02 대표님 지시) 상세: `docs/DESIGN_PROMPT.md` 「화면 문구」.
+- **플랫폼 마스터 관리자가 최상위 권한이다. 권한 계층: 마스터 관리자 > 판매자 > 구매자·시청자. 마스터 관리자은 모든 판매자·쇼핑몰·구독·설정을 다루며, 판매자 권한으로 마스터 관리자 기능에 접근할 수 없다. 마스터 관리자 안에서도 역할별 권한을 나눈다: 무제한 조회·변경은 최고관리자(대표님)만, 운영·CS는 담당 기능만, 조회 전용은 변경 불가.** (2026-10-02 대표님 지시) 권한 설계·API·화면 구현 모두 이 계층을 따른다.
+- **화면 문구에서 「판매자」는 「파트너스」로 통일한다(판매자 관리자 → 파트너스 관리자). 구매자 화면에서는 그대로 「판매자」로 쓴다(예: 판매자에게 문의해 주세요). 코드·DB·내부 문서의 「판매자」(seller) 이름은 그대로 둔다. 「마스터 콘솔」은 화면·문서 모두 「마스터 관리자」로 통일한다.** (2026-10-04 대표님 지시) 상세: `docs/DESIGN_PROMPT.md` 「용어·숫자」.
+- **화면 문구는 짧게, 행동·결과 중심으로 쓴다. 「#12」 같은 코드성 표기와 AI가 쓴 것 같은 문구는 절대 금지.** (2026-10-02 대표님 지시) **말투는 화면에 따라 다르다: 마스터 관리자·파트너스 관리자(관리자 로그인·계정 화면 AU-001~004·011·012 포함)는 버튼·라벨은 명사형(「저장」「다시 시도」), 문장은 합니다체, 요청은 「~해 주십시오」, 확인 질문은 「~하시겠습니까?」. 구매자 쇼핑몰·공개 화면·오버레이·구매자 메일은 토스식 해요체.** (2026-10-04 대표님 지시) 상세: `docs/DESIGN_PROMPT.md` 「화면 문구」.
+- **화면 이름 「감사 로그」는 「로그 추적」으로 쓴다(코드·DB의 audit 이름은 그대로).** (2026-10-04 대표님 지시)
 
 ## 작업 규칙
 
@@ -69,3 +71,13 @@
 - 망고TCG 운영 코드·DB·설정 변경
 - 운영 주문·회원정보·비밀정보 복사
 - 비밀정보를 저장소·문서·로그에 기록
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

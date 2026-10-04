@@ -69,11 +69,20 @@ model Seller {
   id                       String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   slug                     String       @unique
   shopName                 String
+  // 공유 미리보기(og:title·og:description) 제목·설명. 비어 있으면 쇼핑몰 이름(제목)·없음(설명). 파트너스 쇼핑몰 설정(SHOP_SETTINGS)에서 바꾼다.
+  shareTitle               String?
+  shareDescription         String?
   status                   SellerStatus @default(PENDING)
   businessInfo             Json?
   approvedAt               DateTime?    @db.Timestamptz(3)
-  // 체험하기 종료 시각 = 마스터 승인 시각(DB 시계) + TRIAL_DAYS(14일, lib/server/sellers/approval.ts). 지나면 구독 전까지 판매자 API를 막는다.
+  // 체험하기 종료 시각 = 마스터 승인 시각(DB 시계) + 판매자 플랜의 체험 일수(SubscriptionPlan.trialDays, 오버레이 전용 7일·통합 없음,
+  // lib/server/sellers/approval.ts). 체험이 없는 플랜은 null. 지나면 구독 전까지 판매자 API를 막는다.
   trialEndsAt              DateTime?    @db.Timestamptz(3)
+  // 판매자 플랜(가입 신청 때 정함, ONQ 1-C). 구독 행이 생기면 구독의 planId가 청구 기준이다. 기존 판매자는 INTEGRATED로 옮겼다.
+  planId                   String?      @db.Uuid
+  // 런칭 할인을 쓴 시각(런칭가 청구가 처음 확정된 때, 대표님 결정 2026-10-04). 이 뒤 해지하고 다시 구독하면 정가다.
+  // 이전 전 STANDARD 결제는 사용으로 세지 않는다(ONQ 1-C-2).
+  launchDiscountUsedAt     DateTime?    @db.Timestamptz(3)
   // 잠긴 지 30일이 지나 자동 해지된 시각. 이때부터 90일 보관 뒤 삭제 대상(삭제는 별도 작업). 다시 구독하면 비운다.
   serviceEndedAt           DateTime?    @db.Timestamptz(3)
   approvedByAdminId        String?      @db.Uuid
@@ -90,6 +99,7 @@ model Seller {
   createdAt                DateTime     @default(now()) @db.Timestamptz(3)
 
   approvedBy PlatformAdmin? @relation(fields: [approvedByAdminId], references: [id])
+  plan       SubscriptionPlan? @relation(fields: [planId], references: [id])
 
   domains                  SellerDomain[]
   users                    SellerUser[]
@@ -108,6 +118,8 @@ model Seller {
   orderItems               OrderItem[]
   orderConsents            OrderConsent[]
   orderPolicy              SellerOrderPolicy?
+  memberPolicy             SellerMemberPolicy?
+  rejoinBlocks             BuyerRejoinBlock[]
   purchaseRestrictions     BuyerPurchaseRestriction[]
   shippingPolicy           SellerShippingPolicy?
   orderShippingAddresses   OrderShippingAddress[]
@@ -124,6 +136,13 @@ model Seller {
   subscription             SellerSubscription?
   subscriptionPayments     SubscriptionPayment[]
   auditLogs                AuditLog[]
+  shopBanners              ShopBanner[]
+  shopPopups               ShopPopup[]
+  shopContentImages        ShopContentImage[]
+  coupons                  Coupon[]
+  buyerCoupons             BuyerCoupon[]
+  couponRedemptions        CouponRedemption[]
+  logo                     SellerLogo?
 }
 
 model SellerDomain {
@@ -175,6 +194,16 @@ model SellerUser {
   credentialVersion Int                     @default(0)
   status            SellerUserStatus        @default(ACTIVE)
   lastLoginAt       DateTime?               @db.Timestamptz(3)
+  // 직원 휴대폰 번호(숫자만, 대표자가 직원 관리에서 등록, 기존 행은 null). 직원 본인확인 연결 때 결과와 대조한다.
+  phone             String?
+  // 직원이 본인확인으로 연결한 CI의 HMAC 해시(등록한 이름·휴대폰과 결과가 맞을 때만). 직원 셀프 아이디·비밀번호 찾기에만 쓴다.
+  // 대표자가 휴대폰 번호를 바꾸면 지운다. 대표자는 쇼핑몰 대표자 CI(Seller.representativeCiHash)를 쓰고 여기는 비워 둔다.
+  identityCiHash    String?
+  identityLinkedAt  DateTime?               @db.Timestamptz(3)
+  // 연결돼 있다가 대표자가 휴대폰 번호를 바꿔 연결이 풀린 시각(다시 연결하면 비움). 처음부터 미연결인 직원과 구별한다.
+  identityUnlinkedAt DateTime?              @db.Timestamptz(3)
+  // 대표자 가입 신청 필수 동의 기록(본인확인 시작 때 받은 문서 버전·시각, sellers/signupConsent.ts). 직원·이 기능 전 대표자는 비어 있다.
+  signupConsent     Json?
   createdAt         DateTime                @default(now()) @db.Timestamptz(3)
 
   seller      Seller               @relation(fields: [sellerId], references: [id])
@@ -183,6 +212,7 @@ model SellerUser {
 
   @@unique([sellerId, id])
   @@unique([sellerId, email])
+  @@index([identityCiHash])
 }
 
 // 판매자 대표 비밀번호 재설정 권한(일회용·10분). 토큰은 해시만 저장한다.
@@ -191,15 +221,23 @@ model PasswordResetGrant {
   sellerId     String    @db.Uuid
   sellerUserId String    @db.Uuid
   tokenHash    String    @unique
-  // 발급 때 확인한 대표자 CI 해시. 쓸 때 쇼핑몰 대표자 CI가 바뀌었으면 거부한다.
+  // 발급 때 확인한 CI 해시(대표자는 쇼핑몰 대표자 CI, 직원은 연결 CI). 쓸 때 그 값이 바뀌었으면 거부한다.
   ciHash       String
   expiresAt    DateTime  @db.Timestamptz(3)
   usedAt       DateTime? @db.Timestamptz(3)
+  // 이 권한으로 새 비밀번호 저장에 성공한 시각(실패로 소진되거나 다른 권한 사용으로 무효가 된 권한은 비어 있음).
+  // 응답을 잃고 같은 새 비밀번호로 다시 보낸 요청을 성공으로 돌려주는 데 쓴다(auth/passwordReset.ts).
+  completedAt  DateTime? @db.Timestamptz(3)
   createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  // 아이디 찾기로 준 권한: 발급에 쓴 본인확인과 토큰을 다시 만드는 무작위 값(토큰 = 서버 비밀키 HMAC(nonce), 원문은 저장하지 않음).
+  // 응답을 잃은 재시도에 같은 토큰을 다시 돌려준다(auth/accountRecovery.ts).
+  verificationId String?   @db.Uuid
+  nonce          String?
 
   seller     Seller     @relation(fields: [sellerId], references: [id])
   sellerUser SellerUser @relation(fields: [sellerId, sellerUserId], references: [sellerId, id])
 
+  @@index([verificationId])
   @@index([sellerId, sellerUserId])
 }
 
@@ -266,12 +304,25 @@ model BuyerMember {
   // PASS 본인인증 CI의 HMAC-SHA256 값(원문 CI는 저장하지 않음). 같은 쇼핑몰 중복 가입 차단 기준.
   ciHash             String
   identityVerifiedAt DateTime          @db.Timestamptz(3)
-  // PASS 생년월일. 미성년자 구매 정책 판정에 쓴다.
-  birthDate          DateTime          @db.Date
+  // PASS 생년월일. 미성년자 구매 정책 판정에 쓴다. 탈퇴하면 지운다(null).
+  birthDate          DateTime?         @db.Date
   broadcastNickname  String
   gradeId            String            @db.Uuid
   status             BuyerMemberStatus @default(ACTIVE)
   marketingConsentAt DateTime?         @db.Timestamptz(3)
+  // 지금 마케팅 수신 동의의 문서 버전(동의 중일 때만). 마지막으로 철회한 시각(다시 동의하면 비움). buyers/marketingConsent.ts
+  marketingConsentVersion String?
+  marketingWithdrawnAt    DateTime?    @db.Timestamptz(3)
+  // 가입 때 재가입 제한이 켜져 있었으면 그때 기간(일). 가입하며 안내받은(동의한) 기간보다 길게 CI 해시를 보관하지 않으려고 남긴다.
+  // 없으면(제한이 꺼져 있을 때 가입) 탈퇴해도 재가입을 제한하지 않는다(buyers/rejoin.ts).
+  rejoinRestrictionDaysAgreed Int?
+  // 「재가입 제한 정보 보관 동의」(개인정보 수집·이용 동의와 별도, 재가입 제한을 켠 쇼핑몰에서만 받음) 시각·문서 버전
+  rejoinRetentionAgreedAt     DateTime? @db.Timestamptz(3)
+  rejoinRetentionVersion      String?
+  // 위 보관 동의를 마지막으로 철회한 시각(회원 정보에서 언제든 철회, buyers/rejoinConsent.ts). 철회하면 위 세 칸을 비운다.
+  rejoinRetentionWithdrawnAt  DateTime? @db.Timestamptz(3)
+  // 가입 필수 동의 기록(본인확인 시작 때 받은 문서 버전·시각, buyers/consent.ts SignupConsent)
+  signupConsent               Json?
   lastLoginAt        DateTime?         @db.Timestamptz(3)
   createdAt          DateTime          @default(now()) @db.Timestamptz(3)
   deletedAt          DateTime?         @db.Timestamptz(3)
@@ -285,9 +336,12 @@ model BuyerMember {
   rewardLedger         RewardLedger[]
   rewardBalances       RewardBalance[]
   addresses            BuyerAddress[]
+  coupons              BuyerCoupon[]
 
   @@unique([sellerId, id])
   @@index([sellerId, gradeId])
+  @@index([sellerId, createdAt])
+  @@index([sellerId, deletedAt])
 }
 
 // 구매자 저장 배송지(2026-10-03 대표님 결정). 주문 때 입력한 배송지를 저장하고(구매자가 끌 수 있음), 주문서에서 고른다.
@@ -320,6 +374,8 @@ enum IdentityVerificationPurpose {
   BUYER_SIGNUP
   SELLER_REPRESENTATIVE
   PASSWORD_RESET
+  STAFF_LINK // 직원 본인확인 연결(로그인한 직원, subjectId = 직원 계정)
+  ACCOUNT_RECOVERY // 쇼핑몰을 모르는 아이디 찾기·계정 고르기 비밀번호 찾기
 }
 
 enum IdentityVerificationMethod {
@@ -360,6 +416,8 @@ model IdentityVerification {
   verifiedAt      DateTime?                   @db.Timestamptz(3)
   // 인증을 시작한 브라우저에 준 일회용 값의 해시. 완료할 때 같은 값이 있어야 한다(다른 사람이 id만 알아서는 못 씀).
   ownerTokenHash  String?
+  // 구매자 가입: 본인확인 전에 받은 필수 동의(buyers/consent.ts SignupConsent). 가입하면 회원으로 옮긴다.
+  signupConsent   Json?
   // 비밀번호 찾기: 재설정 대상 계정(없는 계정이면 null, 응답은 같게)
   subjectId       String?                     @db.Uuid
   // 구매자 가입 시작 멱등 키(클라이언트가 만든 attemptKey의 해시). 같은 쇼핑몰·같은 키로 다시 시작하면 새로 만들지 않는다.
@@ -370,6 +428,9 @@ model IdentityVerification {
   requestIp       String?
   // 이 인증으로 가입·재설정 권한을 이미 발급했으면 기록(한 번만 쓰임)
   consumedAt      DateTime?                   @db.Timestamptz(3)
+  // 식별 항목(이름·휴대폰·요청 휴대폰·생년월일·CI 해시·subjectId·동의·대행사 요청 id)을 비운 시각. 행은 한도 계산에 쓰여 남긴다
+  // (쇼핑몰·상태·요청 시각·요청 IP). 비식별된 VERIFIED 행은 CI 해시가 없어도 된다(CHECK).
+  anonymizedAt    DateTime?                   @db.Timestamptz(3)
   expiresAt       DateTime                    @db.Timestamptz(3)
   createdAt       DateTime                    @default(now()) @db.Timestamptz(3)
 
@@ -520,6 +581,226 @@ model StockMovement {
   @@index([sellerId, seq(sort: Desc)])
 }
 
+// ───────────── 쇼핑몰 꾸미기: 홈 배너·이벤트 팝업 (2026-10-04 대표님 지시) ─────────────
+// 파트너스 관리자에서 대표자·「쇼핑몰 설정」(SHOP_SETTINGS) 직원만 바꾼다(lib/server/shop-content). 노출 기간은 DB 시계로 판단한다.
+// 이미지는 대표님 저장 방식 결정 전이라 비용 없는 A안(DB bytea). 형식·크기·해시 CHECK는 마이그레이션 SQL.
+// 배너·팝업은 (sellerId, 이미지 id) 복합 외래키로 같은 쇼핑몰 이미지만 가리킨다.
+
+enum ShopPopupTarget {
+  HOME
+  ALL
+}
+
+// IMAGE=이미지 팝업(가운데), TEXT=글 팝업(가운데), BAR=상단 띠(화면 맨 위 한 줄)
+enum ShopPopupKind {
+  IMAGE
+  TEXT
+  BAR
+}
+
+model ShopContentImage {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId    String   @db.Uuid
+  data        Bytes
+  // 바이트로 확인한 형식(image/png만, 2026-10-04 MASTER 결정). 올린 쪽이 보낸 Content-Type은 쓰지 않는다.
+  contentType String
+  byteSize    Int
+  width       Int
+  height      Int
+  // 주소 버전(v=)과 캐시 판단용 SHA-256(hex)
+  sha256      String
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  seller        Seller       @relation(fields: [sellerId], references: [id])
+  bannersPc     ShopBanner[] @relation("ShopBannerPcImage")
+  bannersMobile ShopBanner[] @relation("ShopBannerMobileImage")
+  popups        ShopPopup[]
+
+  @@unique([sellerId, id])
+  @@index([sellerId, createdAt])
+}
+
+// 홈 배너 슬라이드. 모바일 이미지가 없으면 PC 이미지를 쓴다. linkUrl은 쇼핑몰 안 경로(/로 시작) 또는 http(s) 주소만.
+model ShopBanner {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String    @db.Uuid
+  // 관리용 이름이자 이미지 대체 글
+  title         String
+  pcImageId     String    @db.Uuid
+  mobileImageId String?   @db.Uuid
+  linkUrl       String?
+  // 게시 기간. 비어 있으면 그쪽 제한 없음.
+  startsAt      DateTime? @db.Timestamptz(3)
+  endsAt        DateTime? @db.Timestamptz(3)
+  showOnPc      Boolean   @default(true)
+  showOnMobile  Boolean   @default(true)
+  isActive      Boolean   @default(true)
+  sortOrder     Int       @default(0)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime  @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller      Seller            @relation(fields: [sellerId], references: [id])
+  pcImage     ShopContentImage  @relation("ShopBannerPcImage", fields: [sellerId, pcImageId], references: [sellerId, id], onDelete: Restrict)
+  mobileImage ShopContentImage? @relation("ShopBannerMobileImage", fields: [sellerId, mobileImageId], references: [sellerId, id], onDelete: Restrict)
+
+  @@index([sellerId, sortOrder])
+}
+
+// 이벤트 팝업. target HOME=쇼핑몰 홈만, ALL=모든 구매자 화면. 이미지 팝업은 이미지, 글 팝업은 내용이 있어야 한다(CHECK).
+// dismissDays: 구매자가 「보지 않기」를 고르면 숨기는 날 수(0=닫기만·매번 표시, 1=오늘 하루, 7=7일). 구매자 브라우저에 저장한다.
+model ShopPopup {
+  id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId       String          @db.Uuid
+  kind           ShopPopupKind   @default(IMAGE)
+  title          String
+  body           String?
+  imageId        String?         @db.Uuid
+  linkUrl        String?
+  linkLabel      String?
+  startsAt       DateTime?       @db.Timestamptz(3)
+  endsAt         DateTime?       @db.Timestamptz(3)
+  target         ShopPopupTarget @default(HOME)
+  showOnPc       Boolean         @default(true)
+  showOnMobile   Boolean         @default(true)
+  dismissDays    Int             @default(1)
+  isActive       Boolean         @default(true)
+  sortOrder      Int             @default(0)
+  createdAt      DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime        @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller            @relation(fields: [sellerId], references: [id])
+  image  ShopContentImage? @relation(fields: [sellerId, imageId], references: [sellerId, id], onDelete: Restrict)
+
+  @@index([sellerId, sortOrder])
+}
+
+// ───────────── 쿠폰 (SA-035 쿠폰 관리 · SH-028 내 쿠폰함, 2026-10-04 대표님 확정 11건 중 1) ─────────────
+// 대표자·적립금(MEMBER_POINTS) 권한 직원이 만들고 고친다(lib/server/shop-coupons). 할인 금액은 주문 생성 때 서버가 계산한다.
+// 규칙(MASTER 2026-10-04): 주문당 1장, 1인 1장, 적립금 병용은 쿠폰별 옵션, 전체 취소면 복구·부분 취소는 복구 없음.
+// 발급 수량·사용 여부는 조건부 UPDATE로 막아 동시 요청에도 한도를 넘지 않는다. 형식·범위 CHECK는 마이그레이션 SQL.
+
+// AMOUNT=금액 할인(원), RATE=비율 할인(%, 최대 할인 선택), FREE_SHIPPING=배송비 무료
+enum CouponBenefit {
+  AMOUNT
+  RATE
+  FREE_SHIPPING
+}
+
+// DOWNLOAD=쇼핑몰에서 내려받기, CODE=코드 입력, MANUAL=직접 지급(등급·회원 선택)
+enum CouponIssueMethod {
+  DOWNLOAD
+  CODE
+  MANUAL
+}
+
+// ISSUED=쓸 수 있음(기간은 expiresAt), USED=주문에 씀. 전체 취소면 ISSUED로 되돌린다.
+enum BuyerCouponStatus {
+  ISSUED
+  USED
+}
+
+model Coupon {
+  id                String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId          String            @db.Uuid
+  name              String
+  issueMethod       CouponIssueMethod
+  // 코드 입력 방식의 코드(대문자 영문·숫자 4~16자). 쇼핑몰 안에서 겹치지 않는다(부분 유니크 인덱스, 마이그레이션 SQL).
+  code              String?
+  benefit           CouponBenefit
+  // AMOUNT: 할인 금액(원), RATE: 할인율(1~90 %), FREE_SHIPPING: 없음
+  value             Int?
+  // RATE만: 최대 할인 금액(원, 비우면 제한 없음)
+  maxDiscount       Int?
+  // 최소 주문 금액(적용 상품 금액 기준, 배송비 제외)
+  minOrderAmount    Int               @default(0)
+  // 받을 수 있고 쓸 수 있는 기간. validDays가 있으면 받은 쿠폰은 받은 때부터 그 날 수까지(사용 종료를 넘지 않음).
+  startsAt          DateTime          @db.Timestamptz(3)
+  endsAt            DateTime          @db.Timestamptz(3)
+  validDays         Int?
+  // 발급 수량 한도(비우면 제한 없음)와 지금까지 발급한 수
+  issueLimit        Int?
+  issuedCount       Int               @default(0)
+  // 적용 상품: productIds가 비어 있으면 전체 상품
+  productIds        String[]          @default([]) @db.Uuid
+  // 이벤트 할인 중인 상품은 할인 대상에서 뺀다
+  excludeDiscounted Boolean           @default(true)
+  // 적립금과 함께 쓰기 허용(적립금 사용 기능이 생기면 주문 생성에서 판정)
+  allowWithReward   Boolean           @default(true)
+  // 발급 중지(false)여도 이미 받은 쿠폰은 기간 안에 쓸 수 있다
+  isActive          Boolean           @default(true)
+  createdAt         DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime          @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller      Seller             @relation(fields: [sellerId], references: [id])
+  issued      BuyerCoupon[]
+  redemptions CouponRedemption[]
+
+  @@unique([sellerId, id])
+  @@index([sellerId, createdAt])
+}
+
+// 구매자가 받은 쿠폰(1인 1장). 탈퇴하면 쓰지 않은 쿠폰은 지우고, 쓴 쿠폰은 주문 할인 기록이라 주문과 함께 남긴다.
+model BuyerCoupon {
+  id            String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String            @db.Uuid
+  couponId      String            @db.Uuid
+  buyerMemberId String            @db.Uuid
+  status        BuyerCouponStatus @default(ISSUED)
+  issuedAt      DateTime          @db.Timestamptz(3)
+  expiresAt     DateTime          @db.Timestamptz(3)
+  usedAt        DateTime?         @db.Timestamptz(3)
+
+  seller      Seller             @relation(fields: [sellerId], references: [id])
+  coupon      Coupon             @relation(fields: [sellerId, couponId], references: [sellerId, id])
+  buyerMember BuyerMember        @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id])
+  redemptions CouponRedemption[]
+
+  @@unique([couponId, buyerMemberId])
+  @@unique([sellerId, id])
+  @@index([sellerId, buyerMemberId, status])
+}
+
+// 주문에 쓴 쿠폰과 할인 금액(주문당 1장). 전체 취소로 쿠폰을 되돌리면 restoredAt을 남긴다(기록은 지우지 않음).
+model CouponRedemption {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId       String        @db.Uuid
+  orderId        String        @unique @db.Uuid
+  couponId       String        @db.Uuid
+  buyerCouponId  String        @db.Uuid
+  benefit        CouponBenefit
+  discountAmount Int
+  // 상품 할인 쿠폰의 품목별 배분액 { 옵션 id: 원 }(적용 품목 금액 비율, 원 단위 끝수는 마지막 품목). 부분 환불·적립 기준에 쓴다.
+  // 배송비 무료 쿠폰은 빈 값({}).
+  itemDiscounts  Json          @default("{}")
+  restoredAt     DateTime?     @db.Timestamptz(3)
+  createdAt      DateTime      @default(now()) @db.Timestamptz(3)
+
+  seller      Seller      @relation(fields: [sellerId], references: [id])
+  order       Order       @relation(fields: [sellerId, orderId], references: [sellerId, id])
+  coupon      Coupon      @relation(fields: [sellerId, couponId], references: [sellerId, id])
+  buyerCoupon BuyerCoupon @relation(fields: [sellerId, buyerCouponId], references: [sellerId, id])
+
+  @@unique([sellerId, orderId])
+  @@index([sellerId, couponId])
+  @@index([sellerId, buyerCouponId])
+}
+
+// 쇼핑몰 로고(SA-060 쇼핑몰 정보, 2026-10-04 대표님 지시). 쇼핑몰당 1개. PNG만, 2MB 이하, 정사각형 512~1440px(마이그레이션 CHECK).
+// 구매자 쇼핑몰 머리(ShopFrame)에 보이고, 없으면 쇼핑몰 이름 첫 글자를 보인다. 저장은 대표님 결정 전까지 A안(DB bytea).
+model SellerLogo {
+  sellerId    String   @id @db.Uuid
+  data        Bytes
+  contentType String
+  byteSize    Int
+  width       Int
+  height      Int
+  // 주소 버전(v=)과 캐시 판단용 SHA-256(hex)
+  sha256      String
+  updatedAt   DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+}
+
 // ───────────── 주문·주문 품목 ─────────────
 
 enum OrderStatus {
@@ -578,6 +859,10 @@ model Order {
   paymentDueAt              DateTime?         @db.Timestamptz(3)
   // 입금 기한이 지나 시스템이 자동 취소한 시각. 자동 구매 제한 횟수를 셀 때 쓴다.
   autoCancelledAt           DateTime?         @db.Timestamptz(3)
+  // 법정 보관(buyers/legalHold.ts): 끝난 주문의 보관 만료일(끝난 날 + 5년, 모든 회원)과, 탈퇴 회원의 끝난 주문에 다는 분리 보관 표시.
+  // 분리된 주문은 판매자·구매자 일반 조회(목록·검색·상세)에서 뺀다. 보관 만료 뒤 파기는 별도 함수.
+  legalHoldAt               DateTime?         @db.Timestamptz(3)
+  legalRetainUntil          DateTime?         @db.Timestamptz(3)
 
   seller          Seller                @relation(fields: [sellerId], references: [id])
   buyerMember     BuyerMember           @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id])
@@ -590,6 +875,7 @@ model Order {
   queueItems      QueueItem[]
   rewardLedger    RewardLedger[]
   notifications   OrderNotification[]
+  couponRedemption CouponRedemption?
 
   @@unique([sellerId, id])
   @@unique([sellerId, orderNo])
@@ -845,19 +1131,23 @@ model OverlayToken {
 
 // 추가만 한다. 수정·삭제하지 않는다. 비밀번호 해시·토큰·TOTP 비밀키는 before/after에 넣지 않는다.
 model AuditLog {
-  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  actorType  ActorType
-  actorId    String?   @db.Uuid
-  sellerId   String?   @db.Uuid
-  action     String
-  targetType String?
-  targetId   String?
-  before     Json?
-  after      Json?
-  reason     String?
-  ip         String?
-  userAgent  String?
-  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actorType   ActorType
+  actorId     String?   @db.Uuid
+  sellerId    String?   @db.Uuid
+  action      String
+  targetType  String?
+  targetId    String?
+  before      Json?
+  after       Json?
+  reason      String?
+  ip          String?
+  userAgent   String?
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  // 구매자 회원이 행위자·대상인 행: 회원 id를 둘 기한(retainUntil, 기록 시각 + 거래 관련 5년·거래 무관 3개월, audit/log.ts)과
+  // 탈퇴 때 거래 관련 행에 다는 분리 보관 표시(legalHoldAt, buyers/legalHold.ts). 기한 뒤 회원 id 비식별은 별도 함수.
+  legalHoldAt DateTime? @db.Timestamptz(3)
+  retainUntil DateTime? @db.Timestamptz(3)
 
   seller Seller? @relation(fields: [sellerId], references: [id])
 
@@ -878,11 +1168,16 @@ model SubscriptionPlan {
   trialMessageLimit  Int      @default(100)
   trialIdentityLimit Int      @default(50)
   trialStorageMb     Int      @default(1024)
+  // 마스터 승인 시각부터의 체험 일수(오버레이 전용 7, 통합 0 = 체험 없음, ARCHITECTURE 4.8.0)
+  trialDays          Int      @default(0)
   createdAt          DateTime @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime @updatedAt @db.Timestamptz(3)
 
   subscriptions SellerSubscription[]
   priceChanges  SubscriptionPriceChange[]
+  sellers       Seller[]
+  pendingFor    SellerSubscription[]  @relation("PendingPlan")
+  targetOf      SubscriptionPayment[] @relation("PaymentTargetPlan")
 }
 
 // 판매가 변경 기록(대표님 결정 2026-10-02). 새 가입자는 바로 새 가격, 기존 구독자는 구독을 시작할 때 적용되던 가격을 내다가
@@ -928,15 +1223,31 @@ model SellerSubscription {
   // 자동결제 실패 뒤 다시 시도한 횟수(최대 3번)와 계속 쓸 수 있는 유예 끝(실패한 날 + 7일)
   retryCount         Int                      @default(0)
   graceUntil         DateTime?                @db.Timestamptz(3)
+  // STANDARD → INTEGRATED 이전 전 가격 스냅숏(ONQ 1-C, ARCHITECTURE 4.8.0). 결제가 이어지는 구독에만 남긴다.
+  // 고지 발송 완료 시각(legacyPriceNoticeSentAt) + 30일 전까지는 이 금액으로 청구하고, 발송 전(null)이면 계속 이 금액이다.
+  // 해지 뒤 다시 구독하면 비운다(새 가입자 가격).
+  legacyPrice             Int?
+  legacyPriceNoticeSentAt DateTime?             @db.Timestamptz(3)
+  // 다음 결제일에 바꿀 플랜(하위 변경, ONQ 1-C-2). 갱신 결제 직전에 planId로 옮기고 비운다. 다시 지금 플랜을 고르면 비운다.
+  pendingPlanId           String?               @db.Uuid
+  // 이 구독은 정가로 청구한다(런칭 할인을 이미 쓴 계정이 해지 뒤 다시 구독, 대표님 결정 2026-10-04). 구독이 이어지는 동안 그대로다.
+  regularPrice            Boolean               @default(false)
   createdAt          DateTime                 @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime                 @updatedAt @db.Timestamptz(3)
 
-  seller   Seller                @relation(fields: [sellerId], references: [id])
-  plan     SubscriptionPlan      @relation(fields: [planId], references: [id])
-  payments SubscriptionPayment[]
+  seller      Seller                @relation(fields: [sellerId], references: [id])
+  plan        SubscriptionPlan      @relation(fields: [planId], references: [id])
+  pendingPlan SubscriptionPlan?     @relation("PendingPlan", fields: [pendingPlanId], references: [id])
+  payments    SubscriptionPayment[]
 
   @@unique([sellerId, id])
   @@index([status, nextChargeAt])
+}
+
+// PERIOD: 이용 기간 결제(첫 결제·갱신·재시도·카드 등록·체험 중 상위 변경). PRORATION: 결제 중 상위 변경의 남은 기간 차액(기간을 바꾸지 않음).
+enum SubscriptionPaymentKind {
+  PERIOD
+  PRORATION
 }
 
 enum SubscriptionPaymentStatus {
@@ -959,11 +1270,17 @@ model SubscriptionPayment {
   failureReason     String?
   // 예약 실행이 만든 청구(true)인지, 판매자가 카드 등록으로 직접 낸 청구(false)인지
   scheduled         Boolean                   @default(false)
+  kind              SubscriptionPaymentKind   @default(PERIOD)
+  // 상위 변경 청구면 결제가 확정될 때 옮길 플랜(실패·대기면 지금 플랜 유지, ONQ 1-C-2)
+  targetPlanId      String?                   @db.Uuid
+  // 런칭가(판매가)로 낸 청구인지. 확정되면 판매자에 런칭 할인 사용을 남긴다(정가·이전 전 가격 청구는 false)
+  launchDiscount    Boolean                   @default(false)
   paidAt            DateTime?                 @db.Timestamptz(3)
   createdAt         DateTime                  @default(now()) @db.Timestamptz(3)
 
   seller       Seller             @relation(fields: [sellerId], references: [id])
   subscription SellerSubscription @relation(fields: [sellerId, subscriptionId], references: [sellerId, id])
+  targetPlan   SubscriptionPlan?  @relation("PaymentTargetPlan", fields: [targetPlanId], references: [id])
 
   @@index([sellerId, createdAt])
 }
@@ -1127,4 +1444,103 @@ model OrderNotification {
 
   @@unique([orderId, kind])
   @@index([sellerId, kind, status])
+}
+
+// 판매자 회원 정책. 재가입 제한(대표님 결정 2026-10-03, 기본 꺼짐): 켜면 탈퇴한 사람(본인확인 기준)이 정한 기간(일) 동안 다시 가입할 수 없다.
+model SellerMemberPolicy {
+  sellerId                 String   @id @db.Uuid
+  rejoinRestrictionEnabled Boolean  @default(false)
+  rejoinRestrictionDays    Int      @default(30)
+  updatedAt                DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+}
+
+// 재가입 제한 목적으로만 남기는 탈퇴 회원의 본인확인 식별값 해시. 이름·휴대폰 등 다른 정보는 두지 않는다.
+// 재가입 제한이 켜진 쇼핑몰에서 탈퇴할 때만 만들고, expiresAt이 지나거나 판매자가 제한을 끄면 지운다(buyers/rejoin.ts).
+model BuyerRejoinBlock {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId  String   @db.Uuid
+  ciHash    String
+  expiresAt DateTime @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+
+  @@unique([sellerId, ciHash])
+  @@index([expiresAt])
+}
+
+// 앱 안 정기 실행 heartbeat(인스턴스·작업별 마지막 실행). 감시는 앱 밖 수집기(scripts/ops/monitor.mjs)가 이 표를 읽어 판단한다.
+// 작업 이름 "scheduler.tick"은 정기 실행 루프 자체(작업을 잠금 때문에 건너뛰어도 남음).
+// 앱 인스턴스(이름별) 상태의 유일한 기준(ops/metrics.ts). 프로세스가 시작할 때 등록하며 새 세대 값(uuid)을 쓰고 종료 표시를 비운다.
+model OpsInstance {
+  name         String    @id
+  generation   String
+  // 정상 종료(SIGTERM·SIGINT) 때 자기 세대일 때만 남기는 종료 시각. 없으면 아무리 오래돼도 살아 있는 인스턴스로 본다.
+  retiredAt    DateTime? @db.Timestamptz(3)
+  registeredAt DateTime  @db.Timestamptz(3)
+}
+
+// 정기 실행 heartbeat(인스턴스·세대·작업별). 지표는 OpsInstance의 지금 세대 행만 본다.
+model OpsHeartbeat {
+  instance   String
+  generation String
+  job        String
+  lastRunAt  DateTime  @db.Timestamptz(3)
+  // done | skipped | failed
+  lastStatus String
+  lastError  String?
+  // 마지막 성공 시각(실패가 이어져도 언제부터인지 알 수 있게)
+  lastOkAt   DateTime? @db.Timestamptz(3)
+  updatedAt  DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@id([instance, generation, job])
+}
+
+// 인프라 감시 사건(수집기가 남기는 incident 열기·닫기 등). 마스터 관리자(최고관리자)가 읽는다.
+// 쓰기는 내부 토큰(OPS_INGEST_TOKEN)으로 인증한 POST /api/internal/ops/events만. 같은 (source, eventId)는 한 번만 저장한다(재전송 안전).
+model OpsEvent {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  // 들어온 순서(같은 occurredAt끼리 정할 때 늦게 들어온 쪽이 뒤)
+  seq        BigInt   @default(autoincrement())
+  source     String
+  // 수집기가 붙인 사건 id(재전송 중복 제거)
+  eventId    String
+  // incident_open | incident_close | info 등
+  kind       String
+  // 같은 사건을 묶는 키(예: health, cert, version_mismatch)
+  key        String
+  severity   String
+  message    String
+  detail     Json?
+  occurredAt DateTime @db.Timestamptz(3)
+  // 서버가 받은 시각(보존 기간 기준)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([source, eventId])
+  @@unique([seq])
+  @@index([occurredAt])
+  // 열린 사건 계산(수집기·key별 마지막으로 받은 사건)
+  @@index([source, key, seq])
+  // 보존 기간 정리(받은 시각)
+  @@index([createdAt])
+}
+
+// ───────────── 관리자 화면 브랜딩 (마스터 관리자가 바꿈) ─────────────
+
+// 관리자 화면별 파비콘·공유 카드. target: "admin"(마스터 관리자) | "seller"(파트너스 관리자, 플랫폼 공통 1벌). 값·크기는 마이그레이션 CHECK로 묶는다.
+// 이미지는 저장소 결정(A: DB bytea / B: 버킷) 전까지 이 표에 바이트로 둔다. 읽기·쓰기는 lib/server/branding/store.ts 한 곳에서만 한다.
+// *Hash는 바이트의 sha256 앞 12자(주소의 버전 값). 이미지가 없으면 데이터·형식·해시가 모두 null이다.
+model SiteBranding {
+  target        String   @id
+  faviconData   Bytes?
+  faviconType   String?
+  faviconHash   String?
+  ogTitle       String?
+  ogDescription String?
+  ogImageData   Bytes?
+  ogImageType   String?
+  ogImageHash   String?
+  updatedAt     DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 }

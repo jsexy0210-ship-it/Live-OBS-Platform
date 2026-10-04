@@ -20,6 +20,15 @@ describe("GET /api/health", () => {
     expect(await res.json()).toEqual({ status: "ok", db: "ok", version: "abc1234" });
   });
 
+  it("테스트 서버 모드(OBS_TEST_MODE=1)면 testMode: true를 붙이고, 아니면 붙이지 않아요", async () => {
+    vi.stubEnv("APP_VERSION", "abc1234");
+    queryRaw.mockResolvedValue([{ "?column?": 1 }]);
+    vi.stubEnv("OBS_TEST_MODE", "1");
+    expect(await (await GET()).json()).toEqual({ status: "ok", db: "ok", version: "abc1234", testMode: true });
+    vi.stubEnv("OBS_TEST_MODE", "0");
+    expect(await (await GET()).json()).toEqual({ status: "ok", db: "ok", version: "abc1234" });
+  });
+
   it("DB 연결이 안 되면 503이고 오류 내용은 드러내지 않아요", async () => {
     vi.stubEnv("APP_VERSION", "");
     queryRaw.mockRejectedValue(new Error("connect ECONNREFUSED 10.0.0.5:5432 password=secret"));

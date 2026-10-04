@@ -69,7 +69,7 @@ runner는 처음 한 번 상시 서비스로 등록해 둬요(「서버 준비�
 | 실패한 단계 | 확인할 것 |
 | --- | --- |
 | Check target commit | `confirm_sha`가 지금 main 맨 위 커밋과 같은지. `/opt/obs/.env`가 있는지 |
-| Waiting for a runner(시작 안 함) | 서버에서 `cd /opt/obs/actions-runner && sudo ./svc.sh status`가 active인지, GitHub Runners 화면에 `obs-web-test`가 Idle인지, 등록 때 라벨 `obs-kakao`를 넣었는지 |
+| Waiting for a runner(시작 안 함) | 서버에서 `sudo bash -c 'cd /home/obs && ./svc.sh status'`가 active인지, GitHub Runners 화면에 `obs-web-test`가 Idle인지, 등록 때 라벨 `obs-kakao`를 넣었는지 |
 | Backup / Build and start에서 permission denied | `obs` 계정이 `docker` 그룹인지(`id obs`). 그룹을 추가한 뒤에는 runner 서비스를 다시 시작해야 해요(`sudo ./svc.sh stop && sudo ./svc.sh start`) |
 | Build and start | 마이그레이션 실패(`obs-web-migrate` 로그), `.env` 값 누락(`POSTGRES_*`), 디스크 부족(`df -h`) |
 | Health check | `db":"error"`면 DB 컨테이너 상태, version이 다르면 이전 컨테이너가 남았는지(`docker ps`) |
@@ -88,7 +88,7 @@ runner는 처음 한 번 상시 서비스로 등록해 둬요(「서버 준비�
 - GitHub Runners 화면에서 runner가 받은 job 기록을 가끔 확인해요(배포 워크플로 말고 다른 job이 있으면 아래 「이상할 때」).
 
 이상할 때(배포가 아닌 job을 runner가 받았을 때):
-1. 서버에서 `cd /opt/obs/actions-runner && sudo ./svc.sh stop`으로 멈추고, GitHub Runners 화면에서 `obs-web-test`를 지워요.
+1. 서버에서 `sudo bash -c 'cd /home/obs && ./svc.sh stop'`으로 멈추고, GitHub Runners 화면에서 `obs-web-test`를 지워요.
 2. 그 job의 실행 화면을 열어 어느 워크플로·PR인지 기록해 MASTER에 알려요.
 3. `/opt/obs/.env`의 비밀값(DB 비밀번호·키)을 바꾸는 것을 검토해요(DB 비밀번호는 「서버 .env」의 변경 절차).
 
@@ -178,7 +178,8 @@ sudo -u obs nano /opt/obs/.env
 | `POSTGRES_DB` | 필수 | DB 이름 |
 | `IDENTITY_HASH_KEY` | 필수 | 본인확인 CI 해시 키(32자 이상) |
 | `BILLING_KEY_SECRET` | 필수 | 빌링키 암호화 키(32자 이상) |
-| `BILLING_PROVIDER` | 필수 | obs-test는 **`fake`**(실제 결제 금지, 2026-10-03 결정). **주의**: 지금 코드는 운영 빌드(`NODE_ENV=production`)에서 가짜 결제 공급자 생성을 막아요(`lib/server/billing/provider.ts`). 그래서 obs-test에서는 카드 등록·구독 결제가 오류로 멈춰요(비워도 같음). 실제 결제는 일어나지 않아요. **obs-test에서는 카드 등록·구독 결제가 동작하지 않는 것이 의도예요**(2026-10-03 결정) |
+| `BILLING_PROVIDER` | 선택 | obs-test는 비워도 돼요(아래 `OBS_TEST_MODE=1`이면 가짜 결제 공급자를 써요). 운영 빌드에서 `fake`만 넣으면 가짜 결제 공급자 생성이 막혀 카드 등록·구독 결제가 오류로 멈춰요 |
+| `OBS_TEST_MODE` | **obs-test만** | `1`이면 테스트 서버 모드예요(대표님 지시 2026-10-03). 휴대폰 본인확인은 가짜 공급자(인증번호 `000000`, 문자·과금 없음, 포트원 설정이 있어도 테스트 모드가 우선), 구독 결제는 가짜 결제 공급자(실제 돈 이동 없음, 결제 번호 `fake-pay-…`)로 처리하고, 「시험 데이터 넣기」 명령을 쓸 수 있어요. 켜지면 서버 로그에 경고 한 줄이 남고 `GET /api/health`에 `"testMode": true`가 붙어요. **운영 서버에는 절대 넣지 않아요** |
 | `OBS_SITE_ADDRESS` | 필수(HTTPS) | obs-test는 `test.on-aircue.com`. 비우면 `:80`(HTTP만, 로그인 유지 안 됨). 아래 「HTTPS」 |
 | `BUSINESS_STATUS_PROVIDER`, `NTS_BUSINESS_STATUS_API_KEY` | 선택 | 판매자 가입 사업자 상태 점검 |
 | `MAIL_ORDER_PROVIDER`, `FTC_MAIL_ORDER_API_KEY` | 선택 | 통신판매업 점검 |
@@ -211,13 +212,11 @@ $C up -d --wait         # 같은 버전 그대로, 앱·마이그레이션이 �
    ./config.sh --url https://github.com/jsexy0210-ship-it/Live-OBS-Platform --labels obs-kakao --name obs-web-test --unattended --token <화면의 토큰>
    exit
    ```
-3. 서비스로 등록하고 시작해요(관리자 계정에서).
+3. 서비스로 등록하고 시작해요(관리자 계정에서). `/opt/obs`는 `obs` 계정만 열 수 있어서 `sudo bash -c`로 들어가요.
    ```bash
-   cd /opt/obs/actions-runner
-   sudo ./svc.sh install obs
-   sudo ./svc.sh start
-   sudo ./svc.sh status    # active (running)이면 돼요
+   sudo bash -c 'cd /opt/obs/actions-runner && ./svc.sh install obs && ./svc.sh start && ./svc.sh status'   # active (running)이면 돼요
    ```
+   - 지금 obs-test 서버(obs-web-test)의 runner는 `/home/obs`에 설치돼 있어요(2026-10-03). 그 서버에서는 위·아래 명령의 `/opt/obs/actions-runner`를 `/home/obs`로 바꿔 써요.
    GitHub Runners 화면에 `obs-web-test`가 **Idle**로 보이면 끝이에요.
 4. Settings → Environments → `obs-test`를 이렇게 설정하길 권해요.
    - Deployment branches and tags: **Selected branches** → `main`만
@@ -236,6 +235,24 @@ cd /opt/obs/src && C="docker compose -p obs-web -f deploy/docker-compose.yml --e
 export APP_VERSION=$(docker ps -a --filter label=com.docker.compose.project=obs-web --filter label=com.docker.compose.service=obs-web-app --format '{{.Image}}' | head -1 | cut -d: -f2)
 echo "현재 버전: ${APP_VERSION:-없음}"
 ```
+
+## 시험 데이터 넣기(obs-test 전용)
+
+테스트 서버에 시험 판매자(대표자) 계정 1개, 시험 쇼핑몰(`/shop/test-shop`) 1개, 상품 3개를 넣어요(`scripts/seed-obs-test.mjs`). 판매자가 이미 있으면 아무것도 하지 않아요(다시 실행해도 중복 없음). 실제 결제·문자는 없어요.
+마스터 관리자(최고관리자) 시험 계정도 함께 또는 따로 만들 수 있어요(대표님 지시 2026-10-04): 「Seed obs-test」의 `admin_login`·`admin_password`(서버에서는 `SEED_ADMIN_LOGIN`·`SEED_ADMIN_PASSWORD`)를 넣으면 최고관리자 계정을 만들고, 같은 아이디가 이미 있으면 만들지 않아요. 판매자 아이디·비밀번호와 관리자 아이디·비밀번호는 각각 선택이지만 둘 중 한 쌍은 꼭 넣어요. 판매자가 이미 있으면 판매자 부분만 건너뛰고 관리자는 계속 만들어요.
+로그인 아이디·비밀번호는 실행할 때 직접 입력해요(저장소·문서·로그에 남지 않아요). 이 명령에서만 아이디 형식·비밀번호 8자 규칙을 건너뛰어요(대표님 허용 2026-10-03, 운영 규칙은 그대로).
+**서버에 접속하지 않고 GitHub에서 넣기(권장):** Actions → 「Seed obs-test」 → Run workflow에서 아이디·비밀번호를 넣고 실행해요(main 기준, Environment `obs-test` 승인 대상). 비밀번호는 실행 로그에서 가려져요. 앱이 한 번 배포된 뒤에만 돌아요.
+
+서버에서 직접 넣을 때는 위 「서버 명령 준비」 줄을 먼저 실행하고, 아래를 붙여 넣은 뒤 아이디·비밀번호를 입력해요.
+
+```bash
+read -p "아이디: " SEED_SELLER_LOGIN && read -s -p "비밀번호: " SEED_SELLER_PASSWORD && echo && export SEED_SELLER_LOGIN SEED_SELLER_PASSWORD && OBS_TEST_MODE="$(sed -n 's/^OBS_TEST_MODE=//p' /opt/obs/.env)" IDENTITY_HASH_KEY="$(sed -n 's/^IDENTITY_HASH_KEY=//p' /opt/obs/.env)" $C run --rm --no-deps -e OBS_TEST_MODE -e SEED_SELLER_LOGIN -e SEED_SELLER_PASSWORD -e IDENTITY_HASH_KEY obs-web-migrate node scripts/seed-obs-test.mjs; unset SEED_SELLER_LOGIN SEED_SELLER_PASSWORD
+```
+
+- 마이그레이션 이미지(`obs-web-migrate`)를 써요. 이 기능이 들어간 버전으로 한 번 배포한 뒤에 실행해요.
+- 테스트 모드 여부는 이 서버의 `/opt/obs/.env`에 적힌 `OBS_TEST_MODE` 값을 그대로 넘겨요(명령에 1을 박아 두지 않아요). 운영 서버처럼 `.env`에 `OBS_TEST_MODE=1`이 없으면 명령이 아무것도 넣지 않고 실패해요.
+- 끝나면 파트너스 로그인 화면에서 넣은 아이디·비밀번호로 로그인해요.
+- 대표자 본인확인 정보는 시험용 인물로 채워요. 비밀번호 찾기에서 이름 「테스트대표」, 생년월일 1990년 1월 1일(남), 아무 휴대폰번호, 인증번호 `000000`을 넣으면 대표자로 확인돼요. 서버의 `IDENTITY_HASH_KEY`로 해시를 만들어서 이 값이 없으면 명령이 실패해요. `obs-web-migrate` 컨테이너에는 DB 주소만 들어가므로, 위 줄이 `/opt/obs/.env`의 `IDENTITY_HASH_KEY` 값을 읽어 이 명령에만 넘겨요(화면·명령 기록에 값이 남지 않아요). `.env`에서 이 값은 따옴표 없이 적어 둬요.
 
 ## 수동 배포(서버에서 직접, 워크플로를 쓸 수 없을 때)
 
