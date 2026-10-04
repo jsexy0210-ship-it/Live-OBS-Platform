@@ -522,6 +522,14 @@ describe("가입 필수 동의(PF-007-1)", () => {
     expect(await db.identityVerification.count()).toBe(0);
   });
 
+  it("옛 문서 버전으로 시작하면 409 본문에 지금 버전 두 개를 담아 화면이 새 버전으로 다시 동의하게 한다", async () => {
+    const r = await startRoute(post("/api/seller-signup/verification", { ...SELLER_IDV, termsVersion: "2020-01-01.v0", privacyVersion: "2020-01-01.v0" }));
+    expect(r.status).toBe(409);
+    expect(await r.json()).toMatchObject({ error: "consent_outdated", termsVersion: SELLER_SIGNUP_CONSENT.termsVersion, privacyVersion: SELLER_SIGNUP_CONSENT.privacyVersion });
+    const missing = await startRoute(post("/api/seller-signup/verification", IDV_INPUT));
+    expect(await missing.json()).not.toHaveProperty("termsVersion");
+  });
+
   it("신청하면 동의한 문서 버전·시각을 대표자 계정과 감사 기록에 남긴다", async () => {
     const start = await startRoute(post("/api/seller-signup/verification", { ...SELLER_IDV, name: "동의대표", phone: "01077778888" }));
     expect(start.status).toBe(200);

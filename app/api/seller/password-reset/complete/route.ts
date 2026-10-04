@@ -3,7 +3,8 @@ import { GRANT_COOKIE, RESET_PATH, resetSellerPassword } from "../../../../../li
 import { prisma } from "../../../../../lib/server/db";
 import { clearFlowCookie, mutation, readCookie, readJson, requestMeta } from "../../../../../lib/server/http/route";
 
-// 새 비밀번호 저장. 재설정 권한은 한 번만 쓰이고, 그 계정의 기존 로그인은 모두 끊긴다.
+// 새 비밀번호 저장. 재설정 권한은 한 번만 쓰이고, 그 계정의 기존 로그인은 모두 끊긴다(비밀번호 찾기·아이디 찾기 재설정 공용).
+// 저장에 성공한 권한으로 같은 새 비밀번호를 10분 안에 다시 보내면 아무것도 바꾸지 않고 200(응답 유실 대비), 다른 비밀번호면 400 invalid_grant.
 export const POST = mutation(async (req: Request) => {
   const body = await readJson<{ newPassword: string }>(req);
   if (typeof body.newPassword !== "string" || body.newPassword.length > 200) {
