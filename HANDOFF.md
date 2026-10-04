@@ -9,7 +9,9 @@
 | Live-OBS-Platform MASTER (2) | `session_018xa8SC5evpEFNVcQBwcN5t` | 요구사항 접수 · 작업 배정 · 독립 검수 · main 병합 · 상태 문서 관리. 2026-10-02 17:21 KST 교체 생성 |
 | (이전) MASTER | `session_01XqBPGTKiEMmRSMB5SfFp3C` | 컨텍스트 50% 도달로 교체. PR #15 병합 후 보관 완료 (2026-10-02 KST) |
 | 디자인 전담 (2) | `session_01DCQ38rPYwPnVCZJbhLgJnc` | 디자인 아티팩트 https://claude.ai/artifact/YYGXZ3u4QvjQpEMUHnN4tS 이어서 작업 (아티팩트 `project/` 파일만 소유). 우선순위: ① 오버레이 9:16·16:9 기본 템플릿 3종 ② 기존 아트보드 A안·화면 문구·도메인·도우미·구매자 문의 반영 ③ 남은 화면. 2026-10-02 18:45 KST MASTER 생성 |
-| 개발 전담 (기반) (2) | `session_01Ud86wDnEPvsi8jPbo4zGCi` | 이전 기반 세션을 이어받음(서버·DB·API·테스트). 소유: `prisma/**`, `lib/server/**`, `app/api/**`, `tests/**`, `docs/ARCHITECTURE.md`, `package*.json`, `ci.yml` 테스트 단계. 2026-10-03 20:18 KST MASTER 생성 |
+| 개발 전담 (기반) (4) | `session_016QFa8qXJSQSLrSFqvKCtWi` | 진행 중. (3)에서 #169·대기열 인수(「미완료·블로커」의 「기반 세션 인계」). 소유: `prisma/**`, `lib/server/**`, `app/api/**`(automation 제외), `tests/**`, `docs/ARCHITECTURE.md`, `package*.json`, `ci.yml` 테스트 단계, `scripts/seed-obs-test.mjs`. 2026-10-04 KST MASTER 생성 |
+| (이전) 개발 전담 (기반) (3) | `session_01CmfFhZdBNA3ojJFFrdTuJ3` | 교체됨 → (4), 보관 예정. 대화가 길어져 2026-10-04 KST 교체 |
+| (이전) 개발 전담 (기반) (2) | `session_01Ud86wDnEPvsi8jPbo4zGCi` | 교체됨(→ 3). 이전 기반 세션을 이어받음(서버·DB·API·테스트). 소유: `prisma/**`, `lib/server/**`, `app/api/**`, `tests/**`, `docs/ARCHITECTURE.md`, `package*.json`, `ci.yml` 테스트 단계. 2026-10-03 20:18 KST MASTER 생성 |
 | (이전) 개발 전담 (기반) | `session_01Lhh5mXm1mdLnACzpHDNLUw` | 개발 1단계(화면 제외): 설계 문서 `docs/ARCHITECTURE.md` → 스키마·권한·테넌트 격리·주문대기 도메인·로그인·테스트·CI 테스트 단계. 소유: `prisma/**`, `lib/server/**`, `app/api/**`, `tests/**`, `docs/ARCHITECTURE.md`, `package*.json`, `ci.yml` 테스트 단계. 2026-10-02 21:30 KST MASTER 생성. 컨텍스트 70% 초과로 2026-10-03 교체 |
 | 개발 전담 (화면) | `session_01U3TpR6Kgg8zZnxyS48PegW` | 2026-10-03 대표님 결정 「판매자 화면부터 실제로 만들어 눌러 볼 수 있게」. 화면 라우트·components·스타일·dev-seed·e2e만 소유. 서버 API·lib/server·prisma는 개발 전담 (기반) 소유 |
 | 인프라 전담 | `session_016ErhcGpbBooDx8a9sYYUmK` | 이슈 #137 테스트 서버 배포 구성(Docker Compose·Caddy·`/api/health`·`docs/DEPLOY.md`). #145 병합(2026-10-03). 배포 워크플로 파일은 MASTER 소유. 2026-10-03 MASTER 생성 |
@@ -44,6 +46,21 @@
 - 카카오클라우드: 테스트 VM `obs-web-test`와 Cloudflare DNS `test.on-aircue.com`은 대표님 보고로 확인(PROJECT_STATUS 「인프라 방향」). 이전(Leftlife) VM·버킷·보안 그룹과 Object Storage 버킷 상태는 미확인이며, 새 서버가 뜬 것을 확인한 뒤 삭제 여부를 정한다(PROJECT_STATUS).
 
 ## 미완료·블로커
+
+### 기반 세션 인계 (2026-10-04 KST, 개발 전담 (기반) (3) → 담당 (4))
+
+- 열린 PR
+  - #169 파트너스 가입 약관 동의 서버(PF-007-1): 화면 PR #172와 짝 병합(#169 → #172 연달아), 그 전까지 초안. 마이그레이션 `20261004110000_seller_signup_consent`(병합 순서상 마지막이어야 함, main이 바뀌면 다시 확인). Codex 스레드 4175479113(화면 동의 칸 없음)은 짝 병합 준비 때 해결
+  - #174 ONQ 1-A 설계 문서(ARCHITECTURE 4.8.0): 병합 전이면 Codex 결과 처리
+- 대기열(순서대로, 각각 별도 PR)
+  1. ONQ 1-B 권한 모델: #174 설계대로 플랜 → 기능 권한 3종 매핑, 판매자 API(`requireSeller` 뒤)와 공개·구매자 경로(4.8.0 「막음/허용」 표) 검사, 부정 시험, 기존 판매자는 동작 그대로(통합 권한). 결제 엔진은 건드리지 않음. 코드 이름·오류 코드는 이 PR에서 제안
+  2. 대기열 6번 나머지: 재가입 제한 정보 보관 동의 철회 API(생기면 `REJOIN_RESTRICTION_CONFIG.available` 판단) → 적립금 잔액 API → 야간 광고 제한(21~8시 KST)
+  3. ONQ 1-C 결제 엔진 전환·`STANDARD` 이전 백필: 범위는 MASTER가 지정(ONQ_PLAN E1-B·E1-C, 이전 전 가격 스냅숏)
+- 블로커·대표님 결정 대기
+  - 이미지 저장소(A: Postgres bytea / B: 오브젝트 스토리지, 유료) — 쇼핑몰 파비콘·로고·공유 카드 이미지 업로드, 상품 이미지가 기다림
+  - 런칭 할인 기간·종료일, 오버레이 전용 체험 비용 한도, 청약철회·중도 해지 환불 법무 확인
+  - 파트너스 가입 필수 동의 원문: 이용약관(PF-008)과 개인정보 수집·이용 동의(처리방침과 별도 문서, `docs/PRODUCT_SCOPE.md` 동의 항목 참고). PF-009는 개인정보처리방침이다(`docs/IA.md`). 대표님 확정 문서가 필요하고, 지금은 버전 값만 있음
+  - 마케팅 수신 동의·철회 결과 통지: 알림 발송 채널 연동 때 붙임(처리 후 14일 이내)
 
 - 운영 DB 생성 때 collation을 UTF-8 계열(`ko_KR.UTF-8` 등)로 만들 것. 「C」 collation이면 상품 이름 검색의 대소문자 무시(`lower()`)가 ASCII에만 적용된다
 - 재고 이력 `stockAfter`는 이 기능 전 이력에서 null(화면은 표시하지 않음)
