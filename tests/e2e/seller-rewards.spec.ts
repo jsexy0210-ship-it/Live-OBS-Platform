@@ -31,7 +31,7 @@ async function saveOk(page: Page) {
     page.waitForResponse((r) => r.request().method() === "PUT" && r.url().includes("/api/seller/reward-policy") && r.ok()),
     page.getByRole("button", { name: "저장", exact: true }).last().click(),
   ]);
-  await expect(page.getByText("적립금 지급 시점을 저장했어요", { exact: false }).first()).toBeVisible();
+  await expect(page.getByText("적립금 지급 시점을 저장했습니다", { exact: false }).first()).toBeVisible();
 }
 
 test("적립금 지급 시점: 기본은 배송 완료 후, 결제하면 바로로 바꾸면 저장되고 다시 열어도 그대로다", async ({ page }) => {
@@ -46,7 +46,7 @@ test("적립금 지급 시점: 기본은 배송 완료 후, 결제하면 바로�
   // 메뉴 「적립금」에서 들어온다
   await expect(page.getByRole("link", { name: "적립금", exact: true })).toHaveAttribute("href", "/seller/rewards");
   await expect(page.getByRole("radio", { name: "배송 완료 후 지급 (기본)" })).toBeChecked();
-  await expect(page.getByText("적립금은 결제할 때 금액으로 정해져요.")).toBeVisible();
+  await expect(page.getByText("적립금은 결제할 때 금액으로 정해집니다.")).toBeVisible();
   await expect(page.getByRole("button", { name: "저장", exact: true }).last()).toBeDisabled();
   await shot(page, "SA-031-earn-timing");
 

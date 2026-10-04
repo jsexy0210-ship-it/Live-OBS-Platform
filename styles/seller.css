@@ -44,8 +44,13 @@ body {
   flex: 1;
 }
 .login-links {
-  justify-content: center;
+  justify-content: space-between;
   gap: 8px;
+}
+/* 아이디 찾기 | 비밀번호 찾기 전환(AU-011·AU-003 위쪽) */
+.find-switch > .tab {
+  flex: 1;
+  text-align: center;
 }
 
 /* 파트너스 가입 신청(PF-007) · 비밀번호 찾기(AU-003·004) */

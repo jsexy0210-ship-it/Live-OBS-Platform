@@ -29,10 +29,10 @@ type OptRow = {
 type Errors = { name?: string; description?: string; price?: string; options?: string; rows: Record<number, { name?: string; priceDelta?: string; stock?: string }> };
 
 const STATUS_HELP: Record<ProductStatus, string> = {
-  ON_SALE: "쇼핑몰과 방송 주문대기에 바로 보여요",
-  SOLD_OUT: "쇼핑몰에 「품절」로 보이고 주문은 받지 않아요",
-  HIDDEN: "쇼핑몰에서 보이지 않아요. 언제든 다시 판매할 수 있어요",
-  DRAFT: "아직 쇼핑몰에 보이지 않아요",
+  ON_SALE: "쇼핑몰과 방송 주문대기에 바로 표시됩니다",
+  SOLD_OUT: "쇼핑몰에 「품절」로 표시되고 주문은 받지 않습니다",
+  HIDDEN: "쇼핑몰에 표시되지 않습니다. 언제든 다시 판매할 수 있습니다",
+  DRAFT: "아직 쇼핑몰에 표시되지 않습니다",
 };
 
 let seq = 0;
@@ -47,39 +47,39 @@ const toRow = (o: ProductOption): OptRow => ({
 const blankRow = (name = ""): OptRow => ({ key: ++seq, name, priceDelta: "0", stock: "0" });
 
 // 서버와 같은 글자 규칙(lib/server/text/clean.ts)으로 미리 검사해, 서버만 거부하는 글자(폭 없는 공백·채움 문자 등)가 어느 칸인지 알려 준다
-const BAD_CHARS = "쓸 수 없는 글자가 들어 있어요. 보이지 않는 글자나 빈칸 문자를 지워 주세요";
+const BAD_CHARS = "사용할 수 없는 글자가 들어 있습니다. 보이지 않는 글자나 빈칸 문자를 지워 주십시오";
 const badLine = (v: string) => v.trim() !== "" && cleanText(v, Number.MAX_SAFE_INTEGER, "name") === null;
 const badMultiline = (v: string) => v.trim() !== "" && cleanText(v, Number.MAX_SAFE_INTEGER, "multiline") === null;
 
 function validate(name: string, description: string, price: string, status: ProductStatus, rows: OptRow[]): Errors {
   const e: Errors = { rows: {} };
   const len = textLength(name);
-  if (len === 0) e.name = "상품명을 입력해 주세요";
-  else if (len > NAME_MAX) e.name = `상품명은 ${NAME_MAX}자까지 쓸 수 있어요`;
+  if (len === 0) e.name = "상품명을 입력해 주십시오";
+  else if (len > NAME_MAX) e.name = `상품명은 ${NAME_MAX}자까지 입력할 수 있습니다`;
   else if (badLine(name)) e.name = BAD_CHARS;
-  if (textLength(description) > DESC_MAX) e.description = `설명은 ${DESC_MAX.toLocaleString("ko-KR")}자까지 쓸 수 있어요`;
+  if (textLength(description) > DESC_MAX) e.description = `설명은 ${DESC_MAX.toLocaleString("ko-KR")}자까지 입력할 수 있습니다`;
   else if (badMultiline(description)) e.description = BAD_CHARS;
   const p = parseAmount(price);
-  if (p === null) e.price = "숫자만 입력해 주세요";
-  else if (p < 1 || p > INT4_MAX) e.price = "가격은 1원 이상, 21억 원 이하로 입력해 주세요";
+  if (p === null) e.price = "숫자만 입력해 주십시오";
+  else if (p < 1 || p > INT4_MAX) e.price = "가격은 1원 이상, 21억 원 이하로 입력해 주십시오";
   // 판매가가 올바를 때만 옵션 단가(판매가 + 추가 금액)를 검사한다
   const priceOk = !e.price && p !== null;
   for (const r of rows) {
     const re: Errors["rows"][number] = {};
     const n = textLength(r.name);
-    if (n === 0) re.name = "옵션명을 입력해 주세요";
-    else if (n > NAME_MAX) re.name = `옵션명은 ${NAME_MAX}자까지 쓸 수 있어요`;
+    if (n === 0) re.name = "옵션명을 입력해 주십시오";
+    else if (n > NAME_MAX) re.name = `옵션명은 ${NAME_MAX}자까지 입력할 수 있습니다`;
     else if (badLine(r.name)) re.name = BAD_CHARS;
     const d = parseAmount(r.priceDelta);
-    if (d === null) re.priceDelta = "숫자만 입력해 주세요";
-    else if (priceOk && (p + d < 1 || p + d > INT4_MAX)) re.priceDelta = "추가 금액을 더한 가격이 1원보다 작거나 너무 커요";
+    if (d === null) re.priceDelta = "숫자만 입력해 주십시오";
+    else if (priceOk && (p + d < 1 || p + d > INT4_MAX)) re.priceDelta = "추가 금액을 더한 가격이 1원보다 작거나 너무 큽니다";
     const s = parseAmount(r.stock);
-    if (s === null) re.stock = "숫자만 입력해 주세요";
-    else if (s < 0 || s > INT4_MAX) re.stock = "재고는 0개 이상으로 입력해 주세요";
+    if (s === null) re.stock = "숫자만 입력해 주십시오";
+    else if (s < 0 || s > INT4_MAX) re.stock = "재고는 0개 이상으로 입력해 주십시오";
     if (Object.keys(re).length) e.rows[r.key] = re;
   }
-  if (rows.length > OPTION_MAX) e.options = `옵션은 ${OPTION_MAX}개까지 만들 수 있어요`;
-  else if (status === "ON_SALE" && rows.length === 0) e.options = "판매하려면 옵션이 하나 이상 있어야 해요";
+  if (rows.length > OPTION_MAX) e.options = `옵션은 ${OPTION_MAX}개까지 만들 수 있습니다`;
+  else if (status === "ON_SALE" && rows.length === 0) e.options = "판매하려면 옵션이 하나 이상 있어야 합니다";
   return e;
 }
 
@@ -113,10 +113,10 @@ export function ProductForm({ initial }: { initial?: Product }) {
   }, []);
   const restockText =
     restock === null
-      ? "취소·반품 때 재고를 되돌릴지는 주문 설정의 「취소·반품하면 재고 되돌리기」를 따라요"
+      ? "취소·반품 때 재고를 되돌릴지는 주문 설정의 「취소·반품하면 재고 되돌리기」를 따릅니다"
       : restock
-        ? "주문 취소·발송 전 환불이면 재고가 돌아와요(주문 설정에서 켜져 있어요). 발송 뒤 환불이나 개봉한 상품은 돌아오지 않아요"
-        : "취소·환불해도 재고가 돌아오지 않아요(주문 설정에서 꺼져 있어요)";
+        ? "주문 취소·발송 전 환불이면 재고가 돌아옵니다(주문 설정에서 켜져 있습니다). 발송 뒤 환불이나 개봉한 상품은 돌아오지 않습니다"
+        : "취소·환불해도 재고가 돌아오지 않습니다(주문 설정에서 꺼져 있습니다)";
   const [rows, setRows] = useState<OptRow[]>(() => (initial ? initial.options.map(toRow) : [blankRow("기본")]));
   const [removed, setRemoved] = useState<string[]>([]);
   const [showErrors, setShowErrors] = useState(false);
@@ -148,7 +148,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
     const e = validate(name, description, price, st, rows);
     if (errorCount(e) > 0) {
       setShowErrors(true);
-      fail(`아래 ${errorCount(e)}개 항목을 확인해 주세요: ${errorFields(e)}`);
+      fail(`아래 ${errorCount(e)}개 항목을 확인해 주십시오: ${errorFields(e)}`);
       return false;
     }
     return true;
@@ -169,7 +169,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
         options: rows.map((o, i) => ({ name: o.name.trim(), priceDelta: parseAmount(o.priceDelta), stock: parseAmount(o.stock), sortOrder: i })),
       },
     });
-    if (!r.ok) return fail(failMessage(r, "상품을 등록하지 못했어요. 입력한 내용은 그대로 있어요"));
+    if (!r.ok) return fail(failMessage(r, "admin", "상품을 등록하지 못했습니다. 입력한 내용은 그대로 있습니다"));
     router.push(`/seller/products?toast=${st === "DRAFT" ? "draft" : "created"}`);
   };
 
@@ -196,7 +196,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
       if (Object.keys(patch).length === 0) return true;
       const r = await api<Product>(`/api/seller/products/${current.id}`, { method: "PATCH", body: patch });
       if (!r.ok) {
-        fail(failMessage(r, "저장하지 못했어요"));
+        fail(failMessage(r, "admin", "저장하지 못했습니다"));
         return false;
       }
       current = r.data;
@@ -215,7 +215,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
           method: "POST",
           body: { name: o.name.trim(), priceDelta: delta, stock, sortOrder: i },
         });
-        if (!r.ok) return fail(failMessage(r, "옵션을 추가하지 못했어요"));
+        if (!r.ok) return fail(failMessage(r, "admin", "옵션을 추가하지 못했습니다"));
         current = r.data;
         const made = current.options.find((x) => !known.has(x.id));
         list = list.map((x) => (x.key === o.key && made ? { ...x, id: made.id, orig: { name: made.name, priceDelta: made.priceDelta, stock: made.stock } } : x));
@@ -235,10 +235,10 @@ export function ProductForm({ initial }: { initial?: Product }) {
           const now = fresh.ok ? fresh.data.options.find((x) => x.id === o.id) : undefined;
           if (now) {
             setRows(list.map((x) => (x.key === o.key ? { ...x, stock: String(now.stock), orig: { ...x.orig!, stock: now.stock } } : x)));
-            return fail(`그사이 「${o.name.trim()}」 재고가 바뀌었어요. 지금 재고는 ${now.stock.toLocaleString("ko-KR")}개예요. 확인하고 다시 저장해 주세요`);
+            return fail(`그사이 「${o.name.trim()}」 재고가 변경되었습니다. 지금 재고는 ${now.stock.toLocaleString("ko-KR")}개입니다. 확인하고 다시 저장해 주십시오`);
           }
         }
-        return fail(failMessage(r, "옵션을 저장하지 못했어요"));
+        return fail(failMessage(r, "admin", "옵션을 저장하지 못했습니다"));
       }
       current = r.data;
       list = list.map((x) => (x.key === o.key ? { ...x, orig: { name: o.name.trim(), priceDelta: delta, stock } } : x));
@@ -247,7 +247,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
 
     for (const id of removed) {
       const r = await api<Product>(`/api/seller/products/${current.id}/options/${id}`, { method: "DELETE" });
-      if (!r.ok && r.status !== 404) return fail(failMessage(r, "옵션을 삭제하지 못했어요"));
+      if (!r.ok && r.status !== 404) return fail(failMessage(r, "admin", "옵션을 삭제하지 못했습니다"));
       if (r.ok) current = r.data;
       gone = gone.filter((x) => x !== id);
       setRemoved(gone);
@@ -259,7 +259,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
     setRemoved([]);
     setShowErrors(false);
     setSaving(null);
-    setToast("저장했어요");
+    setToast("저장했습니다");
   };
 
   const busy = saving !== null;
@@ -270,15 +270,15 @@ export function ProductForm({ initial }: { initial?: Product }) {
   const saveButtons = (block: boolean) =>
     isEdit ? (
       <button className={`btn${block ? " btn-lg btn-block" : " btn-sm"}${saving ? " is-loading" : ""}`} type="button" disabled={busy || !required} onClick={() => void update()}>
-        {saving ? "저장하고 있어요" : "저장"}
+        {saving ? "저장 중" : "저장"}
       </button>
     ) : (
       <>
         <button className={`btn btn-out${block ? " btn-lg btn-block" : " btn-sm"}`} type="button" disabled={busy || !required} onClick={() => void create("DRAFT")}>
-          {saving === "draft" ? "저장하고 있어요" : "임시 저장"}
+          {saving === "draft" ? "저장 중" : "임시 저장"}
         </button>
         <button className={`btn${block ? " btn-lg btn-block" : " btn-sm"}${saving === "save" ? " is-loading" : ""}`} type="button" disabled={busy || !required} onClick={() => void create(status)}>
-          {saving === "save" ? "등록하고 있어요" : "등록"}
+          {saving === "save" ? "등록 중" : "등록"}
         </button>
       </>
     );
@@ -296,7 +296,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
           {failure && (
             <div className="msg msg-neg" role="alert">
               <span>
-                <b>저장할 수 없어요.</b> {failure}
+                <b>저장할 수 없습니다.</b> {failure}
               </span>
             </div>
           )}
@@ -323,9 +323,9 @@ export function ProductForm({ initial }: { initial?: Product }) {
                 </span>
               </div>
               {shown.name || nameLen > NAME_MAX ? (
-                <span className="err">{shown.name ?? `상품명은 ${NAME_MAX}자까지 쓸 수 있어요`}</span>
+                <span className="err">{shown.name ?? `상품명은 ${NAME_MAX}자까지 입력할 수 있습니다`}</span>
               ) : (
-                <span className="help">목록에서 잘 보이려면 50자 이내가 좋아요 · 공백 포함 최대 100자 · 쇼핑몰과 오버레이에 그대로 보여요</span>
+                <span className="help">목록에서 잘 보이려면 50자 이내가 좋습니다 · 공백 포함 최대 100자 · 쇼핑몰과 오버레이에 그대로 표시됩니다</span>
               )}
             </div>
             <div className="fld">
@@ -333,7 +333,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
               <textarea
                 id="p-desc"
                 className={`inp${shown.description ? " is-error" : ""}`}
-                placeholder="구성 · 상태 · 배송 안내를 적어 주세요"
+                placeholder="구성 · 상태 · 배송 안내를 입력해 주십시오"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
               />
@@ -373,7 +373,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
                 + 옵션 추가
               </button>
             </div>
-            <span className="help">재고는 옵션마다 따로 세요. 재고가 0이 되면 그 옵션은 주문할 수 없어요</span>
+            <span className="help">재고는 옵션마다 따로 관리합니다. 재고가 0이 되면 그 옵션은 주문할 수 없습니다</span>
             <div className="opt-head" aria-hidden="true">
               <span>옵션명</span>
               <span className="r">추가 금액</span>
@@ -427,7 +427,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
                 </div>
               );
             })}
-            {rows.length === 0 && <span className="t-l2 c-alt">옵션이 없어요. 옵션을 추가해야 판매할 수 있어요</span>}
+            {rows.length === 0 && <span className="t-l2 c-alt">옵션이 없습니다. 옵션을 추가해야 판매할 수 있습니다</span>}
             {shown.options && <span className="err">{shown.options}</span>}
           </section>
 
@@ -458,8 +458,8 @@ export function ProductForm({ initial }: { initial?: Product }) {
               ))}
             </div>
             <span className="help">
-              기본은 결제하면 차감이에요 · 「주문하면 바로 차감」은 선착순·한정 판매에 좋아요 · {restockText}
-              {isEdit ? " · 바꾸면 다음 주문부터 적용돼요" : ""}
+              기본은 결제하면 차감입니다 · 「주문하면 바로 차감」은 선착순·한정 판매에 적합합니다 · {restockText}
+              {isEdit ? " · 변경하면 다음 주문부터 적용됩니다" : ""}
             </span>
           </section>
 
@@ -467,7 +467,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
             <section className="card pad-l col" style={{ gap: 12, boxShadow: "inset 0 0 0 1px var(--wds-line-status-negative-normal)" }}>
               <h2 className="t-hl1 c-neg">상품 삭제</h2>
               <div className="row between" style={{ gap: 12 }}>
-                <span className="t-c1 c-alt">판매한 적이 있는 상품은 삭제 대신 「숨김」을 권장해요. 삭제해도 주문 기록은 남아요.</span>
+                <span className="t-c1 c-alt">판매한 적이 있는 상품은 삭제 대신 「숨김」을 권장합니다. 삭제해도 주문 기록은 남습니다.</span>
                 <button className="btn btn-out" type="button" style={{ color: "var(--neg-text)" }} onClick={() => setConfirmDelete(true)} disabled={busy}>
                   삭제
                 </button>
@@ -482,20 +482,20 @@ export function ProductForm({ initial }: { initial?: Product }) {
             <div className="img" style={{ width: "100%", aspectRatio: "1" }} title="이미지 없음">
               <NoImage size={40} />
             </div>
-            <span className={`t-b1 fw6 pname${nameLen ? "" : " c-ast"}`}>{nameLen ? name.trim() : "상품명을 입력해 주세요"}</span>
+            <span className={`t-b1 fw6 pname${nameLen ? "" : " c-ast"}`}>{nameLen ? name.trim() : "상품명을 입력해 주십시오"}</span>
             <span className="pprice">
               <span className={`t-hl1 num${priceNum ? "" : " c-ast"}`}>{won(priceNum ?? 0)}</span>
             </span>
           </div>
           <div className="card pad col" style={{ gap: 8 }}>
-            <span className="t-hl2">꼭 채워 주세요</span>
-            <span className="t-l2 c-neu">상품명, 판매가, 옵션 이름은 비워 둘 수 없어요</span>
+            <span className="t-hl2">필수 입력 항목</span>
+            <span className="t-l2 c-neu">상품명, 판매가, 옵션 이름은 비워 둘 수 없습니다</span>
           </div>
           <div className="col" style={{ gap: 8 }}>
             {saveButtons(true)}
             {!required && (
               <span className="t-c1 c-alt" style={{ textAlign: "center" }}>
-                필수 항목을 채우면 {isEdit ? "저장" : "등록"}할 수 있어요
+                필수 항목을 채우면 {isEdit ? "저장" : "등록"}할 수 있습니다
               </span>
             )}
           </div>
@@ -509,7 +509,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
             setBase(p);
             setStatus(p.status);
             setConfirmDelete(false);
-            setToast("숨김으로 바꿨어요");
+            setToast("숨김으로 변경했습니다");
           }}
         />
       )}
@@ -539,13 +539,13 @@ function DeleteDialog({ product, onClose, onHidden }: { product: Product; onClos
     if (mode === "hide") {
       const r = await api<Product>(`/api/seller/products/${product.id}`, { method: "PATCH", body: { status: "HIDDEN" } });
       setBusy(false);
-      if (!r.ok) return setError(failMessage(r, "숨기지 못했어요"));
+      if (!r.ok) return setError(failMessage(r, "admin", "숨기지 못했습니다"));
       return onHidden(r.data);
     }
     const r = await api(`/api/seller/products/${product.id}`, { method: "DELETE" });
     if (!r.ok) {
       setBusy(false);
-      return setError(failMessage(r, "삭제하지 못했어요"));
+      return setError(failMessage(r, "admin", "삭제하지 못했습니다"));
     }
     router.push("/seller/products?toast=deleted");
   };
@@ -555,9 +555,9 @@ function DeleteDialog({ product, onClose, onHidden }: { product: Product; onClos
       <div className="modal">
         <div className="modal-h">
           <h3 id="del-title" className="t-hl1 c-neg">
-            「{product.name}」{objectParticle(product.name)} 삭제할까요?
+            「{product.name}」{objectParticle(product.name)} 삭제하시겠습니까?
           </h3>
-          <p className="t-b2 c-neu">쇼핑몰과 주문대기에서 바로 사라져요. 지난 주문 기록은 남지만 상품은 되살릴 수 없어요.</p>
+          <p className="t-b2 c-neu">쇼핑몰과 주문대기에서 바로 사라집니다. 지난 주문 기록은 남지만 상품은 되살릴 수 없습니다.</p>
         </div>
         {error && (
           <div className="msg msg-neg" role="alert">
@@ -568,15 +568,15 @@ function DeleteDialog({ product, onClose, onHidden }: { product: Product; onClos
           <label className={`row choice${mode === "hide" ? " on" : ""}`} style={{ gap: 10 }}>
             <input className="rdo" type="radio" name="del-mode" checked={mode === "hide"} onChange={() => setMode("hide")} />
             <span className="col">
-              <span className="t-l1 fw6">숨김으로 바꾸기 (권장)</span>
-              <span className="t-c1 c-alt">쇼핑몰에서만 사라지고 언제든 다시 판매할 수 있어요</span>
+              <span className="t-l1 fw6">숨김으로 변경 (권장)</span>
+              <span className="t-c1 c-alt">쇼핑몰에서만 사라지고 언제든 다시 판매할 수 있습니다</span>
             </span>
           </label>
           <label className={`row choice${mode === "delete" ? " on" : ""}`} style={{ gap: 10 }}>
             <input className="rdo" type="radio" name="del-mode" checked={mode === "delete"} onChange={() => setMode("delete")} />
             <span className="col">
               <span className="t-l1 fw6 c-neg">완전 삭제</span>
-              <span className="t-c1 c-alt">되돌릴 수 없어요 · 상품명을 입력해서 확인해요</span>
+              <span className="t-c1 c-alt">되돌릴 수 없습니다 · 상품명을 입력해 확인합니다</span>
             </span>
           </label>
           {mode === "delete" && (
@@ -588,7 +588,7 @@ function DeleteDialog({ product, onClose, onHidden }: { product: Product; onClos
             취소
           </button>
           <button className={`btn${mode === "delete" ? " btn-neg" : ""}`} type="button" onClick={() => void run()} disabled={busy || !ok}>
-            {mode === "hide" ? "숨김으로 바꾸기" : "삭제"}
+            {mode === "hide" ? "숨김으로 변경" : "삭제"}
           </button>
         </div>
       </div>
