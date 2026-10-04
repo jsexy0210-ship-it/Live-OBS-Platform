@@ -152,6 +152,7 @@ test.describe.serial("SH-029 리뷰 쓰기 · SA-048 리뷰 관리", () => {
       let dlg = await open();
       const x = dlg.getByRole("button", { name: "닫기" });
       await expect(x).toBeVisible();
+      expect(await dlg.evaluate((el) => getComputedStyle(el).borderRadius)).toBe("8px");
       const [box, xb] = [await dlg.boundingBox(), await x.boundingBox()];
       expect(xb!.x + xb!.width).toBeGreaterThan(box!.x + box!.width - 24);
       expect(xb!.y).toBeLessThan(box!.y + 24);
