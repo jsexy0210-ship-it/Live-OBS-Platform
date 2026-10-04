@@ -51,10 +51,10 @@ export default function MemberSettingsPage() {
     setFailure(null);
     const r = await api<{ policy: Policy }>("/api/seller/member-policy", { method: "PUT", body: { rejoinRestrictionEnabled: enabled, rejoinRestrictionDays: days } });
     setSaving(false);
-    if (!r.ok) return setFailure(failMessage(r, "저장하지 못했어요. 잠시 뒤 다시 시도해 주세요"));
+    if (!r.ok) return setFailure(failMessage(r, "admin", "저장하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
     apply(r.data.policy);
     setState({ kind: "ok", saved: r.data.policy });
-    setToast("회원 정책을 저장했어요");
+    setToast("회원 정책을 저장했습니다");
   };
 
   // 저장된 기간이 선택지에 없으면(API로 다른 값을 넣은 경우) 그 값도 보여 준다
@@ -65,7 +65,7 @@ export default function MemberSettingsPage() {
       <Topbar crumb="설정 › 쇼핑몰 설정 › 회원 정책">
         {saved && (
           <button className="btn btn-sm" type="button" onClick={() => void save()} disabled={saving || !dirty}>
-            {saving ? "저장하고 있어요" : "저장"}
+            {saving ? "저장 중" : "저장"}
           </button>
         )}
       </Topbar>
@@ -74,7 +74,7 @@ export default function MemberSettingsPage() {
         <div className="ph">
           <div className="col" style={{ gap: 6 }}>
             <h1 className="t-t3">회원 정책</h1>
-            <span className="t-l2 c-alt">탈퇴한 사람이 다시 가입하는 것을 정해요. 저장하면 바로 적용돼요.</span>
+            <span className="t-l2 c-alt">탈퇴한 사람의 재가입 기준을 정합니다. 저장하면 바로 적용됩니다.</span>
           </div>
         </div>
 
@@ -87,7 +87,7 @@ export default function MemberSettingsPage() {
               ) : state.status === 402 ? (
                 <Locked />
               ) : (
-                <ErrorState title="회원 정책을 불러오지 못했어요" onRetry={() => void load()} />
+                <ErrorState title="회원 정책을 불러오지 못했습니다" onRetry={() => void load()} />
               ))}
           </div>
         ) : (
@@ -96,7 +96,7 @@ export default function MemberSettingsPage() {
               {failure && (
                 <div className="msg msg-neg" role="alert">
                   <span>
-                    <b>저장할 수 없어요.</b> {failure}
+                    <b>저장할 수 없습니다.</b> {failure}
                   </span>
                 </div>
               )}
@@ -109,10 +109,10 @@ export default function MemberSettingsPage() {
                     </span>
                     <span className="t-c1 c-alt" id="rj-help">
                       {!available && !enabled
-                        ? "회원이 동의를 철회할 수 있는 화면이 준비되면 켤 수 있어요"
+                        ? "회원이 동의를 철회할 수 있는 화면이 준비되면 켤 수 있습니다"
                         : enabled
-                          ? `탈퇴한 날부터 ${label(days)} 동안 같은 사람이 다시 가입할 수 없어요`
-                          : "꺼 두면 탈퇴한 사람도 바로 다시 가입할 수 있어요 · 기본 꺼짐"}
+                          ? `탈퇴한 날부터 ${label(days)} 동안 같은 사람이 다시 가입할 수 없습니다`
+                          : "꺼 두면 탈퇴한 사람도 바로 다시 가입할 수 있습니다 · 기본 꺼짐"}
                     </span>
                   </span>
                   <button
@@ -144,13 +144,13 @@ export default function MemberSettingsPage() {
             </div>
             <aside className="col aside-sticky" style={{ gap: 16 }}>
               <div className="card pad col" style={{ gap: 8 }}>
-                <span className="t-hl2">알아 두세요</span>
+                <span className="t-hl2">참고</span>
                 <span className="t-c1 c-alt" style={{ lineHeight: 1.6 }}>
-                  켜면 가입할 때 「재가입 제한 정보 보관」 동의를 따로 받아요. 이미 가입한 회원은 가입할 때 동의한 기간까지만 적용돼요. 끄면 보관하던 탈퇴 회원 정보는 바로 지워요.
+                  켜면 가입할 때 「재가입 제한 정보 보관」 동의를 따로 받습니다. 이미 가입한 회원은 가입할 때 동의한 기간까지만 적용됩니다. 끄면 보관하던 탈퇴 회원 정보는 바로 삭제합니다.
                 </span>
               </div>
               <button className="btn btn-lg btn-block" type="button" onClick={() => void save()} disabled={saving || !dirty}>
-                {saving ? "저장하고 있어요" : "저장"}
+                {saving ? "저장 중" : "저장"}
               </button>
             </aside>
           </div>

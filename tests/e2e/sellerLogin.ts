@@ -11,5 +11,5 @@ export async function submitSellerLogin(page: Page, email: string, password: str
   await page.getByRole("button", { name: "로그인" }).click();
   if (!staff) return;
   await page.waitForURL((u) => u.pathname !== "/seller/login");
-  if (new URL(page.url()).pathname === "/seller/identity-link") await page.getByRole("button", { name: "나중에 할게요" }).click();
+  if (new URL(page.url()).pathname === "/seller/identity-link") await page.getByRole("button", { name: "나중에 하기" }).click();
 }

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import IdentityCheck from "../../../../components/seller/IdentityCheck";
 import NewPasswordForm from "../../../../components/seller/NewPasswordForm";
-import { AuthFrame, IdentityUnavailable, useStaffType, withType } from "../../../../components/seller/PartnersAuth";
+import { AuthFrame, FindSwitch, IdentityUnavailable, useStaffType, withType } from "../../../../components/seller/PartnersAuth";
 import { api, failMessage } from "../../../../components/seller/api";
 import { RETRY_TEXT, stepOutcome } from "../../../../components/seller/stepFailure";
 
@@ -69,14 +69,14 @@ export default function PasswordResetPage() {
     if (r.error === "reset_not_allowed") {
       return restart(
         staff
-          ? { title: "비밀번호를 바꿀 수 없어요", text: "등록된 직원 정보와 맞지 않아요. 대표자에게 물어봐 주세요" }
-          : { title: "비밀번호를 바꿀 수 없어요", text: "이메일 · 쇼핑몰 주소와 대표자 본인인지 확인해 주세요." },
+          ? { title: "비밀번호를 변경할 수 없습니다", text: "등록된 직원 정보와 맞지 않습니다. 대표자에게 문의해 주십시오" }
+          : { title: "비밀번호를 변경할 수 없습니다", text: "이메일 · 쇼핑몰 주소와 대표자 본인인지 확인해 주십시오." },
       );
     }
-    if (out === "restart") return restart({ text: "본인확인을 처음부터 다시 해 주세요" });
+    if (out === "restart") return restart({ text: "본인확인을 처음부터 다시 해 주십시오" });
     // 결과를 아직 받는 중이거나 그 밖의 오류(연결 끊김·서버 오류·요청 제한 등): 본인확인을 버리지 않고 같은 요청으로 다시 누르게 한다
     setPending(verificationId);
-    setNotice({ text: r.error === "pending" ? "본인확인 결과를 확인하고 있어요. 잠시 뒤 다시 눌러 주세요" : failMessage(r, RETRY_TEXT) });
+    setNotice({ text: r.error === "pending" ? "본인확인 결과를 확인하고 있습니다. 잠시 후 다시 눌러 주십시오" : failMessage(r, "admin", RETRY_TEXT) });
     focus("pa-notice");
   };
 
@@ -87,25 +87,26 @@ export default function PasswordResetPage() {
       {step === "done" ? (
         <div className="col" style={{ gap: 14, alignItems: "center", textAlign: "center" }}>
           <h1 className="t-t3" id="pa-done-title" tabIndex={-1}>
-            비밀번호를 바꿨어요
+            비밀번호를 변경했습니다
           </h1>
-          <span className="t-l2 c-alt">다른 기기의 로그인은 모두 풀렸어요. 새 비밀번호로 로그인해 주세요.</span>
+          <span className="t-l2 c-alt">다른 기기의 로그인은 모두 해제되었습니다. 새 비밀번호로 로그인해 주십시오.</span>
           <Link className="btn btn-lg btn-block" href={withType("/seller/login", staff)}>
-            로그인하기
+            로그인
           </Link>
         </div>
       ) : (
         <>
+          {step === "find" && <FindSwitch current="password" />}
           <div className="col" style={{ gap: 4 }}>
-            <h1 className="t-t3">{step === "find" ? "비밀번호를 찾아요" : "새 비밀번호를 정해요"}</h1>
+            <h1 className="t-t3">{step === "find" ? "비밀번호 찾기" : "새 비밀번호 설정"}</h1>
             <span className="t-l2 c-alt">
               {step === "find"
-                ? "가입한 이메일과 쇼핑몰 주소를 적고 휴대폰 본인확인을 하면 바로 새 비밀번호를 정할 수 있어요."
+                ? "가입한 이메일과 쇼핑몰 주소를 입력하고 휴대폰 본인확인을 하면 바로 새 비밀번호를 정할 수 있습니다."
                 : `${email.trim()} · 휴대폰 본인확인 완료`}
             </span>
           </div>
           {unavailable ? (
-            <IdentityUnavailable action="비밀번호를 찾을" />
+            <IdentityUnavailable tone="admin" action="비밀번호를 찾을" />
           ) : (
             <>
               {notice && (
@@ -121,7 +122,7 @@ export default function PasswordResetPage() {
                   {pending && (
                     <span className="row" style={{ marginTop: 8 }}>
                       <button className="btn btn-sm" type="button" disabled={busy} onClick={() => void verify(pending)}>
-                        다시 확인하기
+                        다시 확인
                       </button>
                     </span>
                   )}
@@ -130,7 +131,7 @@ export default function PasswordResetPage() {
               {step === "find" ? (
                 <>
                   <div className="msg msg-info" style={{ display: "block" }}>
-                    {staff ? "직원 본인 명의의 휴대폰으로 확인해요." : "쇼핑몰 대표자 본인 명의의 휴대폰으로 확인해요."}
+                    {staff ? "직원 본인 명의의 휴대폰으로 확인합니다." : "쇼핑몰 대표자 본인 명의의 휴대폰으로 확인합니다."}
                   </div>
                   <div className="fld">
                     <label htmlFor="pr-email">이메일</label>
@@ -148,9 +149,9 @@ export default function PasswordResetPage() {
                       disabled={busy || codeSent}
                       onChange={(e) => setShopSlug(e.target.value.toLowerCase())}
                     />
-                    <span className="help">가입할 때 정한 쇼핑몰 주소예요</span>
+                    <span className="help">가입할 때 정한 쇼핑몰 주소입니다</span>
                   </div>
-                  <IdentityCheck
+                  <IdentityCheck tone="admin"
                     key={idvKey}
                     label="휴대폰 본인확인"
                     base={BASE}
@@ -169,7 +170,7 @@ export default function PasswordResetPage() {
                     setStep("done");
                     focus("pa-done-title");
                   }}
-                  onExpired={() => restart({ text: "시간이 지나 처음부터 다시 해야 해요. 본인확인을 다시 해 주세요" })}
+                  onExpired={() => restart({ text: "시간이 지나 처음부터 다시 해야 합니다. 본인확인을 다시 해 주십시오" })}
                 />
               )}
             </>
