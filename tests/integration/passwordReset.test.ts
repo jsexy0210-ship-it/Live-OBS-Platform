@@ -484,6 +484,8 @@ describe("HTTP: 비밀번호 찾기 흐름", () => {
   it("권한 발급 응답을 잃은 뒤 같은 본인확인으로 다시 확인하면 같은 권한을 받고 그 권한으로 저장된다(#166 Codex P2), 시작 쿠키는 지우지 않는다", async () => {
     const { seller, owner } = await shop();
     const s = await httpStart(post("/api/seller/password-reset/start", { email: owner.email, shopSlug: seller.slug, person: REP }));
+    // 시작 쿠키는 본인확인 10분 + 확인 뒤 10분 + 권한 재발급 10분 동안 남는다(끝 무렵 권한 응답을 잃어도 재시도 가능, Codex P2)
+    expect(s.headers.get("set-cookie")).toMatch(/^lo_idv=[^;]+;.*Max-Age=1800/i);
     const { verificationId } = await s.json();
     const { requestId } = await db.identityVerification.findUniqueOrThrow({ where: { id: verificationId } });
     (identityProvider() as FakeIdentityProvider).complete(requestId, person("REP-CI"));

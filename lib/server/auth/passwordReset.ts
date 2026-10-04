@@ -5,7 +5,7 @@ import { forbidden, notFound } from "../authz/errors";
 import { dbNow } from "../billing/subscription";
 import { keyedOwnerToken, parseAttemptKey, reuseKeyedAttempt, scopedAttemptKeyHash } from "../identity/attempt";
 import type { IdentityProvider } from "../identity/provider";
-import { completeIdentityVerification, parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
+import { REQUEST_TTL_MS, VERIFIED_USE_TTL_MS, completeIdentityVerification, parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
 import { requireSellerPermission, type TenantContext } from "../tenant/context";
 import { hashPassword, verifyPassword } from "./password";
 import { recoveryLimitReached } from "./recoveryLimit";
@@ -17,6 +17,9 @@ import { normalizeEmail } from "./login";
 // → 3) 새 비밀번호 저장, 그 계정의 기존 세션 모두 폐기. 계정이 있는지 없는지는 응답으로 드러나지 않는다.
 
 export const GRANT_TTL_MS = 10 * 60_000;
+// 본인확인 시작 쿠키(비밀번호 찾기 lo_idv·아이디 찾기 lo_fidv) 유효 시간(초): 본인확인을 마치는 시간 + 확인 뒤 쓸 수 있는 시간 +
+// 권한 발급 응답을 잃은 재시도 시간(권한 유효 시간). 끝 무렵에 권한을 받고 응답을 잃어도 재시도 때 쿠키가 남아 있게 한다(#170 Codex P2).
+export const FLOW_COOKIE_MAX_AGE_S = (REQUEST_TTL_MS + VERIFIED_USE_TTL_MS + GRANT_TTL_MS) / 1000;
 // 새 비밀번호 저장에 성공한 뒤 응답을 잃은 재시도를 성공으로 돌려주는 시간(저장 시각부터)
 export const RESET_COMPLETE_RETRY_MS = 10 * 60_000;
 
