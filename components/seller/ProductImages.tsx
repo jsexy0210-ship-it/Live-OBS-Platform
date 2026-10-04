@@ -14,8 +14,8 @@ export type SlotImage = {
   error?: string;
 };
 
-export const IMAGE_ACCEPT = ["image/jpeg", "image/png"] as const;
-export const IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+export const IMAGE_ACCEPT = ["image/jpeg", "image/png", "image/webp"] as const;
+export const IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 export const IMAGE_MAX_COUNT = 10;
 
 // 고른 파일 중 올릴 수 있는 것만 남기고, 못 올리는 이유는 한 줄로 돌려 준다(종류·크기·남은 칸)
@@ -23,8 +23,8 @@ export function pickUploadable(files: File[], room: number): { ok: File[]; probl
   const ok: File[] = [];
   let problem: string | null = null;
   for (const f of files) {
-    if (!(IMAGE_ACCEPT as readonly string[]).includes(f.type)) problem = "JPG · PNG만 올릴 수 있습니다";
-    else if (f.size > IMAGE_MAX_BYTES) problem = "10MB 이하만 올릴 수 있습니다";
+    if (!(IMAGE_ACCEPT as readonly string[]).includes(f.type)) problem = "JPG · PNG · WEBP만 올릴 수 있습니다";
+    else if (f.size > IMAGE_MAX_BYTES) problem = "5MB 이하만 올릴 수 있습니다";
     else if (ok.length >= room) problem = `이미지는 ${IMAGE_MAX_COUNT}장까지 올릴 수 있습니다`;
     else ok.push(f);
   }
@@ -155,7 +155,7 @@ export default function ProductImages({
           }}
         />
       </div>
-      <span className="help">첫 번째가 대표 이미지입니다 · 끌어서 순서 변경 · 1:1 비율 권장 · JPG · PNG · 10MB 이하 · 칸을 누르거나 파일을 끌어다 놓으면 올라갑니다</span>
+      <span className="help">첫 번째가 대표 이미지입니다 · 끌어서 순서 변경 · 1:1 비율 권장 · JPG · PNG · WEBP · 5MB 이하 · 칸을 누르거나 파일을 끌어다 놓으면 올라갑니다</span>
       <span className="pm-count num">
         {images.length} / {max}
       </span>

@@ -39,10 +39,10 @@ test("이미지 칸: 첫 이미지가 대표, 여러 장 올리고 순서를 바
 test("이미지 칸: 종류·크기가 맞지 않는 파일은 올리지 않고 이유를 알려 준다, 10장까지", async ({ page }) => {
   await openNew(page);
   await page.getByLabel("상품 이미지 파일").setInputFiles({ name: "x.gif", mimeType: "image/gif", buffer: PNG });
-  await expect(page.getByRole("alert").filter({ hasText: "JPG · PNG만 올릴 수 있습니다" })).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "JPG · PNG · WEBP만 올릴 수 있습니다" })).toBeVisible();
   await expect(page.getByTestId("product-image")).toHaveCount(0);
-  await page.getByLabel("상품 이미지 파일").setInputFiles({ name: "big.png", mimeType: "image/png", buffer: Buffer.alloc(10 * 1024 * 1024 + 1) });
-  await expect(page.getByRole("alert").filter({ hasText: "10MB 이하만 올릴 수 있습니다" })).toBeVisible();
+  await page.getByLabel("상품 이미지 파일").setInputFiles({ name: "big.png", mimeType: "image/png", buffer: Buffer.alloc(5 * 1024 * 1024 + 1) });
+  await expect(page.getByRole("alert").filter({ hasText: "5MB 이하만 올릴 수 있습니다" })).toBeVisible();
   const eleven = Array.from({ length: 11 }, (_, i) => png(`n${i}.png`));
   await page.getByLabel("상품 이미지 파일").setInputFiles(eleven);
   await expect(page.getByTestId("product-image")).toHaveCount(10);
