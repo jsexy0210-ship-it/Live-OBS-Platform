@@ -96,6 +96,26 @@ test.describe.serial("SA-060 쇼핑몰 로고", () => {
     await expect(page.locator(".shop-top")).toContainText("카");
   });
 
+  test("로그인이 풀린 채 로고·배너 이미지를 올리면 로그인 화면으로 간다(401)", async ({ page, context }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/seller/login?next=%2Fseller%2Fsettings%2Fshop");
+    await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
+    await expect(page).toHaveURL(/\/seller\/settings\/shop$/);
+    await context.clearCookies();
+    await page.getByLabel("로고 파일").setInputFiles(file("logo.png", png(512, 512)));
+    await expect(page).toHaveURL(/\/seller\/login\?next=%2Fseller%2Fsettings%2Fshop$/);
+
+    await page.goto("/seller/login?next=%2Fseller%2Fbanners");
+    await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
+    await expect(page).toHaveURL(/\/seller\/banners$/);
+    await page.getByRole("button", { name: "배너 추가" }).first().click();
+    await context.clearCookies();
+    await page.getByRole("dialog", { name: "배너 추가" }).getByLabel("PC 이미지", { exact: true }).setInputFiles(file("pc.png", png(1200, 400)));
+    await expect(page).toHaveURL(/\/seller\/login\?next=%2Fseller%2Fbanners$/);
+    // 로고는 그대로(아무것도 저장되지 않음)
+    await clearLogo();
+  });
+
   test("「쇼핑몰 설정」 권한 없는 직원: 메뉴 → 쇼핑몰 정보 탭으로 들어가 보기만(올리기·지우기 없음, 볼 수 없는 탭은 안 보임)", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/seller/login");

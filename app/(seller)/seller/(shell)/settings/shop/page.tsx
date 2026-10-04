@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { SettingsTabs } from "../../../../../../components/seller/SettingsTabs";
 import { Toast } from "../../../../../../components/seller/States";
-import { api } from "../../../../../../components/seller/api";
+import { api, apiUpload } from "../../../../../../components/seller/api";
 import "./shop-info.css";
 
 // SA-060 쇼핑몰 정보(파트너스 관리자, 설정 › 쇼핑몰 설정). 지금은 로고만(2026-10-04 대표님 지시).
@@ -40,19 +40,16 @@ export default function ShopInfoPage() {
     setError(null);
     if (file.size > MAX_BYTES) return setError(`2MB를 넘었습니다 · 지금 파일은 ${mb(file.size)}입니다`);
     setBusy(true);
-    try {
-      // 파일 바이트를 그대로 보낸다. 형식·크기는 서버가 바이트로 확인한다.
-      const res = await fetch("/api/seller/shop-content/logo", { method: "PUT", body: file, cache: "no-store" });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) return setError(data.message ?? (res.status === 403 ? "변경 권한이 없습니다" : "로고를 올리지 못했습니다"));
-      setState({ kind: "ok", logo: data.logo as Logo });
-      setToast("로고를 바꿨습니다 · 쇼핑몰에 바로 반영");
-    } catch {
-      setError("연결이 끊겼습니다. 인터넷 연결을 확인해 주십시오");
-    } finally {
-      setBusy(false);
-      if (input.current) input.current.value = "";
+    // 파일 바이트를 그대로 보낸다. 형식·크기는 서버가 바이트로 확인한다. 로그인이 풀렸으면 apiUpload가 로그인 화면으로 보낸다.
+    const r = await apiUpload<{ logo: Logo }>("/api/seller/shop-content/logo", file, { method: "PUT" });
+    setBusy(false);
+    if (input.current) input.current.value = "";
+    if (!r.ok) {
+      if (r.status === 401) return;
+      return setError(r.message ?? (r.status === 0 ? "연결이 끊겼습니다. 인터넷 연결을 확인해 주십시오" : r.status === 403 ? "변경 권한이 없습니다" : "로고를 올리지 못했습니다"));
     }
+    setState({ kind: "ok", logo: r.data.logo });
+    setToast("로고를 바꿨습니다 · 쇼핑몰에 바로 반영");
   };
 
   const remove = async () => {

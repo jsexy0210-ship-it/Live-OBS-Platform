@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { apiUpload } from "../../../../../../components/seller/api";
 import { useRef, useState } from "react";
 import "./shop-content.css";
 
@@ -101,19 +102,14 @@ export function ImagePicker({
     if (file.size > MAX_BYTES) return setError(`2MB를 넘었습니다 · 지금 파일은 ${mb(file.size)}입니다`);
     setBusy(true);
     onBusy?.(true);
-    try {
-      // 파일 바이트를 그대로 보낸다. 형식은 서버가 바이트로 확인한다.
-      const res = await fetch("/api/seller/shop-content/images", { method: "POST", body: file, cache: "no-store" });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) onChange(data.image as AdminImage);
-      else setError(data.message ?? IMAGE_ERRORS[data.error] ?? (res.status === 403 ? "변경 권한이 없습니다" : "이미지를 올리지 못했습니다"));
-    } catch {
-      setError("연결이 끊겼습니다. 인터넷 연결을 확인해 주십시오");
-    } finally {
-      setBusy(false);
-      onBusy?.(false);
-      if (input.current) input.current.value = "";
-    }
+    // 파일 바이트를 그대로 보낸다. 형식은 서버가 바이트로 확인한다. 로그인이 풀렸으면 apiUpload가 로그인 화면으로 보낸다.
+    const r = await apiUpload<{ image: AdminImage }>("/api/seller/shop-content/images", file);
+    setBusy(false);
+    onBusy?.(false);
+    if (input.current) input.current.value = "";
+    if (r.ok) onChange(r.data.image);
+    else if (r.status !== 401)
+      setError(r.message ?? IMAGE_ERRORS[r.error] ?? (r.status === 0 ? "연결이 끊겼습니다. 인터넷 연결을 확인해 주십시오" : r.status === 403 ? "변경 권한이 없습니다" : "이미지를 올리지 못했습니다"));
   };
 
   const small = value && (value.width < recommend.width || value.height < recommend.height);
