@@ -28,7 +28,7 @@ const STOCK_FILTERS: { key: StockFilter; label: string }[] = [
 const query = (f: ProductStatus | "ALL", sf: StockFilter | null, q: string) =>
   [f === "ALL" ? "" : `status=${f}`, sf ? `stock=${sf}` : "", q ? `q=${encodeURIComponent(q)}` : ""].filter(Boolean).join("&");
 
-const TOASTS: Record<string, string> = { created: "상품을 등록했습니다", draft: "임시 저장했습니다", deleted: "상품을 삭제했습니다" };
+const TOASTS: Record<string, string> = { created: "상품을 등록했습니다", draft: "임시 저장했습니다", deleted: "상품을 삭제했습니다", created_nocat: "상품을 등록했습니다. 카테고리는 지정하지 못했으니 상품 수정에서 다시 지정해 주십시오" };
 
 type Page = { products: Product[]; nextCursor: string | null };
 type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; items: Product[]; next: string | null };

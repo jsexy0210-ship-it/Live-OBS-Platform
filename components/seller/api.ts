@@ -113,6 +113,8 @@ export type ProductStatus = "DRAFT" | "ON_SALE" | "SOLD_OUT" | "HIDDEN";
 export type ProductOption = { id: string; name: string; priceDelta: number; stock: number; sku: string | null; sortOrder: number };
 export type Product = {
   id: string;
+  // 판매자별 자동 상품 코드(P0000001)
+  code?: string;
   name: string;
   description: string | null;
   price: number;

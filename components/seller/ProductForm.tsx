@@ -30,7 +30,13 @@ type OptRow = {
   orig?: { name: string; priceDelta: number; stock: number };
 };
 
-type Errors = { name?: string; description?: string; price?: string; options?: string; rows: Record<number, { name?: string; priceDelta?: string; stock?: string }> };
+type Errors = {
+  name?: string;
+  description?: string;
+  price?: string;
+  options?: string;
+  rows: Record<number, { name?: string; priceDelta?: string; stock?: string }>;
+};
 
 const STATUS_HELP: Record<ProductStatus, string> = {
   ON_SALE: "쇼핑몰과 방송 주문대기에 바로 표시됩니다",
@@ -99,6 +105,18 @@ function errorFields(e: Errors): string {
   return f.join(" · ");
 }
 
+// 카테고리 트리(GET /api/seller/categories). 2단까지
+type CategoryNode = {
+  id: string;
+  name: string;
+  visible: boolean;
+  sortOrder: number;
+  productCount: number;
+  children: CategoryNode[];
+};
+// 짧은 설명(시안: 한 줄 0/80). 이미 저장된 긴 설명·여러 줄 설명은 그대로 보여 주고 저장을 막지 않는다
+const SHORT_DESC_MAX = 80;
+
 export function ProductForm({ initial }: { initial?: Product }) {
   const router = useRouter();
   const isEdit = !!initial;
@@ -106,10 +124,37 @@ export function ProductForm({ initial }: { initial?: Product }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [price, setPrice] = useState(initial ? String(initial.price) : "");
+  // 카테고리: 대분류·소분류 한 쌍을 고른다(상품에는 고른 것 중 가장 아래 칸만 지정). 지정은 상품을 만든 뒤(수정은 바뀌었을 때) 따로 저장한다
+  const [cats, setCats] = useState<CategoryNode[] | null>(null);
+  const [parentId, setParentId] = useState("");
+  const [childId, setChildId] = useState("");
+  const [catBase, setCatBase] = useState<string | null>(null);
+  const categoryId = childId || parentId || null;
+  const legacyDesc = !!initial?.description && (initial.description.length > SHORT_DESC_MAX || initial.description.includes("\n"));
+  useEffect(() => {
+    void (async () => {
+      const t = await api<{ categories: CategoryNode[] }>("/api/seller/categories");
+      if (!t.ok) return;
+      setCats(t.data.categories);
+      if (!initial) return;
+      const a = await api<{ categoryIds: string[] }>(`/api/seller/products/${initial.id}/categories`);
+      const id = a.ok ? a.data.categoryIds[0] : undefined;
+      if (!id) return setCatBase(null);
+      const top = t.data.categories.find((c) => c.id === id);
+      const parent = top ?? t.data.categories.find((c) => c.children.some((k) => k.id === id));
+      setParentId(parent?.id ?? "");
+      setChildId(top ? "" : id);
+      setCatBase(id);
+    })();
+  }, [initial]);
   // 이미지·상세 페이지(SA-012). 업로드·저장 API가 병합되기 전이라 브라우저 안에서만 들고 있다(저장되지 않음)
   const [images, setImages] = useState<SlotImage[]>([]);
   const [blocks, setBlocks] = useState<DetailBlock[]>([]);
-  const localImage = (f: File): SlotImage => ({ id: `i${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, url: URL.createObjectURL(f), state: "done" });
+  const localImage = (f: File): SlotImage => ({
+    id: `i${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+    url: URL.createObjectURL(f),
+    state: "done",
+  });
   const [status, setStatus] = useState<ProductStatus>(initial?.status ?? "ON_SALE");
   const [deduct, setDeduct] = useState<StockDeductMode>(initial?.stockDeductMode ?? "PAYMENT");
   // 취소·반품 때 재고를 되돌릴지는 주문 설정(restockOnCancel)을 따른다. 쇼핑몰 설정 권한이 없으면 읽지 못하므로 설정 이름만 안내한다
@@ -178,7 +223,16 @@ export function ProductForm({ initial }: { initial?: Product }) {
       },
     });
     if (!r.ok) return fail(failMessage(r, "admin", "상품을 등록하지 못했습니다. 입력한 내용은 그대로 있습니다"));
-    router.push(`/seller/products?toast=${st === "DRAFT" ? "draft" : "created"}`);
+    // 카테고리는 상품이 만들어진 뒤에 지정한다. 실패해도 상품은 이미 등록됐으므로 목록으로 보내고 알려 준다(다시 눌러 중복 등록하지 않게)
+    let catFailed = false;
+    if (categoryId) {
+      const c = await api(`/api/seller/products/${r.data.id}/categories`, {
+        method: "PUT",
+        body: { categoryIds: [categoryId] },
+      });
+      catFailed = !c.ok;
+    }
+    router.push(`/seller/products?toast=${catFailed ? "created_nocat" : st === "DRAFT" ? "draft" : "created"}`);
   };
 
   // 수정: 바뀐 것만 하나씩 보낸다. 한 단계가 실패하면 거기서 멈추고, 이미 저장된 단계는 기준값에 반영해 다시 보내지 않는다.
@@ -226,7 +280,19 @@ export function ProductForm({ initial }: { initial?: Product }) {
         if (!r.ok) return fail(failMessage(r, "admin", "옵션을 추가하지 못했습니다"));
         current = r.data;
         const made = current.options.find((x) => !known.has(x.id));
-        list = list.map((x) => (x.key === o.key && made ? { ...x, id: made.id, orig: { name: made.name, priceDelta: made.priceDelta, stock: made.stock } } : x));
+        list = list.map((x) =>
+          x.key === o.key && made
+            ? {
+                ...x,
+                id: made.id,
+                orig: {
+                  name: made.name,
+                  priceDelta: made.priceDelta,
+                  stock: made.stock,
+                },
+              }
+            : x,
+        );
         setRows(list);
         continue;
       }
@@ -242,7 +308,17 @@ export function ProductForm({ initial }: { initial?: Product }) {
           const fresh = await api<Product>(`/api/seller/products/${current.id}`);
           const now = fresh.ok ? fresh.data.options.find((x) => x.id === o.id) : undefined;
           if (now) {
-            setRows(list.map((x) => (x.key === o.key ? { ...x, stock: String(now.stock), orig: { ...x.orig!, stock: now.stock } } : x)));
+            setRows(
+              list.map((x) =>
+                x.key === o.key
+                  ? {
+                      ...x,
+                      stock: String(now.stock),
+                      orig: { ...x.orig!, stock: now.stock },
+                    }
+                  : x,
+              ),
+            );
             return fail(`그사이 「${o.name.trim()}」 재고가 변경되었습니다. 지금 재고는 ${now.stock.toLocaleString("ko-KR")}개입니다. 확인하고 다시 저장해 주십시오`);
           }
         }
@@ -262,6 +338,14 @@ export function ProductForm({ initial }: { initial?: Product }) {
     }
 
     if (!(await patchProduct(late))) return;
+    if (categoryId !== catBase) {
+      const c = await api(`/api/seller/products/${current.id}/categories`, {
+        method: "PUT",
+        body: { categoryIds: categoryId ? [categoryId] : [] },
+      });
+      if (!c.ok) return fail(failMessage(c, "admin", "카테고리를 지정하지 못했습니다"));
+      setCatBase(categoryId);
+    }
     setBase(current);
     setRows(current.options.map(toRow));
     setRemoved([]);
@@ -335,21 +419,88 @@ export function ProductForm({ initial }: { initial?: Product }) {
                 {(shown.name || nameLen > NAME_MAX) && <span className="err">{shown.name ?? `상품명은 ${NAME_MAX}자까지 입력할 수 있습니다`}</span>}
               </div>
             </FormRow>
-            <FormRow label="상품 설명" htmlFor="p-desc">
+            <FormRow
+              label="카테고리"
+              help={cats && cats.length === 0 ? "등록된 카테고리가 없습니다. 카테고리를 만들면 여기서 고를 수 있습니다" : "쇼핑몰 상품 목록에서 이 카테고리로 찾을 수 있습니다"}
+            >
+              {cats && cats.length > 0 ? (
+                <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                  <select
+                    className="inp"
+                    style={{ width: 200 }}
+                    aria-label="대분류"
+                    value={parentId}
+                    onChange={(e) => {
+                      setParentId(e.target.value);
+                      setChildId("");
+                    }}
+                  >
+                    <option value="">대분류 선택</option>
+                    {cats.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                  {(cats.find((c) => c.id === parentId)?.children.length ?? 0) > 0 && (
+                    <select className="inp" style={{ width: 200 }} aria-label="소분류" value={childId} onChange={(e) => setChildId(e.target.value)}>
+                      <option value="">소분류 선택 안 함</option>
+                      {cats
+                        .find((c) => c.id === parentId)!
+                        .children.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                    </select>
+                  )}
+                </div>
+              ) : (
+                <span className="t-l2 c-alt">{cats ? "카테고리 없음" : "불러오는 중"}</span>
+              )}
+            </FormRow>
+            <FormRow label="상품 코드" help="등록하면 판매자별 순번으로 자동 매겨집니다">
+              <span className="num" data-testid="product-code">
+                {base?.code ?? "등록 후 표시"}
+              </span>
+            </FormRow>
+            <FormRow label="짧은 설명" htmlFor="p-desc">
               <div className="col" style={{ gap: 4, width: "100%" }}>
-                <textarea
-                  id="p-desc"
-                  className={`inp${shown.description ? " is-error" : ""}`}
-                  placeholder="구성 · 상태 · 배송 안내를 입력해 주십시오"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                />
-                {shown.description && <span className="err">{shown.description}</span>}
+                {legacyDesc ? (
+                  <textarea
+                    id="p-desc"
+                    className={`inp${shown.description ? " is-error" : ""}`}
+                    placeholder="한 줄로 소개해 주십시오"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                  />
+                ) : (
+                  <div style={{ position: "relative" }}>
+                    <input
+                      id="p-desc"
+                      className={`inp${shown.description ? " is-error" : ""}`}
+                      type="text"
+                      placeholder="예: 36팩 · 한정 수량"
+                      maxLength={SHORT_DESC_MAX}
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      style={{ paddingRight: 70 }}
+                    />
+                    <span className="t-c1 num name-count c-alt" data-testid="desc-count">
+                      {textLength(description)}/{SHORT_DESC_MAX}
+                    </span>
+                  </div>
+                )}
+                {shown.description ? (
+                  <span className="err">{shown.description}</span>
+                ) : (
+                  <span className="help">상품 상세 위쪽과 공유 카드에 보입니다 · 자세한 내용은 아래 「상세 페이지」 블록으로</span>
+                )}
               </div>
             </FormRow>
           </FormSection>
 
-          <FormSection title="이미지">
+          <FormSection title="이미지" actions={<span className="t-c1 c-alt num">{images.length} / 10</span>}>
             <FormRow label="상품 이미지" required>
               <ProductImages
                 images={images}
@@ -674,9 +825,7 @@ function DeleteDialog({ product, onClose, onHidden }: { product: Product; onClos
               <span className="t-c1 c-alt">되돌릴 수 없습니다 · 상품명을 입력해 확인합니다</span>
             </span>
           </label>
-          {mode === "delete" && (
-            <input className="inp" type="text" placeholder={product.name} aria-label="삭제할 상품명 입력" value={typed} onChange={(e) => setTyped(e.target.value)} />
-          )}
+          {mode === "delete" && <input className="inp" type="text" placeholder={product.name} aria-label="삭제할 상품명 입력" value={typed} onChange={(e) => setTyped(e.target.value)} />}
         </div>
         <div className="modal-f">
           <button className="btn btn-out" type="button" onClick={onClose} disabled={busy}>
