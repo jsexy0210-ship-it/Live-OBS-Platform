@@ -110,18 +110,18 @@ test("마스터 관리자 공유 카드에 1200×630 이미지를 올리면 og:i
   // 정확한 크기를 고르기 전에 먼저 알려 준다(MASTER 결정)
   await expect(page.getByText("카드 이미지 크기는 1200×630입니다. 직접 업로드할 때는 이 크기로 만들어 주십시오.")).toBeVisible();
   await page.getByRole("radio", { name: "이미지 업로드" }).click();
-  const wrong = await sharp({ create: { width: 800, height: 600, channels: 3, background: "#222" } }).jpeg().toBuffer();
-  await page.getByLabel("공유 카드 이미지 파일").setInputFiles({ name: "wrong.jpg", mimeType: "image/jpeg", buffer: wrong });
+  const wrong = await sharp({ create: { width: 800, height: 600, channels: 3, background: "#222" } }).png().toBuffer();
+  await page.getByLabel("공유 카드 이미지 파일").setInputFiles({ name: "wrong.png", mimeType: "image/png", buffer: wrong });
   await expect(page.getByText("1200×630 크기 이미지를 선택해 주십시오. 선택한 이미지: 800×600")).toBeVisible();
   await expect(page.getByRole("button", { name: "공유 카드 저장" })).toBeDisabled();
-  const image = await sharp({ create: { width: 1200, height: 630, channels: 3, background: "#1f4fff" } }).jpeg().toBuffer();
-  await page.getByLabel("공유 카드 이미지 파일").setInputFiles({ name: "card.jpg", mimeType: "image/jpeg", buffer: image });
+  const image = await sharp({ create: { width: 1200, height: 630, channels: 3, background: "#1f4fff" } }).png().toBuffer();
+  await page.getByLabel("공유 카드 이미지 파일").setInputFiles({ name: "card.png", mimeType: "image/png", buffer: image });
   await page.getByRole("button", { name: "공유 카드 저장" }).click();
   await expect(page.getByText("공유 카드를 저장했습니다.")).toBeVisible();
   const admin = await head(page, "/admin/login");
   expect(admin.ogImage).toMatch(/\/api\/branding\/admin\/og\?v=[0-9a-f]{12}$/);
   const got = await request.get(admin.ogImage!);
-  expect(got.headers()["content-type"]).toBe("image/jpeg");
+  expect(got.headers()["content-type"]).toBe("image/png");
   expect(Buffer.from(await got.body()).equals(image)).toBe(true);
   // 제목으로 만들기로 돌리면 다시 그린 카드
   await page.goto("/admin/settings/branding");

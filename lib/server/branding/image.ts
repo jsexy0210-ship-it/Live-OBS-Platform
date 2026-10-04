@@ -1,7 +1,7 @@
 import { crc32, inflateSync } from "node:zlib";
 
 // 올린 이미지의 형식 확인. 파일 이름·Content-Type은 믿지 않고 파일 앞부분 바이트(시그니처)와 헤더 구조로 판단한다.
-// SVG는 스크립트를 품을 수 있어 받지 않는다(텍스트 파일은 어떤 시그니처에도 맞지 않아 거부된다).
+// 받는 형식은 PNG·ICO뿐이다. SVG는 스크립트를 품을 수 있어 받지 않는다(텍스트 파일은 어떤 시그니처에도 맞지 않아 거부된다).
 
 export const FAVICON_MAX_BYTES = 256 * 1024;
 export const OG_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
@@ -11,7 +11,7 @@ export const OG_IMAGE_HEIGHT = 630;
 const FAVICON_MIN_SIDE = 16;
 const FAVICON_MAX_SIDE = 1024;
 
-export type ImageType = "image/png" | "image/x-icon" | "image/jpeg";
+export type ImageType = "image/png" | "image/x-icon";
 export type ImageInfo = { type: ImageType; width: number; height: number };
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -22,6 +22,7 @@ const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0
 // - 내용: IDAT를 모두 이어 zlib으로 풀어(크기 상한을 둬 압축 폭탄을 막음) 풀린 길이가 IHDR로 계산한 길이와 같고,
 //   줄마다 앞의 필터 바이트가 0~4여야 한다.
 const PNG_DEPTHS: Record<number, number[]> = { 0: [1, 2, 4, 8, 16], 2: [8, 16], 3: [1, 2, 4, 8], 4: [8, 16], 6: [8, 16] };
+const PNG_CRITICAL = new Set(["IHDR", "PLTE", "IDAT", "IEND"]);
 const PNG_CHANNELS: Record<number, number> = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 };
 // Adam7 단계별 [시작 x, 시작 y, x 간격, y 간격]
 const ADAM7 = [
@@ -69,6 +70,9 @@ function png(b: Buffer, verify = true): ImageInfo | null {
     const type = b.toString("latin1", o + 4, o + 8);
     if (crc32(b.subarray(o + 4, o + 8 + len)) !== b.readUInt32BE(o + 8 + len)) return null;
     if (type === "IHDR" && o !== 8) return null;
+    // 조각 이름 규칙: 영문자만, 셋째 글자(예약 비트)는 대문자. 첫 글자가 대문자인 필수 조각은 아는 것(IHDR·PLTE·IDAT·IEND)만 받는다
+    // (모르는 필수 조각이 있으면 디코더는 그림을 버린다). 소문자로 시작하는 보조 조각은 건너뛴다.
+    if (!/^[A-Za-z]{2}[A-Z][A-Za-z]$/.test(type) || (/^[A-Z]/.test(type) && !PNG_CRITICAL.has(type))) return null;
     if (type === "PLTE") {
       // 회색조에는 없어야 하고, 그림 데이터 앞에 한 번, 항목 수는 1~256(색 번호 형식은 비트 깊이 안)
       const entries = len / 3;
@@ -143,84 +147,12 @@ function bmpIcon(d: Buffer, w: number, h: number): boolean {
   return d.length >= 40 + palette + row(bpp) * h + row(1) * h;
 }
 
-// JPEG: SOI(FFD8) 뒤 표식을 따라가며 확인한다(머리만 맞춘 파일·빈 그림 데이터를 받지 않게).
-// - 프레임 시작(SOF0~SOF15, DHT·JPG·DAC 제외) 1개: 정밀도 8·12, 구성 요소 1·3·4개, 길이 = 8 + 3×개수,
-//   요소마다 가로·세로 표본 비율 1~4, 양자화표 번호 0~3. 크기는 여기서 읽는다.
-// - 첫 스캔 시작(SOS): SOF 뒤, 요소 1~4개, 길이 = 6 + 2×개수, 바로 뒤에 그림(엔트로피) 데이터가 1바이트 이상
-// - 파일은 EOI(FFD9)로 끝나야 한다.
-function jpeg(b: Buffer): ImageInfo | null {
-  if (b.length < 4 || b[0] !== 0xff || b[1] !== 0xd8 || b[2] !== 0xff) return null;
-  if (b[b.length - 2] !== 0xff || b[b.length - 1] !== 0xd9) return null;
-  let o = 2;
-  let frame: { width: number; height: number; components: number } | null = null;
-  while (o + 4 <= b.length) {
-    if (b[o] !== 0xff) return null;
-    const marker = b[o + 1];
-    if (marker === 0xff) {
-      o++;
-      continue;
-    }
-    // 길이 없는 표식(RSTn·TEM)
-    if ((marker >= 0xd0 && marker <= 0xd7) || marker === 0x01) {
-      o += 2;
-      continue;
-    }
-    if (marker === 0xd9) return null;
-    const len = b.readUInt16BE(o + 2);
-    if (len < 2 || o + 2 + len > b.length) return null;
-    if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
-      if (frame || len < 8) return null;
-      const precision = b[o + 4];
-      const height = b.readUInt16BE(o + 5);
-      const width = b.readUInt16BE(o + 7);
-      const components = b[o + 9];
-      if ((precision !== 8 && precision !== 12) || width === 0 || height === 0 || ![1, 3, 4].includes(components) || len !== 8 + 3 * components) return null;
-      for (let i = 0; i < components; i++) {
-        const sampling = b[o + 11 + i * 3];
-        const [hs, vs] = [sampling >> 4, sampling & 0x0f];
-        if (hs < 1 || hs > 4 || vs < 1 || vs > 4 || b[o + 12 + i * 3] > 3) return null;
-      }
-      frame = { width, height, components };
-    }
-    if (marker === 0xda) {
-      const n = b[o + 4];
-      if (!frame || n < 1 || n > 4 || n > frame.components || len !== 6 + 2 * n) return null;
-      return jpegHasScanData(b, o + 2 + len) ? { type: "image/jpeg", width: frame.width, height: frame.height } : null;
-    }
-    o += 2 + len;
-  }
-  return null;
-}
-
-// 스캔 머리 뒤에서 다음 표식(채움 FF00·RSTn 제외)까지 그림 데이터가 1바이트 이상인지
-function jpegHasScanData(b: Buffer, start: number): boolean {
-  let n = 0;
-  for (let i = start; i < b.length - 1; i++) {
-    if (b[i] === 0xff) {
-      const next = b[i + 1];
-      if (next === 0x00) {
-        n++;
-        i++;
-        continue;
-      }
-      if (next >= 0xd0 && next <= 0xd7) {
-        i++;
-        continue;
-      }
-      if (next === 0xff) continue;
-      return n > 0;
-    }
-    n++;
-  }
-  return false;
-}
-
 export function detectImage(b: Buffer): ImageInfo | null {
-  return png(b) ?? ico(b) ?? jpeg(b);
+  return png(b) ?? ico(b);
 }
 
 // 형식·크기만 먼저 읽는다(PNG 그림 데이터는 풀지 않음). 크기가 틀린 파일은 풀기 전에 「크기」로 안내하려고 쓴다.
-const sniff = (b: Buffer): ImageInfo | null => png(b, false) ?? ico(b) ?? jpeg(b);
+const sniff = (b: Buffer): ImageInfo | null => png(b, false) ?? ico(b);
 
 export type ImageRejection = "file_too_large" | "unsupported_image" | "wrong_image_size";
 
@@ -237,12 +169,13 @@ export function checkFavicon(b: Buffer): ImageCheck {
   return detectImage(b) ? { ok: true, info } : { ok: false, reason: "unsupported_image" };
 }
 
-// 공유 카드 이미지: PNG·JPEG만, 2MB까지, 1200×630 그대로.
+// 공유 카드 이미지: PNG만, 2MB까지, 1200×630 그대로. JPEG는 그림 데이터까지 확인하려면 디코더가 필요해(새 의존성) 받지 않는다
+// (MASTER 결정 2026-10-04, 형식을 좁혀도 된다).
 export function checkOgImage(b: Buffer): ImageCheck {
   if (b.length === 0) return { ok: false, reason: "empty_file" };
   if (b.length > OG_IMAGE_MAX_BYTES) return { ok: false, reason: "file_too_large" };
   const info = sniff(b);
-  if (!info || (info.type !== "image/png" && info.type !== "image/jpeg")) return { ok: false, reason: "unsupported_image" };
+  if (!info || info.type !== "image/png") return { ok: false, reason: "unsupported_image" };
   if (info.width !== OG_IMAGE_WIDTH || info.height !== OG_IMAGE_HEIGHT) return { ok: false, reason: "wrong_image_size" };
   return detectImage(b) ? { ok: true, info } : { ok: false, reason: "unsupported_image" };
 }

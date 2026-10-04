@@ -72,7 +72,7 @@ describe("브랜딩 이미지 형식 확인(파일 앞부분 바이트)", () => 
     expect(checkFavicon(Buffer.alloc(0))).toEqual({ ok: false, reason: "empty_file" });
   });
 
-  it("머리만 맞춘 잘린 파일·CRC가 틀린 PNG·EOI 없는 JPEG·깨진 BMP 아이콘은 거부한다(Codex 지적)", async () => {
+  it("머리만 맞춘 잘린 파일·CRC가 틀린 PNG·깨진 BMP 아이콘은 거부한다(Codex 지적)", async () => {
     const full = await png(1200, 630);
     // 시그니처 + 1200×630 IHDR만 있는 33바이트
     expect(checkOgImage(full.subarray(0, 33))).toEqual({ ok: false, reason: "unsupported_image" });
@@ -82,9 +82,6 @@ describe("브랜딩 이미지 형식 확인(파일 앞부분 바이트)", () => 
     expect(checkOgImage(badCrc)).toEqual({ ok: false, reason: "unsupported_image" });
     // IEND 뒤에 다른 데이터를 붙인 파일
     expect(checkOgImage(Buffer.concat([full, SVG]))).toEqual({ ok: false, reason: "unsupported_image" });
-    const j = await jpg(1200, 630);
-    expect(checkOgImage(j.subarray(0, 200))).toEqual({ ok: false, reason: "unsupported_image" });
-    expect(checkOgImage(j.subarray(0, j.length - 2))).toEqual({ ok: false, reason: "unsupported_image" });
     // ICO 안의 PNG가 잘림
     const inner = await png(32, 32);
     expect(checkFavicon(icoOf(inner.subarray(0, 40)))).toEqual({ ok: false, reason: "unsupported_image" });
@@ -126,20 +123,27 @@ describe("브랜딩 이미지 형식 확인(파일 앞부분 바이트)", () => 
     expect(checkFavicon(icon)).toMatchObject({ ok: true, info: { width: 37, height: 21 } });
   });
 
-  it("JPEG 내용 검사: 스캔 데이터가 없거나 구성 요소·표본 비율이 틀리면 거부한다", async () => {
-    const j = await jpg(1200, 630);
-    const sos = j.indexOf(Buffer.from([0xff, 0xda]));
-    const sosEnd = sos + 2 + j.readUInt16BE(sos + 2);
-    // SOS 머리 바로 뒤에 EOI(그림 데이터 없음)
-    expect(checkOgImage(Buffer.concat([j.subarray(0, sosEnd), Buffer.from([0xff, 0xd9])]))).toEqual({ ok: false, reason: "unsupported_image" });
-    const sof = j.indexOf(Buffer.from([0xff, 0xc0]));
-    const twoComponents = Buffer.from(j);
-    twoComponents[sof + 9] = 2;
-    expect(checkOgImage(twoComponents)).toEqual({ ok: false, reason: "unsupported_image" });
-    const zeroSampling = Buffer.from(j);
-    zeroSampling[sof + 11] = 0x00;
-    expect(checkOgImage(zeroSampling)).toEqual({ ok: false, reason: "unsupported_image" });
-    expect(checkOgImage(j)).toMatchObject({ ok: true });
+  it("모르는 필수 조각·규칙에 맞지 않는 조각 이름은 거부하고, 보조 조각은 건너뛴다(Codex 지적 3차)", () => {
+    const withChunk = (type: string) => {
+      const base = rawPng(32, 32);
+      const iend = base.length - 12;
+      return Buffer.concat([base.subarray(0, iend), chunk(type, Buffer.from("x")), base.subarray(iend)]);
+    };
+    expect(checkFavicon(withChunk("ABCD"))).toEqual({ ok: false, reason: "unsupported_image" });
+    // 셋째 글자(예약 비트)가 소문자
+    expect(checkFavicon(withChunk("abcd"))).toEqual({ ok: false, reason: "unsupported_image" });
+    expect(checkFavicon(withChunk("ab1D"))).toEqual({ ok: false, reason: "unsupported_image" });
+    // 보조 조각(tEXt·사설 조각)은 받는다
+    expect(checkFavicon(withChunk("tEXt"))).toMatchObject({ ok: true });
+    expect(checkFavicon(withChunk("prVt"))).toMatchObject({ ok: true });
+  });
+
+  it("JPEG는 정상 파일이어도 받지 않는다(그림 데이터까지 확인할 수 없어 PNG만, MASTER 결정)", async () => {
+    expect(checkOgImage(await jpg(1200, 630))).toEqual({ ok: false, reason: "unsupported_image" });
+    // 시작 표식·프레임·스캔·끝 표식만 맞춘 38바이트(Codex 지적 3차)
+    const tiny = Buffer.from("ffd8ffc0000b080276 04b001011100ffda0008010100003f0000ffd9".replace(/ /g, ""), "hex");
+    expect(checkOgImage(tiny)).toEqual({ ok: false, reason: "unsupported_image" });
+    expect(detectImage(tiny)).toBeNull();
   });
 
   it("BMP를 담은 ICO는 크기가 맞으면 받고, 데이터가 모자라면 거부한다", () => {
@@ -161,18 +165,12 @@ describe("브랜딩 이미지 형식 확인(파일 앞부분 바이트)", () => 
     expect(checkFavicon(await png(2048, 2048))).toEqual({ ok: false, reason: "wrong_image_size" });
   });
 
-  it("공유 카드 이미지는 1200×630 PNG·JPEG만, 2MB까지", async () => {
+  it("공유 카드 이미지는 1200×630 PNG만, 2MB까지", async () => {
     expect(checkOgImage(await png(1200, 630))).toMatchObject({ ok: true, info: { type: "image/png" } });
-    expect(checkOgImage(await jpg(1200, 630))).toEqual({ ok: true, info: { type: "image/jpeg", width: 1200, height: 630 } });
     expect(checkOgImage(await png(1200, 600))).toEqual({ ok: false, reason: "wrong_image_size" });
     expect(checkOgImage(icoOf(await png(32, 32)))).toEqual({ ok: false, reason: "unsupported_image" });
     expect(checkOgImage(SVG)).toEqual({ ok: false, reason: "unsupported_image" });
     expect(checkOgImage(Buffer.alloc(2 * 1024 * 1024 + 1))).toEqual({ ok: false, reason: "file_too_large" });
-  });
-
-  it("JPEG는 EXIF 등 앞 블록을 건너 프레임 크기를 읽는다", async () => {
-    const withExif = await sharp({ create: { width: 1200, height: 630, channels: 3, background: "#000" } }).withMetadata({ exif: { IFD0: { Copyright: "x" } } }).jpeg({ progressive: true }).toBuffer();
-    expect(detectImage(withExif)).toEqual({ type: "image/jpeg", width: 1200, height: 630 });
   });
 
   it("본문은 한도까지만 읽고, 넘으면(선언 길이·실제 길이) null", async () => {

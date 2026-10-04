@@ -131,6 +131,7 @@ describe("파비콘", () => {
   it("DB 제약도 형식·크기를 막는다(코드를 거치지 않은 쓰기)", async () => {
     await expect(db.siteBranding.create({ data: { target: "admin", faviconData: Buffer.from("x"), faviconType: "image/svg+xml", faviconHash: "a" } })).rejects.toThrow();
     await expect(db.siteBranding.create({ data: { target: "shop" } })).rejects.toThrow();
+    await expect(db.siteBranding.create({ data: { target: "seller", ogImageData: Buffer.from("x"), ogImageType: "image/jpeg", ogImageHash: "a" } })).rejects.toThrow();
     await expect(db.siteBranding.create({ data: { target: "admin", faviconData: Buffer.alloc(262145), faviconType: "image/png", faviconHash: "a" } })).rejects.toThrow();
   });
 });
@@ -167,13 +168,15 @@ describe("공유 카드", () => {
     const c = await adminCookie("SUPER_ADMIN");
     expect((await upload(ogPut, "admin", await png(1000, 630), c)).status).toBe(400);
     expect((await upload(ogPut, "admin", SVG, c)).status).toBe(400);
-    const image = await sharp({ create: { width: 1200, height: 630, channels: 3, background: "#2244aa" } }).jpeg().toBuffer();
+    // JPEG는 받지 않는다(PNG만)
+    expect((await upload(ogPut, "admin", await sharp({ create: { width: 1200, height: 630, channels: 3, background: "#2244aa" } }).jpeg().toBuffer(), c)).status).toBe(400);
+    const image = await png(1200, 630, "#2244aa");
     const r = await upload(ogPut, "admin", image, c);
     expect(r.status).toBe(200);
     const { branding } = await r.json();
     expect(branding.ogImage.uploaded).toBe(true);
     const got = await publicOg(new Request(`${BASE}${branding.ogImage.url}`), ctx("admin"));
-    expect(got.headers.get("content-type")).toBe("image/jpeg");
+    expect(got.headers.get("content-type")).toBe("image/png");
     expect(Buffer.from(await got.arrayBuffer()).equals(image)).toBe(true);
     const reset = await (await remove(ogDelete, "admin", c)).json();
     expect(reset.branding.ogImage.uploaded).toBe(false);

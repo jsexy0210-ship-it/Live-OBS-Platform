@@ -33,7 +33,7 @@ const IMAGE_MESSAGES: Record<ImageSlot, Record<ImageRejection, string>> = {
   },
   ogImage: {
     file_too_large: "공유 카드 이미지는 2MB까지 업로드할 수 있습니다.",
-    unsupported_image: "공유 카드 이미지는 PNG·JPG 파일만 업로드할 수 있습니다.",
+    unsupported_image: "공유 카드 이미지는 PNG 파일만 업로드할 수 있습니다.",
     wrong_image_size: "공유 카드 이미지는 1200×630 크기여야 합니다.",
   },
 };

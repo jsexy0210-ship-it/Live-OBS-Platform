@@ -201,7 +201,7 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
     // 브라우저가 열지 못하는 파일(잘린 파일 등)은 공유 서비스도 못 보여 준다
     if (!size) {
       URL.revokeObjectURL(url);
-      return setOgError("이미지를 열 수 없습니다. PNG·JPG 파일을 선택해 주십시오.");
+      return setOgError("이미지를 열 수 없습니다. PNG 파일을 선택해 주십시오.");
     }
     if (size.w !== 1200 || size.h !== 630) {
       URL.revokeObjectURL(url);
@@ -389,13 +389,13 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
             </div>
             {mode === "uploaded" && (
               <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                <span className="t-c1 c-alt">PNG·JPG 파일을 2MB까지 업로드할 수 있습니다.</span>
+                <span className="t-c1 c-alt">PNG 파일을 2MB까지 업로드할 수 있습니다.</span>
                 {canEdit && (
                   <>
                     <input
                       ref={ogInput}
                       type="file"
-                      accept=".png,.jpg,.jpeg,image/png,image/jpeg"
+                      accept=".png,image/png"
                       hidden
                       aria-label="공유 카드 이미지 파일"
                       onChange={(e) => {
