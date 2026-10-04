@@ -118,6 +118,10 @@ model Seller {
   orderItems               OrderItem[]
   orderConsents            OrderConsent[]
   orderPolicy              SellerOrderPolicy?
+  messageBalance           SellerMessageBalance?
+  messageLedger            SellerMessageLedger[]
+  messageFeeConsents       SellerMessageFeeConsent[]
+  mailDeliveries           MailDelivery[]
   memberPolicy             SellerMemberPolicy?
   rejoinBlocks             BuyerRejoinBlock[]
   purchaseRestrictions     BuyerPurchaseRestriction[]
@@ -1336,6 +1340,11 @@ model SubscriptionPlan {
   trialStorageMb     Int      @default(1024)
   // 마스터 승인 시각부터의 체험 일수(오버레이 전용 7, 통합 0 = 체험 없음, ARCHITECTURE 4.8.0)
   trialDays          Int      @default(0)
+  // 월 거래 메일 제공량(통, KST 달 기준, 대표님 결정 2026-10-05). 넘는 거래 메일은 발송 충전 잔액에서 차감한다.
+  // 최고관리자만 바꾸고(billing.price), 적용 예정일을 두면 그때부터 새 값(next*). lib/server/mail/quota.ts
+  mailMonthlyQuota   Int       @default(100)
+  nextMailQuota      Int?
+  nextMailQuotaAt    DateTime? @db.Timestamptz(3)
   createdAt          DateTime @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime @updatedAt @db.Timestamptz(3)
 
@@ -2219,4 +2228,139 @@ model PaymentCancel {
 
   @@unique([paymentId, idempotencyKey])
   @@index([status, lastTriedAt])
+}
+
+// 발송 충전 잔액(대표님 결정 2026-10-05, docs/terms/SELLER_MESSAGE_FEE_NOTICE.md, lib/server/messaging/balance.ts).
+// 파트너스당 1행. 유료(직접 충전, 환불 대상)와 무상(이벤트·보상, 환불 안 함)을 나눠 두고 둘 다 음수가 될 수 없다.
+model SellerMessageBalance {
+  sellerId            String   @id @db.Uuid
+  paidBalance         Int      @default(0)
+  freeBalance         Int      @default(0)
+  // 잔액(유료 + 무상)이 이 금액(원) 아래로 내려가면 알린다. 0이면 알리지 않는다.
+  lowBalanceThreshold Int      @default(0)
+  updatedAt           DateTime @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+}
+
+// 비용이 드는 발송·조회 채널(서식 1절)
+enum MessageChannel {
+  // 월 제공량을 넘은 거래 메일
+  MAIL_TRANSACTIONAL
+  // 광고·공지 대량 메일
+  MAIL_BULK
+  SMS
+  LMS
+  ALIMTALK
+  // 구매자 휴대폰 본인인증(쇼핑몰에서 켠 경우)
+  IDENTITY_VERIFICATION
+  // 배송 자동 조회(배송 완료 자동 처리를 켠 경우)
+  DELIVERY_TRACKING
+}
+
+enum MessageLedgerType {
+  // 유료 충전(+유료)
+  CHARGE
+  // 무상 지급(+무상)
+  GRANT
+  // 발송 차감(−). 보내기 전에 잡아 두고(PENDING) 성공하면 SUCCEEDED, 실패하면 되돌린다(REVERSED).
+  DEBIT
+  // 유료 잔액 환불(−유료)
+  REFUND
+}
+
+enum MessageLedgerStatus {
+  PENDING
+  SUCCEEDED
+  REVERSED
+}
+
+// 발송 충전 원장. paidAmount·freeAmount는 잔액 변화(차감은 음수). 같은 요청 키(idempotencyKey)는 되돌린 것을 빼고 한 건만(부분 유니크, 마이그레이션).
+model SellerMessageLedger {
+  id             String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId       String              @db.Uuid
+  type           MessageLedgerType
+  status         MessageLedgerStatus
+  channel        MessageChannel?
+  quantity       Int                 @default(1)
+  unitPrice      Int?
+  paidAmount     Int
+  freeAmount     Int
+  idempotencyKey String
+  reason         String?
+  actorType      ActorType
+  actorId        String?             @db.Uuid
+  createdAt      DateTime            @default(now()) @db.Timestamptz(3)
+  finishedAt     DateTime?           @db.Timestamptz(3)
+
+  seller         Seller         @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  mailDeliveries MailDelivery[]
+
+  @@index([sellerId, createdAt])
+}
+
+// 발송 비용 안내 동의(서식 7절). 첫 충전 전에 받고, 서식 버전이 바뀌면 다시 받는다.
+model SellerMessageFeeConsent {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId     String   @db.Uuid
+  version      String
+  sellerUserId String   @db.Uuid
+  consentedAt  DateTime @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@unique([sellerId, version])
+}
+
+// 채널별 단가(원, 기본 0원). 바꿀 때 적용 예정일을 두면 그때부터 새 단가(pending*). 최고관리자만(billing.price).
+model MessageChannelPrice {
+  channel            MessageChannel @id
+  unitPrice          Int            @default(0)
+  pendingUnitPrice   Int?
+  pendingEffectiveAt DateTime?      @db.Timestamptz(3)
+  updatedAt          DateTime       @updatedAt @db.Timestamptz(3)
+}
+
+// 플랫폼 발송 설정(한 행, id = 1). 충전 기능 스위치(서식 값·법률 검토 전에는 꺼 둠)와 플랫폼 메일 무료 한도(메일 서비스 하루·월).
+model PlatformMessageSetting {
+  id                   Int      @id @default(1)
+  chargingEnabled      Boolean  @default(false)
+  platformDailyLimit   Int      @default(100)
+  platformMonthlyLimit Int      @default(3000)
+  updatedAt            DateTime @updatedAt @db.Timestamptz(3)
+}
+
+enum MailDeliveryStatus {
+  // 보내는 중(한도 계산에 넣는다)
+  PENDING
+  SENT
+  // 보내지 못함(한도에서 빼고, 차감했으면 되돌린다)
+  FAILED
+  // 제공량을 넘었는데 충전 잔액이 모자라 보내지 않음(잔액 부족 미발송)
+  SKIPPED_BALANCE
+  // 플랫폼 전체 무료 한도에 걸려 보내지 않음
+  SKIPPED_PLATFORM_LIMIT
+}
+
+// 메일 발송 기록(한 통에 한 행). 받는 사람 주소·내용은 남기지 않는다. sellerId가 없으면 플랫폼이 보낸 메일(플랫폼 한도에만 센다).
+// month는 KST 달(YYYY-MM). charged는 제공량 밖이라 충전 잔액에서 차감한(또는 하려던) 통, ledgerId는 그 차감.
+model MailDelivery {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId          String?            @db.Uuid
+  kind              String
+  bulk              Boolean            @default(false)
+  refId             String?
+  month             String
+  status            MailDeliveryStatus
+  charged           Boolean            @default(false)
+  ledgerId          String?            @db.Uuid
+  providerMessageId String?
+  createdAt         DateTime           @default(now()) @db.Timestamptz(3)
+  finishedAt        DateTime?          @db.Timestamptz(3)
+
+  seller Seller?              @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  ledger SellerMessageLedger? @relation(fields: [ledgerId], references: [id])
+
+  @@index([sellerId, month, status])
+  @@index([createdAt, status])
 }
