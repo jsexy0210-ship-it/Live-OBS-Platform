@@ -30,7 +30,7 @@ const NAV: Nav[] = [
   { label: "구매 제한", perm: "MEMBER_POINTS" },
   { label: "구매자 문의", perm: "INQUIRY_REPLY" },
   { h: "방송 · 오버레이" },
-  { label: "오버레이 편집기", perm: "OVERLAY_EDIT" },
+  { label: "오버레이 편집기", href: "/seller/overlay", perm: "OVERLAY_EDIT" },
   { label: "HIT 카드 이력", perm: "BROADCAST_RUN" },
   { label: "방송 이력", perm: "BROADCAST_RUN" },
   { h: "설정" },
