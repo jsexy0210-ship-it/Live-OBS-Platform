@@ -7,13 +7,21 @@ import { AuthFrame, IdentityUnavailable, Steps } from "../../../../components/se
 import { api, failMessage } from "../../../../components/seller/api";
 import { RETRY_TEXT, stepOutcome } from "../../../../components/seller/stepFailure";
 
-// PF-007 파트너스 가입 신청: 1 대표자 휴대폰 본인확인 → 2 사업자·계정·쇼핑몰 정보 → 3 신청 완료(바로 승인 또는 승인 대기).
+// PF-007 파트너스 가입 신청: 1 필수 약관 동의(PF-007-1) · 대표자 휴대폰 본인확인 → 2 사업자·계정·쇼핑몰 정보 → 3 신청 완료(바로 승인 또는 승인 대기).
 // API: POST /api/seller-signup/verification(·/resend·/confirm) → POST /api/seller-signup/apply.
+// 필수 동의는 본인확인 시작 요청에 함께 보낸다(문자 비용을 쓰기 전에 서버가 확인). 서버가 terms_required(400)·consent_outdated(409)로
+// 거절하면 동의 칸을 비우고 다시 동의하게 한다.
 // 본인확인 대행사 연결 전에는 API가 503을 주고, 이 화면은 「본인확인 서비스 준비 중이에요」 상태로 바꾼다.
 const STEPS = ["본인확인", "정보 입력", "신청 완료"];
 const BASE = "/api/seller-signup/verification";
 const MIN_PASSWORD_LENGTH = 8; // 서버(lib/server/auth/passwordReset.ts)와 같은 값
 const SLUG = /^[a-z0-9](?:[a-z0-9-]{1,28}[a-z0-9])$/; // 서버(lib/server/sellers/application.ts)와 같은 규칙
+// 화면이 보여 주는 약관 버전. 서버(lib/server/sellers/signupConsent.ts SELLER_SIGNUP_CONSENT_VERSIONS)와 같은 값
+const CONSENT_VERSIONS = { termsVersion: "2026-10-04.v1", privacyVersion: "2026-10-04.v1" };
+const CONSENT_TEXT: Record<string, string> = {
+  terms_required: "필수 약관에 동의해 주세요",
+  consent_outdated: "약관이 바뀌었어요. 다시 확인해 주세요",
+};
 
 // 승인 대기 사유(자동 점검에서 걸린 항목)
 const REVIEW_TEXT: Record<string, string> = {
@@ -46,6 +54,12 @@ export default function PartnersSignupPage() {
   const [verification, setVerification] = useState<{ id: string; who: { name: string; phone: string } } | null>(null);
   // 본인확인을 처음부터 다시 할 때 칸을 비우려고 바꾸는 값
   const [idvKey, setIdvKey] = useState(0);
+  const [agreedTerms, setAgreedTerms] = useState(false);
+  const [agreedPrivacy, setAgreedPrivacy] = useState(false);
+  const [consentError, setConsentError] = useState<string | null>(null);
+  // 인증번호를 보낸 동안에는 동의 칸을 잠근다(보낸 동의와 화면이 어긋나지 않게)
+  const [idvSent, setIdvSent] = useState(false);
+  const consentReady = agreedTerms && agreedPrivacy;
   const [notice, setNotice] = useState<{ text: string; login?: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<Done | null>(null);
@@ -76,6 +90,17 @@ export default function PartnersSignupPage() {
     setStep(0);
     setNotice(text ? { text } : null);
     focus(text ? "pa-notice" : "idv-name");
+  };
+
+  // 서버가 동의를 받지 않았으면(terms_required·consent_outdated) 동의 칸을 비우고 그 칸에서 안내한다
+  const consentRefused = (r: { error: string }) => {
+    const text = CONSENT_TEXT[r.error];
+    if (!text) return false;
+    setAgreedTerms(false);
+    setAgreedPrivacy(false);
+    setConsentError(text);
+    focus("su-terms-all");
+    return true;
   };
 
   // 서버와 같은 규칙으로 먼저 걸러 칸 아래에 알려 준다
@@ -126,6 +151,12 @@ export default function PartnersSignupPage() {
     }
     const out = stepOutcome(r);
     if (out === "unavailable") return toUnavailable();
+    // 본인확인 기록에 필수 동의가 없으면 약관 동의부터 다시
+    if (CONSENT_TEXT[r.error]) {
+      restartIdentity(null);
+      consentRefused(r);
+      return;
+    }
     // 서버가 본인확인을 다시 하라고 한 경우만 처음부터. 연결 끊김·서버 오류·확인 중이면 본인확인을 그대로 두고 다시 신청하게 한다
     // (서버는 같은 본인확인·같은 입력의 재신청에 이미 만든 신청 결과를 돌려준다)
     if (out === "restart") return restartIdentity("본인확인 시간이 지났거나 확인되지 않았어요. 본인확인을 다시 해 주세요");
@@ -226,19 +257,59 @@ export default function PartnersSignupPage() {
               {verification ? (
                 <IdentityDone who={verification.who} disabled={busy} onAgain={() => restartIdentity(null)} />
               ) : (
-                <IdentityCheck
-                  key={idvKey}
-                  label="대표자 휴대폰 본인확인"
-                  base={BASE}
-                  start={(person, attemptKey) => api<{ verificationId: string }>(BASE, { method: "POST", body: { ...person, attemptKey } })}
-                  onUnavailable={toUnavailable}
-                  onVerified={(id, who) => {
-                    setVerification({ id, who });
-                    setNotice(null);
-                    setStep(1);
-                    focus("su-companyName");
-                  }}
-                />
+                <>
+                  {/* 필수 동의는 본인확인을 요청하기 전에 받는다(PF-007-1). 약관 원문(PF-008·PF-009)이 정해지면 「보기」를 붙인다 */}
+                  <fieldset className="col pa-fs pa-terms" disabled={idvSent} aria-describedby={consentError ? "su-terms-err" : undefined}>
+                    <legend className="t-hl2">약관 동의</legend>
+                    <label className="chk pa-terms-all">
+                      <input
+                        id="su-terms-all"
+                        type="checkbox"
+                        className="cbx"
+                        checked={consentReady}
+                        aria-invalid={!!consentError}
+                        onChange={(e) => {
+                          setAgreedTerms(e.target.checked);
+                          setAgreedPrivacy(e.target.checked);
+                          setConsentError(null);
+                        }}
+                      />
+                      필수 약관에 모두 동의해요
+                    </label>
+                    <label className="chk">
+                      <input type="checkbox" className="cbx" checked={agreedTerms} onChange={(e) => { setAgreedTerms(e.target.checked); setConsentError(null); }} />
+                      파트너스 이용약관 (필수)
+                    </label>
+                    <label className="chk">
+                      <input type="checkbox" className="cbx" checked={agreedPrivacy} onChange={(e) => { setAgreedPrivacy(e.target.checked); setConsentError(null); }} />
+                      개인정보 수집 · 이용 (필수)
+                    </label>
+                    {consentError && (
+                      <span id="su-terms-err" className="err" role="alert">
+                        {consentError}
+                      </span>
+                    )}
+                  </fieldset>
+                  <IdentityCheck
+                    key={idvKey}
+                    label="대표자 휴대폰 본인확인"
+                    base={BASE}
+                    blocked={!consentReady}
+                    scope={JSON.stringify(CONSENT_VERSIONS)}
+                    start={(person, attemptKey) =>
+                      api<{ verificationId: string }>(BASE, { method: "POST", body: { ...person, attemptKey, agreedTerms, agreedPrivacy, ...CONSENT_VERSIONS } })
+                    }
+                    onStartRefused={consentRefused}
+                    onSentChange={setIdvSent}
+                    onUnavailable={toUnavailable}
+                    onVerified={(id, who) => {
+                      setVerification({ id, who });
+                      setNotice(null);
+                      setStep(1);
+                      focus("su-companyName");
+                    }}
+                  />
+                </>
               )}
               <form className="col pa-sec" aria-label="가입 정보" onSubmit={apply} noValidate>
                 <fieldset className={`col pa-fs${verification ? "" : " is-waiting"}`} disabled={!verification || busy}>

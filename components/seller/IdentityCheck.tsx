@@ -58,9 +58,11 @@ type Props = {
   onUnavailable: () => void;
   // 인증번호를 보낸 동안 true(부모는 인증 요청에 쓴 다른 칸을 잠근다)
   onSentChange?: (sent: boolean) => void;
+  // 시작 거절을 부모가 자기 칸에서 안내하면 true(예: 가입 필수 동의). 그때는 이 칸에 안내를 따로 띄우지 않는다
+  onStartRefused?: (r: Fail) => boolean;
 };
 
-export default function IdentityCheck({ label, start, scope = "", base, blocked = false, onVerified, onUnavailable, onSentChange }: Props) {
+export default function IdentityCheck({ label, start, scope = "", base, blocked = false, onVerified, onUnavailable, onSentChange, onStartRefused }: Props) {
   const [step, setStep] = useState<"identity" | "code">("identity");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ kind: "neg" | "info"; text: string } | null>(null);
@@ -130,7 +132,7 @@ export default function IdentityCheck({ label, start, scope = "", base, blocked 
     setBusy(false);
     // 409 start_in_progress(앞 요청이 아직 문자를 보내는 중)·연결 끊김·일시 오류는 키를 두어 다시 누르면 같은 시도로 이어 간다
     if (r.ok || r.error === "already_verified" || r.error === "expired" || r.error === "failed") attempt.current = null;
-    if (!r.ok) return fail(r);
+    if (!r.ok) return onStartRefused?.(r) ? undefined : fail(r);
     setVerificationId(r.data.verificationId);
     setSent(person);
     setCode("");
