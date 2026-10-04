@@ -42,6 +42,12 @@ test("구매자: 마케팅 정보 수신을 철회하면 바로 처리 결과가
   await sw.click();
   const terms = page.getByTestId("mc-terms");
   await expect(terms).toContainText("마케팅 정보 수신 동의 (선택)");
+  // 동의 전에 서식 전체(이용 목적·항목·보유 기간)를 보여 준다
+  const doc = terms.getByTestId("mc-doc");
+  await expect(doc).toContainText("카드숍 별빛은(는) 라이브 방송 시작·이벤트·할인·새 상품 소식을 보내기 위해");
+  await expect(doc.getByRole("cell", { name: "이름, 휴대폰 번호" })).toBeVisible();
+  await expect(doc.getByRole("cell", { name: "동의를 철회하거나 회원 탈퇴할 때까지" })).toBeVisible();
+  await expect(doc).toContainText("카카오톡 광고 메시지·문자");
   await expect(sw).toHaveAttribute("aria-checked", "false");
   await shot(page, "SH-025-terms");
   // 동의 문구가 바뀐 뒤(409 consent_outdated): 문구를 다시 보여 주고 지금 버전으로 다시 동의한다

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import MarketingConsentDoc from "./MarketingConsentDoc";
 import ShopState from "./ShopState";
 
 // SH-025 마케팅 정보 수신 설정. 끄면 바로 철회하고, 켜면 동의 문구를 보여 준 뒤 지금 문서 버전(currentVersion)으로 동의한다.
@@ -164,9 +165,8 @@ export default function MarketingConsent({ slug, shopName }: { slug: string; sho
       {asking && (
         <div className="card pad col" style={{ gap: 10, boxShadow: "inset 0 0 0 1px var(--wds-line-normal-normal)" }} data-testid="mc-terms">
           <span className="t-l1 fw6">마케팅 정보 수신 동의 (선택)</span>
-          <span className="t-l2 c-alt" style={{ lineHeight: 1.6 }}>
-            {shopName}의 새 상품, 라이브 방송 시작, 할인 소식을 문자나 알림으로 보내 드려요. 동의하지 않아도 쇼핑몰은 그대로 이용할 수 있고, 이 화면에서 언제든 끌 수 있어요.
-          </span>
+          {/* 동의를 받기 전에 서식 전체(이용 목적·항목·보유 기간)를 보여 준다 */}
+          <MarketingConsentDoc shopName={shopName} />
           <span className="row" style={{ gap: 8 }}>
             <button className={`btn btn-sm${busy ? " is-loading" : ""}`} type="button" disabled={busy} onClick={() => void save(true, s.currentVersion)}>
               동의하고 받기
