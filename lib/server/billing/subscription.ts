@@ -82,6 +82,21 @@ export async function priceFor(
   return row?.salePrice ?? plan.salePrice;
 }
 
+// 이번 청구 금액과 런칭가 여부(런칭 할인 계정당 1회, 대표님 결정 2026-10-04, ARCHITECTURE 4.8.0).
+// - 정가 구독(regularPrice: 할인을 쓴 계정이 해지 뒤 다시 구독)은 플랜 정가.
+// - 그 밖은 priceFor(판매가 = 런칭가, 가격 변경 고지 규칙, 이전 전 가격 스냅숏). 스냅숏 금액과 STANDARD 플랜 결제는 런칭가로 세지 않는다.
+export async function chargeFor(
+  db: Db,
+  plan: SubscriptionPlan,
+  sub: Pick<SellerSubscription, "subscribedAt" | "legacyPrice" | "legacyPriceNoticeSentAt" | "regularPrice">,
+  at: Date,
+): Promise<{ amount: number; launchDiscount: boolean }> {
+  if (sub.regularPrice) return { amount: plan.listPrice, launchDiscount: false };
+  const legacy = sub.legacyPrice != null && (!sub.legacyPriceNoticeSentAt || at < after(sub.legacyPriceNoticeSentAt, PRICE_NOTICE_MS));
+  // 이전 전 STANDARD 플랜 결제도 런칭 할인 사용으로 세지 않는다
+  return { amount: await priceFor(db, plan, sub.subscribedAt, at, sub), launchDiscount: !legacy && plan.code !== "STANDARD" };
+}
+
 // 구독 행이 없을 때 쓰는 판매자 플랜(가입 때 정한 플랜, 없으면 신규 가입 기본 플랜)
 export async function sellerPlanOf(db: Db, sellerId: string): Promise<SubscriptionPlan | null> {
   const seller = await db.seller.findUnique({ where: { id: sellerId }, select: { plan: true } });
@@ -112,7 +127,10 @@ export async function getSubscriptionView(db: PrismaClient, ctx: TenantContext, 
   requireSellerRead(ctx, "SUBSCRIPTION_MANAGE");
   const at = now ?? (await dbNow(db));
   const [seller, plan, payments] = await Promise.all([
-    db.seller.findUniqueOrThrow({ where: { id: ctx.sellerId }, select: { trialEndsAt: true, subscription: { include: { plan: true, pendingPlan: true } } } }),
+    db.seller.findUniqueOrThrow({
+      where: { id: ctx.sellerId },
+      select: { trialEndsAt: true, launchDiscountUsedAt: true, subscription: { include: { plan: true, pendingPlan: true } } },
+    }),
     sellerPlanOf(db, ctx.sellerId),
     db.subscriptionPayment.findMany({ where: { sellerId: ctx.sellerId }, orderBy: { createdAt: "desc" }, take: 24 }),
   ]);
@@ -132,9 +150,13 @@ export async function getSubscriptionView(db: PrismaClient, ctx: TenantContext, 
           nextAmount:
             sub && !isEndedSubscription(sub, at)
               ? nextPlan === shownPlan
-                ? await priceFor(db, shownPlan, sub.subscribedAt, sub.nextChargeAt ?? at, sub)
-                : await priceFor(db, nextPlan!, sub.subscribedAt, sub.nextChargeAt ?? at)
-              : await priceFor(db, shownPlan, at, at),
+                ? (await chargeFor(db, shownPlan, sub, sub.nextChargeAt ?? at)).amount
+                : sub.regularPrice
+                  ? nextPlan!.listPrice
+                  : await priceFor(db, nextPlan!, sub.subscribedAt, sub.nextChargeAt ?? at)
+              : seller.launchDiscountUsedAt
+                ? shownPlan.listPrice
+                : await priceFor(db, shownPlan, at, at),
         }
       : null,
     subscription: sub
@@ -199,7 +221,7 @@ export async function registerCardAndPay(
     .$transaction(async (tx): Promise<Prepared> => {
       await lockSeller(tx, ctx.sellerId);
       const now = input.now ?? (await dbNow(tx));
-      const seller = await tx.seller.findUniqueOrThrow({ where: { id: ctx.sellerId }, select: { trialEndsAt: true, subscription: true } });
+      const seller = await tx.seller.findUniqueOrThrow({ where: { id: ctx.sellerId }, select: { trialEndsAt: true, launchDiscountUsedAt: true, subscription: true } });
       const before = seller.subscription;
       const plan = before
         ? await tx.subscriptionPlan.findUnique({ where: { id: before.planId } })
@@ -216,13 +238,15 @@ export async function registerCardAndPay(
       const card = { billingKeyCipher, cardLabel: issued.cardLabel, cancelAtPeriodEnd: false };
       const sub = await tx.sellerSubscription.upsert({
         where: { sellerId: ctx.sellerId },
-        create: { sellerId: ctx.sellerId, planId: plan.id, ...card, nextChargeAt, createdAt: now, subscribedAt: now },
+        // 런칭 할인을 이미 쓴 계정의 새 구독은 정가다(대표님 결정 2026-10-04)
+        create: { sellerId: ctx.sellerId, planId: plan.id, ...card, nextChargeAt, createdAt: now, subscribedAt: now, regularPrice: !!seller.launchDiscountUsedAt },
         update: {
           ...card,
           // 카드만 등록하는 경우(결제한 기간이 남음·체험하기 중)는 결제 없이도 정상 구독이다
           ...(cardOnly ? { status: "ACTIVE" as const, nextChargeAt, canceledAt: null } : {}),
           // 다시 구독하면 새 가입자다: 이전 전 가격 스냅숏도 비운다(그때 플랜 가격, ONQ 1-C)
-          ...(restart ? { subscribedAt: now, legacyPrice: null, legacyPriceNoticeSentAt: null } : {}),
+          // 런칭 할인을 이미 쓴 계정이면 이 구독은 정가다(대표님 결정 2026-10-04, 이전 전 STANDARD 결제는 사용으로 세지 않음)
+          ...(restart ? { subscribedAt: now, legacyPrice: null, legacyPriceNoticeSentAt: null, regularPrice: !!seller.launchDiscountUsedAt } : {}),
         },
       });
       await writeAudit(tx, {
@@ -247,7 +271,7 @@ export async function registerCardAndPay(
         data: {
           sellerId: ctx.sellerId,
           subscriptionId: sub.id,
-          amount: await priceFor(tx, plan, sub.subscribedAt, now, sub),
+          ...(await chargeFor(tx, plan, sub, now)),
           periodStart: period.start,
           periodEnd: period.end,
           scheduled: false,
@@ -334,6 +358,10 @@ export async function settlePayment(
         reason: result.ok ? "paid_after_cancel" : result.reason.slice(0, 200),
       });
       return { nextChargeAt: null };
+    }
+    // 런칭가 청구가 처음 확정되면(해지 뒤 확정돼 환불 대상인 청구는 빼고) 계정에 런칭 할인 사용을 남긴다(대표님 결정 2026-10-04)
+    if (result.ok && payment.launchDiscount) {
+      await tx.seller.updateMany({ where: { id: payment.sellerId, launchDiscountUsedAt: null }, data: { launchDiscountUsedAt: now } });
     }
     // 결제 중 상위 변경의 차액(ONQ 1-C-2): 확정되면 플랜만 바꾸고 기간·결제일은 그대로, 실패·거절이면 지금 플랜 그대로(유예 없음)
     if (payment.kind === "PRORATION") {
@@ -479,7 +507,7 @@ export async function renewDueSubscriptions(db: PrismaClient, provider: BillingP
             data: {
               sellerId,
               subscriptionId: id,
-              amount: await priceFor(tx, sub.plan, sub.subscribedAt, now, sub),
+              ...(await chargeFor(tx, sub.plan, sub, now)),
               periodStart: period.start,
               periodEnd: period.end,
               scheduled: true,

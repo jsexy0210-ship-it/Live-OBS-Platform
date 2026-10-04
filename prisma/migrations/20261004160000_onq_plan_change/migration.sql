@@ -13,3 +13,9 @@ ALTER TABLE "SellerSubscription" ADD CONSTRAINT "SellerSubscription_pendingPlanI
 -- 구독당 진행 중(PENDING) 청구 하나(SubscriptionPayment_one_pending_key)는 그대로 모든 종류에 적용한다.
 DROP INDEX "SubscriptionPayment_active_period_key";
 CREATE UNIQUE INDEX "SubscriptionPayment_active_period_key" ON "SubscriptionPayment"("subscriptionId", "periodStart") WHERE "status" IN ('PENDING', 'PAID') AND "kind" = 'PERIOD';
+
+-- 런칭 할인 계정당 1회(대표님 결정 2026-10-04): 계정의 사용 시각, 구독의 정가 청구 여부, 청구의 런칭가 여부.
+-- 기존 결제(이전 전 STANDARD 포함)는 사용으로 세지 않는다(모두 기본값 null·false).
+ALTER TABLE "Seller" ADD COLUMN "launchDiscountUsedAt" TIMESTAMPTZ(3);
+ALTER TABLE "SellerSubscription" ADD COLUMN "regularPrice" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "SubscriptionPayment" ADD COLUMN "launchDiscount" BOOLEAN NOT NULL DEFAULT false;

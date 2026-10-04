@@ -80,6 +80,9 @@ model Seller {
   trialEndsAt              DateTime?    @db.Timestamptz(3)
   // 판매자 플랜(가입 신청 때 정함, ONQ 1-C). 구독 행이 생기면 구독의 planId가 청구 기준이다. 기존 판매자는 INTEGRATED로 옮겼다.
   planId                   String?      @db.Uuid
+  // 런칭 할인을 쓴 시각(런칭가 청구가 처음 확정된 때, 대표님 결정 2026-10-04). 이 뒤 해지하고 다시 구독하면 정가다.
+  // 이전 전 STANDARD 결제는 사용으로 세지 않는다(ONQ 1-C-2).
+  launchDiscountUsedAt     DateTime?    @db.Timestamptz(3)
   // 잠긴 지 30일이 지나 자동 해지된 시각. 이때부터 90일 보관 뒤 삭제 대상(삭제는 별도 작업). 다시 구독하면 비운다.
   serviceEndedAt           DateTime?    @db.Timestamptz(3)
   approvedByAdminId        String?      @db.Uuid
@@ -996,6 +999,8 @@ model SellerSubscription {
   legacyPriceNoticeSentAt DateTime?             @db.Timestamptz(3)
   // 다음 결제일에 바꿀 플랜(하위 변경, ONQ 1-C-2). 갱신 결제 직전에 planId로 옮기고 비운다. 다시 지금 플랜을 고르면 비운다.
   pendingPlanId           String?               @db.Uuid
+  // 이 구독은 정가로 청구한다(런칭 할인을 이미 쓴 계정이 해지 뒤 다시 구독, 대표님 결정 2026-10-04). 구독이 이어지는 동안 그대로다.
+  regularPrice            Boolean               @default(false)
   createdAt          DateTime                 @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime                 @updatedAt @db.Timestamptz(3)
 
@@ -1037,6 +1042,8 @@ model SubscriptionPayment {
   kind              SubscriptionPaymentKind   @default(PERIOD)
   // 상위 변경 청구면 결제가 확정될 때 옮길 플랜(실패·대기면 지금 플랜 유지, ONQ 1-C-2)
   targetPlanId      String?                   @db.Uuid
+  // 런칭가(판매가)로 낸 청구인지. 확정되면 판매자에 런칭 할인 사용을 남긴다(정가·이전 전 가격 청구는 false)
+  launchDiscount    Boolean                   @default(false)
   paidAt            DateTime?                 @db.Timestamptz(3)
   createdAt         DateTime                  @default(now()) @db.Timestamptz(3)
 

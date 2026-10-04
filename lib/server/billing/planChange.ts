@@ -4,7 +4,7 @@ import { requireSellerPermission, type TenantContext } from "../tenant/context";
 import { addMonthsKst } from "./access";
 import type { BillingProvider, ChargeResult } from "./provider";
 import { openBillingKey } from "./secret";
-import { dbNow, isEndedSubscription, lockSeller, planPeriod, priceFor, sellerPlanOf, settlePayment, switchPlan } from "./subscription";
+import { chargeFor, dbNow, isEndedSubscription, lockSeller, planPeriod, priceFor, sellerPlanOf, settlePayment, switchPlan } from "./subscription";
 
 // 플랜 변경(ONQ 1-C-2, ARCHITECTURE 4.8.0 「결제 규칙」, PRODUCT_SCOPE 확정 ①). 실제 PG는 공급자 인터페이스로만 부른다.
 // - 상위 변경(오버레이 전용 → 통합)은 결제사가 결제를 확정한 뒤에만 적용한다. 대기·실패·시간 초과면 지금 플랜 그대로다.
@@ -16,7 +16,7 @@ import { dbNow, isEndedSubscription, lockSeller, planPeriod, priceFor, sellerPla
 // - 하위 변경(통합 → 오버레이 전용): 결제한 기간이나 유예 중이면 다음 결제일부터(pendingPlanId), 아니면 바로. 환불 없음.
 //   변경 전에 받은 주문의 처리는 그대로 열린다(기능 권한 ORDER_FOLLOWUP).
 // - 사업자·통신판매업 점검 게이트는 오버레이 전용 최소 가입(ONQ 2단계)이 생길 때 넣는다(지금은 모든 가입이 점검을 거침).
-// - 런칭 할인 계정당 1회는 MASTER 결정 뒤 별도로 넣는다.
+// - 런칭 할인 계정당 1회(대표님 결정 2026-10-04): 구독이 이어지는 동안의 상위 변경은 런칭가 기준이고, 정가 구독은 정가 기준이다.
 
 export const CHANGEABLE_PLANS = ["OVERLAY_ONLY", "INTEGRATED"] as const;
 const RANK: Record<string, number> = { OVERLAY_ONLY: 1, INTEGRATED: 2, STANDARD: 2 };
@@ -120,9 +120,11 @@ export async function changePlan(
     }
     if (!sub?.billingKeyCipher) return { kind: "done", result: { ok: false, reason: "card_required" } };
     const billingKey = openBillingKey(sub.billingKeyCipher, ctx.sellerId);
-    const curPrice = await priceFor(tx, current, sub.subscribedAt, now, sub);
-    const newPrice = await priceFor(tx, target, sub.subscribedAt, now);
-    const base = { sellerId: ctx.sellerId, subscriptionId: sub.id, scheduled: false, targetPlanId: target.id, createdAt: now };
+    // 금액: 정가 구독이면 두 플랜 모두 정가, 아니면 판매가(런칭가). 구독이 이어지는 동안의 상위 변경은 런칭가를 유지한다(대표님 결정 2026-10-04).
+    const cur = await chargeFor(tx, current, sub, now);
+    const curPrice = cur.amount;
+    const newPrice = sub.regularPrice ? target.listPrice : await priceFor(tx, target, sub.subscribedAt, now);
+    const base = { sellerId: ctx.sellerId, subscriptionId: sub.id, scheduled: false, targetPlanId: target.id, createdAt: now, launchDiscount: !sub.regularPrice };
 
     let payment: SubscriptionPayment;
     if (paidActive) {

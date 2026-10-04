@@ -5,7 +5,7 @@ import { sellerFeatures } from "../../lib/server/billing/features";
 import { changePlan } from "../../lib/server/billing/planChange";
 import { FakeBillingProvider } from "../../lib/server/billing/provider";
 import { sealBillingKey } from "../../lib/server/billing/secret";
-import { getSubscriptionView, reconcileStalePayments, renewDueSubscriptions } from "../../lib/server/billing/subscription";
+import { cancelSubscription, getSubscriptionView, reconcileStalePayments, registerCardAndPay, renewDueSubscriptions } from "../../lib/server/billing/subscription";
 import { prisma } from "../../lib/server/db";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { PASSWORD, createSeller, createSellerUser, db, resetDb, seedPlans } from "./helpers";
@@ -226,5 +226,77 @@ describe("입력·권한", () => {
       );
     expect((await post({ planCode: "STANDARD" })).status).toBe(400);
     expect((await post({ planCode: "OVERLAY_ONLY" })).status).toBe(409);
+  });
+});
+
+describe("런칭 할인 계정당 1회(대표님 결정 2026-10-04)", () => {
+  const used = async (sellerId: string) => (await db.seller.findUniqueOrThrow({ where: { id: sellerId } })).launchDiscountUsedAt;
+  // 해지하고 기간 끝까지 쓴 뒤(예약 실행이 CANCELED로) 다시 카드 등록
+  async function cancelAndRestart(s: { ctx: TenantContext; seller: { id: string } }, endsAt: Date, restartAt: Date) {
+    await cancelSubscription(db, s.ctx, { now: new Date(endsAt.getTime() - DAY) });
+    await renewDueSubscriptions(db, new FakeBillingProvider(), { now: endsAt });
+    expect((await subOf(s.seller.id)).status).toBe("CANCELED");
+    return registerCardAndPay(db, new FakeBillingProvider(), s.ctx, { authKey: "auth", now: restartAt });
+  }
+
+  it("런칭가 첫 결제가 확정되면 사용을 남기고, 구독이 이어지는 동안 갱신은 런칭가, 해지 뒤 재구독은 정가 249,000원(갱신도 정가)", async () => {
+    const s = await shop("INTEGRATED", null);
+    expect(await registerCardAndPay(db, new FakeBillingProvider(), s.ctx, { authKey: "auth", now: T0 })).toMatchObject({ ok: true, charged: true });
+    expect(await used(s.seller.id)).toEqual(T0);
+    const first = await subOf(s.seller.id);
+    await renewDueSubscriptions(db, new FakeBillingProvider(), { now: first.nextChargeAt! });
+    expect((await payments(s.seller.id)).map((p) => p.amount)).toEqual([179000, 179000]);
+
+    const sub = await subOf(s.seller.id);
+    expect(await cancelAndRestart(s, sub.currentPeriodEnd!, new Date(sub.currentPeriodEnd!.getTime() + 5 * DAY))).toMatchObject({ ok: true, charged: true });
+    expect((await payments(s.seller.id)).map((p) => p.amount)).toEqual([179000, 179000, 249000]);
+    const restarted = await subOf(s.seller.id);
+    expect(restarted.regularPrice).toBe(true);
+    await renewDueSubscriptions(db, new FakeBillingProvider(), { now: restarted.nextChargeAt! });
+    expect((await payments(s.seller.id)).map((p) => p.amount)).toEqual([179000, 179000, 249000, 249000]);
+    expect((await getSubscriptionView(db, s.ctx, restarted.nextChargeAt!)).plan).toMatchObject({ nextAmount: 249000 });
+  });
+
+  it("오버레이 전용 런칭가(69,000원)로 쓰던 계정의 구독 중 상위 변경은 런칭가 기준 차액, 다음 갱신은 통합 런칭가 179,000원", async () => {
+    const s = await shop("OVERLAY_ONLY", at(-30), paying);
+    await db.seller.update({ where: { id: s.seller.id }, data: { launchDiscountUsedAt: at(-20) } });
+    expect(await changePlan(db, new FakeBillingProvider(), s.ctx, { planCode: "INTEGRATED", now: T0 })).toMatchObject({ ok: true, charged: 36666 });
+    await renewDueSubscriptions(db, new FakeBillingProvider(), { now: at(9) });
+    expect((await payments(s.seller.id)).map((p) => p.amount)).toEqual([36666, 179000]);
+  });
+
+  it("정가 구독(해지 뒤 재구독)의 상위 변경은 정가 기준 차액 (249,000 − 99,000) × 10/30, 다음 갱신은 정가 249,000원", async () => {
+    const s = await shop("OVERLAY_ONLY", at(-30), { ...paying, regularPrice: true });
+    await db.seller.update({ where: { id: s.seller.id }, data: { launchDiscountUsedAt: at(-200) } });
+    expect(await changePlan(db, new FakeBillingProvider(), s.ctx, { planCode: "INTEGRATED", now: T0 })).toMatchObject({ ok: true, charged: 50000 });
+    await renewDueSubscriptions(db, new FakeBillingProvider(), { now: at(9) });
+    expect((await payments(s.seller.id)).map((p) => p.amount)).toEqual([50000, 249000]);
+  });
+
+  it("이전된 STANDARD 이력은 사용으로 세지 않는다: 첫 재구독 한 번은 통합 런칭가 179,000원, 그 뒤 해지·재구독은 정가", async () => {
+    const s = await shop("INTEGRATED", at(-60), { ...paying, legacyPrice: 199000 });
+    // 이전 전 STANDARD로 낸 결제(런칭가 아님)
+    await db.subscriptionPayment.create({
+      data: { sellerId: s.seller.id, subscriptionId: s.subscription!.id, amount: 199000, status: "PAID", paidAt: at(-20), periodStart: at(-20), periodEnd: at(10), createdAt: at(-20) },
+    });
+    // 이전 전 가격 갱신(고지 미발송, 스냅숏 199,000원)도 런칭 할인 사용이 아니다
+    await renewDueSubscriptions(db, new FakeBillingProvider(), { now: at(9) });
+    expect(await used(s.seller.id)).toBeNull();
+    const sub = await subOf(s.seller.id);
+    expect(await cancelAndRestart(s, sub.currentPeriodEnd!, new Date(sub.currentPeriodEnd!.getTime() + 3 * DAY))).toMatchObject({ ok: true });
+    expect((await payments(s.seller.id)).map((p) => p.amount)).toEqual([199000, 199000, 179000]);
+    expect(await used(s.seller.id)).not.toBeNull();
+    const again = await subOf(s.seller.id);
+    expect(await cancelAndRestart(s, again.currentPeriodEnd!, new Date(again.currentPeriodEnd!.getTime() + 3 * DAY))).toMatchObject({ ok: true });
+    expect((await payments(s.seller.id)).map((p) => p.amount)).toEqual([199000, 199000, 179000, 249000]);
+  });
+
+  it("거절된 런칭가 결제는 사용으로 세지 않는다(다시 결제하면 런칭가)", async () => {
+    const s = await shop("INTEGRATED", null);
+    const declined = await registerCardAndPay(db, declining(), s.ctx, { authKey: "auth", now: T0 });
+    expect(declined).toMatchObject({ ok: false, reason: "payment_failed" });
+    expect(await used(s.seller.id)).toBeNull();
+    expect(await registerCardAndPay(db, new FakeBillingProvider(), s.ctx, { authKey: "auth", now: T0 })).toMatchObject({ ok: true });
+    expect((await payments(s.seller.id)).map((p) => [p.amount, p.status])).toEqual([[179000, "FAILED"], [179000, "PAID"]]);
   });
 });
