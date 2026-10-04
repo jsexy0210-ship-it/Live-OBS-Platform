@@ -32,7 +32,7 @@
 | RUNNING(실행 중) | VERIFYING / NEEDS_CUSTOMER / QUEUED / FAILED / CANCELED / CLEANUP_NEEDED | 검증 단계 도달 / 고객 행동 필요 / 일시 오류·lease 만료 / 치명 오류·시도 소진·비용 초과·위험 행동 / 취소 / 되돌리기 실패 |
 | NEEDS_CUSTOMER(고객 행동 필요) | QUEUED / FAILED / CANCELED | 고객이 마쳤다고 알림(재개) / 마감 24시간 지남 / 취소 |
 | VERIFYING(검증 중) | SUCCEEDED / NEEDS_CUSTOMER / QUEUED / FAILED / CANCELED / CLEANUP_NEEDED | 테스트 표시 확인 / OBS 미연결 등 / 재시도 / 실패 / 취소 / 되돌리기 실패 |
-| CLEANUP_NEEDED(정리 필요) | FAILED | 사람이 쇼핑몰 앱·웹훅·OBS 변경을 정리한 뒤 실패·환불로 닫는다(판매자 취소·재개 불가, 열린 작업이라 새 구매도 막힘, 보관 자료는 정리 전용으로 남김) |
+| CLEANUP_NEEDED(정리 필요) | FAILED | 사람이 쇼핑몰 앱·웹훅·OBS 변경을 정리한 뒤 마스터 관리자(운영 역할 이상, `billing.manage`)가 정리 메모와 함께 닫는다(`POST /api/automation/admin/jobs/[jobId]/cleanup`, `closeCleanupNeeded`): FAILED·결제는 환불 처리 대기(REFUND_PENDING, 실제 PG 환불은 대표님 승인 사항)·로그 추적 `automation.cleanup_closed`. 닫기 전에는 판매자 취소·재개 불가, 열린 작업이라 새 구매도 막힘 |
 | SUCCEEDED·FAILED·CANCELED | 없음 | 끝 |
 
 - 고객 행동 종류: `LOGIN`, `TWO_FACTOR`, `CAPTCHA`, `PERMISSION_GRANT`, `LOCAL_TOOL`. 완전 무인을 약속하지 않는다.

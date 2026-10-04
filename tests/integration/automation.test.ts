@@ -6,7 +6,8 @@ import { GET as jobsRoute } from "../../app/api/automation/jobs/route";
 import { POST as purchaseRoute } from "../../app/api/automation/purchase/route";
 import { POST as reconnectRoute } from "../../app/api/automation/reconnect/route";
 import { POST as refundRoute } from "../../app/api/automation/jobs/[jobId]/refund-request/route";
-import { loginSeller } from "../../lib/server/auth/login";
+import { POST as cleanupCloseRoute } from "../../app/api/automation/admin/jobs/[jobId]/cleanup/route";
+import { loginAdmin, loginSeller } from "../../lib/server/auth/login";
 import { AUTOMATION_CONSENT, AUTOMATION_PRICE, REINSTALL_PRICE } from "../../lib/server/automation/config";
 import { cafe24Playbook } from "../../lib/server/automation/playbooks/cafe24";
 import { validatePlaybook } from "../../lib/server/automation/playbook";
@@ -24,7 +25,7 @@ import { sealBillingKey } from "../../lib/server/billing/secret";
 import type { AutomationAction } from "../../lib/server/automation/ports";
 import { prisma } from "../../lib/server/db";
 import type { TenantContext } from "../../lib/server/tenant/context";
-import { PASSWORD, createSeller, createSellerUser, db, resetDb } from "./helpers";
+import { PASSWORD, adminCredentials, createAdmin, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
 beforeAll(() => {
   process.env.BILLING_KEY_SECRET = "test-billing-key-secret-0123456789abcdef";
@@ -2812,6 +2813,70 @@ describe("Codex 27차 반영(a8dd5a6)", () => {
     // 반대로 성공들보다 뒤에 시작한 실패가 있으면 끊긴다
     await db.automationPracticeRun.create({ data: run(T(-30_000), T(-20_000), "FAILED") });
     expect(await playbookReadiness(db, cafe24Playbook)).toMatchObject({ verified: false, streak: 0, needsReverify: true });
+  });
+});
+
+describe("Codex 28차 반영(3a3a286): 「정리 필요」 운영자 닫기", () => {
+  const BASE = "http://localhost:3000";
+  const adminCookie = async (role: "SUPER_ADMIN" | "OPERATIONS" | "CS" | "READ_ONLY") => {
+    const admin = await createAdmin(role);
+    const r = await loginAdmin(db, adminCredentials(admin), {});
+    if (!r.ok) throw new Error(r.reason);
+    return `lo_admin=${r.token}`;
+  };
+  const close = (jobId: string, cookie: string, body: unknown = { note: "쇼핑몰 앱·OBS 소스를 직접 정리함" }, origin: string | null = BASE) =>
+    cleanupCloseRoute(
+      new Request(`${BASE}/api/automation/admin/jobs/${jobId}/cleanup`, {
+        method: "POST",
+        headers: { host: "localhost:3000", ...(origin ? { origin } : {}), cookie, "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+      { params: Promise.resolve({ jobId }) },
+    );
+  async function cleanupNeededJob() {
+    const a = await bought();
+    await db.automationJob.update({
+      where: { id: a.jobId },
+      data: { stepIndex: 4, playbookActions: 10, obsPairingId: `pc-${a.seller.id}`, obsTargetKey: `obs:pc-${a.seller.id}`, changedAt: new Date(), mutatedSteps: ["display_settings"] },
+    });
+    const other = await bought();
+    await db.automationJob.update({ where: { id: other.jobId }, data: { status: "CANCELED", finishedAt: new Date(), lastDeviationAt: new Date(), deviatedSteps: ["webhook_setup"] } });
+    await runOnce(db, runtime(), W);
+    expect(await job(a.jobId)).toMatchObject({ status: "CLEANUP_NEEDED" });
+    // 연습으로 작업서를 다시 검증해 새 구매가 지원 목록 때문에 막히지 않게 한다
+    await db.automationJob.update({ where: { id: other.jobId }, data: { lastDeviationAt: new Date(Date.now() - 3_600_000) } });
+    for (let i = 0; i < PRACTICE_STREAK_REQUIRED; i++) await runPractice(db, runtime(), cafe24Playbook, { shopHost: "myshop.cafe24.com" });
+    return a;
+  }
+
+  it("정리 필요 작업은 판매자의 새 구매를 막고, 운영 관리자가 닫으면 FAILED·환불 처리 대기 1건·로그 추적 1건이 남고 새 구매가 열린다", async () => {
+    const a = await cleanupNeededJob();
+    const buy = () => purchaseAutomation(db, new FakeBillingProvider(), a.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP });
+    expect(await buy()).toMatchObject({ ok: false, reason: "job_in_progress" });
+
+    const res = await close(a.jobId, await adminCookie("OPERATIONS"));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, refundPending: true });
+    expect(await job(a.jobId)).toMatchObject({ status: "FAILED" });
+    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "REFUND_PENDING", refundReason: "cleanup_done" });
+    expect(await db.automationPayment.count({ where: { sellerId: a.seller.id, status: "REFUNDED" } })).toBe(0);
+    expect(await db.auditLog.count({ where: { action: "automation.cleanup_closed", targetId: a.jobId } })).toBe(1);
+    expect(await buy()).toMatchObject({ ok: true });
+  });
+
+  it("조회 전용·CS 관리자는 403, 다른 출처는 403, 정리 필요가 아닌 작업은 409, 메모 없으면 400 — 모두 상태 변화 없음", async () => {
+    const a = await cleanupNeededJob();
+    expect((await close(a.jobId, await adminCookie("READ_ONLY"))).status).toBe(403);
+    expect((await close(a.jobId, await adminCookie("CS"))).status).toBe(403);
+    const ops = await adminCookie("SUPER_ADMIN");
+    expect((await close(a.jobId, ops, undefined, "https://evil.test")).status).toBe(403);
+    expect((await close(a.jobId, ops, { note: "" })).status).toBe(400);
+    expect(await job(a.jobId)).toMatchObject({ status: "CLEANUP_NEEDED" });
+    const fresh = await shopWithCard();
+    const r = await purchaseAutomation(db, new FakeBillingProvider(), fresh.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP });
+    if (!r.ok) throw new Error(r.reason);
+    expect((await close(r.jobId, ops)).status).toBe(409);
+    expect(await db.auditLog.count({ where: { action: "automation.cleanup_closed" } })).toBe(0);
   });
 });
 
