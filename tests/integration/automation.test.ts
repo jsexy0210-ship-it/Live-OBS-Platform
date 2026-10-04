@@ -1136,11 +1136,15 @@ describe("정본 d6e22c4: 실행 시간 6시간 마감·시작 뒤 취소", () =
     rt.browser.outcome = (_s, action) => (action.type === "click" && !asked ? ((asked = true), { kind: "needs_customer", action: "LOGIN" }) : undefined);
     expect(await runOnce(db, rt, W)).toBe("needs_customer");
     expect((await job(a.jobId)).browserStateHeld).toBe(true);
-    // 실행 시간이 상한 직전까지 쓰인 상태로 재개
-    await db.automationJob.update({ where: { id: a.jobId }, data: { activeMsUsed: 6 * 60 * 60_000 - 100 } });
+    // 실행 시간을 상한까지 다 쓴 상태로 재개: 재개 뒤 첫 확인(누르기 전 touch)에서 바로 넘는다.
+    // 여유를 두면(예: 100ms) 그 안에 누르기가 실행돼 「바꾼 뒤 상한 초과」(정리 필요)로 갈려 실행 속도에 따라 결과가 달라진다
+    await db.automationJob.update({ where: { id: a.jobId }, data: { activeMsUsed: 6 * 60 * 60_000 } });
     await forgetChanges(a.jobId);
     await resumeJob(db, a.ctx, a.jobId);
+    const before = rt.browser.performed.length;
     expect(await runOnce(db, rt, W)).toBe("failed");
+    // 재개 뒤 외부 행동 0회(바꾸기 전 상한 초과)
+    expect(rt.browser.performed.length).toBe(before);
     expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "run_time_limit", leaseOwner: null, runStartedAt: null });
     expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "REFUND_PENDING", refundReason: "run_time_limit" });
     await purgeEndedBrowserState(db, rt);
