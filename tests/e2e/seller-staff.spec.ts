@@ -241,29 +241,63 @@ test("저장 응답을 놓치면 직원 목록을 다시 읽어 실제 결과를
   const id = uniq();
   const s = { name: `유실${id}`, phone: "01033334444", email: `lost-${id}@example.com`, password: `pw-${id}-init` };
 
-  // 직원 추가: 서버는 만들었는데 응답이 끊기고, 확인용 목록 읽기도 한 번 실패한다 → 실패라고 단정하지 않고 확인하지 못했다고 알린다
+  // 서버는 만들고 응답만 끊긴다(POST). times로 그 뒤 목록 읽기(GET)도 몇 번 실패시킨다
+  const loseCreate = (listFailures: number) =>
+    page.route(
+      (u) => u.pathname === "/api/seller/staff",
+      async (route) => {
+        if (route.request().method() === "POST") {
+          await route.fetch();
+          return route.abort("connectionreset");
+        }
+        return route.fulfill({ status: 500, json: { error: "internal" } });
+      },
+      { times: 1 + listFailures },
+    );
+
+  // ① 응답·확인용 목록 읽기가 모두 실패: 실패라고 하지 않고 칸을 잠근 채 「확인하기」만 둔다 → 확인하면 만든 것으로 처리
   await addStaff(page, s);
   await page.getByRole("checkbox", { name: "상품", exact: true }).check();
-  await page.route(
-    (u) => u.pathname === "/api/seller/staff",
-    async (route) => {
-      if (route.request().method() === "POST") {
-        await route.fetch();
-        return route.abort("connectionreset");
-      }
-      return route.fulfill({ status: 500, json: { error: "internal" } });
-    },
-    { times: 2 },
-  );
+  await loseCreate(1);
   await page.getByRole("button", { name: "계정 만들기" }).click();
-  await expect(page.getByText("계정을 만들었는지 확인하지 못했어요. 목록을 확인한 뒤 다시 시도해 주세요")).toBeVisible();
-  // 다시 누르면 서버는 email_taken이지만, 목록에 방금 보낸 그대로의 계정이 있으므로 만든 것으로 본다
-  const retried = page.waitForResponse((r) => r.url().endsWith("/api/seller/staff") && r.request().method() === "POST");
-  await page.getByRole("button", { name: "계정 만들기" }).click();
-  expect((await retried).status()).toBe(409);
+  const unclear = page.getByTestId("sa-unclear");
+  await expect(unclear).toContainText("계정을 만들었는지 확인하지 못했어요");
+  await expect(page.getByLabel("초기 비밀번호")).toBeDisabled();
+  await expect(page.getByLabel("이름", { exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "계정 만들기" })).toBeDisabled();
+  await shot(page, "SA-100-unclear");
+  await unclear.getByRole("button", { name: "확인하기" }).click();
   await expect(page.getByText(`${s.name} 계정을 만들었어요`, { exact: false })).toBeVisible();
   await expect(page.getByLabel("이메일 (로그인 아이디)")).toHaveValue("");
   await expect(row(page, s.email)).toContainText("상품");
+
+  // ② 불분명한 상태에서 「새로 입력하기」로 풀고 비밀번호를 바꿔 다시 보내면 email_taken: 만든 것으로 보지 않고 안내만 한다
+  const id2 = uniq();
+  const s2 = { name: `재입력${id2}`, phone: "01033335555", email: `again-${id2}@example.com`, password: `pw-${id2}-first` };
+  await addStaff(page, s2);
+  await loseCreate(1);
+  await page.getByRole("button", { name: "계정 만들기" }).click();
+  await expect(unclear).toBeVisible();
+  await unclear.getByRole("button", { name: "새로 입력하기" }).click();
+  await expect(page.getByLabel("초기 비밀번호")).toBeEnabled();
+  await page.getByLabel("초기 비밀번호").fill(`pw-${id2}-second`);
+  const retried = page.waitForResponse((r) => r.url().endsWith("/api/seller/staff") && r.request().method() === "POST");
+  await page.getByRole("button", { name: "계정 만들기" }).click();
+  expect((await retried).status()).toBe(409);
+  await expect(page.getByText("이 이메일로 이미 계정이 있어요. 목록에서 확인하고 필요하면 비밀번호를 다시 정해 주세요")).toBeVisible();
+  await expect(page.getByText(`${s2.name} 계정을 만들었어요`, { exact: false })).toHaveCount(0);
+  await expect(page.getByLabel("이메일 (로그인 아이디)")).toHaveValue(s2.email);
+  await expect(row(page, s2.email)).toBeVisible();
+
+  // ③ 전각 글자 이름: 서버는 NFKC로 저장한다. 응답을 놓쳐도 같은 규칙으로 비교해 만든 것으로 처리
+  const id3 = uniq();
+  const s3 = { name: `ＡＢ직원${id3}`, phone: "01033336666", email: `wide-${id3}@example.com`, password: `pw-${id3}-init` };
+  await page.getByLabel("이메일 (로그인 아이디)").fill("");
+  await addStaff(page, s3);
+  await loseCreate(0);
+  await page.getByRole("button", { name: "계정 만들기" }).click();
+  await expect(page.getByText(`AB직원${id3} 계정을 만들었어요`, { exact: false })).toBeVisible();
+  await expect(row(page, s3.email)).toContainText(`AB직원${id3}`);
 
   // 권한 수정: 서버는 저장했는데 응답이 끊긴다 → 다시 읽어 보낸 값과 같으므로 저장했다고 알리고 목록에 반영
   await page.getByRole("button", { name: `${s.name} 정보 · 권한 수정` }).click();

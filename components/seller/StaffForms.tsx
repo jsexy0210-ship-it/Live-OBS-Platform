@@ -52,6 +52,8 @@ export type Staff = {
 
 // 직원 이름: 서버(lib/server/sellers/staffName.ts)와 같은 규칙. NFKC 뒤 코드포인트 50자까지, 제어·서식 문자(폭 없는 공백 등) 거부
 export const STAFF_NAME_MAX = 50;
+// 서버가 저장하는 모양(cleanStaffName: NFKC·앞뒤 공백 정리)으로 바꾼 이름. 저장 결과를 다시 읽어 비교할 때 쓴다
+export const normStaffName = (v: string) => cleanText(v, STAFF_NAME_MAX) ?? v.trim();
 export function staffNameError(v: string): string | null {
   if (!v.trim()) return "이름을 적어 주세요";
   if (textLength(v) > STAFF_NAME_MAX) return `이름은 ${STAFF_NAME_MAX}자까지 적을 수 있어요`;
@@ -185,7 +187,7 @@ export function EditStaffModal({ staff, onClose, onSaved, onChanged }: { staff: 
     setBusy(false);
     if (!cur) return setError("저장했는지 확인하지 못했어요. 잠시 뒤 목록에서 확인해 주세요");
     onChanged?.();
-    if (cur.name === name.trim() && cur.phone === nextPhone && sameSet(cur.permissions, perms)) return onSaved(savedText());
+    if (cur.name === normStaffName(name) && cur.phone === nextPhone && sameSet(cur.permissions, perms)) return onSaved(savedText());
     setBase(cur);
     setName(cur.name);
     setPhone(cur.phone ?? "");

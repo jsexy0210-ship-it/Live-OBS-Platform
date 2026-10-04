@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { phoneText } from "../../../../../components/seller/IdentityCheck";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import {
@@ -14,6 +14,7 @@ import {
   STAFF_ERRORS,
   cleanPhone,
   isUnclear,
+  normStaffName,
   phoneOk,
   readStaffList,
   sameSet,
@@ -190,7 +191,7 @@ export default function StaffPage() {
                 <span className="t-l2 c-neu">권한 변경은 바로 적용돼요. 직원이 로그인 중이면 다음 화면부터 바뀌어요. 변경 기록은 감사 로그에 남아요.</span>
               </div>
             </div>
-            <AddStaff onAdded={(name) => done(`${name} 계정을 만들었어요 · 이메일과 초기 비밀번호를 직접 알려 주세요`)} />
+            <AddStaff onAdded={(name) => done(`${name} 계정을 만들었어요 · 이메일과 초기 비밀번호를 직접 알려 주세요`)} onChanged={() => void load()} />
           </div>
         )}
       </main>
@@ -205,7 +206,7 @@ export default function StaffPage() {
 type Errors = Partial<Record<"name" | "phone" | "email" | "password", string>>;
 
 // 직원 추가: 이름·휴대폰·이메일(로그인 아이디)·초기 비밀번호·권한. 메일 초대 없이 바로 계정이 만들어진다
-function AddStaff({ onAdded }: { onAdded: (name: string) => void }) {
+function AddStaff({ onAdded, onChanged }: { onAdded: (name: string) => void; onChanged: () => void }) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
@@ -214,8 +215,12 @@ function AddStaff({ onAdded }: { onAdded: (name: string) => void }) {
   const [errors, setErrors] = useState<Errors>({});
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // 앞 요청의 결과가 불분명했는지(연결 끊김·5xx). 그 뒤 다시 보내 email_taken이 오면 방금 만든 계정일 수 있다
-  const unclear = useRef(false);
+  // 결과가 불분명했던 시도(보낸 값 그대로, 이름·휴대폰은 서버가 저장하는 모양). 있는 동안 칸을 잠그고 「확인하기」로만 확인한다:
+  // 값을 바꿔 다시 보내면 서버에 남은 계정(첫 시도의 비밀번호)과 화면 값이 달라지기 때문
+  const [unclear, setUnclear] = useState<{ name: string; phone: string; email: string; perms: StaffPerm[] } | null>(null);
+  // 불분명했던 시도를 두고 「새로 입력하기」로 새로 시작했는지. 그 뒤 email_taken은 만든 것으로 보지 않고 안내한다
+  const [restarted, setRestarted] = useState(false);
+  const locked = busy || unclear !== null;
   // 보내는 동안 칸이 잠겨 있으므로 다시 그린 뒤에 포커스를 옮긴다
   const [focusTo, setFocusTo] = useState<{ id: string } | null>(null);
   useEffect(() => {
@@ -224,9 +229,45 @@ function AddStaff({ onAdded }: { onAdded: (name: string) => void }) {
     setFocusTo(null);
   }, [focusTo]);
 
+  const succeed = (added: string) => {
+    setBusy(false);
+    setUnclear(null);
+    setRestarted(false);
+    setName("");
+    setPhone("");
+    setEmail("");
+    setPassword("");
+    setPerms([]);
+    onAdded(added);
+  };
+
+  // 불분명했던 바로 그 시도가 만들어졌는지 목록으로 확인한다(같은 이메일·이름·휴대폰·권한이면 만든 것)
+  const confirmSent = async (sent: NonNullable<typeof unclear>) => {
+    setBusy(true);
+    setFailure(null);
+    const list = await readStaffList();
+    if (!list) {
+      setBusy(false);
+      setUnclear(sent);
+      return setFailure("계정을 만들었는지 확인하지 못했어요. 잠시 뒤 「확인하기」를 눌러 주세요");
+    }
+    const mine = list.find((s) => s.email.toLowerCase() === sent.email.toLowerCase());
+    if (mine && mine.name === sent.name && mine.phone === sent.phone && sameSet(mine.permissions, sent.perms)) return succeed(sent.name);
+    setBusy(false);
+    setUnclear(null);
+    setFailure("계정이 만들어지지 않았어요. 다시 시도해 주세요");
+  };
+
+  const restart = () => {
+    setUnclear(null);
+    setRestarted(true);
+    setFailure(null);
+    setFocusTo({ id: "sa-name" });
+  };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (busy) return;
+    if (locked) return;
     const next: Errors = {};
     const nameError = staffNameError(name);
     if (nameError) next.name = nameError;
@@ -238,34 +279,20 @@ function AddStaff({ onAdded }: { onAdded: (name: string) => void }) {
     const first = (["name", "phone", "email", "password"] as const).find((k) => next[k]);
     if (first) return setFocusTo({ id: `sa-${first}` });
     setBusy(true);
+    const sent = { name: normStaffName(name), phone: cleanPhone(phone), email: email.trim(), perms };
     const r = await api("/api/seller/staff", {
       method: "POST",
-      body: { name: name.trim(), phone: cleanPhone(phone), email: email.trim(), password, permissions: perms },
+      body: { name: name.trim(), phone: sent.phone, email: sent.email, password, permissions: perms },
     });
-    const succeed = () => {
-      setBusy(false);
-      unclear.current = false;
-      const added = name.trim();
-      setName("");
-      setPhone("");
-      setEmail("");
-      setPassword("");
-      setPerms([]);
-      onAdded(added);
-    };
-    if (r.ok) return succeed();
-    // 결과가 불분명하거나, 불분명했던 요청 뒤 email_taken이면 목록을 다시 읽어 방금 보낸 계정(같은 이메일·이름·휴대폰·권한)이 있으면 만든 것으로 본다
-    if (isUnclear(r) || (r.error === "email_taken" && unclear.current)) {
-      if (isUnclear(r)) unclear.current = true;
-      const list = await readStaffList();
-      const mine = list?.find((s) => s.email.toLowerCase() === email.trim().toLowerCase());
-      if (mine && mine.name === name.trim() && mine.phone === cleanPhone(phone) && sameSet(mine.permissions, perms)) return succeed();
-      if (isUnclear(r)) {
-        setBusy(false);
-        return setFailure(list ? "계정을 만들지 못했어요. 잠시 뒤 다시 시도해 주세요" : "계정을 만들었는지 확인하지 못했어요. 목록을 확인한 뒤 다시 시도해 주세요");
-      }
-    }
+    if (r.ok) return succeed(sent.name);
+    // 결과가 불분명하면(연결 끊김·5xx) 실패라고 하지 않고 이 시도가 만들어졌는지 확인한다
+    if (isUnclear(r)) return confirmSent(sent);
     setBusy(false);
+    if (r.error === "email_taken" && restarted) {
+      onChanged();
+      setErrors({ email: "이 이메일로 이미 계정이 있어요. 목록에서 확인하고 필요하면 비밀번호를 다시 정해 주세요" });
+      return setFocusTo({ id: "sa-email" });
+    }
     const field = ({ email_taken: "email", weak_password: "password", invalid_phone: "phone" } as const)[r.error as "email_taken"];
     if (field) {
       setErrors({ [field]: STAFF_ERRORS[r.error] });
@@ -292,7 +319,7 @@ function AddStaff({ onAdded }: { onAdded: (name: string) => void }) {
   const inputProps = (key: keyof Errors) => ({
     id: `sa-${key}`,
     className: `inp${errors[key] ? " is-error" : ""}`,
-    disabled: busy,
+    disabled: locked,
     "aria-invalid": !!errors[key],
     "aria-describedby": errors[key] ? `sa-${key}-err` : undefined,
   });
@@ -305,10 +332,24 @@ function AddStaff({ onAdded }: { onAdded: (name: string) => void }) {
         </h2>
         <span className="t-c1 c-alt">바로 계정이 만들어져요 · 메일 초대는 없어요</span>
       </div>
-      {failure && (
-        <div className="msg msg-neg" role="alert">
-          <span>{failure}</span>
+      {unclear ? (
+        <div className="msg msg-cau" role="alert" style={{ display: "block" }} data-testid="sa-unclear">
+          <span>{failure ?? "계정을 만들었는지 확인하지 못했어요. 「확인하기」로 목록에서 확인해 주세요"}</span>
+          <span className="row" style={{ gap: 6, marginTop: 8 }}>
+            <button className="btn btn-sm" type="button" disabled={busy} onClick={() => void confirmSent(unclear)}>
+              확인하기
+            </button>
+            <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={restart}>
+              새로 입력하기
+            </button>
+          </span>
         </div>
+      ) : (
+        failure && (
+          <div className="msg msg-neg" role="alert">
+            <span>{failure}</span>
+          </div>
+        )
       )}
       {field("name", "이름", <input {...inputProps("name")} value={name} onChange={(e) => setName(e.target.value)} />)}
       {field(
@@ -328,8 +369,8 @@ function AddStaff({ onAdded }: { onAdded: (name: string) => void }) {
         <SecretInput {...inputProps("password")} maxLength={200} value={password} onChange={(e) => setPassword(e.target.value)} />,
         `${MIN_PASSWORD_LENGTH}자 이상 · 직원에게 직접 전달해 주세요`,
       )}
-      <PermissionPicker value={perms} onChange={setPerms} disabled={busy} />
-      <button className={`btn btn-lg btn-block${busy ? " is-loading" : ""}`} type="submit" disabled={busy}>
+      <PermissionPicker value={perms} onChange={setPerms} disabled={locked} />
+      <button className={`btn btn-lg btn-block${busy ? " is-loading" : ""}`} type="submit" disabled={locked}>
         {busy ? "만들고 있어요" : "계정 만들기"}
       </button>
     </form>
