@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import ShopLogo from "./ShopLogo";
 
-type Props = { slug: string; shopName: string; loggedIn: boolean };
+type Props = { slug: string; shopName: string; loggedIn: boolean; nickname?: string | null };
 
 function Icon({ d }: { d: string }) {
   return (
@@ -25,7 +25,7 @@ const ICON = {
 };
 
 // 구매자 쇼핑몰 머리(띠·로고·검색·장바구니·카테고리)와 휴대폰 카테고리 서랍·아래 고정 바. 상품 분류(카테고리)가 생기면 「전체 상품」 뒤에 붙인다.
-export default function ShopChrome({ slug, shopName, loggedIn }: Props) {
+export default function ShopChrome({ slug, shopName, loggedIn, nickname }: Props) {
   const base = `/shop/${encodeURIComponent(slug)}`;
   const path = usePathname() ?? "";
   const [drawer, setDrawer] = useState(false);
@@ -72,6 +72,7 @@ export default function ShopChrome({ slug, shopName, loggedIn }: Props) {
             {account}
             <Link href={`${base}/orders`}>주문 조회</Link>
             <Link href={`${base}/help`}>고객센터</Link>
+            {loggedIn && nickname && <span className="shop-util-who">{nickname} 님</span>}
           </div>
         </div>
         <div className="shop-top">
@@ -85,16 +86,25 @@ export default function ShopChrome({ slug, shopName, loggedIn }: Props) {
             </Link>
             <form className="shop-search shop-pc" role="search" action={`${base}/search`}>
               <input type="search" name="q" maxLength={50} placeholder="상품 검색" aria-label="상품 검색" />
-              <button type="submit" className="shop-iconbtn" aria-label="검색">
-                <Icon d={ICON.search} />
+              <button type="submit" className="shop-search-btn">
+                검색
               </button>
             </form>
             <Link href={`${base}/search`} className="shop-iconbtn shop-m" aria-label="검색">
               <Icon d={ICON.search} />
             </Link>
-            <Link href={`${base}/cart`} className="shop-iconbtn shop-cart" aria-label="장바구니">
+            <Link href={`${base}/cart`} className="shop-iconbtn shop-cart shop-m" aria-label="장바구니">
               <Icon d={ICON.cart} />
             </Link>
+            <div className="shop-hics shop-pc">
+              <Link href={`${base}/cart`} className="shop-hic">
+                <Icon d={ICON.cart} />
+                장바구니
+              </Link>
+              <Link href={loggedIn ? `${base}/me` : `${base}/login`} className="shop-hic">
+                <Icon d={ICON.user} />내 정보
+              </Link>
+            </div>
           </div>
         </div>
         <nav className="shop-cats" aria-label="카테고리">
@@ -105,6 +115,16 @@ export default function ShopChrome({ slug, shopName, loggedIn }: Props) {
               </Link>
             ))}
           </div>
+        </nav>
+        <nav className="shop-mcat" aria-label="메뉴 탭">
+          <Link href={base} aria-current={here(base)}>
+            홈
+          </Link>
+          {cats.map((c) => (
+            <Link key={c.href} href={c.href} aria-current={here(c.href)}>
+              {c.label}
+            </Link>
+          ))}
         </nav>
       </header>
 

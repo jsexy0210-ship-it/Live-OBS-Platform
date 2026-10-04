@@ -55,8 +55,12 @@ body {
 }
 .shop-util .shop-wrap {
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 16px;
+}
+.shop-util-who {
+  margin-left: auto;
+  color: var(--wds-label-alternative);
 }
 .shop-app .shop-util a,
 .shop-util .shop-linkbtn {
@@ -83,11 +87,12 @@ body {
 }
 .shop-search {
   display: flex;
-  align-items: center;
-  width: 360px;
+  align-items: stretch;
+  width: 400px;
   max-width: 40%;
+  height: 36px;
   margin-left: auto;
-  border: 2px solid var(--wds-label-normal);
+  border: 1px solid var(--wds-label-normal);
   border-radius: 2px;
 }
 .shop-search input {
@@ -102,8 +107,36 @@ body {
   background: transparent;
   color: var(--wds-label-normal);
 }
-.shop-search .shop-iconbtn {
-  height: 36px;
+.shop-search-btn {
+  flex: none;
+  width: 56px;
+  padding: 0;
+  border: 0;
+  background: var(--wds-label-normal);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+/* 머리 오른쪽 아이콘(장바구니·내 정보): 아이콘 아래 글자 */
+.shop-hics {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.shop-app a.shop-hic {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 48px;
+  font-size: 12px;
+  color: var(--wds-label-normal);
+  text-decoration: none;
+}
+.shop-mcat {
+  display: none;
 }
 .shop-cart {
   position: relative;
@@ -131,6 +164,7 @@ body {
   box-shadow: inset 0 -2px 0 var(--brand);
 }
 .shop-app .shop-m,
+.shop-app a.shop-iconbtn.shop-m,
 .shop-tabbar {
   display: none;
 }
@@ -383,7 +417,31 @@ body {
   .shop-pc {
     display: none;
   }
-  .shop-app .shop-m {
+  .shop-mcat {
+    display: flex;
+    gap: 16px;
+    padding: 0 16px;
+    height: 40px;
+    align-items: center;
+    overflow-x: auto;
+    white-space: nowrap;
+    border-bottom: 1px solid var(--wds-line-solid-neutral);
+  }
+  .shop-app .shop-mcat a {
+    display: inline-flex;
+    align-items: center;
+    height: 40px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--wds-label-normal);
+    text-decoration: none;
+  }
+  .shop-app .shop-mcat a[aria-current="page"] {
+    color: var(--brand);
+    box-shadow: inset 0 -2px 0 var(--brand);
+  }
+  .shop-app .shop-m,
+  .shop-app a.shop-iconbtn.shop-m {
     display: inline-flex;
   }
   .shop-top {
