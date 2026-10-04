@@ -53,7 +53,8 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
     fault === "BUYER" && preview && !blocked
       ? [
           ...preview.openedItems.map((o) => ({ label: `개봉한 상품 · ${order.items.find((i) => i.id === o.orderItemId)?.productNameSnapshot ?? ""}`, amount: o.amount })),
-          ...(preview.shipped && order.shippingFee > 0 ? [{ label: "처음 배송비", amount: order.shippingFee }] : []),
+          // 구매자가 실제로 낸 배송비(배송비 무료 쿠폰이면 0, 서버 미리보기 값)
+          ...(preview.shipped && (preview.chargedShippingFee ?? order.shippingFee) > 0 ? [{ label: "처음 배송비", amount: preview.chargedShippingFee ?? order.shippingFee }] : []),
           ...(quote && quote.returnFeeDeducted > 0 ? [{ label: "반품 배송비", amount: quote.returnFeeDeducted }] : []),
         ]
       : [];
