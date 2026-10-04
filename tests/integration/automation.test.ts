@@ -17,7 +17,7 @@ import { FakeBrowserExecutor, FakeObsBridge, FakePlanner, FakePracticeEnvironmen
 import { markConnectionRevoked } from "../../lib/server/automation/connection";
 import { cancelJob, getJob, requestRefund, resumeJob } from "../../lib/server/automation/jobs";
 import { purchaseAutomation, reconcileAutomationPayments, reconnectAutomation } from "../../lib/server/automation/purchase";
-import { EngineAborted, actionKeyOf, runSteps } from "../../lib/server/automation/engine";
+import { EngineAborted, actionKeyOf, callPort, runSteps } from "../../lib/server/automation/engine";
 import { FencingError, RunTimeExceeded, advanceStep, claimNext, extendLease, finishJob, lockJob, markBrowserStateHeld, markChanged, parkForCustomer, reapExpired, toVerifying, touch, unmarkChanged } from "../../lib/server/automation/queue";
 import { executeJob, purgeEndedBrowserState, runOnce, runWorkerLoop, startHeartbeat } from "../../lib/server/automation/worker";
 import { FakeBillingProvider } from "../../lib/server/billing/provider";
@@ -3641,9 +3641,11 @@ describe("Codex 45차 반영(6da016b)", () => {
         s.close = (opts) => (lateClose = gate.then(() => close(opts)));
         return s;
       };
-      expect(await runOnce(db, rt, W)).toBe("needs_customer");
+      // 보관이 끝나지 않았으므로 고객 대기로 두지 않고 다시 시도한다(46차)
+      expect(await runOnce(db, rt, W)).toBe("retry");
+      expect(await job(a.jobId)).toMatchObject({ status: "QUEUED", lastError: "state_save_timeout" });
       expect(rt.browser.saved.has(a.jobId)).toBe(false);
-      await resumeJob(db, a.ctx, a.jobId);
+      await db.automationJob.update({ where: { id: a.jobId }, data: { runAfter: new Date(Date.now() - 1000) } });
       // 닫기·보관이 끝났다고 볼 수 없으면(종료 확인 없음·창 안) 다른 작업자가 이어받지 않는다
       expect(await claimNext(db, "w-other")).toBeNull();
       await db.automationJob.update({ where: { id: a.jobId }, data: { lastActionStartedAt: new Date(Date.now() - 3 * 60_000) } });
@@ -3704,6 +3706,94 @@ describe("Codex 45차 반영(6da016b)", () => {
       expect(await runOnce(db, rt, W)).toBe("needs_customer");
       expect(rt.planner.inputs.length).toBeGreaterThan(0);
       expect(rt.browser.saved.has(a.jobId)).toBe(true);
+    } finally {
+      actionWindowGuard.strict = false;
+    }
+  });
+});
+
+describe("Codex 46차 반영(포트 호출 계약 callPort)", () => {
+  const limits = AUTOMATION_LIMITS as { actionTimeoutMs: number };
+
+  it("보관본 삭제가 영원히 멈춰도 상한 뒤 삭제 실패로 기록하고 넘어가며, 같은 삭제 대상은 한 작업자만 잡는다", async () => {
+    const saved = limits.actionTimeoutMs;
+    limits.actionTimeoutMs = 100;
+    try {
+      const a = await bought();
+      await db.automationJob.update({ where: { id: a.jobId }, data: { status: "CANCELED", finishedAt: new Date() } });
+      const rt = runtime();
+      let calls = 0;
+      rt.browser.discard = () => {
+        calls++;
+        return new Promise(() => {});
+      };
+      // 두 작업자가 동시에 정리를 돈다: 한쪽만 삭제를 요청하고, 둘 다 묶이지 않고 돌아온다
+      const [p1, p2] = await Promise.all([purgeEndedBrowserState(db, rt), purgeEndedBrowserState(db, rt)]);
+      expect(p1 + p2).toBe(0);
+      expect(calls).toBe(1);
+      const j = await job(a.jobId);
+      expect(j).toMatchObject({ artifactsPurgedAt: null, artifactsPurgeAttempts: 1 });
+      expect(j.artifactsPurgeRetryAt!.getTime()).toBeGreaterThan(Date.now());
+      // 재시도 시각 전에는 다시 잡지 않는다
+      expect(await purgeEndedBrowserState(db, rt)).toBe(0);
+      expect(calls).toBe(1);
+    } finally {
+      limits.actionTimeoutMs = saved;
+    }
+  });
+
+  it("세션 열기가 상한을 넘기면 다시 시도(read_timeout)로 돌아가고, 늦게 열린 세션은 보관하지 않고 닫히며, 그동안 다른 작업자는 이어받지 않는다", async () => {
+    const saved = limits.actionTimeoutMs;
+    limits.actionTimeoutMs = 100;
+    try {
+      const a = await bought();
+      const rt = runtime();
+      let release!: () => void;
+      const gate = new Promise<void>((r) => (release = r));
+      const open = rt.browser.open.bind(rt.browser);
+      let lateOpen: ReturnType<typeof open> | null = null;
+      rt.browser.open = (scope) => {
+        if (lateOpen) return open(scope);
+        return (lateOpen = gate.then(() => open(scope)));
+      };
+      expect(await runOnce(db, rt, W)).toBe("retry");
+      expect(await job(a.jobId)).toMatchObject({ status: "QUEUED", lastError: "read_timeout" });
+      await db.automationJob.update({ where: { id: a.jobId }, data: { runAfter: new Date(Date.now() - 1000) } });
+      // 열기(보관본 복원)가 끝났다고 볼 수 없으면 이어받지 않는다
+      expect(await claimNext(db, "w-other")).toBeNull();
+      release();
+      const late = await lateOpen!;
+      await new Promise((r) => setTimeout(r, 20));
+      // 아무도 쓰지 않는 늦은 세션은 닫혔고 보관본을 만들지 않았다
+      expect(rt.browser.live.has(late.id)).toBe(false);
+      expect(rt.browser.saved.has(a.jobId)).toBe(false);
+    } finally {
+      limits.actionTimeoutMs = saved;
+    }
+  });
+
+  it("엄격 모드에서 포트 메서드를 callPort 밖에서 직접 부르면 거부되고, 작업 실행·고객 대기 보관·끝난 작업 삭제는 모두 callPort 안에서만 부른다", async () => {
+    actionWindowGuard.strict = true;
+    try {
+      const rt = runtime();
+      const scope = { sellerId: "s", jobId: "00000000-0000-0000-0000-000000000000" };
+      await expect(rt.obs.observe(scope)).rejects.toThrow("outside_port_call:obs.observe");
+      await expect(rt.obs.currentPairingId(scope)).rejects.toThrow("outside_port_call");
+      await expect(rt.browser.open(scope)).rejects.toThrow("outside_port_call:browser.open");
+      await expect(rt.browser.discard(scope)).rejects.toThrow("outside_port_call");
+      await expect(rt.obs.discard(scope)).rejects.toThrow("outside_port_call");
+      await expect(rt.vault.forJob(scope)).rejects.toThrow("outside_port_call");
+      expect(await callPort(() => rt.obs.observe(scope))).toMatchObject({ ok: true });
+
+      const a = await bought();
+      expect(await runOnce(db, rt, W)).toBe("succeeded");
+      const b = await bought();
+      const rt2 = runtime();
+      rt2.browser.outcome = (_s, action) => (action.type === "click" ? { kind: "needs_customer", action: "LOGIN" } : undefined);
+      expect(await runOnce(db, rt2, W)).toBe("needs_customer");
+      expect(rt2.browser.saved.has(b.jobId)).toBe(true);
+      expect(await purgeEndedBrowserState(db, rt)).toBe(1);
+      expect(rt.browser.discarded).toContain(a.jobId);
     } finally {
       actionWindowGuard.strict = false;
     }

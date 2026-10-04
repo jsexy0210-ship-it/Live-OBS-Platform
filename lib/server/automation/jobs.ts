@@ -55,6 +55,8 @@ const PUBLIC_ERRORS = new Set([
   "payment_unresolved",
   "planner_timeout",
   "read_timeout",
+  "state_save_timeout",
+  "state_save_failed",
 ]);
 const STEP_KEYS = new Set(STEPS.map((s) => s.key));
 

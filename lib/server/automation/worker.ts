@@ -2,7 +2,7 @@ import { writeAudit } from "../audit/log";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import type { BillingProvider } from "../billing/provider";
 import { AUTOMATION_LIMITS } from "./config";
-import { EngineAborted, ExternalReadTimeout, runRollback, runSteps } from "./engine";
+import { EngineAborted, ExternalReadTimeout, callPort, runRollback, runSteps } from "./engine";
 import { findPlaybook } from "./playbooks";
 import type { AutomationRuntime, JobScope } from "./ports";
 import { cleanupPracticeArtifacts, playbookReadiness } from "./practice";
@@ -224,11 +224,18 @@ export async function purgeEndedBrowserState(db: PrismaClient, rt: Pick<Automati
   for (const j of ended) {
     // 끝난 작업이라도 옛 실행자의 외부 행동이 아직 끝났다고 볼 수 없으면(격리 창) 지우지 않고 다음 반복에서 다시 본다
     if (!quiescent(j, now)) continue;
+    // 삭제 대상은 한 작업자만 잡는다: 다음 재시도 시각을 두 삭제 요청의 상한 + 여유 뒤로 미루는 조건부 갱신이 점유다
+    // (다른 작업자는 그 시각까지 고르지 않는다. 작업자가 죽으면 그 뒤 다시 잡힌다)
+    const claimed = await db.automationJob.updateMany({
+      where: { id: j.id, artifactsPurgedAt: null, OR: [{ artifactsPurgeRetryAt: null }, { artifactsPurgeRetryAt: { lte: now } }] },
+      data: { artifactsPurgeRetryAt: new Date(now.getTime() + PURGE_CLAIM_MS()) },
+    });
+    if (claimed.count !== 1) continue;
     const scope = { sellerId: j.sellerId, jobId: j.id };
-    try {
-      await rt.browser.discard(scope);
-      await rt.obs.discard(scope);
-    } catch {
+    // 삭제 요청도 포트 호출 계약을 거친다: 상한을 넘기거나 오류면 삭제 실패로 기록하고 다음 작업으로 넘어간다(작업자가 묶이지 않음)
+    const browser = await callPort(() => rt.browser.discard(scope));
+    const obs = browser.ok ? await callPort(() => rt.obs.discard(scope)) : browser;
+    if (!obs.ok) {
       await recordPurgeFailure(db, j.id, j.sellerId, j.artifactsPurgeAttempts + 1);
       continue;
     }
@@ -244,6 +251,8 @@ export async function purgeEndedBrowserState(db: PrismaClient, rt: Pick<Automati
 
 // 보관 자료 삭제 반복 실패: 이 횟수부터 마스터 관리자 알림(감사 기록 운영 이벤트, 작업당 1건). 재시도는 늦춰 가며 계속한다.
 export const PURGE_ALERT_AFTER = 10;
+// 삭제 점유 시간: 두 삭제 요청의 상한 + 여유
+const PURGE_CLAIM_MS = () => 2 * AUTOMATION_LIMITS.actionTimeoutMs + AUTOMATION_LIMITS.actionQuiesceGraceMs;
 const PURGE_MAX_BACKOFF_MS = 60 * 60_000;
 
 async function recordPurgeFailure(db: PrismaClient, jobId: string, sellerId: string, attempts: number) {

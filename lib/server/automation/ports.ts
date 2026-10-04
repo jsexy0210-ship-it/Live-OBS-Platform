@@ -44,7 +44,7 @@ export type PlannerDecision = { action: AutomationAction; costWon: number };
 export interface AutomationPlanner {
   // 쓰는 모델 이름(config.ts plannerConfig). 비용 산정·기록용
   readonly model: string;
-  // 엔진의 격리 창 장치(boundedAction) 안에서만 부른다. 상한(actionTimeoutMs)에 이르면 signal이 중단되며, 받은 쪽은 호출을 끊는다(계약).
+  // 엔진의 포트 호출 계약(callPort, 격리 창 기록) 안에서만 부른다. 상한(actionTimeoutMs)에 이르면 signal이 중단되며, 받은 쪽은 호출을 끊는다(계약).
   decide(input: PlannerInput, signal?: AbortSignal): Promise<PlannerDecision>;
 }
 
@@ -142,7 +142,7 @@ export type AutomationRuntime = { planner: AutomationPlanner; browser: BrowserEx
 
 // 연습 환경(시험용 쇼핑몰·시험용 PC). 연습 1회는 기준 상태(앱·웹훅·표시 설정·시험 이벤트·OBS 소스 없음)에서 시작해야 성공으로 센다.
 // reset: 기준 상태로 되돌린다. isBaseline: 지금 기준 상태인지 실제 상태를 읽어 확인한다.
-// 두 연산은 외부 연산이라 엔진의 격리 창 장치(boundedAction) 안에서만 부른다. 상한(actionTimeoutMs)에 이르면 signal이 중단되며,
+// 두 연산은 외부 연산이라 엔진의 포트 호출 계약(callPort, 격리 창 기록) 안에서만 부른다. 상한(actionTimeoutMs)에 이르면 signal이 중단되며,
 // 받은 쪽은 그 뒤 아무것도 바꾸지 않고 스스로 멈춘다(계약).
 export interface PracticeEnvironment {
   reset(signal?: AbortSignal): Promise<void>;

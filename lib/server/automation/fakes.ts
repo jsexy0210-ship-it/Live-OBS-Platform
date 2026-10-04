@@ -17,12 +17,12 @@ import type {
   SecretVault,
 } from "./ports";
 import { PRACTICE_SELLER_ID, pageMatchesExpected } from "./ports";
-import { insideBoundedAction } from "./engine";
+import { insidePortCall } from "./engine";
 
-// 시험용: 켜면 외부 연산(실행기 행동·연습 초기화·기준 상태 확인)이 격리 창 장치(boundedAction) 밖에서 불릴 때 거부한다
+// 시험용: 켜면 모든 포트 메서드(행동·닫기·판단·연습 초기화·기준 상태 확인·삭제·열기·읽기)가 포트 호출 계약(callPort) 밖에서 불릴 때 거부한다
 export const actionWindowGuard = { strict: false };
 function assertInWindow(what: string) {
-  if (actionWindowGuard.strict && !insideBoundedAction()) throw new Error(`outside_action_window:${what}`);
+  if (actionWindowGuard.strict && !insidePortCall()) throw new Error(`outside_port_call:${what}`);
 }
 
 // 가짜(모의) 구현. 실제 Gemini·브라우저·로컬 도구를 부르지 않는다. 운영 환경에서는 만들 수 없다.
@@ -101,6 +101,7 @@ export class FakeBrowserExecutor implements BrowserExecutor {
   readonly tombstones = new Set<string>();
 
   async discard(scope: JobScope): Promise<void> {
+    assertInWindow("browser.discard");
     this.tombstones.add(scope.jobId);
     this.saved.delete(scope.jobId);
     // 행동 키 기록도 그 작업 것을 지운다
@@ -145,6 +146,7 @@ export class FakeBrowserExecutor implements BrowserExecutor {
   }
 
   async open(scope: JobScope): Promise<BrowserSession> {
+    assertInWindow("browser.open");
     const id = `ctx-${++this.seq}`;
     this.opened.push({ id, scope });
     this.live.add(id);
@@ -157,6 +159,7 @@ export class FakeBrowserExecutor implements BrowserExecutor {
     return {
       id,
       async observe(): Promise<Observation> {
+        assertInWindow("session.observe");
         await sleep(self.delayMs);
         // 화면 글 + 실제로 바뀐 쇼핑몰 상태(앱 설치·주문 알림). 단계 완료 판정은 이 상태로만 맞는다
         const text = [self.pageText(scope, secretsSeen), ...(self.shopState.get(scope.sellerId) ?? [])].join(" · ");
@@ -165,9 +168,11 @@ export class FakeBrowserExecutor implements BrowserExecutor {
         return { url: self.pageUrl(scope), text, elements };
       },
       async currentUrl() {
+        assertInWindow("session.currentUrl");
         return self.currentUrlOverride ? self.currentUrlOverride(scope) : self.pageUrl(scope);
       },
       async currentShopKey() {
+        assertInWindow("session.currentShopKey");
         self.shopKeyReads++;
         const v = self.shopKey.get(scope.sellerId);
         return v === undefined ? `mall-${scope.sellerId}` : v;
@@ -229,6 +234,7 @@ export class FakeObsBridge implements ObsBridge {
   }
 
   async observe(scope: JobScope): Promise<Observation> {
+    assertInWindow("obs.observe");
     await sleep(this.delayMs);
     // 연결 여부 + 실제 OBS 상태(소스 수·표시 설정·테스트 주문 표시). 단계 완료 판정은 이 상태로만 맞는다
     const parts = this.disconnected.has(scope.sellerId)
@@ -254,6 +260,7 @@ export class FakeObsBridge implements ObsBridge {
   readonly tombstones = new Set<string>();
 
   async discard(scope: JobScope): Promise<void> {
+    assertInWindow("obs.discard");
     this.tombstones.add(scope.jobId);
     this.connections.delete(scope.jobId);
     for (const k of [...this.applied.keys()]) if (k.startsWith(`${scope.jobId}:`)) this.applied.delete(k);
@@ -261,6 +268,7 @@ export class FakeObsBridge implements ObsBridge {
   }
 
   async currentPairingId(scope: JobScope): Promise<string | null> {
+    assertInWindow("obs.currentPairingId");
     if (this.disconnected.has(scope.sellerId)) return null;
     if (!this.tombstones.has(scope.jobId)) this.connections.add(scope.jobId);
     const v = this.pairing.get(scope.sellerId);
@@ -316,6 +324,7 @@ export class FakeSecretVault implements SecretVault {
   }
 
   async forJob(scope: JobScope): Promise<JobSecrets> {
+    assertInWindow("vault.forJob");
     let s = this.byJob.get(scope.jobId);
     if (!s) {
       s = { webhook_url: `https://hooks.test/${scope.sellerId}/${randomBytes(8).toString("hex")}`, webhook_secret: randomBytes(24).toString("hex") };

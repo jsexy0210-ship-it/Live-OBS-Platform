@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { AutomationPracticeRun, Prisma, PrismaClient } from "@prisma/client";
 import { AUTOMATION_LIMITS, plannerConfig } from "./config";
 import { writeAudit } from "../audit/log";
-import { boundedAction, runSteps, type EngineStats } from "./engine";
+import { callPort, runSteps, type EngineStats } from "./engine";
 import { FencingError, QUIESCE_MS, backoffMs, dbNow, lockPlaybook, quiescent, quiescentSql } from "./queue";
 import type { Playbook } from "./playbook";
 import { PLAYBOOKS } from "./playbooks";
@@ -28,10 +28,10 @@ const IN_PROGRESS = [PRACTICE_INCOMPLETE, PRACTICE_DEVIATED];
 // 기한이 지나 회수됐거나 늦게 끝나 세지 않는 회차
 const PRACTICE_EXPIRED = "practice_expired";
 
-// 연습 실행 범위의 보관 자료(행동 키 기록·OBS 연결 정보)를 두 실행기에 지우라고 요청한다. 둘 다 성공해야 정리 끝이다.
+// 연습 실행 범위의 보관 자료(행동 키 기록·OBS 연결 정보)를 두 실행기에 지우라고 요청한다. 둘 다 성공해야 정리 끝이다(상한 초과·오류는 실패).
 async function discardScope(rt: Pick<AutomationRuntime, "browser" | "obs">, scope: JobScope): Promise<boolean> {
-  const results = await Promise.allSettled([rt.browser.discard(scope), rt.obs.discard(scope)]);
-  return results.every((r) => r.status === "fulfilled");
+  const results = await Promise.all([callPort(() => rt.browser.discard(scope)), callPort(() => rt.obs.discard(scope))]);
+  return results.every((r) => r.ok);
 }
 
 // 연습 환경(시험용 쇼핑몰·PC)에서 다른 연습이 실행 중이다. 이 호출은 실행하지 않았다(기록도 남기지 않음).
@@ -112,15 +112,14 @@ export async function runPractice(
   // (이전 회차가 남긴 앱·웹훅·소스 위에서 성공해도 작업서를 검증한 것이 아니므로 세지 않고, 실패 기록이 연속 성공을 끊는다)
   // 되돌리기도 외부 행동이라 격리 창 기록 안에서 한다(늦게 끝나도 다음 연습은 종료 확인 또는 창 경과 뒤에만 시작)
   // 상한(T_action)을 넘기면 중단 신호를 보내고 실패로 본다(종료 확인 없음 → 격리 창은 마지막 시작 시각 + 상한 + 여유로 풀린다)
-  const baseline = await boundedAction(
-    { actionStarted, actionEnded },
+  const baseline = await callPort(
     async (signal) => {
       await rt.practice.reset(signal);
       return rt.practice.isBaseline(signal);
     },
-    false,
-  ).catch(() => false);
-  if (!baseline) result = { kind: "failed", reason: "practice_reset_failed" };
+    { window: { actionStarted, actionEnded } },
+  ).catch((): { ok: false } => ({ ok: false }));
+  if (!baseline.ok || !baseline.value) result = { kind: "failed", reason: "practice_reset_failed" };
   else {
     try {
       result = await runSteps(
