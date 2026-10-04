@@ -251,3 +251,33 @@ test("마스터 관리자 로고 색은 파트너스 관리자 로고 색과 다
   await expect.poll(sideX).toBe(0);
   await page.screenshot({ path: "tests/e2e/screenshots/branding-master-logo-shell-390.png" });
 });
+
+test("저장 전 입력값이 미리보기에 바로 반영된다(제목·설명·카드 이미지·파비콘, 대표님 지시 2026-10-04)", async ({ page }) => {
+  await login(page, superEmail);
+  await page.getByRole("tab", { name: "파트너스 관리자" }).click();
+  const card = page.getByLabel("공유 카드 미리보기");
+  const image = page.getByAltText("공유 카드 이미지 미리보기");
+  const icon = page.getByAltText("파비콘 미리보기");
+  // 제목·설명: 입력하는 대로 글자가 바뀌고, 제목으로 만든 카드 그림도 새 제목으로 다시 그린다
+  await page.getByLabel("제목").fill("미리보기 확인 제목");
+  await page.getByLabel("설명").fill("미리보기 확인 설명");
+  await expect(card.getByText("미리보기 확인 제목")).toBeVisible();
+  await expect(card.getByText("미리보기 확인 설명")).toBeVisible();
+  await expect(image).toHaveAttribute("src", `/api/admin/branding/card-preview?title=${encodeURIComponent("미리보기 확인 제목")}`);
+  await expect.poll(() => image.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(1200);
+  // 글자 수를 넘으면 마지막으로 그릴 수 있던 카드를 그대로 두고 깨진 그림을 보이지 않는다
+  await page.getByLabel("제목").fill("가".repeat(61));
+  await page.waitForTimeout(600);
+  await expect(image).toHaveAttribute("src", `/api/admin/branding/card-preview?title=${encodeURIComponent("미리보기 확인 제목")}`);
+  // 파비콘: 고르기만 해도 공유 카드의 사이트 아이콘이 고른 파일로 바뀐다(저장 전)
+  const iconBefore = await icon.getAttribute("src");
+  await page.getByLabel("파비콘 파일").setInputFiles({ name: "preview.png", mimeType: "image/png", buffer: await sharp({ create: { width: 64, height: 64, channels: 4, background: "#00aaff" } }).png().toBuffer() });
+  await expect(icon).toHaveAttribute("src", /^blob:/);
+  expect(await icon.getAttribute("src")).not.toBe(iconBefore);
+  // 카드 이미지 올리기: 고른 1200×630 PNG가 바로 미리보기에 나온다
+  await page.getByRole("radio", { name: "이미지 업로드" }).click();
+  await page.getByLabel("공유 카드 이미지 파일").setInputFiles({ name: "preview-card.png", mimeType: "image/png", buffer: await sharp({ create: { width: 1200, height: 630, channels: 3, background: "#aa00ff" } }).png().toBuffer() });
+  await expect(image).toHaveAttribute("src", /^blob:/);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.screenshot({ path: "tests/e2e/screenshots/branding-preview-live-1440.png", fullPage: true });
+});
