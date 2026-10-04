@@ -92,3 +92,41 @@
   color: #fff;
   box-shadow: none;
 }
+
+/* 카페24식 표: 대기·최근 완료 */
+.bc-tbl td {
+  vertical-align: middle;
+}
+.bc-tbl .bc-item {
+  text-align: left;
+}
+.bc-live {
+  border-radius: 4px;
+}
+.bc-side {
+  position: sticky;
+  top: 16px;
+}
+.bc-side .bc-keys {
+  position: static;
+}
+@media (max-width: 900px) {
+  .bc-side {
+    position: static;
+  }
+}
+.bc-tbl {
+  table-layout: fixed;
+}
+.bc-tbl td {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  overflow: hidden;
+}
+.bc-tbl th,
+.bc-tbl td.num {
+  white-space: nowrap;
+}
+.bc-tbl .bc-acts {
+  flex-wrap: nowrap;
+}
