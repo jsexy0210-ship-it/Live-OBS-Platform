@@ -712,3 +712,12 @@ body {
   gap: 8px;
   padding-top: 4px;
 }
+.shop-modal-busy {
+  margin: 0;
+  font-size: 13px;
+  color: var(--wds-label-alternative);
+}
+.shop-modal-x:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

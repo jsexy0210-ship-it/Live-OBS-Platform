@@ -38,6 +38,7 @@ export default function ReviewMine({ slug }: { slug: string }) {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [deleting, setDeleting] = useState<Mine | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [removing, setRemoving] = useState(false);
 
   const load = useCallback(async () => {
     const r = await call<Data>(base);
@@ -72,8 +73,10 @@ export default function ReviewMine({ slug }: { slug: string }) {
   };
 
   const remove = async () => {
-    if (!deleting) return;
+    if (!deleting || removing) return;
+    setRemoving(true);
     const r = await call<{ revokedReward: number }>(`${base}/${deleting.id}`, { method: "DELETE" });
+    setRemoving(false);
     setDeleting(null);
     setMsg(r.ok ? { ok: true, text: `리뷰를 지웠어요${r.data.revokedReward > 0 ? ` · 적립금 ${won(r.data.revokedReward)}은 돌려받았어요` : ""}` } : { ok: false, text: r.message ?? "지우지 못했어요. 잠시 뒤 다시 해 주세요" });
     await load();
@@ -192,12 +195,13 @@ export default function ReviewMine({ slug }: { slug: string }) {
         <ShopModal
           title="리뷰를 지울까요?"
           onClose={() => setDeleting(null)}
+          busy={removing}
           footer={
             <>
-              <button className="btn btn-out" type="button" onClick={() => setDeleting(null)}>
+              <button className="btn btn-out" type="button" disabled={removing} onClick={() => setDeleting(null)}>
                 취소
               </button>
-              <button className="btn btn-neg" type="button" onClick={() => void remove()}>
+              <button className="btn btn-neg" type="button" disabled={removing} onClick={() => void remove()}>
                 지우기
               </button>
             </>
