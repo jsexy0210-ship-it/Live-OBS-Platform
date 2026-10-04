@@ -97,7 +97,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
     return (
       <div className="st" style={{ minHeight: "100vh", borderRadius: 0 }}>
         <div className="st-ic neg">!</div>
-        <span className="t">화면을 불러오지 못했어요</span>
+        <span className="t">화면을 불러오지 못했습니다</span>
         <button className="btn btn-sm" type="button" onClick={() => void load()}>
           다시 시도
         </button>
@@ -137,7 +137,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
                 {n.label}
               </Link>
             ) : (
-              <a key={i} className="nav-i off" aria-disabled="true" title="곧 열려요">
+              <a key={i} className="nav-i off" aria-disabled="true" title="준비 중입니다">
                 {n.label}
               </a>
             ),
@@ -147,7 +147,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
           </button>
           {logoutError && (
             <span className="err side-logout-err" role="alert">
-              로그아웃하지 못했어요. 다시 시도해 주세요
+              로그아웃하지 못했습니다. 다시 시도해 주십시오
             </span>
           )}
         </aside>
@@ -188,24 +188,24 @@ function AccessBanner() {
   if (me.access === "trial") {
     return (
       <div className="msg msg-info access-banner" role="status">
-        <b>{trialDaysLeft === null ? "체험 중이에요" : trialDaysLeft === 0 ? "체험이 오늘 끝나요" : `체험이 ${trialDaysLeft}일 남았어요`}</b>
-        <span>체험이 끝나기 전에 구독하면 그대로 이어서 쓸 수 있어요</span>
+        <b>{trialDaysLeft === null ? "체험 중입니다" : trialDaysLeft === 0 ? "체험이 오늘 끝납니다" : `체험이 ${trialDaysLeft}일 남았습니다`}</b>
+        <span>체험이 끝나기 전에 구독하면 그대로 이어서 사용할 수 있습니다</span>
       </div>
     );
   }
   if (me.access === "grace") {
     return (
       <div className="msg msg-cau access-banner" role="status">
-        <b>구독료 결제가 안 됐어요</b>
-        <span>결제 카드를 확인해 주세요. 며칠 안에 결제되지 않으면 새 판매가 멈춰요</span>
+        <b>구독료 결제가 되지 않았습니다</b>
+        <span>결제 카드를 확인해 주십시오. 며칠 안에 결제되지 않으면 새 판매가 중지됩니다</span>
       </div>
     );
   }
   if (me.access === "expired") {
     return (
       <div className="msg msg-neg access-banner" role="alert">
-        <b>이용 기간이 끝났어요</b>
-        <span>지금은 상품 등록·수정과 새 판매가 멈춰 있어요. {me.isOwner ? "구독하면 바로 다시 쓸 수 있어요" : "대표자에게 구독을 요청해 주세요"}</span>
+        <b>이용 기간이 끝났습니다</b>
+        <span>지금은 상품 등록·수정과 새 판매가 중지되어 있습니다. {me.isOwner ? "구독하면 바로 다시 사용할 수 있습니다" : "대표자에게 구독을 요청해 주십시오"}</span>
       </div>
     );
   }

@@ -17,4 +17,5 @@ export function stepOutcome(r: { status: number; error: string }, restartErrors:
 }
 
 // 같은 단계를 다시 시도하게 할 때의 안내(연결 끊김은 공통 api()의 문구, 서버 오류는 이 문구)
-export const RETRY_TEXT = "잠시 후 다시 시도해 주세요";
+export const RETRY_TEXT = "잠시 후 다시 시도해 주십시오";
+export const RETRY_TEXT_PUBLIC = "잠시 후 다시 시도해 주세요";
