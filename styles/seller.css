@@ -482,6 +482,41 @@ body {
   flex: none;
 }
 
+/* 공유 미리보기(SA-060): 메신저에 보이는 카드 모양 */
+.sp-card {
+  overflow: hidden;
+  max-width: 420px;
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px var(--wds-line-normal-normal);
+  background: var(--surface);
+}
+.sp-card-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1200 / 630;
+  background: var(--wds-fill-alternative);
+}
+.sp-card-body {
+  gap: 4px;
+  padding: 12px 14px;
+  min-width: 0;
+}
+.sp-card-title {
+  font-weight: 700;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.sp-card-desc {
+  font-size: 13px;
+  color: var(--wds-label-neutral);
+  overflow-wrap: anywhere;
+}
+.sp-card-host {
+  font-size: 12px;
+  color: var(--wds-label-alternative);
+}
+
 /* 파트너스 가입 필수 약관 동의(PF-007-1): 본인확인 위 */
 .pa-terms {
   gap: 10px;
@@ -494,4 +529,22 @@ body {
   padding-bottom: 10px;
   font-weight: 600;
   box-shadow: inset 0 -1px 0 var(--wds-line-normal-alternative);
+}
+
+/* 설정 화면 입력 묶음(저장 중 잠금용 fieldset): 기본 테두리·여백 없이 기존 칸 배치 그대로 */
+.settings-fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+/* 쇼핑몰 설정 탭: 좁은 화면에서는 탭 줄 안에서 가로로 넘겨 본다(화면 전체가 가로로 넘치지 않게) */
+.settings-tabs {
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.settings-tabs::-webkit-scrollbar {
+  display: none;
 }
