@@ -259,17 +259,18 @@ GitHub Secrets·Variables는 이 방식에서 필요 없어요(비밀값은 서�
 1. 콘솔 로그인(버킷이 있는 프로젝트 선택).
 2. 오른쪽 위 **프로필 아이콘 → 자격 증명**.
 3. **S3 액세스 키** 탭 → **S3 액세스 키 생성** → 이름 입력(예: `obs-test-image`) → **생성**.
-4. 나온 **액세스 키**와 **보안 액세스 키**를 복사해 서버 `/opt/obs/.env`에만 넣어요(아래 C). **보안 액세스 키는 이 화면에서만 볼 수 있다고 가정**하고, 놓치면 새로 만들어요.
+4. 나온 **액세스 키**와 **보안 액세스 키**를 복사해 **GitHub 저장소 Secrets**에만 넣어요: 저장소 → Settings → Secrets and variables → Actions → `KAKAO_S3_ACCESS_KEY`(액세스 키), `KAKAO_S3_SECRET_KEY`(보안 액세스 키). 2026-10-05에 대표님이 등록하셨어요. 서버 `.env`에는 직접 넣지 않아요(아래 C). **보안 액세스 키는 이 화면에서만 볼 수 있다고 가정**하고, 놓치면 새로 만들어요.
 5. 프로젝트당 키는 **최대 2개**예요. 서버용 1개만 쓰고, 나머지 1개는 교체용으로 비워 둬요.
 
-### C. 서버 `.env`에 넣을 변수
+### C. 서버 `.env`에는 배포 워크플로가 넣어요
 
-위 「4. 서버 `.env`」 표의 `IMAGE_STORAGE`, `IMAGE_S3_ENDPOINT`, `IMAGE_S3_REGION`, `IMAGE_S3_BUCKET`, `IMAGE_S3_ACCESS_KEY_ID`, `IMAGE_S3_SECRET_ACCESS_KEY`예요. 값은 대표님이 서버에서 직접 입력해요.
+위 「4. 서버 `.env`」 표의 `IMAGE_STORAGE`, `IMAGE_S3_ENDPOINT`, `IMAGE_S3_REGION`, `IMAGE_S3_BUCKET`, `IMAGE_S3_ACCESS_KEY_ID`, `IMAGE_S3_SECRET_ACCESS_KEY`예요. **Deploy obs-test 워크플로의 `Sync image storage env` 단계**가 배포 때마다 GitHub Secrets 값과 고정값(엔드포인트 `https://objectstorage.kr-central-2.kakaocloud.com`, 리전 `kr-central-2`, 버킷 `live-obs-platform`)을 `/opt/obs/.env`에 반영해요. 직접 입력하지 않아도 돼요.
 
-- 엔드포인트 주소 형식: `https://objectstorage.kr-central-2.kakaocloud.com`(비밀이 아니에요). 주소는 **경로 방식**(`엔드포인트/버킷/객체`)으로 써요. 카카오 예제가 모두 경로 방식이에요.
-- **`IMAGE_STORAGE=kakao`는 맨 마지막에, 연결 시험이 끝난 뒤에 넣어요.** 키만 먼저 넣어 두면 동작은 그대로예요.
-- 키를 넣은 뒤 「넣었어요」라고만 알려 주세요(값은 알리지 않아요). 인프라 세션이 읽기·쓰기·삭제를 한 번씩 확인하는 시험을 만들어 드려요.
-- `.env`를 바꾼 뒤에는 재배포(또는 `up -d`)해야 반영돼요.
+- 값은 로그에 나오지 않아요. `.env`의 다른 줄은 그대로 두고, 임시 파일에 만든 뒤 한 번에 바꿔요.
+- **`IMAGE_STORAGE`는 없을 때만 `db`로 넣어요.** 이미 있으면 덮어쓰지 않아요. 그래서 처음에는 키만 들어가고 이미지는 계속 DB에 저장돼요. **카카오로 바꾸는 일은 이 단계가 하지 않아요.** 드라이버가 병합되고 이전을 승인한 뒤, 서버 `.env`의 `IMAGE_STORAGE`를 `kakao`로 직접 바꾸고 재배포해요.
+- Secret이 비어 있거나 `.env`에 그대로 쓸 수 없는 문자가 있으면 경고만 남기고 키를 넣지 않아요. 이 단계가 실패해도 배포는 막지 않아요.
+- **버킷 연결 확인(선택)**: 배포를 실행할 때 `check_image_bucket`을 켜면 배포 뒤 버킷 목록 조회를 **딱 한 번**(쓰기 없음) 해요. 성공이면 로그에 「목록 조회 성공」, 실패면 HTTP 코드와 오류 코드(예: `SignatureDoesNotMatch`, `AccessDenied`)가 나와요. 실패해도 배포 결과는 바뀌지 않아요.
+- `.env`를 바꾼 뒤에는 재배포(또는 `up -d`)해야 앱에 반영돼요.
 
 ### D. 요금 확인
 
