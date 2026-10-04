@@ -50,7 +50,7 @@ test.describe.serial("SA-035 쿠폰 관리 · SH-028 내 쿠폰함", () => {
     await dlg.getByLabel("할인 금액 (원)").fill("5000");
     await dlg.getByLabel("최소 주문 금액 (원)").fill("50000");
     await expect(dlg.getByTestId("coupon-preview")).toContainText("5,000원");
-    await expect(dlg.getByTestId("coupon-preview")).toContainText("50,000원 이상 · 할인 중 상품 제외");
+    await expect(dlg.getByTestId("coupon-preview")).toContainText("50,000원 이상 주문 · 할인 중 상품 제외");
     await page.screenshot({ path: `${SHOT}/sa035-editor-1440.png` });
     await dlg.getByRole("button", { name: "저장" }).click();
     await expect(dlg).toBeHidden();
