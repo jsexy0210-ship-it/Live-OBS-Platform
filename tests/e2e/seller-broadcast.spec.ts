@@ -230,3 +230,121 @@ test("되돌리기는 지금 방송에서 완료한 주문에만 보인다(방�
   await expect(done).toBeVisible();
   await expect(done.getByRole("button", { name: "되돌리기" })).toHaveCount(0);
 });
+
+test("변경 뒤 다시 읽기가 실패하면 변경 조작을 모두 끄고, 다시 불러오기가 성공해야 다시 켠다", async ({ page }) => {
+  await openFirst(page);
+  const complete = page.getByRole("button", { name: /개봉 완료/ });
+  await page.route(isQueueGet, (r) => r.abort("connectionreset"));
+  await page.keyboard.press("Control+ArrowUp");
+  await expect(page.getByTestId("bc-stale")).toContainText("다시 불러오기 전까지 변경할 수 없습니다");
+  // 옛 version을 가진 화면에서는 버튼·단축키·창 확인이 모두 막힌다
+  await expect(complete).toBeDisabled();
+  await expect(page.getByRole("button", { name: "방송 종료" })).toBeDisabled();
+  await page.keyboard.press("Control+ArrowUp");
+  await page.keyboard.press("Control+Enter");
+  await page.waitForTimeout(300);
+  const s = await queueStatuses();
+  expect(s[A].status).toBe("OPENING");
+  expect(s[A].timerSeconds).toBe(30);
+  // 다시 불러오기가 성공하면 최신 상태로 켜진다
+  await page.unroute(isQueueGet);
+  await page.getByRole("button", { name: "다시 불러오기" }).click();
+  await expect(page.getByTestId("bc-stale")).toHaveCount(0);
+  await expect(complete).toBeEnabled();
+  await expect(page.getByTestId("bc-opening").locator(".num")).toHaveText(/^0:(2\d|30)$/);
+  await page.keyboard.press("Control+ArrowUp");
+  await expect(toast(page)).toContainText("타이머를 1:00로 정했습니다");
+  expect((await queueStatuses())[A].timerSeconds).toBe(60);
+});
+
+test("거부(409)된 변경도 그 전에 시작된 읽기를 무효로 해, 늦게 온 옛 읽기가 잠금을 풀지 않는다", async ({ page }) => {
+  await openFirst(page);
+  let release!: () => void;
+  const held = new Promise<void>((f) => (release = f));
+  let n = 0;
+  await page.route(isQueueGet, async (r) => {
+    n += 1;
+    if (n === 1) {
+      const res = await r.fetch();
+      await held;
+      return r.fulfill({ response: res });
+    }
+    return r.abort("connectionreset");
+  });
+  // 다른 화면이 먼저 바꾼 것처럼 서버가 409로 거부한다
+  await page.route("**/api/seller/queue/*/timer", (r) => r.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ error: "conflict" }) }));
+  const oldRead = page.waitForRequest((q) => isQueueGet(new URL(q.url())));
+  await bumpLiveVersion();
+  await oldRead;
+  await page.keyboard.press("Control+ArrowUp");
+  await expect(toast(page)).toContainText("다른 화면에서 먼저 바뀌었습니다");
+  await expect(page.getByTestId("bc-stale")).toBeVisible();
+  release();
+  await page.waitForTimeout(500);
+  await expect(page.getByTestId("bc-stale")).toBeVisible();
+  await expect(page.getByRole("button", { name: /개봉 완료/ })).toBeDisabled();
+});
+
+test("종료 확인 창이 열린 사이 다른 화면이 방송을 바꾸면 창을 닫고, 새 방송은 끝나지 않는다", async ({ page, context }) => {
+  await login(page, "demo-owner@example.com", "/seller/broadcast");
+  await page.getByLabel("방송 제목").fill("방송 A");
+  await page.getByRole("button", { name: "방송 시작" }).click();
+  await expect(page.getByTestId("bc-title")).toHaveText("방송 A");
+  await page.getByRole("button", { name: "방송 종료" }).click();
+  const dialog = page.getByRole("dialog", { name: "방송을 종료하시겠습니까?" });
+  await expect(dialog).toBeVisible();
+  // 다른 창: A를 끝내고 B를 시작
+  const other = await context.newPage();
+  await other.goto("/seller/broadcast");
+  await other.getByRole("button", { name: "방송 종료" }).click();
+  await other.getByRole("dialog").getByRole("button", { name: "방송 종료" }).click();
+  await other.getByLabel("방송 제목").fill("방송 B");
+  await other.getByRole("button", { name: "방송 시작" }).click();
+  await expect(other.getByTestId("bc-title")).toHaveText("방송 B");
+  // 처음 창: 확인 창이 닫히고 B가 보인다(B를 끌 수 있는 확인 버튼이 남지 않음)
+  await page.bringToFront();
+  await expect(page.getByTestId("bc-title")).toHaveText("방송 B", { timeout: 5000 });
+  await expect(dialog).toHaveCount(0);
+  await expect(toast(page)).toContainText("다른 화면에서 방송이 바뀌었습니다");
+  await other.reload();
+  await expect(other.getByTestId("bc-title")).toHaveText("방송 B");
+  await other.close();
+});
+
+test("보던 중 권한·이용 상태가 끝나면(403) 옛 내용과 버튼을 지우고 권한 안내로 바꾼다", async ({ page }) => {
+  await openFirst(page);
+  await page.route(isQueueGet, (r) => r.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ error: "forbidden" }) }));
+  await bumpLiveVersion();
+  await expect(page.getByText("이 기능은 권한이 필요합니다")).toBeVisible();
+  await expect(page.getByTestId("bc-opening")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /개봉 완료/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "방송 종료" })).toHaveCount(0);
+});
+
+test("Ctrl+Enter를 누른 채 있어도(자동 반복) 완료는 한 번만, 다음 주문이 저절로 개봉되지 않는다", async ({ page }) => {
+  await openFirst(page);
+  await page.keyboard.down("Control");
+  await page.keyboard.down("Enter");
+  for (let i = 0; i < 5; i++) {
+    await page.waitForTimeout(150);
+    await page.keyboard.down("Enter"); // 이미 눌린 키: repeat=true로 전달됨
+  }
+  await page.keyboard.up("Enter");
+  await page.keyboard.up("Control");
+  await expect(toast(page)).toContainText("개봉을 완료했습니다");
+  await expect(page.getByTestId("bc-opening")).toHaveCount(0);
+  const s = await queueStatuses();
+  expect(s[A].status).toBe("DONE");
+  expect(s[B].status).toBe("WAITING");
+  expect(s[C].status).toBe("WAITING");
+});
+
+test("PC 시계가 틀려도(1시간 빠름) 방금 완료한 주문의 되돌리기가 보이고 동작한다", async ({ page }) => {
+  await page.clock.setSystemTime(new Date(Date.now() + 3600_000));
+  await openFirst(page);
+  await page.keyboard.press("Control+Enter");
+  const done = page.getByTestId("bc-done").locator("li", { hasText: A });
+  await done.getByRole("button", { name: "되돌리기" }).click();
+  await expect(page.getByTestId("bc-opening")).toContainText(A);
+  expect((await queueStatuses())[A].status).toBe("OPENING");
+});

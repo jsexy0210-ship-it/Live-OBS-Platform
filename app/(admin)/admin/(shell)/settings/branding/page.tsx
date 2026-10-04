@@ -17,6 +17,7 @@ type Branding = {
   description: string | null;
   defaults: { title: string; description: string | null };
   favicon: { url: string; type: string } | null;
+  defaultFaviconUrl: string;
   ogImage: { url: string; uploaded: boolean; width: number; height: number };
 };
 type Settings = { canEdit: boolean; targets: Branding[] };
@@ -262,7 +263,7 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
         : branding.ogImage.url;
   const host = typeof window === "undefined" ? "" : window.location.host;
   // 공유 카드의 사이트 표시 줄에 붙는 아이콘: 고른 파비콘 → 올린 파비콘 → 기본 아이콘 순(저장 전 선택도 바로 보인다)
-  const previewIcon = favicon?.url ?? branding.favicon?.url ?? "/branding/onq-32.png";
+  const previewIcon = favicon?.url ?? branding.favicon?.url ?? branding.defaultFaviconUrl;
   const [previewBroken, setPreviewBroken] = useState(false);
   useEffect(() => setPreviewBroken(false), [previewSrc]);
   const shownDescription = description.trim() || branding.defaults.description;
@@ -283,7 +284,7 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
                 {favicon || branding.favicon ? (
                   <img src={favicon?.url ?? branding.favicon!.url} alt="현재 파비콘" width={32} height={32} />
                 ) : (
-                  <img src="/branding/onq-32.png" alt="기본 아이콘" width={32} height={32} />
+                  <img src={branding.defaultFaviconUrl} alt="기본 아이콘" width={32} height={32} />
                 )}
               </span>
               <span className="col" style={{ gap: 2 }}>

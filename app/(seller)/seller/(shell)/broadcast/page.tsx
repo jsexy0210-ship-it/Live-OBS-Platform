@@ -28,7 +28,7 @@ import { useLatestResponse } from "../../../../../components/seller/latestRespon
 // API: GET /api/seller/queue·queue/version·stream, POST queue/{id}/{start|complete|revert|cancel|timer}·queue/reorder·broadcast/start·broadcast/end
 
 type Load = { kind: "loading" } | { kind: "error"; status: number; error: string } | { kind: "ok"; snap: Snapshot };
-type Modal = { kind: "end" } | { kind: "cancel"; item: QueueItem } | { kind: "timer"; item: QueueItem } | null;
+type Modal = { kind: "end"; sessionId: string } | { kind: "cancel"; item: QueueItem } | { kind: "timer"; item: QueueItem } | null;
 
 const POLL_MS = 15_000;
 
@@ -49,20 +49,35 @@ export default function BroadcastDashboardPage() {
   // 다시 읽기 반영 규칙(latestResponse.ts): 나중에 보낸 요청의 성공만 반영하고, 실패가 앞선 성공을 버리지 않는다
   const reads = useLatestResponse();
   const version = useRef<number | null>(null);
+  // 되돌리기 10초 판정은 PC 시계(Date)가 아니라 이 화면이 완료를 확인한 순간의 단조 시계(performance.now) 기준이다.
+  // 이 화면에서 완료했거나, 직전 화면에서 개봉 중이던 주문이 완료로 바뀐 것을 본 경우만 기록한다(언제 완료됐는지 모르는 주문은 되돌리기를 보이지 않음)
+  const doneSeenAt = useRef(new Map<string, number>());
+  const lastOpeningId = useRef<string | null>(null);
+  const applySnap = useCallback((snap: Snapshot) => {
+    const seen = performance.now();
+    for (const d of snap.recentDone) if (d.id === lastOpeningId.current && !doneSeenAt.current.has(d.id)) doneSeenAt.current.set(d.id, seen);
+    lastOpeningId.current = snap.opening?.id ?? null;
+    version.current = snap.version;
+    setStale(false);
+    setState({ kind: "ok", snap });
+  }, []);
   const load = useCallback(async () => {
     const t = reads.next();
     const r = await api<Snapshot>("/api/seller/queue");
     if (!r.ok) {
-      if (reads.hasApplied()) return reads.failMatters(t) ? setStale(true) : undefined;
+      // 이용 기간 만료(402)·권한·플랜 해제(403)는 일시적 실패가 아니다: 보이던 내용을 지우고 해당 안내로 바꾼다
+      const terminal = r.status === 402 || r.status === 403;
+      if (reads.hasApplied() && !terminal) return reads.failMatters(t) ? setStale(true) : undefined;
+      if (reads.hasApplied() && !reads.failMatters(t)) return;
+      setStale(false);
+      setModal(null);
       return setState({ kind: "error", status: r.status, error: r.error });
     }
     const verdict = reads.accept(t);
     // 변경 전에 보낸 읽기가 늦게 왔으면 버린다(변경 뒤 다시 읽기가 반영한다. 그 읽기가 실패했으면 낡음 안내가 남는다)
     if (verdict !== "apply") return;
-    version.current = r.data.version;
-    setStale(false);
-    setState({ kind: "ok", snap: r.data });
-  }, [reads]);
+    applySnap(r.data);
+  }, [reads, applySnap]);
 
   // 처음 읽기 + 실시간 채널 + 15초 확인
   useEffect(() => {
@@ -98,19 +113,18 @@ export default function BroadcastDashboardPage() {
     return () => clearInterval(t);
   }, []);
 
-  // 변경 요청 공통 처리: 성공·거부 모두 다시 읽어 서버 상태로 맞춘다. 불분명하면 성공을 추정하지 않는다.
-  // 다시 읽기가 끝날 때까지 조작을 막는다(옛 version으로 다음 요청을 보내 409가 나지 않게).
-  // 서버가 바뀌었을(수 있는) 요청 뒤에는 그 전에 보낸 읽기 응답이 늦게 와도 반영하지 않는다(confirmChange).
+  // 변경 요청 공통 처리: 결과(성공·거부·불분명)와 상관없이 보내기 직전에 그 전에 시작된 읽기를 모두 무효로 하고(confirmChange),
+  // 끝나면 다시 읽어 서버 상태로 맞춘다. 다시 읽기가 끝날 때까지 조작을 막는다(옛 version으로 다음 요청을 보내 409가 나지 않게).
+  // 결과가 불분명하면 성공을 추정하지 않는다.
   const mutate = useCallback(
     async <T,>(path: string, body: unknown, okText: string): Promise<ApiResult<T>> => {
       setBusy(true);
+      reads.confirmChange();
       const r = await api<T>(path, { method: "POST", body });
       if (r.ok) {
-        reads.confirmChange();
         setModal(null);
         setToast({ text: okText });
       } else if (isUnclearFailure(r.status)) {
-        reads.confirmChange();
         setModal(null);
         setToast({ text: "처리 결과를 확인하지 못했습니다. 최신 상태를 다시 불러왔습니다. 화면에서 반영 여부를 확인해 주십시오", neg: true });
       } else {
@@ -124,14 +138,39 @@ export default function BroadcastDashboardPage() {
     [load, reads],
   );
 
+  // 방송 종료는 확인 창을 연 그 방송에만 한다. 종료 API는 방송을 지정받지 않아(지금 방송을 끝냄),
+  // 보내기 직전에 서버의 지금 방송이 그 방송인지 다시 확인하고, 다르면 보내지 않는다.
+  const endBroadcast = async (sessionId: string) => {
+    setBusy(true);
+    const t = reads.next();
+    const r = await api<Snapshot>("/api/seller/queue");
+    if (!r.ok || r.data.broadcast?.id !== sessionId) {
+      setBusy(false);
+      setModal(null);
+      setToast({ text: r.ok ? "다른 화면에서 방송이 바뀌었습니다. 최신 내용을 확인한 뒤 다시 종료해 주십시오" : failMessage(r, "admin"), neg: true });
+      if (r.ok && reads.accept(t) === "apply") applySnap(r.data);
+      else void load();
+      return;
+    }
+    setBusy(false);
+    // broadcastSessionId: 서버가 지금 방송과 맞춰 볼 수 있게 미리 넘긴다(서버 확인은 기반 세션에 배정, 생기기 전에는 무시됨)
+    await mutate("/api/seller/broadcast/end", { broadcastSessionId: sessionId }, "방송을 종료했습니다");
+  };
+
+  // 변경 조작은 요청 처리 중(busy)이거나 보이는 내용이 서버에서 확인된 최신이 아닐 때(stale) 모두 막는다.
+  // 옛 version으로 보내 409가 나는 것을 원인에서 막는다. 「다시 불러오기」만 열어 둔다
+  const locked = busy || stale;
   const snap = state.kind === "ok" ? state.snap : null;
   const live = snap?.broadcast ?? null;
   const opening = snap?.opening ?? null;
   const waiting = snap ? (live ? snap.waiting : snap.beforeBroadcast) : [];
   const next = waiting[0] ?? null;
 
-  const act = (item: QueueItem, action: "start" | "complete" | "revert", okText: string) =>
-    mutate(`/api/seller/queue/${item.id}/${action}`, { expectedVersion: item.version }, okText);
+  const act = async (item: QueueItem, action: "start" | "complete" | "revert", okText: string) => {
+    const r = await mutate(`/api/seller/queue/${item.id}/${action}`, { expectedVersion: item.version }, okText);
+    if (r.ok && action === "complete") doneSeenAt.current.set(item.id, performance.now());
+    return r;
+  };
   const setTimer = (item: QueueItem, seconds: number) =>
     mutate(`/api/seller/queue/${item.id}/timer`, { expectedVersion: item.version, timerSeconds: seconds }, seconds ? `타이머를 ${clock(seconds)}로 정했습니다` : "타이머를 껐습니다");
   const cancel = (item: QueueItem, reason: string) =>
@@ -145,10 +184,20 @@ export default function BroadcastDashboardPage() {
     void mutate("/api/seller/queue/reorder", { broadcastSessionId: live?.id ?? null, orderedIds: ids, expectedVersion: snap.version }, "순서를 바꿨습니다");
   };
 
+  // 종료 확인 창이 열린 사이 다른 화면에서 방송이 바뀌면(끝나거나 새 방송) 창을 닫는다
+  useEffect(() => {
+    if (modal?.kind !== "end" || state.kind !== "ok" || busy) return;
+    if (state.snap.broadcast?.id !== modal.sessionId) {
+      setModal(null);
+      setToast({ text: "다른 화면에서 방송이 바뀌었습니다. 최신 내용을 확인한 뒤 다시 종료해 주십시오", neg: true });
+    }
+  }, [modal, state, busy]);
+
   // 단축키(모두 Ctrl 조합): 개봉 시작·완료 Ctrl+Enter, 타이머 +30초 Ctrl+↑, 취소 Ctrl+Backspace(확인 창)
   const keys = useRef<(e: KeyboardEvent) => void>(() => undefined);
   keys.current = (e: KeyboardEvent) => {
-    if (!e.ctrlKey || e.altKey || e.metaKey || modal || busy || !snap || typing(e.target)) return;
+    // 길게 눌러 생기는 자동 반복(e.repeat)은 무시한다(완료 뒤 다음 주문이 개봉되거나 타이머가 계속 오르지 않게)
+    if (e.repeat || !e.ctrlKey || e.altKey || e.metaKey || modal || locked || !snap || typing(e.target)) return;
     if (e.key === "Enter") {
       e.preventDefault();
       if (opening) void act(opening, "complete", "개봉을 완료했습니다");
@@ -212,7 +261,7 @@ export default function BroadcastDashboardPage() {
             <div className="col" style={{ gap: 16, minWidth: 0 }}>
               {stale && (
                 <div className="msg msg-cau row between" role="status" data-testid="bc-stale" style={{ gap: 8, flexWrap: "wrap" }}>
-                  <span>최신 주문대기를 불러오지 못했습니다. 보이는 내용이 최신이 아닐 수 있습니다.</span>
+                  <span>최신 주문대기를 불러오지 못했습니다. 다시 불러오기 전까지 변경할 수 없습니다.</span>
                   <button className="btn btn-sm btn-out" type="button" onClick={() => void load()}>
                     다시 불러오기
                   </button>
@@ -232,7 +281,7 @@ export default function BroadcastDashboardPage() {
                       </span>
                       <span className="t-c1 c-alt">{kstTime(live.startedAt)} 시작</span>
                     </div>
-                    <button className="btn btn-out" type="button" disabled={busy} onClick={() => setModal({ kind: "end" })}>
+                    <button className="btn btn-out" type="button" disabled={locked} onClick={() => live && setModal({ kind: "end", sessionId: live.id })}>
                       방송 종료
                     </button>
                   </div>
@@ -247,8 +296,8 @@ export default function BroadcastDashboardPage() {
                     <label className="sr" htmlFor="bc-title-input">
                       방송 제목
                     </label>
-                    <input id="bc-title-input" className="inp" placeholder="방송 제목 (선택)" maxLength={100} value={title} disabled={busy} onChange={(e) => setTitle(e.target.value)} />
-                    <button className="btn" type="submit" disabled={busy}>
+                    <input id="bc-title-input" className="inp" placeholder="방송 제목 (선택)" maxLength={100} value={title} disabled={locked} onChange={(e) => setTitle(e.target.value)} />
+                    <button className="btn" type="submit" disabled={locked}>
                       방송 시작
                     </button>
                   </form>
@@ -264,7 +313,7 @@ export default function BroadcastDashboardPage() {
                   <OpeningPanel
                     item={opening}
                     now={now}
-                    busy={busy}
+                    busy={locked}
                     onComplete={() => void act(opening, "complete", "개봉을 완료했습니다")}
                     onTimer={() => setModal({ kind: "timer", item: opening })}
                     onCancel={() => setModal({ kind: "cancel", item: opening })}
@@ -274,7 +323,7 @@ export default function BroadcastDashboardPage() {
                     <span className="t-l2 c-alt">
                       다음 순서: <b className="c-pri">{next.nicknameSnapshot}</b> · {next.productLabel} ×{next.quantity}
                     </span>
-                    <button className="btn btn-xl btn-block bc-big" type="button" disabled={busy} onClick={() => void act(next, "start", "개봉을 시작했습니다")}>
+                    <button className="btn btn-xl btn-block bc-big" type="button" disabled={locked} onClick={() => void act(next, "start", "개봉을 시작했습니다")}>
                       개봉 시작 <span className="kbd">Ctrl+Enter</span>
                     </button>
                   </div>
@@ -301,16 +350,16 @@ export default function BroadcastDashboardPage() {
                         <ItemText item={w} />
                         <span className="row bc-acts">
                           {w.timerSeconds > 0 && <span className="t-c1 c-alt num">⏱ {clock(w.timerSeconds)}</span>}
-                          <button className="btn btn-sm btn-ghost" type="button" aria-label={`${w.nicknameSnapshot} 위로`} disabled={busy || i === 0} onClick={() => move(i, -1)}>
+                          <button className="btn btn-sm btn-ghost" type="button" aria-label={`${w.nicknameSnapshot} 위로`} disabled={locked || i === 0} onClick={() => move(i, -1)}>
                             ↑
                           </button>
-                          <button className="btn btn-sm btn-ghost" type="button" aria-label={`${w.nicknameSnapshot} 아래로`} disabled={busy || i === waiting.length - 1} onClick={() => move(i, 1)}>
+                          <button className="btn btn-sm btn-ghost" type="button" aria-label={`${w.nicknameSnapshot} 아래로`} disabled={locked || i === waiting.length - 1} onClick={() => move(i, 1)}>
                             ↓
                           </button>
-                          <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={() => setModal({ kind: "timer", item: w })}>
+                          <button className="btn btn-sm btn-out" type="button" disabled={locked} onClick={() => setModal({ kind: "timer", item: w })}>
                             타이머
                           </button>
-                          <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={() => setModal({ kind: "cancel", item: w })}>
+                          <button className="btn btn-sm btn-out" type="button" disabled={locked} onClick={() => setModal({ kind: "cancel", item: w })}>
                             취소
                           </button>
                         </span>
@@ -330,7 +379,8 @@ export default function BroadcastDashboardPage() {
                 ) : (
                   <ul className="bc-list" data-testid="bc-done">
                     {snap.recentDone.map((d) => {
-                      const canRevert = live && d.broadcastSessionId === live.id && !opening && d.doneAt && now - new Date(d.doneAt).getTime() < REVERT_WINDOW_MS;
+                      const seenAt = doneSeenAt.current.get(d.id);
+                      const canRevert = live && d.broadcastSessionId === live.id && !opening && seenAt !== undefined && performance.now() - seenAt < REVERT_WINDOW_MS;
                       return (
                         <li key={d.id} className="bc-row">
                           <span className="bdg b-done">완료</span>
@@ -338,7 +388,7 @@ export default function BroadcastDashboardPage() {
                           <span className="row bc-acts">
                             {d.doneAt && <span className="t-c1 c-alt num">{kstTime(d.doneAt)}</span>}
                             {canRevert && (
-                              <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={() => void act(d, "revert", "완료를 되돌렸습니다")}>
+                              <button className="btn btn-sm btn-out" type="button" disabled={locked} onClick={() => void act(d, "revert", "완료를 되돌렸습니다")}>
                                 되돌리기
                               </button>
                             )}
@@ -379,12 +429,13 @@ export default function BroadcastDashboardPage() {
         <EndBroadcastModal
           waiting={snap?.waiting.length ?? 0}
           busy={busy}
+          blocked={stale}
           onClose={() => setModal(null)}
-          onConfirm={() => void mutate("/api/seller/broadcast/end", {}, "방송을 종료했습니다")}
+          onConfirm={() => void endBroadcast(modal.sessionId)}
         />
       )}
-      {modal?.kind === "cancel" && <CancelItemModal item={modal.item} busy={busy} onClose={() => setModal(null)} onConfirm={(reason) => void cancel(modal.item, reason)} />}
-      {modal?.kind === "timer" && <TimerModal item={modal.item} busy={busy} onClose={() => setModal(null)} onConfirm={(s) => void setTimer(modal.item, s)} />}
+      {modal?.kind === "cancel" && <CancelItemModal item={modal.item} busy={busy} blocked={stale} onClose={() => setModal(null)} onConfirm={(reason) => void cancel(modal.item, reason)} />}
+      {modal?.kind === "timer" && <TimerModal item={modal.item} busy={busy} blocked={stale} onClose={() => setModal(null)} onConfirm={(s) => void setTimer(modal.item, s)} />}
       {toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}
     </>
   );

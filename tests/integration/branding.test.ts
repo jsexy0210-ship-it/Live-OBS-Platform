@@ -224,7 +224,18 @@ describe("관리자 화면 head 값(generateMetadata)", () => {
     // 마스터 관리자 쪽은 기본값 그대로
     const admin = await brandingMetadata("admin");
     expect(admin).toMatchObject({ title: "ONQ 마스터 관리자" });
-    expect(admin.icons).toEqual(empty.icons);
+    // 마스터 관리자 기본 아이콘은 틸로 그린 것(대표님 지시 2026-10-04), 올린 파비콘이 있으면 그것이 우선
+    const adminDefault = {
+      icon: [{ url: "/branding/onq-admin-32.png", type: "image/png", sizes: "32x32" }],
+      shortcut: [{ url: "/branding/onq-admin-32.png", type: "image/png" }],
+      apple: [{ url: "/branding/onq-admin-180.png", sizes: "180x180" }],
+    };
+    expect(admin.icons).toEqual(adminDefault);
+    await upload(faviconPut, "admin", await png(32, 32, "#123456"), c);
+    const adminUploaded = (await brandingMetadata("admin")).icons as { icon: { url: string }[] };
+    expect(adminUploaded.icon[0].url).toMatch(/^\/api\/branding\/admin\/favicon\?v=[0-9a-f]{12}$/);
+    await remove(faviconDelete, "admin", c);
+    expect((await brandingMetadata("admin")).icons).toEqual(adminDefault);
     // 되돌리면 다시 기본 아이콘
     await remove(faviconDelete, "seller", c);
     expect((await brandingMetadata("seller")).icons).toEqual(empty.icons);

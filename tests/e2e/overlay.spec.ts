@@ -103,3 +103,22 @@ test("처음 열 때 서버에 닿지 않으면 빈 화면 대신 연결 끊김 
   await expect(ov.getByTestId("overlay-offline")).toHaveCount(0);
   await ov.close();
 });
+
+test("그리던 중 연결이 잠깐 끊겨도 회복되면 같은 상태(version)여도 끊김 안내를 거둔다", async ({ page }) => {
+  test.setTimeout(75_000);
+  await page.goto("/seller/login?next=/seller/products");
+  await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
+  await page.waitForURL((u) => u.pathname === "/seller/products");
+  const token = await issue(page);
+  const ov = await page.context().newPage();
+  await ov.goto(`/overlay/${token}`);
+  await expect(ov.getByTestId("overlay-idle")).toBeVisible();
+  // 15초 확인이 실패하면(상태는 그대로) → 그린 화면은 두고 끊김 안내
+  await ov.route("**/api/overlay/*/version", (r) => r.abort("connectionreset"));
+  await expect(ov.getByTestId("overlay-offline")).toBeVisible({ timeout: 20_000 });
+  await expect(ov.getByTestId("overlay-idle")).toBeVisible();
+  // 회복: 다음 확인은 같은 version을 돌려주지만, 끊김 표시 중이므로 다시 읽어 안내를 거둔다
+  await ov.unroute("**/api/overlay/*/version");
+  await expect(ov.getByTestId("overlay-offline")).toHaveCount(0, { timeout: 20_000 });
+  await ov.close();
+});

@@ -30,13 +30,19 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
   const sent = useRef(0);
   const applied = useRef(0);
   const version = useRef<number | null>(null);
+  // 연결이 끊겼다고 표시한 동안에는 version이 그대로여도 다시 읽어 안내를 거둔다(회복 뒤 같은 version이 와도)
+  const isOffline = useRef(false);
+  const markOffline = useCallback(() => {
+    isOffline.current = true;
+    setView(offline);
+  }, []);
   const load = useCallback(async () => {
     const n = ++sent.current;
     let res: Response;
     try {
       res = await fetch(`${base}/state`, { cache: "no-store" });
     } catch {
-      if (n > applied.current) setView(offline);
+      if (n > applied.current) markOffline();
       return;
     }
     if (n <= applied.current) return;
@@ -45,18 +51,19 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
       version.current = null;
       return setView({ kind: "gone" });
     }
-    if (!res.ok) return setView(offline);
+    if (!res.ok) return markOffline();
     const state = (await res.json().catch(() => null)) as State | null;
     if (!state || n <= applied.current) return;
     applied.current = n;
     version.current = state.version;
+    isOffline.current = false;
     setView({ kind: "ok", state, offline: false });
-  }, [base]);
+  }, [base, markOffline]);
 
   useEffect(() => {
     void load();
     const onVersion = (v: unknown) => {
-      if (typeof v !== "number" || v !== version.current) void load();
+      if (typeof v !== "number" || v !== version.current || isOffline.current) void load();
     };
     let es: EventSource | null = null;
     if (typeof EventSource !== "undefined") {
@@ -75,7 +82,7 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
     const poll = setInterval(() => {
       fetch(`${base}/version`, { cache: "no-store" })
         .then(async (r) => (r.status === 404 ? onVersion(null) : r.ok ? onVersion(((await r.json()) as { version?: unknown }).version) : undefined))
-        .catch(() => setView(offline));
+        .catch(markOffline);
     }, POLL_MS);
     return () => {
       es?.close();
