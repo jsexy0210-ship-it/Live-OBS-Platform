@@ -64,6 +64,8 @@ const IMAGE_ERRORS: Record<string, string> = {
   unsupported_image: "PNG 파일만 올릴 수 있습니다",
   wrong_image_size: "이미지 가로·세로는 100~2000px, 전체 1920×1080 화소 이하여야 합니다",
   empty_file: "빈 파일은 올릴 수 없습니다",
+  png_16bit: "8비트(일반) PNG로 저장해 주십시오. 16비트 PNG는 올릴 수 없습니다",
+  png_too_large: "이미지 데이터가 너무 큽니다. 8비트(일반) PNG로 저장하거나 크기를 줄여 주십시오",
 };
 const MAX_BYTES = 2 * 1024 * 1024;
 const mb = (n: number) => `${(n / 1024 / 1024).toFixed(1)}MB`;
@@ -146,7 +148,7 @@ export function ImagePicker({
           <span className="col" style={{ alignItems: "center", gap: 4 }}>
             <span className="t-l2 fw6">{busy ? "올리는 중" : "이미지를 끌어다 놓거나 선택"}</span>
             <span className="t-c1 c-alt">
-              PNG · 2MB 이하 · {recommend.width} × {recommend.height} 권장
+              8비트 PNG · 2MB 이하 · {recommend.width} × {recommend.height} 권장
             </span>
           </span>
         )}
