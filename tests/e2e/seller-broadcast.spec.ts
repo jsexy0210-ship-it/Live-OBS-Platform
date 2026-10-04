@@ -13,7 +13,8 @@ test.beforeAll(() => {
   if (!PASSWORD) throw new Error("E2E_PASSWORD가 없어요. dev-seed가 출력한 데모 비밀번호를 넣어 주세요");
 });
 test.beforeEach(async () => resetBroadcastQueue());
-test.afterAll(async () => cleanupBroadcastQueue());
+const RUN_STARTED = new Date();
+test.afterAll(async () => cleanupBroadcastQueue(RUN_STARTED));
 
 async function shot(page: Page, name: string) {
   if (!SHOTS) return;

@@ -82,17 +82,17 @@ export async function queueStatuses(slug = "demo-shop") {
   }
 }
 
-// 끝나면 진행 중 방송을 끝내고 3건을 취소로 둔다(다른 e2e의 환불 화면에 「개봉한 상품」으로 잡히지 않게)
-export async function cleanupBroadcastQueue(slug = "demo-shop") {
+// 끝나면 3건을 취소로 두고(다른 e2e의 환불 화면에 「개봉한 상품」으로 잡히지 않게), since 뒤에 시작한 방송을 지운다(통계 e2e의 방송 수가 바뀌지 않게)
+export async function cleanupBroadcastQueue(since: Date, slug = "demo-shop") {
   const db = open();
   try {
     const seller = await db.seller.findUniqueOrThrow({ where: { slug }, select: { id: true } });
     const now = new Date();
-    await db.broadcastSession.updateMany({ where: { sellerId: seller.id, status: "LIVE" }, data: { status: "ENDED", endedAt: now } });
     await db.queueItem.updateMany({
       where: { sellerId: seller.id, nicknameSnapshot: { in: [...NICKS] } },
       data: { status: "CANCELLED", broadcastSessionId: null, cancelledAt: now, cancelReason: "e2e 정리", version: { increment: 1 } },
     });
+    await db.broadcastSession.deleteMany({ where: { sellerId: seller.id, startedAt: { gte: since } } });
     await db.seller.update({ where: { id: seller.id }, data: { liveVersion: { increment: 1 } } });
   } finally {
     await db.$disconnect();
