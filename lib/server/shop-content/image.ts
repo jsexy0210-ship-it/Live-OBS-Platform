@@ -48,7 +48,7 @@ const sizeOk = (w: number, h: number) =>
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 // 시그니처와 IHDR(첫 33바이트)의 가로·세로. 형식 판정은 detectImage가 한다.
-function pngSize(b: Buffer): { width: number; height: number } | null {
+export function pngSize(b: Buffer): { width: number; height: number } | null {
   if (b.length < 33 || !b.subarray(0, 8).equals(PNG_SIGNATURE) || b.toString("latin1", 12, 16) !== "IHDR") return null;
   return { width: b.readUInt32BE(16), height: b.readUInt32BE(20) };
 }

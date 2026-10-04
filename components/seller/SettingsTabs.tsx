@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-// 쇼핑몰 설정 안의 화면 이동(배송비 정책 · 주문 설정 · 회원 정책)
+// 쇼핑몰 설정 안의 화면 이동(쇼핑몰 정보 · 배송비 정책 · 주문 설정 · 회원 정책)
 const TABS = [
+  { href: "/seller/settings/shop", label: "쇼핑몰 정보" },
   { href: "/seller/settings/shipping", label: "배송비 정책" },
   { href: "/seller/settings/order", label: "주문 설정" },
   { href: "/seller/settings/member", label: "회원 정책" },

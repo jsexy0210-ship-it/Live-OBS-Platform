@@ -82,6 +82,8 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/shop-content/popups/reorder": "STORE_OPERATIONS",
   "seller/shop-content/images": "STORE_OPERATIONS",
   "seller/shop-content/images/[imageId]": "STORE_OPERATIONS",
+  "seller/shop-content/logo": "STORE_OPERATIONS",
+  "seller/shop-content/logo/image": "STORE_OPERATIONS",
 };
 
 // 공개·구매자 경로(ARCHITECTURE 4.8.0 표): 기능 권한이 없을 때 막는지. 막는 검사는 lib 쪽(shopOpen·createOrder·resolveOverlayToken)이나
@@ -97,6 +99,7 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/og.png": "STORE_OPERATIONS",
   "shop/[slug]/shop-content": "STORE_OPERATIONS", // 홈 배너·이벤트 팝업
   "shop/[slug]/shop-content/images/[imageId]": "STORE_OPERATIONS",
+  "shop/[slug]/shop-content/logo": "STORE_OPERATIONS", // 쇼핑몰 로고(없으면 404, 화면은 첫 글자)
   "shop/[slug]/orders/[orderId]": "OPEN",
   "shop/[slug]/auth/login": "OPEN",
   "shop/[slug]/auth/logout": "OPEN",
