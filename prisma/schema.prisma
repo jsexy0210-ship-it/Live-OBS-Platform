@@ -147,6 +147,7 @@ model Seller {
   productReviewImages      ProductReviewImage[]
   productReviewReports     ProductReviewReport[]
   productReviewPolicy      ProductReviewPolicy?
+  cartItems                CartItem[]
 }
 
 model SellerDomain {
@@ -345,6 +346,7 @@ model BuyerMember {
   productReviews       ProductReview[]
   productReviewImages  ProductReviewImage[]
   productReviewReports ProductReviewReport[]
+  cartItems            CartItem[]
 
   @@unique([sellerId, id])
   @@index([sellerId, gradeId])
@@ -550,6 +552,7 @@ model ProductOption {
   product        Product         @relation(fields: [sellerId, productId], references: [sellerId, id])
   stockMovements StockMovement[]
   orderItems     OrderItem[]
+  cartItems      CartItem[]
 
   @@unique([sellerId, id])
   @@index([sellerId, productId])
@@ -1993,4 +1996,24 @@ model ProductCategory {
 model ProductCodeCounter {
   sellerId String @id @db.Uuid
   lastNo   Int
+}
+
+// 구매자 장바구니(SH-004, 로그인 회원만). 옵션마다 한 줄(같은 옵션을 다시 담으면 수량을 더한다). 회원당 50줄, 줄당 1~99개.
+// 가격·재고·판매 상태는 담을 때 저장하지 않고 볼 때마다 지금 값으로 계산한다(shop-cart/service.ts). 회원 탈퇴 때 지운다.
+model CartItem {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String   @db.Uuid
+  buyerMemberId String   @db.Uuid
+  optionId      String   @db.Uuid
+  quantity      Int
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller        @relation(fields: [sellerId], references: [id])
+  member BuyerMember   @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id], onDelete: Cascade)
+  option ProductOption @relation(fields: [sellerId, optionId], references: [sellerId, id])
+
+  @@unique([buyerMemberId, optionId])
+  @@index([sellerId, buyerMemberId])
+  @@index([sellerId, optionId])
 }

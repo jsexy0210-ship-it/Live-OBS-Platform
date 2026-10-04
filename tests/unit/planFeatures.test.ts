@@ -146,6 +146,10 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/auth/logout": "OPEN",
   "shop/[slug]/addresses": "OPEN",
   "shop/[slug]/addresses/[addressId]": "OPEN",
+  "shop/[slug]/cart": "STORE_OPERATIONS", // 장바구니: 담기(POST)는 shopOpen으로 막음, 목록·선택 삭제는 열림
+  "shop/[slug]/cart/[itemId]": "STORE_OPERATIONS", // 수량 변경(PATCH)은 shopOpen으로 막음, 한 줄 삭제는 열림
+  "shop/[slug]/cart/checkout": "STORE_OPERATIONS", // 주문서로 넘기기(shopOpen으로 막음)
+  "shop/[slug]/cart/count": "OPEN", // 머리 배지 개수
   "shop/[slug]/me/marketing-consent": "OPEN",
   "shop/[slug]/me/withdraw": "OPEN",
   "shop/[slug]/me/rewards": "OPEN", // 내 적립금 잔액(탈퇴 전 확인, #180)

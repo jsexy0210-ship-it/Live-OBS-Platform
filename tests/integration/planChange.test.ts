@@ -515,6 +515,14 @@ describe("플랜별 금액·변경 미리보기(GET /api/seller/subscription/pla
         }),
       );
     for (const expectedAmount of [-1, 1.5, "36666", null]) expect((await post({ planCode: "INTEGRATED", expectedAmount })).status).toBe(400);
+    // 확인 금액은 필수: 없으면 400 amount_required(아무것도 바꾸지 않음). 다른 거절 사유가 먼저다(같은 플랜 409 same_plan)
+    const missing = await post({ planCode: "INTEGRATED" });
+    expect(missing.status).toBe(400);
+    expect(await missing.json()).toEqual({ error: "amount_required" });
+    expect(await planOf(s.seller.id)).toBe("OVERLAY_ONLY");
+    const same = await post({ planCode: "OVERLAY_ONLY" });
+    expect(same.status).toBe(409);
+    expect(await same.json()).toEqual({ error: "same_plan" });
     const r = await post({ planCode: "INTEGRATED", expectedAmount: 1 });
     expect(r.status).toBe(409);
     expect(await r.json()).toEqual({ error: "amount_changed" });

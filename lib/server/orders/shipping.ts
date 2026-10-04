@@ -9,6 +9,8 @@ export const INT4_MAX = 2147483647;
 export const MAX_FEE = 100_000;
 export const MAX_FREE_OVER = 100_000_000;
 export const MAX_ZIP_RANGES = 50;
+// 배송 처리 묶음 하나에 담을 수 있는 최대 주문 수(서버 검증과 화면의 나눠 보내기가 같은 값을 쓴다)
+export const SHIPMENT_BATCH_MAX = 100;
 
 export type ZipRange = [number, number];
 // freeShipping: 무료(0원) 배송 유형. 켜면 기본 배송비·무료 기준을 쓰지 않고, 도서산간 추가비는 그대로 붙는다(대표님 결정 2026-10-03).

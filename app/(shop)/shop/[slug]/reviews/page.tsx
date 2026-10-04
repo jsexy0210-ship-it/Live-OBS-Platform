@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import ReviewMine from "../../../../../components/shop/ReviewMine";
-import ShopFrame from "../../../../../components/shop/ShopFrame";
 import { prisma } from "../../../../../lib/server/db";
 
 export const dynamic = "force-dynamic";
@@ -23,8 +22,8 @@ export default async function ShopReviewsPage({ params }: Params) {
   const shop = await findShop((await params).slug);
   if (!shop) notFound();
   return (
-    <ShopFrame slug={shop.slug} shopName={shop.shopName}>
+    <>
       <ReviewMine slug={shop.slug} />
-    </ShopFrame>
+    </>
   );
 }

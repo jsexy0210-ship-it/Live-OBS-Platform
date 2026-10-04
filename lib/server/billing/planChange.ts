@@ -30,6 +30,7 @@ export type PlanChangeFailure =
   | "payment_pending"
   | "not_activated" // 결제는 됐지만 그사이 해지 등으로 반영되지 않음(환불 대상으로 감사 기록)
   | "plan_missing"
+  | "amount_required" // 확인 금액(expectedAmount)이 꼭 필요한 호출(HTTP 경로)인데 없음. 다른 실패 사유가 먼저다
   | "amount_changed" // 확인받은 금액(expectedAmount)과 지금 낼 금액이 다름(아무것도 바꾸지 않음)
   | "cancel_scheduled"; // 해지 예약 중(바꿔도 해지로 끝나 적용되지 않음). 카드를 다시 등록해 해지를 취소한 뒤 바꾼다
 
@@ -49,6 +50,7 @@ export const PLAN_CHANGE_STATUS: Record<PlanChangeFailure, number> = {
   plan_missing: 409,
   cancel_scheduled: 409,
   amount_changed: 409,
+  amount_required: 400,
 };
 
 const DAY_MS = 86_400_000;
@@ -141,7 +143,8 @@ export async function changePlan(
   db: PrismaClient,
   provider: BillingProvider,
   ctx: TenantContext,
-  input: { planCode: unknown; expectedAmount?: number; now?: Date },
+  // requireExpectedAmount: HTTP 경로는 확인 금액을 꼭 받는다(화면은 미리보기 chargeNow를 보냄, #253). 판단 실패 사유가 먼저고, 그다음 없으면 amount_required
+  input: { planCode: unknown; expectedAmount?: number; requireExpectedAmount?: boolean; now?: Date },
 ): Promise<PlanChangeResult> {
   requireSellerPermission(ctx, "SUBSCRIPTION_MANAGE");
   const code = typeof input.planCode === "string" ? input.planCode : "";
@@ -171,6 +174,7 @@ export async function changePlan(
 
     const q = await quotePlanChange(tx, { trialEndsAt: seller.trialEndsAt, sub, current, target, now });
     // 화면에서 확인받은 금액(미리보기 chargeNow)이 있으면 지금 낼 금액과 같을 때만 진행한다(그사이 날짜·가격이 바뀌면 409, 아무것도 바꾸지 않음)
+    if (q.type !== "fail" && input.expectedAmount === undefined && input.requireExpectedAmount) return { kind: "done", result: { ok: false, reason: "amount_required" } };
     if (q.type !== "fail" && input.expectedAmount !== undefined && input.expectedAmount !== (q.type === "charge" ? q.amount : 0)) {
       return { kind: "done", result: { ok: false, reason: "amount_changed" } };
     }

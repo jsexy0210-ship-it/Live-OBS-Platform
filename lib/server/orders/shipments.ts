@@ -5,6 +5,9 @@ import { completeDelivery } from "./delivery";
 import { orderErrorBody } from "./messages";
 import { decodeCursor, encodeCursor, kstDayStart, SELLER_ORDER_PAGE_DEFAULT, SELLER_ORDER_PAGE_MAX } from "./read";
 import { shipOrder } from "./ship";
+import { SHIPMENT_BATCH_MAX } from "./shipping";
+
+export { SHIPMENT_BATCH_MAX };
 
 // 파트너스 배송 처리(ORDER_SHIPPING). 상태 전이는 기존 규칙을 그대로 쓴다: 발송·송장 수정은 shipOrder(ship.ts), 배송 완료는 completeDelivery(delivery.ts).
 // 여기서는 탭별 목록과, 여러 주문을 한 번에 보내는 묶음 처리(주문마다 따로 처리하고 결과를 주문별로 돌려줌)만 더한다.
@@ -12,7 +15,6 @@ import { shipOrder } from "./ship";
 //     in_transit = 배송 중(결제 완료 주문), delivered = 배송 완료. 법정 보관으로 분리한 주문(legalHoldAt)은 없는 주문이다.
 export const SHIPMENT_TABS = ["ready", "in_transit", "delivered"] as const;
 export type ShipmentTab = (typeof SHIPMENT_TABS)[number];
-export const SHIPMENT_BATCH_MAX = 100;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const TAB_WHERE: Record<ShipmentTab, Prisma.OrderWhereInput> = {
