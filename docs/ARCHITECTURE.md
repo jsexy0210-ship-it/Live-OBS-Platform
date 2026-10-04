@@ -109,6 +109,7 @@ tests/unit/**, tests/integration/**           테스트
 | `SALES_VIEW` | 매출 보기 |
 | `SHOP_SETTINGS` | 쇼핑몰 설정 |
 
+- 추가 기능 11건(쿠폰·상품 리뷰·교환·반품 등, 2026-10-04 확정)은 새 항목 없이 위 항목에 대응한다. 기능별 대응표는 `HANDOFF.md` 「추가 기능 11건 개발 배정」이다.
 - **대표자 전용(항목으로 줄 수 없음)**: PG 연결, 구독, 직원 관리, 적립금 실지급 스위치.
 - 직원 관리 API(대표자 전용): 생성, 권한 변경, 비활성화(기존 세션 폐기), 비밀번호 재설정. 같은 쇼핑몰 직원만(다른 쇼핑몰은 404), 대표자 계정은 대상 아님(403). 생성·권한 변경·비활성화는 감사 로그(누가, 누구의, 전과 후).
 - 옛 역할 데이터 이전: `OWNER` → 대표자, `MANAGER` → `SHOP_SETTINGS`를 뺀 9개 항목, `BROADCASTER` → `BROADCAST_RUN`·`OVERLAY_EDIT`.
@@ -136,7 +137,7 @@ tests/unit/**, tests/integration/**           테스트
 ### 4.2 판매자(쇼핑몰)·직원
 
 - `Seller` (테넌트 = 쇼핑몰 1개): id, slug(기본 주소 하위 이름, **유니크**), shopName, status(`PENDING | ACTIVE | SUSPENDED | REJECTED | CLOSED`), businessInfo(JSON), approvedAt, approvedByAdminId, suspendedReason, representativeCiHash(대표자 휴대폰 본인확인 CI의 HMAC), representativeVerifiedAt(둘은 함께 기록), liveVersion(실시간 version 카운터, 기본 0), createdAt — **대표자 1명당 쇼핑몰 1개**: representativeCiHash 부분 유니크(해지 `CLOSED`·반려 `REJECTED` 제외)
-- 공유 미리보기(SA-060, 대기열 4번 C안): `Seller.shareTitle`(60자)·`shareDescription`(160자), `GET·PUT /api/seller/share-preview`(대표자·`SHOP_SETTINGS`). 공개 `GET /api/shop/{slug}/share`(제목·설명·카드 주소, 상품 상세는 상품 이름 우선)와 `GET /api/shop/{slug}/og.png`(쇼핑몰 이름 기본 카드, 원티드 산스로 서버에서 그림, `lib/server/shop/ogCard.ts`). 파비콘·카드 이미지·로고 업로드는 이미지 저장소 결정 뒤
+- 공유 미리보기(SA-060, 대기열 4번 C안): `Seller.shareTitle`(60자)·`shareDescription`(160자), `GET·PUT /api/seller/share-preview`(대표자·`SHOP_SETTINGS`). 공개 `GET /api/shop/{slug}/share`(제목·설명·카드 주소, 상품 상세는 상품 이름 우선)와 `GET /api/shop/{slug}/og.png`(쇼핑몰 이름 기본 카드, 원티드 산스로 서버에서 그림, `lib/server/shop/ogCard.ts`). 로고·배너·팝업 이미지 업로드는 대표님 지시(2026-10-04)로 이미지 저장소 결정 전까지 A(DB 저장, PNG, `lib/server/branding/image.ts` 검사기 재사용)로 만든다. 쇼핑몰별 파비콘·카드 이미지 업로드도 같은 방식으로 뒤따른다
 - `SellerDomain`: id, sellerId, hostname(**유니크**), verifiedAt, certStatus — 개인 도메인 연결용 자리만
 - `SellerUser`: id, sellerId, email, passwordHash, name, isOwner, permissions(권한 항목 배열, 3.3), status(`ACTIVE | DISABLED`), lastLoginAt, phone(직원 휴대폰, nullable), identityCiHash·identityLinkedAt(직원 본인확인 연결, 3.1) — **(sellerId, email) 유니크**, 판매자당 OWNER 1명 이상
 - `SellerSession`: id, sellerUserId, sellerId, tokenHash(**유니크**), expiresAt, lastSeenAt, revokedAt
