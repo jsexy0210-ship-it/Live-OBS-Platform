@@ -11,7 +11,7 @@ import { type MailSender, sendMail } from "../../lib/server/mail/quota";
 import { MESSAGE_FEE_NOTICE_VERSION, reserveDebit } from "../../lib/server/messaging/balance";
 import { chargeMessageBalance, reconcileMessageCharges, settleMessageCharge } from "../../lib/server/messaging/charge";
 import { STALE_DEBIT_HOLD_MS, STALE_MAIL_HOLD_MS, expireStaleMessageHolds } from "../../lib/server/messaging/holds";
-import { MESSAGE_JOB_NAME } from "../../lib/server/messaging/jobs";
+import { MESSAGE_JOB_NAME, runMessageJobs } from "../../lib/server/messaging/jobs";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { PASSWORD, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
@@ -112,9 +112,9 @@ describe("발송 충전", () => {
     provider.failNext = "timeout_before_charge";
     await chargeMessageBalance(db, provider, s.ctx, { amount: 4_000, idempotencyKey: "p2" });
     const now = new Date(Date.now() + 2 * 60_000);
-    expect(await reconcileMessageCharges(db, provider, { now })).toEqual({ paid: 1, failed: 0, pending: 1, errors: 0 });
+    expect(await reconcileMessageCharges(db, provider, { now })).toEqual({ paid: 1, failed: 0, pending: 1, errors: 0, truncated: false });
     expect(await paid(s.seller.id)).toBe(3_000);
-    expect(await reconcileMessageCharges(db, provider, { now: new Date(Date.now() + 11 * 60_000) })).toEqual({ paid: 0, failed: 1, pending: 0, errors: 0 });
+    expect(await reconcileMessageCharges(db, provider, { now: new Date(Date.now() + 11 * 60_000) })).toEqual({ paid: 0, failed: 1, pending: 0, errors: 0, truncated: false });
     expect(await db.messageCharge.findFirstOrThrow({ where: { idempotencyKey: "p2" } })).toMatchObject({ status: "FAILED", failureReason: "not_charged" });
     expect(await paid(s.seller.id)).toBe(3_000);
   });
@@ -205,11 +205,11 @@ describe("멈춘 예약 정리", () => {
     await db.mailDelivery.update({ where: { id: old.deliveryId }, data: { createdAt: new Date(Date.now() - STALE_MAIL_HOLD_MS - 1000) } });
     await db.sellerMessageLedger.update({ where: { id: old.ledgerId! }, data: { createdAt: new Date(Date.now() - STALE_DEBIT_HOLD_MS - 1000) } });
     await db.sellerMessageLedger.update({ where: { id: sms.ledgerId }, data: { createdAt: new Date(Date.now() - STALE_DEBIT_HOLD_MS - 1000) } });
-    expect(await expireStaleMessageHolds(db)).toEqual({ mailsFailed: 1, debitsReleased: 1 });
+    expect(await expireStaleMessageHolds(db)).toEqual({ mailsFailed: 1, debitsReleased: 1, truncated: false });
     expect(await db.mailDelivery.findUniqueOrThrow({ where: { id: old.deliveryId } })).toMatchObject({ status: "FAILED" });
     expect(await db.mailDelivery.findUniqueOrThrow({ where: { id: fresh.deliveryId } })).toMatchObject({ status: "PENDING" });
     expect(await paid(s.seller.id)).toBe(90);
-    expect(await expireStaleMessageHolds(db)).toEqual({ mailsFailed: 0, debitsReleased: 0 });
+    expect(await expireStaleMessageHolds(db)).toEqual({ mailsFailed: 0, debitsReleased: 0, truncated: false });
   });
 });
 
@@ -270,5 +270,45 @@ describe("발송 충전 정기 작업과 충전 켜기 조건", () => {
     await db.opsHeartbeat.deleteMany();
     expect((await put(cookie, { platformDailyLimit: 50 })).status).toBe(200);
     expect(await (await put(cookie, { chargingEnabled: false })).json()).toMatchObject({ chargingEnabled: false });
+  });
+});
+
+describe("정기 작업 처리 시간 예산(스케줄러 60초 제한 안에서 끝내고 다음 실행이 이어서 처리)", () => {
+  it("공급자 조회가 느리면 예산 안에서 멈추고(다음 건을 시작하지 않음), 다음 실행이 남은 건을 오래된 순으로 이어서 확정한다", async () => {
+    const s = await shop();
+    // 공급자에는 결제가 있고 조회가 느린(건당 60ms) 상황
+    const provider = new FakeBillingProvider();
+    const slow = { ...provider, charge: provider.charge.bind(provider), issueBillingKey: provider.issueBillingKey.bind(provider), name: provider.name,
+      getPayment: async (id: string) => { await new Promise((r) => setTimeout(r, 60)); return provider.getPayment(id); } };
+    for (let i = 0; i < 5; i++) {
+      provider.failNext = "timeout_after_charge";
+      await chargeMessageBalance(db, provider, s.ctx, { amount: 1_000, idempotencyKey: `slow-${i}` });
+    }
+    await db.messageCharge.updateMany({ data: { createdAt: new Date(Date.now() - 5 * 60_000) } });
+    const first = await reconcileMessageCharges(db, slow, { deadline: Date.now() + 100 });
+    expect(first.truncated).toBe(true);
+    expect(first.paid).toBeGreaterThanOrEqual(1);
+    expect(first.paid).toBeLessThan(5);
+    const rest = await reconcileMessageCharges(db, slow, { deadline: Date.now() + 10_000 });
+    expect(rest).toMatchObject({ truncated: false, errors: 0 });
+    expect(first.paid + rest.paid).toBe(5);
+    expect(await paid(s.seller.id)).toBe(5_000);
+    expect(provider.charges).toHaveLength(5);
+  });
+
+  it("예산을 다 쓰면 정리도 멈추고 아무것도 잃지 않는다(예산 0 → 0건, 다음 실행에서 처리)", async () => {
+    const s = await shop();
+    await db.subscriptionPlan.update({ where: { code: "INTEGRATED" }, data: { mailMonthlyQuota: 0 } });
+    await db.messageChannelPrice.create({ data: { channel: "MAIL_TRANSACTIONAL", unitPrice: 10 } });
+    await db.sellerMessageBalance.create({ data: { sellerId: s.seller.id, paidBalance: 30 } });
+    const { reserveMail } = await import("../../lib/server/mail/quota");
+    for (let i = 0; i < 3; i++) expect((await reserveMail(db, { sellerId: s.seller.id, kind: "t" })).ok).toBe(true);
+    await db.mailDelivery.updateMany({ data: { createdAt: new Date(Date.now() - STALE_MAIL_HOLD_MS - 1000) } });
+    expect(await expireStaleMessageHolds(db, { deadline: Date.now() - 1 })).toEqual({ mailsFailed: 0, debitsReleased: 0, truncated: true });
+    expect(await runMessageJobs(db, new Date(), 0)).toBe(0);
+    expect(await db.mailDelivery.count({ where: { status: "PENDING" } })).toBe(3);
+    expect(await runMessageJobs(db, new Date())).toBe(3);
+    expect(await db.mailDelivery.count({ where: { status: "FAILED" } })).toBe(3);
+    expect(await paid(s.seller.id)).toBe(30);
   });
 });
