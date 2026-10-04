@@ -58,7 +58,7 @@ test("주문 통계: 기간·단위를 바꾸면 다시 집계하고, 화면 숫
   expect(w.current).toEqual(body.current);
 
   const download = page.waitForEvent("download");
-  await page.getByRole("button", { name: "CSV 내려받기" }).click();
+  await page.getByRole("button", { name: "엑셀(CSV) 내려받기" }).click();
   const file = await download;
   expect(file.suggestedFilename()).toMatch(/^order-stats_\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}\.csv$/);
   const csv = readFileSync((await file.path())!, "utf8");

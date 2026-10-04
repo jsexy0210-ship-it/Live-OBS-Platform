@@ -8,7 +8,7 @@ import { Topbar } from "../SellerShell";
 import { LoadingRows } from "../States";
 import { api } from "../api";
 
-// 통계 화면 공통 틀: 통계 탭 · 기간 선택(오늘·최근 7일·최근 30일·직접 선택) · 묶음 단위 · 상태(로딩·데이터 없음·오류·권한 없음).
+// SA-056 통계 화면 공통 틀: 통계 탭 · 기간 선택(오늘·최근 7일·최근 30일·직접 선택) · 묶음 단위 · 상태(로딩·데이터 없음·오류·권한 없음).
 // 날짜는 KST 기준. 서버가 최대 366일까지 받는다(lib/server/stats/range.ts).
 export const STATS_TABS = [
   { href: "/seller/stats/orders", label: "주문" },
@@ -96,7 +96,7 @@ export function StatsFrame({ title, sub, period, setPeriod, onDownload, units = 
           </div>
           {onDownload && (
             <button className="btn btn-sm btn-out" type="button" onClick={onDownload}>
-              CSV 내려받기
+              엑셀(CSV) 내려받기
             </button>
           )}
         </div>
