@@ -4,7 +4,9 @@ body {
   margin: 0;
   background: #ffffff;
 }
+/* 구매자 쇼핑몰은 모든 화면 바탕이 흰색(대표님 지시 2026-10-04). 영역 구분은 회색 바탕이 아니라 1px 선과 여백으로 한다 */
 .shop-app {
+  --page: #ffffff;
   word-break: keep-all;
   overflow-wrap: anywhere;
 }
@@ -46,7 +48,7 @@ body {
   cursor: pointer;
 }
 .shop-util {
-  background: var(--wds-background-normal-alternative);
+  background: var(--wds-background-normal-normal);
   border-bottom: 1px solid var(--wds-line-solid-neutral);
   font-size: 12px;
   line-height: 32px;
@@ -145,7 +147,7 @@ body {
 }
 .shop-foot {
   padding: 28px 0 32px;
-  background: var(--wds-background-normal-alternative);
+  background: var(--wds-background-normal-normal);
   border-top: 1px solid var(--wds-line-solid-neutral);
   font-size: 12px;
   line-height: 20px;
@@ -194,7 +196,7 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 8px 8px 8px 16px;
-  background: var(--wds-background-normal-alternative);
+  background: var(--wds-background-normal-normal);
   border-bottom: 1px solid var(--wds-line-solid-neutral);
 }
 .shop-drawer-account {
