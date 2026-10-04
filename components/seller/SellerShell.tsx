@@ -34,6 +34,8 @@ const NAV: Nav[] = [
   { label: "회원", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
   { label: "구매 제한", perm: "MEMBER_POINTS", plan: "ANY" },
   { label: "구매자 문의", perm: "INQUIRY_REPLY", plan: "ANY" },
+  // 리뷰: 목록·집계 조회는 파트너스 계정 누구나, 답글·숨김·설정은 구매자 문의(INQUIRY_REPLY) 권한(서버에서 막음). 서버가 스토어 운영 기능을 요구한다
+  { label: "리뷰", href: "/seller/reviews", plan: "STORE_OPERATIONS" },
   { h: "방송 · 오버레이" },
   { label: "오버레이 편집기", href: "/seller/overlay", perm: "OVERLAY_EDIT", plan: "OVERLAY" },
   { label: "HIT 카드 이력", perm: "BROADCAST_RUN", plan: "OVERLAY" },

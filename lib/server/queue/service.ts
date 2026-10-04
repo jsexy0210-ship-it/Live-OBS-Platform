@@ -10,6 +10,7 @@ import { restoreOrderStock } from "../products/stock";
 import { checkTransition, isCompletePermutation, isValidTimer, type QueueAction, type QueueRejection } from "./rules";
 import { refreshOrderRetention } from "../buyers/legalHold";
 import { chargedShippingFee, itemCouponDiscount, restoreOrderCoupon } from "../shop-coupons/service";
+import { revokeReviewRewardsForOrder, type ReviewRewardRevoke } from "../product-reviews/service";
 
 type Tx = Prisma.TransactionClient;
 
@@ -475,6 +476,8 @@ export type RefundOutcome = {
   cancelledQueueItemIds: string[];
   openedItemCount: number;
   rewardRevoke: RewardRevokeOutcome;
+  // 이 주문 상품 리뷰의 적립 회수(revokeMode를 따른다. MANUAL이면 manual_review와 회수할 금액)
+  reviewRewardRevoke: ReviewRewardRevoke;
   refundAmount: number;
   refundFault: RefundFault | null;
   returnFeeDeducted: number;
@@ -668,6 +671,8 @@ export async function refundOrder(
         createdAt: now,
       });
     }
+    // 이 주문의 상품 리뷰 적립도 같은 회수 방식으로 회수한다(주문 잠금 뒤 회원 → 리뷰 → 원장, product-reviews/service.ts)
+    const reviewRewardRevoke = await revokeReviewRewardsForOrder(tx, ctx.sellerId, orderId, now);
     await writeAudit(tx, {
       actorType: ctx.actorType,
       actorId: ctx.actorId,
@@ -683,6 +688,7 @@ export async function refundOrder(
         cancelledQueueItems: cancelledQueueItemIds.length,
         openedItems: openedItemCount,
         rewardRevoke,
+        reviewRewardRevoke,
         shippedBeforeRefund,
         refundAmount,
         refundFault,
@@ -694,7 +700,7 @@ export async function refundOrder(
     await maybeRestrict(tx, ctx.sellerId, order.buyerMemberId, now, "paid_cancel");
     // 끝난 날이 바뀌었으니 보관 만료일을 다시 계산하고(구매 확정 뒤 환불 포함), 탈퇴한 회원의 주문이면 분리 보관 표시를 단다(buyers/legalHold.ts)
     await refreshOrderRetention(tx, ctx.sellerId, now, { orderId });
-    return { orderId, restockedItemIds, cancelledQueueItemIds, openedItemCount, rewardRevoke, refundAmount, refundFault, returnFeeDeducted };
+    return { orderId, restockedItemIds, cancelledQueueItemIds, openedItemCount, rewardRevoke, reviewRewardRevoke, refundAmount, refundFault, returnFeeDeducted };
   });
 }
 
