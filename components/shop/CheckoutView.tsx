@@ -9,7 +9,7 @@ import "./Cart.css";
 import "./Checkout.css";
 
 // SH-005 주문서(시안 04 SH). 서버가 지금 받는 범위만 만든다: 주문 상품·배송지·쿠폰·필수 동의 → 주문 생성(결제 대기).
-// 결제 수단·적립금·닉네임·받는 방법·배송비 미리보기는 해당 API가 생기면 붙인다(금액은 주문 때 서버가 다시 계산).
+// 결제 수단 선택·결제는 주문 상세(OrderPay)에서 한다. 적립금·닉네임·받는 방법·배송비 미리보기는 해당 API가 생기면 붙인다(금액은 주문 때 서버가 다시 계산).
 type Line = { id: string; productName: string; optionName: string; quantity: number; lineTotal: number };
 type Checkout = { items: { optionId: string; quantity: number }[]; lines: Line[]; subtotal: number };
 type Addr = { id: string; label: string | null; recipientName: string; phone: string; zipCode: string; address1: string; address2: string | null; memo: string | null; isDefault: boolean };
@@ -270,7 +270,7 @@ export default function CheckoutView({ slug }: { slug: string }) {
         <button className="btn btn-lg btn-block" type="button" disabled={busy} aria-busy={busy} onClick={() => void submit()}>
           {busy ? "주문하고 있어요" : "주문하기"}
         </button>
-        <p className="cart-hint">주문하면 결제 대기 상태로 접수돼요. 결제 방법은 곧 열려요.</p>
+        <p className="cart-hint">주문하면 결제 대기 상태로 접수되고, 다음 화면에서 결제 수단(카드·무통장 입금)을 골라요.</p>
       </aside>
     </div>,
   );
