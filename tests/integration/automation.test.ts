@@ -2047,11 +2047,14 @@ describe("Codex 13차 반영(d47b9f0)", () => {
         // 실행기가 행동을 처리하는 도중에 판매자가 취소하고 서버가 보관 자료를 정리했다(사람 정리를 마친 뒤의 정리와 같은 상황)
         await forgetChanges(a.jobId);
         await cancelJob(db, a.ctx, a.jobId);
-        expect(await purgeEndedBrowserState(db, rt)).toBe(1);
+        // 42차: 행동이 진행 중이면(종료 확인 전·격리 창 안) 정리는 미뤄진다
+        expect(await purgeEndedBrowserState(db, rt)).toBe(0);
       }
       return perform(scope, action, actionKey);
     };
     await runOnce(db, rt, W);
+    // 행동이 끝난(종료 확인) 뒤 정리한다
+    expect(await purgeEndedBrowserState(db, rt)).toBe(1);
     expect([...rt.obs.applied.keys()].filter((k) => k.startsWith(a.jobId))).toHaveLength(0);
     expect(rt.obs.connections.has(a.jobId)).toBe(false);
     expect([...rt.browser.applied.keys()].filter((k) => k.startsWith(a.jobId))).toHaveLength(0);
@@ -3477,5 +3480,77 @@ describe("Codex 41차 반영(9415cd2)", () => {
     };
     expect(await runOnce(db, rt, W)).not.toBe("succeeded");
     expect((await job(a.jobId)).stepIndex).toBe(2);
+  });
+});
+
+describe("Codex 42차 반영(2624a18)", () => {
+  async function opsCookie() {
+    const admin = await createAdmin("OPERATIONS");
+    const r = await loginAdmin(db, adminCredentials(admin), {});
+    if (!r.ok) throw new Error(r.reason);
+    return `lo_admin=${r.token}`;
+  }
+  const close = async (jobId: string) =>
+    cleanupCloseRoute(
+      new Request(`http://localhost:3000/api/automation/admin/jobs/${jobId}/cleanup`, {
+        method: "POST",
+        headers: { host: "localhost:3000", origin: "http://localhost:3000", cookie: await opsCookie(), "content-type": "application/json" },
+        body: JSON.stringify({ note: "직접 정리함" }),
+      }),
+      { params: Promise.resolve({ jobId }) },
+    );
+
+  it("회수한 옛 연습의 되돌리기(reset)가 아직 끝나지 않았으면 새 연습은 격리 창 동안 거절되고, 종료 확인 뒤에만 시작해 섞이지 않는다", async () => {
+    await db.automationPracticeRun.deleteMany();
+    const old = runtime();
+    let finishReset!: () => void;
+    const slow = new Promise<void>((r) => (finishReset = r));
+    let inReset!: () => void;
+    const resetting = new Promise<void>((r) => (inReset = r));
+    const reset = old.practice.reset.bind(old.practice);
+    old.practice.reset = async () => {
+      inReset();
+      await slow;
+      return reset();
+    };
+    const oldRun = runPractice(db, old, cafe24Playbook, { shopHost: "myshop.cafe24.com" });
+    await resetting;
+    // 옛 회차가 기한을 넘긴다 → 새 연습은 회수만 하고 격리 창 동안 거절(quiescing)
+    await db.automationPracticeRun.updateMany({ where: { reason: "practice_incomplete" }, data: { startedAt: new Date(Date.now() - 7 * 3600_000) } });
+    const fresh = runtime();
+    await expect(runPractice(db, fresh, cafe24Playbook, { shopHost: "myshop.cafe24.com" })).rejects.toMatchObject({ reason: "quiescing" });
+    expect(fresh.practice.resets).toBe(0);
+    // 옛 되돌리기가 늦게 끝난다(종료 확인) → 옛 실행은 회수됐으므로 행동 0회
+    finishReset();
+    await oldRun;
+    expect(old.browser.performed.length + old.obs.performed.length).toBe(0);
+    // 이제 새 연습이 시작해 성공한다
+    expect((await runPractice(db, fresh, cafe24Playbook, { shopHost: "myshop.cafe24.com" })).outcome).toBe("SUCCEEDED");
+  });
+
+  it("느린 외부 행동이 남은 정리 필요 작업은 격리 창 전에는 닫기가 거절되고, 종료 확인 뒤에 닫힌다", async () => {
+    const a = await bought();
+    await db.automationJob.update({ where: { id: a.jobId }, data: { status: "CLEANUP_NEEDED", cleanupNeededAt: new Date(), changedAt: new Date(), mutatedSteps: ["shop_connect"], lastError: "lease_expired", lastActionStartedAt: new Date(), lastActionEndedAt: null } });
+    const res = await close(a.jobId);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: "action_in_progress" });
+    expect(await job(a.jobId)).toMatchObject({ status: "CLEANUP_NEEDED" });
+    await db.automationJob.update({ where: { id: a.jobId }, data: { lastActionEndedAt: new Date(Date.now() + 1000) } });
+    expect((await close(a.jobId)).status).toBe(200);
+    expect(await job(a.jobId)).toMatchObject({ status: "FAILED" });
+  });
+
+  it("lease가 끝난 작업을 다른 작업자가 이어받는 것도 옛 실행자의 행동이 끝났다고 볼 수 있을 때(종료 확인 또는 상한 + 여유 경과)만", async () => {
+    const a = await bought();
+    const got = await claimNext(db, "w-old");
+    if (!got) throw new Error("no claim");
+    // 옛 작업자가 외부 행동을 시작한 채 멈췄고 lease가 끝났다
+    await db.automationJob.update({ where: { id: a.jobId }, data: { lastActionStartedAt: new Date(), lastActionEndedAt: null, leaseExpiresAt: new Date(Date.now() - 1000) } });
+    await reapExpired(db);
+    await db.automationJob.update({ where: { id: a.jobId }, data: { runAfter: new Date(Date.now() - 1000) } });
+    expect(await claimNext(db, "w-new")).toBeNull();
+    // 행동 상한 + 여유가 지나면 이어받는다
+    await db.automationJob.update({ where: { id: a.jobId }, data: { lastActionStartedAt: new Date(Date.now() - 3 * 60_000) } });
+    expect((await claimNext(db, "w-new"))?.job.id).toBe(a.jobId);
   });
 });

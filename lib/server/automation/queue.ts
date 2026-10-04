@@ -1,4 +1,4 @@
-import type { AutomationCustomerAction, AutomationJob, AutomationJobStatus, Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, type AutomationCustomerAction, type AutomationJob, type AutomationJobStatus, type PrismaClient } from "@prisma/client";
 import { AUTOMATION_LIMITS } from "./config";
 import type { ChangeMark } from "./engine";
 import type { ConnectionFacts, VerificationEvidence } from "./ports";
@@ -36,6 +36,26 @@ export function deadlinesFor(job: Pick<AutomationJob, "queuedAt" | "startedAt">)
   };
   return { start, total, customerActionAt };
 }
+
+// 외부 행동 격리 창(공용 장치): 이미 시작된 외부 행동은 토큰으로 취소할 수 없으므로, 소유권이 넘어가거나 닫히는 모든 지점
+// (작업 인수·같은 OBS 대상의 다른 작업·보관 자료 삭제·정리 닫기·새 연습)은 옛 소유자의 종료 확인(ack) 또는
+// 마지막 행동 시작 + 행동 상한 + 여유 경과 중 먼저 오는 것까지 기다린다. 아래 SQL 조각은 같은 규칙의 후보 고르기용이다.
+export type ActionWindow = { lastActionStartedAt: Date | null; lastActionEndedAt: Date | null };
+export const QUIESCE_MS = AUTOMATION_LIMITS.actionTimeoutMs + AUTOMATION_LIMITS.actionQuiesceGraceMs;
+export function quiescent(row: ActionWindow, now: Date): boolean {
+  const started = row.lastActionStartedAt;
+  if (!started) return true;
+  if (row.lastActionEndedAt && row.lastActionEndedAt >= started) return true;
+  return now.getTime() >= started.getTime() + QUIESCE_MS;
+}
+export const quiescentSql = (alias: string) =>
+  Prisma.raw(
+    `(${alias}."lastActionStartedAt" IS NULL OR ${alias}."lastActionEndedAt" >= ${alias}."lastActionStartedAt" OR ${alias}."lastActionStartedAt" <= clock_timestamp() - interval '${QUIESCE_MS} milliseconds')`,
+  );
+
+// 외부 행동 시작 기록(점유 확인 포함: 자리를 잃었으면 던져 행동하지 않는다)과 종료 확인(자리를 잃었어도 남긴다: 끝났다는 사실이므로)
+export const markActionStarted = (db: PrismaClient, c: Claim) => fencedWrite(db, c, (now) => ({ data: { lastActionStartedAt: now } }));
+export const markActionEnded = (db: PrismaClient, jobId: string) => db.$executeRaw`UPDATE "AutomationJob" SET "lastActionEndedAt" = clock_timestamp() WHERE id = ${jobId}::uuid`;
 
 // 지금 넘긴 마감(시작·전체)이 있으면 그 사유
 export function overdue(job: Pick<AutomationJob, "queuedAt" | "startedAt">, now: Date): "start_deadline" | "total_deadline" | null {
@@ -110,15 +130,18 @@ async function claimOnce(db: PrismaClient, workerId: string, opts: { leaseMs?: n
     const rows = await tx.$queryRaw<{ id: string }[]>`
       SELECT j.id FROM "AutomationJob" j
       WHERE j.status = 'QUEUED' AND j."runAfter" <= clock_timestamp()
+        AND ${quiescentSql("j")}
         AND NOT EXISTS (
           SELECT 1 FROM "AutomationJob" r
-          WHERE r."obsTargetKey" = j."obsTargetKey" AND r.status IN ('RUNNING', 'VERIFYING'))
+          WHERE r."obsTargetKey" = j."obsTargetKey" AND (r.status IN ('RUNNING', 'VERIFYING') OR (r.id <> j.id AND NOT ${quiescentSql("r")})))
       ORDER BY j."runAfter", j."createdAt"
       LIMIT 1
       FOR UPDATE SKIP LOCKED`;
     if (rows.length === 0) return null;
     const now = await dbNow(tx);
     const before = await tx.automationJob.findUniqueOrThrow({ where: { id: rows[0].id } });
+    // 옛 실행자의 외부 행동이 끝났다고 볼 수 있을 때만 인수한다(격리 창, 후보 고르기와 같은 규칙)
+    if (!quiescent(before, now)) return null;
     // 마감(시작 24시간·전체 72시간)이 지난 작업은 실행 자리를 주지 않고 외부 행동 0회로 닫은 뒤 다음 작업을 고른다
     const late = overdue(before, now);
     if (late) {

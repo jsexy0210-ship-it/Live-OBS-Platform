@@ -3,7 +3,7 @@ import type { AutomationPracticeRun, Prisma, PrismaClient } from "@prisma/client
 import { AUTOMATION_LIMITS, plannerConfig } from "./config";
 import { writeAudit } from "../audit/log";
 import { runSteps, type EngineStats } from "./engine";
-import { FencingError, backoffMs, dbNow, lockPlaybook } from "./queue";
+import { FencingError, QUIESCE_MS, backoffMs, dbNow, lockPlaybook, quiescent, quiescentSql } from "./queue";
 import type { Playbook } from "./playbook";
 import { PLAYBOOKS } from "./playbooks";
 import { PRACTICE_SELLER_ID, type AutomationRuntime, type JobScope, type PracticeRuntime } from "./ports";
@@ -35,9 +35,10 @@ async function discardScope(rt: Pick<AutomationRuntime, "browser" | "obs">, scop
 }
 
 // 연습 환경(시험용 쇼핑몰·PC)에서 다른 연습이 실행 중이다. 이 호출은 실행하지 않았다(기록도 남기지 않음).
+// in_use: 기한 안의 진행 중 연습이 있다. quiescing: 회수한 옛 회차의 외부 행동이 끝났다고 볼 수 있을 때까지(격리 창) 기다린다.
 export class PracticeEnvironmentBusy extends Error {
-  constructor() {
-    super("practice_env_busy");
+  constructor(readonly reason: "in_use" | "quiescing" = "in_use") {
+    super(`practice_env_busy:${reason}`);
   }
 }
 
@@ -57,18 +58,24 @@ export async function runPractice(
   // 시각은 DB 시계로만 남긴다(준비 상태 판정이 DB에 저장된 다른 시각과 비교한다). 실행 시간 측정(durationMs)만 프로세스 시계
   // 연습 환경은 한 번에 한 연습만 쓴다: 환경 단위 잠금 아래 진행 중(끝나지 않았고 실행 시간 상한 안) 연습이 있으면 시작하지 않는다.
   // 이 회차 기록이 곧 환경 점유(lease)다. 상한이 지나면 점유가 풀리고, 그 뒤 늦게 끝난 결과는 성공으로 세지 않는다(아래 최종 기록).
-  const run = await db.$transaction(async (tx) => {
+  const claimed = await db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('automation_practice_env'))`;
     const startedAt = await dbNow(tx);
     const cutoff = new Date(startedAt.getTime() - AUTOMATION_LIMITS.maxRunMs);
     const busy = await tx.automationPracticeRun.count({ where: { reason: { in: IN_PROGRESS }, startedAt: { gt: cutoff } } });
-    if (busy > 0) throw new PracticeEnvironmentBusy();
+    if (busy > 0) return "in_use" as const;
     // 기한이 지난 진행 중 회차는 시간 경과만으로 내버려 두지 않고 토큰을 올려 회수한다: 그 실행은 다음 행동 직전 확인에서 멈춘다.
     // 이미 시작한 행동이 남았을 수 있어 새 회차는 아래에서 기준 상태로 되돌리고 확인한 뒤 실행한다
     await tx.automationPracticeRun.updateMany({
       where: { reason: { in: IN_PROGRESS }, startedAt: { lte: cutoff } },
       data: { fencingToken: { increment: 1 }, reason: PRACTICE_EXPIRED, finishedAt: startedAt },
     });
+    // 옛 회차(회수했거나 끝난)의 외부 행동이 아직 끝났다고 볼 수 없으면 환경을 내주지 않는다(격리 창, 회수는 커밋하고 거절)
+    const recent = await tx.automationPracticeRun.findMany({
+      where: { lastActionStartedAt: { gt: new Date(startedAt.getTime() - QUIESCE_MS) } },
+      select: { lastActionStartedAt: true, lastActionEndedAt: true },
+    });
+    if (recent.some((r) => !quiescent(r, startedAt))) return "quiescing" as const;
     return tx.automationPracticeRun.create({
       data: {
         playbookId: playbook.id,
@@ -85,19 +92,32 @@ export async function runPractice(
       },
     });
   });
+  if (claimed === "in_use" || claimed === "quiescing") throw new PracticeEnvironmentBusy(claimed);
+  const run = claimed;
   // 이 회차가 아직 환경을 점유하는지(토큰 그대로·진행 중). 실행기 행동 직전마다(touch)와 주기적으로(abort) 확인한다
   const owned = { id: run.id, fencingToken: run.fencingToken, reason: { in: IN_PROGRESS } };
   const assertOwner = async () => {
     if ((await db.automationPracticeRun.count({ where: owned })) !== 1) throw new FencingError();
   };
+  // 외부 행동 격리 창: 시작 기록은 점유 확인과 함께(회수됐으면 던져 행동하지 않음), 종료 확인은 점유와 무관하게 남긴다
+  const actionStarted = async () => {
+    if ((await db.automationPracticeRun.updateMany({ where: owned, data: { lastActionStartedAt: await dbNow(db) } })).count !== 1) throw new FencingError();
+  };
+  const actionEnded = async () => void (await db.$executeRaw`UPDATE "AutomationPracticeRun" SET "lastActionEndedAt" = clock_timestamp() WHERE id = ${run.id}::uuid`);
   const lost = new AbortController();
   const beat = setInterval(() => void assertOwner().catch(() => lost.abort()), Math.max(20, Math.floor(AUTOMATION_LIMITS.leaseMs / 3)));
   // 매 회차 시험용 쇼핑몰·PC를 기준 상태로 되돌리고 실제 상태로 확인한다. 되돌리기·확인이 실패하면 실행하지 않고 실패로 남긴다
   // (이전 회차가 남긴 앱·웹훅·소스 위에서 성공해도 작업서를 검증한 것이 아니므로 세지 않고, 실패 기록이 연속 성공을 끊는다)
-  const baseline = await rt.practice
-    .reset()
-    .then(() => rt.practice.isBaseline())
-    .catch(() => false);
+  // 되돌리기도 외부 행동이라 격리 창 기록 안에서 한다(늦게 끝나도 다음 연습은 종료 확인 또는 창 경과 뒤에만 시작)
+  const baseline = await (async () => {
+    await actionStarted();
+    try {
+      await rt.practice.reset();
+      return await rt.practice.isBaseline();
+    } finally {
+      await actionEnded();
+    }
+  })().catch(() => false);
   if (!baseline) result = { kind: "failed", reason: "practice_reset_failed" };
   else {
     try {
@@ -131,6 +151,8 @@ export async function runPractice(
             });
           },
           enterVerify: async () => {},
+          actionStarted,
+          actionEnded,
           stepDone: async (next) => void (stepIndex = next),
         },
       );
@@ -193,6 +215,7 @@ export async function cleanupPracticeArtifacts(db: PrismaClient, rt: Pick<Automa
     WHERE id IN (
       SELECT id FROM "AutomationPracticeRun"
       WHERE "cleanupPendingAt" <= clock_timestamp() AND "cleanupScopeId" IS NOT NULL AND "cleanupAttempts" < ${CLEANUP_MAX_ATTEMPTS}
+        AND ${quiescentSql('"AutomationPracticeRun"')}
       ORDER BY "cleanupPendingAt" ASC, id ASC
       LIMIT ${limit}
       FOR UPDATE SKIP LOCKED

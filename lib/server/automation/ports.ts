@@ -85,6 +85,7 @@ export interface BrowserSession {
   // expected: 엔진이 확인한 문서 주소와 이동 규칙(변경 행동에만). 실행기는 행동을 적용하는 것과 원자적으로(같은 페이지 문맥에서 바로 앞에)
   // 지금 문서 주소를 다시 읽어 expected.url과 같고 이동 규칙(호스트·경로·쿼리 키·조각 금지) 안인지, 비밀값 입력이면 비밀값 출처 규칙
   // (secretOrigin) 안인지 대조하고, 아니면 아무것도 하지 않고 fatal "page_mismatch"를 돌려준다(확인과 실행 사이 리다이렉트 차단).
+  // 행동 하나는 하드 상한(AUTOMATION_LIMITS.actionTimeoutMs) 안에 끝내고, 넘기면 실행기 쪽에서 강제로 끊는다(계약, 엔진 격리 창의 전제)
   perform(action: AutomationAction, secrets: JobSecrets, actionKey?: string, expected?: ExpectedPage): Promise<ActionOutcome>;
   // 지금 로그인된 관리 화면의 쇼핑몰 식별자(읽기만, 아무것도 바꾸지 않음). 알 수 없으면 null
   currentShopKey(): Promise<string | null>;
@@ -120,6 +121,7 @@ export interface ObsBridge {
   // actionKey: 위와 같다. 로컬 도구는 같은 키로 이미 성공한 OBS 변경(소스 추가 등)을 다시 적용하지 않는다.
   // expectedPairingId: 엔진이 직전에 확인한(잠금을 잡은) PC. 로컬 도구는 실행 직전 지금 연결된 PC와 원자적으로 비교해 다르면
   // 아무것도 하지 않고 fatal "pairing_mismatch"를 돌려준다. 성공 결과에는 실제로 실행한 PC(pairingId)를 반드시 담는다.
+  // 행동 하나는 하드 상한(AUTOMATION_LIMITS.actionTimeoutMs) 안에 끝내고, 넘기면 실행기 쪽에서 강제로 끊는다(계약, 엔진 격리 창의 전제)
   perform(scope: JobScope, action: AutomationAction, actionKey?: string, expectedPairingId?: string): Promise<ActionOutcome>;
   // 연결된 로컬 도구의 OBS pairing id(읽기만). 연결 안 됐거나 알 수 없으면 null
   currentPairingId(scope: JobScope): Promise<string | null>;

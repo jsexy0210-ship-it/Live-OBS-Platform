@@ -1,12 +1,12 @@
 import type { PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import type { AdminSessionContext } from "../auth/session";
-import { dbNow, lockJob, lockSellerAutomation, markRefundPending, writeJobEvent } from "./queue";
+import { dbNow, lockJob, lockSellerAutomation, markRefundPending, quiescent, writeJobEvent } from "./queue";
 
 // 마스터 관리자(운영 역할 이상)가 사람이 정리를 마친 「정리 필요」 작업을 닫는다: CLEANUP_NEEDED → FAILED.
 // 결제는 다른 실패와 같은 환불 처리 대기(REFUND_PENDING)로 넘긴다(실제 PG 환불 실행은 하지 않음 — 대표님 승인 사항).
 // 잠금 순서: 판매자 → 작업 행 → 결제 행(queue.ts). 정리 메모와 함께 로그 추적(감사 기록)에 남긴다.
-export type CloseCleanupResult = { ok: true; refundPending: boolean } | { ok: false; reason: "not_found" | "invalid_state" | "bad_note" };
+export type CloseCleanupResult = { ok: true; refundPending: boolean } | { ok: false; reason: "not_found" | "invalid_state" | "bad_note" | "action_in_progress" };
 
 export async function closeCleanupNeeded(
   db: PrismaClient,
@@ -24,6 +24,8 @@ export async function closeCleanupNeeded(
     const cur = await tx.automationJob.findUniqueOrThrow({ where: { id: jobId } });
     if (cur.status !== "CLEANUP_NEEDED") return { ok: false, reason: "invalid_state" } as const;
     const now = await dbNow(tx);
+    // 진행 중일 수 있는 외부 행동이 끝났다고 볼 수 있을 때까지(격리 창) 닫지 않는다: 닫으면 열린 작업 제약이 풀려 새 설치가 겹칠 수 있다
+    if (!quiescent(cur, now)) return { ok: false, reason: "action_in_progress" } as const;
     // 판매자가 취소해 정리 필요가 된 작업은 취소로 닫는다(시작 뒤 취소는 환불 없음, 확정 ②). 그 밖(실패)은 실패·환불 처리 대기
     const end = cur.cancelRequestedAt ? "CANCELED" : "FAILED";
     await tx.automationJob.update({ where: { id: jobId }, data: { status: end, finishedAt: now } });

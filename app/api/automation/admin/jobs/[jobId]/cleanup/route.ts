@@ -14,6 +14,8 @@ export const POST = mutation(async (req: Request, { params }: { params: Promise<
   const body = await readJson<{ note: string }>(req);
   const r = await closeCleanupNeeded(prisma, admin, jobId, body.note, requestMeta(req));
   if (r.ok) return noStore(NextResponse.json(r));
-  const status = r.reason === "not_found" ? 404 : r.reason === "invalid_state" ? 409 : 400;
-  return noStore(NextResponse.json({ error: r.reason }, { status }));
+  const status = r.reason === "not_found" ? 404 : r.reason === "invalid_state" || r.reason === "action_in_progress" ? 409 : 400;
+  // 진행 중일 수 있는 외부 행동이 끝날 때까지는 닫지 않는다(마스터 관리자 화면, 합니다체)
+  const message = r.reason === "action_in_progress" ? "진행 중인 작업 행동이 끝나면 닫을 수 있습니다. 잠시 뒤 다시 시도해 주십시오" : undefined;
+  return noStore(NextResponse.json({ error: r.reason, ...(message ? { message } : {}) }, { status }));
 });

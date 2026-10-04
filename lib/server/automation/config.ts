@@ -26,6 +26,10 @@ export const AUTOMATION_LIMITS = {
   // 시간 한도(docs/AUTOMATION.md 「시간 한도」 표와 1:1, 계산은 queue.ts deadlinesFor 한 곳)
   // 고객 행동(로그인·인증 등)을 기다리는 시간. 지나면 실패로 닫는다. 전체 마감보다 늦게 잡지 않는다.
   customerActionMs: 24 * 60 * 60_000,
+  // 외부 행동 하나의 하드 상한(T_action). 엔진은 이 시간이 지나면 기다리지 않고, 실행기도 넘기면 강제로 끊는다(계약).
+  // 소유권이 넘어가거나 닫히는 지점은 종료 확인이 없으면 시작 + 이 상한 + 여유까지 격리한다(quiescent)
+  actionTimeoutMs: 2 * 60_000,
+  actionQuiesceGraceMs: 30_000,
   // 시작 마감: 대기열에 들어간(결제 확인) 뒤 이 안에 실행을 시작하지 못하면 외부 행동 0회로 실패(ONQ E3-Q)
   startDeadlineMs: 24 * 60 * 60_000,
   // 전체 마감: 실행을 시작한 뒤 고객 대기를 몇 번 거쳐도 이 시간이 지나면 끝낸다(ONQ E3-W)

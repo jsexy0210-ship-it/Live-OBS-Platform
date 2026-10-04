@@ -88,6 +88,8 @@ CREATE TABLE "AutomationJob" (
     "runStartedAt" TIMESTAMPTZ(3),
     "lastDeviationAt" TIMESTAMPTZ(3),
     "targetVerifiedAt" TIMESTAMPTZ(3),
+    "lastActionStartedAt" TIMESTAMPTZ(3),
+    "lastActionEndedAt" TIMESTAMPTZ(3),
     "queuedAt" TIMESTAMPTZ(3),
     "startedAt" TIMESTAMPTZ(3),
     "finishedAt" TIMESTAMPTZ(3),
@@ -131,6 +133,8 @@ CREATE TABLE "AutomationPracticeRun" (
     "cleanupAttempts" INTEGER NOT NULL DEFAULT 0,
     "cleanupNeededAt" TIMESTAMPTZ(3),
     "fencingToken" INTEGER NOT NULL DEFAULT 0,
+    "lastActionStartedAt" TIMESTAMPTZ(3),
+    "lastActionEndedAt" TIMESTAMPTZ(3),
 
     CONSTRAINT "AutomationPracticeRun_pkey" PRIMARY KEY ("id")
 );

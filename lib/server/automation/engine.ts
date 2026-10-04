@@ -16,6 +16,7 @@ import {
   type VerificationEvidence,
 } from "./ports";
 import { DB_INT_MAX, externalId, fromExecutor } from "./boundary";
+import { AUTOMATION_LIMITS } from "./config";
 import { STEPS } from "./steps";
 import type { AutomationCustomerAction } from "@prisma/client";
 
@@ -35,6 +36,9 @@ export type EngineHooks = {
   markChanged?(stepKey: string): Promise<ChangeMark>;
   // 실행기가 「적용 안 함」(행동 0회)을 보장하는 결과로 거절했다: 바로 앞 markChanged가 새로 남긴 기록만 되돌린다
   unmarkChanged?(stepKey: string, mark: ChangeMark): Promise<void>;
+  // 외부 행동 격리 창: 행동 직전 시작 기록(점유를 잃었으면 던져 행동하지 않음)과 행동이 돌아온 뒤 종료 확인
+  actionStarted?(): Promise<void>;
+  actionEnded?(): Promise<void>;
   // OBS를 처음 바꾸기 직전: 같은 PC 잠금을 실제 PC(OBS pairing)로 옮긴다. 다른 작업이 그 PC에서 실행 중이면 던진다.
   claimObsTarget?(pairingId: string): Promise<void>;
   // 브라우저 상태를 보관하기 직전(「보관 중」 표시를 먼저 남긴다). 실패하면 보관하지 않는다.
@@ -97,6 +101,26 @@ export const ACTION_EFFECT: Record<AutomationAction["type"], "external" | "sessi
 const NOT_APPLIED: ReadonlySet<string> = new Set(["page_mismatch", "pairing_mismatch"]);
 // 변경 기록(markChanged)이 이번에 새로 남긴 것: 단계 추가 여부와 새로 남긴 첫 변경 시각(이미 있었으면 null)
 export type ChangeMark = { stepAdded: boolean; changedAt: Date | null };
+// 외부 행동 하나를 격리 창 장치로 감싼다: 시작 기록 → 하드 상한(T_action) 안에서 실행 → 종료 확인.
+// 상한을 넘기면 기다리지 않고 일시 실패로 돌려주되 종료 확인은 남기지 않는다(실행기가 아직 끝나지 않았을 수 있어, 격리 창은 시작 + 상한 + 여유로 풀린다).
+type ActionWindowHooks = { actionStarted?(): Promise<void>; actionEnded?(): Promise<void> };
+async function boundedAction(hooks: ActionWindowHooks, run: () => Promise<ActionOutcome>): Promise<ActionOutcome> {
+  await hooks.actionStarted?.();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
+  try {
+    return await Promise.race([
+      run(),
+      new Promise<ActionOutcome>((resolve) => {
+        timer = setTimeout(() => ((timedOut = true), resolve({ kind: "retryable", reason: "timeout" })), AUTOMATION_LIMITS.actionTimeoutMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+    if (!timedOut) await hooks.actionEnded?.();
+  }
+}
+
 // 완료·되돌림 판정 공용 장치(본 단계·검증 단계·되돌리기 모두): 행동 전 대조와 같은 기준을 통과한 관찰에만 글 단서를 적용한다.
 // 브라우저는 관찰 주소 = 지금 문서 주소이고 이동 규칙 안이며 판정의 기대 경로로 시작해야 하고, OBS는 지금 PC가 이 작업이 확인한 PC여야 한다.
 async function verifiedOnExpected(
@@ -390,8 +414,13 @@ async function runAll(
         const actionKey = keyed(action) ? actionKeyOf(scope.jobId, stepIndex, action) : undefined;
         // OBS 쪽은 확인한 PC를 넘겨 로컬 도구가 실행 직전에 비교하게 하고(다르면 행동 0건으로 거절), 결과의 실제 실행 PC를 다시 대조한다
         // 결과는 경계(fromExecutor)에서 정규화한 값만 쓴다(사유는 정해 둔 코드로, 식별자는 형식 검사, 증거는 비밀값 가림)
-        performStarted = true;
-        out = fromExecutor(session ? await session.perform(action, secrets, actionKey, expectedPage) : await rt.obs.perform(scope, action, actionKey, confirmedPairing), secrets);
+        out = fromExecutor(
+          await boundedAction(hooks, () => {
+            performStarted = true;
+            return session ? session.perform(action, secrets, actionKey, expectedPage) : rt.obs.perform(scope, action, actionKey, confirmedPairing);
+          }),
+          secrets,
+        );
       } finally {
         if (!performStarted && freshMark && hooks.unmarkChanged) {
           await hooks.unmarkChanged(step.key, freshMark);
@@ -461,7 +490,7 @@ export async function runRollback(
   rt: AutomationRuntime,
   scope: JobScope,
   opts: { playbook: Playbook; shopHost: string | null; stepIndex: number; mutatedSteps: readonly string[]; obsPairingId: string | null; signal?: AbortSignal },
-  hooks: { touch(): Promise<void> },
+  hooks: { touch(): Promise<void> } & ActionWindowHooks,
 ): Promise<RollbackResult> {
   const guard = () => {
     if (opts.signal?.aborted) throw new EngineAborted();
@@ -512,7 +541,10 @@ export async function runRollback(
         await hooks.touch();
         guard();
         const actionKey = keyed(action) ? actionKeyOf(scope.jobId, 100 + at, action) : undefined;
-        const out = fromExecutor(rb.kind === "browser" ? await session!.perform(action, secrets, actionKey, expectedPage) : await rt.obs.perform(scope, action, actionKey, pairing), secrets);
+        const out = fromExecutor(
+          await boundedAction(hooks, () => (rb.kind === "browser" ? session!.perform(action, secrets, actionKey, expectedPage) : rt.obs.perform(scope, action, actionKey, pairing))),
+          secrets,
+        );
         guard();
         if (out.kind !== "ok" || (rb.kind === "obs" && out.pairingId !== pairing)) return { kind: "cleanup_needed", reason: `rollback_failed:${rb.forStep}` };
       }

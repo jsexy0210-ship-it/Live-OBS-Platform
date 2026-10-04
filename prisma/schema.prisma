@@ -1702,6 +1702,9 @@ model AutomationJob {
   lastDeviationAt      DateTime?                 @db.Timestamptz(3)
   // 무료 재연결의 쇼핑몰·PC 대조를 통과한 시각(그때의 쇼핑몰·PC는 shopKey·obsPairingId). 재시도 때 브라우저 단계를 다시 하지 않으면 이 기록을 쓴다.
   targetVerifiedAt     DateTime?                 @db.Timestamptz(3)
+  // 외부 행동 격리 창: 마지막 외부 행동 시작 시각과 종료 확인 시각. 소유권이 넘어가거나 닫히는 지점은 종료 확인 또는 시작 + 행동 상한 + 여유까지 기다린다(quiescent)
+  lastActionStartedAt  DateTime?                 @db.Timestamptz(3)
+  lastActionEndedAt    DateTime?                 @db.Timestamptz(3)
   // 처음 대기열에 들어간 시각(결제 확인·무료 재연결 생성). 시작 마감 기준(deadlinesFor)
   queuedAt             DateTime?                 @db.Timestamptz(3)
   startedAt            DateTime?                 @db.Timestamptz(3)
@@ -1768,6 +1771,9 @@ model AutomationPracticeRun {
   cleanupNeededAt  DateTime?                @db.Timestamptz(3)
   // 연습 환경 점유 토큰: 다음 연습이 기한 지난 회차를 회수할 때 올린다. 실행 중 회차는 행동 직전마다 그대로인지 확인한다
   fencingToken     Int                      @default(0)
+  // 외부 행동 격리 창(작업과 같은 규칙)
+  lastActionStartedAt DateTime?             @db.Timestamptz(3)
+  lastActionEndedAt   DateTime?             @db.Timestamptz(3)
 
   @@index([playbookId, playbookVersion, finishedAt])
 }
