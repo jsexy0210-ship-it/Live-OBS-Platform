@@ -19,3 +19,29 @@ export async function resetCartInDb(slug: string, loginId: string, lines: { prod
     await db.$disconnect();
   }
 }
+
+// 주문서 e2e가 만든 주문 정리: 데모 구매자가 since 이후에 만든 주문과 딸린 행을 지운다(재고 이동·알림 포함).
+export async function deleteBuyerOrdersSince(slug: string, loginId: string, since: Date) {
+  const db = open();
+  try {
+    const seller = await db.seller.findUniqueOrThrow({ where: { slug } });
+    const buyer = await db.buyerMember.findFirstOrThrow({ where: { sellerId: seller.id, loginId, deletedAt: null } });
+    const orders = await db.order.findMany({ where: { sellerId: seller.id, buyerMemberId: buyer.id, createdAt: { gte: since } }, select: { id: true } });
+    const orderId = { in: orders.map((o) => o.id) };
+    await db.$transaction([
+      db.stockMovement.deleteMany({ where: { orderId } }),
+      db.couponRedemption.deleteMany({ where: { orderId } }),
+      db.orderStatusHistory.deleteMany({ where: { orderId } }),
+      db.queueItem.deleteMany({ where: { orderId } }),
+      db.rewardLedger.deleteMany({ where: { orderId } }),
+      db.orderConsent.deleteMany({ where: { orderId } }),
+      db.orderShippingAddress.deleteMany({ where: { orderId } }),
+      db.shipment.deleteMany({ where: { orderId } }),
+      db.orderNotification.deleteMany({ where: { orderId } }),
+      db.orderItem.deleteMany({ where: { orderId } }),
+      db.order.deleteMany({ where: { id: orderId } }),
+    ]);
+  } finally {
+    await db.$disconnect();
+  }
+}

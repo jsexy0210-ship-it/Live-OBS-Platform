@@ -1,7 +1,9 @@
 "use client";
 
 import "../../../../../styles/seller-broadcast.css";
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PageHead } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { CancelItemModal, EndBroadcastModal, TimerModal } from "../../../../../components/seller/broadcast/Modals";
 import {
@@ -229,12 +231,15 @@ export default function BroadcastDashboardPage() {
         }
       />
       <main className="main">
-        <div className="ph">
-          <div className="col" style={{ gap: 4 }}>
-            <h1 className="t-t3">방송 대시보드</h1>
-            <span className="t-l2 c-alt">결제된 주문이 들어온 순서대로 쌓입니다. 개봉 상태는 오버레이에 바로 반영됩니다.</span>
-          </div>
-        </div>
+        <PageHead
+          title="방송 대시보드"
+          path={["방송", "방송 대시보드"]}
+          actions={
+            <Link className="btn btn-out" href="/seller/overlay">
+              오버레이 주소
+            </Link>
+          }
+        />
 
         {!allowed ? (
           <div className="card">
@@ -343,29 +348,47 @@ export default function BroadcastDashboardPage() {
                 {waiting.length === 0 ? (
                   <span className="t-l2 c-alt">대기 중인 주문이 없습니다</span>
                 ) : (
-                  <ol className="bc-list" data-testid="bc-waiting">
-                    {waiting.map((w, i) => (
-                      <li key={w.id} className="bc-row">
-                        <span className="bc-no num">{i + 1}</span>
-                        <ItemText item={w} />
-                        <span className="row bc-acts">
-                          {w.timerSeconds > 0 && <span className="t-c1 c-alt num">⏱ {clock(w.timerSeconds)}</span>}
-                          <button className="btn btn-sm btn-ghost" type="button" aria-label={`${w.nicknameSnapshot} 위로`} disabled={locked || i === 0} onClick={() => move(i, -1)}>
-                            ↑
-                          </button>
-                          <button className="btn btn-sm btn-ghost" type="button" aria-label={`${w.nicknameSnapshot} 아래로`} disabled={locked || i === waiting.length - 1} onClick={() => move(i, 1)}>
-                            ↓
-                          </button>
-                          <button className="btn btn-sm btn-out" type="button" disabled={locked} onClick={() => setModal({ kind: "timer", item: w })}>
-                            타이머
-                          </button>
-                          <button className="btn btn-sm btn-out" type="button" disabled={locked} onClick={() => setModal({ kind: "cancel", item: w })}>
-                            취소
-                          </button>
-                        </span>
-                      </li>
-                    ))}
-                  </ol>
+                  <div className="au-lt-wrap">
+                    <table className="tbl bc-tbl">
+                      <thead>
+                        <tr>
+                          <th style={{ width: 48 }}>순서</th>
+                          <th style={{ width: 80 }}>접수</th>
+                          <th>구매자 · 상품</th>
+                          <th style={{ width: 70 }}>타이머</th>
+                          <th style={{ width: 240 }}>관리</th>
+                        </tr>
+                      </thead>
+                      <tbody data-testid="bc-waiting">
+                        {waiting.map((w, i) => (
+                          <tr key={w.id}>
+                            <td className="num">{i + 1}</td>
+                            <td className="num">{kstTime(w.receivedAt)}</td>
+                            <td>
+                              <ItemText item={w} />
+                            </td>
+                            <td className="num">{w.timerSeconds > 0 ? clock(w.timerSeconds) : "-"}</td>
+                            <td>
+                              <span className="row bc-acts">
+                                <button className="btn btn-sm btn-ghost" type="button" aria-label={`${w.nicknameSnapshot} 위로`} disabled={locked || i === 0} onClick={() => move(i, -1)}>
+                                  ↑
+                                </button>
+                                <button className="btn btn-sm btn-ghost" type="button" aria-label={`${w.nicknameSnapshot} 아래로`} disabled={locked || i === waiting.length - 1} onClick={() => move(i, 1)}>
+                                  ↓
+                                </button>
+                                <button className="btn btn-sm btn-out" type="button" disabled={locked} onClick={() => setModal({ kind: "timer", item: w })}>
+                                  타이머
+                                </button>
+                                <button className="btn btn-sm btn-out" type="button" disabled={locked} onClick={() => setModal({ kind: "cancel", item: w })}>
+                                  취소
+                                </button>
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </section>
 
@@ -377,31 +400,57 @@ export default function BroadcastDashboardPage() {
                 {snap.recentDone.length === 0 ? (
                   <span className="t-l2 c-alt">완료한 주문이 없습니다</span>
                 ) : (
-                  <ul className="bc-list" data-testid="bc-done">
-                    {snap.recentDone.map((d) => {
-                      const seenAt = doneSeenAt.current.get(d.id);
-                      const canRevert = live && d.broadcastSessionId === live.id && !opening && seenAt !== undefined && performance.now() - seenAt < REVERT_WINDOW_MS;
-                      return (
-                        <li key={d.id} className="bc-row">
-                          <span className="bdg b-done">완료</span>
-                          <ItemText item={d} />
-                          <span className="row bc-acts">
-                            {d.doneAt && <span className="t-c1 c-alt num">{kstTime(d.doneAt)}</span>}
-                            {canRevert && (
-                              <button className="btn btn-sm btn-out" type="button" disabled={locked} onClick={() => void act(d, "revert", "완료를 되돌렸습니다")}>
-                                되돌리기
-                              </button>
-                            )}
-                          </span>
-                        </li>
-                      );
-                    })}
-                  </ul>
+                  <div className="au-lt-wrap">
+                    <table className="tbl bc-tbl">
+                      <thead>
+                        <tr>
+                          <th style={{ width: 70 }}>시각</th>
+                          <th>구매자 · 상품</th>
+                          <th style={{ width: 70 }}>결과</th>
+                          <th style={{ width: 90 }}>관리</th>
+                        </tr>
+                      </thead>
+                      <tbody data-testid="bc-done">
+                        {snap.recentDone.map((d) => {
+                          const seenAt = doneSeenAt.current.get(d.id);
+                          const canRevert = live && d.broadcastSessionId === live.id && !opening && seenAt !== undefined && performance.now() - seenAt < REVERT_WINDOW_MS;
+                          return (
+                            <tr key={d.id}>
+                              <td className="num">{d.doneAt ? kstTime(d.doneAt) : "-"}</td>
+                              <td>
+                                <ItemText item={d} />
+                              </td>
+                              <td>
+                                <span className="bdg b-done">완료</span>
+                              </td>
+                              <td>
+                                {canRevert && (
+                                  <button className="btn btn-sm btn-out" type="button" disabled={locked} onClick={() => void act(d, "revert", "완료를 되돌렸습니다")}>
+                                    되돌리기
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </section>
             </div>
 
-            <aside className="card pad col bc-keys" style={{ gap: 10 }} aria-labelledby="bc-keys-h">
+            <aside className="col bc-side" style={{ gap: 16 }}>
+            <section className="card pad col" style={{ gap: 10 }} aria-labelledby="bc-ov-h">
+              <h2 className="t-hl2" id="bc-ov-h">
+                오버레이
+              </h2>
+              <span className="t-c1 c-alt">OBS 브라우저 소스에 넣는 주소는 발급할 때 한 번만 보입니다. 잃어버리면 다시 발급해 주십시오.</span>
+              <Link className="btn btn-sm btn-out" href="/seller/overlay">
+                오버레이 주소 발급
+              </Link>
+            </section>
+            <section className="card pad col bc-keys" style={{ gap: 10 }} aria-labelledby="bc-keys-h">
               <h2 className="t-hl2" id="bc-keys-h">
                 단축키
               </h2>
@@ -420,6 +469,7 @@ export default function BroadcastDashboardPage() {
                 </dd>
               </dl>
               <span className="t-c1 c-alt">입력칸에 글자를 입력하는 중에는 단축키가 동작하지 않습니다</span>
+            </section>
             </aside>
           </div>
         )}
@@ -449,7 +499,7 @@ function ItemText({ item }: { item: QueueItem }) {
         {item.gradeSnapshot && <span className="t-c1 c-alt fw5"> · {item.gradeSnapshot}</span>}
       </span>
       <span className="t-c1 c-alt ell">
-        {item.productLabel} ×{item.quantity} · {kstTime(item.receivedAt)} 결제
+        {item.productLabel} ×{item.quantity}
       </span>
     </span>
   );
