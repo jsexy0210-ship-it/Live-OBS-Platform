@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import ShopState from "./ShopState";
 import { call, md, stars } from "./reviewShared";
 import "./Reviews.css";
+import ShopModal from "./ShopModal";
 
 // SH-029 내 리뷰: 쓸 수 있는 상품(리뷰 쓰기)과 내가 쓴 리뷰(공개 상태·숨김 사유·판매자 답글, 고치기·지우기). API: /api/shop/{slug}/reviews.
 type Writable = { orderItemId: string; productName: string; optionName: string; deliveredAt: string | null; writableUntil: string | null };
@@ -188,26 +189,22 @@ export default function ReviewMine({ slug }: { slug: string }) {
         )}
       </div>
       {deleting && (
-        <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="rv-del-title">
-          <div className="modal">
-            <div className="modal-h">
-              <h2 className="t-h2" id="rv-del-title">
-                리뷰를 지울까요?
-              </h2>
-              <span className="t-l2 c-alt">
-                지운 리뷰는 되돌릴 수 없고, 이 상품 리뷰는 다시 쓸 수 없어요.{deleting.rewardedAmount > 0 ? ` 받은 적립금 ${won(deleting.rewardedAmount)}은 돌려받아요.` : ""}
-              </span>
-            </div>
-            <div className="modal-f">
+        <ShopModal
+          title="리뷰를 지울까요?"
+          onClose={() => setDeleting(null)}
+          footer={
+            <>
               <button className="btn btn-out" type="button" onClick={() => setDeleting(null)}>
                 취소
               </button>
               <button className="btn btn-neg" type="button" onClick={() => void remove()}>
                 지우기
               </button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        >
+          지운 리뷰는 되돌릴 수 없고, 이 상품 리뷰는 다시 쓸 수 없어요.{deleting.rewardedAmount > 0 ? ` 받은 적립금 ${won(deleting.rewardedAmount)}은 돌려받아요.` : ""}
+        </ShopModal>
       )}
     </section>
   );

@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { ModalClose } from "./ShopModal";
 import "./EventPopup.css";
 
 // 쇼핑몰 이벤트 팝업(SH-001 「이벤트 팝업 · 가운데」「상단 띠 팝업」, 관리 SA-065). 서버가 기간·대상 화면으로 고른 팝업을 받아,
@@ -126,6 +127,7 @@ export default function EventPopup({ popups }: { popups: EventPopupItem[] }) {
       {current && (
         <div className="ep-dim" onClick={(e) => e.target === e.currentTarget && dismissCurrent(false)}>
           <div className="ep" role="dialog" aria-modal="true" aria-labelledby={`ep-t-${current.id}`}>
+            <ModalClose className="ep-x" innerRef={closeRef} onClick={close} />
             {current.kind === "IMAGE" &&
               current.image &&
               (current.link ? (
@@ -146,19 +148,14 @@ export default function EventPopup({ popups }: { popups: EventPopupItem[] }) {
                 </a>
               )}
             </div>
-            <div className="ep-foot t-c1">
-              {current.dismissDays > 0 ? (
+            {current.dismissDays > 0 && (
+              <div className="ep-foot t-c1">
                 <label className="row ep-hide">
                   <input className="cbx" type="checkbox" checked={hide} onChange={(e) => setHide(e.target.checked)} />
                   {dismissLabel(current.dismissDays)}
                 </label>
-              ) : (
-                <span />
-              )}
-              <button ref={closeRef} className="btn btn-sm btn-ghost" type="button" onClick={close}>
-                닫기
-              </button>
-            </div>
+              </div>
+            )}
           </div>
         </div>
       )}

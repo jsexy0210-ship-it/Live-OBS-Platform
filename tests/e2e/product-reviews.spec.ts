@@ -137,4 +137,34 @@ test.describe.serial("SH-029 리뷰 쓰기 · SA-048 리뷰 관리", () => {
     await expect(mine).toContainText("소중한 리뷰 감사합니다");
     await page.screenshot({ path: `${SHOT}/sh029-mine-390.png`, fullPage: true });
   });
+
+  test("공통 모달: 오른쪽 위에 X가 보이고, X·Esc·바깥 클릭으로 닫힌다(리뷰는 그대로)", async ({ page, baseURL }) => {
+    await buyerLogin(page, baseURL!);
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      await page.goto(`/shop/${SLUG}/reviews`);
+      const open = async () => {
+        await page.getByTestId("my-review").first().getByRole("button", { name: "지우기" }).click();
+        const dlg = page.getByRole("dialog", { name: "리뷰를 지울까요?" });
+        await expect(dlg).toBeVisible();
+        return dlg;
+      };
+      let dlg = await open();
+      const x = dlg.getByRole("button", { name: "닫기" });
+      await expect(x).toBeVisible();
+      const [box, xb] = [await dlg.boundingBox(), await x.boundingBox()];
+      expect(xb!.x + xb!.width).toBeGreaterThan(box!.x + box!.width - 24);
+      expect(xb!.y).toBeLessThan(box!.y + 24);
+      await page.screenshot({ path: `${SHOT}/shop-modal-x-${width}.png` });
+      await x.click();
+      await expect(dlg).toBeHidden();
+      dlg = await open();
+      await page.keyboard.press("Escape");
+      await expect(dlg).toBeHidden();
+      dlg = await open();
+      await page.mouse.click(4, 4);
+      await expect(dlg).toBeHidden();
+      await expect(page.getByTestId("my-review")).toHaveCount(1);
+    }
+  });
 });
