@@ -477,16 +477,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
         </div>
 
         <aside className="col aside-sticky" style={{ gap: 16 }}>
-          <div className="card pad col pcard" style={{ gap: 10 }}>
-            <span className="t-hl2">쇼핑몰 미리보기</span>
-            <div className="img" style={{ width: "100%", aspectRatio: "1" }} title="이미지 없음">
-              <NoImage size={40} />
-            </div>
-            <span className={`t-b1 fw6 pname${nameLen ? "" : " c-ast"}`}>{nameLen ? name.trim() : "상품명을 입력해 주십시오"}</span>
-            <span className="pprice">
-              <span className={`t-hl1 num${priceNum ? "" : " c-ast"}`}>{won(priceNum ?? 0)}</span>
-            </span>
-          </div>
+          <ProductPreview name={name} description={description} price={priceNum} status={status} rows={rows} />
           <div className="card pad col" style={{ gap: 8 }}>
             <span className="t-hl2">필수 입력 항목</span>
             <span className="t-l2 c-neu">상품명, 판매가, 옵션 이름은 비워 둘 수 없습니다</span>
@@ -515,6 +506,73 @@ export function ProductForm({ initial }: { initial?: Product }) {
       )}
       {toast && <Toast text={toast} onDone={() => setToast(null)} />}
     </>
+  );
+}
+
+// 쇼핑몰 미리보기: 저장 전 입력값(상품명·설명·판매가·옵션·판매 상태)을 그대로 그린다(저장된 서버 값을 쓰지 않음).
+// 설명은 구매자 화면처럼 줄바꿈을 지키고, 길면 몇 줄 뒤 접어 「더보기」로 편다. 사진 기능이 없어 사진 칸은 낮게 둔다.
+const DESC_PREVIEW_LINES = 6;
+function ProductPreview({ name, description, price, status, rows }: { name: string; description: string; price: number | null; status: ProductStatus; rows: OptRow[] }) {
+  const [open, setOpen] = useState(false);
+  const desc = description.trim();
+  const long = desc.split("\n").length > DESC_PREVIEW_LINES || textLength(desc) > DESC_PREVIEW_LINES * 22;
+  const options = rows.filter((r) => r.name.trim() !== "");
+  const priceText = (r: OptRow) => {
+    const delta = parseAmount(r.priceDelta) ?? 0;
+    return price === null ? "—" : won(Math.max(0, price + delta));
+  };
+  const soldOut = status === "SOLD_OUT";
+  return (
+    <div className="card pad col pcard pv" style={{ gap: 10 }} data-testid="product-preview">
+      <span className="t-hl2">쇼핑몰 미리보기</span>
+      {(status === "HIDDEN" || status === "DRAFT") && (
+        <span className="t-c1 c-alt" data-testid="preview-status-note">
+          {status === "HIDDEN" ? "숨김 상태라 쇼핑몰에 표시되지 않습니다" : "임시 저장 상태라 쇼핑몰에 표시되지 않습니다"}
+        </span>
+      )}
+      <div className="img pv-img" title="이미지 없음">
+        <NoImage size={32} />
+      </div>
+      {soldOut && (
+        <span className="pbadge">
+          <span className="bdg b-fail">품절</span>
+        </span>
+      )}
+      <span className={`t-b1 fw6 pname${textLength(name) ? "" : " c-ast"}`} data-testid="preview-name">
+        {textLength(name) ? name.trim() : "상품명을 입력해 주십시오"}
+      </span>
+      <span className="pprice">
+        <span className={`t-hl1 num${price ? "" : " c-ast"}`} data-testid="preview-price">
+          {won(price ?? 0)}
+        </span>
+      </span>
+      {options.length > 1 || (options.length === 1 && options[0].name.trim() !== "기본") ? (
+        <ul className="pv-opts" data-testid="preview-options">
+          {options.map((r) => (
+            <li key={r.key} className="row between t-l2" style={{ gap: 8 }}>
+              <span className="ell">{r.name.trim()}</span>
+              <span className="num c-alt">{soldOut || parseAmount(r.stock) === 0 ? "품절" : priceText(r)}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {desc ? (
+        <div className="col" style={{ gap: 4 }}>
+          <p className={`t-l2 pv-desc${long && !open ? " clamp" : ""}`} data-testid="preview-description">
+            {desc}
+          </p>
+          {long && (
+            <button className="btn btn-sm btn-ghost" type="button" style={{ alignSelf: "flex-start" }} onClick={() => setOpen((v) => !v)}>
+              {open ? "접기" : "더보기"}
+            </button>
+          )}
+        </div>
+      ) : (
+        <span className="t-l2 c-ast" data-testid="preview-description">
+          상품 설명을 입력하면 여기에 표시됩니다
+        </span>
+      )}
+    </div>
   );
 }
 

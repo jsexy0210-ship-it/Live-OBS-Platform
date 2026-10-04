@@ -611,3 +611,35 @@ body {
 .settings-tabs::-webkit-scrollbar {
   display: none;
 }
+
+/* 상품 등록·수정 쇼핑몰 미리보기(ProductForm ProductPreview): 사진 칸은 낮게, 설명은 줄바꿈 유지·몇 줄 뒤 접기 */
+/* 목록 카드의 줄 맞춤용 최소 높이는 미리보기에서 쓰지 않는다(빈칸 없이 설명까지 보이게) */
+.pcard.pv .pname,
+.pcard.pv .pprice {
+  min-height: 0;
+}
+.pcard .pv-img {
+  width: 100%;
+  height: 120px;
+}
+.pv-opts {
+  list-style: none;
+  margin: 0;
+  padding: 8px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--wds-line-normal-alternative);
+}
+.pv-desc {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.6;
+}
+.pv-desc.clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
