@@ -538,3 +538,13 @@ body {
   margin: 0;
   min-width: 0;
 }
+
+/* 쇼핑몰 설정 탭: 좁은 화면에서는 탭 줄 안에서 가로로 넘겨 본다(화면 전체가 가로로 넘치지 않게) */
+.settings-tabs {
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.settings-tabs::-webkit-scrollbar {
+  display: none;
+}

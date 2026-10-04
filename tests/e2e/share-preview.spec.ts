@@ -143,3 +143,17 @@ test("공유 미리보기: 저장하는 동안에는 칸을 잠가 저장 중 �
   await page.getByRole("complementary").getByRole("button", { name: "저장" }).click();
   await expect(page.getByLabel("제목")).toHaveValue("");
 });
+
+// 쇼핑몰 설정 탭이 늘어 390px에서는 탭 줄 안에서 가로로 넘긴다: 화면 전체는 넘치지 않고, 지금 탭(맨 끝 공유 미리보기)이 보인다
+test("390px에서 쇼핑몰 설정 탭은 탭 줄 안에서 넘기고, 지금 탭이 화면 안에 보인다", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await loginSeller(page, "demo-owner@example.com", PASSWORD, "/seller/settings/share");
+  await expect(page).toHaveURL(/\/seller\/settings\/share$/);
+  const current = page.getByRole("navigation", { name: "쇼핑몰 설정" }).getByRole("link", { name: "공유 미리보기" });
+  await expect(current).toHaveAttribute("aria-current", "page");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await expect.poll(async () => {
+    const box = await current.boundingBox();
+    return box !== null && box.x >= 0 && box.x + box.width <= 390;
+  }).toBe(true);
+});
