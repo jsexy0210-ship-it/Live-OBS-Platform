@@ -1,5 +1,7 @@
 import type { IdentityVerificationPurpose } from "@prisma/client";
 import { NextResponse } from "next/server";
+import { planFeatureRequired } from "../authz/errors";
+import { sellerFeatures } from "../billing/features";
 import { BUYER_SIGNUP_MESSAGES, shopOpen } from "../buyers/signup";
 import { prisma } from "../db";
 import { mutation, readCookie, readJson } from "../http/route";
@@ -17,6 +19,8 @@ export const identityFailure = (reason: IdentityErrorCode) =>
 // 쇼핑몰(sellerId)은 요청 기록에서 읽고, ownerToken·용도가 맞아야만 쓴다(다른 세션의 요청 id는 없는 것으로 본다).
 // 쇼핑몰 경로(/api/shop/{slug}/…)에서 쓰면 URL의 쇼핑몰이 기록의 쇼핑몰과 같아야 하고(다르면 404),
 // 운영 중·잠기지 않은 쇼핑몰이어야 한다(잠기면 402, 가입 시작과 같은 기준).
+// 직원 본인확인 연결(STAFF_LINK)은 시작 라우트와 같은 기능 권한(ACCOUNT: 기능 권한이 하나라도 있음)을 기록의 쇼핑몰로 다시 본다.
+// 시작한 뒤 플랜이 바뀌면(통합 첫 결제 확정 전 등) 다시 받기·확인도 403 plan_feature_required로 막는다(ARCHITECTURE 4.8.0, #176 Codex P2).
 export function identityStepRoute(step: "resend" | "confirm", purpose: IdentityVerificationPurpose, cookieName: string) {
   return mutation(async (req: Request, ctx?: { params: Promise<{ slug?: string }> }) => {
     const provider = identityProvider();
@@ -26,6 +30,7 @@ export function identityStepRoute(step: "resend" | "confirm", purpose: IdentityV
     if (!id) return identityFailure("not_found");
     const v = await prisma.identityVerification.findUnique({ where: { id }, select: { sellerId: true } });
     if (!v) return identityFailure("not_found");
+    if (purpose === "STAFF_LINK" && v.sellerId && (await sellerFeatures(prisma, v.sellerId)).length === 0) throw planFeatureRequired();
     // 동적 세그먼트가 없는 라우트에서도 Next가 ctx를 넘기고 params는 undefined로 풀린다
     const slug = ctx ? (await ctx.params)?.slug : undefined;
     if (slug !== undefined) {

@@ -9,7 +9,7 @@ import { listOptionStock } from "../../../../../lib/server/products/optionStock"
 // 응답 { options: [{ productId, productName, productStatus, optionId, optionName, sku, stock }], nextCursor }.
 export async function GET(req: Request) {
   try {
-    const ctx = await requireSeller(prisma, sessionToken(req, "seller"));
+    const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "STORE_OPERATIONS" });
     const q = new URL(req.url).searchParams;
     const r = await listOptionStock(prisma, ctx, {
       status: q.get("status") ?? undefined,
