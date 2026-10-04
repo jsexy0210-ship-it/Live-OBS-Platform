@@ -10,7 +10,7 @@ export const MEMBER_DATA_POLICY: Record<string, { policy: MemberDataPolicy; note
   BuyerAddress: { policy: "delete", note: "저장 배송지" },
   ProductReview: { policy: "anonymize", note: "상품 리뷰는 남기고 작성자 표시를 「탈퇴 회원」으로(product-reviews anonymizeMemberReviews). 리뷰에 붙은 사진은 리뷰와 함께 남는다" },
   ProductReviewImage: { policy: "delete", note: "리뷰에 붙지 않은 사진은 지운다. 리뷰에 붙은 사진은 리뷰와 함께 남는다(리뷰는 비식별)" },
-  ProductReviewReport: { policy: "delete", note: "리뷰 신고 기록" },
+  ProductReviewReport: { policy: "anonymize", note: "리뷰 신고 기록은 남긴다(보류는 판매자만 풀어야 해서 신고 사실이 필요). 신고자는 비식별된 탈퇴 회원 행으로만 이어진다" },
   BuyerCoupon: { policy: "delete", note: "받은 쿠폰. 쓰지 않은 쿠폰은 지우고, 주문에 쓴(쓴 뒤 전체 취소로 되돌린) 쿠폰은 주문 할인 기록(CouponRedemption)과 이어져 주문과 함께 남긴다(shop-coupons)" },
   BuyerSession: { policy: "delete", note: "로그인 세션" },
   BuyerPurchaseRestriction: { policy: "delete", note: "구매 제한(개인정보 없음, 탈퇴하면 쓸 일 없음)" },

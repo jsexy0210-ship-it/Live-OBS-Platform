@@ -414,6 +414,25 @@ describe("고치기·지우기·신고", () => {
     expect(await db.productReviewReport.count({ where: { reviewId: r.reviewId } })).toBe(4);
   });
 
+  it("신고 보류 뒤 신고자가 탈퇴해 미확인 신고가 줄어도, 작성자가 고쳐서 풀 수 없다(보류는 판매자만 품, MASTER 검수 ①)", async () => {
+    const s = await shop();
+    await setPolicy(s, { rewardText: 500 });
+    const r = await created(s, (await s.delivered()).id);
+    const reporters = [];
+    for (let i = 0; i < 3; i++) {
+      const m = await createLoginBuyer(s.seller.id, s.grade.id);
+      reporters.push(m);
+      await reportPost(json("/x", "POST", await buyerCookie(s.seller.id, m.loginId!), { reason: "AD" }), p({ slug: s.slug, reviewId: r.reviewId }));
+    }
+    expect(await withdrawBuyer(db, { sellerId: s.seller.id, buyerMemberId: reporters[0].id }, { password: PASSWORD })).toEqual({ ok: true });
+    expect(await db.productReviewReport.count({ where: { reviewId: r.reviewId, resolvedAt: null } })).toBe(3);
+    expect((await reviewPut(json("/x", "PUT", s.b1, { rating: 4, body: BODY }), p({ slug: s.slug, reviewId: r.reviewId }))).status).toBe(200);
+    const row = await db.productReview.findUniqueOrThrow({ where: { id: r.reviewId } });
+    expect([row.status, row.heldBy]).toEqual(["HELD", "reports"]);
+    // 처음 적립 500은 신고 보류 때 회수됐고, 고치기로 새 적립이 나가지 않는다
+    expect((await ledger(s)).map((x) => [x.type, x.amount])).toEqual([["EARN", 500], ["REVOKE", -500]]);
+  });
+
   it("신고로 보류된 리뷰는 금지어를 넣었다 빼도 판매자가 공개하기 전까지 보류로 남는다(Codex 4176768623)", async () => {
     const s = await shop();
     await setPolicy(s, { bannedWords: ["사기"] });
@@ -613,6 +632,25 @@ describe("환불과 리뷰 적립", () => {
     await created(s, item.id);
     expect((await refund(s, item.orderId)).ok).toBe(true);
     expect((await ledger(s)).map((x) => x.type)).toEqual(["EARN"]);
+  });
+
+  it("환불 결과와 로그 추적에 리뷰 적립 회수가 드러난다: AUTO는 revoked와 금액, MANUAL은 manual_review와 회수할 금액(MASTER 검수 ②)", async () => {
+    const s = await shop();
+    await setPolicy(s, { rewardText: 500 });
+    const a = await s.delivered();
+    await created(s, a.id);
+    const ra = await refund(s, a.orderId);
+    expect(ra.ok && ra.value.reviewRewardRevoke).toEqual({ outcome: "revoked", amount: 500 });
+    await db.rewardPolicy.upsert({ where: { sellerId: s.seller.id }, create: { sellerId: s.seller.id, revokeMode: "MANUAL" }, update: { revokeMode: "MANUAL" } });
+    const b = await s.delivered();
+    await created(s, b.id);
+    const rb = await refund(s, b.orderId);
+    expect(rb.ok && rb.value.reviewRewardRevoke).toEqual({ outcome: "manual_review", amount: 500 });
+    const audit = await db.auditLog.findFirstOrThrow({ where: { action: "order.refund", targetId: b.orderId } });
+    expect((audit.after as { reviewRewardRevoke: unknown }).reviewRewardRevoke).toEqual({ outcome: "manual_review", amount: 500 });
+    const c = await s.delivered();
+    const rc = await refund(s, c.orderId);
+    expect(rc.ok && rc.value.reviewRewardRevoke).toEqual({ outcome: "none", amount: 0 });
   });
 
   it("MANUAL로 환불된 주문의 리뷰를 구매자가 고쳐도 리뷰 적립을 자동 회수하지 않는다(수동 확인 대상 유지, Codex 4177247985)", async () => {
@@ -849,7 +887,7 @@ describe("사진·잠긴 쇼핑몰·탈퇴", () => {
     expect(((await mine.json()) as { reviews: unknown[] }).reviews).toHaveLength(1);
   });
 
-  it("탈퇴: 리뷰는 남기고 작성자 표시를 「탈퇴 회원」으로, 신고·붙지 않은 사진은 지운다", async () => {
+  it("탈퇴: 리뷰는 남기고 작성자 표시를 「탈퇴 회원」으로, 붙지 않은 사진은 지우고 신고 기록은 남긴다", async () => {
     const s = await shop();
     const r = await created(s, (await s.delivered()).id);
     const other = await created(s, (await s.delivered(s.buyer2.id)).id, { rating: 4, body: BODY }, s.b2);
@@ -857,7 +895,7 @@ describe("사진·잠긴 쇼핑몰·탈퇴", () => {
     await upload(s, fakeJpeg(100, 100));
     expect(await withdrawBuyer(db, { sellerId: s.seller.id, buyerMemberId: s.buyer.id }, { password: PASSWORD })).toEqual({ ok: true });
     expect((await db.productReview.findUniqueOrThrow({ where: { id: r.reviewId } })).authorNickname).toBe("탈퇴 회원");
-    expect(await db.productReviewReport.count({ where: { buyerMemberId: s.buyer.id } })).toBe(0);
+    expect(await db.productReviewReport.count({ where: { buyerMemberId: s.buyer.id } })).toBe(1);
     expect(await db.productReviewImage.count({ where: { buyerMemberId: s.buyer.id, reviewId: null } })).toBe(0);
     const audit = await db.auditLog.findFirstOrThrow({ where: { action: "buyer.withdraw", actorId: s.buyer.id } });
     expect((audit.after as { reviews: { reviews: number } }).reviews.reviews).toBe(1);

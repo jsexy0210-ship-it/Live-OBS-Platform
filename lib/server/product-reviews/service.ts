@@ -152,17 +152,22 @@ async function settleReward(tx: Tx, r: ProductReview, now: Date, orderPaid: bool
 // 환불(queue/service.ts refundOrder)에서 부른다. 주문 행은 환불이 이미 잠갔다(NO KEY UPDATE). 그 뒤 회원 → 리뷰 → 원장 순서로
 // 이 주문 리뷰의 적립을 settleReward로 맞춘다(환불된 주문이라 원하는 금액은 0). 회수 방식은 주문 적립과 같다:
 // AUTO(기본)면 회수, MANUAL이면 주문 적립처럼 기록하지 않고 수동 확인 대상으로 둔다.
-export async function revokeReviewRewardsForOrder(tx: Tx, sellerId: string, orderId: string, now: Date): Promise<number> {
+export type ReviewRewardRevoke = { outcome: "revoked" | "manual_review" | "none"; amount: number };
+export async function revokeReviewRewardsForOrder(tx: Tx, sellerId: string, orderId: string, now: Date): Promise<ReviewRewardRevoke> {
   const policy = await tx.rewardPolicy.findUnique({ where: { sellerId }, select: { revokeMode: true } });
-  if (policy?.revokeMode === "MANUAL") return 0;
-  const refs = await tx.productReview.findMany({ where: { sellerId, orderId }, select: { id: true, buyerMemberId: true }, orderBy: { id: "asc" } });
+  const refs = await tx.productReview.findMany({ where: { sellerId, orderId }, select: { id: true, buyerMemberId: true, rewardRound: true }, orderBy: { id: "asc" } });
+  const active = await activeRewards(tx, sellerId, refs);
+  if (active.size === 0) return { outcome: "none", amount: 0 };
+  const total = [...active.values()].reduce((a, x) => a + x.amount, 0);
+  // MANUAL: 주문 적립처럼 기록하지 않고, 회수할 리뷰 적립을 환불 결과·로그 추적에 드러내 판매자가 수동으로 확인하게 한다
+  if (policy?.revokeMode === "MANUAL") return { outcome: "manual_review", amount: total };
   let revoked = 0;
-  for (const ref of refs) {
+  for (const ref of refs.filter((r) => active.has(r.id))) {
     await tx.$queryRaw`SELECT "id" FROM "BuyerMember" WHERE "id" = ${ref.buyerMemberId}::uuid AND "sellerId" = ${sellerId}::uuid FOR SHARE`;
     const r = await lockReview(tx, sellerId, ref.id);
     if (r) revoked += (await settleReward(tx, r, now, false)).revoked;
   }
-  return revoked;
+  return { outcome: "revoked", amount: revoked };
 }
 
 // ───────── 파트너스 관리자 ─────────
@@ -630,7 +635,8 @@ export async function updateReview(db: PrismaClient, scope: BuyerScope, id: stri
       const held = heldReason(p.v.body, policy.bannedWords);
       // 신고 누적 보류·공개 대기는 판매자가 풀 때까지 그대로 둔다. 신고 보류는 바뀔 수 있는 표시값(heldBy)이 아니라
       // 판매자가 아직 확인하지 않은 신고(resolvedAt 없음) 수로 판단해, 본문을 어떻게 고쳐도 풀리지 않는다.
-      const reportHeld = before.status === "HELD" && (await openReportCount(tx, scope.sellerId, id)) >= REVIEW_REPORT_HOLD;
+      // 보류는 판매자만 푼다: 신고로 보류된 리뷰(heldBy=reports)는 그사이 신고자가 탈퇴해 미확인 신고가 줄어도 풀리지 않는다(MASTER 검수 ①).
+      const reportHeld = before.status === "HELD" && (before.heldBy === "reports" || (await openReportCount(tx, scope.sellerId, id)) >= REVIEW_REPORT_HOLD);
       const status: ProductReviewStatus = reportHeld || held
         ? "HELD"
         : before.status === "HELD"
@@ -778,9 +784,9 @@ export async function anonymizeMemberReviews(tx: Tx, scope: BuyerScope) {
     });
   }
   const reviews = await tx.productReview.updateMany({ where: scope, data: { authorNickname: WITHDRAWN_AUTHOR } });
-  const reports = await tx.productReviewReport.deleteMany({ where: scope });
   const images = await reviewImageStore.delete(tx, { ...scope, reviewId: null });
-  return { reviews: reviews.count, reports: reports.count, images };
+  // 신고 행은 지우지 않는다(보류 판단의 사실). 신고자 연결은 비식별된 탈퇴 회원 행만 가리킨다.
+  return { reviews: reviews.count, images };
 }
 
 // 파트너스 관리자 문구(합니다체)
