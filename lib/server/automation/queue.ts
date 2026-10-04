@@ -61,10 +61,10 @@ export async function markActionStarted(db: PrismaClient, c: Claim): Promise<Dat
   return at;
 }
 // 자리를 잃었어도 해야 하는 정리 연산(세션 닫기·보관)의 시작 기록(점유 확인 없음, 다음 소유자를 늦추는 보수적인 기록)
+// 시작 기록은 절대 뒤로 가지 않는다(읽고 쓰는 사이에 다른 소유자가 더 늦은 시작을 남겼어도 그것보다 앞서지 않게 DB에서 한 문장으로 쓴다).
 export async function markReleaseStarted(db: PrismaClient, jobId: string): Promise<Date> {
-  const at = await dbNow(db);
-  await db.automationJob.updateMany({ where: { id: jobId }, data: { lastActionStartedAt: at } });
-  return at;
+  const rows = await db.$queryRaw<{ at: Date }[]>`UPDATE "AutomationJob" SET "lastActionStartedAt" = GREATEST(COALESCE("lastActionStartedAt", clock_timestamp()), clock_timestamp()) WHERE id = ${jobId}::uuid RETURNING "lastActionStartedAt" AS at`;
+  return rows[0]?.at ?? (await dbNow(db));
 }
 // 종료 확인(돌아온 호출·늦게 끝난 호출 모두): 자기 시작 기록이 그대로일 때만 남긴다(뒤에 시작한 행동을 끝났다고 하지 않음).
 // 같은 작업에 끝나지 않은 호출이 남아 있으면 부르지 않는다(engine.ts trackedWindow)

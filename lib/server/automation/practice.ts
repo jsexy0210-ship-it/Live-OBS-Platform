@@ -107,10 +107,10 @@ export async function runPractice(
       if ((await db.automationPracticeRun.updateMany({ where: owned, data: { lastActionStartedAt: at } })).count !== 1) throw new FencingError();
       return at;
     },
+    // 시작 기록은 절대 뒤로 가지 않는다(DB에서 한 문장으로)
     release: async () => {
-      const at = await dbNow(db);
-      await db.automationPracticeRun.updateMany({ where: { id: run.id }, data: { lastActionStartedAt: at } });
-      return at;
+      const rows = await db.$queryRaw<{ at: Date }[]>`UPDATE "AutomationPracticeRun" SET "lastActionStartedAt" = GREATEST(COALESCE("lastActionStartedAt", clock_timestamp()), clock_timestamp()) WHERE id = ${run.id}::uuid RETURNING "lastActionStartedAt" AS at`;
+      return rows[0]?.at ?? (await dbNow(db));
     },
     end: async (startedAt) =>
       void (await db.automationPracticeRun.updateMany({ where: { id: run.id, lastActionStartedAt: startedAt }, data: { lastActionEndedAt: await dbNow(db) } })),

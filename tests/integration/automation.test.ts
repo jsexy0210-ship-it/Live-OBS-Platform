@@ -18,7 +18,7 @@ import { markConnectionRevoked } from "../../lib/server/automation/connection";
 import { cancelJob, getJob, requestRefund, resumeJob } from "../../lib/server/automation/jobs";
 import { purchaseAutomation, reconcileAutomationPayments, reconnectAutomation } from "../../lib/server/automation/purchase";
 import { EngineAborted, actionKeyOf, callPort, insidePortCall, runSteps } from "../../lib/server/automation/engine";
-import { FencingError, RunTimeExceeded, advanceStep, claimNext, extendLease, finishJob, lockJob, markBrowserStateHeld, markChanged, parkForCustomer, reapExpired, toVerifying, touch, unmarkChanged } from "../../lib/server/automation/queue";
+import { FencingError, RunTimeExceeded, advanceStep, claimNext, extendLease, finishJob, lockJob, markActionEnded, markActionStarted, markBrowserStateHeld, markChanged, markReleaseStarted, parkForCustomer, reapExpired, toVerifying, touch, unmarkChanged } from "../../lib/server/automation/queue";
 import { executeJob, purgeEndedBrowserState, runOnce, runWorkerLoop, startHeartbeat } from "../../lib/server/automation/worker";
 import { FakeBillingProvider } from "../../lib/server/billing/provider";
 import { billingProvider } from "../../lib/server/billing/registry";
@@ -3956,5 +3956,48 @@ describe("MASTER 검수 반영(f8561e3): 종료 확인은 자기 시작 기록�
     } finally {
       limits.actionTimeoutMs = saved;
     }
+  });
+});
+
+describe("검수 전담 반영: 옛 소유자의 늦은 기록이 새 소유자의 창을 풀지 않는다", () => {
+  const open = async (jobId: string) => {
+    const j = await job(jobId);
+    return !!j.lastActionStartedAt && !(j.lastActionEndedAt && j.lastActionEndedAt >= j.lastActionStartedAt);
+  };
+
+  it("옛 소유자의 종료 확인·세션 닫기 기록은 새 소유자가 시작한 행동의 창을 풀지 않고, 새 소유자 자신의 종료 확인만 푼다", async () => {
+    const a = await bought();
+    const old = await claimNext(db, "w-old");
+    if (!old) throw new Error("no claim");
+    await markActionStarted(db, old.claim);
+    // 옛 소유자의 행동은 10초 전에 시작했고, 새 소유자가 이어받아 5초 전에 행동을 시작했다(옛 행동은 아직 끝나지 않음)
+    const oldStart = new Date(Date.now() - 10_000);
+    const newStart = new Date(Date.now() - 5_000);
+    await db.automationJob.update({ where: { id: a.jobId }, data: { lastActionStartedAt: newStart, lastActionEndedAt: null } });
+    expect(await open(a.jobId)).toBe(true);
+    // 옛 소유자의 늦은 종료 확인(자기 시작 기록 oldStart)은 새 창을 풀지 않는다
+    await markActionEnded(db, a.jobId, oldStart);
+    expect(await open(a.jobId)).toBe(true);
+    // 옛 소유자의 세션 닫기 시작 기록은 시작 기록을 뒤로 되돌리지 않는다(더 늦은 새 시작이 있으면 그대로)
+    const releaseAt = await markReleaseStarted(db, a.jobId);
+    expect(releaseAt.getTime()).toBeGreaterThanOrEqual(newStart.getTime());
+    expect((await job(a.jobId)).lastActionStartedAt!.getTime()).toBeGreaterThanOrEqual(newStart.getTime());
+    await markActionEnded(db, a.jobId, oldStart);
+    expect(await open(a.jobId)).toBe(true);
+    // 현재 시작 기록에 묶인 종료 확인만 창을 푼다
+    await markActionEnded(db, a.jobId, releaseAt);
+    expect(await open(a.jobId)).toBe(false);
+  });
+
+  it("세션 닫기의 시작 기록은 읽고 쓰는 사이에 남긴 더 늦은 시작 기록을 뒤로 되돌리지 않는다(이미 끝난 창이 다시 풀리지 않음)", async () => {
+    const a = await bought();
+    const got = await claimNext(db, "w-old");
+    if (!got) throw new Error("no claim");
+    // 다른 소유자가 더 늦은 시각(지금보다 뒤)에 행동을 시작해 둔 상태: 닫기가 지금 시각으로 덮어쓰면 시작이 뒤로 가 창이 잘못 풀릴 수 있다
+    const later = new Date(Date.now() + 60_000);
+    await db.automationJob.update({ where: { id: a.jobId }, data: { lastActionStartedAt: later, lastActionEndedAt: new Date(Date.now() - 1_000) } });
+    await markReleaseStarted(db, a.jobId);
+    expect((await job(a.jobId)).lastActionStartedAt!.getTime()).toBeGreaterThanOrEqual(later.getTime());
+    expect(await open(a.jobId)).toBe(true);
   });
 });
