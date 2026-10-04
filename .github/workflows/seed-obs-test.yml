@@ -57,7 +57,15 @@ jobs:
           APP_VERSION="$(docker ps -a --filter label=com.docker.compose.project=obs-web --filter label=com.docker.compose.service=obs-web-app --format '{{.Image}}' | head -1 | cut -d: -f2)"
           [ -n "$APP_VERSION" ] || { echo "배포된 앱이 없어요. Deploy obs-test를 먼저 실행해 주세요."; exit 1; }
           export APP_VERSION
-          OBS_TEST_MODE="$(sed -n 's/^OBS_TEST_MODE=//p' "$ENV_FILE")"
-          IDENTITY_HASH_KEY="$(sed -n 's/^IDENTITY_HASH_KEY=//p' "$ENV_FILE")"
+          # 앱이 실제로 쓰는 값을 떠 있는 앱 컨테이너에서 읽는다(.env의 따옴표·공백 차이로 앱과 다르게 읽히지 않게)
+          app="$(docker ps --filter label=com.docker.compose.project=obs-web --filter label=com.docker.compose.service=obs-web-app --format '{{.ID}}' | head -1)"
+          [ -n "$app" ] || { echo "앱 컨테이너가 떠 있지 않아요. Deploy obs-test를 먼저 실행해 주세요."; exit 1; }
+          OBS_TEST_MODE="$(docker exec "$app" printenv OBS_TEST_MODE || true)"
+          if [ "$OBS_TEST_MODE" != "1" ]; then
+            echo "앱의 OBS_TEST_MODE가 1이 아니에요(지금 값: ${OBS_TEST_MODE:-없음}). /opt/obs/.env에 OBS_TEST_MODE=1을 넣고 Deploy obs-test로 다시 띄운 뒤 실행해 주세요."
+            exit 1
+          fi
+          IDENTITY_HASH_KEY="$(docker exec "$app" printenv IDENTITY_HASH_KEY || true)"
+          echo "::add-mask::$IDENTITY_HASH_KEY"
           export OBS_TEST_MODE IDENTITY_HASH_KEY SEED_SELLER_LOGIN SEED_SELLER_PASSWORD
           $C run --rm --no-deps -e OBS_TEST_MODE -e SEED_SELLER_LOGIN -e SEED_SELLER_PASSWORD -e IDENTITY_HASH_KEY obs-web-migrate node scripts/seed-obs-test.mjs
