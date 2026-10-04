@@ -1,0 +1,97 @@
+import sharp from "sharp";
+import { describe, expect, it } from "vitest";
+import { checkFavicon, checkOgImage, detectImage, readBodyLimited } from "../../lib/server/branding/image";
+import { requestOrigin } from "../../lib/server/branding/siteUrl";
+
+const png = (w: number, h: number) => sharp({ create: { width: w, height: h, channels: 4, background: "#ff6600" } }).png().toBuffer();
+const jpg = (w: number, h: number) => sharp({ create: { width: w, height: h, channels: 3, background: "#123456" } }).jpeg().toBuffer();
+
+// PNG 한 장을 담은 ICO(Vista 이후 형식)
+function icoOf(inner: Buffer, side = 32): Buffer {
+  const head = Buffer.alloc(22);
+  head.writeUInt16LE(0, 0);
+  head.writeUInt16LE(1, 2);
+  head.writeUInt16LE(1, 4);
+  head[6] = side % 256;
+  head[7] = side % 256;
+  head.writeUInt16LE(1, 10);
+  head.writeUInt16LE(32, 12);
+  head.writeUInt32LE(inner.length, 14);
+  head.writeUInt32LE(22, 18);
+  return Buffer.concat([head, inner]);
+}
+
+const SVG = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
+
+describe("브랜딩 이미지 형식 확인(파일 앞부분 바이트)", () => {
+  it("PNG·ICO 파비콘은 받고 크기를 읽는다", async () => {
+    expect(checkFavicon(await png(512, 512))).toEqual({ ok: true, info: { type: "image/png", width: 512, height: 512 } });
+    expect(checkFavicon(icoOf(await png(32, 32)))).toEqual({ ok: true, info: { type: "image/x-icon", width: 32, height: 32 } });
+    // 0은 256px
+    expect(checkFavicon(icoOf(await png(256, 256), 256))).toMatchObject({ ok: true, info: { width: 256, height: 256 } });
+    // 정사각형이 아니어도 받는다(화면에서 권장 안내)
+    expect(checkFavicon(await png(64, 32))).toMatchObject({ ok: true });
+  });
+
+  it("SVG·JPEG·HTML·이름만 바꾼 텍스트·잘린 파일은 파비콘으로 받지 않는다", async () => {
+    expect(checkFavicon(SVG)).toEqual({ ok: false, reason: "unsupported_image" });
+    expect(checkFavicon(await jpg(64, 64))).toEqual({ ok: false, reason: "unsupported_image" });
+    expect(checkFavicon(Buffer.from("<!doctype html><script>alert(1)</script>"))).toEqual({ ok: false, reason: "unsupported_image" });
+    // PNG 시그니처 뒤에 SVG를 붙인 위장 파일(IHDR 없음)
+    expect(checkFavicon(Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), SVG]))).toEqual({ ok: false, reason: "unsupported_image" });
+    // ICO 머리만 있고 이미지 범위가 파일 밖
+    const broken = icoOf(await png(32, 32)).subarray(0, 40);
+    expect(checkFavicon(broken)).toEqual({ ok: false, reason: "unsupported_image" });
+    expect(checkFavicon(Buffer.alloc(0))).toEqual({ ok: false, reason: "empty_file" });
+  });
+
+  it("파비콘 256KB 초과, 한 변 16px 미만·1024px 초과 PNG는 거부한다", async () => {
+    const big = Buffer.concat([await png(32, 32), Buffer.alloc(256 * 1024)]);
+    expect(checkFavicon(big)).toEqual({ ok: false, reason: "file_too_large" });
+    expect(checkFavicon(await png(8, 8))).toEqual({ ok: false, reason: "wrong_image_size" });
+    expect(checkFavicon(await png(2048, 2048))).toEqual({ ok: false, reason: "wrong_image_size" });
+  });
+
+  it("공유 카드 이미지는 1200×630 PNG·JPEG만, 2MB까지", async () => {
+    expect(checkOgImage(await png(1200, 630))).toMatchObject({ ok: true, info: { type: "image/png" } });
+    expect(checkOgImage(await jpg(1200, 630))).toEqual({ ok: true, info: { type: "image/jpeg", width: 1200, height: 630 } });
+    expect(checkOgImage(await png(1200, 600))).toEqual({ ok: false, reason: "wrong_image_size" });
+    expect(checkOgImage(icoOf(await png(32, 32)))).toEqual({ ok: false, reason: "unsupported_image" });
+    expect(checkOgImage(SVG)).toEqual({ ok: false, reason: "unsupported_image" });
+    expect(checkOgImage(Buffer.concat([await png(1200, 630), Buffer.alloc(2 * 1024 * 1024)]))).toEqual({ ok: false, reason: "file_too_large" });
+  });
+
+  it("JPEG는 EXIF 등 앞 블록을 건너 프레임 크기를 읽는다", async () => {
+    const withExif = await sharp({ create: { width: 1200, height: 630, channels: 3, background: "#000" } }).withMetadata({ exif: { IFD0: { Copyright: "x" } } }).jpeg({ progressive: true }).toBuffer();
+    expect(detectImage(withExif)).toEqual({ type: "image/jpeg", width: 1200, height: 630 });
+  });
+
+  it("본문은 한도까지만 읽고, 넘으면(선언 길이·실제 길이) null", async () => {
+    const req = (body: Buffer, len?: string) => new Request("http://x/", { method: "PUT", body: new Uint8Array(body), headers: len ? { "content-length": len } : {} });
+    expect(await readBodyLimited(req(Buffer.alloc(10)), 10)).toHaveLength(10);
+    expect(await readBodyLimited(req(Buffer.alloc(11)), 10)).toBeNull();
+    expect(await readBodyLimited(req(Buffer.alloc(5), "999"), 10)).toBeNull();
+  });
+});
+
+describe("공유 메타 절대 주소의 기준 주소", () => {
+  const h = (o: Record<string, string>) => new Headers(o);
+  it("신뢰 프록시가 없으면 X-Forwarded-Host를 무시하고 Host를 쓴다", () => {
+    delete process.env.TRUSTED_PROXY_HOPS;
+    expect(requestOrigin(h({ host: "test.on-aircue.com", "x-forwarded-host": "evil.example" }))?.toString()).toBe("http://test.on-aircue.com/");
+    expect(requestOrigin(h({ host: "localhost:3000" }))?.toString()).toBe("http://localhost:3000/");
+  });
+  it("신뢰 프록시면 X-Forwarded-Host·Proto를 쓴다", () => {
+    process.env.TRUSTED_PROXY_HOPS = "1";
+    try {
+      expect(requestOrigin(h({ host: "app:3000", "x-forwarded-host": "test.on-aircue.com", "x-forwarded-proto": "https" }))?.toString()).toBe("https://test.on-aircue.com/");
+    } finally {
+      delete process.env.TRUSTED_PROXY_HOPS;
+    }
+  });
+  it("호스트 모양이 이상하면 null(og:image를 빼고 내보냄)", () => {
+    expect(requestOrigin(h({ host: "evil.com/path" }))).toBeNull();
+    expect(requestOrigin(h({ host: "a b" }))).toBeNull();
+    expect(requestOrigin(h({}))).toBeNull();
+  });
+});

@@ -1,0 +1,123 @@
+// 올린 이미지의 형식 확인. 파일 이름·Content-Type은 믿지 않고 파일 앞부분 바이트(시그니처)와 헤더 구조로 판단한다.
+// SVG는 스크립트를 품을 수 있어 받지 않는다(텍스트 파일은 어떤 시그니처에도 맞지 않아 거부된다).
+
+export const FAVICON_MAX_BYTES = 256 * 1024;
+export const OG_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
+export const OG_IMAGE_WIDTH = 1200;
+export const OG_IMAGE_HEIGHT = 630;
+// 파비콘 PNG 한 변 길이(정사각형 권장, 강제하지 않음)
+const FAVICON_MIN_SIDE = 16;
+const FAVICON_MAX_SIDE = 1024;
+
+export type ImageType = "image/png" | "image/x-icon" | "image/jpeg";
+export type ImageInfo = { type: ImageType; width: number; height: number };
+
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+// PNG: 시그니처 + 첫 청크가 IHDR(길이 13)이어야 한다. 크기는 IHDR에서 읽는다.
+function png(b: Buffer): ImageInfo | null {
+  if (b.length < 33 || !b.subarray(0, 8).equals(PNG_SIGNATURE)) return null;
+  if (b.readUInt32BE(8) !== 13 || b.toString("latin1", 12, 16) !== "IHDR") return null;
+  const width = b.readUInt32BE(16);
+  const height = b.readUInt32BE(20);
+  return width > 0 && height > 0 ? { type: "image/png", width, height } : null;
+}
+
+// ICO: 예약 0 + 형식 1(아이콘) + 이미지 수 1개 이상. 각 이미지 항목이 가리키는 범위가 파일 안에 있어야 한다.
+// 크기는 가장 큰 항목(0은 256)을 쓴다.
+function ico(b: Buffer): ImageInfo | null {
+  if (b.length < 22 || b.readUInt16LE(0) !== 0 || b.readUInt16LE(2) !== 1) return null;
+  const count = b.readUInt16LE(4);
+  if (count === 0 || 6 + count * 16 > b.length) return null;
+  let width = 0;
+  let height = 0;
+  for (let i = 0; i < count; i++) {
+    const o = 6 + i * 16;
+    const size = b.readUInt32LE(o + 8);
+    const offset = b.readUInt32LE(o + 12);
+    if (b[o + 3] !== 0 || size === 0 || offset < 6 + count * 16 || offset + size > b.length) return null;
+    width = Math.max(width, b[o] || 256);
+    height = Math.max(height, b[o + 1] || 256);
+  }
+  return { type: "image/x-icon", width, height };
+}
+
+// JPEG: SOI(FFD8) 뒤 표식을 따라가 프레임 시작(SOF0~SOF15, DHT·JPG·DAC 제외)에서 크기를 읽는다.
+function jpeg(b: Buffer): ImageInfo | null {
+  if (b.length < 4 || b[0] !== 0xff || b[1] !== 0xd8 || b[2] !== 0xff) return null;
+  let o = 2;
+  while (o + 4 <= b.length) {
+    if (b[o] !== 0xff) return null;
+    const marker = b[o + 1];
+    if (marker === 0xff) {
+      o++;
+      continue;
+    }
+    // 길이 없는 표식(RSTn·TEM)
+    if ((marker >= 0xd0 && marker <= 0xd7) || marker === 0x01) {
+      o += 2;
+      continue;
+    }
+    if (marker === 0xd9 || marker === 0xda) return null;
+    const len = b.readUInt16BE(o + 2);
+    if (len < 2 || o + 2 + len > b.length) return null;
+    if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+      if (len < 7) return null;
+      const height = b.readUInt16BE(o + 5);
+      const width = b.readUInt16BE(o + 7);
+      return width > 0 && height > 0 ? { type: "image/jpeg", width, height } : null;
+    }
+    o += 2 + len;
+  }
+  return null;
+}
+
+export function detectImage(b: Buffer): ImageInfo | null {
+  return png(b) ?? ico(b) ?? jpeg(b);
+}
+
+export type ImageRejection = "file_too_large" | "unsupported_image" | "wrong_image_size";
+
+export type ImageCheck = { ok: true; info: ImageInfo } | { ok: false; reason: ImageRejection | "empty_file" };
+
+// 파비콘: PNG·ICO만, 256KB까지. PNG는 한 변 16~1024px(정사각형 권장은 화면에서 안내).
+export function checkFavicon(b: Buffer): ImageCheck {
+  if (b.length === 0) return { ok: false, reason: "empty_file" };
+  if (b.length > FAVICON_MAX_BYTES) return { ok: false, reason: "file_too_large" };
+  const info = detectImage(b);
+  if (!info || (info.type !== "image/png" && info.type !== "image/x-icon")) return { ok: false, reason: "unsupported_image" };
+  const side = (n: number) => n >= FAVICON_MIN_SIDE && n <= FAVICON_MAX_SIDE;
+  if (info.type === "image/png" && !(side(info.width) && side(info.height))) return { ok: false, reason: "wrong_image_size" };
+  return { ok: true, info };
+}
+
+// 공유 카드 이미지: PNG·JPEG만, 2MB까지, 1200×630 그대로.
+export function checkOgImage(b: Buffer): ImageCheck {
+  if (b.length === 0) return { ok: false, reason: "empty_file" };
+  if (b.length > OG_IMAGE_MAX_BYTES) return { ok: false, reason: "file_too_large" };
+  const info = detectImage(b);
+  if (!info || (info.type !== "image/png" && info.type !== "image/jpeg")) return { ok: false, reason: "unsupported_image" };
+  if (info.width !== OG_IMAGE_WIDTH || info.height !== OG_IMAGE_HEIGHT) return { ok: false, reason: "wrong_image_size" };
+  return { ok: true, info };
+}
+
+// 요청 본문을 max 바이트까지만 읽는다. 넘으면 null(끝까지 받지 않고 끊는다).
+export async function readBodyLimited(req: Request, max: number): Promise<Buffer | null> {
+  const declared = Number(req.headers.get("content-length") ?? "");
+  if (Number.isFinite(declared) && declared > max) return null;
+  if (!req.body) return Buffer.alloc(0);
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > max) {
+      await reader.cancel().catch(() => undefined);
+      return null;
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks);
+}

@@ -1,0 +1,29 @@
+import type { Metadata } from "next";
+import { headers } from "next/headers";
+import { prisma } from "../db";
+import { brandingMeta } from "./service";
+import { requestOrigin } from "./siteUrl";
+import type { BrandingTarget } from "./store";
+
+// 관리자 화면 layout의 generateMetadata: 파비콘(<link rel="icon">)·og:title·og:description·og:image·twitter:card.
+// 요청 헤더를 읽으므로 화면은 요청마다 그린다(빌드 때 DB를 읽지 않음). DB를 못 읽으면 기본값(앱 공통 메타)을 그대로 쓴다.
+// 화면마다 정한 title이 있으면 그 값이 우선한다(Next 메타데이터 병합).
+export async function brandingMetadata(target: BrandingTarget): Promise<Metadata> {
+  const origin = requestOrigin(await headers());
+  let meta;
+  try {
+    meta = await brandingMeta(prisma, target);
+  } catch (e) {
+    console.error(e);
+    return {};
+  }
+  const description = meta.description ?? undefined;
+  const images = origin ? [{ url: new URL(meta.image.url, origin).toString(), width: meta.image.width, height: meta.image.height }] : undefined;
+  return {
+    title: meta.title,
+    description,
+    ...(meta.favicon && { icons: { icon: [{ url: meta.favicon.url, type: meta.favicon.type }], shortcut: [{ url: meta.favicon.url, type: meta.favicon.type }] } }),
+    openGraph: { type: "website", title: meta.title, description, ...(images && { images }) },
+    twitter: { card: "summary_large_image", title: meta.title, description, ...(images && { images: images.map((i) => i.url) }) },
+  };
+}
