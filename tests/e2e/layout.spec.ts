@@ -64,9 +64,9 @@ test("대분류를 누르면 왼쪽 메뉴가 그 대분류의 하위 메뉴로 
 
 test("권한 없는 직원에게는 메뉴와, 하위 메뉴가 모두 숨겨진 대분류가 보이지 않는다", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  // 상품 권한만 있는 직원
+  // 상품 권한만 있는 직원(리뷰·쿠폰은 권한 없이 조회라 회원·프로모션 대분류는 남는다)
   await login(page, "demo-staff@example.com", "/seller/products");
-  await expect(gnb(page).locator(".gnb-i")).toHaveText(["홈", "상품", "프로모션", "디자인", "쇼핑몰 설정"]);
+  await expect(gnb(page).locator(".gnb-i")).toHaveText(["홈", "상품", "회원", "프로모션", "디자인", "쇼핑몰 설정"]);
   await gnb(page).getByRole("link", { name: "쇼핑몰 설정" }).click();
   await expect(page).toHaveURL(/\/seller\/settings\/shop$/);
   // 대표자 전용·설정 권한 메뉴는 숨는다
