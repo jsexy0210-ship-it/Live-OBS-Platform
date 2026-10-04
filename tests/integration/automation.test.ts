@@ -2453,6 +2453,33 @@ describe("Codex 20차 반영(fd75a03)", () => {
   });
 });
 
+describe("Codex 21차 반영(284abcb)", () => {
+  it("누르기 직전 문서가 같은 경로라도 허용하지 않은 쿼리·조각이 붙은 주소로 넘어가 있으면 행동 0건·실패(이동 규칙 전체로 검사)", async () => {
+    for (const url of ["https://myshop.cafe24.com/disp/admin/shop1/?next=https://evil.test", "https://myshop.cafe24.com/disp/admin/shop1/#frag"]) {
+      const a = await bought();
+      const rt = runtime();
+      rt.browser.currentUrlOverride = () => url;
+      expect(await runOnce(db, rt, W), url).toBe("failed");
+      expect(await job(a.jobId), url).toMatchObject({ status: "FAILED", lastError: "unsafe_action:page_not_allowed" });
+      expect(rt.browser.performed.filter((p) => p.type === "click" || p.type === "fill"), url).toHaveLength(0);
+      await db.automationJob.updateMany({ data: { deviatedSteps: [], lastDeviationAt: null } });
+    }
+  });
+
+  it("판단 모델이 낸 비용이 음수·소수·숫자 아님이면 0으로 바꿔 넘기지 않고 bad_cost로 멈춘다(행동 0건, 비용 누적 없음)", async () => {
+    for (const bad of [-5, 1.5, "10", Number.NaN]) {
+      const a = await bought();
+      const rt = runtime();
+      rt.browser.pageText = () => "화면이 바뀌었어요 · 로그아웃"; // 작업서 단서와 달라 판단 모델로 간다
+      rt.planner.decide = async () => ({ action: { type: "click", target: "앱 설치" }, costWon: bad as number });
+      expect(await runOnce(db, rt, W), String(bad)).toBe("failed");
+      expect(await job(a.jobId), String(bad)).toMatchObject({ status: "FAILED", lastError: "unsafe_action:bad_cost", costUsed: 0 });
+      expect(rt.browser.performed.filter((p) => p.type === "click"), String(bad)).toHaveLength(0);
+      await db.automationJob.updateMany({ data: { deviatedSteps: [], lastDeviationAt: null } });
+    }
+  });
+});
+
 // 쇼핑몰 연결 단계(「앱 설치」 누르기)를 마친 뒤에만 문서 주소가 바뀌게 한다: 웹훅 단계의 첫 변경 행동인 비밀값 입력 검사를 시험한다
 // (그 전부터 바뀌어 있으면 누르기 직전 주소 검사(page_not_allowed)가 먼저 멈춘다 — 19차 시험)
 function afterConnect(rt: { browser: FakeBrowserExecutor }, url: string | null) {

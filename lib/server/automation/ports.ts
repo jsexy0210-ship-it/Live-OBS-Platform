@@ -204,6 +204,21 @@ export type SecretTargets = Readonly<Partial<Record<SecretRef, readonly string[]
 // 이동 규칙: 이 작업의 쇼핑몰 호스트(정확히 일치)와 단계별 허용 경로 접두·쿼리 키. 없으면 이동할 수 없다.
 export type NavRules = { shopHost: string | null | undefined; pathPrefixes: readonly string[]; queryKeys: readonly string[] };
 
+// 이동 규칙 검사: 이동 행동의 주소와, 브라우저 변경 행동 직전의 현재 문서 주소(관찰·실제) 모두 같은 규칙으로 본다.
+function navCheck(raw: string, nav: NavRules | null): { ok: true } | { ok: false; reason: string } {
+  if (!hostAllowed(raw)) return { ok: false, reason: "host_not_allowed" };
+  const u = new URL(raw);
+  // 호스트는 이 작업의 쇼핑몰 호스트만(같은 플랫폼의 다른 몰·중앙 호스트 거부)
+  if (!nav?.shopHost || u.hostname !== nav.shopHost) return { ok: false, reason: "host_not_allowed" };
+  // 경로는 단계별 허용 접두, 쿼리는 정한 키만, 조각(#)은 쓰지 않는다
+  if (!nav.pathPrefixes.some((p) => p.startsWith("/") && u.pathname.startsWith(p))) return { ok: false, reason: "target_not_allowed" };
+  if ([...u.searchParams.keys()].some((k) => !nav.queryKeys.includes(k)) || u.hash) return { ok: false, reason: "target_not_allowed" };
+  return { ok: true };
+}
+
+// 현재 문서 주소가 이 단계의 이동 규칙(호스트·경로·쿼리 키·조각 금지) 안인지. 주소를 모르면 거부한다
+export const pageAllowedByNav = (raw: string | null, nav: NavRules | null): boolean => !!raw && navCheck(raw, nav).ok;
+
 export function validateDecision(
   step: Step,
   d: PlannerDecision,
@@ -218,16 +233,8 @@ export function validateDecision(
   if (!Number.isInteger(d.costWon) || d.costWon < 0) return { ok: false, reason: "bad_cost" };
   if (!a || !ALLOWED_ACTIONS[step.kind].includes(a.type)) return { ok: false, reason: "action_not_allowed" };
   switch (a.type) {
-    case "navigate": {
-      if (!hostAllowed(a.url)) return { ok: false, reason: "host_not_allowed" };
-      const u = new URL(a.url);
-      // 호스트는 이 작업의 쇼핑몰 호스트만(같은 플랫폼의 다른 몰·중앙 호스트 거부)
-      if (!nav?.shopHost || u.hostname !== nav.shopHost) return { ok: false, reason: "host_not_allowed" };
-      // 경로는 단계별 허용 접두, 쿼리는 정한 키만, 조각(#)은 쓰지 않는다
-      if (!nav.pathPrefixes.some((p) => p.startsWith("/") && u.pathname.startsWith(p))) return { ok: false, reason: "target_not_allowed" };
-      if ([...u.searchParams.keys()].some((k) => !nav.queryKeys.includes(k)) || u.hash) return { ok: false, reason: "target_not_allowed" };
-      return { ok: true };
-    }
+    case "navigate":
+      return navCheck(a.url, nav);
     case "click":
       if (typeof a.target !== "string" || !a.target || a.target.length > 200) return { ok: false, reason: "bad_target" };
       if (dangerous(a.target)) return { ok: false, reason: "dangerous_target" };

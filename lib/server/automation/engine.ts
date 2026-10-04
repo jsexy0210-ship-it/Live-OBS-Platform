@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { cueMatches, matchException, navRulesFor, plannerVocabulary, resolveShop, type Playbook } from "./playbook";
 import {
   sanitizeObservation,
+  pageAllowedByNav,
   secretOriginAllowed,
   validateDecision,
   type ActionOutcome,
@@ -224,8 +225,13 @@ async function runAll(
         const vocabulary = plannerVocabulary(pb ?? secretBook?.steps[step.key]);
         const decision = await rt.planner.decide({ step, observation: sanitizeObservation(raw, secrets, vocabulary), history, reference });
         stats.plannerCalls++;
-        costWon = Number.isInteger(decision.costWon) && decision.costWon > 0 ? decision.costWon : 0;
+        // 모델이 낸 비용 원값부터 검사한다(음수·소수·숫자 아님은 바꿔 넘기지 않고 bad_cost로 멈춤). 통과한 비용만 누적한다
         const check = validateDecision(step, decision, secrets, secretTargets, allowedTargets, nav);
+        if (!check.ok && check.reason === "bad_cost") {
+          await touchStats();
+          return { kind: "failed", reason: "unsafe_action:bad_cost" };
+        }
+        costWon = decision.costWon;
         stats.costUsed += costWon;
         await touchStats();
         if (stats.costUsed > opts.costLimit) return { kind: "failed", reason: "cost_limit" };
@@ -277,8 +283,7 @@ async function runAll(
       if (session && mutating) {
         guard();
         const here = await session.currentUrl();
-        const onPage = (u: string | null) => !!u && !!nav && secretOriginAllowed(u, nav.shopHost, nav.pathPrefixes);
-        if (!onPage(raw.url) || !onPage(here)) return { kind: "failed", reason: "unsafe_action:page_not_allowed" };
+        if (!pageAllowedByNav(raw.url, nav) || !pageAllowedByNav(here, nav)) return { kind: "failed", reason: "unsafe_action:page_not_allowed" };
       }
       if (MUTATING.includes(action.type) && !markedSteps.has(step.key) && hooks.markChanged) {
         await hooks.markChanged(step.key);
@@ -359,8 +364,7 @@ export async function runRollback(
         if (session && rb.kind === "browser" && MUTATING.includes(action.type)) {
           guard();
           const here = await session.currentUrl();
-          const onPage = (u: string | null) => !!u && secretOriginAllowed(u, nav.shopHost, nav.pathPrefixes);
-          if (!onPage(raw.url) || !onPage(here)) return { kind: "cleanup_needed", reason: "rollback_unsafe:page_not_allowed" };
+          if (!pageAllowedByNav(raw.url, nav) || !pageAllowedByNav(here, nav)) return { kind: "cleanup_needed", reason: "rollback_unsafe:page_not_allowed" };
         }
         let pairing: string | undefined;
         if (rb.kind === "obs") {
