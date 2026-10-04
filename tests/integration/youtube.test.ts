@@ -8,6 +8,7 @@ import { YoutubeQuotaError, type ChannelInfo, type VideoInfo, type YoutubeClient
 import { quotaDay, reserveQuota } from "../../lib/server/youtube/quota";
 import { connectChannel, connectLive, findChannelLive, unlinkLive, youtubeStatus } from "../../lib/server/youtube/service";
 import { syncYoutube } from "../../lib/server/youtube/sync";
+import { startYoutubeWorker } from "../../lib/server/youtube/worker";
 import { PASSWORD, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
 // 유튜브 연동 PR 1: 채널·방송 연결, 방송 자동 시작·종료, 할당량, 판매자 격리, 키 없음. 유튜브 호출은 모두 모의.
@@ -89,6 +90,11 @@ describe("키 없음·권한", () => {
     const put = await putChannel(c, "@shopa");
     expect(put.status).toBe(409);
     expect(await put.json()).toMatchObject({ error: "not_configured" });
+  });
+  it("타이머는 키가 없거나 SCHEDULER_DISABLED=1이면 시작하지 않는다", () => {
+    expect(startYoutubeWorker(db, {})).toBeNull();
+    process.env.YOUTUBE_API_KEY = "k";
+    expect(startYoutubeWorker(db, { SCHEDULER_DISABLED: "1" })).toBeNull();
   });
   it("BROADCAST_RUN 직원은 되고, 없는 직원은 403", async () => {
     const s = await shop();
