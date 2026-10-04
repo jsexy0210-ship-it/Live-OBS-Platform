@@ -88,3 +88,18 @@ test("없는 토큰 주소는 주문을 보여 주지 않고 주소 확인 안�
   await expect(page.getByTestId("overlay-gone")).toHaveText("오버레이 주소가 바뀌었어요. 파트너스 관리자에서 새 주소를 넣어 주세요");
   await expect(page.getByTestId("overlay-queue")).toHaveCount(0);
 });
+
+test("처음 열 때 서버에 닿지 않으면 빈 화면 대신 연결 끊김 안내를 보이고, 연결되면 상태를 보인다", async ({ page }) => {
+  await page.goto("/seller/login?next=/seller/products");
+  await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
+  await page.waitForURL((u) => u.pathname === "/seller/products");
+  const token = await issue(page);
+  const ov = await page.context().newPage();
+  await ov.route("**/api/overlay/*/state", (r) => r.abort("connectionreset"));
+  await ov.goto(`/overlay/${token}`);
+  await expect(ov.getByTestId("overlay-offline")).toHaveText("연결이 끊겼어요. 다시 연결하는 중이에요");
+  await ov.unroute("**/api/overlay/*/state");
+  await expect(ov.getByTestId("overlay-idle")).toBeVisible({ timeout: 20_000 });
+  await expect(ov.getByTestId("overlay-offline")).toHaveCount(0);
+  await ov.close();
+});

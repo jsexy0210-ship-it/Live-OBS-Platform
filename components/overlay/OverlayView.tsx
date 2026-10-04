@@ -11,9 +11,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 type Item = { id: string; nickname: string; gradeSnapshot: string | null; productLabel: string; quantity: number };
 type State = { version: number; live: boolean; opening: Item | null; waiting: Item[] };
-type View = { kind: "loading" } | { kind: "gone" } | { kind: "ok"; state: State; offline: boolean };
+type View = { kind: "loading" } | { kind: "gone" } | { kind: "offline" } | { kind: "ok"; state: State; offline: boolean };
 
 const POLL_MS = 15_000;
+
+// 연결 실패: 그린 화면이 있으면 그대로 두고 안내만 더하고, 아직 한 번도 못 그렸으면 안내만 보인다(OV-006). 주소가 바뀐 상태는 그대로 둔다
+const offline = (v: View): View => (v.kind === "ok" ? { ...v, offline: true } : v.kind === "gone" ? v : { kind: "offline" });
 const QUEUE_ROWS = { portrait: 4, landscape: 5 };
 
 export function OverlayView({ token, landscape }: { token: string; landscape: boolean }) {
@@ -33,7 +36,7 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
     try {
       res = await fetch(`${base}/state`, { cache: "no-store" });
     } catch {
-      if (n > applied.current) setView((v) => (v.kind === "ok" ? { ...v, offline: true } : v));
+      if (n > applied.current) setView(offline);
       return;
     }
     if (n <= applied.current) return;
@@ -42,7 +45,7 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
       version.current = null;
       return setView({ kind: "gone" });
     }
-    if (!res.ok) return setView((v) => (v.kind === "ok" ? { ...v, offline: true } : v));
+    if (!res.ok) return setView(offline);
     const state = (await res.json().catch(() => null)) as State | null;
     if (!state || n <= applied.current) return;
     applied.current = n;
@@ -72,7 +75,7 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
     const poll = setInterval(() => {
       fetch(`${base}/version`, { cache: "no-store" })
         .then(async (r) => (r.status === 404 ? onVersion(null) : r.ok ? onVersion(((await r.json()) as { version?: unknown }).version) : undefined))
-        .catch(() => setView((v) => (v.kind === "ok" ? { ...v, offline: true } : v)));
+        .catch(() => setView(offline));
     }, POLL_MS);
     return () => {
       es?.close();
@@ -94,6 +97,11 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
   return (
     <div className="ovl-root">
       <div className={`ovl ${landscape ? "ovl-land" : "ovl-port"}`} style={{ width: W, height: H, transform: `scale(${scale})` }} data-testid="overlay">
+        {view.kind === "offline" && (
+          <div className="ovl-pill ovl-notice" role="status" data-testid="overlay-offline">
+            연결이 끊겼어요. 다시 연결하는 중이에요
+          </div>
+        )}
         {view.kind === "gone" && (
           <div className="ovl-pill ovl-notice" role="status" data-testid="overlay-gone">
             오버레이 주소가 바뀌었어요. 파트너스 관리자에서 새 주소를 넣어 주세요
