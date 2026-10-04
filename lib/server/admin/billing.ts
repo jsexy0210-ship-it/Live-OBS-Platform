@@ -33,6 +33,17 @@ const accessSql = (now: Date) => Prisma.sql`CASE
   WHEN sub."status" = 'ACTIVE' AND NOT sub."cancelAtPeriodEnd" AND sub."nextChargeAt" <= ${now} THEN 'charging'
   ELSE 'expired' END`;
 
+// 구독 현황 대상(승인된 파트너스: 운영 중·정지·종료)과 이용 상태별 수. 구독 현황 탭 숫자와 대시보드(MA-001)가 같은 기준을 쓴다.
+const subscriptionBase = Prisma.sql`FROM "Seller" se
+    LEFT JOIN "SellerSubscription" sub ON sub."sellerId" = se."id"
+    LEFT JOIN "SubscriptionPlan" p ON p."id" = COALESCE(sub."planId", se."planId")
+    WHERE se."approvedAt" IS NOT NULL AND se."status" IN ('ACTIVE', 'SUSPENDED', 'CLOSED')`;
+
+export async function subscriptionAccessCounts(db: PrismaClient, now: Date): Promise<Record<SellerAccess, number>> {
+  const rows = await db.$queryRaw<{ access: SellerAccess; n: number }[]>`SELECT ${accessSql(now)} AS "access", count(*)::int AS "n" ${subscriptionBase} GROUP BY 1`;
+  return Object.fromEntries(ACCESS.map((a) => [a, rows.find((r) => r.access === a)?.n ?? 0])) as Record<SellerAccess, number>;
+}
+
 export type AdminSubscriptionQuery = { access?: string | null; plan?: string | null; q?: string | null; cursor?: string | null; limit?: string | null };
 
 type SubscriptionRow = {
@@ -67,10 +78,7 @@ export async function listAdminSubscriptions(db: PrismaClient, admin: AdminSessi
   if (q.length > 50) return { ok: false as const };
   const now = opts.now ?? (await dbNow(db));
   const access = accessSql(now);
-  const base = Prisma.sql`FROM "Seller" se
-    LEFT JOIN "SellerSubscription" sub ON sub."sellerId" = se."id"
-    LEFT JOIN "SubscriptionPlan" p ON p."id" = COALESCE(sub."planId", se."planId")
-    WHERE se."approvedAt" IS NOT NULL AND se."status" IN ('ACTIVE', 'SUSPENDED', 'CLOSED')`;
+  const base = subscriptionBase;
   const conds: Prisma.Sql[] = [];
   if (query.access) conds.push(Prisma.sql`(${access}) = ${query.access}`);
   if (query.plan) conds.push(Prisma.sql`p."code" = ${query.plan}`);
@@ -83,8 +91,7 @@ export async function listAdminSubscriptions(db: PrismaClient, admin: AdminSessi
       sub."status"::text AS "subStatus", sub."cardLabel", sub."currentPeriodEnd", sub."nextChargeAt", sub."cancelAtPeriodEnd", sub."graceUntil", sub."retryCount"
     ${base}${extra}
     ORDER BY se."createdAt" DESC, se."id" DESC LIMIT ${take + 1}`;
-  const countRows = await db.$queryRaw<{ access: SellerAccess; n: number }[]>`SELECT ${access} AS "access", count(*)::int AS "n" ${base} GROUP BY 1`;
-  const counts = Object.fromEntries(ACCESS.map((a) => [a, countRows.find((r) => r.access === a)?.n ?? 0])) as Record<SellerAccess, number>;
+  const counts = await subscriptionAccessCounts(db, now);
   const page = rows.slice(0, take);
   const last = page[page.length - 1];
   return {

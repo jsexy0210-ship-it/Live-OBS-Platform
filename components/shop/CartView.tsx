@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { CART_COUNT_EVENT } from "./ShopChrome";
 import { call } from "./reviewShared";
 import ShopModal from "./ShopModal";
 import "./Cart.css";
@@ -29,6 +30,7 @@ export default function CartView({ slug }: { slug: string }) {
       const r = await call<Cart>(api);
       if (!r.ok) return setView({ kind: r.status === 401 ? "login" : "error" });
       setView({ kind: "ok", cart: r.data });
+      window.dispatchEvent(new CustomEvent(CART_COUNT_EVENT, { detail: r.data.count }));
       setPicked((prev) => {
         const ids = new Set(r.data.items.map((l) => l.id));
         // 처음에는 주문할 수 있는 줄을 모두 고르고, 다시 불러올 때는 남아 있는 선택만 유지한다

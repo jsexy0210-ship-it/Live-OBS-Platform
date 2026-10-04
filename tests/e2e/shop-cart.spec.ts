@@ -88,6 +88,25 @@ test.describe.serial("로그인 구매자", () => {
     await expect(page.getByRole("link", { name: "상품 보러 가기" })).toHaveAttribute("href", `/shop/${SLUG}/products`);
   });
 
+  test("머리 장바구니 배지가 개수를 보여 주고, 삭제하면 따라 바뀐다. 비회원은 배지 없음", async ({ page, browser }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`/shop/${SLUG}`);
+    const count = ((await (await page.request.get(`/api/shop/${SLUG}/cart/count`)).json()) as { count: number }).count;
+    expect(count).toBeGreaterThan(0);
+    const badge = page.locator(".shop-hics .shop-badge");
+    await expect(badge).toHaveText(String(count));
+    await expect(page.getByRole("link", { name: `장바구니 (${count}개)` })).toBeVisible();
+    await page.goto(`/shop/${SLUG}/cart`);
+    await page.locator(".cart-tbl tbody tr", { hasText: "문라이트 컬렉션 박스" }).getByRole("button", { name: "삭제" }).click();
+    await expect(badge).toHaveText(String(count - 1));
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.locator(".shop-tabbar .shop-badge")).toHaveText(String(count - 1));
+    const guest = await browser.newPage({ baseURL: page.url().split("/shop/")[0] });
+    await guest.goto(`/shop/${SLUG}`);
+    await expect(guest.locator(".shop-badge")).toHaveCount(0);
+    await guest.close();
+  });
+
   test("휴대폰 390: 줄이 카드로 쌓이고 가로 스크롤 없음, 합계 상자는 아래 바 위에 붙는다", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`/shop/${SLUG}/cart`);
