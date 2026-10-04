@@ -247,7 +247,10 @@ describe("재고", () => {
   it("교환 발송은 교환 품목의 재고를 빼고, 재고가 모자라면 아무것도 바꾸지 않는다", async () => {
     const s = await shop();
     const id = await s.delivered();
-    const [a, b] = await s.items(id); // 부스터 팩(2개), 슬리브(1개)
+    // 부스터 팩(2개), 슬리브(1개). 정렬은 DB 문자 정렬 규칙에 따라 달라지므로 옵션으로 고른다
+    const all = await s.items(id);
+    const a = all.find((i) => i.optionId === s.oa.id)!;
+    const b = all.find((i) => i.optionId === s.ob.id)!;
     const req = await s.exch(id, [a.id]);
     await proceedToReceived(s, req.id);
     const at = await stock(s.oa.id);
