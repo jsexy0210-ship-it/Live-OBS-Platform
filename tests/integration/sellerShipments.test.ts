@@ -86,7 +86,7 @@ describe("배송 처리 목록 GET /api/seller/shipments", () => {
     const o = await s.order();
     const sent = await ship(s.cookie, [{ orderId: o.id, courier: "CJ", trackingNumber: "1234-5678-9012" }]);
     expect(sent.status).toBe(200);
-    expect(sent.body.results).toEqual([{ orderId: o.id, ok: true, shipment: expect.objectContaining({ courier: "CJ", trackingNumber: "123456789012", status: "IN_TRANSIT" }) }]);
+    expect(sent.body.results).toEqual([{ orderId: o.id, ok: true, mode: "shipped", previous: null, shipment: expect.objectContaining({ courier: "CJ", trackingNumber: "123456789012", status: "IN_TRANSIT" }) }]);
     expect((await list(s.cookie)).body.shipments).toEqual([]);
     const transit = (await list(s.cookie, "?tab=in_transit&q=123456789012")).body.shipments;
     expect(transit).toMatchObject([{ orderId: o.id, orderNo: o.orderNo, shipment: { courier: "CJ", trackingNumber: "123456789012", status: "IN_TRANSIT" } }]);
@@ -213,5 +213,59 @@ describe("송장 일괄 입력·배송 완료 POST", () => {
     expect((await ship(staff, [{ orderId: o.id, courier: "CJ", trackingNumber: "123456789012" }])).status).toBe(403);
     expect((await deliver(staff, [o.id])).status).toBe(403);
     expect(await db.shipment.count()).toBe(0);
+  });
+});
+
+describe("#215 후속: 송장 수정 표시·기간 검사·탭별 정렬", () => {
+  it("일괄 입력 결과에 처음 발송(shipped)인지 배송 중 송장 수정(updated)인지와 바꾸기 전 송장을 준다", async () => {
+    const s = await shop();
+    const o = await s.order();
+    const first = await ship(s.cookie, [{ orderId: o.id, courier: "CJ", trackingNumber: "123456789012" }]);
+    expect(first.body.results).toMatchObject([{ orderId: o.id, ok: true, mode: "shipped", previous: null }]);
+    const again = await ship(s.cookie, [{ orderId: o.id, courier: "HANJIN", trackingNumber: "999988887777" }]);
+    expect(again.body.results).toMatchObject([
+      { orderId: o.id, ok: true, mode: "updated", previous: { courier: "CJ", trackingNumber: "123456789012" }, shipment: { courier: "HANJIN", trackingNumber: "999988887777" } },
+    ]);
+    expect(await db.auditLog.count({ where: { action: "order.shipment.update", targetId: o.id } })).toBe(1);
+  });
+
+  it("시작일이 종료일보다 늦거나 기간이 366일을 넘으면 400, 같은 날·366일은 된다", async () => {
+    const s = await shop();
+    await s.order({ createdAt: new Date("2026-10-01T10:00:00+09:00") });
+    expect((await list(s.cookie, "?from=2026-10-02&to=2026-10-01")).status).toBe(400);
+    expect((await list(s.cookie, "?tab=in_transit&from=2026-10-02&to=2026-10-01")).status).toBe(400);
+    expect((await list(s.cookie, "?from=2025-10-01&to=2026-10-02")).status).toBe(400);
+    expect((await list(s.cookie, "?from=2025-10-01&to=2026-10-01")).status).toBe(200);
+    expect(ids((await list(s.cookie, "?from=2026-10-01&to=2026-10-01")).body)).toHaveLength(1);
+  });
+
+  it("배송 중 탭은 발송 시각, 배송 완료 탭은 배송 완료 시각 내림차순이고, 같은 시각이 섞여도 커서로 빠짐·겹침 없이 넘어간다", async () => {
+    const s = await shop();
+    // 주문 시각 순서(a < b < c < d)와 발송·완료 시각 순서를 서로 다르게 둔다
+    const base = new Date("2026-10-01T00:00:00Z").getTime();
+    const made = [] as { id: string }[];
+    for (let i = 0; i < 4; i++) made.push(await s.order({ createdAt: new Date(base + i * 60_000) }));
+    const shippedAt = [new Date(base + 9 * 3600_000), new Date(base + 7 * 3600_000), new Date(base + 9 * 3600_000), new Date(base + 8 * 3600_000)];
+    const deliveredAt = [new Date(base + 20 * 3600_000), new Date(base + 30 * 3600_000), new Date(base + 25 * 3600_000), new Date(base + 30 * 3600_000)];
+    for (let i = 0; i < 4; i++) {
+      await db.shipment.create({ data: { sellerId: s.seller.id, orderId: made[i].id, courier: "CJ", trackingNumber: `12345678901${i}`, status: "IN_TRANSIT", shippedAt: shippedAt[i] } });
+    }
+    const page = async (tab: string) => {
+      const seen: string[] = [];
+      let cursor: string | null = null;
+      do {
+        const r = await list(s.cookie, `?tab=${tab}&limit=1${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`);
+        expect(r.status).toBe(200);
+        seen.push(...ids(r.body));
+        cursor = r.body.nextCursor;
+      } while (cursor);
+      return seen;
+    };
+    // 발송 시각 내림차순: 9시(0·2, 같은 시각은 주문 id 내림차순) → 8시(3) → 7시(1)
+    const sameTime = [made[0].id, made[2].id].sort().reverse();
+    expect(await page("in_transit")).toEqual([...sameTime, made[3].id, made[1].id]);
+    for (let i = 0; i < 4; i++) await db.shipment.update({ where: { orderId: made[i].id }, data: { status: "DELIVERED", deliveredAt: deliveredAt[i] } });
+    const sameDone = [made[1].id, made[3].id].sort().reverse();
+    expect(await page("delivered")).toEqual([...sameDone, made[2].id, made[0].id]);
   });
 });
