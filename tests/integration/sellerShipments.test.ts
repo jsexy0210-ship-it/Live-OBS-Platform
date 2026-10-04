@@ -126,7 +126,14 @@ describe("배송 처리 목록 GET /api/seller/shipments", () => {
     expect((await list(noPii, `?q=${encodeURIComponent("박받")}`)).body.shipments).toEqual([]);
     expect(await db.auditLog.count({ where: { action: "customer.pii.view" } })).toBe(0);
     expect((await list(pii, `?q=${encodeURIComponent("박받")}`)).body.shipments[0].shippingAddress).toMatchObject({ recipientName: "박받는", phone: "01033334444" });
-    expect(await db.auditLog.findMany({ where: { action: "customer.pii.view" } })).toMatchObject([{ targetType: "ShipmentList", after: { orderIds: [o.id], count: 1 } }]);
+    // 일치하는 받는 분이 없어도 이름으로 찾았으면 기록한다(0건, 검색어는 남기지 않음)
+    expect((await list(pii, `?q=${encodeURIComponent("없는사람")}`)).body.shipments).toEqual([]);
+    const audits = await db.auditLog.findMany({ where: { action: "customer.pii.view" }, orderBy: { createdAt: "asc" } });
+    expect(audits).toMatchObject([
+      { targetType: "ShipmentList", reason: "shipment_list_search", after: { orderIds: [o.id], count: 1 } },
+      { targetType: "ShipmentList", reason: "shipment_list_search", after: { orderIds: [], count: 0 } },
+    ]);
+    expect(JSON.stringify(audits)).not.toContain("없는사람");
   });
 });
 
