@@ -245,21 +245,31 @@ test("본인확인 시작 응답을 잃고 다시 누르면 같은 attemptKey로
 });
 
 test("가입 신청: 화면의 약관 버전이 서버와 다르면 문자를 보내지 않고, 동의를 비워 다시 동의하게 한다", async ({ page }) => {
+  // 약관이 바뀌기 전에 열어 둔 화면: 처음 받은 화면의 약관 버전만 예전 값으로 바꿔 둔다(그 뒤 화면 데이터 요청은 그대로 서버 값)
+  await page.route(
+    (u) => u.pathname === "/seller/signup",
+    async (route) => {
+      if (route.request().resourceType() !== "document") return route.continue();
+      const res = await route.fetch();
+      return route.fulfill({ response: res, body: (await res.text()).replace(/\d{4}-\d{2}-\d{2}\.v\d+/g, "2026-01-01.v0") });
+    },
+    { times: 1 },
+  );
   await page.goto("/seller/signup");
   const who = `최${letters(uniq())}`;
   await fillIdentity(page, who);
   await agreeSignupTerms(page);
-  // 예전 화면이 보낸 것처럼 약관 버전만 바꿔 보낸다(한 번만)
-  await page.route(
-    (u) => u.pathname === "/api/seller-signup/verification",
-    (route) => route.continue({ postData: JSON.stringify({ ...(route.request().postDataJSON() as object), termsVersion: "2026-01-01.v0" }) }),
-    { times: 1 },
-  );
+  const stale = page.waitForRequest((r) => r.url().endsWith("/api/seller-signup/verification") && r.method() === "POST");
   const refused = page.waitForResponse((r) => r.url().endsWith("/api/seller-signup/verification") && r.request().method() === "POST");
   // 거절되면 화면 데이터를 새로 받아 서버의 지금 약관 버전으로 바꾼다(열어 둔 예전 화면이 같은 버전을 계속 보내지 않게)
   const refreshed = page.waitForRequest((r) => new URL(r.url()).pathname === "/seller/signup" && r.headers()["rsc"] === "1");
   await page.getByRole("button", { name: "인증번호 받기" }).click();
-  expect((await refused).status()).toBe(409);
+  expect((await stale).postDataJSON()).toMatchObject({ termsVersion: "2026-01-01.v0", privacyVersion: "2026-01-01.v0" });
+  const refusedRes = await refused;
+  expect(refusedRes.status()).toBe(409);
+  // 서버는 거절하면서 지금 약관 버전을 알려 준다
+  const current = (await refusedRes.json()) as { termsVersion: string; privacyVersion: string };
+  expect(current.termsVersion).toMatch(/^\d{4}-\d{2}-\d{2}\.v\d+$/);
   await refreshed;
   await expect(page.locator("#idv-name")).toHaveValue(who);
   await expect(page.locator("#su-terms-err")).toHaveText("약관이 바뀌었어요. 다시 확인해 주세요");
@@ -268,10 +278,14 @@ test("가입 신청: 화면의 약관 버전이 서버와 다르면 문자를 �
   await expect(page.getByRole("button", { name: "인증번호 받기" })).toBeDisabled();
   await expect(page.getByText("인증번호를 보냈어요", { exact: false })).toHaveCount(0);
   await shot(page, "PF-007-1-outdated");
-  // 다시 동의하면 지금 버전으로 보내 본인확인을 이어 간다
+  // 다시 동의하면 서버의 지금 버전으로 보내 본인확인을 이어 간다
   await agreeSignupTerms(page);
   await expect(page.locator("#su-terms-err")).toHaveCount(0);
+  const again = page.waitForRequest((r) => r.url().endsWith("/api/seller-signup/verification") && r.method() === "POST");
+  const accepted = page.waitForResponse((r) => r.url().endsWith("/api/seller-signup/verification") && r.request().method() === "POST");
   await verify(page);
+  expect((await again).postDataJSON()).toMatchObject({ termsVersion: current.termsVersion, privacyVersion: current.privacyVersion });
+  expect((await accepted).status()).toBe(200);
   await expect(page.getByText("본인확인을 마쳤어요")).toBeVisible();
 });
 

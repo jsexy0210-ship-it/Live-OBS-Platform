@@ -18,7 +18,7 @@ const CARRIERS: { value: Carrier; label: string }[] = [
 
 // device: 본인확인 대행사에 보내는 기기 구분(PC는 768px 이상, 구매자 가입과 같은 기준)
 export type IdentityPerson = { name: string; phone: string; birth7: string; carrier: Carrier; device: "PC" | "MOBILE" };
-type Fail = { status: number; error: string; message?: string };
+type Fail = { status: number; error: string; message?: string; body?: Record<string, unknown> };
 
 // 서버가 문구를 주지 않는 하루 한도 응답(429)
 const LIMIT_MESSAGES: Record<string, string> = {

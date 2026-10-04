@@ -51,6 +51,9 @@ const validDate = (d: string) => {
 
 export default function PartnersSignupForm({ consentVersions }: { consentVersions: ConsentVersions }) {
   const router = useRouter();
+  // 보내는 약관 버전: 서버 화면이 넘긴 값. 409 consent_outdated 본문에 지금 버전이 오면 그 값으로 바꾼다
+  const [versions, setVersions] = useState(consentVersions);
+  useEffect(() => setVersions(consentVersions), [consentVersions]);
   const [step, setStep] = useState(0);
   const [unavailable, setUnavailable] = useState(false);
   const [verification, setVerification] = useState<{ id: string; who: { name: string; phone: string } } | null>(null);
@@ -95,14 +98,18 @@ export default function PartnersSignupForm({ consentVersions }: { consentVersion
   };
 
   // 서버가 동의를 받지 않았으면(terms_required·consent_outdated) 동의 칸을 비우고 그 칸에서 안내한다
-  const consentRefused = (r: { error: string }) => {
+  const consentRefused = (r: { error: string; body?: Record<string, unknown> }) => {
     const text = CONSENT_TEXT[r.error];
     if (!text) return false;
     setAgreedTerms(false);
     setAgreedPrivacy(false);
     setConsentError(text);
-    // 약관이 바뀌었으면 지금 버전을 새로 받는다(입력한 칸은 그대로 둔다)
-    if (r.error === "consent_outdated") router.refresh();
+    // 약관이 바뀌었으면 지금 버전으로 바꾼다: 서버가 본문에 준 버전을 바로 쓰고, 화면 데이터도 새로 받는다(입력한 칸은 그대로 둔다)
+    if (r.error === "consent_outdated") {
+      const { termsVersion, privacyVersion } = r.body ?? {};
+      if (typeof termsVersion === "string" && typeof privacyVersion === "string") setVersions({ termsVersion, privacyVersion });
+      router.refresh();
+    }
     focus("su-terms-all");
     return true;
   };
@@ -299,9 +306,9 @@ export default function PartnersSignupForm({ consentVersions }: { consentVersion
                     label="대표자 휴대폰 본인확인"
                     base={BASE}
                     blocked={!consentReady}
-                    scope={JSON.stringify(consentVersions)}
+                    scope={JSON.stringify(versions)}
                     start={(person, attemptKey) =>
-                      api<{ verificationId: string }>(BASE, { method: "POST", body: { ...person, attemptKey, agreedTerms, agreedPrivacy, ...consentVersions } })
+                      api<{ verificationId: string }>(BASE, { method: "POST", body: { ...person, attemptKey, agreedTerms, agreedPrivacy, ...versions } })
                     }
                     onStartRefused={consentRefused}
                     onSentChange={setIdvSent}
