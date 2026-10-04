@@ -40,8 +40,8 @@ async function searchFor(page: Page, text: string) {
 // 판매 상태·재고 라디오를 고르고 「검색」을 누른다(응답을 기다리지 않는다)
 async function applyStatus(page: Page, status: string, stock = "전체") {
   const box = searchBox(page);
-  await box.getByRole("radiogroup", { name: "판매 상태" }).getByRole("radio", { name: status, exact: true }).check();
-  await box.getByRole("radiogroup", { name: "재고" }).getByRole("radio", { name: stock, exact: true }).check();
+  await box.getByRole("radiogroup", { name: "판매 상태", exact: true }).getByRole("radio", { name: status, exact: true }).check();
+  await box.getByRole("radiogroup", { name: "재고", exact: true }).getByRole("radio", { name: stock, exact: true }).check();
   await box.getByRole("button", { name: "검색", exact: true }).click();
 }
 
