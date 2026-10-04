@@ -12,6 +12,7 @@
 | 개발 전담 (기반-상품) | `session_018WsyHpKDofgW5DEiS4tUoA` | 2026-10-04 신설. 상품 API: 목록 검색·정렬·일괄 처리, 카테고리·자동 상품 코드, 상품 이미지(저장 인터페이스 `lib/server/storage/`), 상세 페이지 블록, 진열, 재입고, CSV. 마이그레이션 20261004220000·250000~ |
 | 개발 전담 (기반-쇼핑몰) | `session_01GnUdkmvAEWEVA3Yh3wbB5a` | 2026-10-04 신설. 구매자 API: 장바구니·찜·공지/FAQ·방송 중 표시·등급. 마이그레이션 20261004240000~ |
 | 개발 전담 (기반-설정) | `session_01EUBERBNF6aDTDawpJF4gkf` | 2026-10-05 신설. 파트너스 설정 API: 적립금 원장·회원별 잔액·주문자 알림·검색 노출·법정 고지(사업자 정보·구매안전서비스 먼저). 마이그레이션 20261004290000~ |
+| 개발 전담 (기반-유튜브) | `session_01H4tkcKx7B9mokLRDNuBNYP` | 2026-10-05 신설(대표님 지시). YouTube Data API v3: 채널·방송 연결, 방송 시작·종료 자동 감지, 실시간 채팅 닉네임·주문 매칭. 설계(할당량) 보고 후 구현. 마이그레이션 20261004300000~ |
 | 개발 전담 (화면) (3) | `session_01BwVsBQrQRL49RsUn9ejKYw` | (2)를 교체(Sonnet, 2026-10-04 대표님 지시 속도). 소유는 아래 (2)·(이전) 줄과 같음. 2026-10-04 KST MASTER 생성 |
 | 화면-방송 (2) | `session_01LEN2yPC22mYAT7r16f4RJ6` | 화면-방송(`session_01EUscVzBZ5i68jWQHwNpus7`) 교체(Sonnet). 방송 화면 SA-001 계열·SA-051~055, 오버레이 OV-001·002, #212·#213. 2026-10-04 KST MASTER 생성 |
 | 화면-설정 (2) | `session_014yzgBefSGaxVp7o6eBETzb` | 화면-설정(`session_01BEoFcXM4wkW8BLX8c54YBJ`) 교체(Sonnet). #210 → #216 → #218 → #220. 2026-10-04 KST MASTER 생성 |
