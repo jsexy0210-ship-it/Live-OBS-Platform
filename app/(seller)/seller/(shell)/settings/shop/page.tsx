@@ -139,7 +139,7 @@ export default function ShopInfoPage() {
                 </div>
                 <div className="col" style={{ gap: 8, minWidth: 0, flex: 1 }}>
                   <span className="t-l2">{logo ? `${logo.size} × ${logo.size}px · PNG · ${mb(logo.byteSize)}` : "로고 없음 · 쇼핑몰 이름 첫 글자로 표시"}</span>
-                  <span className="help">PNG · 2MB 이하 · 정사각형 512 × 512px 이상(1440px까지) · 끌어다 놓아도 됨</span>
+                  <span className="help">8비트 PNG · 2MB 이하 · 정사각형 512 × 512px 이상(1440px까지) · 끌어다 놓아도 됨</span>
                   {editable && (
                     <div className="row" style={{ gap: 6 }}>
                       <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={pick}>

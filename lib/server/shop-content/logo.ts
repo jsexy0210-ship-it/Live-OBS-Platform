@@ -1,13 +1,12 @@
 import type { PrismaClient } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { writeAudit } from "../audit/log";
-import { detectImage } from "../branding/image";
 import { shopOpen } from "../buyers/signup";
 import { requireSellerPermission, type TenantContext } from "../tenant/context";
-import { imageVersion, pngSize } from "./image";
+import { checkPng, imageVersion, type PngRejection } from "./image";
 
 // 쇼핑몰 로고(SA-060 쇼핑몰 정보, 2026-10-04 대표님 지시). 쇼핑몰당 1개.
-// PNG만(브랜딩 검사기 detectImage로 그림 데이터까지 확인), 2MB 이하, 정사각형, 512px 이상.
+// 8비트 PNG만(배너·팝업과 같은 검사 checkPng: 16비트·풀기 상한 초과는 먼저 따로 안내, 브랜딩 검사기로 그림 데이터까지 확인), 2MB 이하, 정사각형, 512px 이상.
 // 한 변 상한 1440px은 브랜딩 검사기가 풀어 보는 그림 데이터 상한(8,400,000바이트) 안에 8비트 RGBA가 들어가는 크기다
 // (1440 × (1 + 1440 × 4) = 8,295,840바이트). 마이그레이션 20261004170000_shop_logo CHECK와 같은 값.
 // 보기는 같은 쇼핑몰의 파트너스 계정 누구나, 바꾸기·지우기는 대표자·「쇼핑몰 설정」(SHOP_SETTINGS) 직원만. 바꾸면 로그 추적에 남긴다.
@@ -15,7 +14,7 @@ export const LOGO_MAX_BYTES = 2 * 1024 * 1024;
 export const LOGO_MIN_SIDE = 512;
 export const LOGO_MAX_SIDE = 1440;
 
-export type LogoRejection = "empty_file" | "file_too_large" | "unsupported_image" | "not_square" | "wrong_image_size";
+export type LogoRejection = PngRejection | "not_square" | "wrong_image_size";
 
 export const LOGO_MESSAGES: Record<LogoRejection, string> = {
   empty_file: "빈 파일은 올릴 수 없습니다",
@@ -23,19 +22,16 @@ export const LOGO_MESSAGES: Record<LogoRejection, string> = {
   unsupported_image: "PNG 파일만 올릴 수 있습니다",
   not_square: "로고는 가로와 세로가 같은 정사각형이어야 합니다",
   wrong_image_size: `로고는 ${LOGO_MIN_SIDE}~${LOGO_MAX_SIDE}px 정사각형이어야 합니다`,
+  png_16bit: "8비트(일반) PNG로 저장해 주십시오. 16비트 PNG는 올릴 수 없습니다",
+  png_too_large: "이미지 데이터가 너무 큽니다. 8비트(일반) PNG로 저장하거나 크기를 줄여 주십시오",
 };
 
+// 배너·팝업과 같은 PNG 검사(checkPng)를 거친다. 크기 사유만 로고 기준(정사각형, 512~1440px).
 export function checkLogo(b: Buffer): { ok: true; width: number } | { ok: false; reason: LogoRejection } {
-  if (b.length === 0) return { ok: false, reason: "empty_file" };
-  if (b.length > LOGO_MAX_BYTES) return { ok: false, reason: "file_too_large" };
-  // 크기는 PNG 머리로 먼저 본다(틀린 크기는 풀기 전에 안내)
-  const head = pngSize(b);
-  if (!head) return { ok: false, reason: "unsupported_image" };
-  if (head.width !== head.height) return { ok: false, reason: "not_square" };
-  if (head.width < LOGO_MIN_SIDE || head.width > LOGO_MAX_SIDE) return { ok: false, reason: "wrong_image_size" };
-  const info = detectImage(b);
-  if (!info || info.type !== "image/png") return { ok: false, reason: "unsupported_image" };
-  return { ok: true, width: info.width };
+  const r = checkPng(b, LOGO_MAX_BYTES, (w, h): "not_square" | "wrong_image_size" | null =>
+    w !== h ? "not_square" : w < LOGO_MIN_SIDE || w > LOGO_MAX_SIDE ? "wrong_image_size" : null,
+  );
+  return r.ok ? { ok: true, width: r.width } : r;
 }
 
 export type LogoView = { url: string; size: number; byteSize: number } | null;

@@ -72,13 +72,13 @@ test.describe.serial("SA-064 홈 배너 · SA-065 이벤트 팝업", () => {
 
     await page.getByRole("button", { name: "배너 추가" }).first().click();
     const dialog = page.getByRole("dialog", { name: "배너 추가" });
-    await expect(dialog.getByText("PNG · 2MB 이하 · 1200 × 400 권장")).toBeVisible();
+    await expect(dialog.getByText("PNG · 2MB 이하 · 1920 × 600 권장")).toBeVisible();
     await dialog.getByLabel("제목 (대체 텍스트)").fill("10월 스타라이트 박스 오픈");
     // PNG가 아닌 파일(JPEG·SVG)은 내용으로 걸러진다
     await dialog.getByLabel("PC 이미지", { exact: true }).setInputFiles(file("pc.png", jpeg(1200, 400)));
     await expect(dialog.getByText("PNG 파일만 올릴 수 있습니다")).toBeVisible();
-    await dialog.getByLabel("PC 이미지", { exact: true }).setInputFiles(file("pc.png", await canvasPng(page, 1200, 400, "#5b3df6", "10월 스타라이트 박스")));
-    await expect(dialog.getByText("1200 × 400px · PNG")).toBeVisible();
+    await dialog.getByLabel("PC 이미지", { exact: true }).setInputFiles(file("pc.png", await canvasPng(page, 1920, 600, "#5b3df6", "10월 스타라이트 박스")));
+    await expect(dialog.getByText("1920 × 600px · PNG")).toBeVisible();
     // 권장보다 작은 모바일 이미지는 올라가지만 안내가 보인다 → 권장 크기로 바꾼다
     await dialog.getByLabel("모바일 이미지", { exact: true }).setInputFiles(file("m.png", png(300, 300)));
     await expect(dialog.getByText("가로 750px 이상 이미지를 권장합니다 · 지금 파일은 300×300입니다 (올릴 수는 있음)")).toBeVisible();
@@ -100,16 +100,16 @@ test.describe.serial("SA-064 홈 배너 · SA-065 이벤트 팝업", () => {
     await page.getByRole("button", { name: "배너 추가" }).first().click();
     const d2 = page.getByRole("dialog", { name: "배너 추가" });
     await d2.getByLabel("제목 (대체 텍스트)").fill("주말 브레이크 안내");
-    await d2.getByLabel("PC 이미지", { exact: true }).setInputFiles(file("pc2.png", await canvasPng(page, 1200, 400, "#e8382d", "주말 브레이크")));
-    await expect(d2.getByText("1200 × 400px · PNG")).toBeVisible();
+    await d2.getByLabel("PC 이미지", { exact: true }).setInputFiles(file("pc2.png", await canvasPng(page, 1920, 600, "#e8382d", "주말 브레이크")));
+    await expect(d2.getByText("1920 × 600px · PNG")).toBeVisible();
     await d2.getByLabel("시작 시각").fill(kstLocal(3600_000));
     await d2.getByRole("button", { name: "저장" }).click();
     // 세 번째: PC만
     await page.getByRole("button", { name: "배너 추가" }).first().click();
     const d3 = page.getByRole("dialog", { name: "배너 추가" });
     await d3.getByLabel("제목 (대체 텍스트)").fill("회원 등급 혜택");
-    await d3.getByLabel("PC 이미지", { exact: true }).setInputFiles(file("pc3.png", await canvasPng(page, 1200, 400, "#0f8a5f", "회원 혜택 · PC만")));
-    await expect(d3.getByText("1200 × 400px · PNG")).toBeVisible();
+    await d3.getByLabel("PC 이미지", { exact: true }).setInputFiles(file("pc3.png", await canvasPng(page, 1920, 600, "#0f8a5f", "회원 혜택 · PC만")));
+    await expect(d3.getByText("1920 × 600px · PNG")).toBeVisible();
     await d3.getByRole("radio", { name: "PC만" }).click();
     await d3.getByRole("button", { name: "저장" }).click();
 
@@ -140,7 +140,7 @@ test.describe.serial("SA-064 홈 배너 · SA-065 이벤트 팝업", () => {
     await page.getByTestId("banner-row").nth(0).getByRole("button", { name: "수정" }).click();
     const edit = page.getByRole("dialog", { name: "배너 수정" });
     await expect(edit.getByRole("button", { name: "저장" })).toBeEnabled();
-    await edit.getByLabel("PC 이미지", { exact: true }).setInputFiles(file("pc4.png", await canvasPng(page, 1200, 400, "#5b3df6", "10월 스타라이트 박스")));
+    await edit.getByLabel("PC 이미지", { exact: true }).setInputFiles(file("pc4.png", await canvasPng(page, 1920, 600, "#5b3df6", "10월 스타라이트 박스")));
     await expect(edit.getByRole("button", { name: "이미지 올리는 중" })).toBeDisabled();
     release();
     await expect(edit.getByRole("button", { name: "저장" })).toBeEnabled();
@@ -277,14 +277,24 @@ test.describe.serial("SA-064 홈 배너 · SA-065 이벤트 팝업", () => {
     }
   });
 
-  test("권한 없는 직원: 메뉴가 없고 주소로 들어가도 권한 안내만", async ({ page }) => {
+  test("「쇼핑몰 설정」 권한 없는 직원: 목록은 보고, 추가·수정·삭제는 없음", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/seller/login?next=%2Fseller%2Fbanners");
     await submitSellerLogin(page, "demo-staff@example.com", PASSWORD);
     await expect(page).toHaveURL(/\/seller\/banners$/);
-    await expect(page.getByText("「쇼핑몰 설정」 권한 필요")).toBeVisible();
-    await expect(page.getByRole("link", { name: "배너 · 팝업" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "배너 · 팝업" })).toBeVisible();
+    await expect(page.getByText("목록만 볼 수 있습니다. 배너 추가 · 수정은 대표자나 쇼핑몰 설정 권한이 있는 직원에게 요청해 주십시오.")).toBeVisible();
+    await expect(page.getByTestId("banner-row")).toHaveCount(3);
     await expect(page.getByRole("button", { name: "배너 추가" })).toHaveCount(0);
-    await page.screenshot({ path: `${SHOT}/SA-064-no-permission-1440.png` });
+    await expect(page.getByRole("button", { name: "수정" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "삭제" })).toHaveCount(0);
+    expect(await imageLoaded(page, ".sc-thumb")).toBe(true);
+    // 화면을 거치지 않고 바꾸려 해도 403
+    const status = await page.evaluate(async () => (await fetch("/api/seller/shop-content/popups", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "TEXT", title: "x", body: "y" }) })).status);
+    expect(status).toBe(403);
+    await page.screenshot({ path: `${SHOT}/SA-064-staff-readonly-1440.png` });
+    await page.getByRole("link", { name: "이벤트 팝업", exact: true }).click();
+    await expect(page.getByTestId("popup-row")).toHaveCount(3);
+    await expect(page.getByRole("button", { name: "팝업 추가" })).toHaveCount(0);
   });
 });

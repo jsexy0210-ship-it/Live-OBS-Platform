@@ -76,6 +76,10 @@ describe("SA-060 쇼핑몰 로고", () => {
     expect(await (await put(s.owner, jpeg(600, 600))).json()).toEqual({ error: "unsupported_image", message: "PNG 파일만 올릴 수 있습니다" });
     expect(((await (await put(s.owner, png(800, 600))).json()) as { error: string }).error).toBe("not_square");
     expect(((await (await put(s.owner, png(300, 300))).json()) as { error: string }).error).toBe("wrong_image_size");
+    expect(await (await put(s.owner, png(1200, 1200, [1, 2, 3], { depth: 16, color: 6 }))).json()).toEqual({
+      error: "png_16bit",
+      message: "8비트(일반) PNG로 저장해 주십시오. 16비트 PNG는 올릴 수 없습니다",
+    });
     expect((await put(s.owner, Buffer.alloc(2 * 1024 * 1024 + 1))).status).toBe(413);
     expect(await db.sellerLogo.count()).toBe(0);
     // DB도 정사각형이 아니거나 PNG가 아닌 로고를 막는다

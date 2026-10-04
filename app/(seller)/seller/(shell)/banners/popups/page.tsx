@@ -164,6 +164,11 @@ export default function PopupsPage() {
             </button>
           )}
         </div>
+        {state.kind === "ok" && !editable && (
+          <div className="msg msg-info" role="status">
+            <span>목록만 볼 수 있습니다. 팝업 추가 · 수정은 대표자나 쇼핑몰 설정 권한이 있는 직원에게 요청해 주십시오.</span>
+          </div>
+        )}
         <section className="card" style={{ overflow: "hidden" }}>
           {state.kind === "loading" && <StateBox kind="loading" what="팝업" />}
           {state.kind === "error" && <StateBox kind={stateKind(state.status, state.error)} what="팝업" onRetry={() => void load()} />}

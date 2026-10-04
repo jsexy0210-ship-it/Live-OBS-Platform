@@ -21,4 +21,12 @@ describe("SA-060 쇼핑몰 로고 검사", () => {
     expect(checkLogo(Buffer.alloc(0))).toEqual({ ok: false, reason: "empty_file" });
     expect(checkLogo(Buffer.alloc(LOGO_MAX_BYTES + 1))).toEqual({ ok: false, reason: "file_too_large" });
   });
+
+  it("16비트 PNG 로고는 「8비트 PNG로 저장」 사유로 거부(배너·팝업과 같은 checkPng, Codex 4176225063)", () => {
+    // 16비트 RGBA 1200×1200은 풀린 크기 11,521,200바이트로 브랜딩 검사기 상한(8,400,000)을 넘는다
+    expect(checkLogo(png(1200, 1200, [1, 2, 3], { depth: 16, color: 6 }))).toEqual({ ok: false, reason: "png_16bit" });
+    expect(checkLogo(png(600, 600, [1, 2, 3], { depth: 16 }))).toEqual({ ok: false, reason: "png_16bit" });
+    // 8비트 RGBA 1440×1440은 받는다(풀린 크기 8,295,840바이트)
+    expect(checkLogo(png(1440, 1440, [1, 2, 3], { color: 6 }))).toEqual({ ok: true, width: 1440 });
+  });
 });
