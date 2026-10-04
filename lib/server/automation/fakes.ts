@@ -54,7 +54,7 @@ export class FakePlanner implements AutomationPlanner {
     assertNotProduction(env);
   }
 
-  async decide(input: PlannerInput): Promise<PlannerDecision> {
+  async decide(input: PlannerInput, _signal: AbortSignal): Promise<PlannerDecision> {
     assertInWindow("planner.decide");
     this.inputs.push(input);
     const o = this.override?.(input);
@@ -100,7 +100,7 @@ export class FakeBrowserExecutor implements BrowserExecutor {
   // 지운 작업 범위(tombstone). 지운 뒤 늦게 끝난 행동·닫기가 보관 자료를 되살리지 못하게 거부한다(계약).
   readonly tombstones = new Set<string>();
 
-  async discard(scope: JobScope): Promise<void> {
+  async discard(scope: JobScope, _signal: AbortSignal): Promise<void> {
     assertInWindow("browser.discard");
     this.tombstones.add(scope.jobId);
     this.saved.delete(scope.jobId);
@@ -145,8 +145,10 @@ export class FakeBrowserExecutor implements BrowserExecutor {
     assertNotProduction(env);
   }
 
-  async open(scope: JobScope): Promise<BrowserSession> {
+  async open(scope: JobScope, signal: AbortSignal): Promise<BrowserSession> {
     assertInWindow("browser.open");
+    // 중단 신호를 받았으면 보관본을 복원(소비)하지 않고 거절한다(계약)
+    if (signal.aborted) throw new Error("open_aborted");
     const id = `ctx-${++this.seq}`;
     this.opened.push({ id, scope });
     this.live.add(id);
@@ -158,7 +160,7 @@ export class FakeBrowserExecutor implements BrowserExecutor {
     let secretsSeen: JobSecrets | undefined;
     return {
       id,
-      async observe(): Promise<Observation> {
+      async observe(_signal: AbortSignal): Promise<Observation> {
         assertInWindow("session.observe");
         await sleep(self.delayMs);
         // 화면 글 + 실제로 바뀐 쇼핑몰 상태(앱 설치·주문 알림). 단계 완료 판정은 이 상태로만 맞는다
@@ -167,17 +169,17 @@ export class FakeBrowserExecutor implements BrowserExecutor {
         const elements = self.pageElements ? self.pageElements(scope) : text.split(" · ").map((t) => ({ kind: "notice" as const, text: t }));
         return { url: self.pageUrl(scope), text, elements };
       },
-      async currentUrl() {
+      async currentUrl(_signal: AbortSignal) {
         assertInWindow("session.currentUrl");
         return self.currentUrlOverride ? self.currentUrlOverride(scope) : self.pageUrl(scope);
       },
-      async currentShopKey() {
+      async currentShopKey(_signal: AbortSignal) {
         assertInWindow("session.currentShopKey");
         self.shopKeyReads++;
         const v = self.shopKey.get(scope.sellerId);
         return v === undefined ? `mall-${scope.sellerId}` : v;
       },
-      async perform(action, secrets, actionKey?: string, expected?: ExpectedPage): Promise<ActionOutcome> {
+      async perform(action, secrets, actionKey: string | undefined, expected: ExpectedPage | undefined, _signal: AbortSignal): Promise<ActionOutcome> {
         assertInWindow("browser.perform");
         secretsSeen = secrets;
         if (self.tombstones.has(scope.jobId)) return { kind: "fatal", reason: "scope_discarded" };
@@ -233,7 +235,7 @@ export class FakeObsBridge implements ObsBridge {
     assertNotProduction(env);
   }
 
-  async observe(scope: JobScope): Promise<Observation> {
+  async observe(scope: JobScope, _signal: AbortSignal): Promise<Observation> {
     assertInWindow("obs.observe");
     await sleep(this.delayMs);
     // 연결 여부 + 실제 OBS 상태(소스 수·표시 설정·테스트 주문 표시). 단계 완료 판정은 이 상태로만 맞는다
@@ -259,7 +261,7 @@ export class FakeObsBridge implements ObsBridge {
   // 지운 작업 범위(tombstone). 지운 뒤에는 연결 정보·행동 키를 다시 남기지 않는다(계약).
   readonly tombstones = new Set<string>();
 
-  async discard(scope: JobScope): Promise<void> {
+  async discard(scope: JobScope, _signal: AbortSignal): Promise<void> {
     assertInWindow("obs.discard");
     this.tombstones.add(scope.jobId);
     this.connections.delete(scope.jobId);
@@ -267,7 +269,7 @@ export class FakeObsBridge implements ObsBridge {
     this.discarded.push(scope.jobId);
   }
 
-  async currentPairingId(scope: JobScope): Promise<string | null> {
+  async currentPairingId(scope: JobScope, _signal: AbortSignal): Promise<string | null> {
     assertInWindow("obs.currentPairingId");
     if (this.disconnected.has(scope.sellerId)) return null;
     if (!this.tombstones.has(scope.jobId)) this.connections.add(scope.jobId);
@@ -282,7 +284,7 @@ export class FakeObsBridge implements ObsBridge {
   readonly display = new Set<string>();
   readonly shown = new Set<string>();
 
-  async perform(scope: JobScope, action: AutomationAction, actionKey?: string, expectedPairingId?: string): Promise<ActionOutcome> {
+  async perform(scope: JobScope, action: AutomationAction, actionKey: string | undefined, expectedPairingId: string | undefined, _signal: AbortSignal): Promise<ActionOutcome> {
     assertInWindow("obs.perform");
     await sleep(this.delayMs);
     if (this.tombstones.has(scope.jobId)) return { kind: "fatal", reason: "scope_discarded" };
@@ -323,7 +325,7 @@ export class FakeSecretVault implements SecretVault {
     assertNotProduction(env);
   }
 
-  async forJob(scope: JobScope): Promise<JobSecrets> {
+  async forJob(scope: JobScope, _signal: AbortSignal): Promise<JobSecrets> {
     assertInWindow("vault.forJob");
     let s = this.byJob.get(scope.jobId);
     if (!s) {
@@ -343,7 +345,7 @@ export class FakePracticeEnvironment implements PracticeEnvironment {
 
   constructor(private readonly rt: { browser: FakeBrowserExecutor; obs: FakeObsBridge }) {}
 
-  async reset(signal?: AbortSignal): Promise<void> {
+  async reset(signal: AbortSignal): Promise<void> {
     assertInWindow("practice.reset");
     if (this.failReset) throw new Error("reset failed");
     // 상한을 넘겨 중단됐으면 아무것도 바꾸지 않는다(계약)
@@ -354,7 +356,7 @@ export class FakePracticeEnvironment implements PracticeEnvironment {
     if (!this.leaveSource) this.rt.obs.sources.delete(PRACTICE_SELLER_ID);
   }
 
-  async isBaseline(): Promise<boolean> {
+  async isBaseline(_signal: AbortSignal): Promise<boolean> {
     assertInWindow("practice.isBaseline");
     return !this.rt.browser.shopState.get(PRACTICE_SELLER_ID)?.size && !this.rt.obs.sources.get(PRACTICE_SELLER_ID) && !this.rt.obs.display.has(PRACTICE_SELLER_ID);
   }

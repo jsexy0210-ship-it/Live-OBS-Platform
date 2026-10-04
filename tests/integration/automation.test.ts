@@ -17,7 +17,7 @@ import { FakeBrowserExecutor, FakeObsBridge, FakePlanner, FakePracticeEnvironmen
 import { markConnectionRevoked } from "../../lib/server/automation/connection";
 import { cancelJob, getJob, requestRefund, resumeJob } from "../../lib/server/automation/jobs";
 import { purchaseAutomation, reconcileAutomationPayments, reconnectAutomation } from "../../lib/server/automation/purchase";
-import { EngineAborted, actionKeyOf, callPort, runSteps } from "../../lib/server/automation/engine";
+import { EngineAborted, actionKeyOf, callPort, insidePortCall, runSteps } from "../../lib/server/automation/engine";
 import { FencingError, RunTimeExceeded, advanceStep, claimNext, extendLease, finishJob, lockJob, markBrowserStateHeld, markChanged, parkForCustomer, reapExpired, toVerifying, touch, unmarkChanged } from "../../lib/server/automation/queue";
 import { executeJob, purgeEndedBrowserState, runOnce, runWorkerLoop, startHeartbeat } from "../../lib/server/automation/worker";
 import { FakeBillingProvider } from "../../lib/server/billing/provider";
@@ -78,6 +78,8 @@ function runtime() {
 }
 
 const W = { workerId: "w1" };
+// 시험에서 포트를 직접 부를 때 넘기는 중단되지 않는 신호
+const SIG = new AbortController().signal;
 
 // 결제는 됐는데 결과 조회가 잠깐 안 되는 PG
 class FlakyLookupProvider extends FakeBillingProvider {
@@ -382,7 +384,7 @@ describe("격리·비밀값·악성 페이지", () => {
     expect(await runOnce(db, rt, W)).toBe("succeeded");
     const all = JSON.stringify(rt.planner.inputs);
     const job0 = await db.automationJob.findFirstOrThrow();
-    const secrets = await rt.vault.forJob({ sellerId: job0.sellerId, jobId: job0.id });
+    const secrets = await rt.vault.forJob({ sellerId: job0.sellerId, jobId: job0.id }, SIG);
     expect(all).not.toContain(secrets.webhook_secret);
     expect(all).not.toContain(secrets.webhook_url);
     // 비밀값이 든 화면 글은 허용 어휘가 아니므로 자리표시로만 간다
@@ -1002,9 +1004,9 @@ describe("고객 대기용 보관 세션(정본 4678efb)", () => {
     expect(a.rt.browser.saved.has(a.jobId)).toBe(false);
     expect(await job(a.jobId)).toMatchObject({ browserStateHeld: false });
     // 끝난 작업 id로 다시 열어도 빈 상태(보관본 없음)
-    const reopened = await a.rt.browser.open({ sellerId: a.seller.id, jobId: a.jobId });
+    const reopened = await a.rt.browser.open({ sellerId: a.seller.id, jobId: a.jobId }, new AbortController().signal);
     expect(a.rt.browser.cookies.get(reopened.id)?.get("session")).toBeUndefined();
-    await reopened.close();
+    await reopened.close({ signal: new AbortController().signal });
     // 끝난 작업은 다시 실행 자리를 받지 못한다
     expect(await claimNext(db, "w9")).toBeNull();
     expect(blob.length).toBeGreaterThan(0);
@@ -1509,7 +1511,7 @@ describe("Codex 6차 반영(9144f55)", () => {
     rt.obs.disconnected.add(obsWait.seller.id);
     expect(await runOnce(db, rt, W)).toBe("needs_customer");
     rt.obs.disconnected.delete(obsWait.seller.id);
-    await rt.obs.currentPairingId({ sellerId: obsWait.seller.id, jobId: obsWait.jobId });
+    await rt.obs.currentPairingId({ sellerId: obsWait.seller.id, jobId: obsWait.jobId }, SIG);
     await forgetChanges(obsWait.jobId);
     await cancelJob(db, obsWait.ctx, obsWait.jobId);
     // 고정 키는 세션 밖에 남는 효과(OBS·테스트 주문)에만 붙는다(29차)
@@ -1699,9 +1701,9 @@ describe("Codex 8차 반영(748f1ff)", () => {
     const onB: string[] = [];
     const obs = rt.obs;
     const perform = obs.perform.bind(obs);
-    obs.perform = async (scope, action, actionKey) => {
+    obs.perform = async (scope, action, actionKey, pairing, signal) => {
       if (obs.pairing.get(scope.sellerId) === "pc-B") onB.push(action.type);
-      const out = await perform(scope, action, actionKey);
+      const out = await perform(scope, action, actionKey, pairing, signal);
       // 첫 OBS 변경(소스 추가) 직후 로컬 도구가 다른 PC로 바뀐다
       if (action.type === "obs_add_overlay_source") obs.pairing.set(scope.sellerId, "pc-B");
       return out;
@@ -1806,9 +1808,9 @@ describe("Codex 10차 반영(38e24f1)", () => {
     const obs = rt.obs;
     const perform = obs.perform.bind(obs);
     const afterSwitch: string[] = [];
-    obs.perform = async (scope, action, actionKey) => {
+    obs.perform = async (scope, action, actionKey, pairing, signal) => {
       if (obs.pairing.get(scope.sellerId) === "pc-B") afterSwitch.push(action.type);
-      const out = await perform(scope, action, actionKey);
+      const out = await perform(scope, action, actionKey, pairing, signal);
       if (action.type === "send_test_event") obs.pairing.set(scope.sellerId, "pc-B");
       return out;
     };
@@ -1868,9 +1870,9 @@ describe("Codex 11차 반영(002ed20)", () => {
     const perform = obs.perform.bind(obs);
     const onB: string[] = [];
     let crash = true;
-    obs.perform = async (scope, action, actionKey) => {
+    obs.perform = async (scope, action, actionKey, pairing, signal) => {
       if (obs.pairing.get(scope.sellerId) === "pc-B") onB.push(action.type);
-      const out = await perform(scope, action, actionKey);
+      const out = await perform(scope, action, actionKey, pairing, signal);
       if (crash && action.type === "obs_add_overlay_source") {
         crash = false;
         throw new Error("worker crashed");
@@ -1949,12 +1951,12 @@ describe("Codex 12차 반영(6706ed2)", () => {
     const rt = runtime();
     const discard = rt.browser.discard.bind(rt.browser);
     let failOnce = true;
-    rt.browser.discard = async (scope) => {
+    rt.browser.discard = async (scope, signal) => {
       if (failOnce) {
         failOnce = false;
         throw new Error("executor unavailable");
       }
-      return discard(scope);
+      return discard(scope, signal);
     };
     const run = await runPractice(db, rt, cafe24Playbook, { shopHost: "myshop.cafe24.com" });
     const runId = rt.browser.opened[0].scope.jobId;
@@ -2043,7 +2045,7 @@ describe("Codex 13차 반영(d47b9f0)", () => {
     const a = await bought();
     const rt = runtime();
     const perform = rt.obs.perform.bind(rt.obs);
-    rt.obs.perform = async (scope, action, actionKey) => {
+    rt.obs.perform = async (scope, action, actionKey, pairing, signal) => {
       if (action.type === "obs_add_overlay_source") {
         // 실행기가 행동을 처리하는 도중에 판매자가 취소하고 서버가 보관 자료를 정리했다(사람 정리를 마친 뒤의 정리와 같은 상황)
         await forgetChanges(a.jobId);
@@ -2051,7 +2053,7 @@ describe("Codex 13차 반영(d47b9f0)", () => {
         // 42차: 행동이 진행 중이면(종료 확인 전·격리 창 안) 정리는 미뤄진다
         expect(await purgeEndedBrowserState(db, rt)).toBe(0);
       }
-      return perform(scope, action, actionKey);
+      return perform(scope, action, actionKey, pairing, signal);
     };
     await runOnce(db, rt, W);
     // 행동이 끝난(종료 확인) 뒤 정리한다
@@ -2395,8 +2397,8 @@ describe("Codex 18차 반영(353d28c)", () => {
     obs.pairing.set(a.seller.id, "pc-A");
     const read = obs.currentPairingId.bind(obs);
     let switched = false;
-    obs.currentPairingId = async (scope) => {
-      const v = await read(scope);
+    obs.currentPairingId = async (scope, signal) => {
+      const v = await read(scope, signal);
       // 확인 직후(실행 전) 로컬 도구가 다른 PC로 바뀐다
       if (!switched) {
         switched = true;
@@ -2952,8 +2954,8 @@ describe("Codex 29차 반영(d3e5fa2)", () => {
     const rt = runtime();
     let verifyTried = 0;
     const perform = rt.obs.perform.bind(rt.obs);
-    rt.obs.perform = async (scope, action, key, pairing) =>
-      action.type === "check_overlay_shows_test_event" && verifyTried++ === 0 ? { kind: "retryable", reason: "timeout" } : perform(scope, action, key, pairing);
+    rt.obs.perform = async (scope, action, key, pairing, signal) =>
+      action.type === "check_overlay_shows_test_event" && verifyTried++ === 0 ? { kind: "retryable", reason: "timeout" } : perform(scope, action, key, pairing, signal);
     expect(await runOnce(db, rt, { ...W, random: () => 0 })).toBe("retry");
     await db.automationJob.update({ where: { id: a.jobId }, data: { runAfter: new Date(Date.now() - 1000) } });
     expect(await runOnce(db, rt, W)).toBe("succeeded");
@@ -3019,8 +3021,8 @@ describe("Codex 31차 반영(5a3cec1)", () => {
           : undefined;
     // 로컬 도구가 결과에 연결 결과(facts)를 따로 싣지 않아도(계약상 pairingId만) 실행 PC를 남겨야 한다
     const perform = rt.obs.perform.bind(rt.obs);
-    rt.obs.perform = async (scope, action, key, pairing) => {
-      const out = await perform(scope, action, key, pairing);
+    rt.obs.perform = async (scope, action, key, pairing, signal) => {
+      const out = await perform(scope, action, key, pairing, signal);
       return out.kind === "ok" ? { ...out, facts: undefined } : out;
     };
     // 검증 단계도 작업서 행동(테스트 주문 보내기) 대신 판단 모델로 확인만 하게 한다(이 시험에서만, 끝나면 되돌림)
@@ -3108,12 +3110,12 @@ describe("Codex 32차 반영(7d8ca50)", () => {
     rt.browser.pageText = () => "다른 화면 · 로그아웃";
     let during: unknown = null;
     const decide = rt.planner.decide.bind(rt.planner);
-    rt.planner.decide = async (input) => {
+    rt.planner.decide = async (input, signal) => {
       if (!during) {
         const s = await shopWithCard();
         during = await purchaseAutomation(db, new FakeBillingProvider(), s.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP });
       }
-      return decide(input);
+      return decide(input, signal);
     };
     await runPractice(db, rt, cafe24Playbook, { shopHost: "myshop.cafe24.com" });
     expect(during).toEqual({ ok: false, reason: "shop_not_supported" });
@@ -3133,7 +3135,7 @@ describe("Codex 35차 반영(01bbaeb)", () => {
   it("실행기가 돌려준 실패 사유에 비밀값·웹훅 주소가 있어도 작업·전이 기록·감사 기록에는 고정 코드만 남는다", async () => {
     const a = await bought();
     const rt = runtime();
-    const sec = await rt.vault.forJob({ sellerId: a.seller.id, jobId: a.jobId });
+    const sec = await rt.vault.forJob({ sellerId: a.seller.id, jobId: a.jobId }, SIG);
     rt.browser.outcome = (_s, action) => (action.type === "fill" ? { kind: "fatal", reason: `bad hook ${sec.webhook_url} secret=${sec.webhook_secret}` } : undefined);
     expect(await runOnce(db, rt, W)).toBe("failed");
     expect(await job(a.jobId)).toMatchObject({ lastError: "executor_error" });
@@ -3266,8 +3268,8 @@ describe("Codex 37차 반영(eab4486)", () => {
     const a = await bought();
     const rt = runtime();
     const open = rt.browser.open.bind(rt.browser);
-    rt.browser.open = async (scope) => {
-      const s = await open(scope);
+    rt.browser.open = async (scope, signal) => {
+      const s = await open(scope, signal);
       const perform = s.perform.bind(s);
       s.perform = async (action, ...rest) => {
         if (action.type !== "click") return perform(action, ...rest);
@@ -3290,14 +3292,14 @@ describe("Codex 38차 반영(fb73c34)", () => {
     // 판매자가 원래 쓰던 소스 1개 + 이 작업이 추가할 소스
     obs.sources.set(scope.sellerId, 1);
     obs.failOnce.add(scope.sellerId);
-    expect(await obs.perform(scope, { type: "obs_add_overlay_source" })).toEqual({ kind: "retryable", reason: "obs_busy" });
+    expect(await obs.perform(scope, { type: "obs_add_overlay_source" }, undefined, undefined, SIG)).toEqual({ kind: "retryable", reason: "obs_busy" });
     expect(obs.connections.has(scope.jobId)).toBe(false);
-    expect((await obs.perform(scope, { type: "obs_add_overlay_source" })).kind).toBe("ok");
+    expect((await obs.perform(scope, { type: "obs_add_overlay_source" }, undefined, undefined, SIG)).kind).toBe("ok");
     expect(obs.sources.get(scope.sellerId)).toBe(2);
     // 되돌리기의 소스 제거도 일시 실패 뒤 재시도에서 한 번만 빠진다(판매자 소스는 남음)
     obs.failOnce.add(scope.sellerId);
-    expect(await obs.perform(scope, { type: "obs_remove_overlay_source" })).toEqual({ kind: "retryable", reason: "obs_busy" });
-    expect((await obs.perform(scope, { type: "obs_remove_overlay_source" })).kind).toBe("ok");
+    expect(await obs.perform(scope, { type: "obs_remove_overlay_source" }, undefined, undefined, SIG)).toEqual({ kind: "retryable", reason: "obs_busy" });
+    expect((await obs.perform(scope, { type: "obs_remove_overlay_source" }, undefined, undefined, SIG)).kind).toBe("ok");
     expect(obs.sources.get(scope.sellerId)).toBe(1);
   });
 });
@@ -3365,7 +3367,7 @@ describe("Codex 40차 반영(c248d64)", () => {
     const gate = new Promise<void>((r) => (release = r));
     setTimeout(() => release(), 2000);
     const reset = rt.practice.reset.bind(rt.practice);
-    rt.practice.reset = async () => (await gate, reset());
+    rt.practice.reset = async (signal) => (await gate, reset(signal));
     const calls = Array.from({ length: 5 }, () => runPractice(db, rt, cafe24Playbook, { shopHost: "myshop.cafe24.com" }));
     let refused = 0;
     for (const c of calls) c.catch(() => ++refused === 4 && release());
@@ -3385,8 +3387,8 @@ describe("Codex 40차 반영(c248d64)", () => {
       for (let i = 0; i < PRACTICE_STREAK_REQUIRED - 1; i++) await runPractice(db, rt, cafe24Playbook, { shopHost: "myshop.cafe24.com" });
       // 기준 상태 확인 직후(실행 중) 회차가 기한을 넘기거나 정기 정리가 그 회차를 가져간다
       const isBaseline = rt.practice.isBaseline.bind(rt.practice);
-      rt.practice.isBaseline = async () => {
-        const ok = await isBaseline();
+      rt.practice.isBaseline = async (signal) => {
+        const ok = await isBaseline(signal);
         const where = { reason: "practice_incomplete" };
         if (late === "expired") await db.automationPracticeRun.updateMany({ where, data: { startedAt: new Date(Date.now() - 7 * 3600_000) } });
         else await db.automationPracticeRun.updateMany({ where, data: { cleanupPendingAt: new Date(Date.now() + 600_000), cleanupAttempts: { increment: 1 } } });
@@ -3447,10 +3449,10 @@ describe("Codex 41차 반영(9415cd2)", () => {
     let stuck!: () => void;
     const inPlanner = new Promise<void>((r) => (stuck = r));
     const decide = old.planner.decide.bind(old.planner);
-    old.planner.decide = async (input) => {
+    old.planner.decide = async (input, signal) => {
       stuck();
       await gate;
-      return decide(input);
+      return decide(input, signal);
     };
     const oldRun = runPractice(db, old, cafe24Playbook, { shopHost: "myshop.cafe24.com" });
     await inPlanner;
@@ -3476,8 +3478,8 @@ describe("Codex 41차 반영(9415cd2)", () => {
     const a = await bought();
     const rt = runtime();
     const perform = rt.obs.perform.bind(rt.obs);
-    rt.obs.perform = async (scope, action, key, pairing) => {
-      const out = await perform(scope, action, key, pairing);
+    rt.obs.perform = async (scope, action, key, pairing, signal) => {
+      const out = await perform(scope, action, key, pairing, signal);
       // 소스 추가 단계의 「단계 끝」 결과가 돌아온 직후(완료 판정 전) 다른 PC로 바뀐다(그 PC에도 소스가 있다)
       if (action.type === "step_done" && (rt.obs.sources.get(scope.sellerId) ?? 0) > 0 && !rt.obs.display.has(scope.sellerId)) rt.obs.pairing.set(scope.sellerId, "pc-other");
       return out;
@@ -3512,10 +3514,10 @@ describe("Codex 42차 반영(2624a18)", () => {
     let inReset!: () => void;
     const resetting = new Promise<void>((r) => (inReset = r));
     const reset = old.practice.reset.bind(old.practice);
-    old.practice.reset = async () => {
+    old.practice.reset = async (signal) => {
       inReset();
       await slow;
-      return reset();
+      return reset(signal);
     };
     const oldRun = runPractice(db, old, cafe24Playbook, { shopHost: "myshop.cafe24.com" });
     await resetting;
@@ -3635,8 +3637,8 @@ describe("Codex 45차 반영(6da016b)", () => {
       const gate = new Promise<void>((r) => (release = r));
       let lateClose!: Promise<void>;
       const open = rt.browser.open.bind(rt.browser);
-      rt.browser.open = async (scope) => {
-        const s = await open(scope);
+      rt.browser.open = async (scope, signal) => {
+        const s = await open(scope, signal);
         const close = s.close.bind(s);
         s.close = (opts) => (lateClose = gate.then(() => close(opts)));
         return s;
@@ -3752,9 +3754,11 @@ describe("Codex 46차 반영(포트 호출 계약 callPort)", () => {
       const gate = new Promise<void>((r) => (release = r));
       const open = rt.browser.open.bind(rt.browser);
       let lateOpen: ReturnType<typeof open> | null = null;
-      rt.browser.open = (scope) => {
-        if (lateOpen) return open(scope);
-        return (lateOpen = gate.then(() => open(scope)));
+      rt.browser.open = (scope, signal) => {
+        if (lateOpen) return open(scope, signal);
+        // 중단 신호를 따르지 않는 실행기(계약 위반)여도 늦게 열린 세션은 onLate가 닫는다
+        void signal;
+        return (lateOpen = gate.then(() => open(scope, SIG)));
       };
       expect(await runOnce(db, rt, W)).toBe("retry");
       expect(await job(a.jobId)).toMatchObject({ status: "QUEUED", lastError: "read_timeout" });
@@ -3777,13 +3781,13 @@ describe("Codex 46차 반영(포트 호출 계약 callPort)", () => {
     try {
       const rt = runtime();
       const scope = { sellerId: "s", jobId: "00000000-0000-0000-0000-000000000000" };
-      await expect(rt.obs.observe(scope)).rejects.toThrow("outside_port_call:obs.observe");
-      await expect(rt.obs.currentPairingId(scope)).rejects.toThrow("outside_port_call");
-      await expect(rt.browser.open(scope)).rejects.toThrow("outside_port_call:browser.open");
-      await expect(rt.browser.discard(scope)).rejects.toThrow("outside_port_call");
-      await expect(rt.obs.discard(scope)).rejects.toThrow("outside_port_call");
-      await expect(rt.vault.forJob(scope)).rejects.toThrow("outside_port_call");
-      expect(await callPort(() => rt.obs.observe(scope))).toMatchObject({ ok: true });
+      await expect(rt.obs.observe(scope, SIG)).rejects.toThrow("outside_port_call:obs.observe");
+      await expect(rt.obs.currentPairingId(scope, SIG)).rejects.toThrow("outside_port_call");
+      await expect(rt.browser.open(scope, SIG)).rejects.toThrow("outside_port_call:browser.open");
+      await expect(rt.browser.discard(scope, SIG)).rejects.toThrow("outside_port_call");
+      await expect(rt.obs.discard(scope, SIG)).rejects.toThrow("outside_port_call");
+      await expect(rt.vault.forJob(scope, SIG)).rejects.toThrow("outside_port_call");
+      expect(await callPort((signal) => rt.obs.observe(scope, signal))).toMatchObject({ ok: true });
 
       const a = await bought();
       expect(await runOnce(db, rt, W)).toBe("succeeded");
@@ -3796,6 +3800,83 @@ describe("Codex 46차 반영(포트 호출 계약 callPort)", () => {
       expect(rt.browser.discarded).toContain(a.jobId);
     } finally {
       actionWindowGuard.strict = false;
+    }
+  });
+});
+
+// 시험용: 결제 조회·청구가 외부 호출 계약(callPort) 밖에서 불리면 거부하는 엄격한 가짜 결제 공급자
+class StrictBillingProvider extends FakeBillingProvider {
+  hang = false;
+  override async getPayment(orderId: string) {
+    if (!insidePortCall()) throw new Error("outside_port_call:billing.getPayment");
+    if (this.hang) return new Promise<never>(() => {});
+    return super.getPayment(orderId);
+  }
+  override async charge(input: Parameters<FakeBillingProvider["charge"]>[0]) {
+    if (!insidePortCall()) throw new Error("outside_port_call:billing.charge");
+    return super.charge(input);
+  }
+}
+
+describe("Codex 47차 반영(외부 의존 전체로 계약 확대)", () => {
+  const limits = AUTOMATION_LIMITS as { actionTimeoutMs: number };
+
+  it("세션 열기가 멈추면 중단 신호를 보내고, 중단한 열기가 끝났다고 확인되기 전에는 다른 작업자가 잡지 못하며, 중단된 열기는 보관본을 소비하지 않는다", async () => {
+    const saved = limits.actionTimeoutMs;
+    try {
+      const a = await bought();
+      const rt = runtime();
+      rt.browser.outcome = (_s, action) => (action.type === "click" ? { kind: "needs_customer", action: "LOGIN" } : undefined);
+      expect(await runOnce(db, rt, W)).toBe("needs_customer");
+      expect(rt.browser.saved.has(a.jobId)).toBe(true);
+      await resumeJob(db, a.ctx, a.jobId);
+      limits.actionTimeoutMs = 100;
+      rt.browser.outcome = () => undefined;
+      let release!: () => void;
+      const gate = new Promise<void>((r) => (release = r));
+      const open = rt.browser.open.bind(rt.browser);
+      let lateOpen: Promise<unknown> | null = null;
+      rt.browser.open = (scope, signal) => {
+        if (lateOpen) return open(scope, signal);
+        const p = gate.then(() => open(scope, signal));
+        lateOpen = p.catch(() => undefined);
+        return p;
+      };
+      expect(await runOnce(db, rt, W)).toBe("retry");
+      expect(await job(a.jobId)).toMatchObject({ status: "QUEUED", lastError: "read_timeout" });
+      await db.automationJob.update({ where: { id: a.jobId }, data: { runAfter: new Date(Date.now() - 1000) } });
+      // 중단한 열기가 끝났다고 확인되기 전: 이어받지 않는다
+      expect(await claimNext(db, "w-other")).toBeNull();
+      release();
+      await lateOpen;
+      await new Promise((r) => setTimeout(r, 50));
+      // 중단 신호를 받은 열기는 보관본을 복원(소비)하지 않았고, 끝났다는 확인이 남아 시간이 지나지 않아도 이어받는다
+      expect(rt.browser.saved.has(a.jobId)).toBe(true);
+      expect((await claimNext(db, "w-other"))?.job.id).toBe(a.jobId);
+    } finally {
+      limits.actionTimeoutMs = saved;
+    }
+  });
+
+  it("결제 조회가 영원히 멈춰도 구매·대사는 상한 뒤 돌아오고, 결제는 PENDING 그대로 남는다(확정·실패 처리 없음)", async () => {
+    const saved = limits.actionTimeoutMs;
+    limits.actionTimeoutMs = 100;
+    try {
+      const provider = new StrictBillingProvider();
+      const a = await shopWithCard();
+      provider.failNext = "timeout_before_charge";
+      provider.hang = true;
+      expect(await purchaseAutomation(db, provider, a.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP })).toMatchObject({ ok: true, paymentStatus: "PENDING" });
+      expect(await reconcileAutomationPayments(db, provider, { olderThanMs: 0 })).toBe(0);
+      expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "PENDING" });
+      expect(await db.automationJob.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "AWAITING_PAYMENT" });
+      // 조회가 돌아오면 다음 대사가 같은 청구 id로 확인·다시 보내 확정한다(엄격 공급자: 모든 결제 호출이 callPort 안)
+      provider.hang = false;
+      await db.automationPayment.updateMany({ data: { lastCheckedAt: null } });
+      expect(await reconcileAutomationPayments(db, provider, { olderThanMs: 0 })).toBe(1);
+      expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "PAID" });
+    } finally {
+      limits.actionTimeoutMs = saved;
     }
   });
 });

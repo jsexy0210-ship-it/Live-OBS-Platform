@@ -38,11 +38,13 @@ export type EngineHooks = {
   markChanged?(stepKey: string): Promise<ChangeMark>;
   // 실행기가 「적용 안 함」(행동 0회)을 보장하는 결과로 거절했다: 바로 앞 markChanged가 새로 남긴 기록만 되돌린다
   unmarkChanged?(stepKey: string, mark: ChangeMark): Promise<void>;
-  // 외부 행동 격리 창: 행동 직전 시작 기록(점유를 잃었으면 던져 행동하지 않음)과 행동이 돌아온 뒤 종료 확인
-  actionStarted?(): Promise<void>;
+  // 외부 행동 격리 창: 행동 직전 시작 기록(점유를 잃었으면 던져 행동하지 않음, 기록한 시작 시각을 돌려줌)과 행동이 돌아온 뒤 종료 확인,
+  // 상한을 넘긴 호출이 늦게라도 끝났다는 확인(settle, 그 시작 기록이 그대로일 때만)
+  actionStarted?(): Promise<Date | void>;
   actionEnded?(): Promise<void>;
+  actionSettled?(startedAt: Date): Promise<void>;
   // 자리를 잃었어도 해야 하는 정리 연산(브라우저 세션 닫기·보관)의 시작 기록: 점유 확인 없이 남긴다(기록은 다음 소유자를 늦추는 보수적인 쪽)
-  releaseStarted?(): Promise<void>;
+  releaseStarted?(): Promise<Date | void>;
   // OBS를 처음 바꾸기 직전: 같은 PC 잠금을 실제 PC(OBS pairing)로 옮긴다. 다른 작업이 그 PC에서 실행 중이면 던진다.
   claimObsTarget?(pairingId: string): Promise<void>;
   // 브라우저 상태를 보관하기 직전(「보관 중」 표시를 먼저 남긴다). 실패하면 보관하지 않는다.
@@ -108,15 +110,16 @@ export type ChangeMark = { stepAdded: boolean; changedAt: Date | null };
 // 포트 호출 계약: 실행기·로컬 도구·판단 모델·비밀값·연습 환경의 모든 메서드는 callPort로만 부른다(시험용 가짜는 밖에서 부르면 거부한다).
 // 결과는 판별 유니온이라 부른 쪽이 상한 초과(timeout)·오류(error)를 반드시 다뤄야 타입이 통과한다(undefined로 새지 않음).
 // - 상한(T_action)에 이르면 기다리지 않고 timeout을 돌려주며, 넘겨 준 중단 신호를 보낸다(계약: 받은 쪽은 스스로 멈춘다).
-// - window: 외부 상태를 바꾸는 호출의 격리 창 기록(시작 기록 → 종료 확인). 상한을 넘기면 종료 확인을 남기지 않는다
-//   (실행기가 아직 끝나지 않았을 수 있어 격리 창은 시작 + 상한 + 여유로 풀린다).
+// - window: 외부 상태를 바꾸는 호출의 격리 창 기록(시작 기록 → 종료 확인). 상한을 넘기면 중단 신호를 보내고 종료 확인을 남기지 않는다.
+//   격리 창은 중단한 호출이 실제로 끝났다는 확인(settle: 늦은 결과 정리까지 마친 뒤 actionSettled) 또는 강제 상한(시작 + 상한 + 여유) 중
+//   먼저 오는 것까지 이어진다. 그 전에는 작업을 다른 작업자에게 넘기지 않는다(queue.ts quiescent).
 // - onLate: 상한을 넘긴 뒤 늦게 성공한 결과(세션 같은 자원)를 정리한다. 부른 쪽은 이미 떠났으므로 반드시 여기서 닫는다.
 export type PortResult<T> = { ok: true; value: T } | { ok: false; reason: "timeout" } | { ok: false; reason: "error"; error: unknown };
-export type ActionWindowHooks = { actionStarted?(): Promise<void>; actionEnded?(): Promise<void> };
+export type ActionWindowHooks = { actionStarted?(): Promise<Date | void>; actionEnded?(): Promise<void>; actionSettled?(startedAt: Date): Promise<void> };
 const PORT_SCOPE = new AsyncLocalStorage<true>();
 export const insidePortCall = () => PORT_SCOPE.getStore() === true;
 export async function callPort<T>(run: (signal: AbortSignal) => Promise<T>, opts: { window?: ActionWindowHooks; onLate?: (late: T) => unknown } = {}): Promise<PortResult<T>> {
-  await opts.window?.actionStarted?.();
+  const startedAt = await opts.window?.actionStarted?.();
   const abort = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   let timedOut = false;
@@ -138,9 +141,20 @@ export async function callPort<T>(run: (signal: AbortSignal) => Promise<T>, opts
   } finally {
     clearTimeout(timer);
     if (!timedOut) await opts.window?.actionEnded?.();
-    else if (opts.onLate) {
-      const onLate = opts.onLate;
-      void call.then((late) => PORT_SCOPE.run(true, async () => onLate(late))).catch(() => undefined);
+    else {
+      // 늦은 결과를 정리한 뒤에야 끝났다고 확인한다(정리 중에 다른 작업자가 이어받지 않게)
+      const { onLate, window } = opts;
+      void call
+        .then(
+          async (late) => {
+            if (onLate) await PORT_SCOPE.run(true, async () => onLate(late));
+          },
+          () => undefined,
+        )
+        .then(async () => {
+          if (startedAt && window?.actionSettled) await window.actionSettled(startedAt);
+        })
+        .catch(() => undefined);
     }
   }
 }
@@ -157,7 +171,7 @@ export function valueOrThrow<T>(r: PortResult<T>): T {
   if (r.reason === "timeout") throw new ExternalReadTimeout();
   throw r.error;
 }
-const readPort = async <T>(run: () => Promise<T>): Promise<T> => valueOrThrow(await callPort(run));
+const readPort = async <T>(run: (signal: AbortSignal) => Promise<T>): Promise<T> => valueOrThrow(await callPort(run));
 // 바꾸는 행동의 결과: 상한 초과는 일시 실패로 본다(다시 시도). 오류는 그대로 올린다.
 const ACTION_TIMEOUT: ActionOutcome = { kind: "retryable", reason: "timeout" };
 function actionOutcome(r: PortResult<ActionOutcome>): ActionOutcome {
@@ -168,10 +182,14 @@ function actionOutcome(r: PortResult<ActionOutcome>): ActionOutcome {
 // 세션 열기: 보관본을 복원(하고 지우는) 외부 상태 변경이라 격리 창 기록 안에서 한다. 상한을 넘긴 뒤 늦게 열린 세션은
 // 아무도 쓰지 않으므로 보관하지 않고 바로 닫는다(늦게 열린 세션이 남아 자원을 쥐거나 상태를 쓰지 않게).
 async function openSession(rt: AutomationRuntime, scope: JobScope, window: ActionWindowHooks): Promise<BrowserSession> {
-  return valueOrThrow(await callPort(() => rt.browser.open(scope), { window, onLate: (late) => callPort((signal) => late.close({ signal })) }));
+  return valueOrThrow(await callPort((signal) => rt.browser.open(scope, signal), { window, onLate: (late) => callPort((signal) => late.close({ signal })) }));
 }
 // 세션 닫기(보관 포함)도 격리 창 기록 안에서 한다. 자리를 잃었어도 닫아야 하므로 시작 기록은 점유 확인 없이(releaseStarted) 남긴다.
-const closeWindow = (hooks: { releaseStarted?(): Promise<void> } & ActionWindowHooks): ActionWindowHooks => ({ actionStarted: hooks.releaseStarted ?? hooks.actionStarted, actionEnded: hooks.actionEnded });
+const closeWindow = (hooks: { releaseStarted?(): Promise<Date | void> } & ActionWindowHooks): ActionWindowHooks => ({
+  actionStarted: hooks.releaseStarted ?? hooks.actionStarted,
+  actionEnded: hooks.actionEnded,
+  actionSettled: hooks.actionSettled,
+});
 
 // 완료·되돌림 판정 공용 장치(본 단계·검증 단계·되돌리기 모두): 행동 전 대조와 같은 기준을 통과한 관찰에만 글 단서를 적용한다.
 // 브라우저는 관찰 주소 = 지금 문서 주소이고 이동 규칙 안이며 판정의 기대 경로로 시작해야 하고, OBS는 지금 PC가 이 작업이 확인한 PC여야 한다.
@@ -186,8 +204,8 @@ async function verifiedOnExpected(
 ): Promise<boolean> {
   if (kind === "browser") {
     if (!session || !check.pagePath || !nav) return false;
-    const after = await readPort(() => session.observe());
-    const here = await readPort(() => session.currentUrl());
+    const after = await readPort((signal) => session.observe(signal));
+    const here = await readPort((signal) => session.currentUrl(signal));
     if (!after.url || !here || here !== after.url || !pageAllowedByNav(after.url, nav)) return false;
     let path: string;
     try {
@@ -197,9 +215,9 @@ async function verifiedOnExpected(
     }
     return path.startsWith(check.pagePath) && cueMatches({ textIncludes: check.textIncludes }, after);
   }
-  const now = externalId(await readPort(() => rt.obs.currentPairingId(scope)));
+  const now = externalId(await readPort((signal) => rt.obs.currentPairingId(scope, signal)));
   if (!pairing || !now.ok || now.value !== pairing) return false;
-  return cueMatches({ textIncludes: check.textIncludes }, await readPort(() => rt.obs.observe(scope)));
+  return cueMatches({ textIncludes: check.textIncludes }, await readPort((signal) => rt.obs.observe(scope, signal)));
 }
 
 const MUTATING: readonly AutomationAction["type"][] = (Object.keys(ACTION_EFFECT) as AutomationAction["type"][]).filter((t) => ACTION_EFFECT[t] !== "none");
@@ -290,7 +308,7 @@ async function runAll(
   };
   let verifying = opts.verifying;
   let evidence: VerificationEvidence | undefined;
-  const secrets = await readPort(() => rt.vault.forJob(scope));
+  const secrets = await readPort((signal) => rt.vault.forJob(scope, signal));
   // 무료 재연결: 무엇이든 바꾸기 전에 실제로 연결된 쇼핑몰·PC가 기준 작업과 같은지 읽기만으로 확인한다.
   // 고객 로그인 전에는 쇼핑몰을 알 수 없으므로, 첫 변경 행동 바로 전에 한다. 알 수 없으면 무료로 진행하지 않는다.
   const want = opts.expectFacts;
@@ -305,12 +323,12 @@ async function runAll(
     if (!shopChecked) {
       const session = await browser();
       guard();
-      const shop = externalId(await readPort(() => session.currentShopKey()));
+      const shop = externalId(await readPort((signal) => session.currentShopKey(signal)));
       if (!shop.ok) return { kind: "failed", reason: "shop_identity_invalid" };
       shopKey = shop.value;
     }
     guard();
-    const pc = externalId(await readPort(() => rt.obs.currentPairingId(scope)));
+    const pc = externalId(await readPort((signal) => rt.obs.currentPairingId(scope, signal)));
     if (!pc.ok) return { kind: "failed", reason: "pc_identity_invalid" };
     const obsPairingId = pc.value;
     if (opts.waitForUnknownTarget && !shopKey) return { kind: "needs_customer", action: "LOGIN" };
@@ -351,7 +369,7 @@ async function runAll(
     for (let i = 0; i < opts.maxActionsPerStep && !done; i++) {
       const session = step.kind === "browser" ? await browser() : null;
       guard();
-      const raw = session ? await readPort(() => session.observe()) : await readPort(() => rt.obs.observe(scope));
+      const raw = session ? await readPort((signal) => session.observe(signal)) : await readPort((signal) => rt.obs.observe(scope, signal));
       const exception = pb ? matchException(pb, raw) : null;
       if (exception) {
         await touchStats();
@@ -423,7 +441,7 @@ async function runAll(
       let confirmedPairing: string | undefined;
       if (!session) {
         guard();
-        const read = externalId(await readPort(() => rt.obs.currentPairingId(scope)));
+        const read = externalId(await readPort((signal) => rt.obs.currentPairingId(scope, signal)));
         // 형식에 맞지 않는 PC 식별자(200자 초과 등)는 자르지 않고 바꾸기 전에 멈춘다
         if (!read.ok) return { kind: "failed", reason: "pc_identity_invalid" };
         const pairingId = read.value;
@@ -443,7 +461,7 @@ async function runAll(
       // 관찰한 화면에 관리자 로그인 상태 단서가 있어야 한다(리다이렉트로 다른 출처·같은 호스트의 쇼핑몰 앞 화면에 간 경우 차단)
       if (action.type === "fill" && "secretRef" in action.value) {
         guard();
-        const here = session ? await readPort(() => session.currentUrl()) : null;
+        const here = session ? await readPort((signal) => session.currentUrl(signal)) : null;
         const origin = secretBook?.secretOrigin;
         const ok = (u: string | null) => !!u && !!origin && secretOriginAllowed(u, opts.shopHost, origin.pathPrefixes);
         if (!origin || !ok(raw.url) || !ok(here) || !cueMatches(origin.adminCue, raw)) return { kind: "failed", reason: "unsafe_action:secret_origin_not_allowed" };
@@ -454,7 +472,7 @@ async function runAll(
       let expectedPage: ExpectedPage | undefined;
       if (session && mutating) {
         guard();
-        const here = await readPort(() => session.currentUrl());
+        const here = await readPort((signal) => session.currentUrl(signal));
         if (!nav || !here || !pageAllowedByNav(raw.url, nav) || !pageAllowedByNav(here, nav)) return { kind: "failed", reason: "unsafe_action:page_not_allowed" };
         // 관찰한 문서와 지금 문서가 다르면(관찰과 확인 사이 이동) 판단 근거가 지금 화면이 아니다: 행동 0건으로 다시 관찰한다
         if (here !== raw.url) {
@@ -489,9 +507,9 @@ async function runAll(
         out = fromExecutor(
           actionOutcome(
             await callPort(
-              () => {
+              (signal) => {
                 performStarted = true;
-                return session ? session.perform(action, secrets, actionKey, expectedPage) : rt.obs.perform(scope, action, actionKey, confirmedPairing);
+                return session ? session.perform(action, secrets, actionKey, expectedPage, signal) : rt.obs.perform(scope, action, actionKey, confirmedPairing, signal);
               },
               { window: hooks },
             ),
@@ -567,12 +585,12 @@ export async function runRollback(
   rt: AutomationRuntime,
   scope: JobScope,
   opts: { playbook: Playbook; shopHost: string | null; stepIndex: number; mutatedSteps: readonly string[]; obsPairingId: string | null; signal?: AbortSignal },
-  hooks: { touch(): Promise<void>; releaseStarted?(): Promise<void> } & ActionWindowHooks,
+  hooks: { touch(): Promise<void>; releaseStarted?(): Promise<Date | void> } & ActionWindowHooks,
 ): Promise<RollbackResult> {
   const guard = () => {
     if (opts.signal?.aborted) throw new EngineAborted();
   };
-  const secrets = await readPort(() => rt.vault.forJob(scope));
+  const secrets = await readPort((signal) => rt.vault.forJob(scope, signal));
   let session: BrowserSession | null = null;
   // 바꾼 단계(mutatedSteps)마다 되돌리기 항목(행동 1개 이상)이 있어야 한다. 하나라도 없으면(사람 정리 단계·모르는 단계) 아무것도 하지 않고
   // 「정리 필요」로 넘긴다(되돌리지 못한 변경을 남긴 채 되돌렸다고 하지 않음, fail-closed)
@@ -593,7 +611,7 @@ export async function runRollback(
         guard();
         if (rb.kind === "browser" && !session) session = await openSession(rt, scope, hooks);
         const live = session;
-        const raw = live && rb.kind === "browser" ? await readPort(() => live.observe()) : await readPort(() => rt.obs.observe(scope));
+        const raw = live && rb.kind === "browser" ? await readPort((signal) => live.observe(signal)) : await readPort((signal) => rt.obs.observe(scope, signal));
         if (!cueMatches(rb.actions[i].expect, raw)) return { kind: "cleanup_needed", reason: `rollback_deviated:${rb.forStep}` };
         const action = resolveShop(rb.actions[i].action, opts.shopHost);
         const check = validateDecision(step, { action, costWon: 0 }, secrets, {}, rb.allowedTargets, nav);
@@ -601,7 +619,7 @@ export async function runRollback(
         let expectedPage: ExpectedPage | undefined;
         if (live && rb.kind === "browser" && MUTATING.includes(action.type)) {
           guard();
-          const here = await readPort(() => live.currentUrl());
+          const here = await readPort((signal) => live.currentUrl(signal));
           if (!here || !pageAllowedByNav(raw.url, nav) || !pageAllowedByNav(here, nav)) return { kind: "cleanup_needed", reason: "rollback_unsafe:page_not_allowed" };
           // 관찰한 문서와 지금 문서가 다르면 되돌리기를 이어 가지 않는다(판단 모델 없이는 다시 맞출 수 없음)
           if (here !== raw.url) return { kind: "cleanup_needed", reason: "rollback_unsafe:page_changed" };
@@ -610,7 +628,7 @@ export async function runRollback(
         let pairing: string | undefined;
         if (rb.kind === "obs") {
           guard();
-          const read = externalId(await readPort(() => rt.obs.currentPairingId(scope)));
+          const read = externalId(await readPort((signal) => rt.obs.currentPairingId(scope, signal)));
           const current = read.ok ? read.value : null;
           if (!current || (opts.obsPairingId && current !== opts.obsPairingId)) return { kind: "cleanup_needed", reason: "rollback_obs_target" };
           pairing = current;
@@ -620,7 +638,7 @@ export async function runRollback(
         guard();
         const actionKey = keyed(action) ? actionKeyOf(scope.jobId, 100 + at, action) : undefined;
         const out = fromExecutor(
-          actionOutcome(await callPort(() => (rb.kind === "browser" ? session!.perform(action, secrets, actionKey, expectedPage) : rt.obs.perform(scope, action, actionKey, pairing)), { window: hooks })),
+          actionOutcome(await callPort((signal) => (rb.kind === "browser" ? session!.perform(action, secrets, actionKey, expectedPage, signal) : rt.obs.perform(scope, action, actionKey, pairing, signal)), { window: hooks })),
           secrets,
         );
         guard();

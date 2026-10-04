@@ -54,10 +54,23 @@ export const quiescentSql = (alias: string) =>
   );
 
 // 외부 행동 시작 기록(점유 확인 포함: 자리를 잃었으면 던져 행동하지 않는다)과 종료 확인(자리를 잃었어도 남긴다: 끝났다는 사실이므로)
-export const markActionStarted = (db: PrismaClient, c: Claim) => fencedWrite(db, c, (now) => ({ data: { lastActionStartedAt: now } }));
+// 시작 기록은 남긴 시각을 돌려준다(상한을 넘긴 호출이 늦게 끝났을 때 그 시작 기록이 그대로인지 대조하는 데 쓴다)
+export async function markActionStarted(db: PrismaClient, c: Claim): Promise<Date> {
+  let at!: Date;
+  await fencedWrite(db, c, (now) => ((at = now), { data: { lastActionStartedAt: now } }));
+  return at;
+}
 // 자리를 잃었어도 해야 하는 정리 연산(세션 닫기·보관)의 시작 기록(점유 확인 없음, 다음 소유자를 늦추는 보수적인 기록)
-export const markReleaseStarted = (db: PrismaClient, jobId: string) => db.$executeRaw`UPDATE "AutomationJob" SET "lastActionStartedAt" = clock_timestamp() WHERE id = ${jobId}::uuid`;
+export async function markReleaseStarted(db: PrismaClient, jobId: string): Promise<Date> {
+  const at = await dbNow(db);
+  await db.automationJob.updateMany({ where: { id: jobId }, data: { lastActionStartedAt: at } });
+  return at;
+}
 export const markActionEnded = (db: PrismaClient, jobId: string) => db.$executeRaw`UPDATE "AutomationJob" SET "lastActionEndedAt" = clock_timestamp() WHERE id = ${jobId}::uuid`;
+// 상한을 넘겨 중단한 호출이 늦게라도 끝났다(settle). 그 뒤 새 행동이 시작되지 않았을 때(시작 기록이 그대로)만 종료 확인을 남긴다
+export async function markActionSettled(db: PrismaClient, jobId: string, startedAt: Date): Promise<void> {
+  await db.automationJob.updateMany({ where: { id: jobId, lastActionStartedAt: startedAt }, data: { lastActionEndedAt: await dbNow(db) } });
+}
 
 // 지금 넘긴 마감(시작·전체)이 있으면 그 사유
 export function overdue(job: Pick<AutomationJob, "queuedAt" | "startedAt">, now: Date): "start_deadline" | "total_deadline" | null {

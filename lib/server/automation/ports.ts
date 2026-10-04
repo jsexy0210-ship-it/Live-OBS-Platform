@@ -45,7 +45,7 @@ export interface AutomationPlanner {
   // 쓰는 모델 이름(config.ts plannerConfig). 비용 산정·기록용
   readonly model: string;
   // 엔진의 포트 호출 계약(callPort, 격리 창 기록) 안에서만 부른다. 상한(actionTimeoutMs)에 이르면 signal이 중단되며, 받은 쪽은 호출을 끊는다(계약).
-  decide(input: PlannerInput, signal?: AbortSignal): Promise<PlannerDecision>;
+  decide(input: PlannerInput, signal: AbortSignal): Promise<PlannerDecision>;
 }
 
 // 연결 결과로 알게 된 값(무료 재연결 판정용)과 검증 증거. 비밀값을 넣지 않는다.
@@ -77,9 +77,12 @@ export const pageMatchesExpected = (current: string | null, expected: ExpectedPa
       secretOriginAllowed(current, expected.secretOrigin.shopHost, expected.secretOrigin.pathPrefixes) &&
       expected.secretOrigin.adminCueText.every((t) => currentText.includes(t))));
 
+// 외부 의존 공통 계약(47차): 아래 모든 메서드는 signal을 필수로 받고, 엔진·작업자는 callPort로만 부른다.
+// signal이 중단되면(상한 초과) 받은 쪽은 그 뒤 아무것도 바꾸지 않고(보관본 복원·소비 포함) 곧바로 끝낸다(거절로 끝나도 된다).
+// 엔진은 중단한 호출이 실제로 끝났다는 확인(settle)이나 강제 상한 전에는 그 작업을 다른 작업자에게 넘기지 않는다.
 export interface BrowserSession {
   readonly id: string;
-  observe(): Promise<Observation>;
+  observe(signal: AbortSignal): Promise<Observation>;
   // actionKey: 변경 행동(클릭·입력·OBS 설정·테스트 주문)에만 붙는 고정 키(작업 id·단계·행동 의미의 해시, 순번과 무관). 실행기는 같은 키로
   // 이미 성공한 행동을 다시 적용하지 않고 그때 결과를 돌려준다(작업자가 죽은 뒤 회수·재실행해도 중복 적용 없음).
   // 키 기록도 보관 자료처럼 작업에만 묶고 작업이 끝나면 지운다. 키가 없는 행동(이동·확인)은 매번 실행한다.
@@ -87,11 +90,11 @@ export interface BrowserSession {
   // 지금 문서 주소를 다시 읽어 expected.url과 같고 이동 규칙(호스트·경로·쿼리 키·조각 금지) 안인지, 비밀값 입력이면 비밀값 출처 규칙
   // (secretOrigin) 안인지 대조하고, 아니면 아무것도 하지 않고 fatal "page_mismatch"를 돌려준다(확인과 실행 사이 리다이렉트 차단).
   // 행동 하나는 하드 상한(AUTOMATION_LIMITS.actionTimeoutMs) 안에 끝내고, 넘기면 실행기 쪽에서 강제로 끊는다(계약, 엔진 격리 창의 전제)
-  perform(action: AutomationAction, secrets: JobSecrets, actionKey?: string, expected?: ExpectedPage): Promise<ActionOutcome>;
+  perform(action: AutomationAction, secrets: JobSecrets, actionKey: string | undefined, expected: ExpectedPage | undefined, signal: AbortSignal): Promise<ActionOutcome>;
   // 지금 로그인된 관리 화면의 쇼핑몰 식별자(읽기만, 아무것도 바꾸지 않음). 알 수 없으면 null
-  currentShopKey(): Promise<string | null>;
+  currentShopKey(signal: AbortSignal): Promise<string | null>;
   // 지금 문서의 주소(리다이렉트 뒤 실제 출처, 읽기만). 알 수 없으면 null. 비밀값을 넣기 직전에 확인한다.
-  currentUrl(): Promise<string | null>;
+  currentUrl(signal: AbortSignal): Promise<string | null>;
   // 기본: 쿠키·저장소·임시파일까지 지운다.
   // keepForResume: 고객 행동(로그인·2단계 인증·CAPTCHA·권한 승인) 대기로 멈출 때. 실행기는 이 작업의 쿠키·저장소·자격증명과
   // 임시 파일(화면 캡처·내려받은 파일·실행 기록)을
@@ -99,7 +102,7 @@ export interface BrowserSession {
   // 작업이 끝나면(완료·취소·실패·마감) 서버가 discard로 바로 지운다(worker.ts purgeEndedBrowserState).
   // 보관(keepForResume)은 외부 상태 변경이라 격리 창 장치 안에서만 부른다. signal이 중단되면(상한 초과) 보관하지 않고 끝낸다(계약,
   // 다음 소유자는 새 세션으로 시작한다).
-  close(opts?: { keepForResume?: boolean; signal?: AbortSignal }): Promise<void>;
+  close(opts: { keepForResume?: boolean; signal: AbortSignal }): Promise<void>;
 }
 
 // 실제 실행기가 지켜야 할 접속 조건(정본 c4cc711). 서버 쪽 검사(validateDecision의 허용 호스트·https·기본 포트)만으로는
@@ -111,31 +114,32 @@ export interface BrowserSession {
 // - 거부하면 retryable이 아니라 fatal로 돌려준다(같은 주소를 반복 시도하지 않게).
 export interface BrowserExecutor {
   // 작업마다 새 browser context. 다른 작업·판매자와 쿠키·저장소를 나누지 않는다(같은 작업의 보관본만 복원).
-  open(scope: JobScope): Promise<BrowserSession>;
+  // 보관본을 복원(하고 지우는) 외부 변경이다. signal이 중단되면 복원하지 않고 거절로 끝낸다(계약).
+  open(scope: JobScope, signal: AbortSignal): Promise<BrowserSession>;
   // 그 작업의 보관본(쿠키·저장소·자격증명·임시 파일)과 행동 키 기록을 지운다. 끝난 모든 작업(완료·취소·실패·마감)에 서버가
   // 한 번씩 요청한다(고객 대기가 없었던 작업 포함). 없으면 아무것도 안 한다. 지운 뒤에는 복원할 수 없다.
   // 지운 범위에는 tombstone을 남겨, 그 뒤 늦게 끝난 행동·닫기(keepForResume 포함)가 보관본·행동 키를 다시 쓰는 것을 거부한다
   // (행동 결과는 fatal "scope_discarded"). 정리가 진행 중인 실행보다 먼저 끝나도 자료가 되살아나지 않게 하는 규칙이다.
-  discard(scope: JobScope): Promise<void>;
+  discard(scope: JobScope, signal: AbortSignal): Promise<void>;
 }
 
 export interface ObsBridge {
-  observe(scope: JobScope): Promise<Observation>;
+  observe(scope: JobScope, signal: AbortSignal): Promise<Observation>;
   // actionKey: 위와 같다. 로컬 도구는 같은 키로 이미 성공한 OBS 변경(소스 추가 등)을 다시 적용하지 않는다.
   // expectedPairingId: 엔진이 직전에 확인한(잠금을 잡은) PC. 로컬 도구는 실행 직전 지금 연결된 PC와 원자적으로 비교해 다르면
   // 아무것도 하지 않고 fatal "pairing_mismatch"를 돌려준다. 성공 결과에는 실제로 실행한 PC(pairingId)를 반드시 담는다.
   // 행동 하나는 하드 상한(AUTOMATION_LIMITS.actionTimeoutMs) 안에 끝내고, 넘기면 실행기 쪽에서 강제로 끊는다(계약, 엔진 격리 창의 전제)
-  perform(scope: JobScope, action: AutomationAction, actionKey?: string, expectedPairingId?: string): Promise<ActionOutcome>;
+  perform(scope: JobScope, action: AutomationAction, actionKey: string | undefined, expectedPairingId: string | undefined, signal: AbortSignal): Promise<ActionOutcome>;
   // 연결된 로컬 도구의 OBS pairing id(읽기만). 연결 안 됐거나 알 수 없으면 null
-  currentPairingId(scope: JobScope): Promise<string | null>;
+  currentPairingId(scope: JobScope, signal: AbortSignal): Promise<string | null>;
   // 이 작업의 OBS 연결 정보(로컬 도구 연결 토큰 등)와 행동 키 기록을 지운다. 고객 대기 중에는 암호화해 작업에만 묶어 두고,
   // 작업이 끝나면(완료·취소·실패·마감, 고객 대기가 없었던 작업 포함) 서버가 이것으로 바로 지운다. 지운 뒤에는 다시 쓸 수 없다.
   // 지운 범위에는 tombstone을 남겨, 늦게 끝난 행동이 연결 정보·행동 키를 다시 남기지 않게 거부한다(결과는 fatal "scope_discarded").
-  discard(scope: JobScope): Promise<void>;
+  discard(scope: JobScope, signal: AbortSignal): Promise<void>;
 }
 
 export interface SecretVault {
-  forJob(scope: JobScope): Promise<JobSecrets>;
+  forJob(scope: JobScope, signal: AbortSignal): Promise<JobSecrets>;
 }
 
 export type AutomationRuntime = { planner: AutomationPlanner; browser: BrowserExecutor; obs: ObsBridge; vault: SecretVault };
@@ -145,8 +149,8 @@ export type AutomationRuntime = { planner: AutomationPlanner; browser: BrowserEx
 // 두 연산은 외부 연산이라 엔진의 포트 호출 계약(callPort, 격리 창 기록) 안에서만 부른다. 상한(actionTimeoutMs)에 이르면 signal이 중단되며,
 // 받은 쪽은 그 뒤 아무것도 바꾸지 않고 스스로 멈춘다(계약).
 export interface PracticeEnvironment {
-  reset(signal?: AbortSignal): Promise<void>;
-  isBaseline(signal?: AbortSignal): Promise<boolean>;
+  reset(signal: AbortSignal): Promise<void>;
+  isBaseline(signal: AbortSignal): Promise<boolean>;
 }
 export type PracticeRuntime = AutomationRuntime & { practice: PracticeEnvironment };
 // 연습 실행 범위의 판매자 자리(시험용 쇼핑몰·PC 하나)

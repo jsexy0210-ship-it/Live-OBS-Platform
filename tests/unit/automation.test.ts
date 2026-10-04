@@ -2,7 +2,17 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_COST_LIMIT_WON, DEFAULT_PLANNER_MODEL, plannerConfig } from "../../lib/server/automation/config";
 import { FakeBrowserExecutor, FakePlanner } from "../../lib/server/automation/fakes";
 import { publicError } from "../../lib/server/automation/jobs";
-import { sanitizeObservation, validateDecision, type AutomationAction } from "../../lib/server/automation/ports";
+import {
+  sanitizeObservation,
+  validateDecision,
+  type AutomationAction,
+  type AutomationPlanner,
+  type BrowserExecutor,
+  type BrowserSession,
+  type ObsBridge,
+  type PracticeEnvironment,
+  type SecretVault,
+} from "../../lib/server/automation/ports";
 import { backoffMs } from "../../lib/server/automation/queue";
 import { TERMINAL, TRANSITIONS, canTransition, sourcesOf } from "../../lib/server/automation/states";
 import { STEPS, VERIFY_STEP_INDEX } from "../../lib/server/automation/steps";
@@ -105,5 +115,30 @@ describe("판단 모델 설정(확정 ⑦)", () => {
     expect(plannerConfig({})).toEqual({ model: DEFAULT_PLANNER_MODEL, costLimitWon: DEFAULT_COST_LIMIT_WON });
     expect(plannerConfig({ AUTOMATION_PLANNER_MODEL: "pro-next", AUTOMATION_COST_LIMIT_WON: "2000" })).toEqual({ model: "pro-next", costLimitWon: 2000 });
     for (const v of ["0", "-1", "1.5", "abc", "1000000"]) expect(plannerConfig({ AUTOMATION_COST_LIMIT_WON: v }).costLimitWon).toBe(DEFAULT_COST_LIMIT_WON);
+  });
+});
+
+// 47차: 외부 의존(실행기·세션·로컬 OBS 도구·판단 모델·비밀값·연습 환경)의 모든 메서드는 중단 신호(signal)를 필수로 받는다(타입 검사로 강제)
+type Methods<T> = { [K in keyof T]-?: T[K] extends (...a: never[]) => unknown ? K : never }[keyof T];
+type TakesSignal<F> = F extends (...a: infer A) => unknown ? (A extends [...unknown[], AbortSignal] ? true : A extends [{ signal: AbortSignal }] ? true : false) : false;
+type AllTakeSignal<T> = false extends { [K in Methods<T>]: TakesSignal<T[K]> }[Methods<T>] ? false : true;
+const portsTakeSignal: [
+  AllTakeSignal<BrowserExecutor>,
+  AllTakeSignal<BrowserSession>,
+  AllTakeSignal<ObsBridge>,
+  AllTakeSignal<AutomationPlanner>,
+  AllTakeSignal<SecretVault>,
+  AllTakeSignal<PracticeEnvironment>,
+] = [true, true, true, true, true, true];
+// 검사 자체가 동작하는지(신호가 없거나 선택이면 거부)
+// @ts-expect-error 신호 없는 메서드
+const noSignal: AllTakeSignal<{ open(scope: string): Promise<void> }> = true;
+// @ts-expect-error 선택 신호
+const optionalSignal: AllTakeSignal<{ open(scope: string, signal?: AbortSignal): Promise<void> }> = true;
+
+describe("외부 의존 계약(47차)", () => {
+  it("모든 포트 메서드는 signal을 필수로 받는다(타입 검사)", () => {
+    expect(portsTakeSignal.every(Boolean)).toBe(true);
+    expect([noSignal, optionalSignal]).toEqual([true, true]);
   });
 });

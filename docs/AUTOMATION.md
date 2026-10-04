@@ -98,12 +98,15 @@
   |---|---|---|
   | `BrowserSession.perform`·`ObsBridge.perform` | 격리 창(상한 초과면 일시 실패) | 외부 변경 |
   | `BrowserSession.close` | 격리 창(자리를 잃었어도 닫으므로 시작 기록은 점유 확인 없이). 보관(`keepForResume`)이 상한 초과·오류면 고객 대기로 두지 않고 다시 시도(`state_save_timeout`·`state_save_failed`, 46차) | 브라우저 상태 보관은 외부 변경 |
-  | `BrowserExecutor.open` | 격리 창(상한 초과면 `read_timeout` 다시 시도). 늦게 열린 세션은 보관하지 않고 닫음(`onLate`, 46차) | 보관본을 복원·삭제하는 외부 변경 |
+  | `BrowserExecutor.open` | 격리 창(상한 초과면 중단 신호 → `read_timeout` 다시 시도). 중단 신호를 받으면 보관본을 복원하지 않고 거절(계약, 47차). 늦게 열린 세션은 보관하지 않고 닫음(`onLate`, 46차) | 보관본을 복원·삭제하는 외부 변경 |
   | `AutomationPlanner.decide` | 격리 창(상한 초과면 `planner_timeout` 실패) | 작업자를 붙잡을 수 있음 |
   | `PracticeEnvironment.reset`·`isBaseline` | 격리 창 | 시험 환경 변경 |
   | `BrowserSession.observe`·`currentUrl`·`currentShopKey`, `ObsBridge.observe`·`currentPairingId`, `SecretVault.forJob` | 상한만(넘으면 `read_timeout` 다시 시도) | 읽기라 외부 변경 없음, 작업자를 붙잡을 수 있음 |
   | `BrowserExecutor.discard`·`ObsBridge.discard` | 상한만, 격리 창이 지난 뒤에만 부름. 상한 초과·오류는 삭제 실패로 기록하고 다음 작업으로. 끝난 작업 삭제는 한 작업자만 잡음(재시도 시각을 두 요청 상한 + 여유 뒤로 미루는 조건부 갱신, 46차) | 실행기 쪽 보관 자료 삭제 |
 
+  | `BillingProvider.getPayment`·`charge`(자동 연결 결제) | 상한만. 조회가 넘으면 결제는 PENDING 그대로 다음 대사로, 청구가 넘으면 결과 모름으로 PENDING(47차) | 작업자를 붙잡을 수 있음 |
+
+  모든 포트 메서드는 `signal`을 필수로 받는다(47차, 타입 시험으로 강제). 결제 공급자 인터페이스(`BillingProvider`)는 구독 결제와 함께 쓰는 공용 인터페이스라 이번에 시그니처를 바꾸지 않았다(미완료, §8). 격리 창은 상한을 넘긴 호출이 실제로 끝났다는 확인(settle: 늦은 결과 정리까지 마친 뒤, 그 시작 기록이 그대로일 때만 종료 확인) 또는 강제 상한(시작 + 상한 + 여유) 중 먼저 오는 것까지 이어진다(47차).
   모든 포트 메서드는 `callPort` 하나로만 부른다(46차). 결과는 `{ok:true,value} | {ok:false,reason:"timeout"|"error"}` 판별 유니온이라 부른 쪽이 상한 초과를 반드시 다룬다(undefined 없음). 상한을 넘긴 뒤 늦게 도착한 자원은 `onLate`로 정리한다. 시험용 가짜는 엄격 모드에서 `callPort` 밖 호출을 거부한다. 상한 계약은 각 메서드 주석(`ports.ts`)에 있다.
 - 시각은 DB 시계로만 기록·비교한다(lease·마감·재시도·이탈·준비 상태·연습 기록·보관 자료 삭제 재시도·정리 필요 시각). 프로세스 시계는 실행 시간 측정(`durationMs`)에만 쓴다. DB 시계는 트랜잭션 시작 시각(`now()`)이 아니라 실제 시각(`clock_timestamp()`)이며, 시간 판단·연장은 잠금을 잡은 뒤에 한다(잠금 대기 중 lease·마감이 지나면 그대로 반영).
 - 잠금 순서(교착 방지, 모든 경로 공통): 판매자 잠금 → 작업서 잠금 → 작업 행 → 결제 행. 작업 행을 잡은 뒤에 판매자·작업서 잠금을 잡지 않는다(설치 완료·화면 이탈 기록은 작업 행보다 먼저 잡는다, `fencedWrite`의 `preLocks`).
@@ -166,6 +169,7 @@
 
 ## 8. 판단 필요 (미확정)
 
+- **판단 필요 — 결제 공급자 인터페이스에 중단 신호 넣기 (Codex 47차)**: 자동 연결의 결제 조회·청구는 `callPort` 상한으로 묶어 작업자가 묶이지 않고 결제는 PENDING으로 남는다. 다만 `BillingProvider`는 구독 결제(`lib/server/billing`)와 함께 쓰는 공용 인터페이스라 메서드에 `signal`을 필수로 넣는 변경은 이 PR의 소유 범위 밖이다. 실제 PG 연동 때 공용 인터페이스에 `signal`을 넣고 구독 결제 쪽 호출도 함께 고친다.
 - **미완료 — E3-W 자동 되돌리기 전체 (Codex 44차, 후속 PR)**: 지금 자동 되돌리기(`runRollback`)는 실행 시작 때 작업서 버전 변경·검증 해제로 멈추는 경로에서만 한다. 실행 중 실패(`failed`)·확인 실패(쇼핑몰·PC 식별값 없음)·재시도 소진·실행 시간 마감으로 끝나는 작업은 바꾼 것이 있으면 되돌리지 않고 「정리 필요」(결제 보류, 마스터 관리자 알림, 운영자가 정리 뒤 닫기)로 둔다. 안전 쪽 동작이다. 이 경로들을 한 종료 함수(되돌리기 → 확인되면 실패, 아니면 정리 필요)로 모으면 실패할 때마다 외부 행동(되돌리기)이 늘고, PC 불일치처럼 대상이 의심스러운 안전 정지에서도 되돌리기가 돌 수 있어, 경로별 허용 범위를 정해 E3-W에서 한다.
 - Gemini 키 연결·실제 호출·대규모 부하 시험(확정 ⑦: 시작 전 재승인), 비용 상한 실측 조정.
 - 실제 환불 실행(REFUND_PENDING → REFUNDED): PG 환불 API와 승인 절차(대표님 승인 대상).

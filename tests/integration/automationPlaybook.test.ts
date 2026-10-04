@@ -163,7 +163,7 @@ describe("연습 모드와 지원 목록", () => {
     rt.browser.outcome = () => ({ kind: "fatal", reason: "admin_error" });
     const run = await runPractice(db, rt, cafe24Playbook, { shopHost: "myshop.cafe24.com" });
     expect(run).toMatchObject({ outcome: "FAILED", failedStep: "shop_connect", reason: "admin_error" });
-    const secrets = await rt.vault.forJob({ sellerId: "practice", jobId: "x" });
+    const secrets = await rt.vault.forJob({ sellerId: "practice", jobId: "x" }, new AbortController().signal);
     const all = JSON.stringify(await db.automationPracticeRun.findMany());
     expect(all).not.toContain(secrets.webhook_secret);
     expect(all).not.toContain(MATCHING_ADMIN);

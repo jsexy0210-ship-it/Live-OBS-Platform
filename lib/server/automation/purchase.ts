@@ -15,6 +15,7 @@ import {
   REINSTALL_PRICE,
 } from "./config";
 import { externalId } from "./boundary";
+import { callPort, valueOrThrow } from "./engine";
 import type { Playbook } from "./playbook";
 import { findPlaybook, playbookForShopUrl, shopHostOf } from "./playbooks";
 import { playbookReadiness } from "./practice";
@@ -359,7 +360,8 @@ export async function verifyAndSettle(
   paymentId: string,
   opts: { notChargedAfterMs?: number } = {},
 ): Promise<AutomationPayment["status"]> {
-  const found = await provider.getPayment(paymentId);
+  // 결제 조회도 외부 호출 계약(callPort)을 거친다: 상한을 넘기면 던져(결제는 PENDING 그대로) 대사가 다음 회차에 다시 묻는다
+  const found = valueOrThrow(await callPort(() => provider.getPayment(paymentId)));
   return db.$transaction(async (tx) => {
     // 잠금 순서(작업 행 → 결제 행)대로 잡은 뒤의 실제 시각으로 마감을 판단한다(잠금 대기 중 흐른 시간 포함)
     const head = await tx.automationPayment.findUniqueOrThrow({ where: { id: paymentId }, select: { job: { select: { id: true } } } });
@@ -449,17 +451,16 @@ async function submitCharge(db: PrismaClient, provider: BillingProvider, payment
     return r.count === 1 ? { sellerId: p.sellerId, amount: p.amount, kind: p.job.kind } : null;
   });
   if (!claimed) return false;
-  try {
-    await provider.charge({
+  // 결과를 못 받으면(상한 초과·오류) PENDING으로 두고 대사(reconcile)가 같은 청구 id로 PG에 확인한다(같은 청구 id는 한 번만 결제됨)
+  await callPort(() =>
+    provider.charge({
       billingKey,
       customerKey: claimed.sellerId,
       amount: claimed.amount,
       orderId: paymentId,
       orderName: claimed.kind === "INITIAL" ? AUTOMATION_ORDER_NAME : REINSTALL_ORDER_NAME,
-    });
-  } catch {
-    // 결과를 모른다. PENDING으로 두고 대사(reconcile)가 같은 청구 id로 PG에 확인한다.
-  }
+    }),
+  );
   return true;
 }
 
@@ -484,7 +485,8 @@ export async function reconcileAutomationPayments(db: PrismaClient, provider: Bi
   for (const p of stale) {
     // 한 건 조회가 실패해도 나머지는 계속 확인한다
     try {
-      if ((await provider.getPayment(p.id)).status === "NOT_FOUND") {
+      // 조회가 상한을 넘기면 던져 이 건은 PENDING으로 두고 다음 건으로 넘어간다
+      if (valueOrThrow(await callPort(() => provider.getPayment(p.id))).status === "NOT_FOUND") {
         const sub = await db.sellerSubscription.findUnique({ where: { sellerId: p.sellerId }, select: { billingKeyCipher: true } });
         if (sub?.billingKeyCipher) await submitCharge(db, provider, p.id, openBillingKey(sub.billingKeyCipher, p.sellerId), cutoff);
       }
