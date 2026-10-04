@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { grantPaidPeriodInDb } from "./billingDb";
 
 // 파트너스 가입 신청(PF-007) → 로그인 → 비밀번호 찾기(AU-003·004)를 실제 API로 끝까지 확인한다.
 // 개발 서버(playwright.config.ts 「dev」)에서 돈다: 가짜 본인확인 공급자(인증번호 000000)와
@@ -139,6 +140,8 @@ test("파트너스 가입 신청 → 바로 승인 → 로그인 → 비밀번�
   await page.getByLabel("비밀번호").fill(a.password);
   await page.getByRole("button", { name: "로그인" }).click();
   await expect(page).toHaveURL(/\/seller\/products$/);
+  // 새 파트너는 통합 요금제·체험 없음이라 첫 결제 전까지 잠겨 있다(#185)
+  await expect(page.getByText("이용 기간이 끝나서 지금은 쓸 수 없어요")).toBeVisible();
   await page.context().clearCookies();
 
   // 비밀번호 찾기: 대표자 본인확인 → 새 비밀번호
@@ -495,6 +498,8 @@ test("직원: 로그인하면 본인확인 연결 안내가 뜨고, 나중에 �
   await expect(page).toHaveURL(/\/seller\/products$/);
   const id = uniq();
   const s = { email: `staff-${id}@example.com`, name: `이${letters(id)}`, password: `pw-${id}-staff`, phone: randomPhone() };
+  // 직원 관리는 잠긴 파트너가 쓸 수 없다: 시험 DB에 결제한 이용 기간을 넣는다
+  await grantPaidPeriodInDb(a.email);
   await createStaff(page, s);
   await signOut(page);
 
@@ -614,9 +619,9 @@ test("직원: 로그인하면 본인확인 연결 안내가 뜨고, 나중에 �
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByText("연결됨", { exact: true })).toBeVisible();
   await dialog.getByLabel("휴대폰 번호").fill(nextPhone);
-  await expect(dialog.getByText("번호를 바꾸면 직원이 다시 본인확인을 해야 해요.")).toBeVisible();
+  await expect(dialog.getByText("번호를 바꾸면 직원이 본인확인을 다시 해야 합니다.")).toBeVisible();
   await dialog.getByRole("button", { name: "저장" }).click();
-  await expect(page.getByText("다음 로그인 때 본인확인을 다시 안내해요", { exact: false })).toBeVisible();
+  await expect(page.getByText("다음 로그인 때 본인확인을 다시 안내합니다", { exact: false })).toBeVisible();
   await signOut(page);
   await login(page, "직원", s.email, next);
   await expect(page).toHaveURL(/\/seller\/identity-link\?next=/);

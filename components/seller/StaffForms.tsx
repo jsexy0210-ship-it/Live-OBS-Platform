@@ -24,7 +24,7 @@ export const PERMS: { key: StaffPerm; label: string; desc: string }[] = [
   { key: "OVERLAY_EDIT", label: "오버레이 편집", desc: "오버레이 설정 · URL" },
   { key: "PRODUCT_MANAGE", label: "상품", desc: "등록 · 재고 · 카테고리" },
   { key: "ORDER_SHIPPING", label: "주문·배송", desc: "주문 처리 · 입금 확인 · 송장" },
-  { key: "CUSTOMER_PII_VIEW", label: "고객 정보 보기", desc: "고객 이름·연락처·주소를 볼 수 있어요" },
+  { key: "CUSTOMER_PII_VIEW", label: "고객 정보 보기", desc: "고객 이름·연락처·주소를 볼 수 있습니다" },
   { key: "MEMBER_POINTS", label: "회원·적립금", desc: "회원 · 구매 제한 · 적립금" },
   { key: "INQUIRY_REPLY", label: "문의 답변", desc: "구매자 문의" },
   { key: "RECEIPT_TAX", label: "영수증·세금계산서", desc: "발행 · 재발행" },
@@ -55,9 +55,9 @@ export const STAFF_NAME_MAX = 50;
 // 서버가 저장하는 모양(cleanStaffName: NFKC·앞뒤 공백 정리)으로 바꾼 이름. 저장 결과를 다시 읽어 비교할 때 쓴다
 export const normStaffName = (v: string) => cleanText(v, STAFF_NAME_MAX) ?? v.trim();
 export function staffNameError(v: string): string | null {
-  if (!v.trim()) return "이름을 적어 주세요";
-  if (textLength(v) > STAFF_NAME_MAX) return `이름은 ${STAFF_NAME_MAX}자까지 적을 수 있어요`;
-  if (cleanText(v, STAFF_NAME_MAX) === null) return "이름에 쓸 수 없는 문자가 있어요";
+  if (!v.trim()) return "이름을 입력해 주십시오";
+  if (textLength(v) > STAFF_NAME_MAX) return `이름은 ${STAFF_NAME_MAX}자까지 입력할 수 있습니다`;
+  if (cleanText(v, STAFF_NAME_MAX) === null) return "이름에 사용할 수 없는 문자가 있습니다";
   return null;
 }
 
@@ -68,11 +68,11 @@ export const phoneOk = (v: string) => /^01\d{8,9}$/.test(cleanPhone(v));
 
 // 서버 실패 이유 → 화면 문구(서버가 문구를 주지 않는 응답)
 export const STAFF_ERRORS: Record<string, string> = {
-  email_taken: "이미 쓰고 있는 이메일이에요",
-  weak_password: `비밀번호는 ${MIN_PASSWORD_LENGTH}자 이상으로 정해 주세요`,
-  invalid_phone: "휴대폰 번호를 다시 확인해 주세요",
-  invalid_permissions: "권한을 다시 골라 주세요",
-  bad_request: "입력한 내용을 다시 확인해 주세요",
+  email_taken: "이미 사용 중인 이메일입니다",
+  weak_password: `비밀번호는 ${MIN_PASSWORD_LENGTH}자 이상으로 정해 주십시오`,
+  invalid_phone: "휴대폰 번호를 다시 확인해 주십시오",
+  invalid_permissions: "권한을 다시 선택해 주십시오",
+  bad_request: "입력 내용을 다시 확인해 주십시오",
 };
 // 새 비밀번호 칸: 기본은 가리고 「보기」로 잠깐 확인한다(화면 녹화·옆사람에게 그대로 보이지 않게).
 // 값이 비워지면(만들기 성공 뒤 등) 다시 가린다: 다음 직원 비밀번호가 바로 보이지 않게
@@ -105,7 +105,7 @@ export function PermissionPicker({ value, onChange, disabled }: { value: StaffPe
             {b.label}
           </button>
         ))}
-        <span className="t-c1 c-alt">누른 뒤 개별로 고칠 수 있어요</span>
+        <span className="t-c1 c-alt">선택 후 항목별로 수정할 수 있습니다</span>
       </div>
       <div className="col">
         {PERMS.map((p) => (
@@ -121,7 +121,7 @@ export function PermissionPicker({ value, onChange, disabled }: { value: StaffPe
           <div key={label} className="row between staff-perm is-owner-only">
             <span className="col" style={{ gap: 1 }}>
               <span className="t-l1 fw6">{label}</span>
-              <span className="t-c1 c-alt">대표자만 할 수 있어요</span>
+              <span className="t-c1 c-alt">대표자 전용</span>
             </span>
             <input className="cbx" type="checkbox" disabled aria-label={`${label} · 대표자만`} />
           </div>
@@ -158,12 +158,18 @@ function Dialog({ title, labelId, busy, onClose, children, wide }: { title: stri
 
 export const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
 
-// 저장 결과가 불분명할 때(연결 끊김·5xx, stepFailure.ts 기준) 지금 직원 목록을 다시 읽어 실제 상태를 확인한다. 읽지 못하면 null
+// 직원 변경(추가·정보·권한 수정·비밀번호 재설정·비활성화)의 결과가 불분명할 때(연결 끊김·5xx, stepFailure.ts 기준) 공통 처리:
+// 실패라고 단정하지 않고 지금 직원 목록을 다시 읽어 실제 상태로 판정한다. 목록으로 알 수 없는 것(비밀번호)은 같은 값으로만 다시 보내게 한다.
 export async function readStaffList(): Promise<Staff[] | null> {
   const r = await api<{ staff: Staff[] }>("/api/seller/staff");
   return r.ok ? r.data.staff : null;
 }
 export const isUnclear = (r: { status: number; error: string }) => stepOutcome(r) === "retry";
+// 결과가 불분명한 변경을 목록으로 확인한다: 목록을 읽어 판정 함수에 넘긴다. 목록을 읽지 못하면 null(아직 모름)
+export async function settleByList<T>(judge: (list: Staff[]) => T): Promise<T | null> {
+  const list = await readStaffList();
+  return list ? judge(list) : null;
+}
 
 // 직원 정보·권한 수정: 이름·휴대폰은 PATCH, 권한은 permissions로 보낸다(바뀐 것만)
 // 저장 응답을 놓치거나 서버 오류(결과 불분명)면 직원을 다시 읽어, 보낸 값과 같으면 저장한 것으로 보고 다르면 창과 목록에 지금 값을 보여 준다
@@ -180,19 +186,19 @@ export function EditStaffModal({ staff, onClose, onSaved, onChanged }: { staff: 
   const phoneChanged = nextPhone !== base.phone;
   const profileChanged = name.trim() !== base.name || phoneChanged;
   const permsChanged = !sameSet(perms, base.permissions);
-  const savedText = () => (phoneChanged && base.identityLinked ? `${name.trim()} 정보를 저장했어요 · 다음 로그인 때 본인확인을 다시 안내해요` : `${name.trim()} 정보를 저장했어요`);
+  const savedText = () => (phoneChanged && base.identityLinked ? `${name.trim()} 정보를 저장했습니다 · 다음 로그인 때 본인확인을 다시 안내합니다` : `${name.trim()} 정보를 저장했습니다`);
 
   const checkUnclear = async () => {
-    const cur = (await readStaffList())?.find((s) => s.id === base.id);
+    const cur = await settleByList((list) => list.find((s) => s.id === base.id) ?? null);
     setBusy(false);
-    if (!cur) return setError("저장했는지 확인하지 못했어요. 잠시 뒤 목록에서 확인해 주세요");
+    if (!cur) return setError("저장 여부를 확인하지 못했습니다. 잠시 후 목록에서 확인해 주십시오");
     onChanged?.();
     if (cur.name === normStaffName(name) && cur.phone === nextPhone && sameSet(cur.permissions, perms)) return onSaved(savedText());
     setBase(cur);
     setName(cur.name);
     setPhone(cur.phone ?? "");
     setPerms(cur.permissions);
-    setError("저장되지 않았어요. 지금 정보와 권한을 확인해 주세요");
+    setError("저장되지 않았습니다. 현재 정보와 권한을 확인해 주십시오");
   };
 
   const save = async (e: React.FormEvent) => {
@@ -200,7 +206,7 @@ export function EditStaffModal({ staff, onClose, onSaved, onChanged }: { staff: 
     if (busy) return;
     const nameError = staffNameError(name);
     if (nameError) return setError(nameError);
-    if (nextPhone !== null && !phoneOk(phone)) return setPhoneError("01로 시작하는 휴대폰 번호를 숫자로 적어 주세요");
+    if (nextPhone !== null && !phoneOk(phone)) return setPhoneError("01로 시작하는 휴대폰 번호를 숫자로 입력해 주십시오");
     setBusy(true);
     setError(null);
     setPhoneError(null);
@@ -210,7 +216,7 @@ export function EditStaffModal({ staff, onClose, onSaved, onChanged }: { staff: 
         if (isUnclear(r)) return checkUnclear();
         setBusy(false);
         if (r.error === "invalid_phone") return setPhoneError(STAFF_ERRORS.invalid_phone);
-        return setError(staffFail(r, "저장하지 못했어요. 잠시 뒤 다시 시도해 주세요"));
+        return setError(staffFail(r, "저장하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
       }
     }
     if (permsChanged) {
@@ -218,7 +224,7 @@ export function EditStaffModal({ staff, onClose, onSaved, onChanged }: { staff: 
       if (!r.ok) {
         if (isUnclear(r)) return checkUnclear();
         setBusy(false);
-        return setError(profileChanged ? `이름·휴대폰은 저장했지만 권한은 바꾸지 못했어요. ${staffFail(r, "다시 시도해 주세요")}` : staffFail(r, "저장하지 못했어요. 잠시 뒤 다시 시도해 주세요"));
+        return setError(profileChanged ? `이름·휴대폰은 저장했지만 권한은 변경하지 못했습니다. ${staffFail(r, "다시 시도해 주십시오")}` : staffFail(r, "저장하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
       }
     }
     setBusy(false);
@@ -266,11 +272,11 @@ export function EditStaffModal({ staff, onClose, onSaved, onChanged }: { staff: 
         </div>
         {phoneChanged && base.identityLinked ? (
           <div className="msg msg-cau" role="status" style={{ display: "block" }}>
-            <b>번호를 바꾸면 직원이 다시 본인확인을 해야 해요.</b> 저장하면 연결만 풀려요. 다시 연결하기 전까지는 아이디 · 비밀번호를 스스로 찾을 수 없고, 다른 메뉴는 그대로 써요.
+            <b>번호를 바꾸면 직원이 본인확인을 다시 해야 합니다.</b> 저장하면 연결만 해제됩니다. 다시 연결하기 전까지는 아이디 · 비밀번호를 스스로 찾을 수 없으며, 다른 메뉴는 그대로 사용합니다.
           </div>
         ) : (
           <span className="t-c1 c-alt">
-            {base.phone === null ? "예전에 만든 직원은 비어 있어요 · 채우면 직원이 다음 로그인 때 휴대폰 본인확인으로 계정을 연결해요" : "직원이 아이디 · 비밀번호를 찾을 때 본인확인에 써요"}
+            {base.phone === null ? "예전에 만든 직원은 비어 있습니다 · 입력하면 직원이 다음 로그인 때 휴대폰 본인확인으로 계정을 연결합니다" : "직원이 아이디 · 비밀번호를 찾을 때 본인확인에 사용합니다"}
           </span>
         )}
         <div className="row between staff-link">
@@ -278,13 +284,13 @@ export function EditStaffModal({ staff, onClose, onSaved, onChanged }: { staff: 
           <span className={`bdg ${base.identityLinked && !phoneChanged ? "b-done" : "b-cancel"}`}>{base.identityLinked && !phoneChanged ? "연결됨" : "본인확인 전"}</span>
         </div>
         <PermissionPicker value={perms} onChange={setPerms} disabled={busy} />
-        <span className="t-c1 c-alt">저장하면 바로 적용돼요 · 직원이 로그인 중이면 다음 화면부터 바뀌어요 · 변경 기록은 감사 로그에 남아요</span>
+        <span className="t-c1 c-alt">저장하면 즉시 적용됩니다 · 직원이 로그인 중이면 다음 화면부터 반영됩니다 · 변경 기록은 로그 추적에 남습니다</span>
         <div className="modal-f">
           <button className="btn btn-out" type="button" onClick={onClose} disabled={busy}>
             취소
           </button>
           <button className={`btn${busy ? " is-loading" : ""}`} type="submit" disabled={busy || (!profileChanged && !permsChanged)}>
-            {busy ? "저장하고 있어요" : "저장"}
+            {busy ? "저장 중" : "저장"}
           </button>
         </div>
       </form>
@@ -292,26 +298,54 @@ export function EditStaffModal({ staff, onClose, onSaved, onChanged }: { staff: 
   );
 }
 
+// 비밀번호는 목록으로 확인할 수 없다: 결과가 불분명하면 「바뀌었을 수 있음」을 알리고, 칸을 잠근 채 같은 값으로만 다시 보내게 한다
+// (같은 값을 다시 정하는 것은 안전하다). 「새로 정하기」로 풀면 새 시도다.
 export function ResetPasswordModal({ staff, onClose, onDone }: { staff: Staff; onClose: () => void; onDone: (text: string) => void }) {
   const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [unclear, setUnclear] = useState(false);
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (busy) return;
-    if (pw.length < MIN_PASSWORD_LENGTH) return setError(`${MIN_PASSWORD_LENGTH}자 이상으로 정해 주세요`);
+    if (pw.length < MIN_PASSWORD_LENGTH) return setError(`${MIN_PASSWORD_LENGTH}자 이상으로 정해 주십시오`);
     setBusy(true);
     setError(null);
     const r = await api(`/api/seller/staff/${staff.id}/password`, { method: "POST", body: { newPassword: pw } });
     setBusy(false);
-    if (r.ok) return onDone(`${staff.name} 비밀번호를 바꿨어요 · 직원에게 직접 알려 주세요`);
-    setError(staffFail(r, "바꾸지 못했어요. 잠시 뒤 다시 시도해 주세요"));
+    if (r.ok) return onDone(`${staff.name} 비밀번호를 변경했습니다 · 직원에게 직접 전달해 주십시오`);
+    if (isUnclear(r)) return setUnclear(true);
+    setUnclear(false);
+    setError(staffFail(r, "변경하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
   };
 
   return (
-    <Dialog title={`${staff.name}의 비밀번호를 새로 정할까요?`} labelId="staff-pw-title" busy={busy} onClose={onClose}>
+    <Dialog title={`${staff.name} 비밀번호를 재설정하시겠습니까?`} labelId="staff-pw-title" busy={busy} onClose={onClose}>
       <form className="col" style={{ gap: 14 }} onSubmit={submit} noValidate>
+        {unclear && (
+          <div className="msg msg-cau" role="alert" style={{ display: "block" }} data-testid="sp-unclear">
+            <span>
+              <b>비밀번호가 변경되었을 수 있습니다.</b> 결과를 확인하지 못했습니다. 같은 비밀번호로 다시 보내 확인해 주십시오.
+            </span>
+            <span className="row" style={{ gap: 6, marginTop: 8 }}>
+              <button className="btn btn-sm" type="button" disabled={busy} onClick={() => void submit()}>
+                같은 비밀번호로 다시 보내기
+              </button>
+              <button
+                className="btn btn-sm btn-out"
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setUnclear(false);
+                  setPw("");
+                }}
+              >
+                새로 정하기
+              </button>
+            </span>
+          </div>
+        )}
         <div className="fld">
           <label htmlFor="sp-new">새 비밀번호</label>
           <SecretInput
@@ -319,7 +353,7 @@ export function ResetPasswordModal({ staff, onClose, onDone }: { staff: Staff; o
             className={`inp${error ? " is-error" : ""}`}
             maxLength={200}
             value={pw}
-            disabled={busy}
+            disabled={busy || unclear}
             onChange={(e) => {
               setPw(e.target.value);
               setError(null);
@@ -333,17 +367,17 @@ export function ResetPasswordModal({ staff, onClose, onDone }: { staff: Staff; o
             </span>
           ) : (
             <span id="sp-new-help" className="help">
-              {MIN_PASSWORD_LENGTH}자 이상 · 직원에게 직접 전달해 주세요
+              {MIN_PASSWORD_LENGTH}자 이상 · 직원에게 직접 전달해 주십시오
             </span>
           )}
         </div>
-        <span className="t-l2 c-neu">바꾸면 {staff.name}의 다른 기기 로그인은 모두 풀려요.</span>
+        <span className="t-l2 c-neu">변경하면 {staff.name}의 다른 기기 로그인이 모두 해제됩니다.</span>
         <div className="modal-f">
           <button className="btn btn-out" type="button" onClick={onClose} disabled={busy}>
             취소
           </button>
-          <button className={`btn${busy ? " is-loading" : ""}`} type="submit" disabled={busy || pw === ""}>
-            {busy ? "바꾸고 있어요" : "재설정"}
+          <button className={`btn${busy ? " is-loading" : ""}`} type="submit" disabled={busy || unclear || pw === ""}>
+            {busy ? "변경 중" : "재설정"}
           </button>
         </div>
       </form>
@@ -351,7 +385,7 @@ export function ResetPasswordModal({ staff, onClose, onDone }: { staff: Staff; o
   );
 }
 
-export function DisableStaffModal({ staff, onClose, onDone }: { staff: Staff; onClose: () => void; onDone: (text: string) => void }) {
+export function DisableStaffModal({ staff, onClose, onDone, onChanged }: { staff: Staff; onClose: () => void; onDone: (text: string) => void; onChanged?: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -360,15 +394,27 @@ export function DisableStaffModal({ staff, onClose, onDone }: { staff: Staff; on
     setBusy(true);
     setError(null);
     const r = await api(`/api/seller/staff/${staff.id}/disable`, { method: "POST" });
+    if (r.ok) {
+      setBusy(false);
+      return onDone(`${staff.name} 계정을 비활성화했습니다`);
+    }
+    // 결과가 불분명하면 목록을 다시 읽어 실제 상태로 판정한다
+    if (isUnclear(r)) {
+      const cur = await settleByList((list) => list.find((s) => s.id === staff.id) ?? null);
+      setBusy(false);
+      if (!cur) return setError("비활성화 여부를 확인하지 못했습니다. 잠시 후 목록에서 확인해 주십시오");
+      onChanged?.();
+      if (cur.status === "DISABLED") return onDone(`${staff.name} 계정을 비활성화했습니다`);
+      return setError("비활성화되지 않았습니다. 다시 시도해 주십시오");
+    }
     setBusy(false);
-    if (r.ok) return onDone(`${staff.name} 계정을 비활성화했어요`);
-    setError(failMessage(r, "비활성화하지 못했어요. 잠시 뒤 다시 시도해 주세요"));
+    setError(failMessage(r, "비활성화하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
   };
 
   return (
-    <Dialog title={`${staff.name} 계정을 비활성화할까요?`} labelId="staff-disable-title" busy={busy} onClose={onClose}>
+    <Dialog title={`${staff.name} 계정을 비활성화하시겠습니까?`} labelId="staff-disable-title" busy={busy} onClose={onClose}>
       <p className="t-b2 c-neu" style={{ margin: 0 }}>
-        바로 로그아웃되고 다시 로그인할 수 없어요. 처리 기록은 감사 로그에 남아요.
+        즉시 로그아웃되며 다시 로그인할 수 없습니다. 처리 기록은 로그 추적에 남습니다.
       </p>
       {error && (
         <div className="msg msg-neg" role="alert">
@@ -380,7 +426,7 @@ export function DisableStaffModal({ staff, onClose, onDone }: { staff: Staff; on
           취소
         </button>
         <button className={`btn btn-neg${busy ? " is-loading" : ""}`} type="button" onClick={() => void submit()} disabled={busy}>
-          {busy ? "비활성화하고 있어요" : "비활성화"}
+          {busy ? "비활성화 중" : "비활성화"}
         </button>
       </div>
     </Dialog>
