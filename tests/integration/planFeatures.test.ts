@@ -349,8 +349,11 @@ describe("서버 렌더 쇼핑몰 화면(ARCHITECTURE 4.8.0 ③)", () => {
     expect((closedEl.props.children as El).type).not.toBe(SignupForm);
     const closed = renderToStaticMarkup(closedEl as unknown as React.ReactElement);
     expect(closed).toContain("지금은 쇼핑몰을 이용할 수 없어요");
-    expect(closed).not.toContain("<form");
-    expect(closed).not.toContain("<input");
+    // 공통 틀 머리에 검색 칸(form)이 있으므로, 가입 폼이 없다는 확인은 본문(main)만 본다
+    const body = closed.slice(closed.indexOf('<main class="shop-main">'), closed.indexOf("</main>"));
+    expect(body).toContain("지금은 쇼핑몰을 이용할 수 없어요");
+    expect(body).not.toContain("<form");
+    expect(body).not.toContain("<input");
   });
 });
 

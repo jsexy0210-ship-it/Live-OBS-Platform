@@ -60,7 +60,7 @@ test("비밀번호가 틀리면 안내하고 로그인하지 않는다", async (
 test("상품 목록: 데모 상품·상태 배지·필터, 체험 배너가 보인다", async ({ page }) => {
   await login(page);
   await expect(page.getByText(/체험이 \d+일 남았습니다/)).toBeVisible();
-  await expect(page.locator(".topbar")).toContainText("카드숍 별빛");
+  await expect(page.locator(".gnb")).toContainText("카드숍 별빛");
   const rows = page.getByTestId("product-row");
   await expect(rows.filter({ hasText: "스타라이트 부스터 박스" })).toBeVisible();
   await expect(rows.filter({ hasText: "탑로더 25장" }).getByText("재고 부족")).toBeVisible();
@@ -218,7 +218,7 @@ test("상품 삭제: 숨김을 먼저 권하고, 완전 삭제는 상품명을 �
   await shot(page, "SA-012-D-delete");
   await dialog.getByRole("button", { name: "숨김으로 변경", exact: true }).click();
   await expect(page.getByText("숨김으로 변경했습니다")).toBeVisible();
-  await expect(page.locator(".topbar .bdg")).toHaveText("숨김");
+  await expect(page.locator(".loc-bar .bdg")).toHaveText("숨김");
 
   await page.getByRole("button", { name: "삭제", exact: true }).click();
   await dialog.getByText("완전 삭제").click();
@@ -291,8 +291,11 @@ test("권한이 하나도 없는 직원에게는 권한이 필요한 메뉴가 �
     await expect(side.getByText(hidden, { exact: true })).toHaveCount(0);
   }
   // 「쇼핑몰 설정」은 모든 직원이 볼 수 있는 탭(쇼핑몰 정보)이 있어 보인다(MASTER 결정 2026-10-04)
-  for (const shown of ["홈", "쇼핑몰 설정", "공지 · 문의", "도우미", "내 계정"]) {
-    await expect(side.getByText(shown, { exact: true }).last()).toBeVisible();
+  // 대분류는 상단 메뉴(GNB), 공지·도우미·내 계정은 상단 오른쪽 유틸에 있다
+  const gnb = page.getByRole("navigation", { name: "주 메뉴" });
+  await expect(gnb.locator(".gnb-i")).toHaveText(["홈", "프로모션", "디자인", "쇼핑몰 설정"]);
+  for (const shown of ["공지 · 문의", "도우미", "내 계정"]) {
+    await expect(page.locator(".gnb").getByText(shown, { exact: true })).toBeVisible();
   }
 });
 
@@ -303,9 +306,11 @@ test("상품 권한이 없는 직원은 권한 안내를 본다", async ({ page 
   // 권한이 없는 메뉴는 숨기고, 가진 권한(배송)과 대표자 전용 메뉴 구분을 따른다
   const side = page.getByRole("complementary", { name: "파트너스 메뉴" });
   await expect(side.getByText("상품", { exact: true })).toHaveCount(0);
-  await expect(side.getByText("배송", { exact: true })).toBeVisible();
   await expect(side.getByText("직원 계정", { exact: true })).toHaveCount(0);
   await shot(page, "SA-011-no-permission");
+  // 「배송」은 상단 대분류 「주문」 아래 왼쪽 메뉴에 있다
+  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "주문", exact: true }).click();
+  await expect(side.getByText("배송", { exact: true })).toBeVisible();
 });
 
 test("휴대폰 폭(390)에서는 메뉴가 서랍으로 열리고 상품이 카드로 보인다", async ({ page }) => {
@@ -331,18 +336,18 @@ test("휴대폰 폭(390)에서는 메뉴가 서랍으로 열리고 상품이 카
   // 100자 이름은 3줄에서 말줄임된다
   expect(cards.find((c) => c.len === 100)?.clamped).toBe(true);
 
-  await expect(page.getByRole("link", { name: "상품", exact: true })).not.toBeInViewport();
+  await expect(page.getByRole("link", { name: "상품 목록", exact: true })).not.toBeInViewport();
   await page.getByRole("button", { name: "메뉴 열기" }).click();
-  await expect(page.getByRole("link", { name: "상품", exact: true })).toBeInViewport();
+  await expect(page.getByRole("link", { name: "상품 목록", exact: true })).toBeInViewport();
   if (SHOTS) await page.screenshot({ path: "tests/e2e/screenshots/SA-shell-drawer-390.png" });
   await page.getByRole("button", { name: "메뉴 닫기" }).click();
-  await expect(page.getByRole("link", { name: "상품", exact: true })).not.toBeInViewport();
+  await expect(page.getByRole("link", { name: "상품 목록", exact: true })).not.toBeInViewport();
 
-  // 지금 보고 있는 메뉴(상품)를 눌러도 서랍이 닫힌다
+  // 지금 보고 있는 메뉴(상품 목록)를 눌러도 서랍이 닫힌다
   await page.getByRole("button", { name: "메뉴 열기" }).click();
-  await expect(page.getByRole("link", { name: "상품", exact: true })).toBeInViewport();
-  await page.getByRole("link", { name: "상품", exact: true }).click();
-  await expect(page.getByRole("link", { name: "상품", exact: true })).not.toBeInViewport();
+  await expect(page.getByRole("link", { name: "상품 목록", exact: true })).toBeInViewport();
+  await page.getByRole("link", { name: "상품 목록", exact: true }).click();
+  await expect(page.getByRole("link", { name: "상품 목록", exact: true })).not.toBeInViewport();
 });
 
 test("로그아웃 요청이 실패하면 화면에 남아 다시 시도하게 한다", async ({ page }) => {

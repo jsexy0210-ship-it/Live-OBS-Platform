@@ -38,7 +38,7 @@ const toast = (page: Page) => page.getByRole("status").filter({ has: page.locato
 test("대표자: 방송 시작부터 개봉·타이머·완료·되돌리기·취소·종료까지 실제로 처리된다", async ({ page }) => {
   await login(page, "demo-owner@example.com", "/seller/products");
   await expect(page).toHaveURL(/\/seller\/products$/);
-  await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "방송 대시보드" }).click();
+  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "방송", exact: true }).click();
   await expect(page).toHaveURL(/\/seller\/broadcast$/);
 
   // 방송 전: 대기 3건, 개봉은 방송을 시작해야 할 수 있다

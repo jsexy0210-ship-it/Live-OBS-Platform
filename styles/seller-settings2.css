@@ -1,0 +1,33 @@
+/* 파트너스 설정 2(구독 · 결제, 구매 제한 등) 화면 전용 */
+.sub-grid {
+  display: grid;
+  grid-template-columns: 3fr 2fr;
+  gap: 20px;
+  align-items: start;
+}
+.sub-plans {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.sub-plan {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px var(--wds-line-normal-normal);
+}
+.sub-plan.on {
+  box-shadow: inset 0 0 0 2px var(--wds-label-normal);
+}
+.sub-tbl td,
+.sub-tbl th {
+  white-space: nowrap;
+}
+@media (max-width: 900px) {
+  .sub-grid {
+    grid-template-columns: 1fr;
+  }
+}

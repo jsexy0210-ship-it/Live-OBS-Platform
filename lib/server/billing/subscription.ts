@@ -1,7 +1,10 @@
 import { Prisma, type ActorType, type PrismaClient, type SellerSubscription, type SubscriptionPayment, type SubscriptionPlan } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
-import { addMonthsKst, lockedSince, nextPeriodEnd, sellerAccess, type SellerAccess } from "./access";
+import { addMonthsKst, canCancelSubscription, cardRegistrationCharges, isEndedSubscription, lockedSince, nextPeriodEnd, sellerAccess, type SellerAccess } from "./access";
+
+// 판정 함수는 화면과 함께 쓰려고 access.ts(순수 모듈)에 있다. 기존 import 경로를 위해 다시 내보낸다.
+export { isEndedSubscription };
 import type { BillingProvider, ChargeResult } from "./provider";
 import { assertBillingSecret, openBillingKey, sealBillingKey } from "./secret";
 
@@ -93,12 +96,6 @@ export async function sellerPlanOf(db: Db, sellerId: string): Promise<Subscripti
 }
 
 type PeriodState = Pick<SellerSubscription, "status" | "currentPeriodEnd" | "billingAnchorAt" | "cancelAtPeriodEnd">;
-
-// 해지된 구독인지: CANCELED이거나, 해지 예약한 기간이 이미 끝남(예약 실행이 아직 CANCELED로 바꾸기 전).
-export function isEndedSubscription(sub: PeriodState | null, now: Date): boolean {
-  if (!sub) return true;
-  return sub.status === "CANCELED" || (sub.cancelAtPeriodEnd && !!sub.currentPeriodEnd && sub.currentPeriodEnd <= now);
-}
 
 // 다음 청구 기간. 결제한 적 있는 구독은 지난 기간 끝(owed)에 이어서, 처음이거나 해지 뒤면 지금부터(기준일 새로).
 // owed부터 세도 기간이 이미 지났으면(잠금이 한 달을 넘김) 지금부터 새로 센다.
@@ -214,11 +211,11 @@ export async function registerCardAndPay(
         : await sellerPlanOf(tx, ctx.sellerId);
       if (!plan) return { kind: "error", reason: "plan_missing" };
 
-      const inTrial = !!seller.trialEndsAt && seller.trialEndsAt > now;
       // 처음이거나 해지된 뒤 다시 구독하면 새 구독자다(구독 시작 시각을 새로, 기간도 지금부터).
       const restart = isEndedSubscription(before, now);
       const paidActive = before?.status === "ACTIVE" && !!before.currentPeriodEnd && before.currentPeriodEnd > now;
-      const cardOnly = paidActive || (inTrial && before?.status !== "PAST_DUE");
+      // 바로 결제할지는 화면과 같은 판정 함수로 정한다(access.ts)
+      const cardOnly = !cardRegistrationCharges(seller.trialEndsAt, before, now);
       const nextChargeAt = paidActive ? after(before!.currentPeriodEnd!, -RENEW_LEAD_MS) : cardOnly ? seller.trialEndsAt : before?.nextChargeAt ?? null;
       // 카드를 다시 등록하면 자동결제를 다시 켠다(해지 예약을 푼다).
       const card = { billingKeyCipher, cardLabel: issued.cardLabel, cancelAtPeriodEnd: false };
@@ -418,7 +415,7 @@ export async function cancelSubscription(db: PrismaClient, ctx: TenantContext, i
     await lockSeller(tx, ctx.sellerId);
     const now = input.now ?? (await dbNow(tx));
     const sub = await tx.sellerSubscription.findUnique({ where: { sellerId: ctx.sellerId } });
-    if (!sub || sub.status === "CANCELED" || sub.cancelAtPeriodEnd) return { ok: false as const, reason: "not_subscribed" as const };
+    if (!sub || !canCancelSubscription(sub)) return { ok: false as const, reason: "not_subscribed" as const };
     // 결제를 처리하는 중(PENDING 청구)에는 해지하지 않는다(결제 결과와 해지가 엇갈리지 않게)
     if (await tx.subscriptionPayment.findFirst({ where: { subscriptionId: sub.id, status: "PENDING" }, select: { id: true } })) {
       return { ok: false as const, reason: "payment_in_progress" as const };

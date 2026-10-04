@@ -10,6 +10,7 @@
   background: #00000073;
 }
 .ep {
+  position: relative;
   width: 400px;
   max-width: 100%;
   max-height: 100%;
@@ -19,6 +20,18 @@
   border-radius: 16px;
   background: var(--surface);
   box-shadow: 0 12px 40px #00000033;
+}
+/* 공통 모달 X와 같은 자리(오른쪽 위). 사진 위에서도 보이도록 흰 바탕을 깐다 */
+.ep-x {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  background: #ffffffe6;
+  box-shadow: 0 1px 4px #00000026;
+}
+.ep-x:hover {
+  background: #fff;
 }
 .ep-img {
   display: block;
@@ -33,6 +46,7 @@
 }
 .ep-body h2 {
   margin: 0;
+  padding-right: 36px;
 }
 .ep-text {
   margin: 0;
@@ -42,9 +56,8 @@
 .ep-foot {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
-  padding: 8px 8px 8px 16px;
+  padding: 8px 16px 12px;
 }
 .ep-hide {
   gap: 6px;

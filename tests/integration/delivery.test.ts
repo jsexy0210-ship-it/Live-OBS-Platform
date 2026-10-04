@@ -1,6 +1,8 @@
 import type { Prisma } from "@prisma/client";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { POST as deliverRoute } from "../../app/api/seller/orders/[orderId]/deliver/route";
+import { POST as refundRoute } from "../../app/api/seller/orders/[orderId]/refund/route";
+import { POST as unconfirmRoute } from "../../app/api/seller/orders/[orderId]/unconfirm/route";
 import { GET as orderPolicyGet, PUT as orderPolicyPut } from "../../app/api/seller/order-policy/route";
 import { GET as rewardPolicyGet, PUT as rewardPolicyPut } from "../../app/api/seller/reward-policy/route";
 import { loginSeller } from "../../lib/server/auth/login";
@@ -8,7 +10,7 @@ import { prisma } from "../../lib/server/db";
 import { getBuyerOrder } from "../../lib/server/orders/buyer";
 import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
 import { createOrder } from "../../lib/server/orders/create";
-import { autoCompleteDeliveries, autoConfirmPurchases, completeDelivery } from "../../lib/server/orders/delivery";
+import { autoCompleteDeliveries, autoConfirmPurchases, completeDelivery, unconfirmPurchase } from "../../lib/server/orders/delivery";
 import { ORDER_ERROR_MESSAGES, ORDER_ERROR_MESSAGES_FORMAL } from "../../lib/server/orders/messages";
 import { getOrder } from "../../lib/server/orders/read";
 import { shipOrder } from "../../lib/server/orders/ship";
@@ -363,5 +365,97 @@ describe("주문 조회에 환불·구매 확정 정보", () => {
     const refund = { refundAmount: 7000, refundFault: "BUYER", returnFeeDeducted: 3000, purchaseConfirmedAt: null };
     expect(await getOrder(db, s.ctx, id)).toMatchObject(refund);
     expect(await getBuyerOrder(db, { sellerId: s.seller.id, buyerMemberId: s.buyer.id }, id)).toMatchObject(refund);
+  });
+});
+
+describe("구매 확정 취소 뒤 환불", () => {
+  // 배송 완료 8일 전 → 자동 구매 확정까지 마친 주문
+  async function confirmed(s: Awaited<ReturnType<typeof shop>>) {
+    const id = await s.shipped();
+    await completeDelivery(db, s.ctx, id);
+    await deliveredAgo(id, 8 * DAY);
+    expect((await autoConfirmPurchases(db)).done).toContain(id);
+    return id;
+  }
+  const post = (path: string, body: unknown, cookie: string, orderId: string) =>
+    path === "unconfirm"
+      ? unconfirmRoute(new Request(`http://localhost:3000/api/seller/orders/${orderId}/unconfirm`, { method: "POST", headers: { ...H, cookie }, body: JSON.stringify(body) }), { params: Promise.resolve({ orderId }) })
+      : refundRoute(new Request(`http://localhost:3000/api/seller/orders/${orderId}/refund`, { method: "POST", headers: { ...H, cookie }, body: JSON.stringify(body) }), { params: Promise.resolve({ orderId }) });
+
+  it("구매 확정한 주문은 바로 환불할 수 없고(409 purchase_confirmed), 판매자가 확정을 취소하면 환불되며 지급한 적립금을 회수한다", async () => {
+    const s = await shop();
+    const id = await confirmed(s);
+    const cookie = await sellerCookie(s.owner.email);
+    const refund = async () => post("refund", { reason: "불량", expectedRefundAmount: 13000, expectedVersion: await lv(s.seller.id), fault: "SELLER" }, cookie, id);
+    const blocked = await refund();
+    expect(blocked.status).toBe(409);
+    expect(await blocked.json()).toEqual({ error: "purchase_confirmed", message: ORDER_ERROR_MESSAGES_FORMAL.purchase_confirmed });
+    expect((await db.order.findUniqueOrThrow({ where: { id } })).status).toBe("PAID");
+
+    const un = await post("unconfirm", { reason: "구매자 불량 문의" }, cookie, id);
+    expect(un.status).toBe(200);
+    expect(await un.json()).toEqual({ purchaseUnconfirmedAt: expect.any(String) });
+    expect(await db.order.findUniqueOrThrow({ where: { id } })).toMatchObject({ purchaseConfirmedAt: null, purchaseUnconfirmedAt: expect.any(Date) });
+    expect(await db.auditLog.findFirstOrThrow({ where: { action: "order.purchase_unconfirm", targetId: id } })).toMatchObject({
+      actorId: s.owner.id,
+      reason: "구매자 불량 문의",
+      before: { purchaseConfirmedAt: expect.any(String) },
+      after: { purchaseConfirmedAt: null },
+    });
+
+    const ok = await refund();
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toMatchObject({ rewardRevoke: "revoked", refundAmount: 13000 });
+    expect((await db.rewardLedger.findMany({ where: { orderId: id }, orderBy: { createdAt: "asc" } })).map((r) => [r.type, r.amount])).toEqual([
+      ["EARN", 100],
+      ["REVOKE", -100],
+    ]);
+  });
+
+  it("회수 방식이 수동이면 환불 때 회수 기록 없이 수동 확인 대기(manual_review)로 남는다", async () => {
+    const s = await shop();
+    await db.rewardPolicy.update({ where: { sellerId: s.seller.id }, data: { revokeMode: "MANUAL" } });
+    const id = await confirmed(s);
+    expect(await unconfirmPurchase(db, s.ctx, id, { reason: "반품" })).toMatchObject({ ok: true });
+    expect(await refundOrder(db, s.ctx, id, { reason: "반품", expectedLiveVersion: await lv(s.seller.id), fault: "BUYER" })).toMatchObject({
+      ok: true,
+      value: { rewardRevoke: "manual_review" },
+    });
+    expect(await db.rewardLedger.count({ where: { orderId: id, type: "REVOKE" } })).toBe(0);
+  });
+
+  it("확정을 취소한 주문은 자동 구매 확정이 다시 확정하지 않는다", async () => {
+    const s = await shop();
+    const id = await confirmed(s);
+    expect(await unconfirmPurchase(db, s.ctx, id, { reason: "환불 검토" })).toMatchObject({ ok: true });
+    expect(await autoConfirmPurchases(db)).toEqual({ done: [], failed: [] });
+    expect((await db.order.findUniqueOrThrow({ where: { id } })).purchaseConfirmedAt).toBeNull();
+  });
+
+  it("확정 전·환불된 주문은 409 not_confirmed, 사유 없음·200자 넘음은 400, 다른 쇼핑몰 주문은 404, 주문·배송 권한 없는 직원은 403", async () => {
+    const s = await shop();
+    const other = await shop();
+    const cookie = await sellerCookie(s.owner.email);
+    const notYet = await s.shipped();
+    await completeDelivery(db, s.ctx, notYet);
+    const r1 = await post("unconfirm", { reason: "사유" }, cookie, notYet);
+    expect(r1.status).toBe(409);
+    expect(await r1.json()).toEqual({ error: "not_confirmed", message: ORDER_ERROR_MESSAGES_FORMAL.not_confirmed });
+    const id = await confirmed(s);
+    for (const reason of [undefined, "  ", "가".repeat(201)]) {
+      const r = await post("unconfirm", { reason }, cookie, id);
+      expect(r.status).toBe(400);
+      expect(await r.json()).toEqual({ error: "invalid_reason", message: ORDER_ERROR_MESSAGES_FORMAL.invalid_reason });
+    }
+    const theirs = await confirmed(other);
+    expect((await post("unconfirm", { reason: "사유" }, cookie, theirs)).status).toBe(404);
+    expect((await db.order.findUniqueOrThrow({ where: { id: theirs } })).purchaseConfirmedAt).not.toBeNull();
+    const staff = await createSellerUser(s.seller.id, { permissions: ["PRODUCT_MANAGE"] });
+    expect((await post("unconfirm", { reason: "사유" }, await sellerCookie(staff.email), id)).status).toBe(403);
+    expect((await db.order.findUniqueOrThrow({ where: { id } })).purchaseConfirmedAt).not.toBeNull();
+    // 확정을 풀고 환불한 뒤에는 다시 풀 수 없다
+    expect(await unconfirmPurchase(db, s.ctx, id, { reason: "환불" })).toMatchObject({ ok: true });
+    await refundOrder(db, s.ctx, id, { reason: "환불", expectedLiveVersion: await lv(s.seller.id), fault: "SELLER" });
+    expect(await unconfirmPurchase(db, s.ctx, id, { reason: "환불" })).toEqual({ ok: false, reason: "not_confirmed" });
   });
 });
