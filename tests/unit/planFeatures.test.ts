@@ -88,6 +88,10 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/broadcast/start": "OVERLAY",
   "seller/broadcast/end": "OVERLAY",
   "seller/overlay/token": "OVERLAY",
+  "seller/overlay/layout": "OVERLAY",
+  "seller/overlay/layout/reset": "OVERLAY",
+  "seller/overlay/templates": "OVERLAY",
+  "seller/overlay/templates/[templateId]": "OVERLAY",
   "seller/queue": "OVERLAY",
   "seller/queue/[itemId]/[action]": "OVERLAY",
   "seller/queue/reorder": "OVERLAY",
@@ -209,6 +213,7 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/me/rewards": "OPEN", // 내 적립금 잔액(탈퇴 전 확인, #180)
   "shop/[slug]/me/rejoin-retention-consent": "OPEN", // 재가입 제한 정보 보관 동의 철회(언제든, #177)
   "overlay/[token]/state": "OVERLAY",
+  "overlay/[token]/layout": "OVERLAY",
   "overlay/[token]/version": "OVERLAY",
   "overlay/[token]/stream": "OVERLAY",
 };
