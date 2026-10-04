@@ -109,6 +109,25 @@ test.describe.serial("SA-035 쿠폰 관리 · SH-028 내 쿠폰함", () => {
     await shots(page, "sh028-usable");
   });
 
+  test("구매자: 쇼핑몰 이용이 막혀도 받은 쿠폰은 보이고, 코드 등록·받기는 숨긴다(Codex 4176525935)", async ({ page, baseURL }) => {
+    await buyerLogin(page, baseURL!);
+    // 잠긴 쇼핑몰 응답(서버는 shopOpen=false, 받을 수 있는 쿠폰 없음)
+    await page.route(`**/api/shop/${SLUG}/coupons?*`, async (route) => {
+      const res = await route.fetch();
+      const body = (await res.json()) as Record<string, unknown>;
+      await route.fulfill({ response: res, json: { ...body, shopOpen: false, claimable: [], claimableMore: false } });
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`/shop/${SLUG}/coupons`);
+    await expect(page.getByText("지금은 쿠폰을 받을 수 없어요. 받은 쿠폰은 여기서 볼 수 있어요")).toBeVisible();
+    await expect(page.getByLabel("쿠폰 코드")).toHaveCount(0);
+    await expect(page.locator(".cb-item")).toHaveCount(2);
+    await page.getByRole("tab", { name: /받을 수 있어요/ }).click();
+    await expect(page.getByTestId("cb-claimable-empty")).toBeVisible();
+    await expect(page.getByRole("button", { name: "받기" })).toHaveCount(0);
+    await page.screenshot({ path: `${SHOT}/sh028-locked-390.png`, fullPage: true });
+  });
+
   test("대표자: 발급 수가 집계에 보이고, 발급 중지하면 구매자는 더 받을 수 없다", async ({ page, baseURL }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await ownerOpen(page, "/seller/coupons");

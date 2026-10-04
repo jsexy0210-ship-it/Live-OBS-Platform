@@ -2,8 +2,6 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import CouponBox from "../../../../../components/shop/CouponBox";
 import ShopFrame from "../../../../../components/shop/ShopFrame";
-import ShopState from "../../../../../components/shop/ShopState";
-import { shopOpen } from "../../../../../lib/server/buyers/signup";
 import { prisma } from "../../../../../lib/server/db";
 
 export const dynamic = "force-dynamic";
@@ -20,14 +18,14 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   return { title: shop ? `내 쿠폰함 · ${shop.shopName}` : "내 쿠폰함" };
 }
 
-// SH-028 내 쿠폰함(마이페이지). 쇼핑몰이 없거나 운영 중이 아니면 404, 이용이 막혔으면(구독 만료·스토어 운영 권한 없음) 안내 화면.
+// SH-028 내 쿠폰함(마이페이지). 쇼핑몰이 없거나 운영 중이 아니면 404.
+// 이용이 막힌 쇼핑몰(구독 만료·스토어 운영 권한 없음)에서도 받은 쿠폰은 읽기 전용으로 보인다(받기·코드 등록만 숨김, API가 shopOpen으로 알려 줌).
 export default async function ShopCouponsPage({ params }: Params) {
   const shop = await findShop((await params).slug);
   if (!shop) notFound();
-  const open = await shopOpen(prisma, shop.id);
   return (
     <ShopFrame shopName={shop.shopName}>
-      {open ? <CouponBox slug={shop.slug} /> : <ShopState title="지금은 쇼핑몰을 이용할 수 없어요" body="쇼핑몰이 다시 문을 열면 쿠폰함을 볼 수 있어요." />}
+      <CouponBox slug={shop.slug} />
     </ShopFrame>
   );
 }

@@ -27,11 +27,19 @@ import {
 // - 잠금 원칙: 쿠폰을 바꾸거나 발급·삭제·사용하는 쓰기는 쿠폰 행 FOR UPDATE(lockCoupon) 아래에서 읽고 검사하고, 대상 회원은 회원 행 잠금으로
 //   ACTIVE를 다시 본다(받기·주문은 회원 행 FOR SHARE를 먼저 잡고, 탈퇴만 FOR UPDATE. 공유 잠금끼리는 서로 막지 않아 교착이 없다).
 //   쿠폰 수정은 쿠폰 행 → 쇼핑몰 행(NO KEY UPDATE) 순서. 복원은 사용 기록(CouponRedemption)·받은 쿠폰 행 조건부 UPDATE로 한 번만.
+// - 잠금을 잡은 뒤에는 잠금 전에 읽은 값을 믿지 않는다. 잠긴 쿠폰 행(발급 방식·코드·기간·중지)과 잠금 뒤 시각(lockedNow, clock_timestamp)으로
+//   모든 조건을 다시 검사하고, 받은 시각·만료도 그 시각으로 정한다(받기·코드·직접 지급·주문 견적 모두).
 
 type Db = PrismaClient | Prisma.TransactionClient;
 type Tx = Prisma.TransactionClient;
 export type AuditMeta = { ip?: string | null; userAgent?: string | null };
 export type CouponStatus = "live" | "scheduled" | "ended";
+
+// 잠금을 잡은 뒤의 실제 시각(clock_timestamp, 밀리초로 자름). now()는 트랜잭션 시작 시각이라 잠금을 기다린 시간이 빠진다.
+async function lockedNow(tx: Tx): Promise<Date> {
+  const rows = await tx.$queryRaw<{ now: Date }[]>`SELECT date_trunc('milliseconds', clock_timestamp()) AS now`;
+  return rows[0].now;
+}
 
 async function dbNow(db: Db): Promise<Date> {
   const rows = await db.$queryRaw<{ now: Date }[]>`SELECT date_trunc('milliseconds', now()) AS now`;
@@ -264,7 +272,8 @@ export async function grantCoupon(
     const coupon = await lockCoupon(tx, ctx.sellerId, id);
     if (!coupon) throw notFound();
     if (coupon.issueMethod !== "MANUAL") return { ok: false as const, reason: "not_manual" as const };
-    const now = await dbNow(tx);
+    // 잠금 뒤 시각으로 기간을 보고 받은 시각·만료를 정한다
+    const now = await lockedNow(tx);
     // 받기·코드와 같게 사용 기간 안에서만 지급한다(시작 전·종료·중지는 거절)
     const status = statusOf(coupon, now);
     if (status !== "live") return { ok: false as const, reason: status === "scheduled" ? ("not_started" as const) : ("ended" as const) };
@@ -395,6 +404,8 @@ async function issue(
   db: PrismaClient,
   scope: BuyerScope,
   find: (tx: Tx, now: Date) => Promise<Coupon | null>,
+  // 잠긴 쿠폰 행이 이 받기 방식에 맞는지(내려받기 방식·코드 값). 잠금 전에 찾은 값은 믿지 않는다.
+  matches: (c: Coupon) => boolean,
   action: string,
   meta: AuditMeta,
   countAttempts = false,
@@ -415,9 +426,11 @@ async function issue(
         if (failed >= CODE_ATTEMPT_LIMIT) return { ok: false as const, reason: "code_attempts" as const };
       }
       const found = await find(tx, now);
-      // 쿠폰 행을 잠그고 지금 값으로 검사한다(그사이 판매자의 수정·중지와 엇갈리지 않게)
-      const coupon = found && (await lockCoupon(tx, scope.sellerId, found.id));
-      if (!coupon || statusOf(coupon, now) !== "live") {
+      // 쿠폰 행을 잠그고, 잠긴 값과 잠금 뒤 시각으로 다시 검사한다(그사이 판매자의 수정·중지·종료와 엇갈리지 않게)
+      const locked = found && (await lockCoupon(tx, scope.sellerId, found.id));
+      const issuedAt = await lockedNow(tx);
+      const coupon = locked && matches(locked) && statusOf(locked, issuedAt) === "live" ? locked : null;
+      if (!coupon) {
         if (countAttempts) {
           await writeAudit(tx, { actorType: "BUYER", actorId: member.id, sellerId: scope.sellerId, action: "buyer_coupon.code_failed", ip: meta.ip, userAgent: meta.userAgent });
         }
@@ -432,11 +445,11 @@ async function issue(
         WHERE "id" = ${coupon.id}::uuid AND "sellerId" = ${scope.sellerId}::uuid AND ("issueLimit" IS NULL OR "issuedCount" < "issueLimit")`;
       if (inc !== 1) return { ok: false as const, reason: "sold_out" as const };
       const bc = await tx.buyerCoupon.create({
-        data: { sellerId: scope.sellerId, couponId: coupon.id, buyerMemberId: member.id, issuedAt: now, expiresAt: couponExpiry(coupon, now) },
+        data: { sellerId: scope.sellerId, couponId: coupon.id, buyerMemberId: member.id, issuedAt, expiresAt: couponExpiry(coupon, issuedAt) },
         include: { coupon: true },
       });
       await writeAudit(tx, { actorType: "BUYER", actorId: member.id, sellerId: scope.sellerId, action, targetType: "Coupon", targetId: coupon.id, ip: meta.ip, userAgent: meta.userAgent });
-      return { ok: true as const, coupon: mineView(bc, now) };
+      return { ok: true as const, coupon: mineView(bc, issuedAt) };
     });
   } catch (e) {
     if (isUniqueViolation(e)) return { ok: false, reason: "already_issued" };
@@ -446,12 +459,27 @@ async function issue(
 
 export function downloadCoupon(db: PrismaClient, scope: BuyerScope, couponId: string, meta: AuditMeta = {}) {
   if (!isUuid(couponId)) return Promise.resolve({ ok: false as const, reason: "coupon_not_found" as const });
-  return issue(db, scope, (tx) => tx.coupon.findFirst({ where: { id: couponId, sellerId: scope.sellerId, issueMethod: "DOWNLOAD" } }), "buyer_coupon.download", meta);
+  return issue(
+    db,
+    scope,
+    (tx) => tx.coupon.findFirst({ where: { id: couponId, sellerId: scope.sellerId, issueMethod: "DOWNLOAD" } }),
+    (c) => c.issueMethod === "DOWNLOAD",
+    "buyer_coupon.download",
+    meta,
+  );
 }
 
 export function redeemCouponCode(db: PrismaClient, scope: BuyerScope, rawCode: unknown, meta: AuditMeta = {}): Promise<IssueResult> {
   const code = normalizeCode(rawCode);
-  return issue(db, scope, async (tx) => (code ? tx.coupon.findFirst({ where: { sellerId: scope.sellerId, code, issueMethod: "CODE" } }) : null), "buyer_coupon.code", meta, true);
+  return issue(
+    db,
+    scope,
+    async (tx) => (code ? tx.coupon.findFirst({ where: { sellerId: scope.sellerId, code, issueMethod: "CODE" } }) : null),
+    (c) => c.issueMethod === "CODE" && c.code === code,
+    "buyer_coupon.code",
+    meta,
+    true,
+  );
 }
 
 // ───────── 주문 연동(orders/create.ts·queue/service.ts·orders/overdue.ts) ─────────
@@ -486,8 +514,10 @@ export async function quoteOrderCoupon(
   if (!isUuid(o.couponId)) return { ok: false, reason: "coupon_unavailable" };
   // 쿠폰 행을 잠그고 지금 값으로 검사한다(그사이 판매자의 수정·중지와 엇갈리지 않게)
   if (!(await lockCoupon(tx, o.sellerId, o.couponId))) return { ok: false, reason: "coupon_unavailable" };
+  // 잠금을 기다린 사이 시각이 지났을 수 있어 잠금 뒤 시각으로 기간을 본다
+  const now = await lockedNow(tx);
   const bc = await tx.buyerCoupon.findFirst({
-    where: { sellerId: o.sellerId, buyerMemberId: o.buyerMemberId, couponId: o.couponId, status: "ISSUED", expiresAt: { gt: o.now }, coupon: { startsAt: { lte: o.now }, endsAt: { gt: o.now } } },
+    where: { sellerId: o.sellerId, buyerMemberId: o.buyerMemberId, couponId: o.couponId, status: "ISSUED", expiresAt: { gt: now }, coupon: { startsAt: { lte: now }, endsAt: { gt: now } } },
     include: { coupon: true },
   });
   if (!bc) return { ok: false, reason: "coupon_unavailable" };

@@ -6,6 +6,8 @@ import { GET as couponsGet, POST as couponsPost } from "../../app/api/seller/cou
 import { POST as downloadPost } from "../../app/api/shop/[slug]/coupons/[couponId]/download/route";
 import { POST as codePost } from "../../app/api/shop/[slug]/coupons/code/route";
 import { GET as boxGet } from "../../app/api/shop/[slug]/coupons/route";
+import ShopCouponsPage from "../../app/(shop)/shop/[slug]/coupons/page";
+import CouponBox from "../../components/shop/CouponBox";
 import { GET as buyerOrderGet } from "../../app/api/shop/[slug]/orders/[orderId]/route";
 import { POST as orderPost } from "../../app/api/shop/[slug]/orders/route";
 import { loginBuyer, loginSeller } from "../../lib/server/auth/login";
@@ -282,6 +284,46 @@ describe("경쟁(쿠폰 행·회원 행 잠금)", () => {
     expect(await db.coupon.count({ where: { id: c.id } })).toBe(1);
   });
 
+  it("받기 대기 중 발급 방식이 직접 지급으로 바뀌거나 코드가 바뀌면 잠긴 쿠폰 기준으로 거절한다(Codex 4176525927)", async () => {
+    const s = await shop();
+    const dl = await makeCoupon(s);
+    let res: Promise<Response> | null = null;
+    await db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT 1 FROM "Coupon" WHERE "id" = ${dl.id}::uuid FOR UPDATE`;
+      res = download(s, dl.id);
+      await waitForLockWaiter();
+      await tx.coupon.update({ where: { id: dl.id }, data: { issueMethod: "MANUAL" } });
+    });
+    expect((await res!).status).toBe(404);
+    const code = await makeCoupon(s, { issueMethod: "CODE", code: "OLDCODE1" });
+    let r2: Promise<Response> | null = null;
+    await db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT 1 FROM "Coupon" WHERE "id" = ${code.id}::uuid FOR UPDATE`;
+      r2 = redeem(s, "OLDCODE1");
+      await waitForLockWaiter();
+      await tx.coupon.update({ where: { id: code.id }, data: { code: "NEWCODE1" } });
+    });
+    expect((await r2!).status).toBe(404);
+    expect(await db.buyerCoupon.count()).toBe(0);
+    expect(await db.coupon.count({ where: { issuedCount: { gt: 0 } } })).toBe(0);
+  });
+
+  it("종료 직전에 받기를 시작해 잠금을 기다리는 사이 종료가 지나면 잠금 뒤 시각으로 보고 거절한다(Codex 4176525932)", async () => {
+    const s = await shop();
+    const c = await makeCoupon(s);
+    let res: Promise<Response> | null = null;
+    await db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT 1 FROM "Coupon" WHERE "id" = ${c.id}::uuid FOR UPDATE`;
+      await tx.coupon.update({ where: { id: c.id }, data: { endsAt: new Date(Date.now() + 1500) } });
+      res = download(s, c.id);
+      await waitForLockWaiter();
+      // 받기 요청이 잠금을 기다리는 동안 종료 시각이 지나게 한다
+      await new Promise((r) => setTimeout(r, 1800));
+    });
+    expect((await res!).status).toBe(404);
+    expect(await db.buyerCoupon.count()).toBe(0);
+  });
+
   it("직접 지급과 탈퇴가 겹치면 탈퇴한 회원에게는 지급하지 않는다(Codex 4176403243)", async () => {
     const s = await shop();
     const c = await makeCoupon(s, { issueMethod: "MANUAL" });
@@ -371,6 +413,21 @@ describe("받기(내려받기·코드)", () => {
     const all = await buyerCouponBox(db, { sellerId: s.seller.id, buyerMemberId: s.buyer.id }, 50);
     expect(all.claimable.map((c) => c.name)).toEqual(["받을 0", "받을 1", "받을 2"]);
     expect(all.claimableMore).toBe(false);
+  });
+
+  it("이용이 막힌 쇼핑몰에서도 내 쿠폰함은 받은 쿠폰을 읽기 전용으로 보여 주고, 화면도 쿠폰함을 그린다(Codex 4176525935)", async () => {
+    const s = await shop();
+    const c = await makeCoupon(s);
+    await makeCoupon(s, { name: "받을 쿠폰" });
+    await download(s, c.id);
+    await db.seller.update({ where: { id: s.seller.id }, data: { trialEndsAt: new Date(Date.now() - DAY) } });
+    const res = await boxGet(get(`/api/shop/${s.seller.slug}/coupons`, s.b1), p({ slug: s.seller.slug }));
+    const box = (await res.json()) as { usable: { name: string }[]; claimable: unknown[]; shopOpen: boolean };
+    expect(box.shopOpen).toBe(false);
+    expect(box.usable.map((x) => x.name)).toEqual(["오픈 기념"]);
+    expect(box.claimable).toEqual([]);
+    const page = (await ShopCouponsPage({ params: Promise.resolve({ slug: s.seller.slug }) })) as unknown as { props: { children: { type: unknown } } };
+    expect(page.props.children.type).toBe(CouponBox);
   });
 
   it("내 쿠폰함: 쓸 수 있어요 · 받을 수 있어요 · 지난 쿠폰", async () => {

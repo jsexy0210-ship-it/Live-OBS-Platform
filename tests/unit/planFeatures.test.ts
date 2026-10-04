@@ -130,7 +130,7 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
 const SHOP_PAGES: Record<string, "STORE_OPERATIONS" | "OPEN"> = {
   "shop/[slug]": "STORE_OPERATIONS", // 쇼핑몰 홈(홈 배너·이벤트 팝업)
   "shop/[slug]/signup": "STORE_OPERATIONS",
-  "shop/[slug]/coupons": "STORE_OPERATIONS", // SH-028 내 쿠폰함
+  "shop/[slug]/coupons": "OPEN", // SH-028 내 쿠폰함: 잠긴 쇼핑몰도 받은 쿠폰은 읽기 전용(받기는 API에서 막음)
   "shop/[slug]/me/notifications": "OPEN", // SH-025 알림 설정: 마케팅 수신 철회는 잠긴 쇼핑몰에서도 연다(API me/marketing-consent와 같은 기준)
 };
 

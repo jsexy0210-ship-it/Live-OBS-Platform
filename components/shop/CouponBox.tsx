@@ -173,6 +173,11 @@ export default function CouponBox({ slug }: { slug: string }) {
           <span className="t-c1 c-alt">방송 채팅 · 문자로 받은 코드를 넣으면 쿠폰함에 들어와요</span>
         </form>
       )}
+      {!box.shopOpen && (
+        <p className="msg msg-info t-l2" role="status">
+          지금은 쿠폰을 받을 수 없어요. 받은 쿠폰은 여기서 볼 수 있어요
+        </p>
+      )}
       {msg && (
         <p className={`msg ${msg.ok ? "msg-pos" : "msg-neg"} t-l2`} role={msg.ok ? "status" : "alert"}>
           {msg.text}
@@ -210,7 +215,7 @@ export default function CouponBox({ slug }: { slug: string }) {
         ))}
       {tab === "claimable" &&
         (box.claimable.length === 0 ? (
-          <div className="cb-empty">
+          <div className="cb-empty" data-testid="cb-claimable-empty">
             <span className="t-b2 fw6">지금 받을 수 있는 쿠폰이 없어요</span>
           </div>
         ) : (
