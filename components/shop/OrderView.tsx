@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import ReturnSection from "./returns/ReturnSection";
 import { call } from "./reviewShared";
 import "./Cart.css";
 import "./Checkout.css";
@@ -166,6 +167,7 @@ export default function OrderView({ slug, orderId }: { slug: string; orderId: st
           <b>{won(o.totalAmount)}</b>
         </div>
       </section>
+      {(o.status === "PAID" || o.status === "REFUNDED") && <ReturnSection slug={slug} orderId={o.id} />}
       <div className="cart-tools">
         <Link className="btn btn-sm btn-out" href={`${base}/products`}>
           계속 쇼핑하기
