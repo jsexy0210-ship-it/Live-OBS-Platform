@@ -3,10 +3,10 @@ import type { Prisma } from "@prisma/client";
 // 파트너스 가입 신청 필수 동의(PF-007-1, MASTER 결정 2026-10-04 대기열 3번 A안): 대표자 휴대폰 본인확인을 시작하기 전에 받는다.
 // 본인확인 시작 요청이 동의 값과 화면에 보여 준 문서 버전을 보내고, 서버는 지금 버전과 같을 때만 시작한다(문자 비용을 쓰기 전에 거절).
 // 동의 기록은 본인확인 요청(IdentityVerification.signupConsent)에 묶고, 신청을 마치면 대표자 계정(SellerUser.signupConsent)으로 옮긴다.
-// 문서(PF-008 이용약관·PF-009 개인정보 수집·이용)가 바뀌면 버전을 올린다.
+// 문서(PF-008 이용약관, 개인정보 수집·이용 동의: 개인정보처리방침(PF-009)과 별도 문서)가 바뀌면 버전을 올린다.
 export const SELLER_SIGNUP_CONSENT_VERSIONS = {
   terms: "2026-10-04.v1", // 파트너스 이용약관(PF-008)
-  privacy: "2026-10-04.v1", // 개인정보 수집·이용(PF-009)
+  privacy: "2026-10-04.v1", // 개인정보 수집·이용 동의(처리방침 PF-009와 별도 문서)
 } as const;
 
 export type SellerSignupConsent = { termsVersion: string; privacyVersion: string; agreedAt: string };
