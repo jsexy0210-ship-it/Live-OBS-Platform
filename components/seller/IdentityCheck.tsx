@@ -56,7 +56,8 @@ type Props = {
   blocked?: boolean;
   onVerified: (verificationId: string, who: { name: string; phone: string }) => void;
   onUnavailable: () => void;
-  // 인증번호를 보낸 동안 true(부모는 인증 요청에 쓴 다른 칸을 잠근다)
+  // 인증번호 받기 요청을 보내는 중이거나 인증번호를 보낸 동안 true(부모는 인증 요청에 쓴 다른 칸을 잠근다).
+  // 보내는 중에도 잠가야 보낸 값(동의·이메일 등)과 화면이 어긋나지 않는다. 요청이 실패하면 다시 false
   onSentChange?: (sent: boolean) => void;
   // 시작 거절을 부모가 자기 칸에서 안내하면 true(예: 가입 필수 동의). 그때는 이 칸에 안내를 따로 띄우지 않는다
   onStartRefused?: (r: Fail) => boolean;
@@ -89,7 +90,7 @@ export default function IdentityCheck({ label, start, scope = "", base, blocked 
   }, [focusTo]);
   const focus = (id: string) => setFocusTo({ id });
 
-  useEffect(() => onSentChange?.(step === "code"), [step, onSentChange]);
+  useEffect(() => onSentChange?.(step === "code" || busy), [step, busy, onSentChange]);
 
   const ready = !blocked && name.trim() !== "" && birth.length === 8 && gender !== null && carrier !== "" && phone.length >= 10 && agreed;
   const locked = step === "code" || busy;

@@ -104,6 +104,8 @@ export default function PartnersSignupForm({ consentVersions }: { consentVersion
     setAgreedTerms(false);
     setAgreedPrivacy(false);
     setConsentError(text);
+    // 시작 요청이 끝났으므로 동의 칸을 바로 풀어 포커스를 옮길 수 있게 한다(IdentityCheck가 알리는 것보다 먼저)
+    setIdvSent(false);
     // 약관이 바뀌었으면 지금 버전으로 바꾼다: 서버가 본문에 준 버전을 바로 쓰고, 화면 데이터도 새로 받는다(입력한 칸은 그대로 둔다)
     if (r.error === "consent_outdated") {
       const { termsVersion, privacyVersion } = r.body ?? {};

@@ -244,6 +244,33 @@ test("본인확인 시작 응답을 잃고 다시 누르면 같은 attemptKey로
   await expect(page.getByRole("heading", { name: "새 비밀번호를 정해요" })).toBeVisible();
 });
 
+test("가입 신청: 인증번호 받기 요청을 보내는 동안에는 약관 동의를 바꿀 수 없다", async ({ page }) => {
+  await page.goto("/seller/signup");
+  await fillIdentity(page, `윤${letters(uniq())}`);
+  await agreeSignupTerms(page);
+  // 시작 응답을 붙잡아 두고 그 사이 동의를 풀어 본다
+  let release: () => void = () => {};
+  const held = new Promise<void>((r) => (release = r));
+  await page.route(
+    (u) => u.pathname === "/api/seller-signup/verification",
+    async (route) => {
+      await held;
+      await route.continue();
+    },
+    { times: 1 },
+  );
+  await page.getByRole("button", { name: "인증번호 받기" }).click();
+  const all = page.getByLabel("필수 약관에 모두 동의해요");
+  await expect(all).toBeDisabled();
+  await all.click({ force: true });
+  await page.getByLabel("개인정보 수집 · 이용 (필수)").click({ force: true });
+  await expect(all).toBeChecked();
+  await expect(page.getByLabel("개인정보 수집 · 이용 (필수)")).toBeChecked();
+  release();
+  await expect(page.getByText("인증번호를 보냈어요. 문자로 받은 6자리를 넣어 주세요")).toBeVisible();
+  await expect(all).toBeChecked();
+});
+
 test("가입 신청: 화면의 약관 버전이 서버와 다르면 문자를 보내지 않고, 동의를 비워 다시 동의하게 한다", async ({ page }) => {
   // 약관이 바뀌기 전에 열어 둔 화면: 처음 받은 화면의 약관 버전만 예전 값으로 바꿔 둔다(그 뒤 화면 데이터 요청은 그대로 서버 값)
   await page.route(
