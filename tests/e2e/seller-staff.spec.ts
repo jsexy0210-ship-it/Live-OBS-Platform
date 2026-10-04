@@ -660,6 +660,8 @@ test("권한 다시 읽기가 겹치면 늦게 온 옛 응답이 새 권한을 �
     await held;
     return route.fulfill({ response: res });
   });
+  // 1초 안의 다시 읽기는 한 번으로 묶이므로 첫 화면을 읽고 1초 넘게 지난 뒤 포커스를 보낸다
+  await staffPage.waitForTimeout(1100);
   await staffPage.evaluate(() => window.dispatchEvent(new Event("focus")));
   await fetched;
 
