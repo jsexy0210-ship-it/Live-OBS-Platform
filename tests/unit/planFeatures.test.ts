@@ -61,6 +61,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/shipments/deliver": "ORDER_FOLLOWUP",
   "seller/members": "ORDER_FOLLOWUP",
   "seller/members/[memberId]": "ORDER_FOLLOWUP",
+  "seller/reward-ledger": "ORDER_FOLLOWUP",
   "seller/purchase-restrictions/[buyerMemberId]/lift": "ORDER_FOLLOWUP",
   "seller/coupons": "STORE_OPERATIONS",
   "seller/reviews": "STORE_OPERATIONS",
@@ -121,6 +122,8 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/shop-content/logo": "STORE_OPERATIONS",
   "seller/shop-content/logo/image": "STORE_OPERATIONS",
   "seller/broadcast/summary": "OVERLAY",
+  "seller/hit-cards": "OVERLAY",
+  "seller/hit-cards/[hitCardId]": "OVERLAY",
   "seller/stats/broadcasts": "OVERLAY",
   "seller/stats/members": "STORE_OPERATIONS",
   "seller/stats/orders": "STORE_OPERATIONS",
@@ -160,6 +163,7 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/products/[productId]/reviews": "STORE_OPERATIONS",
   "shop/[slug]/products/[productId]/images/[imageId]": "STORE_OPERATIONS", // 상품 사진(보이는 상품만)
   "shop/[slug]/orders/[orderId]": "OPEN",
+  "shop/[slug]/payments": "STORE_OPERATIONS", // 주문 카드 결제 시작(startPayment가 주문 생성과 같은 조건으로 막음)
   "shop/[slug]/auth/login": "OPEN",
   "shop/[slug]/auth/logout": "OPEN",
   "shop/[slug]/addresses": "OPEN",

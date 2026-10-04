@@ -1042,6 +1042,7 @@ model Order {
   notifications   OrderNotification[]
   couponRedemption CouponRedemption?
   productReviews   ProductReview[]
+  payments         Payment[]
 
   @@unique([sellerId, id])
   @@unique([sellerId, orderNo])
@@ -2155,6 +2156,74 @@ model ShopDisplayItem {
 
   @@id([sellerId, productId])
   @@index([sellerId, sortOrder])
+}
+
+// ───────────── 구매자 주문 결제(PG, 기반-결제. 대표님 결정 2026-10-05: 나이스페이 테스트(샌드박스) 결제) ─────────────
+// 결제 시도 1건 = Payment 1행. id를 PG 주문번호(orderId)로 넘긴다(시도마다 고유).
+// 같은 주문은 승인 중·결제 완료·취소된 결제가 하나만 있을 수 있다(마이그레이션의 부분 유니크 인덱스, 두 번 승인 금지).
+enum PaymentStatus {
+  READY
+  APPROVING
+  PAID
+  FAILED
+  CANCELLED
+  PARTIAL_CANCELLED
+}
+
+enum PaymentCancelStatus {
+  REQUESTED
+  DONE
+  FAILED
+}
+
+model Payment {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId        String        @db.Uuid
+  orderId         String        @db.Uuid
+  provider        String
+  method          PaymentMethod
+  status          PaymentStatus @default(READY)
+  // 결제 시작 때 서버가 다시 계산한 주문 금액. 승인·인증 결과의 금액이 이 값과 다르면 승인하지 않는다.
+  amount          Int
+  // 취소 완료(DONE)된 금액 합
+  cancelledAmount Int           @default(0)
+  // PG 거래 번호(인증 뒤 받음)
+  pgTid           String?       @unique
+  failureCode     String?
+  approvedAt      DateTime?     @db.Timestamptz(3)
+  cancelledAt     DateTime?     @db.Timestamptz(3)
+  createdAt       DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime      @updatedAt @db.Timestamptz(3)
+
+  order   Order           @relation(fields: [sellerId, orderId], references: [sellerId, id])
+  cancels PaymentCancel[]
+
+  @@unique([sellerId, id])
+  @@index([sellerId, orderId])
+  @@index([status, updatedAt])
+}
+
+// 결제 취소 요청(환불과 같은 트랜잭션에서 남기고, PG 호출은 커밋 뒤 processPaymentCancel이 한다). id를 PG 취소 주문번호로 넘긴다.
+model PaymentCancel {
+  id             String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId       String              @db.Uuid
+  paymentId      String              @db.Uuid
+  amount         Int
+  reason         String
+  // 같은 사유로 두 번 취소하지 않게(예: refund:{orderId})
+  idempotencyKey String
+  status         PaymentCancelStatus @default(REQUESTED)
+  pgCancelledTid String?
+  failureCode    String?
+  attempts       Int                 @default(0)
+  lastTriedAt    DateTime?           @db.Timestamptz(3)
+  doneAt         DateTime?           @db.Timestamptz(3)
+  createdAt      DateTime            @default(now()) @db.Timestamptz(3)
+
+  payment Payment @relation(fields: [sellerId, paymentId], references: [sellerId, id])
+
+  @@unique([paymentId, idempotencyKey])
+  @@index([status, lastTriedAt])
 }
 
 // 파트너스 메일 초과 발송 설정(대표님 결정 2026-10-05, lib/server/mail/quota.ts). 없으면 기본값(끔·상한 0).
