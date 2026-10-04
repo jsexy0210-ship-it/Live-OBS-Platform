@@ -120,3 +120,54 @@ test("메뉴 정보가 지난 값이어도 서버가 403 plan_feature_required�
   await expect(menu(page).getByText("상품", { exact: true })).toHaveCount(0);
   await expect(menu(page).getByText("주문", { exact: true })).toBeVisible();
 });
+
+const STORE_ME = ["OVERLAY", "EXTERNAL_INTEGRATION", "STORE_OPERATIONS"];
+
+test("403으로 막힌 뒤 다시 읽은 /me가 그 화면을 허용하면(그사이 요금제를 올림) 안내 화면을 지운다", async ({ page }) => {
+  await login(page, OVERLAY, "/seller/orders");
+  // 요금제를 올린 상황: /me는 계속 쇼핑몰 기능을 준다. 상품 API는 처음 한 번만 실제 서버(403), 그 뒤는 올린 뒤 응답(빈 목록)
+  await page.route("**/api/seller/me", async (route) => {
+    const res = await route.fetch();
+    await route.fulfill({ response: res, json: { ...(await res.json()), features: STORE_ME } });
+  });
+  let first = true;
+  await page.route("**/api/seller/products*", async (route) => {
+    if (first) {
+      first = false;
+      return route.continue();
+    }
+    await route.fulfill({ json: { products: [], nextCursor: null } });
+  });
+  const blocked = page.waitForResponse((r) => r.url().includes("/api/seller/products") && r.status() === 403);
+  await page.goto("/seller/products");
+  await blocked;
+  // 차단 뒤 다시 읽은 /me가 상품 화면을 허용하므로 안내 화면이 풀리고 상품 화면이 다시 그려진다
+  await expect(page.getByTestId("plan-feature-required")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: /^상품/ })).toBeVisible();
+});
+
+test("화면을 옮긴 뒤 늦게 온 403 plan_feature_required는 지금 화면을 막지 않는다", async ({ page }) => {
+  await login(page, OVERLAY, "/seller/orders");
+  // 처음 /me는 쇼핑몰 기능이 있는 것처럼(메뉴에 상품이 보이게), 상품 API 응답(실제 403)은 늦게 온다
+  await page.route(
+    "**/api/seller/me",
+    async (route) => {
+      const res = await route.fetch();
+      await route.fulfill({ response: res, json: { ...(await res.json()), features: STORE_ME } });
+    },
+    { times: 1 },
+  );
+  await page.route("**/api/seller/products*", async (route) => {
+    await new Promise((r) => setTimeout(r, 1500));
+    await route.continue();
+  });
+  const late = page.waitForResponse((r) => r.url().includes("/api/seller/products") && r.status() === 403);
+  await page.goto("/seller/products");
+  // 상품 응답을 기다리지 않고 주문 화면으로 옮긴다
+  await menu(page).getByRole("link", { name: "주문", exact: true }).click();
+  await expect(page).toHaveURL(/\/seller\/orders$/);
+  await late;
+  await page.waitForTimeout(300);
+  await expect(page.getByTestId("plan-feature-required")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "주문", exact: true })).toBeVisible();
+});

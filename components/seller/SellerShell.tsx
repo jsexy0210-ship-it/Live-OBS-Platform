@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useLatestResponse, type ReadTicket } from "./latestResponse";
-import { api, PLAN_FEATURE_EVENT, type Me } from "./api";
+import { api, PLAN_FEATURE_EVENT, type Me, type PlanFeatureEventDetail } from "./api";
 
 // 판매자 관리자 공통 틀: 왼쪽 메뉴(좁은 화면에서는 서랍) + 상단 바 + 이용 상태 배너.
 // 아직 만들지 않은 화면은 메뉴에서 흐리게 두고 누를 수 없게 한다.
@@ -110,10 +110,13 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   // /me 다시 읽기 반영 규칙(latestResponse.ts): 나중에 보낸 요청의 성공만 반영하고, 실패가 앞선 성공을 버리지 않는다.
   // 반영할 때 파생 값(남은 체험 일수)도 함께 계산한다: 처음 읽기·다시 읽기 어느 쪽이 먼저 성공해도 같은 결과
   const meReads = useLatestResponse();
+  // 반영한 /me의 세대(요금제 차단 뒤 다시 읽은 값인지 가리는 데 쓴다)
+  const [meGen, setMeGen] = useState(0);
   const applyMe = (t: ReadTicket, data: Me) => {
     if (meReads.accept(t) !== "apply") return;
     setFailed(false);
     setMe(data);
+    setMeGen(t.n);
     // 체험 중이면 /me가 끝나는 시각을 준다(대표자·직원 모두)
     setTrialDaysLeft(data.access === "trial" && data.trialEndsAt ? Math.max(0, Math.ceil((new Date(data.trialEndsAt).getTime() - Date.now()) / 86_400_000)) : null);
   };
@@ -140,12 +143,13 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   // 로딩 화면은 띄우지 않고, 실패하면 지금 값을 그대로 둔다(401이면 공통 api()가 로그인으로 보낸다)
   // 창으로 돌아올 때(포커스·화면이 다시 보일 때)도 다시 읽는다: 권한이 하나도 없는 직원은 옮길 화면이 없어 경로로는 새로 읽지 못한다.
   // 짧은 간격으로 겹치면(포커스와 visibilitychange가 함께 오는 경우 등) 한 번만 읽는다
-  const refresh = useCallback(() => {
+  const refresh = useCallback((): number => {
     lastRead.current = Date.now();
     const t = meReads.next();
     void api<Me>("/api/seller/me").then((r) => {
       if (r.ok) applyMe(t, r.data);
     });
+    return t.n;
   }, []);
   const firstPath = useRef(pathname);
   useEffect(() => {
@@ -177,16 +181,25 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => setNavOpen(false), [pathname]);
 
-  // 화면이 부른 API가 403 plan_feature_required면(그사이 요금제가 바뀐 경우 등) 그 화면을 안내 화면으로 바꾸고 메뉴를 다시 읽는다
-  const [planBlocked, setPlanBlocked] = useState<string | null>(null);
+  // 화면이 부른 API가 403 plan_feature_required면(그사이 요금제가 바뀐 경우 등) 그 화면을 안내 화면으로 바꾸고 메뉴를 다시 읽는다.
+  // 요청을 보낸 화면과 지금 화면이 다르면(옮긴 뒤 늦게 온 응답) 무시한다. 차단은 화면을 떠나면 지우고,
+  // 차단 뒤 다시 읽은 /me(gen 이후 세대)가 이 화면을 허용하면 지운다(그사이 요금제를 올린 경우)
+  const [planBlocked, setPlanBlocked] = useState<{ path: string; gen: number } | null>(null);
   useEffect(() => {
-    const onBlocked = () => {
-      setPlanBlocked(window.location.pathname);
-      refresh();
+    const onBlocked = (e: Event) => {
+      const page = (e as CustomEvent<PlanFeatureEventDetail>).detail?.page;
+      if (page !== window.location.pathname) return;
+      setPlanBlocked({ path: page, gen: refresh() });
     };
     window.addEventListener(PLAN_FEATURE_EVENT, onBlocked);
     return () => window.removeEventListener(PLAN_FEATURE_EVENT, onBlocked);
   }, [refresh]);
+  useEffect(() => setPlanBlocked(null), [pathname]);
+  // 화면의 요금제 조건을 모르면(routePlan 없음) 허용을 확인할 수 없어 떠날 때까지 둔다(다시 막히는 되풀이 방지)
+  useEffect(() => {
+    const need = planBlocked && routePlan(planBlocked.path);
+    if (planBlocked && need && me && meGen >= planBlocked.gen && planAllows(me.features, need)) setPlanBlocked(null);
+  }, [planBlocked, me, meGen]);
 
   // 세션을 실제로 끊었을 때만 로그인 화면으로 보낸다. 실패하면 화면에 남아 다시 시도하게 한다(공용 기기에서 로그아웃된 줄 착각하지 않게).
   const [logoutError, setLogoutError] = useState(false);
@@ -219,7 +232,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   const can = (perm: string) => canFor(me, perm);
   const features = me.features ?? [];
   const nav = visibleNav(me);
-  const blocked = planBlocked === pathname || !planAllows(features, routePlan(pathname));
+  const blocked = planBlocked?.path === pathname || !planAllows(features, routePlan(pathname));
   // 안내 화면에서 갈 수 있는 첫 화면(만든 메뉴 중 지금 열리는 것)
   const nextNav = nav.find((n): n is NavItem => "label" in n && !!n.href && !pathname.startsWith(n.href));
 
