@@ -3,6 +3,7 @@ import { writeAudit } from "../audit/log";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 import type { VideoInfo, YoutubeClient } from "./client";
 import { Rejected, callYoutube, discoverLive, guard, liveStatusOf } from "./call";
+import { CHAT_NOTICE } from "./chat";
 import { parseYoutubeRef } from "./parse";
 import { applyVideoState } from "./sync";
 
@@ -19,6 +20,7 @@ const liveView = (l: YoutubeLiveLink) => ({
   actualEndAt: l.actualEndAt,
   broadcastSessionId: l.broadcastSessionId,
   autoStarted: l.autoStarted,
+  chatEnabled: l.chatEnabled,
   checkedAt: l.checkedAt,
 });
 
@@ -32,6 +34,7 @@ export async function youtubeStatus(db: PrismaClient, ctx: TenantContext, config
     configured,
     channel: channel ? { channelId: channel.channelId, title: channel.title, url: `https://www.youtube.com/channel/${channel.channelId}`, connectedAt: channel.connectedAt } : null,
     live: live ? liveView(live) : null,
+    chatNotice: CHAT_NOTICE,
   };
 }
 
