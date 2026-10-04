@@ -5,7 +5,8 @@ import { SIGNUP_CONSENT_VERSIONS } from "./consent";
 // 구매자 마케팅 정보 수신 동의 조회·철회·다시 동의(대기열 6번, 정보통신망법 제50조 제2항: 수신자는 언제든 철회할 수 있다).
 // 철회하면 동의 시각·문서 버전을 비우고 철회 시각을 남긴다. 다시 동의하면 화면이 보여 준 문서 버전이 지금 버전과 같을 때만 받는다.
 // 광고성 알림(방송 시작 알림 등)은 동의 중(marketingConsentAt 있음)인 회원에게만 보낸다(PRODUCT_SCOPE 「방송 시작 알림」).
-// 이미 같은 상태면 아무것도 바꾸지 않고 지금 상태를 돌려준다(다시 보낸 요청에 안전).
+// 이미 같은 상태(철회됨, 또는 지금 버전으로 동의 중)면 아무것도 바꾸지 않고 지금 상태를 돌려준다(다시 보낸 요청에 안전).
+// 동의 중이지만 버전이 없거나 옛 버전이면 다시 동의할 때 지금 버전·시각으로 새로 기록한다.
 
 export type MarketingConsentState = { agreed: boolean; agreedAt: string | null; version: string | null; withdrawnAt: string | null; currentVersion: string };
 
@@ -45,7 +46,10 @@ export async function setMarketingConsent(db: PrismaClient, scope: Scope, raw: u
       SELECT "id" FROM "BuyerMember" WHERE "id" = ${scope.buyerMemberId}::uuid AND "sellerId" = ${scope.sellerId}::uuid AND "deletedAt" IS NULL FOR UPDATE`;
     if (!row) return { ok: false as const, reason: "not_found" as const };
     const cur = await tx.buyerMember.findUniqueOrThrow({ where: { id: row.id }, select: SELECT });
-    if ((cur.marketingConsentAt !== null) === agreed) return { ok: true as const, state: stateOf(cur), changed: false };
+    // 바꿀 것이 없는 경우: 철회 요청인데 이미 철회됨, 또는 동의 요청인데 이미 지금 버전으로 동의함.
+    // 동의 중이어도 버전이 없거나(이 기능 전 회원) 옛 버전이면 지금 버전으로 다시 기록한다(Codex P1).
+    const current = agreed ? cur.marketingConsentAt !== null && cur.marketingConsentVersion === SIGNUP_CONSENT_VERSIONS.marketing : cur.marketingConsentAt === null;
+    if (current) return { ok: true as const, state: stateOf(cur), changed: false };
     const now = new Date();
     const next = await tx.buyerMember.update({
       where: { id: row.id },
@@ -61,7 +65,7 @@ export async function setMarketingConsent(db: PrismaClient, scope: Scope, raw: u
       action: agreed ? "buyer.marketing_consent.agree" : "buyer.marketing_consent.withdraw",
       targetType: "BuyerMember",
       targetId: row.id,
-      before: { agreed: !agreed, version: cur.marketingConsentVersion },
+      before: { agreed: cur.marketingConsentAt !== null, version: cur.marketingConsentVersion },
       after: { agreed, version: next.marketingConsentVersion },
       ip: meta.ip,
       userAgent: meta.userAgent,

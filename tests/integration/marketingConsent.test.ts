@@ -70,6 +70,24 @@ describe("구매자 마케팅 수신 동의 철회·다시 동의", () => {
     expect(await audits()).toEqual([{ action: "buyer.marketing_consent.withdraw" }, { action: "buyer.marketing_consent.agree" }]);
   });
 
+  it("동의 중이지만 버전이 없거나 옛 버전이면 지금 버전으로 다시 동의할 때 버전·시각·감사가 새로 남고, 같은 버전으로 다시 보내면 바뀌지 않는다(Codex P1)", async () => {
+    for (const old of [null, "2020-01-01.v0"]) {
+      await resetDb();
+      const s = await shop();
+      const agreedAt = new Date("2026-09-01T00:00:00Z");
+      await db.buyerMember.update({ where: { id: s.buyer.id }, data: { marketingConsentAt: agreedAt, marketingConsentVersion: old } });
+      const r = await s.put({ agreed: true, marketingVersion: V });
+      expect(r.status).toBe(200);
+      const row = await db.buyerMember.findUniqueOrThrow({ where: { id: s.buyer.id } });
+      expect(row.marketingConsentVersion).toBe(V);
+      expect(row.marketingConsentAt!.getTime()).toBeGreaterThan(agreedAt.getTime());
+      expect(await audits()).toEqual([{ action: "buyer.marketing_consent.agree" }]);
+      const again = await s.put({ agreed: true, marketingVersion: V });
+      expect((await again.json()).agreedAt).toBe(row.marketingConsentAt!.toISOString());
+      expect(await audits()).toHaveLength(1);
+    }
+  });
+
   it("로그인하지 않았거나 다른 쇼핑몰 세션이면 401이고 다른 회원의 동의는 바뀌지 않는다", async () => {
     const a = await shop();
     const b = await shop();
