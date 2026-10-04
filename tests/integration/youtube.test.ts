@@ -366,6 +366,20 @@ describe("채팅 수집", () => {
     expect(s.yt.calls).toEqual(["videos.list", "liveChatMessages.list"]);
   });
 
+  it("같은 방송을 두 판매자가 연결해도 채팅은 판매자마다 저장된다", async () => {
+    const a = await liveShop();
+    const b = await shop();
+    await connectLive(db, b.ctx, a.yt.client, VID_A, NOW);
+    const bCookie = await cookieOf(b.owner.email);
+    await putChat(a.cookie, true);
+    await putChat(bCookie, true);
+    const page = { messages: [msg("same1", "닉네임1")], nextPageToken: "p2", pollingIntervalMillis: 3_000, ended: false };
+    a.yt.chatPages.push(page, { ...page });
+    expect(await collectChats(db, a.yt.client, NOW)).toEqual({ polled: 2, saved: 2 });
+    expect(await db.youtubeChatMessage.count({ where: { sellerId: a.seller.id, messageId: "same1" } })).toBe(1);
+    expect(await db.youtubeChatMessage.count({ where: { sellerId: b.seller.id, messageId: "same1" } })).toBe(1);
+  });
+
   it("방송이 없으면 켤 수 없다", async () => {
     const s = await shop();
     const res = await putChat(await cookieOf(s.owner.email), true);
