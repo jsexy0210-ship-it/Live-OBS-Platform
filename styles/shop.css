@@ -169,6 +169,33 @@ body {
 .shop-mcat {
   display: none;
 }
+/* 장바구니 개수 배지 */
+.shop-hic-ico {
+  position: relative;
+  display: inline-flex;
+}
+.shop-cart {
+  position: relative;
+}
+.shop-badge {
+  position: absolute;
+  top: -6px;
+  right: -9px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--brand);
+  color: var(--brand-ink, #fff);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+.shop-cart .shop-badge {
+  top: 4px;
+  right: 2px;
+}
 .shop-cart {
   position: relative;
 }

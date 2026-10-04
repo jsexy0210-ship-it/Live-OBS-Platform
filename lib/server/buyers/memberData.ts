@@ -63,6 +63,7 @@ export const MEMBER_AUDIT_RETENTION: Record<string, MemberAuditRetention> = {
   "buyer_review.update": "non_transaction",
   "buyer_review.delete": "non_transaction",
   "buyer_review.report": "non_transaction",
+  "buyer_review.report_withdraw": "non_transaction",
   "buyer_review.image_upload": "non_transaction",
   // 마케팅 수신 동의 철회·다시 동의(회원 정보 수정과 같은 분류)
   "buyer.marketing_consent.withdraw": "non_transaction",

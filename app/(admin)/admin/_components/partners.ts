@@ -38,7 +38,9 @@ export type SellerDetail = {
     graceUntil: string | null;
     retryCount: number;
     planCode: string;
+    planName: string;
     pendingPlanCode: string | null;
+    pendingPlanName: string | null;
   } | null;
   orders30d: { since: string; created: number; paid: number; paidAmount: number; lastOrderAt: string | null };
 };

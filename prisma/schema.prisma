@@ -523,13 +523,20 @@ model Product {
   @@unique([sellerId, codeNo])
 }
 
+// 상품 사진(PR-A, 2026-10-04 대표님 지시). 첫 번째(sortOrder 0)가 대표 사진(썸네일). 상품당 10장(lib/server/products/images.ts).
+// 바이트는 공통 저장소(lib/server/storage, storageKey)에 두고 여기에는 형식·크기·해시만 둔다(저장 방식이 바뀌어도 이 표는 그대로).
 model ProductImage {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerId   String   @db.Uuid
-  productId  String   @db.Uuid
-  storageKey String
-  sortOrder  Int      @default(0)
-  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId    String   @db.Uuid
+  productId   String   @db.Uuid
+  storageKey  String   @unique
+  contentType String
+  byteSize    Int
+  width       Int
+  height      Int
+  sha256      String
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
 
   seller  Seller  @relation(fields: [sellerId], references: [id])
   product Product @relation(fields: [sellerId, productId], references: [sellerId, id])
@@ -939,6 +946,8 @@ model ProductReviewReport {
   createdAt     DateTime            @default(now()) @db.Timestamptz(3)
   // 판매자가 확인해 공개한 시각. 현재 신고 수·보류 판정·사유 집계는 resolvedAt이 비어 있는 신고로만 계산한다
   resolvedAt    DateTime?           @db.Timestamptz(3)
+  // 신고자가 스스로 철회한 시각. 철회한 신고는 미확인 신고 수·사유 집계에서 빠지지만 행은 남는다(같은 리뷰를 다시 신고할 수 없다). 리뷰 상태는 바꾸지 않는다
+  withdrawnAt   DateTime?           @db.Timestamptz(3)
 
   seller      Seller        @relation(fields: [sellerId], references: [id])
   review      ProductReview @relation(fields: [sellerId, reviewId], references: [sellerId, id], onDelete: Cascade)
@@ -2019,6 +2028,20 @@ model CartItem {
   @@unique([buyerMemberId, optionId])
   @@index([sellerId, buyerMemberId])
   @@index([sellerId, optionId])
+}
+
+// 공통 이미지 저장소의 DB 드라이버 표(IMAGE_STORAGE=db, 대표님 결정 2026-10-04: 오브젝트 스토리지로 옮길 수 있게 하되 지금은 DB).
+// lib/server/storage/db.ts만 읽고 쓴다. storageKey = "db:" + id. 형식·크기·해시 CHECK는 마이그레이션 20261004250000_product_images.
+model StoredImage {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId    String   @db.Uuid
+  data        Bytes
+  contentType String
+  byteSize    Int
+  sha256      String
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([sellerId])
 }
 
 // 구매자 찜(SH-034, 로그인 회원만). 상품마다 한 줄, 회원당 200개. 가격·판매 상태는 볼 때마다 지금 값(shop-wish/service.ts). 회원 탈퇴 때 지운다.
