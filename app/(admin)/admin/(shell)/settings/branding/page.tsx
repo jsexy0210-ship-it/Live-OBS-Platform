@@ -164,7 +164,7 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
   const pickFavicon = async (file: File | undefined) => {
     setFaviconError(null);
     if (!file) return;
-    if (file.size > FAVICON_MAX) return setFaviconError("파비콘은 256KB까지 업로드할 수 있습니다.");
+    if (file.size > FAVICON_MAX) return setFaviconError("파비콘이 256KB를 넘습니다. 256KB 이하 PNG·ICO로 줄여 주십시오.");
     const url = URL.createObjectURL(file);
     const size = await imageSize(url);
     const warn = size && size.w !== size.h ? "정사각형이 아니면 탭에서 찌그러져 보일 수 있습니다." : undefined;
@@ -195,7 +195,7 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
     setOgError(null);
     setOgFile(null);
     if (!file) return;
-    if (file.size > OG_MAX) return setOgError("공유 카드 이미지는 2MB까지 업로드할 수 있습니다.");
+    if (file.size > OG_MAX) return setOgError("공유 카드 이미지가 2MB를 넘습니다. 2MB 이하 PNG로 줄여 주십시오.");
     const url = URL.createObjectURL(file);
     const size = await imageSize(url);
     // 브라우저가 열지 못하는 파일(잘린 파일 등)은 공유 서비스도 못 보여 준다
@@ -363,7 +363,7 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
             <span className="t-l2 fw6" id={`mode-${t}`}>
               카드 이미지
             </span>
-            <span className="t-c1 c-alt">카드 이미지 크기는 1200×630입니다. 직접 업로드할 때는 이 크기로 만들어 주십시오.</span>
+            <span className="t-c1 c-alt">PNG 파일만 올릴 수 있습니다. 카드 이미지 크기는 1200×630이며 2MB까지 업로드할 수 있습니다.</span>
             <div className="seg" role="radiogroup" aria-labelledby={`mode-${t}`} style={{ alignSelf: "flex-start" }}>
               {(
                 [
@@ -389,7 +389,7 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
             </div>
             {mode === "uploaded" && (
               <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                <span className="t-c1 c-alt">PNG 파일을 2MB까지 업로드할 수 있습니다.</span>
+                <span className="t-c1 c-alt">1200×630 크기 PNG 파일을 선택해 주십시오.</span>
                 {canEdit && (
                   <>
                     <input

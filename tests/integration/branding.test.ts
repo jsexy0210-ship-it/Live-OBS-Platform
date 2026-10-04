@@ -123,7 +123,7 @@ describe("파비콘", () => {
     expect(await svg.json()).toEqual({ error: "unsupported_image", message: "파비콘은 PNG·ICO 파일만 업로드할 수 있습니다." });
     const big = await upload(faviconPut, "seller", Buffer.concat([await png(32, 32), Buffer.alloc(300 * 1024)]), c);
     expect(big.status).toBe(413);
-    expect((await big.json()).error).toBe("file_too_large");
+    expect(await big.json()).toEqual({ error: "file_too_large", message: "파비콘이 256KB를 넘습니다. 256KB 이하 PNG·ICO로 줄여 주십시오." });
     expect((await upload(faviconPut, "seller", Buffer.alloc(0), c)).status).toBe(400);
     expect(await db.siteBranding.count()).toBe(0);
   });

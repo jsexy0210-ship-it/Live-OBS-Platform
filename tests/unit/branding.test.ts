@@ -133,6 +133,13 @@ describe("브랜딩 이미지 형식 확인(파일 앞부분 바이트)", () => 
     // 셋째 글자(예약 비트)가 소문자
     expect(checkFavicon(withChunk("abcd"))).toEqual({ ok: false, reason: "unsupported_image" });
     expect(checkFavicon(withChunk("ab1D"))).toEqual({ ok: false, reason: "unsupported_image" });
+    // IHDR가 두 번, PLTE가 그림 데이터 뒤·두 번
+    expect(checkFavicon(withChunk("IHDR"))).toEqual({ ok: false, reason: "unsupported_image" });
+    expect(checkFavicon(withChunk("PLTE"))).toEqual({ ok: false, reason: "unsupported_image" });
+    const twoPlte = rawPng(32, 32, { color: 2, plte: Buffer.alloc(6), idat: [deflateSync(Buffer.alloc(32 * (1 + 32 * 3)))] });
+    const firstIdat = twoPlte.indexOf(Buffer.from("IDAT")) - 4;
+    expect(checkFavicon(Buffer.concat([twoPlte.subarray(0, firstIdat), chunk("PLTE", Buffer.alloc(6)), twoPlte.subarray(firstIdat)]))).toEqual({ ok: false, reason: "unsupported_image" });
+    expect(checkFavicon(twoPlte)).toMatchObject({ ok: true });
     // 보조 조각(tEXt·사설 조각)은 받는다
     expect(checkFavicon(withChunk("tEXt"))).toMatchObject({ ok: true });
     expect(checkFavicon(withChunk("prVt"))).toMatchObject({ ok: true });

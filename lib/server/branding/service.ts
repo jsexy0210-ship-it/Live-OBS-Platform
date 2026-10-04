@@ -27,12 +27,12 @@ export const BRANDING_MESSAGES = {
 
 const IMAGE_MESSAGES: Record<ImageSlot, Record<ImageRejection, string>> = {
   favicon: {
-    file_too_large: "파비콘은 256KB까지 업로드할 수 있습니다.",
+    file_too_large: "파비콘이 256KB를 넘습니다. 256KB 이하 PNG·ICO로 줄여 주십시오.",
     unsupported_image: "파비콘은 PNG·ICO 파일만 업로드할 수 있습니다.",
     wrong_image_size: "파비콘 PNG는 한 변이 16~1024px이어야 합니다.",
   },
   ogImage: {
-    file_too_large: "공유 카드 이미지는 2MB까지 업로드할 수 있습니다.",
+    file_too_large: "공유 카드 이미지가 2MB를 넘습니다. 2MB 이하 PNG로 줄여 주십시오.",
     unsupported_image: "공유 카드 이미지는 PNG 파일만 업로드할 수 있습니다.",
     wrong_image_size: "공유 카드 이미지는 1200×630 크기여야 합니다.",
   },
