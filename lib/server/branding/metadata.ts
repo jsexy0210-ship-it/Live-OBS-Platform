@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { prisma } from "../db";
-import { brandingMeta, DEFAULT_FAVICON } from "./service";
+import { brandingMeta, defaultFavicon } from "./service";
 import { requestOrigin } from "./siteUrl";
 import type { BrandingTarget } from "./store";
 
@@ -18,6 +18,7 @@ export async function brandingMetadata(target: BrandingTarget): Promise<Metadata
     return {};
   }
   const description = meta.description ?? undefined;
+  const fallback = defaultFavicon(target);
   const images = origin ? [{ url: new URL(meta.image.url, origin).toString(), width: meta.image.width, height: meta.image.height }] : undefined;
   return {
     title: meta.title,
@@ -26,9 +27,9 @@ export async function brandingMetadata(target: BrandingTarget): Promise<Metadata
     icons: meta.favicon
       ? { icon: [{ url: meta.favicon.url, type: meta.favicon.type }], shortcut: [{ url: meta.favicon.url, type: meta.favicon.type }], apple: [{ url: meta.favicon.url }] }
       : {
-          icon: [{ url: DEFAULT_FAVICON.url, type: DEFAULT_FAVICON.type, sizes: "32x32" }],
-          shortcut: [{ url: DEFAULT_FAVICON.url, type: DEFAULT_FAVICON.type }],
-          apple: [{ url: DEFAULT_FAVICON.appleUrl, sizes: "180x180" }],
+          icon: [{ url: fallback.url, type: fallback.type, sizes: "32x32" }],
+          shortcut: [{ url: fallback.url, type: fallback.type }],
+          apple: [{ url: fallback.appleUrl, sizes: "180x180" }],
         },
     openGraph: { type: "website", title: meta.title, description, ...(images && { images }) },
     twitter: { card: "summary_large_image", title: meta.title, description, ...(images && { images: images.map((i) => i.url) }) },
