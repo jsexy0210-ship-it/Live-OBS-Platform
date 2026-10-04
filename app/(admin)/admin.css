@@ -14,7 +14,7 @@
   --info-bg: var(--master-tint);
 }
 
-/* 카페24식 틀(.cs·.gnb·.lnb·.loc-bar, styles/seller.css)의 색을 마스터 청록으로 바꾼다. GNB는 청록 바탕, 선택·강조는 같은 청록 계열.
+/* 업무용 관리 화면 틀(.cs·.gnb·.lnb·.loc-bar, styles/seller.css)의 색을 마스터 청록으로 바꾼다. GNB는 청록 바탕, 선택·강조는 같은 청록 계열.
    GNB 선택 표시줄은 바탕과 같은 청록이면 안 보이므로 흰색으로 둔다. 새 색 값을 만들지 않고 --master 계열과 그 어두운 단계만 쓴다. */
 .app.admin-app {
   --cs-gnb: var(--master);
