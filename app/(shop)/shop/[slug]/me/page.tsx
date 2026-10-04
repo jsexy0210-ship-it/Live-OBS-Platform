@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import ShopFrame from "../../../../../components/shop/ShopFrame";
 import { COOKIE_NAMES } from "../../../../../lib/server/auth/policy";
 import { resolveBuyerSession } from "../../../../../lib/server/auth/session";
 import { prisma } from "../../../../../lib/server/db";
@@ -34,7 +33,7 @@ export default async function ShopMyPage({ params }: Params) {
     { href: `${base}/me/notifications`, label: "알림 설정" },
   ];
   return (
-    <ShopFrame slug={shop.slug} shopName={shop.shopName}>
+    <>
       <section className="card shop-card col shop-my">
         <h1 className="t-h1">내 정보</h1>
         <p className="t-l1 c-alt">{session.member.name}님, 반가워요.</p>
@@ -46,6 +45,6 @@ export default async function ShopMyPage({ params }: Params) {
           ))}
         </nav>
       </section>
-    </ShopFrame>
+    </>
   );
 }

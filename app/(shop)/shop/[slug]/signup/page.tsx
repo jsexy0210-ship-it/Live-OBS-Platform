@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import ShopFrame from "../../../../../components/shop/ShopFrame";
 import SignupForm from "../../../../../components/shop/SignupForm";
 import ShopState from "../../../../../components/shop/ShopState";
 import { SIGNUP_CONSENT_VERSIONS } from "../../../../../lib/server/buyers/consent";
@@ -40,7 +39,7 @@ export default async function ShopSignupPage({ params }: Params) {
     rejoinDays: await rejoinDaysToAgree(prisma, shop.id),
   };
   return (
-    <ShopFrame slug={slug} shopName={shop.shopName}>
+    <>
       {!open ? (
         <ShopState title="지금은 쇼핑몰을 이용할 수 없어요" body="쇼핑몰이 다시 문을 열면 가입할 수 있어요." />
       ) : !identityReady ? (
@@ -48,6 +47,6 @@ export default async function ShopSignupPage({ params }: Params) {
       ) : (
         <SignupForm slug={slug} shopName={shop.shopName} consent={consent} />
       )}
-    </ShopFrame>
+    </>
   );
 }
