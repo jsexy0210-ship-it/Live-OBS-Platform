@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { AutomationPracticeRun, Prisma, PrismaClient } from "@prisma/client";
 import { AUTOMATION_LIMITS, plannerConfig } from "./config";
 import { writeAudit } from "../audit/log";
-import { callPort, runSteps, type EngineStats } from "./engine";
+import { callPort, runSteps, trackedWindow, type EngineStats } from "./engine";
 import { FencingError, QUIESCE_MS, backoffMs, dbNow, lockPlaybook, quiescent, quiescentSql } from "./queue";
 import type { Playbook } from "./playbook";
 import { PLAYBOOKS } from "./playbooks";
@@ -99,22 +99,22 @@ export async function runPractice(
   const assertOwner = async () => {
     if ((await db.automationPracticeRun.count({ where: owned })) !== 1) throw new FencingError();
   };
-  // 외부 행동 격리 창: 시작 기록은 점유 확인과 함께(회수됐으면 던져 행동하지 않음), 종료 확인은 점유와 무관하게 남긴다
-  const actionStarted = async () => {
-    const at = await dbNow(db);
-    if ((await db.automationPracticeRun.updateMany({ where: owned, data: { lastActionStartedAt: at } })).count !== 1) throw new FencingError();
-    return at;
-  };
-  const actionEnded = async () => void (await db.$executeRaw`UPDATE "AutomationPracticeRun" SET "lastActionEndedAt" = clock_timestamp() WHERE id = ${run.id}::uuid`);
-  // 회수됐어도 해야 하는 세션 닫기의 시작 기록(점유 확인 없음)
-  const releaseStarted = async () => {
-    const at = await dbNow(db);
-    await db.automationPracticeRun.updateMany({ where: { id: run.id }, data: { lastActionStartedAt: at } });
-    return at;
-  };
-  // 상한을 넘겨 중단한 호출이 늦게라도 끝났다(settle): 그 시작 기록이 그대로일 때만 종료 확인을 남긴다
-  const actionSettled = async (startedAt: Date) =>
-    void (await db.automationPracticeRun.updateMany({ where: { id: run.id, lastActionStartedAt: startedAt }, data: { lastActionEndedAt: await dbNow(db) } }));
+  // 외부 행동 격리 창(trackedWindow): 시작 기록은 점유 확인과 함께(회수됐으면 던져 행동하지 않음), 세션 닫기의 시작 기록은 점유 확인 없이,
+  // 종료 확인은 점유와 무관하게 자기 시작 기록이 그대로일 때만 남긴다
+  const actionWindow = trackedWindow({
+    start: async () => {
+      const at = await dbNow(db);
+      if ((await db.automationPracticeRun.updateMany({ where: owned, data: { lastActionStartedAt: at } })).count !== 1) throw new FencingError();
+      return at;
+    },
+    release: async () => {
+      const at = await dbNow(db);
+      await db.automationPracticeRun.updateMany({ where: { id: run.id }, data: { lastActionStartedAt: at } });
+      return at;
+    },
+    end: async (startedAt) =>
+      void (await db.automationPracticeRun.updateMany({ where: { id: run.id, lastActionStartedAt: startedAt }, data: { lastActionEndedAt: await dbNow(db) } })),
+  });
   const lost = new AbortController();
   const beat = setInterval(() => void assertOwner().catch(() => lost.abort()), Math.max(20, Math.floor(AUTOMATION_LIMITS.leaseMs / 3)));
   // 매 회차 시험용 쇼핑몰·PC를 기준 상태로 되돌리고 실제 상태로 확인한다. 되돌리기·확인이 실패하면 실행하지 않고 실패로 남긴다
@@ -126,7 +126,7 @@ export async function runPractice(
       await rt.practice.reset(signal);
       return rt.practice.isBaseline(signal);
     },
-    { window: { actionStarted, actionEnded, actionSettled } },
+    { window: actionWindow },
   ).catch((): { ok: false } => ({ ok: false }));
   if (!baseline.ok || !baseline.value) result = { kind: "failed", reason: "practice_reset_failed" };
   else {
@@ -161,10 +161,7 @@ export async function runPractice(
             });
           },
           enterVerify: async () => {},
-          actionStarted,
-          actionEnded,
-          actionSettled,
-          releaseStarted,
+          ...actionWindow,
           stepDone: async (next) => void (stepIndex = next),
         },
       );

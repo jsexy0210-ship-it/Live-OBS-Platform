@@ -66,9 +66,9 @@ export async function markReleaseStarted(db: PrismaClient, jobId: string): Promi
   await db.automationJob.updateMany({ where: { id: jobId }, data: { lastActionStartedAt: at } });
   return at;
 }
-export const markActionEnded = (db: PrismaClient, jobId: string) => db.$executeRaw`UPDATE "AutomationJob" SET "lastActionEndedAt" = clock_timestamp() WHERE id = ${jobId}::uuid`;
-// 상한을 넘겨 중단한 호출이 늦게라도 끝났다(settle). 그 뒤 새 행동이 시작되지 않았을 때(시작 기록이 그대로)만 종료 확인을 남긴다
-export async function markActionSettled(db: PrismaClient, jobId: string, startedAt: Date): Promise<void> {
+// 종료 확인(돌아온 호출·늦게 끝난 호출 모두): 자기 시작 기록이 그대로일 때만 남긴다(뒤에 시작한 행동을 끝났다고 하지 않음).
+// 같은 작업에 끝나지 않은 호출이 남아 있으면 부르지 않는다(engine.ts trackedWindow)
+export async function markActionEnded(db: PrismaClient, jobId: string, startedAt: Date): Promise<void> {
   await db.automationJob.updateMany({ where: { id: jobId, lastActionStartedAt: startedAt }, data: { lastActionEndedAt: await dbNow(db) } });
 }
 

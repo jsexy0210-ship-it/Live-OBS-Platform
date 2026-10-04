@@ -3880,3 +3880,81 @@ describe("Codex 47차 반영(외부 의존 전체로 계약 확대)", () => {
     }
   });
 });
+
+describe("MASTER 검수 반영(f8561e3): 종료 확인은 자기 시작 기록에만", () => {
+  const limits = AUTOMATION_LIMITS as { actionTimeoutMs: number };
+  async function opsCookie() {
+    const admin = await createAdmin("OPERATIONS");
+    const r = await loginAdmin(db, adminCredentials(admin), {});
+    if (!r.ok) throw new Error(r.reason);
+    return `lo_admin=${r.token}`;
+  }
+  const close = async (jobId: string) =>
+    cleanupCloseRoute(
+      new Request(`http://localhost:3000/api/automation/admin/jobs/${jobId}/cleanup`, {
+        method: "POST",
+        headers: { host: "localhost:3000", origin: "http://localhost:3000", cookie: await opsCookie(), "content-type": "application/json" },
+        body: JSON.stringify({ note: "직접 정리함" }),
+      }),
+      { params: Promise.resolve({ jobId }) },
+    );
+  const windowOpen = async (jobId: string) => {
+    const j = await job(jobId);
+    return !!j.lastActionStartedAt && !(j.lastActionEndedAt && j.lastActionEndedAt >= j.lastActionStartedAt);
+  };
+
+  it("세션이 열린 채 OBS 행동이 멈추면, 세션 닫기가 끝나도 상한 + 여유 전에는 이어받기·정리 필요 닫기·보관 자료 삭제가 모두 막힌다", async () => {
+    const saved = limits.actionTimeoutMs;
+    limits.actionTimeoutMs = 100;
+    try {
+      const a = await bought();
+      const rt = runtime();
+      // 중단 신호를 무시하고 끝나지 않는 OBS 행동(브라우저 세션은 앞 단계에서 열려 있다)
+      rt.obs.perform = () => new Promise(() => {});
+      await runOnce(db, rt, W);
+      expect(rt.browser.live.size).toBe(0);
+      expect(await windowOpen(a.jobId)).toBe(true);
+      await db.automationJob.update({ where: { id: a.jobId }, data: { runAfter: new Date(Date.now() - 1000) } });
+      expect(await claimNext(db, "w-other")).toBeNull();
+      // 바꾼 것이 있는 작업을 판매자가 취소하면 정리 필요: 진행 중인 행동이 있어 닫지 못한다
+      await cancelJob(db, a.ctx, a.jobId);
+      expect(await job(a.jobId)).toMatchObject({ status: "CLEANUP_NEEDED" });
+      expect((await close(a.jobId)).status).toBe(409);
+      // 끝난 작업의 보관 자료도 지우지 않는다
+      await forgetChanges(a.jobId);
+      await db.automationJob.update({ where: { id: a.jobId }, data: { status: "CANCELED", finishedAt: new Date() } });
+      expect(await purgeEndedBrowserState(db, rt)).toBe(0);
+      // 강제 상한(시작 + 상한 + 여유)이 지나면 지운다
+      await db.automationJob.update({ where: { id: a.jobId }, data: { lastActionStartedAt: new Date(Date.now() - 3 * 60_000) } });
+      expect(await purgeEndedBrowserState(db, rt)).toBe(1);
+    } finally {
+      limits.actionTimeoutMs = saved;
+    }
+  });
+
+  it("되돌리기 행동이 멈추면, 되돌리기 세션 닫기가 끝나도 정리 필요 닫기가 막힌다", async () => {
+    const saved = limits.actionTimeoutMs;
+    try {
+      const a = await bought();
+      const rt = runtime();
+      await db.automationJob.update({ where: { id: a.jobId }, data: { stepIndex: 1, playbookActions: 3, changedAt: new Date(), mutatedSteps: ["shop_connect"] } });
+      rt.browser.shopState.set(a.seller.id, new Set(["앱 사용 중"]));
+      const other = await bought();
+      await db.automationJob.update({ where: { id: other.jobId }, data: { status: "CANCELED", finishedAt: new Date(), lastDeviationAt: new Date(), deviatedSteps: ["webhook_setup"] } });
+      limits.actionTimeoutMs = 100;
+      const open = rt.browser.open.bind(rt.browser);
+      rt.browser.open = async (scope, signal) => {
+        const s = await open(scope, signal);
+        s.perform = () => new Promise(() => {});
+        return s;
+      };
+      await runOnce(db, rt, W);
+      expect(await job(a.jobId)).toMatchObject({ status: "CLEANUP_NEEDED" });
+      expect(rt.browser.live.size).toBe(0);
+      expect(await windowOpen(a.jobId)).toBe(true);
+      expect((await close(a.jobId)).status).toBe(409);
+    } finally {
+      limits.actionTimeoutMs = saved;
+    }
+  });
+});

@@ -38,10 +38,11 @@ export type EngineHooks = {
   markChanged?(stepKey: string): Promise<ChangeMark>;
   // 실행기가 「적용 안 함」(행동 0회)을 보장하는 결과로 거절했다: 바로 앞 markChanged가 새로 남긴 기록만 되돌린다
   unmarkChanged?(stepKey: string, mark: ChangeMark): Promise<void>;
-  // 외부 행동 격리 창: 행동 직전 시작 기록(점유를 잃었으면 던져 행동하지 않음, 기록한 시작 시각을 돌려줌)과 행동이 돌아온 뒤 종료 확인,
-  // 상한을 넘긴 호출이 늦게라도 끝났다는 확인(settle, 그 시작 기록이 그대로일 때만)
+  // 외부 행동 격리 창(trackedWindow): 행동 직전 시작 기록(점유를 잃었으면 던져 행동하지 않음, 기록한 시작 시각을 돌려줌)과
+  // 행동이 돌아온 뒤 종료 확인, 상한을 넘긴 호출이 늦게라도 끝났다는 확인(settle). 종료 확인은 자기 시작 기록에만 묶는다
   actionStarted?(): Promise<Date | void>;
-  actionEnded?(): Promise<void>;
+  actionEnded?(startedAt?: Date): Promise<void>;
+  actionTimedOut?(): void;
   actionSettled?(startedAt: Date): Promise<void>;
   // 자리를 잃었어도 해야 하는 정리 연산(브라우저 세션 닫기·보관)의 시작 기록: 점유 확인 없이 남긴다(기록은 다음 소유자를 늦추는 보수적인 쪽)
   releaseStarted?(): Promise<Date | void>;
@@ -115,7 +116,34 @@ export type ChangeMark = { stepAdded: boolean; changedAt: Date | null };
 //   먼저 오는 것까지 이어진다. 그 전에는 작업을 다른 작업자에게 넘기지 않는다(queue.ts quiescent).
 // - onLate: 상한을 넘긴 뒤 늦게 성공한 결과(세션 같은 자원)를 정리한다. 부른 쪽은 이미 떠났으므로 반드시 여기서 닫는다.
 export type PortResult<T> = { ok: true; value: T } | { ok: false; reason: "timeout" } | { ok: false; reason: "error"; error: unknown };
-export type ActionWindowHooks = { actionStarted?(): Promise<Date | void>; actionEnded?(): Promise<void>; actionSettled?(startedAt: Date): Promise<void> };
+export type ActionWindowHooks = {
+  actionStarted?(): Promise<Date | void>;
+  // 돌아온 호출의 종료 확인. 자기 시작 기록(startedAt)에만 묶는다
+  actionEnded?(startedAt?: Date): Promise<void>;
+  // 상한을 넘겨 아직 끝나지 않은 호출이 생겼다(끝났다는 확인 전까지 같은 창의 종료 확인을 남기지 않는다)
+  actionTimedOut?(): void;
+  actionSettled?(startedAt: Date): Promise<void>;
+};
+
+// 한 작업(또는 연습 회차)의 격리 창 기록. 창은 행 하나의 시작·종료 기록이라, 종료 확인은 자기 시작 기록이 그대로일 때만 남기고
+// (store.end가 시작 시각 조건으로 쓴다), 상한을 넘겨 아직 끝나지 않은 호출이 하나라도 있으면 뒤 호출(세션 닫기 등)이 돌아와도
+// 종료 확인을 남기지 않는다. 뒤 호출의 시작 기록은 시각을 앞으로만 옮기므로(창을 늘림) 앞 호출의 강제 상한보다 일찍 풀리지 않는다.
+// 프로세스가 죽으면 기록이 남지 않아 강제 상한(시작 + 상한 + 여유)으로만 풀린다(보수적인 쪽).
+export function trackedWindow(store: { start(): Promise<Date>; release(): Promise<Date>; end(startedAt: Date): Promise<void> }) {
+  let unsettled = 0;
+  return {
+    actionStarted: () => store.start(),
+    releaseStarted: () => store.release(),
+    actionEnded: async (startedAt?: Date) => {
+      if (unsettled === 0 && startedAt) await store.end(startedAt);
+    },
+    actionTimedOut: () => void unsettled++,
+    actionSettled: async (startedAt: Date) => {
+      unsettled--;
+      if (unsettled === 0) await store.end(startedAt);
+    },
+  };
+}
 const PORT_SCOPE = new AsyncLocalStorage<true>();
 export const insidePortCall = () => PORT_SCOPE.getStore() === true;
 export async function callPort<T>(run: (signal: AbortSignal) => Promise<T>, opts: { window?: ActionWindowHooks; onLate?: (late: T) => unknown } = {}): Promise<PortResult<T>> {
@@ -133,6 +161,7 @@ export async function callPort<T>(run: (signal: AbortSignal) => Promise<T>, opts
       new Promise<PortResult<T>>((resolve) => {
         timer = setTimeout(() => {
           timedOut = true;
+          opts.window?.actionTimedOut?.();
           abort.abort();
           resolve({ ok: false, reason: "timeout" });
         }, AUTOMATION_LIMITS.actionTimeoutMs);
@@ -140,7 +169,7 @@ export async function callPort<T>(run: (signal: AbortSignal) => Promise<T>, opts
     ]);
   } finally {
     clearTimeout(timer);
-    if (!timedOut) await opts.window?.actionEnded?.();
+    if (!timedOut) await opts.window?.actionEnded?.(startedAt || undefined);
     else {
       // 늦은 결과를 정리한 뒤에야 끝났다고 확인한다(정리 중에 다른 작업자가 이어받지 않게)
       const { onLate, window } = opts;
@@ -188,6 +217,7 @@ async function openSession(rt: AutomationRuntime, scope: JobScope, window: Actio
 const closeWindow = (hooks: { releaseStarted?(): Promise<Date | void> } & ActionWindowHooks): ActionWindowHooks => ({
   actionStarted: hooks.releaseStarted ?? hooks.actionStarted,
   actionEnded: hooks.actionEnded,
+  actionTimedOut: hooks.actionTimedOut,
   actionSettled: hooks.actionSettled,
 });
 

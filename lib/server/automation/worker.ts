@@ -2,12 +2,12 @@ import { writeAudit } from "../audit/log";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import type { BillingProvider } from "../billing/provider";
 import { AUTOMATION_LIMITS } from "./config";
-import { EngineAborted, ExternalReadTimeout, callPort, runRollback, runSteps } from "./engine";
+import { EngineAborted, ExternalReadTimeout, callPort, runRollback, runSteps, trackedWindow } from "./engine";
 import { findPlaybook } from "./playbooks";
 import type { AutomationRuntime, JobScope } from "./ports";
 import { cleanupPracticeArtifacts, playbookReadiness } from "./practice";
 import { reconcileAutomationPayments } from "./purchase";
-import { FencingError, RunTimeExceeded, dbNow, hasChanges, markChanged, unmarkChanged, markActionStarted, markActionEnded, markActionSettled, markReleaseStarted, quiescent, markCleanupNeeded, advanceStep, claimNext, claimObsTarget, extendLease, failWithRefund, markBrowserStateHeld, markTargetVerified, finishJob, parkForCustomer, reapExpired, retryLater, toVerifying, touch, type Claimed } from "./queue";
+import { FencingError, RunTimeExceeded, dbNow, hasChanges, markChanged, unmarkChanged, markActionStarted, markActionEnded, markReleaseStarted, quiescent, markCleanupNeeded, advanceStep, claimNext, claimObsTarget, extendLease, failWithRefund, markBrowserStateHeld, markTargetVerified, finishJob, parkForCustomer, reapExpired, retryLater, toVerifying, touch, type Claimed } from "./queue";
 
 // 자동 연결 작업자 진입점. 웹 서버(주문 API)와 다른 프로세스로 띄우는 것을 전제로 한다.
 // 실제 프로세스 실행(배포)은 운영 승인 사항이라 1차에는 이 모듈과 테스트만 있다.
@@ -54,12 +54,11 @@ export async function executeJob(db: PrismaClient, rt: AutomationRuntime, { job,
   const beat = startHeartbeat(() => extendLease(db, claim, leaseMs), Math.max(20, Math.floor(leaseMs / 3)));
   const lost = { signal: beat.signal };
   // 외부 호출 격리 창 기록(engine.ts callPort)
-  const windowHooks = {
-    actionStarted: () => markActionStarted(db, claim),
-    actionEnded: async () => void (await markActionEnded(db, claim.jobId)),
-    actionSettled: (startedAt: Date) => markActionSettled(db, claim.jobId, startedAt),
-    releaseStarted: () => markReleaseStarted(db, claim.jobId),
-  };
+  const windowHooks = trackedWindow({
+    start: () => markActionStarted(db, claim),
+    release: () => markReleaseStarted(db, claim.jobId),
+    end: (startedAt) => markActionEnded(db, claim.jobId, startedAt),
+  });
   try {
     // 무료 재연결은 실제로 연결된 쇼핑몰·PC가 기준 작업과 같아야 한다(요청 값만 믿지 않는다).
     // 유료 재설치는 요청한 쇼핑몰·PC(targetShopKey·targetObsPairingId)와 같아야 한다(다른 쇼핑몰·PC에 설치하지 않음)
