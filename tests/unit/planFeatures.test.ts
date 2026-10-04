@@ -38,6 +38,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/subscription/card": "BILLING",
   "seller/subscription/cancel": "BILLING",
   "seller/subscription/plan": "BILLING",
+  "seller/subscription/plan/preview": "BILLING",
   "seller/me/identity": "ACCOUNT",
   "seller/me/identity/link": "ACCOUNT",
   "seller/me/identity/start": "ACCOUNT",
