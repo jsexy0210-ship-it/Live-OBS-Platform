@@ -24,6 +24,7 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
     window.location.assign(`/seller/login?next=${encodeURIComponent(window.location.pathname)}`);
   }
   const body = data as { error?: string; message?: string } & Record<string, unknown>;
+  notifyPlanFeature(path, res.status, body.error);
   return { ok: false, status: res.status, error: body.error ?? "unknown", message: body.message, body };
 }
 
@@ -41,7 +42,14 @@ export async function apiUpload<T>(path: string, file: Blob, init: { method?: "P
     window.location.assign(`/seller/login?next=${encodeURIComponent(window.location.pathname)}`);
   }
   const body = data as { error?: string; message?: string } & Record<string, unknown>;
+  notifyPlanFeature(path, res.status, body.error);
   return { ok: false, status: res.status, error: body.error ?? "unknown", message: body.message, body };
+}
+
+// 지금 요금제에 없는 기능이라 서버가 막으면(403 plan_feature_required) 파트너스 틀(SellerShell)이 안내 화면으로 바꾸도록 알린다
+export const PLAN_FEATURE_EVENT = "seller:plan-feature-required";
+function notifyPlanFeature(path: string, status: number, error: string | undefined) {
+  if (status === 403 && error === "plan_feature_required" && path.startsWith("/api/seller/")) window.dispatchEvent(new Event(PLAN_FEATURE_EVENT));
 }
 
 // 화면 말투: admin=파트너스 관리자·관리자 인증 화면(합니다체), public=공개 화면(가입 신청 등, 해요체)
@@ -77,7 +85,10 @@ export function failMessage(r: { status: number; message?: string }, tone: Tone,
 }
 
 export type SellerAccess = "trial" | "paid" | "charging" | "grace" | "expired";
+// 요금제가 주는 기능 권한(lib/server/billing/features.ts). 화면은 메뉴를 고르는 데만 쓰고, 막는 것은 서버가 한다
+export type PlanFeature = "OVERLAY" | "EXTERNAL_INTEGRATION" | "STORE_OPERATIONS";
 export type Me = { sellerId: string; userId: string; isOwner: boolean; permissions: string[]; access: SellerAccess;
+  features: PlanFeature[];
   shop: { name: string; slug: string };
   user: { name: string; email: string };
   trialEndsAt: string | null;

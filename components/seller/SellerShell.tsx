@@ -4,46 +4,65 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useLatestResponse, type ReadTicket } from "./latestResponse";
-import { api, type Me } from "./api";
+import { api, PLAN_FEATURE_EVENT, type Me } from "./api";
 
 // 판매자 관리자 공통 틀: 왼쪽 메뉴(좁은 화면에서는 서랍) + 상단 바 + 이용 상태 배너.
 // 아직 만들지 않은 화면은 메뉴에서 흐리게 두고 누를 수 없게 한다.
 
 // perm: 그 권한이 있어야 메뉴가 보인다. OWNER는 대표자 전용.
-type Nav = { h: string } | { label: string; href?: string; perm?: string; match?: string };
+// plan: 요금제가 그 기능 권한을 줘야 메뉴가 보인다(ARCHITECTURE 4.8.0 판매자 API 분류와 같은 기준). 없으면 구독·결제처럼 항상 열린다.
+//   ANY = 기능 권한이 하나라도 있을 때(ACCOUNT·ORDER_FOLLOWUP: 요금제를 낮춘 뒤에도 이미 받은 주문은 처리, 통합 첫 결제 확정 전에는 닫힘)
+type PlanNeed = "ANY" | "OVERLAY" | "STORE_OPERATIONS";
+type Nav = { h: string } | { label: string; href?: string; perm?: string; match?: string; plan?: PlanNeed };
 const NAV: Nav[] = [
   { h: "홈" },
-  { label: "홈" },
-  { label: "통계", href: "/seller/stats", perm: "SALES_VIEW" },
+  { label: "홈", plan: "ANY" },
+  { label: "통계", href: "/seller/stats", perm: "SALES_VIEW", plan: "STORE_OPERATIONS" },
   { h: "방송" },
-  { label: "방송 대시보드", perm: "BROADCAST_RUN" },
+  { label: "방송 대시보드", perm: "BROADCAST_RUN", plan: "OVERLAY" },
   { h: "판매" },
-  { label: "상품", href: "/seller/products", perm: "PRODUCT_MANAGE" },
-  { label: "주문", href: "/seller/orders", perm: "ORDER_SHIPPING" },
-  { label: "입금 확인", perm: "ORDER_SHIPPING" },
-  { label: "배송", perm: "ORDER_SHIPPING" },
-  { label: "영수증 · 세금계산서", perm: "RECEIPT_TAX" },
-  { label: "적립금", href: "/seller/rewards", perm: "MEMBER_POINTS" },
+  { label: "상품", href: "/seller/products", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
+  { label: "주문", href: "/seller/orders", perm: "ORDER_SHIPPING", plan: "ANY" },
+  { label: "입금 확인", perm: "ORDER_SHIPPING", plan: "ANY" },
+  { label: "배송", perm: "ORDER_SHIPPING", plan: "ANY" },
+  { label: "영수증 · 세금계산서", perm: "RECEIPT_TAX", plan: "ANY" },
+  { label: "적립금", href: "/seller/rewards", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
   // 쿠폰: 집계 조회는 파트너스 계정 누구나, 만들기·지급은 적립금(MEMBER_POINTS) 권한(화면에서 막음)
-  { label: "쿠폰", href: "/seller/coupons" },
-  { label: "회원", perm: "MEMBER_POINTS" },
-  { label: "구매 제한", perm: "MEMBER_POINTS" },
-  { label: "구매자 문의", perm: "INQUIRY_REPLY" },
+  { label: "쿠폰", href: "/seller/coupons", plan: "STORE_OPERATIONS" },
+  { label: "회원", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
+  { label: "구매 제한", perm: "MEMBER_POINTS", plan: "ANY" },
+  { label: "구매자 문의", perm: "INQUIRY_REPLY", plan: "ANY" },
   { h: "방송 · 오버레이" },
-  { label: "오버레이 편집기", perm: "OVERLAY_EDIT" },
-  { label: "HIT 카드 이력", perm: "BROADCAST_RUN" },
-  { label: "방송 이력", perm: "BROADCAST_RUN" },
+  { label: "오버레이 편집기", perm: "OVERLAY_EDIT", plan: "OVERLAY" },
+  { label: "HIT 카드 이력", perm: "BROADCAST_RUN", plan: "OVERLAY" },
+  { label: "방송 이력", perm: "BROADCAST_RUN", plan: "OVERLAY" },
   { h: "설정" },
-  { label: "쇼핑몰 설정", href: "/seller/settings/shop", match: "/seller/settings" },
-  { label: "배너 · 팝업", href: "/seller/banners" },
-  { label: "결제(PG) 연결", perm: "OWNER" },
-  { label: "주문자 알림", perm: "SHOP_SETTINGS" },
+  { label: "쇼핑몰 설정", href: "/seller/settings/shop", match: "/seller/settings", plan: "STORE_OPERATIONS" },
+  { label: "배너 · 팝업", href: "/seller/banners", plan: "STORE_OPERATIONS" },
+  { label: "결제(PG) 연결", perm: "OWNER", plan: "STORE_OPERATIONS" },
+  { label: "주문자 알림", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
   { label: "구독 · 결제", perm: "OWNER" },
-  { label: "직원 계정", href: "/seller/staff", perm: "OWNER" },
+  { label: "직원 계정", href: "/seller/staff", perm: "OWNER", plan: "ANY" },
   { label: "공지 · 문의" },
   { label: "도우미" },
-  { label: "내 계정" },
+  { label: "내 계정", plan: "ANY" },
 ];
+
+// 주소로 바로 들어와도 요금제에 없는 화면은 안내 화면을 보인다. 메뉴 묶음과 다른 하위 화면만 따로 적는다(긴 주소가 먼저)
+const ROUTE_PLAN: [string, PlanNeed][] = [["/seller/stats/broadcasts", "OVERLAY"]];
+function routeNav(pathname: string) {
+  return NAV.find((n): n is Extract<Nav, { label: string }> => "label" in n && !!n.href && pathname.startsWith(n.match ?? n.href));
+}
+// 상단 바 경로(「판매 › 주문」처럼 메뉴 묶음 › 메뉴)
+function routeCrumb(pathname: string): string {
+  const item = routeNav(pathname);
+  if (!item) return "파트너스";
+  const head = NAV.slice(0, NAV.indexOf(item)).reverse().find((n): n is { h: string } => "h" in n);
+  return head && head.h !== item.label ? `${head.h} › ${item.label}` : item.label;
+}
+function routePlan(pathname: string): PlanNeed | undefined {
+  return ROUTE_PLAN.find(([p]) => pathname.startsWith(p))?.[1] ?? routeNav(pathname)?.plan;
+}
 
 type ShellCtx = { me: Me; trialDaysLeft: number | null; openNav: () => void; can: (perm: string) => boolean };
 const Ctx = createContext<ShellCtx | null>(null);
@@ -133,6 +152,17 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => setNavOpen(false), [pathname]);
 
+  // 화면이 부른 API가 403 plan_feature_required면(그사이 요금제가 바뀐 경우 등) 그 화면을 안내 화면으로 바꾸고 메뉴를 다시 읽는다
+  const [planBlocked, setPlanBlocked] = useState<string | null>(null);
+  useEffect(() => {
+    const onBlocked = () => {
+      setPlanBlocked(window.location.pathname);
+      refresh();
+    };
+    window.addEventListener(PLAN_FEATURE_EVENT, onBlocked);
+    return () => window.removeEventListener(PLAN_FEATURE_EVENT, onBlocked);
+  }, [refresh]);
+
   // 세션을 실제로 끊었을 때만 로그인 화면으로 보낸다. 실패하면 화면에 남아 다시 시도하게 한다(공용 기기에서 로그아웃된 줄 착각하지 않게).
   const [logoutError, setLogoutError] = useState(false);
   const logout = async () => {
@@ -162,8 +192,15 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   }
 
   const can = (perm: string) => me.isOwner || (perm !== "OWNER" && me.permissions.includes(perm));
-  // 권한이 없는 메뉴는 숨기고, 안에 메뉴가 하나도 안 남은 묶음 제목도 숨긴다
-  const nav = NAV.filter((n) => !("label" in n) || !n.perm || can(n.perm)).filter((n, i, all) => !("h" in n) || (all[i + 1] !== undefined && !("h" in all[i + 1])));
+  const features = me.features ?? [];
+  const hasPlan = (need?: PlanNeed) => !need || (need === "ANY" ? features.length > 0 : features.includes(need));
+  // 권한·요금제 기능이 없는 메뉴는 숨기고, 안에 메뉴가 하나도 안 남은 묶음 제목도 숨긴다
+  const nav = NAV.filter((n) => !("label" in n) || ((!n.perm || can(n.perm)) && hasPlan(n.plan))).filter(
+    (n, i, all) => !("h" in n) || (all[i + 1] !== undefined && !("h" in all[i + 1])),
+  );
+  const blocked = planBlocked === pathname || !hasPlan(routePlan(pathname));
+  // 안내 화면에서 갈 수 있는 첫 화면(만든 메뉴 중 지금 열리는 것)
+  const nextNav = nav.find((n): n is Extract<Nav, { label: string }> => "label" in n && !!n.href && !pathname.startsWith(n.match ?? n.href));
 
   return (
     <Ctx.Provider value={{ me, trialDaysLeft, openNav: () => setNavOpen(true), can }}>
@@ -201,9 +238,34 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
           )}
         </aside>
         <button className="nav-dim" type="button" aria-label="메뉴 닫기" onClick={() => setNavOpen(false)} />
-        <div className="col shell-body">{children}</div>
+        <div className="col shell-body">
+          {blocked ? <PlanFeatureRequired crumb={routeCrumb(pathname)} noFeatures={features.length === 0} next={nextNav} /> : children}
+        </div>
       </div>
     </Ctx.Provider>
+  );
+}
+
+// 지금 요금제에 없는 기능(서버 403 plan_feature_required, 또는 /me features에 없음)의 안내 화면
+function PlanFeatureRequired({ crumb, noFeatures, next }: { crumb: string; noFeatures: boolean; next?: { label: string; href?: string } }) {
+  const { me } = useSeller();
+  return (
+    <>
+      <Topbar crumb={crumb} />
+      <main className="main">
+        <div className="card st" style={{ boxShadow: "none" }} data-testid="plan-feature-required">
+          <div className="st-ic lock">!</div>
+          <h1 className="t">지금 요금제에서 사용할 수 없는 기능입니다</h1>
+          <span className="s">{noFeatures ? "구독료 첫 결제가 확정되면 사용할 수 있습니다" : "쇼핑몰 통합 요금제에서 사용할 수 있습니다"}</span>
+          <span className="s">{me.isOwner ? "요금제는 구독 · 결제에서 바꿀 수 있습니다" : "요금제 변경은 대표자에게 요청해 주십시오"}</span>
+          {next?.href && (
+            <Link className="btn btn-sm" href={next.href}>
+              {next.label} 화면으로 이동
+            </Link>
+          )}
+        </div>
+      </main>
+    </>
   );
 }
 
