@@ -4,7 +4,7 @@ export type ProductCardData = { id: string; name: string; price: number; salePri
 
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 
-export function ProductCard({ p }: { p: ProductCardData }) {
+export function ProductCard({ p, children }: { p: ProductCardData; children?: React.ReactNode }) {
   const rate = p.salePrice !== null ? Math.floor(((p.price - p.salePrice) / p.price) * 100) : 0;
   return (
     <li className="pc">
@@ -21,6 +21,7 @@ export function ProductCard({ p }: { p: ProductCardData }) {
           <strong>{won(p.price)}</strong>
         )}
       </p>
+      {children}
     </li>
   );
 }
