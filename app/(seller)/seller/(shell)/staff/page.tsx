@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { phoneText } from "../../../../../components/seller/IdentityCheck";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import {
@@ -52,24 +52,38 @@ export default function StaffPage() {
   // 변경 뒤 목록 다시 읽기가 실패해 보이는 목록이 최신이 아닐 수 있음(숨기지 않고 알리고 다시 불러오기를 둔다)
   const [stale, setStale] = useState(false);
 
-  // 목록 다시 읽기(저장 직후·불분명 확인 등) 반영 규칙(latestResponse.ts): 나중에 보낸 요청의 성공만 반영하고, 실패가 앞선 성공을 버리지 않는다
+  // 목록 다시 읽기(저장 직후·불분명 확인 등) 반영 규칙(latestResponse.ts): 나중에 보낸 요청의 성공만 반영하고, 실패가 앞선 성공을 버리지 않으며,
+  // 행에 직접 반영한 확정 변경보다 먼저 보낸 요청의 응답으로는 목록 전체를 덮지 않는다(낡음 안내를 두고 다시 읽기를 한 번 요청)
   const listReads = useLatestResponse();
+  const autoRetriedFor = useRef(-1);
   const load = useCallback(async () => {
-    const n = listReads.next();
+    const t = listReads.next();
     const r = await api<{ staff: Staff[] }>("/api/seller/staff");
     // 이미 목록을 보여 주는 중에 다시 읽기만 실패하면 지금 화면을 그대로 둔다(직원 추가의 불분명 상태 등 입력 중인 내용을 잃지 않게)
     if (!r.ok) {
       if (listReads.hasApplied()) return setStale(true);
       return setState({ kind: "error", status: r.status });
     }
-    if (!listReads.accept(n)) return;
+    const verdict = listReads.accept(t);
+    if (verdict === "outdated") {
+      setStale(true);
+      // 같은 확정 변경에 대해 자동으로는 한 번만 다시 읽는다(실패가 이어져도 반복 요청하지 않음)
+      if (autoRetriedFor.current !== listReads.changes()) {
+        autoRetriedFor.current = listReads.changes();
+        void load();
+      }
+      return;
+    }
+    if (verdict !== "apply") return;
     setStale(false);
     setState({ kind: "ok", staff: r.data.staff });
   }, [listReads]);
 
-  // 서버가 성공으로 확정한 변경을 해당 행에 바로 반영한다
-  const applyRow = (id: string, changes: Partial<Staff>) =>
+  // 서버가 성공으로 확정한 변경을 해당 행에 바로 반영한다(그 전에 보낸 목록 응답이 이 변경을 덮지 않게 확정 변경 번호를 올린다)
+  const applyRow = (id: string, changes: Partial<Staff>) => {
+    listReads.confirmChange();
     setState((prev) => (prev.kind === "ok" ? { kind: "ok", staff: prev.staff.map((s) => (s.id === id ? { ...s, ...changes } : s)) } : prev));
+  };
 
   useEffect(() => {
     if (me.isOwner) void load();

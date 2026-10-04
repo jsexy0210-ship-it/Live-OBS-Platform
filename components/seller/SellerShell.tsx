@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { useLatestResponse } from "./latestResponse";
+import { useLatestResponse, type ReadTicket } from "./latestResponse";
 import { api, type Me } from "./api";
 
 // 판매자 관리자 공통 틀: 왼쪽 메뉴(좁은 화면에서는 서랍) + 상단 바 + 이용 상태 배너.
@@ -66,8 +66,8 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   // /me 다시 읽기 반영 규칙(latestResponse.ts): 나중에 보낸 요청의 성공만 반영하고, 실패가 앞선 성공을 버리지 않는다.
   // 반영할 때 파생 값(남은 체험 일수)도 함께 계산한다: 처음 읽기·다시 읽기 어느 쪽이 먼저 성공해도 같은 결과
   const meReads = useLatestResponse();
-  const applyMe = (n: number, data: Me) => {
-    if (!meReads.accept(n)) return;
+  const applyMe = (t: ReadTicket, data: Me) => {
+    if (meReads.accept(t) !== "apply") return;
     setFailed(false);
     setMe(data);
     // 체험 중이면 /me가 끝나는 시각을 준다(대표자·직원 모두)
@@ -76,7 +76,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   const load = useCallback(async () => {
     lastRead.current = Date.now();
     setFailed(false);
-    const n = meReads.next();
+    const t = meReads.next();
     const r = await api<Me>("/api/seller/me");
     if (!r.ok) {
       if (r.status === 401) router.replace(`/seller/login?next=${encodeURIComponent(pathname)}`);
@@ -84,7 +84,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
       else if (!meReads.hasApplied()) setFailed(true);
       return;
     }
-    applyMe(n, r.data);
+    applyMe(t, r.data);
   }, [router, pathname]);
 
   useEffect(() => {
@@ -98,9 +98,9 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   // 짧은 간격으로 겹치면(포커스와 visibilitychange가 함께 오는 경우 등) 한 번만 읽는다
   const refresh = useCallback(() => {
     lastRead.current = Date.now();
-    const n = meReads.next();
+    const t = meReads.next();
     void api<Me>("/api/seller/me").then((r) => {
-      if (r.ok) applyMe(n, r.data);
+      if (r.ok) applyMe(t, r.data);
     });
   }, []);
   const firstPath = useRef(pathname);

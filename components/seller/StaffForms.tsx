@@ -225,7 +225,10 @@ export function EditStaffModal({ staff, onClose, onSaved, onChanged, onApply }: 
     setBusy(false);
     if (!cur) return setUnclear({ sent, text: UNCLEAR_UNREAD });
     onChanged?.();
-    if (cur.name === sent.name && cur.phone === sent.phone && sameSet(cur.permissions, sent.perms)) return onSaved(savedText(sent));
+    // 이번 요청에 실제로 보낸 필드만 비교한다(보내지 않은 필드는 다른 창에서 바뀌었을 수 있어 판정에 쓰지 않음)
+    const profileOk = !sent.profile || (cur.name === sent.name && cur.phone === sent.phone);
+    const permsOk = !sent.permissions || sameSet(cur.permissions, sent.perms);
+    if (profileOk && permsOk) return onSaved(savedText(sent));
     setUnclear({ sent, text: UNCLEAR_PENDING });
   };
 
