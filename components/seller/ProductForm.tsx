@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { FormRow, FormSection } from "../admin-ui";
+import ProductDetailEditor, { type DetailBlock } from "./ProductDetailEditor";
+import ProductImages, { type SlotImage } from "./ProductImages";
 import { Topbar } from "./SellerShell";
 import { NoImage, Toast } from "./States";
 import { api, failMessage, type Product, type ProductOption, type ProductStatus, type StockDeductMode } from "./api";
@@ -104,6 +106,10 @@ export function ProductForm({ initial }: { initial?: Product }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [price, setPrice] = useState(initial ? String(initial.price) : "");
+  // 이미지·상세 페이지(SA-012). 업로드·저장 API가 병합되기 전이라 브라우저 안에서만 들고 있다(저장되지 않음)
+  const [images, setImages] = useState<SlotImage[]>([]);
+  const [blocks, setBlocks] = useState<DetailBlock[]>([]);
+  const localImage = (f: File): SlotImage => ({ id: `i${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, url: URL.createObjectURL(f), state: "done" });
   const [status, setStatus] = useState<ProductStatus>(initial?.status ?? "ON_SALE");
   const [deduct, setDeduct] = useState<StockDeductMode>(initial?.stockDeductMode ?? "PAYMENT");
   // 취소·반품 때 재고를 되돌릴지는 주문 설정(restockOnCancel)을 따른다. 쇼핑몰 설정 권한이 없으면 읽지 못하므로 설정 이름만 안내한다
@@ -340,6 +346,34 @@ export function ProductForm({ initial }: { initial?: Product }) {
                 />
                 {shown.description && <span className="err">{shown.description}</span>}
               </div>
+            </FormRow>
+          </FormSection>
+
+          <FormSection title="이미지">
+            <FormRow label="상품 이미지" required>
+              <ProductImages
+                images={images}
+                onAdd={(files) => setImages((cur) => [...cur, ...files.map(localImage)])}
+                onRemove={(id) => setImages((cur) => cur.filter((x) => x.id !== id))}
+                onReorder={(from, to) =>
+                  setImages((cur) => {
+                    const next = [...cur];
+                    const [m] = next.splice(from, 1);
+                    next.splice(to, 0, m!);
+                    return next;
+                  })
+                }
+              />
+            </FormRow>
+          </FormSection>
+
+          <FormSection title="상세 페이지">
+            <FormRow label="상세 내용">
+              <ProductDetailEditor
+                blocks={blocks}
+                onChange={setBlocks}
+                onPickImage={(blockId, file) => setBlocks((cur) => cur.map((b) => (b.id === blockId && b.type === "image" ? { ...b, image: localImage(file) } : b)))}
+              />
             </FormRow>
           </FormSection>
 
