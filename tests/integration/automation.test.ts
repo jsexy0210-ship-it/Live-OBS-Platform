@@ -692,7 +692,7 @@ describe("지원 목록 밖 쇼핑몰 구매 차단(MASTER 판단 2026-10-04)", 
       }),
     );
     expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: "shop_not_supported", message: "아직 자동 연결할 수 없는 쇼핑몰이에요. 직접 설정으로 연결해 주세요" });
+    expect(await res.json()).toEqual({ error: "shop_not_supported", message: "아직 자동 연결할 수 없는 쇼핑몰입니다. 직접 설정으로 연결해 주십시오" });
 
     const done = await bought();
     expect(await runOnce(db, runtime(), W)).toBe("succeeded");

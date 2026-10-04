@@ -143,8 +143,8 @@ export async function supportedPlaybookFor(db: PrismaClient, shopUrl: unknown): 
   return pb && (await playbookReadiness(db, pb)).verified ? pb : null;
 }
 
-// 거부 안내 문구(화면 문구 정본은 디자인 쪽). 플랫폼 이름을 넣지 않는다.
-export const SHOP_NOT_SUPPORTED_MESSAGE = "아직 자동 연결할 수 없는 쇼핑몰이에요. 직접 설정으로 연결해 주세요";
+// 거부 안내 문구(화면 문구 정본은 디자인 쪽). 파트너스 관리자 API라 합니다체. 플랫폼 이름을 넣지 않는다.
+export const SHOP_NOT_SUPPORTED_MESSAGE = "아직 자동 연결할 수 없는 쇼핑몰입니다. 직접 설정으로 연결해 주십시오";
 
 // 결제가 실패한 요청은 재전송해도 실패로 돌려준다(처음 응답과 같게)
 const view = (p: AutomationPayment & { job: AutomationJob | null }, replayed: boolean): PurchaseResult =>
