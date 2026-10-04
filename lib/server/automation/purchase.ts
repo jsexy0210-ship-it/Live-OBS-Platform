@@ -14,6 +14,7 @@ import {
   REINSTALL_ORDER_NAME,
   REINSTALL_PRICE,
 } from "./config";
+import { externalId } from "./boundary";
 import type { Playbook } from "./playbook";
 import { findPlaybook, playbookForShopUrl, shopHostOf } from "./playbooks";
 import { playbookReadiness } from "./practice";
@@ -109,7 +110,7 @@ async function commitJob(db: PrismaClient, ctx: TenantContext, plan: CommitPlan)
         playbookVersion: plan.playbook.version,
         shopHost: plan.shopHost,
         obsTargetKey: plan.obsTargetKey,
-        ...(paid ? {} : { status: "QUEUED" as const, runAfter: now, idempotencyKey: plan.key, requestFingerprint: plan.fingerprint }),
+        ...(paid ? {} : { status: "QUEUED" as const, runAfter: now, queuedAt: now, idempotencyKey: plan.key, requestFingerprint: plan.fingerprint }),
       },
     });
     // 잠금 안에서 다시 계산한 판정으로만 저장한다
@@ -289,7 +290,8 @@ export async function decideReconnect(db: PrismaClient | Prisma.TransactionClien
 
 const isTarget = (v: unknown): v is ReconnectTarget => {
   const t = v as Partial<ReconnectTarget> | null;
-  const ok = (s: unknown) => typeof s === "string" && s.length > 0 && s.length <= 200;
+  // 저장·대조에 쓰는 외부 식별자 규칙(boundary.ts externalId)과 같게: 1~200자, 제어 문자 없음. 결제·작업 생성 전에 거절한다
+  const ok = (s: unknown) => { const r = externalId(s); return r.ok && r.value !== null; };
   return !!t && ok(t.shopKey) && ok(t.obsPairingId);
 };
 
@@ -388,7 +390,7 @@ export async function verifyAndSettle(
       const to = status === "PAID" ? "QUEUED" : "FAILED";
       const moved = await tx.automationJob.updateMany({
         where: { id: job.id, status: "AWAITING_PAYMENT" },
-        data: to === "QUEUED" ? { status: to, runAfter: now } : { status: to, lastError: "payment_failed", finishedAt: now },
+        data: to === "QUEUED" ? { status: to, runAfter: now, queuedAt: now } : { status: to, lastError: "payment_failed", finishedAt: now },
       });
       if (moved.count === 1) await writeJobEvent(tx, job, "AWAITING_PAYMENT", to, job.fencingToken, { paymentStatus: status });
       // 결제 확정 전에 취소된(연결을 시작하지 않은) 작업에 결제가 들어왔다: 환불 처리 대기로 둔다(실제 환불은 승인 뒤)

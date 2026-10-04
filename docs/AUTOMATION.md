@@ -28,9 +28,9 @@
 | 출발 | 갈 수 있는 곳 | 계기 |
 |---|---|---|
 | AWAITING_PAYMENT(결제 대기) | QUEUED / FAILED / CANCELED | 서버가 PG 조회로 PAID 확인 / 결제 실패 / 판매자 취소 |
-| QUEUED(대기열) | RUNNING / CANCELED | 작업자가 자리 잡음 / 취소 |
+| QUEUED(대기열) | RUNNING / FAILED / CANCELED / CLEANUP_NEEDED | 작업자가 자리 잡음 / 시작·전체 마감 지남(자리 주지 않음) / 취소 / 바꾼 뒤 마감·취소 |
 | RUNNING(실행 중) | VERIFYING / NEEDS_CUSTOMER / QUEUED / FAILED / CANCELED / CLEANUP_NEEDED | 검증 단계 도달 / 고객 행동 필요 / 일시 오류·lease 만료 / 치명 오류·시도 소진·비용 초과·위험 행동 / 취소 / 되돌리기 실패 |
-| NEEDS_CUSTOMER(고객 행동 필요) | QUEUED / FAILED / CANCELED | 고객이 마쳤다고 알림(재개) / 마감 24시간 지남 / 취소 |
+| NEEDS_CUSTOMER(고객 행동 필요) | QUEUED / FAILED / CANCELED / CLEANUP_NEEDED | 고객이 마쳤다고 알림(재개) / 고객 대기 마감 지남 / 취소 / 바꾼 뒤 마감·취소 |
 | VERIFYING(검증 중) | SUCCEEDED / NEEDS_CUSTOMER / QUEUED / FAILED / CANCELED / CLEANUP_NEEDED | 테스트 표시 확인 / OBS 미연결 등 / 재시도 / 실패 / 취소 / 되돌리기 실패 |
 | CLEANUP_NEEDED(정리 필요) | FAILED / CANCELED | 사람이 쇼핑몰 앱·웹훅·OBS 변경을 정리한 뒤 마스터 관리자(운영 역할 이상, `billing.manage`)가 정리 메모와 함께 닫는다(`POST /api/automation/admin/jobs/[jobId]/cleanup`, `closeCleanupNeeded`): 판매자 취소로 들어온 작업(취소 요청 때 남긴 `cancelRequestedAt`. 오류 문구로 추론하지 않으므로 실행기 오류 문구가 「canceled」여도 실패로 닫음)은 CANCELED(환불 없음, 취소 규칙과 같음), 그 밖은 FAILED·결제는 환불 처리 대기(REFUND_PENDING, 실제 PG 환불은 대표님 승인 사항)·로그 추적 `automation.cleanup_closed`. 정리 필요 동안 결제는 그대로 두고 보관 자료도 지우지 않는다. 닫기 전에는 판매자 취소·재개 불가, 열린 작업이라 새 구매도 막힘 |
 | SUCCEEDED·FAILED·CANCELED | 없음 | 끝 |
@@ -43,6 +43,15 @@
 ### 재개·재시도·취소 규칙
 
 - 재개: `NEEDS_CUSTOMER`에서만, 마감 전에만. 고객 행동 정보·마감을 지우고 `QUEUED`(즉시 실행 가능). 마감이 지났으면 회수를 기다리지 않고 같은 트랜잭션에서 `FAILED(customer_action_timeout)`·결제 `REFUND_PENDING`으로 끝내고 `action_expired`(409)를 돌려준다.
+- **시간 한도**(설정 `AUTOMATION_LIMITS`, 계산은 `deadlinesFor` 한 곳. 넘으면 바꾼 것이 없을 때 `FAILED`·결제 `REFUND_PENDING`, 있으면 「정리 필요」):
+
+  | 한도 | 기준 | 값 | 사유 코드 | 강제하는 곳 |
+  |---|---|---|---|---|
+  | 시작 마감 | 대기열 진입(`queuedAt`, 결제 확인·무료 재연결 생성) | 24시간 | `start_deadline` | 자리 잡기(claim, 자리 주지 않고 외부 행동 0회로 닫음)·회수 |
+  | 고객 대기 마감 | 대기 시작 | 24시간, 단 전체 마감보다 늦지 않게 | `customer_action_timeout` | 대기 설정(`actionDeadlineAt`)·재개·회수 |
+  | 전체 마감 | 실행 시작(`startedAt`) | 72시간(고객 대기 여러 번 포함) | `total_deadline` | 자리 잡기·회수·실행 중 lease 연장(`touch`·heartbeat) |
+  | 실행 시간 | 고객 대기를 뺀 실제 실행 합계(`activeMsUsed`) | 6시간 | `run_time_limit` | 실행 중 lease 연장 |
+
 - 고객 행동 마감(24시간): 지나면 작업은 `FAILED(customer_action_timeout)`로 끝나고, 결제(110,000원·33,000원)는 확정 ②대로 `REFUND_PENDING`(전액 환불 처리 대기)이 된다(정본 fc09f13). 실제 환불 실행은 승인 뒤.
 - 실행 시간 마감(6시간, 정본 d6e22c4): 고객 대기를 뺀 실제 실행 시간(`activeMsUsed`, 실행 자리를 놓을 때마다 합산·lease 만료 회수 땐 만료 시각까지)이 재시도 포함 합계 6시간을 넘으면 `touch`·heartbeat가 막고 작업을 `FAILED(run_time_limit)`로 끝내며 결제는 `REFUND_PENDING`. 보관 자료는 종료 삭제 규칙대로 지운다.
 - 시작 뒤 취소(정본 d6e22c4): 즉시 `CANCELED` + fencing 토큰 증가 → heartbeat가 자리 잃음을 알아채고 다음 외부 행동 전에 멈춤(진행 중 호출 1개까지). 보관 자료는 지우고, 결제는 단순 변심이라 환불하지 않는다(`refund-request`도 거부).

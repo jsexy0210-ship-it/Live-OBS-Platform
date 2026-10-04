@@ -23,8 +23,13 @@ export const AUTOMATION_LIMITS = {
   maxActionsPerStep: 12,
   // 고객 대기를 뺀 실제 실행 시간 합계 상한(재시도 포함). 넘으면 실패로 끝내고 전액 환불 처리 대기(정본 d6e22c4).
   maxRunMs: 6 * 60 * 60_000,
-  // 고객 행동(로그인·인증 등)을 기다리는 시간. 지나면 실패로 닫는다.
+  // 시간 한도(docs/AUTOMATION.md 「시간 한도」 표와 1:1, 계산은 queue.ts deadlinesFor 한 곳)
+  // 고객 행동(로그인·인증 등)을 기다리는 시간. 지나면 실패로 닫는다. 전체 마감보다 늦게 잡지 않는다.
   customerActionMs: 24 * 60 * 60_000,
+  // 시작 마감: 대기열에 들어간(결제 확인) 뒤 이 안에 실행을 시작하지 못하면 외부 행동 0회로 실패(ONQ E3-Q)
+  startDeadlineMs: 24 * 60 * 60_000,
+  // 전체 마감: 실행을 시작한 뒤 고객 대기를 몇 번 거쳐도 이 시간이 지나면 끝낸다(ONQ E3-W)
+  totalDeadlineMs: 72 * 60 * 60_000,
   // 다시 시도 간격: 지수 증가 + 지터, 상한
   backoffBaseMs: 5_000,
   backoffCapMs: 10 * 60_000,

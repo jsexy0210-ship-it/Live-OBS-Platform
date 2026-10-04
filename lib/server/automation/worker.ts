@@ -26,10 +26,11 @@ const isUniqueViolation = (e: unknown) => e instanceof Prisma.PrismaClientKnownR
 // 확인된 lease 없이 외부 행동을 계속하면 회수된 작업을 다른 작업자가 같이 실행할 수 있다.
 export function startHeartbeat(extend: () => Promise<void>, intervalMs: number) {
   const ctrl = new AbortController();
-  let overTime = false;
+  // 실행 시간 상한·전체 마감으로 멈췄으면 그 사유(run_time_limit·total_deadline)
+  let overTime: string | null = null;
   const timer = setInterval(() => {
     extend().catch((e) => {
-      if (e instanceof RunTimeExceeded) overTime = true;
+      if (e instanceof RunTimeExceeded) overTime = e.message;
       ctrl.abort();
     });
   }, intervalMs);
@@ -157,7 +158,7 @@ export async function executeJob(db: PrismaClient, rt: AutomationRuntime, { job,
     // 실행 시간 합계(대기 제외)가 6시간을 넘었다: 실패로 끝내고 전액 환불 처리 대기(정본 d6e22c4)
     if (e instanceof RunTimeExceeded || (e instanceof EngineAborted && beat.overTime())) {
       try {
-        await failWithRefund(db, claim, "run_time_limit");
+        await failWithRefund(db, claim, e instanceof RunTimeExceeded ? e.message : (beat.overTime() ?? "run_time_limit"));
         return "failed";
       } catch (inner) {
         if (inner instanceof FencingError) return "fenced";

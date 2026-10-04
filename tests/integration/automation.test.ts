@@ -1302,14 +1302,14 @@ describe("Codex 5차 반영", () => {
     await new Promise((r) => setTimeout(r, 40));
     generic.stop();
     expect(generic.signal.aborted).toBe(true);
-    expect(generic.overTime()).toBe(false);
+    expect(generic.overTime()).toBeNull();
     const over = startHeartbeat(async () => {
       throw new RunTimeExceeded();
     }, 10);
     await new Promise((r) => setTimeout(r, 40));
     over.stop();
     expect(over.signal.aborted).toBe(true);
-    expect(over.overTime()).toBe(true);
+    expect(over.overTime()).toBe("run_time_limit");
     const ok = startHeartbeat(async () => {}, 10);
     await new Promise((r) => setTimeout(r, 40));
     ok.stop();
@@ -3149,5 +3149,57 @@ describe("Codex 35차 반영(01bbaeb)", () => {
     expect(calls).toBe(1);
     expect(rt.browser.performed.filter((p) => p.type === "click")).toHaveLength(0);
     expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "cost_limit", costUsed: 2_147_483_647, attempts: 0 });
+  });
+});
+
+describe("Codex 36차 반영(9cef14e)", () => {
+  const hoursAgo = (h: number) => db.$queryRaw<{ t: Date }[]>`SELECT clock_timestamp() - ${h} * interval '1 hour' AS t`.then((r) => r[0].t);
+
+  it("결제 확인 뒤 24시간 안에 시작하지 못한 작업(작업자 25시간 공백)은 실행 자리를 받지 않고 외부 행동 0회로 실패·전액 환불 처리 대기", async () => {
+    const a = await bought();
+    await db.automationJob.update({ where: { id: a.jobId }, data: { queuedAt: await hoursAgo(25) } });
+    const rt = runtime();
+    expect(await runOnce(db, rt, W)).toBe("idle");
+    expect(rt.browser.performed.length + rt.obs.performed.length).toBe(0);
+    expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "start_deadline", startedAt: null });
+    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "REFUND_PENDING", refundReason: "start_deadline" });
+    // 회수(reapExpired)도 같은 기준으로 닫는다
+    const b = await bought();
+    await db.automationJob.update({ where: { id: b.jobId }, data: { queuedAt: await hoursAgo(25) } });
+    expect((await reapExpired(db)).failed).toBeGreaterThanOrEqual(1);
+    expect(await job(b.jobId)).toMatchObject({ status: "FAILED", lastError: "start_deadline" });
+  });
+
+  it("고객 대기를 여러 번 거쳐도 시작부터 72시간에 끝난다: 대기 마감은 전체 마감보다 늦지 않고, 전체 마감이 지난 대기열 작업은 실행되지 않는다", async () => {
+    const a = await bought();
+    const rt = runtime();
+    // 바꾸기 전(이동 단계)에 로그인 대기
+    rt.browser.outcome = (_s, action) => (action.type === "navigate" ? { kind: "needs_customer", action: "LOGIN" } : undefined);
+    expect(await runOnce(db, rt, W)).toBe("needs_customer");
+    const first = await job(a.jobId);
+    expect(first.actionDeadlineAt!.getTime() - first.startedAt!.getTime()).toBeGreaterThan(23 * 3600_000);
+    // 시작이 71시간 전이었다면: 두 번째 대기 마감은 지금 + 24시간이 아니라 시작 + 72시간
+    const startedAt = await hoursAgo(71);
+    await db.automationJob.update({ where: { id: a.jobId }, data: { startedAt } });
+    await resumeJob(db, a.ctx, a.jobId);
+    expect(await runOnce(db, rt, W)).toBe("needs_customer");
+    expect((await job(a.jobId)).actionDeadlineAt!.getTime()).toBe(startedAt.getTime() + 72 * 3600_000);
+    // 세 번째 재개 뒤 전체 마감이 지났으면 실행 자리를 주지 않고 끝낸다(외부 행동 없음)
+    await resumeJob(db, a.ctx, a.jobId);
+    await db.automationJob.update({ where: { id: a.jobId }, data: { startedAt: await hoursAgo(73) } });
+    const before = rt.browser.performed.length;
+    expect(await runOnce(db, rt, W)).toBe("idle");
+    expect(rt.browser.performed.length).toBe(before);
+    expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "total_deadline" });
+    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "REFUND_PENDING" });
+  });
+
+  it("재연결 대상(쇼핑몰·PC 식별자)에 제어 문자가 있거나 200자를 넘으면 결제·작업을 만들기 전에 bad_target", async () => {
+    const s = await shopWithCard();
+    for (const target of [{ shopKey: "m\u0000x", obsPairingId: "p" }, { shopKey: "m", obsPairingId: "p\nq" }, { shopKey: "m", obsPairingId: "p".repeat(201) }]) {
+      expect(await reconnectAutomation(db, new FakeBillingProvider(), s.ctx, { idempotencyKey: newKey(), consent, target, shopUrl: SHOP }), JSON.stringify(target)).toEqual({ ok: false, reason: "bad_target" });
+    }
+    expect(await db.automationPayment.count({ where: { sellerId: s.seller.id } })).toBe(0);
+    expect(await db.automationJob.count({ where: { sellerId: s.seller.id } })).toBe(0);
   });
 });

@@ -17,10 +17,32 @@ export class FencingError extends Error {
 }
 
 // 고객 대기를 뺀 실행 시간 합계가 상한(6시간)을 넘었다. 작업자는 이것을 받으면 실패·전액 환불 처리 대기로 끝낸다.
+// 전체 마감(72시간)이 지나도 같은 방식으로 던진다(사유 total_deadline).
 export class RunTimeExceeded extends Error {
-  constructor() {
-    super("run_time_limit");
+  constructor(reason: "run_time_limit" | "total_deadline" = "run_time_limit") {
+    super(reason);
   }
+}
+
+// 시간 한도(docs/AUTOMATION.md 「시간 한도」 표와 1:1). 마감 판단은 모두 이 함수만 쓴다(claim·회수·고객 대기·재개·실행 중 확인).
+// start: 대기열에 들어간 뒤 실행을 시작하지 못한 작업의 시작 마감, total: 실행을 시작한 작업의 전체 마감,
+// customerActionAt: 고객 대기 마감(지금 + 24시간, 전체 마감보다 늦지 않게)
+export function deadlinesFor(job: Pick<AutomationJob, "queuedAt" | "startedAt">) {
+  const start = !job.startedAt && job.queuedAt ? plus(job.queuedAt, AUTOMATION_LIMITS.startDeadlineMs) : null;
+  const total = job.startedAt ? plus(job.startedAt, AUTOMATION_LIMITS.totalDeadlineMs) : null;
+  const customerActionAt = (now: Date) => {
+    const wait = plus(now, AUTOMATION_LIMITS.customerActionMs);
+    return total && total < wait ? total : wait;
+  };
+  return { start, total, customerActionAt };
+}
+
+// 지금 넘긴 마감(시작·전체)이 있으면 그 사유
+export function overdue(job: Pick<AutomationJob, "queuedAt" | "startedAt">, now: Date): "start_deadline" | "total_deadline" | null {
+  const d = deadlinesFor(job);
+  if (d.start && d.start <= now) return "start_deadline";
+  if (d.total && d.total <= now) return "total_deadline";
+  return null;
 }
 
 export type Claim = { readonly jobId: string; readonly token: number };
@@ -69,6 +91,15 @@ export async function claimNext(
   workerId: string,
   opts: { leaseMs?: number; maxRunning?: number } = {},
 ): Promise<Claimed | null> {
+  // 마감이 지난 작업을 닫았으면(각각 커밋) 다음 작업을 다시 고른다
+  for (let i = 0; i < 20; i++) {
+    const r = await claimOnce(db, workerId, opts);
+    if (r !== "closed") return r;
+  }
+  return null;
+}
+
+async function claimOnce(db: PrismaClient, workerId: string, opts: { leaseMs?: number; maxRunning?: number }): Promise<Claimed | null | "closed"> {
   const leaseMs = opts.leaseMs ?? AUTOMATION_LIMITS.leaseMs;
   const maxRunning = opts.maxRunning ?? AUTOMATION_LIMITS.maxRunning;
   return db.$transaction(async (tx) => {
@@ -88,6 +119,12 @@ export async function claimNext(
     if (rows.length === 0) return null;
     const now = await dbNow(tx);
     const before = await tx.automationJob.findUniqueOrThrow({ where: { id: rows[0].id } });
+    // 마감(시작 24시간·전체 72시간)이 지난 작업은 실행 자리를 주지 않고 외부 행동 0회로 닫은 뒤 다음 작업을 고른다
+    const late = overdue(before, now);
+    if (late) {
+      await closeOverdue(tx, before, now, late);
+      return "closed" as const;
+    }
     const job = await tx.automationJob.update({
       where: { id: before.id },
       data: {
@@ -220,6 +257,7 @@ export type TouchStats = { costUsed: number; plannerCalls?: number; playbookActi
 // 실행 시간 합계(대기 제외)가 상한을 넘었으면 던진다(touch·heartbeat 때 확인)
 function assertRunTime(cur: AutomationJob, now: Date) {
   if (cur.activeMsUsed + runningMs(cur, now) > AUTOMATION_LIMITS.maxRunMs) throw new RunTimeExceeded();
+  if (overdue(cur, now) === "total_deadline") throw new RunTimeExceeded("total_deadline");
 }
 
 export const touch = (db: PrismaClient, c: Claim, stats: TouchStats, leaseMs: number = AUTOMATION_LIMITS.leaseMs) =>
@@ -315,12 +353,13 @@ export const toVerifying = (db: PrismaClient, c: Claim) => fencedWrite(db, c, ()
 
 // 고객 행동이 필요하면 실행 자리를 반납하고 기다린다(다른 작업이 그 자리를 쓴다).
 export const parkForCustomer = (db: PrismaClient, c: Claim, action: AutomationCustomerAction, heldBrowserState = false) =>
-  fencedWrite(db, c, (now) => ({
+  fencedWrite(db, c, (now, cur) => ({
     to: "NEEDS_CUSTOMER",
     data: {
       ...RELEASE,
       customerAction: action,
-      actionDeadlineAt: plus(now, AUTOMATION_LIMITS.customerActionMs),
+      // 고객 대기 마감: 지금 + 24시간, 단 전체 마감(시작 + 72시간)보다 늦지 않게
+      actionDeadlineAt: deadlinesFor(cur).customerActionAt(now),
       ...(heldBrowserState ? { browserStateHeld: true } : {}),
     },
     detail: { customerAction: action },
@@ -355,15 +394,20 @@ export const finishJob = (db: PrismaClient, c: Claim, to: "SUCCEEDED" | "FAILED"
 // 고객 행동 마감이 지난 대기 작업을 끝낸다(회수와 재개 시도가 같이 쓴다). 바꾼 것이 없으면 실패·전액 환불 처리 대기(확정 ②,
 // 실제 환불 실행은 승인 뒤), 있으면 정리 필요(결제는 정리 뒤)
 export async function expireCustomerWait(tx: Tx, id: string, now: Date) {
-  const cur = await tx.automationJob.findUniqueOrThrow({ where: { id } });
+  await closeOverdue(tx, await tx.automationJob.findUniqueOrThrow({ where: { id } }), now, "customer_action_timeout");
+}
+
+// 마감이 지난 대기 작업(QUEUED·NEEDS_CUSTOMER)을 실행 없이 끝낸다. 호출하는 쪽이 작업 행을 잠근 상태여야 한다.
+// 바꾼 것이 없으면 실패·전액 환불 처리 대기, 있으면 정리 필요(endStateFor). 토큰을 올려 늦은 쓰기를 막는다.
+async function closeOverdue(tx: Tx, cur: AutomationJob, now: Date, reason: "customer_action_timeout" | "start_deadline" | "total_deadline") {
   const end = endStateFor(cur, "FAILED");
   const job = await tx.automationJob.update({
-    where: { id },
-    data: { status: end, lastError: "customer_action_timeout", finishedAt: now, customerAction: null, actionDeadlineAt: null, ...(end === "CLEANUP_NEEDED" ? { cleanupNeededAt: now } : {}) },
+    where: { id: cur.id },
+    data: { ...RELEASE, status: end, lastError: reason, finishedAt: now, customerAction: null, actionDeadlineAt: null, fencingToken: { increment: 1 }, ...(end === "CLEANUP_NEEDED" ? { cleanupNeededAt: now } : {}) },
   });
-  await writeJobEvent(tx, job, "NEEDS_CUSTOMER", end, job.fencingToken, { reason: "customer_action_timeout" });
-  if (end === "FAILED") await markRefundPending(tx, job, "customer_action_timeout", now);
-  else await alertCleanupNeeded(tx, job, "customer_action_timeout");
+  await writeJobEvent(tx, job, cur.status, end, job.fencingToken, { reason });
+  if (end === "FAILED") await markRefundPending(tx, job, reason, now);
+  else await alertCleanupNeeded(tx, job, reason);
 }
 
 // lease가 끝난 실행 중 작업을 회수한다(작업자 중단·멈춤). 토큰을 올려 이전 작업자의 늦은 쓰기를 막는다.
@@ -405,6 +449,20 @@ export async function reapExpired(db: PrismaClient, random: () => number = Math.
       LIMIT 100 FOR UPDATE SKIP LOCKED`;
     for (const { id } of waiting) {
       await expireCustomerWait(tx, id, now);
+      failed++;
+    }
+    // 시작·전체 마감이 지난 대기열 작업(작업자 부족·장애로 실행되지 못함). 후보만 SQL로 고르고 판단은 deadlinesFor로 한다
+    const queued = await tx.$queryRaw<{ id: string }[]>`
+      SELECT id FROM "AutomationJob"
+      WHERE status = 'QUEUED' AND (
+        ("startedAt" IS NULL AND "queuedAt" <= clock_timestamp() - ${AUTOMATION_LIMITS.startDeadlineMs} * interval '1 millisecond')
+        OR "startedAt" <= clock_timestamp() - ${AUTOMATION_LIMITS.totalDeadlineMs} * interval '1 millisecond')
+      LIMIT 100 FOR UPDATE SKIP LOCKED`;
+    for (const { id } of queued) {
+      const cur = await tx.automationJob.findUniqueOrThrow({ where: { id } });
+      const late = overdue(cur, now);
+      if (!late) continue;
+      await closeOverdue(tx, cur, now, late);
       failed++;
     }
     return { requeued, failed };

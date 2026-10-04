@@ -1567,6 +1567,8 @@ model AutomationJob {
   lastDeviationAt      DateTime?                 @db.Timestamptz(3)
   // 무료 재연결의 쇼핑몰·PC 대조를 통과한 시각(그때의 쇼핑몰·PC는 shopKey·obsPairingId). 재시도 때 브라우저 단계를 다시 하지 않으면 이 기록을 쓴다.
   targetVerifiedAt     DateTime?                 @db.Timestamptz(3)
+  // 처음 대기열에 들어간 시각(결제 확인·무료 재연결 생성). 시작 마감 기준(deadlinesFor)
+  queuedAt             DateTime?                 @db.Timestamptz(3)
   startedAt            DateTime?                 @db.Timestamptz(3)
   finishedAt           DateTime?                 @db.Timestamptz(3)
   createdAt            DateTime                  @default(now()) @db.Timestamptz(3)

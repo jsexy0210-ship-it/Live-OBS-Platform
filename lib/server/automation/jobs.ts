@@ -50,6 +50,8 @@ const PUBLIC_ERRORS = new Set([
   "pc_identity_invalid",
   "shop_identity_invalid",
   "executor_error",
+  "start_deadline",
+  "total_deadline",
 ]);
 const STEP_KEYS = new Set(STEPS.map((s) => s.key));
 

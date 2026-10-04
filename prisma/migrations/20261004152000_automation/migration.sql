@@ -87,6 +87,7 @@ CREATE TABLE "AutomationJob" (
     "runStartedAt" TIMESTAMPTZ(3),
     "lastDeviationAt" TIMESTAMPTZ(3),
     "targetVerifiedAt" TIMESTAMPTZ(3),
+    "queuedAt" TIMESTAMPTZ(3),
     "startedAt" TIMESTAMPTZ(3),
     "finishedAt" TIMESTAMPTZ(3),
     "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,

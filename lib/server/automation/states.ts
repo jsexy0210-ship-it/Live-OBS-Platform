@@ -4,7 +4,7 @@ import type { AutomationJobStatus } from "@prisma/client";
 // 모든 상태 변경은 이 표를 거친다: 쓰기 조건(where status in ...)을 여기서 만든다.
 export const TRANSITIONS: Record<AutomationJobStatus, readonly AutomationJobStatus[]> = {
   AWAITING_PAYMENT: ["QUEUED", "FAILED", "CANCELED"],
-  QUEUED: ["RUNNING", "CANCELED", "CLEANUP_NEEDED"],
+  QUEUED: ["RUNNING", "FAILED", "CANCELED", "CLEANUP_NEEDED"],
   RUNNING: ["VERIFYING", "NEEDS_CUSTOMER", "QUEUED", "FAILED", "CANCELED", "CLEANUP_NEEDED"],
   NEEDS_CUSTOMER: ["QUEUED", "FAILED", "CANCELED", "CLEANUP_NEEDED"],
   VERIFYING: ["SUCCEEDED", "NEEDS_CUSTOMER", "QUEUED", "FAILED", "CANCELED", "CLEANUP_NEEDED"],
