@@ -581,11 +581,18 @@ enum ShopPopupTarget {
   ALL
 }
 
+// IMAGE=이미지 팝업(가운데), TEXT=글 팝업(가운데), BAR=상단 띠(화면 맨 위 한 줄)
+enum ShopPopupKind {
+  IMAGE
+  TEXT
+  BAR
+}
+
 model ShopContentImage {
   id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   sellerId    String   @db.Uuid
   data        Bytes
-  // 바이트로 확인한 형식(image/png·image/jpeg). 올린 쪽이 보낸 Content-Type은 쓰지 않는다.
+  // 바이트로 확인한 형식(image/png만, 2026-10-04 MASTER 결정). 올린 쪽이 보낸 Content-Type은 쓰지 않는다.
   contentType String
   byteSize    Int
   width       Int
@@ -615,6 +622,8 @@ model ShopBanner {
   // 게시 기간. 비어 있으면 그쪽 제한 없음.
   startsAt      DateTime? @db.Timestamptz(3)
   endsAt        DateTime? @db.Timestamptz(3)
+  showOnPc      Boolean   @default(true)
+  showOnMobile  Boolean   @default(true)
   isActive      Boolean   @default(true)
   sortOrder     Int       @default(0)
   createdAt     DateTime  @default(now()) @db.Timestamptz(3)
@@ -627,10 +636,12 @@ model ShopBanner {
   @@index([sellerId, sortOrder])
 }
 
-// 이벤트 팝업. target HOME=쇼핑몰 홈만, ALL=모든 구매자 화면. 「오늘 하루 보지 않기」는 구매자 브라우저에 저장한다.
+// 이벤트 팝업. target HOME=쇼핑몰 홈만, ALL=모든 구매자 화면. 이미지 팝업은 이미지, 글 팝업은 내용이 있어야 한다(CHECK).
+// dismissDays: 구매자가 「보지 않기」를 고르면 숨기는 날 수(0=닫기만·매번 표시, 1=오늘 하루, 7=7일). 구매자 브라우저에 저장한다.
 model ShopPopup {
   id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   sellerId       String          @db.Uuid
+  kind           ShopPopupKind   @default(IMAGE)
   title          String
   body           String?
   imageId        String?         @db.Uuid
@@ -641,7 +652,7 @@ model ShopPopup {
   target         ShopPopupTarget @default(HOME)
   showOnPc       Boolean         @default(true)
   showOnMobile   Boolean         @default(true)
-  allowHideToday Boolean         @default(true)
+  dismissDays    Int             @default(1)
   isActive       Boolean         @default(true)
   sortOrder      Int             @default(0)
   createdAt      DateTime        @default(now()) @db.Timestamptz(3)

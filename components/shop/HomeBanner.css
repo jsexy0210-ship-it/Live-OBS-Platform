@@ -75,7 +75,16 @@
   width: 16px;
   background: #fff;
 }
+.hb-m {
+  display: none;
+}
 @media (max-width: 767px) {
+  .hb-pc {
+    display: none;
+  }
+  .hb-m {
+    display: block;
+  }
   .hb {
     border-radius: 10px;
   }

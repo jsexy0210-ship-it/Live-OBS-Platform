@@ -27,18 +27,13 @@ export function png(width: number, height: number, rgb: [number, number, number]
   ]);
 }
 
-// 머리 구조와 양자화·허프만표까지 갖춘 JPEG(크기 확인용). 그림 데이터는 가짜라 브라우저 표시용으로는 realJpeg를 쓴다.
-export function jpeg(width: number, height: number, tables = true): Buffer {
+// 구조가 맞는 최소 JPEG(PNG만 받는지 확인용)
+export function jpeg(width: number, height: number): Buffer {
   const dqt = Buffer.concat([Buffer.from([0xff, 0xdb, 0x00, 0x43, 0x00]), Buffer.alloc(64, 1)]);
-  const dht = (cls: number) => Buffer.concat([Buffer.from([0xff, 0xc4, 0x00, 0x14, cls << 4]), Buffer.from([1, ...Array(15).fill(0)]), Buffer.from([0])]);
   const sof = Buffer.from([0xff, 0xc0, 0x00, 0x0b, 0x08, height >> 8, height & 0xff, width >> 8, width & 0xff, 0x01, 0x01, 0x11, 0x00]);
   const sos = Buffer.from([0xff, 0xda, 0x00, 0x08, 0x01, 0x01, 0x00, 0x00, 0x3f, 0x00]);
-  const head = tables ? [dqt, dht(0), dht(1)] : [];
-  return Buffer.concat([Buffer.from([0xff, 0xd8]), ...head, sof, sos, Buffer.from([0x12, 0x34, 0x56]), Buffer.from([0xff, 0xd9])]);
+  return Buffer.concat([Buffer.from([0xff, 0xd8]), dqt, sof, sos, Buffer.from([0x12, 0x34, 0x56]), Buffer.from([0xff, 0xd9])]);
 }
-
-// 실제 인코더로 만든 120×120 JPEG(보라색 한 가지)
-export const realJpeg = () => Buffer.from("/9j/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAB4AHgDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAb/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCOAWMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf/Z", "base64");
 
 // PNG 머리 뒤에 SVG를 붙인 위장 파일
 export const svgInPng = () => Buffer.concat([png(200, 200).subarray(0, 33), Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>')]);

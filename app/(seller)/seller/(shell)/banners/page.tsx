@@ -6,12 +6,16 @@ import { Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
 import {
   ConfirmDelete,
+  ContentTabs,
+  DeviceSeg,
   GripIcon,
   ImagePicker,
   LinkField,
   PeriodFields,
   StateBox,
   StatusBadge,
+  StatusSummary,
+  devicesText,
   errorText,
   fromKstInput,
   linkLooksOk,
@@ -23,8 +27,8 @@ import {
   type ContentStatus,
 } from "./_shared/ui";
 
-// 홈 배너 관리(파트너스 관리자). 쇼핑몰 홈 맨 위 슬라이드. 끌어서 순서 변경, PC·모바일 이미지, 링크, 게시 기간, 미리보기.
-// API: /api/seller/shop-content/banners(대표자·「쇼핑몰 설정」 권한 직원만).
+// SA-064 홈 배너 관리(파트너스 관리자, 설정 › 배너 · 팝업). 쇼핑몰 홈 맨 위 슬라이드. 끌어서 순서 변경, PC·모바일 이미지,
+// 링크, 게시 기간, 표시 기기, 미리보기. API: /api/seller/shop-content/banners(대표자·「쇼핑몰 설정」 권한 직원만).
 
 type Banner = {
   id: string;
@@ -34,14 +38,27 @@ type Banner = {
   linkUrl: string | null;
   startsAt: string | null;
   endsAt: string | null;
+  showOnPc: boolean;
+  showOnMobile: boolean;
   isActive: boolean;
   sortOrder: number;
   status: ContentStatus;
 };
-type Draft = { id: string | null; title: string; pcImage: AdminImage | null; mobileImage: AdminImage | null; linkUrl: string; startsAt: string; endsAt: string; isActive: boolean };
+type Draft = {
+  id: string | null;
+  title: string;
+  pcImage: AdminImage | null;
+  mobileImage: AdminImage | null;
+  linkUrl: string;
+  startsAt: string;
+  endsAt: string;
+  showOnPc: boolean;
+  showOnMobile: boolean;
+  isActive: boolean;
+};
 
 const LIMIT = 10;
-const empty: Draft = { id: null, title: "", pcImage: null, mobileImage: null, linkUrl: "", startsAt: "", endsAt: "", isActive: true };
+const empty: Draft = { id: null, title: "", pcImage: null, mobileImage: null, linkUrl: "", startsAt: "", endsAt: "", showOnPc: true, showOnMobile: true, isActive: true };
 const toDraft = (b: Banner): Draft => ({
   id: b.id,
   title: b.title,
@@ -50,11 +67,13 @@ const toDraft = (b: Banner): Draft => ({
   linkUrl: b.linkUrl ?? "",
   startsAt: toKstInput(b.startsAt),
   endsAt: toKstInput(b.endsAt),
+  showOnPc: b.showOnPc,
+  showOnMobile: b.showOnMobile,
   isActive: b.isActive,
 });
 
 export default function BannersPage() {
-  const { can } = useSeller();
+  const { can, me } = useSeller();
   const editable = can("SHOP_SETTINGS");
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number; error?: string } | { kind: "ok"; list: Banner[] }>({ kind: "loading" });
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -93,27 +112,40 @@ export default function BannersPage() {
 
   return (
     <>
-      <Topbar crumb="설정 › 홈 배너 관리">
-        {state.kind === "ok" && editable && (
-          <button className="btn btn-sm" type="button" disabled={list.length >= LIMIT} onClick={() => setDraft(empty)}>
-            배너 추가
-          </button>
-        )}
-      </Topbar>
+      <Topbar crumb="설정 › 배너 · 팝업 › 홈 배너" />
       <main className="main">
+        <ContentTabs active="banners" />
         <div className="ph">
           <div className="col" style={{ gap: 6 }}>
             <h1 className="t-t3">홈 배너 관리</h1>
-            <span className="t-l2 c-alt">쇼핑몰 홈 맨 위 슬라이드 · 위에서부터 차례로 노출 · 5초마다 넘김 · 최대 {LIMIT}개</span>
+            <span className="t-l2 c-alt">쇼핑몰 홈 맨 위 슬라이드 · 순서를 끌어서 바꾸고 기간 · 링크 · 기기별 이미지를 지정 · 최대 {LIMIT}장</span>
+          </div>
+          <div className="row" style={{ gap: 8 }}>
+            <a className="btn btn-out" href={`/shop/${encodeURIComponent(me.shop.slug)}`} target="_blank" rel="noopener noreferrer">
+              쇼핑몰 홈 보기
+            </a>
+            {state.kind === "ok" && editable && (
+              <button className="btn" type="button" disabled={list.length >= LIMIT} onClick={() => setDraft(empty)}>
+                배너 추가
+              </button>
+            )}
           </div>
         </div>
+        {state.kind === "ok" && editable && list.length >= LIMIT && (
+          <div className="msg msg-cau" role="status">
+            <span>
+              <b>배너는 {LIMIT}장까지 등록할 수 있습니다.</b> 종료된 배너를 삭제하거나 기간을 조정해 주십시오.
+            </span>
+          </div>
+        )}
         <section className="card" style={{ overflow: "hidden" }}>
           {state.kind === "loading" && <StateBox kind="loading" what="배너" />}
           {state.kind === "error" && <StateBox kind={stateKind(state.status, state.error)} what="배너" onRetry={() => void load()} />}
           {state.kind === "ok" && list.length === 0 && (
             <div className="st" style={{ boxShadow: "none" }}>
-              <span className="t">등록된 배너 없음</span>
-              <span className="s">배너를 추가하면 쇼핑몰 홈 맨 위에 바로 노출됩니다</span>
+              <div className="st-ic">+</div>
+              <span className="t">등록한 배너가 없습니다</span>
+              <span className="s">배너를 추가하면 쇼핑몰 홈 맨 위에 바로 표시됩니다</span>
               {editable && (
                 <button className="btn btn-sm" type="button" onClick={() => setDraft(empty)}>
                   배너 추가
@@ -121,6 +153,7 @@ export default function BannersPage() {
               )}
             </div>
           )}
+          {state.kind === "ok" && list.length > 0 && <StatusSummary noun="배너" unit="장" list={list} />}
           {state.kind === "ok" && list.length > 0 && (
             <ol className="sc-list" aria-label="배너 순서" style={{ margin: 0, padding: 0, listStyle: "none" }}>
               {list.map((b, i) => (
@@ -144,9 +177,11 @@ export default function BannersPage() {
                       <StatusBadge status={b.status} />
                       <span className="t-l1 fw6 ell">{b.title}</span>
                     </span>
-                    <span className="t-c1 c-alt num">{periodText(b.startsAt, b.endsAt)}</span>
+                    <span className="t-c1 c-alt num">
+                      {periodText(b.startsAt, b.endsAt)} · {devicesText(b)}
+                    </span>
                     <span className="t-c1 c-alt ell">
-                      {b.linkUrl ? `링크 ${b.linkUrl}` : "링크 없음"} · {b.mobileImage ? "모바일 이미지 별도" : "모바일도 PC 이미지 사용"}
+                      {b.linkUrl ? `연결 ${b.linkUrl}` : "연결 없음"} · {b.mobileImage ? "모바일 이미지 따로" : "모바일도 PC 이미지"}
                     </span>
                   </span>
                   {editable && (
@@ -154,7 +189,7 @@ export default function BannersPage() {
                       <button className="btn btn-sm btn-out" type="button" onClick={() => setDraft(toDraft(b))}>
                         수정
                       </button>
-                      <button className="btn btn-sm btn-ghost" type="button" onClick={() => setDeleting(b)}>
+                      <button className="btn btn-sm btn-text" type="button" style={{ color: "var(--neg-text)" }} onClick={() => setDeleting(b)}>
                         삭제
                       </button>
                     </span>
@@ -164,7 +199,7 @@ export default function BannersPage() {
             </ol>
           )}
         </section>
-        {state.kind === "ok" && list.length >= LIMIT && <span className="help">배너는 {LIMIT}개까지 등록할 수 있습니다. 쓰지 않는 배너를 삭제해 주십시오</span>}
+        {state.kind === "ok" && list.length > 0 && <span className="t-c1 c-alt">순서는 홈 슬라이드 순서와 같음 · 시작 시각에 자동 게시, 종료 시각이 지나면 자동 숨김</span>}
       </main>
       {draft && (
         <BannerEditor
@@ -178,7 +213,7 @@ export default function BannersPage() {
         />
       )}
       {deleting && (
-        <ConfirmDelete title="배너를 삭제하시겠습니까?" body={`「${deleting.title}」 배너가 쇼핑몰 홈에서 바로 사라집니다.`} busy={busy} onCancel={() => setDeleting(null)} onConfirm={() => void remove()} />
+        <ConfirmDelete title="배너를 삭제하시겠습니까?" body={`「${deleting.title}」를 삭제합니다. 홈에서 바로 사라지고 되돌릴 수 없습니다.`} busy={busy} onCancel={() => setDeleting(null)} onConfirm={() => void remove()} />
       )}
       {toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}
     </>
@@ -204,6 +239,8 @@ function BannerEditor({ draft: initial, onClose, onSaved }: { draft: Draft; onCl
       linkUrl: d.linkUrl.trim() || null,
       startsAt: fromKstInput(d.startsAt),
       endsAt: fromKstInput(d.endsAt),
+      showOnPc: d.showOnPc,
+      showOnMobile: d.showOnMobile,
       isActive: d.isActive,
     };
     const r = d.id
@@ -211,7 +248,7 @@ function BannerEditor({ draft: initial, onClose, onSaved }: { draft: Draft; onCl
       : await api("/api/seller/shop-content/banners", { method: "POST", body });
     setSaving(false);
     if (!r.ok) return setFailure(errorText(r, "저장하지 못했습니다. 잠시 뒤 다시 시도해 주십시오"));
-    onSaved(d.id ? "배너를 저장했습니다" : "배너를 추가했습니다");
+    onSaved(d.id ? "배너를 저장했습니다 · 홈에 바로 반영" : "배너를 추가했습니다 · 홈에 바로 반영");
   };
 
   const previewImg = device === "mobile" ? (d.mobileImage ?? d.pcImage) : d.pcImage;
@@ -235,15 +272,23 @@ function BannerEditor({ draft: initial, onClose, onSaved }: { draft: Draft; onCl
           <div className="col" style={{ gap: 16 }}>
             <div className="fld">
               <label htmlFor="banner-title" className="req">
-                배너 이름
+                제목 (대체 텍스트)
               </label>
               <input id="banner-title" className="inp" value={d.title} maxLength={40} onChange={(e) => set({ title: e.target.value })} placeholder="예: 10월 신상품 오픈" />
-              <span className="help">관리용 이름 · 이미지를 볼 수 없는 구매자에게 대신 읽어 주는 글 · 40자까지</span>
+              <span className="help">화면 낭독기와 이미지가 안 뜰 때 표시 · 40자</span>
             </div>
-            <ImagePicker label="PC 이미지" hint="PNG·JPEG · 3MB까지 · 권장 1920 × 600px" value={d.pcImage} onChange={(v) => set({ pcImage: v })} />
-            <ImagePicker label="모바일 이미지" optional hint="비워 두면 PC 이미지 사용 · 권장 1080 × 1080px" value={d.mobileImage} onChange={(v) => set({ mobileImage: v })} />
+            <ImagePicker label="PC 이미지" recommend={{ width: 1200, height: 400 }} value={d.pcImage} onChange={(v) => set({ pcImage: v })} />
+            <ImagePicker
+              label="모바일 이미지"
+              optional
+              recommend={{ width: 750, height: 750 }}
+              emptyHint="비우면 PC 이미지를 맞춰서 표시"
+              value={d.mobileImage}
+              onChange={(v) => set({ mobileImage: v })}
+            />
             <LinkField value={d.linkUrl} onChange={(v) => set({ linkUrl: v })} />
             <PeriodFields startsAt={d.startsAt} endsAt={d.endsAt} onChange={(v) => set(v)} />
+            <DeviceSeg value={d} onChange={(v) => set(v)} />
             <div className="row between">
               <span className="col" style={{ gap: 2 }}>
                 <span className="t-l1 fw6" id="banner-active-label">
@@ -272,11 +317,11 @@ function BannerEditor({ draft: initial, onClose, onSaved }: { draft: Draft; onCl
                 </div>
               ) : (
                 <span className="t-c1 c-alt" style={{ alignSelf: "center" }}>
-                  이미지를 선택하면 여기에 표시됩니다
+                  이미지를 올리면 여기에 표시됩니다
                 </span>
               )}
             </div>
-            <span className="help">실제 쇼핑몰 홈 맨 위에 이 비율로 노출됩니다</span>
+            <span className="help">{(device === "pc" ? d.showOnPc : d.showOnMobile) ? "실제 쇼핑몰 홈 맨 위에 이 비율로 표시됩니다" : `${device === "pc" ? "PC" : "모바일"}에서는 표시하지 않음`}</span>
           </div>
         </div>
         <div className="modal-f">

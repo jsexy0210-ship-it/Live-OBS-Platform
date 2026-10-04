@@ -4,12 +4,13 @@ import { detectImage } from "../branding/image";
 import { writeAudit } from "../audit/log";
 import { requireSellerPermission, type TenantContext } from "../tenant/context";
 
-// 배너·팝업 이미지. 형식은 확장자·Content-Type이 아니라 바이트로 확인한다(브랜딩 검사기 detectImage 재사용:
-// PNG는 그림 데이터를 실제로 풀어 보고, JPEG는 표식 구조와 그림 데이터를 확인한다). SVG·WebP·GIF는 받지 않는다.
+// 배너·팝업 이미지. PNG만 받는다(2026-10-04 MASTER 결정: 서버가 내용까지 확인할 수 있는 형식만).
+// 형식은 확장자·Content-Type이 아니라 바이트로 확인한다. 브랜딩 검사기 detectImage를 그대로 쓰며, PNG는 구조·CRC를 보고
+// 그림 데이터를 실제로 풀어 길이·줄 필터까지 확인한다. JPEG·ICO·SVG·WebP·GIF는 받지 않는다.
 // 저장은 대표님 저장 방식 결정 전까지 A안(DB bytea). 크기·형식 CHECK는 마이그레이션 20261004160000_shop_content와 같은 값.
-export const SHOP_IMAGE_MAX_BYTES = 3 * 1024 * 1024;
+export const SHOP_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 export const SHOP_IMAGE_MIN_SIDE = 100;
-// PNG를 풀 때 상한(16MB)에 걸리지 않는 크기. 1920×600 PC 배너, 1080×1080 모바일 배너가 들어간다.
+// PNG를 풀 때 상한(16MB)에 걸리지 않는 크기. 권장 크기(PC 배너 1200×400, 모바일 750×750, 팝업 600×600)가 넉넉히 들어간다.
 export const SHOP_IMAGE_MAX_SIDE = 2000;
 // 아직 배너·팝업에 쓰지 않은 이미지는 쇼핑몰당 이 개수까지만 둔다(올리기만 반복해 DB를 채우지 않게).
 export const UNUSED_IMAGE_LIMIT = 30;
@@ -20,83 +21,22 @@ export type ShopImageRejection = "empty_file" | "file_too_large" | "unsupported_
 
 export const SHOP_IMAGE_MESSAGES: Record<ShopImageRejection, string> = {
   empty_file: "빈 파일은 올릴 수 없습니다",
-  file_too_large: "이미지는 3MB까지 올릴 수 있습니다",
-  unsupported_image: "PNG·JPEG 이미지만 올릴 수 있습니다",
+  file_too_large: "이미지는 2MB까지 올릴 수 있습니다",
+  unsupported_image: "PNG 파일만 올릴 수 있습니다",
   wrong_image_size: `이미지 가로·세로는 ${SHOP_IMAGE_MIN_SIDE}~${SHOP_IMAGE_MAX_SIDE}px이어야 합니다`,
   too_many_unused_images: "아직 쓰지 않은 이미지가 많습니다. 배너·팝업을 저장한 뒤 다시 올려 주십시오",
 };
 
-export type ShopImageInfo = { type: "image/png" | "image/jpeg"; width: number; height: number };
+export type ShopImageInfo = { type: "image/png"; width: number; height: number };
 
 export function checkShopImage(b: Buffer): { ok: true; info: ShopImageInfo } | { ok: false; reason: ShopImageRejection } {
   if (b.length === 0) return { ok: false, reason: "empty_file" };
   if (b.length > SHOP_IMAGE_MAX_BYTES) return { ok: false, reason: "file_too_large" };
   const info = detectImage(b);
-  if (!info || (info.type !== "image/png" && info.type !== "image/jpeg")) return { ok: false, reason: "unsupported_image" };
-  if (info.type === "image/jpeg" && !jpegTablesOk(b)) return { ok: false, reason: "unsupported_image" };
+  if (!info || info.type !== "image/png") return { ok: false, reason: "unsupported_image" };
   const side = (n: number) => n >= SHOP_IMAGE_MIN_SIDE && n <= SHOP_IMAGE_MAX_SIDE;
   if (!side(info.width) || !side(info.height)) return { ok: false, reason: "wrong_image_size" };
-  return { ok: true, info: { type: info.type, width: info.width, height: info.height } };
-}
-
-// JPEG 표 확인(브랜딩 검사기 위에 더한다). 첫 스캔 전까지 프레임의 각 요소가 쓰는 양자화표(DQT)가 정의되고,
-// 스캔의 각 요소가 쓰는 허프만표(DHT, DC·AC)가 정의돼 있어야 한다(산술 부호화 프레임은 DAC 기본값이 있어 허프만표를 보지 않는다).
-// 표가 빠진 파일은 머리 구조가 맞아도 브라우저가 그리지 못한다. 그림 데이터 전체를 푸는 확인은 하지 않는다(디코더 의존성 없음).
-export function jpegTablesOk(b: Buffer): boolean {
-  const quant = new Set<number>();
-  const huff = new Set<string>();
-  let frameQuant: number[] = [];
-  let arithmetic = false;
-  let o = 2;
-  while (o + 4 <= b.length) {
-    if (b[o] !== 0xff) return false;
-    const m = b[o + 1];
-    if (m === 0xff) {
-      o++;
-      continue;
-    }
-    if ((m >= 0xd0 && m <= 0xd7) || m === 0x01) {
-      o += 2;
-      continue;
-    }
-    const len = b.readUInt16BE(o + 2);
-    const end = o + 2 + len;
-    if (len < 2 || end > b.length) return false;
-    if (m === 0xdb) {
-      // DQT: [정밀도(4)·번호(4)] + 64개 값(정밀도 0이면 1바이트, 1이면 2바이트), 여러 개가 이어질 수 있다
-      for (let i = o + 4; i < end; ) {
-        const pq = b[i] >> 4;
-        quant.add(b[i] & 0x0f);
-        i += 1 + 64 * (pq ? 2 : 1);
-        if (i > end) return false;
-      }
-    } else if (m === 0xc4) {
-      // DHT: [종류(4)·번호(4)] + 길이별 개수 16바이트 + 값들
-      for (let i = o + 4; i < end; ) {
-        if (i + 17 > end) return false;
-        huff.add(`${b[i] >> 4}:${b[i] & 0x0f}`);
-        let n = 0;
-        for (let k = 1; k <= 16; k++) n += b[i + k];
-        i += 17 + n;
-        if (i > end) return false;
-      }
-    } else if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) {
-      arithmetic = m >= 0xc9;
-      const nc = b[o + 9];
-      frameQuant = Array.from({ length: nc }, (_, i) => b[o + 12 + i * 3]);
-    } else if (m === 0xda) {
-      if (!frameQuant.every((q) => quant.has(q))) return false;
-      if (arithmetic) return true;
-      const ns = b[o + 4];
-      for (let i = 0; i < ns; i++) {
-        const t = b[o + 6 + i * 2];
-        if (!huff.has(`0:${t >> 4}`) || !huff.has(`1:${t & 0x0f}`)) return false;
-      }
-      return true;
-    }
-    o = end;
-  }
-  return false;
+  return { ok: true, info: { type: "image/png", width: info.width, height: info.height } };
 }
 
 export type ShopImageMeta = { id: string; contentType: string; width: number; height: number; byteSize: number; version: string };

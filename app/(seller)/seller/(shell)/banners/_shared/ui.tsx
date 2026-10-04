@@ -1,17 +1,18 @@
 "use client";
 
+import Link from "next/link";
 import { useRef, useState } from "react";
 import "./shop-content.css";
 
-// 홈 배너 관리·이벤트 팝업 관리가 함께 쓰는 화면 조각. 파트너스 관리자 문구는 명사형·합니다체(2026-10-04 대표님 지시).
+// 홈 배너 관리(SA-064)·이벤트 팝업 관리(SA-065)가 함께 쓰는 화면 조각. 파트너스 관리자 문구는 명사형·합니다체(2026-10-04 대표님 지시).
 
 export type ContentStatus = "live" | "scheduled" | "ended" | "hidden";
 export type AdminImage = { id: string; width: number; height: number; url: string };
 
 const STATUS: Record<ContentStatus, { label: string; cls: string }> = {
   live: { label: "게시 중", cls: "b-done" },
-  scheduled: { label: "게시 예정", cls: "b-info" },
-  ended: { label: "게시 종료", cls: "b-gray" },
+  scheduled: { label: "예약", cls: "b-info" },
+  ended: { label: "종료", cls: "b-gray nodot" },
   hidden: { label: "숨김", cls: "b-cancel" },
 };
 
@@ -35,7 +36,7 @@ export function kstText(iso: string | null): string {
 }
 
 export function periodText(startsAt: string | null, endsAt: string | null): string {
-  if (!startsAt && !endsAt) return "기간 제한 없음";
+  if (!startsAt && !endsAt) return "상시";
   if (!endsAt) return `${kstText(startsAt)}부터`;
   if (!startsAt) return `${kstText(endsAt)}까지`;
   return `${kstText(startsAt)} ~ ${kstText(endsAt)}`;
@@ -51,41 +52,49 @@ export function PeriodFields({ startsAt, endsAt, onChange, disabled }: { startsA
         <span className="c-alt">~</span>
         <input className="inp" type="datetime-local" aria-label="종료 시각" value={endsAt} disabled={disabled} onChange={(e) => onChange({ startsAt, endsAt: e.target.value })} />
       </div>
-      {bad ? <span className="err">종료 시각은 시작 시각보다 늦어야 합니다</span> : <span className="help">비워 두면 그쪽 제한 없음 · 서버 시각 기준으로 게시·종료</span>}
+      {bad ? <span className="err">종료 시각은 시작 시각보다 늦어야 합니다</span> : <span className="help">비우면 바로 게시 · 종료를 비우면 상시 · 서버 시각 기준 자동 게시·숨김</span>}
     </div>
   );
 }
 
 // ───────── 이미지 올리기 ─────────
+// 상자 자체가 올리는 곳이다(누르거나 끌어다 놓기, 미리보기, 바꾸기·지우기). PNG만, 2MB 이하(서버가 바이트로 확인).
 const IMAGE_ERRORS: Record<string, string> = {
-  file_too_large: "이미지는 3MB까지 올릴 수 있습니다",
-  unsupported_image: "PNG·JPEG 이미지만 올릴 수 있습니다",
+  file_too_large: "이미지는 2MB까지 올릴 수 있습니다",
+  unsupported_image: "PNG 파일만 올릴 수 있습니다",
   wrong_image_size: "이미지 가로·세로는 100~2000px이어야 합니다",
   empty_file: "빈 파일은 올릴 수 없습니다",
 };
+const MAX_BYTES = 2 * 1024 * 1024;
+const mb = (n: number) => `${(n / 1024 / 1024).toFixed(1)}MB`;
 
 export function ImagePicker({
   label,
-  hint,
+  recommend,
   value,
   onChange,
   optional,
+  emptyHint,
   disabled,
 }: {
   label: string;
-  hint: string;
+  recommend: { width: number; height: number };
   value: AdminImage | null;
   onChange: (v: AdminImage | null) => void;
   optional?: boolean;
+  emptyHint?: string;
   disabled?: boolean;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
+  const [over, setOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const upload = async (file: File) => {
-    setBusy(true);
     setError(null);
+    // 서버도 다시 확인한다. 큰 파일은 보내기 전에 알려 준다.
+    if (file.size > MAX_BYTES) return setError(`2MB를 넘었습니다 · 지금 파일은 ${mb(file.size)}입니다`);
+    setBusy(true);
     try {
       // 파일 바이트를 그대로 보낸다. 형식은 서버가 바이트로 확인한다.
       const res = await fetch("/api/seller/shop-content/images", { method: "POST", body: file, cache: "no-store" });
@@ -100,50 +109,143 @@ export function ImagePicker({
     }
   };
 
+  const small = value && (value.width < recommend.width || value.height < recommend.height);
+  const pick = () => !disabled && !busy && input.current?.click();
+
   return (
     <div className="fld">
       <span className={optional ? "lbl" : "lbl req"}>{label}</span>
-      <div className="sc-pick">
+      <div
+        className={`sc-drop${over ? " is-over" : ""}${value ? " has-img" : ""}`}
+        role="button"
+        tabIndex={disabled ? -1 : 0}
+        aria-label={`${label} ${value ? "바꾸기" : "선택"}`}
+        aria-busy={busy}
+        onClick={pick}
+        onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), pick())}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setOver(true);
+        }}
+        onDragLeave={() => setOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setOver(false);
+          const f = e.dataTransfer.files?.[0];
+          if (f && !disabled) void upload(f);
+        }}
+      >
         {value ? (
-          <img src={value.url} alt="" className="sc-pick-img" />
+          <img src={value.url} alt="" className="sc-drop-img" />
         ) : (
-          <span className="sc-pick-empty t-c1 c-alt">{busy ? "올리는 중" : "이미지 없음"}</span>
+          <span className="col" style={{ alignItems: "center", gap: 4 }}>
+            <span className="t-l2 fw6">{busy ? "올리는 중" : "이미지를 끌어다 놓거나 선택"}</span>
+            <span className="t-c1 c-alt">
+              PNG · 2MB 이하 · {recommend.width} × {recommend.height} 권장
+            </span>
+          </span>
         )}
-        <div className="col" style={{ gap: 6 }}>
-          <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
-            <button className="btn btn-sm btn-out" type="button" disabled={disabled || busy} onClick={() => input.current?.click()}>
-              {busy ? "올리는 중" : value ? "이미지 변경" : "이미지 선택"}
+      </div>
+      <input
+        ref={input}
+        type="file"
+        accept="image/png"
+        hidden
+        aria-label={label}
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) void upload(f);
+        }}
+      />
+      {value && (
+        <div className="row between" style={{ gap: 8 }}>
+          <span className="t-c1 c-alt num">
+            {value.width} × {value.height}px · PNG
+          </span>
+          <span className="row" style={{ gap: 6 }}>
+            <button className="btn btn-sm btn-out" type="button" disabled={disabled || busy} onClick={pick}>
+              {busy ? "올리는 중" : "바꾸기"}
             </button>
-            {value && optional && (
+            {optional && (
               <button className="btn btn-sm btn-ghost" type="button" disabled={disabled || busy} onClick={() => onChange(null)}>
-                삭제
+                지우기
               </button>
             )}
-          </div>
-          {value && (
-            <span className="t-c1 c-alt num">
-              {value.width} × {value.height}px
-            </span>
-          )}
-          <span className="help">{hint}</span>
+          </span>
         </div>
-        <input
-          ref={input}
-          type="file"
-          accept="image/png,image/jpeg"
-          hidden
-          aria-label={label}
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) void upload(f);
-          }}
-        />
-      </div>
-      {error && (
+      )}
+      {error ? (
         <span className="err" role="alert">
           {error}
         </span>
+      ) : small ? (
+        <span className="help">
+          가로 {recommend.width}px 이상 이미지를 권장합니다 · 지금 파일은 {value!.width}×{value!.height}입니다 (올릴 수는 있음)
+        </span>
+      ) : (
+        !value && emptyHint && <span className="help">{emptyHint}</span>
       )}
+    </div>
+  );
+}
+
+// ───────── 탭 · 기기 · 요약 ─────────
+export function ContentTabs({ active }: { active: "banners" | "popups" }) {
+  const tabs = [
+    { key: "banners", href: "/seller/banners", label: "홈 배너" },
+    { key: "popups", href: "/seller/banners/popups", label: "이벤트 팝업" },
+  ] as const;
+  return (
+    <nav className="tabs" aria-label="배너 · 팝업">
+      {tabs.map((t) => (
+        <Link key={t.key} href={t.href} className={`tab${active === t.key ? " on" : ""}`} aria-current={active === t.key ? "page" : undefined}>
+          {t.label}
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
+type Devices = { showOnPc: boolean; showOnMobile: boolean };
+const DEVICE_CHOICES: { label: string; v: Devices }[] = [
+  { label: "PC · 모바일", v: { showOnPc: true, showOnMobile: true } },
+  { label: "PC만", v: { showOnPc: true, showOnMobile: false } },
+  { label: "모바일만", v: { showOnPc: false, showOnMobile: true } },
+];
+export const devicesText = (d: Devices) => DEVICE_CHOICES.find((c) => c.v.showOnPc === d.showOnPc && c.v.showOnMobile === d.showOnMobile)?.label ?? "PC · 모바일";
+
+export function DeviceSeg({ value, onChange }: { value: Devices; onChange: (v: Devices) => void }) {
+  return (
+    <div className="fld">
+      <span className="lbl" id="sc-device-label">
+        표시 기기
+      </span>
+      <div className="seg" role="radiogroup" aria-labelledby="sc-device-label" style={{ alignSelf: "flex-start" }}>
+        {DEVICE_CHOICES.map((c) => {
+          const on = c.v.showOnPc === value.showOnPc && c.v.showOnMobile === value.showOnMobile;
+          return (
+            <button key={c.label} type="button" role="radio" aria-checked={on} className={on ? "on" : ""} onClick={() => onChange(c.v)}>
+              {c.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+export function StatusSummary({ noun, unit, list }: { noun: string; unit: string; list: { status: ContentStatus }[] }) {
+  const n = (s: ContentStatus) => list.filter((i) => i.status === s).length;
+  return (
+    <div className="row" style={{ gap: 8, flexWrap: "wrap", padding: "14px 20px", boxShadow: "inset 0 -1px 0 var(--wds-line-normal-alternative)" }}>
+      <span className="t-hl2">
+        {noun} {list.length}
+        {unit}
+      </span>
+      {n("live") > 0 && <span className="bdg b-done">게시 중 {n("live")}</span>}
+      {n("scheduled") > 0 && <span className="bdg b-info">예약 {n("scheduled")}</span>}
+      {n("hidden") > 0 && <span className="bdg b-cancel">숨김 {n("hidden")}</span>}
+      {n("ended") > 0 && <span className="bdg b-gray nodot">종료 {n("ended")}</span>}
     </div>
   );
 }

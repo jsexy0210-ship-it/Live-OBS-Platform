@@ -23,7 +23,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   return { title: shop?.shopName ?? "쇼핑몰" };
 }
 
-// SH-001 쇼핑몰 홈(최소). 지금은 홈 배너 슬라이드와 이벤트 팝업만 그린다. 상품·방송 영역은 쇼핑몰 홈 화면 작업에서 붙인다.
+// SH-001 쇼핑몰 홈(최소). 지금은 홈 배너 슬라이드(SA-064)와 이벤트 팝업(SA-065)만 그린다. 상품·방송 영역은 쇼핑몰 홈 화면 작업에서 붙인다.
 // 쇼핑몰이 없거나 운영 중이 아니면 404, 이용이 막혔으면(구독 만료·스토어 운영 권한 없음) 안내 화면.
 export default async function ShopHomePage({ params }: Params) {
   const { slug } = await params;
@@ -36,6 +36,7 @@ export default async function ShopHomePage({ params }: Params) {
         <ShopState title="지금은 쇼핑몰을 이용할 수 없어요" body="쇼핑몰이 다시 문을 열면 이용할 수 있어요." />
       ) : (
         <div className="col" style={{ width: 1080, maxWidth: "100%", gap: 16 }}>
+          <EventPopup popups={content.popups} />
           <HomeBanner banners={content.banners} />
           <section className="card pad col" style={{ gap: 6 }}>
             <h1 className="t-hl1">{shop.shopName}</h1>
@@ -46,7 +47,6 @@ export default async function ShopHomePage({ params }: Params) {
               회원가입
             </Link>
           </section>
-          <EventPopup popups={content.popups} />
         </div>
       )}
     </ShopFrame>

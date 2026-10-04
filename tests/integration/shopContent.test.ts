@@ -19,7 +19,7 @@ import { visibleShopContent } from "../../lib/server/shop-content/service";
 import { jpeg, png, svg, svgInPng } from "../unit/shopContentFixtures";
 import { PASSWORD, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
-// 홈 배너·이벤트 팝업(2026-10-04 대표님 지시): 권한·테넌트 격리·플랜 권한·기간(DB 시계)·링크·이미지·감사 로그.
+// SA-064 홈 배너·SA-065 이벤트 팝업(2026-10-04 대표님 지시): 권한·테넌트 격리·플랜 권한·기간(DB 시계)·링크·이미지(PNG만)·형태·감사 로그.
 beforeEach(resetDb);
 afterAll(async () => {
   await db.$disconnect();
@@ -54,13 +54,13 @@ async function upload(cookie: string, bytes: Buffer, contentType = "image/png") 
 }
 
 async function banner(cookie: string, extra: Record<string, unknown> = {}) {
-  const img = await upload(cookie, png(1920, 600));
+  const img = await upload(cookie, png(1200, 400));
   const res = await bannersPost(json("/api/seller/shop-content/banners", "POST", cookie, { title: "10월 신상품", pcImageId: img.body.image!.id, ...extra }));
   return { res, body: (await res.json()) as { banner?: { id: string; status: string }; error?: string } };
 }
 
 async function popup(cookie: string, extra: Record<string, unknown> = {}) {
-  const res = await popupsPost(json("/api/seller/shop-content/popups", "POST", cookie, { title: "이번 주 방송 안내", ...extra }));
+  const res = await popupsPost(json("/api/seller/shop-content/popups", "POST", cookie, { kind: "TEXT", title: "이번 주 방송 안내", body: "토요일 20시에 만나요", ...extra }));
   return { res, body: (await res.json()) as { popup?: { id: string; status: string }; error?: string } };
 }
 
@@ -245,6 +245,8 @@ describe("기간(DB 시계)·대상·노출", () => {
     await popup(s.owner, { title: "추석 연휴 배송 안내" });
     const html = renderToStaticMarkup((await ShopHomePage({ params: Promise.resolve({ slug: s.seller.slug }) })) as React.ReactElement);
     expect(html).toContain("hb-track");
+    expect(html).toContain("hb-pc");
+    expect(html).toContain("hb-m");
     expect(html).toContain(`href="/shop/${s.seller.slug}/products/abc"`);
     expect(html).toContain(`/api/shop/${s.seller.slug}/shop-content/images/`);
   });
@@ -279,19 +281,54 @@ describe("입력 검사", () => {
     expect(row.startsAt!.toISOString()).toBe("2026-10-05T01:00:00.000Z");
   });
 
-  it("이미지: 내용으로 확인한다(SVG·위장 파일 거부, PNG라고 보낸 JPEG는 JPEG로 저장), 3MB 초과는 413", async () => {
+  it("이미지: PNG만, 내용으로 확인한다(PNG라고 보낸 JPEG·SVG·위장 파일 거부), 2MB 초과는 413", async () => {
     const s = await shop();
-    expect((await upload(s.owner, svg(), "image/png")).body.error).toBe("unsupported_image");
+    expect((await upload(s.owner, svg(), "image/png")).body).toMatchObject({ error: "unsupported_image", message: "PNG 파일만 올릴 수 있습니다" });
     expect((await upload(s.owner, svgInPng())).body.error).toBe("unsupported_image");
+    expect((await upload(s.owner, jpeg(1200, 400), "image/png")).body.error).toBe("unsupported_image");
     expect((await upload(s.owner, png(50, 50))).body.error).toBe("wrong_image_size");
-    const big = await upload(s.owner, Buffer.alloc(3 * 1024 * 1024 + 1));
-    expect(big.res.status).toBe(413);
-    const j = await upload(s.owner, jpeg(1080, 1080), "image/png");
-    expect(j.res.status).toBe(201);
-    expect((await db.shopContentImage.findUniqueOrThrow({ where: { id: j.body.image!.id } })).contentType).toBe("image/jpeg");
-    const pv = await sellerImageGet(get(j.body.image!.url, s.owner), p({ imageId: j.body.image!.id }));
-    expect(pv.headers.get("content-type")).toBe("image/jpeg");
+    expect((await upload(s.owner, Buffer.alloc(2 * 1024 * 1024 + 1))).res.status).toBe(413);
+    expect(await db.shopContentImage.count()).toBe(0);
+    const ok = await upload(s.owner, png(750, 750), "image/jpeg");
+    expect(ok.res.status).toBe(201);
+    expect((await db.shopContentImage.findUniqueOrThrow({ where: { id: ok.body.image!.id } })).contentType).toBe("image/png");
+    const pv = await sellerImageGet(get(ok.body.image!.url, s.owner), p({ imageId: ok.body.image!.id }));
+    expect(pv.headers.get("content-type")).toBe("image/png");
+    expect(pv.headers.get("x-content-type-options")).toBe("nosniff");
     expect(pv.headers.get("cache-control")).toContain("private");
+    // DB도 PNG가 아닌 형식을 막는다
+    await expect(
+      db.shopContentImage.create({ data: { sellerId: s.seller.id, data: new Uint8Array(4), contentType: "image/jpeg", byteSize: 4, width: 200, height: 200, sha256: "0".repeat(64) } }),
+    ).rejects.toThrow();
+  });
+
+  it("팝업 형태: 이미지 팝업은 이미지, 글 팝업은 내용이 필요하고, 상단 띠는 이미지·내용·버튼 이름을 버린다", async () => {
+    const s = await shop();
+    expect((await popup(s.owner, { kind: "IMAGE" })).body.error).toBe("invalid_image");
+    expect((await popup(s.owner, { kind: "TEXT", body: "" })).body.error).toBe("invalid_body");
+    expect((await popup(s.owner, { kind: "POPUP" })).body.error).toBe("invalid_kind");
+    expect((await popup(s.owner, { dismissDays: 3 })).body.error).toBe("invalid_dismiss");
+    const img = await upload(s.owner, png(600, 600));
+    const image = await popup(s.owner, { kind: "IMAGE", imageId: img.body.image!.id, body: null, dismissDays: 7 });
+    expect(image.res.status).toBe(201);
+    const bar = await popup(s.owner, { kind: "BAR", imageId: img.body.image!.id, body: "버려짐", linkUrl: "/products", linkLabel: "버려짐", dismissDays: 0, target: "ALL" });
+    expect(bar.res.status).toBe(201);
+    const row = await db.shopPopup.findUniqueOrThrow({ where: { id: bar.body.popup!.id } });
+    expect(row).toMatchObject({ kind: "BAR", imageId: null, body: null, linkLabel: null, linkUrl: "/products", dismissDays: 0 });
+    const c = await publicContent(s.seller.slug, "other");
+    expect(c.body!.popups).toEqual([expect.objectContaining({ id: row.id, kind: "BAR", dismissDays: 0, link: { href: `/shop/${s.seller.slug}/products`, external: false } })]);
+    // DB CHECK: 이미지 없는 이미지 팝업, 정해지지 않은 보지 않기 기간
+    await expect(db.shopPopup.create({ data: { sellerId: s.seller.id, kind: "IMAGE", title: "x" } })).rejects.toThrow();
+    await expect(db.shopPopup.create({ data: { sellerId: s.seller.id, kind: "BAR", title: "x", dismissDays: 3 } })).rejects.toThrow();
+  });
+
+  it("배너 표시 기기: PC만·모바일만은 구매자 응답에 그대로, 둘 다 끄면 400", async () => {
+    const s = await shop();
+    expect((await banner(s.owner, { showOnPc: false, showOnMobile: false })).body.error).toBe("invalid_device");
+    const pcOnly = await banner(s.owner, { showOnMobile: false });
+    expect(pcOnly.res.status).toBe(201);
+    const c = await publicContent(s.seller.slug);
+    expect(c.body!.banners).toEqual([expect.objectContaining({ id: pcOnly.body.banner!.id, showOnPc: true, showOnMobile: false })]);
   });
 
   it(`쓰지 않은 이미지는 ${UNUSED_IMAGE_LIMIT}개까지`, async () => {

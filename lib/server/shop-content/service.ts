@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient, ShopBanner, ShopPopup, ShopPopupTarget } from "@prisma/client";
+import type { Prisma, PrismaClient, ShopBanner, ShopPopup, ShopPopupKind, ShopPopupTarget } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { notFound } from "../authz/errors";
 import { shopOpen } from "../buyers/signup";
@@ -7,7 +7,7 @@ import { cleanText } from "../text/clean";
 import { deleteUnusedImages, imageVersion } from "./image";
 import { normalizeLink, resolveLink } from "./link";
 
-// 쇼핑몰 홈 배너·이벤트 팝업(2026-10-04 대표님 지시). 파트너스 관리자에서 대표자·「쇼핑몰 설정」(SHOP_SETTINGS) 직원만 바꾸고
+// 쇼핑몰 홈 배너(SA-064)·이벤트 팝업(SA-065)(2026-10-04 대표님 지시). 파트너스 관리자에서 대표자·「쇼핑몰 설정」(SHOP_SETTINGS) 직원만 바꾸고
 // 바꿀 때마다 감사 로그(화면 이름 「로그 추적」)를 남긴다. 구매자 화면 노출 여부는 DB 시계(now())로 판단한다.
 export const BANNER_LIMIT = 10;
 export const POPUP_LIMIT = 20;
@@ -15,6 +15,8 @@ export const TITLE_MAX = 40;
 export const POPUP_BODY_MAX = 200;
 export const LINK_LABEL_MAX = 20;
 export const DEFAULT_LINK_LABEL = "자세히 보기";
+// 「보지 않기」 선택지: 0=닫기만(매번 표시), 1=오늘 하루, 7=7일
+export const DISMISS_DAYS = [0, 1, 7] as const;
 
 export type ContentRejection =
   | "invalid_title"
@@ -25,19 +27,23 @@ export type ContentRejection =
   | "invalid_image"
   | "invalid_device"
   | "invalid_target"
+  | "invalid_kind"
+  | "invalid_dismiss"
   | "too_many"
   | "order_conflict";
 
 // 파트너스 관리자 화면 문구(명사형·합니다체)
 export const CONTENT_MESSAGES: Record<ContentRejection, string> = {
   invalid_title: `제목은 ${TITLE_MAX}자까지 입력할 수 있습니다`,
-  invalid_body: `내용은 ${POPUP_BODY_MAX}자까지 입력할 수 있습니다`,
+  invalid_body: `내용을 ${POPUP_BODY_MAX}자 안에서 입력해 주십시오`,
   invalid_link: "링크는 쇼핑몰 안 경로(/로 시작) 또는 http(s) 주소만 입력할 수 있습니다",
   invalid_link_label: `버튼 이름은 ${LINK_LABEL_MAX}자까지 입력할 수 있습니다`,
   invalid_period: "종료 시각은 시작 시각보다 늦어야 합니다",
-  invalid_image: "이미지를 다시 올려 주십시오",
+  invalid_image: "이미지를 올려 주십시오",
   invalid_device: "PC·모바일 중 하나 이상 선택해 주십시오",
   invalid_target: "노출 화면을 다시 선택해 주십시오",
+  invalid_kind: "팝업 형태를 다시 선택해 주십시오",
+  invalid_dismiss: "다시 보지 않기 기간을 다시 선택해 주십시오",
   too_many: "더 추가할 수 없습니다. 쓰지 않는 항목을 삭제해 주십시오",
   order_conflict: "다른 곳에서 목록이 바뀌었습니다. 새로고침한 뒤 다시 시도해 주십시오",
 };
@@ -64,6 +70,13 @@ function parsePeriod(b: Record<string, unknown>): { startsAt: Date | null; endsA
   if (startsAt === undefined || endsAt === undefined) return null;
   if (startsAt && endsAt && startsAt >= endsAt) return null;
   return { startsAt, endsAt };
+}
+
+// PC·모바일 표시(둘 다 끌 수 없음)
+function parseDevices(b: Record<string, unknown>): { showOnPc: boolean; showOnMobile: boolean } | null {
+  const showOnPc = bool(b.showOnPc, true);
+  const showOnMobile = bool(b.showOnMobile, true);
+  return showOnPc || showOnMobile ? { showOnPc, showOnMobile } : null;
 }
 
 const obj = (raw: unknown) => (raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {});
@@ -101,7 +114,17 @@ const publicImage = (slug: string, i: ImageRow) =>
   i ? { width: i.width, height: i.height, url: `/api/shop/${encodeURIComponent(slug)}/shop-content/images/${i.id}?v=${imageVersion(i.sha256)}` } : null;
 
 // ───────── 배너 ─────────
-type BannerInput = { title: string; pcImageId: string; mobileImageId: string | null; linkUrl: string | null; startsAt: Date | null; endsAt: Date | null; isActive: boolean };
+type BannerInput = {
+  title: string;
+  pcImageId: string;
+  mobileImageId: string | null;
+  linkUrl: string | null;
+  startsAt: Date | null;
+  endsAt: Date | null;
+  showOnPc: boolean;
+  showOnMobile: boolean;
+  isActive: boolean;
+};
 
 async function parseBanner(db: Db, sellerId: string, raw: unknown): Promise<{ ok: true; v: BannerInput } | Fail> {
   const b = obj(raw);
@@ -111,13 +134,15 @@ async function parseBanner(db: Db, sellerId: string, raw: unknown): Promise<{ ok
   if (!link.ok) return { ok: false, reason: "invalid_link" };
   const period = parsePeriod(b);
   if (!period) return { ok: false, reason: "invalid_period" };
+  const devices = parseDevices(b);
+  if (!devices) return { ok: false, reason: "invalid_device" };
   const mobileImageId = b.mobileImageId === null || b.mobileImageId === undefined || b.mobileImageId === "" ? null : b.mobileImageId;
   if (!(await ownImage(db, sellerId, b.pcImageId)) || (mobileImageId !== null && !(await ownImage(db, sellerId, mobileImageId)))) {
     return { ok: false, reason: "invalid_image" };
   }
   return {
     ok: true,
-    v: { title, pcImageId: b.pcImageId as string, mobileImageId: mobileImageId as string | null, linkUrl: link.value, ...period, isActive: bool(b.isActive, true) },
+    v: { title, pcImageId: b.pcImageId as string, mobileImageId: mobileImageId as string | null, linkUrl: link.value, ...period, ...devices, isActive: bool(b.isActive, true) },
   };
 }
 
@@ -133,6 +158,8 @@ function bannerView(r: BannerRow, now: Date) {
     linkUrl: r.linkUrl,
     startsAt: r.startsAt?.toISOString() ?? null,
     endsAt: r.endsAt?.toISOString() ?? null,
+    showOnPc: r.showOnPc,
+    showOnMobile: r.showOnMobile,
     isActive: r.isActive,
     sortOrder: r.sortOrder,
     status: statusOf(r, now),
@@ -148,6 +175,8 @@ const bannerAudit = (r: ShopBanner) => ({
   linkUrl: r.linkUrl,
   startsAt: r.startsAt,
   endsAt: r.endsAt,
+  showOnPc: r.showOnPc,
+  showOnMobile: r.showOnMobile,
   isActive: r.isActive,
   sortOrder: r.sortOrder,
 });
@@ -207,6 +236,7 @@ export async function deleteBanner(db: PrismaClient, ctx: TenantContext, id: str
 
 // ───────── 팝업 ─────────
 type PopupInput = {
+  kind: ShopPopupKind;
   title: string;
   body: string | null;
   imageId: string | null;
@@ -217,20 +247,28 @@ type PopupInput = {
   target: ShopPopupTarget;
   showOnPc: boolean;
   showOnMobile: boolean;
-  allowHideToday: boolean;
+  dismissDays: number;
   isActive: boolean;
 };
 
+// 형태별: 이미지 팝업은 이미지 필수(내용은 선택), 글 팝업은 내용 필수(이미지 없음), 상단 띠는 제목 한 줄과 링크만(이미지·내용 없음).
 async function parsePopup(db: Db, sellerId: string, raw: unknown): Promise<{ ok: true; v: PopupInput } | Fail> {
   const b = obj(raw);
+  const kind = b.kind === undefined ? "IMAGE" : b.kind;
+  if (kind !== "IMAGE" && kind !== "TEXT" && kind !== "BAR") return { ok: false, reason: "invalid_kind" };
   const title = cleanText(b.title, TITLE_MAX, "memo");
   if (!title) return { ok: false, reason: "invalid_title" };
-  const body = b.body === null || b.body === undefined || b.body === "" ? null : cleanText(b.body, POPUP_BODY_MAX, "multiline");
-  if (body === null && !(b.body === null || b.body === undefined || b.body === "")) return { ok: false, reason: "invalid_body" };
+  const empty = (v: unknown) => v === null || v === undefined || v === "";
+  let body: string | null = null;
+  if (kind !== "BAR" && !empty(b.body)) {
+    body = cleanText(b.body, POPUP_BODY_MAX, "multiline");
+    if (!body) return { ok: false, reason: "invalid_body" };
+  }
+  if (kind === "TEXT" && !body) return { ok: false, reason: "invalid_body" };
   const link = normalizeLink(b.linkUrl);
   if (!link.ok) return { ok: false, reason: "invalid_link" };
   let linkLabel: string | null = null;
-  if (link.value && !(b.linkLabel === null || b.linkLabel === undefined || b.linkLabel === "")) {
+  if (link.value && kind !== "BAR" && !empty(b.linkLabel)) {
     linkLabel = cleanText(b.linkLabel, LINK_LABEL_MAX, "name");
     if (!linkLabel) return { ok: false, reason: "invalid_link_label" };
   }
@@ -238,14 +276,16 @@ async function parsePopup(db: Db, sellerId: string, raw: unknown): Promise<{ ok:
   if (!period) return { ok: false, reason: "invalid_period" };
   const target = b.target === undefined ? "HOME" : b.target;
   if (target !== "HOME" && target !== "ALL") return { ok: false, reason: "invalid_target" };
-  const showOnPc = bool(b.showOnPc, true);
-  const showOnMobile = bool(b.showOnMobile, true);
-  if (!showOnPc && !showOnMobile) return { ok: false, reason: "invalid_device" };
-  const imageId = b.imageId === null || b.imageId === undefined || b.imageId === "" ? null : b.imageId;
-  if (imageId !== null && !(await ownImage(db, sellerId, imageId))) return { ok: false, reason: "invalid_image" };
+  const devices = parseDevices(b);
+  if (!devices) return { ok: false, reason: "invalid_device" };
+  const dismissDays = b.dismissDays === undefined ? 1 : b.dismissDays;
+  if (!(DISMISS_DAYS as readonly unknown[]).includes(dismissDays)) return { ok: false, reason: "invalid_dismiss" };
+  const imageId = kind === "IMAGE" && !empty(b.imageId) ? b.imageId : null;
+  if (kind === "IMAGE" && (imageId === null || !(await ownImage(db, sellerId, imageId)))) return { ok: false, reason: "invalid_image" };
   return {
     ok: true,
     v: {
+      kind,
       title,
       body,
       imageId: imageId as string | null,
@@ -253,9 +293,8 @@ async function parsePopup(db: Db, sellerId: string, raw: unknown): Promise<{ ok:
       linkLabel,
       ...period,
       target,
-      showOnPc,
-      showOnMobile,
-      allowHideToday: bool(b.allowHideToday, true),
+      ...devices,
+      dismissDays: dismissDays as number,
       isActive: bool(b.isActive, true),
     },
   };
@@ -266,6 +305,7 @@ type PopupRow = ShopPopup & { image: ImageRow };
 function popupView(r: PopupRow, now: Date) {
   return {
     id: r.id,
+    kind: r.kind,
     title: r.title,
     body: r.body,
     image: adminImage(r.image),
@@ -276,7 +316,7 @@ function popupView(r: PopupRow, now: Date) {
     target: r.target,
     showOnPc: r.showOnPc,
     showOnMobile: r.showOnMobile,
-    allowHideToday: r.allowHideToday,
+    dismissDays: r.dismissDays,
     isActive: r.isActive,
     sortOrder: r.sortOrder,
     status: statusOf(r, now),
@@ -285,6 +325,7 @@ function popupView(r: PopupRow, now: Date) {
 export type PopupView = ReturnType<typeof popupView>;
 
 const popupAudit = (r: ShopPopup) => ({
+  kind: r.kind,
   title: r.title,
   body: r.body,
   imageId: r.imageId,
@@ -295,7 +336,7 @@ const popupAudit = (r: ShopPopup) => ({
   target: r.target,
   showOnPc: r.showOnPc,
   showOnMobile: r.showOnMobile,
-  allowHideToday: r.allowHideToday,
+  dismissDays: r.dismissDays,
   isActive: r.isActive,
   sortOrder: r.sortOrder,
 });
@@ -385,7 +426,7 @@ export async function reorder(db: PrismaClient, ctx: TenantContext, kind: "banne
 export type ShopPage = "home" | "other";
 
 // 지금 보여 줄 배너·팝업(운영 중이고 스토어 운영 권한이 있는 쇼핑몰만, 아니면 null). 기간은 DB 시계로 판단한다.
-// 배너는 홈에서만, 팝업은 홈이면 HOME·ALL, 그 밖 화면이면 ALL만. PC·모바일 구분은 화면 너비로 브라우저가 한다.
+// 배너는 홈에서만, 팝업은 홈이면 HOME·ALL, 그 밖 화면이면 ALL만. PC·모바일 구분은 화면 너비(768px)로 브라우저가 한다.
 export async function visibleShopContent(db: PrismaClient, slug: string, page: ShopPage) {
   const shop = await db.seller.findUnique({ where: { slug }, select: { id: true, slug: true } });
   if (!shop || !(await shopOpen(db, shop.id))) return null;
@@ -407,9 +448,12 @@ export async function visibleShopContent(db: PrismaClient, slug: string, page: S
       link: resolveLink(shop.slug, b.linkUrl),
       pcImage: publicImage(shop.slug, b.pcImage)!,
       mobileImage: publicImage(shop.slug, b.mobileImage),
+      showOnPc: b.showOnPc,
+      showOnMobile: b.showOnMobile,
     })),
     popups: popups.map((p) => ({
       id: p.id,
+      kind: p.kind,
       title: p.title,
       body: p.body,
       image: publicImage(shop.slug, p.image),
@@ -417,8 +461,8 @@ export async function visibleShopContent(db: PrismaClient, slug: string, page: S
       linkLabel: p.linkUrl ? (p.linkLabel ?? DEFAULT_LINK_LABEL) : null,
       showOnPc: p.showOnPc,
       showOnMobile: p.showOnMobile,
-      allowHideToday: p.allowHideToday,
-      // 내용을 바꾸면 「오늘 하루 보지 않기」를 다시 묻도록 저장 키에 넣는다
+      dismissDays: p.dismissDays,
+      // 내용을 바꾸면 「보지 않기」를 다시 묻도록 저장 키에 넣는다
       version: p.updatedAt.getTime().toString(36),
     })),
   };

@@ -7,8 +7,8 @@ export default function ShopFrame({ shopName, children }: { shopName: string; ch
       <header className="shop-top">
         <span className="shop-name">{shopName}</span>
       </header>
-      <main className="shop-main">{children}</main>
       <EventPopupForPage />
+      <main className="shop-main">{children}</main>
       <footer className="shop-foot">
         <span className="t-l2 c-alt">
           <span className="logo-word" />로 운영하는 쇼핑몰이에요
