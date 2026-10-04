@@ -401,6 +401,7 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
   - 공정위 「통신판매사업자 등록상세」 조회(기준은 조회, MASTER 결정): 신고번호 없음·형식 틀림(`mail_order_number_invalid`), 조회 실패·키 없음(`mail_order_lookup_failed`), 등록 없음·사업자번호 불일치(`mail_order_not_registered`), 영업 상태 정상 아님(`mail_order_not_active`). 키 `FTC_MAIL_ORDER_API_KEY`.
   - 하나도 없으면 같은 트랜잭션에서 자동 승인(`approvedByAdminId = null`, 체험하기 시작, 감사 로그 `seller.auto_approve`).
   - 하나라도 있으면 승인 대기(`PENDING`)로 두고 마스터 「확인 필요」(`GET /api/admin/sellers/review`)에 올린다. 대표님이 승인(`approve`, 사유 비움)·반려(`reject`, 사유 필수, `rejectedReason`·`rejectedAt` 전용 컬럼 — 정지 사유와 섞지 않음)한다. 보완 요청은 화면 단계에서.
+- 마스터 관리자 파트너스(`lib/server/admin/sellers.ts`): 목록 `GET /api/admin/sellers`(MA-011, `platform.read`, q 쇼핑몰 이름·주소·status·plan, 가입 시각 내림차순 커서 limit 기본 50·최대 200)·상세 `GET /api/admin/sellers/{id}`(MA-012, 기본 정보·대표자·구독·최근 30일 주문 요약). 이용 정지 `POST …/{id}/suspend { reason }`(MA-015, `seller.moderate`, 운영 중만, 사유 1~200자 `suspendedReason`)·해제 `POST …/{id}/unsuspend`(정지만). 정지되면 파트너스 세션·로그인이 바로 막힌다(`auth/session.ts`). 로그 추적 `admin.seller.suspend`·`unsuspend`.
 - 신청 때 쇼핑몰·대표자 계정(본인확인 이름)·기본 등급 5개를 만든다. 사업자 정보는 `Seller.businessInfo`(사업자등록번호·상호·대표자명·개업일자·통신판매업 신고번호·국세청·공정위 조회 결과·점검 시각)에 둔다.
 - 국세청·공정위 조회는 공급자 인터페이스(`lib/server/sellers/businessCheck.ts`)로만 부른다. `BUSINESS_STATUS_PROVIDER=fake`·`MAIL_ORDER_PROVIDER=fake`를 명시했을 때만 가짜(운영 불가). 그 밖에는 실제 조회 자리이며, 실제 연동 전이거나 키가 없으면 조회 실패로 처리해 자동 승인하지 않는다. 환경변수 이름은 `.env.example`.
 
