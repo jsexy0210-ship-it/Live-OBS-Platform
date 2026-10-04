@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { COOKIE_NAMES } from "../../lib/server/auth/policy";
 import { resolveBuyerSession } from "../../lib/server/auth/session";
 import { prisma } from "../../lib/server/db";
+import { publicCategories } from "../../lib/server/shop-category/service";
 import { EventPopupForPage } from "./EventPopup";
 import ShopChrome from "./ShopChrome";
 
@@ -33,10 +34,11 @@ export default async function ShopFrame({ slug, shopName, children }: { slug: st
   const seller = await prisma.seller.findUnique({ where: { slug: slug.slice(0, 60) }, select: { id: true, businessInfo: true } });
   const token = (await cookies()).get(COOKIE_NAMES.buyer)?.value;
   const session = seller ? await resolveBuyerSession(prisma, token, seller.id) : null;
+  const categories = (await publicCategories(prisma, slug.slice(0, 60))) ?? [];
   const rows = footRows(seller?.businessInfo);
   return (
     <div className="shop-page">
-      <ShopChrome slug={slug} shopName={shopName} loggedIn={!!session} nickname={session?.member.broadcastNickname ?? null} />
+      <ShopChrome slug={slug} shopName={shopName} loggedIn={!!session} nickname={session?.member.broadcastNickname ?? null} categories={categories} />
       <EventPopupForPage />
       <main className="shop-main">{children}</main>
       <footer className="shop-foot">
