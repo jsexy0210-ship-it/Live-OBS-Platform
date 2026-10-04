@@ -38,7 +38,7 @@ export default async function ShopSearchPage({ params, searchParams }: Props) {
           </form>
           {q && (
             <ProductListing
-              sellerId={shop.id}
+              slug={shop.slug}
               title={`‘${q}’ 검색 결과`}
               path={path}
               q={q}

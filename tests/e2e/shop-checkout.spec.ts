@@ -82,6 +82,6 @@ test("휴대폰 390: 주문서 가로 스크롤 없음", async ({ page, baseURL 
   await page.goto(`/shop/${SLUG}/cart`);
   await page.getByRole("link", { name: /주문하기$/ }).click();
   await expect(page.getByRole("heading", { name: "주문서", level: 1 })).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: "tests/e2e/screenshots/SH-005-checkout-390.png", fullPage: true });
 });
