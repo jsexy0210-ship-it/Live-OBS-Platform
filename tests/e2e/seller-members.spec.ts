@@ -30,6 +30,8 @@ test("대표자: 회원 목록에서 닉네임으로 찾고, 상세에서 주문
   for (const nick of ["별빛사냥꾼", "카드왕", "민트컨디션"]) await expect(rows.filter({ hasText: nick })).toHaveCount(1);
   // 대표자는 개인정보 열람이 되므로 이름 열이 있다
   await expect(page.locator("thead").getByText("이름 · 휴대폰", { exact: true })).toBeVisible();
+  // 개인정보 열람 권한이 있으면 이름 · 휴대폰 끝자리로도 찾는다고 안내한다
+  await expect(page.getByLabel("회원 검색")).toHaveAttribute("placeholder", "닉네임 · 이름 · 휴대폰 끝자리");
   await expect(rows.filter({ hasText: "카드왕" })).toContainText("데모구매자2");
   await shot(page, "SA-041-members");
 

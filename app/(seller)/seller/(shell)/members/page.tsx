@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Topbar } from "../../../../../components/seller/SellerShell";
+import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
 import { MAX_SEARCH_LENGTH } from "../../../../../components/seller/format";
@@ -40,6 +40,8 @@ export default function MemberListPage() {
   const reqId = useRef(0);
   const load = useCallback(async (f: Filters) => {
     const id = ++reqId.current;
+    // 조건을 바꾸면 이전 조건의 「더 보기」는 버려지므로 그 진행 표시도 거둔다
+    setMore(false);
     setState({ kind: "loading" });
     const r = await api<Page>(`/api/seller/members?${query(f)}`);
     if (id !== reqId.current) return;
@@ -52,12 +54,15 @@ export default function MemberListPage() {
     setMore(true);
     const id = reqId.current;
     const r = await api<Page>(`/api/seller/members?${query({ q, status }, state.next)}`);
-    setMore(false);
     if (id !== reqId.current) return;
+    setMore(false);
     if (r.ok) setState({ kind: "ok", items: [...state.items, ...r.data.members], next: r.data.nextCursor });
     else setToast("더 불러오지 못했습니다. 다시 눌러 주십시오");
   };
 
+  // 이름·휴대폰 끝자리 검색은 개인정보 열람 권한이 있을 때만 서버가 찾는다
+  const { can } = useSeller();
+  const searchHint = can("CUSTOMER_PII_VIEW") ? "닉네임 · 이름 · 휴대폰 끝자리" : "방송 닉네임";
   const items = state.kind === "ok" ? state.items : [];
   const filtered = q !== "" || status !== null;
   const showPii = items.some((m) => m.name !== undefined || m.phone !== undefined);
@@ -79,7 +84,7 @@ export default function MemberListPage() {
               <input
                 className="inp inp-sm"
                 type="search"
-                placeholder="닉네임 · 이름 · 휴대폰 끝자리"
+                placeholder={searchHint}
                 aria-label="회원 검색"
                 value={search}
                 maxLength={MAX_SEARCH_LENGTH}
