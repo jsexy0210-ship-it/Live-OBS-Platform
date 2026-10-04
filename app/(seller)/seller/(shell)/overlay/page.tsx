@@ -42,7 +42,11 @@ export default function OverlayPage() {
       setIssued({ token: r.data.token, at: Date.now() });
       return setToast({ text: "새 주소를 발급했습니다" });
     }
-    if (r.status === 0 || r.status >= 500) return setFail({ kind: "unclear" });
+    // 불분명: 서버가 이미 새 주소를 만들고 이전 주소를 끊었을 수 있어 보이던 주소도 지운다(끊긴 주소를 OBS에 넣지 않게)
+    if (r.status === 0 || r.status >= 500) {
+      setIssued(null);
+      return setFail({ kind: "unclear" });
+    }
     if (r.status === 402) return setFail({ kind: "locked" });
     if (r.status === 403) return setFail({ kind: r.error === "plan_feature_required" ? "plan" : "forbidden" });
     setFail({ kind: "other", text: failMessage(r, "admin") });
@@ -115,7 +119,7 @@ export default function OverlayPage() {
               {issued && (
                 <>
                   <div className="msg msg-info" role="status">
-                    이 화면을 벗어나면 주소를 다시 볼 수 없습니다. 지금 복사해 OBS에 넣어 주십시오.
+                    이 주소는 지금만 볼 수 있습니다. OBS에 넣은 뒤 잃어버리면 재발급해 주십시오.
                   </div>
                   <ul className="ovu-list" data-testid="ovu-urls">
                     {urls(issued.token).map((u) => (
@@ -172,7 +176,7 @@ function IssueConfirm({ again, busy, onClose, onConfirm }: { again: boolean; bus
           <h2 className="t-h2" id="ovu-confirm-h">
             {again ? "주소를 다시 발급하시겠습니까?" : "새 주소를 발급하시겠습니까?"}
           </h2>
-          <span className="t-l2 c-alt">이전에 발급한 주소는 바로 끊깁니다. OBS에 넣은 주소도 새 주소로 바꿔야 합니다.</span>
+          <span className="t-l2 c-alt">{again ? "기존 OBS 주소는 바로 끊깁니다. OBS에 새 주소를 다시 넣어야 합니다." : "이전에 발급한 주소가 있으면 바로 끊깁니다. OBS에 넣은 주소도 새 주소로 바꿔야 합니다."}</span>
         </div>
         <div className="modal-f">
           <button className="btn btn-out" type="button" disabled={busy} onClick={onClose}>
