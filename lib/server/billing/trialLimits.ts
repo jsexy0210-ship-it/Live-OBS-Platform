@@ -3,7 +3,7 @@ import type { AdminSessionContext } from "../auth/session";
 import { writeAudit } from "../audit/log";
 import { forbidden } from "../authz/errors";
 import { adminCan } from "../authz/permissions";
-import { DEFAULT_PLAN_CODE, sellerAccessFor } from "./subscription";
+import { sellerAccessFor, sellerPlanOf } from "./subscription";
 
 // 체험하기 중 한도(대표님 결정 2026-10-02): 알림톡·문자 100건, 구매자 휴대폰 본인확인 50건, 저장 용량 1GB.
 // 값은 SubscriptionPlan에 있고 마스터가 코드 수정 없이 바꾼다. 알림톡·업로드 기능을 붙일 때 이 확인 함수를 부른다.
@@ -24,7 +24,9 @@ export async function checkTrialLimit(
   now?: Date,
 ): Promise<TrialLimitResult> {
   if ((await sellerAccessFor(db, sellerId, now)) !== "trial") return { ok: true };
-  const plan = await db.subscriptionPlan.findUnique({ where: { code: DEFAULT_PLAN_CODE } });
+  // 체험은 구독 행 전(카드 미등록)이거나 카드만 등록한 때다. 구독 행이 있으면 그 플랜, 없으면 판매자 플랜의 한도를 쓴다.
+  const sub = await db.sellerSubscription.findUnique({ where: { sellerId }, select: { plan: true } });
+  const plan = sub?.plan ?? (await sellerPlanOf(db, sellerId));
   if (!plan) return { ok: true };
   const limit = plan[COLUMN[kind]];
   const used = typeof usage.used === "function" ? await usage.used() : usage.used;

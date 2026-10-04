@@ -49,7 +49,11 @@ async function main() {
   // 체험 기간을 넉넉히 둬 시험 중에 쇼핑몰이 잠기지 않게 한다
   const trialEndsAt = new Date(Date.now() + 365 * 86_400_000);
   await db.$transaction(async (tx) => {
-    const seller = await tx.seller.create({ data: { ...SHOP, status: "ACTIVE", approvedAt: new Date(), trialEndsAt, representativeCiHash, representativeVerifiedAt: new Date() } });
+    // 시험 쇼핑몰은 쇼핑몰 통합 플랜(ONQ 1-C, 마이그레이션이 넣은 행)이고, 시험용으로 1년 체험을 준다
+    const plan = await tx.subscriptionPlan.findUnique({ where: { code: "INTEGRATED" }, select: { id: true } });
+    const seller = await tx.seller.create({
+      data: { ...SHOP, status: "ACTIVE", approvedAt: new Date(), trialEndsAt, planId: plan?.id ?? null, representativeCiHash, representativeVerifiedAt: new Date() },
+    });
     await tx.memberGrade.createMany({
       data: [
         { sellerId: seller.id, displayName: "일반", sortOrder: 0, systemKey: "BASIC" },
