@@ -205,18 +205,16 @@ describe("구매자 탈퇴", () => {
     expect(await db.rewardLedger.count({ where: { buyerMemberId: s.buyer.id, status: "PENDING" } })).toBe(0);
   });
 
-  it("탈퇴와 환불이 동시에 와도 처리 대기 원장이 남지 않고 잔액은 0", async () => {
-    for (let i = 0; i < 5; i++) {
-      await resetDb();
-      const s = await shop();
-      await db.rewardBalance.create({ data: { sellerId: s.seller.id, buyerMemberId: s.buyer.id, balance: 300 } });
-      const { refund } = await deliveredWithEarn(s);
-      const [w, r] = await Promise.all([s.withdraw(PASSWORD), refund()]);
-      expect(w.status).toBe(200);
-      expect(r.ok).toBe(true);
-      expect(await db.rewardLedger.count({ where: { buyerMemberId: s.buyer.id, status: "PENDING" } })).toBe(0);
-      expect((await db.rewardBalance.findUniqueOrThrow({ where: { sellerId_buyerMemberId: { sellerId: s.seller.id, buyerMemberId: s.buyer.id } } })).balance).toBe(0);
-    }
+  // 경합을 여러 번 겪어 보려고 5회 반복한다. 회차마다 따로 시험해 DB 초기화가 한 시험 시간에 쌓이지 않게 한다.
+  it.each([1, 2, 3, 4, 5])("탈퇴와 환불이 동시에 와도 처리 대기 원장이 남지 않고 잔액은 0(%i회차)", async () => {
+    const s = await shop();
+    await db.rewardBalance.create({ data: { sellerId: s.seller.id, buyerMemberId: s.buyer.id, balance: 300 } });
+    const { refund } = await deliveredWithEarn(s);
+    const [w, r] = await Promise.all([s.withdraw(PASSWORD), refund()]);
+    expect(w.status).toBe(200);
+    expect(r.ok).toBe(true);
+    expect(await db.rewardLedger.count({ where: { buyerMemberId: s.buyer.id, status: "PENDING" } })).toBe(0);
+    expect((await db.rewardBalance.findUniqueOrThrow({ where: { sellerId_buyerMemberId: { sellerId: s.seller.id, buyerMemberId: s.buyer.id } } })).balance).toBe(0);
   });
 
   it("탈퇴하면 그 회원의 주문·주문대기·히트 카드 닉네임 스냅숏은 「탈퇴한 회원」으로 바꾸고 구매 제한은 지운다. 받는 사람 스냅숏과 다른 회원 기록은 그대로", async () => {
@@ -280,18 +278,19 @@ describe("구매자 탈퇴", () => {
     expect((await s.withdraw(PASSWORD)).status).toBe(200);
   });
 
-  it("결제 완료 뒤 배송 완료 전 주문(발송 전·배송 중·재고 부족 환불 대기)이 있으면 409, 결제 대기·배송 완료·구매 확정·취소·환불된 주문만 있으면 탈퇴된다", async () => {
-    for (const [status, extra, shipment, expected] of [
-      ["PENDING_PAYMENT", {}, null, 200],
-      ["PAID", {}, null, 409],
-      ["PAID", {}, "IN_TRANSIT", 409],
-      ["PAID", { stockShortageAt: new Date() }, null, 409],
-      ["PAID", {}, "DELIVERED", 200],
-      ["PAID", { purchaseConfirmedAt: new Date() }, "DELIVERED", 200],
-      ["CANCELLED", {}, null, 200],
-      ["REFUNDED", {}, "IN_TRANSIT", 200],
-    ] as const) {
-      await resetDb();
+  // 경우마다 따로 시험한다(한 시험에서 DB 전체 초기화를 8번 하면 CI에서 5초를 넘었다, 초기화 한 번 약 250ms)
+  it.each([
+    ["결제 대기", "PENDING_PAYMENT", {}, null, 200],
+    ["발송 전", "PAID", {}, null, 409],
+    ["배송 중", "PAID", {}, "IN_TRANSIT", 409],
+    ["재고 부족 환불 대기", "PAID", { stockShortageAt: new Date() }, null, 409],
+    ["배송 완료", "PAID", {}, "DELIVERED", 200],
+    ["구매 확정", "PAID", { purchaseConfirmedAt: new Date() }, "DELIVERED", 200],
+    ["취소", "CANCELLED", {}, null, 200],
+    ["환불", "REFUNDED", {}, "IN_TRANSIT", 200],
+  ] as const)(
+    "결제 완료 뒤 배송 완료 전 주문(발송 전·배송 중·재고 부족 환불 대기)이 있으면 409, 결제 대기·배송 완료·구매 확정·취소·환불된 주문만 있으면 탈퇴된다: %s",
+    async (_label, status, extra, shipment, expected) => {
       const s = await shop();
       const o = await s.order(status, extra);
       if (shipment) {
@@ -305,8 +304,8 @@ describe("구매자 탈퇴", () => {
         expect(await res.json()).toEqual({ error: "orders_in_progress", message: "배송 중인 주문이 끝나거나 환불되면 탈퇴할 수 있어요" });
         expect((await db.buyerMember.findUniqueOrThrow({ where: { id: s.buyer.id } })).status).toBe("ACTIVE");
       }
-    }
-  });
+    },
+  );
 
   it("탈퇴가 결제 대기 주문을 읽은 뒤 그 주문이 판매자 취소·입금 확인으로 바뀌어도 500이 아니다: 취소됐으면 건너뛰고 탈퇴, 결제됐으면 409", async () => {
     for (const [change, expected] of [

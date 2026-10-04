@@ -224,13 +224,15 @@ export async function startBroadcast(
 export async function endBroadcast(
   db: PrismaClient,
   ctx: TenantContext,
-  input: { now?: Date } = {},
+  input: { now?: Date; broadcastSessionId?: string } = {},
 ): Promise<QueueResult<{ broadcastSessionId: string; carriedOver: number }>> {
   requireSellerPermission(ctx, "BROADCAST_RUN");
   const now = input.now ?? new Date();
   return run(db, ctx.sellerId, async (tx) => {
     const live = await tx.broadcastSession.findFirst({ where: { sellerId: ctx.sellerId, status: "LIVE" } });
     if (!live) throw new Rejected("not_live");
+    // 화면이 확인한 방송(A)이 아닌 다른 방송(B)이 지금 LIVE이면 종료하지 않는다(A를 끝내려다 B를 끝내는 일 방지)
+    if (input.broadcastSessionId !== undefined && input.broadcastSessionId !== live.id) throw new Rejected("not_live");
     if (await tx.queueItem.count({ where: { sellerId: ctx.sellerId, broadcastSessionId: live.id, status: "OPENING" } })) {
       throw new Rejected("opening_in_progress");
     }

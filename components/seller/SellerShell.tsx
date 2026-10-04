@@ -32,7 +32,7 @@ const NAV: Nav[] = [
   // 리뷰: 목록·집계 조회는 파트너스 계정 누구나, 답글·숨김·설정은 구매자 문의(INQUIRY_REPLY) 권한(서버에서 막음)
   { label: "리뷰", href: "/seller/reviews" },
   { h: "방송 · 오버레이" },
-  { label: "오버레이 편집기", perm: "OVERLAY_EDIT" },
+  { label: "오버레이 편집기", href: "/seller/overlay", perm: "OVERLAY_EDIT" },
   { label: "HIT 카드 이력", perm: "BROADCAST_RUN" },
   { label: "방송 이력", perm: "BROADCAST_RUN" },
   { h: "설정" },
@@ -40,7 +40,7 @@ const NAV: Nav[] = [
   { label: "배너 · 팝업", href: "/seller/banners" },
   { label: "결제(PG) 연결", perm: "OWNER" },
   { label: "주문자 알림", perm: "SHOP_SETTINGS" },
-  { label: "구독 · 결제", perm: "OWNER" },
+  { label: "구독 · 결제", href: "/seller/subscription", perm: "OWNER" },
   { label: "직원 계정", href: "/seller/staff", perm: "OWNER" },
   { label: "공지 · 문의" },
   { label: "도우미" },
