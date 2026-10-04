@@ -63,6 +63,30 @@ test("이미지 칸: 종류·크기가 맞지 않는 파일은 올리지 않고 
   await expect(page.getByRole("button", { name: /^(대표 )?이미지( \d+)? 올리기$/ })).toHaveCount(0);
 });
 
+test("상세 페이지: 글·이미지 블록을 추가하고 순서를 바꾸고 미리보기로 순서대로 본다", async ({ page }) => {
+  await openNew(page);
+  const blocks = page.getByTestId("detail-block");
+  await page.getByRole("button", { name: "+ 글 블록" }).click();
+  await page.getByRole("button", { name: "+ 이미지 블록" }).click();
+  await page.getByRole("button", { name: "+ 글 블록" }).click();
+  await expect(blocks).toHaveCount(3);
+  await page.getByLabel("블록 1 글").fill("첫 번째 글");
+  await page.getByLabel("블록 3 글").fill("마지막 글");
+  await page.getByLabel("블록 2 이미지 파일").setInputFiles(png("d.png"));
+  await expect(blocks.nth(1).locator("img")).toBeVisible();
+  // 마지막 글을 맨 위로
+  await page.getByRole("button", { name: "블록 3 위로" }).click();
+  await page.getByRole("button", { name: "블록 2 위로" }).click();
+  await expect(page.getByLabel("블록 1 글")).toHaveValue("마지막 글");
+  await page.getByRole("button", { name: "미리보기" }).click();
+  const pv = page.getByTestId("detail-preview");
+  await expect(pv.locator("p").first()).toHaveText("마지막 글");
+  await expect(pv.locator("img")).toHaveCount(1);
+  await page.getByRole("button", { name: "편집으로 돌아가기" }).click();
+  await page.getByRole("button", { name: "블록 1 삭제" }).click();
+  await expect(blocks).toHaveCount(2);
+});
+
 test("빈 칸은 10칸 중 올리지 않은 만큼 번호로 보이고, 첫 빈 칸이 「대표 이미지」→「추가 이미지」다", async ({ page }) => {
   await openNew(page);
   await expect(page.getByRole("button", { name: "대표 이미지 올리기" })).toBeVisible();
@@ -191,4 +215,43 @@ test("이미지 수정 저장: 지우고 바로 저장해도 서버에서 지워
   expect(await widths(page, id)).toEqual([400, 300]);
   // 저장 뒤 화면도 서버 이미지로 바뀌어 다시 저장해도 되풀이하지 않는다
   await expect(tiles).toHaveCount(2);
+});
+
+test("상세 페이지 저장: 글·이미지 블록이 순서대로 저장되고, 수정에서 지운 이미지 블록은 서버에서도 지워지며, 빈 글 블록은 저장 전에 알려 준다", async ({ page }) => {
+  await openNew(page);
+  const name = track(`상세상품 ${RUN}`);
+  await page.getByLabel("상품명").fill(name);
+  await page.getByLabel("판매가").fill("7000");
+  await page.getByLabel("옵션 1 재고").fill("2");
+  await page.getByRole("button", { name: "+ 글 블록" }).click();
+  await page.getByRole("button", { name: "+ 이미지 블록" }).click();
+  await page.getByLabel("블록 1 글").fill("첫 글");
+  await page.getByLabel("블록 2 이미지 파일").setInputFiles({ name: "d.png", mimeType: "image/png", buffer: await pngBytes(page, 250, "#8a5ad9") });
+  // 빈 글 블록은 저장 전에 알려 준다
+  await page.getByRole("button", { name: "+ 글 블록" }).click();
+  await page.getByRole("button", { name: "등록", exact: true }).first().click();
+  await expect(page.getByText("비어 있는 글 블록이 있습니다").first()).toBeVisible();
+  await page.getByLabel("블록 3 글").fill("마지막 글");
+  await page.getByRole("button", { name: "등록", exact: true }).first().click();
+  await expect(page.getByText("상품을 등록했습니다")).toBeVisible();
+  const found = await page.request.get(`/api/seller/products?q=${encodeURIComponent(name)}`);
+  const id = ((await found.json()) as { products: { id: string }[] }).products[0]!.id;
+  type Detail = { blocks: ({ type: "text"; text: string } | { type: "image"; imageId: string; width: number })[]; images: { id: string }[] };
+  const read = async () => (await (await page.request.get(`/api/seller/products/${id}/detail`)).json()) as Detail;
+  const d1 = await read();
+  expect(d1.blocks.map((b) => b.type)).toEqual(["text", "image", "text"]);
+  expect((d1.blocks[1] as { width: number }).width).toBe(250);
+  // 수정: 이미지 블록을 지우고 글을 바꿔 저장하면 서버의 상세 사진도 지워진다
+  await page.goto(`/seller/products/${id}`);
+  await expect(page.getByTestId("detail-block")).toHaveCount(3);
+  await page.getByRole("button", { name: "블록 2 삭제" }).click();
+  await page.getByLabel("블록 1 글").fill("바뀐 첫 글");
+  await page.getByRole("button", { name: "저장", exact: true }).first().click();
+  await expect(page.getByText("저장했습니다")).toBeVisible();
+  const d2 = await read();
+  expect(d2.blocks).toEqual([
+    { type: "text", text: "바뀐 첫 글" },
+    { type: "text", text: "마지막 글" },
+  ]);
+  expect(d2.images).toHaveLength(0);
 });

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { FormRow, FormSection } from "../admin-ui";
+import ProductDetailEditor, { type DetailBlock } from "./ProductDetailEditor";
 import ProductImages, { type SlotImage } from "./ProductImages";
 import { Topbar } from "./SellerShell";
 import { NoImage, Toast } from "./States";
@@ -153,6 +154,21 @@ export function ProductForm({ initial }: { initial?: Product }) {
   const [images, setImages] = useState<FormImage[]>(() => (initial?.images ?? []).map((i) => ({ id: i.id, url: i.url, state: "done" as const, server: true })));
   const [removedImages, setRemovedImages] = useState<string[]>([]);
   const [uploadNote, setUploadNote] = useState<string | null>(null);
+  // 상세 페이지 블록(글·이미지): 이미지 블록의 사진도 저장할 때 올린다(?kind=detail). 지운·바꾼 서버 상세 사진은 저장할 때 서버에서 지운다
+  const [blocks, setBlocks] = useState<DetailBlock[]>([]);
+  const [detailRemoved, setDetailRemoved] = useState<string[]>([]);
+  const detailBase = useRef<string>("[]");
+  useEffect(() => {
+    if (!initial) return;
+    void api<{ blocks: ({ type: "text"; text: string } | { type: "image"; imageId: string; url: string })[] }>(`/api/seller/products/${initial.id}/detail`).then((r) => {
+      if (!r.ok) return;
+      const list: DetailBlock[] = r.data.blocks.map((b, i) =>
+        b.type === "text" ? { id: `d${i}`, type: "text", text: b.text } : { id: `d${i}`, type: "image", image: { id: b.imageId, url: b.url, state: "done", server: true } as SlotImage },
+      );
+      setBlocks(list);
+      detailBase.current = JSON.stringify(r.data.blocks.map((b) => (b.type === "text" ? { type: "text", text: b.text } : { type: "image", imageId: b.imageId })));
+    });
+  }, [initial]);
   const localImage = (f: File): FormImage => ({
     id: `i${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
     url: URL.createObjectURL(f),
@@ -201,7 +217,19 @@ export function ProductForm({ initial }: { initial?: Product }) {
     topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
+  // 상세 페이지: 서버는 글 1~2000자, 이미지는 올린 사진만 받는다. 비어 있는 블록은 저장 전에 알려 준다
+  const detailError = blocks.some((b) => b.type === "text" && b.text.trim() === "")
+    ? "비어 있는 글 블록이 있습니다. 내용을 입력하거나 블록을 삭제해 주십시오"
+    : blocks.some((b) => b.type === "image" && !b.image)
+      ? "이미지가 없는 이미지 블록이 있습니다. 이미지를 올리거나 블록을 삭제해 주십시오"
+      : null;
+
   const checkFirst = (st: ProductStatus) => {
+    if (detailError) {
+      setShowErrors(true);
+      fail(detailError);
+      return false;
+    }
     const e = validate(name, description, price, st, rows);
     if (errorCount(e) > 0) {
       setShowErrors(true);
@@ -255,6 +283,44 @@ export function ProductForm({ initial }: { initial?: Product }) {
     return { ok: true };
   };
 
+  // 상세 페이지를 저장한다: 새 상세 사진 올림(?kind=detail) → 블록 통째로 저장 → 지운·바꾼 상세 사진 삭제. 실패하면 거기서 멈춘다
+  const syncDetail = async (productId: string): Promise<{ ok: true } | { ok: false; message: string }> => {
+    const base = `/api/seller/products/${productId}/images`;
+    let list = blocks;
+    const todo = list.filter((b) => b.type === "image" && (b.image as FormImage | null)?.file);
+    let n = 0;
+    for (const b of todo) {
+      if (b.type !== "image" || !b.image) continue;
+      const img = b.image as FormImage;
+      n += 1;
+      setUploadNote(`상세 이미지 ${todo.length}장 올리는 중 · ${n} / ${todo.length}`);
+      const r = await apiUpload<{ image: ProductImageInfo }>(`${base}?kind=detail`, img.file!);
+      if (!r.ok) {
+        const message = failMessage(r, "admin", "상세 이미지를 올리지 못했습니다");
+        list = list.map((x) => (x.id === b.id && x.type === "image" ? { ...x, image: { ...img, state: "error" as const, error: message } as SlotImage } : x));
+        setBlocks(list);
+        setUploadNote(null);
+        return { ok: false, message };
+      }
+      URL.revokeObjectURL(img.url);
+      list = list.map((x) => (x.id === b.id && x.type === "image" ? { ...x, image: { id: r.data.image.id, url: r.data.image.url, state: "done" as const, server: true } as SlotImage } : x));
+      setBlocks(list);
+    }
+    setUploadNote(null);
+    const payload = list.map((b) => (b.type === "text" ? { type: "text", text: b.text } : { type: "image", imageId: b.image!.id }));
+    if (JSON.stringify(payload) !== detailBase.current) {
+      const r = await api(`/api/seller/products/${productId}/detail`, { method: "PUT", body: { blocks: payload } });
+      if (!r.ok) return { ok: false, message: failMessage(r, "admin", "상세 페이지를 저장하지 못했습니다") };
+      detailBase.current = JSON.stringify(payload);
+    }
+    for (const id of detailRemoved) {
+      const r = await api(`${base}/${id}`, { method: "DELETE" });
+      if (!r.ok && r.status !== 404) return { ok: false, message: failMessage(r, "admin", "상세 이미지를 지우지 못했습니다") };
+      setDetailRemoved((cur) => cur.filter((x) => x !== id));
+    }
+    return { ok: true };
+  };
+
   const create = async (st: ProductStatus) => {
     if (!checkFirst(st)) return;
     setSaving(st === "DRAFT" ? "draft" : "save");
@@ -282,6 +348,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
     }
     let imgFailed = false;
     if (images.length > 0) imgFailed = !(await syncImages(r.data.id)).ok;
+    if (!imgFailed && blocks.length > 0) imgFailed = !(await syncDetail(r.data.id)).ok;
     router.push(`/seller/products?toast=${catFailed || imgFailed ? "created_partial" : st === "DRAFT" ? "draft" : "created"}`);
   };
 
@@ -398,6 +465,8 @@ export function ProductForm({ initial }: { initial?: Product }) {
     }
     const si = await syncImages(current.id);
     if (!si.ok) return fail(si.message);
+    const sd = await syncDetail(current.id);
+    if (!sd.ok) return fail(sd.message);
     setBase(current);
     setRows(current.options.map(toRow));
     setRemoved([]);
@@ -581,6 +650,32 @@ export function ProductForm({ initial }: { initial?: Product }) {
                 }
                 onRetry={(id) => setImages((cur) => cur.map((x) => (x.id === id ? { ...x, state: "done" as const, error: undefined } : x)))}
               />
+            </FormRow>
+          </FormSection>
+
+          <FormSection title="상세 페이지">
+            <FormRow label="상세 내용">
+              <ProductDetailEditor
+                blocks={blocks}
+                disabled={busy}
+                onChange={(next) => {
+                  // 지운 서버 상세 사진은 저장할 때 서버에서도 지운다
+                  const keep = new Set(next.flatMap((b) => (b.type === "image" && b.image ? [b.image.id] : [])));
+                  const gone = blocks.flatMap((b) => (b.type === "image" && b.image && (b.image as FormImage).server && !keep.has(b.image.id) ? [b.image.id] : []));
+                  if (gone.length > 0) setDetailRemoved((cur) => [...cur, ...gone]);
+                  setBlocks(next);
+                }}
+                onPickImage={(blockId, file) => {
+                  const old = blocks.find((b) => b.id === blockId);
+                  if (old?.type === "image" && old.image && (old.image as FormImage).server) setDetailRemoved((cur) => [...cur, old.image!.id]);
+                  setBlocks((cur) => cur.map((b) => (b.id === blockId && b.type === "image" ? { ...b, image: localImage(file) } : b)));
+                }}
+              />
+              {showErrors && detailError && (
+                <span className="err" role="alert">
+                  {detailError}
+                </span>
+              )}
             </FormRow>
           </FormSection>
 
