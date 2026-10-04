@@ -69,14 +69,14 @@ describe("쿠폰 입력 검사", () => {
 
 describe("할인 계산", () => {
   it("금액 할인은 적용 금액을 넘지 않는다", () => {
-    expect(quoteCoupon(coupon, [line(P1, 3000)], 3000)).toEqual({ ok: true, discountAmount: 3000, baseAmount: 3000 });
-    expect(quoteCoupon(coupon, [line(P1, 30000, 2)], 3000)).toEqual({ ok: true, discountAmount: 5000, baseAmount: 60000 });
+    expect(quoteCoupon(coupon, [line(P1, 3000)], 3000)).toEqual({ ok: true, discountAmount: 3000, baseAmount: 3000, itemDiscounts: { [P1]: 3000 } });
+    expect(quoteCoupon(coupon, [line(P1, 30000, 2)], 3000)).toEqual({ ok: true, discountAmount: 5000, baseAmount: 60000, itemDiscounts: { [P1]: 5000 } });
   });
 
   it("비율 할인은 원 단위 버림, 최대 할인 금액까지", () => {
     const rate = { ...coupon, benefit: "RATE" as const, value: 15 };
-    expect(quoteCoupon(rate, [line(P1, 9999)], 0)).toEqual({ ok: true, discountAmount: 1499, baseAmount: 9999 });
-    expect(quoteCoupon({ ...rate, maxDiscount: 1000 }, [line(P1, 9999)], 0)).toEqual({ ok: true, discountAmount: 1000, baseAmount: 9999 });
+    expect(quoteCoupon(rate, [line(P1, 9999)], 0)).toEqual({ ok: true, discountAmount: 1499, baseAmount: 9999, itemDiscounts: { [P1]: 1499 } });
+    expect(quoteCoupon({ ...rate, maxDiscount: 1000 }, [line(P1, 9999)], 0)).toEqual({ ok: true, discountAmount: 1000, baseAmount: 9999, itemDiscounts: { [P1]: 1000 } });
   });
 
   it("최소 주문 금액은 적용 상품 금액 기준(배송비 제외)", () => {
@@ -95,8 +95,20 @@ describe("할인 계산", () => {
 
   it("배송비 무료는 그 주문의 배송비만큼, 배송비가 없으면 쓸 수 없음", () => {
     const free = { ...coupon, benefit: "FREE_SHIPPING" as const, value: null };
-    expect(quoteCoupon(free, [line(P1, 10000)], 3500)).toEqual({ ok: true, discountAmount: 3500, baseAmount: 10000 });
+    expect(quoteCoupon(free, [line(P1, 10000)], 3500)).toEqual({ ok: true, discountAmount: 3500, baseAmount: 10000, itemDiscounts: {} });
     expect(quoteCoupon(free, [line(P1, 10000)], 0)).toEqual({ ok: false, reason: "coupon_not_applicable" });
+  });
+
+  it("품목별 배분: 적용 품목 금액 비율, 원 단위 버림, 끝수는 마지막 품목, 합계 = 할인", () => {
+    const a = { ...line(P1, 10000), key: "a" };
+    const b = { ...line(P2, 3333, 3), key: "b" };
+    const r = quoteCoupon({ ...coupon, benefit: "AMOUNT", value: 7777 }, [a, b], 0);
+    // 기준 19,999원 → a = floor(7777 × 10000 / 19999) = 3888, b = 3889
+    expect(r.ok && r.itemDiscounts).toEqual({ a: 3888, b: 3889 });
+    // 할인 중 품목은 배분에서 빠진다
+    const c = { ...line(P2, 9000, 1, 10000), key: "c" };
+    const r2 = quoteCoupon(coupon, [a, c], 0);
+    expect(r2.ok && r2.itemDiscounts).toEqual({ a: 5000 });
   });
 
   it("받은 뒤 N일 만료는 사용 종료를 넘지 않는다", () => {

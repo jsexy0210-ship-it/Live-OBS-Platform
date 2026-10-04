@@ -243,6 +243,7 @@ describe("매출 통계 GET /api/seller/stats/sales", () => {
     expect(body.current).toEqual({
       gross: 12000 + 8000 + 7000 + 1000,
       discount: 2000,
+      couponDiscount: 0,
       rewardUsed: 0,
       shippingFee: 3000,
       paid: 13000 + 8000 + 7000 + 1000,
@@ -554,7 +555,7 @@ describe("한 응답의 집계는 같은 시점의 데이터로 맞는다", () =
     const r = await salesStats(racing(s.seller.id, o.buyerMemberId), s.ctx, parseStatsRange({ from: "2026-10-01", to: "2026-10-07" })!);
     expect(r.byMethod.reduce((a, m) => a + m.paid, 0)).toBe(r.current.paid);
     expect(r.series.reduce((a, p) => a + p.paid, 0)).toBe(r.current.paid);
-    expect(r.current.gross - r.current.discount + r.current.shippingFee - r.current.rewardUsed).toBe(r.current.paid);
+    expect(r.current.gross - r.current.discount - r.current.couponDiscount + r.current.shippingFee - r.current.rewardUsed).toBe(r.current.paid);
   });
 
   it("상품 통계: 집계 사이에 안 팔린 상품이 팔려도 상위 상품과 안 팔린 상품이 겹치지 않는다", async () => {

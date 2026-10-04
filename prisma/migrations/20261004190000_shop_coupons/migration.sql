@@ -57,6 +57,7 @@ CREATE TABLE "CouponRedemption" (
     "buyerCouponId" UUID NOT NULL,
     "benefit" "CouponBenefit" NOT NULL,
     "discountAmount" INTEGER NOT NULL,
+    "itemDiscounts" JSONB NOT NULL DEFAULT '{}',
     "restoredAt" TIMESTAMPTZ(3),
     "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 

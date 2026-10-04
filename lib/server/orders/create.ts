@@ -160,7 +160,7 @@ async function createInTransaction(
       buyerMemberId: member.id,
       couponId: input.couponId,
       now,
-      lines: priced.map((p) => ({ productId: p.option.productId, unitPrice: p.unitPrice, listUnitPrice: p.listUnitPrice, quantity: p.line.quantity })),
+      lines: priced.map((p) => ({ key: p.option.id, productId: p.option.productId, unitPrice: p.unitPrice, listUnitPrice: p.listUnitPrice, quantity: p.line.quantity })),
       shippingFee,
     });
     if (!coupon.ok) return { ok: false as const, reason: coupon.reason };

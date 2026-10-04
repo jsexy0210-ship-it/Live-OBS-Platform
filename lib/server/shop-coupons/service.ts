@@ -24,6 +24,9 @@ import {
 // - 쿠폰 사용은 주문 생성 트랜잭션에서 ISSUED → USED 조건부 UPDATE로 한 번만 성공한다(동시 주문 둘 중 하나만).
 // - 전체 취소(결제 대기 취소·자동 취소·전액 환불)면 쿠폰을 되돌리고, 부분 환불이면 되돌리지 않는다.
 // - 바꿀 때마다 로그 추적(감사 로그)에 남긴다. 기간 판단은 DB 시계(밀리초로 자름).
+// - 잠금 원칙: 쿠폰을 바꾸거나 발급·삭제·사용하는 쓰기는 쿠폰 행 FOR UPDATE(lockCoupon) 아래에서 읽고 검사하고, 대상 회원은 회원 행 잠금으로
+//   ACTIVE를 다시 본다(받기·주문은 회원 행 FOR SHARE를 먼저 잡고, 탈퇴만 FOR UPDATE. 공유 잠금끼리는 서로 막지 않아 교착이 없다).
+//   쿠폰 수정은 쿠폰 행 → 쇼핑몰 행(NO KEY UPDATE) 순서. 복원은 사용 기록(CouponRedemption)·받은 쿠폰 행 조건부 UPDATE로 한 번만.
 
 type Db = PrismaClient | Prisma.TransactionClient;
 type Tx = Prisma.TransactionClient;
@@ -453,16 +456,25 @@ export function redeemCouponCode(db: PrismaClient, scope: BuyerScope, rawCode: u
 
 // ───────── 주문 연동(orders/create.ts·queue/service.ts·orders/overdue.ts) ─────────
 
-export type OrderCouponFailure = "coupon_unavailable" | CouponQuoteFailure;
+export type OrderCouponFailure = "coupon_unavailable" | "coupon_zero_total" | CouponQuoteFailure;
 // 주문서 문구(해요체)
 export const ORDER_COUPON_MESSAGES: Record<OrderCouponFailure, string> = {
   coupon_unavailable: "쓸 수 없는 쿠폰이에요. 쿠폰함에서 확인해 주세요",
   coupon_not_applicable: "이 주문에는 쓸 수 없는 쿠폰이에요",
   coupon_min_order: "쿠폰 최소 주문 금액을 채우지 못했어요",
+  // 결제 금액이 0원이 되는 쿠폰은 당분간 받지 않는다(MASTER 2026-10-04 보수적 기본값, 대표님 확정 대기)
+  coupon_zero_total: "이 주문에는 쿠폰을 쓸 수 없어요. 결제 금액이 0원이 돼요",
 };
 export const isOrderCouponFailure = (r: string): r is OrderCouponFailure => r in ORDER_COUPON_MESSAGES;
 
-export type AppliedCoupon = { couponId: string; buyerCouponId: string; benefit: CouponBenefit; discountAmount: number };
+export type AppliedCoupon = { couponId: string; buyerCouponId: string; benefit: CouponBenefit; discountAmount: number; itemDiscounts: Record<string, number> };
+
+// 주문 품목(옵션)별 쿠폰 할인 배분액. 사용 기록이 없거나 되돌렸으면 0이 아니라 배분 그대로(환불·적립은 주문 당시 결제 기준).
+export function itemCouponDiscount(r: { itemDiscounts: Prisma.JsonValue } | null | undefined, optionId: string): number {
+  const m = r?.itemDiscounts;
+  const v = m && typeof m === "object" && !Array.isArray(m) ? (m as Record<string, unknown>)[optionId] : undefined;
+  return typeof v === "number" && Number.isInteger(v) && v > 0 ? v : 0;
+}
 
 // 주문에 쓸 쿠폰 확인·할인 계산(주문 생성 트랜잭션 안, 잠금 뒤 DB 시계). couponId가 없으면 null.
 // 본인이 받은(ISSUED) 쿠폰이고 사용 기간(시작 ≤ 지금 < 만료) 안이어야 한다. 발급 중지된 쿠폰도 받은 쿠폰은 쓸 수 있다.
@@ -472,6 +484,8 @@ export async function quoteOrderCoupon(
 ): Promise<{ ok: true; applied: AppliedCoupon | null } | { ok: false; reason: OrderCouponFailure }> {
   if (o.couponId === undefined || o.couponId === null) return { ok: true, applied: null };
   if (!isUuid(o.couponId)) return { ok: false, reason: "coupon_unavailable" };
+  // 쿠폰 행을 잠그고 지금 값으로 검사한다(그사이 판매자의 수정·중지와 엇갈리지 않게)
+  if (!(await lockCoupon(tx, o.sellerId, o.couponId))) return { ok: false, reason: "coupon_unavailable" };
   const bc = await tx.buyerCoupon.findFirst({
     where: { sellerId: o.sellerId, buyerMemberId: o.buyerMemberId, couponId: o.couponId, status: "ISSUED", expiresAt: { gt: o.now }, coupon: { startsAt: { lte: o.now }, endsAt: { gt: o.now } } },
     include: { coupon: true },
@@ -479,7 +493,9 @@ export async function quoteOrderCoupon(
   if (!bc) return { ok: false, reason: "coupon_unavailable" };
   const q = quoteCoupon(bc.coupon, o.lines, o.shippingFee);
   if (!q.ok) return q;
-  return { ok: true, applied: { couponId: bc.couponId, buyerCouponId: bc.id, benefit: bc.coupon.benefit, discountAmount: q.discountAmount } };
+  const total = o.lines.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0) + o.shippingFee;
+  if (total - q.discountAmount <= 0) return { ok: false, reason: "coupon_zero_total" };
+  return { ok: true, applied: { couponId: bc.couponId, buyerCouponId: bc.id, benefit: bc.coupon.benefit, discountAmount: q.discountAmount, itemDiscounts: q.itemDiscounts } };
 }
 
 // 동시에 같은 쿠폰을 쓴 다른 주문이 먼저 끝났을 때. 주문 생성 트랜잭션을 통째로 되돌린다.
@@ -493,7 +509,7 @@ export async function useOrderCoupon(tx: Tx, o: { sellerId: string; buyerMemberI
   });
   if (used.count !== 1) throw new CouponTaken();
   await tx.couponRedemption.create({
-    data: { sellerId: o.sellerId, orderId: o.orderId, couponId: o.applied.couponId, buyerCouponId: o.applied.buyerCouponId, benefit: o.applied.benefit, discountAmount: o.applied.discountAmount, createdAt: o.now },
+    data: { sellerId: o.sellerId, orderId: o.orderId, couponId: o.applied.couponId, buyerCouponId: o.applied.buyerCouponId, benefit: o.applied.benefit, discountAmount: o.applied.discountAmount, itemDiscounts: o.applied.itemDiscounts, createdAt: o.now },
   });
   await writeAudit(tx, {
     actorType: "BUYER",

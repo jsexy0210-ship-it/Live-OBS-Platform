@@ -135,6 +135,12 @@ export default function OrderDetailPage() {
                     <dd className="num">{won(o.shippingFee)}</dd>
                   </>
                 )}
+                {o.couponRedemption && (
+                  <>
+                    <dt>쿠폰 할인 · {o.couponRedemption.coupon.name}</dt>
+                    <dd className="num c-neg">−{won(o.couponRedemption.discountAmount)}</dd>
+                  </>
+                )}
                 {o.rewardUsedAmount > 0 && (
                   <>
                     <dt>적립금 사용</dt>

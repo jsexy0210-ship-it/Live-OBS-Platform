@@ -768,6 +768,9 @@ model CouponRedemption {
   buyerCouponId  String        @db.Uuid
   benefit        CouponBenefit
   discountAmount Int
+  // 상품 할인 쿠폰의 품목별 배분액 { 옵션 id: 원 }(적용 품목 금액 비율, 원 단위 끝수는 마지막 품목). 부분 환불·적립 기준에 쓴다.
+  // 배송비 무료 쿠폰은 빈 값({}).
+  itemDiscounts  Json          @default("{}")
   restoredAt     DateTime?     @db.Timestamptz(3)
   createdAt      DateTime      @default(now()) @db.Timestamptz(3)
 

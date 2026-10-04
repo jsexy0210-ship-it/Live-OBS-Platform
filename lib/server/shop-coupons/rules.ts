@@ -145,7 +145,8 @@ export function couponExpiry(c: { endsAt: Date; validDays: number | null }, issu
   return t < c.endsAt.getTime() ? new Date(t) : c.endsAt;
 }
 
-export type CouponLine = { productId: string; unitPrice: number; listUnitPrice: number; quantity: number };
+// key: 품목을 가리키는 값(주문에서는 옵션 id, 주문당 옵션은 한 줄). 품목별 할인 배분의 키다.
+export type CouponLine = { key?: string; productId: string; unitPrice: number; listUnitPrice: number; quantity: number };
 export type CouponQuoteFailure = "coupon_not_applicable" | "coupon_min_order";
 
 // 할인 계산. 적용 상품(비어 있으면 전체)에서 「할인 중인 상품 제외」면 이벤트 할인 단가(단가 < 정가) 품목을 뺀 금액이 기준이다.
@@ -156,20 +157,33 @@ export function quoteCoupon(
   c: { benefit: CouponBenefit; value: number | null; maxDiscount: number | null; minOrderAmount: number; productIds: string[]; excludeDiscounted: boolean },
   lines: CouponLine[],
   shippingFee: number,
-): { ok: true; discountAmount: number; baseAmount: number } | { ok: false; reason: CouponQuoteFailure } {
+): { ok: true; discountAmount: number; baseAmount: number; itemDiscounts: Record<string, number> } | { ok: false; reason: CouponQuoteFailure } {
   const scope = new Set(c.productIds.map((x) => x.toLowerCase()));
-  const base = lines
-    .filter((l) => (scope.size === 0 || scope.has(l.productId.toLowerCase())) && !(c.excludeDiscounted && l.unitPrice < l.listUnitPrice))
-    .reduce((sum, l) => sum + l.unitPrice * l.quantity, 0);
+  const eligible = lines.filter((l) => (scope.size === 0 || scope.has(l.productId.toLowerCase())) && !(c.excludeDiscounted && l.unitPrice < l.listUnitPrice));
+  const base = eligible.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0);
   if (base <= 0) return { ok: false, reason: "coupon_not_applicable" };
   if (base < c.minOrderAmount) return { ok: false, reason: "coupon_min_order" };
   if (c.benefit === "FREE_SHIPPING") {
-    return shippingFee > 0 ? { ok: true, discountAmount: shippingFee, baseAmount: base } : { ok: false, reason: "coupon_not_applicable" };
+    return shippingFee > 0 ? { ok: true, discountAmount: shippingFee, baseAmount: base, itemDiscounts: {} } : { ok: false, reason: "coupon_not_applicable" };
   }
   const raw = c.benefit === "AMOUNT" ? (c.value ?? 0) : Math.floor((base * (c.value ?? 0)) / 100);
   const capped = c.benefit === "RATE" && c.maxDiscount !== null ? Math.min(raw, c.maxDiscount) : raw;
   const discountAmount = Math.min(capped, base);
-  return discountAmount > 0 ? { ok: true, discountAmount, baseAmount: base } : { ok: false, reason: "coupon_not_applicable" };
+  return discountAmount > 0 ? { ok: true, discountAmount, baseAmount: base, itemDiscounts: allocateDiscount(eligible, discountAmount) } : { ok: false, reason: "coupon_not_applicable" };
+}
+
+// 상품 할인을 적용 품목 금액 비율로 나눈다(원 단위 버림, 끝수는 마지막 품목). 각 품목 배분액은 그 품목 금액을 넘지 않는다(할인 ≤ 적용 금액).
+export function allocateDiscount(eligible: CouponLine[], discount: number): Record<string, number> {
+  const base = eligible.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0);
+  const out: Record<string, number> = {};
+  let left = discount;
+  eligible.forEach((l, i) => {
+    const amount = l.unitPrice * l.quantity;
+    const share = i === eligible.length - 1 ? left : Math.floor((discount * amount) / base);
+    out[l.key ?? l.productId] = (out[l.key ?? l.productId] ?? 0) + share;
+    left -= share;
+  });
+  return out;
 }
 
 // 화면 표시용 혜택 문구. 예) 5,000원 할인 · 10% 할인 · 최대 20,000원 · 배송비 무료

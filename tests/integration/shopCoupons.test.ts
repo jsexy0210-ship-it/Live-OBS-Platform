@@ -15,7 +15,9 @@ import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
 import { createOrder } from "../../lib/server/orders/create";
 import { cancelOverdueOrders } from "../../lib/server/orders/overdue";
 import { getOrder } from "../../lib/server/orders/read";
-import { cancelPendingOrder, markOrderPaid, refundOrder } from "../../lib/server/queue/service";
+import { cancelPendingOrder, markOrderPaid, previewRefund, refundOrder } from "../../lib/server/queue/service";
+import { parseStatsRange } from "../../lib/server/stats/range";
+import { salesStats } from "../../lib/server/stats/sales";
 import { CODE_ATTEMPT_LIMIT, buyerCouponBox } from "../../lib/server/shop-coupons/service";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { PASSWORD, createLoginBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
@@ -454,6 +456,8 @@ describe("주문 할인(서버 계산, 주문 생성과 같은 트랜잭션)", (
     if (!o.ok) throw new Error(o.reason);
     expect((await markOrderPaid(db, { sellerId: s.seller.id, orderId: o.orderId, paymentMethod: "CARD" })).ok).toBe(true);
     await db.shipment.create({ data: { sellerId: s.seller.id, orderId: o.orderId, courier: "CJ", trackingNumber: "123456789012", shippedAt: new Date() } });
+    // 환불 미리보기도 실제로 낸 배송비(0원)를 준다(화면 공제 항목, Codex 4176463862)
+    expect((await previewRefund(db, s.ctx, o.orderId))?.chargedShippingFee).toBe(0);
     const r = await refundOrder(db, s.ctx, o.orderId, { reason: "단순 변심", expectedLiveVersion: await lv(s.seller.id), fault: "BUYER" });
     // 기본 반품 배송비 3,000원 × 2(왕복), 상품 30,000원
     expect(r.ok && [r.value.returnFeeDeducted, r.value.refundAmount]).toEqual([6000, 24000]);
@@ -466,6 +470,106 @@ describe("주문 할인(서버 계산, 주문 생성과 같은 트랜잭션)", (
     await download(s, c.id);
     const r = await order(s, c.id);
     expect(r.ok && [r.totalAmount, r.shippingFee]).toEqual([30000, 3500]);
+  });
+});
+
+describe("품목별 할인 배분·적립 기준·0원 거절(MASTER 2026-10-04 보수적 기본값)", () => {
+  async function twoItems(s: Shop) {
+    const make = async (name: string) => {
+      const product = await db.product.create({ data: { sellerId: s.seller.id, name, price: 10000, status: "ON_SALE" } });
+      return db.productOption.create({ data: { sellerId: s.seller.id, productId: product.id, name: "1개", stock: 10 } });
+    };
+    return [await make("상품 A"), await make("상품 B")];
+  }
+
+  it("1만원 × 2, 쿠폰 1만원, 1개 개봉 뒤 구매자 사정 환불 → 5천원만 돌려주고 쿠폰은 복원하지 않는다(Codex 4176403238)", async () => {
+    const s = await shop();
+    // 배송비·반품 배송비 0원(배분만 보이게)
+    await db.sellerShippingPolicy.create({ data: { sellerId: s.seller.id, baseFee: 0, returnFee: 0 } });
+    const [a, b] = await twoItems(s);
+    const c = await makeCoupon(s, { value: 10000 });
+    await download(s, c.id);
+    const o = await createOrder(db, { sellerId: s.seller.id, buyerMemberId: s.buyer.id, items: [{ optionId: a.id, quantity: 1 }, { optionId: b.id, quantity: 1 }], consent, shippingAddress, couponId: c.id });
+    if (!o.ok) throw new Error(o.reason);
+    expect(o.totalAmount).toBe(10000);
+    const red = await db.couponRedemption.findUniqueOrThrow({ where: { orderId: o.orderId } });
+    expect(red.itemDiscounts).toEqual({ [a.id]: 5000, [b.id]: 5000 });
+    expect((await markOrderPaid(db, { sellerId: s.seller.id, orderId: o.orderId, paymentMethod: "CARD" })).ok).toBe(true);
+    const itemA = await db.orderItem.findFirstOrThrow({ where: { orderId: o.orderId, optionId: a.id } });
+    await db.queueItem.updateMany({ where: { orderItemId: itemA.id }, data: { openingStartedAt: new Date(), status: "DONE" } });
+    await db.shipment.create({ data: { sellerId: s.seller.id, orderId: o.orderId, courier: "CJ", trackingNumber: "123456789012", shippedAt: new Date() } });
+    const preview = await previewRefund(db, s.ctx, o.orderId);
+    expect(preview?.byFault.BUYER.refundAmount).toBe(5000);
+    expect(preview?.openedItems.map((x) => x.amount)).toEqual([5000]);
+    const r = await refundOrder(db, s.ctx, o.orderId, { reason: "단순 변심", expectedLiveVersion: await lv(s.seller.id), fault: "BUYER", confirmOpened: true });
+    expect(r.ok && r.value.refundAmount).toBe(5000);
+    expect((await held(s, c.id)).status).toBe("USED");
+  });
+
+  it("원 단위 끝수는 마지막 품목에 몰고, 배분 합계는 할인 금액과 같다", async () => {
+    const s = await shop();
+    const [a, b] = await twoItems(s);
+    await db.productOption.update({ where: { id: b.id }, data: { priceDelta: 3333 } });
+    const c = await makeCoupon(s, { benefit: "RATE", value: 7 });
+    await download(s, c.id);
+    const o = await createOrder(db, { sellerId: s.seller.id, buyerMemberId: s.buyer.id, items: [{ optionId: a.id, quantity: 1 }, { optionId: b.id, quantity: 1 }], consent, shippingAddress, couponId: c.id });
+    if (!o.ok) throw new Error(o.reason);
+    const red = await db.couponRedemption.findUniqueOrThrow({ where: { orderId: o.orderId } });
+    // 23,333원 × 7% = 1,633원 → A 10,000원 몫 floor(1633 × 10000 / 23333) = 699원, 나머지 934원은 B
+    expect(red.discountAmount).toBe(1633);
+    expect(red.itemDiscounts).toEqual({ [a.id]: 699, [b.id]: 934 });
+  });
+
+  it("적립 기준은 쿠폰 할인 뒤 상품 금액이다", async () => {
+    const s = await shop();
+    await db.rewardPolicy.create({ data: { sellerId: s.seller.id, rates: { [s.grade.id]: { card: 10 } }, earnTiming: "ON_PAYMENT" } });
+    const c = await makeCoupon(s);
+    await download(s, c.id);
+    const o = await order(s, c.id);
+    if (!o.ok) throw new Error(o.reason);
+    expect((await markOrderPaid(db, { sellerId: s.seller.id, orderId: o.orderId, paymentMethod: "CARD" })).ok).toBe(true);
+    // (30,000 − 5,000) × 10%
+    expect((await db.order.findUniqueOrThrow({ where: { id: o.orderId } })).rewardEarnAmount).toBe(2500);
+  });
+
+  it("결제 금액이 0원이 되는 쿠폰은 409로 거절하고(해요체) 주문을 만들지 않는다", async () => {
+    const s = await shop();
+    await db.sellerShippingPolicy.create({ data: { sellerId: s.seller.id, baseFee: 0 } });
+    const c = await makeCoupon(s, { value: 30000 });
+    await download(s, c.id);
+    const res = await orderPost(json(`/api/shop/${s.seller.slug}/orders`, "POST", s.b1, { items: [{ optionId: s.option.id, quantity: 1 }], consent, shippingAddress, couponId: c.id }), p({ slug: s.seller.slug }));
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "coupon_zero_total", message: "이 주문에는 쿠폰을 쓸 수 없어요. 결제 금액이 0원이 돼요" });
+    expect(await db.order.count()).toBe(0);
+    expect((await held(s, c.id)).status).toBe("ISSUED");
+  });
+
+  it("주문 견적도 쿠폰 행 잠금을 기다렸다가 바뀐 종료로 검사한다(Codex 4176463858)", async () => {
+    const s = await shop();
+    const c = await makeCoupon(s);
+    await download(s, c.id);
+    let pending: ReturnType<typeof order> | null = null;
+    await db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT 1 FROM "Coupon" WHERE "id" = ${c.id}::uuid FOR UPDATE`;
+      pending = order(s, c.id);
+      await waitForLockWaiter();
+      await tx.coupon.update({ where: { id: c.id }, data: { endsAt: new Date(Date.now() - 1000) } });
+    });
+    expect(await pending!).toEqual({ ok: false, reason: "coupon_unavailable" });
+    expect(await db.order.count()).toBe(0);
+  });
+
+  it("매출 통계에 쿠폰 할인 줄이 있고 판매액 − 할인 − 쿠폰 할인 − 적립금 + 배송비 = 결제액(Codex 4176463853)", async () => {
+    const s = await shop();
+    const c = await makeCoupon(s);
+    await download(s, c.id);
+    const o = await order(s, c.id);
+    if (!o.ok) throw new Error(o.reason);
+    expect((await markOrderPaid(db, { sellerId: s.seller.id, orderId: o.orderId, paymentMethod: "CARD" })).ok).toBe(true);
+    const today = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Seoul" }).format(new Date());
+    const st = await salesStats(db, s.ctx, parseStatsRange({ from: today, to: today })!);
+    expect(st.current.couponDiscount).toBe(5000);
+    expect(st.current.gross - st.current.discount - st.current.couponDiscount - st.current.rewardUsed + st.current.shippingFee).toBe(st.current.paid);
   });
 });
 
