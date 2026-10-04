@@ -157,8 +157,30 @@ export function maskPersonal(s: string): string {
 
 // 판단 모델 입력을 만든다: 화면 본문을 그대로 보내지 않고 조작 요소만 추린다. 요소 글은 허용 어휘(공통 UI 어휘 + 작업서 단계 문구, vocabulary)에
 // 정확히 있을 때만 원문으로 보내고, 그 밖은 자리표시 「[문구]」와 요소 번호만 보낸다(이름이 든 안내·링크 차단). 남은 글도 비밀값·개인정보 패턴을 가린다.
-// 주소는 출처·경로만(쿼리·조각에 개인정보가 실릴 수 있음). 비밀값이 짧으면(8자 미만) 오탐이 많아 지우지 않는다 — 그런 값은 비밀로 쓰지 않는다.
-export function sanitizeObservation(o: Observation, secrets: JobSecrets, vocabulary: readonly string[] = COMMON_UI_WORDS): SafeObservation {
+// 주소는 허용 목록 규칙(plannerUrl)으로만 보낸다. 비밀값이 짧으면(8자 미만) 오탐이 많아 지우지 않는다 — 그런 값은 비밀로 쓰지 않는다.
+// 판단 모델에 보내는 주소 규칙(허용 목록): 이 작업 쇼핑몰 호스트는 「{shop}」, 다른 호스트는 「[다른 주소]」로 바꾸고,
+// 경로는 작업서에 적힌 고정 조각(pathSegments)과 정확히 같은 조각만 원문, 나머지(이메일·이름·번호·인코딩된 값 등 모든 동적 조각)는 「:id」.
+// 쿼리·조각(#)은 보내지 않는다. 패턴으로 개인정보를 찾는 방식(maskPersonal)은 인코딩된 값을 놓치므로 주소에는 쓰지 않는다.
+export type PlannerUrlRules = { shopHost: string | null | undefined; pathSegments: readonly string[] };
+export const DYNAMIC_SEGMENT = ":id";
+
+function plannerUrl(raw: string, rules: PlannerUrlRules | null): string | null {
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    return null;
+  }
+  const host = rules?.shopHost && u.hostname === rules.shopHost ? "{shop}" : "[다른 주소]";
+  const allowed = new Set(rules?.pathSegments ?? []);
+  const path = u.pathname
+    .split("/")
+    .map((seg) => (seg === "" || allowed.has(seg) ? seg : DYNAMIC_SEGMENT))
+    .join("/");
+  return `${u.protocol}//${host}${path}`;
+}
+
+export function sanitizeObservation(o: Observation, secrets: JobSecrets, vocabulary: readonly string[] = COMMON_UI_WORDS, urlRules: PlannerUrlRules | null = null): SafeObservation {
   const strip = (s: string) =>
     Object.values(secrets)
       .filter((v) => v.length >= 8)
@@ -169,16 +191,7 @@ export function sanitizeObservation(o: Observation, secrets: JobSecrets, vocabul
     .filter(({ e }) => PLANNER_ELEMENT_KINDS.includes(e.kind))
     .map(({ e, i }) => `[${e.kind}#${i + 1}] ${allowed.has(e.text.trim()) ? e.text.trim() : PLACEHOLDER}`)
     .join("\n");
-  let url: string | null = null;
-  if (o.url) {
-    try {
-      const u = new URL(o.url);
-      url = maskPersonal(strip(`${u.origin}${u.pathname}`));
-    } catch {
-      url = null;
-    }
-  }
-  return { url, untrustedPageText: maskPersonal(strip(text)).slice(0, MAX_PAGE_TEXT) };
+  return { url: o.url ? plannerUrl(o.url, urlRules) : null, untrustedPageText: maskPersonal(strip(text)).slice(0, MAX_PAGE_TEXT) };
 }
 
 // 관리 화면 이동은 이 호스트(와 하위 도메인)만. https만 허용한다.

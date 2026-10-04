@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { cueMatches, matchException, navRulesFor, plannerVocabulary, resolveShop, type Playbook } from "./playbook";
+import { cueMatches, matchException, navRulesFor, plannerPathSegments, plannerVocabulary, resolveShop, type Playbook } from "./playbook";
 import {
   sanitizeObservation,
   pageAllowedByNav,
@@ -224,7 +224,7 @@ async function runAll(
         // 화면 이탈은 판단 모델을 부르기 전에 기록한다(호출이 계속 실패해 작업이 닫혀도 작업서가 재검증 대상이 되게)
         if (stats.deviatedNow) await touchStats();
         const vocabulary = plannerVocabulary(pb ?? secretBook?.steps[step.key]);
-        const decision = await rt.planner.decide({ step, observation: sanitizeObservation(raw, secrets, vocabulary), history, reference });
+        const decision = await rt.planner.decide({ step, observation: sanitizeObservation(raw, secrets, vocabulary, { shopHost: opts.shopHost, pathSegments: plannerPathSegments(secretBook) }), history, reference });
         stats.plannerCalls++;
         // 모델이 낸 비용 원값부터 검사한다(음수·소수·숫자 아님은 바꿔 넘기지 않고 bad_cost로 멈춤). 통과한 비용만 누적한다
         const check = validateDecision(step, decision, secrets, secretTargets, allowedTargets, nav);

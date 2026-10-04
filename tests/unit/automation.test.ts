@@ -48,8 +48,8 @@ describe("모델 입력 정리와 행동 검사", () => {
     // 허용 어휘가 아닌 글은 자리표시, 허용 어휘는 원문. 길이는 8,000자로 자른다
     expect(o.untrustedPageText.startsWith("[notice#1] [문구]\n[button#2] 저장")).toBe(true);
     expect(o.untrustedPageText.length).toBe(8000);
-    // 주소는 출처·경로만(쿼리 제외), 요소가 없으면 화면 글을 보내지 않는다
-    expect(o.url).toBe("https://admin.cafe24.com/");
+    // 주소는 허용 목록 규칙으로만(쿼리 제외, 이 작업 쇼핑몰이 아닌 호스트는 자리표시), 요소가 없으면 화면 글을 보내지 않는다
+    expect(o.url).toBe("https://[다른 주소]/");
     expect(sanitizeObservation({ url: null, text: "홍길동 010-1234-5678" }, secrets).untrustedPageText).toBe("");
   });
 

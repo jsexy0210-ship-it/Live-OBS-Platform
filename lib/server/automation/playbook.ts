@@ -53,6 +53,27 @@ export function plannerVocabulary(step: PlaybookStep | null | undefined): string
   return [...new Set(words)];
 }
 
+// 판단 모델에 원문으로 보내도 되는 주소 경로 조각: 작업서에 적힌 고정 경로(단계·비밀값 출처·되돌리기의 허용 경로 접두와 이동 주소)의 조각만.
+// 자리표시({shop} 등)가 든 조각은 넣지 않는다.
+export function plannerPathSegments(p: Playbook | null | undefined): string[] {
+  if (!p) return [];
+  const paths: string[] = [...p.secretOrigin.pathPrefixes];
+  const navPath = (a: AutomationAction) => {
+    if (a.type !== "navigate") return;
+    const m = /^https:\/\/[^/]+(\/[^?#]*)/.exec(a.url);
+    if (m) paths.push(m[1]);
+  };
+  for (const s of Object.values(p.steps)) {
+    paths.push(...s.allowedUrls.pathPrefixes);
+    s.actions.forEach(({ action }) => navPath(action));
+  }
+  for (const rb of p.rollback) {
+    paths.push(...rb.allowedUrls.pathPrefixes);
+    rb.actions.forEach(({ action }) => navPath(action));
+  }
+  return [...new Set(paths.flatMap((x) => x.split("/")).filter((seg) => seg && !seg.includes("{")))];
+}
+
 export const navRulesFor = (step: PlaybookStep | null | undefined, shopHost: string | null | undefined): NavRules | null =>
   step ? { shopHost, pathPrefixes: step.allowedUrls.pathPrefixes, queryKeys: step.allowedUrls.queryKeys } : null;
 

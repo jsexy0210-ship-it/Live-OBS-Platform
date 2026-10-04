@@ -77,24 +77,37 @@ export async function runPractice(
   } catch {
     result = { kind: "failed", reason: "practice_error" };
   }
-  // 보관 자료는 실행마다 바로 지운다. 실패하면 기록에 남겨 정기 정리(cleanupPracticeArtifacts)가 백오프로 다시 한다.
-  const cleaned = await discardScope(rt, scope);
   const outcome = result.kind === "succeeded" ? "SUCCEEDED" : result.kind === "needs_customer" ? "NEEDS_CUSTOMER" : "FAILED";
-  return db.automationPracticeRun.update({
-    where: { id: run.id },
-    data: {
-      ...(cleaned ? { cleanupPendingAt: null } : { cleanupAttempts: 1, cleanupPendingAt: new Date(Date.now() + backoffMs(1)) }),
-      finishedAt: new Date(),
-      outcome,
-      failedStep: outcome === "SUCCEEDED" ? null : (STEPS[stepIndex]?.key ?? null),
-      reason: result.kind === "succeeded" ? null : result.kind === "needs_customer" ? result.action : result.reason.slice(0, 200),
-      durationMs: Math.round(performance.now() - t0),
-      plannerCalls: stats.plannerCalls,
-      playbookActions: stats.playbookActions,
-      costWon: stats.costUsed,
-      deviatedSteps: stats.deviatedSteps,
-    },
+  // 결과(실패·이탈 포함)부터 작업서 배타 잠금 아래 기록한다: 구매·작업 확정은 공유 잠금으로 준비 상태를 다시 읽으므로,
+  // 보관 자료 정리(외부 호출)를 기다리는 동안 이전 연속 성공을 근거로 결제·작업이 확정되지 않는다.
+  // 기록과 함께 정리 대기 시각을 점유 시간만큼 미뤄 둬 정기 정리가 이 실행의 정리와 겹치지 않게 한다.
+  const claimedUntil = new Date(Date.now() + CLEANUP_CLAIM_MS);
+  const recorded = await db.$transaction(async (tx) => {
+    await lockPlaybook(tx, playbook.id, "exclusive");
+    return tx.automationPracticeRun.update({
+      where: { id: run.id },
+      data: {
+        cleanupPendingAt: claimedUntil,
+        finishedAt: new Date(),
+        outcome,
+        failedStep: outcome === "SUCCEEDED" ? null : (STEPS[stepIndex]?.key ?? null),
+        reason: result.kind === "succeeded" ? null : result.kind === "needs_customer" ? result.action : result.reason.slice(0, 200),
+        durationMs: Math.round(performance.now() - t0),
+        plannerCalls: stats.plannerCalls,
+        playbookActions: stats.playbookActions,
+        costWon: stats.costUsed,
+        deviatedSteps: stats.deviatedSteps,
+      },
+    });
   });
+  // 보관 자료는 결과를 기록한 뒤 지운다. 실패하면 정기 정리(cleanupPracticeArtifacts)가 백오프로 다시 한다.
+  // 반영은 기록 때 점유한 상태 그대로일 때만(정기 정리가 먼저 가져갔으면 덮어쓰지 않음)
+  const cleaned = await discardScope(rt, scope);
+  await db.automationPracticeRun.updateMany({
+    where: { id: run.id, cleanupAttempts: recorded.cleanupAttempts, cleanupPendingAt: recorded.cleanupPendingAt },
+    data: cleaned ? { cleanupPendingAt: null } : { cleanupAttempts: recorded.cleanupAttempts + 1, cleanupPendingAt: new Date(Date.now() + backoffMs(1)) },
+  });
+  return db.automationPracticeRun.findUniqueOrThrow({ where: { id: run.id } });
 }
 
 // 정리가 끝나지 않은 연습 실행의 보관 자료를 다시 지운다(작업자 반복에서 부른다). 실패하면 백오프로 미루고,

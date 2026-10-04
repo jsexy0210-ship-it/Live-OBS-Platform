@@ -2545,6 +2545,43 @@ describe("Codex 22차 반영(917980f)", () => {
   });
 });
 
+describe("Codex 23차 반영(55910fd)", () => {
+  it("연습이 실패하면 결과를 작업서 배타 잠금 아래 먼저 기록하고 보관 자료는 그 뒤에 지운다: 정리가 느린 동안 들어온 구매는 거절·결제 0건", async () => {
+    const rt = runtime();
+    rt.browser.outcome = (_scope, action) => (action.type === "click" ? { kind: "fatal", reason: "practice_broke" } : undefined);
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let started!: () => void;
+    const discarding = new Promise<void>((r) => (started = r));
+    rt.browser.discard = async () => {
+      started();
+      await gate;
+    };
+    const running = runPractice(db, rt, cafe24Playbook, { shopHost: "myshop.cafe24.com" });
+    await discarding;
+    const s = await shopWithCard();
+    const r = await purchaseAutomation(db, new FakeBillingProvider(), s.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP });
+    release();
+    const run = await running;
+    expect(r).toEqual({ ok: false, reason: "shop_not_supported" });
+    expect(await db.automationPayment.count({ where: { sellerId: s.seller.id } })).toBe(0);
+    expect(run).toMatchObject({ outcome: "FAILED", cleanupPendingAt: null });
+  });
+
+  it("판단 모델에 보내는 주소는 허용한 고정 경로 조각만 원문, 나머지(인코딩된 이메일·한글 이름·번호)는 자리표시, 쇼핑몰 호스트는 {shop}", async () => {
+    const a = await bought();
+    const rt = runtime();
+    rt.browser.pageText = () => "화면이 바뀌었어요 · 로그아웃";
+    rt.browser.pageUrl = () => "https://myshop.cafe24.com/disp/admin/member/hong%40example.com/%ED%99%8D%EA%B8%B8%EB%8F%99/12345/";
+    await runOnce(db, rt, W);
+    expect(rt.planner.inputs.length).toBeGreaterThan(0);
+    const url = rt.planner.inputs[0].observation.url ?? "";
+    expect(url).toBe("https://{shop}/disp/admin/:id/:id/:id/:id/");
+    for (const leak of ["hong", "%40", "%ED", "홍길동", "12345", "myshop"]) expect(url, leak).not.toContain(leak);
+    expect(a.jobId).toBeTruthy();
+  });
+});
+
 // 쇼핑몰 연결 단계(「앱 설치」 누르기)를 마친 뒤에만 문서 주소가 바뀌게 한다: 웹훅 단계의 첫 변경 행동인 비밀값 입력 검사를 시험한다
 // (그 전부터 바뀌어 있으면 누르기 직전 주소 검사(page_not_allowed)가 먼저 멈춘다 — 19차 시험)
 function afterConnect(rt: { browser: FakeBrowserExecutor }, url: string | null) {
