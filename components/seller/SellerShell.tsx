@@ -56,7 +56,7 @@ const MENU: Group[] = [
     items: [
       { label: "회원", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
       { label: "적립금", href: "/seller/rewards", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
-      { label: "구매 제한", perm: "MEMBER_POINTS", plan: "FOLLOWUP" },
+      { label: "구매 제한", href: "/seller/purchase-restrictions", perm: "MEMBER_POINTS", plan: "FOLLOWUP" },
       { label: "구매자 문의", perm: "INQUIRY_REPLY", plan: "FOLLOWUP" },
       // 리뷰: 목록·집계 조회는 파트너스 계정 누구나, 답글·숨김·설정은 구매자 문의(INQUIRY_REPLY) 권한(서버에서 막음). 서버가 스토어 운영 기능을 요구한다
       { label: "리뷰", href: "/seller/reviews", plan: "STORE_OPERATIONS" },
