@@ -9,7 +9,7 @@ import { QUOTA_CHAT_RATIO, QUOTA_WARN_RATIO, quotaUsage } from "./quota";
 // - 기본 꺼짐. 파트너스가 방송(진행 중 연결)마다 켠 LIVE 연결만 수집한다. 켜지 않으면 할당량을 쓰지 않는다.
 // - 조회 간격: max(유튜브가 준 간격, 20초). 새 메시지가 없으면 2배씩 늘려 60초까지. 할당량 80%를 넘으면 2배(최대 120초).
 //   95%면 수집하지 않는다(방송 상태 감지는 계속). 판매자 하루 상한(quota.ts)을 넘으면 그 판매자만 쉰다.
-// - 같은 메시지는 유튜브 메시지 id로 한 번만 저장(skipDuplicates). 다음 페이지 토큰을 이어 받는다.
+// - 같은 메시지는 판매자마다 유튜브 메시지 id로 한 번만 저장(skipDuplicates, (sellerId, messageId) 유니크). 다음 페이지 토큰을 이어 받는다.
 // - 저장은 표시 이름·본문 앞 200자·게시 시각·작성자 채널 id뿐, 30일 지나면 지운다(purgeOldChats).
 // - 닉네임 매칭은 표시용이다. 주문을 바꾸지 않는다.
 export const CHAT_MIN_INTERVAL_MS = 20_000;
