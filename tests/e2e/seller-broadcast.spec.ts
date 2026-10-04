@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { submitSellerLogin } from "./sellerLogin";
-import { NICKS, cleanupBroadcastQueue, queueStatuses, resetBroadcastQueue } from "./seller-broadcast-db";
+import { NICKS, bumpLiveVersion, cleanupBroadcastQueue, queueStatuses, resetBroadcastQueue } from "./seller-broadcast-db";
 
 // SA-001 방송 대시보드: 메뉴로 들어가기 · 방송 전 대기 순서 변경 · 방송 시작 · 개봉 시작 · 타이머(단축키·창) · 완료 · 되돌리기 · 취소(사유) · 방송 종료,
 // 다른 창 실시간 반영(SSE), 결과가 불분명한 요청은 성공으로 보이지 않음, 방송 진행 권한 없는 직원은 메뉴·화면 없음.
@@ -155,4 +155,78 @@ test("방송 진행 권한이 없는 직원: 메뉴가 없고 주소로 들어�
   await expect(page.getByText("필요한 권한: 방송 진행")).toBeVisible();
   await expect(page.getByRole("link", { name: "방송 대시보드" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "방송 시작" })).toHaveCount(0);
+});
+
+const isQueueGet = (u: URL) => u.pathname === "/api/seller/queue";
+
+// 방송을 시작하고 첫 대기(A)를 개봉 중으로 둔다
+async function openFirst(page: Page) {
+  await login(page, "demo-owner@example.com", "/seller/broadcast");
+  await page.getByRole("button", { name: "방송 시작" }).click();
+  await expect(page.getByTestId("bc-live-badge")).toBeVisible();
+  await page.getByRole("button", { name: /개봉 시작/ }).click();
+  await expect(page.getByTestId("bc-opening")).toContainText(A);
+  await page.locator("body").click({ position: { x: 5, y: 5 } });
+}
+
+test("변경 뒤 다시 읽기가 끝날 때까지 조작을 막아, 이어서 누른 단축키가 옛 version으로 거부되지 않는다", async ({ page }) => {
+  await openFirst(page);
+  const complete = page.getByRole("button", { name: /개봉 완료/ });
+  // 다시 읽기를 늦춘다: 그동안 버튼이 풀리면 옛 version으로 두 번째 요청이 나가 409가 난다
+  await page.route(isQueueGet, async (r) => {
+    await new Promise((f) => setTimeout(f, 800));
+    await r.continue();
+  });
+  await page.keyboard.press("Control+ArrowUp");
+  await expect(complete).toBeDisabled();
+  await expect(complete).toBeEnabled();
+  await page.keyboard.press("Control+ArrowUp");
+  await expect(complete).toBeDisabled();
+  await expect(complete).toBeEnabled();
+  await expect(page.getByTestId("bc-opening").locator(".num")).toHaveText(/^(1:00|0:5\d)$/);
+  await expect(toast(page)).not.toContainText("다른 화면에서 먼저 바뀌었습니다");
+  expect((await queueStatuses())[A].timerSeconds).toBe(60);
+});
+
+test("변경 전에 보낸 읽기가 변경 성공 뒤에 도착하면 반영하지 않고, 다시 읽기가 실패하면 낡음 안내를 남긴다", async ({ page }) => {
+  await openFirst(page);
+  let release!: () => void;
+  const held = new Promise<void>((f) => (release = f));
+  let n = 0;
+  await page.route(isQueueGet, async (r) => {
+    n += 1;
+    if (n === 1) {
+      // 변경 전에 시작된 읽기: 변경 전 상태를 받아 두었다가 변경이 성공한 뒤에 돌려준다
+      const res = await r.fetch();
+      await held;
+      return r.fulfill({ response: res });
+    }
+    return r.abort("connectionreset");
+  });
+  const oldRead = page.waitForRequest((q) => isQueueGet(new URL(q.url())));
+  await bumpLiveVersion();
+  await oldRead;
+  const posted = page.waitForResponse((q) => q.url().endsWith("/timer") && q.request().method() === "POST");
+  await page.keyboard.press("Control+ArrowUp");
+  expect((await posted).status()).toBe(200);
+  await expect(page.getByTestId("bc-stale")).toBeVisible();
+  release();
+  await page.waitForTimeout(500);
+  // 늦게 온 옛 응답이 화면을 「최신」으로 덮지 않는다
+  await expect(page.getByTestId("bc-stale")).toBeVisible();
+  expect((await queueStatuses())[A].timerSeconds).toBe(30);
+});
+
+test("되돌리기는 지금 방송에서 완료한 주문에만 보인다(방송을 바꾼 뒤 10초 안이어도 이전 방송 주문은 없음)", async ({ page }) => {
+  await openFirst(page);
+  await page.keyboard.press("Control+Enter");
+  const done = page.getByTestId("bc-done").locator("li", { hasText: A });
+  await expect(done.getByRole("button", { name: "되돌리기" })).toBeVisible();
+  await page.getByRole("button", { name: "방송 종료" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "방송 종료" }).click();
+  await expect(page.getByTestId("bc-live-badge")).toHaveCount(0);
+  await page.getByRole("button", { name: "방송 시작" }).click();
+  await expect(page.getByTestId("bc-live-badge")).toBeVisible();
+  await expect(done).toBeVisible();
+  await expect(done.getByRole("button", { name: "되돌리기" })).toHaveCount(0);
 });
