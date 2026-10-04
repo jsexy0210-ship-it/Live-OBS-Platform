@@ -12,16 +12,11 @@ import {
   ResetPasswordModal,
   SecretInput,
   STAFF_ERRORS,
-  UNCLEAR_PENDING,
-  UNCLEAR_UNREAD,
   UnclearBox,
   cleanPhone,
   isUnclear,
   normStaffName,
   phoneOk,
-  readStaffList,
-  settleByList,
-  sameSet,
   staffFail,
   staffNameError,
   type Staff,
@@ -60,7 +55,8 @@ export default function StaffPage() {
     const n = ++listSeq.current;
     const r = await api<{ staff: Staff[] }>("/api/seller/staff");
     if (n !== listSeq.current) return;
-    if (!r.ok) return setState({ kind: "error", status: r.status });
+    // 이미 목록을 보여 주는 중에 다시 읽기만 실패하면 지금 화면을 그대로 둔다(직원 추가의 불분명 상태 등 입력 중인 내용을 잃지 않게)
+    if (!r.ok) return setState((prev) => (prev.kind === "ok" ? prev : { kind: "error", status: r.status }));
     setState({ kind: "ok", staff: r.data.staff });
   }, []);
 
@@ -211,6 +207,7 @@ export default function StaffPage() {
   );
 }
 
+const UNCLEAR_CREATE = "생성 여부를 확인하지 못했습니다. 목록에서 확인하고, 있으면 비밀번호를 재설정해 주십시오. 같은 값으로 재전송해 성공하면 생성이 확정됩니다";
 const TAKEN_TEXT = "이 이메일로 등록된 계정이 이미 있습니다. 목록에서 확인하고 필요하면 비밀번호를 재설정해 주십시오";
 
 type Errors = Partial<Record<"name" | "phone" | "email" | "password", string>>;
@@ -225,11 +222,10 @@ function AddStaff({ onAdded, onChanged }: { onAdded: (name: string) => void; onC
   const [errors, setErrors] = useState<Errors>({});
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // 결과가 불분명했던 시도(보낸 값 그대로). 있는 동안 칸을 잠그고 「확인」(목록을 다시 읽음)과 「같은 값으로 재전송」만 누를 수 있다:
-  // 첫 요청이 아직 서버에서 처리 중일 수 있어, 목록에 없다고 실패로 확정하지 않는다. 다른 값으로 보내면 서버에 남은 계정(첫 비밀번호)과 화면 값이 달라진다
-  // check: 목록에서 확인할 값(이름·휴대폰은 서버가 저장하는 모양). before: 보내기 직전의 직원 id(이미 있던 계정—비활성 포함—을 방금 만든 계정으로 오인하지 않게)
-  // body: 재전송할 본문 그대로(비밀번호 포함)
-  type Sent = { check: { name: string; phone: string; email: string; perms: StaffPerm[] }; before: string[]; body: { name: string; phone: string; email: string; password: string; permissions: StaffPerm[] } };
+  // 결과가 불분명했던 시도(보낸 값 그대로, 비밀번호 포함). 있는 동안 칸을 잠그고 「같은 값으로 재전송」과 「새로 입력」만 누를 수 있다.
+  // 목록으로 「생성됨」을 추정하지 않는다: 목록의 계정이 이 요청으로 생긴 것인지(다른 창이 만든 것인지), 입력한 비밀번호가 적용됐는지 알 수 없기 때문.
+  // 생성을 확정하는 것은 서버의 성공 응답뿐이다(재전송 포함). 목록은 보여 주기용으로만 다시 읽는다
+  type Sent = { name: string; body: { name: string; phone: string; email: string; password: string; permissions: StaffPerm[] } };
   const [unclear, setUnclear] = useState<Sent | null>(null);
   // 불분명했던 시도를 두고 「새로 입력」으로 나왔을 때의 안내
   const [notice, setNotice] = useState<string | null>(null);
@@ -257,54 +253,23 @@ function AddStaff({ onAdded, onChanged }: { onAdded: (name: string) => void; onC
     onAdded(added);
   };
 
-  // 그 시도가 만들어졌는지 목록으로 확인한다: 보내기 전에 없던 id이고 활성이며 같은 이메일·이름·휴대폰·권한이면 만든 것. null은 목록을 읽지 못함
-  const createdIn = (sent: Sent) =>
-    settleByList((list) =>
-      list.some(
-        (s) =>
-          !sent.before.includes(s.id) &&
-          s.status === "ACTIVE" &&
-          s.email.toLowerCase() === sent.check.email.toLowerCase() &&
-          s.name === sent.check.name &&
-          s.phone === sent.check.phone &&
-          sameSet(s.permissions, sent.check.perms),
-      ),
-    );
-
-  // 확실한 성공 증거(목록의 새 계정)가 있을 때만 풀고, 없으면 불분명한 채로 둔다
-  const confirmSent = async (sent: Sent) => {
-    setBusy(true);
-    setFailure(null);
-    const created = await createdIn(sent);
-    if (created) return succeed(sent.check.name);
+  // 불분명한 상태로 둔다(목록은 보여 주기용으로 다시 읽음)
+  const keepUnclear = (sent: Sent, text: string) => {
     setBusy(false);
     setUnclear(sent);
-    setFailure(created === null ? UNCLEAR_UNREAD : UNCLEAR_PENDING);
+    setFailure(text);
+    onChanged();
   };
 
-  // 보낸 값 그대로 다시 보낸다. 성공 응답이면 만든 것. email_taken이면 첫 시도가 만들었을 수 있어 목록으로 확인하고,
-  // 새 계정이 없으면 이미 있던 다른 계정이 이메일을 쓰고 있는 것이므로(첫 시도도 만들 수 없었음) 불분명을 끝내고 안내한다
+  // 보낸 값 그대로 다시 보낸다. 성공 응답이면 생성 확정. email_taken이면 이전 요청이 만들었는지 다른 계정인지 알 수 없어 불분명으로 남긴다
   const resend = async (sent: Sent) => {
     setBusy(true);
     setFailure(null);
     const r = await api("/api/seller/staff", { method: "POST", body: sent.body });
-    if (r.ok) return succeed(sent.check.name);
-    if (isUnclear(r)) return confirmSent(sent);
-    if (r.error === "email_taken") {
-      const created = await createdIn(sent);
-      if (created) return succeed(sent.check.name);
-      if (created === null) {
-        setBusy(false);
-        return setFailure(UNCLEAR_UNREAD);
-      }
-      setBusy(false);
-      setUnclear(null);
-      onChanged();
-      setErrors({ email: TAKEN_TEXT });
-      return setFocusTo({ id: "sa-email" });
-    }
-    setBusy(false);
-    setFailure(staffFail(r, "재전송하지 못했습니다. 잠시 후 「확인」을 눌러 주십시오"));
+    if (r.ok) return succeed(sent.name);
+    if (isUnclear(r)) return keepUnclear(sent, UNCLEAR_CREATE);
+    if (r.error === "email_taken") return keepUnclear(sent, "같은 이메일의 계정이 이미 있습니다. 이전 요청으로 생성된 계정인지는 확인할 수 없습니다. 목록에서 확인하고, 있으면 비밀번호를 재설정해 주십시오");
+    keepUnclear(sent, staffFail(r, "재전송하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
   };
 
   const restart = () => {
@@ -331,20 +296,12 @@ function AddStaff({ onAdded, onChanged }: { onAdded: (name: string) => void; onC
     if (first) return setFocusTo({ id: `sa-${first}` });
     setBusy(true);
     setNotice(null);
-    // 보내기 직전의 직원 id를 서버에서 읽어 남긴다. 읽지 못하면 보내지 않는다: 화면의 목록은 낡았을 수 있어(다른 창에서 만든 계정 등),
-    // 응답을 놓쳤을 때 이미 있던 계정을 방금 만든 계정으로 오인할 수 있기 때문
-    const list = await readStaffList();
-    if (!list) {
-      setBusy(false);
-      return setFailure("직원 목록을 확인하지 못해 계정을 생성하지 않았습니다. 잠시 후 다시 시도해 주십시오");
-    }
-    const before = list.map((s) => s.id);
     const body = { name: name.trim(), phone: cleanPhone(phone), email: email.trim(), password, permissions: perms };
-    const sent: Sent = { check: { name: normStaffName(name), phone: body.phone, email: body.email, perms }, before, body };
+    const sent: Sent = { name: normStaffName(name), body };
     const r = await api("/api/seller/staff", { method: "POST", body });
-    if (r.ok) return succeed(sent.check.name);
-    // 결과가 불분명하면(연결 끊김·5xx) 실패라고 하지 않고 이 시도가 만들어졌는지 확인한다
-    if (isUnclear(r)) return confirmSent(sent);
+    if (r.ok) return succeed(sent.name);
+    // 결과가 불분명하면(연결 끊김·5xx·코드 없는 응답) 성공도 실패도 단정하지 않는다
+    if (isUnclear(r)) return keepUnclear(sent, UNCLEAR_CREATE);
     setBusy(false);
     if (r.error === "email_taken" && restarted) {
       onChanged();
@@ -394,9 +351,8 @@ function AddStaff({ onAdded, onChanged }: { onAdded: (name: string) => void; onC
         <UnclearBox
           testId="sa-unclear"
           title="계정이 생성되었을 수 있습니다."
-          text={failure ?? UNCLEAR_PENDING}
+          text={failure ?? UNCLEAR_CREATE}
           busy={busy}
-          onCheck={() => void confirmSent(unclear)}
           onResend={() => void resend(unclear)}
           resendLabel="같은 값으로 재전송"
           extra={

@@ -235,7 +235,7 @@ test("대표자: 직원 비밀번호를 재설정하면 새 비밀번호로만 �
   await staffPage.close();
 });
 
-test("저장 응답을 놓치면 직원 목록을 다시 읽어 실제 결과를 보여 준다(직원 추가·정보·권한 수정)", async ({ page }) => {
+test("저장 응답을 놓치면 추가는 생성됨으로 단정하지 않고, 정보·권한 수정은 다시 읽어 실제 결과를 보여 준다", async ({ page }) => {
   await login(page, "demo-owner@example.com");
   await expect(page).toHaveURL(/\/seller\/staff$/);
   const id = uniq();
@@ -262,22 +262,30 @@ test("저장 응답을 놓치면 직원 목록을 다시 읽어 실제 결과를
     });
   };
 
-  // ① 응답·확인용 목록 읽기가 모두 실패: 실패라고 하지 않고 칸을 잠근 채 「확인」·「재전송」만 둔다 → 확인하면 만든 것으로 처리
+  // ① 서버는 만들었는데 응답이 끊긴다: 목록에 계정이 보여도 이 요청으로 생긴 것인지·입력한 비밀번호가 적용됐는지 알 수 없어 「생성했습니다」로 단정하지 않는다.
+  // 칸을 잠그고 「같은 값으로 재전송」·「새로 입력」만 둔다. 재전송이 email_taken이어도 여전히 단정하지 않는다
   await addStaff(page, s);
   await page.getByRole("checkbox", { name: "상품", exact: true }).check();
-  await loseCreate(1);
+  await loseCreate(0);
   await page.getByRole("button", { name: "계정 생성" }).click();
   const unclear = page.getByTestId("sa-unclear");
   await expect(unclear).toContainText("계정이 생성되었을 수 있습니다.");
-  await expect(unclear).toContainText("목록을 읽지 못해 결과를 확인하지 못했습니다");
+  await expect(unclear).toContainText("생성 여부를 확인하지 못했습니다. 목록에서 확인하고, 있으면 비밀번호를 재설정해 주십시오");
+  await expect(unclear.getByRole("button", { name: "확인", exact: true })).toHaveCount(0);
   await expect(page.getByLabel("초기 비밀번호")).toBeDisabled();
   await expect(page.getByLabel("이름", { exact: true })).toBeDisabled();
   await expect(page.getByRole("button", { name: "계정 생성" })).toBeDisabled();
-  await shot(page, "SA-100-unclear");
-  await unclear.getByRole("button", { name: "확인" }).click();
-  await expect(page.getByText(`${s.name} 계정을 생성했습니다`, { exact: false })).toBeVisible();
-  await expect(page.getByLabel("이메일 (로그인 아이디)")).toHaveValue("");
+  // 목록은 보여 주기용으로 다시 읽는다
   await expect(row(page, s.email)).toContainText("상품");
+  await shot(page, "SA-100-unclear");
+  const resent = page.waitForResponse((r) => r.url().endsWith("/api/seller/staff") && r.request().method() === "POST");
+  await unclear.getByRole("button", { name: "같은 값으로 재전송" }).click();
+  expect((await resent).status()).toBe(409);
+  await expect(unclear).toContainText("같은 이메일의 계정이 이미 있습니다. 이전 요청으로 생성된 계정인지는 확인할 수 없습니다");
+  await expect(page.getByText(`${s.name} 계정을 생성했습니다`, { exact: false })).toHaveCount(0);
+  await unclear.getByRole("button", { name: "새로 입력" }).click();
+  await expect(page.getByLabel("초기 비밀번호")).toBeEnabled();
+  await page.getByLabel("이메일 (로그인 아이디)").fill("");
 
   // ② 불분명한 상태에서 「새로 입력」으로 풀면 이전 요청이 처리되었을 수 있다고 안내한다. 비밀번호를 바꿔 비밀번호를 바꿔 다시 보내면 email_taken: 만든 것으로 보지 않고 안내만 한다
   const id2 = uniq();
@@ -298,13 +306,17 @@ test("저장 응답을 놓치면 직원 목록을 다시 읽어 실제 결과를
   await expect(page.getByLabel("이메일 (로그인 아이디)")).toHaveValue(s2.email);
   await expect(row(page, s2.email)).toBeVisible();
 
-  // ③ 전각 글자 이름: 서버는 NFKC로 저장한다. 응답을 놓쳐도 같은 규칙으로 비교해 만든 것으로 처리
+  // ③ 서버에 닿기 전 503(처리 안 됨)이면 불분명 → 같은 값으로 재전송해 성공 응답을 받으면 생성 확정. 전각 이름은 서버가 저장하는 모양(NFKC)으로 알린다
   const id3 = uniq();
   const s3 = { name: `ＡＢ직원${id3}`, phone: "01033336666", email: `wide-${id3}@example.com`, password: `pw-${id3}-init` };
+  await page.getByLabel("이름", { exact: true }).fill("");
   await page.getByLabel("이메일 (로그인 아이디)").fill("");
   await addStaff(page, s3);
-  await loseCreate(0);
+  await page.unroute(isList);
+  await page.route(isList, (route) => (route.request().method() === "POST" ? route.fulfill({ status: 503, contentType: "text/html", body: "<html>busy</html>" }) : route.continue()), { times: 1 });
   await page.getByRole("button", { name: "계정 생성" }).click();
+  await expect(unclear).toBeVisible();
+  await unclear.getByRole("button", { name: "같은 값으로 재전송" }).click();
   await expect(page.getByText(`AB직원${id3} 계정을 생성했습니다`, { exact: false })).toBeVisible();
   await expect(row(page, s3.email)).toContainText(`AB직원${id3}`);
 
@@ -393,7 +405,7 @@ test("결과가 불분명한 직원 변경은 실제 상태로 판정한다(이�
 
   // ① 같은 이메일·이름·휴대폰·권한으로 다시 만들기: 요청이 서버에 닿기 전에 끊긴다 → 목록에 같은 값의 (비활성) 계정이 있어도
   // 보내기 전에 있던 계정이라 만든 것으로 보지 않는다. 목록에 없다고 실패로 확정하지도 않고 불분명 상태로 둔다.
-  // 같은 값으로 재전송하면 email_taken이고 새 계정이 없으므로(이미 있던 계정이 이메일을 씀) 그때 이메일 안내로 끝낸다
+  // 같은 값으로 재전송하면 email_taken: 이전 요청이 만든 것인지 알 수 없으므로 여전히 「생성했습니다」로 단정하지 않는다
   await addStaff(page, s);
   await page.getByRole("checkbox", { name: "상품", exact: true }).check();
   let aborted = false;
@@ -406,11 +418,10 @@ test("결과가 불분명한 직원 변경은 실제 상태로 판정한다(이�
     },
   );
   await page.getByRole("button", { name: "계정 생성" }).click();
-  await expect(page.getByTestId("sa-unclear")).toContainText("아직 반영이 확인되지 않았습니다");
+  await expect(page.getByTestId("sa-unclear")).toContainText("생성 여부를 확인하지 못했습니다. 목록에서 확인하고, 있으면 비밀번호를 재설정해 주십시오");
   await expect(page.getByLabel("초기 비밀번호")).toBeDisabled();
   await page.getByTestId("sa-unclear").getByRole("button", { name: "같은 값으로 재전송" }).click();
-  await expect(page.getByText("이 이메일로 등록된 계정이 이미 있습니다. 목록에서 확인하고 필요하면 비밀번호를 재설정해 주십시오")).toBeVisible();
-  await expect(page.getByTestId("sa-unclear")).toHaveCount(0);
+  await expect(page.getByTestId("sa-unclear")).toContainText("같은 이메일의 계정이 이미 있습니다. 이전 요청으로 생성된 계정인지는 확인할 수 없습니다");
   await page.unroute((u) => u.pathname === "/api/seller/staff");
   await expect(page.getByText(`${s.name} 계정을 생성했습니다`, { exact: false })).toHaveCount(0);
 });
@@ -443,18 +454,20 @@ test("결과가 불분명한 직원 변경은 늦게 반영돼도 실패로 단�
   const id = uniq();
   const s = { name: `늦게${id}`, phone: "01055556666", email: `late-${id}@example.com`, password: `pw-${id}-init` };
 
-  // 직원 추가: 끊긴 직후 목록에는 없다 → 불분명 유지·칸 잠금(「생성되지 않았습니다」 금지) → 늦게 만들어진 뒤 「확인」으로 성공
+  // 직원 추가: 끊긴 직후 목록에는 없다 → 불분명 유지·칸 잠금(「생성되지 않았습니다」 금지). 늦게 만들어진 뒤에도 「생성했습니다」로 단정하지 않고, 목록에 보인다
   await addStaff(page, s);
   let replay = await holdOnce((u, m) => u.pathname === "/api/seller/staff" && m === "POST");
   await page.getByRole("button", { name: "계정 생성" }).click();
   const addBox = page.getByTestId("sa-unclear");
-  await expect(addBox).toContainText("아직 반영이 확인되지 않았습니다");
+  await expect(addBox).toContainText("생성 여부를 확인하지 못했습니다. 목록에서 확인하고, 있으면 비밀번호를 재설정해 주십시오");
   await expect(page.getByLabel("초기 비밀번호")).toBeDisabled();
   await expect(page.getByRole("button", { name: "계정 생성" })).toBeDisabled();
   await replay();
-  await addBox.getByRole("button", { name: "확인", exact: true }).click();
-  await expect(page.getByText(`${s.name} 계정을 생성했습니다`, { exact: false })).toBeVisible();
+  await addBox.getByRole("button", { name: "같은 값으로 재전송" }).click();
+  await expect(addBox).toContainText("같은 이메일의 계정이 이미 있습니다. 이전 요청으로 생성된 계정인지는 확인할 수 없습니다");
+  await expect(page.getByText(`${s.name} 계정을 생성했습니다`, { exact: false })).toHaveCount(0);
   await expect(row(page, s.email)).toBeVisible();
+  await addBox.getByRole("button", { name: "새로 입력" }).click();
   const dialog = page.getByRole("dialog");
 
   // 정보 수정: 끊긴 직후 다시 읽으면 반영 전 → 불분명 유지·칸 잠금(「저장되지 않았습니다」로 되돌리지 않음) → 늦게 저장된 뒤 「확인」으로 성공
@@ -527,12 +540,15 @@ test("직원 변경이 503·형식 모를 응답이면 불분명으로 보고 �
   const html = { contentType: "text/html", body: "<html>Service Unavailable</html>" };
   const json503 = { contentType: "application/json", body: JSON.stringify({ error: "service_unavailable" }) };
 
-  // 직원 추가: 503이어도 목록에서 만든 계정을 확인해 성공으로 처리
+  // 직원 추가: 503이면 실패도 성공도 단정하지 않는다(목록에 보여도 「생성했습니다」 없음)
   await addStaff(page, s);
   let off = await after503((u) => u.pathname === "/api/seller/staff", "POST", json503);
   await page.getByRole("button", { name: "계정 생성" }).click();
-  await expect(page.getByText(`${s.name} 계정을 생성했습니다`, { exact: false })).toBeVisible();
+  await expect(page.getByTestId("sa-unclear")).toContainText("생성 여부를 확인하지 못했습니다. 목록에서 확인하고, 있으면 비밀번호를 재설정해 주십시오");
+  await expect(row(page, s.email)).toBeVisible();
+  await expect(page.getByText(`${s.name} 계정을 생성했습니다`, { exact: false })).toHaveCount(0);
   await off();
+  await page.getByTestId("sa-unclear").getByRole("button", { name: "새로 입력" }).click();
 
   // 비밀번호 재설정: 503(HTML)이면 「변경되었을 수 있음」으로 잠그고 같은 값으로만 재전송
   const dialog = page.getByRole("dialog");
@@ -748,13 +764,12 @@ test("처음 화면 정보를 읽는 동안 다시 읽기가 실패해도 처음
   await page.unrouteAll();
 });
 
-// 보내기 직전 목록 확인이 실패하면 계정을 만들지 않는다: 화면의 낡은 목록을 기준으로 삼으면 다른 창에서 이미 만든 계정을 방금 만든 것으로 오인한다
-test("직원 추가 직전 목록 확인이 실패하면 보내지 않고, 다른 창에서 만든 같은 계정을 생성됨으로 보고하지 않는다", async ({ page }) => {
+// 다른 창이 같은 값으로 먼저 계정을 만든 상태에서 내 요청의 응답(email_taken)을 놓치면: 목록의 그 계정을 내 성공으로 오인하지 않는다
+test("다른 창이 만든 같은 계정이 있을 때 응답을 놓쳐도 「생성했습니다」로 보고하지 않고 불분명을 안내한다", async ({ page }) => {
   await login(page, "demo-owner@example.com");
   await expect(page).toHaveURL(/\/seller\/staff$/);
   const id = uniq();
   const s = { name: `다른창${id}`, phone: "01088889999", email: `tab-${id}@example.com`, password: `pw-${id}-init` };
-  // 다른 창에서 같은 값으로 이미 만들었다(이 화면의 목록에는 아직 없음)
   const made = await page.evaluate(
     async (b) => (await fetch("/api/seller/staff", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b) })).status,
     { name: s.name, phone: s.phone, email: s.email, password: `pw-${id}-other`, permissions: [] },
@@ -763,27 +778,21 @@ test("직원 추가 직전 목록 확인이 실패하면 보내지 않고, 다�
   await expect(row(page, s.email)).toHaveCount(0);
 
   await addStaff(page, s);
-  let posts = 0;
-  let listFail = true;
-  await page.route("**/api/seller/staff", async (route) => {
-    if (route.request().method() === "POST") {
-      posts += 1;
+  await page.route(
+    "**/api/seller/staff",
+    async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
       // 서버는 email_taken으로 답하지만 응답을 놓친다
       await route.fetch();
       return route.abort("connectionreset");
-    }
-    if (listFail) {
-      listFail = false;
-      return route.fulfill({ status: 500, json: { error: "internal" } });
-    }
-    return route.continue();
-  });
+    },
+    { times: 1 },
+  );
   await page.getByRole("button", { name: "계정 생성" }).click();
-  await expect(page.getByText("직원 목록을 확인하지 못해 계정을 생성하지 않았습니다", { exact: false })).toBeVisible();
-  expect(posts).toBe(0);
+  await expect(page.getByTestId("sa-unclear")).toContainText("생성 여부를 확인하지 못했습니다. 목록에서 확인하고, 있으면 비밀번호를 재설정해 주십시오");
+  await expect(row(page, s.email)).toBeVisible();
   await expect(page.getByText(`${s.name} 계정을 생성했습니다`, { exact: false })).toHaveCount(0);
-  await expect(page.getByLabel("초기 비밀번호")).toBeEnabled();
-  await page.unrouteAll();
+  await expect(page.getByLabel("초기 비밀번호")).toBeDisabled();
 });
 
 test("직원: 메뉴에 직원 계정이 없고, 주소로 들어오면 대표자만 볼 수 있다고 안내한다", async ({ page }) => {
