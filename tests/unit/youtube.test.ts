@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { YOUTUBE_MESSAGES, liveStatusOf } from "../../lib/server/youtube/call";
+import { CHAT_NOTICE, nextChatInterval, normalizeNickname } from "../../lib/server/youtube/chat";
 import { YoutubeApiError, YoutubeQuotaError, createYoutubeClient, youtubeApiKey, type VideoInfo } from "../../lib/server/youtube/client";
 import { parseYoutubeRef } from "../../lib/server/youtube/parse";
 import { quotaDay, quotaLimits } from "../../lib/server/youtube/quota";
@@ -81,6 +82,57 @@ describe("API 응답 해석(모의)", () => {
   });
 });
 
+describe("채팅 응답 해석(모의)", () => {
+  it("liveChat/messages → 표시 이름·본문 앞 200자(이모지 반쪽 없이)·다음 토큰", async () => {
+    const seen: string[] = [];
+    const long = "😀".repeat(250);
+    const client = createYoutubeClient(
+      "KEY",
+      fakeFetch(
+        200,
+        {
+          nextPageToken: "n2",
+          pollingIntervalMillis: 4000,
+          items: [
+            { id: "m1", snippet: { displayMessage: long, publishedAt: "2026-10-05T01:00:00Z" }, authorDetails: { channelId: "UC1", displayName: " 망고 " } },
+            { id: "m2", snippet: { displayMessage: "x" }, authorDetails: { displayName: "날짜없음" } },
+          ],
+        },
+        seen,
+      ),
+    );
+    const page = await client.chatMessages("chat1", "n1");
+    expect(page).toMatchObject({ nextPageToken: "n2", pollingIntervalMillis: 4000, ended: false });
+    expect(page.messages).toHaveLength(1);
+    expect(page.messages[0]).toMatchObject({ messageId: "m1", authorChannelId: "UC1", authorName: "망고" });
+    expect(Array.from(page.messages[0].text)).toHaveLength(200);
+    const u = new URL(seen[0]);
+    expect(u.pathname).toBe("/youtube/v3/liveChat/messages");
+    expect(u.searchParams.get("pageToken")).toBe("n1");
+  });
+  it("채팅이 끝났거나 꺼졌으면 ended, 할당량 초과는 오류", async () => {
+    for (const reason of ["liveChatEnded", "liveChatDisabled", "liveChatNotFound"]) {
+      const c = createYoutubeClient("KEY", fakeFetch(403, { error: { errors: [{ reason }] } }));
+      expect((await c.chatMessages("x", null)).ended, reason).toBe(true);
+    }
+    const q = createYoutubeClient("KEY", fakeFetch(403, { error: { errors: [{ reason: "quotaExceeded" }] } }));
+    await expect(q.chatMessages("x", null)).rejects.toBeInstanceOf(YoutubeQuotaError);
+  });
+  it("조회 간격: 20초 하한, 새 메시지 없으면 2배씩 60초까지, 80% 넘으면 2배", () => {
+    expect(nextChatInterval(null, 3_000, 5, 0)).toBe(20_000);
+    expect(nextChatInterval(null, 30_000, 5, 0)).toBe(30_000);
+    expect(nextChatInterval(20_000, 3_000, 0, 0)).toBe(40_000);
+    expect(nextChatInterval(40_000, 3_000, 0, 0)).toBe(60_000);
+    expect(nextChatInterval(60_000, 3_000, 0, 0)).toBe(60_000);
+    expect(nextChatInterval(null, 3_000, 5, 0.85)).toBe(40_000);
+    expect(nextChatInterval(60_000, 3_000, 0, 0.9)).toBe(120_000);
+  });
+  it("닉네임 비교 정규화", () => {
+    expect(normalizeNickname("@Mango Kim")).toBe("mangokim");
+    expect(normalizeNickname("ＭＡＮＧＯ")).toBe("mango");
+  });
+});
+
 describe("방송 상태 판정", () => {
   const v = (p: Partial<VideoInfo>): VideoInfo => ({
     videoId: VID, channelId: CH, title: "", broadcast: "upcoming", isLiveVideo: true, scheduledStartAt: null, actualStartAt: null, actualEndAt: null, liveChatId: null, ...p,
@@ -112,6 +164,6 @@ describe("할당량·설정", () => {
 
 describe("문구 말투", () => {
   it("파트너스 관리자 문구는 합니다체", () => {
-    for (const m of Object.values(YOUTUBE_MESSAGES)) expect(m, m).not.toMatch(/(요|요\.|요\?)$/);
+    for (const m of [...Object.values(YOUTUBE_MESSAGES), CHAT_NOTICE]) expect(m, m).not.toMatch(/(요|요\.|요\?)$/);
   });
 });

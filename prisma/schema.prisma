@@ -2523,14 +2523,40 @@ model YoutubeLiveLink {
   // 이 연결이 방송을 자동으로 시작했는지(수동으로 켜 둔 방송에 붙었으면 false)
   autoStarted        Boolean           @default(false)
   checkedAt          DateTime?         @db.Timestamptz(3)
+  // 채팅 수집(기본 꺼짐, 파트너스가 방송마다 켠다). 다음 조회 시각·간격·페이지 토큰은 sync.ts가 관리한다.
+  chatEnabled        Boolean           @default(false)
+  chatPageToken      String?
+  chatNextPollAt     DateTime?         @db.Timestamptz(3)
+  chatIntervalMs     Int?
   createdAt          DateTime          @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime          @updatedAt @db.Timestamptz(3)
 
-  seller    Seller            @relation(fields: [sellerId], references: [id])
-  broadcast BroadcastSession? @relation(fields: [sellerId, broadcastSessionId], references: [sellerId, id])
+  seller       Seller               @relation(fields: [sellerId], references: [id])
+  broadcast    BroadcastSession?    @relation(fields: [sellerId, broadcastSessionId], references: [sellerId, id])
+  chatMessages YoutubeChatMessage[]
 
+  @@unique([sellerId, id])
   @@index([status])
   @@index([sellerId, createdAt])
+}
+
+// 수집한 유튜브 채팅(주문 닉네임 확인용). 표시 이름·본문 앞 200자만, 30일 지나면 지운다(lib/server/youtube/chat.ts).
+// 같은 메시지는 유튜브 메시지 id로 한 번만 저장한다.
+model YoutubeChatMessage {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId        String   @db.Uuid
+  liveLinkId      String   @db.Uuid
+  messageId       String   @unique
+  authorChannelId String
+  authorName      String
+  text            String
+  publishedAt     DateTime @db.Timestamptz(3)
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+
+  liveLink YoutubeLiveLink @relation(fields: [sellerId, liveLinkId], references: [sellerId, id])
+
+  @@index([sellerId, liveLinkId, publishedAt])
+  @@index([createdAt])
 }
 
 // 하루 할당량 사용(태평양 시각 날짜 기준, 구글 할당량 초기화와 같음). scope는 "all"(전체 합) 또는 판매자 id.
