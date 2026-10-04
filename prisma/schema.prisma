@@ -75,8 +75,11 @@ model Seller {
   status                   SellerStatus @default(PENDING)
   businessInfo             Json?
   approvedAt               DateTime?    @db.Timestamptz(3)
-  // 체험하기 종료 시각 = 마스터 승인 시각(DB 시계) + TRIAL_DAYS(14일, lib/server/sellers/approval.ts). 지나면 구독 전까지 판매자 API를 막는다.
+  // 체험하기 종료 시각 = 마스터 승인 시각(DB 시계) + 판매자 플랜의 체험 일수(SubscriptionPlan.trialDays, 오버레이 전용 7일·통합 없음,
+  // lib/server/sellers/approval.ts). 체험이 없는 플랜은 null. 지나면 구독 전까지 판매자 API를 막는다.
   trialEndsAt              DateTime?    @db.Timestamptz(3)
+  // 판매자 플랜(가입 신청 때 정함, ONQ 1-C). 구독 행이 생기면 구독의 planId가 청구 기준이다. 기존 판매자는 INTEGRATED로 옮겼다.
+  planId                   String?      @db.Uuid
   // 잠긴 지 30일이 지나 자동 해지된 시각. 이때부터 90일 보관 뒤 삭제 대상(삭제는 별도 작업). 다시 구독하면 비운다.
   serviceEndedAt           DateTime?    @db.Timestamptz(3)
   approvedByAdminId        String?      @db.Uuid
@@ -93,6 +96,7 @@ model Seller {
   createdAt                DateTime     @default(now()) @db.Timestamptz(3)
 
   approvedBy PlatformAdmin? @relation(fields: [approvedByAdminId], references: [id])
+  plan       SubscriptionPlan? @relation(fields: [planId], references: [id])
 
   domains                  SellerDomain[]
   users                    SellerUser[]
@@ -1015,11 +1019,14 @@ model SubscriptionPlan {
   trialMessageLimit  Int      @default(100)
   trialIdentityLimit Int      @default(50)
   trialStorageMb     Int      @default(1024)
+  // 마스터 승인 시각부터의 체험 일수(오버레이 전용 7, 통합 0 = 체험 없음, ARCHITECTURE 4.8.0)
+  trialDays          Int      @default(0)
   createdAt          DateTime @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime @updatedAt @db.Timestamptz(3)
 
   subscriptions SellerSubscription[]
   priceChanges  SubscriptionPriceChange[]
+  sellers       Seller[]
 }
 
 // 판매가 변경 기록(대표님 결정 2026-10-02). 새 가입자는 바로 새 가격, 기존 구독자는 구독을 시작할 때 적용되던 가격을 내다가
@@ -1065,6 +1072,11 @@ model SellerSubscription {
   // 자동결제 실패 뒤 다시 시도한 횟수(최대 3번)와 계속 쓸 수 있는 유예 끝(실패한 날 + 7일)
   retryCount         Int                      @default(0)
   graceUntil         DateTime?                @db.Timestamptz(3)
+  // STANDARD → INTEGRATED 이전 전 가격 스냅숏(ONQ 1-C, ARCHITECTURE 4.8.0). 결제가 이어지는 구독에만 남긴다.
+  // 고지 발송 완료 시각(legacyPriceNoticeSentAt) + 30일 전까지는 이 금액으로 청구하고, 발송 전(null)이면 계속 이 금액이다.
+  // 해지 뒤 다시 구독하면 비운다(새 가입자 가격).
+  legacyPrice             Int?
+  legacyPriceNoticeSentAt DateTime?             @db.Timestamptz(3)
   createdAt          DateTime                 @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime                 @updatedAt @db.Timestamptz(3)
 

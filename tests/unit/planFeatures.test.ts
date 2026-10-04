@@ -120,17 +120,17 @@ const SHOP_PAGES: Record<string, "STORE_OPERATIONS" | "OPEN"> = {
 
 describe("플랜 → 기능 권한 표", () => {
   it("오버레이 전용 2종, 통합·STANDARD 3종, 모르는 플랜은 없음", () => {
-    const open = { firstPaymentConfirmed: true, inTrial: false };
+    const open = { firstPaymentConfirmed: true, hadTrial: false };
     expect(planFeatures("OVERLAY_ONLY", open)).toEqual(["OVERLAY", "EXTERNAL_INTEGRATION"]);
     expect(planFeatures("INTEGRATED", open)).toEqual(["OVERLAY", "EXTERNAL_INTEGRATION", "STORE_OPERATIONS"]);
-    expect(planFeatures("STANDARD", { firstPaymentConfirmed: false, inTrial: false })).toEqual(PLAN_FEATURES.STANDARD);
+    expect(planFeatures("STANDARD", { firstPaymentConfirmed: false, hadTrial: false })).toEqual(PLAN_FEATURES.STANDARD);
     expect(planFeatures("NOPE", open)).toEqual([]);
   });
 
-  it("통합은 첫 결제 확정 전(체험 아님)이면 없음", () => {
-    expect(planFeatures("INTEGRATED", { firstPaymentConfirmed: false, inTrial: false })).toEqual([]);
-    expect(planFeatures("INTEGRATED", { firstPaymentConfirmed: false, inTrial: true })).toHaveLength(3);
-    expect(planFeatures("OVERLAY_ONLY", { firstPaymentConfirmed: false, inTrial: false })).toHaveLength(2);
+  it("통합은 첫 결제 확정 전이면 없음(체험을 받은 적 있는 이전 판매자는 잠금 규칙을 따름)", () => {
+    expect(planFeatures("INTEGRATED", { firstPaymentConfirmed: false, hadTrial: false })).toEqual([]);
+    expect(planFeatures("INTEGRATED", { firstPaymentConfirmed: false, hadTrial: true })).toHaveLength(3);
+    expect(planFeatures("OVERLAY_ONLY", { firstPaymentConfirmed: false, hadTrial: false })).toHaveLength(2);
   });
 });
 
