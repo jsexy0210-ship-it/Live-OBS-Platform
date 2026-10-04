@@ -196,7 +196,7 @@ async function computeReadiness(db: Prisma.TransactionClient, playbook: Playbook
   // 걸러내기는 DB에서 한다(가져온 뒤 거르면 진행 중 기록이 많을 때 끝난 기록이 잘려 연속 성공이 줄어든다)
   const runs = await db.automationPracticeRun.findMany({
     where: { ...where, OR: [{ reason: null }, { reason: { not: PRACTICE_INCOMPLETE } }, { startedAt: { lte: runningSince } }] },
-    orderBy: { finishedAt: "desc" },
+    orderBy: { startedAt: "desc" },
     take: 100,
   });
   // 고객 작업에서 화면이 작업서와 달랐던 가장 최근 시각. 그 전의 연습 성공은 바뀐 화면을 검증하지 못했으므로 세지 않는다.
@@ -206,16 +206,16 @@ async function computeReadiness(db: Prisma.TransactionClient, playbook: Playbook
     select: { lastDeviationAt: true },
   });
   const driftAt = drifted?.lastDeviationAt ?? null;
+  // 연속 성공은 시작 시각 순서로 센다(연습 결과는 시작 때의 화면을 검증한 것이다. 끝난 순서로 세면 늦게 끝난 앞선 연습이 뒤의 연습을 가린다).
+  // 화면 이탈 전에 시작한 연습은 바뀐 화면을 검증하지 못했으므로 끊김이 아니라 제외한다(이탈 뒤에 끝났어도)
   let streak = 0;
   for (const r of runs) {
-    // 화면 이탈 전에 시작한 연습은 바뀐 화면을 검증하지 못했다(이탈 뒤에 끝났어도 세지 않는다)
-    if (driftAt && r.startedAt <= driftAt) break;
+    if (driftAt && r.startedAt <= driftAt) continue;
     if (r.outcome !== "SUCCEEDED" || r.deviatedSteps.length > 0) break;
     streak++;
   }
-  const last = runs[0]?.finishedAt;
-  // 마지막 연습 뒤에 이탈이 있었다(또는 이탈 뒤 연습이 아직 기준 횟수에 못 미침) → 다시 연습해 검증
-  const needsReverify = !!driftAt && (!last || driftAt >= last || streak < required);
+  // 이탈 뒤에 시작한 연습의 연속 성공이 기준에 못 미치면 다시 연습해 검증
+  const needsReverify = !!driftAt && streak < required;
   const avg = (f: (r: AutomationPracticeRun) => number) => (runs.length ? Math.round(runs.reduce((a, r) => a + f(r), 0) / runs.length) : null);
   return {
     playbookId: playbook.id,

@@ -2772,6 +2772,48 @@ describe("Codex 26차 반영(acd7e67)", () => {
   });
 });
 
+describe("Codex 27차 반영(a8dd5a6)", () => {
+  const T = (ms: number) => new Date(Date.now() + ms);
+  const run = (startedAt: Date, finishedAt: Date, outcome: "SUCCEEDED" | "FAILED") => ({
+    playbookId: cafe24Playbook.id,
+    playbookVersion: cafe24Playbook.version,
+    outcome,
+    reason: outcome === "FAILED" ? "x" : null,
+    durationMs: 0,
+    plannerCalls: 0,
+    playbookActions: 0,
+    costWon: 0,
+    startedAt,
+    finishedAt,
+  });
+  async function driftAt(at: Date) {
+    const other = await bought();
+    // 공통 준비의 연습 기록을 지우고 이 시험의 기록만으로 판정한다
+    await db.automationPracticeRun.deleteMany();
+    await db.automationJob.update({ where: { id: other.jobId }, data: { status: "CANCELED", finishedAt: at, lastDeviationAt: at, deviatedSteps: ["webhook_setup"] } });
+  }
+
+  it("화면 이탈 전에 시작해 늦게 끝난 연습은 연속 성공을 끊지 않고 제외된다: 이탈 뒤 시작한 성공 5건이면 준비 완료", async () => {
+    await driftAt(T(-60_000));
+    // 이탈 전에 시작했지만 가장 늦게 끝난 실패 1건
+    await db.automationPracticeRun.create({ data: run(T(-120_000), T(60_000), "FAILED") });
+    // 이탈 뒤에 시작한 성공 5건(위 실패보다 먼저 끝남)
+    for (let i = 0; i < PRACTICE_STREAK_REQUIRED; i++) await db.automationPracticeRun.create({ data: run(T(-50_000 + i * 1000), T(-40_000 + i * 1000), "SUCCEEDED") });
+    const r = await playbookReadiness(db, cafe24Playbook);
+    expect(r).toMatchObject({ verified: true, streak: PRACTICE_STREAK_REQUIRED, needsReverify: false });
+  });
+
+  it("연속 성공은 시작 순서로 센다: 먼저 시작해 늦게 끝난 실패 뒤에 시작한 성공 5건이면 준비 완료", async () => {
+    await driftAt(T(-60_000));
+    await db.automationPracticeRun.create({ data: run(T(-55_000), T(60_000), "FAILED") });
+    for (let i = 0; i < PRACTICE_STREAK_REQUIRED; i++) await db.automationPracticeRun.create({ data: run(T(-50_000 + i * 1000), T(-40_000 + i * 1000), "SUCCEEDED") });
+    expect(await playbookReadiness(db, cafe24Playbook)).toMatchObject({ verified: true, streak: PRACTICE_STREAK_REQUIRED });
+    // 반대로 성공들보다 뒤에 시작한 실패가 있으면 끊긴다
+    await db.automationPracticeRun.create({ data: run(T(-30_000), T(-20_000), "FAILED") });
+    expect(await playbookReadiness(db, cafe24Playbook)).toMatchObject({ verified: false, streak: 0, needsReverify: true });
+  });
+});
+
 // 쇼핑몰 연결 단계(「앱 설치」 누르기)를 마친 뒤에만 문서 주소가 바뀌게 한다: 웹훅 단계의 첫 변경 행동인 비밀값 입력 검사를 시험한다
 // (그 전부터 바뀌어 있으면 누르기 직전 주소 검사(page_not_allowed)가 먼저 멈춘다 — 19차 시험)
 function afterConnect(rt: { browser: FakeBrowserExecutor }, url: string | null) {
