@@ -26,5 +26,15 @@ export function playbookForShopUrl(raw: string): Playbook | null {
   } catch {
     return null;
   }
-  return PLAYBOOKS.find((p) => p.hostSuffixes.some((h) => host === h || host.endsWith(`.${h}`))) ?? null;
+  host = host.toLowerCase();
+  // 판매자별 쇼핑몰 호스트(<몰>.<접미사>, 몰 이름 형식이 맞고 예약 이름이 아님)만 받는다. apex·중앙/서비스 호스트·두 단계 하위 도메인은 지원 밖
+  return (
+    PLAYBOOKS.find((p) =>
+      p.hostSuffixes.some((h) => {
+        if (!host.endsWith(`.${h}`)) return false;
+        const label = host.slice(0, -(h.length + 1));
+        return p.shopLabel.pattern.test(label) && !p.shopLabel.reserved.includes(label);
+      }),
+    ) ?? null
+  );
 }

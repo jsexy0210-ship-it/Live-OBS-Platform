@@ -2415,6 +2415,44 @@ describe("Codex 19차 반영(83b6897)", () => {
   });
 });
 
+describe("Codex 20차 반영(fd75a03)", () => {
+  it("쇼핑몰 주소는 판매자별 쇼핑몰 호스트(한 단계 하위 도메인)만 받는다: apex·중앙/예약 호스트·두 단계 하위 도메인은 지원 밖·결제 0건", async () => {
+    for (const shopUrl of ["https://cafe24.com", "https://admin.cafe24.com", "https://www.cafe24.com", "https://eclogin.cafe24.com", "https://a.b.cafe24.com"]) {
+      const s = await shopWithCard();
+      expect(await purchaseAutomation(db, new FakeBillingProvider(), s.ctx, { idempotencyKey: newKey(), consent, shopUrl }), shopUrl).toEqual({ ok: false, reason: "shop_not_supported" });
+      expect(await db.automationPayment.count({ where: { sellerId: s.seller.id } }), shopUrl).toBe(0);
+      expect(await db.automationJob.count({ where: { sellerId: s.seller.id } }), shopUrl).toBe(0);
+    }
+    const ok = await shopWithCard();
+    expect(await purchaseAutomation(db, new FakeBillingProvider(), ok.ctx, { idempotencyKey: newKey(), consent, shopUrl: "https://mallid.cafe24.com" })).toMatchObject({ ok: true });
+  });
+
+  it("연습 정리를 작업자 둘이 동시에 돌려도 한 행은 한 작업자만 집는다: 정리 1회, 성공 뒤 다른 작업자의 실패가 덮어쓰지 않고 알림 0건", async () => {
+    const practice = await import("../../lib/server/automation/practice");
+    const run = await runPractice(db, runtime(), cafe24Playbook, { shopHost: "myshop.cafe24.com" });
+    // 마지막 한 번 남은 정리 대기 행
+    await db.automationPracticeRun.update({
+      where: { id: run.id },
+      data: { cleanupScopeId: run.cleanupScopeId ?? crypto.randomUUID(), cleanupPendingAt: new Date(Date.now() - 1000), cleanupAttempts: 9 },
+    });
+    const rt = runtime();
+    let calls = 0;
+    rt.browser.discard = async () => {
+      calls++;
+      if (calls === 1) {
+        await new Promise((r) => setTimeout(r, 300));
+        return;
+      }
+      throw new Error("executor unavailable");
+    };
+    await Promise.all([practice.cleanupPracticeArtifacts(db, rt), practice.cleanupPracticeArtifacts(db, rt)]);
+    expect(calls).toBe(1);
+    const r = await db.automationPracticeRun.findUniqueOrThrow({ where: { id: run.id } });
+    expect(r).toMatchObject({ cleanupPendingAt: null, cleanupNeededAt: null, cleanupAttempts: 10 });
+    expect(await db.auditLog.count({ where: { action: "automation.practice_cleanup_needed", targetId: run.id } })).toBe(0);
+  });
+});
+
 // 쇼핑몰 연결 단계(「앱 설치」 누르기)를 마친 뒤에만 문서 주소가 바뀌게 한다: 웹훅 단계의 첫 변경 행동인 비밀값 입력 검사를 시험한다
 // (그 전부터 바뀌어 있으면 누르기 직전 주소 검사(page_not_allowed)가 먼저 멈춘다 — 19차 시험)
 function afterConnect(rt: { browser: FakeBrowserExecutor }, url: string | null) {

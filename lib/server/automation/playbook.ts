@@ -63,6 +63,9 @@ export type Playbook = {
   platform: string;
   // 쇼핑몰 주소 판별에 쓰는 호스트 끝부분
   hostSuffixes: readonly string[];
+  // 판매자별 쇼핑몰 호스트 형식: 접미사 바로 앞 한 단계 이름만(<몰>.<접미사>). 이 형식에 맞고 예약 이름이 아니어야 쇼핑몰 주소로 받는다
+  // (apex·중앙/서비스 호스트·두 단계 하위 도메인을 작업의 신뢰 호스트로 쓰지 않게)
+  shopLabel: { pattern: RegExp; reserved: readonly string[] };
   // draft = 연습 검증 전. 지원 목록 여부는 이 값이 아니라 연습 기록(practice.ts)으로 정한다.
   status: "draft" | "ready";
   // 비밀값을 넣어도 되는 화면: 작업 대상 쇼핑몰 호스트와 정확히 같고, 경로가 관리자 경로 접두사로 시작하며,

@@ -7,6 +7,13 @@ export const cafe24Playbook: Playbook = {
   version: 1,
   platform: "Cafe24",
   hostSuffixes: ["cafe24.com"],
+  // 쇼핑몰 아이디(<몰>.cafe24.com의 <몰>): 영문 소문자·숫자 4~16자(공개 자료 기준 가정값, 공식 문서 직접 열람 불가 — 연습 때 확인).
+  // 예약 이름: 플랫폼 중앙·서비스 호스트(관리자 중앙 admin, 로그인 센터 eclogin, 개발자센터 developers, API api, 대표 사이트 www 등).
+  // 근거: 공개 자료 검색의 관리자·로그인 센터·개발자센터 주소. 목록 밖 서비스 호스트가 실습 때 확인되면 여기에 더한다.
+  shopLabel: {
+    pattern: /^[a-z0-9]{4,16}$/,
+    reserved: ["admin", "www", "api", "eclogin", "developers", "developer", "echosting", "help", "support", "login", "mail", "store", "static", "image", "img", "cdn"],
+  },
   status: "draft",
   // 관리자 화면은 쇼핑몰 자체 하위 도메인(<몰>.cafe24.com/admin, /disp/admin/…)에 있다(공개 자료 기준, 공식 문서 직접 열람 불가 — 연습 때 확인).
   // 같은 호스트에 쇼핑몰 앞 화면이 있으므로 경로 접두사와 로그인 상태 단서(로그아웃 버튼)를 함께 본다. 단서 문구는 가정값.

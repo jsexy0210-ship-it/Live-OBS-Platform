@@ -17,6 +17,8 @@ import { STEPS } from "./steps";
 export const PRACTICE_STREAK_REQUIRED = 5;
 // 정리 다시 시도 상한. 모두 실패하면 「정리 필요」로 바꾸고 마스터 관리자 알림(운영 이벤트)을 남긴다.
 export const CLEANUP_MAX_ATTEMPTS = 10;
+// 정리 점유 시간: 이 시간 안에 끝나지 않으면(작업자 중단) 다른 작업자가 다시 집는다
+const CLEANUP_CLAIM_MS = 10 * 60_000;
 // 연습 시작 때 남기는 기록의 사유(결과가 나오면 바뀐다)
 const PRACTICE_INCOMPLETE = "practice_incomplete";
 
@@ -98,26 +100,34 @@ export async function runPractice(
 // 정리가 끝나지 않은 연습 실행의 보관 자료를 다시 지운다(작업자 반복에서 부른다). 실패하면 백오프로 미루고,
 // 상한(10회)을 모두 실패하면 자동 정리를 멈추고 「정리 필요」(cleanupNeededAt)로 바꾼 뒤 같은 트랜잭션에서 마스터 관리자 알림 1건을 남긴다.
 export async function cleanupPracticeArtifacts(db: PrismaClient, rt: Pick<AutomationRuntime, "browser" | "obs">, limit = 20): Promise<number> {
-  const due = await db.automationPracticeRun.findMany({
-    where: { cleanupPendingAt: { lte: new Date() }, cleanupScopeId: { not: null }, cleanupAttempts: { lt: CLEANUP_MAX_ATTEMPTS } },
-    orderBy: { cleanupPendingAt: "asc" },
-    take: limit,
-  });
+  // 정리 대기 행을 원자적으로 점유한다: 고르면서 다음 대기 시각을 점유 시간만큼 미뤄 다른 작업자가 같은 행을 집지 않게 한다.
+  // 결과는 고른 시점의 대기 시각·시도 횟수가 그대로일 때만 반영한다(점유가 풀린 뒤 다른 작업자가 먼저 반영했으면 덮어쓰지 않음)
+  const claimed = await db.$queryRaw<{ id: string; cleanupScopeId: string; cleanupAttempts: number; cleanupPendingAt: Date; playbookId: string; playbookVersion: number }[]>`
+    UPDATE "AutomationPracticeRun" SET "cleanupPendingAt" = now() + ${`${CLEANUP_CLAIM_MS} milliseconds`}::interval
+    WHERE id IN (
+      SELECT id FROM "AutomationPracticeRun"
+      WHERE "cleanupPendingAt" <= now() AND "cleanupScopeId" IS NOT NULL AND "cleanupAttempts" < ${CLEANUP_MAX_ATTEMPTS}
+      ORDER BY "cleanupPendingAt" ASC, id ASC
+      LIMIT ${limit}
+      FOR UPDATE SKIP LOCKED
+    )
+    RETURNING id, "cleanupScopeId", "cleanupAttempts", "cleanupPendingAt", "playbookId", "playbookVersion"`;
   let cleaned = 0;
-  for (const r of due) {
-    const ok = await discardScope(rt, { sellerId: "practice", jobId: r.cleanupScopeId! });
+  for (const r of claimed) {
+    const ok = await discardScope(rt, { sellerId: "practice", jobId: r.cleanupScopeId });
     const attempts = r.cleanupAttempts + 1;
+    const mine = { id: r.id, cleanupAttempts: r.cleanupAttempts, cleanupPendingAt: r.cleanupPendingAt };
     if (ok || attempts < CLEANUP_MAX_ATTEMPTS) {
-      await db.automationPracticeRun.update({
-        where: { id: r.id },
+      const w = await db.automationPracticeRun.updateMany({
+        where: mine,
         data: ok ? { cleanupPendingAt: null, cleanupAttempts: attempts } : { cleanupAttempts: attempts, cleanupPendingAt: new Date(Date.now() + backoffMs(attempts)) },
       });
-      if (ok) cleaned++;
+      if (ok && w.count === 1) cleaned++;
       continue;
     }
     await db.$transaction(async (tx) => {
       const moved = await tx.automationPracticeRun.updateMany({
-        where: { id: r.id, cleanupNeededAt: null },
+        where: { ...mine, cleanupNeededAt: null },
         data: { cleanupAttempts: attempts, cleanupPendingAt: null, cleanupNeededAt: new Date() },
       });
       if (moved.count === 1) {
