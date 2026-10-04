@@ -1,0 +1,63 @@
+# obs-test 서버 시험 데이터 넣기(시험 판매자 계정 1개·시험 쇼핑몰·상품). 절차: docs/DEPLOY.md 「시험 데이터 넣기」
+# - 수동 실행(workflow_dispatch)만. main·이 저장소일 때만 job이 돈다(대표님 승인 2026-10-04).
+# - scripts/seed-obs-test.mjs를 서버의 마이그레이션 이미지(obs-web-migrate)로 실행한다. OBS_TEST_MODE=1인 서버에서만 동작한다.
+# - 판매자가 이미 있으면 아무것도 하지 않는다(스크립트 동작).
+# - 비밀번호는 실행 입력으로만 받고 로그에서 가린다. 서버 비밀값은 /opt/obs/.env에서 이 명령에만 넘긴다.
+name: Seed obs-test
+
+on:
+  workflow_dispatch:
+    inputs:
+      login:
+        description: "시험 판매자 로그인 아이디"
+        required: true
+        type: string
+      password:
+        description: "시험 판매자 비밀번호(테스트 서버 전용)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-obs-test
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    name: Seed obs-test
+    if: github.ref == 'refs/heads/main' && github.repository == 'jsexy0210-ship-it/Live-OBS-Platform'
+    runs-on: [self-hosted, obs-kakao]
+    environment: obs-test
+    timeout-minutes: 15
+    env:
+      ENV_FILE: /opt/obs/.env
+    steps:
+      - name: Mask password
+        env:
+          SEED_SELLER_PASSWORD: ${{ inputs.password }}
+        run: echo "::add-mask::$SEED_SELLER_PASSWORD"
+
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Run seed
+        env:
+          SEED_SELLER_LOGIN: ${{ inputs.login }}
+          SEED_SELLER_PASSWORD: ${{ inputs.password }}
+        run: |
+          set -euo pipefail
+          test -f "$ENV_FILE" || { echo "$ENV_FILE 이 없어요(docs/DEPLOY.md 「서버 .env」)."; exit 1; }
+          C="docker compose -p obs-web -f deploy/docker-compose.yml --env-file $ENV_FILE"
+          # 지금 떠 있는 앱 이미지 버전을 그대로 써서 새로 빌드하지 않는다
+          APP_VERSION="$(docker ps -a --filter label=com.docker.compose.project=obs-web --filter label=com.docker.compose.service=obs-web-app --format '{{.Image}}' | head -1 | cut -d: -f2)"
+          [ -n "$APP_VERSION" ] || { echo "배포된 앱이 없어요. Deploy obs-test를 먼저 실행해 주세요."; exit 1; }
+          export APP_VERSION
+          OBS_TEST_MODE="$(sed -n 's/^OBS_TEST_MODE=//p' "$ENV_FILE")"
+          IDENTITY_HASH_KEY="$(sed -n 's/^IDENTITY_HASH_KEY=//p' "$ENV_FILE")"
+          export OBS_TEST_MODE IDENTITY_HASH_KEY SEED_SELLER_LOGIN SEED_SELLER_PASSWORD
+          $C run --rm --no-deps -e OBS_TEST_MODE -e SEED_SELLER_LOGIN -e SEED_SELLER_PASSWORD -e IDENTITY_HASH_KEY obs-web-migrate node scripts/seed-obs-test.mjs
