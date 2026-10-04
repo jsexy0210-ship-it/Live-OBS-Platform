@@ -46,7 +46,7 @@ const MENU: Group[] = [
     items: [
       { label: "전체 주문", href: "/seller/orders", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
       { label: "입금 확인", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
-      { label: "교환 · 반품", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
+      { label: "교환 · 반품", href: "/seller/returns", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
       { label: "배송", href: "/seller/shipping", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
       { label: "송장 발급", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
       { label: "송장 출력 · 추적", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },

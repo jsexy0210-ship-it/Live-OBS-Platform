@@ -66,6 +66,14 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/reward-ledger": "ORDER_FOLLOWUP",
   "seller/purchase-restrictions/[buyerMemberId]/lift": "ORDER_FOLLOWUP",
   "seller/coupons": "STORE_OPERATIONS",
+  "seller/returns": "ORDER_FOLLOWUP",
+  "seller/returns/[id]": "ORDER_FOLLOWUP",
+  "seller/returns/[id]/accept": "ORDER_FOLLOWUP",
+  "seller/returns/[id]/reject": "ORDER_FOLLOWUP",
+  "seller/returns/[id]/receive": "ORDER_FOLLOWUP",
+  "seller/returns/[id]/exchange": "ORDER_FOLLOWUP",
+  "seller/returns/[id]/refund": "ORDER_FOLLOWUP",
+  "seller/returns/images/[imageId]": "ORDER_FOLLOWUP",
   "seller/reviews": "STORE_OPERATIONS",
   "seller/reviews/[reviewId]": "STORE_OPERATIONS",
   "seller/reviews/[reviewId]/reply": "STORE_OPERATIONS",
@@ -156,6 +164,11 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/coupons": "OPEN", // 내 쿠폰함(받은 쿠폰 조회는 열고, 받을 수 있는 쿠폰은 운영 중일 때만)
   "shop/[slug]/categories": "STORE_OPERATIONS", // 카테고리 메뉴(SA-015)
   "shop/[slug]/shop-content/logo": "STORE_OPERATIONS", // 쇼핑몰 로고(없으면 404, 화면은 첫 글자)
+  "shop/[slug]/returns": "STORE_OPERATIONS", // 교환·반품 신청(POST는 shopOpen으로 막고, GET 내 신청 조회는 잠긴 쇼핑몰에서도 열림)
+  "shop/[slug]/returns/[id]/cancel": "STORE_OPERATIONS",
+  "shop/[slug]/returns/[id]/ship-back": "STORE_OPERATIONS",
+  "shop/[slug]/returns/images": "STORE_OPERATIONS",
+  "shop/[slug]/returns/images/[imageId]": "OPEN", // 내가 올린 신청 사진
   "shop/[slug]/reviews": "OPEN", // 내 리뷰(받은 답글·숨김 사유는 잠긴 쇼핑몰에서도 본다)
   "shop/[slug]/reviews/[reviewId]": "OPEN", // 내 리뷰 고치기·지우기
   "shop/[slug]/reviews/images/[imageId]": "OPEN", // 내가 올린 사진

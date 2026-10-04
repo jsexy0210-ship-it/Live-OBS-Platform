@@ -4,6 +4,7 @@ import { recordOrderEarn } from "../queue/service";
 import { requireSellerPermission, type TenantContext } from "../tenant/context";
 import { dbClock, getOrderPolicy } from "./overdue";
 import { refreshOrderRetention } from "../buyers/legalHold";
+import { hasActiveReturn } from "../shop-returns/hooks";
 
 // 배송 완료·구매 확정(PRODUCT_SCOPE 「배송 완료」·「구매 확정」, 「적립금 지급 시점」).
 // - 배송 완료: 판매자가 직접 처리하거나, 배송 중으로 n일(판매자 설정, 기본 사용·7일)이 지나면 자동으로 처리한다.
@@ -183,6 +184,8 @@ async function autoConfirmOrder(tx: Tx, o: { orderId: string; sellerId: string }
   });
   const deliveredAt = order.shipment?.status === "DELIVERED" ? order.shipment.deliveredAt : null;
   if (order.purchaseConfirmedAt || !deliveredAt) return false;
+  // 진행 중인 교환·반품 신청이 있으면 확정하지 않는다(shop-returns)
+  if (await hasActiveReturn(tx, o.sellerId, o.orderId)) return false;
   const since = order.purchaseUnconfirmedAt ?? deliveredAt;
   const policy = await getOrderPolicy(tx, o.sellerId);
   if (!policy.autoConfirmEnabled || since.getTime() + policy.autoConfirmDays * DAY_MS > locked.now.getTime()) return false;
