@@ -31,7 +31,7 @@ async function login(page: Page, email: string, next: string) {
 
 const menu = (page: Page) => page.getByRole("complementary", { name: "파트너스 메뉴" });
 // 스토어 운영(쇼핑몰 기능) 권한이 있어야 보이는 메뉴
-const STORE_MENUS = ["통계", "상품", "적립금", "쿠폰", "회원", "쇼핑몰 설정", "배너 · 팝업", "결제(PG) 연결", "주문자 알림"];
+const STORE_MENUS = ["상품", "적립금", "쿠폰", "회원", "쇼핑몰 설정", "배너 · 팝업", "결제(PG) 연결", "주문자 알림"];
 // 오버레이 전용에서도 보이는 메뉴(오버레이 권한·기존 주문 처리·계정·구독)
 const COMMON_MENUS = ["주문", "구매 제한", "방송 대시보드", "오버레이 편집기", "방송 이력", "구독 · 결제", "직원 계정", "내 계정"];
 
@@ -40,6 +40,7 @@ test("쇼핑몰 통합은 쇼핑몰 기능 메뉴가 모두 보인다", async ({
   const me = await (await page.request.get("/api/seller/me")).json();
   expect(me.features).toContain("STORE_OPERATIONS");
   for (const label of [...STORE_MENUS, ...COMMON_MENUS]) await expect(menu(page).getByText(label, { exact: true })).toBeVisible();
+  await expect(menu(page).getByRole("link", { name: "통계", exact: true })).toHaveAttribute("href", "/seller/stats");
   await expect(page.getByTestId("plan-feature-required")).toHaveCount(0);
   await shot(page, "plan-menu-integrated");
 });
@@ -51,7 +52,29 @@ test("오버레이 전용은 쇼핑몰 기능 메뉴를 숨기고, 오버레이�
   await expect(page.getByRole("heading", { name: "주문" })).toBeVisible();
   for (const label of COMMON_MENUS) await expect(menu(page).getByText(label, { exact: true })).toBeVisible();
   for (const label of STORE_MENUS) await expect(menu(page).getByText(label, { exact: true })).toHaveCount(0);
+  // 통계는 방송 통계만 연다(매출·상품 등은 숨김)
+  await expect(menu(page).getByRole("link", { name: "통계", exact: true })).toHaveAttribute("href", "/seller/stats/broadcasts");
   await shot(page, "plan-menu-overlay");
+});
+
+test("로그인 뒤 기본 화면: 통합은 지금처럼 상품, 오버레이 전용은 안내 화면 대신 열 수 있는 첫 메뉴(방송 통계)", async ({ page }) => {
+  await page.goto("/seller/login");
+  await submitSellerLogin(page, INTEGRATED, PASSWORD);
+  await expect(page).toHaveURL(/\/seller\/products$/);
+  await page.context().clearCookies();
+
+  await page.goto("/seller/login");
+  await submitSellerLogin(page, OVERLAY, PASSWORD);
+  await expect(page).toHaveURL(/\/seller\/stats\/broadcasts$/);
+  await expect(page.getByRole("heading", { name: "방송 통계" })).toBeVisible();
+  await expect(page.getByTestId("plan-feature-required")).toHaveCount(0);
+  // 통계 탭도 방송만 남는다
+  await expect(page.getByRole("navigation", { name: "통계 종류" }).getByRole("link")).toHaveText(["방송"]);
+  await shot(page, "plan-overlay-landing");
+
+  // 매출·주문 통계 요약은 주소로 들어와도 안내 화면
+  await page.goto("/seller/stats");
+  await expect(page.getByTestId("plan-feature-required")).toBeVisible();
 });
 
 test("오버레이 전용이 쇼핑몰 기능 주소로 바로 들어오면 안내 화면을 보이고, 열 수 있는 화면으로 보낸다", async ({ page }) => {
@@ -71,8 +94,9 @@ test("오버레이 전용이 쇼핑몰 기능 주소로 바로 들어오면 안�
   await expect(page.getByText("상품 등록")).toHaveCount(0);
   await shot(page, "plan-feature-required");
 
-  await guide.getByRole("link", { name: "주문 화면으로 이동" }).click();
-  await expect(page).toHaveURL(/\/seller\/orders$/);
+  // 열 수 있는 첫 메뉴(통계 → 방송 통계)로 보낸다
+  await guide.getByRole("link", { name: "통계 화면으로 이동" }).click();
+  await expect(page).toHaveURL(/\/seller\/stats\/broadcasts$/);
   await expect(page.getByTestId("plan-feature-required")).toHaveCount(0);
 });
 

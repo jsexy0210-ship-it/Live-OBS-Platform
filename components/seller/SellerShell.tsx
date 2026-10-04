@@ -13,11 +13,13 @@ import { api, PLAN_FEATURE_EVENT, type Me } from "./api";
 // plan: 요금제가 그 기능 권한을 줘야 메뉴가 보인다(ARCHITECTURE 4.8.0 판매자 API 분류와 같은 기준). 없으면 구독·결제처럼 항상 열린다.
 //   ANY = 기능 권한이 하나라도 있을 때(ACCOUNT·ORDER_FOLLOWUP: 요금제를 낮춘 뒤에도 이미 받은 주문은 처리, 통합 첫 결제 확정 전에는 닫힘)
 type PlanNeed = "ANY" | "OVERLAY" | "STORE_OPERATIONS";
-type Nav = { h: string } | { label: string; href?: string; perm?: string; match?: string; plan?: PlanNeed };
+// alt: plan이 없을 때 대신 여는 화면(그 요금제에서 쓸 수 있는 하위 화면만 보여 줄 때)
+type Nav = { h: string } | { label: string; href?: string; perm?: string; match?: string; plan?: PlanNeed; alt?: { plan: PlanNeed; href: string } };
 const NAV: Nav[] = [
   { h: "홈" },
   { label: "홈", plan: "ANY" },
-  { label: "통계", href: "/seller/stats", perm: "SALES_VIEW", plan: "STORE_OPERATIONS" },
+  // 오버레이 전용은 방송 통계만(매출·상품 등은 스토어 운영, MASTER 결정 2026-10-04)
+  { label: "통계", href: "/seller/stats", perm: "SALES_VIEW", plan: "STORE_OPERATIONS", alt: { plan: "OVERLAY", href: "/seller/stats/broadcasts" } },
   { h: "방송" },
   { label: "방송 대시보드", perm: "BROADCAST_RUN", plan: "OVERLAY" },
   { h: "판매" },
@@ -62,6 +64,29 @@ function routeCrumb(pathname: string): string {
 }
 function routePlan(pathname: string): PlanNeed | undefined {
   return ROUTE_PLAN.find(([p]) => pathname.startsWith(p))?.[1] ?? routeNav(pathname)?.plan;
+}
+
+type NavItem = Extract<Nav, { label: string }>;
+export function planAllows(features: readonly string[] | undefined, need?: PlanNeed): boolean {
+  const f = features ?? [];
+  return !need || (need === "ANY" ? f.length > 0 : f.includes(need));
+}
+function canFor(me: Me, perm: string) {
+  return me.isOwner || (perm !== "OWNER" && me.permissions.includes(perm));
+}
+// 권한·요금제 기능이 없는 메뉴는 숨기고(alt가 열리면 그 화면으로), 안에 메뉴가 하나도 안 남은 묶음 제목도 숨긴다
+function visibleNav(me: Me): Nav[] {
+  return NAV.flatMap((n): Nav[] => {
+    if (!("label" in n)) return [n];
+    if (n.perm && !canFor(me, n.perm)) return [];
+    if (planAllows(me.features, n.plan)) return [n];
+    return n.alt && planAllows(me.features, n.alt.plan) ? [{ ...n, href: n.alt.href }] : [];
+  }).filter((n, i, all) => !("h" in n) || (all[i + 1] !== undefined && !("h" in all[i + 1])));
+}
+// 로그인 뒤 갈 화면: 기본 화면(href)이 요금제에 없으면 만든 메뉴 중 지금 열리는 첫 메뉴(없으면 기본 화면 그대로)
+export function landingFor(me: Me, href: string): string {
+  if (planAllows(me.features, routePlan(href))) return href;
+  return visibleNav(me).find((n): n is NavItem => "label" in n && !!n.href)?.href ?? href;
 }
 
 type ShellCtx = { me: Me; trialDaysLeft: number | null; openNav: () => void; can: (perm: string) => boolean };
@@ -191,16 +216,12 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const can = (perm: string) => me.isOwner || (perm !== "OWNER" && me.permissions.includes(perm));
+  const can = (perm: string) => canFor(me, perm);
   const features = me.features ?? [];
-  const hasPlan = (need?: PlanNeed) => !need || (need === "ANY" ? features.length > 0 : features.includes(need));
-  // 권한·요금제 기능이 없는 메뉴는 숨기고, 안에 메뉴가 하나도 안 남은 묶음 제목도 숨긴다
-  const nav = NAV.filter((n) => !("label" in n) || ((!n.perm || can(n.perm)) && hasPlan(n.plan))).filter(
-    (n, i, all) => !("h" in n) || (all[i + 1] !== undefined && !("h" in all[i + 1])),
-  );
-  const blocked = planBlocked === pathname || !hasPlan(routePlan(pathname));
+  const nav = visibleNav(me);
+  const blocked = planBlocked === pathname || !planAllows(features, routePlan(pathname));
   // 안내 화면에서 갈 수 있는 첫 화면(만든 메뉴 중 지금 열리는 것)
-  const nextNav = nav.find((n): n is Extract<Nav, { label: string }> => "label" in n && !!n.href && !pathname.startsWith(n.match ?? n.href));
+  const nextNav = nav.find((n): n is NavItem => "label" in n && !!n.href && !pathname.startsWith(n.href));
 
   return (
     <Ctx.Provider value={{ me, trialDaysLeft, openNav: () => setNavOpen(true), can }}>
