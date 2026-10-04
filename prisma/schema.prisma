@@ -872,7 +872,6 @@ model ProductReview {
   repliedAt      DateTime?            @db.Timestamptz(3)
   reportCount    Int                  @default(0)
   // 지금 지급된 리뷰 적립금(회수하면 0)과 지급 회차(다시 공개하면 새 회차로 지급)
-  rewardedAmount Int                  @default(0)
   rewardRound    Int                  @default(0)
   createdAt      DateTime             @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime             @default(now()) @db.Timestamptz(3)

@@ -2,6 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { POST as hidePost } from "../../app/api/seller/reviews/[reviewId]/hide/route";
 import { POST as publishPost } from "../../app/api/seller/reviews/[reviewId]/publish/route";
 import { PUT as replyPut } from "../../app/api/seller/reviews/[reviewId]/reply/route";
+import { GET as sellerDetailGet } from "../../app/api/seller/reviews/[reviewId]/route";
 import { GET as sellerImageGet } from "../../app/api/seller/reviews/images/[imageId]/route";
 import { GET as policyGet, PUT as policyPut } from "../../app/api/seller/reviews/policy/route";
 import { GET as sellerList } from "../../app/api/seller/reviews/route";
@@ -98,6 +99,14 @@ async function created(s: Shop, itemId: string, body: unknown = { rating: 5, bod
   const j = (await res.json()) as { reviewId: string; status: string; grantedReward: number; error?: string };
   return { res, ...j };
 }
+// 판매자 화면(목록·상세)과 구매자 화면(내 리뷰)이 보여 주는 리뷰 적립 금액
+const sellerReward = async (s: Shop, id: string) => {
+  const d = ((await (await sellerDetailGet(get("/x", s.owner), p({ reviewId: id }))).json()) as { review: { rewardedAmount: number } }).review;
+  const l = (await (await sellerList(get("/x", s.owner))).json()) as { reviews: { id: string; rewardedAmount: number }[] };
+  return [d.rewardedAmount, l.reviews.find((x) => x.id === id)?.rewardedAmount];
+};
+const buyerReward = async (s: Shop, id: string, cookie = s.b1) =>
+  ((await (await mineGet(get("/x", cookie), p({ slug: s.slug }))).json()) as { reviews: { id: string; rewardedAmount: number }[] }).reviews.find((x) => x.id === id)?.rewardedAmount;
 const ledger = (s: Shop) => db.rewardLedger.findMany({ where: { sellerId: s.seller.id }, orderBy: { createdAt: "asc" } });
 
 describe("작성 자격", () => {
@@ -193,11 +202,43 @@ describe("공개 방식·자동 보류·적립금", () => {
     expect(r.status).toBe("PENDING");
     expect(await withdrawBuyer(db, { sellerId: s.seller.id, buyerMemberId: s.buyer.id }, { password: PASSWORD })).toEqual({ ok: true });
     expect((await publishPost(json("/x", "POST", s.owner, {}), p({ reviewId: r.reviewId }))).status).toBe(200);
-    expect((await db.productReview.findUniqueOrThrow({ where: { id: r.reviewId } })).rewardedAmount).toBe(0);
+    expect(await sellerReward(s, r.reviewId)).toEqual([0, 0]);
     const audit = await db.auditLog.findFirstOrThrow({ where: { action: "review.publish", targetId: r.reviewId } });
     expect((audit.after as { grantedReward: number }).grantedReward).toBe(0);
     expect((await hidePost(json("/x", "POST", s.cs, { reason: "OTHER" }), p({ reviewId: r.reviewId }))).status).toBe(200);
     expect((await ledger(s)).map((x) => [x.type, x.status, x.failureReason])).toEqual([["EARN", "FAILED", "member_withdrawn"]]);
+  });
+
+  it("공개 리뷰의 대기 적립이 있는 회원이 탈퇴하면 리뷰 적립 금액은 원장대로 0이 된다(Codex 4176818122)", async () => {
+    const s = await shop();
+    await setPolicy(s, { rewardText: 500 });
+    const r = await created(s, (await s.delivered()).id);
+    expect(await sellerReward(s, r.reviewId)).toEqual([500, 500]);
+    expect(await buyerReward(s, r.reviewId)).toBe(500);
+    expect(await withdrawBuyer(db, { sellerId: s.seller.id, buyerMemberId: s.buyer.id }, { password: PASSWORD })).toEqual({ ok: true });
+    expect(await sellerReward(s, r.reviewId)).toEqual([0, 0]);
+    expect((await hidePost(json("/x", "POST", s.cs, { reason: "OTHER" }), p({ reviewId: r.reviewId }))).status).toBe(200);
+    expect((await ledger(s)).map((x) => [x.type, x.status])).toEqual([["EARN", "FAILED"]]);
+  });
+
+  it("리뷰에서 뗀 사진은 소진돼 다른 리뷰에 붙일 수 없고, 사진을 모두 떼면 글 리뷰 금액으로 조정된다(Codex 4176818118)", async () => {
+    const s = await shop();
+    await setPolicy(s, { rewardText: 500, rewardPhoto: 1000 });
+    const [i1, i2] = [await s.delivered(), await s.delivered()];
+    const img = (await (await upload(s, fakeJpeg(800, 600))).json()) as { image: { id: string } };
+    const r = await created(s, i1.id, { rating: 5, body: BODY, imageIds: [img.image.id] });
+    expect(r.grantedReward).toBe(1000);
+    expect((await reviewPut(json("/x", "PUT", s.b1, { rating: 5, body: BODY, imageIds: [] }), p({ slug: s.slug, reviewId: r.reviewId }))).status).toBe(200);
+    expect(await db.productReviewImage.count({ where: { id: img.image.id } })).toBe(0);
+    const again = await write(s, i2.id, { rating: 5, body: BODY, imageIds: [img.image.id] });
+    expect([again.status, ((await again.json()) as { error: string }).error]).toEqual([400, "invalid_images"]);
+    expect((await ledger(s)).map((x) => [x.type, x.amount, x.idempotencyKey])).toEqual([
+      ["EARN", 1000, `review_reward:${r.reviewId}:1`],
+      ["REVOKE", -1000, `review_revoke:${r.reviewId}:1`],
+      ["EARN", 500, `review_reward:${r.reviewId}:2`],
+    ]);
+    expect(await sellerReward(s, r.reviewId)).toEqual([500, 500]);
+    expect(await buyerReward(s, r.reviewId)).toBe(500);
   });
 
   it("적립금 기본값은 0원(끔)이라 공개돼도 원장을 만들지 않는다", async () => {

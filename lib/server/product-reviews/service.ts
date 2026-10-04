@@ -64,9 +64,27 @@ function buyerAudit(db: Db, scope: BuyerScope, meta: AuditMeta, action: string, 
 }
 
 // ───────── 리뷰 적립금 ─────────
-// 공개될 때 지급(이미 지급된 회차가 있으면 그대로). 다시 공개하면 새 회차로 지급한다. 리뷰 행 잠금 아래에서 부른다.
+// 리뷰의 적립 금액은 리뷰에 저장하지 않고 원장에서 계산한다(원장과 어긋날 수 없게).
+// 지금 회차(rewardRound)의 적립 원장이 있고 실패(탈퇴 등)가 아니며 같은 회차 회수 원장이 없을 때만 그 금액이 유효하다.
+type RewardRef = { id: string; rewardRound: number };
+export async function activeRewards(db: Db, sellerId: string, reviews: RewardRef[]): Promise<Map<string, { amount: number; testMode: boolean }>> {
+  const live = reviews.filter((r) => r.rewardRound > 0);
+  const out = new Map<string, { amount: number; testMode: boolean }>();
+  if (live.length === 0) return out;
+  const keys = live.flatMap((r) => [`review_reward:${r.id}:${r.rewardRound}`, `review_revoke:${r.id}:${r.rewardRound}`]);
+  const rows = await db.rewardLedger.findMany({ where: { sellerId, idempotencyKey: { in: keys } }, select: { idempotencyKey: true, amount: true, status: true, testMode: true } });
+  const by = new Map(rows.map((x) => [x.idempotencyKey, x]));
+  for (const r of live) {
+    const earn = by.get(`review_reward:${r.id}:${r.rewardRound}`);
+    if (earn && earn.status !== "FAILED" && !by.has(`review_revoke:${r.id}:${r.rewardRound}`)) out.set(r.id, { amount: earn.amount, testMode: earn.testMode });
+  }
+  return out;
+}
+
+// 공개될 때 지급(유효한 적립이 있으면 그대로). 다시 공개하면 새 회차로 지급한다. 리뷰 행 잠금 아래에서 부른다.
+// 결과는 돌려받은 원장 상태로 판단한다. 실패(탈퇴 회원 등)면 지급 0이고, 회차만 넘겨 같은 키를 다시 쓰지 않게 한다.
 async function grantReward(tx: Tx, r: ProductReview, now: Date): Promise<number> {
-  if (r.rewardedAmount > 0) return 0;
+  if ((await activeRewards(tx, r.sellerId, [r])).has(r.id)) return 0;
   const policy = await policyOf(tx, r.sellerId);
   const photos = await tx.productReviewImage.count({ where: { sellerId: r.sellerId, reviewId: r.id } });
   const amount = rewardFor(policy, photos);
@@ -83,31 +101,26 @@ async function grantReward(tx: Tx, r: ProductReview, now: Date): Promise<number>
     idempotencyKey: `review_reward:${r.id}:${round}`,
     createdAt: now,
   });
-  // 결과는 돌려받은 원장 상태로 판단한다. 실패(탈퇴 회원 등)면 지급으로 기록하지 않고(회수도 하지 않음), 회차만 넘겨 같은 키를 다시 쓰지 않게 한다.
-  const paid = earn.status !== "FAILED";
-  await tx.productReview.update({ where: { id: r.id }, data: { rewardedAmount: paid ? amount : 0, rewardRound: round } });
-  return paid ? amount : 0;
+  await tx.productReview.update({ where: { id: r.id }, data: { rewardRound: round } });
+  return earn.status === "FAILED" ? 0 : amount;
 }
 
-// 숨김·삭제 때 회수(지급된 금액이 있을 때만, 회차마다 한 번).
-// testMode는 지금 실지급 스위치가 아니라 원래 적립 원장을 따른다(주문 환불 회수와 같은 방식). 적립 원장이 없으면 회수하지 않는다.
+// 숨김·삭제·사진 조건을 잃을 때 회수(유효한 적립이 있을 때만, 회차마다 한 번).
+// testMode는 지금 실지급 스위치가 아니라 원래 적립 원장을 따른다(주문 환불 회수와 같은 방식). 회수 원장이 실패했으면(탈퇴 회원) 회수액 0.
 async function revokeReward(tx: Tx, r: ProductReview, now: Date): Promise<number> {
-  if (r.rewardedAmount <= 0) return 0;
-  const earn = await tx.rewardLedger.findUnique({ where: { sellerId_idempotencyKey: { sellerId: r.sellerId, idempotencyKey: `review_reward:${r.id}:${r.rewardRound}` } }, select: { testMode: true, status: true } });
-  if (!earn || earn.status === "FAILED") return 0;
+  const earn = (await activeRewards(tx, r.sellerId, [r])).get(r.id);
+  if (!earn) return 0;
   const revoke = await createPendingRewardLedger(tx, {
     sellerId: r.sellerId,
     buyerMemberId: r.buyerMemberId,
     orderId: r.orderId,
     type: "REVOKE",
-    amount: -r.rewardedAmount,
+    amount: -earn.amount,
     testMode: earn.testMode,
     idempotencyKey: `review_revoke:${r.id}:${r.rewardRound}`,
     createdAt: now,
   });
-  // 이 회차는 닫는다. 회수 원장이 실패했으면(탈퇴 회원) 회수한 금액은 0으로 돌려준다.
-  await tx.productReview.updateMany({ where: { id: r.id }, data: { rewardedAmount: 0 } });
-  return revoke.status === "FAILED" ? 0 : r.rewardedAmount;
+  return revoke.status === "FAILED" ? 0 : earn.amount;
 }
 
 // ───────── 파트너스 관리자 ─────────
@@ -157,6 +170,7 @@ export async function listSellerReviews(db: PrismaClient, ctx: TenantContext, q:
     policyOf(db, ctx.sellerId),
   ]);
   const page = rows.slice(0, SELLER_PAGE);
+  const rewards = await activeRewards(db, ctx.sellerId, page);
   const total = visibleAgg._count._all;
   return {
     reviews: page.map((r) => ({
@@ -171,6 +185,7 @@ export async function listSellerReviews(db: PrismaClient, ctx: TenantContext, q:
       heldLabel: r.heldBy ? (HELD_LABEL[r.heldBy] ?? null) : null,
       hiddenReason: r.hiddenReason,
       photos: r._count.images,
+      rewardedAmount: rewards.get(r.id)?.amount ?? 0,
       replied: r.reply !== null,
       reportCount: r.reportCount,
       createdAt: r.createdAt,
@@ -207,6 +222,7 @@ export async function getSellerReview(db: PrismaClient, ctx: TenantContext, id: 
   if (!r) throw notFound();
   const reasons: Partial<Record<ProductReviewReason, number>> = {};
   for (const x of r.reports) reasons[x.reason] = (reasons[x.reason] ?? 0) + 1;
+  const reward = (await activeRewards(db, ctx.sellerId, [r])).get(r.id)?.amount ?? 0;
   return {
     id: r.id,
     productName: r.product.name,
@@ -223,7 +239,7 @@ export async function getSellerReview(db: PrismaClient, ctx: TenantContext, id: 
     repliedAt: r.repliedAt,
     reportCount: r.reportCount,
     reportReasons: reasons,
-    rewardedAmount: r.rewardedAmount,
+    rewardedAmount: reward,
     images: r.images.map((i) => ({ ...i, url: sellerImageUrl(i.id) })),
     orderedAt: r.order.createdAt,
     deliveredAt: r.order.shipment?.deliveredAt ?? null,
@@ -410,6 +426,7 @@ export async function myReviews(db: PrismaClient, scope: BuyerScope, slug: strin
       include: { product: { select: { name: true } }, orderItem: { select: { optionNameSnapshot: true } }, images: { select: { id: true }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] } },
     }),
   ]);
+  const rewards = await activeRewards(db, scope.sellerId, mine);
   return {
     writable: items.map((i) => ({
       orderItemId: i.id,
@@ -431,7 +448,7 @@ export async function myReviews(db: PrismaClient, scope: BuyerScope, slug: strin
       hiddenNote: r.status === "HIDDEN" ? r.hiddenNote : null,
       reply: r.reply,
       repliedAt: r.repliedAt,
-      rewardedAmount: r.rewardedAmount,
+      rewardedAmount: rewards.get(r.id)?.amount ?? 0,
       images: r.images.map((i) => ({ id: i.id, url: buyerImageUrl(slug, i.id) })),
       createdAt: r.createdAt,
       editable: r.status !== "HIDDEN" && now.getTime() < r.createdAt.getTime() + REVIEW_EDIT_DAYS * DAY,
@@ -546,11 +563,18 @@ export async function updateReview(db: PrismaClient, scope: BuyerScope, id: stri
             : "VISIBLE"
           : before.status;
       const heldBy = reportHeld ? "reports" : (held ?? null);
-      await tx.productReviewImage.updateMany({ where: { sellerId: scope.sellerId, reviewId: id, id: { notIn: p.v.imageIds } }, data: { reviewId: null } });
+      // 사진은 한 번 리뷰에 붙으면 소진된다. 리뷰에서 뗀 사진은 지워 다른 리뷰에 다시 붙일 수 없게 한다(같은 사진으로 적립을 거듭 받지 못하게).
+      const photosBefore = await tx.productReviewImage.count({ where: { sellerId: scope.sellerId, reviewId: id } });
+      await tx.productReviewImage.deleteMany({ where: { sellerId: scope.sellerId, reviewId: id, id: { notIn: p.v.imageIds } } });
       if (!(await attachImages(tx, scope, id, p.v.imageIds))) throw new BadImages();
       await tx.productReview.update({ where: { id }, data: { rating: p.v.rating, body: p.v.body, status, heldBy, updatedAt: now } });
-      // 보류에서 공개로 바뀌면 적립금을 지급한다(이미 지급했으면 그대로)
-      if (status === "VISIBLE" && before.status !== "VISIBLE") await grantReward(tx, { ...before, status }, now);
+      if (status === "VISIBLE" && before.status !== "VISIBLE") {
+        // 보류에서 공개로 바뀌면 적립금을 지급한다(유효한 적립이 있으면 그대로)
+        await grantReward(tx, { ...before, status }, now);
+      } else if (status === "VISIBLE" && photosBefore > 0 && p.v.imageIds.length === 0) {
+        // 사진을 모두 떼어 사진 리뷰 조건을 잃으면 이번 회차를 회수하고 글 리뷰 금액으로 다시 지급한다(같은 회수·지급 경로)
+        if ((await revokeReward(tx, before, now)) > 0) await grantReward(tx, before, now);
+      }
       await buyerAudit(tx, scope, meta, "buyer_review.update", id, { status, rating: p.v.rating, photos: p.v.imageIds.length });
       return { ok: true as const, status };
     });
