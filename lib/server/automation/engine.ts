@@ -247,6 +247,7 @@ async function runAll(
       // OBS 쪽 행동은 바꾸기·검증 읽기·단계 끝 모두 직전마다(모든 작업) 실제 PC를 새로 읽는다. 무료 재연결은 기준 PC와 다르면 멈춘다(앞선 대조 기록을 믿지 않음).
       // 이미 한 PC에 바꾼 뒤 PC가 바뀌었으면 두 PC에 나눠 설치하거나 다른 PC의 증거로 완료하지 않게 멈춘다.
       // 이번 실행에서 처음 바꾸기 전에는 같은 PC 잠금을 그 PC로 옮긴다(다른 작업이 그 PC를 쓰고 있으면 claimObsTarget이 던져 obs_target_busy)
+      let confirmedPairing: string | undefined;
       if (!session) {
         guard();
         const pairingId = await rt.obs.currentPairingId(scope);
@@ -260,6 +261,7 @@ async function runAll(
           }
           obsPairing = pairingId;
         }
+        confirmedPairing = pairingId;
       }
       // 비밀값 입력은 승인 때 관찰한 주소와 실행 직전 실제 문서 주소가 모두 작업 대상 쇼핑몰의 관리자 경로여야 하고,
       // 관찰한 화면에 관리자 로그인 상태 단서가 있어야 한다(리다이렉트로 다른 출처·같은 호스트의 쇼핑몰 앞 화면에 간 경우 차단)
@@ -278,7 +280,9 @@ async function runAll(
       // 변경 행동의 고정 키: 작업·단계와 행동의 의미(종류·대상·값)의 해시. 순번과 무관해 같은 행동은 몇 번째로 오든 한 번만,
       // 다른 행동은 같은 순번이라도 실행된다. 이동·확인 같은 바꾸지 않는 행동은 새 세션에서 다시 해야 하므로 키를 붙이지 않는다.
       const actionKey = MUTATING.includes(action.type) ? actionKeyOf(scope.jobId, stepIndex, action) : undefined;
-      const out: ActionOutcome = session ? await session.perform(action, secrets, actionKey) : await rt.obs.perform(scope, action, actionKey);
+      // OBS 쪽은 확인한 PC를 넘겨 로컬 도구가 실행 직전에 비교하게 하고(다르면 행동 0건으로 거절), 결과의 실제 실행 PC를 다시 대조한다
+      const out: ActionOutcome = session ? await session.perform(action, secrets, actionKey) : await rt.obs.perform(scope, action, actionKey, confirmedPairing);
+      if (!session && out.kind === "ok" && out.pairingId !== confirmedPairing) return { kind: "failed", reason: "obs_target_changed" };
       // 외부 행동이 끝나는 사이 자리를 잃었거나 실행 시간 상한을 넘었으면 결과를 쓰지 않고 멈춘다(작업자가 상황에 맞게 정리)
       guard();
       if (out.kind === "needs_customer") return { kind: "needs_customer", action: out.action };
@@ -344,17 +348,19 @@ export async function runRollback(
         const action = resolveShop(rb.actions[i].action, opts.shopHost);
         const check = validateDecision(step, { action, costWon: 0 }, secrets, {}, rb.allowedTargets, nav);
         if (!check.ok) return { kind: "cleanup_needed", reason: `rollback_unsafe:${check.reason}` };
+        let pairing: string | undefined;
         if (rb.kind === "obs") {
           guard();
-          const pairing = await rt.obs.currentPairingId(scope);
-          if (!pairing || (opts.obsPairingId && pairing !== opts.obsPairingId)) return { kind: "cleanup_needed", reason: "rollback_obs_target" };
+          const current = await rt.obs.currentPairingId(scope);
+          if (!current || (opts.obsPairingId && current !== opts.obsPairingId)) return { kind: "cleanup_needed", reason: "rollback_obs_target" };
+          pairing = current;
         }
         await hooks.touch();
         guard();
         const actionKey = MUTATING.includes(action.type) ? actionKeyOf(scope.jobId, 100 + at, action) : undefined;
-        const out = rb.kind === "browser" ? await session!.perform(action, secrets, actionKey) : await rt.obs.perform(scope, action, actionKey);
+        const out = rb.kind === "browser" ? await session!.perform(action, secrets, actionKey) : await rt.obs.perform(scope, action, actionKey, pairing);
         guard();
-        if (out.kind !== "ok") return { kind: "cleanup_needed", reason: `rollback_failed:${rb.forStep}` };
+        if (out.kind !== "ok" || (rb.kind === "obs" && out.pairingId !== pairing)) return { kind: "cleanup_needed", reason: `rollback_failed:${rb.forStep}` };
       }
     }
     return { kind: "rolled_back" };

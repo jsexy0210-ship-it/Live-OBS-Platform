@@ -52,7 +52,8 @@ export type ConnectionFacts = { shopKey?: string; obsPairingId?: string };
 export type VerificationEvidence = Readonly<Record<string, string | number | boolean>>;
 
 export type ActionOutcome =
-  | { kind: "ok"; stepDone: boolean; verified?: boolean; facts?: ConnectionFacts; evidence?: VerificationEvidence }
+  // pairingId: OBS 쪽 행동은 실제로 실행한 PC를 반드시 돌려준다(엔진이 확인한 PC와 다시 대조)
+  | { kind: "ok"; stepDone: boolean; verified?: boolean; facts?: ConnectionFacts; evidence?: VerificationEvidence; pairingId?: string }
   | { kind: "needs_customer"; action: AutomationCustomerAction }
   | { kind: "retryable"; reason: string }
   | { kind: "fatal"; reason: string };
@@ -96,7 +97,9 @@ export interface BrowserExecutor {
 export interface ObsBridge {
   observe(scope: JobScope): Promise<Observation>;
   // actionKey: 위와 같다. 로컬 도구는 같은 키로 이미 성공한 OBS 변경(소스 추가 등)을 다시 적용하지 않는다.
-  perform(scope: JobScope, action: AutomationAction, actionKey?: string): Promise<ActionOutcome>;
+  // expectedPairingId: 엔진이 직전에 확인한(잠금을 잡은) PC. 로컬 도구는 실행 직전 지금 연결된 PC와 원자적으로 비교해 다르면
+  // 아무것도 하지 않고 fatal "pairing_mismatch"를 돌려준다. 성공 결과에는 실제로 실행한 PC(pairingId)를 반드시 담는다.
+  perform(scope: JobScope, action: AutomationAction, actionKey?: string, expectedPairingId?: string): Promise<ActionOutcome>;
   // 연결된 로컬 도구의 OBS pairing id(읽기만). 연결 안 됐거나 알 수 없으면 null
   currentPairingId(scope: JobScope): Promise<string | null>;
   // 이 작업의 OBS 연결 정보(로컬 도구 연결 토큰 등)와 행동 키 기록을 지운다. 고객 대기 중에는 암호화해 작업에만 묶어 두고,

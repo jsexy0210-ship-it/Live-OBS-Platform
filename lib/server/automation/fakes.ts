@@ -227,14 +227,18 @@ export class FakeObsBridge implements ObsBridge {
   readonly applied = new Map<string, ActionOutcome>();
   readonly sources = new Map<string, number>();
 
-  async perform(scope: JobScope, action: AutomationAction, actionKey?: string): Promise<ActionOutcome> {
+  async perform(scope: JobScope, action: AutomationAction, actionKey?: string, expectedPairingId?: string): Promise<ActionOutcome> {
     await sleep(this.delayMs);
     if (this.tombstones.has(scope.jobId)) return { kind: "fatal", reason: "scope_discarded" };
+    // 실행 직전 지금 연결된 PC와 엔진이 확인한 PC를 비교(계약)
+    const current = this.disconnected.has(scope.sellerId) ? null : (this.pairing.get(scope.sellerId) ?? `pc-${scope.sellerId}`);
+    if (expectedPairingId !== undefined && current !== expectedPairingId) return { kind: "fatal", reason: "pairing_mismatch" };
     const done = actionKey ? this.applied.get(actionKey) : undefined;
     if (done) return done;
     const out = await this.apply(scope, action);
-    if (out.kind === "ok" && actionKey) this.applied.set(actionKey, out);
-    return out;
+    const result: ActionOutcome = out.kind === "ok" && current ? { ...out, pairingId: current } : out;
+    if (result.kind === "ok" && actionKey) this.applied.set(actionKey, result);
+    return result;
   }
 
   private async apply(scope: JobScope, action: AutomationAction): Promise<ActionOutcome> {

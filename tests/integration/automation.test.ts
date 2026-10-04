@@ -2326,3 +2326,33 @@ describe("Codex 17차 반영(07ce315)", () => {
     expect(lookups).toBe(2);
   });
 });
+
+describe("Codex 18차 반영(353d28c)", () => {
+  it("PC를 확인한 뒤 실행 직전에 로컬 도구가 다른 PC로 바뀌면, 로컬 도구가 확인한 PC와 비교해 행동 0건으로 거절한다(pairing_mismatch)", async () => {
+    const a = await bought();
+    const rt = runtime();
+    const obs = rt.obs;
+    obs.pairing.set(a.seller.id, "pc-A");
+    const read = obs.currentPairingId.bind(obs);
+    let switched = false;
+    obs.currentPairingId = async (scope) => {
+      const v = await read(scope);
+      // 확인 직후(실행 전) 로컬 도구가 다른 PC로 바뀐다
+      if (!switched) {
+        switched = true;
+        obs.pairing.set(scope.sellerId, "pc-B");
+      }
+      return v;
+    };
+    expect(await runOnce(db, rt, W)).toBe("failed");
+    expect(obs.performed).toHaveLength(0);
+    expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "pairing_mismatch" });
+  });
+
+  it("정상 경로에서는 로컬 도구가 실제 실행한 PC를 돌려주고 엔진이 대조해 그대로 완료한다", async () => {
+    const a = await bought();
+    const rt = runtime();
+    expect(await runOnce(db, rt, W)).toBe("succeeded");
+    expect(await job(a.jobId)).toMatchObject({ obsPairingId: `pc-${a.seller.id}` });
+  });
+});

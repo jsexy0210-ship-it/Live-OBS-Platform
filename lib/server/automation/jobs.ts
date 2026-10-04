@@ -44,6 +44,7 @@ const PUBLIC_ERRORS = new Set([
   "playbook_version_changed",
   "playbook_not_verified",
   "shop_identity_unverified",
+  "pairing_mismatch",
 ]);
 const STEP_KEYS = new Set(STEPS.map((s) => s.key));
 
