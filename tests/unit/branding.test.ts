@@ -45,8 +45,38 @@ describe("브랜딩 이미지 형식 확인(파일 앞부분 바이트)", () => 
     expect(checkFavicon(Buffer.alloc(0))).toEqual({ ok: false, reason: "empty_file" });
   });
 
+  it("머리만 맞춘 잘린 파일·CRC가 틀린 PNG·EOI 없는 JPEG·깨진 BMP 아이콘은 거부한다(Codex 지적)", async () => {
+    const full = await png(1200, 630);
+    // 시그니처 + 1200×630 IHDR만 있는 33바이트
+    expect(checkOgImage(full.subarray(0, 33))).toEqual({ ok: false, reason: "unsupported_image" });
+    expect(checkOgImage(full.subarray(0, full.length - 12))).toEqual({ ok: false, reason: "unsupported_image" });
+    const badCrc = Buffer.from(full);
+    badCrc[40] ^= 0xff;
+    expect(checkOgImage(badCrc)).toEqual({ ok: false, reason: "unsupported_image" });
+    // IEND 뒤에 다른 데이터를 붙인 파일
+    expect(checkOgImage(Buffer.concat([full, SVG]))).toEqual({ ok: false, reason: "unsupported_image" });
+    const j = await jpg(1200, 630);
+    expect(checkOgImage(j.subarray(0, 200))).toEqual({ ok: false, reason: "unsupported_image" });
+    expect(checkOgImage(j.subarray(0, j.length - 2))).toEqual({ ok: false, reason: "unsupported_image" });
+    // ICO 안의 PNG가 잘림
+    const inner = await png(32, 32);
+    expect(checkFavicon(icoOf(inner.subarray(0, 40)))).toEqual({ ok: false, reason: "unsupported_image" });
+  });
+
+  it("BMP를 담은 ICO는 크기가 맞으면 받고, 데이터가 모자라면 거부한다", () => {
+    const side = 16;
+    const dib = Buffer.alloc(40 + side * side * 4 + 4 * side);
+    dib.writeUInt32LE(40, 0);
+    dib.writeInt32LE(side, 4);
+    dib.writeInt32LE(side * 2, 8);
+    dib.writeUInt16LE(1, 12);
+    dib.writeUInt16LE(32, 14);
+    expect(checkFavicon(icoOf(dib, side))).toEqual({ ok: true, info: { type: "image/x-icon", width: 16, height: 16 } });
+    expect(checkFavicon(icoOf(dib.subarray(0, 100), side))).toEqual({ ok: false, reason: "unsupported_image" });
+  });
+
   it("파비콘 256KB 초과, 한 변 16px 미만·1024px 초과 PNG는 거부한다", async () => {
-    const big = Buffer.concat([await png(32, 32), Buffer.alloc(256 * 1024)]);
+    const big = Buffer.alloc(256 * 1024 + 1);
     expect(checkFavicon(big)).toEqual({ ok: false, reason: "file_too_large" });
     expect(checkFavicon(await png(8, 8))).toEqual({ ok: false, reason: "wrong_image_size" });
     expect(checkFavicon(await png(2048, 2048))).toEqual({ ok: false, reason: "wrong_image_size" });
@@ -58,7 +88,7 @@ describe("브랜딩 이미지 형식 확인(파일 앞부분 바이트)", () => 
     expect(checkOgImage(await png(1200, 600))).toEqual({ ok: false, reason: "wrong_image_size" });
     expect(checkOgImage(icoOf(await png(32, 32)))).toEqual({ ok: false, reason: "unsupported_image" });
     expect(checkOgImage(SVG)).toEqual({ ok: false, reason: "unsupported_image" });
-    expect(checkOgImage(Buffer.concat([await png(1200, 630), Buffer.alloc(2 * 1024 * 1024)]))).toEqual({ ok: false, reason: "file_too_large" });
+    expect(checkOgImage(Buffer.alloc(2 * 1024 * 1024 + 1))).toEqual({ ok: false, reason: "file_too_large" });
   });
 
   it("JPEG는 EXIF 등 앞 블록을 건너 프레임 크기를 읽는다", async () => {
@@ -93,5 +123,7 @@ describe("공유 메타 절대 주소의 기준 주소", () => {
     expect(requestOrigin(h({ host: "evil.com/path" }))).toBeNull();
     expect(requestOrigin(h({ host: "a b" }))).toBeNull();
     expect(requestOrigin(h({}))).toBeNull();
+    // 정규식은 통과하지만 URL을 만들 수 없는 포트(Codex 지적)
+    expect(requestOrigin(h({ host: "example.com:99999" }))).toBeNull();
   });
 });

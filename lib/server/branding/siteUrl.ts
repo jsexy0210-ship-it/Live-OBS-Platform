@@ -19,5 +19,10 @@ export function requestOrigin(h: HeaderReader): URL | null {
   const fwdProto = proxy ? first(h.get("x-forwarded-proto")) : null;
   const local = /^(localhost|127\.0\.0\.1)(:\d+)?$/i.test(host);
   const proto = fwdProto === "http" || fwdProto === "https" ? fwdProto : local ? "http" : process.env.NODE_ENV === "production" ? "https" : "http";
-  return new URL(`${proto}://${host.toLowerCase()}`);
+  // 포트가 범위 밖(예: :99999)이면 URL을 만들 수 없다: 이상한 호스트와 같이 null
+  try {
+    return new URL(`${proto}://${host.toLowerCase()}`);
+  } catch {
+    return null;
+  }
 }

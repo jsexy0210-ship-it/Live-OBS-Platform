@@ -198,7 +198,12 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
     if (file.size > OG_MAX) return setOgError("공유 카드 이미지는 2MB까지 올릴 수 있어요");
     const url = URL.createObjectURL(file);
     const size = await imageSize(url);
-    if (size && (size.w !== 1200 || size.h !== 630)) {
+    // 브라우저가 열지 못하는 파일(잘린 파일 등)은 공유 서비스도 못 보여 준다
+    if (!size) {
+      URL.revokeObjectURL(url);
+      return setOgError("이미지를 열 수 없어요. PNG·JPG 파일을 골라 주세요");
+    }
+    if (size.w !== 1200 || size.h !== 630) {
       URL.revokeObjectURL(url);
       return setOgError(`1200×630 크기 이미지를 골라 주세요 · 고른 이미지 ${size.w}×${size.h}`);
     }
