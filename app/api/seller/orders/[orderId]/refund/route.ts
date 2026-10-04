@@ -6,14 +6,15 @@ import { orderErrorBody } from "../../../../../../lib/server/orders/messages";
 import { refundOrder } from "../../../../../../lib/server/queue/service";
 
 // 화면에 바로 보여 줄 안내 문구가 있는 환불 거부 사유
-type RefundMessageCode = "fault_required" | "opened_items_present" | "opened_items_unshipped";
-const REFUND_MESSAGE_CODES = new Set<string>(["fault_required", "opened_items_present", "opened_items_unshipped"] satisfies RefundMessageCode[]);
+type RefundMessageCode = "fault_required" | "opened_items_present" | "opened_items_unshipped" | "purchase_confirmed";
+const REFUND_MESSAGE_CODES = new Set<string>(["fault_required", "opened_items_present", "opened_items_unshipped", "purchase_confirmed"] satisfies RefundMessageCode[]);
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // 결제 완료 주문 환불(개봉 전 품목만 재고 복구, 연결된 대기·개봉 중 자동 취소). 사유·expectedVersion 필수, ORDER_SHIPPING 권한.
 // 개봉을 시작했거나 마친 품목이 있으면 confirmOpened: true가 있어야 한다(없으면 409 opened_items_present).
 // fault: "BUYER"(구매자 사정) | "SELLER"(판매자 사정). 발송했거나 개봉한 품목이 있으면 꼭 보낸다(없으면 400 fault_required).
+// 구매 확정한 주문은 409 purchase_confirmed(먼저 POST …/unconfirm으로 구매 확정을 취소).
 // expectedRefundAmount: 화면에서 확인받은 환불액(필수, 0 이상 정수. 없으면 400). 서버가 계산한 금액과 다르면 409 refund_amount_changed로
 // 아무것도 바꾸지 않는다(되돌릴 수 없는 환불이라 확인한 금액으로만 실행, MASTER 결정 2026-10-03).
 export const POST = mutation(async (req: Request, { params }: { params: Promise<{ orderId: string }> }) => {

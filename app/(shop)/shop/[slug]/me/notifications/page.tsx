@@ -23,7 +23,7 @@ export default async function ShopNotificationsPage({ params }: Params) {
   const shop = await findShop((await params).slug);
   if (!shop) notFound();
   return (
-    <ShopFrame shopName={shop.shopName}>
+    <ShopFrame slug={shop.slug} shopName={shop.shopName}>
       <MarketingConsent slug={shop.slug} shopName={shop.shopName} />
     </ShopFrame>
   );

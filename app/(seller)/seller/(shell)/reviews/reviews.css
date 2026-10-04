@@ -1,0 +1,13 @@
+/* SA-048 리뷰 관리 */
+.rv-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
+.rv-row{display:grid;grid-template-columns:minmax(0,1.2fr) 96px minmax(0,2.4fr) 110px auto;gap:12px;align-items:start;padding:14px 16px;box-shadow:inset 0 -1px 0 var(--wds-line-normal-alternative);cursor:pointer}
+.rv-row:hover{background:var(--wds-fill-alternative)}
+.rv-star{color:#f5a524;letter-spacing:1px;white-space:nowrap}
+.rv-body{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.rv-modal{max-height:calc(100vh - 40px);overflow:auto}
+.rv-imgs{display:flex;gap:8px;flex-wrap:wrap}
+.rv-imgs img{width:96px;height:96px;object-fit:cover;border-radius:10px;background:var(--wds-fill-normal)}
+.rv-dist{display:grid;grid-template-columns:32px minmax(0,1fr) 40px;gap:8px;align-items:center}
+.rv-bar{height:8px;border-radius:4px;background:var(--wds-fill-normal);overflow:hidden}
+.rv-bar>span{display:block;height:100%;background:#f5a524}
+@media (max-width:767px){.rv-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.rv-row{grid-template-columns:minmax(0,1fr) auto}.rv-row>.rv-hide-m{display:none}}

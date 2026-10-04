@@ -24,7 +24,9 @@ export default defineConfig({
     timezoneId: "Asia/Seoul",
   },
   projects: [
-    { name: "start", testIgnore: /(shop-signup-flow|partners-auth-flow|test-mode-flow)\.spec\.ts$/ },
+    { name: "start", testIgnore: /(shop-signup-flow|partners-auth-flow|test-mode-flow|test-mode-live)\.spec\.ts$/ },
     { name: "dev", testMatch: /(shop-signup-flow|partners-auth-flow|test-mode-flow)\.spec\.ts$/, use: { baseURL: process.env.E2E_DEV_BASE_URL ?? "http://localhost:3101" } },
+    // 테스트 모드 서버(OBS_TEST_MODE=1로 띄운 운영 빌드) 전용: 같은 빌드를 npx next start -p 3102로 한 번 더 띄우고 E2E_TESTMODE_BASE_URL(기본 http://localhost:3102)로 돌린다.
+    { name: "testmode", testMatch: /test-mode-live\.spec\.ts$/, use: { baseURL: process.env.E2E_TESTMODE_BASE_URL ?? "http://localhost:3102" } },
   ],
 });

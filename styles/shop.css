@@ -1,8 +1,8 @@
-/* 구매자 화면 공통 틀(최소) + SH-011 회원가입 */
+/* 구매자 화면 공통 틀(일반 쇼핑몰 구성) + SH-011 회원가입 */
 html,
 body {
   margin: 0;
-  background: #f6f4f0;
+  background: #ffffff;
 }
 .shop-app {
   word-break: keep-all;
@@ -12,32 +12,441 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background: var(--page);
+  background: var(--wds-background-normal-normal);
 }
-.shop-top {
+/* 일반 쇼핑몰 공통 틀: 흰 바탕·옅은 회색 구분선, 모서리 작게. 판매자 대표 색(--brand)은 강조(가격·선택 표시·버튼)에만 */
+.shop-wrap {
+  width: 1200px;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 0 16px;
+  box-sizing: border-box;
+}
+.shop-app a.shop-iconbtn,
+.shop-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--wds-label-normal);
+  cursor: pointer;
+}
+.shop-linkbtn {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.shop-util {
+  background: var(--wds-background-normal-alternative);
+  border-bottom: 1px solid var(--wds-line-solid-neutral);
+  font-size: 12px;
+  line-height: 32px;
+}
+.shop-util .shop-wrap {
+  display: flex;
+  justify-content: flex-end;
+  gap: 16px;
+}
+.shop-app .shop-util a,
+.shop-util .shop-linkbtn {
+  color: var(--wds-label-neutral);
+}
+.shop-top .shop-wrap {
   display: flex;
   align-items: center;
-  height: 56px;
-  padding: 0 16px;
-  background: var(--surface);
-  box-shadow: inset 0 -1px 0 var(--wds-line-normal-alternative);
+  gap: 16px;
+  height: 80px;
+}
+.shop-app a.shop-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--wds-label-normal);
+  text-decoration: none;
 }
 .shop-name {
-  font-size: 17px;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.shop-search {
+  display: flex;
+  align-items: center;
+  width: 360px;
+  max-width: 40%;
+  margin-left: auto;
+  border: 2px solid var(--wds-label-normal);
+  border-radius: 2px;
+}
+.shop-search input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 12px;
+  border: 0;
+  outline: 0;
+  font: inherit;
+  font-size: 14px;
+  background: transparent;
+  color: var(--wds-label-normal);
+}
+.shop-search .shop-iconbtn {
+  height: 36px;
+}
+.shop-cart {
+  position: relative;
+}
+.shop-cats {
+  border-top: 1px solid var(--wds-line-solid-neutral);
+  border-bottom: 1px solid var(--wds-line-solid-normal);
+}
+.shop-cats .shop-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 28px;
+}
+.shop-app .shop-cats a {
+  display: block;
+  padding: 12px 0;
+  font-size: 15px;
   font-weight: 700;
+  color: var(--wds-label-normal);
+  text-decoration: none;
+  box-shadow: inset 0 -2px 0 transparent;
+}
+.shop-app .shop-cats a[aria-current="page"] {
+  color: var(--brand);
+  box-shadow: inset 0 -2px 0 var(--brand);
+}
+.shop-app .shop-m,
+.shop-tabbar {
+  display: none;
 }
 .shop-main {
   flex: 1;
   display: flex;
   justify-content: center;
-  padding: 16px 16px 40px;
+  padding: 24px 16px 48px;
+}
+/* 넓은 화면을 쓰는 쇼핑몰 화면(홈·목록·검색)은 머리와 같은 폭 */
+.shop-main > .shop-wrap {
+  width: 1168px;
+  padding: 0;
 }
 .shop-foot {
+  padding: 28px 0 32px;
+  background: var(--wds-background-normal-alternative);
+  border-top: 1px solid var(--wds-line-solid-neutral);
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--wds-label-alternative);
+}
+.shop-foot-name {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--wds-label-neutral);
+}
+.shop-foot-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 16px;
+  margin: 0 0 12px;
+}
+.shop-foot-info > div {
+  display: flex;
+  gap: 6px;
+}
+.shop-foot-info dd {
+  margin: 0;
+}
+.shop-foot-by {
+  margin: 0;
+}
+/* 휴대폰 카테고리 서랍 */
+.shop-drawer-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(0, 0, 0, 0.4);
+}
+.shop-drawer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: min(320px, 85vw);
+  overflow-y: auto;
+  background: var(--wds-background-normal-normal);
+}
+.shop-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 8px 8px 16px;
+  background: var(--wds-background-normal-alternative);
+  border-bottom: 1px solid var(--wds-line-solid-neutral);
+}
+.shop-drawer-account {
+  display: flex;
+  gap: 16px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.shop-app .shop-drawer-account a,
+.shop-drawer-account .shop-linkbtn {
+  color: var(--wds-label-normal);
+}
+.shop-drawer-title {
+  margin: 0;
+  padding: 16px 16px 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--wds-label-alternative);
+}
+.shop-drawer-list {
+  display: flex;
+  flex-direction: column;
+}
+.shop-app .shop-drawer-list a {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--wds-line-solid-alternative);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--wds-label-normal);
+  text-decoration: none;
+}
+.shop-app .shop-drawer-list a[aria-current="page"] {
+  color: var(--brand);
+}
+.shop-drawer-sub {
+  margin-top: 16px;
+  border-top: 1px solid var(--wds-line-solid-neutral);
+}
+.shop-app .shop-drawer-sub a {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--wds-label-neutral);
+}
+
+/* 상품 격자: PC 4열 · 태블릿 3열 · 휴대폰 2열. 사진 1:1, 이름 2줄 */
+.shop-sec {
+  margin-top: 40px;
+}
+.shop-sec:first-child {
+  margin-top: 0;
+}
+.shop-sec-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.shop-sec-head h2,
+.shop-sec-head h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+}
+.shop-app .shop-more {
+  font-size: 13px;
+  color: var(--wds-label-alternative);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.pc-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 32px 20px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pc {
+  position: relative;
+  min-width: 0;
+}
+.pc-photo {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 1 / 1;
+  border-radius: 2px;
+  background: var(--wds-background-normal-alternative) center / 40% no-repeat
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23c2c4c8' stroke-width='1.2'%3E%3Crect x='3' y='5' width='18' height='14' rx='1'/%3E%3Ccircle cx='9' cy='10' r='1.6'/%3E%3Cpath d='m4 18 5-5 4 4 2-2 5 5'/%3E%3C/svg%3E");
+}
+/* 품절: 사진 왼쪽 위에 검은 사선 띠(45도). 카드는 흐리게 하지 않는다 */
+.pc-out {
+  position: absolute;
+  left: -38px;
+  top: 16px;
+  width: 140px;
+  transform: rotate(-45deg);
+  background: #000;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 22px;
+  text-align: center;
+  pointer-events: none;
+}
+.pc-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  margin: 12px 0 6px;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--wds-label-normal);
+}
+.pc-price {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+  margin: 0;
+  font-size: 16px;
+}
+.pc-price strong {
+  font-weight: 700;
+}
+.pc-rate {
+  font-weight: 700;
+  color: var(--brand);
+}
+.pc-price del {
+  font-size: 13px;
+  color: var(--wds-label-assistive);
+}
+.shop-empty {
+  padding: 64px 16px;
+  border-top: 1px solid var(--wds-line-solid-neutral);
+  border-bottom: 1px solid var(--wds-line-solid-neutral);
+  text-align: center;
+  color: var(--wds-label-alternative);
+}
+.shop-sort {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: 13px;
+}
+.shop-app .shop-sort a {
+  color: var(--wds-label-alternative);
+  text-decoration: none;
+}
+.shop-app .shop-sort a[aria-current="page"] {
+  color: var(--wds-label-normal);
+  font-weight: 700;
+}
+.shop-pager {
   display: flex;
   justify-content: center;
-  padding: 20px 16px 28px;
+  gap: 8px;
+  margin-top: 40px;
 }
+.shop-searchbox {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+.shop-searchbox .inp {
+  border-radius: 2px;
+}
+.shop-searchbox .btn {
+  border-radius: 2px;
+}
+
+@media (max-width: 1023px) {
+  .pc-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767px) {
+  .shop-util,
+  .shop-cats,
+  .shop-pc {
+    display: none;
+  }
+  .shop-app .shop-m {
+    display: inline-flex;
+  }
+  .shop-top {
+    border-bottom: 1px solid var(--wds-line-solid-normal);
+  }
+  .shop-top .shop-wrap {
+    gap: 4px;
+    height: 56px;
+    padding: 0 8px;
+  }
+  .shop-app a.shop-brand {
+    flex: 1;
+    justify-content: center;
+  }
+  .shop-name {
+    font-size: 17px;
+  }
+  .shop-page {
+    padding-bottom: calc(56px + env(safe-area-inset-bottom));
+  }
+  .shop-tabbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 50;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    height: 56px;
+    padding-bottom: env(safe-area-inset-bottom);
+    background: var(--wds-background-normal-normal);
+    border-top: 1px solid var(--wds-line-solid-normal);
+  }
+  .shop-app .shop-tabbar a,
+  .shop-tabbar button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-size: 11px;
+    color: var(--wds-label-neutral);
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .shop-app .shop-tabbar a[aria-current="page"] {
+    color: var(--brand);
+    font-weight: 700;
+  }
+  .pc-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px 12px;
+  }
+  .shop-sec-head h2,
+  .shop-sec-head h1 {
+    font-size: 18px;
+  }
+}
+
 .shop-card {
+  border-radius: 4px;
   width: 560px;
   max-width: 100%;
   padding: 24px 20px;
@@ -172,6 +581,9 @@ body {
   .shop-main {
     padding: 0 0 24px;
   }
+  .shop-main > .shop-wrap {
+    padding: 16px 16px 0;
+  }
   .shop-card {
     width: 100%;
     border-radius: 0;
@@ -205,5 +617,32 @@ body {
 }
 .mc-table th {
   background: var(--wds-fill-alternative);
+  font-weight: 600;
+}
+
+/* SH-010 로그인 · SH-020 내 정보 */
+.shop-login,
+.shop-my {
+  align-self: flex-start;
+  width: 440px;
+  gap: 16px;
+}
+.shop-login .msg {
+  margin: 0;
+}
+.shop-login-foot {
+  margin: 0;
+  text-align: center;
+}
+.shop-my-list {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--wds-line-solid-neutral);
+}
+.shop-app .shop-my-list a {
+  padding: 14px 4px;
+  border-bottom: 1px solid var(--wds-line-solid-neutral);
+  color: var(--wds-label-normal);
+  text-decoration: none;
   font-weight: 600;
 }
