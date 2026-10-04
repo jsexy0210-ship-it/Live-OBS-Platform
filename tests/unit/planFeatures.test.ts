@@ -88,6 +88,9 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/categories/[categoryId]": "STORE_OPERATIONS",
   "seller/categories/order": "STORE_OPERATIONS",
   "seller/products/[productId]/categories": "STORE_OPERATIONS",
+  "seller/products/[productId]/images": "STORE_OPERATIONS",
+  "seller/products/[productId]/images/order": "STORE_OPERATIONS",
+  "seller/products/[productId]/images/[imageId]": "STORE_OPERATIONS",
   "seller/products/[productId]/event": "STORE_OPERATIONS",
   "seller/products/[productId]/options": "STORE_OPERATIONS",
   "seller/products/[productId]/options/[optionId]": "STORE_OPERATIONS",
@@ -141,6 +144,7 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/reviews/[reviewId]/report": "STORE_OPERATIONS",
   "shop/[slug]/reviews/public-images/[imageId]": "STORE_OPERATIONS",
   "shop/[slug]/products/[productId]/reviews": "STORE_OPERATIONS",
+  "shop/[slug]/products/[productId]/images/[imageId]": "STORE_OPERATIONS", // 상품 사진(보이는 상품만)
   "shop/[slug]/orders/[orderId]": "OPEN",
   "shop/[slug]/auth/login": "OPEN",
   "shop/[slug]/auth/logout": "OPEN",
