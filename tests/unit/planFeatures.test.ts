@@ -87,6 +87,8 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/shop-content/popups/reorder": "STORE_OPERATIONS",
   "seller/shop-content/images": "STORE_OPERATIONS",
   "seller/shop-content/images/[imageId]": "STORE_OPERATIONS",
+  "seller/shop-content/logo": "STORE_OPERATIONS",
+  "seller/shop-content/logo/image": "STORE_OPERATIONS",
   "seller/stats/broadcasts": "OVERLAY",
   "seller/stats/members": "STORE_OPERATIONS",
   "seller/stats/orders": "STORE_OPERATIONS",
@@ -111,6 +113,7 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/coupons/code": "STORE_OPERATIONS", // 쿠폰 받기(코드·내려받기)는 shopOpen으로 막음
   "shop/[slug]/coupons/[couponId]/download": "STORE_OPERATIONS",
   "shop/[slug]/coupons": "OPEN", // 내 쿠폰함(받은 쿠폰 조회는 열고, 받을 수 있는 쿠폰은 운영 중일 때만)
+  "shop/[slug]/shop-content/logo": "STORE_OPERATIONS", // 쇼핑몰 로고(없으면 404, 화면은 첫 글자)
   "shop/[slug]/orders/[orderId]": "OPEN",
   "shop/[slug]/auth/login": "OPEN",
   "shop/[slug]/auth/logout": "OPEN",
