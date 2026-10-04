@@ -1,0 +1,94 @@
+/* 쇼핑몰 홈 배너 슬라이드(HomeBanner.tsx) */
+.hb {
+  position: relative;
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--wds-fill-alternative);
+}
+.hb-track {
+  display: flex;
+  align-items: flex-start;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+.hb-track::-webkit-scrollbar {
+  display: none;
+}
+.hb-slide {
+  flex: 0 0 100%;
+  scroll-snap-align: start;
+}
+.hb-slide a {
+  display: block;
+}
+.hb-slide img {
+  display: block;
+  width: 100%;
+  height: auto;
+  user-select: none;
+}
+.hb-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffffd9;
+  color: #111;
+  cursor: pointer;
+  box-shadow: 0 2px 8px #0000001f;
+}
+.hb-prev {
+  left: 12px;
+}
+.hb-next {
+  right: 12px;
+}
+.hb-dots {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 10px;
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+}
+.hb-dots > button {
+  width: 6px;
+  height: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: #ffffffa6;
+  box-shadow: 0 0 0 1px #0000001a;
+  cursor: pointer;
+  transition: width 0.2s;
+}
+.hb-dots > button.on {
+  width: 16px;
+  background: #fff;
+}
+.hb-m {
+  display: none;
+}
+@media (max-width: 767px) {
+  .hb-pc {
+    display: none;
+  }
+  .hb-m {
+    display: block;
+  }
+  .hb {
+    border-radius: 10px;
+  }
+  .hb-arrow {
+    display: none;
+  }
+}
