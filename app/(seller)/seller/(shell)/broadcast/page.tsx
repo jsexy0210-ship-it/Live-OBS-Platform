@@ -56,7 +56,9 @@ export default function BroadcastDashboardPage() {
       if (reads.hasApplied()) return reads.failMatters(t) ? setStale(true) : undefined;
       return setState({ kind: "error", status: r.status, error: r.error });
     }
-    if (reads.accept(t) !== "apply") return;
+    const verdict = reads.accept(t);
+    // 변경 전에 보낸 읽기가 늦게 왔으면 버린다(변경 뒤 다시 읽기가 반영한다. 그 읽기가 실패했으면 낡음 안내가 남는다)
+    if (verdict !== "apply") return;
     version.current = r.data.version;
     setStale(false);
     setState({ kind: "ok", snap: r.data });
@@ -97,25 +99,29 @@ export default function BroadcastDashboardPage() {
   }, []);
 
   // 변경 요청 공통 처리: 성공·거부 모두 다시 읽어 서버 상태로 맞춘다. 불분명하면 성공을 추정하지 않는다.
+  // 다시 읽기가 끝날 때까지 조작을 막는다(옛 version으로 다음 요청을 보내 409가 나지 않게).
+  // 서버가 바뀌었을(수 있는) 요청 뒤에는 그 전에 보낸 읽기 응답이 늦게 와도 반영하지 않는다(confirmChange).
   const mutate = useCallback(
     async <T,>(path: string, body: unknown, okText: string): Promise<ApiResult<T>> => {
       setBusy(true);
       const r = await api<T>(path, { method: "POST", body });
-      setBusy(false);
       if (r.ok) {
+        reads.confirmChange();
         setModal(null);
         setToast({ text: okText });
       } else if (isUnclearFailure(r.status)) {
+        reads.confirmChange();
         setModal(null);
         setToast({ text: "처리 결과를 확인하지 못했습니다. 최신 상태를 다시 불러왔습니다. 화면에서 반영 여부를 확인해 주십시오", neg: true });
       } else {
         setToast({ text: rejectText(r.error) ?? failMessage(r, "admin"), neg: true });
         if (r.error !== "reason_required" && r.error !== "invalid_timer") setModal(null);
       }
-      void load();
+      await load();
+      setBusy(false);
       return r;
     },
-    [load],
+    [load, reads],
   );
 
   const snap = state.kind === "ok" ? state.snap : null;
@@ -324,7 +330,7 @@ export default function BroadcastDashboardPage() {
                 ) : (
                   <ul className="bc-list" data-testid="bc-done">
                     {snap.recentDone.map((d) => {
-                      const canRevert = live && !opening && d.doneAt && now - new Date(d.doneAt).getTime() < REVERT_WINDOW_MS;
+                      const canRevert = live && d.broadcastSessionId === live.id && !opening && d.doneAt && now - new Date(d.doneAt).getTime() < REVERT_WINDOW_MS;
                       return (
                         <li key={d.id} className="bc-row">
                           <span className="bdg b-done">완료</span>

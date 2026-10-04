@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { notifySellerChanged } from "../../lib/server/realtime/notify";
 import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
 
 // SA-001 방송 대시보드 e2e 준비(폐기용 테스트 DB, 이름이 _test로 끝남). 데모 시드에는 대기 주문이 없어 여기서 만든다.
@@ -94,6 +95,17 @@ export async function cleanupBroadcastQueue(since: Date, slug = "demo-shop") {
     });
     await db.broadcastSession.deleteMany({ where: { sellerId: seller.id, startedAt: { gte: since } } });
     await db.seller.update({ where: { id: seller.id }, data: { liveVersion: { increment: 1 } } });
+  } finally {
+    await db.$disconnect();
+  }
+}
+
+// 다른 곳에서 바뀐 것처럼 실시간 version만 올리고 알린다(대시보드가 주문대기를 다시 읽게)
+export async function bumpLiveVersion(slug = "demo-shop") {
+  const db = open();
+  try {
+    const s = await db.seller.update({ where: { slug }, data: { liveVersion: { increment: 1 } }, select: { id: true, liveVersion: true } });
+    await notifySellerChanged(db, s.id, s.liveVersion);
   } finally {
     await db.$disconnect();
   }
