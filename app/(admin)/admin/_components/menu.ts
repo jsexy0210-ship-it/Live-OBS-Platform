@@ -1,0 +1,93 @@
+import { adminCan, type AdminPermission } from "../../../../lib/server/authz/permissions";
+
+// 마스터 관리자 메뉴(docs/IA.md MA 「메뉴 그룹」 표). perm은 그 화면의 서버 API가 요구하는 권한과 같다(없으면 platform.read).
+// ready: 화면이 있는 메뉴. 없으면 「준비 중」 한 줄 화면으로 연결한다. 하위 메뉴가 모두 숨겨진 대분류는 GNB에서도 숨긴다.
+export type AdminRole = "SUPER_ADMIN" | "OPERATIONS" | "CS" | "READ_ONLY";
+export type AdminItem = { label: string; href: string; perm?: AdminPermission; ready?: true };
+export type AdminGroup = { key: string; label: string; items: AdminItem[] };
+
+export const ADMIN_MENU: AdminGroup[] = [
+  { key: "home", label: "홈", items: [{ label: "통합 대시보드", href: "/admin" }] },
+  {
+    key: "partners",
+    label: "파트너스",
+    items: [
+      { label: "파트너스 목록", href: "/admin/partners" },
+      { label: "가입 신청", href: "/admin/partners/applications" },
+    ],
+  },
+  {
+    key: "billing",
+    label: "구독·요금",
+    items: [
+      { label: "요금제", href: "/admin/billing/plans" },
+      { label: "구독 현황", href: "/admin/billing/subscriptions" },
+      { label: "청구·결제 내역", href: "/admin/billing/invoices" },
+      { label: "환불 요청", href: "/admin/billing/refunds" },
+    ],
+  },
+  {
+    key: "settlement",
+    label: "정산",
+    items: [
+      { label: "PG 연결 상태", href: "/admin/settlement/pg" },
+      { label: "구독료 수납", href: "/admin/settlement/collection" },
+    ],
+  },
+  {
+    key: "ops",
+    label: "운영",
+    items: [
+      { label: "실시간 방송", href: "/admin/ops/live" },
+      { label: "주문·오버레이 접속", href: "/admin/ops/access" },
+      { label: "적립금 실지급 파트너스", href: "/admin/ops/rewards" },
+      { label: "실시간 감시", href: "/admin/ops/monitor", perm: "system.manage" },
+      { label: "자동 연결 작업", href: "/admin/ops/jobs" },
+    ],
+  },
+  {
+    key: "support",
+    label: "고객지원",
+    items: [
+      { label: "파트너스 문의", href: "/admin/support/inquiries" },
+      { label: "공지사항", href: "/admin/support/notices" },
+      { label: "도우미 답변 자료", href: "/admin/support/assistant" },
+    ],
+  },
+  {
+    key: "admins",
+    label: "관리자",
+    items: [
+      { label: "관리자 계정", href: "/admin/accounts", perm: "admin.manage" },
+      { label: "역할별 권한", href: "/admin/accounts/roles", perm: "admin.manage" },
+    ],
+  },
+  { key: "logs", label: "로그", items: [{ label: "로그 추적", href: "/admin/logs", perm: "audit.read" }] },
+  {
+    key: "settings",
+    label: "설정",
+    items: [
+      { label: "플랫폼 기본 정책", href: "/admin/settings/policy", perm: "system.manage" },
+      { label: "알림 채널", href: "/admin/settings/notifications", perm: "system.manage" },
+      { label: "점검 모드", href: "/admin/settings/maintenance", perm: "system.manage" },
+      { label: "도우미 설정", href: "/admin/settings/assistant", perm: "system.manage" },
+      // 조회는 모든 관리자(변경은 최고관리자만)
+      { label: "파비콘·공유 카드", href: "/admin/settings/branding", ready: true },
+    ],
+  },
+];
+
+export const itemAllowed = (role: AdminRole, item: AdminItem) => adminCan(role, item.perm ?? "platform.read");
+
+export function visibleAdminMenu(role: AdminRole): AdminGroup[] {
+  return ADMIN_MENU.map((g) => ({ ...g, items: g.items.filter((n) => itemAllowed(role, n)) })).filter((g) => g.items.length > 0);
+}
+
+// 지금 주소의 대분류·메뉴(주소가 길게 맞는 메뉴)
+export function routeNav(pathname: string): { group: AdminGroup; item: AdminItem } | null {
+  let best: { group: AdminGroup; item: AdminItem } | null = null;
+  for (const group of ADMIN_MENU)
+    for (const item of group.items)
+      if ((pathname === item.href || (item.href !== "/admin" && pathname.startsWith(`${item.href}/`))) && (!best || item.href.length > best.item.href.length)) best = { group, item };
+  return best;
+}
