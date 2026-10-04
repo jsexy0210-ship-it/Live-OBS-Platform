@@ -1,4 +1,8 @@
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import type React from "react";
+import ShopSignupPage from "../../app/(shop)/shop/[slug]/signup/page";
+import SignupForm from "../../components/shop/SignupForm";
 import { GET as overlayState } from "../../app/api/overlay/[token]/state/route";
 import { GET as overlayStream } from "../../app/api/overlay/[token]/stream/route";
 import { GET as overlayVersion } from "../../app/api/overlay/[token]/version/route";
@@ -323,6 +327,24 @@ describe("공개·구매자 경로: 스토어 운영 권한이 없는 쇼핑몰(
     // 진행 중 주문이 없는 다른 구매자는 탈퇴할 수 있다
     const otherCookie = await s.login(s.other.loginId);
     expect((await withdrawRoute(req(`/api/shop/${slug}/me/withdraw`, "POST", otherCookie, { password: PASSWORD }), slugCtx(slug))).status).toBe(200);
+  });
+});
+
+describe("서버 렌더 쇼핑몰 화면(ARCHITECTURE 4.8.0 ③)", () => {
+  type El = { type: unknown; props: { children?: unknown } };
+  const page = async (slug: string) => (await ShopSignupPage({ params: Promise.resolve({ slug }) })) as unknown as El;
+
+  it("구매자 가입 화면: 스토어 운영 권한이 없으면 안내 화면이고 가입 폼이 없다. 있으면 지금처럼 가입 폼을 그린다", async () => {
+    const s = await shop();
+    // 가입 폼(SignupForm)은 앱 라우터가 있어야 그려져서, 열린 경우는 화면이 고른 컴포넌트로 본다
+    expect(((await page(s.seller.slug)).props.children as El).type).toBe(SignupForm);
+    await setPlan(s.seller.id, "OVERLAY_ONLY");
+    const closedEl = await page(s.seller.slug);
+    expect((closedEl.props.children as El).type).not.toBe(SignupForm);
+    const closed = renderToStaticMarkup(closedEl as unknown as React.ReactElement);
+    expect(closed).toContain("지금은 쇼핑몰을 이용할 수 없어요");
+    expect(closed).not.toContain("<form");
+    expect(closed).not.toContain("<input");
   });
 });
 

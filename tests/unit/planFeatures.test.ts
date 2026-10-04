@@ -5,14 +5,16 @@ import { PLAN_FEATURES, planFeatures } from "../../lib/server/billing/features";
 
 // ONQ 1-B 기능 권한(ARCHITECTURE 4.8.0) 경로 목록 검사. 새 판매자·공개·구매자 경로를 만들면 아래 표에 넣어야 통과한다.
 const API = join(__dirname, "../../app/api");
+const SHOP_PAGES_DIR = join(__dirname, "../../app/(shop)");
 
-function routeFiles(dir: string): string[] {
+function filesNamed(dir: string, file: string, root: string): string[] {
   return readdirSync(dir).flatMap((name) => {
     const p = join(dir, name);
-    if (statSync(p).isDirectory()) return routeFiles(p);
-    return name === "route.ts" ? [relative(API, p).replace(/\/route\.ts$/, "")] : [];
+    if (statSync(p).isDirectory()) return filesNamed(p, file, root);
+    return name === file ? [relative(root, p).slice(0, -(file.length + 1))] : [];
   });
 }
+const routeFiles = (dir: string) => filesNamed(dir, "route.ts", dir);
 
 // 판매자 API → 요구하는 기능 권한(lib/server/authz/guards.ts SellerRouteFeature). 가드를 부르지 않는 경로는 null.
 const SELLER_ROUTES: Record<string, string | null> = {
@@ -97,6 +99,12 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "overlay/[token]/stream": "OVERLAY",
 };
 
+// 서버 렌더 쇼핑몰 화면(ARCHITECTURE 4.8.0 ③). 「새 거래 시작」 화면은 스토어 운영 권한이 없으면 폼·구매 버튼 없이 안내 화면을 그린다.
+// 판정은 shopOpen(운영 중·잠김·스토어 운영 권한)이 하고, 렌더 결과는 tests/integration/planFeatures.test.ts가 확인한다.
+const SHOP_PAGES: Record<string, "STORE_OPERATIONS" | "OPEN"> = {
+  "shop/[slug]/signup": "STORE_OPERATIONS",
+};
+
 describe("플랜 → 기능 권한 표", () => {
   it("오버레이 전용 2종, 통합·STANDARD 3종, 모르는 플랜은 없음", () => {
     const open = { firstPaymentConfirmed: true, inTrial: false };
@@ -129,6 +137,15 @@ describe("경로 목록 검사", () => {
       }
       expect(calls.length, route).toBeGreaterThan(0);
       for (const call of calls) expect(call.match(/feature: "([A-Z_]+)"/)?.[1], `${route}: ${call}`).toBe(want);
+    }
+  });
+
+  it("쇼핑몰 화면은 모두 표에 있고, 막는 화면은 shopOpen으로 판정한다", () => {
+    const pages = filesNamed(SHOP_PAGES_DIR, "page.tsx", SHOP_PAGES_DIR);
+    expect(pages.sort()).toEqual(Object.keys(SHOP_PAGES).sort());
+    for (const page of pages) {
+      if (SHOP_PAGES[page] !== "STORE_OPERATIONS") continue;
+      expect(readFileSync(join(SHOP_PAGES_DIR, page, "page.tsx"), "utf8"), page).toMatch(/shopOpen\(/);
     }
   });
 
