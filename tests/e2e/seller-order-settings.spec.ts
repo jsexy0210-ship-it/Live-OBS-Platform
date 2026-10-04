@@ -183,15 +183,15 @@ test("자동 배송 완료·자동 구매 확정: 기본 7일, 기간을 바꾸�
   await expect(page.getByTestId("delivery-existing")).toHaveText("기간을 바꾸면 이미 배송 중이거나 배송 완료된 주문도 바뀐 기간으로 계산합니다.");
   await expect(page.getByLabel("자동 배송 완료 기간")).toHaveValue("7");
   await expect(page.getByLabel("자동 구매 확정 기간")).toHaveValue("7");
-  await expect(page.getByTestId("delivery-preview")).toContainText("배송 중 7일이 지나면 배송 완료로 바뀌어요 · 배송 완료 7일 뒤 자동으로 구매 확정돼요");
+  await expect(page.getByTestId("delivery-preview")).toContainText("배송 중 7일이 지나면 배송 완료로 바뀝니다 · 배송 완료 7일 뒤 자동으로 구매 확정됩니다");
   await shot(page, "SA-063-delivery");
 
   // 기간 검사: 1~30일
   await page.getByLabel("자동 배송 완료 기간").fill("31");
   await save(page);
-  await expect(page.getByText("1일부터 30일까지 정할 수 있어요")).toBeVisible();
+  await expect(page.getByText("1일부터 30일까지 정할 수 있습니다")).toBeVisible();
   await page.getByLabel("자동 배송 완료 기간").fill("0");
-  await expect(page.getByText("1일부터 30일까지 정할 수 있어요")).toBeVisible();
+  await expect(page.getByText("1일부터 30일까지 정할 수 있습니다")).toBeVisible();
   // 빈칸은 따로 안내한다
   await page.getByLabel("자동 배송 완료 기간").fill("");
   await expect(page.getByText("기간을 입력해 주십시오")).toBeVisible();

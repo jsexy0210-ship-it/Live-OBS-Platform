@@ -35,6 +35,24 @@ export function AuthFrame({ children, wide = false }: { children: React.ReactNod
   );
 }
 
+// 아이디 찾기(AU-011) | 비밀번호 찾기(AU-003) 전환. 로그인 화면의 「아이디/비밀번호 찾기」 하나로 들어와 화면 위쪽에서 바꾼다
+export function FindSwitch({ current }: { current: "id" | "password" }) {
+  const staff = useStaffType();
+  const items = [
+    { key: "id", label: "아이디 찾기", href: withType("/seller/find-id", staff) },
+    { key: "password", label: "비밀번호 찾기", href: withType("/seller/password-reset", staff) },
+  ] as const;
+  return (
+    <nav className="tabs find-switch" aria-label="아이디·비밀번호 찾기">
+      {items.map((t) => (
+        <Link key={t.key} href={t.href} className={`tab${current === t.key ? " on" : ""}`} aria-current={current === t.key ? "page" : undefined}>
+          {t.label}
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
 // 단계 표시(1 본인확인 → 2 정보 입력 → 3 신청 완료). 지난 단계와 지금 단계는 채운 원
 export function Steps({ steps, current }: { steps: string[]; current: number }) {
   return (

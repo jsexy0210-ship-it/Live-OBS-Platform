@@ -69,7 +69,7 @@ export default function NewPasswordForm({ onDone, onExpired, loginHref }: Props)
           </span>
         </div>
         <Link className="btn btn-lg btn-block" href={loginHref}>
-          로그인하기
+          로그인
         </Link>
         <button className="btn btn-lg btn-block btn-out" type="button" onClick={onExpired}>
           처음부터 다시 찾기
@@ -89,7 +89,7 @@ export default function NewPasswordForm({ onDone, onExpired, loginHref }: Props)
               </span>
               <span className="row" style={{ marginTop: 8 }}>
                 <Link className="btn btn-sm" href={loginHref}>
-                  로그인하기
+                  로그인
                 </Link>
               </span>
             </>
@@ -152,7 +152,7 @@ export default function NewPasswordForm({ onDone, onExpired, loginHref }: Props)
       </div>
       <span className="t-c1 c-alt">변경하면 다른 기기의 로그인은 모두 해제됩니다</span>
       <button className={`btn btn-lg btn-block${busy ? " is-loading" : ""}`} type="submit" disabled={busy || pw === "" || pw2 === ""}>
-        {busy ? "변경 중" : "비밀번호 바꾸기"}
+        {busy ? "변경 중" : "비밀번호 변경"}
       </button>
     </form>
   );

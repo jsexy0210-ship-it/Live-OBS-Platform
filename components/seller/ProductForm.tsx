@@ -568,7 +568,7 @@ function DeleteDialog({ product, onClose, onHidden }: { product: Product; onClos
           <label className={`row choice${mode === "hide" ? " on" : ""}`} style={{ gap: 10 }}>
             <input className="rdo" type="radio" name="del-mode" checked={mode === "hide"} onChange={() => setMode("hide")} />
             <span className="col">
-              <span className="t-l1 fw6">숨김으로 바꾸기 (권장)</span>
+              <span className="t-l1 fw6">숨김으로 변경 (권장)</span>
               <span className="t-c1 c-alt">쇼핑몰에서만 사라지고 언제든 다시 판매할 수 있습니다</span>
             </span>
           </label>
@@ -588,7 +588,7 @@ function DeleteDialog({ product, onClose, onHidden }: { product: Product; onClos
             취소
           </button>
           <button className={`btn${mode === "delete" ? " btn-neg" : ""}`} type="button" onClick={() => void run()} disabled={busy || !ok}>
-            {mode === "hide" ? "숨김으로 바꾸기" : "삭제"}
+            {mode === "hide" ? "숨김으로 변경" : "삭제"}
           </button>
         </div>
       </div>

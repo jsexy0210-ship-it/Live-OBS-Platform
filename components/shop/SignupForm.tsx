@@ -2,9 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { api, failMessage } from "../seller/api";
+import { api, failMessage as baseFailMessage } from "../seller/api";
 import { textLength } from "../seller/format";
 import ShopState from "./ShopState";
+
+// 구매자 화면이라 공통 실패 문구도 해요체로 쓴다
+const failMessage = (r: { status: number; message?: string }, fallback?: string) => baseFailMessage(r, fallback, "public");
 
 // SH-011 구매자 회원가입: 필수 약관 동의 → 휴대폰 본인확인(인증번호 받기 → 확인) → 아이디·비밀번호·방송 닉네임·(선택) 마케팅 → 가입.
 // 실패 문구는 서버 message를 그대로 쓴다(정본: lib/server/buyers/signup.ts BUYER_SIGNUP_MESSAGES, lib/server/identity/messages.ts).

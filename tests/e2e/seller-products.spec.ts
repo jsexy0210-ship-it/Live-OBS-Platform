@@ -122,7 +122,7 @@ test("상품 등록 → 목록에 바로 보인다", async ({ page }) => {
   await page.getByLabel("판매가").fill("만오천원");
   await page.getByRole("button", { name: "등록", exact: true }).first().click();
   await expect(page.getByText("숫자만 입력해 주십시오")).toBeVisible();
-  await expect(page.getByText(/아래 1개 항목을 확인해 주세요: 판매가/)).toBeVisible();
+  await expect(page.getByText(/아래 1개 항목을 확인해 주십시오: 판매가/)).toBeVisible();
   await shot(page, "SA-012-new-error");
 
   await page.getByLabel("판매가").fill("15,000");
@@ -151,18 +151,18 @@ test("상품명 100자를 넘기면 글자 수가 빨갛게 바뀌고 안내한�
   await page.goto("/seller/products/new");
   await page.getByLabel("상품명").fill("가".repeat(101));
   await expect(page.getByTestId("name-count")).toHaveText("101/100");
-  await expect(page.getByText("상품명은 100자까지 쓸 수 있어요")).toBeVisible();
+  await expect(page.getByText("상품명은 100자까지 입력할 수 있습니다")).toBeVisible();
 
   // 👍 101개는 101자로 세고 막는다
   await page.getByLabel("상품명").fill("👍".repeat(101));
   await expect(page.getByTestId("name-count")).toHaveText("101/100");
-  await expect(page.getByText("상품명은 100자까지 쓸 수 있어요")).toBeVisible();
+  await expect(page.getByText("상품명은 100자까지 입력할 수 있습니다")).toBeVisible();
 
   // 이모지 96개 + 실행마다 다른 글자 4개 = 100자라 서버도 받는다(실제로 등록해 목록에서 확인)
   const name100 = track("👍".repeat(96) + stamp.slice(-4));
   await page.getByLabel("상품명").fill(name100);
   await expect(page.getByTestId("name-count")).toHaveText("100/100");
-  await expect(page.getByText("상품명은 100자까지 쓸 수 있어요")).toHaveCount(0);
+  await expect(page.getByText("상품명은 100자까지 입력할 수 있습니다")).toHaveCount(0);
   await page.getByLabel("판매가").fill("1000");
   await page.getByRole("button", { name: "임시 저장" }).first().click();
   await expect(page).toHaveURL(/\/seller\/products$/);
@@ -214,9 +214,9 @@ test("상품 삭제: 숨김을 먼저 권하고, 완전 삭제는 상품명을 �
 
   await page.getByRole("button", { name: "삭제", exact: true }).click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog.getByText(`「${name}」을 삭제할까요?`)).toBeVisible();
+  await expect(dialog.getByText(`「${name}」을 삭제하시겠습니까?`)).toBeVisible();
   await shot(page, "SA-012-D-delete");
-  await dialog.getByRole("button", { name: "숨김으로 바꾸기" }).click();
+  await dialog.getByRole("button", { name: "숨김으로 변경", exact: true }).click();
   await expect(page.getByText("숨김으로 변경했습니다")).toBeVisible();
   await expect(page.locator(".topbar .bdg")).toHaveText("숨김");
 
@@ -392,7 +392,7 @@ test("「재고 없음」·「재고 부족」으로 걸러 보면 서버 기준
   await expect(page.getByTestId("product-row").filter({ hasText: "드래곤 소울 부스터" })).toHaveCount(0);
   // 판매 상태 탭과 함께 쓴다: 「숨김」 + 「재고 부족」은 해당 없음
   await page.getByRole("tab", { name: "숨김" }).click();
-  await expect(page.getByText("「숨김 · 재고 부족」에 해당하는 상품이 없어요")).toBeVisible();
+  await expect(page.getByText("「숨김 · 재고 부족」에 해당하는 상품이 없습니다")).toBeVisible();
 });
 
 test("「품절로 설정」 탭은 판매 상태가 품절인 상품만, 배지와 이름이 맞는다", async ({ page }) => {
@@ -427,7 +427,7 @@ test("상품 검색: 상품·옵션 이름으로 서버에서 찾고(대소문�
   await expect(page.getByTestId("product-row").first()).toContainText("문라이트 1탄 박스");
   // 없는 이름은 안내하고, 「전체 보기」로 검색까지 지운다
   await searchFor(page, "없는상품이름");
-  await expect(page.getByText("「없는상품이름 · 숨김」에 해당하는 상품이 없어요")).toBeVisible();
+  await expect(page.getByText("「없는상품이름 · 숨김」에 해당하는 상품이 없습니다")).toBeVisible();
   await page.getByRole("button", { name: "전체 보기" }).click();
   await expect(page.getByLabel("상품 검색")).toHaveValue("");
   await expect(page.getByTestId("product-row").filter({ hasText: "스타라이트 부스터 박스" })).toBeVisible();
@@ -439,7 +439,7 @@ test("상품 검색어는 50자까지: 입력은 50자에서 멈추고, 바꾼 �
   await page.getByLabel("상품 검색").fill("가".repeat(51));
   await expect(page.getByLabel("상품 검색")).toHaveValue("가".repeat(50));
   await page.getByLabel("상품 검색").fill("㈜".repeat(50));
-  await expect(page.getByText("검색어는 50자까지 쓸 수 있어요")).toBeVisible();
+  await expect(page.getByText("검색어는 50자까지 입력할 수 있습니다")).toBeVisible();
   await page.getByRole("button", { name: "검색 지우기" }).click();
   await expect(page.getByLabel("상품 검색")).toHaveValue("");
   await expect(page.getByTestId("product-row").first()).toBeVisible();

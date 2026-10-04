@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import IdentityCheck from "../../../../components/seller/IdentityCheck";
 import NewPasswordForm from "../../../../components/seller/NewPasswordForm";
-import { AuthFrame, IdentityUnavailable, useStaffType, withType } from "../../../../components/seller/PartnersAuth";
+import { AuthFrame, FindSwitch, IdentityUnavailable, useStaffType, withType } from "../../../../components/seller/PartnersAuth";
 import { api, failMessage } from "../../../../components/seller/api";
 import { RETRY_TEXT, stepOutcome } from "../../../../components/seller/stepFailure";
 
@@ -107,7 +107,7 @@ export default function FindIdPage() {
           </h1>
           <span className="t-l2 c-alt">다른 기기의 로그인은 모두 해제되었습니다. 새 비밀번호로 로그인해 주십시오.</span>
           <Link className="btn btn-lg btn-block" href={withType("/seller/login", staff)}>
-            로그인하기
+            로그인
           </Link>
         </div>
       </AuthFrame>
@@ -116,6 +116,7 @@ export default function FindIdPage() {
 
   return (
     <AuthFrame>
+      {step === "find" && <FindSwitch current="id" />}
       <div className="col" style={{ gap: 4 }}>
         <h1 className="t-t3" id="fi-title" tabIndex={-1}>
           {title}
@@ -143,7 +144,7 @@ export default function FindIdPage() {
               {pending && verificationId && (
                 <span className="row" style={{ marginTop: 8 }}>
                   <button className="btn btn-sm" type="button" disabled={busy} onClick={() => void loadAccounts(verificationId)}>
-                    다시 확인하기
+                    다시 확인
                   </button>
                 </span>
               )}
@@ -183,7 +184,7 @@ export default function FindIdPage() {
                   ))}
                 </div>
                 <Link className="btn btn-lg btn-block" href={withType("/seller/login", staff)}>
-                  로그인하기
+                  로그인
                 </Link>
                 <button className={`btn btn-lg btn-block btn-out${busy ? " is-loading" : ""}`} type="button" disabled={!picked || busy} onClick={() => void reset()}>
                   {busy ? "확인 중" : "선택한 계정 비밀번호 변경"}
@@ -191,7 +192,7 @@ export default function FindIdPage() {
               </>
             ) : (
               <button className="btn btn-lg btn-block btn-out" type="button" onClick={() => restart(null)}>
-                본인확인 다시 하기
+                본인확인 재시도
               </button>
             ))}
           {step === "password" && (
@@ -209,8 +210,6 @@ export default function FindIdPage() {
       {!unavailable && (
         <div className="row t-l2 c-alt" style={{ justifyContent: "center", gap: 8 }}>
           <Link href={withType("/seller/login", staff)}>로그인으로 돌아가기</Link>
-          <span aria-hidden>·</span>
-          <Link href={withType("/seller/password-reset", staff)}>비밀번호 찾기</Link>
         </div>
       )}
     </AuthFrame>

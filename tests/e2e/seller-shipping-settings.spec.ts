@@ -62,9 +62,9 @@ test("무료·고정으로 바꿔도 저장되고, 잘못된 금액은 막는다
   await page.getByRole("radio", { name: "고정" }).check();
   await page.getByLabel("배송비", { exact: true }).fill("-500");
   await save(page);
-  await expect(page.getByText("1원 이상으로 적어 주세요")).toBeVisible();
+  await expect(page.getByText("1원 이상으로 입력해 주십시오")).toBeVisible();
   await page.getByLabel("배송비", { exact: true }).fill("200000");
-  await expect(page.getByText("100,000원까지 정할 수 있어요")).toBeVisible();
+  await expect(page.getByText("100,000원까지 정할 수 있습니다")).toBeVisible();
   await shot(page, "SA-061-shipping-error");
 
   // 기본값으로 되돌려 둔다
@@ -139,7 +139,7 @@ test("반품 · 교환 배송비: 기본 3,000원 · 6,000원, 바꾸면 저장�
   await save(page);
   await expect(page.getByText("숫자만 입력해 주십시오").or(page.getByText("0원 이상으로 입력해 주십시오")).first()).toBeVisible();
   await exc.fill("100001");
-  await expect(page.getByText("100,000원까지 정할 수 있어요")).toBeVisible();
+  await expect(page.getByText("100,000원까지 정할 수 있습니다")).toBeVisible();
 
   await ret.fill("2,500");
   await exc.fill("5000");

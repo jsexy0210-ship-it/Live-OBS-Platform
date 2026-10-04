@@ -11,7 +11,7 @@ import { stepOutcome } from "../../../../components/seller/stepFailure";
 // AU-012 직원 본인확인으로 계정 연결(정본: docs/IA.md AU-012, 디자인 AU-012). 연결 전 직원이 로그인하면 로그인 화면이 이리로 보낸다.
 // 연결은 직원이 아이디·비밀번호를 스스로 찾을 때만 쓴다. 연결 전이나 건너뛴 뒤에도 로그인·업무는 그대로다(「나중에 하기」).
 // 대표자가 SA-100에서 등록한 이름·휴대폰과 본인확인 결과가 같아야 연결된다. 다르면 대표자에게 정보 수정을 부탁하게 안내한다.
-// 대표자가 번호를 바꿔 연결이 풀렸으면(relinkRequired) 「본인확인 다시 하기」로 안내한다.
+// 대표자가 번호를 바꿔 연결이 풀렸으면(relinkRequired) 「본인확인 재시도」로 안내한다.
 // API: GET /api/seller/me/identity { available, phoneRegistered, registeredPhoneLast4, linked, relinkRequired } → POST start(·resend·confirm) → POST link { verificationId }.
 const BASE = "/api/seller/me/identity";
 
@@ -129,7 +129,7 @@ export default function IdentityLinkPage() {
           </h1>
           <span className="t-l2 c-alt">이제 아이디 · 비밀번호를 직접 찾을 수 있습니다. 다음 로그인부터는 이메일과 비밀번호만으로 로그인합니다.</span>
           <button className="btn btn-lg btn-block" type="button" onClick={later}>
-            계속하기
+            계속
           </button>
         </div>
       </AuthFrame>
@@ -191,7 +191,7 @@ export default function IdentityLinkPage() {
           </div>
           <div className="row" style={{ gap: 8 }}>
             <button className="btn btn-sm" type="button" onClick={() => setView("form")}>
-              본인확인 다시 하기
+              본인확인 재시도
             </button>
             <button className="btn btn-sm btn-out" type="button" onClick={later}>
               나중에 하기
@@ -206,7 +206,7 @@ export default function IdentityLinkPage() {
               {pending && (
                 <span className="row" style={{ marginTop: 8 }}>
                   <button className="btn btn-sm" type="button" disabled={busy} onClick={() => void link(pending)}>
-                    다시 확인하기
+                    다시 확인
                   </button>
                 </span>
               )}

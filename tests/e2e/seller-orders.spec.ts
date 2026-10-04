@@ -82,8 +82,8 @@ test("상태 필터·검색·기간으로 걸러 보고, 결과가 없으면 알
   const none = listResponse(page, "q=");
   await page.getByLabel("주문 검색").fill("없는닉네임");
   await none;
-  await expect(page.getByText("「없는닉네임」 검색 결과가 없어요")).toBeVisible();
-  await expect(page.getByText("기간 필터 「오늘」을 해제하면 전체 기간에서 찾아요.")).toBeVisible();
+  await expect(page.getByText("「없는닉네임」 검색 결과가 없습니다")).toBeVisible();
+  await expect(page.getByText("기간 필터 「오늘」을 해제하면 전체 기간에서 찾습니다.")).toBeVisible();
   await page.getByRole("button", { name: "전체 기간에서 검색" }).click();
   await expect(page.getByText("조건에 맞는 주문이 없습니다")).toBeVisible();
 });
@@ -143,7 +143,7 @@ test("환불 모달: 사유 주체를 고르지 않으면 환불할 수 없고, 
   await expect(run).toBeEnabled();
   await shot(page, "SA-023");
   await run.click();
-  await expect(page.getByText("1,000원 환불을 완료했어요")).toBeVisible();
+  await expect(page.getByText("1,000원 환불을 완료했습니다")).toBeVisible();
   expect(body).toMatchObject({ fault: "BUYER", reason: "결제 오류 · 중복 결제", confirmOpened: false });
   expect(Number.isInteger((body as unknown as { expectedVersion: number }).expectedVersion)).toBe(true);
 });
@@ -242,7 +242,7 @@ test("환불 모달: 확인한 금액을 함께 보내고, 그사이 금액이 �
   await agree.check();
   await expect(run).toHaveText("120,000원 환불 실행");
   await run.click();
-  await expect(page.getByText("120,000원 환불을 완료했어요")).toBeVisible();
+  await expect(page.getByText("120,000원 환불을 완료했습니다")).toBeVisible();
   expect(bodies.map((b) => b.expectedRefundAmount)).toEqual([129000, 120000]);
   // 환불 뒤 상세를 다시 읽는 요청이 아직 route.fetch 중일 수 있다. 테스트가 끝나 페이지가 닫히면 그 콜백이 오류를 내므로 라우트를 정리한다
   await page.unrouteAll({ behavior: "ignoreErrors" });
@@ -264,7 +264,7 @@ test("실제 환불: 판매자 사정으로 환불하면 완료 알림이 뜨고
   const refund = page.waitForResponse((r) => r.url().endsWith("/refund") && r.request().method() === "POST");
   await dialog.getByRole("button", { name: /환불 실행/ }).click();
   expect((await refund).status()).toBe(200);
-  await expect(page.getByText(/원 환불을 완료했어요/)).toBeVisible();
+  await expect(page.getByText(/원 환불을 완료했습니다/)).toBeVisible();
   await expect(page.locator(".bdg-lg").first()).toHaveText("환불됨");
   await expect(page.getByText("파트너스 사정")).toBeVisible();
   await expect(page.getByRole("button", { name: "취소 · 환불" })).toHaveCount(0);
@@ -303,7 +303,7 @@ test("환불 모달: 결제 수단이 카드면 「카드 승인 취소」를 �
   await expect(dialog.getByRole("alert")).toContainText("이 기능은 권한이 필요합니다");
   await expect(dialog.getByRole("alert")).toContainText("대표자에게 요청해 주십시오 · 필요한 권한: 주문·배송");
   await dialog.getByRole("button", { name: /환불 실행/ }).click();
-  await expect(page.getByText("2,000원 환불을 완료했어요")).toBeVisible();
+  await expect(page.getByText("2,000원 환불을 완료했습니다")).toBeVisible();
   expect(calls).toBe(3);
 });
 
@@ -322,7 +322,7 @@ test("주문·배송 권한만 있는 직원(방송 진행 권한 없음)도 실
   const refund = page.waitForResponse((r) => r.url().endsWith("/refund") && r.request().method() === "POST");
   await dialog.getByRole("button", { name: /환불 실행/ }).click();
   expect((await refund).status()).toBe(200);
-  await expect(page.getByText(/원 환불을 완료했어요/)).toBeVisible();
+  await expect(page.getByText(/원 환불을 완료했습니다/)).toBeVisible();
   await expect(page.locator(".bdg-lg").first()).toHaveText("환불됨");
 });
 

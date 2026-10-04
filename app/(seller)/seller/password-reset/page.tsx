@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import IdentityCheck from "../../../../components/seller/IdentityCheck";
 import NewPasswordForm from "../../../../components/seller/NewPasswordForm";
-import { AuthFrame, IdentityUnavailable, useStaffType, withType } from "../../../../components/seller/PartnersAuth";
+import { AuthFrame, FindSwitch, IdentityUnavailable, useStaffType, withType } from "../../../../components/seller/PartnersAuth";
 import { api, failMessage } from "../../../../components/seller/api";
 import { RETRY_TEXT, stepOutcome } from "../../../../components/seller/stepFailure";
 
@@ -91,11 +91,12 @@ export default function PasswordResetPage() {
           </h1>
           <span className="t-l2 c-alt">다른 기기의 로그인은 모두 해제되었습니다. 새 비밀번호로 로그인해 주십시오.</span>
           <Link className="btn btn-lg btn-block" href={withType("/seller/login", staff)}>
-            로그인하기
+            로그인
           </Link>
         </div>
       ) : (
         <>
+          {step === "find" && <FindSwitch current="password" />}
           <div className="col" style={{ gap: 4 }}>
             <h1 className="t-t3">{step === "find" ? "비밀번호 찾기" : "새 비밀번호 설정"}</h1>
             <span className="t-l2 c-alt">
@@ -121,7 +122,7 @@ export default function PasswordResetPage() {
                   {pending && (
                     <span className="row" style={{ marginTop: 8 }}>
                       <button className="btn btn-sm" type="button" disabled={busy} onClick={() => void verify(pending)}>
-                        다시 확인하기
+                        다시 확인
                       </button>
                     </span>
                   )}
