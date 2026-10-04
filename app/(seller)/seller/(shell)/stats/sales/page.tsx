@@ -3,7 +3,7 @@
 import { EmptyStats, StatsFrame, StatsState, usePeriod, useStats, type Unit } from "../../../../../../components/seller/stats/StatsFrame";
 import { BarChart, Kpis, bucketLabel, count, downloadCsv, won } from "../../../../../../components/seller/stats/parts";
 
-// 매출 통계(GET /api/seller/stats/sales). 주문 시각(KST) 기준, 결제된 주문만.
+// SA-056 통계 · 매출(GET /api/seller/stats/sales). 주문 시각(KST) 기준, 결제된 주문만.
 type Summary = { gross: number; discount: number; rewardUsed: number; shippingFee: number; paid: number; refund: number; net: number; paidOrders: number };
 type Method = { method: string; paidOrders: number; paid: number; refund: number; net: number };
 type Point = { bucket: string; paid: number; refund: number; net: number };

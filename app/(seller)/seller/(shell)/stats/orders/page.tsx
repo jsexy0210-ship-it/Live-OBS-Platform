@@ -3,7 +3,7 @@
 import { EmptyStats, StatsFrame, StatsState, usePeriod, useStats, type Unit } from "../../../../../../components/seller/stats/StatsFrame";
 import { BarChart, Kpis, bucketLabel, count, downloadCsv, pct, won } from "../../../../../../components/seller/stats/parts";
 
-// 주문 통계(GET /api/seller/stats/orders). 주문 시각(KST) 기준, 비교는 바로 앞 같은 기간.
+// SA-056 통계 · 주문(GET /api/seller/stats/orders). 주문 시각(KST) 기준, 비교는 바로 앞 같은 기간.
 type Summary = {
   orders: number;
   paidOrders: number;
