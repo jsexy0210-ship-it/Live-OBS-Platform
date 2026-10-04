@@ -3,24 +3,26 @@ import type { AdminSessionContext } from "../auth/session";
 import { writeAudit } from "../audit/log";
 import { forbidden } from "../authz/errors";
 import { adminCan } from "../authz/permissions";
-import { dbNow } from "../billing/subscription";
-
-// 체험하기 기간(대표님 결정 2026-10-02, 3일 → 14일 변경). 코드에서는 이 상수 하나만 쓴다.
-export const TRIAL_DAYS = 14;
+import { DEFAULT_PLAN_CODE, dbNow } from "../billing/subscription";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 type Meta = { ip?: string | null; userAgent?: string | null };
 
-// 승인 대기(PENDING) 쇼핑몰을 운영 중으로 바꾼다. 승인 시각과 체험하기 종료(승인 + TRIAL_DAYS일)는 DB 시계로 정한다
-// (대표님 결정 2026-10-02). 「확인 필요」 사유는 비운다. 승인 대기가 아니면 null(동시에 두 번 불러도 한 번만 승인).
+// 승인 대기(PENDING) 쇼핑몰을 운영 중으로 바꾼다. 승인 시각과 체험하기 종료는 DB 시계로 정한다.
+// 체험 일수는 판매자 플랜의 trialDays(오버레이 전용 7일, 통합 없음 = trialEndsAt null, ONQ 1-C·ARCHITECTURE 4.8.0)이고,
+// 판매자 플랜이 없으면 신규 가입 기본 플랜(DEFAULT_PLAN_CODE)을 정해 남긴다. 「확인 필요」 사유는 비운다.
+// 승인 대기가 아니면 null(동시에 두 번 불러도 한 번만 승인).
 // adminId가 null이면 가입 자동 승인이다.
 export async function activateSeller(db: Db, sellerId: string, adminId: string | null) {
-  const rows = await db.$queryRaw<{ approvedAt: Date; trialEndsAt: Date }[]>`
-    UPDATE "Seller"
-       SET "status" = 'ACTIVE', "approvedAt" = now(), "approvedByAdminId" = ${adminId}::uuid,
-           "trialEndsAt" = now() + make_interval(days => ${TRIAL_DAYS}::int), "reviewReasons" = ARRAY[]::TEXT[]
-     WHERE "id" = ${sellerId}::uuid AND "status" = 'PENDING'
-     RETURNING "approvedAt", "trialEndsAt"`;
+  const rows = await db.$queryRaw<{ approvedAt: Date; trialEndsAt: Date | null }[]>`
+    UPDATE "Seller" s
+       SET "status" = 'ACTIVE', "approvedAt" = now(), "approvedByAdminId" = ${adminId}::uuid, "planId" = p."id",
+           "trialEndsAt" = CASE WHEN p."trialDays" > 0 THEN now() + make_interval(days => p."trialDays") ELSE NULL END,
+           "reviewReasons" = ARRAY[]::TEXT[]
+      FROM "SubscriptionPlan" p
+     WHERE s."id" = ${sellerId}::uuid AND s."status" = 'PENDING'
+       AND p."id" = COALESCE(s."planId", (SELECT "id" FROM "SubscriptionPlan" WHERE "code" = ${DEFAULT_PLAN_CODE}))
+     RETURNING s."approvedAt", s."trialEndsAt"`;
   return rows[0] ?? null;
 }
 

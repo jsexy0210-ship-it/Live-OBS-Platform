@@ -4,6 +4,7 @@ import { POST as resetCompleteRoute } from "../../app/api/seller/password-reset/
 import { POST as resetConfirmRoute } from "../../app/api/seller/password-reset/confirm/route";
 import { POST as resetStartRoute } from "../../app/api/seller/password-reset/start/route";
 import { POST as resetVerifyRoute } from "../../app/api/seller/password-reset/verify/route";
+import { GET as productsRoute } from "../../app/api/seller/products/route";
 import { POST as cardRoute } from "../../app/api/seller/subscription/card/route";
 import { POST as signupRoute } from "../../app/api/shop/[slug]/signup/route";
 import { POST as confirmRoute } from "../../app/api/shop/[slug]/signup/verification/confirm/route";
@@ -20,6 +21,7 @@ import { POST as applyRoute } from "../../app/api/seller-signup/apply/route";
 import { POST as sellerConfirmRoute } from "../../app/api/seller-signup/verification/confirm/route";
 import { POST as sellerStartRoute } from "../../app/api/seller-signup/verification/route";
 import { loginSeller } from "../../lib/server/auth/login";
+import { sellerFeatures } from "../../lib/server/billing/features";
 import { prisma } from "../../lib/server/db";
 import { IDV_INPUT, SELLER_SIGNUP_CONSENT, SIGNUP_CONSENT, createSeller, db, resetDb } from "./helpers";
 
@@ -235,7 +237,6 @@ describe("테스트 서버 모드: 바뀐 본인확인 흐름(아이디 찾기·
 describe("테스트 서버 모드: 운영 빌드에서 구독 결제 우회", () => {
   it("플래그가 없는 운영 빌드는 가짜 결제를 쓸 수 없고(결제 기록 없음), 플래그가 있으면 실제 결제 없이 카드 등록·결제가 성공하고 결제 번호에 fake가 붙는다", async () => {
     expect(seed({ OBS_TEST_MODE: "1", ...SEED }).code).toBe(0);
-    await db.subscriptionPlan.create({ data: { code: "STANDARD", name: "월 구독", listPrice: 300000, salePrice: 199000 } });
     // 체험이 끝난 쇼핑몰(카드 등록 뒤 바로 결제)
     await db.seller.update({ where: { slug: "test-shop" }, data: { trialEndsAt: new Date(Date.now() - 86_400_000) } });
     const login = await loginSeller(db, { email: "test", password: "1234" }, {});
@@ -253,7 +254,50 @@ describe("테스트 서버 모드: 운영 빌드에서 구독 결제 우회", ()
     const paid = await card();
     expect(paid.status).toBe(200);
     const payment = await db.subscriptionPayment.findFirstOrThrow();
-    expect(payment).toMatchObject({ status: "PAID", amount: 199000 });
+    expect(payment).toMatchObject({ status: "PAID", amount: 179000 }); // 시험 쇼핑몰은 쇼핑몰 통합(ONQ 1-C) 런칭가
     expect(payment.providerPaymentId).toMatch(/^fake-pay-/);
+  });
+
+  it("새 파트너스(기본 플랜 통합, 체험 없음): 첫 결제 전에는 상품 API가 막히고, 테스트 서버 모드 우회로 첫 결제 179,000원이 확정되면 기능이 모두 열린다(ONQ 1-C)", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("IDENTITY_HASH_KEY", HASH_KEY);
+    vi.stubEnv("OBS_TEST_MODE", "1");
+    for (const k of ["PORTONE_API_SECRET", "PORTONE_STORE_ID", "PORTONE_IDENTITY_CHANNEL_KEY"]) vi.stubEnv(k, "");
+    vi.stubEnv("BILLING_KEY_SECRET", "test-billing-key-secret-0123456789abcdef");
+    vi.stubEnv("BILLING_PROVIDER", "");
+    const s = await sellerStartRoute(post("/api/seller-signup/verification", { ...IDV_INPUT, name: "통합대표", birth7: "8505051", ...SELLER_SIGNUP_CONSENT }));
+    expect(s.status).toBe(200);
+    const flow = cookieOf(s, "lo_sidv");
+    const { verificationId } = await s.json();
+    expect((await sellerConfirmRoute(post("/api/seller-signup/verification/confirm", { verificationId, code: "000000" }, flow))).status).toBe(200);
+    const applied = await applyRoute(
+      post(
+        "/api/seller-signup/apply",
+        {
+          verificationId, email: "new@example.com", password: "partner-pass-1", shopName: "새 쇼핑몰", slug: "new-shop",
+          businessNumber: "124-81-00998", companyName: "새 상사", openedOn: "20200101", mailOrderNumber: "제2025-부산해운대-00077호",
+        },
+        flow,
+      ),
+    );
+    expect(applied.status).toBe(200);
+    const seller = await db.seller.findUniqueOrThrow({ where: { slug: "new-shop" }, include: { plan: true } });
+    if (seller.status === "PENDING") await db.seller.update({ where: { id: seller.id }, data: { status: "ACTIVE", approvedAt: new Date() } });
+    expect(seller.plan?.code).toBe("INTEGRATED");
+    expect(seller.trialEndsAt).toBeNull();
+    expect(await sellerFeatures(db, seller.id)).toEqual([]);
+    const login = await loginSeller(db, { email: "new@example.com", password: "partner-pass-1" }, {});
+    if (!login.ok) throw new Error(login.reason);
+    const cookie = `lo_seller=${login.token}`;
+    const products = () => productsRoute(new Request("http://localhost:3000/api/seller/products", { headers: { host: "localhost:3000", cookie } }));
+    expect((await products()).status).toBe(402);
+
+    const paid = await cardRoute(post("/api/seller/subscription/card", { authKey: "test-card" }, cookie));
+    expect(paid.status).toBe(200);
+    const payment = await db.subscriptionPayment.findFirstOrThrow({ where: { sellerId: seller.id } });
+    expect(payment).toMatchObject({ status: "PAID", amount: 179000 });
+    expect(payment.providerPaymentId).toMatch(/^fake-pay-/);
+    expect(await sellerFeatures(db, seller.id)).toEqual(["OVERLAY", "EXTERNAL_INTEGRATION", "STORE_OPERATIONS"]);
+    expect((await products()).status).toBe(200);
   });
 });

@@ -16,6 +16,22 @@ export async function resetDb(): Promise<void> {
   if (rows.length === 0) return;
   const list = rows.map((r) => `"public"."${r.tablename}"`).join(", ");
   await db.$executeRawUnsafe(`TRUNCATE ${list} RESTART IDENTITY CASCADE`);
+  // 마이그레이션이 넣는 기준 데이터(플랜 행)는 다시 넣는다(운영 DB와 같은 출발점)
+  await seedPlans();
+}
+
+// 마이그레이션이 넣는 플랜 행(resetDb가 지우므로 구독 시험은 이것으로 다시 넣는다). STANDARD는 ONQ 1-C 이전 전 플랜.
+export async function seedPlans() {
+  const rows = [
+    { code: "STANDARD", name: "월 구독", listPrice: 300000, salePrice: 199000, trialDays: 14 },
+    { code: "OVERLAY_ONLY", name: "오버레이 전용", listPrice: 99000, salePrice: 69000, trialDays: 7 },
+    { code: "INTEGRATED", name: "쇼핑몰 통합", listPrice: 249000, salePrice: 179000, trialDays: 0 },
+  ];
+  for (const r of rows) await db.subscriptionPlan.upsert({ where: { code: r.code }, create: r, update: {} });
+  return Object.fromEntries(await Promise.all(rows.map(async (r) => [r.code, await db.subscriptionPlan.findUniqueOrThrow({ where: { code: r.code } })]))) as Record<
+    "STANDARD" | "OVERLAY_ONLY" | "INTEGRATED",
+    Awaited<ReturnType<typeof db.subscriptionPlan.findUniqueOrThrow>>
+  >;
 }
 
 let seq = 0;

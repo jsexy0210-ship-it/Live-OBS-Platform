@@ -132,12 +132,14 @@ describe("플랜 → 기능 권한", () => {
     expect(await sellerFeatures(db, u.seller.id)).toEqual([]);
   });
 
-  it("체험 중인 통합(1-C에서 옮길 체험 중 기존 판매자)은 첫 결제 전에도 연다", async () => {
+  it("체험을 받은 적 있는 통합(1-C에서 옮긴 기존 판매자)은 첫 결제 전에도 연다. 체험이 끝나면 잠금 규칙(402)이 막고, 잠긴 동안 기존 주문 처리는 열린다", async () => {
     const s = await shop();
     await setPlan(s.seller.id, "INTEGRATED");
     expect(await sellerFeatures(db, s.seller.id)).toEqual(ALL);
     await db.seller.update({ where: { id: s.seller.id }, data: { trialEndsAt: new Date(Date.now() - 1000) } });
-    expect(await sellerFeatures(db, s.seller.id)).toEqual([]);
+    expect(await sellerFeatures(db, s.seller.id)).toEqual(ALL);
+    expect((await productsGet(req("/api/seller/products", "GET", s.cookie))).status).toBe(402);
+    expect((await sellerOrders(req("/api/seller/orders", "GET", s.cookie))).status).toBe(200);
   });
 });
 
