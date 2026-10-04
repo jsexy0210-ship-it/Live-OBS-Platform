@@ -58,7 +58,7 @@ export const SUBSCRIPTION_STATUS: Record<SubscriptionStatus, { label: string; cl
 export const PLAN_FILTER = [
   { code: "OVERLAY_ONLY", label: "오버레이 전용" },
   { code: "INTEGRATED", label: "쇼핑몰 통합" },
-  { code: "STANDARD", label: "스탠다드" },
+  { code: "STANDARD", label: "월 구독" },
 ] as const;
 
 export const day = (iso: string | null) =>
