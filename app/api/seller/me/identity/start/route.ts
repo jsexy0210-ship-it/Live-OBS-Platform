@@ -15,7 +15,7 @@ const NO_STORE = { "cache-control": "no-store" };
 // 대표자가 등록한 휴대폰이 없으면 409 phone_not_registered, 입력한 이름·번호가 등록 정보와 다르면 409 identity_mismatch(문자 안 보냄),
 // 직원 계정당 하루 10회를 넘으면 429 link_limit_exceeded. 성공하면 { verificationId }와 확인용 쿠키.
 export const POST = mutation(async (req: Request) => {
-  const ctx = await requireSeller(prisma, sessionToken(req, "seller"));
+  const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "ACCOUNT" });
   const provider = identityProvider();
   if (!provider) return identityUnavailable();
   const body = await readJson<Record<string, unknown>>(req);

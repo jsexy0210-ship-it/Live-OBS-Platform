@@ -8,7 +8,7 @@ import { listSellerOrders } from "../../../../lib/server/orders/read";
 export async function GET(req: Request) {
   try {
     // 잠금 중에도 이미 받은 주문은 처리할 수 있다(대표님 결정 2026-10-02, PRODUCT_SCOPE 「잠금 중 허용 범위」).
-    const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { allowUnpaid: true });
+    const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { allowUnpaid: true, feature: "ORDER_FOLLOWUP" });
     const p = new URL(req.url).searchParams;
     const r = await listSellerOrders(prisma, ctx, {
       status: p.getAll("status").flatMap((s) => s.split(",")).filter(Boolean),

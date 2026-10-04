@@ -1,0 +1,139 @@
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join, relative } from "node:path";
+import { describe, expect, it } from "vitest";
+import { PLAN_FEATURES, planFeatures } from "../../lib/server/billing/features";
+
+// ONQ 1-B 기능 권한(ARCHITECTURE 4.8.0) 경로 목록 검사. 새 판매자·공개·구매자 경로를 만들면 아래 표에 넣어야 통과한다.
+const API = join(__dirname, "../../app/api");
+
+function routeFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const p = join(dir, name);
+    if (statSync(p).isDirectory()) return routeFiles(p);
+    return name === "route.ts" ? [relative(API, p).replace(/\/route\.ts$/, "")] : [];
+  });
+}
+
+// 판매자 API → 요구하는 기능 권한(lib/server/authz/guards.ts SellerRouteFeature). 가드를 부르지 않는 경로는 null.
+const SELLER_ROUTES: Record<string, string | null> = {
+  "seller/auth/login": null,
+  "seller/auth/logout": null,
+  "seller/find-id/accounts": null,
+  "seller/find-id/confirm": null,
+  "seller/find-id/resend": null,
+  "seller/find-id/reset": null,
+  "seller/find-id/start": null,
+  "seller/password-reset/complete": null,
+  "seller/password-reset/confirm": null,
+  "seller/password-reset/resend": null,
+  "seller/password-reset/start": null,
+  "seller/password-reset/verify": null,
+  // 본인확인 다시 받기·확인은 시작(ACCOUNT)한 흐름의 쿠키로만 쓴다
+  "seller/me/identity/confirm": null,
+  "seller/me/identity/resend": null,
+  "seller/me": "BILLING",
+  "seller/subscription": "BILLING",
+  "seller/subscription/card": "BILLING",
+  "seller/subscription/cancel": "BILLING",
+  "seller/me/identity": "ACCOUNT",
+  "seller/me/identity/link": "ACCOUNT",
+  "seller/me/identity/start": "ACCOUNT",
+  "seller/staff": "ACCOUNT",
+  "seller/staff/[userId]": "ACCOUNT",
+  "seller/staff/[userId]/disable": "ACCOUNT",
+  "seller/staff/[userId]/password": "ACCOUNT",
+  "seller/staff/[userId]/permissions": "ACCOUNT",
+  "seller/orders": "ORDER_FOLLOWUP",
+  "seller/orders/[orderId]": "ORDER_FOLLOWUP",
+  "seller/orders/[orderId]/cancel": "ORDER_FOLLOWUP",
+  "seller/orders/[orderId]/deliver": "ORDER_FOLLOWUP",
+  "seller/orders/[orderId]/refund": "ORDER_FOLLOWUP",
+  "seller/orders/[orderId]/ship": "ORDER_FOLLOWUP",
+  "seller/purchase-restrictions": "ORDER_FOLLOWUP",
+  "seller/purchase-restrictions/[buyerMemberId]/lift": "ORDER_FOLLOWUP",
+  "seller/broadcast/start": "OVERLAY",
+  "seller/broadcast/end": "OVERLAY",
+  "seller/overlay/token": "OVERLAY",
+  "seller/queue": "OVERLAY",
+  "seller/queue/[itemId]/[action]": "OVERLAY",
+  "seller/queue/reorder": "OVERLAY",
+  "seller/queue/version": "OVERLAY",
+  "seller/stream": "OVERLAY",
+  "seller/member-policy": "STORE_OPERATIONS",
+  "seller/order-policy": "STORE_OPERATIONS",
+  "seller/products": "STORE_OPERATIONS",
+  "seller/products/[productId]": "STORE_OPERATIONS",
+  "seller/products/[productId]/event": "STORE_OPERATIONS",
+  "seller/products/[productId]/options": "STORE_OPERATIONS",
+  "seller/products/[productId]/options/[optionId]": "STORE_OPERATIONS",
+  "seller/products/[productId]/options/[optionId]/stock-adjust": "STORE_OPERATIONS",
+  "seller/products/options": "STORE_OPERATIONS",
+  "seller/products/stock-movements": "STORE_OPERATIONS",
+  "seller/reward-policy": "STORE_OPERATIONS",
+  "seller/share-preview": "STORE_OPERATIONS",
+  "seller/shipping-policy": "STORE_OPERATIONS",
+};
+
+// 공개·구매자 경로(ARCHITECTURE 4.8.0 표): 기능 권한이 없을 때 막는지. 막는 검사는 lib 쪽(shopOpen·createOrder·resolveOverlayToken)이나
+// 라우트에 있고, 동작은 tests/integration/planFeatures.test.ts가 경로마다 확인한다.
+const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
+  "shop/[slug]/orders": "STORE_OPERATIONS", // POST만 막음, GET(내 주문)은 열림
+  "shop/[slug]/order-consent": "STORE_OPERATIONS",
+  "shop/[slug]/signup": "STORE_OPERATIONS",
+  "shop/[slug]/signup/verification": "STORE_OPERATIONS",
+  "shop/[slug]/signup/verification/resend": "STORE_OPERATIONS",
+  "shop/[slug]/signup/verification/confirm": "STORE_OPERATIONS",
+  "shop/[slug]/share": "STORE_OPERATIONS",
+  "shop/[slug]/og.png": "STORE_OPERATIONS",
+  "shop/[slug]/orders/[orderId]": "OPEN",
+  "shop/[slug]/auth/login": "OPEN",
+  "shop/[slug]/auth/logout": "OPEN",
+  "shop/[slug]/addresses": "OPEN",
+  "shop/[slug]/addresses/[addressId]": "OPEN",
+  "shop/[slug]/me/marketing-consent": "OPEN",
+  "shop/[slug]/me/withdraw": "OPEN",
+  "overlay/[token]/state": "OVERLAY",
+  "overlay/[token]/version": "OVERLAY",
+  "overlay/[token]/stream": "OVERLAY",
+};
+
+describe("플랜 → 기능 권한 표", () => {
+  it("오버레이 전용 2종, 통합·STANDARD 3종, 모르는 플랜은 없음", () => {
+    const open = { firstPaymentConfirmed: true, inTrial: false };
+    expect(planFeatures("OVERLAY_ONLY", open)).toEqual(["OVERLAY", "EXTERNAL_INTEGRATION"]);
+    expect(planFeatures("INTEGRATED", open)).toEqual(["OVERLAY", "EXTERNAL_INTEGRATION", "STORE_OPERATIONS"]);
+    expect(planFeatures("STANDARD", { firstPaymentConfirmed: false, inTrial: false })).toEqual(PLAN_FEATURES.STANDARD);
+    expect(planFeatures("NOPE", open)).toEqual([]);
+  });
+
+  it("통합은 첫 결제 확정 전(체험 아님)이면 없음", () => {
+    expect(planFeatures("INTEGRATED", { firstPaymentConfirmed: false, inTrial: false })).toEqual([]);
+    expect(planFeatures("INTEGRATED", { firstPaymentConfirmed: false, inTrial: true })).toHaveLength(3);
+    expect(planFeatures("OVERLAY_ONLY", { firstPaymentConfirmed: false, inTrial: false })).toHaveLength(2);
+  });
+});
+
+describe("경로 목록 검사", () => {
+  const all = routeFiles(API);
+
+  it("판매자 API는 모두 표에 있고, 가드마다 표의 기능 권한을 넘긴다", () => {
+    const seller = all.filter((r) => r.startsWith("seller/"));
+    expect(seller.sort()).toEqual(Object.keys(SELLER_ROUTES).sort());
+    for (const route of seller) {
+      const src = readFileSync(join(API, route, "route.ts"), "utf8");
+      const calls = src.match(/requireSeller\([^;]*/g) ?? [];
+      const want = SELLER_ROUTES[route];
+      if (want === null) {
+        expect(calls, route).toEqual([]);
+        continue;
+      }
+      expect(calls.length, route).toBeGreaterThan(0);
+      for (const call of calls) expect(call.match(/feature: "([A-Z_]+)"/)?.[1], `${route}: ${call}`).toBe(want);
+    }
+  });
+
+  it("공개·구매자 경로는 모두 표에 있다", () => {
+    const pub = all.filter((r) => r.startsWith("shop/") || r.startsWith("overlay/"));
+    expect(pub.sort()).toEqual(Object.keys(PUBLIC_ROUTES).sort());
+  });
+});
