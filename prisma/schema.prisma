@@ -126,6 +126,8 @@ model Seller {
   shipments                Shipment[]
   orderStatusHistories     OrderStatusHistory[]
   broadcastSessions        BroadcastSession[]
+  youtubeChannel           YoutubeChannelLink?
+  youtubeLives             YoutubeLiveLink[]
   queueItems               QueueItem[]
   queueItemStatusHistories QueueItemStatusHistory[]
   hitCards                 HitCard[]
@@ -1114,6 +1116,7 @@ model BroadcastSession {
   seller     Seller      @relation(fields: [sellerId], references: [id])
   queueItems QueueItem[]
   hitCards   HitCard[]
+  youtubeLives YoutubeLiveLink[]
 
   @@unique([sellerId, id])
   @@index([sellerId, status])
@@ -2106,4 +2109,60 @@ model ShopNotice {
   seller Seller @relation(fields: [sellerId], references: [id])
 
   @@index([sellerId, kind, createdAt])
+}
+
+// 유튜브 연동(YouTube Data API v3, API 키만·공개 방송 읽기만). 규칙·할당량은 lib/server/youtube/.
+// 판매자 채널 연결(판매자당 1개). uploadsPlaylistId로 새 방송을 찾는다(search.list 100단위는 쓰지 않음).
+model YoutubeChannelLink {
+  sellerId          String    @id @db.Uuid
+  channelId         String
+  title             String
+  uploadsPlaylistId String
+  connectedAt       DateTime  @default(now()) @db.Timestamptz(3)
+  // 마지막으로 새 방송을 찾아본 시각(자동 찾기 간격 계산)
+  checkedAt         DateTime? @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+}
+
+enum YoutubeLiveStatus {
+  UPCOMING
+  LIVE
+  ENDED
+  UNLINKED
+}
+
+// 판매자 방송 영상 연결. 진행 중 연결(UPCOMING·LIVE)은 판매자당 1개(마이그레이션 SQL 부분 유니크 인덱스).
+// broadcastSessionId는 유튜브가 진행으로 바뀔 때 자동 시작했거나 이미 켜져 있던 방송.
+model YoutubeLiveLink {
+  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId           String            @db.Uuid
+  videoId            String
+  title              String
+  status             YoutubeLiveStatus @default(UPCOMING)
+  liveChatId         String?
+  scheduledStartAt   DateTime?         @db.Timestamptz(3)
+  actualStartAt      DateTime?         @db.Timestamptz(3)
+  actualEndAt        DateTime?         @db.Timestamptz(3)
+  broadcastSessionId String?           @db.Uuid
+  // 이 연결이 방송을 자동으로 시작했는지(수동으로 켜 둔 방송에 붙었으면 false)
+  autoStarted        Boolean           @default(false)
+  checkedAt          DateTime?         @db.Timestamptz(3)
+  createdAt          DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime          @updatedAt @db.Timestamptz(3)
+
+  seller    Seller            @relation(fields: [sellerId], references: [id])
+  broadcast BroadcastSession? @relation(fields: [sellerId, broadcastSessionId], references: [sellerId, id])
+
+  @@index([status])
+  @@index([sellerId, createdAt])
+}
+
+// 하루 할당량 사용(태평양 시각 날짜 기준, 구글 할당량 초기화와 같음). scope는 "all"(전체 합) 또는 판매자 id.
+model YoutubeQuotaUsage {
+  day   String
+  scope String
+  units Int    @default(0)
+
+  @@id([day, scope])
 }
