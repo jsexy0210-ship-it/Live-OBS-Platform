@@ -254,8 +254,9 @@ describe("목록 필터: 결과가 많아도 오류 없이 SQL에서 거른다",
     const other = await seller();
     const N = 33000;
     for (const sid of [s.ctx.sellerId, other.ctx.sellerId]) {
-      await db.$executeRaw`INSERT INTO "Product" ("sellerId", "name", "price", "status", "sortOrder")
-        SELECT ${sid}::uuid, '포켓몬 카드 ' || g, 5000, 'ON_SALE', 0 FROM generate_series(1, ${N}) g`;
+      // 상품 코드 번호를 직접 넣어 행마다 도는 번호 트리거를 건너뛴다(이 시험은 목록 필터만 본다)
+      await db.$executeRaw`INSERT INTO "Product" ("sellerId", "name", "price", "status", "sortOrder", "codeNo")
+        SELECT ${sid}::uuid, '포켓몬 카드 ' || g, 5000, 'ON_SALE', 0, g FROM generate_series(1, ${N}) g`;
     }
     for (const opts of [{ q: "포켓몬" }, { stock: "out" }, { q: "카드", stock: "out", status: "ON_SALE" }]) {
       const first = await listProducts(db, s.ctx, { ...opts, limit: 2 });

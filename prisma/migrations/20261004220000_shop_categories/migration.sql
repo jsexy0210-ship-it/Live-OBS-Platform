@@ -55,12 +55,25 @@ WHERE p."id" = n."id";
 -- CreateIndex
 CREATE UNIQUE INDEX "Product_sellerId_codeNo_key" ON "Product"("sellerId", "codeNo");
 
--- 새 상품은 codeNo를 0(기본)으로 넣으면 판매자별 잠금 아래 다음 번호를 매긴다. 같은 문장에서 여러 행을 넣어도 앞 행 번호를 보고 이어 매긴다.
+-- 판매자별 마지막 번호. 트리거만 올린다.
+-- CreateTable
+CREATE TABLE "ProductCodeCounter" (
+    "sellerId" UUID NOT NULL,
+    "lastNo" INTEGER NOT NULL,
+
+    CONSTRAINT "ProductCodeCounter_pkey" PRIMARY KEY ("sellerId")
+);
+
+INSERT INTO "ProductCodeCounter" ("sellerId", "lastNo") SELECT "sellerId", MAX("codeNo") FROM "Product" GROUP BY "sellerId";
+
+-- 새 상품은 codeNo를 0(기본)으로 넣으면 판매자 카운터 행을 잠그고 올려 다음 번호를 매긴다(행마다 한 번, 표 크기와 상관없음).
+-- 같은 판매자의 동시 등록은 카운터 행 잠금으로 줄을 선다. 지운 상품 번호도 다시 쓰지 않는다.
 CREATE FUNCTION product_assign_code_no() RETURNS trigger AS $$
 BEGIN
   IF NEW."codeNo" <= 0 THEN
-    PERFORM pg_advisory_xact_lock(hashtext('product_code:' || NEW."sellerId"::text));
-    SELECT COALESCE(MAX("codeNo"), 0) + 1 INTO NEW."codeNo" FROM "Product" WHERE "sellerId" = NEW."sellerId";
+    INSERT INTO "ProductCodeCounter" ("sellerId", "lastNo") VALUES (NEW."sellerId", 1)
+    ON CONFLICT ("sellerId") DO UPDATE SET "lastNo" = "ProductCodeCounter"."lastNo" + 1
+    RETURNING "lastNo" INTO NEW."codeNo";
   END IF;
   RETURN NEW;
 END

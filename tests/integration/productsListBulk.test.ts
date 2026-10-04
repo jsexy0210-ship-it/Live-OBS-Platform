@@ -242,7 +242,7 @@ describe("자동 상품 코드", () => {
     expect((await db.product.findMany({ where: { sellerId: s.seller.id, name: { startsWith: "묶음" } }, orderBy: { codeNo: "asc" } })).map((p) => p.codeNo)).toEqual([10, 11, 12]);
     await db.product.update({ where: { id: first.id }, data: { deletedAt: new Date() } });
     await db.product.deleteMany({ where: { sellerId: s.seller.id, name: "묶음 3" } });
-    expect((await made(s.ctx, { name: "다음" })).codeNo).toBe(12); // 행을 지운 맨 끝 번호만 다시 쓸 수 있다(소프트 삭제는 그대로 남음)
+    expect((await made(s.ctx, { name: "다음" })).codeNo).toBe(13); // 지운 번호(소프트 삭제·행 삭제 모두)는 다시 쓰지 않는다
     const tenth = (await db.product.findFirstOrThrow({ where: { sellerId: s.seller.id, codeNo: 10 } })).id;
     expect((await getProduct(db, s.ctx, tenth)).code).toBe("P0000010");
 
