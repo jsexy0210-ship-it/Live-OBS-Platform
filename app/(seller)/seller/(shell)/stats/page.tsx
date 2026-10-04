@@ -247,7 +247,7 @@ function Overview({ data, metric, setMetric, productSort, setProductSort, compar
               </tbody>
             </table>
           </div>
-          <span className="t-c1 c-alt">방송 매출 = 방송 시작 ~ 종료 안 주문 · 종료 뒤 2시간 안 주문은 방송 시간 일반 주문 · 시청 수는 준비 중</span>
+          <span className="t-c1 c-alt">방송 매출 = 방송 시작 ~ 종료 안 주문 · 종료 뒤 2시간 안 주문은 방송 시간 일반 주문 · HIT는 방송 중 만든 카드 · 시청 수는 준비 중</span>
         </section>
 
         <section className="card pad-l col" style={{ gap: 12 }}>
@@ -335,6 +335,7 @@ function Overview({ data, metric, setMetric, productSort, setProductSort, compar
             <dt>쿠폰 사용</dt>
             <dd className="sts-soon">{SOON}</dd>
           </dl>
+          <span className="t-c1 c-alt">적립금은 기간 안에 처리가 끝난 원장 기준 · 사용 비율은 매출 대비</span>
           <div className="row" style={{ gap: 8 }}>
             <Link className="btn btn-sm btn-out" href="/seller/rewards">
               적립금
@@ -364,6 +365,7 @@ function Overview({ data, metric, setMetric, productSort, setProductSort, compar
             <dt>리뷰 작성률</dt>
             <dd className="sts-soon">{SOON}</dd>
           </dl>
+          <span className="t-c1 c-alt">기간 안 주문 기준 · 발송 평균은 결제부터 발송까지 · 자동 취소 비율은 주문 수 대비</span>
         </section>
       </div>
     </>
