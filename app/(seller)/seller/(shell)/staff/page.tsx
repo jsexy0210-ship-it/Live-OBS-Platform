@@ -199,7 +199,7 @@ export default function StaffPage() {
                 <span className="t-l2 c-neu">권한 변경은 즉시 적용됩니다. 직원이 로그인 중이면 다음 화면부터 반영됩니다. 변경 기록은 로그 추적에 남습니다.</span>
               </div>
             </div>
-            <AddStaff onAdded={(name) => done(`${name} 계정을 생성했습니다 · 이메일과 초기 비밀번호를 직원에게 직접 전달해 주십시오`)} onChanged={() => void load()} knownIds={staff.map((s) => s.id)} />
+            <AddStaff onAdded={(name) => done(`${name} 계정을 생성했습니다 · 이메일과 초기 비밀번호를 직원에게 직접 전달해 주십시오`)} onChanged={() => void load()} />
           </div>
         )}
       </main>
@@ -216,7 +216,7 @@ const TAKEN_TEXT = "이 이메일로 등록된 계정이 이미 있습니다. �
 type Errors = Partial<Record<"name" | "phone" | "email" | "password", string>>;
 
 // 직원 추가: 이름·휴대폰·이메일(로그인 아이디)·초기 비밀번호·권한. 메일 초대 없이 바로 계정이 만들어진다
-function AddStaff({ onAdded, onChanged, knownIds }: { onAdded: (name: string) => void; onChanged: () => void; knownIds: string[] }) {
+function AddStaff({ onAdded, onChanged }: { onAdded: (name: string) => void; onChanged: () => void }) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
@@ -331,8 +331,14 @@ function AddStaff({ onAdded, onChanged, knownIds }: { onAdded: (name: string) =>
     if (first) return setFocusTo({ id: `sa-${first}` });
     setBusy(true);
     setNotice(null);
-    // 보내기 직전의 직원 id를 남긴다(읽지 못하면 화면에 있는 목록으로)
-    const before = (await readStaffList())?.map((s) => s.id) ?? knownIds;
+    // 보내기 직전의 직원 id를 서버에서 읽어 남긴다. 읽지 못하면 보내지 않는다: 화면의 목록은 낡았을 수 있어(다른 창에서 만든 계정 등),
+    // 응답을 놓쳤을 때 이미 있던 계정을 방금 만든 계정으로 오인할 수 있기 때문
+    const list = await readStaffList();
+    if (!list) {
+      setBusy(false);
+      return setFailure("직원 목록을 확인하지 못해 계정을 생성하지 않았습니다. 잠시 후 다시 시도해 주십시오");
+    }
+    const before = list.map((s) => s.id);
     const body = { name: name.trim(), phone: cleanPhone(phone), email: email.trim(), password, permissions: perms };
     const sent: Sent = { check: { name: normStaffName(name), phone: body.phone, email: body.email, perms }, before, body };
     const r = await api("/api/seller/staff", { method: "POST", body });

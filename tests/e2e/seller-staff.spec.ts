@@ -721,6 +721,71 @@ test("직원 창으로 1초 안에 다시 돌아와도 잠시 뒤 다시 읽어 
   await staffPage.close();
 });
 
+// 처음 읽기가 늦는 동안 포커스로 다시 읽은 요청이 실패(503)해도, 늦게 온 처음 응답으로 화면을 그린다(로딩에 멈추지 않음)
+test("처음 화면 정보를 읽는 동안 다시 읽기가 실패해도 처음 응답으로 화면을 보여 준다", async ({ page }) => {
+  await login(page, "demo-owner@example.com");
+  await expect(page).toHaveURL(/\/seller\/staff$/);
+  let release: () => void = () => {};
+  const held = new Promise<void>((r) => (release = r));
+  let calls = 0;
+  await page.route("**/api/seller/me", async (route) => {
+    calls += 1;
+    if (calls === 1) {
+      const res = await route.fetch();
+      await held;
+      return route.fulfill({ response: res });
+    }
+    return route.fulfill({ status: 503, json: { error: "service_unavailable" } });
+  });
+  await page.reload();
+  await expect(page.locator("[aria-busy=true]").first()).toBeVisible();
+  await page.waitForTimeout(1100);
+  const failed = page.waitForResponse((r) => r.url().endsWith("/api/seller/me") && r.status() === 503);
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await failed;
+  release();
+  await expect(page.getByRole("heading", { name: "직원 계정" })).toBeVisible();
+  await page.unrouteAll();
+});
+
+// 보내기 직전 목록 확인이 실패하면 계정을 만들지 않는다: 화면의 낡은 목록을 기준으로 삼으면 다른 창에서 이미 만든 계정을 방금 만든 것으로 오인한다
+test("직원 추가 직전 목록 확인이 실패하면 보내지 않고, 다른 창에서 만든 같은 계정을 생성됨으로 보고하지 않는다", async ({ page }) => {
+  await login(page, "demo-owner@example.com");
+  await expect(page).toHaveURL(/\/seller\/staff$/);
+  const id = uniq();
+  const s = { name: `다른창${id}`, phone: "01088889999", email: `tab-${id}@example.com`, password: `pw-${id}-init` };
+  // 다른 창에서 같은 값으로 이미 만들었다(이 화면의 목록에는 아직 없음)
+  const made = await page.evaluate(
+    async (b) => (await fetch("/api/seller/staff", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b) })).status,
+    { name: s.name, phone: s.phone, email: s.email, password: `pw-${id}-other`, permissions: [] },
+  );
+  expect(made).toBe(201);
+  await expect(row(page, s.email)).toHaveCount(0);
+
+  await addStaff(page, s);
+  let posts = 0;
+  let listFail = true;
+  await page.route("**/api/seller/staff", async (route) => {
+    if (route.request().method() === "POST") {
+      posts += 1;
+      // 서버는 email_taken으로 답하지만 응답을 놓친다
+      await route.fetch();
+      return route.abort("connectionreset");
+    }
+    if (listFail) {
+      listFail = false;
+      return route.fulfill({ status: 500, json: { error: "internal" } });
+    }
+    return route.continue();
+  });
+  await page.getByRole("button", { name: "계정 생성" }).click();
+  await expect(page.getByText("직원 목록을 확인하지 못해 계정을 생성하지 않았습니다", { exact: false })).toBeVisible();
+  expect(posts).toBe(0);
+  await expect(page.getByText(`${s.name} 계정을 생성했습니다`, { exact: false })).toHaveCount(0);
+  await expect(page.getByLabel("초기 비밀번호")).toBeEnabled();
+  await page.unrouteAll();
+});
+
 test("직원: 메뉴에 직원 계정이 없고, 주소로 들어오면 대표자만 볼 수 있다고 안내한다", async ({ page }) => {
   const listed = page.waitForRequest((r) => r.url().endsWith("/api/seller/staff"), { timeout: 3000 }).then(
     () => true,

@@ -60,20 +60,29 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   const [navOpen, setNavOpen] = useState(false);
 
   const lastRead = useRef(0);
-  // /me 요청 세대: 읽기가 겹치면 가장 마지막에 보낸 요청의 응답만 반영한다(늦게 온 옛 응답이 새 권한을 덮지 않게)
+  // /me 요청 세대: 성공한 응답 중 이미 반영한 것보다 나중에 보낸 요청의 응답만 반영한다(늦게 온 옛 응답이 새 권한을 덮지 않게).
+  // 세대는 성공 응답을 반영할 때 확정한다: 나중에 보낸 요청이 실패해도 먼저 보낸 요청의 성공을 버리지 않는다
   const meSeq = useRef(0);
+  const meApplied = useRef(0);
+  const applyMe = (n: number, data: Me) => {
+    if (n <= meApplied.current) return false;
+    meApplied.current = n;
+    setFailed(false);
+    setMe(data);
+    return true;
+  };
   const load = useCallback(async () => {
     lastRead.current = Date.now();
     setFailed(false);
     const n = ++meSeq.current;
     const r = await api<Me>("/api/seller/me");
-    if (n !== meSeq.current) return;
     if (!r.ok) {
       if (r.status === 401) router.replace(`/seller/login?next=${encodeURIComponent(pathname)}`);
-      else setFailed(true);
+      // 아직 한 번도 그리지 못했으면 다시 시도 화면을 보인다(이미 그린 화면은 그대로 둔다)
+      else if (meApplied.current === 0) setFailed(true);
       return;
     }
-    setMe(r.data);
+    if (!applyMe(n, r.data)) return;
     // 체험 중이면 /me가 끝나는 시각을 준다(대표자·직원 모두)
     if (r.data.access === "trial" && r.data.trialEndsAt) {
       const ms = new Date(r.data.trialEndsAt).getTime() - Date.now();
@@ -94,7 +103,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
     lastRead.current = Date.now();
     const n = ++meSeq.current;
     void api<Me>("/api/seller/me").then((r) => {
-      if (n === meSeq.current && r.ok) setMe(r.data);
+      if (r.ok) applyMe(n, r.data);
     });
   }, []);
   const firstPath = useRef(pathname);
