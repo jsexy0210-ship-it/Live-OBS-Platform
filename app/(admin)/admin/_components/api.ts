@@ -23,11 +23,11 @@ export async function adminApi<T>(path: string, init: { method?: string; json?: 
   return { ok: false, status: res.status, error: body.error ?? "unknown", message: body.message };
 }
 
-export function failMessage(r: { status: number; message?: string }, fallback = "잠시 뒤 다시 시도해 주세요"): string {
+export function failMessage(r: { status: number; message?: string }, fallback = "잠시 후 다시 시도해 주십시오."): string {
   if (r.message) return r.message;
-  if (r.status === 0) return "연결이 끊겼어요. 인터넷 연결을 확인해 주세요";
-  if (r.status === 403) return "최고관리자만 바꿀 수 있어요";
-  if (r.status === 413) return "파일이 너무 커요";
+  if (r.status === 0) return "연결이 끊겼습니다. 인터넷 연결을 확인해 주십시오.";
+  if (r.status === 403) return "최고관리자만 변경할 수 있습니다.";
+  if (r.status === 413) return "파일이 너무 큽니다.";
   return fallback;
 }
 

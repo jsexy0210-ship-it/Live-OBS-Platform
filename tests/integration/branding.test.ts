@@ -120,7 +120,7 @@ describe("파비콘", () => {
     const c = await adminCookie("SUPER_ADMIN");
     const svg = await upload(faviconPut, "seller", SVG, c, { "content-type": "image/png" });
     expect(svg.status).toBe(400);
-    expect(await svg.json()).toEqual({ error: "unsupported_image", message: "파비콘은 PNG·ICO 파일만 올릴 수 있어요" });
+    expect(await svg.json()).toEqual({ error: "unsupported_image", message: "파비콘은 PNG·ICO 파일만 업로드할 수 있습니다." });
     const big = await upload(faviconPut, "seller", Buffer.concat([await png(32, 32), Buffer.alloc(300 * 1024)]), c);
     expect(big.status).toBe(413);
     expect((await big.json()).error).toBe("file_too_large");

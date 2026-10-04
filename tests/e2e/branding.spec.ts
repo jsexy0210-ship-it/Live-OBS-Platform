@@ -57,22 +57,22 @@ test("최고관리자가 파트너스 관리자 파비콘·공유 카드를 바�
 
   // SVG(스크립트 위험)는 안내만 보이고 바뀌지 않는다
   await page.getByLabel("파비콘 파일").setInputFiles({ name: "icon.png", mimeType: "image/png", buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>') });
-  await page.getByRole("button", { name: "이 파비콘으로 바꾸기" }).click();
-  await expect(page.getByText("파비콘은 PNG·ICO 파일만 올릴 수 있어요")).toBeVisible();
+  await page.getByRole("button", { name: "파비콘 변경" }).click();
+  await expect(page.getByText("파비콘은 PNG·ICO 파일만 업로드할 수 있습니다.")).toBeVisible();
   await page.getByRole("button", { name: "취소" }).click();
 
   const icon = await sharp({ create: { width: 64, height: 64, channels: 4, background: "#ff3b30" } }).png().toBuffer();
   await page.getByLabel("파비콘 파일").setInputFiles({ name: "partners.png", mimeType: "image/png", buffer: icon });
-  await page.getByRole("button", { name: "이 파비콘으로 바꾸기" }).click();
-  await expect(page.getByText("파비콘을 바꿨어요")).toBeVisible();
+  await page.getByRole("button", { name: "파비콘 변경" }).click();
+  await expect(page.getByText("파비콘을 변경했습니다.")).toBeVisible();
 
   await page.getByLabel("제목").fill("온큐 파트너스 센터");
-  await page.getByLabel("설명").fill("방송 주문을 한곳에서 관리해요");
+  await page.getByLabel("설명").fill("방송 주문을 한곳에서 관리합니다");
   // 저장 전 미리보기: 입력한 제목으로 그린 카드
   const preview = page.getByAltText("공유 카드 이미지 미리보기");
   await expect(preview).toHaveAttribute("src", /card-preview\?title=%EC%98%A8%ED%81%90/);
   await expect.poll(() => preview.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(1200);
-  await expect(page.getByText("파비콘을 바꿨어요")).toBeHidden();
+  await expect(page.getByText("파비콘을 변경했습니다.")).toBeHidden();
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.screenshot({ path: "tests/e2e/screenshots/branding-settings-1440.png", fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -82,11 +82,11 @@ test("최고관리자가 파트너스 관리자 파비콘·공유 카드를 바�
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.getByRole("button", { name: "공유 카드 저장" }).click();
-  await expect(page.getByText("공유 카드를 저장했어요")).toBeVisible();
+  await expect(page.getByText("공유 카드를 저장했습니다.")).toBeVisible();
 
   const seller = await head(page, "/seller/login");
   expect(seller.icons).toEqual([expect.stringMatching(/^\/api\/branding\/seller\/favicon\?v=[0-9a-f]{12}$/)]);
-  expect(seller).toMatchObject({ ogTitle: "온큐 파트너스 센터", ogDescription: "방송 주문을 한곳에서 관리해요", twitterCard: "summary_large_image" });
+  expect(seller).toMatchObject({ ogTitle: "온큐 파트너스 센터", ogDescription: "방송 주문을 한곳에서 관리합니다", twitterCard: "summary_large_image" });
   expect(seller.ogImage).toMatch(/^http:\/\/localhost:\d+\/api\/branding\/seller\/og\?v=[0-9a-f]{12}$/);
   const fav = await request.get(seller.icons[0]!);
   expect(fav.headers()["content-type"]).toBe("image/png");
@@ -108,16 +108,16 @@ test("최고관리자가 파트너스 관리자 파비콘·공유 카드를 바�
 test("마스터 관리자 공유 카드에 1200×630 이미지를 올리면 og:image가 그 이미지가 되고, 크기가 틀리면 막힌다", async ({ page, request }) => {
   await login(page, superEmail);
   // 정확한 크기를 고르기 전에 먼저 알려 준다(MASTER 결정)
-  await expect(page.getByText("카드 이미지는 1200×630 크기예요. 직접 올릴 때는 이 크기 그대로 만들어 주세요.")).toBeVisible();
-  await page.getByRole("radio", { name: "이미지 올리기" }).click();
+  await expect(page.getByText("카드 이미지 크기는 1200×630입니다. 직접 업로드할 때는 이 크기로 만들어 주십시오.")).toBeVisible();
+  await page.getByRole("radio", { name: "이미지 업로드" }).click();
   const wrong = await sharp({ create: { width: 800, height: 600, channels: 3, background: "#222" } }).jpeg().toBuffer();
   await page.getByLabel("공유 카드 이미지 파일").setInputFiles({ name: "wrong.jpg", mimeType: "image/jpeg", buffer: wrong });
-  await expect(page.getByText("1200×630 크기 이미지를 골라 주세요 · 고른 이미지 800×600")).toBeVisible();
+  await expect(page.getByText("1200×630 크기 이미지를 선택해 주십시오. 선택한 이미지: 800×600")).toBeVisible();
   await expect(page.getByRole("button", { name: "공유 카드 저장" })).toBeDisabled();
   const image = await sharp({ create: { width: 1200, height: 630, channels: 3, background: "#1f4fff" } }).jpeg().toBuffer();
   await page.getByLabel("공유 카드 이미지 파일").setInputFiles({ name: "card.jpg", mimeType: "image/jpeg", buffer: image });
   await page.getByRole("button", { name: "공유 카드 저장" }).click();
-  await expect(page.getByText("공유 카드를 저장했어요")).toBeVisible();
+  await expect(page.getByText("공유 카드를 저장했습니다.")).toBeVisible();
   const admin = await head(page, "/admin/login");
   expect(admin.ogImage).toMatch(/\/api\/branding\/admin\/og\?v=[0-9a-f]{12}$/);
   const got = await request.get(admin.ogImage!);
@@ -125,18 +125,25 @@ test("마스터 관리자 공유 카드에 1200×630 이미지를 올리면 og:i
   expect(Buffer.from(await got.body()).equals(image)).toBe(true);
   // 제목으로 만들기로 돌리면 다시 그린 카드
   await page.goto("/admin/settings/branding");
-  await page.getByRole("radio", { name: "제목으로 만들기" }).click();
+  await page.getByRole("radio", { name: "제목으로 생성" }).click();
   await page.getByRole("button", { name: "공유 카드 저장" }).click();
-  await expect(page.getByText("공유 카드를 저장했어요")).toBeVisible();
+  await expect(page.getByText("공유 카드를 저장했습니다.")).toBeVisible();
   const back = await request.get((await head(page, "/admin/login")).ogImage!);
   expect(back.headers()["content-type"]).toBe("image/png");
 });
 
 test("조회 전용 관리자는 지금 값만 보고 바꿀 수 없다", async ({ page }) => {
+  // 로그인 실패 문구도 합니다체(대표님 지시 2026-10-04)
+  await page.goto("/admin/login");
+  await page.getByLabel("이메일").fill(readOnlyEmail);
+  await page.getByLabel("비밀번호").fill("wrong-password");
+  await page.getByRole("button", { name: "로그인" }).click();
+  await expect(page.getByText("이메일 또는 비밀번호가 올바르지 않습니다.")).toBeVisible();
+  await page.screenshot({ path: "tests/e2e/screenshots/branding-login-error-1440.png" });
   await login(page, readOnlyEmail);
-  await expect(page.getByText("최고관리자만 바꿀 수 있어요. 지금은 보기만 할 수 있어요.")).toBeVisible();
+  await expect(page.getByText("최고관리자만 변경할 수 있습니다. 현재는 조회만 가능합니다.")).toBeVisible();
   await expect(page.getByRole("button", { name: "공유 카드 저장" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "파일 고르기" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "파일 선택" })).toHaveCount(0);
   await expect(page.getByLabel("제목")).toBeDisabled();
   await page.screenshot({ path: "tests/e2e/screenshots/branding-readonly-1440.png", fullPage: true });
 });

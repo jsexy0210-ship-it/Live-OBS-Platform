@@ -17,24 +17,24 @@ export const BRANDING_DESCRIPTION_MAX = 160;
 
 export const BRANDING_DEFAULTS: Record<BrandingTarget, { title: string; description: string | null }> = {
   admin: { title: "ONQ 마스터 관리자", description: null },
-  seller: { title: "ONQ 파트너스 관리자", description: "쇼핑몰 운영과 방송 주문대기를 한곳에서 관리하세요." },
+  seller: { title: "ONQ 파트너스 관리자", description: "쇼핑몰 운영과 방송 주문대기를 한곳에서 관리합니다." },
 };
 
 export const BRANDING_MESSAGES = {
-  invalid_branding_text: `제목은 ${BRANDING_TITLE_MAX}자, 설명은 ${BRANDING_DESCRIPTION_MAX}자까지 쓸 수 있어요`,
-  empty_file: "파일을 골라 주세요",
+  invalid_branding_text: `제목은 ${BRANDING_TITLE_MAX}자, 설명은 ${BRANDING_DESCRIPTION_MAX}자까지 입력할 수 있습니다.`,
+  empty_file: "파일을 선택해 주십시오.",
 } as const;
 
 const IMAGE_MESSAGES: Record<ImageSlot, Record<ImageRejection, string>> = {
   favicon: {
-    file_too_large: "파비콘은 256KB까지 올릴 수 있어요",
-    unsupported_image: "파비콘은 PNG·ICO 파일만 올릴 수 있어요",
-    wrong_image_size: "파비콘 PNG는 한 변이 16~1024px이어야 해요",
+    file_too_large: "파비콘은 256KB까지 업로드할 수 있습니다.",
+    unsupported_image: "파비콘은 PNG·ICO 파일만 업로드할 수 있습니다.",
+    wrong_image_size: "파비콘 PNG는 한 변이 16~1024px이어야 합니다.",
   },
   ogImage: {
-    file_too_large: "공유 카드 이미지는 2MB까지 올릴 수 있어요",
-    unsupported_image: "공유 카드 이미지는 PNG·JPG 파일만 올릴 수 있어요",
-    wrong_image_size: "공유 카드 이미지는 1200×630 크기여야 해요",
+    file_too_large: "공유 카드 이미지는 2MB까지 업로드할 수 있습니다.",
+    unsupported_image: "공유 카드 이미지는 PNG·JPG 파일만 업로드할 수 있습니다.",
+    wrong_image_size: "공유 카드 이미지는 1200×630 크기여야 합니다.",
   },
 };
 

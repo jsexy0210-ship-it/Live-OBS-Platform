@@ -22,8 +22,8 @@ type Branding = {
 type Settings = { canEdit: boolean; targets: Branding[] };
 
 const TABS: { key: Target; label: string; help: string }[] = [
-  { key: "admin", label: "마스터 관리자", help: "마스터 관리자 화면에 적용돼요" },
-  { key: "seller", label: "파트너스 관리자", help: "모든 파트너스의 관리자 화면에 똑같이 적용돼요" },
+  { key: "admin", label: "마스터 관리자", help: "마스터 관리자 화면에 적용됩니다." },
+  { key: "seller", label: "파트너스 관리자", help: "모든 파트너스 관리자 화면에 동일하게 적용됩니다." },
 ];
 const TITLE_MAX = 60;
 const DESCRIPTION_MAX = 160;
@@ -75,7 +75,7 @@ export default function BrandingSettingsPage() {
         <div className="ph">
           <div className="col" style={{ gap: 6 }}>
             <h1 className="t-t3">파비콘 · 공유 카드</h1>
-            <span className="t-l2 c-alt">브라우저 탭 아이콘과 링크를 공유할 때 보이는 카드를 정해요.</span>
+            <span className="t-l2 c-alt">브라우저 탭 아이콘과 링크 공유 시 표시되는 카드를 설정합니다.</span>
           </div>
         </div>
         <nav className="tabs" role="tablist" aria-label="적용할 화면">
@@ -93,7 +93,7 @@ export default function BrandingSettingsPage() {
         {state.kind === "error" && (
           <div className="card st" style={{ boxShadow: "none" }}>
             <div className="st-ic neg">!</div>
-            <span className="t">설정을 불러오지 못했어요</span>
+            <span className="t">설정을 불러오지 못했습니다.</span>
             <button className="btn btn-sm" type="button" onClick={() => void load()}>
               다시 시도
             </button>
@@ -103,7 +103,7 @@ export default function BrandingSettingsPage() {
           <>
             {!state.data.canEdit && (
               <div className="msg msg-info" role="status">
-                <span>최고관리자만 바꿀 수 있어요. 지금은 보기만 할 수 있어요.</span>
+                <span>최고관리자만 변경할 수 있습니다. 현재는 조회만 가능합니다.</span>
               </div>
             )}
             <span className="t-l2 c-alt">{TABS.find((t) => t.key === tab)!.help}</span>
@@ -164,10 +164,10 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
   const pickFavicon = async (file: File | undefined) => {
     setFaviconError(null);
     if (!file) return;
-    if (file.size > FAVICON_MAX) return setFaviconError("파비콘은 256KB까지 올릴 수 있어요");
+    if (file.size > FAVICON_MAX) return setFaviconError("파비콘은 256KB까지 업로드할 수 있습니다.");
     const url = URL.createObjectURL(file);
     const size = await imageSize(url);
-    const warn = size && size.w !== size.h ? "정사각형이 아니면 탭에서 찌그러져 보일 수 있어요" : undefined;
+    const warn = size && size.w !== size.h ? "정사각형이 아니면 탭에서 찌그러져 보일 수 있습니다." : undefined;
     setFavicon({ file, url, warn });
   };
 
@@ -177,9 +177,9 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
     setFaviconError(null);
     const r = await adminApi<{ branding: Branding }>(`/api/admin/branding/${t}/favicon`, { method: "PUT", file: favicon.file });
     setFaviconBusy(false);
-    if (!r.ok) return setFaviconError(failMessage(r, "파비콘을 바꾸지 못했어요. 잠시 뒤 다시 시도해 주세요"));
+    if (!r.ok) return setFaviconError(failMessage(r, "파비콘을 변경하지 못했습니다. 잠시 후 다시 시도해 주십시오."));
     setFavicon(null);
-    onSaved(r.data.branding, "파비콘을 바꿨어요");
+    onSaved(r.data.branding, "파비콘을 변경했습니다.");
   };
 
   const resetFavicon = async () => {
@@ -187,25 +187,25 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
     setFaviconError(null);
     const r = await adminApi<{ branding: Branding }>(`/api/admin/branding/${t}/favicon`, { method: "DELETE" });
     setFaviconBusy(false);
-    if (!r.ok) return setFaviconError(failMessage(r, "되돌리지 못했어요. 잠시 뒤 다시 시도해 주세요"));
-    onSaved(r.data.branding, "기본 파비콘으로 되돌렸어요");
+    if (!r.ok) return setFaviconError(failMessage(r, "기본값으로 되돌리지 못했습니다. 잠시 후 다시 시도해 주십시오."));
+    onSaved(r.data.branding, "기본 파비콘으로 되돌렸습니다.");
   };
 
   const pickOg = async (file: File | undefined) => {
     setOgError(null);
     setOgFile(null);
     if (!file) return;
-    if (file.size > OG_MAX) return setOgError("공유 카드 이미지는 2MB까지 올릴 수 있어요");
+    if (file.size > OG_MAX) return setOgError("공유 카드 이미지는 2MB까지 업로드할 수 있습니다.");
     const url = URL.createObjectURL(file);
     const size = await imageSize(url);
     // 브라우저가 열지 못하는 파일(잘린 파일 등)은 공유 서비스도 못 보여 준다
     if (!size) {
       URL.revokeObjectURL(url);
-      return setOgError("이미지를 열 수 없어요. PNG·JPG 파일을 골라 주세요");
+      return setOgError("이미지를 열 수 없습니다. PNG·JPG 파일을 선택해 주십시오.");
     }
     if (size.w !== 1200 || size.h !== 630) {
       URL.revokeObjectURL(url);
-      return setOgError(`1200×630 크기 이미지를 골라 주세요 · 고른 이미지 ${size.w}×${size.h}`);
+      return setOgError(`1200×630 크기 이미지를 선택해 주십시오. 선택한 이미지: ${size.w}×${size.h}`);
     }
     setOgFile({ file, url });
   };
@@ -218,7 +218,7 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
       const r = await adminApi<{ branding: Branding }>(`/api/admin/branding/${t}`, { method: "PUT", json: { title: title.trim() || null, description: description.trim() || null } });
       if (!r.ok) {
         setSaving(false);
-        return setFailure(failMessage(r, "저장하지 못했어요. 잠시 뒤 다시 시도해 주세요"));
+        return setFailure(failMessage(r, "저장하지 못했습니다. 잠시 후 다시 시도해 주십시오."));
       }
       latest = r.data.branding;
     }
@@ -229,14 +229,14 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
           : await adminApi<{ branding: Branding }>(`/api/admin/branding/${t}/og-image`, { method: "DELETE" });
       if (!r.ok) {
         setSaving(false);
-        if (latest) onSaved(latest, "제목·설명만 저장했어요");
-        return setFailure(failMessage(r, "이미지를 저장하지 못했어요. 잠시 뒤 다시 시도해 주세요"));
+        if (latest) onSaved(latest, "제목·설명만 저장했습니다.");
+        return setFailure(failMessage(r, "이미지를 저장하지 못했습니다. 잠시 후 다시 시도해 주십시오."));
       }
       latest = r.data.branding;
       setOgFile(null);
     }
     setSaving(false);
-    if (latest) onSaved(latest, "공유 카드를 저장했어요");
+    if (latest) onSaved(latest, "공유 카드를 저장했습니다.");
   };
 
   const previewSrc =
@@ -256,20 +256,20 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
             <h2 className="t-hl2" id={`fav-${t}`}>
               파비콘
             </h2>
-            <span className="t-c1 c-alt">PNG·ICO 파일, 256KB까지 올릴 수 있어요. 512×512 같은 정사각형을 권장해요.</span>
+            <span className="t-c1 c-alt">PNG·ICO 파일을 256KB까지 업로드할 수 있습니다. 512×512 등 정사각형 이미지를 권장합니다.</span>
           </div>
           <div className="row" style={{ gap: 16, flexWrap: "wrap" }}>
             <div className="row" style={{ gap: 12 }}>
               <span className="card row" style={{ width: 56, height: 56, justifyContent: "center", flex: "none" }}>
                 {favicon || branding.favicon ? (
-                  <img src={favicon?.url ?? branding.favicon!.url} alt="지금 파비콘" width={32} height={32} />
+                  <img src={favicon?.url ?? branding.favicon!.url} alt="현재 파비콘" width={32} height={32} />
                 ) : (
                   <span className="logo-sym" aria-label="기본 아이콘" />
                 )}
               </span>
               <span className="col" style={{ gap: 2 }}>
                 <span className="t-l1 fw6">{favicon ? "새 파비콘 미리보기" : branding.favicon ? "올린 파비콘" : "기본 아이콘"}</span>
-                <span className="t-c1 c-alt">{favicon ? favicon.file.name : branding.favicon ? "브라우저 탭에 이 아이콘이 보여요" : "아직 올리지 않았어요"}</span>
+                <span className="t-c1 c-alt">{favicon ? favicon.file.name : branding.favicon ? "브라우저 탭에 이 아이콘이 표시됩니다." : "업로드한 파비콘이 없습니다."}</span>
               </span>
             </div>
             {canEdit && (
@@ -291,7 +291,7 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
                       취소
                     </button>
                     <button className="btn btn-sm" type="button" disabled={faviconBusy} onClick={() => void uploadFavicon()}>
-                      {faviconBusy ? "바꾸고 있어요" : "이 파비콘으로 바꾸기"}
+                      {faviconBusy ? "변경 중" : "파비콘 변경"}
                     </button>
                   </>
                 ) : (
@@ -302,7 +302,7 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
                       </button>
                     )}
                     <button className="btn btn-sm" type="button" disabled={faviconBusy} onClick={() => faviconInput.current?.click()}>
-                      파일 고르기
+                      파일 선택
                     </button>
                   </>
                 )}
@@ -322,12 +322,12 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
             <h2 className="t-hl2" id={`og-${t}`}>
               공유 카드
             </h2>
-            <span className="t-c1 c-alt">메신저나 SNS에 주소를 붙여 넣으면 이 카드가 보여요.</span>
+            <span className="t-c1 c-alt">메신저나 SNS에 주소를 붙여 넣으면 이 카드가 표시됩니다.</span>
           </div>
           {failure && (
             <div className="msg msg-neg" role="alert">
               <span>
-                <b>저장할 수 없어요.</b> {failure}
+                <b>저장할 수 없습니다.</b> {failure}
               </span>
             </div>
           )}
@@ -342,7 +342,7 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
               onChange={(e) => setTitle(e.target.value)}
             />
             <span className={titleLen > TITLE_MAX ? "err" : "help"}>
-              {titleLen}/{TITLE_MAX} · 비우면 「{branding.defaults.title}」로 보여요
+              {titleLen}/{TITLE_MAX} · 비워 두면 「{branding.defaults.title}」로 표시됩니다.
             </span>
           </div>
           <div className="fld">
@@ -351,7 +351,7 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
               id={`desc-${t}`}
               className={`inp${descLen > DESCRIPTION_MAX ? " is-error" : ""}`}
               value={description}
-              placeholder={branding.defaults.description ?? "비워 두면 설명 없이 보여요"}
+              placeholder={branding.defaults.description ?? "비워 두면 설명 없이 표시됩니다."}
               disabled={!canEdit}
               onChange={(e) => setDescription(e.target.value)}
             />
@@ -363,12 +363,12 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
             <span className="t-l2 fw6" id={`mode-${t}`}>
               카드 이미지
             </span>
-            <span className="t-c1 c-alt">카드 이미지는 1200×630 크기예요. 직접 올릴 때는 이 크기 그대로 만들어 주세요.</span>
+            <span className="t-c1 c-alt">카드 이미지 크기는 1200×630입니다. 직접 업로드할 때는 이 크기로 만들어 주십시오.</span>
             <div className="seg" role="radiogroup" aria-labelledby={`mode-${t}`} style={{ alignSelf: "flex-start" }}>
               {(
                 [
-                  ["generated", "제목으로 만들기"],
-                  ["uploaded", "이미지 올리기"],
+                  ["generated", "제목으로 생성"],
+                  ["uploaded", "이미지 업로드"],
                 ] as const
               ).map(([k, label]) => (
                 <button
@@ -389,7 +389,7 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
             </div>
             {mode === "uploaded" && (
               <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                <span className="t-c1 c-alt">PNG·JPG, 2MB까지 올릴 수 있어요.</span>
+                <span className="t-c1 c-alt">PNG·JPG 파일을 2MB까지 업로드할 수 있습니다.</span>
                 {canEdit && (
                   <>
                     <input
@@ -404,7 +404,7 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
                       }}
                     />
                     <button className="btn btn-sm" type="button" style={{ marginLeft: "auto" }} onClick={() => ogInput.current?.click()}>
-                      {ogFile || branding.ogImage.uploaded ? "다른 이미지 고르기" : "이미지 고르기"}
+                      {ogFile || branding.ogImage.uploaded ? "다른 이미지 선택" : "이미지 선택"}
                     </button>
                   </>
                 )}
@@ -422,13 +422,13 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
       <aside className="col aside-sticky" style={{ gap: 16 }}>
         <div className="card col" style={{ overflow: "hidden" }} aria-label="공유 카드 미리보기">
           <span className="t-hl2" style={{ padding: "16px 16px 12px" }}>
-            공유하면 이렇게 보여요
+            공유 카드 미리보기
           </span>
           <div style={{ aspectRatio: "1200 / 630", background: "var(--wds-fill-normal)", display: "flex", alignItems: "center", justifyContent: "center" }}>
             {previewSrc ? (
               <img src={previewSrc} alt="공유 카드 이미지 미리보기" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
             ) : (
-              <span className="t-c1 c-alt">이미지를 골라 주세요</span>
+              <span className="t-c1 c-alt">이미지를 선택해 주십시오.</span>
             )}
           </div>
           <div className="col" style={{ gap: 4, padding: "12px 16px 16px" }}>
@@ -439,7 +439,7 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
         </div>
         {canEdit && (
           <button className="btn btn-lg btn-block" type="button" onClick={() => void save()} disabled={!canSave}>
-            {saving ? "저장하고 있어요" : "공유 카드 저장"}
+            {saving ? "저장 중" : "공유 카드 저장"}
           </button>
         )}
       </aside>

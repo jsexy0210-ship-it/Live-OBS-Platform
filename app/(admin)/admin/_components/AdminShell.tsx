@@ -15,7 +15,7 @@ const Ctx = createContext<ShellCtx | null>(null);
 
 export function useAdmin(): ShellCtx {
   const v = useContext(Ctx);
-  if (!v) throw new Error("AdminShell 안에서만 써요");
+  if (!v) throw new Error("AdminShell 안에서만 사용합니다");
   return v;
 }
 
@@ -51,7 +51,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     return (
       <div className="st" style={{ minHeight: "100vh", borderRadius: 0 }}>
         <div className="st-ic neg">!</div>
-        <span className="t">화면을 불러오지 못했어요</span>
+        <span className="t">화면을 불러오지 못했습니다.</span>
         <button className="btn btn-sm" type="button" onClick={() => void load()}>
           다시 시도
         </button>
@@ -93,7 +93,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           </button>
           {logoutError && (
             <span className="err side-logout-err" role="alert">
-              로그아웃하지 못했어요. 다시 시도해 주세요
+              로그아웃하지 못했습니다. 다시 시도해 주십시오.
             </span>
           )}
         </aside>
