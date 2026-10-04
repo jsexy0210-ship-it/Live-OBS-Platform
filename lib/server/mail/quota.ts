@@ -7,6 +7,7 @@ import { captureDebit, messageSettings, releaseDebit, reserveDebit } from "../me
 // 메일 제공량·충전 잔액 차감(대표님 결정 2026-10-05, docs/terms/SELLER_MESSAGE_FEE_NOTICE.md 1~3절).
 // - 거래 메일: 구독 플랜의 월 제공량(SubscriptionPlan.mailMonthlyQuota, KST 달, 다음 달로 넘어가지 않음)까지 무료. 넘으면 발송 충전 잔액에서
 //   MAIL_TRANSACTIONAL 단가만큼 차감하고, 잔액이 모자라면 공급자를 부르지 않고 SKIPPED_BALANCE(잔액 부족 미발송)로 남긴다(주문 처리는 계속).
+//   충전 기능이 꺼져 있으면(기본) 제공량을 넘는 메일은 차감 없이 SKIPPED_BALANCE로 남긴다.
 // - 광고·공지 대량 메일(bulk): 제공량과 상관없이 MAIL_BULK 단가로 차감.
 // - 차감은 보내기 전에 잡고(messaging/balance.ts reserveDebit) 성공하면 확정, 실패하면 되돌린다. 차감 키는 발송 기록 id.
 // - 플랫폼 전체 무료 한도(메일 서비스 하루·월, PlatformMessageSetting): 다 쓰면 누구의 메일도 보내지 않고(차감도 안 함)
