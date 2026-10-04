@@ -62,9 +62,14 @@ export async function markActionStarted(db: PrismaClient, c: Claim): Promise<Dat
 }
 // 자리를 잃었어도 해야 하는 정리 연산(세션 닫기·보관)의 시작 기록(점유 확인 없음, 다음 소유자를 늦추는 보수적인 기록)
 // 시작 기록은 절대 뒤로 가지 않는다(읽고 쓰는 사이에 다른 소유자가 더 늦은 시작을 남겼어도 그것보다 앞서지 않게 DB에서 한 문장으로 쓴다).
-export async function markReleaseStarted(db: PrismaClient, jobId: string): Promise<Date> {
-  const rows = await db.$queryRaw<{ at: Date }[]>`UPDATE "AutomationJob" SET "lastActionStartedAt" = GREATEST(COALESCE("lastActionStartedAt", clock_timestamp()), clock_timestamp()) WHERE id = ${jobId}::uuid RETURNING "lastActionStartedAt" AS at`;
-  return rows[0]?.at ?? (await dbNow(db));
+// owned: 아직 다른 소유자가 이어받지 않았는가(자리를 잡은 횟수 claimSeq가 그대로). 취소·회수·종료는 fencing 토큰을 올리지만 claimSeq는
+// 올리지 않으므로 그런 경우는 소유자로 본다. 이어받힌 호출은 시작만 남기고 종료 확인은 남기지 않는다:
+// 그 사이 새 소유자가 시작한 행동의 진행 여부를 이 호출은 알 수 없으므로, 창은 강제 상한(시작 + 상한 + 여유)으로만 풀린다(보수적인 쪽).
+export async function markReleaseStarted(db: PrismaClient, c: Claim): Promise<{ at: Date; owned: boolean }> {
+  const owned = await db.$queryRaw<{ at: Date }[]>`UPDATE "AutomationJob" SET "lastActionStartedAt" = GREATEST(COALESCE("lastActionStartedAt", clock_timestamp()), clock_timestamp()) WHERE id = ${c.jobId}::uuid AND "claimSeq" = ${c.seq ?? -1} RETURNING "lastActionStartedAt" AS at`;
+  if (owned[0]) return { at: owned[0].at, owned: true };
+  const rows = await db.$queryRaw<{ at: Date }[]>`UPDATE "AutomationJob" SET "lastActionStartedAt" = GREATEST(COALESCE("lastActionStartedAt", clock_timestamp()), clock_timestamp()) WHERE id = ${c.jobId}::uuid RETURNING "lastActionStartedAt" AS at`;
+  return { at: rows[0]?.at ?? (await dbNow(db)), owned: false };
 }
 // 종료 확인(돌아온 호출·늦게 끝난 호출 모두): 자기 시작 기록이 그대로일 때만 남긴다(뒤에 시작한 행동을 끝났다고 하지 않음).
 // 같은 작업에 끝나지 않은 호출이 남아 있으면 부르지 않는다(engine.ts trackedWindow)
@@ -80,7 +85,8 @@ export function overdue(job: Pick<AutomationJob, "queuedAt" | "startedAt">, now:
   return null;
 }
 
-export type Claim = { readonly jobId: string; readonly token: number };
+// seq: 이 실행 자리를 잡은 횟수(claimSeq). 다른 작업자가 이어받았는지 가리는 데만 쓴다(markReleaseStarted)
+export type Claim = { readonly jobId: string; readonly token: number; readonly seq?: number };
 
 // 지금 실행 자리에서 쓴 시간(ms)
 const runningMs = (cur: { runStartedAt: Date | null }, now: Date) => (cur.runStartedAt ? Math.max(0, now.getTime() - cur.runStartedAt.getTime()) : 0);
@@ -170,12 +176,13 @@ async function claimOnce(db: PrismaClient, workerId: string, opts: { leaseMs?: n
         leaseOwner: workerId,
         leaseExpiresAt: plus(now, leaseMs),
         fencingToken: { increment: 1 },
+        claimSeq: { increment: 1 },
         startedAt: before.startedAt ?? now,
         runStartedAt: now,
       },
     });
     await writeJobEvent(tx, job, "QUEUED", "RUNNING", job.fencingToken, { workerId });
-    return { job, claim: { jobId: job.id, token: job.fencingToken } };
+    return { job, claim: { jobId: job.id, token: job.fencingToken, seq: job.claimSeq } };
   });
 }
 

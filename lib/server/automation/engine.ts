@@ -129,18 +129,28 @@ export type ActionWindowHooks = {
 // (store.end가 시작 시각 조건으로 쓴다), 상한을 넘겨 아직 끝나지 않은 호출이 하나라도 있으면 뒤 호출(세션 닫기 등)이 돌아와도
 // 종료 확인을 남기지 않는다. 뒤 호출의 시작 기록은 시각을 앞으로만 옮기므로(창을 늘림) 앞 호출의 강제 상한보다 일찍 풀리지 않는다.
 // 프로세스가 죽으면 기록이 남지 않아 강제 상한(시작 + 상한 + 여유)으로만 풀린다(보수적인 쪽).
-export function trackedWindow(store: { start(): Promise<Date>; release(): Promise<Date>; end(startedAt: Date): Promise<void> }) {
+// 자리를 잃은 뒤의 정리 호출(release의 owned=false)은 종료 확인을 남기지 않는다: 이 프로세스는 그 사이 새 소유자(다른 프로세스)가 시작한
+// 행동의 진행 여부를 알 수 없으므로 창은 강제 상한으로만 풀린다.
+export function trackedWindow(store: { start(): Promise<Date>; release(): Promise<{ at: Date; owned: boolean }>; end(startedAt: Date): Promise<void> }) {
   let unsettled = 0;
+  const noEnd = new Set<number>();
+  const endIfAllowed = async (startedAt: Date) => {
+    if (!noEnd.has(startedAt.getTime())) await store.end(startedAt);
+  };
   return {
     actionStarted: () => store.start(),
-    releaseStarted: () => store.release(),
+    releaseStarted: async () => {
+      const r = await store.release();
+      if (!r.owned) noEnd.add(r.at.getTime());
+      return r.at;
+    },
     actionEnded: async (startedAt?: Date) => {
-      if (unsettled === 0 && startedAt) await store.end(startedAt);
+      if (unsettled === 0 && startedAt) await endIfAllowed(startedAt);
     },
     actionTimedOut: () => void unsettled++,
     actionSettled: async (startedAt: Date) => {
       unsettled--;
-      if (unsettled === 0) await store.end(startedAt);
+      if (unsettled === 0) await endIfAllowed(startedAt);
     },
   };
 }

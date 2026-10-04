@@ -56,7 +56,7 @@ export async function executeJob(db: PrismaClient, rt: AutomationRuntime, { job,
   // 외부 호출 격리 창 기록(engine.ts callPort)
   const windowHooks = trackedWindow({
     start: () => markActionStarted(db, claim),
-    release: () => markReleaseStarted(db, claim.jobId),
+    release: () => markReleaseStarted(db, claim),
     end: (startedAt) => markActionEnded(db, claim.jobId, startedAt),
   });
   try {

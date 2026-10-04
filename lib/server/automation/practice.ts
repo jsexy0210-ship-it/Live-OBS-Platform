@@ -107,10 +107,12 @@ export async function runPractice(
       if ((await db.automationPracticeRun.updateMany({ where: owned, data: { lastActionStartedAt: at } })).count !== 1) throw new FencingError();
       return at;
     },
-    // 시작 기록은 절대 뒤로 가지 않는다(DB에서 한 문장으로)
+    // 시작 기록은 절대 뒤로 가지 않는다(DB에서 한 문장으로). 회수돼 토큰이 올랐으면 시작만 남기고 종료 확인은 남기지 않는다(강제 상한으로만 풀림)
     release: async () => {
+      const owned = await db.$queryRaw<{ at: Date }[]>`UPDATE "AutomationPracticeRun" SET "lastActionStartedAt" = GREATEST(COALESCE("lastActionStartedAt", clock_timestamp()), clock_timestamp()) WHERE id = ${run.id}::uuid AND "fencingToken" = ${run.fencingToken} RETURNING "lastActionStartedAt" AS at`;
+      if (owned[0]) return { at: owned[0].at, owned: true };
       const rows = await db.$queryRaw<{ at: Date }[]>`UPDATE "AutomationPracticeRun" SET "lastActionStartedAt" = GREATEST(COALESCE("lastActionStartedAt", clock_timestamp()), clock_timestamp()) WHERE id = ${run.id}::uuid RETURNING "lastActionStartedAt" AS at`;
-      return rows[0]?.at ?? (await dbNow(db));
+      return { at: rows[0]?.at ?? (await dbNow(db)), owned: false };
     },
     end: async (startedAt) =>
       void (await db.automationPracticeRun.updateMany({ where: { id: run.id, lastActionStartedAt: startedAt }, data: { lastActionEndedAt: await dbNow(db) } })),

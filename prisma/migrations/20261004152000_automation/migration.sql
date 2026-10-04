@@ -61,6 +61,7 @@ CREATE TABLE "AutomationJob" (
     "leaseOwner" TEXT,
     "leaseExpiresAt" TIMESTAMPTZ(3),
     "fencingToken" INTEGER NOT NULL DEFAULT 0,
+    "claimSeq" INTEGER NOT NULL DEFAULT 0,
     "lastError" TEXT,
     "shopKey" TEXT,
     "shopHost" TEXT,

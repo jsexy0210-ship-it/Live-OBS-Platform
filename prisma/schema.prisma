@@ -1656,6 +1656,8 @@ model AutomationJob {
   leaseExpiresAt       DateTime?                 @db.Timestamptz(3)
   // 실행 자리를 잡을 때마다 1씩 오른다. 작업자는 이 값이 같을 때만 쓴다(fencing).
   fencingToken         Int                       @default(0)
+  // 대기열에서 실행 자리를 잡을 때만 1씩 오른다(취소·회수·종료로 fencingToken이 올라도 오르지 않음). 다른 작업자가 이어받았는지 가리는 데 쓴다.
+  claimSeq             Int                       @default(0)
   lastError            String?
   // 연결 결과: 외부 쇼핑몰 식별자(예: Cafe24 몰 id)와 고객 PC의 OBS pairing id. 무료 재연결 판정에 쓴다.
   shopKey              String?

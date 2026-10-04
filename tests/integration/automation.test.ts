@@ -17,7 +17,7 @@ import { FakeBrowserExecutor, FakeObsBridge, FakePlanner, FakePracticeEnvironmen
 import { markConnectionRevoked } from "../../lib/server/automation/connection";
 import { cancelJob, getJob, requestRefund, resumeJob } from "../../lib/server/automation/jobs";
 import { purchaseAutomation, reconcileAutomationPayments, reconnectAutomation } from "../../lib/server/automation/purchase";
-import { EngineAborted, actionKeyOf, callPort, insidePortCall, runSteps } from "../../lib/server/automation/engine";
+import { EngineAborted, actionKeyOf, callPort, insidePortCall, runSteps, trackedWindow } from "../../lib/server/automation/engine";
 import { FencingError, RunTimeExceeded, advanceStep, claimNext, extendLease, finishJob, lockJob, markActionEnded, markActionStarted, markBrowserStateHeld, markChanged, markReleaseStarted, parkForCustomer, reapExpired, toVerifying, touch, unmarkChanged } from "../../lib/server/automation/queue";
 import { executeJob, purgeEndedBrowserState, runOnce, runWorkerLoop, startHeartbeat } from "../../lib/server/automation/worker";
 import { FakeBillingProvider } from "../../lib/server/billing/provider";
@@ -3979,7 +3979,7 @@ describe("검수 전담 반영: 옛 소유자의 늦은 기록이 새 소유자�
     await markActionEnded(db, a.jobId, oldStart);
     expect(await open(a.jobId)).toBe(true);
     // 옛 소유자의 세션 닫기 시작 기록은 시작 기록을 뒤로 되돌리지 않는다(더 늦은 새 시작이 있으면 그대로)
-    const releaseAt = await markReleaseStarted(db, a.jobId);
+    const releaseAt = (await markReleaseStarted(db, old.claim)).at;
     expect(releaseAt.getTime()).toBeGreaterThanOrEqual(newStart.getTime());
     expect((await job(a.jobId)).lastActionStartedAt!.getTime()).toBeGreaterThanOrEqual(newStart.getTime());
     await markActionEnded(db, a.jobId, oldStart);
@@ -3996,8 +3996,44 @@ describe("검수 전담 반영: 옛 소유자의 늦은 기록이 새 소유자�
     // 다른 소유자가 더 늦은 시각(지금보다 뒤)에 행동을 시작해 둔 상태: 닫기가 지금 시각으로 덮어쓰면 시작이 뒤로 가 창이 잘못 풀릴 수 있다
     const later = new Date(Date.now() + 60_000);
     await db.automationJob.update({ where: { id: a.jobId }, data: { lastActionStartedAt: later, lastActionEndedAt: new Date(Date.now() - 1_000) } });
-    await markReleaseStarted(db, a.jobId);
+    await markReleaseStarted(db, got.claim);
     expect((await job(a.jobId)).lastActionStartedAt!.getTime()).toBeGreaterThanOrEqual(later.getTime());
     expect(await open(a.jobId)).toBe(true);
+  });
+
+  it("두 작업자: 자리를 잃은 A가 세션을 닫아도(시작만 기록, 종료 확인 없음) 새 소유자 B의 진행 중 행동 창은 풀리지 않아 C가 이어받지 못하고, 보관 자료도 지우지 않으며, 강제 상한 뒤에만 풀린다", async () => {
+    const a = await bought();
+    const A = await claimNext(db, "w-A");
+    if (!A) throw new Error("no claim A");
+    // A는 자리를 잃었다(lease 만료·회수). A의 행동은 없었으므로 B가 바로 이어받는다
+    await db.automationJob.update({ where: { id: a.jobId }, data: { leaseExpiresAt: new Date(Date.now() - 1000) } });
+    await reapExpired(db);
+    await db.automationJob.update({ where: { id: a.jobId }, data: { runAfter: new Date(Date.now() - 1000) } });
+    const B = await claimNext(db, "w-B");
+    if (!B) throw new Error("no claim B");
+    // B가 외부 행동을 시작했다(진행 중, 종료 확인 없음)
+    await markActionStarted(db, B.claim);
+    expect(await open(a.jobId)).toBe(true);
+    // A(자리를 잃음)가 이제야 세션 닫기를 한다: 시작만 남기고 돌아와도 종료 확인은 남기지 않는다
+    const win = trackedWindow({
+      start: () => markActionStarted(db, A.claim),
+      release: () => markReleaseStarted(db, A.claim),
+      end: (startedAt) => markActionEnded(db, a.jobId, startedAt),
+    });
+    const closed = await callPort(async () => undefined, { window: { actionStarted: win.releaseStarted, actionEnded: win.actionEnded, actionTimedOut: win.actionTimedOut, actionSettled: win.actionSettled } });
+    expect(closed.ok).toBe(true);
+    // B의 행동이 아직 진행 중이므로 창은 열려 있다: B가 자리를 잃어 회수돼도 C가 이어받지 못한다
+    expect(await open(a.jobId)).toBe(true);
+    await db.automationJob.update({ where: { id: a.jobId }, data: { leaseExpiresAt: new Date(Date.now() - 1000) } });
+    await reapExpired(db);
+    await db.automationJob.update({ where: { id: a.jobId }, data: { runAfter: new Date(Date.now() - 1000) } });
+    expect(await claimNext(db, "w-C")).toBeNull();
+    // 끝난 작업의 보관 자료도 지우지 않는다
+    await forgetChanges(a.jobId);
+    await db.automationJob.update({ where: { id: a.jobId }, data: { status: "CANCELED", finishedAt: new Date() } });
+    expect(await purgeEndedBrowserState(db, runtime())).toBe(0);
+    // 강제 상한(시작 + 상한 + 여유)이 지나면 풀린다
+    await db.automationJob.update({ where: { id: a.jobId }, data: { lastActionStartedAt: new Date(Date.now() - 3 * 60_000) } });
+    expect(await purgeEndedBrowserState(db, runtime())).toBe(1);
   });
 });
