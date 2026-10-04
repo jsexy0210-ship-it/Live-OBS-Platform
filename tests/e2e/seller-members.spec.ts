@@ -24,7 +24,7 @@ test("대표자: 회원 목록에서 닉네임으로 찾고, 상세에서 주문
   await page.goto("/seller/login?next=%2Fseller%2Fmembers");
   await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
   await expect(page).toHaveURL(/\/seller\/members$/);
-  await expect(page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "회원", exact: true })).toHaveAttribute("href", "/seller/members");
+  await expect(page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "회원 목록", exact: true })).toHaveAttribute("href", "/seller/members");
 
   const rows = page.getByTestId("member-row");
   for (const nick of ["별빛사냥꾼", "카드왕", "민트컨디션"]) await expect(rows.filter({ hasText: nick })).toHaveCount(1);

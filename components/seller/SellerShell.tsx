@@ -20,7 +20,14 @@ type PlanNeed = "ANY" | "OVERLAY" | "STORE_OPERATIONS" | "FOLLOWUP";
 type Item = { label: string; href?: string; perm?: string; plan?: PlanNeed; alt?: { plan: PlanNeed; href: string } };
 type Group = { key: string; label: string; items: Item[] };
 const MENU: Group[] = [
-  { key: "home", label: "홈", items: [{ label: "홈", plan: "ANY" }] },
+  {
+    key: "home",
+    label: "홈",
+    items: [
+      { label: "홈", plan: "ANY" },
+      { label: "시작하기", plan: "ANY" },
+    ],
+  },
   {
     key: "broadcast",
     label: "방송",
@@ -29,6 +36,8 @@ const MENU: Group[] = [
       { label: "오버레이 편집기", href: "/seller/overlay", perm: "OVERLAY_EDIT", plan: "OVERLAY" },
       { label: "HIT 카드 이력", perm: "BROADCAST_RUN", plan: "OVERLAY" },
       { label: "방송 이력", perm: "BROADCAST_RUN", plan: "OVERLAY" },
+      { label: "외부 쇼핑몰 연동", perm: "SHOP_SETTINGS", plan: "OVERLAY" },
+      { label: "자동 연결", perm: "SHOP_SETTINGS", plan: "OVERLAY" },
     ],
   },
   {
@@ -37,7 +46,10 @@ const MENU: Group[] = [
     items: [
       { label: "전체 주문", href: "/seller/orders", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
       { label: "입금 확인", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
+      { label: "교환 · 반품", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
       { label: "배송", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
+      { label: "송장 발급", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
+      { label: "송장 출력 · 추적", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
       { label: "영수증 · 세금계산서", perm: "RECEIPT_TAX", plan: "FOLLOWUP" },
     ],
   },
@@ -48,18 +60,31 @@ const MENU: Group[] = [
       { label: "상품 목록", href: "/seller/products", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
       { label: "상품 등록", href: "/seller/products/new", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
       { label: "재고 관리", href: "/seller/products/stock", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
+      { label: "카테고리", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
+      { label: "상품 진열", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
+      { label: "재입고 알림", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
+      { label: "엑셀 일괄 등록", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
     ],
   },
   {
     key: "member",
     label: "회원",
     items: [
-      { label: "회원", href: "/seller/members", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
-      { label: "적립금", href: "/seller/rewards", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
+      { label: "회원 목록", href: "/seller/members", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
+      { label: "회원 등급", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
       { label: "구매 제한", href: "/seller/purchase-restrictions", perm: "MEMBER_POINTS", plan: "FOLLOWUP" },
+      { label: "회원 알림 발송", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
+      { label: "적립금", href: "/seller/rewards", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
+    ],
+  },
+  {
+    key: "board",
+    label: "게시판",
+    items: [
       { label: "구매자 문의", perm: "INQUIRY_REPLY", plan: "FOLLOWUP" },
-      // 리뷰: 목록·집계 조회는 파트너스 계정 누구나, 답글·숨김·설정은 구매자 문의(INQUIRY_REPLY) 권한(서버에서 막음). 서버가 스토어 운영 기능을 요구한다
-      { label: "리뷰", href: "/seller/reviews", plan: "STORE_OPERATIONS" },
+      // 상품 리뷰: 목록·집계 조회는 파트너스 계정 누구나, 답글·숨김·설정은 구매자 문의(INQUIRY_REPLY) 권한(서버에서 막음). 서버가 스토어 운영 기능을 요구한다
+      { label: "상품 리뷰", href: "/seller/reviews", plan: "STORE_OPERATIONS" },
+      { label: "쇼핑몰 공지 · 자주 묻는 질문", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
     ],
   },
   // 쿠폰: 집계 조회는 파트너스 계정 누구나, 만들기·지급은 적립금(MEMBER_POINTS) 권한(화면에서 막음)
@@ -81,10 +106,13 @@ const MENU: Group[] = [
       // 회원 정책: IA 표에는 없지만 이미 있는 화면이라 쇼핑몰 설정 안에 둔다
       { label: "회원 정책", href: "/seller/settings/member", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
       { label: "공유 설정", href: "/seller/settings/share", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
+      { label: "법정 고지 · 약관", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
+      { label: "검색 노출", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
       { label: "결제(PG) 연결", perm: "OWNER", plan: "STORE_OPERATIONS" },
       { label: "주문자 알림", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
       { label: "직원 계정", href: "/seller/staff", perm: "OWNER", plan: "ANY" },
       { label: "구독 · 결제", href: "/seller/subscription", perm: "OWNER" },
+      { label: "쇼핑몰 통합 전환", perm: "OWNER" },
     ],
   },
 ];

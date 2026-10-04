@@ -32,13 +32,13 @@ function footRows(info: unknown): [string, string][] {
 const loadFrame = cache(async (slug: string) => {
   const seller = await prisma.seller.findUnique({ where: { slug: slug.slice(0, 60) }, select: { id: true, businessInfo: true } });
   const token = (await cookies()).get(COOKIE_NAMES.buyer)?.value;
-  const loggedIn = !!seller && !!(await resolveBuyerSession(prisma, token, seller.id));
-  return { loggedIn, rows: footRows(seller?.businessInfo) };
+  const session = seller ? await resolveBuyerSession(prisma, token, seller.id) : null;
+  return { loggedIn: !!session, nickname: session?.member.broadcastNickname ?? null, rows: footRows(seller?.businessInfo) };
 });
 
 async function FrameChrome({ slug, shopName }: { slug: string; shopName: string }) {
-  const { loggedIn } = await loadFrame(slug);
-  return <ShopChrome slug={slug} shopName={shopName} loggedIn={loggedIn} />;
+  const { loggedIn, nickname } = await loadFrame(slug);
+  return <ShopChrome slug={slug} shopName={shopName} loggedIn={loggedIn} nickname={nickname} />;
 }
 
 function Foot({ shopName, rows }: { shopName: string; rows: [string, string][] }) {
