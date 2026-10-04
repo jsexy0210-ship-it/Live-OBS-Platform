@@ -1,5 +1,4 @@
 import { notFound } from "next/navigation";
-import ShopFrame from "../../../../../components/shop/ShopFrame";
 import ShopState from "../../../../../components/shop/ShopState";
 import { findActiveShop } from "./shop";
 
@@ -8,8 +7,8 @@ export default async function ComingSoon({ slug, title, body }: { slug: string; 
   const shop = await findActiveShop(slug);
   if (!shop) notFound();
   return (
-    <ShopFrame slug={shop.slug} shopName={shop.shopName}>
+    <>
       <ShopState title={title} body={body} />
-    </ShopFrame>
+    </>
   );
 }

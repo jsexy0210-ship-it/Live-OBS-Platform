@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import MarketingConsent from "../../../../../../components/shop/MarketingConsent";
-import ShopFrame from "../../../../../../components/shop/ShopFrame";
 import { prisma } from "../../../../../../lib/server/db";
 
 export const dynamic = "force-dynamic";
@@ -23,8 +22,8 @@ export default async function ShopNotificationsPage({ params }: Params) {
   const shop = await findShop((await params).slug);
   if (!shop) notFound();
   return (
-    <ShopFrame slug={shop.slug} shopName={shop.shopName}>
+    <>
       <MarketingConsent slug={shop.slug} shopName={shop.shopName} />
-    </ShopFrame>
+    </>
   );
 }
