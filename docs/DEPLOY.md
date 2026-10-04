@@ -382,7 +382,7 @@ cd /opt/obs/src && scripts/ops/disk-cleanup.sh          # 지울 목록만 보�
 cd /opt/obs/src && scripts/ops/disk-cleanup.sh --apply  # 실제 정리
 ```
 
-롤백은 남긴 5개 버전 안에서만 이미지 재빌드 없이 됩니다. 컨테이너 로그(json-file)는 크기 제한이 없어 따로 늘어날 수 있으며, 컴포즈 `logging`(max-size·max-file) 설정은 별도 승인 사항으로 제안합니다.
+롤백은 남긴 5개 버전 안에서만 이미지 재빌드 없이 됩니다. 컨테이너 로그(json-file)는 서비스마다 10MB×3개까지만 남깁니다(`deploy/docker-compose.yml`의 `x-logging`). 컨테이너가 새로 만들어질 때 적용되므로 다음 배포부터 반영됩니다.
 
 ## 롤백
 
