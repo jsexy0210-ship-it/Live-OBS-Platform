@@ -260,6 +260,7 @@ describe("구매자 가입 HTTP", () => {
       expect(res.status, JSON.stringify(start)).toBe(201);
       const member = await db.buyerMember.findFirstOrThrow({ where: { sellerId: s.seller.id } });
       expect(member.marketingConsentAt, JSON.stringify(start)).toEqual(agreed ? new Date(consent.agreedAt) : null);
+      expect(member.marketingConsentVersion).toBe(agreed ? SIGNUP_CONSENT_VERSIONS.marketing : null);
       expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.signup", actorId: member.id } })).toMatchObject({
         after: { agreedTerms: true, agreedPrivacy: true, agreedMarketing: agreed, ...(agreed ? { marketingVersion: SIGNUP_CONSENT_VERSIONS.marketing } : {}) },
       });
