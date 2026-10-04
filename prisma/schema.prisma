@@ -69,6 +69,9 @@ model Seller {
   id                       String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   slug                     String       @unique
   shopName                 String
+  // 공유 미리보기(og:title·og:description) 제목·설명. 비어 있으면 쇼핑몰 이름(제목)·없음(설명). 파트너스 쇼핑몰 설정(SHOP_SETTINGS)에서 바꾼다.
+  shareTitle               String?
+  shareDescription         String?
   status                   SellerStatus @default(PENDING)
   businessInfo             Json?
   approvedAt               DateTime?    @db.Timestamptz(3)
@@ -206,6 +209,9 @@ model PasswordResetGrant {
   ciHash       String
   expiresAt    DateTime  @db.Timestamptz(3)
   usedAt       DateTime? @db.Timestamptz(3)
+  // 이 권한으로 새 비밀번호 저장에 성공한 시각(실패로 소진되거나 다른 권한 사용으로 무효가 된 권한은 비어 있음).
+  // 응답을 잃고 같은 새 비밀번호로 다시 보낸 요청을 성공으로 돌려주는 데 쓴다(auth/passwordReset.ts).
+  completedAt  DateTime? @db.Timestamptz(3)
   createdAt    DateTime  @default(now()) @db.Timestamptz(3)
   // 아이디 찾기로 준 권한: 발급에 쓴 본인확인과 토큰을 다시 만드는 무작위 값(토큰 = 서버 비밀키 HMAC(nonce), 원문은 저장하지 않음).
   // 응답을 잃은 재시도에 같은 토큰을 다시 돌려준다(auth/accountRecovery.ts).

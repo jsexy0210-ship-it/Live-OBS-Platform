@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { startAccountRecovery } from "../../../../../lib/server/auth/accountRecovery";
+import { FLOW_COOKIE_MAX_AGE_S } from "../../../../../lib/server/auth/passwordReset";
 import { RECOVERY_IDV_COOKIE, RECOVERY_LIMIT_MESSAGE, RECOVERY_PATH } from "../../../../../lib/server/auth/recoveryFlow";
 import { prisma } from "../../../../../lib/server/db";
 import { mutation, readJson, requestMeta, setFlowCookie } from "../../../../../lib/server/http/route";
@@ -24,6 +25,6 @@ export const POST = mutation(async (req: Request) => {
     return identityFailure(r.reason);
   }
   const res = NextResponse.json({ verificationId: r.verificationId }, { headers: NO_STORE });
-  setFlowCookie(res, RECOVERY_IDV_COOKIE, r.ownerToken, RECOVERY_PATH, 20 * 60);
+  setFlowCookie(res, RECOVERY_IDV_COOKIE, r.ownerToken, RECOVERY_PATH, FLOW_COOKIE_MAX_AGE_S);
   return res;
 });
