@@ -7,7 +7,7 @@ import { keyedOwnerToken, parseAttemptKey, reuseKeyedAttempt, scopedAttemptKeyHa
 import type { IdentityProvider } from "../identity/provider";
 import { completeIdentityVerification, parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
 import { requireSellerPermission, type TenantContext } from "../tenant/context";
-import { hashPassword } from "./password";
+import { hashPassword, verifyPassword } from "./password";
 import { recoveryLimitReached } from "./recoveryLimit";
 import { generateToken, hashToken } from "./token";
 import { normalizeEmail } from "./login";
@@ -17,6 +17,8 @@ import { normalizeEmail } from "./login";
 // → 3) 새 비밀번호 저장, 그 계정의 기존 세션 모두 폐기. 계정이 있는지 없는지는 응답으로 드러나지 않는다.
 
 export const GRANT_TTL_MS = 10 * 60_000;
+// 새 비밀번호 저장에 성공한 뒤 응답을 잃은 재시도를 성공으로 돌려주는 시간(저장 시각부터)
+export const RESET_COMPLETE_RETRY_MS = 10 * 60_000;
 
 // 비밀번호 해시 함수(테스트에서 호출 여부를 확인할 수 있게 객체로 둔다)
 export const passwordHasher = { hashPassword };
@@ -228,6 +230,8 @@ export function expectedResetCi(u: { isOwner: boolean; identityCiHash: string | 
 export type ResetResult = { ok: true } | { ok: false; reason: "invalid_grant" | "weak_password" };
 
 // 재설정 권한으로 새 비밀번호 저장. 권한은 한 번만 쓰이고, 그 계정의 기존 세션은 모두 폐기한다.
+// 멱등(MASTER 지시): 이 권한으로 이미 저장에 성공했고(completedAt) 같은 새 비밀번호로 다시 보내면 성공을 돌려준다(응답 유실 대비).
+// 이때는 아무것도 바꾸지 않는다(세션 폐기·감사 기록은 처음 한 번만). 다른 비밀번호거나 재시도 시간이 지났으면 invalid_grant.
 export async function resetSellerPassword(
   db: PrismaClient,
   input: { grantToken: string | undefined; newPassword: string },
@@ -239,7 +243,8 @@ export async function resetSellerPassword(
   const tokenHash = hashToken(input.grantToken);
   // 무효한 권한이면 비싼 해시 계산 전에 거부한다. 실제 소진은 아래 트랜잭션에서 원자적으로 한다.
   const candidate = await db.passwordResetGrant.findUnique({ where: { tokenHash }, select: { usedAt: true, expiresAt: true } });
-  if (!candidate || candidate.usedAt || candidate.expiresAt <= now) return { ok: false, reason: "invalid_grant" };
+  if (candidate?.usedAt) return (await alreadyCompleted(db, tokenHash, input.newPassword, now)) ? { ok: true } : { ok: false, reason: "invalid_grant" };
+  if (!candidate || candidate.expiresAt <= now) return { ok: false, reason: "invalid_grant" };
   const passwordHash = await passwordHasher.hashPassword(input.newPassword);
 
   // 권한을 먼저 소진하고(한 번만 쓰임), 그 순간 계정·대표자 CI를 다시 확인한다. 확인에 실패해도 권한은 소진된 채로 남는다.
@@ -248,7 +253,7 @@ export async function resetSellerPassword(
       where: { tokenHash, usedAt: null, expiresAt: { gt: now } },
       data: { usedAt: now },
     });
-    if (used.count !== 1) return { grant: null, reason: "invalid_grant" as const };
+    if (used.count !== 1) return { grant: null, reason: "lost_race" as const };
     const g = await tx.passwordResetGrant.findUniqueOrThrow({
       where: { tokenHash },
       include: { sellerUser: { include: { seller: { select: { representativeCiHash: true } } } } },
@@ -260,6 +265,7 @@ export async function resetSellerPassword(
     if (stale) return { grant: g, reason: stale };
 
     await tx.sellerUser.update({ where: { id: g.sellerUserId }, data: { passwordHash, credentialVersion: { increment: 1 } } });
+    await tx.passwordResetGrant.update({ where: { id: g.id }, data: { completedAt: now } });
     const revoked = await tx.sellerSession.updateMany({ where: { sellerUserId: g.sellerUserId, revokedAt: null }, data: { revokedAt: now } });
     // 같은 계정의 다른 미사용 재설정 권한은 모두 무효
     const otherGrants = await tx.passwordResetGrant.updateMany({
@@ -279,30 +285,34 @@ export async function resetSellerPassword(
     });
     return { grant: g, reason: null };
   });
-  const grant = outcome.reason === null ? outcome.grant : null;
-  if (outcome.reason !== null && outcome.reason !== "invalid_grant") {
-    await writeAudit(db, {
-      actorType: "SELLER_USER",
-      actorId: outcome.grant?.sellerUserId ?? null,
-      sellerId: outcome.grant?.sellerId ?? null,
-      action: "auth.seller.password_reset.failed",
-      reason: outcome.reason,
-      ip: meta.ip,
-      userAgent: meta.userAgent,
-    });
-    return { ok: false, reason: "invalid_grant" };
+  // 같은 권한으로 동시에 보낸 요청: 앞 요청이 커밋한 뒤 0행으로 끝나므로, 다시 읽어 같은 비밀번호로 저장됐으면 성공으로 돌려준다
+  if (outcome.reason === "lost_race") {
+    if (await alreadyCompleted(db, tokenHash, input.newPassword, now)) return { ok: true };
+    return failed(db, null, "invalid_grant", meta);
   }
-  if (!grant) {
-    await writeAudit(db, {
-      actorType: "SELLER_USER",
-      action: "auth.seller.password_reset.failed",
-      reason: "invalid_grant",
-      ip: meta.ip,
-      userAgent: meta.userAgent,
-    });
-    return { ok: false, reason: "invalid_grant" };
-  }
+  if (outcome.reason !== null) return failed(db, outcome.grant, outcome.reason, meta);
   return { ok: true };
+}
+
+// 이 권한으로 저장에 성공했고(completedAt, 재시도 시간 안), 계정이 아직 활성이며 지금 비밀번호가 보낸 새 비밀번호와 같은지
+async function alreadyCompleted(db: PrismaClient, tokenHash: string, newPassword: string, now: Date): Promise<boolean> {
+  const g = await db.passwordResetGrant.findUnique({ where: { tokenHash }, select: { completedAt: true, sellerUser: { select: { status: true, passwordHash: true } } } });
+  if (!g?.completedAt || now.getTime() - g.completedAt.getTime() > RESET_COMPLETE_RETRY_MS || g.sellerUser.status !== "ACTIVE") return false;
+  return verifyPassword(g.sellerUser.passwordHash, newPassword);
+}
+
+// 저장 실패 감사 기록(권한을 소진했지만 계정·CI 확인에 실패했거나, 권한이 이미 쓰였거나 없음)
+async function failed(db: PrismaClient, grant: { sellerUserId: string; sellerId: string } | null, reason: string, meta: Meta): Promise<ResetResult> {
+  await writeAudit(db, {
+    actorType: "SELLER_USER",
+    actorId: grant?.sellerUserId ?? null,
+    sellerId: grant?.sellerId ?? null,
+    action: "auth.seller.password_reset.failed",
+    reason,
+    ip: meta.ip,
+    userAgent: meta.userAgent,
+  });
+  return { ok: false, reason: "invalid_grant" };
 }
 
 // 직원(매니저·방송 담당) 비밀번호는 대표가 직원 관리에서 재설정한다. 같은 쇼핑몰 직원만, 대표 계정은 대상이 아니다.
