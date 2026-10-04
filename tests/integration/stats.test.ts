@@ -601,7 +601,7 @@ describe("통계 요약 GET /api/seller/stats/overview (SA-056)", () => {
     const fresh = await s.newBuyer("2026-10-02T01:00:00Z");
     await s.order({ createdAt: "2026-09-25T03:00:00Z", total: 99000 });
     const paid = await s.order({ createdAt: at, total: 20000 });
-    await s.order({ createdAt: at, total: 10000, buyerId: fresh.id });
+    const freshOrder = await s.order({ createdAt: at, total: 10000, buyerId: fresh.id });
     await s.order({ createdAt: at, status: "REFUNDED", total: 6000, refundAmount: 4000, buyerId: fresh.id });
     await s.order({ createdAt: at, status: "CANCELLED", total: 5000 });
     const overdue = await s.order({ createdAt: at, status: "CANCELLED", total: 7000 });
@@ -626,8 +626,18 @@ describe("통계 요약 GET /api/seller/stats/overview (SA-056)", () => {
       await db.hitCard.create({ data: { sellerId: s.seller.id, nicknameSnapshot: "닉", cardName: "카드", createdAt: new Date(h) } });
     }
 
+    // 쿠폰: 기간 안 결제 주문에 쓴 1건(2000원) + 복구된 1건은 세지 않는다
+    const cp = await db.coupon.create({ data: { sellerId: s.seller.id, name: "쿠폰", issueMethod: "CODE", code: "T", benefit: "AMOUNT", value: 2000, startsAt: new Date("2026-01-01T00:00:00Z"), endsAt: new Date("2027-01-01T00:00:00Z") } });
+    const useCoupon = async (orderId: string, buyerMemberId: string, restoredAt: Date | null) => {
+      const bc = await db.buyerCoupon.create({ data: { sellerId: s.seller.id, couponId: cp.id, buyerMemberId, issuedAt: new Date("2026-09-01T00:00:00Z"), expiresAt: new Date("2027-01-01T00:00:00Z") } });
+      await db.couponRedemption.create({ data: { sellerId: s.seller.id, orderId, couponId: cp.id, buyerCouponId: bc.id, benefit: "AMOUNT", discountAmount: 2000, restoredAt } });
+    };
+    await useCoupon(paid.id, s.buyer.id, null);
+    await useCoupon(freshOrder.id, fresh.id, new Date(at));
+
     const { status, body } = await call(overviewRoute, "overview?from=2026-10-01&to=2026-10-07", await cookieOf(s.owner.email));
     expect(status).toBe(200);
+    expect(body.coupons).toEqual({ used: 1, discount: 2000 });
     // 순매출 = 20000 + 10000 + (6000 − 4000) + 8000 = 40000, 남은 주문 3건(환불 1·취소 2 제외)
     expect(body.summary.current).toMatchObject({ revenue: 40000, orders: 3, excluded: 3, averageOrderValue: 13333 });
     expect(body.summary.previous).toMatchObject({ revenue: 99000, orders: 1 });
@@ -639,7 +649,7 @@ describe("통계 요약 GET /api/seller/stats/overview (SA-056)", () => {
     // 방송 외: 방송 [시작, 종료 + 2시간] 밖의 결제 주문(10/2 03:00 UTC 3건)
     expect(body.broadcasts.outside).toEqual({ orders: 3, net: 32000 });
     expect(body.series.reduce((a: number, p: { revenue: number }) => a + p.revenue, 0)).toBe(40000);
-    expect(body.unavailable).toEqual(expect.arrayContaining(["visitors", "coupons", "returns", "inquiries", "reviews", "memberGrades"]));
+    expect(body.unavailable).toEqual(expect.arrayContaining(["visitors", "returns", "inquiries", "reviews", "memberGrades"]));
   });
 
   it("적립금은 처리 완료 시각(processedAt)으로 기간에 넣는다", async () => {
