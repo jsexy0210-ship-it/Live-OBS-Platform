@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { TIMER_MAX_SECONDS, clock, type QueueItem } from "./queue";
 
 // SA-001 확인 창: 방송 종료 · 주문 취소(사유 필수) · 타이머 설정. Esc로 닫는다(처리 중에는 닫지 않는다).
+// blocked: 대시보드 내용이 최신이 아님(다시 불러오기 전까지 확인 버튼을 끈다, 닫기는 된다)
 
 function useEscape(busy: boolean, onClose: () => void) {
   useEffect(() => {
@@ -31,7 +32,7 @@ function Frame({ id, title, sub, children }: { id: string; title: string; sub?: 
 
 const who = (item: QueueItem) => `${item.nicknameSnapshot} · ${item.productLabel} ×${item.quantity}`;
 
-export function EndBroadcastModal({ waiting, busy, onClose, onConfirm }: { waiting: number; busy: boolean; onClose: () => void; onConfirm: () => void }) {
+export function EndBroadcastModal({ waiting, busy, blocked, onClose, onConfirm }: { waiting: number; busy: boolean; blocked: boolean; onClose: () => void; onConfirm: () => void }) {
   useEscape(busy, onClose);
   return (
     <Frame id="bc-end-title" title="방송을 종료하시겠습니까?" sub={waiting > 0 ? `남은 대기 ${waiting}건은 다음 방송으로 넘어갑니다` : undefined}>
@@ -39,7 +40,7 @@ export function EndBroadcastModal({ waiting, busy, onClose, onConfirm }: { waiti
         <button className="btn btn-out" type="button" disabled={busy} onClick={onClose}>
           닫기
         </button>
-        <button className="btn btn-neg" type="button" disabled={busy} onClick={onConfirm}>
+        <button className="btn btn-neg" type="button" disabled={busy || blocked} onClick={onConfirm}>
           방송 종료
         </button>
       </div>
@@ -47,7 +48,7 @@ export function EndBroadcastModal({ waiting, busy, onClose, onConfirm }: { waiti
   );
 }
 
-export function CancelItemModal({ item, busy, onClose, onConfirm }: { item: QueueItem; busy: boolean; onClose: () => void; onConfirm: (reason: string) => void }) {
+export function CancelItemModal({ item, busy, blocked, onClose, onConfirm }: { item: QueueItem; busy: boolean; blocked: boolean; onClose: () => void; onConfirm: (reason: string) => void }) {
   useEscape(busy, onClose);
   const [reason, setReason] = useState("");
   const ok = reason.trim().length > 0;
@@ -58,7 +59,7 @@ export function CancelItemModal({ item, busy, onClose, onConfirm }: { item: Queu
         style={{ gap: 16 }}
         onSubmit={(e) => {
           e.preventDefault();
-          if (ok && !busy) onConfirm(reason.trim());
+          if (ok && !busy && !blocked) onConfirm(reason.trim());
         }}
       >
         <div className="fld">
@@ -72,7 +73,7 @@ export function CancelItemModal({ item, busy, onClose, onConfirm }: { item: Queu
           <button className="btn btn-out" type="button" disabled={busy} onClick={onClose}>
             닫기
           </button>
-          <button className="btn btn-neg" type="submit" disabled={busy || !ok}>
+          <button className="btn btn-neg" type="submit" disabled={busy || blocked || !ok}>
             주문대기 취소
           </button>
         </div>
@@ -83,7 +84,7 @@ export function CancelItemModal({ item, busy, onClose, onConfirm }: { item: Queu
 
 const PRESETS = [60, 180, 300, 600];
 
-export function TimerModal({ item, busy, onClose, onConfirm }: { item: QueueItem; busy: boolean; onClose: () => void; onConfirm: (seconds: number) => void }) {
+export function TimerModal({ item, busy, blocked, onClose, onConfirm }: { item: QueueItem; busy: boolean; blocked: boolean; onClose: () => void; onConfirm: (seconds: number) => void }) {
   useEscape(busy, onClose);
   const [min, setMin] = useState(String(Math.floor(item.timerSeconds / 60)));
   const [sec, setSec] = useState(String(item.timerSeconds % 60));
@@ -102,7 +103,7 @@ export function TimerModal({ item, busy, onClose, onConfirm }: { item: QueueItem
         style={{ gap: 16 }}
         onSubmit={(e) => {
           e.preventDefault();
-          if (ok && !busy) onConfirm(total);
+          if (ok && !busy && !blocked) onConfirm(total);
         }}
       >
         <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
@@ -132,7 +133,7 @@ export function TimerModal({ item, busy, onClose, onConfirm }: { item: QueueItem
           <button className="btn btn-out" type="button" disabled={busy} onClick={onClose}>
             닫기
           </button>
-          <button className="btn" type="submit" disabled={busy || !ok}>
+          <button className="btn" type="submit" disabled={busy || blocked || !ok}>
             저장
           </button>
         </div>
