@@ -39,6 +39,9 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/subscription/cancel": "BILLING",
   "seller/subscription/plan": "BILLING",
   "seller/subscription/plan/preview": "BILLING",
+  "seller/message-balance": "BILLING",
+  "seller/message-balance/consent": "BILLING",
+  "seller/message-balance/ledger": "BILLING",
   "seller/me/identity": "ACCOUNT",
   "seller/me/identity/link": "ACCOUNT",
   "seller/me/identity/start": "ACCOUNT",
@@ -53,12 +56,14 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/orders/[orderId]/deliver": "ORDER_FOLLOWUP",
   "seller/orders/[orderId]/refund": "ORDER_FOLLOWUP",
   "seller/orders/[orderId]/unconfirm": "ORDER_FOLLOWUP",
+  "seller/orders/[orderId]/reconfirm": "ORDER_FOLLOWUP",
   "seller/orders/[orderId]/ship": "ORDER_FOLLOWUP",
   "seller/purchase-restrictions": "ORDER_FOLLOWUP",
   "seller/shipments": "ORDER_FOLLOWUP",
   "seller/shipments/deliver": "ORDER_FOLLOWUP",
   "seller/members": "ORDER_FOLLOWUP",
   "seller/members/[memberId]": "ORDER_FOLLOWUP",
+  "seller/reward-ledger": "ORDER_FOLLOWUP",
   "seller/purchase-restrictions/[buyerMemberId]/lift": "ORDER_FOLLOWUP",
   "seller/coupons": "STORE_OPERATIONS",
   "seller/reviews": "STORE_OPERATIONS",
@@ -90,6 +95,10 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/products/[productId]/categories": "STORE_OPERATIONS",
   "seller/products/[productId]/images": "STORE_OPERATIONS",
   "seller/products/[productId]/detail": "STORE_OPERATIONS",
+  "seller/display": "STORE_OPERATIONS",
+  "seller/display/sections": "STORE_OPERATIONS",
+  "seller/display/recommended": "STORE_OPERATIONS",
+  "seller/display/settings": "STORE_OPERATIONS",
   "seller/products/[productId]/images/order": "STORE_OPERATIONS",
   "seller/products/[productId]/images/[imageId]": "STORE_OPERATIONS",
   "seller/products/[productId]/event": "STORE_OPERATIONS",
@@ -115,6 +124,12 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/shop-content/logo": "STORE_OPERATIONS",
   "seller/shop-content/logo/image": "STORE_OPERATIONS",
   "seller/broadcast/summary": "OVERLAY",
+  "seller/youtube": "OVERLAY",
+  "seller/youtube/channel": "OVERLAY",
+  "seller/youtube/live": "OVERLAY",
+  "seller/youtube/live/find": "OVERLAY",
+  "seller/hit-cards": "OVERLAY",
+  "seller/hit-cards/[hitCardId]": "OVERLAY",
   "seller/stats/broadcasts": "OVERLAY",
   "seller/stats/members": "STORE_OPERATIONS",
   "seller/stats/orders": "STORE_OPERATIONS",
@@ -148,11 +163,13 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/reviews/images": "STORE_OPERATIONS",
   "shop/[slug]/reviews/[reviewId]/report": "STORE_OPERATIONS",
   "shop/[slug]/reviews/public-images/[imageId]": "STORE_OPERATIONS",
+  "shop/[slug]/home": "STORE_OPERATIONS", // 홈 진열(SA-016)
   "shop/[slug]/products": "STORE_OPERATIONS", // 구매자 상품 목록(운영 중 쇼핑몰만)
   "shop/[slug]/products/[productId]": "STORE_OPERATIONS", // 구매자 상품 상세
   "shop/[slug]/products/[productId]/reviews": "STORE_OPERATIONS",
   "shop/[slug]/products/[productId]/images/[imageId]": "STORE_OPERATIONS", // 상품 사진(보이는 상품만)
   "shop/[slug]/orders/[orderId]": "OPEN",
+  "shop/[slug]/payments": "STORE_OPERATIONS", // 주문 카드 결제 시작(startPayment가 주문 생성과 같은 조건으로 막음)
   "shop/[slug]/auth/login": "OPEN",
   "shop/[slug]/auth/logout": "OPEN",
   "shop/[slug]/addresses": "OPEN",
@@ -192,7 +209,8 @@ const SHOP_PAGES: Record<string, "STORE_OPERATIONS" | "OPEN"> = {
   "shop/[slug]/orders/[orderId]": "OPEN", // SH-007 주문 완료·상세: 기존 주문 조회는 잠긴 쇼핑몰에서도 열림(API와 같은 기준)
   "shop/[slug]/wishlist": "OPEN", // SH-034 찜: 목록·빼기는 잠긴 쇼핑몰에서도 열림(찜하기만 API가 막음)
   "shop/[slug]/orders": "OPEN", // 주문 조회 준비 중 안내(기능 없음)
-  "shop/[slug]/help": "OPEN", // 고객센터 준비 중 안내(기능 없음)
+  "shop/[slug]/help": "STORE_OPERATIONS", // SH-030 고객센터: 공지·FAQ API가 운영 중인 쇼핑몰만 열어 줌 → shopOpen으로 막고, 막히면 안내 화면
+  "shop/[slug]/help/notices/[noticeId]": "STORE_OPERATIONS", // 공지 상세(같은 기준)
   "shop/[slug]/me/notifications": "OPEN", // SH-025 알림 설정: 마케팅 수신 철회는 잠긴 쇼핑몰에서도 연다(API me/marketing-consent와 같은 기준)
 };
 

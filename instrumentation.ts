@@ -3,4 +3,6 @@ export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
   const [{ startScheduler }, { prisma }] = await Promise.all([import("./lib/server/jobs/scheduler"), import("./lib/server/db")]);
   startScheduler(prisma);
+  // 유튜브 방송 상태 확인(60초, 키 없음·SCHEDULER_DISABLED=1이면 꺼짐, lib/server/youtube/worker.ts)
+  (await import("./lib/server/youtube/worker")).startYoutubeWorker(prisma);
 }

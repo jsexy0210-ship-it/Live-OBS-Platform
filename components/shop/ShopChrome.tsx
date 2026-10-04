@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import ShopLogo from "./ShopLogo";
 
@@ -9,7 +9,8 @@ export const CART_COUNT_EVENT = "shop-cart-count";
 const badge = (n: number) => (n > 0 ? <b className="shop-badge" aria-hidden="true">{n > 99 ? "99+" : n}</b> : null);
 const cartLabel = (n: number) => (n > 0 ? `장바구니 (${n}개)` : "장바구니");
 
-type Props = { slug: string; shopName: string; loggedIn: boolean; nickname?: string | null };
+type Category = { id: string; name: string; children: { id: string; name: string }[] };
+type Props = { slug: string; shopName: string; loggedIn: boolean; nickname?: string | null; categories?: Category[] };
 
 function Icon({ d }: { d: string }) {
   return (
@@ -29,15 +30,18 @@ const ICON = {
   heart: "M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.6-7 10-7 10z",
 };
 
-// 구매자 쇼핑몰 머리(띠·로고·검색·장바구니·카테고리)와 휴대폰 카테고리 서랍·아래 고정 바. 상품 분류(카테고리)가 생기면 「전체 상품」 뒤에 붙인다.
-export default function ShopChrome({ slug, shopName, loggedIn, nickname }: Props) {
+// 구매자 쇼핑몰 머리(띠·로고·검색·장바구니·카테고리)와 휴대폰 카테고리 서랍·아래 고정 바. 「전체 상품」 뒤에 쇼핑몰의 대분류 카테고리를 붙이고, 서랍에는 소분류까지 보인다.
+export default function ShopChrome({ slug, shopName, loggedIn, nickname, categories = [] }: Props) {
   const base = `/shop/${encodeURIComponent(slug)}`;
   const path = usePathname() ?? "";
   const [drawer, setDrawer] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLButtonElement>(null);
   const [cartCount, setCartCount] = useState(0);
+  const category = useSearchParams().get("category");
   const here = (href: string) => (path === href ? ("page" as const) : undefined);
+  // 카테고리 링크는 /products?category=id. 그 분류(또는 하위 분류)를 보고 있으면 현재 위치로 표시한다.
+  const inCat = (c: Category) => path === `${base}/products` && !!category && (category === c.id || c.children.some((x) => x.id === category));
 
   useEffect(() => setDrawer(false), [path]);
   // 장바구니 개수 배지: 로그인했을 때만 불러오고, 장바구니 화면이 바뀐 개수를 알려 주면(CART_COUNT_EVENT) 따라간다
@@ -83,7 +87,10 @@ export default function ShopChrome({ slug, shopName, loggedIn, nickname }: Props
       <Link href={`${base}/signup`}>회원가입</Link>
     </>
   );
-  const cats = [{ href: `${base}/products`, label: "전체 상품" }];
+  const cats = [
+    { href: `${base}/products`, label: "전체 상품", current: path === `${base}/products` && !category },
+    ...categories.map((c) => ({ href: `${base}/products?category=${c.id}`, label: c.name, current: inCat(c), sub: c.children })),
+  ];
 
   return (
     <>
@@ -141,7 +148,7 @@ export default function ShopChrome({ slug, shopName, loggedIn, nickname }: Props
         <nav className="shop-cats" aria-label="카테고리">
           <div className="shop-wrap">
             {cats.map((c) => (
-              <Link key={c.href} href={c.href} aria-current={here(c.href)}>
+              <Link key={c.href} href={c.href} aria-current={c.current ? "page" : undefined}>
                 {c.label}
               </Link>
             ))}
@@ -152,7 +159,7 @@ export default function ShopChrome({ slug, shopName, loggedIn, nickname }: Props
             홈
           </Link>
           {cats.map((c) => (
-            <Link key={c.href} href={c.href} aria-current={here(c.href)}>
+            <Link key={c.href} href={c.href} aria-current={c.current ? "page" : undefined}>
               {c.label}
             </Link>
           ))}
@@ -180,9 +187,17 @@ export default function ShopChrome({ slug, shopName, loggedIn, nickname }: Props
             <p className="shop-drawer-title">카테고리</p>
             <nav className="shop-drawer-list" aria-label="카테고리">
               {cats.map((c) => (
-                <Link key={c.href} href={c.href} aria-current={here(c.href)}>
-                  {c.label}
-                </Link>
+                <div key={c.href}>
+                  <Link href={c.href} aria-current={c.current ? "page" : undefined}>
+                    {c.label}
+                  </Link>
+                  {"sub" in c &&
+                    c.sub.map((x) => (
+                      <Link key={x.id} className="shop-drawer-child" href={`${base}/products?category=${x.id}`} aria-current={category === x.id ? "page" : undefined}>
+                        {x.name}
+                      </Link>
+                    ))}
+                </div>
               ))}
             </nav>
             <nav className="shop-drawer-list shop-drawer-sub" aria-label="쇼핑 도움">

@@ -185,7 +185,7 @@ sudo -u obs nano /opt/obs/.env
 | `MAIL_ORDER_PROVIDER`, `FTC_MAIL_ORDER_API_KEY` | 선택 | 통신판매업 점검 |
 | `PORTONE_API_SECRET`, `PORTONE_STORE_ID`, `PORTONE_IDENTITY_CHANNEL_KEY` | 선택 | 휴대폰 본인확인. 없으면 가입 본인확인은 503 「준비 중」 |
 | `OBS_ENVIRONMENT` | 필수(obs-test) | **`test`**. 장애 주입·가용성 프로파일·무중단 배포 스크립트는 이 줄이 있을 때만 돌아요. 운영 서버에는 넣지 않아요 |
-| `IMAGE_STORAGE` | 선택 | 이미지 저장 위치. 비우면 지금처럼 DB에 저장해요. `kakao`면 카카오 Object Storage 버킷에 저장해요(드라이버 PR 병합 뒤부터. 그 전에 넣어도 동작은 바뀌지 않아요). 아래 「이미지 서버(카카오 Object Storage)」 |
+| `IMAGE_STORAGE` | 선택 | 이미지 저장 위치. 비우면 지금처럼 DB에 저장해요. `kakao`면 카카오 Object Storage 버킷에 저장해요(드라이버 `lib/server/storage/kakao.ts`는 들어 있지만, **과금이 생기므로 전환은 보류 중이에요(2026-10-04 대표님 지시). `kakao`로 바꾸지 마세요.**). 아래 「이미지 서버(카카오 Object Storage)」 |
 | `IMAGE_S3_ENDPOINT` | `IMAGE_STORAGE=kakao`일 때 | 버킷의 S3 호환 주소(비밀이 아니에요) |
 | `IMAGE_S3_REGION` | 위와 같음 | 리전(`kr-central-2`) |
 | `IMAGE_S3_BUCKET` | 위와 같음 | 버킷 이름(`live-obs-platform`) |

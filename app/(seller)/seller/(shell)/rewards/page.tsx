@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { FormFoot, FormRow, FormSection, PageHead } from "../../../../../components/admin-ui";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
@@ -48,27 +49,13 @@ export default function RewardPolicyPage() {
     setToast("적립금 지급 시점을 저장했습니다 · 다음 결제부터 적용됩니다");
   };
 
+  const option = OPTIONS.find((o) => o.key === timing)!;
+
   return (
     <>
-      <Topbar crumb="판매 › 적립금">
-        {saved && (
-          <button className="btn btn-sm" type="button" onClick={() => void save()} disabled={saving || !dirty}>
-            {saving ? "저장 중" : "저장"}
-          </button>
-        )}
-      </Topbar>
+      <Topbar crumb="판매 › 적립금" />
       <main className="main">
-        <nav className="tabs" aria-label="적립금">
-          <a className="tab on" href="/seller/rewards" aria-current="page">
-            적립 정책
-          </a>
-        </nav>
-        <div className="ph">
-          <div className="col" style={{ gap: 6 }}>
-            <h1 className="t-t3">적립 정책</h1>
-            <span className="t-l2 c-alt">구매자 적립금의 지급 시점을 정합니다. 저장하면 다음 결제부터 적용됩니다.</span>
-          </div>
-        </div>
+        <PageHead title="적립 정책" />
 
         {state.kind !== "ok" ? (
           <div className="card">
@@ -83,46 +70,47 @@ export default function RewardPolicyPage() {
               ))}
           </div>
         ) : (
-          <div className="form-grid">
-            <div className="col" style={{ gap: 20 }}>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void save();
+            }}
+          >
+            <fieldset className="settings-fields" disabled={saving}>
               {failure && (
-                <div className="msg msg-neg" role="alert">
+                <div className="msg msg-neg" role="alert" style={{ marginBottom: 16 }}>
                   <span>
                     <b>저장할 수 없습니다.</b> {failure}
                   </span>
                 </div>
               )}
-              <section className="card pad-l col" style={{ gap: 14 }} role="radiogroup" aria-label="적립금 지급 시점">
-                <h2 className="t-hl1">적립금 지급 시점</h2>
-                <div className="col" style={{ gap: 8 }}>
-                  {OPTIONS.map((o) => (
-                    <label key={o.key} className={`row choice${timing === o.key ? " on" : ""}`} style={{ gap: 10 }}>
-                      <input className="rdo" type="radio" name="earn-timing" checked={timing === o.key} onChange={() => setTiming(o.key)} aria-label={o.title} />
-                      <span className="col" style={{ gap: 2, flex: 1, minWidth: 0 }}>
-                        <span className="t-l1 fw6">{o.title}</span>
-                        <span className="t-c1 c-alt">{o.desc}</span>
-                      </span>
-                    </label>
-                  ))}
-                </div>
-                <div className="msg msg-info t-l2" role="note">
-                  <span>
-                    <b>적립금은 결제할 때 금액으로 정해집니다.</b> 지급 시점을 변경해도 적립 금액은 그대로이고, 적립되는 시점만 달라집니다.
-                  </span>
-                </div>
-              </section>
-            </div>
-
-            <aside className="col aside-sticky" style={{ gap: 16 }}>
-              <div className="card pad col" style={{ gap: 6 }}>
-                <span className="t-hl2">참고</span>
-                <span className="t-l2 c-neu">변경한 지급 시점은 저장한 뒤 결제되는 주문부터 적용됩니다. 이미 결제한 주문은 결제할 때의 설정을 따릅니다.</span>
+              <FormSection title="적립금 지급 시점">
+                <FormRow label="지급 시점" help={option.desc}>
+                  <div className="row" role="radiogroup" aria-label="적립금 지급 시점" style={{ gap: 24, flexWrap: "wrap" }}>
+                    {OPTIONS.map((o) => (
+                      <label key={o.key} className="chk">
+                        <input className="rdo" type="radio" name="earn-timing" checked={timing === o.key} onChange={() => setTiming(o.key)} aria-label={o.title} />
+                        {o.title}
+                      </label>
+                    ))}
+                  </div>
+                </FormRow>
+              </FormSection>
+              <div className="msg msg-info t-l2" role="note" style={{ marginTop: 16 }}>
+                <span>
+                  <b>적립금은 결제할 때 금액으로 정해집니다.</b> 지급 시점을 변경해도 적립 금액은 그대로이고, 적립되는 시점만 달라집니다.
+                </span>
               </div>
-              <button className="btn btn-lg btn-block" type="button" onClick={() => void save()} disabled={saving || !dirty}>
+              <p className="help" style={{ marginTop: 8 }}>
+                변경한 지급 시점은 저장한 뒤 결제되는 주문부터 적용됩니다. 이미 결제한 주문은 결제할 때의 설정을 따릅니다.
+              </p>
+            </fieldset>
+            <FormFoot>
+              <button className="btn btn-lg" type="submit" disabled={saving || !dirty}>
                 {saving ? "저장 중" : "저장"}
               </button>
-            </aside>
-          </div>
+            </FormFoot>
+          </form>
         )}
       </main>
       {toast && <Toast text={toast} onDone={() => setToast(null)} />}

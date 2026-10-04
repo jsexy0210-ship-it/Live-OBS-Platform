@@ -1,0 +1,113 @@
+/* 고객센터(HelpView.tsx)·공지 상세(NoticeView.tsx). 표는 열 제목 가운데·값 왼쪽 */
+.help-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--wds-line-solid-neutral);
+}
+.help-tabs button {
+  height: var(--shop-h);
+  padding: 0 16px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--wds-label-alternative);
+  cursor: pointer;
+}
+.help-tabs button[aria-selected="true"] {
+  color: var(--brand);
+  border-bottom-color: var(--brand);
+}
+.help-tbl .c-date {
+  width: 96px;
+}
+.help-tbl th.c-date,
+.help-tbl td.c-date {
+  text-align: left;
+}
+.help-tag {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 1px 6px;
+  border-radius: 2px;
+  background: var(--wds-fill-normal);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--wds-label-neutral);
+}
+.help-search {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  max-width: 480px;
+}
+.help-search .inp {
+  flex: 1;
+}
+.help-hint {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--wds-status-negative);
+}
+.help-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.help-chip {
+  height: var(--shop-h-sm);
+  padding: 0 12px;
+  border: 1px solid var(--wds-line-solid-normal);
+  border-radius: var(--shop-r);
+  background: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+.help-chip[aria-pressed="true"] {
+  border-color: var(--wds-label-normal);
+  background: var(--wds-label-normal);
+  color: #fff;
+}
+.help-faqs {
+  border-top: 1px solid var(--wds-label-normal);
+}
+.help-faq {
+  border-bottom: 1px solid var(--wds-line-solid-neutral);
+}
+.help-faq summary {
+  padding: 14px 4px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.help-faq p {
+  margin: 0;
+  padding: 12px 12px 16px;
+  background: var(--wds-background-normal-alternative);
+  white-space: pre-line;
+  line-height: 1.6;
+}
+.help-notice h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+.help-date {
+  margin: 0 0 16px;
+  font-size: 12px;
+  color: var(--wds-label-alternative);
+}
+.help-body {
+  padding: 16px 0;
+  border-top: 1px solid var(--wds-line-solid-neutral);
+  white-space: pre-wrap;
+  line-height: 1.7;
+}
+.shop-app .help-tbl a {
+  color: var(--wds-label-normal);
+  text-decoration: none;
+}
+.shop-app .help-tbl a:hover {
+  text-decoration: underline;
+}

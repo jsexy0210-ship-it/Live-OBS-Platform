@@ -4,6 +4,7 @@ import { prisma } from "../../../../../../lib/server/db";
 import { mutation, queueRejectionStatus, readJson, sessionToken } from "../../../../../../lib/server/http/route";
 import { orderErrorBody } from "../../../../../../lib/server/orders/messages";
 import { refundOrder } from "../../../../../../lib/server/queue/service";
+import { kickPaymentCancels } from "../../../../../../lib/server/payments/worker";
 
 // 화면에 바로 보여 줄 안내 문구가 있는 환불 거부 사유
 type RefundMessageCode = "fault_required" | "opened_items_present" | "opened_items_unshipped" | "purchase_confirmed";
@@ -38,5 +39,7 @@ export const POST = mutation(async (req: Request, { params }: { params: Promise<
     const status = queueRejectionStatus(result.reason);
     return NextResponse.json(REFUND_MESSAGE_CODES.has(result.reason) ? orderErrorBody(result.reason as RefundMessageCode, "formal") : { error: result.reason }, { status });
   }
+  // 카드 결제 주문이면 커밋 뒤 PG 취소(부분 취소 포함)를 보낸다. 실패해도 환불 결과는 그대로, 정기 실행이 다시 보낸다.
+  await kickPaymentCancels(prisma, orderId);
   return NextResponse.json({ ...result.value, version: result.version });
 });
