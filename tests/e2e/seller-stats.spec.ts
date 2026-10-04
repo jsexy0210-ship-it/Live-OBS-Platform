@@ -79,6 +79,11 @@ test("직접 선택: 1년을 넘는 기간은 막고, 맞는 기간은 그 기�
   expect((await r).status()).toBe(200);
   await expect(page.getByText("선택한 기간에 주문이 없습니다")).toBeVisible();
   await shot(page, "stats-orders-empty");
+  // 이번 달: 그달 1일(KST)부터 오늘까지
+  const today = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
+  const month = statsResponse(page, "orders", `from=${today.slice(0, 8)}01&to=${today}`);
+  await page.getByRole("button", { name: "이번 달" }).click();
+  expect((await month).status()).toBe(200);
 });
 
 test("매출 통계: 매출 구성·결제 수단별을 API 값으로 보여 준다", async ({ page }) => {
@@ -142,7 +147,11 @@ test("방송 통계: 방송이 없으면 빈 상태를, 탭으로 다른 통계�
   const body = await (await first).json();
   expect(body.unavailable).toEqual(["viewers", "conversion"]);
   if (body.total.broadcasts === 0) await expect(page.getByText("선택한 기간에 진행한 방송이 없습니다")).toBeVisible();
-  else await expect(page.getByTestId("stats-broadcasts").locator("tbody tr")).toHaveCount(body.broadcasts.length);
+  else {
+    // 방송마다 방송 매출 줄 + 방송 시간 일반 주문 줄
+    await expect(page.getByTestId("stats-broadcasts").locator("tbody tr")).toHaveCount(body.broadcasts.length * 2);
+    await expect(page.getByTestId("stats-broadcast-general")).toHaveCount(body.broadcasts.length);
+  }
   await shot(page, "stats-broadcasts");
   await page.getByRole("navigation", { name: "통계 종류" }).getByRole("link", { name: "매출" }).click();
   await expect(page).toHaveURL(/\/seller\/stats\/sales$/);

@@ -19,7 +19,8 @@ export const STATS_TABS = [
 ] as const;
 
 export type Unit = "day" | "week" | "month";
-export type Period = { preset: "today" | "7d" | "30d" | "custom"; from: string; to: string; unit: Unit };
+export type Period = { preset: Preset | "custom"; from: string; to: string; unit: Unit };
+type Preset = "today" | "7d" | "30d" | "month";
 const MAX_DAYS = 366;
 const DAY_MS = 86_400_000;
 
@@ -27,9 +28,11 @@ export const kstToday = () => new Date(Date.now() + 9 * 3600_000).toISOString().
 const shift = (d: string, days: number) => new Date(new Date(`${d}T00:00:00Z`).getTime() + days * DAY_MS).toISOString().slice(0, 10);
 const daysBetween = (a: string, b: string) => Math.round((new Date(`${b}T00:00:00Z`).getTime() - new Date(`${a}T00:00:00Z`).getTime()) / DAY_MS) + 1;
 
-function presetPeriod(preset: "today" | "7d" | "30d", unit: Unit): Period {
+// 이번 달: 그달 1일(KST)부터 오늘까지(MASTER 결정 2026-10-04)
+function presetPeriod(preset: Preset, unit: Unit): Period {
   const to = kstToday();
-  return { preset, to, from: preset === "today" ? to : shift(to, preset === "7d" ? -6 : -29), unit };
+  const from = preset === "today" ? to : preset === "month" ? `${to.slice(0, 8)}01` : shift(to, preset === "7d" ? -6 : -29);
+  return { preset, to, from, unit };
 }
 
 export type Load<T> = { kind: "loading" } | { kind: "error"; status: number; error: string } | { kind: "ok"; data: T };
@@ -78,6 +81,7 @@ export function StatsFrame({ title, sub, period, setPeriod, onDownload, units = 
     { key: "today", label: "오늘" },
     { key: "7d", label: "최근 7일" },
     { key: "30d", label: "최근 30일" },
+    { key: "month", label: "이번 달" },
   ] as const;
   const unitOptions: { key: Unit; label: string }[] = [
     { key: "day", label: "일" },

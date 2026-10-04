@@ -361,6 +361,11 @@ describe("방송 통계 GET /api/seller/stats/broadcasts", () => {
     await queue(s.seller.id, await s.order({ createdAt: at, total: 10000, status: "REFUNDED", refundAmount: 7000, items: [[5000, 5000, 1]] }), live.id);
     await queue(s.seller.id, await s.order({ createdAt: at, total: 3000, items: [[3000, 3000, 1]] }), null);
     await queue(s.seller.id, await s.order({ createdAt: at, total: 4000, items: [[4000, 4000, 1]] }), old.id);
+    // 방송 시간 일반 주문: 주문대기에 안 올라간 결제 주문(방송 종료 뒤 2시간 안까지). 결제 대기·2시간 뒤 주문은 빼고, 환불은 따로 센다
+    await s.order({ createdAt: "2026-10-02T14:59:00Z", total: 6000, items: [[6000, 6000, 1]] });
+    await s.order({ createdAt: "2026-10-02T14:00:00Z", total: 2000, status: "REFUNDED", refundAmount: 2000, items: [[2000, 2000, 1]] });
+    await s.order({ createdAt: "2026-10-02T12:30:00Z", total: 9000, status: "PENDING_PAYMENT", items: [[9000, 9000, 1]] });
+    await s.order({ createdAt: "2026-10-02T15:00:00Z", total: 8000, items: [[8000, 8000, 1]] });
 
     const { status, body } = await call(broadcastsRoute, "broadcasts?from=2026-10-01&to=2026-10-07", await cookieOf(s.owner.email));
     expect(status).toBe(200);
@@ -368,6 +373,10 @@ describe("방송 통계 GET /api/seller/stats/broadcasts", () => {
     expect(body.broadcasts[1]).toMatchObject({ title: "금요 방송", orders: 2, paid: 30000, refunded: 1, refund: 7000, net: 23000 });
     expect(body.broadcasts[0]).toMatchObject({ title: null, orders: 0, paid: 0, net: 0 });
     expect(body.total).toEqual({ broadcasts: 2, orders: 2, paid: 30000, net: 23000 });
+    // 주문대기에 방송 없이 올라간 주문(3,000원)과 안 올라간 주문 2건. 다른 방송 주문대기에 올라간 4,000원은 넣지 않는다
+    expect(body.broadcasts[1].general).toEqual({ orders: 3, paid: 11000, refunded: 1, refund: 2000, net: 9000 });
+    expect(body.broadcasts[0].general).toEqual({ orders: 0, paid: 0, refunded: 0, refund: 0, net: 0 });
+    expect(body.general).toEqual({ orders: 3, paid: 11000, net: 9000 });
     expect(body.unavailable).toEqual(["viewers", "conversion"]);
   });
 
