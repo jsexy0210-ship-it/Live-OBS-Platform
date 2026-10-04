@@ -5,9 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { FormRow, FormSection } from "../admin-ui";
+import ProductDetailEditor, { type DetailBlock } from "./ProductDetailEditor";
+import ProductImages, { type SlotImage } from "./ProductImages";
 import { Topbar } from "./SellerShell";
 import { NoImage, Toast } from "./States";
-import { api, failMessage, type Product, type ProductOption, type ProductStatus, type StockDeductMode } from "./api";
+import { api, apiUpload, failMessage, type Product, type ProductImageInfo, type ProductOption, type ProductStatus, type StockDeductMode } from "./api";
 import { INT4_MAX, STATUS_LABEL, parseAmount, statusBadge, textLength, won } from "./format";
 import { cleanText } from "../../lib/server/text/clean";
 
@@ -28,7 +30,13 @@ type OptRow = {
   orig?: { name: string; priceDelta: number; stock: number };
 };
 
-type Errors = { name?: string; description?: string; price?: string; options?: string; rows: Record<number, { name?: string; priceDelta?: string; stock?: string }> };
+type Errors = {
+  name?: string;
+  description?: string;
+  price?: string;
+  options?: string;
+  rows: Record<number, { name?: string; priceDelta?: string; stock?: string }>;
+};
 
 const STATUS_HELP: Record<ProductStatus, string> = {
   ON_SALE: "쇼핑몰과 방송 주문대기에 바로 표시됩니다",
@@ -97,6 +105,20 @@ function errorFields(e: Errors): string {
   return f.join(" · ");
 }
 
+// 폼이 들고 있는 이미지: 서버에 있는 것(server)과 아직 올리지 않은 새 파일(file)
+type FormImage = SlotImage & { server?: boolean; file?: File };
+// 카테고리 트리(GET /api/seller/categories). 2단까지
+type CategoryNode = {
+  id: string;
+  name: string;
+  visible: boolean;
+  sortOrder: number;
+  productCount: number;
+  children: CategoryNode[];
+};
+// 짧은 설명(시안: 한 줄 0/80). 이미 저장된 긴 설명·여러 줄 설명은 그대로 보여 주고 저장을 막지 않는다
+const SHORT_DESC_MAX = 80;
+
 export function ProductForm({ initial }: { initial?: Product }) {
   const router = useRouter();
   const isEdit = !!initial;
@@ -104,6 +126,55 @@ export function ProductForm({ initial }: { initial?: Product }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [price, setPrice] = useState(initial ? String(initial.price) : "");
+  // 카테고리: 대분류·소분류 한 쌍을 고른다(상품에는 고른 것 중 가장 아래 칸만 지정). 지정은 상품을 만든 뒤(수정은 바뀌었을 때) 따로 저장한다
+  const [cats, setCats] = useState<CategoryNode[] | null>(null);
+  const [parentId, setParentId] = useState("");
+  const [childId, setChildId] = useState("");
+  const [catBase, setCatBase] = useState<string | null>(null);
+  const categoryId = childId || parentId || null;
+  const legacyDesc = !!initial?.description && (initial.description.length > SHORT_DESC_MAX || initial.description.includes("\n"));
+  useEffect(() => {
+    void (async () => {
+      const t = await api<{ categories: CategoryNode[] }>("/api/seller/categories");
+      if (!t.ok) return;
+      setCats(t.data.categories);
+      if (!initial) return;
+      const a = await api<{ categoryIds: string[] }>(`/api/seller/products/${initial.id}/categories`);
+      const id = a.ok ? a.data.categoryIds[0] : undefined;
+      if (!id) return setCatBase(null);
+      const top = t.data.categories.find((c) => c.id === id);
+      const parent = top ?? t.data.categories.find((c) => c.children.some((k) => k.id === id));
+      setParentId(parent?.id ?? "");
+      setChildId(top ? "" : id);
+      setCatBase(id);
+    })();
+  }, [initial]);
+  // 이미지(SA-012): 저장할 때 올린다. 새로 고른 파일은 file을 들고 있고(미리보기는 브라우저 주소), 서버에 있는 것은 server=true.
+  // 지운 서버 이미지는 저장할 때 지운다. 순서는 저장할 때 서버에 맞춘다.
+  const [images, setImages] = useState<FormImage[]>(() => (initial?.images ?? []).map((i) => ({ id: i.id, url: i.url, state: "done" as const, server: true })));
+  const [removedImages, setRemovedImages] = useState<string[]>([]);
+  const [uploadNote, setUploadNote] = useState<string | null>(null);
+  // 상세 페이지 블록(글·이미지): 이미지 블록의 사진도 저장할 때 올린다(?kind=detail). 지운·바꾼 서버 상세 사진은 저장할 때 서버에서 지운다
+  const [blocks, setBlocks] = useState<DetailBlock[]>([]);
+  const [detailRemoved, setDetailRemoved] = useState<string[]>([]);
+  const detailBase = useRef<string>("[]");
+  useEffect(() => {
+    if (!initial) return;
+    void api<{ blocks: ({ type: "text"; text: string } | { type: "image"; imageId: string; url: string })[] }>(`/api/seller/products/${initial.id}/detail`).then((r) => {
+      if (!r.ok) return;
+      const list: DetailBlock[] = r.data.blocks.map((b, i) =>
+        b.type === "text" ? { id: `d${i}`, type: "text", text: b.text } : { id: `d${i}`, type: "image", image: { id: b.imageId, url: b.url, state: "done", server: true } as SlotImage },
+      );
+      setBlocks(list);
+      detailBase.current = JSON.stringify(r.data.blocks.map((b) => (b.type === "text" ? { type: "text", text: b.text } : { type: "image", imageId: b.imageId })));
+    });
+  }, [initial]);
+  const localImage = (f: File): FormImage => ({
+    id: `i${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+    url: URL.createObjectURL(f),
+    state: "done",
+    file: f,
+  });
   const [status, setStatus] = useState<ProductStatus>(initial?.status ?? "ON_SALE");
   const [deduct, setDeduct] = useState<StockDeductMode>(initial?.stockDeductMode ?? "PAYMENT");
   // 취소·반품 때 재고를 되돌릴지는 주문 설정(restockOnCancel)을 따른다. 쇼핑몰 설정 권한이 없으면 읽지 못하므로 설정 이름만 안내한다
@@ -146,7 +217,19 @@ export function ProductForm({ initial }: { initial?: Product }) {
     topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
+  // 상세 페이지: 서버는 글 1~2000자, 이미지는 올린 사진만 받는다. 비어 있는 블록은 저장 전에 알려 준다
+  const detailError = blocks.some((b) => b.type === "text" && b.text.trim() === "")
+    ? "비어 있는 글 블록이 있습니다. 내용을 입력하거나 블록을 삭제해 주십시오"
+    : blocks.some((b) => b.type === "image" && !b.image)
+      ? "이미지가 없는 이미지 블록이 있습니다. 이미지를 올리거나 블록을 삭제해 주십시오"
+      : null;
+
   const checkFirst = (st: ProductStatus) => {
+    if (detailError) {
+      setShowErrors(true);
+      fail(detailError);
+      return false;
+    }
     const e = validate(name, description, price, st, rows);
     if (errorCount(e) > 0) {
       setShowErrors(true);
@@ -154,6 +237,88 @@ export function ProductForm({ initial }: { initial?: Product }) {
       return false;
     }
     return true;
+  };
+
+  // 서버에 있는 이미지 순서(저장한 뒤 맞춰 둔다). 저장 때 화면 순서와 다르면 순서를 서버에 보낸다
+  const serverOrder = useRef<string[]>((initial?.images ?? []).map((i) => i.id));
+
+  // 이미지를 저장한다: 지운 것 삭제 → 새 파일을 화면 순서대로 올림 → 순서가 다르면 순서 맞춤. 실패하면 거기서 멈추고 이유를 돌려 준다
+  // (이미 처리한 단계는 화면 상태에 반영돼 다시 저장해도 되풀이하지 않는다)
+  const syncImages = async (productId: string): Promise<{ ok: true } | { ok: false; message: string }> => {
+    const base = `/api/seller/products/${productId}/images`;
+    for (const id of removedImages) {
+      const r = await api(`${base}/${id}`, { method: "DELETE" });
+      if (!r.ok && r.status !== 404) return { ok: false, message: failMessage(r, "admin", "이미지를 지우지 못했습니다") };
+      serverOrder.current = serverOrder.current.filter((x) => x !== id);
+      setRemovedImages((cur) => cur.filter((x) => x !== id));
+    }
+    let list = images;
+    const todo = list.filter((i) => i.file);
+    let n = 0;
+    for (const img of todo) {
+      n += 1;
+      setUploadNote(`이미지 ${todo.length}장 올리는 중 · ${n} / ${todo.length}`);
+      list = list.map((x) => (x.id === img.id ? { ...x, state: "uploading" as const, error: undefined } : x));
+      setImages(list);
+      const r = await apiUpload<{ image: ProductImageInfo }>(base, img.file!);
+      if (!r.ok) {
+        const message = failMessage(r, "admin", "이미지를 올리지 못했습니다");
+        list = list.map((x) => (x.id === img.id ? { ...x, state: "error" as const, error: message } : x));
+        setImages(list);
+        setUploadNote(null);
+        return { ok: false, message };
+      }
+      URL.revokeObjectURL(img.url);
+      serverOrder.current = [...serverOrder.current, r.data.image.id];
+      list = list.map((x) => (x.id === img.id ? { id: r.data.image.id, url: r.data.image.url, state: "done" as const, server: true } : x));
+      setImages(list);
+    }
+    setUploadNote(null);
+    const want = list.filter((i) => i.server).map((i) => i.id);
+    if (want.length > 1 && want.join() !== serverOrder.current.join()) {
+      const r = await api(`${base}/order`, { method: "PUT", body: { imageIds: want } });
+      if (!r.ok) return { ok: false, message: failMessage(r, "admin", "이미지 순서를 저장하지 못했습니다") };
+    }
+    serverOrder.current = want;
+    return { ok: true };
+  };
+
+  // 상세 페이지를 저장한다: 새 상세 사진 올림(?kind=detail) → 블록 통째로 저장 → 지운·바꾼 상세 사진 삭제. 실패하면 거기서 멈춘다
+  const syncDetail = async (productId: string): Promise<{ ok: true } | { ok: false; message: string }> => {
+    const base = `/api/seller/products/${productId}/images`;
+    let list = blocks;
+    const todo = list.filter((b) => b.type === "image" && (b.image as FormImage | null)?.file);
+    let n = 0;
+    for (const b of todo) {
+      if (b.type !== "image" || !b.image) continue;
+      const img = b.image as FormImage;
+      n += 1;
+      setUploadNote(`상세 이미지 ${todo.length}장 올리는 중 · ${n} / ${todo.length}`);
+      const r = await apiUpload<{ image: ProductImageInfo }>(`${base}?kind=detail`, img.file!);
+      if (!r.ok) {
+        const message = failMessage(r, "admin", "상세 이미지를 올리지 못했습니다");
+        list = list.map((x) => (x.id === b.id && x.type === "image" ? { ...x, image: { ...img, state: "error" as const, error: message } as SlotImage } : x));
+        setBlocks(list);
+        setUploadNote(null);
+        return { ok: false, message };
+      }
+      URL.revokeObjectURL(img.url);
+      list = list.map((x) => (x.id === b.id && x.type === "image" ? { ...x, image: { id: r.data.image.id, url: r.data.image.url, state: "done" as const, server: true } as SlotImage } : x));
+      setBlocks(list);
+    }
+    setUploadNote(null);
+    const payload = list.map((b) => (b.type === "text" ? { type: "text", text: b.text } : { type: "image", imageId: b.image!.id }));
+    if (JSON.stringify(payload) !== detailBase.current) {
+      const r = await api(`/api/seller/products/${productId}/detail`, { method: "PUT", body: { blocks: payload } });
+      if (!r.ok) return { ok: false, message: failMessage(r, "admin", "상세 페이지를 저장하지 못했습니다") };
+      detailBase.current = JSON.stringify(payload);
+    }
+    for (const id of detailRemoved) {
+      const r = await api(`${base}/${id}`, { method: "DELETE" });
+      if (!r.ok && r.status !== 404) return { ok: false, message: failMessage(r, "admin", "상세 이미지를 지우지 못했습니다") };
+      setDetailRemoved((cur) => cur.filter((x) => x !== id));
+    }
+    return { ok: true };
   };
 
   const create = async (st: ProductStatus) => {
@@ -172,7 +337,19 @@ export function ProductForm({ initial }: { initial?: Product }) {
       },
     });
     if (!r.ok) return fail(failMessage(r, "admin", "상품을 등록하지 못했습니다. 입력한 내용은 그대로 있습니다"));
-    router.push(`/seller/products?toast=${st === "DRAFT" ? "draft" : "created"}`);
+    // 카테고리·이미지는 상품이 만들어진 뒤에 저장한다. 실패해도 상품은 이미 등록됐으므로 목록으로 보내고 알려 준다(다시 눌러 중복 등록하지 않게)
+    let catFailed = false;
+    if (categoryId) {
+      const c = await api(`/api/seller/products/${r.data.id}/categories`, {
+        method: "PUT",
+        body: { categoryIds: [categoryId] },
+      });
+      catFailed = !c.ok;
+    }
+    let imgFailed = false;
+    if (images.length > 0) imgFailed = !(await syncImages(r.data.id)).ok;
+    if (!imgFailed && blocks.length > 0) imgFailed = !(await syncDetail(r.data.id)).ok;
+    router.push(`/seller/products?toast=${catFailed || imgFailed ? "created_partial" : st === "DRAFT" ? "draft" : "created"}`);
   };
 
   // 수정: 바뀐 것만 하나씩 보낸다. 한 단계가 실패하면 거기서 멈추고, 이미 저장된 단계는 기준값에 반영해 다시 보내지 않는다.
@@ -220,7 +397,19 @@ export function ProductForm({ initial }: { initial?: Product }) {
         if (!r.ok) return fail(failMessage(r, "admin", "옵션을 추가하지 못했습니다"));
         current = r.data;
         const made = current.options.find((x) => !known.has(x.id));
-        list = list.map((x) => (x.key === o.key && made ? { ...x, id: made.id, orig: { name: made.name, priceDelta: made.priceDelta, stock: made.stock } } : x));
+        list = list.map((x) =>
+          x.key === o.key && made
+            ? {
+                ...x,
+                id: made.id,
+                orig: {
+                  name: made.name,
+                  priceDelta: made.priceDelta,
+                  stock: made.stock,
+                },
+              }
+            : x,
+        );
         setRows(list);
         continue;
       }
@@ -236,7 +425,17 @@ export function ProductForm({ initial }: { initial?: Product }) {
           const fresh = await api<Product>(`/api/seller/products/${current.id}`);
           const now = fresh.ok ? fresh.data.options.find((x) => x.id === o.id) : undefined;
           if (now) {
-            setRows(list.map((x) => (x.key === o.key ? { ...x, stock: String(now.stock), orig: { ...x.orig!, stock: now.stock } } : x)));
+            setRows(
+              list.map((x) =>
+                x.key === o.key
+                  ? {
+                      ...x,
+                      stock: String(now.stock),
+                      orig: { ...x.orig!, stock: now.stock },
+                    }
+                  : x,
+              ),
+            );
             return fail(`그사이 「${o.name.trim()}」 재고가 변경되었습니다. 지금 재고는 ${now.stock.toLocaleString("ko-KR")}개입니다. 확인하고 다시 저장해 주십시오`);
           }
         }
@@ -256,6 +455,18 @@ export function ProductForm({ initial }: { initial?: Product }) {
     }
 
     if (!(await patchProduct(late))) return;
+    if (categoryId !== catBase) {
+      const c = await api(`/api/seller/products/${current.id}/categories`, {
+        method: "PUT",
+        body: { categoryIds: categoryId ? [categoryId] : [] },
+      });
+      if (!c.ok) return fail(failMessage(c, "admin", "카테고리를 지정하지 못했습니다"));
+      setCatBase(categoryId);
+    }
+    const si = await syncImages(current.id);
+    if (!si.ok) return fail(si.message);
+    const sd = await syncDetail(current.id);
+    if (!sd.ok) return fail(sd.message);
     setBase(current);
     setRows(current.options.map(toRow));
     setRemoved([]);
@@ -329,17 +540,142 @@ export function ProductForm({ initial }: { initial?: Product }) {
                 {(shown.name || nameLen > NAME_MAX) && <span className="err">{shown.name ?? `상품명은 ${NAME_MAX}자까지 입력할 수 있습니다`}</span>}
               </div>
             </FormRow>
-            <FormRow label="상품 설명" htmlFor="p-desc">
+            <FormRow
+              label="카테고리"
+              help={cats && cats.length === 0 ? "등록된 카테고리가 없습니다. 카테고리를 만들면 여기서 고를 수 있습니다" : "쇼핑몰 상품 목록에서 이 카테고리로 찾을 수 있습니다"}
+            >
+              {cats && cats.length > 0 ? (
+                <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                  <select
+                    className="inp"
+                    style={{ width: 200 }}
+                    aria-label="대분류"
+                    value={parentId}
+                    onChange={(e) => {
+                      setParentId(e.target.value);
+                      setChildId("");
+                    }}
+                  >
+                    <option value="">대분류 선택</option>
+                    {cats.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                  {(cats.find((c) => c.id === parentId)?.children.length ?? 0) > 0 && (
+                    <select className="inp" style={{ width: 200 }} aria-label="소분류" value={childId} onChange={(e) => setChildId(e.target.value)}>
+                      <option value="">소분류 선택 안 함</option>
+                      {cats
+                        .find((c) => c.id === parentId)!
+                        .children.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                    </select>
+                  )}
+                </div>
+              ) : (
+                <span className="t-l2 c-alt">{cats ? "카테고리 없음" : "불러오는 중"}</span>
+              )}
+            </FormRow>
+            <FormRow label="상품 코드" help="등록하면 판매자별 순번으로 자동 매겨집니다">
+              <span className="num" data-testid="product-code">
+                {base?.code ?? "등록 후 표시"}
+              </span>
+            </FormRow>
+            <FormRow label="짧은 설명" htmlFor="p-desc">
               <div className="col" style={{ gap: 4, width: "100%" }}>
-                <textarea
-                  id="p-desc"
-                  className={`inp${shown.description ? " is-error" : ""}`}
-                  placeholder="구성 · 상태 · 배송 안내를 입력해 주십시오"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                />
-                {shown.description && <span className="err">{shown.description}</span>}
+                {legacyDesc ? (
+                  <textarea
+                    id="p-desc"
+                    className={`inp${shown.description ? " is-error" : ""}`}
+                    placeholder="한 줄로 소개해 주십시오"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                  />
+                ) : (
+                  <div style={{ position: "relative" }}>
+                    <input
+                      id="p-desc"
+                      className={`inp${shown.description ? " is-error" : ""}`}
+                      type="text"
+                      placeholder="예: 36팩 · 한정 수량"
+                      maxLength={SHORT_DESC_MAX}
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      style={{ paddingRight: 70 }}
+                    />
+                    <span className="t-c1 num name-count c-alt" data-testid="desc-count">
+                      {textLength(description)}/{SHORT_DESC_MAX}
+                    </span>
+                  </div>
+                )}
+                {shown.description ? (
+                  <span className="err">{shown.description}</span>
+                ) : (
+                  <span className="help">상품 상세 위쪽과 공유 카드에 보입니다 · 자세한 내용은 아래 「상세 페이지」 블록으로</span>
+                )}
               </div>
+            </FormRow>
+          </FormSection>
+
+          <FormSection title="이미지" actions={<span className="t-c1 c-alt num">{images.length} / 10</span>}>
+            <FormRow label="상품 이미지">
+              <ProductImages
+                images={images}
+                disabled={busy}
+                onAdd={(files) => setImages((cur) => [...cur, ...files.map(localImage)])}
+                onRemove={(id) => {
+                  const gone = images.find((x) => x.id === id);
+                  if (gone?.server) setRemovedImages((cur) => [...cur, id]);
+                  setImages((cur) => cur.filter((x) => x.id !== id));
+                }}
+                onRestore={(img, index) => {
+                  if ((img as FormImage).server) setRemovedImages((cur) => cur.filter((x) => x !== img.id));
+                  setImages((cur) => {
+                    const next = [...cur];
+                    next.splice(Math.min(index, next.length), 0, img as FormImage);
+                    return next;
+                  });
+                }}
+                onReorder={(from, to) =>
+                  setImages((cur) => {
+                    const next = [...cur];
+                    const [m] = next.splice(from, 1);
+                    next.splice(to, 0, m!);
+                    return next;
+                  })
+                }
+                onRetry={(id) => setImages((cur) => cur.map((x) => (x.id === id ? { ...x, state: "done" as const, error: undefined } : x)))}
+              />
+            </FormRow>
+          </FormSection>
+
+          <FormSection title="상세 페이지">
+            <FormRow label="상세 내용">
+              <ProductDetailEditor
+                blocks={blocks}
+                disabled={busy}
+                onChange={(next) => {
+                  // 지운 서버 상세 사진은 저장할 때 서버에서도 지운다
+                  const keep = new Set(next.flatMap((b) => (b.type === "image" && b.image ? [b.image.id] : [])));
+                  const gone = blocks.flatMap((b) => (b.type === "image" && b.image && (b.image as FormImage).server && !keep.has(b.image.id) ? [b.image.id] : []));
+                  if (gone.length > 0) setDetailRemoved((cur) => [...cur, ...gone]);
+                  setBlocks(next);
+                }}
+                onPickImage={(blockId, file) => {
+                  const old = blocks.find((b) => b.id === blockId);
+                  if (old?.type === "image" && old.image && (old.image as FormImage).server) setDetailRemoved((cur) => [...cur, old.image!.id]);
+                  setBlocks((cur) => cur.map((b) => (b.id === blockId && b.type === "image" ? { ...b, image: localImage(file) } : b)));
+                }}
+              />
+              {showErrors && detailError && (
+                <span className="err" role="alert">
+                  {detailError}
+                </span>
+              )}
             </FormRow>
           </FormSection>
 
@@ -477,13 +813,18 @@ export function ProductForm({ initial }: { initial?: Product }) {
         </div>
 
         <aside className="col aside-sticky" style={{ gap: 16 }}>
-          <ProductPreview name={name} description={description} price={priceNum} status={status} rows={rows} />
+          <ProductPreview name={name} description={description} price={priceNum} status={status} rows={rows} image={images.find((i) => i.state !== "error")?.url} />
           <div className="card pad col" style={{ gap: 8 }}>
             <span className="t-hl2">필수 입력 항목</span>
             <span className="t-l2 c-neu">상품명, 판매가, 옵션 이름은 비워 둘 수 없습니다</span>
           </div>
           <div className="col" style={{ gap: 8 }}>
             {saveButtons(true)}
+            {uploadNote && (
+              <span className="t-c1 c-alt" style={{ textAlign: "center" }} role="status">
+                {uploadNote}
+              </span>
+            )}
             {!required && (
               <span className="t-c1 c-alt" style={{ textAlign: "center" }}>
                 필수 항목을 채우면 {isEdit ? "저장" : "등록"}할 수 있습니다
@@ -512,7 +853,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
 // 쇼핑몰 미리보기: 저장 전 입력값(상품명·설명·판매가·옵션·판매 상태)을 그대로 그린다(저장된 서버 값을 쓰지 않음).
 // 설명은 구매자 화면처럼 줄바꿈을 지키고, 길면 몇 줄 뒤 접어 「더보기」로 편다. 사진 기능이 없어 사진 칸은 낮게 둔다.
 const DESC_PREVIEW_LINES = 6;
-function ProductPreview({ name, description, price, status, rows }: { name: string; description: string; price: number | null; status: ProductStatus; rows: OptRow[] }) {
+function ProductPreview({ name, description, price, status, rows, image }: { image?: string; name: string; description: string; price: number | null; status: ProductStatus; rows: OptRow[] }) {
   const [open, setOpen] = useState(false);
   const desc = description.trim();
   const long = desc.split("\n").length > DESC_PREVIEW_LINES || textLength(desc) > DESC_PREVIEW_LINES * 22;
@@ -533,8 +874,8 @@ function ProductPreview({ name, description, price, status, rows }: { name: stri
           {status === "HIDDEN" ? "숨김 상태라 쇼핑몰에 표시되지 않습니다" : "임시 저장 상태라 쇼핑몰에 표시되지 않습니다"}
         </span>
       )}
-      <div className="img pv-img" title="이미지 없음">
-        <NoImage size={32} />
+      <div className="img pv-img" title={image ? "대표 이미지" : "이미지 없음"}>
+        {image ? <img src={image} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "inherit" }} /> : <NoImage size={32} />}
       </div>
       {soldOut && (
         <span className="pbadge">
@@ -640,9 +981,7 @@ function DeleteDialog({ product, onClose, onHidden }: { product: Product; onClos
               <span className="t-c1 c-alt">되돌릴 수 없습니다 · 상품명을 입력해 확인합니다</span>
             </span>
           </label>
-          {mode === "delete" && (
-            <input className="inp" type="text" placeholder={product.name} aria-label="삭제할 상품명 입력" value={typed} onChange={(e) => setTyped(e.target.value)} />
-          )}
+          {mode === "delete" && <input className="inp" type="text" placeholder={product.name} aria-label="삭제할 상품명 입력" value={typed} onChange={(e) => setTyped(e.target.value)} />}
         </div>
         <div className="modal-f">
           <button className="btn btn-out" type="button" onClick={onClose} disabled={busy}>

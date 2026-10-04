@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { Toast } from "../../../../../../components/seller/States";
+import { EventPopupBar, EventPopupCard, type EventPopupItem } from "../../../../../../components/shop/EventPopup";
 import { api } from "../../../../../../components/seller/api";
 import {
   ConfirmDelete,
@@ -20,6 +21,8 @@ import {
   fromKstInput,
   linkLooksOk,
   periodText,
+  previewLink,
+  PreviewFrame,
   stateKind,
   toKstInput,
   useSortable,
@@ -255,6 +258,7 @@ export default function PopupsPage() {
 }
 
 function PopupEditor({ draft: initial, onClose, onSaved }: { draft: Draft; onClose: () => void; onSaved: (text: string) => void }) {
+  const { me } = useSeller();
   const [d, setD] = useState<Draft>(initial);
   const [device, setDevice] = useState<"pc" | "mobile">("pc");
   const [saving, setSaving] = useState(false);
@@ -294,7 +298,22 @@ function PopupEditor({ draft: initial, onClose, onSaved }: { draft: Draft; onClo
   };
 
   const shown = device === "pc" ? d.showOnPc : d.showOnMobile;
-  const dismissText = DISMISS.find((x) => x.v === d.dismissDays)!;
+  // 구매자 이벤트 팝업(EventPopup)의 띠·카드를 저장 전 입력값 그대로 그린다. 링크 버튼 문구가 비면 서버가 「자세히 보기」로 저장한다.
+  const link = previewLink(me.shop.slug, d.linkUrl);
+  const item: EventPopupItem = {
+    id: "preview",
+    kind: d.kind,
+    title: d.title,
+    body: d.kind === "BAR" ? null : d.body.trim() || null,
+    image: d.kind === "IMAGE" ? d.image : null,
+    link,
+    linkLabel: link && d.kind !== "BAR" ? d.linkLabel.trim() || "자세히 보기" : null,
+    showOnPc: d.showOnPc,
+    showOnMobile: d.showOnMobile,
+    dismissDays: d.dismissDays,
+    version: "preview",
+  };
+  const [hide, setHide] = useState(false);
 
   return (
     <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="popup-edit-title">
@@ -400,37 +419,13 @@ function PopupEditor({ draft: initial, onClose, onSaved }: { draft: Draft; onClo
                 <span className="t-c1 c-alt" style={{ alignSelf: "center" }}>
                   {device === "pc" ? "PC" : "모바일"}에서는 표시하지 않음
                 </span>
-              ) : d.kind === "BAR" ? (
-                <div className="sc-pv-bar">
-                  <span className="t-l2 fw6">{d.title || "띠 문구"}</span>
-                  <span>×</span>
-                </div>
               ) : (
-                <div className="sc-pv-popup">
-                  <div className="ep-card">
-                    {d.kind === "IMAGE" && d.image && <img src={d.image.url} alt="" />}
-                    <div className="col" style={{ gap: 8, padding: "12px 12px 4px" }}>
-                      {d.kind === "TEXT" && <span className="t-l1 fw7">{d.title || "제목"}</span>}
-                      {d.body.trim() && (
-                        <span className="t-c1 c-alt" style={{ whiteSpace: "pre-line" }}>
-                          {d.body}
-                        </span>
-                      )}
-                      {d.linkUrl.trim() && (
-                        <span className="btn btn-sm btn-block" aria-hidden="true">
-                          {d.linkLabel.trim() || "자세히 보기"}
-                        </span>
-                      )}
-                    </div>
-                    <div className="row between t-c1 c-alt" style={{ padding: "8px 12px" }}>
-                      <span>{d.dismissDays > 0 ? dismissText.label : ""}</span>
-                      <span>닫기</span>
-                    </div>
-                  </div>
-                </div>
+                <PreviewFrame className={d.kind === "BAR" ? "sc-pv-barwrap" : "sc-pv-popup"}>
+                  {d.kind === "BAR" ? <EventPopupBar bar={item} onClose={() => undefined} /> : <EventPopupCard popup={item} hide={hide} onHide={setHide} onClose={() => undefined} />}
+                </PreviewFrame>
               )}
             </div>
-            <span className="help">구매자 화면 문구는 해요체 그대로 표시</span>
+            <span className="help">실제 쇼핑몰에 뜨는 모양으로 표시됩니다 · 링크는 눌러도 이동하지 않음</span>
           </div>
         </div>
         <div className="modal-f">

@@ -21,9 +21,11 @@ type Slide = { id: string; title: string; link: HomeBannerItem["link"]; image: I
 
 const INTERVAL_MS = 5000;
 
-export default function HomeBanner({ banners }: { banners: HomeBannerItem[] }) {
+// only: 파트너스 관리자 미리보기용. 지정한 기기의 슬라이드만 화면 너비와 관계없이 그린다.
+export default function HomeBanner({ banners, only }: { banners: HomeBannerItem[]; only?: "pc" | "mobile" }) {
   const pc = banners.filter((b) => b.showOnPc).map((b) => ({ id: b.id, title: b.title, link: b.link, image: b.pcImage }));
   const mobile = banners.filter((b) => b.showOnMobile).map((b) => ({ id: b.id, title: b.title, link: b.link, image: b.mobileImage ?? b.pcImage }));
+  if (only) return <Slider slides={only === "pc" ? pc : mobile} className="hb-only" />;
   return (
     <>
       {pc.length > 0 && <Slider slides={pc} className="hb-pc" />}

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { Toast } from "../../../../../components/seller/States";
+import HomeBanner from "../../../../../components/shop/HomeBanner";
 import { api } from "../../../../../components/seller/api";
 import {
   ConfirmDelete,
@@ -20,6 +21,8 @@ import {
   fromKstInput,
   linkLooksOk,
   periodText,
+  previewLink,
+  PreviewFrame,
   stateKind,
   toKstInput,
   useSortable,
@@ -227,6 +230,7 @@ export default function BannersPage() {
 }
 
 function BannerEditor({ draft: initial, onClose, onSaved }: { draft: Draft; onClose: () => void; onSaved: (text: string) => void }) {
+  const { me } = useSeller();
   const [d, setD] = useState<Draft>(initial);
   const [device, setDevice] = useState<"pc" | "mobile">("pc");
   const [saving, setSaving] = useState(false);
@@ -258,7 +262,9 @@ function BannerEditor({ draft: initial, onClose, onSaved }: { draft: Draft; onCl
     onSaved(d.id ? "배너를 저장했습니다 · 홈에 바로 반영" : "배너를 추가했습니다 · 홈에 바로 반영");
   };
 
-  const previewImg = device === "mobile" ? (d.mobileImage ?? d.pcImage) : d.pcImage;
+  // 구매자 홈 배너(HomeBanner)를 저장 전 입력값 그대로 그린다: 이미지·제목(대체 글)·링크·표시 기기
+  const previewItem = d.pcImage ? [{ id: "preview", title: d.title, link: previewLink(me.shop.slug, d.linkUrl), pcImage: d.pcImage, mobileImage: d.mobileImage, showOnPc: d.showOnPc, showOnMobile: d.showOnMobile }] : [];
+  const previewShown = previewItem.length > 0 && (device === "pc" ? d.showOnPc : d.showOnMobile);
 
   return (
     <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="banner-edit-title">
@@ -318,17 +324,17 @@ function BannerEditor({ draft: initial, onClose, onSaved }: { draft: Draft; onCl
               </div>
             </div>
             <div className={`sc-preview-stage is-${device}`} data-testid="banner-preview">
-              {previewImg ? (
-                <div className="sc-pv-banner">
-                  <img src={previewImg.url} alt={d.title} />
-                </div>
+              {previewShown ? (
+                <PreviewFrame>
+                  <HomeBanner banners={previewItem} only={device} />
+                </PreviewFrame>
               ) : (
                 <span className="t-c1 c-alt" style={{ alignSelf: "center" }}>
-                  이미지를 올리면 여기에 표시됩니다
+                  {previewItem.length === 0 ? "이미지를 올리면 여기에 표시됩니다" : `${device === "pc" ? "PC" : "모바일"}에서는 표시하지 않음`}
                 </span>
               )}
             </div>
-            <span className="help">{(device === "pc" ? d.showOnPc : d.showOnMobile) ? "실제 쇼핑몰 홈 맨 위에 이 비율로 표시됩니다" : `${device === "pc" ? "PC" : "모바일"}에서는 표시하지 않음`}</span>
+            <span className="help">실제 쇼핑몰 홈 맨 위에 이 모양으로 표시됩니다 · 링크는 눌러도 이동하지 않음</span>
           </div>
         </div>
         <div className="modal-f">
