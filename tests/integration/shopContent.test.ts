@@ -161,7 +161,7 @@ describe("플랜 기능 권한", () => {
     const s = await shop();
     const b = await banner(s.owner);
     const row = await db.shopBanner.findUniqueOrThrow({ where: { id: b.body.banner!.id } });
-    const plan = await db.subscriptionPlan.create({ data: { code: "OVERLAY_ONLY", name: "OVERLAY_ONLY", listPrice: 99_000, salePrice: 69_000 } });
+    const plan = await db.subscriptionPlan.upsert({ where: { code: "OVERLAY_ONLY" }, create: { code: "OVERLAY_ONLY", name: "OVERLAY_ONLY", listPrice: 99_000, salePrice: 69_000 }, update: {} });
     await db.sellerSubscription.create({ data: { sellerId: s.seller.id, planId: plan.id, status: "ACTIVE" } });
     const before = await counts();
 

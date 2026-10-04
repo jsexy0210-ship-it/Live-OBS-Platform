@@ -6,7 +6,7 @@ import { requireSellerPermission, type TenantContext } from "../tenant/context";
 
 // 배너·팝업 이미지. 형식은 확장자·Content-Type이 아니라 바이트로 확인한다(브랜딩 검사기 detectImage 재사용:
 // PNG는 그림 데이터를 실제로 풀어 보고, JPEG는 표식 구조와 그림 데이터를 확인한다). SVG·WebP·GIF는 받지 않는다.
-// 저장은 대표님 저장 방식 결정 전까지 A안(DB bytea). 크기·형식 CHECK는 마이그레이션 20261004150000_shop_content와 같은 값.
+// 저장은 대표님 저장 방식 결정 전까지 A안(DB bytea). 크기·형식 CHECK는 마이그레이션 20261004160000_shop_content와 같은 값.
 export const SHOP_IMAGE_MAX_BYTES = 3 * 1024 * 1024;
 export const SHOP_IMAGE_MIN_SIDE = 100;
 // PNG를 풀 때 상한(16MB)에 걸리지 않는 크기. 1920×600 PC 배너, 1080×1080 모바일 배너가 들어간다.
