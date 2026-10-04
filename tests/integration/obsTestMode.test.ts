@@ -20,7 +20,7 @@ import { POST as staffCreateRoute } from "../../app/api/seller/staff/route";
 import { POST as applyRoute } from "../../app/api/seller-signup/apply/route";
 import { POST as sellerConfirmRoute } from "../../app/api/seller-signup/verification/confirm/route";
 import { POST as sellerStartRoute } from "../../app/api/seller-signup/verification/route";
-import { loginSeller } from "../../lib/server/auth/login";
+import { loginAdmin, loginSeller } from "../../lib/server/auth/login";
 import { sellerFeatures } from "../../lib/server/billing/features";
 import { prisma } from "../../lib/server/db";
 import { IDV_INPUT, SELLER_SIGNUP_CONSENT, SIGNUP_CONSENT, createSeller, db, resetDb } from "./helpers";
@@ -105,6 +105,51 @@ describe("테스트 서버 시험 데이터 명령(scripts/seed-obs-test.mjs)", 
     const r = seed({ OBS_TEST_MODE: "1", ...SEED });
     expect(r.code).toBe(0);
     expect(await db.sellerUser.count({ where: { email: "test" } })).toBe(0);
+  });
+
+  // 마스터 관리자(최고관리자) 시험 계정(대표님 지시 2026-10-04). 아이디 형식·비밀번호 길이 규칙은 이 명령에서만 건너뛴다.
+  const ADMIN = { SEED_ADMIN_LOGIN: "master", SEED_ADMIN_PASSWORD: "9876" };
+  const adminLogin = () => loginAdmin(db, { email: "master", password: "9876" }, {});
+
+  it("관리자만: 본인확인 해시 키 없이 최고관리자 계정만 만들고 그 계정으로 로그인된다. 판매자는 만들지 않고, 출력에 비밀번호가 없다", async () => {
+    const r = seed({ OBS_TEST_MODE: "1", ...ADMIN });
+    expect(r.code).toBe(0);
+    expect(r.out).not.toContain("9876");
+    expect(await db.platformAdmin.findMany({ select: { email: true, name: true, role: true, status: true } })).toEqual([
+      { email: "master", name: "최고관리자", role: "SUPER_ADMIN", status: "ACTIVE" },
+    ]);
+    expect((await adminLogin()).ok).toBe(true);
+    expect(await db.seller.count()).toBe(0);
+  });
+
+  it("둘 다: 판매자·관리자를 함께 만든다. 같은 관리자로 다시 실행하면 만들지 않고 알린다(비밀번호도 바꾸지 않음)", async () => {
+    expect(seed({ OBS_TEST_MODE: "1", ...SEED, ...ADMIN }).code).toBe(0);
+    expect(await db.sellerUser.count({ where: { email: "test" } })).toBe(1);
+    expect(await db.platformAdmin.count()).toBe(1);
+    const again = seed({ OBS_TEST_MODE: "1", ...SEED, SEED_ADMIN_LOGIN: "master", SEED_ADMIN_PASSWORD: "other" });
+    expect(again.code).toBe(0);
+    expect(again.out).toContain("이미 같은 아이디의 마스터 관리자가 있어");
+    expect(await db.platformAdmin.count()).toBe(1);
+    expect((await adminLogin()).ok).toBe(true);
+  });
+
+  it("판매자가 이미 있으면 판매자 부분만 건너뛰고 관리자 생성은 계속한다. 아이디·비밀번호 한쪽만 있으면 아무것도 하지 않고 실패한다", async () => {
+    await createSeller();
+    const r = seed({ OBS_TEST_MODE: "1", ...SEED, ...ADMIN });
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("이미 판매자가 있어");
+    expect(await db.sellerUser.count({ where: { email: "test" } })).toBe(0);
+    expect(await db.platformAdmin.count()).toBe(1);
+
+    const halves: Record<string, string>[] = [{ SEED_ADMIN_LOGIN: "other" }, { SEED_ADMIN_PASSWORD: "x" }, { SEED_SELLER_LOGIN: "x", ...ADMIN }];
+    for (const half of halves) {
+      const bad = seed({ OBS_TEST_MODE: "1", IDENTITY_HASH_KEY: HASH_KEY, ...half });
+      expect(bad.code, JSON.stringify(half)).toBe(1);
+    }
+    expect(await db.platformAdmin.count()).toBe(1);
+    // OBS_TEST_MODE=1 가드는 관리자에도 그대로
+    expect(seed({ SEED_ADMIN_LOGIN: "other", SEED_ADMIN_PASSWORD: "x" }).code).toBe(1);
+    expect(await db.platformAdmin.count()).toBe(1);
   });
 });
 

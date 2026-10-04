@@ -1,7 +1,7 @@
-# obs-test 서버 시험 데이터 넣기(시험 판매자 계정 1개·시험 쇼핑몰·상품). 절차: docs/DEPLOY.md 「시험 데이터 넣기」
+# obs-test 서버 시험 데이터 넣기(시험 판매자 계정 1개·시험 쇼핑몰·상품, 마스터 관리자 시험 계정 1개). 절차: docs/DEPLOY.md 「시험 데이터 넣기」
 # - 수동 실행(workflow_dispatch)만. main·이 저장소일 때만 job이 돈다(대표님 승인 2026-10-04).
 # - scripts/seed-obs-test.mjs를 서버의 마이그레이션 이미지(obs-web-migrate)로 실행한다. OBS_TEST_MODE=1인 서버에서만 동작한다.
-# - 판매자가 이미 있으면 아무것도 하지 않는다(스크립트 동작).
+# - 판매자·관리자 중 넣은 쪽만 만든다. 판매자가 이미 있으면 판매자는 건너뛰고, 같은 아이디의 관리자가 있으면 관리자는 만들지 않는다(스크립트 동작).
 # - 비밀번호는 실행 입력으로만 받고, 이벤트 파일에서 읽어 쓰기 전에 로그에서 가린다. 서버 비밀값은 /opt/obs/.env에서 이 명령에만 넘긴다.
 name: Seed obs-test
 
@@ -9,12 +9,20 @@ on:
   workflow_dispatch:
     inputs:
       login:
-        description: "시험 판매자 로그인 아이디"
-        required: true
+        description: "시험 판매자 로그인 아이디(비우면 판매자는 만들지 않음)"
+        required: false
         type: string
       password:
         description: "시험 판매자 비밀번호(테스트 서버 전용)"
-        required: true
+        required: false
+        type: string
+      admin_login:
+        description: "마스터 관리자(최고관리자) 시험 로그인 아이디(비우면 관리자는 만들지 않음)"
+        required: false
+        type: string
+      admin_password:
+        description: "마스터 관리자 시험 비밀번호(테스트 서버 전용)"
+        required: false
         type: string
       enable_test_mode:
         description: "테스트 서버 모드(OBS_TEST_MODE=1)가 꺼져 있으면 .env에 켜고 앱을 다시 띄운 뒤 진행(대표님 승인 2026-10-04)"
@@ -51,11 +59,14 @@ jobs:
         run: |
           set -euo pipefail
           command -v python3 >/dev/null || { echo "러너에 python3가 필요해요."; exit 1; }
-          # 줄바꿈이 든 값은 add-mask가 첫 줄만 가리므로 값을 출력하지 않고 거절한다
-          read_input() { python3 -c 'import json,os,sys;v=json.load(open(os.environ["GITHUB_EVENT_PATH"]))["inputs"][sys.argv[1]];v=str(v);sys.exit("입력값에 줄바꿈을 넣을 수 없어요.") if ("\n" in v or "\r" in v) else print(v)' "$1"; }
+          # 줄바꿈이 든 값은 add-mask가 첫 줄만 가리므로 값을 출력하지 않고 거절한다. 비운 선택 입력은 빈 값으로 읽는다.
+          read_input() { python3 -c 'import json,os,sys;v=json.load(open(os.environ["GITHUB_EVENT_PATH"])).get("inputs",{}).get(sys.argv[1]);v="" if v is None else str(v);sys.exit("입력값에 줄바꿈을 넣을 수 없어요.") if ("\n" in v or "\r" in v) else print(v)' "$1"; }
           SEED_SELLER_PASSWORD="$(read_input password)"
-          echo "::add-mask::$SEED_SELLER_PASSWORD"
+          [ -z "$SEED_SELLER_PASSWORD" ] || echo "::add-mask::$SEED_SELLER_PASSWORD"
           SEED_SELLER_LOGIN="$(read_input login)"
+          SEED_ADMIN_PASSWORD="$(read_input admin_password)"
+          [ -z "$SEED_ADMIN_PASSWORD" ] || echo "::add-mask::$SEED_ADMIN_PASSWORD"
+          SEED_ADMIN_LOGIN="$(read_input admin_login)"
           test -f "$ENV_FILE" || { echo "$ENV_FILE 이 없어요(docs/DEPLOY.md 「서버 .env」)."; exit 1; }
           C="docker compose -p obs-web -f deploy/docker-compose.yml --env-file $ENV_FILE"
           # 지금 떠 있는 앱 이미지 버전을 그대로 써서 새로 빌드하지 않는다
@@ -85,5 +96,5 @@ jobs:
           fi
           IDENTITY_HASH_KEY="$(docker exec "$app" printenv IDENTITY_HASH_KEY || true)"
           echo "::add-mask::$IDENTITY_HASH_KEY"
-          export OBS_TEST_MODE IDENTITY_HASH_KEY SEED_SELLER_LOGIN SEED_SELLER_PASSWORD
-          $C run --rm --no-deps -e OBS_TEST_MODE -e SEED_SELLER_LOGIN -e SEED_SELLER_PASSWORD -e IDENTITY_HASH_KEY obs-web-migrate node scripts/seed-obs-test.mjs
+          export OBS_TEST_MODE IDENTITY_HASH_KEY SEED_SELLER_LOGIN SEED_SELLER_PASSWORD SEED_ADMIN_LOGIN SEED_ADMIN_PASSWORD
+          $C run --rm --no-deps -e OBS_TEST_MODE -e SEED_SELLER_LOGIN -e SEED_SELLER_PASSWORD -e SEED_ADMIN_LOGIN -e SEED_ADMIN_PASSWORD -e IDENTITY_HASH_KEY obs-web-migrate node scripts/seed-obs-test.mjs
