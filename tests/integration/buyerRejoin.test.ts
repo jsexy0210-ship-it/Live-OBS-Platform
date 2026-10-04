@@ -1,11 +1,13 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { GET as policyGet, PUT as policyPut } from "../../app/api/seller/member-policy/route";
+import { GET as rejoinConsentGet, PUT as rejoinConsentPut } from "../../app/api/shop/[slug]/me/rejoin-retention-consent/route";
 import { POST as signupRoute } from "../../app/api/shop/[slug]/signup/route";
 import { POST as confirmRoute } from "../../app/api/shop/[slug]/signup/verification/confirm/route";
 import { POST as startRoute } from "../../app/api/shop/[slug]/signup/verification/route";
-import { loginSeller } from "../../lib/server/auth/login";
+import { loginBuyer, loginSeller } from "../../lib/server/auth/login";
 import { BUYER_SIGNUP_STATUS } from "../../lib/server/buyers/signup";
 import { REJOIN_RESTRICTION_CONFIG, REJOIN_RETENTION_CONSENT_VERSION, purgeExpiredRejoinBlocks } from "../../lib/server/buyers/rejoin";
+import { withdrawRejoinRetentionConsent } from "../../lib/server/buyers/rejoinConsent";
 import { withdrawBuyer } from "../../lib/server/buyers/withdraw";
 import { prisma } from "../../lib/server/db";
 import { IDV_INPUT, PASSWORD, REJOIN_CONSENT, SIGNUP_CONSENT, createSeller, createSellerUser, db, resetDb } from "./helpers";
@@ -319,5 +321,94 @@ describe("구매자 재가입 제한", () => {
     expect(await db.buyerRejoinBlock.count({ where: { sellerId: s.seller.id } })).toBe(0);
     await s.setPolicy({ rejoinRestrictionEnabled: true });
     expect((await s.signup({}, "b3@example.com", "닉3")).status).toBe(201);
+  });
+});
+
+describe("재가입 제한 정보 보관 동의 철회(GET·PUT /api/shop/{slug}/me/rejoin-retention-consent)", () => {
+  const buyerCookie = async (sellerId: string, loginId = "buyer01@example.com") => {
+    const r = await loginBuyer(db, { sellerId, loginId, password: "pw-123456" }, {});
+    if (!r.ok) throw new Error(r.reason);
+    return `lo_buyer=${r.token}`;
+  };
+  const url = (slug: string) => `http://localhost:3000/api/shop/${slug}/me/rejoin-retention-consent`;
+  const get = (slug: string, cookie?: string) => rejoinConsentGet(new Request(url(slug), { headers: { ...H, ...(cookie ? { cookie } : {}) } }), ctx(slug));
+  const put = (slug: string, body: unknown, cookie?: string) =>
+    rejoinConsentPut(new Request(url(slug), { method: "PUT", headers: { ...H, ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body) }), ctx(slug));
+
+  it("동의한 회원이 철회하면 기간·시각·버전을 비우고 철회 시각·감사를 남기며, 탈퇴해도 CI 해시를 남기지 않아 바로 다시 가입된다", async () => {
+    const s = await shop();
+    await s.setPolicy({ rejoinRestrictionEnabled: true, rejoinRestrictionDays: 7 });
+    expect((await s.signup()).status).toBe(201);
+    const cookie = await buyerCookie(s.seller.id);
+    const before = await get(s.seller.slug, cookie);
+    expect(before.status).toBe(200);
+    expect(await before.json()).toMatchObject({ agreed: true, version: REJOIN_RETENTION_CONSENT_VERSION, restrictionDays: 7, withdrawnAt: null });
+
+    const res = await put(s.seller.slug, { agreed: false }, cookie);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({ agreed: false, agreedAt: null, version: null, restrictionDays: null });
+    expect(body.withdrawnAt).toEqual(expect.any(String));
+    const m = await db.buyerMember.findFirstOrThrow({ where: { sellerId: s.seller.id, deletedAt: null } });
+    expect(m).toMatchObject({ rejoinRestrictionDaysAgreed: null, rejoinRetentionAgreedAt: null, rejoinRetentionVersion: null });
+    expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.rejoin_retention_consent.withdraw", actorId: m.id } })).toMatchObject({
+      sellerId: s.seller.id,
+      before: { agreed: true, version: REJOIN_RETENTION_CONSENT_VERSION, restrictionDays: 7 },
+      after: { agreed: false },
+    });
+
+    // 다시 보내도 바꾸지 않는다(감사도 한 번)
+    expect((await put(s.seller.slug, { agreed: false }, cookie)).status).toBe(200);
+    expect(await db.auditLog.count({ where: { action: "buyer.rejoin_retention_consent.withdraw" } })).toBe(1);
+
+    await s.withdraw();
+    expect(await db.buyerRejoinBlock.count({ where: { sellerId: s.seller.id } })).toBe(0);
+    // 탈퇴하면 철회 시각도 비운다
+    expect(await db.buyerMember.findUniqueOrThrow({ where: { id: m.id } })).toMatchObject({ rejoinRetentionWithdrawnAt: null });
+    expect((await s.signup({}, "buyer02@example.com", "다른닉")).status).toBe(201);
+  });
+
+  it("동의하지 않은 회원은 철회해도 바뀌는 것이 없고, 다시 동의·잘못된 본문은 400, 로그인 없으면 401, 탈퇴 회원 세션은 쓸 수 없다", async () => {
+    const s = await shop();
+    await s.setPolicy({ rejoinRestrictionEnabled: true });
+    expect((await s.signup({}, "buyer01@example.com", "카드왕", { agreedRejoinRetention: false })).status).toBe(201);
+    const cookie = await buyerCookie(s.seller.id);
+    expect(await (await get(s.seller.slug, cookie)).json()).toMatchObject({ agreed: false, withdrawnAt: null });
+    expect(await (await put(s.seller.slug, { agreed: false }, cookie)).json()).toMatchObject({ agreed: false, withdrawnAt: null });
+    expect(await db.auditLog.count({ where: { action: "buyer.rejoin_retention_consent.withdraw" } })).toBe(0);
+    for (const bad of [{ agreed: true }, {}, { agreed: "false" }]) {
+      const r = await put(s.seller.slug, bad, cookie);
+      expect(r.status).toBe(400);
+      expect(await r.json()).toMatchObject({ error: "invalid_rejoin_retention_consent" });
+    }
+    expect((await get(s.seller.slug)).status).toBe(401);
+    expect((await put(s.seller.slug, { agreed: false })).status).toBe(401);
+    await s.withdraw();
+    expect((await put(s.seller.slug, { agreed: false }, cookie)).status).toBe(401);
+  });
+
+  it("탈퇴는 회원 행을 잠근 뒤의 동의 상태로 정한다: 탈퇴 요청이 회원을 읽은 뒤 철회가 끝나도 CI 해시를 남기지 않는다", async () => {
+    const s = await shop();
+    await s.setPolicy({ rejoinRestrictionEnabled: true, rejoinRestrictionDays: 7 });
+    expect((await s.signup()).status).toBe(201);
+    const m = await db.buyerMember.findFirstOrThrow({ where: { sellerId: s.seller.id, deletedAt: null } });
+    // 탈퇴가 회원을 읽은 뒤(첫 트랜잭션 직전) 철회가 끝나게 한다
+    let raced = false;
+    const racing = new Proxy(db, {
+      get(t, p) {
+        const v = Reflect.get(t, p);
+        if (p !== "$transaction") return typeof v === "function" ? v.bind(t) : v;
+        return async (...args: unknown[]) => {
+          if (!raced) {
+            raced = true;
+            expect(await withdrawRejoinRetentionConsent(db, { sellerId: s.seller.id, buyerMemberId: m.id }, { agreed: false })).toMatchObject({ ok: true, changed: true });
+          }
+          return (v as (...a: unknown[]) => unknown).apply(t, args);
+        };
+      },
+    });
+    expect(await withdrawBuyer(racing, { sellerId: s.seller.id, buyerMemberId: m.id }, { password: "pw-123456" })).toEqual({ ok: true });
+    expect(raced).toBe(true);
+    expect(await db.buyerRejoinBlock.count({ where: { sellerId: s.seller.id } })).toBe(0);
   });
 });

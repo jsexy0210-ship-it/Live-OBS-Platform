@@ -50,6 +50,8 @@ export const MEMBER_AUDIT_RETENTION: Record<string, MemberAuditRetention> = {
   // 마케팅 수신 동의 철회·다시 동의(회원 정보 수정과 같은 분류)
   "buyer.marketing_consent.withdraw": "non_transaction",
   "buyer.marketing_consent.agree": "non_transaction",
+  // 재가입 제한 정보 보관 동의 철회(회원 정보 수정과 같은 분류)
+  "buyer.rejoin_retention_consent.withdraw": "non_transaction",
   // 미입금 자동 취소로 생긴 구매 제한(판매자 회원 관리). 주문 기록 자체는 order.* 행이 따로 남는다.
   "buyer.purchase_restriction.create": "non_transaction",
   "buyer.purchase_restriction.lift": "non_transaction",
