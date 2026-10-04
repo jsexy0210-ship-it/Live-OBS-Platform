@@ -147,6 +147,8 @@ model Seller {
   productReviewImages      ProductReviewImage[]
   productReviewReports     ProductReviewReport[]
   productReviewPolicy      ProductReviewPolicy?
+  cartItems                CartItem[]
+  wishItems                WishItem[]
 }
 
 model SellerDomain {
@@ -345,6 +347,8 @@ model BuyerMember {
   productReviews       ProductReview[]
   productReviewImages  ProductReviewImage[]
   productReviewReports ProductReviewReport[]
+  cartItems            CartItem[]
+  wishItems            WishItem[]
 
   @@unique([sellerId, id])
   @@index([sellerId, gradeId])
@@ -501,6 +505,9 @@ model Product {
   eventStartsAt      DateTime?          @db.Timestamptz(3)
   eventEndsAt        DateTime?          @db.Timestamptz(3)
   sortOrder          Int                @default(0)
+  // 상품 코드 번호(카페24식 자동 상품 코드, MASTER 결정 2026-10-04). 판매자별 1부터 순번, 화면·API는 「P」 + 7자리(P0000001).
+  // 넣을 때 0(기본)이면 DB 트리거(product_assign_code_no)가 ProductCodeCounter로 다음 번호를 매긴다. 지운 상품 번호도 다시 쓰지 않는다.
+  codeNo             Int                @default(0)
   createdAt          DateTime           @default(now()) @db.Timestamptz(3)
   deletedAt          DateTime?          @db.Timestamptz(3)
 
@@ -509,8 +516,11 @@ model Product {
   options    ProductOption[]
   orderItems OrderItem[]
   reviews    ProductReview[]
+  categories ProductCategory[]
+  wishItems  WishItem[]
 
   @@unique([sellerId, id])
+  @@unique([sellerId, codeNo])
 }
 
 model ProductImage {
@@ -545,6 +555,7 @@ model ProductOption {
   product        Product         @relation(fields: [sellerId, productId], references: [sellerId, id])
   stockMovements StockMovement[]
   orderItems     OrderItem[]
+  cartItems      CartItem[]
 
   @@unique([sellerId, id])
   @@index([sellerId, productId])
@@ -1948,4 +1959,81 @@ model AutomationShopRevocation {
   revokedAt DateTime @db.Timestamptz(3)
 
   @@id([sellerId, shopKey])
+}
+
+// 쇼핑몰 카테고리(SA-015, 2026-10-04 대표님 지시). 2단까지: 대분류(parentId 없음) 아래 소분류. 순서는 같은 부모 안에서 sortOrder.
+// visible=false면 구매자 쇼핑몰에 보이지 않는다(대분류를 끄면 그 아래 소분류도 안 보인다). 삭제는 행을 지운다(지난 주문이 참조하지 않음).
+// 판매자 격리: 부모·상품 연결은 (sellerId, id) 복합 키로만 잇는다. 값 범위는 lib/server/shop-category/rules.ts.
+model ShopCategory {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId  String   @db.Uuid
+  parentId  String?  @db.Uuid
+  name      String
+  visible   Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  parent   ShopCategory?     @relation("ShopCategoryTree", fields: [sellerId, parentId], references: [sellerId, id], onDelete: Restrict)
+  children ShopCategory[]    @relation("ShopCategoryTree")
+  products ProductCategory[]
+
+  @@unique([sellerId, id])
+  @@index([sellerId, parentId, sortOrder])
+}
+
+// 상품 ↔ 카테고리(여러 개 지정 가능). 카테고리를 지우면 연결도 지운다.
+model ProductCategory {
+  sellerId   String   @db.Uuid
+  productId  String   @db.Uuid
+  categoryId String   @db.Uuid
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  product  Product      @relation(fields: [sellerId, productId], references: [sellerId, id])
+  category ShopCategory @relation(fields: [sellerId, categoryId], references: [sellerId, id], onDelete: Cascade)
+
+  @@id([productId, categoryId])
+  @@index([sellerId, categoryId])
+}
+
+// 판매자별 마지막 상품 코드 번호(Product.codeNo). DB 트리거 product_assign_code_no만 올린다(행 잠금으로 판매자별 줄 세움).
+model ProductCodeCounter {
+  sellerId String @id @db.Uuid
+  lastNo   Int
+}
+
+// 구매자 장바구니(SH-004, 로그인 회원만). 옵션마다 한 줄(같은 옵션을 다시 담으면 수량을 더한다). 회원당 50줄, 줄당 1~99개.
+// 가격·재고·판매 상태는 담을 때 저장하지 않고 볼 때마다 지금 값으로 계산한다(shop-cart/service.ts). 회원 탈퇴 때 지운다.
+model CartItem {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String   @db.Uuid
+  buyerMemberId String   @db.Uuid
+  optionId      String   @db.Uuid
+  quantity      Int
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller        @relation(fields: [sellerId], references: [id])
+  member BuyerMember   @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id], onDelete: Cascade)
+  option ProductOption @relation(fields: [sellerId, optionId], references: [sellerId, id])
+
+  @@unique([buyerMemberId, optionId])
+  @@index([sellerId, buyerMemberId])
+  @@index([sellerId, optionId])
+}
+
+// 구매자 찜(SH-034, 로그인 회원만). 상품마다 한 줄, 회원당 200개. 가격·판매 상태는 볼 때마다 지금 값(shop-wish/service.ts). 회원 탈퇴 때 지운다.
+model WishItem {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String   @db.Uuid
+  buyerMemberId String   @db.Uuid
+  productId     String   @db.Uuid
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+
+  seller  Seller      @relation(fields: [sellerId], references: [id])
+  member  BuyerMember @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id], onDelete: Cascade)
+  product Product     @relation(fields: [sellerId, productId], references: [sellerId, id])
+
+  @@unique([buyerMemberId, productId])
+  @@index([sellerId, buyerMemberId, createdAt])
+  @@index([sellerId, productId])
 }

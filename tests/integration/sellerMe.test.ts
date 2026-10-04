@@ -31,7 +31,7 @@ describe("판매자 로그인 실패 응답", () => {
     expect(await empty.json()).toEqual({ error: "bad_request", message: LOGIN_ERROR_MESSAGES.bad_request });
   });
 
-  it("승인 대기·정지·비활성 직원·여러 쇼핑몰은 사유별 코드와 문구", async () => {
+  it("승인 대기·비활성 직원·여러 쇼핑몰은 사유별 코드와 문구, 이용 정지는 로그인된다(신규만 막기)", async () => {
     const pending = await createSeller();
     await db.seller.update({ where: { id: pending.seller.id }, data: { status: "PENDING" } });
     const p = await createSellerUser(pending.seller.id, "OWNER");
@@ -48,7 +48,6 @@ describe("판매자 로그인 실패 응답", () => {
     await createSellerUser(s2.seller.id, "OWNER", shared);
     for (const [email, status, code] of [
       [p.email, 403, "seller_pending"],
-      [su.email, 403, "seller_suspended"],
       [staff.email, 403, "account_disabled"],
       [shared, 409, "shop_required"],
     ] as const) {
@@ -57,6 +56,7 @@ describe("판매자 로그인 실패 응답", () => {
       expect(await res.json()).toEqual({ error: code, message: LOGIN_ERROR_MESSAGES[code] });
     }
     expect((await login({ email: shared, password: PASSWORD, shopSlug: s2.seller.slug })).status).toBe(200);
+    expect((await login({ email: su.email, password: PASSWORD })).status).toBe(200);
   });
 });
 
@@ -115,7 +115,7 @@ describe("GET /api/seller/me", () => {
     expect(bodyA).toMatchObject({ isOwner: false, access: "trial", trialEndsAt: endsA.toISOString() });
     expect(JSON.stringify(bodyA)).not.toContain(endsB.toISOString());
     // 금액·결제 정보는 주지 않는다
-    expect(Object.keys(bodyA).sort()).toEqual(["access", "features", "isOwner", "orderFollowup", "permissions", "sellerId", "shop", "trialEndsAt", "user", "userId"]);
+    expect(Object.keys(bodyA).sort()).toEqual(["access", "features", "isOwner", "orderFollowup", "permissions", "sellerId", "shop", "suspended", "trialEndsAt", "user", "userId"]);
     expect(await (await me(cb)).json()).toMatchObject({ isOwner: true, trialEndsAt: endsB.toISOString() });
     // 결제한 기간이 남아 체험이 아닌 상태면 null
     const plan = await db.subscriptionPlan.upsert({ where: { code: "STANDARD" }, update: {}, create: { code: "STANDARD", name: "스탠다드", listPrice: 30000, salePrice: 30000 } });

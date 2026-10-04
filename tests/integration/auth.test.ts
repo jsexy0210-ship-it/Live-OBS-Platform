@@ -144,22 +144,25 @@ describe("판매자 로그인과 마스터 기능 차단", () => {
     await expect(requireAdmin(db, r.token, "platform.read", at(1))).rejects.toMatchObject({ status: 401 });
   });
 
-  it("승인 대기·정지된 판매자는 로그인할 수 없다", async () => {
+  it("승인 대기 판매자는 로그인할 수 없고, 이용 정지된 판매자는 로그인된다(신규만 막기, 대표님 결정 2026-10-04)", async () => {
     const { seller } = await createSeller();
     const owner = await createSellerUser(seller.id, "OWNER");
     await db.seller.update({ where: { id: seller.id }, data: { status: "PENDING" } });
     expect(await loginSeller(db, { email: owner.email, password: PASSWORD }, { now: t0 })).toEqual({ ok: false, reason: "seller_pending" });
     await db.seller.update({ where: { id: seller.id }, data: { status: "SUSPENDED" } });
-    expect(await loginSeller(db, { email: owner.email, password: PASSWORD }, { now: t0 })).toEqual({ ok: false, reason: "seller_suspended" });
+    expect(await loginSeller(db, { email: owner.email, password: PASSWORD }, { now: t0 })).toMatchObject({ ok: true });
   });
 
-  it("판매자가 정지되면 기존 세션도 바로 끊긴다", async () => {
+  it("판매자가 정지되면 기존 세션은 살아 있지만, 이미 받은 주문 처리·내 정보 밖의 API는 바로 403 seller_suspended", async () => {
     const { seller } = await createSeller();
     const owner = await createSellerUser(seller.id, "OWNER");
     const r = await loginSeller(db, { email: owner.email, password: PASSWORD }, { now: t0 });
     if (!r.ok) throw new Error("login failed");
     await db.seller.update({ where: { id: seller.id }, data: { status: "SUSPENDED" } });
-    await expect(requireSeller(db, r.token, at(1))).rejects.toMatchObject({ status: 401 });
+    await expect(requireSeller(db, r.token, at(1))).rejects.toMatchObject({ status: 403, code: "seller_suspended" });
+    await expect(requireSeller(db, r.token, at(1), { allowUnpaid: true, feature: "BILLING" })).rejects.toMatchObject({ status: 403, code: "seller_suspended" });
+    await expect(requireSeller(db, r.token, at(1), { allowUnpaid: true, feature: "ORDER_FOLLOWUP" })).resolves.toMatchObject({ sellerId: seller.id });
+    await expect(requireSeller(db, r.token, at(1), { allowUnpaid: true, feature: "BILLING", allowSuspended: true })).resolves.toMatchObject({ sellerId: seller.id });
   });
 
   it("같은 이메일이 두 판매자에 있으면 비밀번호가 맞는 계정으로, 둘 다 맞으면 쇼핑몰을 고르게 한다", async () => {

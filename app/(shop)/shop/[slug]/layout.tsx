@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
+import ShopFrame from "../../../../components/shop/ShopFrame";
 import { DEFAULT_FAVICON } from "../../../../lib/server/branding/service";
 import { requestOrigin } from "../../../../lib/server/branding/siteUrl";
 import { prisma } from "../../../../lib/server/db";
@@ -35,6 +36,15 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   };
 }
 
-export default function ShopSlugLayout({ children }: { children: React.ReactNode }) {
-  return children;
+// 구매자 쇼핑몰 공통 틀(머리·바닥글·휴대폰 아래 고정 바)은 이 레이아웃이 한 번만 그린다. 화면(page)은 본문만 돌려준다.
+// 없거나 운영 중이 아닌 쇼핑몰은 틀 없이 본문만 둔다(각 화면이 404를 낸다).
+export default async function ShopSlugLayout({ children, params }: { children: React.ReactNode; params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  const shop = await prisma.seller.findUnique({ where: { slug: slug.slice(0, 60) }, select: { shopName: true, status: true } });
+  if (!shop || shop.status !== "ACTIVE") return children;
+  return (
+    <ShopFrame slug={slug} shopName={shop.shopName}>
+      {children}
+    </ShopFrame>
+  );
 }

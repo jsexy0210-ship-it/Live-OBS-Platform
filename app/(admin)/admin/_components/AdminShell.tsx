@@ -6,7 +6,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { adminApi, type AdminMe } from "./api";
 import { itemAllowed, routeNav, visibleAdminMenu } from "./menu";
 
-// 마스터 관리자 공통 틀(카페24식 업무 화면 틀, 대표님 지시 2026-10-04): 상단 청록 GNB(대분류) + 왼쪽 LNB(고른 대분류의 하위 메뉴) + 본문.
+// 마스터 관리자 공통 틀(업무용 관리 화면 틀, 대표님 지시 2026-10-04): 상단 청록 GNB(대분류) + 왼쪽 LNB(고른 대분류의 하위 메뉴) + 본문.
 // 파트너스 관리자 틀(.cs·.gnb·.lnb·.loc-bar)을 그대로 쓰고 색만 admin.css에서 마스터 청록으로 바꾼다. 좁은 화면에서는 GNB가 햄버거로 접히고 LNB가 서랍(전체 메뉴)으로 열린다.
 const ROLE_LABEL: Record<AdminMe["role"], string> = { SUPER_ADMIN: "최고관리자", OPERATIONS: "운영", CS: "고객 지원", READ_ONLY: "조회 전용" };
 
@@ -149,7 +149,11 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 // 본문 위 경로 줄(대분류 › 메뉴). 메뉴에 없는 화면이면 crumb 문구를 쓴다
 export function AdminTopbar({ crumb, children }: { crumb: string; children?: React.ReactNode }) {
   const { loc } = useAdmin();
-  const path = loc ? (loc.group === loc.item ? [loc.item] : [loc.group, loc.item]) : crumb.split("›").map((p) => p.trim());
+  const parts = crumb.split("›").map((p) => p.trim());
+  const last = parts[parts.length - 1];
+  // 하위 화면(상세 등)이면 메뉴 경로 뒤에 crumb 마지막 칸을 덧붙인다
+  const path = loc ? (loc.group === loc.item ? [loc.item] : [loc.group, loc.item]) : parts;
+  if (loc && parts.length > 2 && last !== loc.item && last !== loc.group) path.push(last);
   return (
     <div className="loc-bar">
       <span className="crumb ell">

@@ -6,6 +6,12 @@ body {
 }
 /* 구매자 쇼핑몰은 모든 화면 바탕이 흰색(대표님 지시 2026-10-04). 영역 구분은 회색 바탕이 아니라 1px 선과 여백으로 한다 */
 .shop-app {
+  /* 크기 규칙(대표님 지시 2026-10-04): 입력·검색·버튼 모서리 6px, 하단 고정 바·모달 8px. 입력·검색·기본 버튼 40px, 작은 32px, 주요 버튼·하단 고정 바 48px. 글자 14px(주요 버튼 16px) */
+  --shop-r: 6px;
+  --shop-r-lg: 8px;
+  --shop-h: 40px;
+  --shop-h-sm: 32px;
+  --shop-h-lg: 48px;
   --page: #ffffff;
   word-break: keep-all;
   overflow-wrap: anywhere;
@@ -34,10 +40,34 @@ body {
   height: 40px;
   padding: 0;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--shop-r);
   background: transparent;
   color: var(--wds-label-normal);
   cursor: pointer;
+}
+.shop-app .btn {
+  height: var(--shop-h);
+  border-radius: var(--shop-r);
+  font-size: 14px;
+}
+.shop-app .btn-sm {
+  height: var(--shop-h-sm);
+  border-radius: var(--shop-r);
+  font-size: 14px;
+}
+.shop-app .btn-lg {
+  height: var(--shop-h-lg);
+  border-radius: var(--shop-r);
+  font-size: 16px;
+}
+.shop-app .inp {
+  height: var(--shop-h);
+  border-radius: var(--shop-r);
+  font-size: 14px;
+}
+.shop-app .inp-sm {
+  height: var(--shop-h-sm);
+  border-radius: var(--shop-r);
 }
 .shop-linkbtn {
   padding: 0;
@@ -90,15 +120,16 @@ body {
   align-items: stretch;
   width: 400px;
   max-width: 40%;
-  height: 36px;
+  height: var(--shop-h);
   margin-left: auto;
   border: 1px solid var(--wds-label-normal);
-  border-radius: 2px;
+  border-radius: var(--shop-r);
+  overflow: hidden;
 }
 .shop-search input {
   flex: 1;
   min-width: 0;
-  height: 36px;
+  height: 100%;
   padding: 0 12px;
   border: 0;
   outline: 0;
@@ -398,11 +429,9 @@ body {
   gap: 8px;
   margin-bottom: 24px;
 }
-.shop-searchbox .inp {
-  border-radius: 2px;
-}
+.shop-searchbox .inp,
 .shop-searchbox .btn {
-  border-radius: 2px;
+  border-radius: var(--shop-r);
 }
 
 @media (max-width: 1023px) {
@@ -460,7 +489,7 @@ body {
     font-size: 17px;
   }
   .shop-page {
-    padding-bottom: calc(56px + env(safe-area-inset-bottom));
+    padding-bottom: calc(var(--shop-h-lg) + env(safe-area-inset-bottom));
   }
   .shop-tabbar {
     position: fixed;
@@ -470,7 +499,8 @@ body {
     z-index: 50;
     display: grid;
     grid-template-columns: repeat(5, 1fr);
-    height: 56px;
+    height: calc(var(--shop-h-lg) + env(safe-area-inset-bottom));
+    border-radius: var(--shop-r-lg) var(--shop-r-lg) 0 0;
     padding-bottom: env(safe-area-inset-bottom);
     background: var(--wds-background-normal-normal);
     border-top: 1px solid var(--wds-line-solid-normal);
@@ -727,7 +757,7 @@ body {
   flex-direction: column;
   gap: 12px;
   padding: 20px 20px 16px;
-  border-radius: 16px;
+  border-radius: var(--shop-r-lg);
   background: #fff;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
 }

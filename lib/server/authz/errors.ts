@@ -17,3 +17,5 @@ export const notFound = () => new AuthError(404, "not_found");
 export const subscriptionRequired = () => new AuthError(402, "subscription_required");
 // 지금 플랜에 이 기능 권한이 없을 때(오버레이 전용의 스토어 운영, 통합 첫 결제 확정 전 등). 아무것도 바꾸지 않는다.
 export const planFeatureRequired = () => new AuthError(403, "plan_feature_required");
+// 마스터가 이용 정지한 쇼핑몰(대표님 결정 2026-10-04 「신규만 막기」): 이미 받은 주문의 처리와 내 정보·구독 조회만 열린다.
+export const sellerSuspended = () => new AuthError(403, "seller_suspended");
