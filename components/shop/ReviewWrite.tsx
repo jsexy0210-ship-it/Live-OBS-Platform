@@ -55,9 +55,10 @@ export default function ReviewWrite({ slug, itemId, reviewId }: { slug: string; 
     setUploading(true);
     setMsg(null);
     for (const f of picked.slice(0, MAX_PHOTOS - photos.length)) {
-      const blob = await reencodePhoto(f);
+      // 줄여서(긴 변 1,600px JPEG) 올린다. 줄이지 못하면 JPG·PNG·WEBP 원본을 그대로 보내고, 서버가 같은 기준으로 검사한다
+      const blob = (await reencodePhoto(f)) ?? (["image/jpeg", "image/png", "image/webp"].includes(f.type) ? f : null);
       if (!blob) {
-        setMsg({ ok: false, text: "이 사진은 올릴 수 없어요. 다른 사진을 골라 주세요" });
+        setMsg({ ok: false, text: "이 사진은 올릴 수 없어요. JPG·PNG·WEBP 사진을 골라 주세요" });
         continue;
       }
       const r = await call<{ image: Photo }>(`${base}/images`, { method: "POST", raw: blob });
@@ -152,8 +153,9 @@ export default function ReviewWrite({ slug, itemId, reviewId }: { slug: string; 
               <span className="t-c1 c-alt num">{uploading ? "올리는 중" : `${photos.length}/${MAX_PHOTOS}`}</span>
             </button>
           )}
-          <input ref={input} type="file" accept="image/*" multiple hidden aria-label="리뷰 사진" onChange={(e) => void addPhotos(e.target.files)} />
+          <input ref={input} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden aria-label="리뷰 사진" onChange={(e) => void addPhotos(e.target.files)} />
         </div>
+        <span className="t-c1 c-alt">JPG·PNG·WEBP, 한 장에 5MB까지 올릴 수 있어요. 사진에 담긴 위치 정보는 지워져요</span>
         {view.reward && (view.reward.photo > 0 || view.reward.text > 0) && (
           <span className="t-c1 c-alt">
             {view.reward.photo > 0 ? `사진을 1장 이상 넣으면 적립금 ${won(view.reward.photo)}` : ""}
