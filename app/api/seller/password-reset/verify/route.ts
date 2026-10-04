@@ -10,7 +10,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // 같은 본인확인으로 다시 부르면(응답 유실) 그 권한이 안 쓰였고 만료 전이면 같은 권한을 다시 준다. 쓴 권한·만료는 400 reset_not_allowed.
 export const POST = mutation(async (req: Request) => {
   const provider = identityProvider();
-  if (!provider) return identityUnavailable();
+  if (!provider) return identityUnavailable("formal");
   const body = await readJson<{ verificationId: string }>(req);
   // 형식이 틀린 id도 다른 거부와 같은 응답(존재 여부 비노출)
   if (!isString(body.verificationId) || !UUID.test(body.verificationId)) {

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { IDENTITY_UNAVAILABLE_MESSAGE } from "./messages";
+import type { MessageTone } from "../text/tone";
+import { identityErrorBody } from "./messages";
 import { PortOneIdentityProvider, portOneConfigFromEnv } from "./portone";
 import { isTestMode, warnTestModeOnce } from "../testMode";
 import { FakeIdentityProvider, type IdentityProvider } from "./provider";
@@ -25,5 +26,5 @@ export function identityProvider(env: NodeJS.ProcessEnv = process.env): Identity
   return globalForIdentity.identityProvider;
 }
 
-export const identityUnavailable = () =>
-  NextResponse.json({ error: "identity_unavailable", message: IDENTITY_UNAVAILABLE_MESSAGE }, { status: 503, headers: { "cache-control": "no-store" } });
+export const identityUnavailable = (tone: MessageTone = "friendly") =>
+  NextResponse.json(identityErrorBody("identity_unavailable", tone), { status: 503, headers: { "cache-control": "no-store" } });

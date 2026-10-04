@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { ORDER_ERROR_MESSAGES } from "../../lib/server/orders/messages";
+import { ORDER_ERROR_MESSAGES, ORDER_ERROR_MESSAGES_FORMAL } from "../../lib/server/orders/messages";
 import { shipOrder } from "../../lib/server/orders/ship";
 import { applyQueueAction, cancelPendingOrder, markOrderPaid, refundOrder, startBroadcast } from "../../lib/server/queue/service";
 import type { TenantContext } from "../../lib/server/tenant/context";
@@ -330,17 +330,17 @@ describe("HTTP: 환불·취소 API", () => {
     expect((await call(refundRoute, order.id, "refund", { reason: "요청", expectedVersion: await lv(s.seller.id), confirmOpened: true, fault: "SELLER" })).status).toBe(400);
     const noConfirm = await call(refundRoute, order.id, "refund", { reason: "요청", expectedRefundAmount: 5000, expectedVersion: await lv(s.seller.id) });
     expect(noConfirm.status).toBe(409);
-    expect(await noConfirm.json()).toEqual({ error: "opened_items_present", message: ORDER_ERROR_MESSAGES.opened_items_present });
+    expect(await noConfirm.json()).toEqual({ error: "opened_items_present", message: ORDER_ERROR_MESSAGES_FORMAL.opened_items_present });
     // 개봉한 품목이 있으면 사유 주체(fault)도 꼭 보낸다. 잘못된 값은 400.
     const noFault = await call(refundRoute, order.id, "refund", { reason: "요청", expectedRefundAmount: 5000, expectedVersion: await lv(s.seller.id), confirmOpened: true });
     expect(noFault.status).toBe(400);
-    expect(await noFault.json()).toEqual({ error: "fault_required", message: ORDER_ERROR_MESSAGES.fault_required });
+    expect(await noFault.json()).toEqual({ error: "fault_required", message: ORDER_ERROR_MESSAGES_FORMAL.fault_required });
     expect((await call(refundRoute, order.id, "refund", { reason: "요청", expectedRefundAmount: 5000, expectedVersion: await lv(s.seller.id), confirmOpened: true, fault: "buyer" })).status).toBe(400);
     expect((await db.order.findUniqueOrThrow({ where: { id: order.id } })).status).toBe("PAID");
     // 발송 전에 개봉한 품목이 있으면 구매자 사정 환불은 막는다(안내 문구 포함)
     const buyer = await call(refundRoute, order.id, "refund", { reason: "요청", expectedRefundAmount: 5000, expectedVersion: await lv(s.seller.id), confirmOpened: true, fault: "BUYER" });
     expect(buyer.status).toBe(409);
-    expect(await buyer.json()).toEqual({ error: "opened_items_unshipped", message: ORDER_ERROR_MESSAGES.opened_items_unshipped });
+    expect(await buyer.json()).toEqual({ error: "opened_items_unshipped", message: ORDER_ERROR_MESSAGES_FORMAL.opened_items_unshipped });
     expect((await db.order.findUniqueOrThrow({ where: { id: order.id } })).status).toBe("PAID");
     const ok = await call(refundRoute, order.id, "refund", { reason: "요청", expectedRefundAmount: 5000, expectedVersion: await lv(s.seller.id), confirmOpened: true, fault: "SELLER" });
     expect(ok.status).toBe(200);
