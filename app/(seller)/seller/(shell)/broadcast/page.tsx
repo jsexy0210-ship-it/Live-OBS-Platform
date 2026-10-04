@@ -28,7 +28,7 @@ import { useLatestResponse } from "../../../../../components/seller/latestRespon
 // API: GET /api/seller/queue·queue/version·stream, POST queue/{id}/{start|complete|revert|cancel|timer}·queue/reorder·broadcast/start·broadcast/end
 
 type Load = { kind: "loading" } | { kind: "error"; status: number; error: string } | { kind: "ok"; snap: Snapshot };
-type Modal = { kind: "end" } | { kind: "cancel"; item: QueueItem } | { kind: "timer"; item: QueueItem } | null;
+type Modal = { kind: "end"; sessionId: string } | { kind: "cancel"; item: QueueItem } | { kind: "timer"; item: QueueItem } | null;
 
 const POLL_MS = 15_000;
 
@@ -53,7 +53,12 @@ export default function BroadcastDashboardPage() {
     const t = reads.next();
     const r = await api<Snapshot>("/api/seller/queue");
     if (!r.ok) {
-      if (reads.hasApplied()) return reads.failMatters(t) ? setStale(true) : undefined;
+      // 이용 기간 만료(402)·권한·플랜 해제(403)는 일시적 실패가 아니다: 보이던 내용을 지우고 해당 안내로 바꾼다
+      const terminal = r.status === 402 || r.status === 403;
+      if (reads.hasApplied() && !terminal) return reads.failMatters(t) ? setStale(true) : undefined;
+      if (reads.hasApplied() && !reads.failMatters(t)) return;
+      setStale(false);
+      setModal(null);
       return setState({ kind: "error", status: r.status, error: r.error });
     }
     const verdict = reads.accept(t);
@@ -98,19 +103,18 @@ export default function BroadcastDashboardPage() {
     return () => clearInterval(t);
   }, []);
 
-  // 변경 요청 공통 처리: 성공·거부 모두 다시 읽어 서버 상태로 맞춘다. 불분명하면 성공을 추정하지 않는다.
-  // 다시 읽기가 끝날 때까지 조작을 막는다(옛 version으로 다음 요청을 보내 409가 나지 않게).
-  // 서버가 바뀌었을(수 있는) 요청 뒤에는 그 전에 보낸 읽기 응답이 늦게 와도 반영하지 않는다(confirmChange).
+  // 변경 요청 공통 처리: 결과(성공·거부·불분명)와 상관없이 보내기 직전에 그 전에 시작된 읽기를 모두 무효로 하고(confirmChange),
+  // 끝나면 다시 읽어 서버 상태로 맞춘다. 다시 읽기가 끝날 때까지 조작을 막는다(옛 version으로 다음 요청을 보내 409가 나지 않게).
+  // 결과가 불분명하면 성공을 추정하지 않는다.
   const mutate = useCallback(
     async <T,>(path: string, body: unknown, okText: string): Promise<ApiResult<T>> => {
       setBusy(true);
+      reads.confirmChange();
       const r = await api<T>(path, { method: "POST", body });
       if (r.ok) {
-        reads.confirmChange();
         setModal(null);
         setToast({ text: okText });
       } else if (isUnclearFailure(r.status)) {
-        reads.confirmChange();
         setModal(null);
         setToast({ text: "처리 결과를 확인하지 못했습니다. 최신 상태를 다시 불러왔습니다. 화면에서 반영 여부를 확인해 주십시오", neg: true });
       } else {
@@ -123,6 +127,27 @@ export default function BroadcastDashboardPage() {
     },
     [load, reads],
   );
+
+  // 방송 종료는 확인 창을 연 그 방송에만 한다. 종료 API는 방송을 지정받지 않아(지금 방송을 끝냄),
+  // 보내기 직전에 서버의 지금 방송이 그 방송인지 다시 확인하고, 다르면 보내지 않는다.
+  const endBroadcast = async (sessionId: string) => {
+    setBusy(true);
+    const t = reads.next();
+    const r = await api<Snapshot>("/api/seller/queue");
+    if (!r.ok || r.data.broadcast?.id !== sessionId) {
+      setBusy(false);
+      setModal(null);
+      setToast({ text: r.ok ? "다른 화면에서 방송이 바뀌었습니다. 최신 내용을 확인한 뒤 다시 종료해 주십시오" : failMessage(r, "admin"), neg: true });
+      if (r.ok && reads.accept(t) === "apply") {
+        version.current = r.data.version;
+        setStale(false);
+        setState({ kind: "ok", snap: r.data });
+      } else void load();
+      return;
+    }
+    setBusy(false);
+    await mutate("/api/seller/broadcast/end", {}, "방송을 종료했습니다");
+  };
 
   // 변경 조작은 요청 처리 중(busy)이거나 보이는 내용이 서버에서 확인된 최신이 아닐 때(stale) 모두 막는다.
   // 옛 version으로 보내 409가 나는 것을 원인에서 막는다. 「다시 불러오기」만 열어 둔다
@@ -147,6 +172,15 @@ export default function BroadcastDashboardPage() {
     [ids[index], ids[j]] = [ids[j], ids[index]];
     void mutate("/api/seller/queue/reorder", { broadcastSessionId: live?.id ?? null, orderedIds: ids, expectedVersion: snap.version }, "순서를 바꿨습니다");
   };
+
+  // 종료 확인 창이 열린 사이 다른 화면에서 방송이 바뀌면(끝나거나 새 방송) 창을 닫는다
+  useEffect(() => {
+    if (modal?.kind !== "end" || state.kind !== "ok" || busy) return;
+    if (state.snap.broadcast?.id !== modal.sessionId) {
+      setModal(null);
+      setToast({ text: "다른 화면에서 방송이 바뀌었습니다. 최신 내용을 확인한 뒤 다시 종료해 주십시오", neg: true });
+    }
+  }, [modal, state, busy]);
 
   // 단축키(모두 Ctrl 조합): 개봉 시작·완료 Ctrl+Enter, 타이머 +30초 Ctrl+↑, 취소 Ctrl+Backspace(확인 창)
   const keys = useRef<(e: KeyboardEvent) => void>(() => undefined);
@@ -235,7 +269,7 @@ export default function BroadcastDashboardPage() {
                       </span>
                       <span className="t-c1 c-alt">{kstTime(live.startedAt)} 시작</span>
                     </div>
-                    <button className="btn btn-out" type="button" disabled={locked} onClick={() => setModal({ kind: "end" })}>
+                    <button className="btn btn-out" type="button" disabled={locked} onClick={() => live && setModal({ kind: "end", sessionId: live.id })}>
                       방송 종료
                     </button>
                   </div>
@@ -384,7 +418,7 @@ export default function BroadcastDashboardPage() {
           busy={busy}
           blocked={stale}
           onClose={() => setModal(null)}
-          onConfirm={() => void mutate("/api/seller/broadcast/end", {}, "방송을 종료했습니다")}
+          onConfirm={() => void endBroadcast(modal.sessionId)}
         />
       )}
       {modal?.kind === "cancel" && <CancelItemModal item={modal.item} busy={busy} blocked={stale} onClose={() => setModal(null)} onConfirm={(reason) => void cancel(modal.item, reason)} />}
