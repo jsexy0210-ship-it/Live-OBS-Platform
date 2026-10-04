@@ -12,6 +12,9 @@ import {
   ResetPasswordModal,
   SecretInput,
   STAFF_ERRORS,
+  UNCLEAR_PENDING,
+  UNCLEAR_UNREAD,
+  UnclearBox,
   cleanPhone,
   isUnclear,
   normStaffName,
@@ -204,6 +207,8 @@ export default function StaffPage() {
   );
 }
 
+const TAKEN_TEXT = "이 이메일로 등록된 계정이 이미 있습니다. 목록에서 확인하고 필요하면 비밀번호를 재설정해 주십시오";
+
 type Errors = Partial<Record<"name" | "phone" | "email" | "password", string>>;
 
 // 직원 추가: 이름·휴대폰·이메일(로그인 아이디)·초기 비밀번호·권한. 메일 초대 없이 바로 계정이 만들어진다
@@ -216,11 +221,15 @@ function AddStaff({ onAdded, onChanged, knownIds }: { onAdded: (name: string) =>
   const [errors, setErrors] = useState<Errors>({});
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // 결과가 불분명했던 시도(보낸 값 그대로, 이름·휴대폰은 서버가 저장하는 모양). 있는 동안 칸을 잠그고 「확인하기」로만 확인한다:
-  // 값을 바꿔 다시 보내면 서버에 남은 계정(첫 시도의 비밀번호)과 화면 값이 달라지기 때문
-  // before: 보내기 직전의 직원 id(이미 있던 계정—비활성 포함—을 방금 만든 계정으로 오인하지 않게)
-  const [unclear, setUnclear] = useState<{ name: string; phone: string; email: string; perms: StaffPerm[]; before: string[] } | null>(null);
-  // 불분명했던 시도를 두고 「새로 입력하기」로 새로 시작했는지. 그 뒤 email_taken은 만든 것으로 보지 않고 안내한다
+  // 결과가 불분명했던 시도(보낸 값 그대로). 있는 동안 칸을 잠그고 「확인」(목록을 다시 읽음)과 「같은 값으로 재전송」만 누를 수 있다:
+  // 첫 요청이 아직 서버에서 처리 중일 수 있어, 목록에 없다고 실패로 확정하지 않는다. 다른 값으로 보내면 서버에 남은 계정(첫 비밀번호)과 화면 값이 달라진다
+  // check: 목록에서 확인할 값(이름·휴대폰은 서버가 저장하는 모양). before: 보내기 직전의 직원 id(이미 있던 계정—비활성 포함—을 방금 만든 계정으로 오인하지 않게)
+  // body: 재전송할 본문 그대로(비밀번호 포함)
+  type Sent = { check: { name: string; phone: string; email: string; perms: StaffPerm[] }; before: string[]; body: { name: string; phone: string; email: string; password: string; permissions: StaffPerm[] } };
+  const [unclear, setUnclear] = useState<Sent | null>(null);
+  // 불분명했던 시도를 두고 「새로 입력」으로 나왔을 때의 안내
+  const [notice, setNotice] = useState<string | null>(null);
+  // 불분명했던 시도를 두고 새로 시작했는지. 그 뒤 email_taken은 만든 것으로 보지 않고 안내한다
   const [restarted, setRestarted] = useState(false);
   const locked = busy || unclear !== null;
   // 보내는 동안 칸이 잠겨 있으므로 다시 그린 뒤에 포커스를 옮긴다
@@ -234,6 +243,7 @@ function AddStaff({ onAdded, onChanged, knownIds }: { onAdded: (name: string) =>
   const succeed = (added: string) => {
     setBusy(false);
     setUnclear(null);
+    setNotice(null);
     setRestarted(false);
     setName("");
     setPhone("");
@@ -243,36 +253,62 @@ function AddStaff({ onAdded, onChanged, knownIds }: { onAdded: (name: string) =>
     onAdded(added);
   };
 
-  // 불분명했던 바로 그 시도가 만들어졌는지 목록으로 확인한다: 보내기 전에 없던 id이고 활성이며 같은 이메일·이름·휴대폰·권한이면 만든 것
-  const confirmSent = async (sent: NonNullable<typeof unclear>) => {
-    setBusy(true);
-    setFailure(null);
-    const created = await settleByList((list) =>
+  // 그 시도가 만들어졌는지 목록으로 확인한다: 보내기 전에 없던 id이고 활성이며 같은 이메일·이름·휴대폰·권한이면 만든 것. null은 목록을 읽지 못함
+  const createdIn = (sent: Sent) =>
+    settleByList((list) =>
       list.some(
         (s) =>
           !sent.before.includes(s.id) &&
           s.status === "ACTIVE" &&
-          s.email.toLowerCase() === sent.email.toLowerCase() &&
-          s.name === sent.name &&
-          s.phone === sent.phone &&
-          sameSet(s.permissions, sent.perms),
+          s.email.toLowerCase() === sent.check.email.toLowerCase() &&
+          s.name === sent.check.name &&
+          s.phone === sent.check.phone &&
+          sameSet(s.permissions, sent.check.perms),
       ),
     );
-    if (created === null) {
-      setBusy(false);
-      setUnclear(sent);
-      return setFailure("계정 생성 여부를 확인하지 못했습니다. 잠시 후 「확인」을 눌러 주십시오");
-    }
-    if (created) return succeed(sent.name);
+
+  // 확실한 성공 증거(목록의 새 계정)가 있을 때만 풀고, 없으면 불분명한 채로 둔다
+  const confirmSent = async (sent: Sent) => {
+    setBusy(true);
+    setFailure(null);
+    const created = await createdIn(sent);
+    if (created) return succeed(sent.check.name);
     setBusy(false);
-    setUnclear(null);
-    setFailure("계정이 생성되지 않았습니다. 다시 시도해 주십시오");
+    setUnclear(sent);
+    setFailure(created === null ? UNCLEAR_UNREAD : UNCLEAR_PENDING);
+  };
+
+  // 보낸 값 그대로 다시 보낸다. 성공 응답이면 만든 것. email_taken이면 첫 시도가 만들었을 수 있어 목록으로 확인하고,
+  // 새 계정이 없으면 이미 있던 다른 계정이 이메일을 쓰고 있는 것이므로(첫 시도도 만들 수 없었음) 불분명을 끝내고 안내한다
+  const resend = async (sent: Sent) => {
+    setBusy(true);
+    setFailure(null);
+    const r = await api("/api/seller/staff", { method: "POST", body: sent.body });
+    if (r.ok) return succeed(sent.check.name);
+    if (isUnclear(r)) return confirmSent(sent);
+    if (r.error === "email_taken") {
+      const created = await createdIn(sent);
+      if (created) return succeed(sent.check.name);
+      if (created === null) {
+        setBusy(false);
+        return setFailure(UNCLEAR_UNREAD);
+      }
+      setBusy(false);
+      setUnclear(null);
+      onChanged();
+      setErrors({ email: TAKEN_TEXT });
+      return setFocusTo({ id: "sa-email" });
+    }
+    setBusy(false);
+    setFailure(staffFail(r, "재전송하지 못했습니다. 잠시 후 「확인」을 눌러 주십시오"));
   };
 
   const restart = () => {
     setUnclear(null);
     setRestarted(true);
     setFailure(null);
+    setNotice("이전 계정 생성 요청이 처리되었을 수 있습니다. 목록에서 확인한 뒤 입력해 주십시오");
+    onChanged();
     setFocusTo({ id: "sa-name" });
   };
 
@@ -290,20 +326,19 @@ function AddStaff({ onAdded, onChanged, knownIds }: { onAdded: (name: string) =>
     const first = (["name", "phone", "email", "password"] as const).find((k) => next[k]);
     if (first) return setFocusTo({ id: `sa-${first}` });
     setBusy(true);
+    setNotice(null);
     // 보내기 직전의 직원 id를 남긴다(읽지 못하면 화면에 있는 목록으로)
     const before = (await readStaffList())?.map((s) => s.id) ?? knownIds;
-    const sent = { name: normStaffName(name), phone: cleanPhone(phone), email: email.trim(), perms, before };
-    const r = await api("/api/seller/staff", {
-      method: "POST",
-      body: { name: name.trim(), phone: sent.phone, email: sent.email, password, permissions: perms },
-    });
-    if (r.ok) return succeed(sent.name);
+    const body = { name: name.trim(), phone: cleanPhone(phone), email: email.trim(), password, permissions: perms };
+    const sent: Sent = { check: { name: normStaffName(name), phone: body.phone, email: body.email, perms }, before, body };
+    const r = await api("/api/seller/staff", { method: "POST", body });
+    if (r.ok) return succeed(sent.check.name);
     // 결과가 불분명하면(연결 끊김·5xx) 실패라고 하지 않고 이 시도가 만들어졌는지 확인한다
     if (isUnclear(r)) return confirmSent(sent);
     setBusy(false);
     if (r.error === "email_taken" && restarted) {
       onChanged();
-      setErrors({ email: "이 이메일로 등록된 계정이 이미 있습니다. 목록에서 확인하고 필요하면 비밀번호를 재설정해 주십시오" });
+      setErrors({ email: TAKEN_TEXT });
       return setFocusTo({ id: "sa-email" });
     }
     const field = ({ email_taken: "email", weak_password: "password", invalid_phone: "phone" } as const)[r.error as "email_taken"];
@@ -346,21 +381,28 @@ function AddStaff({ onAdded, onChanged, knownIds }: { onAdded: (name: string) =>
         <span className="t-c1 c-alt">계정이 즉시 생성됩니다 · 메일 초대는 없습니다</span>
       </div>
       {unclear ? (
-        <div className="msg msg-cau" role="alert" style={{ display: "block" }} data-testid="sa-unclear">
-          <span>{failure ?? "계정 생성 여부를 확인하지 못했습니다. 「확인」을 눌러 목록에서 확인해 주십시오"}</span>
-          <span className="row" style={{ gap: 6, marginTop: 8 }}>
-            <button className="btn btn-sm" type="button" disabled={busy} onClick={() => void confirmSent(unclear)}>
-              확인하기
+        <UnclearBox
+          testId="sa-unclear"
+          title="계정이 생성되었을 수 있습니다."
+          text={failure ?? UNCLEAR_PENDING}
+          busy={busy}
+          onCheck={() => void confirmSent(unclear)}
+          onResend={() => void resend(unclear)}
+          resendLabel="같은 값으로 재전송"
+          extra={
+            <button className="btn btn-sm btn-text" type="button" disabled={busy} onClick={restart}>
+              새로 입력
             </button>
-            <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={restart}>
-              새로 입력하기
-            </button>
-          </span>
+          }
+        />
+      ) : failure ? (
+        <div className="msg msg-neg" role="alert">
+          <span>{failure}</span>
         </div>
       ) : (
-        failure && (
-          <div className="msg msg-neg" role="alert">
-            <span>{failure}</span>
+        notice && (
+          <div className="msg msg-cau" role="status" data-testid="sa-notice">
+            <span>{notice}</span>
           </div>
         )
       )}

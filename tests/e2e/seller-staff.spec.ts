@@ -262,13 +262,14 @@ test("저장 응답을 놓치면 직원 목록을 다시 읽어 실제 결과를
     });
   };
 
-  // ① 응답·확인용 목록 읽기가 모두 실패: 실패라고 하지 않고 칸을 잠근 채 「확인하기」만 둔다 → 확인하면 만든 것으로 처리
+  // ① 응답·확인용 목록 읽기가 모두 실패: 실패라고 하지 않고 칸을 잠근 채 「확인」·「재전송」만 둔다 → 확인하면 만든 것으로 처리
   await addStaff(page, s);
   await page.getByRole("checkbox", { name: "상품", exact: true }).check();
   await loseCreate(1);
   await page.getByRole("button", { name: "계정 생성" }).click();
   const unclear = page.getByTestId("sa-unclear");
-  await expect(unclear).toContainText("계정 생성 여부를 확인하지 못했습니다");
+  await expect(unclear).toContainText("계정이 생성되었을 수 있습니다.");
+  await expect(unclear).toContainText("목록을 읽지 못해 결과를 확인하지 못했습니다");
   await expect(page.getByLabel("초기 비밀번호")).toBeDisabled();
   await expect(page.getByLabel("이름", { exact: true })).toBeDisabled();
   await expect(page.getByRole("button", { name: "계정 생성" })).toBeDisabled();
@@ -278,7 +279,7 @@ test("저장 응답을 놓치면 직원 목록을 다시 읽어 실제 결과를
   await expect(page.getByLabel("이메일 (로그인 아이디)")).toHaveValue("");
   await expect(row(page, s.email)).toContainText("상품");
 
-  // ② 불분명한 상태에서 「새로 입력하기」로 풀고 비밀번호를 바꿔 다시 보내면 email_taken: 만든 것으로 보지 않고 안내만 한다
+  // ② 불분명한 상태에서 「새로 입력」으로 풀면 이전 요청이 처리되었을 수 있다고 안내한다. 비밀번호를 바꿔 비밀번호를 바꿔 다시 보내면 email_taken: 만든 것으로 보지 않고 안내만 한다
   const id2 = uniq();
   const s2 = { name: `재입력${id2}`, phone: "01033335555", email: `again-${id2}@example.com`, password: `pw-${id2}-first` };
   await addStaff(page, s2);
@@ -286,6 +287,7 @@ test("저장 응답을 놓치면 직원 목록을 다시 읽어 실제 결과를
   await page.getByRole("button", { name: "계정 생성" }).click();
   await expect(unclear).toBeVisible();
   await unclear.getByRole("button", { name: "새로 입력" }).click();
+  await expect(page.getByTestId("sa-notice")).toHaveText("이전 계정 생성 요청이 처리되었을 수 있습니다. 목록에서 확인한 뒤 입력해 주십시오");
   await expect(page.getByLabel("초기 비밀번호")).toBeEnabled();
   await page.getByLabel("초기 비밀번호").fill(`pw-${id2}-second`);
   const retried = page.waitForResponse((r) => r.url().endsWith("/api/seller/staff") && r.request().method() === "POST");
@@ -324,14 +326,22 @@ test("저장 응답을 놓치면 직원 목록을 다시 읽어 실제 결과를
   await expect(page.getByText(`${s.name} 정보를 저장했습니다`)).toBeVisible();
   await expect(row(page, s.email)).toContainText("주문·배송");
 
-  // 이름 수정: 서버 오류로 저장되지 않았다 → 다시 읽어 저장되지 않았다고 알리고 창에 지금 값을 보여 준다
+  // 이름 수정: 서버 오류(5xx)로 결과가 불분명하고 다시 읽어도 반영 전이다 → 실패로 단정하지 않고 칸을 잠근 채 불분명 상태로 둔다.
+  // 같은 값 재저장이 성공하면 저장으로 처리
   await page.getByRole("button", { name: `${s.name} 정보 · 권한 수정` }).click();
   await dialog.getByLabel("이름").fill(`${s.name}바꿈`);
   await page.route((u) => /\/api\/seller\/staff\/[^/]+$/.test(u.pathname), (route) => route.fulfill({ status: 500, json: { error: "internal" } }), { times: 1 });
   await dialog.getByRole("button", { name: "저장" }).click();
-  await expect(dialog.getByText("저장되지 않았습니다. 현재 정보와 권한을 확인해 주십시오")).toBeVisible();
-  await expect(dialog.getByLabel("이름")).toHaveValue(s.name);
-  await expect(dialog.getByRole("checkbox", { name: "주문·배송", exact: true })).toBeChecked();
+  const editUnclear = dialog.getByTestId("se-unclear");
+  await expect(editUnclear).toContainText("저장되었을 수 있습니다.");
+  await expect(editUnclear).toContainText("아직 반영이 확인되지 않았습니다");
+  await expect(dialog.getByLabel("이름")).toBeDisabled();
+  await expect(dialog.getByLabel("이름")).toHaveValue(`${s.name}바꿈`);
+  const resaved = page.waitForRequest((r) => /\/api\/seller\/staff\/[^/]+$/.test(new URL(r.url()).pathname) && r.method() === "PATCH");
+  await editUnclear.getByRole("button", { name: "같은 값으로 재저장" }).click();
+  expect((await resaved).postDataJSON()).toMatchObject({ name: `${s.name}바꿈` });
+  await expect(page.getByText(`${s.name}바꿈 정보를 저장했습니다`)).toBeVisible();
+  await expect(row(page, s.email)).toContainText(`${s.name}바꿈`);
 });
 
 test("결과가 불분명한 직원 변경은 실제 상태로 판정한다(이미 있던 계정 오인 금지·비밀번호 같은 값 재전송·비활성화 재조회)", async ({ page }) => {
@@ -362,7 +372,8 @@ test("결과가 불분명한 직원 변경은 실제 상태로 판정한다(이�
   await expect(dialog.getByLabel("새 비밀번호")).toBeDisabled();
   await expect(dialog.getByRole("button", { name: "재설정" })).toBeDisabled();
   const resent = page.waitForRequest((r) => r.url().endsWith("/password") && r.method() === "POST");
-  await dialog.getByRole("button", { name: "같은 비밀번호로 다시 보내기" }).click();
+  await expect(dialog.getByRole("button", { name: "새로 정하기" })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "같은 비밀번호로 재전송" }).click();
   expect((await resent).postDataJSON()).toEqual({ newPassword: next });
   await expect(page.getByText(`${s.name} 비밀번호를 변경했습니다`, { exact: false })).toBeVisible();
 
@@ -381,7 +392,8 @@ test("결과가 불분명한 직원 변경은 실제 상태로 판정한다(이�
   await expect(row(page, s.email)).toContainText("비활성");
 
   // ① 같은 이메일·이름·휴대폰·권한으로 다시 만들기: 요청이 서버에 닿기 전에 끊긴다 → 목록에 같은 값의 (비활성) 계정이 있어도
-  // 보내기 전에 있던 계정이라 만든 것으로 보지 않는다
+  // 보내기 전에 있던 계정이라 만든 것으로 보지 않는다. 목록에 없다고 실패로 확정하지도 않고 불분명 상태로 둔다.
+  // 같은 값으로 재전송하면 email_taken이고 새 계정이 없으므로(이미 있던 계정이 이메일을 씀) 그때 이메일 안내로 끝낸다
   await addStaff(page, s);
   await page.getByRole("checkbox", { name: "상품", exact: true }).check();
   let aborted = false;
@@ -394,9 +406,104 @@ test("결과가 불분명한 직원 변경은 실제 상태로 판정한다(이�
     },
   );
   await page.getByRole("button", { name: "계정 생성" }).click();
-  await expect(page.getByText("계정이 생성되지 않았습니다. 다시 시도해 주십시오")).toBeVisible();
+  await expect(page.getByTestId("sa-unclear")).toContainText("아직 반영이 확인되지 않았습니다");
+  await expect(page.getByLabel("초기 비밀번호")).toBeDisabled();
+  await page.getByTestId("sa-unclear").getByRole("button", { name: "같은 값으로 재전송" }).click();
+  await expect(page.getByText("이 이메일로 등록된 계정이 이미 있습니다. 목록에서 확인하고 필요하면 비밀번호를 재설정해 주십시오")).toBeVisible();
+  await expect(page.getByTestId("sa-unclear")).toHaveCount(0);
   await page.unroute((u) => u.pathname === "/api/seller/staff");
   await expect(page.getByText(`${s.name} 계정을 생성했습니다`, { exact: false })).toHaveCount(0);
+});
+
+// 응답은 끊겼는데 서버는 아직 처리 중인 경우(늦게 반영): 곧바로 다시 읽으면 「없음」이지만 실패로 확정하지 않는다.
+// 끊긴 요청을 붙잡아 두었다가 나중에 같은 요청을 서버에 보내(늦게 끝난 처리) 「확인」으로 성공을 확인한다
+test("결과가 불분명한 직원 변경은 늦게 반영돼도 실패로 단정하지 않고, 같은 값으로만 다시 보내게 한다", async ({ page }) => {
+  await login(page, "demo-owner@example.com");
+  await expect(page).toHaveURL(/\/seller\/staff$/);
+  const origin = new URL(page.url()).origin;
+  // 첫 요청 하나를 서버에 보내지 않고 끊는다. 나중에 replay()로 같은 요청을 보낸다(늦게 끝난 처리)
+  const holdOnce = async (match: (u: URL, method: string) => boolean) => {
+    let held: { url: string; method: string; data: string | null } | null = null;
+    const pred = (u: URL) => u.origin === origin && u.pathname.startsWith("/api/seller/staff");
+    const handler = async (route: import("@playwright/test").Route) => {
+      const req = route.request();
+      if (held || !match(new URL(req.url()), req.method())) return route.continue();
+      held = { url: req.url(), method: req.method(), data: req.postData() };
+      return route.abort("connectionreset");
+    };
+    await page.route(pred, handler);
+    return async () => {
+      await page.unroute(pred, handler);
+      if (!held) throw new Error("붙잡은 요청이 없어요");
+      const h = held as { url: string; method: string; data: string | null };
+      const r = await page.request.fetch(h.url, { method: h.method, data: h.data ?? undefined, headers: { origin, "content-type": "application/json" } });
+      expect(r.ok()).toBe(true);
+    };
+  };
+  const id = uniq();
+  const s = { name: `늦게${id}`, phone: "01055556666", email: `late-${id}@example.com`, password: `pw-${id}-init` };
+
+  // 직원 추가: 끊긴 직후 목록에는 없다 → 불분명 유지·칸 잠금(「생성되지 않았습니다」 금지) → 늦게 만들어진 뒤 「확인」으로 성공
+  await addStaff(page, s);
+  let replay = await holdOnce((u, m) => u.pathname === "/api/seller/staff" && m === "POST");
+  await page.getByRole("button", { name: "계정 생성" }).click();
+  const addBox = page.getByTestId("sa-unclear");
+  await expect(addBox).toContainText("아직 반영이 확인되지 않았습니다");
+  await expect(page.getByLabel("초기 비밀번호")).toBeDisabled();
+  await expect(page.getByRole("button", { name: "계정 생성" })).toBeDisabled();
+  await replay();
+  await addBox.getByRole("button", { name: "확인", exact: true }).click();
+  await expect(page.getByText(`${s.name} 계정을 생성했습니다`, { exact: false })).toBeVisible();
+  await expect(row(page, s.email)).toBeVisible();
+  const dialog = page.getByRole("dialog");
+
+  // 정보 수정: 끊긴 직후 다시 읽으면 반영 전 → 불분명 유지·칸 잠금(「저장되지 않았습니다」로 되돌리지 않음) → 늦게 저장된 뒤 「확인」으로 성공
+  await page.getByRole("button", { name: `${s.name} 정보 · 권한 수정` }).click();
+  await dialog.getByLabel("이름").fill(`${s.name}새`);
+  replay = await holdOnce((u, m) => m === "PATCH");
+  await dialog.getByRole("button", { name: "저장" }).click();
+  const editBox = dialog.getByTestId("se-unclear");
+  await expect(editBox).toContainText("아직 반영이 확인되지 않았습니다");
+  await expect(dialog.getByLabel("이름")).toBeDisabled();
+  await expect(dialog.getByLabel("이름")).toHaveValue(`${s.name}새`);
+  await replay();
+  await editBox.getByRole("button", { name: "확인", exact: true }).click();
+  await expect(page.getByText(`${s.name}새 정보를 저장했습니다`)).toBeVisible();
+  const name2 = `${s.name}새`;
+
+  // 정보 수정을 불분명한 채로 닫으면 이전 요청이 처리되었을 수 있다고 안내한다
+  await page.getByRole("button", { name: `${name2} 정보 · 권한 수정` }).click();
+  await dialog.getByRole("checkbox", { name: "상품", exact: true }).check();
+  replay = await holdOnce((u, m) => u.pathname.endsWith("/permissions") && m === "POST");
+  await dialog.getByRole("button", { name: "저장" }).click();
+  await expect(dialog.getByTestId("se-unclear")).toBeVisible();
+  await dialog.getByRole("button", { name: "닫기" }).click();
+  await expect(page.getByText("이전 저장 요청이 처리되었을 수 있습니다 · 목록에서 정보와 권한을 확인해 주십시오")).toBeVisible();
+  await replay();
+
+  // 비밀번호 재설정: 다른 비밀번호로 바꾸는 길이 없다(늦게 끝난 첫 요청이 덮을 수 있음). 닫으면 처리되었을 수 있다고 안내한다
+  await page.getByRole("button", { name: `${name2} 비밀번호 재설정` }).click();
+  await dialog.getByLabel("새 비밀번호").fill(`pw-${id}-late`);
+  replay = await holdOnce((u, m) => u.pathname.endsWith("/password") && m === "POST");
+  await dialog.getByRole("button", { name: "재설정" }).click();
+  await expect(dialog.getByTestId("sp-unclear")).toContainText("비밀번호가 변경되었을 수 있습니다.");
+  await expect(dialog.getByRole("button", { name: "새로 정하기" })).toHaveCount(0);
+  await expect(dialog.getByLabel("새 비밀번호")).toBeDisabled();
+  await dialog.getByRole("button", { name: "닫기" }).click();
+  await expect(page.getByText("이전 비밀번호 재설정 요청이 처리되었을 수 있습니다", { exact: false })).toBeVisible();
+  await replay();
+
+  // 비활성화: 끊긴 직후 다시 읽으면 아직 활성 → 불분명 유지(「비활성화되지 않았습니다」 금지) → 늦게 처리된 뒤 「확인」으로 성공
+  await page.getByRole("button", { name: `${name2} 비활성화` }).click();
+  replay = await holdOnce((u, m) => u.pathname.endsWith("/disable") && m === "POST");
+  await dialog.getByRole("button", { name: "비활성화" }).click();
+  const offBox = dialog.getByTestId("sd-unclear");
+  await expect(offBox).toContainText("아직 반영이 확인되지 않았습니다");
+  await expect(dialog.getByRole("button", { name: "비활성화", exact: true })).toBeDisabled();
+  await replay();
+  await offBox.getByRole("button", { name: "확인", exact: true }).click();
+  await expect(page.getByText(`${name2} 계정을 비활성화했습니다`)).toBeVisible();
+  await expect(row(page, s.email)).toContainText("비활성");
 });
 
 test("권한이 하나도 없는 직원도 창으로 돌아오면 대표자가 켠 권한이 메뉴에 나온다(새로고침 없이)", async ({ page }) => {
