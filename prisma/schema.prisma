@@ -118,6 +118,8 @@ model Seller {
   orderItems               OrderItem[]
   orderConsents            OrderConsent[]
   orderPolicy              SellerOrderPolicy?
+  mailPolicy               SellerMailPolicy?
+  mailDeliveries           MailDelivery[]
   memberPolicy             SellerMemberPolicy?
   rejoinBlocks             BuyerRejoinBlock[]
   purchaseRestrictions     BuyerPurchaseRestriction[]
@@ -1335,6 +1337,9 @@ model SubscriptionPlan {
   trialStorageMb     Int      @default(1024)
   // 마스터 승인 시각부터의 체험 일수(오버레이 전용 7, 통합 0 = 체험 없음, ARCHITECTURE 4.8.0)
   trialDays          Int      @default(0)
+  // 월 메일 제공량(통, KST 달 기준, 대표님 결정 2026-10-05). 넘는 발송은 파트너스가 초과 발송을 켰을 때만 보내고 다음 달 구독료에 합산한다.
+  // 최고관리자만 바꾼다(billing.price). lib/server/mail/quota.ts
+  mailMonthlyQuota   Int      @default(100)
   createdAt          DateTime @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime @updatedAt @db.Timestamptz(3)
 
@@ -2150,4 +2155,58 @@ model ShopDisplayItem {
 
   @@id([sellerId, productId])
   @@index([sellerId, sortOrder])
+}
+
+// 파트너스 메일 초과 발송 설정(대표님 결정 2026-10-05, lib/server/mail/quota.ts). 없으면 기본값(끔·상한 0).
+// 끄거나 이번 달 초과 발송이 상한에 이르면 그 파트너스의 메일은 보내지 않는다(주문 처리는 계속).
+model SellerMailPolicy {
+  sellerId          String   @id @db.Uuid
+  overageAllowed    Boolean  @default(false)
+  // 한 달(KST)에 제공량을 넘겨 보낼 수 있는 통수
+  overageMonthlyCap Int      @default(0)
+  updatedAt         DateTime @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+}
+
+// 플랫폼 메일 설정(한 행, id = 1). 초과 발송 통당 단가(원, 기본 0원, 대표님이 정함)와 플랫폼 전체 무료 한도(메일 서비스 하루·월).
+// 최고관리자만 바꾼다(billing.price).
+model PlatformMailSetting {
+  id                   Int      @id @default(1)
+  overageUnitPrice     Int      @default(0)
+  platformDailyLimit   Int      @default(100)
+  platformMonthlyLimit Int      @default(3000)
+  updatedAt            DateTime @updatedAt @db.Timestamptz(3)
+}
+
+enum MailDeliveryStatus {
+  // 보내는 중(한도 계산에 넣는다)
+  PENDING
+  SENT
+  // 보내지 못함(한도에서 뺀다)
+  FAILED
+  // 파트너스 제공량·초과 상한에 걸려 보내지 않음
+  SKIPPED_QUOTA
+  // 플랫폼 전체 무료 한도에 걸려 보내지 않음
+  SKIPPED_PLATFORM_LIMIT
+}
+
+// 메일 발송 기록(한 통에 한 행). 받는 사람 주소·내용은 남기지 않는다. sellerId가 없으면 플랫폼이 보낸 메일(플랫폼 한도에만 센다).
+// month는 KST 달(YYYY-MM). overage는 제공량을 넘겨 보낸(또는 보내려던) 통.
+model MailDelivery {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId          String?            @db.Uuid
+  kind              String
+  refId             String?
+  month             String
+  status            MailDeliveryStatus
+  overage           Boolean            @default(false)
+  providerMessageId String?
+  createdAt         DateTime           @default(now()) @db.Timestamptz(3)
+  finishedAt        DateTime?          @db.Timestamptz(3)
+
+  seller Seller? @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@index([sellerId, month, status])
+  @@index([createdAt, status])
 }
