@@ -102,64 +102,87 @@ export default function EventPopup({ popups }: { popups: EventPopupItem[] }) {
   return (
     <>
       {bar && (
-        <div className="ep-bar" role="region" aria-label="알림">
-          {bar.link ? (
-            <a className="t-l2 fw6 ep-bar-text" href={bar.link.href} {...linkAttrs(bar.link)}>
-              {bar.title}
-            </a>
-          ) : (
-            <span className="t-l2 fw6 ep-bar-text">{bar.title}</span>
-          )}
-          <button
-            className="ep-bar-x"
-            type="button"
-            aria-label={bar.dismissDays === 0 ? "닫기" : `닫기 · ${dismissLabel(bar.dismissDays)}`}
-            onClick={() => {
-              remember(bar);
-              closed.current.add(bar.id);
-              setBar(null);
-            }}
-          >
-            ×
-          </button>
-        </div>
+        <EventPopupBar
+          bar={bar}
+          onClose={() => {
+            remember(bar);
+            closed.current.add(bar.id);
+            setBar(null);
+          }}
+        />
       )}
       {current && (
         <div className="ep-dim" onClick={(e) => e.target === e.currentTarget && dismissCurrent(false)}>
-          <div className="ep" role="dialog" aria-modal="true" aria-labelledby={`ep-t-${current.id}`}>
-            <ModalClose className="ep-x" innerRef={closeRef} onClick={close} />
-            {current.kind === "IMAGE" &&
-              current.image &&
-              (current.link ? (
-                <a href={current.link.href} {...linkAttrs(current.link)}>
-                  <img className="ep-img" src={current.image.url} width={current.image.width} height={current.image.height} alt={current.title} />
-                </a>
-              ) : (
-                <img className="ep-img" src={current.image.url} width={current.image.width} height={current.image.height} alt={current.title} />
-              ))}
-            <div className="ep-body">
-              <h2 className={current.kind === "IMAGE" ? "sr" : "t-hl2"} id={`ep-t-${current.id}`}>
-                {current.title}
-              </h2>
-              {current.body && <p className="t-l2 c-alt ep-text">{current.body}</p>}
-              {current.link && (
-                <a className="btn btn-block" href={current.link.href} {...linkAttrs(current.link)}>
-                  {current.linkLabel}
-                </a>
-              )}
-            </div>
-            {current.dismissDays > 0 && (
-              <div className="ep-foot t-c1">
-                <label className="row ep-hide">
-                  <input className="cbx" type="checkbox" checked={hide} onChange={(e) => setHide(e.target.checked)} />
-                  {dismissLabel(current.dismissDays)}
-                </label>
-              </div>
-            )}
-          </div>
+          <EventPopupCard popup={current} hide={hide} onHide={setHide} onClose={close} closeRef={closeRef} />
         </div>
       )}
     </>
+  );
+}
+
+// 상단 띠·가운데 팝업의 모양. 구매자 화면과 파트너스 관리자 미리보기가 같은 것을 쓴다.
+export function EventPopupBar({ bar, onClose }: { bar: EventPopupItem; onClose: () => void }) {
+  return (
+    <div className="ep-bar" role="region" aria-label="알림">
+      {bar.link ? (
+        <a className="t-l2 fw6 ep-bar-text" href={bar.link.href} {...linkAttrs(bar.link)}>
+          {bar.title}
+        </a>
+      ) : (
+        <span className="t-l2 fw6 ep-bar-text">{bar.title}</span>
+      )}
+      <button className="ep-bar-x" type="button" aria-label={bar.dismissDays === 0 ? "닫기" : `닫기 · ${dismissLabel(bar.dismissDays)}`} onClick={onClose}>
+        ×
+      </button>
+    </div>
+  );
+}
+
+export function EventPopupCard({
+  popup: current,
+  hide,
+  onHide,
+  onClose,
+  closeRef,
+}: {
+  popup: EventPopupItem;
+  hide: boolean;
+  onHide: (v: boolean) => void;
+  onClose: () => void;
+  closeRef?: React.Ref<HTMLButtonElement>;
+}) {
+  return (
+    <div className="ep" role="dialog" aria-modal="true" aria-labelledby={`ep-t-${current.id}`}>
+      <ModalClose className="ep-x" innerRef={closeRef} onClick={onClose} />
+      {current.kind === "IMAGE" &&
+        current.image &&
+        (current.link ? (
+          <a href={current.link.href} {...linkAttrs(current.link)}>
+            <img className="ep-img" src={current.image.url} width={current.image.width} height={current.image.height} alt={current.title} />
+          </a>
+        ) : (
+          <img className="ep-img" src={current.image.url} width={current.image.width} height={current.image.height} alt={current.title} />
+        ))}
+      <div className="ep-body">
+        <h2 className={current.kind === "IMAGE" ? "sr" : "t-hl2"} id={`ep-t-${current.id}`}>
+          {current.title}
+        </h2>
+        {current.body && <p className="t-l2 c-alt ep-text">{current.body}</p>}
+        {current.link && (
+          <a className="btn btn-block" href={current.link.href} {...linkAttrs(current.link)}>
+            {current.linkLabel}
+          </a>
+        )}
+      </div>
+      {current.dismissDays > 0 && (
+        <div className="ep-foot t-c1">
+          <label className="row ep-hide">
+            <input className="cbx" type="checkbox" checked={hide} onChange={(e) => onHide(e.target.checked)} />
+            {dismissLabel(current.dismissDays)}
+          </label>
+        </div>
+      )}
+    </div>
   );
 }
 
