@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
+import { couponAmountText, couponConditions, couponDate, type CouponView } from "../../../../../components/shop/CouponBox";
 import { ConfirmDelete, StateBox, errorText, fromKstInput, kstText, stateKind, toKstInput } from "../banners/_shared/ui";
 import "./coupons.css";
 
@@ -481,7 +482,22 @@ function CouponEditor({ draft: initial, products, onClose, onSaved }: { draft: D
     onSaved(d.id ? "쿠폰을 저장했습니다" : `쿠폰을 저장했습니다 · ${kstText(fromKstInput(d.startsAt))}부터 발급`);
   };
 
-  const previewAmount = d.benefit === "FREE_SHIPPING" ? "배송비 무료" : d.benefit === "AMOUNT" ? won(num(d.value) ?? 0) : `${num(d.value) ?? 0}%`;
+  // 구매자 쿠폰함(CouponBox)의 「받을 수 있어요」 카드와 같은 문구·모양으로 저장 전 입력값을 그린다
+  const endIso = d.endsAt ? fromKstInput(d.endsAt) : null;
+  const view: CouponView = {
+    couponId: "preview",
+    name: d.name.trim() || "쿠폰 이름",
+    benefit: d.benefit,
+    value: num(d.value) ?? 0,
+    maxDiscount: d.benefit === "RATE" ? num(d.maxDiscount) : null,
+    minOrderAmount: num(d.minOrderAmount) ?? 0,
+    excludeDiscounted: d.excludeDiscounted,
+    allowWithReward: d.allowWithReward,
+    productScoped: scoped && d.productIds.length > 0,
+    startsAt: (d.startsAt ? fromKstInput(d.startsAt) : null) ?? "",
+    endsAt: endIso ?? "",
+    validDays: d.useValidDays ? num(d.validDays) : null,
+  };
 
   return (
     <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="cp-edit-title">
@@ -646,17 +662,24 @@ function CouponEditor({ draft: initial, products, onClose, onSaved }: { draft: D
           </div>
           <div className="cp-preview">
             <span className="t-hl2">구매자 쿠폰함 미리보기</span>
-            <div className="cp-pv-card" data-testid="coupon-preview">
-              <div className="cp-pv-amt">{previewAmount}</div>
-              <div className="col" style={{ gap: 4, padding: "12px 14px", minWidth: 0 }}>
-                <span className="t-l1 fw6">{d.name.trim() || "쿠폰 이름"}</span>
-                <span className="t-c1 c-alt">
-                  {conditionText({ minOrderAmount: num(d.minOrderAmount) ?? 0, excludeDiscounted: d.excludeDiscounted, productIds: scoped ? d.productIds : [] })}
-                </span>
-                <span className="t-c1 c-alt">{d.useValidDays && d.validDays ? `받은 날부터 ${d.validDays}일` : d.endsAt ? `${kstText(fromKstInput(d.endsAt)).slice(5, 10).replace(".", "/")}까지` : ""}</span>
-              </div>
-            </div>
-            <span className="help">구매자 화면 문구는 해요체 그대로 표시 · 기한은 남은 날짜로 표시</span>
+            <ul className="cb-list" data-testid="coupon-preview">
+              <li className="cb-item">
+                <div className="cb-amt">
+                  <span className="t-h2 fw7">{couponAmountText(view)}</span>
+                </div>
+                <div className="cb-body">
+                  <span className="t-b2 fw6">{view.name}</span>
+                  <span className="t-l2 c-alt">{couponConditions(view)}</span>
+                  <span className="t-c1 c-alt">{view.validDays ? `받은 날부터 ${view.validDays}일` : endIso ? `${couponDate(endIso)}까지` : ""}</span>
+                </div>
+                <div className="cb-side">
+                  <span className="btn btn-sm" aria-hidden="true">
+                    받기
+                  </span>
+                </div>
+              </li>
+            </ul>
+            <span className="help">쇼핑몰 쿠폰함에 이렇게 표시됩니다</span>
           </div>
         </div>
         <div className="modal-f">
