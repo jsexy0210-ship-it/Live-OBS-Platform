@@ -2179,7 +2179,7 @@ describe("MASTER 최소 안전 동작: 변경 뒤 실패는 정리 필요·알�
 
     // 변경 뒤: 쇼핑몰 연결·웹훅까지 마친 작업이 비용 상한으로 실패
     const changed = await bought();
-    await db.automationJob.update({ where: { id: changed.jobId }, data: { costLimit: 5, playbookId: null, playbookVersion: null, stepIndex: 2, playbookActions: 5 } });
+    await db.automationJob.update({ where: { id: changed.jobId }, data: { costLimit: 5, playbookId: null, playbookVersion: null, stepIndex: 2, playbookActions: 5, changedAt: new Date(), mutatedSteps: ["shop_connect", "webhook_setup"] } });
     expect(await runOnce(db, runtime(), W)).toBe("failed");
     const j = await job(changed.jobId);
     expect(j).toMatchObject({ status: "FAILED", lastError: "cost_limit" });
@@ -2192,7 +2192,7 @@ describe("MASTER 최소 안전 동작: 변경 뒤 실패는 정리 필요·알�
     const rt = runtime();
     // 쇼핑몰 연결·웹훅을 마친 뒤 OBS 단계에서 로컬 도구 연결을 기다린다
     rt.obs.disconnected.add(a.seller.id);
-    await db.automationJob.update({ where: { id: a.jobId }, data: { stepIndex: 2, playbookActions: 5 } });
+    await db.automationJob.update({ where: { id: a.jobId }, data: { stepIndex: 2, playbookActions: 5, changedAt: new Date(), mutatedSteps: ["shop_connect", "webhook_setup"] } });
     expect(await runOnce(db, rt, W)).toBe("needs_customer");
     await db.automationJob.update({ where: { id: a.jobId }, data: { actionDeadlineAt: new Date(Date.now() - 1000) } });
     await reapExpired(db);
@@ -2476,6 +2476,71 @@ describe("Codex 21차 반영(284abcb)", () => {
       expect(await job(a.jobId), String(bad)).toMatchObject({ status: "FAILED", lastError: "unsafe_action:bad_cost", costUsed: 0 });
       expect(rt.browser.performed.filter((p) => p.type === "click"), String(bad)).toHaveLength(0);
       await db.automationJob.updateMany({ data: { deviatedSteps: [], lastDeviationAt: null } });
+    }
+  });
+});
+
+describe("Codex 22차 반영(917980f)", () => {
+  it("실행기는 엔진이 확인한 문서 주소·이동 규칙을 받아 실행 직전에 다시 대조한다: 확인 뒤 실행 직전에 다른 쇼핑몰로 넘어가면 행동 0건(page_mismatch)", async () => {
+    for (const to of ["https://othershop.cafe24.com/disp/admin/shop1/", "https://myshop.cafe24.com/disp/admin/shop1/other"]) {
+      const a = await bought();
+      const rt = runtime();
+      // 엔진 검사가 끝난 뒤, 실행기가 행동하기 직전에 문서가 바뀐다
+      rt.browser.beforePerform = (action) => {
+        if (action.type === "click" || action.type === "fill") rt.browser.currentUrlOverride = () => to;
+      };
+      expect(await runOnce(db, rt, W), to).toBe("failed");
+      expect(rt.browser.performed.filter((p) => p.type === "click" || p.type === "fill"), to).toHaveLength(0);
+      expect(await job(a.jobId), to).toMatchObject({ status: "FAILED", lastError: "page_mismatch" });
+      await db.automationJob.updateMany({ data: { deviatedSteps: [], lastDeviationAt: null } });
+    }
+  });
+
+  it("비밀값 입력은 관리자 로그인 단서도 실행기가 입력 직전에 다시 대조한다: 확인 뒤 로그아웃된 화면이면 입력 0건(page_mismatch)", async () => {
+    const a = await bought();
+    const rt = runtime();
+    const text = rt.browser.pageText;
+    rt.browser.beforePerform = (action) => {
+      if (action.type === "fill") rt.browser.pageText = (scope, secrets) => text(scope, secrets).split("로그아웃").join("");
+    };
+    expect(await runOnce(db, rt, W)).toBe("failed");
+    expect(rt.browser.performed.filter((p) => p.type === "fill")).toHaveLength(0);
+    expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "page_mismatch" });
+  });
+
+  it("정리 필요는 변경 기록(changedAt·mutatedSteps)으로만 판단한다: 기존 설치를 확인만 하고 진행한 작업(진행 위치 2, 변경 기록 없음)이 실패해도 정리 필요·알림 없음", async () => {
+    const a = await bought();
+    await db.automationJob.update({ where: { id: a.jobId }, data: { costLimit: 5, playbookId: null, playbookVersion: null, stepIndex: 2, playbookActions: 5 } });
+    expect(await runOnce(db, runtime(), W)).toBe("failed");
+    expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "cost_limit", cleanupNeededAt: null });
+    expect(await db.auditLog.count({ where: { action: "automation.job_cleanup_needed", targetId: a.jobId } })).toBe(0);
+  });
+
+  it("보관 자료 삭제가 계속 거부돼도 같은 실패 행만 다시 고르지 않는다: 실패 행은 미뤄지고 뒤의 작업이 정리되며, 반복 실패는 마스터 알림 1건", async () => {
+    const stuck: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const s = await bought();
+      await db.automationJob.update({ where: { id: s.jobId }, data: { status: "FAILED", finishedAt: new Date(), updatedAt: new Date(Date.now() - 60_000 + i) } });
+      stuck.push(s.jobId);
+    }
+    const later = await bought();
+    await db.automationJob.update({ where: { id: later.jobId }, data: { status: "FAILED", finishedAt: new Date() } });
+    const rt = runtime();
+    rt.browser.discard = async (scope) => {
+      if (stuck.includes(scope.jobId)) throw new Error("executor refused");
+    };
+    // 한 번에 3건만 고르게 해도 두 번째 회차에는 뒤의 작업에 닿는다
+    await purgeEndedBrowserState(db, rt, 3);
+    await purgeEndedBrowserState(db, rt, 3);
+    expect(await job(later.jobId)).toMatchObject({ artifactsPurgedAt: expect.any(Date) });
+    // 실패 행을 다시 시도할 때가 되면 다시 시도하고, 상한 횟수를 넘기면 알림은 행마다 1건
+    for (let i = 0; i < 12; i++) {
+      await db.automationJob.updateMany({ where: { id: { in: stuck } }, data: { artifactsPurgeRetryAt: new Date(Date.now() - 1000) } });
+      await purgeEndedBrowserState(db, rt, 3);
+    }
+    for (const id of stuck) {
+      expect(await job(id)).toMatchObject({ artifactsPurgedAt: null });
+      expect(await db.auditLog.count({ where: { action: "automation.artifacts_purge_failed", targetId: id } })).toBe(1);
     }
   });
 });

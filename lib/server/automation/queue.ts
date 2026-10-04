@@ -146,8 +146,9 @@ async function fencedWrite(
   });
 }
 
-// 이 작업이 무언가를 바꿨을 수 있는가: 변경 행동을 시작했거나(changedAt) 끝낸 단계가 있으면(판단 호출·이동만으로는 아님)
-export const hasChanges = (j: Pick<AutomationJob, "stepIndex" | "changedAt">) => j.stepIndex > 0 || j.changedAt !== null;
+// 이 작업이 무언가를 바꿨을 수 있는가: 되돌리기와 같은 증거(변경 행동 직전 기록 changedAt·mutatedSteps)로만 판단한다.
+// 진행 위치(stepIndex)는 쓰지 않는다(기존 설치를 확인만 하고 단계를 끝낸 작업은 바꾼 것이 없다)
+export const hasChanges = (j: Pick<AutomationJob, "changedAt" | "mutatedSteps">) => j.changedAt !== null || j.mutatedSteps.length > 0;
 
 // 단계마다 첫 변경 행동 직전 기록: 작업의 첫 변경 시각(changedAt, 이미 있으면 그대로)과 변경을 시작한 단계(mutatedSteps)를 같은 쓰기로
 export const markChanged = (db: PrismaClient, c: Claim, stepKey: string) =>

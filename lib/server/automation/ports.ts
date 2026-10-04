@@ -58,13 +58,34 @@ export type ActionOutcome =
   | { kind: "retryable"; reason: string }
   | { kind: "fatal"; reason: string };
 
+// secretOrigin(비밀값 입력에만): 비밀값 출처 규칙과 관리자 로그인 상태 단서 문구(지금 화면 글에 모두 있어야 함)
+export type ExpectedPage = {
+  url: string;
+  nav: NavRules;
+  secretOrigin?: { shopHost: string | null | undefined; pathPrefixes: readonly string[]; adminCueText: readonly string[] };
+};
+
+// 실행기 쪽 대조(계약): 지금 문서 주소(와 비밀값 입력이면 지금 화면 글)가 엔진이 확인한 주소·규칙·로그인 단서 그대로인지
+export const pageMatchesExpected = (current: string | null, expected: ExpectedPage, secretFill: boolean, currentText = ""): boolean =>
+  !!current &&
+  current === expected.url &&
+  pageAllowedByNav(current, expected.nav) &&
+  (!secretFill ||
+    (!!expected.secretOrigin &&
+      expected.secretOrigin.adminCueText.length > 0 &&
+      secretOriginAllowed(current, expected.secretOrigin.shopHost, expected.secretOrigin.pathPrefixes) &&
+      expected.secretOrigin.adminCueText.every((t) => currentText.includes(t))));
+
 export interface BrowserSession {
   readonly id: string;
   observe(): Promise<Observation>;
   // actionKey: 변경 행동(클릭·입력·OBS 설정·테스트 주문)에만 붙는 고정 키(작업 id·단계·행동 의미의 해시, 순번과 무관). 실행기는 같은 키로
   // 이미 성공한 행동을 다시 적용하지 않고 그때 결과를 돌려준다(작업자가 죽은 뒤 회수·재실행해도 중복 적용 없음).
   // 키 기록도 보관 자료처럼 작업에만 묶고 작업이 끝나면 지운다. 키가 없는 행동(이동·확인)은 매번 실행한다.
-  perform(action: AutomationAction, secrets: JobSecrets, actionKey?: string): Promise<ActionOutcome>;
+  // expected: 엔진이 확인한 문서 주소와 이동 규칙(변경 행동에만). 실행기는 행동을 적용하는 것과 원자적으로(같은 페이지 문맥에서 바로 앞에)
+  // 지금 문서 주소를 다시 읽어 expected.url과 같고 이동 규칙(호스트·경로·쿼리 키·조각 금지) 안인지, 비밀값 입력이면 비밀값 출처 규칙
+  // (secretOrigin) 안인지 대조하고, 아니면 아무것도 하지 않고 fatal "page_mismatch"를 돌려준다(확인과 실행 사이 리다이렉트 차단).
+  perform(action: AutomationAction, secrets: JobSecrets, actionKey?: string, expected?: ExpectedPage): Promise<ActionOutcome>;
   // 지금 로그인된 관리 화면의 쇼핑몰 식별자(읽기만, 아무것도 바꾸지 않음). 알 수 없으면 null
   currentShopKey(): Promise<string | null>;
   // 지금 문서의 주소(리다이렉트 뒤 실제 출처, 읽기만). 알 수 없으면 null. 비밀값을 넣기 직전에 확인한다.

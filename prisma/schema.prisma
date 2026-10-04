@@ -1390,6 +1390,10 @@ model AutomationJob {
   // 끝난 작업의 보관 자료(브라우저 상태·임시 파일·행동 키 기록·OBS 연결 정보) 삭제를 실행기·로컬 도구에 요청한 시각.
   // 고객 대기가 없었던 작업도 포함해 끝난 모든 작업을 한 번씩 정리한다(worker.ts purgeEndedBrowserState).
   artifactsPurgedAt    DateTime?                 @db.Timestamptz(3)
+  // 보관 자료 삭제 요청이 실패한 횟수·다음 재시도 시각(실패 행만 계속 고르지 않게 미룬다)·반복 실패 알림 시각(작업당 1건)
+  artifactsPurgeAttempts  Int                    @default(0)
+  artifactsPurgeRetryAt   DateTime?              @db.Timestamptz(3)
+  artifactsPurgeAlertedAt DateTime?              @db.Timestamptz(3)
   // 무료 재연결(결제 없음) 요청의 Idempotency-Key·요청 지문. 유료 작업의 키는 결제 행에 있다.
   idempotencyKey       String?
   requestFingerprint   String?

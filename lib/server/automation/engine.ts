@@ -10,6 +10,7 @@ import {
   type AutomationRuntime,
   type BrowserSession,
   type ConnectionFacts,
+  type ExpectedPage,
   type JobScope,
   type VerificationEvidence,
 } from "./ports";
@@ -280,10 +281,14 @@ async function runAll(
       }
       // 브라우저의 모든 변경 행동(누르기·입력)은 관찰한 주소와 실행 직전 실제 문서 주소가 모두 이 작업의 쇼핑몰 호스트(정확히 일치)와
       // 단계 허용 경로 안이어야 한다(같은 플랫폼의 다른 쇼핑몰·같은 호스트의 쇼핑몰 앞 화면으로 넘어간 경우 행동 0건)
+      // 확인한 주소·규칙은 실행기에도 넘겨 행동 직전에 다시 대조하게 한다(확인과 실행 사이 리다이렉트 차단, 다르면 page_mismatch)
+      let expectedPage: ExpectedPage | undefined;
       if (session && mutating) {
         guard();
         const here = await session.currentUrl();
-        if (!pageAllowedByNav(raw.url, nav) || !pageAllowedByNav(here, nav)) return { kind: "failed", reason: "unsafe_action:page_not_allowed" };
+        if (!nav || !here || !pageAllowedByNav(raw.url, nav) || !pageAllowedByNav(here, nav)) return { kind: "failed", reason: "unsafe_action:page_not_allowed" };
+        const secretFill = action.type === "fill" && "secretRef" in action.value;
+        expectedPage = { url: here, nav, ...(secretFill ? { secretOrigin: { shopHost: opts.shopHost, pathPrefixes: secretBook?.secretOrigin.pathPrefixes ?? [], adminCueText: secretBook?.secretOrigin.adminCue.textIncludes ?? [] } } : {}) };
       }
       if (MUTATING.includes(action.type) && !markedSteps.has(step.key) && hooks.markChanged) {
         await hooks.markChanged(step.key);
@@ -294,7 +299,7 @@ async function runAll(
       // 다른 행동은 같은 순번이라도 실행된다. 이동·확인 같은 바꾸지 않는 행동은 새 세션에서 다시 해야 하므로 키를 붙이지 않는다.
       const actionKey = MUTATING.includes(action.type) ? actionKeyOf(scope.jobId, stepIndex, action) : undefined;
       // OBS 쪽은 확인한 PC를 넘겨 로컬 도구가 실행 직전에 비교하게 하고(다르면 행동 0건으로 거절), 결과의 실제 실행 PC를 다시 대조한다
-      const out: ActionOutcome = session ? await session.perform(action, secrets, actionKey) : await rt.obs.perform(scope, action, actionKey, confirmedPairing);
+      const out: ActionOutcome = session ? await session.perform(action, secrets, actionKey, expectedPage) : await rt.obs.perform(scope, action, actionKey, confirmedPairing);
       if (!session && out.kind === "ok" && out.pairingId !== confirmedPairing) return { kind: "failed", reason: "obs_target_changed" };
       // 외부 행동이 끝나는 사이 자리를 잃었거나 실행 시간 상한을 넘었으면 결과를 쓰지 않고 멈춘다(작업자가 상황에 맞게 정리)
       guard();
@@ -361,10 +366,12 @@ export async function runRollback(
         const action = resolveShop(rb.actions[i].action, opts.shopHost);
         const check = validateDecision(step, { action, costWon: 0 }, secrets, {}, rb.allowedTargets, nav);
         if (!check.ok) return { kind: "cleanup_needed", reason: `rollback_unsafe:${check.reason}` };
+        let expectedPage: ExpectedPage | undefined;
         if (session && rb.kind === "browser" && MUTATING.includes(action.type)) {
           guard();
           const here = await session.currentUrl();
-          if (!pageAllowedByNav(raw.url, nav) || !pageAllowedByNav(here, nav)) return { kind: "cleanup_needed", reason: "rollback_unsafe:page_not_allowed" };
+          if (!here || !pageAllowedByNav(raw.url, nav) || !pageAllowedByNav(here, nav)) return { kind: "cleanup_needed", reason: "rollback_unsafe:page_not_allowed" };
+          expectedPage = { url: here, nav };
         }
         let pairing: string | undefined;
         if (rb.kind === "obs") {
@@ -376,7 +383,7 @@ export async function runRollback(
         await hooks.touch();
         guard();
         const actionKey = MUTATING.includes(action.type) ? actionKeyOf(scope.jobId, 100 + at, action) : undefined;
-        const out = rb.kind === "browser" ? await session!.perform(action, secrets, actionKey) : await rt.obs.perform(scope, action, actionKey, pairing);
+        const out = rb.kind === "browser" ? await session!.perform(action, secrets, actionKey, expectedPage) : await rt.obs.perform(scope, action, actionKey, pairing);
         guard();
         if (out.kind !== "ok" || (rb.kind === "obs" && out.pairingId !== pairing)) return { kind: "cleanup_needed", reason: `rollback_failed:${rb.forStep}` };
       }

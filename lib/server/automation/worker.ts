@@ -1,3 +1,4 @@
+import { writeAudit } from "../audit/log";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import type { BillingProvider } from "../billing/provider";
 import { AUTOMATION_LIMITS } from "./config";
@@ -184,9 +185,15 @@ export async function executeJob(db: PrismaClient, rt: AutomationRuntime, { job,
 // 삭제를 실행기·로컬 도구에 요청한다. 고객 대기가 없었던 작업도 포함한다. 판매자 취소처럼 작업자 밖에서 끝난 작업도 여기서 지운다.
 // 삭제 요청이 실패하면 표시가 남아 다음 반복에서 다시 한다.
 export async function purgeEndedBrowserState(db: PrismaClient, rt: Pick<AutomationRuntime, "browser" | "obs">, limit = 50): Promise<number> {
+  const now = new Date();
+  // 삭제가 실패한 작업은 다음 재시도 시각까지 고르지 않는다(실패 행만 계속 골라 뒤의 작업에 닿지 못하는 일 방지)
   const ended = await db.automationJob.findMany({
-    where: { artifactsPurgedAt: null, status: { in: ["SUCCEEDED", "FAILED", "CANCELED"] } },
-    select: { id: true, sellerId: true },
+    where: {
+      artifactsPurgedAt: null,
+      status: { in: ["SUCCEEDED", "FAILED", "CANCELED"] },
+      OR: [{ artifactsPurgeRetryAt: null }, { artifactsPurgeRetryAt: { lte: now } }],
+    },
+    select: { id: true, sellerId: true, artifactsPurgeAttempts: true },
     orderBy: { updatedAt: "asc" },
     take: limit,
   });
@@ -197,16 +204,40 @@ export async function purgeEndedBrowserState(db: PrismaClient, rt: Pick<Automati
       await rt.browser.discard(scope);
       await rt.obs.discard(scope);
     } catch {
+      await recordPurgeFailure(db, j.id, j.sellerId, j.artifactsPurgeAttempts + 1);
       continue;
     }
     purged += (
       await db.automationJob.updateMany({
         where: { id: j.id, artifactsPurgedAt: null, status: { in: ["SUCCEEDED", "FAILED", "CANCELED"] } },
-        data: { artifactsPurgedAt: new Date(), browserStateHeld: false },
+        data: { artifactsPurgedAt: new Date(), browserStateHeld: false, artifactsPurgeRetryAt: null },
       })
     ).count;
   }
   return purged;
+}
+
+// 보관 자료 삭제 반복 실패: 이 횟수부터 마스터 관리자 알림(감사 기록 운영 이벤트, 작업당 1건). 재시도는 늦춰 가며 계속한다.
+export const PURGE_ALERT_AFTER = 10;
+const PURGE_MAX_BACKOFF_MS = 60 * 60_000;
+
+async function recordPurgeFailure(db: PrismaClient, jobId: string, sellerId: string, attempts: number) {
+  const retryAt = new Date(Date.now() + Math.min(30_000 * 2 ** Math.min(attempts - 1, 10), PURGE_MAX_BACKOFF_MS));
+  await db.$transaction(async (tx) => {
+    await tx.automationJob.updateMany({ where: { id: jobId, artifactsPurgedAt: null }, data: { artifactsPurgeAttempts: attempts, artifactsPurgeRetryAt: retryAt } });
+    if (attempts < PURGE_ALERT_AFTER) return;
+    const first = await tx.automationJob.updateMany({ where: { id: jobId, artifactsPurgedAt: null, artifactsPurgeAlertedAt: null }, data: { artifactsPurgeAlertedAt: new Date() } });
+    if (first.count === 1) {
+      await writeAudit(tx, {
+        actorType: "SYSTEM",
+        sellerId,
+        action: "automation.artifacts_purge_failed",
+        targetType: "AutomationJob",
+        targetId: jobId,
+        after: { attempts },
+      });
+    }
+  });
 }
 
 // 작업자 반복: 만료 회수 → 보관본 삭제 → 결제 대사 → 작업 하나 실행. 할 일이 없으면 잠깐 쉰다. signal로 멈춘다.

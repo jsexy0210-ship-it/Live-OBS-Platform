@@ -5,6 +5,7 @@ import type {
   AutomationPlanner,
   BrowserExecutor,
   BrowserSession,
+  ExpectedPage,
   JobScope,
   JobSecrets,
   ObsBridge,
@@ -14,6 +15,7 @@ import type {
   PlannerInput,
   SecretVault,
 } from "./ports";
+import { pageMatchesExpected } from "./ports";
 
 // 가짜(모의) 구현. 실제 Gemini·브라우저·로컬 도구를 부르지 않는다. 운영 환경에서는 만들 수 없다.
 function assertNotProduction(env: string | undefined) {
@@ -100,6 +102,8 @@ export class FakeBrowserExecutor implements BrowserExecutor {
   // 관찰·현재 문서 주소(리다이렉트 흉내용). observe 때와 실행 직전 주소를 따로 바꿀 수 있다.
   pageUrl: (scope: JobScope) => string | null = () => "https://myshop.cafe24.com/disp/admin/shop1/";
   currentUrlOverride: ((scope: JobScope) => string | null) | null = null;
+  // 시험용: 실행기가 행동을 받은 직후(대조 전) 끼어들 일(예: 문서가 리다이렉트됨)
+  beforePerform: ((action: AutomationAction, scope: JobScope) => void) | null = null;
   // 테스트용: 화면 요소(표·목록·입력값 등)를 직접 정한다
   pageElements: ((scope: JobScope) => ObservedElement[]) | null = null;
   // 이미 적용한 행동 키 → 결과(같은 키는 한 번만 적용)
@@ -147,9 +151,16 @@ export class FakeBrowserExecutor implements BrowserExecutor {
         const v = self.shopKey.get(scope.sellerId);
         return v === undefined ? `mall-${scope.sellerId}` : v;
       },
-      async perform(action, secrets, actionKey?: string): Promise<ActionOutcome> {
+      async perform(action, secrets, actionKey?: string, expected?: ExpectedPage): Promise<ActionOutcome> {
         secretsSeen = secrets;
         if (self.tombstones.has(scope.jobId)) return { kind: "fatal", reason: "scope_discarded" };
+        self.beforePerform?.(action, scope);
+        // 엔진이 확인한 문서 그대로인지 행동 직전에 대조(계약). 다르면 행동 0건
+        if (expected) {
+          const current = self.currentUrlOverride ? self.currentUrlOverride(scope) : self.pageUrl(scope);
+          const secretFill = action.type === "fill" && "secretRef" in action.value;
+          if (!pageMatchesExpected(current, expected, secretFill, self.pageText(scope, secretsSeen))) return { kind: "fatal", reason: "page_mismatch" };
+        }
         // 같은 키로 이미 성공한 행동은 다시 적용하지 않는다(계약)
         const done = actionKey ? self.applied.get(actionKey) : undefined;
         if (done) return done;
