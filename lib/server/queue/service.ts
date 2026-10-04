@@ -209,7 +209,7 @@ export async function startBroadcast(
       }
       await writeAudit(tx, {
         actorType: ctx.actorType,
-        actorId: ctx.actorId,
+        actorId: ctx.actorType === "SYSTEM" ? null : ctx.actorId,
         sellerId: ctx.sellerId,
         action: "broadcast.start",
         targetType: "BroadcastSession",
@@ -253,7 +253,7 @@ export async function endBroadcast(
     await tx.broadcastSession.update({ where: { id: live.id }, data: { status: "ENDED", endedAt: now } });
     await writeAudit(tx, {
       actorType: ctx.actorType,
-      actorId: ctx.actorId,
+      actorId: ctx.actorType === "SYSTEM" ? null : ctx.actorId,
       sellerId: ctx.sellerId,
       action: "broadcast.end",
       targetType: "BroadcastSession",

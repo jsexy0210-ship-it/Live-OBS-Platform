@@ -36,6 +36,7 @@ export const MEMBER_REFERENCE_POLICY: Record<string, { policy: MemberDataPolicy;
   "StockMovement.actorId": { policy: "retain_legal", note: "actorType=BUYER 행(주문으로 생긴 재고 증감). 거래 기록" },
   "OrderStatusHistory.actorId": { policy: "retain_legal", note: "actorType=BUYER 행(구매자 취소 등). 거래 기록" },
   "QueueItemStatusHistory.actorId": { policy: "retain_legal", note: "actorType=BUYER 행. 주문 이행 기록" },
+  "SellerMessageLedger.actorId": { policy: "retain_legal", note: "구매자 행 없음(DB CHECK로 actorType BUYER 금지, 행위자는 시스템·파트너스 직원·관리자). 발송 충전 원장" },
 };
 
 // 탈퇴 회원이 행위자·대상인 감사 로그의 행동 종류별 보관(대표님 결정 2026-10-03, PRODUCT_SCOPE 「구매자 탈퇴·재가입」).
