@@ -26,7 +26,7 @@ export const PATCH = mutation(async (req: Request, { params }: Params) => {
   const { productId } = await params;
   if (!UUID.test(productId)) return notFound();
   const r = await updateProduct(prisma, ctx, productId, await readJson(req));
-  if (!r.ok) return NextResponse.json(orderErrorBody(r.reason), { status: 400 });
+  if (!r.ok) return NextResponse.json(orderErrorBody(r.reason, "formal"), { status: 400 });
   return NextResponse.json(r.value);
 });
 

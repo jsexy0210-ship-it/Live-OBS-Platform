@@ -17,7 +17,7 @@ export async function GET(req: Request) {
       cursor: q.get("cursor"),
       limit: q.get("limit"),
     });
-    if (!r.ok) return noStore(NextResponse.json(orderErrorBody(r.reason), { status: 400 }));
+    if (!r.ok) return noStore(NextResponse.json(orderErrorBody(r.reason, "formal"), { status: 400 }));
     return noStore(NextResponse.json(r.value));
   } catch (e) {
     return noStore(errorResponse(e));

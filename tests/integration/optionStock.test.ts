@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { GET as optionsRoute } from "../../app/api/seller/products/options/route";
 import { loginSeller } from "../../lib/server/auth/login";
 import { prisma } from "../../lib/server/db";
-import { ORDER_ERROR_MESSAGES } from "../../lib/server/orders/messages";
+import { ORDER_ERROR_MESSAGES, ORDER_ERROR_MESSAGES_FORMAL } from "../../lib/server/orders/messages";
 import { createProduct, deleteOption, deleteProduct } from "../../lib/server/products/manage";
 import { listOptionStock } from "../../lib/server/products/optionStock";
 import type { TenantContext } from "../../lib/server/tenant/context";
@@ -100,7 +100,7 @@ describe("옵션 단위 재고 목록", () => {
     ] as const) {
       const r = await get(qs);
       expect(r.status, qs).toBe(400);
-      expect(await r.json()).toEqual({ error: code, message: ORDER_ERROR_MESSAGES[code] });
+      expect(await r.json()).toEqual({ error: code, message: ORDER_ERROR_MESSAGES_FORMAL[code] });
     }
     const ok = await get("stock=out&limit=10");
     expect(ok.status).toBe(200);
