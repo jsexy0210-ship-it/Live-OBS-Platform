@@ -13,6 +13,7 @@ export async function getOrder(db: PrismaClient, ctx: TenantContext, orderId: st
     where: { id: orderId, sellerId: ctx.sellerId, legalHoldAt: null },
     include: {
       items: true,
+      couponRedemption: { select: { benefit: true, discountAmount: true, restoredAt: true, coupon: { select: { id: true, name: true } } } },
       shipment: { select: { courier: true, trackingNumber: true, status: true, shippedAt: true, deliveredAt: true } },
       shippingAddress: { select: { recipientName: true, phone: true, zipCode: true, address1: true, address2: true, memo: true, isRemote: true } },
       buyerMember: { select: { id: true, broadcastNickname: true, name: true, phone: true } },

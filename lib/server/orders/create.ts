@@ -7,6 +7,7 @@ import { sellerAccessFor } from "../billing/subscription";
 import { OPENED_NO_REFUND_CONSENT } from "./consent";
 import { activeRestriction, dbClock, getOrderPolicy, lockSellerOrders } from "./overdue";
 import { computeShippingFee, getShippingPolicy, INT4_MAX, isRemoteAddress, parseShippingAddress } from "./shipping";
+import { CouponTaken, quoteOrderCoupon, useOrderCoupon, type OrderCouponFailure } from "../shop-coupons/service";
 
 // 구매자 주문 생성(결제 대기까지). 실제 PG 결제 호출은 없다.
 // - 결제 전 개봉 고지(OPENED_NO_REFUND_CONSENT) 동의 필수(체크 기본 해제, 동의 없으면 주문을 만들지 않음). 동의 시각(DB 시계)·문구 버전을 기록.
@@ -16,6 +17,7 @@ import { computeShippingFee, getShippingPolicy, INT4_MAX, isRemoteAddress, parse
 // - 즉시 발송: 배송지는 주문 때 받아 스냅숏으로 남기고, 배송비는 판매자 배송비 설정으로 계산한다(shipping.ts).
 // - 적립금 사용은 방식이 정해지기 전이라 받지 않는다(요청이 오면 거부).
 // - 입력한 배송지는 구매자 배송지 목록에 저장한다(saveAddress: false면 저장 안 함, 기본 저장. buyers/addresses.ts).
+// - 쿠폰(couponId, 주문당 1장): 할인 금액은 서버가 계산해 결제 금액에서 빼고, 같은 트랜잭션에서 쿠폰을 USED로 바꾼다(shop-coupons/service.ts).
 
 export const MAX_ORDER_LINES = 20;
 export const MAX_LINE_QUANTITY = 99;
@@ -31,6 +33,7 @@ export type CreateOrderInput = {
   rewardUseAmount?: unknown;
   shippingAddress: unknown;
   saveAddress?: unknown;
+  couponId?: unknown;
   meta?: { ip?: string | null; userAgent?: string | null };
 };
 
@@ -45,6 +48,7 @@ export type CreateOrderFailure =
   | "invalid_shipping_address"
   | "invalid_amount" // 단가 1원 미만(음수 추가금 등)·합계가 정수 범위를 넘음
   | "purchase_restricted" // 미입금 자동 취소가 쌓여 주문이 막힌 구매자(overdue.ts)
+  | OrderCouponFailure // 쿠폰을 쓸 수 없음·적용 상품 없음·최소 주문 금액 미달(shop-coupons)
   | "order_rate_limited"; // 같은 구매자가 이 쇼핑몰에서 1분에 10건 넘게 주문
 
 export type CreateOrderResult =
@@ -93,6 +97,7 @@ export async function createOrder(db: PrismaClient, input: CreateOrderInput): Pr
     return await createInTransaction(db, input, lines, address);
   } catch (e) {
     if (e instanceof OutOfStockAtOrder) return { ok: false, reason: "out_of_stock" };
+    if (e instanceof CouponTaken) return { ok: false, reason: "coupon_unavailable" };
     throw e;
   }
 }
@@ -149,7 +154,17 @@ async function createInTransaction(
     const policy = await getShippingPolicy(tx, input.sellerId);
     const isRemote = isRemoteAddress(address.zipCode, address.address1, policy.remoteZipRanges);
     const shippingFee = computeShippingFee(itemsSubtotal, policy, isRemote);
-    const totalAmount = itemsSubtotal + shippingFee;
+    // 쿠폰 할인(서버 계산). 배송비 무료 쿠폰도 배송비(shippingFee)는 그대로 남기고 할인 금액으로 뺀다.
+    const coupon = await quoteOrderCoupon(tx, {
+      sellerId: input.sellerId,
+      buyerMemberId: member.id,
+      couponId: input.couponId,
+      now,
+      lines: priced.map((p) => ({ key: p.option.id, productId: p.option.productId, unitPrice: p.unitPrice, listUnitPrice: p.listUnitPrice, quantity: p.line.quantity })),
+      shippingFee,
+    });
+    if (!coupon.ok) return { ok: false as const, reason: coupon.reason };
+    const totalAmount = itemsSubtotal + shippingFee - (coupon.applied?.discountAmount ?? 0);
     if (!Number.isSafeInteger(totalAmount) || totalAmount > INT4_MAX) return { ok: false as const, reason: "invalid_amount" as const };
 
     // 입금 기한: 주문 시각 + 판매자 설정(기본 사용·10일). 자동 취소를 끈 쇼핑몰은 기한을 두지 않는다. 이미 만든 주문은 설정을 바꿔도 그대로다.
@@ -173,6 +188,7 @@ async function createInTransaction(
         paymentDueAt,
       },
     });
+    if (coupon.applied) await useOrderCoupon(tx, { sellerId: input.sellerId, buyerMemberId: member.id, orderId: order.id, applied: coupon.applied, now });
     await tx.orderShippingAddress.create({ data: { sellerId: input.sellerId, orderId: order.id, ...address, isRemote } });
     await recordOrderAddress(tx, { sellerId: input.sellerId, buyerMemberId: member.id }, address, input.saveAddress !== false, now);
     await tx.orderItem.createMany({
