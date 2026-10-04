@@ -3,7 +3,7 @@
 import { StatsFrame, StatsState, usePeriod, useStats, type Unit } from "../../../../../../components/seller/stats/StatsFrame";
 import { BarChart, Kpis, bucketLabel, downloadCsv, pct } from "../../../../../../components/seller/stats/parts";
 
-// 회원 통계(GET /api/seller/stats/members). 날짜는 KST.
+// SA-056 통계 · 회원(GET /api/seller/stats/members). 날짜는 KST.
 type Summary = { signups: number; withdrawals: number; buyers: number; repeatBuyers: number; repeatRate: number | null };
 type Point = { bucket: string; signups: number; withdrawals: number; buyers: number };
 type Data = { range: { from: string; to: string; unit: Unit }; current: Summary; previous: Summary; series: Point[] };

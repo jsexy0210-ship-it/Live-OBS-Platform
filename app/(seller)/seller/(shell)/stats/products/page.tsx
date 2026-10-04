@@ -3,7 +3,7 @@
 import { EmptyStats, StatsFrame, StatsState, usePeriod, useStats } from "../../../../../../components/seller/stats/StatsFrame";
 import { Kpis, count, downloadCsv, won } from "../../../../../../components/seller/stats/parts";
 
-// 상품 통계(GET /api/seller/stats/products). 주문 시각(KST) 기간의 결제 완료 주문(환불 제외) 품목 기준.
+// SA-056 통계 · 상품(GET /api/seller/stats/products). 주문 시각(KST) 기간의 결제 완료 주문(환불 제외) 품목 기준.
 type Row = { productId: string; name: string; deleted: boolean; quantity: number; revenue: number; orders: number };
 type Totals = { quantity: number; revenue: number; products: number };
 type Data = { range: { from: string; to: string }; current: Totals; previous: Totals; top: Row[]; unsold: { productId: string; name: string; status: string }[]; unsoldCount: number };

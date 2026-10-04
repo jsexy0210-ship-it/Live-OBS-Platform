@@ -3,7 +3,7 @@
 import { EmptyStats, StatsFrame, StatsState, usePeriod, useStats } from "../../../../../../components/seller/stats/StatsFrame";
 import { BarChart, Kpis, count, downloadCsv, won } from "../../../../../../components/seller/stats/parts";
 
-// 방송 통계(GET /api/seller/stats/broadcasts). 기간(KST)에 시작한 방송별 주문대기 주문 기준.
+// SA-056 통계 · 방송(GET /api/seller/stats/broadcasts). 기간(KST)에 시작한 방송별 주문대기 주문 기준.
 type Row = { id: string; title: string | null; status: string; startedAt: string; endedAt: string | null; orders: number; paid: number; refunded: number; refund: number; net: number };
 type Data = { range: { from: string; to: string }; total: { broadcasts: number; orders: number; paid: number; net: number }; broadcasts: Row[] };
 
