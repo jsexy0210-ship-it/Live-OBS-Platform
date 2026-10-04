@@ -343,26 +343,27 @@ describe("회원 통계 GET /api/seller/stats/members", () => {
 });
 
 describe("방송 통계 GET /api/seller/stats/broadcasts", () => {
-  async function queue(sellerId: string, order: { id: string; items: { id: string }[] }, broadcastSessionId: string | null) {
+  // 주문대기 항목(결제 때 생김). broadcastSessionId는 방송 종료 때 지워지고 다음 방송에 다시 붙는 값이라 통계 귀속에 쓰지 않는다
+  async function queue(sellerId: string, order: { id: string; items: { id: string }[] }, broadcastSessionId: string | null, createdAt = new Date()) {
     let pos = 0;
     for (const it of order.items) {
       await db.queueItem.create({
-        data: { sellerId, orderId: order.id, orderItemId: it.id, broadcastSessionId, position: ++pos, receivedAt: new Date(), nicknameSnapshot: "닉", productLabel: "상품", quantity: 1 },
+        data: { sellerId, orderId: order.id, orderItemId: it.id, broadcastSessionId, position: ++pos, receivedAt: createdAt, createdAt, nicknameSnapshot: "닉", productLabel: "상품", quantity: 1 },
       });
     }
   }
 
-  it("기간에 시작한 방송별로 주문(여러 품목도 1건)·결제액·환불을 세고, 시청자 값은 준비 중으로 둔다", async () => {
+  it("방송 [시작, 종료] 안의 결제 주문은 방송 매출, 종료 뒤 2시간 안은 방송 시간 일반 주문(주문 시각 기준), 시청자 값은 준비 중", async () => {
     const s = await shop();
     const live = await db.broadcastSession.create({ data: { sellerId: s.seller.id, title: "금요 방송", status: "ENDED", startedAt: new Date("2026-10-02T11:00:00Z"), endedAt: new Date("2026-10-02T13:00:00Z") } });
     const quiet = await db.broadcastSession.create({ data: { sellerId: s.seller.id, title: null, status: "ENDED", startedAt: new Date("2026-10-03T11:00:00Z") } });
-    const old = await db.broadcastSession.create({ data: { sellerId: s.seller.id, status: "ENDED", startedAt: new Date("2026-09-30T14:00:00Z") } });
+    const old = await db.broadcastSession.create({ data: { sellerId: s.seller.id, status: "ENDED", startedAt: new Date("2026-09-30T14:00:00Z"), endedAt: new Date("2026-09-30T16:00:00Z") } });
     const at = "2026-10-02T12:00:00Z";
     await queue(s.seller.id, await s.order({ createdAt: at, total: 20000, items: [[5000, 5000, 1], [5000, 5000, 1]] }), live.id);
     await queue(s.seller.id, await s.order({ createdAt: at, total: 10000, status: "REFUNDED", refundAmount: 7000, items: [[5000, 5000, 1]] }), live.id);
     await queue(s.seller.id, await s.order({ createdAt: at, total: 3000, items: [[3000, 3000, 1]] }), null);
     await queue(s.seller.id, await s.order({ createdAt: at, total: 4000, items: [[4000, 4000, 1]] }), old.id);
-    // 방송 시간 일반 주문: 주문대기에 안 올라간 결제 주문(방송 종료 뒤 2시간 안까지). 결제 대기·2시간 뒤 주문은 빼고, 환불은 따로 센다
+    // 방송 시간 일반 주문: 종료 뒤 2시간 안에 들어온 결제 주문. 결제 대기·2시간이 지난 주문은 빼고, 환불은 따로 센다
     await s.order({ createdAt: "2026-10-02T14:59:00Z", total: 6000, items: [[6000, 6000, 1]] });
     await s.order({ createdAt: "2026-10-02T14:00:00Z", total: 2000, status: "REFUNDED", refundAmount: 2000, items: [[2000, 2000, 1]] });
     await s.order({ createdAt: "2026-10-02T12:30:00Z", total: 9000, status: "PENDING_PAYMENT", items: [[9000, 9000, 1]] });
@@ -371,14 +372,43 @@ describe("방송 통계 GET /api/seller/stats/broadcasts", () => {
     const { status, body } = await call(broadcastsRoute, "broadcasts?from=2026-10-01&to=2026-10-07", await cookieOf(s.owner.email));
     expect(status).toBe(200);
     expect(body.broadcasts.map((b: { id: string }) => b.id)).toEqual([quiet.id, live.id]);
-    expect(body.broadcasts[1]).toMatchObject({ title: "금요 방송", orders: 2, paid: 30000, refunded: 1, refund: 7000, net: 23000 });
+    // 방송 중 주문 4건(주문대기에 어느 방송으로 붙어 있든, 안 붙어 있든 주문 시각으로 귀속). 여러 품목도 1건
+    expect(body.broadcasts[1]).toMatchObject({ title: "금요 방송", orders: 4, paid: 37000, refunded: 1, refund: 7000, net: 30000 });
     expect(body.broadcasts[0]).toMatchObject({ title: null, orders: 0, paid: 0, net: 0 });
-    expect(body.total).toEqual({ broadcasts: 2, orders: 2, paid: 30000, net: 23000 });
-    // 주문대기에 방송 없이 올라간 주문(3,000원)과 안 올라간 주문 2건. 다른 방송 주문대기에 올라간 4,000원은 넣지 않는다
-    expect(body.broadcasts[1].general).toEqual({ orders: 3, paid: 11000, refunded: 1, refund: 2000, net: 9000 });
+    expect(body.total).toEqual({ broadcasts: 2, orders: 4, paid: 37000, net: 30000 });
+    expect(body.broadcasts[1].general).toEqual({ orders: 2, paid: 8000, refunded: 1, refund: 2000, net: 6000 });
     expect(body.broadcasts[0].general).toEqual({ orders: 0, paid: 0, refunded: 0, refund: 0, net: 0 });
-    expect(body.general).toEqual({ orders: 3, paid: 11000, net: 9000 });
+    expect(body.general).toEqual({ orders: 2, paid: 8000, net: 6000 });
     expect(body.unavailable).toEqual(["viewers", "conversion"]);
+  });
+
+  it("지난 방송 매출은 이월·늦은 결제로 다음 방송으로 옮겨 가지 않는다(주문 시각 귀속)", async () => {
+    const s = await shop();
+    const A = await db.broadcastSession.create({ data: { sellerId: s.seller.id, title: "A", status: "ENDED", startedAt: new Date("2026-10-02T11:00:00Z"), endedAt: new Date("2026-10-02T13:00:00Z") } });
+    const B = await db.broadcastSession.create({ data: { sellerId: s.seller.id, title: "B", status: "ENDED", startedAt: new Date("2026-10-02T16:00:00Z"), endedAt: new Date("2026-10-02T18:00:00Z") } });
+    // ① A 중 결제 → A 종료 때 대기 항목 이월(broadcastSessionId null) → B 시작 때 B로 흡수 → B에서 개봉
+    const carried = await s.order({ createdAt: "2026-10-02T12:00:00Z", total: 5000, items: [[5000, 5000, 1]] });
+    await queue(s.seller.id, carried, B.id, new Date("2026-10-02T12:00:00Z"));
+    // ② A 중 주문 → A 종료 → B 시작 뒤 결제(주문대기 항목은 결제 때 B에 생김)
+    const late = await s.order({ createdAt: "2026-10-02T12:30:00Z", total: 7000, items: [[7000, 7000, 1]] });
+    await db.order.update({ where: { id: late.id }, data: { paidAt: new Date("2026-10-02T16:30:00Z") } });
+    await queue(s.seller.id, late, B.id, new Date("2026-10-02T16:30:00Z"));
+
+    const r = await broadcastStats(db, s.ctx, WEEK());
+    const byTitle = Object.fromEntries(r.broadcasts.map((b) => [b.title, b]));
+    expect(byTitle.A).toMatchObject({ orders: 2, paid: 12000, net: 12000 });
+    expect(byTitle.B).toMatchObject({ orders: 0, paid: 0, net: 0 });
+    expect(byTitle.B.general.orders + byTitle.A.general.orders).toBe(0);
+  });
+
+  it("방송 중(LIVE)이면 지금까지를 방송 시간으로 보고, 시작 직전 주문은 넣지 않는다", async () => {
+    const s = await shop();
+    const live = await db.broadcastSession.create({ data: { sellerId: s.seller.id, title: "방송 중", status: "LIVE", startedAt: new Date("2026-10-03T11:00:00Z") } });
+    await s.order({ createdAt: "2026-10-03T10:59:59.999Z", total: 1000, items: [[1000, 1000, 1]] });
+    await s.order({ createdAt: "2026-10-03T11:00:00Z", total: 2000, items: [[2000, 2000, 1]] });
+    await s.order({ createdAt: "2026-10-03T20:00:00Z", total: 3000, items: [[3000, 3000, 1]] });
+    const r = await broadcastStats(db, s.ctx, WEEK());
+    expect(r.broadcasts.find((b) => b.id === live.id)).toMatchObject({ orders: 2, paid: 5000 });
   });
 
   it("다른 쇼핑몰 방송·주문은 섞이지 않고, 플랜 기능은 OVERLAY를 따른다", async () => {

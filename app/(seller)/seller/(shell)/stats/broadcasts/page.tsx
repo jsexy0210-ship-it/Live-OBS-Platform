@@ -4,8 +4,8 @@ import { Fragment } from "react";
 import { EmptyStats, StatsFrame, StatsState, usePeriod, useStats } from "../../../../../../components/seller/stats/StatsFrame";
 import { BarChart, Kpis, count, downloadCsv, won } from "../../../../../../components/seller/stats/parts";
 
-// SA-056 통계 · 방송(GET /api/seller/stats/broadcasts). 기간(KST)에 시작한 방송별 주문대기 주문(방송 매출)과,
-// 방송 시작 ~ 종료 뒤 2시간 안에 주문대기 없이 들어온 결제 주문(방송 시간 일반 주문, 별도 줄).
+// SA-056 통계 · 방송(GET /api/seller/stats/broadcasts). 기간(KST)에 시작한 방송별로 주문 시각 기준:
+// 방송 시작 ~ 종료 안의 결제 주문(방송 매출)과 종료 뒤 2시간 안의 결제 주문(방송 시간 일반 주문, 별도 줄).
 type Money = { orders: number; paid: number; refunded: number; refund: number; net: number };
 type Row = { id: string; title: string | null; status: string; startedAt: string; endedAt: string | null; general: Money } & Money;
 type Sum = { orders: number; paid: number; net: number };
@@ -37,7 +37,7 @@ export default function BroadcastStatsPage() {
   const chrono = data ? [...data.broadcasts].reverse() : [];
 
   return (
-    <StatsFrame title="방송" sub="기간 중 시작한 방송별로, 주문대기에 올라간 주문을 방송 매출로 셉니다. 방송 시작부터 종료 뒤 2시간 안의 일반 주문은 따로 표시합니다." period={period} setPeriod={setPeriod} units={false} onDownload={data ? download : undefined}>
+    <StatsFrame title="방송" sub="기간 중 시작한 방송별로, 방송 중 들어온 결제 주문을 방송 매출로 셉니다. 종료 뒤 2시간 안의 주문은 따로 표시합니다." period={period} setPeriod={setPeriod} units={false} onDownload={data ? download : undefined}>
       <StatsState state={state} onRetry={() => void reload()} />
       {data && data.total.broadcasts === 0 && <EmptyStats text="선택한 기간에 진행한 방송이 없습니다" />}
       {data && data.total.broadcasts > 0 && (
@@ -94,7 +94,7 @@ export default function BroadcastStatsPage() {
               </tbody>
             </table>
           </div>
-          <p className="t-c1 c-alt">방송 시간 일반 주문은 방송 시작부터 종료 뒤 2시간 안에 주문대기 없이 들어온 결제 주문입니다. 주문대기에 올라간 주문은 방송 매출에만 셉니다. 시청자 수와 시청자 → 주문 전환은 시청 데이터 연동 뒤 제공합니다.</p>
+          <p className="t-c1 c-alt">방송 매출은 방송 시작부터 종료까지, 방송 시간 일반 주문은 종료 뒤 2시간 안에 들어온 결제 주문입니다(주문 시각 기준). 결제가 늦거나 다음 방송에서 개봉해도 주문한 방송에 셉니다. 시청자 수와 시청자 → 주문 전환은 시청 데이터 연동 뒤 제공합니다.</p>
         </>
       )}
     </StatsFrame>

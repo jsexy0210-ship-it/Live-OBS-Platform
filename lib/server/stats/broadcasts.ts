@@ -3,11 +3,11 @@ import { requireSellerRead, type TenantContext } from "../tenant/context";
 import type { StatsRange } from "./range";
 import { num, statsSnapshot } from "./sql";
 
-// 방송 통계(SALES_VIEW). 그 기간(KST)에 시작한 방송별로 센다(MASTER 결정 2026-10-04).
-// - 방송 매출(본값): 그 방송의 주문대기에 올라간 주문(결제 때 올라감). 한 주문의 여러 품목이 올라가도 주문은 한 번만 센다.
-// - 방송 시간 일반 주문(별도 줄): 방송 시작 ~ 종료 뒤 2시간(방송 중이면 지금까지) 안에 들어온 결제 주문 중
-//   어느 방송의 주문대기에도 올라가지 않은 주문. 겹치는 주문은 주문대기 쪽에서만 센다.
-//   두 방송의 시간이 겹치면 그 주문 시각 직전에 시작한 방송 하나에만 넣는다.
+// 방송 통계(SALES_VIEW). 그 기간(KST)에 시작한 방송별로, 바뀌지 않는 주문 시각(Order.createdAt)으로 귀속한다(MASTER 결정 2026-10-04).
+// - 방송 매출: 방송 [시작, 종료](방송 중이면 종료 = 지금) 안에 들어온 결제 주문
+// - 방송 시간 일반 주문(별도 줄): 종료 뒤 2시간 안에 들어온 결제 주문
+// 주문대기 항목의 broadcastSessionId는 방송 종료 때 지워지고 다음 방송에 다시 붙는 값이라 쓰지 않는다(지난 방송 매출이 바뀌지 않게).
+// 방송은 겹치지 않아 한 주문은 한 방송에만 센다. 앞 방송의 「종료 뒤 2시간」과 다음 방송 시간이 겹치면 다음 방송의 방송 매출로 센다.
 // 결제액은 결제된 주문의 금액, 환불은 그 뒤 환불된 주문. 시청자 수·시청자 → 주문 전환은 데이터가 없어 내보내지 않는다(화면 「준비 중」).
 export const BROADCAST_LIMIT = 100;
 export const AFTER_BROADCAST_WINDOW = "2 hours";
@@ -32,42 +32,29 @@ export async function broadcastStats(db: PrismaClient, ctx: TenantContext, range
   return statsSnapshot(db, async (tx) => {
     const rows = await tx.$queryRaw<Row[]>`
       WITH b AS (
-        SELECT id, title, status::text AS status, "startedAt", "endedAt",
-          coalesce("endedAt" + ${AFTER_BROADCAST_WINDOW}::interval, 'infinity'::timestamptz) AS window_end
+        SELECT id, title, status::text AS status, "startedAt", "endedAt", coalesce("endedAt", now()) AS end_at
         FROM "BroadcastSession"
         WHERE "sellerId" = ${sid}::uuid AND "startedAt" >= ${range.start} AND "startedAt" < ${range.end}
         ORDER BY "startedAt" DESC, id
         LIMIT ${BROADCAST_LIMIT}
       ),
-      bo AS (
-        SELECT DISTINCT q."broadcastSessionId" AS bid, q."orderId" AS oid FROM "QueueItem" q
-        WHERE q."sellerId" = ${sid}::uuid AND q."broadcastSessionId" IN (SELECT id FROM b)
-      ),
-      q AS (
-        SELECT bo.bid, count(o.id)::int AS orders,
-          coalesce(sum(o."totalAmount"::bigint) FILTER (WHERE o."paidAt" IS NOT NULL), 0) AS paid,
-          count(o.id) FILTER (WHERE o.status = 'REFUNDED')::int AS refunded,
-          coalesce(sum(coalesce(o."refundAmount", o."totalAmount")::bigint) FILTER (WHERE o.status = 'REFUNDED'), 0) AS refund
-        FROM bo JOIN "Order" o ON o.id = bo.oid AND o."sellerId" = ${sid}::uuid
-        GROUP BY bo.bid
-      ),
-      g_pick AS (
-        SELECT DISTINCT ON (o.id) b.id AS bid, o."totalAmount", o.status, o."refundAmount"
+      pick AS (
+        SELECT DISTINCT ON (o.id) b.id AS bid, o."createdAt" <= b.end_at AS live,
+          o."totalAmount", o.status, o."refundAmount"
         FROM "Order" o
-        JOIN b ON o."createdAt" >= b."startedAt" AND o."createdAt" < b.window_end
+        JOIN b ON o."createdAt" >= b."startedAt" AND o."createdAt" < b.end_at + ${AFTER_BROADCAST_WINDOW}::interval
         WHERE o."sellerId" = ${sid}::uuid AND o."paidAt" IS NOT NULL
-          AND NOT EXISTS (
-            SELECT 1 FROM "QueueItem" qi
-            WHERE qi."sellerId" = ${sid}::uuid AND qi."orderId" = o.id AND qi."broadcastSessionId" IS NOT NULL
-          )
-        ORDER BY o.id, b."startedAt" DESC, b.id
+          AND o."createdAt" >= (SELECT min("startedAt") FROM b)
+        ORDER BY o.id, (o."createdAt" <= b.end_at) DESC, b."startedAt" DESC, b.id
       ),
-      g AS (
-        SELECT bid, count(*)::int AS orders, coalesce(sum("totalAmount"::bigint), 0) AS paid,
+      agg AS (
+        SELECT bid, live, count(*)::int AS orders, coalesce(sum("totalAmount"::bigint), 0) AS paid,
           count(*) FILTER (WHERE status = 'REFUNDED')::int AS refunded,
           coalesce(sum(coalesce("refundAmount", "totalAmount")::bigint) FILTER (WHERE status = 'REFUNDED'), 0) AS refund
-        FROM g_pick GROUP BY bid
-      )
+        FROM pick GROUP BY bid, live
+      ),
+      q AS (SELECT * FROM agg WHERE live),
+      g AS (SELECT * FROM agg WHERE NOT live)
       SELECT b.id, b.title, b.status, b."startedAt" AS started_at, b."endedAt" AS ended_at,
         coalesce(q.orders, 0) AS orders, coalesce(q.paid, 0) AS paid, coalesce(q.refunded, 0) AS refunded, coalesce(q.refund, 0) AS refund,
         coalesce(g.orders, 0) AS g_orders, coalesce(g.paid, 0) AS g_paid, coalesce(g.refunded, 0) AS g_refunded, coalesce(g.refund, 0) AS g_refund
@@ -80,7 +67,7 @@ export async function broadcastStats(db: PrismaClient, ctx: TenantContext, range
       startedAt: r.started_at.toISOString(),
       endedAt: r.ended_at?.toISOString() ?? null,
       ...money(r.orders, r.paid, r.refunded, r.refund),
-      // 방송 시간 일반 주문(주문대기에 올라가지 않은 결제 주문)
+      // 방송 시간 일반 주문(종료 뒤 2시간 안에 들어온 결제 주문)
       general: money(r.g_orders, r.g_paid, r.g_refunded, r.g_refund),
     }));
     const sum = (pick: (r: (typeof list)[number]) => { orders: number; paid: number; net: number }) => ({
