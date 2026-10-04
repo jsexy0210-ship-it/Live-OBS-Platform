@@ -194,7 +194,7 @@ describe("결제와 해지가 엇갈릴 때(#186 Codex)", () => {
     expect(await db.auditLog.count({ where: { action: "subscription.refund_required", sellerId: s.seller.id } })).toBe(1);
   });
 
-  it("하위 변경을 예약한 뒤 해지하고 다시 구독하면 예약은 사라지고 다음 갱신도 지금 플랜(통합) 금액", async () => {
+  it("하위 변경을 예약한 뒤 해지하고 다시 구독하면 예약은 사라지고 다음 갱신도 지금 플랜(통합) 금액(런칭 할인을 아직 안 쓴 판매자 = 런칭가 179,000원)", async () => {
     const s = await shop("INTEGRATED", at(-30), paying);
     expect(await changePlan(db, new FakeBillingProvider(), s.ctx, { planCode: "OVERLAY_ONLY", now: T0 })).toMatchObject({ applied: "next_payment" });
     await cancelSubscription(db, s.ctx, { now: T0 });
@@ -207,6 +207,23 @@ describe("결제와 해지가 엇갈릴 때(#186 Codex)", () => {
     expect(restarted).toMatchObject({ pendingPlanId: null, plan: { code: "INTEGRATED" } });
     await renewDueSubscriptions(db, new FakeBillingProvider(), { now: restarted.nextChargeAt! });
     expect((await payments(s.seller.id)).map((p) => p.amount)).toEqual([179000, 179000]);
+    expect(await planOf(s.seller.id)).toBe("INTEGRATED");
+  });
+
+  it("런칭가로 결제한 뒤 하위 변경 예약 → 해지 → 재구독이면 예약은 사라지고 재구독·다음 갱신 모두 통합 정가 249,000원", async () => {
+    const s = await shop("INTEGRATED", null);
+    expect(await registerCardAndPay(db, new FakeBillingProvider(), s.ctx, { authKey: "auth", now: T0 })).toMatchObject({ ok: true, charged: true });
+    const first = await subOf(s.seller.id);
+    expect(await changePlan(db, new FakeBillingProvider(), s.ctx, { planCode: "OVERLAY_ONLY", now: at(1) })).toMatchObject({ applied: "next_payment" });
+    await cancelSubscription(db, s.ctx, { now: at(2) });
+    await renewDueSubscriptions(db, new FakeBillingProvider(), { now: first.currentPeriodEnd! });
+    expect(await subOf(s.seller.id)).toMatchObject({ status: "CANCELED", pendingPlanId: null });
+    const restartAt = new Date(first.currentPeriodEnd!.getTime() + 2 * DAY);
+    expect(await registerCardAndPay(db, new FakeBillingProvider(), s.ctx, { authKey: "auth", now: restartAt })).toMatchObject({ ok: true, charged: true });
+    const restarted = await subOf(s.seller.id);
+    expect(restarted).toMatchObject({ pendingPlanId: null, regularPrice: true, plan: { code: "INTEGRATED" } });
+    await renewDueSubscriptions(db, new FakeBillingProvider(), { now: restarted.nextChargeAt! });
+    expect((await payments(s.seller.id)).map((p) => p.amount)).toEqual([179000, 249000, 249000]);
     expect(await planOf(s.seller.id)).toBe("INTEGRATED");
   });
 });
