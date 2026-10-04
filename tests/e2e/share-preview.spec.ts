@@ -1,0 +1,101 @@
+import { expect, test, type Page } from "@playwright/test";
+import { submitSellerLogin } from "./sellerLogin";
+
+// SA-060 공유 미리보기: 대표자가 제목·설명을 정하면 쇼핑몰 공개 페이지의 og:title·og:description에 쓰이고,
+// og:image는 서버가 그린 기본 카드(/api/shop/{slug}/og.png), 파비콘은 ONQ 기본(app/icon.svg)이다. 운영 빌드(데모 시드)로 확인한다.
+const PASSWORD = process.env.E2E_PASSWORD ?? "";
+const SHOTS = process.env.E2E_SCREENSHOTS === "1";
+
+async function shot(page: Page, name: string) {
+  if (!SHOTS) return;
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForTimeout(150);
+    await page.screenshot({ path: `tests/e2e/screenshots/${name}-${width}.png`, fullPage: true });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+}
+
+async function loginSeller(page: Page, email: string, password: string, next: string) {
+  await page.goto(`/seller/login?next=${encodeURIComponent(next)}`);
+  await submitSellerLogin(page, email, password);
+}
+
+const meta = (page: Page, key: string) => page.locator(`head meta[property="${key}"], head meta[name="${key}"]`).first();
+
+test("대표자: 공유 미리보기 제목·설명을 저장하면 쇼핑몰 페이지의 공유 정보에 쓰이고, 비우면 쇼핑몰 이름으로 돌아간다", async ({ page }) => {
+  await loginSeller(page, "demo-owner@example.com", PASSWORD, "/seller/settings/share");
+  await expect(page).toHaveURL(/\/seller\/settings\/share$/);
+  await expect(page.getByRole("navigation", { name: "쇼핑몰 설정" }).getByRole("link", { name: "공유 미리보기" })).toHaveAttribute("aria-current", "page");
+  // 비어 있으면 미리보기 제목은 쇼핑몰 이름이다
+  const card = page.getByTestId("sp-card");
+  await expect(card).toContainText("카드숍 별빛");
+  await expect(card.locator("img")).toHaveAttribute("src", "/api/shop/demo-shop/og.png");
+  await expect.poll(() => card.locator("img").evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(1200);
+
+  const title = "별빛 카드숍 라이브";
+  const description = "매주 금요일 밤 라이브로 만나요";
+  await page.getByLabel("제목").fill(title);
+  await page.getByLabel("설명").fill(description);
+  await expect(card).toContainText(title);
+  await expect(card).toContainText(description);
+  await expect(page.getByText(`${Array.from(title).length}/60`)).toBeVisible();
+  await shot(page, "SA-060-share");
+  // 휴대폰 폭에서도 화면이 가로로 넘치지 않는다(설정 탭이 하나 늘었다)
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const saved = page.waitForResponse((r) => r.url().endsWith("/api/seller/share-preview") && r.request().method() === "PUT");
+  await page.getByRole("complementary").getByRole("button", { name: "저장" }).click();
+  expect((await saved).status()).toBe(200);
+  await expect(page.getByText("공유 미리보기를 저장했어요")).toBeVisible();
+
+  // 쇼핑몰 공개 페이지: 저장한 제목·설명, 서버가 그린 카드 이미지, ONQ 기본 파비콘
+  await page.goto("/shop/demo-shop/signup");
+  await expect(meta(page, "og:title")).toHaveAttribute("content", title);
+  await expect(meta(page, "og:description")).toHaveAttribute("content", description);
+  await expect(meta(page, "og:image")).toHaveAttribute("content", /^https?:\/\/[^/]+\/api\/shop\/demo-shop\/og\.png\?v=[0-9a-f]{12}$/);
+  await expect(meta(page, "og:image:width")).toHaveAttribute("content", "1200");
+  await expect(meta(page, "twitter:card")).toHaveAttribute("content", "summary_large_image");
+  await expect(page.locator('head link[rel="icon"]').first()).toHaveAttribute("href", /\/icon\.svg/);
+  // 화면 제목은 그 화면 것이 우선한다
+  await expect(page).toHaveTitle("회원가입 · 카드숍 별빛");
+
+  // 비우고 저장하면 기본값(제목은 쇼핑몰 이름, 설명 없음)으로 돌아간다
+  await page.goto("/seller/settings/share");
+  await page.getByLabel("제목").fill("");
+  await page.getByLabel("설명").fill("");
+  await expect(card).toContainText("카드숍 별빛");
+  await page.getByRole("complementary").getByRole("button", { name: "저장" }).click();
+  await expect(page.getByText("공유 미리보기를 저장했어요")).toBeVisible();
+  await page.goto("/shop/demo-shop/signup");
+  await expect(meta(page, "og:title")).toHaveAttribute("content", "카드숍 별빛");
+  await expect(page.locator('head meta[property="og:description"]')).toHaveCount(0);
+});
+
+test("공유 미리보기: 길이를 넘으면 저장할 수 없고, 쇼핑몰 설정 권한이 없는 직원은 볼 수 없다", async ({ page }) => {
+  await loginSeller(page, "demo-owner@example.com", PASSWORD, "/seller/settings/share");
+  await page.getByLabel("제목").fill("가".repeat(61));
+  await expect(page.getByText("61/60")).toBeVisible();
+  await expect(page.getByLabel("제목")).toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByRole("complementary").getByRole("button", { name: "저장" })).toBeDisabled();
+  await page.context().clearCookies();
+
+  // 상품 권한만 있는 직원: 화면은 권한 안내, API는 403
+  await loginSeller(page, "demo-staff@example.com", PASSWORD, "/seller/settings/share");
+  await expect(page).toHaveURL(/\/seller\/settings\/share$/);
+  await expect(page.getByText("필요한 권한: 쇼핑몰 설정")).toBeVisible();
+  await expect(page.getByLabel("제목")).toHaveCount(0);
+  const put = await page.evaluate(async () => {
+    const r = await fetch("/api/seller/share-preview", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: "바꿈", description: null }) });
+    return r.status;
+  });
+  expect(put).toBe(403);
+});
+
+test("없는 쇼핑몰 주소는 공유 정보를 만들지 않고 기본값을 쓴다", async ({ page }) => {
+  await page.goto("/shop/no-such-shop-zz/signup");
+  await expect(page.locator('head meta[property="og:image"]')).toHaveCount(0);
+  await expect(page.locator('head link[rel="icon"]').first()).toHaveAttribute("href", /\/icon\.svg/);
+});
