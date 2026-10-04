@@ -129,6 +129,23 @@ test.describe.serial("SA-064 홈 배너 · SA-065 이벤트 팝업", () => {
     await page.reload();
     await expect(page.getByTestId("banner-row").nth(0)).toContainText("10월 스타라이트 박스 오픈");
     await page.screenshot({ path: `${SHOT}/SA-064-banners-1440.png`, fullPage: true });
+
+    // 이미지를 올리는 동안은 저장할 수 없다(옛 이미지로 저장되지 않게)
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    await page.route("**/api/seller/shop-content/images", async (route) => {
+      await held;
+      await route.continue();
+    });
+    await page.getByTestId("banner-row").nth(0).getByRole("button", { name: "수정" }).click();
+    const edit = page.getByRole("dialog", { name: "배너 수정" });
+    await expect(edit.getByRole("button", { name: "저장" })).toBeEnabled();
+    await edit.getByLabel("PC 이미지", { exact: true }).setInputFiles(file("pc4.png", await canvasPng(page, 1200, 400, "#5b3df6", "10월 스타라이트 박스")));
+    await expect(edit.getByRole("button", { name: "이미지 올리는 중" })).toBeDisabled();
+    release();
+    await expect(edit.getByRole("button", { name: "저장" })).toBeEnabled();
+    await page.unroute("**/api/seller/shop-content/images");
+    await edit.getByRole("button", { name: "취소" }).click();
     await page.setViewportSize({ width: 390, height: 844 });
     await page.reload();
     await expect(page.getByTestId("banner-row")).toHaveCount(3);
@@ -197,6 +214,8 @@ test.describe.serial("SA-064 홈 배너 · SA-065 이벤트 팝업", () => {
     await expect(page.locator(".hb-pc")).toBeVisible();
     await expect(page.locator(".hb-m")).toBeHidden();
     expect(await imageLoaded(page, ".hb-pc .hb-slide img")).toBe(true);
+    // 모바일 슬라이드(숨김)의 이미지는 내려받지 않는다
+    expect(await page.locator(".hb-m img").first().evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBe(0);
     await page.screenshot({ path: `${SHOT}/SA-064-065-shop-home-popup-1440.png` });
 
     await popup.getByLabel("7일 동안 보지 않기").check();
@@ -232,6 +251,30 @@ test.describe.serial("SA-064 홈 배너 · SA-065 이벤트 팝업", () => {
     await page.goto("/shop/demo-shop/signup");
     await expect(page.getByRole("dialog", { name: POPUP_TITLE })).toBeVisible();
     await expect(page.getByRole("region", { name: "알림" })).toContainText(BAR_TITLE);
+  });
+
+  test("구매자: 창 너비가 PC↔모바일 기준을 넘나들면 팝업을 다시 고른다(PC만 팝업은 좁히면 사라지고 넓히면 다시 보임)", async ({ page }) => {
+    const ctx = await request.newContext({ baseURL: BASE, extraHTTPHeaders: { Origin: BASE } });
+    await ctx.post("/api/seller/auth/login", { data: { email: "demo-owner@example.com", password: PASSWORD } });
+    const res = await ctx.post("/api/seller/shop-content/popups", { data: { kind: "TEXT", title: "PC 전용 안내", body: "PC에서만 보여요", target: "HOME", showOnMobile: false, dismissDays: 0 } });
+    expect(res.status()).toBe(201);
+    const id = ((await res.json()) as { popup: { id: string } }).popup.id;
+    try {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.goto("/shop/demo-shop");
+      await page.getByRole("dialog", { name: POPUP_TITLE }).getByRole("button", { name: "닫기" }).click();
+      const pcOnly = page.getByRole("dialog", { name: "PC 전용 안내" });
+      await expect(pcOnly).toBeVisible();
+      await page.setViewportSize({ width: 390, height: 844 });
+      await expect(pcOnly).toBeHidden();
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await expect(pcOnly).toBeVisible();
+      // 이미 닫은 팝업은 너비가 바뀌어도 되살아나지 않는다
+      await expect(page.getByRole("dialog", { name: POPUP_TITLE })).toHaveCount(0);
+    } finally {
+      await ctx.delete(`/api/seller/shop-content/popups/${id}`);
+      await ctx.dispose();
+    }
   });
 
   test("권한 없는 직원: 메뉴가 없고 주소로 들어가도 권한 안내만", async ({ page }) => {

@@ -8,6 +8,7 @@ import { GET as bannersGet, POST as bannersPost } from "../../app/api/seller/sho
 import { GET as sellerImageGet } from "../../app/api/seller/shop-content/images/[imageId]/route";
 import { POST as imagePost } from "../../app/api/seller/shop-content/images/route";
 import { PUT as popupPut } from "../../app/api/seller/shop-content/popups/[popupId]/route";
+import { PUT as popupReorder } from "../../app/api/seller/shop-content/popups/reorder/route";
 import { GET as popupsGet, POST as popupsPost } from "../../app/api/seller/shop-content/popups/route";
 import { GET as publicImageGet } from "../../app/api/shop/[slug]/shop-content/images/[imageId]/route";
 import { GET as publicContentGet } from "../../app/api/shop/[slug]/shop-content/route";
@@ -320,6 +321,21 @@ describe("입력 검사", () => {
     // DB CHECK: 이미지 없는 이미지 팝업, 정해지지 않은 보지 않기 기간
     await expect(db.shopPopup.create({ data: { sellerId: s.seller.id, kind: "IMAGE", title: "x" } })).rejects.toThrow();
     await expect(db.shopPopup.create({ data: { sellerId: s.seller.id, kind: "BAR", title: "x", dismissDays: 3 } })).rejects.toThrow();
+  });
+
+  it("팝업 「보지 않기」 버전: 순서·기간·노출만 바꾸면 그대로, 구매자에게 보이는 내용을 바꾸면 달라진다", async () => {
+    const s = await shop();
+    const a = (await popup(s.owner, { title: "첫째" })).body.popup!.id;
+    const b = (await popup(s.owner, { title: "둘째" })).body.popup!.id;
+    const versions = async () => Object.fromEntries((await publicContent(s.seller.slug)).body!.popups.map((x) => [x.id, (x as unknown as { version: string }).version]));
+    const before = await versions();
+    expect((await popupReorder(json("/x", "PUT", s.owner, { ids: [b, a] }))).status).toBe(200);
+    await popupPut(json("/x", "PUT", s.owner, { kind: "TEXT", title: "첫째", body: "토요일 20시에 만나요", endsAt: "2099-01-01T00:00:00+09:00" }), p({ popupId: a }));
+    expect(await versions()).toEqual(before);
+    await popupPut(json("/x", "PUT", s.owner, { kind: "TEXT", title: "첫째", body: "일요일로 바뀌었어요" }), p({ popupId: a }));
+    const after = await versions();
+    expect(after[a]).not.toBe(before[a]);
+    expect(after[b]).toBe(before[b]);
   });
 
   it("배너 표시 기기: PC만·모바일만은 구매자 응답에 그대로, 둘 다 끄면 400", async () => {

@@ -60,12 +60,30 @@ export default function EventPopup({ popups }: { popups: EventPopupItem[] }) {
   const [hide, setHide] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
 
+  // 이번 방문에서 닫은 팝업(화면 너비가 바뀌어 다시 고를 때 되살리지 않게)
+  const closed = useRef(new Set<string>());
+
+  // 기기는 화면 너비로 고르고, 너비가 기준(768px)을 넘나들면(창 크기·회전) 다시 고른다
   useEffect(() => {
-    const pc = typeof window.matchMedia === "function" ? window.matchMedia(PC_QUERY).matches : true;
-    const shown = popups.filter((p) => (pc ? p.showOnPc : p.showOnMobile) && !dismissed(p));
-    setQueue(shown.filter((p) => p.kind !== "BAR"));
-    setBar(shown.find((p) => p.kind === "BAR") ?? null);
+    const mq = typeof window.matchMedia === "function" ? window.matchMedia(PC_QUERY) : null;
+    const pick = () => {
+      const pc = mq ? mq.matches : true;
+      const shown = popups.filter((p) => (pc ? p.showOnPc : p.showOnMobile) && !dismissed(p) && !closed.current.has(p.id));
+      setQueue(shown.filter((p) => p.kind !== "BAR"));
+      setBar(shown.find((p) => p.kind === "BAR") ?? null);
+    };
+    pick();
+    mq?.addEventListener("change", pick);
+    return () => mq?.removeEventListener("change", pick);
   }, [popups]);
+
+  const dismissCurrent = (remember_: boolean) => {
+    const p = queue[0];
+    if (!p) return;
+    if (remember_) remember(p);
+    closed.current.add(p.id);
+    setQueue((q) => q.slice(1));
+  };
 
   const current = queue[0];
 
@@ -73,16 +91,12 @@ export default function EventPopup({ popups }: { popups: EventPopupItem[] }) {
     if (!current) return;
     setHide(false);
     closeRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setQueue((q) => q.slice(1));
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && dismissCurrent(false);
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [current?.id]);
 
-  const close = () => {
-    if (!current) return;
-    if (hide) remember(current);
-    setQueue((q) => q.slice(1));
-  };
+  const close = () => dismissCurrent(hide);
 
   return (
     <>
@@ -101,6 +115,7 @@ export default function EventPopup({ popups }: { popups: EventPopupItem[] }) {
             aria-label={bar.dismissDays === 0 ? "닫기" : `닫기 · ${dismissLabel(bar.dismissDays)}`}
             onClick={() => {
               remember(bar);
+              closed.current.add(bar.id);
               setBar(null);
             }}
           >
@@ -109,7 +124,7 @@ export default function EventPopup({ popups }: { popups: EventPopupItem[] }) {
         </div>
       )}
       {current && (
-        <div className="ep-dim" onClick={(e) => e.target === e.currentTarget && setQueue((q) => q.slice(1))}>
+        <div className="ep-dim" onClick={(e) => e.target === e.currentTarget && dismissCurrent(false)}>
           <div className="ep" role="dialog" aria-modal="true" aria-labelledby={`ep-t-${current.id}`}>
             {current.kind === "IMAGE" &&
               current.image &&

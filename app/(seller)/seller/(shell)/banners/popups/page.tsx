@@ -23,6 +23,7 @@ import {
   stateKind,
   toKstInput,
   useSortable,
+  useUploading,
   type AdminImage,
   type ContentStatus,
 } from "../_shared/ui";
@@ -253,6 +254,7 @@ function PopupEditor({ draft: initial, onClose, onSaved }: { draft: Draft; onClo
   const [device, setDevice] = useState<"pc" | "mobile">("pc");
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  const { uploading, onBusy } = useUploading();
   const set = (patch: Partial<Draft>) => setD((v) => ({ ...v, ...patch }));
   const ready =
     d.title.trim() !== "" &&
@@ -262,7 +264,7 @@ function PopupEditor({ draft: initial, onClose, onSaved }: { draft: Draft; onClo
     !(d.startsAt && d.endsAt && d.startsAt >= d.endsAt);
 
   const save = async () => {
-    if (!ready) return;
+    if (uploading || !ready) return;
     setSaving(true);
     setFailure(null);
     const body = {
@@ -318,7 +320,7 @@ function PopupEditor({ draft: initial, onClose, onSaved }: { draft: Draft; onClo
                 ))}
               </div>
             </div>
-            {d.kind === "IMAGE" && <ImagePicker label="이미지" recommend={{ width: 600, height: 600 }} value={d.image} onChange={(v) => set({ image: v })} />}
+            {d.kind === "IMAGE" && <ImagePicker onBusy={onBusy} label="이미지" recommend={{ width: 600, height: 600 }} value={d.image} onChange={(v) => set({ image: v })} />}
             <div className="fld">
               <label htmlFor="popup-title" className="req">
                 {d.kind === "IMAGE" ? "제목 (대체 텍스트)" : d.kind === "BAR" ? "띠 문구" : "제목"}
@@ -430,8 +432,8 @@ function PopupEditor({ draft: initial, onClose, onSaved }: { draft: Draft; onClo
           <button className="btn btn-out" type="button" onClick={onClose} disabled={saving}>
             취소
           </button>
-          <button className="btn" type="button" onClick={() => void save()} disabled={!ready || saving}>
-            {saving ? "저장 중" : "저장"}
+          <button className="btn" type="button" onClick={() => void save()} disabled={!ready || saving || uploading}>
+            {saving ? "저장 중" : uploading ? "이미지 올리는 중" : "저장"}
           </button>
         </div>
       </div>

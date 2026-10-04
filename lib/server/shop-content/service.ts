@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient, ShopBanner, ShopPopup, ShopPopupKind, ShopPopupTarget } from "@prisma/client";
+import { createHash } from "node:crypto";
 import { writeAudit } from "../audit/log";
 import { notFound } from "../authz/errors";
 import { shopOpen } from "../buyers/signup";
@@ -462,12 +463,18 @@ export async function visibleShopContent(db: PrismaClient, slug: string, page: S
       showOnPc: p.showOnPc,
       showOnMobile: p.showOnMobile,
       dismissDays: p.dismissDays,
-      // 내용을 바꾸면 「보지 않기」를 다시 묻도록 저장 키에 넣는다
-      version: p.updatedAt.getTime().toString(36),
+      // 구매자에게 보이는 내용이 바뀌면 「보지 않기」를 다시 묻도록 저장 키에 넣는다. 순서·기간·노출 스위치만 바꾼 것은 버전을 바꾸지 않는다.
+      version: popupContentVersion(p),
     })),
   };
 }
 export type VisibleShopContent = NonNullable<Awaited<ReturnType<typeof visibleShopContent>>>;
+
+// 팝업 내용 버전(구매자 브라우저의 「보지 않기」 저장 키). updatedAt은 순서 바꾸기에도 바뀌므로 쓰지 않는다.
+function popupContentVersion(p: ShopPopup): string {
+  const content = [p.kind, p.title, p.body, p.imageId, p.linkUrl, p.linkLabel, p.target, p.showOnPc, p.showOnMobile, p.dismissDays];
+  return createHash("sha256").update(JSON.stringify(content)).digest("hex").slice(0, 12);
+}
 
 // 공개 이미지: 운영 중인 쇼핑몰의 이미지 중 지금 보이는 배너·팝업이 쓰는 것만 준다(예약·종료·숨김 항목의 이미지는 404).
 export async function publicShopImage(db: PrismaClient, slug: string, imageId: string) {

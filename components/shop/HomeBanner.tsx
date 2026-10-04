@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import "./HomeBanner.css";
 
 // 쇼핑몰 홈 배너 슬라이드(SH-001 「홈 배너 슬라이드」, 관리 SA-064). 5초마다 넘어가고, 손으로 넘기거나 점·화살표로 고를 수 있다.
-// PC(768px 이상)와 모바일 슬라이드를 따로 그리고 CSS로 하나만 보인다(기기별 표시 설정이 다르면 장 수가 달라서).
+// PC(768px 이상)와 모바일 슬라이드를 따로 그리고 CSS로 하나만 보인다(기기별 표시 설정이 다르면 장 수가 달라서). 이미지는 lazy라 숨은 쪽은 받지 않는다.
 // 모바일은 모바일 이미지, 없으면 PC 이미지를 쓴다. 링크가 있으면 눌러서 이동한다(바깥 주소는 새 창).
 // 마우스를 올리거나 키보드로 들어오면 자동 넘김을 멈추고, 움직임 줄이기 설정이면 자동으로 넘기지 않는다.
 type Img = { url: string; width: number; height: number };
@@ -71,7 +71,8 @@ function Slider({ slides: banners, className }: { slides: Slide[]; className: st
     >
       <div className="hb-track" ref={track} onScroll={onScroll}>
         {banners.map((b, i) => {
-          const img = <img src={b.image.url} width={b.image.width} height={b.image.height} alt={b.title} loading={i === 0 ? "eager" : "lazy"} draggable={false} />;
+          // 모두 lazy: 안 보이는 기기의 슬라이드(display:none)는 브라우저가 받지 않는다. 보이는 첫 장은 화면 안이라 바로 받는다.
+          const img = <img src={b.image.url} width={b.image.width} height={b.image.height} alt={b.title} loading="lazy" draggable={false} />;
           return (
             <div key={b.id} className="hb-slide" role="group" aria-roledescription="slide" aria-label={`${i + 1} / ${count}`} aria-hidden={i !== index}>
               {b.link ? (

@@ -76,6 +76,7 @@ export function ImagePicker({
   optional,
   emptyHint,
   disabled,
+  onBusy,
 }: {
   label: string;
   recommend: { width: number; height: number };
@@ -84,6 +85,8 @@ export function ImagePicker({
   optional?: boolean;
   emptyHint?: string;
   disabled?: boolean;
+  // 올리는 동안 true. 편집 화면은 이 동안 저장을 막는다(옛 이미지로 저장되지 않게).
+  onBusy?: (busy: boolean) => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -95,6 +98,7 @@ export function ImagePicker({
     // 서버도 다시 확인한다. 큰 파일은 보내기 전에 알려 준다.
     if (file.size > MAX_BYTES) return setError(`2MB를 넘었습니다 · 지금 파일은 ${mb(file.size)}입니다`);
     setBusy(true);
+    onBusy?.(true);
     try {
       // 파일 바이트를 그대로 보낸다. 형식은 서버가 바이트로 확인한다.
       const res = await fetch("/api/seller/shop-content/images", { method: "POST", body: file, cache: "no-store" });
@@ -105,6 +109,7 @@ export function ImagePicker({
       setError("연결이 끊겼습니다. 인터넷 연결을 확인해 주십시오");
     } finally {
       setBusy(false);
+      onBusy?.(false);
       if (input.current) input.current.value = "";
     }
   };
@@ -248,6 +253,12 @@ export function StatusSummary({ noun, unit, list }: { noun: string; unit: string
       {n("ended") > 0 && <span className="bdg b-gray nodot">종료 {n("ended")}</span>}
     </div>
   );
+}
+
+// 편집 화면의 이미지 올리기 진행 수. 하나라도 올리는 중이면 저장을 막는다.
+export function useUploading() {
+  const [n, setN] = useState(0);
+  return { uploading: n > 0, onBusy: (b: boolean) => setN((v) => Math.max(0, v + (b ? 1 : -1))) };
 }
 
 // ───────── 링크 ─────────

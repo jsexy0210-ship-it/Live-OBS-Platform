@@ -23,6 +23,7 @@ import {
   stateKind,
   toKstInput,
   useSortable,
+  useUploading,
   type AdminImage,
   type ContentStatus,
 } from "./_shared/ui";
@@ -225,11 +226,12 @@ function BannerEditor({ draft: initial, onClose, onSaved }: { draft: Draft; onCl
   const [device, setDevice] = useState<"pc" | "mobile">("pc");
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  const { uploading, onBusy } = useUploading();
   const set = (patch: Partial<Draft>) => setD((v) => ({ ...v, ...patch }));
   const ready = d.title.trim() !== "" && !!d.pcImage && linkLooksOk(d.linkUrl) && !(d.startsAt && d.endsAt && d.startsAt >= d.endsAt);
 
   const save = async () => {
-    if (!ready || !d.pcImage) return;
+    if (uploading || !ready || !d.pcImage) return;
     setSaving(true);
     setFailure(null);
     const body = {
@@ -277,8 +279,8 @@ function BannerEditor({ draft: initial, onClose, onSaved }: { draft: Draft; onCl
               <input id="banner-title" className="inp" value={d.title} maxLength={40} onChange={(e) => set({ title: e.target.value })} placeholder="예: 10월 신상품 오픈" />
               <span className="help">화면 낭독기와 이미지가 안 뜰 때 표시 · 40자</span>
             </div>
-            <ImagePicker label="PC 이미지" recommend={{ width: 1200, height: 400 }} value={d.pcImage} onChange={(v) => set({ pcImage: v })} />
-            <ImagePicker
+            <ImagePicker onBusy={onBusy} label="PC 이미지" recommend={{ width: 1200, height: 400 }} value={d.pcImage} onChange={(v) => set({ pcImage: v })} />
+            <ImagePicker onBusy={onBusy}
               label="모바일 이미지"
               optional
               recommend={{ width: 750, height: 750 }}
@@ -328,8 +330,8 @@ function BannerEditor({ draft: initial, onClose, onSaved }: { draft: Draft; onCl
           <button className="btn btn-out" type="button" onClick={onClose} disabled={saving}>
             취소
           </button>
-          <button className="btn" type="button" onClick={() => void save()} disabled={!ready || saving}>
-            {saving ? "저장 중" : "저장"}
+          <button className="btn" type="button" onClick={() => void save()} disabled={!ready || saving || uploading}>
+            {saving ? "저장 중" : uploading ? "이미지 올리는 중" : "저장"}
           </button>
         </div>
       </div>
