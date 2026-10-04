@@ -29,6 +29,10 @@ test.describe("PC 1440", () => {
     await expect(page.locator(".shop-name")).toHaveText("카드숍 별빛");
     await expect(page.getByRole("search").getByLabel("상품 검색")).toBeVisible();
     await expect(page.getByRole("link", { name: "장바구니" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "내 정보" })).toBeVisible();
+    await expect(page.getByRole("search").getByRole("button", { name: "검색" })).toHaveText("검색");
+    expect(await page.getByRole("search").evaluate((el) => Math.round(el.getBoundingClientRect().width))).toBe(400);
+    await expect(page.locator(".shop-util-who")).toHaveCount(0);
     await expect(page.getByRole("navigation", { name: "카테고리" }).getByRole("link", { name: "전체 상품" })).toBeVisible();
     await expect(page.getByRole("navigation", { name: "바로 가기" })).toBeHidden();
     await expect(page.getByRole("button", { name: "카테고리 메뉴" })).toBeHidden();
@@ -97,6 +101,18 @@ test.describe("PC 1440", () => {
   });
 });
 
+test("로그인하면 맨 위 띠 오른쪽에 닉네임 님이 보인다", async ({ page, baseURL }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const r = await page.request.post(`/api/shop/${SLUG}/auth/login`, { data: { loginId: "demo-buyer1@example.com", password: PASSWORD }, headers: { origin: baseURL! } });
+  expect(r.status()).toBe(200);
+  await page.goto(`/shop/${SLUG}`);
+  const who = page.locator(".shop-util-who");
+  await expect(who).toHaveText(/ 님$/);
+  const [w, bar] = [await who.boundingBox(), await page.locator(".shop-util .shop-wrap").boundingBox()];
+  expect(w!.x + w!.width).toBeGreaterThan(bar!.x + bar!.width - 24);
+  await expect(page.locator(".shop-util").getByRole("link", { name: "내 정보" })).toBeVisible();
+});
+
 test("구매자 쇼핑몰 모든 화면의 바탕은 흰색이다(회색 바탕 없음)", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   const white = "rgb(255, 255, 255)";
@@ -130,6 +146,9 @@ test.describe("휴대폰 390", () => {
     await expect(page.getByRole("search")).toBeHidden();
     await expect(page.locator(".shop-name")).toBeVisible();
     const top = page.locator(".shop-top");
+    const mcat = page.getByRole("navigation", { name: "메뉴 탭" });
+    await expect(mcat.getByRole("link", { name: "홈" })).toHaveAttribute("aria-current", "page");
+    await expect(mcat.getByRole("link", { name: "전체 상품" })).toBeVisible();
     await expect(top.getByRole("link", { name: "검색" })).toBeVisible();
     await expect(top.getByRole("link", { name: "장바구니" })).toBeVisible();
 
