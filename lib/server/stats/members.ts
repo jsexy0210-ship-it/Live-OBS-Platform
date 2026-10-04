@@ -40,34 +40,37 @@ async function summary(db: StatsDb, sid: string, start: Date, end: Date): Promis
 
 export async function memberStats(db: PrismaClient, ctx: TenantContext, range: StatsRange) {
   requireSellerRead(ctx, "SALES_VIEW");
+  return statsSnapshot(db, (tx) => memberStatsIn(tx, ctx, range));
+}
+
+// 같은 스냅숏 안에서 다른 집계와 함께 부를 때(통계 요약). 권한 검사는 부르는 쪽이 한다.
+export async function memberStatsIn(tx: StatsDb, ctx: TenantContext, range: StatsRange) {
   const sid = ctx.sellerId;
-  return statsSnapshot(db, async (tx) => {
-    const [current, previous, series] = await Promise.all([
-      summary(tx, sid, range.start, range.end),
-      summary(tx, sid, range.prev.start, range.prev.end),
-      tx.$queryRaw<{ bucket: string; signups: number | null; withdrawals: number | null; buyers: number | null }[]>`
-        WITH s AS (${bucketSeries(range.unit, range.start, range.end)}),
-        su AS (
-          SELECT ${bucketOf(range.unit, Prisma.sql`"createdAt"`)} AS b, count(*)::int AS n FROM "BuyerMember"
-          WHERE "sellerId" = ${sid}::uuid AND "createdAt" >= ${range.start} AND "createdAt" < ${range.end} GROUP BY 1
-        ),
-        wd AS (
-          SELECT ${bucketOf(range.unit, Prisma.sql`"deletedAt"`)} AS b, count(*)::int AS n FROM "BuyerMember"
-          WHERE "sellerId" = ${sid}::uuid AND "deletedAt" >= ${range.start} AND "deletedAt" < ${range.end} GROUP BY 1
-        ),
-        bu AS (
-          SELECT ${bucketOf(range.unit, Prisma.sql`"createdAt"`)} AS b, count(DISTINCT "buyerMemberId")::int AS n FROM "Order"
-          WHERE "sellerId" = ${sid}::uuid AND "paidAt" IS NOT NULL AND "createdAt" >= ${range.start} AND "createdAt" < ${range.end} GROUP BY 1
-        )
-        SELECT to_char(s.b, 'YYYY-MM-DD') AS bucket, su.n AS signups, wd.n AS withdrawals, bu.n AS buyers
-        FROM s LEFT JOIN su ON su.b = s.b LEFT JOIN wd ON wd.b = s.b LEFT JOIN bu ON bu.b = s.b
-        ORDER BY s.b`,
-    ]);
-    return {
-      range: { from: range.from, to: range.to, unit: range.unit, previous: { from: range.prev.from, to: range.prev.to } },
-      current,
-      previous,
-      series: series.map((r) => ({ bucket: r.bucket, signups: num(r.signups), withdrawals: num(r.withdrawals), buyers: num(r.buyers) })),
-    };
-  });
+  const [current, previous, series] = await Promise.all([
+    summary(tx, sid, range.start, range.end),
+    summary(tx, sid, range.prev.start, range.prev.end),
+    tx.$queryRaw<{ bucket: string; signups: number | null; withdrawals: number | null; buyers: number | null }[]>`
+      WITH s AS (${bucketSeries(range.unit, range.start, range.end)}),
+      su AS (
+        SELECT ${bucketOf(range.unit, Prisma.sql`"createdAt"`)} AS b, count(*)::int AS n FROM "BuyerMember"
+        WHERE "sellerId" = ${sid}::uuid AND "createdAt" >= ${range.start} AND "createdAt" < ${range.end} GROUP BY 1
+      ),
+      wd AS (
+        SELECT ${bucketOf(range.unit, Prisma.sql`"deletedAt"`)} AS b, count(*)::int AS n FROM "BuyerMember"
+        WHERE "sellerId" = ${sid}::uuid AND "deletedAt" >= ${range.start} AND "deletedAt" < ${range.end} GROUP BY 1
+      ),
+      bu AS (
+        SELECT ${bucketOf(range.unit, Prisma.sql`"createdAt"`)} AS b, count(DISTINCT "buyerMemberId")::int AS n FROM "Order"
+        WHERE "sellerId" = ${sid}::uuid AND "paidAt" IS NOT NULL AND "createdAt" >= ${range.start} AND "createdAt" < ${range.end} GROUP BY 1
+      )
+      SELECT to_char(s.b, 'YYYY-MM-DD') AS bucket, su.n AS signups, wd.n AS withdrawals, bu.n AS buyers
+      FROM s LEFT JOIN su ON su.b = s.b LEFT JOIN wd ON wd.b = s.b LEFT JOIN bu ON bu.b = s.b
+      ORDER BY s.b`,
+  ]);
+  return {
+    range: { from: range.from, to: range.to, unit: range.unit, previous: { from: range.prev.from, to: range.prev.to } },
+    current,
+    previous,
+    series: series.map((r) => ({ bucket: r.bucket, signups: num(r.signups), withdrawals: num(r.withdrawals), buyers: num(r.buyers) })),
+  };
 }
