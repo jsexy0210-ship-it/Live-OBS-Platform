@@ -17,6 +17,7 @@ type Branding = {
   description: string | null;
   defaults: { title: string; description: string | null };
   favicon: { url: string; type: string } | null;
+  defaultFaviconUrl: string;
   ogImage: { url: string; uploaded: boolean; width: number; height: number };
 };
 type Settings = { canEdit: boolean; targets: Branding[] };
@@ -153,6 +154,8 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
   // 제목으로 만든 카드 미리보기: 입력을 멈추고 0.4초 뒤 다시 그린다
   const [previewTitle, setPreviewTitle] = useState(cardTitle);
   useEffect(() => {
+    // 글자 수를 넘은 제목은 서버가 그리지 않으므로(400) 마지막으로 그릴 수 있던 제목의 카드를 그대로 둔다
+    if (textLength(cardTitle) > TITLE_MAX) return;
     const id = setTimeout(() => setPreviewTitle(cardTitle), 400);
     return () => clearTimeout(id);
   }, [cardTitle]);
@@ -259,6 +262,10 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
         ? `/api/admin/branding/card-preview?title=${encodeURIComponent(previewTitle)}`
         : branding.ogImage.url;
   const host = typeof window === "undefined" ? "" : window.location.host;
+  // 공유 카드의 사이트 표시 줄에 붙는 아이콘: 고른 파비콘 → 올린 파비콘 → 기본 아이콘 순(저장 전 선택도 바로 보인다)
+  const previewIcon = favicon?.url ?? branding.favicon?.url ?? branding.defaultFaviconUrl;
+  const [previewBroken, setPreviewBroken] = useState(false);
+  useEffect(() => setPreviewBroken(false), [previewSrc]);
   const shownDescription = description.trim() || branding.defaults.description;
 
   return (
@@ -277,7 +284,7 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
                 {favicon || branding.favicon ? (
                   <img src={favicon?.url ?? branding.favicon!.url} alt="현재 파비콘" width={32} height={32} />
                 ) : (
-                  <img src="/branding/onq-32.png" alt="기본 아이콘" width={32} height={32} />
+                  <img src={branding.defaultFaviconUrl} alt="기본 아이콘" width={32} height={32} />
                 )}
               </span>
               <span className="col" style={{ gap: 2 }}>
@@ -438,14 +445,19 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
             공유 카드 미리보기
           </span>
           <div style={{ aspectRatio: "1200 / 630", background: "var(--wds-fill-normal)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            {previewSrc ? (
-              <img src={previewSrc} alt="공유 카드 이미지 미리보기" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+            {previewSrc && !previewBroken ? (
+              <img src={previewSrc} alt="공유 카드 이미지 미리보기" onError={() => setPreviewBroken(true)} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+            ) : previewSrc ? (
+              <span className="t-c1 c-alt">미리보기를 만들 수 없습니다. 제목을 확인해 주십시오.</span>
             ) : (
               <span className="t-c1 c-alt">이미지를 선택해 주십시오.</span>
             )}
           </div>
           <div className="col" style={{ gap: 4, padding: "12px 16px 16px" }}>
-            <span className="t-c2 c-alt">{host}</span>
+            <span className="row t-c2 c-alt" style={{ gap: 6 }}>
+              <img src={previewIcon} alt="파비콘 미리보기" width={16} height={16} />
+              {host}
+            </span>
             <span className="t-l1 fw6 ell">{cardTitle}</span>
             {shownDescription && <span className="t-c1 c-alt">{shownDescription}</span>}
           </div>
