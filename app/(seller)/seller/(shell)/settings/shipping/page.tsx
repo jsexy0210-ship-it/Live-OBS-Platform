@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
-import { SettingsTabs } from "../../../../../../components/seller/SettingsTabs";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
 import { parseAmount, won } from "../../../../../../components/seller/format";
@@ -183,7 +182,6 @@ export default function ShippingSettingsPage() {
         )}
       </Topbar>
       <main className="main">
-        <SettingsTabs />
         <div className="ph">
           <div className="col" style={{ gap: 6 }}>
             <h1 className="t-t3">배송비 정책</h1>
@@ -271,7 +269,7 @@ export default function ShippingSettingsPage() {
                   </div>
                   <div className="row between t-l2" style={{ gap: 12 }}>
                     <span className="c-alt">도서산간 추가</span>
-                    <span className="num c-alt">{remoteNum !== null && !errors.remote ? (remoteNum === 0 ? "받지 않음" : `+${won(remoteNum)} · 해당 주소만`) : "—"}</span>
+                    <span className="num c-alt" data-testid="remote-preview">{remoteNum !== null && !errors.remote ? (remoteNum === 0 ? "받지 않음" : `+${won(remoteNum)} · 해당 주소만`) : "—"}</span>
                   </div>
                 </div>
                 <span className="t-l2" data-testid="return-preview">

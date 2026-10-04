@@ -89,12 +89,31 @@ async function main() {
     }
   }
   await seedOrders(seller.id, passwordHash);
+  await seedOverlayOnlySeller(passwordHash);
   console.log(`데모 판매자를 준비했어요 (DB: ${dbName})`);
   console.log(`  대표자: ${users[0].email}`);
   console.log(`  상품 담당 직원: ${users[1].email}`);
   console.log(`  상품 권한 없는 직원: ${users[2].email}`);
   console.log(`  권한 0개 직원: ${users[3].email}`);
-  console.log(`  비밀번호(네 계정 같음): ${password}`);
+  console.log(`  오버레이 전용 요금제 대표자: ${OVERLAY_OWNER}`);
+  console.log(`  비밀번호(모든 데모 계정 같음): ${password}`);
+}
+
+// 오버레이 전용 요금제 판매자(체험 중): 쇼핑몰 기능(스토어 운영) 메뉴가 숨겨지는지 확인용. 데모 쇼핑몰(통합)과 메뉴를 비교한다.
+const OVERLAY_OWNER = "demo-overlay-owner@example.com";
+async function seedOverlayOnlySeller(passwordHash) {
+  const plan = await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "OVERLAY_ONLY" }, select: { id: true } });
+  const trialEndsAt = new Date(Date.now() + 7 * 86_400_000);
+  const seller = await db.seller.upsert({
+    where: { slug: "demo-overlay" },
+    update: { status: "ACTIVE", planId: plan.id, trialEndsAt },
+    create: { slug: "demo-overlay", shopName: "방송숍 달빛", status: "ACTIVE", approvedAt: new Date(), planId: plan.id, trialEndsAt },
+  });
+  await db.sellerUser.upsert({
+    where: { sellerId_email: { sellerId: seller.id, email: OVERLAY_OWNER } },
+    update: { passwordHash, status: "ACTIVE", credentialVersion: { increment: 1 } },
+    create: { sellerId: seller.id, passwordHash, email: OVERLAY_OWNER, name: "대표자", isOwner: true, permissions: [] },
+  });
 }
 
 // 판매자 주문 화면(SA-021·022·023)용 데모 구매자·주문. 주문이 하나도 없을 때만 만든다(다시 돌려도 늘지 않음).
