@@ -16,7 +16,7 @@ const NAV: Nav[] = [
   { label: "홈" },
   { label: "통계", href: "/seller/stats", perm: "SALES_VIEW" },
   { h: "방송" },
-  { label: "방송 대시보드", perm: "BROADCAST_RUN" },
+  { label: "방송 대시보드", href: "/seller/broadcast", perm: "BROADCAST_RUN" },
   { h: "판매" },
   { label: "상품", href: "/seller/products", perm: "PRODUCT_MANAGE" },
   { label: "주문", href: "/seller/orders", perm: "ORDER_SHIPPING" },
