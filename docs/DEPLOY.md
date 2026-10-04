@@ -246,7 +246,8 @@ echo "현재 버전: ${APP_VERSION:-없음}"
 서버에서 직접 넣을 때는 위 「서버 명령 준비」 줄을 먼저 실행하고, 아래를 붙여 넣은 뒤 아이디·비밀번호를 입력해요.
 
 ```bash
-read -p "아이디: " SEED_SELLER_LOGIN && read -s -p "비밀번호: " SEED_SELLER_PASSWORD && echo && export SEED_SELLER_LOGIN SEED_SELLER_PASSWORD && OBS_TEST_MODE="$(sed -n 's/^OBS_TEST_MODE=//p' /opt/obs/.env)" IDENTITY_HASH_KEY="$(sed -n 's/^IDENTITY_HASH_KEY=//p' /opt/obs/.env)" $C run --rm --no-deps -e OBS_TEST_MODE -e SEED_SELLER_LOGIN -e SEED_SELLER_PASSWORD -e IDENTITY_HASH_KEY obs-web-migrate node scripts/seed-obs-test.mjs; unset SEED_SELLER_LOGIN SEED_SELLER_PASSWORD
+# 판매자 쌍과 관리자 쌍은 각각 선택(Enter만 치면 건너뜀)이고, 둘 중 한 쌍은 꼭 넣어요. 비밀번호는 화면에 나오지 않아요.
+read -p "판매자 아이디(없으면 Enter): " SEED_SELLER_LOGIN && read -s -p "판매자 비밀번호: " SEED_SELLER_PASSWORD && echo && read -p "관리자 아이디(없으면 Enter): " SEED_ADMIN_LOGIN && read -s -p "관리자 비밀번호: " SEED_ADMIN_PASSWORD && echo && export SEED_SELLER_LOGIN SEED_SELLER_PASSWORD SEED_ADMIN_LOGIN SEED_ADMIN_PASSWORD && OBS_TEST_MODE="$(sed -n 's/^OBS_TEST_MODE=//p' /opt/obs/.env)" IDENTITY_HASH_KEY="$(sed -n 's/^IDENTITY_HASH_KEY=//p' /opt/obs/.env)" $C run --rm --no-deps -e OBS_TEST_MODE -e SEED_SELLER_LOGIN -e SEED_SELLER_PASSWORD -e SEED_ADMIN_LOGIN -e SEED_ADMIN_PASSWORD -e IDENTITY_HASH_KEY obs-web-migrate node scripts/seed-obs-test.mjs; unset SEED_SELLER_LOGIN SEED_SELLER_PASSWORD SEED_ADMIN_LOGIN SEED_ADMIN_PASSWORD
 ```
 
 - 마이그레이션 이미지(`obs-web-migrate`)를 써요. 이 기능이 들어간 버전으로 한 번 배포한 뒤에 실행해요.
