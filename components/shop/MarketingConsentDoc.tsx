@@ -1,5 +1,8 @@
 // 마케팅 정보 수신 동의 서식(docs/terms/MARKETING_CONSENT_TEMPLATE.md, 버전 lib/server/buyers/consent.ts SIGNUP_CONSENT_VERSIONS.marketing).
 // 동의를 받기 전에 이 글 전체를 보여 준다. 서식을 바꾸면 이 글과 버전을 함께 바꾼다.
+// 동의할 때는 서버가 준 버전이 아니라 이 글과 함께 묶인 버전을 보낸다: 화면에 보인 글과 기록되는 버전이 늘 같도록.
+// 서버 버전과 다르면(이 화면을 연 뒤 서식이 바뀜) 동의를 받지 않고 새로고침을 안내한다.
+export const MARKETING_DOC_VERSION = "2026-10-03.v1";
 export default function MarketingConsentDoc({ shopName }: { shopName: string }) {
   return (
     <div className="col mc-doc" style={{ gap: 10 }} data-testid="mc-doc">

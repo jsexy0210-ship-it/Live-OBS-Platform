@@ -46,7 +46,7 @@ export default async function ShopSignupPage({ params }: Params) {
       ) : !identityReady ? (
         <ShopState title="본인확인 서비스 준비 중이에요" body="휴대폰 본인확인을 할 수 있게 되면 바로 가입할 수 있어요. 잠시 뒤 다시 와 주세요." />
       ) : (
-        <SignupForm slug={slug} consent={consent} />
+        <SignupForm slug={slug} shopName={shop.shopName} consent={consent} />
       )}
     </ShopFrame>
   );

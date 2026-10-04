@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import MarketingConsentDoc from "./MarketingConsentDoc";
+import MarketingConsentDoc, { MARKETING_DOC_VERSION } from "./MarketingConsentDoc";
 import ShopState from "./ShopState";
 
-// SH-025 마케팅 정보 수신 설정. 끄면 바로 철회하고, 켜면 동의 문구를 보여 준 뒤 지금 문서 버전(currentVersion)으로 동의한다.
+// SH-025 마케팅 정보 수신 설정. 끄면 바로 철회하고, 켜면 서식 전체를 보여 준 뒤 그 서식의 버전(MARKETING_DOC_VERSION)으로 동의한다.
+// 서버의 지금 버전(currentVersion)과 다르거나 동의가 consent_outdated로 거절되면 동의를 받지 않고 새로고침을 안내한다(보인 적 없는 서식에 동의 기록 금지).
 // 정보통신망법 제50조 제7항: 수신 동의·철회를 처리하면 보낸 곳(쇼핑몰)·처리 결과·처리 날짜를 바로 알린다(한국 날짜).
 // 응답을 놓치거나 서버 오류면 지금 상태를 다시 읽어 실제 결과를 보여 준다.
 type State = { agreed: boolean; agreedAt: string | null; version: string | null; withdrawnAt: string | null; currentVersion: string };
@@ -38,6 +39,8 @@ export default function MarketingConsent({ slug, shopName }: { slug: string; sho
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
+  // 화면을 연 뒤 서식이 바뀌어 새로고침해야 한다
+  const [outdated, setOutdated] = useState(false);
 
   const load = useCallback(async () => {
     const r = await call<State>(path);
@@ -62,12 +65,12 @@ export default function MarketingConsent({ slug, shopName }: { slug: string; sho
           : null,
     );
 
-  const save = async (agreed: boolean, version?: string) => {
+  const save = async (agreed: boolean) => {
     if (busy) return;
     setBusy(true);
     setFailure(null);
     setResult(null);
-    const r = await call<State>(path, { method: "PUT", body: agreed ? { agreed, marketingVersion: version } : { agreed } });
+    const r = await call<State>(path, { method: "PUT", body: agreed ? { agreed, marketingVersion: MARKETING_DOC_VERSION } : { agreed } });
     setBusy(false);
     if (r.ok) {
       setAsking(false);
@@ -76,14 +79,12 @@ export default function MarketingConsent({ slug, shopName }: { slug: string; sho
     }
     if (r.status === 401 || r.status === 404) return setView({ kind: "login" });
     if (r.error === "consent_outdated") {
-      // 동의 문구가 바뀌었다: 지금 버전을 다시 받아 문구를 다시 보여 준다
-      await load();
-      setAsking(true);
-      return setFailure("동의 내용이 바뀌었어요. 다시 확인하고 동의해 주세요");
+      // 서식이 바뀌었다: 이 화면의 글은 예전 서식이라 새 버전으로 동의를 받지 않고 새로고침하게 한다
+      return setOutdated(true);
     }
     // 응답을 놓쳤거나 서버 오류: 지금 상태를 다시 읽어 바뀌었으면 결과를, 아니면 실패를 알린다
     const now = await load();
-    if (now && now.agreed === agreed && (!agreed || now.version === now.currentVersion)) {
+    if (now && now.agreed === agreed && (!agreed || now.version === MARKETING_DOC_VERSION)) {
       setAsking(false);
       return done(now);
     }
@@ -112,6 +113,8 @@ export default function MarketingConsent({ slug, shopName }: { slug: string; sho
   const s = view.state;
   // 예전 문구로 동의한 회원은 지금 문구로 다시 동의해야 한다
   const stale = s.agreed && s.version !== s.currentVersion;
+  // 이 화면의 서식이 서버의 지금 서식과 다르다(화면을 연 뒤 바뀜)
+  const needsReload = outdated || s.currentVersion !== MARKETING_DOC_VERSION;
   return (
     <section className="card shop-card col" style={{ gap: 16 }} aria-labelledby="mc-title">
       <h1 id="mc-title" className="t-h1">
@@ -162,13 +165,28 @@ export default function MarketingConsent({ slug, shopName }: { slug: string; sho
           </span>
         </div>
       )}
-      {asking && (
+      {asking && needsReload && (
+        <div className="msg msg-cau" role="alert" style={{ display: "block" }} data-testid="mc-reload">
+          <span>
+            <b>새로고침이 필요해요.</b> 동의 내용이 바뀌었어요. 새로고침한 뒤 바뀐 내용을 확인하고 동의해 주세요.
+          </span>
+          <span className="row" style={{ gap: 8, marginTop: 8 }}>
+            <button className="btn btn-sm" type="button" onClick={() => window.location.reload()}>
+              새로고침
+            </button>
+            <button className="btn btn-sm btn-out" type="button" onClick={() => setAsking(false)}>
+              취소
+            </button>
+          </span>
+        </div>
+      )}
+      {asking && !needsReload && (
         <div className="card pad col" style={{ gap: 10, boxShadow: "inset 0 0 0 1px var(--wds-line-normal-normal)" }} data-testid="mc-terms">
           <span className="t-l1 fw6">마케팅 정보 수신 동의 (선택)</span>
           {/* 동의를 받기 전에 서식 전체(이용 목적·항목·보유 기간)를 보여 준다 */}
           <MarketingConsentDoc shopName={shopName} />
           <span className="row" style={{ gap: 8 }}>
-            <button className={`btn btn-sm${busy ? " is-loading" : ""}`} type="button" disabled={busy} onClick={() => void save(true, s.currentVersion)}>
+            <button className={`btn btn-sm${busy ? " is-loading" : ""}`} type="button" disabled={busy} onClick={() => void save(true)}>
               동의하고 받기
             </button>
             <button
