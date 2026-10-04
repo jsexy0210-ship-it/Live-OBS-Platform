@@ -331,8 +331,9 @@ export async function runRollback(
   try {
     for (const rb of opts.playbook.rollback) {
       const at = STEPS.findIndex((s) => s.key === rb.forStep);
-      // 끝낸 단계와, 변경을 시작한 기록이 있는 현재 단계만 되돌린다(아직 아무것도 바꾸지 않은 현재 단계는 남의 설정일 수 있어 건드리지 않음)
-      if (at < 0 || at > opts.stepIndex || (at === opts.stepIndex && !opts.mutatedSteps.includes(rb.forStep))) continue;
+      // 변경 기록(mutatedSteps)이 있는 단계만 되돌린다(완료 여부와 무관). 기존 설정을 확인만 하고 끝낸 단계·아직 바꾸지 않은 현재 단계는
+      // 판매자의 기존 앱·웹훅일 수 있어 건드리지 않는다
+      if (at < 0 || at > opts.stepIndex || !opts.mutatedSteps.includes(rb.forStep)) continue;
       const step = { key: `rollback:${rb.forStep}`, kind: rb.kind } as const;
       const nav = { shopHost: opts.shopHost, pathPrefixes: rb.allowedUrls.pathPrefixes, queryKeys: rb.allowedUrls.queryKeys };
       for (let i = 0; i < rb.actions.length; i++) {

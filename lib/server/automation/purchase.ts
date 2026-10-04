@@ -433,17 +433,21 @@ async function submitCharge(db: PrismaClient, provider: BillingProvider, payment
 // PG에 기록이 없으면(결제 요청 전에 멈췄거나 요청이 PG에 닿지 않음) 결제 대기 작업에 한해 같은 청구 id로 다시 보낸다.
 export async function reconcileAutomationPayments(db: PrismaClient, provider: BillingProvider, opts: { olderThanMs?: number } = {}): Promise<number> {
   const cutoff = new Date((await dbNow(db)).getTime() - (opts.olderThanMs ?? AUTOMATION_LIMITS.reconcileAfterMs));
-  // 확인한 지 오래된 순(처음이면 먼저), 같으면 id 순. 확인 직전에 시각을 남겨 오류가 난 건도 다음 회차에는 뒤로 간다.
-  const stale = await db.automationPayment.findMany({
-    // 확인 간격(대사 간격)이 지난 건만: 작업자 반복이 짧아도 같은 결제의 PG 조회는 간격당 1회
-    where: { status: "PENDING", createdAt: { lte: cutoff }, OR: [{ lastCheckedAt: null }, { lastCheckedAt: { lte: cutoff } }] },
-    select: { id: true, sellerId: true },
-    orderBy: [{ lastCheckedAt: { sort: "asc", nulls: "first" } }, { id: "asc" }],
-    take: 50,
-  });
+  // 고르기와 점유를 한 문장으로: 확인 간격이 지난 PENDING 청구를 확인한 지 오래된 순(처음이면 먼저)·id 순으로 50건 골라
+  // 확인 시각을 남기고 그 행만 돌려준다(다른 작업자가 잠근 행은 건너뜀). 여러 작업자가 동시에 돌아도 같은 청구는 한 작업자만 PG에 묻고,
+  // 오류가 난 건도 다음 회차에는 뒤로 간다.
+  const stale = await db.$queryRaw<{ id: string; sellerId: string }[]>`
+    UPDATE "AutomationPayment" SET "lastCheckedAt" = now()
+    WHERE id IN (
+      SELECT id FROM "AutomationPayment"
+      WHERE status = 'PENDING' AND "createdAt" <= ${cutoff} AND ("lastCheckedAt" IS NULL OR "lastCheckedAt" <= ${cutoff})
+      ORDER BY "lastCheckedAt" ASC NULLS FIRST, id ASC
+      LIMIT 50
+      FOR UPDATE SKIP LOCKED
+    )
+    RETURNING id, "sellerId"`;
   let settled = 0;
   for (const p of stale) {
-    await db.automationPayment.updateMany({ where: { id: p.id, status: "PENDING" }, data: { lastCheckedAt: await dbNow(db) } });
     // 한 건 조회가 실패해도 나머지는 계속 확인한다
     try {
       if ((await provider.getPayment(p.id)).status === "NOT_FOUND") {

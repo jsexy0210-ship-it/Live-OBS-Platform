@@ -2109,7 +2109,10 @@ describe("Codex 14차 반영(32fc6cd)·MASTER 되돌리기 경로", () => {
     const a = await bought();
     const rt = runtime();
     // 쇼핑몰 연결·웹훅·OBS 소스 추가까지 마친 상태(진행 위치 3)
-    await db.automationJob.update({ where: { id: a.jobId }, data: { stepIndex: 3, playbookActions: 8, obsPairingId: `pc-${a.seller.id}`, obsTargetKey: `obs:pc-${a.seller.id}` } });
+    await db.automationJob.update({
+      where: { id: a.jobId },
+      data: { stepIndex: 3, playbookActions: 8, obsPairingId: `pc-${a.seller.id}`, obsTargetKey: `obs:pc-${a.seller.id}`, changedAt: new Date(), mutatedSteps: ["shop_connect", "webhook_setup", "obs_overlay_install"] },
+    });
     rt.obs.sources.set(a.seller.id, 1);
     const other = await bought();
     await db.automationJob.update({ where: { id: other.jobId }, data: { status: "CANCELED", finishedAt: new Date(), lastDeviationAt: new Date(), deviatedSteps: ["webhook_setup"] } });
@@ -2127,7 +2130,7 @@ describe("Codex 14차 반영(32fc6cd)·MASTER 되돌리기 경로", () => {
     const a = await bought();
     const rt = runtime();
     rt.browser.pageText = () => "화면이 바뀌었어요 · 로그아웃";
-    await db.automationJob.update({ where: { id: a.jobId }, data: { stepIndex: 2, playbookActions: 5 } });
+    await db.automationJob.update({ where: { id: a.jobId }, data: { stepIndex: 2, playbookActions: 5, changedAt: new Date(), mutatedSteps: ["shop_connect", "webhook_setup"] } });
     const other = await bought();
     await db.automationJob.update({ where: { id: other.jobId }, data: { status: "CANCELED", finishedAt: new Date(), lastDeviationAt: new Date(), deviatedSteps: ["webhook_setup"] } });
     await runOnce(db, rt, W);
@@ -2273,5 +2276,53 @@ describe("Codex 16차 반영(e45452b)", () => {
     expect(await runOnce(db, runtime(), W)).toBe("succeeded");
     const j = await job(a.jobId);
     expect(j.mutatedSteps).toEqual(expect.arrayContaining(["shop_connect", "webhook_setup", "obs_overlay_install", "display_settings", "test_event_verify"]));
+  });
+});
+
+describe("Codex 17차 반영(07ce315)", () => {
+  it("기존 설정을 확인만 하고 끝낸 단계(변경 기록 없음)는 검증 해제 때 되돌리지 않고, 변경한 단계만 되돌린다", async () => {
+    const a = await bought();
+    // 쇼핑몰 연결은 이미 설치된 앱을 확인만 하고 끝냈고(기록 없음), 웹훅 단계에서 변경을 시작했다
+    await db.automationJob.update({ where: { id: a.jobId }, data: { stepIndex: 2, mutatedSteps: ["webhook_setup"], changedAt: new Date() } });
+    const other = await bought();
+    await db.automationJob.update({ where: { id: other.jobId }, data: { status: "CANCELED", finishedAt: new Date(), lastDeviationAt: new Date(), deviatedSteps: ["webhook_setup"] } });
+    const rt = runtime();
+    expect(await runOnce(db, rt, W)).toBe("failed");
+    // 「주문 알림 끄기」 1번만(「앱 사용 중지」 없음)
+    expect(rt.browser.performed.filter((p) => p.type === "click")).toHaveLength(1);
+    expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "playbook_not_verified" });
+  });
+
+  it("작업자 둘이 동시에 결제 대사를 돌려도 같은 결제의 PG 조회는 한 작업자만 한다", async () => {
+    let lookups = 0;
+    class Slow extends FakeBillingProvider {
+      override async getPayment(orderId: string) {
+        lookups++;
+        await new Promise((r) => setTimeout(r, 50));
+        return super.getPayment(orderId);
+      }
+    }
+    const provider = new Slow();
+    const a = await shopWithCard();
+    // PG에는 결제가 됐는데 결과를 못 받아 PENDING으로 남은 결제(구매 때의 조회는 세지 않는다)
+    const r = await purchaseAutomation(db, provider, a.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP });
+    if (!r.ok) throw new Error(r.reason);
+    await db.automationPayment.updateMany({ where: { sellerId: a.seller.id }, data: { status: "PENDING", paidAt: null, createdAt: new Date(Date.now() - 10 * 60_000), lastCheckedAt: null } });
+    lookups = 0;
+    // 대상을 고른 직후 잠깐 멈춰, 두 작업자가 고르는 시점이 겹치게 한다(고르기와 점유가 따로면 둘 다 같은 행을 집는다)
+    const racing = db.$extends({
+      query: {
+        automationPayment: {
+          async findMany({ args, query }) {
+            const rows = await query(args);
+            await new Promise((res) => setTimeout(res, 100));
+            return rows;
+          },
+        },
+      },
+    }) as unknown as typeof db;
+    await Promise.all([reconcileAutomationPayments(racing, provider), reconcileAutomationPayments(racing, provider)]);
+    // 한 작업자의 한 회차 조회 수(대사 조회 1 + 확정 조회 1)
+    expect(lookups).toBe(2);
   });
 });
