@@ -20,6 +20,7 @@ export const MEMBER_DATA_POLICY: Record<string, { policy: MemberDataPolicy; note
   HitCard: { policy: "anonymize", note: "닉네임 스냅숏을 「탈퇴한 회원」으로" },
   RewardLedger: { policy: "retain_legal", note: "적립금 원장(거래 기록). 처리 전 원장은 FAILED(member_withdrawn)" },
   RewardBalance: { policy: "anonymize", note: "잔액을 소멸 원장으로 0(개인정보 없음)" },
+  RewardExpiryNotice: { policy: "delete", note: "적립금 소멸 30일 전 안내 기록(잔액이 0이 되어 더 쓸 일 없음)" },
 };
 
 // 회원 전용 칸이 아니라 여러 행위자가 함께 쓰는 칸(행위자 유형이 구매자인 행에 구매자 회원 id가 들어간다).
