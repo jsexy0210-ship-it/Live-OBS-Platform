@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import CouponBox from "../../../../../components/shop/CouponBox";
-import ShopFrame from "../../../../../components/shop/ShopFrame";
 import { prisma } from "../../../../../lib/server/db";
 
 export const dynamic = "force-dynamic";
@@ -24,8 +23,8 @@ export default async function ShopCouponsPage({ params }: Params) {
   const shop = await findShop((await params).slug);
   if (!shop) notFound();
   return (
-    <ShopFrame slug={shop.slug} shopName={shop.shopName}>
+    <>
       <CouponBox slug={shop.slug} />
-    </ShopFrame>
+    </>
   );
 }

@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import LoginForm from "../../../../../components/shop/LoginForm";
-import ShopFrame from "../../../../../components/shop/ShopFrame";
 import { findActiveShop } from "../_lib/shop";
 
 export const dynamic = "force-dynamic";
@@ -21,8 +20,8 @@ export default async function ShopLoginPage({ params, searchParams }: Props) {
   const base = `/shop/${encodeURIComponent(shop.slug)}`;
   const next = typeof raw === "string" && (raw === base || raw.startsWith(`${base}/`)) && !raw.includes("//", 1) && !raw.includes("\\") ? raw : null;
   return (
-    <ShopFrame slug={shop.slug} shopName={shop.shopName}>
+    <>
       <LoginForm slug={shop.slug} next={next} />
-    </ShopFrame>
+    </>
   );
 }

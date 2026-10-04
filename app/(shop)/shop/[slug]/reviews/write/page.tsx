@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import ReviewWrite from "../../../../../../components/shop/ReviewWrite";
-import ShopFrame from "../../../../../../components/shop/ShopFrame";
 import ShopState from "../../../../../../components/shop/ShopState";
 import { shopOpen } from "../../../../../../lib/server/buyers/signup";
 import { prisma } from "../../../../../../lib/server/db";
@@ -29,7 +28,7 @@ export default async function ShopReviewWritePage({ params, searchParams }: Para
   const review = typeof q.review === "string" ? q.review : null;
   const open = await shopOpen(prisma, shop.id);
   return (
-    <ShopFrame slug={shop.slug} shopName={shop.shopName}>
+    <>
       {!open ? (
         <ShopState title="지금은 쇼핑몰을 이용할 수 없어요" body="쇼핑몰이 다시 문을 열면 리뷰를 쓸 수 있어요." />
       ) : !item && !review ? (
@@ -37,6 +36,6 @@ export default async function ShopReviewWritePage({ params, searchParams }: Para
       ) : (
         <ReviewWrite slug={shop.slug} itemId={item} reviewId={item ? null : review} />
       )}
-    </ShopFrame>
+    </>
   );
 }
