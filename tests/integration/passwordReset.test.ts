@@ -232,10 +232,13 @@ describe("판매자 비밀번호 찾기 (대표자 휴대폰 본인확인)", () 
     expect(results.filter((r) => r.ok)).toHaveLength(1);
   });
 
-  it("같은 본인인증으로 재설정 권한을 두 번 받을 수 없다", async () => {
+  it("같은 본인인증으로 다른 재설정 권한을 또 받을 수 없다(다시 부르면 같은 권한, 그 권한을 쓴 뒤에는 거부)", async () => {
     const { seller, owner } = await shop();
     const { start, grant } = await grantFor(owner.email, seller.slug, "REP-CI");
-    expect(grant.ok).toBe(true);
+    if (!grant.ok) throw new Error("grant failed");
+    expect(await issueSellerPasswordResetGrant(db, provider, { verificationId: start.verificationId, ownerToken: start.ownerToken })).toEqual(grant);
+    expect(await db.passwordResetGrant.count()).toBe(1);
+    expect(await resetSellerPassword(db, { grantToken: grant.grantToken, newPassword: NEW_PASSWORD })).toEqual({ ok: true });
     expect(await issueSellerPasswordResetGrant(db, provider, { verificationId: start.verificationId, ownerToken: start.ownerToken })).toEqual({
       ok: false,
       reason: "reset_not_allowed",
@@ -478,6 +481,54 @@ describe("HTTP: 비밀번호 찾기 흐름", () => {
     expect((await httpComplete(post("/api/seller/password-reset/complete", { newPassword: "again-pass-1" }, gc))).status).toBe(400);
     expect((await loginSeller(db, { email: owner.email, password: NEW_PASSWORD }, {})).ok).toBe(true);
   });
+  it("권한 발급 응답을 잃은 뒤 같은 본인확인으로 다시 확인하면 같은 권한을 받고 그 권한으로 저장된다(#166 Codex P2), 시작 쿠키는 지우지 않는다", async () => {
+    const { seller, owner } = await shop();
+    const s = await httpStart(post("/api/seller/password-reset/start", { email: owner.email, shopSlug: seller.slug, person: REP }));
+    const { verificationId } = await s.json();
+    const { requestId } = await db.identityVerification.findUniqueOrThrow({ where: { id: verificationId } });
+    (identityProvider() as FakeIdentityProvider).complete(requestId, person("REP-CI"));
+    expect((await httpConfirm(post("/api/seller/password-reset/confirm", { verificationId, code: "000000" }, cookieOf(s)))).status).toBe(200);
+    const grantOf = (r: Response) => (r.headers.get("set-cookie") ?? "").split(/,(?=\s*lo_)/).map((c) => c.trim()).find((c) => c.startsWith("lo_pwreset="))!.split(";")[0];
+    const first = await httpVerify(post("/api/seller/password-reset/verify", { verificationId }, cookieOf(s)));
+    expect(first.status).toBe(200);
+    expect(first.headers.get("set-cookie") ?? "").not.toMatch(/lo_idv=;/);
+    // 첫 응답을 잃었다고 보고 같은 쿠키로 다시 확인
+    const again = await httpVerify(post("/api/seller/password-reset/verify", { verificationId }, cookieOf(s)));
+    expect(again.status).toBe(200);
+    expect(grantOf(again)).toBe(grantOf(first));
+    expect(await db.passwordResetGrant.count()).toBe(1);
+    // 다른 브라우저(쿠키 없음)는 같은 id로도 받지 못한다
+    expect((await httpVerify(post("/api/seller/password-reset/verify", { verificationId }))).status).toBe(400);
+    expect((await httpComplete(post("/api/seller/password-reset/complete", { newPassword: NEW_PASSWORD }, grantOf(again)))).status).toBe(200);
+    // 권한을 쓴 뒤에는 다시 확인해도 거부
+    expect((await httpVerify(post("/api/seller/password-reset/verify", { verificationId }, cookieOf(s)))).status).toBe(400);
+    expect((await loginSeller(db, { email: owner.email, password: NEW_PASSWORD }, {})).ok).toBe(true);
+  });
+
+  it("권한 재발급: 만료(발급 뒤 10분)·다른 본인확인(거부로 소진)은 거부하고, 동시에 다시 불러도 권한은 하나다", async () => {
+    const { seller, owner } = await shop();
+    const t0 = new Date();
+    const a = await startOk({ email: owner.email, shopSlug: seller.slug }, { now: t0 });
+    await confirmReset(a, "REP-CI", t0);
+    const ids = { verificationId: a.verificationId, ownerToken: a.ownerToken };
+    const rs = await Promise.all([1, 2, 3].map(() => issueSellerPasswordResetGrant(db, provider, ids, { now: t0 })));
+    expect(rs.every((r) => r.ok)).toBe(true);
+    expect(new Set(rs.map((r) => (r.ok ? r.grantToken : "")))).toHaveProperty("size", 1);
+    expect(await db.passwordResetGrant.count()).toBe(1);
+    expect(await issueSellerPasswordResetGrant(db, provider, ids, { now: new Date(t0.getTime() + 10 * 60_000 + 1) })).toEqual({ ok: false, reason: "reset_not_allowed" });
+    expect(await issueSellerPasswordResetGrant(db, provider, ids, { now: new Date(t0.getTime() + 60 * 60_000) })).toEqual({ ok: false, reason: "reset_not_allowed" });
+
+    // 다른 본인확인: CI가 달라 거부되며 소진된 기록은 다시 불러도 권한이 없다
+    const b = await startOk({ email: owner.email, shopSlug: seller.slug });
+    await confirmReset(b, "OTHER-CI");
+    const idsB = { verificationId: b.verificationId, ownerToken: b.ownerToken };
+    expect(await issueSellerPasswordResetGrant(db, provider, idsB)).toEqual({ ok: false, reason: "reset_not_allowed" });
+    expect(await issueSellerPasswordResetGrant(db, provider, idsB)).toEqual({ ok: false, reason: "reset_not_allowed" });
+    // a의 쿠키로 b의 기록을 부르거나, b의 쿠키로 a의 기록을 불러도 거부
+    expect(await issueSellerPasswordResetGrant(db, provider, { verificationId: a.verificationId, ownerToken: b.ownerToken }, { now: t0 })).toEqual({ ok: false, reason: "reset_not_allowed" });
+    expect(await db.passwordResetGrant.count()).toBe(1);
+  });
+
   it("재설정 권한 발급 감사 로그를 쓰지 못하면 권한도 만들지 않고 본인확인도 소진하지 않는다(같은 트랜잭션)", async () => {
     const { seller, owner } = await shop();
     const s = await startOk({ email: owner.email, shopSlug: seller.slug });

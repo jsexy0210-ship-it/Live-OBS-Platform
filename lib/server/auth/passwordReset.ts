@@ -1,5 +1,5 @@
 import type { IdentityVerification, PrismaClient } from "@prisma/client";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import { writeAudit } from "../audit/log";
 import { forbidden, notFound } from "../authz/errors";
 import { dbNow } from "../billing/subscription";
@@ -9,7 +9,7 @@ import { completeIdentityVerification, parseIdentityPerson, sendFirstIdentityCod
 import { requireSellerPermission, type TenantContext } from "../tenant/context";
 import { hashPassword, verifyPassword } from "./password";
 import { recoveryLimitReached } from "./recoveryLimit";
-import { generateToken, hashToken } from "./token";
+import { hashToken } from "./token";
 import { normalizeEmail } from "./login";
 
 // 판매자 비밀번호 찾기: 대표자 휴대폰 본인확인으로만 한다(메일 링크 없음, 대표님 지시 2026-10-02).
@@ -137,8 +137,18 @@ export async function startSellerPasswordReset(
 
 export type GrantResult = { ok: true; grantToken: string; expiresAt: Date } | { ok: false; reason: "reset_not_allowed" | "pending" };
 
+// 재설정 권한 토큰: 서버 비밀키(IDENTITY_HASH_KEY)로 만든 HMAC(용도 구분 + nonce). 같은 nonce면 같은 토큰이라 응답을 잃은 재시도에 다시 만든다
+// (권한 행에는 nonce와 토큰 해시만 두고 원문은 저장하지 않는다). 비밀번호 찾기·아이디 찾기 재설정 공용.
+export function grantTokenOf(nonce: string): string {
+  const key = process.env.IDENTITY_HASH_KEY;
+  if (!key || key.length < 32) throw new Error("IDENTITY_HASH_KEY가 없거나 너무 짧아요(32자 이상).");
+  return createHmac("sha256", key).update(`password_reset_grant\0${nonce}`).digest("base64url");
+}
+
 // 휴대폰 본인확인 완료 확인 → CI 비교 → 재설정 권한 발급. 대표자는 쇼핑몰 대표자 CI, 직원은 계정에 연결한 CI와 같아야 한다
 // (2026-10-03 대표님 결정, 연결 안 된 직원은 대표자 재설정만). 실패 사유는 하나로 묶는다(계정 존재·종류·CI 일치·연결 여부 비노출).
+// 응답을 잃은 재시도(#166 Codex P2): 시작한 브라우저(쿠키)가 같은 본인확인으로 다시 부르면, 그 본인확인으로 준 권한이 아직 안 쓰였고
+// 만료 전(발급 뒤 10분)일 때 같은 토큰을 다시 만들어 돌려준다(유료 본인확인을 다시 하지 않게). 쓴 권한·만료·다른 본인확인은 지금처럼 거부한다.
 export async function issueSellerPasswordResetGrant(
   db: PrismaClient,
   provider: IdentityProvider,
@@ -171,16 +181,22 @@ export async function issueSellerPasswordResetGrant(
     { sellerId: v.sellerId, purpose: "PASSWORD_RESET", ownerToken: input.ownerToken },
     now,
   );
+  let verified: IdentityVerification | null = done.ok ? done.verification : null;
   if (!done.ok) {
     if (done.reason === "pending") return { ok: false, reason: "pending" };
-    await failAudit(`verification_${done.reason}`);
-    return { ok: false, reason: "reset_not_allowed" };
+    // 소진 뒤 본인확인 유효 시간이 지난 재시도도 같은 브라우저의 것이면 아래 재시도 판정으로 넘긴다
+    const owned = done.reason === "expired" && v.status === "VERIFIED" && !!v.consumedAt && !!input.ownerToken && v.ownerTokenHash === hashToken(input.ownerToken);
+    if (!owned) {
+      await failAudit(`verification_${done.reason}`);
+      return { ok: false, reason: "reset_not_allowed" };
+    }
+    verified = v;
   }
 
   const user = v.subjectId
     ? await db.sellerUser.findUnique({ where: { id: v.subjectId }, include: { seller: { select: { representativeCiHash: true } } } })
     : null;
-  const ci = done.verification.ciHash;
+  const ci = verified!.ciHash;
   // 거부되는 경우에도 이 본인인증은 소진해 같은 인증으로 다시 시도하지 못하게 한다.
   const rejectAndConsume = async (reason: string): Promise<GrantResult> => {
     await db.identityVerification.updateMany({ where: { id: v.id, consumedAt: null }, data: { consumedAt: now } });
@@ -193,14 +209,27 @@ export async function issueSellerPasswordResetGrant(
   if (!expected) return rejectAndConsume(user.isOwner ? "ci_mismatch" : "staff_not_linked");
   if (!ci || expected !== ci) return rejectAndConsume("ci_mismatch");
 
-  const grantToken = generateToken();
-  const expiresAt = new Date(now.getTime() + GRANT_TTL_MS);
-  const issued = await db.$transaction(async (tx) => {
-    // 같은 본인인증으로 재설정 권한을 두 번 받지 못한다.
-    const used = await tx.identityVerification.updateMany({ where: { id: v.id, consumedAt: null }, data: { consumedAt: now } });
-    if (used.count !== 1) return false;
+  const issued = await db.$transaction(async (tx): Promise<{ grantToken: string; expiresAt: Date } | string> => {
+    // 같은 본인확인의 권한 발급을 한 줄로 세운다(처음 발급·재시도가 겹쳐도 하나씩, 늦은 쪽은 먼저 만든 권한을 다시 받음).
+    // 같은 본인인증으로 새 권한을 두 번 받지 못한다.
+    const [cur] = await tx.$queryRaw<{ consumedAt: Date | null }[]>`SELECT "consumedAt" FROM "IdentityVerification" WHERE "id" = ${v.id}::uuid FOR UPDATE`;
+    if (cur?.consumedAt) {
+      const [prior] = await tx.$queryRaw<{ nonce: string | null; usedAt: Date | null; expiresAt: Date }[]>`
+        SELECT "nonce", "usedAt", "expiresAt" FROM "PasswordResetGrant"
+        WHERE "verificationId" = ${v.id}::uuid AND "sellerUserId" = ${user.id}::uuid
+        ORDER BY "createdAt" DESC LIMIT 1 FOR UPDATE`;
+      if (!prior?.nonce) return "verification_already_used";
+      if (prior.usedAt) return "grant_already_used";
+      if (prior.expiresAt <= now) return "retry_window_passed";
+      return { grantToken: grantTokenOf(prior.nonce), expiresAt: prior.expiresAt };
+    }
+    if (!done.ok) return "verification_expired";
+    await tx.identityVerification.update({ where: { id: v.id }, data: { consumedAt: now } });
+    const nonce = randomBytes(32).toString("base64url");
+    const grantToken = grantTokenOf(nonce);
+    const expiresAt = new Date(now.getTime() + GRANT_TTL_MS);
     await tx.passwordResetGrant.create({
-      data: { sellerId: user.sellerId, sellerUserId: user.id, tokenHash: hashToken(grantToken), ciHash: ci, expiresAt, createdAt: now },
+      data: { sellerId: user.sellerId, sellerUserId: user.id, tokenHash: hashToken(grantToken), ciHash: ci, expiresAt, createdAt: now, verificationId: v.id, nonce },
     });
     // 발급 기록도 같은 트랜잭션에서 남긴다(쓰지 못하면 권한 발급·본인확인 소진도 되돌린다)
     await writeAudit(tx, {
@@ -213,13 +242,13 @@ export async function issueSellerPasswordResetGrant(
       ip: meta.ip,
       userAgent: meta.userAgent,
     });
-    return true;
+    return { grantToken, expiresAt };
   });
-  if (!issued) {
-    await failAudit("verification_already_used");
+  if (typeof issued === "string") {
+    await failAudit(issued);
     return { ok: false, reason: "reset_not_allowed" };
   }
-  return { ok: true, grantToken, expiresAt };
+  return { ok: true, ...issued };
 }
 
 // 재설정 권한을 줄 때·쓸 때 대조하는 CI 해시: 대표자는 쇼핑몰 대표자 CI, 직원은 연결 CI(없으면 null = 셀프 재설정 불가)
