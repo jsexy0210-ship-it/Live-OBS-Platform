@@ -110,6 +110,8 @@ export async function cancelJob(db: PrismaClient, ctx: TenantContext, jobId: str
     customerAction: null,
     actionDeadlineAt: null,
     finishedAt: now,
+    // 취소 출처(정리 필요를 닫을 때 취소로 끝낼지를 이 값으로만 정한다)
+    cancelRequestedAt: now,
     fencingToken: { increment: 1 },
   }));
 }
@@ -135,7 +137,7 @@ async function change(
       await expireCustomerWait(tx, jobId, now);
       return "expired" as const;
     }
-    // 바꾼 뒤 취소는 「정리 필요」로 멈춘다(endStateFor). 사람이 쇼핑몰 앱·웹훅·OBS를 정리한 뒤 마스터 관리자가 취소로 닫는다(lastError "canceled")
+    // 바꾼 뒤 취소는 「정리 필요」로 멈춘다(endStateFor). 사람이 쇼핑몰 앱·웹훅·OBS를 정리한 뒤 마스터 관리자가 취소로 닫는다(cancelRequestedAt)
     const end = to === "CANCELED" ? endStateFor(cur, "CANCELED") : to;
     const r = await tx.automationJob.updateMany({
       where: { id: jobId, sellerId: ctx.sellerId, status: { in: [...from] }, ...(to === "QUEUED" ? { OR: [{ actionDeadlineAt: null }, { actionDeadlineAt: { gt: now } }] } : {}) },

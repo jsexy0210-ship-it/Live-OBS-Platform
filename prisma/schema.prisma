@@ -1528,6 +1528,8 @@ model AutomationJob {
   shopHost             String?
   // 정리 필요 표시: 무언가를 바꾼 뒤 실패·취소로 끝났다(쇼핑몰 앱·웹훅·OBS가 남았을 수 있음). 이때 마스터 관리자 알림을 남긴다.
   cleanupNeededAt      DateTime?                 @db.Timestamptz(3)
+  // 판매자가 취소를 요청한 시각(취소 출처). 정리 필요를 닫을 때 취소(환불 없음)와 실패(환불 대기)를 이 값으로만 가른다(오류 문구로 추론하지 않음).
+  cancelRequestedAt    DateTime?                 @db.Timestamptz(3)
   // 처음으로 변경 행동(클릭·입력·OBS 설정·테스트 주문)을 하기 직전에 남긴 시각. 변경 뒤 실패면 정리 필요로 본다.
   changedAt            DateTime?                 @db.Timestamptz(3)
   // 변경 행동을 시작한 단계(단계마다 첫 변경 직전, changedAt과 같은 쓰기). 되돌리기는 끝낸 단계와 여기 있는 현재 단계만 한다.

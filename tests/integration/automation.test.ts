@@ -3070,6 +3070,17 @@ describe("Codex 32차 반영(7d8ca50)", () => {
     expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "PAID" });
   });
 
+  it("33차: 실행기 오류 문구가 「canceled」여도 판매자 취소가 아니면 운영자 닫기는 실패·환불 처리 대기(취소 출처는 cancelRequestedAt으로만)", async () => {
+    const a = await bought();
+    const rt = runtime();
+    rt.browser.outcome = (_s, action) => (action.type === "fill" ? { kind: "fatal", reason: "canceled" } : undefined);
+    expect(await runOnce(db, rt, W)).toBe("failed");
+    expect(await job(a.jobId)).toMatchObject({ status: "CLEANUP_NEEDED", lastError: "canceled", cancelRequestedAt: null });
+    expect((await close(a.jobId)).status).toBe(200);
+    expect(await job(a.jobId)).toMatchObject({ status: "FAILED" });
+    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "REFUND_PENDING" });
+  });
+
   it("연습 도중 화면 이탈을 보면 그 즉시 기록해 준비 상태를 내린다: 연습이 끝나기 전에 들어온 구매도 거절", async () => {
     const rt = runtime();
     rt.browser.pageText = () => "다른 화면 · 로그아웃";
