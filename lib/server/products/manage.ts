@@ -3,6 +3,7 @@ import { writeAudit } from "../audit/log";
 import { notFound } from "../authz/errors";
 import { dbNow } from "../billing/subscription";
 import { dbClock } from "../orders/overdue";
+import { kstDayStart } from "../orders/read";
 import { INT4_MAX } from "../orders/shipping";
 import { cleanText } from "../text/clean";
 import { eventFits, eventOf, eventView } from "./event";
@@ -124,26 +125,89 @@ export function parseStockFilter(raw: unknown): readonly [number, number] | null
   return raw === "out" || raw === "low" ? STOCK_FILTERS[raw] : "invalid";
 }
 
-// 상품 목록(keyset 커서 페이지). 정렬: 진열 순서 → 최근 등록 → id. nextCursor가 null이면 마지막 쪽이에요.
-// 커서는 이 판매자 상품 id만 받고, 그 행의 정렬 값(sortOrder, createdAt, id) 바로 뒤부터 고른다.
+// 정렬(sort): 빼면 진열 순서 → 최근 등록. newest(최근 등록), sales(판매량 많은 순), price_asc·price_desc(가격). 같으면 id 순.
+// 판매량은 결제 완료(PAID) 주문의 품목 수량 합이다(취소·환불·입금 전 주문 제외). 목록 응답의 soldQuantity와 같은 기준.
+export const PRODUCT_SORTS = ["newest", "sales", "price_asc", "price_desc"] as const;
+export type ProductSort = (typeof PRODUCT_SORTS)[number];
+// 노출 상태(display): shown = 쇼핑몰에 보이는 상품(판매 중·품절), hidden = 안 보이는 상품(판매 대기·숨김)
+const DISPLAY_STATUSES = { shown: ["ON_SALE", "SOLD_OUT"], hidden: ["DRAFT", "HIDDEN"] } as const satisfies Record<string, readonly ProductStatus[]>;
+export const MAX_CODE_LENGTH = 64;
+
+type ListFailure =
+  | "invalid_cursor"
+  | "invalid_limit"
+  | "invalid_stock_filter"
+  | "invalid_search"
+  | "invalid_sort"
+  | "invalid_date_range"
+  | "invalid_code"
+  | "invalid_sale_mode"
+  | "invalid_display";
+
+export type ProductListQuery = {
+  status?: unknown;
+  display?: unknown;
+  stock?: unknown;
+  q?: unknown;
+  code?: unknown;
+  saleMode?: unknown;
+  createdFrom?: unknown;
+  createdTo?: unknown;
+  sort?: unknown;
+  cursor?: unknown;
+  limit?: unknown;
+};
+
+// 등록일 기간(KST 날짜 YYYY-MM-DD, 양 끝 포함). 둘 다 빼면 null, 하나만 써도 된다. 없는 날짜·시작 > 종료는 "invalid".
+export function parseCreatedRange(from: unknown, to: unknown): { gte: Date | null; lt: Date | null } | null | "invalid" {
+  const day = (v: unknown) => (v === undefined || v === "" ? null : typeof v === "string" ? (kstDayStart(v) ?? "invalid") : "invalid");
+  const f = day(from);
+  const t = day(to);
+  if (f === "invalid" || t === "invalid") return "invalid";
+  if (!f && !t) return null;
+  if (f && t && f > t) return "invalid";
+  return { gte: f, lt: t ? new Date(t.getTime() + 24 * 3600_000) : null };
+}
+
+// 상품 목록(keyset 커서 페이지). 기본 정렬: 진열 순서 → 최근 등록 → id. nextCursor가 null이면 마지막 쪽이에요.
+// 커서는 이 판매자 상품 id만 받고, 그 행의 지금 정렬 값 바로 뒤부터 고른다.
 // 기준 상품이 그사이 지워졌거나 필터 밖이 되어도 값만 쓰므로 다음 상품을 건너뛰지 않는다.
+// 판매량순은 쪽을 넘기는 사이 판매량이 바뀐 상품이 앞뒤 쪽에서 한 번 더 보이거나 빠질 수 있다(가격·등록일 정렬은 그대로).
 // limit은 숫자 또는 숫자만 있는 문자열(1~200)만 받는다("1e2", "0x10", " 5 "는 거부).
 export async function listProducts(
   db: PrismaClient,
   ctx: TenantContext,
-  opts: { status?: unknown; stock?: unknown; q?: unknown; cursor?: unknown; limit?: unknown } = {},
+  opts: ProductListQuery = {},
 ): Promise<
-  | { ok: true; value: { products: Awaited<ReturnType<typeof productView>>[]; nextCursor: string | null } }
-  | { ok: false; reason: "invalid_cursor" | "invalid_limit" | "invalid_stock_filter" | "invalid_search" }
+  | { ok: true; value: { products: (Awaited<ReturnType<typeof productView>> & { soldQuantity: number })[]; nextCursor: string | null } }
+  | { ok: false; reason: ListFailure }
 > {
   requireSellerRead(ctx, "PRODUCT_MANAGE");
   const status = PRODUCT_STATUSES.includes(opts.status as ProductStatus) ? (opts.status as ProductStatus) : undefined;
   const limit = parsePageLimit(opts.limit);
   if (limit === null) return { ok: false, reason: "invalid_limit" };
+  const sort = opts.sort === undefined || opts.sort === "" ? null : PRODUCT_SORTS.includes(opts.sort as ProductSort) ? (opts.sort as ProductSort) : "invalid";
+  if (sort === "invalid") return { ok: false, reason: "invalid_sort" };
+  let display: readonly ProductStatus[] | undefined;
+  if (opts.display !== undefined && opts.display !== "") {
+    if (opts.display !== "shown" && opts.display !== "hidden") return { ok: false, reason: "invalid_display" };
+    display = DISPLAY_STATUSES[opts.display];
+  }
+  let saleMode: StockDeductMode | undefined;
+  if (opts.saleMode !== undefined && opts.saleMode !== "") {
+    if (!STOCK_DEDUCT_MODES.includes(opts.saleMode as StockDeductMode)) return { ok: false, reason: "invalid_sale_mode" };
+    saleMode = opts.saleMode as StockDeductMode;
+  }
+  const created = parseCreatedRange(opts.createdFrom, opts.createdTo);
+  if (created === "invalid") return { ok: false, reason: "invalid_date_range" };
   // 필터·정렬·커서는 모두 SQL 안에서 걸러 이번 쪽의 상품 id(최대 limit + 1개)만 고른다. 걸러진 id 목록을 IN으로 넘기면
   // 결과가 Postgres 바인드 변수 한도(32,767)를 넘을 때 오류가 나므로 쓰지 않는다.
   const where: Prisma.Sql[] = [Prisma.sql`p."sellerId" = ${ctx.sellerId}::uuid`, Prisma.sql`p."deletedAt" IS NULL`];
   if (status) where.push(Prisma.sql`p."status" = ${status}::"ProductStatus"`);
+  if (display) where.push(Prisma.sql`p."status"::text IN (${Prisma.join(display)})`);
+  if (saleMode) where.push(Prisma.sql`p."stockDeductMode" = ${saleMode}::"StockDeductMode"`);
+  if (created?.gte) where.push(Prisma.sql`p."createdAt" >= ${created.gte}`);
+  if (created?.lt) where.push(Prisma.sql`p."createdAt" < ${created.lt}`);
   let stockJoin = Prisma.empty;
   const stockRange = parseStockFilter(opts.stock);
   if (stockRange === "invalid") return { ok: false, reason: "invalid_stock_filter" };
@@ -167,29 +231,78 @@ export async function listProducts(
                  WHERE o."sellerId" = ${ctx.sellerId}::uuid AND o."productId" = p."id" AND o."deletedAt" IS NULL
                    AND strpos(lower(o."name"), lower(${term})) > 0))`);
   }
+  // 상품 코드 code: 상품 id 전체가 같거나, (지우지 않은) 옵션 SKU에 들어 있으면(대소문자 무시, 부분 일치). 상품에는 따로 코드 칸이 없다.
+  const code = opts.code === undefined || (typeof opts.code === "string" && /^ *$/.test(opts.code)) ? null : (cleanText(opts.code, MAX_CODE_LENGTH) ?? "invalid");
+  if (code === "invalid") return { ok: false, reason: "invalid_code" };
+  if (code) {
+    where.push(Prisma.sql`(p."id"::text = lower(${code})
+      OR EXISTS (SELECT 1 FROM "ProductOption" o
+                 WHERE o."sellerId" = ${ctx.sellerId}::uuid AND o."productId" = p."id" AND o."deletedAt" IS NULL
+                   AND o."sku" IS NOT NULL AND strpos(lower(o."sku"), lower(${code})) > 0))`);
+  }
+  // 판매량: 결제 완료 주문 품목 수량을 상품별로 한 번만 더해 붙인다(판매량순 정렬·커서에만 쓴다)
+  const soldJoin =
+    sort === "sales"
+      ? Prisma.sql`LEFT JOIN (
+      SELECT oi."productId", SUM(oi."quantity") AS "sold" FROM "OrderItem" oi
+      JOIN "Order" od ON od."sellerId" = oi."sellerId" AND od."id" = oi."orderId"
+      WHERE oi."sellerId" = ${ctx.sellerId}::uuid AND od."status" = 'PAID'
+      GROUP BY oi."productId") sd ON sd."productId" = p."id"`
+      : Prisma.empty;
+  const sold = Prisma.sql`COALESCE(sd."sold", 0)`;
   if (opts.cursor !== undefined && opts.cursor !== "") {
     if (typeof opts.cursor !== "string" || !UUID.test(opts.cursor)) return { ok: false, reason: "invalid_cursor" };
-    const c = await db.product.findFirst({ where: { id: opts.cursor, sellerId: ctx.sellerId }, select: { id: true, sortOrder: true, createdAt: true } });
+    const rows = await db.$queryRaw<{ id: string; sortOrder: number; createdAt: Date; price: number; sold: bigint }[]>`
+      SELECT p."id", p."sortOrder", p."createdAt", p."price", ${sort === "sales" ? sold : Prisma.sql`0`}::bigint AS "sold"
+      FROM "Product" p ${soldJoin}
+      WHERE p."id" = ${opts.cursor}::uuid AND p."sellerId" = ${ctx.sellerId}::uuid`;
+    const c = rows[0];
     if (!c) return { ok: false, reason: "invalid_cursor" };
-    where.push(Prisma.sql`(p."sortOrder" > ${c.sortOrder}
+    const after = (col: Prisma.Sql, v: unknown, dir: "<" | ">") =>
+      Prisma.sql`(${col} ${Prisma.raw(dir)} ${v} OR (${col} = ${v} AND p."id" > ${c.id}::uuid))`;
+    if (sort === "newest") where.push(after(Prisma.sql`p."createdAt"`, c.createdAt, "<"));
+    else if (sort === "price_asc") where.push(after(Prisma.sql`p."price"`, c.price, ">"));
+    else if (sort === "price_desc") where.push(after(Prisma.sql`p."price"`, c.price, "<"));
+    else if (sort === "sales") where.push(after(sold, c.sold, "<"));
+    else {
+      where.push(Prisma.sql`(p."sortOrder" > ${c.sortOrder}
       OR (p."sortOrder" = ${c.sortOrder} AND p."createdAt" < ${c.createdAt})
       OR (p."sortOrder" = ${c.sortOrder} AND p."createdAt" = ${c.createdAt} AND p."id" > ${c.id}::uuid))`);
+    }
   }
+  const orderBy =
+    sort === "newest"
+      ? Prisma.sql`p."createdAt" DESC, p."id" ASC`
+      : sort === "price_asc"
+        ? Prisma.sql`p."price" ASC, p."id" ASC`
+        : sort === "price_desc"
+          ? Prisma.sql`p."price" DESC, p."id" ASC`
+          : sort === "sales"
+            ? Prisma.sql`${sold} DESC, p."id" ASC`
+            : Prisma.sql`p."sortOrder" ASC, p."createdAt" DESC, p."id" ASC`;
   const ids = await db.$queryRaw<{ id: string }[]>`
     SELECT p."id" FROM "Product" p
     ${stockJoin}
+    ${soldJoin}
     WHERE ${Prisma.join(where, " AND ")}
-    ORDER BY p."sortOrder" ASC, p."createdAt" DESC, p."id" ASC
+    ORDER BY ${orderBy}
     LIMIT ${limit + 1}`;
   // 두 조회 사이에 지워졌거나 상태가 바뀐 상품이 응답에 섞이지 않게 같은 조건을 다시 건다
+  const statusIn = status ? [status] : display;
   const found = await db.product.findMany({
-    where: { sellerId: ctx.sellerId, deletedAt: null, ...(status ? { status } : {}), id: { in: ids.map((r) => r.id) } },
+    where: { sellerId: ctx.sellerId, deletedAt: null, ...(statusIn ? { status: { in: [...statusIn] } } : {}), id: { in: ids.map((r) => r.id) } },
     include: { options: { where: { deletedAt: null }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }] } },
   });
   const byId = new Map(found.map((p) => [p.id, p]));
   // 고른 순서대로. 두 조회 사이에 지워진 상품은 빠지지만, 다음 쪽 커서는 고른 id 기준이라 뒤 상품을 건너뛰지 않는다.
   const pageIds = ids.slice(0, limit).map((r) => r.id);
   const page = pageIds.map((id) => byId.get(id)).filter((p): p is (typeof found)[number] => p !== undefined);
+  const soldRows = await db.$queryRaw<{ productId: string; sold: bigint }[]>`
+    SELECT oi."productId", SUM(oi."quantity")::bigint AS "sold" FROM "OrderItem" oi
+    JOIN "Order" od ON od."sellerId" = oi."sellerId" AND od."id" = oi."orderId"
+    WHERE oi."sellerId" = ${ctx.sellerId}::uuid AND od."status" = 'PAID' AND oi."productId" = ANY(${page.map((p) => p.id)}::uuid[])
+    GROUP BY oi."productId"`;
+  const soldBy = new Map(soldRows.map((r) => [r.productId, Number(r.sold)]));
   const now = await dbNow(db);
   return {
     ok: true,
@@ -197,6 +310,7 @@ export async function listProducts(
       products: page.map(({ deletedAt: _d, options, ...p }) => ({
         ...p,
         event: eventView(eventOf(p), p.price, now),
+        soldQuantity: soldBy.get(p.id) ?? 0,
         options: options.map(({ deletedAt: _o, ...o }) => o),
       })),
       nextCursor: ids.length > limit ? pageIds[pageIds.length - 1] : null,
