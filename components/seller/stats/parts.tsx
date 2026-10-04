@@ -25,7 +25,8 @@ function Delta({ now, prev, fmt, lowerIsBetter }: { now: number | null; prev: nu
   );
 }
 
-export type Kpi = { label: string; now: number | null; prev: number | null; fmt: (n: number) => string; lowerIsBetter?: boolean; text?: string };
+// compare: false면 비교 줄을 빼고 note(있으면)를 둔다(비교 기간이 없는 지표)
+export type Kpi = { label: string; now: number | null; prev: number | null; fmt: (n: number) => string; lowerIsBetter?: boolean; text?: string; compare?: false; note?: string };
 
 export function Kpis({ items }: { items: Kpi[] }) {
   return (
@@ -34,7 +35,7 @@ export function Kpis({ items }: { items: Kpi[] }) {
         <div key={k.label} className="stat" data-testid="stats-kpi">
           <span className="t-l2 c-alt">{k.label}</span>
           <span className="v">{k.text ?? (k.now === null ? "—" : k.fmt(k.now))}</span>
-          <Delta now={k.now} prev={k.prev} fmt={k.fmt} lowerIsBetter={k.lowerIsBetter} />
+          {k.compare === false ? <span className="d">{k.note ?? "\u00a0"}</span> : <Delta now={k.now} prev={k.prev} fmt={k.fmt} lowerIsBetter={k.lowerIsBetter} />}
         </div>
       ))}
     </div>
@@ -89,7 +90,7 @@ export function BarChart({ title, points, fmt }: { title: string; points: { labe
               const x = slot * i + (slot - bw) / 2;
               const h = Math.max(0, H - y(p.value));
               return (
-                <g key={p.label} className={hover === i ? "on" : ""} onMouseEnter={() => setHover(i)}>
+                <g key={i} className={hover === i ? "on" : ""} onMouseEnter={() => setHover(i)}>
                   <rect className="hit" x={slot * i} y={0} width={slot} height={H} />
                   {h > 0 && <path className="bar" d={roundedTop(x, H - h, bw, h, Math.min(4, bw / 2, h))} />}
                 </g>
@@ -105,7 +106,7 @@ export function BarChart({ title, points, fmt }: { title: string; points: { labe
         <div className="sts-x" aria-hidden="true">
           {points.map((p, i) =>
             i % every === 0 ? (
-              <span key={p.label} style={{ left: pctX(i) }}>
+              <span key={i} style={{ left: pctX(i) }}>
                 {p.label}
               </span>
             ) : null,

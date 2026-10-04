@@ -80,6 +80,9 @@ model Seller {
   trialEndsAt              DateTime?    @db.Timestamptz(3)
   // 판매자 플랜(가입 신청 때 정함, ONQ 1-C). 구독 행이 생기면 구독의 planId가 청구 기준이다. 기존 판매자는 INTEGRATED로 옮겼다.
   planId                   String?      @db.Uuid
+  // 런칭 할인을 쓴 시각(런칭가 청구가 처음 확정된 때, 대표님 결정 2026-10-04). 이 뒤 해지하고 다시 구독하면 정가다.
+  // 이전 전 STANDARD 결제는 사용으로 세지 않는다(ONQ 1-C-2).
+  launchDiscountUsedAt     DateTime?    @db.Timestamptz(3)
   // 잠긴 지 30일이 지나 자동 해지된 시각. 이때부터 90일 보관 뒤 삭제 대상(삭제는 별도 작업). 다시 구독하면 비운다.
   serviceEndedAt           DateTime?    @db.Timestamptz(3)
   approvedByAdminId        String?      @db.Uuid
@@ -1057,6 +1060,8 @@ model SubscriptionPlan {
   subscriptions SellerSubscription[]
   priceChanges  SubscriptionPriceChange[]
   sellers       Seller[]
+  pendingFor    SellerSubscription[]  @relation("PendingPlan")
+  targetOf      SubscriptionPayment[] @relation("PaymentTargetPlan")
 }
 
 // 판매가 변경 기록(대표님 결정 2026-10-02). 새 가입자는 바로 새 가격, 기존 구독자는 구독을 시작할 때 적용되던 가격을 내다가
@@ -1107,15 +1112,26 @@ model SellerSubscription {
   // 해지 뒤 다시 구독하면 비운다(새 가입자 가격).
   legacyPrice             Int?
   legacyPriceNoticeSentAt DateTime?             @db.Timestamptz(3)
+  // 다음 결제일에 바꿀 플랜(하위 변경, ONQ 1-C-2). 갱신 결제 직전에 planId로 옮기고 비운다. 다시 지금 플랜을 고르면 비운다.
+  pendingPlanId           String?               @db.Uuid
+  // 이 구독은 정가로 청구한다(런칭 할인을 이미 쓴 계정이 해지 뒤 다시 구독, 대표님 결정 2026-10-04). 구독이 이어지는 동안 그대로다.
+  regularPrice            Boolean               @default(false)
   createdAt          DateTime                 @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime                 @updatedAt @db.Timestamptz(3)
 
-  seller   Seller                @relation(fields: [sellerId], references: [id])
-  plan     SubscriptionPlan      @relation(fields: [planId], references: [id])
-  payments SubscriptionPayment[]
+  seller      Seller                @relation(fields: [sellerId], references: [id])
+  plan        SubscriptionPlan      @relation(fields: [planId], references: [id])
+  pendingPlan SubscriptionPlan?     @relation("PendingPlan", fields: [pendingPlanId], references: [id])
+  payments    SubscriptionPayment[]
 
   @@unique([sellerId, id])
   @@index([status, nextChargeAt])
+}
+
+// PERIOD: 이용 기간 결제(첫 결제·갱신·재시도·카드 등록·체험 중 상위 변경). PRORATION: 결제 중 상위 변경의 남은 기간 차액(기간을 바꾸지 않음).
+enum SubscriptionPaymentKind {
+  PERIOD
+  PRORATION
 }
 
 enum SubscriptionPaymentStatus {
@@ -1138,11 +1154,17 @@ model SubscriptionPayment {
   failureReason     String?
   // 예약 실행이 만든 청구(true)인지, 판매자가 카드 등록으로 직접 낸 청구(false)인지
   scheduled         Boolean                   @default(false)
+  kind              SubscriptionPaymentKind   @default(PERIOD)
+  // 상위 변경 청구면 결제가 확정될 때 옮길 플랜(실패·대기면 지금 플랜 유지, ONQ 1-C-2)
+  targetPlanId      String?                   @db.Uuid
+  // 런칭가(판매가)로 낸 청구인지. 확정되면 판매자에 런칭 할인 사용을 남긴다(정가·이전 전 가격 청구는 false)
+  launchDiscount    Boolean                   @default(false)
   paidAt            DateTime?                 @db.Timestamptz(3)
   createdAt         DateTime                  @default(now()) @db.Timestamptz(3)
 
   seller       Seller             @relation(fields: [sellerId], references: [id])
   subscription SellerSubscription @relation(fields: [sellerId, subscriptionId], references: [sellerId, id])
+  targetPlan   SubscriptionPlan?  @relation("PaymentTargetPlan", fields: [targetPlanId], references: [id])
 
   @@index([sellerId, createdAt])
 }
