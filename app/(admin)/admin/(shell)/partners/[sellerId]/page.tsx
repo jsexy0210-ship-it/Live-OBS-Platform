@@ -69,6 +69,11 @@ export default function PartnerDetailPage() {
                   {s.status === "ACTIVE" ? "이용 정지" : "정지 해제"}
                 </button>
               )}
+              {s && (
+                <Link className="btn btn-out" href={`/admin/billing/invoices?sellerId=${s.id}`}>
+                  청구·결제 내역
+                </Link>
+              )}
               <Link className="btn btn-out" href="/admin/partners">
                 파트너스 목록
               </Link>
