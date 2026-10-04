@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { writeAudit } from "../audit/log";
 import { notFound } from "../authz/errors";
 import { shopOpen } from "../buyers/signup";
-import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
+import { requireSellerPermission, type TenantContext } from "../tenant/context";
 import { cleanText } from "../text/clean";
 import { deleteUnusedImages, imageVersion } from "./image";
 import { normalizeLink, resolveLink } from "./link";
@@ -183,7 +183,7 @@ const bannerAudit = (r: ShopBanner) => ({
 });
 
 export async function listBanners(db: PrismaClient, ctx: TenantContext) {
-  requireSellerRead(ctx, "SHOP_SETTINGS");
+  // 조회는 같은 쇼핑몰의 파트너스 계정이면 누구나(보기만, MASTER 결정 2026-10-04). 바꾸기는 대표자·SHOP_SETTINGS만.
   const [now, rows] = await Promise.all([
     dbNow(db),
     db.shopBanner.findMany({ where: { sellerId: ctx.sellerId }, include: bannerInclude, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] }),
@@ -343,7 +343,7 @@ const popupAudit = (r: ShopPopup) => ({
 });
 
 export async function listPopups(db: PrismaClient, ctx: TenantContext) {
-  requireSellerRead(ctx, "SHOP_SETTINGS");
+  // 조회는 같은 쇼핑몰의 파트너스 계정이면 누구나(보기만, MASTER 결정 2026-10-04). 바꾸기는 대표자·SHOP_SETTINGS만.
   const [now, rows] = await Promise.all([
     dbNow(db),
     db.shopPopup.findMany({ where: { sellerId: ctx.sellerId }, include: { image: imageSelect }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] }),
@@ -489,9 +489,9 @@ export async function publicShopImage(db: PrismaClient, slug: string, imageId: s
   return db.shopContentImage.findFirst({ where: { id: imageId, sellerId: shop.id }, select: { data: true, contentType: true, sha256: true } });
 }
 
-// 파트너스 관리자 미리보기용 이미지(아직 저장하지 않은 이미지 포함). 조회 권한(SHOP_SETTINGS)이 있어야 한다.
+// 파트너스 관리자 미리보기용 이미지(아직 저장하지 않은 이미지 포함). 같은 쇼핑몰 계정만, 다른 쇼핑몰 이미지는 404.
 export async function sellerShopImage(db: PrismaClient, ctx: TenantContext, imageId: string) {
-  requireSellerRead(ctx, "SHOP_SETTINGS");
+  // 조회는 같은 쇼핑몰의 파트너스 계정이면 누구나(보기만, MASTER 결정 2026-10-04). 바꾸기는 대표자·SHOP_SETTINGS만.
   if (!isUuid(imageId)) throw notFound();
   const row = await db.shopContentImage.findFirst({ where: { id: imageId, sellerId: ctx.sellerId }, select: { data: true, contentType: true, sha256: true } });
   if (!row) throw notFound();

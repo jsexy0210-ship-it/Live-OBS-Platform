@@ -83,7 +83,10 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/shop-content/popups/reorder": "STORE_OPERATIONS",
   "seller/shop-content/images": "STORE_OPERATIONS",
   "seller/shop-content/images/[imageId]": "STORE_OPERATIONS",
+  "seller/stats/broadcasts": "OVERLAY",
+  "seller/stats/members": "STORE_OPERATIONS",
   "seller/stats/orders": "STORE_OPERATIONS",
+  "seller/stats/products": "STORE_OPERATIONS",
   "seller/stats/sales": "STORE_OPERATIONS",
 };
 

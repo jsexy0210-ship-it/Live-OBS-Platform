@@ -78,7 +78,7 @@ const counts = async () => ({
 });
 
 describe("권한", () => {
-  it("대표자·「쇼핑몰 설정」 직원은 추가·조회, 권한 없는 직원은 조회·변경 모두 403이고 아무것도 남지 않는다", async () => {
+  it("대표자·「쇼핑몰 설정」 직원은 추가·조회, 권한 없는 직원은 보기만(변경 403)이고 아무것도 남지 않는다", async () => {
     const s = await shop();
     expect((await banner(s.owner)).res.status).toBe(201);
     expect((await banner(s.staff)).res.status).toBe(201);
@@ -86,8 +86,11 @@ describe("권한", () => {
     expect((await bannersGet(get("/api/seller/shop-content/banners", s.staff))).status).toBe(200);
 
     const before = await counts();
-    expect((await bannersGet(get("/api/seller/shop-content/banners", s.noPerm))).status).toBe(403);
-    expect((await popupsGet(get("/api/seller/shop-content/popups", s.noPerm))).status).toBe(403);
+    // 보기는 같은 쇼핑몰 직원 누구나(MASTER 결정 2026-10-04)
+    const seen = (await (await bannersGet(get("/api/seller/shop-content/banners", s.noPerm))).json()) as { banners: { pcImage: { id: string } }[] };
+    expect(seen.banners).toHaveLength(2);
+    expect((await popupsGet(get("/api/seller/shop-content/popups", s.noPerm))).status).toBe(200);
+    expect((await sellerImageGet(get("/x", s.noPerm), p({ imageId: seen.banners[0].pcImage.id }))).status).toBe(200);
     expect((await upload(s.noPerm, png(400, 400))).res.status).toBe(403);
     expect((await popup(s.noPerm)).res.status).toBe(403);
     const [b] = await db.shopBanner.findMany();
@@ -288,6 +291,8 @@ describe("입력 검사", () => {
     expect((await upload(s.owner, svgInPng())).body.error).toBe("unsupported_image");
     expect((await upload(s.owner, jpeg(1200, 400), "image/png")).body.error).toBe("unsupported_image");
     expect((await upload(s.owner, png(50, 50))).body.error).toBe("wrong_image_size");
+    // 16비트 PNG는 「PNG만」이 아니라 「8비트 PNG로 저장」 안내(Codex 4176099331)
+    expect((await upload(s.owner, png(1920, 600, [1, 2, 3], { depth: 16, color: 6 }))).body).toMatchObject({ error: "png_16bit", message: "8비트(일반) PNG로 저장해 주십시오. 16비트 PNG는 올릴 수 없습니다" });
     expect((await upload(s.owner, Buffer.alloc(2 * 1024 * 1024 + 1))).res.status).toBe(413);
     expect(await db.shopContentImage.count()).toBe(0);
     const ok = await upload(s.owner, png(750, 750), "image/jpeg");

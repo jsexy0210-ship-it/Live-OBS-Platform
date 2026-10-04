@@ -19,5 +19,10 @@
 .sts-chart .hit:hover+.bar,.sts-chart g.on .bar{opacity:.75}
 .sts-tip{position:absolute;pointer-events:none;transform:translate(-50%,-100%);padding:6px 10px;border-radius:8px;background:var(--wds-label-normal);color:var(--page);font-size:12px;line-height:16px;white-space:nowrap;font-variant-numeric:tabular-nums}
 .sts-scroll{overflow-x:auto}
+.sts-share{display:flex;align-items:center;gap:8px;min-width:120px}
+.sts-share i{display:block;height:8px;border-radius:0 4px 4px 0;background:var(--wds-primary-normal)}
+.sts-soon{color:var(--wds-label-assistive)}
 .sts-h{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:16px 20px 0}
-@media (max-width:720px){.sts-bar{padding:12px 16px}.sts-range{width:100%}.sts-range .inp{flex:1;width:auto;min-width:0}.sts-chart{padding:12px 16px 8px 56px}.sts-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:720px){.sts-bar{padding:12px 16px}.sts-range{width:100%}.sts-range .inp{flex:1;width:auto;min-width:0}.sts-range>.btn{width:100%}.sts-chart{padding:12px 16px 8px 56px}.sts-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.sts-scroll .tbl .sts-name{min-width:160px}
+.sts-scroll .tbl tr.sts-sub td{font-size:13px;padding-top:6px;padding-bottom:10px}

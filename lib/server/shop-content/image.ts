@@ -11,21 +11,30 @@ import { requireSellerPermission, type TenantContext } from "../tenant/context";
 export const SHOP_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 export const SHOP_IMAGE_MIN_SIDE = 100;
 export const SHOP_IMAGE_MAX_SIDE = 2000;
-// 전체 화소 수 상한. 브랜딩 검사기가 풀어 보는 그림 데이터 상한(8,400,000바이트) 안에 8비트 RGBA가 들어가는 값이다
-// (2,000,000 × 4 + 줄 머리 = 약 8,002,000바이트). 권장 크기(PC 배너 1200×400, 모바일 750×750, 팝업 600×600)는 넉넉히 들어간다.
-export const SHOP_IMAGE_MAX_PIXELS = 2_000_000;
+// 전체 화소 수 상한 = 1920×1080(MASTER 결정 2026-10-04: PC 배너 표준 크기는 받는다). 브랜딩 검사기가 풀어 보는 그림 데이터
+// 상한(8,400,000바이트) 안에 8비트 RGBA가 들어가는 값이다(2,073,600 × 4 + 줄 머리 1,080 = 8,295,480바이트).
+export const SHOP_IMAGE_MAX_PIXELS = 1920 * 1080;
 // 아직 배너·팝업에 쓰지 않은 이미지는 쇼핑몰당 이 개수까지만 둔다(올리기만 반복해 DB를 채우지 않게).
 export const UNUSED_IMAGE_LIMIT = 30;
 // 이보다 오래된 쓰지 않는 이미지는 다음 업로드 때 지운다.
 const UNUSED_IMAGE_TTL_MS = 24 * 3600_000;
 
-export type ShopImageRejection = "empty_file" | "file_too_large" | "unsupported_image" | "wrong_image_size" | "too_many_unused_images";
+export type ShopImageRejection =
+  | "empty_file"
+  | "file_too_large"
+  | "unsupported_image"
+  | "wrong_image_size"
+  | "png_16bit"
+  | "png_too_large"
+  | "too_many_unused_images";
 
 export const SHOP_IMAGE_MESSAGES: Record<ShopImageRejection, string> = {
   empty_file: "빈 파일은 올릴 수 없습니다",
   file_too_large: "이미지는 2MB까지 올릴 수 있습니다",
   unsupported_image: "PNG 파일만 올릴 수 있습니다",
-  wrong_image_size: `이미지 가로·세로는 ${SHOP_IMAGE_MIN_SIDE}~${SHOP_IMAGE_MAX_SIDE}px, 전체 200만 화소 이하여야 합니다`,
+  wrong_image_size: `이미지 가로·세로는 ${SHOP_IMAGE_MIN_SIDE}~${SHOP_IMAGE_MAX_SIDE}px, 전체 1920×1080 화소 이하여야 합니다`,
+  png_16bit: "8비트(일반) PNG로 저장해 주십시오. 16비트 PNG는 올릴 수 없습니다",
+  png_too_large: "이미지 데이터가 너무 큽니다. 8비트(일반) PNG로 저장하거나 크기를 줄여 주십시오",
   too_many_unused_images: "아직 쓰지 않은 이미지가 많습니다. 배너·팝업을 저장한 뒤 다시 올려 주십시오",
 };
 
@@ -35,9 +44,13 @@ export function checkShopImage(b: Buffer): { ok: true; info: ShopImageInfo } | {
   if (b.length === 0) return { ok: false, reason: "empty_file" };
   if (b.length > SHOP_IMAGE_MAX_BYTES) return { ok: false, reason: "file_too_large" };
   // 크기는 PNG 머리(IHDR)로 먼저 본다. 크기가 틀린 파일은 풀기 전에 「크기」로 안내한다.
-  const head = pngSize(b);
+  const head = pngHeader(b);
   if (!head) return { ok: false, reason: "unsupported_image" };
   if (!sizeOk(head.width, head.height)) return { ok: false, reason: "wrong_image_size" };
+  // 브랜딩 검사기는 풀린 그림 데이터가 상한을 넘으면 형식 오류로 거부한다. 「PNG만」 같은 엉뚱한 안내가 나가지 않게
+  // 16비트는 먼저 따로 막고, 그 밖에 상한을 넘는 조합(색 형식·인터레이스)도 풀기 전에 사유를 알려 준다.
+  if (head.depth === 16) return { ok: false, reason: "png_16bit" };
+  if (pngRawSize(head) > PNG_DECODE_LIMIT) return { ok: false, reason: "png_too_large" };
   const info = detectImage(b);
   if (!info || info.type !== "image/png") return { ok: false, reason: "unsupported_image" };
   return { ok: true, info: { type: "image/png", width: info.width, height: info.height } };
@@ -47,10 +60,35 @@ const sizeOk = (w: number, h: number) =>
   w >= SHOP_IMAGE_MIN_SIDE && w <= SHOP_IMAGE_MAX_SIDE && h >= SHOP_IMAGE_MIN_SIDE && h <= SHOP_IMAGE_MAX_SIDE && w * h <= SHOP_IMAGE_MAX_PIXELS;
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-// 시그니처와 IHDR(첫 33바이트)의 가로·세로. 형식 판정은 detectImage가 한다.
-function pngSize(b: Buffer): { width: number; height: number } | null {
+type PngHeader = { width: number; height: number; depth: number; color: number; interlace: number };
+// 시그니처와 IHDR(첫 33바이트)의 크기·비트 깊이·색 형식·인터레이스. 형식 판정(조합이 맞는지 등)은 detectImage가 한다.
+function pngHeader(b: Buffer): PngHeader | null {
   if (b.length < 33 || !b.subarray(0, 8).equals(PNG_SIGNATURE) || b.toString("latin1", 12, 16) !== "IHDR") return null;
-  return { width: b.readUInt32BE(16), height: b.readUInt32BE(20) };
+  return { width: b.readUInt32BE(16), height: b.readUInt32BE(20), depth: b[24], color: b[25], interlace: b[28] };
+}
+
+// 브랜딩 검사기(lib/server/branding/image.ts)가 풀어 보는 그림 데이터 상한. 그 파일의 PNG_MAX_RAW와 같은 값이어야 한다.
+const PNG_DECODE_LIMIT = 8_400_000;
+const PNG_CHANNELS: Record<number, number> = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 };
+const ADAM7 = [
+  [0, 0, 8, 8],
+  [4, 0, 8, 8],
+  [0, 4, 4, 8],
+  [2, 0, 4, 4],
+  [0, 2, 2, 4],
+  [1, 0, 2, 2],
+  [0, 1, 1, 2],
+] as const;
+// 풀린 그림 데이터 길이(줄마다 필터 1바이트 + 줄 바이트, Adam7은 단계별). 모르는 색 형식이면 0(형식 판정은 detectImage).
+export function pngRawSize(h: Pick<PngHeader, "width" | "height" | "depth" | "color" | "interlace">): number {
+  const bits = (PNG_CHANNELS[h.color] ?? 0) * h.depth;
+  const rowBytes = (w: number) => Math.ceil((w * bits) / 8);
+  if (h.interlace !== 1) return h.height * (1 + rowBytes(h.width));
+  return ADAM7.reduce((n, [x0, y0, dx, dy]) => {
+    const w = h.width > x0 ? Math.ceil((h.width - x0) / dx) : 0;
+    const rows = h.height > y0 ? Math.ceil((h.height - y0) / dy) : 0;
+    return n + (w === 0 ? 0 : rows * (1 + rowBytes(w)));
+  }, 0);
 }
 
 export type ShopImageMeta = { id: string; contentType: string; width: number; height: number; byteSize: number; version: string };
