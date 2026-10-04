@@ -17,6 +17,13 @@ import type {
   SecretVault,
 } from "./ports";
 import { PRACTICE_SELLER_ID, pageMatchesExpected } from "./ports";
+import { insideBoundedAction } from "./engine";
+
+// 시험용: 켜면 외부 연산(실행기 행동·연습 초기화·기준 상태 확인)이 격리 창 장치(boundedAction) 밖에서 불릴 때 거부한다
+export const actionWindowGuard = { strict: false };
+function assertInWindow(what: string) {
+  if (actionWindowGuard.strict && !insideBoundedAction()) throw new Error(`outside_action_window:${what}`);
+}
 
 // 가짜(모의) 구현. 실제 Gemini·브라우저·로컬 도구를 부르지 않는다. 운영 환경에서는 만들 수 없다.
 function assertNotProduction(env: string | undefined) {
@@ -165,6 +172,7 @@ export class FakeBrowserExecutor implements BrowserExecutor {
         return v === undefined ? `mall-${scope.sellerId}` : v;
       },
       async perform(action, secrets, actionKey?: string, expected?: ExpectedPage): Promise<ActionOutcome> {
+        assertInWindow("browser.perform");
         secretsSeen = secrets;
         if (self.tombstones.has(scope.jobId)) return { kind: "fatal", reason: "scope_discarded" };
         self.beforePerform?.(action, scope);
@@ -264,6 +272,7 @@ export class FakeObsBridge implements ObsBridge {
   readonly shown = new Set<string>();
 
   async perform(scope: JobScope, action: AutomationAction, actionKey?: string, expectedPairingId?: string): Promise<ActionOutcome> {
+    assertInWindow("obs.perform");
     await sleep(this.delayMs);
     if (this.tombstones.has(scope.jobId)) return { kind: "fatal", reason: "scope_discarded" };
     // 실행 직전 지금 연결된 PC와 엔진이 확인한 PC를 비교(계약)
@@ -322,8 +331,11 @@ export class FakePracticeEnvironment implements PracticeEnvironment {
 
   constructor(private readonly rt: { browser: FakeBrowserExecutor; obs: FakeObsBridge }) {}
 
-  async reset(): Promise<void> {
+  async reset(signal?: AbortSignal): Promise<void> {
+    assertInWindow("practice.reset");
     if (this.failReset) throw new Error("reset failed");
+    // 상한을 넘겨 중단됐으면 아무것도 바꾸지 않는다(계약)
+    if (signal?.aborted) return;
     this.resets++;
     this.rt.browser.shopState.delete(PRACTICE_SELLER_ID);
     this.rt.obs.display.delete(PRACTICE_SELLER_ID);
@@ -331,6 +343,7 @@ export class FakePracticeEnvironment implements PracticeEnvironment {
   }
 
   async isBaseline(): Promise<boolean> {
+    assertInWindow("practice.isBaseline");
     return !this.rt.browser.shopState.get(PRACTICE_SELLER_ID)?.size && !this.rt.obs.sources.get(PRACTICE_SELLER_ID) && !this.rt.obs.display.has(PRACTICE_SELLER_ID);
   }
 }

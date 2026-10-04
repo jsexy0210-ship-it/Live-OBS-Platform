@@ -12,7 +12,8 @@ import { AUTOMATION_CONSENT, AUTOMATION_PRICE, REINSTALL_PRICE } from "../../lib
 import { cafe24Playbook } from "../../lib/server/automation/playbooks/cafe24";
 import { validatePlaybook } from "../../lib/server/automation/playbook";
 import { PRACTICE_STREAK_REQUIRED, PracticeEnvironmentBusy, playbookReadiness, runPractice } from "../../lib/server/automation/practice";
-import { FakeBrowserExecutor, FakeObsBridge, FakePlanner, FakePracticeEnvironment, FakeSecretVault } from "../../lib/server/automation/fakes";
+import { AUTOMATION_LIMITS } from "../../lib/server/automation/config";
+import { FakeBrowserExecutor, FakeObsBridge, FakePlanner, FakePracticeEnvironment, FakeSecretVault, actionWindowGuard } from "../../lib/server/automation/fakes";
 import { markConnectionRevoked } from "../../lib/server/automation/connection";
 import { cancelJob, getJob, requestRefund, resumeJob } from "../../lib/server/automation/jobs";
 import { purchaseAutomation, reconcileAutomationPayments, reconnectAutomation } from "../../lib/server/automation/purchase";
@@ -3552,5 +3553,67 @@ describe("Codex 42차 반영(2624a18)", () => {
     // 행동 상한 + 여유가 지나면 이어받는다
     await db.automationJob.update({ where: { id: a.jobId }, data: { lastActionStartedAt: new Date(Date.now() - 3 * 60_000) } });
     expect((await claimNext(db, "w-new"))?.job.id).toBe(a.jobId);
+  });
+});
+
+describe("Codex 43차 반영(b41e744)", () => {
+  it("모든 외부 연산(실행기 행동·연습 초기화·기준 상태 확인·되돌리기)은 격리 창 장치 안에서만 불린다", async () => {
+    actionWindowGuard.strict = true;
+    try {
+      await bought();
+      expect(await runOnce(db, runtime(), W)).toBe("succeeded");
+      // 되돌리기 경로
+      const a = await bought();
+      const rt = runtime();
+      await db.automationJob.update({ where: { id: a.jobId }, data: { stepIndex: 1, playbookActions: 3, changedAt: new Date(), mutatedSteps: ["shop_connect"] } });
+      rt.browser.shopState.set(a.seller.id, new Set(["앱 사용 중"]));
+      const other = await bought();
+      await db.automationJob.update({ where: { id: other.jobId }, data: { status: "CANCELED", finishedAt: new Date(), lastDeviationAt: new Date(), deviatedSteps: ["webhook_setup"] } });
+      expect(await runOnce(db, rt, W)).toBe("failed");
+      expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "playbook_not_verified" });
+      // 연습(초기화·기준 상태 확인·실행)
+      await db.automationPracticeRun.deleteMany();
+      expect((await runPractice(db, runtime(), cafe24Playbook, { shopHost: "myshop.cafe24.com" })).outcome).toBe("SUCCEEDED");
+    } finally {
+      actionWindowGuard.strict = false;
+    }
+  });
+
+  it("연습 초기화가 상한을 넘기면 중단되고(종료 확인 없음) 새 연습은 격리 창 동안 거절되며, 창 뒤 시작한 연습은 옛 초기화가 늦게 끝나도 섞이지 않는다", async () => {
+    const limits = AUTOMATION_LIMITS as { actionTimeoutMs: number };
+    const saved = limits.actionTimeoutMs;
+    limits.actionTimeoutMs = 100;
+    try {
+      await db.automationPracticeRun.deleteMany();
+      const rt = runtime();
+      let release!: () => void;
+      const late = new Promise<void>((r) => (release = r));
+      const reset = rt.practice.reset.bind(rt.practice);
+      let first = true;
+      let lateDone!: Promise<void>;
+      rt.practice.reset = async (signal) => {
+        if (first) {
+          first = false;
+          // 옛 초기화는 상한을 넘겨 멈춰 있다가 나중에 끝난다(중단 신호를 받았으면 아무것도 바꾸지 않아야 한다)
+          lateDone = late.then(() => reset(signal));
+          return lateDone;
+        }
+        return reset(signal);
+      };
+      const old = await runPractice(db, rt, cafe24Playbook, { shopHost: "myshop.cafe24.com" });
+      expect(old).toMatchObject({ outcome: "FAILED", reason: "practice_reset_failed", lastActionEndedAt: null });
+      // 격리 창 안: 새 연습 거절
+      await expect(runPractice(db, rt, cafe24Playbook, { shopHost: "myshop.cafe24.com" })).rejects.toMatchObject({ reason: "quiescing" });
+      // 상한 + 여유가 지난 뒤에만 시작해 성공한다
+      await db.automationPracticeRun.update({ where: { id: old.id }, data: { lastActionStartedAt: new Date(Date.now() - 3 * 60_000) } });
+      expect((await runPractice(db, rt, cafe24Playbook, { shopHost: "myshop.cafe24.com" })).outcome).toBe("SUCCEEDED");
+      expect(rt.obs.sources.get("practice")).toBe(1);
+      // 옛 초기화가 늦게 끝나도 새 결과(시험 PC의 소스)를 지우지 않는다
+      release();
+      await lateDone;
+      expect(rt.obs.sources.get("practice")).toBe(1);
+    } finally {
+      limits.actionTimeoutMs = saved;
+    }
   });
 });

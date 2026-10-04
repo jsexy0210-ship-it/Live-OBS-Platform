@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { AutomationPracticeRun, Prisma, PrismaClient } from "@prisma/client";
 import { AUTOMATION_LIMITS, plannerConfig } from "./config";
 import { writeAudit } from "../audit/log";
-import { runSteps, type EngineStats } from "./engine";
+import { boundedAction, runSteps, type EngineStats } from "./engine";
 import { FencingError, QUIESCE_MS, backoffMs, dbNow, lockPlaybook, quiescent, quiescentSql } from "./queue";
 import type { Playbook } from "./playbook";
 import { PLAYBOOKS } from "./playbooks";
@@ -109,15 +109,15 @@ export async function runPractice(
   // 매 회차 시험용 쇼핑몰·PC를 기준 상태로 되돌리고 실제 상태로 확인한다. 되돌리기·확인이 실패하면 실행하지 않고 실패로 남긴다
   // (이전 회차가 남긴 앱·웹훅·소스 위에서 성공해도 작업서를 검증한 것이 아니므로 세지 않고, 실패 기록이 연속 성공을 끊는다)
   // 되돌리기도 외부 행동이라 격리 창 기록 안에서 한다(늦게 끝나도 다음 연습은 종료 확인 또는 창 경과 뒤에만 시작)
-  const baseline = await (async () => {
-    await actionStarted();
-    try {
-      await rt.practice.reset();
-      return await rt.practice.isBaseline();
-    } finally {
-      await actionEnded();
-    }
-  })().catch(() => false);
+  // 상한(T_action)을 넘기면 중단 신호를 보내고 실패로 본다(종료 확인 없음 → 격리 창은 마지막 시작 시각 + 상한 + 여유로 풀린다)
+  const baseline = await boundedAction(
+    { actionStarted, actionEnded },
+    async (signal) => {
+      await rt.practice.reset(signal);
+      return rt.practice.isBaseline(signal);
+    },
+    false,
+  ).catch(() => false);
   if (!baseline) result = { kind: "failed", reason: "practice_reset_failed" };
   else {
     try {

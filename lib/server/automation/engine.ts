@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import { cueMatches, matchException, navRulesFor, plannerPathSegments, plannerVocabulary, resolveShop, type DoneCheck, type Playbook } from "./playbook";
 import {
@@ -103,16 +104,25 @@ const NOT_APPLIED: ReadonlySet<string> = new Set(["page_mismatch", "pairing_mism
 export type ChangeMark = { stepAdded: boolean; changedAt: Date | null };
 // 외부 행동 하나를 격리 창 장치로 감싼다: 시작 기록 → 하드 상한(T_action) 안에서 실행 → 종료 확인.
 // 상한을 넘기면 기다리지 않고 일시 실패로 돌려주되 종료 확인은 남기지 않는다(실행기가 아직 끝나지 않았을 수 있어, 격리 창은 시작 + 상한 + 여유로 풀린다).
-type ActionWindowHooks = { actionStarted?(): Promise<void>; actionEnded?(): Promise<void> };
-async function boundedAction(hooks: ActionWindowHooks, run: () => Promise<ActionOutcome>): Promise<ActionOutcome> {
+// 실행기·연습 환경의 외부 연산은 모두 이 장치를 거친다(연습 초기화·기준 상태 확인 포함). 상한에 이르면 넘겨 준 중단 신호를 보내고(계약: 받은 쪽은 스스로 멈춘다)
+// 상한 초과 값(timedOut)을 돌려준다. 장치 안에서 부른 것인지는 insideBoundedAction()으로 알 수 있다(시험용 가짜가 장치 밖 호출을 거부하는 데 쓴다).
+export type ActionWindowHooks = { actionStarted?(): Promise<void>; actionEnded?(): Promise<void> };
+const ACTION_SCOPE = new AsyncLocalStorage<true>();
+export const insideBoundedAction = () => ACTION_SCOPE.getStore() === true;
+export async function boundedAction<T>(hooks: ActionWindowHooks, run: (signal: AbortSignal) => Promise<T>, timedOutValue: T): Promise<T> {
   await hooks.actionStarted?.();
+  const abort = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   let timedOut = false;
   try {
     return await Promise.race([
-      run(),
-      new Promise<ActionOutcome>((resolve) => {
-        timer = setTimeout(() => ((timedOut = true), resolve({ kind: "retryable", reason: "timeout" })), AUTOMATION_LIMITS.actionTimeoutMs);
+      ACTION_SCOPE.run(true, () => run(abort.signal)),
+      new Promise<T>((resolve) => {
+        timer = setTimeout(() => {
+          timedOut = true;
+          abort.abort();
+          resolve(timedOutValue);
+        }, AUTOMATION_LIMITS.actionTimeoutMs);
       }),
     ]);
   } finally {
@@ -120,6 +130,7 @@ async function boundedAction(hooks: ActionWindowHooks, run: () => Promise<Action
     if (!timedOut) await hooks.actionEnded?.();
   }
 }
+const ACTION_TIMEOUT: ActionOutcome = { kind: "retryable", reason: "timeout" };
 
 // 완료·되돌림 판정 공용 장치(본 단계·검증 단계·되돌리기 모두): 행동 전 대조와 같은 기준을 통과한 관찰에만 글 단서를 적용한다.
 // 브라우저는 관찰 주소 = 지금 문서 주소이고 이동 규칙 안이며 판정의 기대 경로로 시작해야 하고, OBS는 지금 PC가 이 작업이 확인한 PC여야 한다.
@@ -415,10 +426,14 @@ async function runAll(
         // OBS 쪽은 확인한 PC를 넘겨 로컬 도구가 실행 직전에 비교하게 하고(다르면 행동 0건으로 거절), 결과의 실제 실행 PC를 다시 대조한다
         // 결과는 경계(fromExecutor)에서 정규화한 값만 쓴다(사유는 정해 둔 코드로, 식별자는 형식 검사, 증거는 비밀값 가림)
         out = fromExecutor(
-          await boundedAction(hooks, () => {
-            performStarted = true;
-            return session ? session.perform(action, secrets, actionKey, expectedPage) : rt.obs.perform(scope, action, actionKey, confirmedPairing);
-          }),
+          await boundedAction(
+            hooks,
+            () => {
+              performStarted = true;
+              return session ? session.perform(action, secrets, actionKey, expectedPage) : rt.obs.perform(scope, action, actionKey, confirmedPairing);
+            },
+            ACTION_TIMEOUT,
+          ),
           secrets,
         );
       } finally {
@@ -542,7 +557,7 @@ export async function runRollback(
         guard();
         const actionKey = keyed(action) ? actionKeyOf(scope.jobId, 100 + at, action) : undefined;
         const out = fromExecutor(
-          await boundedAction(hooks, () => (rb.kind === "browser" ? session!.perform(action, secrets, actionKey, expectedPage) : rt.obs.perform(scope, action, actionKey, pairing))),
+          await boundedAction(hooks, () => (rb.kind === "browser" ? session!.perform(action, secrets, actionKey, expectedPage) : rt.obs.perform(scope, action, actionKey, pairing)), ACTION_TIMEOUT),
           secrets,
         );
         guard();
