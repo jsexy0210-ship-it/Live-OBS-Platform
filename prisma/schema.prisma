@@ -842,6 +842,8 @@ model Order {
   refundedAt                DateTime?         @db.Timestamptz(3)
   // 구매 확정 시각(배송 완료 n일 뒤 자동). 주문 상태(status)는 결제 완료(PAID) 그대로 둔다.
   purchaseConfirmedAt       DateTime?         @db.Timestamptz(3)
+  // 판매자가 구매 확정을 취소한 시각(대표님 결정 2026-10-03). 있으면 자동 구매 확정이 다시 확정하지 않는다(환불하려고 푼 주문).
+  purchaseUnconfirmedAt     DateTime?         @db.Timestamptz(3)
   // 적립 스냅숏(결제 때 판정, MASTER 결정 2026-10-03): 지급 시점·회원 등급·적립률(%)·적립 예정액. 결제 때 0원이면 나중에도 적립하지 않는다.
   // 배송 완료 때는 rewardEarnTiming이 ON_DELIVERY인 주문만 rewardEarnAmount로 기록한다. 적립 정책이 없던 주문·이 기능 전 주문은 null.
   rewardEarnTiming          RewardEarnTiming?
