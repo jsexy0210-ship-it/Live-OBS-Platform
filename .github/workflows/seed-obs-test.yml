@@ -46,7 +46,8 @@ jobs:
         run: |
           set -euo pipefail
           command -v python3 >/dev/null || { echo "러너에 python3가 필요해요."; exit 1; }
-          read_input() { python3 -c 'import json,os,sys;print(json.load(open(os.environ["GITHUB_EVENT_PATH"]))["inputs"][sys.argv[1]])' "$1"; }
+          # 줄바꿈이 든 값은 add-mask가 첫 줄만 가리므로 값을 출력하지 않고 거절한다
+          read_input() { python3 -c 'import json,os,sys;v=json.load(open(os.environ["GITHUB_EVENT_PATH"]))["inputs"][sys.argv[1]];sys.exit("입력값에 줄바꿈을 넣을 수 없어요.") if ("\n" in v or "\r" in v) else print(v)' "$1"; }
           SEED_SELLER_PASSWORD="$(read_input password)"
           echo "::add-mask::$SEED_SELLER_PASSWORD"
           SEED_SELLER_LOGIN="$(read_input login)"
