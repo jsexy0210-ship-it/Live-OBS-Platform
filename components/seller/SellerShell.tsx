@@ -47,7 +47,7 @@ const MENU: Group[] = [
       { label: "전체 주문", href: "/seller/orders", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
       { label: "입금 확인", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
       { label: "교환 · 반품", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
-      { label: "배송", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
+      { label: "배송", href: "/seller/shipping", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
       { label: "송장 발급", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
       { label: "송장 출력 · 추적", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
       { label: "영수증 · 세금계산서", perm: "RECEIPT_TAX", plan: "FOLLOWUP" },
@@ -70,7 +70,7 @@ const MENU: Group[] = [
     key: "member",
     label: "회원",
     items: [
-      { label: "회원 목록", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
+      { label: "회원 목록", href: "/seller/members", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
       { label: "회원 등급", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
       { label: "구매 제한", href: "/seller/purchase-restrictions", perm: "MEMBER_POINTS", plan: "FOLLOWUP" },
       { label: "회원 알림 발송", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
