@@ -450,6 +450,37 @@ async function writableItems(db: Db, scope: BuyerScope, now: Date, writableDays:
 }
 
 // 내 리뷰(SH-029 「내 리뷰 목록」): 쓸 수 있는 상품과 내가 쓴 리뷰(숨김 사유·답글 포함)
+// 내 리뷰 한 건의 화면 값(목록·단건 조회가 같이 쓴다). 고칠 수 있는지(숨기지 않았고 쓴 뒤 7일 안)는 서버가 정한다.
+const MY_INCLUDE = { product: { select: { name: true } }, orderItem: { select: { optionNameSnapshot: true } }, images: { select: { id: true }, orderBy: [{ sortOrder: "asc" as const }, { createdAt: "asc" as const }] } } satisfies Prisma.ProductReviewInclude;
+type MyRow = Prisma.ProductReviewGetPayload<{ include: typeof MY_INCLUDE }>;
+function myView(r: MyRow, slug: string, now: Date, reward: number) {
+  return {
+    id: r.id,
+    productName: r.product.name,
+    optionName: r.orderItem.optionNameSnapshot,
+    rating: r.rating,
+    body: r.body,
+    status: r.status,
+    hiddenReason: r.hiddenReason ? REASON_BUYER[r.hiddenReason] : null,
+    hiddenNote: r.status === "HIDDEN" ? r.hiddenNote : null,
+    reply: r.reply,
+    repliedAt: r.repliedAt,
+    rewardedAmount: reward,
+    images: r.images.map((i) => ({ id: i.id, url: buyerImageUrl(slug, i.id) })),
+    createdAt: r.createdAt,
+    editable: r.status !== "HIDDEN" && now.getTime() < r.createdAt.getTime() + REVIEW_EDIT_DAYS * DAY,
+  };
+}
+
+// 내 리뷰 단건(고치기 화면). 목록에서 찾지 않고 id로 직접 읽는다. 본인·지우지 않은 리뷰만, 아니면 null(404).
+export async function myReview(db: PrismaClient, scope: BuyerScope, slug: string, id: string) {
+  if (!isUuid(id)) return null;
+  const r = await db.productReview.findFirst({ where: { ...scope, id, deletedAt: null }, include: MY_INCLUDE });
+  if (!r) return null;
+  const now = await lockedNow(db);
+  return myView(r, slug, now, (await activeRewards(db, scope.sellerId, [r])).get(r.id)?.amount ?? 0);
+}
+
 // cursor: 내가 쓴 리뷰 다음 쪽, writableCursor: 리뷰를 기다리는 상품 다음 쪽(각각 nextCursor·writableNextCursor로 받은 id).
 export async function myReviews(db: PrismaClient, scope: BuyerScope, slug: string, q: { cursor?: string | null; writableCursor?: string | null } = {}) {
   const now = await lockedNow(db);
@@ -462,7 +493,7 @@ export async function myReviews(db: PrismaClient, scope: BuyerScope, slug: strin
       where: { ...scope, deletedAt: null, ...afterCursor(reviewAfter) },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: MY_PAGE + 1,
-      include: { product: { select: { name: true } }, orderItem: { select: { optionNameSnapshot: true } }, images: { select: { id: true }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] } },
+      include: MY_INCLUDE,
     }),
   ]);
   const items = itemRows.slice(0, MY_PAGE);
@@ -480,22 +511,7 @@ export async function myReviews(db: PrismaClient, scope: BuyerScope, slug: strin
       deliveredAt: i.order.shipment?.deliveredAt ?? null,
       writableUntil: i.order.shipment?.deliveredAt ? new Date(i.order.shipment.deliveredAt.getTime() + policy.writableDays * DAY) : null,
     })),
-    reviews: mine.map((r) => ({
-      id: r.id,
-      productName: r.product.name,
-      optionName: r.orderItem.optionNameSnapshot,
-      rating: r.rating,
-      body: r.body,
-      status: r.status,
-      hiddenReason: r.hiddenReason ? REASON_BUYER[r.hiddenReason] : null,
-      hiddenNote: r.status === "HIDDEN" ? r.hiddenNote : null,
-      reply: r.reply,
-      repliedAt: r.repliedAt,
-      rewardedAmount: rewards.get(r.id)?.amount ?? 0,
-      images: r.images.map((i) => ({ id: i.id, url: buyerImageUrl(slug, i.id) })),
-      createdAt: r.createdAt,
-      editable: r.status !== "HIDDEN" && now.getTime() < r.createdAt.getTime() + REVIEW_EDIT_DAYS * DAY,
-    })),
+    reviews: mine.map((r) => myView(r, slug, now, rewards.get(r.id)?.amount ?? 0)),
     reward: { text: policy.rewardText, photo: policy.rewardPhoto },
     writableDays: policy.writableDays,
     now,

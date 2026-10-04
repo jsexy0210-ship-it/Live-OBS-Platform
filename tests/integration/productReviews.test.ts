@@ -8,7 +8,7 @@ import { GET as policyGet, PUT as policyPut } from "../../app/api/seller/reviews
 import { GET as sellerList } from "../../app/api/seller/reviews/route";
 import { GET as productReviewsGet } from "../../app/api/shop/[slug]/products/[productId]/reviews/route";
 import { POST as reportPost } from "../../app/api/shop/[slug]/reviews/[reviewId]/report/route";
-import { DELETE as reviewDelete, PUT as reviewPut } from "../../app/api/shop/[slug]/reviews/[reviewId]/route";
+import { DELETE as reviewDelete, GET as reviewGet, PUT as reviewPut } from "../../app/api/shop/[slug]/reviews/[reviewId]/route";
 import { GET as myImageGet } from "../../app/api/shop/[slug]/reviews/images/[imageId]/route";
 import { POST as imagePost } from "../../app/api/shop/[slug]/reviews/images/route";
 import { GET as itemGet, POST as itemPost } from "../../app/api/shop/[slug]/reviews/items/[orderItemId]/route";
@@ -624,6 +624,31 @@ describe("내 리뷰 목록 쪽 나눔(Codex 4176954762)", () => {
     });
     const r = await readAll("reviews");
     expect([r.seen.length, new Set(r.seen).size, r.pages]).toEqual([101, 101, 3]);
+  });
+});
+
+describe("고치기 화면은 id로 직접 읽는다(Codex 4177019076)", () => {
+  it("내 리뷰가 51개를 넘어도 가장 오래된 리뷰를 단건 조회로 열 수 있고(editable은 서버 판정), 남의 리뷰·지운 리뷰는 404", async () => {
+    const s = await shop();
+    const items = [];
+    for (let i = 0; i < 55; i++) items.push(await s.delivered());
+    await db.productReview.createMany({
+      data: items.map((it, i) => ({
+        sellerId: s.seller.id, orderId: it.orderId, orderItemId: it.id, productId: s.product.id, buyerMemberId: s.buyer.id,
+        authorNickname: "닉", rating: 4, body: BODY, status: "VISIBLE" as const, createdAt: new Date(Date.now() - (i + 1) * 60_000),
+      })),
+    });
+    const oldest = await db.productReview.findFirstOrThrow({ where: { sellerId: s.seller.id }, orderBy: { createdAt: "asc" } });
+    const first = (await (await mineGet(get("/x", s.b1), p({ slug: s.slug }))).json()) as { reviews: { id: string }[] };
+    expect(first.reviews.some((r) => r.id === oldest.id)).toBe(false);
+    const res = await reviewGet(get("/x", s.b1), p({ slug: s.slug, reviewId: oldest.id }));
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { review: { id: string; editable: boolean } }).review).toMatchObject({ id: oldest.id, editable: true });
+    expect((await reviewGet(get("/x", s.b2), p({ slug: s.slug, reviewId: oldest.id }))).status).toBe(404);
+    await db.productReview.update({ where: { id: oldest.id }, data: { createdAt: new Date(Date.now() - 8 * DAY) } });
+    expect(((await (await reviewGet(get("/x", s.b1), p({ slug: s.slug, reviewId: oldest.id }))).json()) as { review: { editable: boolean } }).review.editable).toBe(false);
+    expect((await reviewDelete(json("/x", "DELETE", s.b1), p({ slug: s.slug, reviewId: oldest.id }))).status).toBe(200);
+    expect((await reviewGet(get("/x", s.b1), p({ slug: s.slug, reviewId: oldest.id }))).status).toBe(404);
   });
 });
 

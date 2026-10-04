@@ -6,7 +6,7 @@ import { call, md, RATING_TEXT, reencodePhoto } from "./reviewShared";
 import "./Reviews.css";
 
 // SH-029 리뷰 쓰기·고치기. 별점(필수)·사진(선택, 5장)·리뷰(10~1,000자). 사진은 이 화면에서 JPEG로 다시 저장해 올린다(위치 정보 제거).
-// 쓰기: GET·POST /api/shop/{slug}/reviews/items/{orderItemId}. 고치기: 내 리뷰(GET /reviews)에서 찾아 PUT /reviews/{id}.
+// 쓰기: GET·POST /api/shop/{slug}/reviews/items/{orderItemId}. 고치기: GET·PUT /reviews/{id}(목록에서 찾지 않고 id로 직접 읽는다).
 type Photo = { id: string; url: string };
 type Item = { productName: string; optionName: string; quantity: number; orderedAt: string; deliveredAt: string | null; reward: { text: number; photo: number } };
 type Mine = { id: string; productName: string; optionName: string; rating: number; body: string; images: Photo[]; editable: boolean };
@@ -32,10 +32,11 @@ export default function ReviewWrite({ slug, itemId, reviewId }: { slug: string; 
       const i = r.data.item;
       return setView({ kind: "ok", title: `${i.productName}${i.quantity > 1 ? ` ×${i.quantity}` : ""}`, sub: `${md(i.orderedAt)} 주문${i.deliveredAt ? ` · ${md(i.deliveredAt)} 배송 완료` : ""}`, reward: i.reward });
     }
-    const r = await call<{ reviews: Mine[] }>(base);
-    if (!r.ok) return setView(r.status === 401 ? { kind: "login" } : { kind: "error" });
-    const m = r.data.reviews.find((x) => x.id === reviewId);
-    if (!m || !m.editable) return setView({ kind: "closed" });
+    if (!reviewId) return setView({ kind: "closed" });
+    const r = await call<{ review: Mine }>(`${base}/${encodeURIComponent(reviewId)}`);
+    if (!r.ok) return setView(r.status === 401 ? { kind: "login" } : r.status === 404 ? { kind: "closed" } : { kind: "error" });
+    const m = r.data.review;
+    if (!m.editable) return setView({ kind: "closed" });
     setRating(m.rating);
     setBody(m.body);
     setPhotos(m.images);
