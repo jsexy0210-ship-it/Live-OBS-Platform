@@ -240,7 +240,9 @@ echo "현재 버전: ${APP_VERSION:-없음}"
 
 테스트 서버에 시험 판매자(대표자) 계정 1개, 시험 쇼핑몰(`/shop/test-shop`) 1개, 상품 3개를 넣어요(`scripts/seed-obs-test.mjs`). 판매자가 이미 있으면 아무것도 하지 않아요(다시 실행해도 중복 없음). 실제 결제·문자는 없어요.
 로그인 아이디·비밀번호는 실행할 때 직접 입력해요(저장소·문서·로그에 남지 않아요). 이 명령에서만 아이디 형식·비밀번호 8자 규칙을 건너뛰어요(대표님 허용 2026-10-03, 운영 규칙은 그대로).
-위 「서버 명령 준비」 줄을 먼저 실행하고, 아래를 붙여 넣은 뒤 아이디·비밀번호를 입력해요.
+**서버에 접속하지 않고 GitHub에서 넣기(권장):** Actions → 「Seed obs-test」 → Run workflow에서 아이디·비밀번호를 넣고 실행해요(main 기준, Environment `obs-test` 승인 대상). 비밀번호는 실행 로그에서 가려져요. 앱이 한 번 배포된 뒤에만 돌아요.
+
+서버에서 직접 넣을 때는 위 「서버 명령 준비」 줄을 먼저 실행하고, 아래를 붙여 넣은 뒤 아이디·비밀번호를 입력해요.
 
 ```bash
 read -p "아이디: " SEED_SELLER_LOGIN && read -s -p "비밀번호: " SEED_SELLER_PASSWORD && echo && export SEED_SELLER_LOGIN SEED_SELLER_PASSWORD && OBS_TEST_MODE="$(sed -n 's/^OBS_TEST_MODE=//p' /opt/obs/.env)" IDENTITY_HASH_KEY="$(sed -n 's/^IDENTITY_HASH_KEY=//p' /opt/obs/.env)" $C run --rm --no-deps -e OBS_TEST_MODE -e SEED_SELLER_LOGIN -e SEED_SELLER_PASSWORD -e IDENTITY_HASH_KEY obs-web-migrate node scripts/seed-obs-test.mjs; unset SEED_SELLER_LOGIN SEED_SELLER_PASSWORD

@@ -172,3 +172,20 @@ test("넓은 화면에서 연 뒤 390px로 줄여도 지금 탭이 화면 안에
     return box !== null && box.x >= 0 && box.x + box.width <= 390;
   }).toBe(true);
 });
+
+// 1440px(넓은 화면)에서도 공유 미리보기·설정 탭 스타일이 적용된다(좁은 화면 전용 블록 안에 갇히지 않음)
+test("1440px에서 공유 미리보기 카드·설정 탭·입력 묶음 스타일이 적용된다", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await loginSeller(page, "demo-owner@example.com", PASSWORD, "/seller/settings/share");
+  await expect(page).toHaveURL(/\/seller\/settings\/share$/);
+  await expect(page.getByTestId("sp-card")).toBeVisible();
+  const styles = await page.evaluate(() => {
+    const get = (sel: string) => getComputedStyle(document.querySelector(sel)!);
+    return {
+      cardMaxWidth: get(".sp-card").maxWidth,
+      tabsOverflowX: get(".settings-tabs").overflowX,
+      fieldsBorder: get(".settings-fields").borderTopWidth,
+    };
+  });
+  expect(styles).toEqual({ cardMaxWidth: "420px", tabsOverflowX: "auto", fieldsBorder: "0px" });
+});
