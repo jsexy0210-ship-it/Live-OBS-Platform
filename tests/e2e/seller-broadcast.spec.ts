@@ -320,3 +320,31 @@ test("보던 중 권한·이용 상태가 끝나면(403) 옛 내용과 버튼을
   await expect(page.getByRole("button", { name: /개봉 완료/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "방송 종료" })).toHaveCount(0);
 });
+
+test("Ctrl+Enter를 누른 채 있어도(자동 반복) 완료는 한 번만, 다음 주문이 저절로 개봉되지 않는다", async ({ page }) => {
+  await openFirst(page);
+  await page.keyboard.down("Control");
+  await page.keyboard.down("Enter");
+  for (let i = 0; i < 5; i++) {
+    await page.waitForTimeout(150);
+    await page.keyboard.down("Enter"); // 이미 눌린 키: repeat=true로 전달됨
+  }
+  await page.keyboard.up("Enter");
+  await page.keyboard.up("Control");
+  await expect(toast(page)).toContainText("개봉을 완료했습니다");
+  await expect(page.getByTestId("bc-opening")).toHaveCount(0);
+  const s = await queueStatuses();
+  expect(s[A].status).toBe("DONE");
+  expect(s[B].status).toBe("WAITING");
+  expect(s[C].status).toBe("WAITING");
+});
+
+test("PC 시계가 틀려도(1시간 빠름) 방금 완료한 주문의 되돌리기가 보이고 동작한다", async ({ page }) => {
+  await page.clock.setSystemTime(new Date(Date.now() + 3600_000));
+  await openFirst(page);
+  await page.keyboard.press("Control+Enter");
+  const done = page.getByTestId("bc-done").locator("li", { hasText: A });
+  await done.getByRole("button", { name: "되돌리기" }).click();
+  await expect(page.getByTestId("bc-opening")).toContainText(A);
+  expect((await queueStatuses())[A].status).toBe("OPENING");
+});

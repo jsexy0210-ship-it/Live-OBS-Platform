@@ -49,6 +49,18 @@ export default function BroadcastDashboardPage() {
   // 다시 읽기 반영 규칙(latestResponse.ts): 나중에 보낸 요청의 성공만 반영하고, 실패가 앞선 성공을 버리지 않는다
   const reads = useLatestResponse();
   const version = useRef<number | null>(null);
+  // 되돌리기 10초 판정은 PC 시계(Date)가 아니라 이 화면이 완료를 확인한 순간의 단조 시계(performance.now) 기준이다.
+  // 이 화면에서 완료했거나, 직전 화면에서 개봉 중이던 주문이 완료로 바뀐 것을 본 경우만 기록한다(언제 완료됐는지 모르는 주문은 되돌리기를 보이지 않음)
+  const doneSeenAt = useRef(new Map<string, number>());
+  const lastOpeningId = useRef<string | null>(null);
+  const applySnap = useCallback((snap: Snapshot) => {
+    const seen = performance.now();
+    for (const d of snap.recentDone) if (d.id === lastOpeningId.current && !doneSeenAt.current.has(d.id)) doneSeenAt.current.set(d.id, seen);
+    lastOpeningId.current = snap.opening?.id ?? null;
+    version.current = snap.version;
+    setStale(false);
+    setState({ kind: "ok", snap });
+  }, []);
   const load = useCallback(async () => {
     const t = reads.next();
     const r = await api<Snapshot>("/api/seller/queue");
@@ -64,10 +76,8 @@ export default function BroadcastDashboardPage() {
     const verdict = reads.accept(t);
     // 변경 전에 보낸 읽기가 늦게 왔으면 버린다(변경 뒤 다시 읽기가 반영한다. 그 읽기가 실패했으면 낡음 안내가 남는다)
     if (verdict !== "apply") return;
-    version.current = r.data.version;
-    setStale(false);
-    setState({ kind: "ok", snap: r.data });
-  }, [reads]);
+    applySnap(r.data);
+  }, [reads, applySnap]);
 
   // 처음 읽기 + 실시간 채널 + 15초 확인
   useEffect(() => {
@@ -138,15 +148,13 @@ export default function BroadcastDashboardPage() {
       setBusy(false);
       setModal(null);
       setToast({ text: r.ok ? "다른 화면에서 방송이 바뀌었습니다. 최신 내용을 확인한 뒤 다시 종료해 주십시오" : failMessage(r, "admin"), neg: true });
-      if (r.ok && reads.accept(t) === "apply") {
-        version.current = r.data.version;
-        setStale(false);
-        setState({ kind: "ok", snap: r.data });
-      } else void load();
+      if (r.ok && reads.accept(t) === "apply") applySnap(r.data);
+      else void load();
       return;
     }
     setBusy(false);
-    await mutate("/api/seller/broadcast/end", {}, "방송을 종료했습니다");
+    // broadcastSessionId: 서버가 지금 방송과 맞춰 볼 수 있게 미리 넘긴다(서버 확인은 기반 세션에 배정, 생기기 전에는 무시됨)
+    await mutate("/api/seller/broadcast/end", { broadcastSessionId: sessionId }, "방송을 종료했습니다");
   };
 
   // 변경 조작은 요청 처리 중(busy)이거나 보이는 내용이 서버에서 확인된 최신이 아닐 때(stale) 모두 막는다.
@@ -158,8 +166,11 @@ export default function BroadcastDashboardPage() {
   const waiting = snap ? (live ? snap.waiting : snap.beforeBroadcast) : [];
   const next = waiting[0] ?? null;
 
-  const act = (item: QueueItem, action: "start" | "complete" | "revert", okText: string) =>
-    mutate(`/api/seller/queue/${item.id}/${action}`, { expectedVersion: item.version }, okText);
+  const act = async (item: QueueItem, action: "start" | "complete" | "revert", okText: string) => {
+    const r = await mutate(`/api/seller/queue/${item.id}/${action}`, { expectedVersion: item.version }, okText);
+    if (r.ok && action === "complete") doneSeenAt.current.set(item.id, performance.now());
+    return r;
+  };
   const setTimer = (item: QueueItem, seconds: number) =>
     mutate(`/api/seller/queue/${item.id}/timer`, { expectedVersion: item.version, timerSeconds: seconds }, seconds ? `타이머를 ${clock(seconds)}로 정했습니다` : "타이머를 껐습니다");
   const cancel = (item: QueueItem, reason: string) =>
@@ -185,7 +196,8 @@ export default function BroadcastDashboardPage() {
   // 단축키(모두 Ctrl 조합): 개봉 시작·완료 Ctrl+Enter, 타이머 +30초 Ctrl+↑, 취소 Ctrl+Backspace(확인 창)
   const keys = useRef<(e: KeyboardEvent) => void>(() => undefined);
   keys.current = (e: KeyboardEvent) => {
-    if (!e.ctrlKey || e.altKey || e.metaKey || modal || locked || !snap || typing(e.target)) return;
+    // 길게 눌러 생기는 자동 반복(e.repeat)은 무시한다(완료 뒤 다음 주문이 개봉되거나 타이머가 계속 오르지 않게)
+    if (e.repeat || !e.ctrlKey || e.altKey || e.metaKey || modal || locked || !snap || typing(e.target)) return;
     if (e.key === "Enter") {
       e.preventDefault();
       if (opening) void act(opening, "complete", "개봉을 완료했습니다");
@@ -367,7 +379,8 @@ export default function BroadcastDashboardPage() {
                 ) : (
                   <ul className="bc-list" data-testid="bc-done">
                     {snap.recentDone.map((d) => {
-                      const canRevert = live && d.broadcastSessionId === live.id && !opening && d.doneAt && now - new Date(d.doneAt).getTime() < REVERT_WINDOW_MS;
+                      const seenAt = doneSeenAt.current.get(d.id);
+                      const canRevert = live && d.broadcastSessionId === live.id && !opening && seenAt !== undefined && performance.now() - seenAt < REVERT_WINDOW_MS;
                       return (
                         <li key={d.id} className="bc-row">
                           <span className="bdg b-done">완료</span>
