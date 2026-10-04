@@ -344,18 +344,30 @@ async function runAll(
       }
       // 이번 행동 직전에 새로 남긴 변경 기록(실행기가 행동 0회로 거절하면 이것만 되돌린다)
       let freshMark: ChangeMark | null = null;
-      if (MUTATING.includes(action.type) && !markedSteps.has(step.key) && hooks.markChanged) {
-        freshMark = await hooks.markChanged(step.key);
-        markedSteps.add(step.key);
+      // 실행기를 불렀는가. 변경 기록 뒤 실행기를 부르기 전에 끝나는 모든 경로(자리 잃음·취소·heartbeat 오류·guard 예외)에서
+      // 이번 기록을 되돌린다(바꾼 것이 없음). 결과 분기에 기대지 않고 finally로 한다.
+      let performStarted = false;
+      let out!: ActionOutcome;
+      try {
+        if (MUTATING.includes(action.type) && !markedSteps.has(step.key) && hooks.markChanged) {
+          freshMark = await hooks.markChanged(step.key);
+          markedSteps.add(step.key);
+        }
+        guard();
+        // 고정 키: 작업·단계와 행동의 의미(종류·대상·값)의 해시. 순번과 무관해 같은 행동은 몇 번째로 오든 한 번만,
+        // 다른 행동은 같은 순번이라도 실행된다. 세션 밖에 남는 효과(ACTION_EFFECT external)에만 붙이고, 세션 안의 조작(누르기·입력)과
+        // 바꾸지 않는 행동은 새 세션에서 다시 해야 하므로 붙이지 않는다.
+        const actionKey = keyed(action) ? actionKeyOf(scope.jobId, stepIndex, action) : undefined;
+        // OBS 쪽은 확인한 PC를 넘겨 로컬 도구가 실행 직전에 비교하게 하고(다르면 행동 0건으로 거절), 결과의 실제 실행 PC를 다시 대조한다
+        // 결과는 경계(fromExecutor)에서 정규화한 값만 쓴다(사유는 정해 둔 코드로, 식별자는 형식 검사, 증거는 비밀값 가림)
+        performStarted = true;
+        out = fromExecutor(session ? await session.perform(action, secrets, actionKey, expectedPage) : await rt.obs.perform(scope, action, actionKey, confirmedPairing), secrets);
+      } finally {
+        if (!performStarted && freshMark && hooks.unmarkChanged) {
+          await hooks.unmarkChanged(step.key, freshMark);
+          markedSteps.delete(step.key);
+        }
       }
-      guard();
-      // 고정 키: 작업·단계와 행동의 의미(종류·대상·값)의 해시. 순번과 무관해 같은 행동은 몇 번째로 오든 한 번만,
-      // 다른 행동은 같은 순번이라도 실행된다. 세션 밖에 남는 효과(ACTION_EFFECT external)에만 붙이고, 세션 안의 조작(누르기·입력)과
-      // 바꾸지 않는 행동은 새 세션에서 다시 해야 하므로 붙이지 않는다.
-      const actionKey = keyed(action) ? actionKeyOf(scope.jobId, stepIndex, action) : undefined;
-      // OBS 쪽은 확인한 PC를 넘겨 로컬 도구가 실행 직전에 비교하게 하고(다르면 행동 0건으로 거절), 결과의 실제 실행 PC를 다시 대조한다
-      // 결과는 경계(fromExecutor)에서 정규화한 값만 쓴다(사유는 정해 둔 코드로, 식별자는 형식 검사, 증거는 비밀값 가림)
-      const out: ActionOutcome = fromExecutor(session ? await session.perform(action, secrets, actionKey, expectedPage) : await rt.obs.perform(scope, action, actionKey, confirmedPairing), secrets);
       // 행동 0회가 보장된 거절이면 바꾼 것이 없으므로 이번에 남긴 변경 기록을 되돌린다. 자리를 잃었어도(취소·회수와 겹침) 먼저 한다(guard 전)
       if (out.kind === "fatal" && NOT_APPLIED.has(out.reason) && freshMark && hooks.unmarkChanged) {
         await hooks.unmarkChanged(step.key, freshMark);

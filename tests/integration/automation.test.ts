@@ -11,13 +11,13 @@ import { loginAdmin, loginSeller } from "../../lib/server/auth/login";
 import { AUTOMATION_CONSENT, AUTOMATION_PRICE, REINSTALL_PRICE } from "../../lib/server/automation/config";
 import { cafe24Playbook } from "../../lib/server/automation/playbooks/cafe24";
 import { validatePlaybook } from "../../lib/server/automation/playbook";
-import { PRACTICE_STREAK_REQUIRED, playbookReadiness, runPractice } from "../../lib/server/automation/practice";
+import { PRACTICE_STREAK_REQUIRED, PracticeEnvironmentBusy, playbookReadiness, runPractice } from "../../lib/server/automation/practice";
 import { FakeBrowserExecutor, FakeObsBridge, FakePlanner, FakePracticeEnvironment, FakeSecretVault } from "../../lib/server/automation/fakes";
 import { markConnectionRevoked } from "../../lib/server/automation/connection";
 import { cancelJob, getJob, requestRefund, resumeJob } from "../../lib/server/automation/jobs";
 import { purchaseAutomation, reconcileAutomationPayments, reconnectAutomation } from "../../lib/server/automation/purchase";
 import { EngineAborted, actionKeyOf, runSteps } from "../../lib/server/automation/engine";
-import { FencingError, RunTimeExceeded, advanceStep, claimNext, extendLease, finishJob, lockJob, markBrowserStateHeld, parkForCustomer, reapExpired, toVerifying, touch } from "../../lib/server/automation/queue";
+import { FencingError, RunTimeExceeded, advanceStep, claimNext, extendLease, finishJob, lockJob, markBrowserStateHeld, markChanged, parkForCustomer, reapExpired, toVerifying, touch, unmarkChanged } from "../../lib/server/automation/queue";
 import { executeJob, purgeEndedBrowserState, runOnce, runWorkerLoop, startHeartbeat } from "../../lib/server/automation/worker";
 import { FakeBillingProvider } from "../../lib/server/billing/provider";
 import { billingProvider } from "../../lib/server/billing/registry";
@@ -3346,5 +3346,73 @@ describe("Codex 39차 반영(716073d)", () => {
       expect(rt.browser.performed.length + rt.obs.performed.length, broken).toBe(before);
       expect((await playbookReadiness(db, cafe24Playbook)).verified, broken).toBe(false);
     }
+  });
+});
+
+describe("Codex 40차 반영(c248d64)", () => {
+  it("연습 환경은 한 번에 한 연습만 쓴다: 동시 5회 호출이면 하나만 실행되고 나머지는 실행·기록 없이 거절된다", async () => {
+    await db.automationPracticeRun.deleteMany();
+    const rt = runtime();
+    // 먼저 잡은 연습이 기준 상태로 되돌리는 동안 나머지 호출이 겹치게 한다(나머지가 모두 끝난 뒤, 또는 2초 뒤 풀어 줌)
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    setTimeout(() => release(), 2000);
+    const reset = rt.practice.reset.bind(rt.practice);
+    rt.practice.reset = async () => (await gate, reset());
+    const calls = Array.from({ length: 5 }, () => runPractice(db, rt, cafe24Playbook, { shopHost: "myshop.cafe24.com" }));
+    let refused = 0;
+    for (const c of calls) c.catch(() => ++refused === 4 && release());
+    const results = await Promise.allSettled(calls);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const rejected = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+    expect(rejected).toHaveLength(4);
+    for (const r of rejected) expect(r.reason).toBeInstanceOf(PracticeEnvironmentBusy);
+    expect(rt.practice.resets).toBe(1);
+    expect(await db.automationPracticeRun.count()).toBe(1);
+  });
+
+  it("기한이 지났거나 정기 정리가 가져간 회차의 늦은 성공은 성공으로 세지 않는다(practice_expired)", async () => {
+    for (const late of ["expired", "claimed"] as const) {
+      await db.automationPracticeRun.deleteMany();
+      const rt = runtime();
+      for (let i = 0; i < PRACTICE_STREAK_REQUIRED - 1; i++) await runPractice(db, rt, cafe24Playbook, { shopHost: "myshop.cafe24.com" });
+      // 기준 상태 확인 직후(실행 중) 회차가 기한을 넘기거나 정기 정리가 그 회차를 가져간다
+      const isBaseline = rt.practice.isBaseline.bind(rt.practice);
+      rt.practice.isBaseline = async () => {
+        const ok = await isBaseline();
+        const where = { reason: "practice_incomplete" };
+        if (late === "expired") await db.automationPracticeRun.updateMany({ where, data: { startedAt: new Date(Date.now() - 7 * 3600_000) } });
+        else await db.automationPracticeRun.updateMany({ where, data: { cleanupPendingAt: new Date(Date.now() + 600_000), cleanupAttempts: { increment: 1 } } });
+        return ok;
+      };
+      const run = await runPractice(db, rt, cafe24Playbook, { shopHost: "myshop.cafe24.com" });
+      expect(run, late).toMatchObject({ outcome: "FAILED", reason: "practice_expired" });
+      expect((await playbookReadiness(db, cafe24Playbook)).verified, late).toBe(false);
+    }
+  });
+
+  it("변경 기록 직후 실행기를 부르기 전에 자리를 잃으면 이번 기록을 되돌린다: 바꾼 것이 없어 취소는 정리 필요가 아니라 취소로 끝난다", async () => {
+    const a = await bought();
+    const got = await claimNext(db, "w-40");
+    if (!got) throw new Error("no claim");
+    const rt = runtime();
+    const ctrl = new AbortController();
+    const hooks = {
+      touch: async () => {},
+      enterVerify: async () => {},
+      stepDone: async () => {},
+      // 기록이 커밋된 직후 자리를 잃는다(heartbeat 실패·취소와 같음)
+      markChanged: async (k: string) => {
+        const m = await markChanged(db, got.claim, k);
+        ctrl.abort();
+        return m;
+      },
+      unmarkChanged: (k: string, m: Awaited<ReturnType<typeof markChanged>>) => unmarkChanged(db, got.claim, k, m),
+    };
+    const opts = { verifying: false, costLimit: 3000, maxActionsPerStep: 12, playbook: cafe24Playbook, shopHost: "myshop.cafe24.com", startIndex: 0, signal: ctrl.signal, stats: { costUsed: 0, plannerCalls: 0, playbookActions: 0, deviatedSteps: [] } };
+    await expect(runSteps(rt, { sellerId: a.seller.id, jobId: a.jobId }, opts, hooks)).rejects.toBeInstanceOf(EngineAborted);
+    expect(rt.browser.performed.filter((p) => p.type === "click")).toHaveLength(0);
+    expect(await job(a.jobId)).toMatchObject({ changedAt: null, mutatedSteps: [] });
+    expect(await cancelJob(db, a.ctx, a.jobId)).toMatchObject({ ok: true, job: { status: "CANCELED" } });
   });
 });

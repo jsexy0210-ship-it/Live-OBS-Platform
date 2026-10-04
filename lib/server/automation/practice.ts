@@ -23,11 +23,20 @@ const CLEANUP_CLAIM_MS = 10 * 60_000;
 const PRACTICE_INCOMPLETE = "practice_incomplete";
 // 진행 중에 화면 이탈을 본 연습(결과가 나오기 전이라도 진행 중 기록에서 빠져 연속 성공을 끊는다)
 const PRACTICE_DEVIATED = "practice_deviated";
+// 결과가 아직 기록되지 않은(진행 중) 연습 기록의 사유
+const IN_PROGRESS = [PRACTICE_INCOMPLETE, PRACTICE_DEVIATED];
 
 // 연습 실행 범위의 보관 자료(행동 키 기록·OBS 연결 정보)를 두 실행기에 지우라고 요청한다. 둘 다 성공해야 정리 끝이다.
 async function discardScope(rt: Pick<AutomationRuntime, "browser" | "obs">, scope: JobScope): Promise<boolean> {
   const results = await Promise.allSettled([rt.browser.discard(scope), rt.obs.discard(scope)]);
   return results.every((r) => r.status === "fulfilled");
+}
+
+// 연습 환경(시험용 쇼핑몰·PC)에서 다른 연습이 실행 중이다. 이 호출은 실행하지 않았다(기록도 남기지 않음).
+export class PracticeEnvironmentBusy extends Error {
+  constructor() {
+    super("practice_env_busy");
+  }
 }
 
 export async function runPractice(
@@ -44,8 +53,13 @@ export async function runPractice(
   const scope = { sellerId: PRACTICE_SELLER_ID, jobId: randomUUID() };
   // 실행 전에 기록부터 남긴다(정리 대상 범위 포함). 도중에 죽으면 실패로 남고, 정리는 실행 시간 상한 뒤 정기 정리가 한다.
   // 시각은 DB 시계로만 남긴다(준비 상태 판정이 DB에 저장된 다른 시각과 비교한다). 실행 시간 측정(durationMs)만 프로세스 시계
+  // 연습 환경은 한 번에 한 연습만 쓴다: 환경 단위 잠금 아래 진행 중(끝나지 않았고 실행 시간 상한 안) 연습이 있으면 시작하지 않는다.
+  // 이 회차 기록이 곧 환경 점유(lease)다. 상한이 지나면 점유가 풀리고, 그 뒤 늦게 끝난 결과는 성공으로 세지 않는다(아래 최종 기록).
   const run = await db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('automation_practice_env'))`;
     const startedAt = await dbNow(tx);
+    const busy = await tx.automationPracticeRun.count({ where: { reason: { in: IN_PROGRESS }, startedAt: { gt: new Date(startedAt.getTime() - AUTOMATION_LIMITS.maxRunMs) } } });
+    if (busy > 0) throw new PracticeEnvironmentBusy();
     return tx.automationPracticeRun.create({
       data: {
         playbookId: playbook.id,
@@ -92,7 +106,8 @@ export async function runPractice(
             if (!s.deviatedNow) return;
             await db.$transaction(async (tx) => {
               await lockPlaybook(tx, playbook.id, "exclusive");
-              await tx.automationPracticeRun.update({ where: { id: run.id }, data: { reason: PRACTICE_DEVIATED, deviatedSteps: s.deviatedSteps } });
+              // 아직 진행 중인 이 회차일 때만(기한이 지나 이미 마감됐으면 되살리지 않는다)
+              await tx.automationPracticeRun.updateMany({ where: { id: run.id, reason: { in: IN_PROGRESS } }, data: { reason: PRACTICE_DEVIATED, deviatedSteps: s.deviatedSteps } });
             });
           },
           enterVerify: async () => {},
@@ -107,25 +122,35 @@ export async function runPractice(
   // 결과(실패·이탈 포함)부터 작업서 배타 잠금 아래 기록한다: 구매·작업 확정은 공유 잠금으로 준비 상태를 다시 읽으므로,
   // 보관 자료 정리(외부 호출)를 기다리는 동안 이전 연속 성공을 근거로 결제·작업이 확정되지 않는다.
   // 기록과 함께 정리 대기 시각을 점유 시간만큼 미뤄 둬 정기 정리가 이 실행의 정리와 겹치지 않게 한다.
+  // 결과는 이 회차가 아직 환경을 점유할 때만 그대로 기록한다: 실행 시간 상한 안이고, 끝나지 않았고, 정기 정리가 가져가지 않았을 때(조건부 갱신).
+  // 아니면 결과를 성공으로 세지 않고 실패(practice_expired)로 남기며, 보관 자료 정리는 정기 정리에 맡긴다.
   const recorded = await db.$transaction(async (tx) => {
     await lockPlaybook(tx, playbook.id, "exclusive");
     const now = await dbNow(tx);
-    return tx.automationPracticeRun.update({
-      where: { id: run.id },
+    const measured = {
+      durationMs: Math.round(performance.now() - t0),
+      plannerCalls: stats.plannerCalls,
+      playbookActions: stats.playbookActions,
+      costWon: stats.costUsed,
+      deviatedSteps: stats.deviatedSteps,
+    };
+    const own = await tx.automationPracticeRun.updateMany({
+      // DB에 저장된 시작 시각 기준 실행 시간 상한 안일 때만
+      where: { id: run.id, reason: { in: IN_PROGRESS }, startedAt: { gt: new Date(now.getTime() - AUTOMATION_LIMITS.maxRunMs) }, cleanupPendingAt: run.cleanupPendingAt, cleanupAttempts: run.cleanupAttempts },
       data: {
         cleanupPendingAt: new Date(now.getTime() + CLEANUP_CLAIM_MS),
         finishedAt: now,
         outcome,
         failedStep: outcome === "SUCCEEDED" ? null : (STEPS[stepIndex]?.key ?? null),
         reason: result.kind === "succeeded" ? null : result.kind === "needs_customer" ? result.action : result.reason.slice(0, 200),
-        durationMs: Math.round(performance.now() - t0),
-        plannerCalls: stats.plannerCalls,
-        playbookActions: stats.playbookActions,
-        costWon: stats.costUsed,
-        deviatedSteps: stats.deviatedSteps,
+        ...measured,
       },
     });
+    if (own.count === 1) return tx.automationPracticeRun.findUniqueOrThrow({ where: { id: run.id } });
+    await tx.automationPracticeRun.updateMany({ where: { id: run.id, reason: { in: IN_PROGRESS } }, data: { finishedAt: now, outcome: "FAILED", reason: "practice_expired", ...measured } });
+    return null;
   });
+  if (!recorded) return db.automationPracticeRun.findUniqueOrThrow({ where: { id: run.id } });
   // 보관 자료는 결과를 기록한 뒤 지운다. 실패하면 정기 정리(cleanupPracticeArtifacts)가 백오프로 다시 한다.
   // 반영은 기록 때 점유한 상태 그대로일 때만(정기 정리가 먼저 가져갔으면 덮어쓰지 않음)
   const cleaned = await discardScope(rt, scope);
