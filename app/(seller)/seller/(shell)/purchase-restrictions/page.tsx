@@ -20,6 +20,8 @@ const REASON: Record<string, string> = {
 
 const DAY = (iso: string) => new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso));
 const MAX_REASON = 200;
+// 서버(lib/server/orders/overdue.ts)가 목록을 최근 200건에서 자른다
+const LIST_LIMIT = 200;
 
 // 한 구매자에게 사유가 다른 제한이 겹칠 수 있다(풀기는 구매자 단위로 모두 푼다): 구매자별로 묶어 가장 늦게 끝나는 날을 보인다
 function byBuyer(rows: Restriction[]) {
@@ -39,7 +41,7 @@ function byBuyer(rows: Restriction[]) {
 type Group = ReturnType<typeof byBuyer>[number];
 
 export default function PurchaseRestrictionsPage() {
-  const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; rows: Restriction[] }>({ kind: "loading" });
+  const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number; error?: string } | { kind: "ok"; rows: Restriction[] }>({ kind: "loading" });
   const [lifting, setLifting] = useState<Group | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
@@ -52,7 +54,7 @@ export default function PurchaseRestrictionsPage() {
       const r = await api<{ restrictions: Restriction[] }>("/api/seller/purchase-restrictions");
       if (!r.ok) {
         if (!reads.failMatters(t)) return false;
-        if (!reads.hasApplied()) setState({ kind: "error", status: r.status });
+        if (!reads.hasApplied()) setState({ kind: "error", status: r.status, error: r.error });
         return false;
       }
       if (reads.accept(t) === "apply") {
@@ -84,7 +86,8 @@ export default function PurchaseRestrictionsPage() {
   // 풀려던 제한이 그사이 없어졌다(404): 목록을 다시 읽어 맞춘다. 다시 읽기가 실패하면 목록이 최신이 아니라고 알린다.
   const goneRefresh = async () => {
     setLifting(null);
-    if (!(await load(true))) {
+    if (await load(true)) setToast("이미 풀렸거나 기간이 끝난 제한입니다");
+    else {
       setStale(true);
       setToast("이미 풀렸거나 기간이 끝난 제한입니다 · 목록을 새로 불러오지 못했습니다");
     }
@@ -118,10 +121,25 @@ export default function PurchaseRestrictionsPage() {
           </div>
         )}
 
+        {state.kind === "ok" && state.rows.length >= LIST_LIMIT && (
+          <div className="msg msg-cau" role="status" style={{ marginBottom: 16 }}>
+            <span>최근 {LIST_LIMIT}건까지만 표시합니다. 일부 구매자의 사유·기간이 빠져 보일 수 있습니다.</span>
+          </div>
+        )}
+
         <section className="card col" aria-label="구매 제한 목록">
           {state.kind === "loading" && <LoadingRows rows={4} />}
           {state.kind === "error" &&
-            (state.status === 403 ? <NoPermission need="회원·적립금" /> : <ErrorState title="구매 제한 목록을 불러오지 못했습니다" onRetry={() => void load()} />)}
+            (state.status === 403 && state.error === "plan_feature_required" ? (
+              <div className="st" style={{ boxShadow: "none" }}>
+                <span className="t">지금 요금제에서 사용할 수 없는 기능입니다</span>
+                <span className="s">쇼핑몰 통합 요금제에서 사용할 수 있습니다</span>
+              </div>
+            ) : state.status === 403 ? (
+              <NoPermission need="회원·적립금" />
+            ) : (
+              <ErrorState title="구매 제한 목록을 불러오지 못했습니다" onRetry={() => void load()} />
+            ))}
           {state.kind === "ok" &&
             (groups.length === 0 ? (
               <div className="st">
@@ -185,7 +203,13 @@ function LiftModal({ group, onClose, onDone, onGone }: { group: Group; onClose: 
     if (r.ok) return onDone();
     // 404: 그사이 기간이 끝났거나 다른 사람이 이미 풀었다. 목록을 다시 읽어 맞춘다.
     if (r.status === 404) return onGone();
-    setError(r.error === "invalid_reason" ? "사유에 쓸 수 없는 글자가 있습니다" : failMessage(r, "admin"));
+    setError(
+      r.error === "invalid_reason"
+        ? "사유에 쓸 수 없는 글자가 있습니다"
+        : r.status === 403 && r.error === "plan_feature_required"
+          ? "지금 요금제에서 사용할 수 없는 기능입니다"
+          : failMessage(r, "admin"),
+    );
   };
 
   return (

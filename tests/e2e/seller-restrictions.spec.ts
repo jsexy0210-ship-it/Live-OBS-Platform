@@ -95,6 +95,9 @@ test("이미 풀린 제한을 풀려고 하면 목록을 다시 맞춘다", asyn
   expect((await lift).status()).toBe(404);
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByText("주문이 막힌 구매자가 없습니다")).toBeVisible();
+  // 다시 읽기에 성공해도 성공으로 보이지 않고 「이미 풀렸다」고 알린다
+  await expect(page.getByText("이미 풀렸거나 기간이 끝난 제한입니다")).toBeVisible();
+  await expect(page.getByText("목록이 최신이 아닐 수 있습니다.")).toHaveCount(0);
 });
 
 test("이미 풀린 제한이고 다시 읽기도 실패하면 목록이 최신이 아니라고 알린다", async ({ page }) => {
@@ -114,6 +117,51 @@ test("이미 풀린 제한이고 다시 읽기도 실패하면 목록이 최신�
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByText("목록이 최신이 아닐 수 있습니다.")).toBeVisible();
   await expect(page.getByText("이미 풀렸거나 기간이 끝난 제한입니다", { exact: false })).toBeVisible();
+});
+
+test("이모지 150자 사유는 150자로 세어 풀 수 있다(UTF-16 길이가 아니라 글자 수 기준)", async ({ page }) => {
+  await restrictDemoBuyer();
+  await page.goto("/seller/login?next=%2Fseller%2Fpurchase-restrictions");
+  await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
+  const row = page.getByTestId("restriction-row").filter({ hasText: NICK });
+  await row.getByRole("button", { name: "제한 풀기" }).click();
+  const reason = "😀".repeat(150);
+  await page.getByRole("dialog").getByLabel("사유 (선택)").fill(reason);
+  await expect(page.getByRole("dialog").getByText("150/200")).toBeVisible();
+  const lift = page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/lift"));
+  await page.getByRole("dialog").getByRole("button", { name: "제한 풀기" }).click();
+  const res = await lift;
+  expect(res.status()).toBe(200);
+  expect(res.request().postDataJSON()).toEqual({ reason });
+});
+
+test("요금제에 없는 기능(403 plan_feature_required)이면 권한 안내가 아니라 요금제 안내를 보인다", async ({ page }) => {
+  await page.route("**/api/seller/purchase-restrictions", (route) =>
+    route.request().method() === "GET" ? route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ error: "plan_feature_required" }) }) : route.continue(),
+  );
+  await page.goto("/seller/login?next=%2Fseller%2Fpurchase-restrictions");
+  await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
+  await expect(page.getByText("지금 요금제에서 사용할 수 없는 기능입니다", { exact: false }).first()).toBeVisible();
+  await expect(page.getByText("필요한 권한", { exact: false })).toHaveCount(0);
+  await expect(page.getByText("이 기능은 권한이 필요합니다")).toHaveCount(0);
+});
+
+test("목록이 200건에 닿으면 최근 200건까지만 표시한다고 안내한다", async ({ page }) => {
+  const rows = Array.from({ length: 200 }, (_, i) => ({
+    id: `r${i}`,
+    buyerMemberId: `b${i}`,
+    reason: "UNPAID_AUTO_CANCEL",
+    startsAt: new Date(Date.now() - 86_400_000).toISOString(),
+    endsAt: new Date(Date.now() + 86_400_000).toISOString(),
+    buyerMember: { broadcastNickname: `구매자${i}` },
+  }));
+  await page.route("**/api/seller/purchase-restrictions", (route) =>
+    route.request().method() === "GET" ? route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ restrictions: rows }) }) : route.continue(),
+  );
+  await page.goto("/seller/login?next=%2Fseller%2Fpurchase-restrictions");
+  await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
+  await expect(page.getByText("최근 200건까지만 표시합니다", { exact: false })).toBeVisible();
+  await expect(page.getByTestId("restriction-row")).toHaveCount(200);
 });
 
 test("회원·적립금 권한이 없는 직원은 메뉴가 안 보이고, 주소로 들어와도 권한 안내를 본다", async ({ page }) => {
