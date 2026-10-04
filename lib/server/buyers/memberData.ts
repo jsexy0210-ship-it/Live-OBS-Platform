@@ -8,6 +8,9 @@ export type MemberDataPolicy = "delete" | "anonymize" | "retain_legal";
 export const MEMBER_DATA_POLICY: Record<string, { policy: MemberDataPolicy; note: string }> = {
   BuyerMember: { policy: "anonymize", note: "이름·휴대폰·닉네임·아이디·CI 해시·생년월일·비밀번호·마케팅 동의(시각·문서 버전·철회 시각)·가입 동의 기록(signupConsent)·재가입 제한 보관 동의 스냅숏 비식별, WITHDRAWN·deletedAt" },
   BuyerAddress: { policy: "delete", note: "저장 배송지" },
+  ProductReview: { policy: "anonymize", note: "상품 리뷰는 남기고 작성자 표시를 「탈퇴 회원」으로(product-reviews anonymizeMemberReviews). 리뷰에 붙은 사진은 리뷰와 함께 남는다" },
+  ProductReviewImage: { policy: "delete", note: "리뷰에 붙지 않은 사진은 지운다. 리뷰에 붙은 사진은 리뷰와 함께 남는다(리뷰는 비식별)" },
+  ProductReviewReport: { policy: "delete", note: "리뷰 신고 기록" },
   BuyerCoupon: { policy: "delete", note: "받은 쿠폰. 쓰지 않은 쿠폰은 지우고, 주문에 쓴(쓴 뒤 전체 취소로 되돌린) 쿠폰은 주문 할인 기록(CouponRedemption)과 이어져 주문과 함께 남긴다(shop-coupons)" },
   BuyerSession: { policy: "delete", note: "로그인 세션" },
   BuyerPurchaseRestriction: { policy: "delete", note: "구매 제한(개인정보 없음, 탈퇴하면 쓸 일 없음)" },
@@ -52,6 +55,12 @@ export const MEMBER_AUDIT_RETENTION: Record<string, MemberAuditRetention> = {
   "buyer_coupon.download": "non_transaction",
   "buyer_coupon.code": "non_transaction",
   "buyer_coupon.code_failed": "non_transaction",
+  // 상품 리뷰 쓰기·고치기·지우기·신고·사진 올리기(거래 무관)
+  "buyer_review.create": "non_transaction",
+  "buyer_review.update": "non_transaction",
+  "buyer_review.delete": "non_transaction",
+  "buyer_review.report": "non_transaction",
+  "buyer_review.image_upload": "non_transaction",
   // 마케팅 수신 동의 철회·다시 동의(회원 정보 수정과 같은 분류)
   "buyer.marketing_consent.withdraw": "non_transaction",
   "buyer.marketing_consent.agree": "non_transaction",

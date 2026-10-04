@@ -28,6 +28,8 @@ const NAV: Nav[] = [
   { label: "회원", perm: "MEMBER_POINTS" },
   { label: "구매 제한", perm: "MEMBER_POINTS" },
   { label: "구매자 문의", perm: "INQUIRY_REPLY" },
+  // 리뷰: 목록·집계 조회는 파트너스 계정 누구나, 답글·숨김·설정은 구매자 문의(INQUIRY_REPLY) 권한(서버에서 막음)
+  { label: "리뷰", href: "/seller/reviews" },
   { h: "방송 · 오버레이" },
   { label: "오버레이 편집기", perm: "OVERLAY_EDIT" },
   { label: "HIT 카드 이력", perm: "BROADCAST_RUN" },
