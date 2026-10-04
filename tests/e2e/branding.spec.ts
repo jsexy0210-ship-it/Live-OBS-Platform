@@ -58,10 +58,20 @@ test("최고관리자가 파트너스 관리자 파비콘·공유 카드를 바�
   // SVG(스크립트 위험)는 안내만 보이고 바뀌지 않는다
   await page.getByLabel("파비콘 파일").setInputFiles({ name: "icon.png", mimeType: "image/png", buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>') });
   await page.getByRole("button", { name: "파비콘 변경" }).click();
-  await expect(page.getByText("파비콘은 PNG·ICO 파일만 업로드할 수 있습니다.")).toBeVisible();
+  await expect(page.getByText("파비콘은 PNG 파일만 업로드할 수 있습니다.")).toBeVisible();
+  // 안내가 떠 있는 동안에는 다시 올릴 수 없다
+  await expect(page.getByRole("button", { name: "파비콘 변경" })).toBeDisabled();
   await page.getByRole("button", { name: "취소" }).click();
 
   const icon = await sharp({ create: { width: 64, height: 64, channels: 4, background: "#ff3b30" } }).png().toBuffer();
+  // 맞는 파일을 고른 뒤 너무 큰 파일로 바꾸면 이전 선택도 지워진다(Codex 지적: 안내와 다른 파일이 올라가지 않게)
+  await page.getByLabel("파비콘 파일").setInputFiles({ name: "first.png", mimeType: "image/png", buffer: icon });
+  await expect(page.getByRole("button", { name: "파비콘 변경" })).toBeEnabled();
+  await page.getByLabel("파비콘 파일").setInputFiles({ name: "big.png", mimeType: "image/png", buffer: Buffer.concat([icon, Buffer.alloc(300 * 1024)]) });
+  await expect(page.getByText("파비콘이 256KB를 넘습니다. 256KB 이하 PNG로 줄여 주십시오.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "파비콘 변경" })).toHaveCount(0);
+  await expect(page.getByText("first.png")).toHaveCount(0);
+
   await page.getByLabel("파비콘 파일").setInputFiles({ name: "partners.png", mimeType: "image/png", buffer: icon });
   await page.getByRole("button", { name: "파비콘 변경" }).click();
   await expect(page.getByText("파비콘을 변경했습니다.")).toBeVisible();

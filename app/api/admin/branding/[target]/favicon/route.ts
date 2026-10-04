@@ -8,7 +8,7 @@ import { mutation, requestMeta, sessionToken } from "../../../../../../lib/serve
 
 type Ctx = { params: Promise<{ target: string }> };
 
-// 파비콘(PNG·ICO, 256KB까지) 올리기. 본문은 파일 바이트 그대로. 형식은 파일 앞부분 바이트로 확인한다. 최고관리자만.
+// 파비콘(PNG, 256KB까지) 올리기. 본문은 파일 바이트 그대로. 형식은 파일 앞부분 바이트로 확인한다. 최고관리자만.
 export const PUT = mutation(async (req: Request, ctx: Ctx) => {
   const admin = await requireAdmin(prisma, sessionToken(req, "admin"), "system.manage");
   const { target } = await ctx.params;

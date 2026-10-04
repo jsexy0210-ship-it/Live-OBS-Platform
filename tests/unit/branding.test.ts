@@ -7,7 +7,7 @@ import { requestOrigin } from "../../lib/server/branding/siteUrl";
 const png = (w: number, h: number) => sharp({ create: { width: w, height: h, channels: 4, background: "#ff6600" } }).png().toBuffer();
 const jpg = (w: number, h: number) => sharp({ create: { width: w, height: h, channels: 3, background: "#123456" } }).jpeg().toBuffer();
 
-// PNG 한 장을 담은 ICO(Vista 이후 형식)
+// PNG 한 장을 담은 ICO(Vista 이후 형식). ICO는 받지 않는다는 확인에만 쓴다
 function icoOf(inner: Buffer, side = 32): Buffer {
   const head = Buffer.alloc(22);
   head.writeUInt16LE(0, 0);
@@ -52,11 +52,10 @@ function rawPng(w: number, h: number, o: { color?: number; depth?: number; idat?
 const SVG = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
 
 describe("브랜딩 이미지 형식 확인(파일 앞부분 바이트)", () => {
-  it("PNG·ICO 파비콘은 받고 크기를 읽는다", async () => {
+  it("PNG 파비콘은 받고 크기를 읽으며, ICO는 안에 온전한 PNG가 들어 있어도 받지 않는다(Codex 지적 5차)", async () => {
     expect(checkFavicon(await png(512, 512))).toEqual({ ok: true, info: { type: "image/png", width: 512, height: 512 } });
-    expect(checkFavicon(icoOf(await png(32, 32)))).toEqual({ ok: true, info: { type: "image/x-icon", width: 32, height: 32 } });
-    // 0은 256px
-    expect(checkFavicon(icoOf(await png(256, 256), 256))).toMatchObject({ ok: true, info: { width: 256, height: 256 } });
+    expect(checkFavicon(icoOf(await png(32, 32)))).toEqual({ ok: false, reason: "unsupported_image" });
+    expect(checkFavicon(icoOf(await png(256, 256), 256))).toEqual({ ok: false, reason: "unsupported_image" });
     // 정사각형이 아니어도 받는다(화면에서 권장 안내)
     expect(checkFavicon(await png(64, 32))).toMatchObject({ ok: true });
   });
@@ -67,13 +66,10 @@ describe("브랜딩 이미지 형식 확인(파일 앞부분 바이트)", () => 
     expect(checkFavicon(Buffer.from("<!doctype html><script>alert(1)</script>"))).toEqual({ ok: false, reason: "unsupported_image" });
     // PNG 시그니처 뒤에 SVG를 붙인 위장 파일(IHDR 없음)
     expect(checkFavicon(Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), SVG]))).toEqual({ ok: false, reason: "unsupported_image" });
-    // ICO 머리만 있고 이미지 범위가 파일 밖
-    const broken = icoOf(await png(32, 32)).subarray(0, 40);
-    expect(checkFavicon(broken)).toEqual({ ok: false, reason: "unsupported_image" });
     expect(checkFavicon(Buffer.alloc(0))).toEqual({ ok: false, reason: "empty_file" });
   });
 
-  it("머리만 맞춘 잘린 파일·CRC가 틀린 PNG·깨진 BMP 아이콘은 거부한다(Codex 지적)", async () => {
+  it("머리만 맞춘 잘린 파일·CRC가 틀린 PNG는 거부한다(Codex 지적)", async () => {
     const full = await png(1200, 630);
     // 시그니처 + 1200×630 IHDR만 있는 33바이트
     expect(checkOgImage(full.subarray(0, 33))).toEqual({ ok: false, reason: "unsupported_image" });
@@ -83,9 +79,6 @@ describe("브랜딩 이미지 형식 확인(파일 앞부분 바이트)", () => 
     expect(checkOgImage(badCrc)).toEqual({ ok: false, reason: "unsupported_image" });
     // IEND 뒤에 다른 데이터를 붙인 파일
     expect(checkOgImage(Buffer.concat([full, SVG]))).toEqual({ ok: false, reason: "unsupported_image" });
-    // ICO 안의 PNG가 잘림
-    const inner = await png(32, 32);
-    expect(checkFavicon(icoOf(inner.subarray(0, 40)))).toEqual({ ok: false, reason: "unsupported_image" });
   });
 
   it("PNG 내용 검사: 빈 IDAT·zlib이 아닌 데이터·길이가 다른 데이터·잘못된 필터·색 형식 규칙을 거부한다(Codex 지적 2차)", async () => {
@@ -112,8 +105,6 @@ describe("브랜딩 이미지 형식 확인(파일 앞부분 바이트)", () => 
     expect(checkFavicon(indexed())).toEqual({ ok: false, reason: "unsupported_image" });
     expect(checkFavicon(indexed(Buffer.alloc(3 * 4)))).toMatchObject({ ok: true });
     expect(checkFavicon(indexed(Buffer.alloc(3 * 257)))).toEqual({ ok: false, reason: "unsupported_image" });
-    // ICO 안의 PNG도 같은 검사를 거친다
-    expect(checkFavicon(icoOf(rawPng(32, 32, { idat: [Buffer.alloc(0)] })))).toEqual({ ok: false, reason: "unsupported_image" });
   });
 
   it("색 번호 PNG: 필터를 되돌린 실제 색 번호가 PLTE 항목 수 밖이면 거부하고, 안이면 받는다(Codex 지적 4차)", async () => {
@@ -189,18 +180,6 @@ describe("브랜딩 이미지 형식 확인(파일 앞부분 바이트)", () => 
     const tiny = Buffer.from("ffd8ffc0000b080276 04b001011100ffda0008010100003f0000ffd9".replace(/ /g, ""), "hex");
     expect(checkOgImage(tiny)).toEqual({ ok: false, reason: "unsupported_image" });
     expect(detectImage(tiny)).toBeNull();
-  });
-
-  it("BMP를 담은 ICO는 크기가 맞으면 받고, 데이터가 모자라면 거부한다", () => {
-    const side = 16;
-    const dib = Buffer.alloc(40 + side * side * 4 + 4 * side);
-    dib.writeUInt32LE(40, 0);
-    dib.writeInt32LE(side, 4);
-    dib.writeInt32LE(side * 2, 8);
-    dib.writeUInt16LE(1, 12);
-    dib.writeUInt16LE(32, 14);
-    expect(checkFavicon(icoOf(dib, side))).toEqual({ ok: true, info: { type: "image/x-icon", width: 16, height: 16 } });
-    expect(checkFavicon(icoOf(dib.subarray(0, 100), side))).toEqual({ ok: false, reason: "unsupported_image" });
   });
 
   it("파비콘 256KB 초과, 한 변 16px 미만·1024px 초과 PNG는 거부한다", async () => {

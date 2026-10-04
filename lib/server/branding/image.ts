@@ -1,7 +1,7 @@
 import { crc32, inflateSync } from "node:zlib";
 
 // 올린 이미지의 형식 확인. 파일 이름·Content-Type은 믿지 않고 파일 앞부분 바이트(시그니처)와 헤더 구조로 판단한다.
-// 받는 형식은 PNG·ICO뿐이다. SVG는 스크립트를 품을 수 있어 받지 않는다(텍스트 파일은 어떤 시그니처에도 맞지 않아 거부된다).
+// 받는 형식은 PNG뿐이다(파비콘·공유 카드 모두, MASTER 결정 2026-10-04: 다른 형식은 그림 데이터까지 확인하기 어려움). SVG는 스크립트를 품을 수 있어 받지 않는다(텍스트 파일은 어떤 시그니처에도 맞지 않아 거부된다).
 
 export const FAVICON_MAX_BYTES = 256 * 1024;
 export const OG_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
@@ -11,7 +11,7 @@ export const OG_IMAGE_HEIGHT = 630;
 const FAVICON_MIN_SIDE = 16;
 const FAVICON_MAX_SIDE = 1024;
 
-export type ImageType = "image/png" | "image/x-icon";
+export type ImageType = "image/png";
 export type ImageInfo = { type: ImageType; width: number; height: number };
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -35,8 +35,9 @@ const ADAM7 = [
   [1, 0, 2, 2],
   [0, 1, 1, 2],
 ] as const;
-// 풀린 그림 데이터 상한(파비콘 1024×1024·카드 1200×630의 가장 큰 형식보다 넉넉함)
-const PNG_MAX_RAW = 16 * 1024 * 1024;
+// 파일 하나에서 풀어 볼 그림 데이터 상한(= 필터 되돌리기 작업량 상한). 받는 가장 큰 경우인 파비콘 1024×1024 RGBA 16비트
+// (1024 × (1 + 1024 × 8) = 8,389,632바이트)를 겨우 넘는 값이다. IHDR로 계산한 길이가 이보다 크면 풀지 않고 거부한다.
+const PNG_MAX_RAW = 8_400_000;
 
 // 풀린 데이터의 단계(인터레이스가 없으면 1개) 목록: [줄 수, 줄 바이트 수(필터 바이트 제외), 줄의 화소 수]
 type PngPass = [rows: number, rowBytes: number, pixels: number];
@@ -50,7 +51,7 @@ function pngRows(width: number, height: number, bits: number, interlace: number)
   });
 }
 
-function png(b: Buffer, verify = true): ImageInfo | null {
+function png(b: Buffer): ImageInfo | null {
   if (b.length < 45 || !b.subarray(0, 8).equals(PNG_SIGNATURE)) return null;
   if (b.readUInt32BE(8) !== 13 || b.toString("latin1", 12, 16) !== "IHDR") return null;
   const width = b.readUInt32BE(16);
@@ -59,7 +60,7 @@ function png(b: Buffer, verify = true): ImageInfo | null {
   if (width === 0 || height === 0 || !PNG_DEPTHS[color]?.includes(depth) || compression !== 0 || filter !== 0 || interlace > 1) return null;
   const rows = pngRows(width, height, PNG_CHANNELS[color] * depth, interlace);
   const expected = rows.reduce((n, [h, w]) => n + h * (1 + w), 0);
-  if (expected === 0 || (verify && expected > PNG_MAX_RAW)) return null;
+  if (expected === 0 || expected > PNG_MAX_RAW) return null;
 
   const idat: Buffer[] = [];
   let idatClosed = false;
@@ -95,7 +96,7 @@ function png(b: Buffer, verify = true): ImageInfo | null {
     if (type === "IEND") {
       if (len !== 0 || end !== b.length || idat.length === 0 || (color === 3 && !plteEntries)) return null;
       const pixels = { bytesPerPixel: Math.ceil((PNG_CHANNELS[color] * depth) / 8), depth, paletteEntries: color === 3 ? plteEntries : 0 };
-      return !verify || pngPixelsOk(Buffer.concat(idat), rows, expected, pixels) ? { type: "image/png", width, height } : null;
+      return pngPixelsOk(Buffer.concat(idat), rows, expected, pixels) ? { type: "image/png", width, height } : null;
     }
     o = end;
   }
@@ -152,63 +153,36 @@ function pngPixelsOk(
   return true;
 }
 
-// ICO: 예약 0 + 형식 1(아이콘) + 이미지 수 1개 이상. 각 이미지 항목이 가리키는 범위가 파일 안에 있고,
-// 그 안의 데이터가 온전한 PNG이거나 BMP 정보 머리(40바이트, 크기·색 깊이가 맞음)여야 한다. 크기는 가장 큰 항목(0은 256)을 쓴다.
-function ico(b: Buffer): ImageInfo | null {
-  if (b.length < 22 || b.readUInt16LE(0) !== 0 || b.readUInt16LE(2) !== 1) return null;
-  const count = b.readUInt16LE(4);
-  if (count === 0 || 6 + count * 16 > b.length) return null;
-  let width = 0;
-  let height = 0;
-  for (let i = 0; i < count; i++) {
-    const o = 6 + i * 16;
-    const size = b.readUInt32LE(o + 8);
-    const offset = b.readUInt32LE(o + 12);
-    if (b[o + 3] !== 0 || size === 0 || offset < 6 + count * 16 || offset + size > b.length) return null;
-    const w = b[o] || 256;
-    const h = b[o + 1] || 256;
-    const data = b.subarray(offset, offset + size);
-    if (data.subarray(0, 8).equals(PNG_SIGNATURE)) {
-      if (!png(data)) return null;
-    } else if (!bmpIcon(data, w, h)) return null;
-    width = Math.max(width, w);
-    height = Math.max(height, h);
-  }
-  return { type: "image/x-icon", width, height };
-}
-
-// ICO 안의 BMP: BITMAPINFOHEADER(40바이트), 가로 = 항목 가로, 세로 = 항목 세로 × 2(색 + 투명 마스크), 면 1,
-// 색 깊이 1·4·8·24·32, 압축 없음. 색 데이터와 마스크가 크기 안에 다 들어 있어야 한다.
-function bmpIcon(d: Buffer, w: number, h: number): boolean {
-  if (d.length < 40 || d.readUInt32LE(0) !== 40) return false;
-  if (d.readInt32LE(4) !== w || d.readInt32LE(8) !== h * 2 || d.readUInt16LE(12) !== 1) return false;
-  const bpp = d.readUInt16LE(14);
-  if (![1, 4, 8, 24, 32].includes(bpp) || d.readUInt32LE(16) !== 0) return false;
-  const palette = bpp <= 8 ? (d.readUInt32LE(32) || 2 ** bpp) * 4 : 0;
-  const row = (bits: number) => Math.ceil((w * bits) / 32) * 4;
-  return d.length >= 40 + palette + row(bpp) * h + row(1) * h;
-}
-
 export function detectImage(b: Buffer): ImageInfo | null {
-  return png(b) ?? ico(b);
+  return png(b);
 }
 
-// 형식·크기만 먼저 읽는다(PNG 그림 데이터는 풀지 않음). 크기가 틀린 파일은 풀기 전에 「크기」로 안내하려고 쓴다.
-const sniff = (b: Buffer): ImageInfo | null => png(b, false) ?? ico(b);
+// 시그니처와 IHDR(첫 33바이트)만 읽어 크기를 본다. 조각을 따라가거나 풀지 않는다(크기가 틀린 파일은 풀기 전에 「크기」로 안내).
+function pngHeader(b: Buffer): ImageInfo | null {
+  if (b.length < 33 || !b.subarray(0, 8).equals(PNG_SIGNATURE)) return null;
+  if (b.readUInt32BE(8) !== 13 || b.toString("latin1", 12, 16) !== "IHDR") return null;
+  return { type: "image/png", width: b.readUInt32BE(16), height: b.readUInt32BE(20) };
+}
+
+// 머리로 크기를 먼저 본 뒤, 크기가 맞을 때만 한 번 끝까지 확인한다(풀기는 파일마다 한 번).
+function checkPng(b: Buffer, sizeOk: (i: ImageInfo) => boolean): ImageCheck {
+  const head = pngHeader(b);
+  if (!head) return { ok: false, reason: "unsupported_image" };
+  if (!sizeOk(head)) return { ok: false, reason: "wrong_image_size" };
+  const info = png(b);
+  return info ? { ok: true, info } : { ok: false, reason: "unsupported_image" };
+}
 
 export type ImageRejection = "file_too_large" | "unsupported_image" | "wrong_image_size";
 
 export type ImageCheck = { ok: true; info: ImageInfo } | { ok: false; reason: ImageRejection | "empty_file" };
 
-// 파비콘: PNG·ICO만, 256KB까지. PNG는 한 변 16~1024px(정사각형 권장은 화면에서 안내).
+// 파비콘: PNG만, 256KB까지, 한 변 16~1024px(정사각형 권장은 화면에서 안내). ICO는 여러 장을 담아 풀기 비용이 커져 받지 않는다.
 export function checkFavicon(b: Buffer): ImageCheck {
   if (b.length === 0) return { ok: false, reason: "empty_file" };
   if (b.length > FAVICON_MAX_BYTES) return { ok: false, reason: "file_too_large" };
-  const info = sniff(b);
-  if (!info || (info.type !== "image/png" && info.type !== "image/x-icon")) return { ok: false, reason: "unsupported_image" };
   const side = (n: number) => n >= FAVICON_MIN_SIDE && n <= FAVICON_MAX_SIDE;
-  if (info.type === "image/png" && !(side(info.width) && side(info.height))) return { ok: false, reason: "wrong_image_size" };
-  return detectImage(b) ? { ok: true, info } : { ok: false, reason: "unsupported_image" };
+  return checkPng(b, (i) => side(i.width) && side(i.height));
 }
 
 // 공유 카드 이미지: PNG만, 2MB까지, 1200×630 그대로. JPEG는 그림 데이터까지 확인하려면 디코더가 필요해(새 의존성) 받지 않는다
@@ -216,10 +190,7 @@ export function checkFavicon(b: Buffer): ImageCheck {
 export function checkOgImage(b: Buffer): ImageCheck {
   if (b.length === 0) return { ok: false, reason: "empty_file" };
   if (b.length > OG_IMAGE_MAX_BYTES) return { ok: false, reason: "file_too_large" };
-  const info = sniff(b);
-  if (!info || info.type !== "image/png") return { ok: false, reason: "unsupported_image" };
-  if (info.width !== OG_IMAGE_WIDTH || info.height !== OG_IMAGE_HEIGHT) return { ok: false, reason: "wrong_image_size" };
-  return detectImage(b) ? { ok: true, info } : { ok: false, reason: "unsupported_image" };
+  return checkPng(b, (i) => i.width === OG_IMAGE_WIDTH && i.height === OG_IMAGE_HEIGHT);
 }
 
 // 요청 본문을 max 바이트까지만 읽는다. 넘으면 null(끝까지 받지 않고 끊는다).

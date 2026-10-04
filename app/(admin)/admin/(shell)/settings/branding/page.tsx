@@ -6,7 +6,7 @@ import { AdminTopbar } from "../../../_components/AdminShell";
 import { adminApi, failMessage } from "../../../_components/api";
 
 // 사이트 설정 > 파비콘 · 공유 카드(대표님 요구 2026-10-04). 마스터 관리자·파트너스 관리자 화면을 따로 정한다.
-// 파비콘: PNG·ICO를 고르면 미리 보고 「바꾸기」로 올린다. 공유 카드: 제목·설명 + 이미지(제목으로 만들기 / 직접 올리기), 저장 전에 미리보기.
+// 파비콘: PNG를 고르면 미리 보고 「바꾸기」로 올린다. 공유 카드: 제목·설명 + 이미지(제목으로 만들기 / 직접 올리기), 저장 전에 미리보기.
 // 바꾸기는 최고관리자만(서버가 canEdit으로 알려 줌). 다른 역할은 지금 값만 본다.
 // API: GET /api/admin/branding, PUT /api/admin/branding/{target}, PUT·DELETE …/favicon, …/og-image, GET …/card-preview?title=
 
@@ -162,9 +162,11 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
   const canSave = canEdit && (textDirty || imageDirty) && !textInvalid && !needFile && !ogError && !saving;
 
   const pickFavicon = async (file: File | undefined) => {
+    // 새로 고른 파일이 거부되면 이전에 고른 파일도 지운다(안내와 다른 파일이 올라가지 않게)
     setFaviconError(null);
+    setFavicon(null);
     if (!file) return;
-    if (file.size > FAVICON_MAX) return setFaviconError("파비콘이 256KB를 넘습니다. 256KB 이하 PNG·ICO로 줄여 주십시오.");
+    if (file.size > FAVICON_MAX) return setFaviconError("파비콘이 256KB를 넘습니다. 256KB 이하 PNG로 줄여 주십시오.");
     const url = URL.createObjectURL(file);
     const size = await imageSize(url);
     const warn = size && size.w !== size.h ? "정사각형이 아니면 탭에서 찌그러져 보일 수 있습니다." : undefined;
@@ -256,7 +258,7 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
             <h2 className="t-hl2" id={`fav-${t}`}>
               파비콘
             </h2>
-            <span className="t-c1 c-alt">PNG·ICO 파일을 256KB까지 업로드할 수 있습니다. 512×512 등 정사각형 이미지를 권장합니다.</span>
+            <span className="t-c1 c-alt">PNG 파일만 올릴 수 있습니다. 256KB까지 업로드할 수 있으며 512×512 등 정사각형 이미지를 권장합니다.</span>
           </div>
           <div className="row" style={{ gap: 16, flexWrap: "wrap" }}>
             <div className="row" style={{ gap: 12 }}>
@@ -277,7 +279,7 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
                 <input
                   ref={faviconInput}
                   type="file"
-                  accept=".png,.ico,image/png,image/x-icon,image/vnd.microsoft.icon"
+                  accept=".png,image/png"
                   hidden
                   aria-label="파비콘 파일"
                   onChange={(e) => {
@@ -290,7 +292,7 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
                     <button className="btn btn-sm btn-ghost" type="button" disabled={faviconBusy} onClick={() => setFavicon(null)}>
                       취소
                     </button>
-                    <button className="btn btn-sm" type="button" disabled={faviconBusy} onClick={() => void uploadFavicon()}>
+                    <button className="btn btn-sm" type="button" disabled={faviconBusy || !!faviconError} onClick={() => void uploadFavicon()}>
                       {faviconBusy ? "변경 중" : "파비콘 변경"}
                     </button>
                   </>

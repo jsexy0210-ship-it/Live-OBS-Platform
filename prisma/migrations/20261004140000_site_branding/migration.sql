@@ -14,10 +14,10 @@ CREATE TABLE "SiteBranding" (
     CONSTRAINT "SiteBranding_pkey" PRIMARY KEY ("target"),
     CONSTRAINT "SiteBranding_target_check" CHECK ("target" IN ('admin', 'seller')),
     -- 셋(데이터·형식·해시)이 모두 있거나 모두 없어야 한다. NULL과 비교한 IN·=는 NULL이 되어 CHECK를 통과하므로 IS NOT NULL을 따로 둔다.
-    -- 파비콘: PNG·ICO, 256KB까지. 공유 카드 이미지: PNG, 2MB까지(lib/server/branding/image.ts와 같은 값)
+    -- 파비콘: PNG, 256KB까지. 공유 카드 이미지: PNG, 2MB까지(lib/server/branding/image.ts와 같은 값)
     CONSTRAINT "SiteBranding_favicon_check" CHECK (
         ("faviconData" IS NULL AND "faviconType" IS NULL AND "faviconHash" IS NULL)
-        OR ("faviconData" IS NOT NULL AND "faviconHash" IS NOT NULL AND "faviconType" IS NOT NULL AND "faviconType" IN ('image/png', 'image/x-icon') AND octet_length("faviconData") <= 262144)
+        OR ("faviconData" IS NOT NULL AND "faviconHash" IS NOT NULL AND "faviconType" IS NOT NULL AND "faviconType" = 'image/png' AND octet_length("faviconData") <= 262144)
     ),
     CONSTRAINT "SiteBranding_og_image_check" CHECK (
         ("ogImageData" IS NULL AND "ogImageType" IS NULL AND "ogImageHash" IS NULL)

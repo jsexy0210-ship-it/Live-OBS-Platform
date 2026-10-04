@@ -120,10 +120,10 @@ describe("파비콘", () => {
     const c = await adminCookie("SUPER_ADMIN");
     const svg = await upload(faviconPut, "seller", SVG, c, { "content-type": "image/png" });
     expect(svg.status).toBe(400);
-    expect(await svg.json()).toEqual({ error: "unsupported_image", message: "파비콘은 PNG·ICO 파일만 업로드할 수 있습니다." });
+    expect(await svg.json()).toEqual({ error: "unsupported_image", message: "파비콘은 PNG 파일만 업로드할 수 있습니다." });
     const big = await upload(faviconPut, "seller", Buffer.concat([await png(32, 32), Buffer.alloc(300 * 1024)]), c);
     expect(big.status).toBe(413);
-    expect(await big.json()).toEqual({ error: "file_too_large", message: "파비콘이 256KB를 넘습니다. 256KB 이하 PNG·ICO로 줄여 주십시오." });
+    expect(await big.json()).toEqual({ error: "file_too_large", message: "파비콘이 256KB를 넘습니다. 256KB 이하 PNG로 줄여 주십시오." });
     expect((await upload(faviconPut, "seller", Buffer.alloc(0), c)).status).toBe(400);
     expect(await db.siteBranding.count()).toBe(0);
   });
@@ -131,6 +131,8 @@ describe("파비콘", () => {
   it("DB 제약도 형식·크기를 막는다(코드를 거치지 않은 쓰기)", async () => {
     await expect(db.siteBranding.create({ data: { target: "admin", faviconData: Buffer.from("x"), faviconType: "image/svg+xml", faviconHash: "a" } })).rejects.toThrow();
     await expect(db.siteBranding.create({ data: { target: "shop" } })).rejects.toThrow();
+    // ICO는 DB에도 넣을 수 없다(PNG만)
+    await expect(db.siteBranding.create({ data: { target: "admin", faviconData: Buffer.from("x"), faviconType: "image/x-icon", faviconHash: "a" } })).rejects.toThrow();
     // 형식만 비운 행(데이터·해시는 있음)도 막는다(Codex 지적 4차: NULL과 비교하면 CHECK를 통과하던 문제)
     await expect(db.siteBranding.create({ data: { target: "admin", faviconData: Buffer.from("x"), faviconHash: "a" } })).rejects.toThrow();
     await expect(db.siteBranding.create({ data: { target: "seller", ogImageData: Buffer.from("x"), ogImageHash: "a" } })).rejects.toThrow();
