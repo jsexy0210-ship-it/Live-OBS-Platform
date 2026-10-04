@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PageHead } from "../../../../../components/admin-ui";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
 import { MAX_SEARCH_LENGTH } from "../../../../../components/seller/format";
 import { itemSummaryText, listDate, phoneText } from "../../../../../components/seller/orders";
+import { sendInBatches } from "../../../../../components/seller/shipping/sendInBatches";
 import { COURIERS, isCourier, type Courier } from "../../../../../lib/server/orders/shipping";
 import "../../../../../styles/seller-shipping.css";
 
@@ -21,8 +23,6 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "delivered", label: "배송 완료" },
 ];
 const PAGE = 50;
-// 한 번에 보낼 수 있는 주문 수(서버 SHIPMENT_BATCH_MAX). 더 많이 고르면 나눠 보낸다.
-const BATCH = 100;
 const SEARCH_DELAY_MS = 300;
 
 type Row = {
@@ -117,21 +117,15 @@ export default function ShippingPage() {
   const readyTargets = items.filter((r) => picked.has(r.orderId) && (tracking[r.orderId] ?? "").trim() !== "");
   const missing = items.filter((r) => picked.has(r.orderId) && (tracking[r.orderId] ?? "").trim() === "").length;
 
-  // 100건씩 나눠 보낸다. 묶음 하나가 통째로 실패하면(네트워크·400 등) 그 묶음의 주문은 실패로 남기고 다음 묶음은 계속 보낸다.
+  // 묶음 나누기·부분 실패 처리는 sendInBatches(단위 시험 있음).
   // 처리 중에는 탭·검색을 잠가, 끝난 뒤 다시 읽기가 지금 보고 있는 조건과 같게 한다.
   const send = async <T,>(path: string, list: T[], body: (chunk: T[]) => unknown, idOf: (x: T) => string, verb: string, failText: string) => {
     setBusy(true);
-    const results: Result[] = [];
-    let lastFail: string | null = null;
-    for (let i = 0; i < list.length; i += BATCH) {
-      const chunk = list.slice(i, i + BATCH);
+    // 서버 한도(SHIPMENT_BATCH_MAX)만큼씩 나눠 보낸다
+    const { results, lastFail } = await sendInBatches(list, idOf, async (chunk) => {
       const r = await api<{ results: Result[] }>(path, { method: "POST", body: body(chunk) });
-      if (r.ok) results.push(...r.data.results);
-      else {
-        lastFail = failMessage(r, "admin", failText);
-        results.push(...chunk.map((x) => ({ orderId: idOf(x), ok: false, message: lastFail ?? undefined })));
-      }
-    }
+      return r.ok ? { results: r.data.results } : { failMessage: failMessage(r, "admin", failText) };
+    });
     if (results.every((r) => !r.ok) && lastFail) {
       setBusy(false);
       return setToast({ text: lastFail, neg: true });
@@ -170,12 +164,7 @@ export default function ShippingPage() {
     <>
       <Topbar crumb="판매 › 배송" />
       <main className="main">
-        <div className="ph">
-          <div className="col" style={{ gap: 4 }}>
-            <h1 className="t-t3">배송</h1>
-            <span className="t-l2 c-alt">결제가 끝난 주문의 송장을 입력하고 배송 완료를 처리합니다. 배송비 정책은 쇼핑몰 설정에서 정합니다.</span>
-          </div>
-        </div>
+        <PageHead title="배송" />
 
         <div className="card">
           <nav className="tabs" aria-label="배송 상태" style={{ padding: "0 16px" }}>
