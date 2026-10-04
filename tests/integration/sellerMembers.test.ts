@@ -111,10 +111,14 @@ describe("회원 목록 GET /api/seller/members", () => {
 
     expect((await list(pii, `?q=${encodeURIComponent("김철")}`)).body.members[0]).toMatchObject({ id: m.id, name: "김철수", phone: "01011112222" });
     expect(ids((await list(pii, "?q=2222")).body)).toEqual([m.id]);
+    // 일치하는 회원이 없어도 개인정보로 찾았으면 기록한다(0건)
+    expect((await list(pii, `?q=${encodeURIComponent("없는이름")}`)).body.members).toEqual([]);
     const audits = await piiAudits();
-    expect(audits).toHaveLength(2);
+    expect(audits).toHaveLength(3);
     expect(audits[0]).toMatchObject({ sellerId: s.seller.id, targetType: "MemberList", reason: "member_list_search", after: { memberIds: [m.id], count: 1 } });
+    expect(audits[2]).toMatchObject({ reason: "member_list_search", after: { memberIds: [], count: 0 } });
     expect(JSON.stringify(audits)).not.toContain("김철");
+    expect(JSON.stringify(audits)).not.toContain("없는이름");
   });
 
   it("MEMBER_POINTS 없는 직원은 목록·상세 모두 403", async () => {
