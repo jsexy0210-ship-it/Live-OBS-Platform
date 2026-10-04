@@ -27,7 +27,7 @@ const NAV: Nav[] = [
   // 쿠폰: 집계 조회는 파트너스 계정 누구나, 만들기·지급은 적립금(MEMBER_POINTS) 권한(화면에서 막음)
   { label: "쿠폰", href: "/seller/coupons" },
   { label: "회원", perm: "MEMBER_POINTS" },
-  { label: "구매 제한", perm: "MEMBER_POINTS" },
+  { label: "구매 제한", href: "/seller/purchase-restrictions", perm: "MEMBER_POINTS" },
   { label: "구매자 문의", perm: "INQUIRY_REPLY" },
   { h: "방송 · 오버레이" },
   { label: "오버레이 편집기", perm: "OVERLAY_EDIT" },
