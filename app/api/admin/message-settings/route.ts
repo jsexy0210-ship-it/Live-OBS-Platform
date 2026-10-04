@@ -14,11 +14,14 @@ export async function GET(req: Request) {
   }
 }
 
-// 바꾸기는 최고관리자만. 본문 { chargingEnabled?, platformDailyLimit?, platformMonthlyLimit? }. 빼고 보내면 지금 값 유지.
+// 바꾸기는 최고관리자만. 충전을 켜려면 발송 충전 정기 작업이 최근 2시간 안에 성공했어야 한다(아니면 409 jobs_not_running). 본문 { chargingEnabled?, platformDailyLimit?, platformMonthlyLimit? }. 빼고 보내면 지금 값 유지.
 export const PUT = mutation(async (req: Request) => {
   const admin = await requireAdmin(prisma, sessionToken(req, "admin"), "billing.price");
   const body = await readJson<{ chargingEnabled?: unknown; platformDailyLimit?: unknown; platformMonthlyLimit?: unknown }>(req);
   const r = await updateAdminMessageSettings(prisma, admin, body, requestMeta(req));
-  if (!r.ok) return NextResponse.json({ error: "invalid_message_settings", message: "입력한 값을 확인해 주십시오" }, { status: 400 });
+  if (!r.ok) {
+    if (r.reason === "jobs_not_running") return NextResponse.json({ error: r.reason, message: "충전 정기 작업이 아직 돌지 않아 충전을 켤 수 없습니다" }, { status: 409 });
+    return NextResponse.json({ error: r.reason, message: "입력한 값을 확인해 주십시오" }, { status: 400 });
+  }
   return NextResponse.json(r.settings);
 });

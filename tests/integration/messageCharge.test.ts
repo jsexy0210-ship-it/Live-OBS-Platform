@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { PUT as adminSettingsPut } from "../../app/api/admin/message-settings/route";
 import { GET as chargesGet, POST as chargesPost } from "../../app/api/seller/message-balance/charges/route";
+import { SCHEDULED_JOBS, runScheduledJobs } from "../../lib/server/jobs/scheduler";
 import { loginSeller } from "../../lib/server/auth/login";
 import { FakeBillingProvider } from "../../lib/server/billing/provider";
 import { billingProvider } from "../../lib/server/billing/registry";
@@ -9,6 +11,7 @@ import { type MailSender, sendMail } from "../../lib/server/mail/quota";
 import { MESSAGE_FEE_NOTICE_VERSION, reserveDebit } from "../../lib/server/messaging/balance";
 import { chargeMessageBalance, reconcileMessageCharges, settleMessageCharge } from "../../lib/server/messaging/charge";
 import { STALE_DEBIT_HOLD_MS, STALE_MAIL_HOLD_MS, expireStaleMessageHolds } from "../../lib/server/messaging/holds";
+import { MESSAGE_JOB_NAME } from "../../lib/server/messaging/jobs";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { PASSWORD, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
@@ -207,5 +210,65 @@ describe("멈춘 예약 정리", () => {
     expect(await db.mailDelivery.findUniqueOrThrow({ where: { id: fresh.deliveryId } })).toMatchObject({ status: "PENDING" });
     expect(await paid(s.seller.id)).toBe(90);
     expect(await expireStaleMessageHolds(db)).toEqual({ mailsFailed: 0, debitsReleased: 0 });
+  });
+});
+
+describe("발송 충전 정기 작업과 충전 켜기 조건", () => {
+  const H2 = { "content-type": "application/json", host: "localhost:3000", origin: "http://localhost:3000" };
+  const put = (cookie: string, body: unknown) =>
+    adminSettingsPut(new Request("http://localhost:3000/api/admin/message-settings", { method: "PUT", headers: { ...H2, cookie }, body: JSON.stringify(body) }));
+  const beat = (lastOkAt: Date | null, lastStatus = "done") =>
+    db.opsHeartbeat.create({ data: { instance: "test", generation: "g1", job: MESSAGE_JOB_NAME, lastRunAt: lastOkAt ?? new Date(), lastStatus, lastOkAt } });
+
+  it("정기 실행 목록에 들어 있고, 한 번 돌면 멈춘 메일 예약을 닫고 응답이 끊긴 충전을 확정한다", async () => {
+    expect(SCHEDULED_JOBS.map((j) => j.name)).toContain(MESSAGE_JOB_NAME);
+    const s = await shop();
+    // 앞 시험이 전역 공급자에서 거절로 바꾼 카드와 다른 카드
+    await db.sellerSubscription.update({ where: { sellerId: s.seller.id }, data: { billingKeyCipher: sealBillingKey("fake-bk-job", s.seller.id) } });
+    // 응답이 끊긴 충전(가짜 공급자에는 결제됨) — 라우트와 같은 공급자(registry)
+    const provider = billingProvider() as FakeBillingProvider;
+    provider.failNext = "timeout_after_charge";
+    const r = await chargeMessageBalance(db, provider, s.ctx, { amount: 5_000, idempotencyKey: "job" });
+    expect(r).toMatchObject({ ok: true, charge: { status: "PENDING" } });
+    await db.messageCharge.updateMany({ data: { createdAt: new Date(Date.now() - 5 * 60_000) } });
+    // 멈춘 메일 예약(잔액 10원 차감 중)
+    await db.subscriptionPlan.update({ where: { code: "INTEGRATED" }, data: { mailMonthlyQuota: 0 } });
+    await db.messageChannelPrice.create({ data: { channel: "MAIL_TRANSACTIONAL", unitPrice: 10 } });
+    await db.sellerMessageBalance.create({ data: { sellerId: s.seller.id, freeBalance: 10 } });
+    const { reserveMail } = await import("../../lib/server/mail/quota");
+    const m = await reserveMail(db, { sellerId: s.seller.id, kind: "t" });
+    expect(m.ok).toBe(true);
+    await db.mailDelivery.updateMany({ data: { createdAt: new Date(Date.now() - STALE_MAIL_HOLD_MS - 1000) } });
+    const out = await runScheduledJobs(db, new Date());
+    expect(out.find((o) => o.name === MESSAGE_JOB_NAME)).toEqual({ name: MESSAGE_JOB_NAME, status: "done", count: 2 });
+    expect(await db.messageCharge.findFirstOrThrow()).toMatchObject({ status: "PAID" });
+    expect((await db.mailDelivery.findFirstOrThrow()).status).toBe("FAILED");
+    expect(await db.sellerMessageBalance.findUniqueOrThrow({ where: { sellerId: s.seller.id } })).toMatchObject({ paidBalance: 5_000, freeBalance: 10 });
+    expect(provider.charges.filter((c) => c.amount === 5_000)).toHaveLength(1);
+  });
+
+  it("충전 켜기는 이 작업이 2시간 안에 성공한 기록이 있어야 한다(없음·오래됨·실패면 409). 끄기는 언제든", async () => {
+    const { createAdmin } = await import("./helpers");
+    const { createAdminSession } = await import("../../lib/server/auth/session");
+    const su = await createAdmin("SUPER_ADMIN");
+    const cookie = `lo_admin=${(await createAdminSession(db, su.id, {})).token}`;
+    const r1 = await put(cookie, { chargingEnabled: true });
+    expect(r1.status).toBe(409);
+    expect(await r1.json()).toMatchObject({ error: "jobs_not_running" });
+    await beat(new Date(Date.now() - 3 * 3600_000));
+    expect((await put(cookie, { chargingEnabled: true })).status).toBe(409);
+    await db.opsHeartbeat.deleteMany();
+    await beat(new Date(), "failed");
+    expect((await put(cookie, { chargingEnabled: true })).status).toBe(409);
+    expect((await db.platformMessageSetting.findUnique({ where: { id: 1 } }))?.chargingEnabled ?? false).toBe(false);
+    await db.opsHeartbeat.deleteMany();
+    await beat(new Date());
+    const ok = await put(cookie, { chargingEnabled: true });
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toMatchObject({ chargingEnabled: true });
+    // 켜진 뒤 다른 값만 바꾸는 것·끄기는 작업 기록과 상관없이 된다
+    await db.opsHeartbeat.deleteMany();
+    expect((await put(cookie, { platformDailyLimit: 50 })).status).toBe(200);
+    expect(await (await put(cookie, { chargingEnabled: false })).json()).toMatchObject({ chargingEnabled: false });
   });
 });
