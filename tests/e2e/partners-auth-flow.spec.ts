@@ -144,7 +144,7 @@ test("파트너스 가입 신청 → 바로 승인 → 로그인 → 비밀번�
   await page.getByRole("button", { name: "로그인" }).click();
   await expect(page).toHaveURL(/\/seller\/products$/);
   // 새 파트너는 통합 요금제·체험 없음이라 첫 결제 전까지 잠겨 있다(#185)
-  await expect(page.getByText("이용 기간이 끝나서 지금은 쓸 수 없어요")).toBeVisible();
+  await expect(page.getByText("이용 기간이 끝나 지금은 사용할 수 없습니다")).toBeVisible();
   await page.context().clearCookies();
 
   // 비밀번호 찾기: 대표자 본인확인 → 새 비밀번호
