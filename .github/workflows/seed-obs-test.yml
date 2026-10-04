@@ -16,6 +16,11 @@ on:
         description: "시험 판매자 비밀번호(테스트 서버 전용)"
         required: true
         type: string
+      enable_test_mode:
+        description: "테스트 서버 모드(OBS_TEST_MODE=1)가 꺼져 있으면 .env에 켜고 앱을 다시 띄운 뒤 진행(대표님 승인 2026-10-04)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -47,7 +52,7 @@ jobs:
           set -euo pipefail
           command -v python3 >/dev/null || { echo "러너에 python3가 필요해요."; exit 1; }
           # 줄바꿈이 든 값은 add-mask가 첫 줄만 가리므로 값을 출력하지 않고 거절한다
-          read_input() { python3 -c 'import json,os,sys;v=json.load(open(os.environ["GITHUB_EVENT_PATH"]))["inputs"][sys.argv[1]];sys.exit("입력값에 줄바꿈을 넣을 수 없어요.") if ("\n" in v or "\r" in v) else print(v)' "$1"; }
+          read_input() { python3 -c 'import json,os,sys;v=json.load(open(os.environ["GITHUB_EVENT_PATH"]))["inputs"][sys.argv[1]];v=str(v);sys.exit("입력값에 줄바꿈을 넣을 수 없어요.") if ("\n" in v or "\r" in v) else print(v)' "$1"; }
           SEED_SELLER_PASSWORD="$(read_input password)"
           echo "::add-mask::$SEED_SELLER_PASSWORD"
           SEED_SELLER_LOGIN="$(read_input login)"
@@ -61,8 +66,21 @@ jobs:
           app="$(docker ps --filter label=com.docker.compose.project=obs-web --filter label=com.docker.compose.service=obs-web-app --format '{{.ID}}' | head -1)"
           [ -n "$app" ] || { echo "앱 컨테이너가 떠 있지 않아요. Deploy obs-test를 먼저 실행해 주세요."; exit 1; }
           OBS_TEST_MODE="$(docker exec "$app" printenv OBS_TEST_MODE || true)"
+          ENABLE_TEST_MODE="$(read_input enable_test_mode 2>/dev/null || echo false)"
+          if [ "$OBS_TEST_MODE" != "1" ] && [ "$ENABLE_TEST_MODE" = "True" -o "$ENABLE_TEST_MODE" = "true" ]; then
+            echo "테스트 서버 모드를 켜요: $ENV_FILE에 OBS_TEST_MODE=1을 넣고 같은 버전으로 앱을 다시 띄워요."
+            cp -p "$ENV_FILE" "$ENV_FILE.bak-$(date +%Y%m%d%H%M%S)"
+            if grep -q '^OBS_TEST_MODE=' "$ENV_FILE"; then
+              sed -i 's/^OBS_TEST_MODE=.*/OBS_TEST_MODE=1/' "$ENV_FILE"
+            else
+              printf '\nOBS_TEST_MODE=1\n' >> "$ENV_FILE"
+            fi
+            OBS_ENV_FILE="$ENV_FILE" $C up -d --wait --wait-timeout 300 obs-web-app
+            app="$(docker ps --filter label=com.docker.compose.project=obs-web --filter label=com.docker.compose.service=obs-web-app --format '{{.ID}}' | head -1)"
+            OBS_TEST_MODE="$(docker exec "$app" printenv OBS_TEST_MODE || true)"
+          fi
           if [ "$OBS_TEST_MODE" != "1" ]; then
-            echo "앱의 OBS_TEST_MODE가 1이 아니에요(지금 값: ${OBS_TEST_MODE:-없음}). /opt/obs/.env에 OBS_TEST_MODE=1을 넣고 Deploy obs-test로 다시 띄운 뒤 실행해 주세요."
+            echo "앱의 OBS_TEST_MODE가 1이 아니에요(지금 값: ${OBS_TEST_MODE:-없음}). enable_test_mode를 켜고 다시 실행해 주세요."
             exit 1
           fi
           IDENTITY_HASH_KEY="$(docker exec "$app" printenv IDENTITY_HASH_KEY || true)"
