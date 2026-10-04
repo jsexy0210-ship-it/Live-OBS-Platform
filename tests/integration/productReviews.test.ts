@@ -444,7 +444,31 @@ describe("권한·테넌트·공개 목록", () => {
   });
 });
 
-describe("잠금 순서(주문 → 회원 → 리뷰 → 원장)", () => {
+describe("잠금 순서(회원 → 주문 → 리뷰 → 원장)", () => {
+  it("탈퇴처럼 회원 행을 잡은 뒤 그 회원의 주문 행을 바꿔도 교착이 없다: 리뷰 쓰기는 회원에서 기다리고 주문을 쥐지 않는다(Codex 4177123328)", async () => {
+    const s = await shop();
+    await setPolicy(s, { rewardText: 500 });
+    const item = await s.delivered();
+    const r = await created(s, item.id);
+    let go!: () => void;
+    let locked!: () => void;
+    const proceed = new Promise<void>((res) => (go = res));
+    const memberLocked = new Promise<void>((res) => (locked = res));
+    // 탈퇴와 같은 순서: 회원 행 NO KEY UPDATE → 그 회원의 주문 행 갱신(보존 기한)
+    const withdraw = db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "BuyerMember" WHERE "id" = ${s.buyer.id}::uuid FOR NO KEY UPDATE`;
+      locked();
+      await proceed;
+      await tx.$executeRaw`UPDATE "Order" SET "status" = "status" WHERE "id" = ${item.orderId}::uuid`;
+    }, { timeout: 20_000 });
+    await memberLocked;
+    const editing = reviewPut(json("/x", "PUT", s.b1, { rating: 4, body: BODY }), p({ slug: s.slug, reviewId: r.reviewId }));
+    await waitForLockWaiter();
+    go();
+    await withdraw;
+    expect((await editing).status).toBe(200);
+  });
+
   it("환불이 주문을 바꾸는 중이면 리뷰 작성은 기다렸다가 환불된 주문으로 보고 거절한다(리뷰·적립 없음, Codex 4176882125)", async () => {
     const s = await shop();
     await setPolicy(s, { rewardText: 500 });

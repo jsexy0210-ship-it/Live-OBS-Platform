@@ -32,10 +32,13 @@ import { cleanText } from "../text/clean";
 // - 공개 방식: 바로 공개(연락처·외부 주소·금지어가 있으면 보류) 또는 확인 뒤 공개. 신고가 3건 쌓이면 공개 리뷰를 보류한다.
 // - 리뷰 적립금(설정, 기본 0원): 모든 상태 전이의 끝에서 settleReward 하나로 원하는 상태(공개·회원 유효·주문 결제 완료면 사진 자격 금액, 아니면 0)와 원장을 맞춘다
 //   (실지급 스위치가 꺼져 있으면 testMode). 지운 리뷰는 묘비(deletedAt)로 남아 같은 주문 상품에 다시 쓸 수 없다.
-// - 잠금 순서(모든 쓰기 경로가 따른다, shop-coupons와 같은 원칙): 주문 행(FOR SHARE) → 회원 행(FOR SHARE) → 리뷰 행(FOR UPDATE) → 원장.
-//   · 환불은 주문 행을 바꾸고(NO KEY UPDATE), 탈퇴는 회원 행(NO KEY UPDATE) → 그 회원의 리뷰 행 순서라 같은 방향이다. 공유 잠금끼리는 서로 막지 않는다.
-//   · 새 리뷰는 주문 → 회원을 잠근 뒤 주문 품목 자격(결제 완료·배송 완료·기간)을 다시 보고, 주문 품목당 1개는 유니크 키가 막는다.
-//   · 기존 리뷰는 lockReviewChain으로 주문 → 작성자 회원 → 리뷰를 잠근다. 신고는 신고한 회원 → 리뷰 순서다(주문·적립을 건드리지 않음).
+// - 잠금 순서(모든 쓰기 경로가 따른다): 회원 행(FOR SHARE) → 주문 행(FOR SHARE) → 리뷰 행(FOR UPDATE) → 원장.
+//   · 탈퇴는 회원 행(NO KEY UPDATE)을 잡은 뒤 그 회원의 주문 행(보존 기한 갱신)·리뷰 행을 바꾼다. 리뷰 쓰기도 회원을 먼저 잡아야
+//     「주문을 쥐고 회원을 기다림」과 「회원을 쥐고 주문을 기다림」이 엇갈리는 교착이 생기지 않는다(Codex 4177123328).
+//   · 환불은 판매자 주문 잠금 아래에서 주문 행을 바꾼 뒤 회원 행을 공유 잠금으로만 잡는다(리뷰 적립 회수). 회원 공유 잠금끼리는 서로 막지 않아
+//     리뷰 쓰기(회원 공유 → 주문 대기)와 엇갈려도 환불이 먼저 끝나고 리뷰 쓰기는 환불된 주문을 다시 본다.
+//   · 새 리뷰는 회원 → 주문을 잠근 뒤 주문 품목 자격(결제 완료·배송 완료·기간)을 다시 보고, 주문 품목당 1개는 유니크 키가 막는다.
+//   · 기존 리뷰는 lockReviewChain으로 작성자 회원(신고면 신고한 회원도) → 주문 → 리뷰를 잠근다.
 //   · 잠근 뒤에는 잠긴 행과 잠금 뒤 시각(clock_timestamp)으로 모든 조건을 다시 본다. 적립은 잠긴 주문이 결제 완료(PAID)일 때만 지급한다.
 
 type Db = PrismaClient | Prisma.TransactionClient;
@@ -70,14 +73,14 @@ async function lockOrderPaid(tx: Tx, sellerId: string, orderId: string): Promise
   return o?.status === "PAID";
 }
 
-// 기존 리뷰를 바꾸는 쓰기의 잠금: 주문(FOR SHARE) → 작성자 회원(FOR SHARE) → 리뷰(FOR UPDATE). 주문·작성자는 리뷰에서 바뀌지 않는 값이다.
+// 기존 리뷰를 바꾸는 쓰기의 잠금: 작성자 회원(FOR SHARE) → 주문(FOR SHARE) → 리뷰(FOR UPDATE). 주문·작성자는 리뷰에서 바뀌지 않는 값이다.
 // 신고처럼 다른 회원(신고한 회원)도 함께 잠가야 하면 extraMemberId로 넘긴다(회원 잠금끼리는 id 순서). 지운 리뷰(묘비)는 없는 것으로 본다.
 async function lockReviewChain(tx: Tx, sellerId: string, id: string, extraMemberId?: string): Promise<{ review: ProductReview; orderPaid: boolean } | null> {
   const ref = await tx.productReview.findFirst({ where: { id, sellerId, deletedAt: null }, select: { orderId: true, buyerMemberId: true } });
   if (!ref) return null;
-  const orderPaid = await lockOrderPaid(tx, sellerId, ref.orderId);
   for (const memberId of [...new Set([ref.buyerMemberId, ...(extraMemberId ? [extraMemberId] : [])])].sort())
     await tx.$queryRaw`SELECT "id" FROM "BuyerMember" WHERE "id" = ${memberId}::uuid AND "sellerId" = ${sellerId}::uuid FOR SHARE`;
+  const orderPaid = await lockOrderPaid(tx, sellerId, ref.orderId);
   const review = await lockReview(tx, sellerId, id);
   return review && !review.deletedAt ? { review, orderPaid } : null;
 }
@@ -560,11 +563,11 @@ export async function createReview(db: PrismaClient, scope: BuyerScope, orderIte
     const ref = await db.orderItem.findFirst({ where: { id: orderItemId, sellerId: scope.sellerId }, select: { orderId: true } });
     if (!ref) return { ok: false, reason: "not_writable" };
     return await db.$transaction(async (tx) => {
-      // 잠금 순서: 주문 → 회원. 잠근 뒤 아래 writableItems가 결제 완료·배송 완료를 다시 본다(그사이 환불됐으면 거절).
-      const orderPaid = await lockOrderPaid(tx, scope.sellerId, ref.orderId);
+      // 잠금 순서: 회원 → 주문. 잠근 뒤 아래 writableItems가 결제 완료·배송 완료를 다시 본다(그사이 환불됐으면 거절).
       const [member] = await tx.$queryRaw<{ id: string; broadcastNickname: string }[]>`
         SELECT "id", "broadcastNickname" FROM "BuyerMember" WHERE "id" = ${scope.buyerMemberId}::uuid AND "sellerId" = ${scope.sellerId}::uuid AND "status" = 'ACTIVE' AND "deletedAt" IS NULL FOR SHARE`;
       if (!member) return { ok: false as const, reason: "shop_unavailable" as const };
+      const orderPaid = await lockOrderPaid(tx, scope.sellerId, ref.orderId);
       const now = await lockedNow(tx);
       const policy = await policyOf(tx, scope.sellerId);
       const [item] = await writableItems(tx, scope, now, policy.writableDays, { orderItemId });
@@ -671,7 +674,7 @@ export async function reportReview(db: PrismaClient, scope: BuyerScope, id: stri
   if (!(await shopOpen(db, scope.sellerId))) return { ok: false, reason: "shop_unavailable" };
   try {
     return await db.$transaction(async (tx) => {
-      // 잠금 순서: 주문 → 회원(작성자·신고한 회원) → 리뷰. 신고 보류는 적립도 바꾸므로 같은 순서를 따른다.
+      // 잠금 순서: 회원(작성자·신고한 회원) → 주문 → 리뷰. 신고 보류는 적립도 바꾸므로 같은 순서를 따른다.
       const locked = await lockReviewChain(tx, scope.sellerId, id, scope.buyerMemberId);
       if (!locked || locked.review.status !== "VISIBLE") throw notFound();
       const before = locked.review;
