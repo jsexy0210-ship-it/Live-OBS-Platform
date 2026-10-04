@@ -57,6 +57,8 @@ test("대표자: 방송 시작부터 개봉·타이머·완료·되돌리기·�
   await page.getByRole("button", { name: "방송 시작" }).click();
   await expect(page.getByTestId("bc-live-badge")).toBeVisible();
   await expect(page.getByTestId("bc-title")).toHaveText("e2e 라이브");
+  await expect(page.getByTestId("bc-summary")).toContainText("지금 방송");
+  await expect(page.getByTestId("bc-summary")).toContainText("완료 / 취소");
   await expect(page.getByRole("heading", { name: /^대기 3건/ })).toBeVisible();
 
   // 개봉 시작(버튼) → A 개봉 중
