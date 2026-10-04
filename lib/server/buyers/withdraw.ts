@@ -118,6 +118,8 @@ export async function withdrawBuyer(
         birthDate: null,
         passwordHash: unusable,
         marketingConsentAt: null,
+        marketingConsentVersion: null,
+        marketingWithdrawnAt: null,
         // 동의 기록(필수·선택 동의 문서 버전·시각, 재가입 제한 보관 동의 스냅숏)도 비운다. 재가입 제한 기록은 아래
         // recordRejoinBlock이 탈퇴 전에 읽은 member 값으로 만든다.
         signupConsent: Prisma.DbNull,

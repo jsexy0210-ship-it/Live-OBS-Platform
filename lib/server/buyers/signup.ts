@@ -286,6 +286,7 @@ export async function signupBuyer(
           gradeId: grade.id,
           // 마케팅 수신 동의 시각은 본인확인 시작 때 동의한 시각이다
           marketingConsentAt: consent.marketing ? new Date(consent.agreedAt) : null,
+          marketingConsentVersion: consent.marketing?.version ?? null,
           signupConsent: consent,
           rejoinRestrictionDaysAgreed: rejoinDays,
           rejoinRetentionAgreedAt: consent.rejoinRetention ? new Date(consent.agreedAt) : null,
