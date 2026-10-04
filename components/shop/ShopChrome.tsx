@@ -5,6 +5,10 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import ShopLogo from "./ShopLogo";
 
+export const CART_COUNT_EVENT = "shop-cart-count";
+const badge = (n: number) => (n > 0 ? <b className="shop-badge" aria-hidden="true">{n > 99 ? "99+" : n}</b> : null);
+const cartLabel = (n: number) => (n > 0 ? `장바구니 (${n}개)` : "장바구니");
+
 type Props = { slug: string; shopName: string; loggedIn: boolean; nickname?: string | null };
 
 function Icon({ d }: { d: string }) {
@@ -31,9 +35,25 @@ export default function ShopChrome({ slug, shopName, loggedIn, nickname }: Props
   const [drawer, setDrawer] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLButtonElement>(null);
+  const [cartCount, setCartCount] = useState(0);
   const here = (href: string) => (path === href ? ("page" as const) : undefined);
 
   useEffect(() => setDrawer(false), [path]);
+  // 장바구니 개수 배지: 로그인했을 때만 불러오고, 장바구니 화면이 바뀐 개수를 알려 주면(CART_COUNT_EVENT) 따라간다
+  useEffect(() => {
+    if (!loggedIn) return;
+    let live = true;
+    fetch(`/api/shop/${encodeURIComponent(slug)}/cart/count`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { count?: number } | null) => live && typeof d?.count === "number" && setCartCount(d.count))
+      .catch(() => null);
+    const on = (e: Event) => setCartCount((e as CustomEvent<number>).detail);
+    window.addEventListener(CART_COUNT_EVENT, on);
+    return () => {
+      live = false;
+      window.removeEventListener(CART_COUNT_EVENT, on);
+    };
+  }, [loggedIn, slug]);
   useEffect(() => {
     if (!drawer) return;
     closeRef.current?.focus();
@@ -93,13 +113,17 @@ export default function ShopChrome({ slug, shopName, loggedIn, nickname }: Props
             <Link href={`${base}/search`} className="shop-iconbtn shop-m" aria-label="검색">
               <Icon d={ICON.search} />
             </Link>
-            <Link href={`${base}/cart`} className="shop-iconbtn shop-cart shop-m" aria-label="장바구니">
+            <Link href={`${base}/cart`} className="shop-iconbtn shop-cart shop-m" aria-label={cartLabel(cartCount)}>
               <Icon d={ICON.cart} />
+              {badge(cartCount)}
             </Link>
             <div className="shop-hics shop-pc">
               <Link href={`${base}/cart`} className="shop-hic">
-                <Icon d={ICON.cart} />
-                장바구니
+                <span className="shop-hic-ico">
+                  <Icon d={ICON.cart} />
+                  {badge(cartCount)}
+                </span>
+                {cartLabel(cartCount)}
               </Link>
               <Link href={loggedIn ? `${base}/me` : `${base}/login`} className="shop-hic">
                 <Icon d={ICON.user} />내 정보
@@ -175,8 +199,11 @@ export default function ShopChrome({ slug, shopName, loggedIn, nickname }: Props
           검색
         </Link>
         <Link href={`${base}/cart`} aria-current={here(`${base}/cart`)}>
-          <Icon d={ICON.cart} />
-          장바구니
+          <span className="shop-hic-ico">
+            <Icon d={ICON.cart} />
+            {badge(cartCount)}
+          </span>
+          {cartLabel(cartCount)}
         </Link>
         <Link href={loggedIn ? `${base}/me` : `${base}/login`} aria-current={here(`${base}/me`)}>
           <Icon d={ICON.user} />내 정보
