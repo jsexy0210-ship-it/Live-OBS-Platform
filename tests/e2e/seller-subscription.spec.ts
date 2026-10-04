@@ -136,6 +136,72 @@ test("거절된 카드는 실패로 알리고 카드를 등록한 것처럼 보�
   await page.getByRole("dialog").getByRole("button", { name: "취소" }).click();
 });
 
+async function ownerOpens(page: Page) {
+  await page.goto("/seller/login?next=%2Fseller%2Fsubscription");
+  await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
+  await expect(page).toHaveURL(/\/seller\/subscription$/);
+}
+
+test("유예가 끝난 결제 실패 구독: 상위 변경은 지금 결제된다고 안내하고, 해지할 수 있다", async ({ page }) => {
+  await resetSubscription();
+  // 오버레이 전용 · 결제 실패(PAST_DUE) · 유예와 결제한 기간 모두 끝남(잠김). 서버 changePlan은 이 상태의 상위 변경을 바로 결제한다.
+  await withDb(async (db, sellerId) => {
+    const overlay = await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "OVERLAY_ONLY" } });
+    const day = 86_400_000;
+    await db.sellerSubscription.create({
+      data: {
+        sellerId,
+        planId: overlay.id,
+        status: "PAST_DUE",
+        cardLabel: "테스트카드 1234",
+        currentPeriodStart: new Date(Date.now() - 40 * day),
+        currentPeriodEnd: new Date(Date.now() - 10 * day),
+        graceUntil: new Date(Date.now() - 3 * day),
+        retryCount: 3,
+      },
+    });
+  });
+  await ownerOpens(page);
+  await expect(page.getByTestId("sub-status")).toHaveText("이용 기간 끝");
+  await page.getByTestId("sub-plan").filter({ hasText: "쇼핑몰 통합" }).getByRole("button", { name: "변경" }).click();
+  await expect(page.getByRole("dialog")).toContainText("밀린 이번 기간 요금과 남은 기간 차액을 등록한 카드로 바로 결제합니다.");
+  await page.getByRole("dialog").getByRole("button", { name: "취소" }).click();
+
+  // 이용 기간이 끝났어도 해지는 열려 있다(서버 cancelSubscription이 받는 상태)
+  await page.getByRole("button", { name: "해지", exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText("바로 해지되고 더 이상 결제되지 않습니다.");
+  const cancel = post(page, "/api/seller/subscription/cancel");
+  await page.getByRole("dialog").getByRole("button", { name: "해지", exact: true }).click();
+  expect((await cancel).status()).toBe(200);
+  await expect(page.getByRole("button", { name: "해지", exact: true })).toHaveCount(0);
+  const status = await withDb((db, sellerId) => db.sellerSubscription.findUniqueOrThrow({ where: { sellerId }, select: { status: true } }));
+  expect(status.status).toBe("CANCELED");
+});
+
+test("카드를 등록한 체험을 해지하면 체험 끝 날짜까지 해지 예정으로 보인다", async ({ page }) => {
+  await resetSubscription();
+  const trialEnd = new Date(Date.now() + 5 * 86_400_000);
+  await withDb((db, sellerId) => db.seller.update({ where: { id: sellerId }, data: { trialEndsAt: trialEnd } }));
+  await ownerOpens(page);
+  await expect(page.getByTestId("sub-status")).toHaveText("체험 중");
+  // 체험 중 카드 등록은 결제 없이 카드만 저장한다
+  const card = post(page, "/api/seller/subscription/card");
+  await page.getByRole("button", { name: "테스트 카드 등록" }).click();
+  expect((await card).status()).toBe(200);
+  await expect(page.getByText("결제 카드를 등록했습니다")).toBeVisible();
+  await expect(page.getByTestId("sub-payment")).toHaveCount(0);
+
+  const endText = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "long", day: "numeric" }).format(trialEnd);
+  await page.getByRole("button", { name: "해지", exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText(`${endText}까지 이용할 수 있고`);
+  const cancel = post(page, "/api/seller/subscription/cancel");
+  await page.getByRole("dialog").getByRole("button", { name: "해지", exact: true }).click();
+  expect((await cancel).status()).toBe(200);
+  await page.reload();
+  await expect(page.getByTestId("sub-status")).toHaveText("해지 예정");
+  await expect(page.getByText(`해지했습니다. ${endText}까지 이용할 수 있고, 그 뒤에는 결제되지 않습니다.`)).toBeVisible();
+});
+
 test("직원은 메뉴가 안 보이고, 주소로 들어와도 대표자 전용 안내를 본다", async ({ page }) => {
   await page.goto("/seller/login?next=%2Fseller%2Fsubscription");
   await submitSellerLogin(page, "demo-staff@example.com", PASSWORD);

@@ -6,6 +6,7 @@ import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../com
 import { api, failMessage } from "../../../../../components/seller/api";
 import { won } from "../../../../../components/seller/format";
 import { useLatestResponse } from "../../../../../components/seller/latestResponse";
+import { canCancelSubscription, planChangeState } from "../../../../../lib/server/billing/access";
 import { PaymentHistory, type Payment } from "../../../../../components/seller/subscription/PaymentHistory";
 import "../../../../../styles/seller-settings2.css";
 
@@ -53,23 +54,41 @@ const PLAN_FAIL: Record<string, string> = {
   not_activated: "결제는 되었지만 플랜에 반영되지 않았습니다. 문의하기로 알려 주십시오",
 };
 
-// 플랜 변경 확인 창 안내. 서버(planChange.ts)가 나누는 기준을 그대로 따른다:
-// 결제한 기간 중(paid)·결제 실패 유예(PAST_DUE)·체험 중·그 밖(잠김·첫 결제 전)에 따라 적용 시점과 결제가 다르다.
-function planChangeNote(v: View, target: string, now = Date.now()): string {
+const toDate = (iso: string | null) => (iso ? new Date(iso) : null);
+
+// 서버 판정 함수(access.ts의 planChangeState)를 화면 값(문자열 시각)으로 부른다. 서버의 changePlan과 같은 기준이다.
+function billingState(v: View, now = new Date()) {
   const s = v.subscription;
-  const paid = !!s && s.status === "ACTIVE" && !!s.currentPeriodStart && !!s.currentPeriodEnd && new Date(s.currentPeriodEnd).getTime() > now;
-  const pastDue = !!s && s.status === "PAST_DUE" && v.access !== "expired";
-  const trial = v.access === "trial" && !paid;
+  return planChangeState(
+    toDate(v.trialEndsAt),
+    s ? { status: s.status, cancelAtPeriodEnd: s.cancelAtPeriodEnd, currentPeriodStart: toDate(s.currentPeriodStart), currentPeriodEnd: toDate(s.currentPeriodEnd) } : null,
+    now,
+  );
+}
+
+// 플랜 변경 확인 창 안내: 결제한 기간 중·결제 실패(유예가 끝났어도 해지 전이면)·체험 중·그 밖에 따라 적용 시점과 결제가 다르다.
+function planChangeNote(v: View, target: string): string {
+  const { paidActive, pastDue, inTrial } = billingState(v);
   const up = (RANK[target] ?? 0) > (RANK[v.plan?.code ?? ""] ?? 0);
-  if (!up) return paid || pastDue ? "다음 결제일부터 적용됩니다. 그 전까지는 지금 플랜을 그대로 이용합니다." : "바로 적용됩니다. 결제는 없습니다.";
-  if (paid) return "남은 이용 기간의 차액을 등록한 카드로 바로 결제합니다.";
-  if (pastDue) return "이번 기간 요금과 남은 기간 차액을 등록한 카드로 바로 결제합니다.";
-  if (trial) return "새 플랜 요금을 등록한 카드로 바로 결제하고, 오늘부터 새 이용 기간이 시작됩니다.";
+  if (!up) return paidActive || pastDue ? "다음 결제일부터 적용됩니다. 그 전까지는 지금 플랜을 그대로 이용합니다." : "바로 적용됩니다. 결제는 없습니다.";
+  if (paidActive) return "남은 이용 기간의 차액을 등록한 카드로 바로 결제합니다.";
+  if (pastDue) return "밀린 이번 기간 요금과 남은 기간 차액을 등록한 카드로 바로 결제합니다.";
+  if (inTrial) return "새 플랜 요금을 등록한 카드로 바로 결제하고, 오늘부터 새 이용 기간이 시작됩니다.";
   return "바로 적용되고 지금은 결제되지 않습니다. 다음 결제부터 새 플랜 요금이 청구됩니다.";
+}
+
+// 해지하면 이용이 끝나는 때: 결제한 기간이 남았으면 그 끝, 아니면 체험 끝(체험 중), 둘 다 없으면 null(바로 해지)
+function serviceEnd(v: View, now = Date.now()): string | null {
+  const end = v.subscription?.currentPeriodEnd;
+  if (end && new Date(end).getTime() > now) return end;
+  if (v.trialEndsAt && new Date(v.trialEndsAt).getTime() > now) return v.trialEndsAt;
+  return null;
 }
 
 function statusOf(v: View): { label: string; cls: string } {
   const s = v.subscription;
+  // 해지했지만 체험·결제한 기간이 남아 이용 중이면 「해지 예정」
+  if (s && !canCancelSubscription(s) && (v.access === "trial" || v.access === "paid")) return { label: "해지 예정", cls: "b-warn" };
   if (v.access === "trial") return { label: "체험 중", cls: "b-info" };
   if (v.access === "grace") return { label: "결제 실패", cls: "b-fail" };
   if (v.access === "expired") return { label: "이용 기간 끝", cls: "b-gray" };
@@ -188,7 +207,9 @@ export default function SubscriptionPage() {
 
   const view = state.kind === "ok" ? state.view : null;
   const sub = view?.subscription ?? null;
-  const live = !!sub && sub.status !== "CANCELED" && !sub.cancelAtPeriodEnd && view?.access !== "expired";
+  // 해지 가능 여부는 서버(cancelSubscription)와 같은 기준. 이용 기간이 끝난 결제 실패 구독도 해지할 수 있다.
+  const live = canCancelSubscription(sub);
+  const endsAt = view ? serviceEnd(view) : null;
   const current = view?.plan?.code ?? null;
   const canceling = !!sub?.cancelAtPeriodEnd;
   const pendingPlan = sub?.pendingPlanCode && !sub.cancelAtPeriodEnd ? plans.find((p) => p.code === sub.pendingPlanCode) ?? { code: sub.pendingPlanCode, name: "다른 플랜" } : null;
@@ -282,9 +303,9 @@ export default function SubscriptionPage() {
                     </>
                   )}
                 </dl>
-                {sub?.cancelAtPeriodEnd && sub.currentPeriodEnd && (
+                {sub && !live && endsAt && (
                   <div className="msg msg-info t-l2" role="note">
-                    <span>해지했습니다. {DAY(sub.currentPeriodEnd)}까지 이용할 수 있고, 그 뒤에는 결제되지 않습니다.</span>
+                    <span>해지했습니다. {DAY(endsAt)}까지 이용할 수 있고, 그 뒤에는 결제되지 않습니다.</span>
                   </div>
                 )}
                 {view.access === "expired" && (
@@ -394,7 +415,9 @@ export default function SubscriptionPage() {
               </h2>
               <span className="t-l2 c-alt">
                 {confirm.kind === "cancel"
-                  ? `${DAY(sub?.currentPeriodEnd ?? null)}까지 이용할 수 있고, 그 뒤에는 결제되지 않습니다.`
+                  ? endsAt
+                    ? `${DAY(endsAt)}까지 이용할 수 있고, 그 뒤에는 결제되지 않습니다.`
+                    : "바로 해지되고 더 이상 결제되지 않습니다."
                   : planChangeNote(view, confirm.plan.code)}
               </span>
             </div>

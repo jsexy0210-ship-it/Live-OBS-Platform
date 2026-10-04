@@ -1,10 +1,10 @@
 import type { PrismaClient, SubscriptionPayment } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { requireSellerPermission, type TenantContext } from "../tenant/context";
-import { addMonthsKst } from "./access";
+import { addMonthsKst, planChangeState } from "./access";
 import type { BillingProvider, ChargeResult } from "./provider";
 import { openBillingKey } from "./secret";
-import { chargeFor, dbNow, isEndedSubscription, lockSeller, planPeriod, sellerPlanOf, withoutLegacy, settlePayment, switchPlan } from "./subscription";
+import { chargeFor, dbNow, lockSeller, planPeriod, sellerPlanOf, withoutLegacy, settlePayment, switchPlan } from "./subscription";
 
 // 플랜 변경(ONQ 1-C-2, ARCHITECTURE 4.8.0 「결제 규칙」, PRODUCT_SCOPE 확정 ①). 실제 PG는 공급자 인터페이스로만 부른다.
 // - 상위 변경(오버레이 전용 → 통합)은 결제사가 결제를 확정한 뒤에만 적용한다. 대기·실패·시간 초과면 지금 플랜 그대로다.
@@ -107,10 +107,7 @@ export async function changePlan(
       return { kind: "done", result: { ok: false, reason: "payment_in_progress" } };
     }
 
-    const active = !!sub && !isEndedSubscription(sub, now);
-    const paidActive = active && sub!.status === "ACTIVE" && !!sub!.currentPeriodEnd && sub!.currentPeriodEnd > now && !!sub!.currentPeriodStart;
-    const pastDue = active && sub!.status === "PAST_DUE";
-    const inTrial = !!seller.trialEndsAt && seller.trialEndsAt > now && !paidActive;
+    const { paidActive, pastDue, inTrial } = planChangeState(seller.trialEndsAt, sub, now);
     const now0 = { kind: "done" as const, result: { ok: true as const, applied: "now" as const, charged: 0, planCode: target.code, effectiveAt: now } };
 
     // 하위 변경: 결제한 기간·유예 중이면 다음 결제일부터, 아니면 바로

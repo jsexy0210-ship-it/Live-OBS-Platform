@@ -26,6 +26,35 @@ export function sellerAccess({ trialEndsAt, subscription: s }: AccessInput, now:
   return "expired";
 }
 
+// ───────────── 구독 판정(순수 함수: 서버 처리와 파트너스 화면이 같은 기준을 쓴다) ─────────────
+
+type EndState = { status: string; currentPeriodEnd: Date | null; cancelAtPeriodEnd: boolean };
+
+// 해지된 구독인지: CANCELED이거나, 해지 예약한 기간이 이미 끝남(예약 실행이 아직 CANCELED로 바꾸기 전).
+export function isEndedSubscription(sub: EndState | null, now: Date): boolean {
+  if (!sub) return true;
+  return sub.status === "CANCELED" || (sub.cancelAtPeriodEnd && !!sub.currentPeriodEnd && sub.currentPeriodEnd <= now);
+}
+
+// 해지할 수 있는지(cancelSubscription과 같은 기준). 결제 진행 중(PENDING 청구)인지는 따로 본다.
+export function canCancelSubscription(sub: { status: string; cancelAtPeriodEnd: boolean } | null): boolean {
+  return !!sub && sub.status !== "CANCELED" && !sub.cancelAtPeriodEnd;
+}
+
+// 플랜 변경 때의 결제 상태(changePlan과 같은 기준).
+// paidActive: 결제한 기간 중 · pastDue: 끝나지 않은 결제 실패 구독(유예가 끝났어도) · inTrial: 결제한 기간 없이 체험 중
+export function planChangeState(
+  trialEndsAt: Date | null,
+  sub: (EndState & { currentPeriodStart: Date | null }) | null,
+  now: Date,
+): { paidActive: boolean; pastDue: boolean; inTrial: boolean } {
+  const active = !!sub && !isEndedSubscription(sub, now);
+  const paidActive = active && sub!.status === "ACTIVE" && !!sub!.currentPeriodEnd && sub!.currentPeriodEnd > now && !!sub!.currentPeriodStart;
+  const pastDue = active && sub!.status === "PAST_DUE";
+  const inTrial = !!trialEndsAt && trialEndsAt > now && !paidActive;
+  return { paidActive, pastDue, inTrial };
+}
+
 // 잠기기 시작한 시각(이용 가능했던 마지막 시각). 잠금 30일 뒤 자동 해지 판단에 쓴다.
 // 체험하기 끝, 결제한 기간 끝, 유예 끝 중 가장 늦은 시각. 하나도 없으면 null.
 export function lockedSince({ trialEndsAt, subscription: s }: AccessInput): Date | null {
