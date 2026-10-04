@@ -87,7 +87,7 @@ test("최고관리자가 파트너스 관리자 파비콘·공유 카드를 바�
   await page.screenshot({ path: "tests/e2e/screenshots/branding-settings-1440.png", fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   // 좁은 화면에서는 메뉴가 서랍으로 들어간다(옮겨 가는 동안 찍지 않게 기다림)
-  await expect.poll(async () => (await page.locator("aside.side").boundingBox())?.x ?? 0).toBeLessThan(-200);
+  await expect.poll(async () => (await page.locator("aside.lnb").boundingBox())?.x ?? 0).toBeLessThan(-200);
   await page.screenshot({ path: "tests/e2e/screenshots/branding-settings-390.png", fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -239,10 +239,10 @@ test("마스터 관리자 로고 색은 파트너스 관리자 로고 색과 다
   }
   await page.setViewportSize({ width: 1440, height: 900 });
   await login(page, superEmail);
-  const shell = await page.locator("aside.side .logo-sym").evaluate((el) => getComputedStyle(el).backgroundColor);
+  const shell = await page.locator("header.gnb").evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(shell).toBe(masterLogin);
   expect(shell).not.toBe(partners);
-  const sideX = async () => (await page.locator("aside.side").boundingBox())?.x ?? -1;
+  const sideX = async () => (await page.locator("aside.lnb").boundingBox())?.x ?? -1;
   await page.screenshot({ path: "tests/e2e/screenshots/branding-master-logo-shell-1440.png", fullPage: true });
   // 좁은 화면: 메뉴 서랍을 열어 로고를 보인다(옮겨 가는 동안 찍지 않게 서랍이 멈출 때까지 기다림)
   await page.setViewportSize({ width: 390, height: 844 });
@@ -305,7 +305,7 @@ test("마스터 관리자 기본 파비콘은 틸이고, 올린 파비콘이 있
   await expect(page.getByAltText("기본 아이콘")).toHaveAttribute("src", "/branding/onq-admin-32.png");
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
-    if (width === 390) await expect.poll(async () => (await page.locator("aside.side").boundingBox())?.x ?? 0).toBeLessThan(-200);
+    if (width === 390) await expect.poll(async () => (await page.locator("aside.lnb").boundingBox())?.x ?? 0).toBeLessThan(-200);
     await page.screenshot({ path: `tests/e2e/screenshots/branding-master-favicon-${width}.png`, fullPage: true });
   }
   await page.setViewportSize({ width: 1440, height: 900 });
