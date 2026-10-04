@@ -154,6 +154,8 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/cart/[itemId]": "STORE_OPERATIONS", // 수량 변경(PATCH)은 shopOpen으로 막음, 한 줄 삭제는 열림
   "shop/[slug]/cart/checkout": "STORE_OPERATIONS", // 주문서로 넘기기(shopOpen으로 막음)
   "shop/[slug]/cart/count": "OPEN", // 머리 배지 개수
+  "shop/[slug]/wishlist": "STORE_OPERATIONS", // 찜: 찜하기(POST)는 shopOpen으로 막음, 목록은 열림
+  "shop/[slug]/wishlist/[productId]": "OPEN", // 찜 빼기
   "shop/[slug]/me/marketing-consent": "OPEN",
   "shop/[slug]/me/withdraw": "OPEN",
   "shop/[slug]/me/rewards": "OPEN", // 내 적립금 잔액(탈퇴 전 확인, #180)
@@ -175,7 +177,8 @@ const SHOP_PAGES: Record<string, "STORE_OPERATIONS" | "OPEN"> = {
   "shop/[slug]/search": "STORE_OPERATIONS", // SH-002 상품 검색
   "shop/[slug]/login": "OPEN", // SH-010 로그인: 잠긴 쇼핑몰에서도 받은 쿠폰·알림 설정에 들어갈 수 있게 연다
   "shop/[slug]/me": "OPEN", // SH-020 내 정보(메뉴 링크만)
-  "shop/[slug]/cart": "OPEN", // SH-004 준비 중 안내(기능 없음)
+  "shop/[slug]/cart": "STORE_OPERATIONS", // SH-004 장바구니: shopOpen으로 막고, 막히면 안내 화면
+  "shop/[slug]/checkout": "OPEN", // SH-005 주문서 준비 중 안내(기능 없음)
   "shop/[slug]/orders": "OPEN", // 주문 조회 준비 중 안내(기능 없음)
   "shop/[slug]/help": "OPEN", // 고객센터 준비 중 안내(기능 없음)
   "shop/[slug]/me/notifications": "OPEN", // SH-025 알림 설정: 마케팅 수신 철회는 잠긴 쇼핑몰에서도 연다(API me/marketing-consent와 같은 기준)

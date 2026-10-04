@@ -12,6 +12,11 @@ on:
         description: "배포할 main 커밋 SHA(앞 7자리 이상). 실행 시점의 main과 다르면 멈춰요."
         required: true
         type: string
+      check_image_bucket:
+        description: "배포 뒤 이미지 버킷 연결을 확인해요(목록 조회 1회, 쓰기 없음). 켜지 않으면 확인하지 않아요."
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -90,6 +95,70 @@ jobs:
             echo "DB 볼륨이 아직 없어 백업을 건너뛰어요(첫 배포)."
           fi
 
+      # 이미지 서버(카카오 Object Storage) 설정을 서버 .env에 반영한다(docs/DEPLOY.md 「이미지 서버」).
+      # - 키 값은 GitHub Secrets(KAKAO_S3_ACCESS_KEY·KAKAO_S3_SECRET_KEY)에서만 와요. 로그에 찍지 않아요(set -x 금지, 값을 echo하지 않음).
+      # - .env의 다른 줄은 그대로 두고, 임시 파일에 만든 뒤 한 번에 바꿔요(중간에 실패해도 기존 .env가 남아요).
+      # - IMAGE_STORAGE는 없을 때만 db로 넣어요. 이미 있으면(대표님이 서버에서 바꾼 값) 덮어쓰지 않아요. 카카오 전환은 이 단계가 하지 않아요.
+      # - 이 단계가 실패해도 배포는 막지 않아요(기본 저장소는 DB라 영향 없음).
+      - name: Sync image storage env
+        continue-on-error: true
+        env:
+          KAKAO_S3_ACCESS_KEY: ${{ secrets.KAKAO_S3_ACCESS_KEY }}
+          KAKAO_S3_SECRET_KEY: ${{ secrets.KAKAO_S3_SECRET_KEY }}
+          IMAGE_S3_ENDPOINT: https://objectstorage.kr-central-2.kakaocloud.com
+          IMAGE_S3_REGION: kr-central-2
+          IMAGE_S3_BUCKET: live-obs-platform
+        run: |
+          set -euo pipefail
+          umask 077
+          ak="${KAKAO_S3_ACCESS_KEY:-}"; sk="${KAKAO_S3_SECRET_KEY:-}"
+          [ -z "$ak" ] || echo "::add-mask::$ak"
+          [ -z "$sk" ] || echo "::add-mask::$sk"
+          if [ ! -f "$ENV_FILE" ]; then
+            echo "::warning::$ENV_FILE 이 없어 이미지 저장소 설정을 건너뛰어요."; exit 0
+          fi
+          safe='^[A-Za-z0-9._/+=-]+$'   # .env(compose env_file)에 따옴표·공백·$·# 없이 그대로 쓸 수 있는 문자만
+          have_keys=0
+          if [ -n "$ak" ] && [ -n "$sk" ]; then
+            if [[ "$ak" =~ $safe && "$sk" =~ $safe ]]; then
+              have_keys=1
+            else
+              echo "::warning::KAKAO_S3_* Secret에 .env에 그대로 쓸 수 없는 문자(공백·따옴표·\$·# 등)가 있어 키는 넣지 않아요."
+            fi
+          else
+            echo "::notice::KAKAO_S3_* Secret이 비어 있어 키는 넣지 않아요."
+          fi
+          has_storage=0
+          grep -Eq '^[[:space:]]*(export[[:space:]]+)?IMAGE_STORAGE[[:space:]]*=' "$ENV_FILE" && has_storage=1 || true
+          tmp="$(mktemp "$(dirname "$ENV_FILE")/.env.XXXXXX")"
+          trap 'rm -f "$tmp"' EXIT
+          if [ "$have_keys" = 1 ]; then
+            # 키가 있을 때만 IMAGE_S3_* 줄을 새 값으로 바꾼다(다른 줄은 그대로)
+            grep -Ev '^[[:space:]]*(export[[:space:]]+)?IMAGE_S3_[A-Z_]*[[:space:]]*=' "$ENV_FILE" > "$tmp" || true
+          else
+            cat "$ENV_FILE" > "$tmp"
+          fi
+          if [ -s "$tmp" ] && [ -n "$(tail -c1 "$tmp")" ]; then echo >> "$tmp"; fi
+          {
+            [ "$has_storage" = 1 ] || echo "IMAGE_STORAGE=db"
+            if [ "$have_keys" = 1 ]; then
+              echo "IMAGE_S3_ENDPOINT=$IMAGE_S3_ENDPOINT"
+              echo "IMAGE_S3_REGION=$IMAGE_S3_REGION"
+              echo "IMAGE_S3_BUCKET=$IMAGE_S3_BUCKET"
+              printf 'IMAGE_S3_ACCESS_KEY_ID=%s\n' "$ak"
+              printf 'IMAGE_S3_SECRET_ACCESS_KEY=%s\n' "$sk"
+            fi
+          } >> "$tmp"
+          chmod 600 "$tmp"
+          if cmp -s "$tmp" "$ENV_FILE"; then
+            echo "이미지 저장소 설정: 바뀐 것 없음"
+          else
+            mv -f "$tmp" "$ENV_FILE"
+            echo "이미지 저장소 설정을 .env에 반영했어요(키 $([ "$have_keys" = 1 ] && echo 넣음 || echo 그대로))."
+          fi
+          cur="$(sed -n 's/^[[:space:]]*\(export[[:space:]]\+\)\?IMAGE_STORAGE[[:space:]]*=[[:space:]]*//p' "$ENV_FILE" | tail -n1)"
+          echo "IMAGE_STORAGE 현재 값: ${cur:-없음}"
+
       - name: Build and start
         env:
           APP_VERSION: ${{ github.sha }}
@@ -109,6 +178,39 @@ jobs:
             if [ "$i" -eq 30 ]; then echo "health 실패: ${body:-응답 없음}"; exit 1; fi
             sleep 5
           done
+
+      # 선택 단계(check_image_bucket을 켠 때만): 버킷 연결 확인. 목록 조회 1회(GET, 쓰기 없음). 실패해도 배포 결과는 바꾸지 않고 오류 표시만 남겨요.
+      - name: Check image bucket (optional, read-only)
+        if: ${{ inputs.check_image_bucket }}
+        continue-on-error: true
+        env:
+          KAKAO_S3_ACCESS_KEY: ${{ secrets.KAKAO_S3_ACCESS_KEY }}
+          KAKAO_S3_SECRET_KEY: ${{ secrets.KAKAO_S3_SECRET_KEY }}
+          IMAGE_S3_ENDPOINT: https://objectstorage.kr-central-2.kakaocloud.com
+          IMAGE_S3_REGION: kr-central-2
+          IMAGE_S3_BUCKET: live-obs-platform
+        run: |
+          set -euo pipefail
+          ak="${KAKAO_S3_ACCESS_KEY:-}"; sk="${KAKAO_S3_SECRET_KEY:-}"
+          [ -z "$ak" ] || echo "::add-mask::$ak"
+          [ -z "$sk" ] || echo "::add-mask::$sk"
+          if [ -z "$ak" ] || [ -z "$sk" ]; then
+            echo "::warning::KAKAO_S3_* Secret이 비어 있어 버킷 확인을 건너뛰어요."; exit 0
+          fi
+          safe='^[A-Za-z0-9._/+=-]+$'
+          [[ "$ak" =~ $safe && "$sk" =~ $safe ]] || { echo "::error::KAKAO_S3_* Secret 형식이 올바르지 않아 버킷 확인을 할 수 없어요."; exit 1; }
+          out="$(mktemp)"; trap 'rm -f "$out"' EXIT
+          empty_sha=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+          # 키는 인자가 아니라 표준입력의 curl 설정으로 넘겨요(프로세스 목록에 남지 않음). 경로 방식 주소(엔드포인트/버킷).
+          code="$(printf 'user = "%s:%s"\n' "$ak" "$sk" | curl -sS -K - --max-time 20 -o "$out" -w '%{http_code}' \
+            --aws-sigv4 "aws:amz:${IMAGE_S3_REGION}:s3" -H "x-amz-content-sha256: $empty_sha" \
+            "${IMAGE_S3_ENDPOINT}/${IMAGE_S3_BUCKET}?list-type=2&max-keys=1" 2>/dev/null)" || code=000
+          if [ "$code" = 200 ] && grep -q '<ListBucketResult' "$out"; then
+            echo "버킷 연결 확인: 목록 조회 성공(HTTP 200, 쓰기 없음)"
+          else
+            err="$(grep -o '<Code>[^<]*</Code>' "$out" 2>/dev/null | head -n1 | sed 's/<[^>]*>//g' || true)"
+            echo "::error::버킷 연결 확인 실패(HTTP $code${err:+, $err})"; exit 1
+          fi
 
       - name: Record deploy
         if: success()
