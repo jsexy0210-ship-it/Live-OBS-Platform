@@ -209,6 +209,9 @@ model PasswordResetGrant {
   ciHash       String
   expiresAt    DateTime  @db.Timestamptz(3)
   usedAt       DateTime? @db.Timestamptz(3)
+  // 이 권한으로 새 비밀번호 저장에 성공한 시각(실패로 소진되거나 다른 권한 사용으로 무효가 된 권한은 비어 있음).
+  // 응답을 잃고 같은 새 비밀번호로 다시 보낸 요청을 성공으로 돌려주는 데 쓴다(auth/passwordReset.ts).
+  completedAt  DateTime? @db.Timestamptz(3)
   createdAt    DateTime  @default(now()) @db.Timestamptz(3)
   // 아이디 찾기로 준 권한: 발급에 쓴 본인확인과 토큰을 다시 만드는 무작위 값(토큰 = 서버 비밀키 HMAC(nonce), 원문은 저장하지 않음).
   // 응답을 잃은 재시도에 같은 토큰을 다시 돌려준다(auth/accountRecovery.ts).

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { IDV_COOKIE, RESET_PATH, startSellerPasswordReset } from "../../../../../lib/server/auth/passwordReset";
+import { FLOW_COOKIE_MAX_AGE_S, IDV_COOKIE, RESET_PATH, startSellerPasswordReset } from "../../../../../lib/server/auth/passwordReset";
 import { prisma } from "../../../../../lib/server/db";
 import { isString, mutation, readJson, requestMeta, setFlowCookie } from "../../../../../lib/server/http/route";
 import { START_IN_PROGRESS_MESSAGE } from "../../../../../lib/server/identity/attempt";
@@ -30,6 +30,6 @@ export const POST = mutation(async (req: Request) => {
     return identityFailure(r.reason);
   }
   const res = NextResponse.json({ verificationId: r.verificationId }, { headers: { "cache-control": "no-store" } });
-  setFlowCookie(res, IDV_COOKIE, r.ownerToken, RESET_PATH, 10 * 60);
+  setFlowCookie(res, IDV_COOKIE, r.ownerToken, RESET_PATH, FLOW_COOKIE_MAX_AGE_S);
   return res;
 });

@@ -1,11 +1,11 @@
 import type { IdentityVerification, Prisma, PrismaClient } from "@prisma/client";
-import { createHmac, randomBytes, randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { writeAudit } from "../audit/log";
 import { dbNow } from "../billing/subscription";
 import { keyedOwnerToken, parseAttemptKey, reuseKeyedAttempt, scopedAttemptKeyHash } from "../identity/attempt";
 import type { IdentityProvider } from "../identity/provider";
 import { completeIdentityVerification, parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
-import { GRANT_TTL_MS } from "./passwordReset";
+import { GRANT_TTL_MS, grantTokenOf } from "./passwordReset";
 import { recoveryLimitReached } from "./recoveryLimit";
 import { hashToken } from "./token";
 
@@ -210,13 +210,6 @@ export async function issueRecoveryResetGrant(
   });
   if (!issued || typeof issued === "string") return fail(issued ?? "verification_already_used");
   return { ok: true, ...issued };
-}
-
-// 아이디 찾기 재설정 권한 토큰: 서버 비밀키(IDENTITY_HASH_KEY)로 만든 HMAC(용도 구분 + nonce). 같은 nonce면 같은 토큰이라 재시도에 다시 만든다.
-function grantTokenOf(nonce: string): string {
-  const key = process.env.IDENTITY_HASH_KEY;
-  if (!key || key.length < 32) throw new Error("IDENTITY_HASH_KEY가 없거나 너무 짧아요(32자 이상).");
-  return createHmac("sha256", key).update(`password_reset_grant\0${nonce}`).digest("base64url");
 }
 
 // 아이디 찾기(ACCOUNT_RECOVERY)·직원 연결(STAFF_LINK) 본인확인 기록 비식별(MASTER 2026-10-04, 가입 기록과 같은 기준).
