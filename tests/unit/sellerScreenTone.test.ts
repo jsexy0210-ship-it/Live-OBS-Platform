@@ -10,6 +10,7 @@ const EXCLUDE = [
   "app/(seller)/seller/signup/",
   "components/seller/api.ts", // failMessage 말투표(admin·public)
   "components/seller/IdentityCheck.tsx", // 본인확인 문구표(admin·public)
+  "components/seller/TestModeNotice.tsx", // 파트너스(formal)·구매자 가입 두 말투 문구표
   "components/seller/PartnersAuth.tsx", // 가입·로그인 밖 화면 공용(pub ? 해요체 : 합니다체)
   "components/seller/stepFailure.ts", // RETRY_TEXT_PUBLIC(가입 신청용)
 ];

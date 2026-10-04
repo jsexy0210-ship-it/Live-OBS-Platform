@@ -11,7 +11,7 @@ import { loginBuyer, loginSeller } from "../../lib/server/auth/login";
 import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
 import { createOrder } from "../../lib/server/orders/create";
 import { getBuyerOrder, listBuyerOrders } from "../../lib/server/orders/buyer";
-import { autoConfirmPurchases } from "../../lib/server/orders/delivery";
+import { autoConfirmPurchases, unconfirmPurchase } from "../../lib/server/orders/delivery";
 import { maybeRestrict } from "../../lib/server/orders/overdue";
 import { getOrder, listOrders, listSellerOrders } from "../../lib/server/orders/read";
 import { signupBuyer } from "../../lib/server/buyers/signup";
@@ -601,8 +601,9 @@ describe("탈퇴 회원 법정 보관 분리", () => {
     expect((await getOrder(db, sctx, otherToConfirm.id)).id).toBe(otherToConfirm.id);
     expect((await db.order.findUniqueOrThrow({ where: { id: otherOrder.id } })).legalHoldAt).toBeNull();
 
-    // 분리된 구매 확정 주문을 나중에 환불하면 보관 만료일을 환불 날 기준으로 다시 계산한다(분리 표시는 그대로)
+    // 분리된 구매 확정 주문을 나중에 환불하면(구매 확정을 먼저 취소) 보관 만료일을 환불 날 기준으로 다시 계산한다(분리 표시는 그대로)
     const heldAt = rows.get(confirmed.id)!.legalHoldAt;
+    expect(await unconfirmPurchase(db, sctx, confirmed.id, { reason: "불량" })).toMatchObject({ ok: true });
     const late = await refundOrder(db, sctx, confirmed.id, { reason: "불량", expectedLiveVersion: (await db.seller.findUniqueOrThrow({ where: { id: s.seller.id } })).liveVersion, fault: "SELLER" });
     expect(late.ok).toBe(true);
     const lateRefunded = await db.order.findUniqueOrThrow({ where: { id: confirmed.id } });

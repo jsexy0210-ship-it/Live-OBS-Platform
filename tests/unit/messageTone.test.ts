@@ -13,6 +13,9 @@ import { SHARE_PREVIEW_MESSAGES } from "../../lib/server/shop/sharePreview";
 import { SHOP_IMAGE_MESSAGES } from "../../lib/server/shop-content/image";
 import { LOGO_MESSAGES } from "../../lib/server/shop-content/logo";
 import { CONTENT_MESSAGES } from "../../lib/server/shop-content/service";
+import { COUPON_MESSAGES } from "../../lib/server/shop-coupons/rules";
+import { BUYER_COUPON_MESSAGES, CODE_MESSAGES, ORDER_COUPON_MESSAGES } from "../../lib/server/shop-coupons/service";
+import { BUYER_REVIEW_MESSAGES, SELLER_REVIEW_MESSAGES } from "../../lib/server/product-reviews/service";
 
 // 서버 응답 문구 말투(lib/server/text/tone.ts): 파트너스·마스터 관리자 API는 합니다체, 구매자·공개 API와 파트너스 가입 신청은 해요체.
 const FRIENDLY = /(요|요\.|요\?)$/;
@@ -35,6 +38,9 @@ describe("문구표 말투", () => {
       ...Object.values(CONTENT_MESSAGES),
       ...Object.values(SHOP_IMAGE_MESSAGES),
       ...Object.values(LOGO_MESSAGES),
+      // 쿠폰·리뷰 파트너스 관리자 문구
+      ...Object.values(COUPON_MESSAGES),
+      ...Object.values(SELLER_REVIEW_MESSAGES),
     ])
       formal(m);
     for (const m of [
@@ -42,6 +48,11 @@ describe("문구표 말투", () => {
       ...Object.values(ORDER_ERROR_MESSAGES),
       ...Object.values(IDENTITY_ERROR_MESSAGES),
       START_IN_PROGRESS_MESSAGE,
+      // 쿠폰·리뷰 구매자 문구
+      ...Object.values(BUYER_COUPON_MESSAGES),
+      ...Object.values(CODE_MESSAGES),
+      ...Object.values(ORDER_COUPON_MESSAGES),
+      ...Object.values(BUYER_REVIEW_MESSAGES),
     ])
       friendly(m);
     // 두 벌은 같은 사유를 모두 가진다
