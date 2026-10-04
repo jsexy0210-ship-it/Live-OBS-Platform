@@ -80,7 +80,7 @@ describe("진열 설정", () => {
   it("추천 상품: 보이는 상품만 순서대로, 지운·숨긴 상품은 구매자 홈에서 빠지고, 남의 상품·지운 상품·중복·21개는 저장하지 않는다", async () => {
     const s = await seller();
     const other = await seller();
-    const ids = [];
+    const ids: string[] = [];
     for (const n of ["A", "B", "C"]) ids.push((await made(s.ctx, n)).id);
     const x = await made(other.ctx, "X");
     await setRecommended(db, s.ctx, { productIds: [ids[2], ids[0], ids[1]] });
