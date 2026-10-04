@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import IdentityCheck, { IdentityDone, kstToday } from "../../../../components/seller/IdentityCheck";
 import { AuthFrame, IdentityUnavailable, Steps } from "../../../../components/seller/PartnersAuth";
 import { api, failMessage } from "../../../../components/seller/api";
+import { RETRY_TEXT, stepOutcome } from "../../../../components/seller/stepFailure";
 
 // PF-007 파트너스 가입 신청: 1 대표자 휴대폰 본인확인 → 2 사업자·계정·쇼핑몰 정보 → 3 신청 완료(바로 승인 또는 승인 대기).
 // API: POST /api/seller-signup/verification(·/resend·/confirm) → POST /api/seller-signup/apply.
@@ -123,12 +124,19 @@ export default function PartnersSignupPage() {
       focus("pa-done-title");
       return;
     }
-    if (r.status === 503) return toUnavailable();
+    const out = stepOutcome(r);
+    if (out === "unavailable") return toUnavailable();
+    // 서버가 본인확인을 다시 하라고 한 경우만 처음부터. 연결 끊김·서버 오류·확인 중이면 본인확인을 그대로 두고 다시 신청하게 한다
+    // (서버는 같은 본인확인·같은 입력의 재신청에 이미 만든 신청 결과를 돌려준다)
+    if (out === "restart") return restartIdentity("본인확인 시간이 지났거나 확인되지 않았어요. 본인확인을 다시 해 주세요");
+    if (out === "retry" || r.error === "verification_pending") {
+      setNotice({ text: r.error === "verification_pending" ? "본인확인 결과를 확인하고 있어요. 잠시 뒤 다시 신청해 주세요" : failMessage(r, RETRY_TEXT) });
+      return focus("pa-notice");
+    }
     const field = (k: Field, text: string) => {
       setErrors({ [k]: text });
       focus(`su-${k}`);
     };
-    if (r.error === "verification_invalid" || r.error === "verification_pending") return restartIdentity("본인확인 시간이 지났거나 확인되지 않았어요. 본인확인을 다시 해 주세요");
     if (r.error === "weak_password") return field("password", `${MIN_PASSWORD_LENGTH}자 이상으로 정해 주세요`);
     if (r.error === "invalid_slug") return field("slug", "쓸 수 없는 주소예요. 다른 주소를 정해 주세요");
     if (r.error === "slug_taken") return field("slug", "이미 쓰고 있는 주소예요. 다른 주소를 정해 주세요");

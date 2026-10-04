@@ -74,7 +74,7 @@ export async function rejectSeller(db: PrismaClient, admin: AdminSessionContext,
   return { ok: true as const };
 }
 
-// 마스터 콘솔 「확인 필요」 목록: 자동 승인되지 않은 승인 대기 쇼핑몰과 걸린 항목.
+// 마스터 관리자 「확인 필요」 목록: 자동 승인되지 않은 승인 대기 쇼핑몰과 걸린 항목.
 export async function listSellersToReview(db: PrismaClient, admin: AdminSessionContext) {
   if (!adminCan(admin.admin.role, "platform.read")) throw forbidden();
   const sellers = await db.seller.findMany({

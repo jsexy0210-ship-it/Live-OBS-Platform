@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { submitSellerLogin } from "./sellerLogin";
 import { RUN, cleanupProducts, track } from "./cleanup";
 
 // SA-014 재고 관리: 한 번에 적용, 빼기·더하기(사유), 그사이 바뀐 재고는 덮어쓰지 않음, 걸러 보기, 권한, 390.
@@ -24,9 +25,7 @@ async function shot(page: Page, name: string) {
 
 async function openAs(page: Page, email = "demo-owner@example.com") {
   await page.goto("/seller/login?next=%2Fseller%2Fproducts%2Fstock");
-  await page.getByLabel("이메일").fill(email);
-  await page.getByLabel("비밀번호").fill(PASSWORD);
-  await page.getByRole("button", { name: "로그인" }).click();
+  await submitSellerLogin(page, email, PASSWORD);
   await expect(page).toHaveURL(/\/seller\/products\/stock$/);
 }
 
@@ -262,9 +261,7 @@ test("재고 차감 기준 안내는 주문 설정의 「취소·반품하면 �
 
 test("상품 담당 직원(쇼핑몰 설정 권한 없음)은 설정 이름으로 안내받는다", async ({ page }) => {
   await page.goto("/seller/login?next=%2Fseller%2Fproducts%2Fnew");
-  await page.getByLabel("이메일").fill("demo-staff@example.com");
-  await page.getByLabel("비밀번호").fill(PASSWORD);
-  await page.getByRole("button", { name: "로그인" }).click();
+  await submitSellerLogin(page, "demo-staff@example.com", PASSWORD);
   await expect(page.getByText("주문 설정의 「취소·반품하면 재고 되돌리기」를 따라요", { exact: false })).toBeVisible();
 });
 
