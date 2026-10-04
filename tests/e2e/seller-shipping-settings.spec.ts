@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { submitSellerLogin } from "./sellerLogin";
 
 // SA-061 배송비 정책: 방식(무료·고정·일정 금액 이상 무료)과 금액을 바꾸고 저장해 확인한다.
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
@@ -21,9 +22,7 @@ async function shot(page: Page, name: string) {
 
 async function openAs(page: Page, email: string) {
   await page.goto("/seller/login?next=%2Fseller%2Fsettings%2Fshipping");
-  await page.getByLabel("이메일").fill(email);
-  await page.getByLabel("비밀번호").fill(PASSWORD);
-  await page.getByRole("button", { name: "로그인" }).click();
+  await submitSellerLogin(page, email, PASSWORD);
   await expect(page).toHaveURL(/\/seller\/settings\/shipping$/);
 }
 

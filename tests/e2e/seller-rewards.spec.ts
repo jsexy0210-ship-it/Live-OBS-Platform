@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { submitSellerLogin } from "./sellerLogin";
 
 // SA-031 적립 정책 중 적립금 지급 시점: 결제하면 바로 / 배송 완료 후(기본)를 바꿔 저장해 확인한다.
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
@@ -21,9 +22,7 @@ async function shot(page: Page, name: string) {
 
 async function login(page: Page, email: string) {
   await page.goto("/seller/login?next=%2Fseller%2Frewards");
-  await page.getByLabel("이메일").fill(email);
-  await page.getByLabel("비밀번호").fill(PASSWORD);
-  await page.getByRole("button", { name: "로그인" }).click();
+  await submitSellerLogin(page, email, PASSWORD);
   await expect(page).toHaveURL(/\/seller\/rewards$/);
 }
 
@@ -65,9 +64,7 @@ test("적립금 지급 시점: 기본은 배송 완료 후, 결제하면 바로�
 
 test("회원·적립금 권한이 없는 직원은 메뉴가 안 보이고, 주소로 들어와도 권한 안내를 본다", async ({ page }) => {
   await page.goto("/seller/login?next=%2Fseller%2Frewards");
-  await page.getByLabel("이메일").fill("demo-staff@example.com");
-  await page.getByLabel("비밀번호").fill(PASSWORD);
-  await page.getByRole("button", { name: "로그인" }).click();
+  await submitSellerLogin(page, "demo-staff@example.com", PASSWORD);
   await expect(page).toHaveURL(/\/seller\/rewards$/);
   await expect(page.getByText("필요한 권한: 회원·적립금", { exact: false })).toBeVisible();
   await expect(page.getByRole("link", { name: "적립금", exact: true })).toHaveCount(0);
