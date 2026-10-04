@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { cleanupProducts, RUN, track } from "./cleanup";
 import { submitSellerLogin } from "./sellerLogin";
 
 // 파트너스 화면 미리보기: 저장 전 입력값을 바로 그리는지(저장된 서버 값이나 일부 칸만 쓰지 않는지) 확인한다.
@@ -6,6 +7,7 @@ import { submitSellerLogin } from "./sellerLogin";
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
 const SHOTS = process.env.E2E_SCREENSHOTS === "1";
 
+test.afterAll(() => cleanupProducts(PASSWORD));
 test.beforeAll(() => {
   if (!PASSWORD) throw new Error("E2E_PASSWORD가 없어요. dev-seed가 출력한 데모 비밀번호를 넣어 주세요");
 });
@@ -45,11 +47,10 @@ test("상품 등록 미리보기: 상품명·판매가·설명·옵션·판매 �
   await expect(pv.locator(".pbadge")).toHaveCount(0);
   await expect(pv.getByTestId("preview-price")).toHaveText("15,000원");
 
-  // 설명: 줄바꿈을 지킨다
-  await page.getByLabel("상품 설명").fill("1박스 36팩 구성\n미개봉 정품\n주문 다음 날 발송");
+  // 짧은 설명(한 줄, 80자까지): 입력하는 즉시 반영한다
+  await page.getByLabel("짧은 설명").fill("1박스 36팩 구성 · 미개봉 정품 · 주문 다음 날 발송");
   const desc = pv.getByTestId("preview-description");
-  await expect(desc).toHaveText("1박스 36팩 구성\n미개봉 정품\n주문 다음 날 발송");
-  expect(await desc.evaluate((el) => getComputedStyle(el).whiteSpace)).toBe("pre-wrap");
+  await expect(desc).toHaveText("1박스 36팩 구성 · 미개봉 정품 · 주문 다음 날 발송");
   await expect(pv.getByRole("button", { name: "더보기" })).toHaveCount(0);
 
   // 옵션: 이름·옵션별 가격(판매가 + 추가 금액)·재고 0이면 품절
@@ -67,15 +68,6 @@ test("상품 등록 미리보기: 상품명·판매가·설명·옵션·판매 �
   await expect(opts.nth(1)).toHaveText(/3팩 묶음\s*품절/);
   await shot(page, "SA-012-preview");
 
-  // 긴 설명은 몇 줄 뒤 접고 「더보기」로 편다
-  await page.getByLabel("상품 설명").fill(Array.from({ length: 12 }, (_, i) => `${i + 1}번째 줄 안내`).join("\n"));
-  await expect(desc).toContainText("12번째 줄 안내");
-  const clamped = await desc.evaluate((el) => el.scrollHeight > el.clientHeight + 1);
-  expect(clamped).toBe(true);
-  await pv.getByRole("button", { name: "더보기" }).click();
-  expect(await desc.evaluate((el) => el.scrollHeight <= el.clientHeight + 1)).toBe(true);
-  await expect(pv.getByRole("button", { name: "접기" })).toBeVisible();
-
   // 판매 상태
   const status = page.getByRole("radiogroup", { name: "판매 상태" });
   await status.getByRole("radio", { name: "품절" }).click();
@@ -91,8 +83,8 @@ test("상품 수정 미리보기: 저장된 값이 아니라 고치는 중인 �
   await expect(page.getByLabel("상품명")).toHaveValue("문라이트 컬렉션 박스");
   const pv = page.getByTestId("product-preview");
   await expect(pv.getByTestId("preview-name")).toHaveText("문라이트 컬렉션 박스");
-  await page.getByLabel("상품 설명").fill("수정 중인 설명\n두 번째 줄");
-  await expect(pv.getByTestId("preview-description")).toHaveText("수정 중인 설명\n두 번째 줄");
+  await page.getByLabel("짧은 설명").fill("수정 중인 설명");
+  await expect(pv.getByTestId("preview-description")).toHaveText("수정 중인 설명");
   await page.getByLabel("판매가").fill("99000");
   await expect(pv.getByTestId("preview-price")).toHaveText("99,000원");
   await shot(page, "SA-012-E-preview");
@@ -129,4 +121,29 @@ test("공유 미리보기: 제목·설명을 저장 전에 카드에 바로 보�
   await page.getByLabel("설명").fill("미리보기 설명");
   await expect(card).toContainText("미리보기 제목");
   await expect(card).toContainText("미리보기 설명");
+});
+
+// 이전에 저장한 긴 설명·여러 줄 설명: 한 줄 입력칸으로 바꾸면 줄바꿈이 사라지므로 여러 줄 칸으로 보여 주고, 미리보기는 줄바꿈을 지키며 길면 접는다
+test("이미 저장된 여러 줄 설명은 여러 줄 칸으로 보이고, 미리보기는 줄바꿈을 지키며 길면 「더보기」로 편다", async ({ page }) => {
+  await open(page, "/seller/products");
+  const name = track(`긴설명 ${RUN}`);
+  const description = Array.from({ length: 12 }, (_, i) => `${i + 1}번째 줄 안내`).join("\n");
+  const res = await page.request.post("/api/seller/products", {
+    data: { name, price: 1000, status: "DRAFT", description, options: [{ name: "기본", priceDelta: 0, stock: 1, sortOrder: 0 }] },
+    headers: { Origin: new URL(page.url()).origin },
+  });
+  expect(res.status()).toBe(201);
+  const { id } = (await res.json()) as { id: string };
+  await page.goto(`/seller/products/${id}`);
+  const box = page.getByLabel("짧은 설명");
+  expect(await box.evaluate((el) => el.tagName)).toBe("TEXTAREA");
+  await expect(box).toHaveValue(description);
+  const pv = page.getByTestId("product-preview");
+  const desc = pv.getByTestId("preview-description");
+  expect(await desc.evaluate((el) => getComputedStyle(el).whiteSpace)).toBe("pre-wrap");
+  await expect(desc).toContainText("12번째 줄 안내");
+  expect(await desc.evaluate((el) => el.scrollHeight > el.clientHeight + 1)).toBe(true);
+  await pv.getByRole("button", { name: "더보기" }).click();
+  expect(await desc.evaluate((el) => el.scrollHeight <= el.clientHeight + 1)).toBe(true);
+  await expect(pv.getByRole("button", { name: "접기" })).toBeVisible();
 });
