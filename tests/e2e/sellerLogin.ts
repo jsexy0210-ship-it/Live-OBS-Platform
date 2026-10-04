@@ -2,7 +2,7 @@ import type { Page } from "@playwright/test";
 
 // 파트너스 로그인 화면에서 데모 계정으로 로그인한다(로그인 화면은 먼저 열어 둔다).
 // 대표자(demo-owner·demo-overlay-owner)가 아니면 직원 탭을 고른다(탭과 계정 종류가 다르면 서버가 로그인하지 않는다, AU-002).
-// 직원이 본인확인 연결 안내(AU-012, 본인확인을 쓸 수 있는 서버에서만 뜬다)로 가면 「나중에 할게요」로 원래 가려던 화면으로 넘어간다.
+// 직원이 본인확인 연결 안내(AU-012, 본인확인을 쓸 수 있는 서버에서만 뜬다)로 가면 「나중에 하기」로 원래 가려던 화면으로 넘어간다.
 export async function submitSellerLogin(page: Page, email: string, password: string) {
   const staff = !email.endsWith("-owner@example.com");
   if (staff) await page.getByRole("tab", { name: "직원" }).click();
