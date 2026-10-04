@@ -72,39 +72,33 @@ describe("관리자 계정 MA-061·062", () => {
     expect(await loginAdmin(db, { email: ops.email, password: PASSWORD }, {})).toMatchObject({ ok: true });
   });
 
-  it("마지막 최고관리자는 역할을 내리거나 정지할 수 없다(409). 잠금을 쥔 다른 강등과 겹쳐도 한 명은 남는다", async () => {
+  it("최고관리자는 누구도(본인 포함) 정지·역할 변경할 수 없고(409 super_admin_protected) 이름만 바뀐다. 최고관리자 역할은 추가·수정으로 줄 수 없다(400)", async () => {
+    // 대표님 지시(2026-10-04): 「최고관리자는 유일신이다. 정지·강등 넣지 마라.」 최고관리자는 시드로만 만든다
     const su = await signedIn("SUPER_ADMIN");
-    expect(await (await patch(su.cookie, su.id, { role: "OPERATIONS" })).json()).toEqual({ error: "last_super_admin" });
-    expect((await patch(su.cookie, su.id, { status: "SUSPENDED" })).status).toBe(409);
-    const su2 = await signedIn("SUPER_ADMIN");
-    const c1 = (await resolveAdminSession(db, su.token))!;
-    // [경합] 한쪽이 최고관리자 행을 잠근 채 su2를 내리고 커밋 전에 멈춘 사이, 다른 쪽이 su를 내린다
-    let release!: () => void;
-    let locked!: () => void;
-    const gate = new Promise<void>((r) => (release = r));
-    const holding = new Promise<void>((r) => (locked = r));
-    const first = db.$transaction(
-      async (tx) => {
-        await tx.$queryRaw`SELECT "id" FROM "PlatformAdmin" WHERE "role" = 'SUPER_ADMIN' OR "id" = ${su2.id}::uuid ORDER BY "id" FOR UPDATE`;
-        await tx.platformAdmin.update({ where: { id: su2.id }, data: { role: "CS" } });
-        locked();
-        await gate;
-      },
-      { timeout: 15_000 },
-    );
-    await holding;
-    let settled = false;
-    const second = updateAdmin(db, c1, su.id, { role: "CS" }).finally(() => (settled = true));
-    // 잠금을 기다리기 시작할 때까지(잠금이 없으면 먼저 끝난다)
-    for (let i = 0; i < 100 && !settled; i++) {
-      const [w] = await db.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS n FROM pg_stat_activity WHERE "wait_event_type" = 'Lock' AND "datname" = current_database()`;
-      if (w.n > 0) break;
-      await new Promise((r) => setTimeout(r, 25));
+    const ops = await signedIn("OPERATIONS");
+    const audits = async () => db.auditLog.count({ where: { action: { startsWith: "admin.account." } } });
+    for (const body of [{ status: "SUSPENDED" }, { role: "OPERATIONS" }, { role: "SUPER_ADMIN" }, { status: "ACTIVE" }, { name: "새 이름", status: "SUSPENDED" }]) {
+      const r = await patch(su.cookie, su.id, body);
+      expect(r.status, JSON.stringify(body)).toBe(body.role === "SUPER_ADMIN" ? 400 : 409);
     }
-    release();
-    await first;
-    expect(await second).toEqual({ ok: false, reason: "last_super_admin" });
-    expect(await db.platformAdmin.count({ where: { role: "SUPER_ADMIN", status: "ACTIVE" } })).toBe(1);
+    expect(await (await patch(su.cookie, su.id, { role: "CS" })).json()).toEqual({ error: "super_admin_protected" });
+    expect(await db.platformAdmin.findUniqueOrThrow({ where: { id: su.id } })).toMatchObject({ role: "SUPER_ADMIN", status: "ACTIVE", name: "관리자" });
+    expect(await resolveAdminSession(db, su.token)).not.toBeNull();
+    expect(await audits()).toBe(0);
+
+    // 최고관리자 역할 부여 거부(추가·수정 모두), 아무것도 바뀌지 않는다
+    const created = await create(su.cookie, { email: "second@example.com", name: "두 번째", role: "SUPER_ADMIN", password: "long-enough-pw" });
+    expect(created.status).toBe(400);
+    expect(await created.json()).toEqual({ error: "super_admin_not_assignable" });
+    expect(await db.platformAdmin.count({ where: { email: "second@example.com" } })).toBe(0);
+    expect(await (await patch(su.cookie, ops.id, { role: "SUPER_ADMIN" })).json()).toEqual({ error: "super_admin_not_assignable" });
+    expect((await db.platformAdmin.findUniqueOrThrow({ where: { id: ops.id } })).role).toBe("OPERATIONS");
+    expect(await updateAdmin(db, (await resolveAdminSession(db, su.token))!, ops.id, { role: "SUPER_ADMIN" })).toEqual({ ok: false, reason: "super_admin_not_assignable" });
+    expect(await audits()).toBe(0);
+
+    // 이름은 바꿀 수 있다
+    expect(await (await patch(su.cookie, su.id, { name: "대표" })).json()).toMatchObject({ admin: { name: "대표", role: "SUPER_ADMIN", status: "ACTIVE" } });
+    expect(await audits()).toBe(1);
   });
 
   it("최고관리자가 아니면 계정·권한 표 모두 403이고 아무것도 바뀌지 않는다. 파트너스 세션은 401", async () => {

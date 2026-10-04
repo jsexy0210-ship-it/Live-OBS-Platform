@@ -9,8 +9,10 @@ import { dbNow } from "../billing/subscription";
 
 // 마스터 관리자 계정(MA-061·062)과 역할별 권한 표(MA-063). 모두 admin.manage(최고관리자)만.
 // 역할·상태는 요청마다 DB에서 다시 읽으므로(auth/session.ts) 바꾸면 바로 적용된다. 정지하면 그 계정의 세션도 끝낸다.
-// 최고관리자가 한 명도 남지 않게 되는 변경(마지막 최고관리자의 역할 변경·정지)은 막는다.
+// 최고관리자(SUPER_ADMIN)는 한 명뿐이고 시드로만 만든다(대표님 지시 2026-10-04 「최고관리자는 유일신이다. 정지·강등 넣지 마라」):
+// 누구도(본인 포함) 최고관리자를 정지·역할 변경할 수 없고(이름만 바꿈), 다른 계정에 최고관리자 역할을 줄 수 없다.
 const ROLES: readonly PlatformAdminRole[] = ["SUPER_ADMIN", "OPERATIONS", "CS", "READ_ONLY"];
+const ASSIGNABLE_ROLES: readonly PlatformAdminRole[] = ["OPERATIONS", "CS", "READ_ONLY"];
 const STATUSES: readonly PlatformAdminStatus[] = ["ACTIVE", "SUSPENDED"];
 const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,}$/;
 type Meta = { ip?: string | null; userAgent?: string | null };
@@ -37,7 +39,7 @@ export function permissionTable(admin: AdminSessionContext) {
   };
 }
 
-export type CreateAdminFailure = "invalid_input" | "weak_password" | "email_taken";
+export type CreateAdminFailure = "invalid_input" | "super_admin_not_assignable" | "weak_password" | "email_taken";
 
 // 계정 추가. 처음 비밀번호는 최고관리자가 정해 따로 전한다(응답·로그 추적에 넣지 않음).
 export async function createAdmin(
@@ -50,6 +52,7 @@ export async function createAdmin(
   const email = typeof input.email === "string" ? input.email.trim().toLowerCase() : "";
   const name = typeof input.name === "string" ? input.name.trim() : "";
   if (!EMAIL_RE.test(email) || !name || name.length > 50 || !ROLES.includes(input.role as PlatformAdminRole)) return { ok: false as const, reason: "invalid_input" as const };
+  if (!ASSIGNABLE_ROLES.includes(input.role as PlatformAdminRole)) return { ok: false as const, reason: "super_admin_not_assignable" as const };
   if (typeof input.password !== "string" || input.password.length < MIN_PASSWORD_LENGTH || input.password.length > 200) return { ok: false as const, reason: "weak_password" as const };
   const passwordHash = await hashPassword(input.password);
   try {
@@ -73,9 +76,9 @@ export async function createAdmin(
   }
 }
 
-export type UpdateAdminFailure = "invalid_input" | "not_found" | "last_super_admin";
+export type UpdateAdminFailure = "invalid_input" | "super_admin_not_assignable" | "not_found" | "super_admin_protected";
 
-// 이름·역할·상태 바꾸기(빼고 보내면 그대로). 정지하면 세션을 끝낸다. 최고관리자 행들을 잠그고 남는 수를 세어 마지막 한 명을 지킨다.
+// 이름·역할·상태 바꾸기(빼고 보내면 그대로). 정지하면 세션을 끝낸다. 최고관리자는 이름만 바꾼다(역할·상태를 보내면 409, 아무것도 바꾸지 않음).
 export async function updateAdmin(
   db: PrismaClient,
   admin: AdminSessionContext,
@@ -91,16 +94,13 @@ export async function updateAdmin(
   const role = input.role as PlatformAdminRole | undefined;
   const status = input.status as PlatformAdminStatus | undefined;
   if (name === undefined && role === undefined && status === undefined) return { ok: false as const, reason: "invalid_input" as const };
+  if (role !== undefined && !ASSIGNABLE_ROLES.includes(role)) return { ok: false as const, reason: "super_admin_not_assignable" as const };
   return db.$transaction(async (tx) => {
-    // 최고관리자 수를 세기 전에 그 행들(과 대상)을 같은 순서로 잠근다(동시에 두 명을 내려도 마지막 한 명은 남는다)
-    await tx.$queryRaw`SELECT "id" FROM "PlatformAdmin" WHERE "role" = 'SUPER_ADMIN' OR "id" = ${adminId}::uuid ORDER BY "id" FOR UPDATE`;
+    // 대상 행을 잠그고 읽는다(동시에 두 번 바꿔도 전후 기록이 어긋나지 않게)
+    await tx.$queryRaw`SELECT "id" FROM "PlatformAdmin" WHERE "id" = ${adminId}::uuid FOR UPDATE`;
     const before = await tx.platformAdmin.findUnique({ where: { id: adminId }, select: VIEW });
     if (!before) return { ok: false as const, reason: "not_found" as const };
-    const losesSuper = before.role === "SUPER_ADMIN" && before.status === "ACTIVE" && ((role !== undefined && role !== "SUPER_ADMIN") || status === "SUSPENDED");
-    if (losesSuper) {
-      const supers = await tx.platformAdmin.count({ where: { role: "SUPER_ADMIN", status: "ACTIVE" } });
-      if (supers <= 1) return { ok: false as const, reason: "last_super_admin" as const };
-    }
+    if (before.role === "SUPER_ADMIN" && (role !== undefined || status !== undefined)) return { ok: false as const, reason: "super_admin_protected" as const };
     const after = await tx.platformAdmin.update({ where: { id: adminId }, data: { ...(name !== undefined ? { name } : {}), ...(role ? { role } : {}), ...(status ? { status } : {}) }, select: VIEW });
     let revokedSessions = 0;
     if (status === "SUSPENDED" && before.status !== "SUSPENDED") {

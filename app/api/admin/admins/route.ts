@@ -15,8 +15,8 @@ export async function GET(req: Request) {
   }
 }
 
-// POST { email, name(1~50자), role(SUPER_ADMIN·OPERATIONS·CS·READ_ONLY), password(8자 이상) } → 201 { admin }.
-// 400 invalid_input·weak_password, 409 email_taken. 비밀번호는 응답·로그 추적에 남기지 않는다.
+// POST { email, name(1~50자), role(OPERATIONS·CS·READ_ONLY), password(8자 이상) } → 201 { admin }.
+// 400 invalid_input·weak_password·super_admin_not_assignable(최고관리자는 시드로만), 409 email_taken. 비밀번호는 응답·로그 추적에 남기지 않는다.
 export const POST = mutation(async (req: Request) => {
   const admin = await requireAdmin(prisma, sessionToken(req, "admin"), "admin.manage");
   const body = await readJson<{ email: unknown; name: unknown; role: unknown; password: unknown }>(req);
