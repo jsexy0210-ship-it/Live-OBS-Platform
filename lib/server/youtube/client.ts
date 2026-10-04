@@ -1,10 +1,17 @@
 // YouTube Data API v3 읽기 전용 클라이언트(API 키만). 단위 시험은 fetch를 모의로 넣는다.
 // 호출마다 할당량 단위가 정해져 있다(QUOTA_COST). search.list(100단위)는 쓰지 않는다.
-export const QUOTA_COST = { "videos.list": 1, "channels.list": 1, "playlistItems.list": 1 } as const;
+// liveChatMessages.list 5단위는 공식 표를 이 환경에서 확인하지 못했다(실제 호출 시험 때 확인, 다르면 이 값만 바꾼다).
+export const QUOTA_COST = { "videos.list": 1, "channels.list": 1, "playlistItems.list": 1, "liveChatMessages.list": 5 } as const;
 export type YoutubeMethod = keyof typeof QUOTA_COST;
 
 export const VIDEOS_PER_CALL = 50;
 const BASE = "https://www.googleapis.com/youtube/v3/";
+const PATH: Record<YoutubeMethod, string> = {
+  "videos.list": "videos",
+  "channels.list": "channels",
+  "playlistItems.list": "playlistItems",
+  "liveChatMessages.list": "liveChat/messages",
+};
 
 export type ChannelInfo = { channelId: string; title: string; uploadsPlaylistId: string };
 // broadcast: upcoming(예정)·live(진행)·none(라이브가 아니거나 끝남). liveStreamingDetails가 없으면 라이브 영상이 아니다.
@@ -19,6 +26,10 @@ export type VideoInfo = {
   actualEndAt: Date | null;
   liveChatId: string | null;
 };
+
+export type ChatMessage = { messageId: string; authorChannelId: string; authorName: string; text: string; publishedAt: Date };
+// ended: 채팅이 끝났거나 꺼짐·없음(liveChatEnded·liveChatDisabled·liveChatNotFound). 받으면 그 방송의 수집을 멈춘다.
+export type ChatPage = { messages: ChatMessage[]; nextPageToken: string | null; pollingIntervalMillis: number | null; ended: boolean };
 
 // 할당량 초과(403 quotaExceeded·dailyLimitExceeded). 받으면 그날 호출을 멈춘다.
 export class YoutubeQuotaError extends Error {
@@ -37,16 +48,21 @@ export type YoutubeClient = {
   channel(ref: { channelId: string } | { handle: string }): Promise<ChannelInfo | null>;
   latestUploads(playlistId: string, max?: number): Promise<string[]>;
   videos(ids: readonly string[]): Promise<VideoInfo[]>;
+  chatMessages(liveChatId: string, pageToken: string | null): Promise<ChatPage>;
 };
+
+const CHAT_ENDED = new Set(["liveChatEnded", "liveChatDisabled", "liveChatNotFound", "forbidden"]);
 
 type Fetch = (url: string, init?: RequestInit) => Promise<Response>;
 
 const date = (v: unknown) => (typeof v === "string" && !Number.isNaN(Date.parse(v)) ? new Date(v) : null);
+// 글자(코드 포인트) 단위로 자른다(이모지 반쪽이 남지 않게)
+const cut = (v: string, n: number) => Array.from(v).slice(0, n).join("");
 const str = (v: unknown) => (typeof v === "string" && v ? v : null);
 
 export function createYoutubeClient(apiKey: string, fetchImpl: Fetch = fetch, timeoutMs = 10_000): YoutubeClient {
-  async function get(method: YoutubeMethod, params: Record<string, string>): Promise<{ items?: unknown[] }> {
-    const url = new URL(BASE + method.split(".")[0]);
+  async function get(method: YoutubeMethod, params: Record<string, string>): Promise<{ items?: unknown[]; nextPageToken?: unknown; pollingIntervalMillis?: unknown }> {
+    const url = new URL(BASE + PATH[method]);
     for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
     url.searchParams.set("key", apiKey);
     let res: Response;
@@ -55,7 +71,7 @@ export function createYoutubeClient(apiKey: string, fetchImpl: Fetch = fetch, ti
     } catch (e) {
       throw new YoutubeApiError(0, e instanceof Error ? e.name : "network");
     }
-    const body = (await res.json().catch(() => ({}))) as { items?: unknown[]; error?: { errors?: { reason?: string }[] } };
+    const body = (await res.json().catch(() => ({}))) as { items?: unknown[]; nextPageToken?: unknown; pollingIntervalMillis?: unknown; error?: { errors?: { reason?: string }[] } };
     if (!res.ok) {
       const reason = body.error?.errors?.[0]?.reason ?? "unknown";
       if (res.status === 403 && (reason === "quotaExceeded" || reason === "dailyLimitExceeded")) throw new YoutubeQuotaError();
@@ -100,6 +116,32 @@ export function createYoutubeClient(apiKey: string, fetchImpl: Fetch = fetch, ti
           liveChatId: str(d?.activeLiveChatId),
         } satisfies VideoInfo;
       });
+    },
+    async chatMessages(liveChatId, pageToken) {
+      let r;
+      try {
+        r = await get("liveChatMessages.list", { liveChatId, part: "snippet,authorDetails", maxResults: "2000", ...(pageToken ? { pageToken } : {}) });
+      } catch (e) {
+        if (e instanceof YoutubeApiError && CHAT_ENDED.has(e.reason)) return { messages: [], nextPageToken: null, pollingIntervalMillis: null, ended: true };
+        throw e;
+      }
+      const messages = (r.items ?? []).flatMap((raw) => {
+        const m = raw as { id?: string; snippet?: { displayMessage?: string; publishedAt?: string }; authorDetails?: { channelId?: string; displayName?: string } };
+        const publishedAt = date(m.snippet?.publishedAt);
+        const authorName = m.authorDetails?.displayName?.trim();
+        if (!m.id || !publishedAt || !authorName) return [];
+        return [
+          {
+            messageId: m.id,
+            authorChannelId: m.authorDetails?.channelId ?? "",
+            authorName: cut(authorName, 100),
+            text: cut(m.snippet?.displayMessage ?? "", 200),
+            publishedAt,
+          },
+        ];
+      });
+      const interval = Number(r.pollingIntervalMillis);
+      return { messages, nextPageToken: str(r.nextPageToken), pollingIntervalMillis: Number.isFinite(interval) && interval > 0 ? interval : null, ended: false };
     },
   };
 }
