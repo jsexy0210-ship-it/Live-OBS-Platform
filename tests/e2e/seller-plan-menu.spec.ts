@@ -29,35 +29,48 @@ async function login(page: Page, email: string, next: string) {
   await expect(page).toHaveURL(new RegExp(`${next.replace(/\//g, "\\/")}$`));
 }
 
-const menu = (page: Page) => page.getByRole("complementary", { name: "파트너스 메뉴" });
-// 스토어 운영(쇼핑몰 기능) 권한이 있어야 보이는 메뉴
-const STORE_MENUS = ["상품", "적립금", "쿠폰", "회원", "쇼핑몰 설정", "배너 · 팝업", "결제(PG) 연결", "주문자 알림"];
-// 오버레이 전용에서도 보이는 메뉴(오버레이 권한·기존 주문 처리·계정·구독)
-const COMMON_MENUS = ["주문", "구매 제한", "방송 대시보드", "오버레이 편집기", "방송 이력", "구독 · 결제", "직원 계정", "내 계정"];
+const gnb = (page: Page) => page.getByRole("navigation", { name: "주 메뉴" });
+const lnb = (page: Page) => page.getByRole("complementary", { name: "파트너스 메뉴" });
+// 왼쪽 메뉴의 하위 메뉴(대분류 제목은 제외). 고르지 않은 대분류는 화면에서 접혀 있어 있는지(개수)로 확인한다
+const lnbItem = (page: Page, label: string) => lnb(page).locator(".lnb-i").filter({ hasText: new RegExp(`^${label.replace(/[()]/g, "\\$&")}$`) });
+// 스토어 운영(쇼핑몰 기능) 권한이 있어야 보이는 하위 메뉴
+const STORE_MENUS = ["상품 목록", "적립금", "쿠폰", "회원", "배너 · 팝업", "결제(PG) 연결", "주문자 알림"];
+// 오버레이 전용에서도 보이는 하위 메뉴(오버레이 권한·기존 주문 처리·계정·구독)
+const COMMON_MENUS = ["전체 주문", "구매 제한", "방송 대시보드", "오버레이 편집기", "방송 이력", "구독 · 결제", "직원 계정"];
+const overlayMe = (orderFollowup: boolean) => async (route: import("@playwright/test").Route) => {
+  const res = await route.fetch();
+  const body = await res.json();
+  await route.fulfill({ response: res, json: { ...body, orderFollowup } });
+};
 
 test("쇼핑몰 통합은 쇼핑몰 기능 메뉴가 모두 보인다", async ({ page }) => {
   await login(page, INTEGRATED, "/seller/orders");
   const me = await (await page.request.get("/api/seller/me")).json();
   expect(me.features).toContain("STORE_OPERATIONS");
-  for (const label of [...STORE_MENUS, ...COMMON_MENUS]) await expect(menu(page).getByText(label, { exact: true })).toBeVisible();
-  await expect(menu(page).getByRole("link", { name: "통계", exact: true })).toHaveAttribute("href", "/seller/stats");
+  for (const label of [...STORE_MENUS, ...COMMON_MENUS]) await expect(lnbItem(page, label)).toHaveCount(1);
+  await expect(gnb(page).locator(".gnb-i")).toHaveText(["홈", "방송", "주문", "상품", "회원", "프로모션", "디자인", "통계", "쇼핑몰 설정"]);
+  await expect(gnb(page).getByRole("link", { name: "통계", exact: true })).toHaveAttribute("href", "/seller/stats");
   await expect(page.getByTestId("plan-feature-required")).toHaveCount(0);
   await shot(page, "plan-menu-integrated");
 });
 
-test("오버레이 전용은 쇼핑몰 기능 메뉴를 숨기고, 오버레이·주문·계정 메뉴는 남긴다", async ({ page }) => {
+test("오버레이 전용은 쇼핑몰 기능 메뉴를 숨기고, 오버레이·후속 처리·계정 메뉴는 남긴다", async ({ page }) => {
+  // 데모 오버레이 쇼핑몰에는 끝나지 않은 주문이 없어 후속 처리 여부(orderFollowup)를 켠 값으로 바꿔 읽는다(꺼진 경우는 아래 시험)
+  await page.route("**/api/seller/me", overlayMe(true));
   await login(page, OVERLAY, "/seller/orders");
   const me = await (await page.request.get("/api/seller/me")).json();
   expect(me.features).toEqual(["OVERLAY", "EXTERNAL_INTEGRATION"]);
   await expect(page.getByRole("heading", { name: "주문" })).toBeVisible();
-  for (const label of COMMON_MENUS) await expect(menu(page).getByText(label, { exact: true })).toBeVisible();
-  for (const label of STORE_MENUS) await expect(menu(page).getByText(label, { exact: true })).toHaveCount(0);
+  for (const label of COMMON_MENUS) await expect(lnbItem(page, label)).toHaveCount(1);
+  for (const label of STORE_MENUS) await expect(lnbItem(page, label)).toHaveCount(0);
+  // 상품·프로모션·디자인 대분류는 하위 메뉴가 모두 숨어 GNB에서도 사라진다
+  await expect(gnb(page).locator(".gnb-i")).toHaveText(["홈", "방송", "주문", "회원", "통계", "쇼핑몰 설정"]);
   // 통계는 방송 통계만 연다(매출·상품 등은 숨김)
-  await expect(menu(page).getByRole("link", { name: "통계", exact: true })).toHaveAttribute("href", "/seller/stats/broadcasts");
+  await expect(gnb(page).getByRole("link", { name: "통계", exact: true })).toHaveAttribute("href", "/seller/stats/broadcasts");
   await shot(page, "plan-menu-overlay");
 });
 
-test("로그인 뒤 기본 화면: 통합은 지금처럼 상품, 오버레이 전용은 안내 화면 대신 열 수 있는 첫 메뉴(방송 통계)", async ({ page }) => {
+test("로그인 뒤 기본 화면: 통합은 지금처럼 상품, 오버레이 전용은 안내 화면 대신 열 수 있는 첫 메뉴(방송 대시보드)", async ({ page }) => {
   await page.goto("/seller/login");
   await submitSellerLogin(page, INTEGRATED, PASSWORD);
   await expect(page).toHaveURL(/\/seller\/products$/);
@@ -65,12 +78,14 @@ test("로그인 뒤 기본 화면: 통합은 지금처럼 상품, 오버레이 �
 
   await page.goto("/seller/login");
   await submitSellerLogin(page, OVERLAY, PASSWORD);
-  await expect(page).toHaveURL(/\/seller\/stats\/broadcasts$/);
-  await expect(page.getByRole("heading", { name: "방송 통계" })).toBeVisible();
+  await expect(page).toHaveURL(/\/seller\/broadcast$/);
   await expect(page.getByTestId("plan-feature-required")).toHaveCount(0);
-  // 통계 탭도 방송만 남는다
-  await expect(page.getByRole("navigation", { name: "통계 종류" }).getByRole("link")).toHaveText(["방송"]);
   await shot(page, "plan-overlay-landing");
+
+  // 방송 통계는 열려 있고, 통계 탭도 방송만 남는다
+  await page.goto("/seller/stats/broadcasts");
+  await expect(page.getByRole("heading", { name: "방송 통계" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "통계 종류" }).getByRole("link")).toHaveText(["방송"]);
 
   // 매출·주문 통계 요약은 주소로 들어와도 안내 화면
   await page.goto("/seller/stats");
@@ -89,14 +104,15 @@ test("오버레이 전용이 쇼핑몰 기능 주소로 바로 들어오면 안�
   await expect(guide.getByRole("heading", { name: "지금 요금제에서 사용할 수 없는 기능입니다" })).toBeVisible();
   await expect(guide.getByText("쇼핑몰 통합 요금제에서 사용할 수 있습니다")).toBeVisible();
   await expect(guide.getByText("요금제는 구독 · 결제에서 바꿀 수 있습니다")).toBeVisible();
-  await expect(page.getByText("판매 › 상품")).toBeVisible();
+  await expect(guide.getByRole("link", { name: "구독 · 결제" })).toHaveAttribute("href", "/seller/subscription");
+  await expect(page.locator(".loc-bar")).toContainText("상품›상품 목록");
   // 상품 화면 내용(등록 버튼)은 그리지 않는다
   await expect(page.getByText("상품 등록")).toHaveCount(0);
   await shot(page, "plan-feature-required");
 
-  // 열 수 있는 첫 메뉴(통계 → 방송 통계)로 보낸다
-  await guide.getByRole("link", { name: "통계 화면으로 이동" }).click();
-  await expect(page).toHaveURL(/\/seller\/stats\/broadcasts$/);
+  // 열 수 있는 첫 메뉴(방송 대시보드)로 보낸다
+  await guide.getByRole("link", { name: "방송 대시보드 화면으로 이동" }).click();
+  await expect(page).toHaveURL(/\/seller\/broadcast$/);
   await expect(page.getByTestId("plan-feature-required")).toHaveCount(0);
 });
 
@@ -117,8 +133,8 @@ test("메뉴 정보가 지난 값이어도 서버가 403 plan_feature_required�
   await blocked;
   await expect(page.getByTestId("plan-feature-required")).toBeVisible();
   // 다시 읽은 /me(실제 값)로 메뉴에서 쇼핑몰 기능이 빠진다
-  await expect(menu(page).getByText("상품", { exact: true })).toHaveCount(0);
-  await expect(menu(page).getByText("주문", { exact: true })).toBeVisible();
+  await expect(gnb(page).getByRole("link", { name: "상품", exact: true })).toHaveCount(0);
+  await expect(gnb(page).getByRole("link", { name: "방송", exact: true })).toBeVisible();
 });
 
 const STORE_ME = ["OVERLAY", "EXTERNAL_INTEGRATION", "STORE_OPERATIONS"];
@@ -164,7 +180,7 @@ test("화면을 옮긴 뒤 늦게 온 403 plan_feature_required는 지금 화면
   const late = page.waitForResponse((r) => r.url().includes("/api/seller/products") && r.status() === 403);
   await page.goto("/seller/products");
   // 상품 응답을 기다리지 않고 주문 화면으로 옮긴다
-  await menu(page).getByRole("link", { name: "주문", exact: true }).click();
+  await gnb(page).getByRole("link", { name: "주문", exact: true }).click();
   await expect(page).toHaveURL(/\/seller\/orders$/);
   await late;
   await page.waitForTimeout(300);
@@ -189,9 +205,9 @@ test("같은 화면으로 돌아온 뒤 첫 방문에서 보낸 요청의 늦은
   const late = page.waitForResponse((r) => r.url().includes("/api/seller/products") && r.status() === 403);
   await page.goto("/seller/products");
   // 상품 → 주문 → 다시 상품(첫 방문의 상품 요청은 아직 응답 전)
-  await menu(page).getByRole("link", { name: "주문", exact: true }).click();
+  await gnb(page).getByRole("link", { name: "주문", exact: true }).click();
   await expect(page).toHaveURL(/\/seller\/orders$/);
-  await menu(page).getByRole("link", { name: "상품", exact: true }).click();
+  await gnb(page).getByRole("link", { name: "상품", exact: true }).click();
   await expect(page).toHaveURL(/\/seller\/products$/);
   await expect(page.getByRole("heading", { name: /^상품/ })).toBeVisible();
   // 안내 화면이 잠깐이라도 나타나는지 기록한다(다시 읽은 /me가 허용해 곧 지워지는 경우도 잡게)
@@ -206,4 +222,21 @@ test("같은 화면으로 돌아온 뒤 첫 방문에서 보낸 요청의 늦은
   await page.waitForTimeout(500);
   expect(await page.evaluate(() => (window as unknown as { __planShown: boolean }).__planShown)).toBe(false);
   await expect(page.getByTestId("plan-feature-required")).toHaveCount(0);
+});
+
+// #230: 오버레이 전용으로 내린 뒤에도 후속 처리할 일이 남았으면(orderFollowup) 주문·구매 제한·문의 메뉴가 보이고, 다 끝나면 숨는다
+test("오버레이 전용: 후속 처리 대상이 남아 있으면 주문·회원 대분류가 보이고, 다 끝나면 GNB에서 숨는다", async ({ page }) => {
+  await page.route("**/api/seller/me", overlayMe(true));
+  await login(page, OVERLAY, "/seller/orders");
+  await expect(gnb(page).locator(".gnb-i")).toHaveText(["홈", "방송", "주문", "회원", "통계", "쇼핑몰 설정"]);
+  await expect(lnbItem(page, "전체 주문")).toHaveCount(1);
+  await expect(lnbItem(page, "구매 제한")).toHaveCount(1);
+  await expect(lnbItem(page, "구매자 문의")).toHaveCount(1);
+
+  await page.unroute("**/api/seller/me");
+  await page.route("**/api/seller/me", overlayMe(false));
+  await page.goto("/seller/broadcast");
+  await expect(gnb(page).locator(".gnb-i")).toHaveText(["홈", "방송", "통계", "쇼핑몰 설정"]);
+  await expect(lnbItem(page, "전체 주문")).toHaveCount(0);
+  await expect(lnbItem(page, "구매 제한")).toHaveCount(0);
 });

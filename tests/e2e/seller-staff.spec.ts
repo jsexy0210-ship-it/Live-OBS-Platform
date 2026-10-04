@@ -49,6 +49,8 @@ async function addStaff(page: Page, s: { name: string; phone: string; email: str
 test("대표자: 메뉴에서 직원 계정으로 들어가 목록을 보고, 직원을 추가하면 목록에 권한과 함께 나온다", async ({ page }) => {
   await login(page, "demo-owner@example.com", PASSWORD, "/seller/products");
   await expect(page).toHaveURL(/\/seller\/products$/);
+  // 상단 대분류 「쇼핑몰 설정」 → 왼쪽 메뉴 「직원 계정」
+  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "쇼핑몰 설정" }).click();
   await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "직원 계정" }).click();
   await expect(page).toHaveURL(/\/seller\/staff$/);
   await expect(page.getByRole("heading", { name: /직원 계정/ })).toBeVisible();
@@ -211,13 +213,13 @@ test("대표자: 직원 비밀번호를 재설정하면 새 비밀번호로만 �
   await expect(staffPage).toHaveURL(/\/seller\/products$/);
 
   // 직원이 로그인해 있는 동안 대표자가 권한을 켜면, 직원이 다음 화면으로 옮길 때 메뉴에 바로 나온다(새로고침 없이)
-  const staffMenu = staffPage.getByRole("complementary", { name: "파트너스 메뉴" });
+  const staffMenu = staffPage.getByRole("navigation", { name: "주 메뉴" });
   await expect(staffMenu.getByRole("link", { name: "주문", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: `${s.name} 정보 · 권한 수정` }).click();
   await dialog.getByRole("checkbox", { name: "주문·배송", exact: true }).check();
   await dialog.getByRole("button", { name: "저장" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await staffPage.getByRole("link", { name: "재고 관리" }).click();
+  await staffPage.getByRole("main").getByRole("link", { name: "재고 관리" }).click();
   await expect(staffPage).toHaveURL(/\/seller\/products\/stock$/);
   await expect(staffMenu.getByRole("link", { name: "주문", exact: true })).toBeVisible();
 
@@ -627,7 +629,7 @@ test("권한이 하나도 없는 직원도 창으로 돌아오면 대표자가 �
   const staffPage = await page.context().browser()!.newPage();
   await login(staffPage, s.email, s.password, "/seller/products");
   await skipIdentityLink(staffPage);
-  const staffMenu = staffPage.getByRole("complementary", { name: "파트너스 메뉴" });
+  const staffMenu = staffPage.getByRole("navigation", { name: "주 메뉴" });
   await expect(staffMenu.getByRole("link", { name: "주문", exact: true })).toHaveCount(0);
 
   await page.getByRole("button", { name: `${s.name} 정보 · 권한 수정` }).click();
@@ -658,7 +660,7 @@ test("권한 다시 읽기가 겹치면 늦게 온 옛 응답이 새 권한을 �
   const staffPage = await page.context().browser()!.newPage();
   await login(staffPage, s.email, s.password, "/seller/products");
   await skipIdentityLink(staffPage);
-  const staffMenu = staffPage.getByRole("complementary", { name: "파트너스 메뉴" });
+  const staffMenu = staffPage.getByRole("navigation", { name: "주 메뉴" });
   const orders = staffMenu.getByRole("link", { name: "주문", exact: true });
   await expect(orders).toHaveCount(0);
 
@@ -718,7 +720,7 @@ test("직원 창으로 1초 안에 다시 돌아와도 잠시 뒤 다시 읽어 
   const staffPage = await page.context().browser()!.newPage();
   await login(staffPage, s.email, s.password, "/seller/products");
   await skipIdentityLink(staffPage);
-  const orders = staffPage.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "주문", exact: true });
+  const orders = staffPage.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "주문", exact: true });
   await expect(orders).toHaveCount(0);
 
   // 첫 포커스로 다시 읽는다(아직 권한 없음) → 바로 대표자가 권한을 켜고 → 1초 안에 다시 포커스(바로 읽지 않음)

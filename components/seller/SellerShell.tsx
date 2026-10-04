@@ -6,92 +6,141 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { useLatestResponse, type ReadTicket } from "./latestResponse";
 import { api, currentNavGeneration, nextNavGeneration, PLAN_FEATURE_EVENT, type Me, type PlanFeatureEventDetail } from "./api";
 
-// 판매자 관리자 공통 틀: 왼쪽 메뉴(좁은 화면에서는 서랍) + 상단 바 + 이용 상태 배너.
+// 파트너스 관리자 공통 틀(업무용 관리 화면 틀, 대표님 지시 2026-10-04): 상단 고정 GNB(대분류) + 왼쪽 LNB(고른 대분류의 하위 메뉴) + 본문.
+// 메뉴 묶음은 docs/IA.md SA 「메뉴 그룹」 표를 따른다. 좁은 화면에서는 GNB가 햄버거로 접히고 LNB가 서랍으로 열린다(서랍에는 전체 메뉴).
 // 아직 만들지 않은 화면은 메뉴에서 흐리게 두고 누를 수 없게 한다.
 
 // perm: 그 권한이 있어야 메뉴가 보인다. OWNER는 대표자 전용.
 // plan: 요금제가 그 기능 권한을 줘야 메뉴가 보인다(ARCHITECTURE 4.8.0 판매자 API 분류와 같은 기준). 없으면 구독·결제처럼 항상 열린다.
-//   ANY = 기능 권한이 하나라도 있을 때(ACCOUNT·ORDER_FOLLOWUP: 요금제를 낮춘 뒤에도 이미 받은 주문은 처리, 통합 첫 결제 확정 전에는 닫힘)
-type PlanNeed = "ANY" | "OVERLAY" | "STORE_OPERATIONS";
+//   ANY = 기능 권한이 하나라도 있을 때(홈·직원 계정·내 계정: 통합 첫 결제 확정 전에는 닫힘)
+//   FOLLOWUP = STORE_OPERATIONS가 있거나, 오버레이 전용으로 내린 뒤에도 후속 처리할 일이 남았을 때(/me orderFollowup). 주문·배송·문의 메뉴(ORDER_FOLLOWUP 경로)
 // alt: plan이 없을 때 대신 여는 화면(그 요금제에서 쓸 수 있는 하위 화면만 보여 줄 때)
-type Nav = { h: string } | { label: string; href?: string; perm?: string; match?: string; plan?: PlanNeed; alt?: { plan: PlanNeed; href: string } };
-const NAV: Nav[] = [
-  { h: "홈" },
-  { label: "홈", plan: "ANY" },
-  // 오버레이 전용은 방송 통계만(매출·상품 등은 스토어 운영, MASTER 결정 2026-10-04)
-  { label: "통계", href: "/seller/stats", perm: "SALES_VIEW", plan: "STORE_OPERATIONS", alt: { plan: "OVERLAY", href: "/seller/stats/broadcasts" } },
-  { h: "방송" },
-  { label: "방송 대시보드", href: "/seller/broadcast", perm: "BROADCAST_RUN", plan: "OVERLAY" },
-  { h: "판매" },
-  { label: "상품", href: "/seller/products", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
-  { label: "주문", href: "/seller/orders", perm: "ORDER_SHIPPING", plan: "ANY" },
-  { label: "입금 확인", perm: "ORDER_SHIPPING", plan: "ANY" },
-  { label: "배송", perm: "ORDER_SHIPPING", plan: "ANY" },
-  { label: "영수증 · 세금계산서", perm: "RECEIPT_TAX", plan: "ANY" },
-  { label: "적립금", href: "/seller/rewards", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
+// 하위 메뉴가 모두 숨겨진 대분류는 GNB에서도 숨긴다.
+type PlanNeed = "ANY" | "OVERLAY" | "STORE_OPERATIONS" | "FOLLOWUP";
+type Item = { label: string; href?: string; perm?: string; plan?: PlanNeed; alt?: { plan: PlanNeed; href: string } };
+type Group = { key: string; label: string; items: Item[] };
+const MENU: Group[] = [
+  { key: "home", label: "홈", items: [{ label: "홈", plan: "ANY" }] },
+  {
+    key: "broadcast",
+    label: "방송",
+    items: [
+      { label: "방송 대시보드", href: "/seller/broadcast", perm: "BROADCAST_RUN", plan: "OVERLAY" },
+      { label: "오버레이 편집기", href: "/seller/overlay", perm: "OVERLAY_EDIT", plan: "OVERLAY" },
+      { label: "HIT 카드 이력", perm: "BROADCAST_RUN", plan: "OVERLAY" },
+      { label: "방송 이력", perm: "BROADCAST_RUN", plan: "OVERLAY" },
+    ],
+  },
+  {
+    key: "order",
+    label: "주문",
+    items: [
+      { label: "전체 주문", href: "/seller/orders", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
+      { label: "입금 확인", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
+      { label: "배송", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
+      { label: "영수증 · 세금계산서", perm: "RECEIPT_TAX", plan: "FOLLOWUP" },
+    ],
+  },
+  {
+    key: "product",
+    label: "상품",
+    items: [
+      { label: "상품 목록", href: "/seller/products", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
+      { label: "상품 등록", href: "/seller/products/new", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
+      { label: "재고 관리", href: "/seller/products/stock", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
+    ],
+  },
+  {
+    key: "member",
+    label: "회원",
+    items: [
+      { label: "회원", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
+      { label: "적립금", href: "/seller/rewards", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
+      { label: "구매 제한", perm: "MEMBER_POINTS", plan: "FOLLOWUP" },
+      { label: "구매자 문의", perm: "INQUIRY_REPLY", plan: "FOLLOWUP" },
+      // 리뷰: 목록·집계 조회는 파트너스 계정 누구나, 답글·숨김·설정은 구매자 문의(INQUIRY_REPLY) 권한(서버에서 막음). 서버가 스토어 운영 기능을 요구한다
+      { label: "리뷰", href: "/seller/reviews", plan: "STORE_OPERATIONS" },
+    ],
+  },
   // 쿠폰: 집계 조회는 파트너스 계정 누구나, 만들기·지급은 적립금(MEMBER_POINTS) 권한(화면에서 막음)
-  { label: "쿠폰", href: "/seller/coupons", plan: "STORE_OPERATIONS" },
-  { label: "회원", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
-  { label: "구매 제한", perm: "MEMBER_POINTS", plan: "ANY" },
-  { label: "구매자 문의", perm: "INQUIRY_REPLY", plan: "ANY" },
-  // 리뷰: 목록·집계 조회는 파트너스 계정 누구나, 답글·숨김·설정은 구매자 문의(INQUIRY_REPLY) 권한(서버에서 막음). 서버가 스토어 운영 기능을 요구한다
-  { label: "리뷰", href: "/seller/reviews", plan: "STORE_OPERATIONS" },
-  { h: "방송 · 오버레이" },
-  { label: "오버레이 편집기", href: "/seller/overlay", perm: "OVERLAY_EDIT", plan: "OVERLAY" },
-  { label: "HIT 카드 이력", perm: "BROADCAST_RUN", plan: "OVERLAY" },
-  { label: "방송 이력", perm: "BROADCAST_RUN", plan: "OVERLAY" },
-  { h: "설정" },
-  { label: "쇼핑몰 설정", href: "/seller/settings/shop", match: "/seller/settings", plan: "STORE_OPERATIONS" },
-  { label: "배너 · 팝업", href: "/seller/banners", plan: "STORE_OPERATIONS" },
-  { label: "결제(PG) 연결", perm: "OWNER", plan: "STORE_OPERATIONS" },
-  { label: "주문자 알림", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
-  { label: "구독 · 결제", href: "/seller/subscription", perm: "OWNER" },
-  { label: "직원 계정", href: "/seller/staff", perm: "OWNER", plan: "ANY" },
-  { label: "공지 · 문의" },
-  { label: "도우미" },
-  { label: "내 계정", plan: "ANY" },
+  { key: "promotion", label: "프로모션", items: [{ label: "쿠폰", href: "/seller/coupons", plan: "STORE_OPERATIONS" }] },
+  { key: "design", label: "디자인", items: [{ label: "배너 · 팝업", href: "/seller/banners", plan: "STORE_OPERATIONS" }] },
+  {
+    key: "stats",
+    label: "통계",
+    // 오버레이 전용은 방송 통계만(매출·상품 등은 스토어 운영, MASTER 결정 2026-10-04)
+    items: [{ label: "통계", href: "/seller/stats", perm: "SALES_VIEW", plan: "STORE_OPERATIONS", alt: { plan: "OVERLAY", href: "/seller/stats/broadcasts" } }],
+  },
+  {
+    key: "settings",
+    label: "쇼핑몰 설정",
+    items: [
+      { label: "쇼핑몰 정보", href: "/seller/settings/shop", plan: "STORE_OPERATIONS" },
+      { label: "주문 설정", href: "/seller/settings/order", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
+      { label: "배송 설정", href: "/seller/settings/shipping", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
+      // 회원 정책: IA 표에는 없지만 이미 있는 화면이라 쇼핑몰 설정 안에 둔다
+      { label: "회원 정책", href: "/seller/settings/member", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
+      { label: "공유 설정", href: "/seller/settings/share", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
+      { label: "결제(PG) 연결", perm: "OWNER", plan: "STORE_OPERATIONS" },
+      { label: "주문자 알림", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
+      { label: "직원 계정", href: "/seller/staff", perm: "OWNER", plan: "ANY" },
+      { label: "구독 · 결제", href: "/seller/subscription", perm: "OWNER" },
+    ],
+  },
 ];
 
 // 주소로 바로 들어와도 요금제에 없는 화면은 안내 화면을 보인다. 메뉴 묶음과 다른 하위 화면만 따로 적는다(긴 주소가 먼저)
 const ROUTE_PLAN: [string, PlanNeed][] = [["/seller/stats/broadcasts", "OVERLAY"]];
-function routeNav(pathname: string) {
-  return NAV.find((n): n is Extract<Nav, { label: string }> => "label" in n && !!n.href && pathname.startsWith(n.match ?? n.href));
+// 쇼핑몰 설정 하위 화면(/seller/settings/…)은 메뉴마다 따로 주소가 있어 접두어가 길게 맞는 메뉴를 고른다
+function routeNav(pathname: string): { group: Group; item: Item } | null {
+  let best: { group: Group; item: Item } | null = null;
+  for (const group of MENU)
+    for (const item of group.items)
+      if (item.href && (pathname === item.href || pathname.startsWith(`${item.href}/`)) && (!best || item.href.length > best.item.href!.length)) best = { group, item };
+  return best;
 }
-// 상단 바 경로(「판매 › 주문」처럼 메뉴 묶음 › 메뉴)
+// 상단 바 경로(「주문 › 전체 주문」처럼 대분류 › 메뉴)
 function routeCrumb(pathname: string): string {
-  const item = routeNav(pathname);
-  if (!item) return "파트너스";
-  const head = NAV.slice(0, NAV.indexOf(item)).reverse().find((n): n is { h: string } => "h" in n);
-  return head && head.h !== item.label ? `${head.h} › ${item.label}` : item.label;
+  const r = routeNav(pathname);
+  if (!r) return "파트너스";
+  return r.group.label !== r.item.label ? `${r.group.label} › ${r.item.label}` : r.item.label;
 }
+// FOLLOWUP은 메뉴를 숨길 때만 쓴다. 주소로 들어온 화면은 서버(ORDER_FOLLOWUP 경로는 기능 권한이 하나라도 있으면 열림)가 막는지에 따른다
 function routePlan(pathname: string): PlanNeed | undefined {
-  return ROUTE_PLAN.find(([p]) => pathname.startsWith(p))?.[1] ?? routeNav(pathname)?.plan;
+  const need = ROUTE_PLAN.find(([p]) => pathname.startsWith(p))?.[1] ?? routeNav(pathname)?.item.plan;
+  return need === "FOLLOWUP" ? "ANY" : need;
 }
 
-type NavItem = Extract<Nav, { label: string }>;
-export function planAllows(features: readonly string[] | undefined, need?: PlanNeed): boolean {
+// 요금제 기능 권한만 보는 판단(통계 탭 등). FOLLOWUP은 후속 처리 여부(orderFollowup)가 필요해 menuAllows가 본다
+export function planAllows(features: readonly string[] | undefined, need?: Exclude<PlanNeed, "FOLLOWUP">): boolean {
   const f = features ?? [];
   return !need || (need === "ANY" ? f.length > 0 : f.includes(need));
+}
+function menuAllows(me: Pick<Me, "features" | "orderFollowup">, need?: PlanNeed): boolean {
+  return need === "FOLLOWUP" ? planAllows(me.features, "STORE_OPERATIONS") || !!me.orderFollowup : planAllows(me.features, need);
 }
 function canFor(me: Me, perm: string) {
   return me.isOwner || (perm !== "OWNER" && me.permissions.includes(perm));
 }
-// 권한·요금제 기능이 없는 메뉴는 숨기고(alt가 열리면 그 화면으로), 안에 메뉴가 하나도 안 남은 묶음 제목도 숨긴다
-function visibleNav(me: Me): Nav[] {
-  return NAV.flatMap((n): Nav[] => {
-    if (!("label" in n)) return [n];
-    if (n.perm && !canFor(me, n.perm)) return [];
-    if (planAllows(me.features, n.plan)) return [n];
-    return n.alt && planAllows(me.features, n.alt.plan) ? [{ ...n, href: n.alt.href }] : [];
-  }).filter((n, i, all) => !("h" in n) || (all[i + 1] !== undefined && !("h" in all[i + 1])));
+// 권한·요금제 기능이 없는 메뉴는 숨기고(alt가 열리면 그 화면으로), 안에 메뉴가 하나도 안 남은 대분류도 숨긴다
+function visibleMenu(me: Me): Group[] {
+  return MENU.map((g) => ({
+    ...g,
+    items: g.items.flatMap((n): Item[] => {
+      if (n.perm && !canFor(me, n.perm)) return [];
+      if (menuAllows(me, n.plan)) return [n];
+      return n.alt && menuAllows(me, n.alt.plan) ? [{ ...n, href: n.alt.href }] : [];
+    }),
+  })).filter((g) => g.items.length > 0);
 }
 // 로그인 뒤 갈 화면: 기본 화면(href)이 요금제에 없으면 만든 메뉴 중 지금 열리는 첫 메뉴(없으면 기본 화면 그대로)
 export function landingFor(me: Me, href: string): string {
-  if (planAllows(me.features, routePlan(href))) return href;
-  return visibleNav(me).find((n): n is NavItem => "label" in n && !!n.href)?.href ?? href;
+  if (menuAllows(me, routePlan(href))) return href;
+  return visibleMenu(me).flatMap((g) => g.items).find((n) => !!n.href)?.href ?? href;
 }
 
-type ShellCtx = { me: Me; trialDaysLeft: number | null; openNav: () => void; can: (perm: string) => boolean };
+// loc: 지금 화면의 대분류 · 메뉴 이름(본문 위 경로 줄에 쓴다)
+type ShellCtx = { me: Me; trialDaysLeft: number | null; openNav: () => void; can: (perm: string) => boolean; loc: { group: string; item: string; exact: boolean } | null };
 const Ctx = createContext<ShellCtx | null>(null);
 
 export function useSeller(): ShellCtx {
@@ -107,6 +156,8 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   const [failed, setFailed] = useState(false);
   const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null);
   const [navOpen, setNavOpen] = useState(false);
+  // GNB에서 고른 대분류(화면을 옮기면 지금 화면의 대분류로 돌아간다)
+  const [picked, setPicked] = useState<string | null>(null);
 
   const lastRead = useRef(0);
   // /me 다시 읽기 반영 규칙(latestResponse.ts): 나중에 보낸 요청의 성공만 반영하고, 실패가 앞선 성공을 버리지 않는다.
@@ -181,7 +232,10 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
     };
   }, [refresh]);
 
-  useEffect(() => setNavOpen(false), [pathname]);
+  useEffect(() => {
+    setNavOpen(false);
+    setPicked(null);
+  }, [pathname]);
 
   // 화면 방문 번호: 경로가 바뀌면 화면(자식)을 그리기 전에 올린다. 자식의 첫 요청도 새 번호를 갖도록 렌더 중에 한 번만 올린다
   const visitPath = useRef<string | null>(null);
@@ -206,7 +260,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   // 화면의 요금제 조건을 모르면(routePlan 없음) 허용을 확인할 수 없어 떠날 때까지 둔다(다시 막히는 되풀이 방지)
   useEffect(() => {
     const need = planBlocked && routePlan(planBlocked.path);
-    if (planBlocked && need && me && meGen >= planBlocked.gen && planAllows(me.features, need)) setPlanBlocked(null);
+    if (planBlocked && need && me && meGen >= planBlocked.gen && menuAllows(me, need)) setPlanBlocked(null);
   }, [planBlocked, me, meGen]);
 
   // 세션을 실제로 끊었을 때만 로그인 화면으로 보낸다. 실패하면 화면에 남아 다시 시도하게 한다(공용 기기에서 로그아웃된 줄 착각하지 않게).
@@ -239,49 +293,106 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
 
   const can = (perm: string) => canFor(me, perm);
   const features = me.features ?? [];
-  const nav = visibleNav(me);
-  const blocked = (planBlocked?.path === pathname && planBlocked.visit === currentNavGeneration()) || !planAllows(features, routePlan(pathname));
+  const menu = visibleMenu(me);
+  const route = routeNav(pathname);
+  const active = route && menu.some((g) => g.key === route.group.key) ? route : null;
+  const shown = menu.find((g) => g.key === picked) ?? menu.find((g) => g.key === active?.group.key) ?? menu[0];
+  const loc = active ? { group: active.group.label, item: active.item.label, exact: pathname === active.item.href } : null;
+  const blocked = (planBlocked?.path === pathname && planBlocked.visit === currentNavGeneration()) || !menuAllows(me, routePlan(pathname));
   // 안내 화면에서 갈 수 있는 첫 화면(만든 메뉴 중 지금 열리는 것)
-  const nextNav = nav.find((n): n is NavItem => "label" in n && !!n.href && !pathname.startsWith(n.href));
+  const nextNav = menu.flatMap((g) => g.items).find((n) => !!n.href && !pathname.startsWith(n.href));
+
+  const utilities = (
+    <>
+      <a className="util-i" href={`/shop/${me.shop.slug}`} target="_blank" rel="noreferrer">
+        쇼핑몰 바로가기
+      </a>
+      <a className="util-i off" aria-disabled="true" title="준비 중입니다">
+        공지 · 문의
+      </a>
+      <a className="util-i off" aria-disabled="true" title="준비 중입니다">
+        도우미
+      </a>
+      <a className="util-i off" aria-disabled="true" title="준비 중입니다">
+        내 계정
+      </a>
+      <button className="util-i util-btn" type="button" onClick={() => void logout()}>
+        로그아웃
+      </button>
+    </>
+  );
 
   return (
-    <Ctx.Provider value={{ me, trialDaysLeft, openNav: () => setNavOpen(true), can }}>
-      <div className={`shell${navOpen ? " nav-open" : ""}`}>
-        <aside className="side" aria-label="파트너스 메뉴">
-          <Link className="logo" href="/seller/products" style={{ padding: "6px 12px 14px", fontSize: 18 }}>
+    <Ctx.Provider value={{ me, trialDaysLeft, openNav: () => setNavOpen(true), can, loc }}>
+      <div className={`cs${navOpen ? " nav-open" : ""}`}>
+        <header className="gnb">
+          <button className="gnb-menu" type="button" aria-label="메뉴 열기" onClick={() => setNavOpen(true)}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <path d="M4 7h16M4 12h16M4 17h16" />
+            </svg>
+          </button>
+          <Link className="logo gnb-logo" href="/seller/products">
             <span className="logo-sym" />
             <span className="logo-word" />
-            <span className="t-c1 c-alt" style={{ marginLeft: 4 }}>
-              파트너스
-            </span>
+            <span className="gnb-sub">파트너스</span>
           </Link>
-          {nav.map((n, i) =>
-            "h" in n ? (
-              <span key={i} className="nav-h">
-                {n.h}
-              </span>
-            ) : n.href ? (
-              <Link key={i} className={`nav-i${pathname.startsWith(n.match ?? n.href) ? " on" : ""}`} href={n.href} onClick={() => setNavOpen(false)}>
-                {n.label}
-              </Link>
-            ) : (
-              <a key={i} className="nav-i off" aria-disabled="true" title="준비 중입니다">
-                {n.label}
-              </a>
-            ),
-          )}
-          <button className="btn btn-sm btn-ghost side-logout" type="button" onClick={() => void logout()}>
-            로그아웃
-          </button>
-          {logoutError && (
-            <span className="err side-logout-err" role="alert">
-              로그아웃하지 못했습니다. 다시 시도해 주십시오
+          <nav className="gnb-nav" aria-label="주 메뉴">
+            {menu.map((g) => {
+              const first = g.items.find((n) => n.href)?.href;
+              const cls = `gnb-i${g.key === shown.key ? " on" : ""}`;
+              return first ? (
+                <Link key={g.key} className={cls} href={first} onClick={() => setPicked(null)}>
+                  {g.label}
+                </Link>
+              ) : (
+                <button key={g.key} className={cls} type="button" aria-pressed={g.key === shown.key} onClick={() => setPicked(g.key)}>
+                  {g.label}
+                </button>
+              );
+            })}
+          </nav>
+          <div className="gnb-util">
+            <span className="gnb-shop ell" title={`${me.user.name} · ${me.user.email}`}>
+              {me.shop.name}
             </span>
-          )}
-        </aside>
-        <button className="nav-dim" type="button" aria-label="메뉴 닫기" onClick={() => setNavOpen(false)} />
-        <div className="col shell-body">
-          {blocked ? <PlanFeatureRequired crumb={routeCrumb(pathname)} noFeatures={features.length === 0} next={nextNav} /> : children}
+            <span className="util-desk">{utilities}</span>
+          </div>
+        </header>
+        {logoutError && (
+          <div className="msg msg-neg logout-err" role="alert">
+            로그아웃하지 못했습니다. 다시 시도해 주십시오
+          </div>
+        )}
+        <div className="cs-wrap">
+          <aside className="lnb" aria-label="파트너스 메뉴">
+            {menu.map((g) => (
+              <section key={g.key} className={`lnb-sec${g.key === shown.key ? " on" : ""}`}>
+                <strong className="lnb-h">{g.label}</strong>
+                {g.items.map((n) =>
+                  n.href ? (
+                    <Link
+                      key={n.label}
+                      className={`lnb-i${active?.item === n ? " on" : ""}`}
+                      href={n.href}
+                      aria-current={active?.item === n ? "page" : undefined}
+                      onClick={() => setNavOpen(false)}
+                    >
+                      {n.label}
+                    </Link>
+                  ) : (
+                    <a key={n.label} className="lnb-i off" aria-disabled="true" title="준비 중입니다">
+                      {n.label}
+                    </a>
+                  ),
+                )}
+              </section>
+            ))}
+            <div className="lnb-util">{utilities}</div>
+          </aside>
+          <button className="cs-dim" type="button" aria-label="메뉴 닫기" onClick={() => setNavOpen(false)} />
+          <div className="col cs-body">
+            {blocked ? <PlanFeatureRequired crumb={routeCrumb(pathname)} noFeatures={features.length === 0} next={nextNav} /> : children}
+          </div>
         </div>
       </div>
     </Ctx.Provider>
@@ -299,7 +410,15 @@ function PlanFeatureRequired({ crumb, noFeatures, next }: { crumb: string; noFea
           <div className="st-ic lock">!</div>
           <h1 className="t">지금 요금제에서 사용할 수 없는 기능입니다</h1>
           <span className="s">{noFeatures ? "구독료 첫 결제가 확정되면 사용할 수 있습니다" : "쇼핑몰 통합 요금제에서 사용할 수 있습니다"}</span>
-          <span className="s">{me.isOwner ? "요금제는 구독 · 결제에서 바꿀 수 있습니다" : "요금제 변경은 대표자에게 요청해 주십시오"}</span>
+          <span className="s">
+            {me.isOwner ? (
+              <>
+                요금제는 <Link href="/seller/subscription">구독 · 결제</Link>에서 바꿀 수 있습니다
+              </>
+            ) : (
+              "요금제 변경은 대표자에게 요청해 주십시오"
+            )}
+          </span>
           {next?.href && (
             <Link className="btn btn-sm" href={next.href}>
               {next.label} 화면으로 이동
@@ -311,26 +430,30 @@ function PlanFeatureRequired({ crumb, noFeatures, next }: { crumb: string; noFea
   );
 }
 
-// 화면마다 상단 바(경로·버튼)를 넣고, 그 아래에 이용 상태 배너를 붙인다.
+// 화면마다 본문 위에 경로 줄(대분류 › 메뉴 · 오른쪽 버튼)을 넣고, 그 아래에 이용 상태 배너를 붙인다.
+// crumb: 예전 경로 문구. 경로는 메뉴 구조에서 만들고, 하위 화면(주문 상세·이벤트 팝업 등)이면 crumb 마지막 칸을 덧붙인다.
 export function Topbar({ crumb, badge, children }: { crumb: string; badge?: React.ReactNode; children?: React.ReactNode }) {
-  const { me, openNav } = useSeller();
+  const { loc } = useSeller();
+  const parts = crumb.split("›").map((p) => p.trim());
+  const last = parts[parts.length - 1];
+  const path = loc ? [loc.group, loc.item] : parts;
+  if (loc && !loc.exact && parts.length > 2 && last !== loc.item && last !== loc.group) path.push(last);
+  // 대분류와 메뉴 이름이 같으면(통계 › 통계) 한 번만
+  const shownPath = path.filter((p, i) => i === 0 || p !== path[i - 1]);
   return (
     <>
-      <header className="topbar">
-        <button className="icon-btn menu-btn" type="button" aria-label="메뉴 열기" onClick={openNav}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-            <path d="M4 7h16M4 12h16M4 17h16" />
-          </svg>
-        </button>
-        <span className="crumb ell">{crumb}</span>
+      <div className="loc-bar">
+        <span className="crumb ell">
+          {shownPath.map((p, i) => (
+            <span key={i} className={i === shownPath.length - 1 ? "crumb-now" : undefined}>
+              {i > 0 && <span className="crumb-sep" aria-hidden="true">›</span>}
+              {p}
+            </span>
+          ))}
+        </span>
         {badge}
-        <div className="row tb-actions">
-          {children}
-          <span className="btn btn-sm btn-ghost tb-account" title={`${me.user.name} · ${me.user.email}`}>
-            {me.shop.name}
-          </span>
-        </div>
-      </header>
+        <div className="row tb-actions">{children}</div>
+      </div>
       <AccessBanner />
     </>
   );

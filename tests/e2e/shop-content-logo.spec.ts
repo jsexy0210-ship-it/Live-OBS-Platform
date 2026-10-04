@@ -53,9 +53,9 @@ test.describe.serial("SA-060 쇼핑몰 로고", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/seller/login?next=%2Fseller%2Fsettings%2Fshipping");
     await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
-    await page.getByRole("link", { name: "쇼핑몰 정보" }).click();
+    await page.getByRole("navigation", { name: "쇼핑몰 설정" }).getByRole("link", { name: "쇼핑몰 정보" }).click();
     await expect(page).toHaveURL(/\/seller\/settings\/shop$/);
-    await expect(page.getByRole("link", { name: "쇼핑몰 정보" })).toHaveAttribute("aria-current", "page");
+    await expect(page.getByRole("navigation", { name: "쇼핑몰 설정" }).getByRole("link", { name: "쇼핑몰 정보" })).toHaveAttribute("aria-current", "page");
     // 로고가 없으면 쇼핑몰 이름 첫 글자
     await expect(page.getByText("로고 없음 · 쇼핑몰 이름 첫 글자로 표시")).toBeVisible();
     await expect(page.getByTestId("logo-preview")).toContainText("카");
@@ -188,7 +188,7 @@ test.describe.serial("SA-060 쇼핑몰 로고", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/seller/login");
     await submitSellerLogin(page, "demo-staff@example.com", PASSWORD);
-    await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "쇼핑몰 설정" }).click();
+    await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "쇼핑몰 설정" }).click();
     await expect(page).toHaveURL(/\/seller\/settings\/shop$/);
     const tabs = page.getByRole("navigation", { name: "쇼핑몰 설정" });
     await expect(tabs.getByRole("link", { name: "쇼핑몰 정보" })).toHaveAttribute("aria-current", "page");

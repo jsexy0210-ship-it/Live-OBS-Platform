@@ -100,6 +100,8 @@ export type SellerAccess = "trial" | "paid" | "charging" | "grace" | "expired";
 export type PlanFeature = "OVERLAY" | "EXTERNAL_INTEGRATION" | "STORE_OPERATIONS";
 export type Me = { sellerId: string; userId: string; isOwner: boolean; permissions: string[]; access: SellerAccess;
   features: PlanFeature[];
+  // true면 STORE_OPERATIONS가 없어도(오버레이 전용으로 내린 뒤) 후속 처리할 주문·구매 제한이 남아 주문·배송·문의 메뉴를 계속 보인다
+  orderFollowup?: boolean;
   shop: { name: string; slug: string };
   user: { name: string; email: string };
   trialEndsAt: string | null;
