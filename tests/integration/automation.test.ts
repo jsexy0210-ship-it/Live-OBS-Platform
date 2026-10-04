@@ -3267,3 +3267,22 @@ describe("Codex 37차 반영(eab4486)", () => {
     expect(await job(a.jobId)).toMatchObject({ status: "CANCELED", changedAt: null, mutatedSteps: [], cleanupNeededAt: null });
   });
 });
+
+describe("Codex 38차 반영(fb73c34)", () => {
+  it("가짜 로컬 도구의 일시 실패는 적용 전 실패다: 재시도 뒤에도 소스 추가·제거가 한 번만 반영되고, 실패한 시도는 연결 기록을 남기지 않는다", async () => {
+    const obs = new FakeObsBridge();
+    const scope = { sellerId: "seller-38", jobId: "job-38" };
+    // 판매자가 원래 쓰던 소스 1개 + 이 작업이 추가할 소스
+    obs.sources.set(scope.sellerId, 1);
+    obs.failOnce.add(scope.sellerId);
+    expect(await obs.perform(scope, { type: "obs_add_overlay_source" })).toEqual({ kind: "retryable", reason: "obs_busy" });
+    expect(obs.connections.has(scope.jobId)).toBe(false);
+    expect((await obs.perform(scope, { type: "obs_add_overlay_source" })).kind).toBe("ok");
+    expect(obs.sources.get(scope.sellerId)).toBe(2);
+    // 되돌리기의 소스 제거도 일시 실패 뒤 재시도에서 한 번만 빠진다(판매자 소스는 남음)
+    obs.failOnce.add(scope.sellerId);
+    expect(await obs.perform(scope, { type: "obs_remove_overlay_source" })).toEqual({ kind: "retryable", reason: "obs_busy" });
+    expect((await obs.perform(scope, { type: "obs_remove_overlay_source" })).kind).toBe("ok");
+    expect(obs.sources.get(scope.sellerId)).toBe(1);
+  });
+});

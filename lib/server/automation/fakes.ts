@@ -254,15 +254,12 @@ export class FakeObsBridge implements ObsBridge {
 
   private async apply(scope: JobScope, action: AutomationAction): Promise<ActionOutcome> {
     this.performed.push({ scope, type: action.type });
-    if (!this.disconnected.has(scope.sellerId)) this.connections.add(scope.jobId);
-    if (action.type === "obs_add_overlay_source" && !this.disconnected.has(scope.sellerId) && !this.failOnce.has(scope.sellerId)) {
-      this.sources.set(scope.sellerId, (this.sources.get(scope.sellerId) ?? 0) + 1);
-    }
-    if (action.type === "obs_remove_overlay_source" && !this.disconnected.has(scope.sellerId)) {
-      this.sources.set(scope.sellerId, Math.max(0, (this.sources.get(scope.sellerId) ?? 0) - 1));
-    }
+    // 일시 실패·로컬 도구 미연결은 「적용 전」 실패다(계약): 상태(연결·소스)를 바꾸기 전에 돌려준다. 재시도에서 다시 적용돼도 한 번만 바뀐다
     if (this.failOnce.delete(scope.sellerId)) return { kind: "retryable", reason: "obs_busy" };
     if (this.disconnected.has(scope.sellerId)) return { kind: "needs_customer", action: "LOCAL_TOOL" };
+    this.connections.add(scope.jobId);
+    if (action.type === "obs_add_overlay_source") this.sources.set(scope.sellerId, (this.sources.get(scope.sellerId) ?? 0) + 1);
+    if (action.type === "obs_remove_overlay_source") this.sources.set(scope.sellerId, Math.max(0, (this.sources.get(scope.sellerId) ?? 0) - 1));
     if (action.type === "check_overlay_shows_test_event") {
       if (this.notShowing.has(scope.sellerId)) return { kind: "ok", stepDone: false, verified: false };
       return { kind: "ok", stepDone: false, verified: true, evidence: { testEvent: `test-${scope.jobId}`, shownOnOverlay: true } };
