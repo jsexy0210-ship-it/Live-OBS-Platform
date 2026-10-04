@@ -450,7 +450,8 @@ export async function renewDueSubscriptions(db: PrismaClient, provider: BillingP
   const now = input.now ?? (await dbNow(db));
   const summary: RenewSummary = { charged: 0, failed: 0, canceled: 0, skipped: 0, pending: 0, errors: 0 };
   const due = await db.sellerSubscription.findMany({
-    where: { status: { in: ["ACTIVE", "PAST_DUE"] }, nextChargeAt: { lte: now } },
+    // 이용 정지된 쇼핑몰은 자동결제를 멈춘다(해제되면 다음 실행부터 다시, 대표님 결정 2026-10-04)
+    where: { status: { in: ["ACTIVE", "PAST_DUE"] }, nextChargeAt: { lte: now }, seller: { status: { not: "SUSPENDED" } } },
     select: { id: true, sellerId: true },
   });
 
@@ -460,8 +461,8 @@ export async function renewDueSubscriptions(db: PrismaClient, provider: BillingP
         .$transaction(async (tx) => {
           await lockSeller(tx, sellerId);
           // 잠근 뒤 다시 읽는다(그사이 결제·해지·카드 교체가 있었을 수 있음).
-          const sub = await tx.sellerSubscription.findUniqueOrThrow({ where: { id }, include: { plan: true } });
-          if (sub.status === "CANCELED" || !sub.nextChargeAt || sub.nextChargeAt > now) return null;
+          const sub = await tx.sellerSubscription.findUniqueOrThrow({ where: { id }, include: { plan: true, seller: { select: { status: true } } } });
+          if (sub.status === "CANCELED" || !sub.nextChargeAt || sub.nextChargeAt > now || sub.seller.status === "SUSPENDED") return null;
           if (sub.cancelAtPeriodEnd) {
             if (sub.currentPeriodEnd && sub.currentPeriodEnd > now) return null;
             await tx.sellerSubscription.update({ where: { id }, data: { status: "CANCELED", canceledAt: now, nextChargeAt: null, pendingPlanId: null } });

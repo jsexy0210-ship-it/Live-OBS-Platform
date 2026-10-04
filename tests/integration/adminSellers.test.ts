@@ -107,7 +107,7 @@ describe("파트너스 상세 GET /api/admin/sellers/{id}", () => {
 });
 
 describe("이용 정지·해제 POST /api/admin/sellers/{id}/suspend·unsuspend", () => {
-  it("정지하면 파트너스 세션·로그인이 바로 막히고 사유·로그 추적이 남는다. 해제하면 다시 열린다. 상태가 맞지 않으면 409, 사유 없으면 400", async () => {
+  it("정지하면 사유·로그 추적이 남고 파트너스 세션·로그인은 그대로 둔다(신규만 막기). 상태가 맞지 않으면 409, 사유 없으면 400", async () => {
     const { id: adminId, cookie } = await adminCookie("OPERATIONS");
     const { seller } = await createSeller();
     const owner = await createSellerUser(seller.id, "OWNER");
@@ -123,8 +123,9 @@ describe("이용 정지·해제 POST /api/admin/sellers/{id}/suspend·unsuspend"
     expect(r.status).toBe(200);
     expect(await r.json()).toEqual({ ok: true, status: "SUSPENDED" });
     expect(await db.seller.findUniqueOrThrow({ where: { id: seller.id } })).toMatchObject({ status: "SUSPENDED", suspendedReason: "이용약관 위반" });
-    expect(await resolveSellerSession(db, login.token)).toBeNull();
-    expect(await loginSeller(db, { email: owner.email, password: PASSWORD }, {})).toMatchObject({ ok: false, reason: "seller_suspended" });
+    // 이미 받은 주문을 처리하도록 세션·로그인은 살린다(막는 것은 가드, 아래 「정지 중 신규만 막기」)
+    expect(await resolveSellerSession(db, login.token)).not.toBeNull();
+    expect(await loginSeller(db, { email: owner.email, password: PASSWORD }, {})).toMatchObject({ ok: true });
     expect(await db.auditLog.findFirstOrThrow({ where: { action: "admin.seller.suspend", targetId: seller.id } })).toMatchObject({
       actorType: "PLATFORM_ADMIN",
       actorId: adminId,
@@ -156,7 +157,9 @@ describe("이용 정지·해제 POST /api/admin/sellers/{id}/suspend·unsuspend"
       expect((await post(unsuspendRoute, "unsuspend", cookie, seller.id, {})).status).toBe(403);
     }
     expect((await db.seller.findUniqueOrThrow({ where: { id: seller.id } })).status).toBe("ACTIVE");
-    expect(await db.auditLog.count({ where: { action: { startsWith: "admin.seller." } } })).toBe(0);
+    expect(await db.auditLog.count({ where: { action: { in: ["admin.seller.suspend", "admin.seller.unsuspend"] } } })).toBe(0);
+    // 상세 열람(대표자 이메일·사업자 정보)은 역할마다 로그 추적을 남긴다(대표님 결정 2026-10-04)
+    expect(await db.auditLog.count({ where: { action: "admin.seller.view", targetId: seller.id } })).toBe(2);
     const { cookie } = await adminCookie("SUPER_ADMIN");
     expect((await post(suspendRoute, "suspend", cookie, seller.id, { reason: "x" })).status).toBe(200);
   });
