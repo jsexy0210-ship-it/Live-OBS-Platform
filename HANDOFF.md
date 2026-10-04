@@ -9,7 +9,7 @@
 | Live-OBS-Platform MASTER (2) | `session_018xa8SC5evpEFNVcQBwcN5t` | 요구사항 접수 · 작업 배정 · 독립 검수 · main 병합 · 상태 문서 관리. 2026-10-02 17:21 KST 교체 생성 |
 | (이전) MASTER | `session_01XqBPGTKiEMmRSMB5SfFp3C` | 컨텍스트 50% 도달로 교체. PR #15 병합 후 보관 완료 (2026-10-02 KST) |
 | 디자인 전담 (2) | `session_01DCQ38rPYwPnVCZJbhLgJnc` | 디자인 아티팩트 https://claude.ai/artifact/YYGXZ3u4QvjQpEMUHnN4tS 이어서 작업 (아티팩트 `project/` 파일만 소유). 우선순위: ① 오버레이 9:16·16:9 기본 템플릿 3종 ② 기존 아트보드 A안·화면 문구·도메인·도우미·구매자 문의 반영 ③ 남은 화면. 2026-10-02 18:45 KST MASTER 생성 |
-| 개발 전담 (기반) (4) | `session_016QFa8qXJSQSLrSFqvKCtWi` | 진행 중. (3)에서 #169·대기열 인수(「미완료·블로커」의 「기반 세션 인계」). 소유: `prisma/**`, `lib/server/**`, `app/api/**`(automation 제외), `tests/**`, `docs/ARCHITECTURE.md`, `package*.json`, `ci.yml` 테스트 단계, `scripts/seed-obs-test.mjs`. 2026-10-04 KST MASTER 생성 |
+| 개발 전담 (기반) (4) | `session_016QFa8qXJSQSLrSFqvKCtWi` | 진행 중. (3)에서 #169·대기열 인수(「미완료·블로커」의 「기반 세션 인계」). 소유: `prisma/**`(브랜딩 모델 블록·마이그레이션 제외), `lib/server/**`(branding 제외), `app/api/**`(automation·branding 제외), `tests/**`(branding 제외), `docs/ARCHITECTURE.md`, `package*.json`, `ci.yml` 테스트 단계, `scripts/seed-obs-test.mjs`. 2026-10-04 KST MASTER 생성 |
 | (이전) 개발 전담 (기반) (3) | `session_01CmfFhZdBNA3ojJFFrdTuJ3` | 교체됨 → (4), 보관 예정. 대화가 길어져 2026-10-04 KST 교체 |
 | (이전) 개발 전담 (기반) (2) | `session_01Ud86wDnEPvsi8jPbo4zGCi` | 교체됨(→ 3). 이전 기반 세션을 이어받음(서버·DB·API·테스트). 소유: `prisma/**`, `lib/server/**`, `app/api/**`, `tests/**`, `docs/ARCHITECTURE.md`, `package*.json`, `ci.yml` 테스트 단계. 2026-10-03 20:18 KST MASTER 생성 |
 | (이전) 개발 전담 (기반) | `session_01Lhh5mXm1mdLnACzpHDNLUw` | 개발 1단계(화면 제외): 설계 문서 `docs/ARCHITECTURE.md` → 스키마·권한·테넌트 격리·주문대기 도메인·로그인·테스트·CI 테스트 단계. 소유: `prisma/**`, `lib/server/**`, `app/api/**`, `tests/**`, `docs/ARCHITECTURE.md`, `package*.json`, `ci.yml` 테스트 단계. 2026-10-02 21:30 KST MASTER 생성. 컨텍스트 70% 초과로 2026-10-03 교체 |
@@ -58,7 +58,7 @@
   2. 대기열 6번 나머지: 재가입 제한 정보 보관 동의 철회 API(생기면 `REJOIN_RESTRICTION_CONFIG.available` 판단) → 적립금 잔액 API → 야간 광고 제한(21~8시 KST)
   3. ONQ 1-C 결제 엔진 전환·`STANDARD` 이전 백필: 범위는 MASTER가 지정(ONQ_PLAN E1-B·E1-C, 이전 전 가격 스냅숏)
 - 블로커·대표님 결정 대기
-  - 이미지 저장소(A: Postgres bytea / B: 오브젝트 스토리지, 유료) — 쇼핑몰 파비콘·로고·공유 카드 이미지 업로드, 상품 이미지가 기다림
+  - 이미지 저장소(A: Postgres bytea / B: 오브젝트 스토리지, 유료) — 쇼핑몰 파비콘·로고·공유 카드 이미지 업로드, 상품 이미지가 기다림. 마스터·파트너스 관리자의 파비콘·공유 카드(플랫폼 공통)는 2026-10-04 대표님 지시에 따라 결정 전까지 비용이 들지 않는 A로 먼저 만든다. 쇼핑몰별 업로드는 계속 결정을 기다린다
   - 런칭 할인 기간·종료일, 오버레이 전용 체험 비용 한도, 청약철회·중도 해지 환불 법무 확인
   - 파트너스 가입 필수 동의 원문: 이용약관(PF-008)과 개인정보 수집·이용 동의(처리방침과 별도 문서, `docs/PRODUCT_SCOPE.md` 동의 항목 참고). PF-009는 개인정보처리방침이다(`docs/IA.md`). 대표님 확정 문서가 필요하고, 지금은 버전 값만 있음
   - 마케팅 수신 동의·철회 결과 통지: 알림 발송 채널 연동 때 붙임(처리 후 14일 이내)
