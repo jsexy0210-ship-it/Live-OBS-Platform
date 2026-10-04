@@ -148,6 +148,7 @@ model Seller {
   productReviewReports     ProductReviewReport[]
   productReviewPolicy      ProductReviewPolicy?
   cartItems                CartItem[]
+  wishItems                WishItem[]
 }
 
 model SellerDomain {
@@ -347,6 +348,7 @@ model BuyerMember {
   productReviewImages  ProductReviewImage[]
   productReviewReports ProductReviewReport[]
   cartItems            CartItem[]
+  wishItems            WishItem[]
 
   @@unique([sellerId, id])
   @@index([sellerId, gradeId])
@@ -511,6 +513,7 @@ model Product {
   options    ProductOption[]
   orderItems OrderItem[]
   reviews    ProductReview[]
+  wishItems  WishItem[]
 
   @@unique([sellerId, id])
 }
@@ -1971,4 +1974,21 @@ model CartItem {
   @@unique([buyerMemberId, optionId])
   @@index([sellerId, buyerMemberId])
   @@index([sellerId, optionId])
+}
+
+// 구매자 찜(SH-034, 로그인 회원만). 상품마다 한 줄, 회원당 200개. 가격·판매 상태는 볼 때마다 지금 값(shop-wish/service.ts). 회원 탈퇴 때 지운다.
+model WishItem {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String   @db.Uuid
+  buyerMemberId String   @db.Uuid
+  productId     String   @db.Uuid
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+
+  seller  Seller      @relation(fields: [sellerId], references: [id])
+  member  BuyerMember @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id], onDelete: Cascade)
+  product Product     @relation(fields: [sellerId, productId], references: [sellerId, id])
+
+  @@unique([buyerMemberId, productId])
+  @@index([sellerId, buyerMemberId, createdAt])
+  @@index([sellerId, productId])
 }
