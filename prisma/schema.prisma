@@ -2153,6 +2153,7 @@ model ShopDisplayItem {
 
   @@id([sellerId, productId])
   @@index([sellerId, sortOrder])
+}
 
 // 유튜브 연동(YouTube Data API v3, API 키만·공개 방송 읽기만). 규칙·할당량은 lib/server/youtube/.
 // 판매자 채널 연결(판매자당 1개). uploadsPlaylistId로 새 방송을 찾는다(search.list 100단위는 쓰지 않음).
