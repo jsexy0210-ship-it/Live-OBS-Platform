@@ -26,7 +26,7 @@ import {
 import { cleanText } from "../text/clean";
 
 // 상품 리뷰(SA-048 리뷰 관리 · SH-029 리뷰 쓰기, 2026-10-04 대표님 지시, MASTER 결정 A~F).
-// - 구매자: 배송 완료된 주문 상품마다 1번(쇼핑몰 설정 기간 안, 기본 30일). 7일 안에 고치고, 언제든 지울 수 있다(숨긴 리뷰는 고치지 못함).
+// - 구매자: 배송 완료된 주문 상품마다 1번(쇼핑몰 설정 기간 안, 기본 30일). 7일 안에 고치고, 언제든 지울 수 있다(숨긴 리뷰는 고치지 못함). 쓰기 경로(올리기·고치기·지우기·사진·신고)는 모두 쇼핑몰 이용 가능 검사(shopOpen)를 거친다.
 // - 파트너스: 조회는 누구나, 답글·숨김·공개·설정은 대표자·구매자 문의(INQUIRY_REPLY) 직원. 모든 변경은 로그 추적에 남는다.
 // - 공개 방식: 바로 공개(연락처·외부 주소·금지어가 있으면 보류) 또는 확인 뒤 공개. 신고가 3건 쌓이면 공개 리뷰를 보류한다.
 // - 리뷰 적립금(설정, 기본 0원): 공개될 때 지급, 숨김·삭제 때 회수(적립금 원장, 실지급 스위치가 꺼져 있으면 testMode).
@@ -87,17 +87,19 @@ async function grantReward(tx: Tx, r: ProductReview, now: Date): Promise<number>
   return amount;
 }
 
-// 숨김·삭제 때 회수(지급된 금액이 있을 때만, 회차마다 한 번)
+// 숨김·삭제 때 회수(지급된 금액이 있을 때만, 회차마다 한 번).
+// testMode는 지금 실지급 스위치가 아니라 원래 적립 원장을 따른다(주문 환불 회수와 같은 방식). 적립 원장이 없으면 회수하지 않는다.
 async function revokeReward(tx: Tx, r: ProductReview, now: Date): Promise<number> {
   if (r.rewardedAmount <= 0) return 0;
-  const rp = await tx.rewardPolicy.findUnique({ where: { sellerId: r.sellerId }, select: { livePayoutEnabled: true } });
+  const earn = await tx.rewardLedger.findUnique({ where: { sellerId_idempotencyKey: { sellerId: r.sellerId, idempotencyKey: `review_reward:${r.id}:${r.rewardRound}` } }, select: { testMode: true } });
+  if (!earn) return 0;
   await createPendingRewardLedger(tx, {
     sellerId: r.sellerId,
     buyerMemberId: r.buyerMemberId,
     orderId: r.orderId,
     type: "REVOKE",
     amount: -r.rewardedAmount,
-    testMode: !rp?.livePayoutEnabled,
+    testMode: earn.testMode,
     idempotencyKey: `review_revoke:${r.id}:${r.rewardRound}`,
     createdAt: now,
   });
@@ -447,10 +449,12 @@ export async function writableItem(db: PrismaClient, scope: BuyerScope, orderIte
 type Result<T> = { ok: true } & T | { ok: false; reason: BuyerReviewFailure };
 
 // 사진을 리뷰에 붙인다(내가 올렸고 아직 붙지 않은 사진만). 순서는 고른 순서.
+// 조건부 선점: 한 번의 UPDATE로 「아직 안 붙었거나 이 리뷰에 붙은 내 사진」만 가져오고, 바뀐 행 수가 요청 수와 다르면 거절(트랜잭션 롤백).
+// 같은 사진으로 두 리뷰를 동시에 쓰면 뒤 UPDATE는 앞 트랜잭션의 행 잠금을 기다렸다가 조건을 다시 보아 빠지므로, 사진 리뷰 적립이 두 번 나가지 않는다.
 async function attachImages(tx: Tx, scope: BuyerScope, reviewId: string, ids: string[]): Promise<boolean> {
   if (ids.length === 0) return true;
-  const n = await tx.productReviewImage.count({ where: { ...scope, id: { in: ids }, OR: [{ reviewId: null }, { reviewId }] } });
-  if (n !== ids.length) return false;
+  const { count } = await tx.productReviewImage.updateMany({ where: { ...scope, id: { in: ids }, OR: [{ reviewId: null }, { reviewId }] }, data: { reviewId } });
+  if (count !== ids.length) return false;
   for (const [i, id] of ids.entries()) await tx.productReviewImage.update({ where: { id }, data: { reviewId, sortOrder: i } });
   return true;
 }
@@ -515,6 +519,7 @@ export async function updateReview(db: PrismaClient, scope: BuyerScope, id: stri
   if (!isUuid(id)) throw notFound();
   const p = parseReview(raw, REVIEW_IMAGES_PER_REVIEW);
   if (!p.ok) return p;
+  if (!(await shopOpen(db, scope.sellerId))) return { ok: false, reason: "shop_unavailable" };
   try {
     return await db.$transaction(async (tx) => {
       const before = await lockReview(tx, scope.sellerId, id);
@@ -546,9 +551,10 @@ export async function updateReview(db: PrismaClient, scope: BuyerScope, id: stri
   }
 }
 
-// 지우기(작성자만, 언제든). 지급한 리뷰 적립금은 회수한다. 사진·신고는 함께 지운다.
-export async function deleteReview(db: PrismaClient, scope: BuyerScope, id: string, meta: AuditMeta = {}) {
+// 지우기(작성자만, 언제든, 쇼핑몰 이용이 막히면 안 됨). 지급한 리뷰 적립금은 회수한다. 사진·신고는 함께 지운다.
+export async function deleteReview(db: PrismaClient, scope: BuyerScope, id: string, meta: AuditMeta = {}): Promise<Result<{ revokedReward: number }>> {
   if (!isUuid(id)) throw notFound();
+  if (!(await shopOpen(db, scope.sellerId))) return { ok: false, reason: "shop_unavailable" };
   return db.$transaction(async (tx) => {
     const before = await lockReview(tx, scope.sellerId, id);
     if (!before || before.buyerMemberId !== scope.buyerMemberId) throw notFound();

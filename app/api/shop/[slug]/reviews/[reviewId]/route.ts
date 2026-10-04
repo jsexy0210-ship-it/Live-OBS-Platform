@@ -18,10 +18,12 @@ export const PUT = mutation(async (req: Request, { params }: Ctx) => {
   return noStore(NextResponse.json(r));
 });
 
-// 내 리뷰 지우기(언제든). 지급한 리뷰 적립금은 회수한다.
+// 내 리뷰 지우기(언제든, 쇼핑몰 이용이 막히면 안 됨). 지급한 리뷰 적립금은 회수한다.
 export const DELETE = mutation(async (req: Request, { params }: Ctx) => {
   const { slug, reviewId } = await params;
   const b = await buyerScope(req, slug);
   if (!b.scope) return noStore(b.res);
-  return noStore(NextResponse.json(await deleteReview(prisma, b.scope, reviewId, requestMeta(req))));
+  const r = await deleteReview(prisma, b.scope, reviewId, requestMeta(req));
+  if (!r.ok) return noStore(NextResponse.json({ error: r.reason, message: BUYER_REVIEW_MESSAGES[r.reason] }, { status: status(r.reason) }));
+  return noStore(NextResponse.json(r));
 });

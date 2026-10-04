@@ -148,6 +148,44 @@ describe("공개 방식·자동 보류·적립금", () => {
     expect(await db.productReviewImage.count()).toBe(0);
   });
 
+  it("회수의 testMode는 지금 설정이 아니라 원래 적립 원장을 따른다(양방향, Codex 4176709615)", async () => {
+    const s = await shop();
+    await setPolicy(s, { rewardText: 500 });
+    const live = (on: boolean) => db.rewardPolicy.upsert({ where: { sellerId: s.seller.id }, create: { sellerId: s.seller.id, livePayoutEnabled: on }, update: { livePayoutEnabled: on } });
+    // 시험 적립 → 실지급 켬 → 숨김: 회수도 시험(testMode=true)
+    const a = await created(s, (await s.delivered()).id);
+    await live(true);
+    expect((await hidePost(json("/x", "POST", s.cs, { reason: "OTHER" }), p({ reviewId: a.reviewId }))).status).toBe(200);
+    // 실지급 적립 → 실지급 끔 → 지우기: 회수도 실지급(testMode=false)
+    const b = await created(s, (await s.delivered()).id);
+    await live(false);
+    expect((await reviewDelete(json("/x", "DELETE", s.b1), p({ slug: s.slug, reviewId: b.reviewId }))).status).toBe(200);
+    const l = await ledger(s);
+    const mode = (key: string) => l.find((x) => x.idempotencyKey === key)?.testMode;
+    expect([mode(`review_reward:${a.reviewId}:1`), mode(`review_revoke:${a.reviewId}:1`)]).toEqual([true, true]);
+    expect([mode(`review_reward:${b.reviewId}:1`), mode(`review_revoke:${b.reviewId}:1`)]).toEqual([false, false]);
+  });
+
+  it("적립 원장이 없으면 회수 원장을 만들지 않는다", async () => {
+    const s = await shop();
+    await setPolicy(s, { rewardText: 500 });
+    const r = await created(s, (await s.delivered()).id);
+    await db.rewardLedger.deleteMany({ where: { sellerId: s.seller.id } });
+    expect((await hidePost(json("/x", "POST", s.cs, { reason: "OTHER" }), p({ reviewId: r.reviewId }))).status).toBe(200);
+    expect(await ledger(s)).toEqual([]);
+  });
+
+  it("같은 사진으로 두 리뷰를 동시에 올리면 하나만 붙고, 사진 리뷰 적립은 한 번만(Codex 4176709627)", async () => {
+    const s = await shop();
+    await setPolicy(s, { rewardText: 500, rewardPhoto: 1000 });
+    const [i1, i2] = [await s.delivered(), await s.delivered()];
+    const img = (await (await upload(s, fakeJpeg(800, 600))).json()) as { image: { id: string } };
+    const rs = await Promise.all([i1, i2].map((i) => write(s, i.id, { rating: 5, body: BODY, imageIds: [img.image.id] })));
+    expect(rs.map((r) => r.status).sort()).toEqual([201, 400]);
+    expect(await db.productReview.count()).toBe(1);
+    expect((await ledger(s)).map((x) => [x.type, x.amount])).toEqual([["EARN", 1000]]);
+  });
+
   it("적립금 기본값은 0원(끔)이라 공개돼도 원장을 만들지 않는다", async () => {
     const s = await shop();
     const r = await created(s, (await s.delivered()).id);
@@ -271,7 +309,7 @@ describe("사진·잠긴 쇼핑몰·탈퇴", () => {
     expect((await upload(s, Buffer.from("not an image"))).status).toBe(400);
   });
 
-  it("이용이 막힌 쇼핑몰은 쓰기·사진·신고 402, 내 리뷰는 읽을 수 있다", async () => {
+  it("이용이 막힌 쇼핑몰은 쓰기·고치기·지우기·사진·신고 402(Codex 4176709637), 내 리뷰는 읽을 수 있다", async () => {
     const s = await shop();
     const r = await created(s, (await s.delivered()).id);
     const item = await s.delivered();
@@ -279,6 +317,9 @@ describe("사진·잠긴 쇼핑몰·탈퇴", () => {
     expect((await write(s, item.id, { rating: 5, body: BODY })).status).toBe(402);
     expect((await upload(s, fakeJpeg(100, 100))).status).toBe(402);
     expect((await reportPost(json("/x", "POST", s.b2, { reason: "AD" }), p({ slug: s.slug, reviewId: r.reviewId }))).status).toBe(402);
+    expect((await reviewPut(json("/x", "PUT", s.b1, { rating: 1, body: "고친 리뷰 본문이에요 열 글자 넘게" }), p({ slug: s.slug, reviewId: r.reviewId }))).status).toBe(402);
+    expect((await reviewDelete(json("/x", "DELETE", s.b1), p({ slug: s.slug, reviewId: r.reviewId }))).status).toBe(402);
+    expect(await db.productReview.findUnique({ where: { id: r.reviewId }, select: { rating: true, body: true } })).toEqual({ rating: 5, body: BODY });
     const mine = await mineGet(get("/x", s.b1), p({ slug: s.slug }));
     expect(mine.status).toBe(200);
     expect(((await mine.json()) as { reviews: unknown[] }).reviews).toHaveLength(1);
