@@ -62,7 +62,7 @@ export function PeriodFields({ startsAt, endsAt, onChange, disabled }: { startsA
 const IMAGE_ERRORS: Record<string, string> = {
   file_too_large: "이미지는 2MB까지 올릴 수 있습니다",
   unsupported_image: "PNG 파일만 올릴 수 있습니다",
-  wrong_image_size: "이미지 가로·세로는 100~2000px이어야 합니다",
+  wrong_image_size: "이미지 가로·세로는 100~2000px, 전체 200만 화소 이하여야 합니다",
   empty_file: "빈 파일은 올릴 수 없습니다",
 };
 const MAX_BYTES = 2 * 1024 * 1024;

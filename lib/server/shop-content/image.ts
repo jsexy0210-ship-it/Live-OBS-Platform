@@ -10,8 +10,10 @@ import { requireSellerPermission, type TenantContext } from "../tenant/context";
 // 저장은 대표님 저장 방식 결정 전까지 A안(DB bytea). 크기·형식 CHECK는 마이그레이션 20261004160000_shop_content와 같은 값.
 export const SHOP_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 export const SHOP_IMAGE_MIN_SIDE = 100;
-// PNG를 풀 때 상한(16MB)에 걸리지 않는 크기. 권장 크기(PC 배너 1200×400, 모바일 750×750, 팝업 600×600)가 넉넉히 들어간다.
 export const SHOP_IMAGE_MAX_SIDE = 2000;
+// 전체 화소 수 상한. 브랜딩 검사기가 풀어 보는 그림 데이터 상한(8,400,000바이트) 안에 8비트 RGBA가 들어가는 값이다
+// (2,000,000 × 4 + 줄 머리 = 약 8,002,000바이트). 권장 크기(PC 배너 1200×400, 모바일 750×750, 팝업 600×600)는 넉넉히 들어간다.
+export const SHOP_IMAGE_MAX_PIXELS = 2_000_000;
 // 아직 배너·팝업에 쓰지 않은 이미지는 쇼핑몰당 이 개수까지만 둔다(올리기만 반복해 DB를 채우지 않게).
 export const UNUSED_IMAGE_LIMIT = 30;
 // 이보다 오래된 쓰지 않는 이미지는 다음 업로드 때 지운다.
@@ -23,7 +25,7 @@ export const SHOP_IMAGE_MESSAGES: Record<ShopImageRejection, string> = {
   empty_file: "빈 파일은 올릴 수 없습니다",
   file_too_large: "이미지는 2MB까지 올릴 수 있습니다",
   unsupported_image: "PNG 파일만 올릴 수 있습니다",
-  wrong_image_size: `이미지 가로·세로는 ${SHOP_IMAGE_MIN_SIDE}~${SHOP_IMAGE_MAX_SIDE}px이어야 합니다`,
+  wrong_image_size: `이미지 가로·세로는 ${SHOP_IMAGE_MIN_SIDE}~${SHOP_IMAGE_MAX_SIDE}px, 전체 200만 화소 이하여야 합니다`,
   too_many_unused_images: "아직 쓰지 않은 이미지가 많습니다. 배너·팝업을 저장한 뒤 다시 올려 주십시오",
 };
 
@@ -32,11 +34,23 @@ export type ShopImageInfo = { type: "image/png"; width: number; height: number }
 export function checkShopImage(b: Buffer): { ok: true; info: ShopImageInfo } | { ok: false; reason: ShopImageRejection } {
   if (b.length === 0) return { ok: false, reason: "empty_file" };
   if (b.length > SHOP_IMAGE_MAX_BYTES) return { ok: false, reason: "file_too_large" };
+  // 크기는 PNG 머리(IHDR)로 먼저 본다. 크기가 틀린 파일은 풀기 전에 「크기」로 안내한다.
+  const head = pngSize(b);
+  if (!head) return { ok: false, reason: "unsupported_image" };
+  if (!sizeOk(head.width, head.height)) return { ok: false, reason: "wrong_image_size" };
   const info = detectImage(b);
   if (!info || info.type !== "image/png") return { ok: false, reason: "unsupported_image" };
-  const side = (n: number) => n >= SHOP_IMAGE_MIN_SIDE && n <= SHOP_IMAGE_MAX_SIDE;
-  if (!side(info.width) || !side(info.height)) return { ok: false, reason: "wrong_image_size" };
   return { ok: true, info: { type: "image/png", width: info.width, height: info.height } };
+}
+
+const sizeOk = (w: number, h: number) =>
+  w >= SHOP_IMAGE_MIN_SIDE && w <= SHOP_IMAGE_MAX_SIDE && h >= SHOP_IMAGE_MIN_SIDE && h <= SHOP_IMAGE_MAX_SIDE && w * h <= SHOP_IMAGE_MAX_PIXELS;
+
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+// 시그니처와 IHDR(첫 33바이트)의 가로·세로. 형식 판정은 detectImage가 한다.
+function pngSize(b: Buffer): { width: number; height: number } | null {
+  if (b.length < 33 || !b.subarray(0, 8).equals(PNG_SIGNATURE) || b.toString("latin1", 12, 16) !== "IHDR") return null;
+  return { width: b.readUInt32BE(16), height: b.readUInt32BE(20) };
 }
 
 export type ShopImageMeta = { id: string; contentType: string; width: number; height: number; byteSize: number; version: string };
