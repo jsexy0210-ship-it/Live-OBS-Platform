@@ -8,9 +8,9 @@ import { chargeFor, dbNow, isEndedSubscription, lockSeller, planPeriod, priceFor
 
 // 플랜 변경(ONQ 1-C-2, ARCHITECTURE 4.8.0 「결제 규칙」, PRODUCT_SCOPE 확정 ①). 실제 PG는 공급자 인터페이스로만 부른다.
 // - 상위 변경(오버레이 전용 → 통합)은 결제사가 결제를 확정한 뒤에만 적용한다. 대기·실패·시간 초과면 지금 플랜 그대로다.
-//   · 결제한 기간 중: 차액 = (새 플랜 금액 − 지금 플랜 금액) × 남은 시간 ÷ 이번 기간 길이, 원 단위 절사. 결제일은 그대로(PRORATION 청구).
+//   · 결제한 기간 중: 차액 = (새 플랜 금액 − 지금 플랜 금액) × 남은 일수 ÷ 이번 기간 일수(KST 날짜), 원 단위 절사. 결제일은 그대로(PRORATION 청구).
 //   · 체험 중: 체험을 끝내고 새 플랜 금액을 바로 결제, 결제일을 그날로 새로 잡는다(기간 결제, 확정 때 체험 끝).
-//   · 결제 실패 유예 중(PAST_DUE): 밀린 기간의 지금 플랜 금액 + 그 기간 남은 시간의 차액을 한 청구로 결제해 확정된 뒤에만 연다.
+//   · 결제 실패 유예 중(PAST_DUE): 밀린 기간의 지금 플랜 금액 + 그 기간 남은 일수의 차액을 한 청구로 결제해 확정된 뒤에만 연다.
 //   · 그 밖(잠김·해지·결제한 기간 없음): 결제 없이 플랜만 바꾼다(다음 결제가 새 플랜 금액, 결제 전에는 잠금 규칙이 막음).
 //   · 카드가 없으면 결제할 수 없는 경우(체험 중·유예 중) card_required. 체험 중 결제 없이 통합을 열지 않는다.
 // - 하위 변경(통합 → 오버레이 전용): 결제한 기간이나 유예 중이면 다음 결제일부터(pendingPlanId), 아니면 바로. 환불 없음.
@@ -31,7 +31,8 @@ export type PlanChangeFailure =
   | "plan_missing";
 
 export type PlanChangeResult =
-  | { ok: true; applied: "now" | "next_payment" | "canceled_pending"; charged: number; planCode: string; effectiveAt: Date | null }
+  // remainingDays: 차액을 낸 경우 남은 일수(KST 날짜, 화면 「남은 N일분 차액」)
+  | { ok: true; applied: "now" | "next_payment" | "canceled_pending"; charged: number; planCode: string; effectiveAt: Date | null; remainingDays?: number | null }
   | { ok: false; reason: PlanChangeFailure };
 
 export const PLAN_CHANGE_STATUS: Record<PlanChangeFailure, number> = {
@@ -44,9 +45,21 @@ export const PLAN_CHANGE_STATUS: Record<PlanChangeFailure, number> = {
   plan_missing: 409,
 };
 
+const DAY_MS = 86_400_000;
+const KST_MS = 9 * 3_600_000;
+const kstDay = (d: Date) => Math.floor((d.getTime() + KST_MS) / DAY_MS);
+
+// 남은 기간 차액(MASTER 결정 2026-10-04: KST 달력 일 단위). 남은 일수 = 기간 끝 날짜 − 오늘 날짜(KST), 기간 일수 = 끝 날짜 − 시작 날짜.
+// 결제일(기간 끝 날짜) 당일은 0일, 그 전날은 1일. 원 단위 절사.
+export function proration(diff: number, start: Date, end: Date, now: Date): { amount: number; remainingDays: number } {
+  const total = Math.max(1, kstDay(end) - kstDay(start));
+  const remainingDays = Math.min(total, Math.max(0, kstDay(end) - kstDay(now)));
+  return { amount: Math.floor((Math.max(0, diff) * remainingDays) / total), remainingDays };
+}
+
 type Prepared =
   | { kind: "done"; result: PlanChangeResult }
-  | { kind: "charge"; payment: SubscriptionPayment; billingKey: string; orderName: string; planCode: string };
+  | { kind: "charge"; payment: SubscriptionPayment; billingKey: string; orderName: string; planCode: string; remainingDays: number | null };
 
 export async function changePlan(
   db: PrismaClient,
@@ -127,10 +140,10 @@ export async function changePlan(
     const base = { sellerId: ctx.sellerId, subscriptionId: sub.id, scheduled: false, targetPlanId: target.id, createdAt: now, launchDiscount: !sub.regularPrice };
 
     let payment: SubscriptionPayment;
+    let remainingDays: number | null = null;
     if (paidActive) {
-      const start = sub.currentPeriodStart!.getTime();
-      const end = sub.currentPeriodEnd!.getTime();
-      const amount = Math.floor((Math.max(0, newPrice - curPrice) * (end - now.getTime())) / (end - start));
+      const { amount, remainingDays: days } = proration(newPrice - curPrice, sub.currentPeriodStart!, sub.currentPeriodEnd!, now);
+      remainingDays = days;
       if (amount <= 0) {
         await switchPlan(tx, sub.id, ctx.sellerId, target.id);
         await audit("subscription.plan_upgraded", { planCode: target.code, charged: 0 });
@@ -144,9 +157,9 @@ export async function changePlan(
       if (sub.billingAnchorAt?.getTime() !== period.anchor.getTime()) {
         await tx.sellerSubscription.update({ where: { id: sub.id }, data: { billingAnchorAt: period.anchor } });
       }
-      const len = period.end.getTime() - period.start.getTime();
-      const left = Math.min(len, Math.max(0, period.end.getTime() - now.getTime()));
-      const amount = curPrice + Math.floor((Math.max(0, newPrice - curPrice) * left) / len);
+      const diff = proration(newPrice - curPrice, period.start, period.end, now);
+      remainingDays = diff.remainingDays;
+      const amount = curPrice + diff.amount;
       payment = await tx.subscriptionPayment.create({ data: { ...base, kind: "PERIOD", amount, periodStart: period.start, periodEnd: period.end } });
     } else {
       // 체험 중: 새 플랜 금액을 바로, 결제일은 그날로 새로
@@ -155,7 +168,7 @@ export async function changePlan(
       payment = await tx.subscriptionPayment.create({ data: { ...base, kind: "PERIOD", amount: newPrice, periodStart: now, periodEnd: end } });
     }
     await audit("subscription.plan_upgrade_requested", { planCode: target.code, amount: payment.amount, kind: payment.kind });
-    return { kind: "charge", payment, billingKey, orderName: `${target.name} 변경`, planCode: target.code };
+    return { kind: "charge", payment, billingKey, orderName: `${target.name} 변경`, planCode: target.code, remainingDays };
   });
 
   if (prepared.kind === "done") return prepared.result;
@@ -175,5 +188,5 @@ export async function changePlan(
   await settlePayment(db, prepared.payment.id, result, { actorType: ctx.actorType, actorId: ctx.actorId, now: input.now });
   if (!result.ok) return { ok: false, reason: "payment_failed" };
   const now = input.now ?? (await dbNow(db));
-  return { ok: true, applied: "now", charged: prepared.payment.amount, planCode: prepared.planCode, effectiveAt: now };
+  return { ok: true, applied: "now", charged: prepared.payment.amount, planCode: prepared.planCode, effectiveAt: now, remainingDays: prepared.remainingDays };
 }

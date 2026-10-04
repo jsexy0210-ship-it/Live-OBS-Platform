@@ -68,7 +68,7 @@ describe("상위 변경(오버레이 전용 → 통합)", () => {
     });
     expect(await sellerFeatures(db, s.seller.id)).toEqual(OVERLAY);
     const r = await changePlan(db, new FakeBillingProvider(), s.ctx, { planCode: "INTEGRATED", now: T0 });
-    expect(r).toMatchObject({ ok: true, applied: "now", charged: 36666, planCode: "INTEGRATED" });
+    expect(r).toMatchObject({ ok: true, applied: "now", charged: 36666, planCode: "INTEGRATED", remainingDays: 10 });
     expect(await payments(s.seller.id)).toEqual([
       { amount: 69000, status: "PAID", kind: "PERIOD" },
       { amount: 36666, status: "PAID", kind: "PRORATION" },
@@ -80,6 +80,24 @@ describe("상위 변경(오버레이 전용 → 통합)", () => {
     expect(await sellerFeatures(db, s.seller.id)).toEqual(ALL);
     await renewDueSubscriptions(db, new FakeBillingProvider(), { now: at(9) });
     expect((await payments(s.seller.id)).map((p) => [p.amount, p.kind])).toEqual([[69000, "PERIOD"], [36666, "PRORATION"], [179000, "PERIOD"]]);
+  });
+
+  it("차액은 KST 날짜 기준 남은 일수: 결제일 전날은 1일분 3,666원, 결제일 당일(기간 끝 전)은 0원으로 바로 바뀐다", async () => {
+    const before = await shop("OVERLAY_ONLY", at(-30), paying);
+    expect(await changePlan(db, new FakeBillingProvider(), before.ctx, { planCode: "INTEGRATED", now: at(9) })).toMatchObject({
+      ok: true,
+      charged: 3666,
+      remainingDays: 1,
+    });
+    const today = await shop("OVERLAY_ONLY", at(-30), { ...paying, nextChargeAt: at(10) });
+    // 11/11 08:00 KST: 기간 끝(11/11 09:00 KST) 전이지만 결제일 당일
+    expect(await changePlan(db, new FakeBillingProvider(), today.ctx, { planCode: "INTEGRATED", now: new Date(at(10).getTime() - 3_600_000) })).toMatchObject({
+      ok: true,
+      applied: "now",
+      charged: 0,
+    });
+    expect(await payments(today.seller.id)).toEqual([]);
+    expect(await planOf(today.seller.id)).toBe("INTEGRATED");
   });
 
   it("상위 변경 결제가 거절되면 지금 플랜·권한 그대로이고 유예·결제일도 바뀌지 않는다", async () => {
