@@ -10,6 +10,7 @@ import { restoreOrderStock } from "../products/stock";
 import { checkTransition, isCompletePermutation, isValidTimer, type QueueAction, type QueueRejection } from "./rules";
 import { refreshOrderRetention } from "../buyers/legalHold";
 import { chargedShippingFee, itemCouponDiscount, restoreOrderCoupon } from "../shop-coupons/service";
+import { revokeReviewRewardsForOrder } from "../product-reviews/service";
 
 type Tx = Prisma.TransactionClient;
 
@@ -664,6 +665,8 @@ export async function refundOrder(
         createdAt: now,
       });
     }
+    // 이 주문의 상품 리뷰 적립도 같은 회수 방식으로 회수한다(주문 잠금 뒤 회원 → 리뷰 → 원장, product-reviews/service.ts)
+    await revokeReviewRewardsForOrder(tx, ctx.sellerId, orderId, now);
     await writeAudit(tx, {
       actorType: ctx.actorType,
       actorId: ctx.actorId,

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { checkReviewImage, hasImageMetadata, stripJpeg, stripPng } from "../../lib/server/product-reviews/image";
 import { heldReason, parsePolicy, parseReview, rewardFor } from "../../lib/server/product-reviews/rules";
 import { png } from "./shopContentFixtures";
-import { fakeJpeg, seg } from "./reviewFixtures";
+import { fakeJpeg, multiScanJpeg, seg } from "./reviewFixtures";
 
 // 상품 리뷰: 입력 검사·자동 보류·사진 검사(JPEG·PNG, 메타데이터 제거)
 describe("리뷰 사진 검사", () => {
@@ -16,6 +16,28 @@ describe("리뷰 사진 검사", () => {
     expect(r.image.data.includes(Buffer.from("GPSLatitude"))).toBe(false);
     expect(r.image.data.includes(Buffer.from("JFIF"))).toBe(true);
     expect(r.image.data.subarray(-7).equals(Buffer.from([0x12, 0x34, 0xff, 0x00, 0x56, 0xff, 0xd9]))).toBe(true);
+  });
+
+  it("스캔 사이에 끼어든 EXIF·주석도 파일 끝(EOI)까지 지우고, 스캔 데이터·재시작 마커·DHT는 남긴다(Codex 4176882130)", () => {
+    const src = multiScanJpeg(1200, 900);
+    expect(hasImageMetadata(src)).toBe(true);
+    const r = checkReviewImage(src);
+    expect(r.ok && [r.image.width, r.image.height]).toEqual([1200, 900]);
+    if (!r.ok) return;
+    const out = r.image.data;
+    expect(hasImageMetadata(out)).toBe(false);
+    expect(out.includes(Buffer.from("GPSLatitude"))).toBe(false);
+    expect(out.includes(Buffer.from("between scans"))).toBe(false);
+    expect(out.includes(Buffer.from([0x12, 0xff, 0x00, 0x34, 0xff, 0xd0, 0x56]))).toBe(true);
+    expect(out.includes(Buffer.from([0xff, 0xc4]))).toBe(true);
+    expect(out.subarray(-4).equals(Buffer.from([0x78, 0x9a, 0xff, 0xd9]))).toBe(true);
+    // EOI 뒤에 붙은 바이트(숨긴 데이터)는 버린다
+    const tail = checkReviewImage(Buffer.concat([src, Buffer.from("Exif\0\0GPS trailer", "latin1")]));
+    expect(tail.ok && tail.image.data.includes(Buffer.from("trailer"))).toBe(false);
+    // 스캔 사이 마커가 깨졌으면 저장하지 않고 거절
+    const broken = Buffer.from(src);
+    broken.writeUInt16BE(0xffff, src.indexOf(Buffer.from("Exif")) - 2);
+    expect(checkReviewImage(broken)).toEqual({ ok: false, reason: "unsupported_image" });
   });
 
   it("깨진 JPEG(SOF 없음·EOI 없음·길이 넘침)는 거부한다", () => {

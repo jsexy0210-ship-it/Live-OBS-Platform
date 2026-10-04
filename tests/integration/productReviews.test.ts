@@ -15,6 +15,7 @@ import { GET as itemGet, POST as itemPost } from "../../app/api/shop/[slug]/revi
 import { GET as publicImageGet } from "../../app/api/shop/[slug]/reviews/public-images/[imageId]/route";
 import { GET as mineGet } from "../../app/api/shop/[slug]/reviews/route";
 import { loginBuyer, loginSeller } from "../../lib/server/auth/login";
+import { refundOrder } from "../../lib/server/queue/service";
 import { withdrawBuyer } from "../../lib/server/buyers/withdraw";
 import { prisma } from "../../lib/server/db";
 import { hasImageMetadata } from "../../lib/server/product-reviews/image";
@@ -81,6 +82,7 @@ async function shop() {
     product,
     delivered,
     owner: await sellerCookie(owner.email),
+    ctx: { sellerId: seller.id, actorType: "SELLER_USER" as const, actorId: owner.id, isOwner: true, permissions: [], readOnly: false },
     cs: await sellerCookie(csStaff.email),
     noPerm: await sellerCookie(other.email),
     b1: await buyerCookie(seller.id, buyer.loginId!),
@@ -107,6 +109,27 @@ const sellerReward = async (s: Shop, id: string) => {
 };
 const buyerReward = async (s: Shop, id: string, cookie = s.b1) =>
   ((await (await mineGet(get("/x", cookie), p({ slug: s.slug }))).json()) as { reviews: { id: string; rewardedAmount: number }[] }).reviews.find((x) => x.id === id)?.rewardedAmount;
+// 다른 트랜잭션이 행 잠금을 기다리기 시작할 때까지(최대 5초)
+async function waitForLockWaiter() {
+  for (let i = 0; i < 100; i++) {
+    const [w] = await db.$queryRaw<{ n: bigint }[]>`SELECT count(*) AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`;
+    if (w.n > 0n) return;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
+// 트랜잭션 하나를 열어 body를 실행한 채 release()가 불릴 때까지 커밋하지 않는다
+function holdTx(body: (tx: Parameters<Parameters<typeof db.$transaction>[0]>[0]) => Promise<void>) {
+  let release!: () => void;
+  let ready!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  const started = new Promise<void>((r) => (ready = r));
+  const done = db.$transaction(async (tx) => {
+    await body(tx);
+    ready();
+    await gate;
+  }, { timeout: 20_000 });
+  return { started, release, done };
+}
 const ledger = (s: Shop) => db.rewardLedger.findMany({ where: { sellerId: s.seller.id }, orderBy: { createdAt: "asc" } });
 
 describe("작성 자격", () => {
@@ -241,6 +264,20 @@ describe("공개 방식·자동 보류·적립금", () => {
     expect(await buyerReward(s, r.reviewId)).toBe(500);
   });
 
+  it("글 리뷰에 첫 사진을 붙이면 같은 재조정으로 사진 리뷰 금액이 된다(회수 −500, 적립 1,000, Codex 4176882129)", async () => {
+    const s = await shop();
+    await setPolicy(s, { rewardText: 500, rewardPhoto: 1000 });
+    const r = await created(s, (await s.delivered()).id);
+    expect(r.grantedReward).toBe(500);
+    const img = (await (await upload(s, fakeJpeg(800, 600))).json()) as { image: { id: string } };
+    expect((await reviewPut(json("/x", "PUT", s.b1, { rating: 5, body: BODY, imageIds: [img.image.id] }), p({ slug: s.slug, reviewId: r.reviewId }))).status).toBe(200);
+    expect((await ledger(s)).map((x) => [x.type, x.amount])).toEqual([["EARN", 500], ["REVOKE", -500], ["EARN", 1000]]);
+    expect(await sellerReward(s, r.reviewId)).toEqual([1000, 1000]);
+    // 같은 자격으로 다시 고치면(사진 유지) 재조정하지 않는다
+    expect((await reviewPut(json("/x", "PUT", s.b1, { rating: 4, body: BODY, imageIds: [img.image.id] }), p({ slug: s.slug, reviewId: r.reviewId }))).status).toBe(200);
+    expect(await ledger(s)).toHaveLength(3);
+  });
+
   it("적립금 기본값은 0원(끔)이라 공개돼도 원장을 만들지 않는다", async () => {
     const s = await shop();
     const r = await created(s, (await s.delivered()).id);
@@ -373,6 +410,100 @@ describe("권한·테넌트·공개 목록", () => {
     expect((await publicImageGet(get("/x"), p({ slug: s.slug, imageId: img.image.id }))).status).toBe(404);
     const after = (await (await productReviewsGet(get("/x"), p({ slug: s.slug, productId: s.product.id }))).json()) as { average: number; total: number };
     expect([after.average, after.total]).toEqual([3, 1]);
+  });
+});
+
+describe("잠금 순서(주문 → 회원 → 리뷰 → 원장)", () => {
+  it("환불이 주문을 바꾸는 중이면 리뷰 작성은 기다렸다가 환불된 주문으로 보고 거절한다(리뷰·적립 없음, Codex 4176882125)", async () => {
+    const s = await shop();
+    await setPolicy(s, { rewardText: 500 });
+    const item = await s.delivered();
+    const refund = holdTx(async (tx) => {
+      await tx.order.update({ where: { id: item.orderId }, data: { status: "REFUNDED", refundedAt: new Date() } });
+    });
+    await refund.started;
+    const writing = write(s, item.id, { rating: 5, body: BODY });
+    await waitForLockWaiter();
+    refund.release();
+    await refund.done;
+    const r = await writing;
+    expect([r.status, ((await r.json()) as { error: string }).error]).toEqual([403, "not_writable"]);
+    expect(await db.productReview.count()).toBe(0);
+    expect(await ledger(s)).toEqual([]);
+  });
+
+  it("공개와 탈퇴가 겹쳐도 교착 없이 끝난다: 공개는 회원 잠금을 먼저 기다리고, 탈퇴 쪽 리뷰 갱신은 막히지 않는다(Codex 4176882128)", async () => {
+    const s = await shop();
+    await setPolicy(s, { publishMode: "REVIEW", rewardText: 500 });
+    const r = await created(s, (await s.delivered()).id);
+    expect(r.status).toBe("PENDING");
+    // 탈퇴와 같은 순서: 회원 행 NO KEY UPDATE → (공개가 기다리기 시작한 뒤) 그 회원의 리뷰 행 갱신
+    let go!: () => void;
+    let locked!: () => void;
+    const proceed = new Promise<void>((r) => (go = r));
+    const memberLocked = new Promise<void>((r) => (locked = r));
+    const withdraw = db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "BuyerMember" WHERE "id" = ${s.buyer.id}::uuid FOR NO KEY UPDATE`;
+      locked();
+      await proceed;
+      await tx.productReview.updateMany({ where: { buyerMemberId: s.buyer.id }, data: { authorNickname: "탈퇴 회원" } });
+    }, { timeout: 20_000 });
+    await memberLocked;
+    const publishing = publishPost(json("/x", "POST", s.owner, {}), p({ reviewId: r.reviewId }));
+    await waitForLockWaiter();
+    go();
+    await withdraw;
+    expect((await publishing).status).toBe(200);
+  });
+
+  it("공개와 실제 탈퇴(withdrawBuyer)를 동시에 해도 500·교착이 없다", async () => {
+    const s = await shop();
+    await setPolicy(s, { publishMode: "REVIEW", rewardText: 500 });
+    const r = await created(s, (await s.delivered()).id);
+    const [pub, wd] = await Promise.all([
+      publishPost(json("/x", "POST", s.owner, {}), p({ reviewId: r.reviewId })),
+      withdrawBuyer(db, { sellerId: s.seller.id, buyerMemberId: s.buyer.id }, { password: PASSWORD }),
+    ]);
+    expect([pub.status, wd]).toEqual([200, { ok: true }]);
+    expect((await db.productReview.findUniqueOrThrow({ where: { id: r.reviewId } })).authorNickname).toBe("탈퇴 회원");
+  });
+});
+
+describe("환불과 리뷰 적립", () => {
+  const refund = async (s: Shop, orderId: string) =>
+    refundOrder(db, s.ctx, orderId, { reason: "불량", fault: "SELLER", expectedLiveVersion: (await db.seller.findUniqueOrThrow({ where: { id: s.seller.id } })).liveVersion });
+
+  it("리뷰를 쓴 뒤 환불하면(회수 방식 AUTO) 리뷰 적립도 회수 원장이 생기고, 화면 금액은 0", async () => {
+    const s = await shop();
+    await setPolicy(s, { rewardText: 500 });
+    const item = await s.delivered();
+    const r = await created(s, item.id);
+    expect((await refund(s, item.orderId)).ok).toBe(true);
+    expect((await ledger(s)).map((x) => [x.type, x.amount, x.idempotencyKey])).toEqual([
+      ["EARN", 500, `review_reward:${r.reviewId}:1`],
+      ["REVOKE", -500, `review_revoke:${r.reviewId}:1`],
+    ]);
+    expect(await sellerReward(s, r.reviewId)).toEqual([0, 0]);
+  });
+
+  it("회수 방식이 MANUAL이면 주문 적립처럼 회수 원장을 만들지 않고 수동 확인 대상으로 남는다", async () => {
+    const s = await shop();
+    await setPolicy(s, { rewardText: 500 });
+    await db.rewardPolicy.upsert({ where: { sellerId: s.seller.id }, create: { sellerId: s.seller.id, revokeMode: "MANUAL" }, update: { revokeMode: "MANUAL" } });
+    const item = await s.delivered();
+    await created(s, item.id);
+    expect((await refund(s, item.orderId)).ok).toBe(true);
+    expect((await ledger(s)).map((x) => x.type)).toEqual(["EARN"]);
+  });
+
+  it("공개와 환불을 동시에 해도 교착·500 없이 끝나고, 환불된 주문의 리뷰에는 유효한 적립이 남지 않는다", async () => {
+    const s = await shop();
+    await setPolicy(s, { publishMode: "REVIEW", rewardText: 500 });
+    const item = await s.delivered();
+    const r = await created(s, item.id);
+    const [pub, ref] = await Promise.all([publishPost(json("/x", "POST", s.owner, {}), p({ reviewId: r.reviewId })), refund(s, item.orderId)]);
+    expect([pub.status, ref.ok]).toEqual([200, true]);
+    expect(await sellerReward(s, r.reviewId)).toEqual([0, 0]);
   });
 });
 

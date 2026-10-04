@@ -35,36 +35,47 @@ const isSof = (m: number) => m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 
 // 지우는 세그먼트: APP1~APP15(EXIF·XMP·ICC·제조사 정보), COM(주석). APP0(JFIF)은 남긴다.
 const isMeta = (m: number) => (m >= 0xe1 && m <= 0xef) || m === 0xfe;
 
-// JPEG 구조를 확인하고 메타데이터 세그먼트를 뺀 바이트를 돌려준다. 구조가 맞지 않으면 null.
+// JPEG 구조를 확인하고 메타데이터 세그먼트를 뺀 바이트를 돌려준다. 구조가 맞지 않으면 null(저장하지 않고 거절).
+// 메타데이터 제거는 파일 끝까지 보장한다: SOS 뒤 엔트로피 데이터를 지나 다음 마커가 나오면 다시 세그먼트로 읽는다
+// (progressive·여러 스캔 JPEG는 스캔 사이에 DHT 등과 함께 APPn·COM이 끼어들 수 있다). EOI에서 끝내고, 그 뒤 바이트는 버린다.
 export function stripJpeg(b: Buffer): { width: number; height: number; data: Buffer } | null {
   if (b.length < 4 || b[0] !== 0xff || b[1] !== 0xd8) return null;
   const parts: Buffer[] = [b.subarray(0, 2)];
   let i = 2;
   let size: { width: number; height: number } | null = null;
-  while (i + 4 <= b.length) {
+  let scanned = false;
+  while (i + 2 <= b.length) {
     if (b[i] !== 0xff) return null;
     const m = b[i + 1];
     if (m === 0xff) {
       i += 1; // 채움 바이트
       continue;
     }
-    if (m === 0xd8 || m === 0xd9 || (m >= 0xd0 && m <= 0xd7) || m === 0x01) return null; // SOS 전에 나오면 안 되는 마커
+    if (m === 0xd9) {
+      // EOI: 스캔을 하나 이상 지난 뒤에만 정상 끝
+      if (!scanned) return null;
+      parts.push(b.subarray(i, i + 2));
+      return size ? { ...size, data: Buffer.concat(parts) } : null;
+    }
+    if (m === 0xd8 || (m >= 0xd0 && m <= 0xd7) || m === 0x01 || m === 0x00) return null; // 세그먼트 자리에 오면 안 되는 마커
+    if (i + 4 > b.length) return null;
     const len = b.readUInt16BE(i + 2);
     if (len < 2 || i + 2 + len > b.length) return null;
     if (isSof(m)) {
       if (len < 8) return null;
       size = { height: b.readUInt16BE(i + 5), width: b.readUInt16BE(i + 7) };
     }
-    if (m === 0xda) {
-      // SOS 뒤는 엔트로피 데이터 → 끝이 EOI(FFD9)여야 한다
-      if (!size || size.width === 0 || size.height === 0) return null;
-      const end = b.lastIndexOf(Buffer.from([0xff, 0xd9]));
-      if (end < i + 2 + len) return null;
-      parts.push(b.subarray(i, end + 2));
-      return { ...size, data: Buffer.concat(parts) };
-    }
     if (!isMeta(m)) parts.push(b.subarray(i, i + 2 + len));
     i += 2 + len;
+    if (m === 0xda) {
+      // SOS: 크기를 안 뒤에만. 엔트로피 데이터는 FF00(바이트 채움)·FFD0~D7(재시작)·FFFF(채움 앞부분)을 빼고 다음 마커 전까지다.
+      if (!size || size.width === 0 || size.height === 0) return null;
+      const from = i;
+      while (i + 1 < b.length && !(b[i] === 0xff && b[i + 1] !== 0x00 && b[i + 1] !== 0xff && !(b[i + 1] >= 0xd0 && b[i + 1] <= 0xd7))) i += 1;
+      if (i + 1 >= b.length) return null; // 마커 없이 끝남(EOI 없음)
+      parts.push(b.subarray(from, i));
+      scanned = true;
+    }
   }
   return null;
 }
