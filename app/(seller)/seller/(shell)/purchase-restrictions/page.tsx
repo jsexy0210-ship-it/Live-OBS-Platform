@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
+import { textLength } from "../../../../../components/seller/format";
 import { useLatestResponse } from "../../../../../components/seller/latestResponse";
 
 // SA-043 구매 제한 중 「지금 주문이 막힌 구매자」 목록과 풀기(API: GET /api/seller/purchase-restrictions,
@@ -80,6 +81,15 @@ export default function PurchaseRestrictionsPage() {
     }
   };
 
+  // 풀려던 제한이 그사이 없어졌다(404): 목록을 다시 읽어 맞춘다. 다시 읽기가 실패하면 목록이 최신이 아니라고 알린다.
+  const goneRefresh = async () => {
+    setLifting(null);
+    if (!(await load(true))) {
+      setStale(true);
+      setToast("이미 풀렸거나 기간이 끝난 제한입니다 · 목록을 새로 불러오지 못했습니다");
+    }
+  };
+
   const groups = state.kind === "ok" ? byBuyer(state.rows) : [];
 
   return (
@@ -152,7 +162,7 @@ export default function PurchaseRestrictionsPage() {
             ))}
         </section>
       </main>
-      {lifting && <LiftModal group={lifting} onClose={() => setLifting(null)} onDone={() => void lifted(lifting)} onGone={() => void load(true).then(() => setLifting(null))} />}
+      {lifting && <LiftModal group={lifting} onClose={() => setLifting(null)} onDone={() => void lifted(lifting)} onGone={() => void goneRefresh()} />}
       {toast && <Toast text={toast} onDone={() => setToast(null)} />}
     </>
   );
@@ -162,7 +172,9 @@ function LiftModal({ group, onClose, onDone, onGone }: { group: Group; onClose: 
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const tooLong = reason.length > MAX_REASON;
+  // 글자 수는 서버와 같은 기준(NFKC 정규화·앞뒤 공백 제외·코드 포인트)으로 센다
+  const count = textLength(reason);
+  const tooLong = count > MAX_REASON;
 
   const submit = async () => {
     if (tooLong) return;
@@ -191,7 +203,7 @@ function LiftModal({ group, onClose, onDone, onGone }: { group: Group; onClose: 
           </label>
           <textarea id="pr-lift-reason" className="inp" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="예: 입금 확인 후 해제" />
           <span className={`t-c1 ${tooLong ? "c-neg" : "c-alt"}`}>
-            {reason.length}/{MAX_REASON}
+            {count}/{MAX_REASON}
           </span>
           {error && (
             <span className="err" role="alert">

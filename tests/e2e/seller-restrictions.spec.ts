@@ -97,6 +97,25 @@ test("이미 풀린 제한을 풀려고 하면 목록을 다시 맞춘다", asyn
   await expect(page.getByText("주문이 막힌 구매자가 없습니다")).toBeVisible();
 });
 
+test("이미 풀린 제한이고 다시 읽기도 실패하면 목록이 최신이 아니라고 알린다", async ({ page }) => {
+  await restrictDemoBuyer();
+  await page.goto("/seller/login?next=%2Fseller%2Fpurchase-restrictions");
+  await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
+  const row = page.getByTestId("restriction-row").filter({ hasText: NICK });
+  await expect(row).toHaveCount(1);
+  await withDb((db, sellerId, buyerMemberId) => db.buyerPurchaseRestriction.updateMany({ where: { sellerId, buyerMemberId, liftedAt: null }, data: { liftedAt: new Date() } }));
+  // 다시 읽기만 실패시킨다
+  await page.route("**/api/seller/purchase-restrictions", (route) => (route.request().method() === "GET" ? route.fulfill({ status: 500, body: "{}" }) : route.continue()));
+  await row.getByRole("button", { name: "제한 풀기" }).click();
+  // 서버 글자 수 기준(앞뒤 공백 제외)으로 센다
+  await page.getByRole("dialog").getByLabel("사유 (선택)").fill("  확인  ");
+  await expect(page.getByRole("dialog").getByText("2/200")).toBeVisible();
+  await page.getByRole("dialog").getByRole("button", { name: "제한 풀기" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByText("목록이 최신이 아닐 수 있습니다.")).toBeVisible();
+  await expect(page.getByText("이미 풀렸거나 기간이 끝난 제한입니다", { exact: false })).toBeVisible();
+});
+
 test("회원·적립금 권한이 없는 직원은 메뉴가 안 보이고, 주소로 들어와도 권한 안내를 본다", async ({ page }) => {
   await page.goto("/seller/login?next=%2Fseller%2Fpurchase-restrictions");
   await submitSellerLogin(page, "demo-staff@example.com", PASSWORD);
