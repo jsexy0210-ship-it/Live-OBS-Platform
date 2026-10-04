@@ -16,6 +16,7 @@
 | 개발 전담 (화면) | `session_01U3TpR6Kgg8zZnxyS48PegW` | 2026-10-03 대표님 결정 「판매자 화면부터 실제로 만들어 눌러 볼 수 있게」. 화면 라우트·components·스타일·dev-seed·e2e만 소유. 서버 API·lib/server·prisma는 개발 전담 (기반) 소유 |
 | 인프라 전담 | `session_016ErhcGpbBooDx8a9sYYUmK` | 이슈 #137 테스트 서버 배포 구성(Docker Compose·Caddy·`/api/health`·`docs/DEPLOY.md`). #145 병합(2026-10-03). 배포 워크플로 파일은 MASTER 소유. 2026-10-03 MASTER 생성 |
 | 자동연결 전담 | `session_01C4RiocfyZkV2VtLeUoCAmk` | ONQ 통합 지시 「자동 설치·연결 상품」(Gemini, 110,000원) 백엔드: 결제 검증 뒤 실행, 작업 상태기계·큐·lease·fencing, 판단/브라우저 실행기/로컬 OBS 연결 도구 분리(1차는 모의 구현, 실제 Gemini 호출은 비용 승인 후). 소유: `docs/AUTOMATION.md`, `lib/server/automation/**`, `app/api/automation/**`, schema의 자동연결 모델 블록. 2026-10-04 KST MASTER 생성 |
+| 브랜딩 전담 | `session_01W6Sz5vNHLksDXfTUorq6KJ` | 대표님 지시(2026-10-04) 마스터 관리자에서 마스터 관리자·파트너스 관리자 파비콘·OG 카드 설정. 마스터 관리자 화면 최소 틀(로그인·설정)도 함께. 소유: `app/(admin)/**`, `app/api/admin/branding/**`, `app/api/branding/**`, `lib/server/branding/**`, `tests/**/branding*`, schema의 브랜딩 모델 블록과 마이그레이션 `20261004140000_site_branding`, `app/(seller)/layout.tsx` 메타데이터 부분. 2026-10-04 KST MASTER 생성 |
 | (이전) 디자인 전담 | `session_011K2Cw69VDhwYpPegzFpXoK` | 작업 기억 72% 도달·수정 지시 미반영으로 교체. 약 130장 제작(아티팩트에 보존). 2026-10-02 18:45 KST 보관 |
 
 전담 세션 태그: `live-obs` + `lo-master` / `lo-design` / `lo-dev` / `lo-dev-ui`. 새 전담 세션은 이 표에 추가하고 `docs/session-prompt.md`를 지시에 넣는다.
