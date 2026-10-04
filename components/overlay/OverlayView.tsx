@@ -14,6 +14,9 @@ type State = { version: number; live: boolean; opening: Item | null; waiting: It
 type View = { kind: "loading" } | { kind: "gone" } | { kind: "offline" } | { kind: "ok"; state: State; offline: boolean };
 
 const POLL_MS = 15_000;
+// 실시간 채널 오류로 다시 읽는 간격: 처음 오류는 바로 확인하고, 계속 실패하면 3초에서 30초까지 늘린다(서버가 죽어 있을 때 3초마다 읽지 않게)
+const ERROR_RELOAD_MIN_MS = 3_000;
+const ERROR_RELOAD_MAX_MS = 30_000;
 
 // 연결 실패: 그린 화면이 있으면 그대로 두고 안내만 더하고, 아직 한 번도 못 그렸으면 안내만 보인다(OV-006). 주소가 바뀐 상태는 그대로 둔다
 const offline = (v: View): View => (v.kind === "ok" ? { ...v, offline: true } : v.kind === "gone" ? v : { kind: "offline" });
@@ -32,6 +35,7 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
   const version = useRef<number | null>(null);
   // 연결이 끊겼다고 표시한 동안에는 version이 그대로여도 다시 읽어 안내를 거둔다(회복 뒤 같은 version이 와도)
   const isOffline = useRef(false);
+  const errorReload = useRef({ at: 0, gap: ERROR_RELOAD_MIN_MS });
   const markOffline = useCallback(() => {
     isOffline.current = true;
     setView(offline);
@@ -57,6 +61,7 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
     applied.current = n;
     version.current = state.version;
     isOffline.current = false;
+    errorReload.current.gap = ERROR_RELOAD_MIN_MS;
     setView({ kind: "ok", state, offline: false });
   }, [base, markOffline]);
 
@@ -77,7 +82,14 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
       });
       es.addEventListener("resync", () => void load());
       // 서버가 채널을 닫으면(토큰 폐기 등) 바로 상태를 다시 읽어 확인한다
-      es.addEventListener("error", () => void load());
+      es.addEventListener("error", () => {
+        const r = errorReload.current;
+        const t = Date.now();
+        if (t - r.at < r.gap) return;
+        r.at = t;
+        r.gap = Math.min(r.gap * 2, ERROR_RELOAD_MAX_MS);
+        void load();
+      });
     }
     const poll = setInterval(() => {
       fetch(`${base}/version`, { cache: "no-store" })
@@ -88,7 +100,7 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
       es?.close();
       clearInterval(poll);
     };
-  }, [base, load]);
+  }, [base, load, markOffline]);
 
   // OBS 브라우저 소스(1080×1920·1920×1080)에서는 1배, 다른 크기 창에서는 비율을 지켜 맞춘다
   useEffect(() => {
@@ -111,7 +123,7 @@ export function OverlayView({ token, landscape }: { token: string; landscape: bo
         )}
         {view.kind === "gone" && (
           <div className="ovl-pill ovl-notice" role="status" data-testid="overlay-gone">
-            오버레이 주소가 바뀌었어요. 파트너스 관리자에서 새 주소를 넣어 주세요
+            지금은 오버레이를 보여 드릴 수 없어요. 파트너스 관리자에서 주소를 확인해 주세요
           </div>
         )}
         {state && (
