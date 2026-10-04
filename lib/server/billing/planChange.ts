@@ -1,7 +1,7 @@
 import type { PrismaClient, SubscriptionPayment } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { requireSellerPermission, type TenantContext } from "../tenant/context";
-import { addMonthsKst, planChangeState } from "./access";
+import { addMonthsKst, isCancelScheduled, planChangeState } from "./access";
 import type { BillingProvider, ChargeResult } from "./provider";
 import { openBillingKey } from "./secret";
 import { chargeFor, dbNow, lockSeller, planPeriod, sellerPlanOf, withoutLegacy, settlePayment, switchPlan } from "./subscription";
@@ -29,7 +29,8 @@ export type PlanChangeFailure =
   | "payment_failed"
   | "payment_pending"
   | "not_activated" // 결제는 됐지만 그사이 해지 등으로 반영되지 않음(환불 대상으로 감사 기록)
-  | "plan_missing";
+  | "plan_missing"
+  | "cancel_scheduled"; // 해지 예약 중(바꿔도 해지로 끝나 적용되지 않음). 카드를 다시 등록해 해지를 취소한 뒤 바꾼다
 
 export type PlanChangeResult =
   // remainingDays: 차액을 낸 경우 남은 일수(KST 날짜, 화면 「남은 N일분 차액」)
@@ -45,6 +46,7 @@ export const PLAN_CHANGE_STATUS: Record<PlanChangeFailure, number> = {
   payment_pending: 202,
   not_activated: 409,
   plan_missing: 409,
+  cancel_scheduled: 409,
 };
 
 const DAY_MS = 86_400_000;
@@ -94,6 +96,7 @@ export async function changePlan(
         after,
       });
 
+    if (isCancelScheduled(sub, now)) return { kind: "done", result: { ok: false, reason: "cancel_scheduled" } };
     if (current.id === target.id) {
       // 예약된 하위 변경을 거두고 지금 플랜을 그대로 쓴다
       if (sub?.pendingPlanId) {

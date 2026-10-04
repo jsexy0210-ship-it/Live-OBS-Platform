@@ -41,6 +41,20 @@ export function canCancelSubscription(sub: { status: string; cancelAtPeriodEnd: 
   return !!sub && sub.status !== "CANCELED" && !sub.cancelAtPeriodEnd;
 }
 
+// 해지를 예약해 두고 아직 이용 중인 구독인지. 이때는 플랜을 바꿀 수 없다(바꿔도 해지로 끝나 적용되지 않음).
+// 카드를 다시 등록하면 해지 예약이 풀린다(registerCardAndPay).
+export function isCancelScheduled(sub: EndState | null, now: Date): boolean {
+  return !!sub && sub.cancelAtPeriodEnd && !isEndedSubscription(sub, now);
+}
+
+// 카드를 등록(교체)하면 바로 결제하는지(registerCardAndPay와 같은 기준).
+// 결제한 기간이 남았거나, 결제 실패가 아닌 체험 중이면 카드만 등록한다. 그 밖(잠김·결제 실패·첫 결제 전)은 바로 결제한다.
+export function cardRegistrationCharges(trialEndsAt: Date | null, sub: { status: string; currentPeriodEnd: Date | null } | null, now: Date): boolean {
+  const inTrial = !!trialEndsAt && trialEndsAt > now;
+  const paidActive = sub?.status === "ACTIVE" && !!sub.currentPeriodEnd && sub.currentPeriodEnd > now;
+  return !(paidActive || (inTrial && sub?.status !== "PAST_DUE"));
+}
+
 // 플랜 변경 때의 결제 상태(changePlan과 같은 기준).
 // paidActive: 결제한 기간 중 · pastDue: 끝나지 않은 결제 실패 구독(유예가 끝났어도) · inTrial: 결제한 기간 없이 체험 중
 export function planChangeState(

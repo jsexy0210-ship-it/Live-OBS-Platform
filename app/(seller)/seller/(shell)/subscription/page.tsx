@@ -6,7 +6,7 @@ import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../com
 import { api, failMessage } from "../../../../../components/seller/api";
 import { won } from "../../../../../components/seller/format";
 import { useLatestResponse } from "../../../../../components/seller/latestResponse";
-import { canCancelSubscription, planChangeState } from "../../../../../lib/server/billing/access";
+import { canCancelSubscription, cardRegistrationCharges, isCancelScheduled, planChangeState } from "../../../../../lib/server/billing/access";
 import { PaymentHistory, type Payment } from "../../../../../components/seller/subscription/PaymentHistory";
 import "../../../../../styles/seller-settings2.css";
 
@@ -52,6 +52,7 @@ const PLAN_FAIL: Record<string, string> = {
   payment_in_progress: "결제를 처리하고 있습니다. 잠시 후 다시 확인해 주십시오",
   payment_failed: "차액 결제가 거절되어 플랜을 바꾸지 않았습니다. 결제 카드를 확인해 주십시오",
   not_activated: "결제는 되었지만 플랜에 반영되지 않았습니다. 문의하기로 알려 주십시오",
+  cancel_scheduled: "해지 예정인 구독은 플랜을 바꿀 수 없습니다. 결제 카드를 다시 등록해 해지를 취소한 뒤 바꿔 주십시오",
 };
 
 const toDate = (iso: string | null) => (iso ? new Date(iso) : null);
@@ -67,14 +68,28 @@ function billingState(v: View, now = new Date()) {
 }
 
 // 플랜 변경 확인 창 안내: 결제한 기간 중·결제 실패(유예가 끝났어도 해지 전이면)·체험 중·그 밖에 따라 적용 시점과 결제가 다르다.
-function planChangeNote(v: View, target: string): string {
+// 결제가 필요한데 카드가 없으면 서버가 card_required로 거절하므로 확인 버튼을 막는다(blocked).
+function planChangeNote(v: View, target: string): { text: string; blocked: boolean } {
   const { paidActive, pastDue, inTrial } = billingState(v);
   const up = (RANK[target] ?? 0) > (RANK[v.plan?.code ?? ""] ?? 0);
-  if (!up) return paidActive || pastDue ? "다음 결제일부터 적용됩니다. 그 전까지는 지금 플랜을 그대로 이용합니다." : "바로 적용됩니다. 결제는 없습니다.";
-  if (paidActive) return "남은 이용 기간의 차액을 등록한 카드로 바로 결제합니다.";
-  if (pastDue) return "밀린 이번 기간 요금과 남은 기간 차액을 등록한 카드로 바로 결제합니다.";
-  if (inTrial) return "새 플랜 요금을 등록한 카드로 바로 결제하고, 오늘부터 새 이용 기간이 시작됩니다.";
-  return "바로 적용되고 지금은 결제되지 않습니다. 다음 결제부터 새 플랜 요금이 청구됩니다.";
+  const noCard = !v.subscription?.cardLabel;
+  if (!up) return { text: paidActive || pastDue ? "다음 결제일부터 적용됩니다. 그 전까지는 지금 플랜을 그대로 이용합니다." : "바로 적용됩니다. 결제는 없습니다.", blocked: false };
+  if ((paidActive || pastDue || inTrial) && noCard) return { text: "올리려면 결제 카드를 먼저 등록해 주십시오.", blocked: true };
+  if (paidActive) return { text: "남은 이용 기간의 차액을 등록한 카드로 바로 결제합니다. 차액이 없으면 결제 없이 바로 바뀝니다.", blocked: false };
+  if (pastDue) return { text: "밀린 이번 기간 요금과 남은 기간 차액을 등록한 카드로 바로 결제합니다.", blocked: false };
+  if (inTrial) return { text: "새 플랜 요금을 등록한 카드로 바로 결제하고, 오늘부터 새 이용 기간이 시작됩니다.", blocked: false };
+  return { text: "바로 적용되고 지금은 결제되지 않습니다. 다음 결제부터 새 플랜 요금이 청구됩니다.", blocked: false };
+}
+
+// 카드 등록(교체) 확인 창 안내. 결제가 일어나거나 해지 예약이 풀릴 때만 확인을 거친다(null이면 확인 없이 진행).
+function cardNote(v: View, now = new Date()): string | null {
+  const s = v.subscription;
+  const charges = cardRegistrationCharges(toDate(v.trialEndsAt), s ? { status: s.status, currentPeriodEnd: toDate(s.currentPeriodEnd) } : null, now);
+  const scheduled = isCancelScheduled(s ? { status: s.status, cancelAtPeriodEnd: s.cancelAtPeriodEnd, currentPeriodEnd: toDate(s.currentPeriodEnd) } : null, now);
+  const parts: string[] = [];
+  if (scheduled) parts.push("해지를 취소하고 자동결제가 다시 켜집니다.");
+  if (charges) parts.push(`등록하면 바로 ${won(v.plan?.nextAmount ?? 0)}을 결제하고 이용 기간이 시작됩니다.`);
+  return parts.length ? parts.join(" ") : null;
 }
 
 // 해지하면 이용이 끝나는 때: 결제한 기간이 남았으면 그 끝, 아니면 체험 끝(체험 중), 둘 다 없으면 null(바로 해지)
@@ -105,7 +120,7 @@ export default function SubscriptionPage() {
   const [failure, setFailure] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [confirm, setConfirm] = useState<{ kind: "plan"; plan: Plan } | { kind: "cancel" } | null>(null);
+  const [confirm, setConfirm] = useState<{ kind: "plan"; plan: Plan } | { kind: "cancel" } | { kind: "card"; note: string } | null>(null);
   const reads = useLatestResponse();
 
   // 변경 뒤 다시 읽기에도 쓴다: 처음이 아니면 불러오는 화면을 띄우지 않고, 다시 읽기가 실패하면 지금 화면을 두고 알린다
@@ -157,6 +172,7 @@ export default function SubscriptionPage() {
 
   const registerCard = () =>
     run(async () => {
+      setConfirm(null);
       // 테스트 서버의 가짜 결제 공급자는 어떤 인증 값이든 카드로 받는다(실제 카드·결제 없음)
       const r = await api<{ ok: true; charged: boolean }>("/api/seller/subscription/card", { method: "POST", body: { authKey: `test-${crypto.randomUUID()}` } });
       if (!r.ok) {
@@ -211,7 +227,14 @@ export default function SubscriptionPage() {
   const live = canCancelSubscription(sub);
   const endsAt = view ? serviceEnd(view) : null;
   const current = view?.plan?.code ?? null;
-  const canceling = !!sub?.cancelAtPeriodEnd;
+  // 해지 예약 중에는 플랜을 바꿀 수 없다(서버 changePlan도 cancel_scheduled로 거절, 같은 판정 함수)
+  const canceling = isCancelScheduled(sub ? { status: sub.status, cancelAtPeriodEnd: sub.cancelAtPeriodEnd, currentPeriodEnd: toDate(sub.currentPeriodEnd) } : null, new Date());
+  // 카드 등록 버튼: 결제가 일어나거나 해지 예약이 풀리면 확인 창을 먼저 띄운다
+  const askCard = () => {
+    const note = view ? cardNote(view) : null;
+    if (note) setConfirm({ kind: "card", note });
+    else void registerCard();
+  };
   const pendingPlan = sub?.pendingPlanCode && !sub.cancelAtPeriodEnd ? plans.find((p) => p.code === sub.pendingPlanCode) ?? { code: sub.pendingPlanCode, name: "다른 플랜" } : null;
 
   return (
@@ -342,7 +365,7 @@ export default function SubscriptionPage() {
                 <span className="t-c1 c-alt">카드 자동결제만 지원합니다. 매달 결제일에 등록한 카드로 결제됩니다.</span>
                 {testMode ? (
                   <>
-                    <button className="btn btn-sm" type="button" onClick={() => void registerCard()} disabled={busy}>
+                    <button className="btn btn-sm" type="button" onClick={askCard} disabled={busy}>
                       {busy ? "처리 중" : sub?.cardLabel ? "테스트 카드로 변경" : "테스트 카드 등록"}
                     </button>
                     <span className="t-c1 c-alt">테스트 서버입니다. 실제 카드 등록과 결제는 이루어지지 않습니다.</span>
@@ -411,14 +434,16 @@ export default function SubscriptionPage() {
           <div className="modal">
             <div className="modal-h">
               <h2 className="t-h2" id="sub-confirm-title">
-                {confirm.kind === "cancel" ? "구독을 해지하시겠습니까?" : `「${confirm.plan.name}」으로 변경하시겠습니까?`}
+                {confirm.kind === "cancel" ? "구독을 해지하시겠습니까?" : confirm.kind === "card" ? "결제 카드를 등록하시겠습니까?" : `「${confirm.plan.name}」으로 변경하시겠습니까?`}
               </h2>
               <span className="t-l2 c-alt">
                 {confirm.kind === "cancel"
                   ? endsAt
                     ? `${DAY(endsAt)}까지 이용할 수 있고, 그 뒤에는 결제되지 않습니다.`
                     : "바로 해지되고 더 이상 결제되지 않습니다."
-                  : planChangeNote(view, confirm.plan.code)}
+                  : confirm.kind === "card"
+                    ? confirm.note
+                    : planChangeNote(view, confirm.plan.code).text}
               </span>
             </div>
             <div className="modal-f">
@@ -429,8 +454,12 @@ export default function SubscriptionPage() {
                 <button className="btn btn-neg" type="button" onClick={() => void cancel()} disabled={busy}>
                   {busy ? "해지 중" : "해지"}
                 </button>
+              ) : confirm.kind === "card" ? (
+                <button className="btn" type="button" onClick={() => void registerCard()} disabled={busy}>
+                  {busy ? "처리 중" : "등록"}
+                </button>
               ) : (
-                <button className="btn" type="button" onClick={() => void changePlan(confirm.plan)} disabled={busy}>
+                <button className="btn" type="button" onClick={() => void changePlan(confirm.plan)} disabled={busy || planChangeNote(view, confirm.plan.code).blocked}>
                   {busy ? "변경 중" : "변경"}
                 </button>
               )}
