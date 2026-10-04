@@ -169,6 +169,17 @@ describe("만들기·수정·중지·삭제", () => {
     expect((await held(s, c.id)).expiresAt.getTime()).toBe(new Date(sooner).getTime());
   });
 
+  it("사용 종료를 받은 시각보다 앞으로 당겨도 저장되고, 받은 쿠폰은 바로 기간 지남이 된다(Codex 4176358407)", async () => {
+    const s = await shop();
+    const c = await makeCoupon(s);
+    expect((await download(s, c.id)).status).toBe(201);
+    const res = await couponPut(json("/x", "PUT", s.owner, couponBody({ startsAt: iso(-3 * DAY), endsAt: iso(-2 * DAY) })), p({ couponId: c.id }));
+    expect(res.status).toBe(200);
+    const bc = await held(s, c.id);
+    expect(bc.expiresAt.getTime()).toBe(bc.issuedAt.getTime() + 1);
+    expect(await order(s, c.id)).toEqual({ ok: false, reason: "coupon_unavailable" });
+  });
+
   it("발급 중지하면 더는 받을 수 없지만 받은 쿠폰은 쓸 수 있다. 발급한 쿠폰은 지울 수 없다", async () => {
     const s = await shop();
     const c = await makeCoupon(s);
@@ -227,6 +238,19 @@ describe("받기(내려받기·코드)", () => {
     // 거래 무관 행동이라 3개월 보관 기한이 붙는다
     const row = await db.auditLog.findFirstOrThrow({ where: { action: "buyer_coupon.code", actorId: s.buyer.id } });
     expect(row.retainUntil).not.toBeNull();
+  });
+
+  it("틀린 코드를 동시에 많이 넣어도 10분 10회 한도를 넘지 않고, 한도에 걸린 뒤에는 맞는 코드도 막힌다(Codex 4176358406)", async () => {
+    const s = await shop();
+    await makeCoupon(s, { issueMethod: "CODE", code: "LIVE2026" });
+    const rs = await Promise.all(Array.from({ length: CODE_ATTEMPT_LIMIT + 5 }, (_, i) => redeem(s, `WRONG${i}`)));
+    expect(rs.filter((r) => r.status === 404)).toHaveLength(CODE_ATTEMPT_LIMIT);
+    expect(rs.filter((r) => r.status === 429)).toHaveLength(5);
+    expect(await db.auditLog.count({ where: { action: "buyer_coupon.code_failed", actorId: s.buyer.id } })).toBe(CODE_ATTEMPT_LIMIT);
+    expect((await redeem(s, "LIVE2026")).status).toBe(429);
+    expect(await db.buyerCoupon.count()).toBe(0);
+    // 다른 회원은 영향 없음
+    expect((await redeem(s, "LIVE2026", s.b2)).status).toBe(201);
   });
 
   it("내 쿠폰함: 쓸 수 있어요 · 받을 수 있어요 · 지난 쿠폰", async () => {

@@ -174,8 +174,11 @@ export async function updateCoupon(db: PrismaClient, ctx: TenantContext, id: str
     if (await codeTaken(tx, ctx.sellerId, p.v.code, id)) return { ok: false as const, reason: "code_taken" as const };
     // 받은 쿠폰의 만료는 받을 때 정해진다. 사용 종료를 앞당기면 이미 받은 쿠폰도 그때 끝나게 맞춘다.
     const row = await tx.coupon.update({ where: { id }, data: p.v });
+    // 새 종료가 받은 시각보다 이르면(이미 끝난 쿠폰으로) 받은 시각 + 1밀리초로 둔다(BuyerCoupon_period_check: 받은 시각 < 만료).
     if (row.endsAt < before.endsAt) {
-      await tx.buyerCoupon.updateMany({ where: { sellerId: ctx.sellerId, couponId: id, status: "ISSUED", expiresAt: { gt: row.endsAt } }, data: { expiresAt: row.endsAt } });
+      await tx.$executeRaw`
+        UPDATE "BuyerCoupon" SET "expiresAt" = GREATEST(${row.endsAt}, "issuedAt" + interval '1 millisecond')
+        WHERE "sellerId" = ${ctx.sellerId}::uuid AND "couponId" = ${id}::uuid AND "status" = 'ISSUED' AND "expiresAt" > ${row.endsAt}`;
     }
     await audit(tx, ctx, meta, "coupon.update", id, couponAudit(before), couponAudit(row));
     return { ok: true as const, coupon: couponView(row, await dbNow(tx), await statsOf(tx, ctx.sellerId, id)) };
@@ -333,8 +336,20 @@ export async function buyerCouponBox(db: PrismaClient, scope: BuyerScope) {
 
 type IssueResult = { ok: true; coupon: ReturnType<typeof mineView> } | { ok: false; reason: BuyerCouponFailure };
 
+// 코드 입력: 같은 회원이 10분에 10번 넘게 틀리면 잠시 막는다(코드 맞히기 방지). 틀린 시도는 로그 추적에 남긴다.
+export const CODE_ATTEMPT_LIMIT = 10;
+export const CODE_ATTEMPT_WINDOW_MS = 10 * 60_000;
+
 // 받기(내려받기·코드 공통). 발급 수는 조건부 UPDATE로 한도 안에서만 늘리고, 같은 회원이 두 번 받으면 유니크 키로 막아 전체를 되돌린다.
-async function issue(db: PrismaClient, scope: BuyerScope, find: (tx: Tx, now: Date) => Promise<Coupon | null>, action: string, meta: AuditMeta): Promise<IssueResult> {
+// countAttempts(코드 입력): 회원별 트랜잭션 잠금 아래에서 틀린 횟수를 세고 틀린 시도를 기록해, 동시에 여러 번 넣어도 한도를 넘지 않는다.
+async function issue(
+  db: PrismaClient,
+  scope: BuyerScope,
+  find: (tx: Tx, now: Date) => Promise<Coupon | null>,
+  action: string,
+  meta: AuditMeta,
+  countAttempts = false,
+): Promise<IssueResult> {
   if (!(await shopOpen(db, scope.sellerId))) return { ok: false, reason: "shop_unavailable" };
   try {
     return await db.$transaction(async (tx) => {
@@ -342,9 +357,21 @@ async function issue(db: PrismaClient, scope: BuyerScope, find: (tx: Tx, now: Da
       const [member] = await tx.$queryRaw<{ id: string }[]>`
         SELECT "id" FROM "BuyerMember" WHERE "id" = ${scope.buyerMemberId}::uuid AND "sellerId" = ${scope.sellerId}::uuid AND "status" = 'ACTIVE' AND "deletedAt" IS NULL FOR SHARE`;
       if (!member) return { ok: false as const, reason: "shop_unavailable" as const };
+      if (countAttempts) await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`coupon_code:${member.id}`}, 0))`;
       const now = await dbNow(tx);
+      if (countAttempts) {
+        const failed = await tx.auditLog.count({
+          where: { action: "buyer_coupon.code_failed", actorId: member.id, sellerId: scope.sellerId, createdAt: { gt: new Date(now.getTime() - CODE_ATTEMPT_WINDOW_MS) } },
+        });
+        if (failed >= CODE_ATTEMPT_LIMIT) return { ok: false as const, reason: "code_attempts" as const };
+      }
       const coupon = await find(tx, now);
-      if (!coupon || statusOf(coupon, now) !== "live") return { ok: false as const, reason: "coupon_not_found" as const };
+      if (!coupon || statusOf(coupon, now) !== "live") {
+        if (countAttempts) {
+          await writeAudit(tx, { actorType: "BUYER", actorId: member.id, sellerId: scope.sellerId, action: "buyer_coupon.code_failed", ip: meta.ip, userAgent: meta.userAgent });
+        }
+        return { ok: false as const, reason: "coupon_not_found" as const };
+      }
       if (await tx.buyerCoupon.findFirst({ where: { couponId: coupon.id, buyerMemberId: member.id }, select: { id: true } })) {
         return { ok: false as const, reason: "already_issued" as const };
       }
@@ -370,23 +397,9 @@ export function downloadCoupon(db: PrismaClient, scope: BuyerScope, couponId: st
   return issue(db, scope, (tx) => tx.coupon.findFirst({ where: { id: couponId, sellerId: scope.sellerId, issueMethod: "DOWNLOAD" } }), "buyer_coupon.download", meta);
 }
 
-// 코드 입력: 같은 회원이 10분에 10번 넘게 틀리면 잠시 막는다(코드 맞히기 방지). 틀린 시도는 로그 추적에 남긴다.
-export const CODE_ATTEMPT_LIMIT = 10;
-export const CODE_ATTEMPT_WINDOW_MS = 10 * 60_000;
-export async function redeemCouponCode(db: PrismaClient, scope: BuyerScope, rawCode: unknown, meta: AuditMeta = {}): Promise<IssueResult> {
-  const now = await dbNow(db);
-  const failed = await db.auditLog.count({
-    where: { action: "buyer_coupon.code_failed", actorId: scope.buyerMemberId, sellerId: scope.sellerId, createdAt: { gt: new Date(now.getTime() - CODE_ATTEMPT_WINDOW_MS) } },
-  });
-  if (failed >= CODE_ATTEMPT_LIMIT) return { ok: false, reason: "code_attempts" };
+export function redeemCouponCode(db: PrismaClient, scope: BuyerScope, rawCode: unknown, meta: AuditMeta = {}): Promise<IssueResult> {
   const code = normalizeCode(rawCode);
-  const r: IssueResult = code
-    ? await issue(db, scope, (tx) => tx.coupon.findFirst({ where: { sellerId: scope.sellerId, code, issueMethod: "CODE" } }), "buyer_coupon.code", meta)
-    : { ok: false, reason: "coupon_not_found" };
-  if (!r.ok && r.reason === "coupon_not_found") {
-    await writeAudit(db, { actorType: "BUYER", actorId: scope.buyerMemberId, sellerId: scope.sellerId, action: "buyer_coupon.code_failed", ip: meta.ip, userAgent: meta.userAgent });
-  }
-  return r;
+  return issue(db, scope, async (tx) => (code ? tx.coupon.findFirst({ where: { sellerId: scope.sellerId, code, issueMethod: "CODE" } }) : null), "buyer_coupon.code", meta, true);
 }
 
 // ───────── 주문 연동(orders/create.ts·queue/service.ts·orders/overdue.ts) ─────────
