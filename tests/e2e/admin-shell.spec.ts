@@ -40,7 +40,7 @@ test("최고관리자: 로그인하면 홈으로 들어가고, GNB 8개 대분�
   await page.setViewportSize({ width: 1440, height: 900 });
   await login(page, emails.super);
   await expect(gnb(page).getByRole("link")).toHaveText(["홈", "파트너스", "구독·요금", "정산", "운영", "고객지원", "관리자", "설정"]);
-  await expect(page.getByTestId("admin-coming-soon")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "통합 대시보드", level: 1 })).toBeVisible();
   const bg = await page.locator(".gnb").evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(bg).toBe("rgb(15, 118, 110)");
   const h = await page.evaluate(() => ({ lnb: document.querySelector(".lnb-h")!.getBoundingClientRect().height, loc: document.querySelector(".loc-bar")!.getBoundingClientRect().height }));
