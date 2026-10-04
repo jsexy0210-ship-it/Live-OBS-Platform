@@ -25,7 +25,7 @@ describe("자동 연결 상태기계", () => {
   it("완료는 검증 단계에서만, 고객 대기에서 실행으로 바로 가지 않는다", () => {
     expect(sourcesOf("SUCCEEDED")).toEqual(["VERIFYING"]);
     expect(canTransition("NEEDS_CUSTOMER", "RUNNING")).toBe(false);
-    expect(sourcesOf("CANCELED")).toEqual(["AWAITING_PAYMENT", "QUEUED", "RUNNING", "NEEDS_CUSTOMER", "VERIFYING"]);
+    expect(sourcesOf("CANCELED")).toEqual(["AWAITING_PAYMENT", "QUEUED", "RUNNING", "NEEDS_CUSTOMER", "VERIFYING", "CLEANUP_NEEDED"]);
     expect(VERIFY_STEP_INDEX).toBe(STEPS.length - 1);
   });
 });

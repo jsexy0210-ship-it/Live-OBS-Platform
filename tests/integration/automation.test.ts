@@ -111,6 +111,10 @@ async function cookieFor(email: string) {
 const H = (cookie: string, extra: Record<string, string> = {}) => ({ host: "localhost:3000", origin: "http://localhost:3000", cookie, ...extra });
 const params = (jobId: string) => ({ params: Promise.resolve({ jobId }) });
 
+// 32차: 바꾼 것이 있는 작업의 실패·취소는 「정리 필요」로 멈춘다. 바꾸기 전 실패·취소의 처리(환불·보관 자료 삭제)를 시험하는 곳에서는
+// 변경 기록을 지워 「바꾼 것이 없는 작업」으로 둔다(로그인 대기처럼 실제로 바꾸지 않은 경우)
+const forgetChanges = (jobId: string) => db.automationJob.update({ where: { id: jobId }, data: { changedAt: null, mutatedSteps: [] } });
+
 describe("자동 연결 결제와 실행 권한", () => {
   it("결제를 서버가 확인하면 작업이 대기열에 들어가고, 작업자가 단계를 모두 마친 뒤 검증 단계를 거쳐 완료한다", async () => {
     const { jobId, provider } = await bought();
@@ -279,7 +283,7 @@ describe("고객 행동 대기·재개·취소", () => {
     await runOnce(db, rt, W);
     await db.automationJob.update({ where: { id: a.jobId }, data: { actionDeadlineAt: new Date(Date.now() - 1000) } });
     expect(await reapExpired(db)).toEqual({ requeued: 0, failed: 1 });
-    expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "customer_action_timeout" });
+    expect(await job(a.jobId)).toMatchObject({ status: "CLEANUP_NEEDED", lastError: "customer_action_timeout" });
   });
 
   it("실행 중 취소하면 토큰이 올라가 작업자의 다음 쓰기가 거부되고, 상태는 취소로 남는다. 끝난 작업은 취소할 수 없다", async () => {
@@ -846,7 +850,8 @@ describe("Codex 리뷰 반영", () => {
       rt.planner.override = (input) =>
         input.step.key === stepKey ? { action: { type: "fill", target, value: { secretRef: "webhook_secret" } }, costWon: 10 } : undefined;
       expect(await runOnce(db, rt, W)).toBe("failed");
-      expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "unsafe_action:secret_target_not_allowed" });
+      // 웹훅 단계는 앞 단계(앱 설치)에서 바꾼 것이 있어 정리 필요, 첫 단계는 바꾸기 전이라 실패(32차)
+      expect(await job(a.jobId)).toMatchObject({ status: stepKey === "webhook_setup" ? "CLEANUP_NEEDED" : "FAILED", lastError: "unsafe_action:secret_target_not_allowed" });
       expect(rt.browser.performed.filter((p) => p.type === "fill")).toHaveLength(0);
     }
   });
@@ -942,6 +947,7 @@ describe("고객 대기용 보관 세션(정본 4678efb)", () => {
     // 끝나지 않은 작업(대기 중)은 지우지 않는다
     expect(await purgeEndedBrowserState(db, canceled.rt)).toBe(0);
     expect(canceled.rt.browser.saved.has(canceled.jobId)).toBe(true);
+    await forgetChanges(canceled.jobId);
     await cancelJob(db, canceled.ctx, canceled.jobId);
     expect(await purgeEndedBrowserState(db, canceled.rt)).toBe(1);
     expect(canceled.rt.browser.saved.has(canceled.jobId)).toBe(false);
@@ -951,6 +957,7 @@ describe("고객 대기용 보관 세션(정본 4678efb)", () => {
 
     // 고객 행동 마감
     const expired = await parked();
+    await forgetChanges(expired.jobId);
     await db.automationJob.update({ where: { id: expired.jobId }, data: { actionDeadlineAt: new Date(Date.now() - 1000) } });
     await reapExpired(db);
     expect((await job(expired.jobId)).status).toBe("FAILED");
@@ -963,9 +970,10 @@ describe("고객 대기용 보관 세션(정본 4678efb)", () => {
     await resumeJob(db, failed.ctx, failed.jobId);
     failed.rt.browser.outcome = (_s, action) => (action.type === "click" ? { kind: "fatal", reason: "admin_error" } : undefined);
     expect(await runOnce(db, failed.rt, W)).toBe("failed");
+    // 누르기 직전에 바꾼 것으로 기록됐으므로 정리 필요로 멈추고, 정리 전에는 보관 자료를 지우지 않는다(32차)
+    expect(await job(failed.jobId)).toMatchObject({ status: "CLEANUP_NEEDED" });
     await purgeEndedBrowserState(db, failed.rt);
-    expect(failed.rt.browser.discarded).toContain(failed.jobId);
-    expect(await job(failed.jobId)).toMatchObject({ browserStateHeld: false });
+    expect(failed.rt.browser.discarded).not.toContain(failed.jobId);
 
     // 재개 뒤 완료
     const done = await parked();
@@ -975,12 +983,14 @@ describe("고객 대기용 보관 세션(정본 4678efb)", () => {
     await purgeEndedBrowserState(db, done.rt);
     expect(done.rt.browser.discarded).toContain(done.jobId);
     expect(done.rt.browser.saved.size).toBe(0);
-    expect(await db.automationJob.count({ where: { browserStateHeld: true } })).toBe(0);
+    // 정리 필요 작업(위 「재개 뒤 실패」)의 보관본만 정리 전용으로 남는다
+    expect(await db.automationJob.count({ where: { browserStateHeld: true, status: { not: "CLEANUP_NEEDED" } } })).toBe(0);
   });
 
   it("작업자 반복이 끝난 작업의 보관본을 지우고, 지운 뒤에는 그 작업으로도 복원되지 않는다", async () => {
     const a = await parked();
     const blob = a.rt.browser.saved.get(a.jobId)!;
+    await forgetChanges(a.jobId);
     await cancelJob(db, a.ctx, a.jobId);
     const stop = new AbortController();
     const loop = runWorkerLoop(db, a.rt, { workerId: "loop", signal: stop.signal, idleMs: 10 });
@@ -1018,7 +1028,7 @@ describe("Codex 3차·정본 fc09f13 반영", () => {
       const rt = runtime();
       setup(rt);
       expect(await runOnce(db, rt, W), name).toBe("failed");
-      expect(await job(a.jobId), name).toMatchObject({ status: "FAILED", lastError: "unsafe_action:secret_origin_not_allowed" });
+      expect(await job(a.jobId), name).toMatchObject({ status: "CLEANUP_NEEDED", lastError: "unsafe_action:secret_origin_not_allowed" });
       expect(rt.browser.performed.filter((p) => p.type === "fill"), name).toHaveLength(0);
     }
   });
@@ -1067,6 +1077,7 @@ describe("Codex 3차·정본 fc09f13 반영", () => {
     const rt = runtime();
     rt.obs.disconnected.add(a.seller.id);
     expect(await runOnce(db, rt, W)).toBe("needs_customer");
+    await forgetChanges(a.jobId);
     await db.automationJob.update({ where: { id: a.jobId }, data: { actionDeadlineAt: new Date(Date.now() - 1000) } });
     await reapExpired(db);
     expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "customer_action_timeout" });
@@ -1085,6 +1096,7 @@ describe("Codex 3차·정본 fc09f13 반영", () => {
     rt2.obs.pairing.set(s.seller.id, "new-pc");
     rt2.obs.disconnected.add(s.seller.id);
     expect(await runOnce(db, rt2, W)).toBe("needs_customer");
+    await forgetChanges(paid.jobId);
     await db.automationJob.update({ where: { id: paid.jobId }, data: { actionDeadlineAt: new Date(Date.now() - 1000) } });
     await reapExpired(db);
     const reinstallPayment = await db.automationPayment.findFirstOrThrow({ where: { job: { id: paid.jobId } } });
@@ -1126,6 +1138,7 @@ describe("정본 d6e22c4: 실행 시간 6시간 마감·시작 뒤 취소", () =
     expect((await job(a.jobId)).browserStateHeld).toBe(true);
     // 실행 시간이 상한 직전까지 쓰인 상태로 재개
     await db.automationJob.update({ where: { id: a.jobId }, data: { activeMsUsed: 6 * 60 * 60_000 - 100 } });
+    await forgetChanges(a.jobId);
     await resumeJob(db, a.ctx, a.jobId);
     expect(await runOnce(db, rt, W)).toBe("failed");
     expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "run_time_limit", leaseOwner: null, runStartedAt: null });
@@ -1145,6 +1158,7 @@ describe("정본 d6e22c4: 실행 시간 6시간 마감·시작 뒤 취소", () =
     let asked = false;
     rt.browser.outcome = (_s, action) => (action.type === "click" && !asked ? ((asked = true), { kind: "needs_customer", action: "LOGIN" }) : undefined);
     expect(await runOnce(db, rt, W)).toBe("needs_customer");
+    await forgetChanges(parked.jobId);
     await cancelJob(db, parked.ctx, parked.jobId);
     await purgeEndedBrowserState(db, rt);
     expect(rt.browser.saved.size).toBe(0);
@@ -1165,7 +1179,9 @@ describe("정본 d6e22c4: 실행 시간 6시간 마감·시작 뒤 취소", () =
     // 진행 중이던 호출 1개 + heartbeat 주기 사이 1개까지만
     expect(mutating() - atCancel).toBeLessThanOrEqual(2);
     const j = await job(running.jobId);
-    expect(j).toMatchObject({ status: "CANCELED", runStartedAt: null });
+    // 취소 시점에 바꾼 기록이 있으면 정리 필요(사람이 정리한 뒤 마스터 관리자가 취소로 닫음), 없으면 그대로 취소(32차).
+    // 취소 뒤에는 작업자의 변경 기록·행동이 fencing으로 막히므로 둘 중 하나로만 끝난다
+    expect(j).toMatchObject(j.changedAt ? { status: "CLEANUP_NEEDED", lastError: "canceled", runStartedAt: null } : { status: "CANCELED", runStartedAt: null });
     expect(j.activeMsUsed).toBeGreaterThan(0);
     expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: running.seller.id } })).toMatchObject({ status: "PAID" });
     expect(await requestRefund(db, running.ctx, running.jobId)).toEqual({ ok: false, reason: "not_refundable" });
@@ -1317,7 +1333,7 @@ describe("Codex 5차 반영", () => {
 });
 
 describe("MASTER 요청 시험(26c2974 Codex 3건)", () => {
-  it("외부 행동 도중 실행 시간 6시간을 넘기면 그 결과(고객 대기)를 기록하지 않고 FAILED·REFUND_PENDING으로 끝낸다", async () => {
+  it("외부 행동 도중 실행 시간 6시간을 넘기면 그 결과(고객 대기)를 기록하지 않고 끝낸다(바꾼 것이 있으면 정리 필요·결제 보류)", async () => {
     const a = await bought();
     const rt = { ...runtime(), browser: new FakeBrowserExecutor(500), obs: new FakeObsBridge(0) };
     rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장 · 로그아웃";
@@ -1326,8 +1342,9 @@ describe("MASTER 요청 시험(26c2974 Codex 3건)", () => {
     await db.automationJob.update({ where: { id: a.jobId }, data: { activeMsUsed: 6 * 60 * 60_000 - 1800 } });
     // lease는 DB 응답이 잠깐 늦어도 끊기지 않을 만큼(heartbeat 200ms 간격) 둔다. 너무 짧으면 상한 초과 전에 lease가 끊겨 fenced로 갈린다.
     expect(await runOnce(db, rt, { ...W, leaseMs: 600 })).toBe("failed");
-    expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "run_time_limit", customerAction: null, browserStateHeld: false });
-    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "REFUND_PENDING", refundReason: "run_time_limit" });
+    // 누르기 도중이라 바꾼 것이 있으므로 정리 필요로 멈추고 결제는 정리 뒤(32차)
+    expect(await job(a.jobId)).toMatchObject({ status: "CLEANUP_NEEDED", lastError: "run_time_limit", customerAction: null, browserStateHeld: false });
+    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "PAID" });
     expect(rt.browser.saved.size).toBe(0);
   }, 20_000);
 
@@ -1485,6 +1502,7 @@ describe("Codex 6차 반영(9144f55)", () => {
     expect(await runOnce(db, rt, W)).toBe("needs_customer");
     rt.obs.disconnected.delete(obsWait.seller.id);
     await rt.obs.currentPairingId({ sellerId: obsWait.seller.id, jobId: obsWait.jobId });
+    await forgetChanges(obsWait.jobId);
     await cancelJob(db, obsWait.ctx, obsWait.jobId);
     // 고정 키는 세션 밖에 남는 효과(OBS·테스트 주문)에만 붙는다(29차)
     expect([...rt.obs.applied.keys()].some((k) => k.startsWith(done.jobId))).toBe(true);
@@ -1519,7 +1537,7 @@ describe("Codex 7차 반영(6325051)", () => {
       const rt = runtime();
       setup(rt);
       expect(await runOnce(db, rt, W), name).toBe("failed");
-      expect(await job(a.jobId), name).toMatchObject({ status: "FAILED", lastError: "unsafe_action:secret_origin_not_allowed" });
+      expect(await job(a.jobId), name).toMatchObject({ status: "CLEANUP_NEEDED", lastError: "unsafe_action:secret_origin_not_allowed" });
       expect(rt.browser.performed.filter((p) => p.type === "fill"), name).toHaveLength(0);
       await db.automationJob.updateMany({ data: { deviatedSteps: [], lastDeviationAt: null } });
     }
@@ -1543,7 +1561,7 @@ describe("Codex 7차 반영(6325051)", () => {
       const rt = runtime();
       setup(rt);
       expect(await runOnce(db, rt, W), name).toBe("failed");
-      expect(await job(a.jobId), name).toMatchObject({ status: "FAILED", lastError: "unsafe_action:secret_origin_not_allowed" });
+      expect(await job(a.jobId), name).toMatchObject({ status: "CLEANUP_NEEDED", lastError: "unsafe_action:secret_origin_not_allowed" });
       expect(rt.browser.performed.filter((p) => p.type === "fill"), name).toHaveLength(0);
       await db.automationJob.updateMany({ data: { deviatedSteps: [], lastDeviationAt: null } });
     }
@@ -1560,7 +1578,7 @@ describe("Codex 7차 반영(6325051)", () => {
       return undefined;
     };
     expect(await runOnce(db, rt, W)).toBe("failed");
-    expect(await job(r.jobId)).toMatchObject({ status: "FAILED", lastError: "reconnect_target_mismatch" });
+    expect(await job(r.jobId)).toMatchObject({ status: "CLEANUP_NEEDED", lastError: "reconnect_target_mismatch" });
     expect(rt.obs.performed.filter((p) => p.scope.jobId === r.jobId)).toHaveLength(0);
   });
 
@@ -1569,6 +1587,7 @@ describe("Codex 7차 반영(6325051)", () => {
     const rt = runtime();
     rt.browser.outcome = (_s, action) => (action.type === "click" ? { kind: "needs_customer", action: "LOGIN" } : undefined);
     expect(await runOnce(db, rt, W)).toBe("needs_customer");
+    await forgetChanges(a.jobId);
     await db.automationJob.update({ where: { id: a.jobId }, data: { actionDeadlineAt: new Date(Date.now() - 1000) } });
     expect(await resumeJob(db, a.ctx, a.jobId)).toEqual({ ok: false, reason: "action_expired" });
     expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "customer_action_timeout", customerAction: null });
@@ -1682,7 +1701,7 @@ describe("Codex 8차 반영(748f1ff)", () => {
     obs.pairing.set(a.seller.id, "pc-A");
     expect(await runOnce(db, rt, W)).toBe("failed");
     expect(onB.filter((t) => t !== "step_done")).toHaveLength(0);
-    expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "obs_target_changed", obsTargetKey: "obs:pc-A" });
+    expect(await job(a.jobId)).toMatchObject({ status: "CLEANUP_NEEDED", lastError: "obs_target_changed", obsTargetKey: "obs:pc-A" });
   });
 });
 
@@ -1785,7 +1804,7 @@ describe("Codex 10차 반영(38e24f1)", () => {
     expect(await runOnce(db, rt, W)).toBe("failed");
     expect(afterSwitch).toHaveLength(0);
     const j = await job(a.jobId);
-    expect(j).toMatchObject({ status: "FAILED", lastError: "obs_target_changed", verifiedAt: null, obsPairingId: "pc-A" });
+    expect(j).toMatchObject({ status: "CLEANUP_NEEDED", lastError: "obs_target_changed", verifiedAt: null, obsPairingId: "pc-A" });
   });
 
   it("판단 모델 입력에는 조작에 필요한 요소(버튼·링크·제목·라벨·안내)만 가고, 표·목록·입력값과 전화·이메일·주소·주문번호는 빠진다", async () => {
@@ -1852,7 +1871,7 @@ describe("Codex 11차 반영(002ed20)", () => {
     await db.automationJob.update({ where: { id: a.jobId }, data: { runAfter: new Date(Date.now() - 1000) } });
     expect(await runOnce(db, rt, W)).toBe("failed");
     expect(onB).toHaveLength(0);
-    expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "obs_target_changed", obsPairingId: "pc-A" });
+    expect(await job(a.jobId)).toMatchObject({ status: "CLEANUP_NEEDED", lastError: "obs_target_changed", obsPairingId: "pc-A" });
   });
 
   it("판단 모델에는 허용 어휘(작업서 단계 문구·공통 UI 어휘)의 글만 원문으로 가고, 그 밖의 글(이름이 든 안내·링크)은 자리표시와 요소 id만 간다", async () => {
@@ -1950,7 +1969,7 @@ describe("Codex 12차 반영(6706ed2)", () => {
     };
     expect(await runOnce(db, rt, { ...W, random: () => 0 })).toBe("retry");
     const j = await job(a.jobId);
-    expect(j.status).toBe("FAILED");
+    expect(j.status).toBe("CLEANUP_NEEDED");
     expect(j.lastDeviationAt).not.toBeNull();
     const s = await shopWithCard();
     expect(await purchaseAutomation(db, new FakeBillingProvider(), s.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP })).toEqual({ ok: false, reason: "shop_not_supported" });
@@ -2013,7 +2032,8 @@ describe("Codex 13차 반영(d47b9f0)", () => {
     const perform = rt.obs.perform.bind(rt.obs);
     rt.obs.perform = async (scope, action, actionKey) => {
       if (action.type === "obs_add_overlay_source") {
-        // 실행기가 행동을 처리하는 도중에 판매자가 취소하고 서버가 보관 자료를 정리했다
+        // 실행기가 행동을 처리하는 도중에 판매자가 취소하고 서버가 보관 자료를 정리했다(사람 정리를 마친 뒤의 정리와 같은 상황)
+        await forgetChanges(a.jobId);
         await cancelJob(db, a.ctx, a.jobId);
         expect(await purgeEndedBrowserState(db, rt)).toBe(1);
       }
@@ -2206,7 +2226,7 @@ describe("MASTER 최소 안전 동작: 변경 뒤 실패는 정리 필요·알�
     await db.automationJob.update({ where: { id: changed.jobId }, data: { costLimit: 5, playbookId: null, playbookVersion: null, stepIndex: 2, playbookActions: 5, changedAt: new Date(), mutatedSteps: ["shop_connect", "webhook_setup"] } });
     expect(await runOnce(db, runtime(), W)).toBe("failed");
     const j = await job(changed.jobId);
-    expect(j).toMatchObject({ status: "FAILED", lastError: "cost_limit" });
+    expect(j).toMatchObject({ status: "CLEANUP_NEEDED", lastError: "cost_limit" });
     expect(j.cleanupNeededAt).toBeInstanceOf(Date);
     expect(await db.auditLog.count({ where: { action: "automation.job_cleanup_needed", targetId: changed.jobId } })).toBe(1);
   });
@@ -2221,7 +2241,7 @@ describe("MASTER 최소 안전 동작: 변경 뒤 실패는 정리 필요·알�
     await db.automationJob.update({ where: { id: a.jobId }, data: { actionDeadlineAt: new Date(Date.now() - 1000) } });
     await reapExpired(db);
     const j = await job(a.jobId);
-    expect(j).toMatchObject({ status: "FAILED", lastError: "customer_action_timeout" });
+    expect(j).toMatchObject({ status: "CLEANUP_NEEDED", lastError: "customer_action_timeout" });
     expect(j.cleanupNeededAt).toBeInstanceOf(Date);
     expect(await db.auditLog.count({ where: { action: "automation.job_cleanup_needed", targetId: a.jobId } })).toBe(1);
   });
@@ -2259,7 +2279,7 @@ describe("Codex 15차 반영(238d7c2)", () => {
     rt.browser.outcome = (_s, action) => (action.type === "step_done" ? { kind: "ok", stepDone: true } : undefined);
     expect(await runOnce(db, rt, W)).toBe("failed");
     const j = await job(a.jobId);
-    expect(j).toMatchObject({ status: "FAILED", lastError: "shop_identity_unverified", shopKey: null, verifiedAt: null });
+    expect(j).toMatchObject({ status: "CLEANUP_NEEDED", lastError: "shop_identity_unverified", shopKey: null, verifiedAt: null });
     expect(j.cleanupNeededAt).toBeInstanceOf(Date);
 
     const b = await bought();
@@ -2370,7 +2390,7 @@ describe("Codex 18차 반영(353d28c)", () => {
     };
     expect(await runOnce(db, rt, W)).toBe("failed");
     expect(obs.performed).toHaveLength(0);
-    expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "pairing_mismatch" });
+    expect(await job(a.jobId)).toMatchObject({ status: "CLEANUP_NEEDED", lastError: "pairing_mismatch" });
   });
 
   it("정상 경로에서는 로컬 도구가 실제 실행한 PC를 돌려주고 엔진이 대조해 그대로 완료한다", async () => {
@@ -2515,7 +2535,7 @@ describe("Codex 22차 반영(917980f)", () => {
       };
       expect(await runOnce(db, rt, W), to).toBe("failed");
       expect(rt.browser.performed.filter((p) => p.type === "click" || p.type === "fill"), to).toHaveLength(0);
-      expect(await job(a.jobId), to).toMatchObject({ status: "FAILED", lastError: "page_mismatch" });
+      expect(await job(a.jobId), to).toMatchObject({ status: "CLEANUP_NEEDED", lastError: "page_mismatch" });
       await db.automationJob.updateMany({ data: { deviatedSteps: [], lastDeviationAt: null } });
     }
   });
@@ -2529,7 +2549,7 @@ describe("Codex 22차 반영(917980f)", () => {
     };
     expect(await runOnce(db, rt, W)).toBe("failed");
     expect(rt.browser.performed.filter((p) => p.type === "fill")).toHaveLength(0);
-    expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "page_mismatch" });
+    expect(await job(a.jobId)).toMatchObject({ status: "CLEANUP_NEEDED", lastError: "page_mismatch" });
   });
 
   it("정리 필요는 변경 기록(changedAt·mutatedSteps)으로만 판단한다: 기존 설치를 확인만 하고 진행한 작업(진행 위치 2, 변경 기록 없음)이 실패해도 정리 필요·알림 없음", async () => {
@@ -2993,6 +3013,73 @@ describe("Codex 31차 반영(5a3cec1)", () => {
     await db.automationJob.updateMany({ data: { lastDeviationAt: null, deviatedSteps: [] } });
     const r = await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: newKey(), target: { shopKey: `mall-${s.seller.id}`, obsPairingId: `pc-${s.seller.id}` } });
     expect(r).toMatchObject({ ok: true, kind: "RECONNECT_FREE" });
+  });
+});
+
+describe("Codex 32차 반영(7d8ca50)", () => {
+  async function opsCookie() {
+    const admin = await createAdmin("OPERATIONS");
+    const r = await loginAdmin(db, adminCredentials(admin), {});
+    if (!r.ok) throw new Error(r.reason);
+    return `lo_admin=${r.token}`;
+  }
+  const close = async (jobId: string) =>
+    cleanupCloseRoute(
+      new Request(`http://localhost:3000/api/automation/admin/jobs/${jobId}/cleanup`, {
+        method: "POST",
+        headers: { host: "localhost:3000", origin: "http://localhost:3000", cookie: await opsCookie(), "content-type": "application/json" },
+        body: JSON.stringify({ note: "직접 정리함" }),
+      }),
+      { params: Promise.resolve({ jobId }) },
+    );
+
+  it("바꾼 뒤 실패한 작업은 FAILED가 아니라 정리 필요로 멈춘다: 새 구매 막힘·보관 자료 유지·결제 보류, 운영자가 닫아야 실패·환불 대기", async () => {
+    const a = await bought();
+    const rt = runtime();
+    // 앱 설치(쇼핑몰 연결) 뒤 웹훅 단계에서 관리 화면 오류로 실패
+    rt.browser.outcome = (_s, action) => (action.type === "fill" ? { kind: "fatal", reason: "admin_error" } : undefined);
+    expect(await runOnce(db, rt, W)).toBe("failed");
+    expect(await job(a.jobId)).toMatchObject({ status: "CLEANUP_NEEDED", lastError: "admin_error" });
+    expect(await db.auditLog.count({ where: { action: "automation.job_cleanup_needed", targetId: a.jobId } })).toBe(1);
+    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "PAID" });
+    expect(await purchaseAutomation(db, new FakeBillingProvider(), a.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP })).toMatchObject({ ok: false, reason: "job_in_progress" });
+    await purgeEndedBrowserState(db, rt);
+    expect(rt.browser.discarded).not.toContain(a.jobId);
+    expect((await close(a.jobId)).status).toBe(200);
+    expect(await job(a.jobId)).toMatchObject({ status: "FAILED" });
+    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "REFUND_PENDING" });
+    await purgeEndedBrowserState(db, rt);
+    expect(rt.browser.discarded).toContain(a.jobId);
+  });
+
+  it("바꾼 뒤 판매자가 취소해도 정리 필요로 멈추고, 운영자가 닫으면 취소(시작 뒤 취소라 환불 없음)로 끝난다", async () => {
+    const a = await bought();
+    const rt = runtime();
+    rt.browser.outcome = (_s, action) => (action.type === "fill" ? { kind: "needs_customer", action: "LOGIN" } : undefined);
+    expect(await runOnce(db, rt, W)).toBe("needs_customer");
+    expect(await cancelJob(db, a.ctx, a.jobId)).toMatchObject({ ok: true, job: { status: "CLEANUP_NEEDED" } });
+    // 정리 필요는 판매자가 다시 취소해 닫을 수 없다(운영자 정리 뒤 닫기만)
+    expect(await cancelJob(db, a.ctx, a.jobId)).toEqual({ ok: false, reason: "invalid_state" });
+    expect(await job(a.jobId)).toMatchObject({ status: "CLEANUP_NEEDED" });
+    expect((await close(a.jobId)).status).toBe(200);
+    expect(await job(a.jobId)).toMatchObject({ status: "CANCELED" });
+    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "PAID" });
+  });
+
+  it("연습 도중 화면 이탈을 보면 그 즉시 기록해 준비 상태를 내린다: 연습이 끝나기 전에 들어온 구매도 거절", async () => {
+    const rt = runtime();
+    rt.browser.pageText = () => "다른 화면 · 로그아웃";
+    let during: unknown = null;
+    const decide = rt.planner.decide.bind(rt.planner);
+    rt.planner.decide = async (input) => {
+      if (!during) {
+        const s = await shopWithCard();
+        during = await purchaseAutomation(db, new FakeBillingProvider(), s.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP });
+      }
+      return decide(input);
+    };
+    await runPractice(db, rt, cafe24Playbook, { shopHost: "myshop.cafe24.com" });
+    expect(during).toEqual({ ok: false, reason: "shop_not_supported" });
   });
 });
 

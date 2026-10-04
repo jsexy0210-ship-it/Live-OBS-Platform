@@ -24,11 +24,13 @@ export async function closeCleanupNeeded(
     const cur = await tx.automationJob.findUniqueOrThrow({ where: { id: jobId } });
     if (cur.status !== "CLEANUP_NEEDED") return { ok: false, reason: "invalid_state" } as const;
     const now = await dbNow(tx);
-    await tx.automationJob.update({ where: { id: jobId }, data: { status: "FAILED", finishedAt: now } });
-    await writeJobEvent(tx, cur, "CLEANUP_NEEDED", "FAILED", cur.fencingToken, { reason: "cleanup_done" });
+    // 판매자가 취소해 정리 필요가 된 작업은 취소로 닫는다(시작 뒤 취소는 환불 없음, 확정 ②). 그 밖(실패)은 실패·환불 처리 대기
+    const end = cur.lastError === "canceled" ? "CANCELED" : "FAILED";
+    await tx.automationJob.update({ where: { id: jobId }, data: { status: end, finishedAt: now } });
+    await writeJobEvent(tx, cur, "CLEANUP_NEEDED", end, cur.fencingToken, { reason: "cleanup_done" });
     const before = cur.paymentId ? await tx.automationPayment.findUnique({ where: { id: cur.paymentId }, select: { status: true } }) : null;
-    await markRefundPending(tx, cur, "cleanup_done", now);
-    const refundPending = before?.status === "PAID";
+    if (end === "FAILED") await markRefundPending(tx, cur, "cleanup_done", now);
+    const refundPending = end === "FAILED" && before?.status === "PAID";
     await writeAudit(tx, {
       actorType: "PLATFORM_ADMIN",
       actorId: admin.admin.id,
@@ -37,7 +39,7 @@ export async function closeCleanupNeeded(
       targetType: "AutomationJob",
       targetId: jobId,
       before: { status: "CLEANUP_NEEDED", lastError: cur.lastError },
-      after: { status: "FAILED", refundPending },
+      after: { status: end, refundPending },
       reason: note.trim(),
       ip: meta.ip,
       userAgent: meta.userAgent,

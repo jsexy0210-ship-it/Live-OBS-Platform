@@ -21,6 +21,8 @@ export const CLEANUP_MAX_ATTEMPTS = 10;
 const CLEANUP_CLAIM_MS = 10 * 60_000;
 // 연습 시작 때 남기는 기록의 사유(결과가 나오면 바뀐다)
 const PRACTICE_INCOMPLETE = "practice_incomplete";
+// 진행 중에 화면 이탈을 본 연습(결과가 나오기 전이라도 진행 중 기록에서 빠져 연속 성공을 끊는다)
+const PRACTICE_DEVIATED = "practice_deviated";
 
 // 연습 실행 범위의 보관 자료(행동 키 기록·OBS 연결 정보)를 두 실행기에 지우라고 요청한다. 둘 다 성공해야 정리 끝이다.
 async function discardScope(rt: Pick<AutomationRuntime, "browser" | "obs">, scope: JobScope): Promise<boolean> {
@@ -75,7 +77,19 @@ export async function runPractice(
         // 연습은 고객 대기로 멈추면 그대로 끝낸다(보관하지 않음)
         keepBrowserStateOnWait: false,
       },
-      { touch: async () => {}, enterVerify: async () => {}, stepDone: async (next) => void (stepIndex = next) },
+      {
+        // 화면 이탈은 보는 즉시(판단 모델 호출 전) 작업서 배타 잠금 아래 이 연습 기록에 남긴다: 진행 중 기록에서 빠져 연속 성공을 끊으므로
+        // 연습이 끝날 때까지 이전 연속 성공으로 구매가 열려 있지 않다(고객 작업의 이탈 기록과 같은 방식)
+        touch: async (s) => {
+          if (!s.deviatedNow) return;
+          await db.$transaction(async (tx) => {
+            await lockPlaybook(tx, playbook.id, "exclusive");
+            await tx.automationPracticeRun.update({ where: { id: run.id }, data: { reason: PRACTICE_DEVIATED, deviatedSteps: s.deviatedSteps } });
+          });
+        },
+        enterVerify: async () => {},
+        stepDone: async (next) => void (stepIndex = next),
+      },
     );
   } catch {
     result = { kind: "failed", reason: "practice_error" };

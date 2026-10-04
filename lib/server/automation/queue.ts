@@ -138,7 +138,10 @@ async function fencedWrite(
     const now = await dbNow(tx);
     const cur = await tx.automationJob.findUnique({ where: { id: c.jobId } });
     if (!cur) throw new FencingError();
-    const change = build(now, cur);
+    const built = build(now, cur);
+    // 실패로 끝내려는데 바꾼 것이 있으면(되돌리기를 마친 경우 제외) 「정리 필요」로 멈춘다(endStateFor). 결제는 그대로(환불은 정리 뒤)
+    const toCleanup = built.to === "FAILED" && endStateFor(cur, "FAILED", { cleanupDone: opts.cleanupDone }) === "CLEANUP_NEEDED";
+    const change: FencedChange = toCleanup ? { ...built, to: "CLEANUP_NEEDED", data: { ...built.data, cleanupNeededAt: now }, after: undefined } : built;
     const from = change.to ? sourcesOf(change.to).filter((s) => LEASED.includes(s)) : [...LEASED];
     // 실행 자리를 놓는 전이(대기·재시도·끝)면 이번에 쓴 실행 시간을 합계에 더한다
     const releasing = change.to && !LEASED.includes(change.to);
@@ -152,7 +155,7 @@ async function fencedWrite(
     });
     if (r.count !== 1) throw new FencingError();
     if (change.to && change.to !== cur.status) await writeJobEvent(tx, cur, cur.status, change.to, c.token, change.detail);
-    if (change.to === "FAILED" && !opts.cleanupDone) await flagCleanupIfChanged(tx, cur, change.detail?.reason ?? "failed", now);
+    if (toCleanup) await alertCleanupNeeded(tx, cur, change.detail?.reason ?? "failed");
     await change.after?.(tx, cur, now);
   });
 }
@@ -169,9 +172,18 @@ export const markChanged = (db: PrismaClient, c: Claim, stepKey: string) =>
 
 // 바꾼 뒤 실패·취소로 끝나면 조용히 끝내지 않는다: 정리 필요 표시와 마스터 관리자 알림(감사 기록 운영 이벤트)을 같은 트랜잭션에서 남긴다.
 // 사람이 쇼핑몰 앱·웹훅·OBS를 정리할 수 있게 하기 위해서다. 자동 되돌리기 전체(E3-W)는 다음 PR.
-export async function flagCleanupIfChanged(tx: Tx, job: AutomationJob, reason: unknown, now: Date) {
-  if (!hasChanges(job) || job.cleanupNeededAt) return;
-  await tx.automationJob.update({ where: { id: job.id }, data: { cleanupNeededAt: now } });
+// 끝내는 상태 결정(실패·취소로 끝나는 모든 경로가 이 함수 하나로 정한다): 바꾼 것이 있으면(되돌리기를 마친 경우 제외)
+// 「정리 필요」로 멈춘다. 실패·취소로 끝내면 열린 작업에서 빠져 새 구매·설치가 열리고 보관 자료도 지워지므로, 정리 전에는 끝내지 않는다.
+export function endStateFor(
+  job: Pick<AutomationJob, "changedAt" | "mutatedSteps">,
+  intended: "FAILED" | "CANCELED",
+  opts: { cleanupDone?: boolean } = {},
+): "FAILED" | "CANCELED" | "CLEANUP_NEEDED" {
+  return hasChanges(job) && !opts.cleanupDone ? "CLEANUP_NEEDED" : intended;
+}
+
+// 「정리 필요」 마스터 관리자 알림(감사 기록 운영 이벤트) 1건
+export async function alertCleanupNeeded(tx: Tx, job: Pick<AutomationJob, "id" | "sellerId">, reason: unknown) {
   await tx.auditLog.create({
     data: { actorType: "SYSTEM", sellerId: job.sellerId, action: "automation.job_cleanup_needed", targetType: "AutomationJob", targetId: job.id, after: { reason: String(reason).slice(0, 200) } },
   });
@@ -257,11 +269,7 @@ export const markCleanupNeeded = (db: PrismaClient, c: Claim, reason: string) =>
       to: "CLEANUP_NEEDED",
       data: { ...RELEASE, lastError: reason.slice(0, 200), cleanupNeededAt: now },
       detail: { reason: reason.slice(0, 200) },
-      after: async (tx, cur) => {
-        await tx.auditLog.create({
-          data: { actorType: "SYSTEM", sellerId: cur.sellerId, action: "automation.job_cleanup_needed", targetType: "AutomationJob", targetId: cur.id, after: { reason: reason.slice(0, 200) } },
-        });
-      },
+      after: async (tx, cur) => alertCleanupNeeded(tx, cur, reason),
     }),
     { allowExpiredLease: true },
   );
@@ -329,6 +337,20 @@ export const finishJob = (db: PrismaClient, c: Claim, to: "SUCCEEDED" | "FAILED"
     to === "SUCCEEDED" ? { preLocks: { seller: true } } : {},
   );
 
+// 고객 행동 마감이 지난 대기 작업을 끝낸다(회수와 재개 시도가 같이 쓴다). 바꾼 것이 없으면 실패·전액 환불 처리 대기(확정 ②,
+// 실제 환불 실행은 승인 뒤), 있으면 정리 필요(결제는 정리 뒤)
+export async function expireCustomerWait(tx: Tx, id: string, now: Date) {
+  const cur = await tx.automationJob.findUniqueOrThrow({ where: { id } });
+  const end = endStateFor(cur, "FAILED");
+  const job = await tx.automationJob.update({
+    where: { id },
+    data: { status: end, lastError: "customer_action_timeout", finishedAt: now, customerAction: null, actionDeadlineAt: null, ...(end === "CLEANUP_NEEDED" ? { cleanupNeededAt: now } : {}) },
+  });
+  await writeJobEvent(tx, job, "NEEDS_CUSTOMER", end, job.fencingToken, { reason: "customer_action_timeout" });
+  if (end === "FAILED") await markRefundPending(tx, job, "customer_action_timeout", now);
+  else await alertCleanupNeeded(tx, job, "customer_action_timeout");
+}
+
 // lease가 끝난 실행 중 작업을 회수한다(작업자 중단·멈춤). 토큰을 올려 이전 작업자의 늦은 쓰기를 막는다.
 // 고객 행동 마감이 지난 작업은 실패로 닫는다.
 export async function reapExpired(db: PrismaClient, random: () => number = Math.random): Promise<{ requeued: number; failed: number }> {
@@ -344,11 +366,13 @@ export async function reapExpired(db: PrismaClient, random: () => number = Math.
       const cur = await tx.automationJob.findUniqueOrThrow({ where: { id } });
       const attempts = cur.attempts + 1;
       const give = attempts >= cur.maxAttempts;
+      // 시도를 다 쓴 끝은 endStateFor로(바꾼 것이 있으면 정리 필요)
+      const end = endStateFor(cur, "FAILED");
       const job = await tx.automationJob.update({
         where: { id },
         data: {
           ...(give
-            ? { ...RELEASE, status: "FAILED" as const, attempts, lastError: "lease_expired", finishedAt: now, fencingToken: { increment: 1 } }
+            ? { ...RELEASE, status: end, attempts, lastError: "lease_expired", finishedAt: now, fencingToken: { increment: 1 }, ...(end === "CLEANUP_NEEDED" ? { cleanupNeededAt: now } : {}) }
             : { ...RELEASE, status: "QUEUED" as const, attempts, lastError: "lease_expired", runAfter: plus(now, backoffMs(attempts, random)), fencingToken: { increment: 1 } }),
           // 멈춘 작업자가 쓴 시간도 실행 시간에 넣는다(lease가 끝난 시각까지)
           activeMsUsed: cur.activeMsUsed + (cur.leaseExpiresAt ? runningMs(cur, cur.leaseExpiresAt) : 0),
@@ -356,7 +380,7 @@ export async function reapExpired(db: PrismaClient, random: () => number = Math.
         },
       });
       await writeJobEvent(tx, job, cur.status, job.status, job.fencingToken, { reason: "lease_expired" });
-      if (give) await flagCleanupIfChanged(tx, cur, "lease_expired", now);
+      if (give && end === "CLEANUP_NEEDED") await alertCleanupNeeded(tx, cur, "lease_expired");
       if (give) failed++;
       else requeued++;
     }
@@ -365,14 +389,7 @@ export async function reapExpired(db: PrismaClient, random: () => number = Math.
       WHERE status = 'NEEDS_CUSTOMER' AND "actionDeadlineAt" <= clock_timestamp()
       LIMIT 100 FOR UPDATE SKIP LOCKED`;
     for (const { id } of waiting) {
-      const job = await tx.automationJob.update({
-        where: { id },
-        data: { status: "FAILED", lastError: "customer_action_timeout", finishedAt: now, customerAction: null, actionDeadlineAt: null },
-      });
-      await writeJobEvent(tx, job, "NEEDS_CUSTOMER", "FAILED", job.fencingToken, { reason: "customer_action_timeout" });
-      // 마감으로 끝난 작업은 성공 기준을 통과하지 못했으므로 확정 ②대로 전액 환불 처리 대기로 둔다(실제 환불 실행은 승인 뒤)
-      await markRefundPending(tx, job, "customer_action_timeout", now);
-      await flagCleanupIfChanged(tx, job, "customer_action_timeout", now);
+      await expireCustomerWait(tx, id, now);
       failed++;
     }
     return { requeued, failed };

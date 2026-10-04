@@ -2,7 +2,7 @@ import type { AutomationJob, AutomationPayment, PrismaClient } from "@prisma/cli
 import { writeAudit } from "../audit/log";
 import { notFound } from "../authz/errors";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
-import { dbNow, flagCleanupIfChanged, lockJob, markRefundPending, writeJobEvent } from "./queue";
+import { alertCleanupNeeded, dbNow, endStateFor, expireCustomerWait, lockJob, writeJobEvent } from "./queue";
 import { sourcesOf } from "./states";
 import { STEPS } from "./steps";
 
@@ -122,7 +122,8 @@ async function change(
   action: string,
   data: (now: Date, cur: AutomationJob) => Parameters<PrismaClient["automationJob"]["updateMany"]>[0]["data"],
 ): Promise<ChangeResult> {
-  const from = to === "QUEUED" ? (["NEEDS_CUSTOMER"] as const) : sourcesOf(to);
+  // 정리 필요(CLEANUP_NEEDED)는 마스터 관리자가 정리 뒤 닫을 때만 끝난다(closeCleanupNeeded). 판매자 취소로는 닫지 않는다
+  const from = to === "QUEUED" ? (["NEEDS_CUSTOMER"] as const) : sourcesOf(to).filter((s) => s !== "CLEANUP_NEEDED");
   const result = await db.$transaction(async (tx) => {
     // 행을 잠가 읽은 상태와 실제로 바꾸는 상태를 같게 한다(작업자 전이와 겹쳐도 기록의 이전 상태가 맞도록)
     await lockJob(tx, jobId);
@@ -131,25 +132,20 @@ async function change(
     const now = await dbNow(tx);
     // 마감이 지난 대기 작업은 회수(reapExpired)를 기다리지 않고 같은 트랜잭션에서 회수와 같게 끝낸다(재개로 되살리지 않음)
     if (to === "QUEUED" && cur.status === "NEEDS_CUSTOMER" && cur.actionDeadlineAt && cur.actionDeadlineAt <= now) {
-      const failed = await tx.automationJob.update({
-        where: { id: jobId },
-        data: { status: "FAILED", lastError: "customer_action_timeout", finishedAt: now, customerAction: null, actionDeadlineAt: null },
-      });
-      await writeJobEvent(tx, failed, "NEEDS_CUSTOMER", "FAILED", failed.fencingToken, { reason: "customer_action_timeout" });
-      await markRefundPending(tx, failed, "customer_action_timeout", now);
-      await flagCleanupIfChanged(tx, failed, "customer_action_timeout", now);
+      await expireCustomerWait(tx, jobId, now);
       return "expired" as const;
     }
+    // 바꾼 뒤 취소는 「정리 필요」로 멈춘다(endStateFor). 사람이 쇼핑몰 앱·웹훅·OBS를 정리한 뒤 마스터 관리자가 취소로 닫는다(lastError "canceled")
+    const end = to === "CANCELED" ? endStateFor(cur, "CANCELED") : to;
     const r = await tx.automationJob.updateMany({
       where: { id: jobId, sellerId: ctx.sellerId, status: { in: [...from] }, ...(to === "QUEUED" ? { OR: [{ actionDeadlineAt: null }, { actionDeadlineAt: { gt: now } }] } : {}) },
-      data: { ...data(now, cur), status: to },
+      data: { ...data(now, cur), status: end, ...(end === "CLEANUP_NEEDED" ? { cleanupNeededAt: now, lastError: "canceled" } : {}) },
     });
     if (r.count !== 1) return false;
     const after = await tx.automationJob.findUniqueOrThrow({ where: { id: jobId } });
-    // 바꾼 뒤 취소면 정리 필요 표시·마스터 알림(사람이 쇼핑몰 앱·웹훅·OBS를 정리)
-    if (to === "CANCELED") await flagCleanupIfChanged(tx, cur, "canceled", now);
-    await writeJobEvent(tx, after, cur.status, to, after.fencingToken, { by: ctx.actorId });
-    await writeAudit(tx, { actorType: ctx.actorType, actorId: ctx.actorId, sellerId: ctx.sellerId, action, targetType: "AutomationJob", targetId: jobId, before: { status: cur.status }, after: { status: to } });
+    if (end === "CLEANUP_NEEDED") await alertCleanupNeeded(tx, cur, "canceled");
+    await writeJobEvent(tx, after, cur.status, end, after.fencingToken, { by: ctx.actorId });
+    await writeAudit(tx, { actorType: ctx.actorType, actorId: ctx.actorId, sellerId: ctx.sellerId, action, targetType: "AutomationJob", targetId: jobId, before: { status: cur.status }, after: { status: end } });
     return true;
   });
   if (result === "expired") return { ok: false, reason: "action_expired" };
