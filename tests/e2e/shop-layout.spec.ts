@@ -97,6 +97,18 @@ test.describe("PC 1440", () => {
   });
 });
 
+test("구매자 쇼핑몰 모든 화면의 바탕은 흰색이다(회색 바탕 없음)", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const white = "rgb(255, 255, 255)";
+  for (const path of ["", "/products", "/search", "/signup", "/login", "/cart", "/orders", "/help"]) {
+    await page.goto(`/shop/${SLUG}${path}`);
+    for (const sel of ["body", ".shop-app", ".shop-page", ".shop-util", ".shop-foot"]) {
+      const bg = await page.locator(sel).first().evaluate((el) => getComputedStyle(el).backgroundColor);
+      expect(bg, `${path || "/"} ${sel}`).toBe(white);
+    }
+  }
+});
+
 test.describe("태블릿 900", () => {
   test.use({ viewport: { width: 900, height: 1000 } });
 

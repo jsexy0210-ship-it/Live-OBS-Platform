@@ -217,6 +217,53 @@ describe("구매자 탈퇴", () => {
     expect((await db.rewardBalance.findUniqueOrThrow({ where: { sellerId_buyerMemberId: { sellerId: s.seller.id, buyerMemberId: s.buyer.id } } })).balance).toBe(0);
   });
 
+  it("[교착] 탈퇴가 회원 행을 잡은 채 멈춘 사이 환불을 시작하면 환불은 판매자 주문 잠금에서 기다리고, 둘 다 교착 없이 끝난다", async () => {
+    const s = await shop();
+    await db.rewardBalance.create({ data: { sellerId: s.seller.id, buyerMemberId: s.buyer.id, balance: 300 } });
+    const { refund } = await deliveredWithEarn(s);
+    // 그 advisory 잠금 키(hashtext)를 기다리는 세션이 생길 때까지(최대 5초)
+    const waitingOn = async (key: string) => {
+      for (let i = 0; i < 200; i++) {
+        const [w] = await db.$queryRaw<{ n: number }[]>`
+          SELECT count(*)::int AS n FROM pg_locks WHERE "locktype" = 'advisory' AND NOT "granted"
+            AND "objid"::text::bigint = (hashtext(${key})::bigint & 4294967295)`;
+        if (w.n > 0) return true;
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      return false;
+    };
+    // 탈퇴가 회원 행(FOR NO KEY UPDATE)을 잡은 바로 다음 단계(배송지 잠금)에서 멈추게, 같은 배송지 잠금을 먼저 쥔다
+    let release!: () => void;
+    let held!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const holding = new Promise<void>((r) => (held = r));
+    const blocker = db.$transaction(
+      async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`buyer_address:${s.seller.id}:${s.buyer.id}`}))`;
+        held();
+        await gate;
+      },
+      { timeout: 20_000 },
+    );
+    await holding;
+    const withdrawal = s.withdraw(PASSWORD);
+    expect(await waitingOn(`buyer_address:${s.seller.id}:${s.buyer.id}`)).toBe(true);
+    // 탈퇴는 판매자 주문 잠금 → 이 회원 주문 행 → 회원 행을 이미 쥐고 있다
+    const [memberLocked] = await db.$queryRaw<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM pg_locks l JOIN pg_class c ON c.oid = l.relation WHERE c.relname = 'BuyerMember' AND l.granted AND l.mode = 'RowShareLock'`;
+    expect(memberLocked.n).toBeGreaterThan(0);
+    const refunding = refund();
+    // 환불은 회원·주문 행이 아니라 판매자 주문 잠금(advisory)에서 기다린다
+    expect(await waitingOn(`order_no:${s.seller.id}`)).toBe(true);
+    release();
+    const [b, w, r] = await Promise.allSettled([blocker, withdrawal, refunding]);
+    expect(b.status).toBe("fulfilled");
+    expect(w).toMatchObject({ status: "fulfilled", value: { status: 200 } });
+    expect(r).toMatchObject({ status: "fulfilled", value: { ok: true } });
+    expect(await db.rewardLedger.count({ where: { buyerMemberId: s.buyer.id, status: "PENDING" } })).toBe(0);
+    expect((await db.rewardBalance.findUniqueOrThrow({ where: { sellerId_buyerMemberId: { sellerId: s.seller.id, buyerMemberId: s.buyer.id } } })).balance).toBe(0);
+  });
+
   it("탈퇴하면 그 회원의 주문·주문대기·히트 카드 닉네임 스냅숏은 「탈퇴한 회원」으로 바꾸고 구매 제한은 지운다. 받는 사람 스냅숏과 다른 회원 기록은 그대로", async () => {
     const s = await shop();
     const other = await createLoginBuyer(s.seller.id, s.grade.id);
