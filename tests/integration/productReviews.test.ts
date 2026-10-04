@@ -19,6 +19,7 @@ import { refundOrder } from "../../lib/server/queue/service";
 import { withdrawBuyer } from "../../lib/server/buyers/withdraw";
 import { prisma } from "../../lib/server/db";
 import { hasImageMetadata } from "../../lib/server/product-reviews/image";
+import { jpeg, webp } from "../unit/productImageFormatsFixtures";
 import { fakeJpeg } from "../unit/reviewFixtures";
 import { PASSWORD, createLoginBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
@@ -924,6 +925,32 @@ describe("사진·잠긴 쇼핑몰·탈퇴", () => {
     for (let i = 0; i < 11; i++) await upload(s, fakeJpeg(100 + i, 100));
     expect(await db.productReviewImage.count({ where: { buyerMemberId: s.buyer.id, reviewId: null } })).toBe(10);
     expect((await upload(s, Buffer.from("not an image"))).status).toBe(400);
+  });
+
+  it("휴대폰 사진: GPS EXIF가 든 JPG(1MB 넘음)와 WEBP는 올라가고 저장본에 EXIF가 없다. 5MB를 넘으면 413, 지원하지 않는 형식은 400", async () => {
+    const s = await shop();
+    const big = jpeg(3000, 2000, { exif: true, comment: true, xmp: true, trailer: Buffer.alloc(2 * 1024 * 1024, 7) });
+    expect(big.length).toBeGreaterThan(1024 * 1024);
+    const r1 = await upload(s, big);
+    expect(r1.status).toBe(201);
+    const id1 = ((await r1.json()) as { image: { id: string } }).image.id;
+    const row1 = await db.productReviewImage.findUniqueOrThrow({ where: { id: id1 } });
+    expect([row1.contentType, row1.width, row1.height]).toEqual(["image/jpeg", 3000, 2000]);
+    expect(hasImageMetadata(Buffer.from(row1.data))).toBe(false);
+    expect(Buffer.from(row1.data).includes(Buffer.from("GPSLatitude"))).toBe(false);
+    const r2 = await upload(s, webp(800, 600, { exif: true }));
+    expect(r2.status).toBe(201);
+    const id2 = ((await r2.json()) as { image: { id: string } }).image.id;
+    const row2 = await db.productReviewImage.findUniqueOrThrow({ where: { id: id2 } });
+    expect([row2.contentType, hasImageMetadata(Buffer.from(row2.data))]).toEqual(["image/webp", false]);
+    const served = await myImageGet(get("/x", s.b1), p({ slug: s.slug, imageId: id2 }));
+    expect(served.headers.get("content-type")).toBe("image/webp");
+    // 5MB 초과는 끝까지 받지 않고 413, 다른 형식(GIF)은 400
+    expect((await upload(s, Buffer.alloc(5 * 1024 * 1024 + 1, 1))).status).toBe(413);
+    expect((await upload(s, Buffer.from("GIF89a" + "x".repeat(200)))).status).toBe(400);
+    // 올린 사진은 리뷰에 붙여 쓸 수 있다
+    const w = await created(s, (await s.delivered()).id, { rating: 5, body: BODY, imageIds: [id1, id2] });
+    expect(w.res.status).toBe(201);
   });
 
   it("이용이 막힌 쇼핑몰은 쓰기·고치기·지우기·사진·신고 402(Codex 4176709637), 내 리뷰는 읽을 수 있다", async () => {

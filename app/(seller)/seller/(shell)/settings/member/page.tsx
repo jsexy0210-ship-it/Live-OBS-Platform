@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { FormFoot, FormRow, FormSection, PageHead } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
@@ -11,7 +12,6 @@ import { api, failMessage } from "../../../../../../components/seller/api";
 type Policy = { rejoinRestrictionEnabled: boolean; rejoinRestrictionDays: number };
 const CHOICES = [30, 90, 180, 365] as const;
 const label = (d: number) => (d === 365 ? "1년" : `${d}일`);
-const SET_ROW = { padding: "12px 0", gap: 12, boxShadow: "inset 0 -1px 0 var(--wds-line-normal-alternative)" };
 
 export default function MemberSettingsPage() {
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; saved: Policy }>({ kind: "loading" });
@@ -61,20 +61,9 @@ export default function MemberSettingsPage() {
 
   return (
     <>
-      <Topbar crumb="설정 › 쇼핑몰 설정 › 회원 정책">
-        {saved && (
-          <button className="btn btn-sm" type="button" onClick={() => void save()} disabled={saving || !dirty}>
-            {saving ? "저장 중" : "저장"}
-          </button>
-        )}
-      </Topbar>
+      <Topbar crumb="설정 › 쇼핑몰 설정 › 회원 정책" />
       <main className="main">
-        <div className="ph">
-          <div className="col" style={{ gap: 6 }}>
-            <h1 className="t-t3">회원 정책</h1>
-            <span className="t-l2 c-alt">탈퇴한 사람의 재가입 기준을 정합니다. 저장하면 바로 적용됩니다.</span>
-          </div>
-        </div>
+        <PageHead title="회원 정책" />
 
         {state.kind !== "ok" ? (
           <div className="card">
@@ -89,70 +78,67 @@ export default function MemberSettingsPage() {
               ))}
           </div>
         ) : (
-          <div className="form-grid">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void save();
+            }}
+          >
             {/* 저장하는 동안은 칸을 잠근다: 보낸 값과 다른 수정이 응답으로 덮이지 않게 */}
-            <fieldset className="col settings-fields" style={{ gap: 20 }} disabled={saving}>
+            <fieldset className="settings-fields" disabled={saving}>
               {failure && (
-                <div className="msg msg-neg" role="alert">
+                <div className="msg msg-neg" role="alert" style={{ marginBottom: 16 }}>
                   <span>
                     <b>저장할 수 없습니다.</b> {failure}
                   </span>
                 </div>
               )}
-              <section className="card pad col" style={{ gap: 10 }}>
-                <h2 className="t-hl2">재가입 제한</h2>
-                <div className="row between" style={SET_ROW}>
-                  <span className="col" style={{ gap: 2 }}>
-                    <span className="t-l1 fw6" id="rj-label">
-                      탈퇴한 사람의 재가입 막기
-                    </span>
-                    <span className="t-c1 c-alt" id="rj-help">
+              <FormSection title="재가입 제한">
+                <FormRow
+                  label="탈퇴한 사람의 재가입 막기"
+                  help={
+                    <span id="rj-help">
                       {!available && !enabled
                         ? "회원이 동의를 철회할 수 있는 화면이 준비되면 켤 수 있습니다"
                         : enabled
                           ? `탈퇴한 날부터 ${label(days)} 동안 같은 사람이 다시 가입할 수 없습니다`
                           : "꺼 두면 탈퇴한 사람도 바로 다시 가입할 수 있습니다 · 기본 꺼짐"}
                     </span>
-                  </span>
+                  }
+                >
                   <button
                     className={`sw${enabled ? " on" : ""}`}
                     type="button"
                     role="switch"
                     aria-checked={enabled}
-                    aria-labelledby="rj-label"
+                    aria-label="탈퇴한 사람의 재가입 막기"
                     aria-describedby="rj-help"
                     disabled={!available && !enabled}
                     onClick={() => setEnabled((v) => !v)}
                   />
-                </div>
+                </FormRow>
                 {enabled && (
-                  <div className="col" style={{ gap: 8 }}>
-                    <span className="t-l2 fw6" id="rj-days-label">
-                      제한 기간
-                    </span>
-                    <div className="seg" role="radiogroup" aria-labelledby="rj-days-label" style={{ alignSelf: "flex-start" }}>
+                  <FormRow label="제한 기간">
+                    <div className="seg" role="radiogroup" aria-label="제한 기간">
                       {choices.map((d) => (
                         <button key={d} type="button" role="radio" aria-checked={days === d} className={days === d ? "on" : ""} onClick={() => setDays(d)}>
                           {label(d)}
                         </button>
                       ))}
                     </div>
-                  </div>
+                  </FormRow>
                 )}
-              </section>
+              </FormSection>
+              <p className="help" style={{ marginTop: 16 }}>
+                켜면 가입할 때 「재가입 제한 정보 보관」 동의를 따로 받습니다. 이미 가입한 회원은 가입할 때 동의한 기간까지만 적용됩니다. 끄면 보관하던 탈퇴 회원 정보는 바로 삭제합니다.
+              </p>
             </fieldset>
-            <aside className="col aside-sticky" style={{ gap: 16 }}>
-              <div className="card pad col" style={{ gap: 8 }}>
-                <span className="t-hl2">참고</span>
-                <span className="t-c1 c-alt" style={{ lineHeight: 1.6 }}>
-                  켜면 가입할 때 「재가입 제한 정보 보관」 동의를 따로 받습니다. 이미 가입한 회원은 가입할 때 동의한 기간까지만 적용됩니다. 끄면 보관하던 탈퇴 회원 정보는 바로 삭제합니다.
-                </span>
-              </div>
-              <button className="btn btn-lg btn-block" type="button" onClick={() => void save()} disabled={saving || !dirty}>
+            <FormFoot>
+              <button className="btn btn-lg" type="submit" disabled={saving || !dirty}>
                 {saving ? "저장 중" : "저장"}
               </button>
-            </aside>
-          </div>
+            </FormFoot>
+          </form>
         )}
       </main>
       {toast && <Toast text={toast} onDone={() => setToast(null)} />}
