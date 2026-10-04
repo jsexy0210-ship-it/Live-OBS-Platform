@@ -75,7 +75,7 @@ export async function listAdminSellers(db: PrismaClient, admin: AdminSessionCont
 }
 
 // 파트너스 상세: 기본 정보·대표자·구독·최근 30일 주문 요약. 없으면 null.
-export async function getAdminSeller(db: PrismaClient, admin: AdminSessionContext, sellerId: string) {
+export async function getAdminSeller(db: PrismaClient, admin: AdminSessionContext, sellerId: string, meta: Meta = {}) {
   requireRead(admin);
   const s = await db.seller.findUnique({
     where: { id: sellerId },
@@ -105,13 +105,25 @@ export async function getAdminSeller(db: PrismaClient, admin: AdminSessionContex
           cancelAtPeriodEnd: true,
           graceUntil: true,
           retryCount: true,
-          plan: { select: { code: true } },
-          pendingPlan: { select: { code: true } },
+          plan: { select: { code: true, name: true } },
+          pendingPlan: { select: { code: true, name: true } },
         },
       },
     },
   });
   if (!s) return null;
+  // 대표자 이메일·사업자 정보는 마스터 관리자 전 역할이 본다(대표님 결정 2026-10-04 「모두 보기」). 대신 열람할 때마다 로그 추적을 남긴다.
+  await writeAudit(db, {
+    actorType: "PLATFORM_ADMIN",
+    actorId: admin.admin.id,
+    sellerId,
+    action: "admin.seller.view",
+    targetType: "Seller",
+    targetId: sellerId,
+    after: { fields: ["owner", "businessInfo"] },
+    ip: meta.ip,
+    userAgent: meta.userAgent,
+  });
   const now = await dbNow(db);
   const since = new Date(now.getTime() - 30 * DAY_MS);
   const [orders, paid, lastOrder] = await Promise.all([
@@ -124,7 +136,16 @@ export async function getAdminSeller(db: PrismaClient, admin: AdminSessionContex
     ...rest,
     owner: users[0] ?? null,
     subscription: subscription
-      ? { ...subscription, plan: undefined, pendingPlan: undefined, planCode: subscription.plan.code, pendingPlanCode: subscription.pendingPlan?.code ?? null }
+      ? {
+          ...subscription,
+          plan: undefined,
+          pendingPlan: undefined,
+          // 화면은 이름을 보여 준다(코드성 표기 금지), 코드는 분기용
+          planCode: subscription.plan.code,
+          planName: subscription.plan.name,
+          pendingPlanCode: subscription.pendingPlan?.code ?? null,
+          pendingPlanName: subscription.pendingPlan?.name ?? null,
+        }
       : null,
     // 최근 30일: 들어온 주문 수, 결제된 주문 수·결제 금액(환불액 뺌), 마지막 주문 시각
     orders30d: {
@@ -137,7 +158,9 @@ export async function getAdminSeller(db: PrismaClient, admin: AdminSessionContex
   };
 }
 
-// 이용 정지(운영 중 → 정지, 사유 1~200자 필수)·해제(정지 → 운영 중). 정지되면 판매자 세션·로그인이 바로 막힌다(auth/session.ts).
+// 이용 정지(운영 중 → 정지, 사유 1~200자 필수)·해제(정지 → 운영 중). 대표님 결정(2026-10-04) 「신규만 막기」: 정지되면 구매자 쇼핑몰의
+// 새 주문·가입, 오버레이 공개 주소, 파트너스의 방송·상품·설정·결제가 막히고(authz/guards.ts sellerSuspended), 구독 자동결제도 멈춘다.
+// 이미 받은 주문의 배송·환불(ORDER_FOLLOWUP 경로)과 내 정보·구독 조회는 파트너스가 계속 쓴다. 해제하면 다음 예약 실행부터 자동결제가 다시 돈다.
 // 지금 상태가 아니면 409 not_suspendable·not_suspended, 없으면 not_found. 로그 추적 admin.seller.suspend·unsuspend.
 export async function setSellerSuspended(
   db: PrismaClient,

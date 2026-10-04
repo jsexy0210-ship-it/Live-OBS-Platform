@@ -4,7 +4,7 @@ import { resolveAdminSession, resolveSellerSession, type AdminSessionContext } f
 import { sellerFeatures, type Feature } from "../billing/features";
 import { sellerAccessFor } from "../billing/subscription";
 import type { TenantContext } from "../tenant/context";
-import { forbidden, notFound, planFeatureRequired, subscriptionRequired, unauthenticated } from "./errors";
+import { forbidden, notFound, planFeatureRequired, subscriptionRequired, unauthenticated, sellerSuspended } from "./errors";
 import { adminCan, type AdminPermission } from "./permissions";
 
 // 마스터 API 가드. 판매자·구매자 세션 토큰은 AdminSession 테이블에 없으므로 여기서 항상 401이다.
@@ -36,10 +36,13 @@ export async function requireSeller(
   db: PrismaClient,
   token: string | undefined,
   now?: Date,
-  opts: { allowUnpaid?: boolean; feature?: SellerRouteFeature } = {},
+  opts: { allowUnpaid?: boolean; feature?: SellerRouteFeature; allowSuspended?: boolean } = {},
 ): Promise<TenantContext> {
   const ctx = await resolveSellerSession(db, token, now ?? new Date());
   if (!ctx) throw unauthenticated();
+  // 이용 정지(대표님 결정 2026-10-04 「신규만 막기」): 이미 받은 주문의 처리(ORDER_FOLLOWUP, 잠겨도 열리는 경로)와
+  // allowSuspended로 연 조회(내 정보·구독 화면)만 연다. 방송·오버레이·상품·설정·결제(카드 등록·플랜 변경·해지)는 403 seller_suspended.
+  if (ctx.seller.status === "SUSPENDED" && !(opts.allowUnpaid && (opts.feature === "ORDER_FOLLOWUP" || opts.allowSuspended))) throw sellerSuspended();
   // 이용 제한은 DB 시계로 판단한다(now를 넘긴 테스트는 그 시각)
   if (!opts.allowUnpaid && (await sellerAccessFor(db, ctx.seller.id, now)) === "expired") throw subscriptionRequired();
   if (opts.feature && opts.feature !== "BILLING") {
