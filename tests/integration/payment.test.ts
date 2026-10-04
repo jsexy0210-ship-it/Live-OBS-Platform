@@ -19,6 +19,9 @@ import { loginBuyer } from "../../lib/server/auth/login";
 import { PAYMENT_MESSAGES } from "../../lib/server/payments/messages";
 import { setPaymentGatewayForTest } from "../../lib/server/payments/registry";
 import { kickPaymentCancels, runPaymentWorkerOnce } from "../../lib/server/payments/worker";
+import { POST as refundRoute } from "../../app/api/seller/orders/[orderId]/refund/route";
+import { loginSeller } from "../../lib/server/auth/login";
+import { SCHEDULED_JOBS, runScheduledJobs } from "../../lib/server/jobs/scheduler";
 import { PASSWORD, createBuyer, createLoginBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
 beforeEach(resetDb);
@@ -52,7 +55,7 @@ async function setup() {
     if (!r.ok) throw new Error(r.reason);
     return r;
   };
-  return { seller, grade, ctx, buyer, order, gw, start };
+  return { seller, grade, ctx, buyer, owner, order, gw, start };
 }
 
 const orderOf = (id: string) => db.order.findUniqueOrThrow({ where: { id } });
@@ -436,5 +439,98 @@ describe("커밋 뒤 처리(worker)", () => {
     // 다시 돌려도 바뀌는 것 없음
     expect(await runPaymentWorkerOnce(db, new Date(later.getTime() + 5 * 60_000))).toEqual({ cancels: 0, reconciled: 0, failed: 0 });
     expect(s.gw.cancelCalls).toBe(1);
+  });
+});
+
+describe("환불 API → 커밋 뒤 PG 취소(실제 경로, 모의 PG)", () => {
+  async function paidViaApi() {
+    const s = await setup();
+    setPaymentGatewayForTest(s.gw);
+    const o = await s.order();
+    const p = await s.start(o.id);
+    await confirmAuthResult(db, s.gw, s.gw.authorize(p.orderId, 13000));
+    const login = await loginSeller(db, { email: s.owner.email, password: PASSWORD }, {});
+    if (!login.ok) throw new Error(login.reason);
+    const refund = async (body: Record<string, unknown>) =>
+      refundRoute(
+        new Request(`http://localhost:3000/api/seller/orders/${o.id}/refund`, {
+          method: "POST",
+          headers: { "content-type": "application/json", host: "localhost:3000", origin: "http://localhost:3000", cookie: `lo_seller=${login.token}` },
+          body: JSON.stringify({ reason: "구매자 요청", expectedVersion: await lv(s.seller.id), ...body }),
+        }),
+        { params: Promise.resolve({ orderId: o.id }) },
+      );
+    return { ...s, o, p, tid: `fake-tid-${p.paymentId}`, refund };
+  }
+  const paymentJob = SCHEDULED_JOBS.filter((j) => j.name === "payment.process_pending");
+  // 정기 실행은 PG 호출을 따로 띄우므로 끝날 때까지 기다린다
+  const settle = async () => {
+    for (let i = 0; i < 50 && (globalThis as { liveObsPaymentRun?: unknown }).liveObsPaymentRun; i++) await new Promise((r) => setTimeout(r, 20));
+  };
+
+  it("전액 환불: 응답 전에 PG 전액 취소가 끝나고, 같은 환불을 다시 보내도 PG 취소는 한 번", async () => {
+    const s = await paidViaApi();
+    const res = await s.refund({ expectedRefundAmount: 13000 });
+    expect(res.status).toBe(200);
+    expect(await paymentOf(s.p.paymentId)).toMatchObject({ status: "CANCELLED", cancelledAmount: 13000 });
+    expect(await db.paymentCancel.findFirstOrThrow({ where: { paymentId: s.p.paymentId } })).toMatchObject({ status: "DONE", amount: 13000 });
+    expect((await s.refund({ expectedRefundAmount: 13000 })).status).toBe(409);
+    expect(s.gw.cancelCalls).toBe(1);
+  });
+
+  it("부분 환불(발송 뒤 구매자 사정): PG 부분 취소", async () => {
+    const s = await paidViaApi();
+    await db.orderShippingAddress.create({ data: { sellerId: s.seller.id, orderId: s.o.id, recipientName: "김구매", phone: "01012345678", zipCode: "06236", address1: "주소 1" } });
+    const { shipOrder } = await import("../../lib/server/orders/ship");
+    await shipOrder(db, s.ctx, s.o.id, { courier: "CJ", trackingNumber: "123456789012" });
+    const { previewRefund } = await import("../../lib/server/queue/service");
+    const preview = await previewRefund(db, s.ctx, s.o.id);
+    const res = await s.refund({ fault: "BUYER", expectedRefundAmount: preview!.byFault.BUYER.refundAmount });
+    const body = await res.json();
+    expect(res.status, JSON.stringify(body)).toBe(200);
+    expect(body.refundAmount).toBeLessThan(13000);
+    expect(await paymentOf(s.p.paymentId)).toMatchObject({ status: "PARTIAL_CANCELLED", cancelledAmount: body.refundAmount });
+    expect(s.gw.payments.get(s.tid)).toMatchObject({ status: "partialCancelled", balanceAmt: 13000 - body.refundAmount });
+  });
+
+  it("PG 취소 결과를 모르면 환불은 그대로 성공, 요청은 REQUESTED로 남고 정기 실행이 다시 보내 한 번만 반영", async () => {
+    const s = await paidViaApi();
+    s.gw.failNext = "timeout_after";
+    const getPayment = s.gw.getPayment.bind(s.gw);
+    s.gw.getPayment = async () => ({ kind: "unknown", error: "timeout" });
+    expect((await s.refund({ expectedRefundAmount: 13000 })).status).toBe(200);
+    s.gw.getPayment = getPayment;
+    expect((await orderOf(s.o.id)).status).toBe("REFUNDED");
+    expect((await db.paymentCancel.findFirstOrThrow({ where: { paymentId: s.p.paymentId } })).status).toBe("REQUESTED");
+    expect((await paymentOf(s.p.paymentId)).cancelledAmount).toBe(0);
+    const [r] = await runScheduledJobs(db, new Date(Date.now() + 5 * 60_000), paymentJob);
+    expect(r).toEqual({ name: "payment.process_pending", status: "done", count: 1 });
+    await settle();
+    expect(await paymentOf(s.p.paymentId)).toMatchObject({ status: "CANCELLED", cancelledAmount: 13000 });
+    expect(s.gw.cancelCalls).toBe(2); // 두 번째는 PG가 중복 주문번호로 거절 → 조회로 이미 취소된 것을 확인
+  });
+
+  it("PG가 거절하면 환불은 성공, 취소 요청은 FAILED(로그 추적)로 남는다", async () => {
+    const s = await paidViaApi();
+    s.gw.failNext = "reject";
+    expect((await s.refund({ expectedRefundAmount: 13000 })).status).toBe(200);
+    expect(await db.paymentCancel.findFirstOrThrow({ where: { paymentId: s.p.paymentId } })).toMatchObject({ status: "FAILED", failureCode: "cancel_rejected" });
+    expect(await db.auditLog.count({ where: { action: "payment.cancel_failed", targetId: s.o.id } })).toBe(1);
+  });
+
+  it("정기 실행이 승인 중 결제를 확정한다(키가 없으면 띄우지 않음)", async () => {
+    const s = await setup();
+    const o = await s.order();
+    const p = await s.start(o.id);
+    s.gw.failNext = "timeout_after";
+    s.gw.netCancel = async () => ({ kind: "unknown", error: "timeout" });
+    await confirmAuthResult(db, s.gw, s.gw.authorize(p.orderId, 13000));
+    setPaymentGatewayForTest(null);
+    expect((await runScheduledJobs(db, new Date(Date.now() + 5 * 60_000), paymentJob))[0]).toMatchObject({ status: "done", count: 0 });
+    setPaymentGatewayForTest(s.gw);
+    expect((await runScheduledJobs(db, new Date(Date.now() + 5 * 60_000), paymentJob))[0]).toMatchObject({ status: "done", count: 1 });
+    await settle();
+    expect((await orderOf(o.id)).status).toBe("PAID");
+    expect((await paymentOf(p.paymentId)).status).toBe("PAID");
   });
 });
