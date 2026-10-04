@@ -415,6 +415,48 @@ describe("방송 통계 GET /api/seller/stats/broadcasts", () => {
     expect(r.total.orders + r.general.orders).toBe(3);
   });
 
+  it("귀속은 조회 기간과 상관없다: 같은 방송은 어떤 기간으로 조회해도 같은 값(기간 경계의 다음 방송 포함)", async () => {
+    const s = await shop();
+    // A: 10/2 23:00~23:30 KST, B: 10/3 00:10~01:00 KST(A 종료 뒤 2시간 안), C: 10/1 22:00~23:00 KST
+    await db.broadcastSession.create({ data: { sellerId: s.seller.id, title: "A", status: "ENDED", startedAt: new Date("2026-10-02T14:00:00Z"), endedAt: new Date("2026-10-02T14:30:00Z") } });
+    await db.broadcastSession.create({ data: { sellerId: s.seller.id, title: "B", status: "ENDED", startedAt: new Date("2026-10-02T15:10:00Z"), endedAt: new Date("2026-10-02T16:00:00Z") } });
+    await db.broadcastSession.create({ data: { sellerId: s.seller.id, title: "C", status: "ENDED", startedAt: new Date("2026-10-01T13:00:00Z"), endedAt: new Date("2026-10-01T14:00:00Z") } });
+    await s.order({ createdAt: "2026-10-02T14:10:00Z", total: 1000, items: [[1000, 1000, 1]] }); // A 방송 중
+    await s.order({ createdAt: "2026-10-02T14:50:00Z", total: 2000, items: [[2000, 2000, 1]] }); // A 종료 뒤, B 시작 전 → A 일반
+    await s.order({ createdAt: "2026-10-02T15:20:00Z", total: 4000, items: [[4000, 4000, 1]] }); // B 방송 중(10/3 KST) → B
+    await s.order({ createdAt: "2026-10-02T16:30:00Z", total: 8000, items: [[8000, 8000, 1]] }); // B 종료 뒤 → B 일반
+    await s.order({ createdAt: "2026-10-01T15:30:00Z", total: 16000, items: [[16000, 16000, 1]] }); // C 종료 뒤(10/2 0:30 KST) → C 일반
+
+    const ranges: [string, string][] = [
+      ["2026-10-01", "2026-10-01"],
+      ["2026-10-02", "2026-10-02"],
+      ["2026-10-03", "2026-10-03"],
+      ["2026-10-02", "2026-10-03"],
+      ["2026-10-01", "2026-10-07"],
+    ];
+    const seen = new Map<string, unknown>();
+    let totalAll = 0;
+    for (const [from, to] of ranges) {
+      const r = await broadcastStats(db, s.ctx, parseStatsRange({ from, to })!);
+      for (const b of r.broadcasts) {
+        const v = { orders: b.orders, paid: b.paid, general: b.general };
+        if (seen.has(b.title!)) expect(v, `${b.title} ${from}~${to}`).toEqual(seen.get(b.title!));
+        else seen.set(b.title!, v);
+      }
+      if (from === "2026-10-01" && to === "2026-10-07") totalAll = r.total.paid + r.general.paid;
+    }
+    expect(seen.get("A")).toMatchObject({ orders: 1, paid: 1000, general: { orders: 1, paid: 2000 } });
+    expect(seen.get("B")).toMatchObject({ orders: 1, paid: 4000, general: { orders: 1, paid: 8000 } });
+    expect(seen.get("C")).toMatchObject({ orders: 0, general: { orders: 1, paid: 16000 } });
+    // 하루씩 나눠 조회한 합 = 한 번에 조회한 합
+    let daily = 0;
+    for (const d of ["2026-10-01", "2026-10-02", "2026-10-03"]) {
+      const r = await broadcastStats(db, s.ctx, parseStatsRange({ from: d, to: d })!);
+      daily += r.total.paid + r.general.paid;
+    }
+    expect(daily).toBe(totalAll);
+  });
+
   it("방송 중(LIVE)이면 지금까지를 방송 시간으로 보고, 시작 직전 주문은 넣지 않는다", async () => {
     const s = await shop();
     const live = await db.broadcastSession.create({ data: { sellerId: s.seller.id, title: "방송 중", status: "LIVE", startedAt: new Date("2026-10-03T11:00:00Z") } });
