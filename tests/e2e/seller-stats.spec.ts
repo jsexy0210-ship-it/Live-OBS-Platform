@@ -172,8 +172,12 @@ test("통계 요약(SA-056): 요약 지표·방송별·상품별·적립금·주
   await expect(page.getByTestId("overview-broadcasts").locator("tbody tr")).toHaveCount(Math.min(5, body.broadcasts.rows.length) + 2);
   await expect(page.getByTestId("overview-rewards")).toContainText(won(body.rewards.earned));
   await expect(page.getByTestId("overview-operations")).toContainText("준비 중");
-  // 지난 기간과 비교를 켜면 직전 기간 값이 붙는다
+  // 비교를 끄면 어느 칸에도 직전 기간 값 줄이 없고, 켜면 비교하는 칸(매출·주문·주문당 평균·신규 회원)에만 붙는다
+  const cmpLines = page.getByTestId("stats-kpi").locator(".d + .d");
+  await expect(cmpLines).toHaveCount(0);
   await page.getByLabel("지난 기간과 비교").check();
+  await expect(cmpLines).toHaveCount(4);
+  await expect(page.getByTestId("stats-kpi").filter({ has: page.getByText("주문당 평균", { exact: true }) }).locator(".d")).toHaveCount(2);
   await expect(page.getByTestId("stats-kpi").filter({ hasText: "매출 (결제 기준)" })).toContainText(won(body.summary.previous.revenue));
   // 상품 수량순
   if (body.products.top.length > 1) {

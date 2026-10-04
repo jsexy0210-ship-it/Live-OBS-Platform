@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { EmptyStats, StatsFrame, StatsState, usePeriod, useStats, type Unit } from "../../../../../components/seller/stats/StatsFrame";
-import { overviewHasData } from "../../../../../components/seller/stats/overview";
+import { broadcastTable, overviewHasData } from "../../../../../components/seller/stats/overview";
 import { BarChart, bucketLabel, count, downloadCsv, pct, won } from "../../../../../components/seller/stats/parts";
 
 // SA-056 통계(요약). GET /api/seller/stats/overview 한 번으로 요약 지표·일별 매출·방송별 매출·상품별 판매·회원·적립금·주문 처리를 그린다.
@@ -165,6 +165,7 @@ function Overview({ data, metric, setMetric, productSort, setProductSort, compar
   const pfmt = (n: number) => (productSort === "revenue" ? won(n) : `${n.toLocaleString("ko-KR")}개`);
 
   const memberNet = data.members.newNet + data.members.returningNet;
+  const table = broadcastTable(data.broadcasts.rows, BROADCAST_ROWS);
 
   return (
     <>
@@ -177,7 +178,7 @@ function Overview({ data, metric, setMetric, productSort, setProductSort, compar
       <div className="sts-kpis">
         <Tile label="매출 (결제 기준)" value={won(c.revenue)} note={delta(c.revenue, p.revenue)} cmp={cmp(p.revenue, won, c.revenue)} />
         <Tile label="주문" value={count(c.orders)} note={`취소 · 환불 ${count(c.excluded)} 제외`} cmp={cmp(p.orders, count, c.orders)} />
-        <Tile label="주문당 평균" value={c.averageOrderValue === null ? "—" : won(c.averageOrderValue)} note={p.averageOrderValue === null ? "직전 기간 —" : `직전 기간 ${won(p.averageOrderValue)}`} />
+        <Tile label="주문당 평균" value={c.averageOrderValue === null ? "—" : won(c.averageOrderValue)} note={delta(c.averageOrderValue, p.averageOrderValue)} cmp={cmp(p.averageOrderValue, won, c.averageOrderValue)} />
         <Tile label="방문자" value={SOON} note="방문 집계 연동 뒤 제공" />
         <Tile label="신규 회원" value={people(c.signups)} note={`구매 회원 ${people(c.buyers)}`} cmp={cmp(p.signups, people, c.signups)} />
       </div>
@@ -222,7 +223,7 @@ function Overview({ data, metric, setMetric, productSort, setProductSort, compar
                 </tr>
               </thead>
               <tbody>
-                {data.broadcasts.rows.slice(0, BROADCAST_ROWS).map((b) => (
+                {table.shown.map((b) => (
                   <tr key={b.id}>
                     <td className="sts-name">
                       {kstDay(b.startedAt)} {b.title?.trim() || "방송"}
@@ -233,6 +234,15 @@ function Overview({ data, metric, setMetric, productSort, setProductSort, compar
                     <td className="r num">{b.hits.toLocaleString("ko-KR")}</td>
                   </tr>
                 ))}
+                {table.rest && (
+                  <tr className="sts-sub">
+                    <td className="c-alt">그 밖의 방송 {table.rest.count}개</td>
+                    <td className="r c-alt">—</td>
+                    <td className="r num">{count(table.rest.orders)}</td>
+                    <td className="r num fw6">{won(table.rest.net)}</td>
+                    <td className="r num">{table.rest.hits.toLocaleString("ko-KR")}</td>
+                  </tr>
+                )}
                 <tr className="sts-sub">
                   <td className="c-alt">방송 시간 일반 주문</td>
                   <td className="r c-alt">—</td>

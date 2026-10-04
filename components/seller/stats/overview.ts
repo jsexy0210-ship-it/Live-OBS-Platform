@@ -24,3 +24,15 @@ export function overviewHasData(d: OverviewPresence): boolean {
     d.operations.shipping.shipped + d.operations.autoCancelled > 0
   );
 }
+
+// 요약의 방송 내역 표: 최근 방송 limit개는 그대로, 나머지는 「그 밖의 방송 N개」 한 줄로 묶는다.
+// 보이는 줄 + 방송 시간 일반 주문 + 방송 외 주문 = 요약 매출이 되도록 나머지를 버리지 않는다.
+export type BroadcastLine = { id: string; title: string | null; startedAt: string; orders: number; net: number; hits: number };
+export function broadcastTable(rows: BroadcastLine[], limit: number) {
+  const shown = rows.slice(0, limit);
+  const rest = rows.slice(limit);
+  return {
+    shown,
+    rest: rest.length === 0 ? null : { count: rest.length, orders: rest.reduce((a, r) => a + r.orders, 0), net: rest.reduce((a, r) => a + r.net, 0), hits: rest.reduce((a, r) => a + r.hits, 0) },
+  };
+}
