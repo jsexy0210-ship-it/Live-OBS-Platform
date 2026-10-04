@@ -96,15 +96,20 @@ test.describe.serial("SA-060 쇼핑몰 로고", () => {
     await expect(page.locator(".shop-top")).toContainText("카");
   });
 
-  test("「쇼핑몰 설정」 권한 없는 직원: 보기만 하고 올리기·지우기 없음", async ({ page }) => {
+  test("「쇼핑몰 설정」 권한 없는 직원: 메뉴 → 쇼핑몰 정보 탭으로 들어가 보기만(올리기·지우기 없음, 볼 수 없는 탭은 안 보임)", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto("/seller/login?next=%2Fseller%2Fsettings%2Fshop");
+    await page.goto("/seller/login");
     await submitSellerLogin(page, "demo-staff@example.com", PASSWORD);
+    await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "쇼핑몰 설정" }).click();
     await expect(page).toHaveURL(/\/seller\/settings\/shop$/);
+    const tabs = page.getByRole("navigation", { name: "쇼핑몰 설정" });
+    await expect(tabs.getByRole("link", { name: "쇼핑몰 정보" })).toHaveAttribute("aria-current", "page");
+    for (const hidden of ["배송비 정책", "주문 설정", "회원 정책"]) await expect(tabs.getByRole("link", { name: hidden })).toHaveCount(0);
     await expect(page.getByText("보기만 할 수 있습니다. 로고 변경은 대표자나 쇼핑몰 설정 권한이 있는 직원에게 요청해 주십시오.")).toBeVisible();
     await expect(page.getByRole("button", { name: "올리기" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "로고 올리기" })).toHaveCount(0);
     const status = await page.evaluate(async () => (await fetch("/api/seller/shop-content/logo", { method: "DELETE" })).status);
     expect(status).toBe(403);
+    await page.screenshot({ path: `${SHOT}/SA-060-staff-readonly-1440.png` });
   });
 });

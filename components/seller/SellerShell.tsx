@@ -31,7 +31,7 @@ const NAV: Nav[] = [
   { label: "HIT 카드 이력", perm: "BROADCAST_RUN" },
   { label: "방송 이력", perm: "BROADCAST_RUN" },
   { h: "설정" },
-  { label: "쇼핑몰 설정", href: "/seller/settings/shipping", match: "/seller/settings", perm: "SHOP_SETTINGS" },
+  { label: "쇼핑몰 설정", href: "/seller/settings/shop", match: "/seller/settings" },
   { label: "배너 · 팝업", href: "/seller/banners", perm: "SHOP_SETTINGS" },
   { label: "결제(PG) 연결", perm: "OWNER" },
   { label: "주문자 알림", perm: "SHOP_SETTINGS" },
