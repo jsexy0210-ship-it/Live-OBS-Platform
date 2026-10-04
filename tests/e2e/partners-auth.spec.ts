@@ -21,8 +21,10 @@ async function fillIdentity(page: Page) {
   await page.getByRole("button", { name: "남", exact: true }).click();
   await page.getByLabel("통신사").selectOption("SKT");
   await page.getByLabel("휴대폰번호", { exact: true }).fill("01012345678");
-  await page.getByLabel("본인확인 약관에 모두 동의해요").check();
+  await page.getByLabel(agreeLabel(page)).check();
 }
+// 본인확인 약관 동의 문구: 가입 신청(공개 화면)은 해요체, 관리자 인증 화면은 합니다체
+const agreeLabel = (page: Page) => (new URL(page.url()).pathname.startsWith("/seller/signup") ? "본인확인 약관에 모두 동의해요" : "본인확인 약관에 모두 동의합니다");
 
 // 화면에 보이는 글에 「판매자」가 없어야 한다(화면 문구는 「파트너스」, 대표님 지시 2026-10-04)
 async function noSellerWord(page: Page) {
@@ -32,7 +34,7 @@ async function noSellerWord(page: Page) {
 test("파트너스 로그인: 제목·설명이 파트너스 관리자이고, 회원가입·비밀번호 찾기로 이동한다", async ({ page }) => {
   await page.goto("/seller/login");
   await expect(page.getByRole("heading", { name: "파트너스 관리자" })).toBeVisible();
-  await expect(page.getByText("쇼핑몰 운영과 방송 주문대기를 한곳에서 관리하세요.")).toBeVisible();
+  await expect(page.getByText("쇼핑몰 운영과 방송 주문대기를 한곳에서 관리합니다.")).toBeVisible();
   await noSellerWord(page);
   await shot(page, "AU-002");
   await page.getByRole("link", { name: "회원가입" }).click();
@@ -43,8 +45,8 @@ test("파트너스 로그인: 제목·설명이 파트너스 관리자이고, �
   await page.goto("/seller/login");
   await page.getByRole("link", { name: "비밀번호 찾기" }).click();
   await expect(page).toHaveURL(/\/seller\/password-reset$/);
-  await expect(page.getByRole("heading", { name: "비밀번호를 찾아요" })).toBeVisible();
-  await expect(page.getByText("쇼핑몰 대표자 본인 명의의 휴대폰으로 확인해요.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "비밀번호 찾기" })).toBeVisible();
+  await expect(page.getByText("쇼핑몰 대표자 본인 명의의 휴대폰으로 확인합니다.")).toBeVisible();
   await noSellerWord(page);
 });
 
@@ -79,8 +81,8 @@ test("비밀번호 찾기: 이메일·쇼핑몰 주소를 적어야 인증번호
   const res = page.waitForResponse((r) => r.url().endsWith("/api/seller/password-reset/start"));
   await send.click();
   expect((await res).status()).toBe(503);
-  await expect(page.getByRole("heading", { name: "본인확인 서비스 준비 중이에요" })).toBeVisible();
-  await expect(page.getByText("준비되면 바로 비밀번호를 찾을 수 있어요.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "본인확인 서비스 준비 중입니다" })).toBeVisible();
+  await expect(page.getByText("준비되면 바로 비밀번호를 찾을 수 있습니다.")).toBeVisible();
   await noSellerWord(page);
   await shot(page, "AU-003-unavailable");
 });

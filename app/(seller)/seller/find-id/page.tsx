@@ -71,11 +71,11 @@ export default function FindIdPage() {
     }
     const out = stepOutcome(r);
     if (out === "unavailable") return toUnavailable();
-    if (out === "restart") return restart({ text: "본인확인을 처음부터 다시 해 주세요" });
+    if (out === "restart") return restart({ text: "본인확인을 처음부터 다시 해 주십시오" });
     // 결과를 아직 받는 중이거나 잠깐의 오류(연결 끊김·서버 오류 등): 본인확인을 버리지 않고 같은 요청으로 다시 누르게 한다
     setVerificationId(id);
     setPending(true);
-    setNotice({ text: r.error === "pending" ? "본인확인 결과를 확인하고 있어요. 잠시 뒤 다시 눌러 주세요" : failMessage(r, RETRY_TEXT) });
+    setNotice({ text: r.error === "pending" ? "본인확인 결과를 확인하고 있습니다. 잠시 후 다시 눌러 주십시오" : failMessage(r, RETRY_TEXT) });
     focus("pa-notice");
   };
 
@@ -89,14 +89,14 @@ export default function FindIdPage() {
     if (r.ok) return setStep("password");
     const out = stepOutcome(r);
     if (out === "unavailable") return toUnavailable();
-    if (out === "restart") return restart({ text: "본인확인을 처음부터 다시 해 주세요" });
+    if (out === "restart") return restart({ text: "본인확인을 처음부터 다시 해 주십시오" });
     // 응답을 놓쳤거나(연결 끊김) 잠깐의 오류: 고른 계정을 그대로 두고 다시 누르게 한다(서버는 같은 본인확인의 재요청에 같은 권한을 돌려준다)
     setNotice({ text: failMessage(r, RETRY_TEXT) });
     focus("pa-notice");
   };
 
   const pickedAccount = accounts.find((a) => a.accountId === picked);
-  const title = { find: "아이디를 찾아요", accounts: accounts.length > 0 ? "가입한 계정을 찾았어요" : "맞는 계정이 없어요", password: "새 비밀번호를 정해요", done: "비밀번호를 바꿨어요" }[step];
+  const title = { find: "아이디 찾기", accounts: accounts.length > 0 ? "가입한 계정을 찾았습니다" : "맞는 계정이 없습니다", password: "새 비밀번호 설정", done: "비밀번호를 변경했습니다" }[step];
 
   if (step === "done") {
     return (
@@ -105,7 +105,7 @@ export default function FindIdPage() {
           <h1 className="t-t3" id="pa-done-title" tabIndex={-1}>
             {title}
           </h1>
-          <span className="t-l2 c-alt">다른 기기의 로그인은 모두 풀렸어요. 새 비밀번호로 로그인해 주세요.</span>
+          <span className="t-l2 c-alt">다른 기기의 로그인은 모두 해제되었습니다. 새 비밀번호로 로그인해 주십시오.</span>
           <Link className="btn btn-lg btn-block" href={withType("/seller/login", staff)}>
             로그인하기
           </Link>
@@ -122,14 +122,14 @@ export default function FindIdPage() {
         </h1>
         <span className="t-l2 c-alt">
           {step === "find"
-            ? "휴대폰 본인확인을 하면 가입한 로그인 이메일을 보여 드려요."
+            ? "휴대폰 본인확인을 하면 가입한 로그인 이메일을 알려 드립니다."
             : step === "password"
               ? `${pickedAccount?.shopName ?? ""} · ${pickedAccount?.email ?? ""}`
               : accounts.length > 0
-                ? "로그인할 때 이 이메일을 써요. 비밀번호를 바꾸려면 계정을 골라 주세요."
+                ? "로그인할 때 이 이메일을 사용합니다. 비밀번호를 변경하려면 계정을 선택해 주십시오."
                 : staff
-                  ? "등록된 직원 정보와 맞는 계정이 없어요. 대표자에게 물어봐 주세요"
-                  : "입력한 정보와 맞는 대표자 계정이 없어요."}
+                  ? "등록된 직원 정보와 맞는 계정이 없습니다. 대표자에게 문의해 주십시오"
+                  : "입력한 정보와 맞는 대표자 계정이 없습니다."}
         </span>
       </div>
       {unavailable ? (
@@ -152,7 +152,7 @@ export default function FindIdPage() {
           {step === "find" && (
             <>
               <div className="msg msg-info" style={{ display: "block" }}>
-                {staff ? "직원 본인 명의의 휴대폰으로 확인해요." : "쇼핑몰 대표자 본인 명의의 휴대폰으로 확인해요."}
+                {staff ? "직원 본인 명의의 휴대폰으로 확인합니다." : "쇼핑몰 대표자 본인 명의의 휴대폰으로 확인합니다."}
               </div>
               <IdentityCheck
                 key={idvKey}
@@ -186,7 +186,7 @@ export default function FindIdPage() {
                   로그인하기
                 </Link>
                 <button className={`btn btn-lg btn-block btn-out${busy ? " is-loading" : ""}`} type="button" disabled={!picked || busy} onClick={() => void reset()}>
-                  {busy ? "확인하고 있어요" : "고른 계정 비밀번호 바꾸기"}
+                  {busy ? "확인 중" : "선택한 계정 비밀번호 변경"}
                 </button>
               </>
             ) : (
@@ -201,7 +201,7 @@ export default function FindIdPage() {
                 setStep("done");
                 focus("pa-done-title");
               }}
-              onExpired={() => restart({ text: "시간이 지나 처음부터 다시 해야 해요. 본인확인을 다시 해 주세요" })}
+              onExpired={() => restart({ text: "시간이 지나 처음부터 다시 해야 합니다. 본인확인을 다시 해 주십시오" })}
             />
           )}
         </>

@@ -27,14 +27,35 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
   return { ok: false, status: res.status, error: body.error ?? "unknown", message: body.message, body };
 }
 
+// 화면 말투: admin=파트너스 관리자·관리자 인증 화면(합니다체), public=공개 화면(가입 신청 등, 해요체)
+export type Tone = "admin" | "public";
+
+const FAIL_TEXT: Record<Tone, { network: string; expired: string; forbidden: string; notFound: string; retry: string }> = {
+  admin: {
+    network: "연결이 끊겼습니다. 인터넷 연결을 확인해 주십시오",
+    expired: "이용 기간이 끝나 지금은 할 수 없습니다. 구독하면 바로 다시 사용할 수 있습니다",
+    forbidden: "이 기능은 권한이 필요합니다. 대표자에게 요청해 주십시오",
+    notFound: "찾을 수 없습니다. 이미 삭제되었을 수 있습니다",
+    retry: "잠시 후 다시 시도해 주십시오",
+  },
+  public: {
+    network: "연결이 끊겼어요. 인터넷 연결을 확인해 주세요",
+    expired: "이용 기간이 끝나서 지금은 할 수 없어요. 구독하면 바로 다시 쓸 수 있어요",
+    forbidden: "이 기능은 권한이 필요해요. 대표자에게 요청해 주세요",
+    notFound: "찾을 수 없어요. 이미 지워졌을 수 있어요",
+    retry: "잠시 뒤 다시 시도해 주세요",
+  },
+};
+
 // 서버가 준 안내 문구가 있으면 그대로, 없으면 상태별 기본 문구
-export function failMessage(r: { status: number; message?: string }, fallback = "잠시 뒤 다시 시도해 주세요"): string {
+export function failMessage(r: { status: number; message?: string }, fallback?: string, tone: Tone = "admin"): string {
   if (r.message) return r.message;
-  if (r.status === 0) return "연결이 끊겼어요. 인터넷 연결을 확인해 주세요";
-  if (r.status === 402) return "이용 기간이 끝나서 지금은 할 수 없어요. 구독하면 바로 다시 쓸 수 있어요";
-  if (r.status === 403) return "이 기능은 권한이 필요해요. 대표자에게 요청해 주세요";
-  if (r.status === 404) return "찾을 수 없어요. 이미 지워졌을 수 있어요";
-  return fallback;
+  const t = FAIL_TEXT[tone];
+  if (r.status === 0) return t.network;
+  if (r.status === 402) return t.expired;
+  if (r.status === 403) return t.forbidden;
+  if (r.status === 404) return t.notFound;
+  return fallback ?? t.retry;
 }
 
 export type SellerAccess = "trial" | "paid" | "charging" | "grace" | "expired";

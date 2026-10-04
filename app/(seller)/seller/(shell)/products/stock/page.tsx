@@ -25,8 +25,8 @@ const BULK_REASONS = ["재고 조사", "입고", "파손", "직접 입력"] as c
 function memoError(memo: string): string | null {
   const sent = memo.trim();
   if (sent === "") return null;
-  if (textLength(sent.normalize("NFKC").trim()) > 100) return "사유는 100자까지 쓸 수 있어요";
-  return cleanText(sent, 100, "name") ? null : "쓸 수 없는 글자가 있어요";
+  if (textLength(sent.normalize("NFKC").trim()) > 100) return "사유는 100자까지 입력할 수 있습니다";
+  return cleanText(sent, 100, "name") ? null : "사용할 수 없는 글자가 있습니다";
 }
 
 // 옵션 단위 재고 목록(GET /api/seller/products/options)을 200개씩 불러온다. 검색(q: 상품·옵션 이름, 대소문자 무시)과
@@ -93,7 +93,7 @@ export default function StockPage() {
     setSearching(false);
     if (!r.ok) {
       // 서버 기준(NFKC 뒤 50자)을 넘었으면 길이 안내, 아니면 글자 안내
-      if (r.status === 400) return setSearchError(textLength(q.normalize("NFKC").trim()) > MAX_SEARCH_LENGTH ? `검색어는 ${MAX_SEARCH_LENGTH}자까지 쓸 수 있어요` : "검색어에 쓸 수 없는 글자가 있어요");
+      if (r.status === 400) return setSearchError(textLength(q.normalize("NFKC").trim()) > MAX_SEARCH_LENGTH ? `검색어는 ${MAX_SEARCH_LENGTH}자까지 입력할 수 있습니다` : "검색어에 사용할 수 없는 글자가 있습니다");
       if (loadedOnce.current) return setSearchFailed(true);
       return setState({ kind: "error", status: r.status });
     }
@@ -119,7 +119,7 @@ export default function StockPage() {
     const r = await fetchOptions(loadedQ, loadedFilter, cursor);
     if (id !== loadId.current) return;
     setLoadingMore(false);
-    if (!r.ok) return setNotice({ kind: "neg", text: "옵션을 더 불러오지 못했어요. 다시 눌러 주세요" });
+    if (!r.ok) return setNotice({ kind: "neg", text: "옵션을 더 불러오지 못했습니다. 다시 눌러 주십시오" });
     const got = toRows(r.data.options);
     setRows((rs) => [...rs, ...got]);
     setCursor(r.data.nextCursor);
@@ -159,9 +159,9 @@ export default function StockPage() {
   const target = (r: Row) => (next[r.key] === undefined ? r.stock : parseAmount(next[r.key]));
   const rowError = (r: Row): string | null => {
     const t = target(r);
-    if (t === null) return "숫자만 입력해 주세요";
-    if (t < 0) return "0개 이상으로 적어 주세요";
-    if (t > INT4_MAX) return "재고는 21억 개까지 넣을 수 있어요";
+    if (t === null) return "숫자만 입력해 주십시오";
+    if (t < 0) return "0개 이상으로 입력해 주십시오";
+    if (t > INT4_MAX) return "재고는 21억 개까지 입력할 수 있습니다";
     return null;
   };
 
@@ -237,11 +237,11 @@ export default function StockPage() {
     setBulkMemo("");
     await load(searchQRef.current, filterRef.current, true, (prev) => Object.fromEntries(Object.entries(prev).filter(([k, v]) => sentValues[k] !== v)));
     setHistKey((k) => k + 1);
-    if (done) setToast(`재고 ${done}건을 바꿨어요`);
+    if (done) setToast(`재고 ${done}건을 변경했습니다`);
     if (conflicts.length || failed.length) {
       const parts = [];
-      if (conflicts.length) parts.push(`그사이 주문 등으로 재고가 바뀌어 ${conflicts.length}건은 바꾸지 않았어요(${conflicts.join(", ")}). 지금 재고를 보고 다시 적어 주세요.`);
-      if (failed.length) parts.push(`${failed.length}건은 저장하지 못했어요(${failed.join(", ")}).`);
+      if (conflicts.length) parts.push(`그사이 주문 등으로 재고가 바뀌어 ${conflicts.length}건은 변경하지 않았습니다(${conflicts.join(", ")}). 지금 재고를 보고 다시 입력해 주십시오.`);
+      if (failed.length) parts.push(`${failed.length}건은 저장하지 못했습니다(${failed.join(", ")}).`);
       setNotice({ kind: "cau", text: parts.join(" ") });
     }
   };
@@ -260,7 +260,7 @@ export default function StockPage() {
   const shownKeys = new Set(shown.map((r) => r.key));
   const hiddenCount = valid.filter((r) => !shownKeys.has(r.key)).length;
 
-  const applyLabel = applying ? (progress ? `${progress.done.toLocaleString("ko-KR")}/${progress.total.toLocaleString("ko-KR")} 적용 중` : "적용하고 있어요") : `변경 ${valid.length}건 적용`;
+  const applyLabel = applying ? (progress ? `${progress.done.toLocaleString("ko-KR")}/${progress.total.toLocaleString("ko-KR")} 적용 중` : "적용 중") : `변경 ${valid.length}건 적용`;
 
   if (!can("PRODUCT_MANAGE")) {
     return (
@@ -289,7 +289,7 @@ export default function StockPage() {
         <div className="ph">
           <div className="col" style={{ gap: 4 }}>
             <h1 className="t-t3">재고 관리</h1>
-            <span className="t-l2 c-alt">옵션마다 바꿀 재고를 적고 한 번에 적용하거나, 사유와 함께 빼고 더해요.</span>
+            <span className="t-l2 c-alt">옵션마다 변경할 재고를 입력하고 한 번에 적용하거나, 사유와 함께 빼고 더합니다.</span>
           </div>
         </div>
         {notice && (
@@ -306,7 +306,7 @@ export default function StockPage() {
               ) : state.status === 402 ? (
                 <Locked />
               ) : (
-                <ErrorState title="재고를 불러오지 못했어요" onRetry={() => void load(searchQ, filter, true)} />
+                <ErrorState title="재고를 불러오지 못했습니다" onRetry={() => void load(searchQ, filter, true)} />
               ))}
           </div>
         ) : (
@@ -356,7 +356,7 @@ export default function StockPage() {
               )}
               {searchFailed && (
                 <div className="row stock-selinfo" role="alert" data-testid="search-failed">
-                  <span className="t-l2 c-neg">「{searchQ || "전체"}」 결과를 불러오지 못했어요</span>
+                  <span className="t-l2 c-neg">「{searchQ || "전체"}」 결과를 불러오지 못했습니다</span>
                   <button className="btn btn-sm btn-out" type="button" onClick={() => void load(searchQRef.current, filterRef.current, false)}>
                     다시 시도
                   </button>
@@ -366,7 +366,7 @@ export default function StockPage() {
                 <div className="st" style={{ boxShadow: "none" }}>
                   <div className="st-ic">?</div>
                   <span className="t">
-                    {loadedFilter !== "all" ? "조건에 맞는 옵션이 없어요" : loadedQ ? `「${loadedQ}」에 해당하는 상품이 없어요` : "아직 재고를 관리할 상품이 없어요"}
+                    {loadedFilter !== "all" ? "조건에 맞는 옵션이 없습니다" : loadedQ ? `「${loadedQ}」에 해당하는 상품이 없습니다` : "아직 재고를 관리할 상품이 없습니다"}
                   </span>
                   {(loadedFilter !== "all" || loadedQ) && (
                     <button
@@ -481,19 +481,19 @@ export default function StockPage() {
               {!searchError && cursor && (
                 <div className="row center" style={{ padding: "12px 20px" }}>
                   <button className="btn btn-sm btn-out" type="button" onClick={() => void loadMoreOptions()} disabled={loadingMore}>
-                    {loadingMore ? "불러오고 있어요" : "옵션 더 불러오기"}
+                    {loadingMore ? "불러오는 중" : "옵션 더 불러오기"}
                   </button>
                 </div>
               )}
               <div className="row between" style={{ padding: "12px 20px", gap: 12, flexWrap: "wrap" }}>
                 <span className="t-l2 c-alt">
                   {searching ? (
-                    <span data-testid="stock-searching">찾고 있어요 · </span>
+                    <span data-testid="stock-searching">검색 중 · </span>
                   ) : null}
-                  불러온 옵션 {rows.length.toLocaleString("ko-KR")}개{cursor ? " · 옵션이 더 있어요" : ""} · 바뀐 옵션 {changed.length}개 · 적용하기 전에는 반영되지 않아요
-                  {loadingMore && <span data-testid="stock-loading-more"> · 상품을 더 불러오고 있어요</span>}
+                  불러온 옵션 {rows.length.toLocaleString("ko-KR")}개{cursor ? " · 옵션이 더 있습니다" : ""} · 바뀐 옵션 {changed.length}개 · 적용하기 전에는 반영되지 않습니다
+                  {loadingMore && <span data-testid="stock-loading-more"> · 상품을 더 불러오는 중</span>}
                 </span>
-                {invalid.length > 0 && <span className="err">고칠 칸이 {invalid.length}개 있어요. 그 칸은 빼고 적용해요</span>}
+                {invalid.length > 0 && <span className="err">고칠 칸이 {invalid.length}개 있습니다. 그 칸은 빼고 적용합니다</span>}
               </div>
             </div>
 
@@ -525,7 +525,7 @@ export default function StockPage() {
               <h2 id="hist-title" className="t-hl2">
                 재고 이력
               </h2>
-              <span className="t-c1 c-alt">주문 · 취소 · 환불과 직접 바꾼 재고가 사유와 함께 남아요</span>
+              <span className="t-c1 c-alt">주문 · 취소 · 환불과 직접 변경한 재고가 사유와 함께 남습니다</span>
             </div>
             <StockHistory refreshKey={histKey} />
           </section>
@@ -550,7 +550,7 @@ export default function StockPage() {
           <div className="modal">
             <div className="modal-h">
               <h3 id="apply-title" className="t-hl1">
-                재고 {valid.length}건을 적용할까요?
+                재고 {valid.length}건을 적용하시겠습니까?
               </h3>
               {hiddenCount > 0 && (
                 <p className="t-l2 fw6 c-cau" data-testid="apply-hidden">
@@ -558,7 +558,7 @@ export default function StockPage() {
                 </p>
               )}
               <p className="t-b2 c-neu">
-                쇼핑몰에 바로 반영돼요.{invalid.length ? ` 고칠 칸 ${invalid.length}개는 빼고 적용해요.` : ""} 그사이 주문으로 재고가 바뀐 옵션은 바꾸지 않고 알려 드려요.
+                쇼핑몰에 바로 반영됩니다.{invalid.length ? ` 고칠 칸 ${invalid.length}개는 빼고 적용합니다.` : ""} 그사이 주문으로 재고가 바뀐 옵션은 변경하지 않고 따로 알려 드립니다.
               </p>
             </div>
             <div className="fld">
@@ -578,7 +578,7 @@ export default function StockPage() {
                 {bulkMemoError && <span className="err">{bulkMemoError}</span>}
               </div>
             )}
-            <span className="t-c1 c-alt">사유는 재고 이력에 함께 남아요</span>
+            <span className="t-c1 c-alt">사유는 재고 이력에 함께 남습니다</span>
             <div className="modal-f">
               <button className="btn btn-out" type="button" onClick={() => setConfirm(false)}>
                 취소
@@ -615,7 +615,7 @@ export default function StockPage() {
               <h3 id="opt-hist-title" className="t-hl1 clamp2">
                 {histRow.productName} · {histRow.optionName}
               </h3>
-              <p className="t-l2 c-alt">이 옵션의 재고 이력이에요 · 지금 재고 {histRow.stock.toLocaleString("ko-KR")}개</p>
+              <p className="t-l2 c-alt">이 옵션의 재고 이력입니다 · 지금 재고 {histRow.stock.toLocaleString("ko-KR")}개</p>
             </div>
             <div className="stock-hist-body">
               <StockHistory refreshKey={histKey} productId={histRow.productId} optionId={histRow.optionId} />
@@ -647,13 +647,13 @@ function AdjustSheet({ row, onClose, onDone }: { row: Row; onClose: () => void; 
     qty.trim() === ""
       ? null
       : n === null
-        ? "숫자만 입력해 주세요"
+        ? "숫자만 입력해 주십시오"
         : n < 1
-          ? "1개 이상으로 적어 주세요"
+          ? "1개 이상으로 입력해 주십시오"
           : mode === "minus" && n > row.stock
-            ? `남은 재고보다 많이 뺄 수 없어요 · 지금 ${row.stock.toLocaleString("ko-KR")}개`
+            ? `남은 재고보다 많이 뺄 수 없습니다 · 지금 ${row.stock.toLocaleString("ko-KR")}개`
             : mode === "plus" && n > INT4_MAX - row.stock
-              ? "재고는 21억 개까지 넣을 수 있어요"
+              ? "재고는 21억 개까지 입력할 수 있습니다"
               : null;
   const note = reason === "직접 입력" ? memo.trim() : reason;
   const memoErr = reason === "직접 입력" ? memoError(memo) : null;
@@ -669,8 +669,8 @@ function AdjustSheet({ row, onClose, onDone }: { row: Row; onClose: () => void; 
       body: { delta: mode === "minus" ? -n! : n!, reason: note },
     });
     setBusy(false);
-    if (!r.ok) return setError(failMessage(r, "재고를 바꾸지 못했어요. 잠시 뒤 다시 시도해 주세요"));
-    onDone(row, r.data.stock, `${row.productName} 재고 ${n!.toLocaleString("ko-KR")}개를 ${mode === "minus" ? "뺐어요" : "더했어요"} · 남은 재고 ${r.data.stock.toLocaleString("ko-KR")}`);
+    if (!r.ok) return setError(failMessage(r, "재고를 변경하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
+    onDone(row, r.data.stock, `${row.productName} 재고 ${n!.toLocaleString("ko-KR")}개를 ${mode === "minus" ? "뺐습니다" : "더했습니다"} · 남은 재고 ${r.data.stock.toLocaleString("ko-KR")}`);
   };
 
   return (
@@ -726,13 +726,13 @@ function AdjustSheet({ row, onClose, onDone }: { row: Row; onClose: () => void; 
             {memoErr && <span className="err">{memoErr}</span>}
           </div>
         )}
-        <span className="t-c1 c-alt">바꾼 사람·시각과 사유가 함께 기록돼요</span>
+        <span className="t-c1 c-alt">변경한 사람·시각과 사유가 함께 기록됩니다</span>
         <div className="modal-f">
           <button className="btn btn-out" type="button" onClick={onClose} disabled={busy}>
             취소
           </button>
           <button className="btn" type="button" onClick={() => void submit()} disabled={!ready || busy}>
-            {busy ? "바꾸고 있어요" : n && n >= 1 ? `${n.toLocaleString("ko-KR")}개 ${verb}` : verb}
+            {busy ? "변경 중" : n && n >= 1 ? `${n.toLocaleString("ko-KR")}개 ${verb}` : verb}
           </button>
         </div>
       </div>
@@ -805,9 +805,9 @@ function StockHistory({ refreshKey, productId, optionId }: { refreshKey: number;
     setMore(false);
   };
 
-  if (error) return <ErrorState title="재고 이력을 불러오지 못했어요" onRetry={() => void load()} />;
+  if (error) return <ErrorState title="재고 이력을 불러오지 못했습니다" onRetry={() => void load()} />;
   if (items === null) return <LoadingRows rows={3} />;
-  if (items.length === 0) return <span className="t-l2 c-alt">아직 재고를 바꾼 기록이 없어요</span>;
+  if (items.length === 0) return <span className="t-l2 c-alt">아직 재고를 변경한 기록이 없습니다</span>;
   return (
     <>
       <ul className="hist-list" data-testid="stock-history">
@@ -836,15 +836,15 @@ function StockHistory({ refreshKey, productId, optionId }: { refreshKey: number;
       </ul>
       {moreError ? (
         <div className="row center" style={{ gap: 8, flexWrap: "wrap" }} role="alert">
-          <span className="t-l2 c-neg">이력을 더 불러오지 못했어요</span>
+          <span className="t-l2 c-neg">이력을 더 불러오지 못했습니다</span>
           <button className="btn btn-sm btn-out" type="button" disabled={more} onClick={() => void loadMore()}>
-            {more ? "불러오고 있어요" : "다시 불러오기"}
+            {more ? "불러오는 중" : "다시 불러오기"}
           </button>
         </div>
       ) : (
         next && (
           <button className="btn btn-sm btn-out" type="button" style={{ alignSelf: "center" }} disabled={more} onClick={() => void loadMore()}>
-            {more ? "불러오고 있어요" : "이력 더 보기"}
+            {more ? "불러오는 중" : "이력 더 보기"}
           </button>
         )
       )}

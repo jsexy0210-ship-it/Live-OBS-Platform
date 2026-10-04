@@ -34,8 +34,8 @@ export default function NewPasswordForm({ onDone, onExpired, loginHref }: Props)
   const complete = async (e: React.FormEvent) => {
     e.preventDefault();
     if (busy) return;
-    const a = pw.length < MIN_PASSWORD_LENGTH ? `${MIN_PASSWORD_LENGTH}자 이상으로 정해 주세요` : null;
-    const b = !a && pw !== pw2 ? "위에 적은 비밀번호와 달라요" : null;
+    const a = pw.length < MIN_PASSWORD_LENGTH ? `${MIN_PASSWORD_LENGTH}자 이상으로 정해 주십시오` : null;
+    const b = !a && pw !== pw2 ? "위에 입력한 비밀번호와 다릅니다" : null;
     setPwError(a);
     setPw2Error(b);
     if (a || b) return focus(a ? "pw-new" : "pw-again");
@@ -45,7 +45,7 @@ export default function NewPasswordForm({ onDone, onExpired, loginHref }: Props)
     setBusy(false);
     if (r.ok) return onDone();
     if (r.error === "weak_password") {
-      setPwError(`${MIN_PASSWORD_LENGTH}자 이상으로 정해 주세요`);
+      setPwError(`${MIN_PASSWORD_LENGTH}자 이상으로 정해 주십시오`);
       return focus("pw-new");
     }
     if (r.error === "invalid_grant") {
@@ -55,8 +55,8 @@ export default function NewPasswordForm({ onDone, onExpired, loginHref }: Props)
     }
     if (stepOutcome(r) === "retry") {
       uncertain.current = true;
-      setNotice({ text: "새 비밀번호로 로그인해 보세요. 안 되면 다시 바꿔 주세요", maybe: true });
-    } else setNotice({ text: failMessage(r, "바꾸지 못했어요. 잠시 뒤 다시 시도해 주세요") });
+      setNotice({ text: "새 비밀번호로 로그인해 보십시오. 되지 않으면 다시 변경해 주십시오", maybe: true });
+    } else setNotice({ text: failMessage(r, "변경하지 못했습니다. 잠시 후 다시 시도해 주십시오") });
     focus("pw-notice");
   };
 
@@ -65,7 +65,7 @@ export default function NewPasswordForm({ onDone, onExpired, loginHref }: Props)
       <div className="col" style={{ gap: 12 }}>
         <div id="pw-maybe" tabIndex={-1} className="msg msg-info" role="status" style={{ display: "block" }}>
           <span>
-            <b>비밀번호가 이미 바뀌었을 수 있어요.</b> 방금 정한 비밀번호로 로그인해 보세요.
+            <b>비밀번호가 이미 변경되었을 수 있습니다.</b> 방금 정한 비밀번호로 로그인해 보십시오.
           </span>
         </div>
         <Link className="btn btn-lg btn-block" href={loginHref}>
@@ -85,7 +85,7 @@ export default function NewPasswordForm({ onDone, onExpired, loginHref }: Props)
           {notice.maybe ? (
             <>
               <span>
-                <b>비밀번호가 바뀌었을 수 있어요.</b> {notice.text}
+                <b>비밀번호가 변경되었을 수 있습니다.</b> {notice.text}
               </span>
               <span className="row" style={{ marginTop: 8 }}>
                 <Link className="btn btn-sm" href={loginHref}>
@@ -150,9 +150,9 @@ export default function NewPasswordForm({ onDone, onExpired, loginHref }: Props)
           </span>
         )}
       </div>
-      <span className="t-c1 c-alt">바꾸면 다른 기기의 로그인은 모두 풀려요</span>
+      <span className="t-c1 c-alt">변경하면 다른 기기의 로그인은 모두 해제됩니다</span>
       <button className={`btn btn-lg btn-block${busy ? " is-loading" : ""}`} type="submit" disabled={busy || pw === "" || pw2 === ""}>
-        {busy ? "바꾸고 있어요" : "비밀번호 바꾸기"}
+        {busy ? "변경 중" : "비밀번호 바꾸기"}
       </button>
     </form>
   );

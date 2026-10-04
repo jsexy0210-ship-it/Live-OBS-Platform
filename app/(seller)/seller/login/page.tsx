@@ -82,13 +82,13 @@ export default function SellerLoginPage() {
       return;
     }
     setBusy(false);
-    const text = r.message ?? (r.status === 0 ? "연결이 끊겼어요. 인터넷 연결을 확인해 주세요" : "로그인하지 못했어요. 잠시 뒤 다시 시도해 주세요");
+    const text = r.message ?? (r.status === 0 ? "연결이 끊겼습니다. 인터넷 연결을 확인해 주십시오" : "로그인하지 못했습니다. 잠시 후 다시 시도해 주십시오");
     if (r.error === "wrong_account_type") {
       // 고른 탭과 계정 종류가 다르다: 맞는 탭으로 안내하고 전환 버튼을 준다
       const other: AccountType = tab === "owner" ? "staff" : "owner";
       setNotice({
         kind: "info",
-        text: other === "staff" ? "직원 계정이에요. 직원 탭에서 로그인해 주세요" : "대표자 계정이에요. 대표자 탭에서 로그인해 주세요",
+        text: other === "staff" ? "직원 계정입니다. 직원 탭에서 로그인해 주십시오" : "대표자 계정입니다. 대표자 탭에서 로그인해 주십시오",
         switchTo: other,
       });
     } else if (r.error === "invalid_credentials") setFieldError(text);
@@ -107,7 +107,7 @@ export default function SellerLoginPage() {
         </span>
         <div className="col login-head">
           <h1 className="t-t3">파트너스 관리자</h1>
-          <span className="t-l2 c-alt">쇼핑몰 운영과 방송 주문대기를 한곳에서 관리하세요.</span>
+          <span className="t-l2 c-alt">쇼핑몰 운영과 방송 주문대기를 한곳에서 관리합니다.</span>
         </div>
         <div className="tabs login-tabs" role="tablist" aria-label="계정 종류">
           {TABS.map((t, i) => (
@@ -171,14 +171,14 @@ export default function SellerLoginPage() {
             <div className="fld">
               <label htmlFor="shop">쇼핑몰 주소</label>
               <input id="shop" className="inp" type="text" placeholder="예: byulbit" value={shopSlug} onChange={(e) => setShopSlug(e.target.value)} />
-              <span className="help">이 이메일로 쓰는 쇼핑몰이 여러 곳이에요. 로그인할 쇼핑몰 주소를 넣어 주세요</span>
+              <span className="help">이 이메일로 사용하는 쇼핑몰이 여러 곳입니다. 로그인할 쇼핑몰 주소를 입력해 주십시오</span>
             </div>
           )}
           <button className={`btn btn-lg btn-block${busy ? " is-loading" : ""}`} type="submit" disabled={!ready || busy}>
             {busy ? (
               <>
                 <span className="spin" style={{ width: 18, height: 18 }} />
-                로그인하고 있어요
+                로그인 중
               </>
             ) : (
               "로그인"

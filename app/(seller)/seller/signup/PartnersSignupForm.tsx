@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import IdentityCheck, { IdentityDone, kstToday } from "../../../../components/seller/IdentityCheck";
 import { AuthFrame, IdentityUnavailable, Steps } from "../../../../components/seller/PartnersAuth";
 import { api, failMessage } from "../../../../components/seller/api";
-import { RETRY_TEXT, stepOutcome } from "../../../../components/seller/stepFailure";
+import { RETRY_TEXT_PUBLIC, stepOutcome } from "../../../../components/seller/stepFailure";
 
 // PF-007 파트너스 가입 신청: 1 필수 약관 동의(PF-007-1) · 대표자 휴대폰 본인확인 → 2 사업자·계정·쇼핑몰 정보 → 3 신청 완료(바로 승인 또는 승인 대기).
 // API: POST /api/seller-signup/verification(·/resend·/confirm) → POST /api/seller-signup/apply.
@@ -174,7 +174,7 @@ export default function PartnersSignupForm({ consentVersions }: { consentVersion
     // (서버는 같은 본인확인·같은 입력의 재신청에 이미 만든 신청 결과를 돌려준다)
     if (out === "restart") return restartIdentity("본인확인 시간이 지났거나 확인되지 않았어요. 본인확인을 다시 해 주세요");
     if (out === "retry" || r.error === "verification_pending") {
-      setNotice({ text: r.error === "verification_pending" ? "본인확인 결과를 확인하고 있어요. 잠시 뒤 다시 신청해 주세요" : failMessage(r, RETRY_TEXT) });
+      setNotice({ text: r.error === "verification_pending" ? "본인확인 결과를 확인하고 있어요. 잠시 뒤 다시 신청해 주세요" : failMessage(r, RETRY_TEXT_PUBLIC, "public") });
       return focus("pa-notice");
     }
     const field = (k: Field, text: string) => {
@@ -186,10 +186,10 @@ export default function PartnersSignupForm({ consentVersions }: { consentVersion
     if (r.error === "slug_taken") return field("slug", "이미 쓰고 있는 주소예요. 다른 주소를 정해 주세요");
     if (r.error === "invalid_business_number") return field("businessNumber", "사업자등록번호를 다시 확인해 주세요");
     if (r.error === "representative_has_shop") {
-      setNotice({ text: failMessage(r), login: true });
+      setNotice({ text: failMessage(r, undefined, "public"), login: true });
       return focus("pa-notice");
     }
-    setNotice({ text: r.error === "invalid_input" ? "입력한 정보를 다시 확인해 주세요" : failMessage(r, "신청하지 못했어요. 잠시 뒤 다시 시도해 주세요") });
+    setNotice({ text: r.error === "invalid_input" ? "입력한 정보를 다시 확인해 주세요" : failMessage(r, "신청하지 못했어요. 잠시 뒤 다시 시도해 주세요", "public") });
     focus("pa-notice");
   };
 
@@ -214,7 +214,7 @@ export default function PartnersSignupForm({ consentVersions }: { consentVersion
         <span className="t-l2 c-alt">대표자 본인확인을 하고 사업자 정보를 적으면 바로 점검해요.</span>
       </div>
       {unavailable ? (
-        <IdentityUnavailable action="가입을 신청할" />
+        <IdentityUnavailable action="가입을 신청할" tone="public" />
       ) : (
         <>
           <Steps steps={STEPS} current={step} />
@@ -268,7 +268,7 @@ export default function PartnersSignupForm({ consentVersions }: { consentVersion
           ) : (
             <>
               {verification ? (
-                <IdentityDone who={verification.who} disabled={busy} onAgain={() => restartIdentity(null)} />
+                <IdentityDone tone="public" who={verification.who} disabled={busy} onAgain={() => restartIdentity(null)} />
               ) : (
                 <>
                   {/* 필수 동의는 본인확인을 요청하기 전에 받는다(PF-007-1). 약관 원문(PF-008·PF-009)이 정해지면 「보기」를 붙인다 */}
@@ -305,6 +305,7 @@ export default function PartnersSignupForm({ consentVersions }: { consentVersion
                   </fieldset>
                   <IdentityCheck
                     key={idvKey}
+                    tone="public"
                     label="대표자 휴대폰 본인확인"
                     base={BASE}
                     blocked={!consentReady}

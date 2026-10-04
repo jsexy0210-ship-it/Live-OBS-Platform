@@ -109,7 +109,7 @@ test("빼기·더하기: 사유와 함께 바꾸고, 남은 재고보다 많이 
   await page.getByRole("button", { name: `${label} 빼기 · 더하기` }).click();
   const sheet = page.getByRole("dialog");
   await sheet.getByLabel("수량").fill(String(before + 1));
-  await expect(sheet.getByText(`남은 재고보다 많이 뺄 수 없어요 · 지금 ${before}개`)).toBeVisible();
+  await expect(sheet.getByText(`남은 재고보다 많이 뺄 수 없습니다 · 지금 ${before}개`)).toBeVisible();
   await sheet.getByRole("radio", { name: "이벤트 증정" }).click();
   await expect(sheet.getByRole("button", { name: `${before + 1}개 빼기` })).toBeDisabled();
   await sheet.getByLabel("수량").fill("3");
@@ -206,7 +206,7 @@ test("상품 재고 차감 기준을 정하고 바꿀 수 있다(주문하면 �
   await expect(page.getByRole("radio", { name: "주문하면 바로 차감" })).toHaveAttribute("aria-checked", "true");
   await page.getByRole("radio", { name: "결제하면 차감" }).click();
   await page.getByRole("button", { name: "저장", exact: true }).first().click();
-  await expect(page.getByText("저장했어요", { exact: true })).toBeVisible();
+  await expect(page.getByText("저장했습니다", { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("radio", { name: "결제하면 차감" })).toHaveAttribute("aria-checked", "true");
 });
@@ -215,7 +215,7 @@ test("로그인이 풀린 뒤 재고를 바꾸면 로그인으로 보낸다", as
   await openAs(page);
   // 첫 화면 데이터(상품·재고 이력)를 다 받은 뒤 로그인을 끊는다. 이력 요청이 남아 있으면 그 401로 먼저 로그인 화면으로 가 버린다
   await expect(page.getByTestId("stock-row").first()).toBeVisible();
-  await expect(page.getByTestId("history-item").first().or(page.getByText("아직 재고를 바꾼 기록이 없어요"))).toBeVisible();
+  await expect(page.getByTestId("history-item").first().or(page.getByText("아직 재고를 변경한 기록이 없습니다"))).toBeVisible();
   await expect(page.getByTestId("stock-loading-more")).toHaveCount(0);
   await page.context().clearCookies();
   await page.getByRole("button", { name: "탑로더 25장 1팩 빼기 · 더하기" }).click();
@@ -254,15 +254,15 @@ test("재고 차감 기준 안내는 주문 설정의 「취소·반품하면 �
   await page.getByLabel("비밀번호").fill(PASSWORD);
   await page.getByRole("button", { name: "로그인" }).click();
   // 서버와 같이: 취소·발송 전 환불은 돌아오고, 발송 뒤 환불·개봉 상품은 돌아오지 않는다
-  await expect(page.getByText("주문 취소·발송 전 환불이면 재고가 돌아와요(주문 설정에서 켜져 있어요)", { exact: false })).toBeVisible();
-  await expect(page.getByText("발송 뒤 환불이나 개봉한 상품은 돌아오지 않아요", { exact: false })).toBeVisible();
+  await expect(page.getByText("주문 취소·발송 전 환불이면 재고가 돌아옵니다(주문 설정에서 켜져 있습니다)", { exact: false })).toBeVisible();
+  await expect(page.getByText("발송 뒤 환불이나 개봉한 상품은 돌아오지 않습니다", { exact: false })).toBeVisible();
   await expect(page.getByText("미입금으로 취소되면", { exact: false })).toHaveCount(0);
 });
 
 test("상품 담당 직원(쇼핑몰 설정 권한 없음)은 설정 이름으로 안내받는다", async ({ page }) => {
   await page.goto("/seller/login?next=%2Fseller%2Fproducts%2Fnew");
   await submitSellerLogin(page, "demo-staff@example.com", PASSWORD);
-  await expect(page.getByText("주문 설정의 「취소·반품하면 재고 되돌리기」를 따라요", { exact: false })).toBeVisible();
+  await expect(page.getByText("주문 설정의 「취소·반품하면 재고 되돌리기」를 따릅니다", { exact: false })).toBeVisible();
 });
 
 test("390에서는 「모두 선택」이 있고, 바꾸면 아래 고정 바에서 적용한다", async ({ page }) => {
@@ -444,10 +444,10 @@ test("「이력 더 보기」가 실패하면 지금 목록은 두고 그 자리
   await openAs(page);
   await expect(page.getByTestId("history-item").first()).toBeVisible();
   await page.getByRole("button", { name: "이력 더 보기" }).click();
-  await expect(page.getByText("이력을 더 불러오지 못했어요")).toBeVisible();
+  await expect(page.getByText("이력을 더 불러오지 못했습니다")).toBeVisible();
   // 목록은 그대로, 전체 오류 화면으로 바뀌지 않는다
   await expect(page.getByTestId("history-item")).toHaveCount(firstCount);
-  await expect(page.getByText("재고 이력을 불러오지 못했어요")).toHaveCount(0);
+  await expect(page.getByText("재고 이력을 불러오지 못했습니다")).toHaveCount(0);
   await page.getByRole("button", { name: "다시 불러오기" }).click();
   await expect(page.getByTestId("history-item")).toHaveCount(firstCount + 1);
   await expect(page.getByTestId("history-item").last()).toContainText("다음 쪽 이력");
@@ -474,10 +474,10 @@ test("직접 쓴 사유는 서버와 같은 기준(코드포인트 100자)으로
   await sheet.getByRole("radio", { name: "직접 입력" }).click();
   // 두 칸짜리 글자 100개(UTF-16 200칸)는 100자로 센다
   await sheet.getByLabel("사유 메모").fill("𠀀".repeat(100));
-  await expect(sheet.getByText("사유는 100자까지 쓸 수 있어요")).toHaveCount(0);
+  await expect(sheet.getByText("사유는 100자까지 입력할 수 있습니다")).toHaveCount(0);
   await expect(sheet.getByRole("button", { name: "1개 빼기" })).toBeEnabled();
   await sheet.getByLabel("사유 메모").fill("𠀀".repeat(101));
-  await expect(sheet.getByText("사유는 100자까지 쓸 수 있어요")).toBeVisible();
+  await expect(sheet.getByText("사유는 100자까지 입력할 수 있습니다")).toBeVisible();
   await expect(sheet.getByRole("button", { name: "1개 빼기" })).toBeDisabled();
   await sheet.getByRole("button", { name: "취소" }).click();
   // 한 번에 적용 확인 창도 같은 기준
@@ -486,7 +486,7 @@ test("직접 쓴 사유는 서버와 같은 기준(코드포인트 100자)으로
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("radio", { name: "직접 입력" }).click();
   await dialog.getByLabel("사유 메모").fill("𠀀".repeat(101));
-  await expect(dialog.getByText("사유는 100자까지 쓸 수 있어요")).toBeVisible();
+  await expect(dialog.getByText("사유는 100자까지 입력할 수 있습니다")).toBeVisible();
   await expect(dialog.getByRole("button", { name: "적용", exact: true })).toBeDisabled();
   await dialog.getByLabel("사유 메모").fill("𠀀".repeat(100));
   await expect(dialog.getByRole("button", { name: "적용", exact: true })).toBeEnabled();
@@ -646,11 +646,11 @@ test("사유 메모는 실제로 보내는 값(앞뒤 공백 뺀 값)으로 검�
   await sheet.getByRole("radio", { name: "직접 입력" }).click();
   // 앞에 붙은 BOM은 보낼 때 빠지므로 막지 않는다
   await sheet.getByLabel("사유 메모").fill("﻿창고 정리");
-  await expect(sheet.getByText("쓸 수 없는 글자가 있어요")).toHaveCount(0);
+  await expect(sheet.getByText("사용할 수 없는 글자가 있습니다")).toHaveCount(0);
   await expect(sheet.getByRole("button", { name: "1개 빼기" })).toBeEnabled();
   // 가운데 낀 보이지 않는 글자는 서버도 막으므로 화면에서 막는다
   await sheet.getByLabel("사유 메모").fill("창고\u0007정리");
-  await expect(sheet.getByText("쓸 수 없는 글자가 있어요")).toBeVisible();
+  await expect(sheet.getByText("사용할 수 없는 글자가 있습니다")).toBeVisible();
   await sheet.getByRole("button", { name: "취소" }).click();
 });
 
@@ -718,7 +718,7 @@ test("재고 검색은 옵션 목록 API의 이름 검색(q)으로 찾고, 처�
     }),
     page.getByRole("button", { name: "품절", exact: true }).click(),
   ]);
-  await expect(page.getByText("조건에 맞는 옵션이 없어요")).toBeVisible();
+  await expect(page.getByText("조건에 맞는 옵션이 없습니다")).toBeVisible();
 });
 
 test("다른 검색에서 바꿔 둔 재고도 함께 적용하고, 확인 창에 안 보이는 옵션 수를 알린다", async ({ page }) => {
@@ -827,7 +827,7 @@ test("검색어가 틀리면(400) 검색창 바로 아래에 알리고 옛 결�
   await expect(page.getByTestId("stock-row").first()).toBeVisible();
   // 폭 없는 공백만 있는 검색어는 서버가 400으로 막는다
   await page.getByLabel("재고 검색").fill("\u200b");
-  await expect(page.getByTestId("search-error")).toHaveText(/검색어에 쓸 수 없는 글자가 있어요/);
+  await expect(page.getByTestId("search-error")).toHaveText(/검색어에 사용할 수 없는 글자가 있습니다/);
   await expect(page.getByTestId("stock-row")).toHaveCount(0);
   // 검색창 바로 아래(툴바 다음)에 보인다
   const bar = (await page.locator(".stock-search").boundingBox())!;
@@ -845,7 +845,7 @@ test("재고 검색어는 50자까지: 입력은 50자에서 멈추고, 바꾼 �
   await expect(page.getByLabel("재고 검색")).toHaveValue("가".repeat(50));
   // 「㈜」는 NFKC로 「(주)」 3자가 되어 50개면 150자 → 서버가 길이로 막는다
   await page.getByLabel("재고 검색").fill("㈜".repeat(50));
-  await expect(page.getByTestId("search-error")).toHaveText(/검색어는 50자까지 쓸 수 있어요/);
+  await expect(page.getByTestId("search-error")).toHaveText(/검색어는 50자까지 입력할 수 있습니다/);
 });
 
 test("한 번에 적용하는 사이 새로 적은 재고는 적용 뒤에도 남는다", async ({ page }) => {
