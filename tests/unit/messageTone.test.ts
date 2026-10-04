@@ -10,6 +10,9 @@ import { IDENTITY_ERROR_MESSAGES, identityErrorBody } from "../../lib/server/ide
 import { ORDER_ERROR_MESSAGES, ORDER_ERROR_MESSAGES_FORMAL } from "../../lib/server/orders/messages";
 import { STAFF_LINK_MESSAGES } from "../../lib/server/sellers/staffIdentityFlow";
 import { SHARE_PREVIEW_MESSAGES } from "../../lib/server/shop/sharePreview";
+import { SHOP_IMAGE_MESSAGES } from "../../lib/server/shop-content/image";
+import { LOGO_MESSAGES } from "../../lib/server/shop-content/logo";
+import { CONTENT_MESSAGES } from "../../lib/server/shop-content/service";
 
 // 서버 응답 문구 말투(lib/server/text/tone.ts): 파트너스·마스터 관리자 API는 합니다체, 구매자·공개 API와 파트너스 가입 신청은 해요체.
 const FRIENDLY = /(요|요\.|요\?)$/;
@@ -28,6 +31,10 @@ describe("문구표 말투", () => {
       ...Object.values(STAFF_LINK_MESSAGES),
       ...Object.values(MEMBER_POLICY_MESSAGES),
       ...Object.values(SHARE_PREVIEW_MESSAGES),
+      // 배너·팝업·이미지·로고(app/api/seller/shop-content/**). 구매자 쪽 shop-content API는 문구를 내려주지 않는다.
+      ...Object.values(CONTENT_MESSAGES),
+      ...Object.values(SHOP_IMAGE_MESSAGES),
+      ...Object.values(LOGO_MESSAGES),
     ])
       formal(m);
     for (const m of [
