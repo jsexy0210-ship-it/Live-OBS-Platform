@@ -1,4 +1,5 @@
 import type { BankTransferRejection } from "./bank";
+import type { ShippingPreviewRejection } from "./shippingPreview";
 import type { StartRejection } from "./service";
 
 // 구매자 결제 API 화면 문구(해요체, 구매자 쇼핑몰 화면에 그대로 보여 준다).
@@ -38,3 +39,11 @@ export const SELLER_PAYMENT_MESSAGES = {
 } as const;
 
 export const sellerPaymentErrorBody = (reason: keyof typeof SELLER_PAYMENT_MESSAGES) => ({ error: reason, message: SELLER_PAYMENT_MESSAGES[reason] });
+
+// 배송비 미리보기(구매자, 해요체)
+export const SHIPPING_PREVIEW_MESSAGES: Record<ShippingPreviewRejection, string> = {
+  shop_unavailable: PAYMENT_MESSAGES.shop_unavailable,
+  invalid_items: "상품을 다시 골라 주세요",
+  invalid_address: "우편번호와 주소를 확인해 주세요",
+  product_unavailable: "지금 살 수 없는 상품이 있어요",
+};
