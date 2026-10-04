@@ -11,9 +11,9 @@ import { requireSellerPermission, type TenantContext } from "../tenant/context";
 export const SHOP_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 export const SHOP_IMAGE_MIN_SIDE = 100;
 export const SHOP_IMAGE_MAX_SIDE = 2000;
-// 전체 화소 수 상한. 브랜딩 검사기가 풀어 보는 그림 데이터 상한(8,400,000바이트) 안에 8비트 RGBA가 들어가는 값이다
-// (2,000,000 × 4 + 줄 머리 = 약 8,002,000바이트). 권장 크기(PC 배너 1200×400, 모바일 750×750, 팝업 600×600)는 넉넉히 들어간다.
-export const SHOP_IMAGE_MAX_PIXELS = 2_000_000;
+// 전체 화소 수 상한 = 1920×1080(MASTER 결정 2026-10-04: PC 배너 표준 크기는 받는다). 브랜딩 검사기가 풀어 보는 그림 데이터
+// 상한(8,400,000바이트) 안에 8비트 RGBA가 들어가는 값이다(2,073,600 × 4 + 줄 머리 1,080 = 8,295,480바이트).
+export const SHOP_IMAGE_MAX_PIXELS = 1920 * 1080;
 // 아직 배너·팝업에 쓰지 않은 이미지는 쇼핑몰당 이 개수까지만 둔다(올리기만 반복해 DB를 채우지 않게).
 export const UNUSED_IMAGE_LIMIT = 30;
 // 이보다 오래된 쓰지 않는 이미지는 다음 업로드 때 지운다.
@@ -25,7 +25,7 @@ export const SHOP_IMAGE_MESSAGES: Record<ShopImageRejection, string> = {
   empty_file: "빈 파일은 올릴 수 없습니다",
   file_too_large: "이미지는 2MB까지 올릴 수 있습니다",
   unsupported_image: "PNG 파일만 올릴 수 있습니다",
-  wrong_image_size: `이미지 가로·세로는 ${SHOP_IMAGE_MIN_SIDE}~${SHOP_IMAGE_MAX_SIDE}px, 전체 200만 화소 이하여야 합니다`,
+  wrong_image_size: `이미지 가로·세로는 ${SHOP_IMAGE_MIN_SIDE}~${SHOP_IMAGE_MAX_SIDE}px, 전체 1920×1080 화소 이하여야 합니다`,
   too_many_unused_images: "아직 쓰지 않은 이미지가 많습니다. 배너·팝업을 저장한 뒤 다시 올려 주십시오",
 };
 
