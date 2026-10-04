@@ -115,7 +115,7 @@ describe("GET /api/seller/me", () => {
     expect(bodyA).toMatchObject({ isOwner: false, access: "trial", trialEndsAt: endsA.toISOString() });
     expect(JSON.stringify(bodyA)).not.toContain(endsB.toISOString());
     // 금액·결제 정보는 주지 않는다
-    expect(Object.keys(bodyA).sort()).toEqual(["access", "features", "isOwner", "permissions", "sellerId", "shop", "trialEndsAt", "user", "userId"]);
+    expect(Object.keys(bodyA).sort()).toEqual(["access", "features", "isOwner", "orderFollowup", "permissions", "sellerId", "shop", "trialEndsAt", "user", "userId"]);
     expect(await (await me(cb)).json()).toMatchObject({ isOwner: true, trialEndsAt: endsB.toISOString() });
     // 결제한 기간이 남아 체험이 아닌 상태면 null
     const plan = await db.subscriptionPlan.upsert({ where: { code: "STANDARD" }, update: {}, create: { code: "STANDARD", name: "스탠다드", listPrice: 30000, salePrice: 30000 } });
