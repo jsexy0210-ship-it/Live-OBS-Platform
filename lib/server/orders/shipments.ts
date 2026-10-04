@@ -21,6 +21,12 @@ const TAB_WHERE: Record<ShipmentTab, Prisma.OrderWhereInput> = {
   delivered: { shipment: { status: "DELIVERED" } },
 };
 
+// 기간(from·to)의 기준은 탭마다 다르다(MASTER 결정, 카페24식): 발송 대기 = 주문 시각, 배송 중 = 발송 시각, 배송 완료 = 배송 완료 시각.
+// 응답의 dateBasis로 화면이 「주문일·발송일·완료일」 라벨을 고른다.
+export const DATE_BASIS = { ready: "orderedAt", in_transit: "shippedAt", delivered: "deliveredAt" } as const satisfies Record<ShipmentTab, string>;
+const dateWhere = (tab: ShipmentTab, range: Prisma.DateTimeFilter): Prisma.OrderWhereInput =>
+  tab === "ready" ? { createdAt: range } : { shipment: { is: tab === "in_transit" ? { shippedAt: range } : { deliveredAt: range } } };
+
 export type ShipmentListQuery = { tab?: string | null; q?: string | null; from?: string | null; to?: string | null; cursor?: string | null; limit?: string | null };
 
 // 탭별 목록(주문 시각 내림차순, (createdAt, id) 커서). q: 주문번호(숫자 전체 일치)·방송 닉네임·송장번호, 받는 분 이름은 개인정보 권한이 있을 때만.
@@ -43,8 +49,7 @@ export async function listShipments(db: PrismaClient, ctx: TenantContext, query:
   const pii = canViewCustomerPii(ctx);
   const searchesPii = q !== "" && pii;
   const and: Prisma.OrderWhereInput[] = [{ sellerId: ctx.sellerId, legalHoldAt: null }, TAB_WHERE[tab]];
-  if (from) and.push({ createdAt: { gte: from } });
-  if (toStart) and.push({ createdAt: { lt: new Date(toStart.getTime() + 24 * 3600_000) } });
+  if (from || toStart) and.push(dateWhere(tab, { ...(from ? { gte: from } : {}), ...(toStart ? { lt: new Date(toStart.getTime() + 24 * 3600_000) } : {}) }));
   if (q) {
     const or: Prisma.OrderWhereInput[] = [
       { broadcastNicknameSnapshot: { contains: q, mode: "insensitive" } },
@@ -90,6 +95,7 @@ export async function listShipments(db: PrismaClient, ctx: TenantContext, query:
   }
   return {
     ok: true as const,
+    dateBasis: DATE_BASIS[tab],
     shipments: page.map((o) => ({
       orderId: o.id,
       orderNo: o.orderNo,
