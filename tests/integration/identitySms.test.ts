@@ -219,9 +219,9 @@ describe("사용량·판매자 상태", () => {
   it("체험하기 중 구매자 휴대폰 본인확인은 성공 건만 한 번씩 세고, 한도를 넘으면 확정하지 않는다(실패·중복 확인은 세지 않음)", async () => {
     const { seller } = await createSeller();
     await db.subscriptionPlan.upsert({
-      where: { code: "STANDARD" },
+      where: { code: "INTEGRATED" },
       update: { trialIdentityLimit: 2 },
-      create: { code: "STANDARD", name: "스탠다드", listPrice: 300000, salePrice: 199000, trialIdentityLimit: 2 },
+      create: { code: "INTEGRATED", name: "쇼핑몰 통합", listPrice: 249000, salePrice: 179000, trialIdentityLimit: 2 },
     });
     const failed = await buyerIdv(seller.id);
     provider.fail(failed.verification.requestId);
@@ -236,7 +236,7 @@ describe("사용량·판매자 상태", () => {
     expect(await confirmIdv(provider, three.verification, three.ownerToken)).toEqual({ ok: false, reason: "trial_limit_exceeded" });
     expect(await identityUsage(db, seller.id)).toBe(2);
     // 주문 알림 문자 한도(trialMessageLimit)와는 따로 센다
-    expect((await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "STANDARD" } })).trialMessageLimit).toBe(100);
+    expect((await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "INTEGRATED" } })).trialMessageLimit).toBe(100);
   });
 
   it("본인확인 성공은 판매자 승인 상태·체험 기간·대표자 정보·구독을 바꾸지 않는다", async () => {
@@ -286,9 +286,9 @@ describe("Codex 검수 후속(#95)", () => {
   it("[P2] 체험 한도가 1건 남았을 때 같은 요청에 확인이 동시에 들어와도 모두 성공이고 사용량은 1", async () => {
     const { seller } = await createSeller();
     await db.subscriptionPlan.upsert({
-      where: { code: "STANDARD" },
+      where: { code: "INTEGRATED" },
       update: { trialIdentityLimit: 1 },
-      create: { code: "STANDARD", name: "스탠다드", listPrice: 300000, salePrice: 199000, trialIdentityLimit: 1 },
+      create: { code: "INTEGRATED", name: "쇼핑몰 통합", listPrice: 249000, salePrice: 179000, trialIdentityLimit: 1 },
     });
     const { verification: v, ownerToken } = await buyerIdv(seller.id);
     const rs = await Promise.all(Array.from({ length: 4 }, () => confirmIdv(provider, v, ownerToken)));

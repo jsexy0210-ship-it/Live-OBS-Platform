@@ -3,12 +3,17 @@ import type { AdminSessionContext } from "../auth/session";
 import { writeAudit } from "../audit/log";
 import { forbidden } from "../authz/errors";
 import { adminCan } from "../authz/permissions";
-import { PRICE_NOTICE_MS, dbNow, priceFor } from "./subscription";
+import { DEFAULT_PLAN_CODE, PRICE_NOTICE_MS, dbNow, priceFor } from "./subscription";
 
 // 요금 안내·구독 화면에 보여 줄 가격(부가세 포함). 정가는 취소선, 판매가가 실제 청구액이다.
-export async function getPublicPlan(db: PrismaClient, code = "STANDARD") {
-  const plan = await db.subscriptionPlan.findUnique({ where: { code } });
-  return plan ? { code: plan.code, name: plan.name, listPrice: plan.listPrice, salePrice: plan.salePrice } : null;
+// 기본은 신규 가입 기본 플랜. plans에는 지금 가입할 수 있는 두 플랜(오버레이 전용·쇼핑몰 통합)을 함께 준다(ONQ 1-C).
+export const SIGNUP_PLAN_CODES = ["OVERLAY_ONLY", "INTEGRATED"] as const;
+export async function getPublicPlan(db: PrismaClient, code: string = DEFAULT_PLAN_CODE) {
+  const rows = await db.subscriptionPlan.findMany({ where: { code: { in: [code, ...SIGNUP_PLAN_CODES] } } });
+  const view = (p: (typeof rows)[number]) => ({ code: p.code, name: p.name, listPrice: p.listPrice, salePrice: p.salePrice, trialDays: p.trialDays });
+  const plan = rows.find((p) => p.code === code);
+  if (!plan) return null;
+  return { ...view(plan), plans: SIGNUP_PLAN_CODES.flatMap((c) => rows.filter((p) => p.code === c).map(view)) };
 }
 
 const isPrice = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v > 0 && v <= 100_000_000;
@@ -88,4 +93,24 @@ export async function listPriceChangeNoticeTargets(db: PrismaClient, admin: Admi
       appliesFrom,
     })),
   );
+}
+
+// STANDARD → 쇼핑몰 통합 이전(ONQ 1-C)의 가격 변경 고지 대상: 이전 전 가격 스냅숏이 있고 아직 고지를 보내지 않은 구독의 대표자.
+// 발송 기능(메일·알림톡)이 생기면 보낸 뒤 SellerSubscription.legacyPriceNoticeSentAt에 발송 완료 시각을 남긴다.
+// 남기기 전에는 이전 전 가격으로 계속 청구한다(priceFor, 새 가격 청구 0건).
+export async function listPlanMigrationNoticeTargets(db: PrismaClient, admin: AdminSessionContext) {
+  if (!adminCan(admin.admin.role, "billing.price")) throw forbidden();
+  const subs = await db.sellerSubscription.findMany({
+    where: { legacyPrice: { not: null }, legacyPriceNoticeSentAt: null, status: { in: ["ACTIVE", "PAST_DUE"] } },
+    select: { sellerId: true, legacyPrice: true, plan: true, seller: { select: { shopName: true, users: { where: { isOwner: true }, select: { email: true } } } } },
+    orderBy: { createdAt: "asc" },
+  });
+  return subs.map((s) => ({
+    sellerId: s.sellerId,
+    shopName: s.seller.shopName,
+    ownerEmails: s.seller.users.map((u) => u.email),
+    oldPrice: s.legacyPrice!,
+    newPlan: s.plan.code,
+    newPrice: s.plan.salePrice,
+  }));
 }

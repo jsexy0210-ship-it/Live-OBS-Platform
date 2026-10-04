@@ -208,9 +208,9 @@ describe("구매자 가입 HTTP", () => {
   it("체험 한도가 찬 쇼핑몰은 확인 완료 기록을 비식별해도 한도가 다시 생기지 않는다", async () => {
     const s = await shop();
     await db.subscriptionPlan.upsert({
-      where: { code: "STANDARD" },
+      where: { code: "INTEGRATED" },
       update: { trialIdentityLimit: 1 },
-      create: { code: "STANDARD", name: "스탠다드", listPrice: 300000, salePrice: 199000, trialIdentityLimit: 1 },
+      create: { code: "INTEGRATED", name: "쇼핑몰 통합", listPrice: 249000, salePrice: 179000, trialIdentityLimit: 1 },
     });
     const v = await s.verified();
     await db.identityVerification.update({ where: { id: v.verificationId }, data: { expiresAt: new Date(Date.now() - 1000) } });
@@ -456,9 +456,9 @@ describe("signupBuyer는 completeIdentityVerification을 거친다", () => {
   it("체험 중 본인확인 한도가 찼으면 시작·다시 보내기에서 문자를 보내기 전에 403 trial_limit_exceeded로 막는다", async () => {
     const s = await shop();
     await db.subscriptionPlan.upsert({
-      where: { code: "STANDARD" },
+      where: { code: "INTEGRATED" },
       update: { trialIdentityLimit: 1 },
-      create: { code: "STANDARD", name: "스탠다드", listPrice: 300000, salePrice: 199000, trialIdentityLimit: 1 },
+      create: { code: "INTEGRATED", name: "쇼핑몰 통합", listPrice: 249000, salePrice: 179000, trialIdentityLimit: 1 },
     });
     // 한도가 차기 전에 시작해 둔 본인확인(아직 확인 전)
     const startA = await startRoute(post(`${s.base}/verification`, { ...IDV_INPUT, ...SIGNUP_CONSENT, phone: "01011112222" }), ctx(s.slug));
@@ -495,11 +495,11 @@ describe("signupBuyer는 completeIdentityVerification을 거친다", () => {
   it("체험이 아닌(구독 중) 쇼핑몰은 체험 한도와 상관없이 본인확인을 시작한다", async () => {
     const s = await shop();
     await db.subscriptionPlan.upsert({
-      where: { code: "STANDARD" },
+      where: { code: "INTEGRATED" },
       update: { trialIdentityLimit: 0 },
-      create: { code: "STANDARD", name: "스탠다드", listPrice: 300000, salePrice: 199000, trialIdentityLimit: 0 },
+      create: { code: "INTEGRATED", name: "쇼핑몰 통합", listPrice: 249000, salePrice: 179000, trialIdentityLimit: 0 },
     });
-    const plan = await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "STANDARD" } });
+    const plan = await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "INTEGRATED" } });
     await db.sellerSubscription.create({ data: { sellerId: s.seller.id, planId: plan.id, status: "ACTIVE", currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) } });
     expect((await startRoute(post(`${s.base}/verification`, { ...IDV_INPUT, ...SIGNUP_CONSENT }), ctx(s.slug))).status).toBe(200);
     // 체험이 아니면 본인확인 사용량(전체 건수 COUNT)을 세지 않는다. 체험이면 센다.
