@@ -61,7 +61,8 @@ export default function StaffPage() {
     const r = await api<{ staff: Staff[] }>("/api/seller/staff");
     // 이미 목록을 보여 주는 중에 다시 읽기만 실패하면 지금 화면을 그대로 둔다(직원 추가의 불분명 상태 등 입력 중인 내용을 잃지 않게)
     if (!r.ok) {
-      if (listReads.hasApplied()) return setStale(true);
+      // 이미 반영한 응답보다 먼저 보낸 요청의 실패는 알리지 않는다(더 새 목록이 이미 보이고 있음)
+      if (listReads.hasApplied()) return listReads.failMatters(t) ? setStale(true) : undefined;
       return setState({ kind: "error", status: r.status });
     }
     const verdict = listReads.accept(t);

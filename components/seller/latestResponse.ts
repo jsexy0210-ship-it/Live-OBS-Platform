@@ -4,6 +4,7 @@ import { useMemo, useRef } from "react";
 // - 이미 반영한 것보다 나중에 보낸 요청의 성공 응답만 반영한다(늦게 온 옛 응답이 새 값을 덮지 않게)
 // - 나중에 보낸 요청이 실패해도 먼저 보낸 요청의 성공은 버리지 않는다(세대는 성공을 반영할 때 확정)
 // - 화면이 서버가 확정한 변경을 직접 반영했으면(confirmChange) 그 전에 보낸 요청의 응답은 전체를 덮지 않는다("outdated")
+// - 실패도 같은 세대 규칙을 따른다: 이미 반영한 응답보다 먼저 보낸 요청의 실패는 알리지 않는다(failMatters)
 // - 파생 값은 "apply"일 때 같은 자리에서 함께 계산한다
 // 검색어·필터처럼 요청마다 조건이 다른 목록은 해당하지 않는다(그때는 마지막으로 보낸 조건의 응답만 맞다).
 export type ReadTicket = { n: number; change: number };
@@ -25,6 +26,8 @@ export function useLatestResponse() {
         applied.current = t.n;
         return "apply";
       },
+      // 실패한 요청을 화면에 알려야 하는지: 이미 반영한 성공보다 나중에 보낸 요청의 실패만 의미가 있다
+      failMatters: (t: ReadTicket) => t.n > applied.current,
       // 서버가 성공으로 확정한 변경을 화면에 직접 반영했을 때 부른다
       confirmChange: () => {
         change.current += 1;

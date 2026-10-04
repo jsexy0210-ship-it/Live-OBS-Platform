@@ -81,7 +81,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
     if (!r.ok) {
       if (r.status === 401) router.replace(`/seller/login?next=${encodeURIComponent(pathname)}`);
       // 아직 한 번도 그리지 못했으면 다시 시도 화면을 보인다(이미 그린 화면은 그대로 둔다)
-      else if (!meReads.hasApplied()) setFailed(true);
+      else if (!meReads.hasApplied() && meReads.failMatters(t)) setFailed(true);
       return;
     }
     applyMe(t, r.data);

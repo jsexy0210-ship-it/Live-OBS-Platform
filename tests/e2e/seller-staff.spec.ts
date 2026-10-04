@@ -970,6 +970,50 @@ test("정보만 보낸 수정이 불분명할 때 다른 창이 권한을 바꿔
   await expect(row(page, s.email)).toContainText("주문·배송");
 });
 
+// 실패도 세대 규칙을 따른다: 먼저 보낸 목록 요청이 더 새 성공 뒤에 실패로 도착해도 낡음 안내를 띄우지 않는다
+test("먼저 보낸 목록 요청의 실패가 더 새 성공 뒤에 와도 낡음 안내를 띄우지 않는다", async ({ page }) => {
+  await login(page, "demo-owner@example.com");
+  await expect(page).toHaveURL(/\/seller\/staff$/);
+  const id = uniq();
+  const s = { name: `늦실패${id}`, phone: "01090909090", email: `latefail-${id}@example.com`, password: `pw-${id}-init` };
+  await addStaff(page, s);
+  await page.getByRole("button", { name: "계정 생성" }).click();
+  await expect(row(page, s.email)).toContainText("켜진 권한 없음");
+
+  let release: () => void = () => {};
+  const held = new Promise<void>((r) => (release = r));
+  let gets = 0;
+  await page.route("**/api/seller/staff", async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    gets += 1;
+    if (gets === 1) {
+      await held;
+      return route.fulfill({ status: 500, json: { error: "internal" } });
+    }
+    return route.continue();
+  });
+  const dialog = page.getByRole("dialog");
+  // 수정 A → 목록1(붙잡았다가 실패) / 수정 B → 목록2 성공
+  await page.getByRole("button", { name: `${s.name} 정보 · 권한 수정` }).click();
+  await dialog.getByLabel("이름").fill(`${s.name}가`);
+  await dialog.getByRole("button", { name: "저장" }).click();
+  await expect(page.getByText(`${s.name}가 정보를 저장했습니다`)).toBeVisible();
+  await page.getByRole("button", { name: `${s.name}가 정보 · 권한 수정` }).click();
+  await dialog.getByRole("checkbox", { name: "상품", exact: true }).check();
+  const second = page.waitForResponse((r) => r.url().endsWith("/api/seller/staff") && r.request().method() === "GET" && r.status() === 200);
+  await dialog.getByRole("button", { name: "저장" }).click();
+  await second;
+  await expect(page.getByTestId("staff-stale")).toHaveCount(0);
+  // 목록1이 늦게 실패로 도착한다 → 더 새 목록이 이미 보이므로 안내하지 않는다
+  const failed = page.waitForResponse((r) => r.url().endsWith("/api/seller/staff") && r.status() === 500);
+  release();
+  await failed;
+  await page.waitForTimeout(300);
+  await expect(page.getByTestId("staff-stale")).toHaveCount(0);
+  await expect(row(page, s.email)).toContainText("상품");
+  await page.unrouteAll();
+});
+
 test("직원: 메뉴에 직원 계정이 없고, 주소로 들어오면 대표자만 볼 수 있다고 안내한다", async ({ page }) => {
   const listed = page.waitForRequest((r) => r.url().endsWith("/api/seller/staff"), { timeout: 3000 }).then(
     () => true,
