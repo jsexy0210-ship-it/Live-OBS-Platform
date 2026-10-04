@@ -18,7 +18,7 @@ async function shot(page: Page, name: string) {
 
 const links = (page: Page) => page.getByRole("navigation", { name: "계정 도움" }).getByRole("link");
 
-test("로고는 카드 안 맨 위, 기본은 대표자 탭이고 왼쪽 끝 「아이디/비밀번호 찾기」·오른쪽 끝 「회원가입」 링크가 있다. 직원 탭은 회원가입이 없다", async ({ page }) => {
+test("로고는 카드 안 맨 위, 기본은 대표자 탭이고 한 줄에 왼쪽 「아직 회원이 아니신가요? 회원가입」·오른쪽 끝 「아이디/비밀번호 찾기」가 있다. 직원 탭은 찾기만 오른쪽 끝에 있다", async ({ page }) => {
   await page.goto("/seller/login");
   const card = page.locator(".login-card");
   await expect(card.locator(".logo")).toBeVisible();
@@ -30,21 +30,43 @@ test("로고는 카드 안 맨 위, 기본은 대표자 탭이고 왼쪽 끝 「
   });
   expect([...order].sort((a, b) => a - b)).toEqual(order);
 
+  const nav = page.getByRole("navigation", { name: "계정 도움" });
+  const find = page.getByRole("link", { name: "아이디/비밀번호 찾기" });
+  const join = page.getByRole("link", { name: "회원가입" });
   await expect(page.getByRole("tab", { name: "대표자" })).toHaveAttribute("aria-selected", "true");
-  await expect(links(page)).toHaveText(["아이디/비밀번호 찾기", "회원가입"]);
-  await expect(page.getByRole("link", { name: "아이디/비밀번호 찾기" })).toHaveAttribute("href", "/seller/find-id");
-  // 왼쪽 끝·오른쪽 끝에 둔다
-  const box = await page.locator(".login-links").boundingBox();
-  const left = await page.getByRole("link", { name: "아이디/비밀번호 찾기" }).boundingBox();
-  const right = await page.getByRole("link", { name: "회원가입" }).boundingBox();
-  expect(Math.abs(left!.x - box!.x)).toBeLessThan(2);
-  expect(Math.abs(right!.x + right!.width - (box!.x + box!.width))).toBeLessThan(2);
+  // 「회원가입」만 링크(앞 문구는 글자), 찾기는 오른쪽 끝
+  await expect(links(page)).toHaveText(["회원가입", "아이디/비밀번호 찾기"]);
+  await expect(nav).toContainText("아직 회원이 아니신가요? 회원가입");
+  await expect(join).toHaveAttribute("href", "/seller/signup");
+  await expect(find).toHaveAttribute("href", "/seller/find-id");
+  // 회원가입만 강조색(찾기와 앞 문구는 같은 보조색)
+  const colors = await nav.evaluate((el) => {
+    const c = (sel: string) => getComputedStyle(el.querySelector(sel)!).color;
+    return { join: c(".login-join > a"), text: c(".login-join"), find: c(".login-find") };
+  });
+  expect(colors.join).not.toBe(colors.find);
+  expect(colors.text).toBe(colors.find);
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    const box = (await nav.boundingBox())!;
+    const l = (await page.locator(".login-join").boundingBox())!;
+    const r = (await find.boundingBox())!;
+    expect(Math.abs(l.x - box.x)).toBeLessThan(2);
+    expect(Math.abs(r.x + r.width - (box.x + box.width))).toBeLessThan(2);
+    // 한 줄(같은 높이)
+    expect(Math.abs(l.y - r.y)).toBeLessThan(2);
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
   await shot(page, "AU-002-owner");
 
   await page.getByRole("tab", { name: "직원" }).click();
   await expect(page.getByRole("tab", { name: "직원" })).toHaveAttribute("aria-selected", "true");
   await expect(links(page)).toHaveText(["아이디/비밀번호 찾기"]);
-  await expect(page.getByRole("link", { name: "아이디/비밀번호 찾기" })).toHaveAttribute("href", "/seller/find-id?type=staff");
+  await expect(nav).not.toContainText("회원");
+  await expect(find).toHaveAttribute("href", "/seller/find-id?type=staff");
+  const box = (await nav.boundingBox())!;
+  const r = (await find.boundingBox())!;
+  expect(Math.abs(r.x + r.width - (box.x + box.width))).toBeLessThan(2);
   await shot(page, "AU-002-staff");
 });
 
