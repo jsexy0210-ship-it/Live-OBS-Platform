@@ -192,3 +192,53 @@ test("내 템플릿이 20개면 저장을 막고 안내한다", async ({ page })
     for (const id of ids) await call(page, `/api/seller/overlay/templates/${id}`, "DELETE");
   }
 });
+
+test("끌 때 정렬 가이드선이 보이고, 실제 크기 미리보기가 열리며, 저장 안 한 채 나가면 확인 창이 뜬다", async ({ page }) => {
+  await login(page);
+  await reset(page);
+  await page.reload();
+  await expect(page.getByTestId("ove-canvas")).toBeVisible();
+
+  // 가이드선: 현재 주문을 왼쪽 끝으로 끌면 화면 가장자리(주황) 선이 보인다
+  const box = page.getByTestId("ove-box-current");
+  const b = (await box.boundingBox())!;
+  await box.hover();
+  await page.mouse.down();
+  await page.mouse.move(b.x + b.width / 2 - 200, b.y + b.height / 2 + 5, { steps: 6 });
+  await expect(page.getByTestId("ove-guide").first()).toBeVisible();
+  await page.mouse.up();
+  await expect(page.getByTestId("ove-guide")).toHaveCount(0);
+  await expect(page.getByTestId("ove-dirty")).toBeVisible();
+
+  // 실제 크기 미리보기(1배)
+  await page.getByRole("button", { name: "실제 크기 미리보기" }).click();
+  const pv = page.getByTestId("ove-fullpreview");
+  await expect(pv).toContainText("1080×1920");
+  const w = await pv.locator('[data-widget="CURRENT_ORDER"]').boundingBox();
+  expect(Math.round(w!.width)).toBe(Math.round(1080 * 0.94));
+  await pv.getByRole("button", { name: "닫기" }).click();
+  await expect(pv).toHaveCount(0);
+
+  // 나가기 확인 창: 닫기는 그대로, 저장하지 않고 나가기는 이동
+  const link = page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "방송 대시보드" });
+  await link.click();
+  const dlg = page.getByRole("dialog");
+  await expect(dlg).toContainText("저장하지 않은 변경 1개가 있습니다");
+  await dlg.getByRole("button", { name: "닫기" }).click();
+  await expect(page).toHaveURL(/\/seller\/overlay$/);
+  await link.click();
+  await page.getByRole("dialog").getByRole("button", { name: "저장하지 않고 나가기" }).click();
+  await expect(page).not.toHaveURL(/\/seller\/overlay$/);
+  expect((await layout(page)).widgets.find((x) => x.id === "current")!.x).toBe(3);
+
+  // 저장하고 나가기: 저장된 뒤 이동
+  await page.goto("/seller/overlay");
+  await expect(page.getByTestId("ove-canvas")).toBeVisible();
+  await page.getByRole("button", { name: "현재 주문", exact: true }).click();
+  await page.getByLabel("세로 위치").fill("41");
+  await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "방송 대시보드" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "저장하고 나가기" }).click();
+  await expect(page).not.toHaveURL(/\/seller\/overlay$/);
+  expect((await layout(page)).widgets.find((x) => x.id === "current")!.y).toBe(41);
+  await reset(page);
+});

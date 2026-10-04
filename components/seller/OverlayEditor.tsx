@@ -1,6 +1,7 @@
 "use client";
 
 import "./OverlayEditor.css";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { WidgetView } from "../overlay/WidgetView";
 import { MAX_TEMPLATES, SAMPLE_DATA, SLOTS, STAGE, newWidget, slotOf, widgetLabel, type Aspect, type PropValue, type Widget } from "../overlay/layout";
@@ -23,6 +24,8 @@ const MIN_SIZE = 2;
 const COLOR_RE = /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/;
 
 // 유튜브 화면 덮개 추정(세로 1080×1920 기준 px): 위 0~290 채널 정보, 960 아래는 채팅
+type Guide = { p: number; k: "w" | "s" };
+const SNAP_PCT = 1;
 const COVER = { top: 290, chatFrom: 960 };
 
 type Field =
@@ -244,6 +247,10 @@ export default function OverlayEditor() {
     setWidgets(next);
     bump((n) => n + 1);
   };
+  const [lines, setLines] = useState<{ v: Guide[]; h: Guide[] }>({ v: [], h: [] });
+  const [leave, setLeave] = useState<string | null>(null);
+  const [fullPreview, setFullPreview] = useState(false);
+  const router = useRouter();
   const [otherCount, setOtherCount] = useState(0);
   const [full, setFull] = useState(false);
 
@@ -364,6 +371,12 @@ export default function OverlayEditor() {
 
   const drag = useRef<{ id: string; mode: string; sx: number; sy: number; o: Widget } | null>(null);
   const snapTo = (v: number) => (snap ? Math.round(v) : v);
+  // 정렬 가이드: 다른 위젯 가장자리·가운데(분홍), 화면 가장자리·가운데·가림 영역 경계(주황)에 1% 안으로 다가가면 붙고 선을 보인다
+  const near = (edges: number[], cands: Guide[]): { d: number; g: Guide } | null => {
+    let best: { d: number; g: Guide } | null = null;
+    for (const e of edges) for (const g of cands) if (Math.abs(g.p - e) <= SNAP_PCT && (!best || Math.abs(g.p - e) < Math.abs(best.d))) best = { d: g.p - e, g };
+    return best;
+  };
   const onMove = useCallback(
     (e: PointerEvent) => {
       const d = drag.current;
@@ -372,31 +385,90 @@ export default function OverlayEditor() {
       const dx = ((e.clientX - d.sx) / box.width) * 100;
       const dy = ((e.clientY - d.sy) / box.height) * 100;
       const o = d.o;
-      if (d.mode === "move") return setBox(d.id, { x: snapTo(clamp(o.x + dx, 0, 100 - o.w)), y: snapTo(clamp(o.y + dy, 0, 100 - o.h)) });
+      const others = wref.current.filter((w) => w.visible && w.id !== d.id);
+      const xs: Guide[] = [0, 50, 100].map((p) => ({ p, k: "s" as const }));
+      const ys: Guide[] = [0, 50, 100].map((p) => ({ p, k: "s" as const }));
+      if (aspect === "9x16") ys.push({ p: (COVER.top / 1920) * 100, k: "s" }, { p: (COVER.chatFrom / 1920) * 100, k: "s" });
+      for (const w of others) {
+        xs.push(...[w.x, w.x + w.w / 2, w.x + w.w].map((p) => ({ p, k: "w" as const })));
+        ys.push(...[w.y, w.y + w.h / 2, w.y + w.h].map((p) => ({ p, k: "w" as const })));
+      }
+      const gv: Guide[] = [];
+      const gh: Guide[] = [];
       let { x, y, w, h } = o;
-      if (d.mode.includes("e")) w = snapTo(clamp(o.w + dx, MIN_SIZE, 100 - o.x));
-      if (d.mode.includes("s")) h = snapTo(clamp(o.h + dy, MIN_SIZE, 100 - o.y));
-      if (d.mode.includes("w")) {
-        x = snapTo(clamp(o.x + dx, 0, o.x + o.w - MIN_SIZE));
-        w = o.x + o.w - x;
+      if (d.mode === "move") {
+        x = snapTo(clamp(o.x + dx, 0, 100 - o.w));
+        y = snapTo(clamp(o.y + dy, 0, 100 - o.h));
+        const sx = near([x, x + w / 2, x + w], xs);
+        if (sx) {
+          x = clamp(x + sx.d, 0, 100 - w);
+          gv.push(sx.g);
+        }
+        const sy = near([y, y + h / 2, y + h], ys);
+        if (sy) {
+          y = clamp(y + sy.d, 0, 100 - h);
+          gh.push(sy.g);
+        }
+      } else {
+        if (d.mode.includes("e")) w = snapTo(clamp(o.w + dx, MIN_SIZE, 100 - o.x));
+        if (d.mode.includes("s")) h = snapTo(clamp(o.h + dy, MIN_SIZE, 100 - o.y));
+        if (d.mode.includes("w")) {
+          x = snapTo(clamp(o.x + dx, 0, o.x + o.w - MIN_SIZE));
+          w = o.x + o.w - x;
+        }
+        if (d.mode.includes("n")) {
+          y = snapTo(clamp(o.y + dy, 0, o.y + o.h - MIN_SIZE));
+          h = o.y + o.h - y;
+        }
+        // Shift: 가로세로 비율 유지(모서리만)
+        if (e.shiftKey && d.mode.length === 2) {
+          h = (w * o.h) / o.w;
+          h = clamp(h, MIN_SIZE, d.mode.includes("n") ? o.y + o.h : 100 - o.y);
+          if (d.mode.includes("n")) y = o.y + o.h - h;
+        } else {
+          if (d.mode.includes("e")) {
+            const g = near([x + w], xs);
+            if (g) {
+              w = clamp(g.g.p - x, MIN_SIZE, 100 - x);
+              gv.push(g.g);
+            }
+          }
+          if (d.mode.includes("w")) {
+            const g = near([x], xs);
+            if (g) {
+              const right = o.x + o.w;
+              x = clamp(g.g.p, 0, right - MIN_SIZE);
+              w = right - x;
+              gv.push(g.g);
+            }
+          }
+          if (d.mode.includes("s")) {
+            const g = near([y + h], ys);
+            if (g) {
+              h = clamp(g.g.p - y, MIN_SIZE, 100 - y);
+              gh.push(g.g);
+            }
+          }
+          if (d.mode.includes("n")) {
+            const g = near([y], ys);
+            if (g) {
+              const bottom = o.y + o.h;
+              y = clamp(g.g.p, 0, bottom - MIN_SIZE);
+              h = bottom - y;
+              gh.push(g.g);
+            }
+          }
+        }
       }
-      if (d.mode.includes("n")) {
-        y = snapTo(clamp(o.y + dy, 0, o.y + o.h - MIN_SIZE));
-        h = o.y + o.h - y;
-      }
-      // Shift: 가로세로 비율 유지(모서리만)
-      if (e.shiftKey && d.mode.length === 2) {
-        h = (w * o.h) / o.w;
-        h = clamp(h, MIN_SIZE, d.mode.includes("n") ? o.y + o.h : 100 - o.y);
-        if (d.mode.includes("n")) y = o.y + o.h - h;
-      }
+      setLines({ v: gv, h: gh });
       setBox(d.id, { x, y, w, h });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [snap],
+    [snap, aspect],
   );
   const stop = useCallback(() => {
     drag.current = null;
+    setLines({ v: [], h: [] });
     window.removeEventListener("pointermove", onMove);
     window.removeEventListener("pointerup", stop);
   }, [onMove]);
@@ -420,6 +492,22 @@ export default function OverlayEditor() {
     const w = widgets.find((x) => x.id === sel);
     if (w) setBoxMarked(w.id, { x: w.x + (k[0]! * px * 100) / SW, y: w.y + (k[1]! * px * 100) / SH }, "key");
   };
+
+  // 저장 안 한 변경이 있을 때 앱 안 링크로 나가면 확인 창(새로고침·탭 닫기는 beforeunload)
+  useEffect(() => {
+    if (changes === 0) return;
+    const f = (e: MouseEvent) => {
+      const a = (e.target as HTMLElement).closest?.("a[href]") as HTMLAnchorElement | null;
+      if (!a || a.target === "_blank" || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      const url = new URL(a.href, window.location.href);
+      if (url.origin !== window.location.origin || (url.pathname === window.location.pathname && url.search === window.location.search)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setLeave(url.pathname + url.search + url.hash);
+    };
+    document.addEventListener("click", f, true);
+    return () => document.removeEventListener("click", f, true);
+  }, [changes]);
 
   // Ctrl+Z 되돌리기 · Ctrl+Shift+Z(또는 Ctrl+Y) 다시 실행. 글자를 입력하는 칸에서는 브라우저 기본 동작을 둔다
   const undoRef = useRef({ undo, redo });
@@ -448,14 +536,18 @@ export default function OverlayEditor() {
     setConflict(false);
     clearHistory();
   };
-  const save = async () => {
-    if (!server || busy) return;
+  const save = async (): Promise<boolean> => {
+    if (!server || busy) return false;
     setBusy(true);
     const r = await api<Layout>("/api/seller/overlay/layout", { method: "PUT", body: { aspect, widgets, expectedVersion: server.version } });
     setBusy(false);
-    if (!r.ok) return fail(r);
+    if (!r.ok) {
+      fail(r);
+      return false;
+    }
     apply(r.data);
     setToast({ text: "저장했습니다 · 방송 화면에 바로 반영됩니다" });
+    return true;
   };
   // 템플릿으로 초기화: 지금 비율의 배치만 템플릿 값으로 바꾼다(저장하기 전까지는 초안이라 되돌리기로 가져올 수 있다)
   const askReset = (list: Widget[], name: string) =>
@@ -538,6 +630,12 @@ export default function OverlayEditor() {
             )}
           </div>
           <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+            <button className="btn btn-out" type="button" disabled={widgets.length === 0} onClick={() => setFullPreview(true)}>
+              실제 크기 미리보기
+            </button>
+            <button className="btn btn-out" type="button" onClick={() => document.getElementById("ovu-h")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+              오버레이 주소
+            </button>
             <button className="btn btn-out" type="button" title="Ctrl+Z" disabled={hist.current.past.length === 0} onClick={undo}>
               되돌리기
             </button>
@@ -648,6 +746,12 @@ export default function OverlayEditor() {
                   </div>
                 </>
               )}
+              {lines.v.map((g, i) => (
+                <i key={`v${i}`} className={`ove-gl ove-gl-v ove-gl-${g.k}`} data-testid="ove-guide" style={{ left: `${g.p}%` }} />
+              ))}
+              {lines.h.map((g, i) => (
+                <i key={`h${i}`} className={`ove-gl ove-gl-h ove-gl-${g.k}`} data-testid="ove-guide" style={{ top: `${g.p}%` }} />
+              ))}
               {ordered
                 .filter((w) => w.visible)
                 .map((w) => (
@@ -809,6 +913,51 @@ export default function OverlayEditor() {
           </form>
         </div>
       )}
+      {leave !== null && (
+        <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="ove-leave-h">
+          <div className="modal">
+            <div className="modal-h">
+              <h2 className="t-h2" id="ove-leave-h">
+                저장하지 않은 변경 {changes}개가 있습니다
+              </h2>
+              <span className="t-l2 c-alt">나가면 바뀐 내용이 사라집니다.</span>
+            </div>
+            <div className="modal-f">
+              <button className="btn btn-out" type="button" onClick={() => setLeave(null)}>
+                닫기
+              </button>
+              <button
+                className="btn btn-out"
+                type="button"
+                onClick={() => {
+                  const to = leave;
+                  setLeave(null);
+                  clearHistory();
+                  setWidgets(server?.widgets ?? []);
+                  router.push(to);
+                }}
+              >
+                저장하지 않고 나가기
+              </button>
+              <button
+                className="btn"
+                type="button"
+                disabled={busy}
+                onClick={async () => {
+                  const to = leave;
+                  if (await save()) {
+                    setLeave(null);
+                    router.push(to);
+                  } else setLeave(null);
+                }}
+              >
+                저장하고 나가기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {fullPreview && <FullPreview widgets={widgets} aspect={aspect} onClose={() => setFullPreview(false)} />}
       {toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}
     </div>
   );
@@ -866,6 +1015,39 @@ function PropRow({ f, w, onSet }: { f: Field; w: Widget; onSet: (v: PropValue | 
         )}
         {f.kind !== "bool" && f.kind !== "appear" && reset}
       </span>
+    </div>
+  );
+}
+
+// 실제 크기 미리보기: 오버레이 화면과 같은 렌더러로 1배 크기(1080×1920 · 1920×1080)를 그린다. 창보다 크면 스크롤한다
+function FullPreview({ widgets, aspect, onClose }: { widgets: Widget[]; aspect: Aspect; onClose: () => void }) {
+  const { w, h } = STAGE[aspect];
+  const [now] = useState(() => Date.now());
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [onClose]);
+  return (
+    <div className="dim dim-fixed ove-full" role="dialog" aria-modal="true" aria-label="실제 크기 미리보기" data-testid="ove-fullpreview">
+      <div className="ove-full-bar">
+        <span className="t-l1 fw6">
+          실제 크기 미리보기 · {w}×{h}
+        </span>
+        <button className="btn btn-sm" type="button" autoFocus onClick={onClose}>
+          닫기
+        </button>
+      </div>
+      <div className="ove-full-scroll">
+        <div className="ove-full-stage" style={{ width: w, height: h }}>
+          {[...widgets]
+            .filter((x) => x.visible)
+            .sort((a, b) => a.z - b.z)
+            .map((x) => (
+              <WidgetView key={x.id} widget={x} data={SAMPLE_DATA} now={now} />
+            ))}
+        </div>
+      </div>
     </div>
   );
 }
