@@ -206,6 +206,7 @@ tests/unit/**, tests/integration/**           테스트
   - 금액은 서버가 계산(단가 = 상품 가격 + 옵션 추가금, 합계 = 단가 × 수량). 본문의 금액·상태 값은 쓰지 않는다. 적립금 사용은 방식이 정해지기 전이라 요청이 오면 `400 reward_use_not_supported`(rewardUsedAmount = 0).
   - 재고는 주문 수량만큼 있는지 확인하고, 주문 때 차감 상품은 이때 뺀다(4.4). 부족하면 `400 out_of_stock`.
   - 단가가 1원 미만(음수 추가금 등)이거나 합계(상품 + 배송비)가 정수 범위(2,147,483,647원)를 넘으면 `400 invalid_amount`, 주문을 만들지 않는다.
+  - 주문 닉네임(선택, MASTER 결정 2026-10-05): `orderNickname`(1~20자, 가입 닉네임과 같은 글자 검사·앞뒤 공백 제거)을 주면 이 주문의 `broadcastNicknameSnapshot`(주문대기·HIT 카드에 보이는 닉네임)에 쓰고, 없거나 비우면 회원 방송 닉네임. 회원 닉네임 자체는 바꾸지 않는다. 틀리면 `400 invalid_order_nickname`.
   - 배송지 필수(받는 분·연락처·우편번호 5자리·주소, 상세 주소·메모 선택). 틀리면 `400 invalid_shipping_address`. 4.10 참고.
   - 400·402·409 응답은 `{ error, message }`. `message`는 화면에 그대로 보여 줄 문구이고, 사유 코드별 문구는 `lib/server/orders/messages.ts` 한 곳에서만 고친다. 말투는 부르는 API 대상으로 정한다(`lib/server/text/tone.ts`, 대표님 지시 2026-10-04): 파트너스·마스터 관리자 API(`app/api/seller/**`·`app/api/admin/**`)는 합니다체(요청은 「~해 주십시오」), 구매자 쇼핑몰·공개·오버레이 API와 파트너스 가입 신청(`app/api/seller-signup/**`)은 해요체. 같은 사유를 두 쪽이 쓰는 문구표(주문·로그인·본인확인)는 두 벌을 두고, `tests/unit/messageTone.test.ts`가 표의 말투와 경로별 호출을 확인한다.
   - 주문 번호는 판매자별 advisory lock 아래에서 매긴다(동시 주문에도 겹치지 않음). 판매 중(`ON_SALE`)이 아니거나 다른 쇼핑몰 옵션이면 `400 product_unavailable`.
