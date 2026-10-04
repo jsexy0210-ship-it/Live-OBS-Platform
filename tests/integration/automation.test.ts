@@ -2177,7 +2177,8 @@ describe("Codex(4ad65d7~) 진행 중 연습", () => {
     const a = await bought();
     expect(await runOnce(db, runtime(), W)).toBe("succeeded");
     expect(await job(a.jobId)).toMatchObject({ status: "SUCCEEDED" });
-    // 6시간 넘게 끝나지 않은 연습은 죽은 것으로 보고 실패로 센다
+    // 6시간 넘게 끝나지 않은 연습은 죽은 것으로 보고 실패로 센다. 연속 성공은 시작 순서로 세므로(27차) 앞선 성공들은 그보다 먼저 시작한 것으로 둔다
+    await db.automationPracticeRun.updateMany({ where: { id: { not: running.id } }, data: { startedAt: new Date(Date.now() - 8 * 3600_000) } });
     await db.automationPracticeRun.update({ where: { id: running.id }, data: { startedAt: new Date(Date.now() - 7 * 3600_000) } });
     expect((await playbookReadiness(db, cafe24Playbook)).verified).toBe(false);
   });
