@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { writeAudit } from "../audit/log";
 import { shopOpen } from "../buyers/signup";
@@ -47,6 +47,10 @@ export async function readLogo(db: PrismaClient, ctx: TenantContext): Promise<Lo
 
 type Meta = { ip?: string | null; userAgent?: string | null };
 
+// 같은 쇼핑몰의 로고 바꾸기·지우기를 한 줄로 처리한다(동시 지우기 두 번째는 할 일 없음으로 성공, 동시 첫 올리기는 유니크 충돌 없이 차례로).
+// 배너·팝업과 같은 쇼핑몰 행 잠금. NO KEY UPDATE라 쇼핑몰을 가리키는 행 추가(주문 등)는 막지 않는다.
+const lockShopLogo = (tx: Prisma.TransactionClient, sellerId: string) => tx.$queryRaw`SELECT 1 FROM "Seller" WHERE "id" = ${sellerId}::uuid FOR NO KEY UPDATE`;
+
 export async function putLogo(db: PrismaClient, ctx: TenantContext, bytes: Buffer, meta: Meta = {}) {
   requireSellerPermission(ctx, "SHOP_SETTINGS");
   const check = checkLogo(bytes);
@@ -54,6 +58,7 @@ export async function putLogo(db: PrismaClient, ctx: TenantContext, bytes: Buffe
   const sha256 = createHash("sha256").update(bytes).digest("hex");
   const data = { data: new Uint8Array(bytes), contentType: "image/png", byteSize: bytes.length, width: check.width, height: check.width, sha256 };
   return db.$transaction(async (tx) => {
+    await lockShopLogo(tx, ctx.sellerId);
     const before = await tx.sellerLogo.findUnique({ where: { sellerId: ctx.sellerId }, select: { width: true, byteSize: true, sha256: true } });
     await tx.sellerLogo.upsert({ where: { sellerId: ctx.sellerId }, create: { sellerId: ctx.sellerId, ...data }, update: data });
     // 바이트 대신 크기·해시만 남긴다
@@ -77,6 +82,7 @@ export async function putLogo(db: PrismaClient, ctx: TenantContext, bytes: Buffe
 export async function deleteLogo(db: PrismaClient, ctx: TenantContext, meta: Meta = {}) {
   requireSellerPermission(ctx, "SHOP_SETTINGS");
   await db.$transaction(async (tx) => {
+    await lockShopLogo(tx, ctx.sellerId);
     const before = await tx.sellerLogo.findUnique({ where: { sellerId: ctx.sellerId }, select: { width: true, byteSize: true, sha256: true } });
     if (!before) return;
     await tx.sellerLogo.delete({ where: { sellerId: ctx.sellerId } });

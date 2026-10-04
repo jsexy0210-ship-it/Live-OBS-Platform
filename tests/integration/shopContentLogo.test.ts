@@ -64,6 +64,18 @@ describe("SA-060 쇼핑몰 로고", () => {
     expect(JSON.stringify(l[0].after)).not.toContain("data");
   });
 
+  it("동시에 두 번 지워도 둘 다 성공하고 로그 추적은 1건, 동시 첫 올리기도 둘 다 성공한다(Codex 4176368659)", async () => {
+    const s = await shop();
+    expect((await put(s.owner, png(600, 600))).status).toBe(200);
+    const dels = await Promise.all([del(s.owner), del(s.staff), del(s.owner)]);
+    expect(dels.map((r) => r.status)).toEqual([200, 200, 200]);
+    expect(await db.sellerLogo.count()).toBe(0);
+    expect((await logs(s.seller.id)).filter((x) => x.action === "shop.logo.delete")).toHaveLength(1);
+    const puts = await Promise.all([put(s.owner, png(600, 600)), put(s.staff, png(700, 700))]);
+    expect(puts.map((r) => r.status)).toEqual([200, 200]);
+    expect(await db.sellerLogo.count()).toBe(1);
+  });
+
   it("로그인 없음 401, 다른 출처 403", async () => {
     const s = await shop();
     expect((await logoGet(get())).status).toBe(401);
