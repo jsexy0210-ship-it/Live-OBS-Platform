@@ -83,6 +83,8 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/shop-content/popups/reorder": "STORE_OPERATIONS",
   "seller/shop-content/images": "STORE_OPERATIONS",
   "seller/shop-content/images/[imageId]": "STORE_OPERATIONS",
+  "seller/shop-content/logo": "STORE_OPERATIONS",
+  "seller/shop-content/logo/image": "STORE_OPERATIONS",
   "seller/stats/broadcasts": "OVERLAY",
   "seller/stats/members": "STORE_OPERATIONS",
   "seller/stats/orders": "STORE_OPERATIONS",
@@ -104,6 +106,7 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/og.png": "STORE_OPERATIONS",
   "shop/[slug]/shop-content": "STORE_OPERATIONS", // 홈 배너·이벤트 팝업
   "shop/[slug]/shop-content/images/[imageId]": "STORE_OPERATIONS",
+  "shop/[slug]/shop-content/logo": "STORE_OPERATIONS", // 쇼핑몰 로고(없으면 404, 화면은 첫 글자)
   "shop/[slug]/orders/[orderId]": "OPEN",
   "shop/[slug]/auth/login": "OPEN",
   "shop/[slug]/auth/logout": "OPEN",

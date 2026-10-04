@@ -27,6 +27,23 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
   return { ok: false, status: res.status, error: body.error ?? "unknown", message: body.message, body };
 }
 
+// 파일 바이트를 본문 그대로 올리는 요청(이미지 업로드 등). 응답 처리와 401 로그인 이동은 api()와 같다.
+export async function apiUpload<T>(path: string, file: Blob, init: { method?: "POST" | "PUT" } = {}): Promise<ApiResult<T>> {
+  let res: Response;
+  try {
+    res = await fetch(path, { method: init.method ?? "POST", body: file, cache: "no-store" });
+  } catch {
+    return { ok: false, status: 0, error: "network" };
+  }
+  const data = await res.json().catch(() => ({}));
+  if (res.ok) return { ok: true, status: res.status, data: data as T };
+  if (res.status === 401 && path.startsWith("/api/seller/")) {
+    window.location.assign(`/seller/login?next=${encodeURIComponent(window.location.pathname)}`);
+  }
+  const body = data as { error?: string; message?: string } & Record<string, unknown>;
+  return { ok: false, status: res.status, error: body.error ?? "unknown", message: body.message, body };
+}
+
 // 화면 말투: admin=파트너스 관리자·관리자 인증 화면(합니다체), public=공개 화면(가입 신청 등, 해요체)
 export type Tone = "admin" | "public";
 

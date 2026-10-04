@@ -139,6 +139,7 @@ model Seller {
   shopBanners              ShopBanner[]
   shopPopups               ShopPopup[]
   shopContentImages        ShopContentImage[]
+  logo                     SellerLogo?
 }
 
 model SellerDomain {
@@ -667,6 +668,22 @@ model ShopPopup {
   image  ShopContentImage? @relation(fields: [sellerId, imageId], references: [sellerId, id], onDelete: Restrict)
 
   @@index([sellerId, sortOrder])
+}
+
+// 쇼핑몰 로고(SA-060 쇼핑몰 정보, 2026-10-04 대표님 지시). 쇼핑몰당 1개. PNG만, 2MB 이하, 정사각형 512~1440px(마이그레이션 CHECK).
+// 구매자 쇼핑몰 머리(ShopFrame)에 보이고, 없으면 쇼핑몰 이름 첫 글자를 보인다. 저장은 대표님 결정 전까지 A안(DB bytea).
+model SellerLogo {
+  sellerId    String   @id @db.Uuid
+  data        Bytes
+  contentType String
+  byteSize    Int
+  width       Int
+  height      Int
+  // 주소 버전(v=)과 캐시 판단용 SHA-256(hex)
+  sha256      String
+  updatedAt   DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
 }
 
 // ───────────── 주문·주문 품목 ─────────────

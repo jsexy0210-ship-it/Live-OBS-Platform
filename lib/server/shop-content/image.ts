@@ -40,20 +40,34 @@ export const SHOP_IMAGE_MESSAGES: Record<ShopImageRejection, string> = {
 
 export type ShopImageInfo = { type: "image/png"; width: number; height: number };
 
-export function checkShopImage(b: Buffer): { ok: true; info: ShopImageInfo } | { ok: false; reason: ShopImageRejection } {
+// 쇼핑몰 쪽 이미지 업로드(배너·팝업 이미지, 쇼핑몰 로고)가 모두 거치는 PNG 검사. 순서:
+// 빈 파일·용량 → PNG 머리(IHDR) → 크기(경로마다 sizeReason) → 16비트 → 풀린 크기 → 브랜딩 검사기 detectImage(그림 데이터까지).
+// 브랜딩 검사기는 풀린 그림 데이터가 상한을 넘으면 형식 오류로 거부하므로, 「PNG만」 같은 엉뚱한 안내가 나가지 않게
+// 16비트는 먼저 따로 막고, 그 밖에 상한을 넘는 조합(색 형식·인터레이스)도 풀기 전에 사유를 알려 준다.
+export type PngRejection = "empty_file" | "file_too_large" | "unsupported_image" | "png_16bit" | "png_too_large";
+
+export function checkPng<R extends string>(
+  b: Buffer,
+  maxBytes: number,
+  sizeReason: (width: number, height: number) => R | null,
+): { ok: true; width: number; height: number } | { ok: false; reason: PngRejection | R } {
   if (b.length === 0) return { ok: false, reason: "empty_file" };
-  if (b.length > SHOP_IMAGE_MAX_BYTES) return { ok: false, reason: "file_too_large" };
-  // 크기는 PNG 머리(IHDR)로 먼저 본다. 크기가 틀린 파일은 풀기 전에 「크기」로 안내한다.
+  if (b.length > maxBytes) return { ok: false, reason: "file_too_large" };
   const head = pngHeader(b);
   if (!head) return { ok: false, reason: "unsupported_image" };
-  if (!sizeOk(head.width, head.height)) return { ok: false, reason: "wrong_image_size" };
-  // 브랜딩 검사기는 풀린 그림 데이터가 상한을 넘으면 형식 오류로 거부한다. 「PNG만」 같은 엉뚱한 안내가 나가지 않게
-  // 16비트는 먼저 따로 막고, 그 밖에 상한을 넘는 조합(색 형식·인터레이스)도 풀기 전에 사유를 알려 준다.
+  const size = sizeReason(head.width, head.height);
+  if (size) return { ok: false, reason: size };
   if (head.depth === 16) return { ok: false, reason: "png_16bit" };
   if (pngRawSize(head) > PNG_DECODE_LIMIT) return { ok: false, reason: "png_too_large" };
   const info = detectImage(b);
   if (!info || info.type !== "image/png") return { ok: false, reason: "unsupported_image" };
-  return { ok: true, info: { type: "image/png", width: info.width, height: info.height } };
+  return { ok: true, width: info.width, height: info.height };
+}
+
+// 배너·팝업 이미지
+export function checkShopImage(b: Buffer): { ok: true; info: ShopImageInfo } | { ok: false; reason: ShopImageRejection } {
+  const r = checkPng(b, SHOP_IMAGE_MAX_BYTES, (w, h) => (sizeOk(w, h) ? null : "wrong_image_size"));
+  return r.ok ? { ok: true, info: { type: "image/png", width: r.width, height: r.height } } : r;
 }
 
 const sizeOk = (w: number, h: number) =>

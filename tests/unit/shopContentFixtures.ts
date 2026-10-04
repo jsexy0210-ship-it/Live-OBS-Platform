@@ -44,8 +44,8 @@ export const svgInPng = () => Buffer.concat([png(200, 200).subarray(0, 33), Buff
 export const svg = () => Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><script>alert(1)</script></svg>');
 
 // 머리는 맞지만 그림 데이터가 풀리지 않는 PNG(IDAT 내용을 망가뜨리고 CRC는 다시 맞춤)
-export function brokenPng(): Buffer {
-  const ok = png(200, 200);
+export function brokenPng(width = 200, height = 200): Buffer {
+  const ok = png(width, height);
   const ihdrEnd = 8 + 25;
   const idatLen = ok.readUInt32BE(ihdrEnd);
   const bad = Buffer.alloc(idatLen, 0xab);

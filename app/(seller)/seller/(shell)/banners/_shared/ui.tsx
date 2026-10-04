@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { apiUpload } from "../../../../../../components/seller/api";
 import { useRef, useState } from "react";
 import "./shop-content.css";
 
@@ -94,26 +95,27 @@ export function ImagePicker({
   const [busy, setBusy] = useState(false);
   const [over, setOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 올리는 중에는 새 파일(끌어 놓기 포함)을 받지 않는다. 잇단 끌어 놓기는 다음 렌더 전이라 ref로 막는다(순서 뒤바뀜·busy 조기 해제 방지).
+  const working = useRef(false);
 
   const upload = async (file: File) => {
+    // 고른 파일은 이미 받았으니 입력 칸을 바로 비운다. 화면에서 거절(2MB 초과 등)해도 같은 파일을 다시 고를 수 있다(Codex 4176481022).
+    if (input.current) input.current.value = "";
+    if (working.current) return;
     setError(null);
     // 서버도 다시 확인한다. 큰 파일은 보내기 전에 알려 준다.
     if (file.size > MAX_BYTES) return setError(`2MB를 넘었습니다 · 지금 파일은 ${mb(file.size)}입니다`);
+    working.current = true;
     setBusy(true);
     onBusy?.(true);
-    try {
-      // 파일 바이트를 그대로 보낸다. 형식은 서버가 바이트로 확인한다.
-      const res = await fetch("/api/seller/shop-content/images", { method: "POST", body: file, cache: "no-store" });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) onChange(data.image as AdminImage);
-      else setError(data.message ?? IMAGE_ERRORS[data.error] ?? (res.status === 403 ? "변경 권한이 없습니다" : "이미지를 올리지 못했습니다"));
-    } catch {
-      setError("연결이 끊겼습니다. 인터넷 연결을 확인해 주십시오");
-    } finally {
-      setBusy(false);
-      onBusy?.(false);
-      if (input.current) input.current.value = "";
-    }
+    // 파일 바이트를 그대로 보낸다. 형식은 서버가 바이트로 확인한다. 로그인이 풀렸으면 apiUpload가 로그인 화면으로 보낸다.
+    const r = await apiUpload<{ image: AdminImage }>("/api/seller/shop-content/images", file);
+    working.current = false;
+    setBusy(false);
+    onBusy?.(false);
+    if (r.ok) onChange(r.data.image);
+    else if (r.status !== 401)
+      setError(r.message ?? IMAGE_ERRORS[r.error] ?? (r.status === 0 ? "연결이 끊겼습니다. 인터넷 연결을 확인해 주십시오" : r.status === 403 ? "변경 권한이 없습니다" : "이미지를 올리지 못했습니다"));
   };
 
   const small = value && (value.width < recommend.width || value.height < recommend.height);
@@ -139,7 +141,7 @@ export function ImagePicker({
           e.preventDefault();
           setOver(false);
           const f = e.dataTransfer.files?.[0];
-          if (f && !disabled) void upload(f);
+          if (f && !disabled && !busy) void upload(f);
         }}
       >
         {value ? (
