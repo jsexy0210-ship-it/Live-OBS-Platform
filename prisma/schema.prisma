@@ -209,6 +209,9 @@ model PasswordResetGrant {
   ciHash       String
   expiresAt    DateTime  @db.Timestamptz(3)
   usedAt       DateTime? @db.Timestamptz(3)
+  // 이 권한으로 새 비밀번호 저장에 성공한 시각(실패로 소진되거나 다른 권한 사용으로 무효가 된 권한은 비어 있음).
+  // 응답을 잃고 같은 새 비밀번호로 다시 보낸 요청을 성공으로 돌려주는 데 쓴다(auth/passwordReset.ts).
+  completedAt  DateTime? @db.Timestamptz(3)
   createdAt    DateTime  @default(now()) @db.Timestamptz(3)
   // 아이디 찾기로 준 권한: 발급에 쓴 본인확인과 토큰을 다시 만드는 무작위 값(토큰 = 서버 비밀키 HMAC(nonce), 원문은 저장하지 않음).
   // 응답을 잃은 재시도에 같은 토큰을 다시 돌려준다(auth/accountRecovery.ts).
@@ -291,6 +294,9 @@ model BuyerMember {
   gradeId            String            @db.Uuid
   status             BuyerMemberStatus @default(ACTIVE)
   marketingConsentAt DateTime?         @db.Timestamptz(3)
+  // 지금 마케팅 수신 동의의 문서 버전(동의 중일 때만). 마지막으로 철회한 시각(다시 동의하면 비움). buyers/marketingConsent.ts
+  marketingConsentVersion String?
+  marketingWithdrawnAt    DateTime?    @db.Timestamptz(3)
   // 가입 때 재가입 제한이 켜져 있었으면 그때 기간(일). 가입하며 안내받은(동의한) 기간보다 길게 CI 해시를 보관하지 않으려고 남긴다.
   // 없으면(제한이 꺼져 있을 때 가입) 탈퇴해도 재가입을 제한하지 않는다(buyers/rejoin.ts).
   rejoinRestrictionDaysAgreed Int?
