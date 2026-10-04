@@ -22,7 +22,8 @@ async function loginSeller(page: Page, email: string, password: string, next: st
   await submitSellerLogin(page, email, password);
 }
 
-const meta = (page: Page, key: string) => page.locator(`head meta[property="${key}"], head meta[name="${key}"]`).first();
+// Next 16은 일반 브라우저에 메타데이터를 스트리밍해서, 늦게 준비되면 <head> 대신 <body> 뒤쪽에 넣는다(크롤러에는 head에 넣음): 문서 전체에서 찾는다
+const meta = (page: Page, key: string) => page.locator(`meta[property="${key}"], meta[name="${key}"]`).first();
 
 test("대표자: 공유 미리보기 제목·설명을 저장하면 쇼핑몰 페이지의 공유 정보에 쓰이고, 비우면 쇼핑몰 이름으로 돌아간다", async ({ page }) => {
   await loginSeller(page, "demo-owner@example.com", PASSWORD, "/seller/settings/share");
@@ -58,7 +59,7 @@ test("대표자: 공유 미리보기 제목·설명을 저장하면 쇼핑몰 �
   await expect(meta(page, "og:image")).toHaveAttribute("content", /^https?:\/\/[^/]+\/api\/shop\/demo-shop\/og\.png\?v=[0-9a-f]{12}$/);
   await expect(meta(page, "og:image:width")).toHaveAttribute("content", "1200");
   await expect(meta(page, "twitter:card")).toHaveAttribute("content", "summary_large_image");
-  await expect(page.locator('head link[rel="icon"]').first()).toHaveAttribute("href", /\/branding\/onq-32\.png/);
+  await expect(page.locator('link[rel="icon"]').first()).toHaveAttribute("href", /\/branding\/onq-32\.png/);
   // 화면 제목은 그 화면 것이 우선한다
   await expect(page).toHaveTitle("회원가입 · 카드숍 별빛");
 
@@ -71,7 +72,7 @@ test("대표자: 공유 미리보기 제목·설명을 저장하면 쇼핑몰 �
   await expect(page.getByText("공유 미리보기를 저장했습니다")).toBeVisible();
   await page.goto("/shop/demo-shop/signup");
   await expect(meta(page, "og:title")).toHaveAttribute("content", "카드숍 별빛");
-  await expect(page.locator('head meta[property="og:description"]')).toHaveCount(0);
+  await expect(page.locator('meta[property="og:description"]')).toHaveCount(0);
 });
 
 test("공유 미리보기: 길이를 넘으면 저장할 수 없고, 쇼핑몰 설정 권한이 없는 직원은 볼 수 없다", async ({ page }) => {
@@ -113,8 +114,9 @@ test("공유 이미지 주소는 신뢰 프록시가 없으면 요청자가 보�
 
 test("없는 쇼핑몰 주소는 공유 정보를 만들지 않고 기본값을 쓴다", async ({ page }) => {
   await page.goto("/shop/no-such-shop-zz/signup");
-  await expect(page.locator('head meta[property="og:image"]')).toHaveCount(0);
-  await expect(page.locator('head link[rel="icon"]').first()).toHaveAttribute("href", /\/branding\/onq-32\.png/);
+  // 메타데이터가 다 들어온 뒤(아이콘이 보인 뒤)에 og:image가 없는지 본다
+  await expect(page.locator('link[rel="icon"]').first()).toHaveAttribute("href", /\/branding\/onq-32\.png/);
+  await expect(page.locator('meta[property="og:image"]')).toHaveCount(0);
 });
 
 // 저장 응답이 늦는 동안 칸을 고치면, 늦게 온 응답(보낸 값)이 새로 고친 값을 덮는다: 저장하는 동안은 칸을 잠근다
