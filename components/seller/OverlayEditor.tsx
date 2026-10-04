@@ -13,7 +13,8 @@ import { Toast } from "./States";
 type Layout = { aspect: Aspect; templateKey: string; widgets: Widget[]; version: number; isDefault: boolean };
 type Mine = { id: string; name: string; widgets: Widget[]; createdAt: string };
 type Templates = { builtin: { key: string; name: string; widgets: Widget[] }[]; mine: Mine[] };
-type Confirm = { text: string; ok: string; run: () => void };
+type Confirm = { text: string; detail?: string; ok: string; run: () => void };
+const HISTORY_MAX = 50;
 
 const stable = (w: Widget) => JSON.stringify(w, (_k, v) => (v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : 1))) : v));
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -163,7 +164,7 @@ function ColorInput({ value, label, onCommit }: { value: string | undefined; lab
   );
 }
 
-function ConfirmDialog({ text, ok, onOk, onClose }: { text: string; ok: string; onOk: () => void; onClose: () => void }) {
+function ConfirmDialog({ text, detail, ok, onOk, onClose }: { text: string; detail?: string; ok: string; onOk: () => void; onClose: () => void }) {
   useEffect(() => {
     const k = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", k);
@@ -174,6 +175,7 @@ function ConfirmDialog({ text, ok, onOk, onClose }: { text: string; ok: string; 
       <div className="modal">
         <div className="modal-h">
           <h2 className="t-h2">{text}</h2>
+          {detail && <span className="t-l2 c-alt">{detail}</span>}
         </div>
         <div className="modal-f">
           <button className="btn btn-out" type="button" onClick={onClose}>
@@ -203,15 +205,63 @@ export default function OverlayEditor() {
   const [tplName, setTplName] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
   const seq = useRef(0);
+  // 되돌리기·다시 실행(50단계, 저장·다시 불러오기하면 비움). 같은 곳을 이어서 고치는 동안은 한 단계로 묶는다
+  const hist = useRef({ past: [] as Widget[][], future: [] as Widget[][], key: "", t: 0 });
+  const [, bump] = useState(0);
+  const wref = useRef(widgets);
+  wref.current = widgets;
+  const mark = (key: string) => {
+    const h = hist.current;
+    const t = Date.now();
+    const same = h.key === key && t - h.t < 800;
+    h.key = key;
+    h.t = t;
+    if (same) return;
+    h.past.push(wref.current);
+    if (h.past.length > HISTORY_MAX) h.past.shift();
+    h.future = [];
+    bump((n) => n + 1);
+  };
+  const clearHistory = () => {
+    hist.current = { past: [], future: [], key: "", t: 0 };
+    bump((n) => n + 1);
+  };
+  const undo = () => {
+    const h = hist.current;
+    const prev = h.past.pop();
+    if (!prev) return;
+    h.future.push(wref.current);
+    h.key = "";
+    setWidgets(prev);
+    bump((n) => n + 1);
+  };
+  const redo = () => {
+    const h = hist.current;
+    const next = h.future.pop();
+    if (!next) return;
+    h.past.push(wref.current);
+    h.key = "";
+    setWidgets(next);
+    bump((n) => n + 1);
+  };
+  const [otherCount, setOtherCount] = useState(0);
+  const [full, setFull] = useState(false);
 
   const { w: SW, h: SH } = STAGE[aspect];
 
   const load = useCallback(async (a: Aspect) => {
     const n = ++seq.current;
     setState("loading");
-    const [l, t] = await Promise.all([api<Layout>(`/api/seller/overlay/layout?aspect=${a}`), api<Templates>(`/api/seller/overlay/templates?aspect=${a}`)]);
+    const other = a === "9x16" ? "16x9" : "9x16";
+    const [l, t, o] = await Promise.all([
+      api<Layout>(`/api/seller/overlay/layout?aspect=${a}`),
+      api<Templates>(`/api/seller/overlay/templates?aspect=${a}`),
+      api<Templates>(`/api/seller/overlay/templates?aspect=${other}`),
+    ]);
     if (n !== seq.current) return;
     if (!l.ok || !t.ok) return setState("error");
+    setOtherCount(o.ok ? o.data.mine.length : 0);
+    hist.current = { past: [], future: [], key: "", t: 0 };
     setServer(l.data);
     setWidgets(l.data.widgets);
     setTemplates(t.data);
@@ -238,8 +288,12 @@ export default function OverlayEditor() {
     return () => window.removeEventListener("beforeunload", f);
   }, [changes]);
 
-  const patch = (id: string, p: Partial<Widget>) => setWidgets((cur) => cur.map((w) => (w.id === id ? { ...w, ...p } : w)));
-  const setProp = (id: string, key: string, v: PropValue | null) =>
+  const patch = (id: string, p: Partial<Widget>) => {
+    mark(`patch:${id}:${Object.keys(p).join()}:${Date.now()}`);
+    setWidgets((cur) => cur.map((w) => (w.id === id ? { ...w, ...p } : w)));
+  };
+  const setProp = (id: string, key: string, v: PropValue | null) => {
+    mark(`prop:${id}:${key}`);
     setWidgets((cur) =>
       cur.map((w) => {
         if (w.id !== id) return w;
@@ -249,6 +303,7 @@ export default function OverlayEditor() {
         return { ...w, props };
       }),
     );
+  };
   const setBox = (id: string, b: Partial<Pick<Widget, "x" | "y" | "w" | "h">>) =>
     setWidgets((cur) =>
       cur.map((w) => {
@@ -262,6 +317,11 @@ export default function OverlayEditor() {
       }),
     );
 
+  // 입력 칸·방향키로 위치·크기를 바꿀 때(끌 때는 끌기를 시작할 때 한 번만 기록)
+  const setBoxMarked = (id: string, b: Partial<Pick<Widget, "x" | "y" | "w" | "h">>, key: string) => {
+    mark(`box:${id}:${key}`);
+    setBox(id, b);
+  };
   const toggle = (slot: (typeof SLOTS)[number], on: boolean) => {
     const cur = widgets.find((w) => slotOf(w).key === slot.key);
     if (cur) {
@@ -271,6 +331,7 @@ export default function OverlayEditor() {
     }
     if (!on) return;
     const w = newWidget(slot, aspect, widgets);
+    mark(`add:${Date.now()}`);
     setWidgets([...widgets, w]);
     setSel(w.id);
   };
@@ -283,6 +344,7 @@ export default function OverlayEditor() {
     if (j < 0 || j >= order.length) return;
     [order[i], order[j]] = [order[j]!, order[i]!];
     const z = new Map(order.map((w, k) => [w.id, k]));
+    mark(`z:${Date.now()}`);
     setWidgets(widgets.map((w) => ({ ...w, z: z.get(w.id)! })));
   };
 
@@ -342,6 +404,7 @@ export default function OverlayEditor() {
   const start = (e: React.PointerEvent, w: Widget, mode: string) => {
     e.preventDefault();
     e.stopPropagation();
+    mark(`drag:${Date.now()}`);
     setSel(w.id);
     drag.current = { id: w.id, mode, sx: e.clientX, sy: e.clientY, o: w };
     window.addEventListener("pointermove", onMove);
@@ -355,8 +418,24 @@ export default function OverlayEditor() {
     e.preventDefault();
     const px = e.shiftKey ? 10 : 1;
     const w = widgets.find((x) => x.id === sel);
-    if (w) setBox(w.id, { x: w.x + (k[0]! * px * 100) / SW, y: w.y + (k[1]! * px * 100) / SH });
+    if (w) setBoxMarked(w.id, { x: w.x + (k[0]! * px * 100) / SW, y: w.y + (k[1]! * px * 100) / SH }, "key");
   };
+
+  // Ctrl+Z 되돌리기 · Ctrl+Shift+Z(또는 Ctrl+Y) 다시 실행. 글자를 입력하는 칸에서는 브라우저 기본 동작을 둔다
+  const undoRef = useRef({ undo, redo });
+  undoRef.current = { undo, redo };
+  useEffect(() => {
+    const f = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || /^(INPUT|TEXTAREA|SELECT)$/.test((e.target as HTMLElement).tagName)) return;
+      const k = e.key.toLowerCase();
+      if (k === "z" && !e.shiftKey) undoRef.current.undo();
+      else if ((k === "z" && e.shiftKey) || k === "y") undoRef.current.redo();
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", f);
+    return () => window.removeEventListener("keydown", f);
+  }, []);
 
   // ---- 저장·초기화·템플릿 ----
   const fail = (r: { status: number; message?: string; error?: string }) => {
@@ -367,6 +446,7 @@ export default function OverlayEditor() {
     setServer(l);
     setWidgets(l.widgets);
     setConflict(false);
+    clearHistory();
   };
   const save = async () => {
     if (!server || busy) return;
@@ -375,19 +455,21 @@ export default function OverlayEditor() {
     setBusy(false);
     if (!r.ok) return fail(r);
     apply(r.data);
-    setToast({ text: "저장했습니다" });
+    setToast({ text: "저장했습니다 · 방송 화면에 바로 반영됩니다" });
   };
-  const reset = async (template: string) => {
-    if (!server) return;
-    setBusy(true);
-    const r = await api<Layout>("/api/seller/overlay/layout/reset", { method: "POST", body: { aspect, template, expectedVersion: server.version } });
-    setBusy(false);
-    if (!r.ok) return fail(r);
-    apply(r.data);
-    setSel(null);
-    setToast({ text: "템플릿으로 초기화했습니다" });
-  };
-  const askReset = (template: string, name: string) => setConfirm({ text: `「${name}」 템플릿으로 초기화하시겠습니까? 지금 배치는 바뀝니다`, ok: "초기화", run: () => void reset(template) });
+  // 템플릿으로 초기화: 지금 비율의 배치만 템플릿 값으로 바꾼다(저장하기 전까지는 초안이라 되돌리기로 가져올 수 있다)
+  const askReset = (list: Widget[], name: string) =>
+    setConfirm({
+      text: `「${name}」 템플릿 기본값으로 되돌리시겠습니까?`,
+      detail: `${aspect === "9x16" ? "세로 9:16" : "가로 16:9"} 레이아웃의 위치 · 크기 · 색 · 효과가 모두 처음으로 돌아갑니다 · 다른 비율은 그대로입니다 · 되돌리기로 다시 가져올 수 있습니다.`,
+      ok: "초기화",
+      run: () => {
+        mark(`reset:${Date.now()}`);
+        setWidgets(list);
+        setSel(null);
+        setToast({ text: "템플릿으로 초기화했습니다 · 저장하면 방송 화면에 반영됩니다" });
+      },
+    });
   const saveTemplate = async () => {
     const name = (tplName ?? "").trim();
     if (!name) return;
@@ -396,6 +478,7 @@ export default function OverlayEditor() {
     setBusy(false);
     if (!r.ok) {
       setTplName(null);
+      if (r.status === 409 && r.error === "too_many_templates") return setFull(true);
       return setToast({ text: failMessage(r, "admin"), neg: true });
     }
     setTemplates((t) => (t ? { ...t, mine: [r.data, ...t.mine] } : t));
@@ -406,6 +489,7 @@ export default function OverlayEditor() {
     const r = await api<unknown>(`/api/seller/overlay/templates/${m.id}`, { method: "DELETE" });
     if (!r.ok && r.status !== 404) return setToast({ text: failMessage(r, "admin"), neg: true });
     setTemplates((t) => (t ? { ...t, mine: t.mine.filter((x) => x.id !== m.id) } : t));
+    setFull(false);
     setToast({ text: "템플릿을 지웠습니다" });
   };
   const switchAspect = (a: Aspect) => {
@@ -414,6 +498,7 @@ export default function OverlayEditor() {
     setAspect(a);
   };
 
+  const total = (templates?.mine.length ?? 0) + otherCount;
   const selected = widgets.find((w) => w.id === sel) ?? null;
   const ordered = [...widgets].sort((a, b) => a.z - b.z);
   const listOrder = [...SLOTS].sort((a, b) => {
@@ -453,7 +538,13 @@ export default function OverlayEditor() {
             )}
           </div>
           <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-            <button className="btn btn-out" type="button" disabled={busy || widgets.length === 0} onClick={() => setTplName("")}>
+            <button className="btn btn-out" type="button" title="Ctrl+Z" disabled={hist.current.past.length === 0} onClick={undo}>
+              되돌리기
+            </button>
+            <button className="btn btn-out" type="button" title="Ctrl+Shift+Z" disabled={hist.current.future.length === 0} onClick={redo}>
+              다시 실행
+            </button>
+            <button className="btn btn-out" type="button" disabled={busy || widgets.length === 0 || total >= MAX_TEMPLATES} onClick={() => setTplName("")}>
               내 템플릿으로 저장
             </button>
             <button className="btn" type="button" disabled={busy || changes === 0} onClick={() => void save()}>
@@ -464,10 +555,18 @@ export default function OverlayEditor() {
 
         {conflict && (
           <div className="msg msg-neg row between" role="alert" data-testid="ove-conflict" style={{ gap: 8, flexWrap: "wrap" }}>
-            <span>다른 창에서 먼저 저장했습니다</span>
-            <button className="btn btn-sm btn-out" type="button" onClick={() => void load(aspect)}>
-              다시 불러오기
-            </button>
+            <span className="col" style={{ gap: 2 }}>
+              <b>다른 창에서 {aspect === "9x16" ? "세로 9:16" : "가로 16:9"} 레이아웃을 먼저 저장했습니다</b>
+              <span>최신 내용을 불러온 뒤 다시 바꿔 주십시오 · 지금 바꾼 내용은 내 템플릿으로 남겨 둘 수 있습니다</span>
+            </span>
+            <span className="row" style={{ gap: 6 }}>
+              <button className="btn btn-sm btn-out" type="button" disabled={total >= MAX_TEMPLATES} onClick={() => setTplName("")}>
+                내 변경을 템플릿으로 저장
+              </button>
+              <button className="btn btn-sm" type="button" onClick={() => void load(aspect)}>
+                최신 내용 불러오기
+              </button>
+            </span>
           </div>
         )}
 
@@ -587,7 +686,7 @@ export default function OverlayEditor() {
                         min={k === "w" || k === "h" ? MIN_SIZE : 0}
                         max={100}
                         step={0.1}
-                        onCommit={(n) => setBox(selected.id, { [k]: n })}
+                        onCommit={(n) => setBoxMarked(selected.id, { [k]: n }, k)}
                       />
                     </label>
                   ))}
@@ -617,14 +716,19 @@ export default function OverlayEditor() {
         </h2>
         <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
           {templates?.builtin.map((t) => (
-            <button key={t.key} className="btn btn-out" type="button" disabled={busy} onClick={() => askReset(t.key, t.name)}>
+            <button key={t.key} className="btn btn-out" type="button" disabled={busy} onClick={() => askReset(t.widgets, t.name)}>
               {t.name}
             </button>
           ))}
         </div>
+        {(full || total >= MAX_TEMPLATES) && (
+          <div className="msg msg-cau" role="status" data-testid="ove-full">
+            내 템플릿은 20개까지입니다. 하나를 지우면 저장할 수 있습니다
+          </div>
+        )}
         <table className="tbl ove-tbl" data-testid="ove-mine">
           <caption className="t-l2 c-alt" style={{ textAlign: "left", paddingBottom: 6 }}>
-            내 템플릿 {templates?.mine.length ?? 0}/{MAX_TEMPLATES}개 · 지금 비율({aspect === "9x16" ? "세로" : "가로"})에 저장한 것만 보입니다
+            내 템플릿 {total} / {MAX_TEMPLATES} · 비율마다 따로 저장되고 지금 비율({aspect === "9x16" ? "세로" : "가로"})에 저장한 것만 보입니다
           </caption>
           <thead>
             <tr>
@@ -647,7 +751,7 @@ export default function OverlayEditor() {
                 <td>{new Date(m.createdAt).toLocaleDateString("ko-KR")}</td>
                 <td>
                   <span className="row" style={{ gap: 6, justifyContent: "center" }}>
-                    <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={() => askReset(m.id, m.name)}>
+                    <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={() => askReset(m.widgets, m.name)}>
                       적용
                     </button>
                     <button
@@ -669,6 +773,7 @@ export default function OverlayEditor() {
       {confirm && (
         <ConfirmDialog
           text={confirm.text}
+          detail={confirm.detail}
           ok={confirm.ok}
           onClose={() => setConfirm(null)}
           onOk={() => {

@@ -65,9 +65,21 @@ test("위치·크기·속성을 고쳐 저장하면 서버에 남고, 오버레�
   await page.getByLabel("명예의 전당 보이기").check();
   await expect(page.getByTestId("ove-dirty")).toHaveText("저장 안 한 변경 3개");
 
+  // 되돌리기·다시 실행(Ctrl+Z · Ctrl+Shift+Z): 명예의 전당 켜기를 되돌렸다가 다시 실행
+  await page.getByRole("button", { name: "되돌리기" }).click();
+  await expect(page.getByTestId("ove-dirty")).toHaveText("저장 안 한 변경 2개");
+  await page.getByRole("button", { name: "다시 실행" }).click();
+  await expect(page.getByTestId("ove-dirty")).toHaveText("저장 안 한 변경 3개");
+  await page.getByTestId("ove-canvas").focus();
+  await page.keyboard.press("Control+z");
+  await expect(page.getByTestId("ove-dirty")).toHaveText("저장 안 한 변경 2개");
+  await page.keyboard.press("Control+Shift+z");
+  await expect(page.getByTestId("ove-dirty")).toHaveText("저장 안 한 변경 3개");
+
   await page.getByRole("button", { name: "저장하기" }).click();
-  await expect(toast(page)).toContainText("저장했습니다");
+  await expect(toast(page)).toContainText("저장했습니다 · 방송 화면에 바로 반영됩니다");
   await expect(page.getByTestId("ove-dirty")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "되돌리기" })).toBeDisabled();
 
   const saved = await layout(page);
   const cur = saved.widgets.find((w) => w.id === "current")!;
@@ -111,29 +123,34 @@ test("다른 창에서 먼저 저장했으면 안내하고, 다시 불러오면 
   await other.close();
 
   await page.getByRole("button", { name: "저장하기" }).click();
-  await expect(page.getByTestId("ove-conflict")).toContainText("다른 창에서 먼저 저장했습니다");
-  await page.getByRole("button", { name: "다시 불러오기" }).click();
+  await expect(page.getByTestId("ove-conflict")).toContainText("다른 창에서 세로 9:16 레이아웃을 먼저 저장했습니다");
+  await page.getByRole("button", { name: "최신 내용 불러오기" }).click();
   await expect(page.getByTestId("ove-conflict")).toHaveCount(0);
   await expect(page.getByTestId("ove-dirty")).toHaveCount(0);
   await reset(page);
 });
 
-test("템플릿으로 초기화하고, 내 템플릿을 저장·적용·삭제한다", async ({ page }) => {
+test("템플릿으로 초기화(초안)하고 되돌릴 수 있으며, 내 템플릿을 저장·적용·삭제한다", async ({ page }) => {
   await login(page);
   await reset(page);
   await page.reload();
   await expect(page.getByTestId("ove-canvas")).toBeVisible();
 
-  // 바꾼 뒤 스포트라이트로 초기화(확인 창을 거친다)
-  await page.getByRole("button", { name: "현재 주문", exact: true }).click();
-  await page.getByLabel("가로 위치").fill("11");
+  // 스포트라이트로 초기화: 확인 창 → 초안(저장 전)으로 바뀌고, 되돌리기로 돌아간다
   await page.getByRole("button", { name: "현재 주문·명예의 전당 강조" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "초기화" }).click();
   await expect(toast(page)).toContainText("템플릿으로 초기화했습니다");
+  await expect(page.getByTestId("ove-dirty")).toBeVisible();
+  expect((await layout(page)).widgets.some((w) => w.type === "HALL_OF_FAME")).toBe(false);
+  await page.getByRole("button", { name: "되돌리기" }).click();
   await expect(page.getByTestId("ove-dirty")).toHaveCount(0);
+  await page.getByRole("button", { name: "다시 실행" }).click();
+  await page.getByRole("button", { name: "저장하기" }).click();
+  await expect(toast(page)).toContainText("저장했습니다");
   expect((await layout(page)).widgets.some((w) => w.type === "HALL_OF_FAME" && w.visible)).toBe(true);
 
-  // 내 템플릿 저장
+  // 내 템플릿 저장(N / 20 표시)
+  await expect(page.getByTestId("ove-mine")).toContainText("내 템플릿");
   await page.getByRole("button", { name: "내 템플릿으로 저장" }).click();
   await page.getByLabel("템플릿 이름").fill(NAME);
   await page.getByRole("dialog").getByRole("button", { name: "저장", exact: true }).click();
@@ -141,13 +158,14 @@ test("템플릿으로 초기화하고, 내 템플릿을 저장·적용·삭제�
   const row = page.getByTestId("ove-mine-row").filter({ hasText: NAME });
   await expect(row).toHaveCount(1);
 
-  // 기본으로 돌린 뒤 내 템플릿 적용
+  // 기본으로 돌린 뒤 저장, 내 템플릿 적용 후 저장
   await page.getByRole("button", { name: "주문대기 중심" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "초기화" }).click();
-  await expect(toast(page)).toContainText("템플릿으로 초기화했습니다");
-  expect((await layout(page)).widgets.some((w) => w.type === "HALL_OF_FAME")).toBe(false);
+  await page.getByRole("button", { name: "저장하기" }).click();
+  await expect.poll(async () => (await layout(page)).widgets.some((w) => w.type === "HALL_OF_FAME")).toBe(false);
   await row.getByRole("button", { name: "적용" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "초기화" }).click();
+  await page.getByRole("button", { name: "저장하기" }).click();
   await expect.poll(async () => (await layout(page)).widgets.some((w) => w.type === "HALL_OF_FAME")).toBe(true);
 
   // 삭제
@@ -155,4 +173,22 @@ test("템플릿으로 초기화하고, 내 템플릿을 저장·적용·삭제�
   await page.getByRole("dialog").getByRole("button", { name: "삭제" }).click();
   await expect(page.getByTestId("ove-mine-row").filter({ hasText: NAME })).toHaveCount(0);
   await reset(page);
+});
+
+test("내 템플릿이 20개면 저장을 막고 안내한다", async ({ page }) => {
+  await login(page);
+  await reset(page);
+  const l = await layout(page);
+  const ids: string[] = [];
+  for (let i = 0; i < 20; i++) {
+    const r = await call<{ id: string }>(page, "/api/seller/overlay/templates", "POST", { name: `${NAME}-${i}`, aspect: "9x16", widgets: l.widgets });
+    if (r.status === 201) ids.push(r.data.id);
+  }
+  try {
+    await page.reload();
+    await expect(page.getByTestId("ove-full")).toContainText("내 템플릿은 20개까지입니다");
+    await expect(page.getByRole("button", { name: "내 템플릿으로 저장" })).toBeDisabled();
+  } finally {
+    for (const id of ids) await call(page, `/api/seller/overlay/templates/${id}`, "DELETE");
+  }
 });
