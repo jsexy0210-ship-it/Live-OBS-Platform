@@ -825,14 +825,16 @@ test("직원 목록 다시 읽기가 겹쳐 나중 요청이 실패해도 먼저
   await dialog.getByLabel("이름").fill(`${s.name}가`);
   await dialog.getByRole("button", { name: "저장" }).click();
   await expect(page.getByText(`${s.name}가 정보를 저장했습니다`)).toBeVisible();
-  // 두 번째 수정(권한) → 두 번째 다시 읽기는 실패
-  await page.getByRole("button", { name: `${s.name} 정보 · 권한 수정` }).click();
+  // 두 번째 수정(권한) → 두 번째 다시 읽기는 실패: 낡은 목록일 수 있다고 알린다(서버가 확정한 값은 행에 이미 반영)
+  await page.getByRole("button", { name: `${s.name}가 정보 · 권한 수정` }).click();
   await dialog.getByRole("checkbox", { name: "상품", exact: true }).check();
   const failed = page.waitForResponse((r) => r.url().endsWith("/api/seller/staff") && r.request().method() === "GET" && r.status() === 500);
   await dialog.getByRole("button", { name: "저장" }).click();
   await failed;
-  // 첫 다시 읽기가 늦게 성공한다 → 수정된 목록이 보인다
+  await expect(page.getByTestId("staff-stale")).toBeVisible();
+  // 첫 다시 읽기가 늦게 성공한다 → 그 목록을 반영하고 낡음 안내를 지운다(나중 요청의 실패가 앞선 성공을 버리지 않음)
   release();
+  await expect(page.getByTestId("staff-stale")).toHaveCount(0);
   await expect(row(page, s.email)).toContainText(`${s.name}가`);
   await page.unrouteAll();
 });
