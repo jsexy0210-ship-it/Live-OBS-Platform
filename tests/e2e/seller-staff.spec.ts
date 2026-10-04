@@ -30,10 +30,10 @@ async function login(page: Page, email: string, password = PASSWORD, next = "/se
   await page.getByRole("button", { name: "로그인" }).click();
 }
 
-// 본인확인을 쓸 수 있는 서버(개발·테스트 모드)에서는 연결 전 직원이 로그인하면 연결 안내(AU-012)로 간다: 「나중에 할게요」로 넘긴다
+// 본인확인을 쓸 수 있는 서버(개발·테스트 모드)에서는 연결 전 직원이 로그인하면 연결 안내(AU-012)로 간다: 「나중에 하기」로 넘긴다
 async function skipIdentityLink(page: Page) {
   await page.waitForURL((u) => u.pathname !== "/seller/login");
-  if (new URL(page.url()).pathname === "/seller/identity-link") await page.getByRole("button", { name: "나중에 할게요" }).click();
+  if (new URL(page.url()).pathname === "/seller/identity-link") await page.getByRole("button", { name: "나중에 하기" }).click();
 }
 
 const uniq = () => `${Date.now().toString(36).slice(-5)}${Math.floor(Math.random() * 36 ** 2).toString(36)}`;
