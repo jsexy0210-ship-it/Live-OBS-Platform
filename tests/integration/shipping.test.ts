@@ -7,7 +7,7 @@ import { loginBuyer, loginSeller } from "../../lib/server/auth/login";
 import { prisma } from "../../lib/server/db";
 import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
 import { createOrder } from "../../lib/server/orders/create";
-import { ORDER_ERROR_MESSAGES } from "../../lib/server/orders/messages";
+import { ORDER_ERROR_MESSAGES, ORDER_ERROR_MESSAGES_FORMAL } from "../../lib/server/orders/messages";
 import { shipOrder } from "../../lib/server/orders/ship";
 import { markOrderPaid, refundOrder } from "../../lib/server/queue/service";
 import type { TenantContext } from "../../lib/server/tenant/context";
@@ -289,7 +289,7 @@ describe("즉시 발송 처리", () => {
     const pending = await s.order(1);
     const res = await call(await sellerCookie(s.owner.email), pending.orderId);
     expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: "not_shippable", message: "결제가 끝난 주문만 발송할 수 있어요" });
+    expect(await res.json()).toEqual({ error: "not_shippable", message: "결제가 끝난 주문만 발송할 수 있습니다" });
   });
 
   it("주문 조회: 배송지는 고객정보 권한이 있을 때만 주고(열람 기록), 없으면 도서산간 여부만", async () => {
@@ -349,7 +349,7 @@ describe("판매자 배송비 설정 API", () => {
     ]) {
       const res = await put(cookie, body);
       expect(res.status).toBe(400);
-      expect(await res.json()).toEqual({ error: "invalid_shipping_policy", message: ORDER_ERROR_MESSAGES.invalid_shipping_policy });
+      expect(await res.json()).toEqual({ error: "invalid_shipping_policy", message: ORDER_ERROR_MESSAGES_FORMAL.invalid_shipping_policy });
     }
     expect(await db.sellerShippingPolicy.count()).toBe(0);
     const staff = await createSellerUser(s.seller.id, { permissions: ["ORDER_SHIPPING"] });

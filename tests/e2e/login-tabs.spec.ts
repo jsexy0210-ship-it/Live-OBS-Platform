@@ -100,7 +100,7 @@ test("대표자 탭에서 쇼핑몰 주소를 물은 뒤 직원 탭으로 바꾸
     bodies.push(route.request().postDataJSON());
     if (!first) return route.continue();
     first = false;
-    return route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ error: "shop_required", message: "로그인할 쇼핑몰 주소를 넣어 주세요" }) });
+    return route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ error: "shop_required", message: "로그인할 쇼핑몰을 골라 주십시오" }) });
   });
   await page.goto("/seller/login");
   await page.getByLabel("이메일").fill("demo-staff@example.com");

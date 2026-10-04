@@ -14,6 +14,6 @@ export const POST = mutation(async (req: Request, { params }: { params: Promise<
   if (!UUID.test(buyerMemberId)) return NextResponse.json({ error: "not_found" }, { status: 404 });
   const body = await readJson<{ reason: unknown }>(req);
   const r = await liftRestriction(prisma, ctx, buyerMemberId, body.reason);
-  if (!r.ok) return NextResponse.json(orderErrorBody(r.reason), { status: r.reason === "invalid_reason" ? 400 : 404 });
+  if (!r.ok) return NextResponse.json(orderErrorBody(r.reason, "formal"), { status: r.reason === "invalid_reason" ? 400 : 404 });
   return NextResponse.json(r.value);
 });

@@ -15,7 +15,7 @@ const NO_STORE = { "cache-control": "no-store" };
 // 응답을 잃어 같은 본인확인·같은 계정으로 소진 뒤 10분 안에 다시 보내면 새 권한을 주고 이전 권한은 무효로 바꾼다.
 export const POST = mutation(async (req: Request) => {
   const provider = identityProvider();
-  if (!provider) return identityUnavailable();
+  if (!provider) return identityUnavailable("formal");
   const body = await readJson<{ verificationId: unknown; accountType: unknown; accountId: unknown }>(req);
   const accountType = parseAccountType(body.accountType);
   if (!accountType) return NextResponse.json({ error: "bad_request" }, { status: 400, headers: NO_STORE });

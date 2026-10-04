@@ -8,7 +8,7 @@ import { impersonateSeller, requireAdmin } from "../../lib/server/authz/guards";
 import { prisma } from "../../lib/server/db";
 import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
 import { createOrder } from "../../lib/server/orders/create";
-import { ORDER_ERROR_MESSAGES } from "../../lib/server/orders/messages";
+import { ORDER_ERROR_MESSAGES, ORDER_ERROR_MESSAGES_FORMAL } from "../../lib/server/orders/messages";
 import { INT4_MAX } from "../../lib/server/orders/shipping";
 import {
   createOption,
@@ -133,11 +133,11 @@ describe("이름에 숨은 글자·깨진 글자", () => {
       }),
     );
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ error: "invalid_product", message: ORDER_ERROR_MESSAGES.invalid_product });
+    expect(await res.json()).toEqual({ error: "invalid_product", message: ORDER_ERROR_MESSAGES_FORMAL.invalid_product });
     const price = await createRoute(
       new Request("http://localhost:3000/api/seller/products", { method: "POST", headers: { ...H, cookie: await cookie(s.owner.email) }, body: JSON.stringify({ name: "x", price: 0 }) }),
     );
-    expect(await price.json()).toEqual({ error: "invalid_price", message: "가격은 1원 이상, 21억 원 이하로 입력해 주세요. 옵션 추가금을 더한 가격도 같아요" });
+    expect(await price.json()).toEqual({ error: "invalid_price", message: "가격은 1원 이상, 21억 원 이하로 입력해 주십시오. 옵션 추가금을 더한 가격도 같습니다" });
   });
 });
 
@@ -234,7 +234,7 @@ describe("목록 이름 검색(q)", () => {
     for (const bad of ["가".repeat(51), "팩\u0000", "\u200b", "\ufeff", "\t", "\n", " \t "]) {
       const r = await get(bad);
       expect(r.status, JSON.stringify(bad)).toBe(400);
-      expect(await r.json()).toEqual({ error: "invalid_search", message: ORDER_ERROR_MESSAGES.invalid_search });
+      expect(await r.json()).toEqual({ error: "invalid_search", message: ORDER_ERROR_MESSAGES_FORMAL.invalid_search });
     }
     const ok = await get("가".repeat(49) + "팩");
     expect(ok.status).toBe(200);
@@ -479,7 +479,7 @@ describe("판매자 격리·권한", () => {
       createRoute(new Request("http://localhost:3000/api/seller/products", { method: "POST", headers: { ...headers, cookie: c }, body: JSON.stringify(body) }));
     const bad = await create({ name: "x", price: 1000, options: [{ name: "o", priceDelta: -1000 }] });
     expect(bad.status).toBe(400);
-    expect(await bad.json()).toEqual({ error: "invalid_price", message: ORDER_ERROR_MESSAGES.invalid_price });
+    expect(await bad.json()).toEqual({ error: "invalid_price", message: ORDER_ERROR_MESSAGES_FORMAL.invalid_price });
     const ok = await create({ name: "부스터 팩", price: 1000, options: [{ name: "o", stock: 2 }] });
     expect(ok.status).toBe(201);
     const p = await ok.json();
@@ -496,7 +496,7 @@ describe("판매자 격리·권한", () => {
       );
     const conflict = await optionCall(optionPatchRoute, "PATCH", { stock: 9, expectedStock: 1 });
     expect(conflict.status).toBe(409);
-    expect(await conflict.json()).toEqual({ error: "stock_conflict", message: ORDER_ERROR_MESSAGES.stock_conflict });
+    expect(await conflict.json()).toEqual({ error: "stock_conflict", message: ORDER_ERROR_MESSAGES_FORMAL.stock_conflict });
     expect((await optionCall(optionDeleteRoute, "DELETE")).status).toBe(200);
 
     expect((await create({ name: "y", price: 1000 }, { ...H, origin: "http://evil.example" })).status).toBe(403);

@@ -52,7 +52,7 @@ test("비밀번호가 틀리면 안내하고 로그인하지 않는다", async (
   await page.getByLabel("이메일").fill(OWNER);
   await page.getByLabel("비밀번호").fill("wrong-password-x");
   await page.getByRole("button", { name: "로그인" }).click();
-  await expect(page.getByText("이메일이나 비밀번호가 맞지 않아요")).toBeVisible();
+  await expect(page.getByText("이메일이나 비밀번호가 맞지 않습니다")).toBeVisible();
   await expect(page).toHaveURL(/\/seller\/login/);
   await shot(page, "AU-002-error");
 });
