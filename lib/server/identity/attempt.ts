@@ -9,6 +9,8 @@ import { hashToken } from "../auth/token";
 export const FIRST_SEND_WINDOW_MS = 20_000;
 // 보내는 중(409 start_in_progress)일 때 화면에 보여 줄 문구
 export const START_IN_PROGRESS_MESSAGE = "인증번호를 보내고 있어요. 잠시 뒤 다시 시도해 주세요";
+// 파트너스 아이디·비밀번호 찾기·직원 본인확인 연결(합니다체)
+export const START_IN_PROGRESS_MESSAGE_FORMAL = "인증번호를 보내고 있습니다. 잠시 뒤 다시 시도해 주십시오";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

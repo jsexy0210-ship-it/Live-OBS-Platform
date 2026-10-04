@@ -13,6 +13,6 @@ export const POST = mutation(async (req: Request, { params }: { params: Promise<
   const { productId } = await params;
   if (!UUID.test(productId)) return NextResponse.json({ error: "not_found" }, { status: 404 });
   const r = await createOption(prisma, ctx, productId, await readJson(req));
-  if (!r.ok) return NextResponse.json(orderErrorBody(r.reason), { status: 400 });
+  if (!r.ok) return NextResponse.json(orderErrorBody(r.reason, "formal"), { status: 400 });
   return NextResponse.json(r.value, { status: 201 });
 });

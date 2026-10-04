@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireSeller } from "../../../../../../lib/server/authz/guards";
 import { prisma } from "../../../../../../lib/server/db";
 import { mutation, readJson, requestMeta, sessionToken, setFlowCookie } from "../../../../../../lib/server/http/route";
-import { START_IN_PROGRESS_MESSAGE } from "../../../../../../lib/server/identity/attempt";
+import { START_IN_PROGRESS_MESSAGE_FORMAL } from "../../../../../../lib/server/identity/attempt";
 import { identityFailure } from "../../../../../../lib/server/identity/http";
 import { identityProvider, identityUnavailable } from "../../../../../../lib/server/identity/registry";
 import { startStaffLink } from "../../../../../../lib/server/sellers/staffIdentity";
@@ -17,16 +17,16 @@ const NO_STORE = { "cache-control": "no-store" };
 export const POST = mutation(async (req: Request) => {
   const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "ACCOUNT" });
   const provider = identityProvider();
-  if (!provider) return identityUnavailable();
+  if (!provider) return identityUnavailable("formal");
   const body = await readJson<Record<string, unknown>>(req);
   const r = await startStaffLink(prisma, provider, ctx, body, { ...requestMeta(req), attemptKey: body.attemptKey });
   if (!r.ok) {
     if (r.reason === "phone_not_registered" || r.reason === "identity_mismatch") {
       return NextResponse.json({ error: r.reason, message: STAFF_LINK_MESSAGES[r.reason] }, { status: 409, headers: NO_STORE });
     }
-    if (r.reason === "start_in_progress") return NextResponse.json({ error: r.reason, message: START_IN_PROGRESS_MESSAGE }, { status: 409, headers: NO_STORE });
+    if (r.reason === "start_in_progress") return NextResponse.json({ error: r.reason, message: START_IN_PROGRESS_MESSAGE_FORMAL }, { status: 409, headers: NO_STORE });
     if (r.reason === "link_limit_exceeded") return NextResponse.json({ error: r.reason, message: STAFF_LINK_MESSAGES[r.reason] }, { status: 429, headers: NO_STORE });
-    return identityFailure(r.reason);
+    return identityFailure(r.reason, "formal");
   }
   const res = NextResponse.json({ verificationId: r.verificationId }, { headers: NO_STORE });
   setFlowCookie(res, STAFF_LINK_IDV_COOKIE, r.ownerToken, STAFF_LINK_PATH, 20 * 60);
