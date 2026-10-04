@@ -444,29 +444,45 @@ describe("권한·테넌트·공개 목록", () => {
   });
 });
 
-describe("잠금 순서(회원 → 주문 → 리뷰 → 원장)", () => {
-  it("탈퇴처럼 회원 행을 잡은 뒤 그 회원의 주문 행을 바꿔도 교착이 없다: 리뷰 쓰기는 회원에서 기다리고 주문을 쥐지 않는다(Codex 4177123328)", async () => {
+describe("잠금 순서(주문 → 회원 → 리뷰 → 원장)", () => {
+  it("구매 확정 주문의 리뷰 쓰기(주문 → 회원)와 그 회원의 탈퇴가 겹쳐도 교착·500이 없다: 탈퇴도 주문을 회원보다 먼저 잠근다(Codex 4177123328)", async () => {
     const s = await shop();
-    await setPolicy(s, { rewardText: 500 });
     const item = await s.delivered();
+    await db.order.update({ where: { id: item.orderId }, data: { purchaseConfirmedAt: new Date() } });
     const r = await created(s, item.id);
     let go!: () => void;
     let locked!: () => void;
     const proceed = new Promise<void>((res) => (go = res));
-    const memberLocked = new Promise<void>((res) => (locked = res));
-    // 탈퇴와 같은 순서: 회원 행 NO KEY UPDATE → 그 회원의 주문 행 갱신(보존 기한)
-    const withdraw = db.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT "id" FROM "BuyerMember" WHERE "id" = ${s.buyer.id}::uuid FOR NO KEY UPDATE`;
+    const orderLocked = new Promise<void>((res) => (locked = res));
+    // 리뷰 쓰기와 같은 순서: 주문 FOR SHARE → (탈퇴가 기다리기 시작한 뒤) 작성자 회원 FOR SHARE → 리뷰 FOR UPDATE
+    const review = db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "Order" WHERE "id" = ${item.orderId}::uuid FOR SHARE`;
       locked();
       await proceed;
-      await tx.$executeRaw`UPDATE "Order" SET "status" = "status" WHERE "id" = ${item.orderId}::uuid`;
+      await tx.$queryRaw`SELECT "id" FROM "BuyerMember" WHERE "id" = ${s.buyer.id}::uuid FOR SHARE`;
+      await tx.$queryRaw`SELECT "id" FROM "ProductReview" WHERE "id" = ${r.reviewId}::uuid FOR UPDATE`;
     }, { timeout: 20_000 });
-    await memberLocked;
-    const editing = reviewPut(json("/x", "PUT", s.b1, { rating: 4, body: BODY }), p({ slug: s.slug, reviewId: r.reviewId }));
+    await orderLocked;
+    const withdrawing = withdrawBuyer(db, { sellerId: s.seller.id, buyerMemberId: s.buyer.id }, { password: PASSWORD });
     await waitForLockWaiter();
     go();
-    await withdraw;
-    expect((await editing).status).toBe(200);
+    await review;
+    expect(await withdrawing).toEqual({ ok: true });
+    expect((await db.productReview.findUniqueOrThrow({ where: { id: r.reviewId } })).authorNickname).toBe("탈퇴 회원");
+  });
+
+  it("리뷰 고치기와 탈퇴를 실제로 동시에 해도 500·교착이 없다", async () => {
+    const s = await shop();
+    const item = await s.delivered();
+    await db.order.update({ where: { id: item.orderId }, data: { purchaseConfirmedAt: new Date() } });
+    const r = await created(s, item.id);
+    const [ed, wd] = await Promise.allSettled([
+      reviewPut(json("/x", "PUT", s.b1, { rating: 4, body: BODY }), p({ slug: s.slug, reviewId: r.reviewId })),
+      withdrawBuyer(db, { sellerId: s.seller.id, buyerMemberId: s.buyer.id }, { password: PASSWORD }),
+    ]);
+    expect(wd).toEqual({ status: "fulfilled", value: { ok: true } });
+    expect(ed.status).toBe("fulfilled");
+    if (ed.status === "fulfilled") expect(ed.value.status).not.toBe(500);
   });
 
   it("환불이 주문을 바꾸는 중이면 리뷰 작성은 기다렸다가 환불된 주문으로 보고 거절한다(리뷰·적립 없음, Codex 4176882125)", async () => {

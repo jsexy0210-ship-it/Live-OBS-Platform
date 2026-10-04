@@ -92,6 +92,9 @@ export async function withdrawBuyer(
       if (cur?.status !== "PENDING_PAYMENT") return "orders_in_progress" as const;
       pending.push(o.id);
     }
+    // 전역 잠금 순서(주문 → 회원 → 리뷰 → 원장): 아래에서 바꾸는 이 회원의 주문 행(닉네임 비식별·보관 기한 갱신)을 회원 행보다 먼저
+    // id 순으로 잠근다(결제 대기 주문 확인 뒤, 회원 행 앞). 상품 리뷰 쓰기는 주문(FOR SHARE) → 회원(FOR SHARE) 순서라, 회원을 쥔 채 주문을 기다리면 교착이 생긴다(product-reviews).
+    await tx.$queryRaw`SELECT "id" FROM "Order" WHERE "sellerId" = ${scope.sellerId}::uuid AND "buyerMemberId" = ${member.id}::uuid ORDER BY "id" FOR NO KEY UPDATE`;
     await tx.$queryRaw`SELECT "id" FROM "BuyerMember" WHERE "id" = ${member.id}::uuid FOR NO KEY UPDATE`;
     // 재가입 제한은 지금 동의 상태로 정한다(PRODUCT_SCOPE, 개인정보 보호법 제37조). 잠금 전에 읽은 값은 그사이 철회됐을 수 있다.
     const { rejoinRestrictionDaysAgreed } = await tx.buyerMember.findUniqueOrThrow({ where: { id: member.id }, select: { rejoinRestrictionDaysAgreed: true } });
