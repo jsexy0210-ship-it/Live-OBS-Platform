@@ -1,0 +1,100 @@
+# obs-test 서버 시험 데이터 넣기(시험 판매자 계정 1개·시험 쇼핑몰·상품, 마스터 관리자 시험 계정 1개). 절차: docs/DEPLOY.md 「시험 데이터 넣기」
+# - 수동 실행(workflow_dispatch)만. main·이 저장소일 때만 job이 돈다(대표님 승인 2026-10-04).
+# - scripts/seed-obs-test.mjs를 서버의 마이그레이션 이미지(obs-web-migrate)로 실행한다. OBS_TEST_MODE=1인 서버에서만 동작한다.
+# - 판매자·관리자 중 넣은 쪽만 만든다. 판매자가 이미 있으면 판매자는 건너뛰고, 같은 아이디의 관리자가 있으면 관리자는 만들지 않는다(스크립트 동작).
+# - 비밀번호는 실행 입력으로만 받고, 이벤트 파일에서 읽어 쓰기 전에 로그에서 가린다. 서버 비밀값은 /opt/obs/.env에서 이 명령에만 넘긴다.
+name: Seed obs-test
+
+on:
+  workflow_dispatch:
+    inputs:
+      login:
+        description: "시험 판매자 로그인 아이디(비우면 판매자는 만들지 않음)"
+        required: false
+        type: string
+      password:
+        description: "시험 판매자 비밀번호(테스트 서버 전용)"
+        required: false
+        type: string
+      admin_login:
+        description: "마스터 관리자(최고관리자) 시험 로그인 아이디(비우면 관리자는 만들지 않음)"
+        required: false
+        type: string
+      admin_password:
+        description: "마스터 관리자 시험 비밀번호(테스트 서버 전용)"
+        required: false
+        type: string
+      enable_test_mode:
+        description: "테스트 서버 모드(OBS_TEST_MODE=1)가 꺼져 있으면 .env에 켜고 앱을 다시 띄운 뒤 진행(대표님 승인 2026-10-04)"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-obs-test
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    name: Seed obs-test
+    if: github.ref == 'refs/heads/main' && github.repository == 'jsexy0210-ship-it/Live-OBS-Platform'
+    runs-on: [self-hosted, obs-kakao]
+    environment: obs-test
+    timeout-minutes: 15
+    env:
+      ENV_FILE: /opt/obs/.env
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Run seed
+        # 비밀번호는 step env나 ${{ }}로 넘기지 않는다(러너가 실행 전에 env·스크립트를 로그에 찍어 가리기 전에 노출됨).
+        # 이벤트 파일에서 직접 읽고, 쓰기 전에 가린다.
+        run: |
+          set -euo pipefail
+          command -v python3 >/dev/null || { echo "러너에 python3가 필요해요."; exit 1; }
+          # 줄바꿈이 든 값은 add-mask가 첫 줄만 가리므로 값을 출력하지 않고 거절한다. 비운 선택 입력은 빈 값으로 읽는다.
+          read_input() { python3 -c 'import json,os,sys;v=json.load(open(os.environ["GITHUB_EVENT_PATH"])).get("inputs",{}).get(sys.argv[1]);v="" if v is None else str(v);sys.exit("입력값에 줄바꿈을 넣을 수 없어요.") if ("\n" in v or "\r" in v) else print(v)' "$1"; }
+          SEED_SELLER_PASSWORD="$(read_input password)"
+          [ -z "$SEED_SELLER_PASSWORD" ] || echo "::add-mask::$SEED_SELLER_PASSWORD"
+          SEED_SELLER_LOGIN="$(read_input login)"
+          SEED_ADMIN_PASSWORD="$(read_input admin_password)"
+          [ -z "$SEED_ADMIN_PASSWORD" ] || echo "::add-mask::$SEED_ADMIN_PASSWORD"
+          SEED_ADMIN_LOGIN="$(read_input admin_login)"
+          test -f "$ENV_FILE" || { echo "$ENV_FILE 이 없어요(docs/DEPLOY.md 「서버 .env」)."; exit 1; }
+          C="docker compose -p obs-web -f deploy/docker-compose.yml --env-file $ENV_FILE"
+          # 지금 떠 있는 앱 이미지 버전을 그대로 써서 새로 빌드하지 않는다
+          APP_VERSION="$(docker ps -a --filter label=com.docker.compose.project=obs-web --filter label=com.docker.compose.service=obs-web-app --format '{{.Image}}' | head -1 | cut -d: -f2)"
+          [ -n "$APP_VERSION" ] || { echo "배포된 앱이 없어요. Deploy obs-test를 먼저 실행해 주세요."; exit 1; }
+          export APP_VERSION
+          # 앱이 실제로 쓰는 값을 떠 있는 앱 컨테이너에서 읽는다(.env의 따옴표·공백 차이로 앱과 다르게 읽히지 않게)
+          app="$(docker ps --filter label=com.docker.compose.project=obs-web --filter label=com.docker.compose.service=obs-web-app --format '{{.ID}}' | head -1)"
+          [ -n "$app" ] || { echo "앱 컨테이너가 떠 있지 않아요. Deploy obs-test를 먼저 실행해 주세요."; exit 1; }
+          OBS_TEST_MODE="$(docker exec "$app" printenv OBS_TEST_MODE || true)"
+          ENABLE_TEST_MODE="$(read_input enable_test_mode 2>/dev/null || echo false)"
+          if [ "$OBS_TEST_MODE" != "1" ] && [ "$ENABLE_TEST_MODE" = "True" -o "$ENABLE_TEST_MODE" = "true" ]; then
+            echo "테스트 서버 모드를 켜요: $ENV_FILE에 OBS_TEST_MODE=1을 넣고 같은 버전으로 앱을 다시 띄워요."
+            cp -p "$ENV_FILE" "$ENV_FILE.bak-$(date +%Y%m%d%H%M%S)"
+            if grep -q '^OBS_TEST_MODE=' "$ENV_FILE"; then
+              sed -i 's/^OBS_TEST_MODE=.*/OBS_TEST_MODE=1/' "$ENV_FILE"
+            else
+              printf '\nOBS_TEST_MODE=1\n' >> "$ENV_FILE"
+            fi
+            OBS_ENV_FILE="$ENV_FILE" $C up -d --wait --wait-timeout 300 obs-web-app
+            app="$(docker ps --filter label=com.docker.compose.project=obs-web --filter label=com.docker.compose.service=obs-web-app --format '{{.ID}}' | head -1)"
+            OBS_TEST_MODE="$(docker exec "$app" printenv OBS_TEST_MODE || true)"
+          fi
+          if [ "$OBS_TEST_MODE" != "1" ]; then
+            echo "앱의 OBS_TEST_MODE가 1이 아니에요(지금 값: ${OBS_TEST_MODE:-없음}). enable_test_mode를 켜고 다시 실행해 주세요."
+            exit 1
+          fi
+          IDENTITY_HASH_KEY="$(docker exec "$app" printenv IDENTITY_HASH_KEY || true)"
+          echo "::add-mask::$IDENTITY_HASH_KEY"
+          export OBS_TEST_MODE IDENTITY_HASH_KEY SEED_SELLER_LOGIN SEED_SELLER_PASSWORD SEED_ADMIN_LOGIN SEED_ADMIN_PASSWORD
+          $C run --rm --no-deps -e OBS_TEST_MODE -e SEED_SELLER_LOGIN -e SEED_SELLER_PASSWORD -e SEED_ADMIN_LOGIN -e SEED_ADMIN_PASSWORD -e IDENTITY_HASH_KEY obs-web-migrate node scripts/seed-obs-test.mjs

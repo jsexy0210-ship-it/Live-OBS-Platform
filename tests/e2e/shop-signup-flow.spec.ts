@@ -1,4 +1,5 @@
 import { expect, request, test, type Page } from "@playwright/test";
+import { MARKETING_DOC_VERSION } from "../../components/shop/MarketingConsentDoc";
 import { SIGNUP_CONSENT_VERSIONS } from "../../lib/server/buyers/consent";
 import { BUYER_SIGNUP_MESSAGES } from "../../lib/server/buyers/signup";
 import { setMemberPolicyInDb } from "./memberPolicyDb";
@@ -171,6 +172,38 @@ test("인적사항을 서버 형식(birth7·통신사)으로 바꿔 보낸다", 
     // 선택 마케팅 수신 동의도 본인확인 전에 받는다(체크 안 함)
     agreedMarketing: false,
   });
+});
+
+// 화면을 연 뒤 동의 문서가 바뀌었다(409 consent_outdated): 이 화면의 글은 예전 것이라 새 버전 동의를 받지 않고 새로고침하게 한다
+test("본인확인 시작이 문서 바뀜(consent_outdated)이면 새로고침을 안내하고 인증번호 받기를 막는다", async ({ page }) => {
+  await mockApi(page, { verification: fail(409, "consent_outdated", BUYER_SIGNUP_MESSAGES.consent_outdated) });
+  await page.goto(`/shop/${SLUG}/signup`);
+  await fillIdentity(page, "김구매");
+  await page.getByRole("button", { name: "인증번호 받기" }).click();
+  const box = page.getByTestId("idv-reload-box");
+  await expect(box).toContainText("새로고침이 필요해요.");
+  await expect.poll(() => focusedId(page)).toBe("idv-reload");
+  await expect(page.getByRole("button", { name: "인증번호 받기" })).toBeDisabled();
+  await shot(page, "SH-011-reload");
+  await page.unrouteAll();
+  await box.getByRole("button", { name: "새로고침" }).click();
+  await expect(box).toHaveCount(0);
+  await expect(page.getByLabel("이름", { exact: true })).toHaveValue("");
+});
+
+// 선택 마케팅 수신: 동의하기 전에 서식 전체를 볼 수 있고, 동의하면 그 서식에 묶인 버전을 보낸다
+test("마케팅 정보 수신 동의는 서식 전체를 보여 주고, 보인 서식의 버전을 보낸다", async ({ page }) => {
+  await mockApi(page);
+  await page.goto(`/shop/${SLUG}/signup`);
+  await fillIdentity(page, "김구매");
+  await page.locator("details.signup-terms-doc summary").last().click();
+  const doc = page.getByTestId("mc-doc");
+  await expect(doc).toContainText("카드숍 별빛은(는) 라이브 방송 시작·이벤트·할인·새 상품 소식을 보내기 위해");
+  await expect(doc.getByRole("cell", { name: "이름, 휴대폰 번호" })).toBeVisible();
+  await page.getByLabel("(선택) 마케팅 정보 수신").check();
+  const req = page.waitForRequest((r) => r.url().endsWith(`${API}/verification`));
+  await page.getByRole("button", { name: "인증번호 받기" }).click();
+  expect((await req).postDataJSON()).toMatchObject({ agreedMarketing: true, marketingVersion: MARKETING_DOC_VERSION });
 });
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -496,8 +529,8 @@ test("본인확인 시작이 만 14세 미만(403)이면 생년월일 칸에 알
   await expect.poll(() => focusedId(page)).toBe("idv-birth");
 });
 
-test("본인확인 시작이 동의 오류(약관 없음·문서 바뀜)면 동의 칸으로 포커스를 옮기고 오류를 연결한다", async ({ page }) => {
-  for (const [code, status] of [["terms_required", 400], ["consent_outdated", 409]] as const) {
+test("본인확인 시작이 동의 오류(약관 없음)면 동의 칸으로 포커스를 옮기고 오류를 연결한다", async ({ page }) => {
+  for (const [code, status] of [["terms_required", 400]] as const) {
     await page.unrouteAll();
     await mockApi(page, { verification: fail(status, code, BUYER_SIGNUP_MESSAGES[code]) });
     await page.goto(`/shop/${SLUG}/signup`);
@@ -800,7 +833,7 @@ test("재가입 제한을 켠 쇼핑몰의 보관 동의는 선택(본인확인 
       // 필수 약관 전체 동의에 들어가지 않고 기본은 체크 안 함, 체크하지 않아도 인증번호를 받을 수 있다
       await expect(rejoinBox).not.toBeChecked();
       await expect(send).toBeEnabled();
-      await page.getByText("보기").click();
+      await page.locator("details.signup-terms-doc summary").first().click();
       await expect(page.getByText("보관 기간: 탈퇴한 날부터 90일")).toBeVisible();
       await expect(page.getByText("동의하지 않아도 가입할 수 있어요. 동의하지 않으면 이 정보를 보관하지 않고, 탈퇴한 뒤 다시 가입할 때 기간 제한을 받지 않아요.")).toBeVisible();
       if (agree) await rejoinBox.check();
@@ -834,8 +867,9 @@ test("재가입 제한 중이면 문구 뒤에 다시 가입할 수 있는 날(K
   await expect(page.getByText("지금은 다시 가입할 수 없어요. 11월 3일부터 다시 가입할 수 있어요")).toBeVisible();
 });
 
-test("본인확인 시작 때 동의 정보가 바뀌었으면(문서 버전·재가입 제한 기간 변경) 입력은 두고 동의 정보를 새로 받아 다시 동의하게 한다", async ({ page }) => {
-  for (const [code, status] of [["consent_outdated", 409], ["rejoin_policy_changed", 409]] as const) {
+// 문서 버전이 바뀐 경우(consent_outdated)는 화면의 글이 예전 것이라 새로고침하게 한다(위 「문서 바뀜」 테스트)
+test("본인확인 시작 때 재가입 제한 기간이 바뀌었으면 입력은 두고 동의 정보를 새로 받아 다시 동의하게 한다", async ({ page }) => {
+  for (const [code, status] of [["rejoin_policy_changed", 409]] as const) {
     await page.unrouteAll();
     await mockApi(page, { verification: fail(status, code, BUYER_SIGNUP_MESSAGES[code]) });
     await page.goto(`/shop/${SLUG}/signup`);

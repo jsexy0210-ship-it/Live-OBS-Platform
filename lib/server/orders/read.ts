@@ -13,6 +13,7 @@ export async function getOrder(db: PrismaClient, ctx: TenantContext, orderId: st
     where: { id: orderId, sellerId: ctx.sellerId, legalHoldAt: null },
     include: {
       items: true,
+      couponRedemption: { select: { benefit: true, discountAmount: true, restoredAt: true, coupon: { select: { id: true, name: true } } } },
       shipment: { select: { courier: true, trackingNumber: true, status: true, shippedAt: true, deliveredAt: true } },
       shippingAddress: { select: { recipientName: true, phone: true, zipCode: true, address1: true, address2: true, memo: true, isRemote: true } },
       buyerMember: { select: { id: true, broadcastNickname: true, name: true, phone: true } },
@@ -68,7 +69,7 @@ export type SellerOrderListQuery = {
 };
 
 // KST 날짜(YYYY-MM-DD)의 0시. 없는 날짜면 null.
-function kstDayStart(s: string): Date | null {
+export function kstDayStart(s: string): Date | null {
   const m = KST_DATE.exec(s);
   if (!m) return null;
   const d = new Date(`${s}T00:00:00+09:00`);
@@ -79,10 +80,10 @@ function kstDayStart(s: string): Date | null {
 }
 
 // 커서: 마지막 행의 (주문 시각, id). 같은 시각 주문이 여러 건이어도 id로 끊어 빠지거나 겹치지 않는다.
-function encodeCursor(createdAt: Date, id: string) {
+export function encodeCursor(createdAt: Date, id: string) {
   return Buffer.from(`${createdAt.toISOString()}|${id}`).toString("base64url");
 }
-function decodeCursor(s: string): { createdAt: Date; id: string } | null {
+export function decodeCursor(s: string): { createdAt: Date; id: string } | null {
   const [at, id] = Buffer.from(s, "base64url").toString().split("|");
   const createdAt = new Date(at ?? "");
   if (!id || !UUID_RE.test(id) || Number.isNaN(createdAt.getTime())) return null;

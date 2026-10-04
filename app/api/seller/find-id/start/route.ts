@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { startAccountRecovery } from "../../../../../lib/server/auth/accountRecovery";
+import { FLOW_COOKIE_MAX_AGE_S } from "../../../../../lib/server/auth/passwordReset";
 import { RECOVERY_IDV_COOKIE, RECOVERY_LIMIT_MESSAGE, RECOVERY_PATH } from "../../../../../lib/server/auth/recoveryFlow";
 import { prisma } from "../../../../../lib/server/db";
 import { mutation, readJson, requestMeta, setFlowCookie } from "../../../../../lib/server/http/route";
-import { START_IN_PROGRESS_MESSAGE } from "../../../../../lib/server/identity/attempt";
+import { START_IN_PROGRESS_MESSAGE_FORMAL } from "../../../../../lib/server/identity/attempt";
 import { identityFailure } from "../../../../../lib/server/identity/http";
 import { identityProvider, identityUnavailable } from "../../../../../lib/server/identity/registry";
 
@@ -15,15 +16,15 @@ const NO_STORE = { "cache-control": "no-store" };
 // attemptKey(UUID)로 다시 보내면 같은 verificationId·같은 쿠키 값(문자·횟수 다시 안 씀), 보내는 중이면 409 start_in_progress.
 export const POST = mutation(async (req: Request) => {
   const provider = identityProvider();
-  if (!provider) return identityUnavailable();
+  if (!provider) return identityUnavailable("formal");
   const body = await readJson<Record<string, unknown>>(req);
   const r = await startAccountRecovery(prisma, provider, body, { ...requestMeta(req), attemptKey: body.attemptKey });
   if (!r.ok) {
     if (r.reason === "recovery_limit_exceeded") return NextResponse.json({ error: r.reason, message: RECOVERY_LIMIT_MESSAGE }, { status: 429, headers: NO_STORE });
-    if (r.reason === "start_in_progress") return NextResponse.json({ error: r.reason, message: START_IN_PROGRESS_MESSAGE }, { status: 409, headers: NO_STORE });
-    return identityFailure(r.reason);
+    if (r.reason === "start_in_progress") return NextResponse.json({ error: r.reason, message: START_IN_PROGRESS_MESSAGE_FORMAL }, { status: 409, headers: NO_STORE });
+    return identityFailure(r.reason, "formal");
   }
   const res = NextResponse.json({ verificationId: r.verificationId }, { headers: NO_STORE });
-  setFlowCookie(res, RECOVERY_IDV_COOKIE, r.ownerToken, RECOVERY_PATH, 20 * 60);
+  setFlowCookie(res, RECOVERY_IDV_COOKIE, r.ownerToken, RECOVERY_PATH, FLOW_COOKIE_MAX_AGE_S);
   return res;
 });

@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { PortOneIdentityProvider } from "../../lib/server/identity/portone";
-import { FakeIdentityProvider } from "../../lib/server/identity/provider";
+import { FAKE_REQUEST_KEEP, FAKE_REQUEST_TTL_MS, FAKE_SENT_KEEP, FakeIdentityProvider } from "../../lib/server/identity/provider";
 import { newIdentityRequestId, parseIdentityPerson } from "../../lib/server/identity/verification";
 import { identityProvider } from "../../lib/server/identity/registry";
 
@@ -111,5 +111,39 @@ describe("포트원 휴대폰 본인확인 어댑터(실제 호출 미검증, �
     expect(await new PortOneIdentityProvider(config, async () => json(400, {})).confirmCode("idv-1", "111111")).toEqual({ ok: false, reason: "wrong_code" });
     expect(await new PortOneIdentityProvider(config, async () => json(503, {})).confirmCode("idv-1", "111111")).toEqual({ ok: false, reason: "provider_error" });
     expect(await new PortOneIdentityProvider(config, async () => json(200, {})).confirmCode("idv-1", "111111")).toEqual({ ok: true });
+  });
+});
+
+describe("테스트 서버 모드의 가짜 공급자 메모리", () => {
+  afterEach(() => vi.useRealTimers());
+  const person = { name: "홍길동", phone: "01012345678", birth7: "9505051", carrier: "SKT" as const, device: "MOBILE" as const };
+
+  it("1시간 지난 요청은 다음 요청 때 지우고, 1시간 안에 몰려도 요청은 최근 2000건·보낸 기록은 최근 1000건만 남긴다", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-04T00:00:00Z"));
+    const p = new FakeIdentityProvider("production", { testMode: true });
+    const burst = FAKE_REQUEST_KEEP + 500;
+    for (let i = 0; i < burst; i++) await p.sendCode(`old-${i}`, "BUYER_SIGNUP", person);
+    expect(p.sent.length).toBeLessThanOrEqual(FAKE_SENT_KEEP);
+    expect(p.pendingRequestCount).toBe(FAKE_REQUEST_KEEP);
+    // 가장 오래된 요청이 먼저 지워지고, 최근 요청은 그대로 확인된다
+    expect(await p.confirmCode("old-0", "000000")).toEqual({ ok: false, reason: "provider_error" });
+    expect(await p.confirmCode(`old-${burst - 1}`, "000000")).toEqual({ ok: true });
+    vi.setSystemTime(new Date(Date.now() + FAKE_REQUEST_TTL_MS + 1000));
+    await p.sendCode("new", "BUYER_SIGNUP", person);
+    expect(p.pendingRequestCount).toBe(1);
+    // 남은 요청은 그대로 확인·조회된다
+    expect(await p.confirmCode("new", "000000")).toEqual({ ok: true });
+    expect((await p.fetchResult("new")).ok).toBe(true);
+  });
+
+  it("개발·시험용(테스트 서버 모드가 아님)은 지우지 않는다(시험이 보낸 기록 수를 센다)", async () => {
+    vi.useFakeTimers();
+    const p = new FakeIdentityProvider("test");
+    await p.sendCode("a", "BUYER_SIGNUP", person);
+    vi.setSystemTime(new Date(Date.now() + FAKE_REQUEST_TTL_MS + 1000));
+    await p.sendCode("b", "BUYER_SIGNUP", person);
+    expect(p.pendingRequestCount).toBe(2);
+    expect(p.sent).toEqual(["a", "b"]);
   });
 });

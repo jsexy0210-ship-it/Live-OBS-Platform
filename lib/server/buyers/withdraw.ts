@@ -10,6 +10,7 @@ import { holdMemberAuditLogs, refreshOrderRetention } from "./legalHold";
 import { WITHDRAWN_DISPLAY_NAME } from "./memberData";
 import { purgeExpiredRejoinBlocks, recordRejoinBlock } from "./rejoin";
 import { purgeSignupVerificationsForShop } from "./signup";
+import { deleteUnusedBuyerCoupons } from "../shop-coupons/service";
 
 // 구매자 탈퇴(ARCHITECTURE 「구매자 회원」: WITHDRAWN과 deletedAt을 같은 트랜잭션에서, 개인정보 비식별).
 // 기준(MASTER 결정 2026-10-03):
@@ -91,6 +92,8 @@ export async function withdrawBuyer(
       pending.push(o.id);
     }
     await tx.$queryRaw`SELECT "id" FROM "BuyerMember" WHERE "id" = ${member.id}::uuid FOR NO KEY UPDATE`;
+    // 재가입 제한은 지금 동의 상태로 정한다(PRODUCT_SCOPE, 개인정보 보호법 제37조). 잠금 전에 읽은 값은 그사이 철회됐을 수 있다.
+    const { rejoinRestrictionDaysAgreed } = await tx.buyerMember.findUniqueOrThrow({ where: { id: member.id }, select: { rejoinRestrictionDaysAgreed: true } });
     // 배송지 저장·수정과 같은 잠금을 잡아, 겹쳐 저장된 배송지가 탈퇴 뒤에 남지 않게 한다
     await lockBuyerAddresses(tx, scope);
     const busy = await tx.order.count({
@@ -118,12 +121,15 @@ export async function withdrawBuyer(
         birthDate: null,
         passwordHash: unusable,
         marketingConsentAt: null,
+        marketingConsentVersion: null,
+        marketingWithdrawnAt: null,
         // 동의 기록(필수·선택 동의 문서 버전·시각, 재가입 제한 보관 동의 스냅숏)도 비운다. 재가입 제한 기록은 아래
         // recordRejoinBlock이 탈퇴 전에 읽은 member 값으로 만든다.
         signupConsent: Prisma.DbNull,
         rejoinRestrictionDaysAgreed: null,
         rejoinRetentionAgreedAt: null,
         rejoinRetentionVersion: null,
+        rejoinRetentionWithdrawnAt: null,
       },
     });
     if (moved.count !== 1) return "not_found" as const;
@@ -144,8 +150,10 @@ export async function withdrawBuyer(
     });
     const hitCards = await tx.hitCard.updateMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id }, data: { nicknameSnapshot: WITHDRAWN_DISPLAY_NAME } });
     const restrictions = await tx.buyerPurchaseRestriction.deleteMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id } });
-    const rejoinBlockedUntil = await recordRejoinBlock(tx, scope.sellerId, member, now);
+    const rejoinBlockedUntil = await recordRejoinBlock(tx, scope.sellerId, { ciHash: member.ciHash, rejoinRestrictionDaysAgreed }, now);
     const addresses = await tx.buyerAddress.deleteMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id } });
+    // 쓰지 않은 쿠폰 삭제(결제 대기 주문을 위에서 취소해 되돌린 쿠폰은 주문 기록과 이어져 남는다, shop-coupons)
+    const deletedCoupons = await deleteUnusedBuyerCoupons(tx, { sellerId: scope.sellerId, buyerMemberId: member.id });
     const sessions = await tx.buyerSession.deleteMany({ where: { buyerMemberId: member.id } });
     const heldOrders = await refreshOrderRetention(tx, scope.sellerId, now, { buyerMemberId: member.id });
     await writeAudit(tx, {
@@ -157,7 +165,7 @@ export async function withdrawBuyer(
       targetId: member.id,
       ip: input.meta?.ip,
       userAgent: input.meta?.userAgent,
-      after: { status: "WITHDRAWN", deletedAddresses: addresses.count, deletedSessions: sessions.count, anonymizedVerifications: identities, anonymizedOrders: orders.count, anonymizedQueueItems: queueItems.count, anonymizedHitCards: hitCards.count, deletedRestrictions: restrictions.count, cancelledPendingOrders: pending.length, heldOrders, rejoinBlockedUntil, ...forfeited },
+      after: { status: "WITHDRAWN", deletedAddresses: addresses.count, deletedSessions: sessions.count, anonymizedVerifications: identities, anonymizedOrders: orders.count, anonymizedQueueItems: queueItems.count, anonymizedHitCards: hitCards.count, deletedRestrictions: restrictions.count, cancelledPendingOrders: pending.length, heldOrders, rejoinBlockedUntil, ...forfeited, deletedCoupons },
     });
     // 방금 남긴 탈퇴 기록까지 포함해 기한을 단다
     await holdMemberAuditLogs(tx, scope.sellerId, member.id, now);

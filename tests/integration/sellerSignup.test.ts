@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { Prisma } from "@prisma/client";
 import { POST as applyRoute } from "../../app/api/seller-signup/apply/route";
 import { POST as confirmRoute } from "../../app/api/seller-signup/verification/confirm/route";
 import { POST as startRoute } from "../../app/api/seller-signup/verification/route";
@@ -8,14 +9,16 @@ import { prisma } from "../../lib/server/db";
 import { FakeIdentityProvider } from "../../lib/server/identity/provider";
 import { identityProvider } from "../../lib/server/identity/registry";
 import { SIGNUP_VERIFY_DAILY_LIMIT_PER_IP, applyForSeller, startSellerSignupVerification, type ApplyInput } from "../../lib/server/sellers/application";
-import { TRIAL_DAYS, approveSeller, listSellersToReview, rejectSeller } from "../../lib/server/sellers/approval";
+import { approveSeller, listSellersToReview, rejectSeller } from "../../lib/server/sellers/approval";
 import {
   FakeBusinessStatusProvider,
   FakeMailOrderProvider,
   UnavailableBusinessStatusProvider,
   UnavailableMailOrderProvider,
 } from "../../lib/server/sellers/businessCheck";
-import { IDV_INPUT, confirmIdv, createAdmin, db, resetDb, startIdv } from "./helpers";
+import { IDV_INPUT, SELLER_SIGNUP_CONSENT, confirmIdv, createAdmin, db, resetDb, startIdv } from "./helpers";
+
+const SELLER_IDV = { ...IDV_INPUT, ...SELLER_SIGNUP_CONSENT };
 
 beforeAll(() => {
   process.env.IDENTITY_HASH_KEY = "test-identity-hash-key-0123456789abcdef";
@@ -111,7 +114,24 @@ describe("같은 신청 동시 재시도", () => {
 });
 
 describe("자동 점검 통과 → 자동 승인", () => {
-  it("모두 통과하면 바로 운영 중, 체험하기 = 승인 + 14일, 기본 등급 5개, 대표자 계정으로 로그인된다", async () => {
+  it("플랜(ONQ 1-C): 오버레이 전용을 고르면 승인 + 7일 체험, STANDARD·모르는 값은 invalid_input이고 신청을 만들지 않는다", async () => {
+    const business = new FakeBusinessStatusProvider();
+    const r = await applyForSeller(db, { business, mailOrder }, form(await verified("CI-PLAN"), { planCode: "OVERLAY_ONLY" }));
+    expect(r).toMatchObject({ ok: true, approved: true });
+    if (!r.ok) return;
+    const seller = await db.seller.findUniqueOrThrow({ where: { id: r.sellerId }, include: { plan: true } });
+    expect(seller.plan?.code).toBe("OVERLAY_ONLY");
+    expect(seller.trialEndsAt!.getTime() - seller.approvedAt!.getTime()).toBe(7 * DAY);
+    for (const planCode of ["STANDARD", "PRO"]) {
+      expect(await applyForSeller(db, { business, mailOrder }, form(await verified(`CI-${planCode}`), { planCode, slug: `shop-${planCode.toLowerCase()}` }))).toEqual({
+        ok: false,
+        reason: "invalid_input",
+      });
+    }
+    expect(await db.seller.count()).toBe(1);
+  });
+
+  it("모두 통과하면 바로 운영 중, 플랜을 고르지 않으면 통합(체험 없음), 기본 등급 5개, 대표자 계정으로 로그인된다", async () => {
     const business = new FakeBusinessStatusProvider();
     const f = form(await verified("CI-1"));
     const r = await applyForSeller(db, { business, mailOrder }, f);
@@ -119,8 +139,9 @@ describe("자동 점검 통과 → 자동 승인", () => {
     if (!r.ok) return;
     const seller = await db.seller.findUniqueOrThrow({ where: { id: r.sellerId } });
     expect(seller).toMatchObject({ status: "ACTIVE", approvedByAdminId: null, reviewReasons: [] });
-    expect(seller.trialEndsAt!.getTime() - seller.approvedAt!.getTime()).toBe(TRIAL_DAYS * DAY);
-    expect(TRIAL_DAYS).toBe(14);
+    // ONQ 1-C: 신규 가입 기본 플랜은 통합이고 체험이 없다(STANDARD 14일 체험은 신규 가입에 쓰지 않음)
+    expect(seller.trialEndsAt).toBeNull();
+    expect((await db.subscriptionPlan.findUniqueOrThrow({ where: { id: seller.planId! } })).code).toBe("INTEGRATED");
     expect(seller.businessInfo).toMatchObject({
       businessNumber: f.businessNumber,
       representativeName: "김대표",
@@ -249,7 +270,7 @@ describe("HTTP: 가입 신청", () => {
       body: JSON.stringify(body),
     });
 
-  const rep = { ...IDV_INPUT, name: "박대표", phone: "010-3333-4444" };
+  const rep = { ...IDV_INPUT, ...SELLER_SIGNUP_CONSENT, name: "박대표", phone: "010-3333-4444" };
   // 시작 응답의 요청 기록에 가짜 공급자 명의를 정하고, 인증번호 확인 라우트로 확정한다
   const confirmHttp = async (verificationId: string, cookie: string) => {
     const { requestId } = await db.identityVerification.findUniqueOrThrow({ where: { id: verificationId } });
@@ -400,18 +421,18 @@ describe("MASTER 결정 반영", () => {
 
   it("가입 휴대폰 본인확인 시작은 같은 IP에서 하루 10회까지, 다른 IP는 따로 센다", async () => {
     for (let i = 0; i < SIGNUP_VERIFY_DAILY_LIMIT_PER_IP; i++) {
-      expect((await startSellerSignupVerification(db, identity, IDV_INPUT, { ip: "203.0.113.7" })).ok).toBe(true);
+      expect((await startSellerSignupVerification(db, identity, SELLER_IDV, { ip: "203.0.113.7" })).ok).toBe(true);
     }
-    expect(await startSellerSignupVerification(db, identity, IDV_INPUT, { ip: "203.0.113.7" })).toEqual({ ok: false, reason: "daily_limit_exceeded" });
-    expect((await startSellerSignupVerification(db, identity, IDV_INPUT, { ip: "203.0.113.8" })).ok).toBe(true);
+    expect(await startSellerSignupVerification(db, identity, SELLER_IDV, { ip: "203.0.113.7" })).toEqual({ ok: false, reason: "daily_limit_exceeded" });
+    expect((await startSellerSignupVerification(db, identity, SELLER_IDV, { ip: "203.0.113.8" })).ok).toBe(true);
     expect(await db.auditLog.count({ where: { action: "seller.signup.verify_limited" } })).toBe(1);
     // 어제 시작한 건은 세지 않는다(KST 자정 초기화)
     await db.identityVerification.updateMany({ where: { requestIp: "203.0.113.7" }, data: { createdAt: new Date(Date.now() - 2 * DAY) } });
-    expect((await startSellerSignupVerification(db, identity, IDV_INPUT, { ip: "203.0.113.7" })).ok).toBe(true);
+    expect((await startSellerSignupVerification(db, identity, SELLER_IDV, { ip: "203.0.113.7" })).ok).toBe(true);
   });
 
   it("같은 IP에서 동시에 시작해도 10회를 넘지 않는다", async () => {
-    const rs = await Promise.all(Array.from({ length: 15 }, () => startSellerSignupVerification(db, identity, IDV_INPUT, { ip: "198.51.100.1" })));
+    const rs = await Promise.all(Array.from({ length: 15 }, () => startSellerSignupVerification(db, identity, SELLER_IDV, { ip: "198.51.100.1" })));
     expect(rs.filter((r) => r.ok)).toHaveLength(SIGNUP_VERIFY_DAILY_LIMIT_PER_IP);
   });
 });
@@ -492,3 +513,71 @@ describe("MASTER 검수 P1: 사업자 대조·통신판매업 조회", () => {
 });
 
 const normalize = (bn: string) => bn.replace(/-/g, "");
+
+describe("가입 필수 동의(PF-007-1)", () => {
+  const BASE = "http://localhost:3000";
+  const post = (path: string, body: unknown, cookie?: string) =>
+    new Request(BASE + path, {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "localhost:3000", origin: BASE, ...(cookie ? { cookie } : {}) },
+      body: JSON.stringify(body),
+    });
+
+  it("필수 동의가 없거나 true가 아니면 400 terms_required, 문서 버전이 다르면 409 consent_outdated이고 본인확인을 시작하지 않는다(문자 0건)", async () => {
+    const cases: [Record<string, unknown>, number, string][] = [
+      [IDV_INPUT, 400, "terms_required"],
+      [{ ...SELLER_IDV, agreedPrivacy: false }, 400, "terms_required"],
+      [{ ...SELLER_IDV, agreedTerms: "true" }, 400, "terms_required"],
+      [{ ...SELLER_IDV, termsVersion: "2020-01-01.v0" }, 409, "consent_outdated"],
+      [{ ...SELLER_IDV, privacyVersion: undefined }, 409, "consent_outdated"],
+    ];
+    for (const [body, status, error] of cases) {
+      const r = await startRoute(post("/api/seller-signup/verification", body));
+      expect(r.status).toBe(status);
+      expect((await r.json()).error).toBe(error);
+      expect(r.headers.get("set-cookie")).toBeNull();
+    }
+    expect(await db.identityVerification.count()).toBe(0);
+  });
+
+  it("옛 문서 버전으로 시작하면 409 본문에 지금 버전 두 개를 담아 화면이 새 버전으로 다시 동의하게 한다", async () => {
+    const r = await startRoute(post("/api/seller-signup/verification", { ...SELLER_IDV, termsVersion: "2020-01-01.v0", privacyVersion: "2020-01-01.v0" }));
+    expect(r.status).toBe(409);
+    expect(await r.json()).toMatchObject({ error: "consent_outdated", termsVersion: SELLER_SIGNUP_CONSENT.termsVersion, privacyVersion: SELLER_SIGNUP_CONSENT.privacyVersion });
+    const missing = await startRoute(post("/api/seller-signup/verification", IDV_INPUT));
+    expect(await missing.json()).not.toHaveProperty("termsVersion");
+  });
+
+  it("신청하면 동의한 문서 버전·시각을 대표자 계정과 감사 기록에 남긴다", async () => {
+    const start = await startRoute(post("/api/seller-signup/verification", { ...SELLER_IDV, name: "동의대표", phone: "01077778888" }));
+    expect(start.status).toBe(200);
+    const cookie = (start.headers.get("set-cookie") ?? "").split(";")[0];
+    const { verificationId } = await start.json();
+    const { requestId } = await db.identityVerification.findUniqueOrThrow({ where: { id: verificationId } });
+    (identityProvider() as FakeIdentityProvider).complete(requestId, { ci: "CI-CONSENT", name: "동의대표", phone: "01077778888", birthDate: new Date("1980-02-02") });
+    expect((await confirmRoute(post("/api/seller-signup/verification/confirm", { verificationId, code: "000000" }, cookie))).status).toBe(200);
+    const res = await applyRoute(
+      post(
+        "/api/seller-signup/apply",
+        { verificationId, email: "consent-owner@example.com", password: "seller-pass-1", shopName: "동의 카드", slug: "consent-card", businessNumber: businessNumberOf(900), companyName: "동의 상사", openedOn: "20200101" },
+        cookie,
+      ),
+    );
+    expect(res.status).toBe(200);
+    const owner = await db.sellerUser.findFirstOrThrow({ where: { email: "consent-owner@example.com" } });
+    const consent = owner.signupConsent as Record<string, string>;
+    expect(consent).toMatchObject({ termsVersion: SELLER_SIGNUP_CONSENT.termsVersion, privacyVersion: SELLER_SIGNUP_CONSENT.privacyVersion });
+    expect(Number.isNaN(Date.parse(consent.agreedAt))).toBe(false);
+    const audit = await db.auditLog.findFirstOrThrow({ where: { action: "seller.apply", actorId: owner.id } });
+    expect((audit.after as { consent: unknown }).consent).toEqual(consent);
+  });
+
+  it("동의 기록이 없는 본인확인으로는 신청을 받지 않는다(쇼핑몰·계정 0개, 본인확인은 쓰지 않음)", async () => {
+    const v = await verified("CI-NO-CONSENT");
+    await db.identityVerification.update({ where: { id: v.verificationId }, data: { signupConsent: Prisma.DbNull } });
+    const r = await applyForSeller(db, { business: new FakeBusinessStatusProvider(), mailOrder }, form(v));
+    expect(r).toEqual({ ok: false, reason: "terms_required" });
+    expect(await db.seller.count()).toBe(0);
+    expect((await db.identityVerification.findUniqueOrThrow({ where: { id: v.verificationId } })).consumedAt).toBeNull();
+  });
+});

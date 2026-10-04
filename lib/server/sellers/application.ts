@@ -9,6 +9,8 @@ import { dbNow } from "../billing/subscription";
 import { keyedOwnerToken, parseAttemptKey, reuseKeyedAttempt, scopedAttemptKeyHash } from "../identity/attempt";
 import type { IdentityProvider } from "../identity/provider";
 import { parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
+import { SIGNUP_PLAN_CODES } from "../billing/plans";
+import { DEFAULT_PLAN_CODE } from "../billing/subscription";
 import { activateSeller } from "./approval";
 import {
   normalizeBusinessNumber,
@@ -17,6 +19,7 @@ import {
   type BusinessStatusProvider,
   type MailOrderProvider,
 } from "./businessCheck";
+import { parseSellerSignupConsent, readSellerSignupConsent, type SellerConsentFailure } from "./signupConsent";
 
 // 판매자 가입 신청과 자동 점검(대표님 결정 2026-10-02, PRODUCT_SCOPE 「판매자 가입 자동 승인」).
 // 점검: 대표자 휴대폰 본인확인(필수) · 대표자 CI 중복(1인 1쇼핑몰) · 국세청 진위확인(대표자명·개업일 대조)·「계속사업자」 ·
@@ -37,7 +40,7 @@ const OWNER_SCOPE = "seller_signup_owner";
 // 대표자 1인 1쇼핑몰 위반 때 보여 줄 문구(다른 쇼핑몰 이름은 보여 주지 않음, MASTER 결정)
 export const REPRESENTATIVE_HAS_SHOP_MESSAGE = "이미 운영 중인 쇼핑몰이 있어요 · 한 대표자는 쇼핑몰 하나만 열 수 있어요";
 
-// 판매자 가입 휴대폰 본인확인 시작(인적사항 검사 → 요청 기록 → 첫 인증번호). IP별로 줄을 세워(advisory lock) 오늘(KST) 시작 건수를 DB 시계로 센 뒤 한도 안일 때만 시작한다.
+// 판매자 가입 휴대폰 본인확인 시작(필수 동의 검사(signupConsent.ts) → 인적사항 검사 → 요청 기록 → 첫 인증번호). IP별로 줄을 세워(advisory lock) 오늘(KST) 시작 건수를 DB 시계로 센 뒤 한도 안일 때만 시작한다.
 // IP를 알 수 없으면(신뢰 프록시 미설정) 하나의 묶음으로 센다.
 // attemptKey(선택, 클라이언트 UUID): 응답이 끊겨 같은 키로 다시 보내면 같은 기록·같은 ownerToken을 돌려주고 문자·일일 횟수를 다시 쓰지 않는다
 // (identity/attempt.ts reuseKeyedAttempt, 보내는 중이면 409 start_in_progress).
@@ -49,6 +52,8 @@ export async function startSellerSignupVerification(
 ) {
   const attemptKey = parseAttemptKey(meta.attemptKey);
   if (attemptKey === false) return { ok: false as const, reason: "invalid_identity_input" as const };
+  const consent = parseSellerSignupConsent(rawPerson, meta.now ?? new Date());
+  if (!consent.ok) return { ok: false as const, reason: consent.reason };
   const person = parseIdentityPerson(rawPerson);
   if (!person) return { ok: false as const, reason: "invalid_identity_input" as const };
   const ip = meta.ip ?? null;
@@ -80,6 +85,7 @@ export async function startSellerSignupVerification(
       sellerId: null,
       person,
       requestIp: ip,
+      signupConsent: consent.consent,
       attemptKeyHash: keyHash,
       sendStartedAt: keyHash ? (meta.now ?? (await dbNow(tx))) : null,
       id,
@@ -128,6 +134,9 @@ export type ApplyInput = {
   // 개업일자(YYYYMMDD 또는 YYYY-MM-DD). 국세청 진위확인에 쓴다.
   openedOn: string;
   mailOrderNumber?: string | null;
+  // 플랜(ONQ 1-C): OVERLAY_ONLY | INTEGRATED. 없으면 신규 가입 기본 플랜(DEFAULT_PLAN_CODE). 그 밖의 값은 invalid_input.
+  // 가입 화면이 「지금 운영 중인 쇼핑몰이 있나요?」로 고르면 보낸다(ONQ 2단계).
+  planCode?: string | null;
   meta?: { ip?: string | null; userAgent?: string | null };
   now?: Date;
 };
@@ -139,7 +148,8 @@ export type ApplyFailure =
   | "invalid_slug"
   | "slug_taken"
   | "invalid_business_number"
-  | "representative_has_shop";
+  | "representative_has_shop"
+  | SellerConsentFailure; // 본인확인 기록에 필수 동의가 없음(동의 저장 전에 시작한 기록, terms_required)
 
 // resumed: 응답이 끊겨 같은 요청을 다시 보낸 경우(새로 만들지 않고 이미 만든 신청의 지금 상태를 돌려줌)
 export type ApplyResult = { ok: true; sellerId: string; approved: boolean; reviewReasons: ReviewReason[]; resumed: boolean } | { ok: false; reason: ApplyFailure };
@@ -193,6 +203,8 @@ async function applyOnce(
   if (!EMAIL.test(email) || !shopName || shopName.length > 50 || !companyName || companyName.length > 100) return { ok: false, reason: "invalid_input" };
   if (input.password.length < MIN_PASSWORD_LENGTH || input.password.length > 200) return { ok: false, reason: "weak_password" };
   if (!SLUG.test(slug) || RESERVED_SLUGS.has(slug)) return { ok: false, reason: "invalid_slug" };
+  const planCode = input.planCode || DEFAULT_PLAN_CODE;
+  if (!(SIGNUP_PLAN_CODES as readonly string[]).includes(planCode)) return { ok: false, reason: "invalid_input" };
   const businessNumber = normalizeBusinessNumber(input.businessNumber);
   if (!businessNumber) return { ok: false, reason: "invalid_business_number" };
   const openedOn = normalizeOpenedOn(input.openedOn ?? "");
@@ -219,6 +231,9 @@ async function applyOnce(
     return { ok: false, reason: "verification_invalid" };
   }
   const ciHash = v.ciHash;
+  // 본인확인을 시작할 때 받은 필수 동의(없으면 신청을 받지 않는다, 화면은 약관 동의부터 다시)
+  const consent = readSellerSignupConsent(v.signupConsent);
+  if (!consent) return { ok: false, reason: "terms_required" };
 
   // 대표자 1명당 쇼핑몰 1개(해지·반려 제외). 어기면 신청 자체를 받지 않는다(DB 부분 유니크로도 막힘).
   const open = await db.seller.findFirst({ where: { representativeCiHash: ciHash, status: { notIn: ["CLOSED", "REJECTED"] } }, select: { id: true } });
@@ -260,11 +275,13 @@ async function applyOnce(
         select: { id: true },
       });
       if (sameBusiness) reasons.push("business_duplicate");
+      const plan = await tx.subscriptionPlan.findUniqueOrThrow({ where: { code: planCode }, select: { id: true } });
       const seller = await tx.seller.create({
         data: {
           slug,
           shopName,
           status: "PENDING",
+          planId: plan.id,
           representativeCiHash: ciHash,
           representativeVerifiedAt: v.verifiedAt,
           reviewReasons: reasons,
@@ -291,12 +308,12 @@ async function applyOnce(
         ],
       });
       const owner = await tx.sellerUser.create({
-        data: { sellerId: seller.id, email, passwordHash, name: v.name!, isOwner: true, permissions: [] },
+        data: { sellerId: seller.id, email, passwordHash, name: v.name!, isOwner: true, permissions: [], signupConsent: consent },
       });
       // 이 본인확인으로 만든 대표자 계정을 남긴다(응답이 끊겨 다시 보낸 요청을 알아보는 데 쓴다)
       await tx.identityVerification.update({ where: { id: v.id }, data: { subjectId: owner.id } });
       const audit = { sellerId: seller.id, targetType: "Seller", targetId: seller.id, ip: input.meta?.ip, userAgent: input.meta?.userAgent };
-      await writeAudit(tx, { ...audit, actorType: "SELLER_USER", actorId: owner.id, action: "seller.apply", after: { reviewReasons: reasons } });
+      await writeAudit(tx, { ...audit, actorType: "SELLER_USER", actorId: owner.id, action: "seller.apply", after: { reviewReasons: reasons, consent } });
       let approved = false;
       if (reasons.length === 0) {
         const row = await activateSeller(tx, seller.id, null);

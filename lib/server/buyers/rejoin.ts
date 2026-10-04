@@ -16,8 +16,8 @@ export const DEFAULT_REJOIN_DAYS = 30;
 const DAY_MS = 24 * 3600_000;
 
 export const MEMBER_POLICY_MESSAGES = {
-  invalid_member_policy: `재가입 제한 기간은 ${REJOIN_DAYS_MIN}일에서 ${REJOIN_DAYS_MAX}일 사이로 정해 주세요`,
-  rejoin_restriction_unavailable: "회원이 동의를 철회할 수 있는 화면이 준비되면 켤 수 있어요",
+  invalid_member_policy: `재가입 제한 기간은 ${REJOIN_DAYS_MIN}일에서 ${REJOIN_DAYS_MAX}일 사이로 정해 주십시오`,
+  rejoin_restriction_unavailable: "회원이 동의를 철회할 수 있는 화면이 준비되면 켤 수 있습니다",
 } as const;
 export const MEMBER_POLICY_STATUS = { invalid_member_policy: 400, rejoin_restriction_unavailable: 409 } as const;
 

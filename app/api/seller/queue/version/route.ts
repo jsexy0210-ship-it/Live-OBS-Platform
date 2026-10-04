@@ -9,7 +9,7 @@ import { getLiveVersion } from "../../../../../lib/server/queue/read";
 // (대표님 결정 2026-10-02, PRODUCT_SCOPE 「잠금 중 허용 범위」) 잠긴 쇼핑몰에도 돌려준다.
 export async function GET(req: Request) {
   try {
-    const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { allowUnpaid: true });
+    const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { allowUnpaid: true, feature: "OVERLAY" });
     return NextResponse.json({ version: await getLiveVersion(prisma, ctx) });
   } catch (e) {
     return errorResponse(e);

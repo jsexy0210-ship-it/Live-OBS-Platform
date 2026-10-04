@@ -12,9 +12,9 @@ const NO_STORE = { "cache-control": "no-store" };
 // 직원 본인확인 연결 마치기(본문 { verificationId }): 결과 이름·휴대폰이 등록 정보와 같으면 연결(200 { ok: true }),
 // 다르면 409 identity_mismatch(연결 안 함), 확인 전이면 409 verification_pending, 쓸 수 없는 본인확인이면 400 verification_invalid.
 export const POST = mutation(async (req: Request) => {
-  const ctx = await requireSeller(prisma, sessionToken(req, "seller"));
+  const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "ACCOUNT" });
   const provider = identityProvider();
-  if (!provider) return identityUnavailable();
+  if (!provider) return identityUnavailable("formal");
   const body = await readJson<{ verificationId: unknown }>(req);
   if (!isString(body.verificationId) || !UUID.test(body.verificationId)) {
     return NextResponse.json({ error: "verification_invalid", message: STAFF_LINK_MESSAGES.verification_invalid }, { status: 400, headers: NO_STORE });

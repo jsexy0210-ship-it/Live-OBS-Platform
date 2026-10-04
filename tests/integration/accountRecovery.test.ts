@@ -18,6 +18,8 @@ import { GET as staffList, POST as staffCreate } from "../../app/api/seller/staf
 import { startAccountRecovery } from "../../lib/server/auth/accountRecovery";
 import { loginSeller } from "../../lib/server/auth/login";
 import { startSellerPasswordReset } from "../../lib/server/auth/passwordReset";
+import { requireSeller } from "../../lib/server/authz/guards";
+import { linkStaffIdentity } from "../../lib/server/sellers/staffIdentity";
 import { RECOVERY_DAILY_LIMIT_PER_IP, RECOVERY_DAILY_LIMIT_PER_PHONE } from "../../lib/server/auth/recoveryLimit";
 import { prisma } from "../../lib/server/db";
 import { hashCi } from "../../lib/server/identity/ciHash";
@@ -175,6 +177,65 @@ describe("직원 본인확인 연결", () => {
     expect(await (await linkStatus(req("/api/seller/me/identity", "GET", undefined, linkedCookie))).json()).toMatchObject({ phoneRegistered: true, linked: true });
     expect(await db.auditLog.count({ where: { action: "seller.staff.identity_linked", targetId: linked.id } })).toBe(1);
     // 대표자는 403
+    expect((await linkStatus(req("/api/seller/me/identity", "GET", undefined, await sessionOf(owner.email)))).status).toBe(403);
+  });
+  it("본인확인 결과를 받는 사이 대표자가 직원 이름을 바꾸면 옛 이름으로 연결하지 않는다(등록 정보와 맞지 않음)", async () => {
+    const { seller } = await shop();
+    const staff = await createSellerUser(seller.id, "MANAGER");
+    await db.sellerUser.update({ where: { id: staff.id }, data: { phone: "01055556666" } });
+    const cookie = await sessionOf(staff.email);
+    const s = await linkStart(post("/api/seller/me/identity/start", { ...IDV_INPUT, name: "직원", phone: "01055556666" }, cookie));
+    const flow = cookieOf(s, "lo_lidv");
+    const { verificationId } = await s.json();
+    await confirmWith(linkConfirm, "/api/seller/me/identity/confirm", verificationId, flow, { ci: "STAFF-CI" });
+    // 직원 정보를 읽은 뒤 연결을 저장하기 직전에 대표자가 이름을 바꾼다
+    const racing = new Proxy(db, {
+      get(target, prop) {
+        if (prop === "$transaction") {
+          return async (fn: Parameters<typeof db.$transaction>[0]) => {
+            await db.sellerUser.update({ where: { id: staff.id }, data: { name: "바뀐이름" } });
+            return target.$transaction(fn as never);
+          };
+        }
+        const v = Reflect.get(target, prop);
+        return typeof v === "function" ? v.bind(target) : v;
+      },
+    });
+    const ctx = await requireSeller(db, cookie.split("=")[1]);
+    const ownerToken = flow.split("=")[1];
+    expect(await linkStaffIdentity(racing, fake(), ctx, { verificationId, ownerToken })).toEqual({ ok: false, reason: "identity_mismatch" });
+    expect((await db.sellerUser.findUniqueOrThrow({ where: { id: staff.id } })).identityCiHash).toBeNull();
+  });
+});
+
+describe("직원 연결 상태 GET /api/seller/me/identity", () => {
+  it("본인확인 사용 가능 여부·등록 번호 끝 4자리·연결 여부를 주고, 번호 변경으로 풀리면 relinkRequired, 다시 연결하면 해제된다. 다른 직원·대표자에게는 새지 않는다", async () => {
+    const { seller, owner } = await shop();
+    const other = await shop("OTHER-REP");
+    const status = async (cookie: string) => (await linkStatus(req("/api/seller/me/identity", "GET", undefined, cookie))).json();
+    // 다른 쇼핑몰 직원(번호 01077778888)
+    const otherStaff = await createSellerUser(other.seller.id, "MANAGER");
+    await db.sellerUser.update({ where: { id: otherStaff.id }, data: { phone: "01077778888" } });
+    // 처음 미연결: 다시 연결 필요 아님
+    const fresh = await createSellerUser(seller.id, "MANAGER");
+    await db.sellerUser.update({ where: { id: fresh.id }, data: { phone: "01055556666" } });
+    expect(await status(await sessionOf(fresh.email))).toEqual({ available: true, phoneRegistered: true, registeredPhoneLast4: "6666", linked: false, relinkRequired: false });
+    // 연결 → 대표자가 번호 변경 → 다시 연결 필요 → 다시 연결하면 해제
+    const { staff, cookie } = await linkedStaff(seller.id, "STAFF-CI");
+    expect(await status(cookie)).toMatchObject({ linked: true, relinkRequired: false, registeredPhoneLast4: "6666" });
+    await staffPatch(req(`/api/seller/staff/${staff.id}`, "PATCH", { phone: "01055550000" }, await sessionOf(owner.email)), ctxOf(staff.id));
+    const after = await status(cookie);
+    expect(after).toEqual({ available: true, phoneRegistered: true, registeredPhoneLast4: "0000", linked: false, relinkRequired: true });
+    expect(JSON.stringify(after)).not.toContain("01055550000");
+    expect(JSON.stringify(after)).not.toContain("7777");
+    await db.sellerUser.update({ where: { id: staff.id }, data: { phone: "01055556666" } });
+    const s = await linkStart(post("/api/seller/me/identity/start", { ...IDV_INPUT, name: "직원", phone: "01055556666" }, cookie));
+    const flow = cookieOf(s, "lo_lidv");
+    const { verificationId } = await s.json();
+    await confirmWith(linkConfirm, "/api/seller/me/identity/confirm", verificationId, flow, { ci: "STAFF-CI" });
+    expect((await linkRoute(post("/api/seller/me/identity/link", { verificationId }, `${cookie}; ${flow}`))).status).toBe(200);
+    expect(await status(cookie)).toMatchObject({ linked: true, relinkRequired: false });
+    // 대표자는 403(다른 직원 값을 볼 수 없음)
     expect((await linkStatus(req("/api/seller/me/identity", "GET", undefined, await sessionOf(owner.email)))).status).toBe(403);
   });
 });
@@ -439,6 +500,7 @@ describe("비밀번호 찾기(이메일+쇼핑몰) 직원", () => {
 describe("아이디 찾기·계정 고르기 비밀번호 찾기", () => {
   const begin = async () => {
     const s = await findStart(post("/api/seller/find-id/start", { ...IDV_INPUT, name: "직원", phone: "01055556666" }));
+    expect(s.headers.getSetCookie().find((c) => c.startsWith("lo_fidv="))).toMatch(/Max-Age=1800/i);
     expect(s.status).toBe(200);
     return { flow: cookieOf(s, "lo_fidv"), verificationId: (await s.json()).verificationId as string };
   };
@@ -622,7 +684,7 @@ describe("아이디·비밀번호 찾기 한도(같은 휴대폰 하루 10회·�
     // HTTP는 429와 안내 문구
     const res = await findStart(post("/api/seller/find-id/start", person));
     expect(res.status).toBe(429);
-    expect(await res.json()).toEqual({ error: "recovery_limit_exceeded", message: "오늘은 더 인증할 수 없어요. 내일 다시 시도해 주세요" });
+    expect(await res.json()).toEqual({ error: "recovery_limit_exceeded", message: "오늘은 더 인증할 수 없습니다. 내일 다시 시도해 주십시오" });
   });
 
   it("같은 IP는 번호가 달라도 하루 30회까지", async () => {

@@ -6,7 +6,7 @@ import { getQueueSnapshot } from "../../../../lib/server/queue/read";
 
 export async function GET(req: Request) {
   try {
-    const ctx = await requireSeller(prisma, sessionToken(req, "seller"));
+    const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "OVERLAY" });
     return NextResponse.json(await getQueueSnapshot(prisma, ctx));
   } catch (e) {
     return errorResponse(e);

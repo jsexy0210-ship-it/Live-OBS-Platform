@@ -18,7 +18,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // 아무것도 바꾸지 않는다(되돌릴 수 없는 환불이라 확인한 금액으로만 실행, MASTER 결정 2026-10-03).
 export const POST = mutation(async (req: Request, { params }: { params: Promise<{ orderId: string }> }) => {
   // 잠금 중에도 이미 받은 주문은 처리할 수 있다(대표님 결정 2026-10-02, PRODUCT_SCOPE 「잠금 중 허용 범위」).
-  const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { allowUnpaid: true });
+  const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { allowUnpaid: true, feature: "ORDER_FOLLOWUP" });
   const { orderId } = await params;
   if (!UUID.test(orderId)) return NextResponse.json({ error: "not_found" }, { status: 404 });
   const body = await readJson<{ reason: string; expectedVersion: number; confirmOpened: boolean; fault: unknown; expectedRefundAmount: unknown }>(req);
@@ -35,7 +35,7 @@ export const POST = mutation(async (req: Request, { params }: { params: Promise<
   });
   if (!result.ok) {
     const status = queueRejectionStatus(result.reason);
-    return NextResponse.json(REFUND_MESSAGE_CODES.has(result.reason) ? orderErrorBody(result.reason as RefundMessageCode) : { error: result.reason }, { status });
+    return NextResponse.json(REFUND_MESSAGE_CODES.has(result.reason) ? orderErrorBody(result.reason as RefundMessageCode, "formal") : { error: result.reason }, { status });
   }
   return NextResponse.json({ ...result.value, version: result.version });
 });

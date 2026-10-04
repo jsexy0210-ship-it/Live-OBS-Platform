@@ -5,13 +5,15 @@ import { identityProvider, identityUnavailable } from "../../../../lib/server/id
 import { completeIdentityVerification } from "../../../../lib/server/identity/verification";
 import { REPRESENTATIVE_HAS_SHOP_MESSAGE, applyForSeller } from "../../../../lib/server/sellers/application";
 import { businessStatusProvider, mailOrderProvider } from "../../../../lib/server/sellers/businessCheck";
+import { SELLER_CONSENT_MESSAGES } from "../../../../lib/server/sellers/signupConsent";
 import { SELLER_SIGNUP_IDV_COOKIE } from "../../../../lib/server/sellers/signupFlow";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const str = (v: unknown, max = 200) => (typeof v === "string" && v.length <= max ? v : "");
 
 // 판매자 가입 신청 2단계: 휴대폰 본인확인 완료 확인 → 신청 → 자동 점검. 모두 통과하면 바로 승인(approved: true),
-// 아니면 승인 대기(「확인 필요」, reviewReasons).
+// 아니면 승인 대기(「확인 필요」, reviewReasons). 본인확인 기록에 필수 동의가 없으면 400 terms_required(약관 동의부터 다시).
+// 동의 기록(문서 버전·시각)은 대표자 계정에 저장한다.
 export const POST = mutation(async (req: Request) => {
   const provider = identityProvider();
   if (!provider) return identityUnavailable();
@@ -43,12 +45,15 @@ export const POST = mutation(async (req: Request) => {
     companyName: str(body.companyName),
     openedOn: str(body.openedOn, 20),
     mailOrderNumber: str(body.mailOrderNumber, 100) || null,
+    // 문자열이 아닌 값은 그대로 거절되게 넘긴다(빈 값으로 바꿔 기본 플랜이 되지 않게)
+    planCode: body.planCode == null ? null : typeof body.planCode === "string" ? body.planCode.slice(0, 40) : "invalid",
     meta: requestMeta(req),
   });
   if (!r.ok) {
     if (r.reason === "representative_has_shop") {
       return NextResponse.json({ error: r.reason, message: REPRESENTATIVE_HAS_SHOP_MESSAGE }, { status: 409 });
     }
+    if (r.reason === "terms_required" || r.reason === "consent_outdated") return NextResponse.json({ error: r.reason, message: SELLER_CONSENT_MESSAGES[r.reason] }, { status: 400 });
     return NextResponse.json({ error: r.reason }, { status: r.reason === "slug_taken" ? 409 : 400 });
   }
   // 흐름 쿠키는 성공해도 지우지 않는다. 성공 응답이 잘려 브라우저가 결과를 못 받았을 때 같은 요청을 다시 보내면 이 쿠키로

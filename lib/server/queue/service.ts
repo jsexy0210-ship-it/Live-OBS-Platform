@@ -9,6 +9,7 @@ import { requireSellerPermission, requireSellerRead, type TenantContext } from "
 import { restoreOrderStock } from "../products/stock";
 import { checkTransition, isCompletePermutation, isValidTimer, type QueueAction, type QueueRejection } from "./rules";
 import { refreshOrderRetention } from "../buyers/legalHold";
+import { chargedShippingFee, itemCouponDiscount, restoreOrderCoupon } from "../shop-coupons/service";
 
 type Tx = Prisma.TransactionClient;
 
@@ -328,7 +329,8 @@ export async function markOrderPaid(
           earnStartsAt: policy.earnStartsAt,
           gradeId: order.buyerMember.gradeId,
           paymentMethod,
-          base: rewardBase(order.items),
+          // 쿠폰을 쓴 주문은 품목별 쿠폰 할인을 뺀 금액이 기준(MASTER 2026-10-04 보수적 기본값, 대표님 확정 대기)
+          base: rewardBase(order.items) - order.items.reduce((sum, i) => sum + itemCouponDiscount(order.couponRedemption, i.optionId), 0),
           now,
         });
         await tx.order.update({
@@ -398,7 +400,7 @@ async function markPaidIfPending(tx: Tx, sellerId: string, orderId: string, data
 async function loadPendingOrder(tx: Tx, sellerId: string, orderId: string) {
   const order = await tx.order.findFirst({
     where: { id: orderId, sellerId },
-    include: { items: { orderBy: { createdAt: "asc" } }, buyerMember: { include: { grade: true } } },
+    include: { items: { orderBy: { createdAt: "asc" } }, buyerMember: { include: { grade: true } }, couponRedemption: { select: { itemDiscounts: true } } },
   });
   if (!order) throw new Rejected("not_found");
   if (order.status !== "PENDING_PAYMENT") throw new Rejected("invalid_transition");
@@ -445,6 +447,8 @@ export async function cancelPendingOrderInTx(
   });
   // 주문 때 뺀 재고(ORDER 상품)가 있으면 되돌린다(판매자 설정 restockOnCancel)
   const restocked = await restoreOrderStock(tx, { sellerId: o.sellerId, orderId: o.orderId, reason: "CANCEL", now: o.now, actor: { actorType: o.actorType, actorId: o.actorId } });
+  // 쓴 쿠폰은 전체 취소라 되돌린다(shop-coupons)
+  await restoreOrderCoupon(tx, { sellerId: o.sellerId, orderId: o.orderId, now: o.now, reason: o.reason });
   await writeAudit(tx, {
     actorType: o.actorType,
     actorId: o.actorId,
@@ -483,7 +487,8 @@ export type RefundOutcome = {
 // - 돈으로 돌려주는 환불액은 실제 결제액(totalAmount, 적립금 사용액을 이미 뺀 금액)을 넘지 않는다.
 //   쓴 적립금을 되돌리는 규칙은 아직 없다(PRODUCT_SCOPE 「적립금 사용(결제 차감) 방식」 미정). 지금은 주문에서 적립금을 쓸 수 없다.
 export function computeRefund(input: {
-  items: { unitPrice: number; quantity: number; opened: boolean }[];
+  // couponDiscount: 그 품목에 배분된 쿠폰 할인(shop-coupons). 품목 환불액 = 단가 × 수량 − 배분액
+  items: { unitPrice: number; quantity: number; opened: boolean; couponDiscount?: number }[];
   shippingFee: number;
   totalAmount: number;
   shipped: boolean;
@@ -491,7 +496,7 @@ export function computeRefund(input: {
   returnFee: number;
 }): { refundAmount: number; returnFeeDeducted: number } {
   const buyerFault = input.fault === "BUYER";
-  const items = input.items.reduce((sum, i) => sum + (buyerFault && i.opened ? 0 : i.unitPrice * i.quantity), 0);
+  const items = input.items.reduce((sum, i) => sum + (buyerFault && i.opened ? 0 : i.unitPrice * i.quantity - (i.couponDiscount ?? 0)), 0);
   const shipping = !input.shipped || input.fault === "SELLER" ? input.shippingFee : 0;
   const fee = input.shipped && buyerFault && items > 0 ? input.returnFee * (input.shippingFee === 0 ? 2 : 1) : 0;
   const gross = Math.min(items + shipping, input.totalAmount);
@@ -505,6 +510,8 @@ const isOpened = (q: Pick<QueueItem, "openingStartedAt" | "status"> | undefined)
 
 export type RefundPreview = {
   shipped: boolean;
+  // 구매자가 실제로 낸 처음 배송비(배송비 무료 쿠폰이면 0). 화면의 공제 항목은 이 값을 쓴다.
+  chargedShippingFee: number;
   openedItems: { orderItemId: string; amount: number }[];
   // 사유 주체별 환불액. blocked: 이 사유 주체로는 환불할 수 없다(refundOrder가 opened_items_unshipped로 막는다)
   byFault: Record<RefundFault, { refundAmount: number; returnFeeDeducted: number; blocked: boolean }>;
@@ -516,18 +523,29 @@ export async function previewRefund(db: PrismaClient, ctx: TenantContext, orderI
   requireSellerRead(ctx, "ORDER_SHIPPING");
   const order = await db.order.findFirst({
     where: { id: orderId, sellerId: ctx.sellerId, status: "PAID" },
-    include: { items: true, queueItems: true, shipment: { select: { status: true } } },
+    include: { items: true, queueItems: true, shipment: { select: { status: true } }, couponRedemption: { select: { benefit: true, itemDiscounts: true } } },
   });
   if (!order) return null;
   const shipped = order.shipment !== null;
-  const items = order.items.map((i) => ({ id: i.id, unitPrice: i.unitPrice, quantity: i.quantity, opened: isOpened(order.queueItems.find((x) => x.orderItemId === i.id)) }));
+  const items = order.items.map((i) => ({
+    id: i.id,
+    unitPrice: i.unitPrice,
+    quantity: i.quantity,
+    couponDiscount: itemCouponDiscount(order.couponRedemption, i.optionId),
+    opened: isOpened(order.queueItems.find((x) => x.orderItemId === i.id)),
+  }));
   const returnFee = order.returnFeeSnapshot ?? (await getShippingPolicy(db, ctx.sellerId)).returnFee;
   const byFault = {} as RefundPreview["byFault"];
   for (const fault of ["BUYER", "SELLER"] as const) {
-    const r = computeRefund({ items, shippingFee: order.shippingFee, totalAmount: order.totalAmount, shipped, fault, returnFee });
+    const r = computeRefund({ items, shippingFee: chargedShippingFee(order), totalAmount: order.totalAmount, shipped, fault, returnFee });
     byFault[fault] = { ...r, blocked: fault === "BUYER" && !shipped && items.some((i) => i.opened) };
   }
-  return { shipped, openedItems: items.filter((i) => i.opened).map((i) => ({ orderItemId: i.id, amount: i.unitPrice * i.quantity })), byFault };
+  return {
+    shipped,
+    chargedShippingFee: chargedShippingFee(order),
+    openedItems: items.filter((i) => i.opened).map((i) => ({ orderItemId: i.id, amount: i.unitPrice * i.quantity - i.couponDiscount })),
+    byFault,
+  };
 }
 
 // 결제 완료 주문 환불: 결제 완료 → 환불. 주문 품목마다
@@ -560,7 +578,7 @@ export async function refundOrder(
     if (moved.count !== 1) {
       throw new Rejected((await tx.order.count({ where: { id: orderId, sellerId: ctx.sellerId } })) ? "invalid_transition" : "not_found");
     }
-    const order = await tx.order.findUniqueOrThrow({ where: { id: orderId }, include: { items: true, queueItems: true, shipment: { select: { status: true } } } });
+    const order = await tx.order.findUniqueOrThrow({ where: { id: orderId }, include: { items: true, queueItems: true, shipment: { select: { status: true } }, couponRedemption: { select: { benefit: true, itemDiscounts: true } } } });
     // 발송한 주문은 상품이 구매자에게 가 있으므로 재고를 되돌리지 않는다(회수는 판매자가 MANUAL로). 배송 기록은 그대로 둔다.
     const shippedBeforeRefund = order.shipment !== null;
     const openedItemCount = order.items.filter((i) => isOpened(order.queueItems.find((x) => x.orderItemId === i.id))).length;
@@ -574,8 +592,14 @@ export async function refundOrder(
     if (!shippedBeforeRefund && openedItemCount > 0 && refundFault === "BUYER") throw new Rejected("opened_items_unshipped");
     const returnFee = order.returnFeeSnapshot ?? (await getShippingPolicy(tx, ctx.sellerId)).returnFee;
     const { refundAmount, returnFeeDeducted } = computeRefund({
-      items: order.items.map((i) => ({ unitPrice: i.unitPrice, quantity: i.quantity, opened: isOpened(order.queueItems.find((x) => x.orderItemId === i.id)) })),
-      shippingFee: order.shippingFee,
+      items: order.items.map((i) => ({
+        unitPrice: i.unitPrice,
+        quantity: i.quantity,
+        couponDiscount: itemCouponDiscount(order.couponRedemption, i.optionId),
+        opened: isOpened(order.queueItems.find((x) => x.orderItemId === i.id)),
+      })),
+      // 배송비 무료 쿠폰을 썼으면 구매자가 낸 배송비는 0원(shop-coupons chargedShippingFee)
+      shippingFee: chargedShippingFee(order),
       totalAmount: order.totalAmount,
       shipped: shippedBeforeRefund,
       fault: refundFault,
@@ -584,6 +608,10 @@ export async function refundOrder(
     // 화면에서 확인받은 금액과 다르면(그사이 발송·개봉 등) 아무것도 바꾸지 않고 되돌린다
     if (opts.expectedRefundAmount !== undefined && opts.expectedRefundAmount !== refundAmount) throw new Rejected("refund_amount_changed");
     await tx.order.update({ where: { id: orderId }, data: { refundAmount, refundFault, returnFeeDeducted } });
+    // 결제 금액 전부를 돌려주면 전체 취소로 보고 쓴 쿠폰을 되돌린다. 일부만 돌려주면 되돌리지 않는다(MASTER 2026-10-04).
+    // 개봉한 품목을 구매자 사정으로 남기는 환불은 금액이 결제 금액과 같아도 전체 취소가 아니다(Codex 4176403238).
+    const keepsItems = refundFault === "BUYER" && openedItemCount > 0;
+    if (refundAmount === order.totalAmount && !keepsItems) await restoreOrderCoupon(tx, { sellerId: ctx.sellerId, orderId, now, reason: "refund_full" });
     await tx.orderStatusHistory.create({
       data: { sellerId: ctx.sellerId, orderId, fromStatus: "PAID", toStatus: "REFUNDED", actorType: ctx.actorType, actorId: ctx.actorId, reason, createdAt: now },
     });

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { IDV_COOKIE, RESET_PATH, startSellerPasswordReset } from "../../../../../lib/server/auth/passwordReset";
+import { FLOW_COOKIE_MAX_AGE_S, IDV_COOKIE, RESET_PATH, startSellerPasswordReset } from "../../../../../lib/server/auth/passwordReset";
 import { prisma } from "../../../../../lib/server/db";
 import { isString, mutation, readJson, requestMeta, setFlowCookie } from "../../../../../lib/server/http/route";
-import { START_IN_PROGRESS_MESSAGE } from "../../../../../lib/server/identity/attempt";
+import { START_IN_PROGRESS_MESSAGE_FORMAL } from "../../../../../lib/server/identity/attempt";
 import { identityFailure } from "../../../../../lib/server/identity/http";
 import { identityProvider, identityUnavailable } from "../../../../../lib/server/identity/registry";
 
@@ -14,7 +14,7 @@ import { identityProvider, identityUnavailable } from "../../../../../lib/server
 // 같은 키의 첫 문자를 보내는 중이면 409 start_in_progress.
 export const POST = mutation(async (req: Request) => {
   const provider = identityProvider();
-  if (!provider) return identityUnavailable();
+  if (!provider) return identityUnavailable("formal");
   const body = await readJson<{ email: string; shopSlug: string; person: unknown; attemptKey?: unknown; accountType?: unknown }>(req);
   if (!isString(body.email) || !isString(body.shopSlug)) return NextResponse.json({ error: "bad_request" }, { status: 400 });
   if (body.accountType !== undefined && body.accountType !== "owner" && body.accountType !== "staff") return NextResponse.json({ error: "bad_request" }, { status: 400 });
@@ -26,10 +26,10 @@ export const POST = mutation(async (req: Request) => {
   );
   if (!r.ok) {
     if (r.reason === "reset_limit_exceeded") return NextResponse.json({ error: r.reason }, { status: 429, headers: { "cache-control": "no-store" } });
-    if (r.reason === "start_in_progress") return NextResponse.json({ error: r.reason, message: START_IN_PROGRESS_MESSAGE }, { status: 409, headers: { "cache-control": "no-store" } });
-    return identityFailure(r.reason);
+    if (r.reason === "start_in_progress") return NextResponse.json({ error: r.reason, message: START_IN_PROGRESS_MESSAGE_FORMAL }, { status: 409, headers: { "cache-control": "no-store" } });
+    return identityFailure(r.reason, "formal");
   }
   const res = NextResponse.json({ verificationId: r.verificationId }, { headers: { "cache-control": "no-store" } });
-  setFlowCookie(res, IDV_COOKIE, r.ownerToken, RESET_PATH, 10 * 60);
+  setFlowCookie(res, IDV_COOKIE, r.ownerToken, RESET_PATH, FLOW_COOKIE_MAX_AGE_S);
   return res;
 });

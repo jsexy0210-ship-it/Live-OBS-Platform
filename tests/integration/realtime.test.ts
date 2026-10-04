@@ -138,8 +138,17 @@ async function readToEnd(res: Response, timeoutMs = 5000): Promise<string> {
 
 describe("SSE 연결 재확인·상한", () => {
   const params = (token: string) => ({ params: Promise.resolve({ token }) });
-  const open = (token: string, signal?: AbortSignal) =>
-    overlayStream(new Request(`http://localhost/api/overlay/${token}/stream`, { signal }), params(token));
+  // 요청 객체를 붙잡아 둔다. Request가 GC되면 undici 내부 AbortController도 사라져 signal의 abort가 req.signal로 전해지지 않는다
+  // (실제 서버는 연결 동안 요청을 들고 있다). 붙잡지 않으면 GC 시점에 따라 닫은 연결이 슬롯을 놓지 않는다.
+  const live: Request[] = [];
+  afterEach(() => {
+    live.length = 0;
+  });
+  const open = (token: string, signal?: AbortSignal) => {
+    const req = new Request(`http://localhost/api/overlay/${token}/stream`, { signal });
+    live.push(req);
+    return overlayStream(req, params(token));
+  };
 
   it("오버레이 토큰을 재발급하면 옛 토큰 스트림은 다음 확인 때 닫힌다", async () => {
     SSE_CONFIG.pingMs = 100;

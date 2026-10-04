@@ -53,7 +53,8 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
     fault === "BUYER" && preview && !blocked
       ? [
           ...preview.openedItems.map((o) => ({ label: `개봉한 상품 · ${order.items.find((i) => i.id === o.orderItemId)?.productNameSnapshot ?? ""}`, amount: o.amount })),
-          ...(preview.shipped && order.shippingFee > 0 ? [{ label: "처음 배송비", amount: order.shippingFee }] : []),
+          // 구매자가 실제로 낸 배송비(배송비 무료 쿠폰이면 0, 서버 미리보기 값)
+          ...(preview.shipped && (preview.chargedShippingFee ?? order.shippingFee) > 0 ? [{ label: "처음 배송비", amount: preview.chargedShippingFee ?? order.shippingFee }] : []),
           ...(quote && quote.returnFeeDeducted > 0 ? [{ label: "반품 배송비", amount: quote.returnFeeDeducted }] : []),
         ]
       : [];
@@ -109,18 +110,18 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
       setQueueVersion(r.version);
       if (r.changed?.openedItems.length) setNeedOpened(true);
       setAgree(false);
-      setError({ text: r.changed ? "그사이 환불 금액이 바뀌었어요. 금액을 다시 확인해 주세요" : "이미 환불했거나 지금은 환불할 수 없는 주문이에요" });
+      setError({ text: r.changed ? "그사이 환불 금액이 변경되었습니다. 금액을 다시 확인해 주십시오" : "이미 환불했거나 지금은 환불할 수 없는 주문입니다" });
       return;
     }
     const f = r.fail;
     if (f.error === "opened_items_present") {
       setNeedOpened(true);
-      setError({ text: failMessage(f) });
-    } else if (f.status === 403) setError({ title: "이 기능은 권한이 필요해요", text: "대표자에게 요청해 주세요 · 필요한 권한: 주문·배송" });
-    else if (f.error === "invalid_transition") setError({ text: "이미 환불했거나 지금은 환불할 수 없는 주문이에요" });
-    else if (f.error === "conflict") setError({ text: "그사이 주문대기가 바뀌었어요. 다시 눌러 주세요" });
+      setError({ text: failMessage(f, "admin") });
+    } else if (f.status === 403) setError({ title: "이 기능은 권한이 필요합니다", text: "대표자에게 요청해 주십시오 · 필요한 권한: 주문·배송" });
+    else if (f.error === "invalid_transition") setError({ text: "이미 환불했거나 지금은 환불할 수 없는 주문입니다" });
+    else if (f.error === "conflict") setError({ text: "그사이 주문대기가 변경되었습니다. 다시 눌러 주십시오" });
     else if (f.message) setError({ text: f.message });
-    else setError({ title: "환불하지 못했어요.", text: "결제는 그대로예요. 잠시 뒤 다시 시도해 주세요.", retry: true });
+    else setError({ title: "환불하지 못했습니다.", text: "결제는 그대로입니다. 잠시 후 다시 시도해 주십시오.", retry: true });
   };
 
   return (
@@ -141,7 +142,7 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
             <span className="col">
               <span className="t-l1 fw6">주문 전체 환불</span>
               <span className="t-c1 c-alt">
-                {order.paymentMethod === "CARD" ? `${canSend && amount ? `${won(amount)} · ` : ""}카드 승인 취소` : canSend && amount ? won(amount) : "주문 전체를 취소해요"}
+                {order.paymentMethod === "CARD" ? `${canSend && amount ? `${won(amount)} · ` : ""}카드 승인 취소` : canSend && amount ? won(amount) : "주문 전체 취소"}
               </span>
             </span>
           </div>
@@ -164,8 +165,8 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
                 </label>
               ))}
             </div>
-            <span className="help">구매자 사정만 결제 후 취소 횟수에 들어가요 · 고르지 않으면 환불할 수 없어요</span>
-            {fault === "BUYER" && <span className="t-c1 c-alt">이 취소는 구매자의 결제 후 취소 횟수에 들어가요</span>}
+            <span className="help">구매자 사정만 결제 후 취소 횟수에 포함됩니다 · 선택하지 않으면 환불할 수 없습니다</span>
+            {fault === "BUYER" && <span className="t-c1 c-alt">이 취소는 구매자의 결제 후 취소 횟수에 포함됩니다</span>}
           </div>
           <div className="fld">
             <label htmlFor="refund-reason" className="req">
@@ -173,7 +174,7 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
             </label>
             <select id="refund-reason" className="inp" value={reason} disabled={busy} onChange={(e) => setReason(e.target.value)}>
               <option value="" disabled>
-                사유를 골라 주세요
+                사유를 선택해 주십시오
               </option>
               {REASONS.map((r) => (
                 <option key={r} value={r}>
@@ -197,7 +198,7 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
             ))}
             <dt>환불 금액</dt>
             <dd className="num fw7" data-testid="refund-amount">
-              {blocked ? "—" : amount !== null ? won(amount) : fault === null ? "사유 주체를 고르면 보여요" : "금액을 확인하지 못했어요"}
+              {blocked ? "—" : amount !== null ? won(amount) : fault === null ? "사유 주체를 선택하면 표시됩니다" : "금액을 확인하지 못했습니다"}
             </dd>
             {order.paymentMethod === "CARD" && (
               <>
@@ -208,24 +209,24 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
           </dl>
           {blocked && (
             <div className="msg msg-neg" role="alert" style={{ display: "block" }}>
-              발송 전에 개봉한 상품이 있어 구매자 사정으로는 환불할 수 없어요. 개봉한 상품을 보낸 뒤 처리해 주세요
+              발송 전에 개봉한 상품이 있어 구매자 사정으로는 환불할 수 없습니다. 개봉한 상품을 보낸 뒤 처리해 주십시오
             </div>
           )}
           {nothing && (
             <div className="msg" role="status" style={{ display: "block" }}>
-              <b>환불할 금액이 없어요</b> 개봉한 상품과 배송비를 빼면 돌려줄 금액이 0원이에요
+              <b>환불할 금액이 없습니다</b> 개봉한 상품과 배송비를 빼면 돌려줄 금액이 0원입니다
             </div>
           )}
           {needOpened && canSend && (
             <label className="chk">
               <input className="cbx" type="checkbox" checked={openedOk} disabled={busy} onChange={(e) => setOpenedOk(e.target.checked)} />
-              개봉한 상품이 있는 걸 확인했어요
+              개봉한 상품이 있는 것을 확인했습니다
             </label>
           )}
           {canSend && (
             <label className="chk">
               <input className="cbx" type="checkbox" checked={agree} disabled={busy} onChange={(e) => setAgree(e.target.checked)} />
-              위 금액으로 환불해요. 승인 취소 후 되돌릴 수 없어요.
+              위 금액으로 환불합니다. 승인 취소 후 되돌릴 수 없습니다.
             </label>
           )}
           {error && (
@@ -262,7 +263,7 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
               {busy ? (
                 <>
                   <span className="spin" style={{ width: 16, height: 16, boxShadow: "inset 0 0 0 2px #ffffff66" }} />
-                  환불하고 있어요
+                  환불 중
                 </>
               ) : amount !== null ? (
                 `${won(amount)} 환불 실행`
