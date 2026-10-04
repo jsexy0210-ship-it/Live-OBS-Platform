@@ -14,7 +14,9 @@ export type SlotImage = {
   error?: string;
 };
 
-export const IMAGE_ACCEPT = ["image/jpeg", "image/png", "image/webp"] as const;
+// 서버가 받는 형식(기반-상품 계약). 지금은 PNG만이고, JPG·WEBP가 정해지면 여기와 IMAGE_LABEL만 바꾼다
+export const IMAGE_ACCEPT = ["image/png"] as const;
+export const IMAGE_LABEL = "PNG";
 export const IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 export const IMAGE_MAX_COUNT = 10;
 
@@ -23,7 +25,7 @@ export function pickUploadable(files: File[], room: number): { ok: File[]; probl
   const ok: File[] = [];
   let problem: string | null = null;
   for (const f of files) {
-    if (!(IMAGE_ACCEPT as readonly string[]).includes(f.type)) problem = "JPG · PNG · WEBP만 올릴 수 있습니다";
+    if (!(IMAGE_ACCEPT as readonly string[]).includes(f.type)) problem = `${IMAGE_LABEL}만 올릴 수 있습니다`;
     else if (f.size > IMAGE_MAX_BYTES) problem = "5MB 이하만 올릴 수 있습니다";
     else if (ok.length >= room) problem = `이미지는 ${IMAGE_MAX_COUNT}장까지 올릴 수 있습니다`;
     else ok.push(f);
@@ -155,7 +157,7 @@ export default function ProductImages({
           }}
         />
       </div>
-      <span className="help">첫 번째가 대표 이미지입니다 · 끌어서 순서 변경 · 1:1 비율 권장 · JPG · PNG · WEBP · 5MB 이하 · 칸을 누르거나 파일을 끌어다 놓으면 올라갑니다</span>
+      <span className="help">첫 번째가 대표 이미지입니다 · 끌어서 순서 변경 · 1:1 비율 권장 · {IMAGE_LABEL} · 5MB 이하 · 칸을 누르거나 파일을 끌어다 놓으면 올라갑니다</span>
       <span className="pm-count num">
         {images.length} / {max}
       </span>

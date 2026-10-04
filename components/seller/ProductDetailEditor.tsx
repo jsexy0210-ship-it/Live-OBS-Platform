@@ -2,7 +2,7 @@
 
 import "./ProductMedia.css";
 import { useRef, useState } from "react";
-import { IMAGE_ACCEPT, IMAGE_MAX_BYTES, pickUploadable, type SlotImage } from "./ProductImages";
+import { IMAGE_ACCEPT, IMAGE_LABEL, IMAGE_MAX_BYTES, pickUploadable, type SlotImage } from "./ProductImages";
 
 // 상품 상세 페이지 편집 칸(SA-012): 글 블록과 이미지 블록을 쌓고, 위·아래로 순서를 바꾸고, 「미리보기」로 구매자 화면 순서대로 본다.
 // 저장·업로드는 부모가 한다(제어형): blocks를 그리고, 바뀌는 일은 onChange로, 이미지 파일은 onPickImage로 알린다.
@@ -153,7 +153,7 @@ export default function ProductDetailEditor({
       )}
 
       <span className="help">
-        글·이미지 블록은 최대 {max}개 · 글은 블록마다 {DETAIL_TEXT_MAX.toLocaleString("ko-KR")}자까지 · 이미지는 JPG · PNG · WEBP {IMAGE_MAX_BYTES / 1024 / 1024}MB 이하 · 구매자 상품 페이지 아래에 위에서부터 순서대로 표시됩니다
+        글·이미지 블록은 최대 {max}개 · 글은 블록마다 {DETAIL_TEXT_MAX.toLocaleString("ko-KR")}자까지 · 이미지는 {IMAGE_LABEL} {IMAGE_MAX_BYTES / 1024 / 1024}MB 이하 · 구매자 상품 페이지 아래에 위에서부터 순서대로 표시됩니다
       </span>
       {problem && (
         <span className="err" role="alert">
