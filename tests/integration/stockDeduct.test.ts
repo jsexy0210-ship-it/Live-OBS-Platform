@@ -6,7 +6,7 @@ import { loginSeller } from "../../lib/server/auth/login";
 import { prisma } from "../../lib/server/db";
 import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
 import { createOrder } from "../../lib/server/orders/create";
-import { ORDER_ERROR_MESSAGES, purchaseRestrictedMessage } from "../../lib/server/orders/messages";
+import { ORDER_ERROR_MESSAGES, ORDER_ERROR_MESSAGES_FORMAL, purchaseRestrictedMessage } from "../../lib/server/orders/messages";
 import { cancelOverdueOrders, listPaymentDueSoon } from "../../lib/server/orders/overdue";
 import { shipOrder } from "../../lib/server/orders/ship";
 import { createOption, createProduct, updateProduct } from "../../lib/server/products/manage";
@@ -210,12 +210,12 @@ describe("수동 재고 증감", () => {
     for (const body of [{ delta: 0, reason: "x" }, { delta: 1.5, reason: "x" }, { delta: "3", reason: "x" }, { delta: -1 }, { delta: -1, reason: "  " }, { delta: -1, reason: "가".repeat(101) }, { delta: -1, reason: "증정" + "\u0000" }]) {
       const r = await call(body);
       expect(r.status, JSON.stringify(body)).toBe(400);
-      expect(await r.json()).toEqual({ error: "invalid_stock_adjust", message: ORDER_ERROR_MESSAGES.invalid_stock_adjust });
+      expect(await r.json()).toEqual({ error: "invalid_stock_adjust", message: ORDER_ERROR_MESSAGES_FORMAL.invalid_stock_adjust });
     }
     expect((await call({ delta: -1, reason: "가".repeat(100) })).status).toBe(200);
     const over = await call({ delta: -9, reason: "증정" });
     expect(over.status).toBe(409);
-    expect(await over.json()).toEqual({ error: "insufficient_stock", message: ORDER_ERROR_MESSAGES.insufficient_stock });
+    expect(await over.json()).toEqual({ error: "insufficient_stock", message: ORDER_ERROR_MESSAGES_FORMAL.insufficient_stock });
     expect(await stockOf(p.optionId)).toBe(8);
 
     const other = await shop();
@@ -357,7 +357,7 @@ describe("검수 후속(#84)", () => {
       { params: Promise.resolve({ productId: ord.productId, optionId: ord.optionId }) },
     );
     expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: "stock_too_large", message: "재고는 21억 개까지 넣을 수 있어요" });
+    expect(await res.json()).toEqual({ error: "stock_too_large", message: "재고는 21억 개까지 넣을 수 있습니다" });
     expect(await adjustStock(db, s.ctx, ord.productId, ord.optionId, { delta: 1, reason: "입고" })).toMatchObject({ ok: true, value: { stock: INT4_MAX } });
   });
 

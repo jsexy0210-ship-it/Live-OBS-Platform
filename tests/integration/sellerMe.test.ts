@@ -17,14 +17,14 @@ const cookieOf = (res: Response) => (res.headers.get("set-cookie") ?? "").split(
 const me = (cookie?: string) => meRoute(new Request("http://localhost:3000/api/seller/me", { headers: { ...H, ...(cookie ? { cookie } : {}) } }));
 
 describe("판매자 로그인 실패 응답", () => {
-  it("{ error, message } 해요체 문구로 주고, 이메일이 없을 때와 비밀번호가 틀릴 때 같은 응답이다", async () => {
+  it("{ error, message } 합니다체 문구로 주고, 이메일이 없을 때와 비밀번호가 틀릴 때 같은 응답이다", async () => {
     const { seller } = await createSeller();
     const owner = await createSellerUser(seller.id, "OWNER");
     const wrongPassword = await login({ email: owner.email, password: "wrong-password-1" });
     const unknownEmail = await login({ email: "nobody@example.com", password: PASSWORD });
     for (const res of [wrongPassword, unknownEmail]) {
       expect(res.status).toBe(401);
-      expect(await res.json()).toEqual({ error: "invalid_credentials", message: "이메일이나 비밀번호가 맞지 않아요" });
+      expect(await res.json()).toEqual({ error: "invalid_credentials", message: "이메일이나 비밀번호가 맞지 않습니다" });
     }
     const empty = await login({ email: owner.email });
     expect(empty.status).toBe(400);

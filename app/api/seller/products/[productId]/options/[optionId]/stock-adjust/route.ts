@@ -13,7 +13,7 @@ export const POST = mutation(async (req: Request, { params }: { params: Promise<
   const { productId, optionId } = await params;
   const r = await adjustStock(prisma, ctx, productId, optionId, await readJson(req));
   if (!r.ok) {
-    const body = r.currentStock === undefined ? orderErrorBody(r.reason) : { ...orderErrorBody(r.reason), currentStock: r.currentStock };
+    const body = r.currentStock === undefined ? orderErrorBody(r.reason, "formal") : { ...orderErrorBody(r.reason, "formal"), currentStock: r.currentStock };
     return NextResponse.json(body, { status: r.reason === "invalid_stock_adjust" ? 400 : 409 });
   }
   return NextResponse.json(r.value);

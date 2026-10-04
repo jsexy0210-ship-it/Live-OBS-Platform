@@ -889,6 +889,6 @@ describe("#67 재검수 P2: 결제를 처리하는 중의 해지", () => {
       }),
     );
     expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: "payment_in_progress", message: "결제를 처리하고 있어요. 잠시 뒤 다시 시도해 주세요" });
+    expect(await res.json()).toEqual({ error: "payment_in_progress", message: "결제를 처리하고 있습니다. 잠시 뒤 다시 시도해 주십시오" });
   });
 });

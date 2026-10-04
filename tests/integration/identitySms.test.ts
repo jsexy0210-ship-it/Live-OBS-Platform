@@ -177,9 +177,10 @@ describe("공급자 장애·타임아웃·운영 키 없음", () => {
         await resetStartRoute(post("/api/seller/password-reset/start", { email: "a@example.com", shopSlug: "shop", person: IDV_INPUT })),
         await resetVerifyRoute(post("/api/seller/password-reset/verify", { verificationId: crypto.randomUUID() })),
       ];
-      for (const r of rs) {
+      // 파트너스 가입 신청(PF)은 해요체, 파트너스 비밀번호 찾기는 합니다체
+      for (const [i, r] of rs.entries()) {
         expect(r.status).toBe(503);
-        expect(await r.json()).toEqual({ error: "identity_unavailable", message: "본인확인 서비스 준비 중이에요" });
+        expect(await r.json()).toEqual({ error: "identity_unavailable", message: i < 4 ? "본인확인 서비스 준비 중이에요" : "본인확인 서비스를 준비하고 있습니다" });
       }
     } finally {
       env.NODE_ENV = prev;
