@@ -86,7 +86,8 @@ export async function listSellerMembers(db: PrismaClient, ctx: TenantContext, qu
   const page = rows.slice(0, take);
   const last = page[page.length - 1];
   // 이름·휴대폰을 내보냈거나 그것으로 찾았으면 열람 기록. 검색어는 남기지 않고 돌려준 회원 id·건수만 남긴다.
-  if (pii && page.length > 0) {
+  // 개인정보로 찾았으면 결과가 0건이어도 남긴다(일치 여부도 개인정보 확인이다, #209 Codex).
+  if (searchesPii || (pii && page.length > 0)) {
     await writeAudit(db, {
       actorType: ctx.actorType,
       actorId: ctx.actorId,
