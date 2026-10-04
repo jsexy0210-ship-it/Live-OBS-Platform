@@ -24,7 +24,7 @@ test("대표자: 회원 목록에서 닉네임으로 찾고, 상세에서 주문
   await page.goto("/seller/login?next=%2Fseller%2Fmembers");
   await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
   await expect(page).toHaveURL(/\/seller\/members$/);
-  await expect(page.getByRole("link", { name: "회원", exact: true })).toHaveAttribute("href", "/seller/members");
+  await expect(page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "회원", exact: true })).toHaveAttribute("href", "/seller/members");
 
   const rows = page.getByTestId("member-row");
   for (const nick of ["별빛사냥꾼", "카드왕", "민트컨디션"]) await expect(rows.filter({ hasText: nick })).toHaveCount(1);
@@ -70,5 +70,5 @@ test("회원·적립금 권한이 없는 직원은 메뉴가 안 보이고, 주�
   await submitSellerLogin(page, "demo-staff@example.com", PASSWORD);
   await expect(page).toHaveURL(/\/seller\/members$/);
   await expect(page.getByText("필요한 권한: 회원·적립금", { exact: false })).toBeVisible();
-  await expect(page.getByRole("link", { name: "회원", exact: true })).toHaveCount(0);
+  await expect(page.locator("a[href=\"/seller/members\"]")).toHaveCount(0);
 });

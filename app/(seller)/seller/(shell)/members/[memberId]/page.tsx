@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { PageHead } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
@@ -28,14 +29,14 @@ export default function MemberDetailPage() {
     <>
       <Topbar crumb="판매 › 회원 › 회원 상세" />
       <main className="main">
-        <div className="ph">
-          <div className="col" style={{ gap: 6 }}>
-            <Link className="t-l2 c-alt" href="/seller/members">
-              ← 회원 목록
+        <PageHead
+          title={m ? (m.broadcastNickname ?? "닉네임 없음") : "회원 상세"}
+          actions={
+            <Link className="btn btn-out" href="/seller/members">
+              회원 목록
             </Link>
-            <h1 className="t-t3">{m ? (m.broadcastNickname ?? "닉네임 없음") : "회원 상세"}</h1>
-          </div>
-        </div>
+          }
+        />
 
         {!m ? (
           <div className="card">

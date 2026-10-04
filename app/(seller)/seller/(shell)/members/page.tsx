@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PageHead } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
@@ -71,12 +72,7 @@ export default function MemberListPage() {
     <>
       <Topbar crumb="판매 › 회원" />
       <main className="main">
-        <div className="ph">
-          <div className="col" style={{ gap: 4 }}>
-            <h1 className="t-t3">회원</h1>
-            <span className="t-l2 c-alt">내 쇼핑몰에 가입한 구매자입니다. 탈퇴한 회원은 표시되지 않습니다.</span>
-          </div>
-        </div>
+        <PageHead title="회원" />
 
         <div className="card">
           <div className="toolbar" style={{ padding: 16 }}>
