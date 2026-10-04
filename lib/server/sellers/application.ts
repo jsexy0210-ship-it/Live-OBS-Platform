@@ -9,6 +9,8 @@ import { dbNow } from "../billing/subscription";
 import { keyedOwnerToken, parseAttemptKey, reuseKeyedAttempt, scopedAttemptKeyHash } from "../identity/attempt";
 import type { IdentityProvider } from "../identity/provider";
 import { parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
+import { SIGNUP_PLAN_CODES } from "../billing/plans";
+import { DEFAULT_PLAN_CODE } from "../billing/subscription";
 import { activateSeller } from "./approval";
 import {
   normalizeBusinessNumber,
@@ -132,6 +134,9 @@ export type ApplyInput = {
   // 개업일자(YYYYMMDD 또는 YYYY-MM-DD). 국세청 진위확인에 쓴다.
   openedOn: string;
   mailOrderNumber?: string | null;
+  // 플랜(ONQ 1-C): OVERLAY_ONLY | INTEGRATED. 없으면 신규 가입 기본 플랜(DEFAULT_PLAN_CODE). 그 밖의 값은 invalid_input.
+  // 가입 화면이 「지금 운영 중인 쇼핑몰이 있나요?」로 고르면 보낸다(ONQ 2단계).
+  planCode?: string | null;
   meta?: { ip?: string | null; userAgent?: string | null };
   now?: Date;
 };
@@ -198,6 +203,8 @@ async function applyOnce(
   if (!EMAIL.test(email) || !shopName || shopName.length > 50 || !companyName || companyName.length > 100) return { ok: false, reason: "invalid_input" };
   if (input.password.length < MIN_PASSWORD_LENGTH || input.password.length > 200) return { ok: false, reason: "weak_password" };
   if (!SLUG.test(slug) || RESERVED_SLUGS.has(slug)) return { ok: false, reason: "invalid_slug" };
+  const planCode = input.planCode || DEFAULT_PLAN_CODE;
+  if (!(SIGNUP_PLAN_CODES as readonly string[]).includes(planCode)) return { ok: false, reason: "invalid_input" };
   const businessNumber = normalizeBusinessNumber(input.businessNumber);
   if (!businessNumber) return { ok: false, reason: "invalid_business_number" };
   const openedOn = normalizeOpenedOn(input.openedOn ?? "");
@@ -268,11 +275,13 @@ async function applyOnce(
         select: { id: true },
       });
       if (sameBusiness) reasons.push("business_duplicate");
+      const plan = await tx.subscriptionPlan.findUniqueOrThrow({ where: { code: planCode }, select: { id: true } });
       const seller = await tx.seller.create({
         data: {
           slug,
           shopName,
           status: "PENDING",
+          planId: plan.id,
           representativeCiHash: ciHash,
           representativeVerifiedAt: v.verifiedAt,
           reviewReasons: reasons,

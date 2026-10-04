@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
-import { DEFAULT_PLAN_CODE, dbNow } from "./subscription";
+import { DEFAULT_PLAN_CODE } from "./subscription";
 
 // 플랜이 주는 기능 권한(docs/ARCHITECTURE.md 4.8.0, ONQ 1-B). 서버가 매 요청 검사한다(화면 숨김만으로 막지 않음).
 // 잠금(access.ts sellerAccess)과는 따로 판정하고, 잠금 규칙이 먼저다. 직원은 이 기능 권한과 직원 권한(3.3)을 둘 다 가져야 한다.
@@ -20,28 +20,30 @@ export type PlanCode = keyof typeof PLAN_FEATURES;
 // 그 전에는 구독·결제 화면과 내 정보·로그아웃만 열린다.
 const AFTER_FIRST_PAYMENT: readonly string[] = ["INTEGRATED"];
 
-export function planFeatures(planCode: string, state: { firstPaymentConfirmed: boolean; inTrial: boolean }): readonly Feature[] {
+// hadTrial: 체험을 받은 적 있는 판매자(trialEndsAt 있음). 새 통합 가입은 체험이 없어(trialEndsAt null) 첫 결제 확정 전까지 닫히고,
+// 1-C에서 통합으로 옮긴 기존 판매자(체험 중이거나 체험이 끝나 잠김)는 이 대신 잠금 규칙(access.ts)을 따른다. 잠긴 동안에도
+// 체험 중 받은 주문의 처리는 지금처럼 열려야 하기 때문이다(잠금 중 허용 범위).
+export function planFeatures(planCode: string, state: { firstPaymentConfirmed: boolean; hadTrial: boolean }): readonly Feature[] {
   const features: readonly Feature[] | undefined = (PLAN_FEATURES as Record<string, readonly Feature[]>)[planCode];
   if (!features) return [];
-  // 체험 중이면 연다: 1-C에서 체험 중인 기존 STANDARD 판매자를 남은 체험 그대로 통합으로 옮긴다(새 통합 가입에는 체험이 없음).
-  if (AFTER_FIRST_PAYMENT.includes(planCode) && !state.firstPaymentConfirmed && !state.inTrial) return [];
+  if (AFTER_FIRST_PAYMENT.includes(planCode) && !state.firstPaymentConfirmed && !state.hadTrial) return [];
   return features;
 }
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
-// 판매자의 기능 권한. 구독 행이 없으면(승인 뒤 카드 미등록) 지금 기본 플랜(DEFAULT_PLAN_CODE)으로 본다. now를 주지 않으면 DB 시계.
-export async function sellerFeatures(db: Db, sellerId: string, now?: Date): Promise<readonly Feature[]> {
+// 판매자의 기능 권한. 구독 행이 없으면(승인 뒤 카드 미등록) 판매자 플랜(Seller.planId, 없으면 DEFAULT_PLAN_CODE)으로 본다.
+// 판정에 시각은 쓰지 않는다(_now는 가드가 넘기는 시험 시각, 잠금 판정은 access.ts).
+export async function sellerFeatures(db: Db, sellerId: string, _now?: Date): Promise<readonly Feature[]> {
   const seller = await db.seller.findUnique({
     where: { id: sellerId },
-    select: { trialEndsAt: true, subscription: { select: { plan: { select: { code: true } } } } },
+    select: { trialEndsAt: true, plan: { select: { code: true } }, subscription: { select: { plan: { select: { code: true } } } } },
   });
   if (!seller) return [];
-  const planCode = seller.subscription?.plan.code ?? DEFAULT_PLAN_CODE;
-  if (!AFTER_FIRST_PAYMENT.includes(planCode)) return planFeatures(planCode, { firstPaymentConfirmed: false, inTrial: false });
-  const at = now ?? (await dbNow(db));
+  const planCode = seller.subscription?.plan.code ?? seller.plan?.code ?? DEFAULT_PLAN_CODE;
+  if (!AFTER_FIRST_PAYMENT.includes(planCode) || seller.trialEndsAt) return planFeatures(planCode, { firstPaymentConfirmed: false, hadTrial: !!seller.trialEndsAt });
   const paid = await db.subscriptionPayment.findFirst({ where: { sellerId, status: "PAID" }, select: { id: true } });
-  return planFeatures(planCode, { firstPaymentConfirmed: !!paid, inTrial: !!seller.trialEndsAt && seller.trialEndsAt > at });
+  return planFeatures(planCode, { firstPaymentConfirmed: !!paid, hadTrial: false });
 }
 
 export async function sellerHasFeature(db: Db, sellerId: string, feature: Feature, now?: Date): Promise<boolean> {

@@ -276,7 +276,7 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 
 정본은 `docs/PRODUCT_SCOPE.md` 「ONQ 통합 지시」·「가격」·「미확정」 확정 ①③④, 계획·검증 표는 `docs/ONQ_PLAN.md` 1단계·E1-B·E1-C다. 이 절은 목표 설계이고, 아래 4.8.1·4.8.2는 **현재 코드** 설명이다(목표와 다른 곳은 각 줄에 「대체 예정」으로 표시). 정본에 없는 값은 지어내지 않고 「미확정」에 둔다.
 
-- 현재 코드: 플랜 하나(`SubscriptionPlan.code = "STANDARD"`, 정가 300,000원·판매가 199,000원, `lib/server/billing/subscription.ts` `DEFAULT_PLAN_CODE`), 모든 판매자 승인 뒤 14일 체험(`lib/server/sellers/approval.ts` `TRIAL_DAYS`), 체험·구독 중 모든 기능을 연다. 기능 권한(플랜이 주는 권한)은 없고, 직원 권한(3.3 `SellerStaffPermission`)만 있다.
+- 현재 코드(1-C-1 뒤): 플랜 행 `OVERLAY_ONLY`(99,000/69,000원, `trialDays` 7)·`INTEGRATED`(249,000/179,000원, `trialDays` 0)와 이전 전 `STANDARD`(신규 가입에 쓰지 않음). 판매자 플랜 `Seller.planId`(가입 신청 `planCode`, 없으면 신규 가입 기본 플랜 `DEFAULT_PLAN_CODE` = `INTEGRATED`, MASTER 결정 대기), 승인 때 그 플랜의 `trialDays`로 체험(통합은 `trialEndsAt` null). 기능 권한은 1-B(`lib/server/billing/features.ts`). 상위·하위 변경은 1-C-2.
 - 목표 플랜 2종(부가세 포함 월 요금):
 
 | 플랜 | 정가 | 런칭 할인가 | 체험 | 주는 기능 권한 |
@@ -346,7 +346,7 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
 
 화면·메일·API 메시지의 무료 체험 기간 표기는 「체험하기」다(「무료 이용」이라고 쓰지 않음). 코드 이름(`trialEndsAt` 등)은 그대로 둔다.
 
-- (2026-10-04 대체 예정, 목표는 4.8.0: 플랜 2종·오버레이 전용만 7일 체험·통합 체험 없음) `Seller.trialEndsAt`: 마스터 승인 때 DB 시계로 `approvedAt + 14일`(상수 `TRIAL_DAYS`, 대표님 결정 2026-10-02 3일 → 14일)을 채운다(승인 대기인 쇼핑몰만, 동시 승인은 한 번만 반영).
+- `Seller.trialEndsAt`: 마스터 승인(또는 자동 승인) 때 DB 시계로 `approvedAt + 판매자 플랜의 trialDays`를 채운다(오버레이 전용 7일, 통합은 체험 없음 = null, ONQ 1-C·4.8.0). 판매자 플랜이 없으면 그때 신규 가입 기본 플랜을 정해 남긴다. 승인 대기인 쇼핑몰만, 동시 승인은 한 번만 반영. 1-C 이전으로 통합에 옮긴 기존 판매자는 받았던 체험 종료일을 그대로 둔다(그동안 기능 권한도 통합 3종, 체험이 끝나면 잠금 규칙).
 - 이용 가능 여부(`sellerAccess`): 아래 중 하나면 쓸 수 있다. 아니면 판매자 API는 `402 subscription_required`, 오버레이 공개 주소(`state`·`version`·`stream`)는 404, 열려 있는 오버레이 SSE는 다음 핑 재확인 때 닫힌다.
   - `paid`: 결제한 이용 기간 안(`currentPeriodEnd > 지금`). 해지 예약·자동결제 실패여도 기간 끝까지.
   - `trial`: 체험하기 중.
@@ -356,7 +356,8 @@ PENDING_PAYMENT ─결제 확인─▶ PAID ─환불─▶ REFUNDED
   - 잠겨도 열리는 것(대표님 결정, PRODUCT_SCOPE 「잠금 중 허용 범위」): 내 정보(`/api/seller/me`, 이용 상태 포함), 구독·결제(`/api/seller/subscription/**`), 로그아웃, 이미 받은 주문의 처리(주문 조회·취소·환불, 배송·구매자 문의 답변·영수증은 기능을 만들 때 같은 방식으로 연다). 막는 것은 새 판매(쇼핑몰 주문 생성·오버레이·방송 시작·상품 등록·수정·도메인 신규 연결)와 그 밖의 판매자 API다. 판정은 서버 가드(`requireSeller`, 예외는 `allowUnpaid`)에서 한다.
 - 잠금 30일 뒤 자동 해지(`closeLongLockedSellers`, 예약 실행): 잠기기 시작한 시각(체험하기 끝·기간 끝·유예 끝 중 가장 늦은 시각)에서 30일이 지나면 `Seller.serviceEndedAt`을 기록하고 구독을 `CANCELED`, 연결 도메인을 비활성(`SellerDomain.suspendedAt`)으로 바꾼다. 데이터는 지우지 않는다(90일 보관 뒤 삭제·5년 주문·결제 기록 보관은 별도 작업). 보관 기간 안에 다시 결제하면 해지 표시를 지우고 해지 때 푼 도메인을 되살린다.
 - 체험하기 한도(대표님 결정): 알림톡·문자 100건, 구매자 휴대폰 본인확인 50건, 저장 용량 1GB. `SubscriptionPlan`의 `trialMessageLimit`·`trialIdentityLimit`·`trialStorageMb`에 두고 마스터 API(`POST /api/admin/plans/{code}/trial-limits`, `billing.manage`, 감사 로그)로 바꾼다. 확인 함수 `checkTrialLimit`은 체험하기 중인 판매자에게만 적용하며, 알림톡·업로드 기능을 만들 때 연결한다. 휴대폰 본인확인은 연결됨: 구매자 가입 본인확인 성공 1건을 1로 세고(`identityUsage`, 중복 확인은 세지 않음), 주문 알림 문자와 따로 센다. 한도가 이미 찼으면 구매자 가입 본인확인 시작·인증번호 다시 보내기에서 문자를 보내기 전에 `403 trial_limit_exceeded`로 막는다(`buyerSignupIdentityLimitReached`). 확정 때 잠금 아래 최종 확인은 그대로 둔다.
-- (2026-10-04 대체 예정, 목표는 4.8.0: 플랜 2종 오버레이 전용 99,000/69,000원·쇼핑몰 통합 249,000/179,000원) `SubscriptionPlan`: 정가(`listPrice`)·판매가(`salePrice`), 원 단위 부가세 포함, 청구액은 판매가. 기본값 300,000원 / 199,000원은 마이그레이션 데이터로 넣는다(배포 전 운영 판매자 없음 전제로 기존 판매자 백필 포함).
+- `SubscriptionPlan`: 정가(`listPrice`)·판매가(`salePrice`), 원 단위 부가세 포함, 청구액은 판매가. 체험 일수 `trialDays`. 플랜 행은 마이그레이션 데이터로 넣는다: `OVERLAY_ONLY` 99,000/69,000원·7일, `INTEGRATED` 249,000/179,000원·0일(`20261004150000_onq_plans`), 이전 전 `STANDARD` 300,000/199,000원은 남겨 두되 신규 가입에 쓰지 않는다. 구독 행이 없을 때 청구·표시 플랜은 판매자 플랜(`sellerPlanOf`). 요금 안내 `GET /api/plans`는 기본 플랜 값과 `plans`(가입할 수 있는 두 플랜)를 준다.
+- STANDARD → 통합 이전(`20261004150000_onq_plans` BACKFILL, 결정적): 모든 STANDARD 구독(해지 보관 포함)과 모든 기존 판매자(구독 행 없는 체험 중·잠김 포함)를 `INTEGRATED`로 옮기고 상태·체험 종료일·결제일·유예·재시도·해지 예약은 그대로 둔다. 결제가 이어지는 구독(ACTIVE·PAST_DUE, 해지 예약 기간이 끝나지 않음)에만 이전 전 가격 스냅숏 `SellerSubscription.legacyPrice`(priceFor와 같은 규칙으로 계산)를 남긴다. `priceFor`는 스냅숏이 있고 `legacyPriceNoticeSentAt`이 없거나 그 + 30일 전이면 스냅숏 금액을 쓴다(고지 미발송이면 새 가격 청구 0건). 해지 뒤 다시 구독하면 스냅숏을 비운다(그때 플랜 가격). 고지 대상은 `listPlanMigrationNoticeTargets`(최고관리자), 발송 기능이 생기면 보낸 뒤 `legacyPriceNoticeSentAt`을 남긴다. 시험 `tests/integration/planMigration.test.ts`(ONQ_PLAN E1-C).
 - 가격 변경(대표님 결정): 최고관리자만(`billing.price`), 가격 변경·가격 기록(`SubscriptionPriceChange`)·감사 기록은 한 트랜잭션.
   - 청구 금액(`priceFor`) = 가격 기록 중 「구독을 시작할 때(`SellerSubscription.subscribedAt`) 이미 적용되던 것」 또는 「변경 + 30일이 지난 것」 가운데 가장 최근 가격. 그래서 새 가입자는 지금 가격, 기존 구독자는 고지 기간(30일)이 끝난 뒤 첫 결제부터 새 가격을 낸다. 30일 안에 두 번 바꿔도 구독 시작 때 가격(또는 고지가 끝난 가격)을 유지한다.
   - 해지 뒤 다시 구독하면 새 구독자다(`subscribedAt`을 새로 기록, 기간도 결제 시각부터).

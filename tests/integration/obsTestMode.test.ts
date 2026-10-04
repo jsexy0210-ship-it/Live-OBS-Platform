@@ -235,7 +235,6 @@ describe("테스트 서버 모드: 바뀐 본인확인 흐름(아이디 찾기·
 describe("테스트 서버 모드: 운영 빌드에서 구독 결제 우회", () => {
   it("플래그가 없는 운영 빌드는 가짜 결제를 쓸 수 없고(결제 기록 없음), 플래그가 있으면 실제 결제 없이 카드 등록·결제가 성공하고 결제 번호에 fake가 붙는다", async () => {
     expect(seed({ OBS_TEST_MODE: "1", ...SEED }).code).toBe(0);
-    await db.subscriptionPlan.create({ data: { code: "STANDARD", name: "월 구독", listPrice: 300000, salePrice: 199000 } });
     // 체험이 끝난 쇼핑몰(카드 등록 뒤 바로 결제)
     await db.seller.update({ where: { slug: "test-shop" }, data: { trialEndsAt: new Date(Date.now() - 86_400_000) } });
     const login = await loginSeller(db, { email: "test", password: "1234" }, {});
@@ -253,7 +252,7 @@ describe("테스트 서버 모드: 운영 빌드에서 구독 결제 우회", ()
     const paid = await card();
     expect(paid.status).toBe(200);
     const payment = await db.subscriptionPayment.findFirstOrThrow();
-    expect(payment).toMatchObject({ status: "PAID", amount: 199000 });
+    expect(payment).toMatchObject({ status: "PAID", amount: 179000 }); // 시험 쇼핑몰은 쇼핑몰 통합(ONQ 1-C) 런칭가
     expect(payment.providerPaymentId).toMatch(/^fake-pay-/);
   });
 });
