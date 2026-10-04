@@ -184,6 +184,12 @@ sudo -u obs nano /opt/obs/.env
 | `BUSINESS_STATUS_PROVIDER`, `NTS_BUSINESS_STATUS_API_KEY` | 선택 | 판매자 가입 사업자 상태 점검 |
 | `MAIL_ORDER_PROVIDER`, `FTC_MAIL_ORDER_API_KEY` | 선택 | 통신판매업 점검 |
 | `PORTONE_API_SECRET`, `PORTONE_STORE_ID`, `PORTONE_IDENTITY_CHANNEL_KEY` | 선택 | 휴대폰 본인확인. 없으면 가입 본인확인은 503 「준비 중」 |
+| `OBS_ENVIRONMENT` | 필수(obs-test) | **`test`**. 장애 주입·가용성 프로파일·무중단 배포 스크립트는 이 줄이 있을 때만 돌아요. 운영 서버에는 넣지 않아요 |
+| `OBS_MONITOR_TLS_HOST` | 선택 | 서버 감시가 인증서 만료일을 볼 주소(obs-test는 `test.on-aircue.com`) |
+| `OBS_ALERT_URL` | 선택 | 장애 알림을 받을 주소(웹훅). 알림 채널이 정해지기 전에는 비워 둬요(기록만 남아요) |
+| `OBS_MONITOR_INTERVAL_S` | 선택 | 감시 간격(기본 15초, 1~60초. 범위 밖이거나 숫자가 아니면 감시가 시작하지 않고 로그에 이유를 남겨요) |
+| `OBS_MONITOR_KEEP_DAYS` | 선택 | 일별 표본 파일(`samples-YYYYMMDD.jsonl`)을 오늘 포함 며칠 치 남길지(기본 14, 1~3650). 지난 파일은 날짜가 바뀔 때 지워요. 상태·사건·heartbeat 파일은 지우지 않아요 |
+| `OBS_MONITOR_DIR`·`OBS_HISTORY_FILE` | 선택 | 감시 폴더(기본 `/opt/obs/monitor`)·배포 기록 파일(기본 `/opt/obs/deploy-history.log`). 운영 스크립트는 `docker compose config`가 감시 서비스에 실제로 마운트하는 경로를 그대로 써요(`.env` 해석은 compose에 맡김) |
 
 `DATABASE_URL`과 `TRUSTED_PROXY_HOPS`(=1)는 compose가 만들어 넣어요. `.env`에 적지 않아요.
 `.env`를 바꾼 뒤에는 재배포(또는 `up -d`)해야 반영돼요.
@@ -308,6 +314,7 @@ docker image ls obs-web-app                 # 남아 있는 SHA 확인
 APP_VERSION=<이전 SHA> $C up -d --no-build --wait
 ```
 
+- 스크립트로 하면 더 간단해요: `scripts/ops/rollback-app.sh [이전 SHA]`(「운영 스크립트」). SHA를 비우면 배포 기록에서 바로 앞 버전을 골라요.
 - 마이그레이션은 되돌리지 않아요. 새 버전이 DB 구조를 바꿨다면 배포 전 백업으로 복구한 뒤 이전 이미지를 띄워요.
 - 근본 수정은 main에 되돌림 PR을 병합한 뒤 다시 배포해요.
 - 쌓인 이미지는 `docker image ls`로 보고 필요 없는 SHA만 `docker image rm`으로 지워요.
@@ -321,6 +328,152 @@ $C logs -f --tail 200 obs-web-app       # 앱
 $C logs --tail 100 obs-web-migrate      # 마이그레이션 결과
 $C logs --tail 100 obs-web-proxy        # 프록시
 ```
+
+## 운영 스크립트(`scripts/ops/`)
+
+서버에서 `obs` 계정으로 `/opt/obs/src`(「서버 명령 준비」로 main에 맞춘 상태)에서 실행해요. 비밀값은 출력하지 않아요. 결과는 `/opt/obs/checks`, 백업은 `/opt/obs/backups`에 남아요.
+
+| 스크립트 | 하는 일 | 테스트 서버 전용 |
+| --- | --- | --- |
+| `data-snapshot.sh [이름표]` | 표마다 행 수·적용된 마이그레이션 수·DB 볼륨 생성 시각을 파일로 남겨요(읽기만) | 아니요 |
+| `db-backup.sh [이름표]` | 지금 DB를 그대로 깨워 백업. 끝까지 성공하고 파일 검사(`pg_restore -l`)를 통과해야 `.dump`가 돼요 | 아니요 |
+| `db-restore.sh <파일>` | 파일 검사 → 지금 DB 안전 백업 → 앱 중지 → DB 다시 만들기 → 복원 → **지금 버전 마이그레이션 적용**(백업이 더 오래된 스키마여도 앱과 맞춤) → 앱 시작 → 앱마다 healthy 확인(가용성 on이면 2개 모두) → health. 도는 동안 배포 진행 표시를 둬 감시가 장애로 알리지 않아요. **DB 이름을 직접 입력해야 진행** | 아니요 |
+| `rollback-app.sh [SHA] [--force-unchecked]` | 앱만 이전 이미지로(DB 그대로, 빌드 없음). 되돌릴 버전이 모르는 마이그레이션이 DB에 있으면 경고 → health version 확인 → 배포 기록에 남김. 그 버전의 migrate 이미지가 없으면 스키마 호환을 확인할 수 없어 멈추고, `--force-unchecked`일 때만 경고 후 진행 | 아니요 |
+| `availability.sh on\|off\|status` | 가용성 프로파일 켜기·끄기 | 예 |
+| `deploy-mark.sh on <키> ["<사유>"] [유효 초]\|off <키>` | 배포 진행 표시 켜기·끄기(감시가 표시가 있는 동안 새 장애·버전 불일치 경고를 미룸). 여러 단계 배포가 한 줄씩 부르는 용도. 이 표시는 갱신하는 프로세스가 없어 만료 시각(기본 3600초, 1~86400)까지 유효해요(40분 걸리는 워크플로도 덮음). 표시는 키마다 따로라 `off`는 같은 키만 지워요(겹쳐 도는 복원 등의 표시는 그대로). 키는 실행마다 달라야 해서, 같은 키의 살아 있는 표시가 있으면 `on`은 덮어쓰지 않고 멈춰요(확인과 생성은 폴더 잠금 `flock` 안에서 해 동시에 들어와도 하나만 켜져요. util-linux `flock`이 필요해요). 키는 영문·숫자·`.-_`(예: `workflow-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT`). **Deploy obs-test 워크플로 연결은 운영자 승인 뒤**(배포 시작 전 `on workflow-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT`, 끝에 `if: always()`로 `off workflow-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT`) | 아니요 |
+| `rolling-deploy.sh [SHA]` | 가용성 프로파일에서 앱을 하나씩 교체 | 예 |
+| `chaos.sh ...` | 장애 주입(앱 멈춤·강제 종료·충돌·얼림, DB 얼림·재시작) | 예 |
+| `measure.sh <이름표> [초] [초당 요청]` | 가용률·오류율·p50/p95/p99·장애 구간·복구 시간 측정(JSON). 초는 0 초과 600 이하, 초당 요청은 0 초과 200 이하(벗어나면 요청 없이 종료 코드 2) | 예 |
+| `monitor.mjs` | 서버 감시 수집기(「서버 감시」). compose `--profile monitor`로 띄워요 | 아니요 |
+
+「테스트 서버 전용」은 `.env`에 `OBS_ENVIRONMENT=test`가 없으면 실행을 거부해요. 웹 주소로는 노출하지 않고, 서버에서 docker 권한이 있는 사람만 실행할 수 있어요.
+
+## #137 남은 검증 절차(대표님이 서버에서 실행)
+
+이슈 #137의 남은 확인 항목 세 가지예요. 코드 롤백(앱 이미지)과 DB 복원은 **따로** 해요. 실행 결과(출력 마지막 줄·파일 이름)를 MASTER에 보내 주시면 이슈에 기록해요.
+
+준비(한 번):
+```bash
+sudo -u obs -i
+git clone https://github.com/jsexy0210-ship-it/Live-OBS-Platform.git /opt/obs/src 2>/dev/null || true
+cd /opt/obs/src && git fetch origin main && git checkout --detach origin/main
+C="docker compose -p obs-web -f deploy/docker-compose.yml --env-file /opt/obs/.env"
+export APP_VERSION=$(docker ps -a --filter label=com.docker.compose.project=obs-web --filter label=com.docker.compose.service=obs-web-app --format '{{.Image}}' | head -1 | cut -d: -f2)
+```
+
+**1. 재시작·재배포·재부팅 뒤 영속 데이터 보존**
+```bash
+a=$(scripts/ops/data-snapshot.sh before | tail -1)
+$C restart                                          # ① 컨테이너 재시작
+b=$(scripts/ops/data-snapshot.sh after-restart | tail -1); diff "$a" "$b" && echo "재시작: 같음"
+# ② Actions → Deploy obs-test로 재배포(같은 main SHA도 됨)한 뒤
+c=$(scripts/ops/data-snapshot.sh after-redeploy | tail -1); diff "$a" "$c" && echo "재배포: 같음"
+# ③ sudo reboot → 다시 접속해 `cd /opt/obs/src` 뒤
+d=$(ls -t /opt/obs/checks/snapshot-*-before.txt | head -1)
+e=$(scripts/ops/data-snapshot.sh after-reboot | tail -1); diff "$d" "$e" && echo "재부팅: 같음"
+```
+- 「같음」이면 통과예요. 그 사이 시험 서버에 누가 가입·주문했다면 그 표만 늘어날 수 있어요(첫 줄의 볼륨 생성 시각은 같아야 해요).
+- 재부팅 뒤 컨테이너는 `restart: unless-stopped`로 자동으로 떠요. `curl -s http://127.0.0.1/api/health`로 확인해요.
+
+**2. 직전 릴리스로 앱 롤백(DB 그대로)**
+```bash
+docker image ls obs-web-app                         # 이전 SHA 이미지가 있어야 해요(최소 2번 배포한 뒤)
+scripts/ops/rollback-app.sh                         # 배포 기록에서 바로 앞 버전으로. 「롤백 완료: health ok, version=…」
+scripts/ops/rollback-app.sh <원래 SHA>              # 다시 최신으로(또는 Actions에서 main 재배포)
+```
+
+**3. DB 백업·복원(코드 롤백과 별개)**
+```bash
+f=$(scripts/ops/db-backup.sh verify | tail -1)      # 백업
+a=$(scripts/ops/data-snapshot.sh before-restore-test | tail -1)
+scripts/ops/db-restore.sh "$f"                      # DB 이름을 입력하면 진행. 끝에 「복원 완료 … health ok」
+b=$(scripts/ops/data-snapshot.sh after-restore-test | tail -1); diff "$a" "$b" && echo "복원: 같음"
+```
+- 시험 서버에서 백업한 그 파일로 바로 되돌리는 것이라 데이터는 그대로예요. 복원 직전 상태도 `before-restore` 백업으로 따로 남아요.
+
+이 컨테이너(로컬 Docker)에서 같은 스크립트로 돌린 결과(2026-10-04, 실제 서버 결과 아님): 재시작·down→up·Docker 데몬 재시작 뒤 스냅숏 차이 없음 / 롤백 → health version 바뀜·다시 최신으로 / 모르는 마이그레이션 경고 표시 / 복원 뒤 백업 이후 추가한 행·표 사라짐, health ok / DB 이름을 틀리면 중단.
+
+## 가용성 프로파일(테스트 환경 전용, ONQ 단계 8)
+
+`deploy/compose.availability.yml` + `deploy/Caddyfile.availability`. 기본 정의 위에 덧붙여요.
+
+- 앱 2개(`obs-web-app`, `obs-web-app-2`), health 기반 프록시(Caddy: 2초마다 `/api/health`, 응답 헤더 2초 제한, 실패한 앱 5초 제외, GET은 다른 앱으로 재시도), 자원 제한(DB 1 vCPU·1GB, 앱 각 0.75 vCPU·768MB, 프록시 0.25·128MB).
+- **같은 VM 안의 복제 프로세스예요. 앱 프로세스 장애와 무중단 배포는 시험할 수 있지만 VM(호스트)·디스크·DB 장애 내성은 증명하지 않아요.** DB는 하나라 단일 장애 지점이에요.
+- **worker는 아직 없어요.** 앱에 작업 큐·worker 프로세스가 생기면(기반·자동연결 세션, ONQ 단계 4·5) 같은 방식으로 `obs-web-worker` 2개를 더해요. 그 전에는 「worker 2개 이상」을 시험할 수 없어요.
+- 켜고 끌 때 자원 제한이 바뀌어 DB·앱 컨테이너가 다시 만들어져요(수 초 끊김). 데이터는 그대로예요.
+- 배포 워크플로(Deploy obs-test)는 기본 정의만 써요. 실험이 끝나면 `availability.sh off`로 돌려 두고 배포해요. **켜 둔 채 배포하면** 프록시가 앱 1개만 가리키고 app2는 옛 이미지로 남아요. 배포 뒤 `availability.sh on`을 다시 실행하면 새 버전으로 앱 2개를 다시 맞춰요.
+- `on`·`off`는 이미 그 상태여도 실제 구성을 다시 적용하고(`compose up -d --remove-orphans`, on은 기본+가용성 정의, off는 기본 정의) 확인해요: on은 프록시가 두 앱을 가리키는지·app2가 app과 같은 이미지인지, off는 app2가 없고 프록시가 app2를 가리키지 않는지. 맞추지 못하면 0이 아닌 코드로 끝나요. 이때는 표시를 그대로 두니 같은 명령을 다시 실행하면 돼요(전환과 달리 되돌리지 않아요).
+- `on`·`off`가 도는 동안(되돌리기 포함)에는 배포 진행 표시를 둬, 앱·프록시가 다시 만들어지는 사이 감시가 장애를 열지 않아요. 성공·실패·중단 어느 쪽으로 끝나도 표시는 지워져요.
+- `on`·`off`가 실패하거나 도중에 끊기면(Ctrl+C·SSH 끊김·SIGTERM) 원래 구성(on 실패 → 앱 1개, off 실패 → 앱 2개)으로 실제로 되돌리고 표시도 그에 맞춰요. 되돌리기까지 실패하면 표시를 지우고 「구성이 불확실해요」로 끝나니, `status`로 실제 컨테이너를 확인해 주세요.
+- 감시 수집기가 있으면 `on`·`off`가 끝날 때(이미 그 상태일 때도) 감시를 다시 만들어 대상(앱 1개·2개)을 맞춰요. 감시가 healthy가 될 때까지(최대 90초) 기다리고, 설정 오류 등으로 시작 직후 죽으면 이 단계만 실패해 0이 아닌 코드로 끝나니 원인을 고친 뒤 같은 명령을 다시 실행하면 돼요. 멈춰 있는 감시 컨테이너도 다시 켜지므로, 감시를 끄려면 `docker compose ... --profile monitor rm -sf obs-web-monitor`로 지워요.
+
+```bash
+scripts/ops/availability.sh on                      # 지금 버전으로 앱 2개
+scripts/ops/measure.sh baseline 60 20               # 기준선
+scripts/ops/measure.sh kill1 60 20 & sleep 10; scripts/ops/chaos.sh kill-app 1 10; wait
+scripts/ops/measure.sh pause1 60 20 & sleep 10; scripts/ops/chaos.sh pause-app 1 15; wait
+scripts/ops/measure.sh rolling 90 20 & sleep 10; scripts/ops/rolling-deploy.sh <SHA>; wait
+scripts/ops/measure.sh pausedb 60 20 & sleep 10; scripts/ops/chaos.sh pause-db 5; wait
+scripts/ops/availability.sh off
+```
+`chaos.sh`는 다른 앱이 healthy가 아니면(둘 다 내려가는 경우) 실행을 거부하고, 중간에 끊겨도(Ctrl+C·오류) 얼리거나 멈춘 컨테이너를 반드시 되돌려요. 결과 JSON의 `availabilityPct`·`errorRatePct`·`latencyMs`·`outages[].recoveryS`를 봐요. 큐 적체는 작업 큐가 생기면 함께 재요.
+
+이 컨테이너(로컬 Docker, 4 vCPU, 자원 제한 적용)에서 잰 값(2026-10-04, 초당 20건 GET `/api/health`, 시험 숫자이지 서버 용량 보장 아님):
+
+| 시나리오 | 요청 | 가용률 | p95 / p99(ms) | 장애 구간·복구 |
+| --- | ---: | ---: | --- | --- |
+| 기준선(앱 2개) | 801 | 100% | 7 / 12 | 없음 |
+| 앱 1 강제 종료 10초 후 재시작 | 802 | 100% | 7 / 13 | 없음(다시 healthy까지 6초) |
+| 앱 2 프로세스 충돌(자동 재시작) | 802 | 100% | 7 / 10 | 없음(5초) |
+| 앱 1 얼림 15초(응답 멈춤) | 801 | 100% | 8 / 2,257 | 없음. 멈춘 앱에 간 요청은 2초 뒤 다른 앱으로 재시도돼 느려짐 |
+| 앱 2 정지 20초 | 801 | 100% | 7 / 8 | 없음 |
+| 무중단 배포(앱 하나씩 교체, 70초 측정) | 1,401 | 100% | 7 / 12 | 없음 |
+| DB 얼림 5초 | 801 | 84.5% | 1,262 / 2,517 | 1회, 복구 6.2초(DB는 단일 장애 지점) |
+| 비교: 앱 1개 구성에서 프로세스 충돌 | 802 | 98.8% | 8 / 179 | 1회, 복구 0.6초(502 10건) |
+
+고치기 전 설정에서는 이랬어요: GET 재시도가 없을 때 앱 얼림 94.5%(4.4초 동안 절반 실패), 실패 앱 30초 제외일 때 무중단 배포 중 15초 장애·DB 5초 얼림 뒤 30초 넘게 미복구. 지금 값(GET 재시도·응답 헤더 2초 제한·5초 제외·교체 간격 8초)으로 고친 뒤 위 결과가 나왔어요.
+
+## 서버 감시(ONQ 단계 6 인프라 몫)
+
+화면을 닫아도 서버 감시가 계속 돌도록 **앱과 따로 도는 감시 수집기**를 둬요.
+
+- 실행: `docker compose -p obs-web -f deploy/docker-compose.yml --env-file /opt/obs/.env --profile monitor up -d obs-web-monitor` (가용성 프로파일이면 `-f deploy/compose.availability.yml`도). 처음 한 번 `mkdir -p /opt/obs/monitor && touch /opt/obs/deploy-history.log`.
+- 기본 배포(워크플로)에는 뜨지 않아요(`profiles: monitor`). `.env`는 넘기지 않아요.
+- 15초마다(`OBS_MONITOR_INTERVAL_S`): 앱·프록시 `/api/health`의 상태·응답 시간(DB `SELECT 1` 시간 포함)·db·version, 배포 기록의 마지막 SHA와 실행 버전 비교, 인증서 남은 일수(`OBS_MONITOR_TLS_HOST`).
+- 연속 3번 실패 → `incident_open`(critical), 다시 성공 → `incident_close`(지속 시간). 배포 진행 표시가 있는 동안에는 새 장애를 열지 않고(실패 횟수는 셈), 표시가 사라진 뒤에도 실패가 이어지면 다음 틱에 열어요. 표시는 작업마다 자기 파일 하나(`/opt/obs/monitor/deploy-in-progress.d/<종류>-<pid>-<시작 시각>`, 내용은 사유·만료 시각)라, 복원과 가용성 전환처럼 겹쳐 돌아도 먼저 끝난 작업은 자기 표시만 지워요. 유효한 표시가 하나라도 있으면 배포 중이에요. 스크립트가 도는 동안 갱신하는 표시는 15분 안에 갱신됐고 만료 전이어야 하고, `deploy-mark.sh on`으로 만든 표시(갱신 없음)는 만료 시각만 봐요. 감시는 표시를 탐침 전·후에 모두 읽어, 탐침 도중 배포가 끝나도 그 회차 실패로 장애를 열지 않아요. 표시를 끌 때는 바로 지우지 않고 끝난 시각을 적은 기록(`.ended-<키>`)으로 바꿔, 탐침하는 사이 시작해 끝난 짧은 작업도 반영해요. 끝난 지 탐침 시간 제한 + 감시 간격(기본 20초)이 지난 기록은 감시가 지워요. 복원·롤링 배포·롤백·가용성 전환 스크립트는 도는 동안 자기 표시 시각을 1분마다 갱신해, 15분을 넘겨도 표시가 유효해요. 만료는 시작 뒤 최대 1시간(`OBS_DEPLOY_MARK_MAX_S`)이고, 그때 갱신도 멈추고 로그를 남겨요. 스크립트가 멈춰 있어도 만료 뒤에는 감시가 다시 장애를 판단해요. 스크립트가 TERM·INT·HUP으로 끝나면 자기 표시를 지우고, 강제 종료(SIGKILL)되면 갱신이 멈춰 15분 뒤 고아 표시로 처리돼요. 만료되거나 갱신이 끊긴 표시는 감시가 `deploy_mark_stale`로 한 번 알리고 지워요. 예전 단일 파일(`deploy-in-progress`)도 계속 읽어요. 느림(1초 초과)·배포 기록과 실행 버전 불일치(연속 3번. 배포 진행 표시가 있는 동안은 미룸)·인증서 14일 미만 → warn(같은 경고는 한 번만). 알림은 틱 끝에 모아 동시 5건씩, 틱마다 간격의 1/3(기본 5초) 안에서만 보내고 못 보낸 것은 다음 틱으로 넘겨요. 받는 쪽이 응답을 미뤄도 감시 주기와 heartbeat는 밀리지 않아요.
+- 감시 상태(대상별 연속 실패 횟수·열린 장애와 시작 시각·버전 불일치 연속 횟수·경고 쿨다운·시간당 알림 한도·보내지 못한 알림)는 `monitor-state.json` 하나에 남겨, 감시를 다시 만들어도(가용성 on/off·재시작) 이어져요. 장애 중에 다시 만들면 `incident_open`을 또 내지 않고, 복구되면 `incident_close`를 한 번 내요. 파일이 깨졌으면 로그를 한 줄 남기고 빈 상태로 시작해요. 가용성 off로 감시 대상에서 빠진 앱(app2)의 상태는 지우고, 열린 장애는 `incident_close`(`reason: target_removed`)로 닫아요.
+- 기록(`/opt/obs/monitor`): `samples-YYYYMMDD.jsonl`(표본), `events.jsonl`(사건), `monitor-state.json`(감시 상태), `status.json`(마지막 상태), `heartbeat.json`(감시 자체의 마지막 시각 → 감시 끊김 판단). 컨테이너 healthcheck도 heartbeat가 2분 넘게 멈추면 unhealthy예요.
+- 알림: 채널 미정(`PRODUCT_SCOPE.md` 「미확정」)이라 **인터페이스만** 있어요. `OBS_ALERT_URL`을 넣으면 경고·장애·복구를 JSON으로 POST하고, 시간당 10건까지만 보내요. 한도에 걸린 알림은 버리지 않고 기다렸다가 한도가 열리면 보내고, 아직 못 보낸 장애 시작 알림은 같은 대상의 복구 알림과 하나로 합쳐요(`openNotSent: true`). 보낼 목록(50건)이 넘치면 복구 알림이 아닌 오래된 것부터 버려요. 알림톡·메일·텔레그램이 정해지면 그 주소(또는 중계 함수)만 넣으면 돼요.
+- 로컬 확인(2026-10-04): 2초 간격으로 앱을 12초 멈췄을 때 6초 안에 `incident_open`, 다시 켠 뒤 `incident_close`(8초) 기록. 알림 주소로 `version_mismatch` POST 수신.
+
+아직 못 재는 것과 필요한 앱 쪽 훅(앱 코드 `lib/server/**`는 기반 세션 소유, MASTER 요청):
+
+| 항목 | 필요한 것 | 제안 |
+| --- | --- | --- |
+| DB pool 사용량·대기 | 앱이 Prisma 연결 수·대기 수를 내보내는 곳 | 관리자 전용 `GET /api/admin/ops/metrics`(마스터 「조회 전용」 이상), 공개 `/api/health`에는 넣지 않음 |
+| worker·scheduler heartbeat | worker·정기 실행이 마지막으로 돈 시각을 DB에 남김 | `ops_heartbeat(name, at, detail)` 표에 정기 실행마다 기록 → 감시가 「N분 넘게 안 돎」 판단 |
+| 작업 큐 적체 | 큐가 생기면 대기·처리 중·실패 수 | 위 metrics에 포함 → `measure.mjs`·감시가 함께 읽음 |
+| 감시 기록을 화면에서 보기 | 마스터 콘솔이 `status.json`·`events.jsonl`을 읽을 방법 | 감시가 DB 표(`ops_event`)에도 쓰게 하거나 앱이 읽기 전용으로 마운트(기반·화면 세션과 정함) |
+
+기존 앱 안 정기 실행(`lib/server/jobs/scheduler.ts`, `feat/rejoin-restriction` 브랜치, 아직 main 아님) 검토:
+- 정리 작업처럼 **앱 안에서 해도 되는 일**에는 재사용할 수 있어요(1시간 간격, 작업별 advisory lock으로 여러 앱 중 하나만 실행, 실패 격리). heartbeat 기록 작업을 여기에 하나 더 넣는 것도 적합해요.
+- **감시 자체에는 쓰지 않아요.** 앱이 죽거나 멈추면 같은 프로세스 안의 scheduler도 함께 멈춰서 장애를 알릴 수 없기 때문이에요. 그래서 감시는 앱 밖(위 수집기)에 두고, scheduler는 「앱이 살아 있다는 신호(heartbeat)를 남기는 쪽」으로만 써요.
+
+## 다중 서버·DB 고가용성 구성안과 월 비용(산정만, 생성 금지·대표님 승인 사항)
+
+지금 obs-test는 VM 1대에 앱·DB·프록시가 함께 있어요. 호스트·DB 장애에도 버티려면 아래가 필요해요. **아무것도 만들지 않았고, 만들려면 대표님 승인이 필요해요.**
+
+| 구성 요소 | 수량 | 역할 | 단가(공개 자료) | 월 비용 |
+| --- | ---: | --- | --- | --- |
+| 앱 VM(t1i.medium, 2 vCPU·4GB) | 2 | 앱·worker, 서로 다른 가용 영역 | 시간당 44.2원(카카오클라우드 2023-09 출시 공지, 현재가 콘솔 확인 필요) | 약 64,500원(2대 × 730시간) |
+| 로드밸런서 | 1 | 앱 VM 둘로 분배·health 검사 | 콘솔 확인 필요 | 확인 필요 |
+| 관리형 DB(PostgreSQL, 주·대기 복제) 또는 DB VM 2대 + 복제 | 1세트 | DB 장애 시 자동 전환 | 콘솔 확인 필요 | 확인 필요 |
+| 블록 스토리지(DB·VM 디스크) | 용량별 | 데이터 | 콘솔 확인 필요 | 확인 필요 |
+| 백업 보관(오브젝트 스토리지) | 용량별 | VM 밖 백업 보관 | 콘솔 확인 필요 | 확인 필요 |
+| 공인 IP·트래픽 | - | - | 콘솔 확인 필요 | 확인 필요 |
+
+- 무료 크레딧 잔액과 지금 월 비용은 대표님 콘솔 확인 항목이에요(다른 프로젝트와 공유).
+- 최소 단계 제안: ① 지금 VM에서 백업을 VM 밖(오브젝트 스토리지)으로 매일 보내기(비용 작음) → ② DB 복제 → ③ 앱 VM 2대 + 로드밸런서. 각 단계 비용을 콘솔 가격표로 채운 뒤 승인받아요.
 
 ## HTTPS
 
