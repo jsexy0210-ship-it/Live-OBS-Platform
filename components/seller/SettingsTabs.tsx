@@ -20,12 +20,20 @@ export function SettingsTabs() {
   const { can } = useSeller();
   // 좁은 화면에서 지금 탭이 탭 줄 밖에 있으면 탭 줄만 가로로 넘겨 보이게 한다(화면은 세로로 움직이지 않게 scrollLeft만 바꾼다)
   const nav = useRef<HTMLElement>(null);
+  // 화면 폭이 바뀌어(회전·창 크기 변경) 탭 줄 폭이 달라져도 다시 맞춘다
   useEffect(() => {
     const el = nav.current;
-    const on = el?.querySelector<HTMLElement>("[aria-current=page]");
-    if (!el || !on) return;
-    const left = on.offsetLeft - el.offsetLeft;
-    if (left < el.scrollLeft || left + on.offsetWidth > el.scrollLeft + el.clientWidth) el.scrollLeft = left + on.offsetWidth - el.clientWidth;
+    if (!el) return;
+    const reveal = () => {
+      const on = el.querySelector<HTMLElement>("[aria-current=page]");
+      if (!on) return;
+      const left = on.offsetLeft - el.offsetLeft;
+      if (left < el.scrollLeft || left + on.offsetWidth > el.scrollLeft + el.clientWidth) el.scrollLeft = left + on.offsetWidth - el.clientWidth;
+    };
+    reveal();
+    const ro = new ResizeObserver(reveal);
+    ro.observe(el);
+    return () => ro.disconnect();
   }, [pathname]);
   return (
     <nav className="tabs settings-tabs" aria-label="쇼핑몰 설정" ref={nav}>

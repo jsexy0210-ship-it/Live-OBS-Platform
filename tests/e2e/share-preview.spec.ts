@@ -157,3 +157,18 @@ test("390px에서 쇼핑몰 설정 탭은 탭 줄 안에서 넘기고, 지금 �
     return box !== null && box.x >= 0 && box.x + box.width <= 390;
   }).toBe(true);
 });
+
+// 넓은 화면에서 연 뒤 폭을 줄여도(회전·창 크기 변경) 지금 탭이 다시 보이게 탭 줄을 넘긴다
+test("넓은 화면에서 연 뒤 390px로 줄여도 지금 탭이 화면 안에 보인다", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await loginSeller(page, "demo-owner@example.com", PASSWORD, "/seller/settings/share");
+  await expect(page).toHaveURL(/\/seller\/settings\/share$/);
+  const current = page.getByRole("navigation", { name: "쇼핑몰 설정" }).getByRole("link", { name: "공유 미리보기" });
+  await expect(current).toHaveAttribute("aria-current", "page");
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await expect.poll(async () => {
+    const box = await current.boundingBox();
+    return box !== null && box.x >= 0 && box.x + box.width <= 390;
+  }).toBe(true);
+});
