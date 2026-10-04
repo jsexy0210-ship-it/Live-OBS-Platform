@@ -109,17 +109,6 @@ export default function SellerLoginPage() {
           <h1 className="t-t3">파트너스 관리자</h1>
           <span className="t-l2 c-alt">쇼핑몰 운영과 방송 주문대기를 한곳에서 관리합니다.</span>
         </div>
-<<<<<<< HEAD
-        {notice && (
-          <div className={`msg msg-${notice.kind}`} role="alert">
-            <span>{notice.text}</span>
-          </div>
-        )}
-        <div className="fld">
-          <label htmlFor="email">이메일</label>
-          {/* 아이디는 이메일이지만 테스트 서버 시험 계정(예: test)도 있어 브라우저 이메일 형식 검사를 쓰지 않는다 */}
-          <input id="email" className="inp" type="text" inputMode="email" autoCapitalize="none" spellCheck={false} autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} />
-=======
         <div className="tabs login-tabs" role="tablist" aria-label="계정 종류">
           {TABS.map((t, i) => (
             <button
@@ -141,7 +130,6 @@ export default function SellerLoginPage() {
               {t.label}
             </button>
           ))}
->>>>>>> origin/main
         </div>
         <div className="col" id="login-panel" role="tabpanel" aria-labelledby={`login-tab-${tab}`} style={{ gap: 18 }}>
           {notice && (

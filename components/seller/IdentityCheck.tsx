@@ -221,7 +221,7 @@ export default function IdentityCheck({ label, start, scope = "", base, blocked 
         <span className="lbl req">{label}</span>
         <span className="help">{T.help}</span>
       </div>
-      <TestModeNotice kind="identity" />
+      <TestModeNotice kind="identity" formal />
       {notice && (
         <div id="idv-notice" tabIndex={-1} className={`msg msg-${notice.kind}`} role={notice.kind === "neg" ? "alert" : "status"}>
           <span>{notice.text}</span>

@@ -25,13 +25,21 @@ export function useTestMode(): boolean {
   return on;
 }
 
-// kind: identity = 본인확인 단계, payment = 결제 단계
-export default function TestModeNotice({ kind }: { kind: "identity" | "payment" }) {
+// kind: identity = 본인확인 단계, payment = 결제 단계. formal: 파트너스 화면은 합니다체, 구매자 화면은 해요체
+export default function TestModeNotice({ kind, formal = false }: { kind: "identity" | "payment"; formal?: boolean }) {
   const on = useTestMode();
   if (!on) return null;
   return (
     <div className="msg msg-info" role="note" data-testid="test-mode-notice">
-      <span>{kind === "identity" ? "테스트 모드예요. 인증번호 000000을 입력해 주세요" : "테스트 모드예요. 실제로 결제되지 않아요"}</span>
+      <span>
+        {formal
+          ? kind === "identity"
+            ? "테스트 모드입니다. 인증번호 000000을 입력해 주십시오."
+            : "테스트 모드입니다. 실제로 결제되지 않습니다."
+          : kind === "identity"
+            ? "테스트 모드예요. 인증번호 000000을 입력해 주세요"
+            : "테스트 모드예요. 실제로 결제되지 않아요"}
+      </span>
     </div>
   );
 }
