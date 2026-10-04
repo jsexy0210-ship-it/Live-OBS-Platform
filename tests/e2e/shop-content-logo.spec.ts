@@ -116,6 +116,47 @@ test.describe.serial("SA-060 쇼핑몰 로고", () => {
     await clearLogo();
   });
 
+  test("업로드 중에 다시 끌어 놓은 파일은 보내지 않는다(로고·배너 이미지, Codex 4176284813)", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/seller/login?next=%2Fseller%2Fsettings%2Fshop");
+    await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
+    await expect(page).toHaveURL(/\/seller\/settings\/shop$/);
+    const bytes = [...png(512, 512)];
+    // 같은 순간에 두 번 끌어 놓기(두 번째는 첫 업로드 중). 서버 응답을 늦춰 업로드 중 상태를 만든다.
+    const dropTwice = (selector: string) =>
+      page.locator(selector).first().evaluate((el, b) => {
+        for (const name of ["a.png", "b.png"]) {
+          const dt = new DataTransfer();
+          dt.items.add(new File([new Uint8Array(b as number[])], name, { type: "image/png" }));
+          el.dispatchEvent(new DragEvent("drop", { dataTransfer: dt, bubbles: true, cancelable: true }));
+        }
+      }, bytes);
+    let logoPuts = 0;
+    await page.route("**/api/seller/shop-content/logo", async (route) => {
+      if (route.request().method() !== "PUT") return route.continue();
+      logoPuts++;
+      await new Promise((r) => setTimeout(r, 800));
+      await route.continue();
+    });
+    await dropTwice('[data-testid="logo-box"]');
+    await expect(page.getByText("로고를 바꿨습니다")).toBeVisible();
+    expect(logoPuts).toBe(1);
+    await clearLogo();
+
+    await page.goto("/seller/banners");
+    await page.getByRole("button", { name: "배너 추가" }).first().click();
+    let imagePosts = 0;
+    await page.route("**/api/seller/shop-content/images", async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      imagePosts++;
+      await new Promise((r) => setTimeout(r, 800));
+      await route.continue();
+    });
+    await dropTwice('[role="dialog"] .sc-drop');
+    await expect(page.locator('[role="dialog"] .sc-drop img').first()).toBeVisible();
+    expect(imagePosts).toBe(1);
+  });
+
   test("「쇼핑몰 설정」 권한 없는 직원: 메뉴 → 쇼핑몰 정보 탭으로 들어가 보기만(올리기·지우기 없음, 볼 수 없는 탭은 안 보임)", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/seller/login");

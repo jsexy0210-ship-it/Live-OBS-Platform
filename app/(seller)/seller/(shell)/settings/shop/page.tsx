@@ -25,6 +25,8 @@ export default function ShopInfoPage() {
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  // 올리는 중에는 새 파일(끌어 놓기 포함)을 받지 않는다. 상태(busy)는 다음 렌더에야 바뀌므로 잇단 끌어 놓기는 ref로 막는다.
+  const working = useRef(false);
 
   const load = useCallback(async () => {
     const r = await api<{ logo: Logo }>("/api/seller/shop-content/logo");
@@ -38,10 +40,13 @@ export default function ShopInfoPage() {
 
   const upload = async (file: File) => {
     setError(null);
+    if (working.current) return;
     if (file.size > MAX_BYTES) return setError(`2MB를 넘었습니다 · 지금 파일은 ${mb(file.size)}입니다`);
+    working.current = true;
     setBusy(true);
     // 파일 바이트를 그대로 보낸다. 형식·크기는 서버가 바이트로 확인한다. 로그인이 풀렸으면 apiUpload가 로그인 화면으로 보낸다.
     const r = await apiUpload<{ logo: Logo }>("/api/seller/shop-content/logo", file, { method: "PUT" });
+    working.current = false;
     setBusy(false);
     if (input.current) input.current.value = "";
     if (!r.ok) {
@@ -53,9 +58,12 @@ export default function ShopInfoPage() {
   };
 
   const remove = async () => {
+    if (working.current) return;
+    working.current = true;
     setBusy(true);
     setError(null);
     const r = await api<{ logo: Logo }>("/api/seller/shop-content/logo", { method: "DELETE" });
+    working.current = false;
     setBusy(false);
     if (!r.ok) return setError(r.status === 403 ? "변경 권한이 없습니다" : "로고를 지우지 못했습니다");
     setState({ kind: "ok", logo: null });
@@ -128,7 +136,7 @@ export default function ShopInfoPage() {
                     e.preventDefault();
                     setOver(false);
                     const f = e.dataTransfer.files?.[0];
-                    if (f && editable) void upload(f);
+                    if (f && editable && !busy) void upload(f);
                   }}
                 >
                   {logo ? <img src={logo.url} alt="쇼핑몰 로고" /> : <span className="si-letter">{letter}</span>}

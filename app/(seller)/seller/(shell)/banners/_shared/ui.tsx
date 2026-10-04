@@ -95,15 +95,20 @@ export function ImagePicker({
   const [busy, setBusy] = useState(false);
   const [over, setOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 올리는 중에는 새 파일(끌어 놓기 포함)을 받지 않는다. 잇단 끌어 놓기는 다음 렌더 전이라 ref로 막는다(순서 뒤바뀜·busy 조기 해제 방지).
+  const working = useRef(false);
 
   const upload = async (file: File) => {
+    if (working.current) return;
     setError(null);
     // 서버도 다시 확인한다. 큰 파일은 보내기 전에 알려 준다.
     if (file.size > MAX_BYTES) return setError(`2MB를 넘었습니다 · 지금 파일은 ${mb(file.size)}입니다`);
+    working.current = true;
     setBusy(true);
     onBusy?.(true);
     // 파일 바이트를 그대로 보낸다. 형식은 서버가 바이트로 확인한다. 로그인이 풀렸으면 apiUpload가 로그인 화면으로 보낸다.
     const r = await apiUpload<{ image: AdminImage }>("/api/seller/shop-content/images", file);
+    working.current = false;
     setBusy(false);
     onBusy?.(false);
     if (input.current) input.current.value = "";
@@ -135,7 +140,7 @@ export function ImagePicker({
           e.preventDefault();
           setOver(false);
           const f = e.dataTransfer.files?.[0];
-          if (f && !disabled) void upload(f);
+          if (f && !disabled && !busy) void upload(f);
         }}
       >
         {value ? (
