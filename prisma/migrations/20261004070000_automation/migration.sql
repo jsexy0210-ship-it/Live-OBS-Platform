@@ -63,6 +63,7 @@ CREATE TABLE "AutomationJob" (
     "shopHost" TEXT,
     "cleanupNeededAt" TIMESTAMPTZ(3),
     "changedAt" TIMESTAMPTZ(3),
+    "mutatedSteps" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "obsPairingId" TEXT,
     "connectionRevokedAt" TIMESTAMPTZ(3),
     "verifiedAt" TIMESTAMPTZ(3),

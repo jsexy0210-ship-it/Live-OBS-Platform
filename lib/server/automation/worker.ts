@@ -76,10 +76,17 @@ export async function executeJob(db: PrismaClient, rt: AutomationRuntime, { job,
           return "failed";
         }
         // 이미 바꿨으면 되돌린 뒤 실패·환불. 되돌리기는 구매 때 버전의 정의로만 한다(없으면 사람이 정리)
+        // 변경 시각은 있는데 단계 기록이 없으면(이 기록 도입 전 작업 등) 어디까지 바꿨는지 알 수 없다: 되돌리지 않고 사람에게
+        const uncertain = job.changedAt !== null && job.mutatedSteps.length === 0;
         const rolled =
-          found && job.playbookVersion === found.version
-            ? await runRollback(rt, scope, { playbook: found, shopHost: job.shopHost, stepIndex: job.stepIndex, obsPairingId: job.obsPairingId, signal: lost.signal }, { touch: () => extendLease(db, claim, leaseMs) })
-            : ({ kind: "cleanup_needed", reason: "rollback_definition_missing" } as const);
+          found && job.playbookVersion === found.version && !uncertain
+            ? await runRollback(
+                rt,
+                scope,
+                { playbook: found, shopHost: job.shopHost, stepIndex: job.stepIndex, mutatedSteps: job.mutatedSteps, obsPairingId: job.obsPairingId, signal: lost.signal },
+                { touch: () => extendLease(db, claim, leaseMs) },
+              )
+            : ({ kind: "cleanup_needed", reason: uncertain ? "rollback_uncertain" : "rollback_definition_missing" } as const);
         if (rolled.kind === "rolled_back") {
           await failWithRefund(db, claim, stop, { cleanupDone: true });
           return "failed";
@@ -115,7 +122,7 @@ export async function executeJob(db: PrismaClient, rt: AutomationRuntime, { job,
         stepDone: (next, facts) => advanceStep(db, claim, next, facts),
         targetVerified: (target) => markTargetVerified(db, claim, target),
         holdBrowserState: () => markBrowserStateHeld(db, claim),
-        markChanged: () => markChanged(db, claim),
+        markChanged: (stepKey) => markChanged(db, claim, stepKey),
         claimObsTarget: (pairingId) => claimObsTarget(db, claim, pairingId),
       },
     );

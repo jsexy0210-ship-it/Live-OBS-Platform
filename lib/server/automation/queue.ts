@@ -149,8 +149,11 @@ async function fencedWrite(
 // 이 작업이 무언가를 바꿨을 수 있는가: 변경 행동을 시작했거나(changedAt) 끝낸 단계가 있으면(판단 호출·이동만으로는 아님)
 export const hasChanges = (j: Pick<AutomationJob, "stepIndex" | "changedAt">) => j.stepIndex > 0 || j.changedAt !== null;
 
-// 첫 변경 행동 직전 기록(이미 있으면 그대로)
-export const markChanged = (db: PrismaClient, c: Claim) => fencedWrite(db, c, (now, cur) => ({ data: { changedAt: cur.changedAt ?? now } }));
+// 단계마다 첫 변경 행동 직전 기록: 작업의 첫 변경 시각(changedAt, 이미 있으면 그대로)과 변경을 시작한 단계(mutatedSteps)를 같은 쓰기로
+export const markChanged = (db: PrismaClient, c: Claim, stepKey: string) =>
+  fencedWrite(db, c, (now, cur) => ({
+    data: { changedAt: cur.changedAt ?? now, ...(cur.mutatedSteps.includes(stepKey) ? {} : { mutatedSteps: [...cur.mutatedSteps, stepKey] }) },
+  }));
 
 // 바꾼 뒤 실패·취소로 끝나면 조용히 끝내지 않는다: 정리 필요 표시와 마스터 관리자 알림(감사 기록 운영 이벤트)을 같은 트랜잭션에서 남긴다.
 // 사람이 쇼핑몰 앱·웹훅·OBS를 정리할 수 있게 하기 위해서다. 자동 되돌리기 전체(E3-W)는 다음 PR.

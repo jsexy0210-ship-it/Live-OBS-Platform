@@ -2241,3 +2241,37 @@ describe("Codex 15차 반영(238d7c2)", () => {
     expect(r).toMatchObject({ ok: true, kind: "RECONNECT_FREE" });
   });
 });
+
+describe("Codex 16차 반영(e45452b)", () => {
+  async function invalidate() {
+    const other = await bought();
+    await db.automationJob.update({ where: { id: other.jobId }, data: { status: "CANCELED", finishedAt: new Date(), lastDeviationAt: new Date(), deviatedSteps: ["webhook_setup"] } });
+  }
+
+  it("쇼핑몰 연결을 마치고 웹훅 단계에 막 들어간 뒤(변경 기록 없음) 검증이 풀리면, 웹훅은 되돌리지 않고 쇼핑몰 연결만 되돌린다", async () => {
+    const a = await bought();
+    await db.automationJob.update({ where: { id: a.jobId }, data: { stepIndex: 1, mutatedSteps: ["shop_connect"] } });
+    await invalidate();
+    const rt = runtime();
+    expect(await runOnce(db, rt, W)).toBe("failed");
+    // 되돌리기 클릭은 「앱 사용 중지」 1번뿐(「주문 알림 끄기」 없음)
+    expect(rt.browser.performed.filter((p) => p.type === "click")).toHaveLength(1);
+    expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "playbook_not_verified" });
+  });
+
+  it("웹훅 단계에서 첫 변경을 한 뒤 검증이 풀리면 웹훅도 되돌린다", async () => {
+    const a = await bought();
+    await db.automationJob.update({ where: { id: a.jobId }, data: { stepIndex: 1, mutatedSteps: ["shop_connect", "webhook_setup"], changedAt: new Date() } });
+    await invalidate();
+    const rt = runtime();
+    expect(await runOnce(db, rt, W)).toBe("failed");
+    expect(rt.browser.performed.filter((p) => p.type === "click")).toHaveLength(2);
+  });
+
+  it("변경 행동을 할 때마다 그 단계의 변경 기록이 첫 변경 직전에 남는다", async () => {
+    const a = await bought();
+    expect(await runOnce(db, runtime(), W)).toBe("succeeded");
+    const j = await job(a.jobId);
+    expect(j.mutatedSteps).toEqual(expect.arrayContaining(["shop_connect", "webhook_setup", "obs_overlay_install", "display_settings", "test_event_verify"]));
+  });
+});
