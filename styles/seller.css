@@ -543,6 +543,7 @@ body {
   .staff-grid {
     grid-template-columns: minmax(0, 1fr);
   }
+}
 
 /* 공유 미리보기(SA-060): 메신저에 보이는 카드 모양 */
 .sp-card {
