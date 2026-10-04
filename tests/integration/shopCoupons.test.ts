@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { DELETE as couponDelete, PATCH as couponPatch, PUT as couponPut } from "../../app/api/seller/coupons/[couponId]/route";
 import { POST as grantPost } from "../../app/api/seller/coupons/[couponId]/grant/route";
+import { GET as productsGet } from "../../app/api/seller/coupons/products/route";
 import { GET as couponsGet, POST as couponsPost } from "../../app/api/seller/coupons/route";
 import { POST as downloadPost } from "../../app/api/shop/[slug]/coupons/[couponId]/download/route";
 import { POST as codePost } from "../../app/api/shop/[slug]/coupons/code/route";
@@ -97,6 +98,16 @@ const order = (s: Shop, couponId: string | undefined, quantity = 1, buyer = s.bu
 const lv = async (sellerId: string) => (await db.seller.findUniqueOrThrow({ where: { id: sellerId } })).liveVersion;
 const held = (s: Shop, couponId: string, buyerMemberId = s.buyer.id) => db.buyerCoupon.findFirstOrThrow({ where: { couponId, buyerMemberId } });
 
+
+// 다른 트랜잭션이 행 잠금을 기다리기 시작할 때까지(최대 5초)
+async function waitForLockWaiter() {
+  for (let i = 0; i < 100; i++) {
+    const [w] = await db.$queryRaw<{ n: bigint }[]>`SELECT count(*) AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`;
+    if (w.n > 0n) return;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
+
 describe("권한·테넌트 격리", () => {
   it("대표자·적립금 직원만 만들고, 다른 직원은 집계만 본다(canEdit=false, 403)", async () => {
     const s = await shop();
@@ -137,6 +148,22 @@ describe("권한·테넌트 격리", () => {
     const dl = await download(s, c.id);
     expect(dl.status).toBe(402);
     expect(await db.buyerCoupon.count()).toBe(0);
+  });
+});
+
+describe("적용 상품 고르기", () => {
+  it("상품이 많아도 이름으로 찾고(지운 상품·다른 쇼핑몰 제외), 쿠폰 목록은 들어 있는 상품 이름을 준다(Codex 4176403245)", async () => {
+    const s = await shop();
+    const other = await shop();
+    await db.product.createMany({ data: Array.from({ length: 600 }, (_, i) => ({ sellerId: s.seller.id, name: `일반 상품 ${i}`, price: 1000 })) });
+    const old = await db.product.create({ data: { sellerId: s.seller.id, name: "오래된 한정판", price: 1000, createdAt: new Date("2020-01-01") } });
+    await db.product.create({ data: { sellerId: s.seller.id, name: "지운 한정판", price: 1000, deletedAt: new Date() } });
+    await db.product.create({ data: { sellerId: other.seller.id, name: "남의 한정판", price: 1000 } });
+    const res = await productsGet(get("/api/seller/coupons/products?q=" + encodeURIComponent("한정판"), s.noPerm));
+    expect(((await res.json()) as { products: { name: string }[] }).products.map((x) => x.name)).toEqual(["오래된 한정판"]);
+    await makeCoupon(s, { productIds: [old.id] });
+    const list = (await (await couponsGet(get("/api/seller/coupons", s.owner))).json()) as { products: { id: string; name: string }[] };
+    expect(list.products).toEqual([{ id: old.id, name: "오래된 한정판", deleted: false }]);
   });
 });
 
@@ -233,6 +260,40 @@ describe("만들기·수정·중지·삭제", () => {
     expect((await couponDelete(json("/x", "DELETE", s.owner), p({ couponId: unused.id }))).status).toBe(200);
     const actions = (await db.auditLog.findMany({ where: { sellerId: s.seller.id, action: { startsWith: "coupon." } }, orderBy: { createdAt: "asc" } })).map((a) => a.action);
     expect(actions).toEqual(["coupon.create", "coupon.stop", "coupon.create", "coupon.delete"]);
+  });
+});
+
+describe("경쟁(쿠폰 행·회원 행 잠금)", () => {
+  it("발급이 진행 중일 때 삭제는 잠금을 기다렸다가 has_history(409)로 거절된다(Codex 4176403244)", async () => {
+    const s = await shop();
+    const c = await makeCoupon(s);
+    let del: Promise<Response> | null = null;
+    await db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT 1 FROM "Coupon" WHERE "id" = ${c.id}::uuid FOR UPDATE`;
+      del = couponDelete(json("/x", "DELETE", s.owner), p({ couponId: c.id }));
+      await waitForLockWaiter();
+      await tx.coupon.update({ where: { id: c.id }, data: { issuedCount: { increment: 1 } } });
+      await tx.buyerCoupon.create({ data: { sellerId: s.seller.id, couponId: c.id, buyerMemberId: s.buyer.id, issuedAt: new Date(), expiresAt: new Date(Date.now() + DAY) } });
+    });
+    const res = await del!;
+    expect(res.status).toBe(409);
+    expect(await db.coupon.count({ where: { id: c.id } })).toBe(1);
+  });
+
+  it("직접 지급과 탈퇴가 겹치면 탈퇴한 회원에게는 지급하지 않는다(Codex 4176403243)", async () => {
+    const s = await shop();
+    const c = await makeCoupon(s, { issueMethod: "MANUAL" });
+    let grant: Promise<Response> | null = null;
+    await db.$transaction(async (tx) => {
+      // 탈퇴처럼 회원 행을 FOR UPDATE로 잠그고 상태를 바꾼다
+      await tx.$queryRaw`SELECT 1 FROM "BuyerMember" WHERE "id" = ${s.buyer.id}::uuid FOR UPDATE`;
+      grant = grantPost(json("/x", "POST", s.owner, { gradeIds: [s.grade.id] }), p({ couponId: c.id }));
+      await waitForLockWaiter();
+      await tx.buyerMember.update({ where: { id: s.buyer.id }, data: { status: "WITHDRAWN", deletedAt: new Date() } });
+    });
+    expect(await (await grant!).json()).toEqual({ ok: true, granted: 1, skipped: 0 });
+    expect(await db.buyerCoupon.count({ where: { couponId: c.id, buyerMemberId: s.buyer.id } })).toBe(0);
+    expect((await db.coupon.findUniqueOrThrow({ where: { id: c.id } })).issuedCount).toBe(1);
   });
 });
 
@@ -383,6 +444,19 @@ describe("주문 할인(서버 계산, 주문 생성과 같은 트랜잭션)", (
     expect(await order(s, c.id, 2)).toEqual({ ok: false, reason: "coupon_unavailable" });
     expect(await db.order.count()).toBe(0);
     expect(await db.buyerCoupon.count({ where: { status: "USED" } })).toBe(0);
+  });
+
+  it("배송비 무료 쿠폰 주문을 발송 뒤 구매자 사정으로 환불하면 반품 배송비를 왕복으로 뺀다(Codex 4176403242)", async () => {
+    const s = await shop();
+    const c = await makeCoupon(s, { benefit: "FREE_SHIPPING", value: null });
+    await download(s, c.id);
+    const o = await order(s, c.id);
+    if (!o.ok) throw new Error(o.reason);
+    expect((await markOrderPaid(db, { sellerId: s.seller.id, orderId: o.orderId, paymentMethod: "CARD" })).ok).toBe(true);
+    await db.shipment.create({ data: { sellerId: s.seller.id, orderId: o.orderId, courier: "CJ", trackingNumber: "123456789012", shippedAt: new Date() } });
+    const r = await refundOrder(db, s.ctx, o.orderId, { reason: "단순 변심", expectedLiveVersion: await lv(s.seller.id), fault: "BUYER" });
+    // 기본 반품 배송비 3,000원 × 2(왕복), 상품 30,000원
+    expect(r.ok && [r.value.returnFeeDeducted, r.value.refundAmount]).toEqual([6000, 24000]);
   });
 
   it("배송비 무료 쿠폰은 배송비(shippingFee)를 남기고 그만큼 할인한다", async () => {

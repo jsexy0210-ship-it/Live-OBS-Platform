@@ -39,7 +39,7 @@ type Coupon = {
   discountTotal: number;
 };
 type Grade = { id: string; name: string; members: number };
-type Product = { id: string; name: string };
+type Product = { id: string; name: string; deleted?: boolean };
 type Data = {
   coupons: Coupon[];
   summary: { live: number; monthUsed: number; monthDiscount: number; monthCouponOrderRate: number; expiringSoon: number };
@@ -425,8 +425,25 @@ function CouponEditor({ draft: initial, products, onClose, onSaved }: { draft: D
   const set = (patch: Partial<Draft>) => setD((v) => ({ ...v, ...patch }));
   // 한 장이라도 발급했으면 발급 방식·혜택은 바꿀 수 없다(서버도 막음)
   const locked = d.id !== null && d.issued > 0;
-  const productName = useMemo(() => new Map(products.map((p) => [p.id, p.name])), [products]);
-  const matches = q.trim() ? products.filter((p) => p.name.toLowerCase().includes(q.trim().toLowerCase()) && !d.productIds.includes(p.id)).slice(0, 8) : [];
+  // 고른 상품 이름: 쿠폰에 들어 있던 상품 + 검색해서 고른 상품
+  const [picked, setPicked] = useState<Product[]>([]);
+  const productName = useMemo(() => new Map([...products, ...picked].map((p) => [p.id, p.deleted ? `${p.name} (삭제됨)` : p.name])), [products, picked]);
+  const [found, setFound] = useState<Product[]>([]);
+  // 이름 검색은 서버에서(상품이 많아도 모두 찾을 수 있게). 입력을 멈추고 0.25초 뒤에 찾는다.
+  useEffect(() => {
+    const term = q.trim();
+    if (!term) return setFound([]);
+    let alive = true;
+    const t = setTimeout(async () => {
+      const r = await api<{ products: Product[] }>(`/api/seller/coupons/products?q=${encodeURIComponent(term)}`);
+      if (alive && r.ok) setFound(r.data.products);
+    }, 250);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [q]);
+  const matches = found.filter((p) => !d.productIds.includes(p.id)).slice(0, 8);
 
   const ready =
     d.name.trim() !== "" &&
@@ -594,6 +611,7 @@ function CouponEditor({ draft: initial, products, onClose, onSaved }: { draft: D
                             type="button"
                             onClick={() => {
                               set({ productIds: [...d.productIds, p.id] });
+                              setPicked((v) => [...v, p]);
                               setQ("");
                             }}
                           >

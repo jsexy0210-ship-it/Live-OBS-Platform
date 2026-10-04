@@ -104,8 +104,11 @@ export async function listCoupons(db: PrismaClient, ctx: TenantContext) {
       orderBy: { sortOrder: "asc" },
       select: { id: true, displayName: true, _count: { select: { members: { where: { status: "ACTIVE", deletedAt: null } } } } },
     }),
-    // 적용 상품 고르기용(이름만). 상품 관리 권한이 없는 적립금 직원도 고를 수 있게 여기서 준다.
-    db.product.findMany({ where: { sellerId: ctx.sellerId, deletedAt: null }, select: { id: true, name: true }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 500 }),
+    // 쿠폰에 들어 있는 적용 상품의 이름(지운 상품 포함). 고르기는 searchCouponProducts(이름 검색)로 한다.
+    db.product.findMany({
+      where: { sellerId: ctx.sellerId, id: { in: [...new Set((await db.coupon.findMany({ where: { sellerId: ctx.sellerId }, select: { productIds: true } })).flatMap((c) => c.productIds))] } },
+      select: { id: true, name: true, deletedAt: true },
+    }),
   ]);
   const usedBy = new Map(used.map((u) => [u.couponId, u._count._all]));
   const discountBy = new Map(discounts.map((d) => [d.couponId, d._sum.discountAmount ?? 0]));
@@ -122,7 +125,7 @@ export async function listCoupons(db: PrismaClient, ctx: TenantContext) {
       expiringSoon: coupons.filter((c) => c.status === "live" && new Date(c.endsAt) <= weekLater).length,
     },
     grades: grades.map((g) => ({ id: g.id, name: g.displayName, members: g._count.members })),
-    products,
+    products: products.map((p) => ({ id: p.id, name: p.name, deleted: p.deletedAt !== null })),
     canEdit: !ctx.readOnly && sellerCan(ctx, "MEMBER_POINTS"),
     now,
   };
@@ -224,8 +227,8 @@ export async function deleteCoupon(db: PrismaClient, ctx: TenantContext, id: str
   requireSellerPermission(ctx, "MEMBER_POINTS");
   if (!isUuid(id)) throw notFound();
   return db.$transaction(async (tx) => {
-    await lockSellerCoupons(tx, ctx.sellerId);
-    const before = await tx.coupon.findFirst({ where: { id, sellerId: ctx.sellerId } });
+    // 받기와 같은 쿠폰 행을 잠그고 발급 이력을 본다(그사이 받은 쿠폰이 있으면 has_history)
+    const before = await lockCoupon(tx, ctx.sellerId, id);
     if (!before) throw notFound();
     if (before.issuedCount > 0 || (await tx.buyerCoupon.count({ where: { couponId: id } })) > 0) return { ok: false as const, reason: "has_history" as const };
     await tx.coupon.delete({ where: { id } });
@@ -263,11 +266,15 @@ export async function grantCoupon(
     const status = statusOf(coupon, now);
     if (status !== "live") return { ok: false as const, reason: status === "scheduled" ? ("not_started" as const) : ("ended" as const) };
     if ((await tx.memberGrade.count({ where: { sellerId: ctx.sellerId, id: { in: gradeIds } } })) !== gradeIds.length) return { ok: false as const, reason: "invalid_target" as const };
-    const members = await tx.buyerMember.findMany({
-      where: { sellerId: ctx.sellerId, status: "ACTIVE", deletedAt: null, OR: [{ gradeId: { in: gradeIds } }, { id: { in: memberIds } }], coupons: { none: { couponId: id } } },
-      select: { id: true },
-      take: GRANT_MAX + 1,
-    });
+    // 회원 행을 공유 잠금으로 읽어 탈퇴(FOR UPDATE)와 엇갈리지 않게 한다. 탈퇴가 먼저 끝나면 그 회원은 빠진다.
+    const members = await tx.$queryRaw<{ id: string }[]>`
+      SELECT m."id" FROM "BuyerMember" m
+      WHERE m."sellerId" = ${ctx.sellerId}::uuid AND m."status" = 'ACTIVE' AND m."deletedAt" IS NULL
+        AND (m."gradeId" = ANY(${gradeIds}::uuid[]) OR m."id" = ANY(${memberIds}::uuid[]))
+        AND NOT EXISTS (SELECT 1 FROM "BuyerCoupon" b WHERE b."couponId" = ${id}::uuid AND b."buyerMemberId" = m."id")
+      ORDER BY m."id"
+      LIMIT ${GRANT_MAX + 1}
+      FOR SHARE OF m`;
     if (members.length > GRANT_MAX) return { ok: false as const, reason: "too_many_members" as const };
     if (coupon.issueLimit !== null && coupon.issuedCount + members.length > coupon.issueLimit) return { ok: false as const, reason: "issue_limit" as const };
     const expiresAt = couponExpiry(coupon, now);
@@ -281,6 +288,22 @@ export async function grantCoupon(
     return { ok: true as const, granted: members.length, skipped: total - members.length };
   });
 }
+
+// 적용 상품 고르기: 이 쇼핑몰의 지우지 않은 상품을 이름으로 찾는다(대소문자 무시, 20개). 상품 관리 권한이 없는 적립금 직원도 쓴다.
+export async function searchCouponProducts(db: PrismaClient, ctx: TenantContext, q: unknown) {
+  const term = typeof q === "string" ? q.trim().slice(0, 50) : "";
+  if (!term) return [];
+  return db.product.findMany({
+    where: { sellerId: ctx.sellerId, deletedAt: null, name: { contains: term, mode: "insensitive" } },
+    select: { id: true, name: true },
+    orderBy: [{ name: "asc" }, { id: "asc" }],
+    take: 20,
+  });
+}
+
+// 배송비 무료 쿠폰을 쓴 주문은 구매자가 낸 배송비가 0원이다(환불의 처음 배송비·반품 배송비 왕복 판단, queue/service.ts).
+export const chargedShippingFee = (o: { shippingFee: number; couponRedemption: { benefit: CouponBenefit } | null }) =>
+  o.couponRedemption?.benefit === "FREE_SHIPPING" ? 0 : o.shippingFee;
 
 // ───────── 구매자 쿠폰함 ─────────
 

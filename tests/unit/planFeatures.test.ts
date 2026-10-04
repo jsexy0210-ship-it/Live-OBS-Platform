@@ -57,6 +57,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/coupons": "STORE_OPERATIONS",
   "seller/coupons/[couponId]": "STORE_OPERATIONS",
   "seller/coupons/[couponId]/grant": "STORE_OPERATIONS",
+  "seller/coupons/products": "STORE_OPERATIONS",
   "seller/broadcast/start": "OVERLAY",
   "seller/broadcast/end": "OVERLAY",
   "seller/overlay/token": "OVERLAY",
