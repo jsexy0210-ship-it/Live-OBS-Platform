@@ -4,7 +4,7 @@ import { requireSellerPermission, type TenantContext } from "../tenant/context";
 import { addMonthsKst } from "./access";
 import type { BillingProvider, ChargeResult } from "./provider";
 import { openBillingKey } from "./secret";
-import { chargeFor, dbNow, isEndedSubscription, lockSeller, planPeriod, priceFor, sellerPlanOf, settlePayment, switchPlan } from "./subscription";
+import { chargeFor, dbNow, isEndedSubscription, lockSeller, planPeriod, sellerPlanOf, withoutLegacy, settlePayment, switchPlan } from "./subscription";
 
 // 플랜 변경(ONQ 1-C-2, ARCHITECTURE 4.8.0 「결제 규칙」, PRODUCT_SCOPE 확정 ①). 실제 PG는 공급자 인터페이스로만 부른다.
 // - 상위 변경(오버레이 전용 → 통합)은 결제사가 결제를 확정한 뒤에만 적용한다. 대기·실패·시간 초과면 지금 플랜 그대로다.
@@ -136,10 +136,11 @@ export async function changePlan(
     if (!sub?.billingKeyCipher) return { kind: "done", result: { ok: false, reason: "card_required" } };
     const billingKey = openBillingKey(sub.billingKeyCipher, ctx.sellerId);
     // 금액: 정가 구독이면 두 플랜 모두 정가, 아니면 판매가(런칭가). 구독이 이어지는 동안의 상위 변경은 런칭가를 유지한다(대표님 결정 2026-10-04).
-    const cur = await chargeFor(tx, current, sub, now);
-    const curPrice = cur.amount;
-    const newPrice = sub.regularPrice ? target.listPrice : await priceFor(tx, target, sub.subscribedAt, now);
-    const base = { sellerId: ctx.sellerId, subscriptionId: sub.id, scheduled: false, targetPlanId: target.id, createdAt: now, launchDiscount: !sub.regularPrice };
+    // 두 금액 모두 chargeFor(가격 기록·고지 규칙)로 정한다. 새 플랜은 옮기면 스냅숏이 끝나므로 스냅숏 없이 센다.
+    const curPrice = (await chargeFor(tx, current, sub, now)).amount;
+    const next = await chargeFor(tx, target, withoutLegacy(sub), now);
+    const newPrice = next.amount;
+    const base = { sellerId: ctx.sellerId, subscriptionId: sub.id, scheduled: false, targetPlanId: target.id, createdAt: now, launchDiscount: next.launchDiscount };
 
     let payment: SubscriptionPayment;
     let remainingDays: number | null = null;

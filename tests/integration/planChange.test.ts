@@ -1,14 +1,16 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { POST as planRoute } from "../../app/api/seller/subscription/plan/route";
 import { loginSeller } from "../../lib/server/auth/login";
+import { createAdminSession, resolveAdminSession } from "../../lib/server/auth/session";
 import { sellerFeatures } from "../../lib/server/billing/features";
 import { changePlan } from "../../lib/server/billing/planChange";
+import { listPriceChangeNoticeTargets } from "../../lib/server/billing/plans";
 import { FakeBillingProvider } from "../../lib/server/billing/provider";
 import { sealBillingKey } from "../../lib/server/billing/secret";
 import { cancelSubscription, getSubscriptionView, reconcileStalePayments, registerCardAndPay, renewDueSubscriptions } from "../../lib/server/billing/subscription";
 import { prisma } from "../../lib/server/db";
 import type { TenantContext } from "../../lib/server/tenant/context";
-import { PASSWORD, createSeller, createSellerUser, db, resetDb, seedPlans } from "./helpers";
+import { PASSWORD, createAdmin, createSeller, createSellerUser, db, resetDb, seedPlans } from "./helpers";
 
 // ONQ 1-C-2 플랜 변경(ONQ_PLAN E1-B, ARCHITECTURE 4.8.0 결제 규칙). 실제 PG 없이 가짜 공급자로 확인한다.
 beforeAll(() => {
@@ -350,6 +352,32 @@ describe("런칭 할인 계정당 1회(대표님 결정 2026-10-04)", () => {
     expect(await changePlan(db, new FakeBillingProvider(), s.ctx, { planCode: "INTEGRATED", now: T0 })).toMatchObject({ ok: true, charged: 50000 });
     await renewDueSubscriptions(db, new FakeBillingProvider(), { now: at(9) });
     expect((await payments(s.seller.id)).map((p) => p.amount)).toEqual([50000, 249000]);
+  });
+
+  it("정가 인상도 30일 고지 규칙을 따른다: 고지 직후 갱신·상위 변경 차액·구독 화면은 옛 정가, 변경 + 30일 뒤 갱신은 새 정가(#186 Codex)", async () => {
+    // 관리자가 하루 전 쇼핑몰 통합 정가를 249,000 → 299,000원으로 올림(updatePlanPrice와 같은 가격 기록)
+    await db.subscriptionPriceChange.create({ data: { planId: plans.INTEGRATED.id, listPrice: 249000, salePrice: 179000, changedAt: new Date("2000-01-01T00:00:00Z") } });
+    const admin = await createAdmin("SUPER_ADMIN");
+    const adminCtx = (await resolveAdminSession(db, (await createAdminSession(db, admin.id, {})).token))!;
+    await db.subscriptionPriceChange.create({ data: { planId: plans.INTEGRATED.id, listPrice: 299000, salePrice: 179000, changedAt: at(-1), changedByAdminId: admin.id } });
+    await db.subscriptionPlan.update({ where: { id: plans.INTEGRATED.id }, data: { listPrice: 299000 } });
+
+    // 고지 기간 안 갱신: 옛 정가
+    const soon = await shop("INTEGRATED", at(-60), { ...paying, regularPrice: true });
+    expect((await getSubscriptionView(db, soon.ctx, T0)).plan?.nextAmount).toBe(249000);
+    // 가격 변경 고지 대상: 정가 구독은 정가가 바뀐다
+    expect((await listPriceChangeNoticeTargets(db, adminCtx, "INTEGRATED")).find((t) => t.sellerId === soon.seller.id)).toMatchObject({ oldPrice: 249000, newPrice: 299000 });
+    await renewDueSubscriptions(db, new FakeBillingProvider(), { now: at(9) });
+    expect((await payments(soon.seller.id)).map((p) => p.amount)).toEqual([249000]);
+
+    // 변경 + 30일 뒤 갱신: 새 정가
+    const later = await shop("INTEGRATED", at(-60), { status: "ACTIVE", currentPeriodStart: at(0), currentPeriodEnd: at(31), billingAnchorAt: at(0), nextChargeAt: at(30), regularPrice: true });
+    await renewDueSubscriptions(db, new FakeBillingProvider(), { now: at(30) });
+    expect((await payments(later.seller.id)).map((p) => p.amount)).toEqual([299000]);
+
+    // 고지 기간 안 상위 변경 차액: 옛 정가 기준 (249,000 − 99,000) × 10/30
+    const up = await shop("OVERLAY_ONLY", at(-60), { ...paying, regularPrice: true });
+    expect(await changePlan(db, new FakeBillingProvider(), up.ctx, { planCode: "INTEGRATED", now: T0 })).toMatchObject({ ok: true, charged: 50000 });
   });
 
   it("이전된 STANDARD 이력은 사용으로 세지 않는다: 첫 재구독 한 번은 통합 런칭가 179,000원, 그 뒤 해지·재구독은 정가", async () => {

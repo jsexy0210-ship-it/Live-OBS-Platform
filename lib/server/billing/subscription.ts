@@ -60,42 +60,31 @@ export async function sellerAccessFor(db: Db, sellerId: string, now?: Date): Pro
   return sellerAccess({ trialEndsAt: seller.trialEndsAt, subscription: seller.subscription }, at);
 }
 
-// 이번 청구 금액(대표님 결정 2026-10-02). 가격 기록 중 「구독을 시작할 때 이미 적용되던 것」이거나
-// 「변경 + 30일이 지난 것」 가운데 가장 최근 가격이다. 그래서 기존 구독자는 고지 기간(30일)이 끝나기 전에는
-// 구독을 시작할 때의 가격(또는 그 뒤 고지가 끝난 가격)을 내고, 새 구독자는 지금 가격을 낸다.
-// legacy: STANDARD → INTEGRATED 이전 전 가격 스냅숏(ONQ 1-C). 고지 발송 완료 + 30일 전이거나 아직 보내지 않았으면(null) 그 금액이다.
-export async function priceFor(
-  db: Db,
-  plan: SubscriptionPlan,
-  subscribedAt: Date,
-  at: Date,
-  legacy?: Pick<SellerSubscription, "legacyPrice" | "legacyPriceNoticeSentAt"> | null,
-): Promise<number> {
-  if (legacy?.legacyPrice != null && (!legacy.legacyPriceNoticeSentAt || at < after(legacy.legacyPriceNoticeSentAt, PRICE_NOTICE_MS))) {
-    return legacy.legacyPrice;
-  }
+// 청구 금액의 유일한 출처(가격을 읽는 모든 경로가 이것만 쓴다, #186 Codex). 반환은 이번 청구 금액과 런칭가 여부다.
+// 가격(정가·판매가)은 가격 기록 중 「구독을 시작할 때 이미 적용되던 것」이거나 「변경 + 30일이 지난 것」 가운데 가장 최근 것이다
+// (대표님 결정 2026-10-02). 그래서 기존 구독자는 고지 기간(30일)이 끝나기 전에는 구독을 시작할 때의 가격(또는 그 뒤 고지가 끝난 가격)을
+// 내고, 새 구독자는 지금 가격을 낸다. 정가 구독도 같은 규칙으로 정가를 고른다.
+// - 정가 구독(regularPrice: 런칭 할인을 쓴 계정이 해지 뒤 다시 구독)은 정가(대표님 결정 2026-10-04, ARCHITECTURE 4.8.0).
+// - 이전 전 가격 스냅숏(STANDARD → INTEGRATED, ONQ 1-C): 고지 발송 완료 + 30일 전이거나 아직 보내지 않았으면(null) 그 금액이다.
+// - 그 밖은 판매가(= 런칭가). 스냅숏 금액과 STANDARD 플랜 결제는 런칭가로 세지 않는다.
+// 아직 구독하지 않은 판매자는 subscribedAt = at(지금 가격), 스냅숏 없음으로 부른다.
+export type PriceSubscription = Pick<SellerSubscription, "subscribedAt" | "legacyPrice" | "legacyPriceNoticeSentAt" | "regularPrice">;
+export async function chargeFor(db: Db, plan: SubscriptionPlan, sub: PriceSubscription, at: Date): Promise<{ amount: number; launchDiscount: boolean }> {
+  const legacy = !sub.regularPrice && sub.legacyPrice != null && (!sub.legacyPriceNoticeSentAt || at < after(sub.legacyPriceNoticeSentAt, PRICE_NOTICE_MS));
+  if (legacy) return { amount: sub.legacyPrice!, launchDiscount: false };
   const row = await db.subscriptionPriceChange.findFirst({
-    where: { planId: plan.id, OR: [{ changedAt: { lte: subscribedAt } }, { changedAt: { lte: after(at, -PRICE_NOTICE_MS) } }] },
+    where: { planId: plan.id, OR: [{ changedAt: { lte: sub.subscribedAt } }, { changedAt: { lte: after(at, -PRICE_NOTICE_MS) } }] },
     orderBy: { changedAt: "desc" },
-    select: { salePrice: true },
+    select: { listPrice: true, salePrice: true },
   });
-  return row?.salePrice ?? plan.salePrice;
+  const price = row ?? plan;
+  if (sub.regularPrice) return { amount: price.listPrice, launchDiscount: false };
+  // 이전 전 STANDARD 플랜 결제도 런칭 할인 사용으로 세지 않는다
+  return { amount: price.salePrice, launchDiscount: plan.code !== "STANDARD" };
 }
 
-// 이번 청구 금액과 런칭가 여부(런칭 할인 계정당 1회, 대표님 결정 2026-10-04, ARCHITECTURE 4.8.0).
-// - 정가 구독(regularPrice: 할인을 쓴 계정이 해지 뒤 다시 구독)은 플랜 정가.
-// - 그 밖은 priceFor(판매가 = 런칭가, 가격 변경 고지 규칙, 이전 전 가격 스냅숏). 스냅숏 금액과 STANDARD 플랜 결제는 런칭가로 세지 않는다.
-export async function chargeFor(
-  db: Db,
-  plan: SubscriptionPlan,
-  sub: Pick<SellerSubscription, "subscribedAt" | "legacyPrice" | "legacyPriceNoticeSentAt" | "regularPrice">,
-  at: Date,
-): Promise<{ amount: number; launchDiscount: boolean }> {
-  if (sub.regularPrice) return { amount: plan.listPrice, launchDiscount: false };
-  const legacy = sub.legacyPrice != null && (!sub.legacyPriceNoticeSentAt || at < after(sub.legacyPriceNoticeSentAt, PRICE_NOTICE_MS));
-  // 이전 전 STANDARD 플랜 결제도 런칭 할인 사용으로 세지 않는다
-  return { amount: await priceFor(db, plan, sub.subscribedAt, at, sub), launchDiscount: !legacy && plan.code !== "STANDARD" };
-}
+// 플랜을 옮긴 뒤(상위 변경·예약된 하위 변경) 청구 기준: 플랜이 바뀌면 이전 전 가격 스냅숏은 끝난다(switchPlan)
+export const withoutLegacy = (sub: PriceSubscription): PriceSubscription => ({ ...sub, legacyPrice: null, legacyPriceNoticeSentAt: null });
 
 // 구독 행이 없을 때 쓰는 판매자 플랜(가입 때 정한 플랜, 없으면 신규 가입 기본 플랜)
 export async function sellerPlanOf(db: Db, sellerId: string): Promise<SubscriptionPlan | null> {
@@ -151,12 +140,9 @@ export async function getSubscriptionView(db: PrismaClient, ctx: TenantContext, 
             sub && !isEndedSubscription(sub, at)
               ? nextPlan === shownPlan
                 ? (await chargeFor(db, shownPlan, sub, sub.nextChargeAt ?? at)).amount
-                : sub.regularPrice
-                  ? nextPlan!.listPrice
-                  : await priceFor(db, nextPlan!, sub.subscribedAt, sub.nextChargeAt ?? at)
-              : seller.launchDiscountUsedAt
-                ? shownPlan.listPrice
-                : await priceFor(db, shownPlan, at, at),
+                : (await chargeFor(db, nextPlan!, withoutLegacy(sub), sub.nextChargeAt ?? at)).amount
+              : (await chargeFor(db, shownPlan, { subscribedAt: at, legacyPrice: null, legacyPriceNoticeSentAt: null, regularPrice: !!seller.launchDiscountUsedAt }, at))
+                  .amount,
         }
       : null,
     subscription: sub
