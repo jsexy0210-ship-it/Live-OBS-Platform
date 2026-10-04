@@ -378,7 +378,20 @@ async function runAll(
         evidence = out.evidence ?? { verified: true };
       }
       // 검증 단계는 테스트 표시를 실제로 확인한 뒤에만 끝낸다(모델·작업서가 끝났다고 해도 넘어가지 않는다)
-      if (out.stepDone && (step.kind !== "verify" || verified)) done = true;
+      // 단계 끝 신호만으로 끝내지 않는다: 다시 관찰한 화면·상태에 그 단계의 완료 판정(doneWhen)을 적용해 맞을 때만 끝낸다.
+      // 판정이 없으면(작업서 없음) 끝낼 수 없다. 맞지 않으면 작업서대로 되지 않은 것이라 화면 이탈로 보고 판단 모델로 넘긴다.
+      if (out.stepDone && (step.kind !== "verify" || verified)) {
+        const doneWhen = (opts.playbook ?? secretBook)?.steps[step.key]?.doneWhen;
+        if (!doneWhen) return { kind: "failed", reason: "step_unverifiable" };
+        guard();
+        const after = session ? await session.observe() : await rt.obs.observe(scope);
+        if (cueMatches(doneWhen, after)) done = true;
+        else if (!deviated) {
+          deviated = true;
+          if (!stats.deviatedSteps.includes(step.key)) stats.deviatedSteps.push(step.key);
+          stats.deviatedNow = true;
+        }
+      }
       // 작업서 끝 행동(step_done)까지 했는데 끝나지 않았다면 남은 부분은 판단 모델로
       if (!done && !deviated && scripted.length === 0) deviated = true;
     }
@@ -458,6 +471,12 @@ export async function runRollback(
         const out = fromExecutor(rb.kind === "browser" ? await session!.perform(action, secrets, actionKey, expectedPage) : await rt.obs.perform(scope, action, actionKey, pairing), secrets);
         guard();
         if (out.kind !== "ok" || (rb.kind === "obs" && out.pairingId !== pairing)) return { kind: "cleanup_needed", reason: `rollback_failed:${rb.forStep}` };
+      }
+      // 실행 결과 신호만으로 되돌렸다고 보지 않는다: 다시 관찰한 상태가 되돌림 확인(doneWhen)과 맞아야 한다
+      if (rb.actions.length > 0) {
+        guard();
+        const after = session && rb.kind === "browser" ? await session.observe() : await rt.obs.observe(scope);
+        if (!cueMatches(rb.doneWhen, after)) return { kind: "cleanup_needed", reason: `rollback_unverified:${rb.forStep}` };
       }
     }
     return { kind: "rolled_back" };

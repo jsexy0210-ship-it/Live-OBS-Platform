@@ -13,9 +13,10 @@ import type {
   ObservedElement,
   PlannerDecision,
   PlannerInput,
+  PracticeEnvironment,
   SecretVault,
 } from "./ports";
-import { pageMatchesExpected } from "./ports";
+import { PRACTICE_SELLER_ID, pageMatchesExpected } from "./ports";
 
 // 가짜(모의) 구현. 실제 Gemini·브라우저·로컬 도구를 부르지 않는다. 운영 환경에서는 만들 수 없다.
 function assertNotProduction(env: string | undefined) {
@@ -27,7 +28,7 @@ const sleep = (ms: number) => (ms > 0 ? new Promise((r) => setTimeout(r, ms)) : 
 // 단계별 기본 행동 순서. 행동 하나마다 판단 비용 costWon을 쓴다.
 const SCRIPT: Record<string, AutomationAction[]> = {
   shop_connect: [{ type: "navigate", url: "https://myshop.cafe24.com/disp/admin/shop1/" }, { type: "click", target: "앱 설치" }, { type: "step_done" }],
-  webhook_setup: [{ type: "fill", target: "주문 알림 주소", value: { secretRef: "webhook_url" } }, { type: "step_done" }],
+  webhook_setup: [{ type: "fill", target: "주문 알림 주소", value: { secretRef: "webhook_url" } }, { type: "click", target: "저장" }, { type: "step_done" }],
   obs_overlay_install: [{ type: "obs_add_overlay_source" }, { type: "step_done" }],
   display_settings: [{ type: "obs_apply_display_settings" }, { type: "step_done" }],
   test_event_verify: [{ type: "send_test_event" }, { type: "check_overlay_shows_test_event" }, { type: "step_done" }],
@@ -99,6 +100,17 @@ export class FakeBrowserExecutor implements BrowserExecutor {
     this.discarded.push(scope.jobId);
   }
   pageText: (scope: JobScope, secrets?: JobSecrets) => string = () => "Cafe24 관리자";
+  // 판매자별 쇼핑몰의 실제 상태(누르기로 바뀜). 관찰 화면 글에 붙는다(초안 작업서의 완료 판정 문구)
+  readonly shopState = new Map<string, Set<string>>();
+  private applyShopEffect(sellerId: string, target: string) {
+    const st = this.shopState.get(sellerId) ?? new Set<string>();
+    const flip = (on: string, off: string, turnOn: boolean) => (turnOn ? (st.add(on), st.delete(off)) : (st.add(off), st.delete(on)));
+    if (target === "앱 설치") flip("앱 사용 중", "앱 사용 안 함", true);
+    if (target === "앱 사용 중지") flip("앱 사용 중", "앱 사용 안 함", false);
+    if (target === "저장") flip("주문 알림 사용 중", "주문 알림 꺼짐", true);
+    if (target === "주문 알림 끄기") flip("주문 알림 사용 중", "주문 알림 꺼짐", false);
+    this.shopState.set(sellerId, st);
+  }
   // 관찰·현재 문서 주소(리다이렉트 흉내용). observe 때와 실행 직전 주소를 따로 바꿀 수 있다.
   pageUrl: (scope: JobScope) => string | null = () => "https://myshop.cafe24.com/disp/admin/shop1/";
   currentUrlOverride: ((scope: JobScope) => string | null) | null = null;
@@ -138,7 +150,8 @@ export class FakeBrowserExecutor implements BrowserExecutor {
       id,
       async observe(): Promise<Observation> {
         await sleep(self.delayMs);
-        const text = self.pageText(scope, secretsSeen);
+        // 화면 글 + 실제로 바뀐 쇼핑몰 상태(앱 설치·주문 알림). 단계 완료 판정은 이 상태로만 맞는다
+        const text = [self.pageText(scope, secretsSeen), ...(self.shopState.get(scope.sellerId) ?? [])].join(" · ");
         // 구조화된 화면 요소. 따로 정하지 않으면 화면 글을 「 · 」로 나눠 안내 문구로 본다
         const elements = self.pageElements ? self.pageElements(scope) : text.split(" · ").map((t) => ({ kind: "notice" as const, text: t }));
         return { url: self.pageUrl(scope), text, elements };
@@ -171,6 +184,7 @@ export class FakeBrowserExecutor implements BrowserExecutor {
         // 처리하는 사이 지워졌으면 결과를 남기지 않는다
         if (self.tombstones.has(scope.jobId)) return { kind: "fatal", reason: "scope_discarded" };
         if (action.type === "navigate") jar.set("session", `${scope.sellerId}:${scope.jobId}`);
+        if (action.type === "click") self.applyShopEffect(scope.sellerId, action.target);
         const out: ActionOutcome =
           action.type === "step_done"
             ? { kind: "ok", stepDone: true, facts: { shopKey: self.shopKey.get(scope.sellerId) ?? `mall-${scope.sellerId}` } }
@@ -205,8 +219,16 @@ export class FakeObsBridge implements ObsBridge {
 
   async observe(scope: JobScope): Promise<Observation> {
     await sleep(this.delayMs);
-    const text = this.disconnected.has(scope.sellerId) ? "OBS 연결 안 됨" : "OBS 연결됨";
-    return { url: null, text, elements: [{ kind: "notice", text }] };
+    // 연결 여부 + 실제 OBS 상태(소스 수·표시 설정·테스트 주문 표시). 단계 완료 판정은 이 상태로만 맞는다
+    const parts = this.disconnected.has(scope.sellerId)
+      ? ["OBS 연결 안 됨"]
+      : [
+          "OBS 연결됨",
+          (this.sources.get(scope.sellerId) ?? 0) > 0 ? "오버레이 소스 있음" : "오버레이 소스 없음",
+          ...(this.display.has(scope.sellerId) ? ["표시 설정 적용됨"] : []),
+          ...(this.shown.has(scope.jobId) ? ["테스트 주문 표시됨"] : []),
+        ];
+    return { url: null, text: parts.join(" · "), elements: parts.map((text) => ({ kind: "notice" as const, text })) };
   }
 
   // 지운 작업(OBS 연결 정보 삭제 요청을 받은 작업)
@@ -237,6 +259,9 @@ export class FakeObsBridge implements ObsBridge {
   // 이미 적용한 행동 키 → 결과, 판매자별 OBS 소스 수(같은 키는 한 번만 적용되는지 확인용)
   readonly applied = new Map<string, ActionOutcome>();
   readonly sources = new Map<string, number>();
+  // 표시 설정을 적용한 판매자, 테스트 주문이 오버레이에 보인 작업
+  readonly display = new Set<string>();
+  readonly shown = new Set<string>();
 
   async perform(scope: JobScope, action: AutomationAction, actionKey?: string, expectedPairingId?: string): Promise<ActionOutcome> {
     await sleep(this.delayMs);
@@ -260,8 +285,10 @@ export class FakeObsBridge implements ObsBridge {
     this.connections.add(scope.jobId);
     if (action.type === "obs_add_overlay_source") this.sources.set(scope.sellerId, (this.sources.get(scope.sellerId) ?? 0) + 1);
     if (action.type === "obs_remove_overlay_source") this.sources.set(scope.sellerId, Math.max(0, (this.sources.get(scope.sellerId) ?? 0) - 1));
+    if (action.type === "obs_apply_display_settings") this.display.add(scope.sellerId);
     if (action.type === "check_overlay_shows_test_event") {
       if (this.notShowing.has(scope.sellerId)) return { kind: "ok", stepDone: false, verified: false };
+      this.shown.add(scope.jobId);
       return { kind: "ok", stepDone: false, verified: true, evidence: { testEvent: `test-${scope.jobId}`, shownOnOverlay: true } };
     }
     if (action.type === "step_done") return { kind: "ok", stepDone: true, facts: { obsPairingId: this.pairing.get(scope.sellerId) ?? `pc-${scope.sellerId}` } };
@@ -283,5 +310,27 @@ export class FakeSecretVault implements SecretVault {
       this.byJob.set(scope.jobId, s);
     }
     return s;
+  }
+}
+
+// 가짜 연습 환경: 시험용 쇼핑몰·PC(연습 판매자 자리)의 상태를 기준 상태로 되돌리고 실제 상태를 읽어 확인한다.
+export class FakePracticeEnvironment implements PracticeEnvironment {
+  // 시험용: 되돌리기가 실패하게 한다 / 되돌린 뒤에도 상태가 남게 한다
+  failReset = false;
+  leaveSource = false;
+  resets = 0;
+
+  constructor(private readonly rt: { browser: FakeBrowserExecutor; obs: FakeObsBridge }) {}
+
+  async reset(): Promise<void> {
+    if (this.failReset) throw new Error("reset failed");
+    this.resets++;
+    this.rt.browser.shopState.delete(PRACTICE_SELLER_ID);
+    this.rt.obs.display.delete(PRACTICE_SELLER_ID);
+    if (!this.leaveSource) this.rt.obs.sources.delete(PRACTICE_SELLER_ID);
+  }
+
+  async isBaseline(): Promise<boolean> {
+    return !this.rt.browser.shopState.get(PRACTICE_SELLER_ID)?.size && !this.rt.obs.sources.get(PRACTICE_SELLER_ID) && !this.rt.obs.display.has(PRACTICE_SELLER_ID);
   }
 }

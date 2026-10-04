@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { GET as jobRoute } from "../../app/api/automation/jobs/[jobId]/route";
 import { loginSeller } from "../../lib/server/auth/login";
 import { AUTOMATION_CONSENT } from "../../lib/server/automation/config";
-import { FakeBrowserExecutor, FakeObsBridge, FakePlanner, FakeSecretVault } from "../../lib/server/automation/fakes";
+import { FakeBrowserExecutor, FakeObsBridge, FakePlanner, FakePracticeEnvironment, FakeSecretVault } from "../../lib/server/automation/fakes";
 import { cafe24Playbook } from "../../lib/server/automation/playbooks/cafe24";
 import { PRACTICE_STREAK_REQUIRED, playbookReadiness, runPractice, supportedPlaybookIds } from "../../lib/server/automation/practice";
 import { purchaseAutomation } from "../../lib/server/automation/purchase";
@@ -31,7 +31,7 @@ let k = 0;
 function runtime(pageText = MATCHING_ADMIN) {
   const rt = { planner: new FakePlanner(), browser: new FakeBrowserExecutor(), obs: new FakeObsBridge(), vault: new FakeSecretVault() };
   rt.browser.pageText = () => pageText;
-  return rt;
+  return Object.assign(rt, { practice: new FakePracticeEnvironment(rt) });
 }
 
 async function boughtWithShop(shopUrl = "https://myshop.cafe24.com") {

@@ -34,6 +34,9 @@ export type PlaybookStep = {
   allowedTargets: readonly string[];
   // 이 단계에서 이동해도 되는 경로 접두와 쿼리 키(호스트는 이 작업의 쇼핑몰 호스트로 고정). 작업서 이동 주소는 호스트 자리에 {shop}을 쓴다.
   allowedUrls: { pathPrefixes: readonly string[]; queryKeys: readonly string[] };
+  // 단계 완료 판정(필수): 실행기·판단 모델의 「단계 끝」 신호 뒤 다시 관찰한 화면·상태가 이 단서와 맞아야 단계를 끝낸다.
+  // 판정이 없는 단계는 끝낼 수 없다(신호만으로 완료하지 않음).
+  doneWhen: ScreenCue;
 };
 
 // 작업서 이동 주소의 {shop} 자리를 이 작업의 쇼핑몰 호스트로 바꾼다(호스트를 모르면 빈 값 → 검사에서 거부)
@@ -107,6 +110,8 @@ export type PlaybookRollbackStep = {
   actions: readonly { action: AutomationAction; expect?: ScreenCue }[];
   allowedTargets: readonly string[];
   allowedUrls: { pathPrefixes: readonly string[]; queryKeys: readonly string[] };
+  // 되돌림 확인(필수): 행동을 마친 뒤 다시 관찰한 화면·상태가 이 단서와 맞아야 되돌린 것으로 본다(실행 결과 신호만으로 끝내지 않음)
+  doneWhen: ScreenCue;
 };
 
 export function cueMatches(cue: ScreenCue | undefined, o: Observation): boolean {

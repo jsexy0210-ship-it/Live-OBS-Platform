@@ -135,6 +135,16 @@ export interface SecretVault {
 
 export type AutomationRuntime = { planner: AutomationPlanner; browser: BrowserExecutor; obs: ObsBridge; vault: SecretVault };
 
+// 연습 환경(시험용 쇼핑몰·시험용 PC). 연습 1회는 기준 상태(앱·웹훅·표시 설정·시험 이벤트·OBS 소스 없음)에서 시작해야 성공으로 센다.
+// reset: 기준 상태로 되돌린다. isBaseline: 지금 기준 상태인지 실제 상태를 읽어 확인한다.
+export interface PracticeEnvironment {
+  reset(): Promise<void>;
+  isBaseline(): Promise<boolean>;
+}
+export type PracticeRuntime = AutomationRuntime & { practice: PracticeEnvironment };
+// 연습 실행 범위의 판매자 자리(시험용 쇼핑몰·PC 하나)
+export const PRACTICE_SELLER_ID = "practice";
+
 // ───── 안전장치 ─────
 
 const MAX_PAGE_TEXT = 8_000;

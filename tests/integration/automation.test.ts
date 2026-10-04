@@ -12,7 +12,7 @@ import { AUTOMATION_CONSENT, AUTOMATION_PRICE, REINSTALL_PRICE } from "../../lib
 import { cafe24Playbook } from "../../lib/server/automation/playbooks/cafe24";
 import { validatePlaybook } from "../../lib/server/automation/playbook";
 import { PRACTICE_STREAK_REQUIRED, playbookReadiness, runPractice } from "../../lib/server/automation/practice";
-import { FakeBrowserExecutor, FakeObsBridge, FakePlanner, FakeSecretVault } from "../../lib/server/automation/fakes";
+import { FakeBrowserExecutor, FakeObsBridge, FakePlanner, FakePracticeEnvironment, FakeSecretVault } from "../../lib/server/automation/fakes";
 import { markConnectionRevoked } from "../../lib/server/automation/connection";
 import { cancelJob, getJob, requestRefund, resumeJob } from "../../lib/server/automation/jobs";
 import { purchaseAutomation, reconcileAutomationPayments, reconnectAutomation } from "../../lib/server/automation/purchase";
@@ -73,7 +73,7 @@ export async function shopWithCard() {
 function runtime() {
   const rt = { planner: new FakePlanner(), browser: new FakeBrowserExecutor(), obs: new FakeObsBridge(), vault: new FakeSecretVault() };
   rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장 · 로그아웃";
-  return rt;
+  return Object.assign(rt, { practice: new FakePracticeEnvironment(rt) });
 }
 
 const W = { workerId: "w1" };
@@ -1463,6 +1463,8 @@ describe("Codex 6차 반영(9144f55)", () => {
     const opts = { verifying: false, costLimit: 3000, maxActionsPerStep: 12, playbook: null, secretPlaybook: targets, shopHost: "myshop.cafe24.com", startIndex: 0, stats: freshStats() };
     // 1회차: 0번째에 「A」 클릭 성공 뒤 작업자가 죽음
     const rt = runtime();
+    // 쇼핑몰 연결 완료 판정은 실제 상태로 한다(이 시험은 행동 키만 본다: 앱은 이미 설치된 상태)
+    rt.browser.shopState.set(a.seller.id, new Set(["앱 사용 중"]));
     let script: AutomationAction[] = [{ type: "click", target: "A" }, { type: "step_done" }];
     rt.planner.override = (input) => (input.step.key === "shop_connect" ? { action: script[input.history.length] ?? { type: "step_done" }, costWon: 0 } : undefined);
     await expect(
@@ -1745,8 +1747,12 @@ describe("Codex 9차 반영(d1afe8a)", () => {
     const rt = runtime();
     let n = 0;
     rt.planner.override = (input) => (input.step.key === "shop_connect" ? { action: n++ === 0 ? { type: "click", target: "앱 설치" } : { type: "step_done" }, costWon: 0 } : undefined);
+    // 누른 대상을 기록한다(뒤 단계의 「저장」 누르기와 구분)
+    const clicked: string[] = [];
+    rt.browser.outcome = (_s, action) => (action.type === "click" && clicked.push(action.target), undefined);
     await runSteps(rt, scope, { ...opts, stats: { costUsed: 0, plannerCalls: 0, playbookActions: 0, deviatedSteps: [] } }, hooks);
-    expect(rt.browser.performed.filter((p) => p.type === "click")).toHaveLength(1);
+    expect(clicked.filter((t) => t === "앱 설치")).toHaveLength(1);
+    expect(clicked.filter((t) => t === "쇼핑몰 삭제" || t === "운영자 권한 변경")).toHaveLength(0);
   });
 
   it("연습 실행이 끝나면(성공·실패 모두) 그 실행의 브라우저·OBS 보관 자료(행동 키 기록·OBS 연결 정보)를 지운다", async () => {
@@ -2998,7 +3004,9 @@ describe("Codex 31차 반영(5a3cec1)", () => {
     const s = await bought();
     const rt = runtime();
     // OBS가 이미 설정돼 있어 OBS 단계는 바꾸지 않고 확인만 한다(작업서 화면과 달라 판단 모델이 끝냄)
-    rt.obs.observe = async () => ({ url: null, text: "이미 설정됨", elements: [{ kind: "notice", text: "이미 설정됨" }] });
+    // (완료 판정은 실제 상태로 한다: 이미 설정된 상태라 소스·표시 설정·테스트 주문 표시가 보인다)
+    const already = ["이미 설정됨", "오버레이 소스 있음", "표시 설정 적용됨", "테스트 주문 표시됨"];
+    rt.obs.observe = async () => ({ url: null, text: already.join(" · "), elements: already.map((text) => ({ kind: "notice" as const, text })) });
     rt.planner.override = (input) =>
       input.step.kind === "obs"
         ? { action: { type: "step_done" }, costWon: 0 }
@@ -3284,5 +3292,59 @@ describe("Codex 38차 반영(fb73c34)", () => {
     expect(await obs.perform(scope, { type: "obs_remove_overlay_source" })).toEqual({ kind: "retryable", reason: "obs_busy" });
     expect((await obs.perform(scope, { type: "obs_remove_overlay_source" })).kind).toBe("ok");
     expect(obs.sources.get(scope.sellerId)).toBe(1);
+  });
+});
+
+describe("Codex 39차 반영(716073d)", () => {
+  it("단계 끝 신호만으로 완료하지 않는다: 앱 설치 누르기가 실제로 반영되지 않으면(완료 판정 미충족) 다음 단계로 가지 않는다", async () => {
+    const a = await bought();
+    const rt = runtime();
+    // 「앱 설치」 누르기는 성공으로 돌아오지만 쇼핑몰 상태는 바뀌지 않는다(설치되지 않음)
+    rt.browser.outcome = (_s, action) => (action.type === "click" && action.target === "앱 설치" ? { kind: "ok", stepDone: false } : undefined);
+    expect(await runOnce(db, rt, W)).toBe("retry");
+    expect(await job(a.jobId)).toMatchObject({ stepIndex: 0, lastError: "step_action_limit:shop_connect" });
+    // 다음 단계(웹훅 입력) 행동은 0회, 이탈로 기록돼 작업서는 재검증 대상
+    expect(rt.browser.performed.filter((p) => p.type === "fill")).toHaveLength(0);
+    expect((await job(a.jobId)).deviatedSteps).toContain("shop_connect");
+  });
+
+  it("되돌리기도 실행 결과 신호만으로 끝내지 않는다: 「앱 사용 중지」가 실제로 반영되지 않으면 되돌린 것으로 보지 않고 정리 필요", async () => {
+    const a = await bought();
+    const rt = runtime();
+    await db.automationJob.update({ where: { id: a.jobId }, data: { stepIndex: 1, playbookActions: 3, changedAt: new Date(), mutatedSteps: ["shop_connect"] } });
+    rt.browser.shopState.set(a.seller.id, new Set(["앱 사용 중"]));
+    // 누르기는 성공으로 돌아오지만 앱은 계속 사용 중이다
+    rt.browser.outcome = (_s, action) => (action.type === "click" && action.target === "앱 사용 중지" ? { kind: "ok", stepDone: false } : undefined);
+    const other = await bought();
+    await db.automationJob.update({ where: { id: other.jobId }, data: { status: "CANCELED", finishedAt: new Date(), lastDeviationAt: new Date(), deviatedSteps: ["webhook_setup"] } });
+    expect(await runOnce(db, rt, W)).toBe("failed");
+    expect(await job(a.jobId)).toMatchObject({ status: "CLEANUP_NEEDED", lastError: "playbook_not_verified:rollback_unverified:shop_connect" });
+    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "PAID" });
+  });
+
+  it("연습은 매 회차 기준 상태에서 시작한다: 5회 연습해도 시험용 PC의 OBS 소스가 쌓이지 않는다", async () => {
+    await db.automationPracticeRun.deleteMany();
+    const rt = runtime();
+    for (let i = 0; i < PRACTICE_STREAK_REQUIRED; i++) {
+      expect((await runPractice(db, rt, cafe24Playbook, { shopHost: "myshop.cafe24.com" })).outcome).toBe("SUCCEEDED");
+      expect(rt.obs.sources.get("practice")).toBe(1);
+    }
+    expect(rt.practice.resets).toBe(PRACTICE_STREAK_REQUIRED);
+    expect((await playbookReadiness(db, cafe24Playbook)).verified).toBe(true);
+  });
+
+  it("기준 상태로 되돌리기·확인이 실패한 회차는 실행하지 않고 실패로 남아 연속 성공을 끊는다", async () => {
+    await db.automationPracticeRun.deleteMany();
+    const rt = runtime();
+    for (let i = 0; i < PRACTICE_STREAK_REQUIRED - 1; i++) await runPractice(db, rt, cafe24Playbook, { shopHost: "myshop.cafe24.com" });
+    for (const broken of ["fail", "leftover"] as const) {
+      rt.practice.failReset = broken === "fail";
+      rt.practice.leaveSource = broken === "leftover";
+      const before = rt.browser.performed.length + rt.obs.performed.length;
+      const run = await runPractice(db, rt, cafe24Playbook, { shopHost: "myshop.cafe24.com" });
+      expect(run, broken).toMatchObject({ outcome: "FAILED", reason: "practice_reset_failed" });
+      expect(rt.browser.performed.length + rt.obs.performed.length, broken).toBe(before);
+      expect((await playbookReadiness(db, cafe24Playbook)).verified, broken).toBe(false);
+    }
   });
 });

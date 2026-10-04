@@ -6,7 +6,7 @@ import { runSteps, type EngineStats } from "./engine";
 import { backoffMs, dbNow, lockPlaybook } from "./queue";
 import type { Playbook } from "./playbook";
 import { PLAYBOOKS } from "./playbooks";
-import type { AutomationRuntime, JobScope } from "./ports";
+import { PRACTICE_SELLER_ID, type AutomationRuntime, type JobScope, type PracticeRuntime } from "./ports";
 import { STEPS } from "./steps";
 
 // 연습 모드(확정 ⑦-1): 시험용 쇼핑몰에서 작업서를 처음부터 끝까지 실행하고 성공 여부·소요 시간·판단 호출 수·비용·화면 이탈을 남긴다.
@@ -32,7 +32,7 @@ async function discardScope(rt: Pick<AutomationRuntime, "browser" | "obs">, scop
 
 export async function runPractice(
   db: PrismaClient,
-  rt: AutomationRuntime,
+  rt: PracticeRuntime,
   playbook: Playbook,
   // shopHost: 연습용 시험 쇼핑몰 호스트(비밀값은 이 호스트의 관리자 경로에서만 넣는다)
   opts: { shopHost: string; maxActionsPerStep?: number; costLimitWon?: number },
@@ -41,7 +41,7 @@ export async function runPractice(
   const stats: EngineStats = { costUsed: 0, plannerCalls: 0, playbookActions: 0, deviatedSteps: [] };
   let stepIndex = 0;
   let result: Awaited<ReturnType<typeof runSteps>>;
-  const scope = { sellerId: "practice", jobId: randomUUID() };
+  const scope = { sellerId: PRACTICE_SELLER_ID, jobId: randomUUID() };
   // 실행 전에 기록부터 남긴다(정리 대상 범위 포함). 도중에 죽으면 실패로 남고, 정리는 실행 시간 상한 뒤 정기 정리가 한다.
   // 시각은 DB 시계로만 남긴다(준비 상태 판정이 DB에 저장된 다른 시각과 비교한다). 실행 시간 측정(durationMs)만 프로세스 시계
   const run = await db.$transaction(async (tx) => {
@@ -62,37 +62,46 @@ export async function runPractice(
       },
     });
   });
-  try {
-    result = await runSteps(
-      rt,
-      scope,
-      {
-        startIndex: 0,
-        verifying: false,
-        stats,
-        costLimit: opts.costLimitWon ?? plannerConfig().costLimitWon,
-        maxActionsPerStep: opts.maxActionsPerStep ?? AUTOMATION_LIMITS.maxActionsPerStep,
-        playbook,
-        shopHost: opts.shopHost,
-        // 연습은 고객 대기로 멈추면 그대로 끝낸다(보관하지 않음)
-        keepBrowserStateOnWait: false,
-      },
-      {
-        // 화면 이탈은 보는 즉시(판단 모델 호출 전) 작업서 배타 잠금 아래 이 연습 기록에 남긴다: 진행 중 기록에서 빠져 연속 성공을 끊으므로
-        // 연습이 끝날 때까지 이전 연속 성공으로 구매가 열려 있지 않다(고객 작업의 이탈 기록과 같은 방식)
-        touch: async (s) => {
-          if (!s.deviatedNow) return;
-          await db.$transaction(async (tx) => {
-            await lockPlaybook(tx, playbook.id, "exclusive");
-            await tx.automationPracticeRun.update({ where: { id: run.id }, data: { reason: PRACTICE_DEVIATED, deviatedSteps: s.deviatedSteps } });
-          });
+  // 매 회차 시험용 쇼핑몰·PC를 기준 상태로 되돌리고 실제 상태로 확인한다. 되돌리기·확인이 실패하면 실행하지 않고 실패로 남긴다
+  // (이전 회차가 남긴 앱·웹훅·소스 위에서 성공해도 작업서를 검증한 것이 아니므로 세지 않고, 실패 기록이 연속 성공을 끊는다)
+  const baseline = await rt.practice
+    .reset()
+    .then(() => rt.practice.isBaseline())
+    .catch(() => false);
+  if (!baseline) result = { kind: "failed", reason: "practice_reset_failed" };
+  else {
+    try {
+      result = await runSteps(
+        rt,
+        scope,
+        {
+          startIndex: 0,
+          verifying: false,
+          stats,
+          costLimit: opts.costLimitWon ?? plannerConfig().costLimitWon,
+          maxActionsPerStep: opts.maxActionsPerStep ?? AUTOMATION_LIMITS.maxActionsPerStep,
+          playbook,
+          shopHost: opts.shopHost,
+          // 연습은 고객 대기로 멈추면 그대로 끝낸다(보관하지 않음)
+          keepBrowserStateOnWait: false,
         },
-        enterVerify: async () => {},
-        stepDone: async (next) => void (stepIndex = next),
-      },
-    );
-  } catch {
-    result = { kind: "failed", reason: "practice_error" };
+        {
+          // 화면 이탈은 보는 즉시(판단 모델 호출 전) 작업서 배타 잠금 아래 이 연습 기록에 남긴다: 진행 중 기록에서 빠져 연속 성공을 끊으므로
+          // 연습이 끝날 때까지 이전 연속 성공으로 구매가 열려 있지 않다(고객 작업의 이탈 기록과 같은 방식)
+          touch: async (s) => {
+            if (!s.deviatedNow) return;
+            await db.$transaction(async (tx) => {
+              await lockPlaybook(tx, playbook.id, "exclusive");
+              await tx.automationPracticeRun.update({ where: { id: run.id }, data: { reason: PRACTICE_DEVIATED, deviatedSteps: s.deviatedSteps } });
+            });
+          },
+          enterVerify: async () => {},
+          stepDone: async (next) => void (stepIndex = next),
+        },
+      );
+    } catch {
+      result = { kind: "failed", reason: "practice_error" };
+    }
   }
   const outcome = result.kind === "succeeded" ? "SUCCEEDED" : result.kind === "needs_customer" ? "NEEDS_CUSTOMER" : "FAILED";
   // 결과(실패·이탈 포함)부터 작업서 배타 잠금 아래 기록한다: 구매·작업 확정은 공유 잠금으로 준비 상태를 다시 읽으므로,
