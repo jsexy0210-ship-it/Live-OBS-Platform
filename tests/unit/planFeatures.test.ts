@@ -83,6 +83,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/order-policy": "STORE_OPERATIONS",
   "seller/products": "STORE_OPERATIONS",
   "seller/products/[productId]": "STORE_OPERATIONS",
+  "seller/products/bulk": "STORE_OPERATIONS",
   "seller/products/[productId]/event": "STORE_OPERATIONS",
   "seller/products/[productId]/options": "STORE_OPERATIONS",
   "seller/products/[productId]/options/[optionId]": "STORE_OPERATIONS",

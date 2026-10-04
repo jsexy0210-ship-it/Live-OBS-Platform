@@ -34,7 +34,7 @@ export function failMessage(r: { status: number; message?: string }, fallback = 
 // 로그인 뒤 돌아갈 주소: 같은 사이트의 /admin 경로만(다른 사이트로 보내는 주소는 무시)
 export function safeAdminNext(): string {
   const next = new URLSearchParams(window.location.search).get("next");
-  return next && next.startsWith("/admin") && !next.startsWith("//") ? next : "/admin/settings/branding";
+  return next && next.startsWith("/admin") && !next.startsWith("//") ? next : "/admin";
 }
 
 export type AdminMe = { id: string; name: string; email: string; role: "SUPER_ADMIN" | "OPERATIONS" | "CS" | "READ_ONLY" };

@@ -4,13 +4,13 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useState } from "react";
 import { adminApi, type AdminMe } from "./api";
+import { itemAllowed, routeNav, visibleAdminMenu } from "./menu";
 
-// 마스터 관리자 공통 틀(최소): 파트너스 관리자와 같은 왼쪽 메뉴 + 상단 바 모양. 지금은 사이트 설정만 있다.
-const NAV = [{ h: "사이트 설정" }, { label: "파비콘 · 공유 카드", href: "/admin/settings/branding" }] as const;
-
+// 마스터 관리자 공통 틀(카페24식 업무 화면 틀, 대표님 지시 2026-10-04): 상단 청록 GNB(대분류) + 왼쪽 LNB(고른 대분류의 하위 메뉴) + 본문.
+// 파트너스 관리자 틀(.cs·.gnb·.lnb·.loc-bar)을 그대로 쓰고 색만 admin.css에서 마스터 청록으로 바꾼다. 좁은 화면에서는 GNB가 햄버거로 접히고 LNB가 서랍(전체 메뉴)으로 열린다.
 const ROLE_LABEL: Record<AdminMe["role"], string> = { SUPER_ADMIN: "최고관리자", OPERATIONS: "운영", CS: "고객 지원", READ_ONLY: "조회 전용" };
 
-type ShellCtx = { me: AdminMe; openNav: () => void };
+type ShellCtx = { me: AdminMe; openNav: () => void; loc: { group: string; item: string } | null };
 const Ctx = createContext<ShellCtx | null>(null);
 
 export function useAdmin(): ShellCtx {
@@ -25,6 +25,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const [me, setMe] = useState<AdminMe | null>(null);
   const [failed, setFailed] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
+  // GNB에서 고른 대분류(화면을 옮기면 지금 화면의 대분류로 돌아간다)
+  const [picked, setPicked] = useState<string | null>(null);
   const [logoutError, setLogoutError] = useState(false);
 
   const load = async () => {
@@ -38,7 +40,10 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     void load();
   }, []);
 
-  useEffect(() => setNavOpen(false), [pathname]);
+  useEffect(() => {
+    setNavOpen(false);
+    setPicked(null);
+  }, [pathname]);
 
   const logout = async () => {
     setLogoutError(false);
@@ -66,60 +71,128 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     );
   }
 
+  const menu = visibleAdminMenu(me.role);
+  const route = routeNav(pathname);
+  const active = route && menu.some((g) => g.key === route.group.key) ? route : null;
+  const shown = menu.find((g) => g.key === picked) ?? menu.find((g) => g.key === active?.group.key) ?? menu[0];
+  const loc = route ? { group: route.group.label, item: route.item.label } : null;
+
+  const utilities = (
+    <>
+      <a className="util-i off" aria-disabled="true" title="준비 중입니다">
+        알림 센터
+      </a>
+      <a className="util-i off" aria-disabled="true" title="준비 중입니다">
+        내 계정
+      </a>
+      <button className="util-i util-btn" type="button" onClick={() => void logout()}>
+        로그아웃
+      </button>
+    </>
+  );
+
   return (
-    <Ctx.Provider value={{ me, openNav: () => setNavOpen(true) }}>
-      <div className={`shell${navOpen ? " nav-open" : ""}`}>
-        <aside className="side" aria-label="마스터 관리자 메뉴">
-          <Link className="logo" href="/admin/settings/branding" style={{ padding: "6px 12px 14px", fontSize: 18 }}>
+    <Ctx.Provider value={{ me, openNav: () => setNavOpen(true), loc }}>
+      <div className={`cs${navOpen ? " nav-open" : ""}`}>
+        <header className="gnb">
+          <button className="gnb-menu" type="button" aria-label="메뉴 열기" onClick={() => setNavOpen(true)}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <path d="M4 7h16M4 12h16M4 17h16" />
+            </svg>
+          </button>
+          <Link className="logo gnb-logo" href="/admin">
             <span className="logo-sym" />
             <span className="logo-word" />
-            <span className="t-c1 c-alt" style={{ marginLeft: 4 }}>
-              마스터
-            </span>
+            <span className="gnb-sub">마스터 관리자</span>
           </Link>
-          {NAV.map((n, i) =>
-            "h" in n ? (
-              <span key={i} className="nav-h">
-                {n.h}
-              </span>
-            ) : (
-              <Link key={i} className={`nav-i${pathname.startsWith(n.href) ? " on" : ""}`} href={n.href}>
-                {n.label}
+          <nav className="gnb-nav" aria-label="주 메뉴">
+            {menu.map((g) => (
+              <Link key={g.key} className={`gnb-i${g.key === shown.key ? " on" : ""}`} href={g.items[0].href} onClick={() => setPicked(null)}>
+                {g.label}
               </Link>
-            ),
-          )}
-          <button className="btn btn-sm btn-ghost side-logout" type="button" onClick={() => void logout()}>
-            로그아웃
-          </button>
-          {logoutError && (
-            <span className="err side-logout-err" role="alert">
-              로그아웃하지 못했습니다. 다시 시도해 주십시오.
+            ))}
+          </nav>
+          <div className="gnb-util">
+            <span className="gnb-shop ell" title={me.email}>
+              {me.name} · {ROLE_LABEL[me.role]}
             </span>
-          )}
-        </aside>
-        <button className="nav-dim" type="button" aria-label="메뉴 닫기" onClick={() => setNavOpen(false)} />
-        <div className="col shell-body">{children}</div>
+            <span className="util-desk">{utilities}</span>
+          </div>
+        </header>
+        {logoutError && (
+          <div className="msg msg-neg logout-err" role="alert">
+            로그아웃하지 못했습니다. 다시 시도해 주십시오.
+          </div>
+        )}
+        <div className="cs-wrap">
+          <aside className="lnb" aria-label="마스터 관리자 메뉴">
+            {menu.map((g) => (
+              <section key={g.key} className={`lnb-sec${g.key === shown.key ? " on" : ""}`}>
+                <strong className="lnb-h">{g.label}</strong>
+                {g.items.map((n) => (
+                  <Link key={n.href} className={`lnb-i${active?.item === n ? " on" : ""}`} href={n.href} aria-current={active?.item === n ? "page" : undefined} onClick={() => setNavOpen(false)}>
+                    {n.label}
+                  </Link>
+                ))}
+              </section>
+            ))}
+            <div className="lnb-util">{utilities}</div>
+          </aside>
+          <button className="cs-dim" type="button" aria-label="메뉴 닫기" onClick={() => setNavOpen(false)} />
+          <div className="col cs-body">{route && !itemAllowed(me.role, route.item) ? <NoAccess /> : children}</div>
+        </div>
       </div>
     </Ctx.Provider>
   );
 }
 
+// 본문 위 경로 줄(대분류 › 메뉴). 메뉴에 없는 화면이면 crumb 문구를 쓴다
 export function AdminTopbar({ crumb, children }: { crumb: string; children?: React.ReactNode }) {
-  const { me, openNav } = useAdmin();
+  const { loc } = useAdmin();
+  const path = loc ? (loc.group === loc.item ? [loc.item] : [loc.group, loc.item]) : crumb.split("›").map((p) => p.trim());
   return (
-    <header className="topbar">
-      <button className="icon-btn menu-btn" type="button" aria-label="메뉴 열기" onClick={openNav}>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-          <path d="M4 7h16M4 12h16M4 17h16" />
-        </svg>
-      </button>
-      <span className="crumb ell">{crumb}</span>
-      <div className="row tb-actions">
-        {children}
-        <span className="btn btn-sm btn-ghost tb-account" title={me.email}>
-          {me.name} · {ROLE_LABEL[me.role]}
-        </span>
-      </div>
-    </header>
+    <div className="loc-bar">
+      <span className="crumb ell">
+        {path.map((p, i) => (
+          <span key={i} className={i === path.length - 1 ? "crumb-now" : undefined}>
+            {i > 0 && (
+              <span className="crumb-sep" aria-hidden="true">
+                ›
+              </span>
+            )}
+            {p}
+          </span>
+        ))}
+      </span>
+      <div className="row tb-actions">{children}</div>
+    </div>
+  );
+}
+
+// 화면이 아직 없는 메뉴: 한 줄 안내
+export function ComingSoon() {
+  return (
+    <>
+      <AdminTopbar crumb="준비 중" />
+      <main className="main">
+        <div className="card st" style={{ boxShadow: "none" }} data-testid="admin-coming-soon">
+          <span className="t">준비 중입니다</span>
+        </div>
+      </main>
+    </>
+  );
+}
+
+// 그 역할이 못 보는 메뉴 주소로 직접 들어온 경우(화면은 그리지 않는다)
+function NoAccess() {
+  return (
+    <>
+      <AdminTopbar crumb="권한 없음" />
+      <main className="main">
+        <div className="card st" style={{ boxShadow: "none" }} data-testid="admin-no-access">
+          <span className="t">이 화면을 볼 권한이 없습니다</span>
+        </div>
+      </main>
+    </>
   );
 }
