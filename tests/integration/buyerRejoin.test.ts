@@ -343,6 +343,9 @@ describe("재가입 제한 정보 보관 동의 철회(GET·PUT /api/shop/{slug}
     const before = await get(s.seller.slug, cookie);
     expect(before.status).toBe(200);
     expect(await before.json()).toMatchObject({ agreed: true, version: REJOIN_RETENTION_CONSENT_VERSION, restrictionDays: 7, withdrawnAt: null });
+    const agreedMember = await db.buyerMember.findFirstOrThrow({ where: { sellerId: s.seller.id, deletedAt: null } });
+    expect(agreedMember.signupConsent).toMatchObject({ rejoinRetention: { version: REJOIN_RETENTION_CONSENT_VERSION, days: 7 } });
+    expect((await db.identityVerification.findFirstOrThrow({ where: { subjectId: agreedMember.id } })).signupConsent).toMatchObject({ rejoinRetention: { days: 7 } });
 
     const res = await put(s.seller.slug, { agreed: false }, cookie);
     expect(res.status).toBe(200);
@@ -351,6 +354,10 @@ describe("재가입 제한 정보 보관 동의 철회(GET·PUT /api/shop/{slug}
     expect(body.withdrawnAt).toEqual(expect.any(String));
     const m = await db.buyerMember.findFirstOrThrow({ where: { sellerId: s.seller.id, deletedAt: null } });
     expect(m).toMatchObject({ rejoinRestrictionDaysAgreed: null, rejoinRetentionAgreedAt: null, rejoinRetentionVersion: null });
+    // 가입 동의 기록에 복사된 보관 동의(버전·기간)도 지우고, 필수 동의 칸은 남긴다(#177 Codex P1)
+    expect(m.signupConsent).toMatchObject({ rejoinRetention: null, termsVersion: expect.any(String), privacyVersion: expect.any(String) });
+    const idv = await db.identityVerification.findFirstOrThrow({ where: { subjectId: m.id } });
+    expect(idv.signupConsent).toMatchObject({ rejoinRetention: null, termsVersion: expect.any(String) });
     expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.rejoin_retention_consent.withdraw", actorId: m.id } })).toMatchObject({
       sellerId: s.seller.id,
       before: { agreed: true, version: REJOIN_RETENTION_CONSENT_VERSION, restrictionDays: 7 },

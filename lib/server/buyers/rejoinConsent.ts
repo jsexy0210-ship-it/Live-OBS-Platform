@@ -2,7 +2,8 @@ import type { PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 
 // 구매자 「재가입 제한 정보 보관 동의」(선택 동의) 조회·철회(대기열 6번, PRODUCT_SCOPE 「구매자 탈퇴·재가입」, 개인정보 보호법 제37조).
-// 철회하면 동의 기간·시각·문서 버전을 비우고 철회 시각을 남긴다. 탈퇴 때는 지금 동의 상태로 재가입 제한·CI 해시 보관을 정한다
+// 철회하면 동의 기간·시각·문서 버전을 비우고 철회 시각을 남긴다. 가입 동의 기록(BuyerMember.signupConsent와 그 회원을 만든
+// 본인확인 기록의 signupConsent)에 복사된 보관 동의(rejoinRetention: 버전·기간)도 null로 지운다(필수 동의 칸은 그대로, #177 Codex P1). 탈퇴 때는 지금 동의 상태로 재가입 제한·CI 해시 보관을 정한다
 // (buyers/withdraw.ts가 회원 행을 잠근 뒤 다시 읽음). 다시 동의하는 기능은 없다(정본에 없음).
 // 이미 철회됐거나 동의한 적이 없으면 아무것도 바꾸지 않고 지금 상태를 돌려준다(다시 보낸 요청에 안전).
 
@@ -47,6 +48,12 @@ export async function withdrawRejoinRetentionConsent(db: PrismaClient, scope: Sc
       data: { rejoinRestrictionDaysAgreed: null, rejoinRetentionAgreedAt: null, rejoinRetentionVersion: null, rejoinRetentionWithdrawnAt: new Date() },
       select: SELECT,
     });
+    await tx.$executeRaw`
+      UPDATE "BuyerMember" SET "signupConsent" = jsonb_set("signupConsent", '{rejoinRetention}', 'null'::jsonb)
+      WHERE "id" = ${row.id}::uuid AND "signupConsent" ? 'rejoinRetention'`;
+    await tx.$executeRaw`
+      UPDATE "IdentityVerification" SET "signupConsent" = jsonb_set("signupConsent", '{rejoinRetention}', 'null'::jsonb)
+      WHERE "sellerId" = ${scope.sellerId}::uuid AND "subjectId" = ${row.id}::uuid AND "signupConsent" ? 'rejoinRetention'`;
     await writeAudit(tx, {
       actorType: "BUYER",
       actorId: row.id,
