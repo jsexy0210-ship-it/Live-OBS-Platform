@@ -13,7 +13,7 @@ import { identityProvider } from "../../lib/server/identity/registry";
 import { buyerSignupIdentityLimitReached, identityUsage, resendIdentityCode } from "../../lib/server/identity/verification";
 import { startSellerSignupVerification } from "../../lib/server/sellers/application";
 import { SIGNUP_CONSENT_VERSIONS } from "../../lib/server/buyers/consent";
-import { IDV_INPUT, SIGNUP_CONSENT, confirmIdv, createSeller, db, failingAudit, resetDb, startIdv } from "./helpers";
+import { IDV_INPUT, SELLER_SIGNUP_CONSENT, SIGNUP_CONSENT, confirmIdv, createSeller, db, failingAudit, resetDb, startIdv } from "./helpers";
 
 beforeAll(() => {
   process.env.IDENTITY_HASH_KEY = "test-identity-hash-key-0123456789abcdef";
@@ -482,7 +482,7 @@ describe("signupBuyer는 completeIdentityVerification을 거친다", () => {
     expect(await db.identityVerification.count({ where: { purpose: "BUYER_SIGNUP", sellerId: s.seller.id } })).toBe(2);
     // 판매자 본인확인 경로(대표자 가입·비밀번호 재설정)는 이 한도를 보지 않는다
     const provider = new FakeIdentityProvider();
-    const rep = await startSellerSignupVerification(db, provider, { ...IDV_INPUT, phone: "01055556666" }, { ip: "203.0.113.9" });
+    const rep = await startSellerSignupVerification(db, provider, { ...IDV_INPUT, ...SELLER_SIGNUP_CONSENT, phone: "01055556666" }, { ip: "203.0.113.9" });
     const reset = await startSellerPasswordReset(db, provider, { email: "owner@example.com", shopSlug: s.slug, person: IDV_INPUT });
     if (!rep.ok || !reset.ok) throw new Error("판매자 본인확인 시작 실패");
     // 판매자 쪽 다시 보내기도 막히지 않는다(한도가 찬 체험 판매자의 비밀번호 재설정 포함)

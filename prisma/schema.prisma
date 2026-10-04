@@ -185,6 +185,8 @@ model SellerUser {
   identityLinkedAt  DateTime?               @db.Timestamptz(3)
   // 연결돼 있다가 대표자가 휴대폰 번호를 바꿔 연결이 풀린 시각(다시 연결하면 비움). 처음부터 미연결인 직원과 구별한다.
   identityUnlinkedAt DateTime?              @db.Timestamptz(3)
+  // 대표자 가입 신청 필수 동의 기록(본인확인 시작 때 받은 문서 버전·시각, sellers/signupConsent.ts). 직원·이 기능 전 대표자는 비어 있다.
+  signupConsent     Json?
   createdAt         DateTime                @default(now()) @db.Timestamptz(3)
 
   seller      Seller               @relation(fields: [sellerId], references: [id])

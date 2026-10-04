@@ -25,7 +25,7 @@ import {
   identityUsage,
   resendIdentityCode,
 } from "../../lib/server/identity/verification";
-import { IDV_INPUT, confirmIdv, createSeller, db, resetDb, startIdv } from "./helpers";
+import { IDV_INPUT, SELLER_SIGNUP_CONSENT, confirmIdv, createSeller, db, resetDb, startIdv } from "./helpers";
 
 beforeAll(() => {
   process.env.IDENTITY_HASH_KEY = "test-identity-hash-key-0123456789abcdef";
@@ -170,7 +170,7 @@ describe("공급자 장애·타임아웃·운영 키 없음", () => {
     env.NODE_ENV = "production";
     try {
       const rs = [
-        await signupStartRoute(post("/api/seller-signup/verification", IDV_INPUT)),
+        await signupStartRoute(post("/api/seller-signup/verification", { ...IDV_INPUT, ...SELLER_SIGNUP_CONSENT })),
         await signupResendRoute(post("/api/seller-signup/verification/resend", { verificationId: crypto.randomUUID() })),
         await signupConfirmRoute(post("/api/seller-signup/verification/confirm", { verificationId: crypto.randomUUID(), code: "000000" })),
         await applyRoute(post("/api/seller-signup/apply", { verificationId: crypto.randomUUID() })),
@@ -195,11 +195,11 @@ describe("공급자 장애·타임아웃·운영 키 없음", () => {
         body: JSON.stringify(body),
       });
     for (const bad of [{ ...IDV_INPUT, birth7: "9513321" }, { ...IDV_INPUT, carrier: "SKY" }, { ...IDV_INPUT, phone: "0212345678" }, { ...IDV_INPUT, name: "\u200b" }]) {
-      const r = await signupStartRoute(post("/api/seller-signup/verification", bad));
+      const r = await signupStartRoute(post("/api/seller-signup/verification", { ...bad, ...SELLER_SIGNUP_CONSENT }));
       expect(r.status).toBe(400);
       expect(await r.json()).toEqual({ error: "invalid_identity_input", message: IDENTITY_ERROR_MESSAGES.invalid_identity_input });
     }
-    const s = await signupStartRoute(post("/api/seller-signup/verification", IDV_INPUT));
+    const s = await signupStartRoute(post("/api/seller-signup/verification", { ...IDV_INPUT, ...SELLER_SIGNUP_CONSENT }));
     const cookie = (s.headers.get("set-cookie") ?? "").split(";")[0];
     const { verificationId } = await s.json();
     const other = await signupConfirmRoute(post("/api/seller-signup/verification/confirm", { verificationId, code: "000000" }, "lo_sidv=someone-else"));
