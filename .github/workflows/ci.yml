@@ -24,18 +24,20 @@ jobs:
       - name: No deploy workflows
         run: |
           set -euo pipefail
-          # self-hosted 러너는 obs-test 수동 배포(deploy-obs-test.yml) 하나만 허용한다(대표님 승인 2026-10-03, 이슈 #137).
+          # self-hosted 러너는 obs-test 수동 배포(deploy-obs-test.yml, 대표님 승인 2026-10-03, 이슈 #137)와
+          # obs-test 시험 데이터(seed-obs-test.yml, 대표님 승인 2026-10-04)만 허용한다.
           # 그 밖의 워크플로가 self-hosted를 쓰면 실패한다.
-          ! grep -RIl 'self-hosted' .github/workflows/ --exclude=ci.yml --exclude=deploy-obs-test.yml
-          f=.github/workflows/deploy-obs-test.yml
-          if [ -f "$f" ]; then
+          # `! cmd`는 set -e에서 실패로 잡히지 않으므로 if로 멈춘다
+          if grep -RIl 'self-hosted' .github/workflows/ --exclude=ci.yml --exclude=deploy-obs-test.yml --exclude=seed-obs-test.yml; then exit 1; fi
+          for f in .github/workflows/deploy-obs-test.yml .github/workflows/seed-obs-test.yml; do
+            [ -f "$f" ] || continue
             # 수동 실행 전용: workflow_dispatch 말고 다른 트리거가 있으면 실패
-            ! grep -Eq '^[[:space:]]*(push|pull_request|pull_request_target|schedule|workflow_run|workflow_call|repository_dispatch|issue_comment|issues|release|merge_group)[[:space:]]*:' "$f"
+            if grep -Eq '^[[:space:]]*(push|pull_request|pull_request_target|schedule|workflow_run|workflow_call|repository_dispatch|issue_comment|issues|release|merge_group)[[:space:]]*:' "$f"; then echo "$f: 수동 실행 말고 다른 트리거가 있어요"; exit 1; fi
             grep -q '^  workflow_dispatch:' "$f"
             # main·이 저장소일 때만 job 실행, Environment obs-test로 묶기
             grep -Fq "if: github.ref == 'refs/heads/main' && github.repository == 'jsexy0210-ship-it/Live-OBS-Platform'" "$f"
             grep -q '^    environment: obs-test$' "$f"
-          fi
+          done
 
       - name: Node
         uses: actions/setup-node@v4

@@ -160,6 +160,17 @@ test("파트너스 가입 신청 → 바로 승인 → 로그인 → 비밀번�
   await verify(page, false, "/api/seller/password-reset/start");
   await expect(page.locator("#pa-notice")).toContainText("잠시 후 다시 시도해 주십시오");
   await expect(page.locator("#idv-name")).toHaveValue(a.name);
+  // 다시 확인한 요청은 서버가 권한을 발급했는데 응답만 끊긴다: 한 번 더 누르면 서버가 같은 본인확인에 같은 권한을 돌려줘 이어 간다(#170)
+  await page.route(
+    (u) => u.pathname === "/api/seller/password-reset/verify",
+    async (route) => {
+      await route.fetch();
+      return route.abort("connectionreset");
+    },
+    { times: 1 },
+  );
+  await page.getByRole("button", { name: "다시 확인", exact: true }).click();
+  await expect(page.locator("#pa-notice")).toContainText("연결이 끊겼습니다");
   await page.getByRole("button", { name: "다시 확인", exact: true }).click();
   await expect(page.getByRole("heading", { name: "새 비밀번호 설정" })).toBeVisible();
   await expect(page.getByText(`${a.email} · 휴대폰 본인확인 완료`)).toBeVisible();
@@ -458,10 +469,12 @@ test("아이디 찾기(대표자): 본인확인하면 가입한 이메일과 쇼
   await page.getByLabel("새 비밀번호 확인").fill(next);
   // 저장은 서버에서 끝났는데 응답만 끊긴다: 다시 누르면 권한이 이미 쓰여 invalid_grant가 오지만,
   // 처음부터(유료 본인확인) 보내지 않고 방금 정한 비밀번호로 로그인해 보게 한다
+  // 두 번째 요청은 프록시가 코드 없는 503으로 답한다: 본인확인 준비 중(identity_unavailable)이 아니므로 여전히 불분명으로 본다
   let completeCalls = 0;
   await page.route((u) => u.pathname === "/api/seller/password-reset/complete", async (route) => {
     completeCalls += 1;
-    if (completeCalls > 1) return route.continue();
+    if (completeCalls === 2) return route.fulfill({ status: 503, contentType: "text/html", body: "<html>Service Unavailable</html>" });
+    if (completeCalls > 2) return route.continue();
     await route.fetch();
     return route.abort("connectionreset");
   });
@@ -470,10 +483,14 @@ test("아이디 찾기(대표자): 본인확인하면 가입한 이메일과 쇼
   await expect(page.locator("#pw-notice")).toContainText("비밀번호가 변경되었을 수 있습니다.");
   await expect(page.locator("#pw-notice").getByRole("link", { name: "로그인", exact: true })).toBeVisible();
   await shot(page, "AU-004-maybe");
+  const proxied = page.waitForResponse((r) => r.url().endsWith("/api/seller/password-reset/complete") && r.status() === 503);
+  await page.getByRole("button", { name: "비밀번호 변경", exact: true }).click();
+  await proxied;
+  await expect(page.locator("#pw-notice")).toContainText("비밀번호가 변경되었을 수 있습니다.");
   await page.getByRole("button", { name: "비밀번호 변경", exact: true }).click();
   await expect(page.locator("#pw-maybe")).toContainText("비밀번호가 이미 변경되었을 수 있습니다.");
   await expect(page.getByLabel("인증번호")).toHaveCount(0);
-  expect(completeCalls).toBe(2);
+  expect(completeCalls).toBe(3);
   await page.unroute((u) => u.pathname === "/api/seller/password-reset/complete");
   await page.getByRole("link", { name: "로그인", exact: true }).click();
   await expect(page).toHaveURL(/\/seller\/login$/);
@@ -606,17 +623,16 @@ test("직원: 로그인하면 본인확인 연결 안내가 뜨고, 나중에 �
   await signOut(page);
   await login(page, "대표자", a.email, a.password);
   await expect(page).toHaveURL(/\/seller\/products$/);
+  // 직원 계정 화면(SA-100)의 수정 창에서 번호를 바꾼다: 연결된 직원이라 다시 본인확인해야 한다고 알려 준다
   const nextPhone = `011${String(Math.floor(Math.random() * 1e7)).padStart(7, "0")}`;
-  const patched = await page.evaluate(
-    async ({ email, phone }) => {
-      const list = (await (await fetch("/api/seller/staff")).json()) as { staff: { id: string; email: string }[] };
-      const id = list.staff.find((x) => x.email === email)!.id;
-      const r = await fetch(`/api/seller/staff/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ phone }) });
-      return { status: r.status, body: await r.json() };
-    },
-    { email: s.email, phone: nextPhone },
-  );
-  expect(patched).toMatchObject({ status: 200, body: { identityLinked: false } });
+  await page.goto("/seller/staff");
+  await page.getByRole("button", { name: `${s.name} 정보 · 권한 수정` }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("연결됨", { exact: true })).toBeVisible();
+  await dialog.getByLabel("휴대폰 번호").fill(nextPhone);
+  await expect(dialog.getByText("번호를 바꾸면 직원이 본인확인을 다시 해야 합니다.")).toBeVisible();
+  await dialog.getByRole("button", { name: "저장" }).click();
+  await expect(page.getByText("다음 로그인 때 본인확인을 다시 안내합니다", { exact: false })).toBeVisible();
   await signOut(page);
   await login(page, "직원", s.email, next);
   await expect(page).toHaveURL(/\/seller\/identity-link\?next=/);

@@ -482,6 +482,69 @@ body {
   flex: none;
 }
 
+/* 직원 계정(SA-100): 왼쪽 목록 + 오른쪽 직원 추가. 좁은 화면에서는 아래로 내리고 표는 칸 안에서 가로로 민다 */
+.staff-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 420px;
+  gap: 20px;
+  align-items: start;
+}
+.staff-table-wrap {
+  overflow-x: auto;
+}
+.staff-table {
+  min-width: 720px;
+}
+.staff-table td:nth-child(4) {
+  white-space: nowrap;
+}
+.staff-x {
+  width: 32px;
+  height: 32px;
+}
+.staff-perms {
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.staff-perm {
+  gap: 10px;
+  padding: 6px 0;
+  box-shadow: inset 0 -1px 0 var(--wds-line-normal-alternative);
+}
+.staff-perm.is-owner-only {
+  opacity: 0.55;
+}
+.staff-link {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--wds-fill-alternative);
+}
+.pw-wrap {
+  position: relative;
+}
+.pw-wrap > .inp {
+  width: 100%;
+  padding-right: 72px;
+}
+.pw-toggle {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.staff-modal {
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+}
+@media (max-width: 1023px) {
+  .staff-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* 공유 미리보기(SA-060): 메신저에 보이는 카드 모양 */
 .sp-card {
   overflow: hidden;
