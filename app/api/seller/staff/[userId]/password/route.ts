@@ -8,7 +8,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // 대표가 직원 비밀번호를 재설정한다(같은 쇼핑몰 직원만). 직원의 기존 로그인은 모두 끊긴다.
 export const POST = mutation(async (req: Request, { params }: { params: Promise<{ userId: string }> }) => {
-  const ctx = await requireSeller(prisma, sessionToken(req, "seller"));
+  const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "ACCOUNT" });
   const { userId } = await params;
   if (!UUID.test(userId)) return NextResponse.json({ error: "not_found" }, { status: 404 });
   const body = await readJson<{ newPassword: string }>(req);

@@ -1,0 +1,175 @@
+/* OBS 오버레이(OV-001·OV-002) 기본 템플릿 「주문대기 중심」. 배경 투명, 실제 픽셀 크기 기준 */
+html:has(.ovl-root),
+body:has(.ovl-root) {
+  margin: 0;
+  background: transparent;
+  overflow: hidden;
+}
+.ovl-root {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+.ovl {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  color: #fff;
+  font-family: "Wanted Sans Variable", "Wanted Sans", "Apple SD Gothic Neo", sans-serif;
+}
+.ovl-stack {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+/* 세로형: 위쪽 채널 정보 줄 아래부터 화면 위쪽 40%(768px) 안 */
+.ovl-port .ovl-stack {
+  left: 40px;
+  right: 40px;
+  top: 150px;
+  max-height: 618px;
+}
+/* 가로형: 가운데 약 860px를 비우고 왼쪽 열, 아래 진행바 줄 위까지 */
+.ovl-land .ovl-stack {
+  left: 40px;
+  top: 40px;
+  width: 480px;
+  max-height: 900px;
+}
+.ovl-pill {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  padding: 14px 24px;
+  border-radius: 999px;
+  background: #0f0f10e6;
+  box-shadow: 0 0 0 1px #ffffff1f;
+  font-size: 26px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.ovl-notice {
+  position: absolute;
+  left: 40px;
+  top: 150px;
+  white-space: normal;
+  max-width: 900px;
+  border-radius: 24px;
+}
+.ovl-land .ovl-notice {
+  top: 40px;
+}
+.ovl-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 28px 32px;
+  border-radius: 24px;
+  background: #5b3df6f0;
+  box-shadow: 0 0 0 3px #fff, 0 0 48px #ff9200aa;
+  min-width: 0;
+}
+.ovl-grade {
+  align-self: flex-start;
+  padding: 6px 14px;
+  border-radius: 10px;
+  background: #fff;
+  color: #4a2fd9;
+  font-size: 24px;
+  font-weight: 800;
+}
+.ovl-cur-nm {
+  font-size: 64px;
+  font-weight: 800;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ovl-cur-pd {
+  font-size: 34px;
+  font-weight: 600;
+  color: #ffffffd9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ovl-land .ovl-cur-nm {
+  font-size: 52px;
+}
+.ovl-land .ovl-cur-pd {
+  font-size: 28px;
+}
+.ovl-queue {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 24px;
+  border-radius: 24px;
+  background: #0f0f10e6;
+  box-shadow: 0 0 0 1px #ffffff1f, 0 16px 40px #00000066;
+  min-width: 0;
+}
+.ovl-q-h {
+  font-size: 26px;
+  font-weight: 700;
+  color: #ffffffb3;
+}
+.ovl-q-empty {
+  font-size: 30px;
+  font-weight: 600;
+  color: #ffffffb3;
+  padding: 8px 0;
+}
+.ovl-q-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ovl-q-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 12px 18px;
+  border-radius: 18px;
+  background: #ffffff14;
+  min-width: 0;
+}
+.ovl-q-no {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: #ffffff1f;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.ovl-q-tx {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.ovl-q-nm {
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ovl-q-pd {
+  font-size: 22px;
+  color: #ffffffb3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

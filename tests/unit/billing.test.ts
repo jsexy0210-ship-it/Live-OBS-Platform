@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { addMonthsKst, lockedSince, nextPeriodEnd, sellerAccess, type AccessInput } from "../../lib/server/billing/access";
-import { FakeBillingProvider } from "../../lib/server/billing/provider";
+import { FAKE_BILLING_CHARGES_KEEP, FAKE_BILLING_RESULTS_KEEP, FakeBillingProvider } from "../../lib/server/billing/provider";
 import { billingProvider } from "../../lib/server/billing/registry";
 import { assertBillingSecret, openBillingKey, sealBillingKey } from "../../lib/server/billing/secret";
 
@@ -117,5 +117,28 @@ describe("결제 공급자 선택", () => {
     process.env.BILLING_PROVIDER = "fake";
     expect(billingProvider().name).toBe("fake");
     expect(() => new FakeBillingProvider("production")).toThrow();
+  });
+});
+
+describe("테스트 서버 모드의 가짜 결제 공급자 메모리", () => {
+  const charge = (p: FakeBillingProvider, orderId: string) => p.charge({ orderId, amount: 1000, billingKey: "bk", customerKey: "c", orderName: "구독" });
+
+  it("결제 결과는 최근 5000건, 결제 기록은 최근 1000건만 남기고, 남은 결과는 그대로 조회된다", async () => {
+    const p = new FakeBillingProvider("production", { testMode: true });
+    const n = FAKE_BILLING_RESULTS_KEEP + 300;
+    for (let i = 0; i < n; i++) await charge(p, `o-${i}`);
+    expect(p.resultCount).toBe(FAKE_BILLING_RESULTS_KEEP);
+    expect(p.charges.length).toBe(FAKE_BILLING_CHARGES_KEEP);
+    expect(await p.getPayment("o-0")).toEqual({ status: "NOT_FOUND" });
+    expect((await p.getPayment(`o-${n - 1}`)).status).toBe("PAID");
+    // 같은 주문 재요청은 기록을 늘리지 않고 같은 결제 번호
+    expect(await charge(p, `o-${n - 1}`)).toEqual({ ok: true, paymentId: `fake-pay-o-${n - 1}`, receiptUrl: null });
+  });
+
+  it("개발·시험용(테스트 서버 모드가 아님)은 지우지 않는다", async () => {
+    const p = new FakeBillingProvider("test");
+    for (let i = 0; i < FAKE_BILLING_CHARGES_KEEP + 10; i++) await charge(p, `o-${i}`);
+    expect(p.charges.length).toBe(FAKE_BILLING_CHARGES_KEEP + 10);
+    expect(p.resultCount).toBe(FAKE_BILLING_CHARGES_KEEP + 10);
   });
 });

@@ -3,8 +3,10 @@ import { randomBytes } from "node:crypto";
 import { generateToken, hashToken } from "../auth/token";
 import { checkTrialLimit } from "../billing/trialLimits";
 import { cleanText } from "../text/clean";
+import { STAFF_NAME_MAX } from "../sellers/staffName";
 import { hashCi } from "./ciHash";
 import { CARRIERS, DEVICES, birthDateOf, type Carrier, type Device, type IdentityPerson, type IdentityProvider, type IdentityResult, type ProviderFailure } from "./provider";
+import { isTestMode } from "../testMode";
 
 type IdentityResultOk = Extract<IdentityResult, { ok: true }>;
 
@@ -52,10 +54,14 @@ export const newIdentityRequestId = () => randomBytes(16).toString("hex");
 
 // 인적사항 검사. 휴대폰번호는 숫자만 남긴다. 생년월일+성별 자리 7자리, 통신사(알뜰폰 포함), 화면 기기(PC·MOBILE, 없으면 MOBILE).
 // 주민번호 전체는 받지 않는다.
-export function parseIdentityPerson(raw: unknown): IdentityPerson | null {
+// 본인확인 이름 최대 글자 수: 직원 연결은 직원 이름 상한(STAFF_NAME_MAX), 나머지는 30. 시작(인적사항 검사)과 확인(결과 정리)이 같은 값을 쓴다.
+export const identityNameMax = (purpose: IdentityVerificationPurpose): number => (purpose === "STAFF_LINK" ? STAFF_NAME_MAX : 30);
+
+// nameMax: 이름 최대 글자 수(기본 30, 직원 연결은 identityNameMax("STAFF_LINK")).
+export function parseIdentityPerson(raw: unknown, nameMax = 30): IdentityPerson | null {
   if (!raw || typeof raw !== "object") return null;
   const b = raw as Record<string, unknown>;
-  const name = cleanText(b.name, 30);
+  const name = cleanText(b.name, nameMax);
   const phone = typeof b.phone === "string" ? b.phone.normalize("NFKC").replace(/[ -]/g, "") : "";
   const birth7 = typeof b.birth7 === "string" ? b.birth7.normalize("NFKC").replace(/[ -]/g, "") : "";
   const carrier = typeof b.carrier === "string" && (CARRIERS as readonly string[]).includes(b.carrier) ? (b.carrier as Carrier) : null;
@@ -79,6 +85,8 @@ export async function startIdentityVerification(
     // 기록 id와 그 id로 만든 ownerToken을 호출한 쪽이 정할 때(같은 키 재요청에 같은 토큰을 주려고). 없으면 무작위.
     id?: string;
     ownerToken?: string;
+    // 구매자 가입: 본인확인 전에 받은 필수 동의(buyers/consent.ts)
+    signupConsent?: Prisma.InputJsonValue;
     now?: Date;
   },
 ): Promise<{ verification: IdentityVerification; ownerToken: string }> {
@@ -87,6 +95,7 @@ export async function startIdentityVerification(
   const verification = await db.identityVerification.create({
     data: {
       ...(input.id ? { id: input.id } : {}),
+      ...(input.signupConsent ? { signupConsent: input.signupConsent } : {}),
       purpose: input.purpose,
       sellerId: input.sellerId,
       subjectId: input.subjectId ?? null,
@@ -195,8 +204,8 @@ export async function confirmIdentityCode(
     await db.identityVerification.updateMany({ where: { id: v.id, status: "PENDING" }, data: { status: "EXPIRED" } });
     return { ok: false, reason: "expired" };
   }
-  // 운영에서는 가짜 공급자 기록을 완료 처리하지 않는다(공급자 객체를 우회해 만든 경우까지 막는다).
-  if (v.provider === "fake" && process.env.NODE_ENV === "production") return { ok: false, reason: "failed" };
+  // 운영에서는 가짜 공급자 기록을 완료 처리하지 않는다(공급자 객체를 우회해 만든 경우까지 막는다). 테스트 서버 모드(OBS_TEST_MODE=1)만 예외.
+  if (v.provider === "fake" && process.env.NODE_ENV === "production" && !isTestMode()) return { ok: false, reason: "failed" };
   const finalize = (r: IdentityResultOk) => finalizeIdentity(db, v, r, now);
 
   // 틀린 시도: 잡아 둔 1회를 그대로 두고, 한도에 닿았으면 요청을 실패로 끝낸다.
@@ -268,7 +277,7 @@ export async function confirmIdentityCode(
 // 대행사 결과를 대조하고 VERIFIED로 확정한다(한 번만). 다른 요청·다른 용도·요청 때와 다른 휴대폰번호의 결과면 실패로 끝낸다.
 async function finalizeIdentity(db: PrismaClient, v: IdentityVerification, r: IdentityResultOk, now: Date): Promise<ConfirmResult> {
   // 공급자 결과도 입력과 같은 규칙으로 정리해 저장한다(이름: NFKC·앞뒤 공백·글자 검사, 휴대폰: 숫자만). 이름이 비거나 쓸 수 없으면 실패.
-  const name = cleanText(r.name, 30);
+  const name = cleanText(r.name, identityNameMax(v.purpose));
   if (!name || r.requestId !== v.requestId || r.purpose !== v.purpose || r.phone.replace(/\D/g, "") !== v.requestedPhone) {
     await db.identityVerification.updateMany({ where: { id: v.id, status: "PENDING" }, data: { status: "FAILED" } });
     return { ok: false, reason: "failed" };
@@ -280,6 +289,7 @@ async function finalizeIdentity(db: PrismaClient, v: IdentityVerification, r: Id
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`identity_usage:${v.sellerId}`}))`;
       // 잠금을 기다리는 동안 같은 요청의 다른 확인이 먼저 확정했으면 그 결과를 돌려준다(한도로 다시 세지 않는다)
       const current = await tx.identityVerification.findUniqueOrThrow({ where: { id: v.id } });
+      if (current.anonymizedAt) return { ok: false as const, reason: "expired" as const };
       if (current.status === "VERIFIED") return { ok: true as const, verification: current };
       if (current.status !== "PENDING") return { ok: false as const, reason: current.status === "EXPIRED" ? ("expired" as const) : ("failed" as const) };
       const sellerId = v.sellerId;
@@ -289,8 +299,9 @@ async function finalizeIdentity(db: PrismaClient, v: IdentityVerification, r: Id
         return { ok: false as const, reason: "trial_limit_exceeded" as const };
       }
     }
+    // 대행사 호출 중 미가입 정리가 이 기록을 비식별했으면(anonymizedAt) 확정하지 않는다(지운 개인정보를 다시 채우지 않게)
     const moved = await tx.identityVerification.updateMany({
-      where: { id: v.id, status: "PENDING" },
+      where: { id: v.id, status: "PENDING", anonymizedAt: null },
       data: {
         status: "VERIFIED",
         ciHash: hashCi(r.ci),
@@ -302,6 +313,7 @@ async function finalizeIdentity(db: PrismaClient, v: IdentityVerification, r: Id
       },
     });
     const after = await tx.identityVerification.findUniqueOrThrow({ where: { id: v.id } });
+    if (after.anonymizedAt) return { ok: false as const, reason: "expired" as const };
     // 같이 눌린 다른 요청이 먼저 확정했으면 그 결과를 그대로 돌려준다(두 번 세지 않는다)
     if (moved.count === 1 || after.status === "VERIFIED") return { ok: true as const, verification: after };
     return { ok: false as const, reason: after.status === "EXPIRED" ? ("expired" as const) : ("failed" as const) };
@@ -309,6 +321,7 @@ async function finalizeIdentity(db: PrismaClient, v: IdentityVerification, r: Id
 }
 
 // 휴대폰 본인확인 사용량: 이 쇼핑몰에서 성공한 구매자 가입 본인확인 건수(성공 1건 = 1). 주문 알림 문자 발송량과 따로 센다.
+// 비식별한(anonymizedAt) 성공 기록도 그대로 센다(정리해도 한도가 다시 차지 않게, buyers/signup.ts purgeUnfinishedSignupVerifications).
 export async function identityUsage(db: Db, sellerId: string): Promise<number> {
   return db.identityVerification.count({ where: { sellerId, purpose: "BUYER_SIGNUP", status: "VERIFIED" } });
 }

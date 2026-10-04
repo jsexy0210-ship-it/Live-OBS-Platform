@@ -49,15 +49,15 @@ describe("마스터 로그인 실패 문구", () => {
     for (const body of [{ email: a.email, password: "wrong-password-1" }, { email: "nobody@example.com", password: PASSWORD }]) {
       const res = await admin(body);
       expect(res.status).toBe(401);
-      expect(await res.json()).toEqual({ error: "invalid_credentials", message: "이메일이나 비밀번호가 맞지 않아요" });
+      expect(await res.json()).toEqual({ error: "invalid_credentials", message: "이메일이나 비밀번호가 맞지 않습니다" });
     }
     const empty = await admin({ email: a.email });
     expect(empty.status).toBe(400);
-    expect(await empty.json()).toEqual({ error: "bad_request", message: "이메일과 비밀번호를 입력해 주세요" });
+    expect(await empty.json()).toEqual({ error: "bad_request", message: "이메일과 비밀번호를 입력해 주십시오" });
     const suspended = await createAdmin("CS", { status: "SUSPENDED" });
     const res = await admin({ email: suspended.email, password: PASSWORD });
     expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({ error: "account_disabled", message: "지금은 이 계정으로 로그인할 수 없어요. 최고관리자에게 문의해 주세요" });
+    expect(await res.json()).toEqual({ error: "account_disabled", message: "지금은 이 계정으로 로그인할 수 없습니다. 최고관리자에게 문의해 주십시오" });
     expect((await admin({ email: a.email, password: PASSWORD })).status).toBe(200);
   });
 });

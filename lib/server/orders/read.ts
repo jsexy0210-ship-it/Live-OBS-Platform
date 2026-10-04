@@ -6,12 +6,14 @@ import { canViewCustomerPii, requireSellerRead, type TenantContext } from "../te
 // 판매자 범위 조회의 기준 예시. where에는 항상 ctx.sellerId가 들어가고, 다른 판매자 주문은 없음(404)으로 처리한다.
 // 구매자 이름·연락처(·주소)는 CUSTOMER_PII_VIEW가 있을 때만 응답에 넣고, 넣었으면 열람 기록을 남긴다
 // (화면에서 가리는 것으로는 부족하다, 대표님 결정 2026-10-02).
+// 탈퇴 회원의 법정 보관으로 분리한 주문(legalHoldAt, buyers/legalHold.ts)은 일반 조회(상세·목록·검색)에서 없는 주문으로 다룬다.
 export async function getOrder(db: PrismaClient, ctx: TenantContext, orderId: string) {
   requireSellerRead(ctx, "ORDER_SHIPPING");
   const order = await db.order.findFirst({
-    where: { id: orderId, sellerId: ctx.sellerId },
+    where: { id: orderId, sellerId: ctx.sellerId, legalHoldAt: null },
     include: {
       items: true,
+      couponRedemption: { select: { benefit: true, discountAmount: true, restoredAt: true, coupon: { select: { id: true, name: true } } } },
       shipment: { select: { courier: true, trackingNumber: true, status: true, shippedAt: true, deliveredAt: true } },
       shippingAddress: { select: { recipientName: true, phone: true, zipCode: true, address1: true, address2: true, memo: true, isRemote: true } },
       buyerMember: { select: { id: true, broadcastNickname: true, name: true, phone: true } },
@@ -46,7 +48,7 @@ export async function listOrders(
 ) {
   requireSellerRead(ctx, "ORDER_SHIPPING");
   return db.order.findMany({
-    where: { sellerId: ctx.sellerId, ...(opts.status ? { status: opts.status } : {}) },
+    where: { sellerId: ctx.sellerId, legalHoldAt: null, ...(opts.status ? { status: opts.status } : {}) },
     orderBy: { createdAt: "desc" },
     take: Math.min(opts.take ?? 50, 200),
   });
@@ -67,7 +69,7 @@ export type SellerOrderListQuery = {
 };
 
 // KST 날짜(YYYY-MM-DD)의 0시. 없는 날짜면 null.
-function kstDayStart(s: string): Date | null {
+export function kstDayStart(s: string): Date | null {
   const m = KST_DATE.exec(s);
   if (!m) return null;
   const d = new Date(`${s}T00:00:00+09:00`);
@@ -78,10 +80,10 @@ function kstDayStart(s: string): Date | null {
 }
 
 // 커서: 마지막 행의 (주문 시각, id). 같은 시각 주문이 여러 건이어도 id로 끊어 빠지거나 겹치지 않는다.
-function encodeCursor(createdAt: Date, id: string) {
+export function encodeCursor(createdAt: Date, id: string) {
   return Buffer.from(`${createdAt.toISOString()}|${id}`).toString("base64url");
 }
-function decodeCursor(s: string): { createdAt: Date; id: string } | null {
+export function decodeCursor(s: string): { createdAt: Date; id: string } | null {
   const [at, id] = Buffer.from(s, "base64url").toString().split("|");
   const createdAt = new Date(at ?? "");
   if (!id || !UUID_RE.test(id) || Number.isNaN(createdAt.getTime())) return null;
@@ -108,7 +110,7 @@ export async function listSellerOrders(db: PrismaClient, ctx: TenantContext, que
   if (q.length > 50) return { ok: false as const };
 
   const searchesPii = q !== "" && canViewCustomerPii(ctx);
-  const and: Prisma.OrderWhereInput[] = [{ sellerId: ctx.sellerId }];
+  const and: Prisma.OrderWhereInput[] = [{ sellerId: ctx.sellerId, legalHoldAt: null }];
   if (statuses.length) and.push({ status: { in: statuses as OrderStatus[] } });
   if (from) and.push({ createdAt: { gte: from } });
   if (toStart) and.push({ createdAt: { lt: new Date(toStart.getTime() + 24 * 3600_000) } });

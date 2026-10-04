@@ -13,7 +13,8 @@ export type LoginFailure =
   | "seller_suspended"
   | "seller_closed"
   | "shop_required"
-  | "dormant";
+  | "dormant"
+  | "wrong_account_type"; // 파트너스 로그인 탭(대표자·직원)과 비밀번호가 맞은 계정의 종류가 다름
 
 export type LoginResult = ({ ok: true } & IssuedSession) | { ok: false; reason: LoginFailure };
 
@@ -62,7 +63,8 @@ export async function loginAdmin(
 
 export async function loginSeller(
   db: PrismaClient,
-  input: { email: string; password: string; shopSlug?: string },
+  // accountType: 로그인 화면에서 고른 탭(대표자 owner·직원 staff, 2026-10-03 대표님 결정). 빠지면 종류를 보지 않는다(하위 호환).
+  input: { email: string; password: string; shopSlug?: string; accountType?: "owner" | "staff" },
   meta: SessionMeta,
 ): Promise<LoginResult> {
   const now = meta.now ?? new Date();
@@ -80,8 +82,19 @@ export async function loginSeller(
   }
 
   // 같은 이메일로 여러 판매자 계정이 있으면(판매자별 별도 계정) 비밀번호가 맞는 계정을 찾는다.
-  const matched = [];
+  let matched = [];
   for (const u of candidates) if (await verifyPassword(u.passwordHash, input.password)) matched.push(u);
+  // 비밀번호가 맞은 계정 중 고른 탭과 같은 종류만 본다. 맞은 계정이 있는데 모두 다른 종류면 세션 없이 wrong_account_type
+  // (비밀번호가 틀리면 탭과 상관없이 아래 invalid_credentials 그대로).
+  if (input.accountType && matched.length > 0) {
+    const typed = matched.filter((u) => u.isOwner === (input.accountType === "owner"));
+    if (typed.length === 0) {
+      const only = matched.length === 1 ? matched[0] : null;
+      await audit("auth.seller.login_blocked", only?.id ?? null, only?.sellerId ?? null, "wrong_account_type");
+      return fail("wrong_account_type");
+    }
+    matched = typed;
+  }
   if (matched.length === 0) {
     // 계정이 하나로 정해질 때만 그 계정의 실패로 기록한다. 쇼핑몰이 특정되지 않으면 계정 없이 남긴다.
     const only = candidates.length === 1 ? candidates[0] : null;

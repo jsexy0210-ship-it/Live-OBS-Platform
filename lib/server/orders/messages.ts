@@ -1,5 +1,7 @@
-// 주문·배송·상품 거부 사유별 화면 문구(해요체). 화면은 error 코드로 분기하고 message를 그대로 보여 준다.
-// 문구는 여기 한 곳에서만 고친다.
+import type { MessageTone } from "../text/tone";
+
+// 주문·배송·상품 거부 사유별 화면 문구. 화면은 error 코드로 분기하고 message를 그대로 보여 준다.
+// 문구는 여기 한 곳에서만 고친다. 구매자 쇼핑몰 API는 해요체(아래 표), 파트너스 관리자 API는 합니다체(ORDER_ERROR_MESSAGES_FORMAL).
 export const ORDER_ERROR_MESSAGES = {
   shop_unavailable: "지금은 쇼핑몰을 이용할 수 없어요",
   consent_required: "안내를 확인하고 동의해 주세요",
@@ -49,7 +51,7 @@ export const ORDER_ERROR_MESSAGES = {
   insufficient_stock: "재고가 모자라서 뺄 수 없어요",
   stock_too_large: "재고는 21억 개까지 넣을 수 있어요",
   // 환불
-  fault_required: "구매자 사정인지 판매자 사정인지 골라 주세요",
+  fault_required: "구매자 사정인지 파트너스 사정인지 골라 주세요",
   opened_items_present: "개봉한 상품이 있어요. 확인한 뒤 다시 환불해 주세요",
   opened_items_unshipped: "개봉한 상품이 있어서 지금은 환불할 수 없어요. 개봉한 상품을 보낸 뒤 나머지를 처리해 주세요",
 } as const;
@@ -61,7 +63,59 @@ export const ORDER_NOTICES = {
 
 export type OrderErrorCode = keyof typeof ORDER_ERROR_MESSAGES;
 
-export const orderErrorBody = (code: OrderErrorCode) => ({ error: code, message: ORDER_ERROR_MESSAGES[code] });
+// 파트너스 관리자 API(app/api/seller/**) 문구(합니다체, lib/server/text/tone.ts)
+export const ORDER_ERROR_MESSAGES_FORMAL: Record<OrderErrorCode, string> = {
+  shop_unavailable: "지금은 쇼핑몰을 이용할 수 없습니다",
+  consent_required: "안내를 확인하고 동의해 주십시오",
+  consent_outdated: "안내가 바뀌었습니다. 다시 확인하고 동의해 주십시오",
+  invalid_items: "담은 상품을 다시 확인해 주십시오",
+  product_unavailable: "지금은 살 수 없는 상품이 있습니다",
+  out_of_stock: "재고가 부족합니다",
+  reward_use_not_supported: "적립금은 아직 쓸 수 없습니다",
+  invalid_amount: "주문 금액을 계산할 수 없습니다. 상품 가격과 배송비 설정을 확인해 주십시오",
+  invalid_shipping_address: "받는 분, 연락처, 주소를 다시 확인해 주십시오",
+  invalid_shipment: "택배사와 송장번호를 다시 확인해 주십시오",
+  not_shippable: "결제가 끝난 주문만 발송할 수 있습니다",
+  not_deliverable: "배송 중인 주문만 배송 완료로 바꿀 수 있습니다",
+  invalid_reward_policy: "적립금 지급 시점을 다시 골라 주십시오",
+  invalid_shipping_policy: "배송비 설정을 다시 확인해 주십시오",
+  invalid_address_label: "배송지 이름을 다시 확인해 주십시오",
+  address_label_too_long: "배송지 이름은 20자까지 쓸 수 있습니다",
+  too_many_addresses: "배송지는 20개까지 저장할 수 있습니다. 안 쓰는 배송지를 지운 뒤 다시 해 주십시오",
+  duplicate_address: "이미 저장된 배송지입니다",
+  address_not_found: "배송지를 찾을 수 없습니다",
+  default_address_required: "다른 배송지를 기본으로 정해 주십시오",
+  invalid_product: "상품 정보를 다시 확인해 주십시오",
+  product_name_too_long: "상품명은 100자까지 쓸 수 있습니다",
+  invalid_option: "옵션 정보를 다시 확인해 주십시오",
+  invalid_price: "가격은 1원 이상, 21억 원 이하로 입력해 주십시오. 옵션 추가금을 더한 가격도 같습니다",
+  invalid_event: "할인율은 1~90%, 할인 금액은 1원 이상 가격의 90% 이하로 정해 주십시오",
+  invalid_event_period: "할인 기간을 다시 확인해 주십시오. 끝나는 때는 지금보다 뒤, 시작부터 1년 안이어야 합니다",
+  event_price_too_low: "할인한 가격이 1원보다 낮아집니다. 할인이나 가격을 다시 확인해 주십시오",
+  too_many_options: "옵션은 상품 하나에 100개까지 만들 수 있습니다",
+  no_sellable_option: "판매하려면 옵션이 하나 이상 있어야 합니다",
+  stock_conflict: "그사이 재고가 바뀌었습니다. 새로 불러온 뒤 다시 입력해 주십시오",
+  invalid_cursor: "목록을 처음부터 다시 불러와 주십시오",
+  invalid_limit: "한 번에 볼 개수는 1~200개로 정해 주십시오",
+  invalid_stock_filter: "재고 조건을 다시 확인해 주십시오",
+  invalid_search: "검색어는 50자까지, 쓸 수 있는 글자로 입력해 주십시오",
+  purchase_restricted: "입금하지 않은 주문이 쌓여 지금은 주문할 수 없습니다",
+  order_rate_limited: "잠시 뒤 다시 주문해 주십시오",
+  invalid_order_policy: "자동 취소 기간은 1시간에서 30일, 자동 배송 완료·구매 확정은 1일에서 30일 사이로 정해 주십시오",
+  no_restriction: "주문 제한이 걸려 있지 않습니다",
+  invalid_reason: "사유를 다시 확인해 주십시오",
+  invalid_stock_adjust: "바꿀 수량(0이 아닌 정수)과 사유(100자 이내)를 확인해 주십시오",
+  insufficient_stock: "재고가 모자라 뺄 수 없습니다",
+  stock_too_large: "재고는 21억 개까지 넣을 수 있습니다",
+  fault_required: "구매자 사정인지 파트너스 사정인지 골라 주십시오",
+  opened_items_present: "개봉한 상품이 있습니다. 확인한 뒤 다시 환불해 주십시오",
+  opened_items_unshipped: "개봉한 상품이 있어 지금은 환불할 수 없습니다. 개봉한 상품을 보낸 뒤 나머지를 처리해 주십시오",
+};
+
+export const orderErrorBody = (code: OrderErrorCode, tone: MessageTone = "friendly") => ({
+  error: code,
+  message: (tone === "formal" ? ORDER_ERROR_MESSAGES_FORMAL : ORDER_ERROR_MESSAGES)[code],
+});
 
 // 구매 제한 안내: 풀리는 시각을 KST로 알려 준다. 예) 「11월 2일 오후 3시 5분부터 다시 주문할 수 있어요」(정각이면 분은 뺀다)
 export function purchaseRestrictedMessage(endsAt: Date): string {

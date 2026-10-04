@@ -57,8 +57,8 @@ export default function OrderDetailPage() {
             ) : state.status === 404 ? (
               <div className="st" style={{ boxShadow: "none" }}>
                 <div className="st-ic neg">!</div>
-                <span className="t">주문을 찾을 수 없어요</span>
-                <span className="s">삭제됐거나 다른 쇼핑몰의 주문이에요.</span>
+                <span className="t">주문을 찾을 수 없습니다</span>
+                <span className="s">삭제되었거나 다른 쇼핑몰의 주문입니다.</span>
                 <Link className="btn btn-sm btn-out" href="/seller/orders">
                   주문 목록으로
                 </Link>
@@ -66,7 +66,7 @@ export default function OrderDetailPage() {
             ) : (
               <div className="st" style={{ boxShadow: "none" }}>
                 <div className="st-ic neg">!</div>
-                <span className="t">주문을 불러오지 못했어요</span>
+                <span className="t">주문을 불러오지 못했습니다</span>
                 <button className="btn btn-sm" type="button" onClick={() => void load()}>
                   다시 시도
                 </button>
@@ -106,7 +106,7 @@ export default function OrderDetailPage() {
               {o.shipment && <span className="bdg bdg-lg b-info nodot">{SHIPMENT_STATUS[o.shipment.status] ?? "발송함"}</span>}
             </div>
             <span className="t-l2 c-alt">{fullTime(o.createdAt)} 접수</span>
-            <span className="t-c1 c-alt num">주문번호 {o.orderNo} · 응대 · 검색할 때만 써요</span>
+            <span className="t-c1 c-alt num">주문번호 {o.orderNo} · 응대 · 검색할 때만 사용합니다</span>
           </div>
         </div>
 
@@ -135,6 +135,12 @@ export default function OrderDetailPage() {
                     <dd className="num">{won(o.shippingFee)}</dd>
                   </>
                 )}
+                {o.couponRedemption && (
+                  <>
+                    <dt>쿠폰 할인 · {o.couponRedemption.coupon.name}</dt>
+                    <dd className="num c-neg">−{won(o.couponRedemption.discountAmount)}</dd>
+                  </>
+                )}
                 {o.rewardUsedAmount > 0 && (
                   <>
                     <dt>적립금 사용</dt>
@@ -151,7 +157,7 @@ export default function OrderDetailPage() {
                 <dt>결제 수단</dt>
                 <dd>{o.paymentMethod ? PAYMENT_METHOD[o.paymentMethod] : "—"}</dd>
                 <dt>결제 시각</dt>
-                <dd className="num">{o.paidAt ? fullTime(o.paidAt) : "아직 결제하지 않았어요"}</dd>
+                <dd className="num">{o.paidAt ? fullTime(o.paidAt) : "아직 결제하지 않았습니다"}</dd>
                 {o.status === "REFUNDED" && (
                   <>
                     <dt>환불</dt>
@@ -192,7 +198,7 @@ export default function OrderDetailPage() {
                 <dt>회원</dt>
                 <dd>{nick}</dd>
               </dl>
-              {!pii && <span className="t-c1 c-alt">닉네임과 주문 내용만 보여요</span>}
+              {!pii && <span className="t-c1 c-alt">닉네임과 주문 내용만 표시됩니다</span>}
             </section>
             <section className="card pad col" style={{ gap: 12 }}>
               <h2 className="t-hl2">배송</h2>
@@ -218,11 +224,11 @@ export default function OrderDetailPage() {
                 {addr?.isRemote && (
                   <>
                     <dt>도서산간</dt>
-                    <dd>추가 배송비 지역이에요</dd>
+                    <dd>추가 배송비 지역입니다</dd>
                   </>
                 )}
                 <dt>송장</dt>
-                <dd>{o.shipment ? `${courierName(o.shipment.courier)} ${o.shipment.trackingNumber}` : "아직 보내지 않았어요"}</dd>
+                <dd>{o.shipment ? `${courierName(o.shipment.courier)} ${o.shipment.trackingNumber}` : "아직 보내지 않았습니다"}</dd>
                 {o.shipment && (
                   <>
                     <dt>발송 시각</dt>
@@ -230,7 +236,7 @@ export default function OrderDetailPage() {
                   </>
                 )}
               </dl>
-              {pii && <span className="t-c1 c-alt">연락처·주소는 열람 시 감사 기록이 남아요.</span>}
+              {pii && <span className="t-c1 c-alt">연락처·주소는 열람 시 열람 기록이 남습니다.</span>}
             </section>
           </div>
         </div>
@@ -241,7 +247,7 @@ export default function OrderDetailPage() {
           onClose={() => setRefundOpen(false)}
           onDone={(amount) => {
             setRefundOpen(false);
-            setToast(`${won(amount)} 환불을 완료했어요`);
+            setToast(`${won(amount)} 환불을 완료했습니다`);
             void load();
           }}
         />

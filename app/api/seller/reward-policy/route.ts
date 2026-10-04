@@ -8,7 +8,7 @@ import { readEarnTiming, updateEarnTiming } from "../../../../lib/server/rewards
 // 적립금 지급 시점(MEMBER_POINTS). 본문: { earnTiming: "ON_PAYMENT"(결제 즉시) | "ON_DELIVERY"(배송 완료 후, 기본) }.
 export async function GET(req: Request) {
   try {
-    const ctx = await requireSeller(prisma, sessionToken(req, "seller"));
+    const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "STORE_OPERATIONS" });
     return NextResponse.json({ policy: await readEarnTiming(prisma, ctx) });
   } catch (e) {
     return errorResponse(e);
@@ -16,8 +16,8 @@ export async function GET(req: Request) {
 }
 
 export const PUT = mutation(async (req: Request) => {
-  const ctx = await requireSeller(prisma, sessionToken(req, "seller"));
+  const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "STORE_OPERATIONS" });
   const r = await updateEarnTiming(prisma, ctx, await readJson(req));
-  if (!r.ok) return NextResponse.json(orderErrorBody(r.reason), { status: 400 });
+  if (!r.ok) return NextResponse.json(orderErrorBody(r.reason, "formal"), { status: 400 });
   return NextResponse.json({ policy: { earnTiming: r.earnTiming } });
 });
