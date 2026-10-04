@@ -50,6 +50,8 @@ test("로고는 카드 안 맨 위, 기본은 대표자 탭이고 한 줄에 왼
   for (const link of [join, find]) expect(await link.evaluate((el) => getComputedStyle(el).textDecorationLine)).toBe("none");
   await find.hover();
   expect(await find.evaluate((el) => getComputedStyle(el).textDecorationLine)).toBe("underline");
+  // 마우스를 올려도 강조색으로 바뀌지 않고 회색 그대로
+  expect(await find.evaluate((el) => getComputedStyle(el).color)).toBe(colors.find);
   await page.mouse.move(0, 0);
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });

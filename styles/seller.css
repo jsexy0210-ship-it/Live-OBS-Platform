@@ -61,7 +61,8 @@ body {
   font-weight: 600;
 }
 /* 찾기는 강조색 없이 오른쪽 끝(직원 탭처럼 혼자 있어도) */
-.login-links > .login-find {
+.login-links > .login-find,
+.login-links > .login-find:hover {
   margin-left: auto;
   color: var(--wds-label-alternative);
 }
