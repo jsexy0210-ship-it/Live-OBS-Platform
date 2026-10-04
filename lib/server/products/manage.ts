@@ -7,6 +7,7 @@ import { kstDayStart } from "../orders/read";
 import { INT4_MAX } from "../orders/shipping";
 import { cleanText } from "../text/clean";
 import { eventFits, eventOf, eventView } from "./event";
+import { listProductImages, thumbnailUrls } from "./images";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 
 // 판매자 상품·옵션 관리(PRODUCT_MANAGE). 모든 조회·변경은 ctx.sellerId 범위이고 다른 판매자 상품은 없음(404)으로 본다.
@@ -102,7 +103,7 @@ async function productView(tx: Tx | PrismaClient, sellerId: string, productId: s
   const p = await tx.product.findFirstOrThrow({ where: { id: productId, sellerId } });
   const { deletedAt: _d, ...rest } = p;
   const event = eventView(eventOf(p), p.price, await dbNow(tx));
-  return { ...rest, code: productCode(p.codeNo), event, options: (await liveOptions(tx, sellerId, productId)).map(({ deletedAt: _o, ...o }) => o) };
+  return { ...rest, code: productCode(p.codeNo), event, images: await listProductImages(tx, sellerId, productId), options: (await liveOptions(tx, sellerId, productId)).map(({ deletedAt: _o, ...o }) => o) };
 }
 
 export const DEFAULT_PAGE_SIZE = 50;
@@ -189,7 +190,7 @@ export async function listProducts(
   ctx: TenantContext,
   opts: ProductListQuery = {},
 ): Promise<
-  | { ok: true; value: { products: (Awaited<ReturnType<typeof productView>> & { soldQuantity: number })[]; nextCursor: string | null } }
+  | { ok: true; value: { products: (Omit<Awaited<ReturnType<typeof productView>>, "images"> & { soldQuantity: number; thumbnailUrl: string | null })[]; nextCursor: string | null } }
   | { ok: false; reason: ListFailure }
 > {
   requireSellerRead(ctx, "PRODUCT_MANAGE");
@@ -322,6 +323,7 @@ export async function listProducts(
     WHERE oi."sellerId" = ${ctx.sellerId}::uuid AND od."status" = 'PAID' AND oi."productId" = ANY(${page.map((p) => p.id)}::uuid[])
     GROUP BY oi."productId"`;
   const soldBy = new Map(soldRows.map((r) => [r.productId, Number(r.sold)]));
+  const thumbs = await thumbnailUrls(db, ctx.sellerId, page.map((p) => p.id));
   const now = await dbNow(db);
   return {
     ok: true,
@@ -331,6 +333,7 @@ export async function listProducts(
         code: productCode(p.codeNo),
         event: eventView(eventOf(p), p.price, now),
         soldQuantity: soldBy.get(p.id) ?? 0,
+        thumbnailUrl: thumbs.get(p.id) ?? null,
         options: options.map(({ deletedAt: _o, ...o }) => o),
       })),
       nextCursor: ids.length > limit ? pageIds[pageIds.length - 1] : null,
