@@ -4,6 +4,8 @@ import { dbNow } from "../billing/subscription";
 import { restoreOrderStock } from "../products/stock";
 import { cleanText } from "../text/clean";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
+import { refreshOrderRetention } from "../buyers/legalHold";
+import { restoreOrderCoupon } from "../shop-coupons/service";
 
 // 무통장 입금 기한·미입금 자동 취소·자동 구매 제한(PRODUCT_SCOPE 「무통장 입금·구매 제한 기본값」, MASTER 결정).
 // - 입금 기한: 주문 시각 + 판매자 설정(기본 사용·10일, 1시간~30일, 끌 수 있음). 주문할 때 Order.paymentDueAt에 고정한다.
@@ -127,6 +129,9 @@ export async function sellerEventClock(tx: Prisma.TransactionClient, sellerId: s
 export async function maybeRestrict(tx: Prisma.TransactionClient, sellerId: string, buyerMemberId: string, now: Date, kind: RestrictionKind = "unpaid") {
   const rule = ruleOf(await getOrderPolicy(tx, sellerId), kind);
   if (!rule.enabled) return null;
+  // 탈퇴한 회원에게는 구매 제한을 만들지 않는다(쓸 일이 없고 탈퇴 때 지운 기록이 다시 생기지 않게, MASTER 결정 2026-10-03)
+  const member = await tx.buyerMember.findUnique({ where: { id: buyerMemberId }, select: { status: true } });
+  if (!member || member.status === "WITHDRAWN") return null;
   // 다른 제한이 걸려 있어도 기준에 닿으면 새 제한을 만든다(앞 제한이 먼저 끝나도 막히게). 새 제한이 기준 시각이 되므로 겹쳐 만들지 않는다.
   const anchor = await restrictionAnchor(tx, sellerId, buyerMemberId, rule.enabledAt);
   const count = await tx.order.count({
@@ -183,6 +188,7 @@ export async function cancelOverdueOrders(db: PrismaClient, opts: { now?: Date; 
         });
         // 주문 때 뺀 재고(ORDER 상품)가 있으면 되돌린다(판매자 설정 restockOnCancel)
         await restoreOrderStock(tx, { sellerId: o.sellerId, orderId: o.id, reason: "CANCEL", now, actor: { actorType: "SYSTEM", actorId: null } });
+        await restoreOrderCoupon(tx, { sellerId: o.sellerId, orderId: o.id, now, reason: "payment_overdue" });
         await writeAudit(tx, {
           actorType: "SYSTEM",
           sellerId: o.sellerId,
@@ -193,6 +199,7 @@ export async function cancelOverdueOrders(db: PrismaClient, opts: { now?: Date; 
           before: { status: "PENDING_PAYMENT" },
           after: { status: "CANCELLED" },
         });
+        await refreshOrderRetention(tx, o.sellerId, now, { orderId: o.id });
         return { restriction: await maybeRestrict(tx, o.sellerId, o.buyerMemberId, now) };
       });
       // 커밋된 뒤에만 결과에 넣는다

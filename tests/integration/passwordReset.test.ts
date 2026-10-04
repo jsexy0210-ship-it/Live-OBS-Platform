@@ -147,7 +147,8 @@ describe("판매자 비밀번호 찾기 (대표자 휴대폰 본인확인)", () 
       expect(await resetSellerPassword(db, { grantToken, newPassword: NEW_PASSWORD })).toEqual({ ok: false, reason: "invalid_grant" });
       await db.sellerUser.update({ where: { id: owner.id }, data: { isOwner: true } });
       await passwordUnchanged(owner.email);
-      expect((await db.auditLog.findFirstOrThrow({ where: { action: "auth.seller.password_reset.failed", reason: "not_owner" } })).actorId).toBe(owner.id);
+      // 대표자가 아니게 되면 직원 기준(연결 CI)으로 보는데, 연결 CI가 없어 거부된다
+      expect((await db.auditLog.findFirstOrThrow({ where: { action: "auth.seller.password_reset.failed", reason: "staff_not_linked" } })).actorId).toBe(owner.id);
     });
 
     it("그사이 계정이 비활성화되면 거부", async () => {
@@ -188,11 +189,11 @@ describe("판매자 비밀번호 찾기 (대표자 휴대폰 본인확인)", () 
     expect(await db.passwordResetGrant.count()).toBe(0);
   });
 
-  it("직원 계정은 대표자 CI로 인증해도 거부", async () => {
+  it("직원 계정은 대표자 CI로 인증해도 거부(본인확인을 연결하지 않은 직원은 셀프 재설정 불가)", async () => {
     const { seller, manager } = await shop();
     const { grant } = await grantFor(manager.email, seller.slug, "REP-CI");
     expect(grant).toEqual({ ok: false, reason: "reset_not_allowed" });
-    expect((await db.auditLog.findFirstOrThrow({ where: { action: "auth.seller.password_reset.failed" } })).reason).toBe("not_owner");
+    expect((await db.auditLog.findFirstOrThrow({ where: { action: "auth.seller.password_reset.failed" } })).reason).toBe("staff_not_linked");
   });
 
   it("없는 계정도 시작 응답 모양이 같고, 결과는 같은 거부", async () => {
@@ -231,10 +232,13 @@ describe("판매자 비밀번호 찾기 (대표자 휴대폰 본인확인)", () 
     expect(results.filter((r) => r.ok)).toHaveLength(1);
   });
 
-  it("같은 본인인증으로 재설정 권한을 두 번 받을 수 없다", async () => {
+  it("같은 본인인증으로 다른 재설정 권한을 또 받을 수 없다(다시 부르면 같은 권한, 그 권한을 쓴 뒤에는 거부)", async () => {
     const { seller, owner } = await shop();
     const { start, grant } = await grantFor(owner.email, seller.slug, "REP-CI");
-    expect(grant.ok).toBe(true);
+    if (!grant.ok) throw new Error("grant failed");
+    expect(await issueSellerPasswordResetGrant(db, provider, { verificationId: start.verificationId, ownerToken: start.ownerToken })).toEqual(grant);
+    expect(await db.passwordResetGrant.count()).toBe(1);
+    expect(await resetSellerPassword(db, { grantToken: grant.grantToken, newPassword: NEW_PASSWORD })).toEqual({ ok: true });
     expect(await issueSellerPasswordResetGrant(db, provider, { verificationId: start.verificationId, ownerToken: start.ownerToken })).toEqual({
       ok: false,
       reason: "reset_not_allowed",
@@ -278,7 +282,9 @@ describe("판매자 비밀번호 찾기 (대표자 휴대폰 본인확인)", () 
     const spy = vi.spyOn(passwordHasher, "hashPassword");
     try {
       expect(await resetSellerPassword(db, { grantToken: "not-a-grant", newPassword: NEW_PASSWORD })).toEqual({ ok: false, reason: "invalid_grant" });
-      expect(await resetSellerPassword(db, { grantToken: grant.grantToken, newPassword: NEW_PASSWORD })).toEqual({ ok: false, reason: "invalid_grant" });
+      // 이미 쓴 권한: 다른 비밀번호는 거부, 같은 비밀번호 재시도는 성공(멱등). 어느 쪽도 새 해시를 계산하지 않는다.
+      expect(await resetSellerPassword(db, { grantToken: grant.grantToken, newPassword: "different-pass-1" })).toEqual({ ok: false, reason: "invalid_grant" });
+      expect(await resetSellerPassword(db, { grantToken: grant.grantToken, newPassword: NEW_PASSWORD })).toEqual({ ok: true });
       expect(spy).not.toHaveBeenCalled();
     } finally {
       spy.mockRestore();
@@ -315,7 +321,8 @@ describe("비밀번호 찾기 시작 횟수 (쇼핑몰당 하루 10회, KST 자�
     const b = await shop("CI-B");
     for (let i = 0; i < 10; i++) await startSellerPasswordReset(db, provider, { email: a.owner.email, shopSlug: a.seller.slug, person: REP });
     expect((await startSellerPasswordReset(db, provider, { email: a.owner.email, shopSlug: a.seller.slug, person: REP })).ok).toBe(false);
-    expect((await startSellerPasswordReset(db, provider, { email: b.owner.email, shopSlug: b.seller.slug, person: REP })).ok).toBe(true);
+    // 같은 휴대폰 하루 10회 한도(아이디 찾기와 합산)와 섞이지 않게 b는 다른 번호로 시작한다
+    expect((await startSellerPasswordReset(db, provider, { email: b.owner.email, shopSlug: b.seller.slug, person: { ...REP, phone: "01033334444" } })).ok).toBe(true);
   });
 
   it("동시에 몰려도 10회를 넘지 않는다", async () => {
@@ -347,6 +354,64 @@ describe("비밀번호 찾기 시작 횟수 (쇼핑몰당 하루 10회, KST 자�
     const res = await httpStart(req());
     expect(res.status).toBe(429);
     expect(await res.json()).toEqual({ error: "reset_limit_exceeded" });
+  });
+
+  it("HTTP: attemptKey로 다시 시작하면 같은 본인확인·같은 쿠키 값을 돌려주고 문자·하루 10회 한도를 다시 쓰지 않는다. 아이디가 다르면 새로 시작, 확인 뒤 같은 키는 409", async () => {
+    const { seller, owner, manager } = await shop();
+    const BASE = "http://localhost:3000";
+    const req = (body: Record<string, unknown>) =>
+      new Request(BASE + "/api/seller/password-reset/start", {
+        method: "POST",
+        headers: { "content-type": "application/json", host: "localhost:3000", origin: BASE },
+        body: JSON.stringify({ email: owner.email, shopSlug: seller.slug, person: REP, ...body }),
+      });
+    const key = crypto.randomUUID();
+    const first = await httpStart(req({ attemptKey: key }));
+    expect(first.status).toBe(200);
+    const cookie = (first.headers.get("set-cookie") ?? "").split(";")[0];
+    const { verificationId } = await first.json();
+    // 응답이 끊겨 같은 키로 열 번 더 보내도 한도(10회)에 들어가지 않는다
+    for (let i = 0; i < 10; i++) {
+      const again = await httpStart(req({ attemptKey: key }));
+      expect(again.status).toBe(200);
+      expect(await again.json()).toEqual({ verificationId });
+      expect((again.headers.get("set-cookie") ?? "").split(";")[0]).toBe(cookie);
+    }
+    const rows = await db.identityVerification.findMany({ where: { purpose: "PASSWORD_RESET", sellerId: seller.id } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].sendCount).toBe(1);
+    expect(await db.auditLog.count({ where: { action: "auth.seller.password_reset.start" } })).toBe(1);
+    // 같은 키라도 다른 아이디면 새 시작(범위가 다름)
+    const other = await httpStart(req({ email: manager.email, attemptKey: key }));
+    expect(other.status).toBe(200);
+    expect((await other.json()).verificationId).not.toBe(verificationId);
+    // 확인을 마친 뒤 같은 키는 409, 형식이 틀린 키는 400
+    (identityProvider() as FakeIdentityProvider).complete(rows[0].requestId, person("REP-CI"));
+    const confirmReq = new Request(BASE + "/api/seller/password-reset/confirm", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "localhost:3000", origin: BASE, cookie },
+      body: JSON.stringify({ verificationId, code: "000000" }),
+    });
+    expect((await httpConfirm(confirmReq)).status).toBe(200);
+    const done = await httpStart(req({ attemptKey: key }));
+    expect(done.status).toBe(409);
+    expect((await done.json()).error).toBe("already_verified");
+    expect((await httpStart(req({ attemptKey: "abc" }))).status).toBe(400);
+  });
+
+  it("없는 쇼핑몰 주소도 같은 키 재시도는 같은 응답이다(계정 유무 비노출)", async () => {
+    const BASE = "http://localhost:3000";
+    const key = crypto.randomUUID();
+    const req = () =>
+      new Request(BASE + "/api/seller/password-reset/start", {
+        method: "POST",
+        headers: { "content-type": "application/json", host: "localhost:3000", origin: BASE },
+        body: JSON.stringify({ email: "nobody@example.com", shopSlug: "no-such-shop", person: REP, attemptKey: key }),
+      });
+    const a = await (await httpStart(req())).json();
+    const b = await (await httpStart(req())).json();
+    expect(b).toEqual(a);
+    expect(await db.identityVerification.count({ where: { purpose: "PASSWORD_RESET", sellerId: null } })).toBe(1);
   });
 });
 
@@ -416,6 +481,56 @@ describe("HTTP: 비밀번호 찾기 흐름", () => {
     expect((await httpComplete(post("/api/seller/password-reset/complete", { newPassword: "again-pass-1" }, gc))).status).toBe(400);
     expect((await loginSeller(db, { email: owner.email, password: NEW_PASSWORD }, {})).ok).toBe(true);
   });
+  it("권한 발급 응답을 잃은 뒤 같은 본인확인으로 다시 확인하면 같은 권한을 받고 그 권한으로 저장된다(#166 Codex P2), 시작 쿠키는 지우지 않는다", async () => {
+    const { seller, owner } = await shop();
+    const s = await httpStart(post("/api/seller/password-reset/start", { email: owner.email, shopSlug: seller.slug, person: REP }));
+    // 시작 쿠키는 본인확인 10분 + 확인 뒤 10분 + 권한 재발급 10분 동안 남는다(끝 무렵 권한 응답을 잃어도 재시도 가능, Codex P2)
+    expect(s.headers.get("set-cookie")).toMatch(/^lo_idv=[^;]+;.*Max-Age=1800/i);
+    const { verificationId } = await s.json();
+    const { requestId } = await db.identityVerification.findUniqueOrThrow({ where: { id: verificationId } });
+    (identityProvider() as FakeIdentityProvider).complete(requestId, person("REP-CI"));
+    expect((await httpConfirm(post("/api/seller/password-reset/confirm", { verificationId, code: "000000" }, cookieOf(s)))).status).toBe(200);
+    const grantOf = (r: Response) => (r.headers.get("set-cookie") ?? "").split(/,(?=\s*lo_)/).map((c) => c.trim()).find((c) => c.startsWith("lo_pwreset="))!.split(";")[0];
+    const first = await httpVerify(post("/api/seller/password-reset/verify", { verificationId }, cookieOf(s)));
+    expect(first.status).toBe(200);
+    expect(first.headers.get("set-cookie") ?? "").not.toMatch(/lo_idv=;/);
+    // 첫 응답을 잃었다고 보고 같은 쿠키로 다시 확인
+    const again = await httpVerify(post("/api/seller/password-reset/verify", { verificationId }, cookieOf(s)));
+    expect(again.status).toBe(200);
+    expect(grantOf(again)).toBe(grantOf(first));
+    expect(await db.passwordResetGrant.count()).toBe(1);
+    // 다른 브라우저(쿠키 없음)는 같은 id로도 받지 못한다
+    expect((await httpVerify(post("/api/seller/password-reset/verify", { verificationId }))).status).toBe(400);
+    expect((await httpComplete(post("/api/seller/password-reset/complete", { newPassword: NEW_PASSWORD }, grantOf(again)))).status).toBe(200);
+    // 권한을 쓴 뒤에는 다시 확인해도 거부
+    expect((await httpVerify(post("/api/seller/password-reset/verify", { verificationId }, cookieOf(s)))).status).toBe(400);
+    expect((await loginSeller(db, { email: owner.email, password: NEW_PASSWORD }, {})).ok).toBe(true);
+  });
+
+  it("권한 재발급: 만료(발급 뒤 10분)·다른 본인확인(거부로 소진)은 거부하고, 동시에 다시 불러도 권한은 하나다", async () => {
+    const { seller, owner } = await shop();
+    const t0 = new Date();
+    const a = await startOk({ email: owner.email, shopSlug: seller.slug }, { now: t0 });
+    await confirmReset(a, "REP-CI", t0);
+    const ids = { verificationId: a.verificationId, ownerToken: a.ownerToken };
+    const rs = await Promise.all([1, 2, 3].map(() => issueSellerPasswordResetGrant(db, provider, ids, { now: t0 })));
+    expect(rs.every((r) => r.ok)).toBe(true);
+    expect(new Set(rs.map((r) => (r.ok ? r.grantToken : "")))).toHaveProperty("size", 1);
+    expect(await db.passwordResetGrant.count()).toBe(1);
+    expect(await issueSellerPasswordResetGrant(db, provider, ids, { now: new Date(t0.getTime() + 10 * 60_000 + 1) })).toEqual({ ok: false, reason: "reset_not_allowed" });
+    expect(await issueSellerPasswordResetGrant(db, provider, ids, { now: new Date(t0.getTime() + 60 * 60_000) })).toEqual({ ok: false, reason: "reset_not_allowed" });
+
+    // 다른 본인확인: CI가 달라 거부되며 소진된 기록은 다시 불러도 권한이 없다
+    const b = await startOk({ email: owner.email, shopSlug: seller.slug });
+    await confirmReset(b, "OTHER-CI");
+    const idsB = { verificationId: b.verificationId, ownerToken: b.ownerToken };
+    expect(await issueSellerPasswordResetGrant(db, provider, idsB)).toEqual({ ok: false, reason: "reset_not_allowed" });
+    expect(await issueSellerPasswordResetGrant(db, provider, idsB)).toEqual({ ok: false, reason: "reset_not_allowed" });
+    // a의 쿠키로 b의 기록을 부르거나, b의 쿠키로 a의 기록을 불러도 거부
+    expect(await issueSellerPasswordResetGrant(db, provider, { verificationId: a.verificationId, ownerToken: b.ownerToken }, { now: t0 })).toEqual({ ok: false, reason: "reset_not_allowed" });
+    expect(await db.passwordResetGrant.count()).toBe(1);
+  });
+
   it("재설정 권한 발급 감사 로그를 쓰지 못하면 권한도 만들지 않고 본인확인도 소진하지 않는다(같은 트랜잭션)", async () => {
     const { seller, owner } = await shop();
     const s = await startOk({ email: owner.email, shopSlug: seller.slug });
@@ -425,5 +540,89 @@ describe("HTTP: 비밀번호 찾기 흐름", () => {
     expect(await db.passwordResetGrant.count()).toBe(0);
     expect((await db.identityVerification.findUniqueOrThrow({ where: { id: s.verificationId } })).consumedAt).toBeNull();
     expect((await issueSellerPasswordResetGrant(db, provider, ids)).ok).toBe(true);
+  });
+});
+
+describe("새 비밀번호 저장 멱등(응답 유실 재시도)", () => {
+  const completedCount = () => db.auditLog.count({ where: { action: "auth.seller.password_reset.completed" } });
+
+  it("같은 권한·같은 새 비밀번호로 다시 보내면 200이고, 그 사이 새로 로그인한 세션은 끊기지 않는다(세션 무효화·자격 버전 증가 1회)", async () => {
+    const { seller, owner } = await shop();
+    const { grant } = await grantFor(owner.email, seller.slug, "REP-CI");
+    if (!grant.ok) throw new Error("grant failed");
+    const cookie = `lo_pwreset=${grant.grantToken}`;
+    const send = (newPassword: string) =>
+      httpComplete(
+        new Request("http://localhost:3000/api/seller/password-reset/complete", {
+          method: "POST",
+          headers: { "content-type": "application/json", host: "localhost:3000", origin: "http://localhost:3000", cookie },
+          body: JSON.stringify({ newPassword }),
+        }),
+      );
+    expect((await send(NEW_PASSWORD)).status).toBe(200);
+    const version = (await db.sellerUser.findUniqueOrThrow({ where: { id: owner.id } })).credentialVersion;
+    const fresh = await loginSeller(db, { email: owner.email, password: NEW_PASSWORD }, {});
+    if (!fresh.ok) throw new Error("login failed");
+    const retry = await send(NEW_PASSWORD);
+    expect(retry.status).toBe(200);
+    expect(await retry.json()).toEqual({ ok: true });
+    expect(await resolveSellerSession(db, fresh.token)).not.toBeNull();
+    expect((await db.sellerUser.findUniqueOrThrow({ where: { id: owner.id } })).credentialVersion).toBe(version);
+    expect(await completedCount()).toBe(1);
+  });
+
+  it("다른 비밀번호로 다시 보내면 400 invalid_grant이고 비밀번호는 처음 저장한 그대로다", async () => {
+    const { seller, owner } = await shop();
+    const { grant } = await grantFor(owner.email, seller.slug, "REP-CI");
+    if (!grant.ok) throw new Error("grant failed");
+    expect(await resetSellerPassword(db, { grantToken: grant.grantToken, newPassword: NEW_PASSWORD })).toEqual({ ok: true });
+    expect(await resetSellerPassword(db, { grantToken: grant.grantToken, newPassword: "attacker-pass-1" })).toEqual({ ok: false, reason: "invalid_grant" });
+    expect((await loginSeller(db, { email: owner.email, password: "attacker-pass-1" }, {})).ok).toBe(false);
+    expect((await loginSeller(db, { email: owner.email, password: NEW_PASSWORD }, {})).ok).toBe(true);
+    expect(await completedCount()).toBe(1);
+  });
+
+  it("재시도 시간(10분)이 지났거나, 저장 뒤 비밀번호가 다시 바뀌었으면 같은 비밀번호여도 거부", async () => {
+    const { seller, owner } = await shop();
+    const { grant } = await grantFor(owner.email, seller.slug, "REP-CI");
+    if (!grant.ok) throw new Error("grant failed");
+    const t0 = new Date();
+    expect(await resetSellerPassword(db, { grantToken: grant.grantToken, newPassword: NEW_PASSWORD }, { now: t0 })).toEqual({ ok: true });
+    expect(await resetSellerPassword(db, { grantToken: grant.grantToken, newPassword: NEW_PASSWORD }, { now: new Date(t0.getTime() + 11 * 60_000) })).toEqual({
+      ok: false,
+      reason: "invalid_grant",
+    });
+    const { grant: second } = await grantFor(owner.email, seller.slug, "REP-CI");
+    if (!second.ok) throw new Error("grant failed");
+    expect(await resetSellerPassword(db, { grantToken: second.grantToken, newPassword: "newer-pass-123" })).toEqual({ ok: true });
+    expect(await resetSellerPassword(db, { grantToken: grant.grantToken, newPassword: NEW_PASSWORD })).toEqual({ ok: false, reason: "invalid_grant" });
+  });
+
+  it("저장에 실패해 소진된 권한(대표자 CI 변경)과 다른 권한 사용으로 무효가 된 권한은 재시도해도 거부", async () => {
+    const { seller, owner } = await shop();
+    const { grant: a } = await grantFor(owner.email, seller.slug, "REP-CI");
+    const { grant: b } = await grantFor(owner.email, seller.slug, "REP-CI");
+    if (!a.ok || !b.ok) throw new Error("grant failed");
+    expect(await resetSellerPassword(db, { grantToken: a.grantToken, newPassword: NEW_PASSWORD })).toEqual({ ok: true });
+    expect(await resetSellerPassword(db, { grantToken: b.grantToken, newPassword: NEW_PASSWORD })).toEqual({ ok: false, reason: "invalid_grant" });
+
+    const { grant: c } = await grantFor(owner.email, seller.slug, "REP-CI");
+    if (!c.ok) throw new Error("grant failed");
+    await db.seller.update({ where: { id: seller.id }, data: { representativeCiHash: hashCi("OTHER-CI") } });
+    expect(await resetSellerPassword(db, { grantToken: c.grantToken, newPassword: "third-pass-123" })).toEqual({ ok: false, reason: "invalid_grant" });
+    await db.seller.update({ where: { id: seller.id }, data: { representativeCiHash: hashCi("REP-CI") } });
+    expect(await resetSellerPassword(db, { grantToken: c.grantToken, newPassword: "third-pass-123" })).toEqual({ ok: false, reason: "invalid_grant" });
+    expect((await loginSeller(db, { email: owner.email, password: NEW_PASSWORD }, {})).ok).toBe(true);
+  });
+
+  it("같은 요청을 동시에 보내면 모두 성공하고 저장·세션 무효화는 한 번만 일어난다", async () => {
+    const { seller, owner } = await shop();
+    const { grant } = await grantFor(owner.email, seller.slug, "REP-CI");
+    if (!grant.ok) throw new Error("grant failed");
+    const before = (await db.sellerUser.findUniqueOrThrow({ where: { id: owner.id } })).credentialVersion;
+    const rs = await Promise.all([1, 2, 3].map(() => resetSellerPassword(db, { grantToken: grant.grantToken, newPassword: NEW_PASSWORD })));
+    expect(rs).toEqual([{ ok: true }, { ok: true }, { ok: true }]);
+    expect((await db.sellerUser.findUniqueOrThrow({ where: { id: owner.id } })).credentialVersion).toBe(before + 1);
+    expect(await completedCount()).toBe(1);
   });
 });

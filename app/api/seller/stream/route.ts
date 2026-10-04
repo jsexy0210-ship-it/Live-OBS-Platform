@@ -14,14 +14,14 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   try {
     const token = sessionToken(req, "seller");
-    const ctx = await requireSeller(prisma, token);
+    const ctx = await requireSeller(prisma, token, undefined, { feature: "OVERLAY" });
     requireSellerRead(ctx, "BROADCAST_RUN");
     return await openSse(liveHub(), {
       sellerId: ctx.sellerId,
       key: `seller:${hashToken(token!)}`,
       readVersion: () => getLiveVersion(prisma, ctx),
       revalidate: async () => {
-        const now = await requireSeller(prisma, token);
+        const now = await requireSeller(prisma, token, undefined, { feature: "OVERLAY" });
         requireSellerRead(now, "BROADCAST_RUN");
         return now.sellerId === ctx.sellerId;
       },

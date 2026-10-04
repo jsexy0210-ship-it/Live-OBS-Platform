@@ -1,7 +1,8 @@
 import type { RewardLedgerStatus, RewardLedgerType } from "@prisma/client";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { claimRewardExpiryNotices, expireDormantRewards, markRewardExpiryNoticeFailed, markRewardExpiryNoticeSent } from "../../lib/server/rewards/expire";
-import { createLoginBuyer, createSeller, db, resetDb } from "./helpers";
+import { withdrawBuyer } from "../../lib/server/buyers/withdraw";
+import { PASSWORD, createLoginBuyer, createSeller, db, resetDb } from "./helpers";
 
 beforeEach(resetDb);
 afterAll(() => db.$disconnect());
@@ -109,6 +110,16 @@ describe("적립금 소멸 30일 전 안내 대상 잡기", () => {
     // 같은 소멸 예정은 다시 잡지 않는다(보내는 중이어도, 보낸 뒤에도)
     expect(await claimRewardExpiryNotices(db, { now: ms(NOW, 60_000) })).toEqual([]);
     expect(await markRewardExpiryNoticeSent(db, claimed[0])).toBe(true);
+    expect(await claimRewardExpiryNotices(db, { now: ms(NOW, 3600_000) })).toEqual([]);
+  });
+
+  it("탈퇴하면 소멸 안내 기록을 지우고(잔액 0) 다시 잡지 않는다", async () => {
+    const m = await member(500);
+    await m.ledger("EARN", 500, earnedLeft(10));
+    expect(await claimRewardExpiryNotices(db, { now: NOW })).toHaveLength(1);
+    expect(await withdrawBuyer(db, { sellerId: m.seller.id, buyerMemberId: m.buyer.id }, { password: PASSWORD })).toEqual({ ok: true });
+    expect(await db.rewardExpiryNotice.count({ where: { buyerMemberId: m.buyer.id } })).toBe(0);
+    expect(await m.bal()).toBe(0);
     expect(await claimRewardExpiryNotices(db, { now: ms(NOW, 3600_000) })).toEqual([]);
   });
 

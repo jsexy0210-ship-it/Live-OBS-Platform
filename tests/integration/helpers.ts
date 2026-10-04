@@ -1,4 +1,6 @@
 import { PrismaClient, type IdentityVerificationPurpose, type SellerStaffPermission } from "@prisma/client";
+import { SIGNUP_CONSENT_VERSIONS } from "../../lib/server/buyers/consent";
+import { SELLER_SIGNUP_CONSENT_VERSIONS } from "../../lib/server/sellers/signupConsent";
 import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
 import { FAKE_IDENTITY_OTP, type IdentityPerson, type IdentityProvider } from "../../lib/server/identity/provider";
 import { confirmIdentityCode, sendFirstIdentityCode, startIdentityVerification } from "../../lib/server/identity/verification";
@@ -14,6 +16,22 @@ export async function resetDb(): Promise<void> {
   if (rows.length === 0) return;
   const list = rows.map((r) => `"public"."${r.tablename}"`).join(", ");
   await db.$executeRawUnsafe(`TRUNCATE ${list} RESTART IDENTITY CASCADE`);
+  // 마이그레이션이 넣는 기준 데이터(플랜 행)는 다시 넣는다(운영 DB와 같은 출발점)
+  await seedPlans();
+}
+
+// 마이그레이션이 넣는 플랜 행(resetDb가 지우므로 구독 시험은 이것으로 다시 넣는다). STANDARD는 ONQ 1-C 이전 전 플랜.
+export async function seedPlans() {
+  const rows = [
+    { code: "STANDARD", name: "월 구독", listPrice: 300000, salePrice: 199000, trialDays: 14 },
+    { code: "OVERLAY_ONLY", name: "오버레이 전용", listPrice: 99000, salePrice: 69000, trialDays: 7 },
+    { code: "INTEGRATED", name: "쇼핑몰 통합", listPrice: 249000, salePrice: 179000, trialDays: 0 },
+  ];
+  for (const r of rows) await db.subscriptionPlan.upsert({ where: { code: r.code }, create: r, update: {} });
+  return Object.fromEntries(await Promise.all(rows.map(async (r) => [r.code, await db.subscriptionPlan.findUniqueOrThrow({ where: { code: r.code } })]))) as Record<
+    "STANDARD" | "OVERLAY_ONLY" | "INTEGRATED",
+    Awaited<ReturnType<typeof db.subscriptionPlan.findUniqueOrThrow>>
+  >;
 }
 
 let seq = 0;
@@ -143,6 +161,21 @@ export async function createLoginBuyer(sellerId: string, gradeId: string) {
 
 // 휴대폰 본인확인(가짜 공급자) 테스트 도우미. 인적사항 기본값은 아래, 필요한 항목만 바꿔 쓴다.
 export const IDV_INPUT = { name: "홍길동", phone: "01012345678", birth7: "9505051", carrier: "SKT", device: "MOBILE" } as const;
+// 구매자 가입 본인확인 시작 본문에 함께 보내는 필수 동의(buyers/consent.ts). 재가입 제한을 켠 쇼핑몰은 REJOIN_CONSENT도.
+export const SIGNUP_CONSENT = {
+  agreedTerms: true,
+  agreedPrivacy: true,
+  termsVersion: SIGNUP_CONSENT_VERSIONS.terms,
+  privacyVersion: SIGNUP_CONSENT_VERSIONS.privacy,
+} as const;
+// 파트너스 가입 본인확인 시작 본문에 함께 보내는 필수 동의(sellers/signupConsent.ts)
+export const SELLER_SIGNUP_CONSENT = {
+  agreedTerms: true,
+  agreedPrivacy: true,
+  termsVersion: SELLER_SIGNUP_CONSENT_VERSIONS.terms,
+  privacyVersion: SELLER_SIGNUP_CONSENT_VERSIONS.privacy,
+} as const;
+export const REJOIN_CONSENT = { agreedRejoinRetention: true, rejoinRetentionVersion: SIGNUP_CONSENT_VERSIONS.rejoinRetention } as const;
 
 // 시작 + 첫 인증번호 보내기
 export async function startIdv(
@@ -150,7 +183,14 @@ export async function startIdv(
   input: { purpose: IdentityVerificationPurpose; sellerId: string | null; subjectId?: string | null; now?: Date; person?: Partial<IdentityPerson> },
 ) {
   const person: IdentityPerson = { ...IDV_INPUT, ...input.person };
-  const started = await startIdentityVerification(db, provider, { ...input, person });
+  // 구매자·파트너스 가입용이면 본인확인 시작 때 받는 필수 동의를 함께 남긴다(실제 시작 API와 같게)
+  const signupConsent =
+    input.purpose === "BUYER_SIGNUP"
+      ? { termsVersion: SIGNUP_CONSENT_VERSIONS.terms, privacyVersion: SIGNUP_CONSENT_VERSIONS.privacy, rejoinRetention: null, agreedAt: new Date().toISOString() }
+      : input.purpose === "SELLER_REPRESENTATIVE"
+        ? { termsVersion: SELLER_SIGNUP_CONSENT_VERSIONS.terms, privacyVersion: SELLER_SIGNUP_CONSENT_VERSIONS.privacy, agreedAt: new Date().toISOString() }
+        : undefined;
+  const started = await startIdentityVerification(db, provider, { ...input, person, signupConsent });
   const sent = await sendFirstIdentityCode(db, provider, started.verification, person, input.now);
   if (!sent.ok) throw new Error(sent.reason);
   return started;

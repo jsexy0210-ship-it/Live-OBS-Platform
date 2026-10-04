@@ -28,7 +28,7 @@ const query = (f: ProductStatus | "ALL", sf: StockFilter | null, q: string) =>
   [f === "ALL" ? "" : `status=${f}`, sf ? `stock=${sf}` : "", q ? `q=${encodeURIComponent(q)}` : ""].filter(Boolean).join("&");
 const SEARCH_DELAY_MS = 300;
 
-const TOASTS: Record<string, string> = { created: "상품을 등록했어요", draft: "임시 저장했어요", deleted: "상품을 삭제했어요" };
+const TOASTS: Record<string, string> = { created: "상품을 등록했습니다", draft: "임시 저장했습니다", deleted: "상품을 삭제했습니다" };
 
 type Page = { products: Product[]; nextCursor: string | null };
 type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; items: Product[]; next: string | null };
@@ -85,7 +85,7 @@ export default function ProductListPage() {
     setMore(false);
     if (id !== reqId.current) return;
     if (r.ok) setState({ kind: "ok", items: [...state.items, ...r.data.products], next: r.data.nextCursor });
-    else setToast("더 불러오지 못했어요. 다시 눌러 주세요");
+    else setToast("더 불러오지 못했습니다. 다시 눌러 주십시오");
   };
 
   const canManage = can("PRODUCT_MANAGE");
@@ -101,7 +101,7 @@ export default function ProductListPage() {
             <h1 className="t-t3">
               상품 <span className="c-alt fw5">{countText}</span>
             </h1>
-            <span className="t-l2 c-alt">판매 중인 상품은 쇼핑몰과 방송 주문대기에 바로 연결돼요.</span>
+            <span className="t-l2 c-alt">판매 중인 상품은 쇼핑몰과 방송 주문대기에 바로 연결됩니다.</span>
           </div>
           {canManage && (
             <div className="row" style={{ gap: 8 }}>
@@ -152,14 +152,14 @@ export default function ProductListPage() {
                   <div className="st-ic neg">!</div>
                   {/* 서버 기준(NFKC 뒤 50자)을 넘었으면 길이 안내, 아니면 글자 안내 */}
                   <span className="t">
-                    {textLength(q.normalize("NFKC").trim()) > MAX_SEARCH_LENGTH ? `검색어는 ${MAX_SEARCH_LENGTH}자까지 쓸 수 있어요` : "검색어에 쓸 수 없는 글자가 있어요"}
+                    {textLength(q.normalize("NFKC").trim()) > MAX_SEARCH_LENGTH ? `검색어는 ${MAX_SEARCH_LENGTH}자까지 입력할 수 있습니다` : "검색어에 사용할 수 없는 글자가 있습니다"}
                   </span>
                   <button className="btn btn-sm btn-text" type="button" onClick={() => setSearch("")}>
                     검색 지우기
                   </button>
                 </div>
               ) : (
-                <ErrorState title="상품을 불러오지 못했어요" onRetry={() => void load(filter, stockFilter, q)} />
+                <ErrorState title="상품을 불러오지 못했습니다" onRetry={() => void load(filter, stockFilter, q)} />
               )
             ))}
           {state.kind === "ok" && items.length === 0 && (
@@ -167,8 +167,8 @@ export default function ProductListPage() {
               <div className="st-ic">+</div>
               {filter === "ALL" && !stockFilter && !q ? (
                 <>
-                  <span className="t">아직 등록된 상품이 없어요</span>
-                  <span className="s">첫 상품을 등록하면 쇼핑몰에 바로 보여요.</span>
+                  <span className="t">아직 등록된 상품이 없습니다</span>
+                  <span className="s">첫 상품을 등록하면 쇼핑몰에 바로 표시됩니다.</span>
                   {canManage && (
                     <Link className="btn btn-sm" href="/seller/products/new">
                       상품 등록
@@ -178,7 +178,7 @@ export default function ProductListPage() {
               ) : (
                 <>
                   <span className="t">
-                    「{[q || null, filter === "ALL" ? null : FILTERS.find((f) => f.key === filter)?.label, STOCK_FILTERS.find((f) => f.key === stockFilter)?.label].filter(Boolean).join(" · ")}」에 해당하는 상품이 없어요
+                    「{[q || null, filter === "ALL" ? null : FILTERS.find((f) => f.key === filter)?.label, STOCK_FILTERS.find((f) => f.key === stockFilter)?.label].filter(Boolean).join(" · ")}」에 해당하는 상품이 없습니다
                   </span>
                   <button
                     className="btn btn-sm btn-text"
@@ -267,10 +267,10 @@ export default function ProductListPage() {
               <div className="row center" style={{ padding: "12px 20px", minHeight: 56 }}>
                 {state.next ? (
                   <button className="btn btn-sm btn-out" type="button" onClick={() => void loadMore()} disabled={more}>
-                    {more ? "불러오고 있어요" : "더 보기"}
+                    {more ? "불러오는 중" : "더 보기"}
                   </button>
                 ) : (
-                  <span className="t-l2 c-alt">모두 불러왔어요</span>
+                  <span className="t-l2 c-alt">모두 불러왔습니다</span>
                 )}
               </div>
             </>

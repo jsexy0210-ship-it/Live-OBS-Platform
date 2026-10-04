@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import type { IdentityVerificationPurpose } from "@prisma/client";
 import { POST as applyRoute } from "../../app/api/seller-signup/apply/route";
 import { POST as signupConfirmRoute } from "../../app/api/seller-signup/verification/confirm/route";
 import { POST as signupResendRoute } from "../../app/api/seller-signup/verification/resend/route";
@@ -24,7 +25,7 @@ import {
   identityUsage,
   resendIdentityCode,
 } from "../../lib/server/identity/verification";
-import { IDV_INPUT, confirmIdv, createSeller, db, resetDb, startIdv } from "./helpers";
+import { IDV_INPUT, SELLER_SIGNUP_CONSENT, confirmIdv, createSeller, db, resetDb, startIdv } from "./helpers";
 
 beforeAll(() => {
   process.env.IDENTITY_HASH_KEY = "test-identity-hash-key-0123456789abcdef";
@@ -39,7 +40,7 @@ afterAll(async () => {
 });
 
 const provider = new FakeIdentityProvider();
-const ownerOf = (v: { sellerId: string | null; purpose: "BUYER_SIGNUP" | "SELLER_REPRESENTATIVE" | "PASSWORD_RESET" }, ownerToken: string) => ({
+const ownerOf = (v: { sellerId: string | null; purpose: IdentityVerificationPurpose }, ownerToken: string) => ({
   sellerId: v.sellerId,
   purpose: v.purpose,
   ownerToken,
@@ -122,7 +123,7 @@ describe("위조·재사용 결과 차단", () => {
     expect(await completeIdentityVerification(db, provider, v.id, { sellerId: b.seller.id, purpose: "BUYER_SIGNUP", ownerToken })).toEqual({ ok: false, reason: "not_found" });
     expect(await completeIdentityVerification(db, provider, v.id, { sellerId: a.seller.id, purpose: "PASSWORD_RESET", ownerToken })).toEqual({ ok: false, reason: "not_found" });
     const signup = (loginId: string) =>
-      signupBuyer(db, provider, { sellerId: a.seller.id, verificationId: v.id, ownerToken, loginId, password: "pw-123456", broadcastNickname: loginId.split("@")[0], agreedTerms: true, agreedPrivacy: true });
+      signupBuyer(db, provider, { sellerId: a.seller.id, verificationId: v.id, ownerToken, loginId, password: "pw-123456", broadcastNickname: loginId.split("@")[0] });
     expect((await signup("first@example.com")).ok).toBe(true);
     expect(await signup("second@example.com")).toEqual({ ok: false, reason: "verification_invalid" });
   });
@@ -169,16 +170,17 @@ describe("공급자 장애·타임아웃·운영 키 없음", () => {
     env.NODE_ENV = "production";
     try {
       const rs = [
-        await signupStartRoute(post("/api/seller-signup/verification", IDV_INPUT)),
+        await signupStartRoute(post("/api/seller-signup/verification", { ...IDV_INPUT, ...SELLER_SIGNUP_CONSENT })),
         await signupResendRoute(post("/api/seller-signup/verification/resend", { verificationId: crypto.randomUUID() })),
         await signupConfirmRoute(post("/api/seller-signup/verification/confirm", { verificationId: crypto.randomUUID(), code: "000000" })),
         await applyRoute(post("/api/seller-signup/apply", { verificationId: crypto.randomUUID() })),
         await resetStartRoute(post("/api/seller/password-reset/start", { email: "a@example.com", shopSlug: "shop", person: IDV_INPUT })),
         await resetVerifyRoute(post("/api/seller/password-reset/verify", { verificationId: crypto.randomUUID() })),
       ];
-      for (const r of rs) {
+      // 파트너스 가입 신청(PF)은 해요체, 파트너스 비밀번호 찾기는 합니다체
+      for (const [i, r] of rs.entries()) {
         expect(r.status).toBe(503);
-        expect(await r.json()).toEqual({ error: "identity_unavailable", message: "본인확인 서비스 준비 중이에요" });
+        expect(await r.json()).toEqual({ error: "identity_unavailable", message: i < 4 ? "본인확인 서비스 준비 중이에요" : "본인확인 서비스를 준비하고 있습니다" });
       }
     } finally {
       env.NODE_ENV = prev;
@@ -194,11 +196,11 @@ describe("공급자 장애·타임아웃·운영 키 없음", () => {
         body: JSON.stringify(body),
       });
     for (const bad of [{ ...IDV_INPUT, birth7: "9513321" }, { ...IDV_INPUT, carrier: "SKY" }, { ...IDV_INPUT, phone: "0212345678" }, { ...IDV_INPUT, name: "\u200b" }]) {
-      const r = await signupStartRoute(post("/api/seller-signup/verification", bad));
+      const r = await signupStartRoute(post("/api/seller-signup/verification", { ...bad, ...SELLER_SIGNUP_CONSENT }));
       expect(r.status).toBe(400);
       expect(await r.json()).toEqual({ error: "invalid_identity_input", message: IDENTITY_ERROR_MESSAGES.invalid_identity_input });
     }
-    const s = await signupStartRoute(post("/api/seller-signup/verification", IDV_INPUT));
+    const s = await signupStartRoute(post("/api/seller-signup/verification", { ...IDV_INPUT, ...SELLER_SIGNUP_CONSENT }));
     const cookie = (s.headers.get("set-cookie") ?? "").split(";")[0];
     const { verificationId } = await s.json();
     const other = await signupConfirmRoute(post("/api/seller-signup/verification/confirm", { verificationId, code: "000000" }, "lo_sidv=someone-else"));
@@ -218,9 +220,9 @@ describe("사용량·판매자 상태", () => {
   it("체험하기 중 구매자 휴대폰 본인확인은 성공 건만 한 번씩 세고, 한도를 넘으면 확정하지 않는다(실패·중복 확인은 세지 않음)", async () => {
     const { seller } = await createSeller();
     await db.subscriptionPlan.upsert({
-      where: { code: "STANDARD" },
+      where: { code: "INTEGRATED" },
       update: { trialIdentityLimit: 2 },
-      create: { code: "STANDARD", name: "스탠다드", listPrice: 300000, salePrice: 199000, trialIdentityLimit: 2 },
+      create: { code: "INTEGRATED", name: "쇼핑몰 통합", listPrice: 249000, salePrice: 179000, trialIdentityLimit: 2 },
     });
     const failed = await buyerIdv(seller.id);
     provider.fail(failed.verification.requestId);
@@ -235,7 +237,7 @@ describe("사용량·판매자 상태", () => {
     expect(await confirmIdv(provider, three.verification, three.ownerToken)).toEqual({ ok: false, reason: "trial_limit_exceeded" });
     expect(await identityUsage(db, seller.id)).toBe(2);
     // 주문 알림 문자 한도(trialMessageLimit)와는 따로 센다
-    expect((await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "STANDARD" } })).trialMessageLimit).toBe(100);
+    expect((await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "INTEGRATED" } })).trialMessageLimit).toBe(100);
   });
 
   it("본인확인 성공은 판매자 승인 상태·체험 기간·대표자 정보·구독을 바꾸지 않는다", async () => {
@@ -259,7 +261,7 @@ describe("Codex 검수 후속(#95)", () => {
     const after = new Date(done.verification.expiresAt.getTime() + 1000);
     expect(after.getTime() - done.verification.verifiedAt!.getTime()).toBeLessThan(30 * 60_000);
     expect(
-      await signupBuyer(db, provider, { sellerId: seller.id, verificationId: b.verification.id, ownerToken: b.ownerToken, loginId: "late@example.com", password: "pw-123456", broadcastNickname: "늦음", agreedTerms: true, agreedPrivacy: true, now: after }),
+      await signupBuyer(db, provider, { sellerId: seller.id, verificationId: b.verification.id, ownerToken: b.ownerToken, loginId: "late@example.com", password: "pw-123456", broadcastNickname: "늦음", now: after }),
     ).toEqual({ ok: false, reason: "verification_invalid" });
 
     const rep = await startIdv(provider, { purpose: "SELLER_REPRESENTATIVE", sellerId: null });
@@ -285,9 +287,9 @@ describe("Codex 검수 후속(#95)", () => {
   it("[P2] 체험 한도가 1건 남았을 때 같은 요청에 확인이 동시에 들어와도 모두 성공이고 사용량은 1", async () => {
     const { seller } = await createSeller();
     await db.subscriptionPlan.upsert({
-      where: { code: "STANDARD" },
+      where: { code: "INTEGRATED" },
       update: { trialIdentityLimit: 1 },
-      create: { code: "STANDARD", name: "스탠다드", listPrice: 300000, salePrice: 199000, trialIdentityLimit: 1 },
+      create: { code: "INTEGRATED", name: "쇼핑몰 통합", listPrice: 249000, salePrice: 179000, trialIdentityLimit: 1 },
     });
     const { verification: v, ownerToken } = await buyerIdv(seller.id);
     const rs = await Promise.all(Array.from({ length: 4 }, () => confirmIdv(provider, v, ownerToken)));

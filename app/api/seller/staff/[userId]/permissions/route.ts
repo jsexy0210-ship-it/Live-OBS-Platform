@@ -8,7 +8,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // 직원 권한 항목 바꾸기(대표자 전용). 보낸 목록으로 통째로 바꾼다.
 export const POST = mutation(async (req: Request, { params }: { params: Promise<{ userId: string }> }) => {
-  const ctx = await requireSeller(prisma, sessionToken(req, "seller"));
+  const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "ACCOUNT" });
   const { userId } = await params;
   if (!UUID.test(userId)) return NextResponse.json({ error: "not_found" }, { status: 404 });
   const body = await readJson<{ permissions: unknown }>(req);

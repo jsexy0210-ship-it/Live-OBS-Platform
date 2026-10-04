@@ -34,8 +34,8 @@ export default function EditProductPage() {
             (state.status === 404 ? (
               <div className="st" style={{ boxShadow: "none" }}>
                 <div className="st-ic">?</div>
-                <span className="t">상품을 찾을 수 없어요</span>
-                <span className="s">이미 삭제된 상품일 수 있어요.</span>
+                <span className="t">상품을 찾을 수 없습니다</span>
+                <span className="s">이미 삭제된 상품일 수 있습니다.</span>
                 <Link className="btn btn-sm" href="/seller/products">
                   상품 목록으로
                 </Link>
@@ -45,7 +45,7 @@ export default function EditProductPage() {
             ) : state.status === 402 ? (
               <Locked />
             ) : (
-              <ErrorState title="상품을 불러오지 못했어요" onRetry={() => void load()} />
+              <ErrorState title="상품을 불러오지 못했습니다" onRetry={() => void load()} />
             ))}
         </div>
       </main>

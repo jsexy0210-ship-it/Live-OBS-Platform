@@ -1,0 +1,12 @@
+# 사이트 주소는 /opt/obs/.env의 OBS_SITE_ADDRESS로 정한다(docs/DEPLOY.md 「HTTPS」).
+# - 비우면 :80 (공인 IP의 HTTP만, 인증서 없음)
+# - 도메인 이름(obs-test: test.on-aircue.com)을 넣으면 Caddy가 무료 인증서를 자동으로 받아 HTTPS로 받고, HTTP는 HTTPS로 넘긴다.
+{$OBS_SITE_ADDRESS::80} {
+	reverse_proxy obs-web-app:3000
+}
+
+# 서버 안에서 부르는 health check용(배포 워크플로가 http://127.0.0.1/api/health를 본다).
+# 사이트 주소를 도메인으로 바꿔도 이 주소는 HTTP로 앱에 닿는다.
+http://127.0.0.1 {
+	reverse_proxy obs-web-app:3000
+}
