@@ -684,6 +684,43 @@ test("권한 다시 읽기가 겹치면 늦게 온 옛 응답이 새 권한을 �
   await staffPage.close();
 });
 
+// 마지막으로 읽은 지 1초 안에 창으로 돌아오면 바로 읽지 않지만, 버리지 않고 잠시 뒤 한 번 다시 읽는다
+test("직원 창으로 1초 안에 다시 돌아와도 잠시 뒤 다시 읽어 그사이 켜진 권한이 메뉴에 나온다", async ({ page }) => {
+  await login(page, "demo-owner@example.com");
+  await expect(page).toHaveURL(/\/seller\/staff$/);
+  const id = uniq();
+  const s = { name: `미룸${id}`, phone: "01077770000", email: `trail-${id}@example.com`, password: `pw-${id}-init` };
+  await addStaff(page, s);
+  await page.getByRole("button", { name: "계정 생성" }).click();
+  await expect(row(page, s.email)).toContainText("켜진 권한 없음");
+  const staffId = await page.evaluate(async (email) => {
+    const r = await fetch("/api/seller/staff");
+    const body = (await r.json()) as { staff: { id: string; email: string }[] };
+    return body.staff.find((x) => x.email === email)!.id;
+  }, s.email);
+
+  const staffPage = await page.context().browser()!.newPage();
+  await login(staffPage, s.email, s.password, "/seller/products");
+  await skipIdentityLink(staffPage);
+  const orders = staffPage.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "주문", exact: true });
+  await expect(orders).toHaveCount(0);
+
+  // 첫 포커스로 다시 읽는다(아직 권한 없음) → 바로 대표자가 권한을 켜고 → 1초 안에 다시 포커스(바로 읽지 않음)
+  await staffPage.waitForTimeout(1100);
+  const read = staffPage.waitForResponse((r) => r.url().endsWith("/api/seller/me"));
+  await staffPage.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await read;
+  const granted = await page.evaluate(
+    async (sid) => (await fetch(`/api/seller/staff/${sid}/permissions`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ permissions: ["ORDER_SHIPPING"] }) })).status,
+    staffId,
+  );
+  expect(granted).toBe(200);
+  await staffPage.evaluate(() => window.dispatchEvent(new Event("focus")));
+  // 다른 이벤트 없이도 잠시 뒤 다시 읽어 메뉴에 나온다
+  await expect(orders).toBeVisible({ timeout: 3000 });
+  await staffPage.close();
+});
+
 test("직원: 메뉴에 직원 계정이 없고, 주소로 들어오면 대표자만 볼 수 있다고 안내한다", async ({ page }) => {
   const listed = page.waitForRequest((r) => r.url().endsWith("/api/seller/staff"), { timeout: 3000 }).then(
     () => true,

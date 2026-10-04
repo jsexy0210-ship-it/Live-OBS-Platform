@@ -104,13 +104,22 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
     refresh();
   }, [pathname, refresh]);
   useEffect(() => {
+    // 마지막으로 읽은 지 1초 안에 돌아오면 바로 읽지 않고 1초가 되는 때로 한 번 미룬다(버리면 그사이 바뀐 권한을 다음 포커스까지 못 본다)
+    let trailing: ReturnType<typeof setTimeout> | null = null;
     const onBack = () => {
-      if (document.visibilityState !== "visible" || Date.now() - lastRead.current < 1000) return;
-      refresh();
+      if (document.visibilityState !== "visible") return;
+      const wait = 1000 - (Date.now() - lastRead.current);
+      if (wait <= 0) return refresh();
+      if (trailing) return;
+      trailing = setTimeout(() => {
+        trailing = null;
+        refresh();
+      }, wait);
     };
     window.addEventListener("focus", onBack);
     document.addEventListener("visibilitychange", onBack);
     return () => {
+      if (trailing) clearTimeout(trailing);
       window.removeEventListener("focus", onBack);
       document.removeEventListener("visibilitychange", onBack);
     };
