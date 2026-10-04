@@ -17,6 +17,7 @@ type Coupon = { couponId: string; name: string; benefitText: string; minOrderAmo
 type Consent = { version: string; text: string };
 type Data = { checkout: Checkout; addresses: Addr[]; coupons: Coupon[]; consent: Consent };
 type View = { kind: "loading" } | { kind: "login" } | { kind: "noids" } | { kind: "blocked"; message: string; names: string[] } | { kind: "error"; message?: string } | { kind: "ok"; data: Data };
+type Preview = { kind: "idle" } | { kind: "loading" } | { kind: "error"; message: string } | { kind: "ok"; shippingFee: number; isRemote: boolean; total: number };
 type Form = { recipientName: string; phone: string; zipCode: string; address1: string; address2: string; memo: string };
 
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
@@ -47,6 +48,7 @@ export default function CheckoutView({ slug }: { slug: string }) {
   const [busy, setBusy] = useState(false);
   const [tried, setTried] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<Preview>({ kind: "idle" });
 
   useEffect(() => {
     if (!idsKey) return setView({ kind: "noids" });
@@ -75,6 +77,25 @@ export default function CheckoutView({ slug }: { slug: string }) {
   }, [api, idsKey]);
 
   const errors = useMemo(() => (addrId === NEW ? check(form) : {}), [addrId, form]);
+  // 배송비 미리보기: 상품·배송지(우편번호 5자리·주소)가 정해지면 서버가 계산한 값을 받는다(쿠폰 할인 전, 저장 안 함)
+  const okData = view.kind === "ok" ? view.data : null;
+  const picked = okData?.addresses.find((a) => a.id === addrId);
+  const zip = picked ? picked.zipCode : form.zipCode.trim();
+  const addr1 = picked ? picked.address1 : form.address1.trim();
+  const previewItems = okData?.checkout.items;
+  useEffect(() => {
+    if (!previewItems || !/^\d{5}$/.test(zip) || !addr1) return setPreview({ kind: "idle" });
+    let live = true;
+    setPreview({ kind: "loading" });
+    const t = window.setTimeout(async () => {
+      const r = await call<{ shippingFee: number; isRemote: boolean; total: number }>(`${api}/payments/shipping-preview`, { method: "POST", body: { items: previewItems, zipCode: zip, address1: addr1 } });
+      if (live) setPreview(r.ok ? { kind: "ok", shippingFee: r.data.shippingFee, isRemote: r.data.isRemote, total: r.data.total } : { kind: "error", message: r.message ?? "배송비를 계산하지 못했어요" });
+    }, 300);
+    return () => {
+      live = false;
+      window.clearTimeout(t);
+    };
+  }, [api, previewItems, zip, addr1]);
   const set = (k: keyof Form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const head = (
@@ -249,7 +270,25 @@ export default function CheckoutView({ slug }: { slug: string }) {
           <span>상품 금액 ({checkout.lines.length}개)</span>
           <b>{won(checkout.subtotal)}</b>
         </div>
-        <p className="cart-hint">쿠폰 할인과 배송비는 주문하면 정해져요. 주문 상세에서 확인할 수 있어요.</p>
+        <div className="cart-row">
+          <span>배송비</span>
+          <span>
+            {preview.kind === "ok"
+              ? `${won(preview.shippingFee)}${preview.isRemote ? " (제주·도서산간 포함)" : ""}`
+              : preview.kind === "loading"
+                ? "계산하고 있어요"
+                : preview.kind === "error"
+                  ? preview.message
+                  : "배송지를 입력하면 알려 드려요"}
+          </span>
+        </div>
+        {preview.kind === "ok" && (
+          <div className="cart-row">
+            <span>결제 예정 금액</span>
+            <b>{won(preview.total)}</b>
+          </div>
+        )}
+        <p className="cart-hint">쿠폰 할인은 주문할 때 정해져요. 결제 예정 금액은 쿠폰 할인 전 금액이에요.</p>
         <label className="co-check">
           <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} aria-describedby="co-consent-err" />
           <span>
