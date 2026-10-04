@@ -105,8 +105,8 @@ export async function getAdminSeller(db: PrismaClient, admin: AdminSessionContex
           cancelAtPeriodEnd: true,
           graceUntil: true,
           retryCount: true,
-          plan: { select: { code: true } },
-          pendingPlan: { select: { code: true } },
+          plan: { select: { code: true, name: true } },
+          pendingPlan: { select: { code: true, name: true } },
         },
       },
     },
@@ -136,7 +136,16 @@ export async function getAdminSeller(db: PrismaClient, admin: AdminSessionContex
     ...rest,
     owner: users[0] ?? null,
     subscription: subscription
-      ? { ...subscription, plan: undefined, pendingPlan: undefined, planCode: subscription.plan.code, pendingPlanCode: subscription.pendingPlan?.code ?? null }
+      ? {
+          ...subscription,
+          plan: undefined,
+          pendingPlan: undefined,
+          // 화면은 이름을 보여 준다(코드성 표기 금지), 코드는 분기용
+          planCode: subscription.plan.code,
+          planName: subscription.plan.name,
+          pendingPlanCode: subscription.pendingPlan?.code ?? null,
+          pendingPlanName: subscription.pendingPlan?.name ?? null,
+        }
       : null,
     // 최근 30일: 들어온 주문 수, 결제된 주문 수·결제 금액(환불액 뺌), 마지막 주문 시각
     orders30d: {

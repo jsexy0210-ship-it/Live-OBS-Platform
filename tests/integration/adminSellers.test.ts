@@ -98,7 +98,7 @@ describe("파트너스 상세 GET /api/admin/sellers/{id}", () => {
       status: "ACTIVE",
       plan: { code: "INTEGRATED" },
       owner: { email: "owner@example.com" },
-      subscription: { status: "ACTIVE", planCode: "INTEGRATED", pendingPlanCode: null, cardLabel: "카드" },
+      subscription: { status: "ACTIVE", planCode: "INTEGRATED", planName: plans.INTEGRATED.name, pendingPlanCode: null, pendingPlanName: null, cardLabel: "카드" },
       orders30d: { created: 2, paid: 2, paidAmount: 8000 },
     });
     expect((await detail(cookie, "00000000-0000-4000-8000-000000000000")).status).toBe(404);

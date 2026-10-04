@@ -8,6 +8,7 @@ export type MemberDataPolicy = "delete" | "anonymize" | "retain_legal";
 export const MEMBER_DATA_POLICY: Record<string, { policy: MemberDataPolicy; note: string }> = {
   BuyerMember: { policy: "anonymize", note: "이름·휴대폰·닉네임·아이디·CI 해시·생년월일·비밀번호·마케팅 동의(시각·문서 버전·철회 시각)·가입 동의 기록(signupConsent)·재가입 제한 보관 동의 스냅숏 비식별, WITHDRAWN·deletedAt" },
   BuyerAddress: { policy: "delete", note: "저장 배송지" },
+  CartItem: { policy: "delete", note: "장바구니(shop-cart)" },
   ProductReview: { policy: "anonymize", note: "상품 리뷰는 남기고 작성자 표시를 「탈퇴 회원」으로(product-reviews anonymizeMemberReviews). 리뷰에 붙은 사진은 리뷰와 함께 남는다" },
   ProductReviewImage: { policy: "delete", note: "리뷰에 붙지 않은 사진은 지운다. 리뷰에 붙은 사진은 리뷰와 함께 남는다(리뷰는 비식별)" },
   ProductReviewReport: { policy: "anonymize", note: "리뷰 신고 기록은 남긴다(보류는 판매자만 풀어야 해서 신고 사실이 필요). 신고자는 비식별된 탈퇴 회원 행으로만 이어진다" },

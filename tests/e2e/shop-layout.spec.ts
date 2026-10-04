@@ -113,6 +113,19 @@ test("로그인하면 맨 위 띠 오른쪽에 닉네임 님이 보인다", asyn
   await expect(page.locator(".shop-util").getByRole("link", { name: "내 정보" })).toBeVisible();
 });
 
+test("크기 규칙: 입력·검색 40px, 주요 버튼·하단 고정 바 48px, 모서리 6px·8px", async ({ page }) => {
+  const box = (sel: string) => page.locator(sel).first().evaluate((el) => ({ h: Math.round(el.getBoundingClientRect().height), r: getComputedStyle(el).borderTopLeftRadius }));
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/shop/${SLUG}/login`);
+  expect(await box(".shop-search")).toEqual({ h: 40, r: "6px" });
+  expect(await box(".shop-card .inp")).toEqual({ h: 40, r: "6px" });
+  expect(await box(".shop-card .btn-lg")).toEqual({ h: 48, r: "6px" }); // 주요 버튼(로그인)은 48px
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/shop/${SLUG}`);
+  const bar = await page.locator(".shop-tabbar").evaluate((el) => ({ h: Math.round(el.getBoundingClientRect().height), r: getComputedStyle(el).borderTopLeftRadius }));
+  expect(bar).toEqual({ h: 48, r: "8px" });
+});
+
 test("구매자 쇼핑몰 모든 화면의 바탕은 흰색이다(회색 바탕 없음)", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   const white = "rgb(255, 255, 255)";

@@ -87,7 +87,7 @@ test("상품 등록 미리보기: 상품명·판매가·설명·옵션·판매 �
 
 test("상품 수정 미리보기: 저장된 값이 아니라 고치는 중인 설명을 바로 보여 준다", async ({ page }) => {
   await open(page, "/seller/products");
-  await page.getByTestId("product-row").filter({ hasText: "문라이트 컬렉션 박스" }).getByRole("link").click();
+  await page.getByTestId("product-row").filter({ hasText: "문라이트 컬렉션 박스" }).getByRole("link").first().click();
   await expect(page.getByLabel("상품명")).toHaveValue("문라이트 컬렉션 박스");
   const pv = page.getByTestId("product-preview");
   await expect(pv.getByTestId("preview-name")).toHaveText("문라이트 컬렉션 박스");

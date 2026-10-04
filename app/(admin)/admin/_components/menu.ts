@@ -12,8 +12,8 @@ export const ADMIN_MENU: AdminGroup[] = [
     key: "partners",
     label: "파트너스",
     items: [
-      { label: "파트너스 목록", href: "/admin/partners" },
-      { label: "가입 신청", href: "/admin/partners/applications" },
+      { label: "파트너스 목록", href: "/admin/partners", ready: true },
+      { label: "가입 신청", href: "/admin/partners/applications", ready: true },
     ],
   },
   {
