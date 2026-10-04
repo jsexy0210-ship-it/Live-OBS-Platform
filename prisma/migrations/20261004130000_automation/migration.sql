@@ -185,3 +185,12 @@ ALTER TABLE "AutomationJob" ADD CONSTRAINT "AutomationJob_stats_valid" CHECK ("p
 ALTER TABLE "AutomationPracticeRun" ADD CONSTRAINT "AutomationPracticeRun_counters_valid" CHECK ("playbookVersion" > 0 AND "durationMs" >= 0 AND "plannerCalls" >= 0 AND "playbookActions" >= 0 AND "costWon" >= 0);
 -- 끝난 작업 중 보관 자료 삭제를 아직 요청하지 않은 것만 빠르게 찾는다
 CREATE INDEX "AutomationJob_artifacts_purge" ON "AutomationJob"("updatedAt") WHERE "artifactsPurgedAt" IS NULL AND "status" IN ('SUCCEEDED', 'FAILED', 'CANCELED');
+
+-- 쇼핑몰 연결 권한 해제 기록(판매자·쇼핑몰마다 최신 시각)
+CREATE TABLE "AutomationShopRevocation" (
+    "sellerId" UUID NOT NULL,
+    "shopKey" TEXT NOT NULL,
+    "revokedAt" TIMESTAMPTZ(3) NOT NULL,
+
+    CONSTRAINT "AutomationShopRevocation_pkey" PRIMARY KEY ("sellerId","shopKey")
+);

@@ -517,6 +517,8 @@ describe("재연결·재설치(확정 ②)", () => {
     expect(await ask({ ...s.target, obsPairingId: "other-pc" })).toMatchObject({ reason: "payment_required", paidReason: "pc_changed" });
     await markConnectionRevoked(db, { sellerId: s.seller.id, shopKey: s.target.shopKey, reason: "app_uninstalled" });
     expect(await ask(s.target)).toMatchObject({ reason: "payment_required", paidReason: "connection_revoked" });
+    // 해제 기록을 지운 상태로 되돌린다(해제는 작업 칸과 판매자·쇼핑몰 단위 기록 두 곳에 남는다, 25차)
+    await db.automationShopRevocation.deleteMany({ where: { sellerId: s.seller.id } });
     await db.automationJob.update({ where: { id: s.jobId }, data: { connectionRevokedAt: null, finishedAt: new Date(Date.now() - 31 * 86_400_000) } });
     expect(await ask(s.target)).toMatchObject({ reason: "payment_required", paidReason: "window_expired" });
     await db.automationJob.update({ where: { id: s.jobId }, data: { finishedAt: new Date(Date.now() - 29 * 86_400_000) } });
@@ -570,7 +572,8 @@ describe("재연결·재설치(확정 ②)", () => {
     await db.automationJob.updateMany({ where: { kind: "RECONNECT_FREE" }, data: { status: "CANCELED", finishedAt: new Date() } });
     expect(await markConnectionRevoked(db, { sellerId: s.seller.id, shopKey: s.target.shopKey, reason: "app_uninstalled" })).toBe(1);
     expect(await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: newKey(), target: s.target })).toMatchObject({ reason: "payment_required", paidReason: "connection_revoked" });
-    expect(await db.auditLog.count({ where: { action: "automation.connection_revoked" } })).toBe(1);
+    // 해제는 작업 상태·연결 작업 유무와 무관하게 판매자·쇼핑몰 단위로 기록하고 매번 감사 기록을 남긴다(25차)
+    expect(await db.auditLog.count({ where: { action: "automation.connection_revoked" } })).toBe(2);
   });
 
   it("같은 Idempotency-Key를 다른 요청(구매 ↔ 재설치, 다른 쇼핑몰 주소)에 다시 쓰면 409로 거부하고 예전 작업을 돌려주지 않는다", async () => {
@@ -2659,6 +2662,45 @@ describe("Codex 24차 반영(f466487)", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("Codex 25차 반영(a32e65d)", () => {
+  it("설치 작업이 진행 중일 때 온 연결 해제도 잃지 않는다: 작업이 끝난 뒤 무료 재연결은 거절(connection_revoked)", async () => {
+    const s = await bought();
+    const rt = runtime();
+    let revoking: Promise<number> | null = null;
+    // 작업이 실행 중(RUNNING)일 때 해제 알림이 온다
+    rt.browser.beforePerform = (action) => {
+      if (action.type === "click" && !revoking) revoking = markConnectionRevoked(db, { sellerId: s.seller.id, shopKey: `mall-${s.seller.id}`, reason: "app_uninstalled" });
+    };
+    expect(await runOnce(db, rt, W)).toBe("succeeded");
+    expect(revoking).not.toBeNull();
+    await revoking;
+    const target = { shopKey: `mall-${s.seller.id}`, obsPairingId: `pc-${s.seller.id}` };
+    const r = await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: newKey(), target });
+    expect(r).toMatchObject({ ok: false, reason: "payment_required", paidReason: "connection_revoked" });
+    expect(await db.automationJob.count({ where: { sellerId: s.seller.id, kind: "RECONNECT_FREE" } })).toBe(0);
+  });
+
+  it("진행 중인 연습 기록이 100건 넘게 쌓여도 준비 상태(연속 성공)는 그대로다", async () => {
+    expect((await playbookReadiness(db, cafe24Playbook)).verified).toBe(true);
+    const now = (await db.$queryRaw<{ now: Date }[]>`SELECT now() AS now`)[0].now;
+    await db.automationPracticeRun.createMany({
+      data: Array.from({ length: 100 }, () => ({
+        playbookId: cafe24Playbook.id,
+        playbookVersion: cafe24Playbook.version,
+        outcome: "FAILED" as const,
+        reason: "practice_incomplete",
+        durationMs: 0,
+        plannerCalls: 0,
+        playbookActions: 0,
+        costWon: 0,
+        startedAt: now,
+        finishedAt: new Date(now.getTime() + 1000),
+      })),
+    });
+    expect((await playbookReadiness(db, cafe24Playbook)).verified).toBe(true);
   });
 });
 

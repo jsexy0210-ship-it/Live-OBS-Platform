@@ -10,19 +10,24 @@ export async function markConnectionRevoked(db: PrismaClient, input: { sellerId:
     // 무료 재연결 확정(commitJob)과 같은 판매자 잠금으로 순서를 맞춘다(해제 기록이 커밋되기 전에 무료 재연결이 확정되지 않게)
     await lockSellerAutomation(tx, input.sellerId);
     const now = await dbNow(tx);
+    // 작업 상태와 무관하게 판매자·쇼핑몰 단위로 남긴다: 설치 작업이 아직 진행 중(RUNNING·VERIFYING)일 때 온 해제도
+    // 그 작업이 끝난 뒤 무료 재연결 판정(decideReconnect)이 본다
+    await tx.automationShopRevocation.upsert({
+      where: { sellerId_shopKey: { sellerId: input.sellerId, shopKey: input.shopKey } },
+      create: { sellerId: input.sellerId, shopKey: input.shopKey, revokedAt: now },
+      update: { revokedAt: now },
+    });
     const r = await tx.automationJob.updateMany({
       where: { sellerId: input.sellerId, shopKey: input.shopKey, status: "SUCCEEDED", connectionRevokedAt: null },
       data: { connectionRevokedAt: now },
     });
-    if (r.count > 0) {
-      await writeAudit(tx, {
-        actorType: "SYSTEM",
-        sellerId: input.sellerId,
-        action: "automation.connection_revoked",
-        targetType: "AutomationJob",
-        after: { jobs: r.count, reason: input.reason.slice(0, 100) },
-      });
-    }
+    await writeAudit(tx, {
+      actorType: "SYSTEM",
+      sellerId: input.sellerId,
+      action: "automation.connection_revoked",
+      targetType: "AutomationJob",
+      after: { jobs: r.count, reason: input.reason.slice(0, 100) },
+    });
     return r.count;
   });
 }

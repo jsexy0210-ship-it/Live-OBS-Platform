@@ -193,9 +193,12 @@ async function computeReadiness(db: Prisma.TransactionClient, playbook: Playbook
   const where = { playbookId: playbook.id, playbookVersion: playbook.version };
   // 진행 중인 연습(시작 때 남긴 기록, 아직 결과 없음)은 빼고 센다. 실행 시간 상한(6시간)을 넘겨도 끝나지 않은 기록은 죽은 것으로 보고 실패로 센다.
   const runningSince = new Date((await dbNow(db)).getTime() - AUTOMATION_LIMITS.maxRunMs);
-  const runs = (await db.automationPracticeRun.findMany({ where, orderBy: { finishedAt: "desc" }, take: 100 })).filter(
-    (r) => !(r.reason === PRACTICE_INCOMPLETE && r.startedAt > runningSince),
-  );
+  // 걸러내기는 DB에서 한다(가져온 뒤 거르면 진행 중 기록이 많을 때 끝난 기록이 잘려 연속 성공이 줄어든다)
+  const runs = await db.automationPracticeRun.findMany({
+    where: { ...where, OR: [{ reason: null }, { reason: { not: PRACTICE_INCOMPLETE } }, { startedAt: { lte: runningSince } }] },
+    orderBy: { finishedAt: "desc" },
+    take: 100,
+  });
   // 고객 작업에서 화면이 작업서와 달랐던 가장 최근 시각. 그 전의 연습 성공은 바뀐 화면을 검증하지 못했으므로 세지 않는다.
   const drifted = await db.automationJob.findFirst({
     where: { ...where, lastDeviationAt: { not: null } },

@@ -271,6 +271,9 @@ export async function decideReconnect(db: PrismaClient | Prisma.TransactionClien
   if (base.shopKey !== target.shopKey) return { free: false, reason: "shop_changed", baseJobId: base.id };
   if (base.obsPairingId !== target.obsPairingId) return { free: false, reason: "pc_changed", baseJobId: base.id };
   if (base.connectionRevokedAt) return { free: false, reason: "connection_revoked", baseJobId: base.id };
+  // 기준 작업이 만들어진 뒤에 온 해제(작업이 진행 중일 때 온 것 포함)도 무료가 아니다
+  const revoked = base.shopKey ? await db.automationShopRevocation.findUnique({ where: { sellerId_shopKey: { sellerId, shopKey: base.shopKey } } }) : null;
+  if (revoked && revoked.revokedAt >= base.createdAt) return { free: false, reason: "connection_revoked", baseJobId: base.id };
   return { free: true, baseJobId: base.id };
 }
 
