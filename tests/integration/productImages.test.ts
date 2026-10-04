@@ -123,18 +123,18 @@ describe("HTTP·공개 주소", () => {
     const owner = await cookie(s.owner.email);
     const otherOwner = await cookie((await createSellerUser(other.seller.id, "OWNER", "img-other@example.com")).email);
     const pp = { params: Promise.resolve({ productId: p.id }) };
-    const post = (body: Uint8Array, c = owner, headers: Record<string, string> = H) =>
+    const post = (body: Uint8Array<ArrayBuffer>, c = owner, headers: Record<string, string> = H) =>
       imagesPost(new Request(`http://localhost:3000/api/seller/products/${p.id}/images`, { method: "POST", headers: { ...headers, cookie: c }, body }), pp);
 
-    const created = await post(new Uint8Array(png(300, 300)));
+    const created = await post(Uint8Array.from(png(300, 300)));
     expect(created.status).toBe(201);
     const { image } = await created.json();
-    expect((await post(new Uint8Array(png(300, 300)), owner, { ...H, origin: "http://evil.example" })).status).toBe(403);
-    expect((await post(new Uint8Array(png(300, 300)), otherOwner)).status).toBe(404);
+    expect((await post(Uint8Array.from(png(300, 300)), owner, { ...H, origin: "http://evil.example" })).status).toBe(403);
+    expect((await post(Uint8Array.from(png(300, 300)), otherOwner)).status).toBe(404);
     const big = await post(new Uint8Array(5 * 1024 * 1024 + 1));
     expect(big.status).toBe(413);
     expect(await big.json()).toEqual({ error: "file_too_large", message: PRODUCT_IMAGE_MESSAGES.file_too_large });
-    const bad = await post(new Uint8Array(Buffer.from("GIF89a")));
+    const bad = await post(new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]));
     expect(bad.status).toBe(400);
     expect(await bad.json()).toEqual({ error: "unsupported_image", message: PRODUCT_IMAGE_MESSAGES.unsupported_image });
 
