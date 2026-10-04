@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { EmptyStats, StatsFrame, StatsState, usePeriod, useStats, type Unit } from "../../../../../components/seller/stats/StatsFrame";
+import { overviewHasData } from "../../../../../components/seller/stats/overview";
 import { BarChart, bucketLabel, count, downloadCsv, pct, won } from "../../../../../components/seller/stats/parts";
 
 // SA-056 통계(요약). GET /api/seller/stats/overview 한 번으로 요약 지표·일별 매출·방송별 매출·상품별 판매·회원·적립금·주문 처리를 그린다.
@@ -15,10 +16,10 @@ type Data = {
   series: { bucket: string; revenue: number; orders: number }[];
   broadcasts: {
     rows: { id: string; title: string | null; startedAt: string; orders: number; net: number; hits: number }[];
-    general: { orders: number; paid: number; net: number };
+    general: { orders: number; net: number };
     outside: { orders: number; net: number };
   };
-  products: { top: Product[]; total: { quantity: number; revenue: number; products: number }; unsoldCount: number };
+  products: { top: Product[]; topByQuantity: Product[]; total: { quantity: number; revenue: number; products: number }; unsoldCount: number };
   members: { repeatRate: number | null; repeatBuyers: number; buyers: number; newNet: number; returningNet: number };
   rewards: { earned: number; revoked: number; used: number; expired: number; useRate: number | null };
   operations: {
@@ -120,7 +121,8 @@ export default function StatsOverviewPage() {
     </div>
   );
 
-  const empty = data && data.summary.current.orders === 0 && data.summary.current.excluded === 0 && data.summary.current.signups === 0;
+  // 표시할 항목이 모두 비었을 때만 빈 화면(주문이 없어도 방송·적립금·비교값이 있으면 요약을 그린다)
+  const empty = data && !overviewHasData(data);
 
   return (
     <StatsFrame title="요약" heading="통계" sub="매출 · 주문 · 방송 · 상품 · 회원 · 적립금 지표 · 기간 비교 · 내려받기" period={period} setPeriod={setPeriod} download={downloadPanel}>
@@ -153,7 +155,8 @@ function Overview({ data, metric, setMetric, productSort, setProductSort, compar
   const points = data.series.map((s) => ({ label: bucketLabel(s.bucket, data.range.unit), value: metric === "revenue" ? Math.max(0, s.revenue) : s.orders }));
   const best = data.series.reduce<(typeof data.series)[number] | null>((b, s) => (b === null || s[metric] > b[metric] ? s : b), null);
 
-  const sorted = [...data.products.top].sort((a, b) => (productSort === "revenue" ? b.revenue - a.revenue || b.quantity - a.quantity : b.quantity - a.quantity || b.revenue - a.revenue));
+  // 정렬은 서버가 한다(수량순은 팔린 상품 전체에서 고른 목록)
+  const sorted = productSort === "revenue" ? data.products.top : data.products.topByQuantity;
   const shown = sorted.slice(0, PRODUCT_ROWS);
   const restCount = data.products.total.products - shown.length;
   const restValue = productSort === "revenue" ? data.products.total.revenue - shown.reduce((a, r) => a + r.revenue, 0) : data.products.total.quantity - shown.reduce((a, r) => a + r.quantity, 0);
@@ -247,7 +250,7 @@ function Overview({ data, metric, setMetric, productSort, setProductSort, compar
               </tbody>
             </table>
           </div>
-          <span className="t-c1 c-alt">방송 매출 = 방송 시작 ~ 종료 안 주문 · 종료 뒤 2시간 안 주문은 방송 시간 일반 주문 · HIT는 방송 중 만든 카드 · 시청 수는 준비 중</span>
+          <span className="t-c1 c-alt">기간 안 결제 주문을 방송 시작 ~ 종료(방송 매출), 종료 뒤 2시간(방송 시간 일반 주문), 그 밖(방송 외 주문)으로 나눈 값입니다 · 세 칸 합 = 매출 · 방송 통계 탭은 기간 중 시작한 방송 기준 · HIT는 방송 중 만든 카드 · 시청 수는 준비 중</span>
         </section>
 
         <section className="card pad-l col" style={{ gap: 12 }}>
@@ -335,7 +338,7 @@ function Overview({ data, metric, setMetric, productSort, setProductSort, compar
             <dt>쿠폰 사용</dt>
             <dd className="sts-soon">{SOON}</dd>
           </dl>
-          <span className="t-c1 c-alt">적립금은 기간 안에 처리가 끝난 원장 기준 · 사용 비율은 매출 대비</span>
+          <span className="t-c1 c-alt">적립금은 처리가 끝난 시각 기준 · 사용 비율은 매출 대비</span>
           <div className="row" style={{ gap: 8 }}>
             <Link className="btn btn-sm btn-out" href="/seller/rewards">
               적립금

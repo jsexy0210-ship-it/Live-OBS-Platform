@@ -610,7 +610,7 @@ describe("통계 요약 GET /api/seller/stats/overview (SA-056)", () => {
     await db.shipment.create({ data: { sellerId: s.seller.id, orderId: paid.id, courier: "CJ", trackingNumber: "1", shippedAt: new Date("2026-10-03T09:00:00Z") } });
     // 적립금 원장(처리된 것만, 기간 안)
     const led = (type: "EARN" | "REVOKE" | "USE" | "EXPIRE" | "RANKING_BONUS", amount: number, status: "SUCCEEDED" | "PENDING" = "SUCCEEDED", createdAt = at) =>
-      db.rewardLedger.create({ data: { sellerId: s.seller.id, buyerMemberId: s.buyer.id, type, amount, status, testMode: false, idempotencyKey: `${type}-${amount}-${createdAt}-${status}`, createdAt: new Date(createdAt) } });
+      db.rewardLedger.create({ data: { sellerId: s.seller.id, buyerMemberId: s.buyer.id, type, amount, status, testMode: false, idempotencyKey: `${type}-${amount}-${createdAt}-${status}`, createdAt: new Date(createdAt), processedAt: status === "SUCCEEDED" ? new Date(createdAt) : null } });
     await led("EARN", 300);
     await led("RANKING_BONUS", 200);
     await led("REVOKE", -100);
@@ -639,6 +639,48 @@ describe("통계 요약 GET /api/seller/stats/overview (SA-056)", () => {
     expect(body.broadcasts.outside).toEqual({ orders: 3, net: 32000 });
     expect(body.series.reduce((a: number, p: { revenue: number }) => a + p.revenue, 0)).toBe(40000);
     expect(body.unavailable).toEqual(expect.arrayContaining(["visitors", "coupons", "returns", "inquiries", "reviews", "memberGrades"]));
+  });
+
+  it("적립금은 처리 완료 시각(processedAt)으로 기간에 넣는다", async () => {
+    const s = await shop();
+    const led = (amount: number, createdAt: string, processedAt: string) =>
+      db.rewardLedger.create({ data: { sellerId: s.seller.id, buyerMemberId: s.buyer.id, type: "EARN", amount, status: "SUCCEEDED", testMode: false, idempotencyKey: `${amount}`, createdAt: new Date(createdAt), processedAt: new Date(processedAt) } });
+    await led(100, "2026-09-28T03:00:00Z", "2026-10-02T03:00:00Z"); // 앞 기간에 대기 → 이번 기간에 처리
+    await led(200, "2026-10-02T03:00:00Z", "2026-10-09T03:00:00Z"); // 이번 기간에 대기 → 다음 기간에 처리
+    const r = await overviewStats(db, s.ctx, WEEK());
+    expect(r.rewards.earned).toBe(100);
+  });
+
+  it("방송 내역은 기간 안 결제 주문을 방송 매출·방송 시간 일반 주문·방송 외 주문으로 나누고 합계가 기간 매출과 같다(경계 넘는 방송 포함)", async () => {
+    const s = await shop();
+    // A: 9/30 23:00 ~ 10/1 01:00 KST(기간 시작을 넘음), B: 10/3 KST 기간 안, 주문 없음
+    const A = await db.broadcastSession.create({ data: { sellerId: s.seller.id, title: "A", status: "ENDED", startedAt: new Date("2026-09-30T14:00:00Z"), endedAt: new Date("2026-09-30T16:00:00Z") } });
+    await db.broadcastSession.create({ data: { sellerId: s.seller.id, title: "B", status: "ENDED", startedAt: new Date("2026-10-03T11:00:00Z"), endedAt: new Date("2026-10-03T12:00:00Z") } });
+    await s.order({ createdAt: "2026-09-30T14:30:00Z", total: 1000 }); // 9/30 KST: 기간 밖
+    await s.order({ createdAt: "2026-09-30T15:30:00Z", total: 2000 }); // 10/1 00:30 KST: A 방송 매출
+    await s.order({ createdAt: "2026-09-30T17:00:00Z", total: 4000 }); // 10/1 02:00 KST: A 종료 뒤 → 방송 시간 일반 주문
+    await s.order({ createdAt: "2026-10-02T03:00:00Z", total: 8000 }); // 방송 외
+    await db.hitCard.create({ data: { sellerId: s.seller.id, nicknameSnapshot: "닉", cardName: "카드", createdAt: new Date("2026-09-30T15:40:00Z") } });
+    const r = await overviewStats(db, s.ctx, WEEK());
+    const rowA = r.broadcasts.rows.find((b) => b.id === A.id);
+    expect(rowA).toMatchObject({ orders: 1, net: 2000, hits: 1 });
+    expect(r.broadcasts.general).toMatchObject({ orders: 1, net: 4000 });
+    expect(r.broadcasts.outside).toEqual({ orders: 1, net: 8000 });
+    const sum = r.broadcasts.rows.reduce((a, b) => a + b.net, 0) + r.broadcasts.general.net + r.broadcasts.outside.net;
+    expect(sum).toBe(r.summary.current.revenue);
+    expect(r.broadcasts.rows.map((b) => b.title)).toEqual(["B", "A"]);
+  });
+
+  it("수량순 상위는 서버가 수량 기준으로 따로 준다(매출 50위 밖 저가 상품도 수량 1위)", async () => {
+    const s = await shop();
+    const items: [number | null, number, number, string?][] = [];
+    for (let i = 0; i < 51; i++) items.push([10000, 10000, 1, (await s.newProduct(`비싼 상품 ${i}`)).id]);
+    const cheap = await s.newProduct("싼 상품");
+    items.push([100, 100, 5, cheap.id]);
+    await s.order({ createdAt: "2026-10-02T03:00:00Z", total: 510500, items });
+    const r = await overviewStats(db, s.ctx, WEEK());
+    expect(r.products.top.some((p) => p.productId === cheap.id)).toBe(false);
+    expect(r.products.topByQuantity[0]).toMatchObject({ productId: cheap.id, quantity: 5 });
   });
 
   it("다른 쇼핑몰 숫자는 섞이지 않고, 통계 권한 없는 직원은 403", async () => {

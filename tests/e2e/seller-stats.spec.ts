@@ -178,7 +178,7 @@ test("통계 요약(SA-056): 요약 지표·방송별·상품별·적립금·주
   // 상품 수량순
   if (body.products.top.length > 1) {
     await page.getByRole("group", { name: "상품 정렬" }).getByRole("button", { name: "수량순" }).click();
-    const top = [...body.products.top].sort((a: { quantity: number; revenue: number }, b: { quantity: number; revenue: number }) => b.quantity - a.quantity || b.revenue - a.revenue)[0];
+    const top = body.products.topByQuantity[0];
     await expect(page.getByTestId("overview-products").locator(".sts-prow").first()).toContainText(top.name);
   }
   await shot(page, "stats-overview");

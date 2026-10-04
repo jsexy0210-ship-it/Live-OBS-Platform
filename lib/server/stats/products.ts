@@ -62,6 +62,8 @@ export async function productStatsIn(tx: StatsDb, ctx: TenantContext, range: Sta
     current: { quantity: rows.reduce((s, r) => s + r.quantity, 0), revenue: rows.reduce((s, r) => s + r.revenue, 0), products: rows.length },
     previous: { quantity: num(previous[0]?.quantity), revenue: num(previous[0]?.revenue), products: num(previous[0]?.products) },
     top: rows.slice(0, PRODUCT_TOP_LIMIT),
+    // 수량 기준 상위(매출 상위를 다시 정렬하지 않고, 팔린 상품 전체에서 고른다)
+    topByQuantity: [...rows].sort((x, y) => y.quantity - x.quantity || y.revenue - x.revenue || (x.productId < y.productId ? -1 : 1)).slice(0, PRODUCT_TOP_LIMIT),
     unsold: unsold.map((p) => ({ productId: p.id, name: p.name, status: p.status })),
     unsoldCount: num(unsoldCount[0]?.n),
   };
