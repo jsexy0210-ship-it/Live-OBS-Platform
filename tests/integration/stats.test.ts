@@ -651,6 +651,17 @@ describe("통계 요약 GET /api/seller/stats/overview (SA-056)", () => {
     expect(r.rewards.earned).toBe(100);
   });
 
+  it("적립금 합계에서 모의 원장(testMode, 실지급 꺼짐)은 뺀다", async () => {
+    const s = await shop();
+    const at = new Date("2026-10-02T03:00:00Z");
+    const led = (amount: number, testMode: boolean) =>
+      db.rewardLedger.create({ data: { sellerId: s.seller.id, buyerMemberId: s.buyer.id, type: "EARN", amount, status: "SUCCEEDED", testMode, idempotencyKey: `t-${amount}`, createdAt: at, processedAt: at } });
+    await led(100, false);
+    await led(9000, true);
+    const r = await overviewStats(db, s.ctx, WEEK());
+    expect(r.rewards.earned).toBe(100);
+  });
+
   it("방송 내역은 기간 안 결제 주문을 방송 매출·방송 시간 일반 주문·방송 외 주문으로 나누고 합계가 기간 매출과 같다(경계 넘는 방송 포함)", async () => {
     const s = await shop();
     // A: 9/30 23:00 ~ 10/1 01:00 KST(기간 시작을 넘음), B: 10/3 KST 기간 안, 주문 없음

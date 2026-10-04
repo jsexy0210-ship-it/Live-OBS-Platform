@@ -9,7 +9,7 @@ import { num, statsSnapshot, type StatsDb } from "./sql";
 
 // 통계 요약(SA-056, SALES_VIEW). 주문·상품·회원·방송 통계와 아래 지표를 한 스냅숏으로 읽는다. 날짜 기준은 주문 시각(KST).
 // - 신규 vs 기존 매출: 기간 안 결제 주문의 순매출(결제액 − 환불액)을, 그 회원의 첫 결제 주문이 기간 안이면 신규, 앞이면 기존으로 나눈다
-// - 적립금: 처리 완료 시각(processedAt)이 기간 안인 SUCCEEDED 원장. 지급 = 적립·랭킹 보너스, 회수 = 적립 회수, 사용 = 주문 사용, 소멸 = 소멸
+// - 적립금: 처리 완료 시각(processedAt)이 기간 안인 SUCCEEDED 실지급 원장(모의 원장 testMode 제외). 지급 = 적립·랭킹 보너스, 회수 = 적립 회수, 사용 = 주문 사용, 소멸 = 소멸
 // - 결제 → 발송 평균: 기간 안 주문 중 발송한 주문의 (발송 시각 − 결제 시각) 평균
 // - 미입금 자동 취소: 기간 안 주문 중 입금 기한이 지나 시스템이 취소한 주문
 // - 방송 내역: 기간 안 결제 주문을 방송 귀속 규칙(broadcasts.ts, 조회 기간과 무관)으로 방송 매출·방송 시간 일반 주문·방송 외 주문으로 나눈다.
@@ -52,7 +52,7 @@ async function extras(tx: StatsDb, sid: string, start: Date, end: Date) {
         coalesce(sum(-amount) FILTER (WHERE type = 'USE'), 0)::bigint AS reward_use,
         coalesce(sum(-amount) FILTER (WHERE type = 'EXPIRE'), 0)::bigint AS reward_expire
       FROM "RewardLedger"
-      WHERE "sellerId" = ${sid}::uuid AND status = 'SUCCEEDED' AND "processedAt" >= ${start} AND "processedAt" < ${end}
+      WHERE "sellerId" = ${sid}::uuid AND status = 'SUCCEEDED' AND "testMode" = false AND "processedAt" >= ${start} AND "processedAt" < ${end}
     ),
     sh AS (
       SELECT count(*)::int AS ship_count, avg(extract(epoch FROM s."shippedAt" - od."paidAt"))::float8 AS ship_avg_sec
