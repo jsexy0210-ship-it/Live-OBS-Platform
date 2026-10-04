@@ -66,7 +66,7 @@ export default function ShareSettingsPage() {
       body: { title: title.trim() || null, description: description.trim() || null },
     });
     setSaving(false);
-    if (!r.ok) return setFailure(failMessage(r, "저장하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
+    if (!r.ok) return setFailure(failMessage(r, "admin", "저장하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
     apply(r.data.preview);
     setState({ kind: "ok", saved: r.data.preview });
     setToast("공유 미리보기를 저장했습니다");
