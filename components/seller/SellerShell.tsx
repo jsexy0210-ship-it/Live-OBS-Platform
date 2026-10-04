@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { useLatestResponse } from "./latestResponse";
 import { api, type Me } from "./api";
 
 // 판매자 관리자 공통 틀: 왼쪽 메뉴(좁은 화면에서는 서랍) + 상단 바 + 이용 상태 배너.
@@ -62,34 +63,28 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   const [navOpen, setNavOpen] = useState(false);
 
   const lastRead = useRef(0);
-  // /me 요청 세대: 성공한 응답 중 이미 반영한 것보다 나중에 보낸 요청의 응답만 반영한다(늦게 온 옛 응답이 새 권한을 덮지 않게).
-  // 세대는 성공 응답을 반영할 때 확정한다: 나중에 보낸 요청이 실패해도 먼저 보낸 요청의 성공을 버리지 않는다
-  const meSeq = useRef(0);
-  const meApplied = useRef(0);
+  // /me 다시 읽기 반영 규칙(latestResponse.ts): 나중에 보낸 요청의 성공만 반영하고, 실패가 앞선 성공을 버리지 않는다.
+  // 반영할 때 파생 값(남은 체험 일수)도 함께 계산한다: 처음 읽기·다시 읽기 어느 쪽이 먼저 성공해도 같은 결과
+  const meReads = useLatestResponse();
   const applyMe = (n: number, data: Me) => {
-    if (n <= meApplied.current) return false;
-    meApplied.current = n;
+    if (!meReads.accept(n)) return;
     setFailed(false);
     setMe(data);
-    return true;
+    // 체험 중이면 /me가 끝나는 시각을 준다(대표자·직원 모두)
+    setTrialDaysLeft(data.access === "trial" && data.trialEndsAt ? Math.max(0, Math.ceil((new Date(data.trialEndsAt).getTime() - Date.now()) / 86_400_000)) : null);
   };
   const load = useCallback(async () => {
     lastRead.current = Date.now();
     setFailed(false);
-    const n = ++meSeq.current;
+    const n = meReads.next();
     const r = await api<Me>("/api/seller/me");
     if (!r.ok) {
       if (r.status === 401) router.replace(`/seller/login?next=${encodeURIComponent(pathname)}`);
       // 아직 한 번도 그리지 못했으면 다시 시도 화면을 보인다(이미 그린 화면은 그대로 둔다)
-      else if (meApplied.current === 0) setFailed(true);
+      else if (!meReads.hasApplied()) setFailed(true);
       return;
     }
-    if (!applyMe(n, r.data)) return;
-    // 체험 중이면 /me가 끝나는 시각을 준다(대표자·직원 모두)
-    if (r.data.access === "trial" && r.data.trialEndsAt) {
-      const ms = new Date(r.data.trialEndsAt).getTime() - Date.now();
-      setTrialDaysLeft(Math.max(0, Math.ceil(ms / 86_400_000)));
-    }
+    applyMe(n, r.data);
   }, [router, pathname]);
 
   useEffect(() => {
@@ -103,7 +98,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   // 짧은 간격으로 겹치면(포커스와 visibilitychange가 함께 오는 경우 등) 한 번만 읽는다
   const refresh = useCallback(() => {
     lastRead.current = Date.now();
-    const n = ++meSeq.current;
+    const n = meReads.next();
     void api<Me>("/api/seller/me").then((r) => {
       if (r.ok) applyMe(n, r.data);
     });

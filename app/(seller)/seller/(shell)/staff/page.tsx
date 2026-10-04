@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { phoneText } from "../../../../../components/seller/IdentityCheck";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import {
@@ -24,6 +24,7 @@ import {
 } from "../../../../../components/seller/StaffForms";
 import { ErrorState, Locked, LoadingRows, Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
+import { useLatestResponse } from "../../../../../components/seller/latestResponse";
 
 // SA-100 직원 계정(대표자 전용, 정본: docs/IA.md SA-100, 디자인 SA-100). 대표자가 직원 계정을 직접 만들고 권한을 항목별로 켜고 끈다.
 // 직원을 만들 때 이름·휴대폰을 함께 받고(직원 아이디·비밀번호 찾기용), 예전 직원은 수정 창에서 채우거나 바꾼다.
@@ -49,16 +50,15 @@ export default function StaffPage() {
   const [modal, setModal] = useState<Modal>(null);
   const [toast, setToast] = useState<string | null>(null);
 
-  // 목록 다시 읽기가 겹치면(저장 직후·불분명 확인 등) 가장 마지막 요청의 응답만 반영한다
-  const listSeq = useRef(0);
+  // 목록 다시 읽기(저장 직후·불분명 확인 등) 반영 규칙(latestResponse.ts): 나중에 보낸 요청의 성공만 반영하고, 실패가 앞선 성공을 버리지 않는다
+  const listReads = useLatestResponse();
   const load = useCallback(async () => {
-    const n = ++listSeq.current;
+    const n = listReads.next();
     const r = await api<{ staff: Staff[] }>("/api/seller/staff");
-    if (n !== listSeq.current) return;
     // 이미 목록을 보여 주는 중에 다시 읽기만 실패하면 지금 화면을 그대로 둔다(직원 추가의 불분명 상태 등 입력 중인 내용을 잃지 않게)
     if (!r.ok) return setState((prev) => (prev.kind === "ok" ? prev : { kind: "error", status: r.status }));
-    setState({ kind: "ok", staff: r.data.staff });
-  }, []);
+    if (listReads.accept(n)) setState({ kind: "ok", staff: r.data.staff });
+  }, [listReads]);
 
   useEffect(() => {
     if (me.isOwner) void load();

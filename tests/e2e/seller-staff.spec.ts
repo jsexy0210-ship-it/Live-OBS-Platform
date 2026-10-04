@@ -795,6 +795,76 @@ test("다른 창이 만든 같은 계정이 있을 때 응답을 놓쳐도 「�
   await expect(page.getByLabel("초기 비밀번호")).toBeDisabled();
 });
 
+// 목록 다시 읽기: 두 번 연속 수정한 뒤 두 번째 다시 읽기는 실패하고 첫 번째가 늦게 성공하면, 첫 번째(수정 반영된) 목록을 보여 준다
+test("직원 목록 다시 읽기가 겹쳐 나중 요청이 실패해도 먼저 보낸 요청의 성공으로 목록을 갱신한다", async ({ page }) => {
+  await login(page, "demo-owner@example.com");
+  await expect(page).toHaveURL(/\/seller\/staff$/);
+  const id = uniq();
+  const s = { name: `갱신${id}`, phone: "01012121212", email: `relist-${id}@example.com`, password: `pw-${id}-init` };
+  await addStaff(page, s);
+  await page.getByRole("button", { name: "계정 생성" }).click();
+  await expect(row(page, s.email)).toContainText(s.name);
+
+  let release: () => void = () => {};
+  const held = new Promise<void>((r) => (release = r));
+  let gets = 0;
+  await page.route("**/api/seller/staff", async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    gets += 1;
+    if (gets === 1) {
+      const res = await route.fetch();
+      await held;
+      return route.fulfill({ response: res });
+    }
+    if (gets === 2) return route.fulfill({ status: 500, json: { error: "internal" } });
+    return route.continue();
+  });
+  const dialog = page.getByRole("dialog");
+  // 첫 수정(이름) → 첫 다시 읽기(응답 붙잡음)
+  await page.getByRole("button", { name: `${s.name} 정보 · 권한 수정` }).click();
+  await dialog.getByLabel("이름").fill(`${s.name}가`);
+  await dialog.getByRole("button", { name: "저장" }).click();
+  await expect(page.getByText(`${s.name}가 정보를 저장했습니다`)).toBeVisible();
+  // 두 번째 수정(권한) → 두 번째 다시 읽기는 실패
+  await page.getByRole("button", { name: `${s.name} 정보 · 권한 수정` }).click();
+  await dialog.getByRole("checkbox", { name: "상품", exact: true }).check();
+  const failed = page.waitForResponse((r) => r.url().endsWith("/api/seller/staff") && r.request().method() === "GET" && r.status() === 500);
+  await dialog.getByRole("button", { name: "저장" }).click();
+  await failed;
+  // 첫 다시 읽기가 늦게 성공한다 → 수정된 목록이 보인다
+  release();
+  await expect(row(page, s.email)).toContainText(`${s.name}가`);
+  await page.unrouteAll();
+});
+
+// 처음 /me가 늦고 포커스 다시 읽기가 먼저 성공해도 남은 체험 일수를 함께 보여 준다(파생 값은 응답을 반영할 때 함께 계산)
+test("처음 화면 정보가 늦고 다시 읽기가 먼저 성공해도 남은 체험 일수가 보인다", async ({ page }) => {
+  await login(page, "demo-owner@example.com");
+  await expect(page).toHaveURL(/\/seller\/staff$/);
+  await expect(page.getByText(/체험이 (\d+일 남았습니다|오늘 끝납니다)/)).toBeVisible();
+  let release: () => void = () => {};
+  const held = new Promise<void>((r) => (release = r));
+  let calls = 0;
+  await page.route("**/api/seller/me", async (route) => {
+    calls += 1;
+    if (calls === 1) {
+      const res = await route.fetch();
+      await held;
+      return route.fulfill({ response: res });
+    }
+    return route.continue();
+  });
+  await page.reload();
+  await page.waitForTimeout(1100);
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(page.getByRole("heading", { name: "직원 계정" })).toBeVisible();
+  await expect(page.getByText(/체험이 (\d+일 남았습니다|오늘 끝납니다)/)).toBeVisible();
+  release();
+  await page.waitForTimeout(300);
+  await expect(page.getByText(/체험이 (\d+일 남았습니다|오늘 끝납니다)/)).toBeVisible();
+  await page.unrouteAll();
+});
+
 test("직원: 메뉴에 직원 계정이 없고, 주소로 들어오면 대표자만 볼 수 있다고 안내한다", async ({ page }) => {
   const listed = page.waitForRequest((r) => r.url().endsWith("/api/seller/staff"), { timeout: 3000 }).then(
     () => true,
