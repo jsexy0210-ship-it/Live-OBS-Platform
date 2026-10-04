@@ -1,0 +1,197 @@
+/* 오버레이 편집기(SA-051). ove- 접두어로 이 화면만 꾸민다(공통 CSS는 건드리지 않음) */
+.ove-tag {
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--wds-status-cautionary-bg, #fff3d6);
+  color: var(--wds-status-cautionary-text, #8a5a00);
+  font-size: 12px;
+  font-weight: 600;
+}
+.ove-cols {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr) 360px;
+  gap: 16px;
+  align-items: start;
+}
+.ove-slots {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ove-slot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px var(--wds-line-normal-alternative, #e1e2e4);
+}
+.ove-slot.is-sel {
+  box-shadow: inset 0 0 0 2px var(--wds-primary-normal, #0066ff);
+}
+.ove-name {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px 2px;
+}
+.ove-name:disabled {
+  color: var(--wds-label-alternative, #70737c);
+  cursor: default;
+}
+.ove-z {
+  min-width: 0;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font-size: 10px;
+}
+.ove-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.ove-canvas {
+  position: relative;
+  flex: none;
+  overflow: hidden;
+  border-radius: 6px;
+  background: repeating-conic-gradient(#2b2b30 0% 25%, #35353b 0% 50%) 0 0 / 24px 24px;
+  outline-offset: 2px;
+  touch-action: none;
+  user-select: none;
+}
+.ove-stage {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
+  color: #fff;
+  font-family: "Wanted Sans Variable", "Wanted Sans", "Apple SD Gothic Neo", sans-serif;
+}
+.ove-cover {
+  position: absolute;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(135deg, #ff6b001a 0 8px, transparent 8px 16px);
+  border-top: 1px solid #ff9200;
+  border-bottom: 1px solid #ff9200;
+  color: #ffb866;
+  font-size: 11px;
+}
+.ove-cover > span {
+  position: absolute;
+  right: 6px;
+  top: 4px;
+}
+.ove-hit {
+  position: absolute;
+  cursor: move;
+  box-shadow: inset 0 0 0 1px #ffffff55;
+}
+.ove-hit.is-sel {
+  box-shadow: 0 0 0 2px #ff4d9e;
+}
+.ove-h {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #fff;
+  border: 2px solid #ff4d9e;
+  border-radius: 2px;
+  box-sizing: border-box;
+}
+.ove-h-nw { left: -5px; top: -5px; cursor: nwse-resize; }
+.ove-h-n { left: calc(50% - 5px); top: -5px; cursor: ns-resize; }
+.ove-h-ne { right: -5px; top: -5px; cursor: nesw-resize; }
+.ove-h-e { right: -5px; top: calc(50% - 5px); cursor: ew-resize; }
+.ove-h-se { right: -5px; bottom: -5px; cursor: nwse-resize; }
+.ove-h-s { left: calc(50% - 5px); bottom: -5px; cursor: ns-resize; }
+.ove-h-sw { left: -5px; bottom: -5px; cursor: nesw-resize; }
+.ove-h-w { left: -5px; top: calc(50% - 5px); cursor: ew-resize; }
+.ove-props {
+  min-width: 0;
+}
+.ove-fs {
+  margin: 0;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px var(--wds-line-normal-alternative, #e1e2e4);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ove-fs legend {
+  padding: 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.ove-fr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+.ove-fr > span:first-child {
+  flex: none;
+  width: 100px;
+  color: var(--wds-label-alternative, #70737c);
+}
+.ove-num {
+  width: 84px;
+  height: 40px;
+  border-radius: 6px;
+}
+.ove-hex {
+  width: 96px;
+  height: 40px;
+  border-radius: 6px;
+}
+.ove-txt {
+  width: 190px;
+  border-radius: 6px;
+}
+textarea.ove-txt {
+  height: 72px;
+}
+.ove-swatch {
+  width: 40px;
+  height: 40px;
+  padding: 2px;
+  border: 1px solid var(--wds-line-normal-normal, #c8c9cd);
+  border-radius: 6px;
+  background: transparent;
+}
+.ove-clear {
+  border: 0;
+  background: transparent;
+  color: var(--wds-primary-normal, #0066ff);
+  font-size: 12px;
+  cursor: pointer;
+}
+.ove-tbl th,
+.ove-tbl td {
+  text-align: center;
+}
+.ove-tbl td:first-child {
+  text-align: left;
+}
+@media (max-width: 1100px) {
+  .ove-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

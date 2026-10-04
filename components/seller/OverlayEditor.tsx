@@ -1,0 +1,766 @@
+"use client";
+
+import "./OverlayEditor.css";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { WidgetView } from "../overlay/WidgetView";
+import { MAX_TEMPLATES, SAMPLE_DATA, SLOTS, STAGE, newWidget, slotOf, widgetLabel, type Aspect, type PropValue, type Widget } from "../overlay/layout";
+import { api, failMessage } from "./api";
+import { Toast } from "./States";
+
+// 오버레이 편집기(SA-051): 비율(9:16·16:9)마다 위젯 7종의 위치·크기(화면 대비 %)와 속성을 정해 저장한다.
+// 저장은 expectedVersion으로: 다른 창에서 먼저 저장했으면 409 → 「다른 창에서 먼저 저장했습니다 · 다시 불러오기」.
+// API: GET·PUT /api/seller/overlay/layout, POST …/layout/reset, GET·POST /api/seller/overlay/templates, DELETE …/templates/{id}
+type Layout = { aspect: Aspect; templateKey: string; widgets: Widget[]; version: number; isDefault: boolean };
+type Mine = { id: string; name: string; widgets: Widget[]; createdAt: string };
+type Templates = { builtin: { key: string; name: string; widgets: Widget[] }[]; mine: Mine[] };
+type Confirm = { text: string; ok: string; run: () => void };
+
+const stable = (w: Widget) => JSON.stringify(w, (_k, v) => (v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : 1))) : v));
+const round2 = (n: number) => Math.round(n * 100) / 100;
+const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
+const MIN_SIZE = 2;
+const COLOR_RE = /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/;
+
+// 유튜브 화면 덮개 추정(세로 1080×1920 기준 px): 위 0~290 채널 정보, 960 아래는 채팅
+const COVER = { top: 290, chatFrom: 960 };
+
+type Field =
+  | { key: string; label: string; kind: "text"; max: number; lines?: boolean }
+  | { key: string; label: string; kind: "num"; min: number; max: number; step: number; unit?: string }
+  | { key: string; label: string; kind: "color" }
+  | { key: string; label: string; kind: "bool" }
+  | { key: string; label: string; kind: "appear" };
+const color = (key: string, label: string): Field => ({ key, label, kind: "color" });
+const fontFields: Field[] = [
+  { key: "fontSize", label: "글자 크기", kind: "num", min: 8, max: 200, step: 1, unit: "px" },
+  { key: "fontWeight", label: "글자 굵기", kind: "num", min: 100, max: 900, step: 100 },
+  { key: "radius", label: "모서리", kind: "num", min: 0, max: 64, step: 1, unit: "px" },
+];
+const colorFields: Field[] = [
+  color("titleColor", "제목 색"),
+  color("nicknameColor", "닉네임 색"),
+  color("bodyColor", "본문 색"),
+  color("accentColor", "강조 색"),
+  color("borderColor", "테두리 색"),
+  color("titleBgColor", "제목 배경"),
+  { key: "titleBgOpacity", label: "제목 배경 투명도", kind: "num", min: 0, max: 1, step: 0.05 },
+  color("cardBgColor", "카드 배경"),
+  { key: "cardBgOpacity", label: "카드 배경 투명도", kind: "num", min: 0, max: 1, step: 0.05 },
+];
+const queueColors: Field[] = [
+  color("openTitleColor", "오픈 제목 색"),
+  color("openNicknameColor", "오픈 닉네임 색"),
+  color("openProductColor", "오픈 상품 색"),
+  color("openBorderColor", "오픈 테두리 색"),
+  color("waitTitleColor", "대기 제목 색"),
+  color("waitNicknameColor", "대기 닉네임 색"),
+  color("waitProductColor", "대기 상품 색"),
+  color("waitBorderColor", "대기 테두리 색"),
+  color("waitIndexColor", "대기 번호 색"),
+  color("waitCountColor", "대기 건수 색"),
+];
+const effectFields: Field[] = [
+  { key: "glow", label: "빛 번짐", kind: "bool" },
+  { key: "appear", label: "나타나는 효과", kind: "appear" },
+  { key: "appearSec", label: "나타나는 시간", kind: "num", min: 0, max: 10, step: 0.1, unit: "초" },
+];
+function contentFields(w: Widget): Field[] {
+  const rows: Field = { key: "rows", label: "줄 수", kind: "num", min: 1, max: 10, step: 1 };
+  const flow: Field = { key: "flowSec", label: "흐르는 시간", kind: "num", min: 1, max: 120, step: 1, unit: "초" };
+  const title: Field = { key: "title", label: "제목", kind: "text", max: 40 };
+  switch (w.type) {
+    case "NOTICE":
+      return [{ key: "text", label: "공지 글", kind: "text", max: 200, lines: true }, { key: "ticker", label: "옆으로 흐르기", kind: "bool" }, flow];
+    case "SHOP_INFO":
+      return [title, { key: "format", label: "문구 틀", kind: "text", max: 100 }];
+    case "NEW_ORDER_ALERT":
+      return [
+        { key: "format", label: "문구 틀", kind: "text", max: 100 },
+        { key: "durationSec", label: "표시 시간", kind: "num", min: 1, max: 30, step: 1, unit: "초" },
+      ];
+    case "QUEUE":
+      return [title, rows];
+    case "HALL_OF_FAME":
+      return [title, rows, { key: "ticker", label: "위아래로 흐르기", kind: "bool" }, flow];
+    case "CURRENT_ORDER":
+      return [{ key: "marquee", label: "긴 닉네임 흐르기", kind: "bool" }, flow];
+    case "OPEN_TIMER":
+      return [title];
+  }
+}
+const APPEAR: [string, string][] = [
+  ["none", "없음"],
+  ["fade", "서서히"],
+  ["up", "아래에서"],
+  ["left", "왼쪽에서"],
+  ["flip", "뒤집기"],
+];
+
+// 입력 중에는 글자 그대로 두고, 값이 맞을 때만 바깥으로 알린다(비운 채로 두면 칸이 다시 채워지지 않게)
+function NumInput({
+  value,
+  min,
+  max,
+  step,
+  label,
+  onCommit,
+  testId,
+}: {
+  value: number | undefined;
+  min: number;
+  max: number;
+  step: number;
+  label: string;
+  onCommit: (n: number) => void;
+  testId?: string;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const shown = draft ?? (value === undefined ? "" : String(value));
+  const bad = draft !== null && draft !== "" && !(Number.isFinite(Number(draft)) && Number(draft) >= min && Number(draft) <= max);
+  return (
+    <input
+      className={`inp inp-sm ove-num${bad ? " is-err" : ""}`}
+      type="number"
+      aria-label={label}
+      aria-invalid={bad || undefined}
+      data-testid={testId}
+      min={min}
+      max={max}
+      step={step}
+      value={shown}
+      onChange={(e) => {
+        setDraft(e.target.value);
+        const n = Number(e.target.value);
+        if (e.target.value !== "" && Number.isFinite(n) && n >= min && n <= max) onCommit(n);
+      }}
+      onBlur={() => setDraft(null)}
+    />
+  );
+}
+
+function ColorInput({ value, label, onCommit }: { value: string | undefined; label: string; onCommit: (v: string | null) => void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const shown = draft ?? value ?? "";
+  const bad = draft !== null && draft !== "" && !COLOR_RE.test(draft);
+  return (
+    <span className="row" style={{ gap: 6 }}>
+      <input type="color" className="ove-swatch" aria-label={`${label} 고르기`} value={value ? value.slice(0, 7) : "#000000"} onChange={(e) => onCommit(e.target.value)} />
+      <input
+        className={`inp inp-sm ove-hex${bad ? " is-err" : ""}`}
+        aria-label={label}
+        aria-invalid={bad || undefined}
+        placeholder="기본"
+        maxLength={9}
+        value={shown}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          if (COLOR_RE.test(e.target.value)) onCommit(e.target.value.toLowerCase());
+          else if (e.target.value === "") onCommit(null);
+        }}
+        onBlur={() => setDraft(null)}
+      />
+    </span>
+  );
+}
+
+function ConfirmDialog({ text, ok, onOk, onClose }: { text: string; ok: string; onOk: () => void; onClose: () => void }) {
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [onClose]);
+  return (
+    <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-label="확인">
+      <div className="modal">
+        <div className="modal-h">
+          <h2 className="t-h2">{text}</h2>
+        </div>
+        <div className="modal-f">
+          <button className="btn btn-out" type="button" onClick={onClose}>
+            닫기
+          </button>
+          <button className="btn" type="button" onClick={onOk}>
+            {ok}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function OverlayEditor() {
+  const [aspect, setAspect] = useState<Aspect>("9x16");
+  const [server, setServer] = useState<Layout | null>(null);
+  const [widgets, setWidgets] = useState<Widget[]>([]);
+  const [templates, setTemplates] = useState<Templates | null>(null);
+  const [sel, setSel] = useState<string | null>(null);
+  const [state, setState] = useState<"loading" | "error" | "ok">("loading");
+  const [conflict, setConflict] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [snap, setSnap] = useState(true);
+  const [guides, setGuides] = useState(true);
+  const [confirm, setConfirm] = useState<Confirm | null>(null);
+  const [tplName, setTplName] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
+  const seq = useRef(0);
+
+  const { w: SW, h: SH } = STAGE[aspect];
+
+  const load = useCallback(async (a: Aspect) => {
+    const n = ++seq.current;
+    setState("loading");
+    const [l, t] = await Promise.all([api<Layout>(`/api/seller/overlay/layout?aspect=${a}`), api<Templates>(`/api/seller/overlay/templates?aspect=${a}`)]);
+    if (n !== seq.current) return;
+    if (!l.ok || !t.ok) return setState("error");
+    setServer(l.data);
+    setWidgets(l.data.widgets);
+    setTemplates(t.data);
+    setSel(null);
+    setConflict(false);
+    setState("ok");
+  }, []);
+  useEffect(() => {
+    void load(aspect);
+  }, [aspect, load]);
+
+  // 저장 안 한 변경 수: 바뀐 위젯 + 새로 켠 위젯 + 없앤 위젯
+  const changes = (() => {
+    if (!server) return 0;
+    const before = new Map(server.widgets.map((w) => [w.id, stable(w)]));
+    let n = widgets.filter((w) => before.get(w.id) !== stable(w)).length;
+    n += server.widgets.filter((w) => !widgets.some((x) => x.id === w.id)).length;
+    return n;
+  })();
+  useEffect(() => {
+    if (changes === 0) return;
+    const f = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", f);
+    return () => window.removeEventListener("beforeunload", f);
+  }, [changes]);
+
+  const patch = (id: string, p: Partial<Widget>) => setWidgets((cur) => cur.map((w) => (w.id === id ? { ...w, ...p } : w)));
+  const setProp = (id: string, key: string, v: PropValue | null) =>
+    setWidgets((cur) =>
+      cur.map((w) => {
+        if (w.id !== id) return w;
+        const props = { ...w.props };
+        if (v === null) delete props[key];
+        else props[key] = v;
+        return { ...w, props };
+      }),
+    );
+  const setBox = (id: string, b: Partial<Pick<Widget, "x" | "y" | "w" | "h">>) =>
+    setWidgets((cur) =>
+      cur.map((w) => {
+        if (w.id !== id) return w;
+        const n = { ...w, ...b };
+        n.w = clamp(n.w, MIN_SIZE, 100);
+        n.h = clamp(n.h, MIN_SIZE, 100);
+        n.x = clamp(n.x, 0, 100 - n.w);
+        n.y = clamp(n.y, 0, 100 - n.h);
+        return { ...n, x: round2(n.x), y: round2(n.y), w: round2(n.w), h: round2(n.h) };
+      }),
+    );
+
+  const toggle = (slot: (typeof SLOTS)[number], on: boolean) => {
+    const cur = widgets.find((w) => slotOf(w).key === slot.key);
+    if (cur) {
+      patch(cur.id, { visible: on });
+      if (on) setSel(cur.id);
+      return;
+    }
+    if (!on) return;
+    const w = newWidget(slot, aspect, widgets);
+    setWidgets([...widgets, w]);
+    setSel(w.id);
+  };
+
+  // 앞뒤(위가 앞): z를 0부터 다시 매겨 서로 바꾼다
+  const moveZ = (id: string, dir: 1 | -1) => {
+    const order = [...widgets].sort((a, b) => a.z - b.z || (a.id < b.id ? -1 : 1));
+    const i = order.findIndex((w) => w.id === id);
+    const j = i + dir;
+    if (j < 0 || j >= order.length) return;
+    [order[i], order[j]] = [order[j]!, order[i]!];
+    const z = new Map(order.map((w, k) => [w.id, k]));
+    setWidgets(widgets.map((w) => ({ ...w, z: z.get(w.id)! })));
+  };
+
+  // ---- 캔버스: 끌기·크기 조절·방향키 ----
+  const canvas = useRef<HTMLDivElement>(null);
+  const col = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(0.3);
+  useEffect(() => {
+    const el = col.current;
+    if (!el) return;
+    const fit = () => setScale(Math.min(el.clientWidth / SW, aspect === "9x16" ? 0.36 : 0.4));
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [SW, aspect, state]);
+
+  const drag = useRef<{ id: string; mode: string; sx: number; sy: number; o: Widget } | null>(null);
+  const snapTo = (v: number) => (snap ? Math.round(v) : v);
+  const onMove = useCallback(
+    (e: PointerEvent) => {
+      const d = drag.current;
+      const box = canvas.current?.getBoundingClientRect();
+      if (!d || !box) return;
+      const dx = ((e.clientX - d.sx) / box.width) * 100;
+      const dy = ((e.clientY - d.sy) / box.height) * 100;
+      const o = d.o;
+      if (d.mode === "move") return setBox(d.id, { x: snapTo(clamp(o.x + dx, 0, 100 - o.w)), y: snapTo(clamp(o.y + dy, 0, 100 - o.h)) });
+      let { x, y, w, h } = o;
+      if (d.mode.includes("e")) w = snapTo(clamp(o.w + dx, MIN_SIZE, 100 - o.x));
+      if (d.mode.includes("s")) h = snapTo(clamp(o.h + dy, MIN_SIZE, 100 - o.y));
+      if (d.mode.includes("w")) {
+        x = snapTo(clamp(o.x + dx, 0, o.x + o.w - MIN_SIZE));
+        w = o.x + o.w - x;
+      }
+      if (d.mode.includes("n")) {
+        y = snapTo(clamp(o.y + dy, 0, o.y + o.h - MIN_SIZE));
+        h = o.y + o.h - y;
+      }
+      // Shift: 가로세로 비율 유지(모서리만)
+      if (e.shiftKey && d.mode.length === 2) {
+        h = (w * o.h) / o.w;
+        h = clamp(h, MIN_SIZE, d.mode.includes("n") ? o.y + o.h : 100 - o.y);
+        if (d.mode.includes("n")) y = o.y + o.h - h;
+      }
+      setBox(d.id, { x, y, w, h });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [snap],
+  );
+  const stop = useCallback(() => {
+    drag.current = null;
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", stop);
+  }, [onMove]);
+  useEffect(() => stop, [stop]);
+  const start = (e: React.PointerEvent, w: Widget, mode: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSel(w.id);
+    drag.current = { id: w.id, mode, sx: e.clientX, sy: e.clientY, o: w };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", stop);
+  };
+  const onKey = (e: React.KeyboardEvent) => {
+    const t = e.target as HTMLElement;
+    if (!sel || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+    const k = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+    if (!k) return;
+    e.preventDefault();
+    const px = e.shiftKey ? 10 : 1;
+    const w = widgets.find((x) => x.id === sel);
+    if (w) setBox(w.id, { x: w.x + (k[0]! * px * 100) / SW, y: w.y + (k[1]! * px * 100) / SH });
+  };
+
+  // ---- 저장·초기화·템플릿 ----
+  const fail = (r: { status: number; message?: string; error?: string }) => {
+    if (r.status === 409 && r.error === "version_conflict") return setConflict(true);
+    setToast({ text: failMessage(r, "admin"), neg: true });
+  };
+  const apply = (l: Layout) => {
+    setServer(l);
+    setWidgets(l.widgets);
+    setConflict(false);
+  };
+  const save = async () => {
+    if (!server || busy) return;
+    setBusy(true);
+    const r = await api<Layout>("/api/seller/overlay/layout", { method: "PUT", body: { aspect, widgets, expectedVersion: server.version } });
+    setBusy(false);
+    if (!r.ok) return fail(r);
+    apply(r.data);
+    setToast({ text: "저장했습니다" });
+  };
+  const reset = async (template: string) => {
+    if (!server) return;
+    setBusy(true);
+    const r = await api<Layout>("/api/seller/overlay/layout/reset", { method: "POST", body: { aspect, template, expectedVersion: server.version } });
+    setBusy(false);
+    if (!r.ok) return fail(r);
+    apply(r.data);
+    setSel(null);
+    setToast({ text: "템플릿으로 초기화했습니다" });
+  };
+  const askReset = (template: string, name: string) => setConfirm({ text: `「${name}」 템플릿으로 초기화하시겠습니까? 지금 배치는 바뀝니다`, ok: "초기화", run: () => void reset(template) });
+  const saveTemplate = async () => {
+    const name = (tplName ?? "").trim();
+    if (!name) return;
+    setBusy(true);
+    const r = await api<Mine>("/api/seller/overlay/templates", { method: "POST", body: { name, aspect, widgets } });
+    setBusy(false);
+    if (!r.ok) {
+      setTplName(null);
+      return setToast({ text: failMessage(r, "admin"), neg: true });
+    }
+    setTemplates((t) => (t ? { ...t, mine: [r.data, ...t.mine] } : t));
+    setTplName(null);
+    setToast({ text: "내 템플릿으로 저장했습니다" });
+  };
+  const removeTemplate = async (m: Mine) => {
+    const r = await api<unknown>(`/api/seller/overlay/templates/${m.id}`, { method: "DELETE" });
+    if (!r.ok && r.status !== 404) return setToast({ text: failMessage(r, "admin"), neg: true });
+    setTemplates((t) => (t ? { ...t, mine: t.mine.filter((x) => x.id !== m.id) } : t));
+    setToast({ text: "템플릿을 지웠습니다" });
+  };
+  const switchAspect = (a: Aspect) => {
+    if (a === aspect) return;
+    if (changes > 0) return setConfirm({ text: `저장 안 한 변경 ${changes}개가 사라집니다. 비율을 바꾸시겠습니까?`, ok: "바꾸기", run: () => setAspect(a) });
+    setAspect(a);
+  };
+
+  const selected = widgets.find((w) => w.id === sel) ?? null;
+  const ordered = [...widgets].sort((a, b) => a.z - b.z);
+  const listOrder = [...SLOTS].sort((a, b) => {
+    const wa = widgets.find((w) => slotOf(w).key === a.key);
+    const wb = widgets.find((w) => slotOf(w).key === b.key);
+    return (wb ? wb.z + 1 : 0) - (wa ? wa.z + 1 : 0);
+  });
+
+  if (state === "loading" && !server)
+    return (
+      <div className="card pad" role="status" aria-busy="true">
+        <span className="t-l2 c-alt">불러오는 중입니다</span>
+      </div>
+    );
+  if (state === "error" && !server)
+    return (
+      <div className="card pad col" style={{ gap: 10 }} role="alert">
+        <span className="t-l2">편집기를 불러오지 못했습니다. 잠시 후 다시 시도해 주십시오.</span>
+        <button className="btn btn-out" type="button" style={{ alignSelf: "flex-start" }} onClick={() => void load(aspect)}>
+          다시 시도
+        </button>
+      </div>
+    );
+
+  return (
+    <div className="col" style={{ gap: 12 }} data-testid="ove">
+      <section className="card pad col" style={{ gap: 12 }} aria-labelledby="ove-h">
+        <div className="row between" style={{ gap: 12, flexWrap: "wrap" }}>
+          <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+            <h2 className="t-hl1" id="ove-h">
+              화면 편집
+            </h2>
+            {changes > 0 && (
+              <span className="ove-tag" data-testid="ove-dirty">
+                저장 안 한 변경 {changes}개
+              </span>
+            )}
+          </div>
+          <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+            <button className="btn btn-out" type="button" disabled={busy || widgets.length === 0} onClick={() => setTplName("")}>
+              내 템플릿으로 저장
+            </button>
+            <button className="btn" type="button" disabled={busy || changes === 0} onClick={() => void save()}>
+              저장하기
+            </button>
+          </div>
+        </div>
+
+        {conflict && (
+          <div className="msg msg-neg row between" role="alert" data-testid="ove-conflict" style={{ gap: 8, flexWrap: "wrap" }}>
+            <span>다른 창에서 먼저 저장했습니다</span>
+            <button className="btn btn-sm btn-out" type="button" onClick={() => void load(aspect)}>
+              다시 불러오기
+            </button>
+          </div>
+        )}
+
+        <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
+          <div className="seg" role="radiogroup" aria-label="비율">
+            {(["9x16", "16x9"] as const).map((a) => (
+              <button key={a} type="button" role="radio" aria-checked={aspect === a} className={aspect === a ? "on" : ""} onClick={() => switchAspect(a)}>
+                {a === "9x16" ? "세로 9:16" : "가로 16:9"}
+              </button>
+            ))}
+          </div>
+          <label className="chk">
+            <input type="checkbox" checked={snap} onChange={(e) => setSnap(e.target.checked)} /> 격자 스냅
+          </label>
+          {aspect === "9x16" && (
+            <label className="chk">
+              <input type="checkbox" checked={guides} onChange={(e) => setGuides(e.target.checked)} /> 가림 가이드
+            </label>
+          )}
+        </div>
+
+        <div className="ove-cols">
+          <div className="ove-list col" style={{ gap: 6 }}>
+            <span className="t-l1 fw6">위젯</span>
+            <span className="t-c1 c-alt">위가 앞에 보입니다</span>
+            <ul className="ove-slots" data-testid="ove-slots">
+              {listOrder.map((s) => {
+                const w = widgets.find((x) => slotOf(x).key === s.key);
+                return (
+                  <li key={s.key} className={`ove-slot${w && w.id === sel ? " is-sel" : ""}`}>
+                    <label className="chk">
+                      <input type="checkbox" aria-label={`${s.label} 보이기`} checked={!!w?.visible} onChange={(e) => toggle(s, e.target.checked)} />
+                    </label>
+                    <button className="ove-name" type="button" disabled={!w} onClick={() => w && setSel(w.id)}>
+                      {s.label}
+                    </button>
+                    {w && (
+                      <span className="row" style={{ gap: 2 }}>
+                        <button className="btn btn-sm btn-out ove-z" type="button" aria-label={`${s.label} 앞으로`} onClick={() => moveZ(w.id, 1)}>
+                          ▲
+                        </button>
+                        <button className="btn btn-sm btn-out ove-z" type="button" aria-label={`${s.label} 뒤로`} onClick={() => moveZ(w.id, -1)}>
+                          ▼
+                        </button>
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+
+          <div className="ove-center" ref={col}>
+            <div
+              className="ove-canvas"
+              ref={canvas}
+              tabIndex={0}
+              role="application"
+              aria-label="오버레이 배치 화면. 위젯을 고른 뒤 방향키로 1px, Shift와 함께 10px씩 옮깁니다"
+              data-testid="ove-canvas"
+              style={{ width: SW * scale, height: SH * scale }}
+              onKeyDown={onKey}
+              onPointerDown={(e) => e.target === e.currentTarget && setSel(null)}
+            >
+              <div className="ove-stage" style={{ width: SW, height: SH, transform: `scale(${scale})` }}>
+                {ordered
+                  .filter((w) => w.visible)
+                  .map((w) => (
+                    <WidgetView key={w.id} widget={w} data={SAMPLE_DATA} now={0} editing />
+                  ))}
+              </div>
+              {aspect === "9x16" && guides && (
+                <>
+                  <div className="ove-cover" style={{ top: 0, height: `${(COVER.top / SH) * 100}%` }}>
+                    <span>유튜브 채널 정보</span>
+                  </div>
+                  <div className="ove-cover" style={{ top: `${(COVER.chatFrom / SH) * 100}%`, bottom: 0 }}>
+                    <span>유튜브 채팅</span>
+                  </div>
+                </>
+              )}
+              {ordered
+                .filter((w) => w.visible)
+                .map((w) => (
+                  <div
+                    key={w.id}
+                    className={`ove-hit${w.id === sel ? " is-sel" : ""}`}
+                    data-testid={`ove-box-${w.id}`}
+                    aria-label={widgetLabel(w)}
+                    style={{ left: `${w.x}%`, top: `${w.y}%`, width: `${w.w}%`, height: `${w.h}%`, zIndex: 10 + w.z }}
+                    onPointerDown={(e) => start(e, w, "move")}
+                  >
+                    {w.id === sel &&
+                      ["nw", "n", "ne", "e", "se", "s", "sw", "w"].map((m) => <i key={m} className={`ove-h ove-h-${m}`} data-testid={`ove-handle-${m}`} onPointerDown={(e) => start(e, w, m)} />)}
+                  </div>
+                ))}
+            </div>
+            <span className="t-c1 c-alt">
+              {SW}×{SH} 기준 · 끌어서 옮기고 모서리로 크기를 바꿉니다 · Shift 모서리는 비율 유지
+            </span>
+          </div>
+
+          <div className="ove-props col" style={{ gap: 10 }} data-testid="ove-props">
+            {!selected ? (
+              <span className="t-l2 c-alt">배치 화면이나 왼쪽 목록에서 위젯을 선택해 주십시오.</span>
+            ) : (
+              <>
+                <span className="t-l1 fw6">{widgetLabel(selected)}</span>
+                <fieldset className="ove-fs">
+                  <legend>위치 · 크기 (%)</legend>
+                  {(["x", "y", "w", "h"] as const).map((k) => (
+                    <label key={k} className="ove-fr">
+                      <span>{{ x: "가로 위치", y: "세로 위치", w: "너비", h: "높이" }[k]}</span>
+                      <NumInput
+                        label={{ x: "가로 위치", y: "세로 위치", w: "너비", h: "높이" }[k]}
+                        value={selected[k]}
+                        min={k === "w" || k === "h" ? MIN_SIZE : 0}
+                        max={100}
+                        step={0.1}
+                        onCommit={(n) => setBox(selected.id, { [k]: n })}
+                      />
+                    </label>
+                  ))}
+                </fieldset>
+                {[
+                  ["내용", contentFields(selected)],
+                  ["글꼴", fontFields],
+                  ["색", [...colorFields, ...(selected.type === "QUEUE" ? queueColors : [])]],
+                  ["효과", effectFields],
+                ].map(([title, fields]) => (
+                  <fieldset key={title as string} className="ove-fs">
+                    <legend>{title as string}</legend>
+                    {(fields as Field[]).map((f) => (
+                      <PropRow key={f.key} f={f} w={selected} onSet={(v) => setProp(selected.id, f.key, v)} />
+                    ))}
+                  </fieldset>
+                ))}
+              </>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section className="card pad col" style={{ gap: 10 }} aria-labelledby="ove-t">
+        <h2 className="t-hl1" id="ove-t">
+          템플릿
+        </h2>
+        <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+          {templates?.builtin.map((t) => (
+            <button key={t.key} className="btn btn-out" type="button" disabled={busy} onClick={() => askReset(t.key, t.name)}>
+              {t.name}
+            </button>
+          ))}
+        </div>
+        <table className="tbl ove-tbl" data-testid="ove-mine">
+          <caption className="t-l2 c-alt" style={{ textAlign: "left", paddingBottom: 6 }}>
+            내 템플릿 {templates?.mine.length ?? 0}/{MAX_TEMPLATES}개 · 지금 비율({aspect === "9x16" ? "세로" : "가로"})에 저장한 것만 보입니다
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">이름</th>
+              <th scope="col">저장일</th>
+              <th scope="col">관리</th>
+            </tr>
+          </thead>
+          <tbody>
+            {templates?.mine.length === 0 && (
+              <tr>
+                <td colSpan={3} className="c-alt">
+                  저장한 템플릿이 없습니다
+                </td>
+              </tr>
+            )}
+            {templates?.mine.map((m) => (
+              <tr key={m.id} data-testid="ove-mine-row">
+                <td>{m.name}</td>
+                <td>{new Date(m.createdAt).toLocaleDateString("ko-KR")}</td>
+                <td>
+                  <span className="row" style={{ gap: 6, justifyContent: "center" }}>
+                    <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={() => askReset(m.id, m.name)}>
+                      적용
+                    </button>
+                    <button
+                      className="btn btn-sm btn-out"
+                      type="button"
+                      aria-label={`${m.name} 삭제`}
+                      onClick={() => setConfirm({ text: `「${m.name}」 템플릿을 지우시겠습니까?`, ok: "삭제", run: () => void removeTemplate(m) })}
+                    >
+                      삭제
+                    </button>
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+
+      {confirm && (
+        <ConfirmDialog
+          text={confirm.text}
+          ok={confirm.ok}
+          onClose={() => setConfirm(null)}
+          onOk={() => {
+            const run = confirm.run;
+            setConfirm(null);
+            run();
+          }}
+        />
+      )}
+      {tplName !== null && (
+        <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="ove-tn-h">
+          <form
+            className="modal"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void saveTemplate();
+            }}
+          >
+            <div className="modal-h">
+              <h2 className="t-h2" id="ove-tn-h">
+                내 템플릿으로 저장
+              </h2>
+              <input className="inp" aria-label="템플릿 이름" placeholder="템플릿 이름 (30자 이내)" maxLength={30} autoFocus value={tplName} onChange={(e) => setTplName(e.target.value)} />
+            </div>
+            <div className="modal-f">
+              <button className="btn btn-out" type="button" onClick={() => setTplName(null)}>
+                닫기
+              </button>
+              <button className="btn" type="submit" disabled={busy || !tplName.trim()}>
+                저장
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+      {toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}
+    </div>
+  );
+}
+
+function PropRow({ f, w, onSet }: { f: Field; w: Widget; onSet: (v: PropValue | null) => void }) {
+  const cur = w.props[f.key];
+  const reset = cur !== undefined && (
+    <button className="ove-clear" type="button" aria-label={`${f.label} 기본값으로`} onClick={() => onSet(null)}>
+      기본
+    </button>
+  );
+  return (
+    <div className="ove-fr">
+      <span>{f.label}</span>
+      <span className="row" style={{ gap: 6 }}>
+        {f.kind === "num" && (
+          <>
+            <NumInput label={f.label} value={typeof cur === "number" ? cur : undefined} min={f.min} max={f.max} step={f.step} onCommit={(n) => onSet(n)} />
+            {f.unit && <span className="t-c1 c-alt">{f.unit}</span>}
+          </>
+        )}
+        {f.kind === "text" &&
+          (f.lines ? (
+            <textarea
+              className="inp ove-txt"
+              aria-label={f.label}
+              maxLength={f.max}
+              value={typeof cur === "string" ? cur : ""}
+              onChange={(e) => onSet(e.target.value === "" ? null : e.target.value)}
+            />
+          ) : (
+            <input
+              className="inp inp-sm ove-txt"
+              aria-label={f.label}
+              maxLength={f.max}
+              value={typeof cur === "string" ? cur : ""}
+              onChange={(e) => onSet(e.target.value === "" ? null : e.target.value)}
+            />
+          ))}
+        {f.kind === "color" && <ColorInput label={f.label} value={typeof cur === "string" ? cur : undefined} onCommit={onSet} />}
+        {f.kind === "bool" && (
+          <label className="chk">
+            <input type="checkbox" aria-label={f.label} checked={cur === true} onChange={(e) => onSet(e.target.checked ? true : null)} />
+          </label>
+        )}
+        {f.kind === "appear" && (
+          <select className="inp inp-sm" aria-label={f.label} value={typeof cur === "string" ? cur : "none"} onChange={(e) => onSet(e.target.value === "none" ? null : e.target.value)}>
+            {APPEAR.map(([v, l]) => (
+              <option key={v} value={v}>
+                {l}
+              </option>
+            ))}
+          </select>
+        )}
+        {f.kind !== "bool" && f.kind !== "appear" && reset}
+      </span>
+    </div>
+  );
+}
