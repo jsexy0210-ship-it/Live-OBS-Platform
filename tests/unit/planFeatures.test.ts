@@ -42,6 +42,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/message-balance": "BILLING",
   "seller/message-balance/consent": "BILLING",
   "seller/message-balance/ledger": "BILLING",
+  "seller/message-balance/charges": "BILLING",
   "seller/me/identity": "ACCOUNT",
   "seller/me/identity/link": "ACCOUNT",
   "seller/me/identity/start": "ACCOUNT",

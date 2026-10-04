@@ -15,6 +15,8 @@ import { PASSWORD, createAdmin, createSeller, createSellerUser, db, resetDb } fr
 
 // 메일 제공량·발송 충전 잔액·플랫폼 무료 한도(대표님 결정 2026-10-05, docs/terms/SELLER_MESSAGE_FEE_NOTICE.md)
 beforeEach(resetDb);
+// 차감 시험은 충전 기능이 켜진 상태에서 한다(꺼진 동안은 차감하지 않음: messageCharge.test.ts)
+beforeEach(() => db.platformMessageSetting.create({ data: { id: 1, chargingEnabled: true } }));
 afterAll(async () => {
   await db.$disconnect();
   await prisma.$disconnect();
@@ -212,7 +214,7 @@ describe("차감 원장(문자·알림톡·본인인증 등 공용)", () => {
 
 describe("플랫폼 전체 무료 한도", () => {
   it("하루 한도에 이르면 누구의 메일도 보내지 않고(차감도 안 함), 80%·다 씀을 하루에 한 번씩 로그 추적에 남긴다", async () => {
-    await db.platformMessageSetting.create({ data: { id: 1, platformDailyLimit: 5, platformMonthlyLimit: 3000 } });
+    await db.platformMessageSetting.update({ where: { id: 1 }, data: { platformDailyLimit: 5, platformMonthlyLimit: 3000 } });
     const a = await shop(100);
     const b = await shop(100);
     const f = fakeSender();
@@ -231,7 +233,7 @@ describe("플랫폼 전체 무료 한도", () => {
   });
 
   it("동시성: 하루 한도 4에 여러 파트너스가 한꺼번에 10통을 보내도 4통만 보낸다", async () => {
-    await db.platformMessageSetting.create({ data: { id: 1, platformDailyLimit: 4 } });
+    await db.platformMessageSetting.update({ where: { id: 1 }, data: { platformDailyLimit: 4 } });
     const shops = await Promise.all([shop(100), shop(100)]);
     const f = fakeSender({ delayMs: 20 });
     const results = await Promise.all(Array.from({ length: 10 }, (_, i) => send(shops[i % 2].seller.id, f.sender)));
@@ -256,7 +258,7 @@ describe("파트너스 발송 충전 API", () => {
     const g = await get(cookie);
     expect(g.status).toBe(200);
     const view = await g.json();
-    expect(view).toMatchObject({ paidBalance: 30, freeBalance: 10, total: 40, lowBalanceThreshold: 0, lowBalance: false, chargingEnabled: false, noticeVersion: MESSAGE_FEE_NOTICE_VERSION, consent: null, mail: { quota: 50, sent: 0 } });
+    expect(view).toMatchObject({ paidBalance: 30, freeBalance: 10, total: 40, lowBalanceThreshold: 0, lowBalance: false, chargingEnabled: true, noticeVersion: MESSAGE_FEE_NOTICE_VERSION, consent: null, mail: { quota: 50, sent: 0 } });
     expect(view.prices).toHaveLength(7);
     expect(view.prices).toEqual(expect.arrayContaining([{ channel: "SMS", unitPrice: 20, next: null }, { channel: "IDENTITY_VERIFICATION", unitPrice: 0, next: null }]));
 
@@ -323,19 +325,19 @@ describe("마스터 관리자 발송 설정 API", () => {
   const sellerBalance = (cookie: string, sellerId: string) =>
     adminBalanceGet(new Request(`http://localhost:3000/api/admin/sellers/${sellerId}/message-balance`, { headers: { ...H, cookie } }), { params: Promise.resolve({ sellerId }) });
 
-  it("보기는 모든 역할, 충전 스위치·플랫폼 한도 변경은 최고관리자만(로그 추적). 충전은 기본 꺼짐. 파트너스 세션은 401", async () => {
+  it("보기는 모든 역할, 충전 스위치·플랫폼 한도 변경은 최고관리자만(로그 추적). 파트너스 세션은 401", async () => {
     const su = await adminCookie("SUPER_ADMIN");
     const ro = await adminCookie("READ_ONLY");
     const ops = await adminCookie("OPERATIONS");
     const view = await (await get(ro.cookie)).json();
-    expect(view).toMatchObject({ chargingEnabled: false, platformDailyLimit: 100, platformMonthlyLimit: 3000, usage: { today: { used: 0, limit: 100 }, thisMonth: { used: 0, limit: 3000 } } });
+    expect(view).toMatchObject({ chargingEnabled: true, platformDailyLimit: 100, platformMonthlyLimit: 3000, usage: { today: { used: 0, limit: 100 }, thisMonth: { used: 0, limit: 3000 } } });
     expect(view.plans).toEqual(expect.arrayContaining([{ code: "INTEGRATED", name: "쇼핑몰 통합", mailMonthlyQuota: 100, next: null }]));
     expect(view.prices).toHaveLength(7);
 
     expect((await put(ops.cookie, { chargingEnabled: true })).status).toBe(403);
     expect((await put(ro.cookie, { platformDailyLimit: 10 })).status).toBe(403);
     const ok = await put(su.cookie, { platformDailyLimit: 90 });
-    expect(await ok.json()).toMatchObject({ chargingEnabled: false, platformDailyLimit: 90 });
+    expect(await ok.json()).toMatchObject({ chargingEnabled: true, platformDailyLimit: 90 });
     expect(await db.auditLog.findFirstOrThrow({ where: { action: "admin.message_settings.update" } })).toMatchObject({ actorId: su.id, before: { platformDailyLimit: 100 }, after: { platformDailyLimit: 90 } });
     for (const body of [{}, { chargingEnabled: "true" }, { platformDailyLimit: -1 }]) expect((await put(su.cookie, body)).status).toBe(400);
 

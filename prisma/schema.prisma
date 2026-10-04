@@ -121,6 +121,7 @@ model Seller {
   messageBalance           SellerMessageBalance?
   messageLedger            SellerMessageLedger[]
   messageFeeConsents       SellerMessageFeeConsent[]
+  messageCharges           MessageCharge[]
   mailDeliveries           MailDelivery[]
   memberPolicy             SellerMemberPolicy?
   rejoinBlocks             BuyerRejoinBlock[]
@@ -2539,6 +2540,37 @@ model YoutubeQuotaUsage {
   units Int    @default(0)
 
   @@id([day, scope])
+}
+
+enum MessageChargeStatus {
+  // 결제 요청 전·응답 기다림(응답이 끊기면 대조로 확정)
+  PENDING
+  PAID
+  FAILED
+}
+
+// 발송 충전 결제(구독 카드 빌링키로 결제, 테스트 모드 공급자만, lib/server/messaging/charge.ts). id를 PG 주문 번호로 넘긴다.
+// 결제가 확정되면 같은 트랜잭션에서 유료 잔액을 늘리고 원장 CHARGE(키 charge:{id})를 남긴다.
+model MessageCharge {
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId          String              @db.Uuid
+  sellerUserId      String              @db.Uuid
+  amount            Int
+  status            MessageChargeStatus @default(PENDING)
+  // 같은 충전 요청을 두 번 보내도 한 번만 결제
+  idempotencyKey    String
+  // 충전 때 동의한 안내 서식 버전
+  noticeVersion     String
+  providerPaymentId String?
+  receiptUrl        String?
+  failureReason     String?
+  createdAt         DateTime            @default(now()) @db.Timestamptz(3)
+  finishedAt        DateTime?           @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@unique([sellerId, idempotencyKey])
+  @@index([status, createdAt])
 }
 
 // 무통장 입금 계좌(판매자당 1행, 기반-결제 2단계). 구매자가 무통장 입금을 고르면 이 계좌를 안내한다.
