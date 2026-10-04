@@ -96,7 +96,8 @@ async function autoDeliverOrder(tx: Tx, o: { orderId: string; sellerId: string }
 // 구매 확정 취소(대표님 결정 2026-10-03, PRODUCT_SCOPE 「구매 확정 뒤 환불」, 카페24 방식). 구매 확정한 결제 완료 주문만.
 // ORDER_SHIPPING 권한(환불과 같음), 사유 필수, 감사 로그 order.purchase_unconfirm. 확정을 풀면 환불할 수 있고, 이 주문으로 지급한
 // 적립금은 환불 때 기존 회수 정책(판매자 설정 자동·수동)대로 회수한다(구매 확정 때 따로 지급하는 적립금은 없음).
-// 푼 주문은 purchaseUnconfirmedAt을 남겨 자동 구매 확정이 다시 확정하지 않는다.
+// 푼 주문은 purchaseUnconfirmedAt을 남긴다. 환불하지 않으면 판매자가 다시 확정하거나(reconfirmPurchase),
+// 확정을 취소한 뒤 자동 구매 확정 기간(판매자 설정)이 지나면 자동 구매 확정이 다시 확정한다(영구 미확정 방지).
 export async function unconfirmPurchase(db: PrismaClient, ctx: TenantContext, orderId: string, input: { reason?: unknown }) {
   requireSellerPermission(ctx, "ORDER_SHIPPING");
   const reason = typeof input.reason === "string" ? input.reason.trim() : "";
@@ -122,21 +123,48 @@ export async function unconfirmPurchase(db: PrismaClient, ctx: TenantContext, or
   });
 }
 
-// 자동 구매 확정 대상: 결제 완료·배송 완료이고 아직 확정 전이며, 배송 완료 시각 + 판매자 설정 일수가 지난 주문.
+// 구매 확정 다시 하기: 확정을 취소했지만 환불하지 않기로 한 결제 완료 주문만. ORDER_SHIPPING 권한, 감사 로그 order.purchase_reconfirm.
+export async function reconfirmPurchase(db: PrismaClient, ctx: TenantContext, orderId: string) {
+  requireSellerPermission(ctx, "ORDER_SHIPPING");
+  return db.$transaction(async (tx) => {
+    const locked = await lockOrder(tx, ctx.sellerId, orderId);
+    if (!locked) return { ok: false as const, reason: "not_found" as const };
+    const order = await tx.order.findUniqueOrThrow({ where: { id: orderId }, select: { purchaseConfirmedAt: true, purchaseUnconfirmedAt: true } });
+    if (locked.status !== "PAID" || order.purchaseConfirmedAt || !order.purchaseUnconfirmedAt) return { ok: false as const, reason: "not_unconfirmed" as const };
+    await confirmLocked(tx, ctx.sellerId, orderId, locked.now, { actorType: ctx.actorType, actorId: ctx.actorId }, "order.purchase_reconfirm", order.purchaseUnconfirmedAt);
+    return { ok: true as const, purchaseConfirmedAt: locked.now };
+  });
+}
+
+// 확정 기록(잠근 주문). 확정 취소 표시를 지우고, 끝난 거래가 되었으니 보관 만료일을 계산하고 탈퇴한 회원의 주문이면 분리 보관 표시를 단다(buyers/legalHold.ts).
+async function confirmLocked(tx: Tx, sellerId: string, orderId: string, now: Date, actor: Actor, action: string, unconfirmedAt: Date | null) {
+  await tx.order.update({ where: { id: orderId }, data: { purchaseConfirmedAt: now, purchaseUnconfirmedAt: null } });
+  await writeAudit(tx, {
+    ...actor,
+    sellerId,
+    action,
+    targetType: "Order",
+    targetId: orderId,
+    ...(unconfirmedAt ? { before: { purchaseUnconfirmedAt: unconfirmedAt.toISOString() }, after: { purchaseConfirmedAt: now.toISOString() } } : {}),
+  });
+  await refreshOrderRetention(tx, sellerId, now, { orderId });
+}
+
+// 자동 구매 확정 대상: 결제 완료·배송 완료이고 아직 확정 전이며, 기준 시각 + 판매자 설정 일수가 지난 주문.
+// 기준 시각은 배송 완료 시각, 판매자가 확정을 취소한 주문은 취소한 시각(그 뒤 환불하지 않고 기간이 지나면 다시 확정한다).
 export async function autoConfirmPurchases(db: PrismaClient, opts: { now?: Date; limit?: number } = {}) {
   const asOf = opts.now ?? (await dbClock(db));
   return runBatch(
     db,
     (cursor, size) => db.$queryRaw<Candidate[]>`
-      SELECT s."orderId", s."sellerId", s."deliveredAt" AS "at" FROM "Shipment" s
+      SELECT s."orderId", s."sellerId", COALESCE(o."purchaseUnconfirmedAt", s."deliveredAt") AS "at" FROM "Shipment" s
       JOIN "Order" o ON o."id" = s."orderId"
       LEFT JOIN "SellerOrderPolicy" p ON p."sellerId" = s."sellerId"
       WHERE s."status" = 'DELIVERED' AND s."deliveredAt" IS NOT NULL AND o."status" = 'PAID' AND o."purchaseConfirmedAt" IS NULL
-        AND o."purchaseUnconfirmedAt" IS NULL
         AND COALESCE(p."autoConfirmEnabled", true)
-        AND s."deliveredAt" + make_interval(days => COALESCE(p."autoConfirmDays", 7)) <= ${asOf}
-        ${after(cursor, Prisma.sql`s."deliveredAt"`)}
-      ORDER BY s."deliveredAt" ASC, s."orderId" ASC
+        AND COALESCE(o."purchaseUnconfirmedAt", s."deliveredAt") + make_interval(days => COALESCE(p."autoConfirmDays", 7)) <= ${asOf}
+        ${after(cursor, Prisma.sql`COALESCE(o."purchaseUnconfirmedAt", s."deliveredAt")`)}
+      ORDER BY 3 ASC, s."orderId" ASC
       LIMIT ${size}`,
     opts.limit,
     "order.auto_confirm_failed",
@@ -144,8 +172,8 @@ export async function autoConfirmPurchases(db: PrismaClient, opts: { now?: Date;
   );
 }
 
-// 자동 구매 확정 한 건(후보 하나). 주문을 잠근 뒤 상태·판매자 설정(켜짐·기간)·배송 완료 시각을 다시 확인한다.
-// 그사이 환불·확정됐거나, 설정을 끄거나 기간을 늘렸으면 처리하지 않는다. 처리했으면 true.
+// 자동 구매 확정 한 건(후보 하나). 주문을 잠근 뒤 상태·판매자 설정(켜짐·기간)·기준 시각(배송 완료 또는 확정 취소)을 다시 확인한다.
+// 그사이 환불·확정됐거나, 확정을 (다시) 취소했거나, 설정을 끄거나 기간을 늘렸으면 처리하지 않는다. 처리했으면 true.
 async function autoConfirmOrder(tx: Tx, o: { orderId: string; sellerId: string }) {
   const locked = await lockOrder(tx, o.sellerId, o.orderId);
   if (!locked || locked.status !== "PAID") return false;
@@ -154,14 +182,11 @@ async function autoConfirmOrder(tx: Tx, o: { orderId: string; sellerId: string }
     select: { purchaseConfirmedAt: true, purchaseUnconfirmedAt: true, shipment: { select: { status: true, deliveredAt: true } } },
   });
   const deliveredAt = order.shipment?.status === "DELIVERED" ? order.shipment.deliveredAt : null;
-  // 판매자가 구매 확정을 취소한 주문은 다시 자동 확정하지 않는다
-  if (order.purchaseConfirmedAt || order.purchaseUnconfirmedAt || !deliveredAt) return false;
+  if (order.purchaseConfirmedAt || !deliveredAt) return false;
+  const since = order.purchaseUnconfirmedAt ?? deliveredAt;
   const policy = await getOrderPolicy(tx, o.sellerId);
-  if (!policy.autoConfirmEnabled || deliveredAt.getTime() + policy.autoConfirmDays * DAY_MS > locked.now.getTime()) return false;
-  await tx.order.update({ where: { id: o.orderId }, data: { purchaseConfirmedAt: locked.now } });
-  await writeAudit(tx, { ...SYSTEM, sellerId: o.sellerId, action: "order.purchase_confirmed", targetType: "Order", targetId: o.orderId });
-  // 끝난 거래가 되었으니 보관 만료일을 계산하고, 탈퇴한 회원의 주문이면 분리 보관 표시를 단다(buyers/legalHold.ts)
-  await refreshOrderRetention(tx, o.sellerId, locked.now, { orderId: o.orderId });
+  if (!policy.autoConfirmEnabled || since.getTime() + policy.autoConfirmDays * DAY_MS > locked.now.getTime()) return false;
+  await confirmLocked(tx, o.sellerId, o.orderId, locked.now, SYSTEM, "order.purchase_confirmed", order.purchaseUnconfirmedAt);
   return true;
 }
 

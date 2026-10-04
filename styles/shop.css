@@ -838,3 +838,31 @@ body {
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* 홈 고정 공지 띠(머리 바로 아래 한 줄) */
+.shop-ntc {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 36px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--wds-line-solid-neutral);
+  font-size: 13px;
+}
+.shop-ntc b {
+  flex: none;
+  color: var(--brand);
+}
+.shop-ntc a {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--wds-label-normal);
+  text-decoration: none;
+}
+.shop-ntc span {
+  flex: none;
+  color: var(--wds-label-alternative);
+}

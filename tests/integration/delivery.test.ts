@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { POST as deliverRoute } from "../../app/api/seller/orders/[orderId]/deliver/route";
 import { POST as refundRoute } from "../../app/api/seller/orders/[orderId]/refund/route";
+import { POST as reconfirmRoute } from "../../app/api/seller/orders/[orderId]/reconfirm/route";
 import { POST as unconfirmRoute } from "../../app/api/seller/orders/[orderId]/unconfirm/route";
 import { GET as orderPolicyGet, PUT as orderPolicyPut } from "../../app/api/seller/order-policy/route";
 import { GET as rewardPolicyGet, PUT as rewardPolicyPut } from "../../app/api/seller/reward-policy/route";
@@ -10,7 +11,8 @@ import { prisma } from "../../lib/server/db";
 import { getBuyerOrder } from "../../lib/server/orders/buyer";
 import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
 import { createOrder } from "../../lib/server/orders/create";
-import { autoCompleteDeliveries, autoConfirmPurchases, completeDelivery, unconfirmPurchase } from "../../lib/server/orders/delivery";
+import { autoCompleteDeliveries, autoConfirmPurchases, completeDelivery, reconfirmPurchase, unconfirmPurchase } from "../../lib/server/orders/delivery";
+import { hasOrderFollowup } from "../../lib/server/orders/followup";
 import { ORDER_ERROR_MESSAGES, ORDER_ERROR_MESSAGES_FORMAL } from "../../lib/server/orders/messages";
 import { getOrder } from "../../lib/server/orders/read";
 import { shipOrder } from "../../lib/server/orders/ship";
@@ -68,6 +70,16 @@ const lv = async (sellerId: string) => (await db.seller.findUniqueOrThrow({ wher
 // 발송·배송 완료 시각을 과거로 옮긴다(자동 처리 기준 시각 확인용)
 const shippedAgo = (orderId: string, ms: number) => db.shipment.update({ where: { orderId }, data: { shippedAt: new Date(Date.now() - ms) } });
 const deliveredAgo = (orderId: string, ms: number) => db.shipment.update({ where: { orderId }, data: { deliveredAt: new Date(Date.now() - ms) } });
+const unconfirmedAgo = (orderId: string, ms: number) => db.order.update({ where: { id: orderId }, data: { purchaseUnconfirmedAt: new Date(Date.now() - ms) } });
+// 행 잠금을 기다리는 연결이 n개가 될 때까지 기다린다(동시성 시험)
+async function waitForLockWaiters(n: number) {
+  for (let i = 0; i < 200; i++) {
+    const [w] = await db.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`;
+    if (w.n >= n) return;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  throw new Error(`lock waiters < ${n}`);
+}
 
 describe("배송 완료와 적립금 지급 시점", () => {
   it("기본(배송 완료 후 지급)은 결제 때 적립하지 않고, 배송 완료 때 한 번만 지급 대기를 기록한다", async () => {
@@ -424,12 +436,143 @@ describe("구매 확정 취소 뒤 환불", () => {
     expect(await db.rewardLedger.count({ where: { orderId: id, type: "REVOKE" } })).toBe(0);
   });
 
-  it("확정을 취소한 주문은 자동 구매 확정이 다시 확정하지 않는다", async () => {
+  it("확정을 취소한 주문은 취소한 때부터 자동 구매 확정 기간(기본 7일) 안에는 다시 확정하지 않고, 환불하지 않은 채 기간이 지나면 다시 확정한다", async () => {
     const s = await shop();
     const id = await confirmed(s);
     expect(await unconfirmPurchase(db, s.ctx, id, { reason: "환불 검토" })).toMatchObject({ ok: true });
+    // 배송 완료는 8일 전이지만 기준은 확정 취소 시각이다
     expect(await autoConfirmPurchases(db)).toEqual({ done: [], failed: [] });
     expect((await db.order.findUniqueOrThrow({ where: { id } })).purchaseConfirmedAt).toBeNull();
+    expect(await hasOrderFollowup(db, s.seller.id)).toBe(true);
+    await unconfirmedAgo(id, 6 * DAY);
+    expect(await autoConfirmPurchases(db)).toEqual({ done: [], failed: [] });
+    // 판매자 설정 기간(3일)을 따른다
+    await db.sellerOrderPolicy.create({ data: { sellerId: s.seller.id, autoConfirmDays: 3 } });
+    expect(await autoConfirmPurchases(db)).toEqual({ done: [id], failed: [] });
+    expect(await db.order.findUniqueOrThrow({ where: { id } })).toMatchObject({ purchaseConfirmedAt: expect.any(Date), purchaseUnconfirmedAt: null });
+    expect(await db.auditLog.findFirstOrThrow({ where: { action: "order.purchase_confirmed", targetId: id }, orderBy: { createdAt: "desc" } })).toMatchObject({
+      actorType: "SYSTEM",
+      before: { purchaseUnconfirmedAt: expect.any(String) },
+      after: { purchaseConfirmedAt: expect.any(String) },
+    });
+    expect(await hasOrderFollowup(db, s.seller.id)).toBe(false);
+    expect(await autoConfirmPurchases(db)).toEqual({ done: [], failed: [] });
+    // 다시 확정한 주문은 다시 바로 환불할 수 없다
+    expect(await refundOrder(db, s.ctx, id, { reason: "환불", expectedLiveVersion: await lv(s.seller.id), fault: "SELLER" })).toMatchObject({ ok: false });
+    expect((await db.order.findUniqueOrThrow({ where: { id } })).status).toBe("PAID");
+  });
+
+  it("자동 구매 확정을 끈 쇼핑몰은 확정을 취소한 주문도 다시 자동 확정하지 않는다", async () => {
+    const s = await shop();
+    const id = await confirmed(s);
+    expect(await unconfirmPurchase(db, s.ctx, id, { reason: "환불 검토" })).toMatchObject({ ok: true });
+    await unconfirmedAgo(id, 30 * DAY);
+    await db.sellerOrderPolicy.create({ data: { sellerId: s.seller.id, autoConfirmEnabled: false } });
+    expect(await autoConfirmPurchases(db)).toEqual({ done: [], failed: [] });
+  });
+
+  it("판매자가 다시 확정한다: 확정을 취소한 주문만 200, 확정 상태·확정 전·환불된 주문은 409 not_unconfirmed, 다른 쇼핑몰 404, 권한 없는 직원 403", async () => {
+    const s = await shop();
+    const other = await shop();
+    const cookie = await sellerCookie(s.owner.email);
+    const re = (orderId: string, c = cookie) =>
+      reconfirmRoute(new Request(`http://localhost:3000/api/seller/orders/${orderId}/reconfirm`, { method: "POST", headers: { ...H, cookie: c } }), { params: Promise.resolve({ orderId }) });
+    const id = await confirmed(s);
+    const r0 = await re(id);
+    expect(r0.status).toBe(409);
+    expect(await r0.json()).toEqual({ error: "not_unconfirmed", message: ORDER_ERROR_MESSAGES_FORMAL.not_unconfirmed });
+    const notYet = await s.shipped();
+    await completeDelivery(db, s.ctx, notYet);
+    expect((await re(notYet)).status).toBe(409);
+    expect((await db.order.findUniqueOrThrow({ where: { id: notYet } })).purchaseConfirmedAt).toBeNull();
+
+    expect(await unconfirmPurchase(db, s.ctx, id, { reason: "환불 검토" })).toMatchObject({ ok: true });
+    const staff = await createSellerUser(s.seller.id, { permissions: ["PRODUCT_MANAGE"] });
+    expect((await re(id, await sellerCookie(staff.email))).status).toBe(403);
+    const theirs = await confirmed(other);
+    expect(await unconfirmPurchase(db, other.ctx, theirs, { reason: "환불 검토" })).toMatchObject({ ok: true });
+    expect((await re(theirs)).status).toBe(404);
+    expect((await db.order.findUniqueOrThrow({ where: { id: theirs } })).purchaseConfirmedAt).toBeNull();
+
+    const ok = await re(id);
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ purchaseConfirmedAt: expect.any(String) });
+    expect(await db.order.findUniqueOrThrow({ where: { id } })).toMatchObject({ purchaseConfirmedAt: expect.any(Date), purchaseUnconfirmedAt: null });
+    expect(await db.auditLog.findFirstOrThrow({ where: { action: "order.purchase_reconfirm", targetId: id } })).toMatchObject({
+      actorId: s.owner.id,
+      before: { purchaseUnconfirmedAt: expect.any(String) },
+      after: { purchaseConfirmedAt: expect.any(String) },
+    });
+    // 끝난 거래로 보관 만료일을 다시 계산한다
+    expect((await db.order.findUniqueOrThrow({ where: { id } })).legalRetainUntil).toEqual(expect.any(Date));
+    expect((await re(id)).status).toBe(409);
+    // 다시 취소하고 환불하면 다시 확정할 수 없다
+    expect(await unconfirmPurchase(db, s.ctx, id, { reason: "환불" })).toMatchObject({ ok: true });
+    await refundOrder(db, s.ctx, id, { reason: "환불", expectedLiveVersion: await lv(s.seller.id), fault: "SELLER" });
+    expect(await reconfirmPurchase(db, s.ctx, id)).toEqual({ ok: false, reason: "not_unconfirmed" });
+    expect((await db.order.findUniqueOrThrow({ where: { id } })).purchaseConfirmedAt).toBeNull();
+  });
+
+  it("동시성: 다시 확정과 환불이 겹치면 한쪽만 된다(확정되면 환불은 막히고, 환불되면 다시 확정은 막힌다)", async () => {
+    for (const first of ["reconfirm", "refund"] as const) {
+      await resetDb();
+      const s = await shop();
+      const id = await confirmed(s);
+      expect(await unconfirmPurchase(db, s.ctx, id, { reason: "환불 검토" })).toMatchObject({ ok: true });
+      const version = await lv(s.seller.id);
+      let release!: () => void;
+      const gate = new Promise<void>((r) => (release = r));
+      // 주문 행을 잡아 두고 두 요청을 모두 대기시킨 뒤 놓는다(먼저 대기한 쪽이 먼저 잠근다)
+      const holder = db.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "Order" WHERE "id" = ${id}::uuid FOR UPDATE`;
+        await gate;
+      }, { timeout: 20_000 });
+      await waitForLockWaiters(0);
+      const call = (k: "reconfirm" | "refund") =>
+        k === "reconfirm" ? reconfirmPurchase(db, s.ctx, id) : refundOrder(db, s.ctx, id, { reason: "환불", expectedLiveVersion: version, fault: "SELLER" });
+      const a = call(first);
+      await waitForLockWaiters(1);
+      const b = call(first === "reconfirm" ? "refund" : "reconfirm");
+      await waitForLockWaiters(2);
+      release();
+      await holder;
+      const [ra, rb] = await Promise.all([a, b]);
+      expect(ra.ok).toBe(true);
+      expect(rb.ok).toBe(false);
+      const order = await db.order.findUniqueOrThrow({ where: { id } });
+      if (first === "reconfirm") {
+        expect(order).toMatchObject({ status: "PAID", purchaseConfirmedAt: expect.any(Date), purchaseUnconfirmedAt: null });
+        expect(await db.rewardLedger.count({ where: { orderId: id, type: "REVOKE" } })).toBe(0);
+      } else {
+        expect(rb).toEqual({ ok: false, reason: "not_unconfirmed" });
+        expect(order).toMatchObject({ status: "REFUNDED", purchaseConfirmedAt: null });
+      }
+    }
+  });
+
+  it("동시성: 자동 구매 확정이 후보를 고른 뒤 판매자가 환불하면 다시 확정하지 않는다", async () => {
+    const s = await shop();
+    const id = await confirmed(s);
+    expect(await unconfirmPurchase(db, s.ctx, id, { reason: "환불 검토" })).toMatchObject({ ok: true });
+    await unconfirmedAgo(id, 8 * DAY);
+    const version = await lv(s.seller.id);
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let refunded: Promise<unknown> | null = null;
+    const holder = db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "Order" WHERE "id" = ${id}::uuid FOR UPDATE`;
+      await gate;
+    }, { timeout: 20_000 });
+    // 자동 구매 확정은 후보로 고른 뒤 주문 잠금에서 기다리고, 그 뒤 환불도 기다린다. 환불이 먼저 잠그도록 환불을 먼저 대기시킨다.
+    refunded = refundOrder(db, s.ctx, id, { reason: "환불", expectedLiveVersion: version, fault: "SELLER" });
+    await waitForLockWaiters(1);
+    const auto = autoConfirmPurchases(db);
+    await waitForLockWaiters(2);
+    release();
+    await holder;
+    expect(await refunded).toMatchObject({ ok: true });
+    expect(await auto).toEqual({ done: [], failed: [] });
+    expect(await db.order.findUniqueOrThrow({ where: { id } })).toMatchObject({ status: "REFUNDED", purchaseConfirmedAt: null });
   });
 
   it("확정 전·환불된 주문은 409 not_confirmed, 사유 없음·200자 넘음은 400, 다른 쇼핑몰 주문은 404, 주문·배송 권한 없는 직원은 403", async () => {

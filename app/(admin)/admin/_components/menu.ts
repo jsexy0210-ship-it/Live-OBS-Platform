@@ -58,9 +58,9 @@ export const ADMIN_MENU: AdminGroup[] = [
     key: "admins",
     label: "관리자",
     items: [
-      { label: "관리자 계정", href: "/admin/accounts", perm: "admin.manage" },
-      { label: "역할별 권한", href: "/admin/accounts/roles", perm: "admin.manage" },
-      { label: "로그 추적", href: "/admin/logs", perm: "audit.read" },
+      { label: "관리자 계정", href: "/admin/accounts", perm: "admin.manage", ready: true },
+      { label: "역할별 권한", href: "/admin/accounts/roles", perm: "admin.manage", ready: true },
+      { label: "로그 추적", href: "/admin/logs", perm: "audit.read", ready: true },
     ],
   },
   {

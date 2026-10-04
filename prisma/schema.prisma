@@ -519,6 +519,7 @@ model Product {
   reviews    ProductReview[]
   categories ProductCategory[]
   detail     ProductDetail?
+  displayItems ShopDisplayItem[]
   wishItems  WishItem[]
 
   @@unique([sellerId, id])
@@ -1990,6 +1991,7 @@ model ShopCategory {
   parent   ShopCategory?     @relation("ShopCategoryTree", fields: [sellerId, parentId], references: [sellerId, id], onDelete: Restrict)
   children ShopCategory[]    @relation("ShopCategoryTree")
   products ProductCategory[]
+  displaySections ShopDisplaySection[]
 
   @@unique([sellerId, id])
   @@index([sellerId, parentId, sortOrder])
@@ -2107,6 +2109,48 @@ model ShopNotice {
   seller Seller @relation(fields: [sellerId], references: [id])
 
   @@index([sellerId, kind, createdAt])
+}
+
+// 상품 진열(SA-016, 2026-10-04 대표님 지시). 값 범위·검사는 lib/server/shop-display/service.ts.
+enum ShopDisplayKind {
+  RECOMMENDED
+  NEW
+  CATEGORY
+}
+
+// 쇼핑몰별 진열 설정 1행: 구매자 상품 목록의 기본 정렬(new·recommended·popular·low·high)
+model ShopDisplaySetting {
+  sellerId  String   @id @db.Uuid
+  listSort  String   @default("new")
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+}
+
+// 홈 진열 영역(켜기·끄기·순서). 추천·신상품은 쇼핑몰마다 하나씩, 카테고리 영역은 카테고리를 가리킨다(카테고리를 지우면 함께 지움).
+model ShopDisplaySection {
+  id         String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId   String          @db.Uuid
+  kind       ShopDisplayKind
+  categoryId String?         @db.Uuid
+  title      String
+  visible    Boolean         @default(true)
+  itemCount  Int             @default(8)
+  sortOrder  Int             @default(0)
+
+  category ShopCategory? @relation(fields: [sellerId, categoryId], references: [sellerId, id], onDelete: Cascade)
+
+  @@index([sellerId, sortOrder])
+}
+
+// 추천 상품(최대 20개, 순서대로). 상품을 지워도 행은 남고 구매자 화면에서는 빠진다.
+model ShopDisplayItem {
+  sellerId  String @db.Uuid
+  productId String @db.Uuid
+  sortOrder Int
+
+  product Product @relation(fields: [sellerId, productId], references: [sellerId, id])
+
+  @@id([sellerId, productId])
+  @@index([sellerId, sortOrder])
 }
 
 // ───────────── 구매자 주문 결제(PG, 기반-결제. 대표님 결정 2026-10-05: 나이스페이 테스트(샌드박스) 결제) ─────────────
