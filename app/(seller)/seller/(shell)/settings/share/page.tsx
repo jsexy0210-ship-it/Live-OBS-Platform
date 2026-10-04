@@ -5,6 +5,7 @@ import { Topbar, useSeller } from "../../../../../../components/seller/SellerShe
 import { SettingsTabs } from "../../../../../../components/seller/SettingsTabs";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
+import { cleanText, textLength, type TextKind } from "../../../../../../lib/server/text/clean";
 
 // SA-060 공유 미리보기: 쇼핑몰 주소를 공유할 때 보이는 제목·설명. 비워 두면 제목은 쇼핑몰 이름, 설명은 없음.
 // 카드 이미지는 서버가 쇼핑몰 이름으로 그린 기본 카드(/api/shop/{slug}/og.png)다(이미지·파비콘 올리기는 이미지 저장소를 정한 뒤).
@@ -14,8 +15,13 @@ const DESCRIPTION_MAX = 160;
 
 type Preview = { title: string | null; description: string | null };
 
-// 서버와 같은 길이 세기(코드포인트)
-const len = (v: string) => Array.from(v).length;
+// 서버(sharePreview.ts field)와 같은 기준: NFKC 뒤 글자 수, 그리고 cleanText가 받지 않는 글자(줄바꿈·제어 문자 등)
+const len = textLength;
+function problem(v: string, max: number, kind: TextKind): string | null {
+  if (v.trim() === "" || cleanText(v, max, kind) !== null) return null;
+  if (textLength(v) > max) return `${max}자까지 적을 수 있어요`;
+  return /[\r\n]/.test(v) ? "줄을 바꾸지 않고 적어 주세요" : "쓸 수 없는 문자가 있어요";
+}
 
 export default function ShareSettingsPage() {
   const { me } = useSeller();
@@ -47,7 +53,9 @@ export default function ShareSettingsPage() {
 
   const saved = state.kind === "ok" ? state.saved : null;
   const dirty = !!saved && ((saved.title ?? "") !== title || (saved.description ?? "") !== description);
-  const tooLong = len(title.trim()) > TITLE_MAX || len(description.trim()) > DESCRIPTION_MAX;
+  const titleProblem = problem(title, TITLE_MAX, "name");
+  const descriptionProblem = problem(description, DESCRIPTION_MAX, "memo");
+  const tooLong = titleProblem !== null || descriptionProblem !== null;
 
   const save = async () => {
     if (!saved || tooLong) return;
@@ -64,8 +72,8 @@ export default function ShareSettingsPage() {
     setToast("공유 미리보기를 저장했어요");
   };
 
-  const shownTitle = title.trim() || me.shop.name;
-  const shownDescription = description.trim();
+  const shownTitle = cleanText(title, TITLE_MAX, "name") ?? me.shop.name;
+  const shownDescription = cleanText(description, DESCRIPTION_MAX, "memo") ?? "";
 
   return (
     <>
@@ -113,17 +121,17 @@ export default function ShareSettingsPage() {
                   <label htmlFor="sp-title">제목</label>
                   <input
                     id="sp-title"
-                    className={`inp${len(title.trim()) > TITLE_MAX ? " is-error" : ""}`}
+                    className={`inp${titleProblem ? " is-error" : ""}`}
                     value={title}
                     placeholder={me.shop.name}
                     onChange={(e) => setTitle(e.target.value)}
                     aria-describedby="sp-title-help"
-                    aria-invalid={len(title.trim()) > TITLE_MAX}
+                    aria-invalid={!!titleProblem}
                   />
                   <span id="sp-title-help" className="row between t-c1 c-alt">
-                    <span>비워 두면 쇼핑몰 이름을 써요</span>
-                    <span className={len(title.trim()) > TITLE_MAX ? "c-neg" : undefined}>
-                      {len(title.trim())}/{TITLE_MAX}
+                    <span className={titleProblem ? "c-neg" : undefined}>{titleProblem ?? "비워 두면 쇼핑몰 이름을 써요"}</span>
+                    <span className={len(title) > TITLE_MAX ? "c-neg" : undefined}>
+                      {len(title)}/{TITLE_MAX}
                     </span>
                   </span>
                 </div>
@@ -131,18 +139,18 @@ export default function ShareSettingsPage() {
                   <label htmlFor="sp-description">설명</label>
                   <textarea
                     id="sp-description"
-                    className={`inp${len(description.trim()) > DESCRIPTION_MAX ? " is-error" : ""}`}
+                    className={`inp${descriptionProblem ? " is-error" : ""}`}
                     rows={3}
                     value={description}
                     placeholder="예: 매주 금요일 밤 라이브로 만나요"
                     onChange={(e) => setDescription(e.target.value)}
                     aria-describedby="sp-description-help"
-                    aria-invalid={len(description.trim()) > DESCRIPTION_MAX}
+                    aria-invalid={!!descriptionProblem}
                   />
                   <span id="sp-description-help" className="row between t-c1 c-alt">
-                    <span>비워 두면 설명 없이 보여요</span>
-                    <span className={len(description.trim()) > DESCRIPTION_MAX ? "c-neg" : undefined}>
-                      {len(description.trim())}/{DESCRIPTION_MAX}
+                    <span className={descriptionProblem ? "c-neg" : undefined}>{descriptionProblem ?? "비워 두면 설명 없이 보여요"}</span>
+                    <span className={len(description) > DESCRIPTION_MAX ? "c-neg" : undefined}>
+                      {len(description)}/{DESCRIPTION_MAX}
                     </span>
                   </span>
                 </div>

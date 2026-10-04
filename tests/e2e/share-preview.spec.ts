@@ -80,6 +80,17 @@ test("공유 미리보기: 길이를 넘으면 저장할 수 없고, 쇼핑몰 �
   await expect(page.getByText("61/60")).toBeVisible();
   await expect(page.getByLabel("제목")).toHaveAttribute("aria-invalid", "true");
   await expect(page.getByRole("complementary").getByRole("button", { name: "저장" })).toBeDisabled();
+  // 글자 수는 서버와 같은 기준(NFKC 뒤)으로 센다: 합자 ﬃ 하나는 ffi 세 글자
+  await page.getByLabel("제목").fill("ﬃ".repeat(30));
+  await expect(page.getByText("90/60")).toBeVisible();
+  await expect(page.getByText("60자까지 적을 수 있어요")).toBeVisible();
+  await expect(page.getByRole("complementary").getByRole("button", { name: "저장" })).toBeDisabled();
+  // 서버가 받지 않는 글자(줄바꿈)도 저장 전에 알린다
+  await page.getByLabel("제목").fill("");
+  await page.getByLabel("설명").fill("첫 줄\n둘째 줄");
+  await expect(page.getByText("줄을 바꾸지 않고 적어 주세요")).toBeVisible();
+  await expect(page.getByLabel("설명")).toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByRole("complementary").getByRole("button", { name: "저장" })).toBeDisabled();
   await page.context().clearCookies();
 
   // 상품 권한만 있는 직원: 화면은 권한 안내, API는 403
@@ -92,6 +103,12 @@ test("공유 미리보기: 길이를 넘으면 저장할 수 없고, 쇼핑몰 �
     return r.status;
   });
   expect(put).toBe(403);
+});
+
+test("공유 이미지 주소는 신뢰 프록시가 없으면 요청자가 보낸 X-Forwarded-Host를 따르지 않는다", async ({ page, baseURL }) => {
+  await page.setExtraHTTPHeaders({ "x-forwarded-host": "evil.example", "x-forwarded-proto": "https" });
+  await page.goto("/shop/demo-shop/signup");
+  await expect(meta(page, "og:image")).toHaveAttribute("content", new RegExp(`^${baseURL}/api/shop/demo-shop/og\\.png\\?v=`));
 });
 
 test("없는 쇼핑몰 주소는 공유 정보를 만들지 않고 기본값을 쓴다", async ({ page }) => {
