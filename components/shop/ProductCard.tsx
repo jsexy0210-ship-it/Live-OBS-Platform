@@ -7,9 +7,8 @@ const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 export function ProductCard({ p }: { p: ProductCardData }) {
   const rate = p.salePrice !== null ? Math.floor(((p.price - p.salePrice) / p.price) * 100) : 0;
   return (
-    <li className={`pc${p.soldOut ? " is-out" : ""}`}>
-      <div className="pc-photo" aria-hidden="true" />
-      {p.soldOut && <span className="pc-out">품절</span>}
+    <li className="pc">
+      <div className="pc-photo">{p.soldOut && <span className="pc-out" role="img" aria-label="품절">SOLD OUT</span>}</div>
       <p className="pc-name">{p.name}</p>
       <p className="pc-price">
         {p.salePrice !== null ? (

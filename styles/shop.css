@@ -278,25 +278,28 @@ body {
   min-width: 0;
 }
 .pc-photo {
+  position: relative;
+  overflow: hidden;
   aspect-ratio: 1 / 1;
   border-radius: 2px;
   background: var(--wds-background-normal-alternative) center / 40% no-repeat
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23c2c4c8' stroke-width='1.2'%3E%3Crect x='3' y='5' width='18' height='14' rx='1'/%3E%3Ccircle cx='9' cy='10' r='1.6'/%3E%3Cpath d='m4 18 5-5 4 4 2-2 5 5'/%3E%3C/svg%3E");
 }
-.pc.is-out .pc-photo {
-  opacity: 0.55;
-}
+/* 품절: 사진 왼쪽 위에 검은 사선 띠(45도). 카드는 흐리게 하지 않는다 */
 .pc-out {
   position: absolute;
-  left: 8px;
-  top: 8px;
-  padding: 2px 8px;
-  border-radius: 2px;
-  background: var(--wds-label-normal);
+  left: -38px;
+  top: 16px;
+  width: 140px;
+  transform: rotate(-45deg);
+  background: #000;
   color: #fff;
   font-size: 12px;
-  font-weight: 700;
-  line-height: 20px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 22px;
+  text-align: center;
+  pointer-events: none;
 }
 .pc-name {
   display: -webkit-box;
