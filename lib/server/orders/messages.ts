@@ -70,6 +70,7 @@ export const ORDER_ERROR_MESSAGES = {
   purchase_confirmed: "구매 확정한 주문이에요. 구매 확정을 먼저 취소해 주세요",
   // 구매 확정 취소
   not_confirmed: "구매 확정한 주문만 확정을 취소할 수 있어요",
+  not_unconfirmed: "구매 확정을 취소한 주문만 다시 확정할 수 있어요",
 } as const;
 
 // 구매자 주문 화면 안내 문구(해요체)
@@ -141,6 +142,7 @@ export const ORDER_ERROR_MESSAGES_FORMAL: Record<OrderErrorCode, string> = {
   opened_items_unshipped: "개봉한 상품이 있어 지금은 환불할 수 없습니다. 개봉한 상품을 보낸 뒤 나머지를 처리해 주십시오",
   purchase_confirmed: "구매 확정한 주문입니다. 구매 확정을 먼저 취소해 주십시오",
   not_confirmed: "구매 확정한 주문만 확정을 취소할 수 있습니다",
+  not_unconfirmed: "구매 확정을 취소한 주문만 다시 확정할 수 있습니다",
 };
 
 export const orderErrorBody = (code: OrderErrorCode, tone: MessageTone = "friendly") => ({
