@@ -1,0 +1,330 @@
+import { Prisma, type PrismaClient } from "@prisma/client";
+import { writeAudit } from "../audit/log";
+import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
+import { cleanText } from "../text/clean";
+
+// 오버레이 레이아웃(SA-051 편집기 → OV-001 9:16 · OV-002 16:9, docs/DESIGN_PROMPT.md 「OBS 오버레이」).
+// - 판매자·비율마다 레이아웃 1개(OverlayLayout). 없으면 기본 템플릿 queue_focus. 위치·크기는 화면 대비 %(0~100).
+// - 위젯은 아래 종류만, 속성은 종류별 허용 목록과 값 범위만 받는다(모르는 키·잘못된 값은 저장하지 않고 400).
+//   종류마다 하나씩(신규 주문 알림만 첫 주문·재주문·VIP 각 하나).
+// - 저장은 expectedVersion이 지금 version과 같을 때만(두 창 동시 편집 덮어쓰기 방지, 409 version_conflict).
+// - 기본 템플릿 3종(코드)과 「내 템플릿」(OverlayTemplate, 판매자당 20개). 템플릿으로 초기화하면 그 위젯을 그대로 복사한다.
+// - 편집·조회는 OVERLAY_EDIT(대표자·권한 직원), 로그 추적 overlay.layout.update·reset, overlay.template.create·delete.
+// - 오버레이 주소(토큰)용 공개 조회는 위젯 값만 준다(판매자 정보 없음).
+
+export const ASPECTS = ["9x16", "16x9"] as const;
+export type Aspect = (typeof ASPECTS)[number];
+export const WIDGET_TYPES = ["HALL_OF_FAME", "NOTICE", "SHOP_INFO", "CURRENT_ORDER", "QUEUE", "OPEN_TIMER", "NEW_ORDER_ALERT"] as const;
+export type WidgetType = (typeof WIDGET_TYPES)[number];
+export const MAX_WIDGETS = 20;
+export const MAX_TEMPLATES = 20;
+export const APPEAR_KINDS = ["none", "fade", "up", "left", "flip"] as const;
+export const ALERT_VARIANTS = ["first", "repeat", "vip"] as const;
+
+type PropValue = string | number | boolean;
+export type Widget = { id: string; type: WidgetType; visible: boolean; x: number; y: number; w: number; h: number; z: number; props: Record<string, PropValue> };
+
+const COLOR_RE = /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/;
+const ID_RE = /^[a-z0-9_-]{1,40}$/;
+type Spec =
+  | { kind: "color" }
+  | { kind: "text"; max: number; lines?: boolean }
+  | { kind: "num"; min: number; max: number; int?: boolean; step?: number }
+  | { kind: "bool" }
+  | { kind: "enum"; values: readonly string[] };
+const color: Spec = { kind: "color" };
+const pct: Spec = { kind: "num", min: 0, max: 1 };
+
+// 모든 위젯 공통 속성(DESIGN_PROMPT 「위젯마다」)
+const COMMON: Record<string, Spec> = {
+  title: { kind: "text", max: 40 },
+  // 문구 틀: {닉네임}·{상품}·{수량}·{카드명}·{건수} 자리표시를 쓴다(화면이 바꿔 그림)
+  format: { kind: "text", max: 100 },
+  accentColor: color,
+  titleColor: color,
+  nicknameColor: color,
+  bodyColor: color,
+  titleBgColor: color,
+  titleBgOpacity: pct,
+  cardBgColor: color,
+  cardBgOpacity: pct,
+  borderColor: color,
+  radius: { kind: "num", min: 0, max: 64, int: true },
+  fontSize: { kind: "num", min: 8, max: 200, int: true },
+  fontWeight: { kind: "num", min: 100, max: 900, int: true, step: 100 },
+  glow: { kind: "bool" },
+  marquee: { kind: "bool" },
+  ticker: { kind: "bool" },
+  flowSec: { kind: "num", min: 1, max: 120 },
+  appear: { kind: "enum", values: APPEAR_KINDS },
+  appearSec: { kind: "num", min: 0, max: 10 },
+};
+const EXTRA: Partial<Record<WidgetType, Record<string, Spec>>> = {
+  NOTICE: { text: { kind: "text", max: 200, lines: true } },
+  // 주문대기: 「오픈」 영역과 「대기」 영역 색을 따로
+  QUEUE: {
+    openTitleColor: color,
+    openNicknameColor: color,
+    openProductColor: color,
+    openBorderColor: color,
+    waitTitleColor: color,
+    waitNicknameColor: color,
+    waitProductColor: color,
+    waitBorderColor: color,
+    waitIndexColor: color,
+    waitCountColor: color,
+    rows: { kind: "num", min: 1, max: 10, int: true },
+  },
+  HALL_OF_FAME: { rows: { kind: "num", min: 1, max: 10, int: true } },
+  // 신규 주문 알림: 첫 주문·재주문·VIP를 따로
+  NEW_ORDER_ALERT: { variant: { kind: "enum", values: ALERT_VARIANTS }, durationSec: { kind: "num", min: 1, max: 30 } },
+};
+
+function checkProp(spec: Spec, v: unknown): PropValue | null {
+  switch (spec.kind) {
+    case "color":
+      return typeof v === "string" && COLOR_RE.test(v) ? v.toLowerCase() : null;
+    case "bool":
+      return typeof v === "boolean" ? v : null;
+    case "enum":
+      return typeof v === "string" && spec.values.includes(v) ? v : null;
+    case "num": {
+      if (typeof v !== "number" || !Number.isFinite(v) || v < spec.min || v > spec.max) return null;
+      if (spec.int && !Number.isInteger(v)) return null;
+      if (spec.step && v % spec.step !== 0) return null;
+      return Math.round(v * 100) / 100;
+    }
+    case "text":
+      if (v === "") return "";
+      return cleanText(v, spec.max, spec.lines ? "multiline" : "memo");
+  }
+}
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+const isPct = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 100;
+
+// 위젯 배열 검사. 통과하면 정리한 배열, 아니면 null.
+export function parseWidgets(raw: unknown): Widget[] | null {
+  if (!Array.isArray(raw) || raw.length > MAX_WIDGETS) return null;
+  const out: Widget[] = [];
+  const ids = new Set<string>();
+  const kinds = new Set<string>();
+  for (const w of raw) {
+    if (!w || typeof w !== "object" || Array.isArray(w)) return null;
+    const o = w as Record<string, unknown>;
+    const keys = Object.keys(o);
+    if (keys.some((k) => !["id", "type", "visible", "x", "y", "w", "h", "z", "props"].includes(k))) return null;
+    if (typeof o.id !== "string" || !ID_RE.test(o.id) || ids.has(o.id)) return null;
+    if (!WIDGET_TYPES.includes(o.type as WidgetType) || typeof o.visible !== "boolean") return null;
+    if (![o.x, o.y, o.w, o.h].every(isPct)) return null;
+    const [x, y, wd, h] = [o.x, o.y, o.w, o.h].map((v) => round2(v as number));
+    if (wd <= 0 || h <= 0 || x + wd > 100 || y + h > 100) return null;
+    if (typeof o.z !== "number" || !Number.isInteger(o.z) || o.z < 0 || o.z > 99) return null;
+    const type = o.type as WidgetType;
+    const allowed = { ...COMMON, ...(EXTRA[type] ?? {}) };
+    const rawProps = o.props ?? {};
+    if (typeof rawProps !== "object" || rawProps === null || Array.isArray(rawProps)) return null;
+    const props: Record<string, PropValue> = {};
+    for (const [k, v] of Object.entries(rawProps as Record<string, unknown>)) {
+      const spec = allowed[k];
+      if (!spec) return null;
+      const val = checkProp(spec, v);
+      if (val === null) return null;
+      props[k] = val;
+    }
+    if (type === "NEW_ORDER_ALERT" && typeof props.variant !== "string") return null;
+    const kindKey = type === "NEW_ORDER_ALERT" ? `${type}:${props.variant}` : type;
+    if (kinds.has(kindKey)) return null;
+    kinds.add(kindKey);
+    ids.add(o.id);
+    out.push({ id: o.id, type, visible: o.visible, x, y, w: wd, h, z: o.z, props });
+  }
+  return out;
+}
+
+// ---- 기본 템플릿 3종(비율마다). 이름은 디자인이 정하면 바꾼다 ----
+// 세로형은 위쪽 약 40% 안에 모으고(아래 절반은 유튜브 채팅이 덮음), 가로형은 가운데(약 860px)를 비운다.
+const w = (id: string, type: WidgetType, x: number, y: number, wd: number, h: number, z: number, props: Record<string, PropValue> = {}, visible = true): Widget => ({
+  id,
+  type,
+  visible,
+  x,
+  y,
+  w: wd,
+  h,
+  z,
+  props: { flowSec: 20, appear: "up", appearSec: 0.7, cardBgOpacity: 0.9, titleBgOpacity: 0.94, ...props },
+});
+const timerOff = (x: number, y: number, wd: number, h: number) => w("open_timer", "OPEN_TIMER", x, y, wd, h, 5, {}, false);
+
+export const BUILTIN_TEMPLATES: Record<string, { name: string; layouts: Record<Aspect, Widget[]> }> = {
+  queue_focus: {
+    name: "주문대기 중심",
+    layouts: {
+      "9x16": [
+        w("current", "CURRENT_ORDER", 3, 2, 94, 10, 3, { glow: true, marquee: true }),
+        w("queue", "QUEUE", 3, 13, 94, 18, 2, { rows: 4 }),
+        w("shop", "SHOP_INFO", 3, 32, 94, 4, 1),
+        timerOff(70, 2, 27, 6),
+      ],
+      "16x9": [
+        w("current", "CURRENT_ORDER", 2, 4, 26, 18, 3, { glow: true, marquee: true }),
+        w("queue", "QUEUE", 2, 24, 26, 56, 2, { rows: 5 }),
+        w("shop", "SHOP_INFO", 2, 88, 26, 8, 1),
+        timerOff(72, 4, 26, 12),
+      ],
+    },
+  },
+  spotlight: {
+    name: "현재 주문·명예의 전당 강조",
+    layouts: {
+      "9x16": [
+        w("current", "CURRENT_ORDER", 3, 2, 94, 14, 3, { glow: true, marquee: true, fontSize: 56 }),
+        w("hall", "HALL_OF_FAME", 3, 17, 46, 18, 2, { rows: 5, ticker: true }),
+        w("queue", "QUEUE", 51, 17, 46, 18, 2, { rows: 3 }),
+        w("notice", "NOTICE", 3, 36, 94, 4, 1),
+        timerOff(70, 2, 27, 6),
+      ],
+      "16x9": [
+        w("current", "CURRENT_ORDER", 2, 4, 26, 24, 3, { glow: true, marquee: true, fontSize: 56 }),
+        w("hall", "HALL_OF_FAME", 72, 4, 26, 52, 2, { rows: 6, ticker: true }),
+        w("queue", "QUEUE", 2, 30, 26, 50, 2, { rows: 4 }),
+        w("notice", "NOTICE", 72, 60, 26, 20, 1),
+        timerOff(72, 84, 26, 12),
+      ],
+    },
+  },
+  minimal: {
+    name: "작은 패널만",
+    layouts: {
+      "9x16": [
+        w("current", "CURRENT_ORDER", 3, 2, 60, 7, 2, { marquee: true }),
+        w("queue", "QUEUE", 65, 2, 32, 12, 1, { rows: 3 }),
+        timerOff(3, 10, 30, 5),
+      ],
+      "16x9": [
+        w("current", "CURRENT_ORDER", 2, 4, 22, 12, 2, { marquee: true }),
+        w("queue", "QUEUE", 2, 18, 22, 30, 1, { rows: 3 }),
+        timerOff(76, 4, 22, 10),
+      ],
+    },
+  },
+};
+export const DEFAULT_TEMPLATE = "queue_focus";
+
+export const parseAspect = (v: unknown): Aspect | null => (ASPECTS.includes(v as Aspect) ? (v as Aspect) : null);
+type Meta = { ip?: string | null; userAgent?: string | null };
+
+async function currentLayout(db: PrismaClient | Prisma.TransactionClient, sellerId: string, aspect: Aspect) {
+  const row = await db.overlayLayout.findUnique({ where: { sellerId_aspect: { sellerId, aspect } } });
+  if (row) return { aspect, templateKey: row.templateKey, widgets: row.widgets as Widget[], version: row.version, updatedAt: row.updatedAt, isDefault: false };
+  return { aspect, templateKey: DEFAULT_TEMPLATE, widgets: BUILTIN_TEMPLATES[DEFAULT_TEMPLATE].layouts[aspect], version: 0, updatedAt: null, isDefault: true };
+}
+
+export async function getSellerLayout(db: PrismaClient, ctx: TenantContext, aspect: Aspect) {
+  requireSellerRead(ctx, "OVERLAY_EDIT");
+  return currentLayout(db, ctx.sellerId, aspect);
+}
+
+// 오버레이 주소(토큰)로 보는 레이아웃: 위젯과 version만
+export async function getPublicLayout(db: PrismaClient, sellerId: string, aspect: Aspect) {
+  const l = await currentLayout(db, sellerId, aspect);
+  return { aspect, version: l.version, widgets: l.widgets };
+}
+
+export type SaveFailure = "invalid_layout" | "version_conflict" | "template_not_found";
+
+// 저장(전체 교체). expectedVersion: 지금 version(처음이면 0).
+export async function saveLayout(
+  db: PrismaClient,
+  ctx: TenantContext,
+  input: { aspect: unknown; widgets: unknown; expectedVersion: unknown; templateKey?: string },
+  meta: Meta = {},
+): Promise<{ ok: true; layout: Awaited<ReturnType<typeof currentLayout>> } | { ok: false; reason: SaveFailure; current?: number }> {
+  requireSellerPermission(ctx, "OVERLAY_EDIT");
+  const aspect = parseAspect(input.aspect);
+  const widgets = parseWidgets(input.widgets);
+  const expected = input.expectedVersion;
+  if (!aspect || !widgets || typeof expected !== "number" || !Number.isInteger(expected) || expected < 0) return { ok: false, reason: "invalid_layout" };
+  return writeLayout(db, ctx, aspect, widgets, expected, input.templateKey, "overlay.layout.update", meta);
+}
+
+async function writeLayout(db: PrismaClient, ctx: TenantContext, aspect: Aspect, widgets: Widget[], expected: number, templateKey: string | undefined, action: string, meta: Meta) {
+  return db.$transaction(async (tx) => {
+    // 판매자·비율 단위로 줄을 세운다(처음 저장 두 개가 동시에 와도 하나만 통과)
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`overlay_layout:${ctx.sellerId}:${aspect}`}))`;
+    const cur = await tx.overlayLayout.findUnique({ where: { sellerId_aspect: { sellerId: ctx.sellerId, aspect } }, select: { version: true, templateKey: true } });
+    const version = cur?.version ?? 0;
+    if (version !== expected) return { ok: false as const, reason: "version_conflict" as const, current: version };
+    const key = templateKey ?? cur?.templateKey ?? DEFAULT_TEMPLATE;
+    const data = { templateKey: key, widgets: widgets as unknown as Prisma.InputJsonValue, updatedById: ctx.actorType === "SELLER_USER" ? ctx.actorId : null };
+    await tx.overlayLayout.upsert({
+      where: { sellerId_aspect: { sellerId: ctx.sellerId, aspect } },
+      create: { sellerId: ctx.sellerId, aspect, ...data },
+      update: { ...data, version: { increment: 1 } },
+    });
+    await writeAudit(tx, {
+      actorType: ctx.actorType,
+      actorId: ctx.actorId,
+      sellerId: ctx.sellerId,
+      action,
+      targetType: "OverlayLayout",
+      targetId: aspect,
+      after: { templateKey: key, widgetCount: widgets.length, version: version + 1 },
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+    });
+    return { ok: true as const, layout: await currentLayout(tx, ctx.sellerId, aspect) };
+  });
+}
+
+// 템플릿으로 초기화. templateKey: 기본 템플릿 키 또는 내 템플릿 id.
+export async function resetLayout(db: PrismaClient, ctx: TenantContext, input: { aspect: unknown; template: unknown; expectedVersion: unknown }, meta: Meta = {}) {
+  requireSellerPermission(ctx, "OVERLAY_EDIT");
+  const aspect = parseAspect(input.aspect);
+  const expected = input.expectedVersion;
+  if (!aspect || typeof input.template !== "string" || typeof expected !== "number" || !Number.isInteger(expected) || expected < 0) return { ok: false as const, reason: "invalid_layout" as const };
+  const builtin = BUILTIN_TEMPLATES[input.template];
+  let widgets: Widget[] | null = builtin ? builtin.layouts[aspect] : null;
+  if (!widgets && /^[0-9a-f-]{36}$/i.test(input.template)) {
+    const mine = await db.overlayTemplate.findFirst({ where: { id: input.template, sellerId: ctx.sellerId, aspect }, select: { widgets: true } });
+    widgets = mine ? (mine.widgets as Widget[]) : null;
+  }
+  if (!widgets) return { ok: false as const, reason: "template_not_found" as const };
+  return writeLayout(db, ctx, aspect, widgets, expected, input.template, "overlay.layout.reset", meta);
+}
+
+export async function listTemplates(db: PrismaClient, ctx: TenantContext, aspect: Aspect) {
+  requireSellerRead(ctx, "OVERLAY_EDIT");
+  const mine = await db.overlayTemplate.findMany({ where: { sellerId: ctx.sellerId, aspect }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true, name: true, widgets: true, createdAt: true } });
+  return {
+    builtin: Object.entries(BUILTIN_TEMPLATES).map(([key, t]) => ({ key, name: t.name, widgets: t.layouts[aspect] })),
+    mine,
+  };
+}
+
+export async function createTemplate(db: PrismaClient, ctx: TenantContext, input: { name: unknown; aspect: unknown; widgets: unknown }, meta: Meta = {}) {
+  requireSellerPermission(ctx, "OVERLAY_EDIT");
+  const aspect = parseAspect(input.aspect);
+  const name = cleanText(input.name, 30, "memo");
+  const widgets = parseWidgets(input.widgets);
+  if (!aspect || !name || !widgets) return { ok: false as const, reason: "invalid_template" as const };
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`overlay_template:${ctx.sellerId}`}))`;
+    if ((await tx.overlayTemplate.count({ where: { sellerId: ctx.sellerId } })) >= MAX_TEMPLATES) return { ok: false as const, reason: "too_many_templates" as const };
+    const t = await tx.overlayTemplate.create({ data: { sellerId: ctx.sellerId, name, aspect, widgets: widgets as unknown as Prisma.InputJsonValue }, select: { id: true, name: true, widgets: true, createdAt: true } });
+    await writeAudit(tx, { actorType: ctx.actorType, actorId: ctx.actorId, sellerId: ctx.sellerId, action: "overlay.template.create", targetType: "OverlayTemplate", targetId: t.id, after: { name, aspect }, ip: meta.ip, userAgent: meta.userAgent });
+    return { ok: true as const, template: { ...t, aspect } };
+  });
+}
+
+export async function deleteTemplate(db: PrismaClient, ctx: TenantContext, id: string, meta: Meta = {}) {
+  requireSellerPermission(ctx, "OVERLAY_EDIT");
+  return db.$transaction(async (tx) => {
+    const t = await tx.overlayTemplate.findFirst({ where: { id, sellerId: ctx.sellerId }, select: { id: true, name: true } });
+    if (!t) return false;
+    await tx.overlayTemplate.delete({ where: { id } });
+    await writeAudit(tx, { actorType: ctx.actorType, actorId: ctx.actorId, sellerId: ctx.sellerId, action: "overlay.template.delete", targetType: "OverlayTemplate", targetId: id, before: { name: t.name }, ip: meta.ip, userAgent: meta.userAgent });
+    return true;
+  });
+}
