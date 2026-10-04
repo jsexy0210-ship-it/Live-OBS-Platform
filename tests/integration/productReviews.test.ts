@@ -692,6 +692,14 @@ describe("적립은 settleReward 하나로(원하는 상태와 원장을 맞춤,
     expect(await amounts(s)).toEqual([500, -500, 300]);
   });
 
+  it("적립이 없던 리뷰는 설정을 올린 뒤 별점·본문만 고쳐도 새로 지급하지 않는다(고치기는 적립 상태를 바꾸지 않음)", async () => {
+    const s = await shop();
+    const r = await created(s, (await s.delivered()).id);
+    await setPolicy(s, { rewardText: 500 });
+    expect((await edit(s, r.reviewId, "별점과 글만 고쳐요. 카드 상태는 좋았어요", [])).status).toBe(200);
+    expect(await amounts(s)).toEqual([]);
+  });
+
   it("같은 상태로 여러 번 바꿔도(같은 내용 고치기·두 번 공개·두 번 숨김) 원장은 바뀌지 않는다", async () => {
     const s = await shop();
     await setPolicy(s, { rewardText: 500 });

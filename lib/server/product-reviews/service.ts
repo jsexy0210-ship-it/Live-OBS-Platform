@@ -640,11 +640,13 @@ export async function updateReview(db: PrismaClient, scope: BuyerScope, id: stri
           : before.status;
       const heldBy = reportHeld ? "reports" : (held ?? null);
       // 사진은 한 번 리뷰에 붙으면 소진된다. 리뷰에서 뗀 사진은 지워 다른 리뷰에 다시 붙일 수 없게 한다(같은 사진으로 적립을 거듭 받지 못하게).
+      const photosBefore = await tx.productReviewImage.count({ where: { sellerId: scope.sellerId, reviewId: id } });
       await reviewImageStore.delete(tx, { sellerId: scope.sellerId, reviewId: id, id: { notIn: p.v.imageIds } });
       if (!(await attachImages(tx, scope, id, p.v.imageIds))) throw new BadImages();
       await tx.productReview.update({ where: { id }, data: { rating: p.v.rating, body: p.v.body, status, heldBy, updatedAt: now } });
-      // 적립은 바뀐 상태(공개 여부·사진 자격)에 맞춘다
-      await settleReward(tx, { ...before, status, heldBy }, now, locked.orderPaid);
+      // 리뷰 고치기는 적립 상태를 바꾸지 않는다(MASTER 원칙). 공개 여부(보류 ↔ 공개)나 사진 자격이 바뀔 때만 settleReward로 맞춘다.
+      // 별점·본문만 고치면 설정이 바뀌었든, MANUAL 환불로 남겨 둔 적립이든 그대로 둔다(Codex 4177188513·4177247985).
+      if (status !== before.status || photosBefore > 0 !== p.v.imageIds.length > 0) await settleReward(tx, { ...before, status, heldBy }, now, locked.orderPaid);
       await buyerAudit(tx, scope, meta, "buyer_review.update", id, { status, rating: p.v.rating, photos: p.v.imageIds.length });
       return { ok: true as const, status };
     });
