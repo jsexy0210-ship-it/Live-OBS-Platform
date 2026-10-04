@@ -12,7 +12,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ orderId:
   try {
     const { orderId } = await params;
     // 잠금 중에도 이미 받은 주문은 처리할 수 있다(대표님 결정 2026-10-02, PRODUCT_SCOPE 「잠금 중 허용 범위」).
-    const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { allowUnpaid: true });
+    const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { allowUnpaid: true, feature: "ORDER_FOLLOWUP" });
     if (!UUID.test(orderId)) return NextResponse.json({ error: "not_found" }, { status: 404 });
     // queueVersion: 환불 화면이 expectedVersion으로 보낸다(환불과 같은 ORDER_SHIPPING 권한·잠금 중 허용)
     // refundPreview: 결제 완료 주문의 사유 주체별 환불액(계산만). 환불 화면이 확인 전에 실제 금액과 뺀 항목을 보여 준다
