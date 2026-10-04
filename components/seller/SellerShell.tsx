@@ -4,85 +4,135 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useLatestResponse, type ReadTicket } from "./latestResponse";
-import { api, type Me } from "./api";
+import { api, currentNavGeneration, nextNavGeneration, PLAN_FEATURE_EVENT, type Me, type PlanFeatureEventDetail } from "./api";
 
 // 파트너스 관리자 공통 틀(업무용 관리 화면 틀, 대표님 지시 2026-10-04): 상단 고정 GNB(대분류) + 왼쪽 LNB(고른 대분류의 하위 메뉴) + 본문.
 // 메뉴 묶음은 docs/IA.md SA 「메뉴 그룹」 표를 따른다. 좁은 화면에서는 GNB가 햄버거로 접히고 LNB가 서랍으로 열린다(서랍에는 전체 메뉴).
 // 아직 만들지 않은 화면은 메뉴에서 흐리게 두고 누를 수 없게 한다.
 
-// perm: 그 권한이 있어야 메뉴가 보인다. OWNER는 대표자 전용. 하위 메뉴가 모두 숨겨진 대분류는 GNB에서도 숨긴다.
-type Item = { label: string; href?: string; perm?: string };
+// perm: 그 권한이 있어야 메뉴가 보인다. OWNER는 대표자 전용.
+// plan: 요금제가 그 기능 권한을 줘야 메뉴가 보인다(ARCHITECTURE 4.8.0 판매자 API 분류와 같은 기준). 없으면 구독·결제처럼 항상 열린다.
+//   ANY = 기능 권한이 하나라도 있을 때(홈·직원 계정·내 계정: 통합 첫 결제 확정 전에는 닫힘)
+//   FOLLOWUP = STORE_OPERATIONS가 있거나, 오버레이 전용으로 내린 뒤에도 후속 처리할 일이 남았을 때(/me orderFollowup). 주문·배송·문의 메뉴(ORDER_FOLLOWUP 경로)
+// alt: plan이 없을 때 대신 여는 화면(그 요금제에서 쓸 수 있는 하위 화면만 보여 줄 때)
+// 하위 메뉴가 모두 숨겨진 대분류는 GNB에서도 숨긴다.
+type PlanNeed = "ANY" | "OVERLAY" | "STORE_OPERATIONS" | "FOLLOWUP";
+type Item = { label: string; href?: string; perm?: string; plan?: PlanNeed; alt?: { plan: PlanNeed; href: string } };
 type Group = { key: string; label: string; items: Item[] };
 const MENU: Group[] = [
-  { key: "home", label: "홈", items: [{ label: "홈" }] },
+  { key: "home", label: "홈", items: [{ label: "홈", plan: "ANY" }] },
   {
     key: "broadcast",
     label: "방송",
     items: [
-      { label: "방송 대시보드", href: "/seller/broadcast", perm: "BROADCAST_RUN" },
-      { label: "오버레이 편집기", perm: "OVERLAY_EDIT" },
-      { label: "HIT 카드 이력", perm: "BROADCAST_RUN" },
-      { label: "방송 이력", perm: "BROADCAST_RUN" },
+      { label: "방송 대시보드", href: "/seller/broadcast", perm: "BROADCAST_RUN", plan: "OVERLAY" },
+      { label: "오버레이 편집기", href: "/seller/overlay", perm: "OVERLAY_EDIT", plan: "OVERLAY" },
+      { label: "HIT 카드 이력", perm: "BROADCAST_RUN", plan: "OVERLAY" },
+      { label: "방송 이력", perm: "BROADCAST_RUN", plan: "OVERLAY" },
     ],
   },
   {
     key: "order",
     label: "주문",
     items: [
-      { label: "전체 주문", href: "/seller/orders", perm: "ORDER_SHIPPING" },
-      { label: "입금 확인", perm: "ORDER_SHIPPING" },
-      { label: "배송", perm: "ORDER_SHIPPING" },
-      { label: "영수증 · 세금계산서", perm: "RECEIPT_TAX" },
+      { label: "전체 주문", href: "/seller/orders", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
+      { label: "입금 확인", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
+      { label: "배송", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
+      { label: "영수증 · 세금계산서", perm: "RECEIPT_TAX", plan: "FOLLOWUP" },
     ],
   },
   {
     key: "product",
     label: "상품",
     items: [
-      { label: "상품 목록", href: "/seller/products", perm: "PRODUCT_MANAGE" },
-      { label: "상품 등록", href: "/seller/products/new", perm: "PRODUCT_MANAGE" },
-      { label: "재고 관리", href: "/seller/products/stock", perm: "PRODUCT_MANAGE" },
+      { label: "상품 목록", href: "/seller/products", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
+      { label: "상품 등록", href: "/seller/products/new", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
+      { label: "재고 관리", href: "/seller/products/stock", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
     ],
   },
   {
     key: "member",
     label: "회원",
     items: [
-      { label: "회원", perm: "MEMBER_POINTS" },
-      { label: "적립금", href: "/seller/rewards", perm: "MEMBER_POINTS" },
-      { label: "구매 제한", perm: "MEMBER_POINTS" },
-      { label: "구매자 문의", perm: "INQUIRY_REPLY" },
+      { label: "회원", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
+      { label: "적립금", href: "/seller/rewards", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
+      { label: "구매 제한", perm: "MEMBER_POINTS", plan: "FOLLOWUP" },
+      { label: "구매자 문의", perm: "INQUIRY_REPLY", plan: "FOLLOWUP" },
     ],
   },
   // 쿠폰: 집계 조회는 파트너스 계정 누구나, 만들기·지급은 적립금(MEMBER_POINTS) 권한(화면에서 막음)
-  { key: "promotion", label: "프로모션", items: [{ label: "쿠폰", href: "/seller/coupons" }] },
-  { key: "design", label: "디자인", items: [{ label: "배너 · 팝업", href: "/seller/banners" }] },
-  { key: "stats", label: "통계", items: [{ label: "통계", href: "/seller/stats", perm: "SALES_VIEW" }] },
+  { key: "promotion", label: "프로모션", items: [{ label: "쿠폰", href: "/seller/coupons", plan: "STORE_OPERATIONS" }] },
+  { key: "design", label: "디자인", items: [{ label: "배너 · 팝업", href: "/seller/banners", plan: "STORE_OPERATIONS" }] },
+  {
+    key: "stats",
+    label: "통계",
+    // 오버레이 전용은 방송 통계만(매출·상품 등은 스토어 운영, MASTER 결정 2026-10-04)
+    items: [{ label: "통계", href: "/seller/stats", perm: "SALES_VIEW", plan: "STORE_OPERATIONS", alt: { plan: "OVERLAY", href: "/seller/stats/broadcasts" } }],
+  },
   {
     key: "settings",
     label: "쇼핑몰 설정",
     items: [
-      { label: "쇼핑몰 정보", href: "/seller/settings/shop" },
-      { label: "주문 설정", href: "/seller/settings/order", perm: "SHOP_SETTINGS" },
-      { label: "배송 설정", href: "/seller/settings/shipping", perm: "SHOP_SETTINGS" },
+      { label: "쇼핑몰 정보", href: "/seller/settings/shop", plan: "STORE_OPERATIONS" },
+      { label: "주문 설정", href: "/seller/settings/order", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
+      { label: "배송 설정", href: "/seller/settings/shipping", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
       // 회원 정책: IA 표에는 없지만 이미 있는 화면이라 쇼핑몰 설정 안에 둔다
-      { label: "회원 정책", href: "/seller/settings/member", perm: "MEMBER_POINTS" },
-      { label: "공유 설정", href: "/seller/settings/share", perm: "SHOP_SETTINGS" },
-      { label: "결제(PG) 연결", perm: "OWNER" },
-      { label: "주문자 알림", perm: "SHOP_SETTINGS" },
-      { label: "직원 계정", href: "/seller/staff", perm: "OWNER" },
+      { label: "회원 정책", href: "/seller/settings/member", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
+      { label: "공유 설정", href: "/seller/settings/share", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
+      { label: "결제(PG) 연결", perm: "OWNER", plan: "STORE_OPERATIONS" },
+      { label: "주문자 알림", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
+      { label: "직원 계정", href: "/seller/staff", perm: "OWNER", plan: "ANY" },
       { label: "구독 · 결제", href: "/seller/subscription", perm: "OWNER" },
     ],
   },
 ];
 
-// 지금 주소에 맞는 메뉴: 주소 앞부분이 가장 길게 맞는 메뉴(상품 상세 → 상품 목록, 이벤트 팝업 → 배너 · 팝업)
-function findActive(groups: Group[], pathname: string): { group: Group; item: Item } | null {
+// 주소로 바로 들어와도 요금제에 없는 화면은 안내 화면을 보인다. 메뉴 묶음과 다른 하위 화면만 따로 적는다(긴 주소가 먼저)
+const ROUTE_PLAN: [string, PlanNeed][] = [["/seller/stats/broadcasts", "OVERLAY"]];
+// 쇼핑몰 설정 하위 화면(/seller/settings/…)은 메뉴마다 따로 주소가 있어 접두어가 길게 맞는 메뉴를 고른다
+function routeNav(pathname: string): { group: Group; item: Item } | null {
   let best: { group: Group; item: Item } | null = null;
-  for (const group of groups)
+  for (const group of MENU)
     for (const item of group.items)
       if (item.href && (pathname === item.href || pathname.startsWith(`${item.href}/`)) && (!best || item.href.length > best.item.href!.length)) best = { group, item };
   return best;
+}
+// 상단 바 경로(「주문 › 전체 주문」처럼 대분류 › 메뉴)
+function routeCrumb(pathname: string): string {
+  const r = routeNav(pathname);
+  if (!r) return "파트너스";
+  return r.group.label !== r.item.label ? `${r.group.label} › ${r.item.label}` : r.item.label;
+}
+function routePlan(pathname: string): PlanNeed | undefined {
+  return ROUTE_PLAN.find(([p]) => pathname.startsWith(p))?.[1] ?? routeNav(pathname)?.item.plan;
+}
+
+// 요금제 기능 권한만 보는 판단(통계 탭 등). FOLLOWUP은 후속 처리 여부(orderFollowup)가 필요해 menuAllows가 본다
+export function planAllows(features: readonly string[] | undefined, need?: Exclude<PlanNeed, "FOLLOWUP">): boolean {
+  const f = features ?? [];
+  return !need || (need === "ANY" ? f.length > 0 : f.includes(need));
+}
+function menuAllows(me: Pick<Me, "features" | "orderFollowup">, need?: PlanNeed): boolean {
+  return need === "FOLLOWUP" ? planAllows(me.features, "STORE_OPERATIONS") || !!me.orderFollowup : planAllows(me.features, need);
+}
+function canFor(me: Me, perm: string) {
+  return me.isOwner || (perm !== "OWNER" && me.permissions.includes(perm));
+}
+// 권한·요금제 기능이 없는 메뉴는 숨기고(alt가 열리면 그 화면으로), 안에 메뉴가 하나도 안 남은 대분류도 숨긴다
+function visibleMenu(me: Me): Group[] {
+  return MENU.map((g) => ({
+    ...g,
+    items: g.items.flatMap((n): Item[] => {
+      if (n.perm && !canFor(me, n.perm)) return [];
+      if (menuAllows(me, n.plan)) return [n];
+      return n.alt && menuAllows(me, n.alt.plan) ? [{ ...n, href: n.alt.href }] : [];
+    }),
+  })).filter((g) => g.items.length > 0);
+}
+// 로그인 뒤 갈 화면: 기본 화면(href)이 요금제에 없으면 만든 메뉴 중 지금 열리는 첫 메뉴(없으면 기본 화면 그대로)
+export function landingFor(me: Me, href: string): string {
+  if (menuAllows(me, routePlan(href))) return href;
+  return visibleMenu(me).flatMap((g) => g.items).find((n) => !!n.href)?.href ?? href;
 }
 
 // loc: 지금 화면의 대분류 · 메뉴 이름(본문 위 경로 줄에 쓴다)
@@ -109,10 +159,13 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   // /me 다시 읽기 반영 규칙(latestResponse.ts): 나중에 보낸 요청의 성공만 반영하고, 실패가 앞선 성공을 버리지 않는다.
   // 반영할 때 파생 값(남은 체험 일수)도 함께 계산한다: 처음 읽기·다시 읽기 어느 쪽이 먼저 성공해도 같은 결과
   const meReads = useLatestResponse();
+  // 반영한 /me의 세대(요금제 차단 뒤 다시 읽은 값인지 가리는 데 쓴다)
+  const [meGen, setMeGen] = useState(0);
   const applyMe = (t: ReadTicket, data: Me) => {
     if (meReads.accept(t) !== "apply") return;
     setFailed(false);
     setMe(data);
+    setMeGen(t.n);
     // 체험 중이면 /me가 끝나는 시각을 준다(대표자·직원 모두)
     setTrialDaysLeft(data.access === "trial" && data.trialEndsAt ? Math.max(0, Math.ceil((new Date(data.trialEndsAt).getTime() - Date.now()) / 86_400_000)) : null);
   };
@@ -139,12 +192,13 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   // 로딩 화면은 띄우지 않고, 실패하면 지금 값을 그대로 둔다(401이면 공통 api()가 로그인으로 보낸다)
   // 창으로 돌아올 때(포커스·화면이 다시 보일 때)도 다시 읽는다: 권한이 하나도 없는 직원은 옮길 화면이 없어 경로로는 새로 읽지 못한다.
   // 짧은 간격으로 겹치면(포커스와 visibilitychange가 함께 오는 경우 등) 한 번만 읽는다
-  const refresh = useCallback(() => {
+  const refresh = useCallback((): number => {
     lastRead.current = Date.now();
     const t = meReads.next();
     void api<Me>("/api/seller/me").then((r) => {
       if (r.ok) applyMe(t, r.data);
     });
+    return t.n;
   }, []);
   const firstPath = useRef(pathname);
   useEffect(() => {
@@ -179,6 +233,32 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
     setPicked(null);
   }, [pathname]);
 
+  // 화면 방문 번호: 경로가 바뀌면 화면(자식)을 그리기 전에 올린다. 자식의 첫 요청도 새 번호를 갖도록 렌더 중에 한 번만 올린다
+  const visitPath = useRef<string | null>(null);
+  if (visitPath.current !== pathname) {
+    visitPath.current = pathname;
+    nextNavGeneration();
+  }
+  // 화면이 부른 API가 403 plan_feature_required면(그사이 요금제가 바뀐 경우 등) 그 화면을 안내 화면으로 바꾸고 메뉴를 다시 읽는다.
+  // 요청을 보낸 방문과 지금 방문이 다르면(옮긴 뒤 늦게 온 응답, 같은 경로로 돌아온 경우 포함) 무시한다. 차단은 화면을 떠나면 지우고,
+  // 차단 뒤 다시 읽은 /me(gen 이후 세대)가 이 화면을 허용하면 지운다(그사이 요금제를 올린 경우)
+  const [planBlocked, setPlanBlocked] = useState<{ path: string; visit: number; gen: number } | null>(null);
+  useEffect(() => {
+    const onBlocked = (e: Event) => {
+      const visit = (e as CustomEvent<PlanFeatureEventDetail>).detail?.visit;
+      if (visit !== currentNavGeneration()) return;
+      setPlanBlocked({ path: window.location.pathname, visit, gen: refresh() });
+    };
+    window.addEventListener(PLAN_FEATURE_EVENT, onBlocked);
+    return () => window.removeEventListener(PLAN_FEATURE_EVENT, onBlocked);
+  }, [refresh]);
+  useEffect(() => setPlanBlocked(null), [pathname]);
+  // 화면의 요금제 조건을 모르면(routePlan 없음) 허용을 확인할 수 없어 떠날 때까지 둔다(다시 막히는 되풀이 방지)
+  useEffect(() => {
+    const need = planBlocked && routePlan(planBlocked.path);
+    if (planBlocked && need && me && meGen >= planBlocked.gen && menuAllows(me, need)) setPlanBlocked(null);
+  }, [planBlocked, me, meGen]);
+
   // 세션을 실제로 끊었을 때만 로그인 화면으로 보낸다. 실패하면 화면에 남아 다시 시도하게 한다(공용 기기에서 로그아웃된 줄 착각하지 않게).
   const [logoutError, setLogoutError] = useState(false);
   const logout = async () => {
@@ -207,12 +287,16 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const can = (perm: string) => me.isOwner || (perm !== "OWNER" && me.permissions.includes(perm));
-  // 권한이 없는 메뉴는 숨기고, 하위 메뉴가 하나도 안 남은 대분류도 숨긴다
-  const menu = MENU.map((g) => ({ ...g, items: g.items.filter((n) => !n.perm || can(n.perm)) })).filter((g) => g.items.length > 0);
-  const active = findActive(menu, pathname);
-  const shown = menu.find((g) => g.key === picked) ?? active?.group ?? menu[0];
+  const can = (perm: string) => canFor(me, perm);
+  const features = me.features ?? [];
+  const menu = visibleMenu(me);
+  const route = routeNav(pathname);
+  const active = route && menu.some((g) => g.key === route.group.key) ? route : null;
+  const shown = menu.find((g) => g.key === picked) ?? menu.find((g) => g.key === active?.group.key) ?? menu[0];
   const loc = active ? { group: active.group.label, item: active.item.label, exact: pathname === active.item.href } : null;
+  const blocked = (planBlocked?.path === pathname && planBlocked.visit === currentNavGeneration()) || !menuAllows(me, routePlan(pathname));
+  // 안내 화면에서 갈 수 있는 첫 화면(만든 메뉴 중 지금 열리는 것)
+  const nextNav = menu.flatMap((g) => g.items).find((n) => !!n.href && !pathname.startsWith(n.href));
 
   const utilities = (
     <>
@@ -302,10 +386,35 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
             <div className="lnb-util">{utilities}</div>
           </aside>
           <button className="cs-dim" type="button" aria-label="메뉴 닫기" onClick={() => setNavOpen(false)} />
-          <div className="col cs-body">{children}</div>
+          <div className="col cs-body">
+            {blocked ? <PlanFeatureRequired crumb={routeCrumb(pathname)} noFeatures={features.length === 0} next={nextNav} /> : children}
+          </div>
         </div>
       </div>
     </Ctx.Provider>
+  );
+}
+
+// 지금 요금제에 없는 기능(서버 403 plan_feature_required, 또는 /me features에 없음)의 안내 화면
+function PlanFeatureRequired({ crumb, noFeatures, next }: { crumb: string; noFeatures: boolean; next?: { label: string; href?: string } }) {
+  const { me } = useSeller();
+  return (
+    <>
+      <Topbar crumb={crumb} />
+      <main className="main">
+        <div className="card st" style={{ boxShadow: "none" }} data-testid="plan-feature-required">
+          <div className="st-ic lock">!</div>
+          <h1 className="t">지금 요금제에서 사용할 수 없는 기능입니다</h1>
+          <span className="s">{noFeatures ? "구독료 첫 결제가 확정되면 사용할 수 있습니다" : "쇼핑몰 통합 요금제에서 사용할 수 있습니다"}</span>
+          <span className="s">{me.isOwner ? "요금제는 구독 · 결제에서 바꿀 수 있습니다" : "요금제 변경은 대표자에게 요청해 주십시오"}</span>
+          {next?.href && (
+            <Link className="btn btn-sm" href={next.href}>
+              {next.label} 화면으로 이동
+            </Link>
+          )}
+        </div>
+      </main>
+    </>
   );
 }
 
