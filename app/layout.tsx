@@ -3,7 +3,7 @@ import "../styles/wanted-sans.css";
 
 export const metadata: Metadata = {
   title: "Live OBS Platform",
-  description: "판매자 쇼핑몰·라이브 방송 운영 구독 플랫폼 (개발 중)",
+  description: "파트너스 쇼핑몰·라이브 방송 운영 구독 플랫폼 (개발 중)",
   robots: { index: false, follow: false }
 };
 

@@ -38,6 +38,10 @@ async function fillIdentity(page: Page, name: string, phone = "01012345678") {
   await page.getByLabel("휴대폰번호", { exact: true }).fill(phone);
   await page.getByLabel("본인확인 약관에 모두 동의해요").check();
 }
+// 파트너스 가입 필수 약관(PF-007-1). 둘 다 동의해야 인증번호를 받을 수 있다
+async function agreeSignupTerms(page: Page) {
+  await page.getByLabel("필수 약관에 모두 동의해요").check();
+}
 // 아이디·비밀번호 찾기 시작은 같은 휴대폰 하루 10회 한도라 찾기 확인마다 다른 번호를 쓴다(가짜 공급자 CI는 이름·생년월일로만 정해진다)
 const randomPhone = () => `010${String(Math.floor(Math.random() * 1e8)).padStart(8, "0")}`;
 
@@ -68,6 +72,25 @@ async function signup(page: Page, opts: { mailOrderNumber: string; wrongFirst?: 
   await expect(page).toHaveURL(/\/seller\/signup$/);
   await expect(page.getByLabel("상호")).toBeDisabled();
   await fillIdentity(page, a.name);
+  if (opts.shots) {
+    // 필수 약관 둘 다 동의하기 전에는 인증번호 받기가 꺼져 있고 시작 요청을 보내지 않는다
+    let starts = 0;
+    const count = (r: { url: () => string; method: () => string }) => {
+      if (r.url().endsWith("/api/seller-signup/verification") && r.method() === "POST") starts += 1;
+    };
+    page.on("request", count);
+    const send = page.getByRole("button", { name: "인증번호 받기" });
+    await expect(send).toBeDisabled();
+    await page.getByLabel("파트너스 이용약관 (필수)").check();
+    await expect(send).toBeDisabled();
+    await send.click({ force: true });
+    await shot(page, "PF-007-1-terms");
+    await page.getByLabel("개인정보 수집 · 이용 (필수)").check();
+    await expect(page.getByLabel("필수 약관에 모두 동의해요")).toBeChecked();
+    await expect(send).toBeEnabled();
+    page.off("request", count);
+    expect(starts).toBe(0);
+  } else await agreeSignupTerms(page);
   if (opts.shots) await shot(page, "PF-007-1");
   await verify(page, opts.wrongFirst);
   await expect(page.getByText("본인확인을 마쳤어요")).toBeVisible();
@@ -214,6 +237,7 @@ test("본인확인 시작 응답을 잃고 다시 누르면 같은 attemptKey로
   const name = `이${letters(id)}`;
   await page.goto("/seller/signup");
   await fillIdentity(page, name);
+  await agreeSignupTerms(page);
   const signupSent = await dropFirstStart(page, "/api/seller-signup/verification");
   await retryAfterDrop(page, signupSent);
   await expect(page.getByText("본인확인을 마쳤어요")).toBeVisible();
@@ -229,6 +253,78 @@ test("본인확인 시작 응답을 잃고 다시 누르면 같은 attemptKey로
   const resetSent = await dropFirstStart(page, "/api/seller/password-reset/start");
   await retryAfterDrop(page, resetSent);
   await expect(page.getByRole("heading", { name: "새 비밀번호를 정해요" })).toBeVisible();
+});
+
+test("가입 신청: 인증번호 받기 요청을 보내는 동안에는 약관 동의를 바꿀 수 없다", async ({ page }) => {
+  await page.goto("/seller/signup");
+  await fillIdentity(page, `윤${letters(uniq())}`);
+  await agreeSignupTerms(page);
+  // 시작 응답을 붙잡아 두고 그 사이 동의를 풀어 본다
+  let release: () => void = () => {};
+  const held = new Promise<void>((r) => (release = r));
+  await page.route(
+    (u) => u.pathname === "/api/seller-signup/verification",
+    async (route) => {
+      await held;
+      await route.continue();
+    },
+    { times: 1 },
+  );
+  await page.getByRole("button", { name: "인증번호 받기" }).click();
+  const all = page.getByLabel("필수 약관에 모두 동의해요");
+  await expect(all).toBeDisabled();
+  await all.click({ force: true });
+  await page.getByLabel("개인정보 수집 · 이용 (필수)").click({ force: true });
+  await expect(all).toBeChecked();
+  await expect(page.getByLabel("개인정보 수집 · 이용 (필수)")).toBeChecked();
+  release();
+  await expect(page.getByText("인증번호를 보냈어요. 문자로 받은 6자리를 넣어 주세요")).toBeVisible();
+  await expect(all).toBeChecked();
+});
+
+test("가입 신청: 화면의 약관 버전이 서버와 다르면 문자를 보내지 않고, 동의를 비워 다시 동의하게 한다", async ({ page }) => {
+  // 약관이 바뀌기 전에 열어 둔 화면: 처음 받은 화면의 약관 버전만 예전 값으로 바꿔 둔다(그 뒤 화면 데이터 요청은 그대로 서버 값)
+  await page.route(
+    (u) => u.pathname === "/seller/signup",
+    async (route) => {
+      if (route.request().resourceType() !== "document") return route.continue();
+      const res = await route.fetch();
+      return route.fulfill({ response: res, body: (await res.text()).replace(/\d{4}-\d{2}-\d{2}\.v\d+/g, "2026-01-01.v0") });
+    },
+    { times: 1 },
+  );
+  await page.goto("/seller/signup");
+  const who = `최${letters(uniq())}`;
+  await fillIdentity(page, who);
+  await agreeSignupTerms(page);
+  const stale = page.waitForRequest((r) => r.url().endsWith("/api/seller-signup/verification") && r.method() === "POST");
+  const refused = page.waitForResponse((r) => r.url().endsWith("/api/seller-signup/verification") && r.request().method() === "POST");
+  // 거절되면 화면 데이터를 새로 받아 서버의 지금 약관 버전으로 바꾼다(열어 둔 예전 화면이 같은 버전을 계속 보내지 않게)
+  const refreshed = page.waitForRequest((r) => new URL(r.url()).pathname === "/seller/signup" && r.headers()["rsc"] === "1");
+  await page.getByRole("button", { name: "인증번호 받기" }).click();
+  expect((await stale).postDataJSON()).toMatchObject({ termsVersion: "2026-01-01.v0", privacyVersion: "2026-01-01.v0" });
+  const refusedRes = await refused;
+  expect(refusedRes.status()).toBe(409);
+  // 서버는 거절하면서 지금 약관 버전을 알려 준다
+  const current = (await refusedRes.json()) as { termsVersion: string; privacyVersion: string };
+  expect(current.termsVersion).toMatch(/^\d{4}-\d{2}-\d{2}\.v\d+$/);
+  await refreshed;
+  await expect(page.locator("#idv-name")).toHaveValue(who);
+  await expect(page.locator("#su-terms-err")).toHaveText("약관이 바뀌었어요. 다시 확인해 주세요");
+  await expect(page.getByLabel("필수 약관에 모두 동의해요")).not.toBeChecked();
+  await expect(page.getByLabel("필수 약관에 모두 동의해요")).toBeFocused();
+  await expect(page.getByRole("button", { name: "인증번호 받기" })).toBeDisabled();
+  await expect(page.getByText("인증번호를 보냈어요", { exact: false })).toHaveCount(0);
+  await shot(page, "PF-007-1-outdated");
+  // 다시 동의하면 서버의 지금 버전으로 보내 본인확인을 이어 간다
+  await agreeSignupTerms(page);
+  await expect(page.locator("#su-terms-err")).toHaveCount(0);
+  const again = page.waitForRequest((r) => r.url().endsWith("/api/seller-signup/verification") && r.method() === "POST");
+  const accepted = page.waitForResponse((r) => r.url().endsWith("/api/seller-signup/verification") && r.request().method() === "POST");
+  await verify(page);
+  expect((await again).postDataJSON()).toMatchObject({ termsVersion: current.termsVersion, privacyVersion: current.privacyVersion });
+  expect((await accepted).status()).toBe(200);
+  await expect(page.getByText("본인확인을 마쳤어요")).toBeVisible();
 });
 
 test("통신판매업 신고번호를 확인하지 못하면 승인 대기로 받고, 걸린 항목을 알려 준다(개업일 오늘은 한국 날짜 기준)", async ({ page }) => {

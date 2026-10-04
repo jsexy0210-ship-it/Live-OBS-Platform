@@ -1,6 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { generateToken, hashToken } from "../auth/token";
+import { sellerHasFeature } from "../billing/features";
 import { sellerAccessFor } from "../billing/subscription";
 import { requireSellerPermission, type TenantContext } from "../tenant/context";
 
@@ -24,7 +25,8 @@ export async function issueOverlayToken(db: PrismaClient, ctx: TenantContext, no
   return token;
 }
 
-// 오버레이 토큰으로 판매자를 찾는다. 폐기된 토큰, 운영 중이 아닌 판매자, 구독이 끝나 잠긴 판매자는 null
+// 오버레이 토큰으로 판매자를 찾는다. 폐기된 토큰, 운영 중이 아닌 판매자, 구독이 끝나 잠긴 판매자,
+// 오버레이 기능 권한이 없는 판매자(통합 첫 결제 확정 전, ARCHITECTURE 4.8.0)는 null
 // (state·version·stream 모두 404, 열려 있는 SSE는 다음 핑 재확인 때 닫힘. MASTER 결정 2026-10-03).
 export async function resolveOverlayToken(db: PrismaClient, token: string | undefined, now?: Date): Promise<string | null> {
   if (!token || token.length > 100) return null;
@@ -35,5 +37,6 @@ export async function resolveOverlayToken(db: PrismaClient, token: string | unde
   if (!row || row.revokedAt || row.seller.status !== "ACTIVE") return null;
   // 이용 제한은 DB 시계로 판단한다
   if ((await sellerAccessFor(db, row.sellerId, now)) === "expired") return null;
+  if (!(await sellerHasFeature(db, row.sellerId, "OVERLAY", now))) return null;
   return row.sellerId;
 }

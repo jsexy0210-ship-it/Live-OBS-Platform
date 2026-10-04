@@ -53,6 +53,9 @@ test("가입 신청: 본인확인 대행사 연결 전이면 인증번호 받기
   // 본인확인 전에는 정보 입력 칸이 잠겨 있다
   await expect(page.getByLabel("상호")).toBeDisabled();
   await fillIdentity(page);
+  // 필수 약관(PF-007-1)에 동의해야 인증번호를 받을 수 있다
+  await expect(page.getByRole("button", { name: "인증번호 받기" })).toBeDisabled();
+  await page.getByLabel("필수 약관에 모두 동의해요").check();
   const res = page.waitForResponse((r) => r.url().endsWith("/api/seller-signup/verification") && r.request().method() === "POST");
   await page.getByRole("button", { name: "인증번호 받기" }).click();
   expect((await res).status()).toBe(503);

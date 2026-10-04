@@ -6,7 +6,7 @@
 export type MemberDataPolicy = "delete" | "anonymize" | "retain_legal";
 
 export const MEMBER_DATA_POLICY: Record<string, { policy: MemberDataPolicy; note: string }> = {
-  BuyerMember: { policy: "anonymize", note: "이름·휴대폰·닉네임·아이디·CI 해시·생년월일·비밀번호·마케팅 동의·가입 동의 기록(signupConsent)·재가입 제한 보관 동의 스냅숏 비식별, WITHDRAWN·deletedAt" },
+  BuyerMember: { policy: "anonymize", note: "이름·휴대폰·닉네임·아이디·CI 해시·생년월일·비밀번호·마케팅 동의(시각·문서 버전·철회 시각)·가입 동의 기록(signupConsent)·재가입 제한 보관 동의 스냅숏 비식별, WITHDRAWN·deletedAt" },
   BuyerAddress: { policy: "delete", note: "저장 배송지" },
   BuyerSession: { policy: "delete", note: "로그인 세션" },
   BuyerPurchaseRestriction: { policy: "delete", note: "구매 제한(개인정보 없음, 탈퇴하면 쓸 일 없음)" },
@@ -47,6 +47,11 @@ export const MEMBER_AUDIT_RETENTION: Record<string, MemberAuditRetention> = {
   "buyer_address.delete": "non_transaction",
   "buyer.withdraw": "non_transaction",
   "buyer.withdraw_failed": "non_transaction",
+  // 마케팅 수신 동의 철회·다시 동의(회원 정보 수정과 같은 분류)
+  "buyer.marketing_consent.withdraw": "non_transaction",
+  "buyer.marketing_consent.agree": "non_transaction",
+  // 재가입 제한 정보 보관 동의 철회(회원 정보 수정과 같은 분류)
+  "buyer.rejoin_retention_consent.withdraw": "non_transaction",
   // 미입금 자동 취소로 생긴 구매 제한(판매자 회원 관리). 주문 기록 자체는 order.* 행이 따로 남는다.
   "buyer.purchase_restriction.create": "non_transaction",
   "buyer.purchase_restriction.lift": "non_transaction",

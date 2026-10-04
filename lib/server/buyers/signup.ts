@@ -3,6 +3,7 @@ import { writeAudit } from "../audit/log";
 import { hashPassword, verifyPassword } from "../auth/password";
 import { MAX_EMAIL_LENGTH, normalizeEmail } from "../auth/login";
 import { MIN_PASSWORD_LENGTH } from "../auth/passwordReset";
+import { sellerHasFeature } from "../billing/features";
 import { dbNow, sellerAccessFor } from "../billing/subscription";
 import { birthDateOf, type IdentityProvider } from "../identity/provider";
 import { randomUUID } from "node:crypto";
@@ -45,10 +46,16 @@ export function kstAge(birthDate: Date, now: Date): number {
   return ty - by - (tm < bm || (tm === bm && td < bd) ? 1 : 0);
 }
 
-// 운영 중이고 잠기지 않은 쇼핑몰만 가입을 받는다(주문과 같은 기준, DB 시계)
+// 운영 중이고 잠기지 않았고 스토어 운영 기능 권한이 있는 쇼핑몰만 가입을 받는다(주문과 같은 기준, DB 시계).
+// 공유 미리보기·공유 카드도 이 기준이다(ARCHITECTURE 4.8.0 공개·구매자 경로 표).
 export async function shopOpen(db: PrismaClient, sellerId: string) {
   const seller = await db.seller.findUnique({ where: { id: sellerId }, select: { status: true } });
-  return !!seller && seller.status === "ACTIVE" && (await sellerAccessFor(db, sellerId)) !== "expired";
+  return (
+    !!seller &&
+    seller.status === "ACTIVE" &&
+    (await sellerAccessFor(db, sellerId)) !== "expired" &&
+    (await sellerHasFeature(db, sellerId, "STORE_OPERATIONS"))
+  );
 }
 
 // 첫 문자를 보내는 중으로 보는 시간. 공급자 호출 제한시간(10초)보다 넉넉하게 잡는다. 이 시간이 지나도 보낸 기록이 없으면
@@ -286,6 +293,7 @@ export async function signupBuyer(
           gradeId: grade.id,
           // 마케팅 수신 동의 시각은 본인확인 시작 때 동의한 시각이다
           marketingConsentAt: consent.marketing ? new Date(consent.agreedAt) : null,
+          marketingConsentVersion: consent.marketing?.version ?? null,
           signupConsent: consent,
           rejoinRestrictionDaysAgreed: rejoinDays,
           rejoinRetentionAgreedAt: consent.rejoinRetention ? new Date(consent.agreedAt) : null,

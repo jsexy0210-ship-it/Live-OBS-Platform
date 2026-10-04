@@ -9,7 +9,7 @@ import { listStockMovements } from "../../../../../lib/server/products/stockMove
 // 항목: 상품·옵션 이름, 증감, 결과 재고, 유형(주문·취소·환불·직접 변경), 사유, 처리자(직원 이름 또는 「구매자 주문」), 연결 주문 id, 시각.
 export async function GET(req: Request) {
   try {
-    const ctx = await requireSeller(prisma, sessionToken(req, "seller"));
+    const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "STORE_OPERATIONS" });
     const q = new URL(req.url).searchParams;
     const r = await listStockMovements(prisma, ctx, {
       productId: q.get("productId"),

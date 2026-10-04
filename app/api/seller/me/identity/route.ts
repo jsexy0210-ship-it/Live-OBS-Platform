@@ -9,7 +9,7 @@ import { staffLinkStatus } from "../../../../../lib/server/sellers/staffIdentity
 // { available(본인확인을 쓸 수 있음), phoneRegistered, registeredPhoneLast4(끝 4자리만), linked, relinkRequired(번호 변경으로 연결이 풀림) }
 export async function GET(req: Request) {
   try {
-    const ctx = await requireSeller(prisma, sessionToken(req, "seller"));
+    const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "ACCOUNT" });
     return NextResponse.json(await staffLinkStatus(prisma, ctx, identityProvider() !== null), { headers: { "cache-control": "no-store" } });
   } catch (e) {
     return errorResponse(e);
