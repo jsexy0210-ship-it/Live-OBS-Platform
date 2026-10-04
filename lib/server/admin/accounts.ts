@@ -1,0 +1,123 @@
+import { Prisma, type PlatformAdminRole, type PlatformAdminStatus, type PrismaClient } from "@prisma/client";
+import type { AdminSessionContext } from "../auth/session";
+import { writeAudit } from "../audit/log";
+import { forbidden } from "../authz/errors";
+import { ADMIN_PERMISSIONS, adminCan, type AdminPermission } from "../authz/permissions";
+import { hashPassword } from "../auth/password";
+import { MIN_PASSWORD_LENGTH } from "../auth/passwordReset";
+import { dbNow } from "../billing/subscription";
+
+// 마스터 관리자 계정(MA-061·062)과 역할별 권한 표(MA-063). 모두 admin.manage(최고관리자)만.
+// 역할·상태는 요청마다 DB에서 다시 읽으므로(auth/session.ts) 바꾸면 바로 적용된다. 정지하면 그 계정의 세션도 끝낸다.
+// 최고관리자(SUPER_ADMIN)는 한 명뿐이고 시드로만 만든다(대표님 지시 2026-10-04 「최고관리자는 유일신이다. 정지·강등 넣지 마라」):
+// 누구도(본인 포함) 최고관리자를 정지·역할 변경할 수 없고(이름만 바꿈), 다른 계정에 최고관리자 역할을 줄 수 없다.
+const ROLES: readonly PlatformAdminRole[] = ["SUPER_ADMIN", "OPERATIONS", "CS", "READ_ONLY"];
+const ASSIGNABLE_ROLES: readonly PlatformAdminRole[] = ["OPERATIONS", "CS", "READ_ONLY"];
+const STATUSES: readonly PlatformAdminStatus[] = ["ACTIVE", "SUSPENDED"];
+const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,}$/;
+type Meta = { ip?: string | null; userAgent?: string | null };
+
+function requireManage(admin: AdminSessionContext) {
+  if (!adminCan(admin.admin.role, "admin.manage")) throw forbidden();
+}
+
+const VIEW = { id: true, email: true, name: true, role: true, status: true, lastLoginAt: true, createdAt: true } as const satisfies Prisma.PlatformAdminSelect;
+
+export async function listAdmins(db: PrismaClient, admin: AdminSessionContext) {
+  requireManage(admin);
+  return db.platformAdmin.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: VIEW });
+}
+
+// 역할별 권한 표: 권한마다 가진 역할, 역할마다 가진 권한(lib/server/authz/permissions.ts가 정본)
+export function permissionTable(admin: AdminSessionContext) {
+  requireManage(admin);
+  const permissions = Object.keys(ADMIN_PERMISSIONS) as AdminPermission[];
+  return {
+    roles: ROLES,
+    permissions: permissions.map((p) => ({ permission: p, roles: [...ADMIN_PERMISSIONS[p]] })),
+    byRole: Object.fromEntries(ROLES.map((r) => [r, permissions.filter((p) => adminCan(r, p))])) as Record<PlatformAdminRole, AdminPermission[]>,
+  };
+}
+
+export type CreateAdminFailure = "invalid_input" | "super_admin_not_assignable" | "weak_password" | "email_taken";
+
+// 계정 추가. 처음 비밀번호는 최고관리자가 정해 따로 전한다(응답·로그 추적에 넣지 않음).
+export async function createAdmin(
+  db: PrismaClient,
+  admin: AdminSessionContext,
+  input: { email?: unknown; name?: unknown; role?: unknown; password?: unknown },
+  meta: Meta = {},
+) {
+  requireManage(admin);
+  const email = typeof input.email === "string" ? input.email.trim().toLowerCase() : "";
+  const name = typeof input.name === "string" ? input.name.trim() : "";
+  if (!EMAIL_RE.test(email) || !name || name.length > 50 || !ROLES.includes(input.role as PlatformAdminRole)) return { ok: false as const, reason: "invalid_input" as const };
+  if (!ASSIGNABLE_ROLES.includes(input.role as PlatformAdminRole)) return { ok: false as const, reason: "super_admin_not_assignable" as const };
+  if (typeof input.password !== "string" || input.password.length < MIN_PASSWORD_LENGTH || input.password.length > 200) return { ok: false as const, reason: "weak_password" as const };
+  const passwordHash = await hashPassword(input.password);
+  try {
+    return await db.$transaction(async (tx) => {
+      const created = await tx.platformAdmin.create({ data: { email, name, role: input.role as PlatformAdminRole, passwordHash }, select: VIEW });
+      await writeAudit(tx, {
+        actorType: "PLATFORM_ADMIN",
+        actorId: admin.admin.id,
+        action: "admin.account.create",
+        targetType: "PlatformAdmin",
+        targetId: created.id,
+        after: { email: created.email, name: created.name, role: created.role },
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+      });
+      return { ok: true as const, admin: created };
+    });
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") return { ok: false as const, reason: "email_taken" as const };
+    throw e;
+  }
+}
+
+export type UpdateAdminFailure = "invalid_input" | "super_admin_not_assignable" | "not_found" | "super_admin_protected";
+
+// 이름·역할·상태 바꾸기(빼고 보내면 그대로). 정지하면 세션을 끝낸다. 최고관리자는 이름만 바꾼다(역할·상태를 보내면 409, 아무것도 바꾸지 않음).
+export async function updateAdmin(
+  db: PrismaClient,
+  admin: AdminSessionContext,
+  adminId: string,
+  input: { name?: unknown; role?: unknown; status?: unknown },
+  meta: Meta = {},
+) {
+  requireManage(admin);
+  const name = input.name === undefined ? undefined : typeof input.name === "string" ? input.name.trim() : null;
+  if (name !== undefined && (!name || name.length > 50)) return { ok: false as const, reason: "invalid_input" as const };
+  if (input.role !== undefined && !ROLES.includes(input.role as PlatformAdminRole)) return { ok: false as const, reason: "invalid_input" as const };
+  if (input.status !== undefined && !STATUSES.includes(input.status as PlatformAdminStatus)) return { ok: false as const, reason: "invalid_input" as const };
+  const role = input.role as PlatformAdminRole | undefined;
+  const status = input.status as PlatformAdminStatus | undefined;
+  if (name === undefined && role === undefined && status === undefined) return { ok: false as const, reason: "invalid_input" as const };
+  if (role !== undefined && !ASSIGNABLE_ROLES.includes(role)) return { ok: false as const, reason: "super_admin_not_assignable" as const };
+  return db.$transaction(async (tx) => {
+    // 대상 행을 잠그고 읽는다(동시에 두 번 바꿔도 전후 기록이 어긋나지 않게)
+    await tx.$queryRaw`SELECT "id" FROM "PlatformAdmin" WHERE "id" = ${adminId}::uuid FOR UPDATE`;
+    const before = await tx.platformAdmin.findUnique({ where: { id: adminId }, select: VIEW });
+    if (!before) return { ok: false as const, reason: "not_found" as const };
+    if (before.role === "SUPER_ADMIN" && (role !== undefined || status !== undefined)) return { ok: false as const, reason: "super_admin_protected" as const };
+    const after = await tx.platformAdmin.update({ where: { id: adminId }, data: { ...(name !== undefined ? { name } : {}), ...(role ? { role } : {}), ...(status ? { status } : {}) }, select: VIEW });
+    let revokedSessions = 0;
+    if (status === "SUSPENDED" && before.status !== "SUSPENDED") {
+      const now = await dbNow(tx);
+      revokedSessions = (await tx.adminSession.updateMany({ where: { adminId, revokedAt: null }, data: { revokedAt: now } })).count;
+    }
+    await writeAudit(tx, {
+      actorType: "PLATFORM_ADMIN",
+      actorId: admin.admin.id,
+      action: "admin.account.update",
+      targetType: "PlatformAdmin",
+      targetId: adminId,
+      before: { name: before.name, role: before.role, status: before.status },
+      after: { name: after.name, role: after.role, status: after.status, revokedSessions },
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+    });
+    return { ok: true as const, admin: after };
+  });
+}
