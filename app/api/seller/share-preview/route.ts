@@ -9,7 +9,7 @@ import { SHARE_PREVIEW_MESSAGES, readSharePreview, updateSharePreview } from "..
 // 제목 60자·설명 160자를 넘거나 보이지 않는 문자가 있으면 400 invalid_share_preview.
 export async function GET(req: Request) {
   try {
-    const ctx = await requireSeller(prisma, sessionToken(req, "seller"));
+    const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "STORE_OPERATIONS" });
     return NextResponse.json({ preview: await readSharePreview(prisma, ctx) });
   } catch (e) {
     return errorResponse(e);
@@ -17,7 +17,7 @@ export async function GET(req: Request) {
 }
 
 export const PUT = mutation(async (req: Request) => {
-  const ctx = await requireSeller(prisma, sessionToken(req, "seller"));
+  const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "STORE_OPERATIONS" });
   const r = await updateSharePreview(prisma, ctx, await readJson(req));
   if (!r.ok) return NextResponse.json({ error: r.reason, message: SHARE_PREVIEW_MESSAGES[r.reason] }, { status: 400 });
   return NextResponse.json({ preview: r.preview });

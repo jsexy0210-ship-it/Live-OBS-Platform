@@ -15,3 +15,5 @@ export const forbidden = () => new AuthError(403, "forbidden");
 export const notFound = () => new AuthError(404, "not_found");
 // 체험하기가 끝났고 결제한 이용 기간도 없을 때. 구독·결제 화면과 로그아웃만 열린다.
 export const subscriptionRequired = () => new AuthError(402, "subscription_required");
+// 지금 플랜에 이 기능 권한이 없을 때(오버레이 전용의 스토어 운영, 통합 첫 결제 확정 전 등). 아무것도 바꾸지 않는다.
+export const planFeatureRequired = () => new AuthError(403, "plan_feature_required");

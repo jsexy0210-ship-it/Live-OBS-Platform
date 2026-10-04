@@ -8,7 +8,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // 순서 변경. expectedVersion은 화면이 받은 /api/seller/queue 응답의 version(필수)이다.
 export const POST = mutation(async (req: Request) => {
-  const ctx = await requireSeller(prisma, sessionToken(req, "seller"));
+  const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "OVERLAY" });
   const body = await readJson<{ broadcastSessionId: string | null; orderedIds: string[]; expectedVersion: number }>(req);
   const ids = body.orderedIds;
   const scope = body.broadcastSessionId ?? null;
