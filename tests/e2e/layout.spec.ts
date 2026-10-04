@@ -36,11 +36,11 @@ test("대분류를 누르면 왼쪽 메뉴가 그 대분류의 하위 메뉴로 
   await expect(lnb(page).getByRole("link", { name: "상품 목록" })).toHaveAttribute("aria-current", "page");
   await expect(page.locator(".loc-bar")).toContainText("상품›상품 목록");
 
-  // 화면이 없는 대분류(방송): 화면은 그대로, 왼쪽 메뉴만 바뀌고 메뉴는 「준비 중」으로 흐리다
-  await gnb(page).getByRole("button", { name: "방송" }).click();
+  // 화면이 없는 대분류(홈): 화면은 그대로, 왼쪽 메뉴만 바뀌고 메뉴는 「준비 중」으로 흐리다
+  await gnb(page).getByRole("button", { name: "홈", exact: true }).click();
   await expect(page).toHaveURL(/\/seller\/products$/);
-  await expect(lnb(page).locator(".lnb-sec.on .lnb-h")).toHaveText("방송");
-  await expect(lnb(page).getByText("방송 대시보드")).toHaveAttribute("aria-disabled", "true");
+  await expect(lnb(page).locator(".lnb-sec.on .lnb-h")).toHaveText("홈");
+  await expect(lnb(page).getByText("홈", { exact: true }).last()).toHaveAttribute("aria-disabled", "true");
   await expect(lnb(page).getByRole("link", { name: "상품 목록" })).toBeHidden();
 
   // 화면이 있는 대분류(주문): 첫 화면으로 옮기고 왼쪽 메뉴가 주문 하위 메뉴가 된다
