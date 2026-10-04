@@ -43,7 +43,7 @@ export async function dbNow(db: Db): Promise<Date> {
 }
 
 // 모든 구독 변경은 판매자 행을 먼저 잠근다(잠금 순서를 같게 해 교착을 막는다).
-async function lockSeller(tx: Tx, sellerId: string) {
+export async function lockSeller(tx: Tx, sellerId: string) {
   await tx.$queryRaw`SELECT id FROM "Seller" WHERE id = ${sellerId}::uuid FOR UPDATE`;
 }
 
@@ -112,23 +112,28 @@ export async function getSubscriptionView(db: PrismaClient, ctx: TenantContext, 
   requireSellerRead(ctx, "SUBSCRIPTION_MANAGE");
   const at = now ?? (await dbNow(db));
   const [seller, plan, payments] = await Promise.all([
-    db.seller.findUniqueOrThrow({ where: { id: ctx.sellerId }, select: { trialEndsAt: true, subscription: { include: { plan: true } } } }),
+    db.seller.findUniqueOrThrow({ where: { id: ctx.sellerId }, select: { trialEndsAt: true, subscription: { include: { plan: true, pendingPlan: true } } } }),
     sellerPlanOf(db, ctx.sellerId),
     db.subscriptionPayment.findMany({ where: { sellerId: ctx.sellerId }, orderBy: { createdAt: "desc" }, take: 24 }),
   ]);
   const sub = seller.subscription;
   const shownPlan = sub?.plan ?? plan;
+  // 하위 변경이 예약돼 있으면 다음 결제는 그 플랜 금액이다(ONQ 1-C-2)
+  const nextPlan = sub?.pendingPlan && !sub.cancelAtPeriodEnd ? sub.pendingPlan : shownPlan;
   return {
     access: sellerAccess({ trialEndsAt: seller.trialEndsAt, subscription: sub }, at),
     trialEndsAt: seller.trialEndsAt,
     plan: shownPlan
       ? {
+          code: shownPlan.code,
           name: shownPlan.name,
           listPrice: shownPlan.listPrice,
           salePrice: shownPlan.salePrice,
           nextAmount:
             sub && !isEndedSubscription(sub, at)
-              ? await priceFor(db, shownPlan, sub.subscribedAt, sub.nextChargeAt ?? at, sub)
+              ? nextPlan === shownPlan
+                ? await priceFor(db, shownPlan, sub.subscribedAt, sub.nextChargeAt ?? at, sub)
+                : await priceFor(db, nextPlan!, sub.subscribedAt, sub.nextChargeAt ?? at)
               : await priceFor(db, shownPlan, at, at),
         }
       : null,
@@ -142,6 +147,8 @@ export async function getSubscriptionView(db: PrismaClient, ctx: TenantContext, 
           nextChargeAt: sub.nextChargeAt,
           graceUntil: sub.graceUntil,
           retryCount: sub.retryCount,
+          // 다음 결제일에 바뀔 플랜(하위 변경 예약). 없으면 null
+          pendingPlanCode: sub.pendingPlan?.code ?? null,
         }
       : null,
     payments: payments.map((p) => ({
@@ -292,7 +299,7 @@ export async function registerCardAndPay(
 // 성공: 이용 기간을 그 청구 기간으로, 다음 결제를 기간 끝 하루 전으로, 재시도·유예를 지운다.
 // 예약 결제 실패: 처음 실패면 PAST_DUE + 유예(지금 + 7일), 이후 실패마다 재시도 횟수를 올리고 3번을 넘기면 더 시도하지 않는다.
 // 판매자가 직접 한 결제(카드 등록)가 실패하면 구독 상태는 그대로 둔다.
-async function settlePayment(
+export async function settlePayment(
   db: PrismaClient,
   paymentId: string,
   result: ChargeResult,
@@ -328,7 +335,27 @@ async function settlePayment(
       });
       return { nextChargeAt: null };
     }
+    // 결제 중 상위 변경의 차액(ONQ 1-C-2): 확정되면 플랜만 바꾸고 기간·결제일은 그대로, 실패·거절이면 지금 플랜 그대로(유예 없음)
+    if (payment.kind === "PRORATION") {
+      if (result.ok && payment.targetPlanId) await switchPlan(tx, sub.id, payment.sellerId, payment.targetPlanId);
+      await writeAudit(tx, {
+        actorType: opts.actorType,
+        actorId: opts.actorId,
+        sellerId: payment.sellerId,
+        action: result.ok ? "subscription.plan_upgraded" : "subscription.plan_upgrade_failed",
+        targetType: "SubscriptionPayment",
+        targetId: payment.id,
+        after: { amount: payment.amount, targetPlanId: payment.targetPlanId },
+        reason: result.ok ? undefined : result.reason.slice(0, 200),
+      });
+      return { nextChargeAt: sub.nextChargeAt };
+    }
     if (result.ok) {
+      // 체험 중·유예 중 상위 변경의 기간 결제: 확정되면 플랜을 바꾸고 체험을 끝낸다(ONQ 1-C-2)
+      if (payment.targetPlanId) {
+        await switchPlan(tx, sub.id, payment.sellerId, payment.targetPlanId);
+        await tx.seller.updateMany({ where: { id: payment.sellerId, trialEndsAt: { gt: now } }, data: { trialEndsAt: now } });
+      }
       nextChargeAt = after(payment.periodEnd, -RENEW_LEAD_MS);
       await tx.sellerSubscription.update({
         where: { id: sub.id },
@@ -429,8 +456,13 @@ export async function renewDueSubscriptions(db: PrismaClient, provider: BillingP
         .$transaction(async (tx) => {
           await lockSeller(tx, sellerId);
           // 잠근 뒤 다시 읽는다(그사이 결제·해지·카드 교체가 있었을 수 있음).
-          const sub = await tx.sellerSubscription.findUniqueOrThrow({ where: { id }, include: { plan: true } });
+          let sub = await tx.sellerSubscription.findUniqueOrThrow({ where: { id }, include: { plan: true } });
           if (sub.status === "CANCELED" || !sub.nextChargeAt || sub.nextChargeAt > now) return null;
+          // 예약된 하위 변경(ONQ 1-C-2)은 이 갱신 결제부터 새 플랜으로 청구한다
+          if (sub.pendingPlanId && !sub.cancelAtPeriodEnd) {
+            await switchPlan(tx, id, sellerId, sub.pendingPlanId);
+            sub = await tx.sellerSubscription.findUniqueOrThrow({ where: { id }, include: { plan: true } });
+          }
           if (sub.cancelAtPeriodEnd) {
             if (sub.currentPeriodEnd && sub.currentPeriodEnd > now) return null;
             await tx.sellerSubscription.update({ where: { id }, data: { status: "CANCELED", canceledAt: now, nextChargeAt: null } });
@@ -628,4 +660,16 @@ async function restoreAfterResubscribe(tx: Tx, sellerId: string, actorType: Acto
     targetId: sellerId,
     after: { restoredDomains: domains.count },
   });
+}
+
+// 구독·판매자 플랜을 바꾼다(상위 변경 확정, 예약된 하위 변경 적용, 결제 없는 즉시 변경). 예약된 하위 변경과
+// 이전 전 가격 스냅숏(STANDARD → 통합 이전의 고지 규칙)은 플랜이 바뀌면 끝나므로 비운다.
+export async function switchPlan(tx: Tx, subscriptionId: string | null, sellerId: string, planId: string) {
+  if (subscriptionId) {
+    await tx.sellerSubscription.update({
+      where: { id: subscriptionId },
+      data: { planId, pendingPlanId: null, legacyPrice: null, legacyPriceNoticeSentAt: null },
+    });
+  }
+  await tx.seller.update({ where: { id: sellerId }, data: { planId } });
 }
