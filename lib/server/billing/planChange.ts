@@ -174,7 +174,8 @@ export async function changePlan(
 
     const q = await quotePlanChange(tx, { trialEndsAt: seller.trialEndsAt, sub, current, target, now });
     // 화면에서 확인받은 금액(미리보기 chargeNow)이 있으면 지금 낼 금액과 같을 때만 진행한다(그사이 날짜·가격이 바뀌면 409, 아무것도 바꾸지 않음)
-    if (q.type !== "fail" && input.expectedAmount === undefined && input.requireExpectedAmount) return { kind: "done", result: { ok: false, reason: "amount_required" } };
+    // 예약 취소(cancel_pending)는 결제가 없어 확인할 금액이 없다: 화면의 「변경 취소」는 금액 없이 보내므로 필수 검사에서 뺀다(보내면 0과 같을 때만)
+    if (q.type !== "fail" && q.type !== "cancel_pending" && input.expectedAmount === undefined && input.requireExpectedAmount) return { kind: "done", result: { ok: false, reason: "amount_required" } };
     if (q.type !== "fail" && input.expectedAmount !== undefined && input.expectedAmount !== (q.type === "charge" ? q.amount : 0)) {
       return { kind: "done", result: { ok: false, reason: "amount_changed" } };
     }

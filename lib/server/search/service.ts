@@ -14,6 +14,13 @@ import type { TenantContext } from "../tenant/context";
 export const SEARCH_MAX = 50;
 export const PER_KIND = 5;
 
+// 결과의 sub에 쓰는 상태 이름(파트너스 화면의 상태 배지와 같은 용어, 영문 코드를 그대로 내려주지 않는다)
+const PRODUCT_STATUS: Record<string, string> = { ON_SALE: "판매 중", SOLD_OUT: "품절", HIDDEN: "숨김", DRAFT: "임시 저장" };
+const ORDER_STATUS: Record<string, string> = { PENDING_PAYMENT: "결제 대기", PAID: "결제 완료", CANCELLED: "취소", REFUNDED: "환불됨" };
+const MEMBER_STATUS: Record<string, string> = { ACTIVE: "활동", DORMANT: "휴면", WITHDRAWN: "탈퇴" };
+const INQUIRY_STATUS: Record<string, string> = { OPEN: "답변 대기", ANSWERED: "답변 완료", CLOSED: "종료" };
+const label = (map: Record<string, string>, code: string): string | null => map[code] ?? null;
+
 export type SearchHit = { id: string; title: string; sub: string | null; href: string };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ORDER_NO = /^\d{1,9}$/;
@@ -105,9 +112,9 @@ export async function sellerSearch(db: PrismaClient, ctx: TenantContext, q: stri
     }),
   ]);
   return {
-    products: products.map((p): SearchHit => ({ id: p.id, title: p.name, sub: p.status, href: `/seller/products/${p.id}` })),
-    orders: orders.map((o): SearchHit => ({ id: o.id, title: String(o.orderNo), sub: o.status, href: `/seller/orders/${o.id}` })),
-    members: members.map((m): SearchHit => ({ id: m.id, title: m.broadcastNickname, sub: m.status, href: `/seller/members/${m.id}` })),
-    inquiries: inquiries.map((i): SearchHit => ({ id: i.id, title: i.title, sub: i.status, href: `/seller/inquiries/${i.id}` })),
+    products: products.map((p): SearchHit => ({ id: p.id, title: p.name, sub: label(PRODUCT_STATUS, p.status), href: `/seller/products/${p.id}` })),
+    orders: orders.map((o): SearchHit => ({ id: o.id, title: String(o.orderNo), sub: label(ORDER_STATUS, o.status), href: `/seller/orders/${o.id}` })),
+    members: members.map((m): SearchHit => ({ id: m.id, title: m.broadcastNickname, sub: label(MEMBER_STATUS, m.status), href: `/seller/members/${m.id}` })),
+    inquiries: inquiries.map((i): SearchHit => ({ id: i.id, title: i.title, sub: label(INQUIRY_STATUS, i.status), href: `/seller/inquiries/${i.id}` })),
   };
 }

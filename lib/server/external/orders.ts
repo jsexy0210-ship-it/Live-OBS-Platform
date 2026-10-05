@@ -42,11 +42,12 @@ export async function storeExternalOrder(db: PrismaClient, connectionId: string,
   const conn = await db.externalShopConnection.findUnique({ where: { id: connectionId }, select: { id: true, sellerId: true } });
   if (!conn) return { ok: false, reason: "connection_inactive" };
   const out = await db.$transaction(async (tx) => {
-    const seller = await tx.seller.update({ where: { id: conn.sellerId }, data: { liveVersion: { increment: 1 } }, select: { liveVersion: true } });
+    // 판매자 행만 잠가 순번을 직렬화한다. 실제로 바뀔 때만 실시간 version을 올린다(중복·비활성 연결은 올리지 않음)
+    await tx.$queryRaw`SELECT "id" FROM "Seller" WHERE "id" = ${conn.sellerId}::uuid FOR UPDATE`;
     const cur = await tx.externalShopConnection.findFirst({ where: { id: conn.id, sellerId: conn.sellerId, status: "CONNECTED" }, select: { id: true } });
     if (!cur) return { inactive: true as const };
     const dup = await tx.externalOrder.findUnique({ where: { connectionId_externalOrderId: { connectionId: conn.id, externalOrderId: p.externalOrderId } }, select: { id: true } });
-    if (dup) return { created: false as const, queueItemIds: [] as string[], version: seller.liveVersion };
+    if (dup) return { created: false as const, queueItemIds: [] as string[], version: null };
     const [{ now }] = await tx.$queryRaw<{ now: Date }[]>`SELECT now() AS now`;
     const eo = await tx.externalOrder.create({ data: { sellerId: conn.sellerId, connectionId: conn.id, externalOrderId: p.externalOrderId, buyerLabel: p.buyerLabel, receivedAt: now } });
     const live = await tx.broadcastSession.findFirst({ where: { sellerId: conn.sellerId, status: "LIVE" }, select: { id: true } });
@@ -59,6 +60,7 @@ export async function storeExternalOrder(db: PrismaClient, connectionId: string,
       });
       queueItemIds.push(q.id);
     }
+    const seller = await tx.seller.update({ where: { id: conn.sellerId }, data: { liveVersion: { increment: 1 } }, select: { liveVersion: true } });
     return { created: true as const, queueItemIds, version: seller.liveVersion };
   }).catch((e) => {
     // 같은 외부 주문을 동시에 두 번 받으면 유니크로 한쪽만 남는다
@@ -77,7 +79,7 @@ export async function cancelExternalOrder(db: PrismaClient, connectionId: string
   const conn = await db.externalShopConnection.findUnique({ where: { id: connectionId }, select: { id: true, sellerId: true } });
   if (!conn) return { ok: false, reason: "not_found" };
   const out = await db.$transaction(async (tx) => {
-    const seller = await tx.seller.update({ where: { id: conn.sellerId }, data: { liveVersion: { increment: 1 } }, select: { liveVersion: true } });
+    await tx.$queryRaw`SELECT "id" FROM "Seller" WHERE "id" = ${conn.sellerId}::uuid FOR UPDATE`;
     const eo = await tx.externalOrder.findUnique({ where: { connectionId_externalOrderId: { connectionId: conn.id, externalOrderId } }, select: { id: true, sellerId: true, cancelledAt: true } });
     if (!eo || eo.sellerId !== conn.sellerId) return null;
     const [{ now }] = await tx.$queryRaw<{ now: Date }[]>`SELECT now() AS now`;
@@ -87,7 +89,8 @@ export async function cancelExternalOrder(db: PrismaClient, connectionId: string
       await tx.queueItem.update({ where: { id: w.id }, data: { status: "CANCELLED", cancelledAt: now, cancelReason: "외부 쇼핑몰에서 취소됨", version: { increment: 1 } } });
       await tx.queueItemStatusHistory.create({ data: { sellerId: conn.sellerId, queueItemId: w.id, fromStatus: "WAITING", toStatus: "CANCELLED", actorType: "SYSTEM", reason: "external_cancelled", createdAt: now } });
     }
-    return { count: waiting.length, version: seller.liveVersion };
+    const version = waiting.length > 0 ? (await tx.seller.update({ where: { id: conn.sellerId }, data: { liveVersion: { increment: 1 } }, select: { liveVersion: true } })).liveVersion : 0;
+    return { count: waiting.length, version };
   });
   if (!out) return { ok: false, reason: "not_found" };
   if (out.count > 0) await notifySellerChanged(db, conn.sellerId, out.version);
