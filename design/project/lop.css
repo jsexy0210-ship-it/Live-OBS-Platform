@@ -1078,3 +1078,9 @@ select.inp{cursor:pointer}
 /* 관리 열 버튼 묶음: 가운데 · 사이 8 · 폭 토큰 — 폼 표 안 버튼은 입력과 같은 40 */
 .c24 .acts2{display:flex;gap:8px;justify-content:center;flex-wrap:nowrap}.c24 .acts2 .b.sm{min-width:var(--btn-w-xs);padding:0 10px}
 .c24 .ft td .b:not(.sm):not(.lg){height:var(--ui-h-dense)}
+/* 2026-10-06 화면 ← 버튼(Back) — DS-NAV 확정 규격: 관리자 PC 40 · 제목 앞 · 모서리 8 · 아이콘 20 · 휴대폰 44 */
+.c24 .bk{width:40px;height:40px;border:1px solid var(--c24-line);border-radius:8px;display:inline-flex;align-items:center;justify-content:center;background:#fff;color:#191f28;flex:none;box-sizing:border-box;text-decoration:none}
+.c24 .bk svg{width:20px;height:20px}
+.c24 .bk:hover{background:#f2f4f6}.c24 .bk:focus-visible{outline:2px solid #1a56db;outline-offset:1px}
+.c24 .ph2 .bk{margin-right:0}
+.c24.mob .bk,.c24 .mph .bk{width:44px;height:44px;border:0}
