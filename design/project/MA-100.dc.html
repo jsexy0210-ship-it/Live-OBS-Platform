@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>실시간 감시</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="app c24 ma" data-theme="light" style="width: 1920px; display: flex; flex-direction: column">
+<div class="gnb"><a class="brand" href="MA-001.dc.html"><span class="logo-sym" style="--brand: #fff; --brand-ink: var(--c24-gnb)"></span>ONQ <small>마스터 관리자</small></a><nav class="gnb-m"><a class="" href="MA-001.dc.html">홈</a><a class="" href="MA-011.dc.html">파트너스</a><a class="" href="MA-021.dc.html">구독 · 요금</a><a class="" href="MA-031.dc.html">정산</a><a class="on" href="MA-041.dc.html">운영</a><a class="" href="MA-051.dc.html">고객지원</a><a class="" href="MA-061.dc.html">관리자</a><a class="" href="MA-081.dc.html">설정</a></nav><div class="util"><a href="MA-002.dc.html">알림 센터</a><a href="MA-090.dc.html">내 계정</a><span class="who">[이름] · 최고관리자</span><a href="AU-001.dc.html">로그아웃</a></div></div><div class="wrap" style="min-height: 902px"><aside class="lnb"><div class="lnb-t">운영</div><a class="" href="MA-041.dc.html">실시간 방송</a><a class="" href="MA-042.dc.html">주문 · 오버레이 접속</a><a class="" href="MA-043.dc.html">적립금 실지급 파트너스</a><a class="on" href="MA-100.dc.html">실시간 감시</a><a class="" href="MA-110.dc.html">자동 연결 작업</a></aside><main class="cont"><div class="pathbar">운영 › 실시간 감시</div><div class="ph2"><h1>실시간 감시</h1><span class="path">운영 › 실시간 감시</span><div class="acts"><a class="b " href="MA-082.dc.html">알림 설정</a><button class="b pri" type="button">지금 갱신</button></div></div>
+<div class="ltop"><span class="nt">마지막 갱신 16:03:12 · 10초마다</span><span class="sp"><span class="tag r">긴급 1</span> </span></div><div class="sum" style="grid-template-columns: repeat(6, 1fr)"><div><div class="k">앱 서버</div><div class="v">2/2 정상</div></div><div><div class="k">작업 서버</div><div class="v">3/3 정상</div></div><div><div class="k">작업 큐 대기</div><div class="v">12<small>자동 연결 9 · 알림 3</small></div></div><div><div class="k">웹훅 지연 · 느린 5% 기준</div><div class="v">1.2초</div></div><div><div class="k">결제 검증 지연</div><div class="v"><span style="color: #c0262c">4.8초</span><small>임계 2초</small></div></div><div><div class="k">오늘 비용</div><div class="v">38,200원<small>상한 150,000원</small></div></div></div><div class="sec-t">장애 · 이상 목록<span class="nt"><div class="seg"><button class="on" type="button">전체</button><button class="" type="button">긴급</button><button class="" type="button">주의</button></div> <label class="ck"><input type="checkbox" name="r">자동 해결 숨기기</label></span></div><table class="lt"><thead><tr><th style="width: 80px">시각</th><th style="width: 60px">심각도</th><th style="width: 160px">대상</th><th>내용</th><th>자동 조치</th><th style="width: 80px">상태</th></tr></thead><tbody><tr><td>16:02:40</td><td><span class="tag r">긴급</span></td><td>결제 확인</td><td class="l">응답 지연 4.8초 · 임계 2초</td><td>작업 서버 재시작 · 결제 재검증 대기열로 이동</td><td><span class="tag bl">조치 중</span></td></tr><tr><td>15:58:10</td><td><span class="tag y">주의</span></td><td>웹훅 수신 · 카드숍 별빛</td><td class="l">같은 이벤트 3회 중복 수신</td><td>중복 제거 · 1건만 반영</td><td><span class="tag g">자동 해결</span></td></tr><tr><td>15:41:05</td><td><span class="tag y">주의</span></td><td>자동 연결 대기열</td><td class="l">대기 작업 12개 · 임계 10</td><td>동시성 +2 (상한 안)</td><td><span class="tag g">자동 해결</span></td></tr><tr><td>14:20:00</td><td><span class="tag n">정보</span></td><td>DB 복제 지연</td><td class="l">0.9초 · 임계 2초 아래</td><td>기록만</td><td><span class="tag n">확인 불필요</span></td></tr></tbody></table><span class="hint">대표님 판단이 필요한 것만 알림이 갑니다 · 나머지는 자동 조치 뒤 기록만 남깁니다</span><div class="two" style="grid-template-columns: 1fr 1fr"><div><div class="sec-t">자동 조치 기록</div><table class="lt"><thead><tr><th style="width: 80px">시각</th><th>조치</th><th>결과</th></tr></thead><tbody><tr><td>16:02:41</td><td>작업 서버 2 재시작</td><td>결제 검증 지연 · 성공</td></tr><tr><td>15:58:12</td><td>중복 이벤트 제거</td><td>카드숍 별빛 · 3 → 1건</td></tr><tr><td>15:41:06</td><td>자동 연결 동시성 2 → 4</td><td>상한 6 안</td></tr></tbody></table><span class="hint">대기 중 조치 없음</span></div><div><div class="sec-t">안전 규칙</div><div class="note " style="width: 100%">재시작은 10분에 1회 · 동시성은 상한 안에서만 · 결제 · 환불은 자동 조치 안 함</div></div></div>
+</main></div>
+<div class="states">
+<span class="states-h">상태 변형</span>
+<div class="st"><span class="st-tag">감시 끊김</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><div class="note neg" style="width: 100%"><b>감시 데이터가 3분째 들어오지 않습니다.</b> 마지막 갱신 16:00:02 · 화면의 숫자는 그때 값입니다 · 감시 서버 자체를 확인해 주십시오 · 1분 넘게 끊기면 담당자에게 알림이 갑니다</div></div></div><div class="st"><span class="st-tag">장애 없음</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><div class="note pos" style="width: 100%"><b>모두 정상입니다</b> · 마지막 갱신 16:03:12 · 지난 24시간 자동 해결 7건 · 사람 조치 0건</div></div></div><div class="st"><span class="st-tag">긴급 장애 · 사람 판단 필요</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><div class="cfm"><div class="h">결제 검증이 5분째 실패합니다.<button class="x" type="button" aria-label="닫기">×</button></div><div class="bd">자동 조치(재시작 2회)로 풀리지 않았습니다. 자동 연결 결제를 잠시 막으시겠습니까?<div class="nt" style="margin-top: 6px">알림톡 · 메일로 알렸습니다 16:04</div></div><div class="f"><button class="b pri neg" type="button">자동 연결 결제 잠시 막기</button><button class="b " type="button">10분 더 지켜보기</button></div></div></div></div><div class="st"><span class="st-tag">조회 전용 권한</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><div class="note inf" style="width: 100%">조회 전용 계정은 목록과 기록만 볼 수 있습니다</div><button class="b sm" type="button" disabled>자동 연결 결제 잠시 막기</button></div></div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1920,"height":1250}}'>
+class Component extends DCLogic { renderVals() { return {}; } }
+</script>
+</body>
+</html>

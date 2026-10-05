@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>가입 승인 확인</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="app c24" data-theme="light" style="width: 960px; min-height: 640px; padding: 24px; box-sizing: border-box; display: flex; gap: 24px; align-items: flex-start; justify-content: center">
+<div class="cfm" style="max-width: none; width: 880px"><div class="h">트레카랩 가입을 승인하시겠습니까?<button class="x" type="button" aria-label="닫기">×</button></div><div class="bd">승인하면 파트너스에게 승인 안내 메일 · 알림톡이 갑니다. 파트너스 계정과 쇼핑몰 주소([쇼핑몰 주소])가 만들어집니다. 파트너스가 로그인하면 바로 시작하기가 열립니다. 체험은 [승인일+7일]까지입니다 (오버레이 전용만).<div class="note cau" style="width: 100%"><b>자동 점검 경고 1건:</b> 국세청 사업자 상태 「휴업」 · 그래도 승인하려면 아래 확인에 체크해 주십시오</div><table class="ft"><colgroup><col style="width: 150px"><col></colgroup><tr><th>체험 종료일</th><td><input class="i w-s" type="text" value="2026-10-09" placeholder=""><span class="hint">쇼핑몰 통합 신청이면 이 칸은 「체험 없음」 · 승인 즉시 구독 결제로 시작합니다</span></td></tr><tr><th>도메인</th><td><input class="i w-m" type="text" value="trecalab" placeholder=""><span class="unit">.onq.live</span> <span class="tag g">사용 가능</span></td></tr><tr><th>환영 메시지에 덧붙일 말 (선택)</th><td><input class="i w-f" type="text" value="" placeholder=""></td></tr><tr><th>태그</th><td><label class="ck"><input type="checkbox" name="r" checked>내부 태그 「TCG」 부여</label></td></tr></table><div style="margin-top: 8px"><label class="ck"><input type="checkbox" name="r">사업자 「휴업」 경고를 확인했고 승인 사유를 메모에 남겼습니다</label></div></div><div class="f"><button class="b pri" type="button">승인</button><button class="b " type="button">취소</button></div></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":960,"height":640}}'>
+class Component extends DCLogic { renderVals() { return {}; } }
+</script>
+</body>
+</html>

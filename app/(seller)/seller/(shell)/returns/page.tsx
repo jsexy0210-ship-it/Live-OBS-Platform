@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
-import { useUrlState } from "../../../../../lib/client/navigation";
+import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
 import { COURIERS } from "../../../../../lib/server/orders/shipping";
 import { StateBox, errorText, kstText, stateKind } from "../banners/_shared/ui";
 import "./returns.css";
@@ -101,6 +101,7 @@ export default function ReturnsPage() {
     void load();
   }, [load]);
 
+  useScrollRestore("seller-returns", state.kind === "ok");
   const data = state.kind === "ok" ? state.data : null;
   const rows = data ? data.returns.filter((r) => inTab(tab, r.status)) : [];
   const c = data?.counts ?? {};

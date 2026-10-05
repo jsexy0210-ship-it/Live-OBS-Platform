@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>직원 삭제 확인</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="app c24" data-theme="light" style="width: 960px; min-height: 520px; padding: 24px; box-sizing: border-box; display: flex; gap: 24px; align-items: flex-start; justify-content: center">
+<div class="cfm" style="max-width: none; width: 880px"><div class="h">김직원 계정을 삭제하시겠습니까?<button class="x" type="button" aria-label="닫기">×</button></div><div class="bd">즉시 로그아웃되고 다시 로그인할 수 없습니다. 이 계정이 남긴 처리 기록(주문 취소 12건 등)은 로그 추적에 그대로 남습니다.<div style="margin-top: 8px"><div class="col" style="gap: 4px; align-items: flex-start"><label class="ck"><input type="radio" name="del" checked>비활성화 (권장)</label><span class="hint">접속이 막힙니다 · 언제든 다시 켤 수 있습니다 · 인원 수에는 들어갑니다</span><label class="ck"><input type="radio" name="del">완전 삭제</label><span class="hint">되돌릴 수 없음 · 같은 이메일로 다시 추가할 수 있습니다</span></div></div><div style="margin-top: 8px"><label class="ck"><input type="checkbox" name="r">오버레이 주소 재발급 안내 받기 (이 직원이 주소를 알고 있을 수 있습니다)</label></div></div><div class="f"><button class="b pri" type="button">비활성화</button><button class="b " type="button">취소</button></div></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":960,"height":520}}'>
+class Component extends DCLogic { renderVals() { return {}; } }
+</script>
+</body>
+</html>
