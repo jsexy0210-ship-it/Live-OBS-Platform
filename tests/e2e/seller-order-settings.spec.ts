@@ -51,7 +51,15 @@ async function openAs(page: Page, email: string) {
   if (email === "demo-owner@example.com") await resetPolicy(page);
 }
 
-const save = (page: Page) => page.getByRole("button", { name: "저장", exact: true }).last().click();
+// 저장 앞 확인 창(DS-CONFIRM): 입력이 올바르면 창이 열리고 「저장」을 눌러야 서버에 보낸다. 입력 오류면 창 없이 오류만 보인다
+async function save(page: Page) {
+  await page.getByRole("button", { name: "저장", exact: true }).last().click();
+  const dialog = page.getByRole("dialog");
+  if (await dialog.waitFor({ state: "visible", timeout: 1500 }).then(() => true, () => false)) {
+    await expect(dialog).toContainText("주문 설정을 저장하시겠습니까?");
+    await dialog.getByRole("button", { name: "저장", exact: true }).click();
+  }
+}
 // 저장이 실제로 끝날 때까지(PUT 응답) 기다린다. 앞서 띄운 같은 알림이 남아 있어도 다음 단계로 먼저 넘어가지 않게
 async function saveOk(page: Page) {
   await Promise.all([page.waitForResponse((r) => r.request().method() === "PUT" && r.url().includes("/api/seller/order-policy") && r.ok()), save(page)]);

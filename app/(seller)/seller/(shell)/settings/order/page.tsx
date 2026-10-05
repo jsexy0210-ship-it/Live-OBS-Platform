@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { FormFoot, FormRow, FormSection, PageHead } from "../../../../../../components/admin-ui";
+import { FormFoot, FormRow, FormSection, PageHead, useConfirm } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
@@ -40,6 +40,7 @@ const unitFor = (h: number): Unit => (h % 24 === 0 && h >= 48 ? "day" : "hour");
 const dueText = (h: number) => (unitFor(h) === "day" ? `${h / 24}일` : `${h}시간`);
 
 export default function OrderSettingsPage() {
+  const { confirm } = useConfirm();
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; saved: Policy }>({ kind: "loading" });
   const [autoCancel, setAutoCancel] = useState(true);
   const [due, setDue] = useState("");
@@ -122,6 +123,7 @@ export default function OrderSettingsPage() {
       setShowError(true);
       return;
     }
+    if (!(await confirm({ title: "주문 설정을 저장하시겠습니까?", body: "바뀐 내용은 저장한 뒤 들어오는 주문부터 적용됩니다. 이미 접수된 주문은 그대로입니다.", confirmLabel: "저장" }))) return;
     setSaving(true);
     setFailure(null);
     const body: Policy = {
