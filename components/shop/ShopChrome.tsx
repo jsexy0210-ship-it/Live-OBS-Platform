@@ -30,11 +30,12 @@ const ICON = {
   heart: "M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.6-7 10-7 10z",
 };
 
-// 구매자 쇼핑몰 머리(띠·로고·검색·장바구니·카테고리)와 휴대폰 카테고리 서랍·아래 고정 바. 「전체 상품」 뒤에 쇼핑몰의 대분류 카테고리를 붙이고, 서랍에는 소분류까지 보인다.
+// 구매자 쇼핑몰 머리(띠·로고·검색·장바구니·카테고리)와 휴대폰 카테고리 서랍·아래 고정 바. 「전체 상품」 뒤에 쇼핑몰의 대분류 카테고리를 붙이고, 「전체 카테고리」 버튼이나 머리 줄에 마우스를 올리면(키보드 포커스도) 대분류·소분류 펼침 판이 열린다. 서랍에는 소분류까지 보인다.
 export default function ShopChrome({ slug, shopName, loggedIn, nickname, categories = [] }: Props) {
   const base = `/shop/${encodeURIComponent(slug)}`;
   const path = usePathname() ?? "";
   const [drawer, setDrawer] = useState(false);
+  const [panel, setPanel] = useState(false); // PC 카테고리 펼침(대분류 → 소분류)
   const closeRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLButtonElement>(null);
   const [cartCount, setCartCount] = useState(0);
@@ -43,7 +44,10 @@ export default function ShopChrome({ slug, shopName, loggedIn, nickname, categor
   // 카테고리 링크는 /products?category=id. 그 분류(또는 하위 분류)를 보고 있으면 현재 위치로 표시한다.
   const inCat = (c: Category) => path === `${base}/products` && !!category && (category === c.id || c.children.some((x) => x.id === category));
 
-  useEffect(() => setDrawer(false), [path]);
+  useEffect(() => {
+    setDrawer(false);
+    setPanel(false);
+  }, [path, category]);
   // 장바구니 개수 배지: 로그인했을 때만 불러오고, 장바구니 화면이 바뀐 개수를 알려 주면(CART_COUNT_EVENT) 따라간다
   useEffect(() => {
     if (!loggedIn) return;
@@ -145,14 +149,46 @@ export default function ShopChrome({ slug, shopName, loggedIn, nickname, categor
             </div>
           </div>
         </div>
-        <nav className="shop-cats" aria-label="카테고리">
+        <nav
+          className="shop-cats"
+          aria-label="카테고리"
+          onMouseEnter={() => categories.length > 0 && setPanel(true)}
+          onMouseLeave={() => setPanel(false)}
+          onFocus={() => categories.length > 0 && setPanel(true)}
+          onBlur={(e) => !e.currentTarget.contains(e.relatedTarget as Node | null) && setPanel(false)}
+          onKeyDown={(e) => e.key === "Escape" && setPanel(false)}
+        >
           <div className="shop-wrap">
+            {categories.length > 0 && (
+              <button type="button" className="shop-cats-all" aria-expanded={panel} aria-controls="shop-catpanel" onClick={() => setPanel(true)}>
+                <Icon d={ICON.menu} />
+                전체 카테고리
+              </button>
+            )}
             {cats.map((c) => (
               <Link key={c.href} href={c.href} aria-current={c.current ? "page" : undefined}>
                 {c.label}
               </Link>
             ))}
           </div>
+          {panel && categories.length > 0 && (
+            <div id="shop-catpanel" className="shop-catpanel">
+              <div className="shop-wrap">
+                {categories.map((c) => (
+                  <div key={c.id} className="shop-catcol">
+                    <Link href={`${base}/products?category=${c.id}`} className="shop-catcol-h" aria-current={category === c.id ? "page" : undefined}>
+                      {c.name}
+                    </Link>
+                    {c.children.map((x) => (
+                      <Link key={x.id} href={`${base}/products?category=${x.id}`} aria-current={category === x.id ? "page" : undefined}>
+                        {x.name}
+                      </Link>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </nav>
         <nav className="shop-mcat" aria-label="메뉴 탭">
           <Link href={base} aria-current={here(base)}>

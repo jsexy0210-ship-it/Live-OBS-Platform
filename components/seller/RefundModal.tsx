@@ -1,6 +1,7 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useState } from "react";
+import { Modal } from "../admin-ui/Modal";
 import { api, failMessage } from "./api";
 import { won } from "./format";
 import { longTime, type OrderDetail, type RefundFault as Fault, type RefundPreview } from "./orders";
@@ -33,14 +34,6 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
   const [busy, setBusy] = useState(false);
   // retry: 원인을 모르는 실패(서버 오류·연결 끊김)는 「다시 시도」로 같은 내용을 다시 보낸다
   const [error, setError] = useState<{ title?: string; text: string; retry?: boolean } | null>(null);
-  const closeRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    closeRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !busy && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [busy, onClose]);
 
   // 고른 사유 주체의 환불액. 고르기 전에는 두 사유 주체의 금액이 같을 때만 보인다. 미리보기가 없으면(예전 응답) 금액을 단정하지 않는다
   const quote = preview && fault ? preview.byFault[fault] : null;
@@ -131,10 +124,10 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
   };
 
   return (
-    <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="refund-title">
-      <div className="modal modal-lg refund-modal">
+    <Modal labelId="refund-title" className="modal-lg refund-modal" busy={busy} onClose={onClose}>
+      <>
         <div className="modal-h">
-          <h2 className="t-h2" id="refund-title">
+          <h2 className="modal-t" id="refund-title">
             취소 · 환불 처리
           </h2>
           <span className="t-l2 c-alt">
@@ -210,7 +203,7 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
               <>
                 <dt>적립금 반환</dt>
                 <dd className="num" data-testid="refund-reward">
-                  {rewardReturn > 0 ? `${won(rewardReturn)} · 적립금으로 반환` : "0원 (사용한 적립금 없음)"}
+                  {rewardReturn > 0 ? `${won(rewardReturn)} · 적립금으로 반환` : (order.rewardUsedAmount > 0 ? "0원" : "0원 (사용한 적립금 없음)")}
                 </dd>
               </>
             )}
@@ -221,9 +214,7 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
               </>
             )}
           </dl>
-          {rewardReturn !== null && rewardReturn > 0 && !blocked && (
-            <span className="t-c1 c-alt">현금 환불 = 취소 상품 금액 − 적립금 반환 · 쓴 적립금은 취소 상품 금액 비율만큼 10원 단위 내림으로 돌려줍니다</span>
-          )}
+          {rewardReturn !== null && rewardReturn > 0 && !blocked && <span className="t-c1 c-alt">쓴 적립금은 구매자에게 적립금으로 돌려줍니다</span>}
           {blocked && (
             <div className="msg msg-neg" role="alert" style={{ display: "block" }}>
               발송 전에 개봉한 상품이 있어 구매자 사정으로는 환불할 수 없습니다. 개봉한 상품을 보낸 뒤 처리해 주십시오
@@ -272,8 +263,8 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
         </section>
 
         <div className="modal-f">
-          <button ref={closeRef} className="btn btn-out" type="button" disabled={busy} onClick={onClose}>
-            닫기
+          <button className="btn btn-out" type="button" disabled={busy} onClick={onClose}>
+            취소
           </button>
           {canSend && (
             <button className={`btn btn-neg${busy ? " is-loading" : ""}`} type="button" disabled={!ready} onClick={() => void submit()}>
@@ -290,7 +281,7 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
             </button>
           )}
         </div>
-      </div>
-    </div>
+      </>
+    </Modal>
   );
 }

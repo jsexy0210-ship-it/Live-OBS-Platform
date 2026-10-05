@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { PageHead } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { CancelItemModal, EndBroadcastModal, TimerModal } from "../../../../../components/seller/broadcast/Modals";
+import { HitCardModal, type HitTarget } from "../../../../../components/seller/broadcast/HitCardModal";
 import {
   REVERT_WINDOW_MS,
   TIMER_MAX_SECONDS,
@@ -42,7 +43,7 @@ type ChatMatch = { matched: boolean; lastChatAt: string | null };
 type Matches = { orders: { nickname: string; matched: boolean; lastChatAt: string | null }[] };
 const CHAT_POLL_MS = 30_000;
 
-type Modal = { kind: "chat-on" } | { kind: "end"; sessionId: string } | { kind: "cancel"; item: QueueItem } | { kind: "timer"; item: QueueItem } | null;
+type Modal = { kind: "hit" } | { kind: "chat-on" } | { kind: "end"; sessionId: string } | { kind: "cancel"; item: QueueItem } | { kind: "timer"; item: QueueItem } | null;
 
 const POLL_MS = 15_000;
 
@@ -227,6 +228,12 @@ export default function BroadcastDashboardPage() {
   const waiting = snap ? (live ? snap.waiting : snap.beforeBroadcast) : [];
   const next = waiting[0] ?? null;
 
+  // HIT 카드 등록 대상: 지금 개봉 중(기본) → 방금 완료한 주문들
+  const hitTargets: HitTarget[] = [
+    ...(opening ? [{ queueItemId: opening.id, label: `${opening.nicknameSnapshot} · 지금 개봉 중` }] : []),
+    ...(snap?.recentDone ?? []).slice(0, 5).map((d) => ({ queueItemId: d.id, label: `${d.nicknameSnapshot} · 방금 완료 (${kstTime(d.receivedAt)} 접수)` })),
+  ];
+
   const act = async (item: QueueItem, action: "start" | "complete" | "revert", okText: string) => {
     const r = await mutate(`/api/seller/queue/${item.id}/${action}`, { expectedVersion: item.version }, okText);
     if (r.ok && action === "complete") doneSeenAt.current.set(item.id, performance.now());
@@ -263,6 +270,9 @@ export default function BroadcastDashboardPage() {
       e.preventDefault();
       if (opening) void act(opening, "complete", "개봉을 완료했습니다");
       else if (live && next) void act(next, "start", "개봉을 시작했습니다");
+    } else if ((e.key === "h" || e.key === "H") && live) {
+      e.preventDefault();
+      setModal({ kind: "hit" });
     } else if (e.key === "ArrowUp" && opening) {
       e.preventDefault();
       void setTimer(opening, Math.min(TIMER_MAX_SECONDS, opening.timerSeconds + TIMER_STEP));
@@ -294,9 +304,16 @@ export default function BroadcastDashboardPage() {
           title="방송 대시보드"
           path={["방송", "방송 대시보드"]}
           actions={
-            <Link className="btn btn-out" href="/seller/overlay">
-              오버레이 주소
-            </Link>
+            <>
+              {allowed && (
+                <button className="btn" type="button" data-testid="bc-hit-open" disabled={!live || locked} title={live ? undefined : "방송 중에만 등록할 수 있습니다"} onClick={() => setModal({ kind: "hit" })}>
+                  HIT 카드 등록 <span className="kbd">Ctrl+H</span>
+                </button>
+              )}
+              <Link className="btn btn-out" href="/seller/overlay">
+                오버레이 주소
+              </Link>
+            </>
           }
         />
 
@@ -564,6 +581,10 @@ export default function BroadcastDashboardPage() {
                 <dd>
                   <span className="kbd">Ctrl+Enter</span>
                 </dd>
+                <dt>HIT 카드 등록</dt>
+                <dd>
+                  <span className="kbd">Ctrl+H</span>
+                </dd>
                 <dt>타이머 +30초</dt>
                 <dd>
                   <span className="kbd">Ctrl+↑</span>
@@ -590,6 +611,17 @@ export default function BroadcastDashboardPage() {
         />
       )}
       {modal?.kind === "cancel" && <CancelItemModal item={modal.item} busy={busy} blocked={stale} onClose={() => setModal(null)} onConfirm={(reason) => void cancel(modal.item, reason)} />}
+      {modal?.kind === "hit" && (
+        <HitCardModal
+          targets={hitTargets}
+          onClose={() => setModal(null)}
+          onDone={() => {
+            setModal(null);
+            setToast({ text: "HIT 카드를 등록했습니다. 오버레이에 바로 나옵니다" });
+            void load();
+          }}
+        />
+      )}
       {modal?.kind === "chat-on" && yt && (
         <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="bc-chat-title">
           <div className="modal">
