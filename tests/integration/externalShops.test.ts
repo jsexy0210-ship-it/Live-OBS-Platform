@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET as callbackRoute } from "../../app/api/seller/external-shops/oauth-done/route";
 import { GET as listRoute, POST as startRoute } from "../../app/api/seller/external-shops/route";
 import { DELETE as deleteRoute } from "../../app/api/seller/external-shops/[id]/route";
@@ -14,6 +14,9 @@ import { ingestWebhook } from "../../lib/server/external/webhook";
 import { prisma } from "../../lib/server/db";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { PASSWORD, createSeller, createSellerUser, db, resetDb } from "./helpers";
+
+const afterCalls: (() => unknown)[] = [];
+vi.mock("next/server", async (orig) => ({ ...(await orig<typeof import("next/server")>()), after: (fn: () => unknown) => void afterCalls.push(fn) }));
 
 // 외부 쇼핑몰 연동 기반(SA-006 서버): 연결 시작·콜백(1회용 state·세션 묶음)·토큰 암호화·해제·웹훅 인증키·중복·격리.
 // 공급자는 가짜(실제 외부 호출 없음). 설정 키는 시험용 임의값.
@@ -426,5 +429,34 @@ describe("다시 연결·목록 권한 (SA-006)", () => {
     // connectionId 형식이 틀리면 404
     const bad = await startRoute(new Request("http://localhost:3000/api/seller/external-shops", { method: "POST", headers: H(await cookie(a.user.email)), body: JSON.stringify({ connectionId: "nope" }) }));
     expect(bad.status).toBe(404);
+  });
+});
+
+describe("웹훅 경로", () => {
+  it("저장된 새 이벤트만 응답 뒤 처리를 예약하고(중복·인증 실패는 예약하지 않음) 응답 본문은 비어 있다", async () => {
+    const saved = { ...process.env };
+    Object.assign(process.env, ENV);
+    try {
+      const s = await shop();
+      const p = new FakeProvider();
+      const st = await startConnect(db, p, s.ctx, "https://myshop.cafe24.com");
+      if (!st.ok) throw new Error("start");
+      await completeConnect(db, p, s.ctx, { state: stateOf(st.authorizeUrl), code: "k" });
+      afterCalls.length = 0;
+      const body = JSON.stringify({ event_no: 90001, resource: { mall_id: "myshop", order_id: "x1" } });
+      const post = (key: string | null) => webhookRoute(new Request("http://localhost:3000/api/external/webhook", { method: "POST", headers: key ? { "x-api-key": key } : {}, body }));
+      expect((await post(null)).status).toBe(401);
+      expect((await post("wrong")).status).toBe(401);
+      expect(afterCalls).toHaveLength(0);
+      const ok = await post(ENV.EXTERNAL_WEBHOOK_API_KEY);
+      expect(ok.status).toBe(200);
+      expect(await ok.text()).toBe("");
+      expect(afterCalls).toHaveLength(1);
+      expect((await post(ENV.EXTERNAL_WEBHOOK_API_KEY)).status).toBe(200);
+      expect(afterCalls).toHaveLength(1);
+      await afterCalls[0](); // 예약된 처리가 오류 없이 끝난다(공급자 키가 있으면 처리 대상이 아닌 이벤트는 닫힘)
+    } finally {
+      process.env = saved;
+    }
   });
 });
