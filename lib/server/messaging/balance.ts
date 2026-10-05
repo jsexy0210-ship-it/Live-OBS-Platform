@@ -17,7 +17,7 @@ type Db = PrismaClient | Prisma.TransactionClient;
 type Tx = Prisma.TransactionClient;
 
 export const MESSAGE_FEE_NOTICE_VERSION = "2026-10-05";
-export const MESSAGE_CHANNELS: readonly MessageChannel[] = ["MAIL_TRANSACTIONAL", "MAIL_BULK", "SMS", "LMS", "ALIMTALK", "IDENTITY_VERIFICATION", "DELIVERY_TRACKING"];
+export const MESSAGE_CHANNELS: readonly MessageChannel[] = ["MAIL_TRANSACTIONAL", "MAIL_BULK", "SMS", "LMS", "ALIMTALK", "IDENTITY_VERIFICATION", "DELIVERY_TRACKING", "INVOICE_ISSUE", "INVOICE_LABEL", "CASH_RECEIPT", "TAX_INVOICE"];
 export const MESSAGE_AMOUNT_MAX = 10_000_000;
 export const MESSAGE_UNIT_PRICE_MAX = 100_000;
 
