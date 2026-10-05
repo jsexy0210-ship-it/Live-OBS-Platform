@@ -50,15 +50,15 @@ export default function AutomationDonePage() {
         ) : (
           <div className="col" style={{ gap: 16 }}>
             <div className="msg msg-pos" role="status" data-testid="done-ok">
-              <span><b>완료 · 작동 확인</b> · {stamp(j.finishedAt ?? j.createdAt)} 완료 · 테스트 주문이 OBS에 표시된 것까지 확인했습니다</span>
+              <span><b>설정 완료 · 화면에 나오는 것까지 확인했습니다</b> · {stamp(j.finishedAt ?? j.createdAt)} 완료 · 테스트 주문이 방송 화면에 나온 것을 확인했습니다</span>
             </div>
             <section className="card pad col" style={{ gap: 6 }}>
-              <b>완료 설정 확인</b>
-              <span className="t-l2 c-alt">OBS 장면에 「ONQ 주문대기」 소스가 켜져 있는지 확인해 주십시오 · 쇼핑몰 앱 권한을 바꾸면 연결이 끊길 수 있습니다 · 오버레이 색 · 위치는 오버레이 편집기에서 바꿉니다</span>
+              <b>끝난 뒤 확인할 것</b>
+              <span className="t-l2 c-alt">방송 프로그램(OBS)에서 「ONQ 주문대기」(방송 중 들어온 주문 목록 화면)가 켜져 있는지 확인해 주십시오. 쇼핑몰에서 앱 허용을 바꾸면 연결이 끊길 수 있습니다. 방송 화면의 색과 위치는 「방송 화면 꾸미기」에서 바꿉니다</span>
               <span className="t-l2 c-alt">완료 뒤 {FREE_RECONNECT_DAYS}일 동안 같은 쇼핑몰 · 같은 PC는 무료로 재설치해 드립니다</span>
             </section>
             <div className="row" style={{ gap: 8 }}>
-              <Link className="btn btn-out" href="/seller/overlay">오버레이 편집기</Link>
+              <Link className="btn btn-out" href="/seller/overlay">방송 화면 꾸미기</Link>
             </div>
           </div>
         )}

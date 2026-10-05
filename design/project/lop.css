@@ -804,6 +804,10 @@ select.inp{cursor:pointer}
 .c24 .ltop{font-size:14px;gap:8px}
 .c24 .ltop .sp{gap:8px}
 .c24 select.i{appearance:none;-webkit-appearance:none;background:#fff url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1l5 5 5-5' fill='none' stroke='%23555' stroke-width='1.6'/></svg>") no-repeat right 14px center;padding-right:36px}
+/* 2026-10-06 네이버식 날짜 칸 DS-DATEPICKER: 달력 아이콘 · 칸 전체 클릭 · 2026.10.05 */
+.c24 .i.dt,.sh24 .inp.dt{padding-right:36px;background:#fff url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><rect x='1.5' y='2.5' width='13' height='12' rx='2' fill='none' stroke='%23555' stroke-width='1.4'/><path d='M1.5 6h13M5 1v3M11 1v3' stroke='%23555' stroke-width='1.4'/></svg>") no-repeat right 12px center;font-variant-numeric:tabular-nums;cursor:pointer;min-width:132px}
+.c24 .i.dt::placeholder,.sh24 .inp.dt::placeholder{color:#9ca1aa}
+
 .c24 .w-140{width:140px}.c24 .w-100{width:100px}
 .c24 .ltop .b.bulk{min-width:104px}
 .c24 .plist .lt td{height:80px;padding:8px}
@@ -1080,3 +1084,7 @@ select.inp{cursor:pointer}
 .c24 .bk:hover{background:#f2f4f6}.c24 .bk:focus-visible{outline:2px solid #1a56db;outline-offset:1px}
 .c24 .ph2 .bk{margin-right:0}
 .c24.mob .bk,.c24 .mph .bk{width:44px;height:44px;border:0}
+/* 2026-10-06 구매자 휴대폰 위 고정 바 56 · ← 44 (DS-NAV 확정 규격) */
+.sh24.m .mh.sub{height:56px}
+.sh24.m .mh .mi.bk{width:44px;height:44px;margin-left:-10px;color:var(--ink)}
+.sh24.m .mh .mi.bk svg{width:20px;height:20px}

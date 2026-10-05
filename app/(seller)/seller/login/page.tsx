@@ -94,7 +94,7 @@ export default function SellerLoginPage() {
       return;
     }
     setBusy(false);
-    const text = r.message ?? (r.status === 0 ? "연결이 끊겼습니다. 인터넷 연결을 확인해 주십시오" : "로그인하지 못했습니다. 잠시 후 다시 시도해 주십시오");
+    const text = r.message ?? (r.status === 0 ? "연결이 끊겼습니다. 인터넷 연결을 확인해 주십시오" : "로그인하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 눌러 주십시오");
     if (r.error === "wrong_account_type") {
       // 고른 탭과 계정 종류가 다르다: 맞는 탭으로 안내하고 전환 버튼을 준다
       const other: AccountType = tab === "owner" ? "staff" : "owner";
@@ -123,7 +123,7 @@ export default function SellerLoginPage() {
         </span>
         <div className="col login-head">
           <h1 className="t-t3">파트너스 관리자</h1>
-          <span className="t-l2 c-alt">쇼핑몰 운영과 방송 주문대기를 한곳에서 관리합니다.</span>
+          <span className="t-l2 c-alt">쇼핑몰 운영과 방송 주문대기(방송 중 들어온 주문 목록)를 한곳에서 관리합니다.</span>
         </div>
         <div className="tabs login-tabs" role="tablist" aria-label="계정 종류">
           {TABS.map((t, i) => (
@@ -154,7 +154,7 @@ export default function SellerLoginPage() {
               {notice.switchTo && (
                 <span className="row" style={{ marginTop: 8 }}>
                   <button className="btn btn-sm" type="button" onClick={() => choose(notice.switchTo!, true)}>
-                    {notice.switchTo === "staff" ? "직원 탭으로" : "대표자 탭으로"}
+                    {notice.switchTo === "staff" ? "직원으로 로그인하기" : "대표자로 로그인하기"}
                   </button>
                 </span>
               )}
@@ -185,9 +185,9 @@ export default function SellerLoginPage() {
           </div>
           {needShop && (
             <div className="fld">
-              <label htmlFor="shop">쇼핑몰 주소</label>
+              <label htmlFor="shop">쇼핑몰 주소(가입할 때 정한 영문 이름)</label>
               <input id="shop" className="inp" type="text" placeholder="예: byulbit" value={shopSlug} onChange={(e) => setShopSlug(e.target.value)} />
-              <span className="help">이 이메일로 사용하는 쇼핑몰이 여러 곳입니다. 로그인할 쇼핑몰 주소를 입력해 주십시오</span>
+              <span className="help">이 이메일로 쓰는 쇼핑몰이 여러 곳입니다. 가입할 때 정한 쇼핑몰 주소(영문)를 입력해 주십시오</span>
             </div>
           )}
           <button className={`btn btn-lg btn-block${busy ? " is-loading" : ""}`} type="submit" disabled={!ready || busy}>
