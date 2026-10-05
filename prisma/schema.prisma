@@ -1881,6 +1881,54 @@ model SiteBranding {
   updatedAt     DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 }
 
+// ───────────── 외부 서비스 업체 등록·비교(마스터 관리자 설정 > 외부 서비스 연동, docs/COST_POLICY.md) ─────────────
+// 분야별(PG·배송·배송조회) 업체 목록, 분야마다 「추천」 1개·「선택된 업체」 1개. 추천·가중치는 코드에 고정하지 않고 마스터 관리자가 바꾼다.
+// 요금(referenceFee)은 공개 기준 참고값(글)이며 실제 계약 조건이 아니다. 실제 외부 연동·계약은 하지 않는다.
+// features: 분야별 허용 키 목록(String), ratings: { 평가 항목 키: 0~10 } (점수는 가중치로 서버가 계산).
+// (추천·선택 업체 id, category) → ServiceVendor(id, category) 복합 외래키(분야가 다른 업체를 못 고름)와 CHECK는 마이그레이션 SQL에 있다.
+enum ServiceVendorCategory {
+  PG
+  SHIPPING
+  TRACKING
+}
+
+model ServiceVendor {
+  id           String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  category     ServiceVendorCategory
+  name         String
+  features     String[]              @default([])
+  referenceFee String?
+  memo         String?
+  ratings      Json                  @default("{}")
+  active       Boolean               @default(true)
+  createdAt    DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime              @default(now()) @updatedAt @db.Timestamptz(3)
+
+  logo ServiceVendorLogo?
+
+  @@unique([category, name])
+  @@unique([id, category])
+}
+
+// 업체 로고(PNG, 256KB 이하, 16~600px). 플랫폼 저장소(지금은 Postgres)에 보관한다. 외부 주소 직접 연결 금지.
+model ServiceVendorLogo {
+  vendorId  String   @id @db.Uuid
+  data      Bytes
+  type      String
+  hash      String
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  vendor ServiceVendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+}
+
+model ServiceVendorSetting {
+  category            ServiceVendorCategory @id
+  weights             Json
+  recommendedVendorId String?               @db.Uuid
+  selectedVendorId    String?               @db.Uuid
+  updatedAt           DateTime              @default(now()) @updatedAt @db.Timestamptz(3)
+}
+
 // ───────────── 자동 설치·연결 상품 (docs/AUTOMATION.md) ─────────────
 // 결제 상태(AutomationPayment)와 연결 작업 상태(AutomationJob)를 따로 둔다. 작업은 서버가 결제를 PAID로 확정한
 // 같은 트랜잭션에서만 QUEUED가 된다(무료 재연결은 서버가 대상 판정 뒤 바로 QUEUED). 판매자 테이블과는 Prisma 관계를 두지 않는다(Seller 모델을 고치지 않기 위해,

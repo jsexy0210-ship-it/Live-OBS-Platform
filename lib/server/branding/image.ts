@@ -185,6 +185,15 @@ export function checkFavicon(b: Buffer): ImageCheck {
   return checkPng(b, (i) => side(i.width) && side(i.height));
 }
 
+// 외부 서비스 업체 로고(MASTER 결정 2026-10-05): PNG만, 256KB까지, 한 변 16~600px. SVG는 스크립트를 품을 수 있어 받지 않는다.
+export const VENDOR_LOGO_MAX_BYTES = 256 * 1024;
+export function checkVendorLogo(b: Buffer): ImageCheck {
+  if (b.length === 0) return { ok: false, reason: "empty_file" };
+  if (b.length > VENDOR_LOGO_MAX_BYTES) return { ok: false, reason: "file_too_large" };
+  const side = (n: number) => n >= 16 && n <= 600;
+  return checkPng(b, (i) => side(i.width) && side(i.height));
+}
+
 // 공유 카드 이미지: PNG만, 2MB까지, 1200×630 그대로. JPEG는 그림 데이터까지 확인하려면 디코더가 필요해(새 의존성) 받지 않는다
 // (MASTER 결정 2026-10-04, 형식을 좁혀도 된다).
 export function checkOgImage(b: Buffer): ImageCheck {
