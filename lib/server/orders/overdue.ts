@@ -238,12 +238,13 @@ export async function listPaymentDueSoon(db: PrismaClient, opts: { now?: Date } 
     ORDER BY "paymentDueAt" ASC`;
 }
 
-// 판매자: 지금 걸려 있는 구매 제한 목록(MEMBER_POINTS)
-export async function listActiveRestrictions(db: PrismaClient, ctx: TenantContext) {
+// 판매자: 지금 걸려 있는 구매 제한 목록(MEMBER_POINTS). 최근 200건까지라, 회원 한 명의 제한은 buyerMemberId로 걸러 받는다(UUID가 아니면 null).
+export async function listActiveRestrictions(db: PrismaClient, ctx: TenantContext, opts: { buyerMemberId?: string | null } = {}) {
   requireSellerRead(ctx, "MEMBER_POINTS");
+  if (opts.buyerMemberId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(opts.buyerMemberId)) return null;
   const now = await dbNow(db);
   return db.buyerPurchaseRestriction.findMany({
-    where: { sellerId: ctx.sellerId, liftedAt: null, endsAt: { gt: now } },
+    where: { sellerId: ctx.sellerId, liftedAt: null, endsAt: { gt: now }, ...(opts.buyerMemberId ? { buyerMemberId: opts.buyerMemberId } : {}) },
     orderBy: { startsAt: "desc" },
     take: 200,
     select: { id: true, buyerMemberId: true, reason: true, note: true, startsAt: true, endsAt: true, buyerMember: { select: { broadcastNickname: true } } },

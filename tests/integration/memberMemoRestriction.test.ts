@@ -145,4 +145,21 @@ describe("구매 제한 직접 걸기", () => {
     expect(await withdrawBuyer(db, { sellerId: a.seller.id, buyerMemberId: a.buyer.id }, { password: PASSWORD })).toEqual({ ok: true });
     expect((await restrict(a.cookie, a.buyer.id)).status).toBe(404);
   });
+
+  it("?buyerMemberId로 회원 한 명의 제한만 주고(200건 밖이어도), 다른 쇼핑몰 회원 id는 빈 목록, 잘못된 값은 400", async () => {
+    const s = await shop();
+    const other = await createLoginBuyer(s.seller.id, s.grade.id);
+    await restrict(s.cookie, s.buyer.id, { days: 3 });
+    await restrict(s.cookie, other.id, { days: 3 });
+    const get = async (cookie: string, qs: string) => {
+      const r = await restrictionsRoute(new Request(`http://localhost:3000/api/seller/purchase-restrictions${qs}`, { headers: { host: "localhost:3000", cookie } }));
+      return { status: r.status, body: await r.json() };
+    };
+    expect((await get(s.cookie, "")).body.restrictions).toHaveLength(2);
+    const one = await get(s.cookie, `?buyerMemberId=${s.buyer.id}`);
+    expect(one.body.restrictions.map((r: { buyerMemberId: string }) => r.buyerMemberId)).toEqual([s.buyer.id]);
+    const t = await shop();
+    expect((await get(t.cookie, `?buyerMemberId=${s.buyer.id}`)).body.restrictions).toEqual([]);
+    expect((await get(s.cookie, "?buyerMemberId=abc")).status).toBe(400);
+  });
 });
