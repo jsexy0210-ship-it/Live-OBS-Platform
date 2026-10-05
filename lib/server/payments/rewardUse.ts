@@ -75,12 +75,12 @@ export function rewardReturnAmount(o: { rewardUsedAmount: number; items?: Refund
   return raw - (raw % REWARD_USE_UNIT);
 }
 
-// 취소·환불 트랜잭션 안에서 부른다(판매자 주문 잠금 뒤). items(환불 상품 금액·주문 상품 금액)를 주면 환불(비율 반환), 없으면 취소(전부 반환).
+// 취소·환불 트랜잭션 안에서 부른다(판매자 주문 잠금 뒤). amount를 주면 그만큼(환불: queue/service computeRefund가 현금에서 뺀 몫), 없으면 전부(취소).
 // 이미 돌려줬으면(같은 멱등 키) 다시 돌려주지 않는다. 탈퇴한 회원이면 잔액에 넣지 않고 FAILED로 남긴다.
-export async function returnRewardForOrder(tx: Tx, o: { sellerId: string; orderId: string; items?: RefundedItems; now: Date; reason: string }): Promise<number> {
+export async function returnRewardForOrder(tx: Tx, o: { sellerId: string; orderId: string; amount?: number; now: Date; reason: string }): Promise<number> {
   const order = await tx.order.findFirst({ where: { id: o.orderId, sellerId: o.sellerId }, select: { buyerMemberId: true, rewardUsedAmount: true } });
   if (!order) return 0;
-  const amount = rewardReturnAmount({ rewardUsedAmount: order.rewardUsedAmount, items: o.items });
+  const amount = Math.min(o.amount ?? order.rewardUsedAmount, order.rewardUsedAmount);
   if (amount <= 0) return 0;
   const key = `use_return:${o.orderId}`;
   if (await tx.rewardLedger.findUnique({ where: { sellerId_idempotencyKey: { sellerId: o.sellerId, idempotencyKey: key } }, select: { id: true } })) return 0;

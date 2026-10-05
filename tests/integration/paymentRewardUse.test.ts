@@ -7,7 +7,7 @@ import { shipOrder } from "../../lib/server/orders/ship";
 import { FakePaymentGateway } from "../../lib/server/payments/gateway";
 import { parseRewardUse, rewardReturnAmount, rewardUseLimit } from "../../lib/server/payments/rewardUse";
 import { startPayment } from "../../lib/server/payments/service";
-import { cancelPendingOrder, markOrderPaid, refundOrder } from "../../lib/server/queue/service";
+import { cancelPendingOrder, markOrderPaid, previewRefund, refundOrder } from "../../lib/server/queue/service";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { createLoginBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
@@ -144,8 +144,9 @@ describe("쓴 적립금 반환", () => {
     expect(await shipOrder(db, s.ctx, shipped.orderId, { courier: "CJ", trackingNumber: "123456789012" })).toMatchObject({ ok: true });
     const rr = await refundOrder(db, s.ctx, shipped.orderId, { reason: "단순 변심", fault: "BUYER", expectedLiveVersion: await lv(s.seller.id) });
     if (!rr.ok) throw new Error(rr.reason);
-    expect(rr.value.refundAmount).toBeLessThan(10000 + 3000 - 3010); // 반품 배송비를 뺀 현금 환불
     expect(await balanceOf(s.seller.id, s.buyer.id)).toBe(10000); // 상품은 전부 돌아왔으므로 적립금은 전부
+    // 불변식: 현금 + 적립금 반환(3,010) = 돌아오는 상품 10,000 − 반품 배송비(처음 배송비는 돌려주지 않음)
+    expect(rr.value.refundAmount + 3010).toBe(10000 - rr.value.returnFeeDeducted);
   });
 
   it("개봉한 품목을 구매자가 갖는 부분 환불은 돌려주는 상품 금액 비율로 10원 단위 내림", async () => {
@@ -169,10 +170,24 @@ describe("쓴 적립금 반환", () => {
     await db.queueItem.updateMany({ where: { orderItemId: opened.id }, data: { status: "DONE", openingStartedAt: new Date() } });
     expect(await shipOrder(db, s.ctx, r.orderId, { courier: "CJ", trackingNumber: "123456789012" })).toMatchObject({ ok: true });
     const before = await balanceOf(s.seller.id, s.buyer.id);
-    const rr = await refundOrder(db, s.ctx, r.orderId, { reason: "단순 변심", fault: "BUYER", confirmOpened: true, expectedLiveVersion: await lv(s.seller.id) });
+    // 화면 미리보기도 같은 금액(expectedRefundAmount로 넘기는 값)
+    const preview = await previewRefund(db, s.ctx, r.orderId);
+    expect(preview?.byFault.BUYER).toMatchObject({ rewardReturn: 1250 });
+    const rr = await refundOrder(db, s.ctx, r.orderId, {
+      reason: "단순 변심",
+      fault: "BUYER",
+      confirmOpened: true,
+      expectedRefundAmount: preview!.byFault.BUYER.refundAmount,
+      expectedLiveVersion: await lv(s.seller.id),
+    });
     if (!rr.ok) throw new Error(rr.reason);
-    // 3,010 × 5,000 ÷ 12,000 = 1,254.16… → 1,250
+    // 3,010 × 5,000 ÷ 12,000 = 1,254.16… → 1,250. 현금은 그만큼 덜 돌려준다(검수 #346 반례: 5,000원 상품에 6,250원을 돌려주면 안 됨).
     expect((await balanceOf(s.seller.id, s.buyer.id)) - before).toBe(1250);
+    const fee = rr.value.returnFeeDeducted;
+    expect(fee).toBeGreaterThan(0);
+    expect(rr.value.refundAmount).toBe(5000 - 1250 - fee);
+    // 불변식: 현금 환불 + 적립금 반환 = 돌아오는 상품 금액 − 반품 배송비
+    expect(rr.value.refundAmount + 1250).toBe(5000 - fee);
     expect(await db.rewardLedger.findFirstOrThrow({ where: { idempotencyKey: `use_return:${r.orderId}` } })).toMatchObject({ amount: 1250, status: "SUCCEEDED" });
   });
 });

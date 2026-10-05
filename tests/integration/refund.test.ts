@@ -118,8 +118,9 @@ describe("환불: 개봉 전 품목만 재고 복구, 연결된 대기·개봉 �
     await db.sellerShippingPolicy.create({ data: { sellerId: s.seller.id, returnFee: 0 } });
     await ship(s.ctx, p.order.id);
     const res = await refundOrder(db, s.ctx, p.order.id, { reason: "요청", expectedLiveVersion: await lv(s.ctx.sellerId), confirmOpened: true, fault: "BUYER" });
-    // 개봉하지 않은 품목 5,000원이지만 돈으로는 실제 결제액 4,000원까지만 돌려준다
-    expect(res).toMatchObject({ ok: true, value: { refundAmount: 4000, openedItemCount: 1 } });
+    // 돌아오는 품목 5,000원 = 적립금 반환 6,000 × 5,000 ÷ 10,000 = 3,000원 + 현금 2,000원(대표님 결정 2026-10-05, 검수 #346).
+    // 현금은 실제 결제액 4,000원을 넘지 않는다.
+    expect(res).toMatchObject({ ok: true, value: { refundAmount: 2000, openedItemCount: 1 } });
   });
 
   it("발송 전에 개봉한 품목이 있으면 구매자 사정 환불은 409(opened_items_unshipped)이고 아무것도 바뀌지 않는다, 판매자 사정은 전액", async () => {
