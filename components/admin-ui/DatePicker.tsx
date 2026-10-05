@@ -131,7 +131,7 @@ function Popover({ anchor, onClose, children, label }: { anchor: React.RefObject
   return (
     <div className="dt-layer">
       <div className="dt-dim" aria-hidden="true" />
-      <div className="dt-pop" ref={box} role="dialog" aria-label={label} style={pos ? { top: pos.top, left: pos.left } : undefined}>
+      <div className="dt-pop" ref={box} role="dialog" aria-label={label} onMouseDown={(e) => e.preventDefault()} style={pos ? { top: pos.top, left: pos.left } : undefined}>
         {children}
       </div>
     </div>
@@ -165,6 +165,8 @@ export function DatePicker({ value, onChange, tone = "admin", ...p }: FieldProps
   const field = useFieldState(value, onChange);
   const labelId = useId();
   const close = useCallback(() => setOpen(false), []);
+  // 포커스가 칸·달력 밖으로 나가면(Tab 등) 닫는다
+  const leave = () => setTimeout(() => !anchor.current?.contains(document.activeElement) && setOpen(false), 0);
   const openIt = () => {
     if (p.disabled || p.readOnly) return;
     setCursor(value || p.max || todayKst());
@@ -190,7 +192,10 @@ export function DatePicker({ value, onChange, tone = "admin", ...p }: FieldProps
         onClick={openIt}
         onFocus={(e) => (e.currentTarget.dataset.skipOpen ? delete e.currentTarget.dataset.skipOpen : openIt())}
         onChange={(e) => field.change(e.target.value)}
-        onBlur={field.settle}
+        onBlur={() => {
+          field.settle();
+          leave();
+        }}
         onKeyDown={(e) => {
           if (e.key === "ArrowDown") {
             e.preventDefault();
@@ -210,7 +215,7 @@ export function DatePicker({ value, onChange, tone = "admin", ...p }: FieldProps
         <CalIcon />
       </span>
       {open && (
-        <Popover anchor={anchor} onClose={close} label={p["aria-label"] ?? t.cal}>
+        <Popover anchor={anchor} onClose={close} label={`${p["aria-label"] ?? t.cal} 달력`}>
           <span id={labelId} className="sr-only">
             {t.pickOne}
           </span>
@@ -243,6 +248,7 @@ export function DateRangePicker({ from, to, onChange, fromLabel, toLabel, quick 
   const fromField = useFieldState(from, (iso) => onChange({ from: iso, to }));
   const toField = useFieldState(to, (iso) => onChange({ from, to: iso }));
   const close = useCallback(() => setOpen(false), []);
+  const leave = () => setTimeout(() => !anchor.current?.contains(document.activeElement) && setOpen(false), 0);
   const openIt = () => {
     if (disabled) return;
     setDraft({ from, to });
@@ -281,7 +287,10 @@ export function DateRangePicker({ from, to, onChange, fromLabel, toLabel, quick 
           onClick={openIt}
           onFocus={(e) => (e.currentTarget.dataset.skipOpen ? delete e.currentTarget.dataset.skipOpen : !open && openIt())}
           onChange={(e) => f.change(e.target.value)}
-          onBlur={f.settle}
+          onBlur={() => {
+            f.settle();
+            leave();
+          }}
           onKeyDown={(e) => {
             if (e.key !== "ArrowDown") return;
             e.preventDefault();
@@ -312,7 +321,7 @@ export function DateRangePicker({ from, to, onChange, fromLabel, toLabel, quick 
       </span>
       {input("to")}
       {open && (
-        <Popover anchor={anchor} onClose={close} label="기간 선택">
+        <Popover anchor={anchor} onClose={close} label="기간 달력">
           <Calendar cursor={cursor} setCursor={setCursor} from={draft.from} to={draft.to} hover={draft.from && !draft.to ? hover : undefined} min={min} max={max} tone={tone} onPick={pick} onHover={setHover} />
           <div className="dt-foot">
             <span className="dt-hint">{sum}</span>

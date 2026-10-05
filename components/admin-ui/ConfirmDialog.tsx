@@ -120,14 +120,16 @@ type Pending = { opts: ConfirmOptions; resolve: (ok: boolean) => void };
 type Api = { confirm: (opts: ConfirmOptions) => Promise<boolean>; readOnly: boolean };
 const Ctx = createContext<Api | null>(null);
 
-export function ConfirmProvider({ readOnly = false, children }: { readOnly?: boolean; children: React.ReactNode }) {
+// defaultTone: 이 틀 안의 확인 창 말투 기본값(구매자 쇼핑몰은 "shop" = 해요체·휴대폰 바텀시트). 호출에서 tone으로 바꿀 수 있다
+export function ConfirmProvider({ readOnly = false, defaultTone = "admin", children }: { readOnly?: boolean; defaultTone?: "admin" | "shop"; children: React.ReactNode }) {
   const [pending, setPending] = useState<Pending | null>(null);
   const [notice, setNotice] = useState<"admin" | "shop" | null>(null);
   const openRef = useRef(false);
   openRef.current = !!pending || !!notice;
 
   const confirm = useCallback(
-    (opts: ConfirmOptions) => {
+    (raw: ConfirmOptions) => {
+      const opts: ConfirmOptions = { tone: defaultTone, ...raw };
       // 창을 겹쳐 열지 않는다
       if (openRef.current) return Promise.resolve(false);
       if (readOnly && !opts.allowReadOnly) {
@@ -136,7 +138,7 @@ export function ConfirmProvider({ readOnly = false, children }: { readOnly?: boo
       }
       return new Promise<boolean>((resolve) => setPending({ opts, resolve }));
     },
-    [readOnly],
+    [readOnly, defaultTone],
   );
   const api = useMemo(() => ({ confirm, readOnly }), [confirm, readOnly]);
   const finish = (ok: boolean) => {

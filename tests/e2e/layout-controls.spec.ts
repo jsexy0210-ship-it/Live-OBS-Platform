@@ -52,7 +52,7 @@ test("날짜 칸(공통 DatePicker): 글자·빈 곳·아이콘 어디를 눌러
   await expect(date).toBeVisible();
   await expect(date).toHaveAttribute("placeholder", "날짜 선택");
   const box = (await date.boundingBox())!;
-  const cal = page.getByRole("dialog", { name: "기록 시작일" });
+  const cal = page.getByRole("dialog", { name: "기록 시작일 달력" });
   // 글자 쪽·가운데·오른쪽 아이콘 쪽 어디를 눌러도 한 번 열린다
   for (const x of [box.x + 12, box.x + box.width / 2, box.x + box.width - 16]) {
     await page.mouse.click(x, box.y + box.height / 2);

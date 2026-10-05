@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ConfirmProvider } from "../admin-ui/ConfirmDialog";
 import { cookies } from "next/headers";
 import { COOKIE_NAMES } from "../../lib/server/auth/policy";
 import { resolveBuyerSession } from "../../lib/server/auth/session";
@@ -49,7 +50,9 @@ export default async function ShopFrame({ slug, shopName, children }: { slug: st
       <ShopChrome slug={slug} shopName={shopName} loggedIn={!!session} nickname={session?.member.broadcastNickname ?? null} categories={categories} />
       <LiveBar slug={slug} />
       <EventPopupForPage />
-      <main className="shop-main">{children}</main>
+      <main className="shop-main">
+        <ConfirmProvider defaultTone="shop">{children}</ConfirmProvider>
+      </main>
       <footer className="shop-foot">
         <div className="shop-wrap">
           <p className="shop-foot-name">{shopName}</p>
