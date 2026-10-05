@@ -49,19 +49,19 @@ async function login(page: Page, next: string) {
 test("게시하려면 시행일·본문이 필요하고, 저장하면 구매자 화면에 글자 그대로 표시된다", async ({ page, context }) => {
   await login(page, "/seller/settings/legal");
   await expect(page.getByRole("heading", { name: "법정 고지 · 약관" })).toBeVisible();
-  await expect(page.getByTestId("legal-status-terms")).toContainText("게시 전");
+  await expect(page.getByTestId("legal-status-terms")).toContainText("아직 공개 안 함");
   await expect(page.getByTestId("legal-save-terms")).toBeDisabled(); // 바뀐 것이 없으면 저장 못 함
 
   // 게시를 켜고 비워 둔 채 저장하면 칸 가까이에 이유가 나온다
-  await page.getByRole("switch", { name: "이용약관 구매자에게 게시" }).click();
+  await page.getByRole("switch", { name: "이용약관 구매자에게 공개" }).click();
   await page.getByTestId("legal-save-terms").click();
-  await expect(page.getByText("게시하려면 본문을 입력해 주십시오")).toBeVisible();
-  await expect(page.getByText("게시하려면 시행일을 입력해 주십시오")).toBeVisible();
+  await expect(page.getByText("공개하려면 본문을 써 주십시오")).toBeVisible();
+  await expect(page.getByText("공개하려면 시작하는 날을 정해 주십시오")).toBeVisible();
 
   await page.getByLabel("이용약관 본문").fill("제1조(목적)\n이 약관은 <b>시험</b> 쇼핑몰 이용 조건이에요.");
-  await page.getByLabel("이용약관 시행일").fill("2026-11-01");
+  await page.getByLabel("이용약관 시작하는 날").fill("2026-11-01");
   await page.getByTestId("legal-save-terms").click();
-  await expect(page.getByTestId("legal-status-terms")).toContainText("게시 중 · 시행일 2026년 11월 1일");
+  await expect(page.getByTestId("legal-status-terms")).toContainText("공개 중 · 시작하는 날 2026년 11월 1일");
   await expect(page.getByTestId("legal-save-terms")).toBeDisabled();
 
   // 구매자 화면: 본문이 텍스트로만 보이고 시행일이 보인다. 개인정보처리방침은 아직 준비 중
@@ -73,9 +73,9 @@ test("게시하려면 시행일·본문이 필요하고, 저장하면 구매자 
   await expect(buyer.getByRole("heading", { level: 1 })).toHaveText("개인정보처리방침을 준비하고 있어요");
 
   // 게시를 끄고 저장하면 구매자 화면은 다시 준비 중
-  await page.getByRole("switch", { name: "이용약관 구매자에게 게시" }).click();
+  await page.getByRole("switch", { name: "이용약관 구매자에게 공개" }).click();
   await page.getByTestId("legal-save-terms").click();
-  await expect(page.getByTestId("legal-status-terms")).toContainText("게시 전");
+  await expect(page.getByTestId("legal-status-terms")).toContainText("아직 공개 안 함");
   await buyer.goto(`/shop/${SLUG}/terms`);
   await expect(buyer.getByRole("heading", { level: 1 })).toHaveText("이용약관을 준비하고 있어요");
 });
@@ -104,7 +104,7 @@ test("사업자 정보·고지: 검사 오류가 칸 가까이에 보이고, 저
   await page.getByTestId("legal-save-notice").click();
   await expect(page.getByText("전화번호는 숫자·하이픈·괄호만 입력할 수 있습니다")).toBeVisible();
   await expect(page.getByText("가입한 업체 이름을 입력해 주십시오")).toBeVisible();
-  await expect(page.getByText("확인 주소는 https로 시작하는 주소만 입력할 수 있습니다")).toBeVisible();
+  await expect(page.getByText("확인 주소는 https://로 시작하는 주소만 쓸 수 있습니다")).toBeVisible();
 
   await page.getByLabel("주소", { exact: true }).fill("서울시 중구 세종대로 1 <b>3층</b>");
   await page.getByLabel("고객센터 전화").fill("1588-1234");

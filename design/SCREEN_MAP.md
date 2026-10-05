@@ -275,6 +275,7 @@
 | Brand1·2·3 | 브랜드 제안(초안) | DRAFT |
 | DS1~DS6 | 디자인 시스템 설명 보드(DS6 = 카페24식 공통 틀) | DRAFT · DS6 참고 · DS1~5 초안 |
 | DS-CONFIRM | 공통 확인 창 — 저장·삭제·변경·상태 변경·일괄 처리 앞 다이얼로그(규칙 6항 · 관리자 6종 · 구매자 PC 2종 · 휴대폰 시트 2종, 대표님 지시 2026-10-06 · docs PR #627) | FINAL v272 (1791213148-ad9f) · `design/project/DS-CONFIRM.dc.html` |
+| IA1·IA2·IA3 | 정보구조도 보드(IA1은 v279에서 확정 GNB·LNB로 재생성) | DRAFT · 정본은 docs/IA.md |
 | DS-NAV | 새 GNB · 메뉴 구조표(제안) — 파트너스 GNB 10→8 · LNB 50→34, 마스터 8→6 · 28→24, 구매자 이름 2곳, 통폐합 전후 대응표 · 원칙 5(대표님 지시 2026-10-05 · docs/IA.md 「GNB·위계 현대화」 PR #637) · 화면 ← 버튼(Back) 규격 6항·시안 5(대표님 지시 「화면 진입 시 Back 기능도 없다」, 경로는 docs/BACK_ROUTES.md) | FINAL v278 (대표님 확정 2026-10-06 「그대로 진행」, docs/IA.md 「확정 메뉴 구조」 PR #637) · `design/project/DS-NAV.dc.html` |
 | DS-TYPE-SCALE | 글자 · 버튼 · 간격 · 모서리 · 아이콘 · 표 · 일시 표기 크기 체계 한 장(시각 규격 2026-10-05 + 일시 2026.10.05 22:25) | FINAL v278 (대표님 확정 2026-10-06 「그대로 진행」) · `design/project/DS-TYPE-SCALE.dc.html` |
 | IA1·IA2·IA3 | 정보구조도 보드 | DRAFT · 정본은 docs/IA.md |
@@ -288,7 +289,7 @@
 
 | 컴포넌트 | 소스 |
 |---|---|
-| AdminShell / SellerShell (관리자 공통 틀: GNB + LNB + 경로 줄) | design/project/lop.css (`.c24 .gnb` `.lnb` `.pathbar` `.ph2`) · 메뉴 정본 design/project/SA-LNB.dc.html · 휴대폰 틀 design/project/SA-FRAME-M.dc.html · 마스터 메뉴는 design/project/MA-001-IA.dc.html의 GNB·LNB |
+| AdminShell / SellerShell (관리자 공통 틀: GNB + LNB + 경로 줄 + ← 버튼) | **메뉴 구조 정본 DS-NAV(확정 2026-10-06) · 파트너스·마스터 LNB 정본 design/project/SA-LNB.dc.html(v279) · ← 버튼 lop.css `.c24 .bk`** · design/project/lop.css (`.c24 .gnb` `.lnb` `.pathbar` `.ph2` `.rtabs`) · 휴대폰 틀 design/project/SA-FRAME-M.dc.html · 마스터 메뉴는 design/project/MA-001-IA.dc.html의 GNB·LNB |
 | ShopHeader / ShopFrame (구매자 공통 머리 · 바닥 · 탭바) | design/project/lop.css (`.sh24 .tb` `.hd` `.cat` `.ft` `.m .mh` `.tabbar`) · 정본 예시 design/project/SH-001-PC-IA.dc.html · SH-001-IA.dc.html |
 | SearchBox · ListPanel (검색 패널 3층 · 목록 패널 2층 · 외곽 프레임 완전성) | design/project/DS-PANEL.dc.html · lop.css (`.c24 .box.dense` `.ft` `.sbtn` `.lpanel` `.ltop` `.lt`) |
 | 행 동작 · 칩 · 일괄 고정 줄 · 사이드 패널 · 확인 3단계 (관리자 목록 즉시 처리) | design/project/DS-ROW-ACTION.dc.html · 적용 예 MA-013-OPS.dc.html · SA-021-OPS.dc.html · 정본 규칙 docs/ADMIN_OPS_UX.md |
