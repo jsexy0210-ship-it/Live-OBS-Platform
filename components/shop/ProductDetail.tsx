@@ -1,5 +1,6 @@
 "use client";
 
+import ProductReviews from "./ProductReviews";
 import RecommendedProducts from "./RecommendedProducts";
 import ShopBack from "./ShopBack";
 import Link from "next/link";
@@ -314,6 +315,8 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
           )
         )}
       </section>
+
+      <ProductReviews slug={slug} productId={p.id} />
 
       <RecommendedProducts slug={slug} productId={p.id} />
 

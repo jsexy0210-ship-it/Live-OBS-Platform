@@ -413,12 +413,16 @@ describe("다시 연결·목록 권한 (SA-006)", () => {
     expect(await startReconnect(db, null, (await connected("shopb")).ctx, (await db.externalShopConnection.findFirstOrThrow({ where: { shopKey: "shopb" } })).id)).toEqual({ ok: false, reason: "integration_disabled" });
   });
 
-  it("목록은 같은 파트너스의 권한 없는 직원도 보고(보기만), 다른 파트너스의 연결은 보이지 않는다. 라우트는 canManage를 알려 준다", async () => {
+  it("목록은 대표자·쇼핑몰 설정(SHOP_SETTINGS) 직원만 본다(권한 없는 직원은 403), 다른 파트너스의 연결은 보이지 않는다. 라우트는 canManage를 알려 준다", async () => {
     const a = await connected("shopa");
     await connected("shopz");
     const viewer = await createSellerUser(a.seller.id, { permissions: [] });
     const viewerCtx: TenantContext = { ...a.ctx, actorId: viewer.id, isOwner: false, permissions: [] };
-    expect((await listConnections(db, viewerCtx)).map((c) => c.shopKey)).toEqual(["shopa"]);
+    await expect(listConnections(db, viewerCtx)).rejects.toMatchObject({ status: 403 });
+    const staff = await createSellerUser(a.seller.id, { permissions: ["SHOP_SETTINGS"] });
+    const staffCtx: TenantContext = { ...a.ctx, actorId: staff.id, isOwner: false, permissions: ["SHOP_SETTINGS"] };
+    expect((await listConnections(db, staffCtx)).map((c) => c.shopKey)).toEqual(["shopa"]);
+    expect((await listConnections(db, a.ctx)).map((c) => c.shopKey)).toEqual(["shopa"]);
     await expect(startConnect(db, new FakeProvider(), viewerCtx, "https://other.cafe24.com")).rejects.toMatchObject({ status: 403 });
     const cookie = async (email: string) => {
       const r = await loginSeller(db, { email, password: PASSWORD }, {});
@@ -427,8 +431,11 @@ describe("다시 연결·목록 권한 (SA-006)", () => {
     };
     const H = (c: string) => ({ host: "localhost:3000", origin: "http://localhost:3000", cookie: c, "content-type": "application/json" });
     const asViewer = await listRoute(new Request("http://localhost:3000/api/seller/external-shops", { headers: H(await cookie(viewer.email)) }));
-    expect(asViewer.status).toBe(200);
-    expect(await asViewer.json()).toMatchObject({ canManage: false, connections: [{ shopKey: "shopa" }] });
+    expect(asViewer.status).toBe(403);
+    expect(JSON.stringify(await asViewer.json())).not.toContain("shopa");
+    const asStaff = await listRoute(new Request("http://localhost:3000/api/seller/external-shops", { headers: H(await cookie(staff.email)) }));
+    expect(asStaff.status).toBe(200);
+    expect(await asStaff.json()).toMatchObject({ canManage: true, connections: [{ shopKey: "shopa" }] });
     const asOwner = await listRoute(new Request("http://localhost:3000/api/seller/external-shops", { headers: H(await cookie(a.user.email)) }));
     expect(await asOwner.json()).toMatchObject({ canManage: true });
     // connectionId 형식이 틀리면 404
