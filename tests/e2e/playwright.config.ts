@@ -10,6 +10,9 @@ import { defineConfig } from "@playwright/test";
 //   BUSINESS_STATUS_PROVIDER=fake MAIL_ORDER_PROVIDER=fake (운영에서는 만들 수 없는 가짜 공급자). 실행마다 가입용 본인확인 2회를 쓴다.
 //   실제 흐름 테스트 2개가 실행마다 본인확인 2회를 쓴다. 같은 IP·같은 쇼핑몰 하루 10회 한도가 있어
 //   같은 DB로 하루 5번 넘게 돌리면 daily_limit_exceeded로 실패한다(DB를 새로 만들면 풀린다).
+//   자동 연결 화면(automation-screens)도 개발 서버에서 돌린다: 가짜 결제 공급자(BILLING_PROVIDER=fake)는 운영 빌드에서 쓸 수 없고,
+//   BILLING_KEY_SECRET(32자 이상 테스트용 임의값)이 서버와 시험 양쪽에 있어야 한다.
+//   유튜브 시험(seller-youtube·seller-broadcast-chat)은 서버와 시험 양쪽에 YOUTUBE_API_KEY(아무 값)가 있고 서버를 SCHEDULER_DISABLED=1로 띄워야 한다.
 // 운영 빌드(next start)는 본인확인 키가 없으면 가입을 503으로 막으므로, 그 상태 화면은 기본 서버에서 확인한다.
 export default defineConfig({
   testDir: ".",
@@ -24,8 +27,8 @@ export default defineConfig({
     timezoneId: "Asia/Seoul",
   },
   projects: [
-    { name: "start", testIgnore: /(shop-signup-flow|partners-auth-flow|test-mode-flow|test-mode-live|admin-refund-approve)\.spec\.ts$/ },
-    { name: "dev", testMatch: /(shop-signup-flow|partners-auth-flow|test-mode-flow)\.spec\.ts$/, use: { baseURL: process.env.E2E_DEV_BASE_URL ?? "http://localhost:3101" } },
+    { name: "start", testIgnore: /(shop-signup-flow|automation-screens|partners-auth-flow|test-mode-flow|test-mode-live|admin-refund-approve)\.spec\.ts$/ },
+    { name: "dev", testMatch: /(shop-signup-flow|automation-screens|partners-auth-flow|test-mode-flow)\.spec\.ts$/, use: { baseURL: process.env.E2E_DEV_BASE_URL ?? "http://localhost:3101" } },
     // 테스트 모드 서버(OBS_TEST_MODE=1로 띄운 운영 빌드) 전용: 같은 빌드를 npx next start -p 3102로 한 번 더 띄우고 E2E_TESTMODE_BASE_URL(기본 http://localhost:3102)로 돌린다.
     { name: "testmode", testMatch: /(test-mode-live|admin-refund-approve)\.spec\.ts$/, use: { baseURL: process.env.E2E_TESTMODE_BASE_URL ?? "http://localhost:3102" } },
   ],
