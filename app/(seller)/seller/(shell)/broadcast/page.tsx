@@ -483,7 +483,7 @@ export default function BroadcastDashboardPage() {
                             </th>
                           )}
                           <th style={{ width: 70 }}>타이머</th>
-                          <th style={{ width: 240 }}>조작</th>
+                          <th style={{ width: 360 }}>조작</th>
                         </tr>
                       </thead>
                       <tbody data-testid="bc-waiting">

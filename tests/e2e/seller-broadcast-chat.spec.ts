@@ -33,7 +33,7 @@ test("연결된 유튜브 방송이 없으면 토글과 채팅 열이 없고 연
   await resetYoutube();
   await openAndStart(page);
   await expect(page.getByTestId("bc-chat-bar")).toContainText("유튜브 방송을 이어 두면 채팅을 가져올 수 있습니다");
-  await expect(page.getByTestId("bc-chat-bar").getByRole("link", { name: "유튜브 연결" })).toHaveAttribute("href", "/seller/youtube");
+  await expect(page.getByTestId("bc-chat-bar").getByRole("link", { name: "유튜브 이어 두기" })).toHaveAttribute("href", "/seller/youtube");
   await expect(page.getByTestId("bc-chat-toggle")).toHaveCount(0);
   await expect(page.getByTestId("bc-chat-head")).toHaveCount(0);
 });
