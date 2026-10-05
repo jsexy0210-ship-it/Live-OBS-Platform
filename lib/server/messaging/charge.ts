@@ -65,7 +65,7 @@ export async function chargeMessageBalance(
   }
   let result: ChargeResult;
   try {
-    result = await provider.charge({ billingKey: openBillingKey(sub.billingKeyCipher, ctx.sellerId), customerKey: ctx.sellerId, amount, orderId: charge.id, orderName: "발송 충전" });
+    result = await provider.charge({ billingKey: openBillingKey(sub.billingKeyCipher, ctx.sellerId), customerKey: ctx.sellerId, amount, orderId: charge.id, orderName: "발송·이용 충전" });
   } catch (e) {
     // 결제됐는지 모른다. PENDING으로 두고 대조에서 확정한다(다시 결제하지 않음).
     console.error("[message_charge.unresolved]", charge.id, e instanceof Error ? e.message : e);

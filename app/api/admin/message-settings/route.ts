@@ -20,7 +20,7 @@ export const PUT = mutation(async (req: Request) => {
   const body = await readJson<{ chargingEnabled?: unknown; platformDailyLimit?: unknown; platformMonthlyLimit?: unknown }>(req);
   const r = await updateAdminMessageSettings(prisma, admin, body, requestMeta(req));
   if (!r.ok) {
-    if (r.reason === "jobs_not_running") return NextResponse.json({ error: r.reason, message: "충전 정기 작업이 아직 돌지 않아 충전을 켤 수 없습니다" }, { status: 409 });
+    if (r.reason === "jobs_not_running") return NextResponse.json({ error: r.reason, message: "발송·이용 충전 정기 작업이 아직 돌지 않아 충전을 켤 수 없습니다" }, { status: 409 });
     return NextResponse.json({ error: r.reason, message: "입력한 값을 확인해 주십시오" }, { status: 400 });
   }
   return NextResponse.json(r.settings);

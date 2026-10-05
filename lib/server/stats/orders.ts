@@ -27,7 +27,7 @@ export type OrderSummary = {
 
 export type OrderPoint = { bucket: string } & Omit<OrderSummary, "averageOrderValue" | "cancelRate" | "refundRate">;
 
-const AGG = Prisma.sql`
+export const AGG = Prisma.sql`
   count(*)::int AS orders,
   count(*) FILTER (WHERE "paidAt" IS NOT NULL)::int AS paid,
   coalesce(sum("totalAmount"::bigint) FILTER (WHERE "paidAt" IS NOT NULL), 0) AS revenue,
@@ -35,9 +35,9 @@ const AGG = Prisma.sql`
   count(*) FILTER (WHERE status = 'REFUNDED')::int AS refunded,
   coalesce(sum((CASE WHEN status = 'REFUNDED' THEN coalesce("refundAmount", "totalAmount") ELSE coalesce("refundAmount", 0) END)::bigint), 0) AS refund_amount`;
 
-type AggRow = { orders: number; paid: number; revenue: bigint; cancelled: number; refunded: number; refund_amount: bigint };
+export type AggRow = { orders: number; paid: number; revenue: bigint; cancelled: number; refunded: number; refund_amount: bigint };
 
-function toPoint(r: AggRow | undefined) {
+export function toPoint(r: AggRow | undefined) {
   const revenue = num(r?.revenue);
   const refundAmount = num(r?.refund_amount);
   return {
@@ -51,7 +51,7 @@ function toPoint(r: AggRow | undefined) {
   };
 }
 
-function toSummary(r: AggRow | undefined): OrderSummary {
+export function toSummary(r: AggRow | undefined): OrderSummary {
   const p = toPoint(r);
   return {
     ...p,
