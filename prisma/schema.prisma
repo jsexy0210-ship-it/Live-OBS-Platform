@@ -128,6 +128,7 @@ model Seller {
   mailDeliveries           MailDelivery[]
   memberPolicy             SellerMemberPolicy?
   brandColor               SellerBrandColor?
+  favicon                  SellerFavicon?
   shopSeo                  ShopSeo?
   orderNotificationPolicy  SellerOrderNotificationPolicy?
   rejoinBlocks             BuyerRejoinBlock[]
@@ -903,6 +904,19 @@ model SellerLogo {
 model SellerBrandColor {
   sellerId  String   @id @db.Uuid
   color     String
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+}
+
+// 쇼핑몰 파비콘 원본(SA-060). 쇼핑몰당 1개. 8비트 PNG, 정사각형 64~1024px, 256KB 이하(코드 검사). 32·180·512px 크기는 서버가 이 원본에서 그려 쓴다.
+// 없으면 로고에서 자동으로 만들고, 로고도 없으면 ONQ 기본 아이콘(화면 쪽)을 쓴다.
+model SellerFavicon {
+  sellerId  String   @id @db.Uuid
+  data      Bytes
+  byteSize  Int
+  width     Int
+  sha256    String
   updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 
   seller Seller @relation(fields: [sellerId], references: [id])
