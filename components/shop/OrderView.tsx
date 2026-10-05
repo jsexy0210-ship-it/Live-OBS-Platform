@@ -9,6 +9,7 @@ import RefundRequestSection from "./returns/RefundRequestSection";
 import ReturnSection from "./returns/ReturnSection";
 import { call } from "./reviewShared";
 import { trackingUrl } from "./trackingLink";
+import { qtyText } from "./orderFormat";
 import "./Cart.css";
 import "./Checkout.css";
 
@@ -150,7 +151,7 @@ export default function OrderView({ slug, orderId }: { slug: string; orderId: st
               <div>
                 <b>{i.productNameSnapshot}</b>
                 <span className="cart-opt">
-                  {i.optionNameSnapshot} × {i.quantity}
+                  {qtyText(i.optionNameSnapshot, i.quantity)}
                   {(i.refundedQuantity ?? 0) > 0 ? ` · 환불 ${i.refundedQuantity}개` : ""}
                 </span>
               </div>

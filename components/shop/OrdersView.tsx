@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import MyMenu from "./MyMenu";
 import { call } from "./reviewShared";
 import { trackingUrl } from "./trackingLink";
+import { qtyText } from "./orderFormat";
 import "./Cart.css";
 import "./MyMenu.css";
 import "./Orders.css";
@@ -147,7 +148,7 @@ export default function OrdersView({ slug }: { slug: string }) {
                             <div>
                               <b>{i.productNameSnapshot}</b>
                               <span className="cart-opt">
-                                {i.optionNameSnapshot} × {i.quantity}
+                                {qtyText(i.optionNameSnapshot, i.quantity)}
                               </span>
                             </div>
                             <b>{won(i.unitPrice * i.quantity)}</b>
