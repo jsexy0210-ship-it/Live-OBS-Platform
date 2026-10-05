@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { clearReviewsInDb, deliveredItemInDb } from "./reviewDb";
 import { submitSellerLogin } from "./sellerLogin";
+import { okConfirm } from "./shopConfirm";
 
 // SH-029 리뷰 쓰기 · 내 리뷰, SA-048 리뷰 관리. 운영 빌드 + 데모 시드(demo-owner·demo-buyer1, 비밀번호 E2E_PASSWORD).
 // 시작·끝에 데모 쇼핑몰의 리뷰와 이 시험이 만든 주문을 테스트 DB에서 지운다.
@@ -92,10 +93,11 @@ test.describe.serial("SH-029 리뷰 쓰기 · SA-048 리뷰 관리", () => {
     await expect(page.locator(".rv-photo img")).toHaveCount(1);
 
     await page.getByRole("textbox", { name: "리뷰" }).fill("짧아요");
-    await expect(page.getByText("10자 이상 써 주시면 올릴 수 있어요")).toBeVisible();
+    await expect(page.getByText("10자 이상 써야 올릴 수 있어요")).toBeVisible();
     await page.getByRole("textbox", { name: "리뷰" }).fill("브레이크 때 뽑힌 카드 상태가 정말 좋았어요. 포장도 꼼꼼했어요.");
     await shots(page, "sh029-write");
     await page.getByRole("button", { name: "리뷰 올리기" }).click();
+    await okConfirm(page, "올리기");
     await expect(page.locator("p.msg")).toContainText("리뷰를 올렸어요");
     await page.getByRole("link", { name: "내 리뷰 보기" }).click();
     const mine = page.getByTestId("my-review").first();
