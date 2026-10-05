@@ -41,7 +41,8 @@ export type ReturnFailure =
   | "opened_blocked"
   | "refund_account_required"
   | "inspection_required"
-  | "inspection_not_ok";
+  | "inspection_not_ok"
+  | "inspection_locked";
 
 // 구매자 화면 안내(해요체) / 파트너스 화면 안내(합니다체)
 export const BUYER_RETURN_MESSAGES: Record<string, string> = {
@@ -84,6 +85,7 @@ export const SELLER_RETURN_MESSAGES: Record<string, string> = {
   invalid_inspection: "검수 결과를 골라 주십시오",
   inspection_required: "검수 결과를 먼저 입력해 주십시오",
   inspection_not_ok: "검수에서 문제가 확인된 건은 반송·거절로 처리해 주십시오",
+  inspection_locked: "재고를 이미 되돌려 검수 결과를 바꿀 수 없습니다",
 };
 
 async function clockNow(db: Db): Promise<Date> {
@@ -459,22 +461,17 @@ export async function rejectReturn(db: PrismaClient, ctx: TenantContext, id: str
   });
 }
 
-// 회수 완료: 접수 → 회수 완료. restock이면 이 신청의 품목 재고를 되돌린다(판매자 설정 「취소·반품 때 재고 복구」가 꺼져 있으면 되돌리지 않는다).
-export async function receiveReturn(db: PrismaClient, ctx: TenantContext, id: string, body: { restock?: unknown }) {
+// 입고 확인: 접수 → 회수 완료(검수 중). 재고는 여기서 되돌리지 않는다. 검수에서 이상 없음이 나온 뒤에만 되돌린다(inspectReturn restock).
+export async function receiveReturn(db: PrismaClient, ctx: TenantContext, id: string, _body: Record<string, unknown> = {}) {
   return sellerStep(db, ctx, id, "receive", async (tx, r, now) => {
-    let restockedItems = 0;
-    if (body.restock === true) {
-      const items = await tx.returnRequestItem.findMany({ where: { sellerId: ctx.sellerId, returnRequestId: r.id }, select: { orderItemId: true } });
-      const restored = await restoreOrderStock(tx, { sellerId: ctx.sellerId, orderId: r.orderId, reason: "REFUND", now, actor: { actorType: ctx.actorType as ActorType, actorId: ctx.actorId }, itemIds: items.map((i) => i.orderItemId) });
-      restockedItems = restored.length;
-    }
-    await tx.returnRequest.update({ where: { id: r.id }, data: { status: "RECEIVED", receivedAt: now, restocked: restockedItems > 0, updatedAt: now } });
-    await sellerAudit(tx, ctx, "return.receive", r.id, { status: r.status }, { status: "RECEIVED", restockedItems });
+    await tx.returnRequest.update({ where: { id: r.id }, data: { status: "RECEIVED", receivedAt: now, updatedAt: now } });
+    await sellerAudit(tx, ctx, "return.receive", r.id, { status: r.status }, { status: "RECEIVED" });
   });
 }
 
 // 검수 결과 입력: 회수 완료(검수 중) 단계에서. 이상 없음이어야 환불·교환 발송으로 넘어가고, 그 밖은 반송·거절(rejectInspected)을 고른다. 다시 입력해 고칠 수 있다.
-export async function inspectReturn(db: PrismaClient, ctx: TenantContext, id: string, body: { result?: unknown; note?: unknown }) {
+// restock: 이상 없음일 때만 이 신청의 품목 재고를 되돌린다(판매자 설정 「취소·반품 때 재고 복구」가 꺼져 있으면 되돌리지 않는다). 되돌린 뒤에는 검수 결과를 문제 있음으로 바꿀 수 없다(재고가 이미 늘어 있어서).
+export async function inspectReturn(db: PrismaClient, ctx: TenantContext, id: string, body: { result?: unknown; note?: unknown; restock?: unknown }) {
   const result = parseInspection(body.result);
   if (!result) return { ok: false as const, reason: "invalid_inspection" as const };
   let note: string | null = null;
@@ -483,8 +480,16 @@ export async function inspectReturn(db: PrismaClient, ctx: TenantContext, id: st
     if (note === null) return { ok: false as const, reason: "invalid_inspection" as const };
   }
   return sellerStep(db, ctx, id, "inspect", async (tx, r, now) => {
-    await tx.returnRequest.update({ where: { id: r.id }, data: { inspectionResult: result, inspectionNote: note, inspectedAt: now, updatedAt: now } });
-    await sellerAudit(tx, ctx, "return.inspect", r.id, { status: r.status }, { result }, note ?? undefined);
+    const cur = await tx.returnRequest.findUniqueOrThrow({ where: { id: r.id }, select: { restocked: true } });
+    if (cur.restocked && result !== "OK") return { ok: false, reason: "inspection_locked" };
+    let restockedItems = 0;
+    if (result === "OK" && body.restock === true && !cur.restocked) {
+      const items = await tx.returnRequestItem.findMany({ where: { sellerId: ctx.sellerId, returnRequestId: r.id }, select: { orderItemId: true } });
+      const restored = await restoreOrderStock(tx, { sellerId: ctx.sellerId, orderId: r.orderId, reason: "REFUND", now, actor: { actorType: ctx.actorType as ActorType, actorId: ctx.actorId }, itemIds: items.map((i) => i.orderItemId) });
+      restockedItems = restored.length;
+    }
+    await tx.returnRequest.update({ where: { id: r.id }, data: { inspectionResult: result, inspectionNote: note, inspectedAt: now, updatedAt: now, ...(restockedItems > 0 ? { restocked: true } : {}) } });
+    await sellerAudit(tx, ctx, "return.inspect", r.id, { status: r.status }, { result, restockedItems }, note ?? undefined);
   });
 }
 

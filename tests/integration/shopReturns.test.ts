@@ -87,8 +87,8 @@ const lv = async (sellerId: string) => (await db.seller.findUniqueOrThrow({ wher
 const status = async (id: string) => (await db.returnRequest.findUniqueOrThrow({ where: { id } })).status;
 const proceedToReceived = async (s: Awaited<ReturnType<typeof shop>>, id: string, restock = false) => {
   expect(await acceptReturn(db, s.ctx, id, {})).toMatchObject({ ok: true });
-  expect(await receiveReturn(db, s.ctx, id, { restock })).toMatchObject({ ok: true });
-  expect(await inspectReturn(db, s.ctx, id, { result: "OK" })).toMatchObject({ ok: true });
+  expect(await receiveReturn(db, s.ctx, id, {})).toMatchObject({ ok: true });
+  expect(await inspectReturn(db, s.ctx, id, { result: "OK", restock })).toMatchObject({ ok: true });
 };
 
 describe("신청 자격", () => {
@@ -215,7 +215,7 @@ describe("처리 흐름과 상태 전이", () => {
 });
 
 describe("재고", () => {
-  it("회수 완료에서 재고 되돌리기를 고르면 한 번만 되돌리고, 안 고르면 그대로이며, 뒤이은 환불이 다시 되돌리지 않는다", async () => {
+  it("검수 이상 없음에서 재고 되돌리기를 고르면 한 번만 되돌리고, 안 고르면 그대로이며, 뒤이은 환불이 다시 되돌리지 않는다", async () => {
     const s = await shop();
     const before = [await stock(s.oa.id), await stock(s.ob.id)];
     const id = await s.delivered();
@@ -247,6 +247,31 @@ describe("재고", () => {
     await proceedToReceived(s, req.id, true);
     expect(await stock(s.oa.id)).toBe(at);
     expect(await db.returnRequest.findUniqueOrThrow({ where: { id: req.id } })).toMatchObject({ restocked: false });
+  });
+
+  it("재고는 입고 확인에서 되돌리지 않고 검수 이상 없음 뒤에만 되돌린다. 되돌린 뒤에는 문제 있음으로 바꿀 수 없고, 문제 있음 거절은 재고를 늘리지 않는다", async () => {
+    const s = await shop();
+    const id = await s.delivered();
+    const at = [await stock(s.oa.id), await stock(s.ob.id)];
+    const req = await s.ret(id);
+    await acceptReturn(db, s.ctx, req.id, {});
+    // restock을 보내도 입고 확인은 재고를 건드리지 않는다
+    await receiveReturn(db, s.ctx, req.id, { restock: true });
+    expect([await stock(s.oa.id), await stock(s.ob.id)]).toEqual(at);
+    // 문제 있음 검수는 restock을 보내도 되돌리지 않고, 반송·거절 뒤에도 재고는 처음 값
+    expect(await inspectReturn(db, s.ctx, req.id, { result: "USED_DAMAGED", restock: true })).toMatchObject({ ok: true, request: { restocked: false } });
+    expect(await rejectInspectedReturn(db, s.ctx, req.id, { reason: "봉인 훼손" })).toMatchObject({ ok: true });
+    expect([await stock(s.oa.id), await stock(s.ob.id)]).toEqual(at);
+    expect(await db.stockMovement.count({ where: { orderId: id, reason: "REFUND" } })).toBe(0);
+    // 이상 없음 + 되돌리기 뒤에는 검수를 문제 있음으로 바꿀 수 없다
+    const id2 = await s.delivered();
+    const mid = [await stock(s.oa.id), await stock(s.ob.id)];
+    const r2 = await s.ret(id2);
+    await proceedToReceived(s, r2.id, true);
+    expect([await stock(s.oa.id), await stock(s.ob.id)]).toEqual([mid[0] + 2, mid[1] + 1]);
+    expect(await inspectReturn(db, s.ctx, r2.id, { result: "MISSING_PARTS" })).toEqual({ ok: false, reason: "inspection_locked" });
+    expect(await inspectReturn(db, s.ctx, r2.id, { result: "OK", restock: true })).toMatchObject({ ok: true });
+    expect([await stock(s.oa.id), await stock(s.ob.id)]).toEqual([mid[0] + 2, mid[1] + 1]);
   });
 
   it("교환 발송은 교환 품목의 재고를 빼고, 재고가 모자라면 아무것도 바꾸지 않는다", async () => {

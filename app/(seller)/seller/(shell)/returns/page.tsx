@@ -401,12 +401,6 @@ function ReturnDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit
                 )}
               </div>
             )}
-            {canEdit && d.status === "ACCEPTED" && (
-              <label className="row t-l2" style={{ gap: 8 }}>
-                <input className="cbx" type="checkbox" checked={restock} onChange={(e) => setRestock(e.target.checked)} />
-                회수한 상품 재고로 되돌리기
-              </label>
-            )}
             {canEdit && d.status === "RECEIVED" && (
               <div className="col" style={{ gap: 10 }} data-testid="rt-inspect">
                 <div className="fld">
@@ -423,6 +417,12 @@ function ReturnDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit
                   <label htmlFor="rt-insp-note">검수 메모</label>
                   <input id="rt-insp-note" className="inp" maxLength={200} value={inspNote} onChange={(e) => setInspNote(e.target.value)} placeholder="예: 봉인 훼손 확인" />
                 </div>
+                {inspResult === "OK" && !d.restocked && (
+                  <label className="row t-l2" style={{ gap: 8 }}>
+                    <input className="cbx" type="checkbox" checked={restock} onChange={(e) => setRestock(e.target.checked)} />
+                    회수한 상품 재고로 되돌리기
+                  </label>
+                )}
                 {d.inspectionResult && d.inspectionResult !== "OK" && (
                   <div className="msg msg-neg" role="alert">
                     <span>검수에서 문제가 확인되었습니다. 환불 · 교환은 진행할 수 없고 반송 · 거절로 처리해 주십시오. 사유는 구매자에게 전달됩니다.</span>
@@ -512,12 +512,12 @@ function ReturnDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit
             </>
           )}
           {canEdit && d?.status === "ACCEPTED" && (
-            <button className="btn" type="button" disabled={busy} onClick={() => void act("receive", { restock }, "입고를 확인했습니다")}>
+            <button className="btn" type="button" disabled={busy} onClick={() => void act("receive", {}, "입고를 확인했습니다")}>
               입고 확인
             </button>
           )}
           {canEdit && d?.status === "RECEIVED" && (
-            <button className="btn btn-out" type="button" disabled={busy} onClick={() => void act("inspect", { result: inspResult, note: inspNote }, "검수 결과를 저장했습니다")}>
+            <button className="btn btn-out" type="button" disabled={busy} onClick={() => void act("inspect", { result: inspResult, note: inspNote, restock }, "검수 결과를 저장했습니다")}>
               검수 결과 저장
             </button>
           )}
