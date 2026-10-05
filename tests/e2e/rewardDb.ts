@@ -47,6 +47,7 @@ export async function deleteOrderInDb(orderId: string) {
     const where = { orderId };
     await db.$transaction([
       db.paymentCancel.deleteMany({ where: { payment: { orderId } } }),
+      db.orderRefund.deleteMany({ where }),
       db.payment.deleteMany({ where }),
       db.queueItemStatusHistory.deleteMany({ where: { queueItem: { orderId } } }),
       db.hitCard.deleteMany({ where: { queueItem: { orderId } } }),
@@ -62,6 +63,17 @@ export async function deleteOrderInDb(orderId: string) {
       db.orderItem.deleteMany({ where }),
       db.order.deleteMany({ where: { id: orderId } }),
     ]);
+  } finally {
+    await db.$disconnect();
+  }
+}
+
+// 주문의 상품(이름이 맞는 품목)을 개봉한 것으로 만든다: 주문대기를 「완료」로, 개봉 시작 시각을 채운다(개봉 확인 시험용).
+export async function markItemOpenedInDb(orderId: string, productName: string) {
+  const db = open();
+  try {
+    const item = await db.orderItem.findFirstOrThrow({ where: { orderId, productNameSnapshot: productName } });
+    await db.queueItem.updateMany({ where: { orderItemId: item.id }, data: { status: "DONE", openingStartedAt: new Date(), doneAt: new Date() } });
   } finally {
     await db.$disconnect();
   }
