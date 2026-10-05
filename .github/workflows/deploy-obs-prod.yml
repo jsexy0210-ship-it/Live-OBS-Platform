@@ -124,6 +124,7 @@ jobs:
 
       # compose 의존 순서: DB → 마이그레이션(한 번 실행) → 앱. 마이그레이션이 실패하면 앱은 바뀌지 않는다.
       - name: Build and start
+        id: up
         env:
           APP_VERSION: ${{ github.sha }}
           OBS_ENV_FILE: /opt/obs/.env
@@ -152,11 +153,18 @@ jobs:
             sleep 5
           done
 
-      # 헬스 체크가 실패하면 앱만 직전 배포 버전으로 되돌린다(DB는 그대로. DB 복구는 사람이 승인한 뒤 db-restore.sh).
-      - name: Roll back app on health failure
-        if: failure() && steps.health.outcome == 'failure'
+      # 앱 기동(up --wait) 또는 헬스 체크가 실패했을 때, 지금 떠 있는 앱이 이번에 배포한 버전일 때만 직전 버전으로 되돌린다.
+      # 마이그레이션이 실패해 앱이 바뀌지 않았다면(현재 버전 != 이번 SHA) 되돌리지 않는다: 더 옛 버전으로 내려가는 것을 막는다.
+      # DB는 되돌리지 않는다(DB 복구는 사람이 승인한 뒤 db-restore.sh).
+      - name: Roll back app on failed deploy
+        if: failure() && (steps.up.outcome == 'failure' || steps.health.outcome == 'failure')
         run: |
-          echo "::error::헬스 체크 실패로 앱을 직전 버전으로 되돌려요(DB는 그대로)."
+          cur="$(bash -c '. scripts/ops/lib.sh; current_version' 2>/dev/null || true)"
+          if [ "$cur" != "$GITHUB_SHA" ]; then
+            echo "::warning::앱이 이번 배포 버전($GITHUB_SHA)으로 바뀌지 않았어요(현재: ${cur:-알 수 없음}). 마이그레이션 실패 등으로 앱이 그대로이니 되돌리지 않아요."
+            exit 0
+          fi
+          echo "::error::배포 실패로 앱을 직전 버전으로 되돌려요(DB는 그대로)."
           scripts/ops/rollback-app.sh || echo "::error::자동 되돌리기에 실패했어요. 서버에서 scripts/ops/rollback-app.sh 를 직접 실행해야 해요(docs/DEPLOY.md 「롤백」)."
 
       - name: Record deploy
