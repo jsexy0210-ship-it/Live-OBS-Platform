@@ -101,11 +101,13 @@ export default function SearchSynonymsPage() {
         <PageHead
           title="검색 유사어"
           actions={
-            canEdit && (
+            <>
+              {canEdit && (
               <button className={`btn${busy ? " is-loading" : ""}`} type="button" disabled={busy || !dirty} onClick={() => void save()}>
                 {busy ? "저장 중" : "저장"}
               </button>
-            )
+              )}
+            </>
           }
         />
         {state.kind === "ok" && !canEdit && (

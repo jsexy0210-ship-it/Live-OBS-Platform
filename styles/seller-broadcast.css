@@ -127,10 +127,10 @@
 .bc-tbl .bc-acts {
   flex-wrap: nowrap;
 }
-/* 좁은 화면: 고정 폭 칸(합 약 590px)이 구매자·상품 칸을 0으로 짜부라뜨리므로, 표에 최소 폭을 주어 카드(.au-lt-wrap) 안에서 가로로 밀어 보게 한다 */
-@media (max-width: 900px) {
+/* 좁은 화면(1280px 이하: 대시보드가 2단이라 표 칸이 좁다): 고정 폭 칸(합 약 590~690px)이 구매자·상품 칸을 0으로 짜부라뜨리므로, 표에 최소 폭을 주어 카드(.au-lt-wrap) 안에서 가로로 밀어 보게 한다 */
+@media (max-width: 1280px) {
   .bc-tbl {
-    min-width: 760px;
+    min-width: 880px;
   }
 }
 .bc-sum-t {
