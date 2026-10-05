@@ -62,7 +62,7 @@ describe("적립금 원장 GET /api/seller/reward-ledger", () => {
     expect(ids(r.body)).toEqual([e2.id, e1.id]);
     expect(r.body.nextCursor).toBeNull();
     const [last, first] = r.body.entries;
-    expect(first).toMatchObject({ member: { id: a.member.id, broadcastNickname: a.member.broadcastNickname }, type: "EARN", amount: 500, status: "PENDING", order: { id: order.id, orderNo: order.orderNo } });
+    expect(first).toMatchObject({ member: { id: a.member.id, broadcastNickname: a.member.broadcastNickname }, type: "EARN", amount: 500, status: "PENDING", order: { id: order.id, orderNo: order.orderNo, orderNoLabel: expect.stringMatching(/^\d{8}-\d{4,}$/) } });
     expect(last).toMatchObject({ type: "REVOKE", amount: -200, status: "FAILED", failureReason: "member_withdrawn", order: null });
     // 다른 쇼핑몰(b)에서도 a의 원장은 보이지 않는다
     expect(ids((await list(b.cookie)).body)).not.toContain(e1.id);

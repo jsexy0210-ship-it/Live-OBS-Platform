@@ -69,6 +69,17 @@
   gap: 20px;
   align-items: start;
 }
+.ord-detail.ord-history {
+  grid-template-columns: 1fr 1fr;
+  margin-top: 20px;
+}
+.ord-hist-scroll {
+  overflow-x: auto;
+}
+.ord-hist-tbl th,
+.ord-hist-tbl td {
+  white-space: nowrap;
+}
 .refund-modal {
   max-height: calc(100vh - 40px);
   overflow-y: auto;
@@ -129,7 +140,8 @@
   .ord-count {
     margin-left: 0;
   }
-  .ord-detail {
+  .ord-detail,
+  .ord-detail.ord-history {
     grid-template-columns: 1fr;
   }
   .refund-faults {

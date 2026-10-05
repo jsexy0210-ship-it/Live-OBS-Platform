@@ -44,7 +44,7 @@ test("CS는 요금제별 월 제공량을 보기만 한다(이름으로, 변경 
   await expect(page.getByTestId("plan-row")).toHaveCount(3);
   await expect(row(page, "오버레이 전용")).toBeVisible();
   await expect(page.locator("main")).not.toContainText("OVERLAY_ONLY");
-  await expect(page.getByRole("button", { name: "제공량 변경" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "월 무료 메일 수량 변경" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "가격 변경" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "체험 한도 변경" })).toHaveCount(0);
   await expect(row(page, "쇼핑몰 통합").locator("td").nth(1)).toHaveText(/\d원$/);
@@ -55,20 +55,20 @@ test("CS는 요금제별 월 제공량을 보기만 한다(이름으로, 변경 
 
 test("최고관리자: 월 제공량을 바로 바꾸고, 적용 예정으로 걸면 현재 값은 그대로이며, 잘못된 값은 막는다", async ({ page }) => {
   await open(page, superEmail);
-  await row(page, "쇼핑몰 통합").getByRole("button", { name: "제공량 변경" }).click();
+  await row(page, "쇼핑몰 통합").getByRole("button", { name: "월 무료 메일 수량 변경" }).click();
   const dialog = page.getByRole("dialog");
-  await dialog.getByLabel("월 거래 메일 제공량").fill("10000001");
+  await dialog.getByLabel("월 주문·배송 안내 메일 무료 수량").fill("10000001");
   await expect(dialog.getByRole("button", { name: "저장" })).toBeDisabled();
-  await dialog.getByLabel("월 거래 메일 제공량").fill("250");
+  await dialog.getByLabel("월 주문·배송 안내 메일 무료 수량").fill("250");
   await dialog.getByRole("button", { name: "저장" }).click();
   await expect(dialog).toHaveCount(0);
   await expect(row(page, "쇼핑몰 통합").locator("td").nth(7)).toHaveText("250통");
   expect((await db.subscriptionPlan.findUniqueOrThrow({ where: { code: "INTEGRATED" } })).mailMonthlyQuota).toBe(250);
 
   const future = new Date(Date.now() + 3 * 86_400_000 + 9 * 3_600_000).toISOString().slice(0, 16);
-  await row(page, "쇼핑몰 통합").getByRole("button", { name: "제공량 변경" }).click();
-  await dialog.getByLabel("월 거래 메일 제공량").fill("400");
-  await dialog.getByLabel("적용 예정 시각").fill(future);
+  await row(page, "쇼핑몰 통합").getByRole("button", { name: "월 무료 메일 수량 변경" }).click();
+  await dialog.getByLabel("월 주문·배송 안내 메일 무료 수량").fill("400");
+  await dialog.getByLabel("바뀌는 시각").fill(future);
   await dialog.getByRole("button", { name: "저장" }).click();
   await expect(dialog).toHaveCount(0);
   const r = row(page, "쇼핑몰 통합");
@@ -111,7 +111,7 @@ test("운영 담당: 체험 한도만 바꿀 수 있고(가격·제공량 버튼
   try {
     await open(page, opsEmail);
     await expect(page.getByRole("button", { name: "가격 변경" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "제공량 변경" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "월 무료 메일 수량 변경" })).toHaveCount(0);
     await row(page, "오버레이 전용").getByRole("button", { name: "체험 한도 변경" }).click();
     const dialog = page.getByRole("dialog");
     await dialog.getByLabel("저장 용량").fill("10000001");

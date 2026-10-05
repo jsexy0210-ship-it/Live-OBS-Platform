@@ -104,12 +104,19 @@ async function created(s: Shop, itemId: string, body: unknown = { rating: 5, bod
 }
 // 판매자 화면(목록·상세)과 구매자 화면(내 리뷰)이 보여 주는 리뷰 적립 금액
 const sellerReward = async (s: Shop, id: string) => {
-  const d = ((await (await sellerDetailGet(get("/x", s.owner), p({ reviewId: id }))).json()) as { review: { rewardedAmount: number } }).review;
-  const l = (await (await sellerList(get("/x", s.owner))).json()) as { reviews: { id: string; rewardedAmount: number }[] };
+  const d = ((await (await sellerDetailGet(get("/x", s.owner), p({ reviewId: id }))).json()) as { review: { rewardedAmount: number; orderNoLabel: string } }).review;
+  const l = (await (await sellerList(get("/x", s.owner))).json()) as { reviews: { id: string; rewardedAmount: number; orderNoLabel: string }[] };
+  // 사람이 읽는 주문번호(「20261002-0409」)가 상세·목록에 모두 있다
+  expect(d.orderNoLabel).toMatch(/^\d{8}-\d{4,}$/);
+  expect(l.reviews.find((x) => x.id === id)?.orderNoLabel).toMatch(/^\d{8}-\d{4,}$/);
   return [d.rewardedAmount, l.reviews.find((x) => x.id === id)?.rewardedAmount];
 };
-const buyerReward = async (s: Shop, id: string, cookie = s.b1) =>
-  ((await (await mineGet(get("/x", cookie), p({ slug: s.slug }))).json()) as { reviews: { id: string; rewardedAmount: number }[] }).reviews.find((x) => x.id === id)?.rewardedAmount;
+const buyerReward = async (s: Shop, id: string, cookie = s.b1) => {
+  const mine = (await (await mineGet(get("/x", cookie), p({ slug: s.slug }))).json()) as { reviews: { id: string; rewardedAmount: number }[]; writable: { orderNoLabel: string }[] };
+  // 리뷰를 기다리는 상품에도 사람이 읽는 주문번호가 있다
+  for (const w of mine.writable) expect(w.orderNoLabel).toMatch(/^\d{8}-\d{4,}$/);
+  return mine.reviews.find((x) => x.id === id)?.rewardedAmount;
+};
 // 다른 트랜잭션이 행 잠금을 기다리기 시작할 때까지(최대 5초)
 async function waitForLockWaiter() {
   for (let i = 0; i < 100; i++) {

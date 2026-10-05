@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>디자인 시스템 버튼 입력 · 참고 · 구 체계</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.mx{display:grid;grid-template-columns:120px repeat(4,minmax(0,1fr));gap:12px 16px;align-items:center}
+.mx .rh{font-size:13px;font-weight:600;color:var(--wds-label-neutral)}
+.mx .ch{font-size:12px;font-weight:600;color:var(--wds-label-alternative);text-align:center}
+.mx .cl{display:flex;justify-content:center}
+</style>
+</helmet>
+<div class="app" data-theme="light" style="width: 1600px; height: 1200px; padding: 56px; display: flex; flex-direction: column; gap: 20px">
+ <div class="col" style="gap: 6px">
+ <span class="t-l1 fw6 c-alt">공통 디자인 시스템 · 참고 · 구 체계 (정본은 DS6 카페24식 틀과 공통 스타일 · 2026-10-05 UI 현대화 토큰)</span>
+ <h1 class="t-t2">버튼 · 입력 — 기본 · 포커스 · 비활성 · 오류 상태</h1>
+ </div>
+ <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; flex: 1">
+ <div class="card col" style="padding: 24px; gap: 20px">
+ <span class="t-hl1">버튼 — 변형 × 상태</span>
+ <div class="mx">
+ <span></span><span class="ch">기본</span><span class="ch">포커스 (키보드)</span><span class="ch">비활성</span><span class="ch">로딩</span>
+ <span class="rh">Primary</span><div class="cl"><button class="btn" type="button">주문 오픈</button></div><div class="cl"><button class="btn is-focus" type="button">주문 오픈</button></div><div class="cl"><button class="btn" type="button" disabled>주문 오픈</button></div><div class="cl"><button class="btn is-loading" type="button"><span class="spin" style="width: 16px; height: 16px; box-shadow: inset 0 0 0 2px #ffffff66"></span>처리 중</button></div>
+ <span class="rh">Outline</span><div class="cl"><button class="btn btn-out" type="button">취소</button></div><div class="cl"><button class="btn btn-out is-focus" type="button">취소</button></div><div class="cl"><button class="btn btn-out" type="button" disabled>취소</button></div><div class="cl"><button class="btn btn-out is-loading" type="button">저장 중</button></div>
+ <span class="rh">Outline Primary</span><div class="cl"><button class="btn btn-outp" type="button">URL 복사</button></div><div class="cl"><button class="btn btn-outp is-focus" type="button">URL 복사</button></div><div class="cl"><button class="btn btn-outp" type="button" disabled>URL 복사</button></div><div class="cl"><span class="t-c1 c-alt">—</span></div>
+ <span class="rh">Ghost</span><div class="cl"><button class="btn btn-ghost" type="button">필터</button></div><div class="cl"><button class="btn btn-ghost is-focus" type="button">필터</button></div><div class="cl"><button class="btn btn-ghost" type="button" disabled>필터</button></div><div class="cl"><span class="t-c1 c-alt">—</span></div>
+ <span class="rh">Text</span><div class="cl"><button class="btn btn-text" type="button">더보기</button></div><div class="cl"><button class="btn btn-text is-focus" type="button">더보기</button></div><div class="cl"><button class="btn btn-text" type="button" disabled>더보기</button></div><div class="cl"><span class="t-c1 c-alt">—</span></div>
+ <span class="rh">Negative</span><div class="cl"><button class="btn btn-neg" type="button">주문 취소</button></div><div class="cl"><button class="btn btn-neg is-focus" type="button">주문 취소</button></div><div class="cl"><button class="btn btn-neg" type="button" disabled>주문 취소</button></div><div class="cl"><button class="btn btn-neg is-loading" type="button">취소 중</button></div>
+ <span class="rh">Positive</span><div class="cl"><button class="btn btn-pos" type="button">완료</button></div><div class="cl"><button class="btn btn-pos is-focus" type="button">완료</button></div><div class="cl"><button class="btn btn-pos" type="button" disabled>완료</button></div><div class="cl"><span class="t-c1 c-alt">—</span></div>
+ <span class="rh">Master</span><div class="cl"><button class="btn btn-master" type="button">승인</button></div><div class="cl"><button class="btn btn-master is-focus" type="button">승인</button></div><div class="cl"><button class="btn btn-master" type="button" disabled>승인</button></div><div class="cl"><span class="t-c1 c-alt">조회 전용 역할 = 비활성</span></div>
+ </div>
+ <hr class="divider">
+ <span class="t-l1 fw6 c-neu">크기 · 아이콘 버튼 · 단축키 표시</span>
+ <div class="row" style="gap: 12px; flex-wrap: wrap; align-items: center">
+ <button class="btn btn-sm" type="button" style="height: 32px">compact 32 · 표 안 보조</button><button class="btn" type="button" style="height: 40px">dense 40 · 검색 · 필터</button><button class="btn" type="button" style="height: 44px">default 44 · 폼 · 일반</button><button class="btn btn-lg" type="button" style="height: 48px">touch 48 · 휴대폰 · CTA</button><button class="btn btn-xl" type="button" style="height: 56px">broadcast 56 · 방송 조작</button>
+ <button class="icon-btn" type="button" aria-label="닫기" style="box-shadow: inset 0 0 0 1px var(--wds-line-normal-normal)"><span style="font-size: 18px; line-height: 1">×</span></button>
+ <button class="btn btn-out" type="button">개봉 시작 <span class="row" style="gap: 3px; display: inline-flex"><span class="kbd">Ctrl</span><span class="kbd">Enter</span></span></button>
+ </div>
+ <p class="t-l2 c-alt">높이 32 / 40 / 44 / 48 / 56 다섯 단만 · 모서리 8 · 포커스 2px 강조색 · 움직임 150ms. 크기·둥글기 임의 변경 금지. 아이콘 전용 버튼은 <span style="white-space: nowrap">aria-label</span> 필수.</p>
+ </div>
+ <div class="card col" style="padding: 24px; gap: 18px">
+ <span class="t-hl1">입력</span>
+ <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 20px">
+ <div class="fld"><label for="i1">기본</label><input id="i1" class="inp" type="text" placeholder="상품명을 입력해 주세요"><span class="help">최대 60자</span></div>
+ <div class="fld"><label for="i2">포커스</label><input id="i2" class="inp is-focus" type="text" value="스타라이트 부스터"><span class="help">최대 60자</span></div>
+ <div class="fld"><label for="i3" class="req">오류 (필수)</label><input id="i3" class="inp is-error" type="text" value="" placeholder="가격"><span class="err">가격을 입력해 주세요.</span></div>
+ <div class="fld"><label for="i4">비활성</label><input id="i4" class="inp" type="text" value="자동 생성됨" disabled><span class="help">파트너스 ID는 변경할 수 없어요.</span></div>
+ <div class="fld"><label for="i5">검색</label><div class="search"><input id="i5" class="inp" type="search" placeholder="주문번호 · 닉네임 검색"></div></div>
+ <div class="fld"><label for="i6">선택</label><select id="i6" class="inp"><option>전체 상태</option><option>대기</option><option>개봉 중</option></select></div>
+ <div class="fld" style="grid-column: 1 / -1"><label for="i7">여러 줄</label><textarea id="i7" class="inp" placeholder="반려 사유를 입력해 주세요 (신청자에게 전달돼요)"></textarea></div>
+ <div class="fld"><label for="i8">금액 (숫자 · 표 안에서는 가운데 · tabular)</label><input id="i8" class="inp num" type="text" value="179,000"></div>
+ <div class="fld"><label for="i9">조밀 입력 40 · 검색 · 필터 · 속성 편집</label><input id="i9" class="inp inp-sm" type="text" value="12" style="height: 40px"></div>
+ </div>
+ <hr class="divider">
+ <span class="t-l1 fw6 c-neu">체크 · 라디오 · 스위치</span>
+ <div class="row" style="gap: 24px; flex-wrap: wrap">
+ <label class="chk"><input class="cbx" type="checkbox">기본</label>
+ <label class="chk"><input class="cbx" type="checkbox" checked>선택됨</label>
+ <label class="chk"><input class="cbx" type="checkbox" disabled>비활성</label>
+ <label class="chk"><input class="rdo" type="radio" name="r">카드</label>
+ <label class="chk"><input class="rdo" type="radio" name="r" checked>무통장</label>
+ <label class="chk"><input class="rdo" type="radio" name="r" disabled>비활성</label>
+ </div>
+ <div class="row" style="gap: 24px; flex-wrap: wrap">
+ <span class="row" style="gap: 8px"><button class="sw" type="button" aria-label="꺼짐"></button><span class="t-l1">꺼짐</span></span>
+ <span class="row" style="gap: 8px"><button class="sw on" type="button" aria-label="켜짐"></button><span class="t-l1">켜짐</span></span>
+ <span class="row" style="gap: 8px"><button class="sw on sw-neg" type="button" aria-label="실지급 켜짐"></button><span class="t-l1">위험 스위치 켜짐 (실지급)</span></span>
+ <span class="row" style="gap: 8px"><button class="sw" type="button" disabled aria-label="비활성"></button><span class="t-l1 c-alt">비활성</span></span>
+ </div>
+ <p class="t-l2 c-alt">오류 메시지는 "무엇을 해야 하는지"로 써요(「가격을 입력해 주세요」). 라벨은 항상 input과 for/id로 연결. <span style="white-space: nowrap">금액·수량은</span> tabular 숫자 + 표 안에서는 가운데 정렬(2026-10-05 규칙 · 우측 정렬 0건). 입력 경계는 흰 바탕 대비 3:1 이상(파트너스·마스터 #858A94, 구매자 #86817A).</p>
+ </div>
+ </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1600,"height":1200}}'>
+class Component extends DCLogic { renderVals() { return {}; } }
+</script>
+</body>
+</html>

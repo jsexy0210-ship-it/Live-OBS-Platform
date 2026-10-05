@@ -153,7 +153,7 @@ test("결과가 불분명한 요청은 성공으로 보이지 않고 서버 상�
 test("방송 진행 권한이 없는 직원: 메뉴가 없고 주소로 들어와도 화면이 없다", async ({ page }) => {
   await login(page, "demo-none@example.com", "/seller/broadcast");
   await expect(page).toHaveURL(/\/seller\/broadcast$/);
-  await expect(page.getByText("이 기능은 권한이 필요합니다")).toBeVisible();
+  await expect(page.getByText("이 계정은 이 일을 할 수 없습니다")).toBeVisible();
   await expect(page.getByText("필요한 권한: 방송 진행")).toBeVisible();
   await expect(page.getByRole("link", { name: "방송 대시보드" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "방송 시작" })).toHaveCount(0);
@@ -317,7 +317,7 @@ test("보던 중 권한·이용 상태가 끝나면(403) 옛 내용과 버튼을
   await openFirst(page);
   await page.route(isQueueGet, (r) => r.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ error: "forbidden" }) }));
   await bumpLiveVersion();
-  await expect(page.getByText("이 기능은 권한이 필요합니다")).toBeVisible();
+  await expect(page.getByText("이 계정은 이 일을 할 수 없습니다")).toBeVisible();
   await expect(page.getByTestId("bc-opening")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /개봉 완료/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "방송 끝내기" })).toHaveCount(0);

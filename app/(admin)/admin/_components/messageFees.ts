@@ -29,7 +29,7 @@ export type MessageSettings = {
 };
 
 export const CHANNEL_LABEL: Record<MessageChannel, string> = {
-  MAIL_TRANSACTIONAL: "거래 메일(월 제공량 초과분)",
+  MAIL_TRANSACTIONAL: "주문·배송 안내 메일(무료 수량을 넘은 것)",
   MAIL_BULK: "광고·공지 대량 메일",
   SMS: "단문 문자",
   LMS: "장문 문자",

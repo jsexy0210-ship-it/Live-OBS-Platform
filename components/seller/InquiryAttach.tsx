@@ -24,7 +24,7 @@ export function InquiryAttach({ images, onChange, disabled }: { images: Attached
       }
       const r = await apiUpload<{ image: Attached }>("/api/seller/platform-inquiries/images", file);
       if (!r.ok) {
-        setError(r.message ?? "사진을 올리지 못했습니다. 다시 시도해 주십시오");
+        setError(r.message ?? "사진을 올리지 못했습니다. 사진 형식(JPG, PNG, WEBP)과 크기(5MB 이하)를 확인한 뒤 다시 올려 주십시오");
         break;
       }
       next = [...next, { id: r.data.image.id, url: r.data.image.url }];

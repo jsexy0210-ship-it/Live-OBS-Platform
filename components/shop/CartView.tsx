@@ -113,7 +113,7 @@ export default function CartView({ slug }: { slug: string }) {
   const listTotal = chosen.reduce((s, l) => s + l.listUnitPrice * l.quantity, 0);
   const discount = Math.max(0, listTotal - total);
   const finalTotal = quote.kind === "ok" ? quote.total : total;
-  const failMsg = (r: { message?: string }) => r.message ?? "처리하지 못했어요. 잠시 뒤 다시 해 주세요";
+  const failMsg = (r: { message?: string }, fallback: string) => r.message ?? fallback;
 
   const toggle = (id: string) => setPicked((p) => (p.has(id) ? new Set([...p].filter((x) => x !== id)) : new Set(p).add(id)));
   const toggleAll = () => setPicked(allPicked ? new Set() : new Set(selectable.map((l) => l.id)));
@@ -123,7 +123,7 @@ export default function CartView({ slug }: { slug: string }) {
     setBusy(true);
     setMsg(null);
     const r = await call(`${api}/${l.id}`, { method: "PATCH", body: { quantity } });
-    if (!r.ok) setMsg({ ok: false, text: failMsg(r) });
+    if (!r.ok) setMsg({ ok: false, text: failMsg(r, "수량을 바꾸지 못했어요. 잠시 뒤 다시 눌러 주세요") });
     await load(true);
     setBusy(false);
   }
@@ -132,7 +132,7 @@ export default function CartView({ slug }: { slug: string }) {
     if (busy) return;
     setBusy(true);
     const r = await call(`${api}/${l.id}`, { method: "DELETE" });
-    setMsg(r.ok ? { ok: true, text: "장바구니에서 뺐어요", undo: { optionId: l.optionId, quantity: l.quantity } } : { ok: false, text: failMsg(r) });
+    setMsg(r.ok ? { ok: true, text: "장바구니에서 뺐어요", undo: { optionId: l.optionId, quantity: l.quantity } } : { ok: false, text: failMsg(r, "상품을 빼지 못했어요. 잠시 뒤 다시 눌러 주세요") });
     await load(true);
     setBusy(false);
   }
@@ -141,7 +141,7 @@ export default function CartView({ slug }: { slug: string }) {
     if (busy || ids.length === 0) return;
     setBusy(true);
     const r = await call(api, { method: "DELETE", body: { itemIds: ids } });
-    setMsg(r.ok ? { ok: true, text: `${ids.length}개를 장바구니에서 뺐어요` } : { ok: false, text: failMsg(r) });
+    setMsg(r.ok ? { ok: true, text: `${ids.length}개를 장바구니에서 뺐어요` } : { ok: false, text: failMsg(r, "상품을 빼지 못했어요. 잠시 뒤 다시 눌러 주세요") });
     setConfirming(false);
     await load(true);
     setBusy(false);
@@ -151,7 +151,7 @@ export default function CartView({ slug }: { slug: string }) {
     if (busy) return;
     setBusy(true);
     const r = await call<{ item: { id: string } }>(api, { method: "POST", body: { optionId: u.optionId, quantity: u.quantity } });
-    setMsg(r.ok ? { ok: true, text: "다시 담았어요" } : { ok: false, text: failMsg(r) });
+    setMsg(r.ok ? { ok: true, text: "다시 담았어요" } : { ok: false, text: failMsg(r, "다시 담지 못했어요. 잠시 뒤 다시 눌러 주세요") });
     await load(true);
     if (r.ok) setPicked((p) => new Set(p).add(r.data.item.id)); // 되돌린 줄은 다시 고른 상태로
     setBusy(false);
@@ -200,7 +200,7 @@ export default function CartView({ slug }: { slug: string }) {
         <div className="cart-empty">
           <p>장바구니를 불러오지 못했어요. 연결을 확인하고 다시 시도해 주세요.</p>
           <button className="btn" type="button" onClick={() => void load()}>
-            다시 시도
+            다시 불러오기
           </button>
         </div>
       </div>
@@ -291,7 +291,7 @@ export default function CartView({ slug }: { slug: string }) {
                         <span className="cart-tag cart-price-tag">
                           담은 뒤 가격이 {changed(l)!.direction === "up" ? "올랐어요" : "내렸어요"} · {won(changed(l)!.from)} → {won(changed(l)!.to)}
                           <button type="button" className="shop-linkbtn" onClick={() => confirmPrice(l)}>
-                            확인
+                            바뀐 가격 확인했어요
                           </button>
                         </span>
                       )}
@@ -368,7 +368,7 @@ export default function CartView({ slug }: { slug: string }) {
               주문할 상품을 골라 주세요
             </button>
           )}
-          <p className="cart-hint">방송 중 주문은 결제가 끝난 순서대로 열어요 · 품절 상품은 주문에서 자동으로 빠져요</p>
+          <p className="cart-hint">방송 중 주문은 결제가 끝난 순서대로 방송에서 상품을 열어 드려요. 품절 상품은 주문에서 자동으로 빠져요</p>
         </aside>
       </div>
       {confirming && (

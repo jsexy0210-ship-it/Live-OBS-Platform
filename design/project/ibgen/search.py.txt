@@ -1,0 +1,24 @@
+from ib import *
+import re
+s=open(P+'SH-002-PC.dc.html',encoding='utf-8').read()
+def rep(a,b):
+    global s
+    assert a in s,a[:50]; s=s.replace(a,b,1)
+s=s.replace('<title>상품 목록</title>','<title>검색 결과 (IA 개편)</title>')
+rep('<h1>부스터 박스</h1><span class="sub">형태 › 부스터 박스 · 6개 · 재고 있는 상품만</span>','<h1>「부스터」 검색 결과</h1><span class="sub">6개 · 「부스트」로도 찾았어요 · 재고 있는 상품만</span>')
+rep('<button class="btn s k" type="button" style="border: 0; border-radius: 0">인기순</button>','<button class="btn s k" type="button" style="border: 0; border-radius: 0">관련도순</button><button class="btn s" type="button" style="border: 0; border-left: 1px solid var(--ln); border-radius: 0">인기순</button>')
+rep('<div><label class="ck"><input type="checkbox" name="r">방송 중 상품만</label></div>','<div><label class="ck"><input type="checkbox" name="r">방송 중 상품만</label></div><div><label class="ck"><input type="checkbox" name="r">평점 4점 이상</label></div><div><label class="ck"><input type="checkbox" name="r">쿠폰 적용 가능</label></div>')
+rates=iter(['★ 4.8 · 리뷰 12 · 적립 891원','★ 4.7 · 리뷰 38 · 적립 1,320원','★ 4.6 · 리뷰 9 · 적립 1,980원','★ 4.9 · 리뷰 21 · 적립 10,900원','★ 4.5 · 리뷰 7 · 적립 55원','★ 4.9 · 리뷰 120'])
+s=re.sub(r'<div class="bd">',lambda m:'<div class="hint" style="margin:2px 0">'+next(rates,'')+'</div><div class="bd">',s,count=6)
+# 검색창에 키워드 표시
+rep('<form class="srch"><input type="search" value="" placeholder="상품 이름으로 찾아요"','<form class="srch"><input type="search" value="부스터" placeholder="상품 이름으로 찾아요"')
+def chips(items,x=False): return ''.join(f'<a class="t" href="#" style="margin:0 4px 6px 0;display:inline-block">{i}{" ×" if x else ""}</a>' for i in items)
+panel=lambda inner:f'<div class="box" style="width:100%"><div class="bd" style="display:flex;flex-direction:column;gap:14px">{inner}</div></div>'
+focus=panel('<div><div style="display:flex;align-items:center;margin-bottom:8px"><b>최근 검색어</b><a href="#" style="margin-left:auto;color:var(--sub);font-size:12px">전체 삭제</a></div>'+chips(['스타라이트','피닉스','슬리브'],True)+'</div><div><b style="display:block;margin-bottom:8px">인기 검색어</b>'+''.join(f'<div style="display:flex;gap:12px;padding:4px 0"><b style="width:16px">{i}</b><span>{n}</span></div>' for i,n in enumerate(['포켓몬 부스터 박스','카드 슬리브','스타라이트','싱글 카드','케이스 브레이크'],1))+'</div>')
+auto=panel('<div style="display:flex;flex-direction:column;gap:6px">'+''.join(f'<a href="#" style="display:flex;gap:8px"><span>{p}<b>{q}</b>{r}</span></a>' for p,q,r in [('','부스터',' 박스'),('','부스터',' 팩'),('드래곤 소울 ','부스터',''),('','부스트',' (비슷한 말)')])+'</div><div><b style="display:block;margin-bottom:8px">이런 카테고리는 어때요</b>'+chips(['형태 › 부스터 박스','게임 › 포켓몬'])+'</div>')
+nores=f'<div class="sh24" style="width:100%"><div class="ct"><span class="ico">⌕</span><h1>「유니콘」과 맞는 상품이 없어요</h1><p>철자를 확인하거나 다른 이름으로 찾아 보세요</p><div>{chips(["유니콘 → 유니온 카드로 찾아볼까요?"])}</div><div style="margin-top:12px"><b style="display:block;margin-bottom:8px">요즘 많이 찾는 검색어</b>{chips(["포켓몬 부스터 박스","카드 슬리브","스타라이트"])}</div><div style="margin-top:12px"><a class="btn s" href="SH-002-PC.dc.html">전체 상품 보기</a></div></div></div>'
+nofilter='<div class="msg inf">필터 조건에 맞는 상품이 없어요. 필터를 줄여 보세요</div><button class="btn s" type="button">필터 모두 지우기</button>'
+st=''.join(f'<div class="st"><span class="st-tag">{t}</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start">{c}</div></div>' for t,c in [('검색창 포커스 · 입력 전 (최근 · 인기 검색어)',focus),('검색창 입력 중 · 자동완성 + 카테고리 추천 (「부스」)',auto),('검색 결과 없음 · 유사어 · 인기 검색어 안내',nores),('필터 결과 없음',nofilter)])
+rep('<span class="states-h">상태 변형</span>','<span class="states-h">상태 변형</span>'+st)
+save('SH-002-PC-IA',s)
+addboard('SH-002-PC-IA','SH-002-PC-IA 쇼핑몰 검색 · IA 개편 (최근·인기 검색어 · 자동완성 · 카테고리 추천 · 필터 · 관련도 정렬 · 결과 없음 안내)',9680,108800,1440,2700)

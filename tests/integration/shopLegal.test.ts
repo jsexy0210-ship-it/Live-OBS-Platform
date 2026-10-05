@@ -104,6 +104,26 @@ describe("파트너스 입력", () => {
   });
 });
 
+describe("version은 내용이 바뀔 때만 오른다", () => {
+  it("같은 본문·시행일 재저장·재게시·게시 여부만 바꾼 저장은 version이 그대로고, 본문이나 시행일이 바뀌면 1 오른다. 옛 version 충돌 검사는 그대로", async () => {
+    const s = await shop();
+    expect((await put(s.owner, { ...DOC, expectedVersion: 0 })).body.doc.version).toBe(1);
+    // 같은 내용 다시 저장(게시 유지) → 그대로 1
+    expect((await put(s.owner, { ...DOC, expectedVersion: 1 })).body.doc.version).toBe(1);
+    // 내렸다가(게시 여부만 변경) 같은 내용으로 다시 게시 → 그대로 1, 처음 게시 시각도 새로 잡힌다(내릴 때 비움)
+    expect((await put(s.owner, { ...DOC, isPublished: false, expectedVersion: 1 })).body.doc).toMatchObject({ version: 1, isPublished: false });
+    expect((await put(s.owner, { ...DOC, expectedVersion: 1 })).body.doc).toMatchObject({ version: 1, isPublished: true });
+    expect((await pub(s.seller.slug)).body.version).toBe(1);
+    // 시행일만 바뀌어도 내용이 바뀐 것 → 2, 본문이 바뀌면 → 3
+    expect((await put(s.owner, { ...DOC, effectiveOn: "2026-12-01", expectedVersion: 1 })).body.doc.version).toBe(2);
+    expect((await put(s.owner, { ...DOC, effectiveOn: "2026-12-01", body: "고친 본문", expectedVersion: 2 })).body.doc.version).toBe(3);
+    // 내용이 같아도 옛 version으로 보내면 409(다른 창 덮어쓰기 방지)
+    expect(await put(s.owner, { ...DOC, effectiveOn: "2026-12-01", body: "고친 본문", expectedVersion: 2 })).toMatchObject({ status: 409, body: { currentVersion: 3 } });
+    // 종류마다 따로 센다
+    expect((await put(s.owner, { ...DOC, expectedVersion: 0 }, "privacy")).body.doc.version).toBe(1);
+  });
+});
+
 describe("구매자 조회", () => {
   it("게시 전에는 초안 본문이 보이지 않고, 게시하면 본문·시행일이 보이며, 내리면 다시 준비 중이다", async () => {
     const s = await shop();

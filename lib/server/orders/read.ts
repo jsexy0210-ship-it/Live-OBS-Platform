@@ -1,5 +1,6 @@
 import type { OrderStatus, Prisma, PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
+import { orderNoLabel, parseOrderNoLabel } from "./orderNoLabel";
 import { notFound } from "../authz/errors";
 import { canViewCustomerPii, requireSellerRead, type TenantContext } from "../tenant/context";
 
@@ -23,7 +24,7 @@ export async function getOrder(db: PrismaClient, ctx: TenantContext, orderId: st
 
   const { buyerMember, shippingAddress, ...orderRest } = order;
   // 품목마다 보낼 수량(수량 − 부분 환불한 수량). 화면은 refundedQuantity로 「부분 환불 n개」를 보여 준다.
-  const rest = { ...orderRest, items: order.items.map((i) => ({ ...i, shipQuantity: i.quantity - i.refundedQuantity })) };
+  const rest = { ...orderRest, orderNoLabel: orderNoLabel(order.createdAt, order.orderNo), items: order.items.map((i) => ({ ...i, shipQuantity: i.quantity - i.refundedQuantity })) };
   if (!canViewCustomerPii(ctx)) {
     // 배송지도 개인정보라 도서산간 여부(배송비 근거)만 남긴다
     return {
@@ -73,6 +74,8 @@ function shipmentView(s: ShipmentRow) {
   if (!s || s.status === "READY") return { state: "none" as const, courier: null, trackingNumber: null, deliveredAt: null };
   return { state: s.status === "DELIVERED" ? ("delivered" as const) : ("in_transit" as const), courier: s.courier, trackingNumber: s.trackingNumber, deliveredAt: s.deliveredAt };
 }
+
+const refundedAmountOf = (o: { status: OrderStatus; totalAmount: number; refundAmount: number | null }) => o.refundAmount ?? (o.status === "REFUNDED" ? o.totalAmount : 0);
 
 export const SELLER_ORDER_PAGE_DEFAULT = 50;
 export const SELLER_ORDER_PAGE_MAX = 200;
@@ -147,6 +150,9 @@ export async function listSellerOrders(db: PrismaClient, ctx: TenantContext, que
       { buyerMember: { broadcastNickname: { contains: q, mode: "insensitive" } } },
     ];
     if (/^\d{1,9}$/.test(q)) or.push({ orderNo: Number(q) });
+    // 사람이 읽는 주문번호(20261005-0004): 그날(KST)에 만든 그 번호의 주문
+    const label = parseOrderNoLabel(q);
+    if (label) or.push({ orderNo: label.orderNo, createdAt: { gte: label.from, lt: label.to } });
     if (searchesPii) or.push({ shippingAddress: { recipientName: { contains: q, mode: "insensitive" } } });
     and.push({ OR: or });
   }
@@ -163,6 +169,7 @@ export async function listSellerOrders(db: PrismaClient, ctx: TenantContext, que
       createdAt: true,
       paidAt: true,
       totalAmount: true,
+      refundAmount: true,
       paymentMethod: true,
       paymentDueAt: true,
       buyerMember: { select: { id: true, broadcastNickname: true } },
@@ -191,11 +198,17 @@ export async function listSellerOrders(db: PrismaClient, ctx: TenantContext, que
     orders: page.map((o) => ({
       id: o.id,
       orderNo: o.orderNo,
+      orderNoLabel: orderNoLabel(o.createdAt, o.orderNo),
       status: o.status,
       createdAt: o.createdAt,
       paidAt: o.paidAt,
       buyer: o.buyerMember,
       totalAmount: o.totalAmount,
+      // 환불 현황(주문 합계, 현금 환불은 반품 배송비·적립금 반환을 뺀 돌려준 금액). 환불이 없으면 0.
+      // 금액이 비어 있는 옛 전액 환불 주문(REFUNDED)은 합계 전부를 돌려준 것으로 본다(통계와 같은 기준).
+      refundedAmount: refundedAmountOf(o),
+      refundedQuantity: o.items.reduce((a, i) => a + i.refundedQuantity, 0),
+      remainingAmount: Math.max(o.totalAmount - refundedAmountOf(o), 0),
       // 결제 수단과 입금 기한. 무통장 입금 대기(status=PENDING_PAYMENT, paymentMethod=BANK_TRANSFER) 판별용. 결제 전이면 paymentMethod가 null일 수 있다.
       paymentMethod: o.paymentMethod,
       paymentDueAt: o.paymentDueAt,

@@ -46,7 +46,7 @@ export type SellerDetail = {
 };
 
 export const SELLER_STATUS: Record<SellerStatus, { label: string; cls: string }> = {
-  PENDING: { label: "승인 대기", cls: "b-wait" },
+  PENDING: { label: "가입 신청 중", cls: "b-wait" },
   ACTIVE: { label: "운영 중", cls: "b-done" },
   SUSPENDED: { label: "이용 정지", cls: "b-fail" },
   REJECTED: { label: "반려", cls: "b-gray" },

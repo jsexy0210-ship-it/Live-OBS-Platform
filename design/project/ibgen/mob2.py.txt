@@ -1,0 +1,32 @@
+from ib import *
+import re
+# ---- 휴대폰 장바구니
+s=open(P+'SH-004.dc.html',encoding='utf-8').read()
+def rep(a,b):
+    global s
+    assert a in s,a[:50]; s=s.replace(a,b,1)
+s=s.replace('<title>장바구니</title>','<title>장바구니 (IA 개편)</title>')
+rep('<div style="color: var(--sub); font-size: 12px">1박스 (24팩)</div>','<div style="color: var(--sub); font-size: 12px">1박스 (24팩) <button class="btn s" type="button" style="margin-left: 4px">옵션 변경</button></div><span class="tag g">담은 뒤 가격이 내렸어요 · 99,000원 → 89,100원</span>')
+rep('<div style="color: var(--sub); font-size: 12px">1박스 (20팩)</div>','<div style="color: var(--sub); font-size: 12px">1박스 (20팩) <button class="btn s" type="button" style="margin-left: 4px">옵션 변경</button></div><span class="tag r">재고 부족 · 남은 수량 1박스</span>')
+rep('<div class="r"><span>배송비</span><span>3,000원</span></div><div class="r tot"><span>결제 예정 금액</span><b>313,200원</b></div>','<div class="r"><span>할인 (쿠폰은 주문서에서 선택)</span><span>−9,900원</span></div><div class="r"><span>배송비</span><span>3,000원</span></div><div class="r"><span>예상 적립</span><span>3,102원</span></div><div class="r tot"><span>최종 금액</span><b>303,300원</b></div>')
+rep('>313,200원 주문하기<','>303,300원 주문하기<')
+save('SH-004-IA',s)
+addboard('SH-004-IA','SH-004-IA 휴대폰 장바구니 · IA 개편 (옵션 변경 · 가격 변경 · 재고 부족 표시 · 할인 · 예상 적립 · 하단 고정 주문)',13920,108800,800,1500)
+# ---- 휴대폰 검색 결과
+s=open(P+'SH-002.dc.html',encoding='utf-8').read()
+s=s.replace('<title>상품 목록</title>','<title>검색 결과 (IA 개편)</title>')
+rep('<b style="font-size: 15px">부스터 박스</b><span style="color: var(--sub)">6개</span>','<b style="font-size: 15px">「부스터」 검색 결과</b><span style="color: var(--sub)">6개</span>')
+rep('<button class="btn s" type="button">인기순 ▾</button>','<button class="btn s" type="button">관련도순 ▾</button>')
+rep('<span class="t">재고 있는 상품만 ×</span></div>','<span class="t">재고 있는 상품만 ×</span><span class="hint" style="margin:0 0 0 8px;align-self:center">「부스트」로도 찾았어요</span></div>')
+rates=iter(['★ 4.8 · 리뷰 12 · 적립 891원','★ 4.7 · 리뷰 38 · 적립 1,320원','★ 4.6 · 리뷰 9 · 적립 1,980원','★ 4.9 · 리뷰 21 · 적립 10,900원','★ 4.5 · 리뷰 7 · 적립 55원','★ 4.9 · 리뷰 120'])
+i=s.index('<div class="mbody">'); j=s.index('<div class="pg"')
+body=re.sub(r'<div class="bd">',lambda m:'<div class="hint" style="margin:2px 0">'+next(rates,'')+'</div><div class="bd">',s[i:j],count=6)
+s=s[:i]+body+s[j:]
+chips=lambda items,x=False:''.join(f'<span class="t" style="margin:0 4px 6px 0;display:inline-block">{t}{" ×" if x else ""}</span>' for t in items)
+focus=f'<div class="sh24" style="width:100%"><div style="display:flex;align-items:center;margin-bottom:8px"><b>최근 검색어</b><a href="#" style="margin-left:auto;color:var(--sub);font-size:12px">전체 삭제</a></div>{chips(["스타라이트","피닉스","슬리브"],True)}<b style="display:block;margin:12px 0 8px">인기 검색어</b>'+''.join(f'<div style="display:flex;gap:12px;padding:4px 0"><b style="width:16px">{n}</b><span>{t}</span></div>' for n,t in enumerate(["포켓몬 부스터 박스","카드 슬리브","스타라이트","싱글 카드","케이스 브레이크"],1))+'</div>'
+auto=f'<div class="sh24" style="width:100%"><div style="display:flex;flex-direction:column;gap:8px">'+''.join(f'<span>{a}<b>{b}</b>{c}</span>' for a,b,c in [('','부스터',' 박스'),('','부스터',' 팩'),('','부스트',' (비슷한 말)')])+f'</div><b style="display:block;margin:12px 0 8px">이런 카테고리는 어때요</b>{chips(["형태 › 부스터 박스","게임 › 포켓몬"])}</div>'
+nores=f'<div class="sh24" style="width:100%"><div class="ct"><span class="ico">⌕</span><h1>「유니콘」과 맞는 상품이 없어요</h1><p>철자를 확인하거나 다른 이름으로 찾아 보세요</p><div>{chips(["유니콘 → 유니온 카드로 찾아볼까요?"])}</div><div style="margin-top:12px"><b style="display:block;margin-bottom:8px">요즘 많이 찾는 검색어</b>{chips(["포켓몬 부스터 박스","카드 슬리브"])}</div></div></div>'
+extra=''.join(f'<div class="st"><span class="st-tag">{t}</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start">{c}</div></div>' for t,c in [('검색 화면 · 입력 전 (최근 · 인기 검색어)',focus),('검색 화면 · 입력 중 (자동완성 · 카테고리 추천)',auto),('검색 결과 없음 · 유사어 · 인기 검색어',nores)])
+rep('<span class="states-h">상태 변형</span>','<span class="states-h">상태 변형</span>'+extra)
+save('SH-002-IA',s)
+addboard('SH-002-IA','SH-002-IA 휴대폰 검색 결과 · IA 개편 (관련도순 · 유사어 · 카드 평점 · 최근/인기 검색어 · 자동완성 · 결과 없음)',14800,108800,800,2200)

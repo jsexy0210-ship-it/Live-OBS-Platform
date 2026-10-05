@@ -143,7 +143,7 @@ export default function InquiryDetailPage() {
               {inq.messages.map((m) => (
                 <div key={m.id} className="col" style={{ gap: 6 }} data-testid="inquiry-message" data-author={m.author}>
                   <div className="row" style={{ gap: 8 }}>
-                    <b>{m.author === "PLATFORM" ? `플랫폼${m.authorName ? ` · ${m.authorName}` : ""}` : `파트너스${m.authorName ? ` · ${m.authorName}` : ""}`}</b>
+                    <b>{m.author === "PLATFORM" ? `운영팀${m.authorName ? ` · ${m.authorName}` : ""}` : `파트너스${m.authorName ? ` · ${m.authorName}` : ""}`}</b>
                     <span className="t-l2 c-alt">{dayTime(m.createdAt)}</span>
                   </div>
                   <p style={{ whiteSpace: "pre-wrap", margin: 0 }}>{m.body}</p>

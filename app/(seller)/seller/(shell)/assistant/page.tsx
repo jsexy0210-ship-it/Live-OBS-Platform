@@ -38,7 +38,7 @@ export default function AssistantPage() {
       setQuestion("");
       setState((s) => (s.kind === "ok" ? { kind: "ok", s: { ...s.s, remainingToday: r.data.remainingToday } } : s));
     } else {
-      setError(r.message ?? "도우미가 답하지 못했습니다. 잠시 뒤 다시 시도해 주십시오");
+      setError(r.message ?? "도우미가 답하지 못했습니다. 잠시 뒤 다시 눌러 주십시오");
       if (r.error === "unavailable") void load();
     }
   };
@@ -54,19 +54,19 @@ export default function AssistantPage() {
         ) : !s.available ? (
           <div className="card">
             <div className="st">
-              <span className="t">도우미는 준비 중입니다</span>
-              <span className="d">사용법이 막히면 문의하기로 남겨 주십시오.</span>
+              <span className="t">도우미는 아직 준비 중입니다</span>
+              <span className="d">사용법이 어려우면 「문의하기」로 남겨 주십시오.</span>
             </div>
           </div>
         ) : (
           <div className="col" style={{ gap: 16 }}>
             <section className="card pad-l col" style={{ gap: 12 }} aria-label="질문하기">
-              <span className="t-c1 c-alt">플랫폼 사용법만 답합니다. 주문·설정 변경은 하지 않으며, 개인정보는 입력하지 마십시오. 오늘 남은 질문 {s.remainingToday}회</span>
+              <span className="t-c1 c-alt">사용 방법만 알려 드립니다. 주문이나 설정을 대신 바꾸지는 않습니다. 이름·전화번호 같은 개인정보는 쓰지 마십시오. 오늘 남은 질문 {s.remainingToday}번</span>
               <form className="col" style={{ gap: 10 }} onSubmit={send}>
                 <textarea className="inp" rows={3} maxLength={s.questionMax} value={question} onChange={(e) => setQuestion(e.target.value)} disabled={busy || s.remainingToday === 0} placeholder="예: 주문 취소 방법" aria-label="질문" />
                 <div className="row" style={{ gap: 12 }}>
                   <button className="btn btn-pri" type="submit" disabled={busy || s.remainingToday === 0 || question.trim() === ""}>
-                    {busy ? "답변 중" : "질문하기"}
+                    {busy ? "답변 중" : "도우미에게 질문하기"}
                   </button>
                   <span className="t-c1 c-alt">{[...question].length} / {s.questionMax}자</span>
                 </div>

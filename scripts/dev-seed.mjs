@@ -196,6 +196,9 @@ async function seedOrders(sellerId, passwordHash) {
         refundFault: status === "REFUNDED" ? "BUYER" : null,
       },
     });
+    // 상태 이력(SA-022): 주문 생성, 결제했으면 결제 완료까지
+    await db.orderStatusHistory.create({ data: { sellerId, orderId: order.id, fromStatus: null, toStatus: "PENDING_PAYMENT", actorType: "BUYER", actorId: buyer.id, createdAt } });
+    if (paid) await db.orderStatusHistory.create({ data: { sellerId, orderId: order.id, fromStatus: "PENDING_PAYMENT", toStatus: "PAID", actorType: "SYSTEM", createdAt: order.paidAt } });
     for (const [o, quantity, isOpened] of lines) {
       const item = await db.orderItem.create({
         data: {

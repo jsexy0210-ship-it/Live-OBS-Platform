@@ -27,7 +27,7 @@ export function RejectApplicationDialog({ id, shopName, onClose, onDone, onStale
     setBusy(false);
     if (r.ok) return onDone();
     if (r.status === 404 || r.status === 409) return onStale();
-    setError(r.error === "reason_required" ? "사유를 1자 이상 200자 이하로 입력해 주십시오." : failMessage(r, "처리하지 못했습니다. 잠시 후 다시 시도해 주십시오."));
+    setError(r.error === "reason_required" ? "사유를 1자 이상 200자 이하로 입력해 주십시오." : failMessage(r, "가입 반려를 하지 못했습니다. 잠시 후 다시 시도해 주십시오."));
   };
   return (
     <Modal labelId="reject-title" busy={busy} dirty={preset !== "" || extra !== ""} onClose={onClose}>

@@ -10,7 +10,7 @@ import { LoadingRows, NoPermission, Toast } from "../../../../../../components/s
 import { api } from "../../../../../../components/seller/api";
 import { won } from "../../../../../../components/seller/format";
 import { COURIERS, isCourier } from "../../../../../../lib/server/orders/shipping";
-import { PAYMENT_METHOD, STATUS_BADGE, detailStatusLabel, fullTime, longTime, phoneText, type OrderDetail } from "../../../../../../components/seller/orders";
+import { PAYMENT_METHOD, STATUS_BADGE, detailStatusLabel, fullTime, historyActor, historyLabel, historyNote, longTime, phoneText, type OrderDetail } from "../../../../../../components/seller/orders";
 
 // SA-022 판매자 주문 상세(GET /api/seller/orders/{id}). 결제 완료 주문만 「취소 · 환불」(SA-023 모달)을 열 수 있다.
 // 받는 분 이름·연락처·주소는 고객 정보 보기 권한이 있을 때만 서버가 준다(열람 기록은 서버가 남긴다).
@@ -239,6 +239,36 @@ export default function OrderDetailPage() {
               {pii && <span className="t-c1 c-alt">연락처·주소는 열람 시 열람 기록이 남습니다.</span>}
             </section>
           </div>
+        </div>
+        {/* SA-022 하단 2열: 왼쪽 상태 이력(오른쪽 알림 발송은 서버 계약이 생기면 추가) */}
+        <div className="ord-detail ord-history">
+          <section className="card pad col" style={{ gap: 12 }} data-testid="order-history">
+            <h2 className="t-hl2">상태 이력</h2>
+            {o.history.length === 0 ? (
+              <span className="t-c1 c-alt">아직 이력이 없습니다</span>
+            ) : (
+              <div className="ord-hist-scroll"><table className="tbl ord-hist-tbl">
+                <thead>
+                  <tr>
+                    <th style={{ width: 150 }}>시각</th>
+                    <th>상태</th>
+                    <th style={{ width: 110 }}>처리</th>
+                    <th className="l">비고</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...o.history].reverse().map((e, i) => (
+                    <tr key={i} data-testid="history-row">
+                      <td className="num">{fullTime(e.at)}</td>
+                      <td>{historyLabel(e)}</td>
+                      <td>{historyActor(e.actor)}</td>
+                      <td>{historyNote(e)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table></div>
+            )}
+          </section>
         </div>
       </main>
       {refundOpen && (

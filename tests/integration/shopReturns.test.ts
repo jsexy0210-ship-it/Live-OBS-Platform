@@ -336,6 +336,7 @@ describe("재고", () => {
 async function shopPreview(s: Awaited<ReturnType<typeof shop>>, id: string) {
   const d = await getSellerReturn(db, s.ctx, id);
   if (!d?.refundPreview || d.queueVersion === null || !d.fault) throw new Error("no preview");
+  expect(d.orderNoLabel).toEqual(expect.stringMatching(/^\d{8}-\d{4,}$/));
   return { amount: d.refundPreview.byFault[d.fault].refundAmount, queueVersion: d.queueVersion };
 }
 
@@ -419,6 +420,7 @@ describe("권한·판매자 격리", () => {
     expect(await getSellerReturn(db, other.ctx, req.id)).toBeNull();
     expect((await listSellerReturns(db, other.ctx)).returns).toEqual([]);
     expect((await listSellerReturns(db, s.ctx)).returns).toHaveLength(1);
+    expect((await listSellerReturns(db, s.ctx)).returns[0].orderNoLabel).toEqual(expect.stringMatching(/^\d{8}-\d{4,}$/));
     expect(await status(req.id)).toBe("REQUESTED");
   });
 
@@ -513,7 +515,7 @@ describe("교환·반품 v2: 기한·개봉·수거·검수·교환 재고 없�
   it("배송 완료 7일이 지나면 단순 변심·기타는 막고, 판매자 사정 사유는 받는다(기한 표시 포함)", async () => {
     const s = await shop();
     const id = await s.delivered();
-    expect(await buyerReturnContext(db, s.scope, id)).toMatchObject({ windowOpen: true });
+    expect(await buyerReturnContext(db, s.scope, id)).toMatchObject({ windowOpen: true, orderNoLabel: expect.stringMatching(/^\d{8}-\d{4}$/) });
     await db.shipment.update({ where: { orderId: id }, data: { deliveredAt: new Date(Date.now() - 8 * DAY) } });
     expect(await buyerReturnContext(db, s.scope, id)).toMatchObject({ windowOpen: false });
     expect(await createReturn(db, s.scope, id, { orderId: id, kind: "RETURN", reason: "CHANGE_OF_MIND" })).toEqual({ ok: false, reason: "period_expired" });

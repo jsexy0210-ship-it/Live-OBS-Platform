@@ -64,7 +64,7 @@ test("기간별 현황: 상위 5 파트너스에 결제된 쇼핑몰이 오르�
   const row = page.getByTestId("top-seller-row").filter({ hasText: topShop });
   await expect(row).toContainText("123,456원");
   await expect(page.getByTestId("stats-orders")).toContainText("결제 금액");
-  await expect(page.getByTestId("stats-subscriptions")).toContainText("월별 수납 매출");
+  await expect(page.getByTestId("stats-subscriptions")).toContainText("월별 받은 구독료");
   await page.getByRole("button", { name: "최근 7일" }).click();
   await expect(page.getByRole("button", { name: "최근 7일" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByTestId("top-seller-row").filter({ hasText: topShop })).toBeVisible();

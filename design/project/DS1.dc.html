@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>디자인 시스템 기초 · 참고 · 구 체계</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.tk{display:grid;grid-template-columns:28px 1fr auto;gap:8px 10px;align-items:center;font-size:13px}
+.tk .c{width:28px;height:28px;border-radius:7px;box-shadow:inset 0 0 0 1px #00000014}
+.tk .h{color:var(--wds-label-alternative);font-variant-numeric:tabular-nums;font-size:12px}
+.sp{display:flex;align-items:flex-end;gap:10px}
+.sp>div{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:11px;white-space:nowrap;color:var(--wds-label-alternative)}
+.sp i{display:block;background:var(--brand);border-radius:2px}
+</style>
+</helmet>
+<div class="app" data-theme="light" style="width: 1600px; height: 1200px; padding: 56px; display: flex; flex-direction: column; gap: 20px">
+ <div class="col" style="gap: 6px">
+ <span class="t-l1 fw6 c-alt">공통 디자인 시스템 · 참고 · 구 체계 (정본은 DS6 카페24식 틀과 공통 스타일 · 2026-10-05 UI 현대화 토큰)</span>
+ <h1 class="t-t2">기초 — 색상 토큰 · 타이포 · 간격 · 모서리 · 라이트/다크</h1>
+ </div>
+ <div style="display: grid; grid-template-columns: 1fr 1fr 1.2fr; gap: 20px; flex: 1">
+ <div class="card col" style="padding: 24px; gap: 18px">
+ <span class="t-hl1">색상 토큰 (라이트)</span>
+ <div class="tk">
+ <div class="c" style="background: #5b3df6"></div><span>primary.normal — 큐 바이올렛 · 주요 버튼 · 링크 · 개봉 중</span><span class="h">#5b3df6</span>
+ <div class="c" style="background: #4a2fd9"></div><span>primary.heavy — 호버 링크</span><span class="h">#4a2fd9</span>
+ <div class="c" style="background: #1c1a17"></div><span>label.normal — 본문</span><span class="h">#1c1a17</span>
+ <div class="c" style="background: #2e2f33e0"></div><span>label.neutral — 보조 본문 88%</span><span class="h">#2a2825 E0</span>
+ <div class="c" style="background: #37383c9c"></div><span>label.alternative — 캡션 61%</span><span class="h">#34312c 9C</span>
+ <div class="c" style="background: #37383c47"></div><span>label.assistive — 플레이스홀더 28%</span><span class="h">#34312c 47</span>
+ <div class="c" style="background: #ffffff; box-shadow: inset 0 0 0 1px #0000001f"></div><span>background.elevated — 카드 · 입력</span><span class="h">#FFFFFF</span>
+ <div class="c" style="background: #f6f4f0"></div><span>background.alternative — 페이지</span><span class="h">#f6f4f0</span>
+ <div class="c" style="background: #70737c38"></div><span>line.normal — 테두리(inset 1px)</span><span class="h">#716c64 38</span>
+ <div class="c" style="background: #70737c14"></div><span>fill.normal — 고스트 버튼 · 스켈레톤</span><span class="h">#716c64 14</span>
+ <div class="c" style="background: #00bf40"></div><span>status.positive — 완료 · 성공</span><span class="h">#00BF40</span>
+ <div class="c" style="background: #ff9200"></div><span>status.cautionary — 주의 · 연체 · HIT</span><span class="h">#FF9200</span>
+ <div class="c" style="background: #ff4242"></div><span>status.negative — 실패 · 삭제</span><span class="h">#FF4242</span>
+ <div class="c" style="background: #b00c0c"></div><span>negative.text/btn — 빨강 텍스트는 어둡게(대비)</span><span class="h">#B00C0C</span>
+ <div class="c" style="background: #e8382d"></div><span>onair — LIVE</span><span class="h">#e8382d</span>
+ <div class="c" style="background: #0f766e"></div><span>master — 마스터 관리자 식별(틸)</span><span class="h">#0f766e</span>
+ </div>
+ </div>
+ <div class="card col" style="padding: 24px; gap: 18px; background: #171615; color: #f6f4f0" data-theme="dark">
+ <span class="t-hl1">색상 토큰 (다크) — 방송 환경 기본</span>
+ <div class="tk" style="color: #f6f4f0">
+ <div class="c" style="background: #8f78ff"></div><span>primary.normal — 더 밝은 바이올렛(글자 · 링크용)</span><span class="h" style="color: #a8a298">#8f78ff</span>
+ <div class="c" style="background: #f6f4f0"></div><span>label.normal</span><span class="h" style="color: #a8a298">#f6f4f0</span>
+ <div class="c" style="background: #c2c4c8e0"></div><span>label.neutral</span><span class="h" style="color: #a8a298">#c4beb4 E0</span>
+ <div class="c" style="background: #aeb0b69c"></div><span>label.alternative</span><span class="h" style="color: #a8a298">#a8a298 9C</span>
+ <div class="c" style="background: #171615; box-shadow: inset 0 0 0 1px #ffffff33"></div><span>background.normal — 페이지</span><span class="h" style="color: #a8a298">#171615</span>
+ <div class="c" style="background: #201e1b"></div><span>background.elevated — 카드</span><span class="h" style="color: #a8a298">#201e1b</span>
+ <div class="c" style="background: #0e0d0c"></div><span>background.alternative — 오버레이 판</span><span class="h" style="color: #a8a298">#0e0d0c</span>
+ <div class="c" style="background: #70737c52"></div><span>line.normal — 알파 올림 32%</span><span class="h" style="color: #a8a298">#716c64 52</span>
+ <div class="c" style="background: #1ed45a"></div><span>status.positive</span><span class="h" style="color: #a8a298">#1ED45A</span>
+ <div class="c" style="background: #ffa938"></div><span>status.cautionary</span><span class="h" style="color: #a8a298">#FFA938</span>
+ <div class="c" style="background: #ff6363"></div><span>status.negative</span><span class="h" style="color: #a8a298">#FF6363</span>
+ <div class="c" style="background: #0f766e"></div><span>master</span><span class="h" style="color: #a8a298">#0f766e</span>
+ </div>
+ <div class="row" style="gap: 8px; margin-top: auto; flex-wrap: wrap">
+ <button class="btn btn-sm" type="button">주요</button><button class="btn btn-sm btn-out" type="button">보조</button><button class="btn btn-sm btn-ghost" type="button">고스트</button>
+ <span class="bdg b-wait">대기</span><span class="bdg b-open">개봉 중</span><span class="bdg b-done">완료</span><span class="bdg b-cancel">취소</span><span class="bdg b-fail">실패</span>
+ </div>
+ <p class="t-c1" style="color: #a8a298">그림자는 라이트와 동일. 다크에서 텍스트 대비: 본문 15.4:1, 캡션 6.1:1.</p>
+ </div>
+ <div class="col" style="gap: 20px">
+ <div class="card col" style="padding: 24px; gap: 10px">
+ <span class="t-hl1">타이포 스케일 — Wanted Sans (UI 현대화 2026-10-05 · 레이아웃 전담 (3) 토큰표)</span>
+ <div class="row between"><span class="t-h2">관리자 화면 제목</span><span class="t-c1 c-alt num">20/28 · 600~700</span></div>
+ <div class="row between"><span class="t-t3">구매자 화면 제목</span><span class="t-c1 c-alt num">24/32 · 700</span></div>
+ <div class="row between"><span class="t-b1">섹션 제목</span><span class="t-c1 c-alt num">16/24 · 600</span></div>
+ <div class="row between"><span class="t-l1">본문 · 컨트롤 · 레이블</span><span class="t-c1 c-alt num">14/20 · 400~500</span></div>
+ <div class="row between"><span class="t-b1">휴대폰 입력 · 주요 CTA</span><span class="t-c1 c-alt num">16/24 · 500~700</span></div>
+ <div class="row between"><span class="t-l2">표 보조 데이터 · 표 머리</span><span class="t-c1 c-alt num">13/20 · 400~600</span></div>
+ <div class="row between"><span class="t-c1">설명 · 캡션</span><span class="t-c1 c-alt num">12/18 · 400</span></div>
+ <div class="row between"><span class="t-l1">금액 · 시각 · 수량</span><span class="t-c1 c-alt num">tabular-nums (같은 폭 숫자)</span></div>
+ </div>
+ <div class="card col" style="padding: 24px; gap: 14px">
+ <span class="t-hl1">간격 · 모서리</span>
+ <div class="sp"><div><i style="width: 2px; height: 2px"></i>0</div><div><i style="width: 4px; height: 4px"></i>4</div><div><i style="width: 8px; height: 8px"></i>8</div><div><i style="width: 12px; height: 12px"></i>12</div><div><i style="width: 16px; height: 16px"></i>16</div><div><i style="width: 24px; height: 24px"></i>24</div><div><i style="width: 32px; height: 32px"></i>32</div><div><i style="width: 48px; height: 48px"></i>48</div><div><i style="width: 64px; height: 64px"></i>64</div></div>
+ <span class="t-l2 c-alt" style="word-break: keep-all">간격은 이 아홉 값만 씁니다 · 관리자 본문 좌우 24 · 휴대폰 16 · 패널 안쪽 16 (넓은 폼 24) · 레이블↔입력 8 · 폼 항목 16 · 섹션 24~32 · 버튼 사이 8</span>
+ <div class="sp" style="margin-top: 8px"><div><i style="width: 40px; height: 40px; border-radius: 4px; background: #e6e9ee; box-shadow: inset 0 0 0 1px #00000022"></i>배지 4</div><div><i style="width: 40px; height: 40px; border-radius: 8px; background: #e6e9ee; box-shadow: inset 0 0 0 1px #00000022"></i>컨트롤 8</div><div><i style="width: 40px; height: 40px; border-radius: 12px; background: #e6e9ee; box-shadow: inset 0 0 0 1px #00000022"></i>카드 12</div><div><i style="width: 40px; height: 40px; border-radius: 16px; background: #e6e9ee; box-shadow: inset 0 0 0 1px #00000022"></i>모달 16</div><div><i style="width: 40px; height: 40px; border-radius: 20px; background: #e6e9ee; box-shadow: inset 0 0 0 1px #00000022"></i>바텀시트 위 20</div></div>
+ <span class="t-l2 c-alt" style="word-break: keep-all">모서리: 입력 · 선택 · 검색 · 버튼 8 · 표 컨테이너 · 메뉴 8 · 카드 · 패널 12 · 모달 16 · 바텀시트 위쪽 20 · 배지 4 · 원형 · 스위치 · 의도된 캡슐만 예외 · 구분선 1px 한 색 · 유리 효과 · 그라데이션 · 카드 속 카드 · 장식 이모지 금지</span>
+ <p class="t-l2 c-alt">페이지 여백 32 (PC) / 16 (모바일) · 카드 패딩 20~24 · 표 셀 12×16 · 폼 필드 간격 16 · 섹션 간격 20~24.</p>
+ <div class="row" style="gap: 14px; align-items: flex-end">
+ <div class="col" style="align-items: center; gap: 4px"><div style="width: 44px; height: 44px; border-radius: 6px; background: var(--wds-fill-strong)"></div><span class="t-c1 c-alt">6 배지</span></div>
+ <div class="col" style="align-items: center; gap: 4px"><div style="width: 44px; height: 44px; border-radius: 8px; background: var(--wds-fill-strong)"></div><span class="t-c1 c-alt"><span style="white-space: nowrap">8 칩·소버튼</span></span></div>
+ <div class="col" style="align-items: center; gap: 4px"><div style="width: 44px; height: 44px; border-radius: 10px; background: var(--wds-fill-strong)"></div><span class="t-c1 c-alt"><span style="white-space: nowrap">10 버튼·입력</span></span></div>
+ <div class="col" style="align-items: center; gap: 4px"><div style="width: 44px; height: 44px; border-radius: 12px; background: var(--wds-fill-strong)"></div><span class="t-c1 c-alt"><span style="white-space: nowrap">12 카드·대버튼</span></span></div>
+ <div class="col" style="align-items: center; gap: 4px"><div style="width: 44px; height: 44px; border-radius: 16px; background: var(--wds-fill-strong)"></div><span class="t-c1 c-alt">16 메뉴</span></div>
+ <div class="col" style="align-items: center; gap: 4px"><div style="width: 44px; height: 44px; border-radius: 20px; background: var(--wds-fill-strong)"></div><span class="t-c1 c-alt"><span style="white-space: nowrap">20 모달·시트</span></span></div>
+ <div class="col" style="align-items: center; gap: 4px"><div style="width: 44px; height: 44px; border-radius: 999px; background: var(--wds-fill-strong)"></div><span class="t-c1 c-alt"><span style="white-space: nowrap">full 스위치·아이콘</span></span></div>
+ </div>
+ <p class="t-l2 c-alt">접근성: 텍스트 대비 4.5:1 이상(캡션 회색은 61% 알파 = 4.6:1), 포커스 링 2px 파랑 + 오프셋 2px, 터치 타깃 44px 이상, 모든 조작은 실제 button · a · input 요소.</p>
+ </div>
+ </div>
+ </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1600,"height":1200}}'>
+class Component extends DCLogic { renderVals() { return {}; } }
+</script>
+</body>
+</html>
