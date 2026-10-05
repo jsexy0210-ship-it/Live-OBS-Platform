@@ -5,6 +5,7 @@ import { Topbar, useSeller } from "../../../../../../components/seller/SellerShe
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
 import { cleanText, textLength, type TextKind } from "../../../../../../lib/server/text/clean";
+import { useUnsavedGuard } from "../../../../../../lib/client/navigation";
 
 // SA-060 공유 미리보기: 쇼핑몰 주소를 공유할 때 보이는 제목·설명. 비워 두면 제목은 쇼핑몰 이름, 설명은 없음.
 // 카드 이미지는 서버가 쇼핑몰 이름으로 그린 기본 카드(/api/shop/{slug}/og.png)다(이미지·파비콘 올리기는 이미지 저장소를 정한 뒤).
@@ -52,6 +53,7 @@ export default function ShareSettingsPage() {
 
   const saved = state.kind === "ok" ? state.saved : null;
   const dirty = !!saved && ((saved.title ?? "") !== title || (saved.description ?? "") !== description);
+  useUnsavedGuard(dirty); // 링크·브라우저 Back·새로고침에 같은 확인(docs/IA.md Back 규칙 7항)
   const titleProblem = problem(title, TITLE_MAX, "name");
   const descriptionProblem = problem(description, DESCRIPTION_MAX, "memo");
   const tooLong = titleProblem !== null || descriptionProblem !== null;
