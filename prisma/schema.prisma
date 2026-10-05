@@ -2659,6 +2659,10 @@ model Payment {
   // PG 거래 번호(인증 뒤 받음)
   pgTid           String?       @unique
   failureCode     String?
+  // 승인 응답의 카드 요약(구매자 주문 상세 표시용): 카드사 이름, 끝 4자리(카드번호 전체는 저장하지 않음), 할부 개월(0 = 일시불)
+  cardName        String?
+  cardLast4       String?       @db.VarChar(4)
+  cardInstallment Int?
   approvedAt      DateTime?     @db.Timestamptz(3)
   cancelledAt     DateTime?     @db.Timestamptz(3)
   createdAt       DateTime      @default(now()) @db.Timestamptz(3)

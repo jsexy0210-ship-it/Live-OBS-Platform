@@ -26,6 +26,17 @@ const paidBody = (over: Record<string, unknown> = {}) => {
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
 describe("나이스페이 어댑터(샌드박스)", () => {
+  it("승인 응답의 card는 카드사 이름·끝 4자리·할부 개월만 남긴다(번호 전체·그 밖의 값은 버림), 없거나 이상하면 card 없음", async () => {
+    const card = { cardCode: "04", cardName: "비씨", cardNum: "536112******1234", cardQuota: "3", isInterestFree: false, cardType: "credit", acquCardName: "비씨카드" };
+    const ok = await gateway(() => json(paidBody({ card }))).gw.approve({ tid: "T1", amount: 13000 });
+    expect(ok).toEqual({ kind: "ok", value: { tid: "T1", orderId: "O1", status: "paid", amount: 13000, balanceAmt: 13000, card: { name: "비씨", last4: "1234", installment: 3 } } });
+    expect(JSON.stringify(ok)).not.toContain("536112");
+    const lump = await gateway(() => json(paidBody({ card: { cardName: "국민", cardNum: "123456******9999", cardQuota: "0" } }))).gw.approve({ tid: "T1", amount: 13000 });
+    expect(lump.kind === "ok" && lump.value.card).toEqual({ name: "국민", last4: "9999", installment: 0 });
+    const odd = await gateway(() => json(paidBody({ card: { cardNum: "abcd", cardQuota: "x" } }))).gw.approve({ tid: "T1", amount: 13000 });
+    expect(odd.kind === "ok" && "card" in odd.value).toBe(false);
+  });
+
   it("승인은 샌드박스 주소로 Basic 인증·금액만 보내고, 응답 서명을 검증한다", async () => {
     const { gw, calls } = gateway(() => json(paidBody()));
     expect(await gw.approve({ tid: "T1", amount: 13000 })).toEqual({ kind: "ok", value: { tid: "T1", orderId: "O1", status: "paid", amount: 13000, balanceAmt: 13000 } });
