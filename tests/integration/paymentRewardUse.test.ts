@@ -80,6 +80,7 @@ describe("주문할 때 적립금 사용", () => {
     const s = await shop({ balance: 4000 });
     for (const v of [999, 1005, -1000, "1000"]) expect(await s.order(v), String(v)).toEqual({ ok: false, reason: "invalid_reward_use" });
     expect(await s.order(5010)).toEqual({ ok: false, reason: "reward_use_over_limit" }); // 상품 5,000원 초과(배송비에 쓸 수 없음)
+    expect(await s.order(100000)).toEqual({ ok: false, reason: "reward_use_over_limit" }); // 결제 금액이 음수가 될 만큼 넘어도 500이 아니라 한도 초과
     expect(await s.order(4010)).toEqual({ ok: false, reason: "reward_balance_insufficient" });
     expect(await db.order.count()).toBe(0);
     expect(await balanceOf(s.seller.id, s.buyer.id)).toBe(4000);

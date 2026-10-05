@@ -30,15 +30,23 @@ export function rewardUseLimit(o: { itemsSubtotal: number; shippingFee: number; 
   return Math.max(0, Math.min(o.itemsSubtotal - itemCoupon, payable - 1));
 }
 
+// 주문을 넣기 전에 부른다: 판매자 사용 불가·한도 초과면 그 코드(한도를 크게 넘으면 결제 금액이 음수가 되어 주문 insert가 DB CHECK에 걸리므로 먼저 막는다).
+export async function rewardUsePrecheck(tx: Tx, o: { sellerId: string; amount: number; limit: number }): Promise<RewardUseFailure | null> {
+  if (o.amount === 0) return null;
+  const policy = await tx.rewardPolicy.findUnique({ where: { sellerId: o.sellerId }, select: { livePayoutEnabled: true } });
+  if (!policy?.livePayoutEnabled) return "reward_use_unavailable";
+  if (o.amount > o.limit) return "reward_use_over_limit";
+  return null;
+}
+
 // 주문 생성 트랜잭션 안에서 부른다(판매자 주문 잠금·회원 FOR SHARE를 잡은 뒤). 성공하면 null.
 export async function useRewardForOrder(
   tx: Tx,
   o: { sellerId: string; buyerMemberId: string; orderId: string; amount: number; limit: number; now: Date },
 ): Promise<RewardUseFailure | null> {
   if (o.amount === 0) return null;
-  const policy = await tx.rewardPolicy.findUnique({ where: { sellerId: o.sellerId }, select: { livePayoutEnabled: true } });
-  if (!policy?.livePayoutEnabled) return "reward_use_unavailable";
-  if (o.amount > o.limit) return "reward_use_over_limit";
+  const pre = await rewardUsePrecheck(tx, o);
+  if (pre) return pre;
   const [bal] = await tx.$queryRaw<{ balance: number }[]>`
     SELECT "balance" FROM "RewardBalance" WHERE "sellerId" = ${o.sellerId}::uuid AND "buyerMemberId" = ${o.buyerMemberId}::uuid FOR UPDATE`;
   if (!bal || bal.balance < o.amount) return "reward_balance_insufficient";
