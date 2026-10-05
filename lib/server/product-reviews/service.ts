@@ -747,8 +747,9 @@ export async function productReviews(db: PrismaClient, slug: string, productId: 
     const c = await db.productReview.findFirst({ where: { ...base, id: cursor }, select: { id: true, createdAt: true } });
     if (c) after = { OR: [{ createdAt: { lt: c.createdAt } }, { createdAt: c.createdAt, id: { lt: c.id } }] };
   }
-  const [agg, dist, rows] = await Promise.all([
+  const [agg, photoCount, dist, rows] = await Promise.all([
     db.productReview.aggregate({ where: base, _avg: { rating: true }, _count: { _all: true } }),
+    db.productReview.count({ where: { ...base, images: { some: {} } } }),
     db.productReview.groupBy({ by: ["rating"], where: base, _count: { _all: true } }),
     db.productReview.findMany({
       where: { ...base, ...after },
@@ -761,6 +762,8 @@ export async function productReviews(db: PrismaClient, slug: string, productId: 
   return {
     average: agg._count._all > 0 ? Math.round((agg._avg.rating ?? 0) * 10) / 10 : null,
     total: agg._count._all,
+    // 사진이 붙은 공개 리뷰 수(리뷰 요약 「사진 리뷰 N개」)
+    photoCount,
     distribution: [5, 4, 3, 2, 1].map((n) => ({ rating: n, count: dist.find((d) => d.rating === n)?._count._all ?? 0 })),
     reviews: page.map((r) => ({
       id: r.id,
