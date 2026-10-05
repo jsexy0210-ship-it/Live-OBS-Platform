@@ -369,3 +369,63 @@ async function cardExtras(db: PrismaClient, sellerId: string, items: { id: strin
   }
   return out;
 }
+
+// ───────── 추천 상품(상품 상세 「함께 보면 좋은 상품」, AI 없이) ─────────
+// 순서: 운영자 지정(ShopDisplayItem, 지정 순서) → 같은 카테고리 최근 30일 판매량순 → 같은 카테고리 최신순 → 쇼핑몰 전체 최근 30일 판매량순 → 전체 최신순.
+// 앞 단계에서 이미 뽑은 상품은 빼고 자기 자신은 넣지 않는다. 보이는 상품(판매 중·품절, 지우지 않음)만이고, 품절은 맨 뒤로 보내며 판매자가 「품절 숨기기」를 켰으면 뺀다.
+// reason: pick(운영자 지정) | category(같은 카테고리) | best(전체 판매량) | new(전체 최신).
+export const RECOMMEND_DEFAULT = 8;
+export const RECOMMEND_MAX = 20;
+export type RecommendReason = "pick" | "category" | "best" | "new";
+
+async function salesLast30d(db: PrismaClient, sellerId: string, ids: string[] | null, now: Date, limit: number) {
+  const since = new Date(now.getTime() - BEST_WINDOW_MS);
+  const rows = ids
+    ? await db.$queryRaw<{ productId: string; sold: bigint }[]>`
+        SELECT oi."productId", SUM(oi."quantity")::bigint AS "sold" FROM "OrderItem" oi
+        JOIN "Order" od ON od."sellerId" = oi."sellerId" AND od."id" = oi."orderId"
+        WHERE oi."sellerId" = ${sellerId}::uuid AND od."status" = 'PAID' AND od."paidAt" >= ${since} AND oi."productId" = ANY(${ids}::uuid[])
+        GROUP BY oi."productId" ORDER BY "sold" DESC, oi."productId" LIMIT ${limit}`
+    : await db.$queryRaw<{ productId: string; sold: bigint }[]>`
+        SELECT oi."productId", SUM(oi."quantity")::bigint AS "sold" FROM "OrderItem" oi
+        JOIN "Order" od ON od."sellerId" = oi."sellerId" AND od."id" = oi."orderId"
+        WHERE oi."sellerId" = ${sellerId}::uuid AND od."status" = 'PAID' AND od."paidAt" >= ${since}
+        GROUP BY oi."productId" ORDER BY "sold" DESC, oi."productId" LIMIT ${limit}`;
+  return rows.map((r) => r.productId);
+}
+
+export async function shopRecommendations(db: PrismaClient, slug: string, productId: string, rawLimit?: unknown) {
+  const limit = parseInt10(rawLimit, RECOMMEND_DEFAULT, 1, RECOMMEND_MAX);
+  if (limit === null) return { ok: false as const, reason: "invalid_query" as const };
+  if (!UUID.test(productId)) return { ok: false as const, reason: "not_found" as const };
+  const shop = await openShop(db, slug);
+  if (!shop) return { ok: false as const, reason: "not_found" as const };
+  const visible = { sellerId: shop.id, deletedAt: null, status: { in: [...VISIBLE] } };
+  if (!(await db.product.findFirst({ where: { ...visible, id: productId }, select: { id: true } }))) return { ok: false as const, reason: "not_found" as const };
+  const now = await dbNow(db);
+  // 후보를 한도의 2배까지 모은다(지워졌거나 숨겨진 상품·품절 숨기기로 빠질 몫)
+  const want = limit * 2;
+  const picked = new Map<string, RecommendReason>();
+  const add = (ids: string[], reason: RecommendReason) => {
+    for (const id of ids) if (id !== productId && !picked.has(id) && picked.size < want) picked.set(id, reason);
+  };
+  const designated = await db.shopDisplayItem.findMany({ where: { sellerId: shop.id, product: { ...visible } }, orderBy: [{ sortOrder: "asc" }, { productId: "asc" }], select: { productId: true }, take: want });
+  add(designated.map((d) => d.productId), "pick");
+  const mine = await db.productCategory.findMany({ where: { sellerId: shop.id, productId }, select: { categoryId: true } });
+  if (mine.length && picked.size < want) {
+    const sameRows = await db.productCategory.findMany({
+      where: { sellerId: shop.id, categoryId: { in: mine.map((c) => c.categoryId) }, productId: { not: productId }, product: { ...visible } },
+      select: { productId: true, product: { select: { createdAt: true } } },
+    });
+    const same = [...new Map(sameRows.map((r) => [r.productId, r.product.createdAt.getTime()])).entries()];
+    const bySales = await salesLast30d(db, shop.id, same.map(([id]) => id), now, want);
+    add(bySales, "category");
+    add(same.sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).map(([id]) => id), "category");
+  }
+  if (picked.size < want) add(await salesLast30d(db, shop.id, null, now, want), "best");
+  if (picked.size < want) add((await db.product.findMany({ where: { ...visible, id: { not: productId } }, orderBy: [{ createdAt: "desc" }, { id: "asc" }], select: { id: true }, take: want })).map((p) => p.id), "new");
+  const cards = await shopCardsInOrder(db, shop, [...picked.keys()]);
+  const opts = await displayOptions(db, shop.id);
+  const shown = arrange(cards, { soldOutLast: true, hideSoldOut: opts.hideSoldOut, liveFirst: false }, null, (c) => c.id).slice(0, limit);
+  return { ok: true as const, value: { products: shown.map((c) => ({ ...c, reason: picked.get(c.id)! })) } };
+}
