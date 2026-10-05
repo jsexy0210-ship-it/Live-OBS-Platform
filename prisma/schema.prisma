@@ -1059,6 +1059,7 @@ model Order {
   productReviews   ProductReview[]
   returnRequests   ReturnRequest[]
   payments         Payment[]
+  refunds          OrderRefund[]
 
   @@unique([sellerId, id])
   @@unique([sellerId, orderNo])
@@ -1086,6 +1087,8 @@ model OrderItem {
   // 이 품목의 재고를 뺀 시각(주문 때 또는 결제 때)과 되돌린 시각. 두 번 빼거나 두 번 되돌리지 않게 품목마다 남긴다.
   stockDeductedAt     DateTime? @db.Timestamptz(3)
   stockRestoredAt     DateTime? @db.Timestamptz(3)
+  // 환불한 수량(부분 환불, queue/service.ts refundOrder). 0 이상 quantity 이하(DB CHECK).
+  refundedQuantity    Int       @default(0)
 
   seller     Seller        @relation(fields: [sellerId], references: [id])
   order      Order         @relation(fields: [sellerId, orderId], references: [sellerId, id])
@@ -2709,4 +2712,35 @@ model YoutubeChatMonthly {
   messages Int    @default(0)
 
   @@id([sellerId, month])
+}
+
+// 환불 1건(부분 환불 포함, queue/service.ts refundOrder). 한 주문에 여러 번 생길 수 있고 seq는 주문 안 순번(1부터).
+// 마지막 환불(isFinal)에서 주문이 환불(REFUNDED)로 바뀐다. 금액은 이 환불분만(주문 합계는 Order.refundAmount 등).
+model OrderRefund {
+  id                String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId          String       @db.Uuid
+  orderId           String       @db.Uuid
+  seq               Int
+  fault             RefundFault?
+  reason            String
+  // [{ orderItemId, quantity, amount }]: 이번에 돌려받는 품목·수량과 품목 금액(쿠폰 배분 뺀 값, 구매자 사정 개봉 품목은 0)
+  items             Json
+  itemsAmount       Int
+  shippingRefunded  Int
+  refundAmount      Int
+  returnFeeDeducted Int
+  rewardReturn      Int
+  // 주문 적립 회수액과 방식(ledger: 회수 원장, manual: 수동 확인, pending: 아직 기록 전 적립 예정액에서 뺌)
+  rewardRevoke      Int
+  rewardRevokeKind  String?
+  isFinal           Boolean
+  actorType         ActorType
+  actorId           String?      @db.Uuid
+  createdAt         DateTime     @db.Timestamptz(3)
+
+  order Order @relation(fields: [sellerId, orderId], references: [sellerId, id])
+
+  @@unique([sellerId, id])
+  @@unique([orderId, seq])
+  @@index([sellerId, orderId])
 }

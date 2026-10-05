@@ -36,6 +36,7 @@ export const MEMBER_REFERENCE_POLICY: Record<string, { policy: MemberDataPolicy;
   "StockMovement.actorId": { policy: "retain_legal", note: "actorType=BUYER 행(주문으로 생긴 재고 증감). 거래 기록" },
   "OrderStatusHistory.actorId": { policy: "retain_legal", note: "actorType=BUYER 행(구매자 취소 등). 거래 기록" },
   "QueueItemStatusHistory.actorId": { policy: "retain_legal", note: "actorType=BUYER 행. 주문 이행 기록" },
+  "OrderRefund.actorId": { policy: "retain_legal", note: "환불한 행위자(파트너스 직원·관리자·시스템, 지금 구매자 행 없음). 환불 거래 기록" },
   "SellerMessageLedger.actorId": { policy: "retain_legal", note: "구매자 행 없음(DB CHECK로 actorType BUYER 금지, 행위자는 시스템·파트너스 직원·관리자). 발송 충전 원장" },
 };
 
