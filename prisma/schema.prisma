@@ -1569,6 +1569,9 @@ model SubscriptionPayment {
   refunds      SubscriptionRefund[]
 
   @@index([sellerId, createdAt])
+  // 마스터 청구·결제 내역(MA-024)의 기간 조회와 구독별 최신 청구 판정
+  @@index([createdAt])
+  @@index([subscriptionId, createdAt])
 }
 
 // 주문 단위 결제 전 동의(대표님 결정 2026-10-02): 「개봉하면 취소·환불이 안 돼요」. 동의하지 않으면 주문을 만들지 않는다.
