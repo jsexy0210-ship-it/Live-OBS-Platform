@@ -196,6 +196,96 @@ describe("선택 일괄 처리", () => {
     await expect(bulkProducts(db, { ...s.ctx, readOnly: true }, { action: "delete", productIds: [c.id] })).rejects.toMatchObject({ status: 403 });
   });
 
+  it("낙관적 잠금(expected): 화면이 본 판매가·판매 상태와 다르면 그 상품만 건너뛰고(price_conflict·status_conflict + 지금 값) 나머지는 처리한다, 삭제도 같다", async () => {
+    const s = await seller();
+    const a = await made(s.ctx, { name: "A", price: 5000 });
+    const b = await made(s.ctx, { name: "B", price: 6000 });
+    const c = await made(s.ctx, { name: "C", price: 7000 });
+    const d = await made(s.ctx, { name: "D", price: 8000 });
+    // 그사이 다른 사람이 B의 판매가를, C의 판매 상태를 바꿨다
+    await db.product.update({ where: { id: b.id }, data: { price: 6500 } });
+    await db.product.update({ where: { id: c.id }, data: { status: "SOLD_OUT" } });
+
+    const r = await bulkProducts(db, s.ctx, {
+      action: "status",
+      status: "HIDDEN",
+      productIds: [a.id, b.id, c.id, d.id],
+      expected: [
+        { productId: a.id, expectedPrice: 5000, expectedStatus: "ON_SALE" },
+        { productId: b.id, expectedPrice: 6000 },
+        { productId: c.id, expectedStatus: "ON_SALE" },
+      ],
+    });
+    expect(r).toEqual({
+      ok: true,
+      value: {
+        updated: [a.id, d.id],
+        skipped: [
+          { productId: b.id, reason: "price_conflict", currentPrice: 6500 },
+          { productId: c.id, reason: "status_conflict", currentStatus: "SOLD_OUT" },
+        ],
+      },
+    });
+    const status = async (id: string) => (await db.product.findUniqueOrThrow({ where: { id } })).status;
+    expect([await status(a.id), await status(b.id), await status(c.id), await status(d.id)]).toEqual(["HIDDEN", "ON_SALE", "SOLD_OUT", "HIDDEN"]);
+    // 충돌한 상품은 로그도 남지 않는다
+    expect((await db.auditLog.findMany({ where: { action: "product.update", sellerId: s.seller.id }, select: { targetId: true } })).map((l) => l.targetId).sort()).toEqual([a.id, d.id].sort());
+
+    // 판매가와 상태가 모두 다르면 판매가 충돌이 먼저
+    expect(await bulkProducts(db, s.ctx, { action: "status", status: "ON_SALE", productIds: [c.id], expected: [{ productId: c.id, expectedPrice: 1, expectedStatus: "DRAFT" }] })).toEqual({
+      ok: true,
+      value: { updated: [], skipped: [{ productId: c.id, reason: "price_conflict", currentPrice: 7000 }] },
+    });
+    // 본 값과 같으면 처리(되돌리기: 바꾼 뒤 상태 HIDDEN을 기대하고 ON_SALE로)
+    expect(await bulkProducts(db, s.ctx, { action: "status", status: "ON_SALE", productIds: [a.id, d.id], expected: [{ productId: a.id, expectedStatus: "HIDDEN" }, { productId: d.id, expectedStatus: "HIDDEN" }] })).toEqual({
+      ok: true,
+      value: { updated: [a.id, d.id], skipped: [] },
+    });
+
+    // 삭제도 충돌한 상품은 지우지 않는다
+    expect(await bulkProducts(db, s.ctx, { action: "delete", productIds: [a.id, b.id], expected: [{ productId: b.id, expectedPrice: 6000 }] })).toEqual({
+      ok: true,
+      value: { updated: [a.id], skipped: [{ productId: b.id, reason: "price_conflict", currentPrice: 6500 }] },
+    });
+    expect(await db.product.findUniqueOrThrow({ where: { id: b.id } })).toMatchObject({ deletedAt: null });
+    expect((await db.product.findUniqueOrThrow({ where: { id: a.id } })).deletedAt).not.toBeNull();
+    expect(await db.auditLog.count({ where: { action: "product.delete", sellerId: s.seller.id } })).toBe(1);
+
+    // expected를 안 보내면 지금 동작 그대로(충돌 검사 없음)
+    expect(await bulkProducts(db, s.ctx, { action: "status", status: "HIDDEN", productIds: [b.id] })).toEqual({ ok: true, value: { updated: [b.id], skipped: [] } });
+
+    // 형식이 틀리면 400(invalid_bulk): 목록 밖 상품·중복·빈 항목·잘못된 값·배열이 아님
+    for (const expected of [
+      "x",
+      [{ productId: d.id, expectedPrice: 8000 }],
+      [{ productId: b.id }],
+      [{ productId: b.id, expectedPrice: 0 }],
+      [{ productId: b.id, expectedPrice: 1.5 }],
+      [{ productId: b.id, expectedPrice: "6000" }],
+      [{ productId: b.id, expectedStatus: "GONE" }],
+      [{ productId: "bad", expectedPrice: 1 }],
+      [{ productId: b.id, expectedPrice: 1 }, { productId: b.id, expectedStatus: "HIDDEN" }],
+      [null],
+    ]) {
+      expect(await bulkProducts(db, s.ctx, { action: "status", status: "HIDDEN", productIds: [b.id], expected }), JSON.stringify(expected)).toEqual({ ok: false, reason: "invalid_bulk" });
+    }
+  });
+
+  it("동시에 겹쳐도: 단건 변경이 행을 잡은 채 끝나기를 일괄 처리가 기다렸다가, 바뀐 값 기준으로 충돌을 판정한다", async () => {
+    const s = await seller();
+    const a = await made(s.ctx, { name: "A", price: 5000 });
+    let bulk!: ReturnType<typeof bulkProducts>;
+    await db.$transaction(async (tx) => {
+      // 다른 화면의 변경: 행을 잠그고 판매 상태를 바꾼 채 아직 끝내지 않는다
+      await tx.product.update({ where: { id: a.id }, data: { status: "SOLD_OUT" } });
+      bulk = bulkProducts(db, s.ctx, { action: "status", status: "HIDDEN", productIds: [a.id], expected: [{ productId: a.id, expectedStatus: "ON_SALE" }] });
+      await new Promise((r) => setTimeout(r, 300));
+    });
+    // 일괄 처리는 잠금이 풀린 뒤 지금 값(SOLD_OUT)을 보고 건너뛴다
+    expect(await bulk).toEqual({ ok: true, value: { updated: [], skipped: [{ productId: a.id, reason: "status_conflict", currentStatus: "SOLD_OUT" }] } });
+    expect((await db.product.findUniqueOrThrow({ where: { id: a.id } })).status).toBe("SOLD_OUT");
+  });
+
   it("HTTP: 권한 없는 직원 403, 다른 출처 403, 잘못된 요청은 400과 문구, 목록 검색 오류도 문구", async () => {
     const s = await seller();
     const p = await made(s.ctx);
@@ -217,6 +307,11 @@ describe("선택 일괄 처리", () => {
     const ok = await post(owner, { action: "status", status: "SOLD_OUT", productIds: [p.id] });
     expect(ok.status).toBe(200);
     expect(await ok.json()).toEqual({ updated: [p.id], skipped: [] });
+    // 낙관적 잠금: 본 값과 다르면 200으로 skipped에 지금 값을 담아 준다, 형식이 틀리면 400
+    const conflict = await post(owner, { action: "status", status: "HIDDEN", productIds: [p.id], expected: [{ productId: p.id, expectedStatus: "ON_SALE" }] });
+    expect(conflict.status).toBe(200);
+    expect(await conflict.json()).toEqual({ updated: [], skipped: [{ productId: p.id, reason: "status_conflict", currentStatus: "SOLD_OUT" }] });
+    expect((await post(owner, { action: "status", status: "HIDDEN", productIds: [p.id], expected: [{ productId: p.id }] })).status).toBe(400);
 
     const list = (qs: string) => listRoute(new Request(`http://localhost:3000/api/seller/products?${qs}`, { headers: { ...H, cookie: owner } }));
     const r = await list("sort=sales&display=shown&code=&createdFrom=2026-01-01");
