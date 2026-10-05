@@ -56,7 +56,7 @@ test("대표자: 메뉴에서 입금 확인을 열고, 단건 확인 뒤 일괄 
   const dialog = page.getByRole("dialog", { name: "입금을 확인하시겠습니까?" });
   await expect(dialog).toContainText(DEPOSIT_NICKNAMES[0]);
   await dialog.getByRole("button", { name: "입금 확인" }).click();
-  await expect(page.getByText("1건 입금 확인 · 주문대기에 올라갔습니다")).toBeVisible();
+  await expect(page.getByText("1건 입금 확인 · 주문대기(방송에서 개봉할 순서 목록)에 올라갔습니다")).toBeVisible();
   await expect(row(page, DEPOSIT_NICKNAMES[0])).toHaveCount(0);
   expect(await statusOf(page, made.orderIds[0])).toBe("PAID");
 
