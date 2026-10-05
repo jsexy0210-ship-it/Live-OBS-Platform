@@ -1,0 +1,131 @@
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { prisma } from "../../lib/server/db";
+import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
+import { createOrder } from "../../lib/server/orders/create";
+import { getBuyerOrder } from "../../lib/server/orders/buyer";
+import { getOrder, listSellerOrders } from "../../lib/server/orders/read";
+import { listShipments } from "../../lib/server/orders/shipments";
+import { markOrderPaid, previewRefundSelection, refundOrder, type RefundSelection } from "../../lib/server/queue/service";
+import { buyerReturnContext, createReturn } from "../../lib/server/shop-returns/service";
+import { orderStats } from "../../lib/server/stats/orders";
+import { parseStatsRange } from "../../lib/server/stats/range";
+import { salesStats } from "../../lib/server/stats/sales";
+import type { TenantContext } from "../../lib/server/tenant/context";
+import { createLoginBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
+
+// 부분 환불 뒤 보이는 수량·금액(MASTER 배정 2026-10-05, 검수 #391 후속): 출고·주문 목록 요약, 주문 상세, 구매자 주문,
+// 교환·반품 신청 가능 수량은 환불한 수량을 빼고, 통계는 결제 완료로 남은 부분 환불액도 매출에서 뺀다.
+beforeEach(resetDb);
+afterAll(async () => {
+  await db.$disconnect();
+  await prisma.$disconnect();
+});
+
+const consent = { agreed: true, noticeVersion: OPENED_NO_REFUND_CONSENT.version };
+const addr = { recipientName: "김구매", phone: "010-1234-5678", zipCode: "06236", address1: "주소 1" };
+const today = () => new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Seoul" }).format(new Date());
+
+// 박스 7,000원 × 1, 팩 5,000원 × 3(주문대기에서 빠진 품목이라 수량 일부 환불 가능), 배송비 3,000원
+async function setup() {
+  const { seller, grade } = await createSeller();
+  const owner = await createSellerUser(seller.id, "OWNER");
+  const ctx: TenantContext = { sellerId: seller.id, actorType: "SELLER_USER", actorId: owner.id, isOwner: true, permissions: [], readOnly: false };
+  const buyer = await createLoginBuyer(seller.id, grade.id);
+  const box = await db.product.create({ data: { sellerId: seller.id, name: "박스", price: 7000, status: "ON_SALE" } });
+  const pack = await db.product.create({ data: { sellerId: seller.id, name: "팩", price: 5000, status: "ON_SALE" } });
+  const boxOpt = await db.productOption.create({ data: { sellerId: seller.id, productId: box.id, name: "1개", stock: 50 } });
+  const packOpt = await db.productOption.create({ data: { sellerId: seller.id, productId: pack.id, name: "1개", stock: 50 } });
+  const o = await createOrder(db, {
+    sellerId: seller.id,
+    buyerMemberId: buyer.id,
+    items: [
+      { optionId: boxOpt.id, quantity: 1 },
+      { optionId: packOpt.id, quantity: 3 },
+    ],
+    consent,
+    shippingAddress: addr,
+  });
+  if (!o.ok) throw new Error(o.reason);
+  const paid = await markOrderPaid(db, { sellerId: seller.id, orderId: o.orderId, paymentMethod: "CARD" });
+  if (!paid.ok) throw new Error(paid.reason);
+  const items = await db.orderItem.findMany({ where: { orderId: o.orderId } });
+  const boxItem = items.find((i) => i.optionId === boxOpt.id)!;
+  const packItem = items.find((i) => i.optionId === packOpt.id)!;
+  await db.queueItem.update({ where: { sellerId_orderItemId: { sellerId: seller.id, orderItemId: packItem.id } }, data: { status: "CANCELLED", cancelledAt: new Date() } });
+  const order = await db.order.findUniqueOrThrow({ where: { id: o.orderId } });
+  const refund = async (sel: RefundSelection | undefined) => {
+    const p = await previewRefundSelection(db, ctx, o.orderId, sel);
+    if (!p.ok) throw new Error(p.reason);
+    const liveVersion = (await db.seller.findUniqueOrThrow({ where: { id: seller.id } })).liveVersion;
+    const r = await refundOrder(db, ctx, o.orderId, { reason: "부분", expectedLiveVersion: liveVersion, fault: "SELLER", expectedRefundAmount: p.value.byFault.SELLER.refundAmount, items: sel });
+    if (!r.ok) throw new Error(r.reason);
+    return r.value;
+  };
+  return { seller, ctx, buyer, order, boxItem, packItem, refund, scope: { sellerId: seller.id, buyerMemberId: buyer.id } };
+}
+
+const shipmentRow = async (s: Awaited<ReturnType<typeof setup>>) => {
+  const r = await listShipments(db, s.ctx, { tab: "ready" });
+  if (!r.ok) throw new Error("list");
+  return r.shipments.find((x) => x.orderId === s.order.id) ?? null;
+};
+
+describe("부분 환불 뒤 수량 표시", () => {
+  it("출고 목록·주문 목록 요약은 다 돌려준 품목을 빼고, 남은 품목이 없으면(주문 환불) 출고 목록에서 사라진다", async () => {
+    const s = await setup();
+    expect((await shipmentRow(s))?.itemSummary).toEqual({ firstProductName: "박스", otherCount: 1, refundedQuantity: 0 });
+    await s.refund([{ orderItemId: s.boxItem.id, quantity: 1 }]);
+    expect((await shipmentRow(s))?.itemSummary).toEqual({ firstProductName: "팩", otherCount: 0, refundedQuantity: 1 });
+    await s.refund([{ orderItemId: s.packItem.id, quantity: 1 }]);
+    expect((await shipmentRow(s))?.itemSummary).toEqual({ firstProductName: "팩", otherCount: 0, refundedQuantity: 2 });
+    const list = await listSellerOrders(db, s.ctx, {});
+    if (!list.ok) throw new Error("list");
+    expect(list.orders.find((o) => o.id === s.order.id)?.itemSummary).toEqual({ firstProductName: "팩", otherCount: 0, refundedQuantity: 2 });
+    await s.refund(undefined);
+    expect(await shipmentRow(s)).toBeNull();
+    // 전부 환불된 주문의 목록 요약은 모든 품목으로 보여 준다
+    const after = await listSellerOrders(db, s.ctx, {});
+    if (!after.ok) throw new Error("list");
+    expect(after.orders.find((o) => o.id === s.order.id)?.itemSummary).toEqual({ firstProductName: "박스", otherCount: 1, refundedQuantity: 4 });
+  });
+
+  it("파트너스 주문 상세는 품목마다 환불한 수량과 보낼 수량, 구매자 주문 상세는 환불한 수량을 준다", async () => {
+    const s = await setup();
+    await s.refund([{ orderItemId: s.packItem.id, quantity: 2 }]);
+    const o = await getOrder(db, s.ctx, s.order.id);
+    expect(o.items.find((i) => i.id === s.packItem.id)).toMatchObject({ quantity: 3, refundedQuantity: 2, shipQuantity: 1 });
+    expect(o.items.find((i) => i.id === s.boxItem.id)).toMatchObject({ quantity: 1, refundedQuantity: 0, shipQuantity: 1 });
+    const b = await getBuyerOrder(db, s.scope, s.order.id);
+    expect(b?.items.map((i) => [i.productNameSnapshot, i.quantity, i.refundedQuantity]).sort()).toEqual([
+      ["박스", 1, 0],
+      ["팩", 3, 2],
+    ]);
+  });
+
+  it("교환·반품 신청은 다 돌려준 품목을 빼고 남은 수량으로만 받는다", async () => {
+    const s = await setup();
+    await s.refund([{ orderItemId: s.boxItem.id, quantity: 1 }]);
+    await s.refund([{ orderItemId: s.packItem.id, quantity: 1 }]);
+    await db.shipment.create({ data: { sellerId: s.seller.id, orderId: s.order.id, courier: "CJ", trackingNumber: "123456789012", status: "DELIVERED", shippedAt: new Date(), deliveredAt: new Date() } });
+    const ctx = await buyerReturnContext(db, s.scope, s.order.id);
+    expect(ctx?.items).toEqual([{ orderItemId: s.packItem.id, productName: "팩", optionName: "1개", quantity: 2 }]);
+    expect(await createReturn(db, s.scope, s.order.id, { kind: "EXCHANGE", reason: "DEFECTIVE", orderItemIds: [s.boxItem.id] })).toMatchObject({ ok: false, reason: "invalid_items" });
+    const r = await createReturn(db, s.scope, s.order.id, { kind: "RETURN", reason: "DEFECTIVE" });
+    expect(r.ok).toBe(true);
+    const items = await db.returnRequestItem.findMany({ where: { sellerId: s.seller.id } });
+    expect(items.map((i) => [i.orderItemId, i.quantity])).toEqual([[s.packItem.id, 2]]);
+  });
+
+  it("통계: 결제 완료로 남은 부분 환불액도 환불액에 넣고 순매출에서 뺀다", async () => {
+    const s = await setup();
+    await s.refund([{ orderItemId: s.boxItem.id, quantity: 1 }]);
+    const range = parseStatsRange({ from: today(), to: today() })!;
+    const os = await orderStats(db, s.ctx, range);
+    expect(os.current).toMatchObject({ revenue: s.order.totalAmount, refundAmount: 7000, netRevenue: s.order.totalAmount - 7000, refunded: 0 });
+    const ss = await salesStats(db, s.ctx, range);
+    expect(ss.current).toMatchObject({ paid: s.order.totalAmount, refund: 7000, net: s.order.totalAmount - 7000 });
+    await s.refund(undefined);
+    const after = await orderStats(db, s.ctx, range);
+    expect(after.current).toMatchObject({ refundAmount: s.order.totalAmount, netRevenue: 0, refunded: 1 });
+  });
+});
