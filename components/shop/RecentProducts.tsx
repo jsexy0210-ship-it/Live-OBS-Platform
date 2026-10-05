@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ProductGrid, type ProductCardData } from "./ProductCard";
 
 // 최근 본 상품(보드 SH-003-IA): 이 기기에서 본 상품을 localStorage에 최근 순 10개까지 남기고(서버 값 없음, 로그인 무관), 지금 보는 상품은 빼고 보여 준다.
@@ -18,18 +18,19 @@ function read(slug: string): ProductCardData[] {
 
 export default function RecentProducts({ slug, current }: { slug: string; current: ProductCardData }) {
   const [others, setOthers] = useState<ProductCardData[]>([]);
+  // 값이 같으면 같은 객체로 두어 효과가 불필요하게 다시 돌지 않게 한다
+  const { id, name, price, salePrice, soldOut, thumbnailUrl } = current;
+  const card = useMemo<ProductCardData>(() => ({ id, name, price, salePrice, soldOut, thumbnailUrl }), [id, name, price, salePrice, soldOut, thumbnailUrl]);
   useEffect(() => {
     const prev = read(slug);
-    const next = [current, ...prev.filter((x) => x.id !== current.id)].slice(0, MAX);
+    const next = [card, ...prev.filter((x) => x.id !== card.id)].slice(0, MAX);
     try {
       window.localStorage.setItem(key(slug), JSON.stringify(next));
     } catch {
       // 저장하지 못해도 이번 화면에서는 보여 준다
     }
-    setOthers(prev.filter((x) => x.id !== current.id).slice(0, 6));
-    // 지금 상품이 바뀔 때만 다시 기록한다
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug, current.id]);
+    setOthers(prev.filter((x) => x.id !== card.id).slice(0, 6));
+  }, [slug, card]);
   if (others.length === 0) return null;
   return (
     <section className="pd-reco" aria-labelledby="pd-recent-h">
