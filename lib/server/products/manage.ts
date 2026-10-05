@@ -6,6 +6,7 @@ import { dbClock } from "../orders/overdue";
 import { kstDayStart } from "../orders/read";
 import { INT4_MAX } from "../orders/shipping";
 import { cleanText } from "../text/clean";
+import { parseSearchTags } from "../shop-search/service";
 import { eventFits, eventOf, eventView } from "./event";
 import { listProductImages, thumbnailUrls } from "./images";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
@@ -359,7 +360,9 @@ export async function createProduct(db: PrismaClient, ctx: TenantContext, raw: u
   const status = b.status ?? "DRAFT";
   const sortOrder = b.sortOrder ?? 0;
   const stockDeductMode = b.stockDeductMode ?? "PAYMENT";
+  const searchTags = parseSearchTags(b.searchTags);
   if (
+    searchTags === null ||
     description === undefined ||
     !PRODUCT_STATUSES.includes(status as ProductStatus) ||
     !isInt(sortOrder, -100000, 100000) ||
@@ -384,7 +387,7 @@ export async function createProduct(db: PrismaClient, ctx: TenantContext, raw: u
   return db.$transaction(async (tx) => {
     const now = await dbNow(tx);
     const product = await tx.product.create({
-      data: { sellerId: ctx.sellerId, name, description, price, status: status as ProductStatus, sortOrder, stockDeductMode: stockDeductMode as StockDeductMode, createdAt: now },
+      data: { sellerId: ctx.sellerId, name, description, searchTags, price, status: status as ProductStatus, sortOrder, stockDeductMode: stockDeductMode as StockDeductMode, createdAt: now },
     });
     for (const o of options) {
       const created = await tx.productOption.create({ data: { sellerId: ctx.sellerId, productId: product.id, ...o, createdAt: now } });
@@ -427,6 +430,11 @@ export async function updateProduct(
     const description = multiline(b.description, 5000);
     if (description === undefined) return fail("invalid_product");
     data.description = description;
+  }
+  if (b.searchTags !== undefined) {
+    const searchTags = parseSearchTags(b.searchTags);
+    if (searchTags === null) return fail("invalid_product");
+    data.searchTags = searchTags;
   }
   if (b.status !== undefined) {
     if (!PRODUCT_STATUSES.includes(b.status as ProductStatus)) return fail("invalid_product");
