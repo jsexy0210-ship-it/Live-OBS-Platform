@@ -109,6 +109,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/stream": "OVERLAY",
   "seller/member-policy": "STORE_OPERATIONS",
   "seller/order-policy": "STORE_OPERATIONS",
+  "seller/order-notification-policy": "STORE_OPERATIONS",
   "seller/payments/bank-account": "STORE_OPERATIONS", // 무통장 입금 계좌
   "seller/payments/deposits": "ORDER_FOLLOWUP", // 입금 대기 목록(잠금 중에도 이미 받은 주문 처리)
   "seller/payments/deposits/confirm": "ORDER_FOLLOWUP", // 입금 확인

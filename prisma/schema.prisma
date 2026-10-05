@@ -126,6 +126,7 @@ model Seller {
   overlayTemplates         OverlayTemplate[]
   mailDeliveries           MailDelivery[]
   memberPolicy             SellerMemberPolicy?
+  orderNotificationPolicy  SellerOrderNotificationPolicy?
   rejoinBlocks             BuyerRejoinBlock[]
   purchaseRestrictions     BuyerPurchaseRestriction[]
   shippingPolicy           SellerShippingPolicy?
@@ -3045,4 +3046,16 @@ model PlatformInquiryImage {
 
   @@index([sellerId, messageId])
   @@index([sellerId, sellerUserId, messageId, createdAt])
+}
+
+// 주문자 메일 켜기·끄기(SA-080). 거래 메일 4종(주문 완료·발송·배송 완료·취소·환불), 기본은 모두 켬. 행이 없으면 모두 켠 것으로 본다.
+model SellerOrderNotificationPolicy {
+  sellerId             String   @id @db.Uuid
+  orderCompleteEnabled Boolean  @default(true)
+  shippedEnabled       Boolean  @default(true)
+  deliveredEnabled     Boolean  @default(true)
+  cancelRefundEnabled  Boolean  @default(true)
+  updatedAt            DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
 }
