@@ -74,6 +74,8 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/member-grades/recalc": "STORE_OPERATIONS",
   "seller/member-grades/members/[memberId]": "STORE_OPERATIONS",
   "seller/returns": "ORDER_FOLLOWUP",
+  "seller/receipt-requests": "ORDER_FOLLOWUP",
+  "seller/receipt-requests/[id]/retry": "ORDER_FOLLOWUP",
   "seller/refund-requests": "ORDER_FOLLOWUP",
   "seller/refund-requests/[id]": "ORDER_FOLLOWUP",
   "seller/refund-requests/[id]/approve": "ORDER_FOLLOWUP",
@@ -200,6 +202,8 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/categories": "STORE_OPERATIONS", // 카테고리 메뉴(SA-015)
   "shop/[slug]/shop-content/logo": "STORE_OPERATIONS", // 쇼핑몰 로고(없으면 404, 화면은 첫 글자)
   "shop/[slug]/returns": "STORE_OPERATIONS", // 교환·반품 신청(POST는 shopOpen으로 막고, GET 내 신청 조회는 잠긴 쇼핑몰에서도 열림)
+  "shop/[slug]/receipt-requests": "STORE_OPERATIONS", // 현금영수증·세금계산서 신청(POST는 shopOpen으로 막음)
+  "shop/[slug]/receipt-requests/[id]/withdraw": "STORE_OPERATIONS",
   "shop/[slug]/refund-requests": "STORE_OPERATIONS", // 환불 요청(반품 신청과 같음: POST는 shopOpen으로 막음)
   "shop/[slug]/refund-requests/[id]/cancel": "STORE_OPERATIONS",
   "shop/[slug]/returns/[id]/cancel": "STORE_OPERATIONS",
