@@ -793,14 +793,6 @@ body {
 .imp-left {
   flex: none;
 }
-/* 대리 조회 중 쓰기 버튼(제출·삭제성)은 눌러지지 않게 한다. 막는 것은 서버(403 impersonation_read_only)가 한다 */
-.cs[data-readonly="true"] .cs-body :is(button[type="submit"], .btn-neg) {
-  background: var(--wds-interaction-disable);
-  color: var(--wds-label-disable);
-  box-shadow: none;
-  cursor: not-allowed;
-  pointer-events: none;
-}
 .imp-end {
   flex: none;
   background: #fff;
