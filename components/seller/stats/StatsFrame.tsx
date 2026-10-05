@@ -8,7 +8,6 @@ import { PageHead } from "../../admin-ui";
 import { Topbar, planAllows, useSeller } from "../SellerShell";
 import { LoadingRows } from "../States";
 import { api } from "../api";
-import { SmartBackButton } from "../SmartBackButton";
 import { useUrlState } from "../../../lib/client/navigation";
 
 // SA-056 통계 화면 공통 틀: 통계 탭 · 기간 선택(오늘·최근 7일·최근 30일·직접 선택) · 묶음 단위 · 상태(로딩·데이터 없음·오류·권한 없음).
@@ -82,8 +81,7 @@ export function usePeriod(): readonly [Period, (p: Period) => void] {
   return [period, setPeriod] as const;
 }
 
-export function StatsFrame({ back, title, heading, sub, period, setPeriod, onDownload, download, units = true, comparable, children }: {
-  back?: string; // 하위 화면이면 ← 의 부모 경로(요약은 최상위 메뉴라 없음)
+export function StatsFrame({ title, heading, sub, period, setPeriod, onDownload, download, units = true, comparable, children }: {
   title: string;
   // 제목을 따로 줄 때(요약은 「통계」). 없으면 「{title} 통계」
   heading?: string;
@@ -127,15 +125,7 @@ export function StatsFrame({ back, title, heading, sub, period, setPeriod, onDow
     <>
       <Topbar crumb={`통계 › ${title}`} />
       <main className="main">
-        <PageHead
-          title={heading ?? `통계 · ${title}`}
-          actions={
-            <>
-              {back && <SmartBackButton fallback={back}>통계 요약</SmartBackButton>}
-              {download ?? (onDownload && <button className="btn btn-out" type="button" onClick={onDownload}>엑셀 내려받기</button>)}
-            </>
-          }
-        />
+        <PageHead title={heading ?? `통계 · ${title}`} actions={download ?? (onDownload && <button className="btn btn-out" type="button" onClick={onDownload}>엑셀 내려받기</button>)} />
         <nav className="tabs sts-tabs" aria-label="통계 종류">
           {STATS_TABS.filter((t) => planAllows(me.features, t.plan)).map((t) => (
             <Link key={t.href} href={t.href} className={`tab${(t.href === "/seller/stats" ? pathname === t.href : pathname.startsWith(t.href)) ? " on" : ""}`}>

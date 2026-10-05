@@ -33,10 +33,8 @@ export default function NoticeDetailPage() {
       <Topbar crumb="공지 · 문의" />
       <main className="main">
         <PageHead
+          back="/seller/notices"
           title="공지사항"
-          actions={
-            <SmartBackButton fallback="/seller/notices" className="btn btn-out">목록으로</SmartBackButton>
-          }
         />
         <div className="card" style={{ padding: 24 }}>
           {state.kind === "loading" && <LoadingRows rows={4} />}

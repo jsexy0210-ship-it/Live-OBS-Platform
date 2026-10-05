@@ -4,6 +4,7 @@ import "../../../../../../styles/seller-orders.css";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import RefundModal from "../../../../../../components/seller/RefundModal";
+import { PageHead } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { SmartBackButton } from "../../../../../../components/seller/SmartBackButton";
 import { LoadingRows, NoPermission, Toast } from "../../../../../../components/seller/States";
@@ -94,18 +95,18 @@ export default function OrderDetailPage() {
         )}
       </Topbar>
       <main className="main">
-        <div className="ph">
-          <div className="col" style={{ gap: 6 }}>
-            <div className="row wrap" style={{ gap: 8 }}>
-              <h1 className="t-t3">
-                {nick} · {longTime(o.createdAt)} 주문
-              </h1>
+        <PageHead
+          title={
+            <>
+              {nick} · {longTime(o.createdAt)} 주문{" "}
               <span className={`bdg bdg-lg ${STATUS_BADGE[o.status].cls}`}>{detailStatusLabel(o.status)}</span>
               {o.shipment && <span className="bdg bdg-lg b-info nodot">{SHIPMENT_STATUS[o.shipment.status] ?? "발송함"}</span>}
-            </div>
-            <span className="t-l2 c-alt">{fullTime(o.createdAt)} 접수</span>
-            <span className="t-c1 c-alt num">주문번호 {o.orderNo} · 응대 · 검색할 때만 사용합니다</span>
-          </div>
+            </>
+          }
+        />
+        <div className="col" style={{ gap: 4, marginBottom: 16 }}>
+          <span className="t-l2 c-alt">{fullTime(o.createdAt)} 접수</span>
+          <span className="t-c1 c-alt num">주문번호 {o.orderNo} · 응대 · 검색할 때만 사용합니다</span>
         </div>
 
         <div className="ord-detail">

@@ -5,7 +5,6 @@ import { Suspense, useEffect, useState } from "react";
 import { PageHead } from "../../../../../../components/admin-ui";
 import { InquiryAttach, type Attached } from "../../../../../../components/seller/InquiryAttach";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
-import { SmartBackButton } from "../../../../../../components/seller/SmartBackButton";
 import { useUnsavedGuard } from "../../../../../../lib/client/navigation";
 import { api } from "../../../../../../components/seller/api";
 import { INQUIRY_BODY_MAX, INQUIRY_CATEGORY, INQUIRY_TITLE_MAX, type InquiryCategory } from "../../../../../../components/seller/platformInquiry";
@@ -52,12 +51,8 @@ function Form() {
       <Topbar crumb="공지 · 문의" />
       <main className="main">
         <PageHead
+          back="/seller/inquiries"
           title="문의하기"
-          actions={
-            <SmartBackButton fallback="/seller/inquiries" dirty={dirty && !sent}>
-              내 문의
-            </SmartBackButton>
-          }
         />
         <div className="card" style={{ padding: 24 }}>
           <form

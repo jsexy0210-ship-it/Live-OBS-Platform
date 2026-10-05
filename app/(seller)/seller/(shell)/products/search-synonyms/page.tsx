@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { PageHead } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
-import { SmartBackButton } from "../../../../../../components/seller/SmartBackButton";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
 import { textLength } from "../../../../../../components/seller/format";
@@ -103,7 +102,6 @@ export default function SearchSynonymsPage() {
           title="검색 유사어"
           actions={
             <>
-              <SmartBackButton fallback="/seller/products" dirty={dirty}>상품 목록</SmartBackButton>
               {canEdit && (
               <button className={`btn${busy ? " is-loading" : ""}`} type="button" disabled={busy || !dirty} onClick={() => void save()}>
                 {busy ? "저장 중" : "저장"}

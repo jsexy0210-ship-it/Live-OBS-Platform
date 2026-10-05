@@ -57,10 +57,8 @@ export default function InquiryDetailPage() {
       <Topbar crumb="공지 · 문의" />
       <main className="main">
         <PageHead
+          back="/seller/inquiries"
           title="문의 내용"
-          actions={
-            <SmartBackButton fallback="/seller/inquiries" className="btn btn-out">내 문의</SmartBackButton>
-          }
         />
         <div className="card" style={{ padding: 24 }}>
           {state.kind === "loading" && <LoadingRows rows={4} />}

@@ -99,8 +99,7 @@ export default function BroadcastDetailPage() {
                   방송 대시보드로
                 </Link>
               )}
-              <SmartBackButton fallback="/seller/broadcasts" className="btn btn-out">목록</SmartBackButton>
-            </>
+              </>
           }
         />
 

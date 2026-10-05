@@ -24,15 +24,15 @@ test("회원 상세: 직접 진입 → 「회원 목록」은 부모로 replace(
   // 목록 → 상세 → ←
   await page.getByTestId("member-row").first().getByRole("link").click();
   await expect(page).toHaveURL(/\/seller\/members\/[0-9a-f-]{36}$/);
-  await page.getByRole("button", { name: "회원 목록" }).click();
+  await page.getByRole("button", { name: "뒤로" }).click();
   await expect(page).toHaveURL(/\/seller\/members\?status=ACTIVE$/);
   await expect(page.getByRole("button", { name: /^활동/ })).toHaveAttribute("aria-pressed", "true");
 
   // 직접 URL → ←: 부모로 replace, 이어서 브라우저 Back은 직접 진입 전 화면으로
   await page.goto("about:blank");
   await page.goto(detail!);
-  await expect(page.getByRole("button", { name: "회원 목록" })).toBeVisible();
-  await page.getByRole("button", { name: "회원 목록" }).click();
+  await expect(page.getByRole("button", { name: "뒤로" })).toBeVisible();
+  await page.getByRole("button", { name: "뒤로" }).click();
   await expect(page).toHaveURL(/\/seller\/members$/);
   await page.goBack();
   await expect(page).toHaveURL("about:blank");
@@ -46,13 +46,16 @@ test("통계 하위 화면: 기간은 주소에 남고 ←는 통계 요약으�
   await page.reload();
   await expect(page.getByRole("button", { name: "30일", exact: true })).toHaveAttribute("aria-pressed", "true");
   // 직접 진입(이 영역의 이전 화면이 없음) → 부모로 replace
-  await page.getByRole("button", { name: "통계 요약" }).click();
+  await page.getByRole("button", { name: "뒤로" }).click();
   await expect(page).toHaveURL(/\/seller\/stats$/);
 });
 
 test("문의하기: 입력 중 ←는 확인을 묻고, 취소하면 머물고 확인하면 내 문의로 간다", async ({ page }) => {
-  await login(page, "/seller/inquiries/new");
-  await expect(page.getByRole("button", { name: "내 문의" })).toBeVisible();
+  await login(page, "/seller/inquiries");
+  await expect(page).toHaveURL(/\/seller\/inquiries$/);
+  await page.getByRole("link", { name: "문의하기" }).first().click();
+  await expect(page).toHaveURL(/\/seller\/inquiries\/new$/);
+  await expect(page.getByRole("button", { name: "뒤로" })).toBeVisible();
   const seen: string[] = [];
   let answer = false;
   page.on("dialog", (d) => {
@@ -60,11 +63,11 @@ test("문의하기: 입력 중 ←는 확인을 묻고, 취소하면 머물고 �
     void (answer ? d.accept() : d.dismiss());
   });
   await page.getByLabel(/제목/).fill("Back 확인");
-  await page.getByRole("button", { name: "내 문의" }).click();
+  await page.getByRole("button", { name: "뒤로" }).click();
   await expect.poll(() => seen.length).toBe(1);
   await expect(page).toHaveURL(/\/seller\/inquiries\/new$/);
   answer = true;
-  await page.getByRole("button", { name: "내 문의" }).click();
+  await page.getByRole("button", { name: "뒤로" }).click();
   await expect(page).toHaveURL(/\/seller\/inquiries$/);
 });
 
