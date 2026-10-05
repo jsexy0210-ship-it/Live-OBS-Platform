@@ -171,7 +171,7 @@ test("템플릿으로 초기화(초안)하고 되돌릴 수 있으며, 내 템�
   await expect.poll(() => currentX(page)).toBe(43);
 
   // 삭제
-  await row.getByRole("button", { name: `${NAME} 삭제` }).click();
+  await row.getByRole("button", { name: `${NAME} 지우기` }).click();
   await page.getByRole("dialog").getByRole("button", { name: "템플릿 지우기" }).click();
   await expect(page.getByTestId("ove-mine-row").filter({ hasText: NAME })).toHaveCount(0);
   await reset(page);
@@ -262,4 +262,24 @@ test("끌 때 정렬 가이드선이 보이고, 실제 크기 미리보기가 �
   await expect(page).not.toHaveURL(/\/seller\/overlay$/);
   expect((await layout(page)).widgets.find((x) => x.id === "current")!.y).toBe(41);
   await reset(page);
+});
+
+// 쉬운 말 문구로 위쪽 버튼 줄(「지금 배치를 내 템플릿으로 저장」「방송 화면에 저장하기」 등)이 길어졌다. 1440·1024·390에서 화면이 가로로 밀리지 않고 버튼이 줄바꿈으로 모두 보이는지 확인하고 캡처를 남긴다(E2E_SCREENSHOTS=1).
+test("편집기 위쪽 버튼 줄: 1440·1024·390폭에서 가로로 넘치지 않고 모든 버튼이 보인다", async ({ page }) => {
+  await login(page);
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await page.waitForTimeout(600); // 좁은 폭에서 메뉴 서랍이 접히는 전환이 끝난 뒤 잰다
+    const doc = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth, sx: window.scrollX }));
+    expect(doc.sw).toBe(width);
+    expect(doc.cw).toBe(width);
+    expect(doc.sx).toBe(0);
+    for (const name of ["방송 화면에 저장하기", "지금 배치를 내 템플릿으로 저장", "방금 작업 취소", "취소한 작업 다시 하기", "실제 크기로 보기"]) {
+      const box = await page.getByRole("button", { name }).first().boundingBox();
+      expect(box, name).not.toBeNull();
+      expect(box!.x, name).toBeGreaterThanOrEqual(0);
+      expect(box!.x + box!.width, name).toBeLessThanOrEqual(width + 1);
+    }
+    if (process.env.E2E_SCREENSHOTS === "1") await page.screenshot({ path: `tests/e2e/screenshots/SA-051-plain-${width}.png`, fullPage: true });
+  }
 });

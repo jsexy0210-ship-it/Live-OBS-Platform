@@ -111,7 +111,7 @@ test("이미 주소를 보던 중 재발급 결과가 불분명하면 이전 주
     await r.fulfill({ status: 502, body: "{}" });
   });
   await issueVia(page, "주소 새로 만들기");
-  await expect(page.getByTestId("ovu-unclear")).toContainText("이전 주소가 이미 끊겼을 수 있습니다");
+  await expect(page.getByTestId("ovu-unclear")).toContainText("이전 주소를 쓸 수 없을 수 있으니");
   await expect(page.getByTestId("ovu-urls")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "주소 복사" })).toHaveCount(0);
 });
