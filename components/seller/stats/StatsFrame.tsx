@@ -83,8 +83,8 @@ export function StatsFrame({ title, heading, sub, period, setPeriod, onDownload,
   // 직접 입력한 날짜를 「조회」로 적용한다. 프리셋 칩은 누르는 즉시 조회한다
   const apply = () => {
     if (!draft.from || !draft.to) return setRangeError("시작일과 종료일을 입력해 주십시오");
-    if (draft.to < draft.from) return setRangeError("종료일은 시작일 이후여야 합니다");
-    if (daysBetween(draft.from, draft.to) > MAX_DAYS) return setRangeError("직접 입력은 최대 12개월까지 가능합니다");
+    if (draft.to < draft.from) return setRangeError("종료일을 시작일과 같거나 뒤 날짜로 바꿔 주십시오");
+    if (daysBetween(draft.from, draft.to) > MAX_DAYS) return setRangeError("날짜를 직접 정할 때는 최대 12개월까지 볼 수 있습니다. 기간을 줄여 주십시오");
     setRangeError(null);
     setPeriod({ ...period, preset: "custom", from: draft.from, to: draft.to });
   };
@@ -104,7 +104,7 @@ export function StatsFrame({ title, heading, sub, period, setPeriod, onDownload,
     <>
       <Topbar crumb={`통계 › ${title}`} />
       <main className="main">
-        <PageHead title={heading ?? `통계 · ${title}`} actions={download ?? (onDownload && <button className="btn btn-out" type="button" onClick={onDownload}>엑셀 내려받기</button>)} />
+        <PageHead title={heading ?? `통계 · ${title}`} actions={download ?? (onDownload && <button className="btn btn-out" type="button" onClick={onDownload}>엑셀 파일로 받기</button>)} />
         <nav className="tabs sts-tabs" aria-label="통계 종류">
           {STATS_TABS.filter((t) => planAllows(me.features, t.plan)).map((t) => (
             <Link key={t.href} href={t.href} className={`tab${(t.href === "/seller/stats" ? pathname === t.href : pathname.startsWith(t.href)) ? " on" : ""}`}>
@@ -147,14 +147,14 @@ export function StatsFrame({ title, heading, sub, period, setPeriod, onDownload,
                     {comparable && (
                       <label className="chk t-l2">
                         <input className="cbx" type="checkbox" checked={period.compare} onChange={(e) => setPeriod({ ...period, compare: e.target.checked })} />
-                        직전 기간과 비교
+                        바로 앞 기간과 비교
                       </label>
                     )}
                     <button className="btn" type="submit">
-                      조회
+                      기간 보기
                     </button>
                     {units && (
-                      <div className="seg" role="group" aria-label="묶음 단위">
+                      <div className="seg" role="group" aria-label="합계를 나누는 단위">
                         {unitOptions.map((u) => (
                           <button key={u.key} type="button" className={period.unit === u.key ? "on" : ""} aria-pressed={period.unit === u.key} onClick={() => setPeriod({ ...period, unit: u.key })}>
                             {u.label}
@@ -193,14 +193,14 @@ export function StatsState<T>({ state, onRetry }: { state: Load<T>; onRetry: () 
   const lock = state.status === 402 || state.status === 403;
   const [t, s] =
     state.status === 403 && state.error === "plan_feature_required"
-      ? ["현재 플랜에서 제공하지 않는 기능입니다", "쇼핑몰 통합 플랜에서 통계를 볼 수 있습니다"]
+      ? ["지금 이용권에서는 통계를 볼 수 없습니다", "쇼핑몰까지 쓰는 이용권에서 볼 수 있습니다"]
       : state.status === 403
-        ? ["통계 조회 권한이 필요합니다", "대표자에게 「매출 보기」 권한 요청이 필요합니다"]
+        ? ["통계를 볼 수 없는 계정입니다", "대표자에게 「매출 보기」를 허용해 달라고 요청해 주십시오"]
         : state.status === 402
           ? ["이용 기간이 끝나 통계를 볼 수 없습니다", "구독 후 다시 이용할 수 있습니다"]
           : state.status === 400
-            ? ["조회할 수 없는 기간입니다", "직접 입력은 최대 12개월까지 가능합니다"]
-            : ["통계를 불러오지 못했습니다", "잠시 뒤 다시 시도해 주십시오"];
+            ? ["볼 수 없는 기간입니다", "날짜를 직접 정할 때는 최대 12개월까지 볼 수 있습니다. 기간을 줄여 주십시오"]
+            : ["통계를 불러오지 못했습니다", "인터넷 연결을 확인한 뒤 「다시 시도」를 눌러 주십시오"];
   return (
     <div className="card">
       <div className="st" style={{ boxShadow: "none" }} role={lock ? undefined : "alert"}>
