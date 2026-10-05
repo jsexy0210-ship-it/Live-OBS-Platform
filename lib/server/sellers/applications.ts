@@ -7,7 +7,7 @@ import { dbNow } from "../billing/subscription";
 import { mailSender } from "../mail/registry";
 import { sendMail, type MailSender } from "../mail/quota";
 import { kstDayStart } from "../orders/read";
-import { approveSeller } from "./approval";
+import { approveSeller, rejectSeller } from "./approval";
 import type { ReviewReason } from "./application";
 
 // 마스터 관리자 가입 신청(MA-013·014): 처리 대기 목록·요약(KPI)·이력, 보완 요청·재촉 메일·선택 승인·승인 되돌리기(10초).
@@ -17,6 +17,7 @@ const DAY_MS = 86_400_000;
 const KST_MS = 9 * HOUR_MS;
 export const SUPPLEMENT_DAYS = 7;
 export const REMIND_COOLDOWN_MS = DAY_MS;
+export const REMIND_MAX = 3;
 export const UNDO_WINDOW_MS = 10_000;
 // 서버·화면 시계 차이를 받아 주는 여유(응답을 받아 되돌리기를 누르기까지)
 const UNDO_GRACE_MS = 2_000;
@@ -44,6 +45,7 @@ export const APPLICATION_MESSAGES = {
   already_requested: "이미 보완을 요청했습니다",
   not_requested: "보완을 요청한 신청이 아닙니다",
   remind_too_soon: "재촉 메일은 하루에 한 번만 보낼 수 있습니다",
+  remind_limit: "재촉 메일은 최대 3번까지 보낼 수 있습니다",
   mail_unavailable: "메일을 보낼 수 없습니다. 메일 서비스가 연결되지 않았습니다",
   mail_limit: "메일 발송 한도에 이르러 보내지 못했습니다. 잠시 뒤 다시 시도해 주십시오",
   mail_failed: "메일을 보내지 못했습니다. 잠시 뒤 다시 시도해 주십시오",
@@ -97,15 +99,16 @@ const stateOf = (p: Pending): "SUPPLEMENT" | "REVIEW" | "CLEAR" => (supplementOp
 
 export type ApplicationListQuery = {
   tab?: string | null; sort?: string | null; q?: string | null; field?: string | null; industry?: string | null;
-  receivedFrom?: string | null; receivedTo?: string | null; cursor?: string | null; limit?: string | null;
+  receivedFrom?: string | null; receivedTo?: string | null; result?: string | null; cursor?: string | null; limit?: string | null;
 };
 const TABS = ["all", "clear", "review", "supplement", "over48h", "today", "history"] as const;
 const SORTS = ["oldest", "newest"] as const;
+const RESULTS = ["auto", "approved", "rejected"] as const;
 const FIELDS = ["all", "shop", "applicant", "biz"] as const;
 const one = <T extends string>(l: readonly T[], v: string | null | undefined, d: T): T | undefined => (v == null || v === "" ? d : (l as readonly string[]).includes(v) ? (v as T) : undefined);
 
 // 가입 신청 목록(MA-013, platform.read). tab: all(전체)·clear(이상 없음)·review(확인 필요)·supplement(보완 요청)·over48h(48시간 초과)·today(오늘 접수)·history(자동 승인·승인·반려 이력).
-// 응답 { chips, kpi, industries, applications | history, total, nextCursor }. 잘못된 값이면 { ok: false }.
+// result(이력만): auto(자동 승인)·approved(승인)·rejected(반려). 응답 { chips, kpi, industries, applications | history, total, nextCursor }. 잘못된 값이면 { ok: false }.
 export async function listApplications(db: PrismaClient, admin: AdminSessionContext, query: ApplicationListQuery) {
   needRead(admin);
   const tab = one(TABS, query.tab, "all");
@@ -117,6 +120,8 @@ export async function listApplications(db: PrismaClient, admin: AdminSessionCont
   const from = query.receivedFrom ? kstDayStart(query.receivedFrom) : null;
   const to = query.receivedTo ? kstDayStart(query.receivedTo) : null;
   const industry = query.industry?.trim() ?? "";
+  const result = one(RESULTS, query.result, "" as never);
+  if (query.result && !result) return { ok: false as const };
   if (!tab || !sort || !field || !Number.isInteger(limit) || limit < 1 || !Number.isInteger(offset) || q.length > 50 || industry.length > 30) return { ok: false as const };
   if ((query.receivedFrom && !from) || (query.receivedTo && !to) || (from && to && from > to)) return { ok: false as const };
   const now = await dbNow(db);
@@ -137,7 +142,8 @@ export async function listApplications(db: PrismaClient, admin: AdminSessionCont
   const industries = [...new Set(all.map((p) => String(info(p.businessInfo).industry ?? "")).filter(Boolean))].sort();
 
   if (tab === "history") {
-    const h = await applicationHistory(db, now, { q, field, from, to, industry });
+    const want = result === "auto" ? "AUTO_APPROVED" : result === "approved" ? "APPROVED" : result === "rejected" ? "REJECTED" : null;
+    const h = (await applicationHistory(db, now, { q, field, from, to, industry })).filter((x) => !want || x.result === want);
     const page = h.slice(offset, offset + take);
     return { ok: true as const, chips, kpi, industries, history: page, total: h.length, nextCursor: offset + take < h.length ? String(offset + take) : null };
   }
@@ -192,6 +198,7 @@ function viewApplication(p: Pending, now: Date) {
             reason: rev.supplementReason,
             requestedAt: rev.supplementRequestedAt,
             dueAt: rev.supplementDueAt,
+            dueExpired: !!rev.supplementDueAt && rev.supplementDueAt.getTime() <= now.getTime(),
             daysLeft: rev.supplementDueAt ? Math.max(0, Math.ceil((rev.supplementDueAt.getTime() - now.getTime()) / DAY_MS)) : null,
             reminderCount: rev.reminderCount,
             lastReminderAt: rev.lastReminderAt,
@@ -270,7 +277,7 @@ async function applicationHistory(db: PrismaClient, now: Date, f: { q: string; f
   return out.map(({ biz: _b, ...r }) => r);
 }
 
-// 보완 요청(마스터 seller.moderate): 승인 대기 신청에 사유를 남기고 7일 기한을 건다. 기한 안에 풀지 않으면 정기 작업이 자동 반려한다.
+// 보완 요청(마스터 seller.moderate): 승인 대기 신청에 사유를 남기고 7일 기한을 건다. 기한(supplementDueAt)은 화면 표시용이며, 기한이 지나도 자동으로 반려하지 않는다(대표님·MASTER 결정: 자동 반려 없음, 지난 신청은 화면에 「기한 지남」으로만 보인다).
 export async function requestSupplement(db: PrismaClient, admin: AdminSessionContext, sellerId: string, rawReason: unknown, meta: Meta = {}) {
   needModerate(admin);
   const reason = typeof rawReason === "string" ? rawReason.trim() : "";
@@ -317,6 +324,7 @@ export async function remindSupplement(db: PrismaClient, admin: AdminSessionCont
   if (!s) return { ok: false as const, reason: "not_found" as const };
   if (s.status !== "PENDING") return { ok: false as const, reason: "not_pending" as const };
   if (!rev?.supplementRequestedAt || rev.supplementResolvedAt || !owner) return { ok: false as const, reason: "not_requested" as const };
+  if (rev.reminderCount >= REMIND_MAX) return { ok: false as const, reason: "remind_limit" as const };
   if (rev.lastReminderAt && now.getTime() - rev.lastReminderAt.getTime() < REMIND_COOLDOWN_MS) {
     return { ok: false as const, reason: "remind_too_soon" as const, canRemindAt: new Date(rev.lastReminderAt.getTime() + REMIND_COOLDOWN_MS) };
   }
@@ -339,7 +347,7 @@ export async function remindSupplement(db: PrismaClient, admin: AdminSessionCont
   if (r.status !== "SENT") return { ok: false as const, reason: "mail_failed" as const };
   // 하루 한 번 제한은 조건부 갱신으로 지킨다(동시에 두 번 눌러도 한 번만 센다)
   const stamp = await db.sellerApplicationReview.updateMany({
-    where: { sellerId, supplementResolvedAt: null, OR: [{ lastReminderAt: null }, { lastReminderAt: { lte: new Date(now.getTime() - REMIND_COOLDOWN_MS) } }] },
+    where: { sellerId, supplementResolvedAt: null, reminderCount: { lt: REMIND_MAX }, OR: [{ lastReminderAt: null }, { lastReminderAt: { lte: new Date(now.getTime() - REMIND_COOLDOWN_MS) } }] },
     data: { reminderCount: { increment: 1 }, lastReminderAt: now },
   });
   await writeAudit(db, { actorType: "PLATFORM_ADMIN", actorId: admin.admin.id, sellerId, action: "admin.seller.supplement_remind", targetType: "Seller", targetId: sellerId, after: { mail: r.status, counted: stamp.count === 1 }, ip: opts.meta?.ip, userAgent: opts.meta?.userAgent });
@@ -385,18 +393,16 @@ export async function undoApproval(db: PrismaClient, admin: AdminSessionContext,
   });
 }
 
-// 정기 작업: 보완 기한이 지난 신청을 자동 반려한다(로그 추적 seller.supplement_expired).
-export async function rejectExpiredSupplements(tx: Prisma.TransactionClient, now: Date): Promise<number> {
-  const due = await tx.sellerApplicationReview.findMany({ where: { supplementRequestedAt: { not: null }, supplementResolvedAt: null, supplementDueAt: { lte: now } }, select: { sellerId: true } });
-  let n = 0;
-  for (const { sellerId } of due) {
-    const why = `보완 기한(${SUPPLEMENT_DAYS}일) 안에 보완하지 않아 자동 반려했습니다`;
-    const moved = await tx.seller.updateMany({ where: { id: sellerId, status: "PENDING" }, data: { status: "REJECTED", rejectedReason: why, rejectedAt: now } });
-    await tx.sellerApplicationReview.update({ where: { sellerId }, data: { supplementResolvedAt: now } });
-    if (moved.count === 1) {
-      await writeAudit(tx, { actorType: "SYSTEM", actorId: null, sellerId, action: "seller.supplement_expired", targetType: "Seller", targetId: sellerId, reason: why });
-      n++;
-    }
+// 선택 반려: 같은 사유(1~200자)로 한꺼번에 반려한다. 건별 결과(한 건이 실패해도 나머지는 계속). 사유는 신청자에게 그대로 안내되는 문구다.
+export async function bulkReject(db: PrismaClient, admin: AdminSessionContext, rawIds: unknown, rawReason: unknown, meta: Meta = {}) {
+  needModerate(admin);
+  if (!Array.isArray(rawIds) || rawIds.length === 0 || rawIds.length > BULK_APPROVE_MAX || !rawIds.every((x) => typeof x === "string" && UUID.test(x))) return { ok: false as const, reason: "invalid_input" as const };
+  const reason = typeof rawReason === "string" ? rawReason.trim() : "";
+  if (!reason || reason.length > 200) return { ok: false as const, reason: "reason_required" as const };
+  const results: { id: string; ok: boolean; reason?: ApplicationFailure }[] = [];
+  for (const id of new Set(rawIds as string[])) {
+    const r = await rejectSeller(db, admin, id, reason, meta);
+    results.push(r.ok ? { id, ok: true } : { id, ok: false, reason: r.reason === "reason_required" ? "reason_required" : r.reason });
   }
-  return n;
+  return { ok: true as const, rejected: results.filter((r) => r.ok).length, failed: results.filter((r) => !r.ok).length, results };
 }

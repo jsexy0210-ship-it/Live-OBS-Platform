@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { GET as listRoute } from "../../app/api/admin/sellers/applications/route";
 import { POST as bulkRoute } from "../../app/api/admin/sellers/applications/bulk-approve/route";
+import { POST as bulkRejectRoute } from "../../app/api/admin/sellers/applications/bulk-reject/route";
 import { POST as approveRoute } from "../../app/api/admin/sellers/[sellerId]/approve/route";
 import { POST as undoRoute } from "../../app/api/admin/sellers/[sellerId]/approve/undo/route";
 import { POST as remindRoute } from "../../app/api/admin/sellers/[sellerId]/remind/route";
@@ -8,7 +9,7 @@ import { POST as supplementRoute } from "../../app/api/admin/sellers/[sellerId]/
 import { POST as resolveRoute } from "../../app/api/admin/sellers/[sellerId]/supplement/resolve/route";
 import { createAdminSession } from "../../lib/server/auth/session";
 import { prisma } from "../../lib/server/db";
-import { rejectExpiredSupplements, remindSupplement, undoApproval } from "../../lib/server/sellers/applications";
+import { remindSupplement, undoApproval } from "../../lib/server/sellers/applications";
 import { FakeMailSender } from "../../lib/server/mail/registry";
 import { createAdmin, createSeller, createSellerUser, db, resetDb, seedPlans } from "./helpers";
 
@@ -239,22 +240,57 @@ describe("선택 승인·승인 되돌리기", () => {
   });
 });
 
-describe("보완 기한 자동 반려(정기 작업)", () => {
-  it("기한이 지난 보완 요청만 반려하고 사유를 남기며, 기한 전·풀린 건은 그대로다", async () => {
+describe("보완 기한은 표시용, 선택 반려, 재촉 3번 제한", () => {
+  it("기한이 지나도 자동 반려하지 않고 dueExpired로만 표시된다(정기 작업에 자동 반려가 없다)", async () => {
     const op = await admin("OPERATIONS");
-    const late = await pending();
-    const fresh = await pending();
-    const resolved = await pending();
-    for (const s of [late, fresh, resolved]) await post(supplementRoute, op.cookie, s.seller.id, { reason: "보완" });
-    await post(resolveRoute, op.cookie, resolved.seller.id);
-    await db.sellerApplicationReview.updateMany({ where: { sellerId: { in: [late.seller.id, resolved.seller.id] } }, data: { supplementDueAt: new Date(Date.now() - 1000), supplementRequestedAt: new Date(Date.now() - 8 * 24 * HOUR) } });
-    const n = await db.$transaction((tx) => rejectExpiredSupplements(tx, new Date()));
-    expect(n).toBe(1);
-    expect(await db.seller.findUniqueOrThrow({ where: { id: late.seller.id } })).toMatchObject({ status: "REJECTED", rejectedReason: expect.stringContaining("자동 반려") });
-    expect((await db.seller.findUniqueOrThrow({ where: { id: fresh.seller.id } })).status).toBe("PENDING");
-    expect((await db.seller.findUniqueOrThrow({ where: { id: resolved.seller.id } })).status).toBe("PENDING");
-    expect(await db.auditLog.count({ where: { sellerId: late.seller.id, action: "seller.supplement_expired" } })).toBe(1);
-    expect(await db.$transaction((tx) => rejectExpiredSupplements(tx, new Date()))).toBe(0);
+    const s = await pending();
+    await post(supplementRoute, op.cookie, s.seller.id, { reason: "보완" });
+    await db.sellerApplicationReview.update({ where: { sellerId: s.seller.id }, data: { supplementRequestedAt: new Date(Date.now() - 9 * 24 * HOUR), supplementDueAt: new Date(Date.now() - 2 * 24 * HOUR) } });
+    const { SCHEDULED_JOBS } = await import("../../lib/server/jobs/scheduler");
+    expect(SCHEDULED_JOBS.map((j) => j.name).some((n) => n.includes("supplement") || n.includes("seller_application"))).toBe(false);
+    const row = (await list(op.cookie, "?tab=supplement")).body.applications[0];
+    expect(row.supplement).toMatchObject({ dueExpired: true, daysLeft: 0 });
+    expect((await db.seller.findUniqueOrThrow({ where: { id: s.seller.id } })).status).toBe("PENDING");
+  });
+
+  it("선택 반려: 같은 사유로 건별 처리(없는 건·이미 처리된 건은 실패, 나머지 계속), 사유 필수·50건 제한, 권한 최고관리자·운영, 반려 이력에 사유", async () => {
+    const op = await admin("OPERATIONS");
+    const a = await pending();
+    const b = await pending({ reasons: ["business_not_active"] });
+    const done = await pending();
+    await post(approveRoute, op.cookie, done.seller.id);
+    const gone = "00000000-0000-4000-8000-000000000000";
+    const rej = async (cookie: string, body: unknown) => {
+      const r = await bulkRejectRoute(new Request("http://localhost:3000/x", { method: "POST", headers: { ...H, cookie }, body: JSON.stringify(body) }));
+      return { status: r.status, body: (await r.json()) as Record<string, any> };
+    };
+    const r = await rej(op.cookie, { ids: [a.seller.id, gone, done.seller.id, b.seller.id], reason: "사업자 상태 휴업·폐업" });
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ rejected: 2, failed: 2 });
+    const by = new Map<string, any>(r.body.results.map((x: any) => [x.id, x]));
+    expect(by.get(gone)).toMatchObject({ ok: false, reason: "not_found" });
+    expect(by.get(done.seller.id)).toMatchObject({ ok: false, reason: "not_pending" });
+    expect(await db.seller.findMany({ where: { id: { in: [a.seller.id, b.seller.id] } }, select: { status: true, rejectedReason: true } })).toEqual([{ status: "REJECTED", rejectedReason: "사업자 상태 휴업·폐업" }, { status: "REJECTED", rejectedReason: "사업자 상태 휴업·폐업" }]);
+    expect((await rej(op.cookie, { ids: [gone], reason: "" })).status).toBe(400);
+    expect((await rej(op.cookie, { ids: [], reason: "x" })).status).toBe(400);
+    expect((await rej(op.cookie, { ids: Array.from({ length: 51 }, () => gone), reason: "x" })).status).toBe(400);
+    for (const role of ["CS", "READ_ONLY"] as const) expect((await rej((await admin(role)).cookie, { ids: [gone], reason: "x" })).status).toBe(403);
+    const h = await list(op.cookie, "?tab=history&result=rejected");
+    expect(h.body.history.map((x: any) => x.result)).toEqual(["REJECTED", "REJECTED"]);
+    expect((await list(op.cookie, "?tab=history&result=auto")).body.history).toEqual([]);
+    expect((await list(op.cookie, "?tab=history&result=x")).status).toBe(400);
+  });
+
+  it("재촉 메일은 하루 한 번에 최대 3번이다", async () => {
+    const op = await admin("SUPER_ADMIN");
+    const s = await pending();
+    await post(supplementRoute, op.cookie, s.seller.id, { reason: "보완" });
+    for (let i = 1; i <= 3; i++) {
+      expect((await post(remindRoute, op.cookie, s.seller.id)).body.reminderCount).toBe(i);
+      await db.sellerApplicationReview.update({ where: { sellerId: s.seller.id }, data: { lastReminderAt: new Date(Date.now() - 25 * HOUR) } });
+    }
+    expect(await post(remindRoute, op.cookie, s.seller.id)).toMatchObject({ status: 409, body: { error: "remind_limit" } });
+    expect((await db.sellerApplicationReview.findUniqueOrThrow({ where: { sellerId: s.seller.id } })).reminderCount).toBe(3);
   });
 
   it("승인 되돌리기는 시간 안이어도 승인 관리자 본인만(함수 직접 호출도 같다)", async () => {

@@ -3908,7 +3908,7 @@ model ShopLegalNotice {
 
 // ───────────── 파트너스 가입 신청 심사 상태(MA-013) ─────────────
 // 가입 신청(Seller PENDING)의 보완 요청·재촉 메일 기록. 신청마다 한 줄(보완 요청을 처음 보낼 때 만든다). 「확인 필요」·「이상 없음」은 reviewReasons에서 계산한다.
-// 보완 요청 중 = supplementRequestedAt이 있고 supplementResolvedAt이 없음. 기한(supplementDueAt)이 지나면 정기 작업이 자동 반려한다.
+// 보완 요청 중 = supplementRequestedAt이 있고 supplementResolvedAt이 없음. 기한(supplementDueAt)은 표시용이다(기한이 지나도 자동 반려하지 않는다).
 model SellerApplicationReview {
   sellerId              String    @id @db.Uuid
   supplementReason      String?
