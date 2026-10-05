@@ -6,7 +6,9 @@
 
 export type PgStatus = "paid" | "ready" | "failed" | "cancelled" | "partialCancelled" | "expired";
 
-export type PgPayment = { tid: string; orderId: string; status: PgStatus; amount: number; balanceAmt: number };
+// card: 승인 응답의 카드 요약(카드사 이름·끝 4자리·할부 개월, 0 = 일시불). 카드번호 전체는 다루지 않는다.
+export type PgCard = { name: string | null; last4: string | null; installment: number | null };
+export type PgPayment = { tid: string; orderId: string; status: PgStatus; amount: number; balanceAmt: number; card?: PgCard };
 
 export type PgResult<T> = { kind: "ok"; value: T } | { kind: "rejected"; code: string; message?: string } | { kind: "unknown"; error: string };
 
@@ -79,7 +81,7 @@ export class FakePaymentGateway implements PaymentGateway {
     if (prev) return prev.status === "paid" ? { kind: "ok", value: { ...prev } } : { kind: "rejected", code: "already_processed" };
     const auth = this.authed.get(tid);
     if (!auth || auth.amount !== amount) return { kind: "rejected", code: "amount_mismatch" };
-    const p: PgPayment = { tid, orderId: auth.orderId, status: "paid", amount, balanceAmt: amount };
+    const p: PgPayment = { tid, orderId: auth.orderId, status: "paid", amount, balanceAmt: amount, card: { name: "시험카드", last4: "1234", installment: 0 } };
     this.payments.set(tid, p);
     if (fault === "timeout_after") return { kind: "unknown", error: "timeout" };
     return { kind: "ok", value: { ...p } };
