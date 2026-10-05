@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { broadcastDetail } from "../../lib/server/broadcast/detail";
 import { prisma } from "../../lib/server/db";
 import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
@@ -18,6 +18,7 @@ import { createLoginBuyer, createSeller, createSellerUser, db, resetDb } from ".
 // 부분 환불 뒤 보이는 수량·금액(MASTER 배정 2026-10-05, 검수 #391 후속): 출고·주문 목록 요약, 주문 상세, 구매자 주문,
 // 교환·반품 신청 가능 수량은 환불한 수량을 빼고, 통계는 결제 완료로 남은 부분 환불액도 매출에서 뺀다.
 beforeEach(resetDb);
+afterEach(() => vi.useRealTimers());
 afterAll(async () => {
   await db.$disconnect();
   await prisma.$disconnect();
@@ -25,7 +26,13 @@ afterAll(async () => {
 
 const consent = { agreed: true, noticeVersion: OPENED_NO_REFUND_CONSENT.version };
 const addr = { recipientName: "김구매", phone: "010-1234-5678", zipCode: "06236", address1: "주소 1" };
-const today = () => new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Seoul" }).format(new Date());
+const kstDay = (ms: number) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Seoul" }).format(new Date(ms));
+const today = () => kstDay(Date.now());
+// 통계 시험은 시각에 따라 결과가 달라지면 안 된다: 실제 시각과 KST 자정 직후(00:10)에서 모두 돌린다(자정 직후엔 30분 전이 어제라 날짜 범위가 어제로 빠졌다).
+const CLOCKS: [string, string | null][] = [["지금 시각", null], ["KST 자정 직후(00:10)", "2026-10-05T15:10:00Z"]];
+const setClock = (at: string | null) => {
+  if (at) vi.useFakeTimers({ toFake: ["Date"], now: new Date(at) });
+};
 
 // 박스 7,000원 × 1, 팩 5,000원 × 3(주문대기에서 빠진 품목이라 수량 일부 환불 가능), 배송비 3,000원
 async function setup() {
@@ -130,7 +137,8 @@ describe("부분 환불 뒤 수량 표시", () => {
     expect(items.map((i) => [i.orderItemId, i.quantity])).toEqual([[s.packItem.id, 2]]);
   });
 
-  it("통계: 결제 완료로 남은 부분 환불액도 환불액에 넣고 순매출에서 뺀다", async () => {
+  it.each(CLOCKS)("통계: 결제 완료로 남은 부분 환불액도 환불액에 넣고 순매출에서 뺀다(%s)", async (_label, at) => {
+    setClock(at);
     const s = await setup();
     await s.refund([{ orderItemId: s.boxItem.id, quantity: 1 }]);
     const range = parseStatsRange({ from: today(), to: today() })!;
@@ -143,14 +151,16 @@ describe("부분 환불 뒤 수량 표시", () => {
     expect(after.current).toMatchObject({ refundAmount: s.order.totalAmount, netRevenue: 0, refunded: 1 });
   });
 
-  it("상품 통계는 부분 환불한 수량·매출을 빼고 다 돌려준 품목은 판매 없음, 방송 상세는 품목별 환불 수량과 부분 환불액을 뺀 매출", async () => {
+  it.each(CLOCKS)("상품 통계는 부분 환불한 수량·매출을 빼고 다 돌려준 품목은 판매 없음, 방송 상세는 품목별 환불 수량과 부분 환불액을 뺀 매출(%s)", async (_label, at) => {
+    setClock(at);
     const s = await setup();
     const session = await db.broadcastSession.create({ data: { sellerId: s.seller.id, status: "LIVE", startedAt: new Date(Date.now() - 3600_000) } });
     // setup의 주문은 방송 시작 뒤에 만들어졌다
     await db.order.update({ where: { id: s.order.id }, data: { createdAt: new Date(Date.now() - 1800_000) } });
     await s.refund([{ orderItemId: s.boxItem.id, quantity: 1 }]);
     await s.refund([{ orderItemId: s.packItem.id, quantity: 1 }]);
-    const ps = await productStats(db, s.ctx, parseStatsRange({ from: today(), to: today() })!);
+    // 주문 시각을 30분 전으로 옮겼으므로 KST 자정 직후엔 어제다: 어제~오늘 범위로 본다
+    const ps = await productStats(db, s.ctx, parseStatsRange({ from: kstDay(Date.now() - 86_400_000), to: today() })!);
     expect(ps.current).toEqual({ quantity: 2, revenue: 10000, products: 1 });
     expect(ps.topByQuantity.map((r) => [r.name, r.quantity, r.revenue])).toEqual([["팩", 2, 10000]]);
     expect(ps.unsold.map((u) => u.name)).toContain("박스");

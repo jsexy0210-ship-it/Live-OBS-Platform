@@ -11,7 +11,7 @@ import { START_IN_PROGRESS_MESSAGE, keyedOwnerToken as keyedToken, reuseKeyedAtt
 import { hashToken } from "../auth/token";
 import { buyerSignupIdentityLimitReached, completeIdentityVerification, parseIdentityPerson, sendFirstIdentityCode, startIdentityVerification } from "../identity/verification";
 import { EMAIL } from "../sellers/application";
-import { type ConsentFailure, parseSignupConsent, readSignupConsent } from "./consent";
+import { type ConsentFailure, currentConsentDocs, parseSignupConsent, readSignupConsent } from "./consent";
 import { purgeExpiredRejoinBlocks, rejoinBlockedUntil, rejoinDaysToAgree } from "./rejoin";
 import { cleanText } from "../text/clean";
 
@@ -87,7 +87,7 @@ export async function startBuyerSignupVerification(
   // 가입 필수 동의는 본인확인 요청 전에 받는다(PRODUCT_SCOPE 「동의 순서」). 같은 요청 본문의 동의 값·문서 버전이 없거나 다르면 새로 시작하지 않는다.
   // 같은 attemptKey로 이미 시작한 기록이 있으면(응답 유실 뒤 재시도) 그사이 문서 버전·재가입 제한 정책이 바뀌어도 그 기록을 돌려준다
   // (그 기록에는 시작 때 확인한 동의가 묶여 있다). 동의 검사는 새 기록을 만들 때만 적용한다.
-  const consent = parseSignupConsent(rawPerson, await rejoinDaysToAgree(db, sellerId), meta.now ?? new Date());
+  const consent = parseSignupConsent(rawPerson, await rejoinDaysToAgree(db, sellerId), meta.now ?? new Date(), await currentConsentDocs(db, sellerId));
   if (meta.attemptKey !== undefined && (typeof meta.attemptKey !== "string" || !UUID_RE.test(meta.attemptKey))) {
     return { ok: false as const, reason: "invalid_identity_input" as const };
   }
