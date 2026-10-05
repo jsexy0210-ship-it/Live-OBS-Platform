@@ -9,12 +9,47 @@ import "./Cart.css";
 
 // SH-004 장바구니(시안 04 SH). 로그인 구매자 전용 API(/api/shop/{slug}/cart)로 목록·수량·삭제를 한다.
 type Status = "available" | "not_enough_stock" | "sold_out" | "unavailable";
-type Line = { id: string; productId: string; optionId: string; productName: string; optionName: string; quantity: number; unitPrice: number; listUnitPrice: number; lineTotal: number; stock: number; status: Status };
+type PriceChange = { from: number; to: number; diff: number; direction: "up" | "down" };
+type Line = {
+  id: string;
+  productId: string;
+  optionId: string;
+  productName: string;
+  optionName: string;
+  quantity: number;
+  unitPrice: number;
+  listUnitPrice: number;
+  lineTotal: number;
+  stock: number;
+  status: Status;
+  priceChange: PriceChange | null; // 담은 뒤 단가가 바뀐 줄(표시용, 금액은 늘 지금 단가)
+  maxQuantity: number; // 지금 담을 수 있는 최대 수량(살 수 없으면 0)
+  shortage: number; // 재고보다 많이 담긴 수량
+  stockLeft: number | null; // 재고가 적을 때만 남은 수
+};
 type Cart = { items: Line[]; count: number; subtotal: number };
 type View = { kind: "loading" } | { kind: "login" } | { kind: "error" } | { kind: "ok"; cart: Cart };
 
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 const unavailable = (l: Line) => l.status === "sold_out" || l.status === "unavailable";
+
+// 「가격 바뀜 확인」: 확인한 줄의 지금 단가(priceChange.to)를 이 기기에 기억한다. 단가가 또 바뀌면 값이 달라져 다시 보인다(기기 간 동기화는 하지 않는다).
+const ackKey = (slug: string) => `shop-cart-price-ack:${slug}`;
+function readAck(slug: string): Record<string, number> {
+  try {
+    const v = JSON.parse(window.localStorage.getItem(ackKey(slug)) ?? "{}") as unknown;
+    return v && typeof v === "object" ? (v as Record<string, number>) : {};
+  } catch {
+    return {};
+  }
+}
+function writeAck(slug: string, ack: Record<string, number>) {
+  try {
+    window.localStorage.setItem(ackKey(slug), JSON.stringify(ack));
+  } catch {
+    // 저장하지 못해도 이번 화면에서만 숨긴다
+  }
+}
 
 export default function CartView({ slug }: { slug: string }) {
   const base = `/shop/${encodeURIComponent(slug)}`;
@@ -24,6 +59,8 @@ export default function CartView({ slug }: { slug: string }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string; undo?: { optionId: string; quantity: number } } | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const [ack, setAck] = useState<Record<string, number>>({});
+  useEffect(() => setAck(readAck(slug)), [slug]);
 
   const load = useCallback(
     async (keepPick = false) => {
@@ -48,6 +85,14 @@ export default function CartView({ slug }: { slug: string }) {
   const total = chosen.reduce((s, l) => s + l.lineTotal, 0);
   const selectable = lines.filter((l) => !unavailable(l));
   const allPicked = selectable.length > 0 && selectable.every((l) => picked.has(l.id));
+  const changed = (l: Line) => (l.priceChange && ack[l.id] !== l.priceChange.to ? l.priceChange : null);
+  const changedCount = lines.filter((l) => changed(l)).length;
+  function confirmPrice(l: Line) {
+    if (!l.priceChange) return;
+    const next = { ...ack, [l.id]: l.priceChange.to };
+    setAck(next);
+    writeAck(slug, next);
+  }
   const failMsg = (r: { message?: string }) => r.message ?? "처리하지 못했어요. 잠시 뒤 다시 해 주세요";
 
   const toggle = (id: string) => setPicked((p) => (p.has(id) ? new Set([...p].filter((x) => x !== id)) : new Set(p).add(id)));
@@ -159,6 +204,11 @@ export default function CartView({ slug }: { slug: string }) {
   return (
     <div className="shop-wrap cart-wrap">
       {head}
+      {changedCount > 0 && (
+        <p className="cart-msg" role="status">
+          담은 뒤 가격이 바뀐 상품이 {changedCount}개 있어요. 결제 금액은 지금 가격으로 계산돼요.
+        </p>
+      )}
       {msg && (
         <p className={`cart-msg${msg.ok ? "" : " is-err"}`} role="status">
           {msg.text}
@@ -195,7 +245,25 @@ export default function CartView({ slug }: { slug: string }) {
                       <b>{l.productName}</b>
                       <span className="cart-opt">{l.optionName}</span>
                       {out && <span className="cart-tag">품절 · 주문에서 빠져요</span>}
-                      {l.status === "not_enough_stock" && <span className="cart-tag">재고가 부족해요 · 최대 {l.stock}개</span>}
+                      {l.status === "not_enough_stock" && (
+                        <span className="cart-tag">
+                          재고가 부족해요 · 최대 {l.maxQuantity}개
+                          {l.shortage > 0 && l.maxQuantity >= 1 && (
+                            <button type="button" className="shop-linkbtn" disabled={busy} onClick={() => void setQty(l, l.maxQuantity)}>
+                              {l.maxQuantity}개로 줄이기
+                            </button>
+                          )}
+                        </span>
+                      )}
+                      {l.status === "available" && l.stockLeft !== null && <span className="cart-tag">{l.stockLeft}개 남았어요</span>}
+                      {!out && changed(l) && (
+                        <span className="cart-tag cart-price-tag">
+                          담은 뒤 가격이 {changed(l)!.direction === "up" ? "올랐어요" : "내렸어요"} · {won(changed(l)!.from)} → {won(changed(l)!.to)}
+                          <button type="button" className="shop-linkbtn" onClick={() => confirmPrice(l)}>
+                            확인
+                          </button>
+                        </span>
+                      )}
                     </td>
                     <td className="c-qty">
                       {out ? (
@@ -206,7 +274,7 @@ export default function CartView({ slug }: { slug: string }) {
                             −
                           </button>
                           <span aria-label={`수량 ${l.quantity}개`}>{l.quantity}</span>
-                          <button type="button" aria-label="수량 늘리기" disabled={busy || l.quantity >= 99} onClick={() => void setQty(l, l.quantity + 1)}>
+                          <button type="button" aria-label="수량 늘리기" disabled={busy || l.quantity >= Math.min(99, l.maxQuantity || 99)} onClick={() => void setQty(l, l.quantity + 1)}>
                             +
                           </button>
                         </span>
