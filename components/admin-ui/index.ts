@@ -5,3 +5,4 @@ export { ListHead, Pagination } from "./ListTable";
 export { FormSection, FormRow, FormFoot } from "./FormTable";
 export { Modal } from "./Modal";
 export { useWholeDateClick } from "./useWholeDateClick";
+export { GlobalSearch, NotificationBell } from "./GnbTools";

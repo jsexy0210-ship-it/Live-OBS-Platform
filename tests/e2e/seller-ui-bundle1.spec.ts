@@ -125,3 +125,17 @@ test("재고 관리: 상품 목록에서 들어왔다가 「상품 목록」을 
   await expect(page).toHaveURL(/\/seller\/products\?.*sort=price_asc/);
   await expect(page.getByLabel("정렬")).toHaveValue("price_asc");
 });
+
+test("주문 목록: 홈 「배송 준비」 링크(status=PAID&shipped=false)로 열면 필터가 걸리고, 발송 칩으로 해제된다", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await login(page, "/seller/orders");
+  const reqs: string[] = [];
+  page.on("request", (r) => r.url().includes("/api/seller/orders?") && reqs.push(r.url()));
+  await page.goto("/seller/orders?status=PAID&shipped=false");
+  await expect(page.getByRole("button", { name: /^발송 전/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: /^상태: 완료/ })).toBeVisible();
+  await expect.poll(() => reqs.some((u) => u.includes("shipped=false") && u.includes("status=PAID"))).toBe(true);
+  for (const row of await page.getByTestId("order-row").all()) await expect(row).not.toContainText("발송함");
+  await page.getByRole("button", { name: /^발송 전/ }).click();
+  await expect(page).not.toHaveURL(/shipped=/);
+});
