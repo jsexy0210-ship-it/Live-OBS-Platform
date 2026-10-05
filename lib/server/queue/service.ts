@@ -15,6 +15,7 @@ import { revokeReviewRewardsForOrder, type ReviewRewardRevoke } from "../product
 import { requestPaymentCancel } from "../payments/service";
 import { returnRewardForOrder, rewardReturnAmount } from "../payments/rewardUse";
 import { computeRefundStep, earnRevokeStep, itemValue, type RefundCalcItem } from "../payments/refundCalc";
+import { settleRefundRequestsOnRefund } from "../payments/refundRequestHooks";
 
 type Tx = Prisma.TransactionClient;
 
@@ -708,7 +709,17 @@ export async function refundOrder(
   db: PrismaClient,
   ctx: TenantContext,
   orderId: string,
-  opts: { reason?: string; expectedLiveVersion: number; confirmOpened?: boolean; fault?: RefundFault; expectedRefundAmount?: number; items?: RefundSelection; now?: Date },
+  opts: {
+    reason?: string;
+    expectedLiveVersion: number;
+    confirmOpened?: boolean;
+    fault?: RefundFault;
+    expectedRefundAmount?: number;
+    items?: RefundSelection;
+    // 구매자 환불 요청 승인(payments/refundRequest.ts): 그 요청이 진행 중이어야 하고, 같은 트랜잭션에서 승인으로 닫는다
+    refundRequestId?: string;
+    now?: Date;
+  },
 ): Promise<QueueResult<RefundOutcome>> {
   requireSellerPermission(ctx, "ORDER_SHIPPING");
   if (!opts.reason?.trim()) return { ok: false, reason: "reason_required" };
@@ -772,6 +783,17 @@ export async function refundOrder(
         createdAt: now,
       },
     });
+    // 구매자 환불 요청: 승인으로 한 환불이면 그 요청을, 남은 품목을 모두 돌려준 환불이면 진행 중인 요청을 승인으로 닫는다
+    const settled = await settleRefundRequestsOnRefund(tx, {
+      sellerId: ctx.sellerId,
+      orderId,
+      refundId: refund.id,
+      isFinal,
+      requestId: opts.refundRequestId,
+      now,
+      actor: { actorType: ctx.actorType, actorId: ctx.actorId },
+    });
+    if (!settled) throw new Rejected("invalid_transition");
     for (const l of plan.step.lines) await tx.orderItem.update({ where: { id: l.orderItemId }, data: { refundedQuantity: { increment: l.quantity } } });
     await tx.order.update({
       where: { id: orderId },

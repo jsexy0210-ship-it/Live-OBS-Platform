@@ -370,6 +370,7 @@ model BuyerMember {
   cartItems            CartItem[]
   wishItems            WishItem[]
   returnRequests       ReturnRequest[]
+  refundRequests        RefundRequest[]
   returnRequestImages  ReturnRequestImage[]
   gradeOverrides       MemberGradeOverride[]
   gradeHistory         MemberGradeHistory[]
@@ -1068,6 +1069,7 @@ model Order {
   returnRequests   ReturnRequest[]
   payments         Payment[]
   refunds          OrderRefund[]
+  refundRequests   RefundRequest[]
 
   @@unique([sellerId, id])
   @@unique([sellerId, orderNo])
@@ -2820,4 +2822,39 @@ model MemberGradeRun {
   seller Seller @relation(fields: [sellerId], references: [id])
 
   @@id([sellerId, monthKey])
+}
+
+// 구매자 환불 요청(SA-023 · SH-022, MASTER 배정 2026-10-05, lib/server/payments/refundRequest.ts). 결제 완료·발송 전 주문에 구매자가 요청하고,
+// 파트너스가 승인(= 부분 환불 포함 환불, OrderRefund와 이어짐)하거나 사유를 적어 거절한다. 주문당 진행 중(REQUESTED) 요청은 1건(마이그레이션 SQL 부분 유니크).
+enum RefundRequestStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model RefundRequest {
+  id            String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String              @db.Uuid
+  orderId       String              @db.Uuid
+  buyerMemberId String              @db.Uuid
+  status        RefundRequestStatus @default(REQUESTED)
+  reason        ReturnReason
+  reasonText    String              @default("")
+  // [{ orderItemId, quantity }]: 환불을 바라는 품목·수량. null이면 남은 품목 전부
+  items         Json?
+  rejectReason  String?
+  // 승인한 환불(OrderRefund.id). 파트너스가 주문 화면에서 남은 품목을 모두 환불해도 이어서 승인으로 닫는다
+  refundId      String?             @db.Uuid
+  decidedAt     DateTime?           @db.Timestamptz(3)
+  cancelledAt   DateTime?           @db.Timestamptz(3)
+  createdAt     DateTime            @default(now()) @db.Timestamptz(3)
+
+  order       Order       @relation(fields: [sellerId, orderId], references: [sellerId, id])
+  buyerMember BuyerMember @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id])
+
+  @@unique([sellerId, id])
+  @@index([sellerId, status, createdAt])
+  @@index([sellerId, orderId])
+  @@index([sellerId, buyerMemberId, createdAt])
 }

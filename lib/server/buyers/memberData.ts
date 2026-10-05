@@ -13,6 +13,7 @@ export const MEMBER_DATA_POLICY: Record<string, { policy: MemberDataPolicy; note
   ProductReview: { policy: "anonymize", note: "상품 리뷰는 남기고 작성자 표시를 「탈퇴 회원」으로(product-reviews anonymizeMemberReviews). 리뷰에 붙은 사진은 리뷰와 함께 남는다" },
   ProductReviewImage: { policy: "delete", note: "리뷰에 붙지 않은 사진은 지운다. 리뷰에 붙은 사진은 리뷰와 함께 남는다(리뷰는 비식별)" },
   ReturnRequest: { policy: "retain_legal", note: "교환·반품 신청(청약철회·분쟁 처리 기록, 주문과 같은 법정 보관). 신청 사유·사진은 주문과 함께 남고 보관 기간 뒤 주문 파기와 함께 지운다" },
+  RefundRequest: { policy: "retain_legal", note: "구매자 환불 요청(청약철회·분쟁 처리 기록, 주문과 같은 법정 보관). 사유는 주문과 함께 남고 보관 기간 뒤 주문 파기와 함께 지운다" },
   ReturnRequestImage: { policy: "retain_legal", note: "신청에 붙은 사진은 신청과 함께 법정 보관. 신청에 붙지 않은 사진은 탈퇴 때 지운다" },
   MemberGradeOverride: { policy: "delete", note: "파트너스가 고정한 회원 표시(개인정보 없음). 탈퇴하면 지운다" },
   MemberGradeHistory: { policy: "delete", note: "등급 변경 기록(등급 이름과 금액만, 개인정보 없음). 탈퇴하면 지운다" },
@@ -50,6 +51,7 @@ export type MemberAuditRetention = "transaction" | "non_transaction";
 export const MEMBER_AUDIT_RETENTION_PREFIX: Record<string, MemberAuditRetention> = {
   "order.": "transaction", // 주문 생성·결제·취소·자동 취소·환불·재고 부족·구매 확정·배송
   "buyer_return.": "transaction", // 교환·반품 신청·철회·송장(청약철회 기록 5년)
+  "buyer_refund_request.": "transaction", // 환불 요청·철회(청약철회 기록 5년)
 };
 export const MEMBER_AUDIT_RETENTION: Record<string, MemberAuditRetention> = {
   "auth.buyer.login": "non_transaction",
