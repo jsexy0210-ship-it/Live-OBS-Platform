@@ -73,7 +73,7 @@ test("CS도 구독 현황을 조회한다: 탭별로 맞는 파트너스만 보�
   await expectOnly("이용 중", "paid");
   await expect(rows).toContainText("시험카드 1234");
   await expectOnly("연체", "grace");
-  await expect(rows).toContainText("재시도 2회");
+  await expect(rows).toContainText("결제 2번 다시 시도");
   await expectOnly("해지", "expired");
   await expect(rows).toContainText("구독 없음");
   await tab("전체").click();

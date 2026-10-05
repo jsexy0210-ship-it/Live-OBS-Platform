@@ -25,7 +25,7 @@ export default function LiveBroadcastsPage() {
         <div className="col" style={{ gap: 20 }}>
           <div className="card pad row" style={{ justifyContent: "space-between", gap: 12, flexWrap: "wrap" }} role="status" data-testid="live-status">
             <span className="row" style={{ gap: 8 }}>
-              <span className={`bdg ${failed ? "b-fail" : "b-done"}`}>{failed ? "갱신 끊김" : "10초마다 갱신"}</span>
+              <span className={`bdg ${failed ? "b-fail" : "b-done"}`}>{failed ? "자동 새로고침 멈춤" : "10초마다 새로고침"}</span>
               <span className="t-l2 c-alt">
                 마지막 갱신 {clock(lastOk)}
                 {failed ? " · 불러오지 못했습니다. 표시된 값은 마지막으로 읽은 내용입니다." : ""}
@@ -33,7 +33,7 @@ export default function LiveBroadcastsPage() {
             </span>
             <label className="chk">
               <input type="checkbox" checked={problemOnly} onChange={(e) => setProblemOnly(e.target.checked)} />
-              문제 있음만
+              방송 화면이 연결되지 않은 방송만
             </label>
           </div>
 
@@ -41,7 +41,7 @@ export default function LiveBroadcastsPage() {
             {[
               ["방송 중", `${all.length}곳`, "live-count"],
               ["대기 주문", `${all.reduce((s, b) => s + b.queue.waiting, 0).toLocaleString("ko-KR")}건`, "live-waiting"],
-              ["오버레이 접속 안 됨", `${all.filter(isProblem).length}곳`, "live-problem"],
+              ["방송 화면 연결 안 됨", `${all.filter(isProblem).length}곳`, "live-problem"],
             ].map(([label, value, id]) => (
               <div key={id} className="card pad col" style={{ gap: 4 }}>
                 <span className="t-l2 c-alt">{label}</span>
@@ -71,7 +71,7 @@ export default function LiveBroadcastsPage() {
                           <th>방송</th>
                           <th>방송 시간</th>
                           <th>대기</th>
-                          <th>개봉 중</th>
+                          <th>개봉 진행 중</th>
                           <th>완료</th>
                           <th>취소</th>
                           <th>주문</th>
@@ -85,7 +85,7 @@ export default function LiveBroadcastsPage() {
                           return (
                             <tr key={b.broadcastId} data-testid="live-row">
                               <td>
-                                <b>{b.shopName}</b> <span className="c-alt">· {b.slug}</span>
+                                <b>{b.shopName}</b> <span className="c-alt">· 쇼핑몰 주소 {b.slug}</span>
                               </td>
                               <td>{b.title ?? "-"}</td>
                               <td>{elapsed(b.startedAt, now)}</td>

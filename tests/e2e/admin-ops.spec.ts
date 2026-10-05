@@ -49,10 +49,10 @@ test("실시간 방송: 방송 중인 파트너스만 오버레이 상태와 함
   await expect(on).toContainText("1시간 15분");
   await expect(off).toContainText("접속 안 됨");
   await expect(page.getByTestId("live-row").filter({ hasText: names.idle })).toHaveCount(0);
-  await page.getByLabel("문제 있음만").check();
+  await page.getByLabel("방송 화면이 연결되지 않은 방송만").check();
   await expect(on).toHaveCount(0);
   await expect(off).toHaveCount(1);
-  await expect(page.getByTestId("live-status")).toContainText("10초마다 갱신");
+  await expect(page.getByTestId("live-status")).toContainText("10초마다 새로고침");
   await page.screenshot({ path: "tests/e2e/screenshots/admin-ops-live-1440.png" });
 });
 
@@ -61,7 +61,7 @@ test("실시간 방송: 읽지 못하면 「갱신 끊김」을 알리고 마지
   await page.goto("/admin/ops/live");
   await expect(page.getByTestId("live-row").filter({ hasText: names.on })).toBeVisible();
   await page.route("**/api/admin/ops/live-broadcasts", (r) => r.fulfill({ status: 500, contentType: "application/json", body: "{}" }));
-  await expect(page.getByTestId("live-status")).toContainText("갱신 끊김", { timeout: 15_000 });
+  await expect(page.getByTestId("live-status")).toContainText("자동 새로고침 멈춤", { timeout: 15_000 });
   await expect(page.getByTestId("live-row").filter({ hasText: names.on })).toBeVisible();
 });
 
@@ -74,7 +74,7 @@ test("주문·오버레이 접속: 이용 중 파트너스가 보이고 「방�
   await expect(row(names.idle)).toBeVisible();
   await page.getByLabel("방송 중만").check();
   await expect(row(names.idle)).toHaveCount(0);
-  await page.getByLabel("오버레이 접속 안 됨").check();
+  await page.getByLabel("방송 화면 연결 안 됨").check();
   await expect(row(names.on)).toHaveCount(0);
   await expect(row(names.off)).toContainText("접속 안 됨");
   await expect(page.getByTestId("act-created")).toContainText("건");

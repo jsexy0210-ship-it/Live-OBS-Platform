@@ -449,7 +449,7 @@ describe("채팅 닉네임 매칭", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.summary).toEqual({ orders: 2, matched: 1, chatAuthors: 2 });
-    expect(body.orders[0]).toMatchObject({ orderId: inBroadcast.id, nickname: "MangoKim", matched: true, lastChatAt: new Date(NOW.getTime() + 120_000).toISOString() });
+    expect(body.orders[0]).toMatchObject({ orderId: inBroadcast.id, orderNoLabel: expect.stringMatching(/^\d{8}-\d{4,}$/), nickname: "MangoKim", matched: true, lastChatAt: new Date(NOW.getTime() + 120_000).toISOString() });
     expect(body.orders[1]).toMatchObject({ nickname: "없는닉", matched: false, lastChatAt: null });
     expect((await db.order.findUniqueOrThrow({ where: { id: inBroadcast.id } })).broadcastNicknameSnapshot).toBe("MangoKim");
     expect((await getMatches(s.cookie, "?broadcastSessionId=nope")).status).toBe(400);

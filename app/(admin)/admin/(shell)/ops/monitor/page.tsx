@@ -66,11 +66,11 @@ export default function OpsMonitorPage() {
             <>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
                 {[
-                  ["앱 서버", `${data.servers.healthy}/${data.servers.total} 정상`, "monitor-servers", data.servers.stale + data.servers.noSignal > 0 ? `멈춤 ${data.servers.stale} · 신호 없음 ${data.servers.noSignal}` : ""],
-                  ["정기 실행", `${(data.jobs.length - jobsBad)}/${data.jobs.length} 정상`, "monitor-jobs", ""],
+                  ["서비스 서버", `${data.servers.healthy}/${data.servers.total} 정상`, "monitor-servers", data.servers.stale + data.servers.noSignal > 0 ? `멈춘 서버 ${data.servers.stale} · 응답 없는 서버 ${data.servers.noSignal}` : ""],
+                  ["자동으로 도는 작업", `${(data.jobs.length - jobsBad)}/${data.jobs.length} 정상`, "monitor-jobs", ""],
                   ["자동 연결 대기", `${data.queue.automationQueued}건`, "monitor-queue", data.queue.oldestQueuedAt ? `가장 오래된 ${dayTime(data.queue.oldestQueuedAt)}` : ""],
-                  ["결제 확인 대기", `${payPending}건`, "monitor-pay", ""],
-                  ["웹훅 지연", "측정 안 함", "monitor-webhook", "받은 기록을 저장하지 않습니다"],
+                  ["결제 결과 확인 대기", `${payPending}건`, "monitor-pay", ""],
+                  ["외부 알림 수신 지연", "확인하지 않음", "monitor-webhook", "받은 기록을 저장하지 않습니다"],
                 ].map(([label, value, id, sub]) => (
                   <div key={id} className="card pad col" style={{ gap: 4 }}>
                     <span className="t-l2 c-alt">{label}</span>
@@ -85,9 +85,9 @@ export default function OpsMonitorPage() {
               <section className="card" aria-labelledby="mon-open">
                 <div className="row pad-l" style={{ justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                   <h2 className="t-hl1" id="mon-open">
-                    장애 · 이상 목록
+                    문제 목록
                   </h2>
-                  <span className="row" style={{ gap: 6 }} role="group" aria-label="심각도">
+                  <span className="row" style={{ gap: 6 }} role="group" aria-label="얼마나 급한지">
                     {(["all", "critical", "warning"] as Filter[]).map((f) => (
                       <button key={f} type="button" className={`btn btn-sm ${filter === f ? "" : "btn-out"}`} aria-pressed={filter === f} onClick={() => setFilter(f)}>
                         {f === "all" ? "전체" : f === "critical" ? "긴급" : "주의"}
@@ -105,7 +105,7 @@ export default function OpsMonitorPage() {
                       <thead>
                         <tr>
                           <th>시각</th>
-                          <th>심각도</th>
+                          <th>얼마나 급한지</th>
                           <th>대상</th>
                           <th>내용</th>
                         </tr>
@@ -164,7 +164,7 @@ export default function OpsMonitorPage() {
 
               <section className="card" aria-labelledby="mon-pay">
                 <h2 className="t-hl1 pad-l" id="mon-pay">
-                  결제 확인 대기
+                  결제 결과 확인 대기
                 </h2>
                 <div style={{ overflowX: "auto" }}>
                   <table className="tbl">
@@ -190,7 +190,7 @@ export default function OpsMonitorPage() {
 
               <section className="card" aria-labelledby="mon-jobs">
                 <h2 className="t-hl1 pad-l" id="mon-jobs">
-                  정기 실행
+                  자동으로 도는 작업
                 </h2>
                 {data.jobs.length === 0 ? (
                   <div className="st">
@@ -204,7 +204,7 @@ export default function OpsMonitorPage() {
                           <th>작업</th>
                           <th>상태</th>
                           <th>마지막 실행</th>
-                          <th>마지막 성공</th>
+                          <th>마지막으로 성공한 때</th>
                           <th>서버</th>
                           <th>오류</th>
                         </tr>

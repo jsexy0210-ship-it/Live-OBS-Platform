@@ -40,7 +40,7 @@ export const ADMIN_MENU: AdminGroup[] = [
     items: [
       { label: "실시간 방송", href: "/admin/ops/live", ready: true },
       { label: "주문·오버레이 접속", href: "/admin/ops/access", ready: true },
-      { label: "적립금 실지급 파트너스", href: "/admin/ops/rewards", ready: true },
+      { label: "적립금을 실제로 주는 파트너스", href: "/admin/ops/rewards", ready: true },
       { label: "실시간 감시", href: "/admin/ops/monitor", perm: "system.manage", ready: true },
       { label: "자동 연결 작업", href: "/admin/ops/jobs" },
     ],
@@ -59,7 +59,7 @@ export const ADMIN_MENU: AdminGroup[] = [
     label: "관리자",
     items: [
       { label: "관리자 계정", href: "/admin/accounts", perm: "admin.manage", ready: true },
-      { label: "역할별 권한", href: "/admin/accounts/roles", perm: "admin.manage", ready: true },
+      { label: "역할별로 할 수 있는 일", href: "/admin/accounts/roles", perm: "admin.manage", ready: true },
       { label: "로그 추적", href: "/admin/logs", perm: "audit.read", ready: true },
     ],
   },

@@ -1,6 +1,7 @@
 import type { Prisma, PrismaClient, RewardLedgerStatus } from "@prisma/client";
 import { decodeCursor, encodeCursor } from "../orders/read";
 import { requireSellerRead, type TenantContext } from "../tenant/context";
+import { orderNoLabel } from "../orders/orderNoLabel";
 
 // 적립금 지급·회수 원장 조회(SA-032, MEMBER_POINTS). 조회만 하고 지급·회수를 실행하지 않는다.
 // 항상 ctx.sellerId 범위만 본다. 탈퇴 회원의 줄은 닉네임이 「탈퇴회원-…」으로 바뀐 채 남는다(buyers/withdraw.ts).
@@ -21,7 +22,7 @@ const SELECT = {
   createdAt: true,
   processedAt: true,
   buyerMember: { select: { id: true, broadcastNickname: true } },
-  order: { select: { id: true, orderNo: true } },
+  order: { select: { id: true, orderNo: true, createdAt: true } },
 } as const satisfies Prisma.RewardLedgerSelect;
 
 // 생성 시각 내림차순, (createdAt, id) 커서 페이지. 잘못된 값이면 { ok: false }.
@@ -52,7 +53,7 @@ export async function listRewardLedger(db: PrismaClient, ctx: TenantContext, que
       amount: r.amount,
       status: r.status,
       failureReason: r.failureReason,
-      order: r.order,
+      order: r.order ? { id: r.order.id, orderNo: r.order.orderNo, orderNoLabel: orderNoLabel(r.order.createdAt, r.order.orderNo) } : null,
       testMode: r.testMode,
       createdAt: r.createdAt,
       processedAt: r.processedAt,

@@ -155,11 +155,11 @@ export default function ApplicationDetailPage() {
             )}
             {pending && (
               <Info
-                title="확인 필요 항목"
+                title="확인할 것"
                 id="application-reasons"
                 rows={[
                   [
-                    "자동 점검",
+                    "자동으로 확인한 결과",
                     state.kind === "ok" && state.reasons.length > 0 ? (
                       <span className="row" style={{ gap: 6, flexWrap: "wrap" }}>
                         {state.reasons.map((c) => (
@@ -169,7 +169,7 @@ export default function ApplicationDetailPage() {
                         ))}
                       </span>
                     ) : (
-                      "걸린 항목이 없습니다."
+                      "문제가 된 항목이 없습니다."
                     ),
                   ],
                 ]}

@@ -62,7 +62,7 @@ export default function WishlistView({ slug }: { slug: string }) {
       <div className="cart-empty">
         <p>찜한 상품을 불러오지 못했어요. 연결을 확인하고 다시 시도해 주세요.</p>
         <button className="btn" type="button" onClick={() => void load()}>
-          다시 시도
+          다시 불러오기
         </button>
       </div>
     ) : items.length === 0 ? (

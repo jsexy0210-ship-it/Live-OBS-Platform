@@ -3,12 +3,12 @@ export const JOB_STATUS: Record<string, { label: string; cls: string }> = {
   AWAITING_PAYMENT: { label: "결제 대기", cls: "b-wait" },
   QUEUED: { label: "대기", cls: "b-wait" },
   RUNNING: { label: "실행 중", cls: "b-live" },
-  VERIFYING: { label: "검증 중", cls: "b-live" },
-  NEEDS_CUSTOMER: { label: "고객 확인 대기", cls: "b-warn" },
+  VERIFYING: { label: "결과 확인 중", cls: "b-live" },
+  NEEDS_CUSTOMER: { label: "고객이 할 일 기다림", cls: "b-warn" },
   SUCCEEDED: { label: "완료", cls: "b-done" },
   FAILED: { label: "실패", cls: "b-fail" },
   CANCELED: { label: "취소", cls: "b-gray" },
-  CLEANUP_NEEDED: { label: "정리 필요", cls: "b-fail" },
+  CLEANUP_NEEDED: { label: "직접 정리 필요", cls: "b-fail" },
 };
 export const PAY_STATUS: Record<string, { label: string; cls: string }> = {
   PENDING: { label: "결제 확인 중", cls: "b-wait" },

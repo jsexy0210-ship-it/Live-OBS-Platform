@@ -59,9 +59,9 @@ export default function MarketingConsent({ slug, shopName }: { slug: string; sho
   const done = (s: State) =>
     setResult(
       s.agreed && s.agreedAt
-        ? `${shopName}에서 보내는 마케팅 정보 수신에 동의했어요 · 처리일 ${kstDate(s.agreedAt)}`
+        ? `${shopName}에서 보내는 이벤트·할인 소식 받기에 동의했어요 · 동의한 날 ${kstDate(s.agreedAt)}`
         : s.withdrawnAt
-          ? `${shopName}에서 보내는 마케팅 정보 수신을 철회했어요 · 처리일 ${kstDate(s.withdrawnAt)}`
+          ? `${shopName}에서 보내는 이벤트·할인 소식 받기를 그만뒀어요 · 처리한 날 ${kstDate(s.withdrawnAt)}`
           : null,
     );
 
@@ -104,7 +104,7 @@ export default function MarketingConsent({ slug, shopName }: { slug: string; sho
       <section className="card shop-card col" style={{ gap: 12 }}>
         <span className="t-l1">알림 설정을 불러오지 못했어요</span>
         <button className="btn btn-sm" type="button" style={{ alignSelf: "flex-start" }} onClick={() => void load()}>
-          다시 시도
+          다시 불러오기
         </button>
       </section>
     );
@@ -133,7 +133,7 @@ export default function MarketingConsent({ slug, shopName }: { slug: string; sho
       <div className="row between" style={{ gap: 12 }}>
         <span className="col" style={{ gap: 2 }}>
           <span className="t-l1 fw6" id="mc-label">
-            마케팅 정보 받기
+            이벤트·할인 소식 받기
           </span>
           <span className="t-c1 c-alt" id="mc-help">
             {s.agreed ? "새 상품 · 방송 시작 · 할인 소식을 받고 있어요" : "새 상품 · 방송 시작 · 할인 소식을 받지 않아요"}
@@ -182,7 +182,7 @@ export default function MarketingConsent({ slug, shopName }: { slug: string; sho
       )}
       {asking && !needsReload && (
         <div className="card pad col" style={{ gap: 10, boxShadow: "inset 0 0 0 1px var(--wds-line-normal-normal)" }} data-testid="mc-terms">
-          <span className="t-l1 fw6">마케팅 정보 수신 동의 (선택)</span>
+          <span className="t-l1 fw6">이벤트·할인 소식 받기 (선택)</span>
           {/* 동의를 받기 전에 서식 전체(이용 목적·항목·보유 기간)를 보여 준다 */}
           <MarketingConsentDoc shopName={shopName} />
           <span className="row" style={{ gap: 8 }}>
