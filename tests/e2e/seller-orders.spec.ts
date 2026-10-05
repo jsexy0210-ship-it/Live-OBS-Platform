@@ -48,7 +48,7 @@ test("주문 목록: 20건씩 보이고 「주문 더 불러오기」로 나머�
   await expect(rows(page)).toHaveCount(20);
   await expect(page.getByText("20건 넘게")).toBeVisible();
   // 메뉴 「주문」이 이 화면을 가리킨다
-  await expect(page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "주문", exact: true })).toHaveAttribute("href", "/seller/orders");
+  await expect(page.getByLabel("주 메뉴").getByRole("link", { name: "주문", exact: true })).toHaveAttribute("href", "/seller/orders");
   await shot(page, "SA-021");
   const next = listResponse(page, "cursor=");
   await page.getByRole("button", { name: "주문 더 불러오기" }).click();
@@ -282,7 +282,7 @@ test("실제 환불: 판매자 사정으로 환불하면 완료 알림이 뜨고
 
 test("주문·배송 권한이 없는 직원은 메뉴에 주문이 없고, 주소로 들어오면 권한 안내를 본다", async ({ page }) => {
   await login(page, "demo-staff@example.com", "/seller/products");
-  await expect(page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "주문", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "주문", exact: true })).toHaveCount(0);
   await page.goto("/seller/orders");
   await expect(page.getByText("이 계정은 이 일을 할 수 없습니다")).toBeVisible();
   await expect(page.getByText("필요한 권한: 주문·배송")).toBeVisible();

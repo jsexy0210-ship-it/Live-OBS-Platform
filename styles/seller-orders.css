@@ -57,6 +57,29 @@
 .ord-link:hover {
   text-decoration: underline;
 }
+.ord-ono {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--wds-label-alternative);
+  font-weight: 400;
+}
+.ord-rf {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+}
+.ord-ono-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.ord-ono-bar span,
+.ord-ono-bar b {
+  white-space: nowrap;
+}
 .ord-product {
   max-width: 260px;
 }
