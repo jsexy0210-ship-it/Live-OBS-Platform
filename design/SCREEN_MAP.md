@@ -277,7 +277,7 @@
 | DS-CONFIRM | 공통 확인 창 — 저장·삭제·변경·상태 변경·일괄 처리 앞 다이얼로그(규칙 6항 · 관리자 6종 · 구매자 PC 2종 · 휴대폰 시트 2종, 대표님 지시 2026-10-06 · docs PR #627) | FINAL v272 (1791213148-ad9f) · `design/project/DS-CONFIRM.dc.html` |
 | IA1·IA2·IA3 | 정보구조도 보드(IA1은 v279에서 확정 GNB·LNB로 재생성) | DRAFT · 정본은 docs/IA.md |
 | DS-DATEPICKER | 공통 날짜 선택(네이버식) — 칸 2026.10.05 · 빈 칸 「날짜 선택」/「시작일」~「종료일」 · 달력 아이콘 · 달력 ‹ 2026.10 › · 일 빨강 토 파랑 · 오늘 테두리 · 고른 날 채운 원 · 기간 연한 배경 · [초기화][적용] · 관리자 40 · 구매자 PC · 휴대폰 시트 48 · 검색 필터 기본값(최근 1개월) · 규칙 5(대표님 지시 2026-10-06 · docs PR #631 · #630 · #632) | FINAL v276 (1791214099-aa42) · `design/project/DS-DATEPICKER.dc.html` · lop.css `.i.dt` / `.inp.dt` |
-| DS-NAV | 새 GNB · 메뉴 구조표(제안) — 파트너스 GNB 10→8 · LNB 50→34, 마스터 8→6 · 28→24, 구매자 이름 2곳, 통폐합 전후 대응표 · 원칙 5(대표님 지시 2026-10-05 · docs/IA.md 「GNB·위계 현대화」 PR #637) · 화면 ← 버튼(Back) 규격 6항·시안 5(대표님 지시 「화면 진입 시 Back 기능도 없다」, 경로는 docs/BACK_ROUTES.md) | FINAL v278 (대표님 확정 2026-10-06 「그대로 진행」, docs/IA.md 「확정 메뉴 구조」 PR #637) · `design/project/DS-NAV.dc.html` |
+| DS-NAV | 새 GNB · 메뉴 구조표(제안) — 파트너스 GNB 10→8 · LNB 50→34, 마스터 8→6 · 28→24, 구매자 이름 2곳, 통폐합 전후 대응표 · 원칙 5(대표님 지시 2026-10-05 · docs/IA.md 「GNB·위계 현대화」 PR #637) · 화면 ← 버튼(Back) 규격 6항·시안 5(대표님 지시 「화면 진입 시 Back 기능도 없다」, 경로는 docs/BACK_ROUTES.md) | FINAL v295 (대표님 확정 2026-10-06 「그대로 진행」 v278 · 가운뎃점 띄어쓰기 통일 v295, docs/IA.md 「확정 메뉴 구조」 PR #637) · `design/project/DS-NAV.dc.html` |
 | DS-TYPE-SCALE | 글자 · 버튼 · 간격 · 모서리 · 아이콘 · 표 · 일시 표기 크기 체계 한 장(시각 규격 2026-10-05 + 일시 2026.10.05 22:25) | FINAL v278 (대표님 확정 2026-10-06 「그대로 진행」) · `design/project/DS-TYPE-SCALE.dc.html` |
 | IA1·IA2·IA3 | 정보구조도 보드 | DRAFT · 정본은 docs/IA.md |
 | Handoff | 개발 이관 목록 보드 | DRAFT |
