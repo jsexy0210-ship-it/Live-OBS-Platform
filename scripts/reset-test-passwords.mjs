@@ -1,5 +1,6 @@
 // 테스트 서버(obs-test) 전용: 판매자 계정(SellerUser)·구매자 회원(BuyerMember) 전원의 비밀번호를 「1234」로 맞춘다
 // (2026-10-05 대표님 지시 「테스트계정 싹다 비밀번호 1234로 통일」, 마스터 관리자(PlatformAdmin)는 제외).
+// 실행: Actions 「Seed obs-test」를 reset_passwords를 켜고 수동 실행(.github/workflows/seed-obs-test.yml).
 // - OBS_TEST_MODE=1일 때만 실행한다(seed-obs-test.mjs와 같은 플래그). 운영 서버에는 이 값을 넣지 않는다.
 // - 비밀번호 길이 규칙은 이 시험 명령에서만 건너뛴다(서비스의 가입·변경 규칙은 그대로).
 // - 탈퇴(deletedAt)한 구매자는 건드리지 않는다. 판매자 계정은 credentialVersion을 올려 기존 로그인을 끊는다.
