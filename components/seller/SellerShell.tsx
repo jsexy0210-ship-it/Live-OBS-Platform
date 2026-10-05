@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { GlobalSearch, NotificationBell } from "../admin-ui/GnbTools";
 import { useWholeDateClick } from "../admin-ui/useWholeDateClick";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
@@ -66,7 +67,7 @@ const MENU: Group[] = [
       { label: "재고 관리", href: "/seller/products/stock", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
       { label: "카테고리", href: "/seller/products/categories", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
       { label: "상품 진열", href: "/seller/products/display", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
-      { label: "재입고 알림", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
+      { label: "재입고 알림", href: "/seller/products/restock-alerts", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
       { label: "엑셀 일괄 등록", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
     ],
   },
@@ -432,6 +433,8 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
             <span className="gnb-shop ell" title={`${me.user.name} · ${me.user.email}`}>
               {me.shop.name}
             </span>
+            <GlobalSearch scope="seller" />
+            <NotificationBell scope="seller" />
             <span className="util-desk">{utilities}</span>
           </div>
         </header>

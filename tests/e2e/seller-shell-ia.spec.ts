@@ -51,22 +51,27 @@ test("상단 「공지 · 문의」「도우미」는 링크로 열린다", asyn
 });
 
 for (const width of [1024, 1100, 1280, 1440]) {
-  test(`${width}px에서 GNB 메뉴·쇼핑몰 이름·상단 유틸이 겹치지 않는다`, async ({ page }) => {
+  test(`${width}px에서 GNB 메뉴·검색·알림·상단 유틸이 겹치지 않고 잘리지 않는다`, async ({ page }) => {
     await page.setViewportSize({ width, height: 800 });
     await login(page, "/seller/products");
-    await expect(page.locator(".gnb-shop")).toBeVisible();
+    await expect(page.locator(".gnb-util")).toBeVisible();
     const boxes = await page.evaluate(() => {
       const r = (el: Element) => {
         const b = el.getBoundingClientRect();
-        return { left: b.left, right: b.right };
+        return { left: b.left, right: b.right, w: b.width };
       };
       const nav = document.querySelector(".gnb-nav")!;
-      const shop = document.querySelector(".gnb-shop")!;
-      const util = document.querySelector(".util-desk")!;
-      return { nav: r(nav), shop: r(shop), util: r(util), navScroll: nav.scrollWidth - nav.clientWidth > 1 };
+      // 왼쪽에서 오른쪽 순서: 메뉴 → (쇼핑몰 이름) → 검색·알림 아이콘 → 상단 유틸. 숨겨진(폭 0) 것은 건너뛴다
+      const seq = [".gnb-nav", ".gnb-shop", ".gnb-ic-wrap", ".gnb-ic-wrap:nth-of-type(2)", ".util-desk"]
+        .map((q) => document.querySelector(q))
+        .filter((el): el is Element => !!el)
+        .map(r)
+        .filter((x) => x.w > 0);
+      const util = r(document.querySelector(".util-desk")!);
+      return { seq, utilRight: util.right, vw: window.innerWidth, navScroll: nav.scrollWidth - nav.clientWidth > 1 };
     });
-    expect(boxes.nav.right).toBeLessThanOrEqual(boxes.shop.left + 0.5);
-    expect(boxes.shop.right).toBeLessThanOrEqual(boxes.util.left + 0.5);
+    for (let i = 1; i < boxes.seq.length; i++) expect(boxes.seq[i - 1].right, `${i}번째 요소가 앞 요소와 겹침`).toBeLessThanOrEqual(boxes.seq[i].left + 0.5);
+    expect(boxes.utilRight, "상단 유틸이 화면 밖으로 잘림").toBeLessThanOrEqual(boxes.vw);
     expect(boxes.navScroll).toBe(false);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   });
@@ -98,4 +103,52 @@ test("고객 그룹 「구매자 문의」는 /seller/buyer-inquiries로 연결�
   await expect(page).toHaveURL(/\/seller\/buyer-inquiries$/);
   await expect(gnb(page).getByRole("link", { name: "고객", exact: true })).toHaveClass(/\bon\b/);
   await expect(lnb(page).getByRole("link", { name: "구매자 문의" })).toHaveAttribute("aria-current", "page");
+});
+
+test("상단 전역 검색: 상품을 찾아 이동하고, 결과가 없으면 안내하며, Esc로 닫힌다", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await login(page, "/seller/members");
+  await page.getByRole("button", { name: "전체 검색", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "전체 검색" });
+  await expect(dialog.getByText("검색어를 입력해 주십시오.")).toBeVisible();
+  await dialog.getByRole("searchbox").fill("탑로더");
+  const hit = dialog.getByRole("region", { name: "상품" }).getByRole("link", { name: /탑로더 25장/ });
+  await expect(hit).toBeVisible();
+  await hit.click();
+  await expect(page).toHaveURL(/\/seller\/products\/[^/?]+$/);
+  await expect(dialog).toHaveCount(0);
+  await page.getByRole("button", { name: "전체 검색", exact: true }).click();
+  await page.getByRole("dialog", { name: "전체 검색" }).getByRole("searchbox").fill("zzz없는검색어");
+  await expect(page.getByText("「zzz없는검색어」 검색 결과가 없습니다.")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "전체 검색" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "전체 검색", exact: true })).toBeFocused();
+});
+
+test("상단 알림: 종 버튼이 열리고(목록 또는 빈 안내), 바깥을 누르면 닫힌다", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await login(page, "/seller/members");
+  const bell = page.getByRole("button", { name: /^알림/ });
+  await expect(bell).toBeVisible();
+  await bell.click();
+  const dialog = page.getByRole("dialog", { name: "알림" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText(/새 알림이 없습니다|공지|문의 답변/).first()).toBeVisible();
+  await page.mouse.click(300, 600);
+  await expect(dialog).toHaveCount(0);
+});
+
+test("상품 그룹 「재입고 알림」은 /seller/products/restock-alerts로 연결된다", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await login(page, "/seller/products");
+  await expect(lnb(page).getByRole("link", { name: "재입고 알림" })).toHaveAttribute("href", "/seller/products/restock-alerts");
+});
+
+test("모바일(390): 검색·알림 버튼이 보이고 패널이 화면 안에 열린다", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 800 });
+  await login(page, "/seller/members");
+  await page.getByRole("button", { name: "전체 검색", exact: true }).click();
+  const box = await page.getByRole("dialog", { name: "전체 검색" }).boundingBox();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(390);
 });
