@@ -9,6 +9,7 @@ import { Topbar, planAllows, useSeller } from "../SellerShell";
 import { LoadingRows } from "../States";
 import { api } from "../api";
 import { useUrlState } from "../../../lib/client/navigation";
+import { DatePicker } from "../../../components/admin-ui/DatePicker";
 
 // SA-056 통계 화면 공통 틀: 통계 탭 · 기간 선택(오늘·7일·1개월·이번 달·직접 선택, 기본 1개월) · 묶음 단위 · 상태(로딩·데이터 없음·오류·권한 없음).
 // 날짜는 KST 기준. 서버가 최대 366일까지 받는다(lib/server/stats/range.ts).
@@ -162,9 +163,9 @@ export function StatsFrame({ title, heading, sub, period, setPeriod, onDownload,
                         {x.label}
                       </button>
                     ))}
-                    <input className="inp" type="date" aria-label="시작일" value={draft.from} max={draft.to || undefined} onChange={(e) => setDraft({ ...draft, from: e.target.value })} />
+                    <DatePicker aria-label="시작일" value={draft.from} max={draft.to || undefined} onChange={(v) => setDraft({ ...draft, from: v })} />
                     <span className="c-alt">~</span>
-                    <input className="inp" type="date" aria-label="종료일" value={draft.to} min={draft.from || undefined} onChange={(e) => setDraft({ ...draft, to: e.target.value })} />
+                    <DatePicker aria-label="종료일" value={draft.to} min={draft.from || undefined} onChange={(v) => setDraft({ ...draft, to: v })} />
                     {comparable && (
                       <label className="chk t-l2">
                         <input className="cbx" type="checkbox" checked={period.compare} onChange={(e) => setPeriod({ ...period, compare: e.target.checked })} />

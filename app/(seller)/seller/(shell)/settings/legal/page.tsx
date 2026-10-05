@@ -6,6 +6,7 @@ import { Topbar, useSeller } from "../../../../../../components/seller/SellerShe
 import { ErrorState, LoadingRows, Locked, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
 import "./legal.css";
+import { DatePicker } from "../../../../../../components/admin-ui/DatePicker";
 
 // SA-062 법정 고지·약관(파트너스 관리자, 설정 › 쇼핑몰 설정): 쇼핑몰 이용약관·개인정보처리방침 입력.
 // 입력한 글이 구매자 쇼핑몰(/shop/{슬러그}/terms·privacy)에 글자 그대로 표시된다. 게시하기 전에는 구매자에게 「준비 중」으로 보인다.
@@ -140,7 +141,7 @@ function LegalPanel({ kind, label, slug, editable, visible }: { kind: Kind; labe
           </FormRow>
           <FormRow label="시작하는 날" help="공개하려면 필요합니다">
             <div className="col" style={{ gap: 4 }}>
-              <input className={`inp${showError && dateError ? " is-error" : ""}`} type="date" aria-label={`${label} 시작하는 날`} aria-invalid={showError && !!dateError} readOnly={!editable} value={date} onChange={(e) => setDate(e.target.value)} />
+              <DatePicker className={`${showError && dateError ? " is-error" : ""}`} aria-label={`${label} 시작하는 날`} aria-invalid={showError && !!dateError} readOnly={!editable} value={date} onChange={(v) => setDate(v)} />
               {showError && dateError && <span className="err" role="alert">{dateError}</span>}
             </div>
           </FormRow>

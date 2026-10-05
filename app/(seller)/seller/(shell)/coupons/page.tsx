@@ -8,6 +8,7 @@ import { api } from "../../../../../components/seller/api";
 import { couponAmountText, couponConditions, couponDate, type CouponView } from "../../../../../components/shop/CouponBox";
 import { ConfirmDelete, StateBox, errorText, fromKstInput, kstText, stateKind, toKstInput } from "../banners/_shared/ui";
 import "./coupons.css";
+import { DateTimePicker } from "../../../../../components/admin-ui/DatePicker";
 
 // SA-035 쿠폰 관리(파트너스 관리자, 판매 › 쿠폰). 쿠폰 만들기·수정·복제·발급 중지·삭제(발급 0장만)·직접 지급(등급), 발급·사용 집계.
 // 조회는 파트너스 계정 누구나, 바꾸기는 대표자·적립금 권한 직원만(서버가 canEdit으로 알려 줌). 할인 금액은 주문 때 서버가 계산한다.
@@ -591,9 +592,9 @@ function CouponEditor({ draft: initial, products, onClose, onSaved }: { draft: D
             <div className="fld">
               <span className="lbl req">사용 기간 (KST)</span>
               <div className="cp-period">
-                <input className="inp" type="datetime-local" aria-label="사용 시작" value={d.startsAt} onChange={(e) => set({ startsAt: e.target.value })} />
+                <DateTimePicker aria-label="사용 시작" value={d.startsAt} onChange={(v) => set({ startsAt: v })} />
                 <span className="c-alt">~</span>
-                <input className="inp" type="datetime-local" aria-label="사용 종료" value={d.endsAt} onChange={(e) => set({ endsAt: e.target.value })} />
+                <DateTimePicker aria-label="사용 종료" value={d.endsAt} onChange={(v) => set({ endsAt: v })} />
               </div>
               {d.startsAt && d.endsAt && d.startsAt >= d.endsAt ? <span className="err">종료는 시작보다 늦어야 합니다</span> : <span className="help">이 기간에 받고 쓸 수 있음</span>}
               <label className="row t-l2" style={{ gap: 8 }}>
