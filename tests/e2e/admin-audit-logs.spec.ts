@@ -57,7 +57,7 @@ async function open(page: Page, path: string) {
   await page.goto(path);
 }
 
-test("조회 전용 계정도 로그 추적을 본다: 파트너스 지정·종류·행위자·기간 필터, 코드 대신 이름, 값 왼쪽 정렬", async ({ page }) => {
+test("조회 전용 계정도 로그 추적을 본다: 파트너스 지정·종류·행위자·기간 필터, 코드 대신 이름, 표 데이터 가운데 정렬", async ({ page }) => {
   await open(page, `/admin/logs?sellerId=${sellerId}`);
   const rows = page.getByTestId("audit-row");
   await expect(rows).toHaveCount(3);
@@ -67,7 +67,7 @@ test("조회 전용 계정도 로그 추적을 본다: 파트너스 지정·종�
   await expect(page.locator("main")).not.toContainText("admin.seller.suspend");
   await expect(page.locator("main")).not.toContainText("zzz.unknown.thing");
   const align = await page.locator(".tbl td").first().evaluate((el) => getComputedStyle(el).textAlign);
-  expect(["left", "start"]).toContain(align);
+  expect(align).toBe("center"); // 표 정렬 새 규칙(2026-10-05): 글 열(.col-text)이 아니면 데이터는 가운데
 
   const search = () => page.getByRole("button", { name: "검색", exact: true }).click();
   await page.getByLabel("종류").selectOption("admin.seller.");

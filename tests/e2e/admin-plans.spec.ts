@@ -50,7 +50,7 @@ test("CS는 요금제별 월 제공량을 보기만 한다(이름으로, 변경 
   await expect(row(page, "쇼핑몰 통합").locator("td").nth(1)).toHaveText(/\d원$/);
   await expect(page.getByRole("columnheader", { name: "작업" })).toHaveCount(0);
   const align = await page.locator(".tbl td").first().evaluate((el) => getComputedStyle(el).textAlign);
-  expect(["left", "start"]).toContain(align);
+  expect(align).toBe("center"); // 표 정렬 새 규칙(2026-10-05): 글 열(.col-text)이 아니면 데이터는 가운데
 });
 
 test("최고관리자: 월 제공량을 바로 바꾸고, 적용 예정으로 걸면 현재 값은 그대로이며, 잘못된 값은 막는다", async ({ page }) => {
