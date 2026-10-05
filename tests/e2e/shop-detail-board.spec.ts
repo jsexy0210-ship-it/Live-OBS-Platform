@@ -132,3 +132,33 @@ test("PC·태블릿: 하단 바는 고정되지 않고 상품 정보 아래에 �
     if (process.env.E2E_SCREENSHOTS === "1") await page.screenshot({ path: `tests/e2e/screenshots/SH-003-pd-bar-${name}.png` });
   }
 });
+
+// 모달(상품 문의) 위에 확인 창이 겹칠 때: Esc는 위(확인 창)만 닫고, 포커스는 아래 모달로 돌아온다.
+test("문의 창 위의 확인 창: Esc로 확인 창만 닫히고 문의 창·입력 내용은 그대로, 취소하면 서버에 보내지 않는다", async ({ page, baseURL }) => {
+  await login(page, baseURL!);
+  const id = await productIdOf(page, "탑로더 25장");
+  await page.goto(`/shop/${SLUG}/products/${id}`);
+  let posts = 0;
+  await page.route("**/api/shop/*/inquiries", (route) => {
+    if (route.request().method() === "POST") posts += 1;
+    return route.continue();
+  });
+  await page.getByRole("region", { name: /^상품 문의/ }).getByRole("button", { name: "문의하기" }).click();
+  const dlg = page.getByRole("dialog", { name: "상품 문의" });
+  await dlg.getByLabel("제목").fill("겹침 시험");
+  await dlg.getByLabel("내용").fill("확인 창 위에서 Esc를 눌러 봐요");
+  const send = dlg.getByRole("button", { name: "문의 남기기" });
+  await send.click();
+  const cfm = page.getByRole("dialog", { name: "문의를 남길까요?" });
+  await expect(cfm).toBeVisible();
+  await expect(cfm.getByRole("button", { name: "취소" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(cfm).toHaveCount(0);
+  await expect(dlg).toBeVisible(); // 아래 문의 창은 남아 있다
+  await expect(dlg.getByLabel("제목")).toHaveValue("겹침 시험");
+  await expect(send).toBeFocused(); // 포커스가 확인 창을 연 버튼으로 돌아온다
+  expect(posts).toBe(0);
+  await dlg.getByRole("button", { name: "취소" }).click(); // 문의 창을 닫는다(보내지 않음)
+  await expect(dlg).toHaveCount(0);
+  expect(posts).toBe(0);
+});
