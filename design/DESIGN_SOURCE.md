@@ -28,7 +28,7 @@
 
 ## 예외
 
-- **고아 파일**: 캔버스의 `project/SA-045.dc.html`(옛 틀의 회원 알림 발송 보드)은 `canvas.json` 인덱스 밖이고 SA-049로 이동된 보드가 따로 있어 복사하지 않았다(MASTER 결정 2026-10-05). 캔버스 쪽 파일 삭제는 MASTER에 요청.
+- **고아 파일**: 캔버스의 `project/SA-045.dc.html`(옛 틀의 회원 알림 발송 보드)은 `canvas.json` 인덱스 밖이고 SA-049로 이동된 보드가 따로 있어 복사하지 않았다(MASTER 결정 2026-10-05). MASTER가 캔버스에서 삭제함(v257 `1791209877-f282`, canvas.json 변경 없음) — 이 시점부터 `design/project`는 캔버스 `project/`와 서체 파일 외 1:1이다.
 - **서체**: 캔버스의 `project/fonts/WantedSansVariable.woff2`(1.2MB)는 복사하지 않았다. 저장소에 이미 있는 `public/fonts/wanted-sans/split/WantedSansVariable.split.*.woff2`(92개 unicode-range 분할, `styles/wanted-sans.css`)가 같은 서체(Wanted Sans Variable, SIL OFL 1.1)다. 디자인 `lop.css`·`ov.css`의 `@font-face`는 `fonts/WantedSansVariable.woff2`를 가리키므로 저장소 안에서 정적으로 열면 시스템 서체로 대체된다.
 - **런타임**: 보드가 참조하는 `./support.js`와 캔버스의 `artifact-type/**` · `index.html` · `SKILL.md` · 루트의 `*.dc.html`은 Artifact 유형 소유라 이관 대상이 아니다. 따라서 Build는 NOT_APPLICABLE이다.
 - **업로드 이미지**(`/_blob/…`): 2026-10-05 기준 보드가 참조하는 블롭이 없다(스크립트 검사 0건). 생기면 `design/project/` 안에 받아 두고 경로 대응을 여기에 적는다.
