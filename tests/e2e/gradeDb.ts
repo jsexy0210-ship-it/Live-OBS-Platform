@@ -19,6 +19,7 @@ export async function resetGradesInDb(slug: string) {
     await db.memberGradePolicy.deleteMany({ where: { sellerId: seller.id } });
     await db.memberGrade.deleteMany({ where: { id: { in: custom.map((c) => c.id) } } });
     await db.memberGrade.updateMany({ where: { sellerId: seller.id, systemKey: { not: null } }, data: { minAmount: 0 } });
+    await db.memberGrade.updateMany({ where: { sellerId: seller.id }, data: { shippingBenefit: "NONE", shippingDiscount: 0, promotionCouponId: null } });
   } finally {
     await db.$disconnect();
   }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { resolveBuyerSession } from "../../../../../lib/server/auth/session";
+import { requestOrigin } from "../../../../../lib/server/branding/siteUrl";
 import { prisma } from "../../../../../lib/server/db";
 import { mutation, noStore, readJson, sessionToken } from "../../../../../lib/server/http/route";
 import { paymentErrorBody, startPaymentStatus } from "../../../../../lib/server/payments/messages";
@@ -18,10 +19,13 @@ export const POST = mutation(async (req: Request, { params }: { params: Promise<
   if (!session) return noStore(NextResponse.json({ error: "unauthenticated" }, { status: 401 }));
   const gw = paymentGateway();
   if (!gw) return noStore(NextResponse.json(paymentErrorBody("payment_not_ready"), { status: 503 }));
+  // PG가 인증 결과를 보낼 공개 주소: 요청 주소(req.url)는 리버스 프록시 뒤에서 내부 주소(0.0.0.0:3000)라 쓰지 않는다(Host·신뢰 프록시 헤더, 못 만들면 준비 중)
+  const origin = requestOrigin(req.headers);
+  if (!origin) return noStore(NextResponse.json(paymentErrorBody("payment_not_ready"), { status: 503 }));
   const body = await readJson<{ orderId: unknown }>(req);
   if (typeof body.orderId !== "string") return noStore(NextResponse.json(paymentErrorBody("invalid_request"), { status: 400 }));
   const r = await startPayment(prisma, gw, { sellerId: seller.id, buyerMemberId: session.member.id, orderId: body.orderId });
   if (!r.ok) return noStore(NextResponse.json(paymentErrorBody(r.reason), { status: startPaymentStatus(r.reason) }));
   const { ok: _ok, ...value } = r;
-  return noStore(NextResponse.json({ ...value, returnUrl: new URL("/api/payments/nicepay/return", req.url).toString() }));
+  return noStore(NextResponse.json({ ...value, returnUrl: new URL("/api/payments/nicepay/return", origin).toString() }));
 });

@@ -12,9 +12,25 @@ import "./member-grades.css";
 // 조회와 변경은 대표자 · 회원/적립금(MEMBER_POINTS) 권한 직원. 적립률은 적립 정책에서 정하고 여기서는 보기만 한다. API: /api/seller/member-grades.
 type Cadence = "MONTHLY" | "WEEKLY" | "DAILY";
 type Demotion = "STEP" | "IMMEDIATE" | "NONE";
-type Grade = { id: string; displayName: string; sortOrder: number; minAmount: number; isBase: boolean; members: number; rewardCard: number | null; rewardBankTransfer: number | null };
+type ShippingBenefit = "NONE" | "DISCOUNT" | "FREE";
+type Grade = {
+  id: string;
+  displayName: string;
+  sortOrder: number;
+  minAmount: number;
+  isBase: boolean;
+  members: number;
+  rewardCard: number | null;
+  rewardBankTransfer: number | null;
+  shippingBenefit: ShippingBenefit;
+  shippingDiscount: number;
+  promotionCouponId: string | null;
+};
+type Benefit = { id: string; shippingBenefit: ShippingBenefit; shippingDiscount: string; promotionCouponId: string };
+type Change = { id: string; memberId: string; nickname: string; fromName: string; toName: string; reason: string; amount: number | null; createdAt: string };
 type Data = {
   grades: Grade[];
+  couponOptions: { id: string; name: string; usable: boolean }[];
   memberTotal: number;
   autoEnabled: boolean;
   windowMonths: number;
@@ -46,6 +62,14 @@ const DEMOTIONS: { v: Demotion; label: string }[] = [
   { v: "IMMEDIATE", label: "기준 미달 시 바로" },
   { v: "NONE", label: "강등 없음 (올라가기만)" },
 ];
+const SHIPPING: { v: ShippingBenefit; label: string }[] = [
+  { v: "NONE", label: "없음" },
+  { v: "DISCOUNT", label: "정액 할인" },
+  { v: "FREE", label: "배송비 무료" },
+];
+// 혜택 저장 본문: 정액 할인이 아니면 금액은 보내지 않는다(서버가 0으로 둔다). 쿠폰을 비우면 연결을 푼다.
+const benefitBody = (b: Benefit | undefined) =>
+  b ? { shippingBenefit: b.shippingBenefit, ...(b.shippingBenefit === "DISCOUNT" ? { shippingDiscount: Number(b.shippingDiscount || 0) } : {}), promotionCouponId: b.promotionCouponId || null } : {};
 const digits = (v: string) => v.replace(/[^0-9]/g, "");
 const windowText = (m: number) => (m === 0 ? "누적" : `최근 ${m}개월`);
 const kstDay = (iso: string) => kstText(iso).slice(5, 10).replace(".", "/");
@@ -55,6 +79,8 @@ export default function MemberGradesPage() {
   const canEdit = can("MEMBER_POINTS");
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number; error?: string } | { kind: "ok"; data: Data }>({ kind: "loading" });
   const [edit, setEdit] = useState<{ id: string; displayName: string; minAmount: string }[]>([]);
+  const [benefit, setBenefit] = useState<Benefit[]>([]);
+  const [changes, setChanges] = useState<{ kind: "up" | "down"; rows: Change[] } | null>(null);
   const [auto, setAuto] = useState(false);
   const [windowMonths, setWindowMonths] = useState(6);
   const [cadence, setCadence] = useState<Cadence>("MONTHLY");
@@ -71,6 +97,7 @@ export default function MemberGradesPage() {
     if (!r.ok) return setState({ kind: "error", status: r.status, error: r.error });
     setState({ kind: "ok", data: r.data });
     setEdit(r.data.grades.map((g) => ({ id: g.id, displayName: g.displayName, minAmount: String(g.minAmount) })));
+    setBenefit(r.data.grades.map((g) => ({ id: g.id, shippingBenefit: g.shippingBenefit, shippingDiscount: g.shippingDiscount ? String(g.shippingDiscount) : "", promotionCouponId: g.promotionCouponId ?? "" })));
     setAuto(r.data.autoEnabled);
     setWindowMonths(r.data.windowMonths);
     setCadence(r.data.cadence);
@@ -98,7 +125,12 @@ export default function MemberGradesPage() {
   };
 
   const save = () =>
-    void run("/api/seller/member-grades", "PUT", { autoEnabled: auto, windowMonths, cadence, demotion, grades: edit.map((e) => ({ id: e.id, displayName: e.displayName, minAmount: Number(e.minAmount || 0) })) }, () => "등급 설정을 저장했습니다");
+    void run("/api/seller/member-grades", "PUT", { autoEnabled: auto, windowMonths, cadence, demotion, grades: edit.map((e, i) => ({ id: e.id, displayName: e.displayName, minAmount: Number(e.minAmount || 0), ...benefitBody(benefit[i]) })) }, () => "등급 설정을 저장했습니다");
+  const showChanges = async (kind: "up" | "down") => {
+    const r = await api<{ changes: Change[] }>(`/api/seller/member-grades/changes?kind=${kind}`);
+    if (!r.ok) return setFailure(errorText(r, "변동 회원을 불러오지 못했습니다. 잠시 뒤 다시 시도해 주십시오"));
+    setChanges({ kind, rows: r.data.changes });
+  };
   const add = async () => {
     if (await run("/api/seller/member-grades", "POST", { displayName: newName, minAmount: Number(newAmount || 0) }, () => "등급을 추가했습니다")) {
       setNewName("");
@@ -153,6 +185,14 @@ export default function MemberGradesPage() {
               <div>
                 <span className="t-l2 c-alt">지난 재산정{data.lastRun ? ` (${data.lastRun.key})` : ""}</span>
                 <b className="num">{data.lastRun ? `승급 ${data.lastRun.promoted} · 강등 ${data.lastRun.demoted}` : "없음"}</b>
+                <span className="row" style={{ gap: 8 }}>
+                  <button className="btn btn-sm btn-text" type="button" onClick={() => void showChanges("up")}>
+                    승급 회원 보기
+                  </button>
+                  <button className="btn btn-sm btn-text" type="button" onClick={() => void showChanges("down")}>
+                    강등 회원 보기
+                  </button>
+                </span>
               </div>
               <div>
                 <span className="t-l2 c-alt">수동 고정</span>
@@ -203,6 +243,54 @@ export default function MemberGradesPage() {
               )}
             </section>
             <span className="t-c1 c-alt">기준 금액은 높은 등급일수록 커야 합니다 · 첫 등급은 0원 · 등급은 10개까지 · 높은 등급부터 판정해 하나만 적용 · 적립률은 적립 정책에서 수정</span>
+
+            <section className="card" aria-label="등급 혜택" data-testid="grade-benefits">
+              <div className="col" style={{ gap: 2, padding: "12px 16px" }}>
+                <span className="t-hl2">등급 혜택</span>
+                <span className="t-c1 c-alt">배송비 혜택은 주문서 금액과 결제 금액에 똑같이 적용됩니다 · 승급 쿠폰은 승급할 때 한 번만 지급하고 같은 쿠폰은 다시 지급하지 않습니다 · 저장 버튼으로 함께 저장</span>
+              </div>
+              <div className="mg-ben mg-head">
+                <span>등급</span>
+                <span>배송비 혜택</span>
+                <span>할인 금액</span>
+                <span>승급 쿠폰</span>
+              </div>
+              {data.grades.map((g, i) => {
+                const b = benefit[i];
+                if (!b) return null;
+                const set = (patch: Partial<Benefit>) => setBenefit((x) => x.map((y, j) => (j === i ? { ...y, ...patch } : y)));
+                return (
+                  <div key={g.id} className="mg-ben" data-testid="benefit-row">
+                    <span className="t-l2 fw6">{edit[i]?.displayName ?? g.displayName}</span>
+                    <select className="inp" aria-label={`${g.displayName} 배송비 혜택`} disabled={!canEdit} value={b.shippingBenefit} onChange={(e) => set({ shippingBenefit: e.target.value as ShippingBenefit })}>
+                      {SHIPPING.map((o) => (
+                        <option key={o.v} value={o.v}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      className="inp num"
+                      inputMode="numeric"
+                      aria-label={`${g.displayName} 배송비 할인 금액`}
+                      placeholder="원"
+                      disabled={!canEdit || b.shippingBenefit !== "DISCOUNT"}
+                      value={b.shippingBenefit === "DISCOUNT" ? b.shippingDiscount : ""}
+                      onChange={(e) => set({ shippingDiscount: digits(e.target.value) })}
+                    />
+                    <select className="inp" aria-label={`${g.displayName} 승급 쿠폰`} disabled={!canEdit || g.isBase} value={b.promotionCouponId} onChange={(e) => set({ promotionCouponId: e.target.value })}>
+                      <option value="">없음</option>
+                      {data.couponOptions.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                          {c.usable ? "" : " (종료·중지)"}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                );
+              })}
+            </section>
 
             <section className="card pad col" style={{ gap: 12 }} aria-label="산정 기준">
               <div className="row between">
@@ -276,6 +364,31 @@ export default function MemberGradesPage() {
                 ))
               )}
             </section>
+
+            {changes && (
+              <section className="card" aria-label={changes.kind === "up" ? "승급 회원" : "강등 회원"} data-testid="grade-changes">
+                <div className="row between" style={{ padding: "12px 16px" }}>
+                  <span className="t-hl2">{changes.kind === "up" ? "승급 회원" : "강등 회원"} 최근 {changes.rows.length}명</span>
+                  <button className="btn btn-sm btn-text" type="button" onClick={() => setChanges(null)}>
+                    닫기
+                  </button>
+                </div>
+                {changes.rows.length === 0 ? (
+                  <div className="st" style={{ boxShadow: "none" }}>
+                    <span className="t">해당하는 회원이 없습니다</span>
+                  </div>
+                ) : (
+                  changes.rows.map((h) => (
+                    <div key={h.id} className="mg-log">
+                      <span>
+                        {h.nickname} · {h.fromName} → {h.toName}
+                      </span>
+                      <span className="t-c1 c-alt num">{kstText(h.createdAt)}</span>
+                    </div>
+                  ))
+                )}
+              </section>
+            )}
 
             <section className="card" aria-label="최근 변경">
               <div style={{ padding: "12px 16px" }}>

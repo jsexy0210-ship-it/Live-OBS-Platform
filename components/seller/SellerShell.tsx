@@ -78,7 +78,7 @@ const MENU: Group[] = [
       { label: "회원 목록", href: "/seller/members", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
       { label: "회원 등급", href: "/seller/member-grades", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
       { label: "구매 제한", href: "/seller/purchase-restrictions", perm: "MEMBER_POINTS", plan: "FOLLOWUP" },
-      { label: "회원 알림 발송", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
+      { label: "회원 알림 발송", href: "/seller/member-messages", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
       { label: "적립금", href: "/seller/rewards", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
       { label: "회원별 잔액", href: "/seller/rewards/balances", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
       // 원장 API(GET /api/seller/reward-ledger)가 ORDER_FOLLOWUP 경로라 오버레이 전용으로 내린 뒤에도 후속 확인할 수 있다
@@ -116,7 +116,7 @@ const MENU: Group[] = [
       // 회원 정책: IA 표에는 없지만 이미 있는 화면이라 쇼핑몰 설정 안에 둔다
       { label: "회원 정책", href: "/seller/settings/member", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
       { label: "공유 설정", href: "/seller/settings/share", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
-      { label: "법정 고지 · 약관", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
+      { label: "법정 고지 · 약관", href: "/seller/settings/legal", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
       { label: "검색 노출", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
       { label: "결제(PG) 연결", perm: "OWNER", plan: "STORE_OPERATIONS" },
       // 화면이 쓰는 GET /api/seller/message-balance가 대표자 전용이라 메뉴도 대표자에게만 보인다(서버보다 넓게 열지 않는다)

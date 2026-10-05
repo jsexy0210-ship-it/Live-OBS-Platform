@@ -25,6 +25,9 @@ export const PATCH = mutation(async (req: Request, { params }: Ctx) => {
 export const DELETE = mutation(async (req: Request, { params }: Ctx) => {
   const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "STORE_OPERATIONS" });
   const r = await deleteCoupon(prisma, ctx, (await params).couponId, requestMeta(req));
-  if (!r.ok) return NextResponse.json({ error: r.reason, message: "발급한 쿠폰은 삭제할 수 없습니다. 발급을 중지하면 목록에서 「종료」로 남습니다." }, { status: 409 });
+  if (!r.ok) {
+    const message = r.reason === "grade_benefit" ? "회원 등급의 승급 쿠폰으로 연결되어 있어 삭제할 수 없습니다. 등급 혜택에서 연결을 풀어 주십시오." : "발급한 쿠폰은 삭제할 수 없습니다. 발급을 중지하면 목록에서 「종료」로 남습니다.";
+    return NextResponse.json({ error: r.reason, message }, { status: 409 });
+  }
   return NextResponse.json({ ok: true });
 });

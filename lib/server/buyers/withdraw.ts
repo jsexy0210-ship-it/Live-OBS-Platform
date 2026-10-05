@@ -17,6 +17,7 @@ import { deleteUnusedBuyerCoupons } from "../shop-coupons/service";
 import { anonymizeMemberReviews } from "../product-reviews/service";
 import { anonymizeMemberInquiries } from "../buyer-inquiries/service";
 import { deleteMemberGradeData } from "../shop-member-grades/service";
+import { deleteMemberMessageData } from "../shop-member-messages/service";
 import { clearReturnRefundAccounts, deleteUnattachedReturnImages } from "../shop-returns/hooks";
 
 // 구매자 탈퇴(ARCHITECTURE 「구매자 회원」: WITHDRAWN과 deletedAt을 같은 트랜잭션에서, 개인정보 비식별).
@@ -182,6 +183,8 @@ export async function withdrawBuyer(
     await clearReturnRefundAccounts(tx, { sellerId: scope.sellerId, buyerMemberId: member.id });
     // 회원 등급 고정 표시·변경 기록 삭제(shop-member-grades)
     await deleteMemberGradeData(tx, { sellerId: scope.sellerId, buyerMemberId: member.id });
+    // 회원 대상 발송의 받는 사람 기록 삭제(shop-member-messages)
+    await deleteMemberMessageData(tx, { sellerId: scope.sellerId, buyerMemberId: member.id });
     const sessions = await tx.buyerSession.deleteMany({ where: { buyerMemberId: member.id } });
     // 적립금 소멸 안내 기록(잔액을 위에서 0으로 만들어 더 안내할 일이 없다, 개인정보 없음)
     const expiryNotices = await tx.rewardExpiryNotice.deleteMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id } });

@@ -39,6 +39,24 @@ test("대표자: 기준 금액 저장 → 자동 재산정 켜기 검사 → 등
   await expect(rows.nth(1).getByLabel(/기준 금액/)).toHaveValue("100000");
   await page.screenshot({ path: `${SHOT}/sa044-grades-1440.png`, fullPage: true });
 
+  // 등급 혜택: 배송비 정액 할인을 넣고 저장하면 다시 불러와도 남고, 정액 할인이 아니면 금액 칸이 막힌다
+  const ben = page.getByTestId("benefit-row");
+  const second = ben.nth(1);
+  await expect(second.getByLabel(/배송비 할인 금액/)).toBeDisabled();
+  await second.getByLabel(/배송비 혜택/).selectOption("DISCOUNT");
+  await second.getByLabel(/배송비 할인 금액/).fill("1000");
+  await page.getByRole("button", { name: "저장" }).click();
+  await expect(page.getByText("등급 설정을 저장했습니다")).toBeVisible();
+  await page.reload();
+  await expect(ben.nth(1).getByLabel(/배송비 혜택/)).toHaveValue("DISCOUNT");
+  await expect(ben.nth(1).getByLabel(/배송비 할인 금액/)).toHaveValue("1000");
+  await page.screenshot({ path: `${SHOT}/sa044-benefits-1440.png`, fullPage: true });
+  // 정액 할인 금액 0원은 저장할 수 없다
+  await ben.nth(1).getByLabel(/배송비 할인 금액/).fill("");
+  await page.getByRole("button", { name: "저장" }).click();
+  await expect(page.locator(".msg-neg")).toContainText("배송비 혜택을 확인해 주십시오");
+  await page.reload();
+
   // 등급 추가 → 목록에 나오고, 회원이 없으니 삭제할 수 있다
   await page.getByLabel("새 등급 이름").fill("다이아");
   await page.getByLabel("새 등급 기준 금액").fill(String(count * 100000));
@@ -92,4 +110,15 @@ test("직원: 회원 · 적립금 권한이 없으면 등급 메뉴가 보이지
   await page.goto(`/seller/login?next=${encodeURIComponent("/seller/member-grades")}`);
   await submitSellerLogin(page, "demo-none@example.com", PASSWORD);
   await expect(page.getByRole("link", { name: "회원 등급" })).toHaveCount(0);
+});
+
+test("구매자: 내 정보에 지금 등급과 다음 등급까지 남은 금액이 보인다", async ({ page, baseURL }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const r = await page.request.post(`/api/shop/${SLUG}/auth/login`, { data: { loginId: "demo-buyer1@example.com", password: PASSWORD }, headers: { origin: baseURL! } });
+  expect(r.status()).toBe(200);
+  await page.goto(`/shop/${SLUG}/me`);
+  const card = page.getByTestId("grade-card");
+  await expect(card).toContainText("내 등급");
+  await page.screenshot({ path: `${SHOT}/sh020-grade-card-390.png`, fullPage: true });
+  await expect(card).toBeVisible();
 });

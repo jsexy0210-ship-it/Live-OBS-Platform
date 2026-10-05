@@ -484,6 +484,22 @@ body {
   font-size: 13px;
   color: var(--wds-label-assistive);
 }
+.pc-reward,
+.pc-rating {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--wds-label-alternative);
+}
+.pc-reward b {
+  font-weight: 600;
+  color: var(--brand);
+}
+.pc-rating > span:first-child {
+  color: var(--wds-status-cautionary);
+}
+.pc-rc {
+  color: var(--wds-label-assistive);
+}
 .shop-empty {
   padding: 64px 16px;
   border-top: 1px solid var(--wds-line-solid-neutral);
@@ -1026,4 +1042,69 @@ body {
   background: none;
   color: var(--wds-label-alternative);
   cursor: pointer;
+}
+
+/* IA ① LIVE 전면: 맨 위 띠 · 카드 배지 · 상세 안내 */
+.live-bar {
+  border-bottom: 1px solid var(--wds-line-solid-neutral);
+}
+.live-bar-in {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  font-size: 14px;
+}
+.live-bar-in b {
+  color: var(--wds-status-negative);
+}
+.live-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shop-app a.live-go {
+  flex: none;
+  color: var(--wds-status-negative);
+  font-weight: 700;
+  text-decoration: none;
+}
+.live-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--wds-status-negative);
+}
+.pc-live {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--wds-status-negative);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 16px;
+}
+.pd-live {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--wds-status-negative);
+}
+
+/* IA ④ 상품 상세: 추천 상품 */
+.pd-reco {
+  margin-top: 48px;
+}
+.pd-reco h2 {
+  margin: 0 0 16px;
+  font-size: 20px;
 }

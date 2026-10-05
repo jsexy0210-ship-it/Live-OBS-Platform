@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Modal, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
 import { listTime } from "../../../../../components/seller/orders";
+import { useUrlState } from "../../../../../lib/client/navigation";
 import "./buyer-inquiries.css";
 
 // SA-046 구매자 문의 목록 · SA-047 문의 상세·답변(파트너스 관리자, 게시판 › 구매자 문의).
@@ -47,8 +48,19 @@ const TABS: { key: "" | Status; label: string }[] = [
 
 export default function BuyerInquiriesPage() {
   const [state, setState] = useState<Load>({ kind: "loading" });
-  const [draft, setDraft] = useState<Filter>(EMPTY);
-  const [filter, setFilter] = useState<Filter>(EMPTY);
+  // 조건은 URL 쿼리(?status=WAITING&kind=&from=&to=&q=)와 맞춘다: 파트너스 홈 「처리할 일」 링크가 답변 대기로 바로 연다. 틀린 값은 전체로 본다
+  const [url, setUrl] = useUrlState({ status: "", kind: "", from: "", to: "", q: "" });
+  const filter = useMemo<Filter>(
+    () => ({
+      status: url.status === "WAITING" || url.status === "ANSWERED" ? url.status : "",
+      kind: url.kind === "PRODUCT" || url.kind === "GENERAL" ? url.kind : "",
+      from: url.from,
+      to: url.to,
+      q: url.q,
+    }),
+    [url.status, url.kind, url.from, url.to, url.q],
+  );
+  const [draft, setDraft] = useState<Filter>(filter);
   const [more, setMore] = useState<Inquiry[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -100,11 +112,11 @@ export default function BuyerInquiriesPage() {
 
   const search = () => {
     if (invalidRange) return;
-    setFilter(draft);
+    setUrl({ ...draft });
   };
   const setTab = (status: "" | Status) => {
     setDraft((d) => ({ ...d, status }));
-    setFilter((f) => ({ ...f, status }));
+    setUrl({ status });
   };
 
   return (
@@ -117,7 +129,10 @@ export default function BuyerInquiriesPage() {
             <span>문의 목록만 볼 수 있습니다. 답변은 대표자나 구매자 문의 권한이 있는 직원에게 요청해 주십시오.</span>
           </div>
         )}
-        <SearchBox onSearch={search} onReset={() => { setDraft({ ...EMPTY, status: filter.status }); setFilter({ ...EMPTY, status: filter.status }); }} label="문의 검색">
+        <SearchBox onSearch={search} onReset={() => {
+            setDraft({ ...EMPTY, status: filter.status });
+            setUrl({ ...EMPTY, status: filter.status });
+          }} label="문의 검색">
           <SearchRow label="종류">
             <select className="inp" aria-label="문의 종류" value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value as "" | Kind })}>
               <option value="">전체</option>

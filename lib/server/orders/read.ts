@@ -77,6 +77,7 @@ export type SellerOrderListQuery = {
   status?: string[];
   q?: string | null;
   memberId?: string | null;
+  shipped?: string | null;
   from?: string | null;
   to?: string | null;
   cursor?: string | null;
@@ -124,10 +125,13 @@ export async function listSellerOrders(db: PrismaClient, ctx: TenantContext, que
   const q = query.q?.trim() ?? "";
   if (q.length > 50) return { ok: false as const };
   if (query.memberId && !UUID_RE.test(query.memberId)) return { ok: false as const };
+  // 송장(배송 정보) 등록 여부. 「배송 준비」 = status=PAID&shipped=false. 비어 있으면 거르지 않는다.
+  if (query.shipped && query.shipped !== "true" && query.shipped !== "false") return { ok: false as const };
 
   const searchesPii = q !== "" && canViewCustomerPii(ctx);
   const and: Prisma.OrderWhereInput[] = [{ sellerId: ctx.sellerId, legalHoldAt: null }];
   if (query.memberId) and.push({ buyerMemberId: query.memberId });
+  if (query.shipped) and.push({ shipment: query.shipped === "true" ? { isNot: null } : { is: null } });
   if (statuses.length) and.push({ status: { in: statuses as OrderStatus[] } });
   if (from) and.push({ createdAt: { gte: from } });
   if (toStart) and.push({ createdAt: { lt: new Date(toStart.getTime() + 24 * 3600_000) } });

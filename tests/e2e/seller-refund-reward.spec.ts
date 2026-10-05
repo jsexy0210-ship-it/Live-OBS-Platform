@@ -1,6 +1,6 @@
 import { expect, test, type Page, type PlaywrightWorkerArgs } from "@playwright/test";
 import { setOptionStockInDb } from "./cartDb";
-import { allowRewardUseInDb, deleteOrderInDb, liveVersionInDb, markItemOpenedInDb, rewardBalanceInDb } from "./rewardDb";
+import { allowRewardUseInDb, deleteOrderInDb, ensureBankAccountInDb, liveVersionInDb, markItemOpenedInDb, rewardBalanceInDb } from "./rewardDb";
 import { submitSellerLogin } from "./sellerLogin";
 
 // SA-023 환불 창 「현금 환불 · 적립금 반환」: 실제로 적립금 1,000원을 쓴 주문(구매자 주문 → 무통장 → 입금 확인)을 파트너스 환불 창에서 열어
@@ -15,6 +15,7 @@ let prevStock = 0;
 test.beforeAll(async () => {
   if (!PASSWORD) throw new Error("E2E_PASSWORD가 없어요. dev-seed가 출력한 데모 비밀번호를 넣어 주세요");
   await allowRewardUseInDb(SLUG, BUYER, 5000);
+  await ensureBankAccountInDb(SLUG);
   // 주문마다 재고가 줄고 시험이 지운 주문의 재고는 돌아오지 않으므로, 시작할 때 넉넉히 채운다
   prevStock = await setOptionStockInDb(SLUG, "문라이트 컬렉션 박스", "1박스", 50);
 });
@@ -50,7 +51,8 @@ async function paidOrder(page: Page, baseURL: string, playwright: PlaywrightWork
   expect(o.ok(), await o.text()).toBe(true);
   const { orderId } = (await o.json()) as { orderId: string };
   created.push(orderId);
-  expect((await buyer.post(`/api/shop/${SLUG}/payments/bank-transfer`, { data: { orderId }, headers: origin })).status()).toBe(200);
+  const bank = await buyer.post(`/api/shop/${SLUG}/payments/bank-transfer`, { data: { orderId }, headers: origin });
+  expect(bank.status(), await bank.text()).toBe(200);
 
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`/seller/login?next=${encodeURIComponent("/seller/orders")}`);

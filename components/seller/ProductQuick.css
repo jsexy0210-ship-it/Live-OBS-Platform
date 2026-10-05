@@ -1,0 +1,4 @@
+/* 상품 목록 빠른 처리: 판매 상태·재고를 목록에서 바로 바꾼다 */
+.pq-sel{width:100%;max-width:112px;margin-top:6px}
+.pq-stock{width:76px;text-align:right}
+.pq-busy{opacity:.6}
