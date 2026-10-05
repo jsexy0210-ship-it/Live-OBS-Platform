@@ -43,6 +43,8 @@ export type OrderDetail = {
   queueVersion: number;
   // 결제 완료 주문만 온다. 사유 주체별 실제 환불액(서버 계산), 개봉한 상품, 이 사유로 환불할 수 없는지(blocked)
   refundPreview: RefundPreview | null;
+  // 상태 이력(시각 오름차순). 서버 모양은 lib/server/orders/history.ts
+  history: OrderHistoryEvent[];
   // 쓴 쿠폰과 할인 금액(전체 취소로 되돌렸으면 restoredAt). 쿠폰을 쓰지 않았으면 null
   couponRedemption: { benefit: "AMOUNT" | "RATE" | "FREE_SHIPPING"; discountAmount: number; restoredAt: string | null; coupon: { id: string; name: string } } | null;
 };
@@ -74,6 +76,40 @@ export type RefundPreviewItem = {
   queued: boolean;
   refundableAmount: number;
 };
+
+export type OrderHistoryEvent = {
+  kind: "status" | "payment_approved" | "refund_partial" | "payment_cancel";
+  at: string;
+  status: OrderStatus | null;
+  fromStatus: OrderStatus | null;
+  amount: number | null;
+  quantity: number | null;
+  cancelStatus: "REQUESTED" | "DONE" | "FAILED" | null;
+  actor: { type: "SELLER" | "BUYER" | "ADMIN" | "SYSTEM"; role: "OWNER" | "STAFF" | null; name: string | null };
+  note: string | null;
+};
+
+// 상태 이력 「상태」 칸: 시안(SA-022) 표의 상태 이름을 따른다
+export function historyLabel(e: OrderHistoryEvent) {
+  const amount = e.amount !== null ? ` ${e.amount.toLocaleString("ko-KR")}원` : "";
+  if (e.kind === "payment_approved") return `결제 승인${amount}`;
+  if (e.kind === "refund_partial") return `일부 환불${amount}${e.quantity ? ` · ${e.quantity}개` : ""}`;
+  if (e.kind === "payment_cancel") {
+    const r = e.cancelStatus === "DONE" ? "결제 취소 완료" : e.cancelStatus === "FAILED" ? "결제 취소 실패" : "결제 취소 요청";
+    return `${r}${amount}`;
+  }
+  if (e.status === "PAID") return "결제 완료";
+  if (e.status === "PENDING_PAYMENT") return e.fromStatus ? "결제 대기" : "주문 생성";
+  return e.status ? STATUS_BADGE[e.status].label : "—";
+}
+
+// 상태 이력 「처리」 칸: 역할·이름만
+export function historyActor(a: OrderHistoryEvent["actor"]) {
+  if (a.type === "SYSTEM") return "자동";
+  if (a.type === "BUYER") return "구매자";
+  if (a.type === "ADMIN") return "마스터 관리자";
+  return a.name ?? (a.role === "OWNER" ? "대표" : "직원");
+}
 
 // 결제 상태 배지. 시안 결제 배지(완료·결제 대기·환불됨)에 맞추고, 시안에 없는 취소는 「취소」로 보인다.
 export const STATUS_BADGE: Record<OrderStatus, { label: string; cls: string }> = {

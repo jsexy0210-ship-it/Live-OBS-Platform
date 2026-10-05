@@ -10,7 +10,7 @@ import { LoadingRows, NoPermission, Toast } from "../../../../../../components/s
 import { api } from "../../../../../../components/seller/api";
 import { won } from "../../../../../../components/seller/format";
 import { COURIERS, isCourier } from "../../../../../../lib/server/orders/shipping";
-import { PAYMENT_METHOD, STATUS_BADGE, detailStatusLabel, fullTime, longTime, phoneText, type OrderDetail } from "../../../../../../components/seller/orders";
+import { PAYMENT_METHOD, STATUS_BADGE, detailStatusLabel, fullTime, historyActor, historyLabel, longTime, phoneText, type OrderDetail } from "../../../../../../components/seller/orders";
 
 // SA-022 판매자 주문 상세(GET /api/seller/orders/{id}). 결제 완료 주문만 「취소 · 환불」(SA-023 모달)을 열 수 있다.
 // 받는 분 이름·연락처·주소는 고객 정보 보기 권한이 있을 때만 서버가 준다(열람 기록은 서버가 남긴다).
@@ -237,6 +237,33 @@ export default function OrderDetailPage() {
                 )}
               </dl>
               {pii && <span className="t-c1 c-alt">연락처·주소는 열람 시 열람 기록이 남습니다.</span>}
+            </section>
+            <section className="card pad col" style={{ gap: 12 }} data-testid="order-history">
+              <h2 className="t-hl2">상태 이력</h2>
+              {o.history.length === 0 ? (
+                <span className="t-c1 c-alt">아직 이력이 없습니다</span>
+              ) : (
+                <table className="tbl">
+                  <thead>
+                    <tr>
+                      <th style={{ width: 150 }}>시각</th>
+                      <th>상태</th>
+                      <th style={{ width: 110 }}>처리</th>
+                      <th>비고</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...o.history].reverse().map((e, i) => (
+                      <tr key={i}>
+                        <td className="num">{fullTime(e.at)}</td>
+                        <td>{historyLabel(e)}</td>
+                        <td>{historyActor(e.actor)}</td>
+                        <td>{e.note ?? ""}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </section>
           </div>
         </div>
