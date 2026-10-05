@@ -4,6 +4,7 @@ import { SIGNUP_CONSENT_VERSIONS } from "../../lib/server/buyers/consent";
 import { BUYER_SIGNUP_MESSAGES } from "../../lib/server/buyers/signup";
 import { setMemberPolicyInDb } from "./memberPolicyDb";
 import { IDENTITY_ERROR_MESSAGES } from "../../lib/server/identity/messages";
+import { okConfirm } from "./shopConfirm";
 
 // SH-011 구매자 회원가입 흐름 — 개발 서버(가짜 본인확인 공급자, 인증번호 000000)에서 돈다(playwright.config.ts 「dev」).
 // 성공 흐름은 실제 API로, 만들기 어려운 실패(이미 가입·닉네임 중복·여러 번 틀림 등)는 API 응답을 서버 문구 그대로 흉내 내 확인한다.
@@ -133,6 +134,7 @@ test("본인확인 → 틀린 인증번호 → 맞는 인증번호 → 가입까
   await shot(page, "SH-011-verified");
   const done = page.waitForResponse((r) => r.url().endsWith(API) && r.request().method() === "POST");
   await page.getByRole("button", { name: "가입하기" }).click();
+  await okConfirm(page, "가입하기");
   expect((await done).status()).toBe(201);
   await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
   await expect(page.getByText(`이제 주문할 수 있어요. 방송에서는 별${id} 닉네임으로 보여요.`)).toBeVisible();
@@ -159,6 +161,7 @@ test("실제 서버: 본인확인 결과를 확인 응답 값으로 보여 주�
   await expect(page.locator("#v-phone")).toHaveValue(`${phone.slice(0, 3)}-${phone.slice(3, 7)}-${phone.slice(7)}`);
   await fillAccount(page, id, `ＡＢ${id}`);
   await page.getByRole("button", { name: "가입하기" }).click();
+  await okConfirm(page, "가입하기");
   await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
   await expect(page.getByText(`방송에서는 AB${id} 닉네임으로 보여요.`)).toBeVisible();
   expect(statuses).toEqual([201, 201]);
@@ -330,6 +333,7 @@ test("가입 실패는 서버 문구를 해당 칸 아래나 위 안내에 보�
     await toVerified(page);
     await fillAccount(page, "x1", "별빛");
     await page.getByRole("button", { name: "가입하기" }).click();
+    await okConfirm(page, "가입하기");
     const message = (reply.body as { message: string }).message;
     if (where === "notice") await expect(page.getByRole("status").filter({ hasText: message })).toBeVisible();
     else {
@@ -349,6 +353,7 @@ test("본인확인이 무효가 되면 처음부터 다시 하게 한다", async
   await toVerified(page);
   await fillAccount(page, "x2", "별빛");
   await page.getByRole("button", { name: "가입하기" }).click();
+  await okConfirm(page, "가입하기");
   await expect(page.getByRole("alert").filter({ hasText: BUYER_SIGNUP_MESSAGES.verification_invalid })).toBeVisible();
   await expect(page.getByRole("button", { name: "인증번호 받기" })).toBeVisible();
   await expect(page.getByLabel("아이디 (이메일)")).toBeDisabled();
@@ -417,6 +422,7 @@ test("가입을 요청하는 동안에는 계정 칸을 고칠 수 없고, 완�
   await toVerified(page);
   await fillAccount(page, "x3", "보낸닉네임");
   await page.getByRole("button", { name: "가입하기" }).click();
+  await okConfirm(page, "가입하기");
   await expect(page.getByLabel("방송 닉네임")).toBeDisabled();
   await expect(page.getByLabel("아이디 (이메일)")).toBeDisabled();
   release();
@@ -432,6 +438,7 @@ test("방송 닉네임은 서버처럼 글자(코드포인트) 기준으로 20�
   await expect(page.getByText("닉네임은 20자까지 쓸 수 있어요")).toHaveCount(0);
   const req = page.waitForRequest((r) => r.url().endsWith(API) && r.method() === "POST");
   await page.getByRole("button", { name: "가입하기" }).click();
+  await okConfirm(page, "가입하기");
   expect((await req).postDataJSON().broadcastNickname).toBe("🎮".repeat(20));
   await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
 });
@@ -470,6 +477,7 @@ test("확인 응답을 못 받은 뒤 다시 받기에서 이미 확인됐다고
   await fillAccount(page, "x6", "별빛");
   const req = page.waitForRequest((r) => r.url().endsWith(API) && r.method() === "POST");
   await page.getByRole("button", { name: "가입하기" }).click();
+  await okConfirm(page, "가입하기");
   expect((await req).postDataJSON().verificationId).toBe(id);
   await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
 });
@@ -513,10 +521,12 @@ test("요청이 끝나면 포커스가 본문으로 빠지지 않고 다음에 �
   await expect.poll(() => focusedId(page)).toBe("acc-id");
   await fillAccount(page, "x7", "별빛");
   await page.getByRole("button", { name: "가입하기" }).click();
+  await okConfirm(page, "가입하기");
   // 칸 오류면 그 칸
   await expect.poll(() => focusedId(page)).toBe("acc-nick");
   await page.getByLabel("방송 닉네임").fill("별빛2");
   await page.getByRole("button", { name: "가입하기" }).click();
+  await okConfirm(page, "가입하기");
   // 가입하면 완료 제목
   await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
   await expect.poll(() => focusedId(page)).toBe("shop-state-title");
@@ -529,6 +539,7 @@ test("위쪽 안내가 뜨면 안내로 포커스를 옮긴다", async ({ page }
   await toVerified(page);
   await fillAccount(page, "x8", "별빛");
   await page.getByRole("button", { name: "가입하기" }).click();
+  await okConfirm(page, "가입하기");
   await expect(page.getByRole("status").filter({ hasText: BUYER_SIGNUP_MESSAGES.already_member })).toBeVisible();
   await expect.poll(() => focusedId(page)).toBe("signup-notice");
 });
@@ -613,6 +624,7 @@ test("가입 응답이 끊기면 같은 요청을 한 번 다시 보내고, 201�
   await toVerified(page);
   await fillAccount(page, "x9", "별빛");
   await page.getByRole("button", { name: "가입하기" }).click();
+  await okConfirm(page, "가입하기");
   await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
   // 같은 요청을 그대로 한 번 더 보냈고, 로그인으로 확인하지 않는다
   expect(bodies).toHaveLength(2);
@@ -637,6 +649,7 @@ test("재전송이 또 끊기거나 5xx면 완료로 가지 않고 같은 요청
   await toVerified(page);
   await fillAccount(page, "xb", "별빛");
   await page.getByRole("button", { name: "가입하기" }).click();
+  await okConfirm(page, "가입하기");
   await expect(page.getByText("가입이 끝났는지 확인하지 못했어요. 다시 시도해 주세요")).toBeVisible();
   await expect(page.getByRole("button", { name: "가입하기" })).toBeDisabled();
   await page.getByRole("button", { name: "다시 불러오기" }).click();
@@ -660,6 +673,7 @@ test("재전송이 보통의 가입 오류(409 아이디 중복)면 칸 오류�
   await toVerified(page);
   await fillAccount(page, "xd", "별빛");
   await page.getByRole("button", { name: "가입하기" }).click();
+  await okConfirm(page, "가입하기");
   await expect(page.getByRole("alert").filter({ hasText: BUYER_SIGNUP_MESSAGES.login_id_taken })).toBeVisible();
   await expect(page.getByText("가입이 끝났는지 확인하지 못했어요")).toHaveCount(0);
   const id = page.getByLabel("아이디 (이메일)");
@@ -667,6 +681,7 @@ test("재전송이 보통의 가입 오류(409 아이디 중복)면 칸 오류�
   await expect.poll(() => focusedId(page)).toBe("acc-id");
   await id.fill("buyer-xd2@example.com");
   await page.getByRole("button", { name: "가입하기" }).click();
+  await okConfirm(page, "가입하기");
   await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
   expect(bodies[2].loginId).toBe("buyer-xd2@example.com");
 });
@@ -682,6 +697,7 @@ test("재전송이 본인확인 무효(400)면 처음부터 다시 하게 한다
   await toVerified(page);
   await fillAccount(page, "xe", "별빛");
   await page.getByRole("button", { name: "가입하기" }).click();
+  await okConfirm(page, "가입하기");
   await expect(page.getByRole("alert").filter({ hasText: BUYER_SIGNUP_MESSAGES.verification_invalid })).toBeVisible();
   await expect(page.getByRole("button", { name: "인증번호 받기" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "가입했어요" })).toHaveCount(0);
@@ -705,6 +721,7 @@ test("완료 문구의 닉네임은 가입 응답의 broadcastNickname을 쓴다
   await toVerified(page);
   await fillAccount(page, "xc", "입력닉네임");
   await page.getByRole("button", { name: "가입하기" }).click();
+  await okConfirm(page, "가입하기");
   await expect(page.getByText("이제 주문할 수 있어요. 방송에서는 서버닉네임 닉네임으로 보여요.")).toBeVisible();
 });
 
@@ -731,6 +748,7 @@ test("마케팅 정보 수신은 선택이고 본인확인 전에 받는다: 체
     await fillAccount(page, "mk", "별빛");
     const req = page.waitForRequest((r) => r.url().endsWith(API) && r.method() === "POST");
     await page.getByRole("button", { name: "가입하기" }).click();
+    await okConfirm(page, "가입하기");
     expect((await req).postDataJSON().agreedMarketing).toBeUndefined();
     await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
   }
@@ -742,6 +760,7 @@ test("완료 문구의 닉네임은 서버가 저장하는 형태(NFKC 정규화
   await toVerified(page);
   await fillAccount(page, "xa", "ＡＢ①");
   await page.getByRole("button", { name: "가입하기" }).click();
+  await okConfirm(page, "가입하기");
   await expect(page.getByText("이제 주문할 수 있어요. 방송에서는 AB1 닉네임으로 보여요.")).toBeVisible();
 });
 
@@ -758,6 +777,7 @@ test("첫 가입 응답이 5xx면 결과가 애매하다고 보고 같은 요청
   await toVerified(page);
   await fillAccount(page, "xf", "별빛");
   await page.getByRole("button", { name: "가입하기" }).click();
+  await okConfirm(page, "가입하기");
   await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
   expect(bodies).toHaveLength(2);
   expect(bodies[1]).toEqual(bodies[0]);
@@ -774,6 +794,7 @@ test("가입 결과가 애매한 동안에는 본인확인 다시 하기를 막�
   await toVerified(page);
   await fillAccount(page, "xg", "별빛");
   await page.getByRole("button", { name: "가입하기" }).click();
+  await okConfirm(page, "가입하기");
   await expect(page.getByText("가입이 끝났는지 확인하지 못했어요. 다시 시도해 주세요")).toBeVisible();
   // 누르면 본인확인 요청이 사라져 같은 요청으로 복구할 수 없게 된다
   await expect(page.getByRole("button", { name: "본인 확인 다시 하기", exact: true })).toBeDisabled();
@@ -881,6 +902,7 @@ test("재가입 제한을 켠 쇼핑몰의 보관 동의는 선택(본인확인 
       await expect(page.getByText("본인확인을 마쳤어요")).toBeVisible();
       await fillAccount(page, id, `제한${id}`);
       await page.getByRole("button", { name: "가입하기" }).click();
+      await okConfirm(page, "가입하기");
       await expect(page.getByRole("heading", { name: "가입했어요" })).toBeVisible();
     }
   } finally {
@@ -895,6 +917,7 @@ test("재가입 제한 중이면 문구 뒤에 다시 가입할 수 있는 날(K
   await toVerified(page);
   await fillAccount(page, "rj", "제한");
   await page.getByRole("button", { name: "가입하기" }).click();
+  await okConfirm(page, "가입하기");
   await expect(page.getByText("지금은 다시 가입할 수 없어요. 11월 3일부터 다시 가입할 수 있어요")).toBeVisible();
 });
 

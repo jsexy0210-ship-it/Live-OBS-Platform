@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { MARKETING_DOC_VERSION } from "../../components/shop/MarketingConsentDoc";
 import { ensureShopInDb } from "./shopDb";
+import { okConfirm } from "./shopConfirm";
 
 // SH-025 알림 설정: 구매자가 마케팅 정보 수신을 철회·다시 동의하고, 처리 결과(보낸 곳·결과·처리 날짜)를 바로 본다.
 // 운영 빌드 + 데모 시드(demo-buyer1@example.com, 비밀번호는 E2E_PASSWORD).
@@ -61,6 +62,7 @@ test("구매자: 마케팅 정보 수신을 철회하면 바로 처리 결과가
     { times: 1 },
   );
   await terms.getByRole("button", { name: "동의하고 받기" }).click();
+  await okConfirm(page, "받기");
   const reload = page.getByTestId("mc-reload");
   await expect(reload).toContainText("새로고침이 필요해요.");
   await expect(page.getByRole("button", { name: "동의하고 받기" })).toHaveCount(0);
@@ -72,6 +74,7 @@ test("구매자: 마케팅 정보 수신을 철회하면 바로 처리 결과가
   await expect(terms.getByTestId("mc-doc")).toBeVisible();
   const agreed = page.waitForResponse((r) => r.url().endsWith(API) && r.request().method() === "PUT");
   await terms.getByRole("button", { name: "동의하고 받기" }).click();
+  await okConfirm(page, "받기");
   const res = await agreed;
   expect(res.request().postDataJSON()).toEqual({ agreed: true, marketingVersion: MARKETING_DOC_VERSION });
   const body = (await res.json()) as { agreed: boolean; version: string; currentVersion: string };
@@ -81,8 +84,9 @@ test("구매자: 마케팅 정보 수신을 철회하면 바로 처리 결과가
   await expect(sw).toHaveAttribute("aria-checked", "true");
   await expect(terms).toHaveCount(0);
 
-  // 끄면 바로 철회하고 결과(보낸 곳·처리 날짜)를 알린다
+  // 끄면 확인 창을 거쳐 철회하고 결과(보낸 곳·처리 날짜)를 알린다
   await sw.click();
+  await okConfirm(page, "그만 받기");
   await expect(page.getByTestId("mc-result")).toHaveText(`카드숍 별빛에서 보내는 이벤트·할인 소식 받기를 그만뒀어요 · 처리한 날 ${today()}`);
   await expect(sw).toHaveAttribute("aria-checked", "false");
   await shot(page, "SH-025-withdrawn");
@@ -107,6 +111,7 @@ test("구매자: 동의 응답을 놓쳐도 지금 상태를 다시 읽어 처�
     { times: 1 },
   );
   await page.getByTestId("mc-terms").getByRole("button", { name: "동의하고 받기" }).click();
+  await okConfirm(page, "받기");
   await expect(page.getByTestId("mc-result")).toHaveText(`카드숍 별빛에서 보내는 이벤트·할인 소식 받기에 동의했어요 · 동의한 날 ${today()}`);
   await expect(sw).toHaveAttribute("aria-checked", "true");
   // 끝: 철회로 돌려 둔다

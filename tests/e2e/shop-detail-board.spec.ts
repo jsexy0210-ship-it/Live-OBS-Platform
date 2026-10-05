@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { clearCouponsInDb, createClaimableCouponInDb } from "./couponDb";
+import { okConfirm } from "./shopConfirm";
 
 // 보드 SH-003-IA 맞춤: 탭(리뷰·상품 문의 개수), 상품 문의 목록·쓰기, 쿠폰 받기 줄, 공유, 최근 본 상품, 버튼 순서(장바구니·찜·공유·구매하기).
 const SLUG = "demo-shop";
@@ -38,6 +39,7 @@ test("상품 문의: 쓰기(공개·비공개) → 목록·탭 개수 → 지우
   await dlg.getByLabel("제목").fill(TITLE);
   await dlg.getByLabel("내용").fill("박스 크기가 어떻게 되나요?");
   await dlg.getByRole("button", { name: "문의 남기기" }).click();
+  await okConfirm(page, "남기기");
   await expect(qna.getByText("문의를 남겼어요")).toBeVisible();
   await expect(qna.getByText(TITLE)).toBeVisible();
   await expect(qna.getByText("답변 대기").first()).toBeVisible();
@@ -49,6 +51,7 @@ test("상품 문의: 쓰기(공개·비공개) → 목록·탭 개수 → 지우
   await dlg.getByLabel("내용").fill("개인 정보가 들어 있어요");
   await dlg.getByLabel(/비공개로 남겨요/).check();
   await dlg.getByRole("button", { name: "문의 남기기" }).click();
+  await okConfirm(page, "남기기");
   await expect(qna.getByText("🔒 비밀글이에요")).toBeVisible();
   await expect(qna.getByText("개인 정보가 들어 있어요")).toHaveCount(0);
 
