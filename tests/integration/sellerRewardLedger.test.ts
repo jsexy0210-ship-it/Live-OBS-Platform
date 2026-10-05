@@ -105,4 +105,16 @@ describe("적립금 원장 GET /api/seller/reward-ledger", () => {
     expect(await db.rewardLedger.findUniqueOrThrow({ where: { id: e.id } })).toMatchObject({ status: "PENDING", processedAt: null });
     expect(await db.rewardBalance.count()).toBe(0);
   });
+
+  it("memberId로 회원 한 명의 줄만 주고, 잘못된 값은 400, 다른 쇼핑몰 회원 id는 빈 목록이다", async () => {
+    const a = await shop();
+    const b = await shop();
+    const other = await createBuyer(a.seller.id, a.grade.id);
+    const mine = await entry(a);
+    await entry({ seller: a.seller, member: other });
+    await entry(b);
+    expect(ids((await list(a.cookie, `?memberId=${a.member.id}`)).body)).toEqual([mine.id]);
+    expect((await list(a.cookie, `?memberId=${b.member.id}`)).body.entries).toEqual([]);
+    expect((await list(a.cookie, "?memberId=abc")).status).toBe(400);
+  });
 });
