@@ -1,0 +1,27 @@
+from ib import *
+def card(name,pr,badges='',rate='★ 4.8 · 리뷰 12 · 적립 891원',soldout=False,btn='both'):
+    ph='사진'+('<span class="soldout">SOLD OUT</span>' if soldout else '')
+    act=('<div class="act"><button class="btn s" type="button" aria-label="찜" style="flex:none;width:36px">♡</button><button class="btn s" type="button" disabled>품절</button></div>' if soldout else
+         '<div class="act"><button class="btn s" type="button" aria-label="찜" style="flex:none;width:36px">♡</button><button class="btn s" type="button">담기</button><button class="btn s k" type="button">바로 구매</button></div>')
+    return f'<div class="pc"><a class="ph sowrap" href="SH-003-PC-IA.dc.html">{ph}</a><a class="nm" href="SH-003-PC-IA.dc.html">{name}</a><div class="pr">{pr}</div><div class="hint" style="margin:2px 0">{rate}</div><div class="bd">{badges}</div>{act}</div>'
+live='<span class="t live">LIVE</span>'
+best='<span class="t">BEST</span>'
+cards=[
+ ('기본 · 할인 없음',card('카드 슬리브 100매','6,000원','', '★ 4.8 · 리뷰 64 · 적립 60원')),
+ ('할인 · 정가 취소선',card('문라이트 컬렉션 박스','<span class="dc">12%</span> 132,000원 <span class="u">20팩</span> <s>150,000원</s>','<span class="t end">내일 마감</span>','★ 4.7 · 리뷰 38 · 적립 1,320원')),
+ ('LIVE (방송 중 상품)',card('스타라이트 부스터 박스','<span class="dc">10%</span> 89,100원 <span class="u">24팩</span> <s>99,000원</s>',live+'<span class="t end">오늘 마감</span>','★ 4.8 · 리뷰 12 · 적립 891원')),
+ ('BEST',card('크리스탈 팩','4,000원',best,'★ 4.9 · 리뷰 120 · 적립 40원')),
+ ('LIVE + BEST',card('피닉스 케이스 브레이크','198,000원 <span class="u">12팩</span>',live+best+'<span class="t hot">남은 자리 7</span>','★ 4.6 · 리뷰 9 · 적립 1,980원')),
+ ('품절 (SOLD OUT · 구매 막힘)',card('섀도 울프 싱글 카드','38,000원','', '★ 4.5 · 리뷰 7',soldout=True)),
+ ('리뷰 없음 (평점 줄 숨김)',card('신상 카드 덱','24,000원','', '적립 240원')),
+ ('긴 상품명 (두 줄까지)',card('섀도 울프 싱글 카드 · 홀로그램 풀아트 1st Edition 한정 수량 특별판','38,000원','', '★ 4.8 · 리뷰 30 · 적립 380원')),
+]
+rules='''<div class="box" style="margin-top:16px"><div class="h">카드 규칙</div><div class="bd" style="display:flex;flex-direction:column;gap:6px;line-height:1.6">
+<span>정보 순서: 배지(LIVE · BEST · 품절) → 상품명 → 가격(정가 취소선 · 할인율 · 판매가) → 예상 적립 · 평점 · 리뷰 수 → 행동(찜 · 담기 · 바로 구매)</span>
+<span>사진은 정사각형, 이름은 두 줄까지, 가격이 먼저 눈에 들어오게 · 색은 할인율(빨강)과 LIVE 배지만 강조</span>
+<span>품절은 사진 띠와 비활성 「품절」 버튼, 찜은 그대로 누를 수 있어요 · 리뷰가 없으면 평점 줄은 숨기고 적립만 보여요</span>
+<span>휴대폰은 2열 · 행동 버튼은 찜 · 담기만(바로 구매는 상세에서) · 평점 줄은 한 줄로 줄여요</span></div></div>'''
+body='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:24px;padding:24px;background:#fff">'+''.join(f'<div><div class="hint" style="margin:0 0 8px;font-weight:700">{t}</div>{c}</div>' for t,c in cards)+'</div>'+rules
+html=head('상품 카드 (IA 개편)')+f'<div class="app sh24" data-theme="light" style="width: 1200px; display: flex; flex-direction: column; background:#fff">{body}</div>\n</x-dc>\n<script type="text/x-dc" data-dc-script data-props=\'{{"$preview":{{"width":1200,"height":1100}}}}\'>\nclass Component extends DCLogic {{ renderVals() {{ return {{}}; }} }}\n</script>\n</body>\n</html>\n'
+save('SH-CARD-IA',html)
+addboard('SH-CARD-IA','SH-CARD-IA 상품 카드 · IA 개편 (배지 · 가격 · 예상 적립 · 평점 · 찜 · 담기 · 상태 8종)',16600,108800,1200,1100)

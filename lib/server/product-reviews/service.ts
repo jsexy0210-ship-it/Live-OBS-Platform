@@ -736,15 +736,17 @@ export async function withdrawReport(db: PrismaClient, scope: BuyerScope, id: st
 
 // 상품의 공개 리뷰(상품 상세에 끼울 목록): 평균·분포와 최근 순 목록. 운영 중이 아닌 쇼핑몰은 null.
 export const PUBLIC_PAGE = 20;
-export async function productReviews(db: PrismaClient, slug: string, productId: string, cursor?: string | null) {
+// photoOnly=true면 reviews 목록만 사진이 붙은 공개 리뷰로 거른다(평균·총 수·분포·photoCount는 거르지 않은 전체 요약). 다음 쪽(cursor)도 같은 조건에서 이어진다.
+export async function productReviews(db: PrismaClient, slug: string, productId: string, cursor?: string | null, photoOnly = false) {
   const seller = await db.seller.findUnique({ where: { slug: slug.slice(0, 60) }, select: { id: true } });
   if (!seller || !isUuid(productId) || !(await shopOpen(db, seller.id))) return null;
   const product = await db.product.findFirst({ where: { id: productId, sellerId: seller.id, ...SHOP_VISIBLE_PRODUCT }, select: { id: true } });
   if (!product) return null;
   const base = { sellerId: seller.id, productId, status: "VISIBLE" as const, deletedAt: null };
+  const listBase = photoOnly ? { ...base, images: { some: {} } } : base;
   let after = {};
   if (cursor && isUuid(cursor)) {
-    const c = await db.productReview.findFirst({ where: { ...base, id: cursor }, select: { id: true, createdAt: true } });
+    const c = await db.productReview.findFirst({ where: { ...listBase, id: cursor }, select: { id: true, createdAt: true } });
     if (c) after = { OR: [{ createdAt: { lt: c.createdAt } }, { createdAt: c.createdAt, id: { lt: c.id } }] };
   }
   const [agg, photoCount, dist, rows] = await Promise.all([
@@ -752,7 +754,7 @@ export async function productReviews(db: PrismaClient, slug: string, productId: 
     db.productReview.count({ where: { ...base, images: { some: {} } } }),
     db.productReview.groupBy({ by: ["rating"], where: base, _count: { _all: true } }),
     db.productReview.findMany({
-      where: { ...base, ...after },
+      where: { ...listBase, ...after },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: PUBLIC_PAGE + 1,
       include: { orderItem: { select: { optionNameSnapshot: true } }, images: { select: { id: true, width: true, height: true }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] } },

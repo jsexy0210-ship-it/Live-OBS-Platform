@@ -1,0 +1,13 @@
+from ib import *
+s=open(P+'SH-020.dc.html',encoding='utf-8').read()
+def rep(a,b):
+    global s
+    assert a in s,a[:50]; s=s.replace(a,b,1)
+s=s.replace('<title>내 정보</title>','<title>내 정보 (IA 개편)</title>')
+rep('font-weight: 700">주문</div>','font-weight: 700">쇼핑</div>')
+rep('<a class="ml" href="SH-021.dc.html">취소 · 환불<span class="r">›</span></a>','')
+rep('<a class="ml" href="SH-021.dc.html">주문 내역<span class="r">진행 중 1 ›</span></a>','<a class="ml" href="SH-021.dc.html">주문 내역 · 취소 · 환불<span class="r">진행 중 1 ›</span></a>')
+rep('font-weight: 700">설정</div>','font-weight: 700">내 정보</div>')
+rep('<span class="states-h">상태 변형</span>','<span class="states-h">상태 변형</span><div class="st"><span class="st-tag">하위 화면 (예: 주문 내역) · 메뉴를 본문 위에 펼치지 않음</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><div class="sh24" style="width: 100%; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; background: transparent"><div style="width:100%;border:1px solid var(--ln2);padding:12px 16px;display:flex;align-items:center;gap:8px"><a href="SH-020-IA.dc.html" aria-label="내 정보로 돌아가기" style="font-size:20px;line-height:1">‹</a><b>주문 내역</b><span class="hint" style="margin:0 0 0 auto">쇼핑</span></div><span class="hint">휴대폰에서는 하위 화면 위에 마이페이지 전체 메뉴를 펼치지 않아요 · 위 한 줄(← 그룹 이름)만 보이고, 다른 메뉴는 「내 정보」 탭으로 돌아가 골라요 · PC는 왼쪽에 4그룹 메뉴를 계속 보여요</span></div></div></div>')
+save('SH-020-IA',s)
+addboard('SH-020-IA','SH-020-IA 모바일 마이페이지 · IA 개편 (쇼핑 / 혜택 / 활동 / 내 정보 4그룹)',11200,108800,800,1500)

@@ -1,6 +1,6 @@
 // 오버레이 레이아웃 화면 쪽 공용 정의(편집기 SA-051 · 오버레이 OV-001/002). 서버 계약은 lib/server/overlay/layout.ts와 같다.
 export type Aspect = "9x16" | "16x9";
-export type WidgetType = "HALL_OF_FAME" | "NOTICE" | "SHOP_INFO" | "CURRENT_ORDER" | "QUEUE" | "OPEN_TIMER" | "NEW_ORDER_ALERT";
+export type WidgetType = "HALL_OF_FAME" | "NOTICE" | "SHOP_INFO" | "CURRENT_ORDER" | "QUEUE" | "OPEN_TIMER" | "NEW_ORDER_ALERT" | "EVENT_CARD" | "PURCHASE_RANKING";
 export type PropValue = string | number | boolean;
 export type Widget = { id: string; type: WidgetType; visible: boolean; x: number; y: number; w: number; h: number; z: number; props: Record<string, PropValue> };
 
@@ -16,6 +16,8 @@ export const SLOTS: Slot[] = [
   { key: "NOTICE", type: "NOTICE", label: "공지" },
   { key: "SHOP_INFO", type: "SHOP_INFO", label: "쇼핑몰 정보" },
   { key: "OPEN_TIMER", type: "OPEN_TIMER", label: "개봉 타이머" },
+  { key: "EVENT_CARD", type: "EVENT_CARD", label: "이벤트 할인 카드" },
+  { key: "PURCHASE_RANKING", type: "PURCHASE_RANKING", label: "구매 랭킹" },
   { key: "NEW_ORDER_ALERT:first", type: "NEW_ORDER_ALERT", variant: "first", label: "신규 주문 알림 · 첫 주문" },
   { key: "NEW_ORDER_ALERT:repeat", type: "NEW_ORDER_ALERT", variant: "repeat", label: "신규 주문 알림 · 재주문" },
   { key: "NEW_ORDER_ALERT:vip", type: "NEW_ORDER_ALERT", variant: "vip", label: "신규 주문 알림 · VIP" },
@@ -33,6 +35,8 @@ const DEFAULT_BOX: Record<Aspect, Record<WidgetType, [number, number, number, nu
     SHOP_INFO: [3, 32, 94, 4],
     OPEN_TIMER: [70, 2, 27, 6],
     NEW_ORDER_ALERT: [3, 20, 94, 10],
+    EVENT_CARD: [3, 32, 94, 8],
+    PURCHASE_RANKING: [50, 13, 47, 18],
   },
   "16x9": {
     CURRENT_ORDER: [2, 4, 26, 18],
@@ -42,6 +46,8 @@ const DEFAULT_BOX: Record<Aspect, Record<WidgetType, [number, number, number, nu
     SHOP_INFO: [2, 88, 26, 8],
     OPEN_TIMER: [72, 84, 26, 12],
     NEW_ORDER_ALERT: [2, 30, 26, 14],
+    EVENT_CARD: [72, 56, 26, 14],
+    PURCHASE_RANKING: [72, 4, 26, 40],
   },
 };
 export function newWidget(slot: Slot, aspect: Aspect, widgets: Widget[]): Widget {
@@ -58,7 +64,14 @@ export function newWidget(slot: Slot, aspect: Aspect, widgets: Widget[]): Widget
 
 // 편집기 미리보기용 예시 데이터(OverlayView는 실제 데이터를 넣는다)
 export type OrderEvent = { id: string; kind: "FIRST" | "REPEAT" | "VIP"; nickname: string; productLabel: string; quantity: number; moreItems: number; occurredAt: string };
+// 공개 state의 eventCard(지금 마감이 가장 가까운 이벤트 상품 1개)·purchaseRanking(지금 방송 구매 수량 순위)
+export type EventCardData = { productName: string; price: number; discountedPrice: number; discountRate: number | null; endsAt: string; remainingSeconds: number; badge: string | null; remainingLabel: string | null; moreCount: number };
+export type RankingRow = { rank: number; nickname: string; quantity: number };
 export type LiveData = {
+  // 이벤트 할인 카드 위젯용(없으면 위젯을 그리지 않는다)
+  eventCard?: EventCardData | null;
+  // 구매 랭킹 위젯용(방송 중이 아니거나 비어 있으면 위젯을 그리지 않는다)
+  purchaseRanking?: RankingRow[];
   // 쇼핑몰 정보 위젯용(공개 state의 shop)
   shop?: { name: string; url: string | null } | null;
   // 신규 주문 알림 위젯이 지금 보여 줄 주문(없으면 위젯을 그리지 않는다)
@@ -72,6 +85,13 @@ export type LiveData = {
 };
 export const SAMPLE_DATA: LiveData = {
   live: true,
+  eventCard: { productName: "프리미엄 박스", price: 20000, discountedPrice: 15000, discountRate: 25, endsAt: "2026-01-01T00:00:00.000Z", remainingSeconds: 5400, badge: "오늘 마감", remainingLabel: "1시간 30분 남았어요", moreCount: 2 },
+  purchaseRanking: [
+    { rank: 1, nickname: "별빛하늘", quantity: 5 },
+    { rank: 2, nickname: "달콤곰", quantity: 3 },
+    { rank: 2, nickname: "민트초코", quantity: 3 },
+    { rank: 4, nickname: "하루", quantity: 1 },
+  ],
   shop: { name: "카드숍 별빛", url: "https://example.com/shop/starlight" },
   alert: { id: "sample", kind: "VIP", nickname: "별빛하늘", productLabel: "프리미엄 박스", quantity: 2, moreItems: 0, occurredAt: "2026-01-01T00:00:00.000Z" },
   opening: { nickname: "별빛하늘", gradeSnapshot: "VIP", productLabel: "프리미엄 박스", quantity: 2, timerSeconds: 90, openingStartedAt: null },

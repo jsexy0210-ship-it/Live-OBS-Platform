@@ -953,6 +953,9 @@ body {
 .signup-cta {
   padding-top: 4px;
 }
+.signup-missing {
+  margin: 8px 0 0;
+}
 
 @media (max-width: 767px) {
   .shop-main {
@@ -1335,4 +1338,128 @@ body {
 .pd-rv-more {
   display: block;
   margin: 20px auto 0;
+}
+
+/* 보드 SH-003-IA: 방송 중 줄 · 탭 · 상품 문의 */
+.pd-livebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 10px 16px;
+  border: 1px solid var(--wds-line-solid-neutral);
+  border-radius: 8px;
+  font-size: 14px;
+}
+.pd-livebar b {
+  color: var(--wds-status-negative);
+}
+.pd-livebar-t {
+  flex: 1;
+  min-width: 0;
+}
+.pd-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  margin-top: 40px;
+  background: #fff;
+  border-bottom: 1px solid var(--wds-line-solid-neutral);
+}
+.shop-app .pd-tabs a {
+  flex: 1;
+  padding: 14px 8px;
+  text-align: center;
+  font-weight: 600;
+  color: var(--wds-label-normal);
+  text-decoration: none;
+}
+.pd-tabs-c {
+  color: var(--brand);
+}
+.pd-qna {
+  margin-top: 48px;
+}
+.pd-sec-h {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 16px;
+}
+.pd-sec-h h2 {
+  margin: 0;
+  font-size: 20px;
+}
+.pd-qna-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  border-top: 1px solid var(--wds-label-normal);
+}
+.pd-qna-tbl td {
+  padding: 16px 8px;
+  border-bottom: 1px solid var(--wds-line-solid-neutral);
+  vertical-align: top;
+}
+.pd-qna-st {
+  width: 88px;
+  text-align: center;
+}
+.pd-qna-who,
+.pd-qna-date {
+  width: 72px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--wds-label-alternative);
+}
+.pd-qna-main p {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  color: var(--wds-label-alternative);
+}
+.pd-qna-main .pd-qna-a {
+  padding: 10px 12px;
+  background: var(--wds-fill-normal);
+  border-radius: 6px;
+  color: var(--wds-label-normal);
+}
+.pd-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--wds-fill-normal);
+  font-size: 12px;
+  color: var(--wds-label-alternative);
+}
+.pd-tag.is-done {
+  color: var(--wds-status-positive);
+}
+.pd-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+.pd-qna-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pd-qna-form label:not(.chk) {
+  font-size: 13px;
+  font-weight: 700;
+}
+.pd-err {
+  margin: 0;
+  color: var(--wds-status-negative);
+}
+@media (max-width: 767px) {
+  .pd-qna-who {
+    display: none;
+  }
+  .pd-qna-st {
+    width: 72px;
+  }
 }

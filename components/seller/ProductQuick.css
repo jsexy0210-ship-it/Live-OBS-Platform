@@ -2,3 +2,5 @@
 .pq-sel{width:100%;max-width:112px;margin-top:6px}
 .pq-stock{width:76px;text-align:right}
 .pq-busy{opacity:.6}
+.pq-price{width:104px;text-align:right}
+.pq-edit{padding:2px 6px;border:0;border-radius:6px;background:none;color:inherit;font:inherit;text-align:right;cursor:text}.pq-edit:hover{background:var(--wds-fill-alternative)}

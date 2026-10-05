@@ -47,6 +47,14 @@
 - **화면 문구는 짧게, 행동·결과 중심으로 쓴다. 「#12」 같은 코드성 표기와 AI가 쓴 것 같은 문구는 절대 금지.** (2026-10-02 대표님 지시) **말투는 화면에 따라 다르다: 마스터 관리자·파트너스 관리자(관리자 로그인·계정 화면 AU-001~004·011·012 포함)는 버튼·라벨은 명사형(「저장」「다시 시도」), 문장은 합니다체, 요청은 「~해 주십시오」, 확인 질문은 「~하시겠습니까?」. 구매자 쇼핑몰·공개 화면·오버레이·구매자 메일은 토스식 해요체.** (2026-10-04 대표님 지시) 상세: `docs/DESIGN_PROMPT.md` 「화면 문구」.
 - **화면 이름 「감사 로그」는 「로그 추적」으로 쓴다(코드·DB의 audit 이름은 그대로).** (2026-10-04 대표님 지시)
 
+## 디자인 정본 (2026-10-05 대표님 지시 「디자인 실제 소스 Git 이관 및 Source of Truth 구축」)
+
+- 디자인 정본은 저장소 루트 `design/`(캔버스 `project/` 실제 소스)이다. PNG·JPG는 검수 증거일 뿐 정본이 아니다. 출처·버전·우선순위는 `design/DESIGN_SOURCE.md`, 화면별 상태는 `design/SCREEN_MAP.md`.
+- UI 작업을 시작할 때 ① `design/SCREEN_MAP.md` ② 대상 화면의 FINAL 소스 ③ 관련 공통 컴포넌트 소스(`design/project/lop.css` · DS-PANEL · DS-ROW-ACTION · SA-LNB · SH-CARD-IA) ④ `docs/IA.md` ⑤ production 소스 순으로 확인한다. **FINAL 확인 없이 UI 구현을 시작하지 않는다.** DRAFT · BLOCKED로 보고된 화면은 임의로 구현하지 않고 MASTER에 묻는다.
+- 새 화면·큰 UI 변경은 디자인 소스 수정 → 디자인 PR 병합 → 개발 PR 순서다. 단순 구현 오류(정본과 다른 간격·문구·크기)는 정본 기준으로 바로 고친다. 스크린샷은 검수 증거로만 쓴다.
+- 디자인 전담은 캔버스를 고칠 때마다 `design/project`를 같은 내용으로 동기화하는 PR을 낸다(캔버스 버전은 커밋 메시지와 `design/CHANGELOG.md`에). 커밋 규칙: `design(project): SA-011 …` / `design(system): …`.
+- 디자인 소스는 production 코드에서 import하지 않는다. `design/`은 타입 검사·린트·Next 빌드·Docker 이미지에서 제외한다. 검사: `npm run design:check`(SCREEN_MAP 경로 · IA 누락).
+
 ## 작업 규칙
 
 - `main` 직접 수정 금지. 작업 브랜치 → PR → CI 통과 후 반영.

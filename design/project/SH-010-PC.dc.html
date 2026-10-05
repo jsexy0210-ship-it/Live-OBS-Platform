@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>로그인</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="app sh24" data-theme="light" style="width: 1440px; display: flex; flex-direction: column">
+<div class="tb"><div class="in"><a href="SH-010-PC.dc.html">로그인</a><a href="SH-011-PC.dc.html">회원가입</a><a href="SH-021-PC.dc.html">주문 조회</a><a href="SH-030.dc.html">고객센터</a><span class="r"><span>오늘 20:00 방송</span></span></div></div><div class="hd"><div class="in"><a class="logo" href="SH-001-PC.dc.html"><i>별</i>카드숍 별빛</a><form class="srch"><input type="search" value="" placeholder="상품 이름으로 찾아요" aria-label="상품 검색"><button type="button">검색</button></form><div class="ic"><a href="SH-034.dc.html"><span class="n">♡</span>찜</a><a href="SH-004-PC.dc.html"><span class="n">▣</span>장바구니</a><a href="SH-020-PC.dc.html"><span class="n">◯</span>내 정보</a></div></div></div><div class="cat"><div class="in"><a class="all" href="SH-002-PC.dc.html"><i></i>전체 카테고리</a><nav><a class="" href="SH-002-PC.dc.html">게임</a><a class="" href="SH-002-PC.dc.html">형태</a><a class="" href="SH-001-PC.dc.html">명예의 전당</a><a class="" href="SH-030.dc.html">공지 · 이용안내</a></nav><a class="live" href="SH-001-PC.dc.html"><i></i>LIVE 방송 중</a></div></div><main class="main"><div style="width: 480px; margin: 24px auto 0"><div class="pgtitle"><h1>로그인</h1><span class="sub">카드숍 별빛 회원으로 들어가요</span></div><div style="padding-top: 24px"><div style="display: flex; flex-direction: column; gap: 12px"><div style="display: flex; flex-direction: column; gap: 4px"><label style="font-size: 12px; font-weight: 700">이메일</label><input class="inp w-f" type="email" value="star@example.com" placeholder=""></div><div style="display: flex; flex-direction: column; gap: 4px"><label style="font-size: 12px; font-weight: 700">비밀번호</label><input class="inp w-f" type="password" value="••••••••" placeholder=""></div><div style="display: flex; align-items: center"><label class="ck"><input type="checkbox" name="r" checked>로그인 유지</label><a href="SH-012-PC.dc.html" style="margin-left: auto; font-size: 12px; color: var(--sub)">비밀번호를 잊었어요</a></div><a class="btn l p f" href="SH-020-PC.dc.html">로그인</a><a class="btn l f" href="SH-005-PC.dc.html">비회원으로 주문하기</a><div style="text-align: center; font-size: 13px; color: var(--sub)">아직 회원이 아니에요? <a href="SH-011-PC.dc.html" style="color: var(--ink); font-weight: 700; text-decoration: underline">회원가입</a></div></div></div></div></main><div class="ft"><div class="in"><div class="lk"><a href="SH-030.dc.html">회사소개</a><a href="SH-032-PC.dc.html">이용약관</a><a class="b" href="SH-031-PC.dc.html">개인정보처리방침</a><a href="SH-030.dc.html">이용안내</a><a href="SH-030.dc.html">교환 · 환불 안내</a><a href="SH-026.dc.html">문의하기</a></div><div class="cs"><div><span>고객센터</span><b>[고객센터 전화]</b><span>평일 13:00~18:00 · 주말 · 공휴일 쉬어요</span></div><div><span>무통장 입금 계좌</span><b>[은행명] [계좌번호]</b><span>예금주 [상호]</span></div><div><span>이메일</span><b>[이메일]</b><span>문의는 1영업일 안에 답해 드려요</span></div></div><div>상호 [상호] · 대표 [대표자명] · 사업자등록번호 [사업자등록번호] <a href="#" style="text-decoration: underline">사업자정보 확인</a> · 통신판매업 신고 [통신판매업 신고번호]<br>주소 [사업장 주소] · 개인정보 보호책임자 [이름]<br>구매안전서비스(에스크로) 가입 [PG사] · 호스팅 제공자: ONQ · 판매 당사자: [상호]</div></div></div><div class="states">
+<span class="states-h">상태 변형</span>
+<div class="st"><span class="st-tag">입력 오류</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><div class="sh24" style="width: 100%; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; background: transparent"><div style="display: flex; flex-direction: column; gap: 4px"><label style="font-size: 12px; font-weight: 700">비밀번호</label><input class="inp w-f err" type="password" value="••••" placeholder=""><span class="err" style="margin: 0">이메일 또는 비밀번호가 맞지 않아요</span></div></div></div></div><div class="st"><span class="st-tag">5회 틀림 · 잠금</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><div class="sh24" style="width: 100%; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; background: transparent"><div class="msg cau">비밀번호를 5번 틀려 10분 동안 로그인할 수 없어요 · 비밀번호 찾기로 바로 바꿀 수 있어요</div></div></div></div><div class="st"><span class="st-tag">비회원 주문 안내</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><div class="sh24" style="width: 100%; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; background: transparent"><div class="msg inf">비회원 주문은 주문 완료 알림톡(안 되면 문자)의 링크로만 확인할 수 있어요. 적립금은 쌓이지 않아요.</div></div></div></div><div class="st"><span class="st-tag">로그인 중</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><div class="sh24" style="width: 100%; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; background: transparent"><button class="btn l f" type="button" disabled>확인하고 있어요…</button></div></div></div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic { renderVals() { return {}; } }
+</script>
+</body>
+</html>

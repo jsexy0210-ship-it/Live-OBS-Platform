@@ -13,3 +13,4 @@ deploy
 .env.*
 Dockerfile
 .dockerignore
+design

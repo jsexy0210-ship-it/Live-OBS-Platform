@@ -77,3 +77,21 @@ test("메뉴에 없는 주소는 관리자 404(합니다체·홈으로), 화면 
   await page.goto("/admin/settings/branding");
   await expect(page.getByRole("heading", { name: "파비콘 · 공유 카드" })).toBeVisible();
 });
+
+test("마스터 상단: 전역 검색과 알림 버튼이 있고 검색 패널이 열린다", async ({ page }) => {
+  await login(page, emails.super);
+  await expect(page.getByRole("button", { name: /^알림/ })).toBeVisible();
+  await page.getByRole("button", { name: "빠른 찾기", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "전체 검색" });
+  await dialog.getByRole("searchbox").fill("zzz없는검색어");
+  await expect(dialog.getByText("「zzz없는검색어」 검색 결과가 없습니다.")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+});
+
+test("마스터 상단 「알림 센터」는 /admin/notifications로 연결되고 종 「모두 보기」도 같은 곳을 가리킨다", async ({ page }) => {
+  await login(page, emails.super);
+  await expect(page.locator(".util-desk").getByRole("link", { name: "알림 센터" })).toHaveAttribute("href", "/admin/notifications");
+  await page.getByRole("button", { name: /^알림/ }).click();
+  await expect(page.getByRole("dialog", { name: "알림" }).getByRole("link", { name: "모두 보기" })).toHaveAttribute("href", "/admin/notifications");
+});

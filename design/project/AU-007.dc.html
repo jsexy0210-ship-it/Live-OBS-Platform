@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>세션 만료</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}.c24 .gsearch{display:flex;align-items:center;gap:8px;margin:0 12px 0 auto}.c24 .gsearch .i{width:280px;height:36px;background:#fff;border-radius:8px}.c24 .tl{display:flex;flex-direction:column;gap:4px;align-items:flex-start}.c24 .tl .k{font-size:13px;color:var(--c24-sub)}.c24 .tl .v{font-size:24px;line-height:32px;font-weight:700}.c24 .tl.hot .v{color:#c2410c}.c24 .sec-h{display:flex;align-items:baseline;gap:8px;margin:8px 0 0}.c24 .sec-h h2{margin:0;font-size:18px;line-height:26px}.c24 .cols3{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}</style>
+</helmet>
+<div class="app c24" data-theme="light" style="width: 1440px; display: flex; flex-direction: column">
+<div class="authwrap" style="min-height: 520px"><div class="auth" style="width: 420px"><div class="brand"><span class="logo-sym" style="--brand: var(--c24-gnb); --brand-ink: #fff"></span>ONQ <small>파트너스 관리자</small></div><h1>파트너스 관리자</h1><p class="sub">라이브 방송과 주문을 한곳에서 관리합니다</p><div class="note inf" style="width: 100%; margin-bottom: 12px">로그인 시간이 지나 로그아웃되었습니다. 다시 로그인해 주십시오.</div><div class="seg"><button class="on" type="button">대표자</button><button class="" type="button">직원</button></div><label class="fl">이메일</label><input class="i w-f" type="text" value="" placeholder=""><label class="fl">비밀번호</label><input class="i w-f" type="password" value="" placeholder=""><label class="ck"><input type="checkbox" name="r">이 기기에서 로그인 유지</label><button class="b pri lg w" type="button">로그인</button></div></div>
+<div class="states"><span class="states-h">상태 변형</span><div class="st"><span class="st-tag">주소</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><span class="hint">/seller/login?reason=expired · 세션이 끝난 채 열린 화면은 이 주소로 보내고, 로그인하면 보던 경로로 돌아갑니다</span></div></div><div class="st"><span class="st-tag">후속 · 만료 1분 전 안내</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><div class="cfm"><div class="h">1분 뒤 로그아웃됩니다<button class="x" type="button" aria-label="닫기">×</button></div><div class="bd">계속 사용하려면 아래 버튼을 눌러 주십시오.</div><div class="f"><button class="b pri" type="button">계속 사용</button><button class="b " type="button">로그아웃</button></div></div></div></div><div class="st"><span class="st-tag">후속 · 다른 기기 로그인</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><div class="note cau" style="width: 100%"><b>다른 기기에서 로그인하여 이 기기는 로그아웃되었습니다.</b> 본인이 아니라면 비밀번호를 바꿔 주십시오</div></div></div></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic { renderVals() { return {}; } }
+</script>
+</body>
+</html>

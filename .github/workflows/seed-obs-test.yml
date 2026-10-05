@@ -24,6 +24,11 @@ on:
         description: "마스터 관리자 시험 비밀번호(테스트 서버 전용)"
         required: false
         type: string
+      reset_passwords:
+        description: "판매자 계정·구매자 회원 비밀번호를 모두 1234로 맞춤(마스터 관리자 제외, 대표님 지시 2026-10-05). 켜면 시험 데이터 대신 이것만 실행"
+        required: false
+        type: boolean
+        default: false
       enable_test_mode:
         description: "테스트 서버 모드(OBS_TEST_MODE=1)가 꺼져 있으면 .env에 켜고 앱을 다시 띄운 뒤 진행(대표님 승인 2026-10-04)"
         required: false
@@ -93,6 +98,12 @@ jobs:
           if [ "$OBS_TEST_MODE" != "1" ]; then
             echo "앱의 OBS_TEST_MODE가 1이 아니에요(지금 값: ${OBS_TEST_MODE:-없음}). enable_test_mode를 켜고 다시 실행해 주세요."
             exit 1
+          fi
+          RESET_PASSWORDS="$(read_input reset_passwords 2>/dev/null || echo false)"
+          if [ "$RESET_PASSWORDS" = "True" -o "$RESET_PASSWORDS" = "true" ]; then
+            export OBS_TEST_MODE
+            $C run --rm --no-deps -e OBS_TEST_MODE obs-web-migrate node scripts/reset-test-passwords.mjs
+            exit 0
           fi
           IDENTITY_HASH_KEY="$(docker exec "$app" printenv IDENTITY_HASH_KEY || true)"
           echo "::add-mask::$IDENTITY_HASH_KEY"

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>개발 이관용 컴포넌트 목록</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="app" data-theme="light" style="width: 2000px; height: 1400px; padding: 56px; display: flex; flex-direction: column; gap: 20px">
+ <div class="col" style="gap: 6px">
+ <span class="t-l1 fw6 c-alt">산출물</span>
+ <h1 class="t-t2">개발 이관용 컴포넌트 목록</h1>
+ <p class="t-b2 c-alt">저장소 구조(app / components / lib, Next.js) 기준 제안 경로. 스타일 토큰은 Montage(WDS) 구조의 변수 이름을 쓰되 값은 A안(큐 바이올렛 · 웜 뉴트럴 · Wanted Sans)으로 lop.css에서 덮어써요. 오버레이는 ov.css. 모든 컴포넌트는 라이트/다크 모두 지원(data-theme).</p>
+ </div>
+ <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; flex: 1; align-items: start">
+ <div class="card" style="overflow: hidden">
+ <table class="tbl" style="font-size: 13px">
+ <thead><tr><th>컴포넌트</th><th>변형 (props)</th><th>상태</th><th>쓰이는 화면</th></tr></thead>
+ <tbody>
+ <tr><td class="fw6">Button</td><td>variant: primary · outline · outlinePrimary · ghost · text · negative · positive · master / size: sm 32 · md 40 · lg 48 · xl 64 / icon · shortcut</td><td>default · hover · focus · disabled · loading</td><td>전체</td></tr>
+ <tr><td class="fw6">IconButton</td><td>size 32 · 40 / aria-label 필수</td><td>default · focus · disabled</td><td>전체</td></tr>
+ <tr><td class="fw6">TextField</td><td>type: text · number · search · password / size md 44 · sm 36 / prefix · suffix · helper · error</td><td>default · focus · error · disabled · readonly</td><td>모든 입력 화면</td></tr>
+ <tr><td class="fw6">TextArea · Select · DatePicker</td><td>Select 는 Menu 재사용 / Date 는 범위 선택</td><td>동일</td><td>상품 등록 · 요금제 등록 · 목록 필터</td></tr>
+ <tr><td class="fw6">Checkbox · Radio · Switch</td><td>Switch: tone normal · danger(실지급)</td><td>unchecked · checked · disabled · indeterminate(표 전체선택)</td><td>전체</td></tr>
+ <tr><td class="fw6">StatusBadge</td><td>status: wait · open · done · cancel · fail · warn · info · live · master · gray / size sm 24 · lg 30</td><td>—</td><td>전체 (색 매핑 고정)</td></tr>
+ <tr><td class="fw6">Tabs · SegmentedControl · Chip</td><td>Tabs: link형 · count / Chip: selected · removable</td><td>default · active · focus · disabled</td><td>목록 · 상세 탭</td></tr>
+ <tr><td class="fw6">DataTable</td><td>columns · sortable · selectable · rowMenu · stickyHeader / footer bulk-actions</td><td>default · loading(스켈레톤) · empty · noResults · error · forbidden</td><td>모든 목록 화면</td></tr>
+ <tr><td class="fw6">Pagination</td><td>page · total · perPage</td><td>—</td><td>모든 목록 화면</td></tr>
+ <tr><td class="fw6">Menu (Dropdown)</td><td>items: link · action · danger · disabled / section header</td><td>open · focus 항목</td><td>행 작업 · 계정 · 알림</td></tr>
+ <tr><td class="fw6">Dialog</td><td>kind: confirm · danger(체크 확인) · form(모달 폼) / size 440 · 640 · 860</td><td>open · submitting</td><td>방송 대시보드 확인창 6종 · 마스터 <span style="white-space: nowrap">승인/정지/환불</span></td></tr>
+ <tr><td class="fw6">BottomSheet · Drawer</td><td>Sheet: 모바일 옵션 · 필터 · 취소 요청 / Drawer: PC 우측 520</td><td>open</td><td>쇼핑몰 · 로그 추적 상세</td></tr>
+ <tr><td class="fw6">Toast · InlineMessage</td><td>tone: neutral · positive · negative · warning / action</td><td>—</td><td>전체</td></tr>
+ <tr><td class="fw6">EmptyState</td><td>kind: empty · error · forbidden · noResults · loading / icon · title · desc · action</td><td>—</td><td>전체 (공통 상태 패턴)</td></tr>
+ <tr><td class="fw6">Skeleton · Spinner · ProgressBar</td><td>line · block · table-row / Spinner 16 · 28</td><td>—</td><td>로딩</td></tr>
+ </tbody>
+ </table>
+ </div>
+ <div class="col" style="gap: 20px">
+ <div class="card" style="overflow: hidden">
+ <table class="tbl" style="font-size: 13px">
+ <thead><tr><th>도메인 · 레이아웃 컴포넌트</th><th>내용</th><th>쓰이는 화면</th></tr></thead>
+ <tbody>
+ <tr><td class="fw6">SellerShell</td><td>232px 사이드 내비 + 60px 상단바 · 다크 토글 · 방송 중 LIVE 표시 · 알림 센터 · 도우미 진입</td><td>파트너스 관리자 전체</td></tr>
+ <tr><td class="fw6">MasterShell</td><td>52px 틸 띠(역할 배지) + 248px 사이드 내비 · 역할별 메뉴 필터링 · 대리 조회 배너 슬롯</td><td>마스터 관리자 전체</td></tr>
+ <tr><td class="fw6">ShopShell (theme)</td><td>390 모바일 · <span style="white-space: nowrap">--shop</span> / <span style="white-space: nowrap">--shop-ink</span> 테마 변수 · 로고 · 하단 탭 4 · 고정 CTA</td><td>구매자 쇼핑몰 전체</td></tr>
+ <tr><td class="fw6">AuthLayout</td><td>중앙 카드 440 · 역할별 로고 색(파트너스 바이올렛 / 마스터 틸)</td><td>공통 인증 · 쇼핑몰 로그인/가입/비밀번호</td></tr>
+ <tr><td class="fw6">PageHeader · Breadcrumb · Toolbar</td><td>제목 + 보조문 + 우측 액션 / 검색 + 필터 칩 + 세그먼트</td><td>목록 · 상세</td></tr>
+ <tr><td class="fw6">StatCard</td><td>label · value · delta · tone / 4~6열 그리드</td><td>방송 대시보드 · 통합 대시보드 · 정산/결제 현황</td></tr>
+ <tr><td class="fw6">QueueCard (SA)</td><td>순번 · 닉네임 · 상품 · 금액 · 상태 · 타이머 · 1차 액션 XL 버튼 · 단축키</td><td>방송 대시보드</td></tr>
+ <tr><td class="fw6">OverlayWidgets (OV)</td><td>ratio 9:16 1080×1920 · 16:9 1920×1080 / template 줄서기 · 스포트라이트 · 미니 / 위젯 <span style="white-space: nowrap">5종(명예의</span> 전당 · 공지 · 주소시각 · 현재 주문 카드 · 주문대기) + 선택 타이머 / 효과 oFire · oMq · oTick · oPulse / accent · notice props</td><td>오버레이 전체 · 오버레이 설정 미리보기</td></tr>
+ <tr><td class="fw6">HitCardReveal (OV)</td><td>카드 이미지 · 등급 · 닉네임 · 6초 연출 · 축소 후 랭킹 반영</td><td>HIT 연출 · HIT 카드 등록 모달</td></tr>
+ <tr><td class="fw6">OverlayNotice (OV)</td><td>disconnected(연결 끊김 핀 · 패널 50% 투명) · waiting(방송 대기 카드) · empty(주문 없음 카드)</td><td>오버레이 연결 끊김 · 방송 대기 · 주문 없음</td></tr>
+ <tr><td class="fw6">OrderTimeline</td><td>상태 이력 세로 타임라인 · 담당자 · 메모</td><td>주문 상세 · 쇼핑몰 주문 상세 · 청구 상세</td></tr>
+ <tr><td class="fw6">LedgerTable</td><td>적립 · 회수 원장 · 대기/성공/실패 · 재시도</td><td>지급 · 회수 원장 · 실지급 파트너스</td></tr>
+ <tr><td class="fw6">PermissionMatrix</td><td>역할 × 기능 표 · 변경/조회/승인/—</td><td>역할별 권한 표 · 직원 계정</td></tr>
+ <tr><td class="fw6">AuditLogRow · AuditDrawer</td><td>누가 · 언제 · 무엇을 · 이전→이후 diff</td><td>로그 추적 · 상세 드로어</td></tr>
+ <tr><td class="fw6">ProductCard · CartLine · OrderSummary</td><td>쇼핑몰 상품 카드 (1:1 이미지) · 수량 조절 · 금액 합계 · 적립금 사용</td><td>쇼핑몰 홈 · 상품 · 장바구니 · 주문서</td></tr>
+ <tr><td class="fw6">ImpersonationBanner · MaintenanceBanner</td><td>고정 상단 배너 · 종료 버튼 · 감사 기록</td><td>대리 조회 · 전체</td></tr>
+ </tbody>
+ </table>
+ </div>
+ <div class="card col" style="padding: 20px; gap: 10px">
+ <span class="t-hl1">토큰 · 테마 규칙</span>
+ <p class="t-l1 c-neu">1. 색은 항상 WDS 시맨틱 변수(--wds-label-*, --wds-background-*, --wds-status-*)로 참조, 원색 hex 직접 사용 금지. 2. 브랜드 4변수 (<span style="white-space: nowrap">--brand-name</span> · <span style="white-space: nowrap">--brand-ko</span> · <span style="white-space: nowrap">--brand</span> · <span style="white-space: nowrap">--brand-ink</span>)와 A안 토큰 덮어쓰기는 lop.css 한 곳. 3. 쇼핑몰은 파트너스 설정값을 <span style="white-space: nowrap">--shop</span> / <span style="white-space: nowrap">--shop-ink</span> 로 주입. 4. 다크는 data-theme="dark" 루트 속성 하나로 전환(토큰 재매핑, 필터 금지). 5. 상태 배지 색 매핑은 StatusBadge 한 곳에서만 정의. 6. 포커스 링 2px/offset 2px 전역, 제거 금지.</p>
+ </div>
+ </div>
+ </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2000,"height":1400}}'>
+class Component extends DCLogic { renderVals() { return {}; } }
+</script>
+</body>
+</html>

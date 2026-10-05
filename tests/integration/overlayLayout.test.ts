@@ -6,7 +6,7 @@ import { DELETE as templateDelete } from "../../app/api/seller/overlay/templates
 import { GET as templatesGet, POST as templatesPost } from "../../app/api/seller/overlay/templates/route";
 import { loginSeller } from "../../lib/server/auth/login";
 import { prisma } from "../../lib/server/db";
-import { ASPECTS, BUILTIN_TEMPLATES, DEFAULT_TEMPLATE, MAX_TEMPLATES, WIDGET_TYPES, parseWidgets } from "../../lib/server/overlay/layout";
+import { ASPECTS, BUILTIN_TEMPLATES, BUILTIN_WIDGET_TYPES, DEFAULT_TEMPLATE, MAX_TEMPLATES, WIDGET_TYPES, parseWidgets } from "../../lib/server/overlay/layout";
 import { issueOverlayToken } from "../../lib/server/overlay/token";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { PASSWORD, createSeller, createSellerUser, db, resetDb } from "./helpers";
@@ -48,7 +48,7 @@ describe("기본 템플릿", () => {
       for (const aspect of ASPECTS) {
         const ws = t.layouts[aspect];
         expect(parseWidgets(ws)).toEqual(ws);
-        expect(ws.map((w) => w.type).sort()).toEqual([...WIDGET_TYPES].sort());
+        expect(ws.map((w) => w.type).sort()).toEqual([...BUILTIN_WIDGET_TYPES].sort());
         expect(ws.every((w) => w.x + w.w <= 100 && w.y + w.h <= 100)).toBe(true);
         expect(ws.every((w) => w.props.radius === 16 && w.props.flowSec === 20 && w.props.appear === "up")).toBe(true);
       }
@@ -115,6 +115,18 @@ describe("레이아웃 저장·조회", () => {
     const both = await Promise.all([1, 2].map((x) => put(s.cookie, { aspect: "9x16", widgets: [widget({ x })], expectedVersion: 1 })));
     expect(both.map((r) => r.status).sort()).toEqual([200, 409]);
     expect((await db.overlayLayout.findUniqueOrThrow({ where: { sellerId_aspect: { sellerId: s.seller.id, aspect: "9x16" } } })).version).toBe(2);
+  });
+
+  it("이벤트 할인 카드·구매 랭킹 위젯: 종류마다 하나, 구매 랭킹만 줄 수(1~10)", () => {
+    const w = (type: string, props: Record<string, unknown> = {}, id = type.toLowerCase()) => ({ id, type, visible: true, x: 0, y: 0, w: 10, h: 10, z: 1, props });
+    expect(parseWidgets([w("EVENT_CARD", { title: "이벤트" }), w("PURCHASE_RANKING", { rows: 10 })])?.map((x) => x.type)).toEqual(["EVENT_CARD", "PURCHASE_RANKING"]);
+    for (const bad of [
+      [w("PURCHASE_RANKING", { rows: 11 })],
+      [w("PURCHASE_RANKING", { rows: 0 })],
+      [w("EVENT_CARD", { rows: 3 })],
+      [w("EVENT_CARD"), w("EVENT_CARD", {}, "event_card2")],
+      [w("PURCHASE_RANKING"), w("PURCHASE_RANKING", {}, "ranking2")],
+    ]) expect(parseWidgets(bad)).toBeNull();
   });
 
   it("허용하지 않는 위젯·속성·값은 저장하지 않는다(400)", async () => {

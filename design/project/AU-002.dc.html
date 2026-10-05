@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>파트너스 로그인</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="app c24" data-theme="light" style="width: 1440px; display: flex; flex-direction: column">
+<div class="authwrap" style="min-height: 700px"><div class="auth" style="width: 420px"><div class="brand"><span class="logo-sym" style="--brand: var(--c24-gnb); --brand-ink: #fff"></span>ONQ <small>파트너스 관리자</small></div><h1>파트너스 관리자</h1><p class="sub">라이브 방송과 주문을 한곳에서 관리합니다</p><div class="seg"><button class="on" type="button">대표자</button><button class="" type="button">직원</button></div><label class="fl">이메일</label><input class="i w-f" type="text" value="" placeholder=""><label class="fl">비밀번호</label><input class="i w-f" type="password" value="" placeholder=""><label class="ck"><input type="checkbox" name="r">이 기기에서 로그인 유지</label><button class="b pri lg w" type="button">로그인</button><div class="links" style="display: flex; justify-content: space-between; margin-top: 12px"><a href="AU-012.dc.html" style="margin: 0">아직 회원이 아니신가요? <b>회원가입</b></a><a href="AU-003.dc.html" style="margin: 0; color: var(--c24-sub); text-decoration: none">아이디/비밀번호 찾기</a></div></div></div>
+<div class="states">
+<span class="states-h">상태 변형</span><div class="st"><span class="st-tag">직원 로그인 뒤 첫 화면 (UX 기준)</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><span class="hint">권한이 없는 메뉴를 첫 화면으로 열지 않습니다 · 그 직원이 열 수 있는 첫 메뉴(예: 배송 담당은 주문)로 이동합니다 · 열 수 있는 메뉴가 없으면 「권한이 없습니다」 안내와 「대표자에게 권한 요청」 버튼만 보입니다</span></div></div>
+<div class="st"><span class="st-tag">직원 첫 로그인 → 계정 연결</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><div class="note inf" style="width: 100%"><b>처음 로그인한 직원 계정입니다.</b> 휴대폰 본인확인으로 대표자가 등록한 직원 정보와 연결하면 아이디 · 비밀번호를 스스로 찾을 수 있습니다 · 나중에 해도 로그인 · 업무는 그대로입니다</div><a class="b sm pri" href="AU-012.dc.html">계정 연결하기</a></div></div><div class="st"><span class="st-tag">직원 탭</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><div class="seg"><button class="" type="button">대표자</button><button class="on" type="button">직원</button></div><span class="hint">직원 탭은 회원가입 링크가 없습니다 · 대표자가 만든 계정으로 로그인</span></div></div><div class="st"><span class="st-tag">직원 계정으로 대표자 탭 로그인</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><div class="note cau" style="width: 100%">직원 계정입니다. 직원 탭에서 로그인해 주십시오</div><button class="b sm" type="button">직원 탭으로</button></div></div><div class="st"><span class="st-tag">대표자 계정으로 직원 탭 로그인</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><div class="note cau" style="width: 100%">대표자 계정입니다. 대표자 탭에서 로그인해 주십시오</div><button class="b sm" type="button">대표자 탭으로</button></div></div><div class="st"><span class="st-tag">입력 오류</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><label class="fl">비밀번호</label><input class="i w-f err" type="text" value="" placeholder=""><span class="errt">이메일 또는 비밀번호가 맞지 않습니다</span><a href="AU-003.dc.html" style="font-size: 12px">비밀번호를 잊었습니다</a></div></div><div class="st"><span class="st-tag">승인 대기 계정</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><div class="note inf" style="width: 100%"><b>아직 가입 심사 중입니다.</b> 결과를 메일로 알려 드립니다 · 보통 2영업일 안에 끝납니다</div></div></div><div class="st"><span class="st-tag">이용 정지 계정</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><div class="note neg" style="width: 100%"><b>이용이 정지된 계정입니다.</b> 자세한 내용과 해결 방법은 안내 화면에서 볼 수 있습니다</div><a class="b sm" href="AU-006.dc.html">안내 화면</a></div></div><div class="st"><span class="st-tag">로그인 중</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><button class="b pri lg w" type="button" disabled>로그인하고 있습니다</button></div></div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic { renderVals() { return {}; } }
+</script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+/* 파트너스 화면(settings/legal)의 읽기 전용 사업자 정보 */
+.legal-biz {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 16px;
+  margin: 0;
+}
+.legal-biz > div {
+  display: contents;
+}
+.legal-biz dt {
+  color: var(--wds-label-alternative);
+}
+.legal-biz dd {
+  margin: 0;
+}

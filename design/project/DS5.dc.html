@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>디자인 시스템 공통 상태 · 참고 · 구 체계</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="app" data-theme="light" style="width: 1600px; height: 1000px; padding: 56px; display: flex; flex-direction: column; gap: 20px">
+ <div class="col" style="gap: 6px">
+ <span class="t-l1 fw6 c-alt">공통 디자인 시스템 · 참고 · 구 체계 (정본은 DS6 카페24식 틀과 공통 스타일 · 2026-10-05 UI 현대화 토큰)</span>
+ <h1 class="t-t2">공통 상태 패턴 — 모든 화면이 공유하는 6가지 상태</h1>
+ <p class="t-b2 c-alt">각 화면 아트보드 하단 띠(모바일은 우측 열)에 이 패턴이 화면별 문구로 반복돼요. 그림 대신 원형 아이콘 + 제목 + 다음 행동 버튼 하나.</p>
+ </div>
+ <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; flex: 1">
+ <div class="st"><span class="st-tag">기본 (DEFAULT)</span>
+ <div class="col" style="width: 100%; gap: 8px; align-items: stretch; text-align: left">
+ <div class="row between" style="padding: 10px 12px; border-radius: 8px; background: var(--wds-fill-alternative)"><span class="t-l1 fw6">14:12 별빛사냥꾼</span><span class="bdg b-open">개봉 중</span></div>
+ <div class="row between" style="padding: 10px 12px; border-radius: 8px; background: var(--wds-fill-alternative)"><span class="t-l1">14:11 카드왕</span><span class="bdg b-wait">대기</span></div>
+ <div class="row between" style="padding: 10px 12px; border-radius: 8px; background: var(--wds-fill-alternative)"><span class="t-l1">14:10 민트컨디션</span><span class="bdg b-done">완료</span></div>
+ </div>
+ <span class="s">데이터가 있는 일반 상태. 첫 행이 가장 중요한 항목.</span>
+ </div>
+ <div class="st"><span class="st-tag">빈 상태 (EMPTY)</span>
+ <div class="st-ic">+</div><span class="t">아직 등록된 상품이 없어요</span><span class="s">첫 상품을 등록하면 쇼핑몰과 주문대기에 바로 연결돼요.</span>
+ <button class="btn" type="button">상품 등록</button>
+ </div>
+ <div class="st"><span class="st-tag">로딩 (LOADING)</span>
+ <div class="lines"><span class="sk" style="width: 60%; height: 18px"></span><span class="sk" style="width: 90%"></span><span class="sk" style="width: 85%"></span><span class="sk" style="width: 40%"></span></div>
+ <div class="row" style="gap: 8px"><span class="spin"></span><span class="s">목록을 불러오는 중…</span></div>
+ <span class="s">표·카드는 스켈레톤, 버튼 동작은 버튼 안 스피너. 전체 화면 스피너는 쓰지 않음.</span>
+ </div>
+ <div class="st"><span class="st-tag">오류 (ERROR)</span>
+ <div class="st-ic neg">!</div><span class="t">목록을 불러오지 못했어요</span><span class="s">서버와 연결이 잠시 끊겼어요. 잠시 후 다시 시도해 주세요. </span>
+ <div class="row" style="gap: 8px"><button class="btn btn-out" type="button">문의하기</button><button class="btn" type="button">다시 시도</button></div>
+ </div>
+ <div class="st"><span class="st-tag">권한 없음 (FORBIDDEN)</span>
+ <div class="st-ic lock"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg></div><span class="t">이 기능을 사용할 권한이 없어요</span><span class="s">현재 역할: 조회 전용. 변경이 필요하면 최고관리자에게 권한을 요청해 주세요.</span>
+ <button class="btn btn-out" type="button">권한 요청</button>
+ </div>
+ <div class="st"><span class="st-tag">검색 결과 없음 (NO RESULTS)</span>
+ <div class="st-ic">?</div><span class="t">「레드 포션」 검색 결과가 없어요</span><span class="s">검색어를 바꾸거나 필터를 해제해 보세요.</span>
+ <div class="row" style="gap: 8px"><span class="chip on">상태: 개봉 중 <span class="x">×</span></span><button class="btn btn-text" type="button">필터 모두 해제</button></div>
+ </div>
+ </div>
+ <div class="row" style="gap: 16px">
+ <div class="msg t-l2" style="flex: 1"><b>OBS 오버레이의 상태</b>는 예외: 투명 배경을 유지해야 하므로 오류·권한 없음도 작은 상태 배지 하나만 띄워요.</div>
+ <div class="msg t-l2" style="flex: 1"><b>목록 화면</b>은 여기에 「페이지 이동」과 「필터 결과 없음」을 더해 총 8개 상태를 가져요.</div>
+ <div class="msg t-l2" style="flex: 1"><b>권한 없음</b>은 페이지 단위와 기능 단위(버튼 비활성 + 툴팁 「조회 전용 역할」) 두 층으로 나뉘어요.</div>
+ </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1600,"height":1000}}'>
+class Component extends DCLogic { renderVals() { return {}; } }
+</script>
+</body>
+</html>

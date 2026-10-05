@@ -8,6 +8,7 @@ import { Topbar, useSeller } from "../../../../../../components/seller/SellerShe
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
 import { won } from "../../../../../../components/seller/format";
+import { SourceBadge } from "../../../../../../components/seller/broadcast/SourceBadge";
 import { kstDate, kstDuration, type BroadcastSummary } from "../../../../../../components/seller/broadcast/history";
 
 // SA-055 방송 상세(방송 이력의 한 건). 요약 · HIT 카드 · 방송 중 들어온 주문(50개씩).
@@ -26,13 +27,16 @@ type Order = {
   paidAt: string | null;
   completedAt: string | null;
 };
-type Hit = { id: string; cardName: string; note: string | null; nickname: string; order: { id: string; orderNo: string } | null; createdAt: string };
+type Hit = { id: string; cardName: string; note: string | null; nickname: string; order: { id: string; orderNo: string } | null; source?: "INTERNAL" | "EXTERNAL" | null; createdAt: string };
+// 외부 쇼핑몰 주문(내부 주문 행이 없어 orders와 따로 온다, 금액·결제 정보 없음)
+type ExternalOrder = { id: string; nickname: string; items: { productName: string; quantity: number; status: string }[]; createdAt: string; cancelledAt: string | null; completedAt: string | null };
 type Detail = {
   broadcast: { id: string; title: string | null; status: "live" | "ended"; startedAt: string; endedAt: string | null };
   summary: BroadcastSummary;
   orders: Order[];
   nextCursor: string | null;
   hits: Hit[];
+  externalOrders?: ExternalOrder[];
 };
 type Load = { kind: "loading" } | { kind: "error"; status: number; error: string } | { kind: "ok"; data: Detail };
 
@@ -197,7 +201,7 @@ export default function BroadcastDetailPage() {
                               {h.note && <div className="t-c1 c-alt">{h.note}</div>}
                             </td>
                             <td>{h.nickname}</td>
-                            <td>{h.order ? h.order.orderNo : "-"}</td>
+                            <td>{h.order ? h.order.orderNo : h.source === "EXTERNAL" ? <SourceBadge source={h.source} /> : "-"}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -267,6 +271,45 @@ export default function BroadcastDetailPage() {
                   )
                 )}
               </section>
+
+              {(d.externalOrders?.length ?? 0) > 0 && (
+                <section className="card pad col" style={{ gap: 12 }} aria-labelledby="bd-ext-h" data-testid="bd-external">
+                  <h2 className="t-hl1" id="bd-ext-h">
+                    외부 주문 <span className="c-alt fw5">{d.externalOrders!.length}건</span>
+                  </h2>
+                  <div className="au-lt-wrap">
+                    <table className="tbl">
+                      <thead>
+                        <tr>
+                          <th>접수 시각</th>
+                          <th>구매자</th>
+                          <th>상품</th>
+                          <th>상태</th>
+                        </tr>
+                      </thead>
+                      <tbody data-testid="bd-external-orders">
+                        {d.externalOrders!.map((o) => (
+                          <tr key={o.id}>
+                            <td className="num">{kstDate(o.createdAt)}</td>
+                            <td>
+                              {o.nickname} <SourceBadge source="EXTERNAL" />
+                            </td>
+                            <td className="col-product">
+                              {o.items.map((i, k) => (
+                                <div key={k}>
+                                  {i.productName} ×{i.quantity}
+                                </div>
+                              ))}
+                            </td>
+                            <td>{o.cancelledAt ? "취소" : o.completedAt ? "개봉 완료" : "진행 중"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <span className="t-c1 c-alt">외부 쇼핑몰 주문은 금액·결제 정보를 가져오지 않아 이 표에 보이지 않습니다.</span>
+                </section>
+              )}
             </>
           )
         )}
