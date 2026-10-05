@@ -243,17 +243,18 @@ body {
   left: 50%;
   bottom: 24px;
   transform: translateX(-50%);
-  z-index: 60;
+  z-index: var(--ui-z-toast);
   max-width: calc(100% - 32px);
 }
 .dim-fixed {
   position: fixed;
-  z-index: 70;
+  z-index: var(--ui-z-modal);
+  padding: var(--ui-sp-16);
 }
 .choice {
-  padding: 12px 14px;
-  border-radius: 10px;
-  box-shadow: inset 0 0 0 1px var(--wds-line-normal-normal);
+  padding: var(--ui-sp-12) var(--ui-sp-16);
+  border-radius: var(--ui-r-control);
+  box-shadow: inset 0 0 0 1px var(--ui-line-input);
   cursor: pointer;
 }
 .choice.on {
@@ -375,7 +376,7 @@ body {
     height: auto;
     z-index: 50;
     transform: translateX(-100%);
-    transition: transform 0.2s ease;
+    transition: transform var(--ui-dur-panel) var(--ui-ease);
   }
   .shell.nav-open .side {
     transform: none;
@@ -672,11 +673,15 @@ body {
   --info-bg: var(--cs-accent-tint);
   --page: var(--cs-page);
   --surface: var(--cs-surface);
-  font-size: 13px;
-  line-height: 1.5;
+  /* 입력 경계: 흰 바탕 대비 3:1 이상 */
+  --ui-line-input: #858a94;
+  --ui-focus: var(--cs-accent);
+  font-size: var(--ui-fs-body);
+  line-height: var(--ui-lh-body);
   letter-spacing: 0;
 }
 .seller-app[data-theme="dark"] {
+  --ui-line-input: #6c7282;
   --cs-page: #121418;
   --cs-surface: #1b1e24;
   --cs-line: #30343d;
@@ -960,72 +965,46 @@ body {
   margin: 12px 24px 0;
 }
 
-/* 본문: 작은 제목, 촘촘한 간격 */
+/* 본문: 관리자 본문 좌우 24px, 섹션 간격 24px, 화면 제목 20px/28px(2026-10-05 시각 규격) */
 :where(.seller-app) .main {
-  gap: 14px;
-  padding: 18px 24px 32px;
+  gap: var(--ui-gap-section);
+  padding: var(--ui-sp-24) var(--ui-gutter) var(--ui-sp-32);
 }
 :where(.seller-app) .ph {
   align-items: center;
-  gap: 12px;
+  gap: var(--ui-sp-12);
 }
 :where(.seller-app) .main .t-t1,
 :where(.seller-app) .main .t-t2,
 :where(.seller-app) .main .t-t3,
 :where(.seller-app) .main .t-h1 {
-  font-size: 18px;
-  line-height: 26px;
+  font-size: var(--ui-fs-title-admin);
+  line-height: var(--ui-lh-title-admin);
   font-weight: 700;
   letter-spacing: -0.01em;
 }
 :where(.seller-app) .main .t-h2,
 :where(.seller-app) .main .t-hl1 {
-  font-size: 15px;
-  line-height: 22px;
-  font-weight: 700;
+  font-size: var(--ui-fs-section);
+  line-height: var(--ui-lh-section);
+  font-weight: 600;
 }
 :where(.seller-app) .main .t-hl2,
 :where(.seller-app) .main .t-b1 {
-  font-size: 14px;
-  line-height: 20px;
+  font-size: var(--ui-fs-body);
+  line-height: var(--ui-lh-body);
 }
 :where(.seller-app) .stat {
-  padding: 12px 16px;
+  padding: var(--ui-pad-panel);
 }
 :where(.seller-app) .stat .v {
-  font-size: 20px;
-  line-height: 28px;
+  font-size: var(--ui-fs-title-admin);
+  line-height: var(--ui-lh-title-admin);
 }
 
-/* 버튼: 높이 32px, 모서리 3px */
-:where(.seller-app) .btn {
-  height: 32px;
-  padding: 0 14px;
-  border-radius: 3px;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0;
-}
-:where(.seller-app) .btn-sm {
-  height: 28px;
-  padding: 0 10px;
-  border-radius: 3px;
-  font-size: 12px;
-}
-:where(.seller-app) .btn-lg {
-  height: 38px;
-  padding: 0 22px;
-  border-radius: 3px;
-  font-size: 14px;
-}
-:where(.seller-app) .btn-xl {
-  height: 44px;
-  padding: 0 24px;
-  border-radius: 3px;
-  font-size: 15px;
-}
+/* 버튼·입력 크기와 모서리는 lop.css 공통 규칙(--ui-h-*, --ui-r-control)을 그대로 쓴다. 관리자에서는 바탕·테두리 색만 업무용으로 */
 :where(.seller-app) .btn-text {
-  padding: 0 6px;
+  padding: 0 var(--ui-sp-8);
 }
 :where(.seller-app) .btn-out,
 :where(.seller-app) .btn-ghost,
@@ -1033,7 +1012,7 @@ body {
 .app a.btn-ghost {
   background: var(--cs-surface);
   color: var(--wds-label-normal);
-  box-shadow: inset 0 0 0 1px var(--wds-line-normal-normal);
+  box-shadow: inset 0 0 0 1px var(--ui-line-input);
 }
 :where(.seller-app) .btn-out:hover,
 :where(.seller-app) .btn-ghost:hover {
@@ -1045,129 +1024,36 @@ body {
   color: var(--wds-label-disable);
   box-shadow: inset 0 0 0 1px var(--cs-line);
 }
-:where(.seller-app) .icon-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 3px;
-}
-
-/* 입력: 높이 32px, 모서리 2px, 회색 테두리 */
-:where(.seller-app) .inp {
-  height: 32px;
-  padding: 0 10px;
-  border-radius: 2px;
-  font-size: 13px;
-  line-height: 20px;
-  background: var(--cs-surface);
-}
-:where(.seller-app) .inp-sm {
-  height: 28px;
-  font-size: 12px;
-}
-:where(.seller-app) textarea.inp {
-  height: auto;
-  min-height: 80px;
-  padding: 6px 10px;
-}
-:where(.seller-app) .inp:focus {
-  outline: none;
-  box-shadow: inset 0 0 0 1px var(--cs-accent);
-}
 :where(.seller-app) .inp:disabled,
 :where(.seller-app) .inp.is-disabled {
   background: var(--wds-fill-alternative);
   box-shadow: inset 0 0 0 1px var(--cs-line);
 }
-:where(.seller-app) .fld {
-  gap: 4px;
-}
-:where(.seller-app) .fld > label,
-:where(.seller-app) .lbl {
-  font-size: 12px;
-}
-:where(.seller-app) .search > .inp {
-  padding-left: 30px;
-}
-:where(.seller-app) .search::before {
-  left: 10px;
-}
-:where(.seller-app) .search::after {
-  left: 21px;
-}
-:where(.seller-app) .cbx,
-:where(.seller-app) .rdo {
-  width: 16px;
-  height: 16px;
-}
-:where(.seller-app) .cbx {
-  border-radius: 2px;
-}
-:where(.seller-app) .cbx:checked::after {
-  left: 5px;
-  top: 2px;
-  width: 5px;
-  height: 9px;
-}
-:where(.seller-app) .rdo:checked {
-  box-shadow: inset 0 0 0 5px var(--brand);
-}
-:where(.seller-app) .chk {
-  gap: 6px;
-  font-size: 13px;
-}
-:where(.seller-app) .sw {
-  width: 36px;
-  height: 20px;
-}
-:where(.seller-app) .sw::after {
-  width: 14px;
-  height: 14px;
-}
-:where(.seller-app) .sw.on::after {
-  left: 19px;
-}
 
-/* 표면: 흰 바탕 + 가는 테두리, 모서리 3px */
+/* 표면: 흰 바탕 + 1px 선 */
 :where(.seller-app) .card {
-  border-radius: 3px;
   box-shadow: inset 0 0 0 1px var(--cs-line);
 }
-:where(.seller-app) .pad {
-  padding: 16px;
-}
-:where(.seller-app) .pad-l {
-  padding: 20px;
-}
-:where(.seller-app) .img {
-  border-radius: 2px;
-}
 
-/* 표: 회색 머리줄, 가는 회색 테두리, 행 높이 36~40px */
+/* 표: 회색 머리줄(40px), 1px 선, 일반 행 48px · .tbl-compact 40px. 머리 글자 13px, 값 14px */
 :where(.seller-app) .tbl {
-  font-size: 13px;
-  line-height: 20px;
   border-top: 1px solid var(--cs-line-strong);
 }
 :where(.seller-app) .tbl th {
-  padding: 7px 10px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--wds-label-neutral);
   background: var(--cs-th);
   box-shadow: inset 0 -1px 0 var(--cs-line);
 }
 :where(.seller-app) .tbl td {
-  padding: 8px 10px;
   box-shadow: inset 0 -1px 0 var(--cs-line);
 }
 /* 칸 높이·세로선은 표로 보일 때만(좁은 화면에서 행을 카드로 바꾸는 화면은 그대로 둔다) */
-@media (min-width: 768px) {
-  :where(.seller-app) .tbl th {
-    height: 36px;
-  }
+@media (max-width: 767px) {
+  :where(.seller-app) .tbl th,
   :where(.seller-app) .tbl td {
-    height: 38px;
+    height: auto;
   }
+}
+@media (min-width: 768px) {
   :where(.seller-app) .tbl th + th,
   :where(.seller-app) .tbl td + td {
     box-shadow: inset 0 -1px 0 var(--cs-line), inset 1px 0 0 var(--cs-line);
@@ -1178,40 +1064,16 @@ body {
 }
 :where(.seller-app) .kv {
   grid-template-columns: 120px 1fr;
-  gap: 8px 12px;
-  font-size: 13px;
-}
-
-/* 배지: 모서리 2px, 높이 20px */
-:where(.seller-app) .bdg {
-  height: 20px;
-  padding: 0 6px;
-  border-radius: 2px;
-  font-size: 11px;
-  gap: 4px;
-}
-:where(.seller-app) .bdg-lg {
-  height: 24px;
-  padding: 0 8px;
-  font-size: 12px;
-}
-:where(.seller-app) .bdg::before {
-  width: 5px;
-  height: 5px;
+  gap: var(--ui-sp-8) var(--ui-sp-12);
 }
 :where(.seller-app) .b-open {
   background: var(--cs-accent);
 }
 
-/* 탭·세그먼트·칩·페이지 이동 */
+/* 탭·세그먼트·칩·페이지 이동: 선택은 강조색 하나 */
 :where(.seller-app) .tabs {
   gap: 0;
   box-shadow: inset 0 -1px 0 var(--cs-line-strong);
-}
-:where(.seller-app) .tab {
-  padding: 9px 14px;
-  font-size: 13px;
-  line-height: 18px;
 }
 :where(.seller-app) .tab.on {
   color: var(--cs-accent);
@@ -1220,54 +1082,33 @@ body {
 .app a.tab.on {
   color: var(--cs-accent);
 }
-:where(.seller-app) .seg {
-  padding: 0;
-  gap: 0;
-  border-radius: 3px;
-  background: var(--cs-surface);
-  box-shadow: inset 0 0 0 1px var(--wds-line-normal-normal);
-}
-:where(.seller-app) .seg > button {
-  height: 30px;
-  padding: 0 12px;
-  border-radius: 0;
-  font-size: 12px;
-}
-:where(.seller-app) .seg > button + button {
-  box-shadow: inset 1px 0 0 var(--cs-line);
-}
 :where(.seller-app) .seg > button.on {
   background: var(--cs-accent);
   color: #fff;
   box-shadow: none;
 }
-:where(.seller-app) .chip {
-  height: 28px;
-  padding: 0 10px;
-  border-radius: 3px;
-  font-size: 12px;
-}
 :where(.seller-app) .chip.on {
   background: var(--cs-accent);
   color: #fff;
 }
-:where(.seller-app) .pg {
-  gap: 2px;
-}
-:where(.seller-app) .pg > a,
-:where(.seller-app) .pg > span,
 :where(.seller-app) .pg > button {
-  min-width: 28px;
-  height: 28px;
-  padding: 0 6px;
+  min-width: var(--ui-h-compact);
+  height: var(--ui-h-compact);
+  padding: 0 var(--ui-sp-8);
   border: 0;
-  border-radius: 2px;
-  font-size: 12px;
+  border-radius: var(--ui-r-control);
+  font: 500 var(--ui-fs-body)/1 inherit;
+  font-family: inherit;
   background: var(--cs-surface);
   color: var(--wds-label-neutral);
   box-shadow: inset 0 0 0 1px var(--cs-line);
-  font-family: inherit;
   cursor: pointer;
+}
+:where(.seller-app) .pg > a,
+:where(.seller-app) .pg > span {
+  background: var(--cs-surface);
+  color: var(--wds-label-neutral);
+  box-shadow: inset 0 0 0 1px var(--cs-line);
 }
 :where(.seller-app) .pg > .on,
 .app.seller-app .pg > a.on {
@@ -1280,56 +1121,26 @@ body {
   cursor: not-allowed;
 }
 :where(.seller-app) .menu {
-  border-radius: 3px;
-  padding: 4px;
-  box-shadow: 0 2px 8px #0000001f, inset 0 0 0 1px var(--cs-line);
-}
-:where(.seller-app) .menu > a,
-:where(.seller-app) .menu > button {
-  padding: 7px 10px;
-  border-radius: 2px;
-  font-size: 13px;
+  box-shadow: var(--wds-shadow-medium), inset 0 0 0 1px var(--cs-line);
 }
 
-/* 안내·토스트·모달·상태 */
+/* 안내·상태 */
 :where(.seller-app) .msg {
-  padding: 10px 14px;
-  border-radius: 3px;
-  font-size: 13px;
   box-shadow: inset 0 0 0 1px var(--cs-line);
 }
-:where(.seller-app) .toast {
-  border-radius: 3px;
-  font-size: 13px;
-}
-:where(.seller-app) .modal {
-  border-radius: 4px;
-  padding: 20px;
-  gap: 14px;
-  box-shadow: 0 4px 16px #00000033;
-}
-:where(.seller-app) .sheet {
-  border-radius: 4px 4px 0 0;
-}
 :where(.seller-app) .st {
-  border-radius: 3px;
+  border-radius: var(--ui-r-card);
   box-shadow: inset 0 0 0 1px var(--cs-line);
   min-height: 160px;
 }
 :where(.seller-app) .st-ic {
-  width: 36px;
-  height: 36px;
-  font-size: 16px;
+  width: 40px;
+  height: 40px;
+  font-size: var(--ui-fs-section);
 }
 :where(.seller-app) .st .t {
-  font-size: 14px;
-  line-height: 20px;
-}
-:where(.seller-app) .choice {
-  border-radius: 3px;
-}
-:where(.seller-app) .sk {
-  border-radius: 2px;
+  font-size: var(--ui-fs-section);
+  line-height: var(--ui-lh-section);
 }
 
 /* 태블릿 이하: GNB는 햄버거로 접고, LNB는 서랍(전체 메뉴)으로 연다 */
@@ -1356,7 +1167,7 @@ body {
     height: auto;
     z-index: 50;
     transform: translateX(-100%);
-    transition: transform 0.2s ease;
+    transition: transform var(--ui-dur-panel) var(--ui-ease);
   }
   .cs.nav-open .lnb {
     transform: none;
@@ -1389,10 +1200,10 @@ body {
     padding: 4px 16px;
   }
   :where(.seller-app) .main {
-    padding: 14px 16px 28px;
+    padding: var(--ui-sp-16) var(--ui-gutter-mobile) var(--ui-sp-32);
   }
   :where(.seller-app) .access-banner {
-    margin: 10px 16px 0;
+    margin: var(--ui-sp-12) var(--ui-gutter-mobile) 0;
   }
 }
 @media (max-width: 767px) {
@@ -1406,46 +1217,38 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--ui-sp-12);
   flex-wrap: wrap;
-}
-.au-ph-t {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  flex-wrap: wrap;
-  min-width: 0;
+  min-height: var(--ui-h-default);
 }
 .app .au-ph-title {
-  font-size: 18px;
-  line-height: 26px;
+  min-width: 0;
+  font-size: var(--ui-fs-title-admin);
+  line-height: var(--ui-lh-title-admin);
   font-weight: 700;
-}
-.au-ph-path {
-  font-size: 12px;
-  color: var(--wds-label-alternative);
 }
 .au-ph-act,
 .au-lh-act {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--ui-gap-btn);
   flex-wrap: wrap;
 }
-/* 표형 폼·검색 상자 공통 표: 왼쪽 회색 항목명 칸 */
+/* 표형 폼·검색 상자 공통 표: 왼쪽 회색 항목명 칸(14px) */
 .au-ft {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: var(--ui-fs-body);
   background: var(--cs-surface);
   border-top: 1px solid var(--cs-line-strong);
 }
 .au-ft th {
   width: 160px;
-  padding: 8px 12px;
+  padding: var(--ui-sp-8) var(--ui-sp-16);
   text-align: left;
   vertical-align: middle;
-  font-size: 12px;
+  font-size: var(--ui-fs-body);
+  line-height: var(--ui-lh-body);
   font-weight: 600;
   color: var(--wds-label-neutral);
   background: var(--cs-th);
@@ -1453,16 +1256,15 @@ body {
   border-right: 1px solid var(--cs-line);
 }
 .au-ft td {
-  padding: 6px 12px;
-  min-height: 40px;
+  padding: var(--ui-sp-8) var(--ui-sp-16);
   border-bottom: 1px solid var(--cs-line);
 }
 .au-ft-v {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--ui-sp-8);
   flex-wrap: wrap;
-  min-height: 28px;
+  min-height: var(--ui-h-default);
 }
 .au-ft-v > .inp {
   width: auto;
@@ -1470,21 +1272,31 @@ body {
   min-width: 0;
 }
 .au-ft-help {
-  margin: 4px 0 0;
+  margin: var(--ui-sp-4) 0 0;
 }
+/* 검색 상자는 dense(40px): 같은 줄의 입력·선택·버튼이 한 높이 */
 .au-sb {
   background: var(--cs-surface);
   box-shadow: inset 0 0 0 1px var(--cs-line);
+  border-radius: var(--ui-r-table);
+  overflow: hidden;
 }
 .au-sb .au-ft {
   border-top: 0;
+}
+.au-sb .au-ft-v {
+  min-height: var(--ui-h-dense);
+}
+.au-sb .inp,
+.au-sb .btn {
+  min-height: var(--ui-h-dense);
 }
 .au-sb-f,
 .au-ff {
   display: flex;
   justify-content: center;
-  gap: 6px;
-  padding: 12px;
+  gap: var(--ui-gap-btn);
+  padding: var(--ui-sp-12);
 }
 .au-ff {
   position: sticky;
@@ -1496,29 +1308,29 @@ body {
 .au-fs {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--ui-sp-8);
 }
 .au-fs-h {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--ui-sp-8);
 }
 .app .au-fs-t {
-  font-size: 14px;
-  line-height: 20px;
-  font-weight: 700;
+  font-size: var(--ui-fs-section);
+  line-height: var(--ui-lh-section);
+  font-weight: 600;
 }
 .au-lh {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--ui-sp-8);
   flex-wrap: wrap;
-  padding: 8px 12px;
+  padding: var(--ui-sp-8) var(--ui-sp-12);
 }
 .au-lh-total {
-  font-size: 13px;
+  font-size: var(--ui-fs-body);
   color: var(--wds-label-neutral);
 }
 .au-lh-total b {
@@ -1528,17 +1340,21 @@ body {
   overflow-x: auto;
 }
 .au-pg {
-  padding: 12px;
+  padding: var(--ui-sp-12);
 }
 @media (max-width: 767px) {
   .au-ft th {
     width: 96px;
-    padding: 8px;
+    padding: var(--ui-sp-8);
   }
   .au-ft td {
-    padding: 6px 8px;
+    padding: var(--ui-sp-8);
   }
   .au-ft-v > .inp {
     flex: 1 1 100%;
+  }
+  .au-sb .inp,
+  .au-sb .btn {
+    min-height: var(--ui-h-touch);
   }
 }

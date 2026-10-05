@@ -3,3 +3,4 @@ export { PageHead } from "./PageHead";
 export { SearchBox, SearchRow } from "./SearchBox";
 export { ListHead, Pagination } from "./ListTable";
 export { FormSection, FormRow, FormFoot } from "./FormTable";
+export { Modal, ModalClose } from "./Modal";
