@@ -1,10 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { ProductForm } from "../../../../../../components/seller/ProductForm";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
+import { SmartBackButton } from "../../../../../../components/seller/SmartBackButton";
 import { ErrorState, LoadingRows, Locked, NoPermission } from "../../../../../../components/seller/States";
 import { api, type Product } from "../../../../../../components/seller/api";
 
@@ -36,9 +36,9 @@ export default function EditProductPage() {
                 <div className="st-ic">?</div>
                 <span className="t">상품을 찾을 수 없습니다</span>
                 <span className="s">이미 삭제된 상품일 수 있습니다.</span>
-                <Link className="btn btn-sm" href="/seller/products">
+                <SmartBackButton fallback="/seller/products" className="btn btn-sm">
                   상품 목록으로
-                </Link>
+                </SmartBackButton>
               </div>
             ) : state.status === 403 ? (
               <NoPermission need="상품" />

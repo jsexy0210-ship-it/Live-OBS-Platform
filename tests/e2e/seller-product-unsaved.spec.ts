@@ -27,19 +27,19 @@ test("등록 화면: 바꾼 것이 없으면 그냥 나가고, 입력하면 취�
   await login(page, "/seller/products/new");
   const seen = watchDialogs(page, false);
   await expect(page.getByLabel("상품명")).toBeVisible();
-  await page.getByRole("link", { name: "취소" }).click();
+  await page.getByRole("button", { name: "취소" }).click();
   await expect(page).toHaveURL(/\/seller\/products$/);
   expect(seen).toEqual([]);
 
   await page.goto("/seller/products/new");
   await page.getByLabel("상품명").fill("미저장e2e 상품");
-  await page.getByRole("link", { name: "취소" }).click();
+  await page.getByRole("button", { name: "취소" }).click();
   await expect.poll(() => seen).toEqual([WARN]);
   await expect(page).toHaveURL(/\/seller\/products\/new$/);
   await expect(page.getByLabel("상품명")).toHaveValue("미저장e2e 상품");
   // 지우면 변경이 없는 것으로 돌아와 묻지 않는다
   await page.getByLabel("상품명").fill("");
-  await page.getByRole("link", { name: "취소" }).click();
+  await page.getByRole("button", { name: "취소" }).click();
   await expect(page).toHaveURL(/\/seller\/products$/);
   expect(seen).toEqual([WARN]);
 });
@@ -55,12 +55,12 @@ test("수정 화면: 이름을 바꾸면 묻고, 원래대로 되돌리면 묻�
   const seen = watchDialogs(page, false);
 
   await name.fill(`${original}수정`);
-  await page.getByRole("link", { name: "취소" }).click();
+  await page.getByRole("button", { name: "취소" }).click();
   await expect.poll(() => seen).toEqual([WARN]);
   await expect(page).toHaveURL(new RegExp(`/seller/products/${id}$`));
 
   await name.fill(original);
-  await page.getByRole("link", { name: "취소" }).click();
+  await page.getByRole("button", { name: "취소" }).click();
   await expect(page).toHaveURL(/\/seller\/products$/);
   expect(seen).toEqual([WARN]);
 });
@@ -98,7 +98,7 @@ test("수정 화면: 저장하면 변경이 없는 것으로 돌아가 묻지 �
     await name.fill(`${original}저장`);
     await page.getByRole("button", { name: "저장", exact: true }).first().click();
     await expect(page.getByText("저장했습니다")).toBeVisible();
-    await page.getByRole("link", { name: "취소" }).click();
+    await page.getByRole("button", { name: "취소" }).click();
     await expect(page).toHaveURL(/\/seller\/products$/);
     expect(seen).toEqual([]);
   } finally {

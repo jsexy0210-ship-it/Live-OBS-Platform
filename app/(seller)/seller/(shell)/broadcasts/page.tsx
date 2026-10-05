@@ -62,7 +62,7 @@ export default function BroadcastHistoryPage() {
   };
 
   const search = () => {
-    if (draft.from && draft.to && draft.from > draft.to) return setToast({ text: "조회 기간의 시작일이 끝일보다 늦습니다", neg: true });
+    if (draft.from && draft.to && draft.from > draft.to) return setToast({ text: "시작일을 끝일보다 앞 날짜로 바꿔 주십시오", neg: true });
     setApplied({ ...draft });
   };
   const reset = () => {
@@ -97,7 +97,7 @@ export default function BroadcastHistoryPage() {
                   <Locked />
                 ) : state.status === 403 && state.error === "plan_feature_required" ? (
                   <div className="st" style={{ boxShadow: "none" }}>
-                    <span className="t">현재 플랜에서 제공하지 않는 기능입니다</span>
+                    <span className="t">지금 이용 중인 이용권에는 이 기능이 없습니다. 구독 화면에서 이용권을 바꾸면 사용할 수 있습니다</span>
                   </div>
                 ) : state.status === 403 ? (
                   <NoPermission need="방송 진행" />
@@ -123,8 +123,8 @@ export default function BroadcastHistoryPage() {
                             <th>제목</th>
                             <th>시간</th>
                             <th>주문</th>
-                            <th>완료 / 취소</th>
-                            <th>HIT</th>
+                            <th>완료 / 뺀 주문</th>
+                            <th>HIT 카드</th>
                             <th>매출</th>
                             <th>상태</th>
                           </tr>
