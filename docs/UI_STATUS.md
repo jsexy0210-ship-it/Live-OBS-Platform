@@ -48,7 +48,7 @@
 | 주문 상세 | `/seller/orders/[orderId]` | SA | 자동 반영 | 대기 | 미확인 |
 | 교환·반품 | `/seller/returns` | SA | 자동 반영 | 대기 | 미확인 |
 | 배송 | `/seller/shipping` | SA | 자동 반영 | 대기 | 미확인 |
-| 상품 목록 | `/seller/products` | SA-010 | 자동 반영 | 대기 | 확인(1440·390) |
+| 상품 목록 | `/seller/products` | SA-010 | 자동 반영 | 대기 | 확인(1440·390·360, 휴대폰 검색 상자 한 열) |
 | 상품 등록·수정 | `/seller/products/new · [productId]` | SA | 자동 반영 | 대기 | 미확인 |
 | 재고 관리 | `/seller/products/stock` | SA | 자동 반영 | 대기 | 미확인 |
 | 구매 제한 | `/seller/purchase-restrictions` | SA | 자동 반영 | 대기 | 미확인 |
@@ -76,6 +76,12 @@
 | 쿠폰·찜·리뷰 | `/shop/[slug]/coupons · wishlist · reviews` | SH | 자동 반영 | 대기 | 미확인 |
 | 고객센터 | `/shop/[slug]/help/**` | SH-030 | 자동 반영 | 대기 | 미확인 |
 | 구매자 로그인·가입 | `/shop/[slug]/login · signup` | SH-011 | 자동 반영 | 대기 | 미확인 |
+
+## 공개 화면
+
+| 화면 | 경로 | 화면 ID | 1단계 공통 규격 | 화면별 정리 | PC·모바일 확인 |
+|---|---|---|---|---|---|
+| 서비스 소개 | `/about` | PF-001 | 자동 반영 | 대기 | 미확인(e2e public-landing 통과만) |
 
 ## 오버레이 방송 출력
 
