@@ -172,7 +172,7 @@ test("자동 취소를 꺼 둔 상태에서는 숨겨진 입금 기한 값이 �
 
 test("쇼핑몰 설정 권한이 없는 직원은 권한 안내를 본다", async ({ page }) => {
   await openAs(page, "demo-viewer@example.com");
-  await expect(page.getByText("이 기능은 권한이 필요합니다")).toBeVisible();
+  await expect(page.getByText("이 계정은 이 일을 할 수 없습니다")).toBeVisible();
   await expect(page.getByText("필요한 권한: 쇼핑몰 설정")).toBeVisible();
   await expect(page.getByRole("button", { name: "저장", exact: true })).toHaveCount(0);
 });

@@ -27,12 +27,12 @@ type Overview = {
 type Broadcast = { id: string; title: string | null; status: "live" | "ended"; startedAt: string; endedAt: string | null; summary: BroadcastSummary };
 
 const TASK_LABEL: Record<string, string> = {
-  depositPending: "입금 확인",
-  shipPending: "배송 준비",
-  returnRequested: "반품 요청",
-  inquiryWaiting: "문의 답변",
-  stockOut: "재고 없음",
-  stockLow: "재고 적음",
+  depositPending: "입금 확인 필요",
+  shipPending: "배송 준비 필요",
+  returnRequested: "반품 요청 답변 필요",
+  inquiryWaiting: "문의 답변 필요",
+  stockOut: "품절 상품",
+  stockLow: "재고 부족 상품",
 };
 const BROADCAST_ROWS = 3;
 
@@ -92,13 +92,13 @@ function OnboardingStrip() {
       <span className="n">
         {part.data.doneCount}/{part.data.total} 완료
       </span>
-      {failed && <span className="e">닫지 못했습니다. 다시 시도해 주십시오</span>}
+      {failed && <span className="e">안내를 숨기지 못했습니다. 인터넷 연결을 확인한 뒤 다시 눌러 주십시오</span>}
       <Link className="btn btn-out" href="/seller/onboarding">
         이어서 하기
       </Link>
       {can("SHOP_SETTINGS") && (
         <button type="button" className="btn btn-out" onClick={() => void close()}>
-          닫기
+          시작하기 안내 숨기기
         </button>
       )}
     </div>
@@ -114,13 +114,13 @@ function TodayTasks() {
       {part.kind === "error" && <ErrorState title="처리할 일을 불러오지 못했습니다" onRetry={retry} />}
       {part.kind === "ok" &&
         (part.data.items.length === 0 ? (
-          <div className="home-empty">확인할 수 있는 처리할 일이 없습니다</div>
+          <div className="home-empty">오늘 처리할 일이 없습니다</div>
         ) : (
           <>
             <div className="home-tasks" data-testid="home-tasks">
               {part.data.items.map((t) => (
                 <Link key={t.key} href={t.href} className={`home-task${t.count === 0 ? " zero" : ""}`} data-testid={`home-task-${t.key}`}>
-                  <span className="l">{TASK_LABEL[t.key] ?? t.key}</span>
+                  <span className="l">{TASK_LABEL[t.key] ?? "확인할 일"}</span>
                   <span className="v">{t.count.toLocaleString("ko-KR")}</span>
                 </Link>
               ))}
@@ -144,11 +144,11 @@ function Performance() {
         <div data-testid="home-performance">
           <Kpis
             items={[
-              { label: "매출(결제 기준)", now: part.data.summary.current.revenue, prev: part.data.summary.previous.revenue, fmt: won },
+              { label: "결제된 매출", now: part.data.summary.current.revenue, prev: part.data.summary.previous.revenue, fmt: won },
               { label: "주문", now: part.data.summary.current.orders, prev: part.data.summary.previous.orders, fmt: count },
-              { label: "주문당 평균", now: part.data.summary.current.averageOrderValue, prev: part.data.summary.previous.averageOrderValue, fmt: won },
+              { label: "주문 1건당 평균 금액", now: part.data.summary.current.averageOrderValue, prev: part.data.summary.previous.averageOrderValue, fmt: won },
               {
-                label: "취소 · 환불",
+                label: "취소·환불 건수",
                 now: null,
                 prev: null,
                 fmt: count,

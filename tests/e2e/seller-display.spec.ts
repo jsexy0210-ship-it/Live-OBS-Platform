@@ -117,6 +117,6 @@ test("대표자: 카테고리 안 상품 순서를 바꿔 저장한다", async (
 
 test("상품 권한이 없는 직원은 서버가 막아 권한 안내가 보인다", async ({ page }) => {
   await login(page, "demo-none@example.com");
-  await expect(page.getByText("이 기능은 권한이 필요합니다")).toBeVisible();
+  await expect(page.getByText("이 계정은 이 일을 할 수 없습니다")).toBeVisible();
   await expect(page.getByText("필요한 권한: 상품")).toBeVisible();
 });

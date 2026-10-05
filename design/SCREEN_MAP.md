@@ -209,9 +209,9 @@
 |---|---|---|---|---|---|---|---|---|
 | SH-001 | 쇼핑몰 홈 | /shop/[slug] | design/project/SH-001-IA.dc.html | SH-001-IA.dc.html | FINAL | 1791213911-1437 | 2026-10-06 00:27 KST | 현대화 기준 충족(c24/sh24 토큰 · 2026-10-05 이후 작성·갱신) · 변형: SH-001-PC-IA, SH-001, SH-001-PC (SH-001, SH-001-PC = SUPERSEDED) |
 | SH-002 | 상품 목록·검색 | /shop/[slug]/products · /search | design/project/SH-002-IA.dc.html | SH-002-IA.dc.html | FINAL | 1791213911-1437 | 2026-10-06 00:27 KST | 현대화 기준 충족(c24/sh24 토큰 · 2026-10-05 이후 작성·갱신) · 변형: SH-002-PC-IA, SH-002, SH-002-F, SH-002-PC, SH-002-S (SH-002, SH-002-PC = SUPERSEDED) |
-| SH-003 | 상품 상세 | /shop/[slug]/products/[productId] | design/project/SH-003-IA.dc.html | SH-003-IA.dc.html | FINAL | 1791213911-1437 | 2026-10-06 00:27 KST | 현대화 기준 충족(c24/sh24 토큰 · 2026-10-05 이후 작성·갱신) · 변형: SH-003-PC-IA, SH-003, SH-003-O, SH-003-PC (SH-003, SH-003-PC = SUPERSEDED) |
-| SH-004 | 장바구니 | /shop/[slug]/cart | design/project/SH-004-IA.dc.html | SH-004-IA.dc.html | FINAL | 1791213911-1437 | 2026-10-06 00:27 KST | 현대화 기준 충족(c24/sh24 토큰 · 2026-10-05 이후 작성·갱신) · 변형: SH-004-PC-IA, SH-004, SH-004-E, SH-004-PC (SH-004, SH-004-PC = SUPERSEDED) |
-| SH-005 | 주문서 | /shop/[slug]/checkout | design/project/SH-005-IA.dc.html | SH-005-IA.dc.html | FINAL | 1791213911-1437 | 2026-10-06 00:27 KST | 현대화 기준 충족(c24/sh24 토큰 · 2026-10-05 이후 작성·갱신) · 변형: SH-005-PC-IA, SH-005, SH-005-E, SH-005-PC, SH-005-R, SH-005-R-PC (SH-005, SH-005-PC, SH-005-R-PC = SUPERSEDED) |
+| SH-003 | 상품 상세 | /shop/[slug]/products/[productId] | design/project/SH-003-IA.dc.html | SH-003-IA.dc.html | FINAL | v284 (1791217340-eeda) | 2026-10-06 01:52 KST | FINAL 재확인(현대화 기준 충족): 휴대폰 위 바 56 · ← 44 아이콘(DS-NAV) · 하단 바 「장바구니에 담기」「바로 주문하기」(찜 · 공유 44) · 일시 2026.10.01 표기 · 품절 |
+| SH-004 | 장바구니 | /shop/[slug]/cart | design/project/SH-004-IA.dc.html | SH-004-IA.dc.html | FINAL | v284 (1791217340-eeda) | 2026-10-06 01:52 KST | FINAL 재확인(현대화 기준 충족): 휴대폰 위 바 56 · ← 44 아이콘(DS-NAV) · 쉬운 말(#644) 반영 확인 |
+| SH-005 | 주문서 | /shop/[slug]/checkout | design/project/SH-005-IA.dc.html | SH-005-IA.dc.html | FINAL | v284 (1791217340-eeda) | 2026-10-06 01:52 KST | FINAL 재확인(현대화 기준 충족): 휴대폰 위 바 56 · ← 44 아이콘(DS-NAV) · 쉬운 말(#644: 보호자 · 금액을 한 번 더 확인해요) · 쿠폰 기한 2026.10.15 표기 |
 | SH-006 | 결제 진행 | /shop/[slug]/checkout (결제 단계) | design/project/SH-006.dc.html | SH-006.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: SH-006-PC |
 | SH-007 | 주문 완료 | /shop/[slug]/orders/[orderId] (완료) | design/project/SH-007.dc.html | SH-007.dc.html | FINAL | 1791213911-1437 | 2026-10-06 00:27 KST | 현대화 기준 충족(v267): 주문번호 날짜-순번(20261002-0412) 휴대폰·PC 모두 표시 · 안내 한 줄 · 버튼 사이 8px · 변형 SH-007-PC · 변형: SH-007-PC |
 | SH-008 | 결제 실패 | /shop/[slug]/checkout (실패) | design/project/SH-008.dc.html | SH-008.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: SH-008-PC |
@@ -277,14 +277,14 @@
 | DS-CONFIRM | 공통 확인 창 — 저장·삭제·변경·상태 변경·일괄 처리 앞 다이얼로그(규칙 6항 · 관리자 6종 · 구매자 PC 2종 · 휴대폰 시트 2종, 대표님 지시 2026-10-06 · docs PR #627) | FINAL v272 (1791213148-ad9f) · `design/project/DS-CONFIRM.dc.html` |
 | IA1·IA2·IA3 | 정보구조도 보드(IA1은 v279에서 확정 GNB·LNB로 재생성) | DRAFT · 정본은 docs/IA.md |
 | DS-DATEPICKER | 공통 날짜 선택(네이버식) — 칸 2026.10.05 · 빈 칸 「날짜 선택」/「시작일」~「종료일」 · 달력 아이콘 · 달력 ‹ 2026.10 › · 일 빨강 토 파랑 · 오늘 테두리 · 고른 날 채운 원 · 기간 연한 배경 · [초기화][적용] · 관리자 40 · 구매자 PC · 휴대폰 시트 48 · 검색 필터 기본값(최근 1개월) · 규칙 5(대표님 지시 2026-10-06 · docs PR #631 · #630 · #632) | FINAL v276 (1791214099-aa42) · `design/project/DS-DATEPICKER.dc.html` · lop.css `.i.dt` / `.inp.dt` |
+| DS-NAV | 새 GNB · 메뉴 구조표(제안) — 파트너스 GNB 10→8 · LNB 50→34, 마스터 8→6 · 28→24, 구매자 이름 2곳, 통폐합 전후 대응표 · 원칙 5(대표님 지시 2026-10-05 · docs/IA.md 「GNB·위계 현대화」 PR #637) · 화면 ← 버튼(Back) 규격 6항·시안 5(대표님 지시 「화면 진입 시 Back 기능도 없다」, 경로는 docs/BACK_ROUTES.md) | FINAL v278 (대표님 확정 2026-10-06 「그대로 진행」, docs/IA.md 「확정 메뉴 구조」 PR #637) · `design/project/DS-NAV.dc.html` |
+| DS-TYPE-SCALE | 글자 · 버튼 · 간격 · 모서리 · 아이콘 · 표 · 일시 표기 크기 체계 한 장(시각 규격 2026-10-05 + 일시 2026.10.05 22:25) | FINAL v278 (대표님 확정 2026-10-06 「그대로 진행」) · `design/project/DS-TYPE-SCALE.dc.html` |
 | IA1·IA2·IA3 | 정보구조도 보드 | DRAFT · 정본은 docs/IA.md |
 | Handoff | 개발 이관 목록 보드 | DRAFT |
 | Main | 캔버스 표지 | — |
 | ScreenList | 화면 목록 보드 | DRAFT · 정본은 이 SCREEN_MAP |
 | SH-T · SH-T-PC | 파트너스별 테마 구조 비교 | DRAFT |
 | OV-008 | 오버레이 위젯 해부·효과 | DRAFT |
-| DS-NAV | 새 GNB · 메뉴 구조표 | PROPOSAL (대표님 확정 전, 구현 근거 아님) |
-| DS-TYPE-SCALE | 글자 · 버튼 · 간격 크기 체계 | PROPOSAL (대표님 확정 전, 구현 근거 아님) |
 
 ## 공통 컴포넌트 → 실제 소스 위치
 

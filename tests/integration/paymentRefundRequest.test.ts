@@ -100,7 +100,7 @@ describe("구매자 환불 요청", () => {
     expect(await rejectRefundRequest(db, s.ctx, r.request.id, { reason: "늦음" })).toEqual({ ok: false, reason: "invalid_transition" });
     // 구매자 화면: 남은 수량으로 다시 요청할 수 있다
     const c = await buyerRefundRequestContext(db, s.scope, s.order.id);
-    expect(c).toMatchObject({ canRequest: true, blocked: null });
+    expect(c).toMatchObject({ canRequest: true, blocked: null, orderNoLabel: expect.stringMatching(/^\d{8}-\d{4}$/) });
     expect(c?.items.find((i) => i.orderItemId === s.packItem.id)?.quantity).toBe(1);
   });
 

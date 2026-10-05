@@ -28,7 +28,7 @@ test("오버레이 전용 대표자: /seller가 오버레이 홈으로 열리고
   await expect(page.getByText("입금 확인")).toHaveCount(0);
   const up = page.getByTestId("oh-upgrade");
   await expect(up).toContainText("통합 구독");
-  await up.getByRole("link", { name: "구독 보기" }).click();
+  await up.getByRole("link", { name: "이용권 보기" }).click();
   await expect(page).toHaveURL(/\/seller\/subscription/);
   if (SHOTS) {
     await page.goto("/seller/home-overlay");
