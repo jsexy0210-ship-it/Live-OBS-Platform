@@ -204,7 +204,9 @@ describe("이벤트 할인 카드", () => {
     await mk("숨김", { ...event(50, -3600_000, 60_000), status: "HIDDEN" });
     await mk("삭제", { ...event(50, -3600_000, 60_000), deletedAt: new Date() });
     const card = (await s.get()).eventCard;
-    expect(card).toMatchObject({ productName: "곧 마감", price: 10000, discountedPrice: 7000, discountRate: 30, moreCount: 1, badge: "오늘 마감" });
+    expect(card).toMatchObject({ productName: "곧 마감", price: 10000, discountedPrice: 7000, discountRate: 30, moreCount: 1 });
+    // 90분 뒤가 KST 자정을 넘으면 D-1이라 시각에 따라 둘 중 하나
+    expect(["오늘 마감", "D-1"]).toContain(card.badge);
     expect(card.remainingSeconds).toBeGreaterThan(80 * 60);
     expect(card.remainingSeconds).toBeLessThanOrEqual(90 * 60);
     expect(card.remainingLabel).toBe("1시간 30분 남았어요");
