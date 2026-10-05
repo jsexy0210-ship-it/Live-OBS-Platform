@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { GlobalSearch, NotificationBell } from "../admin-ui/GnbTools";
 import { useWholeDateClick } from "../admin-ui/useWholeDateClick";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
@@ -17,8 +18,9 @@ import { api, currentNavGeneration, nextNavGeneration, PLAN_FEATURE_EVENT, type 
 //   FOLLOWUP = STORE_OPERATIONS가 있거나, 오버레이 전용으로 내린 뒤에도 후속 처리할 일이 남았을 때(/me orderFollowup). 주문·배송·문의 메뉴(ORDER_FOLLOWUP 경로)
 // alt: plan이 없을 때 대신 여는 화면(그 요금제에서 쓸 수 있는 하위 화면만 보여 줄 때)
 // 하위 메뉴가 모두 숨겨진 대분류는 GNB에서도 숨긴다.
-type PlanNeed = "ANY" | "OVERLAY" | "STORE_OPERATIONS" | "FOLLOWUP";
-type Item = { label: string; href?: string; perm?: string; plan?: PlanNeed; alt?: { plan: PlanNeed; href: string } };
+type PlanNeed = "ANY" | "OVERLAY" | "EXTERNAL_INTEGRATION" | "STORE_OPERATIONS" | "FOLLOWUP";
+// lnbOnly: 왼쪽 메뉴에만 보이는 항목. 대분류(GNB)를 눌렀을 때 가는 첫 화면이나 로그인 뒤 기본 화면으로는 쓰지 않는다(예: 시작하기)
+type Item = { label: string; href?: string; perm?: string; plan?: PlanNeed; alt?: { plan: PlanNeed; href: string }; lnbOnly?: boolean };
 type Group = { key: string; label: string; items: Item[] };
 const MENU: Group[] = [
   {
@@ -26,7 +28,7 @@ const MENU: Group[] = [
     label: "홈",
     items: [
       { label: "홈", plan: "STORE_OPERATIONS", alt: { plan: "OVERLAY", href: "/seller/home-overlay" } },
-      { label: "시작하기", plan: "ANY" },
+      { label: "시작하기", href: "/seller/onboarding", plan: "ANY", lnbOnly: true },
     ],
   },
   {
@@ -37,9 +39,11 @@ const MENU: Group[] = [
       { label: "오버레이 편집기", href: "/seller/overlay", perm: "OVERLAY_EDIT", plan: "OVERLAY" },
       { label: "HIT 카드 이력", href: "/seller/hit-cards", perm: "BROADCAST_RUN", plan: "OVERLAY" },
       { label: "방송 이력", href: "/seller/broadcasts", perm: "BROADCAST_RUN", plan: "OVERLAY" },
-      { label: "외부 쇼핑몰 연동", perm: "SHOP_SETTINGS", plan: "OVERLAY" },
+      // 서버는 플랜 기능 EXTERNAL_INTEGRATION만 보고 보기를 열지만, 메뉴는 연결·해제 권한(SHOP_SETTINGS)이 있는 직원에게만 보인다(서버보다 넓게 열지 않는다)
+      { label: "외부 쇼핑몰 연동", href: "/seller/external-shops", perm: "SHOP_SETTINGS", plan: "EXTERNAL_INTEGRATION" },
       { label: "유튜브 연결", href: "/seller/youtube", perm: "BROADCAST_RUN", plan: "OVERLAY" },
-      { label: "자동 연결", perm: "SHOP_SETTINGS", plan: "OVERLAY" },
+      // 대표자 전용: 구매(110,000원)·재설치(33,000원)가 걸린 화면이라 서버도 대표자만 허용한다
+      { label: "자동 연결", href: "/seller/automation", perm: "OWNER", plan: "OVERLAY" },
     ],
   },
   {
@@ -66,7 +70,7 @@ const MENU: Group[] = [
       { label: "재고 관리", href: "/seller/products/stock", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
       { label: "카테고리", href: "/seller/products/categories", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
       { label: "상품 진열", href: "/seller/products/display", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
-      { label: "재입고 알림", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
+      { label: "재입고 알림", href: "/seller/products/restock-alerts", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
       { label: "엑셀 일괄 등록", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
     ],
   },
@@ -83,6 +87,8 @@ const MENU: Group[] = [
       { label: "회원별 잔액", href: "/seller/rewards/balances", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
       // 원장 API(GET /api/seller/reward-ledger)가 ORDER_FOLLOWUP 경로라 오버레이 전용으로 내린 뒤에도 후속 확인할 수 있다
       { label: "적립금 원장", href: "/seller/rewards/ledger", perm: "MEMBER_POINTS", plan: "FOLLOWUP" },
+      // 보기는 MEMBER_POINTS, 켜고 끄기는 대표자만(화면·서버가 막는다)
+      { label: "적립금 실시간 지급", href: "/seller/rewards/live-payout", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
       { label: "구매자 문의", href: "/seller/buyer-inquiries", perm: "INQUIRY_REPLY", plan: "FOLLOWUP" },
       // 상품 리뷰: 목록·집계 조회는 파트너스 계정 누구나, 답글·숨김·설정은 구매자 문의(INQUIRY_REPLY) 권한(서버에서 막음). 서버가 스토어 운영 기능을 요구한다
       { label: "상품 리뷰", href: "/seller/reviews", plan: "STORE_OPERATIONS" },
@@ -117,7 +123,7 @@ const MENU: Group[] = [
       { label: "회원 정책", href: "/seller/settings/member", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
       { label: "공유 설정", href: "/seller/settings/share", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
       { label: "법정 고지 · 약관", href: "/seller/settings/legal", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
-      { label: "검색 노출", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
+      { label: "검색 노출", href: "/seller/settings/seo", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
       { label: "결제(PG) 연결", perm: "OWNER", plan: "STORE_OPERATIONS" },
       // 화면이 쓰는 GET /api/seller/message-balance가 대표자 전용이라 메뉴도 대표자에게만 보인다(서버보다 넓게 열지 않는다)
       { label: "주문자 알림", href: "/seller/settings/order-notifications", perm: "OWNER", plan: "STORE_OPERATIONS" },
@@ -178,7 +184,7 @@ function visibleMenu(me: Me): Group[] {
 export function landingFor(me: Me, href: string): string {
   const perm = routeNav(href)?.item.perm;
   if (menuAllows(me, routePlan(href)) && (!perm || canFor(me, perm))) return href;
-  return visibleMenu(me).flatMap((g) => g.items).find((n) => !!n.href)?.href ?? href;
+  return visibleMenu(me).flatMap((g) => g.items).find((n) => !!n.href && !n.lnbOnly)?.href ?? href;
 }
 
 // loc: 지금 화면의 대분류 · 메뉴 이름(본문 위 경로 줄에 쓴다)
@@ -377,7 +383,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   const loc = active ? { group: active.group.label, item: active.item.label, exact: pathname === active.item.href } : null;
   const blocked = (planBlocked?.path === pathname && planBlocked.visit === currentNavGeneration()) || !menuAllows(me, routePlan(pathname));
   // 안내 화면에서 갈 수 있는 첫 화면(만든 메뉴 중 지금 열리는 것)
-  const nextNav = menu.flatMap((g) => g.items).find((n) => !!n.href && !pathname.startsWith(n.href));
+  const nextNav = menu.flatMap((g) => g.items).find((n) => !!n.href && !n.lnbOnly && !pathname.startsWith(n.href));
 
   const utilities = (
     <>
@@ -401,7 +407,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
 
   return (
     <Ctx.Provider value={{ me, trialDaysLeft, openNav, can, loc }}>
-      <div className={`cs${navOpen ? " nav-open" : ""}`}>
+      <div className={`cs${navOpen ? " nav-open" : ""}${me.impersonation ? " imp" : ""}`} data-readonly={me.readOnly ? "true" : undefined}>
         <header className="gnb">
           <button className="gnb-menu" type="button" aria-label="메뉴 열기" onClick={openNav}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
@@ -415,7 +421,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
           </Link>
           <nav className="gnb-nav" aria-label="주 메뉴">
             {menu.map((g) => {
-              const first = g.items.find((n) => n.href)?.href;
+              const first = g.items.find((n) => n.href && !n.lnbOnly)?.href;
               const cls = `gnb-i${g.key === shown.key ? " on" : ""}`;
               return first ? (
                 <Link key={g.key} className={cls} href={first} onClick={() => setPicked(null)}>
@@ -432,9 +438,12 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
             <span className="gnb-shop ell" title={`${me.user.name} · ${me.user.email}`}>
               {me.shop.name}
             </span>
+            <GlobalSearch scope="seller" />
+            <NotificationBell scope="seller" allHref="/seller/notifications" />
             <span className="util-desk">{utilities}</span>
           </div>
         </header>
+        {me.impersonation && <ImpersonationBar shop={me.shop.name} imp={me.impersonation} />}
         {logoutError && (
           <div className="msg msg-neg logout-err" role="alert">
             로그아웃하지 못했습니다. 다시 시도해 주십시오
@@ -533,6 +542,44 @@ export function Topbar({ crumb, badge, children }: { crumb: string; badge?: Reac
       </div>
       <AccessBanner />
     </>
+  );
+}
+
+// 마스터 대리 조회 배너(MA-016 정본): GNB 아래 고정, 쇼핑몰·운영자·사유·남은 시간·종료. 종료는 관리자 세션으로 끝내고 파트너스 목록으로 돌아간다.
+// 끝나는 시각이 지나면 /me를 다시 읽어 세션 만료(401)를 로그인 화면으로 처리한다.
+function ImpersonationBar({ shop, imp }: { shop: string; imp: NonNullable<Me["impersonation"]> }) {
+  const [now, setNow] = useState(() => Date.now());
+  const [ending, setEnding] = useState(false);
+  const [endFailed, setEndFailed] = useState(false);
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const left = Math.max(0, Math.floor((new Date(imp.expiresAt).getTime() - now) / 1000));
+  const end = async () => {
+    setEnding(true);
+    setEndFailed(false);
+    const r = await api("/api/admin/impersonation", { method: "DELETE" });
+    if (r.ok) window.location.assign("/admin/partners");
+    else {
+      setEnding(false);
+      setEndFailed(true);
+    }
+  };
+  const mm = String(Math.floor(left / 60)).padStart(2, "0");
+  const ss = String(left % 60).padStart(2, "0");
+  return (
+    <div className="imp-bar" role="status">
+      <b>읽기 전용 · 대리 조회</b>
+      <span className="imp-txt ell">
+        「{shop}」 화면을 보는 중 · 운영 {imp.adminName} · 사유 {imp.reason}
+      </span>
+      {endFailed && <span className="imp-err">종료하지 못했습니다</span>}
+      <span className="imp-left">{left === 0 ? "시간이 끝났습니다" : `남은 시간 ${mm}:${ss}`}</span>
+      <button className="btn btn-sm imp-end" type="button" disabled={ending} onClick={() => void end()}>
+        종료
+      </button>
+    </div>
   );
 }
 

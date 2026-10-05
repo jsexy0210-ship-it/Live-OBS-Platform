@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>요금제 가격 변경 확인</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="app c24" data-theme="light" style="width: 960px; min-height: 640px; padding: 24px; box-sizing: border-box; display: flex; gap: 24px; align-items: flex-start; justify-content: center">
+<div class="cfm" style="max-width: none; width: 880px"><div class="h">쇼핑몰 통합 가격을 바꾸시겠습니까?<button class="x" type="button" aria-label="닫기">×</button></div><div class="bd"><div style="font-size: 16px; margin-bottom: 8px">월 179,000원 → <b style="color: var(--c24-acc)">249,000원</b> <span class="nt">(부가세 포함)</span></div><table class="ft"><colgroup><col style="width: 150px"><col></colgroup><tr><th>새 가입자</th><td>저장하는 즉시 새 가격으로 가입합니다</td></tr><tr><th>기존 구독자 165명</th><td><b>11/1 (일)</b> 이후 결제부터 새 가격입니다 (고지일 10/2 + 30일) · 그 전 결제는 지금 가격 그대로입니다</td></tr><tr><th>알림</th><td>저장하면 기존 구독자 165명에게 알림톡과 메일을 바로 보냅니다 · 알림톡이 안 되면 문자로 보냅니다 · 구독 · 결제 화면에 「가격 변경 예정」이 뜹니다</td></tr><tr><th>사유 <span class="rq">*</span></th><td><input class="i w-f" type="text" value="" placeholder="로그 추적 · 구독자 안내에 함께 보입니다"></td></tr></table><span class="hint">30일보다 빨리 적용할 수 없습니다 · 날짜는 오늘 기준으로 자동 계산됩니다</span></div><div class="f"><button class="b pri" type="button">가격 바꾸고 알림 보내기</button><button class="b " type="button">취소</button></div></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":960,"height":640}}'>
+class Component extends DCLogic { renderVals() { return {}; } }
+</script>
+</body>
+</html>

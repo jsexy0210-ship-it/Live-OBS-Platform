@@ -86,7 +86,7 @@ export function NoticeForm({ notice, onSaved, onStale }: { notice?: Notice; onSa
               {(Object.keys(NOTICE_AUDIENCE) as NoticeAudience[]).map((a) => (
                 <label key={a} className="chk">
                   <input className="rdo" type="radio" name="audience" checked={audience === a} onChange={() => setAudience(a)} disabled={busy} />
-                  {a === "PARTNERS" ? "파트너스 관리자" : a === "PUBLIC" ? "공개 공지 (로그인 없이 열람)" : "파트너스 관리자 + 공개"}
+                  {a === "PARTNERS" ? "파트너스 관리자" : a === "PUBLIC" ? "로그인 없이 누구나 볼 수 있는 공지" : "파트너스 관리자와 일반 방문자"}
                 </label>
               ))}
             </FormRow>
@@ -119,10 +119,10 @@ export function NoticeForm({ notice, onSaved, onStale }: { notice?: Notice; onSa
       )}
       <FormFoot>
         <button className="btn btn-lg" type="submit" disabled={busy}>
-          {busy ? "저장 중" : "게시"}
+          {busy ? "저장 중" : "지금 게시하기"}
         </button>
         <button className="btn btn-lg btn-out" type="button" onClick={() => void save(false)} disabled={busy}>
-          임시 저장
+          임시 저장하기
         </button>
         <Link className="btn btn-lg btn-out" href="/admin/support/notices">
           취소

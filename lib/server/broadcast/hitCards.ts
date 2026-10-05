@@ -4,6 +4,7 @@ import { notFound } from "../authz/errors";
 import { notifySellerChanged } from "../realtime/notify";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 import { cleanText } from "../text/clean";
+import { orderNoLabel } from "../orders/orderNoLabel";
 
 // HIT 카드(SA-053 이력, 방송 대시보드 「HIT 카드 등록」). 규칙:
 // - 조회는 대표자·「방송 진행」(BROADCAST_RUN) 직원(마스터 대리 조회 포함), 등록·해제는 BROADCAST_RUN 쓰기 권한.
@@ -51,7 +52,7 @@ const cardSelect = {
   nicknameSnapshot: true,
   createdAt: true,
   broadcastSession: { select: { id: true, title: true } },
-  queueItem: { select: { id: true, productLabel: true, order: { select: { id: true, orderNo: true } }, externalOrderId: true, externalOrder: { select: { connection: { select: { shopKey: true } } } } } },
+  queueItem: { select: { id: true, productLabel: true, order: { select: { id: true, orderNo: true, createdAt: true } }, externalOrderId: true, externalOrder: { select: { connection: { select: { shopKey: true } } } } } },
 } satisfies Prisma.HitCardSelect;
 type CardRow = Prisma.HitCardGetPayload<{ select: typeof cardSelect }>;
 
@@ -62,7 +63,7 @@ const view = (r: CardRow) => ({
   nickname: r.nicknameSnapshot,
   broadcast: r.broadcastSession ? { id: r.broadcastSession.id, title: r.broadcastSession.title } : null,
   // 외부 쇼핑몰 주문에서 나온 HIT는 내부 주문이 없어 order가 null이다(닉네임·상품은 queueItem 기준)
-  order: r.queueItem?.order ? { id: r.queueItem.order.id, orderNo: r.queueItem.order.orderNo, productLabel: r.queueItem.productLabel } : null,
+  order: r.queueItem?.order ? { id: r.queueItem.order.id, orderNo: r.queueItem.order.orderNo, orderNoLabel: orderNoLabel(r.queueItem.order.createdAt, r.queueItem.order.orderNo), productLabel: r.queueItem.productLabel } : null,
   // 출처: 외부 쇼핑몰 주문에서 나온 카드면 EXTERNAL(externalShopName은 지금은 몰 ID). 직접 입력한 카드는 queueItem이 없어 null
   source: r.queueItem ? (r.queueItem.externalOrderId ? ("EXTERNAL" as const) : ("INTERNAL" as const)) : null,
   externalShopName: r.queueItem?.externalOrder?.connection.shopKey ?? null,

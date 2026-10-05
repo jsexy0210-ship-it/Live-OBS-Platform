@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>(나중) 마스터 통합 대시보드 운영</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="app" data-theme="light" style="width: 1920px; display: flex; flex-direction: column">
+ <div class="ma-bar">
+ <a class="logo" href="MA-001-R2.dc.html" style="font-size: 18px; --brand: #ffffff; --brand-ink: #0f766e"><span class="logo-sym"></span><span class="logo-word"></span><span class="t-l2" style="opacity: .85; margin-left: 4px">마스터 관리자</span></a>
+ <span class="role">운영 · 김운영</span>
+ <span class="t-l2" style="opacity: .85">플랫폼 정상</span>
+ <div class="row" style="margin-left: auto; gap: 8px"><a class="btn btn-sm" href="MA-002.dc.html" style="background: #ffffff26; color: #fff">알림 <span class="bdg b-fail nodot" style="height: 18px; padding: 0 6px">4</span></a><a class="btn btn-sm" href="MA-090.dc.html" style="background: #fff; color: var(--master)">내 계정</a></div>
+ </div>
+ <div class="ma-shell" style="min-height: 1028px">
+ <aside class="side">
+ <sc-for list="{{nav}}" as="n" hint-placeholder-count="22">
+ <sc-if value="{{n.h}}" hint-placeholder-val="{{false}}"><span class="nav-h">{{n.label}}</span></sc-if>
+ <sc-if value="{{n.item}}" hint-placeholder-val="{{true}}"><a class="nav-i ma-i {{n.cls}}" href="{{n.href}}">{{n.label}}<sc-if value="{{n.badge}}" hint-placeholder-val="{{false}}"><span class="n">{{n.badge}}</span></sc-if></a></sc-if>
+ </sc-for>
+ <div class="msg t-c1" style="margin-top: auto">운영 역할은 관리자 계정 · 시스템 설정 메뉴가 보이지 않습니다. 정지 · 환불은 최고관리자 승인이 필요합니다.</div>
+ </aside>
+ <div class="col">
+ <header class="topbar"><h1 class="t-h2">통합 대시보드</h1><span class="bdg b-gray nodot">운영 보기</span><span class="t-l2 c-alt">15:52 기준</span><div class="row" style="margin-left: auto; gap: 8px"><a class="btn btn-sm btn-out" href="MA-013.dc.html">가입 신청 5건 검토</a><a class="btn btn-sm btn-master" href="MA-041.dc.html">실시간 방송 모니터</a></div></header>
+ <main class="main">
+ <div class="msg msg-info t-l2" style="margin-bottom: 4px"><b>나중에 엽니다.</b> 지금은 마스터 관리자를 대표님 혼자 씁니다. 관리자가 늘어나면 이 화면과 역할 구분을 다시 켭니다.</div>
+<div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px">
+ <div class="card stat"><span class="d">전체 파트너스</span><span class="v">184</span><span class="t-c1 c-alt">정지 4 · 대기 5</span></div>
+ <div class="card stat"><span class="d">가입 신청 대기</span><span class="v">5</span><span class="t-c1 c-cau">48시간 초과 1</span></div>
+ <div class="card stat"><span class="d">지금 방송 중</span><span class="v"><span class="dot dot-live" style="width: 10px; height: 10px; margin-right: 6px"></span>12</span></div>
+ <div class="card stat"><span class="d">오늘 주문</span><span class="v">1,204</span></div>
+ <div class="card stat" style="box-shadow: inset 0 0 0 1px var(--wds-line-status-negative-normal)"><span class="d">PG 오류 파트너스</span><span class="v c-neg">2</span></div>
+ <div class="card stat" style="box-shadow: inset 0 0 0 1px var(--wds-line-status-cautionary-normal)"><span class="d">오버레이 끊김</span><span class="v c-cau">1</span></div>
+ </div>
+ <div class="msg msg-info" style="display: block"><b>운영 역할에는 매출(월 구독 매출) · 수납 지표가 표시되지 않습니다.</b> 구독 · 청구는 조회만 가능하며 환불 처리와 이용 정지는 「승인 요청」으로 최고관리자에게 전달됩니다.</div>
+ <div style="display: grid; grid-template-columns: 1.1fr 1fr 1fr; gap: 20px; align-items: start">
+ <section class="card" style="overflow: hidden">
+ <div class="row between" style="padding: 14px 20px"><h2 class="t-hl2">처리할 일 <span class="bdg b-warn nodot">9</span></h2></div>
+ <div class="row" style="gap: 12px; padding: 12px 20px; box-shadow: inset 0 -1px 0 var(--wds-line-normal-alternative)"><span class="bdg b-fail">PG 오류</span><div class="col grow"><span class="t-l1 fw6">카드숍 별빛 키 만료 · 파트너스 연락 필요</span><span class="t-c1 c-alt">방송 중 · 14:22</span></div><a class="btn btn-sm btn-master" href="MA-016-M.dc.html">대리 조회</a></div>
+ <div class="row" style="gap: 12px; padding: 12px 20px; box-shadow: inset 0 -1px 0 var(--wds-line-normal-alternative)"><span class="bdg b-wait">가입</span><div class="col grow"><span class="t-l1 fw6">트레카랩 사업자 확인 (48시간 초과)</span><span class="t-c1 c-alt">2일 전 접수</span></div><a class="btn btn-sm btn-out" href="MA-014.dc.html">검토</a></div>
+ <div class="row" style="gap: 12px; padding: 12px 20px; box-shadow: inset 0 -1px 0 var(--wds-line-normal-alternative)"><span class="bdg b-warn">연결</span><div class="col grow"><span class="t-l1 fw6">문라이트마켓 오버레이 재연결 실패 10회</span><span class="t-c1 c-alt">방송 중 · 13:48</span></div><a class="btn btn-sm btn-out" href="MA-042.dc.html">확인</a></div>
+ <div class="row" style="gap: 12px; padding: 12px 20px; box-shadow: inset 0 -1px 0 var(--wds-line-normal-alternative)"><span class="bdg b-master">승인 대기</span><div class="col grow"><span class="t-l1 fw6">먹튀카드샵 이용 정지 요청 · 최고관리자 승인 대기</span><span class="t-c1 c-alt">내가 요청 · 어제</span></div><span class="t-c1 c-alt">대기 중</span></div>
+ </section>
+ <section class="card" style="overflow: hidden">
+ <div class="row between" style="padding: 14px 20px"><h2 class="t-hl2">지금 방송 중 <span class="c-alt fw5">12</span></h2><a class="t-l2" href="MA-041.dc.html">전체</a></div>
+ <div class="row" style="gap: 12px; padding: 11px 20px; box-shadow: inset 0 -1px 0 var(--wds-line-normal-alternative)"><span class="dot dot-live"></span><div class="col grow"><span class="t-l1 fw6">카드숍 별빛</span><span class="t-c1 c-alt">2:38 · 대기 7</span></div><span class="bdg b-done">정상</span></div>
+ <div class="row" style="gap: 12px; padding: 11px 20px; box-shadow: inset 0 -1px 0 var(--wds-line-normal-alternative)"><span class="dot dot-live"></span><div class="col grow"><span class="t-l1 fw6">문라이트마켓</span><span class="t-c1 c-alt">1:12 · 대기 14</span></div><span class="bdg b-warn">불안정</span></div>
+ <div class="row" style="gap: 12px; padding: 11px 20px; box-shadow: inset 0 -1px 0 var(--wds-line-normal-alternative)"><span class="dot dot-live"></span><div class="col grow"><span class="t-l1 fw6">포켓덕후샵</span><span class="t-c1 c-alt">0:40 · 대기 3</span></div><span class="bdg b-done">정상</span></div>
+ <div class="row" style="gap: 12px; padding: 11px 20px"><span class="dot dot-live"></span><div class="col grow"><span class="t-l1 fw6">듀얼하우스</span><span class="t-c1 c-alt">0:22 · 대기 0</span></div><span class="bdg b-done">정상</span></div>
+ </section>
+ <section class="card" style="overflow: hidden">
+ <div class="row between" style="padding: 14px 20px"><h2 class="t-hl2">가입 신청 대기 <span class="bdg b-wait">5</span></h2><a class="t-l2" href="MA-013.dc.html">전체</a></div>
+ <div class="row" style="gap: 12px; padding: 11px 20px; box-shadow: inset 0 -1px 0 var(--wds-line-normal-alternative)"><div class="col grow"><span class="t-l1 fw6">트레카랩</span><span class="t-c1 c-cau">사업자 확인 필요 · 2일 전</span></div><a class="btn btn-sm btn-master" href="MA-014.dc.html">검토</a></div>
+ <div class="row" style="gap: 12px; padding: 11px 20px; box-shadow: inset 0 -1px 0 var(--wds-line-normal-alternative)"><div class="col grow"><span class="t-l1 fw6">빛나는카드</span><span class="t-c1 c-alt">서류 완비 · 어제</span></div><a class="btn btn-sm btn-master" href="MA-014.dc.html">검토</a></div>
+ <div class="row" style="gap: 12px; padding: 11px 20px"><div class="col grow"><span class="t-l1 fw6">오픈박스스튜디오</span><span class="t-c1 c-alt">통신판매업 미등록</span></div><a class="btn btn-sm btn-master" href="MA-014.dc.html">검토</a></div>
+ </section>
+ </div>
+ </main>
+ </div>
+ </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1920,"height":1100}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const ROLE = 'ops', ACTIVE = 'MA-001';
+    const HIDE = { super: [], ops: ['MA-061', 'MA-063', 'MA-081'], cs: ['MA-061', 'MA-063', 'MA-070', 'MA-081'], view: ['MA-061', 'MA-063'] }[ROLE];
+    const NAV = [['h','운영'],['통합 대시보드','MA-001'],['알림 센터','MA-002','4'],['h','파트너스'],['파트너스 목록','MA-011'],['가입 신청','MA-013','5'],['h','구독 · 요금제'],['요금제','MA-021'],['구독 현황','MA-023'],['청구 · 결제','MA-024'],['환불 요청','MA-026','3'],['h','정산 · 결제 현황'],['PG 연결 상태','MA-031'],['구독료 수납','MA-032'],['h','운영 현황'],['실시간 방송','MA-041'],['주문 · 오버레이 접속','MA-042'],['실지급 파트너스','MA-043'],['실시간 감시','MA-100'],['자동 연결 작업','MA-110'],['h','고객지원'],['파트너스 문의','MA-051','7'],['공지사항','MA-053'],['도우미 답변 자료','MA-055'],['h','관리'],['로그 추적','MA-070'],['시스템 설정','MA-081'],['내 계정','MA-090']];
+    const items = NAV.filter(([a, b]) => a === 'h' || !HIDE.includes(b));
+    const nav = items.filter(([a, b], i) => a !== 'h' || (items[i + 1] && items[i + 1][0] !== 'h')).map(([a, b, c]) => a === 'h' ? { h: true, item: false, label: b } : { h: false, item: true, label: a, href: b + '.dc.html', cls: b === ACTIVE ? 'on' : '', badge: c || '' });
+    return { nav };
+  }
+}
+</script>
+</body>
+</html>

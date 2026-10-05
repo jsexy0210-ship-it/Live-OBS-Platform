@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>파트너스 방송 대시보드 라이트</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="app" data-theme="light" style="width: 1440px; display: flex; flex-direction: column">
+ <div class="shell" style="min-height: 980px">
+ <aside class="side">
+ <a class="logo" href="SA-001.dc.html" style="padding: 6px 12px 14px; font-size: 18px"><span class="logo-sym"></span><span class="logo-word"></span><span class="t-c1 c-alt" style="margin-left: 4px">파트너스</span></a>
+ <sc-for list="{{nav}}" as="n" hint-placeholder-count="18">
+ <sc-if value="{{n.h}}" hint-placeholder-val="{{false}}"><span class="nav-h">{{n.label}}</span></sc-if>
+ <sc-if value="{{n.item}}" hint-placeholder-val="{{true}}"><a class="nav-i {{n.cls}}" href="{{n.href}}">{{n.label}}</a></sc-if>
+ </sc-for>
+ <div class="card" style="margin-top: auto; padding: 12px; display: flex; flex-direction: column; gap: 6px"><span class="t-c1 c-alt">쇼핑몰</span><span class="t-l1 fw6 ell">카드숍 별빛</span><span class="bdg b-done" style="align-self: flex-start">구독 이용 중</span></div>
+ </aside>
+ <div class="col">
+ <header class="topbar">
+ <h1 class="t-h2">방송 대시보드</h1>
+ <span class="bdg bdg-lg b-live">LIVE 00:48:12</span>
+ <span class="t-l2 c-alt">오버레이 연결됨 · 2초 전 동기화</span>
+ <div class="row" style="margin-left: auto; gap: 8px">
+ <a class="btn btn-sm btn-ghost" href="SA-130.dc.html">알림 <span class="bdg b-fail nodot" style="height: 18px; padding: 0 6px">2</span></a>
+ <a class="btn btn-sm btn-ghost" href="SA-001.dc.html">다크 모드</a>
+ <a class="btn btn-sm btn-out" href="SA-001-M6.dc.html" style="color: var(--neg-text)">방송 종료</a>
+ </div>
+ </header>
+ <main class="main" style="display: grid; grid-template-columns: minmax(0, 1fr) 360px 280px; gap: 20px; align-items: start">
+ <section class="col" style="gap: 16px">
+ <div class="card" style="padding: 24px; display: flex; flex-direction: column; gap: 16px; box-shadow: inset 0 0 0 2px var(--brand)">
+ <div class="row between"><span class="bdg bdg-lg b-open">지금 개봉 중</span><span class="t-l2 c-alt num">14:02:10 접수</span></div>
+ <div class="col" style="gap: 4px"><span class="t-t1">별빛사냥꾼</span><span class="t-b1 c-neu">스타라이트 부스터 박스 36팩 · 1박스 <b class="num">189,000원</b> 카드 결제 완료</span></div>
+ <div class="row" style="gap: 16px; align-items: center">
+ <span class="t-d1 num" style="font-weight: 800; letter-spacing: -.03em">00:42</span>
+ <div class="col grow" style="gap: 8px"><div class="bar" style="height: 10px"><i style="width: 70%"></i></div><div class="row" style="gap: 8px"><a class="btn btn-sm btn-ghost" href="SA-001-M3.dc.html">+30초</a><a class="btn btn-sm btn-ghost" href="SA-001-M3.dc.html">타이머 설정 </a><button class="btn btn-sm btn-ghost" type="button">일시정지</button></div></div>
+ </div>
+ <div class="row" style="gap: 10px; flex-wrap: wrap">
+ <a class="btn btn-xl btn-pos" href="SA-001-M1.dc.html" style="flex: 1 1 100%">개봉 완료 <span class="row" style="gap: 3px; display: inline-flex"><span class="kbd" style="background: #ffffff33; color: #fff">Ctrl</span><span class="kbd" style="background: #ffffff33; color: #fff">Enter</span></span></a>
+ <a class="btn btn-xl btn-out" href="SA-001-M4.dc.html" style="flex: 1 1 calc(50% - 5px); padding: 0 16px; color: var(--cau-text)">HIT 카드 등록 <span class="row" style="gap: 3px; display: inline-flex"><span class="kbd">Ctrl</span><span class="kbd">H</span></span></a>
+ <a class="btn btn-xl btn-out" href="SA-001-M2.dc.html" style="flex: 1 1 calc(50% - 5px); padding: 0 16px; color: var(--neg-text)">취소 <span class="row" style="gap: 3px; display: inline-flex"><span class="kbd">Ctrl</span><span class="kbd">Backspace</span></span></a>
+ </div>
+ </div>
+ <div class="card" style="padding: 16px 20px; display: flex; flex-direction: column; gap: 10px">
+ <div class="row between"><span class="t-hl2">최근 완료</span><a class="t-l2" href="SA-021.dc.html">주문 전체 보기</a></div>
+ <div class="row between"><span class="t-l1"><b class="num">14:01</b> 초보수집가 · 크리스탈 팩 ×1</span><span class="row" style="gap: 8px"><span class="bdg b-warn">HIT</span><span class="bdg b-done">완료</span></span></div>
+ <div class="row between"><span class="t-l1"><b class="num">13:58</b> 밤하늘 · 스타라이트 ×2</span><span class="bdg b-cancel">취소</span></div>
+ <div class="row between"><span class="t-l1"><b class="num">13:55</b> 푸른고래 · 문라이트 컬렉션 박스</span><span class="bdg b-done">완료</span></div>
+ </div>
+ </section>
+ <section class="card" style="display: flex; flex-direction: column; overflow: hidden">
+ <div class="row between" style="padding: 16px 20px 12px"><span class="t-hl2">주문대기 <span class="c-alt fw5">7</span></span><div class="row" style="gap: 6px"><button class="btn btn-sm btn-ghost" type="button">순서 편집</button><button class="btn btn-sm btn-ghost" type="button">전체 보기</button></div></div>
+ <sc-for list="{{queue}}" as="q" hint-placeholder-count="6">
+ <div class="row" style="gap: 12px; padding: 12px 20px; flex-wrap: wrap; box-shadow: inset 0 -1px 0 var(--wds-line-normal-alternative)">
+ <span class="t-l2 num c-alt" style="width: 52px">{{q.at}}</span>
+ <div class="col grow" style="gap: 2px; min-width: 0"><span class="t-l1 fw6" style="word-break: keep-all">{{q.nick}}</span><span class="t-c1 c-alt" style="word-break: keep-all">{{q.product}} · {{q.amount}}</span></div>
+  <button class="icon-btn" type="button" aria-label="더보기" style="width: 32px; height: 32px">⋯</button>
+ <sc-if value="{{q.first}}" hint-placeholder-val="{{false}}"><a class="btn" href="SA-001-M1.dc.html" style="flex: 1 1 100%; height: 56px; padding: 0 18px; font-size: 18px; font-weight: 700; gap: 10px; border-radius: 12px; justify-content: center">개봉 시작 <span class="row" style="gap: 3px; display: inline-flex"><span class="kbd" style="background: #ffffff33; color: #fff">Ctrl</span><span class="kbd" style="background: #ffffff33; color: #fff">Enter</span></span></a></sc-if>
+ </div>
+ </sc-for>
+ <div class="row between" style="padding: 12px 20px; margin-top: auto"><span class="t-l2 c-alt">주문이 접수되면 자동으로 올라옵니다 · 결제가 끝나지 않은 주문은 보이지 않습니다</span></div>
+ </section>
+ <section class="col" style="gap: 16px">
+ <div class="card" style="padding: 14px 20px; display: flex; flex-direction: column; gap: 8px"><span class="t-hl2">오늘 현황</span><div class="row between"><span class="t-l1 c-alt">오늘 주문</span><span class="t-hl1 num">24</span></div><div class="row between"><span class="t-l1 c-alt">오늘 매출</span><span class="t-hl1 num">2,100,000원</span></div><div class="row between"><span class="t-l1 c-alt">완료 / 취소</span><span class="t-hl1 num">16 <span class="c-alt" style="font-size: 14px">/ 1</span></span></div><div class="row between"><span class="t-l1 c-alt">HIT</span><span class="t-hl1 num">3</span></div></div>
+ <div class="card" style="padding: 16px 20px; display: flex; flex-direction: column; gap: 10px">
+ <span class="t-hl2">오버레이</span>
+ <div class="row between"><span class="t-l1">연결 상태</span><span class="bdg b-done">연결됨</span></div>
+ <div class="row between"><span class="t-l1">레이아웃</span><span class="t-l1 c-neu">세로형 1080×1920</span></div>
+ <div class="row between"><span class="t-l1">구매 랭킹</span><button class="sw on" type="button" aria-label="구매 랭킹 표시"></button></div>
+ <div class="row" style="gap: 8px"><a class="btn btn-sm btn-out" href="SA-051.dc.html">설정</a><a class="btn btn-sm btn-out" href="SA-052.dc.html">URL 복사</a></div>
+ </div>
+ <div class="card" style="padding: 16px 20px; display: flex; flex-direction: column; gap: 8px">
+ <span class="t-hl2">단축키 <span class="t-c1 c-alt fw4">모두 Ctrl 조합</span></span><div class="row between t-l2"><span>개봉 시작 / 완료</span><span class="row" style="gap: 3px"><span class="kbd">Ctrl</span><span class="kbd">Enter</span></span></div><div class="row between t-l2"><span>HIT 카드 등록</span><span class="row" style="gap: 3px"><span class="kbd">Ctrl</span><span class="kbd">H</span></span></div><div class="row between t-l2"><span>타이머 +30초</span><span class="row" style="gap: 3px"><span class="kbd">Ctrl</span><span class="kbd">↑</span></span></div><div class="row between t-l2"><span>취소 (확인 창)</span><span class="row" style="gap: 3px"><span class="kbd">Ctrl</span><span class="kbd">Backspace</span></span></div><span class="t-c1 c-alt">개봉 중이면 완료, 아니면 다음 주문 개봉 시작. 입력창에 글자를 쓰는 동안은 단축키가 꺼집니다.</span></div>
+ </section>
+ </main>
+ </div>
+ </div>
+ <div class="states">
+ <span class="states-h">라이트 모드 · 밝은 곳에서 쓰기 좋습니다</span>
+ <div class="st"><span class="st-tag">빈 상태</span><div class="st-ic">0</div><span class="t">대기 중인 주문이 없습니다</span><span class="s">쇼핑몰 주문이 결제 완료되면 자동으로 쌓입니다.</span></div>
+ <div class="st"><span class="st-tag">로딩</span><div class="lines"><span class="sk" style="width: 50%; height: 20px"></span><span class="sk"></span><span class="sk" style="width: 80%"></span></div></div>
+ <div class="st"><span class="st-tag">오류</span><div class="st-ic neg">!</div><span class="t">실시간 연결이 끊겼습니다</span><button class="btn btn-sm" type="button">수동 새로고침</button></div>
+ <div class="st"><span class="st-tag">권한 없음</span><div class="st-ic lock"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg></div><span class="t">이 기능은 권한이 필요합니다</span><span class="s">대표자에게 요청해 주십시오 · 필요한 권한: 방송 진행</span><button class="btn" type="button" disabled style="height: 48px; min-width: 140px; font-size: 16px; font-weight: 700">개봉 시작</button></div>
+ </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1300}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const ACTIVE = 'SA-001';
+    const NAV = [['h','홈'],['홈','SA-002'],['통계','SA-056'],['h','방송'],['방송 대시보드','SA-001'],['h','판매'],['상품','SA-011'],['상품 진열','SA-016'],['재입고 알림','SA-017'],['엑셀 일괄 등록','SA-018'],['주문','SA-021'],['입금 확인','SA-026'],['배송','SA-025'],['교환 · 반품','SA-029'],['영수증 · 세금계산서','SA-024'],['적립금','SA-031'],['쿠폰','SA-035'],['회원','SA-041'],['회원 등급','SA-044'],['회원 알림 발송','SA-045'],['구매 제한','SA-043'],['구매자 문의','SA-046'],['리뷰','SA-048'],['h','방송 · 오버레이'],['오버레이 편집기','SA-051'],['HIT 카드 이력','SA-053'],['방송 이력','SA-054'],['h','설정'],['쇼핑몰 설정','SA-060'],['배너 · 팝업','SA-064'],['쇼핑몰 공지 · 질문','SA-066'],['검색 · 공유 노출','SA-067'],['결제(PG) 연결','SA-070'],['주문자 알림','SA-080'],['구독 · 결제','SA-090'],['직원 계정','SA-100'],['공지 · 문의','SA-111'],['도우미','SA-140'],['내 계정','SA-120']];
+    const nav = NAV.map(([a, b]) => a === 'h' ? { h: true, item: false, label: b } : { h: false, item: true, label: a, href: b + '.dc.html', cls: b === ACTIVE ? 'on' : '' });
+    const queue = [
+      { at: '14:03', nick: '카드왕', product: '드래곤 소울 부스터 ×3', amount: '45,000원', first: true, rest: false },
+      { at: '14:05', nick: '민트컨디션', product: '문라이트 컬렉션 박스', amount: '132,000원', first: false, rest: true },
+      { at: '14:07', nick: '레인보우', product: '스타라이트 부스터 박스 36팩', amount: '189,000원', first: false, rest: true },
+      { at: '14:09', nick: '푸른고래', product: '문라이트 컬렉션 ×2', amount: '264,000원', first: false, rest: true },
+      { at: '14:11', nick: '피카피카', product: '스타라이트 ×1', amount: '6,000원', first: false, rest: true },
+      { at: '14:13', nick: '은하수', product: '크리스탈 팩 ×2', amount: '14,000원', first: false, rest: true }
+    ];
+    return { nav, queue };
+  }
+}
+</script>
+</body>
+</html>

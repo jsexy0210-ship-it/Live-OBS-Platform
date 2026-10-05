@@ -29,7 +29,7 @@ type Data = {
   summary: { running: number; queued: number; customerWaiting: number; doneToday: number; failedToday: number; costTodayWon: number; monthly: { usedWon: number; limitWon: number; stopped: boolean } };
   jobs: Row[];
 };
-const FILTERS: [Filter, string][] = [["all", "전체"], ["customer", "고객 확인 대기"], ["failed", "실패"], ["done", "완료"]];
+const FILTERS: [Filter, string][] = [["all", "전체"], ["customer", "고객이 할 일 기다림"], ["failed", "실패"], ["done", "완료"]];
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 
 function AutomationJobsPageInner() {
@@ -60,11 +60,11 @@ function AutomationJobsPageInner() {
             <>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
                 {[
-                  ["진행 중", `${d.summary.running}`, "sum-running", ""],
-                  ["대기", `${d.summary.queued}`, "sum-queued", ""],
-                  ["고객 확인 대기", `${d.summary.customerWaiting}`, "sum-customer", "실행 자리를 잡지 않습니다"],
+                  ["진행 중", `${d.summary.running}건`, "sum-running", ""],
+                  ["대기", `${d.summary.queued}건`, "sum-queued", ""],
+                  ["고객이 할 일 기다림", `${d.summary.customerWaiting}`, "sum-customer", "고객이 할 일을 기다리는 중입니다"],
                   ["오늘 완료", `${d.summary.doneToday}`, "sum-done", `실패 ${d.summary.failedToday}`],
-                  ["오늘 모델 비용", won(d.summary.costTodayWon), "sum-cost", `이번 달 ${won(d.summary.monthly.usedWon)} / ${won(d.summary.monthly.limitWon)}`],
+                  ["오늘 AI 사용 비용", won(d.summary.costTodayWon), "sum-cost", `이번 달 ${won(d.summary.monthly.usedWon)} / ${won(d.summary.monthly.limitWon)}`],
                 ].map(([label, value, id, sub]) => (
                   <div key={id} className="card pad col" style={{ gap: 4 }}>
                     <span className="t-l2 c-alt">{label}</span>
@@ -75,7 +75,7 @@ function AutomationJobsPageInner() {
               </div>
               {d.summary.monthly.stopped && (
                 <div className="msg msg-cau" role="status" data-testid="budget-stopped">
-                  <span><b>이번 달 모델 비용 한도({won(d.summary.monthly.limitWon)})에 닿아 새 자동 연결 접수와 판단 호출을 멈췄습니다.</b> 다음 달 1일(KST)에 다시 열립니다</span>
+                  <span><b>이번 달 AI 사용 비용이 한도({won(d.summary.monthly.limitWon)})에 닿아 새 자동 연결 신청을 받지 않습니다.</b> 다음 달 1일 0시(한국 시간)에 다시 받습니다.</span>
                 </div>
               )}
               <span className="row" style={{ gap: 6 }} role="group" aria-label="작업 상태">
@@ -110,7 +110,7 @@ function AutomationJobsPageInner() {
                   </div>
                 )}
               </section>
-              <span className="t-c1 c-alt">결제 상태와 작업 상태는 따로 둡니다 · 결제가 확인되지 않으면 작업은 시작하지 않습니다</span>
+              <span className="t-c1 c-alt">결제가 확인되어야 작업을 시작합니다.</span>
             </>
           )}
         </div>

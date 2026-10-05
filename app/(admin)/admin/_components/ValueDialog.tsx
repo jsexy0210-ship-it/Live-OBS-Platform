@@ -63,10 +63,10 @@ export function ValueDialog({
                 <input id="value-input" className="inp" type="text" inputMode="numeric" value={value} onChange={(e) => setValue(e.target.value)} disabled={busy} />
                 <span>{unit}</span>
               </div>
-              {!valid && <span className="t-c1 c-neg">0 이상 {max.toLocaleString("ko-KR")} 이하의 정수로 입력해 주십시오.</span>}
+              {!valid && <span className="t-c1 c-neg">0 이상 {max.toLocaleString("ko-KR")} 이하 숫자만 입력해 주십시오.</span>}
             </div>
             <div className="fld">
-              <label htmlFor="value-at">적용 예정 시각</label>
+              <label htmlFor="value-at">바뀌는 시각</label>
               <input id="value-at" className="inp" type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} disabled={busy} />
               <span className="t-c1 c-alt">한국 시간 기준입니다. 비워 두면 바로 적용합니다.</span>
             </div>

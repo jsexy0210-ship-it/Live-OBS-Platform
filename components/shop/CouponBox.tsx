@@ -139,7 +139,7 @@ export default function CouponBox({ slug }: { slug: string }) {
       <section className="card shop-card col" style={{ gap: 12 }}>
         <span className="t-l1">쿠폰함을 불러오지 못했어요</span>
         <button className="btn btn-sm" type="button" style={{ alignSelf: "flex-start" }} onClick={() => void load()}>
-          다시 시도
+          다시 불러오기
         </button>
       </section>
     );
@@ -167,7 +167,7 @@ export default function CouponBox({ slug }: { slug: string }) {
           <div className="cb-code">
             <input id="cb-code" className="inp" value={code} maxLength={16} autoComplete="off" placeholder="코드를 입력해 주세요" onChange={(e) => setCode(e.target.value)} />
             <button className="btn" type="submit" disabled={!code.trim() || busy !== null}>
-              등록
+              쿠폰 코드 등록하기
             </button>
           </div>
           <span className="t-c1 c-alt">방송 채팅 · 문자로 받은 코드를 넣으면 쿠폰함에 들어와요</span>
@@ -232,7 +232,7 @@ export default function CouponBox({ slug }: { slug: string }) {
                 </div>
                 <div className="cb-side">
                   <button className="btn btn-sm" type="button" disabled={busy !== null} onClick={() => void take(c.couponId, `${base}/${c.couponId}/download`, {})}>
-                    {busy === c.couponId ? "받는 중" : "받기"}
+                    {busy === c.couponId ? "받는 중" : "쿠폰 받기"}
                   </button>
                 </div>
               </li>

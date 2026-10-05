@@ -1,0 +1,40 @@
+from ib import *
+import re
+# ---- 휴대폰 상품 상세
+s=open(P+'SH-003.dc.html',encoding='utf-8').read()
+def rep(a,b):
+    global s
+    assert a in s,a[:50]; s=s.replace(a,b,1)
+s=s.replace('<title>상품 상세</title>','<title>상품 상세 (IA 개편)</title>')
+rep('<div class="mbody">','<div class="mbody"><div class="msg inf" style="margin:0;border-radius:0;display:flex;align-items:center;gap:8px"><span class="t live">LIVE</span><b style="font-size:13px">이 상품이 지금 방송 중이에요</b><a class="btn s" href="SH-001.dc.html" style="margin-left:auto">방송 보기</a></div>')
+rep('</h1>','</h1><div style="display:flex;gap:8px;align-items:center"><b>★ 4.8</b><a href="#" style="color:var(--sub);text-decoration:underline">리뷰 12개</a><span style="color:var(--sub);font-size:12px">· 찜 131</span></div>')
+rep('<tr><th>적립금</th><td>891원 · 개봉 완료 뒤</td></tr>','<tr><th>쿠폰</th><td><button class="btn s" type="button">쿠폰 받기</button> <span class="hint" style="display:inline">신규 5,000원</span></td></tr><tr><th>예상 적립</th><td>891원 · 개봉 완료 뒤</td></tr><tr><th>재고</th><td>12박스 남았어요</td></tr>')
+bars=''.join(f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="width:24px;font-size:12px">{n}점</span><span style="flex:1;height:6px;background:#eceef1;border-radius:3px;overflow:hidden"><i style="display:block;height:6px;width:{w}%;background:var(--ink)"></i></span><span style="width:20px;color:var(--sub);font-size:12px;text-align:right">{c}</span></div>' for n,w,c in [(5,83,10),(4,17,2),(3,0,0),(2,0,0),(1,0,0)])
+review=f'<div class="sec" style="padding-top:0"><div class="s-t"><h2>리뷰</h2><span class="sub">12</span><a class="more" href="SH-029.dc.html">전체 보기 ›</a></div><div style="display:flex;gap:16px;align-items:center;padding:8px 0"><div style="text-align:center"><div style="font-size:28px;font-weight:700">4.8</div><div>★★★★★</div></div><div style="flex:1">{bars}</div></div><div style="display:flex;gap:8px;align-items:center;padding-bottom:8px"><label class="ck"><input type="checkbox">사진 리뷰만 (5)</label><select class="inp" style="margin-left:auto" aria-label="리뷰 정렬"><option>도움순</option><option>최신순</option></select></div></div>'
+rep('<div class="sec" style="padding-top: 0"><div class="s-t"><h2>상품 문의</h2>',review+'<div class="sec" style="padding-top: 0"><div class="s-t"><h2>상품 문의</h2>')
+reco='<div class="sec" style="padding-top:0"><div class="s-t"><h2>함께 보는 상품</h2></div><div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px">'+''.join(f'<a href="SH-003.dc.html" style="color:inherit;text-decoration:none"><div style="aspect-ratio:1;background:#f1f2f4;border:1px solid var(--ln2);display:flex;align-items:center;justify-content:center;color:#aeb3bb">사진</div><div style="margin-top:6px;font-size:13px">{n}</div><b>{p}</b><div class="hint" style="margin:0">{r}</div></a>' for n,p,r in [('문라이트 컬렉션 박스','132,000원','★ 4.7 · 리뷰 38'),('크리스탈 팩','4,000원','★ 4.9 · 리뷰 120')])+'</div><div class="s-t" style="margin-top:16px"><h2>최근 본 상품</h2></div><div style="display:flex;gap:8px">'+''.join('<span style="width:72px;height:72px;background:#f1f2f4;border:1px solid var(--ln2);display:inline-flex;align-items:center;justify-content:center;color:#aeb3bb;font-size:11px">상품</span>' for _ in range(4))+'</div></div>'
+rep('<div style="height: 20px"></div></div><div class="mcta">',reco+'<div style="height: 20px"></div></div><div class="mcta">')
+rep('♡</button>','♡</button><button class="btn l" type="button" style="flex: none; width: 56px; padding: 0" aria-label="공유">공유</button>')
+rep('>바로 구매</a>','>구매하기</a>')
+save('SH-003-IA',s)
+addboard('SH-003-IA','SH-003-IA 휴대폰 상품 상세 · IA 개편 (LIVE 띠 · 평점 · 쿠폰 받기 · 리뷰 요약 · 추천 · 하단 고정 버튼)',12080,108800,800,2700)
+# ---- 휴대폰 주문서
+s=open(P+'SH-005.dc.html',encoding='utf-8').read()
+s=s.replace('<title>주문서</title>','<title>주문서 (IA 개편)</title>')
+a=s.index('<div class="sh24" style="display: flex; flex-direction: column; gap: 16px; padding: 16px">')+len('<div class="sh24" style="display: flex; flex-direction: column; gap: 16px; padding: 16px">')
+b=s.index('</div><div style="padding: 0 16px 16px"><div class="sum">')
+inner=s[a:b]
+blocks=[x for x in re.split(r'(?=<div class="box"><div class="h">)',inner) if x]
+names=[re.search(r'class="h">([^<]+)',x).group(1).strip() for x in blocks]
+print(names)
+order=['방송 닉네임','배송지','받는 방법','주문 상품','쿠폰','적립금','결제 수단']
+def f(n):
+    for x,nm in zip(blocks,names):
+        if nm.startswith(n): return x
+new=''.join(f(n) for n in order)
+s=s[:a]+new+s[b:]
+s=s.replace('<div class="r"><span>쿠폰 할인</span><span>0원</span></div><div class="r"><span>적립금 사용</span><span>−10,000원</span></div><div class="r tot"><span>결제 금액</span><b>303,200원</b></div>','<div class="r"><span>쿠폰 할인</span><span>−5,000원</span></div><div class="r"><span>적립금 사용</span><span>−10,000원</span></div><div class="r"><span>예상 적립</span><span>3,052원</span></div><div class="r tot"><span>최종 결제 금액</span><b>298,200원</b></div>',1)
+s=s.replace('>303,200원 결제하기<','>298,200원 결제하기<',1)
+s=s.replace('<span class="states-h">상태 변형</span>','<span class="states-h">상태 변형</span><div class="st"><span class="st-tag">주문 순서 · 하단 고정</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><span class="hint">닉네임 → 배송지 → 받는 방법 → 상품 → 쿠폰 → 적립금 → 결제 수단 → 최종 금액 → 약관 → 결제. 맨 아래 「최종 결제 금액 + 결제하기」 버튼은 스크롤해도 화면 하단에 고정돼요</span></div></div>',1)
+save('SH-005-IA',s)
+addboard('SH-005-IA','SH-005-IA 휴대폰 주문서 · IA 개편 (닉네임 → 배송지 → 상품 → 쿠폰 → 적립금 → 결제 수단 · 하단 고정 결제 버튼)',13040,108800,800,2000)

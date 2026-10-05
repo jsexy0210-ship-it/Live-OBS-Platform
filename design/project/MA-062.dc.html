@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>관리자 추가 · 수정</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="app c24" data-theme="light" style="width: 1440px; min-height: 760px; padding: 24px; box-sizing: border-box; display: flex; gap: 24px; align-items: flex-start; justify-content: center">
+<div class="cfm" style="max-width: none; width: 660px"><div class="h">관리자 추가<button class="x" type="button" aria-label="닫기">×</button></div><div class="bd"><span class="hint">초대 링크(72시간)로 비밀번호를 정하면 활성화됩니다 · 회사 이메일 도메인만 허용</span><table class="ft"><colgroup><col style="width: 150px"><col></colgroup><tr><th>이메일 <span class="rq">*</span></th><td><input class="i w-l" type="text" value="0" placeholder=""><span class="unit">@onq.example 도메인만</span></td></tr><tr><th>이름 <span class="rq">*</span></th><td><input class="i w-m" type="text" value="" placeholder=""></td></tr><tr><th>역할 <span class="rq">*</span></th><td><div class="col" style="gap: 4px; align-items: flex-start"><label class="ck"><input type="radio" name="rl" checked>운영</label><span class="hint">파트너스 · 가입 승인 · 운영 현황 · 공지 / 정지 · 환불은 승인을 요청합니다</span><label class="ck"><input type="radio" name="rl">CS</label><span class="hint">문의 답변 · 공지 · 대리 조회 · 환불 검토 / 금액 · 로그 추적 비노출</span><label class="ck"><input type="radio" name="rl">조회 전용</label><span class="hint">모든 화면 열람 · 변경 없음 (감사 · 회계)</span></div><span class="hint">최고관리자는 대표 1명뿐이라 고를 수 없습니다</span></td></tr></table></div><div class="f"><button class="b pri" type="button">초대 보내기</button><button class="b " type="button">취소</button></div></div><div class="cfm" style="max-width: none; width: 660px"><div class="h">김운영 계정 수정<button class="x" type="button" aria-label="닫기">×</button></div><div class="bd"><span class="hint">ops1@onq.example · 운영 · 2026-02-01 생성</span><table class="ft"><colgroup><col style="width: 150px"><col></colgroup><tr><th>역할 <span class="rq">*</span></th><td><label class="ck"><input type="radio" name="rl2" checked>운영</label><label class="ck"><input type="radio" name="rl2">CS</label><label class="ck"><input type="radio" name="rl2">조회 전용</label><span class="hint">역할 변경은 바로 적용됩니다 · 지금 세션은 다시 로그인해야 합니다</span></td></tr><tr><th>담당 범위</th><td><label class="ck"><input type="checkbox" name="r" checked>가입 심사</label><label class="ck"><input type="checkbox" name="r" checked>PG · 오버레이 장애</label><label class="ck"><input type="checkbox" name="r">구독 · 청구</label><label class="ck"><input type="checkbox" name="r">문의</label><label class="ck"><input type="checkbox" name="r">공지</label><span class="hint">알림 · 배정 기본값</span></td></tr><tr><th>대리 조회 최대 세션</th><td><label class="ck"><input type="radio" name="ss">15분</label><label class="ck"><input type="radio" name="ss" checked>30분</label></td></tr><tr><th>예외</th><td><label class="ck"><input type="checkbox" name="r">구독 금액 열람 (운영 역할 예외)</label></td></tr><tr><th>계정 상태</th><td><label class="ck"><input type="radio" name="acs" checked>활성</label><label class="ck"><input type="radio" name="acs">비활성</label></td></tr><tr><th></th><td><button class="b sm" type="button">비밀번호 재설정 메일</button><button class="b sm" type="button">세션 강제 종료</button></td></tr></table></div><div class="f"><button class="b pri" type="button">저장</button><button class="b " type="button">취소</button></div></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":760}}'>
+class Component extends DCLogic { renderVals() { return {}; } }
+</script>
+</body>
+</html>

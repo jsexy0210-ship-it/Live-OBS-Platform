@@ -3,7 +3,7 @@ export type NoticeItem = { id: string; title: string; category: "MAINTENANCE" | 
 
 export const NOTICE_CATEGORY: Record<NoticeItem["category"], { label: string; cls: string }> = {
   MAINTENANCE: { label: "점검", cls: "b-pending" },
-  POLICY: { label: "정책", cls: "b-info" },
-  FEATURE: { label: "기능", cls: "b-done" },
+  POLICY: { label: "운영 규칙", cls: "b-info" },
+  FEATURE: { label: "새 기능", cls: "b-done" },
   GENERAL: { label: "일반", cls: "b-gray nodot" },
 };

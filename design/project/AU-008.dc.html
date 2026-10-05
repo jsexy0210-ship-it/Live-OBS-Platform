@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>권한 없음</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="app c24 ma" data-theme="light" style="width: 1440px; display: flex; flex-direction: column">
+<div class="authwrap" style="min-height: 450px"><div class="auth" style="width: 420px"><div class="brand"><span class="logo-sym" style="--brand: var(--c24-gnb); --brand-ink: #fff"></span>ONQ <small>마스터 관리자</small></div><h1>이 화면을 볼 권한이 없어요</h1><p class="sub">조회 전용 역할이에요. 권한이 필요하면 최고관리자에게 요청해 주세요.</p><button class="b pri lg w" type="button">권한 요청하기</button><div class="links"><a href="#">이전으로</a></div></div></div>
+<div class="states">
+<span class="states-h">상태 변형</span>
+<div class="st"><span class="st-tag">파트너스 계정으로 마스터 접근</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><div class="note cau" style="width: 100%"><b>파트너스 계정으로는 들어갈 수 없어요</b> · 마스터 관리자는 플랫폼 운영팀만 쓸 수 있어요</div><a class="b sm" href="AU-002.dc.html">파트너스 관리자로</a></div></div><div class="st"><span class="st-tag">직원 권한 부족</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><div class="note inf" style="width: 100%"><b>이 메뉴는 파트너스 본인만 쓸 수 있어요</b> · 적립금 실지급 · 결제(PG) 연결 · 구독은 직원 권한으로 바꿀 수 없어요</div></div></div><div class="st"><span class="st-tag">기능 단위 · 버튼 비활성</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><button class="b pri sm" type="button" disabled>저장</button><span class="hint">화면은 보이지만 바꾸는 버튼이 꺼져 있고, 올리면 「조회 전용 역할이에요」 안내가 떠요</span></div></div><div class="st"><span class="st-tag">요청 보냄</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><div class="toast2">최고관리자에게 권한 요청을 보냈어요</div></div></div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":750}}'>
+class Component extends DCLogic { renderVals() { return {}; } }
+</script>
+</body>
+</html>

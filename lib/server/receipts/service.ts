@@ -4,6 +4,7 @@ import { sealBillingKey } from "../billing/secret";
 import { shopOpen } from "../buyers/signup";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 import { cleanText } from "../text/clean";
+import { orderNoLabel } from "../orders/orderNoLabel";
 
 // 현금영수증·세금계산서 신청과 발행 상태(SA-024 · SH-005·SH-022, MASTER 배정 2026-10-05).
 // - 구매자: 무통장·계좌이체 주문(입금 전·결제 완료)에 신청한다. 카드 결제는 카드 매출전표로 대신해 신청할 수 없다. 주문당 진행 중인 신청은 1건(DB 부분 유니크).
@@ -208,14 +209,14 @@ export async function listSellerReceiptRequests(db: PrismaClient, ctx: TenantCon
   const statusWhere: Prisma.OrderReceiptRequestWhereInput = status ? { issues: { some: { status } } } : {};
   const rows = await db.orderReceiptRequest.findMany({
     where: { sellerId: ctx.sellerId, order: { legalHoldAt: null }, ...statusWhere, ...after },
-    select: { ...viewSelect, order: { select: { orderNo: true, broadcastNicknameSnapshot: true, totalAmount: true } } },
+    select: { ...viewSelect, order: { select: { orderNo: true, createdAt: true, broadcastNicknameSnapshot: true, totalAmount: true } } },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: PAGE + 1,
   });
   const page = rows.slice(0, PAGE);
   const counts = await db.receiptIssue.groupBy({ by: ["status"], where: { sellerId: ctx.sellerId, request: { order: { legalHoldAt: null } } }, _count: { _all: true } });
   return {
-    requests: page.map(({ order, ...r }) => ({ ...view(r), orderNo: order.orderNo, nickname: order.broadcastNicknameSnapshot, totalAmount: order.totalAmount })),
+    requests: page.map(({ order, ...r }) => ({ ...view(r), orderNo: order.orderNo, orderNoLabel: orderNoLabel(order.createdAt, order.orderNo), nickname: order.broadcastNicknameSnapshot, totalAmount: order.totalAmount })),
     nextCursor: rows.length > PAGE ? page[page.length - 1].id : null,
     counts: Object.fromEntries(counts.map((c) => [c.status, c._count._all])) as Partial<Record<ReceiptIssueStatus, number>>,
   };
