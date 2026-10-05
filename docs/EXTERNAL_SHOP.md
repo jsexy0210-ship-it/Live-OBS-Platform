@@ -12,15 +12,15 @@
 - 아직 안 한다(다음 PR): 웹훅 이벤트 본문 → `NormalizedExternalOrder` 변환(파서, 공식 이벤트 형식 확인 필요)과 취소·환불 이벤트 연결, 외부 주문 원본 보관 기간 삭제·주문대기·오버레이 표시(공식 이벤트 본문 형식 확인 필요, 주문대기 모델이 내부 주문 참조를 필수로 가져 모델 결정 필요), 누락 보정 조회(호출 한도 10분 3,000건의 70% 안전선, `CALL_SAFETY_RATIO`), 해제 대기 철회 재시도, 화면 SA-005·006.
 
 ## 설정(환경변수, 값은 저장소·문서에 적지 않는다)
-`EXTERNAL_SHOP_CLIENT_ID`, `EXTERNAL_SHOP_CLIENT_SECRET`, `EXTERNAL_SHOP_REDIRECT_URI`(https 필수), 선택 `EXTERNAL_SHOP_SCOPES`, `EXTERNAL_WEBHOOK_SIGNATURE_HEADER`. 하나라도 없으면 연동 전체가 꺼진다: 목록 `enabled:false`, 연결 시작 503, 웹훅 503. 토큰 암호화는 기존 `BILLING_KEY_SECRET`을 쓴다.
+`EXTERNAL_SHOP_CLIENT_ID`, `EXTERNAL_SHOP_CLIENT_SECRET`, `EXTERNAL_SHOP_REDIRECT_URI`(https 필수), 선택 `EXTERNAL_SHOP_SCOPES`, 웹훅용 `EXTERNAL_WEBHOOK_API_KEY`(개발자센터 WebHook 인증정보). 앞 세 개가 하나라도 없으면 연동 전체가 꺼지고(목록 `enabled:false`, 연결 시작 503, 웹훅 503), 웹훅 인증키만 없으면 웹훅만 503이다. 토큰 암호화는 기존 `BILLING_KEY_SECRET`을 쓴다.
 
-## 미검증 (공식 문서 직접 확인 전, 이 세션은 developers.cafe24.com 접속이 막혀 있었음)
-다음은 기억·공개 요약에 기대 쓴 값이라, 연결 키를 넣기 전에 반드시 공식 문서와 대조한다. 틀려도 안전하게 실패하도록 만들었다(서명이 틀리면 전부 401, 엔드포인트가 틀리면 연결이 안 됨).
-1. OAuth 엔드포인트 경로(`/api/v2/oauth/authorize`·`token`·`revoke`)와 토큰 응답 필드 이름(`expires_at`·`refresh_token_expires_at`·`scopes`).
-2. 주문 읽기 scope 이름(기본값 `mall.read_order`, 환경변수로 바꿈).
-3. 웹훅 서명: 헤더 이름(기본 `x-cafe24-hmac-sha256`)과 계산식(앱 비밀값으로 본문 HMAC-SHA256, base64). 웹훅은 앱 단위 주소 하나라 본문의 몰 id(`resource.mall_id`)로 연결을 찾는다.
-4. 앱 심사·공개 요건·수수료.
-확인된 것(MASTER): Admin API 호출 한도는 쇼핑몰당 10분 3,000건(넘으면 429), 웹훅 이벤트는 개발자센터 앱 설정에서 등록.
+## 공식 문서 대조 결과 (2026-10-05 KST, developers.cafe24.com 직접 확인)
+근거: `/app/front/app/develop/oauth/oauthcode`·`oauth/token`·`oauth/retoken`·`webhook/manage`·`webhook/sample`·`api/scope`.
+- 일치: OAuth 인증 주소 `https://{mall_id}.cafe24api.com/api/v2/oauth/authorize`(response_type=code, client_id, state, redirect_uri, scope — 공백 또는 콤마 구분), 토큰 `POST …/api/v2/oauth/token`(Basic 인증, authorization_code·refresh_token), 응답 필드(`access_token`·`expires_at`·`refresh_token`·`refresh_token_expires_at`·`mall_id`·`scopes`). 인증 코드 1분, 접근 토큰 2시간, 갱신 토큰 14일·한 번 쓰면 폐기, 토큰 발급 2시간 15회 제한. 주문 조회 scope는 `mall.read_order`.
+- 다름(수정함): 웹훅 인증은 HMAC 서명이 아니라 개발자센터 「WebHook 인증정보」가 `X-API-Key` 헤더로 그대로 온다(`X-Trace-ID`도 옴). 앱 비밀값과는 다른 값이라 환경변수 `EXTERNAL_WEBHOOK_API_KEY`로 받는다.
+- 웹훅 본문: `{event_no, resource:{mall_id, event_shop_no, event_code, order_id, order_date, paid, payment_date, buyer_name, member_id, ordering_product_name(쉼표 구분), …}}`. 주문 접수 90023, 입금 90025, 취소 90026(일괄 90072), 환불 90029(일괄 90073), 삭제 90070. 이벤트에는 품목별 줄·수량이 없고 주문 머리 정보뿐이며, 일괄 이벤트는 `order_id`가 쉼표로 이어진 목록이다. 줄 단위 정보는 주문 조회 API로 받아야 한다.
+- 공식 권고: 웹훅은 일부 누락될 수 있어 웹훅 로그 조회 API로 보정하며, 1주일간 실패 100건 초과·성공률 10% 미만이면 수신이 자동 꺼진다(개발자센터에서 다시 켬). 발신 IP 7개·443 포트 안내가 있다.
+- 아직 미검증(문서 접근 막힘: `developers.cafe24.com/docs/ko/api/admin`, `apidocs.cafe24.com`): 주문 조회 API 경로·응답 필드(품목 줄), 웹훅 로그 조회 API, 토큰 철회(revoke) 경로, 앱 심사·수수료.
 
 ## 보안 요약
 - 판매자가 낸 주소는 접속에 쓰지 않는다. 지원 도메인(`<몰 id>.cafe24.com`·`cafe24shop.com`)에서 몰 id만 뽑아 검증된 값으로 호스트를 만든다(IP·localhost·http·포트·사용자 정의 도메인 거절).
