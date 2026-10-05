@@ -78,7 +78,9 @@ describe("나이스페이 어댑터(샌드박스)", () => {
     expect(gw.verifyAuthResult({ ...auth, signature: sig.toUpperCase() })).toBe(true);
     expect(gw.verifyAuthResult({ ...auth, amount: "100", signature: sig })).toBe(false);
     expect(gw.verifyAuthResult({ ...auth, clientId: "other", signature: sha256Hex(`ATother13000${SECRET}`) })).toBe(false);
-    expect(gw.verifyWebhook(paidBody())).toEqual({ tid: "T1" });
+    expect(gw.verifyWebhook(paidBody())).toEqual({ tid: "T1", status: "paid" });
+    // 모르는 status는 종류로 남기지 않는다(서명이 맞아도 본문 값을 그대로 믿지 않음)
+    expect(gw.verifyWebhook({ ...paidBody(), status: "weird" })).toEqual({ tid: "T1" });
     expect(gw.verifyWebhook({ ...paidBody(), amount: 1 })).toBeNull();
     expect(gw.verifyWebhook("x")).toBeNull();
   });
