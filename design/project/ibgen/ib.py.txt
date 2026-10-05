@@ -1,0 +1,51 @@
+import json, os
+P='/tmp/claude-0/-home-user-Live-OBS-Platform/3b675bae-3250-5ce3-8b19-279da763b523/scratchpad/artifact-files/ff68ec8d-f128-48eb-8e1b-df0e80ab27eb/project/'
+GNB=[('홈','SA-002-IA'),('방송','SA-001'),('주문','SA-021'),('상품','SA-011'),('고객','SA-041'),('스토어','SA-035'),('분석','SA-056'),('설정','SA-060')]
+def head(title):
+    return f'''<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>{title}</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{{margin:0}}.c24 .gsearch{{display:flex;align-items:center;gap:8px;margin:0 12px 0 auto}}.c24 .gsearch .i{{width:280px;height:36px;background:#fff;border-radius:8px}}.c24 .tl{{display:flex;flex-direction:column;gap:4px;align-items:flex-start}}.c24 .tl .k{{font-size:13px;color:var(--c24-sub)}}.c24 .tl .v{{font-size:24px;line-height:32px;font-weight:700}}.c24 .tl.hot .v{{color:#c2410c}}.c24 .sec-h{{display:flex;align-items:baseline;gap:8px;margin:8px 0 0}}.c24 .sec-h h2{{margin:0;font-size:18px;line-height:26px}}.c24 .cols3{{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}}</style>
+</helmet>
+'''
+def gnb(active):
+    nav=''.join(f'<a class="{"on" if n==active else ""}" href="{h}.dc.html">{n}</a>' for n,h in GNB)
+    return f'''<div class="gnb"><a class="brand" href="SA-002-IA.dc.html"><span class="logo-sym" style="--brand: #fff; --brand-ink: var(--c24-gnb)"></span>ONQ <small>파트너스 관리자</small></a><nav class="gnb-m">{nav}</nav><form class="gsearch" onsubmit="return false"><input class="i" type="text" placeholder="상품 · 주문번호 · 회원 · 문의 검색" aria-label="전체 검색"></form><div class="util"><a href="SH-001.dc.html">쇼핑몰 바로가기</a><a href="SA-130.dc.html">알림 센터 <span class="tag r">5</span></a><a href="SA-140.dc.html">도우미</a><a href="SA-120.dc.html">내 계정</a><span class="who">[대표자명] · 카드숍 별빛</span><a href="AU-002.dc.html">로그아웃</a></div></div>'''
+def page(title,body,w=1440,h=1500,gnb_on='홈',lnb='',states=''):
+    return head(title)+f'''<div class="app c24" data-theme="light" style="width: {w}px; display: flex; flex-direction: column">
+{gnb(gnb_on)}<div class="wrap" style="min-height: {h-760}px"><aside class="lnb">{lnb}</aside><main class="cont">{body}
+</main></div>
+{states}</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{{"$preview":{{"width":{w},"height":{h}}}}}'>
+class Component extends DCLogic {{ renderVals() {{ return {{}}; }} }}
+</script>
+</body>
+</html>
+'''
+def stwrap(items):
+    return '<div class="states"><span class="states-h">상태 변형</span>'+''.join(f'<div class="st"><span class="st-tag">{t}</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start">{c}</div></div>' for t,c in items)+'</div>'
+def save(name,html):
+    open(P+name+'.dc.html','w',encoding='utf-8').write(html)
+def addboard(name,title,x,y,w,h):
+    c=json.load(open(P+'canvas.json',encoding='utf-8'))
+    fn=name+'.dc.html'
+    if fn not in c['boards']:
+        c['order'].append(fn)
+    old=c['boards'].get(fn)
+    if old: x,y=old['x'],old['y']
+    c['boards'][fn]={'x':x,'y':y,'w':w,'h':h,'title':title}
+    json.dump(c,open(P+'canvas.json','w',encoding='utf-8'),ensure_ascii=False,indent=1)
+def nextpos(w,h):
+    c=json.load(open(P+'canvas.json',encoding='utf-8'))
+    my=max(b['y']+b['h'] for b in c['boards'].values())
+    return 0,my+120

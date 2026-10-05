@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>요금제 판매 종료 · 삭제 확인</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="app c24" data-theme="light" style="width: 960px; min-height: 600px; padding: 24px; box-sizing: border-box; display: flex; gap: 24px; align-items: flex-start; justify-content: center">
+<div class="cfm" style="max-width: none; width: 880px"><div class="h">쇼핑몰 통합 요금제를 판매 종료하시겠습니까?<button class="x" type="button" aria-label="닫기">×</button></div><div class="bd">구독자 165명이 사용 중이므로 삭제할 수 없고 「판매 종료(비노출)」만 가능합니다. 기존 구독자는 유지되고 신규 가입과 요금제 변경 목록에서 사라집니다.<table class="ft"><colgroup><col style="width: 150px"><col></colgroup><tr><th>처리 <span class="rq">*</span></th><td><div class="col" style="gap: 4px; align-items: flex-start"><label class="ck"><input type="radio" name="d" checked>판매 종료 (비노출)</label><span class="hint">기존 165명은 그대로입니다 · 언제든 다시 공개할 수 있습니다</span><label class="ck"><input type="radio" name="d">완전 삭제</label><span class="hint">구독자가 0명일 때만 할 수 있습니다 · 청구 이력은 남습니다</span></div></td></tr><tr><th>기존 구독자 전환 안내 (선택)</th><td><label class="ck"><input type="radio" name="mv" checked>전환 없음 · 유지</label><label class="ck"><input type="radio" name="mv">프로로 전환 권유 (공지를 보냅니다)</label></td></tr><tr><th>사유 <span class="rq">*</span></th><td><input class="i w-f" type="text" value="" placeholder="로그 추적"></td></tr></table></div><div class="f"><button class="b pri neg" type="button">판매 종료</button><button class="b " type="button">취소</button></div></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":960,"height":600}}'>
+class Component extends DCLogic { renderVals() { return {}; } }
+</script>
+</body>
+</html>

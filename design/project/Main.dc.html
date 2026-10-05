@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>ONQ (OnAirCue) 디자인 표지</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="app" data-theme="dark" style="width: 1600px; height: 1000px; padding: 72px; display: flex; flex-direction: column; gap: 48px; background: #0e0d0c">
+ <div class="row between">
+ <span class="logo" style="font-size: 28px"><span class="logo-sym" style="width: 40px; height: 40px"></span><span class="logo-word"></span></span>
+ <span class="bdg b-gray nodot">브랜드명 가칭 · 대표 확정 전</span>
+ </div>
+ <div class="col" style="gap: 16px; max-width: 1100px">
+ <span class="t-hl1 c-alt">ONQ (OnAirCue) · 전체 화면 디자인</span>
+ <h1 class="t-d1">파트너스별 쇼핑몰과 라이브 방송 주문대기를 하나로.</h1>
+ <p class="t-b1 c-neu">구독형 SaaS — 파트너스는 자기 쇼핑몰에서 상품을 팔고, 방송 중 들어온 주문을 OBS 화면 주문대기에 띄워 순서대로 개봉해요. 이 캔버스는 docs/IA.md 기준 전체 화면과 상태 변형, 브랜드 제안, 공통 디자인 시스템을 담아요.</p>
+ </div>
+ <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px">
+ <sc-for list="{{areas}}" as="a" hint-placeholder-count="7">
+ <div class="card" style="padding: 20px; display: flex; flex-direction: column; gap: 12px">
+ <div class="row between"><span class="t-l2 fw6 c-alt">{{a.code}}</span><span class="{{a.cls}}">{{a.st}}</span></div>
+ <span class="t-hl1">{{a.name}}</span>
+ <div class="bar"><i style="width: {{a.pct}}"></i></div>
+ <span class="t-l2 c-alt num">{{a.done}} / {{a.n}} 화면</span>
+ </div>
+ </sc-for>
+ <div class="card" style="padding: 20px; display: flex; flex-direction: column; gap: 8px; justify-content: center">
+ <span class="t-l2 c-alt">디자인 시스템 (A안)</span>
+ <span class="t-hl1">Montage 구조 + 자체 색 · 서체</span>
+ <span class="t-l2 c-alt">카페24식 관리자 틀 · 선 1px 한 색 · 8px 그리드 · Wanted Sans · 다크는 대표 3장 · 모바일(768px 미만)은 2장</span>
+ </div>
+ </div>
+ <div class="row" style="gap: 24px; margin-top: auto">
+ <span class="t-l2 c-alt">페이지 순서: 00 개요 → 01 OBS 오버레이 → 02 파트너스 관리자 → 03 마스터 관리자 → 04 구매자 쇼핑몰 → 05 소개 · 가입 → 06 공통 인증 → 07 메일 → 99 Old(교체 전 초안) · 관리자(SA · MA · AU)는 카페24식 틀, 쇼핑몰(SH)은 카페24 기본 스킨식 (2026-10-04)</span>
+ </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1600,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const DONE = { '00': 8, OV: 22, SA: 99, MA: 61, SH: 64, PF: 12, AU: 14, EM: 6 };
+    const list = [['00', '개요 · IA · 브랜드 · 디자인 시스템', 8], ['OV', 'OBS 오버레이', 22], ['SA', '파트너스 관리자', 99], ['MA', '마스터 관리자', 61], ['SH', '구매자 쇼핑몰', 64], ['PF', '플랫폼 소개 · 가입', 12], ['AU', '공통 인증', 14], ['EM', '구매자 · 파트너스 메일', 6]];
+    const areas = list.map(([code, name, n]) => {
+      const done = DONE[code] || 0;
+      const full = done >= n;
+      return { code, name, n, done, pct: Math.round((done / n) * 100) + '%', st: full ? '완료' : done ? '진행 중' : '예정', cls: full ? 'bdg b-done' : done ? 'bdg b-open' : 'bdg b-wait' };
+    });
+    return { areas };
+  }
+}
+</script>
+</body>
+</html>

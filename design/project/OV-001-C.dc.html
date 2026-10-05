@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>OBS 오버레이 세로 · 미니형</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ov.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0;background:transparent}</style>
+</helmet>
+<div class="o-root {{bgCls}}" style="width:1080px;height:1920px"><div class="o-bar" style="left:48px;top:290px;width:520px;height:40px;font-size:20px"><span class="ad">mintcard.kr</span><span class="tm"><span class="dt">{{date}}</span><span class="ck">{{time}}</span></span></div><div class="o-cur" style="left:48px;top:342px;width:520px;height:148px;"><div class="o-strip" style="height:36px;font-size:18px"><span class="l"><span class="o-gr" style="background:#c9b3ff;color:#1f1140">VIP</span><span class="gt">VIP 회원이 주문했어요</span></span><span class="ot">20:41:07 주문</span></div><div class="o-body" style="padding:8px 18px 12px"><div class="o-mq o-nick" style="font-size:44px">별빛사냥꾼</div><div class="o-row2" style="height:28px;font-size:17px"><div class="o-mq flow o-prod" style="font-size:24px"><i style="animation-duration:24s"><span>스타라이트 부스터 박스 ×2</span><span>스타라이트 부스터 박스 ×2</span></i></div><span class="o-chip">2개</span><span class="o-chip new" style="background:{{acc}}">방금 주문</span></div></div></div><div class="o-p o-qs" style="left:48px;top:502px;width:520px;height:48px;font-size:22px;box-shadow:inset 0 0 0 2px {{acc}},0 12px 32px #00000059"><span class="o-h2">주문대기</span><span class="c" style="background:{{acc}}">3건</span><span class="f o-mq flow"><i style="animation-duration:20s"><span><b>카드왕</b>드래곤 소울 부스터 ×1</span><span><b>카드왕</b>드래곤 소울 부스터 ×1</span></i></span><span class="m">외 2건</span></div><div class="o-p o-hall" style="left:48px;top:562px;width:520px;height:112px;"><div class="o-r1" style="height:44px;font-size:22px"><span class="rk">1</span><span class="dt">10.02</span><span class="n">별빛사냥꾼</span><span class="c">홀로그램 피닉스 풀아트</span></div><div class="o-tk"><i style="animation-duration:19.2s"><sc-for list="{{tick}}" as="r" hint-placeholder-count="12"><div class="o-rr" style="height:34px;font-size:20px"><span class="rk">{{r.rank}}</span><span class="dt">{{r.date}}</span><span class="n">{{r.nick}}</span><span class="c">{{r.card}}</span></div></sc-for></i></div></div><div class="o-p o-note" style="left:48px;top:686px;width:520px;height:84px;padding:8px 20px"><p style="font-size:24px;line-height:1.3">{{notice}}</p></div></div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"acc": {"editor": "color", "default": "#8f78ff", "options": ["#8f78ff", "#4d9fff", "#2ec27e", "#ff6b9d"]}, "bg": {"editor": "enum", "default": "sample", "options": ["sample", "clear"]}, "notice": {"editor": "text", "default": "오늘은 밤 11시까지 열어요\n주문할 때 방송 닉네임을 꼭 적어 주세요"}, "$preview": {"width": 1080, "height": 1920}}'>
+class Component extends DCLogic {
+  componentDidMount() { this._t = setInterval(() => this.setState({ now: new Date() }), 1000); }
+  componentWillUnmount() { clearInterval(this._t); }
+  renderVals() {
+    const p2 = (n) => String(n).padStart(2, '0');
+    const d = (this.state && this.state.now) || new Date(2026, 9, 2, 20, 41, 7);
+    const days = ['일', '월', '화', '수', '목', '금', '토'];
+    const date = d.getFullYear() + '.' + p2(d.getMonth() + 1) + '.' + p2(d.getDate()) + ' ' + days[d.getDay()];
+    const time = p2(d.getHours()) + ':' + p2(d.getMinutes()) + ':' + p2(d.getSeconds());
+    const GR = {"VIP": ["#c9b3ff", "#1f1140"], "골드": ["#ffd166", "#2b1c00"], "실버": ["#dde1e7", "#1b1f26"], "새싹": ["#a9e58b", "#0f2a0a"], "일반": ["#ffffff33", "#ffffff"]};
+    const Q = [["카드왕", "드래곤 소울 부스터", 1, "골드"], ["민트컨디션", "문라이트 컬렉션 박스", 1, "실버"], ["레인보우", "스타라이트 부스터 박스", 3, "VIP"], ["밤하늘", "크리스탈 팩", 2, "새싹"], ["달토끼", "드래곤 소울 부스터", 1, "일반"], ["푸른고래", "문라이트 컬렉션 박스", 2, "골드"]].map(([nick, prod, qty, gr]) => ({ nick, prod: prod + ' ×' + qty, gr, bg: GR[gr][0], fg: GR[gr][1] }));
+    const HL = [[1, "10.02", "별빛사냥꾼", "홀로그램 피닉스 풀아트"], [2, "10.01", "카드왕", "골드 스탬프 세이렌"], [3, "09.30", "달토끼", "시크릿 레어 유니콘"], [4, "09.28", "번개장군", "레인보우 드래곤"], [5, "09.27", "소금빵", "크리스탈 요정 SR"], [6, "09.25", "푸른고래", "섀도 울프 풀아트"], [7, "09.24", "초보수집가", "문라이트 나이트"]].map(([rank, dt, nick, card]) => ({ rank, date: dt, nick, card }));
+    const rest = HL.slice(1);
+    const ov = { date, time, acc: this.props.acc ?? '#8f78ff', bgCls: (this.props.bg ?? 'sample') === 'clear' ? 'bg-clear' : 'bg-sample', notice: this.props.notice ?? '오늘은 밤 11시까지 열어요\n주문할 때 방송 닉네임을 꼭 적어 주세요', q1: Q.slice(0, 1), q2: Q.slice(0, 2), q3: Q.slice(0, 3), q4: Q.slice(0, 4), q6: Q.slice(0, 6), tick: rest.concat(rest) };
+    return ov;
+  }
+}
+</script>
+</body>
+</html>

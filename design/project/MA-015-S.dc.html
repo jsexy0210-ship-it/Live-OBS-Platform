@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>이용 정지</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="app c24" data-theme="light" style="width: 960px; min-height: 760px; padding: 24px; box-sizing: border-box; display: flex; gap: 24px; align-items: flex-start; justify-content: center">
+<div class="cfm" style="max-width: none; width: 880px"><div class="h">카드숍 별빛을 이용 정지하시겠습니까?<button class="x" type="button" aria-label="닫기">×</button></div><div class="bd">정지 즉시 파트너스 · 직원 로그인이 막히고, 쇼핑몰은 「정지 안내」, 오버레이는 주소 무효로 전환됩니다. 구독 청구는 유지 여부를 선택합니다.<div class="note cau" style="width: 100%"><b>지금 방송 중입니다 (대기 7건).</b> 즉시 정지 시 대기 주문은 「다음 방송 이월」 상태로 보존되며 구매자에게 안내가 발송됩니다 · 가능하면 방송 종료 후 정지를 권장합니다</div><table class="ft"><colgroup><col style="width: 150px"><col></colgroup><tr><th>정지 사유 <span class="rq">*</span></th><td><select class="i w-l"><option selected>선택</option><option>이용약관 위반 (금지 품목)</option><option>구매자 신고 누적 · 환불 분쟁</option><option>구독료 장기 연체</option><option>사업자 정보 허위</option><option>보안 사고 의심</option><option>기타</option></select></td></tr><tr><th>정지 시점 <span class="rq">*</span></th><td><label class="ck"><input type="radio" name="when" checked>방송 종료 후 자동 (권장)</label><label class="ck"><input type="radio" name="when">즉시</label><label class="ck"><input type="radio" name="when">예약 (일시 지정)</label></td></tr><tr><th>상세 사유 <span class="rq">*</span></th><td><textarea class="i w-f" style="min-height: 48px" placeholder="파트너스에게 표시 · 로그 추적"></textarea></td></tr><tr><th>옵션</th><td><div class="col" style="gap: 4px; align-items: flex-start"><label class="ck"><input type="checkbox" name="r" checked>정지 기간 동안 구독 청구 중단</label><label class="ck"><input type="checkbox" name="r" checked>파트너스에게 정지 안내를 보냅니다 (이메일 · 알림톡)</label><label class="ck"><input type="checkbox" name="r">해제 조건을 채우면 자동 해제 검토 알림이 옵니다</label></div></td></tr><tr><th>확인 <span class="rq">*</span></th><td><input class="i w-m" type="text" value="" placeholder="쇼핑몰명 입력"><span class="hint">확인을 위해 쇼핑몰명 「카드숍 별빛」을 입력합니다</span></td></tr></table></div><div class="f"><button class="b pri neg" type="button">이용 정지</button><button class="b " type="button">취소</button></div></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":960,"height":760}}'>
+class Component extends DCLogic { renderVals() { return {}; } }
+</script>
+</body>
+</html>

@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>정보구조도 화면 이동 경로</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.flow{display:flex;align-items:center;gap:0;flex-wrap:wrap;row-gap:16px}
+.flow .node{min-width:150px}
+.node.alt{background:var(--wds-background-status-negative);box-shadow:inset 0 0 0 1px var(--wds-line-status-negative-normal)}
+.node.ok{background:var(--wds-background-status-positive);box-shadow:inset 0 0 0 1px var(--wds-line-status-positive-normal)}
+.node.dark{background:#0e0d0c;color:#fff;box-shadow:none}.node.dark b{color:#ffffff99}
+.node.ma{background:var(--master-tint);box-shadow:inset 0 0 0 1px #6541f259}
+.node.ov{background:#171615;color:#fff;box-shadow:inset 0 0 0 1px #ffffff33}.node.ov b{color:#ffffff99}
+.lane{display:flex;flex-direction:column;gap:12px;padding:20px;border-radius:14px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--wds-line-normal-alternative)}
+.lane-h{display:flex;align-items:center;gap:10px;font-size:16px;font-weight:700}
+.branch{display:flex;flex-direction:column;gap:8px;padding-left:12px;border-left:2px dashed var(--wds-line-normal-normal)}
+.live{position:relative;width:60px;height:2px;background:repeating-linear-gradient(90deg,var(--brand) 0 6px,transparent 6px 10px);align-self:center;flex:none}
+.live::after{content:"실시간";position:absolute;top:-16px;left:8px;font-size:10px;font-weight:700;color:var(--brand)}
+</style>
+</helmet>
+<div class="app" data-theme="light" style="width: 2400px; height: 1500px; padding: 56px; display: flex; flex-direction: column; gap: 20px">
+ <div class="col" style="gap: 6px">
+ <span class="t-l1 fw6 c-alt">00-IA2 · 정보구조도</span>
+ <h1 class="t-t2">화면 이동 경로 — 역할별 핵심 흐름과 차단 경로</h1>
+ <p class="t-b2 c-alt">실선 화살표 = 사용자 이동, 점선 = 분기, 파란 점선 = 실시간 동기화(WebSocket). 빨간 노드 = 차단·오류 화면, 초록 = 완료 화면.</p>
+ </div>
+
+ <div class="lane">
+ <div class="lane-h"><span class="bdg b-open nodot">구매자</span>쇼핑몰 주문 흐름 (모바일)</div>
+ <div class="flow">
+ <div class="node"><b>SH-001</b>쇼핑몰 홈</div><div class="arw"></div>
+ <div class="node"><b>SH-002</b>상품 목록 · 검색</div><div class="arw"></div>
+ <div class="node"><b>SH-003</b>상품 상세 (옵션 시트)</div><div class="arw"></div>
+ <div class="node"><b>SH-004</b>장바구니</div><div class="arw"></div>
+ <div class="node"><b>SH-010 / 011</b>로그인 · 회원가입 (회원만 주문)</div><div class="arw"></div>
+ <div class="node"><b>SH-005</b>주문서 — 방송 닉네임 입력 · 적립금 사용</div><div class="arw"></div>
+ <div class="node"><b>SH-006</b>결제 진행 (PG)</div><div class="arw"></div>
+ <div class="branch">
+ <div class="row"><div class="node ok"><b>SH-007</b>주문 완료</div><div class="arw"></div><div class="node"><b>SH-021 / 022</b>주문 내역 · 상세 → 취소 요청</div></div>
+ <div class="row"><div class="node alt"><b>SH-008</b>결제 실패</div><div class="arw"></div><div class="node"><b>SH-005</b>주문서로 복귀 (재시도)</div></div>
+ </div>
+ </div>
+ <div class="flow">
+ <div class="node"><b>SH-020</b>마이페이지</div><div class="arw"></div>
+ <div class="node"><b>SH-023</b>내 적립금</div>
+ <div style="width: 20px"></div>
+ <div class="node"><b>SH-024</b>회원정보 수정</div>
+ <div style="width: 20px"></div>
+ <div class="node"><b>SH-025</b>알림 설정</div>
+ <div style="width: 40px"></div>
+ <div class="node alt"><b>SH-040</b>쇼핑몰 정지 · 준비 중 — 모든 SH 화면 진입 시 차단</div>
+ </div>
+ </div>
+
+ <div class="lane">
+ <div class="lane-h"><span class="bdg b-open nodot">파트너스</span>가입 → 승인 → 방송 운영 흐름 (PC)</div>
+ <div class="flow">
+ <div class="node"><b>PF-001</b>서비스 소개</div><div class="arw"></div>
+ <div class="node"><b>PF-003</b>요금 안내</div><div class="arw"></div>
+ <div class="node"><b>PF-007-1→3</b>가입 신청 3단계</div><div class="arw"></div>
+ <div class="node"><b>AU-005</b>승인 대기 안내</div><div class="arw"></div>
+ <div class="node ma"><b>MA-014</b>마스터가 승인 / 반려</div><div class="arw"></div>
+ <div class="node"><b>AU-002</b>파트너스 로그인</div><div class="arw"></div>
+ <div class="branch">
+ <div class="row"><div class="node"><b>SA-001</b>방송 대시보드</div></div>
+ <div class="row"><div class="node alt"><b>AU-006</b>이용 정지 안내 (정지된 파트너스)</div></div>
+ </div>
+ </div>
+ <div class="flow">
+ <div class="node"><b>최초 설정</b>SA-060 쇼핑몰 설정 → SA-070 PG 연결 → SA-012 상품 등록 → SA-051 오버레이 설정 → SA-052 URL 복사</div><div class="arw"></div>
+ <div class="node ov"><b>OBS</b>브라우저 소스에 URL 등록 → OV-006 방송 대기 표시</div><div class="arw"></div>
+ <div class="node"><b>SA-001</b>방송 시작 확인</div><div class="live"></div>
+ <div class="node ov"><b>OV-001 / 002</b>주문대기 표시</div>
+ </div>
+ <div class="flow">
+ <div class="node ok"><b>SH-007</b>구매자 주문 완료</div><div class="live"></div>
+ <div class="node"><b>SA-001</b>주문대기에 추가 (대기)</div><div class="arw"></div>
+ <div class="node"><b>M1</b>개봉 시작 확인 → 타이머(M3)</div><div class="live"></div>
+ <div class="node ov"><b>OV-005</b>오픈 타이머</div><div class="arw"></div>
+ <div class="node"><b>M4</b>HIT 카드 등록</div><div class="live"></div>
+ <div class="node ov"><b>OV-003</b>HIT 강조 연출</div><div class="arw"></div>
+ <div class="node"><b>M1</b>완료 / <b>M2</b> 취소</div><div class="arw"></div>
+ <div class="node"><b>M6</b>방송 종료 → SA-055 방송 상세</div>
+ </div>
+ </div>
+
+ <div class="lane">
+ <div class="lane-h"><span class="bdg b-master nodot">마스터</span>플랫폼 운영 흐름 (PC 1920)</div>
+ <div class="flow">
+ <div class="node"><b>AU-001</b>마스터 로그인</div><div class="arw"></div>
+ 
+ <div class="node ma"><b>MA-001</b>통합 대시보드 (역할별)</div><div class="arw"></div>
+ <div class="branch">
+ <div class="row"><div class="node ma"><b>MA-013</b>가입 신청 목록</div><div class="arw"></div><div class="node ma"><b>MA-014</b>신청 상세</div><div class="arw"></div><div class="node ok"><b>승인</b>파트너스 생성 · AU-002 안내</div><div style="width: 12px"></div><div class="node alt"><b>반려</b>사유 입력 → 신청자 알림</div></div>
+ <div class="row"><div class="node ma"><b>MA-011</b>파트너스 목록</div><div class="arw"></div><div class="node ma"><b>MA-012</b>파트너스 상세 (탭 9)</div><div class="arw"></div><div class="node ma"><b>MA-015</b>정지 / 해제 (사유)</div><div style="width: 12px"></div><div class="node ma"><b>MA-016-M</b>대리 조회 사유 입력</div><div class="arw"></div><div class="node"><b>MA-016</b>파트너스 화면 읽기 전용 + 로그 추적 기록</div></div>
+ <div class="row"><div class="node ma"><b>MA-002</b>알림 센터 (결제 실패 · PG 오류)</div><div class="arw"></div><div class="node ma"><b>MA-031</b>PG 오류 상세</div><div style="width: 12px"></div><div class="node ma"><b>MA-026</b>환불 요청</div><div class="arw"></div><div class="node ma"><b>MA-027</b>환불 처리 (승인 필요)</div><div class="arw"></div><div class="node ma"><b>MA-070</b>로그 추적에 기록</div></div>
+ </div>
+ </div>
+ </div>
+
+ <div class="lane">
+ <div class="lane-h"><span class="bdg b-fail nodot">차단 · 오류</span>모든 영역 공통 분기</div>
+ <div class="flow">
+ <div class="node"><b>어느 화면이든</b>세션 만료</div><div class="arw"></div><div class="node alt"><b>AU-007</b>세션 만료 → 해당 역할 로그인</div>
+ <div style="width: 28px"></div>
+ <div class="node"><b>권한 밖 URL</b>파트너스가 MA 접근 · 조회 전용이 변경 시도</div><div class="arw"></div><div class="node alt"><b>AU-008</b>권한 없음(403)</div>
+ <div style="width: 28px"></div>
+ <div class="node"><b>잘못된 주소</b></div><div class="arw"></div><div class="node alt"><b>AU-009</b>페이지 없음(404)</div>
+ <div style="width: 28px"></div>
+ <div class="node ma"><b>MA-083</b>점검 모드 켬</div><div class="arw"></div><div class="node alt"><b>AU-010</b>점검 중 (마스터 제외 전부)</div>
+ <div style="width: 28px"></div>
+ <div class="node ov"><b>OV</b>토큰 무효 · 연결 끊김</div><div class="arw"></div><div class="node alt"><b>OV-006-B / C</b>투명 배경 유지, 작은 상태 배지만</div>
+ </div>
+ </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2400,"height":1500}}'>
+class Component extends DCLogic { renderVals() { return {}; } }
+</script>
+</body>
+</html>

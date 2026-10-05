@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>주문 취소 확인</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="app c24" data-theme="light" style="width: 960px; min-height: 700px; padding: 24px; box-sizing: border-box; display: flex; gap: 24px; align-items: flex-start; justify-content: center">
+<div class="cfm" style="max-width: none; width: 880px"><div class="h">별빛사냥꾼 주문을 취소하시겠습니까?<button class="x" type="button" aria-label="닫기">×</button></div><div class="bd">개봉 중인 주문을 취소하면 주문대기에서 빠지고 오버레이에 「취소」로 잠시 표시된 뒤 사라집니다. 결제 취소(환불)는 아래에서 함께 하거나 주문 관리에서 따로 할 수 있습니다.<table class="ft"><colgroup><col style="width: 150px"><col></colgroup><tr><th>주문</th><td>스타라이트 부스터 박스 36팩 · 1박스 · 189,000원 · 카드</td></tr><tr><th>취소 사유 <span class="rq">*</span></th><td><div class="col" style="gap: 4px; align-items: flex-start"><label class="ck"><input type="radio" name="rs" checked>구매자 요청</label><label class="ck"><input type="radio" name="rs">재고 없음 · 품절</label><label class="ck"><input type="radio" name="rs">결제 · 주문 오류</label><label class="ck"><input type="radio" name="rs">기타 (직접 입력)</label></div></td></tr><tr><th>함께 처리</th><td><label class="ck"><input type="checkbox" name="r" checked>결제도 바로 취소(환불)합니다 · PG 승인 취소</label><label class="ck"><input type="checkbox" name="r" checked>구매자에게 취소 알림을 보냅니다 (주문자 알림 기준)</label></td></tr></table><div style="margin-top: 8px"><label class="ck"><input type="checkbox" name="r">위 내용을 확인했습니다. 이 작업은 되돌릴 수 없습니다.</label></div></div><div class="f"><button class="b pri neg" type="button">주문 취소</button><button class="b " type="button">돌아가기</button></div></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":960,"height":700}}'>
+class Component extends DCLogic { renderVals() { return {}; } }
+</script>
+</body>
+</html>

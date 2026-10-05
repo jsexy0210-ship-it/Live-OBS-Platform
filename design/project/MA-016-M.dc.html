@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>대리 조회 · 접근 사유 입력</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="app c24" data-theme="light" style="width: 960px; min-height: 680px; padding: 24px; box-sizing: border-box; display: flex; gap: 24px; align-items: flex-start; justify-content: center">
+<div class="cfm" style="max-width: none; width: 880px"><div class="h">카드숍 별빛 화면을 대리 조회하시겠습니까?<button class="x" type="button" aria-label="닫기">×</button></div><div class="bd">파트너스 관리자 화면을 <b>읽기 전용</b>으로 봅니다. 모든 변경 버튼이 비활성화되고, 접근 시각 · 사유 · 열람한 화면이 로그 추적과 파트너스 활동 기록에 남습니다. 파트너스에게도 접근 사실이 알림으로 전달됩니다.<table class="ft"><colgroup><col style="width: 150px"><col></colgroup><tr><th>접근 사유 분류 <span class="rq">*</span></th><td><label class="ck"><input type="radio" name="why">문의 대응 (관련 문의 필수)</label><label class="ck"><input type="radio" name="why" checked>장애 · 오류 확인 (관련 알림)</label><label class="ck"><input type="radio" name="why">정산 · 이상 징후 조사</label><label class="ck"><input type="radio" name="why">심사 · 감사</label></td></tr><tr><th>관련 건</th><td><select class="i w-l"><option selected>오버레이 재연결 실패 (알림 13:48)</option><option>문의 · 오버레이 멈춤</option><option>신고</option></select><span class="hint">문의 · 알림 · 신고 중에서 고릅니다</span></td></tr><tr><th>상세 사유 <span class="rq">*</span></th><td><input class="i w-f" type="text" value="오버레이 끊김 문의 · 파트너스 오버레이 설정과 접속 기록 확인" placeholder=""></td></tr><tr><th>열람 범위 <span class="rq">*</span></th><td><label class="ck"><input type="checkbox" name="r" checked>방송 대시보드</label><label class="ck"><input type="checkbox" name="r" checked>오버레이 설정 · 주소</label><label class="ck"><input type="checkbox" name="r">주문 (금액 마스킹)</label><label class="ck"><input type="checkbox" name="r">회원 (연락처 제외)</label><label class="ck"><input type="checkbox" name="r">설정 · PG (키 제외)</label><span class="hint">범위 밖 화면은 대리 조회 중에 「볼 수 없는 화면입니다」로 막힙니다 · 구매자 연락처 · PG 키 · 결제 수단은 어떤 범위에서도 보이지 않습니다</span></td></tr><tr><th>세션 시간</th><td><label class="ck"><input type="radio" name="ss">15분</label><label class="ck"><input type="radio" name="ss" checked>30분</label><label class="ck"><input type="radio" name="ss">60분 (최고관리자)</label></td></tr></table></div><div class="f"><button class="b pri" type="button">읽기 전용으로 열기</button><button class="b " type="button">취소</button></div></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":960,"height":680}}'>
+class Component extends DCLogic { renderVals() { return {}; } }
+</script>
+</body>
+</html>
