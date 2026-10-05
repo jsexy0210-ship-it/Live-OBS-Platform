@@ -1,0 +1,60 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - link "ONQ 파트너스" [ref=e5] [cursor=pointer]:
+        - /url: /seller/products
+        - generic [ref=e7]: ONQ
+        - generic [ref=e8]: 파트너스
+      - navigation "주 메뉴" [ref=e9]:
+        - link "홈" [ref=e10] [cursor=pointer]:
+          - /url: /seller/home-overlay
+        - link "방송" [ref=e11] [cursor=pointer]:
+          - /url: /seller/broadcast
+        - link "통계" [ref=e12] [cursor=pointer]:
+          - /url: /seller/stats/broadcasts
+        - link "설정" [ref=e13] [cursor=pointer]:
+          - /url: /seller/settings/message-balance
+      - generic [ref=e14]:
+        - generic "대표자 · demo-overlay-owner@example.com" [ref=e15]: 방송숍 달빛
+        - button "빠른 찾기" [ref=e17] [cursor=pointer]:
+          - img [ref=e18]
+        - button "알림" [ref=e22] [cursor=pointer]:
+          - img [ref=e23]
+        - generic [ref=e26]:
+          - link "쇼핑몰 보기" [ref=e27] [cursor=pointer]:
+            - /url: /shop/demo-overlay
+          - link "공지 · 문의" [ref=e28] [cursor=pointer]:
+            - /url: /seller/notices
+          - link "도우미" [ref=e29] [cursor=pointer]:
+            - /url: /seller/assistant
+          - link "내 계정" [ref=e30] [cursor=pointer]:
+            - /url: /seller/account
+          - button "로그아웃" [ref=e31] [cursor=pointer]
+    - generic [ref=e32]:
+      - complementary "파트너스 메뉴" [ref=e33]:
+        - generic [ref=e34]:
+          - strong [ref=e35]: 홈
+          - link "홈" [ref=e36] [cursor=pointer]:
+            - /url: /seller/home-overlay
+      - generic [ref=e37]:
+        - generic [ref=e39]: 홈
+        - status [ref=e40]:
+          - generic [ref=e41]: 체험이 7일 남았습니다
+          - generic [ref=e42]: 체험이 끝나기 전에 구독하면 그대로 이어서 사용할 수 있습니다
+        - main [ref=e43]:
+          - generic [ref=e44]:
+            - generic [ref=e45]: "!"
+            - heading "지금 요금제에서 사용할 수 없는 기능입니다" [level=1] [ref=e46]
+            - generic [ref=e47]: 쇼핑몰 통합 요금제에서 사용할 수 있습니다
+            - generic [ref=e48]:
+              - text: 요금제는
+              - link "구독 · 결제" [ref=e49] [cursor=pointer]:
+                - /url: /seller/subscription
+              - text: 에서 바꿀 수 있습니다
+            - link "홈 화면으로 이동" [ref=e50] [cursor=pointer]:
+              - /url: /seller/home-overlay
+  - alert [ref=e51]
+```
