@@ -474,7 +474,7 @@ describe("유튜브 설정·수집 현황·보관 채팅 삭제", () => {
     yt.uploads.set("UUa", ["aaaaaaaaaa3"]);
     yt.video("aaaaaaaaaa3", CH_A);
     await syncYoutube(db, yt.client, NOW);
-    expect((await db.youtubeLiveLink.findFirstOrThrow({ where: { sellerId: t.seller.id } })).chatEnabled).toBe(true);
+    expect((await db.youtubeLiveLink.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: t.seller.id } })).chatEnabled).toBe(true);
   });
 
   it("이번 달 수집 현황: 수집 건수·API 사용 단위·한도, 판매자 하루 한도를 넘으면 수집 멈춤 표시", async () => {
@@ -528,7 +528,7 @@ describe("유튜브 설정·수집 현황·보관 채팅 삭제", () => {
     expect(await res.json()).toEqual({ deleted: 2 });
     expect(await db.youtubeChatMessage.count({ where: { sellerId: a.seller.id } })).toBe(0);
     expect(await db.youtubeChatMessage.count({ where: { sellerId: b.seller.id } })).toBe(2);
-    const log = await db.auditLog.findFirstOrThrow({ where: { sellerId: a.seller.id, action: "youtube.chat.purge" } });
+    const log = await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: a.seller.id, action: "youtube.chat.purge" } });
     expect(log.after).toEqual({ deleted: 2 });
     expect(await chatUsage(db, a.ctx, NOW)).toMatchObject({ messages: 2, storedMessages: 0 });
   });

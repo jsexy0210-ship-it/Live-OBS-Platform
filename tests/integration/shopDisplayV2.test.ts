@@ -53,7 +53,7 @@ async function paidOrder(s: Awaited<ReturnType<typeof seller>>, optionId: string
   const o = await createOrder(db, { sellerId: s.seller.id, buyerMemberId: buyer.id, items: [{ optionId, quantity }], consent, shippingAddress });
   if (!o.ok) throw new Error(o.reason);
   await markOrderPaid(db, { sellerId: s.seller.id, orderId: o.orderId, paymentMethod: "CARD" });
-  const q = await db.queueItem.findFirstOrThrow({ where: { sellerId: s.seller.id, orderId: o.orderId } });
+  const q = await db.queueItem.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id, orderId: o.orderId } });
   if (liveId) await db.queueItem.update({ where: { id: q.id }, data: { broadcastSessionId: liveId } });
   return q;
 }
