@@ -66,7 +66,7 @@ test("승인: 사유 주체를 확인하고 금액에 동의해야 실행되며,
   await expect(dialog.getByTestId("rr-cash")).toContainText(/현금 환불 [\d,]+원/);
   const run = dialog.getByRole("button", { name: "승인하고 환불" });
   await expect(run).toBeDisabled();
-  await dialog.getByLabel("위 금액으로 환불합니다. 승인 취소 후 되돌릴 수 없습니다.").check();
+  await dialog.getByLabel("위 금액으로 환불합니다. 환불한 뒤에는 되돌릴 수 없습니다.").check();
   await expect(run).toBeEnabled();
   await run.click();
   await expect(page.getByText(/원 환불을 승인했습니다/)).toBeVisible();
