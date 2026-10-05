@@ -10,6 +10,7 @@ import { externalProvider } from "../external/provider";
 import { MESSAGE_JOB_NAME, runMessageJobs } from "../messaging/jobs";
 import { purgeFunnelDaily, purgeFunnelSeen } from "../stats/funnel";
 import { recalcMonthlyGrades } from "../shop-member-grades/service";
+import { rejectExpiredSupplements } from "../sellers/applications";
 import { processDueMemberMessages } from "../shop-member-messages/service";
 import { markInstanceRetired, purgeOldOpsEvents, purgeRetiredHeartbeats, recordHeartbeat, registerInstance } from "../ops/metrics";
 
@@ -50,6 +51,8 @@ export const SCHEDULED_JOBS: ScheduledJob[] = [
   // 전환 단계 통계: 중복 제거 표 8일·일 집계 400일 지난 것 삭제(stats/funnel.ts)
   { name: "product_funnel_seen.purge_old", run: (tx, now) => purgeFunnelSeen(tx, now) },
   { name: "product_funnel_daily.purge_old", run: (tx, now) => purgeFunnelDaily(tx, now) },
+  // 가입 신청 보완 기한(7일)이 지난 신청 자동 반려(sellers/applications.ts, 로그 추적 seller.supplement_expired)
+  { name: "seller_application.reject_expired_supplements", run: (tx, now) => rejectExpiredSupplements(tx, now) },
   // 회원 대상 발송: 시각이 된 예약을 기록으로 바꾼다(shop-member-messages, 실제 발송 채널은 아직 없음)
   { name: "member_message.record_due", run: (_tx, now) => processDueMemberMessages(prisma, now) },
 ];
