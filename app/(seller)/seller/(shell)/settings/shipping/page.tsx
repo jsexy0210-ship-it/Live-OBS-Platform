@@ -7,8 +7,9 @@ import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../.
 import { api, failMessage } from "../../../../../../components/seller/api";
 import { parseAmount, won } from "../../../../../../components/seller/format";
 
-// SA-061 배송비 정책. 지금 API가 받는 항목(배송비 방식·배송비·무료 기준·제주·도서산간 추가 배송비·반품·교환 배송비)만 보여 준다.
-// 받는 방법·발송 기간·기본 택배사, 제주와 그 밖의 도서지역을 나눈 금액은 API가 생기면 붙인다.
+// SA-061 배송비 정책. API가 받는 항목: 배송비 방식·배송비·무료 기준·제주·도서산간 추가 배송비·반품·교환 배송비,
+// 받는 방법(지금은 「바로 받기」만, 「보관 후 받기」는 준비 중)·발송 기한(1~30일)·기본 택배사(선택).
+// 제주와 그 밖의 도서지역을 나눈 금액은 API가 생기면 붙인다.
 
 type Policy = {
   freeShipping: boolean;
@@ -18,7 +19,12 @@ type Policy = {
   remoteZipRanges: [number, number][];
   returnFee: number; // 반품 배송비(편도)
   exchangeFee: number; // 교환 배송비(왕복)
+  receiveMethods: string[];
+  dispatchDeadlineDays: number;
+  defaultCourier: string | null;
 };
+type Extras = { couriers: Record<string, string>; maxDays: number; planned: string[] };
+const METHOD_LABEL: Record<string, string> = { IMMEDIATE: "바로 받기", STORAGE: "보관 후 받기" };
 type Mode = "free" | "fixed" | "threshold";
 
 const MAX_FEE = 100_000;
@@ -41,6 +47,13 @@ function feeError(v: string, max: number, min = 0): string | null {
   return null;
 }
 
+function deadlineError(v: string, max: number): string | null {
+  if (v.trim() === "") return "발송 기한을 입력해 주십시오";
+  const n = parseAmount(v);
+  if (n === null) return "숫자만 입력해 주십시오";
+  return n < 1 || n > max ? `1일에서 ${max}일 사이로 입력해 주십시오` : null;
+}
+
 export default function ShippingSettingsPage() {
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; saved: Policy }>({ kind: "loading" });
   const [mode, setMode] = useState<Mode>("fixed");
@@ -49,6 +62,9 @@ export default function ShippingSettingsPage() {
   const [remote, setRemote] = useState("");
   const [returnFee, setReturnFee] = useState("");
   const [exchangeFee, setExchangeFee] = useState("");
+  const [deadline, setDeadline] = useState("");
+  const [courier, setCourier] = useState("");
+  const [extras, setExtras] = useState<Extras>({ couriers: {}, maxDays: 30, planned: [] });
   const [showErrors, setShowErrors] = useState(false);
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -61,12 +77,15 @@ export default function ShippingSettingsPage() {
     setRemote(String(p.remoteSurcharge));
     setReturnFee(String(p.returnFee));
     setExchangeFee(String(p.exchangeFee));
+    setDeadline(String(p.dispatchDeadlineDays));
+    setCourier(p.defaultCourier ?? "");
   };
 
   const load = useCallback(async () => {
     setState({ kind: "loading" });
-    const r = await api<{ policy: Policy }>("/api/seller/shipping-policy");
+    const r = await api<{ policy: Policy; couriers: Record<string, string>; receiveMethodOptions: { planned: string[] }; maxDispatchDeadlineDays: number }>("/api/seller/shipping-policy");
     if (!r.ok) return setState({ kind: "error", status: r.status });
+    setExtras({ couriers: r.data.couriers, maxDays: r.data.maxDispatchDeadlineDays, planned: r.data.receiveMethodOptions.planned });
     apply(r.data.policy);
     setState({ kind: "ok", saved: r.data.policy });
   }, []);
@@ -81,8 +100,9 @@ export default function ShippingSettingsPage() {
     remote: feeError(remote, MAX_FEE),
     returnFee: feeError(returnFee, MAX_FEE),
     exchangeFee: feeError(exchangeFee, MAX_FEE),
+    deadline: deadlineError(deadline, extras.maxDays),
   };
-  const valid = !errors.fee && !errors.freeOver && !errors.remote && !errors.returnFee && !errors.exchangeFee;
+  const valid = !errors.fee && !errors.freeOver && !errors.remote && !errors.returnFee && !errors.exchangeFee && !errors.deadline;
   const saved = state.kind === "ok" ? state.saved : null;
 
   const next = (): Policy | null =>
@@ -105,6 +125,10 @@ export default function ShippingSettingsPage() {
           remoteZipRanges: saved.remoteZipRanges,
           returnFee: parseAmount(returnFee)!,
           exchangeFee: parseAmount(exchangeFee)!,
+          // 받는 방법은 지금 「바로 받기」만 고를 수 있어 저장된 값을 그대로 보낸다
+          receiveMethods: saved.receiveMethods,
+          dispatchDeadlineDays: parseAmount(deadline)!,
+          defaultCourier: courier === "" ? null : courier,
         };
   const candidate = next();
   const dirty =
@@ -115,7 +139,9 @@ export default function ShippingSettingsPage() {
       candidate.freeOverAmount !== saved.freeOverAmount ||
       candidate.remoteSurcharge !== saved.remoteSurcharge ||
       candidate.returnFee !== saved.returnFee ||
-      candidate.exchangeFee !== saved.exchangeFee);
+      candidate.exchangeFee !== saved.exchangeFee ||
+      candidate.dispatchDeadlineDays !== saved.dispatchDeadlineDays ||
+      candidate.defaultCourier !== saved.defaultCourier);
 
   const save = async () => {
     if (!candidate) {
@@ -133,7 +159,7 @@ export default function ShippingSettingsPage() {
     setToast("배송비 정책을 저장했습니다 · 다음 주문부터 적용됩니다");
   };
 
-  const shown = showErrors ? errors : { fee: null, freeOver: null, remote: null, returnFee: null, exchangeFee: null };
+  const shown = showErrors ? errors : { fee: null, freeOver: null, remote: null, returnFee: null, exchangeFee: null, deadline: null };
   const returnNum = parseAmount(returnFee);
   const exchangeNum = parseAmount(exchangeFee);
   const feeNum = parseAmount(fee);
@@ -255,6 +281,48 @@ export default function ShippingSettingsPage() {
                   <b>무료 배송 주문(배송비 0원)은 반품 배송비 × 2를 뺍니다.</b> 도서산간 추가 배송비를 낸 주문은 한 번만 뺍니다. 교환 배송비는 교환 접수가 열리면 적용됩니다.
                 </span>
               </div>
+
+              <FormSection title="받는 방법 · 발송">
+                <FormRow label="받는 방법" help="구매자가 상품을 받는 방법입니다 · 「보관 후 받기」는 준비 중입니다">
+                  <div className="row" style={{ gap: 24, flexWrap: "wrap" }} data-testid="receive-methods">
+                    {(saved?.receiveMethods ?? []).map((m) => (
+                      <label key={m} className="chk">
+                        <input type="checkbox" checked disabled aria-label={METHOD_LABEL[m] ?? m} />
+                        {METHOD_LABEL[m] ?? m}
+                      </label>
+                    ))}
+                    {extras.planned.map((m) => (
+                      <label key={m} className="chk">
+                        <input type="checkbox" checked={false} disabled aria-label={`${METHOD_LABEL[m] ?? m} (준비 중)`} />
+                        {METHOD_LABEL[m] ?? m} <span className="t-c1 c-alt">준비 중</span>
+                      </label>
+                    ))}
+                  </div>
+                </FormRow>
+                <FormRow label="발송 기한" htmlFor="dispatch-days" help={shown.deadline ? <span className="err">{shown.deadline}</span> : `결제 후 이 기간 안에 발송합니다 · 1일에서 ${extras.maxDays}일`}>
+                  <input
+                    id="dispatch-days"
+                    className={`inp num${shown.deadline ? " is-error" : ""}`}
+                    type="text"
+                    inputMode="numeric"
+                    value={deadline}
+                    onChange={(e) => setDeadline(e.target.value)}
+                    style={{ width: 120 }}
+                    aria-invalid={!!shown.deadline}
+                  />
+                  <span className="t-l2 c-alt">일</span>
+                </FormRow>
+                <FormRow label="기본 택배사" htmlFor="default-courier" help="송장을 입력할 때 먼저 선택되어 있습니다 · 정하지 않아도 됩니다">
+                  <select id="default-courier" className="inp" value={courier} onChange={(e) => setCourier(e.target.value)} style={{ width: 200 }}>
+                    <option value="">선택 안 함</option>
+                    {Object.entries(extras.couriers).map(([code, name]) => (
+                      <option key={code} value={code}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </FormRow>
+              </FormSection>
 
               <FormSection title="주문서 미리보기">
                 <FormRow label="배송">

@@ -176,3 +176,45 @@ test("저장하는 동안에는 칸을 잠가 저장 중 수정이 응답으로 
   await page.getByLabel("배송비", { exact: true }).fill("3000");
   await saveOk(page);
 });
+
+test("받는 방법·발송 기한·기본 택배사: 바로 받기만 켜져 있고 보관 후 받기는 준비 중, 기한 범위를 막고, 저장하면 다시 열어도 그대로다", async ({ page }) => {
+  await openAs(page, "demo-owner@example.com");
+  const methods = page.getByTestId("receive-methods");
+  await expect(methods.getByLabel("바로 받기")).toBeChecked();
+  await expect(methods.getByLabel("바로 받기")).toBeDisabled();
+  await expect(methods.getByLabel("보관 후 받기 (준비 중)")).toBeDisabled();
+  await expect(methods.getByLabel("보관 후 받기 (준비 중)")).not.toBeChecked();
+  const before = { days: await page.getByLabel("발송 기한").inputValue(), courier: await page.locator("#default-courier").inputValue() };
+
+  // 범위 밖은 저장하지 않고 이유를 보인다
+  for (const bad of ["0", "31", "abc", ""]) {
+    await page.getByLabel("발송 기한").fill(bad);
+    await save(page);
+    await expect(page.getByText(bad === "" ? "발송 기한을 입력해 주십시오" : bad === "abc" ? "숫자만 입력해 주십시오" : "1일에서 30일 사이로 입력해 주십시오").first()).toBeVisible();
+  }
+
+  await page.getByLabel("발송 기한").fill("7");
+  await page.locator("#default-courier").selectOption("CJ");
+  const put = page.waitForResponse((r) => r.request().method() === "PUT" && r.url().includes("/api/seller/shipping-policy"));
+  await save(page);
+  const res = await put;
+  expect(res.status()).toBe(200);
+  expect(res.request().postDataJSON()).toMatchObject({ receiveMethods: ["IMMEDIATE"], dispatchDeadlineDays: 7, defaultCourier: "CJ" });
+  await saved(page);
+
+  await page.reload();
+  await expect(page.getByLabel("발송 기한")).toHaveValue("7");
+  await expect(page.locator("#default-courier")).toHaveValue("CJ");
+
+  // 택배사를 정하지 않음으로 되돌리면 null로 저장되고, 처음 값으로 복원한다
+  await page.locator("#default-courier").selectOption("");
+  await page.getByLabel("발송 기한").fill(before.days);
+  const clear = page.waitForResponse((r) => r.request().method() === "PUT" && r.url().includes("/api/seller/shipping-policy"));
+  await save(page);
+  expect((await clear).request().postDataJSON()).toMatchObject({ defaultCourier: null, dispatchDeadlineDays: Number(before.days) });
+  await saved(page);
+  if (before.courier !== "") {
+    await page.locator("#default-courier").selectOption(before.courier);
+    await saveOk(page);
+  }
+});
