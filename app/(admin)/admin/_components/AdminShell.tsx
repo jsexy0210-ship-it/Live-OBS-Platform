@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useWholeDateClick } from "../../../../components/admin-ui/useWholeDateClick";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useState } from "react";
 import { adminApi, type AdminMe } from "./api";
@@ -20,6 +21,8 @@ export function useAdmin(): ShellCtx {
 }
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
+  // 날짜 칸 어디를 눌러도 달력이 열린다(화면마다 따로 걸지 않는다)
+  useWholeDateClick();
   const router = useRouter();
   const pathname = usePathname();
   const [me, setMe] = useState<AdminMe | null>(null);
