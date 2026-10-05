@@ -12,7 +12,7 @@ const NAV = [
   { href: "/notices", label: "공지" },
 ];
 
-export function PublicFrame({ children }: { children: React.ReactNode }) {
+export function PublicFrame({ children, active }: { children: React.ReactNode; active?: string }) {
   return (
     <div className="app pf" data-theme="light">
       <header className="pf-head">
@@ -23,7 +23,7 @@ export function PublicFrame({ children }: { children: React.ReactNode }) {
           </Link>
           <nav className="pf-nav" aria-label="주요 메뉴">
             {NAV.map((n) => (
-              <Link key={n.href} href={n.href}>
+              <Link key={n.href} href={n.href} aria-current={n.href === active ? "page" : undefined}>
                 {n.label}
               </Link>
             ))}

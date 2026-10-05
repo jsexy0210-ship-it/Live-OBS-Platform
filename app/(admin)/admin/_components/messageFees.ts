@@ -23,7 +23,7 @@ export const CHANNEL_LABEL: Record<MessageChannel, string> = {
   DELIVERY_TRACKING: "배송 자동 조회",
 };
 export const UNIT_PRICE_MAX = 100_000;
-export const MAIL_QUOTA_MAX_UI = 1_000_000_000;
+export const MAIL_QUOTA_MAX_UI = 10_000_000;
 
 // 적용 예정 시각 입력(datetime-local, KST) → 서버가 받는 ISO 시각. 비우면 undefined(바로 적용)
 export function effectiveAtIso(local: string): string | undefined {

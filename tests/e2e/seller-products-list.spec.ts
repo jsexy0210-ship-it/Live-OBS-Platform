@@ -114,11 +114,12 @@ test("카테고리로 걸러 본다(대분류는 하위 포함)", async ({ page 
     await make(page, `카테고리밖 ${RUN}`);
     expect((await page.request.put(`/api/seller/products/${id}/categories`, { data: { categoryIds: [childId] }, headers: h })).status()).toBe(200);
     await page.reload();
-    await box(page).getByLabel("대분류").selectOption({ label: `목록대 ${RUN}` });
+    // 한 선택 상자: 「대분류」 다음에 「대분류 › 하위」
+    await box(page).getByLabel("카테고리", { exact: true }).selectOption({ label: `목록대 ${RUN}` });
     await search(page);
     await expect(rows(page)).toHaveCount(1);
     await expect(rows(page).first()).toContainText(inCat);
-    await box(page).getByLabel("소분류").selectOption({ label: `목록소 ${RUN}` });
+    await box(page).getByLabel("카테고리", { exact: true }).selectOption({ label: `목록대 ${RUN} › 목록소 ${RUN}` });
     await search(page);
     await expect(rows(page)).toHaveCount(1);
   } finally {
