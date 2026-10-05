@@ -188,7 +188,7 @@ test.describe.serial("SA-060 쇼핑몰 로고", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/seller/login");
     await submitSellerLogin(page, "demo-staff@example.com", PASSWORD);
-    await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "쇼핑몰 설정" }).click();
+    await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "설정", exact: true }).click();
     await expect(page).toHaveURL(/\/seller\/settings\/shop$/);
     await expect(page.getByRole("navigation", { name: "쇼핑몰 설정" })).toHaveCount(0);
     const lnb = page.getByRole("complementary", { name: "파트너스 메뉴" });
