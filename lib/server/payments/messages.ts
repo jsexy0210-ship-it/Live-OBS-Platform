@@ -47,3 +47,7 @@ export const SHIPPING_PREVIEW_MESSAGES: Record<ShippingPreviewRejection, string>
   invalid_address: "우편번호와 주소를 확인해 주세요",
   product_unavailable: "지금 살 수 없는 상품이 있어요",
 };
+
+// 나이스페이 결과 코드 U128: 샌드박스(시험 결제 환경)는 부분 취소를 제공하지 않는다(공식 매뉴얼 nicepayments/nicepay-manual common/code.md).
+// 파트너스·마스터 화면 문구(합니다체). 운영(실가맹점)에서는 부분 취소가 된다.
+export const SANDBOX_PARTIAL_CANCEL_MESSAGE = "시험 결제 환경은 부분 취소를 지원하지 않습니다. 운영 환경에서는 가능합니다.";
