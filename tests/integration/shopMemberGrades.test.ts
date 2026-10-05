@@ -156,6 +156,17 @@ describe("월 1회 자동 재산정", () => {
     expect(await db.auditLog.count({ where: { action: "member_grade.recalc", targetId: s.seller.id } })).toBe(1);
   });
 
+  it("부분 환불한 금액은 결제액에서 빼고 센다(환불 뒤 남은 금액으로 승급 판정)", async () => {
+    const s = await shop();
+    const m = await s.member(0);
+    const o = await s.paid(m.id, 600_000); // 새싹(100,000)·실버(500,000) 기준 위
+    await db.order.update({ where: { id: o.id }, data: { refundAmount: 450_000 } }); // 남은 150,000원 → 새싹
+    await recalcSellerGrades(db, s.seller.id, NOW);
+    expect(await s.gradeOf(m.id)).toBe("새싹");
+    const hist = await db.memberGradeHistory.findFirstOrThrow({ where: { buyerMemberId: m.id } });
+    expect(hist.amount).toBe(150_000);
+  });
+
   it("같은 달에는 다시 돌지 않고(동시 실행 포함) 다음 달에는 한 단계 더 내린다", async () => {
     const s = await shop();
     const down = await s.member(3);

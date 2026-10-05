@@ -210,8 +210,9 @@ export async function recalcSellerGrades(db: PrismaClient, sellerId: string, now
       const rankOf = new Map(grades.map((g, i) => [g.id, i]));
       const locked = new Set((await tx.memberGradeOverride.findMany({ where: { sellerId }, select: { buyerMemberId: true } })).map((o) => o.buyerMemberId));
       const from = windowStart(now);
-      const sums = await tx.order.groupBy({ by: ["buyerMemberId"], where: { sellerId, status: "PAID", paidAt: { gte: from, lt: now } }, _sum: { totalAmount: true } });
-      const amount = new Map(sums.map((s) => [s.buyerMemberId, s._sum.totalAmount ?? 0]));
+      const sums = await tx.order.groupBy({ by: ["buyerMemberId"], where: { sellerId, status: "PAID", paidAt: { gte: from, lt: now } }, _sum: { totalAmount: true, refundAmount: true } });
+      // 결제액 − 부분 환불액(결제 완료 주문에 남은 환불액, 관리자 매출 집계와 같은 기준)
+      const amount = new Map(sums.map((s) => [s.buyerMemberId, Math.max(0, (s._sum.totalAmount ?? 0) - (s._sum.refundAmount ?? 0))]));
       let promoted = 0;
       let demoted = 0;
       let cursor: string | undefined;
