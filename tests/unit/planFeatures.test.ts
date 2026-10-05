@@ -151,6 +151,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/reward-policy": "STORE_OPERATIONS",
   "seller/share-preview": "STORE_OPERATIONS",
   "seller/shipping-policy": "STORE_OPERATIONS",
+  "seller/shop-search/synonyms": "STORE_OPERATIONS", // 검색 유사어 묶음
   "seller/notices": "STORE_OPERATIONS",
   "seller/platform-notices": "BILLING", // 플랫폼 공지(SA-111·112): 잠김·정지 중에도 본다
   "seller/platform-notices/[noticeId]": "BILLING",
@@ -243,6 +244,8 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/products": "STORE_OPERATIONS", // 구매자 상품 목록(운영 중 쇼핑몰만)
   "shop/[slug]/products/[productId]": "STORE_OPERATIONS", // 구매자 상품 상세
   "shop/[slug]/products/[productId]/reviews": "STORE_OPERATIONS",
+  "shop/[slug]/search/popular": "STORE_OPERATIONS", // 인기 검색어
+  "shop/[slug]/search/suggest": "STORE_OPERATIONS", // 검색어 자동완성
   "shop/[slug]/products/[productId]/inquiries": "STORE_OPERATIONS", // 공개 상품 문의(상품 상세)
   "shop/[slug]/products/[productId]/recommendations": "STORE_OPERATIONS", // 추천 상품(상품 상세)
   "shop/[slug]/products/[productId]/images/[imageId]": "STORE_OPERATIONS", // 상품 사진(보이는 상품만)
