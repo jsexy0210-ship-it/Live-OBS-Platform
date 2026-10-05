@@ -98,7 +98,7 @@ test("대표자: 방송 시작부터 개봉·타이머·완료·되돌리기·�
 
   // 대기 취소: 사유가 있어야 한다
   await rowC.getByRole("button", { name: "주문대기에서 빼기" }).click();
-  const cancel = page.getByRole("dialog", { name: "이 주문을 취소하시겠습니까?" });
+  const cancel = page.getByRole("dialog", { name: "이 주문을 주문대기에서 빼시겠습니까?" });
   await expect(cancel.getByRole("button", { name: "주문대기에서 빼기" })).toBeDisabled();
   await cancel.getByLabel("빼는 이유").fill("구매자 요청");
   await cancel.getByRole("button", { name: "주문대기에서 빼기" }).click();
