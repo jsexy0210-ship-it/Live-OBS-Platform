@@ -48,7 +48,7 @@ test("방송을 끝낸 뒤 이력 목록에서 찾아 상세로 들어가 요약
 
   // 메뉴로 이력 목록 → 방송 찾기
   await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "방송", exact: true }).click();
-  await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "방송 이력" }).click();
+  await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "방송 기록" }).click();
   await expect(page).toHaveURL(/\/seller\/broadcasts$/);
   const row = page.getByTestId("bh-list").locator("tr", { hasText: title });
   await expect(row).toContainText("종료");
@@ -85,5 +85,5 @@ test("기간으로 걸러 보고, 잘못된 기간은 조회하지 않으며, �
 test("방송 진행 권한이 없는 직원: 메뉴가 없고 주소로 들어와도 화면이 없다", async ({ page }) => {
   await login(page, "demo-none@example.com", "/seller/broadcasts");
   await expect(page.getByText("필요한 권한: 방송 진행")).toBeVisible();
-  await expect(page.getByRole("link", { name: "방송 이력" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "방송 기록" })).toHaveCount(0);
 });
