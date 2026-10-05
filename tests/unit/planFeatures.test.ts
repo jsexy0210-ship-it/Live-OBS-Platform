@@ -235,6 +235,7 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/products/[productId]": "STORE_OPERATIONS", // 구매자 상품 상세
   "shop/[slug]/products/[productId]/reviews": "STORE_OPERATIONS",
   "shop/[slug]/products/[productId]/inquiries": "STORE_OPERATIONS", // 공개 상품 문의(상품 상세)
+  "shop/[slug]/products/[productId]/recommendations": "STORE_OPERATIONS", // 추천 상품(상품 상세)
   "shop/[slug]/products/[productId]/images/[imageId]": "STORE_OPERATIONS", // 상품 사진(보이는 상품만)
   "shop/[slug]/orders/[orderId]": "OPEN",
   "shop/[slug]/payments": "STORE_OPERATIONS",
