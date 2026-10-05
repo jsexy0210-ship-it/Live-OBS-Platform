@@ -14,7 +14,7 @@ export default function SuspendedPage() {
         <PageHead title="이용이 정지되었습니다" />
         <div className="card pad-l col" style={{ gap: 14, maxWidth: 640 }} data-testid="seller-suspended">
           <span className="t-b1">새 판매와 방송, 상품·설정 변경은 멈춰 있습니다. 이미 받은 주문의 처리(배송·환불·구매자 문의)는 계속할 수 있습니다.</span>
-          <span className="t-l2 c-alt">정지를 풀려면 「공지 · 문의」에서 문의해 주십시오.</span>
+          <span className="t-l2 c-alt">정지를 풀려면 「공지 · 문의」에서 문의해 주십시오. 정지한 이유는 플랫폼이 알려 드립니다.</span>
           <div className="row" style={{ gap: 8 }}>
             <Link className="btn" href="/seller/orders">
               주문 처리

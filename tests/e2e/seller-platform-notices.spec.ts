@@ -29,14 +29,14 @@ test("공지: 고정 공지가 위에 보이고, 눌러 본문을 읽으며, 없
   await login(page, "/seller/notices");
   const rows = page.getByTestId("notice-row");
   await expect(rows.first()).toContainText(`${E2E_PREFIX}점검 안내`);
-  await expect(rows.first()).toContainText("고정");
+  await expect(rows.first()).toContainText("맨 위 고정");
   await expect(page.getByText(`${E2E_PREFIX}일반 안내`)).toBeVisible();
   await expect(page.getByText(`${E2E_PREFIX}공개 전용`)).toHaveCount(0);
   await rows.first().getByRole("link").click();
   await expect(page).toHaveURL(new RegExp(`/seller/notices/${pinned}$`));
   await expect(page.getByTestId("notice-title")).toHaveText(`${E2E_PREFIX}점검 안내`);
   await expect(page.getByTestId("notice-body")).toContainText("새벽 2시 점검");
-  await expect(page.getByText(/발송 화면 공지/)).toBeVisible();
+  await expect(page.getByText(/보인 곳: 화면 공지/)).toBeVisible();
   await page.goto("/seller/notices/00000000-0000-4000-8000-000000000000");
   await expect(page.getByText("공지를 찾을 수 없습니다")).toBeVisible();
 });
@@ -44,7 +44,7 @@ test("공지: 고정 공지가 위에 보이고, 눌러 본문을 읽으며, 없
 test("문의: 공지에서 관련 문의를 보내고, 사진을 붙이고, 답변을 확인한 뒤 추가 문의를 보내며, 종료되면 입력란이 사라진다", async ({ page }) => {
   const noticeId = await createNoticeInDb("문의 연결 공지");
   await login(page, `/seller/notices/${noticeId}`);
-  await page.getByRole("link", { name: "관련 문의하기" }).click();
+  await page.getByRole("link", { name: "이 공지로 문의하기" }).click();
   await expect(page).toHaveURL(/\/seller\/inquiries\/new\?noticeId=/);
   await expect(page.getByText(`관련 공지: ${E2E_PREFIX}문의 연결 공지`)).toBeVisible();
 
