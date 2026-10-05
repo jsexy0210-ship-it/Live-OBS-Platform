@@ -4,11 +4,15 @@ import { PUT as channelRoute } from "../../app/api/seller/youtube/channel/route"
 import { GET as summaryRoute } from "../../app/api/seller/broadcast/summary/route";
 import { loginSeller } from "../../lib/server/auth/login";
 import { prisma } from "../../lib/server/db";
+import { GET as settingsGet, PUT as settingsPut } from "../../app/api/seller/youtube/settings/route";
+import { GET as usageRoute } from "../../app/api/seller/youtube/usage/route";
+import { DELETE as chatsDelete } from "../../app/api/seller/youtube/chats/route";
 import { GET as matchesRoute } from "../../app/api/seller/youtube/live/chat-matches/route";
 import { PUT as chatRoute } from "../../app/api/seller/youtube/live/chat/route";
 import { CHAT_NOTICE, collectChats, purgeOldChats } from "../../lib/server/youtube/chat";
 import { YoutubeQuotaError, type ChannelInfo, type ChatPage, type VideoInfo, type YoutubeClient } from "../../lib/server/youtube/client";
 import { quotaDay, reserveQuota } from "../../lib/server/youtube/quota";
+import { chatUsage } from "../../lib/server/youtube/settings";
 import { connectChannel, connectLive, findChannelLive, unlinkLive, youtubeStatus } from "../../lib/server/youtube/service";
 import { syncYoutube } from "../../lib/server/youtube/sync";
 import { runYoutubeSyncOnce, startYoutubeWorker } from "../../lib/server/youtube/worker";
@@ -435,5 +439,97 @@ describe("채팅 닉네임 매칭", () => {
     const body = await (await getMatches(bCookie, `?broadcastSessionId=${a.link.broadcastSessionId}`)).json();
     expect(body).toMatchObject({ broadcast: null, orders: [] });
     expect((await getMatches(await cookieOf(b.other.email))).status).toBe(403);
+  });
+});
+
+// SA-057: 채팅 수집 기본값, 이번 달 수집 현황, 보관 채팅 지금 삭제
+const hdr = (cookie: string) => ({ host: "localhost:3000", origin: BASE, cookie, "content-type": "application/json" });
+const putSettings = (cookie: string, body: unknown) => settingsPut(new Request(BASE + "/api/seller/youtube/settings", { method: "PUT", headers: hdr(cookie), body: JSON.stringify(body) }));
+const getSettings = (cookie: string) => settingsGet(new Request(BASE + "/api/seller/youtube/settings", { headers: hdr(cookie) }));
+const getUsage = (cookie: string) => usageRoute(new Request(BASE + "/api/seller/youtube/usage", { headers: hdr(cookie) }));
+const deleteChats = (cookie: string) => chatsDelete(new Request(BASE + "/api/seller/youtube/chats", { method: "DELETE", headers: hdr(cookie) }));
+
+describe("유튜브 설정·수집 현황·보관 채팅 삭제", () => {
+  it("채팅 수집 기본값: 기본 꺼짐, 켜면 새로 연결하는 방송(직접·자동 찾기)에 적용, 다른 판매자에는 영향 없음", async () => {
+    const s = await shop();
+    const other = await shop();
+    const c = await cookieOf(s.owner.email);
+    expect(await (await getSettings(c)).json()).toEqual({ chatDefaultEnabled: false });
+    expect((await putSettings(c, { chatDefaultEnabled: "on" })).status).toBe(400);
+    expect((await putSettings(await cookieOf(s.other.email), { chatDefaultEnabled: true })).status).toBe(403);
+    expect(await (await putSettings(c, { chatDefaultEnabled: true })).json()).toEqual({ chatDefaultEnabled: true });
+    expect(await db.auditLog.count({ where: { sellerId: s.seller.id, action: "youtube.settings.update" } })).toBe(1);
+    expect(await (await getSettings(await cookieOf(other.owner.email))).json()).toEqual({ chatDefaultEnabled: false });
+
+    const yt = fakeYoutube();
+    yt.video(VID_A, CH_A);
+    expect(await connectLive(db, s.ctx, yt.client, VID_A, NOW)).toMatchObject({ ok: true, value: { chatEnabled: true } });
+    yt.video(VID_B, CH_B);
+    expect(await connectLive(db, other.ctx, yt.client, VID_B, NOW)).toMatchObject({ ok: true, value: { chatEnabled: false } });
+
+    // 자동 찾기도 기본값을 따른다
+    const t = await shop();
+    await db.youtubeSellerSetting.create({ data: { sellerId: t.seller.id, chatDefaultEnabled: true } });
+    await connectChannel(db, t.ctx, yt.client, CH_A, NOW);
+    yt.uploads.set("UUa", ["aaaaaaaaaa3"]);
+    yt.video("aaaaaaaaaa3", CH_A);
+    await syncYoutube(db, yt.client, NOW);
+    expect((await db.youtubeLiveLink.findFirstOrThrow({ where: { sellerId: t.seller.id } })).chatEnabled).toBe(true);
+  });
+
+  it("이번 달 수집 현황: 수집 건수·API 사용 단위·한도, 판매자 하루 한도를 넘으면 수집 멈춤 표시", async () => {
+    const s = await liveShop();
+    const res = await getUsage(s.cookie);
+    expect(res.status).toBe(200);
+    expect(Object.keys(await res.json()).sort()).toEqual(["collecting", "messages", "month", "stoppedReason", "storedMessages", "units"]);
+    expect((await getUsage(await cookieOf(s.other.email))).status).toBe(403);
+
+    // 방송 연결 1단위(NOW 기준 날짜), 2026-10은 31일
+    expect(await chatUsage(db, s.ctx, NOW)).toEqual({
+      month: "2026-10",
+      messages: 0,
+      storedMessages: 0,
+      units: { month: 1, monthLimit: 3_000 * 31, today: 1, todayLimit: 3_000 },
+      collecting: true,
+      stoppedReason: null,
+    });
+
+    await putChat(s.cookie, true);
+    s.yt.chatPages.push({ messages: [msg("u1", "a"), msg("u2", "b")], nextPageToken: "x", pollingIntervalMillis: 3_000, ended: false });
+    await collectChats(db, s.yt.client, NOW);
+    expect(await chatUsage(db, s.ctx, NOW)).toMatchObject({ messages: 2, storedMessages: 2, units: { month: 6, today: 6 } });
+
+    // 판매자 오늘 한도를 다 쓰면 멈춤으로 보이고 실제로 수집하지 않는다
+    await db.youtubeQuotaUsage.update({ where: { day_scope: { day: quotaDay(NOW), scope: s.seller.id } }, data: { units: 3_000 } });
+    expect(await chatUsage(db, s.ctx, NOW)).toMatchObject({ collecting: false, stoppedReason: "seller_daily_limit" });
+    await db.youtubeLiveLink.update({ where: { id: s.link.id }, data: { chatNextPollAt: null } });
+    s.yt.calls.length = 0;
+    expect(await collectChats(db, s.yt.client, NOW)).toEqual({ polled: 0, saved: 0 });
+    expect(s.yt.calls).toEqual([]);
+
+    // 다른 판매자 현황은 따로
+    const b = await shop();
+    expect(await chatUsage(db, b.ctx, NOW)).toMatchObject({ messages: 0, storedMessages: 0, units: { month: 0, today: 0 } });
+  });
+
+  it("보관 채팅 지금 삭제: 대표자만, 자기 쇼핑몰 채팅만 지우고 로그 추적을 남긴다(이번 달 수집 건수는 유지)", async () => {
+    const a = await liveShop();
+    const b = await liveShop();
+    await putChat(a.cookie, true);
+    await putChat(b.cookie, true);
+    // 같은 방송의 같은 채팅 2건을 두 판매자가 각자 받는다
+    const page = { messages: [msg("d1", "a"), msg("d2", "b")], nextPageToken: "x", pollingIntervalMillis: 3_000, ended: false };
+    a.yt.chatPages.push(page, { ...page });
+    await collectChats(db, a.yt.client, NOW);
+
+    const runner = await cookieOf(a.runner.email);
+    expect((await deleteChats(runner)).status).toBe(403);
+    const res = await deleteChats(a.cookie);
+    expect(await res.json()).toEqual({ deleted: 2 });
+    expect(await db.youtubeChatMessage.count({ where: { sellerId: a.seller.id } })).toBe(0);
+    expect(await db.youtubeChatMessage.count({ where: { sellerId: b.seller.id } })).toBe(2);
+    const log = await db.auditLog.findFirstOrThrow({ where: { sellerId: a.seller.id, action: "youtube.chat.purge" } });
+    expect(log.after).toEqual({ deleted: 2 });
+    expect(await chatUsage(db, a.ctx, NOW)).toMatchObject({ messages: 2, storedMessages: 0 });
   });
 });

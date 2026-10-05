@@ -3,6 +3,7 @@ import { writeAudit } from "../audit/log";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 import { Rejected, callYoutube, guard } from "./call";
 import type { YoutubeClient } from "./client";
+import { addMonthlyChats } from "./settings";
 import { QUOTA_CHAT_RATIO, QUOTA_WARN_RATIO, quotaUsage } from "./quota";
 
 // 유튜브 채팅 수집(MASTER 승인 2026-10-05, 무료 할당량 안에서만).
@@ -49,6 +50,7 @@ export async function collectChats(db: PrismaClient, client: YoutubeClient, now 
         ? await db.youtubeChatMessage.createMany({ data: page.messages.map((m) => ({ ...m, sellerId: link.sellerId, liveLinkId: link.id })), skipDuplicates: true })
         : { count: 0 };
       report.saved += r.count;
+      await addMonthlyChats(db, link.sellerId, r.count, now);
       ratio = (await quotaUsage(db, now)).ratio;
       const interval = nextChatInterval(link.chatIntervalMs, page.pollingIntervalMillis, r.count, ratio);
       await db.youtubeLiveLink.updateMany({

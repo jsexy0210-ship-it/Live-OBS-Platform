@@ -73,8 +73,8 @@ export async function quotaUsage(db: Db, now: Date, limits: QuotaLimits = quotaL
   return { day: quotaDay(now), used, limit: limits.daily, ratio: used / limits.daily };
 }
 
-// 30일 지난 사용 기록 정리(날짜 문자열은 YYYY-MM-DD라 문자열 비교로 충분)
+// 40일 지난 사용 기록 정리(이번 달 수집 현황이 달 전체를 합산하도록 한 달보다 길게 둔다. 날짜 문자열은 YYYY-MM-DD라 문자열 비교로 충분)
 export async function purgeOldQuotaUsage(db: Db, now: Date): Promise<number> {
-  const r = await db.youtubeQuotaUsage.deleteMany({ where: { day: { lt: quotaDay(new Date(now.getTime() - 30 * 86_400_000)) } } });
+  const r = await db.youtubeQuotaUsage.deleteMany({ where: { day: { lt: quotaDay(new Date(now.getTime() - 40 * 86_400_000)) } } });
   return r.count;
 }
