@@ -181,8 +181,12 @@ body {
   border-top: 1px solid var(--wds-line-solid-neutral);
   border-bottom: 1px solid var(--wds-line-solid-normal);
 }
+.shop-cats {
+  position: relative;
+}
 .shop-cats .shop-wrap {
   display: flex;
+  align-items: center;
   flex-wrap: wrap;
   gap: 4px 28px;
 }
@@ -198,6 +202,64 @@ body {
 .shop-app .shop-cats a[aria-current="page"] {
   color: var(--brand);
   box-shadow: inset 0 -2px 0 var(--brand);
+}
+/* 카테고리 펼침: 「전체 카테고리」 버튼·머리 줄에 마우스를 올리면 대분류별 소분류 */
+.shop-app .shop-cats-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--wds-label-normal);
+  cursor: pointer;
+}
+.shop-catpanel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  z-index: 30;
+  background: #fff;
+  border-top: 1px solid var(--wds-line-solid-neutral);
+  border-bottom: 1px solid var(--wds-line-solid-normal);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.06);
+}
+.shop-catpanel .shop-wrap {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 16px 40px;
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+.shop-catcol {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 120px;
+}
+.shop-app .shop-catcol a {
+  display: block;
+  padding: 2px 0;
+  box-shadow: none;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--wds-label-neutral);
+  text-decoration: none;
+}
+.shop-app .shop-catcol a.shop-catcol-h {
+  margin-bottom: 4px;
+  font-weight: 700;
+  color: var(--wds-label-normal);
+}
+.shop-app .shop-catcol a[aria-current="page"] {
+  color: var(--brand);
+  box-shadow: none;
 }
 .shop-app .shop-m,
 .shop-app a.shop-iconbtn.shop-m,
@@ -367,6 +429,7 @@ body {
   display: block;
 }
 .shop-app a.pc-name {
+  color: var(--wds-label-normal);
   text-decoration: none;
 }
 .pc-photo img {
@@ -490,9 +553,39 @@ body {
   color: var(--wds-label-normal);
   text-decoration: none;
 }
+.shop-app .shop-sidecat a.top {
+  font-weight: 700;
+}
 .shop-app .shop-sidecat a.sub {
   padding-left: 24px;
   color: var(--wds-label-alternative);
+}
+.shop-crumb {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--wds-label-alternative);
+}
+/* 같은 대분류의 하위 칩 */
+.shop-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0 0 16px;
+}
+.shop-app .shop-chip {
+  display: inline-block;
+  padding: 4px 12px;
+  border: 1px solid var(--wds-line-solid-normal);
+  border-radius: 16px;
+  font-size: 13px;
+  color: var(--wds-label-neutral);
+  text-decoration: none;
+}
+.shop-app .shop-chip[aria-current="page"] {
+  border-color: var(--brand);
+  color: var(--brand);
+  font-weight: 700;
 }
 .shop-app .shop-sidecat a[aria-current="page"] {
   color: var(--brand);
