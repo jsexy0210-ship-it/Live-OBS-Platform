@@ -12,7 +12,7 @@ import { MESSAGE_FEE_NOTICE } from "../../../../../../components/seller/messageF
 // 충전: POST …/charges(구독 결제 카드). 금액은 비워 두고 시작하며 확인 창을 거친다. 충전 스위치가 꺼져 있으면 잠근다. 유료 잔액 환불 API는 아직 없다.
 // 비용 안내 문구는 docs/terms/SELLER_MESSAGE_FEE_NOTICE.md 서식 그대로(components/seller/messageFeeNotice.ts).
 
-type Channel = "MAIL_TRANSACTIONAL" | "MAIL_BULK" | "SMS" | "LMS" | "ALIMTALK" | "IDENTITY_VERIFICATION" | "DELIVERY_TRACKING";
+type Channel = "MAIL_TRANSACTIONAL" | "MAIL_BULK" | "SMS" | "LMS" | "ALIMTALK" | "IDENTITY_VERIFICATION" | "DELIVERY_TRACKING" | "INVOICE_ISSUE" | "INVOICE_LABEL" | "CASH_RECEIPT" | "TAX_INVOICE";
 type Balance = {
   paidBalance: number;
   freeBalance: number;
@@ -52,6 +52,10 @@ const CHANNEL: Record<Channel, string> = {
   ALIMTALK: "알림톡",
   IDENTITY_VERIFICATION: "구매자 본인인증",
   DELIVERY_TRACKING: "배송 자동 조회",
+  INVOICE_ISSUE: "송장 발급",
+  INVOICE_LABEL: "송장 라벨",
+  CASH_RECEIPT: "현금영수증",
+  TAX_INVOICE: "전자세금계산서",
 };
 const TYPE: Record<Entry["type"], string> = { CHARGE: "충전", GRANT: "무상 지급", DEBIT: "차감", REFUND: "환불" };
 const STATUS: Record<Entry["status"], string> = { PENDING: "처리 중", SUCCEEDED: "", REVERSED: "복원" };

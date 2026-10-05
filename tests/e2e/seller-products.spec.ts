@@ -307,7 +307,7 @@ test("권한이 하나도 없는 직원에게는 권한이 필요한 메뉴가 �
   // 「쇼핑몰 설정」은 모든 직원이 볼 수 있는 탭(쇼핑몰 정보)이 있어 보인다(MASTER 결정 2026-10-04)
   // 대분류는 상단 메뉴(GNB), 공지·도우미·내 계정은 상단 오른쪽 유틸에 있다
   const gnb = page.getByRole("navigation", { name: "주 메뉴" });
-  await expect(gnb.locator(".gnb-i")).toHaveText(["홈", "게시판", "프로모션", "디자인", "쇼핑몰 설정"]);
+  await expect(gnb.locator(".gnb-i")).toHaveText(["홈", "고객", "스토어", "설정"]);
   for (const shown of ["공지 · 문의", "도우미", "내 계정"]) {
     await expect(page.locator(".gnb").getByText(shown, { exact: true })).toBeVisible();
   }
