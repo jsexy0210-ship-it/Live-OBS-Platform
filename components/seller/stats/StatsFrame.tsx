@@ -9,7 +9,7 @@ import { Topbar, planAllows, useSeller } from "../SellerShell";
 import { LoadingRows } from "../States";
 import { api } from "../api";
 
-// SA-056 통계 화면 공통 틀: 통계 탭 · 기간 선택(오늘·최근 7일·최근 30일·직접 선택) · 묶음 단위 · 상태(로딩·데이터 없음·오류·권한 없음).
+// SA-056 통계 화면 공통 틀: 통계 탭 · 기간 선택(오늘·7일·1개월·이번 달·직접 선택, 기본 1개월) · 묶음 단위 · 상태(로딩·데이터 없음·오류·권한 없음).
 // 날짜는 KST 기준. 서버가 최대 366일까지 받는다(lib/server/stats/range.ts).
 // plan: 그 탭을 여는 요금제 기능 권한(서버 stats API와 같은 기준). 없는 탭은 숨긴다(오버레이 전용은 방송만)
 export const STATS_TABS = [
@@ -57,7 +57,7 @@ export function useStats<T>(path: string, p: Period) {
 }
 
 export function usePeriod() {
-  return useState<Period>(() => presetPeriod("7d", "day"));
+  return useState<Period>(() => presetPeriod("30d", "day"));
 }
 
 export function StatsFrame({ title, heading, sub, period, setPeriod, onDownload, download, units = true, comparable, children }: {
@@ -91,7 +91,7 @@ export function StatsFrame({ title, heading, sub, period, setPeriod, onDownload,
   const presets = [
     { key: "today", label: "오늘" },
     { key: "7d", label: "7일" },
-    { key: "30d", label: "30일" },
+    { key: "30d", label: "1개월" },
     { key: "month", label: "이번 달" },
   ] as const;
   const unitOptions: { key: Unit; label: string }[] = [

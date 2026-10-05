@@ -40,9 +40,8 @@ test("주문 통계: 기간·단위를 바꾸면 다시 집계하고, 화면 숫
   await expect(page.getByRole("heading", { name: "통계 · 주문" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "분석", exact: true })).toHaveAttribute("href", "/seller/stats");
 
-  const r30 = statsResponse(page, "orders");
-  await page.getByRole("button", { name: "30일", exact: true }).click();
-  const body = await (await r30).json();
+  await expect(page.getByRole("button", { name: "1개월", exact: true })).toHaveAttribute("aria-pressed", "true");
+  const body = await (await first).json();
   expect(body.current.orders).toBeGreaterThan(0);
   await expect(kpi(page, "주문 수")).toHaveText(`${body.current.orders.toLocaleString("ko-KR")}건`);
   await expect(kpi(page, "결제 금액")).toHaveText(won(body.current.revenue));
@@ -90,9 +89,8 @@ test("매출 통계: 매출 구성·결제 수단별을 API 값으로 보여 준
   const first = statsResponse(page, "sales");
   await login(page, "demo-owner@example.com", "/seller/stats/sales");
   await first;
-  const r30 = statsResponse(page, "sales");
-  await page.getByRole("button", { name: "30일", exact: true }).click();
-  const body = await (await r30).json();
+  await expect(page.getByRole("button", { name: "1개월", exact: true })).toHaveAttribute("aria-pressed", "true");
+  const body = await (await first).json();
   await expect(kpi(page, "결제 금액")).toHaveText(won(body.current.paid));
   await expect(kpi(page, "실제 매출(환불 뺀 금액)")).toHaveText(won(body.current.net));
   await expect(page.getByTestId("stats-methods").locator("tbody tr")).toHaveCount(body.byMethod.length);
@@ -114,9 +112,8 @@ test("상품 통계: 상위 상품·안 팔린 상품을 API 값으로 보여 �
   const first = statsResponse(page, "products");
   await login(page, "demo-owner@example.com", "/seller/stats/products");
   await first;
-  const r30 = statsResponse(page, "products");
-  await page.getByRole("button", { name: "30일", exact: true }).click();
-  const body = await (await r30).json();
+  await expect(page.getByRole("button", { name: "1개월", exact: true })).toHaveAttribute("aria-pressed", "true");
+  const body = await (await first).json();
   await expect(kpi(page, "상품 매출")).toHaveText(won(body.current.revenue));
   if (body.top.length > 0) {
     await expect(page.getByTestId("stats-top").locator("tbody tr")).toHaveCount(body.top.length);
@@ -132,9 +129,8 @@ test("회원 통계: 신규 가입·구매 회원·재구매율을 API 값으로
   const first = statsResponse(page, "members");
   await login(page, "demo-owner@example.com", "/seller/stats/members");
   await first;
-  const r30 = statsResponse(page, "members");
-  await page.getByRole("button", { name: "30일", exact: true }).click();
-  const body = await (await r30).json();
+  await expect(page.getByRole("button", { name: "1개월", exact: true })).toHaveAttribute("aria-pressed", "true");
+  const body = await (await first).json();
   await expect(kpi(page, "신규 가입")).toHaveText(`${body.current.signups.toLocaleString("ko-KR")}명`);
   await expect(kpi(page, "구매 회원")).toHaveText(`${body.current.buyers.toLocaleString("ko-KR")}명`);
   await expect(page.getByTestId("stats-table").locator("tbody tr")).toHaveCount(30);
@@ -163,9 +159,8 @@ test("통계 요약(SA-056): 요약 지표·방송 내역·상품 상위·회원
   await first;
   await expect(page.getByRole("heading", { name: "통계 · 요약" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "통계 종류" }).getByRole("link", { name: "요약" })).toHaveClass(/on/);
-  const r30 = statsResponse(page, "overview");
-  await page.getByRole("button", { name: "30일", exact: true }).click();
-  const body = await (await r30).json();
+  await expect(page.getByRole("button", { name: "1개월", exact: true })).toHaveAttribute("aria-pressed", "true");
+  const body = await (await first).json();
   await expect(kpi(page, "결제된 매출")).toHaveText(won(body.summary.current.revenue));
   await expect(kpi(page, "주문")).toHaveText(`${body.summary.current.orders.toLocaleString("ko-KR")}건`);
   await expect(kpi(page, "방문자")).toHaveText("아직 볼 수 없습니다");
