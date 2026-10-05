@@ -86,7 +86,7 @@ test("장바구니 → 주문서(검사·동의) → 주문(결제 대기) → �
   await expect(page.getByRole("status")).toContainText("주문이 접수됐어요");
   await expect(page.getByText("결제 전").first()).toBeVisible();
   await expect(page.getByRole("region", { name: /주문 상품/ })).toContainText("스타라이트 부스터 박스");
-  await expect(page.getByRole("region", { name: "배송지" })).toContainText("서울 강남구 테스트로 12");
+  await expect(page.getByRole("region", { name: "배송 정보" })).toContainText("서울 강남구 테스트로 12");
   await page.screenshot({ path: "tests/e2e/screenshots/SH-007-order-done-1440.png", fullPage: true });
   const left = ((await (await page.request.get(`/api/shop/${SLUG}/cart`)).json()) as { items: { productName: string }[] }).items.map((l) => l.productName);
   expect(left).toEqual(["드래곤 소울 부스터"]);

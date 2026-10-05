@@ -96,7 +96,7 @@ test("배송비 정책 미리보기: 방식·배송비·무료 기준·도서산
   await page.getByLabel("배송비", { exact: true }).fill("2,800");
   await page.getByLabel("무료 배송 기준").fill("40000");
   await expect(page.getByTestId("fee-preview")).toHaveText("배송비 2,800원 · 40,000원 이상 무료");
-  await page.getByLabel("제주·도서산간 추가 배송비").fill("5000");
+  await page.getByLabel("제주 · 도서산간 추가 배송비").fill("5000");
   await expect(page.getByTestId("remote-preview")).toHaveText("+5,000원 · 해당 주소만");
   await page.getByLabel("반품 배송비 (편도)").fill("3500");
   await page.getByLabel("교환 배송비 (왕복)").fill("7000");

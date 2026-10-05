@@ -129,6 +129,7 @@ describe("PG 연결 상태 GET /api/admin/pg-status", () => {
 
   it("실패 코드 문구: 정한 코드는 그 문구, 모르는 나이스페이 코드·서버 코드는 일반 문구", () => {
     expect(paymentFailureMessage("nicepay_3011")).toBe("카드 번호가 맞지 않습니다");
+    expect(paymentFailureMessage("nicepay_U128")).toBe("시험 결제 환경은 부분 취소를 지원하지 않습니다. 운영 환경에서는 가능합니다.");
     expect(paymentFailureMessage("nicepay_9999")).toBe("결제사에서 승인을 거절했습니다");
     expect(paymentFailureMessage("something_new")).toBe("결제가 완료되지 않았습니다");
     expect(paymentFailureMessage(null)).toBeNull();
