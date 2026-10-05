@@ -18,6 +18,7 @@
 | 레이아웃 전담 (5) · UI 현대화 | `session_017WgBx8FtCk7jBgmCL4id5V` | 2026-10-06 00:05 KST MASTER 생성(Sonnet 5.5). `session_01E7X37SDuT7CyPd67Yonm4k` 를 컨텍스트 67%로 교체. 역할·소유는 전임 행과 같음 |
 | 레이아웃 전담 (4) · UI 현대화 | `session_01E7X37SDuT7CyPd67Yonm4k` | (교체됨 → `session_017WgBx8FtCk7jBgmCL4id5V`, 2026-10-06)  2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_015hHqzBD92PvX1wauiYmjyK`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | UX 감사 전담 (2) | `session_01MHWWLyxFsh9VRU33s3g4DQ` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01GbMUeY3UxdmHvLeW5HQ7co`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
+| 화면-Back 경로 전담 | `session_01L7d1ZovdAZeULLgVrKARDj` | 2026-10-05 대표님 지시 「진입부터 돌아가는 모든 루트를 계산」. 1단계 `docs/BACK_ROUTES.md` 경로표 → 2단계 화면 묶음별 ← 버튼·useSmartBack·상태 보존 적용(파트너스 → 마스터 → 쇼핑몰 → 인증·공개). 공통 셸·navigation 도우미는 레이아웃 소관. 2026-10-05 KST MASTER 생성 |
 | 화면-마스터 (2) | `session_01745GgCnQxQhtnpCd5Pv88w` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01JMzttsfKDXeXncJrX2VsLG`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | 화면-공개 (2) | `session_01VWVPemvkt3eicZ8fDRLSAR` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01HfJMUwycvTKgmVctvRpGjH`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 — 2026-10-05 23:55 KST #565·#614 병합, 보관 |
 | 화면-파트너스 운영 (3) | `session_016P8zSbRmKFuuWC9krz69jq` | 2026-10-05 23:50 KST MASTER 생성(Sonnet 5.5). (2) `session_01JFxmyNJFB2Ztwv2jUtQSCr`를 컨텍스트 76%로 교체. 역할·소유는 전임 행과 같음 |
