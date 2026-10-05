@@ -78,7 +78,7 @@ const MENU: Group[] = [
       { label: "회원 목록", href: "/seller/members", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
       { label: "회원 등급", href: "/seller/member-grades", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
       { label: "구매 제한", href: "/seller/purchase-restrictions", perm: "MEMBER_POINTS", plan: "FOLLOWUP" },
-      { label: "회원 알림 발송", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
+      { label: "회원 알림 발송", href: "/seller/member-messages", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
       { label: "적립금", href: "/seller/rewards", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
       { label: "회원별 잔액", href: "/seller/rewards/balances", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
       // 원장 API(GET /api/seller/reward-ledger)가 ORDER_FOLLOWUP 경로라 오버레이 전용으로 내린 뒤에도 후속 확인할 수 있다
