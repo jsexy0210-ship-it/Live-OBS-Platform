@@ -246,6 +246,7 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/products": "STORE_OPERATIONS", // 구매자 상품 목록(운영 중 쇼핑몰만)
   "shop/[slug]/products/[productId]": "STORE_OPERATIONS", // 구매자 상품 상세
   "shop/[slug]/products/[productId]/reviews": "STORE_OPERATIONS",
+  "shop/[slug]/live": "STORE_OPERATIONS", // 지금 방송 중(홈 띠·배지)
   "shop/[slug]/search/popular": "STORE_OPERATIONS", // 인기 검색어
   "shop/[slug]/search/suggest": "STORE_OPERATIONS", // 검색어 자동완성
   "shop/[slug]/products/[productId]/inquiries": "STORE_OPERATIONS", // 공개 상품 문의(상품 상세)
