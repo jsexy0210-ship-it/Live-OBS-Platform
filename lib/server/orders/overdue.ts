@@ -246,7 +246,7 @@ export async function listActiveRestrictions(db: PrismaClient, ctx: TenantContex
     where: { sellerId: ctx.sellerId, liftedAt: null, endsAt: { gt: now } },
     orderBy: { startsAt: "desc" },
     take: 200,
-    select: { id: true, buyerMemberId: true, reason: true, startsAt: true, endsAt: true, buyerMember: { select: { broadcastNickname: true } } },
+    select: { id: true, buyerMemberId: true, reason: true, note: true, startsAt: true, endsAt: true, buyerMember: { select: { broadcastNickname: true } } },
   });
 }
 
