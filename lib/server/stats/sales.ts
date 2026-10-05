@@ -32,7 +32,7 @@ const ORDER_AGG = Prisma.sql`
   coalesce(sum("totalAmount"::bigint), 0) AS paid,
   coalesce(sum("rewardUsedAmount"::bigint), 0) AS reward,
   coalesce(sum("shippingFee"::bigint), 0) AS shipping,
-  coalesce(sum(coalesce("refundAmount", "totalAmount")::bigint) FILTER (WHERE status = 'REFUNDED'), 0) AS refund`;
+  coalesce(sum((CASE WHEN status = 'REFUNDED' THEN coalesce("refundAmount", "totalAmount") ELSE coalesce("refundAmount", 0) END)::bigint), 0) AS refund`;
 
 const PAID_IN = (sellerId: string, start: Date, end: Date) =>
   Prisma.sql`"sellerId" = ${sellerId}::uuid AND "paidAt" IS NOT NULL AND "createdAt" >= ${start} AND "createdAt" < ${end}`;

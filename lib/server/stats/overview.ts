@@ -33,7 +33,7 @@ type Extra = {
 async function extras(tx: StatsDb, sid: string, start: Date, end: Date) {
   const [r] = await tx.$queryRaw<Extra[]>`
     WITH o AS (
-      SELECT id, "buyerMemberId", "createdAt", "totalAmount"::bigint - CASE WHEN status = 'REFUNDED' THEN coalesce("refundAmount", "totalAmount") ELSE 0 END AS net
+      SELECT id, "buyerMemberId", "createdAt", "totalAmount"::bigint - CASE WHEN status = 'REFUNDED' THEN coalesce("refundAmount", "totalAmount") ELSE coalesce("refundAmount", 0) END AS net
       FROM "Order"
       WHERE "sellerId" = ${sid}::uuid AND "paidAt" IS NOT NULL AND "createdAt" >= ${start} AND "createdAt" < ${end}
     ),
@@ -90,7 +90,7 @@ async function broadcastsInRange(tx: StatsDb, sid: string, range: StatsRange) {
   const [rows, totals] = await Promise.all([
     tx.$queryRaw<BroadcastRow[]>`
       WITH o AS (
-        SELECT id, "createdAt", "totalAmount"::bigint - CASE WHEN status = 'REFUNDED' THEN coalesce("refundAmount", "totalAmount") ELSE 0 END AS net
+        SELECT id, "createdAt", "totalAmount"::bigint - CASE WHEN status = 'REFUNDED' THEN coalesce("refundAmount", "totalAmount") ELSE coalesce("refundAmount", 0) END AS net
         FROM "Order"
         WHERE "sellerId" = ${sid}::uuid AND "paidAt" IS NOT NULL AND "createdAt" >= ${range.start} AND "createdAt" < ${range.end}
       ),
@@ -117,7 +117,7 @@ async function broadcastsInRange(tx: StatsDb, sid: string, range: StatsRange) {
       ORDER BY c."startedAt" DESC, c.id`,
     tx.$queryRaw<BroadcastTotals[]>`
       WITH o AS (
-        SELECT id, "createdAt", "totalAmount"::bigint - CASE WHEN status = 'REFUNDED' THEN coalesce("refundAmount", "totalAmount") ELSE 0 END AS net
+        SELECT id, "createdAt", "totalAmount"::bigint - CASE WHEN status = 'REFUNDED' THEN coalesce("refundAmount", "totalAmount") ELSE coalesce("refundAmount", 0) END AS net
         FROM "Order"
         WHERE "sellerId" = ${sid}::uuid AND "paidAt" IS NOT NULL AND "createdAt" >= ${range.start} AND "createdAt" < ${range.end}
       ),

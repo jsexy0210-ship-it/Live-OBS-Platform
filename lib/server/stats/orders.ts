@@ -7,7 +7,7 @@ import { bucketOf, bucketSeries, num, statsSnapshot, type StatsDb } from "./sql"
 // - 주문 수: 모든 상태(결제 대기·결제 완료·취소·환불)
 // - 결제 주문·결제액: 결제된 적 있는 주문(paidAt 있음 = 결제 완료 + 환불). 객단가 = 결제액 / 결제 주문
 // - 취소: 결제 전 취소(CANCELLED, 판매자 취소·입금 기한 초과·탈퇴). 취소율 = 취소 / 주문 수
-// - 환불: 결제 뒤 환불(REFUNDED). 환불율 = 환불 / 결제 주문. 환불액은 실제 돌려준 금액(refundAmount, 이 값이 없던 옛 주문은 결제액)
+// - 환불: 결제 뒤 환불(REFUNDED). 환불율 = 환불 / 결제 주문. 환불액은 실제 돌려준 금액(refundAmount, 이 값이 없던 옛 주문은 결제액. 결제 완료로 남은 부분 환불 주문의 돌려준 금액도 넣는다)
 // - 순매출 = 결제액 − 환불액
 // 테스트 모드는 서버 단위 설정(OBS_TEST_MODE)이고 주문에 표시가 없다. 테스트 서버 DB의 주문은 모두 시험 주문이라 그대로 센다.
 // 탈퇴 회원의 법정 보관 분리 주문(legalHoldAt)도 실제 판매라 합계에 넣는다(개인정보는 내보내지 않음).
@@ -33,7 +33,7 @@ const AGG = Prisma.sql`
   coalesce(sum("totalAmount"::bigint) FILTER (WHERE "paidAt" IS NOT NULL), 0) AS revenue,
   count(*) FILTER (WHERE status = 'CANCELLED')::int AS cancelled,
   count(*) FILTER (WHERE status = 'REFUNDED')::int AS refunded,
-  coalesce(sum(coalesce("refundAmount", "totalAmount")::bigint) FILTER (WHERE status = 'REFUNDED'), 0) AS refund_amount`;
+  coalesce(sum((CASE WHEN status = 'REFUNDED' THEN coalesce("refundAmount", "totalAmount") ELSE coalesce("refundAmount", 0) END)::bigint), 0) AS refund_amount`;
 
 type AggRow = { orders: number; paid: number; revenue: bigint; cancelled: number; refunded: number; refund_amount: bigint };
 

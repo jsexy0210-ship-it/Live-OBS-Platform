@@ -3,7 +3,7 @@ import { writeAudit } from "../audit/log";
 import { canViewCustomerPii, requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 import { completeDelivery } from "./delivery";
 import { orderErrorBody } from "./messages";
-import { decodeCursor, encodeCursor, kstDayStart, SELLER_ORDER_PAGE_DEFAULT, SELLER_ORDER_PAGE_MAX } from "./read";
+import { decodeCursor, encodeCursor, itemSummary, itemSummarySelect, kstDayStart, SELLER_ORDER_PAGE_DEFAULT, SELLER_ORDER_PAGE_MAX } from "./read";
 import { shipOrder } from "./ship";
 import { SHIPMENT_BATCH_MAX } from "./shipping";
 
@@ -90,8 +90,7 @@ export async function listShipments(db: PrismaClient, ctx: TenantContext, query:
       createdAt: true,
       paidAt: true,
       buyerMember: { select: { id: true, broadcastNickname: true } },
-      items: { select: { productNameSnapshot: true }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: 1 },
-      _count: { select: { items: true } },
+      items: itemSummarySelect,
       shipment: { select: { courier: true, trackingNumber: true, status: true, shippedAt: true, deliveredAt: true } },
       shippingAddress: { select: { recipientName: true, phone: true, zipCode: true, address1: true, address2: true, memo: true, isRemote: true } },
     },
@@ -120,7 +119,8 @@ export async function listShipments(db: PrismaClient, ctx: TenantContext, query:
       createdAt: o.createdAt,
       paidAt: o.paidAt,
       buyer: o.buyerMember,
-      itemSummary: { firstProductName: o.items[0]?.productNameSnapshot ?? null, otherCount: Math.max(o._count.items - 1, 0) },
+      // 부분 환불로 다 돌려준 품목은 보낼 것이 없어 요약에서 뺀다(orders/read.ts itemSummary)
+      itemSummary: itemSummary(o.items),
       shipment: o.shipment,
       // 배송지도 개인정보라 권한이 없으면 도서산간 여부만 남긴다(orders/read.ts getOrder와 같은 기준)
       shippingAddress: o.shippingAddress ? (pii ? o.shippingAddress : { isRemote: o.shippingAddress.isRemote }) : null,

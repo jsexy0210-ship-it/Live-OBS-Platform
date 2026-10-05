@@ -71,7 +71,7 @@ describe("판매자 주문 목록 GET /api/seller/orders", () => {
       paidAt: order.paidAt!.toISOString(),
       buyer: { id: s.buyer.id, broadcastNickname: s.buyer.broadcastNickname },
       totalAmount: 5000,
-      itemSummary: { firstProductName: "부스터 팩", otherCount: 2 },
+      itemSummary: { firstProductName: "부스터 팩", otherCount: 2, refundedQuantity: 0 },
       shipped: false,
       refundable: true,
     });
