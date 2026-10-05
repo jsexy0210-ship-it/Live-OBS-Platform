@@ -42,7 +42,8 @@ const MENU: Group[] = [
       // 서버는 플랜 기능 EXTERNAL_INTEGRATION만 보고 보기를 열지만, 메뉴는 연결·해제 권한(SHOP_SETTINGS)이 있는 직원에게만 보인다(서버보다 넓게 열지 않는다)
       { label: "외부 쇼핑몰 연동", href: "/seller/external-shops", perm: "SHOP_SETTINGS", plan: "EXTERNAL_INTEGRATION" },
       { label: "유튜브 연결", href: "/seller/youtube", perm: "BROADCAST_RUN", plan: "OVERLAY" },
-      { label: "자동 연결", href: "/seller/automation", perm: "SHOP_SETTINGS", plan: "OVERLAY" },
+      // 대표자 전용: 구매(110,000원)·재설치(33,000원)가 걸린 화면이라 서버도 대표자만 허용한다
+      { label: "자동 연결", href: "/seller/automation", perm: "OWNER", plan: "OVERLAY" },
     ],
   },
   {

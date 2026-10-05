@@ -164,3 +164,13 @@ test("화면이 생긴 메뉴가 연결된다: 시작하기·외부 쇼핑몰 �
   await lnb(page).getByRole("link", { name: "시작하기" }).click();
   await expect(page).toHaveURL(/\/seller\/onboarding$/);
 });
+
+test("자동 연결 메뉴는 대표자에게만 보인다", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/seller/login?next=${encodeURIComponent("/seller/broadcast")}`);
+  await submitSellerLogin(page, "demo-staff@example.com", PASSWORD);
+  await page.waitForURL(/\/seller\//);
+  await page.goto("/seller/settings/shop");
+  await expect(lnb(page).getByRole("link", { name: "자동 연결" })).toHaveCount(0);
+  await expect(lnb(page).getByText("자동 연결")).toHaveCount(0);
+});
