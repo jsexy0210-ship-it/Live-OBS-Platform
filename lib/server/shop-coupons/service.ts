@@ -234,13 +234,15 @@ export async function setCouponActive(db: PrismaClient, ctx: TenantContext, id: 
 }
 
 // 삭제: 한 장도 발급하지 않은 쿠폰만. 발급했으면 집계를 남기려고 지우지 않는다(발급 중지로 「종료」).
-export async function deleteCoupon(db: PrismaClient, ctx: TenantContext, id: string, meta: AuditMeta = {}): Promise<{ ok: true } | { ok: false; reason: "has_history" }> {
+export async function deleteCoupon(db: PrismaClient, ctx: TenantContext, id: string, meta: AuditMeta = {}): Promise<{ ok: true } | { ok: false; reason: "has_history" | "grade_benefit" }> {
   requireSellerPermission(ctx, "MEMBER_POINTS");
   if (!isUuid(id)) throw notFound();
   return db.$transaction(async (tx) => {
     // 받기와 같은 쿠폰 행을 잠그고 발급 이력을 본다(그사이 받은 쿠폰이 있으면 has_history)
     const before = await lockCoupon(tx, ctx.sellerId, id);
     if (!before) throw notFound();
+    // 회원 등급의 승급 쿠폰으로 연결된 쿠폰은 지울 수 없다(등급 혜택에서 먼저 풀어야 한다)
+    if ((await tx.memberGrade.count({ where: { sellerId: ctx.sellerId, promotionCouponId: id } })) > 0) return { ok: false as const, reason: "grade_benefit" as const };
     if (before.issuedCount > 0 || (await tx.buyerCoupon.count({ where: { couponId: id } })) > 0) return { ok: false as const, reason: "has_history" as const };
     await tx.coupon.delete({ where: { id } });
     await audit(tx, ctx, meta, "coupon.delete", id, couponAudit(before), undefined);
@@ -299,6 +301,22 @@ export async function grantCoupon(
     await audit(tx, ctx, meta, "coupon.grant", id, undefined, { gradeIds, memberCount: memberIds.length, granted: members.length, skipped: total - members.length });
     return { ok: true as const, granted: members.length, skipped: total - members.length };
   });
+}
+
+// 등급 승급 쿠폰 자동 지급(shop-member-grades): 직접 지급 방식 쿠폰을 한 회원에게 한 장 준다. 이미 받았거나(1인 1장, 같은 쿠폰은 다시 지급하지 않음) 기간·발급 중지·수량 한도로 줄 수 없으면 주지 않는다.
+// 쿠폰 행을 잠그고 수량은 조건부 UPDATE로 지켜 동시 승급·직접 지급과 겹쳐도 한도를 넘지 않는다. 호출하는 쪽 트랜잭션 안에서 부른다.
+export async function issueCouponToMember(tx: Tx, o: { sellerId: string; couponId: string; buyerMemberId: string }): Promise<"issued" | "already" | "unavailable" | "sold_out"> {
+  const coupon = await lockCoupon(tx, o.sellerId, o.couponId);
+  if (!coupon || coupon.issueMethod !== "MANUAL") return "unavailable";
+  const now = await lockedNow(tx);
+  if (statusOf(coupon, now) !== "live") return "unavailable";
+  if (await tx.buyerCoupon.findFirst({ where: { couponId: coupon.id, buyerMemberId: o.buyerMemberId }, select: { id: true } })) return "already";
+  const inc = await tx.$executeRaw`
+    UPDATE "Coupon" SET "issuedCount" = "issuedCount" + 1
+    WHERE "id" = ${coupon.id}::uuid AND "sellerId" = ${o.sellerId}::uuid AND ("issueLimit" IS NULL OR "issuedCount" < "issueLimit")`;
+  if (inc !== 1) return "sold_out";
+  await tx.buyerCoupon.create({ data: { sellerId: o.sellerId, couponId: coupon.id, buyerMemberId: o.buyerMemberId, issuedAt: now, expiresAt: couponExpiry(coupon, now) } });
+  return "issued";
 }
 
 // 적용 상품 고르기: 이 쇼핑몰의 지우지 않은 상품을 이름으로 찾는다(대소문자 무시, 20개). 상품 관리 권한이 없는 적립금 직원도 쓴다.
