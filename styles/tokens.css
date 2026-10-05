@@ -425,3 +425,81 @@
   font-weight: 400;
   letter-spacing: 0.0057em;
 }
+
+/* ───────────────────────────────────────────────────────────────
+   서비스 UI 의미 토큰 (대표님 지시 2026-10-05 「전체 UI 현대화」, docs/DESIGN_PROMPT.md 「시각 규격」)
+   위 Montage 값은 원본 그대로 두고, 화면 규칙(lop.css·seller.css·shop.css·admin.css)은 이 --ui-* 토큰만 참조한다.
+   값은 기본 표시 상태의 CSS px. 높이는 min-height로 써서 글자 확대·긴 번역에서는 늘어날 수 있다.
+   ─────────────────────────────────────────────────────────────── */
+:root {
+  /* 컨트롤 높이: compact는 PC 표 안 보조 버튼만, dense는 관리자 검색·필터·오버레이 속성,
+     default는 일반 폼·버튼, touch는 모바일 입력·주요 버튼·결제 CTA, broadcast는 방송 핵심 버튼(최소값) */
+  --ui-h-compact: 32px;
+  --ui-h-dense: 40px;
+  --ui-h-default: 44px;
+  --ui-h-touch: 48px;
+  --ui-h-broadcast: 56px;
+  --ui-hit-min: 44px;
+  /* 모서리 */
+  --ui-r-control: 8px;
+  --ui-r-table: 8px;
+  --ui-r-card: 12px;
+  --ui-r-modal: 16px;
+  --ui-r-sheet: 20px;
+  --ui-r-badge: 4px;
+  --ui-r-pill: 999px;
+  /* 타이포(서체는 Wanted Sans 그대로) */
+  --ui-fs-title-admin: 20px;
+  --ui-lh-title-admin: 28px;
+  --ui-fs-title-shop: 24px;
+  --ui-lh-title-shop: 32px;
+  --ui-fs-section: 16px;
+  --ui-lh-section: 24px;
+  --ui-fs-body: 14px;
+  --ui-lh-body: 20px;
+  --ui-fs-touch: 16px;
+  --ui-lh-touch: 24px;
+  --ui-fs-dense: 13px;
+  --ui-lh-dense: 20px;
+  --ui-fs-caption: 12px;
+  --ui-lh-caption: 18px;
+  /* 간격: 허용 값은 0/4/8/12/16/24/32/48/64 뿐이다 */
+  --ui-sp-0: 0px;
+  --ui-sp-4: 4px;
+  --ui-sp-8: 8px;
+  --ui-sp-12: 12px;
+  --ui-sp-16: 16px;
+  --ui-sp-24: 24px;
+  --ui-sp-32: 32px;
+  --ui-sp-48: 48px;
+  --ui-sp-64: 64px;
+  --ui-gutter: 24px;
+  --ui-gutter-mobile: 16px;
+  --ui-pad-panel: 16px;
+  --ui-pad-panel-wide: 24px;
+  --ui-gap-label: 8px;
+  --ui-gap-field: 16px;
+  --ui-gap-section: 24px;
+  --ui-gap-btn: 8px;
+  /* 표 행 높이 */
+  --ui-row: 48px;
+  --ui-row-compact: 40px;
+  /* 선·초점: 일반 구분선 1px. 입력 경계는 흰 바탕 대비 3:1 이상인 별도 색(--ui-line-input, 화면 묶음별 값은 lop.css·seller.css) */
+  --ui-line-w: 1px;
+  --ui-focus-w: 2px;
+  /* 움직임: 기본 전환 120~180ms, 패널 180~240ms */
+  --ui-dur: 150ms;
+  --ui-dur-panel: 200ms;
+  --ui-ease: cubic-bezier(0.2, 0, 0, 1);
+  /* 떠 있는 요소의 쌓임 순서 */
+  --ui-z-sticky: 40;
+  --ui-z-drawer: 50;
+  --ui-z-modal: 1300;
+  --ui-z-toast: 1400;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --ui-dur: 0ms;
+    --ui-dur-panel: 0ms;
+  }
+}
