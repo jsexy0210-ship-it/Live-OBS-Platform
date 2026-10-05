@@ -66,11 +66,11 @@ export default function OverlayPage() {
 
   return (
     <>
-      <Topbar crumb="방송 · 오버레이 › 오버레이 편집기" />
+      <Topbar crumb="방송 › 방송 화면 꾸미기" />
       <main className="main">
         <div className="ph">
           <div className="col" style={{ gap: 4 }}>
-            <h1 className="t-t3">오버레이 편집기</h1>
+            <h1 className="t-t3">방송 화면 꾸미기</h1>
             <span className="t-l2 c-alt">방송 프로그램(OBS)의 「브라우저 소스」 칸에 아래 주소를 붙여 넣으면 주문 순서와 개봉 중인 주문이 방송 화면에 나옵니다.</span>
           </div>
         </div>
