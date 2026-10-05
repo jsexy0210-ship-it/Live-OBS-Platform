@@ -158,6 +158,7 @@ model Seller {
   buyerInquiryImages       BuyerInquiryImage[]
   shopSearchSynonyms       ShopSearchSynonym[]
   shopSearchTerms          ShopSearchTerm[]
+  shopSearchBlockedTerms   ShopSearchBlockedTerm[]
   productReviewImages      ProductReviewImage[]
   productReviewReports     ProductReviewReport[]
   productReviewPolicy      ProductReviewPolicy?
@@ -3540,4 +3541,15 @@ model ShopLegalDoc {
   seller Seller @relation(fields: [sellerId], references: [id])
 
   @@unique([sellerId, kind])
+}
+
+// 인기 검색어·자동완성에서 뺄 단어(파트너스가 정함, 소문자로 접은 값). 검색어에 이 단어가 들어 있으면 보이지 않는다(검색 자체는 그대로 된다). 쇼핑몰마다 최대 100개.
+model ShopSearchBlockedTerm {
+  sellerId  String   @db.Uuid
+  term      String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@id([sellerId, term])
 }

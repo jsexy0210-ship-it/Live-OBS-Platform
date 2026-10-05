@@ -18,7 +18,7 @@ async function shop() {
   const base = await createPaidOrderItem(seller.id, buyer.id);
   let first = true;
   // 리뷰를 하나 단다(주문 상품마다 1개라 첫 리뷰 밖에는 주문 상품을 새로 만든다). photos만큼 사진을 붙인다.
-  const review = async (rating: number, opts: { status?: string; deletedAt?: Date; hiddenReason?: string; photos?: number; productId?: string } = {}) => {
+  const review = async (rating: number, opts: { status?: string; deletedAt?: Date; hiddenReason?: string; photos?: number; productId?: string; createdAt?: Date } = {}) => {
     let orderId = base.order.id;
     let orderItemId = base.item.id;
     if (!first) {
@@ -29,7 +29,7 @@ async function shop() {
     }
     first = false;
     const r = await db.productReview.create({
-      data: { sellerId: seller.id, orderId, orderItemId, productId: base.product.id, buyerMemberId: buyer.id, authorNickname: "닉", rating, body: opts.deletedAt ? "" : BODY, status: (opts.status ?? "VISIBLE") as never, hiddenReason: opts.hiddenReason as never, deletedAt: opts.deletedAt },
+      data: { sellerId: seller.id, orderId, orderItemId, productId: base.product.id, buyerMemberId: buyer.id, authorNickname: "닉", rating, body: opts.deletedAt ? "" : BODY, status: (opts.status ?? "VISIBLE") as never, hiddenReason: opts.hiddenReason as never, deletedAt: opts.deletedAt, ...(opts.createdAt ? { createdAt: opts.createdAt } : {}) },
     });
     for (let i = 0; i < (opts.photos ?? 0); i++) {
       await db.productReviewImage.create({ data: { sellerId: seller.id, buyerMemberId: buyer.id, reviewId: r.id, data: Buffer.from("x"), contentType: "image/jpeg", byteSize: 1, width: 10, height: 10, sortOrder: i } });
@@ -39,8 +39,8 @@ async function shop() {
   return { seller, product: base.product, review };
 }
 type Shop = Awaited<ReturnType<typeof shop>>;
-const summary = async (s: Shop, slug = s.seller.slug, productId = s.product.id) => {
-  const res = await reviewsRoute(new Request("http://localhost:3000/x"), { params: Promise.resolve({ slug, productId }) });
+const summary = async (s: Shop, slug = s.seller.slug, productId = s.product.id, qs = "") => {
+  const res = await reviewsRoute(new Request(`http://localhost:3000/x${qs}`), { params: Promise.resolve({ slug, productId }) });
   return { status: res.status, body: (await res.json()) as Record<string, any> };
 };
 
@@ -83,5 +83,46 @@ describe("리뷰 요약", () => {
     expect((await summary(a, "no-such-shop")).status).toBe(404);
     await db.product.update({ where: { id: a.product.id }, data: { status: "HIDDEN" } });
     expect((await summary(a)).status).toBe(404);
+  });
+});
+
+describe("사진 리뷰만 보기(photoOnly)", () => {
+  it("photoOnly=true면 목록은 사진 리뷰만이고 평균·총 수·분포·photoCount는 전체 그대로다", async () => {
+    const s = await shop();
+    await s.review(5, { photos: 2 });
+    await s.review(3);
+    await s.review(4, { photos: 1 });
+    await s.review(1, { status: "HIDDEN", hiddenReason: "OTHER", photos: 1 }); // 숨김 리뷰의 사진은 어디에도 안 나온다
+    const all = await summary(s);
+    const only = await summary(s, s.seller.slug, s.product.id, "?photoOnly=true");
+    expect(all.body.reviews).toHaveLength(3);
+    expect(only.body.reviews).toHaveLength(2);
+    expect(only.body.reviews.every((r: any) => r.images.length > 0)).toBe(true);
+    for (const k of ["average", "total", "photoCount", "distribution"]) expect(only.body[k]).toEqual(all.body[k]);
+    expect((await summary(s, s.seller.slug, s.product.id, "?photoOnly=1")).body.reviews).toHaveLength(2);
+    expect((await summary(s, s.seller.slug, s.product.id, "?photoOnly=false")).body.reviews).toHaveLength(3);
+    expect((await summary(s, s.seller.slug, s.product.id, "?photoOnly=garbage")).body.reviews).toHaveLength(3);
+  });
+
+  it("다음 쪽(cursor)이 사진 리뷰만으로 이어지고 중복·누락이 없으며, 사진 없는 리뷰 id를 cursor로 줘도 걸러진 목록 기준이다", async () => {
+    const s = await shop();
+    const t0 = Date.now();
+    for (let i = 0; i < 23; i++) await s.review(5, { photos: 1, createdAt: new Date(t0 - i * 60_000) });
+    // 사진 없는 리뷰들은 사진 리뷰 사이(여섯 번째와 일곱 번째 사이)에 둔다
+    const plain = await s.review(4, { createdAt: new Date(t0 - 5.5 * 60_000) });
+    for (let i = 0; i < 9; i++) await s.review(4, { createdAt: new Date(t0 - 5.5 * 60_000 - (i + 1) * 1000) });
+    const first = await summary(s, s.seller.slug, s.product.id, "?photoOnly=true");
+    expect(first.body.reviews).toHaveLength(20);
+    expect(first.body.reviews.every((r: any) => r.images.length > 0)).toBe(true);
+    expect(first.body.nextCursor).toBeTruthy();
+    const second = await summary(s, s.seller.slug, s.product.id, `?photoOnly=true&cursor=${first.body.nextCursor}`);
+    expect(second.body.reviews).toHaveLength(3);
+    expect(second.body.nextCursor).toBeNull();
+    const ids = [...first.body.reviews, ...second.body.reviews].map((r: any) => r.id);
+    expect(new Set(ids).size).toBe(23);
+    // 사진 없는 리뷰 id는 걸러진 목록에 없으므로 cursor로 무시되어 처음 쪽이 나온다(걸러지지 않은 목록 기준이면 일곱 번째부터 17개만 나옴)
+    const bogus = await summary(s, s.seller.slug, s.product.id, `?photoOnly=true&cursor=${plain.id}`);
+    expect(bogus.body.reviews).toHaveLength(20);
+    expect(bogus.body.reviews[0].id).toBe(first.body.reviews[0].id);
   });
 });
