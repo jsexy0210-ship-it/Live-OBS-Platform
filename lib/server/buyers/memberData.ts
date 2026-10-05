@@ -20,6 +20,7 @@ export const MEMBER_DATA_POLICY: Record<string, { policy: MemberDataPolicy; note
   RefundRequest: { policy: "retain_legal", note: "구매자 환불 요청(청약철회·분쟁 처리 기록, 주문과 같은 법정 보관). 사유는 주문과 함께 남고 보관 기간 뒤 주문 파기와 함께 지운다" },
   ReturnRequestImage: { policy: "retain_legal", note: "신청에 붙은 사진은 신청과 함께 법정 보관. 신청에 붙지 않은 사진은 탈퇴 때 지운다" },
   MemberMemo: { policy: "delete", note: "파트너스가 적은 회원 메모(자유 입력이라 개인정보가 섞일 수 있음). 탈퇴하면 지운다" },
+  MemberMessageRecipient: { policy: "delete", note: "회원 대상 발송의 받는 사람 기록(shop-member-messages, 개인정보 없음·연락처 저장 안 함). 탈퇴하면 지운다" },
   MemberGradeOverride: { policy: "delete", note: "파트너스가 고정한 회원 표시(개인정보 없음). 탈퇴하면 지운다" },
   MemberGradeHistory: { policy: "delete", note: "등급 변경 기록(등급 이름과 금액만, 개인정보 없음). 탈퇴하면 지운다" },
   ProductReviewReport: { policy: "anonymize", note: "리뷰 신고 기록은 남긴다(보류는 판매자만 풀어야 해서 신고 사실이 필요). 신고자는 비식별된 탈퇴 회원 행으로만 이어진다" },

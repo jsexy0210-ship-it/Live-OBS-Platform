@@ -24,6 +24,7 @@ const rowOf = (page: Page, orderNo: number) => page.getByTestId("refund-request-
 test("주문 목록에서 환불 요청 화면으로 들어간다", async ({ page }) => {
   await page.goto(`/seller/login?next=${encodeURIComponent("/seller/orders")}`);
   await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
+  // 왼쪽 메뉴에도 같은 이름의 항목이 있어, 주문 목록 화면 안의 링크로 한정한다
   await page.locator("main").getByRole("link", { name: "환불 요청" }).click();
   await expect(page).toHaveURL(/\/seller\/orders\/refund-requests$/);
   await expect(page.getByRole("heading", { level: 1, name: "환불 요청" })).toBeVisible();

@@ -27,7 +27,7 @@ async function open(page: Page, width: number) {
   await page.getByRole("button", { name: "로그인" }).click();
   await expect(page).toHaveURL(/\/admin$/);
   await page.goto("/admin/settings/messages");
-  await expect(page.getByTestId("price-row")).toHaveCount(7);
+  await expect(page.getByTestId("price-row")).toHaveCount(11);
 }
 
 const opener = (page: Page) => page.getByTestId("price-row").filter({ hasText: "단문 문자" }).getByRole("button", { name: "변경" });
