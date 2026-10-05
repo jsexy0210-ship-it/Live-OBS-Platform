@@ -30,7 +30,7 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
     window.location.assign("/seller/suspended");
   }
   notifyPlanFeature(path, visit, res.status, body.error);
-  return { ok: false, status: res.status, error: body.error ?? "unknown", message: body.message, body };
+  return { ok: false, status: res.status, error: body.error ?? "unknown", message: body.message ?? readOnlyMessage(res.status, body.error), body };
 }
 
 // 파일 바이트를 본문 그대로 올리는 요청(이미지 업로드 등). 응답 처리와 401 로그인 이동은 api()와 같다.
@@ -49,7 +49,12 @@ export async function apiUpload<T>(path: string, file: Blob, init: { method?: "P
   }
   const body = data as { error?: string; message?: string } & Record<string, unknown>;
   notifyPlanFeature(path, visit, res.status, body.error);
-  return { ok: false, status: res.status, error: body.error ?? "unknown", message: body.message, body };
+  return { ok: false, status: res.status, error: body.error ?? "unknown", message: body.message ?? readOnlyMessage(res.status, body.error), body };
+}
+
+// 마스터 대리 조회 중 허용 밖 요청(403 impersonation_read_only): 오류 화면 대신 이 안내를 보인다
+function readOnlyMessage(status: number, error: string | undefined): string | undefined {
+  return status === 403 && error === "impersonation_read_only" ? "대리 조회 중에는 볼 수 없습니다" : undefined;
 }
 
 // 지금 요금제에 없는 기능이라 서버가 막으면(403 plan_feature_required) 파트너스 틀(SellerShell)이 안내 화면으로 바꾸도록 알린다.
@@ -111,6 +116,9 @@ export type Me = { sellerId: string; userId: string; isOwner: boolean; permissio
   shop: { name: string; slug: string };
   user: { name: string; email: string };
   trialEndsAt: string | null;
+  // 마스터 대리 조회(MA-016)면 true. impersonation은 누가·왜·언제까지 보는지(배너용)
+  readOnly?: boolean;
+  impersonation?: { adminName: string; reason: string; startedAt: string; expiresAt: string } | null;
 };
 
 // 재고 차감 시점: ORDER=주문하면 바로, PAYMENT=결제하면(기본)

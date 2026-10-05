@@ -407,7 +407,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
 
   return (
     <Ctx.Provider value={{ me, trialDaysLeft, openNav, can, loc }}>
-      <div className={`cs${navOpen ? " nav-open" : ""}`}>
+      <div className={`cs${navOpen ? " nav-open" : ""}${me.impersonation ? " imp" : ""}`} data-readonly={me.readOnly ? "true" : undefined}>
         <header className="gnb">
           <button className="gnb-menu" type="button" aria-label="메뉴 열기" onClick={openNav}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
@@ -443,6 +443,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
             <span className="util-desk">{utilities}</span>
           </div>
         </header>
+        {me.impersonation && <ImpersonationBar shop={me.shop.name} imp={me.impersonation} />}
         {logoutError && (
           <div className="msg msg-neg logout-err" role="alert">
             로그아웃하지 못했습니다. 다시 시도해 주십시오
@@ -541,6 +542,44 @@ export function Topbar({ crumb, badge, children }: { crumb: string; badge?: Reac
       </div>
       <AccessBanner />
     </>
+  );
+}
+
+// 마스터 대리 조회 배너(MA-016 정본): GNB 아래 고정, 쇼핑몰·운영자·사유·남은 시간·종료. 종료는 관리자 세션으로 끝내고 파트너스 목록으로 돌아간다.
+// 끝나는 시각이 지나면 /me를 다시 읽어 세션 만료(401)를 로그인 화면으로 처리한다.
+function ImpersonationBar({ shop, imp }: { shop: string; imp: NonNullable<Me["impersonation"]> }) {
+  const [now, setNow] = useState(() => Date.now());
+  const [ending, setEnding] = useState(false);
+  const [endFailed, setEndFailed] = useState(false);
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const left = Math.max(0, Math.floor((new Date(imp.expiresAt).getTime() - now) / 1000));
+  const end = async () => {
+    setEnding(true);
+    setEndFailed(false);
+    const r = await api("/api/admin/impersonation", { method: "DELETE" });
+    if (r.ok) window.location.assign("/admin/partners");
+    else {
+      setEnding(false);
+      setEndFailed(true);
+    }
+  };
+  const mm = String(Math.floor(left / 60)).padStart(2, "0");
+  const ss = String(left % 60).padStart(2, "0");
+  return (
+    <div className="imp-bar" role="status">
+      <b>읽기 전용 · 대리 조회</b>
+      <span className="imp-txt ell">
+        「{shop}」 화면을 보는 중 · 운영 {imp.adminName} · 사유 {imp.reason}
+      </span>
+      {endFailed && <span className="imp-err">종료하지 못했습니다</span>}
+      <span className="imp-left">{left === 0 ? "시간이 끝났습니다" : `남은 시간 ${mm}:${ss}`}</span>
+      <button className="btn btn-sm imp-end" type="button" disabled={ending} onClick={() => void end()}>
+        종료
+      </button>
+    </div>
   );
 }
 
