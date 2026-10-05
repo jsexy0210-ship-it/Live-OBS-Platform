@@ -17,7 +17,7 @@ test.afterAll(async () => {
   await resetCartInDb(SLUG, LOGIN, []);
 });
 
-test("쿠폰을 고르면 쿠폰 할인이 요약에 보이고 결제 예정 금액에서 빠진다", async ({ page, baseURL }) => {
+test("쿠폰을 고르면 쿠폰 할인이 요약에 보이고 최종 결제 금액에서 빠진다", async ({ page, baseURL }) => {
   await resetCartInDb(SLUG, LOGIN, [{ productName: "스타라이트 부스터 박스", quantity: 1 }]);
   const r = await page.request.post(`/api/shop/${SLUG}/auth/login`, { data: { loginId: LOGIN, password: PASSWORD }, headers: { origin: baseURL! } });
   expect(r.status()).toBe(200);
@@ -29,7 +29,7 @@ test("쿠폰을 고르면 쿠폰 할인이 요약에 보이고 결제 예정 금
   await page.getByLabel("우편번호").fill("06234");
   await page.getByLabel("주소", { exact: true }).fill("서울 강남구 테스트로 12");
   const sum = page.getByRole("complementary", { name: "주문 금액" });
-  const total = sum.locator(".cart-row", { hasText: "결제 예정 금액" }).locator("b");
+  const total = sum.locator(".cart-row", { hasText: "최종 결제 금액" }).locator("b");
   await expect(total).toContainText("원");
   const before = Number((await total.innerText()).replace(/[^0-9]/g, ""));
   await expect(sum.getByText("쿠폰 할인")).toHaveCount(0);

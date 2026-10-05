@@ -5,8 +5,10 @@ import { purgeOldSignupVerificationIps, purgeUnfinishedSignupVerifications } fro
 import { prisma } from "../db";
 import { purgeExpiredOAuthStates, purgeOldWebhookEvents, refreshDueTokens } from "../external/jobs";
 import { processWebhookEvents } from "../external/process";
+import { reconcileOrders } from "../external/reconcile";
 import { externalProvider } from "../external/provider";
 import { MESSAGE_JOB_NAME, runMessageJobs } from "../messaging/jobs";
+import { purgeFunnelDaily, purgeFunnelSeen } from "../stats/funnel";
 import { recalcMonthlyGrades } from "../shop-member-grades/service";
 import { processDueMemberMessages } from "../shop-member-messages/service";
 import { markInstanceRetired, purgeOldOpsEvents, purgeRetiredHeartbeats, recordHeartbeat, registerInstance } from "../ops/metrics";
@@ -40,9 +42,14 @@ export const SCHEDULED_JOBS: ScheduledJob[] = [
   { name: "external_webhook_event.purge_old", run: (tx, now) => purgeOldWebhookEvents(tx, now) },
   { name: "external_shop.refresh_tokens", run: (_tx, now) => refreshDueTokens(prisma, externalProvider(), now) },
   // 웹훅으로 받아 아직 처리하지 못한 외부 주문 이벤트를 주문대기·취소로 옮긴다(수신 직후 처리가 실패했거나 토큰 갱신을 기다린 것, external/process.ts)
+  // 웹훅이 빠진 주문 보정: 최근 24시간 결제·취소 주문을 목록 조회로 다시 훑는다(external/reconcile.ts)
+  { name: "external_shop.reconcile_orders", run: async (_tx, now) => { const r = await reconcileOrders(prisma, externalProvider(), { now }); return r.stored + r.cancelled; } },
   { name: "external_webhook_event.process", run: async (_tx, now) => (await processWebhookEvents(prisma, externalProvider(), { now })).processed },
   // 회원 등급 자동 재산정: 켠 쇼핑몰만, 쇼핑몰마다 달(KST)에 한 번(shop-member-grades)
   { name: "member_grade.recalc_monthly", run: (_tx, now) => recalcMonthlyGrades(prisma, now) },
+  // 전환 단계 통계: 중복 제거 표 8일·일 집계 400일 지난 것 삭제(stats/funnel.ts)
+  { name: "product_funnel_seen.purge_old", run: (tx, now) => purgeFunnelSeen(tx, now) },
+  { name: "product_funnel_daily.purge_old", run: (tx, now) => purgeFunnelDaily(tx, now) },
   // 회원 대상 발송: 시각이 된 예약을 기록으로 바꾼다(shop-member-messages, 실제 발송 채널은 아직 없음)
   { name: "member_message.record_due", run: (_tx, now) => processDueMemberMessages(prisma, now) },
 ];

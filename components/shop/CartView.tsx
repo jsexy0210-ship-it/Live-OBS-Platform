@@ -60,6 +60,8 @@ export default function CartView({ slug }: { slug: string }) {
   const [msg, setMsg] = useState<{ ok: boolean; text: string; undo?: { optionId: string; quantity: number } } | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [ack, setAck] = useState<Record<string, number>>({});
+  // 서버 견적(읽기 전용): 고른 줄의 배송비와 결제 예정 금액. 배송지가 없으면 일반 지역 기준이라 제주·도서는 주문서에서 달라질 수 있다.
+  const [quote, setQuote] = useState<{ kind: "idle" } | { kind: "loading" } | { kind: "error" } | { kind: "ok"; shippingFee: number; total: number }>({ kind: "idle" });
   useEffect(() => setAck(readAck(slug)), [slug]);
 
   const load = useCallback(
@@ -93,6 +95,24 @@ export default function CartView({ slug }: { slug: string }) {
     setAck(next);
     writeAck(slug, next);
   }
+  const quoteKey = chosen.map((l) => `${l.optionId}:${l.quantity}`).join(",");
+  useEffect(() => {
+    if (!quoteKey) return setQuote({ kind: "idle" });
+    let live = true;
+    setQuote({ kind: "loading" });
+    const t = window.setTimeout(async () => {
+      const items = quoteKey.split(",").map((x) => ({ optionId: x.split(":")[0], quantity: Number(x.split(":")[1]) }));
+      const r = await call<{ shippingFee: number; totalAmount: number }>(`/api/shop/${encodeURIComponent(slug)}/orders/quote`, { method: "POST", body: { items } });
+      if (live) setQuote(r.ok ? { kind: "ok", shippingFee: r.data.shippingFee, total: r.data.totalAmount } : { kind: "error" });
+    }, 300);
+    return () => {
+      live = false;
+      window.clearTimeout(t);
+    };
+  }, [quoteKey, slug]);
+  const listTotal = chosen.reduce((s, l) => s + l.listUnitPrice * l.quantity, 0);
+  const discount = Math.max(0, listTotal - total);
+  const finalTotal = quote.kind === "ok" ? quote.total : total;
   const failMsg = (r: { message?: string }) => r.message ?? "처리하지 못했어요. 잠시 뒤 다시 해 주세요";
 
   const toggle = (id: string) => setPicked((p) => (p.has(id) ? new Set([...p].filter((x) => x !== id)) : new Set(p).add(id)));
@@ -221,6 +241,15 @@ export default function CartView({ slug }: { slug: string }) {
       )}
       <div className="cart-two">
         <div>
+          <div className="cart-mbar">
+            <label className="chk">
+              <input type="checkbox" className="cbx" checked={allPicked} onChange={toggleAll} disabled={selectable.length === 0} />
+              전체 선택 ({chosen.length}/{lines.length})
+            </label>
+            <button className="btn btn-sm btn-out" type="button" disabled={busy || chosen.length === 0} onClick={() => setConfirming(true)}>
+              선택 삭제
+            </button>
+          </div>
           <table className="cart-tbl">
             <thead>
               <tr>
@@ -242,7 +271,9 @@ export default function CartView({ slug }: { slug: string }) {
                       <input type="checkbox" checked={picked.has(l.id) && !out} disabled={out} onChange={() => toggle(l.id)} aria-label={`${l.productName} 선택`} />
                     </td>
                     <td className="c-info">
-                      <b>{l.productName}</b>
+                      <Link href={`${base}/products/${l.productId}`}>
+                        <b>{l.productName}</b>
+                      </Link>
                       <span className="cart-opt">{l.optionName}</span>
                       {out && <span className="cart-tag">품절 · 주문에서 빠져요</span>}
                       {l.status === "not_enough_stock" && (
@@ -308,18 +339,36 @@ export default function CartView({ slug }: { slug: string }) {
         <aside className="cart-sum" aria-label="주문 금액">
           <div className="cart-row">
             <span>상품 금액 ({chosen.length}개)</span>
-            <b>{won(total)}</b>
+            <b>{won(chosen.length > 0 ? listTotal : 0)}</b>
           </div>
+          {discount > 0 && (
+            <div className="cart-row">
+              <span>할인 (쿠폰은 주문서에서 선택)</span>
+              <span>−{won(discount)}</span>
+            </div>
+          )}
+          {chosen.length > 0 && (
+            <>
+              <div className="cart-row">
+                <span>배송비</span>
+                <span>{quote.kind === "ok" ? won(quote.shippingFee) : quote.kind === "error" ? "주문서에서 알려 드려요" : "계산하고 있어요"}</span>
+              </div>
+              <div className="cart-row cart-total">
+                <span>결제 예정 금액</span>
+                <b>{quote.kind === "ok" ? won(quote.total) : "—"}</b>
+              </div>
+            </>
+          )}
           {chosen.length > 0 ? (
             <Link className="btn btn-lg btn-block" href={orderHref}>
-              {won(total)} 주문하기
+              {won(finalTotal)} 주문하기
             </Link>
           ) : (
             <button className="btn btn-lg btn-block" type="button" disabled>
               주문할 상품을 골라 주세요
             </button>
           )}
-          <p className="cart-hint">품절 상품은 주문에서 자동으로 빠져요</p>
+          <p className="cart-hint">방송 중 주문은 결제가 끝난 순서대로 열어요 · 품절 상품은 주문에서 자동으로 빠져요</p>
         </aside>
       </div>
       {confirming && (

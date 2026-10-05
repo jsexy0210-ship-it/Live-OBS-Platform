@@ -27,7 +27,7 @@ const MENU: Group[] = [
     key: "home",
     label: "홈",
     items: [
-      { label: "홈", plan: "ANY" },
+      { label: "홈", plan: "STORE_OPERATIONS", alt: { plan: "OVERLAY", href: "/seller/home-overlay" } },
       { label: "시작하기", href: "/seller/onboarding", plan: "ANY", lnbOnly: true },
     ],
   },

@@ -4,12 +4,14 @@ import { requireSeller } from "../../../../lib/server/authz/guards";
 import { billingProvider } from "../../../../lib/server/billing/registry";
 import { prisma } from "../../../../lib/server/db";
 import { mutation, noStore, readJson, sessionToken } from "../../../../lib/server/http/route";
+import { requireSellerPermission } from "../../../../lib/server/tenant/context";
 
 // 재연결·재설치(대표자 전용). body { target: { shopKey, obsPairingId }, consent? }, 헤더 Idempotency-Key.
 // 완료 뒤 30일 안 같은 쇼핑몰·같은 PC면 무료로 바로 대기열(201). 아니면 consent 없이 오면 402 + 금액·사유,
 // consent를 붙여 다시 오면 33,000원 재설치로 결제한다.
 export const POST = mutation(async (req: Request) => {
-  const ctx = await requireSeller(prisma, sessionToken(req, "seller"));
+  const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "OVERLAY" });
+  requireSellerPermission(ctx, "SUBSCRIPTION_MANAGE"); // 결제 공급자를 만들기 전에 막는다(서비스도 같은 권한을 다시 확인한다)
   const body = await readJson<{ target: unknown; consent: unknown; shopUrl: unknown }>(req);
   const r = await reconnectAutomation(prisma, billingProvider(), ctx, { idempotencyKey: req.headers.get("idempotency-key"), consent: body.consent, target: body.target, shopUrl: body.shopUrl });
   if (r.ok) return noStore(NextResponse.json(r, { status: r.paymentStatus === "PENDING" ? 202 : r.replayed ? 200 : 201 }));

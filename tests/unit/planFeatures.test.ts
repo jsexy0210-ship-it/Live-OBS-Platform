@@ -164,6 +164,8 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/reward-live-payout": "STORE_OPERATIONS",
   "seller/share-preview": "STORE_OPERATIONS",
   "seller/seo": "STORE_OPERATIONS",
+  "seller/brand-color": "STORE_OPERATIONS",
+  "seller/favicon": "STORE_OPERATIONS",
   "seller/shipping-policy": "STORE_OPERATIONS",
   "seller/shop-search/synonyms": "STORE_OPERATIONS", // 검색 유사어 묶음
   "seller/notices": "STORE_OPERATIONS",
@@ -209,6 +211,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/hit-cards": "OVERLAY",
   "seller/hit-cards/[hitCardId]": "OVERLAY",
   "seller/stats/broadcasts": "OVERLAY",
+  "seller/stats/funnel": "STORE_OPERATIONS",
   "seller/stats/coupons": "STORE_OPERATIONS",
   "seller/stats/hourly": "STORE_OPERATIONS",
   "seller/stats/members": "STORE_OPERATIONS",
@@ -232,6 +235,7 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/signup/verification/confirm": "STORE_OPERATIONS",
   "shop/[slug]/share": "STORE_OPERATIONS",
   "shop/[slug]/og.png": "STORE_OPERATIONS",
+  "shop/[slug]/favicon/[size]": "STORE_OPERATIONS",
   "shop/[slug]/shop-content": "STORE_OPERATIONS", // 홈 배너·이벤트 팝업
   "shop/[slug]/shop-content/images/[imageId]": "STORE_OPERATIONS",
   "shop/[slug]/coupons/code": "STORE_OPERATIONS", // 쿠폰 받기(코드·내려받기)는 shopOpen으로 막음

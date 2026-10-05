@@ -21,6 +21,7 @@ type Preview = { kind: "idle" } | { kind: "loading" } | { kind: "error"; message
 type Form = { recipientName: string; phone: string; zipCode: string; address1: string; address2: string; memo: string };
 
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
+const MEMOS = ["문 앞에 두세요", "경비실에 맡겨 주세요", "배송 전 연락 주세요"];
 const EMPTY: Form = { recipientName: "", phone: "", zipCode: "", address1: "", address2: "", memo: "" };
 const NEW = "new";
 // 적립금 사용 규칙(서버 lib/server/payments/rewardUse.ts와 같음): 1,000원부터 10원 단위, 상품 금액까지(배송비 불가), 결제 금액 1원 이상 남김
@@ -48,6 +49,7 @@ export default function CheckoutView({ slug, memberNickname = "" }: { slug: stri
   const [form, setForm] = useState<Form>(EMPTY);
   const [save, setSave] = useState(true);
   const [couponId, setCouponId] = useState("");
+  const [payMethod, setPayMethod] = useState<"card" | "bank">("card"); // 결제 수단: 주문한 뒤 주문 상세에서 이 수단이 골라진 채로 결제한다
   const [nickname, setNickname] = useState(memberNickname); // 기본값은 회원 방송 닉네임
   const [rewardText, setRewardText] = useState("0"); // 적립금은 기본 0(쓰지 않음)
   const [rewardGone, setRewardGone] = useState(false); // 서버가 「이 쇼핑몰은 적립금을 쓸 수 없어요」로 거절하면 영역을 숨긴다
@@ -213,7 +215,7 @@ export default function CheckoutView({ slug, memberNickname = "" }: { slug: stri
     }
     const cleared = await call<{ count: number }>(`${api}/cart`, { method: "DELETE", body: { itemIds: ids } }); // 주문한 줄은 장바구니에서 뺀다(실패해도 주문은 이미 됐다)
     if (cleared.ok) window.dispatchEvent(new CustomEvent(CART_COUNT_EVENT, { detail: cleared.data.count })); // 머리 배지도 바로 맞춘다
-    router.push(`${base}/orders/${r.data.orderId}?done=1`);
+    router.push(`${base}/orders/${r.data.orderId}?done=1&pay=${payMethod}`);
   }
 
   const field = (k: keyof Form, label: string, props: React.InputHTMLAttributes<HTMLInputElement> = {}) => (
@@ -227,23 +229,14 @@ export default function CheckoutView({ slug, memberNickname = "" }: { slug: stri
   return wrap(
     <div className="cart-two">
       <div className="co-main">
-        <section className="co-box" aria-labelledby="co-items">
-          <h2 id="co-items">
-            주문 상품 <span>{checkout.lines.length}개</span>
-          </h2>
-          <ul className="co-lines">
-            {checkout.lines.map((l) => (
-              <li key={l.id}>
-                <div>
-                  <b>{l.productName}</b>
-                  <span className="cart-opt">
-                    {l.optionName} × {l.quantity}
-                  </span>
-                </div>
-                <b>{won(l.lineTotal)}</b>
-              </li>
-            ))}
-          </ul>
+        <section className="co-box" aria-labelledby="co-nick">
+          <h2 id="co-nick">방송 닉네임</h2>
+          <div className="co-field">
+            <label htmlFor="co-nickname">이 주문의 닉네임</label>
+            <input id="co-nickname" className={`inp${tried && !nickOk ? " is-error" : ""}`} value={nickname} onChange={(e) => setNickname(e.target.value)} maxLength={20} aria-invalid={tried && !nickOk} />
+            {tried && !nickOk && <span className="co-err">닉네임은 20자까지 쓸 수 있어요</span>}
+          </div>
+          <span className="cart-hint">방송 화면에 이 닉네임으로 나와요. 이 주문에만 쓰고 회원 닉네임은 바뀌지 않아요.</span>
         </section>
 
         <section className="co-box" aria-labelledby="co-addr">
@@ -283,6 +276,18 @@ export default function CheckoutView({ slug, memberNickname = "" }: { slug: stri
               {field("zipCode", "우편번호", { inputMode: "numeric", maxLength: 5, placeholder: "5자리" })}
               {field("address1", "주소", { autoComplete: "address-line1", maxLength: 200 })}
               {field("address2", "상세 주소", { autoComplete: "address-line2", maxLength: 100 })}
+              <div className="co-field">
+                <label htmlFor="co-memo-pick">배송 메모 고르기</label>
+                <select id="co-memo-pick" className="inp" value={MEMOS.includes(form.memo) ? form.memo : form.memo === "" ? "" : "custom"} onChange={(e) => setForm((f) => ({ ...f, memo: e.target.value === "custom" ? "" : e.target.value }))}>
+                  <option value="">메모 없음</option>
+                  {MEMOS.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                  <option value="custom">직접 입력</option>
+                </select>
+              </div>
               {field("memo", "배송 메모", { maxLength: 100, placeholder: "예: 문 앞에 두세요" })}
               <label className="co-check">
                 <input type="checkbox" checked={save} onChange={(e) => setSave(e.target.checked)} />
@@ -292,14 +297,51 @@ export default function CheckoutView({ slug, memberNickname = "" }: { slug: stri
           )}
         </section>
 
-        <section className="co-box" aria-labelledby="co-nick">
-          <h2 id="co-nick">방송 닉네임</h2>
-          <div className="co-field">
-            <label htmlFor="co-nickname">이 주문의 닉네임</label>
-            <input id="co-nickname" className={`inp${tried && !nickOk ? " is-error" : ""}`} value={nickname} onChange={(e) => setNickname(e.target.value)} maxLength={20} aria-invalid={tried && !nickOk} />
-            {tried && !nickOk && <span className="co-err">닉네임은 20자까지 쓸 수 있어요</span>}
-          </div>
-          <span className="cart-hint">방송 화면에 이 닉네임으로 나와요. 이 주문에만 쓰고 회원 닉네임은 바뀌지 않아요.</span>
+        <section className="co-box" aria-labelledby="co-items">
+          <h2 id="co-items">
+            주문 상품 <span>{checkout.lines.length}개</span>
+          </h2>
+          <ul className="co-lines">
+            {checkout.lines.map((l) => (
+              <li key={l.id}>
+                <div>
+                  <b>{l.productName}</b>
+                  <span className="cart-opt">
+                    {l.optionName} × {l.quantity}
+                  </span>
+                </div>
+                <b>{won(l.lineTotal)}</b>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section className="co-box" aria-labelledby="co-coupon">
+          <h2 id="co-coupon">쿠폰</h2>
+          <label className="co-field" htmlFor="co-coupon-sel">
+            <span>사용할 쿠폰</span>
+          </label>
+          <select id="co-coupon-sel" className="inp" value={couponId} onChange={(e) => {
+              setCouponNotice(null);
+              setCouponId(e.target.value);
+            }} disabled={coupons.length === 0}>
+            <option value="">{coupons.length === 0 ? "쓸 수 있는 쿠폰이 없어요" : "쿠폰을 쓰지 않아요"}</option>
+            {coupons.map((c) => {
+              const short = c.minOrderAmount !== null && checkout.subtotal < c.minOrderAmount;
+              return (
+                <option key={c.couponId} value={c.couponId} disabled={short}>
+                  {c.name} · {c.benefitText}
+                  {short ? ` (${won(c.minOrderAmount!)} 이상)` : ""}
+                </option>
+              );
+            })}
+          </select>
+          {couponNotice && (
+            <span className="co-err" role="alert">
+              {couponNotice}
+            </span>
+          )}
+          <span className="cart-hint">한 번에 한 장만 쓸 수 있어요. 할인 금액은 주문할 때 한 번 더 확인해요.</span>
         </section>
 
         {rewardOn && (
@@ -340,32 +382,25 @@ export default function CheckoutView({ slug, memberNickname = "" }: { slug: stri
           </section>
         )}
 
-        <section className="co-box" aria-labelledby="co-coupon">
-          <h2 id="co-coupon">쿠폰</h2>
-          <label className="co-field" htmlFor="co-coupon-sel">
-            <span>사용할 쿠폰</span>
-          </label>
-          <select id="co-coupon-sel" className="inp" value={couponId} onChange={(e) => {
-              setCouponNotice(null);
-              setCouponId(e.target.value);
-            }} disabled={coupons.length === 0}>
-            <option value="">{coupons.length === 0 ? "쓸 수 있는 쿠폰이 없어요" : "쿠폰을 쓰지 않아요"}</option>
-            {coupons.map((c) => {
-              const short = c.minOrderAmount !== null && checkout.subtotal < c.minOrderAmount;
-              return (
-                <option key={c.couponId} value={c.couponId} disabled={short}>
-                  {c.name} · {c.benefitText}
-                  {short ? ` (${won(c.minOrderAmount!)} 이상)` : ""}
-                </option>
-              );
-            })}
-          </select>
-          {couponNotice && (
-            <span className="co-err" role="alert">
-              {couponNotice}
-            </span>
-          )}
-          <span className="cart-hint">한 번에 한 장만 쓸 수 있어요. 할인 금액은 주문할 때 한 번 더 확인해요.</span>
+        <section className="co-box" aria-labelledby="co-pay">
+          <h2 id="co-pay">결제 수단</h2>
+          <div className="co-radios" role="radiogroup" aria-label="결제 수단">
+            <label className="co-radio">
+              <input type="radio" name="pay" checked={payMethod === "card"} onChange={() => setPayMethod("card")} />
+              <span>
+                <b>신용 · 체크카드</b>
+              </span>
+            </label>
+            <label className="co-radio">
+              <input type="radio" name="pay" checked={payMethod === "bank"} onChange={() => setPayMethod("bank")} />
+              <span>
+                <b>무통장 입금</b>
+              </span>
+            </label>
+          </div>
+          <span className="cart-hint">
+            카드 결제는 결제 창에서 카드사 인증을 거쳐요. 주문하면 다음 화면에서 고른 수단으로 결제해요. 현금영수증 · 세금계산서는 무통장 입금을 고르면 신청할 수 있어요.
+          </span>
         </section>
       </div>
 
@@ -400,11 +435,11 @@ export default function CheckoutView({ slug, memberNickname = "" }: { slug: stri
         )}
         {preview.kind === "ok" && preview.withAddress && (
           <div className="cart-row">
-            <span>결제 예정 금액</span>
+            <span>최종 결제 금액</span>
             <b>{won(preview.total - (rewardOn ? rewardUse : 0))}</b>
           </div>
         )}
-        <p className="cart-hint">결제 예정 금액은 쿠폰·적립금을 뺀 금액이에요. 주문할 때 서버가 한 번 더 계산해요.</p>
+        <p className="cart-hint">최종 결제 금액은 쿠폰·적립금을 뺀 금액이에요. 주문할 때 서버가 한 번 더 계산해요.</p>
         <label className="co-check">
           <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} aria-describedby="co-consent-err" />
           <span>
@@ -425,7 +460,7 @@ export default function CheckoutView({ slug, memberNickname = "" }: { slug: stri
         <button className="btn btn-lg btn-block" type="button" disabled={busy} aria-busy={busy} onClick={() => void submit()}>
           {busy ? "주문하고 있어요" : "주문하기"}
         </button>
-        <p className="cart-hint">주문하면 결제 대기 상태로 접수되고, 다음 화면에서 결제 수단(카드·무통장 입금)을 골라요.</p>
+        <p className="cart-hint">주문하면 결제 대기 상태로 접수되고, 다음 화면에서 고른 결제 수단으로 결제해요.</p>
       </aside>
     </div>,
   );

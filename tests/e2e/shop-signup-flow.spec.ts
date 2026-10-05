@@ -38,7 +38,8 @@ async function fillIdentity(page: Page, name: string, phone = "01012345678") {
 
 async function fillAccount(page: Page, id: string, nickname: string) {
   await page.getByLabel("아이디 (이메일)").fill(`buyer-${id}@example.com`);
-  await page.getByLabel("비밀번호").fill(`pw-${id}-long`);
+  await page.getByLabel("비밀번호", { exact: true }).fill(`pw-${id}-long`);
+  await page.getByLabel("비밀번호 확인").fill(`pw-${id}-long`);
   await page.getByLabel("방송 닉네임").fill(nickname);
 }
 
@@ -66,6 +67,36 @@ async function toVerified(page: Page, name = "김구매") {
   await page.getByRole("button", { name: "확인", exact: true }).click();
   await expect(page.getByText("본인확인을 마쳤어요")).toBeVisible();
 }
+
+test("버튼이 잠긴 이유를 보여 준다: 인증번호 받기·가입하기에 아직 필요한 항목, 비밀번호 확인이 다르면 알려 준다", async ({ page }) => {
+  await mockApi(page, {});
+  await page.goto(`/shop/${SLUG}/signup`);
+  const send = page.getByRole("button", { name: "인증번호 받기" });
+  const missing = page.locator("#idv-missing");
+  await expect(send).toBeDisabled();
+  await expect(missing).toContainText("이름 · 생년월일 8자리 · 성별 · 통신사 · 휴대폰번호 · 필수 약관 동의");
+  await page.getByLabel("이름", { exact: true }).fill("김별빛");
+  await expect(missing).not.toContainText("이름");
+  await fillIdentity(page, "김별빛");
+  await expect(missing).toHaveCount(0);
+  await expect(send).toBeEnabled();
+
+  await toVerified(page);
+  const join = page.getByRole("button", { name: "가입하기" });
+  await expect(join).toBeDisabled();
+  await expect(page.locator("#acc-missing")).toContainText("아이디 · 비밀번호 · 방송 닉네임");
+  await page.getByLabel("아이디 (이메일)").fill("a@example.com");
+  await page.getByLabel("비밀번호", { exact: true }).fill("password-1234");
+  await page.getByLabel("방송 닉네임").fill("별빛");
+  await expect(page.locator("#acc-missing")).toContainText("비밀번호 확인");
+  await page.getByLabel("비밀번호 확인").fill("password-12");
+  await expect(page.getByText("비밀번호가 서로 달라요")).toBeVisible();
+  await expect(join).toBeDisabled();
+  await page.getByLabel("비밀번호 확인").fill("password-1234");
+  await expect(page.getByText("비밀번호가 서로 달라요")).toHaveCount(0);
+  await expect(page.locator("#acc-missing")).toHaveCount(0);
+  await expect(join).toBeEnabled();
+});
 
 test("본인확인 → 틀린 인증번호 → 맞는 인증번호 → 가입까지 실제로 된다", async ({ page }) => {
   const id = uniq();
@@ -303,7 +334,7 @@ test("가입 실패는 서버 문구를 해당 칸 아래나 위 안내에 보�
     if (where === "notice") await expect(page.getByRole("status").filter({ hasText: message })).toBeVisible();
     else {
       await expect(page.getByRole("alert").filter({ hasText: message })).toBeVisible();
-      await expect(page.getByLabel(field[where])).toHaveAttribute("aria-invalid", "true");
+      await expect(page.getByLabel(field[where], { exact: true })).toHaveAttribute("aria-invalid", "true");
     }
     // 실패해도 본인확인은 그대로라 고쳐서 다시 가입할 수 있다
     await expect(page.getByText("본인확인을 마쳤어요")).toBeVisible();
