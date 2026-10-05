@@ -82,3 +82,26 @@ test("상품 수정: 목록 → 수정 → 취소는 목록 조건으로 돌아�
   await page.getByRole("button", { name: "취소" }).first().click();
   await expect(page).toHaveURL(/\/seller\/products\?sort=price_asc$/);
 });
+
+test("목록 조건은 주소에 남아 새로고침·다른 화면 → Back에서도 유지된다(쿠폰 탭·적립금 원장 상태·방송 이력 기간)", async ({ page }) => {
+  await login(page, "/seller/coupons");
+  await page.getByRole("tab", { name: /^종료/ }).click();
+  await expect(page).toHaveURL(/\/seller\/coupons\?tab=ended$/);
+  await page.reload();
+  await expect(page.getByRole("tab", { name: /^종료/ })).toHaveAttribute("aria-selected", "true");
+
+  await page.goto("/seller/rewards/ledger");
+  await page.getByLabel("처리 상태").selectOption("SUCCEEDED");
+  await page.getByRole("button", { name: "검색" }).click();
+  await expect(page).toHaveURL(/\/seller\/rewards\/ledger\?status=SUCCEEDED$/);
+  await page.reload();
+  await expect(page.getByLabel("처리 상태")).toHaveValue("SUCCEEDED");
+
+  await page.goto("/seller/broadcasts");
+  await page.getByLabel("시작일").fill("2026-09-01");
+  await page.getByLabel("종료일").fill("2026-10-01");
+  await page.getByRole("button", { name: "검색" }).click();
+  await expect(page).toHaveURL(/\/seller\/broadcasts\?from=2026-09-01&to=2026-10-01$/);
+  await page.reload();
+  await expect(page.getByLabel("시작일")).toHaveValue("2026-09-01");
+});
