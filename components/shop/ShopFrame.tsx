@@ -4,9 +4,11 @@ import { COOKIE_NAMES } from "../../lib/server/auth/policy";
 import { resolveBuyerSession } from "../../lib/server/auth/session";
 import { prisma } from "../../lib/server/db";
 import { publicCategories } from "../../lib/server/shop-category/service";
+import { footerNotice } from "../../lib/server/shop-legal/notice";
 import { EventPopupForPage } from "./EventPopup";
 import LiveBar from "./LiveBar";
 import ShopChrome from "./ShopChrome";
+import { noticeRows, type FootRow } from "./footNotice";
 import "./ShopLegal.css";
 
 type BusinessInfo = { companyName?: unknown; representativeName?: unknown; businessNumber?: unknown; mailOrderNumber?: unknown };
@@ -18,7 +20,7 @@ const bizNo = (v: unknown) => {
 };
 
 // 바닥글 사업자 정보: 입점 신청 때 받은 값(Seller.businessInfo). 값이 없는 항목은 줄을 뺀다.
-// 주소·고객센터 번호는 파트너스 법정 고지 설정(SA-062)이 생기면 그 값을 더한다.
+// 주소·고객센터·이메일·사업자정보 확인·호스팅 제공·구매안전서비스·미성년자 구매 안내는 파트너스 법정 고지 설정(SA-062)에서 입력한 값(footNotice.ts, 입력한 것만 표시).
 function footRows(info: unknown): [string, string][] {
   const b = (info && typeof info === "object" ? info : {}) as BusinessInfo;
   const rows: [string, string | null][] = [
@@ -38,7 +40,10 @@ export default async function ShopFrame({ slug, shopName, children }: { slug: st
   const token = (await cookies()).get(COOKIE_NAMES.buyer)?.value;
   const session = seller ? await resolveBuyerSession(prisma, token, seller.id) : null;
   const categories = (await publicCategories(prisma, slug.slice(0, 60))) ?? [];
-  const rows = footRows(seller?.businessInfo);
+  // 입점 신청 때 받은 검증 값 + 파트너스가 입력한 법정 표시(주소·고객센터·구매안전서비스 등, SA-062)
+  const notice = seller ? await footerNotice(prisma, seller.id) : null;
+  const bizNumber = text((seller?.businessInfo as BusinessInfo | null)?.businessNumber);
+  const rows: FootRow[] = [...footRows(seller?.businessInfo).map(([label, value]) => ({ label, value })), ...(notice ? noticeRows(bizNumber, notice) : [])];
   return (
     <div className="shop-page">
       <ShopChrome slug={slug} shopName={shopName} loggedIn={!!session} nickname={session?.member.broadcastNickname ?? null} categories={categories} />
@@ -50,13 +55,18 @@ export default async function ShopFrame({ slug, shopName, children }: { slug: st
           <p className="shop-foot-name">{shopName}</p>
           {rows.length > 0 && (
             <dl className="shop-foot-info">
-              {rows.map(([k, v]) => (
-                <div key={k}>
-                  <dt>{k}</dt>
-                  <dd>{v}</dd>
+              {rows.map((r) => (
+                <div key={r.label}>
+                  <dt>{r.label}</dt>
+                  <dd>{r.href ? <a href={r.href} target="_blank" rel="noreferrer noopener">{r.value}</a> : r.value}</dd>
                 </div>
               ))}
             </dl>
+          )}
+          {notice?.minorNotice && (
+            <p className="shop-foot-minor" data-testid="shop-foot-minor">
+              {notice.minorNotice}
+            </p>
           )}
           <p className="shop-foot-links">
             <Link href={`/shop/${encodeURIComponent(slug)}/terms`}>이용약관</Link>

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>개봉 시작 · 완료 확인</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="app c24" data-theme="light" style="width: 1440px; min-height: 640px; padding: 24px; box-sizing: border-box; display: flex; gap: 24px; align-items: flex-start; justify-content: center">
+<div class="cfm" style="max-width: none; width: 660px"><div class="h">카드왕 주문을 개봉 시작하시겠습니까?<button class="x" type="button" aria-label="닫기">×</button></div><div class="bd">오버레이에 「지금 개봉 중」으로 표시되고 60초 타이머가 시작됩니다.<table class="lt"><thead><tr><th>구매자</th><th>상품</th><th>상태</th></tr></thead><tbody><tr><td><b>카드왕</b></td><td class="l">드래곤 소울 부스터 ×3 · 45,000원 · 카드 결제 완료 · 14:05:12</td><td><span class="tag bl">대기 → 개봉 중</span></td></tr></tbody></table><div style="margin-top: 8px"><label class="ck"><input type="checkbox" name="r">다음부터 이 확인을 건너뛰기 (Ctrl+Enter로 바로 시작)</label></div></div><div class="f"><button class="b pri" type="button">개봉 시작 <kbd style="display: inline-block; border: 1px solid #c9ced6; border-bottom-width: 2px; border-radius: 2px; padding: 0 4px; font-size: 10px; line-height: 14px; background: #fff; color: #555">Enter</kbd></button><button class="b " type="button">취소 <kbd style="display: inline-block; border: 1px solid #c9ced6; border-bottom-width: 2px; border-radius: 2px; padding: 0 4px; font-size: 10px; line-height: 14px; background: #fff; color: #555">Esc</kbd></button></div></div><div class="cfm" style="max-width: none; width: 660px"><div class="h">별빛사냥꾼 개봉을 완료하시겠습니까?<button class="x" type="button" aria-label="닫기">×</button></div><div class="bd">타이머가 <b>42초</b> 남았습니다. 완료하면 다음 주문 카드왕이 바로 개봉 대기 상태가 됩니다.<div style="margin-top: 8px"><div class="col" style="gap: 4px; align-items: flex-start"><label class="ck"><input type="radio" name="nx" checked>완료 후 대기</label><span class="hint">다음 주문은 내가 「개봉 시작」을 누를 때 시작합니다</span><label class="ck"><input type="radio" name="nx">완료 후 바로 다음 오픈</label><span class="hint">카드왕이 바로 개봉 중으로 바뀌고 타이머가 시작됩니다</span></div></div><div class="note inf" style="width: 100%">HIT 카드가 있었습니까? <button class="b sm" type="button">HIT 등록하고 완료</button></div></div><div class="f"><button class="b pri" type="button">개봉 완료</button><button class="b " type="button">취소</button></div></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":640}}'>
+class Component extends DCLogic { renderVals() { return {}; } }
+</script>
+</body>
+</html>

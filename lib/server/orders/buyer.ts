@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { ORDER_NOTICES } from "./messages";
+import { orderNoLabel } from "./orderNoLabel";
 import { COURIERS, isCourier } from "./shipping";
 
 // 구매자 본인 주문 조회(목록·상세). 조회 조건에는 항상 쇼핑몰(sellerId)과 본인(buyerMemberId)이 함께 들어가고,
@@ -38,10 +39,10 @@ type Shipment = { courier: string; trackingNumber: string; status: string; shipp
 const withCourierName = (s: Shipment) => (s ? { ...s, courierName: isCourier(s.courier) ? COURIERS[s.courier] : s.courier } : null);
 
 // 내부 값(stockShortageAt)은 빼고, 재고 부족으로 환불 대상인 결제 주문이면 구매자용 표시(needsRefund)와 안내 문구만 준다.
-function forBuyer<T extends { status: string; stockShortageAt: Date | null; shipment: Shipment }>(o: T) {
+function forBuyer<T extends { status: string; stockShortageAt: Date | null; shipment: Shipment; orderNo: number; createdAt: Date }>(o: T) {
   const { stockShortageAt, shipment, ...rest } = o;
   const needsRefund = o.status === "PAID" && stockShortageAt !== null;
-  return { ...rest, shipment: withCourierName(shipment), needsRefund, notice: needsRefund ? ORDER_NOTICES.stock_shortage_refund : null };
+  return { ...rest, orderNoLabel: orderNoLabel(o.createdAt, o.orderNo), shipment: withCourierName(shipment), needsRefund, notice: needsRefund ? ORDER_NOTICES.stock_shortage_refund : null };
 }
 
 // 목록: 최근 주문부터(createdAt 내림, id 내림), keyset 커서. 커서는 본인 주문 id만 받는다.

@@ -7,19 +7,23 @@
 | 세션 | ID | 담당 |
 |---|---|---|
 | Live-OBS-Platform MASTER (2) | `session_018xa8SC5evpEFNVcQBwcN5t` | 대표님 지시 전달 · 세션 배정·교체 · 상태 문서 관리(2026-10-04 대표님 지시로 검수·병합은 검수 전담에 넘김). 2026-10-02 17:21 KST 교체 생성 |
-| 검수 전담 (2) | `session_017wDPPy8EXzNu5zkAP2uu6R` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01MHJsYfiTFZ8VWkM3xVF7wM`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
+| 검수 전담 (4) | `session_01Wjnr6nWyiUkbYMPBmx7CPt` | 2026-10-06 00:05 KST MASTER 생성(Sonnet 5.5). `session_01FX4H9fYuFRUBq4EEXRqeXq` 를 컨텍스트 증가 속도(선제)로 교체. 역할·소유는 전임 행과 같음 |
+| 검수 전담 (3) | `session_01FX4H9fYuFRUBq4EEXRqeXq` | (교체됨 → `session_01Wjnr6nWyiUkbYMPBmx7CPt`, 2026-10-06)  2026-10-05 23:15 KST MASTER 생성(Sonnet 5.5). `session_017wDPPy8EXzNu5zkAP2uu6R`(검수 전담 (2))를 컨텍스트 78%로 교체. 역할·소유는 전임 행과 같음 |
+| 검수 전담 (2) | `session_017wDPPy8EXzNu5zkAP2uu6R` | (교체됨 → `session_01FX4H9fYuFRUBq4EEXRqeXq`, 2026-10-05)  2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01MHJsYfiTFZ8VWkM3xVF7wM`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | 개발 전담 (기반) (6) | `session_014TjcA8RirjWptikziBwasM` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01N4xJrEzQvUuRHB8QzcQcKE`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | 개발 전담 (기반-상품) (2) | `session_01Cr44KBNsnx39N7sPjPurpx` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_018WsyHpKDofgW5DEiS4tUoA`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | 개발 전담 (기반-쇼핑몰) (2) | `session_01DGVUmLcp7u4NTNbERqjkHj` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01GnUdkmvAEWEVA3Yh3wbB5a`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
-| 개발 전담 (기반-설정) (2) | `session_01VWSSGv5DNryPJeTT6xd9zX` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01EUBERBNF6aDTDawpJF4gkf`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
-| 개발 전담 (기반-유튜브) (2) | `session_01NnpcVX7ZtjRk8oBEM6fMj8` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01H4tkcKx7B9mokLRDNuBNYP`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
-| 레이아웃 전담 (4) · UI 현대화 | `session_01E7X37SDuT7CyPd67Yonm4k` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_015hHqzBD92PvX1wauiYmjyK`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
+| 개발 전담 (기반-설정) (2) | `session_01VWSSGv5DNryPJeTT6xd9zX` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01EUBERBNF6aDTDawpJF4gkf`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 — 2026-10-05 23:20 KST 배정분 전부 병합(#440·#553·#563·#571·#582·#592·#601·#606·#608), 열린 PR 0, 보관 |
+| 개발 전담 (기반-유튜브) (2) | `session_01NnpcVX7ZtjRk8oBEM6fMj8` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01H4tkcKx7B9mokLRDNuBNYP`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 — 2026-10-05 23:55 KST #474 병합, 보관 |
+| 레이아웃 전담 (5) · UI 현대화 | `session_017WgBx8FtCk7jBgmCL4id5V` | 2026-10-06 00:05 KST MASTER 생성(Sonnet 5.5). `session_01E7X37SDuT7CyPd67Yonm4k` 를 컨텍스트 67%로 교체. 역할·소유는 전임 행과 같음 |
+| 레이아웃 전담 (4) · UI 현대화 | `session_01E7X37SDuT7CyPd67Yonm4k` | (교체됨 → `session_017WgBx8FtCk7jBgmCL4id5V`, 2026-10-06)  2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_015hHqzBD92PvX1wauiYmjyK`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | UX 감사 전담 (2) | `session_01MHWWLyxFsh9VRU33s3g4DQ` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01GbMUeY3UxdmHvLeW5HQ7co`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | 화면-마스터 (2) | `session_01745GgCnQxQhtnpCd5Pv88w` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01JMzttsfKDXeXncJrX2VsLG`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
-| 화면-공개 (2) | `session_01VWVPemvkt3eicZ8fDRLSAR` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01HfJMUwycvTKgmVctvRpGjH`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
-| 화면-파트너스 운영 (2) | `session_01JFxmyNJFB2Ztwv2jUtQSCr` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_017i9HrY4Z9if193ZLQfJQbp`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
-| 쇼핑몰 운영 전담 (2) | `session_01WDkrYfwDz7o3oD8f2PeSvP` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01AKkKsTJjMHv2KaJLHh8u1y`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
-| 통계 전담 (2) | `session_01GPhc7Kd9oq7YFPv4Tar4ZX` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_013CH4KbJKN2cpDNBKtipGYL`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
+| 화면-공개 (2) | `session_01VWVPemvkt3eicZ8fDRLSAR` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01HfJMUwycvTKgmVctvRpGjH`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 — 2026-10-05 23:55 KST #565·#614 병합, 보관 |
+| 화면-파트너스 운영 (3) | `session_016P8zSbRmKFuuWC9krz69jq` | 2026-10-05 23:50 KST MASTER 생성(Sonnet 5.5). (2) `session_01JFxmyNJFB2Ztwv2jUtQSCr`를 컨텍스트 76%로 교체. 역할·소유는 전임 행과 같음 |
+| 화면-파트너스 운영 (2) | `session_01JFxmyNJFB2Ztwv2jUtQSCr` | (교체됨 → `session_016P8zSbRmKFuuWC9krz69jq`, 2026-10-05)  2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_017i9HrY4Z9if193ZLQfJQbp`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
+| 쇼핑몰 운영 전담 (2) | `session_01WDkrYfwDz7o3oD8f2PeSvP` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01AKkKsTJjMHv2KaJLHh8u1y`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 — 2026-10-05 23:45 KST 인계분(#455·#481·#500·#525·#547) 전부 병합, 열린 PR 0, 보관. 남은 것: 실제 발송 채널(대표님 결정) 뒤 SA-049 발송 기록을 발송에 연결 |
+| 통계 전담 (2) | `session_01GPhc7Kd9oq7YFPv4Tar4ZX` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_013CH4KbJKN2cpDNBKtipGYL`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 — 2026-10-05 23:55 KST #593 퍼널 API 병합, 보관. 남은 것: 퍼널 화면·브라우저 검증(화면 세션 미배정) |
 | 디자인 전담 (4) · Fable | `session_01QUUqmD2DDwArxHsUqMyA7Y` | 2026-10-05 대표님 지시 「디자인은 다 fable로 바꿔서 빨리 진행해」로 디자인 전담 (3)(`session_019Eb1gYYx6hQzm3VDbKmKmM`, Sonnet)을 Fable 5.1로 교체. 역할·소유는 전임 행과 같음. 첫 배정: docs/ADMIN_OPS_UX.md P1 보드 |
 | 인프라 전담 (2) | `session_013HzEF83eiqjaDFkjzVyUxD` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_016ErhcGpbBooDx8a9sYYUmK`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | 개발 전담 (기반-결제) (2) | `session_018dHyuf6MTABkU1qXJgwHVm` | 2026-10-05 대표님 지시로 `session_012jhVJxoLMffGfwxWvcKJom`를 Sonnet 5.5로 교체. 역할은 전임과 같음 |
@@ -38,9 +42,9 @@
 | 화면-마스터 | `session_01JMzttsfKDXeXncJrX2VsLG` | (교체됨 → `session_01745GgCnQxQhtnpCd5Pv88w`, 2026-10-05)  마스터 관리자 기능 화면(배정 `docs/SCREEN_STATUS.md`). 브랜딩 전담 (2) 소유 `app/(admin)/**` 중 해당 화면 경로만 인수(브랜딩·로그인·요금제 화면 제외, AdminShell은 레이아웃 전담). 2026-10-05 KST MASTER 생성 |
 | 화면-공개 | `session_01HfJMUwycvTKgmVctvRpGjH` | (교체됨 → `session_01VWVPemvkt3eicZ8fDRLSAR`, 2026-10-05)  플랫폼 소개·공개 PF 화면(`/`는 로그인 유지, 랜딩은 `/about`), 공통 404(AU-009)·점검 중(AU-010). 소유 `app/(public)/**`, `components/public/**`. 2026-10-05 KST MASTER 생성 |
 | 화면-파트너스 운영 | `session_017i9HrY4Z9if193ZLQfJQbp` | (교체됨 → `session_01JFxmyNJFB2Ztwv2jUtQSCr`, 2026-10-05)  파트너스 상품·주문·배송·문의 화면(SA-015~018·024·026~028·046·047). 새 경로와 전용 컴포넌트만 소유. 2026-10-05 KST MASTER 생성 |
-| 레이아웃 전담 (2) | `session_01MYKP5ZFqrNQk2QsYPyGu7j` | 아래 레이아웃 전담 교체(Sonnet). 소유에 `AdminShell.tsx` 포함(마스터 관리자 카페24식 셸). 2026-10-04 KST MASTER 생성 |
+| 레이아웃 전담 (2) | `session_01MYKP5ZFqrNQk2QsYPyGu7j` | 아래 레이아웃 전담 교체(Sonnet). 소유에 `AdminShell.tsx` 포함(마스터 관리자 카페24식 셸). 2026-10-04 KST MASTER 생성 — 2026-10-05 23:55 KST 인계 완료, 보관. 남은 것: feat/admin-modal(e984aa6) 공통 모달 e2e 4건 실패·PR 미작성 — 레이아웃 (4) 확인 필요 |
 | 구매자 쇼핑몰 전담 (2) | `session_01KEhmqBBhjTGfGfHyRzEFcy` | 구매자 쇼핑몰 전담(`session_01CAXDQrc5A28LdKYCwt7eGg`) 교체(Sonnet). 대표님 지시 카페24식 쇼핑몰(`docs/DESIGN_PROMPT.md` SH). 소유: `app/(shop)/**`, `components/shop/ShopFrame.tsx`·ShopLogo·ShopState, 새 구매자 쇼핑몰 컴포넌트, `styles/shop.css`(HomeBanner·EventPopup·CouponBox와 ShopFrame 팝업·로고 줄 제외). 2026-10-04 KST MASTER 생성 |
-| 브랜딩 전담 (2) | `session_01DKz4PdvKKdvcsgoBF1MJBU` | 아래 브랜딩 전담 교체(Sonnet). `AdminShell.tsx`는 레이아웃 전담으로 넘어감. 2026-10-04 KST MASTER 생성 |
+| 브랜딩 전담 (2) | `session_01DKz4PdvKKdvcsgoBF1MJBU` | 아래 브랜딩 전담 교체(Sonnet). `AdminShell.tsx`는 레이아웃 전담으로 넘어감. 2026-10-04 KST MASTER 생성 — 2026-10-05 23:55 KST #470 병합, 보관 |
 | (이전) MASTER | `session_01XqBPGTKiEMmRSMB5SfFp3C` | 컨텍스트 50% 도달로 교체. PR #15 병합 후 보관 완료 (2026-10-02 KST) |
 | 디자인 전담 (2) | `session_01DCQ38rPYwPnVCZJbhLgJnc` | (교체됨 → `session_019Eb1gYYx6hQzm3VDbKmKmM`, 2026-10-05)  2026-10-04 추가 배정: 관리자 화면 명사형·합니다체(v153), 로그 추적·아이디/비밀번호 찾기 통합(v152), SA-064 홈 배너·SA-065 이벤트 팝업·SH-001 표시(v154), 외부 쇼핑몰 솔루션 대비 추가 기능 12건(대표님 2026-10-04 모두 확정) 디자인 v155~v157, SA-060 로고 칸을 이미지 업로드 영역으로(v155 우선). 디자인 아티팩트 https://claude.ai/artifact/YYGXZ3u4QvjQpEMUHnN4tS 이어서 작업 (아티팩트 `project/` 파일만 소유). 우선순위: ① 오버레이 9:16·16:9 기본 템플릿 3종 ② 기존 아트보드 A안·화면 문구·도메인·도우미·구매자 문의 반영 ③ 남은 화면. 2026-10-02 18:45 KST MASTER 생성 |
 | 개발 전담 (기반) (4) | `session_016QFa8qXJSQSLrSFqvKCtWi` | 2026-10-04 추가 배정: 파트너스·마스터 관리자에게 보이는 서버 응답 문구(`message`)를 명사형·합니다체로 바꾼다(구매자·공개 API 문구는 해요체 유지). 화면 세션의 문구 전환 PR과 같은 때에 맞춘다. 진행 중. (3)에서 #169·대기열 인수(「미완료·블로커」의 「기반 세션 인계」). 소유: `prisma/**`(브랜딩·쇼핑몰 운영(팝업·배너·로고) 모델 블록과 그 마이그레이션 제외), `lib/server/**`(branding·shop-content·stats 제외), `app/api/**`(automation·branding·shop-content·seller/stats 제외), `tests/**`(`tests/e2e/**`는 화면 세션 소유라 제외, branding·shopContent·stats·`tests/e2e/shop-content*`·`tests/e2e/seller-stats*` 제외. `tests/unit/planFeatures.test.ts`는 쇼핑몰 운영 전담이 자기 경로 줄만 더한다), `docs/ARCHITECTURE.md`, `package*.json`, `ci.yml` 테스트 단계, `scripts/seed-obs-test.mjs`. 아래 「추가 기능 11건 개발 배정」의 쇼핑몰 운영 전담 소유 경로·모델 블록·마이그레이션은 제외. 2026-10-04 KST MASTER 생성 (2026-10-05 보관) |
@@ -157,6 +161,8 @@
 
 - **휴대폰 본인확인은 모든 개발과 디자인 정본 동기화를 마친 뒤 진행한다** (2026-10-05 22:20 KST 대표님 지시). 그때까지 본인확인 대행사 연동·실호출 시험을 하지 않는다. **결제(PG, 나이스페이) 시험은 계속 진행하고 화면 연계(주문 상세·주문 내역·파트너스 주문·마스터 결제 목록 반영)를 지속 확인한다** (같은 날 22:25 KST 대표님 지시로 PG 보류를 철회)
 - **Codex(chatgpt-codex-connector) 보안 리뷰는 중지하고 차후 일괄 진행한다** (2026-10-05 22:30 KST 대표님 지시). 설정은 저장소 밖(Codex 설정)이라 대표님이 끈다. 그때까지 PR의 Codex 한도·보안 리뷰 안내 글은 처리 대상이 아니며, 병합 판단은 CI·검수 전담 검토로 한다. 일괄 보안 리뷰는 대표님 지시 때 진행
+- 쇼핑몰 자체 도메인: 판매자 도메인 등록·소유 확인 서버(#606)까지만. 대표님이 Cloudflare에 `shops.on-aircue.com` A 레코드(DNS only, 시험 서버 IP)를 추가함(2026-10-05 23:15 KST). 인증서 자동 발급·호스트별 쇼핑몰 라우팅(proxy.ts)은 미구축(인프라 변경, 대표님 승인·비용 확인 필요). 운영 서버가 생기면 IP 변경
+- 기반-설정 (2) 인계(2026-10-05): ① 주문 메일 4종 발송 코드가 생기면 보내기 전 `lib/server/seller-settings/orderNotificationPolicy.ts` isOrderMailEnabled 호출 ② 쇼핑몰 layout에 meta.favicon ?? DEFAULT_FAVICON, 공개 화면에 readBrandColorOf·readShopSeoOf 적용은 화면 담당(미적용) ③ 외부 서비스 업체 시드는 요금·기능·점수 비움(마스터 입력) ④ 스키마 수정 때 prisma format 금지, 새 DB 적용 뒤 `prisma migrate diff --exit-code`로 차이 없음 확인 ⑤ 발송 후 구매자 사정 부분 환불을 여러 번 하면 건마다 편도 반품 배송비 공제(문서 미명시) ⑥ 교환 배송비는 설정만 있고 교환 처리 코드 없음
 - 쇼핑몰 검색: 인기 검색어 반복 제한이 서버 메모리라 서버 1대 기준(증설 시 DB 기반으로). 이름·태그 검색은 상품 수천 개 넘는 쇼핑몰에서 trigram 인덱스 검토
 - 쇼핑몰 「방송 중」(#520)은 파트너스가 시작한 방송 세션 기준이라 유튜브만 켜져 있으면 live=false
 - 구매자 문의 글 3년 보관 뒤 파기 작업 없음(상수만, 법률 검토 뒤)

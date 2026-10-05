@@ -1,0 +1,6 @@
+import { chromium } from "/home/user/Live-OBS-Platform/node_modules/@playwright/test/index.mjs";
+const [id,w]=[process.argv[2],+process.argv[3]||1440];
+const b = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium" });
+const p = await b.newPage({ viewport:{width:w,height:900} });
+await p.goto(`http://localhost:8000/${id}.dc.html`); await p.waitForTimeout(400);
+await p.screenshot({ path:`/tmp/gap/b-${id}.png`, fullPage:true }); await b.close();

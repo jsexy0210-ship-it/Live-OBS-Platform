@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { IMPERSONATION_COOKIE, impersonationRequestAllowed } from "./lib/server/auth/impersonation";
+import { PARTNERS_AREA } from "./components/public/maintenanceCopy";
+import { IMPERSONATION_COOKIE, impersonationRequestAllowed, isImpersonationPublicPath } from "./lib/server/auth/impersonation";
 import { prisma } from "./lib/server/db";
 import { cachedMaintenance, isActive, maintenanceTarget, maintenanceNotice } from "./lib/server/maintenance/service";
 
@@ -8,7 +9,7 @@ import { cachedMaintenance, isActive, maintenanceTarget, maintenanceNotice } fro
 export async function proxy(req: NextRequest) {
   // 마스터 대리 조회(MA-016) 쿠키가 붙은 파트너스 API 요청은 조회 허용 경로의 GET·HEAD만 통과한다(나머지는 403, 경로를 하나씩 믿지 않는 안전망)
   const path = req.nextUrl.pathname;
-  if (path.startsWith("/api/seller/") && req.cookies.has(IMPERSONATION_COOKIE) && !impersonationRequestAllowed(req.method, path)) {
+  if (path.startsWith("/api/seller/") && req.cookies.has(IMPERSONATION_COOKIE) && !isImpersonationPublicPath(path) && !impersonationRequestAllowed(req.method, path)) {
     return NextResponse.json({ error: "impersonation_read_only" }, { status: 403, headers: { "Cache-Control": "no-store" } });
   }
   const target = maintenanceTarget(req.nextUrl.pathname);
@@ -21,7 +22,8 @@ export async function proxy(req: NextRequest) {
       { status: 503, headers: { "Cache-Control": "no-store", "Retry-After": "300" } },
     );
   }
-  return NextResponse.rewrite(new URL("/maintenance", req.url));
+  // 파트너스 관리자(/seller)에서 보이는 점검 화면은 관리자 말투(합니다체)라 구역을 알려 준다. 주소는 그대로이고 구매자 쇼핑몰은 해요체.
+  return NextResponse.rewrite(new URL(/^\/seller(\/|$)/.test(path) ? `/maintenance?area=${PARTNERS_AREA}` : "/maintenance", req.url));
 }
 
 export const config = {

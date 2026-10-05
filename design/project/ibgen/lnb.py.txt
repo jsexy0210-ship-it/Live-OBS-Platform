@@ -1,0 +1,27 @@
+from ib import *
+import re
+G=[
+('홈',[('',['홈','시작하기'])]),
+('방송',[('운영',['방송 대시보드','오버레이 편집기','HIT 카드 이력','방송 이력']),('연결',['외부 쇼핑몰 연동','유튜브 연결','자동 연결'])]),
+('주문',[('처리',['전체 주문','입금 확인','환불 요청','교환 · 반품']),('배송',['배송','송장 발급','송장 출력 · 추적']),('증빙',['영수증 · 세금계산서'])]),
+('상품',[('상품',['상품 목록','상품 등록','엑셀 일괄 등록']),('재고 · 진열',['재고 관리','재입고 알림','카테고리','상품 진열'])]),
+('고객',[('회원',['회원 목록','회원 등급','구매 제한','회원 알림 발송']),('적립금',['적립금','회원별 잔액','적립금 원장']),('문의 · 리뷰',['구매자 문의','상품 리뷰'])]),
+('스토어',[('프로모션',['쿠폰']),('디자인',['배너 · 팝업']),('안내',['공지 · 자주 묻는 질문'])]),
+('분석',[('',['통계'])]),
+('설정',[('쇼핑몰',['쇼핑몰 정보','주문 설정','배송 설정','회원 정책','공유 설정','법정 고지 · 약관','검색 노출']),('연결 · 계정',['배송 자동화','주문자 알림','발송 · 이용 충전','직원 계정','구독 · 결제','쇼핑몰 통합 전환'])]),
+]
+NEW={'배송 자동화':'신규','법정 고지 · 약관':'신규'}
+def card(name,secs):
+    h=f'<div class="lnb-t">{name}</div>'
+    for t,its in secs:
+        if t: h+=f'<div class="lnb-h">{t}</div>'
+        for i in its:
+            tag=f' <span class="tag bl">{NEW[i]}</span>' if i in NEW else ''
+            h+=f'<a href="#">{i}{tag}</a>'
+    return f'<aside class="lnb" style="width:260px;border:1px solid var(--c24-line);border-radius:12px;overflow:clip;min-height:0;flex:none">{h}</aside>'
+cards=''.join(card(n,s) for n,s in G)
+note='<div class="box" style="padding:16px;display:flex;flex-direction:column;gap:6px;line-height:1.7"><b>규칙</b><span>① 상단 메뉴(GNB) 8개 = 홈·방송·주문·상품·고객·스토어·분석·설정. 왼쪽 메뉴(LNB)는 GNB 그룹마다 한 벌이고, 같은 그룹 안에서는 소제목(회색 12px)으로 한 번 더 묶습니다.</span><span>② 고객 = 회원 · 적립금 · 문의·리뷰 3묶음. 기존 「게시판」 항목(구매자 문의·상품 리뷰)은 고객으로 옮깁니다. 스토어 = 프로모션(쿠폰) · 디자인(배너·팝업) · 안내(공지·자주 묻는 질문).</span><span>③ 설정은 「쇼핑몰」(쇼핑몰 정보·주문·배송·회원 정책·공유·법정 고지·검색 노출)과 「연결·계정」(<b>배송 자동화</b>·주문자 알림·발송·이용 충전·직원·구독·통합 전환)으로 나눕니다. 배송 자동화는 SA-082이며 보이는 조건(권한·요금제)은 「발송 · 이용 충전」과 같습니다. 결제대행사 연결은 플랫폼 키 하나라 파트너스 메뉴에 두지 않습니다.</span><span>④ 소제목이 하나뿐인 그룹(홈·분석)은 소제목을 쓰지 않습니다. 권한·요금제로 열리지 않는 항목은 목록에서 빼고, 소제목 안 항목이 모두 빠지면 소제목도 숨깁니다.</span><span>⑤ 분석은 지금 「통계」 한 항목입니다. 전환 단계·재구매·방송 성과 등은 통계 화면 안 탭으로 늘리고, 매출·결제(정산 정보)는 정산 방식 「판단 필요」라 메뉴를 만들지 않습니다.</span><span>⑥ 항목을 누르면 해당 화면의 LNB 선택 표시(왼쪽 3px 막대)가 켜지고, 경로 줄은 「그룹 › 항목」으로 보입니다.</span></div>'
+body=f'<div style="padding:32px 40px;display:flex;flex-direction:column;gap:20px;width:1280px;box-sizing:border-box"><h1 style="margin:0;font-size:22px">파트너스 관리자 · 왼쪽 메뉴(LNB) 정리</h1><span class="nt">기준: docs/IA.md 「2026-10-05 IA 개편 결정」 · 상단 메뉴 8개 그룹별 왼쪽 메뉴와 소제목 · 「신규」는 이번에 새로 들어가는 항목</span><div style="display:grid;grid-template-columns:repeat(4,260px);gap:20px 24px;align-items:start">{cards}</div>{note}</div>'
+html=head('파트너스 LNB 정리')+f'<div class="app c24" data-theme="light" style="width: 1280px; display: flex; flex-direction: column; background:#fff">{body}</div>\n</x-dc>\n<script type="text/x-dc" data-dc-script data-props=\'{{"$preview":{{"width":1280,"height":1700}}}}\'>\nclass Component extends DCLogic {{ renderVals() {{ return {{}}; }} }}\n</script>\n</body>\n</html>\n'
+save('SA-LNB',html)
+addboard('SA-LNB','SA-LNB 파트너스 왼쪽 메뉴(LNB) 정리 · 상단 8개 그룹별 소제목',25000,108800,1280,1700)

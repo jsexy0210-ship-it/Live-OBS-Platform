@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>방송 종료 확인</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="app c24" data-theme="light" style="width: 960px; min-height: 720px; padding: 24px; box-sizing: border-box; display: flex; gap: 24px; align-items: flex-start; justify-content: center">
+<div class="cfm" style="max-width: none; width: 880px"><div class="h">방송을 종료하시겠습니까?<button class="x" type="button" aria-label="닫기">×</button></div><div class="bd">오버레이가 「방송 대기」로 돌아가고 방송 이력에 기록됩니다.<div class="sum" style="grid-template-columns: repeat(4, 1fr); margin: 8px 0"><div><div class="k">방송 시간</div><div class="v">2:48:12</div></div><div><div class="k">주문</div><div class="v">24</div></div><div><div class="k">완료 / 취소</div><div class="v">20 / 1</div></div><div><div class="k">HIT</div><div class="v">3</div></div></div><div class="note cau" style="width: 100%"><b>대기 중인 주문 3건이 있습니다.</b> 종료 전에 처리 방법을 골라 주십시오</div><div style="margin-top: 8px"><div class="col" style="gap: 4px; align-items: flex-start"><label class="ck"><input type="radio" name="end" checked>다음 방송으로 이월</label><span class="hint">대기 상태로 두고 다음 방송 때 맨 앞에서 시작합니다 · 구매자에게 알려 드립니다</span><label class="ck"><input type="radio" name="end">방송 없이 개봉 완료 처리</label><span class="hint">방송 없이 개봉하고 결과를 주문 메모에 남깁니다</span><label class="ck"><input type="radio" name="end">전부 취소 · 환불</label><span class="hint">3건 모두 결제 취소 · 되돌릴 수 없습니다</span></div></div><div style="margin-top: 8px"><label class="ck"><input type="checkbox" name="r">위 내용을 확인했습니다</label></div></div><div class="f"><button class="b pri neg" type="button">방송 종료</button><button class="b " type="button">계속 방송</button></div></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":960,"height":720}}'>
+class Component extends DCLogic { renderVals() { return {}; } }
+</script>
+</body>
+</html>

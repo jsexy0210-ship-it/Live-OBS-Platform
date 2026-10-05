@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import { eventOf, eventView } from "../products/event";
 
 // 오버레이(방송 화면)에 내보내는 최소 필드. 회원 id·휴대폰·주문 금액·주문 id는 보내지 않는다.
 const PUBLIC_FIELDS = {
@@ -42,6 +43,9 @@ export const ORDER_EVENT_MAX = 10;
 // 명예의 전당: 지금 방송의 HIT 카드 최근 등록 순 10건(화면은 위젯 rows만큼 자른다)
 export const HALL_MAX = 10;
 
+// 구매 랭킹: 지금 방송에 결제 완료된 주문의 구매 수량(부분 환불 수량 제외) 합이 많은 순 10명. 같은 수량이면 먼저 산 사람이 앞,
+// 같은 수량은 같은 순위(1,1,3). 닉네임·수량·순위만 내보낸다(금액·회원 id·휴대폰 없음). 닉네임은 그 구매자의 가장 최근 방송 닉네임.
+export const RANKING_MAX = 10;
 type Tx = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
 
 async function recentOrderEvents(tx: Tx, sellerId: string, live: { id: string; startedAt: Date }) {
@@ -96,6 +100,52 @@ async function recentOrderEvents(tx: Tx, sellerId: string, live: { id: string; s
   return events;
 }
 
+async function purchaseRanking(tx: Tx, sellerId: string, liveId: string) {
+  const rows = await tx.$queryRaw<{ qty: bigint; nickname: string }[]>`
+    SELECT SUM(q."quantity" - oi."refundedQuantity") AS qty,
+           (ARRAY_AGG(q."nicknameSnapshot" ORDER BY q."receivedAt" DESC, q."id" DESC))[1] AS nickname
+    FROM "QueueItem" q
+    JOIN "Order" o ON o."sellerId" = q."sellerId" AND o."id" = q."orderId"
+    JOIN "OrderItem" oi ON oi."sellerId" = q."sellerId" AND oi."id" = q."orderItemId"
+    WHERE q."sellerId" = ${sellerId}::uuid AND q."broadcastSessionId" = ${liveId}::uuid
+      AND q."status" <> 'CANCELLED' AND o."status" = 'PAID' AND q."quantity" > oi."refundedQuantity"
+    GROUP BY o."buyerMemberId"
+    ORDER BY qty DESC, MIN(q."receivedAt") ASC, o."buyerMemberId" ASC
+    LIMIT ${RANKING_MAX}`;
+  let prev = -1;
+  let rank = 0;
+  return rows.map((r, i) => {
+    const quantity = Number(r.qty);
+    if (quantity !== prev) rank = i + 1;
+    prev = quantity;
+    return { rank, nickname: overlayNickname(r.nickname), quantity };
+  });
+}
+
+// 이벤트 할인 카드: 지금 판매 중이고 이벤트 기간 안인 상품 중 마감이 가장 가까운 1개. 나머지 개수는 moreCount.
+async function eventCard(tx: Tx, sellerId: string) {
+  const [{ now }] = await tx.$queryRaw<{ now: Date }[]>`SELECT now() AS now`;
+  const where = { sellerId, deletedAt: null, status: "ON_SALE" as const, eventStartsAt: { lte: now }, eventEndsAt: { gt: now } };
+  const [first, count] = await Promise.all([
+    tx.product.findFirst({ where, orderBy: [{ eventEndsAt: "asc" }, { id: "asc" }] }),
+    tx.product.count({ where }),
+  ]);
+  const e = first ? eventOf(first) : null;
+  if (!first || !e) return null;
+  const v = eventView(e, first.price, now)!;
+  return {
+    productName: first.name,
+    price: first.price,
+    discountedPrice: v.discountedPrice,
+    discountRate: v.discountRate,
+    endsAt: v.endsAt,
+    remainingSeconds: v.remainingSeconds,
+    badge: v.badge,
+    remainingLabel: v.remainingLabel,
+    moreCount: count - 1,
+  };
+}
+
 export async function getOverlayState(db: PrismaClient, sellerId: string, opts: { origin?: URL | null } = {}) {
   return db.$transaction(
     async (tx) => {
@@ -127,6 +177,8 @@ export async function getOverlayState(db: PrismaClient, sellerId: string, opts: 
         opening: opening ? toPublic(opening) : null,
         waiting: waiting.map(toPublic),
         hits: hits.map(({ nicknameSnapshot, ...h }) => ({ ...h, nickname: overlayNickname(nicknameSnapshot) })),
+        eventCard: await eventCard(tx, sellerId),
+        purchaseRanking: live ? await purchaseRanking(tx, sellerId, live.id) : [],
         orderEvents: live ? await recentOrderEvents(tx, sellerId, live) : [],
       };
     },

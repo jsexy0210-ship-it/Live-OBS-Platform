@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>점검 즉시 시작 확인</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="app c24" data-theme="light" style="width: 960px; min-height: 640px; padding: 24px; box-sizing: border-box; display: flex; gap: 24px; align-items: flex-start; justify-content: center">
+<div class="cfm" style="max-width: none; width: 880px"><div class="h">지금 즉시 점검 모드를 켜시겠습니까?<button class="x" type="button" aria-label="닫기">×</button></div><div class="bd">모든 파트너스 · 구매자 · 오버레이 화면이 즉시 「점검 중」으로 바뀝니다. 예약 없이 켜는 즉시 점검은 긴급 장애 대응에만 사용해 주십시오.<div class="note neg" style="width: 100%"><b>영향 범위 (지금):</b> 방송 중 12개 자동 종료 · 대기 주문 61건 이월 · 진행 중 결제 3건 실패 처리 · 시청자 약 2,400명</div><table class="ft"><colgroup><col style="width: 150px"><col></colgroup><tr><th>켜면 자동으로</th><td>1. 방송 중 파트너스에게 알림톡 · 화면 배너를 바로 보냅니다<br>2. 방송을 종료 처리하고 대기 주문은 「다음 방송 이월」로 두고 구매자에게 알립니다<br>3. 오버레이는 「방송 대기」, 쇼핑몰은 「점검 중」으로 바뀝니다<br>4. 알림 센터 · 슬랙 · 당직 문자로 알리고 로그 추적에 남깁니다</td></tr><tr><th>사유 <span class="rq">*</span></th><td><input class="i w-f" type="text" value="" placeholder="점검 화면과 로그 추적"></td></tr><tr><th>확인 <span class="rq">*</span></th><td><input class="i w-m" type="text" value="" placeholder="점검 시작"><span class="hint">확인을 위해 「점검 시작」을 입력합니다</span></td></tr></table></div><div class="f"><button class="b pri neg" type="button">점검 모드 켜기</button><button class="b " type="button">취소</button></div></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":960,"height":640}}'>
+class Component extends DCLogic { renderVals() { return {}; } }
+</script>
+</body>
+</html>

@@ -152,6 +152,13 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/display/recommended": "STORE_OPERATIONS",
   "seller/display/settings": "STORE_OPERATIONS",
   "seller/restock-alerts": "STORE_OPERATIONS",
+  "seller/bulk-io/products/template": "STORE_OPERATIONS",
+  "seller/bulk-io/products/preview": "STORE_OPERATIONS",
+  "seller/bulk-io/products/export": "STORE_OPERATIONS",
+  "seller/bulk-io/jobs": "STORE_OPERATIONS",
+  "seller/bulk-io/jobs/[jobId]": "STORE_OPERATIONS",
+  "seller/bulk-io/jobs/[jobId]/commit": "STORE_OPERATIONS",
+  "seller/bulk-io/jobs/[jobId]/undo": "STORE_OPERATIONS",
   "seller/products/[productId]/images/order": "STORE_OPERATIONS",
   "seller/products/[productId]/images/[imageId]": "STORE_OPERATIONS",
   "seller/products/[productId]/event": "STORE_OPERATIONS",
@@ -165,8 +172,13 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/share-preview": "STORE_OPERATIONS",
   "seller/seo": "STORE_OPERATIONS",
   "seller/brand-color": "STORE_OPERATIONS",
+  "seller/favicon": "STORE_OPERATIONS",
+  "seller/domains": "STORE_OPERATIONS",
+  "seller/domains/[id]": "STORE_OPERATIONS",
+  "seller/domains/[id]/verify": "STORE_OPERATIONS",
   "seller/shipping-policy": "STORE_OPERATIONS",
   "seller/shop-search/synonyms": "STORE_OPERATIONS", // 검색 유사어 묶음
+  "seller/shop-search/blocked-terms": "STORE_OPERATIONS", // 인기 검색어 제외 단어
   "seller/notices": "STORE_OPERATIONS",
   "seller/platform-notices": "BILLING", // 플랫폼 공지(SA-111·112): 잠김·정지 중에도 본다
   "seller/platform-notices/[noticeId]": "BILLING",
@@ -191,6 +203,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/shop-content/logo": "STORE_OPERATIONS",
   "seller/shop-content/logo/image": "STORE_OPERATIONS",
   "seller/shop-legal/[kind]": "STORE_OPERATIONS",
+  "seller/shop-legal-notice": "STORE_OPERATIONS",
   "seller/broadcast/[broadcastId]": "OVERLAY",
   "seller/broadcast/history": "OVERLAY",
   "seller/broadcast/summary": "OVERLAY",
@@ -210,6 +223,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/hit-cards": "OVERLAY",
   "seller/hit-cards/[hitCardId]": "OVERLAY",
   "seller/stats/broadcasts": "OVERLAY",
+  "seller/stats/funnel": "STORE_OPERATIONS",
   "seller/stats/coupons": "STORE_OPERATIONS",
   "seller/stats/hourly": "STORE_OPERATIONS",
   "seller/stats/members": "STORE_OPERATIONS",
@@ -233,6 +247,7 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/signup/verification/confirm": "STORE_OPERATIONS",
   "shop/[slug]/share": "STORE_OPERATIONS",
   "shop/[slug]/og.png": "STORE_OPERATIONS",
+  "shop/[slug]/favicon/[size]": "STORE_OPERATIONS",
   "shop/[slug]/shop-content": "STORE_OPERATIONS", // 홈 배너·이벤트 팝업
   "shop/[slug]/shop-content/images/[imageId]": "STORE_OPERATIONS",
   "shop/[slug]/coupons/code": "STORE_OPERATIONS", // 쿠폰 받기(코드·내려받기)는 shopOpen으로 막음
@@ -294,6 +309,7 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/me/withdraw": "OPEN",
   "shop/[slug]/me/rewards": "OPEN", // 내 적립금 잔액(탈퇴 전 확인, #180)
   "shop/[slug]/me/rejoin-retention-consent": "OPEN", // 재가입 제한 정보 보관 동의 철회(언제든, #177)
+  "shop/[slug]/me/legal-consent": "OPEN", // 내가 동의한 약관 버전과 지금 쇼핑몰 약관 버전 비교(표시용 플래그, 잠긴 쇼핑몰에서도 열림)
   "overlay/[token]/state": "OVERLAY",
   "overlay/[token]/layout": "OVERLAY",
   "overlay/[token]/version": "OVERLAY",

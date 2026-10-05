@@ -21,3 +21,26 @@ test("점검 중에는 쇼핑몰 주소에서도 점검 화면이 보인다", as
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("지금은 점검 중이에요");
   await expect(page.getByTestId("maintenance-message")).not.toBeEmpty();
 });
+
+// 구역에 따른 말투: ?area=partners(파트너스 관리자 화면에서 proxy가 붙임)는 합니다체, 없으면 해요체. 점검이 켜져 있든 꺼져 있든 같은 말투 규칙이다.
+test("/maintenance는 구역에 따라 합니다체·해요체로 보인다", async ({ page }) => {
+  await page.goto("/maintenance?area=partners");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(/^(지금은 점검 중입니다|점검이 끝났습니다)$/);
+  await expect(page.getByTestId("maintenance")).not.toContainText("결제가 끝난 주문");
+  await page.goto("/maintenance");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(/^(지금은 점검 중이에요|점검이 끝났어요)$/);
+});
+
+// 점검을 켠 시험 DB에서만(E2E_MAINTENANCE_ON=1): 파트너스 관리자 주소는 합니다체, 구매자 쇼핑몰은 해요체이고 주소는 그대로다.
+test("점검 중에는 /seller는 합니다체, /shop은 해요체로 보인다", async ({ page }) => {
+  test.skip(!process.env.E2E_MAINTENANCE_ON, "점검을 켠 시험 DB에서만 실행");
+  await page.goto("/seller/login");
+  await expect(page).toHaveURL(/\/seller\/login$/);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("지금은 점검 중입니다");
+  await expect(page.getByTestId("maintenance")).toContainText("점검 중에는 파트너스 관리자를 이용할 수 없습니다");
+  await expect(page.getByRole("button", { name: "다시 시도" })).toBeVisible();
+  await page.goto("/shop/none");
+  await expect(page).toHaveURL(/\/shop\/none$/);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("지금은 점검 중이에요");
+  await expect(page.getByTestId("maintenance")).toContainText("결제가 끝난 주문은 점검이 끝난 뒤 주문 내역에서 확인할 수 있어요");
+});

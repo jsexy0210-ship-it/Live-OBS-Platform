@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>브랜드 컬러 서체</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}
+.swt{display:flex;flex-direction:column;gap:6px}
+.swt .c{height:60px;border-radius:12px;box-shadow:inset 0 0 0 1px #00000014}
+.swt .n{font-size:13px;font-weight:600}.swt .h{font-size:11px;color:var(--wds-label-alternative);font-variant-numeric:tabular-nums}
+</style>
+</helmet>
+<div class="app" data-theme="light" style="width: 1600px; height: 1080px; padding: 56px; display: flex; flex-direction: column; gap: 20px">
+  <div class="col" style="gap: 6px">
+    <span class="t-l1 fw6 c-alt">브랜드 제안 · A안</span>
+    <h1 class="t-t2">브랜드 컬러 · 서체 — Montage는 구조만, 색과 서체는 자체 제안</h1>
+    <p class="t-b2 c-alt">간격 · 모서리 · 타이포 단계 · 컴포넌트 구조 · 상태색 체계는 Montage(WDS)에서 가져오고, 주색 · 중립색 · 서체 · 마스터 식별색은 아래처럼 바꿨어요. 로고는 기존 심볼(링 + 온에어 점)을 유지하고 색만 바꿨어요.</p>
+  </div>
+  <div style="display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px; flex: 1">
+    <div class="card col" style="padding: 24px; gap: 18px">
+      <span class="t-hl1">브랜드 컬러</span>
+      <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px">
+        <div class="swt"><div class="c" style="background: #5b3df6"></div><span class="n">큐 바이올렛</span><span class="h">#5B3DF6 · 주색 · 흰 글자 6.1:1</span></div><div class="swt"><div class="c" style="background: #4a2fd9"></div><span class="n">바이올렛 진함</span><span class="h">#4A2FD9 · 호버 · 링크 진함</span></div><div class="swt"><div class="c" style="background: #8f78ff"></div><span class="n">바이올렛 밝음</span><span class="h">#8F78FF · 다크 · 오버레이 강조</span></div><div class="swt"><div class="c" style="background: #e8382d"></div><span class="n">온에어 레드</span><span class="h">#E8382D · 방송 중 · 심볼 점</span></div><div class="swt"><div class="c" style="background: #0f766e"></div><span class="n">마스터 틸</span><span class="h">#0F766E · 마스터 관리자 식별</span></div><div class="swt"><div class="c" style="background: #f2c14e"></div><span class="n">명예의 전당 금색</span><span class="h">#F2C14E · 오버레이 1위 · HIT</span></div>
+      </div>
+      <span class="t-l1 fw6 c-neu">웜 뉴트럴 (쿨 뉴트럴에서 교체)</span>
+      <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 12px">
+        <div class="swt"><div class="c" style="background: #1c1a17"></div><span class="n">Ink</span><span class="h">#1C1A17</span></div><div class="swt"><div class="c" style="background: #2a2825"></div><span class="n">Ink 2</span><span class="h">#2A2825</span></div><div class="swt"><div class="c" style="background: #716c64"></div><span class="n">Mid</span><span class="h">#716C64 · 캡션 5.2:1</span></div><div class="swt"><div class="c" style="background: #e3dfd8"></div><span class="n">Line</span><span class="h">#E3DFD8</span></div><div class="swt"><div class="c" style="background: #f6f4f0"></div><span class="n">Page</span><span class="h">#F6F4F0</span></div><div class="swt"><div class="c" style="background: #171615"></div><span class="n">Dark Page</span><span class="h">#171615</span></div><div class="swt"><div class="c" style="background: #201e1b"></div><span class="n">Dark Surface</span><span class="h">#201E1B</span></div>
+      </div>
+      <span class="t-l1 fw6 c-neu">상태 · 주문대기 배지 (Montage 상태색 체계 유지 · 모든 화면 동일)</span>
+      <div class="row" style="gap: 10px; flex-wrap: wrap">
+        <span class="bdg bdg-lg b-wait">대기</span><span class="bdg bdg-lg b-open">개봉 중</span><span class="bdg bdg-lg b-done">완료</span><span class="bdg bdg-lg b-cancel">취소</span><span class="bdg bdg-lg b-fail">실패</span>
+        <span style="width: 16px"></span>
+        <span class="bdg bdg-lg b-live">LIVE</span><span class="bdg bdg-lg b-warn">주의 · 연체</span><span class="bdg bdg-lg b-info">정보 · 체험</span><span class="bdg bdg-lg b-master">마스터</span>
+      </div>
+      <p class="t-l2 c-alt">대기 = 회색 채움, 개봉 중 = 바이올렛 채움(화면에서 유일한 주색 채움 배지), 완료 = 초록 틴트, 취소 = 테두리만, 실패 = 빨강 틴트. 색만이 아니라 채움 · 테두리 · 밝기로도 구분돼요. 오버레이의 금색(1위)과 불꽃(현재 주문)은 서비스 고유 표현으로 고정해요.</p>
+      <table class="tbl" style="font-size: 13px">
+        <thead><tr><th style="width: 200px">Montage에서 가져온 것</th><th>자체 제안으로 바꾼 것</th></tr></thead>
+        <tbody>
+          <tr><td class="fw6">간격 4~48 · 모서리 6~20</td><td>주색: 파랑 #0066FF → 큐 바이올렛 #5B3DF6 (다크 #8F78FF)</td></tr>
+          <tr><td class="fw6">타이포 19단 중 13단(크기 · 행간 · 자간)</td><td>서체: Pretendard → Wanted Sans (변수 서체 100~900, 로컬 파일) · 숫자는 tabular</td></tr>
+          <tr><td class="fw6">버튼 · 입력 · 표 · 배지 · 모달 구조와 크기</td><td>중립색: 쿨(#171719 · #70737C · #F7F7F8) → 웜(#1C1A17 · #716C64 · #F6F4F0)</td></tr>
+          <tr><td class="fw6">상태색 3종(positive · cautionary · negative)과 틴트 규칙</td><td>마스터 식별색: 보라 #6541F2 → 틸 #0F766E (주색과 겹치지 않게)</td></tr>
+          <tr><td class="fw6">그림자 5단 · 포커스 링 규칙</td><td>온에어 레드 #E52222 → #E8382D (조금 따뜻하게) · 로고는 유지, 색만 교체</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="col" style="gap: 20px">
+      <div class="card col" style="padding: 24px; gap: 14px; flex: 1">
+        <span class="t-hl1">서체</span>
+        <div class="col" style="gap: 2px"><span style="font-size: 34px; font-weight: 900; letter-spacing: -.03em; line-height: 1.2">Wanted Sans</span><span class="t-l2 c-alt">Google Fonts · OFL · 400 500 700 800 900 / 폴백: Apple SD Gothic Neo → Noto Sans KR → sans-serif</span></div>
+        <div class="col" style="gap: 6px">
+          <span style="font-size: 24px; font-weight: 900; letter-spacing: -.02em">지금 개봉 중이에요 — 900 오버레이 · 큰 제목</span>
+          <span class="t-t3" style="font-weight: 800">주문이 들어왔어요 — 800 강조</span>
+          <span class="t-hl1">파트너스 관리자 제목 — 700</span>
+          <span class="t-b1">본문 16px: 주문이 접수되면 대기 맨 뒤에 붙어요. — 400</span>
+          <span class="t-l1 c-alt">라벨 14px · 자간 +1.45% — 500</span>
+          <span class="t-hl1 num" style="font-variant-numeric: tabular-nums">00:59 · 1,290,000원 · 1,024명 — 숫자는 항상 tabular</span>
+        </div>
+        <p class="t-l2 c-alt">오버레이(ov.css)도 같은 서체를 800~900으로 크게 써요. Wanted Sans에 탭 숫자가 없을 때를 대비해 시계는 폭이 고정된 숫자 칸을 써요(개발 시 확인).</p>
+      </div>
+      <div class="card col" style="padding: 24px; gap: 10px">
+        <span class="t-hl1">다른 후보로 교체할 때 바꿀 부분</span>
+        <table class="tbl" style="font-size: 13px">
+          <tbody>
+            <tr><td style="width: 160px" class="fw6">lop.css · .app</td><td><span class="kbd">--brand-name</span> <span class="kbd">--brand-ko</span> 두 값 — 모든 화면의 워드마크 · 한글명이 바뀜</td></tr>
+            <tr><td class="fw6">lop.css · .logo-sym</td><td>심볼 도형(링 + 점). 후보별 심볼은 별도 제작 — <span style="white-space: nowrap">워드마크 단독(B안)으로</span> 임시 운용 가능</td></tr>
+            <tr><td class="fw6">lop.css · --brand · A안 토큰</td><td>주색 · 중립색 덮어쓰기 블록. 쇼핑몰은 파트너스별 <span class="kbd">--shop</span>로 덮어쓰므로 영향 없음</td></tr>
+            <tr><td class="fw6">ov.css · 오버레이</td><td>기본 강조색(acc) 하나. 금색 · 불꽃은 브랜드와 무관하게 고정</td></tr>
+            <tr><td class="fw6">소개 페이지 · 메타</td><td>랜딩 제목 · 도메인 · 파비콘 파일</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1600,"height":1000}}'>
+class Component extends DCLogic { renderVals() { return {}; } }
+</script>
+</body>
+</html>

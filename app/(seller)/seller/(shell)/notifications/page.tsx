@@ -8,16 +8,20 @@ import { ErrorState, LoadingRows } from "../../../../../components/seller/States
 import { api } from "../../../../../components/seller/api";
 import { kstText } from "../banners/_shared/ui";
 
-// SA-130 알림 센터(파트너스 관리자). 새 공지와 내 문의에 달린 플랫폼 답변을 한 줄씩 보이고, 눌러 처리 화면으로 간다. 계정 누구나(직원 포함), 구독이 잠기거나 이용 정지 중에도 본다.
-// API: GET /api/seller/notifications → { items: [{ id, kind: NOTICE|INQUIRY_REPLY, title, href, createdAt, unread }], unreadCount }(최근 30건),
+// SA-130 알림 센터(파트너스 관리자). 새 공지, 내 문의에 달린 플랫폼 답변, 입금 확인·결제 완료·재고 없음·반품 요청을 한 줄씩 보이고, 눌러 처리 화면으로 간다. 계정 누구나(직원 포함), 구독이 잠기거나 이용 정지 중에도 본다.
+// API: GET /api/seller/notifications → { items: [{ id, kind: NOTICE|INQUIRY_REPLY|DEPOSIT_PENDING|ORDER_PAID|OUT_OF_STOCK|RETURN_REQUESTED, title, href, createdAt, unread }], unreadCount }(최근 30건),
 // POST /api/seller/notifications/read(연 것으로 남김 — 공지 알림 읽음, 문의 답변은 그 문의를 열어야 읽음).
 // 열었을 때의 안 읽음 표시는 그대로 보여 주고, 읽음 처리는 목록을 받은 뒤에 한다(새로 고치면 공지는 읽음으로 바뀐다).
-type Item = { id: string; kind: "NOTICE" | "INQUIRY_REPLY"; title: string; href: string; createdAt: string; unread: boolean };
+type Item = { id: string; kind: "NOTICE" | "INQUIRY_REPLY" | "DEPOSIT_PENDING" | "ORDER_PAID" | "OUT_OF_STOCK" | "RETURN_REQUESTED"; title: string; href: string; createdAt: string; unread: boolean };
 type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; items: Item[]; unreadCount: number };
 
 const KIND: Record<Item["kind"], { label: string; cls: string }> = {
   NOTICE: { label: "공지", cls: "b-info" },
   INQUIRY_REPLY: { label: "문의 답변", cls: "b-done" },
+  DEPOSIT_PENDING: { label: "입금 확인", cls: "b-warn" },
+  ORDER_PAID: { label: "결제 완료", cls: "b-done" },
+  OUT_OF_STOCK: { label: "재고 없음", cls: "b-fail" },
+  RETURN_REQUESTED: { label: "반품·교환", cls: "b-warn" },
 };
 
 export default function NotificationsPage() {

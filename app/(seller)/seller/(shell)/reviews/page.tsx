@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
+import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
 import { StateBox, errorText, kstText, stateKind } from "../banners/_shared/ui";
 import "./reviews.css";
 
@@ -90,8 +91,12 @@ const TABS: { key: Tab; label: string }[] = [
 
 export default function ReviewsPage() {
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number; error?: string } | { kind: "ok"; data: Data }>({ kind: "loading" });
-  const [tab, setTab] = useState<Tab>("all");
-  const [rating, setRating] = useState("");
+  // 탭·별점은 주소(?tab=·?rating=)가 기준이다. 다른 화면에 갔다 Back으로 돌아와도 그대로 복원된다(UX 감사 9.3). 틀린 값은 전체로 본다
+  const [u, setU] = useUrlState({ tab: "all", rating: "" });
+  const tab: Tab = TABS.some((t) => t.key === u.tab) ? (u.tab as Tab) : "all";
+  const rating = ["5", "4", "low"].includes(u.rating) ? u.rating : "";
+  const setTab = (t: Tab) => setU({ tab: t });
+  const setRating = (v: string) => setU({ rating: v });
   const [more, setMore] = useState<Row[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -121,6 +126,8 @@ export default function ReviewsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useScrollRestore("seller-reviews", state.kind === "ok");
 
   const loadMore = async () => {
     if (!cursor) return;

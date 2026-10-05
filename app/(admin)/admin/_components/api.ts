@@ -1,6 +1,6 @@
 // 마스터 관리자 화면의 API 호출. 같은 출처 요청이라 쿠키·Origin은 브라우저가 붙인다.
 // 로그인이 풀렸으면(401) 로그인 화면으로 보낸다(로그인 요청 자체는 화면이 처리).
-export type ApiResult<T> = { ok: true; status: number; data: T } | { ok: false; status: number; error: string; message?: string };
+export type ApiResult<T> = { ok: true; status: number; data: T } | { ok: false; status: number; error: string; message?: string; retryAfterSeconds?: number };
 
 export async function adminApi<T>(path: string, init: { method?: string; json?: unknown; file?: Blob } = {}): Promise<ApiResult<T>> {
   let res: Response;
@@ -19,8 +19,8 @@ export async function adminApi<T>(path: string, init: { method?: string; json?: 
   if (res.status === 401 && !path.startsWith("/api/admin/auth/")) {
     window.location.assign(`/admin/login?next=${encodeURIComponent(window.location.pathname)}`);
   }
-  const body = data as { error?: string; message?: string };
-  return { ok: false, status: res.status, error: body.error ?? "unknown", message: body.message };
+  const body = data as { error?: string; message?: string; retryAfterSeconds?: number };
+  return { ok: false, status: res.status, error: body.error ?? "unknown", message: body.message, retryAfterSeconds: body.retryAfterSeconds };
 }
 
 export function failMessage(r: { status: number; message?: string }, fallback = "잠시 후 다시 시도해 주십시오."): string {

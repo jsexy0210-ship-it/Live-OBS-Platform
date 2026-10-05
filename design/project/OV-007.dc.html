@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>오버레이 상품 카드 · 이벤트 할인</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}.ovc{background:rgba(12,10,24,.82);color:#fff;border-radius:22px;padding:22px 24px;display:flex;flex-direction:column;gap:10px;box-shadow:0 0 0 2px rgba(255,255,255,.14), 0 18px 40px rgba(0,0,0,.45);font-family:"Wanted Sans","Pretendard JP","Apple SD Gothic Neo",sans-serif}.ovc .nm{font-size:26px;font-weight:800;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:2.6em}.ovc .org{font-size:18px;color:rgba(255,255,255,.55);text-decoration:line-through}.ovc .pct{font-size:56px;font-weight:900;color:#ff5a5a;letter-spacing:-.03em;line-height:1}.ovc .prc{font-size:44px;font-weight:900;letter-spacing:-.02em;line-height:1}.ovc .tm{display:flex;align-items:center;gap:10px;background:#ff3b3b;color:#fff;border-radius:14px;padding:10px 14px;font-size:22px;font-weight:800}.ovc .tm b{font-size:30px;font-variant-numeric:tabular-nums}.ovc .sub{font-size:16px;color:rgba(255,255,255,.7)}</style>
+</helmet>
+<div class="app" data-theme="dark" style="width: 1700px; height: 760px; padding: 32px; display: grid; grid-template-columns: 420px 760px 1fr; gap: 28px; align-items: start; background: linear-gradient(135deg, #2b2340, #0f0c1a)">
+ <div class="col" style="gap: 10px"><span class="t-c1" style="color: #ffffff99">세로 9:16 · 상품 카드 (폭 420)</span><div class="ovc"><span class="sub">지금 방송 상품 · 이벤트 할인</span><span class="nm">스타라이트 부스터 박스</span><span class="org">정가 99,000원</span><div class="row" style="gap: 14px; align-items: baseline"><span class="pct">10%</span><span class="prc">89,100원</span></div><div class="tm"><span>오늘 마감</span><b>3:12:00</b><span style="font-size: 16px; font-weight: 600">남았어요</span></div><span class="sub">10/2 23:59까지 · 1인 3박스까지</span></div></div>
+ <div class="col" style="gap: 10px"><span class="t-c1" style="color: #ffffff99">가로 16:9 · 하단 띠형 (폭 760)</span><div class="ovc" style="flex-direction: row; align-items: center; gap: 22px; padding: 18px 24px"><div class="col" style="gap: 4px; flex: 1; min-width: 0"><span class="sub">이벤트 할인 · 내일까지</span><span class="nm" style="font-size: 22px; min-height: auto; -webkit-line-clamp: 1">문라이트 컬렉션 박스</span><span class="org" style="font-size: 15px">정가 150,000원</span></div><div class="row" style="gap: 12px; align-items: baseline; flex: none"><span class="pct" style="font-size: 46px">12%</span><span class="prc" style="font-size: 36px">132,000원</span></div><div class="tm" style="flex: none; background: #ffb020; color: #1a1200"><b style="font-size: 24px">23:12:00</b><span style="font-size: 15px">남았어요</span></div></div><div class="ovc" style="flex-direction: row; align-items: center; gap: 22px; padding: 18px 24px; margin-top: 8px; opacity: .92"><div class="col" style="gap: 4px; flex: 1; min-width: 0"><span class="sub">이벤트 할인 · 곧 끝나요</span><span class="nm" style="font-size: 22px; min-height: auto; -webkit-line-clamp: 1">크리스탈 팩</span><span class="org" style="font-size: 15px">정가 5,000원</span></div><div class="row" style="gap: 12px; align-items: baseline; flex: none"><span class="pct" style="font-size: 46px">20%</span><span class="prc" style="font-size: 36px">4,000원</span></div><div class="tm" style="flex: none"><b style="font-size: 24px">0:42:00</b><span style="font-size: 15px">남았어요</span></div></div></div>
+ <div class="col" style="gap: 12px; color: #fff"><span class="t-hl2" style="color: #fff">규칙</span><span class="t-l2" style="color: #ffffffcc; line-height: 1.7">· 할인율과 남은 시간을 가장 크게 보여 줘요 (할인율 56px · 가격 44px · 타이머 30px)<br>· 배지는 남은 기간에 맞춰 바뀌어요: 내일 이후에 끝나면 <span style="white-space: nowrap">「3일 남음」처럼</span> 남은 날짜(노랑), 오늘 끝나면 「오늘 마감」(빨강), 1시간 안이면 「곧 끝나요」(빨강)<br>· 타이머는 1초마다 갱신 · 00:00:00이 되면 카드가 정가로 바뀌고 배지 · 타이머가 사라져요<br>· 상품명은 2줄 고정(세로) · 1줄 고정(가로) · 넘치면 말줄임<br>· 할인이 없는 상품은 할인율 · 타이머 자리가 비고 가격만 보여요</span><span class="t-c1" style="color: #ffffff80">예시 기준 10/2 20:47 (쇼핑몰 홈 · 상품 목록과 같은 날) · 스타라이트 10/2 23:59 종료 · 문라이트 10/3 19:59 종료 · 크리스탈 팩 21:29 종료</span></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1700,"height":760}}'>
+class Component extends DCLogic { renderVals() { return {}; } }
+</script>
+</body>
+</html>

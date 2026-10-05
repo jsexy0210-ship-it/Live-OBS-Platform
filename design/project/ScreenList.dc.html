@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>전체 화면 목록</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="app" data-theme="light" style="width: 2600px; min-height: 2300px; padding: 64px; display: flex; flex-direction: column; gap: 32px">
+ <div class="row between" style="align-items: flex-end">
+ <div class="col" style="gap: 8px">
+ <span class="t-l1 fw6 c-alt">00-LST · 산출물</span>
+ <h1 class="t-d2">전체 화면 목록 · 디자인 완료표</h1>
+ <p class="t-b1 c-alt">화면 ID 기준. 「추가」는 docs/IA.md 원안에 없어 새로 넣은 화면, 「변형」은 같은 화면의 상태 변형 아트보드예요. 모든 화면은 아트보드 하단(모바일은 우측)에 빈 상태 · 로딩 · 오류 · 권한 없음 변형을 함께 그려요. 화면 ID는 작업 라벨이라 이 표와 정보구조도에만 써요.</p>
+ </div>
+ <div class="row" style="gap: 24px">
+ <div class="card stat" style="width: 200px"><span class="d">전체 화면</span><span class="v">{{total}}</span></div>
+ <div class="card stat" style="width: 200px"><span class="d">디자인 완료</span><span class="v c-pos">{{done}}</span></div>
+ <div class="card stat" style="width: 200px"><span class="d">남은 화면</span><span class="v">{{left}}</span></div>
+ </div>
+ </div>
+ <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; align-items: start">
+ <sc-for list="{{cols}}" as="c" hint-placeholder-count="4">
+ <div class="col" style="gap: 24px">
+ <sc-for list="{{c.groups}}" as="g" hint-placeholder-count="2">
+ <div class="card" style="overflow: hidden">
+ <div class="row between" style="padding: 16px 16px 12px">
+ <h2 class="t-hl1">{{g.title}}</h2>
+ <span class="t-l2 c-alt">{{g.doneCount}} / {{g.count}} 완료</span>
+ </div>
+ <table class="tbl" style="font-size: 13px">
+ <thead><tr><th style="width: 116px">화면 ID</th><th>화면명</th><th style="width: 56px">구분</th><th style="width: 72px">상태</th></tr></thead>
+ <tbody>
+ <sc-for list="{{g.items}}" as="it" hint-placeholder-count="8">
+ <tr><td class="fw6 num" style="padding: 7px 16px">{{it.id}}</td><td style="padding: 7px 16px">{{it.name}}</td><td style="padding: 7px 16px"><span class="t-c1 c-alt" style="white-space: nowrap">{{it.tag}}</span></td><td style="padding: 7px 16px"><span class="{{it.cls}}">{{it.st}}</span></td></tr>
+ </sc-for>
+ </tbody>
+ </table>
+ </div>
+ </sc-for>
+ </div>
+ </sc-for>
+ </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2600,"height":2300}}'>
+class Component extends DCLogic {
+  renderVals() {
+    // 완료된 영역 코드. 단계가 끝날 때마다 여기에 추가.
+    const DONE = ['00', 'OV', 'SA', 'MA', 'SH', 'PF', 'AU'];
+    const DONE_IDS = ['SH-003', 'SH-026'];
+    const AREAS = {
+      '00': '개요 · IA · 브랜드 · 디자인 시스템', OV: 'OV OBS 오버레이', AU: 'AU 공통 인증', PF: 'PF 플랫폼 소개·가입',
+      SA: 'SA 파트너스 관리자', MA: 'MA 마스터 관리자', SH: 'SH 구매자 쇼핑몰', EM: 'EM 구매자 주문 메일'
+    };
+    const RAW = `00|표지 · 진행 현황|00
+00-IA1|정보구조도 — 메뉴 그룹 (GNB → LNB · docs/IA.md)|00
+00-IA2|정보구조도 — 화면 이동 경로|00
+00-IA3|정보구조도 — 권한별 접근 범위|00
+00-LST|전체 화면 목록 · 완료표|00
+00-BR1|브랜드명 후보 5안|00
+00-BR2|1순위 로고 시안 3종|00
+00-BR3|브랜드 컬러 · 서체|00
+00-DS1|디자인 시스템 — 기초 (참고 · 구 체계 · 정본 DS6)|00
+00-DS2|디자인 시스템 — 버튼 · 입력 상태 (참고 · 구 체계 · 정본 DS6)|00
+00-DS3|디자인 시스템 — 배지 · 표 · 탭 · 드롭다운 (참고 · 구 체계 · 정본 DS6)|00
+00-DS4|디자인 시스템 — 모달 · 시트 · 토스트 (참고 · 구 체계 · 정본 DS6)|00
+00-DS5|디자인 시스템 — 공통 상태 패턴 (참고 · 구 체계 · 정본 DS6)|00
+00-HO|개발 이관용 컴포넌트 목록|00
+OV-000|오버레이 효과 명세 (이름 · 지속 · 주기 · 이징)|OV|추가
+OV-001|세로 9:16 · 줄서기형 (기본)|OV
+OV-001-B|세로 9:16 · 스포트라이트형|OV
+OV-001-C|세로 9:16 · 미니형|OV
+OV-001-E|세로 9:16 · 주문 없음 (빈 상태)|OV|변형
+OV-001-F|세로 9:16 · 주문 많음 · 긴 닉네임|OV|변형
+OV-001-G|세로 9:16 · 유튜브 가림 영역 가이드|OV|추가
+OV-001-P|세로 9:16 · 휴대폰 축소 미리보기 3종|OV|추가
+OV-002|가로 16:9 · 줄서기형 (기본)|OV
+OV-002-B|가로 16:9 · 스포트라이트형|OV
+OV-002-C|가로 16:9 · 미니형|OV
+OV-002-E|가로 16:9 · 주문 없음 (빈 상태)|OV|변형
+OV-002-G|가로 16:9 · 유튜브 가림 영역 가이드|OV|추가
+OV-003|HIT 카드 강조 연출 (세로)|OV
+OV-003-B|HIT 카드 강조 연출 (가로)|OV
+OV-004|명예의 전당 · 현재 주문 카드 · 등급 배지 해부|OV
+OV-005|오픈 타이머 켬 (세로 · 선택 위젯)|OV
+OV-005-B|오픈 타이머 켬 (가로 · 선택 위젯)|OV
+OV-006|연결 끊김 (세로)|OV
+OV-007|오버레이 상품 카드 · 이벤트 할인 (할인율 · 남은 시간 크게)|OV
+OV-008|기본 템플릿 3종 수치표 (9:16 · 16:9 · 위젯 7종 % 좌표 · 표시 · 속성)|OV
+OV-006-B|방송 대기 (세로)|OV
+OV-006-C|연결 끊김 (가로)|OV
+AU-001|마스터 관리자 로그인|AU
+AU-002|파트너스 로그인|AU
+AU-003|비밀번호 찾기|AU
+AU-004|비밀번호 재설정|AU
+AU-005|파트너스 승인 대기 안내|AU
+AU-006|이용 정지 안내|AU
+AU-007|세션 만료|AU
+AU-008|권한 없음 (403)|AU
+AU-009|페이지 없음 (404)|AU
+AU-010|점검 중|AU
+AU-011|휴대폰 본인확인 · 상태 10개 (가입 · 비밀번호 찾기 · 대표자 공통)|AU
+PF-001|서비스 소개 (랜딩)|PF
+PF-001-M|서비스 소개 (모바일)|PF|추가
+PF-002|기능 안내|PF
+PF-003|요금 안내|PF
+PF-004|자주 묻는 질문|PF
+PF-005|공지사항 목록|PF
+PF-006|공지 상세|PF
+PF-007-1|가입 신청 — 약관 동의|PF
+PF-007-2|가입 신청 — 정보 입력|PF
+PF-007-3|가입 신청 — 완료 · 승인 대기|PF
+PF-008|이용약관|PF
+PF-009|개인정보처리방침|PF
+SA-001|방송 대시보드 — 방송 중|SA
+SA-001-DK|방송 대시보드 — 다크 변형|SA|변형
+SA-011-DK|상품 목록 — 다크 변형 (목록 대표)|SA|변형
+SA-012-DK|상품 등록 — 다크 변형 (입력 대표)|SA|변형
+SA-FRAME-M|공통 틀 — 모바일 변형 (768px 미만 · 서랍 아코디언 · 1열 폼)|SA|변형
+SA-011-M|상품 목록 — 모바일 변형 (카드형 목록 · 검색 1열)|SA|변형
+SA-001-B|방송 대시보드 — 주문 많음|SA|변형
+SA-001-C|방송 대시보드 — 방송 시작 전|SA|변형
+SA-001-E|방송 대시보드 — 실시간 연결 오류|SA|변형
+SA-001-M1|개봉 시작 · 완료 확인 다이얼로그|SA
+SA-001-M2|주문 취소 확인 다이얼로그|SA
+SA-001-M3|타이머 설정 모달|SA
+SA-001-M4|HIT 카드 등록 모달|SA
+SA-001-M5|방송 시작 확인|SA
+SA-001-M6|방송 종료 확인|SA
+SA-011|상품 목록 · 검색 · 필터|SA
+SA-011-S|상품 검색 결과 · 결과 없음|SA|변형
+SA-012|상품 등록|SA
+SA-012-E|상품 수정 (입력 오류 포함)|SA
+SA-012-D|상품 삭제 확인|SA
+SA-013|상품 상세 미리보기|SA
+SA-014|재고 관리 (일괄 수정 · 빼기 · 더하기 · 재고 이력)|SA
+SA-021|주문 목록 · 검색 · 필터|SA
+SA-021-S|주문 필터 결과 · 드롭다운 열림|SA|변형
+SA-022|주문 상세|SA
+SA-023|취소 · 환불 처리|SA
+SA-024|현금영수증 · 세금계산서|SA|추가
+SA-025|배송 (배송 준비 · 배송 중 · 완료 · 송장 입력 · 발송 알림)|SA|추가
+SA-031|적립 정책|SA
+SA-032|지급 · 회수 원장|SA
+SA-033|회원별 잔액|SA
+SA-034|실지급 스위치|SA
+SA-034-M|실지급 켜기 경고 확인|SA
+SA-041|회원 목록 · 검색|SA
+SA-042|회원 상세|SA
+SA-046|구매자 문의 목록 (상품 문의 · 1:1 문의)|SA
+SA-047|구매자 문의 상세 · 답변 (비공개 · 답변 수정)|SA
+SA-051|오버레이 편집기 — 위젯 선택 · 속성 패널|SA
+SA-051-B|오버레이 편집기 — 드래그 중 · 스냅 · 스마트 가이드|SA|추가
+SA-051-C|오버레이 편집기 — 주문대기 「오픈」 · 「대기」 색|SA|추가
+SA-051-D|오버레이 편집기 — 신규 주문 알림 3종|SA|추가
+SA-051-P|실제 크기 미리보기 (가림 가이드)|SA|추가
+SA-052|오버레이 URL 복사 · 재발급|SA
+SA-053|HIT 카드 이력|SA
+SA-054|방송 이력|SA
+SA-057|유튜브 연결 (채널 · 방송 주소 · 상태 4종 · 채팅 수집 고지)|SA
+SA-055|방송 상세|SA
+SA-060|쇼핑몰 설정 (내 도메인 연결 흐름)|SA
+SA-061|배송비 정책 (무료 · 고정 · 일정 금액 이상 무료 · 제주 · 도서산간 · 받는 방법)|SA
+SA-063|주문 설정 (미입금 자동 취소 · 재고 복구 · 배송 완료 · 구매 확정 · 반품 배송비)|SA|추가
+SA-062|법정 고지 · 약관 (미성년자 정책 · 약관 편집 · 에스크로)|SA|추가
+SA-002|파트너스 홈 (오늘 할 일 · 매출)|SA|추가
+SA-003|시작하기 (첫 로그인 체크리스트)|SA|추가
+SA-026|입금 확인 (무통장 대기 · 기한 · 자동 취소)|SA|추가
+SA-015|카테고리 관리|SA|추가
+SA-043|구매 제한 (블랙리스트)|SA|추가
+SA-060-D|내 도메인 연결 상태 4종 · 해제 확인|SA|변형
+SA-080|주문자 알림 설정|SA
+SA-081|발송·이용 충전 (선불 · 잔액 · 충전 · 사용 내역 · 미발송 안내)|SA
+SA-090|구독 · 결제|SA
+SA-090-M|구독 해지 확인|SA
+SA-100|직원 계정 · 권한|SA
+SA-100-M|직원 초대 · 권한 수정 모달|SA
+SA-100-D|직원 삭제 확인|SA
+SA-111|공지사항 목록|SA|분할
+SA-112|공지 상세|SA|분할
+SA-113|문의 목록|SA|분할
+SA-114|문의 작성|SA|분할
+SA-115|문의 상세 · 답변 확인|SA|분할
+SA-120|내 계정|SA
+SA-130|알림 센터 (드롭다운)|SA|추가
+SA-140|도우미 (사용법 질문 · 답변)|SA
+MA-001|통합 대시보드 — 최고관리자|MA
+MA-001-R2|통합 대시보드 — 운영 (나중)|MA|나중
+MA-001-R3|통합 대시보드 — CS (나중)|MA|나중
+MA-001-R4|통합 대시보드 — 조회 전용 (나중)|MA|나중
+MA-002|알림 센터 (장애 · 오류)|MA|추가
+MA-011|파트너스 목록 · 검색 · 필터|MA
+MA-011-S|파트너스 검색 결과 · 결과 없음|MA|변형
+MA-012-1|파트너스 상세 — 기본정보|MA
+MA-012-2|파트너스 상세 — 쇼핑몰|MA
+MA-012-3|파트너스 상세 — 구독|MA
+MA-012-4|파트너스 상세 — PG 연결|MA
+MA-012-5|파트너스 상세 — 방송 이력|MA
+MA-012-6|파트너스 상세 — 주문 현황|MA
+MA-012-7|파트너스 상세 — 적립금 설정|MA
+MA-012-8|파트너스 상세 — 메모|MA
+MA-012-9|파트너스 상세 — 활동 기록|MA
+MA-013|가입 신청 목록|MA
+MA-014|가입 신청 상세|MA
+MA-014-A|가입 승인 확인|MA
+MA-014-R|가입 반려 사유 입력|MA
+MA-015-S|이용 정지 (사유 입력)|MA
+MA-015-U|이용 정지 해제|MA
+MA-016-M|대리 조회 — 접근 사유 입력|MA
+MA-016|대리 조회 — 읽기 전용 화면|MA
+MA-021|요금제 목록|MA
+MA-021-P|요금제 가격 변경 확인 (30일 전 알림)|MA
+MA-022|요금제 등록|MA
+MA-022-E|요금제 수정 (변경 영향 경고)|MA
+MA-022-D|요금제 삭제 · 비노출 확인|MA|추가
+MA-023|구독 현황 목록|MA
+MA-024|청구 · 결제 내역|MA
+MA-025|청구 상세|MA
+MA-026|환불 요청 목록|MA
+MA-027|환불 처리|MA
+MA-031|결제 연결 상태 (플랫폼 게이트웨이 · 파트너스별 최근 결제 결과)|MA
+MA-032|구독료 수납 (기간 · 요약 · 일별 · 연체 · 유예 링크)|MA
+MA-041|실시간 방송 중 파트너스|MA
+MA-042|파트너스별 주문 · 오버레이 접속 현황|MA
+MA-043|적립금 실지급 켜진 파트너스|MA
+MA-051|파트너스 문의 목록|MA
+MA-052|문의 상세 · 답변|MA
+MA-053|공지사항 목록|MA
+MA-054|공지 작성 · 수정|MA
+MA-054-D|공지 삭제 확인|MA|추가
+MA-055|도우미 답변 자료 관리|MA
+MA-061|관리자 계정 목록 (나중)|MA|나중
+MA-062|관리자 계정 추가 · 수정 (나중)|MA|나중
+MA-062-D|관리자 계정 비활성화 확인 (나중)|MA|나중
+MA-063|역할별 권한 표 (나중)|MA|나중
+MA-070|로그 추적|MA
+MA-071|로그 추적 상세 (드로어)|MA|추가
+MA-081|플랫폼 기본 정책|MA
+MA-082|알림 채널 설정|MA
+MA-083|점검 모드|MA
+MA-083-M|점검 시작 확인|MA
+MA-084|도우미 설정 (켜기 · 하루 질문 한도)|MA
+MA-086|발송 단가 (최고관리자 · 채널별 단가 · 적용 예정일 · 공지)|MA
+MA-090|내 계정 (비밀번호 · 세션)|MA
+SH-001|쇼핑몰 홈|SH
+SH-002|상품 목록 · 검색|SH
+SH-002-F|필터 바텀시트|SH|추가
+SH-002-S|검색 결과 없음|SH|변형
+SH-003|상품 상세 (상품 문의 · 비공개)|SH
+SH-003-O|옵션 선택 바텀시트|SH|추가
+SH-004|장바구니|SH
+SH-004-E|빈 장바구니|SH|변형
+SH-005|주문서 (방송 닉네임 · 적립금)|SH
+SH-005-E|주문서 입력 오류|SH|변형
+SH-005-R|주문서 · 현금영수증 · 세금계산서 (무통장)|SH|추가
+SH-006|결제 진행|SH
+SH-007|주문 완료|SH
+SH-008|결제 실패|SH
+SH-009|미성년자 구매 제한 안내|SH|추가
+SH-010|로그인|SH
+SH-011|회원가입|SH
+SH-012|비밀번호 찾기|SH
+SH-020|마이페이지|SH
+SH-021|주문 내역|SH
+SH-022|주문 상세|SH
+SH-022-M|주문 취소 요청 바텀시트|SH|추가
+SH-023|내 적립금|SH
+SH-024|회원정보 수정|SH
+SH-025|알림 설정|SH
+SH-027|배송지 관리 (여러 개 · 이름표 · 기본 배송지 · 추가 · 수정 · 삭제)|SH
+SH-026|내 문의 (상품 문의 · 1:1 문의 · 답변 확인)|SH
+SH-030|쇼핑몰 공지 · 이용안내|SH
+SH-040|쇼핑몰 정지 · 준비 중 안내|SH
+SH-041|쇼핑몰 잠금 (이용 불가 · 주문 조회만)|SH
+SH-T|파트너스별 테마 구조 (3종 비교)|SH|추가
+SH-001-PC|쇼핑몰 홈 (PC)|SH|추가
+SH-002-PC|상품 목록 · 필터 (PC)|SH|추가
+SH-003-PC|상품 상세 (PC)|SH|추가
+SH-004-PC|장바구니 (PC)|SH|추가
+SH-005-PC|주문서 (PC)|SH|추가
+SH-005-R-PC|주문서 · 현금영수증 · 세금계산서 (PC · 무통장)|SH|추가
+SH-007-PC|주문 완료 (PC)|SH|추가
+SH-009-PC|미성년자 구매 제한 안내 (PC)|SH|추가
+SH-010-PC|로그인 (PC)|SH|추가
+SH-011-PC|회원가입 (PC)|SH|추가
+SH-012-PC|비밀번호 찾기 (PC)|SH|추가
+EM-001|주문 완료 메일|EM|추가
+EM-002|발송 메일|EM|추가
+EM-003|배송 완료 메일|EM|추가
+EM-004|취소 · 환불 메일|EM|추가
+EM-101|파트너스 가입 승인 안내 메일|EM|추가
+EM-102|가입 반려 안내 메일|EM|추가
+SH-020-PC|마이페이지 (PC)|SH|추가
+SH-021-PC|주문 내역 (PC)|SH|추가
+SH-022-PC|주문 상세 (PC)|SH|추가
+SH-T-PC|파트너스별 테마 구조 PC (3종 비교)|SH|추가`;
+    const rows = RAW.split('\n').map((l) => {
+      const [id, name, area, tag] = l.split('|');
+      const ok = DONE.includes(area) || DONE_IDS.includes(id);
+      return { id, name, area, tag: tag || '원안', st: ok ? '완료' : '예정', cls: ok ? 'bdg b-done' : 'bdg b-wait' };
+    });
+    const group = (a) => {
+      const items = rows.filter((r) => r.area === a);
+      return { title: AREAS[a], items, count: items.length, doneCount: items.filter((r) => r.st === '완료').length };
+    };
+    const cols = [
+      { groups: ['00', 'OV', 'AU', 'PF'].map(group) },
+      { groups: ['SA'].map(group) },
+      { groups: ['MA'].map(group) },
+      { groups: ['SH'].map(group) }
+    ];
+    const done = rows.filter((r) => r.st === '완료').length;
+    return { cols, total: rows.length, done, left: rows.length - done };
+  }
+}
+</script>
+</body>
+</html>

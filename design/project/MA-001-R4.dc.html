@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>(나중) 마스터 통합 대시보드 조회 전용</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="app" data-theme="light" style="width: 1920px; display: flex; flex-direction: column">
+ <div class="ma-bar">
+ <a class="logo" href="MA-001-R4.dc.html" style="font-size: 18px; --brand: #ffffff; --brand-ink: #0f766e"><span class="logo-sym"></span><span class="logo-word"></span><span class="t-l2" style="opacity: .85; margin-left: 4px">마스터 관리자</span></a>
+ <span class="role" style="background: #ffffff1a; box-shadow: inset 0 0 0 1px #ffffff66">조회 전용 · 이감사</span>
+ <span class="t-l2" style="opacity: .85">모든 변경 버튼이 비활성화됩니다</span>
+ <div class="row" style="margin-left: auto; gap: 8px"><a class="btn btn-sm" href="MA-002.dc.html" style="background: #ffffff26; color: #fff">알림</a><a class="btn btn-sm" href="MA-090.dc.html" style="background: #fff; color: var(--master)">내 계정</a></div>
+ </div>
+ <div class="ma-shell" style="min-height: 1028px">
+ <aside class="side">
+ <sc-for list="{{nav}}" as="n" hint-placeholder-count="22">
+ <sc-if value="{{n.h}}" hint-placeholder-val="{{false}}"><span class="nav-h">{{n.label}}</span></sc-if>
+ <sc-if value="{{n.item}}" hint-placeholder-val="{{true}}"><a class="nav-i ma-i {{n.cls}}" href="{{n.href}}">{{n.label}}</a></sc-if>
+ </sc-for>
+ <div class="msg t-c1" style="margin-top: auto">조회 전용은 관리자 계정 메뉴가 보이지 않습니다. 나머지는 모두 볼 수 있지만 변경 · 승인 · 대리 조회는 할 수 없습니다.</div>
+ </aside>
+ <div class="col">
+ <header class="topbar"><h1 class="t-h2">통합 대시보드</h1><span class="bdg b-gray nodot">조회 전용</span><span class="t-l2 c-alt">15:52 기준</span><div class="row" style="margin-left: auto; gap: 8px"><div class="seg"><button type="button" class="on">오늘</button><button type="button">7일</button><button type="button">30일</button></div><button class="btn btn-sm btn-out" type="button">내보내기 (조회 기록이 남습니다)</button></div></header>
+ <main class="main">
+ <div class="msg msg-info t-l2" style="margin-bottom: 4px"><b>나중에 엽니다.</b> 지금은 마스터 관리자를 대표님 혼자 씁니다. 관리자가 늘어나면 이 화면과 역할 구분을 다시 켭니다.</div>
+<div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 12px">
+ <div class="card stat"><span class="d">전체 파트너스</span><span class="v">184</span></div><div class="card stat"><span class="d">신규 가입 (이번 달)</span><span class="v">23</span></div><div class="card stat"><span class="d">구독 매출 월 구독 매출</span><span class="v">16,400,000원</span></div><div class="card stat"><span class="d">구독료 결제 실패</span><span class="v c-neg">4</span></div><div class="card stat"><span class="d">지금 방송 중</span><span class="v">12</span></div><div class="card stat"><span class="d">오늘 주문</span><span class="v">1,204</span></div><div class="card stat"><span class="d">장애 · 오류</span><span class="v c-cau">4</span></div>
+ </div>
+ <div style="display: grid; grid-template-columns: 1.1fr 1fr 1fr; gap: 20px; align-items: start">
+ <section class="card" style="overflow: hidden">
+ <div class="row between" style="padding: 14px 20px"><h2 class="t-hl2">장애 · 오류 알림</h2><a class="t-l2" href="MA-002.dc.html">알림 센터</a></div>
+ <div class="row" style="gap: 12px; padding: 12px 20px; box-shadow: inset 0 -1px 0 var(--wds-line-normal-alternative)"><span class="bdg b-fail">PG 오류</span><div class="col grow"><span class="t-l1 fw6">카드숍 별빛 · 시크릿 키 만료</span><span class="t-c1 c-alt">14:22 · 담당 김운영</span></div><button class="btn btn-sm btn-out" type="button" disabled>처리</button></div>
+ <div class="row" style="gap: 12px; padding: 12px 20px; box-shadow: inset 0 -1px 0 var(--wds-line-normal-alternative)"><span class="bdg b-fail">PG 오류</span><div class="col grow"><span class="t-l1 fw6">포켓덕후샵 · 결제 결과 알림을 35분째 못 받고 있습니다</span><span class="t-c1 c-alt">14:05</span></div><button class="btn btn-sm btn-out" type="button" disabled>처리</button></div>
+ <div class="row" style="gap: 12px; padding: 12px 20px"><span class="bdg b-warn">연결 끊김</span><div class="col grow"><span class="t-l1 fw6">문라이트마켓 · 오버레이 재연결 실패</span><span class="t-c1 c-alt">13:48</span></div><button class="btn btn-sm btn-out" type="button" disabled>처리</button></div>
+ </section>
+ <section class="card" style="overflow: hidden">
+ <div class="row between" style="padding: 14px 20px"><h2 class="t-hl2">가입 신청 대기 <span class="bdg b-wait">5</span></h2></div>
+ <div class="row" style="gap: 12px; padding: 11px 20px; box-shadow: inset 0 -1px 0 var(--wds-line-normal-alternative)"><div class="col grow"><span class="t-l1 fw6">트레카랩</span><span class="t-c1 c-alt">2일 전</span></div><button class="btn btn-sm btn-master" type="button" disabled>검토</button></div>
+ <div class="row" style="gap: 12px; padding: 11px 20px; box-shadow: inset 0 -1px 0 var(--wds-line-normal-alternative)"><div class="col grow"><span class="t-l1 fw6">빛나는카드</span><span class="t-c1 c-alt">어제</span></div><button class="btn btn-sm btn-master" type="button" disabled>검토</button></div>
+ <div class="row" style="gap: 12px; padding: 11px 20px"><div class="col grow"><span class="t-l1 fw6">오픈박스스튜디오</span><span class="t-c1 c-alt">2일 전</span></div><button class="btn btn-sm btn-master" type="button" disabled>검토</button></div>
+ </section>
+ <section class="card pad col" style="gap: 10px">
+ <h2 class="t-hl2">조회 전용 역할이 할 수 있는 일</h2>
+ <div class="col t-l2 c-neu" style="gap: 6px"><span class="row" style="gap: 8px"><span class="bdg b-done">가능</span>모든 목록 · 상세 · 로그 추적 열람, 내보내기</span><span class="row" style="gap: 8px"><span class="bdg b-cancel">불가</span>승인 · 반려 · 정지 · 환불 · 요금제 · 공지 발송</span><span class="row" style="gap: 8px"><span class="bdg b-cancel">불가</span>파트너스 화면 대리 조회</span><span class="row" style="gap: 8px"><span class="bdg b-cancel">불가</span>관리자 계정 · 역할 메뉴 (보이지 않음)</span></div>
+ <span class="t-c1 c-alt">비활성 버튼에 마우스를 올리면 「조회 전용 역할」 툴팁이 표시됩니다.</span>
+ <div class="toast" style="align-self: flex-start"><span class="tdot" style="background: #ffa938"></span>조회 전용 역할은 변경할 수 없습니다</div>
+ </section>
+ </div>
+ </main>
+ </div>
+ </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1920,"height":1100}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const ROLE = 'view', ACTIVE = 'MA-001';
+    const HIDE = { super: [], ops: ['MA-061', 'MA-063', 'MA-081'], cs: ['MA-061', 'MA-063', 'MA-070', 'MA-081'], view: ['MA-061', 'MA-063'] }[ROLE];
+    const NAV = [['h','운영'],['통합 대시보드','MA-001'],['알림 센터','MA-002'],['h','파트너스'],['파트너스 목록','MA-011'],['가입 신청','MA-013'],['h','구독 · 요금제'],['요금제','MA-021'],['구독 현황','MA-023'],['청구 · 결제','MA-024'],['환불 요청','MA-026'],['h','정산 · 결제 현황'],['PG 연결 상태','MA-031'],['구독료 수납','MA-032'],['h','운영 현황'],['실시간 방송','MA-041'],['주문 · 오버레이 접속','MA-042'],['실지급 파트너스','MA-043'],['실시간 감시','MA-100'],['자동 연결 작업','MA-110'],['h','고객지원'],['파트너스 문의','MA-051'],['공지사항','MA-053'],['도우미 답변 자료','MA-055'],['h','관리'],['로그 추적','MA-070'],['시스템 설정','MA-081'],['내 계정','MA-090']];
+    const items = NAV.filter(([a, b]) => a === 'h' || !HIDE.includes(b));
+    const nav = items.filter(([a, b], i) => a !== 'h' || (items[i + 1] && items[i + 1][0] !== 'h')).map(([a, b]) => a === 'h' ? { h: true, item: false, label: b } : { h: false, item: true, label: a, href: b + '.dc.html', cls: b === ACTIVE ? 'on' : '' });
+    return { nav };
+  }
+}
+</script>
+</body>
+</html>

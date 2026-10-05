@@ -1,0 +1,29 @@
+from ib import *
+import re
+src=open(P+'MA-023.dc.html',encoding='utf-8').read()
+g=re.search(r'<div class="gnb">.*?</div></div>(?=<div class="wrap")',src,flags=re.S).group(0)
+g=g.replace('</nav><div class="util">','</nav><form class="gsearch" onsubmit="return false"><input class="i" type="text" placeholder="파트너스 · 주문번호 · 결제번호 · 문의 · 작업 ID 검색" aria-label="전체 검색" style="width:360px"></form><div class="util">',1)
+g=g.replace('<a class="on" href="MA-021.dc.html">','<a class="" href="MA-021.dc.html">').replace('<a class="" href="MA-001.dc.html">홈</a>','<a class="on" href="MA-001-IA.dc.html">홈</a>')
+g=g.replace('<a href="MA-002.dc.html">알림 센터</a>','<a href="MA-002.dc.html">알림 센터 <span class="tag r">9</span></a>')
+def tile(k,v,href,note,hot=True):
+    return f'<a class="kpi" href="{href}.dc.html"><div class="tl{" hot" if hot else ""}"><span class="k">{k}</span><span class="v">{v}</span><span class="nt">{note}</span></div></a>'
+tiles=''.join([
+ tile('가입 승인 대기','5건','MA-013','가장 오래된 신청 3일 전'),
+ tile('결제 실패','4건','MA-024','재시도 예정 2 · 연체 전환 1'),
+ tile('환불 요청','2건','MA-026','처리 기한 임박 1'),
+ tile('파트너스 문의','6건','MA-051','답변 대기 · 1일 넘음 2'),
+ tile('PG 연결 오류','2곳','MA-011','카드숍 별빛 외 1곳'),
+ tile('자동 연결 실패','3건','MA-041','최근 1시간'),
+ tile('심각 장애','1건','MA-041','진행 중 · 14:22 시작'),
+])
+body=f'''<div class="pathbar">홈 › 통합 대시보드</div><div class="ph2"><h1>통합 대시보드</h1><span class="path">홈 › 통합 대시보드</span><div class="acts"><a class="b " href="MA-002.dc.html">알림 센터</a><a class="b pri" href="MA-013.dc.html">가입 신청 검토</a></div></div>
+<div class="sec-h"><h2>오늘 처리할 일</h2><span class="nt">숫자를 누르면 해당 조건이 걸린 목록으로 이동합니다 · 10/5 (월) 15:45 집계</span></div>
+<div class="kpis" style="grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 12px">{tiles}</div>
+<div class="sec-h"><h2>플랫폼 현황</h2><span class="nt">실제 데이터 기준 · 차트는 통합 대시보드 차트 보드(MA-001) 참고</span><span class="sp" style="margin-left:auto"><a class="b " href="MA-001.dc.html">차트 보기</a></span></div>
+<div class="kpis" style="grid-template-columns: repeat(4, minmax(0, 1fr))"><div class="kpi"><div class="k">이용 중 파트너스</div><div class="v">171곳</div><div class="s"><span class="nt">체험 21 · 연체 11</span></div></div><div class="kpi"><div class="k">오늘 주문</div><div class="v">6,962건</div><div class="s"><span class="nt">전일 6,540건</span></div></div><div class="kpi"><div class="k">오늘 결제 금액</div><div class="v">86,300,000원</div><div class="s"><span class="nt">환불 제외</span></div></div><div class="kpi"><div class="k">지금 방송 중</div><div class="v">12곳</div><div class="s"><span class="nt">오류 1곳</span></div></div></div>'''
+lnb='<div class="lnb-t">홈</div><a class="on" href="MA-001-IA.dc.html">통합 대시보드</a><a class="" href="MA-002.dc.html">알림 센터</a>'
+st=stwrap([('처리할 일 없음','<div class="note " style="width: 100%">지금 처리할 일이 없습니다. 새 가입 신청이나 결제 실패가 생기면 여기에 표시됩니다.</div><a class="b" href="MA-002.dc.html">알림 센터</a>'),('오류','<div class="note neg" style="width: 100%"><b>집계를 불러오지 못했습니다.</b> 네트워크를 확인한 뒤 다시 시도해 주십시오.</div><button class="b " type="button">다시 시도</button>'),('조회 전용 관리자','<div class="note inf" style="width: 100%">조회 전용 권한입니다 · 처리 화면으로 이동은 가능하지만 변경은 할 수 없습니다.</div>'),('전역 검색 · 결과 없음','<div class="note " style="width: 100%">「ORD-2026」과 일치하는 파트너스 · 주문 · 결제 · 문의 · 작업이 없습니다. 번호를 다시 확인해 주십시오.</div>')])
+html=head('통합 대시보드 (IA 개편)').replace('<div class="app c24"','')
+html=head('통합 대시보드 (IA 개편)')+f'<div class="app c24 ma" data-theme="light" style="width: 1920px; display: flex; flex-direction: column">\n{g}<div class="wrap" style="min-height: 700px"><aside class="lnb">{lnb}</aside><main class="cont">{body}\n</main></div>\n{st}</div>\n</x-dc>\n<script type="text/x-dc" data-dc-script data-props=\'{{"$preview":{{"width":1920,"height":1300}}}}\'>\nclass Component extends DCLogic {{ renderVals() {{ return {{}}; }} }}\n</script>\n</body>\n</html>\n'
+save('MA-001-IA',html)
+addboard('MA-001-IA','MA-001-IA 마스터 홈 · IA 개편 (오늘 처리할 일 7종 · 전역 검색)',7600,108800,1920,1300)

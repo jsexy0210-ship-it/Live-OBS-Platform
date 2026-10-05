@@ -55,3 +55,25 @@ test("새 공지와 문의 답변이 안 읽음으로 보이고, 열면 공지�
   await notice.getByRole("link").click();
   await expect(page).toHaveURL(new RegExp(`/seller/notices/${noticeId}$`));
 });
+
+test("입금 확인·결제 완료·재고 없음·반품 요청 알림은 서버 제목 그대로 종류 배지와 함께 보이고, 눌러 해당 화면으로 간다", async ({ page }) => {
+  await login(page, "/seller/notifications");
+  const now = new Date().toISOString();
+  const items = [
+    { id: "dp1", kind: "DEPOSIT_PENDING", title: "주문 12 입금 확인 필요", href: "/seller/orders/o12", createdAt: now, unread: true },
+    { id: "op1", kind: "ORDER_PAID", title: "주문 13 결제 완료", href: "/seller/orders/o13", createdAt: now, unread: false },
+    { id: "os1", kind: "OUT_OF_STOCK", title: "테스트 상품 재고 없음", href: "/seller/products/p1", createdAt: now, unread: true },
+    { id: "rr1", kind: "RETURN_REQUESTED", title: "주문 14 반품 요청", href: "/seller/returns", createdAt: now, unread: true },
+  ];
+  await page.route("**/api/seller/notifications", (route) => (route.request().method() === "GET" ? route.fulfill({ json: { items, unreadCount: 3 } }) : route.continue()));
+  await page.goto("/seller/notifications");
+  const row = (t: string) => page.getByTestId("notif-row").filter({ hasText: t });
+  await expect(row("주문 12 입금 확인 필요")).toContainText("입금 확인");
+  await expect(row("주문 13 결제 완료")).toContainText("결제 완료");
+  await expect(row("주문 13 결제 완료")).toHaveAttribute("data-unread", "false");
+  await expect(row("테스트 상품 재고 없음")).toContainText("재고 없음");
+  await expect(row("주문 14 반품 요청")).toContainText("반품·교환");
+  await expect(page.getByTestId("notif-unread")).toContainText("3건");
+  await row("주문 14 반품 요청").getByRole("link").click();
+  await expect(page).toHaveURL(/\/seller\/returns$/);
+});

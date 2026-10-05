@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
 import { ListHead, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
-import { QuickStatus, QuickStock, type QuickDone } from "../../../../../components/seller/ProductQuick";
+import { QuickPrice, QuickStatus, QuickStock, type QuickDone, type QuickUndo } from "../../../../../components/seller/ProductQuick";
 import { categoryLabel, categoryOptions, type CategoryNode } from "../../../../../components/seller/ProductCategoryPicker";
 import { ErrorState, LoadingRows, Locked, NoImage, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, type Product, type ProductStatus } from "../../../../../components/seller/api";
@@ -129,8 +129,12 @@ export default function ProductListPage() {
   const key = query(applied, sort, limit);
   const appliedJson = JSON.stringify(applied);
   const [draft, setDraft] = useState<Filters>(applied);
-  // 주소가 바뀌면(Back·초기화) 입력 중인 값도 적용된 조건으로 맞춘다
+  // 주소가 밖에서 바뀌면(Back 등) 입력 중인 값도 적용된 조건으로 맞춘다. 「검색」「초기화」로 이 화면이 직접 바꾼 주소는 입력 칸을 건드리지 않는다
+  // (초기화 직후 새 검색어를 입력하는 중에 주소 변경이 늦게 반영돼도 입력이 지워지지 않게)
+  const pushed = useRef<string | null>(null);
   useEffect(() => {
+    if (pushed.current === appliedJson) return;
+    pushed.current = appliedJson;
     setDraft(JSON.parse(appliedJson) as Filters);
   }, [appliedJson]);
   const [cats, setCats] = useState<CategoryNode[]>([]);
@@ -148,10 +152,14 @@ export default function ProductListPage() {
     const next = { ...draft, text: draft.text.trim() };
     // 같은 조건으로 다시 누르면 주소가 안 바뀌므로 목록만 다시 읽는다
     if (JSON.stringify(next) === appliedJson) void load(key);
-    else setU(toUrl(next));
+    else {
+      pushed.current = JSON.stringify(next);
+      setU(toUrl(next));
+    }
   };
   const resetAll = () => {
     setDraft(EMPTY);
+    pushed.current = JSON.stringify(EMPTY);
     setU(toUrl(EMPTY));
   };
 
@@ -224,13 +232,17 @@ export default function ProductListPage() {
 
   const skippedText = (r: BulkResult) => (r.skipped.length === 0 ? "" : ` ${r.skipped.length}개는 바꾸지 못했습니다(${[...new Set(r.skipped.map((s) => SKIP_REASON[s.reason] ?? "처리할 수 없음"))].join(" · ")})`);
 
-  // 빠른 처리(판매 상태·재고) 결과를 목록 한 줄에 반영한다. 서버 응답을 받은 뒤에만 바뀐다
-  const quickDone: QuickDone = (p, text) => {
-    setState((s) => (s.kind === "ok" ? { ...s, items: s.items.map((x) => (x.id === p.id ? { ...x, status: p.status, options: p.options } : x)) } : s));
-    if (text) setToast(text);
+  // 빠른 처리(판매 상태·재고·판매가) 결과를 목록 한 줄에 반영한다. 서버 응답을 받은 뒤에만 바뀌고, 되돌릴 수 있는 변경은 토스트에 「되돌리기」가 붙는다
+  const [quickUndo, setQuickUndo] = useState<{ text: string; run: QuickUndo } | null>(null);
+  const quickDone: QuickDone = (p, text, undo) => {
+    setState((s) => (s.kind === "ok" ? { ...s, items: s.items.map((x) => (x.id === p.id ? { ...x, status: p.status, options: p.options, price: p.price ?? x.price } : x)) } : s));
+    if (!text) return;
+    if (undo) {
+      setToast(null);
+      setQuickUndo({ text, run: undo });
+    } else setToast(text);
   };
   const quickFail = (text: string) => setToast(text);
-
   const bulkStatus = async (status: ProductStatus) => {
     const ids = [...selected];
     const prev = items.filter((p) => selected.has(p.id)).map((p) => ({ id: p.id, status: p.status }));
@@ -514,7 +526,7 @@ export default function ProductListPage() {
                             </Link>
                             <div className="t-c1 c-alt ell">{[p.code, optionSummary(p)].filter(Boolean).join(" · ")}</div>
                           </td>
-                          <td className="num">{won(p.price)}</td>
+                          <td className="num">{canManage ? <QuickPrice product={p} onDone={quickDone} onFail={quickFail} /> : won(p.price)}</td>
                           <td className={`num${stock === 0 ? " c-neg fw6" : stock <= LOW_STOCK ? " c-cau fw6" : ""}`}>
                             {canManage && p.options.length === 1 ? <QuickStock product={p} onDone={quickDone} onFail={quickFail} /> : stock.toLocaleString("ko-KR")}
                           </td>
@@ -596,6 +608,18 @@ export default function ProductListPage() {
             </div>
           </div>
         </div>
+      )}
+      {quickUndo && (
+        <UndoToast
+          text={quickUndo.text}
+          canUndo
+          onUndo={() => {
+            const run = quickUndo.run;
+            setQuickUndo(null);
+            void run();
+          }}
+          onDone={() => setQuickUndo(null)}
+        />
       )}
       {undo && <UndoToast text={undo.text} canUndo={undo.prev.length > 0} onUndo={() => void undoBulk()} onDone={() => setUndo(null)} />}
       {toast && <Toast text={toast} onDone={() => setToast(null)} />}
