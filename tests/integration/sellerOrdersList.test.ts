@@ -67,11 +67,15 @@ describe("판매자 주문 목록 GET /api/seller/orders", () => {
     expect(row).toEqual({
       id: order.id,
       orderNo: order.orderNo,
+      orderNoLabel: expect.stringMatching(new RegExp(`^\\d{8}-${String(order.orderNo).padStart(4, "0")}$`)),
       status: "PAID",
       createdAt: order.createdAt.toISOString(),
       paidAt: order.paidAt!.toISOString(),
       buyer: { id: s.buyer.id, broadcastNickname: s.buyer.broadcastNickname },
       totalAmount: 5000,
+      refundedAmount: 0,
+      refundedQuantity: 0,
+      remainingAmount: 5000,
       paymentMethod: order.paymentMethod,
       paymentDueAt: order.paymentDueAt ? order.paymentDueAt.toISOString() : null,
       itemSummary: { firstProductName: "부스터 팩", otherCount: 2, refundedQuantity: 0 },
@@ -283,5 +287,42 @@ describe("판매자 주문 목록 GET /api/seller/orders", () => {
     expect((await list(a.cookie, "?status=PAID&shipped=true")).body.orders.map((o: { id: string; shipment: { state: string } }) => [o.id, o.shipment.state]).sort()).toEqual(
       [[delivered.id, "delivered"], [ready.id, "none"], [transit.id, "in_transit"]].sort(),
     );
+  });
+
+  it("행에 환불 현황(refundedAmount·refundedQuantity·remainingAmount)을 담는다: 환불 없음·부분 환불·전액 환불·옛 전액 환불, 다른 판매자 주문은 섞이지 않는다", async () => {
+    const a = await shop();
+    const b = await shop();
+    const none = await a.order({ status: "PAID", createdAt: new Date("2026-10-01T00:00:00Z") });
+    const partial = await a.order({ status: "PAID", createdAt: new Date("2026-10-02T00:00:00Z") });
+    const full = await a.order({ status: "REFUNDED", createdAt: new Date("2026-10-03T00:00:00Z") });
+    const legacy = await a.order({ status: "REFUNDED", createdAt: new Date("2026-10-04T00:00:00Z") });
+    const cancelled = await a.order({ status: "CANCELLED", createdAt: new Date("2026-10-05T00:00:00Z") });
+    const other = await b.order({ status: "PAID" });
+    const product = await db.product.create({ data: { sellerId: a.seller.id, name: "부스터 팩", price: 1000, status: "ON_SALE" } });
+    const option = await db.productOption.create({ data: { sellerId: a.seller.id, productId: product.id, name: "1팩", stock: 10 } });
+    const item = (orderId: string, quantity: number, refundedQuantity: number) =>
+      db.orderItem.create({ data: { sellerId: a.seller.id, orderId, productId: product.id, optionId: option.id, productNameSnapshot: "부스터 팩", optionNameSnapshot: "1팩", unitPrice: 1000, quantity, refundedQuantity } });
+    // 시험 주문 4: 23,000원 중 5,000원 부분 환불(5개)
+    await db.order.update({ where: { id: partial.id }, data: { totalAmount: 23000, refundAmount: 5000 } });
+    await item(partial.id, 23, 5);
+    await db.order.update({ where: { id: full.id }, data: { totalAmount: 10000, refundAmount: 9000 } }); // 반품 배송비 1,000원을 뺀 환불
+    await item(full.id, 10, 10);
+    await db.order.update({ where: { id: legacy.id }, data: { totalAmount: 7000, refundAmount: null } });
+    await item(legacy.id, 7, 7);
+    await item(none.id, 3, 0);
+    await db.order.update({ where: { id: other.id }, data: { refundAmount: 100 } });
+
+    const rows = Object.fromEntries((await list(a.cookie)).body.orders.map((o: { id: string }) => [o.id, o]));
+    expect(rows[none.id]).toMatchObject({ refundedAmount: 0, refundedQuantity: 0, remainingAmount: 10000 });
+    expect(rows[partial.id]).toMatchObject({ status: "PAID", totalAmount: 23000, refundedAmount: 5000, refundedQuantity: 5, remainingAmount: 18000 });
+    expect(rows[full.id]).toMatchObject({ status: "REFUNDED", refundedAmount: 9000, refundedQuantity: 10, remainingAmount: 1000 });
+    expect(rows[legacy.id]).toMatchObject({ status: "REFUNDED", refundedAmount: 7000, refundedQuantity: 7, remainingAmount: 0 });
+    expect(rows[cancelled.id]).toMatchObject({ refundedAmount: 0, refundedQuantity: 0, remainingAmount: 10000 });
+    // itemSummary.refundedQuantity와 같은 값
+    expect(rows[partial.id].itemSummary.refundedQuantity).toBe(5);
+    // 다른 판매자 목록에는 자기 주문 값만
+    const bRows = (await list(b.cookie)).body.orders;
+    expect(bRows).toHaveLength(1);
+    expect(bRows[0]).toMatchObject({ refundedAmount: 100, remainingAmount: 9900 });
   });
 });
