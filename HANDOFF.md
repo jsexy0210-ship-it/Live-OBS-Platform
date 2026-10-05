@@ -29,7 +29,8 @@
 | 디자인 전담 (4) · Fable | `session_01QUUqmD2DDwArxHsUqMyA7Y` | 2026-10-05 대표님 지시 「디자인은 다 fable로 바꿔서 빨리 진행해」로 디자인 전담 (3)(`session_019Eb1gYYx6hQzm3VDbKmKmM`, Sonnet)을 Fable 5.1로 교체. 역할·소유는 전임 행과 같음. 첫 배정: docs/ADMIN_OPS_UX.md P1 보드 |
 | 인프라 전담 (2) | `session_013HzEF83eiqjaDFkjzVyUxD` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_016ErhcGpbBooDx8a9sYYUmK`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | 개발 전담 (기반-결제) (2) | `session_018dHyuf6MTABkU1qXJgwHVm` | 2026-10-05 대표님 지시로 `session_012jhVJxoLMffGfwxWvcKJom`를 Sonnet 5.5로 교체. 역할은 전임과 같음 |
-| 도우미 전담 (2) | `session_01179Trx8rmw3gteLPm2YqPm` | 2026-10-05 대표님 지시로 `session_01LeAAUEjs1rJTq5gQptRN2S`를 Sonnet 5.5로 교체. 역할은 전임과 같음 |
+| 도우미 전담 (3) | `session_018HDBKkX75yvKWWPHUTovLB` | 2026-10-06 00:48 KST MASTER 생성(Sonnet 5.5). 전임 (2)를 컨텍스트 77%로 교체. 인계 정본 PR #647 「인계」. 큐: UX 감사 도우미 몫 → 반품·환불 응답 orderNoLabel → shipment READY → refundedAmount 적립금 포함 여부 보고 |
+| 도우미 전담 (2) | `session_01179Trx8rmw3gteLPm2YqPm` | (보관, → `session_018HDBKkX75yvKWWPHUTovLB`, 2026-10-06)  2026-10-05 대표님 지시로 `session_01LeAAUEjs1rJTq5gQptRN2S`를 Sonnet 5.5로 교체. 역할은 전임과 같음 |
 | 검수 전담 | `session_01MHJsYfiTFZ8VWkM3xVF7wM` | (교체됨 → `session_017wDPPy8EXzNu5zkAP2uu6R`, 2026-10-05)  모든 PR 독립 검수 · main 병합 · 후속 수정 배정 · 테스트 서버 배포 dispatch(승인은 대표님). 병합 기준은 `CLAUDE.md` 「마스터·전담 세션 운영」. 문서 PR은 만들지 않음. 2026-10-04 KST MASTER 생성 |
 | 개발 전담 (기반) (5) | `session_01N4xJrEzQvUuRHB8QzcQcKE` | (교체됨 → `session_014TjcA8RirjWptikziBwasM`, 2026-10-05)  (4)를 이어받음(2026-10-04). 마스터 관리자 서버 API(파트너스 목록·상세·정지, 구독·청구 조회, 대시보드, 관리자·로그), 이용 정지 「신규만 막기」. 마이그레이션 번호 20261004230000~. 소유는 (4)와 같음 |
 | 개발 전담 (기반-상품) | `session_018WsyHpKDofgW5DEiS4tUoA` | (교체됨 → `session_01Cr44KBNsnx39N7sPjPurpx`, 2026-10-05)  2026-10-04 신설. 상품 API: 목록 검색·정렬·일괄 처리, 카테고리·자동 상품 코드, 상품 이미지(저장 인터페이스 `lib/server/storage/`), 상세 페이지 블록, 진열, 재입고, CSV. 마이그레이션 20261004220000·250000~ |
