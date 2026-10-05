@@ -91,16 +91,22 @@ export type OrderHistoryEvent = {
 
 // 상태 이력 「상태」 칸: 시안(SA-022) 표의 상태 이름을 따른다
 export function historyLabel(e: OrderHistoryEvent) {
-  const amount = e.amount !== null ? ` ${e.amount.toLocaleString("ko-KR")}원` : "";
-  if (e.kind === "payment_approved") return `결제 승인${amount}`;
-  if (e.kind === "refund_partial") return `일부 환불${amount}${e.quantity ? ` · ${e.quantity}개` : ""}`;
-  if (e.kind === "payment_cancel") {
-    const r = e.cancelStatus === "DONE" ? "결제 취소 완료" : e.cancelStatus === "FAILED" ? "결제 취소 실패" : "결제 취소 요청";
-    return `${r}${amount}`;
-  }
+  if (e.kind === "payment_approved") return "결제 완료";
+  if (e.kind === "refund_partial") return "일부 환불";
+  if (e.kind === "payment_cancel") return "결제 취소";
   if (e.status === "PAID") return "결제 완료";
   if (e.status === "PENDING_PAYMENT") return e.fromStatus ? "결제 대기" : "주문 생성";
   return e.status ? STATUS_BADGE[e.status].label : "—";
+}
+
+// 상태 이력 「비고」 칸: 금액·수량·취소 결과 뒤에 파트너스가 쓴 사유
+export function historyNote(e: OrderHistoryEvent) {
+  const parts: string[] = [];
+  if (e.amount !== null) parts.push(`${e.amount.toLocaleString("ko-KR")}원`);
+  if (e.kind === "refund_partial" && e.quantity) parts.push(`${e.quantity}개`);
+  if (e.kind === "payment_cancel") parts.push(e.cancelStatus === "DONE" ? "취소 완료" : e.cancelStatus === "FAILED" ? "취소 실패" : "취소 요청");
+  if (e.note) parts.push(e.note);
+  return parts.join(" · ");
 }
 
 // 상태 이력 「처리」 칸: 역할·이름만

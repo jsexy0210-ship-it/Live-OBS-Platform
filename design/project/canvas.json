@@ -1570,7 +1570,7 @@
       "y": 6339
     },
     "SA-022.dc.html": {
-      "h": 2620,
+      "h": 2780,
       "is_interactive": true,
       "page": "p02",
       "title": "SA-022 주문 상세 (카페24식 · 요약 띠 · 상품 · 결제 · 구매자 · 배송 · 메모 · 상태 이력 · 알림 · 주문번호 + 복사)",
@@ -2995,6 +2995,14 @@
       "w": 1280,
       "x": 22200,
       "y": 108800
+    },
+    "DS-DATEPICKER.dc.html": {
+      "h": 2600,
+      "is_interactive": true,
+      "title": "DS-DATEPICKER 공통 날짜 선택 (네이버식 · 하루 · 기간 · 빈 칸 · 기본값 · 오류 · 구매자 PC · 휴대폰 시트 · 대표님 지시 2026-10-06)",
+      "w": 1280,
+      "x": 23600,
+      "y": 108800
     }
   },
   "createdOnFiles": {
@@ -4078,7 +4086,8 @@
     "OG-002.dc.html",
     "DS-CONFIRM.dc.html",
     "DS-NAV.dc.html",
-    "DS-TYPE-SCALE.dc.html"
+    "DS-TYPE-SCALE.dc.html",
+    "DS-DATEPICKER.dc.html"
   ],
   "pages": [
     {
