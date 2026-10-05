@@ -68,7 +68,7 @@ test.describe.serial("SA-060 쇼핑몰 로고", () => {
     await fileInput.setInputFiles(file("logo.png", png(300, 300)));
     await expect(page.getByText("로고는 512~1440px 정사각형이어야 합니다")).toBeVisible();
     await fileInput.setInputFiles(file("logo.png", await canvasLogo(page, 512)));
-    await expect(page.getByText("로고를 바꿨습니다 · 쇼핑몰에 바로 반영")).toBeVisible();
+    await expect(page.getByText("로고를 바꿨습니다 · 쇼핑몰에 바로 반영됩니다")).toBeVisible();
     await expect(page.getByText(/^512 × 512px · PNG/)).toBeVisible();
     expect(await loaded(page, '[data-testid="logo-box"] img')).toBe(true);
     expect(await loaded(page, '[data-testid="logo-preview"] img')).toBe(true);
