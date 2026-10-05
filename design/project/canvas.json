@@ -1472,10 +1472,10 @@
       "y": 3441
     },
     "SA-012.dc.html": {
-      "h": 4400,
+      "h": 4800,
       "is_interactive": true,
       "page": "p02",
-      "title": "SA-012 상품 등록 (카페24식 1차 · 2열 표형 폼 · 이미지 업로드 칸 · 하단 고정 저장 · 현대화 기준)",
+      "title": "SA-012 상품 등록 (카페24식 1차 · 2열 표형 폼 · 이미지 업로드 칸 · 하단 고정 저장 · 현대화 기준 · 이미지 5장 썸네일 지정 · 상세 설명 에디터)",
       "w": 1440,
       "x": 3040,
       "y": 3441
@@ -2979,6 +2979,22 @@
       "w": 1280,
       "x": 19400,
       "y": 108800
+    },
+    "DS-NAV.dc.html": {
+      "h": 4000,
+      "is_interactive": true,
+      "title": "DS-NAV 새 GNB · 메뉴 구조표 (제안 · 파트너스 10→8 · 마스터 8→6 · 구매자 · 통폐합 전후 대응표 · 대표님 지시 2026-10-05 · MASTER 확인용)",
+      "w": 1280,
+      "x": 20800,
+      "y": 108800
+    },
+    "DS-TYPE-SCALE.dc.html": {
+      "h": 1750,
+      "is_interactive": true,
+      "title": "DS-TYPE-SCALE 글자 · 버튼 · 간격 크기 체계 (시각 규격 2026-10-05 한 장 · 일시 표기 · MASTER 확인용)",
+      "w": 1280,
+      "x": 22200,
+      "y": 108800
     }
   },
   "createdOnFiles": {
@@ -4060,7 +4076,9 @@
     "MA-086.dc.html",
     "OG-001.dc.html",
     "OG-002.dc.html",
-    "DS-CONFIRM.dc.html"
+    "DS-CONFIRM.dc.html",
+    "DS-NAV.dc.html",
+    "DS-TYPE-SCALE.dc.html"
   ],
   "pages": [
     {
