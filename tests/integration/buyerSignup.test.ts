@@ -122,9 +122,9 @@ describe("구매자 가입 HTTP", () => {
     // 가입 본문에 약관 값이 없어도 본인확인 때 받은 동의로 가입된다
     const r = await signupRoute(post(s.base, { verificationId: v.verificationId, loginId: "c@example.com", password: "pw-123456", broadcastNickname: "동의" }, v.cookie), ctx(s.slug));
     expect(r.status).toBe(201);
-    const m = await db.buyerMember.findFirstOrThrow({ where: { sellerId: s.seller.id } });
+    const m = await db.buyerMember.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id } });
     expect(m.signupConsent).toEqual(consent);
-    expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.signup", actorId: m.id } })).toMatchObject({
+    expect(await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "buyer.signup", actorId: m.id } })).toMatchObject({
       after: { agreedTerms: true, agreedPrivacy: true, termsVersion: SIGNUP_CONSENT.termsVersion, privacyVersion: SIGNUP_CONSENT.privacyVersion, consentAgreedAt: (consent as { agreedAt: string }).agreedAt },
     });
   });
@@ -176,7 +176,7 @@ describe("구매자 가입 HTTP", () => {
     const pending = (await pendingStart.json()).verificationId as string;
     const now = new Date();
     for (const id of [stale.verificationId, pending]) await db.identityVerification.update({ where: { id }, data: { expiresAt: new Date(now.getTime() - 1000), subjectId: crypto.randomUUID() } });
-    const before = new Map((await db.identityVerification.findMany()).map((r) => [r.id, r]));
+    const before = new Map((await db.identityVerification.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }] })).map((r) => [r.id, r]));
     const usage = await identityUsage(db, s.seller.id);
     expect(usage).toBe(3);
 
@@ -232,9 +232,9 @@ describe("구매자 가입 HTTP", () => {
     expect(cookieOf(res, "lo_buyer")).toMatch(/^lo_buyer=.+/);
     // 응답 본문이 끊겨도 같은 요청을 다시 보낼 수 있게 본인확인 쿠키는 지우지 않는다(본인확인은 소진되어 재전송에만 쓰임)
     expect(res.headers.getSetCookie().some((c) => c.startsWith("lo_bidv="))).toBe(false);
-    const member = await db.buyerMember.findFirstOrThrow({ where: { sellerId: s.seller.id } });
+    const member = await db.buyerMember.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id } });
     expect(member).toMatchObject({ loginId: "buyer01@example.com", name: "김구매", phone: "01099998888", broadcastNickname: "카드왕" });
-    expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.signup", actorId: member.id } })).toMatchObject({
+    expect(await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "buyer.signup", actorId: member.id } })).toMatchObject({
       userAgent: "signup-test-agent",
       after: { agreedTerms: true, agreedPrivacy: true },
     });
@@ -258,10 +258,10 @@ describe("구매자 가입 HTTP", () => {
       expect(consent.marketing, JSON.stringify(start)).toEqual(agreed ? { version: SIGNUP_CONSENT_VERSIONS.marketing } : null);
       const res = await s.signup(v, signupBody);
       expect(res.status, JSON.stringify(start)).toBe(201);
-      const member = await db.buyerMember.findFirstOrThrow({ where: { sellerId: s.seller.id } });
+      const member = await db.buyerMember.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id } });
       expect(member.marketingConsentAt, JSON.stringify(start)).toEqual(agreed ? new Date(consent.agreedAt) : null);
       expect(member.marketingConsentVersion).toBe(agreed ? SIGNUP_CONSENT_VERSIONS.marketing : null);
-      expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.signup", actorId: member.id } })).toMatchObject({
+      expect(await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "buyer.signup", actorId: member.id } })).toMatchObject({
         after: { agreedTerms: true, agreedPrivacy: true, agreedMarketing: agreed, ...(agreed ? { marketingVersion: SIGNUP_CONSENT_VERSIONS.marketing } : {}) },
       });
     }
@@ -729,7 +729,7 @@ describe("signupBuyer는 completeIdentityVerification을 거친다", () => {
     expect(await first.json()).toEqual({ ok: true, broadcastNickname: "카드왕" });
     // 헤더만 도착하고 본문이 끊긴 경우에도 쿠키가 남아 있어야 다시 보낼 수 있다
     expect(first.headers.getSetCookie().some((c) => c.startsWith("lo_bidv="))).toBe(false);
-    const member = await db.buyerMember.findFirstOrThrow({ where: { sellerId: s.seller.id } });
+    const member = await db.buyerMember.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id } });
     const attempts = (await db.identityVerification.findUniqueOrThrow({ where: { id: v.verificationId } })).useAttemptCount;
     // 같은 요청을 다시 보내면(대소문자만 다른 아이디 포함) 같은 회원으로 201과 세션
     const again = await s.signup(v, { loginId: "Buyer01@Example.com" });
@@ -764,7 +764,7 @@ describe("signupBuyer는 completeIdentityVerification을 거친다", () => {
     expect(await c.json()).toEqual({ ok: true, identity: { name: "Kim", phone: "01012345678", birthDate: "1995-05-05" } });
     expect(await db.identityVerification.findUniqueOrThrow({ where: { id: verificationId } })).toMatchObject({ name: "Kim", phone: "01012345678" });
     expect((await s.signup({ cookie, verificationId })).status).toBe(201);
-    expect((await db.buyerMember.findFirstOrThrow({ where: { sellerId: s.seller.id } })).name).toBe("Kim");
+    expect((await db.buyerMember.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id } })).name).toBe("Kim");
   });
 
   it("같은 가입 요청 두 개가 동시에 와도 둘 다 201·같은 회원이고 회원 1명, 시도 횟수는 한 번만 는다", async () => {

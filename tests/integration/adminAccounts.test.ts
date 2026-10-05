@@ -36,7 +36,7 @@ describe("관리자 계정 MA-061·062", () => {
     expect(admin).toMatchObject({ email: "new@example.com", name: "운영 담당", role: "OPERATIONS", status: "ACTIVE" });
     expect(Object.keys(admin)).not.toContain("passwordHash");
     expect(await loginAdmin(db, { email: "new@example.com", password: "long-enough-pw" }, {})).toMatchObject({ ok: true });
-    const log = await db.auditLog.findFirstOrThrow({ where: { action: "admin.account.create", targetId: admin.id as string } });
+    const log = await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "admin.account.create", targetId: admin.id as string } });
     expect(log).toMatchObject({ actorId: su.id, after: { email: "new@example.com", role: "OPERATIONS" } });
     expect(JSON.stringify(log)).not.toContain("long-enough-pw");
 
@@ -52,7 +52,7 @@ describe("관리자 계정 MA-061·062", () => {
     expect(listed.admins.map((a) => a.id)).toEqual([su.id, admin.id]);
     const changed = await patch(su.cookie, admin.id as string, { name: "CS 담당", role: "CS" });
     expect(await changed.json()).toMatchObject({ admin: { name: "CS 담당", role: "CS" } });
-    expect(await db.auditLog.findFirstOrThrow({ where: { action: "admin.account.update", targetId: admin.id as string } })).toMatchObject({
+    expect(await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "admin.account.update", targetId: admin.id as string } })).toMatchObject({
       before: { role: "OPERATIONS" },
       after: { role: "CS" },
     });
@@ -151,7 +151,7 @@ describe("로그 추적 MA-070·071", () => {
     const l1 = await mk("admin.seller.suspend", at("2026-10-04T15:00:00.000Z")); // KST 10/5 0시
     const l2 = await mk("admin.seller.unsuspend", at("2026-10-05T14:59:59.999Z")); // KST 10/5 끝
     await writeAudit(db, { actorType: "SYSTEM", action: "subscription.canceled", targetType: "SellerSubscription", targetId: "s1" });
-    const l3 = (await db.auditLog.findFirstOrThrow({ where: { action: "subscription.canceled" } })).id;
+    const l3 = (await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "subscription.canceled" } })).id;
     await db.auditLog.update({ where: { id: l3 }, data: { createdAt: at("2026-10-05T15:00:00.000Z") } });
 
     const ids = async (qs: string) => {
