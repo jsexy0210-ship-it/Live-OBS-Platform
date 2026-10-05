@@ -11,6 +11,7 @@ import { AdminTopbar, useAdmin } from "../../../_components/AdminShell";
 import { SELLER_STATUS, SUBSCRIPTION_STATUS, day, dayTime, text, won, type SellerDetail, type SellerStatus } from "../../../_components/partners";
 import { MessageBalanceSection } from "../../../_components/MessageBalanceSection";
 import { SuspendDialog } from "../../../_components/SuspendDialog";
+import { useSmartBack } from "../../../../../../lib/client/navigation";
 
 // MA-012 파트너스 상세(GET /api/admin/sellers/{id}, 모든 마스터 역할): 기본 정보·대표자·사업자·구독·최근 30일 주문.
 // 이용 정지·해제(MA-015)는 최고관리자·운영만 버튼이 보인다. 활동 기록·메모 탭은 API가 생기면 붙인다.
@@ -35,6 +36,7 @@ function Info({ title, id, rows }: { title: string; id: string; rows: [string, R
 }
 
 export default function PartnerDetailPage() {
+  const back = useSmartBack("/admin/partners");
   const { sellerId } = useParams<{ sellerId: string }>();
   const { me } = useAdmin();
   const canModerate = adminCan(me.role, "seller.moderate");
@@ -75,9 +77,7 @@ export default function PartnerDetailPage() {
                   청구·결제 내역
                 </Link>
               )}
-              <Link className="btn btn-out" href="/admin/partners">
-                파트너스 목록
-              </Link>
+              <button className="btn btn-out" type="button" onClick={back}>파트너스 목록</button>
             </>
           }
         />

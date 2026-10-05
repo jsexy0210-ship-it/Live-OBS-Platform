@@ -52,6 +52,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/staff/[userId]/password": "ACCOUNT",
   "seller/staff/[userId]/permissions": "ACCOUNT",
   "seller/orders": "ORDER_FOLLOWUP",
+  "seller/search": "ORDER_FOLLOWUP", // 전역 검색: 이미 받은 주문·문의를 잠김·정지 중에도 찾는다
   "seller/orders/[orderId]": "ORDER_FOLLOWUP",
   "seller/orders/[orderId]/cancel": "ORDER_FOLLOWUP",
   "seller/orders/[orderId]/deliver": "ORDER_FOLLOWUP",
@@ -61,6 +62,8 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/orders/[orderId]/reconfirm": "ORDER_FOLLOWUP",
   "seller/orders/[orderId]/ship": "ORDER_FOLLOWUP",
   "seller/purchase-restrictions": "ORDER_FOLLOWUP",
+  "seller/purchase-restrictions/[buyerMemberId]": "ORDER_FOLLOWUP",
+  "seller/members/[memberId]/memo": "ORDER_FOLLOWUP",
   "seller/shipments": "ORDER_FOLLOWUP",
   "seller/shipments/deliver": "ORDER_FOLLOWUP",
   "seller/members": "ORDER_FOLLOWUP",
@@ -149,6 +152,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/reward-policy": "STORE_OPERATIONS",
   "seller/share-preview": "STORE_OPERATIONS",
   "seller/shipping-policy": "STORE_OPERATIONS",
+  "seller/shop-search/synonyms": "STORE_OPERATIONS", // 검색 유사어 묶음
   "seller/notices": "STORE_OPERATIONS",
   "seller/platform-notices": "BILLING", // 플랫폼 공지(SA-111·112): 잠김·정지 중에도 본다
   "seller/platform-notices/[noticeId]": "BILLING",
@@ -175,6 +179,9 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/broadcast/[broadcastId]": "OVERLAY",
   "seller/broadcast/history": "OVERLAY",
   "seller/broadcast/summary": "OVERLAY",
+  "seller/external-shops": "EXTERNAL_INTEGRATION",
+  "seller/external-shops/oauth-done": "EXTERNAL_INTEGRATION",
+  "seller/external-shops/[id]": "EXTERNAL_INTEGRATION",
   "seller/youtube": "OVERLAY",
   "seller/youtube/channel": "OVERLAY",
   "seller/youtube/live": "OVERLAY",
@@ -238,6 +245,8 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/products": "STORE_OPERATIONS", // 구매자 상품 목록(운영 중 쇼핑몰만)
   "shop/[slug]/products/[productId]": "STORE_OPERATIONS", // 구매자 상품 상세
   "shop/[slug]/products/[productId]/reviews": "STORE_OPERATIONS",
+  "shop/[slug]/search/popular": "STORE_OPERATIONS", // 인기 검색어
+  "shop/[slug]/search/suggest": "STORE_OPERATIONS", // 검색어 자동완성
   "shop/[slug]/products/[productId]/inquiries": "STORE_OPERATIONS", // 공개 상품 문의(상품 상세)
   "shop/[slug]/products/[productId]/recommendations": "STORE_OPERATIONS", // 추천 상품(상품 상세)
   "shop/[slug]/products/[productId]/images/[imageId]": "STORE_OPERATIONS", // 상품 사진(보이는 상품만)

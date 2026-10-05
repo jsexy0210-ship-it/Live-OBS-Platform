@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { PageHead } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows } from "../../../../../../components/seller/States";
+import { useUrlState } from "../../../../../../lib/client/navigation";
 import { adminApi } from "../../../_components/api";
 import { AdminTopbar } from "../../../_components/AdminShell";
 import { JOB_STATUS, PAY_STATUS } from "../../../_components/automation";
@@ -31,8 +32,11 @@ type Data = {
 const FILTERS: [Filter, string][] = [["all", "전체"], ["customer", "고객 확인 대기"], ["failed", "실패"], ["done", "완료"]];
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 
-export default function AutomationJobsPage() {
-  const [filter, setFilter] = useState<Filter>("all");
+function AutomationJobsPageInner() {
+  // 걸러 보기는 주소 쿼리가 기준이다(상세 → Back에서 그대로 돌아온다). 없는 값은 「전체」로 본다.
+  const [q, setQ] = useUrlState({ filter: "all" });
+  const filter: Filter = FILTERS.some(([f]) => f === q.filter) ? (q.filter as Filter) : "all";
+  const setFilter = (f: Filter) => setQ({ filter: f });
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error" } | { kind: "ok"; data: Data }>({ kind: "loading" });
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -112,5 +116,13 @@ export default function AutomationJobsPage() {
         </div>
       </main>
     </>
+  );
+}
+
+export default function AutomationJobsPage() {
+  return (
+    <Suspense fallback={null}>
+      <AutomationJobsPageInner />
+    </Suspense>
   );
 }

@@ -9,6 +9,7 @@ import { adminApi } from "../../../../_components/api";
 import { AdminTopbar } from "../../../../_components/AdminShell";
 import { SUBSCRIPTION_STATUS, day, dayTime, won, type SubscriptionStatus } from "../../../../_components/partners";
 import { PAYMENT_KIND, PAYMENT_STATUS, planLabel, safeUrl, type PaymentDetail } from "../../../../_components/payments";
+import { useSmartBack } from "../../../../../../../lib/client/navigation";
 
 // MA-025 청구 상세(GET /api/admin/payments/{id}, 모든 마스터 역할, 조회만): 청구·결제사 결제 번호·카드 매출전표·구독.
 type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; payment: PaymentDetail };
@@ -32,6 +33,7 @@ function Info({ title, id, rows }: { title: string; id: string; rows: [string, R
 }
 
 export default function InvoiceDetailPage() {
+  const back = useSmartBack("/admin/billing/invoices");
   const { paymentId } = useParams<{ paymentId: string }>();
   const [state, setState] = useState<Load>({ kind: "loading" });
   const load = useCallback(async () => {
@@ -51,9 +53,7 @@ export default function InvoiceDetailPage() {
         <PageHead
           title={p ? `${won(p.amount)} · ${PAYMENT_STATUS[p.status].label}` : "청구 상세"}
           actions={
-            <Link className="btn btn-out" href="/admin/billing/invoices">
-              청구·결제 내역
-            </Link>
+            <button className="btn btn-out" type="button" onClick={back}>청구·결제 내역</button>
           }
         />
         {!p ? (

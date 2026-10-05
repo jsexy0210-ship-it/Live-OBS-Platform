@@ -1,5 +1,9 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { cookies } from "next/headers";
+import { notFound, redirect } from "next/navigation";
+import { COOKIE_NAMES } from "../../../../../lib/server/auth/policy";
+import { resolveBuyerSession } from "../../../../../lib/server/auth/session";
+import { prisma } from "../../../../../lib/server/db";
 import LoginForm from "../../../../../components/shop/LoginForm";
 import { findActiveShop } from "../_lib/shop";
 
@@ -19,6 +23,9 @@ export default async function ShopLoginPage({ params, searchParams }: Props) {
   const raw = (await searchParams).next;
   const base = `/shop/${encodeURIComponent(shop.slug)}`;
   const next = typeof raw === "string" && (raw === base || raw.startsWith(`${base}/`)) && !raw.includes("//", 1) && !raw.includes("\\") ? raw : null;
+  // 이미 로그인했으면 로그인 화면을 건너뛴다(뒤로 가기로 다시 열려도 머무르지 않음)
+  const session = await resolveBuyerSession(prisma, (await cookies()).get(COOKIE_NAMES.buyer)?.value, shop.id);
+  if (session) redirect(next ?? base);
   return (
     <>
       <LoginForm slug={shop.slug} next={next} />

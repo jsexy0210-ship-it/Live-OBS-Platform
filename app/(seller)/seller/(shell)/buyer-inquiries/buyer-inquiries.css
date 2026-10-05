@@ -1,0 +1,10 @@
+/* SA-046·047 구매자 문의 */
+.bi-title{display:block;max-width:100%;padding:0;border:0;background:none;color:inherit;font:inherit;font-weight:600;text-align:left;cursor:pointer}
+.bi-title:hover{text-decoration:underline}
+.bi-more{display:flex;justify-content:center;padding:12px 20px}
+.bi-body{gap:12px}
+.bi-text{margin:0;white-space:pre-line}
+.bi-imgs{display:flex;gap:8px;flex-wrap:wrap}
+.bi-imgs img{object-fit:cover;border-radius:10px;background:var(--wds-fill-normal)}
+.bi-answer{min-height:120px;padding:10px 12px}
+.bi-neg{color:var(--neg-text)}
