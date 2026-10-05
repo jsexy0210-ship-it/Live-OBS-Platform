@@ -132,3 +132,29 @@
   max-width: 100%;
   text-align: right;
 }
+/* 보드 SH-022-IA: 주문 상세 머리글(주문일 · 상태 · 주문번호 복사) */
+.od-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.od-headline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-weight: 600;
+}
+.od-chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--wds-background-normal-alternative);
+  font-size: 12px;
+  font-weight: 700;
+}
+.od-no {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
