@@ -34,21 +34,21 @@ test("방송을 끝낸 뒤 이력 목록에서 찾아 상세로 들어가 요약
 
   // HIT 카드 등록(대상 주문이 개봉 중이 아니면 직접 입력)
   await page.locator("body").press("Control+h");
-  const hit = page.getByRole("dialog", { name: "HIT 카드 등록" });
-  await hit.getByLabel("대상 주문").selectOption({ label: "직접 입력" });
+  const hit = page.getByRole("dialog", { name: "HIT 카드 기록하기" });
+  await hit.getByLabel("카드를 받은 주문").selectOption({ label: "닉네임 직접 쓰기" });
   await hit.getByLabel("카드명").fill(card);
   await hit.getByLabel("구매자 닉네임").fill(A);
-  await hit.getByRole("button", { name: "HIT 카드 등록" }).click();
+  await hit.getByRole("button", { name: "HIT 카드 기록하기" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
 
   // 방송 종료
-  await page.getByRole("button", { name: "방송 종료" }).click();
-  await page.getByRole("dialog", { name: "방송을 종료하시겠습니까?" }).getByRole("button", { name: "방송 종료" }).click();
+  await page.getByRole("button", { name: "방송 끝내기" }).click();
+  await page.getByRole("dialog", { name: "방송을 끝내시겠습니까?" }).getByRole("button", { name: "방송 끝내기" }).click();
   await expect(page.getByTestId("bc-live-badge")).toHaveCount(0);
 
   // 메뉴로 이력 목록 → 방송 찾기
   await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "방송", exact: true }).click();
-  await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "방송 이력" }).click();
+  await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "방송 기록" }).click();
   await expect(page).toHaveURL(/\/seller\/broadcasts$/);
   const row = page.getByTestId("bh-list").locator("tr", { hasText: title });
   await expect(row).toContainText("종료");
@@ -64,7 +64,7 @@ test("방송을 끝낸 뒤 이력 목록에서 찾아 상세로 들어가 요약
   await expect(page.getByTestId("bd-hits")).toContainText(A);
   await expect(page.getByTestId("bd-orders").locator("tr")).toHaveCount(2);
   await expect(page.getByTestId("bd-orders")).toContainText(B);
-  await page.getByRole("link", { name: "목록" }).click();
+  await page.getByRole("button", { name: "뒤로" }).click();
   await expect(page).toHaveURL(/\/seller\/broadcasts$/);
 });
 
@@ -76,7 +76,7 @@ test("기간으로 걸러 보고, 잘못된 기간은 조회하지 않으며, �
   await expect(page.getByTestId("bh-empty")).toContainText("조건에 맞는 방송이 없습니다");
   await page.getByLabel("시작일").fill("2020-02-01");
   await page.getByRole("button", { name: "검색" }).click();
-  await expect(page.getByText("조회 기간의 시작일이 끝일보다 늦습니다")).toBeVisible();
+  await expect(page.getByText("시작일을 끝일보다 앞 날짜로 바꿔 주십시오")).toBeVisible();
 
   await page.goto("/seller/broadcasts/00000000-0000-4000-8000-000000000000");
   await expect(page.getByTestId("bd-notfound")).toContainText("방송을 찾을 수 없습니다");
@@ -85,5 +85,5 @@ test("기간으로 걸러 보고, 잘못된 기간은 조회하지 않으며, �
 test("방송 진행 권한이 없는 직원: 메뉴가 없고 주소로 들어와도 화면이 없다", async ({ page }) => {
   await login(page, "demo-none@example.com", "/seller/broadcasts");
   await expect(page.getByText("필요한 권한: 방송 진행")).toBeVisible();
-  await expect(page.getByRole("link", { name: "방송 이력" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "방송 기록" })).toHaveCount(0);
 });

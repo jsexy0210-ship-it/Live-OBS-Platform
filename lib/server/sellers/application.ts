@@ -134,6 +134,8 @@ export type ApplyInput = {
   // 개업일자(YYYYMMDD 또는 YYYY-MM-DD). 국세청 진위확인에 쓴다.
   openedOn: string;
   mailOrderNumber?: string | null;
+  // 업종(선택, 30자 이내 자유 입력). 가입 신청 목록(MA-013)에 보인다.
+  industry?: string | null;
   // 플랜(ONQ 1-C): OVERLAY_ONLY | INTEGRATED. 없으면 신규 가입 기본 플랜(DEFAULT_PLAN_CODE). 그 밖의 값은 invalid_input.
   // 가입 화면이 「지금 운영 중인 쇼핑몰이 있나요?」로 고르면 보낸다(ONQ 2단계).
   planCode?: string | null;
@@ -291,6 +293,7 @@ async function applyOnce(
             representativeName: v.name,
             openedOn,
             mailOrderNumber: mailOrderNumber ?? input.mailOrderNumber?.trim().slice(0, 100) ?? null,
+            industry: input.industry?.trim().slice(0, 30) || null,
             businessStatus: nts.ok ? nts.status : null,
             businessInfoValid: nts.ok ? nts.valid : null,
             mailOrderStatus,

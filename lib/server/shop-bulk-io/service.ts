@@ -267,7 +267,7 @@ export async function commitProductImport(db: PrismaClient, ctx: TenantContext, 
   const now = await dbNow(db);
   if (now.getTime() - found.createdAt.getTime() > PREVIEW_VALID_MS) return { ok: false, reason: "preview_expired" };
   // 한 번에 하나만 확정한다(조건부 UPDATE)
-  const claimed = await db.bulkJob.updateMany({ where: { id: jobId, sellerId: ctx.sellerId, status: "PREVIEW" }, data: { status: "COMMITTING" } });
+  const claimed = await db.bulkJob.updateMany({ where: { id: jobId, sellerId: ctx.sellerId, status: "PREVIEW" }, data: { status: "COMMITTING", committingAt: now } });
   if (claimed.count !== 1) return { ok: false, reason: "job_busy" };
 
   const products = asArray<ImportProduct>(found.payload);

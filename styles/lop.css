@@ -229,6 +229,13 @@ select.inp[multiple]{padding-right:var(--ui-sp-12);background-image:none}
 .modal-t{font-size:var(--ui-fs-section);line-height:var(--ui-lh-section);font-weight:600;color:var(--wds-label-normal)}
 .modal-confirm{display:flex;flex-direction:column;gap:var(--ui-sp-12);padding:var(--ui-sp-16);border-radius:var(--ui-r-control);background:var(--wds-background-status-cautionary);font-size:var(--ui-fs-body);line-height:var(--ui-lh-body)}
 .modal-confirm>.modal-f{padding-top:0}
+/* 공통 확인 창(DS-CONFIRM): 가운데 다이얼로그(모서리 16·최대 420), 제목 한 줄 → 본문 1~2줄 → [취소][실행 이름]. 휴대폰 구매자는 sheet(바텀시트) */
+.modal.confirm-dialog{max-width:420px;border-radius:16px}
+.confirm-body{font-size:var(--ui-fs-body);line-height:var(--ui-lh-body);color:var(--wds-label-neutral)}
+.confirm-retype{display:flex;flex-direction:column;gap:var(--ui-sp-8);font-size:var(--ui-fs-caption);line-height:var(--ui-lh-caption);color:var(--wds-label-alternative)}
+.confirm-error{font-size:var(--ui-fs-caption);line-height:var(--ui-lh-caption);color:var(--neg-text,var(--wds-status-negative))}
+.confirm-dialog .modal-f{justify-content:center}
+
 @media (max-width:767px){
   .ui-modal-bg.is-sheet{align-items:flex-end;padding:0}
   .ui-modal-bg.is-sheet>.modal{width:100%;max-width:100%;max-height:calc(100dvh - var(--ui-sp-48));border-radius:var(--ui-r-sheet) var(--ui-r-sheet) 0 0;padding-bottom:calc(var(--ui-sp-16) + env(safe-area-inset-bottom))}

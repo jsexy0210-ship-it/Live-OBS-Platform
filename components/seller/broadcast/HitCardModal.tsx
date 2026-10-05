@@ -51,13 +51,13 @@ export function HitCardModal({ targets, onClose, onDone }: { targets: HitTarget[
         >
           <div className="modal-h">
             <h2 className="modal-t" id="hit-add-title">
-              HIT 카드 등록
+              HIT 카드 기록하기
             </h2>
-            <span className="t-l2 c-alt">등록하면 오버레이에 바로 나옵니다</span>
+            <span className="t-l2 c-alt">기록하면 방송 화면에 바로 나옵니다</span>
           </div>
           <div className="fld">
             <label htmlFor="hit-target" className="req">
-              대상 주문
+              카드를 받은 주문
             </label>
             <select id="hit-target" className="inp" value={target} disabled={busy} onChange={(e) => setTarget(e.target.value)}>
               {targets.map((t) => (
@@ -65,7 +65,7 @@ export function HitCardModal({ targets, onClose, onDone }: { targets: HitTarget[
                   {t.label}
                 </option>
               ))}
-              <option value={MANUAL}>직접 입력</option>
+              <option value={MANUAL}>닉네임 직접 쓰기</option>
             </select>
           </div>
           {manual && (
@@ -83,7 +83,7 @@ export function HitCardModal({ targets, onClose, onDone }: { targets: HitTarget[
             <input id="hit-card-name" className="inp" maxLength={60} value={cardName} disabled={busy} autoFocus onChange={(e) => setCardName(e.target.value)} />
           </div>
           <div className="fld">
-            <label htmlFor="hit-note">메모 (파트너스만)</label>
+            <label htmlFor="hit-note">메모 (나만 보임)</label>
             <input id="hit-note" className="inp" maxLength={200} value={note} disabled={busy} onChange={(e) => setNote(e.target.value)} />
           </div>
           {error && (
@@ -96,7 +96,7 @@ export function HitCardModal({ targets, onClose, onDone }: { targets: HitTarget[
               취소
             </button>
             <button className="btn" type="submit" disabled={busy || !ok}>
-              HIT 카드 등록
+              HIT 카드 기록하기
             </button>
           </div>
         </form>

@@ -58,7 +58,7 @@ test("대표자: 방송 시작부터 개봉·타이머·완료·되돌리기·�
   await expect(page.getByTestId("bc-live-badge")).toBeVisible();
   await expect(page.getByTestId("bc-title")).toHaveText("e2e 라이브");
   await expect(page.getByTestId("bc-summary")).toContainText("지금 방송");
-  await expect(page.getByTestId("bc-summary")).toContainText("완료 / 취소");
+  await expect(page.getByTestId("bc-summary")).toContainText("완료 / 뺀 주문");
   await expect(page.getByRole("heading", { name: /^대기 3건/ })).toBeVisible();
 
   // 개봉 시작(버튼) → A 개봉 중
@@ -90,26 +90,26 @@ test("대표자: 방송 시작부터 개봉·타이머·완료·되돌리기·�
   // 대기 타이머 설정(창): C에 3분
   const rowC = page.getByTestId("bc-waiting").locator("tr", { hasText: C });
   await rowC.getByRole("button", { name: "타이머" }).click();
-  const timer = page.getByRole("dialog", { name: "타이머 설정" });
+  const timer = page.getByRole("dialog", { name: "개봉 시간 알림을 정하시겠습니까?" });
   await timer.getByRole("button", { name: "3분" }).click();
-  await timer.getByRole("button", { name: "저장" }).click();
+  await timer.getByRole("button", { name: "이 시간으로 정하기" }).click();
   await expect(timer).toHaveCount(0);
   await expect(rowC).toContainText("3:00");
 
   // 대기 취소: 사유가 있어야 한다
-  await rowC.getByRole("button", { name: "취소" }).click();
-  const cancel = page.getByRole("dialog", { name: "이 주문을 취소하시겠습니까?" });
-  await expect(cancel.getByRole("button", { name: "주문대기 취소" })).toBeDisabled();
-  await cancel.getByLabel("취소 사유").fill("구매자 요청");
-  await cancel.getByRole("button", { name: "주문대기 취소" }).click();
+  await rowC.getByRole("button", { name: "주문대기에서 빼기" }).click();
+  const cancel = page.getByRole("dialog", { name: "이 주문을 주문대기에서 빼시겠습니까?" });
+  await expect(cancel.getByRole("button", { name: "주문대기에서 빼기" })).toBeDisabled();
+  await cancel.getByLabel("빼는 이유").fill("구매자 요청");
+  await cancel.getByRole("button", { name: "주문대기에서 빼기" }).click();
   await expect(cancel).toHaveCount(0);
   await expect(waitingNames(page)).toHaveText([B]);
 
   // 방송 종료 → 남은 B는 방송 전 대기로
-  await page.getByRole("button", { name: "방송 종료" }).click();
-  const end = page.getByRole("dialog", { name: "방송을 종료하시겠습니까?" });
+  await page.getByRole("button", { name: "방송 끝내기" }).click();
+  const end = page.getByRole("dialog", { name: "방송을 끝내시겠습니까?" });
   await expect(end).toContainText("남은 대기 1건은 다음 방송으로 넘어갑니다");
-  await end.getByRole("button", { name: "방송 종료" }).click();
+  await end.getByRole("button", { name: "방송 끝내기" }).click();
   await expect(page.getByTestId("bc-live-badge")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: /방송 전 대기 1건/ })).toBeVisible();
 
@@ -224,8 +224,8 @@ test("되돌리기는 지금 방송에서 완료한 주문에만 보인다(방�
   await page.keyboard.press("Control+Enter");
   const done = page.getByTestId("bc-done").locator("tr", { hasText: A });
   await expect(done.getByRole("button", { name: "되돌리기" })).toBeVisible();
-  await page.getByRole("button", { name: "방송 종료" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "방송 종료" }).click();
+  await page.getByRole("button", { name: "방송 끝내기" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "방송 끝내기" }).click();
   await expect(page.getByTestId("bc-live-badge")).toHaveCount(0);
   await page.getByRole("button", { name: "방송 시작" }).click();
   await expect(page.getByTestId("bc-live-badge")).toBeVisible();
@@ -241,7 +241,7 @@ test("변경 뒤 다시 읽기가 실패하면 변경 조작을 모두 끄고, �
   await expect(page.getByTestId("bc-stale")).toContainText("다시 불러오기 전까지 변경할 수 없습니다");
   // 옛 version을 가진 화면에서는 버튼·단축키·창 확인이 모두 막힌다
   await expect(complete).toBeDisabled();
-  await expect(page.getByRole("button", { name: "방송 종료" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "방송 끝내기" })).toBeDisabled();
   await page.keyboard.press("Control+ArrowUp");
   await page.keyboard.press("Control+Enter");
   await page.waitForTimeout(300);
@@ -292,14 +292,14 @@ test("종료 확인 창이 열린 사이 다른 화면이 방송을 바꾸면 �
   await page.getByLabel("방송 제목").fill("방송 A");
   await page.getByRole("button", { name: "방송 시작" }).click();
   await expect(page.getByTestId("bc-title")).toHaveText("방송 A");
-  await page.getByRole("button", { name: "방송 종료" }).click();
-  const dialog = page.getByRole("dialog", { name: "방송을 종료하시겠습니까?" });
+  await page.getByRole("button", { name: "방송 끝내기" }).click();
+  const dialog = page.getByRole("dialog", { name: "방송을 끝내시겠습니까?" });
   await expect(dialog).toBeVisible();
   // 다른 창: A를 끝내고 B를 시작
   const other = await context.newPage();
   await other.goto("/seller/broadcast");
-  await other.getByRole("button", { name: "방송 종료" }).click();
-  await other.getByRole("dialog").getByRole("button", { name: "방송 종료" }).click();
+  await other.getByRole("button", { name: "방송 끝내기" }).click();
+  await other.getByRole("dialog").getByRole("button", { name: "방송 끝내기" }).click();
   await other.getByLabel("방송 제목").fill("방송 B");
   await other.getByRole("button", { name: "방송 시작" }).click();
   await expect(other.getByTestId("bc-title")).toHaveText("방송 B");
@@ -320,7 +320,7 @@ test("보던 중 권한·이용 상태가 끝나면(403) 옛 내용과 버튼을
   await expect(page.getByText("이 계정은 이 일을 할 수 없습니다")).toBeVisible();
   await expect(page.getByTestId("bc-opening")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /개봉 완료/ })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "방송 종료" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "방송 끝내기" })).toHaveCount(0);
 });
 
 test("Ctrl+Enter를 누른 채 있어도(자동 반복) 완료는 한 번만, 다음 주문이 저절로 개봉되지 않는다", async ({ page }) => {
@@ -374,4 +374,46 @@ test("390폭: 대기 표가 카드 안에서 가로로 스크롤되고 머리글
   expect(btn!.x).toBeGreaterThanOrEqual(box!.x);
   expect(btn!.x + btn!.width).toBeLessThanOrEqual(box!.x + box!.width + 1);
   await page.screenshot({ path: "tests/e2e/screenshots/SA-001-390-scrolled.png", fullPage: true });
+});
+
+// 문구 교체(쉬운 말)로 대기 표 「조작」 열 폭을 240→360px, 좁은 화면(≤1280px) 표 최소 폭을 880px로 넓혔다(의도한 차이).
+// 1440·1024·390에서 대기 표 버튼이 잘리지 않고, 좁은 폭에서는 카드 안에서만 가로로 스크롤되는지 보고 캡처를 남긴다(E2E_SCREENSHOTS=1).
+test("방송 대시보드 대기 표: 1440·1024·390폭에서 조작 버튼이 잘리지 않는다", async ({ page }) => {
+  await login(page, "demo-owner@example.com", "/seller/broadcast");
+  await expect(waitingNames(page)).toHaveText([A, B, C]);
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await page.waitForTimeout(600); // 메뉴 서랍이 접히는 전환이 끝난 뒤 잰다
+    // 화면 전체는 가로로 밀리지 않는다: 문서 너비 = 화면 너비, 가로 스크롤 위치 0, 본문이 왼쪽으로 나가지 않음(좁은 폭의 메뉴 서랍은 화면 밖에 접혀 있다)
+    const doc = () =>
+      page.evaluate(() => {
+        const de = document.documentElement;
+        const lnb = document.querySelector('aside[aria-label="파트너스 메뉴"]')?.getBoundingClientRect();
+        return { sw: de.scrollWidth, cw: de.clientWidth, sx: window.scrollX, main: document.querySelector("main")!.getBoundingClientRect().left, h1: document.querySelector("h1")!.getBoundingClientRect().left, lnbRight: lnb ? lnb.right : null, narrow: window.innerWidth < 1024 };
+      });
+    const before = await doc();
+    expect(before.sw).toBe(width);
+    expect(before.cw).toBe(width);
+    expect(before.sx).toBe(0);
+    expect(before.main).toBeGreaterThanOrEqual(0);
+    expect(before.h1).toBeGreaterThanOrEqual(0);
+    if (before.narrow && before.lnbRight !== null) expect(before.lnbRight).toBeLessThanOrEqual(0);
+    const wrap = page.locator("section[aria-labelledby=bc-waiting-h] .au-lt-wrap");
+    const m = await wrap.evaluate((el) => ({ client: el.clientWidth, scroll: el.scrollWidth }));
+    // 넓은 폭에서는 표 전체가 보이고, 좁은 폭에서는 카드 안에서만 스크롤된다
+    if (width >= 1440) expect(m.scroll).toBeLessThanOrEqual(m.client + 1);
+    else expect(m.scroll).toBeGreaterThan(m.client);
+    // 모든 폭에서 구매자·상품 머리글이 읽히고, 끝까지 밀면 마지막 버튼이 영역 안에 보인다
+    const head = await page.locator("section[aria-labelledby=bc-waiting-h] th", { hasText: "구매자 · 상품" }).boundingBox();
+    expect(head!.width).toBeGreaterThanOrEqual(120);
+    await wrap.evaluate((el) => (el.scrollLeft = el.scrollWidth));
+    const box = await wrap.boundingBox();
+    const btn = await page.getByRole("button", { name: `${A} 아래로` }).boundingBox();
+    expect(btn!.x).toBeGreaterThanOrEqual(box!.x);
+    expect(btn!.x + btn!.width).toBeLessThanOrEqual(box!.x + box!.width + 1);
+    await wrap.evaluate((el) => (el.scrollLeft = 0));
+    // 표를 끝까지 밀었다 돌아온 뒤에도 화면 전체는 그대로다
+    expect(await doc()).toEqual(before);
+    if (SHOTS) await page.screenshot({ path: `tests/e2e/screenshots/SA-001-plain-${width}.png`, fullPage: true });
+  }
 });

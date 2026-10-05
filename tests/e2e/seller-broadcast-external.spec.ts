@@ -33,8 +33,8 @@ test("외부 주문은 대기 줄·방송 상세·HIT 카드 이력에 「외부
 
   // 대시보드 대기: 외부 주문 줄에만 배지가 있다
   const waiting = page.getByTestId("bc-waiting");
-  await expect(waiting.locator("tr", { hasText: EXT_NICK })).toContainText("외부 주문");
-  for (const n of NICKS) await expect(waiting.locator("tr", { hasText: n })).not.toContainText("외부 주문");
+  await expect(waiting.locator("tr", { hasText: EXT_NICK })).toContainText("다른 쇼핑몰 주문");
+  for (const n of NICKS) await expect(waiting.locator("tr", { hasText: n })).not.toContainText("다른 쇼핑몰 주문");
   await expect(waiting.getByTestId("source-badge")).toHaveCount(1);
 
   // 방송 → 외부 주문을 방송 안으로 옮기고 HIT 카드 → 종료
@@ -42,18 +42,18 @@ test("외부 주문은 대기 줄·방송 상세·HIT 카드 이력에 「외부
   await page.getByRole("button", { name: "방송 시작" }).click();
   await expect(page.getByTestId("bc-live-badge")).toBeVisible();
   await putExternalInLiveBroadcast(card);
-  await page.getByRole("button", { name: "방송 종료" }).click();
-  await page.getByRole("dialog", { name: "방송을 종료하시겠습니까?" }).getByRole("button", { name: "방송 종료" }).click();
+  await page.getByRole("button", { name: "방송 끝내기" }).click();
+  await page.getByRole("dialog", { name: "방송을 끝내시겠습니까?" }).getByRole("button", { name: "방송 끝내기" }).click();
   await expect(page.getByTestId("bc-live-badge")).toHaveCount(0);
 
   // 방송 상세: 외부 주문 목록(금액 없음)과 HIT 표의 주문 칸
   await page.goto("/seller/broadcasts");
   await page.getByTestId("bh-list").locator("tr", { hasText: title }).getByTestId("bh-link").click();
   const ext = page.getByTestId("bd-external");
-  await expect(ext).toContainText("외부 주문 1건");
+  await expect(ext).toContainText("다른 쇼핑몰 주문 1건");
   const row = page.getByTestId("bd-external-orders").locator("tr", { hasText: EXT_NICK });
   await expect(row).toContainText(EXT_PRODUCT);
-  await expect(row).toContainText("외부 주문");
+  await expect(row).toContainText("다른 쇼핑몰 주문");
   await expect(page.getByTestId("bd-hits").locator("tr", { hasText: card }).getByTestId("source-badge")).toBeVisible();
 
   // HIT 카드 이력: 주문 번호가 없는 외부 주문 카드는 배지로 표시
