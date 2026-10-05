@@ -53,6 +53,7 @@ const randomPhone = () => `010${String(Math.floor(Math.random() * 1e8)).padStart
 async function verify(page: Page, wrongFirst = false, startPath = "/api/seller-signup/verification") {
   const started = page.waitForRequest((r) => r.url().endsWith(startPath) && r.method() === "POST");
   await page.getByRole("button", { name: "인증번호 문자 받기" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "문자 받기" }).click();
   // 본인확인 대행사에 보내는 기기 구분: 768px 이상이면 PC(구매자 가입과 같은 기준)
   const body = (await started).postDataJSON() as { device?: string; person?: { device?: string } };
   expect(body.device ?? body.person?.device).toBe((page.viewportSize()?.width ?? 0) >= 768 ? "PC" : "MOBILE");
@@ -120,12 +121,16 @@ async function signup(page: Page, opts: { mailOrderNumber: string; wrongFirst?: 
       return route.fulfill({ status: 500, json: { error: "internal" } });
     }, { times: 1 });
     await page.getByRole("button", { name: "신청하기" }).click();
+    await page.getByRole("dialog", { name: "입력한 내용으로 가입을 신청할까요?" }).getByRole("button", { name: "신청하기" }).click();
     await expect(page.locator("#pa-notice")).toContainText("잠시 후 다시 시도해 주세요");
     await expect(page.getByText("본인확인을 마쳤어요")).toBeVisible();
     await expect(page.getByLabel("상호")).toBeEnabled();
   }
   const res = page.waitForResponse((r) => r.url().endsWith("/api/seller-signup/apply"));
   await page.getByRole("button", { name: "신청하기" }).click();
+  const sure = page.getByRole("dialog", { name: "입력한 내용으로 가입을 신청할까요?" });
+  await expect(sure).toContainText("쇼핑몰 주소를 바꿀 수 없어요");
+  await sure.getByRole("button", { name: "신청하기" }).click();
   expect((await res).status()).toBe(200);
   return a;
 }
@@ -194,6 +199,7 @@ test("파트너스 가입 신청 → 바로 승인 → 로그인 → 비밀번�
     await route.continue();
   });
   await page.getByRole("button", { name: "비밀번호 변경", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "비밀번호 변경" }).click();
   await expect(page.getByLabel("새 비밀번호", { exact: true })).toBeDisabled();
   await expect(page.getByLabel("새 비밀번호 확인")).toBeDisabled();
   release();
@@ -229,9 +235,11 @@ async function dropFirstStart(page: Page, path: string) {
 
 async function retryAfterDrop(page: Page, sent: { key: string; id?: string }[]) {
   await page.getByRole("button", { name: "인증번호 문자 받기" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "문자 받기" }).click();
   await expect.poll(() => sent.length).toBe(1);
   await expect(page.getByLabel("인증번호")).toHaveCount(0);
   await page.getByRole("button", { name: "인증번호 문자 받기" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "문자 받기" }).click();
   await expect(page.getByText(codeSentText(page))).toBeVisible();
   expect(sent).toHaveLength(2);
   expect(sent[0].key).toMatch(/^[0-9a-f-]{36}$/);
@@ -282,6 +290,7 @@ test("가입 신청: 인증번호 받기 요청을 보내는 동안에는 약관
     { times: 1 },
   );
   await page.getByRole("button", { name: "인증번호 문자 받기" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "문자 받기" }).click();
   const all = page.getByLabel("필수 약관에 모두 동의해요");
   await expect(all).toBeDisabled();
   await all.click({ force: true });
@@ -313,6 +322,7 @@ test("가입 신청: 화면의 약관 버전이 서버와 다르면 문자를 �
   // 거절되면 화면 데이터를 새로 받아 서버의 지금 약관 버전으로 바꾼다(열어 둔 예전 화면이 같은 버전을 계속 보내지 않게)
   const refreshed = page.waitForRequest((r) => new URL(r.url()).pathname === "/seller/signup" && r.headers()["rsc"] === "1");
   await page.getByRole("button", { name: "인증번호 문자 받기" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "문자 받기" }).click();
   expect((await stale).postDataJSON()).toMatchObject({ termsVersion: "2026-01-01.v0", privacyVersion: "2026-01-01.v0" });
   const refusedRes = await refused;
   expect(refusedRes.status()).toBe(409);
@@ -358,6 +368,7 @@ test("비밀번호 찾기: 대표자가 아니거나 정보가 맞지 않으면 
   await page.setViewportSize({ width: 390, height: 844 });
   const started = page.waitForRequest((r) => r.url().endsWith("/api/seller/password-reset/start"));
   await page.getByRole("button", { name: "인증번호 문자 받기" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "문자 받기" }).click();
   expect(((await started).postDataJSON() as { person: { device: string } }).person.device).toBe("MOBILE");
   // 인증번호를 보낸 뒤에는 그 요청에 쓴 이메일·쇼핑몰 주소를 바꿀 수 없고, 「정보 다시 입력」이면 다시 바꿀 수 있다
   await expect(page.getByLabel("이메일")).toBeDisabled();
@@ -461,9 +472,11 @@ test("아이디 찾기(대표자): 본인확인하면 가입한 이메일과 쇼
     return resetCalls === 1 ? route.abort("connectionreset") : route.fulfill({ response: res });
   });
   await page.getByRole("button", { name: "선택한 계정의 비밀번호 바꾸기" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "비밀번호 바꾸기" }).click();
   await expect(page.locator("#pa-notice")).toContainText("연결이 끊겼습니다");
   await expect(page.getByTestId("fi-account")).toHaveCount(1);
   await page.getByRole("button", { name: "선택한 계정의 비밀번호 바꾸기" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "비밀번호 바꾸기" }).click();
   await expect(page.getByRole("heading", { name: "새 비밀번호 설정" })).toBeVisible();
   expect(resetCalls).toBe(2);
   await page.unroute((u) => u.pathname === "/api/seller/find-id/reset");
@@ -483,15 +496,18 @@ test("아이디 찾기(대표자): 본인확인하면 가입한 이메일과 쇼
     return route.abort("connectionreset");
   });
   await page.getByRole("button", { name: "비밀번호 변경", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "비밀번호 변경" }).click();
   // 응답을 놓친 그 자리에서 바뀌었을 수 있다고 알리고 로그인 안내를 보여 준다
   await expect(page.locator("#pw-notice")).toContainText("비밀번호가 변경되었을 수 있습니다.");
   await expect(page.locator("#pw-notice").getByRole("link", { name: "로그인", exact: true })).toBeVisible();
   await shot(page, "AU-004-maybe");
   const proxied = page.waitForResponse((r) => r.url().endsWith("/api/seller/password-reset/complete") && r.status() === 503);
   await page.getByRole("button", { name: "비밀번호 변경", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "비밀번호 변경" }).click();
   await proxied;
   await expect(page.locator("#pw-notice")).toContainText("비밀번호가 변경되었을 수 있습니다.");
   await page.getByRole("button", { name: "비밀번호 변경", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "비밀번호 변경" }).click();
   await expect(page.locator("#pw-maybe")).toContainText("비밀번호가 바뀌었는지 확인하지 못했습니다.");
   await expect(page.getByLabel("인증번호")).toHaveCount(0);
   expect(completeCalls).toBe(3);
@@ -556,6 +572,7 @@ test("직원: 로그인하면 본인확인 연결 안내가 뜨고, 나중에 �
   await fillIdentity(page, `박${letters(uniq())}`, s.phone);
   const mismatch = page.waitForResponse((r) => r.url().endsWith("/api/seller/me/identity/start"));
   await page.getByRole("button", { name: "인증번호 문자 받기" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "문자 받기" }).click();
   expect((await mismatch).status()).toBe(409);
   await expect(page.locator("#il-state")).toContainText("대표자가 등록한 정보와 다릅니다.");
   await expect(page.locator("#il-state")).toContainText("대표자에게 정보를 고쳐 달라고 요청해 주십시오");
@@ -581,6 +598,8 @@ test("직원: 로그인하면 본인확인 연결 안내가 뜨고, 나중에 �
   });
   await retryAfterDrop(page, linkSent);
   await page.unroute((u) => u.pathname === "/api/seller/me/identity/start");
+  // 본인확인이 끝나면 자동으로 잇지 않고 먼저 묻는다
+  await page.getByRole("dialog", { name: "이 휴대폰으로 내 계정을 연결하시겠습니까?" }).getByRole("button", { name: "연결하기" }).click();
   await expect(page.locator("#pa-notice")).toContainText("확인하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 눌러 주십시오");
   await expect(page.locator("#idv-name")).toHaveValue(s.name);
   await page.getByRole("button", { name: "결과 다시 확인하기", exact: true }).click();
@@ -619,6 +638,7 @@ test("직원: 로그인하면 본인확인 연결 안내가 뜨고, 나중에 �
   await page.getByLabel("새 비밀번호", { exact: true }).fill(next);
   await page.getByLabel("새 비밀번호 확인").fill(next);
   await page.getByRole("button", { name: "비밀번호 변경", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "비밀번호 변경" }).click();
   await expect(page.getByRole("heading", { name: "비밀번호를 변경했습니다" })).toBeVisible();
   await login(page, "직원", s.email, next);
   await expect(page).toHaveURL(/\/seller\/products$/);

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { ConfirmProvider, useConfirm } from "../../../../components/admin-ui";
 import IdentityCheck from "../../../../components/seller/IdentityCheck";
 import NewPasswordForm from "../../../../components/seller/NewPasswordForm";
 import { AuthFrame, FindSwitch, IdentityUnavailable, useStaffType, withType } from "../../../../components/seller/PartnersAuth";
@@ -18,7 +19,17 @@ const BASE = "/api/seller/find-id";
 type Account = { accountId: string; shopName: string; shopSlug: string; email: string };
 type Step = "find" | "accounts" | "password" | "done";
 
+// 로그인 전 화면이라 셸이 없으므로 확인 창 공급자를 이 화면에서 감싼다
 export default function FindIdPage() {
+  return (
+    <ConfirmProvider>
+      <FindIdPageInner />
+    </ConfirmProvider>
+  );
+}
+
+function FindIdPageInner() {
+  const { confirm } = useConfirm();
   const staff = useStaffType();
   const accountType = staff ? "staff" : "owner";
   const [step, setStep] = useState<Step>("find");
@@ -82,6 +93,13 @@ export default function FindIdPage() {
   // 고른 계정의 비밀번호 재설정 권한을 받는다(본인확인은 여기서 소진된다)
   const reset = async () => {
     if (!verificationId || !picked || busy) return;
+    const target = accounts.find((a) => a.accountId === picked);
+    const ok = await confirm({
+      title: target ? `${target.shopName} · ${target.email} 계정의 비밀번호를 바꾸시겠습니까?` : "선택한 계정의 비밀번호를 바꾸시겠습니까?",
+      body: "다음 화면에서 새 비밀번호를 정합니다. 이 본인확인은 한 번만 쓸 수 있습니다.",
+      confirmLabel: "비밀번호 바꾸기",
+    });
+    if (!ok) return;
     setBusy(true);
     setNotice(null);
     const r = await api(`${BASE}/reset`, { method: "POST", body: { verificationId, accountType, accountId: picked } });

@@ -128,7 +128,7 @@ export default function OrderListPage() {
         <div className="ph">
           <div className="col" style={{ gap: 4 }}>
             <h1 className="t-t3">주문</h1>
-            <span className="t-l2 c-alt">결제 완료된 주문만 주문대기에 올라갑니다. 미결제 주문은 「결제 대기」로 표시됩니다.</span>
+            <span className="t-l2 c-alt">결제가 끝난 주문만 방송 주문대기(개봉할 순서 목록)에 들어갑니다. 아직 결제하지 않은 주문은 「결제 대기」로 보입니다.</span>
           </div>
           <Link className="btn btn-out btn-level-secondary" href="/seller/orders/refund-requests">
             환불 요청
@@ -188,7 +188,7 @@ export default function OrderListPage() {
                       초기화
                     </button>
                     <button className="btn btn-dense btn-w-sm" type="button" onClick={applyMenu}>
-                      적용
+                      이 상태로 보기
                     </button>
                   </div>
                 </div>

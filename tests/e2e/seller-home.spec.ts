@@ -81,6 +81,7 @@ test("시작하기 띠: 온보딩이 끝나지 않았을 때만 진행 N/M을 �
   await expect(strip).toContainText(`${state.doneCount}/${state.total} 완료`);
   await expect(strip.getByRole("link", { name: "이어서 하기" })).toHaveAttribute("href", "/seller/onboarding");
   await strip.getByRole("button", { name: "시작하기 안내 숨기기" }).click();
+  await page.getByRole("dialog", { name: "시작하기 안내를 숨기시겠습니까?" }).getByRole("button", { name: "숨기기" }).click();
   await expect(strip).toHaveCount(0);
   expect(((await page.request.get("/api/seller/onboarding").then((r) => r.json())) as Onboarding).dismissed).toBe(true);
   await page.reload();
