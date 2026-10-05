@@ -1,11 +1,17 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { GET as queueRoute } from "../../app/api/seller/queue/route";
+import { loginSeller } from "../../lib/server/auth/login";
+import { broadcastDetail } from "../../lib/server/broadcast/detail";
+import { aggregateBroadcasts } from "../../lib/server/broadcast/summary";
+import { liveProductIds } from "../../lib/server/products/shopCatalog";
+import { getQueueSnapshot } from "../../lib/server/queue/read";
 import { createHitCard } from "../../lib/server/broadcast/hitCards";
 import { cancelExternalOrder, storeExternalOrder, type NormalizedExternalOrder } from "../../lib/server/external/orders";
 import { getOverlayState } from "../../lib/server/overlay/state";
 import { applyQueueAction } from "../../lib/server/queue/service";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { prisma } from "../../lib/server/db";
-import { createBuyer, createPaidOrderItem, createSeller, createSellerUser, db, resetDb } from "./helpers";
+import { PASSWORD, createBuyer, createPaidOrderItem, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
 // 외부 쇼핑몰 주문의 주문대기 연결(ExternalOrder + QueueItem 외부 참조). 내부 Order·회원·상품 행은 만들지 않고,
 // 기존 큐 동작(개봉 시작·완료·취소·HIT 카드)과 오버레이가 외부 주문 항목에서도 돈다. 웹훅 이벤트를 이 모양으로 바꾸는 파서는 별도(공식 형식 확인 뒤).
@@ -177,5 +183,90 @@ describe("외부 쇼핑몰 취소", () => {
     expect((await db.externalOrder.findFirstOrThrow()).cancelledAt).not.toBeNull();
     expect(await db.queueItemStatusHistory.count({ where: { reason: "external_cancelled" } })).toBe(1);
     expect(await cancelExternalOrder(db, s.conn.id, "NOPE")).toEqual({ ok: false, reason: "not_found" });
+  });
+});
+
+describe("조회 경로: 외부 주문이 섞인 큐 (출처 필드·raw SQL 집계)", () => {
+  async function mixed() {
+    const s = await shop();
+    const live = await db.broadcastSession.create({ data: { sellerId: s.seller.id, status: "LIVE" } });
+    const buyer = await createBuyer(s.seller.id, s.grade.id);
+    const internal = await createPaidOrderItem(s.seller.id, buyer.id);
+    await db.queueItem.create({ data: { sellerId: s.seller.id, orderId: internal.order.id, orderItemId: internal.item.id, broadcastSessionId: live.id, position: 1, receivedAt: new Date(), nicknameSnapshot: "내부닉", productLabel: "부스터 팩 1팩", quantity: 1 } });
+    await storeExternalOrder(db, s.conn.id, order("MIX", { lines: [{ productLabel: "외부 박스", quantity: 2 }] }));
+    return { ...s, live, internal };
+  }
+
+  it("큐 스냅샷: 외부 항목이 대기 목록에 같은 줄로 나오고 source·externalShopName이 붙는다(내부는 INTERNAL·null), 조회용 관계는 새지 않는다", async () => {
+    const s = await mixed();
+    const snap = await getQueueSnapshot(db, s.ctx);
+    expect(snap.waiting.map((i) => [i.productLabel, i.position, i.source, i.externalShopName])).toEqual([
+      ["부스터 팩 1팩", 1, "INTERNAL", null],
+      ["외부 박스", 2, "EXTERNAL", s.conn.shopKey],
+    ]);
+    expect(Object.keys(snap.waiting[1])).not.toContain("externalOrder");
+    // 개봉 중·최근 완료에도 같은 모양
+    const ext = (await db.queueItem.findFirstOrThrow({ where: { externalOrderId: { not: null } } })).id;
+    await applyQueueAction(db, s.ctx, ext, "start");
+    expect((await getQueueSnapshot(db, s.ctx)).opening).toMatchObject({ id: ext, source: "EXTERNAL", externalShopName: s.conn.shopKey });
+    await applyQueueAction(db, s.ctx, ext, "complete");
+    expect((await getQueueSnapshot(db, s.ctx)).recentDone[0]).toMatchObject({ id: ext, source: "EXTERNAL" });
+  });
+
+  it("GET /api/seller/queue 라우트도 같은 응답을 준다(로그인 세션)", async () => {
+    const s = await mixed();
+    const r = await loginSeller(db, { email: s.owner.email, password: PASSWORD }, {});
+    if (!r.ok) throw new Error(r.reason);
+    const res = await queueRoute(new Request("http://localhost:3000/api/seller/queue", { headers: { host: "localhost:3000", cookie: `lo_seller=${r.token}` } }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.waiting).toHaveLength(2);
+    expect(body.waiting.map((i: { source: string }) => i.source)).toEqual(["INTERNAL", "EXTERNAL"]);
+  });
+
+  it("raw SQL 집계: 방송 요약의 완료 건수는 외부 항목을 포함하고, 방송 상품 목록(상품 조인)은 외부 항목을 건너뛰고 내부 상품만 준다", async () => {
+    const s = await mixed();
+    const ext = (await db.queueItem.findFirstOrThrow({ where: { externalOrderId: { not: null } } })).id;
+    await applyQueueAction(db, s.ctx, ext, "start");
+    await applyQueueAction(db, s.ctx, ext, "complete");
+    const agg = (await aggregateBroadcasts(db, s.seller.id, [s.live.id])).get(s.live.id)!;
+    expect(agg.completed).toBe(1);
+    expect(await liveProductIds(db, s.seller.id)).toEqual([s.internal.product.id]);
+  });
+
+  it("방송 상세: 외부 주문은 별도 externalOrders 목록(금액·결제 없음)에, HIT 카드는 source가 붙는다. 내부 주문 목록은 그대로", async () => {
+    const s = await mixed();
+    const ext = (await db.queueItem.findFirstOrThrow({ where: { externalOrderId: { not: null } } })).id;
+    await createHitCard(db, s.ctx, { cardName: "리자몽 SAR", queueItemId: ext });
+    const d = await broadcastDetail(db, s.ctx, s.live.id);
+    expect(d.orders).toHaveLength(1);
+    expect(d.externalOrders).toHaveLength(1);
+    expect(d.externalOrders[0]).toMatchObject({ source: "EXTERNAL", externalShopName: s.conn.shopKey, nickname: "별빛팬", items: [{ productName: "외부 박스", quantity: 2, status: "WAITING" }], cancelledAt: null, completedAt: null });
+    expect(Object.keys(d.externalOrders[0])).not.toContain("totalAmount");
+    expect(d.hits[0]).toMatchObject({ source: "EXTERNAL", externalShopName: s.conn.shopKey, order: null });
+  });
+});
+
+describe("실시간 version: 실제로 바뀔 때만 올린다", () => {
+  it("중복·비활성 연결·잘못된 입력·없는 주문 취소는 version을 올리지 않고, 저장·대기 취소는 올린다", async () => {
+    const s = await shop();
+    const ver = async () => (await db.seller.findUniqueOrThrow({ where: { id: s.seller.id } })).liveVersion;
+    const v0 = await ver();
+    await storeExternalOrder(db, s.conn.id, order("V1"));
+    const v1 = await ver();
+    expect(v1).toBe(v0 + 1);
+    await storeExternalOrder(db, s.conn.id, order("V1"));
+    await storeExternalOrder(db, s.conn.id, order("", {}));
+    await cancelExternalOrder(db, s.conn.id, "NOPE");
+    expect(await ver()).toBe(v1);
+    await db.externalShopConnection.update({ where: { id: s.conn.id }, data: { status: "DISCONNECT_PENDING" } });
+    await storeExternalOrder(db, s.conn.id, order("V2"));
+    expect(await ver()).toBe(v1);
+    await db.externalShopConnection.update({ where: { id: s.conn.id }, data: { status: "CONNECTED" } });
+    expect(await cancelExternalOrder(db, s.conn.id, "V1")).toMatchObject({ ok: true, cancelledItems: 1 });
+    expect(await ver()).toBe(v1 + 1);
+    // 이미 취소된 주문을 다시 취소해도 올리지 않는다
+    await cancelExternalOrder(db, s.conn.id, "V1");
+    expect(await ver()).toBe(v1 + 1);
   });
 });
