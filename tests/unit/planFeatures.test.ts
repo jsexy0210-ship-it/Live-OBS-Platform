@@ -113,6 +113,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/stream": "OVERLAY",
   "seller/member-policy": "STORE_OPERATIONS",
   "seller/order-policy": "STORE_OPERATIONS",
+  "seller/order-notification-policy": "STORE_OPERATIONS",
   "seller/payments/bank-account": "STORE_OPERATIONS", // 무통장 입금 계좌
   "seller/payments/deposits": "ORDER_FOLLOWUP", // 입금 대기 목록(잠금 중에도 이미 받은 주문 처리)
   "seller/payments/deposits/confirm": "ORDER_FOLLOWUP", // 입금 확인
@@ -130,6 +131,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/display/sections": "STORE_OPERATIONS",
   "seller/display/recommended": "STORE_OPERATIONS",
   "seller/display/settings": "STORE_OPERATIONS",
+  "seller/restock-alerts": "STORE_OPERATIONS",
   "seller/products/[productId]/images/order": "STORE_OPERATIONS",
   "seller/products/[productId]/images/[imageId]": "STORE_OPERATIONS",
   "seller/products/[productId]/event": "STORE_OPERATIONS",
@@ -144,6 +146,8 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/notices": "STORE_OPERATIONS",
   "seller/platform-notices": "BILLING", // 플랫폼 공지(SA-111·112): 잠김·정지 중에도 본다
   "seller/platform-notices/[noticeId]": "BILLING",
+  "seller/notifications": "BILLING", // 알림 센터(SA-130): 잠김·정지 중에도 본다
+  "seller/notifications/read": "BILLING",
   "seller/assistant": "BILLING", // 도우미(SA-140): 사용법 질문, 잠김·정지 중에도 쓴다(비용은 플랫폼 월 한도·하루 한도가 막음)
   "seller/platform-inquiries": "BILLING", // 플랫폼 문의(SA-113·114·115): 잠김·정지 중에도 쓴다
   "seller/platform-inquiries/[inquiryId]": "BILLING",
@@ -189,6 +193,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
 // 라우트에 있고, 동작은 tests/integration/planFeatures.test.ts가 경로마다 확인한다.
 const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/orders": "STORE_OPERATIONS", // POST만 막음, GET(내 주문)은 열림
+  "shop/[slug]/orders/quote": "STORE_OPERATIONS", // 주문서 견적(읽기 전용)은 shopOpen으로 막음
   "shop/[slug]/order-consent": "STORE_OPERATIONS",
   "shop/[slug]/signup": "STORE_OPERATIONS",
   "shop/[slug]/signup/verification": "STORE_OPERATIONS",
@@ -236,6 +241,8 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/cart/count": "OPEN", // 머리 배지 개수
   "shop/[slug]/wishlist": "STORE_OPERATIONS", // 찜: 찜하기(POST)는 shopOpen으로 막음, 목록은 열림
   "shop/[slug]/wishlist/[productId]": "OPEN", // 찜 빼기
+  "shop/[slug]/restock-alerts": "STORE_OPERATIONS", // 재입고 알림: 신청(POST)은 shopOpen으로 막음, 목록은 열림
+  "shop/[slug]/restock-alerts/[productId]": "OPEN", // 신청 취소
   "shop/[slug]/notices": "STORE_OPERATIONS", // 쇼핑몰 공지(운영 중이 아니면 404)
   "shop/[slug]/notices/[noticeId]": "STORE_OPERATIONS",
   "shop/[slug]/faqs": "STORE_OPERATIONS",

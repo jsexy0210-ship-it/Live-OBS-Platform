@@ -126,6 +126,7 @@ model Seller {
   overlayTemplates         OverlayTemplate[]
   mailDeliveries           MailDelivery[]
   memberPolicy             SellerMemberPolicy?
+  orderNotificationPolicy  SellerOrderNotificationPolicy?
   rejoinBlocks             BuyerRejoinBlock[]
   purchaseRestrictions     BuyerPurchaseRestriction[]
   shippingPolicy           SellerShippingPolicy?
@@ -158,6 +159,7 @@ model Seller {
   productReviewPolicy      ProductReviewPolicy?
   cartItems                CartItem[]
   wishItems                WishItem[]
+  restockAlerts            RestockAlert[]
   shopNotices              ShopNotice[]
   returnRequests           ReturnRequest[]
   memberGradePolicy        MemberGradePolicy?
@@ -373,6 +375,7 @@ model BuyerMember {
   productReviewReports ProductReviewReport[]
   cartItems            CartItem[]
   wishItems            WishItem[]
+  restockAlerts        RestockAlert[]
   returnRequests       ReturnRequest[]
   refundRequests       RefundRequest[]
   returnRequestImages  ReturnRequestImage[]
@@ -540,15 +543,16 @@ model Product {
   createdAt          DateTime           @default(now()) @db.Timestamptz(3)
   deletedAt          DateTime?          @db.Timestamptz(3)
 
-  seller       Seller            @relation(fields: [sellerId], references: [id])
-  images       ProductImage[]
-  options      ProductOption[]
-  orderItems   OrderItem[]
-  reviews      ProductReview[]
-  categories   ProductCategory[]
-  detail       ProductDetail?
-  displayItems ShopDisplayItem[]
-  wishItems    WishItem[]
+  seller        Seller            @relation(fields: [sellerId], references: [id])
+  images        ProductImage[]
+  options       ProductOption[]
+  orderItems    OrderItem[]
+  reviews       ProductReview[]
+  categories    ProductCategory[]
+  detail        ProductDetail?
+  displayItems  ShopDisplayItem[]
+  wishItems     WishItem[]
+  restockAlerts RestockAlert[]
 
   @@unique([sellerId, id])
   @@unique([sellerId, codeNo])
@@ -1687,6 +1691,18 @@ model SellerMemberPolicy {
   seller Seller @relation(fields: [sellerId], references: [id])
 }
 
+// 주문자 메일 켜기·끄기(SA-080). 거래 메일 4종(주문 완료·발송·배송 완료·취소·환불), 기본은 모두 켬. 행이 없으면 모두 켠 것으로 본다.
+model SellerOrderNotificationPolicy {
+  sellerId             String   @id @db.Uuid
+  orderCompleteEnabled Boolean  @default(true)
+  shippedEnabled       Boolean  @default(true)
+  deliveredEnabled     Boolean  @default(true)
+  cancelRefundEnabled  Boolean  @default(true)
+  updatedAt            DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+}
+
 // 재가입 제한 목적으로만 남기는 탈퇴 회원의 본인확인 식별값 해시. 이름·휴대폰 등 다른 정보는 두지 않는다.
 // 재가입 제한이 켜진 쇼핑몰에서 탈퇴할 때만 만들고, expiresAt이 지나거나 판매자가 제한을 끄면 지운다(buyers/rejoin.ts).
 model BuyerRejoinBlock {
@@ -2138,6 +2154,33 @@ model WishItem {
   @@unique([buyerMemberId, productId])
   @@index([sellerId, buyerMemberId, createdAt])
   @@index([sellerId, productId])
+}
+
+// 재입고 알림 신청(SA-017·SH). 회원당 상품 하나에 한 줄. WAITING(품절 기다림) → QUEUED(재고가 들어와 발송 대기, 야간이면 아침 8시 KST로 미룸) → SENT(발송 기록만, 실제 발송은 아직 없음). 다시 신청하면 WAITING으로 돌아간다(shop-restock-alerts/service.ts).
+enum RestockAlertStatus {
+  WAITING
+  QUEUED
+  SENT
+}
+
+model RestockAlert {
+  id            String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String             @db.Uuid
+  buyerMemberId String             @db.Uuid
+  productId     String             @db.Uuid
+  status        RestockAlertStatus @default(WAITING)
+  createdAt     DateTime           @default(now()) @db.Timestamptz(3)
+  restockedAt   DateTime?          @db.Timestamptz(3)
+  notifyAt      DateTime?          @db.Timestamptz(3)
+  notifiedAt    DateTime?          @db.Timestamptz(3)
+
+  seller  Seller      @relation(fields: [sellerId], references: [id])
+  member  BuyerMember @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id], onDelete: Cascade)
+  product Product     @relation(fields: [sellerId, productId], references: [sellerId, id])
+
+  @@unique([buyerMemberId, productId])
+  @@index([sellerId, productId, status])
+  @@index([sellerId, status, notifyAt])
 }
 
 enum ProductImageKind {
@@ -3090,16 +3133,16 @@ model PlatformMaintenance {
 // 설정은 한 행(id=1). 행이 없으면 꺼짐. 모델 이름·단가는 마스터 관리자가 공식 문서를 보고 넣는다(코드에 고정하지 않음).
 // 비용 단위는 1/1000원(milliWon). 단가는 100만 토큰당 원(= 토큰당 마이크로원)이라 비용(milliWon) = 토큰 × 단가 ÷ 1000(올림).
 model AssistantSetting {
-  id                   Int      @id @default(1)
-  enabled              Boolean  @default(false)
-  model                String   @default("")
-  inputWonPerMTok      Int      @default(0)
-  outputWonPerMTok     Int      @default(0)
-  monthlyBudgetWon     Int      @default(10000)
-  sellerDailyLimit     Int      @default(20)
-  version              Int      @default(0)
-  updatedByAdminId     String?  @db.Uuid
-  updatedAt            DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+  id               Int      @id @default(1)
+  enabled          Boolean  @default(false)
+  model            String   @default("")
+  inputWonPerMTok  Int      @default(0)
+  outputWonPerMTok Int      @default(0)
+  monthlyBudgetWon Int      @default(10000)
+  sellerDailyLimit Int      @default(20)
+  version          Int      @default(0)
+  updatedByAdminId String?  @db.Uuid
+  updatedAt        DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 }
 
 // 답변 근거 문서(MA-055). 게시한 문서만 답변 근거로 쓴다. 공개 자료만 넣는다(파트너스 개인정보·주문 데이터 금지).
@@ -3120,8 +3163,8 @@ model AssistantDoc {
 
 // 월별 플랫폼 전체 사용액(KST 월 "2026-10"). 호출 전에 예상 비용을 먼저 얹고(한도 안일 때만), 끝나면 실제 비용으로 바로잡는다.
 model AssistantMonthUsage {
-  month         String @id
-  usedMilliWon  Int    @default(0)
+  month        String @id
+  usedMilliWon Int    @default(0)
 }
 
 // 파트너스별 하루(KST) 호출 수
@@ -3141,20 +3184,29 @@ enum AssistantCallStatus {
 
 // 호출 원장 + 질문 기록. 호출마다 토큰·예상 비용을 남긴다.
 model AssistantLedger {
-  id            String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerId      String              @db.Uuid
-  sellerUserId  String              @db.Uuid
-  month         String
-  model         String
-  inputTokens   Int                 @default(0)
-  outputTokens  Int                 @default(0)
-  costMilliWon  Int                 @default(0)
-  status        AssistantCallStatus
-  question      String
-  answer        String?
-  createdAt     DateTime            @default(now()) @db.Timestamptz(3)
+  id           String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId     String              @db.Uuid
+  sellerUserId String              @db.Uuid
+  month        String
+  model        String
+  inputTokens  Int                 @default(0)
+  outputTokens Int                 @default(0)
+  costMilliWon Int                 @default(0)
+  status       AssistantCallStatus
+  question     String
+  answer       String?
+  createdAt    DateTime            @default(now()) @db.Timestamptz(3)
 
   @@index([createdAt(sort: Desc), id(sort: Desc)])
   @@index([status, createdAt(sort: Desc)])
   @@index([month])
+}
+
+// ───────────── 알림 센터(MA-002 · SA-130) ─────────────
+
+// 파트너스 계정이 알림 센터를 마지막으로 본 시각. 알림은 공지·문의에서 바로 만들어 주고 따로 쌓지 않는다.
+// 공지 알림은 이 시각 이후 게시분이 안 읽음이다(문의 답변은 문의를 열면 읽음). 계정마다 한 줄.
+model SellerNotificationSeen {
+  sellerUserId String   @id @db.Uuid
+  seenAt       DateTime @db.Timestamptz(3)
 }
