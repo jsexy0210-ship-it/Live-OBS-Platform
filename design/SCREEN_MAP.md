@@ -274,6 +274,7 @@
 |---|---|---|
 | Brand1·2·3 | 브랜드 제안(초안) | DRAFT |
 | DS1~DS6 | 디자인 시스템 설명 보드(DS6 = 카페24식 공통 틀) | DRAFT · DS6 참고 · DS1~5 초안 |
+| DS-CONFIRM | 공통 확인 창 — 저장·삭제·변경·상태 변경·일괄 처리 앞 다이얼로그(규칙 6항 · 관리자 6종 · 구매자 PC 2종 · 휴대폰 시트 2종, 대표님 지시 2026-10-06 · docs PR #627) | FINAL v272 (1791213148-ad9f) · `design/project/DS-CONFIRM.dc.html` |
 | IA1·IA2·IA3 | 정보구조도 보드 | DRAFT · 정본은 docs/IA.md |
 | Handoff | 개발 이관 목록 보드 | DRAFT |
 | Main | 캔버스 표지 | — |
@@ -295,7 +296,7 @@
 | Table | lop.css `.c24 .lt`(목록) · `.ft`(표형 폼) · `.sh24 .tbl`(구매자) |
 | Button | lop.css `.c24 .b` + `.sm` `.lg` `.pri` `.neg` `.dark` (높이 토큰 `--ui-h-*`, 폭 토큰 `--btn-w-*`) · 구매자 `.sh24 .btn` |
 | Input · Select · DatePicker | lop.css `.c24 .i` + `.w-xs~.w-f` · Select 화살표 · 날짜 전체 클릭 규칙은 docs/DESIGN_PROMPT.md 「규격」 |
-| Modal · 확인 창 | lop.css `.c24 .cfm` `.ovl` · 예시 MA-013-OPS(반려 사유) · SA-021-OPS(환불) |
+| Modal · 확인 창 | **정본 DS-CONFIRM** · lop.css `.c24 .cfm` `.ovl` · 구매자 `.sh24 .cfm` · 휴대폰 `.sh24.m .sheet .pn` · 위험 실행 `.b.neg.pri` / `.btn.neg.p` · 예시 MA-013-OPS(반려 사유) · SA-021-OPS(환불) |
 | BottomSheet (휴대폰 시트) | design/project/SH-003-O.dc.html(옵션) · SH-002-F.dc.html(필터) · SH-022-M.dc.html(취소 요청) |
 | Badge · 상태 배지 | lop.css `.c24 .tag` (`g` `bl` `y` `r` `n` `live`) · 규칙 DS-ROW-ACTION ② |
 | ProductCard (상품 카드 · 상태 8종) | design/project/SH-CARD-IA.dc.html |
