@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireSeller } from "../../../../lib/server/authz/guards";
 import { prisma } from "../../../../lib/server/db";
-import { listConnections, startConnect } from "../../../../lib/server/external/connect";
+import { listConnections, startConnect, startReconnect } from "../../../../lib/server/external/connect";
+import { sellerCan } from "../../../../lib/server/authz/permissions";
+import { isJobId } from "../../../../lib/server/automation/ids";
 import { externalConfig } from "../../../../lib/server/external/config";
 import { externalProvider } from "../../../../lib/server/external/provider";
 import { errorResponse, mutation, noStore, readJson, sessionToken } from "../../../../lib/server/http/route";
@@ -18,7 +20,7 @@ const STATUS = { integration_disabled: 503, shop_not_supported: 409, already_con
 export async function GET(req: Request) {
   try {
     const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "EXTERNAL_INTEGRATION" });
-    return noStore(NextResponse.json({ enabled: externalConfig().enabled, connections: await listConnections(prisma, ctx) }));
+    return noStore(NextResponse.json({ enabled: externalConfig().enabled, canManage: !ctx.readOnly && sellerCan(ctx, "SHOP_SETTINGS"), connections: await listConnections(prisma, ctx) }));
   } catch (e) {
     return noStore(errorResponse(e));
   }
@@ -26,8 +28,10 @@ export async function GET(req: Request) {
 
 export const POST = mutation(async (req: Request) => {
   const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "EXTERNAL_INTEGRATION" });
-  const body = await readJson<{ shopUrl: unknown }>(req);
-  const r = await startConnect(prisma, externalProvider(), ctx, body.shopUrl);
+  const body = await readJson<{ shopUrl: unknown; connectionId: unknown }>(req);
+  // connectionId가 있으면 그 연결을 다시 연결, 없으면 shopUrl로 새 연결
+  if (body.connectionId !== undefined && !isJobId(body.connectionId)) return noStore(NextResponse.json({ error: "not_found" }, { status: 404 }));
+  const r = body.connectionId ? await startReconnect(prisma, externalProvider(), ctx, body.connectionId as string) : await startConnect(prisma, externalProvider(), ctx, body.shopUrl);
   if (!r.ok) return noStore(NextResponse.json({ error: r.reason, message: MESSAGES[r.reason] }, { status: STATUS[r.reason] }));
   return noStore(NextResponse.json({ authorizeUrl: r.authorizeUrl }));
 });
