@@ -14,6 +14,8 @@ export const ADMIN_PERMISSIONS = {
   "admin.manage": ["SUPER_ADMIN"],
   "system.manage": ["SUPER_ADMIN"],
   "audit.read": ["SUPER_ADMIN", "OPERATIONS", "READ_ONLY"],
+  // 외부 서비스 업체 등록·비교·추천·선택(설정 > 외부 서비스 연동). 변경은 최고관리자·운영(대표님 지시 2026-10-05), 조회는 platform.read
+  "vendor.manage": ["SUPER_ADMIN", "OPERATIONS"],
 } as const satisfies Record<string, readonly PlatformAdminRole[]>;
 
 export type AdminPermission = keyof typeof ADMIN_PERMISSIONS;
