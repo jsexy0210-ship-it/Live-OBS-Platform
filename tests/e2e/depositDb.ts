@@ -1,10 +1,10 @@
 import { PrismaClient } from "@prisma/client";
 import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
 
-// 입금 확인 e2e 준비·정리(폐기용 테스트 DB, 이름이 _test로 끝남). 입금 기한이 지난 무통장 입금 대기 주문 2건을 만들고,
+// 입금 확인 e2e 준비·정리(폐기용 테스트 DB, 이름이 _test로 끝남). 입금 기한이 지난 무통장 입금 대기 주문 3건을 만들고,
 // 끝나면 그 주문과 입금 확인으로 줄어든 재고를 되돌린다. 주문 번호는 910000번대라 다른 시험의 데모 주문과 섞이지 않는다.
 const ORDER_NO_BASE = 910000;
-export const DEPOSIT_NICKNAMES = ["입금e2e-하나", "입금e2e-둘"] as const;
+export const DEPOSIT_NICKNAMES = ["입금e2e-하나", "입금e2e-둘", "입금e2e-셋"] as const;
 const open = () => new PrismaClient({ datasources: { db: { url: assertTestDatabaseUrl(process.env.DATABASE_URL) } } });
 
 // 반환: 만든 주문 id 두 개와 되돌릴 재고(정리 때 쓴다)
@@ -56,6 +56,16 @@ export async function clearPendingDepositsInDb(slug: string, restore?: { optionI
     await db.orderItem.deleteMany({ where: { orderId: { in: ids } } });
     await db.order.deleteMany({ where: { id: { in: ids } } });
     if (restore) await db.productOption.update({ where: { id: restore.optionId }, data: { stock: restore.stock } });
+  } finally {
+    await db.$disconnect();
+  }
+}
+
+// 화면이 목록을 받은 뒤 다른 곳에서 바뀐 것처럼 판매자 liveVersion을 올린다(입금 확인이 409로 막히는지 보는 시험용)
+export async function bumpLiveVersionInDb(slug: string) {
+  const db = open();
+  try {
+    await db.seller.update({ where: { slug }, data: { liveVersion: { increment: 1 } } });
   } finally {
     await db.$disconnect();
   }

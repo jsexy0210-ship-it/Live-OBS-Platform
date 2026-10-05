@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { adminCan } from "../../../../../../../lib/server/authz/permissions";
 import { textLength } from "../../../../../../../lib/server/text/clean";
-import { PageHead } from "../../../../../../../components/admin-ui";
+import { Modal, PageHead } from "../../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../../components/seller/States";
 import { adminApi, failMessage } from "../../../../_components/api";
 import { AdminTopbar, useAdmin } from "../../../../_components/AdminShell";
@@ -51,38 +51,40 @@ function RejectDialog({ id, shopName, onClose, onDone, onStale }: { id: string; 
     setError(r.error === "reason_required" ? "사유를 1자 이상 200자 이하로 입력해 주십시오." : failMessage(r, "처리하지 못했습니다. 잠시 후 다시 시도해 주십시오."));
   };
   return (
-    <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="reject-title">
-      <div className="modal">
-        <div className="modal-h">
-          <h2 className="t-h2" id="reject-title">
-            가입을 반려하시겠습니까?
-          </h2>
-          <span className="t-l2 c-alt">{shopName}의 가입 신청이 반려되며, 같은 대표자가 다시 신청할 수 있습니다.</span>
-        </div>
-        <div className="col" style={{ gap: 6, padding: "0 24px" }}>
-          <label className="lbl" htmlFor="reject-reason">
-            반려 사유
-          </label>
-          <textarea id="reject-reason" className="inp" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} disabled={busy} />
-          <span className={`t-c1 ${count > MAX_REASON ? "c-neg" : "c-alt"}`}>
-            {count}/{MAX_REASON}
-          </span>
-          {error && (
-            <span className="err" role="alert">
-              {error}
+    <Modal labelId="reject-title" busy={busy} dirty={count > 0} onClose={onClose}>
+      {(requestClose) => (
+        <>
+          <div className="modal-h">
+            <h2 className="modal-t" id="reject-title">
+              가입을 반려하시겠습니까?
+            </h2>
+            <span className="t-l2 c-alt">{shopName}의 가입 신청이 반려되며, 같은 대표자가 다시 신청할 수 있습니다.</span>
+          </div>
+          <div className="col" style={{ gap: 6, padding: "0 24px" }}>
+            <label className="lbl" htmlFor="reject-reason">
+              반려 사유
+            </label>
+            <textarea id="reject-reason" className="inp" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} disabled={busy} />
+            <span className={`t-c1 ${count > MAX_REASON ? "c-neg" : "c-alt"}`}>
+              {count}/{MAX_REASON}
             </span>
-          )}
-        </div>
-        <div className="modal-f">
-          <button className="btn btn-out" type="button" onClick={onClose} disabled={busy}>
-            취소
-          </button>
-          <button className="btn" type="button" onClick={() => void submit()} disabled={busy || invalid}>
-            {busy ? "처리 중" : "반려"}
-          </button>
-        </div>
-      </div>
-    </div>
+            {error && (
+              <span className="err" role="alert">
+                {error}
+              </span>
+            )}
+          </div>
+          <div className="modal-f">
+            <button className="btn btn-out" type="button" onClick={requestClose} disabled={busy}>
+              취소
+            </button>
+            <button className="btn" type="button" onClick={() => void submit()} disabled={busy || invalid}>
+              {busy ? "처리 중" : "반려"}
+            </button>
+          </div>
+        </>
+      )}
+    </Modal>
   );
 }
 

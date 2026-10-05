@@ -65,7 +65,7 @@ export async function broadcastStatsIn(tx: StatsDb, ctx: TenantContext, range: S
     agg AS (
       SELECT bid, live, count(*)::int AS orders, coalesce(sum("totalAmount"::bigint), 0) AS paid,
         count(*) FILTER (WHERE status = 'REFUNDED')::int AS refunded,
-        coalesce(sum(coalesce("refundAmount", "totalAmount")::bigint) FILTER (WHERE status = 'REFUNDED'), 0) AS refund
+        coalesce(sum((CASE WHEN status = 'REFUNDED' THEN coalesce("refundAmount", "totalAmount") ELSE coalesce("refundAmount", 0) END)::bigint), 0) AS refund
       FROM pick WHERE bid IN (SELECT id FROM b) GROUP BY bid, live
     ),
     -- HIT 카드도 바뀌지 않는 생성 시각으로 방송 [시작, 종료]에 귀속한다(broadcastSessionId는 쓰지 않음)
