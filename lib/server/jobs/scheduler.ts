@@ -4,9 +4,11 @@ import { purgeExpiredRejoinBlocks } from "../buyers/rejoin";
 import { purgeOldSignupVerificationIps, purgeUnfinishedSignupVerifications } from "../buyers/signup";
 import { prisma } from "../db";
 import { purgeExpiredOAuthStates, purgeOldWebhookEvents, refreshDueTokens } from "../external/jobs";
+import { processWebhookEvents } from "../external/process";
 import { externalProvider } from "../external/provider";
 import { MESSAGE_JOB_NAME, runMessageJobs } from "../messaging/jobs";
 import { recalcMonthlyGrades } from "../shop-member-grades/service";
+import { processDueMemberMessages } from "../shop-member-messages/service";
 import { markInstanceRetired, purgeOldOpsEvents, purgeRetiredHeartbeats, recordHeartbeat, registerInstance } from "../ops/metrics";
 
 // 앱 안 정기 실행(MASTER 결정 2026-10-03: 외부 cron 대신). instrumentation.ts register(nodejs 런타임)에서 startScheduler를 부른다.
@@ -37,8 +39,12 @@ export const SCHEDULED_JOBS: ScheduledJob[] = [
   { name: "external_oauth_state.purge", run: (tx, now) => purgeExpiredOAuthStates(tx, now) },
   { name: "external_webhook_event.purge_old", run: (tx, now) => purgeOldWebhookEvents(tx, now) },
   { name: "external_shop.refresh_tokens", run: (_tx, now) => refreshDueTokens(prisma, externalProvider(), now) },
+  // 웹훅으로 받아 아직 처리하지 못한 외부 주문 이벤트를 주문대기·취소로 옮긴다(수신 직후 처리가 실패했거나 토큰 갱신을 기다린 것, external/process.ts)
+  { name: "external_webhook_event.process", run: async (_tx, now) => (await processWebhookEvents(prisma, externalProvider(), { now })).processed },
   // 회원 등급 자동 재산정: 켠 쇼핑몰만, 쇼핑몰마다 달(KST)에 한 번(shop-member-grades)
   { name: "member_grade.recalc_monthly", run: (_tx, now) => recalcMonthlyGrades(prisma, now) },
+  // 회원 대상 발송: 시각이 된 예약을 기록으로 바꾼다(shop-member-messages, 실제 발송 채널은 아직 없음)
+  { name: "member_message.record_due", run: (_tx, now) => processDueMemberMessages(prisma, now) },
 ];
 
 export const SCHEDULER_INTERVAL_MS = 3600_000;

@@ -113,7 +113,7 @@ function TodayTasks({ tick }: { tick: number }) {
           )}
           <div className="stat-row" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
             {d.items.map((t) => (
-              <Link key={t.key} href={t.href} className="card pad col" style={{ gap: 4, textDecoration: "none", color: "inherit" }} data-testid={`today-task-${t.key}`} aria-label={`${TASK_LABEL[t.key]} ${t.count}건`}>
+              <Link key={t.key} href={t.key === "signupPending" ? "/admin/partners/applications" : t.href} className="card pad col" style={{ gap: 4, textDecoration: "none", color: "inherit" }} data-testid={`today-task-${t.key}`} aria-label={`${TASK_LABEL[t.key]} ${t.count}건`}>
                 <span className="t-l2 c-alt">{TASK_LABEL[t.key]}</span>
                 <span className={`t-h2 ${t.count > 0 ? "c-neg" : ""}`}>{n(t.count, "건")}</span>
               </Link>

@@ -108,6 +108,7 @@ test("상세: 기본 정보·대표자·사업자·구독·최근 30일 주문�
 test("정지 처리 중에는 닫을 수 없고, 서버 403·409는 안내가 보인다", async ({ page }) => {
   await login(page, emails.super);
   await search(page, slugA);
+  await expect(page.getByTestId("partner-row")).toHaveCount(1);
   await page.getByTestId("partner-row").getByRole("button", { name: "이용 정지" }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("사유").fill("확인");

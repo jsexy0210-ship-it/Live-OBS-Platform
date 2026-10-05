@@ -20,7 +20,7 @@
 | 화면-파트너스 운영 (2) | `session_01JFxmyNJFB2Ztwv2jUtQSCr` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_017i9HrY4Z9if193ZLQfJQbp`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | 쇼핑몰 운영 전담 (2) | `session_01WDkrYfwDz7o3oD8f2PeSvP` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01AKkKsTJjMHv2KaJLHh8u1y`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | 통계 전담 (2) | `session_01GPhc7Kd9oq7YFPv4Tar4ZX` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_013CH4KbJKN2cpDNBKtipGYL`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
-| 디자인 전담 (3) | `session_019Eb1gYYx6hQzm3VDbKmKmM` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01DCQ38rPYwPnVCZJbhLgJnc`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
+| 디자인 전담 (4) · Fable | `session_01QUUqmD2DDwArxHsUqMyA7Y` | 2026-10-05 대표님 지시 「디자인은 다 fable로 바꿔서 빨리 진행해」로 디자인 전담 (3)(`session_019Eb1gYYx6hQzm3VDbKmKmM`, Sonnet)을 Fable 5.1로 교체. 역할·소유는 전임 행과 같음. 첫 배정: docs/ADMIN_OPS_UX.md P1 보드 |
 | 인프라 전담 (2) | `session_013HzEF83eiqjaDFkjzVyUxD` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_016ErhcGpbBooDx8a9sYYUmK`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | 개발 전담 (기반-결제) (2) | `session_018dHyuf6MTABkU1qXJgwHVm` | 2026-10-05 대표님 지시로 `session_012jhVJxoLMffGfwxWvcKJom`를 Sonnet 5.5로 교체. 역할은 전임과 같음 |
 | 도우미 전담 (2) | `session_01179Trx8rmw3gteLPm2YqPm` | 2026-10-05 대표님 지시로 `session_01LeAAUEjs1rJTq5gQptRN2S`를 Sonnet 5.5로 교체. 역할은 전임과 같음 |
@@ -155,6 +155,8 @@
 
 ### 2026-10-05 저녁 MASTER 기록
 
+- **휴대폰 본인확인은 모든 개발과 디자인 정본 동기화를 마친 뒤 진행한다** (2026-10-05 22:20 KST 대표님 지시). 그때까지 본인확인 대행사 연동·실호출 시험을 하지 않는다. **결제(PG, 나이스페이) 시험은 계속 진행하고 화면 연계(주문 상세·주문 내역·파트너스 주문·마스터 결제 목록 반영)를 지속 확인한다** (같은 날 22:25 KST 대표님 지시로 PG 보류를 철회)
+- **Codex(chatgpt-codex-connector) 보안 리뷰는 중지하고 차후 일괄 진행한다** (2026-10-05 22:30 KST 대표님 지시). 설정은 저장소 밖(Codex 설정)이라 대표님이 끈다. 그때까지 PR의 Codex 한도·보안 리뷰 안내 글은 처리 대상이 아니며, 병합 판단은 CI·검수 전담 검토로 한다. 일괄 보안 리뷰는 대표님 지시 때 진행
 - 쇼핑몰 검색: 인기 검색어 반복 제한이 서버 메모리라 서버 1대 기준(증설 시 DB 기반으로). 이름·태그 검색은 상품 수천 개 넘는 쇼핑몰에서 trigram 인덱스 검토
 - 쇼핑몰 「방송 중」(#520)은 파트너스가 시작한 방송 세션 기준이라 유튜브만 켜져 있으면 live=false
 - 구매자 문의 글 3년 보관 뒤 파기 작업 없음(상수만, 법률 검토 뒤)
