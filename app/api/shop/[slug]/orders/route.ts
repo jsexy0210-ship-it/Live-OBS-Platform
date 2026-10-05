@@ -7,7 +7,8 @@ import { createOrder, type CreateOrderFailure } from "../../../../../lib/server/
 import { orderErrorBody, purchaseRestrictedMessage } from "../../../../../lib/server/orders/messages";
 import { isOrderCouponFailure, ORDER_COUPON_MESSAGES } from "../../../../../lib/server/shop-coupons/service";
 
-// 구매자 본인 주문 목록(?cursor·limit, 응답 { orders, nextCursor }). 잠긴 쇼핑몰이어도 기존 주문 조회는 연다.
+// 구매자 본인 주문 목록(?cursor·limit·tab·from·to, 응답 { orders, nextCursor, range, counts }). tab: all·pending·inProgress·done·cancelled·refunded,
+// from·to: KST 날짜(YYYY-MM-DD, 둘 다 포함, 비우면 최근 1개월, 최대 1년), counts는 같은 기간의 탭별 전체 개수. 잠긴 쇼핑몰이어도 기존 주문 조회는 연다.
 export async function GET(req: Request, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
@@ -16,7 +17,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
     const session = await resolveBuyerSession(prisma, sessionToken(req, "buyer"), seller.id);
     if (!session) return noStore(NextResponse.json({ error: "unauthenticated" }, { status: 401 }));
     const q = new URL(req.url).searchParams;
-    const r = await listBuyerOrders(prisma, { sellerId: seller.id, buyerMemberId: session.member.id }, { cursor: q.get("cursor") ?? undefined, limit: q.get("limit") ?? undefined });
+    const r = await listBuyerOrders(prisma, { sellerId: seller.id, buyerMemberId: session.member.id }, { cursor: q.get("cursor") ?? undefined, limit: q.get("limit") ?? undefined, tab: q.get("tab") ?? undefined, from: q.get("from") ?? undefined, to: q.get("to") ?? undefined });
     if (!r.ok) return noStore(NextResponse.json(orderErrorBody(r.reason), { status: 400 }));
     return noStore(NextResponse.json(r.value));
   } catch (e) {

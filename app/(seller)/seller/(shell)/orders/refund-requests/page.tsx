@@ -184,7 +184,7 @@ export default function RefundRequestsPage() {
         </div>
         {state.kind === "ok" && !canEdit && (
           <div className="msg msg-info" role="status">
-            <span>환불 요청 처리는 대표자나 주문 · 배송 권한이 있는 직원만 할 수 있습니다.</span>
+            <span>보기만 할 수 있습니다. 바꾸려면 대표자에게 「주문·배송」 허용을 요청해 주십시오.</span>
           </div>
         )}
       </main>
@@ -357,7 +357,7 @@ function RequestDetail({ id, canEdit, onClose, onDone }: { id: string; canEdit: 
               <>
                 <div className="fld">
                   <span className="lbl" id="rr-fault-label">
-                    사유 주체
+                    누구 사정인지
                   </span>
                   <div className="refund-faults" role="radiogroup" aria-labelledby="rr-fault-label">
                     {FAULTS.map((f) => (
@@ -380,7 +380,7 @@ function RequestDetail({ id, canEdit, onClose, onDone }: { id: string; canEdit: 
                       </label>
                     ))}
                   </div>
-                  <span className="help">구매자 사정만 결제 후 취소 횟수에 포함됩니다 · 선택하지 않으면 환불할 수 없습니다</span>
+                  <span className="help">구매자 사정으로 환불하면 이 구매자의 결제 후 취소 횟수가 1회 늘어납니다. 둘 중 하나를 꼭 골라 주십시오.</span>
                 </div>
                 {quote && (
                   <div className="col" style={{ gap: 4 }}>
@@ -391,7 +391,7 @@ function RequestDetail({ id, canEdit, onClose, onDone }: { id: string; canEdit: 
                       적립금 반환 {won(quote.rewardReturn)}
                     </span>
                     {quote.returnFeeDeducted > 0 && <span className="t-c1 c-alt num">반품 배송비 {won(quote.returnFeeDeducted)} 차감</span>}
-                    {quote.blocked && <span className="err">이 사유 주체로는 환불할 수 없는 주문입니다</span>}
+                    {quote.blocked && <span className="err">이 사정으로는 환불할 수 없는 주문입니다</span>}
                   </div>
                 )}
                 {hasOpened && (
@@ -403,7 +403,7 @@ function RequestDetail({ id, canEdit, onClose, onDone }: { id: string; canEdit: 
                 {quote && !quote.blocked && (
                   <label className="row t-l2" style={{ gap: 8 }}>
                     <input className="cbx" type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
-                    위 금액으로 환불합니다. 승인 취소 후 되돌릴 수 없습니다.
+                    위 금액으로 환불합니다. 환불한 뒤에는 되돌릴 수 없습니다.
                   </label>
                 )}
               </>
