@@ -15,10 +15,11 @@ export async function GET(req: Request) {
   }
 }
 
-// 저장. body { autoEnabled?: boolean, grades?: [{ id, displayName, minAmount }] }. 자동 재산정을 켜면 기준액이 등급 순서대로 커야 한다(400 invalid_thresholds).
+// 저장. body { autoEnabled?: boolean, windowMonths?: 0|3|6|12(0=누적), cadence?: MONTHLY|WEEKLY|DAILY, demotion?: STEP|IMMEDIATE|NONE, grades?: [{ id, displayName, minAmount }] }.
+// 자동 재산정을 켜면 기준액이 등급 순서대로 커야 한다(400 invalid_thresholds). 새로 켜거나 주기를 바꾸면 그 주기는 이미 돈 것으로 기록한다(저장하자마자 도는 일 방지).
 export const PUT = mutation(async (req: Request) => {
   const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { feature: "STORE_OPERATIONS" });
-  const r = await saveMemberGrades(prisma, ctx, await readJson<{ autoEnabled: unknown; grades: unknown }>(req));
+  const r = await saveMemberGrades(prisma, ctx, await readJson<{ autoEnabled: unknown; windowMonths: unknown; cadence: unknown; demotion: unknown; grades: unknown }>(req));
   return r.ok ? noStore(NextResponse.json({ ok: true })) : gradeError(r.reason);
 });
 
