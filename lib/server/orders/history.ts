@@ -1,4 +1,5 @@
 import type { ActorType, OrderStatus, PaymentCancelStatus, PrismaClient } from "@prisma/client";
+import { SANDBOX_PARTIAL_CANCEL_MESSAGE } from "../payments/messages";
 import type { TenantContext } from "../tenant/context";
 
 // SA-022 파트너스 주문 상세의 「상태 이력」(GET /api/seller/orders/{id}의 history). 시각 오름차순.
@@ -27,11 +28,14 @@ export type OrderHistoryEvent = {
 
 // 결제 취소 실패 코드 → 파트너스·마스터 화면 문구(합니다체). 모르는 코드는 일반 문구.
 const CANCEL_FAILURE_MESSAGES: Record<string, string> = {
+  nicepay_U128: SANDBOX_PARTIAL_CANCEL_MESSAGE,
   over_balance: "취소할 금액이 남은 결제 금액보다 큽니다",
   provider_mismatch: "다른 결제사로 받은 결제라 취소할 수 없습니다",
 };
 export function cancelFailureText(code: string | null, pgMessage?: string | null): string {
-  const base = (code && CANCEL_FAILURE_MESSAGES[code]) ?? (code?.startsWith("nicepay_") ? "결제사에서 취소를 거절했습니다" : "결제 취소가 끝나지 않았습니다");
+  const known = code ? CANCEL_FAILURE_MESSAGES[code] : undefined;
+  if (known) return known;
+  const base = code?.startsWith("nicepay_") ? "결제사에서 취소를 거절했습니다" : "결제 취소가 끝나지 않았습니다";
   return pgMessage ? `${base}(${pgMessage})` : base;
 }
 

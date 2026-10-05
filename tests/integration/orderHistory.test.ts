@@ -93,6 +93,12 @@ describe("주문 상세 상태 이력", () => {
     expect((await getOrderHistory(db, s.ctx, s.order.id)).find((e) => e.kind === "payment_cancel")?.note).toBe("결제사에서 취소를 거절했습니다");
     await db.paymentCancel.update({ where: { id: cancel.id }, data: { failureCode: "over_balance" } });
     expect((await getOrderHistory(db, s.ctx, s.order.id)).find((e) => e.kind === "payment_cancel")?.note).toBe("취소할 금액이 남은 결제 금액보다 큽니다");
+    // 샌드박스 부분 취소 미제공(nicepay_U128)은 결제사 문구와 상관없이 정해진 안내 문구로
+    await db.paymentCancel.update({ where: { id: cancel.id }, data: { failureCode: "nicepay_U128" } });
+    expect((await getOrderHistory(db, s.ctx, s.order.id)).find((e) => e.kind === "payment_cancel")).toMatchObject({
+      failureCode: "nicepay_U128",
+      note: "시험 결제 환경은 부분 취소를 지원하지 않습니다. 운영 환경에서는 가능합니다.",
+    });
     // 성공·대기 취소는 failureCode가 없다
     await db.paymentCancel.update({ where: { id: cancel.id }, data: { status: "REQUESTED", failureCode: null } });
     expect((await getOrderHistory(db, s.ctx, s.order.id)).find((e) => e.kind === "payment_cancel")).toMatchObject({ cancelStatus: "REQUESTED", failureCode: null });
