@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>마스터 관리자 로그인</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="app c24 ma" data-theme="light" style="width: 1440px; display: flex; flex-direction: column">
+<div class="authwrap" style="min-height: 400px"><div class="auth" style="width: 420px"><div class="brand"><span class="logo-sym" style="--brand: var(--c24-gnb); --brand-ink: #fff"></span>ONQ <small>마스터 관리자</small></div><h1>마스터 관리자</h1><p class="sub">이메일과 비밀번호로 로그인합니다.</p><label class="fl">이메일</label><input class="i w-f" type="text" value="" placeholder=""><label class="fl">비밀번호</label><input class="i w-f" type="password" value="" placeholder=""><button class="b pri lg w" type="button">로그인</button></div></div>
+<div class="states">
+<span class="states-h">상태 변형</span>
+<div class="st"><span class="st-tag">입력 오류</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><label class="fl">비밀번호</label><input class="i w-f err" type="text" value="" placeholder=""><span class="errt">이메일 또는 비밀번호가 맞지 않습니다</span></div></div><div class="st"><span class="st-tag">로그인 중</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><button class="b pri lg w" type="button" disabled>확인하고 있습니다</button></div></div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":700}}'>
+class Component extends DCLogic { renderVals() { return {}; } }
+</script>
+</body>
+</html>

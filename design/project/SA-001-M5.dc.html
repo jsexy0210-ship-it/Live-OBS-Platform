@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>방송 시작 확인</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="app c24" data-theme="light" style="width: 960px; min-height: 860px; padding: 24px; box-sizing: border-box; display: flex; gap: 24px; align-items: flex-start; justify-content: center">
+<div class="cfm" style="max-width: none; width: 880px"><div class="h">방송을 시작하시겠습니까?<button class="x" type="button" aria-label="닫기">×</button></div><div class="bd">오버레이가 「방송 대기」에서 주문대기 표시로 바뀌고, 방송 전 들어온 주문 3건이 주문대기 맨 앞에 놓입니다 · 시작 시각이 방송 이력에 기록됩니다.<table class="ft"><colgroup><col style="width: 150px"><col></colgroup><tr><th>방송 제목 <span class="rq">*</span></th><td><input class="i w-l" type="text" value="10/2 스타라이트 · 문라이트 브레이크" placeholder=""></td></tr><tr><th>오버레이 레이아웃</th><td><div class="col" style="gap: 4px; align-items: flex-start"><label class="ck"><input type="radio" name="lay2" checked>세로형 1080×1920</label><span class="hint">모바일 시청 · 하단 주문대기</span><label class="ck"><input type="radio" name="lay2">가로 사이드형 500×900</label><span class="hint">PC 시청 · 우측 패널</span></div></td></tr><tr><th>오버레이 연결</th><td><span class="tag g">연결됨</span></td></tr><tr><th>PG 연결</th><td><span class="tag g">정상</span></td></tr><tr><th>적립금 실지급</th><td><span class="tag y">켜짐 · 방송 중 지급 발생</span></td></tr><tr><th>유튜브 채팅</th><td>연결된 방송 있음 · 채팅 수집 <span class="tag n">끔</span><span class="hint">채팅 수집은 시작한 뒤 대시보드에서 켭니다 · 유튜브 연결 화면에서도 켤 수 있습니다</span></td></tr></table></div><div class="f"><button class="b pri" type="button">방송 시작</button><button class="b " type="button">취소</button></div></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":960,"height":860}}'>
+class Component extends DCLogic { renderVals() { return {}; } }
+</script>
+</body>
+</html>

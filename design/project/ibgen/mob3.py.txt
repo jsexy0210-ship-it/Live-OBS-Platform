@@ -1,0 +1,16 @@
+from ib import *
+import re
+s=open(P+'SH-001.dc.html',encoding='utf-8').read()
+def rep(a,b):
+    global s
+    assert a in s,a[:50]; s=s.replace(a,b,1)
+s=s.replace('<title>쇼핑몰 홈</title>','<title>쇼핑몰 홈 (IA 개편)</title>')
+rep('<div class="mbody">','<div class="mbody"><div class="msg inf" style="margin:0;border-radius:0;display:flex;align-items:center;gap:8px;background:#fff0f0"><span class="t live">LIVE</span><b style="font-size:13px">지금 라이브 방송 중이에요</b><a class="btn s" href="SH-003-IA.dc.html" style="margin-left:auto">방송 보기</a></div>')
+rates=iter(['★ 4.8 · 리뷰 12 · 적립 891원','★ 4.7 · 리뷰 38 · 적립 1,320원','★ 4.6 · 리뷰 9 · 적립 1,980원','★ 4.9 · 리뷰 120','★ 4.8 · 리뷰 30 · 적립 380원','★ 4.8 · 리뷰 64 · 적립 60원'])
+i=s.index('<section class="sec">'); j=s.index('이번 주 명예의 전당')
+body=re.sub(r'<div class="bd">',lambda m:'<div class="hint" style="margin:2px 0">'+next(rates,'')+'</div><div class="bd">',s[i:j])
+body=body.replace('</div></div><div class="pc">','</div><div style="display:flex;gap:4px;margin-top:6px"><button class="btn s" type="button" aria-label="찜" style="flex:none;width:36px">♡</button><button class="btn s" type="button" style="flex:1">담기</button></div></div><div class="pc">')
+s=s[:i]+body+s[j:]
+rep('<span class="states-h">상태 변형</span>','<span class="states-h">상태 변형</span><div class="st"><span class="st-tag">방송 아님 (LIVE 띠 숨김)</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><span class="hint">방송이 끝나면 맨 위 「지금 라이브 방송 중이에요」 띠가 사라지고 「방송 중 상품」은 「최근 방송 상품」으로 바뀌어요</span></div></div><div class="st"><span class="st-tag">카드 · 찜 로그인 필요</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><div class="msg inf">로그인하면 찜할 수 있어요</div><a class="btn s" href="SH-010.dc.html">로그인</a></div></div>')
+save('SH-001-IA',s)
+addboard('SH-001-IA','SH-001-IA 휴대폰 쇼핑몰 홈 · IA 개편 (LIVE 띠 · 카드 평점 · 예상 적립 · 찜 · 담기)',15680,108800,800,1900)

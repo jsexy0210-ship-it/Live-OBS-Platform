@@ -1,0 +1,46 @@
+from ib import *
+import re
+# ---------- 장바구니
+s=open(P+'SH-004-PC.dc.html',encoding='utf-8').read()
+def rep(a,b):
+    global s
+    assert a in s,a[:50]; s=s.replace(a,b,1)
+s=s.replace('<title>장바구니</title>','<title>장바구니 (IA 개편)</title>')
+# 옵션 변경 버튼 + 담은 뒤 가격 변경 / 재고 부족 표시
+rep('<div style="color: var(--sub); font-size: 12px; margin-top: 4px">1박스 (24팩)</div></div></div></td>','<div style="color: var(--sub); font-size: 12px; margin-top: 4px">1박스 (24팩) <button class="btn s" type="button" style="margin-left: 4px">옵션 변경</button></div><div style="margin-top: 4px"><span class="tag g">담은 뒤 가격이 내렸어요 · 99,000원 → 89,100원</span></div></div></div></td>')
+rep('<div style="color: var(--sub); font-size: 12px; margin-top: 4px">1박스 (20팩)</div></div></div></td>','<div style="color: var(--sub); font-size: 12px; margin-top: 4px">1박스 (20팩) <button class="btn s" type="button" style="margin-left: 4px">옵션 변경</button></div><div style="margin-top: 4px"><span class="tag r">재고 부족 · 남은 수량 1박스</span></div></div></div></td>')
+rep('<div class="r"><span>배송비</span><span>3,000원</span></div><div class="r"><span>적립 예정</span><span>3,102원</span></div>','<div class="r"><span>할인 (쿠폰은 주문서에서 선택)</span><span>−9,900원</span></div><div class="r"><span>배송비</span><span>3,000원</span></div><div class="r"><span>예상 적립</span><span>3,102원</span></div>')
+rep('<b>313,200원</b>','<b>303,300원</b>')
+rep('<span class="hint" style="text-align: center">방송 중 주문은 결제가 끝난 순서대로 열어요</span>','<span class="hint" style="text-align: center">방송 중 주문은 결제가 끝난 순서대로 열어요 · 쿠폰은 주문서에서 골라요</span>')
+save('SH-004-PC-IA',s)
+addboard('SH-004-PC-IA','SH-004-PC-IA 장바구니 · IA 개편 (품절 · 재고 부족 · 가격 변경 표시 · 옵션 변경 · 할인 · 예상 적립)',4560,108800,1440,1300)
+# ---------- 주문서
+s=open(P+'SH-005-PC.dc.html',encoding='utf-8').read()
+i=s.index('<main'); j=s.index('</main>')
+m=s[i:j]
+st=m.index('<div style="display: flex; flex-direction: column; gap: 16px"><div class="box">')+len('<div style="display: flex; flex-direction: column; gap: 16px">')
+en=m.index('<aside class="sum">')
+col=m[st:en]
+assert col.endswith('</div>')
+col_inner=col[:-6]
+blocks=re.split(r'(?=<div class="box"><div class="h">)',col_inner)
+blocks=[b for b in blocks if b]
+names=[re.search(r'class="h">([^<]+)',b).group(1).strip() for b in blocks]
+print(names)
+order=['방송 닉네임','배송지','받는 방법','주문 상품','쿠폰','적립금','결제 수단']
+def find(n): 
+    for b,nm in zip(blocks,names):
+        if nm.startswith(n): return b
+    raise KeyError(n)
+new=''.join(find(n) for n in order)+'</div>'
+m2=m[:st]+new+m[en:]
+# 요약: 배송비·할인·예상 적립·최종 금액
+m2=m2.replace('<div class="r"><span>쿠폰 할인</span><span>0원</span></div>','<div class="r"><span>쿠폰 할인</span><span>−5,000원</span></div>',1)
+m2=m2.replace('<div class="r tot"><span>결제 금액</span><b>303,200원</b></div>','<div class="r"><span>예상 적립</span><span>3,052원</span></div><div class="r tot"><span>최종 결제 금액</span><b>298,200원</b></div>',1)
+m2=m2.replace('303,200원 결제하기','298,200원 결제하기')
+m2=m2.replace('<div class="box"><div class="h">쿠폰</div>','<div class="box"><div class="h">쿠폰 <span class="r">상품 상세에서 받은 쿠폰이 이어져요</span></div>',1)
+s=s[:i]+m2+s[j:]
+s=s.replace('<title>주문서</title>','<title>주문서 (IA 개편)</title>')
+s=s.replace('<span class="states-h">상태 변형</span>','<span class="states-h">상태 변형</span><div class="st"><span class="st-tag">휴대폰 · 결제 버튼 하단 고정</span><div class="col" style="width: 100%; text-align: left; gap: 8px; align-items: flex-start"><span class="hint">주문 순서: 닉네임 → 배송지 → 받는 방법 → 상품 → 쿠폰 → 적립금 → 결제 수단 → 최종 금액 → 약관 → 결제. 휴대폰은 맨 아래에 「최종 결제 금액 + 결제하기」 버튼을 화면 하단에 고정해요</span></div></div>',1)
+save('SH-005-PC-IA',s)
+addboard('SH-005-PC-IA','SH-005-PC-IA 주문서 · IA 개편 (닉네임 → 배송지 → 상품 → 쿠폰 → 적립금 → 결제 수단 → 최종 금액)',6080,108800,1440,2300)

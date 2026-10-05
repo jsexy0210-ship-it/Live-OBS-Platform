@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>정보구조도 권한별 접근 범위</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/wds/tokens.css">
+<link rel="stylesheet" href="lop.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.px{width:100%;border-collapse:collapse;font-size:13px}
+.px th{padding:10px 8px;text-align:center;font-weight:700;background:var(--wds-background-normal-alternative);box-shadow:inset 0 -1px 0 var(--wds-line-normal-neutral)}
+.px th:first-child{text-align:left;padding-left:14px}
+.px td{padding:7px 8px;text-align:center;box-shadow:inset 0 -1px 0 var(--wds-line-normal-alternative)}
+.px td:first-child{text-align:left;padding-left:14px;font-weight:500;white-space:nowrap}
+.px tr.sec td{background:var(--wds-fill-alternative);font-weight:700;color:var(--wds-label-neutral);padding:8px 14px}
+.p{display:inline-flex;min-width:44px;height:22px;align-items:center;justify-content:center;border-radius:6px;font-size:11px;font-weight:700}
+.p-w{background:#5b3df6;color:#fff}
+.p-r{background:var(--wds-fill-strong);color:var(--wds-label-neutral)}
+.p-a{background:var(--wds-background-status-cautionary);color:var(--cau-text)}
+.p-n{color:var(--wds-label-disable)}
+.p-s{background:var(--wds-background-status-positive);color:var(--pos-text)}
+</style>
+</helmet>
+<div class="app" data-theme="light" style="width: 1800px; height: 1500px; padding: 56px; display: flex; flex-direction: column; gap: 20px">
+ <div class="col" style="gap: 6px">
+ <span class="t-l1 fw6 c-alt">00-IA3 · 정보구조도</span>
+ <h1 class="t-t2">권한별 접근 범위</h1>
+ <p class="t-b2 c-alt">권한 계층: 마스터 관리자 › 파트너스 › 구매자 · 시청자. 파트너스 권한으로는 MA 영역 전체가 403. 마스터 관리자 안에서는 역할별로 메뉴 노출과 변경 버튼이 달라져요.</p>
+ </div>
+ <div class="row" style="gap: 10px">
+ <span class="p p-w">변경</span><span class="t-l2 c-alt">조회 + 변경</span>
+ <span class="p p-r" style="margin-left: 12px">조회</span><span class="t-l2 c-alt">조회만 · 변경 버튼 비활성</span>
+ <span class="p p-a" style="margin-left: 12px">승인</span><span class="t-l2 c-alt">최고관리자 승인 후 실행 (Operator Approval Gate)</span>
+ <span class="p p-s" style="margin-left: 12px">본인</span><span class="t-l2 c-alt">본인 데이터만</span>
+ <span class="p p-n" style="margin-left: 12px">—</span><span class="t-l2 c-alt">접근 불가 (메뉴 비노출 · 직접 접근 시 403)</span>
+ </div>
+ <div class="card" style="overflow: hidden">
+ <table class="px">
+ <thead><tr>
+ <th>영역 · 기능</th>
+ <th style="color: var(--master-text)">최고관리자</th><th style="color: var(--master-text)">운영</th><th style="color: var(--master-text)">CS</th><th style="color: var(--master-text)">조회 전용</th>
+ <th style="color: var(--brand)">파트너스</th><th style="color: var(--brand)">파트너스 직원</th><th>구매자</th><th>시청자</th>
+ </tr></thead>
+ <tbody>
+ <tr class="sec"><td colspan="9">MA 마스터 관리자</td></tr>
+ <tr><td>MA-001 통합 대시보드</td><td><span class="p p-w">변경</span></td><td><span class="p p-r">조회</span></td><td><span class="p p-r">조회</span></td><td><span class="p p-r">조회</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td></tr>
+ <tr><td>MA-011~012 파트너스 목록 · 상세</td><td><span class="p p-w">변경</span></td><td><span class="p p-w">변경</span></td><td><span class="p p-r">조회</span></td><td><span class="p p-r">조회</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td></tr>
+ <tr><td>MA-013~014 가입 승인 · 반려</td><td><span class="p p-w">변경</span></td><td><span class="p p-w">변경</span></td><td><span class="p p-r">조회</span></td><td><span class="p p-r">조회</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td></tr>
+ <tr><td>MA-015 이용 정지 · 해제</td><td><span class="p p-w">변경</span></td><td><span class="p p-a">승인</span></td><td><span class="p p-n">—</span></td><td><span class="p p-r">조회</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td></tr>
+ <tr><td>MA-016 파트너스 화면 대리 조회</td><td><span class="p p-w">변경</span></td><td><span class="p p-w">변경</span></td><td><span class="p p-w">변경</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td></tr>
+ <tr><td>MA-021~022 요금제 등록 · 수정</td><td><span class="p p-w">변경</span></td><td><span class="p p-r">조회</span></td><td><span class="p p-r">조회</span></td><td><span class="p p-r">조회</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td></tr>
+ <tr><td>MA-023~025 구독 현황 · 청구 내역</td><td><span class="p p-w">변경</span></td><td><span class="p p-w">변경</span></td><td><span class="p p-r">조회</span></td><td><span class="p p-r">조회</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td></tr>
+ <tr><td>MA-026~027 환불 요청 · 처리</td><td><span class="p p-w">변경</span></td><td><span class="p p-a">승인</span></td><td><span class="p p-a">승인</span></td><td><span class="p p-r">조회</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td></tr>
+ <tr><td>MA-031~032 정산 · 결제 현황</td><td><span class="p p-w">변경</span></td><td><span class="p p-r">조회</span></td><td><span class="p p-r">조회</span></td><td><span class="p p-r">조회</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td></tr>
+ <tr><td>MA-041~043 운영 현황</td><td><span class="p p-w">변경</span></td><td><span class="p p-w">변경</span></td><td><span class="p p-r">조회</span></td><td><span class="p p-r">조회</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td></tr>
+ <tr><td>MA-051~052 파트너스 문의 · 답변</td><td><span class="p p-w">변경</span></td><td><span class="p p-r">조회</span></td><td><span class="p p-w">변경</span></td><td><span class="p p-r">조회</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td></tr>
+ <tr><td>MA-053~054 공지 작성 · 발송</td><td><span class="p p-w">변경</span></td><td><span class="p p-w">변경</span></td><td><span class="p p-w">변경</span></td><td><span class="p p-r">조회</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td></tr>
+ <tr><td>MA-061~063 관리자 계정 · 권한</td><td><span class="p p-w">변경</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td></tr>
+ <tr><td>MA-070 로그 추적</td><td><span class="p p-r">조회</span></td><td><span class="p p-r">조회</span></td><td><span class="p p-n">—</span></td><td><span class="p p-r">조회</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td></tr>
+ <tr><td>MA-081~083 시스템 설정 · 점검 모드</td><td><span class="p p-w">변경</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-r">조회</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td></tr>
+ <tr><td>MA-090 내 계정</td><td><span class="p p-s">본인</span></td><td><span class="p p-s">본인</span></td><td><span class="p p-s">본인</span></td><td><span class="p p-s">본인</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td></tr>
+ <tr class="sec"><td colspan="9">SA 파트너스 관리자 — 파트너스 직원은 대표자가 SA-100에서 계정을 만들고 권한 10개를 항목별로 켜고 꺼요</td></tr>
+ <tr><td>SA-001 방송 대시보드 · 주문대기 조작</td><td><span class="p p-r">대리 조회</span></td><td><span class="p p-r">대리 조회</span></td><td><span class="p p-r">대리 조회</span></td><td><span class="p p-n">—</span></td><td><span class="p p-w">변경</span></td><td><span class="p p-w">변경</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td></tr>
+ <tr><td>SA-010 / 020 상품 · 주문</td><td><span class="p p-r">대리 조회</span></td><td><span class="p p-r">대리 조회</span></td><td><span class="p p-r">대리 조회</span></td><td><span class="p p-n">—</span></td><td><span class="p p-w">변경</span></td><td><span class="p p-w">역할별</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td></tr>
+ <tr><td>SA-030 적립금 · SA-034 실지급 스위치</td><td><span class="p p-r">대리 조회</span></td><td><span class="p p-r">대리 조회</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-w">변경</span></td><td><span class="p p-r">조회</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td></tr>
+ <tr><td>SA-060~090 쇼핑몰 · PG · 알림 · 구독</td><td><span class="p p-r">대리 조회</span></td><td><span class="p p-r">대리 조회</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-w">변경</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td></tr>
+ <tr><td>SA-100 직원 계정 · 권한</td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-w">변경</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td></tr>
+ <tr class="sec"><td colspan="9">OV · SH · PF · AU</td></tr>
+ <tr><td>OV-001~006 OBS 오버레이 (토큰 URL)</td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-w">URL 소유</span></td><td><span class="p p-r">조회</span></td><td><span class="p p-n">—</span></td><td><span class="p p-r">시청</span></td></tr>
+ <tr><td>SH-001~008 쇼핑몰 · 주문</td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-r">미리보기</span></td><td><span class="p p-r">미리보기</span></td><td><span class="p p-w">주문</span></td><td><span class="p p-r">둘러보기</span></td></tr>
+ <tr><td>SH-020~025 마이페이지</td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-s">본인</span></td><td><span class="p p-n">—</span></td></tr>
+ <tr><td>PF-001~009 소개 · 가입 · 약관</td><td><span class="p p-r">공개</span></td><td><span class="p p-r">공개</span></td><td><span class="p p-r">공개</span></td><td><span class="p p-r">공개</span></td><td><span class="p p-r">공개</span></td><td><span class="p p-r">공개</span></td><td><span class="p p-r">공개</span></td><td><span class="p p-r">공개</span></td></tr>
+ <tr><td>AU-001 마스터 로그인</td><td><span class="p p-w">사용</span></td><td><span class="p p-w">사용</span></td><td><span class="p p-w">사용</span></td><td><span class="p p-w">사용</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td></tr>
+ <tr><td>AU-002 파트너스 로그인 / SH-010 구매자 로그인</td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-n">—</span></td><td><span class="p p-w">AU-002</span></td><td><span class="p p-w">AU-002</span></td><td><span class="p p-w">SH-010</span></td><td><span class="p p-n">—</span></td></tr>
+ </tbody>
+ </table>
+ </div>
+ <p class="t-l2 c-alt">「대리 조회」는 MA-016 경로로만 진입하며 읽기 전용 배너가 고정되고 모든 접근이 로그 추적(MA-070)에 남아요. 마스터 계정은 파트너스 로그인(AU-002)으로 로그인할 수 없고, 파트너스 계정은 MA URL 접근 시 AU-008로 이동해요.</p>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1800,"height":1500}}'>
+class Component extends DCLogic { renderVals() { return {}; } }
+</script>
+</body>
+</html>
