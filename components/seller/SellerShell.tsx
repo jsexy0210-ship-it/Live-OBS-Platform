@@ -87,6 +87,8 @@ const MENU: Group[] = [
       { label: "회원별 잔액", href: "/seller/rewards/balances", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
       // 원장 API(GET /api/seller/reward-ledger)가 ORDER_FOLLOWUP 경로라 오버레이 전용으로 내린 뒤에도 후속 확인할 수 있다
       { label: "적립금 원장", href: "/seller/rewards/ledger", perm: "MEMBER_POINTS", plan: "FOLLOWUP" },
+      // 보기는 MEMBER_POINTS, 켜고 끄기는 대표자만(화면·서버가 막는다)
+      { label: "적립금 실시간 지급", href: "/seller/rewards/live-payout", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
       { label: "구매자 문의", href: "/seller/buyer-inquiries", perm: "INQUIRY_REPLY", plan: "FOLLOWUP" },
       // 상품 리뷰: 목록·집계 조회는 파트너스 계정 누구나, 답글·숨김·설정은 구매자 문의(INQUIRY_REPLY) 권한(서버에서 막음). 서버가 스토어 운영 기능을 요구한다
       { label: "상품 리뷰", href: "/seller/reviews", plan: "STORE_OPERATIONS" },
@@ -121,7 +123,7 @@ const MENU: Group[] = [
       { label: "회원 정책", href: "/seller/settings/member", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
       { label: "공유 설정", href: "/seller/settings/share", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
       { label: "법정 고지 · 약관", href: "/seller/settings/legal", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
-      { label: "검색 노출", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
+      { label: "검색 노출", href: "/seller/settings/seo", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
       { label: "결제(PG) 연결", perm: "OWNER", plan: "STORE_OPERATIONS" },
       // 화면이 쓰는 GET /api/seller/message-balance가 대표자 전용이라 메뉴도 대표자에게만 보인다(서버보다 넓게 열지 않는다)
       { label: "주문자 알림", href: "/seller/settings/order-notifications", perm: "OWNER", plan: "STORE_OPERATIONS" },

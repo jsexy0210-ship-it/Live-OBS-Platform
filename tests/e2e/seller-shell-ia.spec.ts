@@ -174,3 +174,14 @@ test("자동 연결 메뉴는 대표자에게만 보인다", async ({ page }) =>
   await expect(lnb(page).getByRole("link", { name: "자동 연결" })).toHaveCount(0);
   await expect(lnb(page).getByText("자동 연결")).toHaveCount(0);
 });
+
+test("화면이 생긴 설정·고객 메뉴가 연결된다: 검색 노출·적립금 실시간 지급", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await login(page, "/seller/settings/shop");
+  await expect(lnb(page).getByRole("link", { name: "검색 노출" })).toHaveAttribute("href", "/seller/settings/seo");
+  await gnb(page).getByRole("link", { name: "고객", exact: true }).click();
+  await expect(lnb(page).getByRole("link", { name: "적립금 실시간 지급" })).toHaveAttribute("href", "/seller/rewards/live-payout");
+  await lnb(page).getByRole("link", { name: "적립금 실시간 지급" }).click();
+  await expect(page).toHaveURL(/\/seller\/rewards\/live-payout$/);
+  await expect(lnb(page).getByRole("link", { name: "적립금 실시간 지급" })).toHaveAttribute("aria-current", "page");
+});
