@@ -209,6 +209,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/hit-cards": "OVERLAY",
   "seller/hit-cards/[hitCardId]": "OVERLAY",
   "seller/stats/broadcasts": "OVERLAY",
+  "seller/stats/coupons": "STORE_OPERATIONS",
   "seller/stats/hourly": "STORE_OPERATIONS",
   "seller/stats/members": "STORE_OPERATIONS",
   "seller/stats/orders": "STORE_OPERATIONS",
