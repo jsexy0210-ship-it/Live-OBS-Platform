@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requestOrigin } from "../../../../../lib/server/branding/siteUrl";
 import { prisma } from "../../../../../lib/server/db";
 import { errorResponse, noStore } from "../../../../../lib/server/http/route";
 import type { AuthResult } from "../../../../../lib/server/payments/gateway";
@@ -23,8 +24,9 @@ export async function POST(req: Request) {
     const out = await confirmAuthResult(prisma, gw, r);
     if (!out.ok) return noStore(new NextResponse(out.reason, { status: out.reason === "not_found" ? 404 : 400 }));
     const seller = await prisma.seller.findUniqueOrThrow({ where: { id: out.sellerId }, select: { slug: true } });
-    const to = new URL(`/shop/${encodeURIComponent(seller.slug)}/orders?orderId=${out.orderId}&payment=${out.outcome}`, req.url);
-    return noStore(NextResponse.redirect(to, 303));
+    const path = `/shop/${encodeURIComponent(seller.slug)}/orders?orderId=${out.orderId}&payment=${out.outcome}`;
+    // 요청 주소(req.url)는 리버스 프록시 뒤에서 내부 주소(0.0.0.0:3000)라 공개 주소는 Host·신뢰 프록시 헤더로 만든다(못 만들 때만 요청 주소).
+    return noStore(NextResponse.redirect(new URL(path, requestOrigin(req.headers) ?? req.url), 303));
   } catch (e) {
     return noStore(errorResponse(e));
   }

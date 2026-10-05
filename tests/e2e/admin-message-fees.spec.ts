@@ -4,7 +4,7 @@ import { randomBytes } from "node:crypto";
 import { hashPassword } from "../../lib/server/auth/password";
 import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
 
-// 마스터 관리자 발송 단가(MA-086): 채널 7종 단가·변경 예정·플랫폼 메일 한도·충전 스위치. 계정은 폐기용 테스트 DB(이름이 _test로 끝남)에 실행마다 새로 만든다.
+// 마스터 관리자 발송 단가(MA-086): 채널 11종 단가·변경 예정·플랫폼 메일 한도·충전 스위치. 계정은 폐기용 테스트 DB(이름이 _test로 끝남)에 실행마다 새로 만든다.
 const password = randomBytes(12).toString("base64url");
 const run = randomBytes(4).toString("hex");
 const superEmail = `msg-super-${run}@example.com`;
@@ -36,9 +36,9 @@ async function open(page: Page, email: string) {
 }
 const row = (page: Page, label: string) => page.getByTestId("price-row").filter({ hasText: label });
 
-test("채널 7종 단가가 이름으로 보이고, 단가 변경(바로·예정)과 입력 검사가 된다", async ({ page }) => {
+test("채널 11종 단가가 이름으로 보이고, 단가 변경(바로·예정)과 입력 검사가 된다", async ({ page }) => {
   await open(page, superEmail);
-  await expect(page.getByTestId("price-row")).toHaveCount(7);
+  await expect(page.getByTestId("price-row")).toHaveCount(11);
   await expect(row(page, "거래 메일(월 제공량 초과분)")).toBeVisible();
   await expect(page.locator("main")).not.toContainText("MAIL_TRANSACTIONAL");
   await expect(page.locator("main")).not.toContainText("IDENTITY_VERIFICATION");
@@ -104,7 +104,7 @@ test("플랫폼 메일 한도 저장과 충전 스위치: 확인 창을 거치�
   // 정기 작업이 돌지 않는 시험 DB에서는 켜기가 거절된다(409)
   await page.getByRole("button", { name: "충전 켜기" }).click();
   await dialog.getByRole("button", { name: "충전 켜기" }).click();
-  await expect(dialog.getByRole("alert")).toHaveText("충전 정기 작업이 아직 돌지 않아 충전을 켤 수 없습니다");
+  await expect(dialog.getByRole("alert")).toHaveText("발송·이용 충전 정기 작업이 아직 돌지 않아 충전을 켤 수 없습니다");
   await expect(dialog.getByRole("button", { name: "취소" })).toBeEnabled();
   await dialog.getByRole("button", { name: "취소" }).click();
   await expect(page.getByTestId("charging-state")).toHaveText("꺼짐");

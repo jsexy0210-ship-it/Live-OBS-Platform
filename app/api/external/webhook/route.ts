@@ -11,6 +11,6 @@ export async function POST(req: Request) {
   const declared = Number(req.headers.get("content-length"));
   if (Number.isFinite(declared) && declared > MAX_WEBHOOK_BYTES) return new NextResponse(null, { status: 413, headers: { "cache-control": "no-store" } });
   const rawBody = await req.text();
-  const r = await ingestWebhook(prisma, cfg, { rawBody, signature: req.headers.get(cfg.signatureHeader) });
+  const r = await ingestWebhook(prisma, cfg, { rawBody, apiKey: req.headers.get("x-api-key") });
   return new NextResponse(null, { status: r.status === 200 ? 200 : r.status, headers: { "cache-control": "no-store" } });
 }

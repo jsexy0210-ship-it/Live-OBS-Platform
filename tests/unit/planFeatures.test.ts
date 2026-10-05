@@ -81,6 +81,10 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/member-grades/[gradeId]": "STORE_OPERATIONS",
   "seller/member-grades/recalc": "STORE_OPERATIONS",
   "seller/member-grades/changes": "STORE_OPERATIONS",
+  "seller/member-messages": "STORE_OPERATIONS",
+  "seller/member-messages/preview": "STORE_OPERATIONS",
+  "seller/member-messages/[id]": "STORE_OPERATIONS",
+  "seller/member-messages/[id]/cancel": "STORE_OPERATIONS",
   "seller/member-grades/members/[memberId]": "STORE_OPERATIONS",
   "seller/returns": "ORDER_FOLLOWUP",
   "seller/receipt-issuer": "ORDER_FOLLOWUP",
@@ -158,6 +162,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/products/stock-movements": "STORE_OPERATIONS",
   "seller/reward-policy": "STORE_OPERATIONS",
   "seller/share-preview": "STORE_OPERATIONS",
+  "seller/seo": "STORE_OPERATIONS",
   "seller/shipping-policy": "STORE_OPERATIONS",
   "seller/shop-search/synonyms": "STORE_OPERATIONS", // 검색 유사어 묶음
   "seller/notices": "STORE_OPERATIONS",
