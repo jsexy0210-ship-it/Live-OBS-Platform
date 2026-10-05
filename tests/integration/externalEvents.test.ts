@@ -28,6 +28,9 @@ class FakeApi implements ExternalOrderApi, Pick<ExternalShopProvider, "refresh">
     this.tokensUsed.push(token);
     return this.orders.get(id) ?? null;
   }
+  async listOrders(): Promise<ExternalOrderData[]> {
+    return [];
+  }
   async refresh(): Promise<TokenSet> {
     this.refreshes++;
     return { accessToken: "AT-new", refreshToken: "RT-new", accessExpiresAt: new Date(Date.now() + 7200_000), refreshExpiresAt: new Date(Date.now() + 14 * 86400_000), scopes: null };
@@ -251,6 +254,7 @@ describe("주문 조회 호출(HttpExternalProvider.fetchOrder)", () => {
       paid: true,
       canceled: false,
       buyerName: "홍길동",
+      paidAt: null,
       items: [{ productName: "카드팩", optionValue: "A형", quantity: 3 }],
     });
     const [url, init] = f.mock.calls[0];
@@ -275,5 +279,26 @@ describe("주문 조회 호출(HttpExternalProvider.fetchOrder)", () => {
     await expect(prov.fetchOrder("myshop", "T", "../o1")).rejects.toThrow("bad_input");
     expect(f).toHaveBeenCalledTimes(1);
     f.mockRestore();
+  });
+  it("listOrders: 공식 응답 모양(orders[])에서 필요한 값만 뽑고, 조건은 KST 날짜·date_type·embed·limit·offset으로 보낸다. 잘못된 입력은 호출 전에 거절한다", async () => {
+    const f = reply(200, {
+      orders: [
+        { order_id: "A1", paid: "T", canceled: "F", payment_date: "2026-10-05T10:00:00+09:00", buyer: { name: "홍길동" }, items: [{ product_name: "카드팩", quantity: 2 }] },
+        { paid: "T" },
+      ],
+    });
+    const r = await prov.listOrders("myshop", "TOKEN", { startDate: "2026-10-04", endDate: "2026-10-05", dateType: "pay_date", limit: 100, offset: 200 });
+    expect(r).toEqual([{ orderId: "A1", paid: true, canceled: false, buyerName: "홍길동", paidAt: new Date("2026-10-05T10:00:00+09:00"), items: [{ productName: "카드팩", optionValue: null, quantity: 2 }] }]);
+    const u = new URL(String(f.mock.calls[0][0]));
+    expect(u.origin + u.pathname).toBe("https://myshop.cafe24api.com/api/v2/admin/orders");
+    expect(Object.fromEntries(u.searchParams)).toEqual({ start_date: "2026-10-04", end_date: "2026-10-05", date_type: "pay_date", embed: "items,buyer", limit: "100", offset: "200" });
+    expect((f.mock.calls[0][1]!.headers as Record<string, string>).authorization).toBe("Bearer TOKEN");
+    f.mockRestore();
+    const g = reply(429);
+    await expect(prov.listOrders("myshop", "T", { startDate: "2026-10-04", endDate: "2026-10-05", dateType: "cancel_date", limit: 100, offset: 0 })).rejects.toMatchObject({ status: 429 });
+    for (const bad of [{ startDate: "x" }, { limit: 0 }, { offset: -1 }]) await expect(prov.listOrders("myshop", "T", { startDate: "2026-10-04", endDate: "2026-10-05", dateType: "pay_date", limit: 100, offset: 0, ...bad })).rejects.toThrow("bad_input");
+    await expect(prov.listOrders("evil.com", "T", { startDate: "2026-10-04", endDate: "2026-10-05", dateType: "pay_date", limit: 100, offset: 0 })).rejects.toThrow("bad_input");
+    expect(g).toHaveBeenCalledTimes(1);
+    g.mockRestore();
   });
 });
