@@ -11,18 +11,32 @@ export type IngestResult =
   | { status: 200; stored: boolean; ignored?: "unknown_shop" }
   | { status: 401 | 400 | 413 | 503 };
 
+// 공식 문서의 헤더는 `X-API-Key: <WebHook 인증정보>` 그대로다(헤더 이름은 대소문자 무관). 값은 앞뒤 공백·감싼 따옴표·「Bearer 」 접두어를 떼고 비교한다
+// (환경변수에 따옴표째 붙여 넣은 경우 등). 값 자체의 대소문자는 구분한다.
+export function normalizeKey(v: string): string {
+  let k = v.trim();
+  if (k.length >= 2 && /^(["'])[\s\S]*\1$/.test(k)) k = k.slice(1, -1).trim();
+  return k.replace(/^Bearer\s+/i, "").trim();
+}
+
 // 길이가 달라도 시간 차이가 없게 해시끼리 비교한다
 function verify(expected: string, given: string | null): boolean {
-  if (!expected || !given) return false;
-  const a = createHash("sha256").update(expected, "utf8").digest();
-  const b = createHash("sha256").update(given.trim(), "utf8").digest();
+  const e = normalizeKey(expected);
+  const g = given === null ? "" : normalizeKey(given);
+  if (!e || !g) return false;
+  const a = createHash("sha256").update(e, "utf8").digest();
+  const b = createHash("sha256").update(g, "utf8").digest();
   return timingSafeEqual(a, b);
 }
 
 export async function ingestWebhook(db: PrismaClient, cfg: ExternalConfig, input: { rawBody: string; apiKey: string | null }): Promise<IngestResult> {
   if (!cfg.enabled || !cfg.webhookKey) return { status: 503 };
   if (Buffer.byteLength(input.rawBody, "utf8") > MAX_WEBHOOK_BYTES) return { status: 413 };
-  if (!verify(cfg.webhookKey, input.apiKey)) return { status: 401 };
+  if (!verify(cfg.webhookKey, input.apiKey)) {
+    // 값은 남기지 않는다(헤더가 왔는지와 길이만): 쇼핑몰 화면의 인증정보와 서버 값이 다를 때 원인을 좁히는 용도
+    console.warn("external_webhook_auth_failed", { hasHeader: input.apiKey !== null, givenLength: input.apiKey?.trim().length ?? 0, expectedLength: cfg.webhookKey.length });
+    return { status: 401 };
+  }
   let payload: unknown;
   try {
     payload = JSON.parse(input.rawBody);

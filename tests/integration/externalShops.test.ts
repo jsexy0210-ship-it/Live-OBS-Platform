@@ -213,6 +213,10 @@ describe("웹훅 수신", () => {
     expect((await send(body, null)).status).toBe(401);
     expect((await send(body, "AAAA")).status).toBe(401);
     expect((await send(body, cfg.clientSecret)).status).toBe(401);
+    // 값 앞뒤 공백·감싼 따옴표·Bearer 접두어는 같은 값으로 본다. 대소문자 다른 값·일부만 맞는 값은 거절
+    for (const ok of [` ${KEY} `, `"${KEY}"`, `'${KEY}'`, `Bearer ${KEY}`]) expect((await send(body, ok)).status).toBe(200);
+    for (const bad of [KEY.toUpperCase(), KEY.slice(0, -1), `${KEY}x`, "", "Bearer "]) expect((await send(body, bad)).status).toBe(401);
+    await db.externalWebhookEvent.deleteMany();
     expect(await db.externalWebhookEvent.count()).toBe(0);
     expect(await send(body, KEY)).toEqual({ status: 200, stored: true });
     expect(await send(body, KEY)).toEqual({ status: 200, stored: false });
