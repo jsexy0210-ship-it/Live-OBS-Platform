@@ -28,8 +28,8 @@ test("GNB는 8개이고 고객·스토어·분석·설정 묶음에 메뉴가 �
     await expect(lnb(page).locator(".lnb-sec.on .lnb-h")).toHaveText(name);
     return lnb(page).locator(".lnb-sec.on .lnb-i").allTextContents();
   };
-  expect(await items("고객")).toEqual(expect.arrayContaining(["회원 목록", "구매자 문의", "상품 리뷰"]));
-  expect(await items("스토어")).toEqual(["쿠폰", "배너 · 팝업", "쇼핑몰 공지 · 자주 묻는 질문"]);
+  expect(await items("고객")).toEqual(expect.arrayContaining(["회원 목록", "회원별 잔액", "구매자 문의", "상품 리뷰"]));
+  expect(await items("스토어")).toEqual(["쿠폰", "배너 · 팝업", "공지·자주 묻는 질문"]);
 });
 
 test("주문 그룹에 환불 요청이 있고, 하위 화면에서 부모 메뉴가 켜져 있다", async ({ page }) => {

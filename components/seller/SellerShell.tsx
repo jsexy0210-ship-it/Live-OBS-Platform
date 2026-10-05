@@ -80,6 +80,7 @@ const MENU: Group[] = [
       { label: "구매 제한", href: "/seller/purchase-restrictions", perm: "MEMBER_POINTS", plan: "FOLLOWUP" },
       { label: "회원 알림 발송", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
       { label: "적립금", href: "/seller/rewards", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
+      { label: "회원별 잔액", href: "/seller/rewards/balances", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
       // 원장 API(GET /api/seller/reward-ledger)가 ORDER_FOLLOWUP 경로라 오버레이 전용으로 내린 뒤에도 후속 확인할 수 있다
       { label: "적립금 원장", href: "/seller/rewards/ledger", perm: "MEMBER_POINTS", plan: "FOLLOWUP" },
       { label: "구매자 문의", perm: "INQUIRY_REPLY", plan: "FOLLOWUP" },
@@ -95,7 +96,8 @@ const MENU: Group[] = [
       // 쿠폰: 집계 조회는 파트너스 계정 누구나, 만들기·지급은 적립금(MEMBER_POINTS) 권한(화면에서 막음)
       { label: "쿠폰", href: "/seller/coupons", plan: "STORE_OPERATIONS" },
       { label: "배너 · 팝업", href: "/seller/banners", plan: "STORE_OPERATIONS" },
-      { label: "쇼핑몰 공지 · 자주 묻는 질문", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
+      // 보기는 권한 없이, 쓰기는 화면에서 SHOP_SETTINGS로 막는다
+      { label: "공지·자주 묻는 질문", href: "/seller/settings/shop-notices", plan: "STORE_OPERATIONS" },
     ],
   },
   {
