@@ -1960,7 +1960,6 @@ model AutomationJob {
   @@index([sellerId, status, finishedAt])
 }
 
-// 작업 상태 전이 기록(누가·언제·어느 fencing 토큰으로). 비밀값은 넣지 않는다.
 // 외부 유료 API 월 사용량(원, 한국 시간 기준 월). 공급자·월마다 1행. 한도(월 1만 원, 2026-10-05 대표님 결정)에 닿으면 stoppedAt을 남기고 그 달은 호출을 멈춘다.
 model ExternalApiUsage {
   provider  String
@@ -1986,6 +1985,7 @@ model ExternalApiCostLedger {
   @@index([provider, period, createdAt])
 }
 
+// 작업 상태 전이 기록(누가·언제·어느 fencing 토큰으로). 비밀값은 넣지 않는다.
 model AutomationJobEvent {
   id           String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   sellerId     String               @db.Uuid

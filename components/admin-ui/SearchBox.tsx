@@ -4,7 +4,7 @@
 //     <SearchRow label="기간"><input className="inp" type="date" … /> ~ <input className="inp" type="date" … /></SearchRow>
 //     <SearchRow label="검색어"><input className="inp" value={q} onChange={…} /></SearchRow>
 //   </SearchBox>
-// Enter로도 검색된다(form 제출). 스타일: styles/seller.css (.au-sb)
+// Enter로도 검색된다(form 제출). 「검색」「초기화」는 같은 레벨이라 같은 높이(40)·같은 폭(80). 스타일: styles/seller.css (.au-sb)
 export function SearchBox({
   onSearch,
   onReset,
@@ -32,11 +32,11 @@ export function SearchBox({
         <tbody>{children}</tbody>
       </table>
       <div className="au-sb-f">
-        <button className="btn" type="submit" disabled={busy}>
+        <button className="btn btn-dense btn-w-sm" type="submit" disabled={busy}>
           검색
         </button>
         {onReset && (
-          <button className="btn btn-out" type="button" onClick={onReset} disabled={busy}>
+          <button className="btn btn-dense btn-out btn-w-sm" type="button" onClick={onReset} disabled={busy}>
             초기화
           </button>
         )}

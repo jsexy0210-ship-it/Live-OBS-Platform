@@ -5,8 +5,8 @@ import { hashPassword } from "../../lib/server/auth/password";
 import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
 import { submitSellerLogin } from "./sellerLogin";
 
-// 표 정렬 규칙(대표님 지시 2026-10-05, docs/DESIGN_PROMPT.md 「표 정렬」): 열 제목·데이터 모두 가운데가 기본,
-// 글 열(.col-text)의 데이터만 왼쪽, 오른쪽 정렬 0건. 실제 화면의 computed style로 관리자 표 전부를 잰다.
+// 표 정렬 규칙(대표님 지시 2026-10-05, docs/DESIGN_PROMPT.md 「표 정렬」·「표 정렬 보강」): 열 제목·데이터 모두 가운데가 기본,
+// 글 열(.col-text 등)은 제목·데이터 모두 왼쪽, 오른쪽 정렬 0건. 실제 화면의 computed style로 관리자 표 전부를 잰다.
 // 또 가운데 열은 칸 안의 내용 중심이 열 제목 중심과 같은 세로선 위에 있는지(어긋남 2px 이내) 본다.
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
 const adminPassword = randomBytes(12).toString("base64url");
@@ -28,14 +28,20 @@ type Report = { right: string[]; thNotCenter: string[]; tdWrong: string[]; offAx
 async function measure(page: Page): Promise<Report> {
   await page.waitForLoadState("networkidle");
   return page.evaluate(() => {
-    const LEFT = ["col-text", "col-product", "col-title", "col-desc"];
+    const LEFT = ["col-text", "col-product", "col-title", "col-desc", "col-description", "col-address"];
     const r: Report = { right: [], thNotCenter: [], tdWrong: [], offAxis: [], tables: 0, rows: 0 };
     const tables = [...document.querySelectorAll<HTMLTableElement>("table.tbl")].filter((t) => t.offsetParent !== null);
     r.tables = tables.length;
     for (const t of tables) {
       const head = t.tHead?.rows[0];
       const heads = head ? [...head.cells] : [];
-      for (const th of heads) if (getComputedStyle(th).textAlign !== "center") r.thNotCenter.push(th.textContent?.trim() || "(빈 제목)");
+      // 열마다 기대 정렬: 그 열 데이터 칸에 글 열 클래스가 있으면 제목도 왼쪽, 아니면 가운데
+      const bodyRows = [...t.tBodies].flatMap((b) => [...b.rows]);
+      heads.forEach((th, i) => {
+        const textCol = bodyRows.some((row) => row.cells[i] && LEFT.some((c) => row.cells[i].classList.contains(c)));
+        const want = textCol ? "left" : "center";
+        if (getComputedStyle(th).textAlign !== want) r.thNotCenter.push(`${th.textContent?.trim() || "(빈 제목)"} → ${getComputedStyle(th).textAlign}(기대 ${want})`);
+      });
       for (const row of [...t.tBodies].flatMap((b) => [...b.rows])) {
         r.rows++;
         [...row.cells].forEach((td, i) => {
@@ -63,7 +69,7 @@ async function measure(page: Page): Promise<Report> {
 
 function expectAligned(path: string, r: Report) {
   expect.soft(r.right, `${path} 오른쪽 정렬`).toEqual([]);
-  expect.soft(r.thNotCenter, `${path} 제목 가운데 아님`).toEqual([]);
+  expect.soft(r.thNotCenter, `${path} 제목 정렬(글 열 왼쪽·나머지 가운데) 어긋남`).toEqual([]);
   expect.soft(r.tdWrong, `${path} 데이터 정렬`).toEqual([]);
   expect.soft(r.offAxis, `${path} 제목·데이터 중심축 어긋남`).toEqual([]);
 }
