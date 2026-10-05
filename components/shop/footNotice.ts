@@ -7,7 +7,7 @@ export const HOSTING_PROVIDER = "ONQ";
 export type FootRow = { label: string; value: string; href?: string };
 type Notice = { address: string; csPhone: string; csEmail: string; csHours: string; escrowKind: "none" | "escrow" | "insurance"; escrowProvider: string; escrowUrl: string };
 
-const ESCROW_TEXT = { escrow: "에스크로 가입", insurance: "소비자피해보상보험 가입" } as const;
+const ESCROW_TEXT = { escrow: "에스크로 가입(결제한 돈을 안전하게 보관해 주는 서비스)", insurance: "소비자피해보상보험 가입" } as const;
 
 export function noticeRows(businessNumber: string | null, n: Notice): FootRow[] {
   const rows: FootRow[] = [];
@@ -19,7 +19,7 @@ export function noticeRows(businessNumber: string | null, n: Notice): FootRow[] 
   if (biz) rows.push({ label: "사업자정보", value: "확인하기", href: biz });
   rows.push({ label: "호스팅 제공", value: HOSTING_PROVIDER });
   if (n.escrowKind !== "none" && n.escrowProvider) {
-    rows.push({ label: "구매안전서비스", value: `${ESCROW_TEXT[n.escrowKind]} · ${n.escrowProvider}`, href: n.escrowUrl || undefined });
+    rows.push({ label: "구매 안전 서비스", value: `${ESCROW_TEXT[n.escrowKind]} · ${n.escrowProvider}`, href: n.escrowUrl || undefined });
   }
   return rows;
 }

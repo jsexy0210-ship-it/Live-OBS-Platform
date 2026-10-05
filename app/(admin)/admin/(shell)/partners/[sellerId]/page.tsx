@@ -74,13 +74,13 @@ function PartnerDetail() {
     setImpBusy(false);
     if (r.ok) {
       setImp(null);
-      return setToast({ text: "대리 조회를 끝냈습니다." });
+      return setToast({ text: "대신 보기를 끝냈습니다." });
     }
     setToast({ text: r.message ?? "끝내지 못했습니다. 잠시 후 다시 시도해 주십시오.", neg: true });
   };
   const impStarted = (r: ImpersonationStart) => {
     setImpDialog(false);
-    setToast(r.opened ? { text: "대리 조회를 시작했습니다. 새 창에서 파트너스 화면을 읽기 전용으로 봅니다." } : { text: "대리 조회를 시작했습니다. 새 창이 막혀 열지 못했습니다. 「파트너스 화면 열기」를 눌러 주십시오.", neg: true });
+    setToast(r.opened ? { text: "대신 보기를 시작했습니다. 새 창에서 파트너스 화면을 읽기 전용으로 봅니다." } : { text: "대신 보기를 시작했습니다. 새 창이 막혀 열지 못했습니다. 「파트너스 화면 열기」를 눌러 주십시오.", neg: true });
     void loadImp();
   };
 
@@ -107,7 +107,7 @@ function PartnerDetail() {
               )}
               {s && canImpersonate && (s.status === "ACTIVE" || s.status === "SUSPENDED") && (
                 <button className="btn btn-out" type="button" onClick={() => setImpDialog(true)}>
-                  대리 조회
+                  이 파트너스 화면 대신 보기
                 </button>
               )}
               {s && (
@@ -136,13 +136,13 @@ function PartnerDetail() {
           <div className="col" style={{ gap: 20 }}>
             {imp && (
               <div className="card pad row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }} role="status" data-testid="impersonation-active">
-                <b>{imp.sellerId === s.id ? "이 파트너스를 대리 조회 중입니다." : `${imp.shopName}을(를) 대리 조회 중입니다.`}</b>
+                <b>{imp.sellerId === s.id ? "이 파트너스 화면을 대신 보는 중입니다." : `${imp.shopName}을(를) 대리 조회 중입니다.`}</b>
                 <span className="t-l2 c-alt">{dayTime(imp.expiresAt)}까지 · 사유: {imp.reason}</span>
                 <button className="btn btn-sm btn-out" type="button" onClick={() => window.open("/seller", "_blank")}>
                   파트너스 화면 열기
                 </button>
                 <button className="btn btn-sm" type="button" onClick={() => void endImp()} disabled={impBusy}>
-                  {impBusy ? "끝내는 중" : "대리 조회 끝내기"}
+                  {impBusy ? "끝내는 중" : "대신 보기 끝내기"}
                 </button>
               </div>
             )}
@@ -195,7 +195,7 @@ function PartnerDetail() {
                 rows={[
                   ["이름", s.owner?.name ?? "-"],
                   ["이메일", s.owner?.email ?? "-"],
-                  ["계정 상태", s.owner?.status ?? "-"],
+                  ["계정 상태", ({ ACTIVE: "이용 중", SUSPENDED: "정지" } as Record<string, string>)[s.owner?.status ?? ""] ?? s.owner?.status ?? "-"],
                   ["최근 로그인", dayTime(s.owner?.lastLoginAt ?? null)],
                 ]}
               />
@@ -220,11 +220,11 @@ function PartnerDetail() {
                         ["결제 카드", text(s.subscription.cardLabel)],
                         ["현재 기간", `${day(s.subscription.currentPeriodStart)} ~ ${day(s.subscription.currentPeriodEnd)}`],
                         ["다음 결제", dayTime(s.subscription.nextChargeAt)],
-                        ["기간 끝에 해지", s.subscription.cancelAtPeriodEnd ? "예" : "아니요"],
-                        ["구독 요금제", s.subscription.planName],
-                        ["변경 예정 요금제", s.subscription.pendingPlanName ?? "-"],
-                        ["연체 유예", dayTime(s.subscription.graceUntil)],
-                        ["결제 재시도", `${s.subscription.retryCount}회`],
+                        ["이용 기간이 끝나면 해지", s.subscription.cancelAtPeriodEnd ? "예" : "아니요"],
+                        ["이용 중인 요금제", s.subscription.planName],
+                        ["바뀔 요금제", s.subscription.pendingPlanName ?? "-"],
+                        ["결제 못 한 뒤 기다려 주는 날짜", dayTime(s.subscription.graceUntil)],
+                        ["결제를 다시 시도한 횟수", `${s.subscription.retryCount}회`],
                       ]
                     : [["상태", "구독 없음"]]
                 }

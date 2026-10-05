@@ -82,6 +82,7 @@ describe("구매자 환불 요청", () => {
     expect(r.request).toMatchObject({ status: "REQUESTED", reason: "CHANGE_OF_MIND", reasonLabel: "단순 변심", items: [{ orderItemId: s.packItem.id, quantity: 2 }] });
     const list = await listSellerRefundRequests(db, s.ctx, { status: "REQUESTED" });
     expect(list.requests.map((x) => x.id)).toEqual([r.request.id]);
+    expect(list.requests[0].orderNoLabel).toEqual(expect.stringMatching(/^\d{8}-\d{4,}$/));
     expect(list.counts).toEqual({ REQUESTED: 1 });
     const d = await getSellerRefundRequest(db, s.ctx, r.request.id);
     expect(d?.refundPreview).toMatchObject({ isFinal: false, byFault: { BUYER: { itemsAmount: 10000, refundAmount: 10000 } } });
@@ -226,6 +227,7 @@ describe("구매자 환불 요청", () => {
     const detail = await sellerDetailRoute(new Request(`http://localhost:3000/api/seller/refund-requests/${created.id}`, { headers: { ...H, cookie: sellerCookie } }), idCtx);
     expect(detail.status).toBe(200);
     const d = await detail.json();
+    expect(d.orderNoLabel).toEqual(expect.stringMatching(/^\d{8}-\d{4,}$/));
     const noReason = await rejectRoute(new Request(`http://localhost:3000/api/seller/refund-requests/${created.id}/reject`, { method: "POST", headers: { ...H, cookie: sellerCookie }, body: "{}" }), idCtx);
     expect(noReason.status).toBe(400);
     expect(await noReason.json()).toEqual({ error: "invalid_reject_reason", message: SELLER_REFUND_REQUEST_MESSAGES.invalid_reject_reason });

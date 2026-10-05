@@ -91,13 +91,13 @@ function Panel<T>({ title, state, retry, children, id }: { title: string; state:
 type TaskKey = "signupPending" | "paymentFailed" | "refundRequested" | "inquiryOpen" | "pgError" | "automationFailed" | "incidentCritical";
 type Tasks = { at: string; total: number; items: { key: TaskKey; count: number; href: string }[] };
 const TASK_LABEL: Record<TaskKey, string> = {
-  signupPending: "가입 승인 대기",
+  signupPending: "가입 신청 처리 대기",
   paymentFailed: "결제 실패",
   refundRequested: "환불 요청",
   inquiryOpen: "답변 대기 문의",
-  pgError: "PG 연결 오류",
+  pgError: "카드 결제 연결 오류",
   automationFailed: "자동 연결 실패",
-  incidentCritical: "심각 장애",
+  incidentCritical: "바로 확인할 문제",
 };
 
 function TodayTasks({ tick }: { tick: number }) {
@@ -224,8 +224,8 @@ function PeriodStats({ days, tick }: { days: number; tick: number }) {
                     <th>결제된 주문</th>
                     <th>결제 금액</th>
                     <th>환불 금액</th>
-                    <th>순매출</th>
-                    <th>비중</th>
+                    <th>환불을 뺀 매출</th>
+                    <th>전체에서 차지하는 비율</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -263,13 +263,13 @@ function SubscriptionRevenue({ tick }: { tick: number }) {
         <>
           <Kpis
             items={[
-              kpi("수납 매출", d.current.revenue, d.previous.revenue, wonF),
-              kpi("수납률", d.current.collectionRate, d.previous.collectionRate, pct),
+              kpi("받은 구독료", d.current.revenue, d.previous.revenue, wonF),
+              kpi("구독료 받은 비율", d.current.collectionRate, d.previous.collectionRate, pct),
               kpi("결제 실패", d.current.failed, d.previous.failed, cntF, true),
               kpi("환불 금액", d.current.refundAmount, d.previous.refundAmount, wonF, true),
             ]}
           />
-          <BarChart title="월별 수납 매출" points={pts(d.series, "month", (p) => p.revenue)} fmt={wonF} />
+          <BarChart title="월별 받은 구독료" points={pts(d.series, "month", (p) => p.revenue)} fmt={wonF} />
         </>
       )}
     </Panel>
@@ -317,7 +317,7 @@ export default function AdminHome() {
             <>
               <Section title="파트너스" href="/admin/partners" link="파트너스 목록">
                 <Tile id="dash-sellers-active" label="운영 중" value={n(d.sellers.ACTIVE, "곳")} />
-                <Tile id="dash-sellers-pending" label="승인 대기" value={n(d.sellers.PENDING, "곳")} />
+                <Tile id="dash-sellers-pending" label="가입 신청 중" value={n(d.sellers.PENDING, "곳")} />
                 <Tile id="dash-sellers-suspended" label="이용 정지" value={n(d.sellers.SUSPENDED, "곳")} />
                 <Tile id="dash-sellers-total" label="전체" value={n(d.sellers.total, "곳")} />
               </Section>
@@ -328,9 +328,9 @@ export default function AdminHome() {
                 <Tile id="dash-orders-amount" label="결제 금액" value={won(d.ordersToday.paidAmount)} />
               </Section>
               <Section title="구독" href="/admin/billing/subscriptions" link="구독 현황">
-                <Tile id="dash-sub-trial" label="체험" value={n(d.subscriptions.trial, "곳")} />
+                <Tile id="dash-sub-trial" label="무료 체험 중" value={n(d.subscriptions.trial, "곳")} />
                 <Tile id="dash-sub-paid" label="이용 중" value={n(d.subscriptions.paid, "곳")} />
-                <Tile id="dash-sub-charging" label="결제 처리 중" value={n(d.subscriptions.charging, "곳")} />
+                <Tile id="dash-sub-charging" label="결제 진행 중" value={n(d.subscriptions.charging, "곳")} />
                 <Tile id="dash-sub-grace" label="연체" value={n(d.subscriptions.grace, "곳")} />
                 <Tile id="dash-sub-expired" label="해지" value={n(d.subscriptions.expired, "곳")} />
               </Section>

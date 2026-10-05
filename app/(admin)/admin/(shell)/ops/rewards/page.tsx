@@ -26,9 +26,9 @@ export default function LivePayoutPage() {
   const items = state.kind === "ok" ? state.items : [];
   return (
     <>
-      <AdminTopbar crumb="운영 › 적립금 실지급 파트너스" />
+      <AdminTopbar crumb="운영 › 적립금을 실제로 주는 파트너스" />
       <main className="main">
-        <PageHead title="적립금 실지급 파트너스" />
+        <PageHead title="적립금을 실제로 주는 파트너스" />
         <div className="col" style={{ gap: 20 }}>
           {state.kind === "ok" && (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
@@ -63,7 +63,7 @@ export default function LivePayoutPage() {
                         <tr>
                           <th>파트너스</th>
                           <th>켠 날짜</th>
-                          <th>적립 시점</th>
+                          <th>적립금을 주는 때</th>
                           <th>남은 적립금</th>
                           <th>적립금 보유 회원</th>
                           <th>관리</th>
@@ -73,7 +73,7 @@ export default function LivePayoutPage() {
                         {items.map((s) => (
                           <tr key={s.sellerId} data-testid="payout-row">
                             <td>
-                              <b>{s.shopName}</b> <span className="c-alt">· {s.slug}</span>
+                              <b>{s.shopName}</b> <span className="c-alt">· 쇼핑몰 주소 {s.slug}</span>
                             </td>
                             <td>{day(s.enabledAt)}</td>
                             <td>{TIMING[s.earnTiming]}</td>

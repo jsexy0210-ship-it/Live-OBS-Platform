@@ -27,7 +27,7 @@ export default function CouponRow({ slug, loggedIn }: { slug: string; loggedIn: 
     setBusy(true);
     const r = await call(`${api}/${first.couponId}/download`, { method: "POST" });
     if (r.ok || r.status === 409) {
-      setMsg(r.ok ? "쿠폰을 받았어요. 주문서에서 쓸 수 있어요" : (r.message ?? "이미 받은 쿠폰이에요"));
+      setMsg(r.ok ? "쿠폰을 받았어요. 주문서에서 쓸 수 있어요" : (r.message ?? "쿠폰을 받지 못했어요. 잠시 뒤 다시 눌러 주세요"));
       setList((l) => l.slice(1));
     } else setMsg(r.message ?? "쿠폰을 받지 못했어요. 잠시 뒤 다시 해 주세요");
     setBusy(false);

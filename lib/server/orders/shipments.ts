@@ -6,6 +6,7 @@ import { orderErrorBody } from "./messages";
 import { decodeCursor, encodeCursor, itemSummary, itemSummarySelect, kstDayStart, SELLER_ORDER_PAGE_DEFAULT, SELLER_ORDER_PAGE_MAX } from "./read";
 import { shipOrder } from "./ship";
 import { SHIPMENT_BATCH_MAX } from "./shipping";
+import { orderNoLabel } from "./orderNoLabel";
 
 export { SHIPMENT_BATCH_MAX };
 
@@ -115,6 +116,7 @@ export async function listShipments(db: PrismaClient, ctx: TenantContext, query:
     shipments: page.map((o) => ({
       orderId: o.id,
       orderNo: o.orderNo,
+      orderNoLabel: orderNoLabel(o.createdAt, o.orderNo),
       status: o.status,
       createdAt: o.createdAt,
       paidAt: o.paidAt,

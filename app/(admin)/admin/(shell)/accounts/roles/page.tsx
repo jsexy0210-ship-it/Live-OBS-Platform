@@ -21,12 +21,12 @@ export default function RolesPage() {
 
   return (
     <>
-      <AdminTopbar crumb="관리자 › 역할별 권한" />
+      <AdminTopbar crumb="관리자 › 역할별로 할 수 있는 일" />
       <main className="main">
-        <PageHead title="역할별 권한" />
+        <PageHead title="역할별로 할 수 있는 일" />
         <div className="card">
           {state.kind === "loading" && <LoadingRows rows={5} />}
-          {state.kind === "error" && <ErrorState title="역할별 권한을 불러오지 못했습니다." onRetry={() => void load()} />}
+          {state.kind === "error" && <ErrorState title="역할별로 할 수 있는 일을 불러오지 못했습니다." onRetry={() => void load()} />}
           {state.kind === "ok" && (
             <div style={{ overflowX: "auto" }}>
               <table className="tbl" style={{ whiteSpace: "nowrap" }}>
@@ -41,7 +41,7 @@ export default function RolesPage() {
                 <tbody>
                   {state.table.permissions.map((p) => (
                     <tr key={p.permission} data-testid="permission-row">
-                      <td className="fw6 col-text">{PERMISSION_LABEL[p.permission] ?? "기타 권한"}</td>
+                      <td className="fw6 col-text">{PERMISSION_LABEL[p.permission] ?? "그 밖의 기능"}</td>
                       {state.table.roles.map((r) => (
                         <td key={r}>{p.roles.includes(r) ? "가능" : "-"}</td>
                       ))}

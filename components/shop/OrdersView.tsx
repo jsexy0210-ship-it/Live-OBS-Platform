@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import MyMenu from "./MyMenu";
 import { call } from "./reviewShared";
 import { trackingUrl } from "./trackingLink";
+import { qtyText } from "./orderFormat";
 import "./Cart.css";
 import "./MyMenu.css";
 import "./Orders.css";
@@ -33,7 +34,7 @@ const kst = (iso: string) => {
 };
 const TABS: { key: Tab; label: string }[] = [
   { key: "all", label: "전체" },
-  { key: "pending", label: "결제 대기" },
+  { key: "pending", label: "결제 전" },
   { key: "doing", label: "진행 중" },
   { key: "done", label: "완료" },
   { key: "cancel", label: "취소 · 환불" },
@@ -45,9 +46,9 @@ function tabOf(o: Order): Exclude<Tab, "all"> {
   return o.shipment?.status === "DELIVERED" ? "done" : "doing";
 }
 function stateOf(o: Order): { label: string; tone: string } {
-  if (o.status === "PENDING_PAYMENT") return { label: "결제 대기", tone: "y" };
-  if (o.status === "CANCELLED") return { label: "취소됨", tone: "g" };
-  if (o.status === "REFUNDED") return { label: "환불됨", tone: "g" };
+  if (o.status === "PENDING_PAYMENT") return { label: "결제 전", tone: "y" };
+  if (o.status === "CANCELLED") return { label: "취소했어요", tone: "g" };
+  if (o.status === "REFUNDED") return { label: "환불했어요", tone: "g" };
   if (o.shipment?.status === "DELIVERED") return { label: "배송 완료", tone: "gr" };
   if (o.shipment?.status === "IN_TRANSIT") return { label: "배송 중", tone: "bl" };
   return { label: o.shipment ? "배송 준비 중" : "결제 완료", tone: "bl" };
@@ -98,7 +99,7 @@ export default function OrdersView({ slug }: { slug: string }) {
       <div className="cart-empty">
         <p>주문 내역을 불러오지 못했어요. 연결을 확인하고 다시 시도해 주세요.</p>
         <button className="btn" type="button" onClick={() => void load()}>
-          다시 시도
+          다시 불러오기
         </button>
       </div>
     ) : orders.length === 0 ? (
@@ -147,7 +148,7 @@ export default function OrdersView({ slug }: { slug: string }) {
                             <div>
                               <b>{i.productNameSnapshot}</b>
                               <span className="cart-opt">
-                                {i.optionNameSnapshot} × {i.quantity}
+                                {qtyText(i.optionNameSnapshot, i.quantity)}
                               </span>
                             </div>
                             <b>{won(i.unitPrice * i.quantity)}</b>

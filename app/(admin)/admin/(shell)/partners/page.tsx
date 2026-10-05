@@ -144,7 +144,7 @@ function PartnerList() {
                             <Link className="fw6" href={`/admin/partners/${s.id}`}>
                               {s.shopName}
                             </Link>
-                            <span className="c-alt"> · {s.slug}</span>
+                            <span className="c-alt"> · 쇼핑몰 주소 {s.slug}</span>
                           </td>
                           <td>
                             <span className={`bdg ${SELLER_STATUS[s.status].cls}`}>{SELLER_STATUS[s.status].label}</span>

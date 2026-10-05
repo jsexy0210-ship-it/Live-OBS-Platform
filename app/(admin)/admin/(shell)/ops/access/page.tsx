@@ -58,7 +58,7 @@ export default function SellerActivityPage() {
               ["오늘 주문", `${sum((s) => s.ordersToday.created).toLocaleString("ko-KR")}건`, "act-created"],
               ["오늘 결제", `${sum((s) => s.ordersToday.paid).toLocaleString("ko-KR")}건`, "act-paid"],
               ["오늘 결제 금액", won(sum((s) => s.ordersToday.paidAmount)), "act-amount"],
-              ["오버레이 접속 중", `${all.filter((s) => s.overlay.connected).length}곳`, "act-connected"],
+              ["방송 화면 연결 중", `${all.filter((s) => s.overlay.connected).length}곳`, "act-connected"],
             ].map(([label, value, id]) => (
               <div key={id} className="card pad col" style={{ gap: 4 }}>
                 <span className="t-l2 c-alt">{label}</span>
@@ -79,7 +79,7 @@ export default function SellerActivityPage() {
             </label>
             <label className="chk">
               <input type="checkbox" checked={offOnly} onChange={(e) => setOffOnly(e.target.checked)} />
-              오버레이 접속 안 됨
+              방송 화면 연결 안 됨
             </label>
           </div>
 
@@ -114,7 +114,7 @@ export default function SellerActivityPage() {
                           return (
                             <tr key={s.sellerId} data-testid="activity-row">
                               <td>
-                                <b>{s.shopName}</b> <span className="c-alt">· {s.slug}</span>
+                                <b>{s.shopName}</b> <span className="c-alt">· 쇼핑몰 주소 {s.slug}</span>
                                 {s.status === "SUSPENDED" && <span className="bdg b-fail"> 이용 정지</span>}
                               </td>
                               <td>{s.live ? <span className="bdg b-done">방송 중</span> : "-"}</td>
