@@ -7,6 +7,7 @@ import { Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
 import { StateBox, errorText, kstText, stateKind } from "../banners/_shared/ui";
 import "./member-messages.css";
+import { DateTimePicker } from "../../../../../components/admin-ui/DatePicker";
 
 // SA-049 회원 알림 발송(파트너스 관리자, 고객 › 회원 알림 발송). 실제 발송 채널(알림톡·문자·메일)과 충전 잔액 차감은 정해지기 전이라 발송 「기록」만 남긴다.
 // 광고성은 수신 동의 회원만·(광고)·무료 수신거부 자동 삽입·08~21시·같은 회원 하루 2건. 조회·발송은 대표자 · 회원/적립금(MEMBER_POINTS) 권한 직원. API: /api/seller/member-messages.
@@ -342,7 +343,7 @@ function EditModal({ m, onClose, onDone }: { m: Msg; onClose: () => void; onDone
         </label>
         <label className="fld">
           <span>예약 시각 (KST)</span>
-          <input className="inp" type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} />
+          <DateTimePicker aria-label="예약 시각 (KST)" value={at} onChange={(v) => setAt(v)} />
         </label>
         <label className="fld">
           <span>문구</span>
@@ -547,7 +548,7 @@ function NewMessage({ onDone }: { onDone: (text: string) => void | Promise<void>
           <label className="row" style={{ gap: 6 }}>
             <input type="radio" name="mm-mode" checked={mode === "SCHEDULE"} onChange={() => setMode("SCHEDULE")} />예약
           </label>
-          {mode === "SCHEDULE" && <input className="inp" style={{ width: 220 }} type="datetime-local" aria-label="예약 시각 (KST)" value={at} onChange={(e) => setAt(e.target.value)} />}
+          {mode === "SCHEDULE" && <DateTimePicker aria-label="예약 시각 (KST)" value={at} onChange={(v) => setAt(v)} />}
         </div>
         <span className="t-c1 c-alt">광고성은 08:00 ~ 21:00에만 · 밖이면 다음 08:00으로 자동</span>
       </fieldset>

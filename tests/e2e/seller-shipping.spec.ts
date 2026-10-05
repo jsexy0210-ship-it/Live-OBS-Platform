@@ -27,7 +27,7 @@ test("대표자: 송장 저장 → 배송 중 → 배송 완료로 옮겨 가고
   await page.goto("/seller/login?next=%2Fseller%2Fshipping");
   await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
   await expect(page).toHaveURL(/\/seller\/shipping$/);
-  await expect(page.getByRole("link", { name: "배송", exact: true })).toHaveAttribute("href", "/seller/shipping");
+  await expect(page.getByRole("link", { name: "배송 · 송장", exact: true })).toHaveAttribute("href", "/seller/shipping");
 
   const rows = page.getByTestId("shipment-row");
   await expect(rows.first()).toBeVisible();
@@ -83,5 +83,5 @@ test("주문·배송 권한이 없는 직원은 메뉴가 안 보이고, 주소�
   await submitSellerLogin(page, "demo-staff@example.com", PASSWORD);
   await expect(page).toHaveURL(/\/seller\/shipping$/);
   await expect(page.getByText("필요한 권한: 주문·배송", { exact: false })).toBeVisible();
-  await expect(page.getByRole("link", { name: "배송", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "배송 · 송장", exact: true })).toHaveCount(0);
 });

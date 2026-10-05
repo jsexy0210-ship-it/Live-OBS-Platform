@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { PageHead } from "../../../../../../components/admin-ui";
+import { PageHead, useConfirm } from "../../../../../../components/admin-ui";
 import { InquiryAttach, type Attached } from "../../../../../../components/seller/InquiryAttach";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { SmartBackButton } from "../../../../../../components/seller/SmartBackButton";
@@ -23,8 +23,7 @@ export default function InquiryDetailPage() {
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; inquiry: Inquiry }>({ kind: "loading" });
   const [body, setBody] = useState("");
   const [images, setImages] = useState<Attached[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { confirm } = useConfirm();
 
   const load = useCallback(async () => {
     const r = await api<{ inquiry: Inquiry }>(`/api/seller/platform-inquiries/${id}`);
@@ -36,15 +35,19 @@ export default function InquiryDetailPage() {
   }, [load]);
 
   const send = async () => {
-    if (!body.trim() || busy) return;
-    setBusy(true);
-    setError(null);
-    const r = await api<{ inquiry: Inquiry }>(`/api/seller/platform-inquiries/${id}/messages`, { method: "POST", body: { body: body.trim(), imageIds: images.map((i) => i.id) } });
-    setBusy(false);
-    if (!r.ok) {
-      if (r.error === "inquiry_closed") void load();
-      return setError(r.message ?? "추가 문의를 보내지 못했습니다. 쓴 내용은 그대로 남아 있으니 다시 눌러 주십시오");
-    }
+    if (!body.trim()) return;
+    const ok = await confirm({
+      title: "추가 문의를 보내시겠습니까?",
+      body: "보낸 뒤에는 수정할 수 없고 문의가 다시 「답변 대기」가 됩니다.",
+      confirmLabel: "추가 문의 보내기",
+      run: async () => {
+        const r = await api<{ inquiry: Inquiry }>(`/api/seller/platform-inquiries/${id}/messages`, { method: "POST", body: { body: body.trim(), imageIds: images.map((i) => i.id) } });
+        if (r.ok) return;
+        if (r.error === "inquiry_closed") void load();
+        return r.message ?? "추가 문의를 보내지 못했습니다. 쓴 내용은 그대로 남아 있으니 다시 눌러 주십시오";
+      },
+    });
+    if (!ok) return;
     setBody("");
     setImages([]);
     await load();
@@ -135,20 +138,15 @@ export default function InquiryDetailPage() {
                     <label htmlFor="iq-more" className="req">
                       추가 문의
                     </label>
-                    <textarea id="iq-more" className="inp" style={{ height: 120, padding: "10px 12px" }} maxLength={INQUIRY_BODY_MAX} value={body} disabled={busy} onChange={(e) => setBody(e.target.value)} />
+                    <textarea id="iq-more" className="inp" style={{ height: 120, padding: "10px 12px" }} maxLength={INQUIRY_BODY_MAX} value={body} onChange={(e) => setBody(e.target.value)} />
                     <span className="help num">
                       {body.length}/{INQUIRY_BODY_MAX}자
                     </span>
                   </div>
-                  <InquiryAttach images={images} onChange={setImages} disabled={busy} />
-                  {error && (
-                    <div className="msg msg-neg" role="alert">
-                      <span>{error}</span>
-                    </div>
-                  )}
+                  <InquiryAttach images={images} onChange={setImages} />
                   <div className="row">
-                    <button className="btn" type="submit" disabled={!body.trim() || busy}>
-                      {busy ? "보내는 중" : "추가 문의 보내기"}
+                    <button className="btn" type="submit" disabled={!body.trim()}>
+                      추가 문의 보내기
                     </button>
                   </div>
                 </form>
