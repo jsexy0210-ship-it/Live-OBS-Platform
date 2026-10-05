@@ -170,7 +170,7 @@ describe("해제", () => {
     expect(s.p.revokes).toEqual(["myshop"]);
     expect(await db.externalShopConnection.findUniqueOrThrow({ where: { id: s.id } })).toMatchObject({ status: "DISCONNECTED", accessTokenCipher: null, refreshTokenCipher: null });
     const body = JSON.stringify({ resource: { mall_id: "myshop" }, event_no: 1 });
-    expect((await ingestWebhook(db, cfg, { rawBody: body, apiKey: cfg.webhookKey })).status).toBe(404);
+    expect(await ingestWebhook(db, cfg, { rawBody: body, apiKey: cfg.webhookKey })).toEqual({ status: 200, stored: false, ignored: "unknown_shop" });
     expect(await db.externalWebhookEvent.count()).toBe(0);
     // 다시 해제해도 같다
     expect(await disconnect(db, s.p, s.ctx, s.id)).toEqual({ ok: true, status: "DISCONNECTED" });
@@ -183,7 +183,8 @@ describe("해제", () => {
     expect(c.accessTokenCipher).toBeNull();
     expect(openBillingKey(c.refreshTokenCipher!, s.seller.id)).toBe("RT-k");
     const body = JSON.stringify({ resource: { mall_id: "myshop" }, event_no: 2 });
-    expect((await ingestWebhook(db, cfg, { rawBody: body, apiKey: cfg.webhookKey })).status).toBe(404);
+    expect(await ingestWebhook(db, cfg, { rawBody: body, apiKey: cfg.webhookKey })).toEqual({ status: 200, stored: false, ignored: "unknown_shop" });
+    expect(await db.externalWebhookEvent.count()).toBe(0);
   });
   it("다른 파트너스의 연결은 해제할 수 없다(404)", async () => {
     const s = await connected();
@@ -224,7 +225,7 @@ describe("웹훅 수신", () => {
     const body = evt(3);
     expect((await send(body, null)).status).toBe(401);
     const unknown = JSON.stringify({ resource: { mall_id: "nobody" } });
-    expect((await send(unknown, KEY)).status).toBe(404);
+    expect(await send(unknown, KEY)).toEqual({ status: 200, stored: false, ignored: "unknown_shop" }); // 인증 통과 + 연결 안 된 몰 = 200, 저장 안 함
     expect((await send("not json", KEY)).status).toBe(400);
     const noMall = JSON.stringify({ resource: {} });
     expect((await send(noMall, KEY)).status).toBe(400);
@@ -454,6 +455,14 @@ describe("웹훅 경로", () => {
       expect(afterCalls).toHaveLength(1);
       expect((await post(ENV.EXTERNAL_WEBHOOK_API_KEY)).status).toBe(200);
       expect(afterCalls).toHaveLength(1);
+      // 쇼핑몰 개발자센터의 WebHook TEST 샘플(연결 안 된 몰): 인증키가 맞으면 200이고 저장·처리 예약은 없다. 인증키가 틀리면 여전히 401
+      const before = await db.externalWebhookEvent.count();
+      const sample = JSON.stringify({ event_no: 90023, resource: { mall_id: "cafe24bestshop", order_id: "20200717-0029236" } });
+      const sampleRes = await webhookRoute(new Request("http://localhost:3000/api/external/webhook", { method: "POST", headers: { "x-api-key": ENV.EXTERNAL_WEBHOOK_API_KEY }, body: sample }));
+      expect(sampleRes.status).toBe(200);
+      expect(await db.externalWebhookEvent.count()).toBe(before);
+      expect(afterCalls).toHaveLength(1);
+      expect((await webhookRoute(new Request("http://localhost:3000/api/external/webhook", { method: "POST", headers: { "x-api-key": "wrong" }, body: sample }))).status).toBe(401);
       await afterCalls[0](); // 예약된 처리가 오류 없이 끝난다(공급자 키가 있으면 처리 대상이 아닌 이벤트는 닫힘)
     } finally {
       process.env = saved;
