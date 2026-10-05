@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { GET as ordersRoute } from "../../app/api/admin/stats/orders/route";
 import { GET as growthRoute } from "../../app/api/admin/stats/growth/route";
+import { GET as topRoute } from "../../app/api/admin/stats/top-sellers/route";
 import { GET as subsRoute } from "../../app/api/admin/stats/subscriptions/route";
 import { loginSeller } from "../../lib/server/auth/login";
 import { createAdminSession } from "../../lib/server/auth/session";
@@ -152,5 +153,54 @@ describe("신규 파트너스·방송 수 추이 GET /api/admin/stats/growth", (
     if (!login.ok) throw new Error(login.reason);
     expect((await get("growth?from=2026-10-01&to=2026-10-07", `lo_seller=${login.token}`, growthRoute)).status).toBe(401);
     expect((await get("growth?from=2026-10-01&to=2026-10-07", undefined, growthRoute)).status).toBe(401);
+  });
+});
+
+describe("상위 5 파트너스 GET /api/admin/stats/top-sellers", () => {
+  it("기간 안 순매출(결제−환불) 순 상위 5, 결제 없는 쇼핑몰·기간 밖 주문은 뺀다, 비중은 플랫폼 순매출 대비", async () => {
+    const shops: Awaited<ReturnType<typeof createSeller>>[] = [];
+    for (let i = 0; i < 7; i++) shops.push(await createSeller());
+    const order = async (s: (typeof shops)[number], at: string, totalAmount: number, extra: Record<string, unknown> = {}) => {
+      const buyer = await createBuyer(s.seller.id, s.grade.id);
+      const { order: o } = await createPaidOrderItem(s.seller.id, buyer.id);
+      await db.order.update({ where: { id: o.id }, data: { createdAt: new Date(at), paidAt: new Date(at), totalAmount, ...extra } });
+    };
+    const IN = "2026-10-02T03:00:00Z";
+    // 순매출: 0번 50000, 1번 40000(결제 60000 − 환불 20000), 2번 30000, 3번 20000, 4번 10000, 5번 5000(6위)
+    await order(shops[0], IN, 50_000);
+    await order(shops[1], IN, 60_000, { status: "REFUNDED", refundAmount: 20_000 });
+    await order(shops[2], IN, 30_000);
+    await order(shops[3], IN, 20_000);
+    await order(shops[4], IN, 10_000);
+    await order(shops[5], IN, 5_000);
+    // 6번: 결제 없는 주문만(결제 대기) → 제외, 0번: 기간 밖 큰 주문 → 제외
+    const b6 = await createBuyer(shops[6].seller.id, shops[6].grade.id);
+    const { order: pending } = await createPaidOrderItem(shops[6].seller.id, b6.id);
+    await db.order.update({ where: { id: pending.id }, data: { createdAt: new Date(IN), paidAt: null, status: "PENDING_PAYMENT" } });
+    await order(shops[0], "2026-11-20T03:00:00Z", 900_000);
+
+    const res = await get("top-sellers?from=2026-10-01&to=2026-10-31", await adminCookie(), topRoute);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.platformNetRevenue).toBe(50_000 + 40_000 + 30_000 + 20_000 + 10_000 + 5_000);
+    expect(body.rows.map((r: { sellerId: string }) => r.sellerId)).toEqual(shops.slice(0, 5).map((s) => s.seller.id));
+    expect(body.rows[1]).toMatchObject({ rank: 2, shopName: shops[1].seller.shopName, slug: shops[1].seller.slug, orders: 1, paidOrders: 1, revenue: 60_000, refundAmount: 20_000, netRevenue: 40_000 });
+    expect(body.rows[0].share).toBeCloseTo(50_000 / 155_000, 4);
+    expect(Object.keys(body.rows[0]).sort()).toEqual(["orders", "paidOrders", "rank", "refundAmount", "revenue", "sellerId", "share", "shopName", "slug", "netRevenue"].sort());
+  });
+
+  it("마스터 관리자 전 역할이 보고, 잘못된 기간은 400, 파트너스 세션·무로그인은 401", async () => {
+    for (const role of ["SUPER_ADMIN", "OPERATIONS", "CS", "READ_ONLY"] as const) {
+      const res = await get("top-sellers?from=2026-10-01&to=2026-10-07", await adminCookie(role), topRoute);
+      expect(res.status, role).toBe(200);
+      expect((await res.json()).rows).toEqual([]);
+    }
+    expect((await get("top-sellers", await adminCookie(), topRoute)).status).toBe(400);
+    const { seller } = await createSeller();
+    const owner = await createSellerUser(seller.id, "OWNER");
+    const login = await loginSeller(db, { email: owner.email, password: PASSWORD }, {});
+    if (!login.ok) throw new Error(login.reason);
+    expect((await get("top-sellers?from=2026-10-01&to=2026-10-07", `lo_seller=${login.token}`, topRoute)).status).toBe(401);
+    expect((await get("top-sellers?from=2026-10-01&to=2026-10-07", undefined, topRoute)).status).toBe(401);
   });
 });

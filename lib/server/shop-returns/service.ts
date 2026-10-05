@@ -1,6 +1,7 @@
 import { cleanText } from "../text/clean";
 import { Prisma, type ActorType, type PrismaClient, type RefundFault, type ReturnKind, type ReturnReason, type ReturnStatus } from "@prisma/client";
 import { writeAudit } from "../audit/log";
+import { assertBillingSecret, openBillingKey, sealBillingKey } from "../billing/secret";
 import { shopOpen } from "../buyers/signup";
 import { checkReviewImage, type ReviewImageRejection } from "../product-reviews/image";
 import { getRefundVersion } from "../queue/read";
@@ -40,6 +41,7 @@ export type ReturnFailure =
   | "period_expired"
   | "opened_blocked"
   | "refund_account_required"
+  | "refund_account_unavailable"
   | "inspection_required"
   | "inspection_not_ok"
   | "inspection_locked";
@@ -61,6 +63,7 @@ export const BUYER_RETURN_MESSAGES: Record<string, string> = {
   invalid_pickup: "수거 방법을 확인해 주세요",
   invalid_refund_account: "환불 계좌(은행·예금주·계좌번호)를 확인해 주세요",
   refund_account_required: "환불받을 계좌를 입력해 주세요",
+  refund_account_unavailable: "지금은 계좌 정보를 안전하게 저장할 수 없어요. 잠시 뒤 다시 해 주세요",
   period_expired: "배송 완료 뒤 7일이 지나 신청할 수 없어요. 불량·오배송은 판매자에게 문의해 주세요",
   opened_blocked: "개봉한 상품은 단순 변심으로 교환·반품할 수 없어요. 불량·오배송은 판매자에게 문의해 주세요",
   empty_file: "사진을 확인해 주세요",
@@ -268,6 +271,14 @@ export async function createReturn(db: PrismaClient, scope: BuyerScope, orderId:
       // 무통장 입금 주문은 환불 계좌가 있어야 신청할 수 있다
       const paid = await tx.order.findUniqueOrThrow({ where: { id: orderId }, select: { paymentMethod: true } });
       if (paid.paymentMethod === "BANK_TRANSFER" && !input.refundAccount) return { ok: false as const, reason: "refund_account_required" as const };
+      // 계좌번호는 원문으로 저장하지 않는다(빌링키와 같은 AES-256-GCM 봉인, 쇼핑몰 id 묶음). 비밀키가 없으면 신청을 받지 않는다.
+      if (paid.paymentMethod === "BANK_TRANSFER") {
+        try {
+          assertBillingSecret();
+        } catch {
+          return { ok: false as const, reason: "refund_account_unavailable" as const };
+        }
+      }
       const imgs = input.imageIds.length
         ? await tx.returnRequestImage.findMany({ where: { id: { in: input.imageIds }, ...scope, returnRequestId: null }, select: { id: true } })
         : [];
@@ -282,7 +293,7 @@ export async function createReturn(db: PrismaClient, scope: BuyerScope, orderId:
           reasonText: input.reasonText,
           pickupMethod: input.pickup,
           ...(paid.paymentMethod === "BANK_TRANSFER" && input.refundAccount
-            ? { refundBankName: input.refundAccount.bankName, refundAccountHolder: input.refundAccount.accountHolder, refundAccountNumber: input.refundAccount.accountNumber }
+            ? { refundBankName: input.refundAccount.bankName, refundAccountHolder: input.refundAccount.accountHolder, refundAccountNumber: sealBillingKey(input.refundAccount.accountNumber, scope.sellerId) }
             : {}),
         },
         select: { id: true },
@@ -413,7 +424,7 @@ export async function getSellerReturn(db: PrismaClient, ctx: TenantContext, id: 
   return {
     ...view(r),
     // 무통장 환불 계좌(환불·종료 뒤 비워진다). 파트너스만 본다
-    refundAccount: r.refundAccountNumber ? { bankName: r.refundBankName, accountHolder: r.refundAccountHolder, accountNumber: r.refundAccountNumber } : null,
+    refundAccount: r.refundAccountNumber ? { bankName: r.refundBankName, accountHolder: r.refundAccountHolder, accountNumber: openAccountNumber(r.refundAccountNumber, ctx.sellerId) } : null,
     paymentMethod: r.order.paymentMethod,
     refunds,
     orderNo: r.order.orderNo,
@@ -445,6 +456,16 @@ async function orderRefundHistory(db: Db, sellerId: string, orderId: string) {
       optionName: name.get(l.orderItemId)?.optionNameSnapshot ?? "",
     })),
   }));
+}
+
+// 파트너스 상세에서만 환불 계좌번호를 푼다(목록·구매자 응답·로그 추적에는 값이 없다). 봉인 전에 저장된 값(원문)은 그대로 보여 주고, 풀 수 없으면 null.
+function openAccountNumber(stored: string, sellerId: string): string | null {
+  if (!stored.startsWith("v1.")) return stored;
+  try {
+    return openBillingKey(stored, sellerId);
+  } catch {
+    return null;
+  }
 }
 
 const requestSelection = (items: { orderItemId: string; quantity: number }[]): RefundSelection => items.map((i) => ({ orderItemId: i.orderItemId, quantity: i.quantity }));

@@ -7,7 +7,9 @@ import { loginSeller } from "../../lib/server/auth/login";
 import { openBillingKey } from "../../lib/server/billing/secret";
 import { completeConnect, disconnect, startConnect } from "../../lib/server/external/connect";
 import { externalConfig } from "../../lib/server/external/config";
-import { shopKeyOf, type ExternalShopProvider, type TokenSet } from "../../lib/server/external/provider";
+import { purgeExpiredOAuthStates, purgeOldWebhookEvents, refreshDueTokens } from "../../lib/server/external/jobs";
+import { SCHEDULED_JOBS } from "../../lib/server/jobs/scheduler";
+import { ExternalHttpError, shopKeyOf, type ExternalShopProvider, type TokenSet } from "../../lib/server/external/provider";
 import { ingestWebhook, signatureOf } from "../../lib/server/external/webhook";
 import { prisma } from "../../lib/server/db";
 import type { TenantContext } from "../../lib/server/tenant/context";
@@ -31,8 +33,12 @@ class FakeProvider implements ExternalShopProvider {
     this.exchanged.push(`${shopKey}:${code}`);
     return { accessToken: `AT-${code}`, refreshToken: `RT-${code}`, accessExpiresAt: new Date(Date.now() + 7200_000), refreshExpiresAt: new Date(Date.now() + 14 * 86400_000), scopes: "mall.read_order" };
   }
-  async refresh(): Promise<TokenSet> {
-    throw new Error("unused");
+  refreshes: string[] = [];
+  refreshError: Error | null = null;
+  async refresh(shopKey: string, refreshToken: string): Promise<TokenSet> {
+    if (this.refreshError) throw this.refreshError;
+    this.refreshes.push(`${shopKey}:${refreshToken}`);
+    return { accessToken: `AT2-${refreshToken}`, refreshToken: `RT2-${refreshToken}`, accessExpiresAt: new Date(Date.now() + 7200_000), refreshExpiresAt: new Date(Date.now() + 14 * 86400_000), scopes: null };
   }
   async revoke(shopKey: string) {
     this.revokes.push(shopKey);
@@ -269,5 +275,100 @@ describe("라우트", () => {
   it("웹훅 라우트: 선언한 본문 크기가 상한을 넘으면 읽기 전에 413", async () => {
     const res = await webhookRoute(new Request("http://localhost:3000/api/external/webhook", { method: "POST", headers: { "content-length": String(300 * 1024) }, body: "{}" }));
     expect(res.status).toBe(413);
+  });
+});
+
+describe("정기 작업", () => {
+  const DAY = 86_400_000;
+  async function connected(key = "myshop") {
+    const s = await shop();
+    const p = new FakeProvider();
+    const st = await startConnect(db, p, s.ctx, `https://${key}.cafe24.com`);
+    if (!st.ok) throw new Error("start");
+    const r = await completeConnect(db, p, s.ctx, { state: stateOf(st.authorizeUrl), code: "k" });
+    if (!r.ok) throw new Error("complete");
+    return { ...s, p, id: r.connectionId };
+  }
+  const conn = (id: string) => db.externalShopConnection.findUniqueOrThrow({ where: { id } });
+
+  it("스케줄러에 세 작업이 등록되어 있다", () => {
+    const names = SCHEDULED_JOBS.map((j) => j.name);
+    for (const n of ["external_oauth_state.purge", "external_webhook_event.purge_old", "external_shop.refresh_tokens"]) expect(names).toContain(n);
+  });
+
+  it("끝난 OAuth state는 만료 1일 뒤 지우고, 방금 만든 것·만료 직후 것은 남긴다", async () => {
+    const s = await shop();
+    const mk = (h: string, exp: number) => db.externalOAuthState.create({ data: { sellerId: s.seller.id, userId: s.user.id, shopKey: "a-shop", stateHash: h, expiresAt: new Date(Date.now() + exp) } });
+    await mk("old", -2 * DAY);
+    await mk("recent-expired", -3600_000);
+    await mk("live", 600_000);
+    expect(await db.$transaction((tx) => purgeExpiredOAuthStates(tx, new Date()))).toBe(1);
+    expect((await db.externalOAuthState.findMany({ select: { stateHash: true } })).map((r) => r.stateHash).sort()).toEqual(["live", "recent-expired"]);
+    expect(await db.$transaction((tx) => purgeExpiredOAuthStates(tx, new Date()))).toBe(0);
+  });
+
+  it("웹훅 원본은 받은 지 30일이 지나면 처리 여부와 관계없이 지운다", async () => {
+    const c = await connected();
+    const mk = (k: string, ageDays: number, processed: boolean) =>
+      db.externalWebhookEvent.create({ data: { sellerId: c.seller.id, connectionId: c.id, eventKey: k, payload: { k }, receivedAt: new Date(Date.now() - ageDays * DAY), processedAt: processed ? new Date() : null } });
+    await mk("old-unprocessed", 31, false);
+    await mk("old-processed", 40, true);
+    await mk("fresh", 29, false);
+    expect(await db.$transaction((tx) => purgeOldWebhookEvents(tx, new Date()))).toBe(2);
+    expect((await db.externalWebhookEvent.findMany({ select: { eventKey: true } })).map((e) => e.eventKey)).toEqual(["fresh"]);
+  });
+
+  it("토큰 갱신: 곧 만료되는 것만 새 토큰(접근·갱신 둘 다)으로 바꾼다", async () => {
+    const due = await connected("dueshop");
+    const fine = await connected("fineshop");
+    await db.externalShopConnection.update({ where: { id: due.id }, data: { refreshExpiresAt: new Date(Date.now() + DAY) } });
+    expect(await refreshDueTokens(db, due.p, new Date())).toBe(1);
+    const c = await conn(due.id);
+    expect(openBillingKey(c.refreshTokenCipher!, due.seller.id)).toBe("RT2-RT-k");
+    expect(openBillingKey(c.accessTokenCipher!, due.seller.id)).toBe("AT2-RT-k");
+    expect(c.refreshExpiresAt!.getTime()).toBeGreaterThan(Date.now() + 10 * DAY);
+    expect(due.p.refreshes).toEqual(["dueshop:RT-k"]);
+    expect((await conn(fine.id)).status).toBe("CONNECTED");
+    expect(openBillingKey((await conn(fine.id)).refreshTokenCipher!, fine.seller.id)).toBe("RT-k");
+    // 다시 돌려도 더 바꾸지 않는다
+    expect(await refreshDueTokens(db, due.p, new Date())).toBe(0);
+  });
+
+  it("갱신이 400·401이면 다시 연결 필요(토큰 삭제), 5xx·네트워크 오류는 그대로 두고 다음에 다시, 갱신 토큰이 이미 만료면 부르지 않고 다시 연결 필요", async () => {
+    const a = await connected("shopa");
+    await db.externalShopConnection.update({ where: { id: a.id }, data: { accessExpiresAt: new Date(Date.now() - 1000) } });
+    a.p.refreshError = new ExternalHttpError(401);
+    expect(await refreshDueTokens(db, a.p, new Date())).toBe(1);
+    expect(await conn(a.id)).toMatchObject({ status: "REAUTH_REQUIRED", accessTokenCipher: null, refreshTokenCipher: null });
+
+    const b = await connected("shopb");
+    await db.externalShopConnection.update({ where: { id: b.id }, data: { accessExpiresAt: new Date(Date.now() - 1000) } });
+    b.p.refreshError = new ExternalHttpError(503);
+    expect(await refreshDueTokens(db, b.p, new Date())).toBe(0);
+    b.p.refreshError = new Error("timeout");
+    expect(await refreshDueTokens(db, b.p, new Date())).toBe(0);
+    expect(await conn(b.id)).toMatchObject({ status: "CONNECTED" });
+    expect((await conn(b.id)).refreshTokenCipher).not.toBeNull();
+
+    // 앞서 시험한 연결은 대상에서 뺀다(이번 확인은 갱신 토큰이 이미 만료된 연결만)
+    await db.externalShopConnection.update({ where: { id: b.id }, data: { accessExpiresAt: new Date(Date.now() + 7200_000) } });
+    const c = await connected("shopc");
+    await db.externalShopConnection.update({ where: { id: c.id }, data: { refreshExpiresAt: new Date(Date.now() - 1000) } });
+    expect(await refreshDueTokens(db, c.p, new Date())).toBe(1);
+    expect(c.p.refreshes).toEqual([]);
+    expect((await conn(c.id)).status).toBe("REAUTH_REQUIRED");
+  });
+
+  it("연동 키가 없거나(provider null)·잠긴 파트너스·시간 예산이 0이면 쇼핑몰 API를 부르지 않는다", async () => {
+    const a = await connected("keyoff");
+    const b = await connected("locked");
+    for (const x of [a, b]) await db.externalShopConnection.update({ where: { id: x.id }, data: { accessExpiresAt: new Date(Date.now() - 1000) } });
+    expect(await refreshDueTokens(db, null, new Date())).toBe(0);
+    await db.seller.update({ where: { id: b.seller.id }, data: { trialEndsAt: new Date(Date.now() - DAY) } });
+    const p = new FakeProvider();
+    expect(await refreshDueTokens(db, p, new Date(), 0)).toBe(0);
+    expect(p.refreshes).toEqual([]);
+    expect(await refreshDueTokens(db, p, new Date())).toBe(1);
+    expect(p.refreshes).toEqual(["keyoff:RT-k"]);
   });
 });

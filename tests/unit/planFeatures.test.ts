@@ -77,6 +77,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/member-grades/recalc": "STORE_OPERATIONS",
   "seller/member-grades/members/[memberId]": "STORE_OPERATIONS",
   "seller/returns": "ORDER_FOLLOWUP",
+  "seller/receipt-issuer": "ORDER_FOLLOWUP",
   "seller/receipt-requests": "ORDER_FOLLOWUP",
   "seller/receipt-requests/[id]/retry": "ORDER_FOLLOWUP",
   "seller/refund-requests": "ORDER_FOLLOWUP",

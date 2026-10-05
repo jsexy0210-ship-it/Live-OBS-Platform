@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import sharp from "sharp";
-import { E2E_PREFIX, adminReplyInDb, cleanupPlatformE2eInDb, createNoticeInDb } from "./platformDb";
+import { E2E_PREFIX, adminReplyInDb, cleanupPlatformE2eInDb, createNoticeInDb, fillInquiryLimitInDb } from "./platformDb";
 import { submitSellerLogin } from "./sellerLogin";
 
 // SA-111·112 공지사항, SA-113·114·115 내 문의. 공지는 DB로 만들고, 문의는 파트너스 화면으로 보낸 뒤 마스터 답변·종료를 DB로 흉내 낸다.
@@ -110,4 +110,41 @@ test("문의: 유형 없이는 보낼 수 없고, 없는 문의는 안내한다"
   await expect(page.getByRole("button", { name: "문의 보내기" })).toBeDisabled();
   await page.goto("/seller/inquiries/00000000-0000-4000-8000-000000000000");
   await expect(page.getByText("문의를 찾을 수 없습니다")).toBeVisible();
+});
+
+// #427 검수 후속: 직원은 자기가 쓴 문의만 보고(대표자는 쇼핑몰 전체), 하루 20건을 넘으면 서버 안내문을 그대로 보인다.
+async function postInquiry(page: Page, title: string) {
+  return page.evaluate(async (t) => {
+    const r = await fetch("/api/seller/platform-inquiries", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ category: "OTHER", title: t, body: "내용" }) });
+    return r.status;
+  }, title);
+}
+
+test("직원은 자기가 쓴 문의만 보고, 대표자는 쇼핑몰 문의를 모두 본다", async ({ page, browser }) => {
+  await login(page, "/seller/inquiries", "demo-viewer@example.com");
+  expect(await postInquiry(page, `${E2E_PREFIX}직원 문의`)).toBe(201);
+  const other = await browser.newContext();
+  const ownerPage = await other.newPage();
+  await login(ownerPage, "/seller/inquiries");
+  expect(await postInquiry(ownerPage, `${E2E_PREFIX}대표자 문의`)).toBe(201);
+  await ownerPage.reload();
+  await expect(ownerPage.getByTestId("inquiry-row").filter({ hasText: `${E2E_PREFIX}대표자 문의` })).toHaveCount(1);
+  await expect(ownerPage.getByTestId("inquiry-row").filter({ hasText: `${E2E_PREFIX}직원 문의` })).toHaveCount(1);
+  await other.close();
+  await page.reload();
+  await expect(page.getByTestId("inquiry-row").filter({ hasText: `${E2E_PREFIX}직원 문의` })).toHaveCount(1);
+  await expect(page.getByTestId("inquiry-row").filter({ hasText: `${E2E_PREFIX}대표자 문의` })).toHaveCount(0);
+});
+
+test("하루 20건을 넘기면 보내지 못하고 서버 안내문이 보인다", async ({ page }) => {
+  await cleanupPlatformE2eInDb();
+  await fillInquiryLimitInDb(20);
+  await login(page, "/seller/inquiries/new");
+  await page.getByLabel("유형").selectOption("OTHER");
+  await page.getByLabel("제목").fill(`${E2E_PREFIX}한도 초과`);
+  await page.getByLabel("내용").fill("내용");
+  await page.getByRole("button", { name: "문의 보내기" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "하루 20건까지" })).toBeVisible();
+  await expect(page).toHaveURL(/\/seller\/inquiries\/new$/);
+  await expect(page.getByLabel("제목")).toHaveValue(`${E2E_PREFIX}한도 초과`);
 });
