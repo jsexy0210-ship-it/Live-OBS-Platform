@@ -81,7 +81,7 @@ export class NicepaySandboxGateway implements PaymentGateway {
     if (res.status >= 500) return { kind: "unknown", error: `http_${res.status}` };
     const b = (json ?? {}) as Record<string, unknown>;
     if (!isStr(b.resultCode)) return { kind: "unknown", error: `invalid_body_${res.status}` };
-    if (b.resultCode !== "0000") return { kind: "rejected", code: `nicepay_${b.resultCode}`.slice(0, 40) };
+    if (b.resultCode !== "0000") return { kind: "rejected", code: `nicepay_${b.resultCode}`.slice(0, 40), ...(isStr(b.resultMsg) ? { message: b.resultMsg.slice(0, 100) } : {}) };
     return { kind: "ok", value: b };
   }
 

@@ -8,7 +8,7 @@ import { confirmAuthResult } from "../../../../../lib/server/payments/service";
 
 // 나이스페이 결제 창 인증 결과(returnUrl, application/x-www-form-urlencoded POST). PG 페이지에서 넘어오므로 Origin 검사·세션 쿠키 없이
 // 서명(authToken·clientId·amount·비밀키)과 결제 행으로만 판단한다. 승인까지 마친 뒤 구매자 주문 화면으로 보낸다(?orderId=…&payment=paid|failed|pending|cancelled).
-const FIELDS = ["authResultCode", "tid", "clientId", "orderId", "amount", "authToken", "signature"] as const;
+const FIELDS = ["authResultCode", "authResultMsg", "tid", "clientId", "orderId", "amount", "authToken", "signature"] as const;
 
 export async function POST(req: Request) {
   try {

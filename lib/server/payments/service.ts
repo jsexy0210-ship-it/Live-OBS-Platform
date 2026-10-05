@@ -72,9 +72,11 @@ export async function startPayment(
   return { ok: true, paymentId: payment.id, clientId: gw.clientId, method: "card", orderId: payment.id, amount, goodsName: goodsNameOf(order.items), paymentDueAt: order.paymentDueAt };
 }
 
-async function fail(db: PrismaClient | Tx, p: Payment, code: string, from: ("READY" | "APPROVING")[] = ["READY", "APPROVING"]) {
+// message: PG가 준 거절 문구(진단용 기록, 카드·개인정보 아님)
+async function fail(db: PrismaClient | Tx, p: Payment, code: string, from: ("READY" | "APPROVING")[] = ["READY", "APPROVING"], message?: string) {
   const moved = await db.payment.updateMany({ where: { id: p.id, status: { in: from } }, data: { status: "FAILED", failureCode: code.slice(0, 60) } });
-  if (moved.count === 1) await writeAudit(db, { ...SYSTEM, sellerId: p.sellerId, action: "payment.failed", targetType: "Order", targetId: p.orderId, after: { paymentId: p.id, code } });
+  if (moved.count === 1)
+    await writeAudit(db, { ...SYSTEM, sellerId: p.sellerId, action: "payment.failed", targetType: "Order", targetId: p.orderId, after: { paymentId: p.id, code, ...(message ? { message } : {}) } });
 }
 
 // returnUrl로 받은 결제 창 인증 결과 처리. 세션 쿠키 없이 오므로(PG에서 넘어오는 POST) 서명과 결제 행으로만 판단한다.
@@ -84,13 +86,34 @@ export async function confirmAuthResult(db: PrismaClient, gw: PaymentGateway, r:
   if (!p || p.provider !== gw.name) return { ok: false, reason: "not_found" };
   const done = (outcome: ConfirmOutcome): ConfirmResult => ({ ok: true, outcome, sellerId: p.sellerId, orderId: p.orderId });
   // 인증 실패 결과에는 서명이 없다(매뉴얼). 서명 없는 값으로 상태를 바꾸지 않는다: READY는 그대로 두고(버리는 시도) 지금 상태만 알린다.
-  if (r.authResultCode !== "0000") return done(p.status === "READY" ? "failed" : outcomeOf(p));
+  if (r.authResultCode !== "0000") {
+    // 서명 없는 값이라 상태는 바꾸지 않지만(READY 유지), 실패 원인을 알 수 있게 인증 결과 코드·문구를 로그 추적에 한 번 남긴다(결제 시도마다 1건).
+    if (p.status === "READY") await auditAuthFailure(db, p, r);
+    return done(p.status === "READY" ? "failed" : outcomeOf(p));
+  }
   if (!gw.verifyAuthResult(r)) return { ok: false, reason: "invalid_signature" };
   if (!/^\d+$/.test(r.amount) || Number(r.amount) !== p.amount || !r.tid) {
     await fail(db, p, "amount_mismatch", ["READY"]);
     return done("failed");
   }
   return done(await approvePayment(db, gw, p.id, r.tid));
+}
+
+async function auditAuthFailure(db: PrismaClient, p: Payment, r: AuthResult) {
+  try {
+    const seen = await db.auditLog.findFirst({ where: { action: "payment.auth_failed", targetId: p.orderId, after: { path: ["paymentId"], equals: p.id } }, select: { id: true } });
+    if (seen) return;
+    await writeAudit(db, {
+      ...SYSTEM,
+      sellerId: p.sellerId,
+      action: "payment.auth_failed",
+      targetType: "Order",
+      targetId: p.orderId,
+      after: { paymentId: p.id, code: r.authResultCode.slice(0, 20), message: (r.authResultMsg ?? "").slice(0, 100) },
+    });
+  } catch {
+    // 기록 실패로 결제 창 결과 처리를 막지 않는다
+  }
 }
 
 // 승인을 잡는다(READY → APPROVING). 주문이 결제 대기가 아니거나 같은 주문의 다른 결제가 이미 잡았으면 승인하지 않는다.
@@ -129,7 +152,7 @@ export async function approvePayment(db: PrismaClient, gw: PaymentGateway, payme
   const claimed = { ...p, status: "APPROVING" as const, pgTid: tid };
   if (r.kind === "ok") return applyPgPayment(db, gw, claimed, r.value);
   if (r.kind === "rejected") {
-    await fail(db, claimed, r.code, ["APPROVING"]);
+    await fail(db, claimed, r.code, ["APPROVING"], r.message);
     return "failed";
   }
   // 승인 응답을 모름: 매뉴얼대로 망 취소. 망 취소 결과도 모르면 APPROVING으로 두고 조회로 확정한다.

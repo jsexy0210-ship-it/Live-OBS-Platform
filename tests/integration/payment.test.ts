@@ -157,13 +157,21 @@ describe("승인: 서명·금액 검증, 두 번 승인 금지", () => {
     const o = await s.order();
     const p1 = await s.start(o.id);
     // 인증 실패 결과에는 서명이 없어 상태를 바꾸지 않는다(READY 그대로, 버리는 시도)
-    expect(await confirmAuthResult(db, s.gw, { ...s.gw.authorize(p1.orderId, 13000), authResultCode: "9999", signature: "" })).toMatchObject({ ok: true, outcome: "failed" });
+    const failedAuth = { ...s.gw.authorize(p1.orderId, 13000), authResultCode: "9999", authResultMsg: "고객 취소", signature: "" };
+    expect(await confirmAuthResult(db, s.gw, failedAuth)).toMatchObject({ ok: true, outcome: "failed" });
     expect((await paymentOf(p1.paymentId)).status).toBe("READY");
     expect(s.gw.approveCalls).toBe(0);
+    // 상태는 안 바꾸지만 실패 원인은 로그 추적에 한 번 남는다(코드·문구, 같은 결제의 다시 온 결과는 늘리지 않음)
+    expect(await confirmAuthResult(db, s.gw, failedAuth)).toMatchObject({ ok: true, outcome: "failed" });
+    const authRows = await db.auditLog.findMany({ where: { action: "payment.auth_failed", targetId: o.id } });
+    expect(authRows).toHaveLength(1);
+    expect(authRows[0]).toMatchObject({ actorType: "SYSTEM", after: { paymentId: p1.paymentId, code: "9999", message: "고객 취소" } });
     const p2 = await s.start(o.id);
     s.gw.failNext = "reject";
     expect(await confirmAuthResult(db, s.gw, s.gw.authorize(p2.orderId, 13000))).toMatchObject({ ok: true, outcome: "failed" });
     expect(await paymentOf(p2.paymentId)).toMatchObject({ status: "FAILED", failureCode: "card_declined" });
+    // 승인 거절 문구도 로그 추적에 남는다
+    expect(await db.auditLog.findFirst({ where: { action: "payment.failed", targetId: o.id } })).toMatchObject({ after: { paymentId: p2.paymentId, code: "card_declined", message: "한도 초과" } });
     expect((await orderOf(o.id)).status).toBe("PENDING_PAYMENT");
     // 실패한 뒤 다시 결제할 수 있다
     const p3 = await s.start(o.id);
@@ -367,6 +375,22 @@ describe("경로", () => {
     expect(res.status).toBe(503);
     expect(await res.json()).toEqual({ error: "payment_not_ready", message: PAYMENT_MESSAGES.payment_not_ready });
     expect(await db.payment.count()).toBe(0);
+  });
+
+  it("결제 창에서 인증이 실패해 돌아오면 payment=failed로 보내고 실패 사유(코드·문구)를 로그 추적에 남긴다(결제 상태는 그대로)", async () => {
+    const s = await buyerShop();
+    setPaymentGatewayForTest(s.gw);
+    const started = await (await startReq(s.seller.slug, s.cookie, { orderId: s.o.id })).json();
+    const back = await returnRoute(
+      new Request(`${origin}/api/payments/nicepay/return`, {
+        method: "POST",
+        body: new URLSearchParams({ authResultCode: "A001", authResultMsg: "사용자가 결제를 취소했어요", orderId: started.orderId, amount: "13000", tid: "", clientId: "", authToken: "", signature: "" }),
+      }),
+    );
+    expect(back.status).toBe(303);
+    expect(back.headers.get("location")).toBe(`${origin}/shop/${s.seller.slug}/orders?orderId=${s.o.id}&payment=failed`);
+    expect((await paymentOf(started.paymentId)).status).toBe("READY");
+    expect(await db.auditLog.findFirst({ where: { action: "payment.auth_failed", targetId: s.o.id } })).toMatchObject({ after: { paymentId: started.paymentId, code: "A001", message: "사용자가 결제를 취소했어요" } });
   });
 
   it("리버스 프록시 뒤: 요청 주소가 내부 주소(0.0.0.0:3000)여도 returnUrl과 인증 뒤 이동 주소는 공개 Host 기준이다(테스트 서버 실측 회귀)", async () => {
