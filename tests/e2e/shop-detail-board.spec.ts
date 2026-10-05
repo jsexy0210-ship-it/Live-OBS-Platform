@@ -1,0 +1,91 @@
+import { expect, test, type Page } from "@playwright/test";
+import { clearCouponsInDb, createClaimableCouponInDb } from "./couponDb";
+
+// 보드 SH-003-IA 맞춤: 탭(리뷰·상품 문의 개수), 상품 문의 목록·쓰기, 쿠폰 받기 줄, 공유, 최근 본 상품, 버튼 순서(장바구니·찜·공유·구매하기).
+const SLUG = "demo-shop";
+const LOGIN = "demo-buyer1@example.com";
+const PASSWORD = process.env.E2E_PASSWORD ?? "";
+const TITLE = `e2e 문의 ${Date.now().toString(36)}`;
+
+test.beforeAll(async () => {
+  if (!PASSWORD) throw new Error("E2E_PASSWORD가 없어요. dev-seed가 출력한 데모 비밀번호를 넣어 주세요");
+  await clearCouponsInDb(SLUG);
+});
+test.afterAll(() => clearCouponsInDb(SLUG));
+
+async function login(page: Page, baseURL: string) {
+  const r = await page.request.post(`/api/shop/${SLUG}/auth/login`, { data: { loginId: LOGIN, password: PASSWORD }, headers: { origin: baseURL } });
+  expect(r.status()).toBe(200);
+}
+async function productIdOf(page: Page, name: string) {
+  const list = (await (await page.request.get(`/api/shop/${SLUG}/products`)).json()) as { products: { id: string; name: string }[] };
+  return list.products.find((p) => p.name === name)!.id;
+}
+
+test("상품 문의: 쓰기(공개·비공개) → 목록·탭 개수 → 지우기, 비회원은 로그인 안내", async ({ page, baseURL }) => {
+  const id = await productIdOf(page, "탑로더 25장");
+  await page.goto(`/shop/${SLUG}/products/${id}`);
+  const qna = page.getByRole("region", { name: /^상품 문의/ });
+  await expect(qna.getByText("아직 문의가 없어요")).toBeVisible();
+  await qna.getByRole("button", { name: "문의하기" }).click();
+  await expect(page.getByRole("dialog", { name: "로그인이 필요해요" })).toBeVisible();
+
+  await login(page, baseURL!);
+  await page.goto(`/shop/${SLUG}/products/${id}`);
+  await qna.getByRole("button", { name: "문의하기" }).click();
+  const dlg = page.getByRole("dialog", { name: "상품 문의" });
+  await expect(dlg.getByRole("button", { name: "문의 남기기" })).toBeDisabled();
+  await dlg.getByLabel("제목").fill(TITLE);
+  await dlg.getByLabel("내용").fill("박스 크기가 어떻게 되나요?");
+  await dlg.getByRole("button", { name: "문의 남기기" }).click();
+  await expect(qna.getByText("문의를 남겼어요")).toBeVisible();
+  await expect(qna.getByText(TITLE)).toBeVisible();
+  await expect(qna.getByText("답변 대기").first()).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "상품 상세 메뉴" }).getByRole("link", { name: /상품 문의/ })).toContainText("1");
+
+  // 비공개로 남기면 목록에는 「비밀글입니다」만 보인다
+  await qna.getByRole("button", { name: "문의하기" }).click();
+  await dlg.getByLabel("제목").fill("비밀 문의");
+  await dlg.getByLabel("내용").fill("개인 정보가 들어 있어요");
+  await dlg.getByLabel(/비공개로 남겨요/).check();
+  await dlg.getByRole("button", { name: "문의 남기기" }).click();
+  await expect(qna.getByText("🔒 비밀글입니다")).toBeVisible();
+  await expect(qna.getByText("개인 정보가 들어 있어요")).toHaveCount(0);
+
+  // 정리: 내 문의를 지운다(답변이 없어 지울 수 있다)
+  const mine = (await (await page.request.get(`/api/shop/${SLUG}/inquiries`)).json()) as { inquiries: { id: string }[] };
+  for (const q of mine.inquiries) {
+    const r = await page.request.delete(`/api/shop/${SLUG}/inquiries/${q.id}`, { headers: { origin: baseURL! } });
+    expect(r.ok()).toBe(true);
+  }
+});
+
+test("쿠폰 받기 줄·버튼 순서·공유(주소 복사)", async ({ page, baseURL, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await createClaimableCouponInDb(SLUG, "상세 시험 쿠폰", 2000);
+  await login(page, baseURL!);
+  const id = await productIdOf(page, "탑로더 25장");
+  await page.goto(`/shop/${SLUG}/products/${id}`);
+  const row = page.locator("tr", { has: page.getByRole("rowheader", { name: "쿠폰" }) });
+  await expect(row).toContainText("상세 시험 쿠폰");
+  await row.getByRole("button", { name: "쿠폰 받기" }).click();
+  await expect(row.getByText("쿠폰을 받았어요")).toBeVisible();
+
+  const names = await page.locator(".pd-actions button").allInnerTexts();
+  expect(names.map((n) => n.trim())).toEqual(["장바구니", "♡", "공유", "구매하기"]);
+  await page.getByRole("button", { name: "공유" }).click();
+  await expect(page.getByText("상품 주소를 복사했어요")).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(`/products/${id}`);
+});
+
+test("최근 본 상품: 다른 상품을 본 뒤 상세에 보이고, 지금 상품은 빠진다", async ({ page }) => {
+  const a = await productIdOf(page, "탑로더 25장");
+  const b = await productIdOf(page, "스타라이트 부스터 박스");
+  await page.goto(`/shop/${SLUG}/products/${a}`);
+  await expect(page.getByRole("region", { name: "최근 본 상품" })).toHaveCount(0); // 처음이면 없음
+  await page.goto(`/shop/${SLUG}/products/${b}`);
+  const recent = page.getByRole("region", { name: "최근 본 상품" });
+  await expect(recent.getByRole("link", { name: "탑로더 25장", exact: true })).toBeVisible();
+  await expect(recent.getByRole("link", { name: "스타라이트 부스터 박스", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: "상품 상세 메뉴" })).toBeVisible();
+});
