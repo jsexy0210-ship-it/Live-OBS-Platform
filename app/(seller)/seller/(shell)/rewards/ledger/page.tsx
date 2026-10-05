@@ -141,7 +141,7 @@ export default function RewardLedgerPage() {
                             <span className={`bdg ${STATUS[e.status].cls}`}>{STATUS[e.status].label}</span>
                           </td>
                           <td>{e.order ? <Link href={`/seller/orders/${e.order.id}`}>{e.order.orderNo}</Link> : "-"}</td>
-                          <td>{e.failureReason ?? "-"}</td>
+                          <td className="col-text">{e.failureReason ?? "-"}</td>
                         </tr>
                       ))}
                     </tbody>
