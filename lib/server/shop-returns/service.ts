@@ -113,7 +113,7 @@ async function lockRequest(tx: Tx, sellerId: string, id: string) {
 // 개봉을 시작했거나 마친 주문 품목(주문대기가 개봉 중·완료). 환불 계산(queue/service.ts isOpened)과 같은 기준이다.
 async function openedOrderItemIds(db: Db, sellerId: string, orderId: string): Promise<Set<string>> {
   const q = await db.queueItem.findMany({ where: { sellerId, orderId }, select: { orderItemId: true, openingStartedAt: true, status: true } });
-  return new Set(q.filter((x) => x.openingStartedAt !== null || x.status === "OPENING" || x.status === "DONE").map((x) => x.orderItemId));
+  return new Set(q.filter((x) => x.openingStartedAt !== null || x.status === "OPENING" || x.status === "DONE").flatMap((x) => (x.orderItemId ? [x.orderItemId] : [])));
 }
 
 const viewInclude = {

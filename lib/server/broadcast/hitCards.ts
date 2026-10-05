@@ -61,7 +61,8 @@ const view = (r: CardRow) => ({
   note: r.note,
   nickname: r.nicknameSnapshot,
   broadcast: r.broadcastSession ? { id: r.broadcastSession.id, title: r.broadcastSession.title } : null,
-  order: r.queueItem ? { id: r.queueItem.order.id, orderNo: r.queueItem.order.orderNo, productLabel: r.queueItem.productLabel } : null,
+  // 외부 쇼핑몰 주문에서 나온 HIT는 내부 주문이 없어 order가 null이다(닉네임·상품은 queueItem 기준)
+  order: r.queueItem?.order ? { id: r.queueItem.order.id, orderNo: r.queueItem.order.orderNo, productLabel: r.queueItem.productLabel } : null,
   createdAt: r.createdAt,
 });
 
@@ -121,7 +122,7 @@ export async function createHitCard(db: PrismaClient, ctx: TenantContext, raw: u
         sellerId: ctx.sellerId,
         broadcastSessionId: live?.id ?? item?.broadcastSessionId ?? null,
         queueItemId: item?.id ?? null,
-        buyerMemberId: item?.order.buyerMemberId ?? null,
+        buyerMemberId: item?.order?.buyerMemberId ?? null,
         nicknameSnapshot: item?.nicknameSnapshot ?? typedNickname!,
         cardName,
         note,

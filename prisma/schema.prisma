@@ -179,6 +179,7 @@ model Seller {
   platformInquiryImages    PlatformInquiryImage[]
   externalShopConnections  ExternalShopConnection[]
   receiptIssuer            SellerReceiptIssuer?
+  externalOrders           ExternalOrder[]
 }
 
 model SellerDomain {
@@ -555,16 +556,16 @@ model Product {
   createdAt          DateTime           @default(now()) @db.Timestamptz(3)
   deletedAt          DateTime?          @db.Timestamptz(3)
 
-  seller        Seller            @relation(fields: [sellerId], references: [id])
-  images        ProductImage[]
-  options       ProductOption[]
-  orderItems    OrderItem[]
-  reviews       ProductReview[]
-  categories    ProductCategory[]
-  detail        ProductDetail?
-  displayItems  ShopDisplayItem[]
-  wishItems     WishItem[]
-  restockAlerts RestockAlert[]
+  seller         Seller            @relation(fields: [sellerId], references: [id])
+  images         ProductImage[]
+  options        ProductOption[]
+  orderItems     OrderItem[]
+  reviews        ProductReview[]
+  categories     ProductCategory[]
+  detail         ProductDetail?
+  displayItems   ShopDisplayItem[]
+  wishItems      WishItem[]
+  restockAlerts  RestockAlert[]
   buyerInquiries BuyerInquiry[]
 
   @@unique([sellerId, id])
@@ -1187,8 +1188,12 @@ enum QueueItemStatus {
 model QueueItem {
   id                 String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   sellerId           String          @db.Uuid
-  orderId            String          @db.Uuid
-  orderItemId        String          @db.Uuid
+  // 내부 주문(orderId·orderItemId)이거나 외부 쇼핑몰 주문(externalOrderId·externalLineNo) 중 정확히 한쪽만 채운다(DB CHECK QueueItem_source_check).
+  // 외부 주문은 재고·결제·적립금·배송을 이 쪽에서 다루지 않는다(외부 쇼핑몰이 한다). 가짜 회원·상품 행을 만들지 않는다.
+  orderId            String?         @db.Uuid
+  orderItemId        String?         @db.Uuid
+  externalOrderId    String?         @db.Uuid
+  externalLineNo     Int?
   broadcastSessionId String?         @db.Uuid
   status             QueueItemStatus @default(WAITING)
   position           Int
@@ -1206,14 +1211,17 @@ model QueueItem {
   createdAt          DateTime        @default(now()) @db.Timestamptz(3)
 
   seller           Seller                   @relation(fields: [sellerId], references: [id])
-  order            Order                    @relation(fields: [sellerId, orderId], references: [sellerId, id])
-  orderItem        OrderItem                @relation(fields: [sellerId, orderItemId], references: [sellerId, id])
+  order            Order?                   @relation(fields: [sellerId, orderId], references: [sellerId, id])
+  orderItem        OrderItem?               @relation(fields: [sellerId, orderItemId], references: [sellerId, id])
+  externalOrder    ExternalOrder?           @relation(fields: [sellerId, externalOrderId], references: [sellerId, id])
   broadcastSession BroadcastSession?        @relation(fields: [sellerId, broadcastSessionId], references: [sellerId, id])
   statusHistory    QueueItemStatusHistory[]
   hitCards         HitCard[]
 
   @@unique([sellerId, id])
   @@unique([sellerId, orderItemId])
+  // 같은 외부 주문 줄은 한 번만 대기열에 오른다(웹훅 재전송·누락 보정 중복 방지)
+  @@unique([sellerId, externalOrderId, externalLineNo])
   @@index([sellerId, status, position])
   @@index([sellerId, broadcastSessionId])
 }
@@ -1650,14 +1658,14 @@ model BuyerPurchaseRestriction {
 // 파트너스가 회원 상세(SA-042)에 적는 회원 메모. 회원마다 1건(덮어쓰기), 작성자·수정 시각을 남긴다.
 // 자유 입력이라 개인정보가 섞일 수 있어 탈퇴 때 지운다(buyers/memberData.ts). 로그 추적에는 본문을 남기지 않고 글자 수만 남긴다.
 model MemberMemo {
-  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerId      String    @db.Uuid
-  buyerMemberId String    @db.Uuid
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String   @db.Uuid
+  buyerMemberId String   @db.Uuid
   body          String
   // 마지막으로 쓴 사람(파트너스 직원·대표자 id). 마스터 대리 조회는 쓰기를 못 하므로 직원만 들어간다.
-  updatedById   String?   @db.Uuid
-  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
-  updatedAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedById   String?  @db.Uuid
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @default(now()) @db.Timestamptz(3)
 
   buyerMember BuyerMember @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id], onDelete: Cascade)
 
@@ -2141,15 +2149,15 @@ model ProductCodeCounter {
 // 구매자 장바구니(SH-004, 로그인 회원만). 옵션마다 한 줄(같은 옵션을 다시 담으면 수량을 더한다). 회원당 50줄, 줄당 1~99개.
 // 가격·재고·판매 상태는 담을 때 저장하지 않고 볼 때마다 지금 값으로 계산한다(shop-cart/service.ts). 회원 탈퇴 때 지운다.
 model CartItem {
-  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerId      String   @db.Uuid
-  buyerMemberId String   @db.Uuid
-  optionId      String   @db.Uuid
-  quantity      Int
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId       String   @db.Uuid
+  buyerMemberId  String   @db.Uuid
+  optionId       String   @db.Uuid
+  quantity       Int
   // 담거나 수량을 바꿀 때 보여 준 단가(이벤트 할인 반영). 장바구니가 지금 단가와 비교해 「가격이 바뀌었어요」를 알린다. 비교용이라 주문 금액에는 쓰지 않는다. 이전 줄은 null.
   addedUnitPrice Int?
-  createdAt     DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt     DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 
   seller Seller        @relation(fields: [sellerId], references: [id])
   member BuyerMember   @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id], onDelete: Cascade)
@@ -2303,14 +2311,14 @@ enum ReturnReason {
 // 교환·반품 신청(주문당 진행 중인 신청은 1건: 부분 유니크 인덱스 ReturnRequest_one_active_per_order, 마이그레이션 SQL).
 // 반품은 주문 전체, 교환은 품목 단위(품목의 수량 전체). 환불은 기존 환불(refundOrder)을 부르고 실제 PG 취소는 결제 연결이 맡는다.
 model ReturnRequest {
-  id                     String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerId               String       @db.Uuid
-  orderId                String       @db.Uuid
-  buyerMemberId          String       @db.Uuid
+  id                     String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId               String            @db.Uuid
+  orderId                String            @db.Uuid
+  buyerMemberId          String            @db.Uuid
   kind                   ReturnKind
-  status                 ReturnStatus @default(REQUESTED)
+  status                 ReturnStatus      @default(REQUESTED)
   reason                 ReturnReason
-  reasonText             String       @default("")
+  reasonText             String            @default("")
   // 접수할 때 판매자가 정한 사유 주체(구매자 사정이면 반품 배송비를 받는다)
   fault                  RefundFault?
   rejectReason           String?
@@ -2318,29 +2326,29 @@ model ReturnRequest {
   returnCourier          String?
   returnTrackingNumber   String?
   // 회수 완료 때 재고를 되돌렸는지
-  restocked              Boolean      @default(false)
+  restocked              Boolean           @default(false)
   // 교환 발송 송장
   exchangeCourier        String?
   exchangeTrackingNumber String?
   // 반품 환불 결과(환불한 금액)
   refundAmount           Int?
   // v2: 수거 방법, 검수 결과, 교환 재고 없음 처리(재입고 뒤 발송 보류·환불 전환), 무통장 주문 환불 계좌(환불·종료 뒤 비운다)
-  pickupMethod           ReturnPickup @default(BUYER_SHIP)
+  pickupMethod           ReturnPickup      @default(BUYER_SHIP)
   inspectionResult       ReturnInspection?
   inspectionNote         String?
-  inspectedAt            DateTime?    @db.Timestamptz(3)
-  exchangeHeldAt         DateTime?    @db.Timestamptz(3)
-  convertedFromExchange  Boolean      @default(false)
+  inspectedAt            DateTime?         @db.Timestamptz(3)
+  exchangeHeldAt         DateTime?         @db.Timestamptz(3)
+  convertedFromExchange  Boolean           @default(false)
   refundBankName         String?
   refundAccountHolder    String?
   refundAccountNumber    String?
-  acceptedAt             DateTime?    @db.Timestamptz(3)
-  receivedAt             DateTime?    @db.Timestamptz(3)
-  completedAt            DateTime?    @db.Timestamptz(3)
-  rejectedAt             DateTime?    @db.Timestamptz(3)
-  cancelledAt            DateTime?    @db.Timestamptz(3)
-  createdAt              DateTime     @default(now()) @db.Timestamptz(3)
-  updatedAt              DateTime     @default(now()) @db.Timestamptz(3)
+  acceptedAt             DateTime?         @db.Timestamptz(3)
+  receivedAt             DateTime?         @db.Timestamptz(3)
+  completedAt            DateTime?         @db.Timestamptz(3)
+  rejectedAt             DateTime?         @db.Timestamptz(3)
+  cancelledAt            DateTime?         @db.Timestamptz(3)
+  createdAt              DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime          @default(now()) @db.Timestamptz(3)
 
   seller      Seller               @relation(fields: [sellerId], references: [id])
   order       Order                @relation(fields: [sellerId, orderId], references: [sellerId, id])
@@ -3085,11 +3093,11 @@ enum ReceiptIssueStatus {
 }
 
 model OrderReceiptRequest {
-  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerId      String      @db.Uuid
-  orderId       String      @db.Uuid
-  buyerMemberId String      @db.Uuid
-  kind          ReceiptKind
+  id             String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId       String      @db.Uuid
+  orderId        String      @db.Uuid
+  buyerMemberId  String      @db.Uuid
+  kind           ReceiptKind
   // 휴대폰·사업자등록번호(숫자). 원문은 저장하지 않고 AES-256-GCM으로 봉인해 두며(판매자 id를 AAD로 묶음), 화면에는 뒤 4자리만 보인다.
   identitySealed String
   identityLast4  String
@@ -3108,21 +3116,21 @@ model OrderReceiptRequest {
 }
 
 model ReceiptIssue {
-  id         String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerId   String             @db.Uuid
-  requestId  String             @db.Uuid
-  status     ReceiptIssueStatus @default(PENDING)
-  amount     Int
+  id          String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId    String             @db.Uuid
+  requestId   String             @db.Uuid
+  status      ReceiptIssueStatus @default(PENDING)
+  amount      Int
   // 외부 발급 건당비를 파트너스 「발송·이용 충전금」에서 차감하는 발급인지(docs/COST_POLICY.md). 차감 연동은 발행 업체 결정 뒤.
-  chargeable Boolean            @default(true)
-  attempts   Int                @default(0)
+  chargeable  Boolean            @default(true)
+  attempts    Int                @default(0)
   failureCode String?
   // 발행 업체가 준 문서 번호(연동 뒤)
   providerKey String?
-  issuedAt    DateTime?         @db.Timestamptz(3)
-  cancelledAt DateTime?         @db.Timestamptz(3)
-  createdAt   DateTime          @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime          @updatedAt @db.Timestamptz(3)
+  issuedAt    DateTime?          @db.Timestamptz(3)
+  cancelledAt DateTime?          @db.Timestamptz(3)
+  createdAt   DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime           @updatedAt @db.Timestamptz(3)
 
   request OrderReceiptRequest @relation(fields: [sellerId, requestId], references: [sellerId, id])
 
@@ -3139,14 +3147,14 @@ enum ReceiptCertStatus {
 }
 
 model SellerReceiptIssuer {
-  sellerId        String            @id @db.Uuid
-  businessNumber  String
-  companyName     String
-  representative  String
-  certStatus      ReceiptCertStatus @default(NOT_REGISTERED)
-  certCheckedAt   DateTime?         @db.Timestamptz(3)
-  createdAt       DateTime          @default(now()) @db.Timestamptz(3)
-  updatedAt       DateTime          @updatedAt @db.Timestamptz(3)
+  sellerId       String            @id @db.Uuid
+  businessNumber String
+  companyName    String
+  representative String
+  certStatus     ReceiptCertStatus @default(NOT_REGISTERED)
+  certCheckedAt  DateTime?         @db.Timestamptz(3)
+  createdAt      DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime          @updatedAt @db.Timestamptz(3)
 
   seller Seller @relation(fields: [sellerId], references: [id])
 }
@@ -3359,6 +3367,7 @@ model ExternalShopConnection {
 
   seller Seller                 @relation(fields: [sellerId], references: [id])
   events ExternalWebhookEvent[]
+  orders ExternalOrder[]
 
   @@unique([sellerId, id])
   @@unique([sellerId, shopKey])
@@ -3412,21 +3421,21 @@ enum BuyerInquiryStatus {
 // 구매자가 쓴 문의. 답변 전에만 구매자가 고치거나 지울 수 있다(지우면 행과 사진을 모두 지움).
 // 탈퇴하면 작성자 표시를 「탈퇴 회원」으로 바꾸고 사진은 지운다. 글은 판매자의 응대 기록으로 남긴다.
 model BuyerInquiry {
-  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerId          String             @db.Uuid
-  buyerMemberId     String             @db.Uuid
-  kind              BuyerInquiryKind
-  productId         String?            @db.Uuid
-  authorNickname    String
-  title             String
-  body              String
-  isPrivate         Boolean            @default(false)
-  status            BuyerInquiryStatus @default(WAITING)
-  answer            String?
-  answeredAt        DateTime?          @db.Timestamptz(3)
-  answeredBySellerUserId String?       @db.Uuid
-  createdAt         DateTime           @default(now()) @db.Timestamptz(3)
-  updatedAt         DateTime           @default(now()) @db.Timestamptz(3)
+  id                     String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId               String             @db.Uuid
+  buyerMemberId          String             @db.Uuid
+  kind                   BuyerInquiryKind
+  productId              String?            @db.Uuid
+  authorNickname         String
+  title                  String
+  body                   String
+  isPrivate              Boolean            @default(false)
+  status                 BuyerInquiryStatus @default(WAITING)
+  answer                 String?
+  answeredAt             DateTime?          @db.Timestamptz(3)
+  answeredBySellerUserId String?            @db.Uuid
+  createdAt              DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime           @default(now()) @db.Timestamptz(3)
 
   seller      Seller              @relation(fields: [sellerId], references: [id])
   buyerMember BuyerMember         @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id])
@@ -3513,4 +3522,27 @@ model AdminImpersonationSession {
 
   @@index([adminId, endedAt])
   @@index([sellerId, createdAt])
+}
+
+// 외부 쇼핑몰 주문(오버레이 전용 파트너스). 방송 표시에 필요한 최소 정보만 저장한다(개인정보 최소 수집, 보관 기간·삭제는 별도 확정 대기).
+// 내부 Order와 별개라 ONQ 회원·상품 행을 만들지 않는다. 같은 연결의 같은 외부 주문번호는 한 번만 저장한다.
+model ExternalOrder {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId        String    @db.Uuid
+  connectionId    String    @db.Uuid
+  externalOrderId String
+  // 방송에 보이는 이름(닉네임·마스킹된 이름). 없으면 「외부 주문」
+  buyerLabel      String?
+  // 취소·환불이 들어오면 취소로 바꾼다(주문 자체는 지우지 않는다)
+  cancelledAt     DateTime? @db.Timestamptz(3)
+  receivedAt      DateTime  @default(now()) @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
+
+  seller     Seller                 @relation(fields: [sellerId], references: [id])
+  connection ExternalShopConnection @relation(fields: [sellerId, connectionId], references: [sellerId, id])
+  queueItems QueueItem[]
+
+  @@unique([sellerId, id])
+  @@unique([connectionId, externalOrderId])
+  @@index([sellerId, receivedAt])
 }
