@@ -22,9 +22,13 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
   if (res.ok) return { ok: true, status: res.status, data: data as T };
   // 로그인이 풀렸으면(만료·로그아웃·비밀번호 변경) 어느 화면에서든 로그인으로 보낸다. 로그인·로그아웃 요청 자체의 401은 화면이 처리한다.
   if (res.status === 401 && init.authRedirect !== false && path.startsWith("/api/seller/") && !path.startsWith("/api/seller/auth/")) {
-    window.location.assign(`/seller/login?next=${encodeURIComponent(window.location.pathname)}`);
+    window.location.assign(`/seller/login?next=${encodeURIComponent(window.location.pathname)}&reason=expired`);
   }
   const body = data as { error?: string; message?: string } & Record<string, unknown>;
+  // 이용 정지 중 막힌 화면의 요청(403 seller_suspended)이면 정지 안내(AU-006)로 보낸다. 안내 화면 자신은 /me만 읽으므로 되돌아오지 않는다.
+  if (res.status === 403 && body.error === "seller_suspended" && path.startsWith("/api/seller/") && !path.startsWith("/api/seller/auth/") && window.location.pathname !== "/seller/suspended") {
+    window.location.assign("/seller/suspended");
+  }
   notifyPlanFeature(path, visit, res.status, body.error);
   return { ok: false, status: res.status, error: body.error ?? "unknown", message: body.message, body };
 }
@@ -102,6 +106,8 @@ export type Me = { sellerId: string; userId: string; isOwner: boolean; permissio
   features: PlanFeature[];
   // true면 STORE_OPERATIONS가 없어도(오버레이 전용으로 내린 뒤) 후속 처리할 주문·구매 제한이 남아 주문·배송·문의 메뉴를 계속 보인다
   orderFollowup?: boolean;
+  // 마스터가 이용 정지했는지. true면 정지 안내(AU-006)를 보이고, 서버가 막는 화면은 403 seller_suspended
+  suspended?: boolean;
   shop: { name: string; slug: string };
   user: { name: string; email: string };
   trialEndsAt: string | null;

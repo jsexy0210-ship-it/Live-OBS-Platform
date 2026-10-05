@@ -52,6 +52,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/staff/[userId]/password": "ACCOUNT",
   "seller/staff/[userId]/permissions": "ACCOUNT",
   "seller/orders": "ORDER_FOLLOWUP",
+  "seller/today-tasks": "ORDER_FOLLOWUP", // 홈 「오늘 처리할 일」(SA-002): 잠금 중에도 이미 받은 주문 처리 항목은 보임
   "seller/search": "ORDER_FOLLOWUP", // 전역 검색: 이미 받은 주문·문의를 잠김·정지 중에도 찾는다
   "seller/orders/[orderId]": "ORDER_FOLLOWUP",
   "seller/orders/[orderId]/cancel": "ORDER_FOLLOWUP",
