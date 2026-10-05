@@ -23,6 +23,9 @@ test.beforeAll(async () => {
   const inq = await db.platformInquiry.create({ data: { sellerId: seller.id, createdBySellerUserId: user.id, category: "OTHER", title: `닫힌 문의 ${run}`, status: "CLOSED", closedAt: new Date(), lastMessageAt: new Date() } });
   await db.platformInquiryMessage.create({ data: { sellerId: seller.id, inquiryId: inq.id, authorType: "SELLER_USER", sellerUserId: user.id, body: "내용입니다." } });
   ids.inquiry = inq.id;
+  const admin = await db.platformAdmin.findFirstOrThrow({ where: { email } });
+  const notice = await db.platformNotice.create({ data: { title: `상태 공지 ${run}`, body: "본문", category: "GENERAL", audience: "PARTNERS", createdByAdminId: admin.id, updatedByAdminId: admin.id, publishedAt: new Date() } });
+  ids.notice = notice.id;
 });
 test.afterAll(async () => {
   await db.$disconnect();
@@ -91,4 +94,20 @@ test("자동 연결 작업: 걸러 보기가 주소에서 와서 눌린 탭으�
   await expect(page.getByRole("button", { name: "실패", exact: true })).toHaveAttribute("aria-pressed", "true");
   await page.goto("/admin/ops/automation?filter=nope");
   await expect(page.getByRole("button", { name: "전체", exact: true })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("공지 목록: 제목 검색이 주소에 남고, 수정 화면에서 Back하면 검색 조건 그대로 돌아온다", async ({ page }) => {
+  await login(page);
+  await page.goto("/admin/support/notices");
+  await page.getByLabel("제목").fill(run);
+  await page.getByRole("button", { name: "검색" }).click();
+  await expect(page).toHaveURL(new RegExp(`q=${run}`));
+  const row = page.getByTestId("notice-row").filter({ hasText: `상태 공지 ${run}` });
+  await expect(row).toBeVisible();
+  await row.getByRole("link", { name: `상태 공지 ${run}` }).click();
+  await expect(page).toHaveURL(new RegExp(`/admin/support/notices/${ids.notice}`));
+  await page.goBack();
+  await expect(page).toHaveURL(new RegExp(`q=${run}`));
+  await expect(page.getByLabel("제목")).toHaveValue(run);
+  await expect(row).toBeVisible();
 });
