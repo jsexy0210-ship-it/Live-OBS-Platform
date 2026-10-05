@@ -111,7 +111,7 @@ describe("부분 환불 뒤 수량 표시", () => {
     await s.refund([{ orderItemId: s.packItem.id, quantity: 1 }]);
     await db.shipment.create({ data: { sellerId: s.seller.id, orderId: s.order.id, courier: "CJ", trackingNumber: "123456789012", status: "DELIVERED", shippedAt: new Date(), deliveredAt: new Date() } });
     const ctx = await buyerReturnContext(db, s.scope, s.order.id);
-    expect(ctx?.items).toEqual([{ orderItemId: s.packItem.id, productName: "팩", optionName: "1개", quantity: 2 }]);
+    expect(ctx?.items).toEqual([{ orderItemId: s.packItem.id, productName: "팩", optionName: "1개", quantity: 2, opened: false }]);
     expect(await createReturn(db, s.scope, s.order.id, { kind: "EXCHANGE", reason: "DEFECTIVE", orderItemIds: [s.boxItem.id] })).toMatchObject({ ok: false, reason: "invalid_items" });
     const r = await createReturn(db, s.scope, s.order.id, { kind: "RETURN", reason: "DEFECTIVE" });
     expect(r.ok).toBe(true);
