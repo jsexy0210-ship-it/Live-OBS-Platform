@@ -10,12 +10,15 @@ import { adminApi } from "../../../_components/api";
 import { AdminTopbar, useAdmin } from "../../../_components/AdminShell";
 import { SELLER_STATUS, SUBSCRIPTION_STATUS, day, dayTime, text, won, type SellerDetail, type SellerStatus } from "../../../_components/partners";
 import { MessageBalanceSection } from "../../../_components/MessageBalanceSection";
+import { ImpersonateDialog, type ImpersonationStart } from "../../../_components/ImpersonateDialog";
 import { SuspendDialog } from "../../../_components/SuspendDialog";
 import { useSmartBack } from "../../../../../../lib/client/navigation";
 
 // MA-012 파트너스 상세(GET /api/admin/sellers/{id}, 모든 마스터 역할): 기본 정보·대표자·사업자·구독·최근 30일 주문.
-// 이용 정지·해제(MA-015)는 최고관리자·운영만 버튼이 보인다. 활동 기록·메모 탭은 API가 생기면 붙인다.
+// 이용 정지·해제(MA-015)는 최고관리자·운영만 버튼이 보인다. 대리 조회(MA-016, 읽기 전용 30분)는 최고관리자·운영·CS만, 운영·정지 상태 쇼핑몰에서만 시작한다. 활동 기록·메모 탭은 API가 생기면 붙인다.
 type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; seller: SellerDetail };
+// 내가 열어 둔 대리 조회(GET /api/admin/impersonation)
+type Impersonation = { sellerId: string; shopName: string; slug: string; reason: string; startedAt: string; expiresAt: string };
 
 function Info({ title, id, rows }: { title: string; id: string; rows: [string, React.ReactNode][] }) {
   return (
@@ -40,6 +43,10 @@ export default function PartnerDetailPage() {
   const { sellerId } = useParams<{ sellerId: string }>();
   const { me } = useAdmin();
   const canModerate = adminCan(me.role, "seller.moderate");
+  const canImpersonate = adminCan(me.role, "seller.impersonate");
+  const [imp, setImp] = useState<Impersonation | null>(null);
+  const [impDialog, setImpDialog] = useState(false);
+  const [impBusy, setImpBusy] = useState(false);
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [dialog, setDialog] = useState(false);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
@@ -50,6 +57,28 @@ export default function PartnerDetailPage() {
     setState(r.ok ? { kind: "ok", seller: r.data.seller } : { kind: "error", status: r.status });
   }, [sellerId]);
   useEffect(() => void load(), [load]);
+  const loadImp = useCallback(async () => {
+    if (!canImpersonate) return;
+    const r = await adminApi<{ active: Impersonation | null }>("/api/admin/impersonation");
+    if (r.ok) setImp(r.data.active);
+  }, [canImpersonate]);
+  useEffect(() => void loadImp(), [loadImp]);
+  const endImp = async () => {
+    if (impBusy) return;
+    setImpBusy(true);
+    const r = await adminApi<{ ok: true }>("/api/admin/impersonation", { method: "DELETE" });
+    setImpBusy(false);
+    if (r.ok) {
+      setImp(null);
+      return setToast({ text: "대리 조회를 끝냈습니다." });
+    }
+    setToast({ text: r.message ?? "끝내지 못했습니다. 잠시 후 다시 시도해 주십시오.", neg: true });
+  };
+  const impStarted = (r: ImpersonationStart) => {
+    setImpDialog(false);
+    setToast(r.opened ? { text: "대리 조회를 시작했습니다. 새 창에서 파트너스 화면을 읽기 전용으로 봅니다." } : { text: "대리 조회를 시작했습니다. 새 창이 막혀 열지 못했습니다. 「파트너스 화면 열기」를 눌러 주십시오.", neg: true });
+    void loadImp();
+  };
 
   const s = state.kind === "ok" ? state.seller : null;
   const done = (status: SellerStatus) => {
@@ -70,6 +99,11 @@ export default function PartnerDetailPage() {
               {s && canModerate && (s.status === "ACTIVE" || s.status === "SUSPENDED") && (
                 <button className="btn btn-out" type="button" onClick={() => setDialog(true)}>
                   {s.status === "ACTIVE" ? "이용 정지" : "정지 해제"}
+                </button>
+              )}
+              {s && canImpersonate && (s.status === "ACTIVE" || s.status === "SUSPENDED") && (
+                <button className="btn btn-out" type="button" onClick={() => setImpDialog(true)}>
+                  대리 조회
                 </button>
               )}
               {s && (
@@ -96,6 +130,18 @@ export default function PartnerDetailPage() {
           </div>
         ) : (
           <div className="col" style={{ gap: 20 }}>
+            {imp && (
+              <div className="card pad row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }} role="status" data-testid="impersonation-active">
+                <b>{imp.sellerId === s.id ? "이 파트너스를 대리 조회 중입니다." : `${imp.shopName}을(를) 대리 조회 중입니다.`}</b>
+                <span className="t-l2 c-alt">{dayTime(imp.expiresAt)}까지 · 사유: {imp.reason}</span>
+                <button className="btn btn-sm btn-out" type="button" onClick={() => window.open("/seller", "_blank")}>
+                  파트너스 화면 열기
+                </button>
+                <button className="btn btn-sm" type="button" onClick={() => void endImp()} disabled={impBusy}>
+                  {impBusy ? "끝내는 중" : "대리 조회 끝내기"}
+                </button>
+              </div>
+            )}
             <div className="stat-row" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
               {[
                 ["최근 30일 주문", `${s.orders30d.created.toLocaleString("ko-KR")}건`, "partner-orders"],
@@ -182,6 +228,7 @@ export default function PartnerDetailPage() {
           }}
         />
       )}
+      {impDialog && s && <ImpersonateDialog seller={s} onClose={() => setImpDialog(false)} onDone={impStarted} />}
       {toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}
     </>
   );
