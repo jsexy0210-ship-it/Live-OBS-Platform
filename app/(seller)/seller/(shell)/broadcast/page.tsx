@@ -171,7 +171,7 @@ export default function BroadcastDashboardPage() {
     const r = await api<{ chatEnabled: boolean }>("/api/seller/youtube/live/chat", { method: "PUT", body: { enabled } });
     setChatBusy(false);
     setModal(null);
-    setToast(r.ok ? { text: enabled ? "채팅 수집을 켰습니다" : "채팅 수집을 껐습니다" } : { text: failMessage(r, "admin"), neg: true });
+    setToast(r.ok ? { text: enabled ? "채팅 가져오기를 켰습니다" : "채팅 가져오기를 껐습니다" } : { text: failMessage(r, "admin"), neg: true });
     await loadYoutube();
   };
 
@@ -313,11 +313,11 @@ export default function BroadcastDashboardPage() {
             <>
               {allowed && (
                 <button className="btn" type="button" data-testid="bc-hit-open" disabled={!live || locked} title={live ? undefined : "방송 중에만 등록할 수 있습니다"} onClick={() => setModal({ kind: "hit" })}>
-                  HIT 카드 등록 <span className="kbd">Ctrl+H</span>
+                  HIT 카드 기록하기 <span className="kbd">Ctrl+H</span>
                 </button>
               )}
               <Link className="btn btn-out" href="/seller/overlay">
-                오버레이 주소
+                방송 화면 주소
               </Link>
             </>
           }
@@ -335,7 +335,7 @@ export default function BroadcastDashboardPage() {
                 <Locked />
               ) : state.status === 403 && state.error === "plan_feature_required" ? (
                 <div className="st" style={{ boxShadow: "none" }}>
-                  <span className="t">현재 플랜에서 제공하지 않는 기능입니다</span>
+                  <span className="t">지금 이용 중인 이용권에는 이 기능이 없습니다. 구독 화면에서 이용권을 바꾸면 사용할 수 있습니다</span>
                 </div>
               ) : state.status === 403 ? (
                 <NoPermission need="방송 진행" />
@@ -360,7 +360,7 @@ export default function BroadcastDashboardPage() {
                 <div className="bc-sum-g">
                   <SumTile label="주문" value={sum ? `${sum.summary.orders.toLocaleString("ko-KR")}건` : "-"} />
                   <SumTile label="매출" value={sum ? won(sum.summary.sales) : "-"} />
-                  <SumTile label="완료 / 취소" value={sum ? `${sum.summary.completed} / ${sum.summary.cancelled}` : "-"} />
+                  <SumTile label="완료 / 뺀 주문" value={sum ? `${sum.summary.completed} / ${sum.summary.cancelled}` : "-"} />
                   <SumTile label="HIT" value={sum ? `${sum.summary.hits}장` : "-"} />
                 </div>
               </section>
@@ -379,7 +379,7 @@ export default function BroadcastDashboardPage() {
                       <span className="t-c1 c-alt">{kstTime(live.startedAt)} 시작</span>
                     </div>
                     <button className="btn btn-out" type="button" disabled={locked} onClick={() => live && setModal({ kind: "end", sessionId: live.id })}>
-                      방송 종료
+                      방송 끝내기
                     </button>
                   </div>
                 ) : (
@@ -411,15 +411,15 @@ export default function BroadcastDashboardPage() {
                             disabled={chatBusy}
                             onChange={(e) => (e.target.checked ? setModal({ kind: "chat-on" }) : void setChatEnabled(false))}
                           />
-                          유튜브 채팅 수집
+                          유튜브 채팅 가져오기
                         </label>
-                        <span className="t-c1 c-alt">{yt.live.chatEnabled ? "켬 · 주문대기에 채팅 확인 여부를 표시만 합니다" : "끔 · 기본은 끔입니다"}</span>
+                        <span className="t-c1 c-alt">{yt.live.chatEnabled ? "켜짐 · 주문한 사람이 채팅했는지 주문대기 표에 표시합니다. 주문에는 영향이 없습니다" : "꺼짐 · 채팅을 가져오지 않습니다"}</span>
                       </>
                     ) : (
                       <>
-                        <span className="t-c1 c-alt">유튜브 방송을 연결하면 채팅을 모을 수 있습니다</span>
+                        <span className="t-c1 c-alt">유튜브 방송을 이어 두면 채팅을 가져올 수 있습니다</span>
                         <Link className="btn btn-sm btn-out" href="/seller/youtube">
-                          유튜브 연결
+                          유튜브 이어 두기
                         </Link>
                       </>
                     )}
@@ -465,6 +465,7 @@ export default function BroadcastDashboardPage() {
                 <h2 className="t-hl1" id="bc-waiting-h">
                   {live ? "대기" : "방송 전 대기"} <span className="c-alt fw5">{waiting.length}건</span>
                 </h2>
+                <span className="t-c1 c-alt">주문대기는 방송에서 개봉할 차례를 기다리는 주문입니다</span>
                 {!live && waiting.length > 0 && <span className="t-c1 c-alt">방송을 시작하면 이 순서대로 방송에 들어갑니다</span>}
                 {waiting.length === 0 ? (
                   <span className="t-l2 c-alt">대기 중인 주문이 없습니다</span>
@@ -474,7 +475,7 @@ export default function BroadcastDashboardPage() {
                       <thead>
                         <tr>
                           <th style={{ width: 48 }}>순서</th>
-                          <th style={{ width: 80 }}>접수</th>
+                          <th style={{ width: 80 }}>주문 시각</th>
                           <th>구매자 · 상품</th>
                           {chatOn && (
                             <th style={{ width: 150 }} data-testid="bc-chat-head">
@@ -482,7 +483,7 @@ export default function BroadcastDashboardPage() {
                             </th>
                           )}
                           <th style={{ width: 70 }}>타이머</th>
-                          <th style={{ width: 240 }}>관리</th>
+                          <th style={{ width: 240 }}>조작</th>
                         </tr>
                       </thead>
                       <tbody data-testid="bc-waiting">
@@ -508,10 +509,10 @@ export default function BroadcastDashboardPage() {
                                   ↓
                                 </button>
                                 <button className="btn btn-sm btn-out" type="button" disabled={locked} onClick={() => setModal({ kind: "timer", item: w })}>
-                                  타이머
+                                  타이머 정하기
                                 </button>
                                 <button className="btn btn-sm btn-out" type="button" disabled={locked} onClick={() => setModal({ kind: "cancel", item: w })}>
-                                  취소
+                                  주문대기에서 빼기
                                 </button>
                               </span>
                             </td>
@@ -538,7 +539,7 @@ export default function BroadcastDashboardPage() {
                           <th style={{ width: 70 }}>시각</th>
                           <th>구매자 · 상품</th>
                           <th style={{ width: 70 }}>결과</th>
-                          <th style={{ width: 90 }}>관리</th>
+                          <th style={{ width: 90 }}>조작</th>
                         </tr>
                       </thead>
                       <tbody data-testid="bc-done">
@@ -574,11 +575,11 @@ export default function BroadcastDashboardPage() {
             <aside className="col bc-side" style={{ gap: 16 }}>
             <section className="card pad col" style={{ gap: 10 }} aria-labelledby="bc-ov-h">
               <h2 className="t-hl2" id="bc-ov-h">
-                오버레이
+                방송 화면
               </h2>
-              <span className="t-c1 c-alt">OBS 브라우저 소스에 넣는 주소는 발급할 때 한 번만 보입니다. 잃어버리면 다시 발급해 주십시오.</span>
+              <span className="t-c1 c-alt">방송 화면 주소는 만들 때 한 번만 보여 드립니다. 잃어버리면 새로 만들어 주십시오. 새로 만들면 예전 주소는 쓸 수 없습니다.</span>
               <Link className="btn btn-sm btn-out" href="/seller/overlay">
-                오버레이 주소 발급
+                방송 화면 주소 만들기
               </Link>
             </section>
             <section className="card pad col bc-keys" style={{ gap: 10 }} aria-labelledby="bc-keys-h">
@@ -590,7 +591,7 @@ export default function BroadcastDashboardPage() {
                 <dd>
                   <span className="kbd">Ctrl+Enter</span>
                 </dd>
-                <dt>HIT 카드 등록</dt>
+                <dt>HIT 카드 기록하기</dt>
                 <dd>
                   <span className="kbd">Ctrl+H</span>
                 </dd>
@@ -598,7 +599,7 @@ export default function BroadcastDashboardPage() {
                 <dd>
                   <span className="kbd">Ctrl+↑</span>
                 </dd>
-                <dt>개봉 중 취소</dt>
+                <dt>개봉 중 주문 빼기</dt>
                 <dd>
                   <span className="kbd">Ctrl+Backspace</span>
                 </dd>
@@ -626,7 +627,7 @@ export default function BroadcastDashboardPage() {
           onClose={() => setModal(null)}
           onDone={() => {
             setModal(null);
-            setToast({ text: "HIT 카드를 등록했습니다. 오버레이에 바로 나옵니다" });
+            setToast({ text: "HIT 카드를 기록했습니다. 방송 화면에 바로 나옵니다" });
             void load();
           }}
         />
@@ -636,7 +637,7 @@ export default function BroadcastDashboardPage() {
           <div className="modal">
             <div className="modal-h">
               <h2 className="t-h2" id="bc-chat-title">
-                유튜브 채팅 수집을 켜시겠습니까?
+                유튜브 채팅 가져오기를 켜시겠습니까?
               </h2>
               <span className="t-l2 c-alt" data-testid="bc-chat-notice">
                 {yt.chatNotice}
@@ -644,10 +645,10 @@ export default function BroadcastDashboardPage() {
             </div>
             <div className="modal-f">
               <button className="btn btn-out" type="button" disabled={chatBusy} onClick={() => setModal(null)}>
-                닫기
+                취소
               </button>
               <button className="btn" type="button" disabled={chatBusy} onClick={() => void setChatEnabled(true)}>
-                켜기
+                채팅 가져오기 켜기
               </button>
             </div>
           </div>
@@ -662,7 +663,7 @@ export default function BroadcastDashboardPage() {
 // 서버는 방송 시간 안에 들어온 주문만 채팅과 맞춰 본다. 그 밖(방송 전 주문)은 확인 대상이 아니라 「-」로 두어 「채팅 없음」으로 오해하지 않게 한다
 function chatText(c: ChatMatch | undefined): string {
   if (!c) return "-";
-  return c.matched ? `채팅 확인됨${c.lastChatAt ? ` · 마지막 ${kstTime(c.lastChatAt)}` : ""}` : "채팅 없음";
+  return c.matched ? `채팅함${c.lastChatAt ? ` · 마지막 채팅 시각 ${kstTime(c.lastChatAt)}` : ""}` : "채팅 기록 없음";
 }
 
 function ChatStateBand({ status }: { status: ChatStatus | null }) {
@@ -720,10 +721,10 @@ function OpeningPanel({ item, now, busy, onComplete, onTimer, onCancel }: { item
       </button>
       <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
         <button className="btn btn-out" type="button" disabled={busy} onClick={onTimer}>
-          타이머 <span className="kbd">Ctrl+↑ +30초</span>
+          타이머 정하기 <span className="kbd">Ctrl+↑ +30초</span>
         </button>
         <button className="btn btn-out" type="button" disabled={busy} onClick={onCancel}>
-          취소 <span className="kbd">Ctrl+Backspace</span>
+          주문대기에서 빼기 <span className="kbd">Ctrl+Backspace</span>
         </button>
       </div>
     </div>

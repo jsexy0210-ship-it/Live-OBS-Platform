@@ -32,7 +32,7 @@ async function openAndStart(page: Page) {
 test("연결된 유튜브 방송이 없으면 토글과 채팅 열이 없고 연결 안내만 보인다", async ({ page }) => {
   await resetYoutube();
   await openAndStart(page);
-  await expect(page.getByTestId("bc-chat-bar")).toContainText("유튜브 방송을 연결하면 채팅을 모을 수 있습니다");
+  await expect(page.getByTestId("bc-chat-bar")).toContainText("유튜브 방송을 이어 두면 채팅을 가져올 수 있습니다");
   await expect(page.getByTestId("bc-chat-bar").getByRole("link", { name: "유튜브 연결" })).toHaveAttribute("href", "/seller/youtube");
   await expect(page.getByTestId("bc-chat-toggle")).toHaveCount(0);
   await expect(page.getByTestId("bc-chat-head")).toHaveCount(0);
@@ -47,14 +47,14 @@ test("채팅 수집은 기본 꺼짐: 켜기 전 보관 고지를 확인하고, 
 
   // 켜기: 보관 고지가 있는 확인 창. 닫으면 켜지지 않는다
   await toggle.click();
-  const dlg = page.getByRole("dialog", { name: "유튜브 채팅 수집을 켜시겠습니까?" });
+  const dlg = page.getByRole("dialog", { name: "유튜브 채팅 가져오기를 켜시겠습니까?" });
   await expect(page.getByTestId("bc-chat-notice")).toContainText("30일 동안 보관합니다");
-  await dlg.getByRole("button", { name: "닫기" }).click();
+  await dlg.getByRole("button", { name: "취소" }).click();
   await expect(toggle).not.toBeChecked();
   expect(await chatEnabledInDb()).toBe(false);
 
   await toggle.click();
-  await page.getByRole("dialog", { name: "유튜브 채팅 수집을 켜시겠습니까?" }).getByRole("button", { name: "켜기" }).click();
+  await page.getByRole("dialog", { name: "유튜브 채팅 가져오기를 켜시겠습니까?" }).getByRole("button", { name: "채팅 가져오기 켜기" }).click();
   await expect(toggle).toBeChecked();
   expect(await chatEnabledInDb()).toBe(true);
   await expect(page.getByTestId("bc-chat-head")).toBeVisible();
@@ -65,8 +65,8 @@ test("채팅 수집은 기본 꺼짐: 켜기 전 보관 고지를 확인하고, 
   await attachLiveAndChat(B, [NICKS[0]]);
   await page.reload();
   const rowB = page.getByTestId("bc-waiting").locator("tr", { hasText: B });
-  await expect(rowB.getByTestId("bc-chat-cell")).toContainText("채팅 확인됨 · 마지막");
-  await expect(page.getByTestId("bc-waiting").locator("tr", { hasText: NICKS[0] }).getByTestId("bc-chat-cell")).toHaveText("채팅 없음");
+  await expect(rowB.getByTestId("bc-chat-cell")).toContainText("채팅함 · 마지막 채팅 시각");
+  await expect(page.getByTestId("bc-waiting").locator("tr", { hasText: NICKS[0] }).getByTestId("bc-chat-cell")).toHaveText("채팅 기록 없음");
   await expect(page.getByTestId("bc-waiting").locator("tr", { hasText: NICKS[2] }).getByTestId("bc-chat-cell")).toHaveText("-");
 
   // 끄기는 확인 없이 바로, 열도 사라진다

@@ -58,7 +58,7 @@ test("대표자: 방송 시작부터 개봉·타이머·완료·되돌리기·�
   await expect(page.getByTestId("bc-live-badge")).toBeVisible();
   await expect(page.getByTestId("bc-title")).toHaveText("e2e 라이브");
   await expect(page.getByTestId("bc-summary")).toContainText("지금 방송");
-  await expect(page.getByTestId("bc-summary")).toContainText("완료 / 취소");
+  await expect(page.getByTestId("bc-summary")).toContainText("완료 / 뺀 주문");
   await expect(page.getByRole("heading", { name: /^대기 3건/ })).toBeVisible();
 
   // 개봉 시작(버튼) → A 개봉 중
@@ -90,26 +90,26 @@ test("대표자: 방송 시작부터 개봉·타이머·완료·되돌리기·�
   // 대기 타이머 설정(창): C에 3분
   const rowC = page.getByTestId("bc-waiting").locator("tr", { hasText: C });
   await rowC.getByRole("button", { name: "타이머" }).click();
-  const timer = page.getByRole("dialog", { name: "타이머 설정" });
+  const timer = page.getByRole("dialog", { name: "개봉 시간 알림을 정하시겠습니까?" });
   await timer.getByRole("button", { name: "3분" }).click();
-  await timer.getByRole("button", { name: "저장" }).click();
+  await timer.getByRole("button", { name: "이 시간으로 정하기" }).click();
   await expect(timer).toHaveCount(0);
   await expect(rowC).toContainText("3:00");
 
   // 대기 취소: 사유가 있어야 한다
-  await rowC.getByRole("button", { name: "취소" }).click();
+  await rowC.getByRole("button", { name: "주문대기에서 빼기" }).click();
   const cancel = page.getByRole("dialog", { name: "이 주문을 취소하시겠습니까?" });
-  await expect(cancel.getByRole("button", { name: "주문대기 취소" })).toBeDisabled();
-  await cancel.getByLabel("취소 사유").fill("구매자 요청");
-  await cancel.getByRole("button", { name: "주문대기 취소" }).click();
+  await expect(cancel.getByRole("button", { name: "주문대기에서 빼기" })).toBeDisabled();
+  await cancel.getByLabel("빼는 이유").fill("구매자 요청");
+  await cancel.getByRole("button", { name: "주문대기에서 빼기" }).click();
   await expect(cancel).toHaveCount(0);
   await expect(waitingNames(page)).toHaveText([B]);
 
   // 방송 종료 → 남은 B는 방송 전 대기로
-  await page.getByRole("button", { name: "방송 종료" }).click();
-  const end = page.getByRole("dialog", { name: "방송을 종료하시겠습니까?" });
+  await page.getByRole("button", { name: "방송 끝내기" }).click();
+  const end = page.getByRole("dialog", { name: "방송을 끝내시겠습니까?" });
   await expect(end).toContainText("남은 대기 1건은 다음 방송으로 넘어갑니다");
-  await end.getByRole("button", { name: "방송 종료" }).click();
+  await end.getByRole("button", { name: "방송 끝내기" }).click();
   await expect(page.getByTestId("bc-live-badge")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: /방송 전 대기 1건/ })).toBeVisible();
 
@@ -224,8 +224,8 @@ test("되돌리기는 지금 방송에서 완료한 주문에만 보인다(방�
   await page.keyboard.press("Control+Enter");
   const done = page.getByTestId("bc-done").locator("tr", { hasText: A });
   await expect(done.getByRole("button", { name: "되돌리기" })).toBeVisible();
-  await page.getByRole("button", { name: "방송 종료" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "방송 종료" }).click();
+  await page.getByRole("button", { name: "방송 끝내기" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "방송 끝내기" }).click();
   await expect(page.getByTestId("bc-live-badge")).toHaveCount(0);
   await page.getByRole("button", { name: "방송 시작" }).click();
   await expect(page.getByTestId("bc-live-badge")).toBeVisible();
@@ -241,7 +241,7 @@ test("변경 뒤 다시 읽기가 실패하면 변경 조작을 모두 끄고, �
   await expect(page.getByTestId("bc-stale")).toContainText("다시 불러오기 전까지 변경할 수 없습니다");
   // 옛 version을 가진 화면에서는 버튼·단축키·창 확인이 모두 막힌다
   await expect(complete).toBeDisabled();
-  await expect(page.getByRole("button", { name: "방송 종료" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "방송 끝내기" })).toBeDisabled();
   await page.keyboard.press("Control+ArrowUp");
   await page.keyboard.press("Control+Enter");
   await page.waitForTimeout(300);
@@ -292,14 +292,14 @@ test("종료 확인 창이 열린 사이 다른 화면이 방송을 바꾸면 �
   await page.getByLabel("방송 제목").fill("방송 A");
   await page.getByRole("button", { name: "방송 시작" }).click();
   await expect(page.getByTestId("bc-title")).toHaveText("방송 A");
-  await page.getByRole("button", { name: "방송 종료" }).click();
-  const dialog = page.getByRole("dialog", { name: "방송을 종료하시겠습니까?" });
+  await page.getByRole("button", { name: "방송 끝내기" }).click();
+  const dialog = page.getByRole("dialog", { name: "방송을 끝내시겠습니까?" });
   await expect(dialog).toBeVisible();
   // 다른 창: A를 끝내고 B를 시작
   const other = await context.newPage();
   await other.goto("/seller/broadcast");
-  await other.getByRole("button", { name: "방송 종료" }).click();
-  await other.getByRole("dialog").getByRole("button", { name: "방송 종료" }).click();
+  await other.getByRole("button", { name: "방송 끝내기" }).click();
+  await other.getByRole("dialog").getByRole("button", { name: "방송 끝내기" }).click();
   await other.getByLabel("방송 제목").fill("방송 B");
   await other.getByRole("button", { name: "방송 시작" }).click();
   await expect(other.getByTestId("bc-title")).toHaveText("방송 B");
@@ -320,7 +320,7 @@ test("보던 중 권한·이용 상태가 끝나면(403) 옛 내용과 버튼을
   await expect(page.getByText("이 기능은 권한이 필요합니다")).toBeVisible();
   await expect(page.getByTestId("bc-opening")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /개봉 완료/ })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "방송 종료" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "방송 끝내기" })).toHaveCount(0);
 });
 
 test("Ctrl+Enter를 누른 채 있어도(자동 반복) 완료는 한 번만, 다음 주문이 저절로 개봉되지 않는다", async ({ page }) => {
