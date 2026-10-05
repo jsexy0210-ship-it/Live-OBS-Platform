@@ -622,8 +622,18 @@ export async function refundOrder(
     await tx.order.update({ where: { id: orderId }, data: { refundAmount, refundFault, returnFeeDeducted } });
     // 카드 결제 주문이면 환불액만큼 PG 취소 요청을 같은 트랜잭션에 남긴다(PG 호출은 커밋 뒤, payments/service.ts)
     await requestPaymentCancel(tx, { sellerId: ctx.sellerId, orderId, amount: refundAmount, reason, idempotencyKey: `refund:${orderId}` });
-    // 쓴 적립금 반환: 전액 환불이면 전부, 부분 환불이면 환불액 비율만큼(1원 미만 버림, payments/rewardUse.ts)
-    await returnRewardForOrder(tx, { sellerId: ctx.sellerId, orderId, refundAmount, now, reason });
+    // 쓴 적립금 반환(payments/rewardUse.ts): 상품 금액 기준. 구매자 사정으로 남기는 개봉 품목만 빠지고, 상품이 전부 돌아오면 전부 반환.
+    const rewardItems = order.items.map((i) => ({
+      value: i.unitPrice * i.quantity - itemCouponDiscount(order.couponRedemption, i.optionId),
+      kept: refundFault === "BUYER" && isOpened(order.queueItems.find((x) => x.orderItemId === i.id)),
+    }));
+    await returnRewardForOrder(tx, {
+      sellerId: ctx.sellerId,
+      orderId,
+      items: { refunded: rewardItems.reduce((s, i) => s + (i.kept ? 0 : i.value), 0), ordered: rewardItems.reduce((s, i) => s + i.value, 0) },
+      now,
+      reason,
+    });
     // 결제 금액 전부를 돌려주면 전체 취소로 보고 쓴 쿠폰을 되돌린다. 일부만 돌려주면 되돌리지 않는다(MASTER 2026-10-04).
     // 개봉한 품목을 구매자 사정으로 남기는 환불은 금액이 결제 금액과 같아도 전체 취소가 아니다(Codex 4176403238).
     const keepsItems = refundFault === "BUYER" && openedItemCount > 0;

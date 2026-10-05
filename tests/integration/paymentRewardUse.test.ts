@@ -51,11 +51,13 @@ describe("적립금 사용 규칙(계산)", () => {
     expect(rewardUseLimit({ itemsSubtotal: 5000, shippingFee: 0, couponDiscount: 0, couponIsShipping: false })).toBe(4999);
   });
 
-  it("반환: 취소·전액 환불은 전부, 부분 환불은 비율(1원 미만 버림)", () => {
-    expect(rewardReturnAmount({ rewardUsedAmount: 3000, totalAmount: 5000 })).toBe(3000);
-    expect(rewardReturnAmount({ rewardUsedAmount: 3000, totalAmount: 5000, refundAmount: 5000 })).toBe(3000);
-    expect(rewardReturnAmount({ rewardUsedAmount: 3000, totalAmount: 7000, refundAmount: 2000 })).toBe(857); // 857.14…
-    expect(rewardReturnAmount({ rewardUsedAmount: 0, totalAmount: 7000, refundAmount: 2000 })).toBe(0);
+  it("반환: 취소·상품 전부 환불은 전부, 일부 상품 환불은 상품 금액 비율로 10원 단위 내림", () => {
+    expect(rewardReturnAmount({ rewardUsedAmount: 3000 })).toBe(3000);
+    expect(rewardReturnAmount({ rewardUsedAmount: 3010, items: { refunded: 12000, ordered: 12000 } })).toBe(3010); // 전부면 끝수까지 전부
+    expect(rewardReturnAmount({ rewardUsedAmount: 3010, items: { refunded: 5000, ordered: 12000 } })).toBe(1250); // 1254.16… → 1250
+    expect(rewardReturnAmount({ rewardUsedAmount: 3000, items: { refunded: 2000, ordered: 7000 } })).toBe(850); // 857.14… → 850
+    expect(rewardReturnAmount({ rewardUsedAmount: 3000, items: { refunded: 0, ordered: 7000 } })).toBe(0);
+    expect(rewardReturnAmount({ rewardUsedAmount: 0, items: { refunded: 2000, ordered: 7000 } })).toBe(0);
   });
 });
 
@@ -128,7 +130,7 @@ describe("쓴 적립금 반환", () => {
     expect(await db.rewardLedger.count({ where: { orderId: r.orderId, amount: { gt: 0 } } })).toBe(1);
   });
 
-  it("전액 환불은 전부, 발송 뒤 구매자 사정 부분 환불은 환불액 비율만큼(1원 미만 버림) 돌려준다", async () => {
+  it("전액 환불은 전부, 상품을 모두 돌려받는 구매자 사정 환불(반품 배송비 차감)도 전부 돌려준다", async () => {
     const s = await shop();
     const full = await s.order(3000);
     if (!full.ok) throw new Error(full.reason);
@@ -136,17 +138,41 @@ describe("쓴 적립금 반환", () => {
     expect(await refundOrder(db, s.ctx, full.orderId, { reason: "구매자 요청", expectedLiveVersion: await lv(s.seller.id) })).toMatchObject({ ok: true, value: { refundAmount: 5000 } });
     expect(await balanceOf(s.seller.id, s.buyer.id)).toBe(10000);
 
-    // 상품 5,000 × 2 + 배송비 3,000 − 적립금 3,000 = 결제 10,000원. 발송 뒤 구매자 사정: 상품 10,000 − 반품 배송비 → 환불액 < 결제액
-    const part = await s.order(3000, 2);
-    if (!part.ok) throw new Error(part.reason);
-    expect(part.totalAmount).toBe(10000);
-    await markOrderPaid(db, { sellerId: s.seller.id, orderId: part.orderId, paymentMethod: "CARD" });
-    expect(await shipOrder(db, s.ctx, part.orderId, { courier: "CJ", trackingNumber: "123456789012" })).toMatchObject({ ok: true });
-    const before = await balanceOf(s.seller.id, s.buyer.id);
-    const rr = await refundOrder(db, s.ctx, part.orderId, { reason: "단순 변심", fault: "BUYER", expectedLiveVersion: await lv(s.seller.id) });
+    const shipped = await s.order(3010, 2);
+    if (!shipped.ok) throw new Error(shipped.reason);
+    await markOrderPaid(db, { sellerId: s.seller.id, orderId: shipped.orderId, paymentMethod: "CARD" });
+    expect(await shipOrder(db, s.ctx, shipped.orderId, { courier: "CJ", trackingNumber: "123456789012" })).toMatchObject({ ok: true });
+    const rr = await refundOrder(db, s.ctx, shipped.orderId, { reason: "단순 변심", fault: "BUYER", expectedLiveVersion: await lv(s.seller.id) });
     if (!rr.ok) throw new Error(rr.reason);
-    const refund = rr.value.refundAmount;
-    expect(refund).toBeLessThan(10000);
-    expect((await balanceOf(s.seller.id, s.buyer.id)) - before).toBe(Math.floor((3000 * refund) / 10000));
+    expect(rr.value.refundAmount).toBeLessThan(10000 + 3000 - 3010); // 반품 배송비를 뺀 현금 환불
+    expect(await balanceOf(s.seller.id, s.buyer.id)).toBe(10000); // 상품은 전부 돌아왔으므로 적립금은 전부
+  });
+
+  it("개봉한 품목을 구매자가 갖는 부분 환불은 돌려주는 상품 금액 비율로 10원 단위 내림", async () => {
+    const s = await shop();
+    const product2 = await db.product.create({ data: { sellerId: s.seller.id, name: "박스", price: 7000, status: "ON_SALE" } });
+    const option2 = await db.productOption.create({ data: { sellerId: s.seller.id, productId: product2.id, name: "1박스", stock: 10 } });
+    // 상품 5,000 + 7,000 = 12,000 + 배송비 3,000 − 적립금 3,010 = 결제 11,990
+    const r = await createOrder(db, {
+      sellerId: s.seller.id,
+      buyerMemberId: s.buyer.id,
+      items: [{ optionId: s.option.id, quantity: 1 }, { optionId: option2.id, quantity: 1 }],
+      consent,
+      shippingAddress,
+      rewardUseAmount: 3010,
+    });
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.totalAmount).toBe(11990);
+    await markOrderPaid(db, { sellerId: s.seller.id, orderId: r.orderId, paymentMethod: "CARD" });
+    // 7,000원 품목은 개봉을 마쳐 구매자가 갖는다 → 5,000원 품목만 돌아온다
+    const opened = await db.orderItem.findFirstOrThrow({ where: { orderId: r.orderId, optionId: option2.id } });
+    await db.queueItem.updateMany({ where: { orderItemId: opened.id }, data: { status: "DONE", openingStartedAt: new Date() } });
+    expect(await shipOrder(db, s.ctx, r.orderId, { courier: "CJ", trackingNumber: "123456789012" })).toMatchObject({ ok: true });
+    const before = await balanceOf(s.seller.id, s.buyer.id);
+    const rr = await refundOrder(db, s.ctx, r.orderId, { reason: "단순 변심", fault: "BUYER", confirmOpened: true, expectedLiveVersion: await lv(s.seller.id) });
+    if (!rr.ok) throw new Error(rr.reason);
+    // 3,010 × 5,000 ÷ 12,000 = 1,254.16… → 1,250
+    expect((await balanceOf(s.seller.id, s.buyer.id)) - before).toBe(1250);
+    expect(await db.rewardLedger.findFirstOrThrow({ where: { idempotencyKey: `use_return:${r.orderId}` } })).toMatchObject({ amount: 1250, status: "SUCCEEDED" });
   });
 });
