@@ -20,6 +20,7 @@ import {
   type QueueItem,
   type Snapshot,
 } from "../../../../../components/seller/broadcast/queue";
+import { SourceBadge } from "../../../../../components/seller/broadcast/SourceBadge";
 import { won } from "../../../../../components/seller/format";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage, type ApiResult } from "../../../../../components/seller/api";
@@ -689,7 +690,7 @@ function ItemText({ item }: { item: QueueItem }) {
     <span className="col bc-item">
       <span className="t-l1 fw6 ell">
         {item.nicknameSnapshot}
-        {item.gradeSnapshot && <span className="t-c1 c-alt fw5"> · {item.gradeSnapshot}</span>}
+        {item.gradeSnapshot && <span className="t-c1 c-alt fw5"> · {item.gradeSnapshot}</span>} <SourceBadge source={item.source} />
       </span>
       <span className="t-c1 c-alt ell">
         {item.productLabel} ×{item.quantity}
