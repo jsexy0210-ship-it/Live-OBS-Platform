@@ -13,12 +13,12 @@
 | PF 플랫폼 소개·가입 | 10 | 2 | 0 | 8 |
 | AU 공통 인증 | 12 | 7 | 0 | 5 |
 | MA 마스터 관리자 | 39 | 13 | 19 | 7 |
-| SA 파트너스 관리자 | 68 | 30 | 24 | 14 |
+| SA 파트너스 관리자 | 68 | 31 | 23 | 14 |
 | OV OBS 오버레이 | 8 | 5 | 0 | 3 |
 | SH 구매자 쇼핑몰 | 29 | 19 | 0 | 10 |
-| 합계 | 166 | 76 | 43 | 47 |
+| 합계 | 166 | 77 | 42 | 47 |
 
-미구현(자리만 + 남음) 합계 90.
+미구현(자리만 + 남음) 합계 89.
 
 ## PF
 
@@ -82,7 +82,6 @@
 - SA-006 외부 쇼핑몰 연동 관리
 - SA-015 카테고리 관리 (API `/api/seller/categories`는 있음, 화면은 상품 목록 필터에서만 사용)
 - SA-016 상품 진열 (API `/api/seller/display`만)
-- SA-017 재입고 알림
 - SA-018 엑셀 일괄 등록·내보내기
 - SA-024 현금영수증·세금계산서
 - SA-026 입금 확인 (API `/api/seller/payments/deposits`만)
@@ -186,6 +185,7 @@ SA
 - SA-041 회원 목록 — `/seller/members`
 - SA-042 회원 상세 — `/seller/members/[memberId]` (부분: 주문 목록·메모·등급 조정·적립금 지급 없음)
 - SA-043 구매 제한 — `/seller/purchase-restrictions` (직접 막기 없음)
+- SA-017 재입고 알림 — `/seller/products/restock-alerts` (상품별 대기·발송 수 조회만. 실제 발송은 서버 미연결이라 기록만, 설정 API 없음. 메뉴 href는 레이아웃 전담 몫)
 - SA-046 구매자 문의 목록 · SA-047 문의 상세·답변 — `/seller/buyer-inquiries` (상세는 목록 위 창. 「구매자 문의」 메뉴 href 연결은 레이아웃 전담 몫)
 - SA-048 상품 리뷰 — `/seller/reviews`
 - SA-051 오버레이 편집기 — `/seller/overlay`
