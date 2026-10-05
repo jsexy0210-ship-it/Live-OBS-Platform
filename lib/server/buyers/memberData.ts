@@ -19,6 +19,7 @@ export const MEMBER_DATA_POLICY: Record<string, { policy: MemberDataPolicy; note
   OrderReceiptRequest: { policy: "retain_legal", note: "현금영수증·세금계산서 신청(세무 증빙, 주문과 같은 법정 보관). 번호는 봉인해 두고 보관 기간 뒤 주문 파기와 함께 지운다" },
   RefundRequest: { policy: "retain_legal", note: "구매자 환불 요청(청약철회·분쟁 처리 기록, 주문과 같은 법정 보관). 사유는 주문과 함께 남고 보관 기간 뒤 주문 파기와 함께 지운다" },
   ReturnRequestImage: { policy: "retain_legal", note: "신청에 붙은 사진은 신청과 함께 법정 보관. 신청에 붙지 않은 사진은 탈퇴 때 지운다" },
+  MemberMemo: { policy: "delete", note: "파트너스가 적은 회원 메모(자유 입력이라 개인정보가 섞일 수 있음). 탈퇴하면 지운다" },
   MemberGradeOverride: { policy: "delete", note: "파트너스가 고정한 회원 표시(개인정보 없음). 탈퇴하면 지운다" },
   MemberGradeHistory: { policy: "delete", note: "등급 변경 기록(등급 이름과 금액만, 개인정보 없음). 탈퇴하면 지운다" },
   ProductReviewReport: { policy: "anonymize", note: "리뷰 신고 기록은 남긴다(보류는 판매자만 풀어야 해서 신고 사실이 필요). 신고자는 비식별된 탈퇴 회원 행으로만 이어진다" },
@@ -92,6 +93,9 @@ export const MEMBER_AUDIT_RETENTION: Record<string, MemberAuditRetention> = {
   // 미입금 자동 취소로 생긴 구매 제한(판매자 회원 관리). 주문 기록 자체는 order.* 행이 따로 남는다.
   "buyer.purchase_restriction.create": "non_transaction",
   "buyer.purchase_restriction.lift": "non_transaction",
+  // 파트너스가 직접 건 제한과 회원 메모(본문은 로그에 남기지 않고 글자 수만 남긴다)
+  "member.memo.update": "non_transaction",
+  "member.memo.delete": "non_transaction",
 };
 
 // 행동 종류의 보관 분류. 목록에 없으면 null(탈퇴 처리는 더 긴 거래 관련 기준으로 둔다).
