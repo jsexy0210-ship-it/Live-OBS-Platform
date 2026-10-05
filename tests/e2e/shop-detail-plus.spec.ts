@@ -44,7 +44,7 @@ test("판매 중 상품: 재입고 버튼은 없고 추천 상품 영역에 자�
   const p = list.products.find((x) => x.name === "탑로더 25장")!;
   await page.goto(`/shop/${SLUG}/products/${p.id}`);
   await expect(page.getByRole("button", { name: "재입고 알림 받기" })).toHaveCount(0);
-  const reco = page.getByRole("region", { name: "함께 보면 좋아요" });
+  const reco = page.getByRole("region", { name: "이 상품과 함께 보는 상품" });
   await expect(reco).toBeVisible();
   const n = await reco.locator("li.pc").count();
   expect(n).toBeGreaterThan(0);

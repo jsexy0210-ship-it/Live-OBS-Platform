@@ -164,6 +164,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/reward-live-payout": "STORE_OPERATIONS",
   "seller/share-preview": "STORE_OPERATIONS",
   "seller/seo": "STORE_OPERATIONS",
+  "seller/brand-color": "STORE_OPERATIONS",
   "seller/shipping-policy": "STORE_OPERATIONS",
   "seller/shop-search/synonyms": "STORE_OPERATIONS", // 검색 유사어 묶음
   "seller/notices": "STORE_OPERATIONS",

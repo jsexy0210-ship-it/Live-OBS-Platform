@@ -44,7 +44,9 @@ describe("나이스페이 어댑터(샌드박스)", () => {
   });
 
   it("resultCode가 0000이 아니면 거절(rejected)", async () => {
-    expect(await gateway(() => json({ resultCode: "3011", resultMsg: "카드 거절" })).gw.approve({ tid: "T1", amount: 13000 })).toEqual({ kind: "rejected", code: "nicepay_3011" });
+    // 거절 문구(resultMsg)는 진단용으로 함께 돌려준다(100자까지, 없으면 생략)
+    expect(await gateway(() => json({ resultCode: "3011", resultMsg: "카드 거절" })).gw.approve({ tid: "T1", amount: 13000 })).toEqual({ kind: "rejected", code: "nicepay_3011", message: "카드 거절" });
+    expect(await gateway(() => json({ resultCode: "3011" })).gw.approve({ tid: "T1", amount: 13000 })).toEqual({ kind: "rejected", code: "nicepay_3011" });
   });
 
   it("타임아웃은 결과 모름(unknown)", async () => {
