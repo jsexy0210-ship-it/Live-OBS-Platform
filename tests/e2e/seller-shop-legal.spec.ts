@@ -1,19 +1,26 @@
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import { expect, test, type Page } from "@playwright/test";
 import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
 import { submitSellerLogin } from "./sellerLogin";
 
 // SA-062 법정 고지·약관(쇼핑몰 이용약관·개인정보처리방침 입력): 게시 조건 검사, 저장하면 구매자 화면(/shop/demo-shop/terms)에 글자 그대로 표시.
-// 폐기용 테스트 DB(이름이 _test로 끝남)의 데모 쇼핑몰(demo-shop)을 쓰고, 시험이 만든 글은 끝나면 지운다.
+// 「사업자 정보·고지」 탭: 입력한 주소·고객센터·구매안전서비스·미성년자 안내가 구매자 바닥글에 표시된다.
+// 폐기용 테스트 DB(이름이 _test로 끝남)의 데모 쇼핑몰(demo-shop)을 쓰고, 시험이 만든 글·넣은 사업자 정보는 끝나면 지운다.
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
 const SLUG = "demo-shop";
 const db = () => new PrismaClient({ datasources: { db: { url: assertTestDatabaseUrl(process.env.DATABASE_URL) } } });
 
-async function cleanup() {
+let originalBusinessInfo: unknown = null;
+const BUSINESS = { companyName: "별빛상사", representativeName: "홍길동", businessNumber: "1234567890", mailOrderNumber: "2026-서울-0001" };
+
+async function cleanup(restore = false) {
   const c = db();
   try {
     const shop = await c.seller.findUnique({ where: { slug: SLUG }, select: { id: true } });
-    if (shop) await c.shopLegalDoc.deleteMany({ where: { sellerId: shop.id } });
+    if (!shop) return;
+    await c.shopLegalDoc.deleteMany({ where: { sellerId: shop.id } });
+    await c.shopLegalNotice.deleteMany({ where: { sellerId: shop.id } });
+    if (restore) await c.seller.update({ where: { id: shop.id }, data: { businessInfo: originalBusinessInfo === null ? Prisma.DbNull : (originalBusinessInfo as Prisma.InputJsonValue) } });
   } finally {
     await c.$disconnect();
   }
@@ -21,8 +28,16 @@ async function cleanup() {
 test.beforeAll(async () => {
   if (!PASSWORD) throw new Error("E2E_PASSWORD가 없어요. dev-seed가 출력한 데모 비밀번호를 넣어 주세요");
   await cleanup();
+  const c = db();
+  try {
+    const shop = await c.seller.findUniqueOrThrow({ where: { slug: SLUG }, select: { id: true, businessInfo: true } });
+    originalBusinessInfo = shop.businessInfo;
+    await c.seller.update({ where: { id: shop.id }, data: { businessInfo: BUSINESS } });
+  } finally {
+    await c.$disconnect();
+  }
 });
-test.afterAll(cleanup);
+test.afterAll(() => cleanup(true));
 
 async function login(page: Page, next: string) {
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -72,4 +87,49 @@ test("탭을 옮겨도 입력 중인 내용이 남는다", async ({ page }) => {
   await expect(page.getByLabel("개인정보처리방침 본문")).toBeVisible();
   await page.getByRole("tab", { name: "이용약관" }).click();
   await expect(page.getByLabel("이용약관 본문")).toHaveValue("입력 중인 약관");
+});
+
+test("사업자 정보·고지: 검사 오류가 칸 가까이에 보이고, 저장하면 구매자 바닥글에 입력한 항목만 표시된다", async ({ page, context }) => {
+  await login(page, "/seller/settings/legal");
+  await page.getByRole("tab", { name: "사업자 정보·고지" }).click();
+  // 입점 신청 때 받은 값은 읽기 전용으로 보인다
+  await expect(page.getByTestId("legal-biz")).toContainText("별빛상사");
+  await expect(page.getByTestId("legal-biz")).toContainText("123-45-67890");
+  await expect(page.getByTestId("legal-save-notice")).toBeDisabled();
+
+  // 틀린 값은 칸 가까이에 이유가 나온다
+  await page.getByLabel("고객센터 전화").fill("전화번호");
+  await page.getByRole("radio", { name: "에스크로" }).click();
+  await page.getByLabel("확인 주소").fill("http://pay.example.com");
+  await page.getByTestId("legal-save-notice").click();
+  await expect(page.getByText("전화번호는 숫자·하이픈·괄호만 입력할 수 있습니다")).toBeVisible();
+  await expect(page.getByText("가입한 업체 이름을 입력해 주십시오")).toBeVisible();
+  await expect(page.getByText("확인 주소는 https로 시작하는 주소만 입력할 수 있습니다")).toBeVisible();
+
+  await page.getByLabel("주소", { exact: true }).fill("서울시 중구 세종대로 1 <b>3층</b>");
+  await page.getByLabel("고객센터 전화").fill("1588-1234");
+  await page.getByLabel("운영시간").fill("평일 10:00~17:00");
+  await page.getByLabel("가입한 업체").fill("시험결제");
+  await page.getByLabel("확인 주소").fill("https://pay.example.com/escrow");
+  await page.getByLabel("미성년자 구매 안내").fill("미성년자는 법정대리인 동의가 필요해요.\n안내 글은 파트너스가 입력해요.");
+  await page.getByTestId("legal-save-notice").click();
+  await expect(page.getByTestId("legal-save-notice")).toBeDisabled();
+
+  // 구매자 바닥글: 입력한 항목만, 값은 텍스트로만, 링크는 새 창
+  const buyer = await context.newPage();
+  await buyer.goto(`/shop/${SLUG}/terms`);
+  const foot = buyer.locator(".shop-foot");
+  await expect(foot).toContainText("서울시 중구 세종대로 1 <b>3층</b>");
+  expect(await foot.locator("b").count()).toBe(0);
+  await expect(foot).toContainText("1588-1234 · 평일 10:00~17:00");
+  await expect(foot).not.toContainText("이메일"); // 입력하지 않은 항목은 줄을 뺀다
+  await expect(foot).toContainText("호스팅 제공");
+  await expect(foot.getByRole("link", { name: "확인하기" })).toHaveAttribute("href", "https://www.ftc.go.kr/bizCommPop.do?wrkr_no=1234567890");
+  await expect(foot.getByRole("link", { name: "에스크로 가입 · 시험결제" })).toHaveAttribute("href", "https://pay.example.com/escrow");
+  await expect(foot.getByRole("link", { name: "에스크로 가입 · 시험결제" })).toHaveAttribute("target", "_blank");
+  await expect(buyer.getByTestId("shop-foot-minor")).toContainText("법정대리인 동의가 필요해요.");
+  // 기존 검증 값 4개는 그대로 보인다
+  await expect(foot).toContainText("별빛상사");
+  await expect(foot).toContainText("123-45-67890");
+  await expect(foot).toContainText("2026-서울-0001");
 });

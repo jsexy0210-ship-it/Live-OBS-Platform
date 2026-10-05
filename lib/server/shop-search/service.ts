@@ -19,6 +19,7 @@ export const TERM_MAX_LENGTH = 20;
 export const POPULAR_DAYS = 7;
 export const POPULAR_LIMIT = 10;
 export const SUGGEST_LIMIT = 8;
+export const BLOCKED_TERM_MAX = 100;
 const KEEP_DAYS = 8;
 
 const fold = (s: string) => s.normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase();
@@ -112,6 +113,9 @@ export async function recordSearchTerm(db: PrismaClient, sellerId: string, term:
   if (len < TERM_MIN_LENGTH || len > TERM_MAX_LENGTH) return;
   if (!allowSearchCount(sellerId, t, ip)) return;
   try {
+    // 파트너스가 제외한 단어가 들어 있는 검색어는 세지 않는다(쓰기 절약, 조회 때도 한 번 더 거른다)
+    const blocked = await db.$queryRaw<{ one: number }[]>`SELECT 1 AS "one" FROM "ShopSearchBlockedTerm" b WHERE b."sellerId" = ${sellerId}::uuid AND strpos(${t}, b."term") > 0 LIMIT 1`;
+    if (blocked.length > 0) return;
     await db.$executeRaw`
       INSERT INTO "ShopSearchTerm" ("sellerId", "day", "term", "count")
       VALUES (${sellerId}::uuid, (now() AT TIME ZONE 'Asia/Seoul')::date, ${t}, 1)
@@ -129,6 +133,7 @@ async function popularRows(db: PrismaClient, sellerId: string, prefix: string | 
   return db.$queryRaw<{ term: string; total: bigint }[]>`
     SELECT "term", SUM("count")::bigint AS "total" FROM "ShopSearchTerm"
     WHERE "sellerId" = ${sellerId}::uuid AND "day" >= (now() AT TIME ZONE 'Asia/Seoul')::date - ${POPULAR_DAYS - 1}::int AND "term" LIKE ${like}
+      AND NOT EXISTS (SELECT 1 FROM "ShopSearchBlockedTerm" b WHERE b."sellerId" = ${sellerId}::uuid AND strpos("ShopSearchTerm"."term", b."term") > 0)
     GROUP BY "term" ORDER BY "total" DESC, "term" LIMIT ${limit}`;
 }
 
@@ -225,5 +230,59 @@ export async function replaceSynonyms(db: PrismaClient, ctx: TenantContext, raw:
     for (const [i, words] of groups.entries()) await tx.shopSearchSynonym.create({ data: { sellerId: ctx.sellerId, words, createdAt: new Date(base + i) } });
     await writeAudit(tx, { actorType: ctx.actorType, actorId: ctx.actorId, sellerId: ctx.sellerId, action: "shop_search.synonyms.update", targetType: "ShopSearchSynonym", before: { groups: before }, after: { groups: groups.length }, ip: meta.ip, userAgent: meta.userAgent });
     return { ok: true as const, groups: groups.map((words) => ({ words })) };
+  });
+}
+
+// ───────── 파트너스: 인기 검색어 제외 단어 ─────────
+// 제외 단어가 들어 있는 검색어는 인기 검색어·자동완성의 「인기 검색어」 칸에서 빠진다(소문자·공백 정리 뒤 부분 일치). 검색 자체와 상품 이름·태그 자동완성은 그대로다.
+export type BlockedTermFailure = "invalid_term" | "too_many_terms" | "term_not_found";
+export const BLOCKED_TERM_MESSAGES: Record<BlockedTermFailure, string> = {
+  invalid_term: `제외할 단어를 ${TERM_MIN_LENGTH}~${TERM_MAX_LENGTH}자로 입력해 주십시오`,
+  too_many_terms: `제외 단어는 ${BLOCKED_TERM_MAX}개까지 등록할 수 있습니다`,
+  term_not_found: "등록되지 않은 단어입니다",
+};
+
+const blockedTermOf = (raw: unknown): string | null => {
+  const t = cleanText(raw, TERM_MAX_LENGTH, "name");
+  if (!t) return null;
+  const f = fold(t);
+  const len = [...f].length;
+  return len >= TERM_MIN_LENGTH && len <= TERM_MAX_LENGTH ? f : null;
+};
+
+// 조회는 같은 쇼핑몰 파트너스 계정 누구나
+export async function listBlockedTerms(db: PrismaClient, ctx: TenantContext) {
+  const rows = await db.shopSearchBlockedTerm.findMany({ where: { sellerId: ctx.sellerId }, orderBy: [{ createdAt: "asc" }, { term: "asc" }], select: { term: true, createdAt: true } });
+  return { terms: rows, canEdit: !ctx.readOnly && sellerCan(ctx, "PRODUCT_MANAGE") };
+}
+
+// 추가. 본문 { term }. 이미 있는 단어는 그대로 성공(중복 없음). 상품 관리(PRODUCT_MANAGE) 권한, 최대 100개.
+export async function addBlockedTerm(db: PrismaClient, ctx: TenantContext, raw: unknown, meta: { ip?: string | null; userAgent?: string | null } = {}) {
+  requireSellerPermission(ctx, "PRODUCT_MANAGE");
+  const term = blockedTermOf(raw && typeof raw === "object" ? (raw as { term?: unknown }).term : undefined);
+  if (!term) return { ok: false as const, reason: "invalid_term" as const };
+  return db.$transaction(async (tx) => {
+    // 같은 쇼핑몰의 동시 추가가 한도를 넘지 않게 판매자 단위로 직렬화한다
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`shop_search_blocked:${ctx.sellerId}`}))`;
+    const exists = await tx.shopSearchBlockedTerm.findUnique({ where: { sellerId_term: { sellerId: ctx.sellerId, term } }, select: { term: true } });
+    if (!exists) {
+      if ((await tx.shopSearchBlockedTerm.count({ where: { sellerId: ctx.sellerId } })) >= BLOCKED_TERM_MAX) return { ok: false as const, reason: "too_many_terms" as const };
+      await tx.shopSearchBlockedTerm.create({ data: { sellerId: ctx.sellerId, term } });
+      await writeAudit(tx, { actorType: ctx.actorType, actorId: ctx.actorId, sellerId: ctx.sellerId, action: "shop_search.blocked_term.add", targetType: "ShopSearchBlockedTerm", after: { term }, ip: meta.ip, userAgent: meta.userAgent });
+    }
+    return { ok: true as const, term };
+  });
+}
+
+// 삭제. 등록되지 않은 단어는 term_not_found(404).
+export async function removeBlockedTerm(db: PrismaClient, ctx: TenantContext, rawTerm: unknown, meta: { ip?: string | null; userAgent?: string | null } = {}) {
+  requireSellerPermission(ctx, "PRODUCT_MANAGE");
+  const term = blockedTermOf(rawTerm);
+  if (!term) return { ok: false as const, reason: "invalid_term" as const };
+  return db.$transaction(async (tx) => {
+    const { count } = await tx.shopSearchBlockedTerm.deleteMany({ where: { sellerId: ctx.sellerId, term } });
+    if (count === 0) return { ok: false as const, reason: "term_not_found" as const };
+    await writeAudit(tx, { actorType: ctx.actorType, actorId: ctx.actorId, sellerId: ctx.sellerId, action: "shop_search.blocked_term.remove", targetType: "ShopSearchBlockedTerm", before: { term }, ip: meta.ip, userAgent: meta.userAgent });
+    return { ok: true as const };
   });
 }
