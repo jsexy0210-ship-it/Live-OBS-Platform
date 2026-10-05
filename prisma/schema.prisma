@@ -2645,3 +2645,40 @@ model OverlayTemplate {
 
   @@index([sellerId, createdAt])
 }
+
+// ───────────── 플랫폼 공지(MA-053·054 작성 · SA-111·112 파트너스 · PF-005·006 공개) ─────────────
+
+enum PlatformNoticeCategory {
+  MAINTENANCE
+  POLICY
+  FEATURE
+  GENERAL
+}
+
+// 보는 곳: 파트너스 관리자만 · 공개 공지만 · 둘 다
+enum PlatformNoticeAudience {
+  PARTNERS
+  PUBLIC
+  ALL
+}
+
+// 마스터 관리자가 쓰는 플랫폼 공지. publishedAt이 null이면 임시 저장(어디에도 안 보임). 지우면 deletedAt(목록·조회에서 빠짐).
+// 작성·수정 관리자는 id만 남긴다(로그 추적에 전후가 남음). version은 다른 창 덮어쓰기 막기.
+model PlatformNotice {
+  id               String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title            String
+  body             String
+  category         PlatformNoticeCategory
+  audience         PlatformNoticeAudience
+  isPinned         Boolean                @default(false)
+  publishedAt      DateTime?              @db.Timestamptz(3)
+  version          Int                    @default(0)
+  createdByAdminId String                 @db.Uuid
+  updatedByAdminId String                 @db.Uuid
+  createdAt        DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime               @default(now()) @updatedAt @db.Timestamptz(3)
+  deletedAt        DateTime?              @db.Timestamptz(3)
+
+  @@index([publishedAt(sort: Desc), id(sort: Desc)])
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
+}
