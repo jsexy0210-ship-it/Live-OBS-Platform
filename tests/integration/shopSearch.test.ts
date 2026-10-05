@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { GET as popularRoute } from "../../app/api/shop/[slug]/search/popular/route";
 import { GET as suggestRoute } from "../../app/api/shop/[slug]/search/suggest/route";
 import { GET as listRoute } from "../../app/api/shop/[slug]/products/route";
@@ -6,12 +6,21 @@ import { GET as synonymsGet, PUT as synonymsPut } from "../../app/api/seller/sho
 import { loginSeller } from "../../lib/server/auth/login";
 import { prisma } from "../../lib/server/db";
 import { createProduct, updateProduct } from "../../lib/server/products/manage";
+import { COUNT_IP_BUDGET, resetSearchCountLimiter } from "../../lib/server/shop-search/service";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { PASSWORD, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
 // 쇼핑몰 검색: 상품 태그·유사어 묶음 검색, 인기 검색어(자체 집계), 자동완성, 판매자 격리·권한
-beforeEach(resetDb);
+// 접속 IP는 신뢰 프록시가 있을 때만 X-Forwarded-For에서 읽는다(http/route.ts clientIp)
+beforeAll(() => {
+  process.env.TRUSTED_PROXY_HOPS = "1";
+});
+beforeEach(async () => {
+  resetSearchCountLimiter();
+  await resetDb();
+});
 afterAll(async () => {
+  delete process.env.TRUSTED_PROXY_HOPS;
   await db.$disconnect();
   await prisma.$disconnect();
 });
@@ -39,8 +48,10 @@ async function shop() {
 }
 type Shop = Awaited<ReturnType<typeof shop>>;
 
-const search = async (s: Shop, q: string) => {
-  const res = await listRoute(new Request(`${BASE}/x?q=${encodeURIComponent(q)}`), { params: Promise.resolve({ slug: s.slug }) });
+// ip를 주지 않으면 검색마다 다른 접속으로 본다(반복 제한과 상관없는 시험용)
+let ipCounter = 0;
+const search = async (s: Shop, q: string, ip = `10.0.${Math.floor(++ipCounter / 250)}.${ipCounter % 250}`) => {
+  const res = await listRoute(new Request(`${BASE}/x?q=${encodeURIComponent(q)}`, { headers: { "x-forwarded-for": ip } }), { params: Promise.resolve({ slug: s.slug }) });
   return { status: res.status, names: ((await res.json()) as { products?: { name: string }[] }).products?.map((p) => p.name) ?? [] };
 };
 const popular = async (slug: string) => {
@@ -213,5 +224,103 @@ describe("자동완성", () => {
     await b.make("포켓몬 박스", { searchTags: ["포켓몬태그"] });
     await search(b, "포켓몬");
     expect((await suggest(a.slug, "포켓몬")).list).toEqual([]);
+  });
+});
+
+describe("인기 검색어 집계 반복 제한(검수 후속)", () => {
+  const countOf = async (s: Shop, term: string) => (await db.shopSearchTerm.findFirst({ where: { sellerId: s.seller.id, term } }))?.count ?? 0;
+
+  it("같은 접속이 같은 검색어를 되풀이해도 한 번만 세고, 다른 접속·다른 검색어는 따로 센다", async () => {
+    const s = await shop();
+    await s.make("부스터 박스");
+    await s.make("프로모 카드");
+    for (let i = 0; i < 5; i++) await search(s, "부스터", "1.1.1.1");
+    expect(await countOf(s, "부스터")).toBe(1);
+    await search(s, "부스터", "2.2.2.2");
+    expect(await countOf(s, "부스터")).toBe(2);
+    await search(s, "프로모", "1.1.1.1");
+    expect(await countOf(s, "프로모")).toBe(1);
+    // 대소문자·공백만 다른 같은 검색어도 되풀이로 본다
+    await s.make("Pokemon Box");
+    await search(s, "POKEMON", "3.3.3.3");
+    await search(s, " pokemon ", "3.3.3.3");
+    expect(await countOf(s, "pokemon")).toBe(1);
+  });
+
+  it("한 접속이 한 쇼핑몰에서 센 검색은 1시간에 한도를 넘으면 더 세지 않고, 검색 결과는 그대로 준다", async () => {
+    const s = await shop();
+    for (let i = 0; i < COUNT_IP_BUDGET + 5; i++) await s.make(`한도상품${String(i).padStart(2, "0")}`);
+    for (let i = 0; i < COUNT_IP_BUDGET + 5; i++) {
+      const r = await search(s, `한도상품${String(i).padStart(2, "0")}`, "9.9.9.9");
+      expect(r.names).toHaveLength(1); // 세지 않아도 검색은 된다
+    }
+    expect(await db.shopSearchTerm.count({ where: { sellerId: s.seller.id } })).toBe(COUNT_IP_BUDGET);
+    // 다른 접속은 영향 없음
+    await search(s, "한도상품34", "8.8.8.8");
+    expect(await db.shopSearchTerm.count({ where: { sellerId: s.seller.id } })).toBe(COUNT_IP_BUDGET + 1);
+  });
+
+  it("접속 IP를 알 수 없으면(신뢰 프록시 없음) 모두 한 접속으로 본다", async () => {
+    const s = await shop();
+    await s.make("부스터 박스");
+    delete process.env.TRUSTED_PROXY_HOPS;
+    try {
+      for (let i = 0; i < 3; i++) await search(s, "부스터", `7.7.7.${i}`); // 헤더는 무시된다
+    } finally {
+      process.env.TRUSTED_PROXY_HOPS = "1";
+    }
+    expect(await countOf(s, "부스터")).toBe(1);
+  });
+
+  it("쓸 오래된 행이 없으면 지우는 쓰기를 하지 않고, 있으면 지운다", async () => {
+    const s = await shop();
+    await s.make("부스터 박스");
+    const deletes: string[] = [];
+    const spy = new Proxy(db, {
+      get(t, k) {
+        const v = Reflect.get(t, k);
+        if (k !== "$executeRaw") return typeof v === "function" ? v.bind(t) : v;
+        return (strings: TemplateStringsArray, ...rest: unknown[]) => {
+          if (strings.join("?").includes("DELETE FROM")) deletes.push("delete");
+          return (v as (...a: unknown[]) => unknown).call(t, strings, ...rest);
+        };
+      },
+    });
+    const { recordSearchTerm } = await import("../../lib/server/shop-search/service");
+    await recordSearchTerm(spy, s.seller.id, "부스터", "4.4.4.4");
+    expect(deletes).toHaveLength(0);
+    await db.$executeRaw`INSERT INTO "ShopSearchTerm" ("sellerId","day","term","count") VALUES (${s.seller.id}::uuid, (now() AT TIME ZONE 'Asia/Seoul')::date - 9, 'ancient', 1)`;
+    await recordSearchTerm(spy, s.seller.id, "프로모", "4.4.4.4");
+    expect(deletes).toHaveLength(1);
+    expect(await db.shopSearchTerm.count({ where: { term: "ancient" } })).toBe(0);
+  });
+});
+
+describe("유사어 동시 저장·외래키(검수 후속)", () => {
+  it("같은 쇼핑몰의 동시 PUT 여러 건이 겹쳐도 묶음이 중복되지 않는다", async () => {
+    const s = await shop();
+    const groups = [{ words: ["포켓몬", "pokemon"] }, { words: ["유희왕", "yugioh"] }];
+    const rs = await Promise.all(Array.from({ length: 8 }, () => putSynonyms(s.owner, groups)));
+    expect(rs.every((r) => r.status === 200)).toBe(true);
+    expect(await db.shopSearchSynonym.count({ where: { sellerId: s.seller.id } })).toBe(2);
+  });
+
+  it("다른 판매자의 동시 PUT은 서로를 막거나 덮지 않는다", async () => {
+    const a = await shop();
+    const b = await shop();
+    await Promise.all([putSynonyms(a.owner, [{ words: ["가가", "나나"] }]), putSynonyms(b.owner, [{ words: ["다다", "라라"] }, { words: ["마마", "바바"] }])]);
+    expect(await db.shopSearchSynonym.count({ where: { sellerId: a.seller.id } })).toBe(1);
+    expect(await db.shopSearchSynonym.count({ where: { sellerId: b.seller.id } })).toBe(2);
+  });
+
+  it("유사어·검색어 집계는 없는 판매자 id로 만들 수 없고, 외래키는 ON DELETE CASCADE이다", async () => {
+    const s = await shop();
+    const ghost = "11111111-1111-4111-8111-111111111111";
+    await expect(db.shopSearchSynonym.create({ data: { sellerId: ghost, words: ["a1", "b1"] } })).rejects.toThrow();
+    await expect(db.$executeRaw`INSERT INTO "ShopSearchTerm" ("sellerId","day","term","count") VALUES (${ghost}::uuid, now()::date, 'x1', 1)`).rejects.toThrow();
+    await db.shopSearchSynonym.create({ data: { sellerId: s.seller.id, words: ["a1", "b1"] } });
+    await db.$executeRaw`INSERT INTO "ShopSearchTerm" ("sellerId","day","term","count") VALUES (${s.seller.id}::uuid, now()::date, 'x1', 1)`;
+    const fk = await db.$queryRaw<{ confdeltype: string }[]>`SELECT confdeltype FROM pg_constraint WHERE conname IN ('ShopSearchSynonym_sellerId_fkey','ShopSearchTerm_sellerId_fkey')`;
+    expect(fk.map((r) => r.confdeltype)).toEqual(["c", "c"]); // ON DELETE CASCADE
   });
 });

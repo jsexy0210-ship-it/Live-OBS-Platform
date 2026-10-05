@@ -64,17 +64,61 @@ export async function productIdsByTerm(db: PrismaClient, sellerId: string, words
   return rows.map((r) => r.id);
 }
 
-// 인기 검색어 집계(결과가 있었던 검색만 부른다). 기록 실패는 검색을 막지 않는다. 오래된 행은 같이 지운다.
-export async function recordSearchTerm(db: PrismaClient, sellerId: string, term: string): Promise<void> {
+// 같은 접속(IP)이 같은 검색어를 되풀이해도 한 번만 세고(10분), 한 접속이 한 쇼핑몰에서 센 검색이 1시간에 30번을 넘으면 더 세지 않는다.
+// 로그인 없는 검색이라 반복 검색으로 쓰기 부하를 일으키거나 인기 순위를 밀어 올리지 못하게 한다. 프로세스 안에서만 기억하므로(서버 한 대 기준)
+// 재시작하면 비워지고, 접속 IP를 알 수 없으면(신뢰 프록시 없음) 모두 한 접속으로 보아 더 보수적으로 센다.
+export const COUNT_REPEAT_WINDOW_MS = 10 * 60_000;
+export const COUNT_IP_BUDGET = 30;
+export const COUNT_IP_WINDOW_MS = 60 * 60_000;
+const LIMITER_MAX_ENTRIES = 20_000;
+const seenTerms = new Map<string, number>(); // `${sellerId}|${term}|${ip}` → 다시 셀 수 있는 시각
+const ipBudgets = new Map<string, { count: number; resetAt: number }>(); // `${sellerId}|${ip}`
+
+export function resetSearchCountLimiter() {
+  seenTerms.clear();
+  ipBudgets.clear();
+}
+
+function prune(now: number) {
+  for (const [k, until] of seenTerms) if (until <= now) seenTerms.delete(k);
+  for (const [k, b] of ipBudgets) if (b.resetAt <= now) ipBudgets.delete(k);
+  // 그래도 많으면(접속이 아주 많이 몰림) 통째로 비운다. 한도가 잠깐 풀려도 서버 메모리가 먼저다.
+  if (seenTerms.size > LIMITER_MAX_ENTRIES) seenTerms.clear();
+  if (ipBudgets.size > LIMITER_MAX_ENTRIES) ipBudgets.clear();
+}
+
+export function allowSearchCount(sellerId: string, term: string, ip: string | null, now = Date.now()): boolean {
+  if (seenTerms.size > LIMITER_MAX_ENTRIES || ipBudgets.size > LIMITER_MAX_ENTRIES) prune(now);
+  const who = ip ?? "unknown";
+  const termKey = `${sellerId}|${fold(term)}|${who}`;
+  if ((seenTerms.get(termKey) ?? 0) > now) return false;
+  const budgetKey = `${sellerId}|${who}`;
+  const b = ipBudgets.get(budgetKey);
+  if (b && b.resetAt > now) {
+    if (b.count >= COUNT_IP_BUDGET) return false;
+    b.count += 1;
+  } else {
+    ipBudgets.set(budgetKey, { count: 1, resetAt: now + COUNT_IP_WINDOW_MS });
+  }
+  seenTerms.set(termKey, now + COUNT_REPEAT_WINDOW_MS);
+  return true;
+}
+
+// 인기 검색어 집계(결과가 있었던 검색만 부른다). 기록 실패는 검색을 막지 않는다.
+// 8일이 지난 행은 있을 때만 지운다(먼저 읽어 보고 지울 행이 없으면 쓰지 않는다 — 하루에 한 번꼴).
+export async function recordSearchTerm(db: PrismaClient, sellerId: string, term: string, ip: string | null = null): Promise<void> {
   const t = fold(term);
   const len = [...t].length;
   if (len < TERM_MIN_LENGTH || len > TERM_MAX_LENGTH) return;
+  if (!allowSearchCount(sellerId, t, ip)) return;
   try {
     await db.$executeRaw`
       INSERT INTO "ShopSearchTerm" ("sellerId", "day", "term", "count")
       VALUES (${sellerId}::uuid, (now() AT TIME ZONE 'Asia/Seoul')::date, ${t}, 1)
       ON CONFLICT ("sellerId", "day", "term") DO UPDATE SET "count" = "ShopSearchTerm"."count" + 1`;
-    await db.$executeRaw`DELETE FROM "ShopSearchTerm" WHERE "sellerId" = ${sellerId}::uuid AND "day" < (now() AT TIME ZONE 'Asia/Seoul')::date - ${KEEP_DAYS}::int`;
+    const stale = await db.$queryRaw<{ one: number }[]>`
+      SELECT 1 AS "one" FROM "ShopSearchTerm" WHERE "sellerId" = ${sellerId}::uuid AND "day" < (now() AT TIME ZONE 'Asia/Seoul')::date - ${KEEP_DAYS}::int LIMIT 1`;
+    if (stale.length > 0) await db.$executeRaw`DELETE FROM "ShopSearchTerm" WHERE "sellerId" = ${sellerId}::uuid AND "day" < (now() AT TIME ZONE 'Asia/Seoul')::date - ${KEEP_DAYS}::int`;
   } catch {
     // 집계는 부가 기능이라 실패해도 검색 결과는 그대로 준다
   }
@@ -172,6 +216,8 @@ export async function replaceSynonyms(db: PrismaClient, ctx: TenantContext, raw:
     groups.push(words);
   }
   return db.$transaction(async (tx) => {
+    // 같은 쇼핑몰의 동시 저장이 지우고 만드는 중에 겹쳐 묶음이 중복되지 않게 판매자 단위로 직렬화한다
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`shop_search_synonyms:${ctx.sellerId}`}))`;
     const before = await tx.shopSearchSynonym.count({ where: { sellerId: ctx.sellerId } });
     await tx.shopSearchSynonym.deleteMany({ where: { sellerId: ctx.sellerId } });
     // 만든 순서가 곧 보이는 순서가 되도록 시각을 1ms씩 벌려 넣는다

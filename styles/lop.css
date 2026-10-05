@@ -95,6 +95,8 @@
 .btn-w-lg,.btn-level-primary{width:var(--btn-w-lg);flex:0 0 var(--btn-w-lg);padding-inline:var(--ui-sp-8)}
 .btn-w-xl{width:var(--btn-w-xl);flex:0 0 var(--btn-w-xl);padding-inline:var(--ui-sp-8)}
 /* 썸네일: PC 64·휴대폰 56, 모서리 8, 비율 유지(cover). 이미지 없음 자리도 같은 크기 */
+/* 입력·Select 폭 단계(화면 파일에 inline 폭을 두지 않는다) */
+.inp.inp-w-sm{width:100px}.inp.inp-w-md{width:150px}.inp.inp-w-lg{width:240px}
 .thumb{display:flex;align-items:center;justify-content:center;flex:none;width:var(--ui-thumb);height:var(--ui-thumb);border-radius:var(--ui-r-control);overflow:hidden;background:var(--wds-fill-normal);color:var(--wds-label-assistive)}
 .thumb>img{display:block;width:100%;height:100%;object-fit:cover}
 .icon-btn{width:var(--ui-h-dense);height:var(--ui-h-dense);padding:0;border-radius:var(--ui-r-control);border:0;background:transparent;color:var(--wds-label-neutral);display:inline-flex;align-items:center;justify-content:center;cursor:pointer}

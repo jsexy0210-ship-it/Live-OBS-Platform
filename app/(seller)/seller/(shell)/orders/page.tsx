@@ -3,6 +3,7 @@
 import "../../../../../styles/seller-orders.css";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
@@ -34,14 +35,25 @@ function query(f: Filters, cursor?: string) {
 }
 
 export default function OrderListPage() {
-  const [search, setSearch] = useState("");
-  const [q, setQ] = useState("");
+  // 검색어·기간·결제 상태는 주소(쿼리)가 기준이다. 상세에 갔다 Back으로 돌아와도 그대로 복원된다(IA Back 규칙 3항)
+  const [u, setU] = useUrlState({ q: "", period: "", status: "" });
+  const q = u.q;
+  const period = PERIODS.find((p) => p.key === u.period)?.key ?? null;
+  const statuses = u.status.split(",").filter((x): x is OrderStatus => STATUSES.includes(x as OrderStatus));
+  const statusKey = statuses.join(",");
+  const setPeriod = (v: Period | null) => setU({ period: v ?? "" });
+  const setStatuses = (v: OrderStatus[]) => setU({ status: v.join(",") });
+  const [search, setSearch] = useState(q);
+  const setUrl = useRef(setU);
+  setUrl.current = setU;
   useEffect(() => {
-    const t = setTimeout(() => setQ(search.trim()), SEARCH_DELAY_MS);
+    const t = setTimeout(() => setUrl.current({ q: search.trim() }), SEARCH_DELAY_MS);
     return () => clearTimeout(t);
   }, [search]);
-  const [statuses, setStatuses] = useState<OrderStatus[]>([]);
-  const [period, setPeriod] = useState<Period | null>(null);
+  // 주소가 바뀌면(Back·필터 초기화) 입력 칸도 맞춘다. 입력 중인 글자는 건드리지 않는다
+  useEffect(() => {
+    setSearch((cur) => (cur.trim() === q ? cur : q));
+  }, [q]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [draft, setDraft] = useState<OrderStatus[]>([]);
   const [state, setState] = useState<Load>({ kind: "loading" });
@@ -58,7 +70,8 @@ export default function OrderListPage() {
     if (id !== reqId.current) return;
     setState(r.ok ? { kind: "ok", items: r.data.orders, next: r.data.nextCursor } : { kind: "error", status: r.status });
   }, []);
-  useEffect(() => void load({ statuses, period, q }), [statuses, period, q, load]);
+  useEffect(() => void load({ statuses: statusKey ? (statusKey.split(",") as OrderStatus[]) : [], period, q }), [statusKey, period, q, load]);
+  useScrollRestore("seller-orders", state.kind === "ok");
 
   const loadMore = async () => {
     if (state.kind !== "ok" || !state.next) return;
@@ -88,10 +101,8 @@ export default function OrderListPage() {
 
   const filtered = statuses.length > 0 || period !== null || q !== "";
   const reset = () => {
-    setStatuses([]);
-    setPeriod(null);
     setSearch("");
-    setQ("");
+    setU({ q: "", period: "", status: "" });
   };
   const statusText = statuses.length === 0 ? "전체" : statuses.length === 1 ? STATUS_BADGE[statuses[0]].label : `${STATUS_BADGE[statuses[0]].label} 외 ${statuses.length - 1}개`;
   const items = state.kind === "ok" ? state.items : [];
@@ -107,7 +118,7 @@ export default function OrderListPage() {
             <h1 className="t-t3">주문</h1>
             <span className="t-l2 c-alt">결제 완료된 주문만 주문대기에 올라갑니다. 미결제 주문은 「결제 대기」로 표시됩니다.</span>
           </div>
-          <Link className="btn btn-out" href="/seller/orders/refund-requests">
+          <Link className="btn btn-out btn-level-secondary" href="/seller/orders/refund-requests">
             환불 요청
           </Link>
         </div>
@@ -154,11 +165,11 @@ export default function OrderListPage() {
                     </label>
                   ))}
                   <hr className="divider" style={{ margin: "4px 0" }} />
-                  <div className="row" style={{ gap: 6, padding: 4 }}>
-                    <button className="btn btn-sm btn-out" type="button" style={{ flex: 1 }} onClick={() => setDraft([])}>
+                  <div className="row ord-menu-f">
+                    <button className="btn btn-dense btn-out btn-w-sm" type="button" onClick={() => setDraft([])}>
                       초기화
                     </button>
-                    <button className="btn btn-sm" type="button" style={{ flex: 1 }} onClick={applyMenu}>
+                    <button className="btn btn-dense btn-w-sm" type="button" onClick={applyMenu}>
                       적용
                     </button>
                   </div>
@@ -166,7 +177,7 @@ export default function OrderListPage() {
               )}
             </div>
             {filtered && (
-              <button className="btn btn-sm btn-text" type="button" onClick={reset}>
+              <button className="btn btn-dense btn-text" type="button" onClick={reset}>
                 필터 초기화
               </button>
             )}
@@ -191,7 +202,7 @@ export default function OrderListPage() {
                   <div className="st-ic">?</div>
                   <span className="t">「{q}」 검색 결과가 없습니다</span>
                   <span className="s">기간 필터 「{periodLabel}」을 해제하면 전체 기간에서 찾습니다.</span>
-                  <button className="btn btn-sm btn-out" type="button" onClick={() => setPeriod(null)}>
+                  <button className="btn btn-dense btn-out btn-w-xl" type="button" onClick={() => setPeriod(null)}>
                     전체 기간에서 검색
                   </button>
                 </>
@@ -199,7 +210,7 @@ export default function OrderListPage() {
                 <>
                   <div className="st-ic">?</div>
                   <span className="t">조건에 맞는 주문이 없습니다</span>
-                  <button className="btn btn-sm btn-text" type="button" onClick={reset}>
+                  <button className="btn btn-dense btn-text" type="button" onClick={reset}>
                     필터 초기화
                   </button>
                 </>
@@ -217,7 +228,7 @@ export default function OrderListPage() {
                     <th>금액</th>
                     <th>결제</th>
                     <th>배송</th>
-                    <th style={{ width: 120 }} aria-label="작업" />
+                    <th className="ord-w-act" aria-label="작업" />
                   </tr>
                 </thead>
                 <tbody>
@@ -238,7 +249,7 @@ export default function OrderListPage() {
                       <td>{o.shipped ? <span className="bdg b-info nodot">발송함</span> : <span className="c-alt">—</span>}</td>
                       <td>
                         {o.refundable && (
-                          <Link className="btn btn-sm" href={`/seller/orders/${o.id}?refund=1`}>
+                          <Link className="btn btn-sm btn-w-sm" href={`/seller/orders/${o.id}?refund=1`}>
                             환불 처리
                           </Link>
                         )}
@@ -250,8 +261,8 @@ export default function OrderListPage() {
             </div>
           )}
           {state.kind === "ok" && state.next && (
-            <div className="row" style={{ padding: "12px 20px", justifyContent: "center" }}>
-              <button className={`btn btn-sm btn-out${more ? " is-loading" : ""}`} type="button" disabled={more} onClick={() => void loadMore()}>
+            <div className="row ord-more">
+              <button className={`btn btn-dense btn-out btn-w-xl${more ? " is-loading" : ""}`} type="button" disabled={more} onClick={() => void loadMore()}>
                 주문 더 불러오기
               </button>
             </div>
