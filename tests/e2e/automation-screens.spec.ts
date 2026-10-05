@@ -23,9 +23,12 @@ test.beforeAll(async () => {
   db = new PrismaClient({ datasources: { db: { url: assertTestDatabaseUrl(process.env.DATABASE_URL) } } });
   const user = await db.sellerUser.findFirstOrThrow({ where: { email: "demo-owner@example.com" }, select: { sellerId: true } });
   sellerId = user.sellerId;
+  await db.automationJobEvent.deleteMany({ where: { sellerId } });
   await db.automationJob.deleteMany({ where: { sellerId } });
   await db.automationPayment.deleteMany({ where: { sellerId } });
-  await db.sellerSubscription.update({ where: { sellerId }, data: { billingKeyCipher: sealBillingKey("fake-bk-e2e", sellerId), cardLabel: "테스트카드 1234" } });
+  const card = { billingKeyCipher: sealBillingKey("fake-bk-e2e", sellerId), cardLabel: "테스트카드 1234" };
+  const plan = await db.subscriptionPlan.upsert({ where: { code: "STANDARD" }, create: { code: "STANDARD", name: "월 구독", listPrice: 300000, salePrice: 199000 }, update: {} });
+  await db.sellerSubscription.upsert({ where: { sellerId }, create: { sellerId, planId: plan.id, ...card }, update: card });
   const have = await db.automationPracticeRun.count({ where: { playbookId: cafe24Playbook.id, playbookVersion: cafe24Playbook.version } });
   if (have < PRACTICE_STREAK_REQUIRED)
     await db.automationPracticeRun.createMany({
@@ -34,6 +37,8 @@ test.beforeAll(async () => {
   await db.platformAdmin.create({ data: { email: adminEmail, passwordHash: await hashPassword(adminPw), name: "운영", role: "READ_ONLY" } });
 });
 test.afterAll(async () => {
+  const ids = (await db.platformAdmin.findMany({ where: { email: adminEmail }, select: { id: true } })).map((a) => a.id);
+  await db.adminSession.deleteMany({ where: { adminId: { in: ids } } });
   await db.platformAdmin.deleteMany({ where: { email: adminEmail } });
   await db.$disconnect();
 });
@@ -96,7 +101,7 @@ test("파트너스: 주소 확인 → 결제 동의 5개 → 결제 → 진행 �
   await page.screenshot({ path: "tests/e2e/screenshots/automation-sa153-1440.png", fullPage: true });
 });
 
-test("마스터 관리자: 목록 요약·필터·상세, 조회 전용은 정리 닫기가 보이지 않는다", async ({ page }) => {
+test("마스터 관리자: 조회 전용 관리자가 목록 요약·필터·상세를 본다", async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1000 });
   await page.goto("/admin/login");
   await page.getByLabel("이메일").fill(adminEmail);
