@@ -3,7 +3,7 @@
 import "../../../../../../styles/seller-orders.css";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { Modal } from "../../../../../../components/admin-ui";
+import { Modal, PageHead } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
@@ -155,20 +155,19 @@ export default function CategoriesPage() {
     <>
       <Topbar crumb="상품 › 카테고리" />
       <main className="main">
-        <div className="ph">
-          <div className="col" style={{ gap: 4 }}>
-            <h1 className="t-t3">카테고리</h1>
-            <span className="t-l2 c-alt">대분류는 쇼핑몰 상단 메뉴, 하위는 그 아래 목록 · 칩이 됩니다.</span>
-          </div>
-          <div className="row" style={{ gap: 8 }}>
-            <Link className="btn btn-out" href="/seller/products">
-              상품 목록
-            </Link>
-            <button className="btn" type="button" disabled={changed.length === 0 || busy || stale} onClick={() => void saveOrder()}>
-              순서 저장
-            </button>
-          </div>
-        </div>
+        <PageHead
+          title="카테고리"
+          actions={
+            <>
+              <Link className="btn btn-out" href="/seller/products">
+                상품 목록
+              </Link>
+              <button className="btn" type="button" disabled={changed.length === 0 || busy || stale} onClick={() => void saveOrder()}>
+                순서 저장
+              </button>
+            </>
+          }
+        />
 
         {stale && (
           <div className="msg msg-neg" role="alert">
@@ -285,7 +284,7 @@ export default function CategoriesPage() {
           )}
         </div>
         {state.kind === "ok" && tree.length > 0 && (
-          <span className="t-c1 c-alt">대분류를 끄면 그 아래 하위도 쇼핑몰에서 함께 사라집니다 · 순서는 같은 대분류 안에서만 바꿀 수 있고 바꾼 뒤 「순서 저장」을 누릅니다 · 상품은 대분류와 하위 어느 쪽이든 고를 수 있습니다.</span>
+          <span className="t-c1 c-alt">대분류는 쇼핑몰 상단 메뉴, 하위는 그 아래 목록 · 칩이 됩니다 · 대분류를 끄면 그 아래 하위도 쇼핑몰에서 함께 사라집니다 · 순서는 같은 대분류 안에서만 바꿀 수 있고 바꾼 뒤 「순서 저장」을 누릅니다 · 상품은 대분류와 하위 어느 쪽이든 고를 수 있습니다.</span>
         )}
 
         {state.kind === "ok" && tree.some((p) => p.visible) && (

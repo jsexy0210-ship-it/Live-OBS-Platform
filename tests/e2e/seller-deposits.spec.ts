@@ -49,7 +49,7 @@ test("대표자: 메뉴에서 입금 확인을 열고, 단건 확인 뒤 일괄 
 
   // 목록 개수 문구가 서버 total과 같다
   const total = await page.evaluate(async () => (await (await fetch("/api/seller/payments/deposits?limit=1")).json()).total);
-  await expect(page.getByTestId("deposit-count")).toContainText(`입금 전 ${total}건`);
+  await expect(page.locator(".au-lh-total")).toContainText(`총 ${total}건`);
 
   // 단건: 확인 창 → 입금 확인 → 목록에서 빠지고 주문 상태가 결제 완료
   await row(page, DEPOSIT_NICKNAMES[0]).getByRole("button", { name: "입금 확인" }).click();

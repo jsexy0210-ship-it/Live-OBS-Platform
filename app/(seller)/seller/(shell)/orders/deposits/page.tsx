@@ -3,7 +3,7 @@
 import "../../../../../../styles/seller-orders.css";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { Modal } from "../../../../../../components/admin-ui";
+import { ListHead, Modal, PageHead } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
@@ -107,26 +107,30 @@ export default function DepositsPage() {
     <>
       <Topbar crumb="주문 › 입금 확인" />
       <main className="main">
-        <div className="ph">
-          <div className="col" style={{ gap: 4 }}>
-            <h1 className="t-t3">입금 확인</h1>
-            <span className="t-l2 c-alt">통장 내역과 입금자명 · 금액이 같은지 확인한 뒤 「입금 확인」을 누릅니다. 확인하면 주문대기에 올라갑니다.</span>
-          </div>
-          <Link className="btn btn-out" href="/seller/settings/order">
-            주문 설정
-          </Link>
-        </div>
+        <PageHead
+          title="입금 확인"
+          actions={
+            <Link className="btn btn-out" href="/seller/settings/order">
+              주문 설정
+            </Link>
+          }
+        />
+        <span className="t-c1 c-alt">통장 내역과 입금자명 · 금액이 같은지 확인한 뒤 「입금 확인」을 누릅니다. 확인하면 주문대기에 올라갑니다.</span>
 
         <div className="card" style={{ overflow: "visible" }}>
-          <div className="toolbar">
-            <span className="t-l2 c-alt" aria-live="polite" data-testid="deposit-count">
-              {state.kind === "ok" ? `입금 전 ${state.total}건${overdue > 0 ? ` · 기한 지남 ${overdue}건` : ""}` : ""}
-            </span>
-            <span style={{ marginLeft: "auto" }} />
-            <button className="btn btn-sm" type="button" disabled={picked.length === 0} onClick={() => setConfirm(rows.filter((r) => picked.includes(r.orderId)))}>
-              선택 입금 확인{picked.length > 0 ? ` (${picked.length})` : ""}
-            </button>
-          </div>
+          {state.kind === "ok" && (
+            <ListHead
+              total={state.total}
+              actions={
+                <>
+                  {overdue > 0 && <span className="t-l2 c-alt">기한 지남 {overdue}건</span>}
+                  <button className="btn btn-sm" type="button" disabled={picked.length === 0} onClick={() => setConfirm(rows.filter((r) => picked.includes(r.orderId)))}>
+                    선택 입금 확인{picked.length > 0 ? ` (${picked.length})` : ""}
+                  </button>
+                </>
+              }
+            />
+          )}
 
           {state.kind === "loading" && <LoadingRows rows={5} />}
           {state.kind === "error" &&
