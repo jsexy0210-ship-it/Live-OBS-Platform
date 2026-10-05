@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useWholeDateClick } from "../admin-ui/useWholeDateClick";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useLatestResponse, type ReadTicket } from "./latestResponse";
@@ -183,6 +184,8 @@ export function useSeller(): ShellCtx {
 }
 
 export function SellerShell({ children }: { children: React.ReactNode }) {
+  // 날짜 칸 어디를 눌러도 달력이 열린다(화면마다 따로 걸지 않는다)
+  useWholeDateClick();
   const router = useRouter();
   const pathname = usePathname();
   const [me, setMe] = useState<Me | null>(null);
