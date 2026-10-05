@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import ShopLegal from "../../../../../components/shop/ShopLegal";
+import { shopOpen } from "../../../../../lib/server/buyers/signup";
 import { prisma } from "../../../../../lib/server/db";
-import { publicLegal } from "../../../../../lib/server/shop-legal/service";
+import { publicLegalOf } from "../../../../../lib/server/shop-legal/service";
 import { findActiveShop } from "../_lib/shop";
 
 export const dynamic = "force-dynamic";
@@ -13,5 +14,6 @@ export const metadata: Metadata = { title: "이용약관" };
 export default async function Page({ params }: { params: Promise<{ slug: string }> }) {
   const shop = await findActiveShop((await params).slug);
   if (!shop) notFound();
-  return <ShopLegal kind="terms" doc={await publicLegal(prisma, shop.slug, "TERMS")} />;
+  // 운영 중이 아닌 쇼핑몰은 안내만(API와 같은 기준)
+  return <ShopLegal kind="terms" doc={(await shopOpen(prisma, shop.id)) ? await publicLegalOf(prisma, shop.id, "TERMS") : null} />;
 }

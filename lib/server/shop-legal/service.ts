@@ -100,11 +100,16 @@ export async function saveSellerLegal(db: PrismaClient, ctx: TenantContext, kind
 
 // ───────── 구매자 ─────────
 
-// 운영 중인 쇼핑몰이 아니면 null(404). 게시하지 않았으면 { published: false }(화면은 「준비 중」).
+// 게시본 읽기(쇼핑몰이 운영 중인지는 부르는 쪽이 shopOpen으로 먼저 확인한다). 게시하지 않았으면 { published: false }(화면은 「준비 중」).
+export async function publicLegalOf(db: PrismaClient, sellerId: string, kind: ShopLegalKind) {
+  const row = await db.shopLegalDoc.findUnique({ where: { sellerId_kind: { sellerId, kind } } });
+  if (!row || !row.isPublished) return { published: false as const, kind: param(kind) };
+  return { published: true as const, kind: param(kind), body: row.body, effectiveOn: dateText(row.effectiveOn), version: row.version };
+}
+
+// 쇼핑몰 주소로 읽기. 없거나 운영 중이 아닌 쇼핑몰이면 null(404).
 export async function publicLegal(db: PrismaClient, slug: string, kind: ShopLegalKind) {
   const shop = await db.seller.findUnique({ where: { slug: slug.slice(0, 60) }, select: { id: true } });
   if (!shop || !(await shopOpen(db, shop.id))) return null;
-  const row = await db.shopLegalDoc.findUnique({ where: { sellerId_kind: { sellerId: shop.id, kind } } });
-  if (!row || !row.isPublished) return { published: false as const, kind: param(kind) };
-  return { published: true as const, kind: param(kind), body: row.body, effectiveOn: dateText(row.effectiveOn), version: row.version };
+  return publicLegalOf(db, shop.id, kind);
 }
