@@ -2,6 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import { notFound } from "../authz/errors";
 import { requireSellerRead, type TenantContext } from "../tenant/context";
 import { aggregateBroadcasts } from "./summary";
+import { orderNoLabel } from "../orders/orderNoLabel";
 
 // 방송 상세(SA-055): 집계 + 그 방송 주문 목록 + HIT 카드. 귀속은 summary.ts와 같다(주문 createdAt·HIT createdAt이 방송 [시작, 종료] 안).
 // - 주문은 방송 중 들어온 순서(오래된 것부터), cursor(마지막 주문 id)로 50개씩. 탈퇴 등으로 분리 보관된 주문(legalHoldAt)은 일반 조회에서 빠진다.
@@ -52,7 +53,7 @@ export async function broadcastDetail(db: PrismaClient, ctx: TenantContext, id: 
       where: { sellerId: ctx.sellerId, createdAt: window },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       take: DETAIL_HIT_LIMIT,
-      select: { id: true, cardName: true, note: true, nicknameSnapshot: true, createdAt: true, queueItem: { select: { order: { select: { id: true, orderNo: true } }, externalOrderId: true, externalOrder: { select: { connection: { select: { shopKey: true } } } } } } },
+      select: { id: true, cardName: true, note: true, nicknameSnapshot: true, createdAt: true, queueItem: { select: { order: { select: { id: true, orderNo: true, createdAt: true } }, externalOrderId: true, externalOrder: { select: { connection: { select: { shopKey: true } } } } } } },
     }),
     // 외부 쇼핑몰 주문(내부 주문 행이 없어 위 주문 목록에 없다): 방송 시간 안에 들어온 것, 금액·결제 정보 없이 닉네임·상품·수량·취소 여부만
     db.externalOrder.findMany({
@@ -72,6 +73,7 @@ export async function broadcastDetail(db: PrismaClient, ctx: TenantContext, id: 
       return {
         id: o.id,
         orderNo: o.orderNo,
+        orderNoLabel: orderNoLabel(o.createdAt, o.orderNo),
         nickname: o.broadcastNicknameSnapshot,
         // refundedQuantity: 부분 환불로 돌려준 수량(화면 「부분 환불 n개」)
         items: o.items.map((i) => ({ productName: i.productNameSnapshot, optionName: i.optionNameSnapshot, quantity: i.quantity, unitPrice: i.unitPrice, refundedQuantity: i.refundedQuantity })),
@@ -102,7 +104,7 @@ export async function broadcastDetail(db: PrismaClient, ctx: TenantContext, id: 
       cardName: h.cardName,
       note: h.note,
       nickname: h.nicknameSnapshot,
-      order: h.queueItem ? h.queueItem.order : null,
+      order: h.queueItem?.order ? { id: h.queueItem.order.id, orderNo: h.queueItem.order.orderNo, orderNoLabel: orderNoLabel(h.queueItem.order.createdAt, h.queueItem.order.orderNo) } : null,
       source: h.queueItem ? (h.queueItem.externalOrderId ? ("EXTERNAL" as const) : ("INTERNAL" as const)) : null,
       externalShopName: h.queueItem?.externalOrder?.connection.shopKey ?? null,
       createdAt: h.createdAt,
