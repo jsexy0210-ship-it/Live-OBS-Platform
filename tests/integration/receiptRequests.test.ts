@@ -70,7 +70,7 @@ describe("현금영수증·세금계산서 신청", () => {
     const s = await setup();
     const r = await createReceiptRequest(db, s.scope, s.bankOrder, { ...income, orderId: s.bankOrder });
     if (!r.ok) throw new Error(r.reason);
-    expect(r.request).toMatchObject({ kind: "CASH_RECEIPT_INCOME", identityLast4: "6789", withdrawnAt: null, taxInfo: null, issue: { status: "PENDING", amount: 10000, attempts: 0 } });
+    expect(r.request).toMatchObject({ kind: "CASH_RECEIPT_INCOME", identityLast4: "6789", withdrawnAt: null, taxInfo: null, issue: { status: "PENDING", amount: 10000, attempts: 0, chargeable: true } });
     expect(JSON.stringify(r.request)).not.toContain("2345");
     const row = await db.orderReceiptRequest.findUniqueOrThrow({ where: { id: r.request.id } });
     expect(row.identitySealed).not.toContain("0102345");
@@ -146,7 +146,7 @@ describe("현금영수증·세금계산서 신청", () => {
     expect(await withdrawReceiptRequest(db, s.scope, again.request.id)).toEqual({ ok: false, reason: "invalid_transition" });
   });
 
-  it("실패한 발행만 다시 시도할 수 있고(대기로) 로그 추적에 남으며, 권한 없는 직원은 막힌다", async () => {
+  it("실패·보류한 발행만 다시 시도할 수 있고(대기로) 로그 추적에 남으며, 권한 없는 직원은 막힌다", async () => {
     const s = await setup();
     const r = await createReceiptRequest(db, s.scope, s.bankOrder, income);
     if (!r.ok) throw new Error(r.reason);
@@ -161,6 +161,12 @@ describe("현금영수증·세금계산서 신청", () => {
     expect(ok).toMatchObject({ ok: true, request: { issue: { status: "PENDING", failureCode: null, attempts: 1 } } });
     expect(await db.auditLog.count({ where: { action: "receipt_issue.retry", targetId: r.request.id, actorId: s.owner.id } })).toBe(1);
     expect(await retryReceiptIssue(db, s.ctx, "nope")).toEqual({ ok: false, reason: "not_found" });
+    // 충전금 잔액이 모자라 보류한 발행도 다시 시도하면 대기로 돌아오고, 구매자는 보류 중에도 철회할 수 있다
+    await db.receiptIssue.updateMany({ where: { requestId: r.request.id }, data: { status: "ON_HOLD" } });
+    expect((await listSellerReceiptRequests(db, s.ctx, { status: "ON_HOLD" })).counts).toEqual({ ON_HOLD: 1 });
+    expect(await retryReceiptIssue(db, s.ctx, r.request.id)).toMatchObject({ ok: true, request: { issue: { status: "PENDING" } } });
+    await db.receiptIssue.updateMany({ where: { requestId: r.request.id }, data: { status: "ON_HOLD" } });
+    expect(await withdrawReceiptRequest(db, s.scope, r.request.id)).toMatchObject({ ok: true, request: { issue: { status: "CANCELLED" } } });
   });
 
   it("경로: 구매자 신청 201·거부 문구(해요체), 철회, 파트너스 목록·다시 시도(합니다체)", async () => {

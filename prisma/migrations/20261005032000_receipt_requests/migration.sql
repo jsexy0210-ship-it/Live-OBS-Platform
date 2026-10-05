@@ -1,6 +1,6 @@
 -- 현금영수증·세금계산서 신청·발행 이력(lib/server/receipts/service.ts)
 CREATE TYPE "ReceiptKind" AS ENUM ('CASH_RECEIPT_INCOME', 'CASH_RECEIPT_EXPENSE', 'TAX_INVOICE');
-CREATE TYPE "ReceiptIssueStatus" AS ENUM ('PENDING', 'ISSUED', 'FAILED', 'CANCELLED');
+CREATE TYPE "ReceiptIssueStatus" AS ENUM ('PENDING', 'ON_HOLD', 'ISSUED', 'FAILED', 'CANCELLED');
 
 CREATE TABLE "OrderReceiptRequest" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),
@@ -25,6 +25,7 @@ CREATE TABLE "ReceiptIssue" (
     "requestId" UUID NOT NULL,
     "status" "ReceiptIssueStatus" NOT NULL DEFAULT 'PENDING',
     "amount" INTEGER NOT NULL,
+    "chargeable" BOOLEAN NOT NULL DEFAULT true,
     "attempts" INTEGER NOT NULL DEFAULT 0,
     "failureCode" TEXT,
     "providerKey" TEXT,

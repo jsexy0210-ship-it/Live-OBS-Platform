@@ -7,10 +7,10 @@ import { cleanText } from "../text/clean";
 
 // 현금영수증·세금계산서 신청과 발행 상태(SA-024 · SH-005·SH-022, MASTER 배정 2026-10-05).
 // - 구매자: 무통장·계좌이체 주문(입금 전·결제 완료)에 신청한다. 카드 결제는 카드 매출전표로 대신해 신청할 수 없다. 주문당 진행 중인 신청은 1건(DB 부분 유니크).
-//   발행 전(대기·실패)에는 철회할 수 있다.
+//   발행 전(대기·보류·실패)에는 철회할 수 있다.
 // - 신청하면 발행 이력(ReceiptIssue)이 대기(PENDING)로 생긴다. 외부 발급 연동(발행 업체)은 결정 전이라 아직 없고, 연동이 붙기 전까지 대기로 남는다.
 // - 휴대폰·사업자등록번호는 원문으로 저장하지 않고 봉인(AES-256-GCM, 판매자 id를 AAD로 묶음)해 두며 화면에는 뒤 4자리만 보인다.
-// - 파트너스(RECEIPT_TAX): 목록·상태 조회, 실패한 발행을 다시 시도(실패 → 대기). 변경은 로그 추적(AuditLog)에 남는다.
+// - 파트너스(RECEIPT_TAX): 목록·상태 조회, 실패·보류한 발행을 다시 시도(→ 대기). 보류(ON_HOLD)는 충전금 잔액이 모자라 발급을 미룬 상태이고 chargeable은 건당비를 충전금에서 차감하는 발급이라는 표시다(차감·보류 전환은 발행 업체 결정 뒤). 변경은 로그 추적(AuditLog)에 남는다.
 // - 환불 때 발행 취소 연동은 후속(발행 업체 결정 뒤).
 type Tx = Prisma.TransactionClient;
 export type AuditMeta = { ip?: string | null; userAgent?: string | null };
@@ -21,7 +21,7 @@ const isUuid = (v: unknown): v is string => typeof v === "string" && UUID.test(v
 const isUniqueViolation = (e: unknown) => e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
 
 export const RECEIPT_KINDS: readonly ReceiptKind[] = ["CASH_RECEIPT_INCOME", "CASH_RECEIPT_EXPENSE", "TAX_INVOICE"];
-const STATUSES: readonly ReceiptIssueStatus[] = ["PENDING", "ISSUED", "FAILED", "CANCELLED"];
+const STATUSES: readonly ReceiptIssueStatus[] = ["PENDING", "ON_HOLD", "ISSUED", "FAILED", "CANCELLED"];
 
 export type ReceiptFailure =
   | "shop_unavailable"
@@ -93,7 +93,7 @@ export function parseNewReceiptRequest(raw: Record<string, unknown>): { ok: true
 
 // ───────────── 보기 ─────────────
 
-const issueSelect = { id: true, status: true, amount: true, attempts: true, failureCode: true, issuedAt: true, cancelledAt: true, createdAt: true } satisfies Prisma.ReceiptIssueSelect;
+const issueSelect = { id: true, status: true, amount: true, chargeable: true, attempts: true, failureCode: true, issuedAt: true, cancelledAt: true, createdAt: true } satisfies Prisma.ReceiptIssueSelect;
 const viewSelect = {
   id: true,
   orderId: true,
@@ -174,7 +174,7 @@ export async function createReceiptRequest(db: PrismaClient, scope: BuyerScope, 
   }
 }
 
-// 철회: 발행 전(대기·실패)만, 본인 신청만. 발행 이력은 취소로 닫는다.
+// 철회: 발행 전(대기·보류·실패)만, 본인 신청만. 발행 이력은 취소로 닫는다.
 export async function withdrawReceiptRequest(db: PrismaClient, scope: BuyerScope, id: string, meta: AuditMeta = {}) {
   if (!isUuid(id)) return { ok: false as const, reason: "not_found" as const };
   return db.$transaction(async (tx) => {
@@ -184,7 +184,7 @@ export async function withdrawReceiptRequest(db: PrismaClient, scope: BuyerScope
     const [r] = await tx.$queryRaw<{ withdrawnAt: Date | null }[]>`
       SELECT "withdrawnAt" FROM "OrderReceiptRequest" WHERE "id" = ${id}::uuid AND "sellerId" = ${scope.sellerId}::uuid FOR UPDATE`;
     const latest = await tx.receiptIssue.findFirst({ where: { sellerId: scope.sellerId, requestId: id }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true, status: true } });
-    if (!r || r.withdrawnAt || !latest || (latest.status !== "PENDING" && latest.status !== "FAILED")) return { ok: false as const, reason: "invalid_transition" as const };
+    if (!r || r.withdrawnAt || !latest || (latest.status !== "PENDING" && latest.status !== "ON_HOLD" && latest.status !== "FAILED")) return { ok: false as const, reason: "invalid_transition" as const };
     const now = new Date();
     await tx.receiptIssue.update({ where: { id: latest.id }, data: { status: "CANCELLED", cancelledAt: now } });
     const row = await tx.orderReceiptRequest.update({ where: { id }, data: { withdrawnAt: now }, select: viewSelect });
@@ -221,7 +221,7 @@ export async function listSellerReceiptRequests(db: PrismaClient, ctx: TenantCon
   };
 }
 
-// 실패한 발행을 다시 시도(실패 → 대기). 연동이 붙으면 작업이 대기 건을 가져가 발행한다.
+// 실패·보류(충전금 잔액 부족)한 발행을 다시 시도(→ 대기). 연동이 붙으면 작업이 대기 건을 가져가 발행한다.
 export async function retryReceiptIssue(db: PrismaClient, ctx: TenantContext, requestId: string) {
   requireSellerPermission(ctx, "RECEIPT_TAX");
   if (!isUuid(requestId)) return { ok: false as const, reason: "not_found" as const };
@@ -232,7 +232,7 @@ export async function retryReceiptIssue(db: PrismaClient, ctx: TenantContext, re
     const [r] = await tx.$queryRaw<{ withdrawnAt: Date | null }[]>`
       SELECT "withdrawnAt" FROM "OrderReceiptRequest" WHERE "id" = ${requestId}::uuid AND "sellerId" = ${ctx.sellerId}::uuid FOR UPDATE`;
     const latest = await tx.receiptIssue.findFirst({ where: { sellerId: ctx.sellerId, requestId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true, status: true } });
-    if (!r || r.withdrawnAt || latest?.status !== "FAILED") return { ok: false as const, reason: "invalid_transition" as const };
+    if (!r || r.withdrawnAt || !latest || (latest.status !== "FAILED" && latest.status !== "ON_HOLD")) return { ok: false as const, reason: "invalid_transition" as const };
     await tx.receiptIssue.update({ where: { id: latest.id }, data: { status: "PENDING", failureCode: null } });
     await writeAudit(tx, {
       actorType: ctx.actorType as ActorType,
@@ -241,7 +241,7 @@ export async function retryReceiptIssue(db: PrismaClient, ctx: TenantContext, re
       action: "receipt_issue.retry",
       targetType: "OrderReceiptRequest",
       targetId: requestId,
-      before: { status: "FAILED" },
+      before: { status: latest.status },
       after: { status: "PENDING" },
     });
     const row = await tx.orderReceiptRequest.findUniqueOrThrow({ where: { id: requestId }, select: viewSelect });

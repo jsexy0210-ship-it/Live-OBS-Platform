@@ -4,7 +4,7 @@ import { prisma } from "../../../../../../lib/server/db";
 import { mutation, noStore, sessionToken } from "../../../../../../lib/server/http/route";
 import { receiptError, retryReceiptIssue } from "../../../../../../lib/server/receipts/service";
 
-// 실패한 발행 다시 시도(RECEIPT_TAX): 실패 → 대기. 실패가 아니면 409 invalid_transition. 로그 추적 receipt_issue.retry.
+// 실패·보류(충전금 잔액 부족) 발행 다시 시도(RECEIPT_TAX): → 대기. 둘 다 아니면 409 invalid_transition. 로그 추적 receipt_issue.retry.
 export const POST = mutation(async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { allowUnpaid: true, feature: "ORDER_FOLLOWUP" });
   const r = await retryReceiptIssue(prisma, ctx, (await params).id);
