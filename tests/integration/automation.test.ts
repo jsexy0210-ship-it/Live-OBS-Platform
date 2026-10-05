@@ -8,6 +8,7 @@ import { POST as reconnectRoute } from "../../app/api/automation/reconnect/route
 import { POST as refundRoute } from "../../app/api/automation/jobs/[jobId]/refund-request/route";
 import { POST as cleanupCloseRoute } from "../../app/api/automation/admin/jobs/[jobId]/cleanup/route";
 import { loginAdmin, loginSeller } from "../../lib/server/auth/login";
+import { budgetOpen, recordExternalCost } from "../../lib/server/automation/budget";
 import { AUTOMATION_CONSENT, AUTOMATION_PRICE, REINSTALL_PRICE } from "../../lib/server/automation/config";
 import { cafe24Playbook } from "../../lib/server/automation/playbooks/cafe24";
 import { validatePlaybook } from "../../lib/server/automation/playbook";
@@ -359,6 +360,30 @@ describe("lease·fencing·잠금·동시성", () => {
     await db.automationJob.update({ where: { id: a.jobId }, data: { costLimit: 5, playbookId: null, playbookVersion: null } });
     expect(await runOnce(db, runtime(), W)).toBe("failed");
     expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "cost_limit", costUsed: 10 });
+  });
+
+  it("판단 모델 비용은 월 원장에 쌓이고, 월 한도에 닿으면 그 달은 판단 호출 없이 멈춘다(budget_limit)", async () => {
+    const a = await bought();
+    await db.automationJob.update({ where: { id: a.jobId }, data: { costLimit: 5, playbookId: null, playbookVersion: null } });
+    expect(await runOnce(db, runtime(), W)).toBe("failed");
+    expect(await db.externalApiCostLedger.aggregate({ _sum: { costWon: true }, where: { provider: "gemini", jobId: a.jobId } })).toMatchObject({ _sum: { costWon: 10 } });
+    expect(await db.externalApiUsage.findFirstOrThrow({ where: { provider: "gemini" } })).toMatchObject({ usedWon: 10, stoppedAt: null });
+    // 한도에 닿으면 이미 접수된 작업은 판단 모델을 부르지 않고 멈춘다
+    const b = await bought();
+    await db.automationJob.update({ where: { id: b.jobId }, data: { playbookId: null, playbookVersion: null } });
+    await recordExternalCost(db, { provider: "gemini", purpose: "test", costWon: 10_000 });
+    expect(await budgetOpen(db, "gemini")).toBe(false);
+    const rt = runtime();
+    expect(await runOnce(db, rt, W)).toBe("failed");
+    expect(await job(b.jobId)).toMatchObject({ status: "FAILED", lastError: "budget_limit", costUsed: 0, plannerCalls: 0 });
+  });
+
+  it("월 한도에 닿으면 새 구매는 결제 없이 service_paused", async () => {
+    await recordExternalCost(db, { provider: "gemini", purpose: "test", costWon: 10_000 });
+    const s = await shopWithCard();
+    const provider = new FakeBillingProvider();
+    expect(await purchaseAutomation(db, provider, s.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP })).toMatchObject({ ok: false, reason: "service_paused" });
+    expect(await db.automationPayment.count()).toBe(0);
   });
 });
 

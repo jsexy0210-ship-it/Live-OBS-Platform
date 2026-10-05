@@ -1,3 +1,4 @@
+import type { Budget } from "./budget";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import { cueMatches, matchException, navRulesFor, plannerPathSegments, plannerVocabulary, resolveShop, type DoneCheck, type Playbook } from "./playbook";
@@ -267,6 +268,8 @@ const keyed = (a: AutomationAction) => ACTION_EFFECT[a.type] === "external";
 export type EngineOptions = {
   // 실행 자리를 잃으면 abort된다. 외부 호출(관찰·판단·실행) 직전마다 확인한다.
   signal?: AbortSignal;
+  // 외부 유료 API 월 한도(budget.ts). 없으면 월 한도를 보지 않는다(연습·시험). 판단 호출 직전에 열림을, 직후에 비용을 기록한다.
+  budget?: Budget;
   // 고객 행동 대기로 멈출 때 브라우저 상태를 보관할지(기본 true). 연습 실행은 보관하지 않는다.
   keepBrowserStateOnWait?: boolean;
   // 이전 실행에서 무료 재연결 대조를 통과했다(작업 행 기록). 브라우저 단계부터 다시 하지 않으면 다시 대조하지 않는다.
@@ -441,6 +444,7 @@ async function runAll(
         const vocabulary = plannerVocabulary(pb ?? secretBook?.steps[step.key]);
         // 판단 호출도 격리 창 장치 안에서 한다: 상한을 넘기면 중단 신호를 보내고 이 작업을 실패로 끝내 작업자가 한 호출에 묶이지 않게 한다
         const observation = sanitizeObservation(raw, secrets, vocabulary, { shopHost: opts.shopHost, pathSegments: plannerPathSegments(secretBook) });
+        if (opts.budget && !(await opts.budget.open())) return { kind: "failed", reason: "budget_limit" };
         const decided = await callPort((signal) => rt.planner.decide({ step, observation, history, reference }, signal), { window: hooks });
         if (!decided.ok) {
           if (decided.reason === "timeout") return { kind: "failed", reason: "planner_timeout" };
@@ -458,6 +462,7 @@ async function runAll(
         // 남은 한도를 넘는 비용(DB 정수 범위 밖 포함)은 합계를 DB 최대값 안으로만 기록하고 바로 cost_limit으로 끝낸다(쓰기 실패로 재시도·재호출 반복 금지)
         const overLimit = costWon > opts.costLimit - stats.costUsed;
         stats.costUsed = Math.min(stats.costUsed + costWon, DB_INT_MAX);
+        await opts.budget?.record(Math.min(costWon, DB_INT_MAX));
         await touchStats();
         if (overLimit) return { kind: "failed", reason: "cost_limit" };
         if (!check.ok) return { kind: "failed", reason: `unsafe_action:${check.reason}` };
