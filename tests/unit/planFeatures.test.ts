@@ -74,6 +74,8 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/member-grades/recalc": "STORE_OPERATIONS",
   "seller/member-grades/members/[memberId]": "STORE_OPERATIONS",
   "seller/returns": "ORDER_FOLLOWUP",
+  "seller/receipt-requests": "ORDER_FOLLOWUP",
+  "seller/receipt-requests/[id]/retry": "ORDER_FOLLOWUP",
   "seller/refund-requests": "ORDER_FOLLOWUP",
   "seller/refund-requests/[id]": "ORDER_FOLLOWUP",
   "seller/refund-requests/[id]/approve": "ORDER_FOLLOWUP",
@@ -83,6 +85,10 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/returns/[id]/reject": "ORDER_FOLLOWUP",
   "seller/returns/[id]/receive": "ORDER_FOLLOWUP",
   "seller/returns/[id]/exchange": "ORDER_FOLLOWUP",
+  "seller/returns/[id]/inspect": "ORDER_FOLLOWUP",
+  "seller/returns/[id]/reject-inspected": "ORDER_FOLLOWUP",
+  "seller/returns/[id]/hold": "ORDER_FOLLOWUP",
+  "seller/returns/[id]/convert": "ORDER_FOLLOWUP",
   "seller/returns/[id]/refund": "ORDER_FOLLOWUP",
   "seller/returns/images/[imageId]": "ORDER_FOLLOWUP",
   "seller/reviews": "STORE_OPERATIONS",
@@ -92,6 +98,10 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/reviews/[reviewId]/publish": "STORE_OPERATIONS",
   "seller/reviews/policy": "STORE_OPERATIONS",
   "seller/reviews/images/[imageId]": "STORE_OPERATIONS",
+  "seller/inquiries": "STORE_OPERATIONS", // 구매자 문의(SA-046·047)
+  "seller/inquiries/[inquiryId]": "STORE_OPERATIONS",
+  "seller/inquiries/[inquiryId]/answer": "STORE_OPERATIONS",
+  "seller/inquiries/images/[imageId]": "STORE_OPERATIONS",
   "seller/coupons/[couponId]": "STORE_OPERATIONS",
   "seller/coupons/[couponId]/grant": "STORE_OPERATIONS",
   "seller/coupons/products": "STORE_OPERATIONS",
@@ -109,6 +119,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/stream": "OVERLAY",
   "seller/member-policy": "STORE_OPERATIONS",
   "seller/order-policy": "STORE_OPERATIONS",
+  "seller/order-notification-policy": "STORE_OPERATIONS",
   "seller/payments/bank-account": "STORE_OPERATIONS", // 무통장 입금 계좌
   "seller/payments/deposits": "ORDER_FOLLOWUP", // 입금 대기 목록(잠금 중에도 이미 받은 주문 처리)
   "seller/payments/deposits/confirm": "ORDER_FOLLOWUP", // 입금 확인
@@ -126,6 +137,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/display/sections": "STORE_OPERATIONS",
   "seller/display/recommended": "STORE_OPERATIONS",
   "seller/display/settings": "STORE_OPERATIONS",
+  "seller/restock-alerts": "STORE_OPERATIONS",
   "seller/products/[productId]/images/order": "STORE_OPERATIONS",
   "seller/products/[productId]/images/[imageId]": "STORE_OPERATIONS",
   "seller/products/[productId]/event": "STORE_OPERATIONS",
@@ -140,6 +152,8 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/notices": "STORE_OPERATIONS",
   "seller/platform-notices": "BILLING", // 플랫폼 공지(SA-111·112): 잠김·정지 중에도 본다
   "seller/platform-notices/[noticeId]": "BILLING",
+  "seller/notifications": "BILLING", // 알림 센터(SA-130): 잠김·정지 중에도 본다
+  "seller/notifications/read": "BILLING",
   "seller/assistant": "BILLING", // 도우미(SA-140): 사용법 질문, 잠김·정지 중에도 쓴다(비용은 플랫폼 월 한도·하루 한도가 막음)
   "seller/platform-inquiries": "BILLING", // 플랫폼 문의(SA-113·114·115): 잠김·정지 중에도 쓴다
   "seller/platform-inquiries/[inquiryId]": "BILLING",
@@ -201,6 +215,8 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/categories": "STORE_OPERATIONS", // 카테고리 메뉴(SA-015)
   "shop/[slug]/shop-content/logo": "STORE_OPERATIONS", // 쇼핑몰 로고(없으면 404, 화면은 첫 글자)
   "shop/[slug]/returns": "STORE_OPERATIONS", // 교환·반품 신청(POST는 shopOpen으로 막고, GET 내 신청 조회는 잠긴 쇼핑몰에서도 열림)
+  "shop/[slug]/receipt-requests": "STORE_OPERATIONS", // 현금영수증·세금계산서 신청(POST는 shopOpen으로 막음)
+  "shop/[slug]/receipt-requests/[id]/withdraw": "STORE_OPERATIONS",
   "shop/[slug]/refund-requests": "STORE_OPERATIONS", // 환불 요청(반품 신청과 같음: POST는 shopOpen으로 막음)
   "shop/[slug]/refund-requests/[id]/cancel": "STORE_OPERATIONS",
   "shop/[slug]/returns/[id]/cancel": "STORE_OPERATIONS",
@@ -210,6 +226,10 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/reviews": "OPEN", // 내 리뷰(받은 답글·숨김 사유는 잠긴 쇼핑몰에서도 본다)
   "shop/[slug]/reviews/[reviewId]": "OPEN", // 내 리뷰 고치기·지우기
   "shop/[slug]/reviews/images/[imageId]": "OPEN", // 내가 올린 사진
+  "shop/[slug]/inquiries": "OPEN", // 내 문의·답변 조회는 열고, 쓰기는 shopOpen으로 막음
+  "shop/[slug]/inquiries/[inquiryId]": "OPEN", // 고치기·지우기는 shopOpen으로 막음
+  "shop/[slug]/inquiries/images": "STORE_OPERATIONS", // 사진 올리기는 shopOpen으로 막음
+  "shop/[slug]/inquiries/images/[imageId]": "OPEN", // 내가 올린 사진
   "shop/[slug]/reviews/items/[orderItemId]": "STORE_OPERATIONS", // 리뷰 쓰기(POST는 shopOpen으로 막음)
   "shop/[slug]/reviews/images": "STORE_OPERATIONS",
   "shop/[slug]/reviews/[reviewId]/report": "STORE_OPERATIONS",
@@ -218,6 +238,8 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/products": "STORE_OPERATIONS", // 구매자 상품 목록(운영 중 쇼핑몰만)
   "shop/[slug]/products/[productId]": "STORE_OPERATIONS", // 구매자 상품 상세
   "shop/[slug]/products/[productId]/reviews": "STORE_OPERATIONS",
+  "shop/[slug]/products/[productId]/inquiries": "STORE_OPERATIONS", // 공개 상품 문의(상품 상세)
+  "shop/[slug]/products/[productId]/recommendations": "STORE_OPERATIONS", // 추천 상품(상품 상세)
   "shop/[slug]/products/[productId]/images/[imageId]": "STORE_OPERATIONS", // 상품 사진(보이는 상품만)
   "shop/[slug]/orders/[orderId]": "OPEN",
   "shop/[slug]/payments": "STORE_OPERATIONS",
@@ -233,6 +255,8 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/cart/count": "OPEN", // 머리 배지 개수
   "shop/[slug]/wishlist": "STORE_OPERATIONS", // 찜: 찜하기(POST)는 shopOpen으로 막음, 목록은 열림
   "shop/[slug]/wishlist/[productId]": "OPEN", // 찜 빼기
+  "shop/[slug]/restock-alerts": "STORE_OPERATIONS", // 재입고 알림: 신청(POST)은 shopOpen으로 막음, 목록은 열림
+  "shop/[slug]/restock-alerts/[productId]": "OPEN", // 신청 취소
   "shop/[slug]/notices": "STORE_OPERATIONS", // 쇼핑몰 공지(운영 중이 아니면 404)
   "shop/[slug]/notices/[noticeId]": "STORE_OPERATIONS",
   "shop/[slug]/faqs": "STORE_OPERATIONS",

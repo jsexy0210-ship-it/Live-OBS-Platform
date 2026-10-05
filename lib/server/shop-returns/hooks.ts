@@ -1,6 +1,6 @@
 import type { ActorType, Prisma, ReturnKind, ReturnStatus } from "@prisma/client";
 import { writeAudit } from "../audit/log";
-import { ACTIVE_STATUSES } from "./rules";
+import { ACTIVE_STATUSES, CLEAR_ACCOUNT } from "./rules";
 import { returnImageStore } from "./store";
 
 // 기존 주문 파일(queue/service.ts 환불, orders/delivery.ts 자동 구매 확정)이 부르는 연결 함수. service.ts와 순환하지 않게 따로 둔다.
@@ -16,7 +16,7 @@ export async function closeReturnsOnRefund(tx: Tx, o: { sellerId: string; orderI
     const done = r.kind === "RETURN" && r.status === "RECEIVED";
     await tx.returnRequest.update({
       where: { id: r.id },
-      data: done ? { status: "COMPLETED", completedAt: o.now, refundAmount: o.refundAmount, updatedAt: o.now } : { status: "CANCELLED", cancelledAt: o.now, updatedAt: o.now },
+      data: done ? { status: "COMPLETED", completedAt: o.now, refundAmount: o.refundAmount, updatedAt: o.now, ...CLEAR_ACCOUNT } : { status: "CANCELLED", cancelledAt: o.now, updatedAt: o.now, ...CLEAR_ACCOUNT },
     });
     await writeAudit(tx, { ...o.actor, sellerId: o.sellerId, action: done ? "return.refund" : "return.close_on_refund", targetType: "ReturnRequest", targetId: r.id, before: { status: r.status }, after: { status: done ? "COMPLETED" : "CANCELLED", refundAmount: done ? o.refundAmount : undefined } });
   }
@@ -31,4 +31,9 @@ export async function hasActiveReturn(tx: Tx, sellerId: string, orderId: string)
 // 탈퇴 회원의 신청에 붙지 않은 사진 삭제
 export async function deleteUnattachedReturnImages(tx: Tx, scope: { sellerId: string; buyerMemberId: string }): Promise<number> {
   return returnImageStore.delete(tx, { ...scope, returnRequestId: null });
+}
+
+// 탈퇴 회원의 신청에 남은 무통장 환불 계좌 비우기(환불 전에 탈퇴한 경우)
+export async function clearReturnRefundAccounts(tx: Tx, scope: { sellerId: string; buyerMemberId: string }): Promise<number> {
+  return (await tx.returnRequest.updateMany({ where: { ...scope, refundAccountNumber: { not: null } }, data: { ...CLEAR_ACCOUNT } })).count;
 }

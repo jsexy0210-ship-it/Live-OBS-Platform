@@ -37,11 +37,11 @@ test("주문 통계: 기간·단위를 바꾸면 다시 집계하고, 화면 숫
   const first = statsResponse(page, "orders");
   await login(page, "demo-owner@example.com", "/seller/stats/orders");
   await first;
-  await expect(page.getByRole("heading", { name: "주문 통계" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "통계 · 주문" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "통계", exact: true })).toHaveAttribute("href", "/seller/stats");
 
   const r30 = statsResponse(page, "orders");
-  await page.getByRole("button", { name: "최근 30일" }).click();
+  await page.getByRole("button", { name: "30일", exact: true }).click();
   const body = await (await r30).json();
   expect(body.current.orders).toBeGreaterThan(0);
   await expect(kpi(page, "주문 수")).toHaveText(`${body.current.orders.toLocaleString("ko-KR")}건`);
@@ -58,7 +58,7 @@ test("주문 통계: 기간·단위를 바꾸면 다시 집계하고, 화면 숫
   expect(w.current).toEqual(body.current);
 
   const download = page.waitForEvent("download");
-  await page.getByRole("button", { name: "엑셀(CSV) 내려받기" }).click();
+  await page.getByRole("button", { name: "엑셀 내려받기" }).click();
   const file = await download;
   expect(file.suggestedFilename()).toMatch(/^order-stats_\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}\.csv$/);
   const csv = readFileSync((await file.path())!, "utf8");
@@ -70,12 +70,12 @@ test("직접 선택: 1년을 넘는 기간은 막고, 맞는 기간은 그 기�
   await login(page, "demo-owner@example.com", "/seller/stats/orders");
   await page.getByLabel("시작일").fill("2025-01-01");
   await page.getByLabel("종료일").fill("2026-01-02");
-  await page.getByRole("button", { name: "직접 선택" }).click();
-  await expect(page.getByRole("alert").filter({ hasText: "직접 선택은" })).toHaveText("직접 선택은 최대 12개월까지 가능합니다 · 선택: 2025-01-01 ~ 2026-01-02");
+  await page.getByRole("button", { name: "조회" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "직접 입력은" })).toHaveText("직접 입력은 최대 12개월까지 가능합니다");
   const r = statsResponse(page, "orders", "from=2020-01-01");
   await page.getByLabel("시작일").fill("2020-01-01");
   await page.getByLabel("종료일").fill("2020-01-31");
-  await page.getByRole("button", { name: "직접 선택" }).click();
+  await page.getByRole("button", { name: "조회" }).click();
   expect((await r).status()).toBe(200);
   await expect(page.getByText("선택한 기간에 주문이 없습니다")).toBeVisible();
   await shot(page, "stats-orders-empty");
@@ -91,7 +91,7 @@ test("매출 통계: 매출 구성·결제 수단별을 API 값으로 보여 준
   await login(page, "demo-owner@example.com", "/seller/stats/sales");
   await first;
   const r30 = statsResponse(page, "sales");
-  await page.getByRole("button", { name: "최근 30일" }).click();
+  await page.getByRole("button", { name: "30일", exact: true }).click();
   const body = await (await r30).json();
   await expect(kpi(page, "결제액")).toHaveText(won(body.current.paid));
   await expect(kpi(page, "순매출")).toHaveText(won(body.current.net));
@@ -115,7 +115,7 @@ test("상품 통계: 상위 상품·안 팔린 상품을 API 값으로 보여 �
   await login(page, "demo-owner@example.com", "/seller/stats/products");
   await first;
   const r30 = statsResponse(page, "products");
-  await page.getByRole("button", { name: "최근 30일" }).click();
+  await page.getByRole("button", { name: "30일", exact: true }).click();
   const body = await (await r30).json();
   await expect(kpi(page, "상품 매출")).toHaveText(won(body.current.revenue));
   if (body.top.length > 0) {
@@ -133,7 +133,7 @@ test("회원 통계: 신규 가입·구매 회원·재구매율을 API 값으로
   await login(page, "demo-owner@example.com", "/seller/stats/members");
   await first;
   const r30 = statsResponse(page, "members");
-  await page.getByRole("button", { name: "최근 30일" }).click();
+  await page.getByRole("button", { name: "30일", exact: true }).click();
   const body = await (await r30).json();
   await expect(kpi(page, "신규 가입")).toHaveText(`${body.current.signups.toLocaleString("ko-KR")}명`);
   await expect(kpi(page, "구매 회원")).toHaveText(`${body.current.buyers.toLocaleString("ko-KR")}명`);
@@ -157,42 +157,36 @@ test("방송 통계: 방송이 없으면 빈 상태를, 탭으로 다른 통계�
   await expect(page).toHaveURL(/\/seller\/stats\/sales$/);
 });
 
-test("통계 요약(SA-056): 요약 지표·방송별·상품별·적립금·주문 처리를 API 값으로 보여 주고, 고른 표만 내려받는다", async ({ page }) => {
+test("통계 요약(SA-056): 요약 지표·방송 내역·상품 상위·회원 표를 API 값으로 보여 주고, 비교를 끄면 직전 기간 줄이 사라지고, 한 파일로 내려받는다", async ({ page }) => {
   const first = statsResponse(page, "overview");
   await login(page, "demo-owner@example.com", "/seller/stats");
   await first;
-  await expect(page.getByRole("heading", { name: "통계", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "통계 · 요약" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "통계 종류" }).getByRole("link", { name: "요약" })).toHaveClass(/on/);
   const r30 = statsResponse(page, "overview");
-  await page.getByRole("button", { name: "최근 30일" }).click();
+  await page.getByRole("button", { name: "30일", exact: true }).click();
   const body = await (await r30).json();
   await expect(kpi(page, "매출 (결제 기준)")).toHaveText(won(body.summary.current.revenue));
   await expect(kpi(page, "주문")).toHaveText(`${body.summary.current.orders.toLocaleString("ko-KR")}건`);
   await expect(kpi(page, "방문자")).toHaveText("준비 중");
-  await expect(page.getByTestId("overview-broadcasts").locator("tbody tr")).toHaveCount(Math.min(5, body.broadcasts.rows.length) + 2);
+  // 방송 매출 · 방송 시간 일반 주문 · 방송 외 주문 · 합계(= 요약 매출)
+  const bt = page.getByTestId("overview-broadcasts");
+  await expect(bt.locator("tbody tr")).toHaveCount(4);
+  await expect(bt.locator("tbody tr").last()).toContainText(won(body.summary.current.revenue));
   await expect(page.getByTestId("overview-rewards")).toContainText(won(body.rewards.earned));
-  await expect(page.getByTestId("overview-operations")).toContainText("준비 중");
-  // 비교를 끄면 어느 칸에도 직전 기간 값 줄이 없고, 켜면 비교하는 칸(매출·주문·주문당 평균·신규 회원)에만 붙는다
-  const cmpLines = page.getByTestId("stats-kpi").locator(".d + .d");
+  await expect(page.getByTestId("overview-rewards")).toContainText("쿠폰 사용");
+  // 비교(기본 켬): 비교하는 칸 5개(매출·주문·주문당 평균·취소·환불·신규 회원)에 직전 기간 줄이 있고, 끄면 없다
+  const cmpLines = page.getByTestId("stats-kpi").locator(".d").filter({ hasText: "직전 기간" });
+  await expect(cmpLines).toHaveCount(5);
+  await page.getByLabel("직전 기간과 비교").uncheck();
   await expect(cmpLines).toHaveCount(0);
-  await page.getByLabel("지난 기간과 비교").check();
-  await expect(cmpLines).toHaveCount(4);
-  await expect(page.getByTestId("stats-kpi").filter({ has: page.getByText("주문당 평균", { exact: true }) }).locator(".d")).toHaveCount(2);
-  await expect(page.getByTestId("stats-kpi").filter({ hasText: "매출 (결제 기준)" })).toContainText(won(body.summary.previous.revenue));
-  // 상품 수량순
-  if (body.products.top.length > 1) {
-    await page.getByRole("group", { name: "상품 정렬" }).getByRole("button", { name: "수량순" }).click();
-    const top = body.products.topByQuantity[0];
-    await expect(page.getByTestId("overview-products").locator(".sts-prow").first()).toContainText(top.name);
-  }
+  await page.getByLabel("직전 기간과 비교").check();
+  if (body.products.top.length > 0) await expect(page.getByTestId("overview-products").locator("tbody tr").first()).toContainText(body.products.top[0].name);
   await shot(page, "stats-overview");
-  // 표 고르기 → 내려받기(방송별 매출만 추가로 고름)
-  await page.getByRole("button", { name: "엑셀(CSV) 내려받기" }).click();
-  await page.getByRole("group", { name: "내려받을 표" }).getByLabel("방송별 매출").check();
   const download = page.waitForEvent("download");
-  await page.getByRole("group", { name: "내려받을 표" }).getByRole("button", { name: "내려받기" }).click();
+  await page.getByRole("button", { name: "엑셀 내려받기" }).click();
   const file = await download;
   expect(file.suggestedFilename()).toMatch(/^stats-summary_\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}\.csv$/);
   const csv = readFileSync((await file.path())!, "utf8");
-  for (const h of ["일별 매출 · 주문", "상품별 판매", "방송별 매출", "방송 외 주문"]) expect(csv).toContain(h);
+  for (const h of ["일별 매출", "방송 내역", "방송 외 주문", "상품 상위"]) expect(csv).toContain(h);
 });
