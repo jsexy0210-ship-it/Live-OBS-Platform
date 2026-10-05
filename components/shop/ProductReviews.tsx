@@ -1,6 +1,8 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
+import { announceCount } from "./pdEvents";
 import { call } from "./reviewShared";
 
 // IA ④ 상품 상세 리뷰: 요약(평균·분포·사진 리뷰 수)과 최근 순 목록. GET /api/shop/{slug}/products/{id}/reviews?cursor → { average, total, photoCount, distribution, reviews, nextCursor }.
@@ -36,6 +38,7 @@ export default function ProductReviews({ slug, productId }: { slug: string; prod
     if (r.ok) {
       setData(r.data);
       setState("ok");
+      announceCount({ key: "reviews", n: r.data.total });
     } else setState("error");
   }, [api]);
   useEffect(() => void load(), [load]);
@@ -49,7 +52,7 @@ export default function ProductReviews({ slug, productId }: { slug: string; prod
   }
 
   return (
-    <section className="pd-rv" aria-labelledby="pd-rv-h">
+    <section className="pd-rv" id="pd-reviews" aria-labelledby="pd-rv-h">
       <h2 id="pd-rv-h">리뷰{data && data.total > 0 ? ` ${data.total.toLocaleString("ko-KR")}` : ""}</h2>
       {state === "loading" && <p className="shop-empty">리뷰를 불러오고 있어요</p>}
       {state === "error" && (
@@ -96,8 +99,7 @@ export default function ProductReviews({ slug, productId }: { slug: string; prod
                 {r.images.length > 0 && (
                   <p className="pd-rv-imgs">
                     {r.images.map((i) => (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img key={i.id} src={i.url} width={80} height={80} alt="리뷰 사진" loading="lazy" />
+                      <Image key={i.id} src={i.url} width={i.width} height={i.height} alt="리뷰 사진" unoptimized />
                     ))}
                   </p>
                 )}

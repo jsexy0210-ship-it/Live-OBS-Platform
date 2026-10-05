@@ -127,6 +127,7 @@ model Seller {
   overlayTemplates         OverlayTemplate[]
   mailDeliveries           MailDelivery[]
   memberPolicy             SellerMemberPolicy?
+  brandColor               SellerBrandColor?
   shopSeo                  ShopSeo?
   orderNotificationPolicy  SellerOrderNotificationPolicy?
   rejoinBlocks             BuyerRejoinBlock[]
@@ -894,6 +895,15 @@ model SellerLogo {
   // 주소 버전(v=)과 캐시 판단용 SHA-256(hex)
   sha256      String
   updatedAt   DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+}
+
+// 쇼핑몰 대표 색상(SA-060). 쇼핑몰당 1행, 없으면 플랫폼 기본 강조색. #RRGGBB 대문자. 강조색(버튼·가격)에만 쓰고 흰 바탕 대비 3:1 이상만 받는다(서버 검사).
+model SellerBrandColor {
+  sellerId  String   @id @db.Uuid
+  color     String
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 
   seller Seller @relation(fields: [sellerId], references: [id])
 }
