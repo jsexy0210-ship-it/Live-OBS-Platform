@@ -1934,7 +1934,9 @@ model ServiceVendor {
   createdAt    DateTime              @default(now()) @db.Timestamptz(3)
   updatedAt    DateTime              @default(now()) @updatedAt @db.Timestamptz(3)
 
-  logo ServiceVendorLogo?
+  logo          ServiceVendorLogo?
+  recommendedIn ServiceVendorSetting[] @relation("ServiceVendorRecommended")
+  selectedIn    ServiceVendorSetting[] @relation("ServiceVendorSelected")
 
   @@unique([category, name])
   @@unique([id, category])
@@ -1957,6 +1959,10 @@ model ServiceVendorSetting {
   recommendedVendorId String?               @db.Uuid
   selectedVendorId    String?               @db.Uuid
   updatedAt           DateTime              @default(now()) @updatedAt @db.Timestamptz(3)
+
+  // 추천·선택 업체는 같은 분야의 업체만(복합 외래키 (업체 id, 분야) → ServiceVendor(id, category), 마이그레이션 20261005042000_service_vendors의 SQL과 같음)
+  recommendedVendor ServiceVendor? @relation("ServiceVendorRecommended", fields: [recommendedVendorId, category], references: [id, category], onDelete: Restrict, map: "ServiceVendorSetting_recommended_fkey")
+  selectedVendor    ServiceVendor? @relation("ServiceVendorSelected", fields: [selectedVendorId, category], references: [id, category], onDelete: Restrict, map: "ServiceVendorSetting_selected_fkey")
 }
 
 // ───────────── 자동 설치·연결 상품 (docs/AUTOMATION.md) ─────────────
