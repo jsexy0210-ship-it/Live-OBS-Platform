@@ -45,3 +45,28 @@ test("쇼핑몰 주소가 보이고, 새로 온 VIP 주문만 VIP 알림 위젯�
   await expect(alert).toHaveCSS("top", `${1920 * 0.3}px`);
   await expect(alert).toHaveCount(0, { timeout: 8000 });
 });
+
+// OV-003 HIT 카드 강조: 처음부터 있던 카드는 그대로, 새로 들어온 카드만 잠깐 강조한 뒤 평소 모양으로 돌아온다.
+test("새로 들어온 HIT 카드만 잠깐 강조된다", async ({ page }) => {
+  test.setTimeout(60_000);
+  let phase = 0;
+  const hof = [{ id: "hof", type: "HALL_OF_FAME", ...box, h: 30, props: { rows: 5 } }];
+  const hit = (id: string, cardName: string) => ({ id, cardName, nickname: "별빛하늘" });
+  await page.route("**/api/overlay/*/layout*", (r) => r.fulfill({ json: { aspect: "9x16", version: 1, widgets: hof } }));
+  await page.route("**/api/overlay/*/stream", (r) => r.abort());
+  await page.route("**/api/overlay/*/version", (r) => r.fulfill({ json: { version: phase + 1 } }));
+  await page.route("**/api/overlay/*/state", (r) =>
+    r.fulfill({ json: { version: phase + 1, live: true, opening: null, waiting: [], hits: phase === 0 ? [hit("a", "옛 카드")] : [hit("b", "새 카드"), hit("a", "옛 카드")], orderEvents: [] } }),
+  );
+  await page.setViewportSize({ width: 1080, height: 1920 });
+  await page.goto("/overlay/mock-token");
+  await expect(page.locator('[data-widget="HALL_OF_FAME"]')).toContainText("옛 카드");
+  await expect(page.locator(".ow-hit-new")).toHaveCount(0);
+
+  phase = 1;
+  const fresh = page.locator(".ow-hit-new");
+  await expect(fresh).toHaveCount(1, { timeout: 25_000 });
+  await expect(fresh).toContainText("새 카드");
+  await expect(fresh).not.toContainText("옛 카드");
+  await expect(page.locator(".ow-hit-new")).toHaveCount(0, { timeout: 12_000 });
+});

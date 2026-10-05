@@ -155,7 +155,7 @@ test("로그인이 풀린 뒤 저장하면 로그인으로 보내고, 로그아�
   await page.context().clearCookies();
   await page.getByRole("switch", { name: "미입금으로 3번 취소되면 30일 동안 주문 막기" }).click();
   await save(page);
-  await expect(page).toHaveURL(/\/seller\/login\?next=%2Fseller%2Fsettings%2Forder$/);
+  await expect(page).toHaveURL(/\/seller\/login\?next=%2Fseller%2Fsettings%2Forder&reason=expired$/);
 });
 
 test("자동 취소를 꺼 둔 상태에서는 숨겨진 입금 기한 값이 틀려도 저장 버튼이 켜지지 않는다", async ({ page }) => {

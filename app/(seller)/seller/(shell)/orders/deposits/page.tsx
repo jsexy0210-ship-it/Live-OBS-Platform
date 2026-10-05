@@ -1,8 +1,10 @@
 "use client";
 
+import "../../../../../../styles/seller-orders.css";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ListHead, Modal, PageHead } from "../../../../../../components/admin-ui";
+import { useScrollRestore } from "../../../../../../lib/client/navigation";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
@@ -63,6 +65,7 @@ export default function DepositsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+  useScrollRestore("seller-deposits", state.kind === "ok");
 
   const loadMore = async () => {
     if (state.kind !== "ok") return;
@@ -109,7 +112,7 @@ export default function DepositsPage() {
         <PageHead
           title="입금 확인"
           actions={
-            <Link className="btn btn-out" href="/seller/settings/order">
+            <Link className="btn btn-out btn-level-secondary" href="/seller/settings/order">
               주문 설정
             </Link>
           }
@@ -123,7 +126,7 @@ export default function DepositsPage() {
               actions={
                 <>
                   {overdue > 0 && <span className="t-l2 c-alt">기한 지남 {overdue}건</span>}
-                  <button className="btn btn-sm" type="button" disabled={picked.length === 0} onClick={() => setConfirm(rows.filter((r) => picked.includes(r.orderId)))}>
+                  <button className="btn btn-dense btn-w-xl" type="button" disabled={picked.length === 0} onClick={() => setConfirm(rows.filter((r) => picked.includes(r.orderId)))}>
                     선택 입금 확인{picked.length > 0 ? ` (${picked.length})` : ""}
                   </button>
                 </>
@@ -146,7 +149,7 @@ export default function DepositsPage() {
               <table className="tbl">
                 <thead>
                   <tr>
-                    <th style={{ width: 36 }}>
+                    <th className="dep-w-chk">
                       <input className="cbx" type="checkbox" aria-label="전체 선택" checked={allPicked} onChange={() => setPicked(allPicked ? [] : rows.map((r) => r.orderId))} />
                     </th>
                     <th>주문</th>
@@ -155,7 +158,7 @@ export default function DepositsPage() {
                     <th>결제 방식</th>
                     <th>입금 기한</th>
                     <th>남은 시간</th>
-                    <th style={{ width: 110 }} aria-label="작업" />
+                    <th className="dep-w-act" aria-label="작업" />
                   </tr>
                 </thead>
                 <tbody>
@@ -178,7 +181,7 @@ export default function DepositsPage() {
                         <td className="num">{o.paymentDueAt ? listTime(o.paymentDueAt) : "-"}</td>
                         <td>{left.urgent ? <b style={{ color: "var(--neg, #c0262c)" }}>{left.text}</b> : left.text}</td>
                         <td>
-                          <button className="btn btn-sm" type="button" onClick={() => setConfirm([o])}>
+                          <button className="btn btn-sm btn-w-sm" type="button" onClick={() => setConfirm([o])}>
                             입금 확인
                           </button>
                         </td>
@@ -190,8 +193,8 @@ export default function DepositsPage() {
             </div>
           )}
           {state.kind === "ok" && state.rows.length < state.total && (
-            <div className="row" style={{ padding: "12px 20px", justifyContent: "center" }}>
-              <button className={`btn btn-sm btn-out${more ? " is-loading" : ""}`} type="button" disabled={more} onClick={() => void loadMore()}>
+            <div className="row dep-more">
+              <button className={`btn btn-dense btn-out btn-level-secondary${more ? " is-loading" : ""}`} type="button" disabled={more} onClick={() => void loadMore()}>
                 더 불러오기
               </button>
             </div>

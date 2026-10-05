@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { AuthError } from "../authz/errors";
+import { IMPERSONATION_COOKIE } from "../auth/impersonation";
 import { COOKIE_NAMES, type Realm } from "../auth/policy";
 
 export function readCookie(req: Request, name: string): string | undefined {
@@ -13,7 +14,8 @@ export function readCookie(req: Request, name: string): string | undefined {
   return undefined;
 }
 
-export const sessionToken = (req: Request, realm: Realm) => readCookie(req, COOKIE_NAMES[realm]);
+// 파트너스 API는 마스터 대리 조회 쿠키(lo_imp)가 있으면 그것을 먼저 본다(토큰이 「imp.」로 시작해 가드가 구분한다)
+export const sessionToken = (req: Request, realm: Realm) => (realm === "seller" ? (readCookie(req, IMPERSONATION_COOKIE) ?? readCookie(req, COOKIE_NAMES.seller)) : readCookie(req, COOKIE_NAMES[realm]));
 
 export function setSessionCookie(res: NextResponse, realm: Realm, token: string, expires: Date) {
   res.cookies.set(COOKIE_NAMES[realm], token, {
@@ -23,6 +25,14 @@ export function setSessionCookie(res: NextResponse, realm: Realm, token: string,
     path: "/",
     expires,
   });
+}
+
+// 마스터 대리 조회 쿠키: 파트너스 API 경로에만 보낸다(관리자 화면·마스터 API에는 가지 않는다)
+export function setImpersonationCookie(res: NextResponse, token: string, expires: Date) {
+  res.cookies.set(IMPERSONATION_COOKIE, token, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "strict", path: "/api/seller", expires });
+}
+export function clearImpersonationCookie(res: NextResponse) {
+  res.cookies.set(IMPERSONATION_COOKIE, "", { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "strict", path: "/api/seller", maxAge: 0 });
 }
 
 // 짧게 쓰는 흐름용 쿠키(본인인증 소유 확인·비밀번호 재설정 권한). 지정한 경로에서만 보낸다.
