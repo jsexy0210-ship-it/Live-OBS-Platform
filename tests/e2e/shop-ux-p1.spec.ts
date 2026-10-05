@@ -40,6 +40,3 @@ test("내 정보는 허브로 그룹별 링크를 보인다", async ({ page }) =
   await page.locator("main").getByRole("link", { name: "주문 내역" }).click();
   await expect(page).toHaveURL(/\/orders$/);
 });
-  const box = await nav.boundingBox();
-  expect(box!.height).toBeLessThan(80);
-});
