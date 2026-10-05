@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { adminCan } from "../../../../../../lib/server/authz/permissions";
-import { PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
+import { Modal, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { MAX_SEARCH_LENGTH } from "../../../../../../components/seller/format";
 import { adminApi, failMessage } from "../../../_components/api";
@@ -33,31 +33,33 @@ function DeleteDialog({ notice, onClose, onDone, onStale }: { notice: Notice; on
     setError(failMessage(r, "삭제하지 못했습니다. 잠시 후 다시 시도해 주십시오."));
   };
   return (
-    <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="notice-del-title">
-      <div className="modal">
-        <div className="modal-h">
-          <h2 className="t-h2" id="notice-del-title">
-            「{notice.title}」을(를) 삭제하시겠습니까?
-          </h2>
-          <span className="t-l2 c-alt">삭제한 공지는 어디에도 보이지 않으며, 로그 추적에만 남습니다.</span>
-        </div>
-        {error && (
-          <div style={{ padding: "0 24px" }}>
-            <span className="err" role="alert">
-              {error}
-            </span>
+    <Modal labelId="notice-del-title" busy={busy} onClose={onClose}>
+      {(requestClose) => (
+        <>
+          <div className="modal-h">
+            <h2 className="modal-t" id="notice-del-title">
+              「{notice.title}」을(를) 삭제하시겠습니까?
+            </h2>
+            <span className="t-l2 c-alt">삭제한 공지는 어디에도 보이지 않으며, 로그 추적에만 남습니다.</span>
           </div>
-        )}
-        <div className="modal-f">
-          <button className="btn btn-out" type="button" onClick={onClose} disabled={busy}>
-            취소
-          </button>
-          <button className="btn" type="button" onClick={() => void submit()} disabled={busy}>
-            {busy ? "처리 중" : "삭제"}
-          </button>
-        </div>
-      </div>
-    </div>
+          {error && (
+            <div style={{ padding: "0 24px" }}>
+              <span className="err" role="alert">
+                {error}
+              </span>
+            </div>
+          )}
+          <div className="modal-f">
+            <button className="btn btn-out" type="button" onClick={requestClose} disabled={busy}>
+              취소
+            </button>
+            <button className="btn" type="button" onClick={() => void submit()} disabled={busy}>
+              {busy ? "처리 중" : "삭제"}
+            </button>
+          </div>
+        </>
+      )}
+    </Modal>
   );
 }
 
