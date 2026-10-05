@@ -4,6 +4,7 @@ import { resolveBuyerSession } from "../../lib/server/auth/session";
 import { prisma } from "../../lib/server/db";
 import { publicCategories } from "../../lib/server/shop-category/service";
 import { EventPopupForPage } from "./EventPopup";
+import LiveBar from "./LiveBar";
 import ShopChrome from "./ShopChrome";
 
 type BusinessInfo = { companyName?: unknown; representativeName?: unknown; businessNumber?: unknown; mailOrderNumber?: unknown };
@@ -39,6 +40,7 @@ export default async function ShopFrame({ slug, shopName, children }: { slug: st
   return (
     <div className="shop-page">
       <ShopChrome slug={slug} shopName={shopName} loggedIn={!!session} nickname={session?.member.broadcastNickname ?? null} categories={categories} />
+      <LiveBar slug={slug} />
       <EventPopupForPage />
       <main className="shop-main">{children}</main>
       <footer className="shop-foot">
