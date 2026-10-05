@@ -2,17 +2,20 @@ import type { Metadata } from "next";
 import "../../styles/tokens.css";
 import "../../styles/lop.css";
 import "../../styles/public.css";
+import { MAINTENANCE_COPY, maintenanceTone } from "../../components/public/maintenanceCopy";
 import { RetryButton } from "../../components/public/RetryButton";
 import { prisma } from "../../lib/server/db";
 import { getPublicMaintenance } from "../../lib/server/maintenance/service";
 
 // AU-010 점검 중. 점검 중이면 proxy.ts가 /seller·/shop 주소를 그대로 두고 이 화면을 보여 준다.
+// 말투: /seller(파트너스 관리자)에서 오면 proxy가 ?area=partners를 붙여 합니다체, 그 밖(구매자 쇼핑몰·공개)은 해요체(components/public/maintenanceCopy.ts).
 export const metadata: Metadata = { title: "점검 중 · ONQ", robots: { index: false } };
 export const dynamic = "force-dynamic";
 
 const KST = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", month: "long", day: "numeric", hour: "numeric", minute: "2-digit", hour12: false });
 
-export default async function MaintenancePage() {
+export default async function MaintenancePage({ searchParams }: { searchParams: Promise<{ area?: string | string[] }> }) {
+  const c = MAINTENANCE_COPY[maintenanceTone((await searchParams).area)];
   // DB를 못 읽어도 화면은 열리고 점검 중으로 보여 준다
   const m = await getPublicMaintenance(prisma).catch(() => null);
   const active = m ? m.active : true;
@@ -25,20 +28,20 @@ export default async function MaintenancePage() {
         </span>
         {active ? (
           <>
-            <h1 className="t-h2">지금은 점검 중이에요</h1>
+            <h1 className="t-h2">{c.title}</h1>
             <p className="t-b1" data-testid="maintenance-message">
-              {m?.message || "더 안정적으로 이용하실 수 있게 서비스를 점검하고 있어요. 잠시 뒤에 다시 이용해 주세요."}
+              {m?.message || c.fallback}
             </p>
-            {m?.endsAt && <p className="t-c1 c-alt">{KST.format(new Date(m.endsAt))}에 끝날 예정이에요</p>}
-            <p className="t-c1 c-alt">결제가 끝난 주문은 점검이 끝난 뒤 주문 내역에서 확인할 수 있어요</p>
+            {m?.endsAt && <p className="t-c1 c-alt">{c.ends(KST.format(new Date(m.endsAt)))}</p>}
+            <p className="t-c1 c-alt">{c.note}</p>
             <RetryButton />
           </>
         ) : (
           <>
-            <h1 className="t-h2">점검이 끝났어요</h1>
-            <p className="t-b1">이제 다시 이용할 수 있어요.</p>
-            <a className="btn" href="/about">
-              처음으로
+            <h1 className="t-h2">{c.doneTitle}</h1>
+            <p className="t-b1">{c.doneBody}</p>
+            <a className="btn" href={c.doneHref}>
+              {c.doneCta}
             </a>
           </>
         )}
