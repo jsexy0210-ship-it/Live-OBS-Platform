@@ -37,6 +37,7 @@ const MENU: Group[] = [
       { label: "HIT 카드 이력", href: "/seller/hit-cards", perm: "BROADCAST_RUN", plan: "OVERLAY" },
       { label: "방송 이력", perm: "BROADCAST_RUN", plan: "OVERLAY" },
       { label: "외부 쇼핑몰 연동", perm: "SHOP_SETTINGS", plan: "OVERLAY" },
+      { label: "유튜브 연결", href: "/seller/youtube", perm: "BROADCAST_RUN", plan: "OVERLAY" },
       { label: "자동 연결", perm: "SHOP_SETTINGS", plan: "OVERLAY" },
     ],
   },
