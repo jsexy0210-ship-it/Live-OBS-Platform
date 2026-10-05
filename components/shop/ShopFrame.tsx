@@ -5,6 +5,7 @@ import { resolveBuyerSession } from "../../lib/server/auth/session";
 import { prisma } from "../../lib/server/db";
 import { publicCategories } from "../../lib/server/shop-category/service";
 import { footerNotice } from "../../lib/server/shop-legal/notice";
+import { ConfirmProvider } from "../admin-ui/ConfirmDialog";
 import { EventPopupForPage } from "./EventPopup";
 import LiveBar from "./LiveBar";
 import ShopChrome from "./ShopChrome";
@@ -45,6 +46,7 @@ export default async function ShopFrame({ slug, shopName, children }: { slug: st
   const bizNumber = text((seller?.businessInfo as BusinessInfo | null)?.businessNumber);
   const rows: FootRow[] = [...footRows(seller?.businessInfo).map(([label, value]) => ({ label, value })), ...(notice ? noticeRows(bizNumber, notice) : [])];
   return (
+    <ConfirmProvider>
     <div className="shop-page">
       <ShopChrome slug={slug} shopName={shopName} loggedIn={!!session} nickname={session?.member.broadcastNickname ?? null} categories={categories} />
       <LiveBar slug={slug} />
@@ -78,5 +80,6 @@ export default async function ShopFrame({ slug, shopName, children }: { slug: st
         </div>
       </footer>
     </div>
+    </ConfirmProvider>
   );
 }
