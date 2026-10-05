@@ -84,7 +84,7 @@ test("로그인 뒤 기본 화면: 통합은 지금처럼 상품, 오버레이 �
 
   // 방송 통계는 열려 있고, 통계 탭도 방송만 남는다
   await page.goto("/seller/stats/broadcasts");
-  await expect(page.getByRole("heading", { name: "방송 통계" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "통계 · 방송" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "통계 종류" }).getByRole("link")).toHaveText(["방송"]);
 
   // 매출·주문 통계 요약은 주소로 들어와도 안내 화면
