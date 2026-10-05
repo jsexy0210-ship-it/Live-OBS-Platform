@@ -186,6 +186,7 @@ SA
 - SA-042 회원 상세 — `/seller/members/[memberId]` (부분: 주문 목록·메모·등급 조정·적립금 지급 없음)
 - SA-043 구매 제한 — `/seller/purchase-restrictions` (직접 막기 없음)
 - SA-017 재입고 알림 — `/seller/products/restock-alerts` (상품별 대기·발송 수 조회만. 실제 발송은 서버 미연결이라 기록만, 설정 API 없음. 메뉴 href는 레이아웃 전담 몫)
+- 검색 유사어 — `/seller/products/search-synonyms` (화면 ID 없음: IA 반영 필요. 서버 #486. 상품 등록·수정 폼의 「검색 키워드」(searchTags)도 같은 PR. 메뉴 href는 레이아웃 전담 몫)
 - SA-046 구매자 문의 목록 · SA-047 문의 상세·답변 — `/seller/buyer-inquiries` (상세는 목록 위 창. 「구매자 문의」 메뉴 href 연결은 레이아웃 전담 몫)
 - SA-048 상품 리뷰 — `/seller/reviews`
 - SA-051 오버레이 편집기 — `/seller/overlay`
