@@ -64,12 +64,21 @@ describe("새 진열 영역", () => {
     const a = await made(s.ctx, "A");
     const b = await made(s.ctx, "B");
     const c = await made(s.ctx, "C");
-    await made(s.ctx, "D");
+    const d = await made(s.ctx, "D");
+    const e = await made(s.ctx, "E");
     const live = await db.broadcastSession.create({ data: { sellerId: s.seller.id, status: "LIVE" } });
     const ended = await db.broadcastSession.create({ data: { sellerId: s.seller.id, status: "ENDED", startedAt: new Date("2026-01-01T00:00:00Z"), endedAt: new Date("2026-01-01T01:00:00Z") } });
     await paidOrder(s, a.options[0].id, 1, live.id);
     const qb = await paidOrder(s, b.options[0].id, 5, live.id);
     await paidOrder(s, c.options[0].id, 2, ended.id); // 끝난 방송은 방송 상품 아님
+    // 30일 넘은 판매는 베스트에 넣지 않는다
+    const old = await paidOrder(s, d.options[0].id, 9);
+    await db.order.update({ where: { id: old.orderId }, data: { paidAt: new Date(Date.now() - 31 * 86_400_000) } });
+    await db.queueItem.update({ where: { id: old.id }, data: { broadcastSessionId: null } }); // 방송 전 주문(결제 때 지금 방송에 붙은 것을 되돌림)
+    // 취소된 대기열은 방송 상품이 아니다(오버레이와 같은 기준)
+    const qe = await paidOrder(s, e.options[0].id, 1, live.id);
+    await db.queueItem.update({ where: { id: qe.id }, data: { status: "CANCELLED" } });
+    await db.order.update({ where: { id: qe.orderId }, data: { status: "CANCELLED" } });
     await db.hitCard.create({ data: { sellerId: s.seller.id, queueItemId: qb.id, broadcastSessionId: live.id, nicknameSnapshot: "구매자", cardName: "리자몽 SAR" } });
     await db.product.update({
       where: { id: c.id },
@@ -86,13 +95,16 @@ describe("새 진열 영역", () => {
     expect(r).toMatchObject({ ok: true });
     expect(titles(await home(s.seller.slug))).toEqual([
       ["LIVE", ["B", "A"]], // 최근 주문 순
-      ["BEST", ["B", "C"]],
+      ["BEST", ["B", "C"]], // 최근 30일 결제 완료 판매량(D는 31일 전, E는 취소)
       ["SALE", ["C"]],
       ["HALL_OF_FAME", ["B"]],
     ]);
-    // 방송이 끝나면 방송 상품 영역은 빠진다
+    // 방송이 끝나면 방송 상품·명예의 전당 영역은 빠진다(오버레이처럼 지금 방송 기준)
     await db.broadcastSession.update({ where: { id: live.id }, data: { status: "ENDED", endedAt: new Date() } });
-    expect(titles(await home(s.seller.slug)).map((x) => x[0])).toEqual(["BEST", "SALE", "HALL_OF_FAME"]);
+    expect(titles(await home(s.seller.slug)).map((x) => x[0])).toEqual(["BEST", "SALE"]);
+    // 판매량이 같으면 최근에 팔린 상품이 앞
+    await paidOrder(s, c.options[0].id, 3);
+    expect(titles(await home(s.seller.slug))[0]).toEqual(["BEST", ["C", "B"]]);
     for (const kind of ["LIVE", "BEST", "SALE", "HALL_OF_FAME"]) {
       expect(await setSections(db, s.ctx, { sections: [{ kind, title: "a" }, { kind, title: "b" }] }), kind).toEqual({ ok: false, reason: "invalid_display_settings" });
     }

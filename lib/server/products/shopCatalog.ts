@@ -15,6 +15,8 @@ import { LOW_STOCK_MAX, productCode } from "./manage";
 export const SHOP_SORTS = ["new", "recommended", "popular", "low", "high"] as const;
 export type ShopSort = (typeof SHOP_SORTS)[number];
 export const SHOP_PAGE_MAX = 60;
+// 베스트 영역 판매량 기간(MASTER 결정 2026-10-05)
+export const BEST_WINDOW_MS = 30 * 86_400_000;
 const SHOP_PAGE_DEFAULT = 24;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const VISIBLE = ["ON_SALE", "SOLD_OUT"] as const;
@@ -56,8 +58,9 @@ export async function shopProductList(
   db: PrismaClient,
   slug: string,
   q: { categoryId?: unknown; q?: unknown; sort?: unknown; page?: unknown; limit?: unknown },
-  // 홈 진열 영역 전용 거르기(구매자 쿼리로는 받지 않음): sale = 이벤트 할인이 지금 걸린 상품만
-  only?: "sale",
+  // 홈 진열 영역 전용(구매자 쿼리로는 받지 않음): sale = 이벤트 할인이 지금 걸린 상품만,
+  // best = 최근 30일 결제 완료 판매량이 있는 상품만 판매량순(동률이면 최근 판매 순, 취소·환불 주문 제외)
+  only?: "sale" | "best",
 ): Promise<{ ok: true; value: { products: ShopProductCard[]; total: number; page: number; hasMore: boolean } } | { ok: false; reason: ListFailure }> {
   const shop = await openShop(db, slug);
   if (!shop) return { ok: false, reason: "not_found" };
@@ -99,7 +102,18 @@ export async function shopProductList(
   });
   const now = await dbNow(db);
   const sold = new Map<string, number>();
-  if (sort === "popular" && rows.length) {
+  const lastSold = new Map<string, number>();
+  if (only === "best" && rows.length) {
+    const r = await db.$queryRaw<{ productId: string; sold: bigint; last: Date }[]>`
+      SELECT oi."productId", SUM(oi."quantity")::bigint AS "sold", MAX(od."paidAt") AS "last" FROM "OrderItem" oi
+      JOIN "Order" od ON od."sellerId" = oi."sellerId" AND od."id" = oi."orderId"
+      WHERE oi."sellerId" = ${shop.id}::uuid AND od."status" = 'PAID' AND od."paidAt" >= ${new Date(now.getTime() - BEST_WINDOW_MS)}
+      GROUP BY oi."productId"`;
+    for (const x of r) {
+      sold.set(x.productId, Number(x.sold));
+      lastSold.set(x.productId, x.last.getTime());
+    }
+  } else if (sort === "popular" && rows.length) {
     const r = await db.$queryRaw<{ productId: string; sold: bigint }[]>`
       SELECT oi."productId", SUM(oi."quantity")::bigint AS "sold" FROM "OrderItem" oi
       JOIN "Order" od ON od."sellerId" = oi."sellerId" AND od."id" = oi."orderId"
@@ -110,7 +124,7 @@ export async function shopProductList(
     const shown = orderUnitPrice(p.price, eventOf(p), now);
     return { p, shown, salePrice: shown < p.price ? shown : null, soldOut: p.status === "SOLD_OUT" || p.options.every((o) => o.stock <= 0) };
   });
-  const cards = only === "sale" ? allCards.filter((c) => c.salePrice !== null) : allCards;
+  const cards = only === "sale" ? allCards.filter((c) => c.salePrice !== null) : only === "best" ? allCards.filter((c) => sold.has(c.p.id)) : allCards;
   // 카테고리를 고르고 진열 순서(recommended)로 보면 카테고리 안 진열 순서가 먼저: 고른 카테고리에 직접 지정한 상품 → 하위 카테고리(카테고리 순서대로)
   const catRank = new Map<string, number>();
   if (categoryIds && sort === "recommended" && rows.length) {
@@ -131,7 +145,7 @@ export async function shopProductList(
     low: (a, b) => a.shown - b.shown || byId(a, b),
     high: (a, b) => b.shown - a.shown || byId(a, b),
   };
-  cards.sort(cmp[sort]);
+  cards.sort(only === "best" ? (a, b) => sold.get(b.p.id)! - sold.get(a.p.id)! || lastSold.get(b.p.id)! - lastSold.get(a.p.id)! || byId(a, b) : cmp[sort]);
   const arranged = arrange(cards, await displayOptions(db, shop.id), await liveProductIds(db, shop.id), (c) => c.p.id);
   const slice = arranged.slice((page - 1) * limit, page * limit);
   const thumbs = await thumbnails(db, shop.id, shop.slug, slice.map((c) => c.p.id));
@@ -163,25 +177,29 @@ export async function displayOptions(db: PrismaClient, sellerId: string): Promis
   return row ?? NO_OPTIONS;
 }
 
-// 지금 방송(LIVE) 중이면 그 방송에서 주문된 상품 id(가장 최근 주문 순, 중복 없음). 방송 중이 아니면 빈 목록.
+// 지금 방송(LIVE) 중이면 그 방송에서 주문된 상품 id(가장 최근 주문 순, 중복 없음, 취소된 대기열 제외). 방송 중이 아니면 빈 목록.
+// 오버레이(lib/server/overlay/state.ts)의 지금 방송·주문 기준과 같다.
 export async function liveProductIds(db: PrismaClient, sellerId: string): Promise<string[]> {
   const live = await db.broadcastSession.findFirst({ where: { sellerId, status: "LIVE" }, orderBy: { startedAt: "desc" }, select: { id: true } });
   if (!live) return [];
   const rows = await db.$queryRaw<{ productId: string }[]>`
     SELECT oi."productId" FROM "QueueItem" q
     JOIN "OrderItem" oi ON oi."sellerId" = q."sellerId" AND oi."id" = q."orderItemId"
-    WHERE q."sellerId" = ${sellerId}::uuid AND q."broadcastSessionId" = ${live.id}::uuid
+    WHERE q."sellerId" = ${sellerId}::uuid AND q."broadcastSessionId" = ${live.id}::uuid AND q."status" <> 'CANCELLED'
     GROUP BY oi."productId" ORDER BY MAX(q."receivedAt") DESC, oi."productId"`;
   return rows.map((r) => r.productId);
 }
 
-// HIT 카드가 나온 상품 id(가장 최근 HIT 순, 중복 없음). 명예의 전당 영역.
+// 명예의 전당 영역: 지금 방송(LIVE)의 HIT 카드가 나온 상품 id(가장 최근 HIT 순, 중복 없음). 방송 중이 아니면 빈 목록.
+// 오버레이 명예의 전당(지금 방송의 HIT 카드, lib/server/overlay/state.ts)과 같은 기준.
 export async function hallOfFameProductIds(db: PrismaClient, sellerId: string, limit: number): Promise<string[]> {
+  const live = await db.broadcastSession.findFirst({ where: { sellerId, status: "LIVE" }, orderBy: { startedAt: "desc" }, select: { id: true } });
+  if (!live) return [];
   const rows = await db.$queryRaw<{ productId: string }[]>`
     SELECT oi."productId" FROM "HitCard" h
     JOIN "QueueItem" q ON q."sellerId" = h."sellerId" AND q."id" = h."queueItemId"
     JOIN "OrderItem" oi ON oi."sellerId" = q."sellerId" AND oi."id" = q."orderItemId"
-    WHERE h."sellerId" = ${sellerId}::uuid
+    WHERE h."sellerId" = ${sellerId}::uuid AND h."broadcastSessionId" = ${live.id}::uuid
     GROUP BY oi."productId" ORDER BY MAX(h."createdAt") DESC, oi."productId" LIMIT ${limit * 3}`;
   return rows.map((r) => r.productId);
 }

@@ -20,8 +20,8 @@ import { requireSellerPermission, requireSellerRead, type TenantContext } from "
 
 // 상품 진열(SA-016, 2026-10-04 대표님 지시, PRODUCT_MANAGE).
 // - 목록 기본 정렬 listSort: 구매자 상품 목록에서 정렬을 고르지 않았을 때(new·recommended·popular·low·high).
-// - 홈 진열 영역: 추천 상품(RECOMMENDED)·신상품(NEW)·카테고리별(CATEGORY)·방송 상품(LIVE, 지금 방송에서 주문된 상품)·베스트(BEST, 결제 완료 판매량)·
-//   할인 중(SALE, 이벤트 할인)·명예의 전당(HALL_OF_FAME, HIT 카드가 나온 상품) 영역을 최대 10개, 순서대로. 카테고리 말고는 종류마다 하나씩.
+// - 홈 진열 영역: 추천 상품(RECOMMENDED)·신상품(NEW)·카테고리별(CATEGORY)·방송 상품(LIVE, 지금 방송에서 주문된 상품)·베스트(BEST, 최근 30일 결제 완료 판매량)·
+//   할인 중(SALE, 이벤트 할인)·명예의 전당(HALL_OF_FAME, 지금 방송의 HIT 카드가 나온 상품. 방송·명예의 전당은 오버레이와 같은 기준) 영역을 최대 10개, 순서대로. 카테고리 말고는 종류마다 하나씩.
 // - 진열 옵션(soldOutLast·hideSoldOut·liveFirst): 구매자 목록과 홈 진열 모두에 건다. 방송 상품 앞으로는 자동 정렬 목록만(추천 상품·방송 상품 영역은 정한 순서 그대로).
 //   영역마다 제목(1~30자)·켜기·보일 상품 수(1~20). 저장은 통째로 바꾼다. 영역을 한 번도 저장하지 않았으면 기본(추천 8 → 신상품 8).
 // - 추천 상품: 최대 20개, 순서대로. 지우지 않은 이 판매자 상품만. 구매자 화면에서는 보이는 상품(판매 중·품절)만 나온다.
@@ -178,7 +178,8 @@ export async function publicHome(db: PrismaClient, slug: string): Promise<{ sect
       products = fixed(await shopCardsInOrder(db, shop, await hallOfFameProductIds(db, shop.id, s.itemCount)), s.itemCount);
     } else {
       const sort = s.kind === "NEW" ? "new" : s.kind === "BEST" ? "popular" : "recommended";
-      const r = await shopProductList(db, shop.slug, { sort, categoryId: s.categoryId ?? undefined, limit: String(s.itemCount) }, s.kind === "SALE" ? "sale" : undefined);
+      const only = s.kind === "SALE" ? "sale" : s.kind === "BEST" ? "best" : undefined;
+      const r = await shopProductList(db, shop.slug, { sort, categoryId: s.categoryId ?? undefined, limit: String(s.itemCount) }, only);
       products = r.ok ? r.value.products : []; // 보이지 않는 카테고리는 not_found → 영역을 뺀다
     }
     if (products.length) out.push({ kind: s.kind, title: s.title, categoryId: s.categoryId, products });
