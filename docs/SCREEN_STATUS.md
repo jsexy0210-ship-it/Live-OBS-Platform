@@ -171,7 +171,7 @@ MA
 
 SA
 - SA-001 방송 대시보드 — `/seller/broadcast` (HIT 카드 등록 모달 없음: 코드 주석 「서버 API가 아직 없어 두지 않는다」)
-- SA-011 상품 목록 — `/seller/products`
+- SA-011 상품 목록 — `/seller/products` (빠른 처리: 판매 상태 선택·옵션 1개 상품 재고 입력을 목록에서 바로 저장. 조건은 URL 쿼리와 맞춤)
 - SA-012 상품 등록·수정 — `/seller/products/new`, `/seller/products/[productId]`
 - SA-013 상품 상세 미리보기 — 상세 편집기 안 「미리보기」 전환만(`ProductDetailEditor`) — 판단 불확실
 - SA-014 재고 일괄 수정 — `/seller/products/stock` (CSV·되돌리기 없음)
