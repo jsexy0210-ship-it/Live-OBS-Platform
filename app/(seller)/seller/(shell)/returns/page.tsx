@@ -322,10 +322,10 @@ function ReturnDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit
                       현금 환불 {won(preview.refundAmount)}
                     </span>
                     <span className="t-c1 c-alt num" data-testid="rt-reward">
-                      {preview.rewardReturn > 0 ? `적립금 반환 ${won(preview.rewardReturn)}` : "적립금 반환 0원 (사용한 적립금 없음)"}
+                      {preview.rewardReturn > 0 ? `적립금 반환 ${won(preview.rewardReturn)}` : "적립금 반환 0원"}
                     </span>
                     {preview.returnFeeDeducted > 0 && <span className="t-c1 c-alt num">반품 배송비 {won(preview.returnFeeDeducted)} 차감</span>}
-                    <span className="t-c1 c-alt">현금 환불 = 돌아오는 상품 금액 − 반품 배송비 − 적립금 반환</span>
+                    {preview.rewardReturn > 0 && <span className="t-c1 c-alt">쓴 적립금은 구매자에게 적립금으로 돌려줍니다</span>}
                     {preview.blocked && <span className="err">이 사유 주체로는 환불할 수 없는 주문입니다</span>}
                   </>
                 ) : (

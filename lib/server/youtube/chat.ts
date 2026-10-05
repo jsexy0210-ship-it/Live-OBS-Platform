@@ -4,7 +4,7 @@ import { requireSellerPermission, requireSellerRead, type TenantContext } from "
 import { Rejected, callYoutube, guard } from "./call";
 import type { YoutubeClient } from "./client";
 import { addMonthlyChats } from "./settings";
-import { QUOTA_CHAT_RATIO, QUOTA_WARN_RATIO, quotaUsage } from "./quota";
+import { QUOTA_ALL, QUOTA_CHAT_RATIO, QUOTA_WARN_RATIO, quotaDay, quotaLimits, quotaUsage, type QuotaLimits } from "./quota";
 
 // 유튜브 채팅 수집(MASTER 승인 2026-10-05, 무료 할당량 안에서만).
 // - 기본 꺼짐. 파트너스가 방송(진행 중 연결)마다 켠 LIVE 연결만 수집한다. 켜지 않으면 할당량을 쓰지 않는다.
@@ -43,7 +43,10 @@ export async function collectChats(db: PrismaClient, client: YoutubeClient, now 
       const page = await callYoutube(db, "liveChatMessages.list", "chat", link.sellerId, now, () => client.chatMessages(link.liveChatId!, link.chatPageToken));
       report.polled++;
       if (page.ended) {
-        await db.youtubeLiveLink.updateMany({ where: { id: link.id, sellerId: link.sellerId }, data: { liveChatId: null, chatPageToken: null, chatNextPollAt: null } });
+        await db.youtubeLiveLink.updateMany({
+          where: { id: link.id, sellerId: link.sellerId },
+          data: { liveChatId: null, chatPageToken: null, chatNextPollAt: null, chatStopReason: page.endReason ?? "chat_ended" },
+        });
         continue;
       }
       const r = page.messages.length
@@ -55,13 +58,22 @@ export async function collectChats(db: PrismaClient, client: YoutubeClient, now 
       const interval = nextChatInterval(link.chatIntervalMs, page.pollingIntervalMillis, r.count, ratio);
       await db.youtubeLiveLink.updateMany({
         where: { id: link.id, sellerId: link.sellerId, status: "LIVE" },
-        data: { chatPageToken: page.nextPageToken ?? link.chatPageToken, chatIntervalMs: interval, chatNextPollAt: new Date(now.getTime() + interval) },
+        data: {
+          chatPageToken: page.nextPageToken ?? link.chatPageToken,
+          chatIntervalMs: interval,
+          chatNextPollAt: new Date(now.getTime() + interval),
+          chatLastPolledAt: now,
+          chatStopReason: null,
+        },
       });
     } catch (e) {
       if (!(e instanceof Rejected)) throw e;
       if (e.reason === "quota_exhausted") return { ...report, stopped: "quota_exhausted" };
-      // 판매자 몫 초과·유튜브 일시 오류는 그 방송만 1분 쉰다
-      await db.youtubeLiveLink.updateMany({ where: { id: link.id, sellerId: link.sellerId }, data: { chatNextPollAt: new Date(now.getTime() + CHAT_IDLE_MAX_MS) } });
+      // 판매자 몫 초과·유튜브 일시 오류는 그 방송만 1분 쉰다(한도는 chatStatus가 할당량 표로 판단, 일시 오류만 이유로 남긴다)
+      await db.youtubeLiveLink.updateMany({
+        where: { id: link.id, sellerId: link.sellerId },
+        data: { chatNextPollAt: new Date(now.getTime() + CHAT_IDLE_MAX_MS), ...(e.reason === "youtube_unavailable" ? { chatStopReason: "youtube_error" } : {}) },
+      });
     }
   }
   return report;
@@ -137,4 +149,52 @@ export async function chatMatches(db: PrismaClient, ctx: TenantContext, broadcas
 export async function purgeOldChats(db: PrismaClient, now: Date): Promise<number> {
   const r = await db.youtubeChatMessage.deleteMany({ where: { createdAt: { lt: new Date(now.getTime() - CHAT_RETENTION_DAYS * 86_400_000) } } });
   return r.count;
+}
+
+// 방송 대시보드 「채팅 일시 중지·비공개」 띠용 채팅 수집 상태(MASTER 배정 2026-10-05).
+// state와 reason:
+// - off: 채팅 수집을 켜지 않음(chat_off)
+// - waiting: 방송 시작 전(not_started)
+// - collecting: 수집 중(reason null)
+// - paused: 일시 중지 — platform_limit(플랫폼 무료 한도 95%) · seller_daily_limit(이 쇼핑몰 오늘 한도) · youtube_error(유튜브 일시 오류, 1분 뒤 다시 시도)
+// - unavailable: 채팅을 받을 수 없음 — chat_disabled(채팅 꺼짐) · chat_forbidden(비공개·회원 전용 등) · chat_not_found · no_live_chat(유튜브가 채팅 id를 주지 않음)
+// - ended: broadcast_ended(방송 종료) · chat_ended(방송 중 채팅 종료) · unlinked(연결 해제)
+export type ChatState = "off" | "waiting" | "collecting" | "paused" | "unavailable" | "ended";
+type StatusLink = { status: string; chatEnabled: boolean; liveChatId: string | null; chatStopReason: string | null };
+const UNAVAILABLE = new Set(["chat_disabled", "chat_forbidden", "chat_not_found"]);
+
+export function chatStateOf(link: StatusLink, quota: { sellerToday: number; platformRatio: number }, limits: QuotaLimits): { state: ChatState; reason: string | null } {
+  if (link.status === "ENDED") return { state: "ended", reason: "broadcast_ended" };
+  if (link.status === "UNLINKED") return { state: "ended", reason: "unlinked" };
+  if (!link.chatEnabled) return { state: "off", reason: "chat_off" };
+  if (link.status === "UPCOMING") return { state: "waiting", reason: "not_started" };
+  if (link.chatStopReason === "chat_ended") return { state: "ended", reason: "chat_ended" };
+  if (link.chatStopReason && UNAVAILABLE.has(link.chatStopReason)) return { state: "unavailable", reason: link.chatStopReason };
+  if (!link.liveChatId) return { state: "unavailable", reason: "no_live_chat" };
+  if (quota.platformRatio >= QUOTA_CHAT_RATIO) return { state: "paused", reason: "platform_limit" };
+  if (quota.sellerToday >= limits.perSeller) return { state: "paused", reason: "seller_daily_limit" };
+  if (link.chatStopReason === "youtube_error") return { state: "paused", reason: "youtube_error" };
+  return { state: "collecting", reason: null };
+}
+
+// 가장 최근에 연결한 방송(진행 중 우선)의 채팅 수집 상태. 연결한 방송이 없으면 link·state null.
+export async function chatStatus(db: PrismaClient, ctx: TenantContext, now = new Date(), limits: QuotaLimits = quotaLimits()) {
+  requireSellerRead(ctx, "BROADCAST_RUN");
+  const select = { id: true, videoId: true, broadcastSessionId: true, status: true, chatEnabled: true, liveChatId: true, chatStopReason: true, chatLastPolledAt: true } as const;
+  const link =
+    (await db.youtubeLiveLink.findFirst({ where: { sellerId: ctx.sellerId, status: { in: ["UPCOMING", "LIVE"] } }, select })) ??
+    (await db.youtubeLiveLink.findFirst({ where: { sellerId: ctx.sellerId }, orderBy: { createdAt: "desc" }, select }));
+  if (!link) return { link: null, state: null, reason: null, lastCollectedAt: null };
+  const day = quotaDay(now);
+  const [seller, all] = await Promise.all([
+    db.youtubeQuotaUsage.findUnique({ where: { day_scope: { day, scope: ctx.sellerId } }, select: { units: true } }),
+    db.youtubeQuotaUsage.findUnique({ where: { day_scope: { day, scope: QUOTA_ALL } }, select: { units: true } }),
+  ]);
+  const { state, reason } = chatStateOf(link, { sellerToday: seller?.units ?? 0, platformRatio: (all?.units ?? 0) / limits.daily }, limits);
+  return {
+    link: { id: link.id, videoId: link.videoId, broadcastSessionId: link.broadcastSessionId, status: link.status.toLowerCase() },
+    state,
+    reason,
+    lastCollectedAt: link.chatLastPolledAt,
+  };
 }

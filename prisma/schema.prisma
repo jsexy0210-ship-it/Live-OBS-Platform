@@ -1312,11 +1312,13 @@ model RewardBalance {
 // ───────────── 오버레이·감사 로그 ─────────────
 
 model OverlayToken {
-  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerId  String    @db.Uuid
-  tokenHash String    @unique
-  createdAt DateTime  @default(now()) @db.Timestamptz(3)
-  revokedAt DateTime? @db.Timestamptz(3)
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId   String    @db.Uuid
+  tokenHash  String    @unique
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  revokedAt  DateTime? @db.Timestamptz(3)
+  // 오버레이 주소로 마지막 접속한 시각(1분에 한 번만 갱신, 마스터 관리자 운영 현황 MA-041·042)
+  lastSeenAt DateTime? @db.Timestamptz(3)
 
   seller Seller @relation(fields: [sellerId], references: [id])
 
@@ -2549,6 +2551,9 @@ model YoutubeLiveLink {
   chatPageToken      String?
   chatNextPollAt     DateTime?         @db.Timestamptz(3)
   chatIntervalMs     Int?
+  // 마지막으로 채팅을 받아 온 시각, 수집이 멈춘 이유(chat_ended·chat_disabled·chat_not_found·chat_forbidden·youtube_error). chat.ts chatStatus 참고.
+  chatLastPolledAt   DateTime?         @db.Timestamptz(3)
+  chatStopReason     String?
   createdAt          DateTime          @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime          @updatedAt @db.Timestamptz(3)
 

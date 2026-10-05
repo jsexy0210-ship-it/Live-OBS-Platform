@@ -23,14 +23,14 @@ test("대표자: 메뉴에서 들어가 HIT 카드를 등록하고, 기간으로
   await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "HIT 카드 이력" }).click();
   await expect(page).toHaveURL(/\/seller\/hit-cards$/);
 
-  // 등록: 필수 칸이 비면 등록 버튼이 꺼져 있다
+  // 등록: 대상 주문이 없으면 「직접 입력」(닉네임을 적음). 필수 칸이 비면 등록 버튼이 꺼져 있다
   await page.getByRole("button", { name: "HIT 카드 등록" }).click();
   const add = page.getByRole("dialog", { name: "HIT 카드 등록" });
-  await expect(add.getByRole("button", { name: "등록" })).toBeDisabled();
-  await add.getByLabel("카드 이름").fill(card);
+  await expect(add.getByRole("button", { name: "HIT 카드 등록" })).toBeDisabled();
+  await add.getByLabel("카드명").fill(card);
   await add.getByLabel("구매자 닉네임").fill("hit-e2e-buyer");
   await add.getByLabel("메모").fill("e2e 메모");
-  await add.getByRole("button", { name: "등록" }).click();
+  await add.getByRole("button", { name: "HIT 카드 등록" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   const row = page.getByTestId("hit-list").locator("tr", { hasText: card });
   await expect(row).toContainText("hit-e2e-buyer");
@@ -51,7 +51,7 @@ test("대표자: 메뉴에서 들어가 HIT 카드를 등록하고, 기간으로
   // 해제: 확인 창에서 닫으면 그대로, 해제하면 사라진다
   await row.getByRole("button", { name: "해제" }).click();
   const del = page.getByRole("dialog", { name: "HIT 카드를 해제하시겠습니까?" });
-  await del.getByRole("button", { name: "닫기" }).click();
+  await del.getByRole("button", { name: "취소" }).click();
   await expect(row).toBeVisible();
   await row.getByRole("button", { name: "해제" }).click();
   await page.getByRole("dialog", { name: "HIT 카드를 해제하시겠습니까?" }).getByRole("button", { name: "해제" }).click();

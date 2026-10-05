@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { YOUTUBE_MESSAGES, liveStatusOf } from "../../lib/server/youtube/call";
-import { CHAT_NOTICE, nextChatInterval, normalizeNickname } from "../../lib/server/youtube/chat";
+import { CHAT_NOTICE, chatStateOf, nextChatInterval, normalizeNickname } from "../../lib/server/youtube/chat";
 import { YoutubeApiError, YoutubeQuotaError, createYoutubeClient, youtubeApiKey, type VideoInfo } from "../../lib/server/youtube/client";
 import { parseYoutubeRef } from "../../lib/server/youtube/parse";
 import { quotaDay, quotaLimits } from "../../lib/server/youtube/quota";
@@ -110,11 +110,14 @@ describe("채팅 응답 해석(모의)", () => {
     expect(u.pathname).toBe("/youtube/v3/liveChat/messages");
     expect(u.searchParams.get("pageToken")).toBe("n1");
   });
-  it("채팅이 끝났거나 꺼졌으면 ended, 할당량 초과는 오류", async () => {
-    for (const reason of ["liveChatEnded", "liveChatDisabled", "liveChatNotFound"]) {
+  it("채팅이 끝났거나 꺼졌으면 ended와 이유, 할당량 초과는 오류", async () => {
+    const reasons = { liveChatEnded: "chat_ended", liveChatDisabled: "chat_disabled", liveChatNotFound: "chat_not_found", forbidden: "chat_forbidden" };
+    for (const [reason, endReason] of Object.entries(reasons)) {
       const c = createYoutubeClient("KEY", fakeFetch(403, { error: { errors: [{ reason }] } }));
-      expect((await c.chatMessages("x", null)).ended, reason).toBe(true);
+      expect(await c.chatMessages("x", null), reason).toMatchObject({ ended: true, endReason });
     }
+    // 목록에 없는 사유(예: toString)는 채팅 종료로 보지 않는다
+    await expect(createYoutubeClient("KEY", fakeFetch(400, { error: { errors: [{ reason: "toString" }] } })).chatMessages("x", null)).rejects.toBeInstanceOf(YoutubeApiError);
     const q = createYoutubeClient("KEY", fakeFetch(403, { error: { errors: [{ reason: "quotaExceeded" }] } }));
     await expect(q.chatMessages("x", null)).rejects.toBeInstanceOf(YoutubeQuotaError);
   });
@@ -130,6 +133,26 @@ describe("채팅 응답 해석(모의)", () => {
   it("닉네임 비교 정규화", () => {
     expect(normalizeNickname("@Mango Kim")).toBe("mangokim");
     expect(normalizeNickname("ＭＡＮＧＯ")).toBe("mango");
+  });
+});
+
+describe("채팅 수집 상태", () => {
+  const limits = { daily: 10_000, perSeller: 3_000 };
+  const ok = { sellerToday: 0, platformRatio: 0 };
+  const live = { status: "LIVE", chatEnabled: true, liveChatId: "c", chatStopReason: null };
+  it("상태·이유 우선순위", () => {
+    expect(chatStateOf({ ...live, status: "ENDED" }, ok, limits)).toEqual({ state: "ended", reason: "broadcast_ended" });
+    expect(chatStateOf({ ...live, status: "UNLINKED" }, ok, limits)).toEqual({ state: "ended", reason: "unlinked" });
+    expect(chatStateOf({ ...live, chatEnabled: false }, ok, limits)).toEqual({ state: "off", reason: "chat_off" });
+    expect(chatStateOf({ ...live, status: "UPCOMING" }, ok, limits)).toEqual({ state: "waiting", reason: "not_started" });
+    expect(chatStateOf({ ...live, liveChatId: null, chatStopReason: "chat_ended" }, ok, limits)).toEqual({ state: "ended", reason: "chat_ended" });
+    expect(chatStateOf({ ...live, liveChatId: null, chatStopReason: "chat_forbidden" }, ok, limits)).toEqual({ state: "unavailable", reason: "chat_forbidden" });
+    expect(chatStateOf({ ...live, liveChatId: null, chatStopReason: "chat_disabled" }, ok, limits)).toEqual({ state: "unavailable", reason: "chat_disabled" });
+    expect(chatStateOf({ ...live, liveChatId: null }, ok, limits)).toEqual({ state: "unavailable", reason: "no_live_chat" });
+    expect(chatStateOf(live, { sellerToday: 0, platformRatio: 0.95 }, limits)).toEqual({ state: "paused", reason: "platform_limit" });
+    expect(chatStateOf(live, { sellerToday: 3_000, platformRatio: 0.5 }, limits)).toEqual({ state: "paused", reason: "seller_daily_limit" });
+    expect(chatStateOf({ ...live, chatStopReason: "youtube_error" }, ok, limits)).toEqual({ state: "paused", reason: "youtube_error" });
+    expect(chatStateOf(live, ok, limits)).toEqual({ state: "collecting", reason: null });
   });
 });
 

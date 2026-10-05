@@ -40,7 +40,7 @@ export default function AdminLoginPage() {
           <h1 className="t-t3">마스터 관리자</h1>
           <span className="t-l2 c-alt">플랫폼 운영 계정으로 로그인해 주십시오.</span>
         </div>
-        <div className="col" style={{ gap: 18 }}>
+        <div className="col" style={{ gap: 16 }}>
           <div className="fld">
             <label htmlFor="email">이메일</label>
             <input id="email" className="inp" type="text" inputMode="email" autoCapitalize="none" spellCheck={false} autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} />
