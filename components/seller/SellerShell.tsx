@@ -83,7 +83,7 @@ const MENU: Group[] = [
       { label: "회원별 잔액", href: "/seller/rewards/balances", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
       // 원장 API(GET /api/seller/reward-ledger)가 ORDER_FOLLOWUP 경로라 오버레이 전용으로 내린 뒤에도 후속 확인할 수 있다
       { label: "적립금 원장", href: "/seller/rewards/ledger", perm: "MEMBER_POINTS", plan: "FOLLOWUP" },
-      { label: "구매자 문의", perm: "INQUIRY_REPLY", plan: "FOLLOWUP" },
+      { label: "구매자 문의", href: "/seller/buyer-inquiries", perm: "INQUIRY_REPLY", plan: "FOLLOWUP" },
       // 상품 리뷰: 목록·집계 조회는 파트너스 계정 누구나, 답글·숨김·설정은 구매자 문의(INQUIRY_REPLY) 권한(서버에서 막음). 서버가 스토어 운영 기능을 요구한다
       { label: "상품 리뷰", href: "/seller/reviews", plan: "STORE_OPERATIONS" },
     ],
