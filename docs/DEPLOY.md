@@ -192,6 +192,7 @@ sudo -u obs nano /opt/obs/.env
 | `IMAGE_S3_ACCESS_KEY_ID`, `IMAGE_S3_SECRET_ACCESS_KEY` | 위와 같음 | 이 버킷 전용 S3 액세스 키. **비밀값이에요.** `.env`에만 넣고 채팅·문서·저장소에는 붙이지 않아요 |
 | `NICEPAY_CLIENT_KEY`, `NICEPAY_SECRET_KEY` | 선택(카드 결제 시험) | 나이스페이 **샌드박스** 키(테스트 서버 전용). 없으면 결제 시작이 「결제 준비 중」으로 거절돼요. **비밀값이에요.** 코드가 샌드박스 주소만 불러 운영 결제는 나가지 않아요. 운영 키는 결제대행사 계약 뒤 운영 서버에서 따로 정해요 |
 | `YOUTUBE_API_KEY` | 선택 | YouTube Data API 키(방송·실시간 채팅 조회, 무료 한도 안에서만). 없으면 YouTube 기능이 꺼져요. **비밀값이에요.** |
+| `GEMINI_API_KEY` | 선택 | 도우미(Gemini) API 키(월 1만 원 한도 안에서만, 한도·모델은 마스터 관리자 도우미 설정). 없으면 도우미는 「준비 중」이에요. 테스트 서버는 배포 때 GitHub Secret `GEMINI_API_KEY`에서 반영해요. **비밀값이에요.** |
 | `OBS_MONITOR_TLS_HOST` | 선택 | 서버 감시가 인증서 만료일을 볼 주소(obs-test는 `test.on-aircue.com`) |
 | `OBS_ALERT_URL` | 선택 | 장애 알림을 받을 주소(웹훅). 알림 채널이 정해지기 전에는 비워 둬요(기록만 남아요) |
 | `OBS_MONITOR_INTERVAL_S` | 선택 | 감시 간격(기본 15초, 1~60초. 범위 밖이거나 숫자가 아니면 감시가 시작하지 않고 로그에 이유를 남겨요) |
