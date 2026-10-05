@@ -119,7 +119,7 @@ const MENU: Group[] = [
       { label: "결제(PG) 연결", perm: "OWNER", plan: "STORE_OPERATIONS" },
       // 화면이 쓰는 GET /api/seller/message-balance가 대표자 전용이라 메뉴도 대표자에게만 보인다(서버보다 넓게 열지 않는다)
       { label: "주문자 알림", href: "/seller/settings/order-notifications", perm: "OWNER", plan: "STORE_OPERATIONS" },
-      { label: "발송 충전", href: "/seller/settings/message-balance", perm: "OWNER", plan: "ANY" },
+      { label: "발송·이용 충전", href: "/seller/settings/message-balance", perm: "OWNER", plan: "ANY" },
       { label: "직원 계정", href: "/seller/staff", perm: "OWNER", plan: "ANY" },
       { label: "구독 · 결제", href: "/seller/subscription", perm: "OWNER" },
       { label: "쇼핑몰 통합 전환", perm: "OWNER" },
