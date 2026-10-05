@@ -66,6 +66,8 @@ export type LiveData = {
   opening: { nickname: string; gradeSnapshot: string | null; productLabel: string; quantity: number; timerSeconds?: number | null; openingStartedAt?: string | null } | null;
   waiting: { id: string; nickname: string; productLabel: string; quantity: number }[];
   hits: { id: string; nickname: string; cardName: string }[];
+  // 방금 새로 들어온 HIT 카드 id(명예의 전당에서 잠깐 강조)
+  freshHitIds?: string[];
   live: boolean;
 };
 export const SAMPLE_DATA: LiveData = {
