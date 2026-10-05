@@ -151,10 +151,10 @@
 | SA-028 | 송장 출력·추적 | — | design/project/SA-028.dc.html | SA-028.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | SA-029 | 교환·반품 | /seller/returns | design/project/SA-029.dc.html | SA-029.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | SA-030 | 적립금(메뉴 그룹) | — | — | 메뉴 그룹 ID(화면 아님) | MISSING | 1791213911-1437 | 2026-10-06 00:27 KST | IA 그룹 헤더 · 보드 대상 아님 |
-| SA-031 | 적립 정책 | /seller/rewards | design/project/SA-031.dc.html | SA-031.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| SA-032 | 지급·회수 원장 | /seller/rewards/ledger | design/project/SA-032.dc.html | SA-032.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| SA-033 | 회원별 잔액 | /seller/rewards/balances | design/project/SA-033.dc.html | SA-033.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| SA-034 | 실지급 스위치 | /seller/rewards/live-payout | design/project/SA-034.dc.html | SA-034.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: SA-034-M |
+| SA-031 | 적립 정책 | /seller/rewards | design/project/SA-031.dc.html | SA-031.dc.html | FINAL | v288 (1791217961-0a6c) | 2026-10-06 02:18 KST | FINAL(통합 「적립금」 탭 1 · 저장 확인 창 · 이력 일시 2026.09.15 · 「인기 카드 1위 보너스」 · 상태 7종) · 현대화 기준 충족(표 규칙 · 쉬운 말 · 확인 창 · 날짜 칸) |
+| SA-032 | 지급·회수 원장 | /seller/rewards/ledger | design/project/SA-032.dc.html | SA-032.dc.html | FINAL | v288 (1791217961-0a6c) | 2026-10-06 02:18 KST | FINAL(통합 「적립금」 탭 2 · 기간 빠른 선택 40 기본값 최근 1개월 · 날짜 칸 .i.dt · 일시 2026.10.02 21:10 · 「실제 지급」 · 상태 6종) · 현대화 기준 충족(표 규칙 · 쉬운 말 · 확인 창 · 날짜 칸) |
+| SA-033 | 회원별 잔액 | /seller/rewards/balances | design/project/SA-033.dc.html | SA-033.dc.html | FINAL | v288 (1791217961-0a6c) | 2026-10-06 02:18 KST | FINAL(통합 「적립금」 탭 3 · 잔액 조정 확인 창 · 상태 7종) · 현대화 기준 충족(표 규칙 · 쉬운 말 · 확인 창 · 날짜 칸) |
+| SA-034 | 실지급 스위치 | /seller/rewards/live-payout | design/project/SA-034.dc.html | SA-034.dc.html | FINAL | v288 (1791217961-0a6c) | 2026-10-06 02:18 KST | FINAL(통합 「적립금」 탭 4 「실제 지급 켜기」 · 켜기 확인 창 「적립금을 실제로 지급하도록 켜시겠습니까?」 · 상태 6종) · 현대화 기준 충족(표 규칙 · 쉬운 말 · 확인 창 · 날짜 칸) |
 | SA-035 | 쿠폰 | /seller/coupons | design/project/SA-035.dc.html | SA-035.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | SA-040 | 회원(메뉴 그룹) | — | — | 메뉴 그룹 ID(화면 아님) | MISSING | 1791213911-1437 | 2026-10-06 00:27 KST | IA 그룹 헤더 · 보드 대상 아님 |
 | SA-041 | 회원 목록 | /seller/members | design/project/SA-041.dc.html | SA-041.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
@@ -175,18 +175,18 @@
 | SA-056 | 통계 | /seller/stats (+ orders·sales·products·members·broadcasts) | design/project/SA-056.dc.html | SA-056.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: SA-056-B, SA-056-M, SA-056-O, SA-056-P, SA-056-S · 변형 SA-056-P(상품 탭) FINAL v268: 상품 전환 퍼널 구역(조회→담기→주문→결제 · 단계 수·전환율 · 상품별 상위 20 표 · 로그인 회원만 집계 안내 · 집계 전 상태) · 기간 빠른 선택 40 통일 |
 | SA-057 | 유튜브 연결 | /seller/youtube | design/project/SA-057.dc.html | SA-057.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | SA-060 | 쇼핑몰 정보 | /seller/settings/shop | design/project/SA-060.dc.html | SA-060.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: SA-060-D |
-| SA-061 | 배송비 정책 | /seller/settings/shipping | design/project/SA-061.dc.html | SA-061.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
+| SA-061 | 배송비 정책 | /seller/settings/shipping | design/project/SA-061.dc.html | SA-061.dc.html | FINAL | v288 (1791217961-0a6c) | 2026-10-06 02:18 KST | FINAL(통합 「주문 · 배송 설정」 탭 2 · 저장 확인 창 · 상태 8종) · 현대화 기준 충족(표 규칙 · 쉬운 말 · 확인 창 · 날짜 칸) |
 | SA-062 | 법정 고지·약관 | /seller/settings/legal | design/project/SA-062.dc.html | SA-062.dc.html | FINAL | 1791213911-1437 | 2026-10-06 00:27 KST | 개발 맞춤 2026-10-05 (2탭 · 게시 스위치) |
-| SA-063 | 주문 설정 | /seller/settings/order | design/project/SA-063.dc.html | SA-063.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
+| SA-063 | 주문 설정 | /seller/settings/order | design/project/SA-063.dc.html | SA-063.dc.html | FINAL | v288 (1791217961-0a6c) | 2026-10-06 02:18 KST | FINAL(통합 「주문 · 배송 설정」 탭 1 · 저장 확인 창 DS-CONFIRM · 상태 10종) · 현대화 기준 충족(표 규칙 · 쉬운 말 · 확인 창 · 날짜 칸) |
 | SA-064 | 홈 배너 | /seller/banners | design/project/SA-064.dc.html | SA-064.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | SA-065 | 이벤트 팝업 | /seller/banners/popups | design/project/SA-065.dc.html | SA-065.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | SA-066 | 쇼핑몰 공지·자주 묻는 질문 | /seller/settings/shop-notices | design/project/SA-066.dc.html | SA-066.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | SA-067 | 검색 노출 | /seller/settings/seo | design/project/SA-067.dc.html | SA-067.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| SA-068 | 회원 정책 | /seller/settings/member | design/project/SA-068.dc.html | SA-068.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
+| SA-068 | 회원 정책 | /seller/settings/member | design/project/SA-068.dc.html | SA-068.dc.html | FINAL | v288 (1791217961-0a6c) | 2026-10-06 02:18 KST | FINAL(통합 「약관 · 회원 정책」 탭 2 · 저장 확인 창 · 상태 6종) · 현대화 기준 충족(표 규칙 · 쉬운 말 · 확인 창 · 날짜 칸) |
 | SA-070 | 결제(PG) 연결 | (폐지) | — | — | SUPERSEDED | 1791213911-1437 | 2026-10-06 00:27 KST | 플랫폼 결제대행사 키 하나 결정(2026-10-05 MASTER)으로 폐지 · 보드 SA-070 · SA-070-B 삭제됨(v255) · docs/IA.md 폐지 표시(#599) |
-| SA-080 | 주문자 알림 설정 | /seller/settings/order-notifications | design/project/SA-080.dc.html | SA-080.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
+| SA-080 | 주문자 알림 설정 | /seller/settings/order-notifications | design/project/SA-080.dc.html | SA-080.dc.html | FINAL | v288 (1791217961-0a6c) | 2026-10-06 02:18 KST | FINAL(메뉴 「알림 설정」 제목 통일 · 저장 확인 창 · 알림 문구는 구매자 해요체 · 상태 11종) · 현대화 기준 충족(표 규칙 · 쉬운 말 · 확인 창 · 날짜 칸) |
 | SA-081 | 발송·이용 충전 | /seller/settings/message-balance | design/project/SA-081.dc.html | SA-081.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 비용 정본 docs/COST_POLICY.md · docs/IA.md 등재(#599) |
-| SA-082 | 배송 자동화 | — | design/project/SA-082.dc.html | SA-082.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 경로 미정(/seller/automation은 자동 연결 화면) · docs/IA.md 등재(#599) |
+| SA-082 | 배송 자동화 | — | design/project/SA-082.dc.html | SA-082.dc.html | FINAL | v288 (1791217961-0a6c) | 2026-10-06 02:18 KST | FINAL(통합 「주문 · 배송 설정」 탭 3 · 켜기/끄기 확인 창 버튼 순서 [취소][실행] · 상태 8종) · 현대화 기준 충족(표 규칙 · 쉬운 말 · 확인 창 · 날짜 칸) |
 | SA-090 | 구독·결제 | /seller/subscription | design/project/SA-090.dc.html | SA-090.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: SA-090-M |
 | SA-100 | 직원 계정·권한 | /seller/staff | design/project/SA-100.dc.html | SA-100.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: SA-100-D, SA-100-M |
 | SA-110 | 공지·문의(메뉴 그룹) | — | — | 메뉴 그룹 ID(화면 아님) | MISSING | 1791213911-1437 | 2026-10-06 00:27 KST | IA 그룹 헤더 · 보드 대상 아님 |
@@ -277,14 +277,14 @@
 | DS-CONFIRM | 공통 확인 창 — 저장·삭제·변경·상태 변경·일괄 처리 앞 다이얼로그(규칙 6항 · 관리자 6종 · 구매자 PC 2종 · 휴대폰 시트 2종, 대표님 지시 2026-10-06 · docs PR #627) | FINAL v272 (1791213148-ad9f) · `design/project/DS-CONFIRM.dc.html` |
 | IA1·IA2·IA3 | 정보구조도 보드(IA1은 v279에서 확정 GNB·LNB로 재생성) | DRAFT · 정본은 docs/IA.md |
 | DS-DATEPICKER | 공통 날짜 선택(네이버식) — 칸 2026.10.05 · 빈 칸 「날짜 선택」/「시작일」~「종료일」 · 달력 아이콘 · 달력 ‹ 2026.10 › · 일 빨강 토 파랑 · 오늘 테두리 · 고른 날 채운 원 · 기간 연한 배경 · [초기화][적용] · 관리자 40 · 구매자 PC · 휴대폰 시트 48 · 검색 필터 기본값(최근 1개월) · 규칙 5(대표님 지시 2026-10-06 · docs PR #631 · #630 · #632) | FINAL v276 (1791214099-aa42) · `design/project/DS-DATEPICKER.dc.html` · lop.css `.i.dt` / `.inp.dt` |
+| DS-NAV | 새 GNB · 메뉴 구조표(제안) — 파트너스 GNB 10→8 · LNB 50→34, 마스터 8→6 · 28→24, 구매자 이름 2곳, 통폐합 전후 대응표 · 원칙 5(대표님 지시 2026-10-05 · docs/IA.md 「GNB·위계 현대화」 PR #637) · 화면 ← 버튼(Back) 규격 6항·시안 5(대표님 지시 「화면 진입 시 Back 기능도 없다」, 경로는 docs/BACK_ROUTES.md) | FINAL v278 (대표님 확정 2026-10-06 「그대로 진행」, docs/IA.md 「확정 메뉴 구조」 PR #637) · `design/project/DS-NAV.dc.html` |
+| DS-TYPE-SCALE | 글자 · 버튼 · 간격 · 모서리 · 아이콘 · 표 · 일시 표기 크기 체계 한 장(시각 규격 2026-10-05 + 일시 2026.10.05 22:25) | FINAL v278 (대표님 확정 2026-10-06 「그대로 진행」) · `design/project/DS-TYPE-SCALE.dc.html` |
 | IA1·IA2·IA3 | 정보구조도 보드 | DRAFT · 정본은 docs/IA.md |
 | Handoff | 개발 이관 목록 보드 | DRAFT |
 | Main | 캔버스 표지 | — |
 | ScreenList | 화면 목록 보드 | DRAFT · 정본은 이 SCREEN_MAP |
 | SH-T · SH-T-PC | 파트너스별 테마 구조 비교 | DRAFT |
 | OV-008 | 오버레이 위젯 해부·효과 | DRAFT |
-| DS-NAV | 새 GNB · 메뉴 구조표 | PROPOSAL (대표님 확정 전, 구현 근거 아님) |
-| DS-TYPE-SCALE | 글자 · 버튼 · 간격 크기 체계 | PROPOSAL (대표님 확정 전, 구현 근거 아님) |
 
 ## 공통 컴포넌트 → 실제 소스 위치
 

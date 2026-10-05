@@ -25,7 +25,7 @@ export default function MemberStatsPage() {
   };
 
   return (
-    <StatsFrame title="회원" sub="가입·탈퇴는 그 시각, 구매 회원은 결제 주문의 주문 시각(KST) 기준입니다." period={period} setPeriod={setPeriod} onDownload={data ? download : undefined}>
+    <StatsFrame title="회원" sub="가입·탈퇴는 그 시각, 구매 회원은 결제 주문의 주문한 시각(한국 시간) 기준입니다." period={period} setPeriod={setPeriod} onDownload={data ? download : undefined}>
       <StatsState state={state} onRetry={() => void reload()} />
       {data && (
         <>
@@ -33,7 +33,7 @@ export default function MemberStatsPage() {
             items={[
               { label: "신규 가입", now: data.current.signups, prev: data.previous.signups, fmt: people },
               { label: "구매 회원", now: data.current.buyers, prev: data.previous.buyers, fmt: people },
-              { label: "재구매율", now: data.current.repeatRate, prev: data.previous.repeatRate, fmt: (n) => pct(n), text: `${pct(data.current.repeatRate)} · ${people(data.current.repeatBuyers)}` },
+              { label: "다시 산 회원 비율", now: data.current.repeatRate, prev: data.previous.repeatRate, fmt: (n) => pct(n), text: `${pct(data.current.repeatRate)} · ${people(data.current.repeatBuyers)}` },
               { label: "탈퇴", now: data.current.withdrawals, prev: data.previous.withdrawals, fmt: people, lowerIsBetter: true },
             ]}
           />
@@ -60,7 +60,7 @@ export default function MemberStatsPage() {
               </tbody>
             </table>
           </div>
-          <p className="t-c1 c-alt">재구매율은 기간 중 구매 회원 가운데 기간 끝까지 결제 주문이 2건 이상인 회원의 비율입니다. 기간별 구매 회원은 묶음마다 따로 세어 합계와 다를 수 있습니다.</p>
+          <p className="t-c1 c-alt">산 회원 중에서 이 기간에 2번 이상 결제한 회원의 비율입니다. 기간별 숫자를 더하면 합계와 다를 수 있습니다(같은 사람이 여러 기간에 나올 수 있기 때문입니다).</p>
         </>
       )}
     </StatsFrame>

@@ -134,13 +134,13 @@ export async function listSellerOrders(db: PrismaClient, ctx: TenantContext, que
   const q = query.q?.trim() ?? "";
   if (q.length > 50) return { ok: false as const };
   if (query.memberId && !UUID_RE.test(query.memberId)) return { ok: false as const };
-  // 송장(배송 정보) 등록 여부. 「배송 준비」 = status=PAID&shipped=false. 비어 있으면 거르지 않는다.
+  // 발송 여부(배송 정보가 있고 발송 전 준비 상태 READY가 아님). 「배송 준비」 = status=PAID&shipped=false. 비어 있으면 거르지 않는다.
   if (query.shipped && query.shipped !== "true" && query.shipped !== "false") return { ok: false as const };
 
   const searchesPii = q !== "" && canViewCustomerPii(ctx);
   const and: Prisma.OrderWhereInput[] = [{ sellerId: ctx.sellerId, legalHoldAt: null }];
   if (query.memberId) and.push({ buyerMemberId: query.memberId });
-  if (query.shipped) and.push({ shipment: query.shipped === "true" ? { isNot: null } : { is: null } });
+  if (query.shipped) and.push(query.shipped === "true" ? { shipment: { is: { status: { not: "READY" } } } } : { OR: [{ shipment: { is: null } }, { shipment: { is: { status: "READY" } } }] });
   if (statuses.length) and.push({ status: { in: statuses as OrderStatus[] } });
   if (from) and.push({ createdAt: { gte: from } });
   if (toStart) and.push({ createdAt: { lt: new Date(toStart.getTime() + 24 * 3600_000) } });
@@ -213,7 +213,7 @@ export async function listSellerOrders(db: PrismaClient, ctx: TenantContext, que
       paymentMethod: o.paymentMethod,
       paymentDueAt: o.paymentDueAt,
       itemSummary: itemSummary(o.items),
-      shipped: o.shipment !== null,
+      shipped: o.shipment !== null && o.shipment.status !== "READY",
       // 배송 상태: none(발송 정보 없음) · in_transit(배송 중) · delivered(배송 완료). 발송 전 준비 상태(READY)는 none으로 본다.
       shipment: shipmentView(o.shipment),
       refundRequest: { pendingCount: o._count.refundRequests },

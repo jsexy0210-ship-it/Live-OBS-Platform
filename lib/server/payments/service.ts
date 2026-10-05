@@ -358,7 +358,7 @@ export async function processPaymentCancel(db: PrismaClient, gw: PaymentGateway,
   if (r.kind === "rejected") {
     // 거절은 사람이 확인한다(로그 추적 기록). 다시 자동으로 보내지 않는다.
     await db.paymentCancel.update({ where: { id: c.id }, data: { status: "FAILED", failureCode: r.code.slice(0, 60) } });
-    await writeAudit(db, { ...SYSTEM, sellerId: c.sellerId, action: "payment.cancel_failed", targetType: "Order", targetId: p.orderId, after: { paymentId: p.id, amount: c.amount, code: r.code } });
+    await writeAudit(db, { ...SYSTEM, sellerId: c.sellerId, action: "payment.cancel_failed", targetType: "Order", targetId: p.orderId, after: { paymentId: p.id, amount: c.amount, code: r.code, ...(r.message ? { message: r.message.slice(0, 100) } : {}) } });
     return "failed";
   }
   return "pending";
