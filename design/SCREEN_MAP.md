@@ -71,7 +71,7 @@
 
 | ID | 화면 | Product Route | Design Source | Entry | Status | Artifact Version | 마지막 동기화(KST) | 비고 |
 |---|---|---|---|---|---|---|---|---|
-| MA-001 | 통합 대시보드 | /admin | design/project/MA-001-IA.dc.html | MA-001-IA.dc.html | FINAL | v291 (1791219075-ad9b) | 2026-10-06 01:51 KST | FINAL 재확인(2026-10-06 마스터 묶음) · MA-001-R2~R4 지시 반영: 「오늘 처리할 일」 유지 + 파트너스·오늘·구독 3섹션(구현 /admin과 같은 칸) + 「기간별 현황」(최근 7·30·90일 · 일별 결제 금액·들어온 주문·가입 신청·시작한 방송 · 상위 5 파트너스 · 월별 받은 구독료). 변형 MA-001(차트 초안) · R2~R4(역할별)는 SUPERSEDED(역할 구분 없이 한 화면) |
+| MA-001 | 통합 대시보드 | /admin | design/project/MA-001-IA.dc.html | MA-001-IA.dc.html | FINAL | v291 (1791219075-ad9b) | 2026-10-06 01:51 KST | FINAL 재확인(2026-10-06 마스터 묶음) · MA-001-R2~R4 지시 반영: 「오늘 처리할 일」 유지 + 파트너스·오늘·구독 3섹션(구현 /admin과 같은 칸) + 「기간별 현황」(최근 7·30·90일 · 일별 결제 금액·들어온 주문·가입 신청·시작한 방송 · 상위 5 파트너스 · 월별 받은 구독료). 변형 MA-001(차트 초안)은 SUPERSEDED, R2~R4(역할별 홈)는 보류(후순위, 역할별 홈은 나중에 다시 꺼낼 수 있게 남김 — MASTER 2026-10-06) |
 | MA-002 | 알림 센터 | /admin/notifications | design/project/MA-002.dc.html | MA-002.dc.html | FINAL | v291 (1791219075-ad9b) | 2026-10-06 01:51 KST | FINAL 재확인(2026-10-06 마스터 묶음) · 제목 「알림 센터」(DS-NAV) · 결제 연결 오류·방송 화면 용어 · 행 버튼 「대신 보기」 |
 | MA-010 | 파트너스(메뉴 그룹) | — | — | 메뉴 그룹 ID(화면 아님) | MISSING | 1791213911-1437 | 2026-10-06 00:27 KST | IA 그룹 헤더 · 보드 대상 아님 |
 | MA-011 | 파트너스 목록 | /admin/partners | design/project/MA-011.dc.html | MA-011.dc.html | FINAL | 1791213911-1437 | 2026-10-06 00:27 KST | DS-PANEL 목록 패널 구조 적용(v243) · 변형: MA-011-PRE, MA-011-S |
@@ -108,7 +108,7 @@
 | MA-070 | 로그 추적 | /admin/logs | design/project/MA-070.dc.html | MA-070.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | MA-071 | 로그 추적 상세 | /admin/logs/[logId] | design/project/MA-071.dc.html | MA-071.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | MA-080 | 시스템 설정(메뉴 그룹) | — | — | 메뉴 그룹 ID(화면 아님) | MISSING | 1791213911-1437 | 2026-10-06 00:27 KST | IA 그룹 헤더 · 보드 대상 아님 |
-| MA-081 | 플랫폼 기본 정책 | — | design/project/MA-081.dc.html | MA-081.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
+| MA-081 | 플랫폼 기본 정책 | — | design/project/MA-081.dc.html | MA-081.dc.html | FINAL | v293 (1791238661-161d) | 2026-10-06 07:17 KST | FINAL 재확인(2026-10-06 MASTER 우선 요청, 서버 #583 병합) · 제목 「플랫폼 기본 정책」(DS-NAV) · 설정 그룹 탭 줄 제거 · 쉬운 말(방송 화면 · 실제 지급 · 대신 보기) · 일시 2026.09.01 · 확인 창 [취소][저장] |
 | MA-082 | 알림 채널 설정 | /admin/settings/messages | design/project/MA-082.dc.html | MA-082.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | MA-083 | 점검 모드 | /admin/settings/maintenance | design/project/MA-083.dc.html | MA-083.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: MA-083-M |
 | MA-084 | 도우미 설정 | /admin/settings/assistant | design/project/MA-084.dc.html | MA-084.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
