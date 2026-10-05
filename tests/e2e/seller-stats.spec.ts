@@ -172,7 +172,7 @@ test("통계 요약(SA-056): 요약 지표·방송 내역·상품 상위·회원
   // 방송 매출 · 방송 시간 일반 주문 · 방송 외 주문 · 합계(= 요약 매출)
   const bt = page.getByTestId("overview-broadcasts");
   await expect(bt.locator("tbody tr")).toHaveCount(4);
-  await expect(bt.locator("tbody tr.total")).toContainText(won(body.summary.current.revenue));
+  await expect(bt.locator("tbody tr").last()).toContainText(won(body.summary.current.revenue));
   await expect(page.getByTestId("overview-rewards")).toContainText(won(body.rewards.earned));
   await expect(page.getByTestId("overview-rewards")).toContainText("쿠폰 사용");
   // 비교(기본 켬): 비교하는 칸 5개(매출·주문·주문당 평균·취소·환불·신규 회원)에 직전 기간 줄이 있고, 끄면 없다

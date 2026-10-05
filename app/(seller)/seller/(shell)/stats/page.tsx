@@ -158,7 +158,7 @@ function Overview({ data, compare }: { data: Data; compare: boolean }) {
             방송 통계
           </Link>
         </div>
-        <table className="sts-tbl" data-testid="overview-broadcasts">
+        <table className="tbl" data-testid="overview-broadcasts">
           <thead>
             <tr>
               <th>구분</th>
@@ -177,7 +177,7 @@ function Overview({ data, compare }: { data: Data; compare: boolean }) {
                 </td>
               </tr>
             ))}
-            <tr className="total">
+            <tr className="fw6">
               <td>합계</td>
               <td>{count(bTotal.orders)}</td>
               <td>{won(bTotal.net)}</td>
@@ -197,7 +197,7 @@ function Overview({ data, compare }: { data: Data; compare: boolean }) {
         {top.length === 0 ? (
           <span className="t-l2 c-alt">선택한 기간에 팔린 상품이 없습니다</span>
         ) : (
-          <table className="sts-tbl" data-testid="overview-products">
+          <table className="tbl" data-testid="overview-products">
             <thead>
               <tr>
                 <th style={{ width: 64 }}>순위</th>
