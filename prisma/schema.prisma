@@ -2811,13 +2811,32 @@ enum MemberGradeChangeReason {
   AUTO_UP
   AUTO_DOWN
   MANUAL
+  // 등급을 지워 기본 등급으로 옮김
+  GRADE_REMOVED
+}
+
+// 재산정 주기와 강등 방식(SA-044 산정 기준)
+enum MemberGradeCadence {
+  MONTHLY
+  WEEKLY
+  DAILY
+}
+
+enum MemberGradeDemotion {
+  STEP
+  IMMEDIATE
+  NONE
 }
 
 // 쇼핑몰별 설정(없으면 꺼짐): 켜면 매월 1일(KST)에 최근 6개월 결제 금액으로 회원 등급을 다시 정한다.
 model MemberGradePolicy {
-  sellerId    String   @id @db.Uuid
-  autoEnabled Boolean  @default(false)
-  updatedAt   DateTime @default(now()) @db.Timestamptz(3)
+  sellerId     String              @id @db.Uuid
+  autoEnabled  Boolean             @default(false)
+  // 기준 금액을 세는 기간(개월). 0이면 누적. 0·3·6·12만.
+  windowMonths Int                 @default(6)
+  cadence      MemberGradeCadence  @default(MONTHLY)
+  demotion     MemberGradeDemotion @default(STEP)
+  updatedAt    DateTime            @default(now()) @db.Timestamptz(3)
 
   seller Seller @relation(fields: [sellerId], references: [id])
 }
@@ -2828,6 +2847,9 @@ model MemberGradeOverride {
   sellerId      String   @db.Uuid
   buyerMemberId String   @unique @db.Uuid
   staffId       String?  @db.Uuid
+  // 고정이 끝나는 시각(없으면 직접 풀 때까지)과 사유
+  until         DateTime? @db.Timestamptz(3)
+  reason        String?
   createdAt     DateTime @default(now()) @db.Timestamptz(3)
 
   seller      Seller      @relation(fields: [sellerId], references: [id])

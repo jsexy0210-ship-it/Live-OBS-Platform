@@ -8,7 +8,8 @@ import { dbNow } from "../billing/subscription";
 import { cleanText } from "../text/clean";
 
 // 구독 환불 요청·처리(MA-026 목록 · MA-027 처리). 규칙:
-// - 보기는 마스터 관리자 전 역할(platform.read), 요청 만들기·승인·반려는 요금·청구 변경 권한(billing.manage: 최고관리자·운영).
+// - 보기는 마스터 관리자 전 역할(platform.read), 요청 만들기·반려는 요금·청구 변경 권한(billing.manage: 최고관리자·운영),
+//   승인(결제 취소 요청)은 최고관리자만(billing.refund, MASTER 결정 2026-10-05).
 //   바꿀 때마다 로그 추적에 남긴다.
 // - 요청은 두 곳에서 생긴다. 시스템: 해지 뒤 확정된 결제(subscription.ts settlePayment, 사유 paid_after_cancel).
 //   마스터 관리자: 결제된(PAID) 청구에 직접(법이 요구하는 환불 등, 사유 필수). 결제당 진행 중이거나 끝난 환불은 하나(DB 부분 유니크).
@@ -194,12 +195,13 @@ export async function rejectSubscriptionRefund(db: PrismaClient, admin: AdminSes
 
 // 승인 = 결제 공급자에 취소 요청. REQUESTED·FAILED·PROCESSING(응답이 끊겼던 것)만. 본문 { expectedVersion, note? }.
 export async function approveSubscriptionRefund(db: PrismaClient, provider: BillingProvider, admin: AdminSessionContext, id: string, raw: unknown, meta: AuditMeta = {}) {
-  requireWrite(admin);
+  if (!adminCan(admin.admin.role, "billing.refund")) throw forbidden();
   if (!UUID.test(id)) throw notFound();
   const b = obj(raw);
   const note = b.note === undefined || b.note === null || b.note === "" ? null : cleanText(b.note, REASON_MAX, "memo");
   if (note === null && b.note !== undefined && b.note !== null && b.note !== "") return { ok: false as const, reason: "invalid_reason" as const };
-  const claimed = await db.$transaction(async (tx) => {
+  // 실패한 환불이 있는 결제에 새 요청을 만든 뒤 옛 요청을 다시 승인하면 결제당 하나 제약(부분 유니크)에 걸린다: 409 already_requested
+  const claim = () => db.$transaction(async (tx) => {
     const [cur] = await tx.$queryRaw<SubscriptionRefund[]>`SELECT * FROM "SubscriptionRefund" WHERE "id" = ${id}::uuid FOR UPDATE`;
     if (!cur) throw notFound();
     if (b.expectedVersion !== cur.version) return { ok: false as const, reason: "version_conflict" as const, currentVersion: cur.version };
@@ -214,6 +216,13 @@ export async function approveSubscriptionRefund(db: PrismaClient, provider: Bill
     await audit(tx, admin, meta, "subscription.refund.approve", row, auditView(cur), auditView(row));
     return { ok: true as const, refund: row, providerPaymentId: pay.providerPaymentId };
   });
+  let claimed: Awaited<ReturnType<typeof claim>>;
+  try {
+    claimed = await claim();
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") return { ok: false as const, reason: "already_requested" as const };
+    throw e;
+  }
   if (!claimed.ok) return claimed;
   const { refund, providerPaymentId } = claimed;
   let result: Awaited<ReturnType<BillingProvider["cancelPayment"]>>;

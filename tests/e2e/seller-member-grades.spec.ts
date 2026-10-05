@@ -47,8 +47,25 @@ test("대표자: 기준 금액 저장 → 자동 재산정 켜기 검사 → 등
   const added = page.getByTestId("grade-row").filter({ has: page.getByLabel("다이아 기준 금액") });
   await expect(added).toHaveCount(1);
   await added.getByRole("button", { name: "삭제" }).click();
+  await expect(page.getByRole("dialog", { name: /「다이아」 등급을 삭제하시겠습니까/ })).toContainText("회원이 없습니다");
+  await page.getByRole("dialog").getByRole("button", { name: "삭제" }).click();
   await expect(page.getByText("등급을 지웠습니다")).toBeVisible();
   await expect(page.getByLabel("다이아 기준 금액")).toHaveCount(0);
+
+  // 산정 기준을 바꿔 저장하고, 지금 재산정을 확인 창에서 실행한다
+  const opts = page.getByRole("region", { name: "산정 기준" }).getByRole("combobox");
+  await opts.nth(0).selectOption("12");
+  await opts.nth(1).selectOption("WEEKLY");
+  await opts.nth(2).selectOption("NONE");
+  await page.getByRole("button", { name: "저장" }).click();
+  await expect(page.getByText("등급 설정을 저장했습니다")).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("region", { name: "산정 기준" }).getByRole("combobox").nth(1)).toHaveValue("WEEKLY");
+  await page.getByRole("button", { name: "지금 재산정" }).click();
+  const recalc = page.getByRole("dialog", { name: "지금 재산정하시겠습니까?" });
+  await expect(recalc).toContainText("최근 12개월 구매 금액");
+  await recalc.getByRole("button", { name: "재산정" }).click();
+  await expect(page.getByText(/재산정 완료 · 승급 \d+명 · 강등 \d+명/)).toBeVisible();
 
   // 회원 직접 조정: 고정하면 고정한 회원에 나오고 최근 변경에 남는다
   await page.getByLabel("회원 닉네임 검색").fill("");
@@ -56,13 +73,19 @@ test("대표자: 기준 금액 저장 → 자동 재산정 켜기 검사 → 등
   const adjust = page.getByTestId("adjust-row").first();
   await expect(adjust).toBeVisible();
   const nick = (await adjust.locator("span").first().textContent())!.trim();
-  const target = await adjust.getByRole("combobox").locator("option").last().textContent();
-  await adjust.getByRole("combobox").selectOption({ label: target! });
+  // 지금과 다른 등급을 고른다
+  const current = await adjust.getByRole("combobox").inputValue();
+  const values = await adjust.getByRole("combobox").locator("option").evaluateAll((o) => o.map((x) => (x as HTMLOptionElement).value));
+  await adjust.getByRole("combobox").selectOption(values.find((v) => v !== current)!);
   await adjust.getByRole("checkbox", { name: "고정" }).check();
+  const until = new Date(Date.now() + 30 * 86_400_000 + 9 * 3600_000).toISOString().slice(0, 10);
+  await adjust.getByLabel(/고정 종료일/).fill(until);
+  await adjust.getByLabel(/고정 사유/).fill("방송 단골");
   await adjust.getByRole("button", { name: "적용" }).click();
   await expect(page.getByText(/등급을 조정했습니다 · 자동 재산정에서 제외/)).toBeVisible();
   await expect(page.getByRole("region", { name: "고정한 회원" })).toContainText(nick);
-  await expect(page.getByTestId("grade-log").first()).toContainText("직접 조정");
+  await expect(page.getByRole("region", { name: "고정한 회원" })).toContainText("까지 고정 · 방송 단골");
+  await expect(page.getByTestId("grade-log").filter({ hasText: `${nick} · ` }).first()).toContainText("직접 조정");
 });
 
 test("직원: 회원 · 적립금 권한이 없으면 등급 메뉴가 보이지 않는다", async ({ page }) => {

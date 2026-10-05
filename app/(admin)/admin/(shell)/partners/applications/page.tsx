@@ -57,7 +57,7 @@ export default function PartnerApplications() {
                           <span className="c-alt"> · {s.slug}</span>
                         </td>
                         <td>{text(s.businessInfo?.companyName)}</td>
-                        <td className="num">{text(s.businessInfo?.businessNumber)}</td>
+                        <td>{text(s.businessInfo?.businessNumber)}</td>
                         <td className="col-text">
                           {s.reviewReasons.length === 0 ? (
                             "-"
@@ -71,7 +71,7 @@ export default function PartnerApplications() {
                             </span>
                           )}
                         </td>
-                        <td className="num">{day(s.createdAt)}</td>
+                        <td>{day(s.createdAt)}</td>
                         <td>
                           <Link className="btn btn-sm btn-out" href={`/admin/partners/applications/${s.id}`}>
                             검토
