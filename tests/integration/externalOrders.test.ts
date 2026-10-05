@@ -213,6 +213,23 @@ describe("조회 경로: 외부 주문이 섞인 큐 (출처 필드·raw SQL 집
     expect((await getQueueSnapshot(db, s.ctx)).recentDone[0]).toMatchObject({ id: ext, source: "EXTERNAL" });
   });
 
+  it("amount: 내부 주문 항목은 주문 때 단가(할인 반영) × 수량, 외부 주문 항목(금액 미저장)은 null. 개봉 중·최근 완료에도 같다. 조회용 관계는 새지 않는다", async () => {
+    const s = await mixed();
+    // 주문 때 이벤트 할인으로 단가가 4,500원이었던 주문(상품 가격 5,000원과 다르다)
+    const item = await db.queueItem.findFirstOrThrow({ where: { sellerId: s.seller.id, orderItemId: { not: null } } });
+    await db.orderItem.update({ where: { id: item.orderItemId! }, data: { unitPrice: 4500 } });
+    const snap = await getQueueSnapshot(db, s.ctx);
+    expect(snap.waiting.map((i) => [i.source, i.quantity, i.amount])).toEqual([
+      ["INTERNAL", 1, 4500],
+      ["EXTERNAL", 2, null],
+    ]);
+    expect(Object.keys(snap.waiting[0])).not.toContain("orderItem");
+    await applyQueueAction(db, s.ctx, item.id, "start");
+    expect((await getQueueSnapshot(db, s.ctx)).opening).toMatchObject({ id: item.id, amount: 4500 });
+    await applyQueueAction(db, s.ctx, item.id, "complete");
+    expect((await getQueueSnapshot(db, s.ctx)).recentDone[0]).toMatchObject({ id: item.id, amount: 4500 });
+  });
+
   it("GET /api/seller/queue 라우트도 같은 응답을 준다(로그인 세션)", async () => {
     const s = await mixed();
     const r = await loginSeller(db, { email: s.owner.email, password: PASSWORD }, {});
