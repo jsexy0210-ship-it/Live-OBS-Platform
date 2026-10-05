@@ -374,6 +374,7 @@ model BuyerMember {
   cartItems            CartItem[]
   wishItems            WishItem[]
   returnRequests       ReturnRequest[]
+  refundRequests        RefundRequest[]
   returnRequestImages  ReturnRequestImage[]
   gradeOverrides       MemberGradeOverride[]
   gradeHistory         MemberGradeHistory[]
@@ -1072,6 +1073,7 @@ model Order {
   returnRequests   ReturnRequest[]
   payments         Payment[]
   refunds          OrderRefund[]
+  refundRequests   RefundRequest[]
 
   @@unique([sellerId, id])
   @@unique([sellerId, orderNo])
@@ -1956,6 +1958,31 @@ model AutomationJob {
 }
 
 // 작업 상태 전이 기록(누가·언제·어느 fencing 토큰으로). 비밀값은 넣지 않는다.
+// 외부 유료 API 월 사용량(원, 한국 시간 기준 월). 공급자·월마다 1행. 한도(월 1만 원, 2026-10-05 대표님 결정)에 닿으면 stoppedAt을 남기고 그 달은 호출을 멈춘다.
+model ExternalApiUsage {
+  provider  String
+  period    String
+  usedWon   Int       @default(0)
+  limitWon  Int
+  stoppedAt DateTime? @db.Timestamptz(3)
+  updatedAt DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@id([provider, period])
+}
+
+// 외부 유료 API 호출 비용 원장(추가만 한다). 월 합계는 ExternalApiUsage와 같은 트랜잭션에서 올린다.
+model ExternalApiCostLedger {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  provider  String
+  period    String
+  purpose   String
+  jobId     String?  @db.Uuid
+  costWon   Int
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([provider, period, createdAt])
+}
+
 model AutomationJobEvent {
   id           String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   sellerId     String               @db.Uuid
@@ -2892,6 +2919,41 @@ model MemberGradeRun {
   seller Seller @relation(fields: [sellerId], references: [id])
 
   @@id([sellerId, monthKey])
+}
+
+// 구매자 환불 요청(SA-023 · SH-022, MASTER 배정 2026-10-05, lib/server/payments/refundRequest.ts). 결제 완료·발송 전 주문에 구매자가 요청하고,
+// 파트너스가 승인(= 부분 환불 포함 환불, OrderRefund와 이어짐)하거나 사유를 적어 거절한다. 주문당 진행 중(REQUESTED) 요청은 1건(마이그레이션 SQL 부분 유니크).
+enum RefundRequestStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model RefundRequest {
+  id            String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String              @db.Uuid
+  orderId       String              @db.Uuid
+  buyerMemberId String              @db.Uuid
+  status        RefundRequestStatus @default(REQUESTED)
+  reason        ReturnReason
+  reasonText    String              @default("")
+  // [{ orderItemId, quantity }]: 환불을 바라는 품목·수량. null이면 남은 품목 전부
+  items         Json?
+  rejectReason  String?
+  // 승인한 환불(OrderRefund.id). 파트너스가 주문 화면에서 남은 품목을 모두 환불해도 이어서 승인으로 닫는다
+  refundId      String?             @db.Uuid
+  decidedAt     DateTime?           @db.Timestamptz(3)
+  cancelledAt   DateTime?           @db.Timestamptz(3)
+  createdAt     DateTime            @default(now()) @db.Timestamptz(3)
+
+  order       Order       @relation(fields: [sellerId, orderId], references: [sellerId, id])
+  buyerMember BuyerMember @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id])
+
+  @@unique([sellerId, id])
+  @@index([sellerId, status, createdAt])
+  @@index([sellerId, orderId])
+  @@index([sellerId, buyerMemberId, createdAt])
 }
 
 // ───────────── 플랫폼 문의(파트너스 → 플랫폼, SA-113·114·115 · 마스터 MA-051·052) ─────────────

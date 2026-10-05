@@ -67,7 +67,7 @@ export default function CheckoutView({ slug, memberNickname = "" }: { slug: stri
         call<{ addresses: Addr[] }>(`${api}/addresses`),
         call<{ usable: Coupon[] }>(`${api}/coupons`),
         call<{ consents: Consent[] }>(`${api}/order-consent`),
-        call<{ balance: number }>(`${api}/me/rewards`),
+        call<{ balance: number; useEnabled?: boolean }>(`${api}/me/rewards`),
       ]);
       if (!live) return;
       if (!co.ok) {
@@ -78,7 +78,7 @@ export default function CheckoutView({ slug, memberNickname = "" }: { slug: stri
       if (!cs.ok || cs.data.consents.length === 0) return setView({ kind: "error", message: cs.ok ? undefined : cs.message });
       const addresses = ad.ok ? ad.data.addresses : [];
       setAddrId(addresses[0]?.id ?? NEW); // 기본 배송지가 맨 앞
-      setView({ kind: "ok", data: { checkout: co.data, addresses, coupons: cp.ok ? cp.data.usable.filter((c) => c.state === "usable") : [], consent: cs.data.consents[0], balance: rw.ok ? rw.data.balance : null } });
+      setView({ kind: "ok", data: { checkout: co.data, addresses, coupons: cp.ok ? cp.data.usable.filter((c) => c.state === "usable") : [], consent: cs.data.consents[0], balance: rw.ok && rw.data.useEnabled !== false ? rw.data.balance : null } }); // 판매자가 적립금 사용을 꺼 두면(useEnabled false) 적립금 영역을 처음부터 숨긴다
     })();
     return () => {
       live = false;
