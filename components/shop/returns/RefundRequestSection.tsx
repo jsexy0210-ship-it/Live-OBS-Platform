@@ -20,7 +20,7 @@ const REASONS: [Reason, string][] = [
   ["NOT_AS_DESCRIBED", "상품 설명과 달라요"],
   ["OTHER", "기타"],
 ];
-const STATUS_TEXT: Record<Status, string> = { REQUESTED: "취소 요청", APPROVED: "승인됐어요", REJECTED: "거절됐어요", CANCELLED: "철회했어요" };
+const STATUS_TEXT: Record<Status, string> = { REQUESTED: "취소 요청", APPROVED: "승인됐어요", REJECTED: "거절됐어요", CANCELLED: "요청을 거뒀어요" };
 const TEXT_MAX = 500;
 
 export default function RefundRequestSection({ slug, orderId, onChanged }: { slug: string; orderId: string; onChanged?: () => void }) {
@@ -43,7 +43,7 @@ export default function RefundRequestSection({ slug, orderId, onChanged }: { slu
     setBusy(true);
     setMsg(null);
     const r = await call(`${base}/${id}/cancel`, { method: "POST" });
-    setMsg(r.ok ? { ok: true, text: "요청을 철회했어요" } : { ok: false, text: r.message ?? "철회하지 못했어요. 잠시 뒤 다시 해 주세요" });
+    setMsg(r.ok ? { ok: true, text: "요청을 거뒀어요" } : { ok: false, text: r.message ?? "요청을 거두지 못했어요. 잠시 뒤 다시 해 주세요" });
     await load();
     setBusy(false);
     if (r.ok) onChanged?.();
@@ -72,7 +72,7 @@ export default function RefundRequestSection({ slug, orderId, onChanged }: { slu
           {r.status === "REJECTED" && r.rejectReason && <span>거절 사유 · {r.rejectReason}</span>}
           {r.status === "REQUESTED" && (
             <button className="btn btn-sm btn-out" type="button" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={() => void withdraw(r.id)}>
-              요청 철회
+              취소 요청 거두기
             </button>
           )}
         </div>
@@ -83,7 +83,7 @@ export default function RefundRequestSection({ slug, orderId, onChanged }: { slu
             주문 취소 요청
           </button>
           <p className="cart-opt" style={{ margin: "8px 0 0" }}>
-            개봉이 시작되면 취소할 수 없어요. 보낸 뒤에는 교환 · 반품을 신청해 주세요
+            방송에서 상품을 열기 시작하면 취소할 수 없어요. 보낸 뒤에는 교환 · 반품을 신청해 주세요
           </p>
         </>
       )}
@@ -152,7 +152,7 @@ function RequestForm({ base, orderId, items, onClose, onDone }: { base: string; 
       }
     >
       <div className="rtb-form">
-        <p style={{ margin: 0 }}>개봉 전까지만 취소할 수 있어요. 판매자가 확인하면 결제는 바로 환불돼요.</p>
+        <p style={{ margin: 0 }}>방송에서 상품을 열기 전까지만 취소할 수 있어요. 판매자가 확인하면 결제는 바로 환불돼요.</p>
         <fieldset>
           <legend>환불받을 상품</legend>
           {items.map((i) => (

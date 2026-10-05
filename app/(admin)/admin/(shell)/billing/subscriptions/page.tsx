@@ -15,7 +15,7 @@ type Access = "trial" | "paid" | "charging" | "grace" | "expired";
 const ACCESS: Record<Access, { label: string; cls: string }> = {
   trial: { label: "체험", cls: "b-info" },
   paid: { label: "이용 중", cls: "b-done" },
-  charging: { label: "결제 처리 중", cls: "b-wait" },
+  charging: { label: "결제 진행 중", cls: "b-wait" },
   grace: { label: "연체", cls: "b-warn" },
   expired: { label: "해지", cls: "b-gray" },
 };
@@ -141,14 +141,14 @@ export default function SubscriptionsPage() {
                     <thead>
                       <tr>
                         <th>쇼핑몰</th>
-                        <th>이용 상태</th>
+                        <th>이용 단계</th>
                         <th>요금제</th>
                         <th>체험 종료</th>
                         <th>이용 기간 끝</th>
                         <th>다음 결제</th>
                         <th>결제 카드</th>
-                        <th>구독 상태</th>
-                        <th>연체 유예</th>
+                        <th>결제 상태</th>
+                        <th>결제 못 한 뒤 기다려 주는 날짜</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -158,7 +158,7 @@ export default function SubscriptionsPage() {
                             <Link className="fw6" href={`/admin/partners/${r.seller.id}`}>
                               {r.seller.shopName}
                             </Link>
-                            <span className="c-alt"> · {r.seller.slug}</span>
+                            <span className="c-alt"> · 쇼핑몰 주소 {r.seller.slug}</span>
                           </td>
                           <td>
                             <span className={`bdg ${ACCESS[r.access].cls}`}>{ACCESS[r.access].label}</span>
@@ -170,7 +170,7 @@ export default function SubscriptionsPage() {
                           <td>{r.subscription?.cardLabel ?? "-"}</td>
                           <td>{r.subscription ? <span className={`bdg ${SUBSCRIPTION_STATUS[r.subscription.status].cls}`}>{SUBSCRIPTION_STATUS[r.subscription.status].label}</span> : "구독 없음"}</td>
                           <td className="num">
-                            {r.subscription?.graceUntil ? `${dayTime(r.subscription.graceUntil)} · 재시도 ${r.subscription.retryCount}회` : "-"}
+                            {r.subscription?.graceUntil ? `${dayTime(r.subscription.graceUntil)} · 결제 ${r.subscription.retryCount}번 다시 시도` : "-"}
                           </td>
                         </tr>
                       ))}

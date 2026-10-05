@@ -336,6 +336,7 @@ describe("재고", () => {
 async function shopPreview(s: Awaited<ReturnType<typeof shop>>, id: string) {
   const d = await getSellerReturn(db, s.ctx, id);
   if (!d?.refundPreview || d.queueVersion === null || !d.fault) throw new Error("no preview");
+  expect(d.orderNoLabel).toEqual(expect.stringMatching(/^\d{8}-\d{4,}$/));
   return { amount: d.refundPreview.byFault[d.fault].refundAmount, queueVersion: d.queueVersion };
 }
 
@@ -419,6 +420,7 @@ describe("권한·판매자 격리", () => {
     expect(await getSellerReturn(db, other.ctx, req.id)).toBeNull();
     expect((await listSellerReturns(db, other.ctx)).returns).toEqual([]);
     expect((await listSellerReturns(db, s.ctx)).returns).toHaveLength(1);
+    expect((await listSellerReturns(db, s.ctx)).returns[0].orderNoLabel).toEqual(expect.stringMatching(/^\d{8}-\d{4,}$/));
     expect(await status(req.id)).toBe("REQUESTED");
   });
 

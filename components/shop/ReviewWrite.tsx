@@ -64,7 +64,7 @@ export default function ReviewWrite({ slug, itemId, reviewId }: { slug: string; 
       const r = await call<{ image: Photo }>(`${base}/images`, { method: "POST", raw: blob });
       if (!r.ok) {
         if (r.status === 401) return setView({ kind: "login" });
-        setMsg({ ok: false, text: r.message ?? "사진을 올리지 못했어요. 잠시 뒤 다시 해 주세요" });
+        setMsg({ ok: false, text: r.message ?? "사진을 올리지 못했어요. 다른 사진으로 다시 올려 주세요" });
         continue;
       }
       setPhotos((p) => [...p, r.data.image]);
@@ -107,7 +107,7 @@ export default function ReviewWrite({ slug, itemId, reviewId }: { slug: string; 
       <section className="card shop-card col" style={{ gap: 12 }}>
         <span className="t-l1">불러오지 못했어요</span>
         <button className="btn btn-sm" type="button" style={{ alignSelf: "flex-start" }} onClick={() => void load()}>
-          다시 시도
+          다시 불러오기
         </button>
       </section>
     );
@@ -189,7 +189,7 @@ export default function ReviewWrite({ slug, itemId, reviewId }: { slug: string; 
           <button className="btn btn-lg btn-block" type="button" disabled={!ready} onClick={() => void submit()}>
             {busy ? "올리는 중" : itemId ? "리뷰 올리기" : "고친 리뷰 올리기"}
           </button>
-          {rating > 0 && length < 10 && <span className="t-c1 c-alt">10자 이상 써 주시면 올릴 수 있어요</span>}
+          {rating > 0 && length < 10 && <span className="t-c1 c-alt">10자 이상 써야 올릴 수 있어요</span>}
         </>
       )}
     </section>

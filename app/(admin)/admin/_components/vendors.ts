@@ -24,26 +24,26 @@ export type VendorBoard = {
   vendors: Vendor[];
 };
 
-export const VENDOR_CATEGORY_LABEL: Record<VendorCategory, string> = { PG: "결제·PG", SHIPPING: "배송·송장", TRACKING: "배송조회" };
+export const VENDOR_CATEGORY_LABEL: Record<VendorCategory, string> = { PG: "카드 결제", SHIPPING: "배송·송장", TRACKING: "배송조회" };
 export const VENDOR_CATEGORIES: VendorCategory[] = ["PG", "SHIPPING", "TRACKING"];
 
 export const CRITERION_LABEL: Record<string, string> = {
   fee: "수수료",
   setupFee: "초기·고정비",
-  recurring: "정기결제",
+  recurring: "자동 반복 결제",
   methods: "결제수단",
-  api: "API·개발 편의",
+  api: "연결하기 쉬운 정도",
   stability: "안정성",
-  settlement: "정산주기",
+  settlement: "정산 받는 주기",
   invoiceIssue: "송장 발급",
   invoicePrint: "송장 출력",
   tracking: "배송 추적",
   carrierCoverage: "택배사 범위",
-  returns: "반품 연동",
+  returns: "반품 자동 연결",
   cost: "비용",
 };
 // 배송 분야의 「API」는 「API 품질」로 쓴다(시안)
-export const criterionLabel = (cat: VendorCategory, key: string) => (cat !== "PG" && key === "api" ? "API 품질" : CRITERION_LABEL[key] ?? key);
+export const criterionLabel = (cat: VendorCategory, key: string) => (cat !== "PG" && key === "api" ? "API 품질" : CRITERION_LABEL[key] ?? "이름 없는 항목");
 
 export const FEATURE_LABEL: Record<string, string> = {
   card: "카드",
@@ -51,13 +51,13 @@ export const FEATURE_LABEL: Record<string, string> = {
   virtualAccount: "가상계좌",
   easyPay: "간편결제",
   recurring: "정기결제",
-  escrow: "에스크로",
+  escrow: "안전결제(에스크로)",
   cashReceipt: "현금영수증",
   invoiceIssue: "송장 발급",
   invoicePrint: "송장 출력",
   tracking: "배송 추적",
-  returns: "반품 연동",
+  returns: "반품 자동 연결",
   multiCarrier: "여러 택배사",
-  apiSandbox: "테스트 환경 제공",
+  apiSandbox: "테스트 기능 있음",
   linkOnly: "조회 링크만 제공",
 };

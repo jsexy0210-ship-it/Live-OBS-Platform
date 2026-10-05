@@ -57,10 +57,10 @@ export default function PlansPage() {
                       <th>판매가</th>
                       <th>체험 일수</th>
                       <th>체험 알림톡·문자</th>
-                      <th>체험 본인확인</th>
+                      <th>체험 중 휴대폰 본인확인</th>
                       <th>체험 저장 용량</th>
-                      <th>월 거래 메일 제공량</th>
-                      <th>변경 후 제공량</th>
+                      <th>월 주문·배송 안내 메일 무료 수량</th>
+                      <th>바뀔 무료 수량</th>
                       <th>적용 예정일</th>
                       {(canEdit || canTrial) && <th>작업</th>}
                     </tr>
@@ -93,7 +93,7 @@ export default function PlansPage() {
                               )}
                               {canEdit && (
                                 <button className="btn btn-sm btn-out" type="button" onClick={() => setDialog({ kind: "quota", plan: p })}>
-                                  제공량 변경
+                                  월 무료 메일 수량 변경
                                 </button>
                               )}
                             </div>
@@ -106,7 +106,7 @@ export default function PlansPage() {
               </div>
             ))}
         </div>
-        <p className="t-c1 c-alt">월 제공량은 한국 시간 기준 한 달 단위이고 남아도 다음 달로 넘어가지 않습니다. 제공량을 넘는 메일은 파트너스의 발송 잔액에서 차감됩니다.</p>
+        <p className="t-c1 c-alt">무료 수량은 한 달 단위(한국 시간)이며 남아도 다음 달로 넘어가지 않습니다. 무료 수량을 넘는 메일은 파트너스의 충전 잔액에서 빠집니다.</p>
       </main>
       {dialog?.kind === "price" && (
         <PlanPriceDialog
@@ -132,8 +132,8 @@ export default function PlansPage() {
       )}
       {dialog?.kind === "quota" && (
         <ValueDialog
-          title={`${dialog.plan.name} 월 제공량 변경`}
-          label="월 거래 메일 제공량"
+          title={`${dialog.plan.name} 월 무료 메일 수량 변경`}
+          label="월 주문·배송 안내 메일 무료 수량"
           unit="통"
           current={dialog.plan.mailMonthlyQuota}
           max={MAIL_QUOTA_MAX_UI}

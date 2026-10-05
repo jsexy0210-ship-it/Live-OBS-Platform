@@ -42,7 +42,7 @@ export default function AdminAccountPage() {
       setCurrent("");
       setNext("");
       setAgain("");
-      setToast(r.data.signedOutOthers ? `비밀번호를 바꿨습니다. 다른 곳 ${r.data.signedOutSessions}건은 로그아웃했습니다.` : "비밀번호를 바꿨습니다.");
+      setToast(r.data.signedOutOthers ? `비밀번호를 바꿨습니다. 다른 기기 ${r.data.signedOutSessions}대는 로그아웃했습니다.` : "비밀번호를 바꿨습니다.");
       return;
     }
     if (r.status === 429 && r.retryAfterSeconds) setWait(r.retryAfterSeconds);

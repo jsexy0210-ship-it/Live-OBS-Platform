@@ -399,7 +399,7 @@ export default function CheckoutView({ slug, memberNickname = "" }: { slug: stri
             </label>
           </div>
           <span className="cart-hint">
-            카드 결제는 결제 창에서 카드사 인증을 거쳐요. 주문하면 다음 화면에서 고른 수단으로 결제해요. 현금영수증 · 세금계산서는 무통장 입금을 고르면 신청할 수 있어요.
+            카드 결제는 결제 창에서 카드 정보를 확인해요. 주문하면 다음 화면에서 고른 방법으로 결제해요. 현금영수증 · 세금계산서는 무통장 입금을 고르면 신청할 수 있어요.
           </span>
         </section>
       </div>
@@ -439,7 +439,7 @@ export default function CheckoutView({ slug, memberNickname = "" }: { slug: stri
             <b>{won(preview.total - (rewardOn ? rewardUse : 0))}</b>
           </div>
         )}
-        <p className="cart-hint">최종 결제 금액은 쿠폰·적립금을 뺀 금액이에요. 주문할 때 서버가 한 번 더 계산해요.</p>
+        <p className="cart-hint">최종 결제 금액은 쿠폰·적립금을 뺀 금액이에요. 주문하는 순간 금액을 한 번 더 확인해요.</p>
         <label className="co-check">
           <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} aria-describedby="co-consent-err" />
           <span>
@@ -448,10 +448,10 @@ export default function CheckoutView({ slug, memberNickname = "" }: { slug: stri
         </label>
         {tried && !agreed && (
           <span id="co-consent-err" className="co-err">
-            주문 내용 확인에 동의해 주세요
+            ‘주문 내용을 확인했어요’에 체크해 주세요
           </span>
         )}
-        <p className="cart-hint">만 19세 미만이 법정대리인 동의 없이 주문하면 본인이나 법정대리인이 취소할 수 있어요. 나이는 휴대폰 본인확인 생년월일로 확인해요.</p>
+        <p className="cart-hint">만 19세 미만이 보호자 동의 없이 주문하면 본인이나 보호자가 취소할 수 있어요. 나이는 가입할 때 확인한 생년월일로 알아봐요.</p>
         {error && (
           <p className="cart-msg is-err" role="alert">
             {error}
@@ -460,7 +460,7 @@ export default function CheckoutView({ slug, memberNickname = "" }: { slug: stri
         <button className="btn btn-lg btn-block" type="button" disabled={busy} aria-busy={busy} onClick={() => void submit()}>
           {busy ? "주문하고 있어요" : "주문하기"}
         </button>
-        <p className="cart-hint">주문하면 결제 대기 상태로 접수되고, 다음 화면에서 고른 결제 수단으로 결제해요.</p>
+        <p className="cart-hint">주문하면 먼저 접수돼요. 아직 결제는 되지 않아요. 다음 화면에서 고른 방법으로 결제해 주세요.</p>
       </aside>
     </div>,
   );

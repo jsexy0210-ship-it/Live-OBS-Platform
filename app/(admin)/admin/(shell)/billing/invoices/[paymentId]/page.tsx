@@ -77,21 +77,21 @@ export default function InvoiceDetailPage() {
                 ["쇼핑몰", <Link key="s" href={`/admin/partners/${p.seller.id}`}>{p.seller.shopName}</Link>],
                 ["금액", won(p.amount)],
                 ["결제 상태", <span key="st" className={`bdg ${PAYMENT_STATUS[p.status].cls}`}>{PAYMENT_STATUS[p.status].label}</span>],
-                ...(p.status === "FAILED" ? ([["실패 사유", p.failureReason ?? "-"]] as [string, React.ReactNode][]) : []),
+                ...(p.status === "FAILED" ? ([["결제 실패 이유", p.failureReason ?? "-"]] as [string, React.ReactNode][]) : []),
                 ["구분", PAYMENT_KIND[p.kind]],
                 ...(p.kind === "PRORATION" ? ([["변경할 요금제", planLabel(p.targetPlanCode)]] as [string, React.ReactNode][]) : []),
                 ["이용 기간", `${day(p.periodStart)} ~ ${day(p.periodEnd)}`],
                 ["청구일", dayTime(p.createdAt)],
                 ["결제일", dayTime(p.paidAt)],
-                ["청구 방식", p.scheduled ? "자동 청구" : "직접 결제"],
-                ["런칭 할인", p.launchDiscount ? "적용" : "미적용"],
+                ["청구 방법", p.scheduled ? "자동으로 청구" : "직접 결제"],
+                ["오픈 기념 할인", p.launchDiscount ? "적용" : "미적용"],
               ]}
             />
             <Info
               title="결제 정보"
               id="invoice-provider"
               rows={[
-                ["결제 번호", p.providerPaymentId ?? "-"],
+                ["카드사 거래 번호", p.providerPaymentId ?? "-"],
                 [
                   "카드 매출전표",
                   receipt ? (
@@ -108,7 +108,7 @@ export default function InvoiceDetailPage() {
               title="구독"
               id="invoice-subscription"
               rows={[
-                ["구독 상태", <span key="sub" className={`bdg ${SUBSCRIPTION_STATUS[p.subscription.status as SubscriptionStatus]?.cls ?? "b-gray"}`}>{SUBSCRIPTION_STATUS[p.subscription.status as SubscriptionStatus]?.label ?? "-"}</span>],
+                ["결제 상태", <span key="sub" className={`bdg ${SUBSCRIPTION_STATUS[p.subscription.status as SubscriptionStatus]?.cls ?? "b-gray"}`}>{SUBSCRIPTION_STATUS[p.subscription.status as SubscriptionStatus]?.label ?? "-"}</span>],
                 ["요금제", p.subscription.plan.name],
                 ["결제 카드", p.subscription.cardLabel ?? "-"],
               ]}

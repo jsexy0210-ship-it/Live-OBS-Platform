@@ -41,7 +41,7 @@ function Notices({ slug }: { slug: string }) {
       <div className="cart-empty">
         <p>공지를 불러오지 못했어요. 연결을 확인하고 다시 시도해 주세요.</p>
         <button className="btn" type="button" onClick={() => void load()}>
-          다시 시도
+          다시 불러오기
         </button>
       </div>
     );
@@ -144,7 +144,7 @@ function Faqs({ slug }: { slug: string }) {
         <div className="cart-empty">
           <p>자주 묻는 질문을 불러오지 못했어요. 연결을 확인하고 다시 시도해 주세요.</p>
           <button className="btn" type="button" onClick={() => void load(q)}>
-            다시 시도
+            다시 불러오기
           </button>
         </div>
       ) : faqs === null ? (

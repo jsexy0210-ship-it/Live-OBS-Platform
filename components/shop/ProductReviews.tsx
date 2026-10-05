@@ -59,7 +59,7 @@ export default function ProductReviews({ slug, productId }: { slug: string; prod
         <p className="shop-empty">
           리뷰를 불러오지 못했어요.{" "}
           <button type="button" className="shop-linkbtn" onClick={() => void load()}>
-            다시 시도
+            다시 불러오기
           </button>
         </p>
       )}
