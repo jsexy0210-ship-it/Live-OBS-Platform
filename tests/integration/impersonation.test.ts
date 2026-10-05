@@ -2,6 +2,8 @@ import { NextRequest } from "next/server";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { DELETE as endRoute, GET as activeRoute } from "../../app/api/admin/impersonation/route";
 import { POST as startRoute } from "../../app/api/admin/sellers/[sellerId]/impersonate/route";
+import { POST as loginRoute } from "../../app/api/seller/auth/login/route";
+import { POST as logoutRoute } from "../../app/api/seller/auth/logout/route";
 import { GET as meRoute } from "../../app/api/seller/me/route";
 import { GET as sellerImpRoute } from "../../app/api/seller/impersonation/route";
 import { GET as ordersRoute } from "../../app/api/seller/orders/route";
@@ -11,7 +13,7 @@ import { GET as subscriptionGet } from "../../app/api/seller/subscription/route"
 import { createAdminSession } from "../../lib/server/auth/session";
 import { prisma } from "../../lib/server/db";
 import { proxy } from "../../proxy";
-import { createAdmin, createBuyer, createSeller, db, resetDb } from "./helpers";
+import { PASSWORD, createAdmin, createBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
 // 마스터 대리 조회(MA-016): 권한·사유·로그 추적, 읽기 전용(경로 안전망 proxy + 가드), 쇼핑몰 격리, 끝내기·만료·관리자 정지 시 차단.
 beforeEach(resetDb);
@@ -177,6 +179,40 @@ describe("화면 틀이 읽는 내 정보 GET /api/seller/me (대리 조회)", (
   });
 });
 
+describe("대리 조회 쿠키가 남은 브라우저의 파트너스 로그인·로그아웃", () => {
+  it("로그인은 성공하고 응답이 대리 조회 쿠키를 지운다. 이후 같은 브라우저는 로그인한 파트너스로 동작하고, 로그아웃은 진짜 세션을 끊는다", async () => {
+    const { seller } = await shopWithOrder("로그인 몰");
+    const user = await createSellerUser(seller.id, "OWNER");
+    const su = await admin("SUPER_ADMIN");
+    const { imp } = await start(su.cookie, seller.id);
+    const stale = `lo_imp=${imp}`;
+    const through = await proxy(new NextRequest(BASE + "/api/seller/auth/login", { method: "POST", headers: { cookie: stale } }));
+    expect(through.headers.get("x-middleware-next")).toBe("1");
+    const res = await loginRoute(req("/api/seller/auth/login", stale, "POST", { email: user.email, password: PASSWORD, shopSlug: seller.slug }));
+    expect(res.status).toBe(200);
+    const setCookie = res.headers.get("set-cookie") ?? "";
+    expect(setCookie).toMatch(/lo_imp=;/);
+    expect(setCookie).toMatch(/lo_imp=;[^,]*Max-Age=0/i);
+    const real = /lo_seller=([^;]+)/.exec(setCookie)?.[1];
+    expect(real).toBeTruthy();
+    // 쿠키를 지운 뒤(브라우저) 파트너스 세션만 남는다 → 일반 로그인 /me
+    const me = await json(await meRoute(req("/api/seller/me", `lo_seller=${real}`)));
+    expect(me.body).toMatchObject({ readOnly: false, impersonation: null, userId: user.id });
+    // 쿠키를 못 지운 브라우저(둘 다 보냄)에서 로그아웃하면 진짜 파트너스 세션이 끊기고 대리 조회 쿠키도 지워진다
+    const out = await logoutRoute(req("/api/seller/auth/logout", `lo_seller=${real}; ${stale}`, "POST"));
+    expect(out.status).toBe(200);
+    expect(out.headers.get("set-cookie") ?? "").toMatch(/lo_imp=;/);
+    expect((await meRoute(req("/api/seller/me", `lo_seller=${real}`))).status).toBe(401);
+  });
+  it("로그인 실패는 대리 조회 쿠키를 건드리지 않는다", async () => {
+    const { seller } = await shopWithOrder("실패 몰");
+    const user = await createSellerUser(seller.id, "OWNER");
+    const res = await loginRoute(req("/api/seller/auth/login", "lo_imp=imp.abc", "POST", { email: user.email, password: "wrong-password", shopSlug: seller.slug }));
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.headers.get("set-cookie") ?? "").not.toMatch(/lo_imp=;/);
+  });
+});
+
 describe("proxy 안전망(대리 조회 쿠키가 있는 /api/seller 요청)", () => {
   const hit = async (method: string, path: string, cookie?: string) => {
     const res = await proxy(new NextRequest(BASE + path, { method, headers: cookie ? { cookie } : {} }));
@@ -199,9 +235,24 @@ describe("proxy 안전망(대리 조회 쿠키가 있는 /api/seller 요청)", (
       ["GET", "/api/seller/me/password"],
       ["GET", "/api/seller/me-evil"],
       ["POST", "/api/seller/me"],
-      ["POST", "/api/seller/auth/login"],
+      ["POST", "/api/seller/auth/login-evil"],
+      ["POST", "/api/seller/password-reset-evil/start"],
+      ["POST", "/api/seller/auth/me"],
     ] as const) {
       expect(await hit(m, p, c)).toMatchObject({ kind: "blocked", status: 403, body: { error: "impersonation_read_only" } });
+    }
+  });
+  it("로그인 전 흐름(로그인·로그아웃·비밀번호 재설정·아이디 찾기)은 대리 조회 쿠키가 남아 있어도 막지 않는다", async () => {
+    const c = "lo_imp=imp.abc";
+    for (const [m, p] of [
+      ["POST", "/api/seller/auth/login"],
+      ["POST", "/api/seller/auth/logout"],
+      ["POST", "/api/seller/password-reset/start"],
+      ["POST", "/api/seller/password-reset/complete"],
+      ["POST", "/api/seller/find-id/start"],
+      ["POST", "/api/seller/find-id/accounts"],
+    ] as const) {
+      expect(await hit(m, p, c)).toEqual({ kind: "pass" });
     }
   });
   it("쿠키가 없으면 건드리지 않고, 마스터 API·화면은 쿠키가 있어도 건드리지 않는다", async () => {
