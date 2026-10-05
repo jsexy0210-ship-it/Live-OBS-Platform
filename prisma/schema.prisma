@@ -69,6 +69,8 @@ model Seller {
   id                       String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   slug                     String       @unique
   shopName                 String
+  // 한 줄 소개(SA-060, 40자). 쇼핑몰 홈·공유 설명 기본값. 비어 있으면 null.
+  shopTagline              String?
   // 공유 미리보기(og:title·og:description) 제목·설명. 비어 있으면 쇼핑몰 이름(제목)·없음(설명). 파트너스 쇼핑몰 설정(SHOP_SETTINGS)에서 바꾼다.
   shareTitle               String?
   shareDescription         String?

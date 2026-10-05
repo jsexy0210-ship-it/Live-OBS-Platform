@@ -68,7 +68,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // 공개 쇼핑몰 페이지의 공유 미리보기 값(og:title·og:description·og:image). 운영 중이고 잠기지 않은 쇼핑몰만(아니면 null).
 // 상품 상세(productId)는 판매 중·품절 상품의 이름이 제목으로 우선한다. 상품 대표 이미지는 상품 이미지 업로드가 생긴 뒤 연결한다.
 export async function shopShareMeta(db: PrismaClient, slug: string, productId?: string | null): Promise<ShareMeta | null> {
-  const shop = await db.seller.findUnique({ where: { slug }, select: { id: true, slug: true, shopName: true, shareTitle: true, shareDescription: true } });
+  const shop = await db.seller.findUnique({ where: { slug }, select: { id: true, slug: true, shopName: true, shopTagline: true, shareTitle: true, shareDescription: true } });
   if (!shop || !(await shopOpen(db, shop.id))) return null;
   const product =
     productId && UUID.test(productId)
@@ -77,7 +77,7 @@ export async function shopShareMeta(db: PrismaClient, slug: string, productId?: 
   const icon = await viewFavicon(db, shop.id, shop.slug);
   return {
     title: product?.name ?? shop.shareTitle ?? shop.shopName,
-    description: shop.shareDescription,
+    description: shop.shareDescription ?? shop.shopTagline,
     image: { url: `/api/shop/${encodeURIComponent(shop.slug)}/og.png?v=${cardVersion(shop.shopName)}`, width: 1200, height: 630 },
     favicon: icon.urls ? { url: icon.urls[32], appleUrl: icon.urls[180], largeUrl: icon.urls[512], type: "image/png" } : null,
   };
