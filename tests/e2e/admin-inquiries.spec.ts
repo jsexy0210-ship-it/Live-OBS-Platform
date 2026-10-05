@@ -16,7 +16,7 @@ let db: PrismaClient;
 async function inquiry(key: string, title: string) {
   const sellerId = ids.seller;
   const i = await db.platformInquiry.create({ data: { sellerId, createdBySellerUserId: ids.user, category: "BILLING", title, lastMessageAt: new Date() } });
-  await db.platformInquiryMessage.create({ data: { sellerId, inquiryId: i.id, authorType: "SELLER", sellerUserId: ids.user, body: `${title} 내용입니다.` } });
+  await db.platformInquiryMessage.create({ data: { sellerId, inquiryId: i.id, authorType: "SELLER_USER", sellerUserId: ids.user, body: `${title} 내용입니다.` } });
   ids[key] = i.id;
 }
 
