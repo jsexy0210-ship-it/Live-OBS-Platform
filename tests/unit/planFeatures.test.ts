@@ -166,6 +166,9 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/seo": "STORE_OPERATIONS",
   "seller/brand-color": "STORE_OPERATIONS",
   "seller/favicon": "STORE_OPERATIONS",
+  "seller/domains": "STORE_OPERATIONS",
+  "seller/domains/[id]": "STORE_OPERATIONS",
+  "seller/domains/[id]/verify": "STORE_OPERATIONS",
   "seller/shipping-policy": "STORE_OPERATIONS",
   "seller/shop-search/synonyms": "STORE_OPERATIONS", // 검색 유사어 묶음
   "seller/shop-search/blocked-terms": "STORE_OPERATIONS", // 인기 검색어 제외 단어
