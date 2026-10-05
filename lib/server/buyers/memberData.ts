@@ -12,6 +12,8 @@ export const MEMBER_DATA_POLICY: Record<string, { policy: MemberDataPolicy; note
   WishItem: { policy: "delete", note: "찜(shop-wish)" },
   ProductReview: { policy: "anonymize", note: "상품 리뷰는 남기고 작성자 표시를 「탈퇴 회원」으로(product-reviews anonymizeMemberReviews). 리뷰에 붙은 사진은 리뷰와 함께 남는다" },
   ProductReviewImage: { policy: "delete", note: "리뷰에 붙지 않은 사진은 지운다. 리뷰에 붙은 사진은 리뷰와 함께 남는다(리뷰는 비식별)" },
+  BuyerInquiry: { policy: "anonymize", note: "구매자 문의는 판매자 응대 기록으로 남기고 작성자 표시를 「탈퇴한 회원」으로(buyer-inquiries anonymizeMemberInquiries). 보관 기간 정책은 대표님 확인 대기" },
+  BuyerInquiryImage: { policy: "delete", note: "문의에 붙은 사진을 포함해 탈퇴 때 모두 지운다(사진에 개인정보가 담길 수 있음)" },
   ReturnRequest: { policy: "retain_legal", note: "교환·반품 신청(청약철회·분쟁 처리 기록, 주문과 같은 법정 보관). 신청 사유·사진은 주문과 함께 남고 보관 기간 뒤 주문 파기와 함께 지운다" },
   RefundRequest: { policy: "retain_legal", note: "구매자 환불 요청(청약철회·분쟁 처리 기록, 주문과 같은 법정 보관). 사유는 주문과 함께 남고 보관 기간 뒤 주문 파기와 함께 지운다" },
   ReturnRequestImage: { policy: "retain_legal", note: "신청에 붙은 사진은 신청과 함께 법정 보관. 신청에 붙지 않은 사진은 탈퇴 때 지운다" },
@@ -74,6 +76,11 @@ export const MEMBER_AUDIT_RETENTION: Record<string, MemberAuditRetention> = {
   "buyer_review.report": "non_transaction",
   "buyer_review.report_withdraw": "non_transaction",
   "buyer_review.image_upload": "non_transaction",
+  // 구매자 문의 쓰기·고치기·지우기·사진 올리기(거래 무관)
+  "buyer_inquiry.create": "non_transaction",
+  "buyer_inquiry.update": "non_transaction",
+  "buyer_inquiry.delete": "non_transaction",
+  "buyer_inquiry.image_upload": "non_transaction",
   "buyer_return.image_upload": "non_transaction", // 신청 전 사진 올리기(신청에 붙은 사진은 신청과 함께 보관)
   // 마케팅 수신 동의 철회·다시 동의(회원 정보 수정과 같은 분류)
   "buyer.marketing_consent.withdraw": "non_transaction",

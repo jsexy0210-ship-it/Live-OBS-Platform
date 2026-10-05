@@ -92,6 +92,10 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/reviews/[reviewId]/publish": "STORE_OPERATIONS",
   "seller/reviews/policy": "STORE_OPERATIONS",
   "seller/reviews/images/[imageId]": "STORE_OPERATIONS",
+  "seller/inquiries": "STORE_OPERATIONS", // 구매자 문의(SA-046·047)
+  "seller/inquiries/[inquiryId]": "STORE_OPERATIONS",
+  "seller/inquiries/[inquiryId]/answer": "STORE_OPERATIONS",
+  "seller/inquiries/images/[imageId]": "STORE_OPERATIONS",
   "seller/coupons/[couponId]": "STORE_OPERATIONS",
   "seller/coupons/[couponId]/grant": "STORE_OPERATIONS",
   "seller/coupons/products": "STORE_OPERATIONS",
@@ -209,6 +213,10 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/reviews": "OPEN", // 내 리뷰(받은 답글·숨김 사유는 잠긴 쇼핑몰에서도 본다)
   "shop/[slug]/reviews/[reviewId]": "OPEN", // 내 리뷰 고치기·지우기
   "shop/[slug]/reviews/images/[imageId]": "OPEN", // 내가 올린 사진
+  "shop/[slug]/inquiries": "OPEN", // 내 문의·답변 조회는 열고, 쓰기는 shopOpen으로 막음
+  "shop/[slug]/inquiries/[inquiryId]": "OPEN", // 고치기·지우기는 shopOpen으로 막음
+  "shop/[slug]/inquiries/images": "STORE_OPERATIONS", // 사진 올리기는 shopOpen으로 막음
+  "shop/[slug]/inquiries/images/[imageId]": "OPEN", // 내가 올린 사진
   "shop/[slug]/reviews/items/[orderItemId]": "STORE_OPERATIONS", // 리뷰 쓰기(POST는 shopOpen으로 막음)
   "shop/[slug]/reviews/images": "STORE_OPERATIONS",
   "shop/[slug]/reviews/[reviewId]/report": "STORE_OPERATIONS",
