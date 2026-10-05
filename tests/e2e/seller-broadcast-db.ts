@@ -121,3 +121,17 @@ export async function purgeE2eHitCards(slug = "demo-shop") {
     await db.$disconnect();
   }
 }
+
+// 시험 주문은 방송 전에 만든 것이라 방송 시간 안에 들어온 주문으로 맞춘다(방송 이력·상세는 방송 시작~종료 안에 들어온 주문만 센다)
+export async function moveQueueOrdersToNow(nicks: readonly string[], slug = "demo-shop") {
+  const db = open();
+  try {
+    const { id: sellerId } = await db.seller.findUniqueOrThrow({ where: { slug }, select: { id: true } });
+    for (const n of nicks) {
+      const item = await db.queueItem.findFirstOrThrow({ where: { sellerId, nicknameSnapshot: n }, select: { orderId: true } });
+      await db.order.update({ where: { id: item.orderId! }, data: { createdAt: new Date(), broadcastNicknameSnapshot: n } });
+    }
+  } finally {
+    await db.$disconnect();
+  }
+}

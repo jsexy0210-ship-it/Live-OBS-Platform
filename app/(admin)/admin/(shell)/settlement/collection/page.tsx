@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows } from "../../../../../../components/seller/States";
 import { adminApi } from "../../../_components/api";
 import { AdminTopbar } from "../../../_components/AdminShell";
 import { won } from "../../../_components/partners";
+import { useListFilters } from "../../../_components/useListFilters";
 
 // MA-032 구독료 수납 현황(GET /api/admin/subscription-billing, 모든 마스터 역할, 조회만). 기간(KST 날짜, 청구 시각 기준)을 비우면 오늘 하루.
 // 결제 목록은 청구·결제 내역(MA-024), 연체·유예 파트너스는 구독 현황(MA-023)에서 본다.
@@ -22,9 +23,8 @@ const range = (from: string, to: string) => {
   return p.toString();
 };
 
-export default function CollectionPage() {
-  const [draft, setDraft] = useState({ from: "", to: "" });
-  const [applied, setApplied] = useState({ from: "", to: "" });
+function CollectionPageInner() {
+  const { applied, draft, setDraft, apply } = useListFilters({ from: "", to: "" });
   const [state, setState] = useState<Load>({ kind: "loading" });
   const reqId = useRef(0);
   const rangeError = !!draft.from && !!draft.to && draft.from > draft.to;
@@ -57,8 +57,8 @@ export default function CollectionPage() {
         <PageHead title="구독료 수납" />
         <div className="col" style={{ gap: 20 }}>
           <SearchBox
-            onSearch={() => !rangeError && setApplied(draft)}
-            onReset={() => { setDraft({ from: "", to: "" }); setApplied({ from: "", to: "" }); }}
+            onSearch={() => !rangeError && apply(draft)}
+            onReset={() => apply({ from: "", to: "" })}
             busy={state.kind === "loading"}
           >
             <SearchRow label="청구 기간">
@@ -135,5 +135,13 @@ export default function CollectionPage() {
         </div>
       </main>
     </>
+  );
+}
+
+export default function CollectionPage() {
+  return (
+    <Suspense fallback={null}>
+      <CollectionPageInner />
+    </Suspense>
   );
 }

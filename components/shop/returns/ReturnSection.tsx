@@ -22,10 +22,24 @@ type Req = {
   exchangeCourierName: string | null;
   exchangeTrackingNumber: string | null;
   refundAmount: number | null;
+  pickupMethod: "COURIER" | "BUYER_SHIP" | "NONE";
+  inspectionResult: "OK" | "USED_DAMAGED" | "MISSING_PARTS" | null;
+  exchangeHeldAt: string | null;
+  convertedFromExchange: boolean;
   createdAt: string;
-  items: { orderItemId: string; productName: string; optionName: string; quantity: number }[];
+  items: { orderItemId: string; productName: string; optionName: string; quantity: number; orderQuantity: number }[];
 };
-type Ctx = { canRequest: boolean; blocked: string | null; items: { orderItemId: string; productName: string; optionName: string; quantity: number }[]; requests: Req[] };
+type RefundLine = { seq: number; createdAt: string; refundAmount: number; returnFeeDeducted: number; rewardReturn: number; items: { quantity: number; productName: string; optionName: string }[] };
+type Ctx = {
+  refunds: RefundLine[];
+  canRequest: boolean;
+  blocked: string | null;
+  deadline: string | null;
+  windowOpen: boolean;
+  needsRefundAccount: boolean;
+  items: { orderItemId: string; productName: string; optionName: string; quantity: number; opened: boolean }[];
+  requests: Req[];
+};
 
 const REASON: Record<Reason, string> = { CHANGE_OF_MIND: "단순 변심", DEFECTIVE: "상품 불량·파손", WRONG_ITEM: "다른 상품이 왔어요", NOT_AS_DESCRIBED: "상품 설명과 달라요", OTHER: "기타" };
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
@@ -35,9 +49,11 @@ function statusText(r: Req): string {
     case "REQUESTED":
       return "신청했어요 · 판매자가 확인하고 있어요";
     case "ACCEPTED":
-      return "접수됐어요 · 상품을 보내 주세요";
+      return r.pickupMethod === "COURIER" ? "접수됐어요 · 택배 수거를 준비하고 있어요" : r.pickupMethod === "NONE" ? "접수됐어요 · 상품은 보내지 않아도 돼요" : "접수됐어요 · 상품을 보내 주세요";
     case "RECEIVED":
-      return "상품을 받았어요 · 처리하고 있어요";
+      if (r.exchangeHeldAt) return "상품을 받았어요 · 교환 상품이 다시 들어오면 보내 드려요";
+      if (r.convertedFromExchange) return "교환 상품 재고가 없어 환불로 바뀌었어요 · 처리하고 있어요";
+      return r.inspectionResult ? "상품을 받았어요 · 검수를 마치고 처리하고 있어요" : "상품을 받았어요 · 검수하고 있어요";
     case "COMPLETED":
       return r.kind === "RETURN" ? `환불이 끝났어요${r.refundAmount !== null ? ` · ${won(r.refundAmount)}` : ""}` : `교환 상품을 보냈어요${r.exchangeTrackingNumber ? ` · ${r.exchangeCourierName} ${r.exchangeTrackingNumber}` : ""}`;
     case "REJECTED":
@@ -82,6 +98,18 @@ export default function ReturnSection({ slug, orderId }: { slug: string; orderId
           }}
         />
       ))}
+      {ctx.refunds.length > 0 && (
+        <div className="rtb-item" data-testid="refund-history">
+          <b>환불 내역</b>
+          {ctx.refunds.map((f) => (
+            <span key={f.seq} className="cart-opt">
+              {md(f.createdAt)} · {f.items.map((i) => `${i.productName} × ${i.quantity}`).join(", ")} · {won(f.refundAmount)} 환불
+              {f.returnFeeDeducted > 0 ? ` (반품 배송비 ${won(f.returnFeeDeducted)} 뺌)` : ""}
+              {f.rewardReturn > 0 ? ` · 적립금 ${won(f.rewardReturn)} 돌려받음` : ""}
+            </span>
+          ))}
+        </div>
+      )}
       {ctx.canRequest && (
         <button className="btn btn-sm btn-out" type="button" style={{ alignSelf: "flex-start" }} onClick={() => setForm(true)}>
           교환 · 반품 신청
@@ -93,6 +121,9 @@ export default function ReturnSection({ slug, orderId }: { slug: string; orderId
           base={base}
           orderId={orderId}
           items={ctx.items}
+          deadline={ctx.deadline}
+          windowOpen={ctx.windowOpen}
+          needsRefundAccount={ctx.needsRefundAccount}
           onClose={() => setForm(false)}
           onDone={async () => {
             setForm(false);
@@ -128,7 +159,7 @@ function RequestItem({ r, base, onDone }: { r: Req; base: string; onDone: (text:
       </div>
       <span>{statusText(r)}</span>
       <span className="cart-opt">{r.items.map((i) => `${i.productName} × ${i.quantity}`).join(", ")}</span>
-      {r.status === "ACCEPTED" && (
+      {r.status === "ACCEPTED" && r.pickupMethod === "BUYER_SHIP" && (
         <div className="rtb-row" style={{ flexWrap: "wrap", justifyContent: "flex-start" }}>
           {r.returnTrackingNumber ? (
             <span className="cart-opt">보낸 송장 {r.returnTrackingNumber}</span>
@@ -165,12 +196,36 @@ function RequestItem({ r, base, onDone }: { r: Req; base: string; onDone: (text:
 
 type Photo = { id: string; url: string };
 
-function RequestForm({ base, orderId, items, onClose, onDone }: { base: string; orderId: string; items: Ctx["items"]; onClose: () => void; onDone: () => void | Promise<void> }) {
+const SELLER_FAULT: Reason[] = ["DEFECTIVE", "WRONG_ITEM", "NOT_AS_DESCRIBED"];
+
+function RequestForm({
+  base,
+  orderId,
+  items,
+  deadline,
+  windowOpen,
+  needsRefundAccount,
+  onClose,
+  onDone,
+}: {
+  base: string;
+  orderId: string;
+  items: Ctx["items"];
+  deadline: string | null;
+  windowOpen: boolean;
+  needsRefundAccount: boolean;
+  onClose: () => void;
+  onDone: () => void | Promise<void>;
+}) {
   const [kind, setKind] = useState<Kind>("RETURN");
   const [picked, setPicked] = useState<string[]>([]);
+  // 반품: 상품별로 돌려보낼 수량(0이면 제외). 처음에는 전부
+  const [qty, setQty] = useState<Record<string, number>>(() => Object.fromEntries(items.map((i) => [i.orderItemId, i.quantity])));
   const [reason, setReason] = useState<Reason | "">("");
   const [text, setText] = useState("");
   const [photos, setPhotos] = useState<Photo[]>([]);
+  const [pickup, setPickup] = useState<"BUYER_SHIP" | "COURIER">("BUYER_SHIP");
+  const [bank, setBank] = useState({ bankName: "", accountHolder: "", accountNumber: "" });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const file = useRef<HTMLInputElement>(null);
@@ -186,14 +241,21 @@ function RequestForm({ base, orderId, items, onClose, onDone }: { base: string; 
     setPhotos((p) => [...p, r.data.image]);
   };
 
-  const ready = reason !== "" && (reason !== "OTHER" || text.trim() !== "") && (kind === "RETURN" || picked.length > 0);
+  // 개봉한 상품은 단순 변심으로 신청할 수 없다(교환은 고른 것 중 하나라도, 반품은 전부 개봉일 때). 기한이 지나면 불량·오배송·설명과 달라요만 받는다.
+  const target = kind === "EXCHANGE" ? items.filter((i) => picked.includes(i.orderItemId)) : items.filter((i) => (qty[i.orderItemId] ?? 0) > 0);
+  const openedHit = target.filter((i) => i.opened).length;
+  const openedBlocked = openedHit > 0 && (kind === "EXCHANGE" || openedHit === target.length);
+  const allowed = (k: Reason) => (SELLER_FAULT.includes(k) ? true : windowOpen && !(k === "CHANGE_OF_MIND" && openedBlocked));
+  const accountOk = !needsRefundAccount || (bank.bankName.trim() !== "" && bank.accountHolder.trim() !== "" && /^[0-9-]{6,20}$/.test(bank.accountNumber.trim()));
+  const ready = reason !== "" && allowed(reason) && accountOk && (reason !== "OTHER" || text.trim() !== "") && (kind === "RETURN" ? target.length > 0 : picked.length > 0);
+  const whole = items.every((i) => (qty[i.orderItemId] ?? 0) === i.quantity);
   const submit = async () => {
     if (!ready || busy) return;
     setBusy(true);
     setErr(null);
     const r = await call(base, {
       method: "POST",
-      body: { orderId, kind, reason, reasonText: text, imageIds: photos.map((p) => p.id), ...(kind === "EXCHANGE" ? { orderItemIds: picked } : {}) },
+      body: { orderId, kind, reason, reasonText: text, pickup, imageIds: photos.map((p) => p.id), ...(kind === "EXCHANGE" ? { orderItemIds: picked } : whole ? {} : { items: target.map((i) => ({ orderItemId: i.orderItemId, quantity: qty[i.orderItemId] })) }), ...(needsRefundAccount ? { refundAccount: bank } : {}) },
     });
     setBusy(false);
     if (!r.ok) return setErr(r.message ?? "신청하지 못했어요. 잠시 뒤 다시 해 주세요");
@@ -217,10 +279,36 @@ function RequestForm({ base, orderId, items, onClose, onDone }: { base: string; 
           {(["RETURN", "EXCHANGE"] as const).map((k) => (
             <label key={k} className="rtb-check">
               <input type="radio" name="rtb-kind" checked={kind === k} onChange={() => setKind(k)} />
-              {k === "RETURN" ? "반품 (주문 전체를 돌려보내고 환불)" : "교환 (골라서 같은 상품으로)"}
+              {k === "RETURN" ? "반품 (돌려보낼 상품을 골라 환불)" : "교환 (골라서 같은 상품으로)"}
             </label>
           ))}
         </fieldset>
+        {kind === "RETURN" && (
+          <fieldset>
+            <legend>돌려보낼 상품</legend>
+            {items.map((i) => (
+              <label key={i.orderItemId} className="rtb-check">
+                <select
+                  className="inp"
+                  style={{ width: 72 }}
+                  aria-label={`${i.productName} 수량`}
+                  value={qty[i.orderItemId] ?? 0}
+                  onChange={(e) => setQty({ ...qty, [i.orderItemId]: Number(e.target.value) })}
+                >
+                  {Array.from({ length: i.quantity + 1 }, (_, n) => (
+                    <option key={n} value={n}>
+                      {n}개
+                    </option>
+                  ))}
+                </select>
+                <span>
+                  {i.productName} · {i.optionName} (최대 {i.quantity}개)
+                  {i.opened ? " (개봉)" : ""}
+                </span>
+              </label>
+            ))}
+          </fieldset>
+        )}
         {kind === "EXCHANGE" && (
           <fieldset>
             <legend>교환할 상품</legend>
@@ -229,6 +317,7 @@ function RequestForm({ base, orderId, items, onClose, onDone }: { base: string; 
                 <input type="checkbox" checked={picked.includes(i.orderItemId)} onChange={(e) => setPicked((p) => (e.target.checked ? [...p, i.orderItemId] : p.filter((x) => x !== i.orderItemId)))} />
                 <span>
                   {i.productName} · {i.optionName} × {i.quantity}
+                  {i.opened ? " (개봉)" : ""}
                 </span>
               </label>
             ))}
@@ -239,12 +328,45 @@ function RequestForm({ base, orderId, items, onClose, onDone }: { base: string; 
           <select id="rtb-reason" className="inp" value={reason} onChange={(e) => setReason(e.target.value as Reason | "")}>
             <option value="">사유를 골라 주세요</option>
             {(Object.keys(REASON) as Reason[]).map((k) => (
-              <option key={k} value={k}>
+              <option key={k} value={k} disabled={!allowed(k)}>
                 {REASON[k]}
               </option>
             ))}
           </select>
+          {deadline && (
+            <span className="cart-opt" data-testid="rt-deadline">
+              {windowOpen ? `배송 완료 뒤 7일 안에 신청할 수 있어요 (${md(deadline)}까지)` : "신청 기간(배송 완료 뒤 7일)이 지났어요. 불량·오배송은 아직 신청할 수 있어요"}
+            </span>
+          )}
+          {openedBlocked && <span className="cart-opt">개봉한 상품은 단순 변심으로 신청할 수 없어요. 불량·오배송은 사유를 골라 신청해 주세요</span>}
         </div>
+        <fieldset>
+          <legend>상품 보내는 방법</legend>
+          {([["BUYER_SHIP", "직접 보낼게요"], ["COURIER", "택배 수거를 원해요"]] as const).map(([k, label]) => (
+            <label key={k} className="rtb-check">
+              <input type="radio" name="rtb-pickup" checked={pickup === k} onChange={() => setPickup(k)} />
+              {label}
+            </label>
+          ))}
+        </fieldset>
+        {needsRefundAccount && (
+          <fieldset>
+            <legend>환불받을 계좌</legend>
+            <div className="fld">
+              <label htmlFor="rtb-bank">은행</label>
+              <input id="rtb-bank" className="inp" maxLength={20} value={bank.bankName} onChange={(e) => setBank({ ...bank, bankName: e.target.value })} />
+            </div>
+            <div className="fld">
+              <label htmlFor="rtb-holder">예금주</label>
+              <input id="rtb-holder" className="inp" maxLength={20} value={bank.accountHolder} onChange={(e) => setBank({ ...bank, accountHolder: e.target.value })} />
+            </div>
+            <div className="fld">
+              <label htmlFor="rtb-acct">계좌번호</label>
+              <input id="rtb-acct" className="inp" inputMode="numeric" maxLength={20} value={bank.accountNumber} onChange={(e) => setBank({ ...bank, accountNumber: e.target.value.replace(/[^0-9-]/g, "") })} />
+              <span className="cart-opt">환불이 끝나면 계좌 정보는 지워져요</span>
+            </div>
+          </fieldset>
+        )}
         <div className="fld">
           <label htmlFor="rtb-text">자세한 사유{reason === "OTHER" ? "" : " (선택)"}</label>
           <textarea id="rtb-text" className="inp" style={{ height: 96, padding: "10px 12px" }} maxLength={500} value={text} onChange={(e) => setText(e.target.value)} placeholder="어떤 점이 문제인지 알려 주세요" />

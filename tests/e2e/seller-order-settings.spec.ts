@@ -65,12 +65,12 @@ test("저장한 적 없는 판매자도 입금 기한이 기본 24시간으로 �
   await page.getByLabel("비밀번호").fill(PASSWORD);
   await page.getByRole("button", { name: "로그인" }).click();
   await expect(page).toHaveURL(/\/seller\/products$/);
-  await page.getByRole("link", { name: "쇼핑몰 설정" }).click();
+  await page.getByRole("link", { name: "설정", exact: true }).click();
   // 메뉴는 모든 직원이 볼 수 있는 첫 탭 「쇼핑몰 정보」로 들어간다(SA-060, MASTER 결정 2026-10-04)
   await expect(page).toHaveURL(/\/seller\/settings\/shop$/);
   await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "주문 설정" }).click();
   await expect(page).toHaveURL(/\/seller\/settings\/order$/);
-  await expect(page.getByRole("link", { name: "쇼핑몰 설정" })).toHaveClass(/\bon\b/);
+  await expect(page.getByRole("link", { name: "설정", exact: true })).toHaveClass(/\bon\b/);
   // 새 DB 첫 실행에서는 저장한 적 없는 상태(서버 기본값)를 그대로 본다. 다시 돌릴 때는 이전 실행이 남긴 값이 있을 수 있어 기본값으로 맞춘 뒤 본다
   if ((await page.getByLabel("입금 기한", { exact: true }).inputValue()) !== "24") await resetPolicy(page);
   await expect(page.getByLabel("입금 기한", { exact: true })).toHaveValue("24");
@@ -155,7 +155,7 @@ test("로그인이 풀린 뒤 저장하면 로그인으로 보내고, 로그아�
   await page.context().clearCookies();
   await page.getByRole("switch", { name: "미입금으로 3번 취소되면 30일 동안 주문 막기" }).click();
   await save(page);
-  await expect(page).toHaveURL(/\/seller\/login\?next=%2Fseller%2Fsettings%2Forder$/);
+  await expect(page).toHaveURL(/\/seller\/login\?next=%2Fseller%2Fsettings%2Forder&reason=expired$/);
 });
 
 test("자동 취소를 꺼 둔 상태에서는 숨겨진 입금 기한 값이 틀려도 저장 버튼이 켜지지 않는다", async ({ page }) => {
@@ -186,9 +186,9 @@ test("자동 배송 완료·자동 구매 확정: 기본 7일, 기간을 바꾸�
   await expect(page.getByLabel("자동 구매 확정 기간")).toHaveValue("7");
   await expect(page.getByTestId("delivery-preview")).toContainText("배송 중 7일이 지나면 배송 완료로 바뀝니다 · 배송 완료 7일 뒤 자동으로 구매 확정됩니다");
   await shot(page, "SA-063-delivery");
-  // 켜면 송장 조회 비용이 발송 충전 잔액에서 차감된다고 알리고, 끄면 비용이 없다고 알린다(단가는 발송 충전 API, 정해지기 전에는 「단가 확정 전 금액이」)
+  // 켜면 송장 조회 비용이 발송·이용 충전금에서 차감된다고 알리고, 끄면 비용이 없다고 알린다(단가는 발송·이용 충전 API, 정해지기 전에는 「단가 확정 전 금액이」)
   await expect(page.getByTestId("tracking-fee")).toContainText("켜면 송장 1건 조회당");
-  await expect(page.getByTestId("tracking-fee")).toContainText("단가 확정 전 금액이 발송 충전 잔액에서 차감됩니다");
+  await expect(page.getByTestId("tracking-fee")).toContainText("단가 확정 전 금액이 발송·이용 충전금에서 차감됩니다");
   await expect(page.getByTestId("tracking-fee")).not.toContainText("[확정 전]");
   await page.getByRole("switch", { name: "배송 중 일정 기간이 지나면 자동으로 배송 완료" }).click();
   await expect(page.getByTestId("tracking-fee")).toContainText("택배사 조회 페이지 링크만 보여 드리며 비용이 없습니다");

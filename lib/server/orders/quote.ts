@@ -66,6 +66,7 @@ export async function quoteOrder(db: PrismaClient, input: QuoteInput) {
       value: {
         itemsSubtotal: price.itemsSubtotal,
         shippingFee: price.shippingFee,
+        gradeShippingDiscount: price.gradeShippingDiscount,
         isRemote: price.isRemote,
         coupon: applied ? { couponId: applied.couponId, benefit: applied.benefit, discountAmount: applied.discountAmount } : null,
         couponDiscount: price.couponDiscount,

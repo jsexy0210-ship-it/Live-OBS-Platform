@@ -55,26 +55,30 @@ async function recentOrderEvents(tx: Tx, sellerId: string, live: { id: string; s
     },
     orderBy: [{ receivedAt: "desc" }, { position: "asc" }],
     take: 100,
-    select: { id: true, orderId: true, nicknameSnapshot: true, productLabel: true, quantity: true, receivedAt: true, position: true },
+    select: { id: true, orderId: true, externalOrderId: true, nicknameSnapshot: true, productLabel: true, quantity: true, receivedAt: true, position: true },
   });
+  // 같은 주문의 줄은 한 이벤트로 묶는다. 외부 쇼핑몰 주문(orderId 없음)은 외부 주문 id로 묶고 「처음」 표시로 보낸다(회원 등급·재구매 정보 없음)
   const byOrder = new Map<string, typeof items>();
   for (const it of items) {
-    const list = byOrder.get(it.orderId);
+    const key = it.orderId ?? `ext:${it.externalOrderId}`;
+    const list = byOrder.get(key);
     if (list) list.push(it);
-    else if (byOrder.size < ORDER_EVENT_MAX) byOrder.set(it.orderId, [it]);
+    else if (byOrder.size < ORDER_EVENT_MAX) byOrder.set(key, [it]);
   }
   const orders = await tx.order.findMany({
-    where: { sellerId, id: { in: [...byOrder.keys()] } },
+    where: { sellerId, id: { in: [...byOrder.keys()].filter((k) => !k.startsWith("ext:")) } },
     select: { id: true, buyerMemberId: true, paidAt: true, buyerMember: { select: { grade: { select: { systemKey: true } } } } },
   });
   const info = new Map(orders.map((o) => [o.id, o]));
   const events = [];
   for (const [orderId, list] of byOrder) {
     const o = info.get(orderId);
-    if (!o) continue;
+    if (!o && !orderId.startsWith("ext:")) continue;
     list.sort((a, b) => a.position - b.position);
     let kind: "FIRST" | "REPEAT" | "VIP" = "FIRST";
-    if (o.buyerMember.grade.systemKey === "VIP") kind = "VIP";
+    if (!o) {
+      // 외부 쇼핑몰 주문: 등급·재구매를 알 수 없어 「처음」으로 둔다
+    } else if (o.buyerMember.grade.systemKey === "VIP") kind = "VIP";
     else if (o.paidAt) {
       const earlier = await tx.order.findFirst({ where: { sellerId, buyerMemberId: o.buyerMemberId, id: { not: o.id }, paidAt: { lt: o.paidAt } }, select: { id: true } });
       if (earlier) kind = "REPEAT";

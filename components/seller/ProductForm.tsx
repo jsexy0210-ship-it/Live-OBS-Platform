@@ -12,6 +12,7 @@ import ProductCategoryPicker, { type CategoryNode } from "./ProductCategoryPicke
 import { NoImage, Toast } from "./States";
 import { api, apiUpload, failMessage, type Product, type ProductImageInfo, type ProductOption, type ProductStatus, type StockDeductMode } from "./api";
 import { INT4_MAX, STATUS_LABEL, parseAmount, statusBadge, textLength, won } from "./format";
+import { useUnsavedGuard } from "../../lib/client/navigation";
 import { cleanText } from "../../lib/server/text/clean";
 
 // SA-012 상품 등록 · SA-012-E 상품 수정. 지금 API가 받는 항목(상품명·설명·판매가·판매 상태·옵션)만 보여 준다.
@@ -20,6 +21,8 @@ import { cleanText } from "../../lib/server/text/clean";
 const NAME_MAX = 100;
 const DESC_MAX = 5000;
 const OPTION_MAX = 100;
+const TAG_MAX = 10;
+const TAG_LEN = 20;
 
 type OptRow = {
   key: number;
@@ -44,6 +47,18 @@ const STATUS_HELP: Record<ProductStatus, string> = {
   SOLD_OUT: "쇼핑몰에 「품절」로 표시되고 주문은 받지 않습니다",
   HIDDEN: "쇼핑몰에 표시되지 않습니다. 언제든 다시 판매할 수 있습니다",
   DRAFT: "아직 쇼핑몰에 표시되지 않습니다",
+};
+
+// 검색 키워드: 쉼표로 나눠 앞뒤 공백을 지우고, 빈 것과 대소문자만 다른 중복을 뺀다(서버 규칙과 같다)
+const parseTags = (text: string): string[] => {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const t of text.split(/[,，]/).map((x) => x.trim())) {
+    if (t === "" || seen.has(t.toLowerCase())) continue;
+    seen.add(t.toLowerCase());
+    out.push(t);
+  }
+  return out;
 };
 
 let seq = 0;
@@ -118,6 +133,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [price, setPrice] = useState(initial ? String(initial.price) : "");
+  const [tagsText, setTagsText] = useState((initial?.searchTags ?? []).join(", "));
   // 카테고리: 칩으로 여러 개(대분류·하위 어느 쪽이든, 최대 10개). 지정은 상품을 만든 뒤(수정은 바뀌었을 때) 따로 저장한다
   const [cats, setCats] = useState<CategoryNode[] | null>(null);
   const [categoryIds, setCategoryIds] = useState<string[]>([]);
@@ -183,9 +199,13 @@ export function ProductForm({ initial }: { initial?: Product }) {
   const [failure, setFailure] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // 등록을 마치고 목록으로 나갈 때는 미저장 경고를 끈다
+  const [leaving, setLeaving] = useState(false);
   const topRef = useRef<HTMLDivElement>(null);
 
   const errors = validate(name, description, price, status, rows);
+  const tags = parseTags(tagsText);
+  const tagError = tags.length > TAG_MAX ? `검색 키워드는 ${TAG_MAX}개까지 입력할 수 있습니다` : tags.some((t) => textLength(t) > TAG_LEN) ? `검색 키워드는 하나에 ${TAG_LEN}자까지 입력할 수 있습니다` : null;
   const shown: Errors = showErrors ? errors : { rows: {} };
   const nameLen = textLength(name);
   const priceNum = parseAmount(price);
@@ -211,6 +231,11 @@ export function ProductForm({ initial }: { initial?: Product }) {
       : null;
 
   const checkFirst = (st: ProductStatus) => {
+    if (tagError) {
+      setShowErrors(true);
+      fail(tagError);
+      return false;
+    }
     if (detailError) {
       setShowErrors(true);
       fail(detailError);
@@ -307,6 +332,41 @@ export function ProductForm({ initial }: { initial?: Product }) {
     return { ok: true };
   };
 
+  // 저장하지 않은 변경(UX-04): 수정은 서버에서 받은 값(base·옵션 orig·catBase·serverOrder·detailBase)과, 등록은 빈 양식과 비교한다
+  const optionsChanged = rows.some((o) => !o.id || (o.orig ? o.name.trim() !== o.orig.name || parseAmount(o.priceDelta) !== o.orig.priceDelta || parseAmount(o.stock) !== o.orig.stock : false));
+  const detailPayload = JSON.stringify(blocks.map((b) => (b.type === "text" ? { type: "text", text: b.text } : { type: "image", imageId: b.image?.id })));
+  const imagesChanged =
+    removedImages.length > 0 ||
+    images.some((i) => !i.server) ||
+    images.filter((i) => i.server).map((i) => i.id).join() !== serverOrder.current.filter((x) => !removedImages.includes(x)).join();
+  const dirtyNow = base
+    ? name.trim() !== base.name ||
+      (description.trim() === "" ? null : description.trim()) !== (base.description ?? null) ||
+      JSON.stringify(tags) !== JSON.stringify(base.searchTags ?? []) ||
+      priceNum !== base.price ||
+      status !== base.status ||
+      deduct !== base.stockDeductMode ||
+      optionsChanged ||
+      removed.length > 0 ||
+      JSON.stringify(categoryIds) !== JSON.stringify(catBase) ||
+      imagesChanged ||
+      detailPayload !== detailBase.current ||
+      detailRemoved.length > 0
+    : name.trim() !== "" ||
+      description.trim() !== "" ||
+      tags.length > 0 ||
+      price.trim() !== "" ||
+      status !== "ON_SALE" ||
+      deduct !== "PAYMENT" ||
+      rows.length !== 1 ||
+      rows[0].name.trim() !== "기본" ||
+      rows[0].priceDelta !== "0" ||
+      rows[0].stock !== "0" ||
+      categoryIds.length > 0 ||
+      images.length > 0 ||
+      blocks.length > 0;
+  useUnsavedGuard(dirtyNow && !leaving);
+
   const create = async (st: ProductStatus) => {
     if (!checkFirst(st)) return;
     setSaving(st === "DRAFT" ? "draft" : "save");
@@ -316,6 +376,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
       body: {
         name: name.trim(),
         description: description.trim() === "" ? null : description.trim(),
+        searchTags: tags,
         price: priceNum,
         status: st,
         stockDeductMode: deduct,
@@ -335,6 +396,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
     let imgFailed = false;
     if (images.length > 0) imgFailed = !(await syncImages(r.data.id)).ok;
     if (!imgFailed && blocks.length > 0) imgFailed = !(await syncDetail(r.data.id)).ok;
+    setLeaving(true);
     router.push(`/seller/products?toast=${catFailed || imgFailed ? "created_partial" : st === "DRAFT" ? "draft" : "created"}`);
   };
 
@@ -353,6 +415,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
     const desc = description.trim() === "" ? null : description.trim();
     if (name.trim() !== current.name) early.name = name.trim();
     if (desc !== (current.description ?? null)) early.description = desc;
+    if (JSON.stringify(tags) !== JSON.stringify(current.searchTags ?? [])) early.searchTags = tags;
     if (priceNum !== current.price) (priceNum! > current.price ? early : late).price = priceNum;
     if (status !== current.status) (status === "ON_SALE" ? late : early).status = status;
     if (deduct !== current.stockDeductMode) early.stockDeductMode = deduct;
@@ -535,6 +598,10 @@ export function ProductForm({ initial }: { initial?: Product }) {
               ) : (
                 <span className="t-l2 c-alt">{cats ? "카테고리 없음" : "불러오는 중"}</span>
               )}
+            </FormRow>
+            <FormRow label="검색 키워드" htmlFor="p-tags" help={`쉼표로 구분 · ${TAG_MAX}개까지, 하나에 ${TAG_LEN}자까지. 상품명에 없는 말로도 쇼핑몰 검색에 걸립니다`}>
+              <input id="p-tags" className={`inp${showErrors && tagError ? " is-error" : ""}`} value={tagsText} disabled={busy} placeholder="예: 선물, 한정판" onChange={(e) => setTagsText(e.target.value)} />
+              {showErrors && tagError && <span className="err">{tagError}</span>}
             </FormRow>
             <FormRow label="상품 코드" help="등록하면 판매자별 순번으로 자동 매겨집니다">
               <span className="num" data-testid="product-code">

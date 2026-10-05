@@ -28,7 +28,7 @@ export default function LoginForm({ slug, next }: { slug: string; next: string |
         body: JSON.stringify({ loginId: loginId.trim(), password }),
       });
       if (res.ok) {
-        window.location.assign(next ?? base);
+        window.location.replace(next ?? base); // 뒤로 가기로 로그인 화면에 돌아오지 않게 기록을 바꾼다
         return;
       }
       const body = (await res.json().catch(() => null)) as { message?: string } | null;

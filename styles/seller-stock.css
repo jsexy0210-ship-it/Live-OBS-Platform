@@ -7,7 +7,7 @@
   max-width: 100%;
 }
 .stock-bulk {
-  gap: 6px;
+  gap: 8px;
   margin-left: auto;
 }
 .stock-table {
@@ -23,7 +23,32 @@
   white-space: nowrap;
 }
 .stock-table .c-act .btn + .btn {
-  margin-left: 6px;
+  margin-left: 8px;
+}
+.stock-delta.inp {
+  width: 80px;
+}
+.stock-more {
+  padding: 12px 20px;
+}
+/* 열 폭(화면 파일에 inline 폭을 두지 않는다). 작업 칸은 표 안 버튼 96 둘 + 사이 8 + 안쪽 여백 */
+.stock-w-chk {
+  width: 44px;
+}
+.stock-w-cur {
+  width: 90px;
+}
+.stock-w-next {
+  width: 140px;
+}
+.stock-w-diff {
+  width: 80px;
+}
+.stock-w-state {
+  width: 100px;
+}
+.stock-w-act {
+  width: 232px;
 }
 .stock-selinfo {
   gap: 8px;
@@ -99,7 +124,7 @@
   }
   .stock-table .c-act {
     display: flex;
-    gap: 6px;
+    gap: 8px;
   }
   .stock-table .c-act .btn {
     flex: 1;

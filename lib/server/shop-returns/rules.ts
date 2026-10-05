@@ -1,4 +1,4 @@
-import type { ReturnKind, ReturnReason, ReturnStatus } from "@prisma/client";
+import type { ReturnInspection, ReturnKind, ReturnPickup, ReturnReason, ReturnStatus } from "@prisma/client";
 import { cleanText } from "../text/clean";
 import { COURIERS, isCourier } from "../orders/shipping";
 
@@ -29,6 +29,36 @@ export const DEFAULT_FAULT: Record<ReturnReason, "BUYER" | "SELLER" | null> = {
   OTHER: null,
 };
 
+// 신청 기한: 배송 완료 뒤 7일(전자상거래법). 판매자 사정 사유(불량·오배송·설명과 다름)는 기한과 상관없이 받는다.
+export const RETURN_WINDOW_DAYS = 7;
+export const SELLER_FAULT_REASONS: readonly ReturnReason[] = ["DEFECTIVE", "WRONG_ITEM", "NOT_AS_DESCRIBED"];
+export function withinReturnWindow(deliveredAt: Date | null, now: Date, reason: ReturnReason): boolean {
+  if (SELLER_FAULT_REASONS.includes(reason)) return true;
+  if (!deliveredAt) return true;
+  return now.getTime() - deliveredAt.getTime() <= RETURN_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+}
+export const returnDeadline = (deliveredAt: Date | null): Date | null => (deliveredAt ? new Date(deliveredAt.getTime() + RETURN_WINDOW_DAYS * 24 * 60 * 60 * 1000) : null);
+
+export const PICKUPS: readonly ReturnPickup[] = ["COURIER", "BUYER_SHIP", "NONE"];
+export const INSPECTIONS: readonly ReturnInspection[] = ["OK", "USED_DAMAGED", "MISSING_PARTS"];
+export const INSPECTION_NOTE_MAX = 200;
+export const parsePickup = (v: unknown): ReturnPickup | null => (typeof v === "string" && (PICKUPS as readonly string[]).includes(v) ? (v as ReturnPickup) : null);
+export const parseInspection = (v: unknown): ReturnInspection | null => (typeof v === "string" && (INSPECTIONS as readonly string[]).includes(v) ? (v as ReturnInspection) : null);
+
+// 무통장 입금 주문의 환불 계좌(구매자 입력). 환불·종료 뒤 서버가 비운다.
+// 환불 계좌는 환불·종료 뒤 비운다(필요한 동안만 보관)
+export const CLEAR_ACCOUNT = { refundBankName: null, refundAccountHolder: null, refundAccountNumber: null } as const;
+export type RefundAccount = { bankName: string; accountHolder: string; accountNumber: string };
+export function parseRefundAccount(raw: unknown): RefundAccount | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const o = raw as Record<string, unknown>;
+  const bankName = cleanText(o.bankName, 20, "memo");
+  const accountHolder = cleanText(o.accountHolder, 20, "memo");
+  const accountNumber = typeof o.accountNumber === "string" ? o.accountNumber.trim() : "";
+  if (!bankName || !accountHolder || !/^[0-9-]{6,20}$/.test(accountNumber) || !/[0-9]{6}/.test(accountNumber.replace(/-/g, ""))) return null;
+  return { bankName, accountHolder, accountNumber };
+}
+
 export type ReturnRejection =
   | "invalid_kind"
   | "invalid_reason"
@@ -38,11 +68,14 @@ export type ReturnRejection =
   | "invalid_courier"
   | "invalid_tracking"
   | "invalid_fault"
-  | "invalid_reject_reason";
+  | "invalid_reject_reason"
+  | "invalid_pickup"
+  | "invalid_inspection"
+  | "invalid_refund_account";
 
 export const isUuid = (v: unknown): v is string => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 
-export type NewReturnInput = { kind: ReturnKind; reason: ReturnReason; reasonText: string; orderItemIds: string[] | null; imageIds: string[] };
+export type NewReturnInput = { kind: ReturnKind; reason: ReturnReason; reasonText: string; orderItemIds: string[] | null; returnItems: { orderItemId: string; quantity: number }[] | null; imageIds: string[]; pickup: ReturnPickup; refundAccount: RefundAccount | null };
 
 // 구매자 신청 입력. 반품은 주문 전체라 품목을 받지 않고(null), 교환은 품목을 1개 이상 고른다. 사유가 「기타」면 설명이 꼭 있어야 한다.
 export function parseNewReturn(raw: Record<string, unknown>): { ok: true; v: NewReturnInput } | { ok: false; reason: ReturnRejection } {
@@ -63,9 +96,35 @@ export function parseNewReturn(raw: Record<string, unknown>): { ok: true; v: New
     if (!Array.isArray(ids) || ids.length === 0 || ids.length > 50 || !ids.every(isUuid) || new Set(ids).size !== ids.length) return { ok: false, reason: "invalid_items" };
     orderItemIds = ids as string[];
   }
+  // 반품은 주문 전체(기본) 또는 품목·수량을 골라 부분 반품(items). 교환은 품목 단위(수량 전체)
+  let returnItems: NewReturnInput["returnItems"] = null;
+  if (kind === "RETURN" && raw.items !== undefined && raw.items !== null) {
+    const arr = raw.items;
+    if (!Array.isArray(arr) || arr.length === 0 || arr.length > 50) return { ok: false, reason: "invalid_items" };
+    const out: { orderItemId: string; quantity: number }[] = [];
+    for (const x of arr) {
+      if (typeof x !== "object" || x === null) return { ok: false, reason: "invalid_items" };
+      const o = x as Record<string, unknown>;
+      if (!isUuid(o.orderItemId) || !Number.isSafeInteger(o.quantity) || (o.quantity as number) < 1 || (o.quantity as number) > 9999) return { ok: false, reason: "invalid_items" };
+      out.push({ orderItemId: o.orderItemId, quantity: o.quantity as number });
+    }
+    if (new Set(out.map((i) => i.orderItemId)).size !== out.length) return { ok: false, reason: "invalid_items" };
+    returnItems = out;
+  }
   const imgs = raw.imageIds ?? [];
   if (!Array.isArray(imgs) || imgs.length > RETURN_IMAGES_MAX || !imgs.every(isUuid) || new Set(imgs).size !== imgs.length) return { ok: false, reason: "invalid_images" };
-  return { ok: true, v: { kind, reason, reasonText, orderItemIds, imageIds: imgs as string[] } };
+  // 수거 희망(택배사 수거 / 직접 발송, 기본 직접 발송). 「수거 없음」은 판매자만 정한다.
+  let pickup: ReturnPickup = "BUYER_SHIP";
+  if (raw.pickup !== undefined && raw.pickup !== null && raw.pickup !== "") {
+    if (raw.pickup !== "COURIER" && raw.pickup !== "BUYER_SHIP") return { ok: false, reason: "invalid_pickup" };
+    pickup = raw.pickup;
+  }
+  let refundAccount: RefundAccount | null = null;
+  if (raw.refundAccount !== undefined && raw.refundAccount !== null) {
+    refundAccount = parseRefundAccount(raw.refundAccount);
+    if (!refundAccount) return { ok: false, reason: "invalid_refund_account" };
+  }
+  return { ok: true, v: { kind, reason, reasonText, orderItemIds, returnItems, imageIds: imgs as string[], pickup, refundAccount } };
 }
 
 // 송장(택배사 코드 + 번호). 번호는 숫자·영문·하이픈만.
@@ -93,4 +152,9 @@ export const TRANSITIONS: Record<string, readonly ReturnStatus[]> = {
   shipBack: ["ACCEPTED"],
   receive: ["ACCEPTED"],
   complete: ["RECEIVED"],
+  // v2: 검수 결과 입력, 교환 재고 없음 처리(재입고 뒤 발송 보류·환불 전환), 검수에서 걸린 건 반송·거절
+  inspect: ["RECEIVED"],
+  hold: ["RECEIVED"],
+  convert: ["RECEIVED"],
+  rejectInspected: ["RECEIVED"],
 };

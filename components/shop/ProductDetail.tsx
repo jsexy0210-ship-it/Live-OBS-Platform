@@ -1,5 +1,6 @@
 "use client";
 
+import ShopBack from "./ShopBack";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -16,6 +17,7 @@ type Option = { id: string; name: string; price: number; salePrice: number | nul
 type Block = { type: "text"; text: string } | { type: "image"; imageId: string; url: string; width: number; height: number };
 export type ShopProduct = {
   id: string;
+  isLive?: boolean;
   name: string;
   description: string | null;
   price: number;
@@ -117,6 +119,7 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
 
   return (
     <article className="pd" aria-label={p.name}>
+      <ShopBack fallback={`/shop/${encodeURIComponent(slug)}/products`} label="목록" />
       {crumb.length > 0 && (
         <nav className="pd-crumb" aria-label="상품 경로">
           <Link href={`${base}/products`}>전체 상품</Link>
@@ -148,6 +151,12 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
         </div>
 
         <div className="pd-info">
+          {p.isLive && (
+            <p className="pd-live" role="status">
+              <span className="live-dot" aria-hidden="true" />
+              이 상품이 지금 방송 중이에요
+            </p>
+          )}
           <h1>{p.name}</h1>
           {p.description && <p className="pd-desc">{p.description}</p>}
           <table className="pd-form">

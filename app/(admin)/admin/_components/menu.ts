@@ -49,7 +49,7 @@ export const ADMIN_MENU: AdminGroup[] = [
     key: "support",
     label: "고객지원",
     items: [
-      { label: "파트너스 문의", href: "/admin/support/inquiries" },
+      { label: "파트너스 문의", href: "/admin/support/inquiries", ready: true },
       { label: "공지사항", href: "/admin/support/notices", ready: true },
       { label: "도우미 답변 자료", href: "/admin/support/assistant" },
     ],
@@ -69,7 +69,7 @@ export const ADMIN_MENU: AdminGroup[] = [
     items: [
       { label: "플랫폼 기본 정책", href: "/admin/settings/policy", perm: "system.manage" },
       { label: "알림 채널", href: "/admin/settings/notifications", perm: "system.manage" },
-      { label: "점검 모드", href: "/admin/settings/maintenance", perm: "system.manage" },
+      { label: "점검 모드", href: "/admin/settings/maintenance", perm: "system.manage", ready: true },
       { label: "도우미 설정", href: "/admin/settings/assistant", perm: "system.manage" },
       { label: "발송 단가", href: "/admin/settings/messages", perm: "system.manage", ready: true },
       // 설정(MA-080대)은 최고관리자만(MASTER 결정 2026-10-04). 서버 조회 API는 platform.read지만 메뉴·주소는 막는다

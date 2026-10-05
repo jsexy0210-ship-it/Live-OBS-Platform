@@ -180,4 +180,50 @@ describe("판매자 주문 목록 GET /api/seller/orders", () => {
     await db.seller.update({ where: { id: s.seller.id }, data: { trialEndsAt: new Date("2000-01-01T00:00:00Z") } });
     expect((await list(s.cookie)).body.orders).toHaveLength(1);
   });
+
+  it("memberId로 회원 한 명의 주문만 주고, 잘못된 값은 400, 다른 판매자 회원 id는 빈 목록이다", async () => {
+    const a = await shop();
+    const b = await shop();
+    const other = await createBuyer(a.seller.id, a.grade.id);
+    const mine = await a.order({ createdAt: new Date("2026-10-01T01:00:00Z") });
+    await db.order.create({ data: { sellerId: a.seller.id, orderNo: 99, buyerMemberId: other.id, broadcastNicknameSnapshot: "다른회원", totalAmount: 1, status: "PAID" } });
+    await b.order();
+    const r = await list(a.cookie, `?memberId=${a.buyer.id}`);
+    expect(r.body.orders.map((o: { id: string }) => o.id)).toEqual([mine.id]);
+    expect(r.body.orders[0].buyer.id).toBe(a.buyer.id);
+    expect((await list(a.cookie, `?memberId=${b.buyer.id}`)).body.orders).toEqual([]);
+    expect((await list(a.cookie, "?memberId=abc")).status).toBe(400);
+  });
+
+  it("shipped=true|false로 발송 정보가 있는 주문·없는 주문만 주고, status·memberId·검색어·커서와 함께 쓸 수 있으며 다른 판매자 주문은 섞이지 않는다", async () => {
+    const a = await shop();
+    const b = await shop();
+    const ship = (sellerId: string, orderId: string) => db.shipment.create({ data: { sellerId, orderId, courier: "CJ", trackingNumber: "123456789", shippedAt: new Date() } });
+    const prep1 = await a.order({ status: "PAID", createdAt: new Date("2026-10-01T01:00:00Z") });
+    const prep2 = await a.order({ status: "PAID", createdAt: new Date("2026-10-02T01:00:00Z") });
+    const sent = await a.order({ status: "PAID", createdAt: new Date("2026-10-03T01:00:00Z") });
+    const unpaid = await a.order({ status: "PENDING_PAYMENT", createdAt: new Date("2026-10-04T01:00:00Z") });
+    await ship(a.seller.id, sent.id);
+    const otherSeller = await b.order({ status: "PAID" });
+    const id = (r: { body: { orders: { id: string }[] } }) => r.body.orders.map((o) => o.id);
+    // 배송 준비 = 결제 완료 + 미발송
+    expect(id(await list(a.cookie, "?status=PAID&shipped=false"))).toEqual([prep2.id, prep1.id]);
+    expect(id(await list(a.cookie, "?status=PAID&shipped=true"))).toEqual([sent.id]);
+    expect((await list(a.cookie, "?shipped=true")).body.orders[0].shipped).toBe(true);
+    expect(id(await list(a.cookie, "?shipped=false"))).toEqual([unpaid.id, prep2.id, prep1.id]);
+    expect(id(await list(a.cookie, ""))).toHaveLength(4);
+    expect(id(await list(a.cookie, "?shipped="))).toHaveLength(4);
+    // 다른 필터·커서와 조합
+    expect(id(await list(a.cookie, `?status=PAID&shipped=false&memberId=${a.buyer.id}`))).toEqual([prep2.id, prep1.id]);
+    expect(id(await list(a.cookie, "?status=PAID&shipped=false&q=기본닉"))).toEqual([prep2.id, prep1.id]);
+    expect(id(await list(a.cookie, "?status=PAID&shipped=false&from=2026-10-02&to=2026-10-02"))).toEqual([prep2.id]);
+    const p1 = await list(a.cookie, "?status=PAID&shipped=false&limit=1");
+    expect(id(p1)).toEqual([prep2.id]);
+    expect(id(await list(a.cookie, `?status=PAID&shipped=false&limit=1&cursor=${p1.body.nextCursor}`))).toEqual([prep1.id]);
+    // 다른 판매자 주문은 섞이지 않는다
+    expect(id(await list(a.cookie, "?shipped=false"))).not.toContain(otherSeller.id);
+    expect(id(await list(b.cookie, "?status=PAID&shipped=false"))).toEqual([otherSeller.id]);
+    // 잘못된 값
+    for (const bad of ["yes", "1", "TRUE", "null"]) expect((await list(a.cookie, `?shipped=${bad}`)).status, bad).toBe(400);
+  });
 });

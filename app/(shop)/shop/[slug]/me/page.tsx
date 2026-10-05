@@ -4,7 +4,10 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { COOKIE_NAMES } from "../../../../../lib/server/auth/policy";
 import { resolveBuyerSession } from "../../../../../lib/server/auth/session";
+import { myGroups } from "../../../../../components/shop/myGroups";
+import GradeCard from "../../../../../components/shop/member-grades/GradeCard";
 import { prisma } from "../../../../../lib/server/db";
+import { buyerGradeStatus } from "../../../../../lib/server/shop-member-grades/benefits";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +23,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   return { title: shop ? `내 정보 · ${shop.shopName}` : "내 정보" };
 }
 
-// SH-020 마이페이지(지금 있는 화면만 링크). 주문 내역·적립금·배송지 화면이 생기면 목록에 더한다.
+// SH-020 내 정보 허브(J-3). 지금 있는 화면만 그룹별로 링크한다.
 // 로그인하지 않았으면 로그인 화면으로 보내고, 로그인하면 여기로 돌아온다.
 export default async function ShopMyPage({ params }: Params) {
   const shop = await findShop((await params).slug);
@@ -28,22 +31,24 @@ export default async function ShopMyPage({ params }: Params) {
   const base = `/shop/${encodeURIComponent(shop.slug)}`;
   const session = await resolveBuyerSession(prisma, (await cookies()).get(COOKIE_NAMES.buyer)?.value, shop.id);
   if (!session) redirect(`${base}/login?next=${encodeURIComponent(`${base}/me`)}`);
-  const links = [
-    { href: `${base}/coupons`, label: "쿠폰함" },
-    { href: `${base}/me/notifications`, label: "알림 설정" },
-  ];
+  const groups = myGroups(base);
+  const grade = await buyerGradeStatus(prisma, { sellerId: shop.id, buyerMemberId: session.member.id });
   return (
     <>
       <section className="card shop-card col shop-my">
         <h1 className="t-h1">내 정보</h1>
         <p className="t-l1 c-alt">{session.member.name}님, 반가워요.</p>
-        <nav aria-label="내 정보 메뉴" className="shop-my-list">
-          {links.map((l) => (
-            <Link key={l.href} href={l.href}>
-              {l.label}
-            </Link>
-          ))}
-        </nav>
+        {grade && <GradeCard status={grade} />}
+        {groups.map((g) => (
+          <nav key={g.title} aria-label={g.title} className="shop-my-list">
+            <p className="shop-my-g">{g.title}</p>
+            {g.links.map((l) => (
+              <Link key={l.href} href={l.href}>
+                {l.label}
+              </Link>
+            ))}
+          </nav>
+        ))}
       </section>
     </>
   );
