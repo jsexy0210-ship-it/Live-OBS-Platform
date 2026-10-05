@@ -136,6 +136,8 @@
 .bc-sum-g {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  border: 1px solid var(--wds-line-normal-alternative);
+  border-radius: var(--ui-r-table);
   background: var(--wds-background-normal-normal, #fff);
 }
 .bc-sum-g .stat + .stat {
