@@ -10,6 +10,7 @@ export const MEMBER_DATA_POLICY: Record<string, { policy: MemberDataPolicy; note
   BuyerAddress: { policy: "delete", note: "저장 배송지" },
   CartItem: { policy: "delete", note: "장바구니(shop-cart)" },
   WishItem: { policy: "delete", note: "찜(shop-wish)" },
+  RestockAlert: { policy: "delete", note: "재입고 알림 신청(shop-restock-alerts)" },
   ProductReview: { policy: "anonymize", note: "상품 리뷰는 남기고 작성자 표시를 「탈퇴 회원」으로(product-reviews anonymizeMemberReviews). 리뷰에 붙은 사진은 리뷰와 함께 남는다" },
   ProductReviewImage: { policy: "delete", note: "리뷰에 붙지 않은 사진은 지운다. 리뷰에 붙은 사진은 리뷰와 함께 남는다(리뷰는 비식별)" },
   ReturnRequest: { policy: "retain_legal", note: "교환·반품 신청(청약철회·분쟁 처리 기록, 주문과 같은 법정 보관). 신청 사유·사진은 주문과 함께 남고 보관 기간 뒤 주문 파기와 함께 지운다" },
