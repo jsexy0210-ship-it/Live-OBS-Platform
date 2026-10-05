@@ -1,0 +1,27 @@
+/* 쇼핑몰 이용약관·개인정보처리방침(ShopLegal.tsx)과 바닥글 링크 */
+.shop-legal-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+.shop-legal-head h1,
+.shop-legal-head p {
+  margin: 0;
+}
+.shop-legal-body {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.8;
+}
+.shop-foot-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0 0 12px;
+}
+.shop-foot-links a {
+  color: inherit;
+  text-decoration: underline;
+}
