@@ -4,7 +4,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import { addDays, addMonths, activeQuick, daysBetween, formatDateInput, monthGrid, parseDateInput, parseTimeInput, quickRange, QUICK_RANGES, todayKst, type QuickKey } from "../../lib/client/dateInput";
 
 // 공통 날짜 선택(DS-DATEPICKER 정본, 대표님 지시 2026-10-06 「네이버식」): 기본 input type=date를 대체한다. 화면마다 따로 만들지 않는다.
-// - 칸: 값 「2026.10.05」, 빈 칸 「날짜 선택」, 오른쪽 달력 아이콘, 칸 어디를 눌러도 달력이 열린다(직접 입력·Tab·키보드도 됨). 높이 40(관리자)·44(폼)·48(휴대폰)은 .inp 규격을 따른다
+// - 칸: 값 「2026.10.05」, 빈 칸 「날짜 선택」, 오른쪽 달력 아이콘, 칸 어디를 눌러도 달력이 열린다(직접 입력·Tab·키보드도 됨: Tab으로 들어와서는 열리지 않고 ↓·Enter로 연다). 높이 40(관리자)·44(폼)·48(휴대폰)은 .inp 규격을 따른다
 // - 값은 모두 「YYYY-MM-DD」 문자열(input type=date와 같음), 값이 없으면 「」
 // - 달력: 「‹ 2026.10 ›」, 일요일 빨강·토요일 파랑, 오늘은 테두리 원, 고른 날은 채운 원, 기간은 사이 연한 배경, 이번 달 밖은 흐리게, min·max 밖은 흐린 취소선
 // - 하루 선택은 날짜를 누르면 바로 닫히고, 기간은 두 번 눌러 [적용]. Esc·바깥 클릭은 값 유지하고 닫기. 화살표·PageUp/Down·Enter 키보드 이동. 휴대폰(767 이하)은 아래에서 올라오는 시트
@@ -114,11 +114,7 @@ function Popover({ anchor, onClose, children, label }: { anchor: React.RefObject
       if (e.key === "Escape") {
         e.stopPropagation();
         onClose();
-        const input = anchor.current?.querySelector("input") as HTMLInputElement | null;
-        if (input) {
-          input.dataset.skipOpen = "1";
-          input.focus();
-        }
+        (anchor.current?.querySelector("input") as HTMLInputElement | null)?.focus();
       }
     };
     document.addEventListener("mousedown", down);
@@ -190,8 +186,7 @@ export function DatePicker({ value, onChange, tone = "admin", ...p }: FieldProps
         readOnly={p.readOnly}
         value={field.shown}
         onClick={openIt}
-        onFocus={(e) => (e.currentTarget.dataset.skipOpen ? delete e.currentTarget.dataset.skipOpen : openIt())}
-        onChange={(e) => field.change(e.target.value)}
+                onChange={(e) => field.change(e.target.value)}
         onBlur={() => {
           field.settle();
           leave();
@@ -285,7 +280,6 @@ export function DateRangePicker({ from, to, onChange, fromLabel, toLabel, quick 
           disabled={disabled}
           value={f.shown}
           onClick={openIt}
-          onFocus={(e) => (e.currentTarget.dataset.skipOpen ? delete e.currentTarget.dataset.skipOpen : !open && openIt())}
           onChange={(e) => f.change(e.target.value)}
           onBlur={() => {
             f.settle();
