@@ -47,6 +47,7 @@
 - 전담 세션은 열린 PR 1개까지만 진행하고, 병합된 뒤 다음 작업을 시작한다. 공통 파일(`components/seller/SellerShell.tsx`, `styles/tokens.css`·`styles/seller.css` 공통 부분, `components/admin-ui/**`)은 레이아웃 전담만 고친다(공용 통합 파일 「자기 줄 추가」 규칙은 유지).
 - 전담 세션은 작업을 마치면 **반드시 PR을 걸고 검수 전담에 검수 요청을 보낸다.** 브랜치 커밋과 보고만으로 끝내지 않는다. PR 본문에 실제로 돌린 검사와 결과, 무엇을 어떻게 고쳤는지, 못 고친 것·판단이 필요한 것을 따로 적는다. 올리기 전에 최신 main을 먼저 머지한다.
 - 세션은 자기가 받은 지시부터 읽는다. 배정할 때 `docs/session-prompt.md` 전문과 「작업을 마치면 PR을 건다」를 지시에 넣는다. 규칙을 고치면 이 파일과 `docs/session-prompt.md`를 함께 고친다.
+- **세션 모델: MASTER가 새로 만들거나 교체하는 전담 세션은 효율 모델(Sonnet 5.5, `claude-sonnet-5-5`)로 만든다(2026-10-05 대표님 지시 「전체 세션 효율적인 모델과 속도로 일괄변경」). 이미 실행 중인 세션은 도구로 모델을 바꿀 수 없어, 열린 PR이 병합되는 시점에 같은 역할의 Sonnet 세션으로 교체한다. 빠른 출력 모드(fast)는 비용이 더 들어 쓰지 않는다.**
 - 새 세션은 과거 대화를 옮겨받지 않는다. Source of Truth는 최신 main의 코드와 이 파일·`PROJECT_STATUS.md`·`HANDOFF.md`다.
 - 컨텍스트가 40~60%에 이르면 상태를 Git에 반영한 뒤 같은 역할의 새 세션으로 교체하고 `HANDOFF.md` 세션 표를 갱신한다. **MASTER를 교체하면 MASTER 세션 ID가 적힌 세 곳(`HANDOFF.md` 세션 표, 이 파일의 MASTER 세션 줄, `docs/session-prompt.md` 7번)을 같은 PR에서 함께 고친다.** 이미 배정된 전담 세션에는 새 ID를 지시로 다시 보낸다.
 - 완료·불필요 세션은 결과·PR·남은 문제를 `HANDOFF.md`에 흡수한 뒤 보관한다.
