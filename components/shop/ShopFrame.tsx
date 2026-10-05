@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { ConfirmProvider } from "../admin-ui/ConfirmDialog";
 import { cookies } from "next/headers";
 import { COOKIE_NAMES } from "../../lib/server/auth/policy";
 import { resolveBuyerSession } from "../../lib/server/auth/session";
@@ -47,13 +46,13 @@ export default async function ShopFrame({ slug, shopName, children }: { slug: st
   const bizNumber = text((seller?.businessInfo as BusinessInfo | null)?.businessNumber);
   const rows: FootRow[] = [...footRows(seller?.businessInfo).map(([label, value]) => ({ label, value })), ...(notice ? noticeRows(bizNumber, notice) : [])];
   return (
-    <ConfirmProvider>
+    <ConfirmProvider defaultTone="shop">
     <div className="shop-page">
       <ShopChrome slug={slug} shopName={shopName} loggedIn={!!session} nickname={session?.member.broadcastNickname ?? null} categories={categories} />
       <LiveBar slug={slug} />
       <EventPopupForPage />
       <main className="shop-main">
-        <ConfirmProvider defaultTone="shop">{children}</ConfirmProvider>
+        {children}
       </main>
       <footer className="shop-foot">
         <div className="shop-wrap">
