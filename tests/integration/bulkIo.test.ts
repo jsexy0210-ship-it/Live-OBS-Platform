@@ -40,7 +40,7 @@ const commit = async (ctx: TenantContext, id: string) => {
   const r = await commitProductImport(db, ctx, id);
   return r.ok ? (r.value as { status: string; createdCount: number; failedCount: number; failures: { row: number; message: string }[]; undoUntil: Date }) : r;
 };
-const liveProducts = (sellerId: string) => db.product.findMany({ where: { sellerId, deletedAt: null }, orderBy: { name: "asc" }, include: { options: { orderBy: { sortOrder: "asc" } } } });
+const liveProducts = (sellerId: string) => db.product.findMany({ where: { sellerId, deletedAt: null }, orderBy: { codeNo: "asc" }, include: { options: { orderBy: { sortOrder: "asc" } } } });
 
 describe("일괄 등록", () => {
   it("미리보기는 상품을 만들지 않고, 확정하면 상품·옵션·재고·카테고리가 생긴다", async () => {
