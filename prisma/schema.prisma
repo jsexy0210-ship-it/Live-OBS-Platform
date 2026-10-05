@@ -165,6 +165,7 @@ model Seller {
   wishItems                WishItem[]
   restockAlerts            RestockAlert[]
   shopNotices              ShopNotice[]
+  shopLegalDocs            ShopLegalDoc[]
   returnRequests           ReturnRequest[]
   memberGradePolicy        MemberGradePolicy?
   memberGradeOverrides     MemberGradeOverride[]
@@ -3524,4 +3525,30 @@ model SellerOnboarding {
   overlayUrlCopiedAt DateTime? @db.Timestamptz(3)
   dismissedAt        DateTime? @db.Timestamptz(3)
   updatedAt          DateTime  @updatedAt @db.Timestamptz(3)
+}
+
+// ───────────── 쇼핑몰별 이용약관·개인정보처리방침(구매자 화면 /shop/[슬러그]/terms·privacy) ─────────────
+
+enum ShopLegalKind {
+  TERMS
+  PRIVACY
+}
+
+// 파트너스가 입력한 본문만 보여 준다(기본 서식은 게시 조건이 있어 앱이 대신 게시하지 않음, docs/terms). 쇼핑몰·종류마다 한 줄.
+// isPublished가 false이면 구매자 화면은 「준비 중」 안내. version은 저장할 때마다 올라가고 다른 창 덮어쓰기를 막는다(shop-legal/service.ts).
+model ShopLegalDoc {
+  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId    String        @db.Uuid
+  kind        ShopLegalKind
+  body        String        @default("")
+  effectiveOn DateTime?     @db.Date
+  isPublished Boolean       @default(false)
+  publishedAt DateTime?     @db.Timestamptz(3)
+  version     Int           @default(0)
+  createdAt   DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime      @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+
+  @@unique([sellerId, kind])
 }
