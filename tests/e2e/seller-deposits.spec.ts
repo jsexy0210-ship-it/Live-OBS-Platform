@@ -1,8 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
-import { DEPOSIT_NICKNAMES, clearPendingDepositsInDb, pendingDepositsInDb } from "./depositDb";
+import { DEPOSIT_NICKNAMES, bumpLiveVersionInDb, clearPendingDepositsInDb, pendingDepositsInDb } from "./depositDb";
 import { submitSellerLogin } from "./sellerLogin";
 
-// SA-026 입금 확인: 기한이 지난 무통장 입금 대기 주문 2건을 만들어 두고 실제 API로 단건·일괄 입금 확인을 눌러 본다.
+// SA-026 입금 확인: 기한이 지난 무통장 입금 대기 주문 3건을 만들어 두고 실제 API로 단건·일괄 입금 확인을 눌러 본다.
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
 const SLUG = "demo-shop";
 const SHOTS = process.env.E2E_SCREENSHOTS === "1";
@@ -21,11 +21,27 @@ const login = async (page: Page, email: string) => {
 const row = (page: Page, nickname: string) => page.getByTestId("deposit-row").filter({ hasText: nickname });
 const statusOf = (page: Page, id: string) => page.evaluate(async (id) => (await (await fetch(`/api/seller/orders/${id}`)).json()).status, id);
 
+test("목록을 받은 뒤 다른 곳에서 바뀌었으면 입금 확인이 막히고, 다시 불러오면 확인된다", async ({ page }) => {
+  await login(page, "demo-owner@example.com");
+  await expect(row(page, DEPOSIT_NICKNAMES[2])).toHaveCount(1);
+  await bumpLiveVersionInDb(SLUG);
+  await row(page, DEPOSIT_NICKNAMES[2]).getByRole("button", { name: "입금 확인" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "입금 확인" }).click();
+  await expect(page.getByText("목록이 바뀌었습니다. 다시 불러온 뒤 확인해 주십시오")).toBeVisible();
+  expect(await statusOf(page, made.orderIds[2])).toBe("PENDING_PAYMENT");
+  // 새로 불러온 목록의 버전으로 다시 보내면 확인된다
+  await expect(row(page, DEPOSIT_NICKNAMES[2])).toHaveCount(1);
+  await row(page, DEPOSIT_NICKNAMES[2]).getByRole("button", { name: "입금 확인" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "입금 확인" }).click();
+  await expect(row(page, DEPOSIT_NICKNAMES[2])).toHaveCount(0);
+  expect(await statusOf(page, made.orderIds[2])).toBe("PAID");
+});
+
 test("대표자: 메뉴에서 입금 확인을 열고, 단건 확인 뒤 일괄 확인한다", async ({ page }) => {
   await login(page, "demo-owner@example.com");
   await expect(page).toHaveURL(/\/seller\/orders\/deposits$/);
   await expect(page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "입금 확인", exact: true })).toHaveAttribute("href", "/seller/orders/deposits");
-  for (const n of DEPOSIT_NICKNAMES) await expect(row(page, n)).toHaveCount(1);
+  for (const n of DEPOSIT_NICKNAMES.slice(0, 2)) await expect(row(page, n)).toHaveCount(1);
   // 기한이 2000년이라 지남으로 보이고, 입금자명은 대표자 개인정보 열람으로 열려 있다
   await expect(row(page, DEPOSIT_NICKNAMES[0])).toContainText("기한 지남");
   await expect(page.locator("thead").getByText("입금자명", { exact: true })).toBeVisible();

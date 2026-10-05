@@ -3,6 +3,7 @@
 import "../../../../../../styles/seller-orders.css";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { Modal } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
@@ -11,10 +12,11 @@ import { listTime } from "../../../../../../components/seller/orders";
 
 // SA-026 입금 확인(파트너스 관리자, 주문 › 입금 확인). 무통장 입금 대기 주문을 기한 빠른 순으로 보고, 통장 내역과 맞춰 본 뒤 단건·일괄로 입금 확인한다.
 // API: GET /api/seller/payments/deposits(입금 대기 목록), POST /api/seller/payments/deposits/confirm(확인 직전 /api/seller/queue/version 값을 함께 보냄).
+// 확인에 보내는 expectedVersion은 목록을 불러올 때 함께 읽어 둔 값이다(보낸 사이 바뀌었으면 서버가 409로 막는다).
 // 입금자명은 구매자 개인정보 열람 권한이 있을 때만 서버가 내려 준다.
 const PAGE = 20;
 type Row = { orderId: string; orderNo: number; amount: number; nickname: string; depositorName?: string; paymentMethod: "CARD" | "BANK_TRANSFER" | null; paymentDueAt: string | null; createdAt: string };
-type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; rows: Row[]; total: number };
+type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; rows: Row[]; total: number; version: number };
 type Result = { orderId: string; result: "paid" | "stock_shortage" | "already_paid" | "card_in_progress" | "not_payable" | "not_found" };
 
 const RESULT_TEXT: Record<Exclude<Result["result"], "paid">, string> = {
@@ -51,10 +53,13 @@ export default function DepositsPage() {
   }, []);
 
   const load = useCallback(async () => {
+    // 버전을 먼저 읽는다: 읽은 뒤 목록이 바뀌면 확인할 때 서버가 409로 알려 준다
+    const v = await api<{ version: number }>("/api/seller/queue/version");
+    if (!v.ok) return setState({ kind: "error", status: v.status });
     const r = await api<{ deposits: Row[]; total: number }>(`/api/seller/payments/deposits?limit=${PAGE}`);
     if (!r.ok) return setState({ kind: "error", status: r.status });
     setPicked([]);
-    setState({ kind: "ok", rows: r.data.deposits, total: r.data.total });
+    setState({ kind: "ok", rows: r.data.deposits, total: r.data.total, version: v.data.version });
   }, []);
   useEffect(() => {
     void load();
@@ -67,22 +72,20 @@ export default function DepositsPage() {
     setMore(false);
     if (!r.ok) return setToast({ text: "더 불러오지 못했습니다. 다시 눌러 주십시오", neg: true });
     const seen = new Set(state.rows.map((x) => x.orderId));
-    setState({ kind: "ok", rows: [...state.rows, ...r.data.deposits.filter((x) => !seen.has(x.orderId))], total: r.data.total });
+    setState({ ...state, rows: [...state.rows, ...r.data.deposits.filter((x) => !seen.has(x.orderId))], total: r.data.total });
   };
 
   const send = async () => {
-    if (!confirm) return;
+    if (!confirm || state.kind !== "ok") return;
     setBusy(true);
-    const v = await api<{ version: number }>("/api/seller/queue/version");
-    if (!v.ok) {
-      setBusy(false);
-      return setToast({ text: v.message ?? "입금 확인을 하지 못했습니다. 다시 시도해 주십시오", neg: true });
-    }
-    const r = await api<{ results: Result[] }>("/api/seller/payments/deposits/confirm", { method: "POST", body: { orderIds: confirm.map((x) => x.orderId), expectedVersion: v.data.version } });
+    const r = await api<{ results: Result[] }>("/api/seller/payments/deposits/confirm", { method: "POST", body: { orderIds: confirm.map((x) => x.orderId), expectedVersion: state.version } });
     setBusy(false);
     setConfirm(null);
     if (!r.ok) {
-      if (r.error === "conflict") void load();
+      if (r.error === "conflict") {
+        void load();
+        return setToast({ text: "목록이 바뀌었습니다. 다시 불러온 뒤 확인해 주십시오", neg: true });
+      }
       return setToast({ text: r.message ?? "입금 확인을 하지 못했습니다. 다시 시도해 주십시오", neg: true });
     }
     const ok = r.data.results.filter((x) => x.result === "paid").length;
@@ -194,29 +197,27 @@ export default function DepositsPage() {
       </main>
 
       {confirm && (
-        <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="dep-title">
-          <div className="modal">
-            <div className="modal-h">
-              <h2 className="t-h2" id="dep-title">
-                입금을 확인하시겠습니까?
-              </h2>
-              <span className="t-l2 c-alt">
-                {confirm.length === 1
-                  ? `${confirm[0].nickname}${confirm[0].depositorName ? ` · 입금자명 ${confirm[0].depositorName}` : ""} · ${won(confirm[0].amount)}. `
-                  : `${confirm.length}건 · 합계 ${won(confirm.reduce((s, x) => s + x.amount, 0))}. `}
-                확인하면 주문대기에 올라가고 구매자에게 알림이 갑니다.
-              </span>
-            </div>
-            <div className="modal-f">
-              <button className="btn btn-out" type="button" onClick={() => setConfirm(null)} disabled={busy}>
-                취소
-              </button>
-              <button className="btn" type="button" onClick={() => void send()} disabled={busy}>
-                {busy ? "확인 중" : "입금 확인"}
-              </button>
-            </div>
+        <Modal labelId="dep-title" busy={busy} onClose={() => setConfirm(null)}>
+          <div className="modal-h">
+            <h2 className="modal-t" id="dep-title">
+              입금을 확인하시겠습니까?
+            </h2>
+            <span className="t-l2 c-alt">
+              {confirm.length === 1
+                ? `${confirm[0].nickname}${confirm[0].depositorName ? ` · 입금자명 ${confirm[0].depositorName}` : ""} · ${won(confirm[0].amount)}. `
+                : `${confirm.length}건 · 합계 ${won(confirm.reduce((s, x) => s + x.amount, 0))}. `}
+              확인하면 주문대기에 올라가고 구매자에게 알림이 갑니다.
+            </span>
           </div>
-        </div>
+          <div className="modal-f">
+            <button className="btn btn-out" type="button" onClick={() => setConfirm(null)} disabled={busy}>
+              취소
+            </button>
+            <button className="btn" type="button" onClick={() => void send()} disabled={busy}>
+              {busy ? "확인 중" : "입금 확인"}
+            </button>
+          </div>
+        </Modal>
       )}
       {toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}
     </>
