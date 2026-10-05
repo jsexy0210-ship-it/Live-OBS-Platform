@@ -96,7 +96,7 @@ test("빈 칸은 10칸 중 올리지 않은 만큼 번호로 보이고, 첫 빈 
   await expect(page.locator(".pm-add.is-first")).toContainText("추가 이미지");
 });
 
-test("카테고리·상품 코드·짧은 설명: 대분류·소분류를 골라 등록하면 지정되고, 수정 화면에 코드와 함께 다시 보인다", async ({ page }) => {
+test("카테고리·상품 코드·짧은 설명: 카테고리를 여러 개 골라 등록하면 지정되고, 수정 화면에 코드와 함께 다시 보인다", async ({ page }) => {
   await openNew(page);
   const origin = new URL(page.url()).origin;
   const hdr = { Origin: origin };
@@ -111,8 +111,17 @@ test("카테고리·상품 코드·짧은 설명: 대분류·소분류를 골라
     await page.getByLabel("상품명").fill(name);
     await page.getByLabel("판매가").fill("12000");
     await page.getByLabel("옵션 1 재고").fill("3");
-    await page.getByLabel("대분류").selectOption({ label: `e2e대 ${RUN}` });
-    await page.getByLabel("소분류").selectOption({ label: `e2e소 ${RUN}` });
+    // 카테고리 고르기 창: 대분류와 하위를 함께 고른다 → 칩으로 보인다
+    await page.getByRole("button", { name: "카테고리 고르기" }).click();
+    const pick = page.getByRole("dialog", { name: /카테고리 고르기/ });
+    await pick.getByRole("checkbox", { name: `e2e대 ${RUN}` }).check();
+    await pick.getByRole("checkbox", { name: `e2e소 ${RUN}` }).check();
+    await expect(pick.getByTestId("category-draft-count")).toContainText("2 / 10");
+    await page.screenshot({ path: "tests/e2e/screenshots/SA-012-category-picker-1440.png" });
+    await pick.getByRole("button", { name: "적용" }).click();
+    await expect(page.getByTestId("category-chip")).toHaveText([`e2e대 ${RUN}×`, `e2e대 ${RUN} › e2e소 ${RUN}×`]);
+    await expect(page.getByTestId("category-count")).toContainText("2 / 10");
+    await page.screenshot({ path: "tests/e2e/screenshots/SA-012-category-chips-1440.png" });
     await expect(page.getByTestId("product-code")).toHaveText("등록 후 표시");
     await page.getByLabel("짧은 설명").fill("한 줄 소개");
     await expect(page.getByTestId("desc-count")).toHaveText("6/80");
@@ -122,12 +131,12 @@ test("카테고리·상품 코드·짧은 설명: 대분류·소분류를 골라
     const list = await page.request.get(`/api/seller/products?q=${encodeURIComponent(name)}`);
     const id = ((await list.json()) as { products: { id: string }[] }).products[0]!.id;
     await page.goto(`/seller/products/${id}`);
-    await expect(page.getByLabel("대분류")).toHaveValue(parentId);
-    await expect(page.getByLabel("소분류").locator("option:checked")).toHaveText(`e2e소 ${RUN}`);
+    await expect(page.getByTestId("category-chip")).toHaveText([`e2e대 ${RUN}×`, `e2e대 ${RUN} › e2e소 ${RUN}×`]);
     await expect(page.getByTestId("product-code")).toHaveText(/^P\d{7}$/);
     await expect(page.getByLabel("짧은 설명")).toHaveValue("한 줄 소개");
-    // 소분류만 바꾸면 수정 때 지정이 바뀐다(대분류만 남기기)
-    await page.getByLabel("소분류").selectOption({ value: "" });
+    // 하위 칩을 지우고 저장하면 지정이 바뀐다(대분류만 남기기)
+    await page.getByRole("button", { name: `e2e대 ${RUN} › e2e소 ${RUN} 지우기` }).click();
+    await expect(page.getByTestId("category-chip")).toHaveCount(1);
     await page.getByRole("button", { name: "저장", exact: true }).first().click();
     await expect(page.getByText("저장했습니다")).toBeVisible();
     const cats = await page.request.get(`/api/seller/products/${id}/categories`);
@@ -138,6 +147,31 @@ test("카테고리·상품 코드·짧은 설명: 대분류·소분류를 골라
     const top = nodes.find((c) => c.id === parentId);
     for (const k of top?.children ?? []) await page.request.delete(`/api/seller/categories/${k.id}`, { headers: hdr });
     await page.request.delete(`/api/seller/categories/${parentId}`, { headers: hdr });
+  }
+});
+
+test("카테고리는 상품당 10개까지: 11번째는 고를 수 없고 안내가 보인다", async ({ page }) => {
+  await openNew(page);
+  const hdr = { Origin: new URL(page.url()).origin };
+  const ids: string[] = [];
+  try {
+    for (let i = 1; i <= 11; i++) {
+      const r = await page.request.post("/api/seller/categories", { data: { name: `한도${String(i).padStart(2, "0")} ${RUN}` }, headers: hdr });
+      expect(r.status()).toBe(201);
+      ids.push(((await r.json()) as { categories: { id: string; name: string }[] }).categories.find((c) => c.name === `한도${String(i).padStart(2, "0")} ${RUN}`)!.id);
+    }
+    await page.goto("/seller/products/new");
+    await page.getByRole("button", { name: "카테고리 고르기" }).click();
+    const pick = page.getByRole("dialog", { name: /카테고리 고르기/ });
+    for (let i = 1; i <= 10; i++) await pick.getByRole("checkbox", { name: `한도${String(i).padStart(2, "0")} ${RUN}` }).check();
+    await expect(pick.getByTestId("category-draft-count")).toContainText("10 / 10");
+    await expect(pick.getByRole("checkbox", { name: `한도11 ${RUN}` })).toBeDisabled();
+    await expect(pick.getByText("11번째는 선택되지 않습니다")).toBeVisible();
+    // 하나를 빼면 다시 고를 수 있다
+    await pick.getByRole("checkbox", { name: `한도01 ${RUN}` }).uncheck();
+    await expect(pick.getByRole("checkbox", { name: `한도11 ${RUN}` })).toBeEnabled();
+  } finally {
+    for (const id of ids) await page.request.delete(`/api/seller/categories/${id}`, { headers: hdr });
   }
 });
 

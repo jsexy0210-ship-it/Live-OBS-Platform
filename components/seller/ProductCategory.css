@@ -1,0 +1,50 @@
+/* 상품 카테고리 칩·고르기 창(SA-012). pc- 접두어, 높이·모서리는 공통 토큰 */
+.pc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ui-sp-8);
+}
+.pc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ui-sp-4);
+  min-height: var(--ui-h-compact);
+  padding: 0 var(--ui-sp-4) 0 var(--ui-sp-12);
+  border-radius: var(--ui-r-control);
+  background: var(--wds-fill-normal);
+  font-size: var(--ui-fs-dense);
+}
+.pc-x {
+  width: var(--ui-h-compact);
+  height: var(--ui-h-compact);
+  border: 0;
+  background: transparent;
+  color: var(--wds-label-alternative);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.pc-x:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.pc-modal {
+  width: 480px;
+  max-width: calc(100vw - var(--ui-sp-32));
+}
+.pc-tree {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-sp-12);
+  max-height: 50vh;
+  overflow: auto;
+  padding: var(--ui-sp-4) 0;
+}
+.pc-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-sp-8);
+}
+.pc-child {
+  margin-left: var(--ui-sp-24);
+}
