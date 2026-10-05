@@ -15,6 +15,7 @@ import { purgeExpiredRejoinBlocks, recordRejoinBlock } from "./rejoin";
 import { purgeSignupVerificationsForShop } from "./signup";
 import { deleteUnusedBuyerCoupons } from "../shop-coupons/service";
 import { anonymizeMemberReviews } from "../product-reviews/service";
+import { anonymizeMemberInquiries } from "../buyer-inquiries/service";
 import { deleteMemberGradeData } from "../shop-member-grades/service";
 import { clearReturnRefundAccounts, deleteUnattachedReturnImages } from "../shop-returns/hooks";
 
@@ -172,6 +173,8 @@ export async function withdrawBuyer(
     const deletedCoupons = await deleteUnusedBuyerCoupons(tx, { sellerId: scope.sellerId, buyerMemberId: member.id });
     // 상품 리뷰는 남기고 작성자 표시만 「탈퇴 회원」으로, 신고·붙지 않은 사진은 지운다(product-reviews)
     const reviews = await anonymizeMemberReviews(tx, { sellerId: scope.sellerId, buyerMemberId: member.id });
+    // 구매자 문의는 남기고 작성자 표시만 「탈퇴한 회원」으로, 사진은 모두 지운다(buyer-inquiries)
+    const inquiries = await anonymizeMemberInquiries(tx, { sellerId: scope.sellerId, buyerMemberId: member.id });
     // 교환·반품 신청에 붙지 않은 사진은 지운다(신청에 붙은 사진은 신청과 함께 법정 보관, shop-returns)
     await deleteUnattachedReturnImages(tx, { sellerId: scope.sellerId, buyerMemberId: member.id });
     // 신청에 남은 무통장 환불 계좌는 비운다(shop-returns)
@@ -191,7 +194,7 @@ export async function withdrawBuyer(
       targetId: member.id,
       ip: input.meta?.ip,
       userAgent: input.meta?.userAgent,
-      after: { status: "WITHDRAWN", deletedAddresses: addresses.count, deletedSessions: sessions.count, deletedRewardExpiryNotices: expiryNotices.count, anonymizedVerifications: identities, anonymizedOrders: orders.count, anonymizedQueueItems: queueItems.count, anonymizedHitCards: hitCards.count, deletedRestrictions: restrictions.count, cancelledPendingOrders: pending.length, heldOrders, rejoinBlockedUntil, ...forfeited, deletedCoupons, reviews },
+      after: { status: "WITHDRAWN", deletedAddresses: addresses.count, deletedSessions: sessions.count, deletedRewardExpiryNotices: expiryNotices.count, anonymizedVerifications: identities, anonymizedOrders: orders.count, anonymizedQueueItems: queueItems.count, anonymizedHitCards: hitCards.count, deletedRestrictions: restrictions.count, cancelledPendingOrders: pending.length, heldOrders, rejoinBlockedUntil, ...forfeited, deletedCoupons, reviews, inquiries },
     });
     // 방금 남긴 탈퇴 기록까지 포함해 기한을 단다
     await holdMemberAuditLogs(tx, scope.sellerId, member.id, now);
