@@ -13,6 +13,7 @@ import { refreshOrderRetention } from "../buyers/legalHold";
 import { chargedShippingFee, itemCouponDiscount, restoreOrderCoupon } from "../shop-coupons/service";
 import { revokeReviewRewardsForOrder, type ReviewRewardRevoke } from "../product-reviews/service";
 import { requestPaymentCancel } from "../payments/service";
+import { returnRewardForOrder } from "../payments/rewardUse";
 
 type Tx = Prisma.TransactionClient;
 
@@ -454,6 +455,8 @@ export async function cancelPendingOrderInTx(
   const restocked = await restoreOrderStock(tx, { sellerId: o.sellerId, orderId: o.orderId, reason: "CANCEL", now: o.now, actor: { actorType: o.actorType, actorId: o.actorId } });
   // 쓴 쿠폰은 전체 취소라 되돌린다(shop-coupons)
   await restoreOrderCoupon(tx, { sellerId: o.sellerId, orderId: o.orderId, now: o.now, reason: o.reason });
+  // 쓴 적립금은 전부 돌려준다(payments/rewardUse.ts, 대표님 결정 2026-10-05)
+  await returnRewardForOrder(tx, { sellerId: o.sellerId, orderId: o.orderId, now: o.now, reason: o.reason });
   await writeAudit(tx, {
     actorType: o.actorType,
     actorId: o.actorId,
@@ -619,6 +622,8 @@ export async function refundOrder(
     await tx.order.update({ where: { id: orderId }, data: { refundAmount, refundFault, returnFeeDeducted } });
     // 카드 결제 주문이면 환불액만큼 PG 취소 요청을 같은 트랜잭션에 남긴다(PG 호출은 커밋 뒤, payments/service.ts)
     await requestPaymentCancel(tx, { sellerId: ctx.sellerId, orderId, amount: refundAmount, reason, idempotencyKey: `refund:${orderId}` });
+    // 쓴 적립금 반환: 전액 환불이면 전부, 부분 환불이면 환불액 비율만큼(1원 미만 버림, payments/rewardUse.ts)
+    await returnRewardForOrder(tx, { sellerId: ctx.sellerId, orderId, refundAmount, now, reason });
     // 결제 금액 전부를 돌려주면 전체 취소로 보고 쓴 쿠폰을 되돌린다. 일부만 돌려주면 되돌리지 않는다(MASTER 2026-10-04).
     // 개봉한 품목을 구매자 사정으로 남기는 환불은 금액이 결제 금액과 같아도 전체 취소가 아니다(Codex 4176403238).
     const keepsItems = refundFault === "BUYER" && openedItemCount > 0;
