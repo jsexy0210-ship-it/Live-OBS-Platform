@@ -1151,6 +1151,8 @@ model Order {
   @@index([sellerId, buyerMemberId, autoCancelledAt])
   // 판매자 주문 목록(주문 시각 내림차순 + id 커서)
   @@index([sellerId, createdAt(sort: Desc), id(sort: Desc)])
+  // 마스터 파트너스 목록의 「이번 달 주문」(MA-011)
+  @@index([sellerId, paidAt])
 }
 
 model OrderItem {
@@ -1224,6 +1226,7 @@ model BroadcastSession {
 
   @@unique([sellerId, id])
   @@index([sellerId, status])
+  @@index([sellerId, startedAt])
 }
 
 enum QueueItemStatus {
@@ -2681,6 +2684,9 @@ model Payment {
   @@unique([sellerId, id])
   @@index([sellerId, orderId])
   @@index([status, updatedAt])
+  // 마스터 파트너스 목록의 결제 연결 상태(MA-011): 마지막 성공·최근 실패를 쇼핑몰별 인덱스로 찾는다
+  @@index([sellerId, approvedAt])
+  @@index([sellerId, status, updatedAt])
 }
 
 // 결제 취소 요청(환불과 같은 트랜잭션에서 남기고, PG 호출은 커밋 뒤 processPaymentCancel이 한다). id를 PG 취소 주문번호로 넘긴다.
