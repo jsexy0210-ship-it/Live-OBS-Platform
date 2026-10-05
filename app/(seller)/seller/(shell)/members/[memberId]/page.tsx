@@ -1,10 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { PageHead } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
+import { SmartBackButton } from "../../../../../../components/seller/SmartBackButton";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
 import { won } from "../../../../../../components/seller/format";
@@ -41,9 +41,7 @@ export default function MemberDetailPage() {
         <PageHead
           title={m ? (m.broadcastNickname ?? "닉네임 없음") : "회원 상세"}
           actions={
-            <Link className="btn btn-out" href="/seller/members">
-              회원 목록
-            </Link>
+            <SmartBackButton fallback="/seller/members" className="btn btn-out">회원 목록</SmartBackButton>
           }
         />
 

@@ -25,7 +25,7 @@ export default function MemberStatsPage() {
   };
 
   return (
-    <StatsFrame title="회원" sub="가입·탈퇴는 그 시각, 구매 회원은 결제 주문의 주문 시각(KST) 기준입니다." period={period} setPeriod={setPeriod} onDownload={data ? download : undefined}>
+    <StatsFrame back="/seller/stats" title="회원" sub="가입·탈퇴는 그 시각, 구매 회원은 결제 주문의 주문 시각(KST) 기준입니다." period={period} setPeriod={setPeriod} onDownload={data ? download : undefined}>
       <StatsState state={state} onRetry={() => void reload()} />
       {data && (
         <>

@@ -1,11 +1,11 @@
 "use client";
 
 import "../../../../../../styles/seller-orders.css";
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import RefundModal from "../../../../../../components/seller/RefundModal";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
+import { SmartBackButton } from "../../../../../../components/seller/SmartBackButton";
 import { LoadingRows, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
 import { won } from "../../../../../../components/seller/format";
@@ -59,9 +59,7 @@ export default function OrderDetailPage() {
                 <div className="st-ic neg">!</div>
                 <span className="t">주문을 찾을 수 없습니다</span>
                 <span className="s">삭제되었거나 다른 쇼핑몰의 주문입니다.</span>
-                <Link className="btn btn-sm btn-out" href="/seller/orders">
-                  주문 목록으로
-                </Link>
+                <SmartBackButton fallback="/seller/orders" className="btn btn-sm btn-out">주문 목록으로</SmartBackButton>
               </div>
             ) : (
               <div className="st" style={{ boxShadow: "none" }}>

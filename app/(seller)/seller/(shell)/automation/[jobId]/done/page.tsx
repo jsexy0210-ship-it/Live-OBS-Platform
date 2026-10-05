@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { PageHead } from "../../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../../components/seller/SellerShell";
+import { SmartBackButton } from "../../../../../../../components/seller/SmartBackButton";
 import { ErrorState, LoadingRows } from "../../../../../../../components/seller/States";
 import { api } from "../../../../../../../components/seller/api";
 import { stamp, type Job } from "../../../../../../../components/seller/automation/common";
@@ -42,7 +43,15 @@ export default function AutomationDonePage() {
     <>
       <Topbar crumb={crumb} />
       <main className="main">
-        <PageHead title="자동 연결 완료" actions={<Link className="btn" href="/seller/broadcast">방송 대시보드로</Link>} />
+        <PageHead
+          title="자동 연결 완료"
+          actions={
+            <>
+              <SmartBackButton fallback="/seller/broadcast">이전</SmartBackButton>
+              <Link className="btn" href="/seller/broadcast">방송 대시보드로</Link>
+            </>
+          }
+        />
         {!done ? (
           <div className="msg msg-cau" role="status" data-testid="done-not-yet">
             <span><b>아직 완료되지 않았습니다.</b> <Link href={`/seller/automation/${j.id}`}>진행 확인</Link></span>

@@ -36,7 +36,7 @@ export default function SalesStatsPage() {
   };
 
   return (
-    <StatsFrame title="매출" sub="주문 시각(KST) 기준, 결제된 주문의 금액입니다. 결제 대기·취소 주문은 넣지 않습니다." period={period} setPeriod={setPeriod} onDownload={data ? download : undefined}>
+    <StatsFrame back="/seller/stats" title="매출" sub="주문 시각(KST) 기준, 결제된 주문의 금액입니다. 결제 대기·취소 주문은 넣지 않습니다." period={period} setPeriod={setPeriod} onDownload={data ? download : undefined}>
       <StatsState state={state} onRetry={() => void reload()} />
       {data && data.current.paidOrders === 0 && <EmptyStats text="선택한 기간에 결제된 주문이 없습니다" />}
       {data && data.current.paidOrders > 0 && (

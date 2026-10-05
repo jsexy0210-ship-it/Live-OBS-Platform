@@ -37,7 +37,7 @@ export default function BroadcastStatsPage() {
   const chrono = data ? [...data.broadcasts].reverse() : [];
 
   return (
-    <StatsFrame title="방송" sub="기간 중 시작한 방송별로, 방송 중 들어온 결제 주문을 방송 매출로 셉니다. 종료 뒤 2시간 안의 주문은 따로 표시합니다." period={period} setPeriod={setPeriod} units={false} onDownload={data ? download : undefined}>
+    <StatsFrame back="/seller/stats" title="방송" sub="기간 중 시작한 방송별로, 방송 중 들어온 결제 주문을 방송 매출로 셉니다. 종료 뒤 2시간 안의 주문은 따로 표시합니다." period={period} setPeriod={setPeriod} units={false} onDownload={data ? download : undefined}>
       <StatsState state={state} onRetry={() => void reload()} />
       {data && data.total.broadcasts === 0 && <EmptyStats text="선택한 기간에 진행한 방송이 없습니다" />}
       {data && data.total.broadcasts > 0 && (

@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { PageHead } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
+import { SmartBackButton } from "../../../../../../components/seller/SmartBackButton";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
 import { ACTION_TEXT, STEP_LABEL, errorText, stamp, type Job } from "../../../../../../components/seller/automation/common";
@@ -82,7 +83,12 @@ export default function AutomationProgressPage() {
       <main className="main">
         <PageHead
           title="자동 연결 진행"
-          actions={cancelable && <button className="btn btn-out" type="button" disabled={busy} onClick={() => setConfirmCancel(true)}>연결 취소하기</button>}
+          actions={
+            <>
+              <SmartBackButton fallback="/seller/automation">자동 연결</SmartBackButton>
+              {cancelable && <button className="btn btn-out" type="button" disabled={busy} onClick={() => setConfirmCancel(true)}>연결 취소하기</button>}
+            </>
+          }
         />
         <div className="col" style={{ gap: 16 }}>
           <div className={`msg ${j.status === "NEEDS_CUSTOMER" ? "msg-cau" : terminal ? "msg-neg" : "msg-info"}`} role="status" data-testid="job-status">

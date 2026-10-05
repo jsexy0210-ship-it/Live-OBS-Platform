@@ -30,7 +30,7 @@ export default function ProductStatsPage() {
   };
 
   return (
-    <StatsFrame title="상품" sub="주문 시각(KST) 기준, 결제 완료 주문의 상품입니다. 환불된 주문은 넣지 않습니다." period={period} setPeriod={setPeriod} units={false} onDownload={data ? download : undefined}>
+    <StatsFrame back="/seller/stats" title="상품" sub="주문 시각(KST) 기준, 결제 완료 주문의 상품입니다. 환불된 주문은 넣지 않습니다." period={period} setPeriod={setPeriod} units={false} onDownload={data ? download : undefined}>
       <StatsState state={state} onRetry={() => void reload()} />
       {data && (
         <>

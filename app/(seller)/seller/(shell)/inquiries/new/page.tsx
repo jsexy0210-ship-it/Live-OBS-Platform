@@ -1,11 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { PageHead } from "../../../../../../components/admin-ui";
 import { InquiryAttach, type Attached } from "../../../../../../components/seller/InquiryAttach";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
+import { SmartBackButton } from "../../../../../../components/seller/SmartBackButton";
+import { useUnsavedGuard } from "../../../../../../lib/client/navigation";
 import { api } from "../../../../../../components/seller/api";
 import { INQUIRY_BODY_MAX, INQUIRY_CATEGORY, INQUIRY_TITLE_MAX, type InquiryCategory } from "../../../../../../components/seller/platformInquiry";
 
@@ -21,6 +22,7 @@ function Form() {
   const [noticeTitle, setNoticeTitle] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
 
   useEffect(() => {
     if (!noticeId) return;
@@ -29,6 +31,7 @@ function Form() {
 
   const ready = category !== "" && title.trim() !== "" && body.trim() !== "";
   const dirty = title !== "" || body !== "" || images.length > 0;
+  useUnsavedGuard(dirty && !sent, "작성 중인 내용이 사라집니다. 나가시겠습니까?");
 
   const send = async () => {
     if (!ready || busy) return;
@@ -40,7 +43,8 @@ function Form() {
     });
     setBusy(false);
     if (!r.ok) return setError(r.message ?? "문의를 보내지 못했습니다. 잠시 후 다시 시도해 주십시오");
-    router.push(`/seller/inquiries/${r.data.inquiry.id}`);
+    setSent(true);
+    router.replace(`/seller/inquiries/${r.data.inquiry.id}`);
   };
 
   return (
@@ -50,9 +54,9 @@ function Form() {
         <PageHead
           title="문의하기"
           actions={
-            <Link className="btn btn-out" href="/seller/inquiries" onClick={(e) => dirty && !window.confirm("작성 중인 내용이 사라집니다. 나가시겠습니까?") && e.preventDefault()}>
+            <SmartBackButton fallback="/seller/inquiries" dirty={dirty && !sent}>
               내 문의
-            </Link>
+            </SmartBackButton>
           }
         />
         <div className="card" style={{ padding: 24 }}>

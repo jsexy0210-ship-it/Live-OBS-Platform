@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { PageHead } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
+import { SmartBackButton } from "../../../../../../components/seller/SmartBackButton";
 import { ErrorState, LoadingRows } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
 import { NOTICE_CATEGORY, type NoticeItem } from "../../../../../../components/seller/platformNotice";
@@ -34,9 +35,7 @@ export default function NoticeDetailPage() {
         <PageHead
           title="공지사항"
           actions={
-            <Link className="btn btn-out" href="/seller/notices">
-              목록으로
-            </Link>
+            <SmartBackButton fallback="/seller/notices" className="btn btn-out">목록으로</SmartBackButton>
           }
         />
         <div className="card" style={{ padding: 24 }}>
@@ -46,9 +45,7 @@ export default function NoticeDetailPage() {
               <div className="st" style={{ boxShadow: "none" }}>
                 <span className="t">공지를 찾을 수 없습니다</span>
                 <span className="s">삭제되었거나 볼 수 없는 공지입니다.</span>
-                <Link className="btn btn-sm btn-out" href="/seller/notices">
-                  공지 목록으로
-                </Link>
+                <SmartBackButton fallback="/seller/notices" className="btn btn-sm btn-out">공지 목록으로</SmartBackButton>
               </div>
             ) : (
               <ErrorState title="공지를 불러오지 못했습니다" onRetry={() => void load()} />

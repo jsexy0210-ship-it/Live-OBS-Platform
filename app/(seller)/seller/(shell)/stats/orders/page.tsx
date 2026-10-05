@@ -34,7 +34,7 @@ export default function OrderStatsPage() {
   };
 
   return (
-    <StatsFrame title="주문" sub="주문 시각(KST) 기준 집계입니다. 비교 기간은 바로 앞 같은 일수입니다." period={period} setPeriod={setPeriod} onDownload={data ? download : undefined}>
+    <StatsFrame back="/seller/stats" title="주문" sub="주문 시각(KST) 기준 집계입니다. 비교 기간은 바로 앞 같은 일수입니다." period={period} setPeriod={setPeriod} onDownload={data ? download : undefined}>
       <StatsState state={state} onRetry={() => void reload()} />
       {data && data.current.orders === 0 && <EmptyStats text="선택한 기간에 주문이 없습니다" />}
       {data && data.current.orders > 0 && (
