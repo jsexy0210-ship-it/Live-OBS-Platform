@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { api, failMessage, type ApiResult, type Tone } from "./api";
+import { useConfirm } from "../admin-ui/ConfirmDialog";
 import TestModeNotice from "./TestModeNotice";
 
 // 파트너스 가입(PF-007)·비밀번호 찾기(AU-003)에서 함께 쓰는 대표자 휴대폰 본인확인 칸.
@@ -45,6 +46,9 @@ const TEXT = {
     agree: "본인확인 이용 약관에 모두 동의합니다",
     sending: "인증번호 보내는 중",
     done: "본인확인을 마쳤습니다",
+    askTitle: "인증번호를 문자로 보내시겠습니까?",
+    askBody: (last4: string) => `끝자리 ${last4}인 번호로 문자 1건을 보냅니다. 하루 보낼 수 있는 횟수가 정해져 있습니다.`,
+    askLabel: "문자 받기",
   },
   public: {
     birthInvalid: "생년월일 8자리를 다시 확인해 주세요",
@@ -55,6 +59,9 @@ const TEXT = {
     agree: "본인확인 이용 약관에 모두 동의해요",
     sending: "인증번호를 보내고 있어요",
     done: "본인확인을 마쳤어요",
+    askTitle: "인증번호를 문자로 받을까요?",
+    askBody: (last4: string) => `끝자리 ${last4}인 번호로 문자 1건을 보내요. 하루 보낼 수 있는 횟수가 정해져 있어요.`,
+    askLabel: "문자 받기",
   },
 } as const;
 
@@ -98,6 +105,9 @@ type Props = {
 
 export default function IdentityCheck({ label, start, scope = "", base, blocked = false, onVerified, onUnavailable, onSentChange, onStartRefused, tone }: Props) {
   const T = TEXT[tone];
+  const { confirm: ask } = useConfirm();
+  // 문자 발송은 횟수 한도와 비용이 있어 보내기 전에 확인한다
+  const askSend = () => ask({ tone: tone === "public" ? "shop" : "admin", title: T.askTitle, body: T.askBody(phone.slice(-4)), confirmLabel: T.askLabel });
   const failText = (r: Fail) => identityFailText(r, tone);
   const [step, setStep] = useState<"identity" | "code">("identity");
   const [busy, setBusy] = useState(false);
@@ -156,6 +166,7 @@ export default function IdentityCheck({ label, start, scope = "", base, blocked 
       focus("idv-birth");
       return;
     }
+    if (!(await askSend())) return;
     setBusy(true);
     setNotice(null);
     setBirthError(null);
@@ -180,6 +191,7 @@ export default function IdentityCheck({ label, start, scope = "", base, blocked 
 
   const resend = async () => {
     if (!verificationId || busy) return;
+    if (!(await askSend())) return;
     setBusy(true);
     setCodeError(null);
     const r = await api(`${base}/resend`, { method: "POST", body: { verificationId } });

@@ -28,7 +28,7 @@ const meta = (page: Page, key: string) => page.locator(`meta[property="${key}"],
 test("대표자: 공유 미리보기 제목·설명을 저장하면 쇼핑몰 페이지의 공유 정보에 쓰이고, 비우면 쇼핑몰 이름으로 돌아간다", async ({ page }) => {
   await loginSeller(page, "demo-owner@example.com", PASSWORD, "/seller/settings/share");
   await expect(page).toHaveURL(/\/seller\/settings\/share$/);
-  await expect(page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "공유 설정" })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "쇼핑몰 정보" })).toHaveAttribute("aria-current", "page");
   // 비어 있으면 미리보기 제목은 쇼핑몰 이름이다
   const card = page.getByTestId("sp-card");
   await expect(card).toContainText("카드숍 별빛");
@@ -144,20 +144,23 @@ test("공유 미리보기: 저장하는 동안에는 칸을 잠가 저장 중 �
   await expect(page.getByLabel("제목")).toHaveValue("");
 });
 
-// 설정 화면 안에 탭 줄이 없고, 왼쪽 메뉴로 각 설정 화면에 갈 수 있다
-test("쇼핑몰 설정 화면에는 탭 줄이 없고, 왼쪽 메뉴로 각 설정 화면에 이동한다", async ({ page }) => {
+// 확정 메뉴 구조(2026-10-06): 공유 설정은 쇼핑몰 정보 항목에 속하고, 주문·배송 설정·약관·회원 정책은 항목 하나에 화면 안 탭으로 나뉜다
+test("공유 설정은 쇼핑몰 정보 메뉴가 켜진 채 열리고, 주문 · 배송 설정은 화면 안 탭으로 이동한다", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await loginSeller(page, "demo-owner@example.com", PASSWORD, "/seller/settings/share");
   await expect(page).toHaveURL(/\/seller\/settings\/share$/);
-  await expect(page.getByRole("navigation", { name: "쇼핑몰 설정" })).toHaveCount(0);
-  await expect(page.locator(".settings-tabs")).toHaveCount(0);
   const lnb = page.getByRole("complementary", { name: "파트너스 메뉴" });
-  await expect(lnb.getByRole("link", { name: "공유 설정" })).toHaveAttribute("aria-current", "page");
-  for (const [name, path] of [["쇼핑몰 정보", "shop"], ["주문 설정", "order"], ["배송 설정", "shipping"], ["회원 정책", "member"], ["공유 설정", "share"]] as const) {
-    await lnb.getByRole("link", { name }).click();
-    await expect(page).toHaveURL(new RegExp(`/seller/settings/${path}$`));
-    await expect(page.getByRole("navigation", { name: "쇼핑몰 설정" })).toHaveCount(0);
-  }
+  await expect(lnb.getByRole("link", { name: "쇼핑몰 정보" })).toHaveAttribute("aria-current", "page");
+  await lnb.getByRole("link", { name: "주문 · 배송 설정" }).click();
+  await expect(page).toHaveURL(/\/seller\/settings\/order$/);
+  const tabs = page.getByRole("navigation", { name: "화면 탭" });
+  await expect(tabs.getByRole("link", { name: "주문 설정" })).toHaveAttribute("aria-current", "page");
+  await tabs.getByRole("link", { name: "배송 설정" }).click();
+  await expect(page).toHaveURL(/\/seller\/settings\/shipping$/);
+  await lnb.getByRole("link", { name: "약관 · 회원 정책" }).click();
+  await expect(page).toHaveURL(/\/seller\/settings\/legal$/);
+  await page.getByRole("navigation", { name: "화면 탭" }).getByRole("link", { name: "회원 정책" }).click();
+  await expect(page).toHaveURL(/\/seller\/settings\/member$/);
 });
 
 // 1440px(넓은 화면)에서도 공유 미리보기 스타일이 적용된다(좁은 화면 전용 블록 안에 갇히지 않음)
