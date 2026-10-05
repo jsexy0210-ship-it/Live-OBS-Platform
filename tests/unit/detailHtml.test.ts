@@ -85,6 +85,72 @@ describe("위험한 것은 지운다", () => {
     expect(r.html).toBe("글 색");
     expect(r.removedCount).toBeGreaterThanOrEqual(3);
   });
+  describe("글자색·배경색(color·background-color)", () => {
+    it("#hex 3·6자리와 rgb()·rgba() 숫자는 span·문단·표 칸에 그대로 남긴다(소문자·공백 정리)", () => {
+      const html =
+        '<p style="color:#ABC;text-align:center">가</p><p><span style="color: #FF0000; background-color: rgb(0, 128, 255)">나</span></p>' +
+        '<table><tr><td style="background-color:rgba(10,20,30,0.5)">다</td></tr></table><p><span style="color:rgba(1,2,3,1)">라</span></p>';
+      const r = clean(html);
+      expect(r.removedCount).toBe(0);
+      expect(r.html).toContain('<p style="color:#abc;text-align:center">가</p>');
+      expect(r.html).toContain('<span style="color:#ff0000;background-color:rgb(0,128,255)">나</span>');
+      expect(r.html).toContain('<td style="background-color:rgba(10,20,30,0.5)">다</td>');
+      expect(r.html).toContain('<span style="color:rgba(1,2,3,1)">라</span>');
+    });
+    const badColors: [string, string][] = [
+      ["url()", "color:url(https://evil.example/x.png)"],
+      ["background-color url()", "background-color:url(javascript:alert(1))"],
+      ["expression()", "color:expression(alert(1))"],
+      ["var()", "color:var(--x)"],
+      ["색 이름", "color:red"],
+      ["currentcolor", "color:currentColor"],
+      ["hex 4자리", "color:#abcd"],
+      ["hex 8자리", "color:#aabbccdd"],
+      ["hex 5자리", "color:#abcde"],
+      ["hsl()", "color:hsl(0,100%,50%)"],
+      ["rgb 채널 범위 밖", "color:rgb(256,0,0)"],
+      ["rgb 퍼센트", "color:rgb(10%,0,0)"],
+      ["rgba 투명도 범위 밖", "color:rgba(0,0,0,2)"],
+      ["rgb 안에 함수", "color:rgb(0,0,calc(1+1))"],
+      ["rgb 뒤에 덧붙임", "color:rgb(0,0,0) url(x)"],
+      ["!important", "color:#fff !important"],
+      ["주석", "color:#fff/*x*/"],
+      ["background 줄임", "background:#fff"],
+      ["background-image", "background-image:url(x)"],
+      ["이스케이프", "color:\\72ed"],
+    ];
+    for (const [name, decl] of badColors) {
+      it(`${name}: 값을 지우고 글은 남긴다`, () => {
+        const r = clean(`<p><span style="${decl}">안녕</span></p>`);
+        expect(r.removedCount).toBeGreaterThanOrEqual(1);
+        expect(r.html).toContain("안녕");
+        for (const needle of ["url(", "expression", "var(", "evil.example", "javascript:", "red", "hsl", "calc", "important", "/*", "background-image", "background:"]) {
+          expect(r.html.toLowerCase(), `${name} → ${needle}`).not.toContain(needle);
+        }
+        expect(r.html).not.toMatch(/style=/);
+      });
+    }
+    it("색과 함께 온 위험한 선언만 지우고 색은 남긴다", () => {
+      const r = clean('<p style="position:fixed;color:#00f;background:url(x)">안녕</p>');
+      expect(r.html).toBe('<p style="color:#00f">안녕</p>');
+      expect(r.removedCount).toBe(2);
+    });
+    it("스타일이 없거나 모두 지워진 span은 태그만 벗기고, 허용하지 않는 속성은 지운다", () => {
+      expect(clean("<p><span>그냥</span> 글</p>").html).toBe("<p>그냥 글</p>");
+      const r = clean('<p><span class="x" onclick="a()" style="color:#123">색</span></p>');
+      expect(r.html).toBe('<p><span style="color:#123">색</span></p>');
+      expect(r.removedCount).toBe(2);
+    });
+    it("링크 안에 색 span을 넣어도 링크 규칙은 그대로다", () => {
+      const r = clean('<a href="javascript:alert(1)"><span style="color:#f00">눌러</span></a>');
+      expect(r.html.toLowerCase()).not.toContain("javascript:");
+      expect(r.html).toContain("눌러");
+    });
+    it("저장한 html을 다시 정화해도 같다(두 번 저장해도 안 변함)", () => {
+      const once = clean('<p><span style="color: #F00; background-color: rgb(1, 2, 3)">색</span></p>').html;
+      expect(clean(once).html).toBe(once);
+    });
+  });
   it("지운 곳 수는 지운 태그·속성마다 하나씩, 깨끗한 글은 0", () => {
     expect(clean('<p onclick="x" class="y" id="z">글</p>').removedCount).toBe(3);
     expect(clean('<p>글</p><script>1</script><iframe></iframe>').removedCount).toBe(2);
