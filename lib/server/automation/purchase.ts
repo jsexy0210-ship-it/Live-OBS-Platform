@@ -14,6 +14,7 @@ import {
   REINSTALL_ORDER_NAME,
   REINSTALL_PRICE,
 } from "./config";
+import { budgetOpen, PLANNER_PROVIDER } from "./budget";
 import { externalId } from "./boundary";
 import { callPort, valueOrThrow } from "./engine";
 import type { Playbook } from "./playbook";
@@ -41,7 +42,9 @@ type Failure =
   // 유료 재설치를 결제하려는 사이 무료 재연결 조건이 됐다(결제하지 않음, 무료 재연결로 다시 요청)
   | "free_reconnect_available"
   // 쇼핑몰이 바뀐 재설치인데 새 쇼핑몰 주소가 없다(이전 쇼핑몰로 설치하지 않음, 결제하지 않음)
-  | "shop_url_required";
+  | "shop_url_required"
+  // 외부 API 월 한도에 닿아 이번 달 새 구매를 받지 않는다(결제하지 않음)
+  | "service_paused";
 export type PurchaseResult =
   | { ok: true; jobId: string; kind: AutomationJob["kind"]; paymentStatus: AutomationPayment["status"] | null; jobStatus: AutomationJob["status"]; replayed: boolean }
   | { ok: false; reason: Failure; jobId?: string };
@@ -58,6 +61,7 @@ export const PURCHASE_FAILURE_STATUS: Record<Failure, number> = {
   payment_failed: 402,
   free_reconnect_available: 409,
   shop_url_required: 400,
+  service_paused: 503,
 };
 
 // 작업 확정 트랜잭션 안에서 다시 계산해 거절할 때(트랜잭션을 되돌린다)
@@ -220,6 +224,7 @@ async function buyPaidJob(db: PrismaClient, provider: BillingProvider, ctx: Tena
   if (existing) return existing;
   const playbook = await input.resolvePlaybook();
   if (!playbook) return { ok: false, reason: "shop_not_supported" };
+  if (!(await budgetOpen(db, PLANNER_PROVIDER))) return { ok: false, reason: "service_paused" };
   const problem = consentProblem(input.consent);
   if (problem) return { ok: false, reason: problem };
 
@@ -471,16 +476,19 @@ export async function reconcileAutomationPayments(db: PrismaClient, provider: Bi
   // 고르기와 점유를 한 문장으로: 확인 간격이 지난 PENDING 청구를 확인한 지 오래된 순(처음이면 먼저)·id 순으로 50건 골라
   // 확인 시각을 남기고 그 행만 돌려준다(다른 작업자가 잠근 행은 건너뜀). 여러 작업자가 동시에 돌아도 같은 청구는 한 작업자만 PG에 묻고,
   // 오류가 난 건도 다음 회차에는 뒤로 간다.
+  // 고르는 질의는 MATERIALIZED로 한 번만 돈다. 「WHERE id IN (… LIMIT … FOR UPDATE SKIP LOCKED)」는 실행 계획에 따라 하위 질의가 다시 돌며
+  // 이미 바꾼 행을 건너뛰고 다음 행을 집어 50건을 넘길 수 있다.
   const stale = await db.$queryRaw<{ id: string; sellerId: string }[]>`
-    UPDATE "AutomationPayment" SET "lastCheckedAt" = clock_timestamp()
-    WHERE id IN (
+    WITH picked AS MATERIALIZED (
       SELECT id FROM "AutomationPayment"
       WHERE status = 'PENDING' AND "createdAt" <= ${cutoff} AND ("lastCheckedAt" IS NULL OR "lastCheckedAt" <= ${cutoff})
       ORDER BY "lastCheckedAt" ASC NULLS FIRST, id ASC
       LIMIT 50
       FOR UPDATE SKIP LOCKED
     )
-    RETURNING id, "sellerId"`;
+    UPDATE "AutomationPayment" p SET "lastCheckedAt" = clock_timestamp()
+    FROM picked WHERE p.id = picked.id
+    RETURNING p.id, p."sellerId"`;
   let settled = 0;
   for (const p of stale) {
     // 한 건 조회가 실패해도 나머지는 계속 확인한다

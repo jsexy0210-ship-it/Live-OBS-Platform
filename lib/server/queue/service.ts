@@ -7,11 +7,15 @@ import { earnQuote } from "../rewards/earn";
 import { createPendingRewardLedger } from "../rewards/ledger";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 import { restoreOrderStock } from "../products/stock";
+import { closeReturnsOnRefund } from "../shop-returns/hooks";
 import { checkTransition, isCompletePermutation, isValidTimer, type QueueAction, type QueueRejection } from "./rules";
 import { refreshOrderRetention } from "../buyers/legalHold";
 import { chargedShippingFee, itemCouponDiscount, restoreOrderCoupon } from "../shop-coupons/service";
 import { revokeReviewRewardsForOrder, type ReviewRewardRevoke } from "../product-reviews/service";
 import { requestPaymentCancel } from "../payments/service";
+import { returnRewardForOrder, rewardReturnAmount } from "../payments/rewardUse";
+import { computeRefundStep, earnRevokeStep, itemValue, type RefundCalcItem } from "../payments/refundCalc";
+import { settleRefundRequestsOnRefund } from "../payments/refundRequestHooks";
 
 type Tx = Prisma.TransactionClient;
 
@@ -208,7 +212,7 @@ export async function startBroadcast(
       }
       await writeAudit(tx, {
         actorType: ctx.actorType,
-        actorId: ctx.actorId,
+        actorId: ctx.actorType === "SYSTEM" ? null : ctx.actorId,
         sellerId: ctx.sellerId,
         action: "broadcast.start",
         targetType: "BroadcastSession",
@@ -252,7 +256,7 @@ export async function endBroadcast(
     await tx.broadcastSession.update({ where: { id: live.id }, data: { status: "ENDED", endedAt: now } });
     await writeAudit(tx, {
       actorType: ctx.actorType,
-      actorId: ctx.actorId,
+      actorId: ctx.actorType === "SYSTEM" ? null : ctx.actorId,
       sellerId: ctx.sellerId,
       action: "broadcast.end",
       targetType: "BroadcastSession",
@@ -404,7 +408,7 @@ async function markPaidIfPending(tx: Tx, sellerId: string, orderId: string, data
 async function loadPendingOrder(tx: Tx, sellerId: string, orderId: string) {
   const order = await tx.order.findFirst({
     where: { id: orderId, sellerId },
-    include: { items: { orderBy: { createdAt: "asc" } }, buyerMember: { include: { grade: true } }, couponRedemption: { select: { itemDiscounts: true } } },
+    include: { items: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] }, buyerMember: { include: { grade: true } }, couponRedemption: { select: { itemDiscounts: true } } },
   });
   if (!order) throw new Rejected("not_found");
   if (order.status !== "PENDING_PAYMENT") throw new Rejected("invalid_transition");
@@ -453,6 +457,8 @@ export async function cancelPendingOrderInTx(
   const restocked = await restoreOrderStock(tx, { sellerId: o.sellerId, orderId: o.orderId, reason: "CANCEL", now: o.now, actor: { actorType: o.actorType, actorId: o.actorId } });
   // 쓴 쿠폰은 전체 취소라 되돌린다(shop-coupons)
   await restoreOrderCoupon(tx, { sellerId: o.sellerId, orderId: o.orderId, now: o.now, reason: o.reason });
+  // 쓴 적립금은 전부 돌려준다(payments/rewardUse.ts, 대표님 결정 2026-10-05)
+  await returnRewardForOrder(tx, { sellerId: o.sellerId, orderId: o.orderId, now: o.now, reason: o.reason });
   await writeAudit(tx, {
     actorType: o.actorType,
     actorId: o.actorId,
@@ -482,6 +488,12 @@ export type RefundOutcome = {
   refundAmount: number;
   refundFault: RefundFault | null;
   returnFeeDeducted: number;
+  // 부분 환불(MASTER 배정 2026-10-05): 이번 환불 1건의 id·순번, 주문 전체가 환불로 끝났는지, 함께 돌려준 적립금, 주문 적립 회수액
+  refundId: string;
+  seq: number;
+  isFinal: boolean;
+  rewardReturn: number;
+  rewardRevokeAmount: number;
 };
 
 // 환불액(PRODUCT_SCOPE 「반품·교환 배송비」, 대표님 결정 2026-10-03).
@@ -491,7 +503,8 @@ export type RefundOutcome = {
 //   처음 배송비가 0원(무료 배송)이었으면 왕복(편도 × 2)으로 뺀다. 돌려줄 상품이 없으면 빼지 않는다. 0원 아래로 내려가지 않는다.
 // - 개봉한 상품은 구매자 사정이면 환불하지 않는다(OPENED_NO_REFUND 동의). 판매자 사정이면 판매자가 확인(confirmOpened)하고 돌려준다.
 // - 돈으로 돌려주는 환불액은 실제 결제액(totalAmount, 적립금 사용액을 이미 뺀 금액)을 넘지 않는다.
-//   쓴 적립금을 되돌리는 규칙은 아직 없다(PRODUCT_SCOPE 「적립금 사용(결제 차감) 방식」 미정). 지금은 주문에서 적립금을 쓸 수 없다.
+// - 쓴 적립금(rewardUsed)은 돌아오는 상품 금액 비율만큼 적립금으로 돌려주고(payments/rewardUse.ts rewardReturnAmount, 10원 단위 내림),
+//   그만큼 현금에서 뺀다: 현금 + 적립금 반환 = 돌아오는 상품(+배송비) − 반품 배송비(대표님 결정 2026-10-05, 검수 #346).
 export function computeRefund(input: {
   // couponDiscount: 그 품목에 배분된 쿠폰 할인(shop-coupons). 품목 환불액 = 단가 × 수량 − 배분액
   items: { unitPrice: number; quantity: number; opened: boolean; couponDiscount?: number }[];
@@ -500,19 +513,118 @@ export function computeRefund(input: {
   shipped: boolean;
   fault: RefundFault | null;
   returnFee: number;
-}): { refundAmount: number; returnFeeDeducted: number } {
+  rewardUsed?: number;
+}): { refundAmount: number; returnFeeDeducted: number; rewardReturn: number } {
   const buyerFault = input.fault === "BUYER";
-  const items = input.items.reduce((sum, i) => sum + (buyerFault && i.opened ? 0 : i.unitPrice * i.quantity - (i.couponDiscount ?? 0)), 0);
+  const value = (i: (typeof input.items)[number]) => i.unitPrice * i.quantity - (i.couponDiscount ?? 0);
+  const items = input.items.reduce((sum, i) => sum + (buyerFault && i.opened ? 0 : value(i)), 0);
+  const ordered = input.items.reduce((sum, i) => sum + value(i), 0);
+  const rewardReturn = rewardReturnAmount({ rewardUsedAmount: input.rewardUsed ?? 0, items: { refunded: items, ordered } });
   const shipping = !input.shipped || input.fault === "SELLER" ? input.shippingFee : 0;
   const fee = input.shipped && buyerFault && items > 0 ? input.returnFee * (input.shippingFee === 0 ? 2 : 1) : 0;
-  const gross = Math.min(items + shipping, input.totalAmount);
-  const returnFeeDeducted = Math.min(fee, Math.max(0, gross));
-  return { refundAmount: Math.max(0, gross - returnFeeDeducted), returnFeeDeducted };
+  const gross = Math.max(0, Math.min(items + shipping - rewardReturn, input.totalAmount));
+  const returnFeeDeducted = Math.min(fee, gross);
+  return { refundAmount: gross - returnFeeDeducted, returnFeeDeducted, rewardReturn };
 }
 
 // 개봉을 시작했거나 마친 주문대기 품목(환불·재고 복구에서 「개봉한 상품」)
 const isOpened = (q: Pick<QueueItem, "openingStartedAt" | "status"> | undefined) =>
   !!q && (q.openingStartedAt !== null || q.status === "OPENING" || q.status === "DONE");
+// 아직 개봉 순서를 기다리거나 개봉 중인 주문대기 품목(환불하면 카드를 취소한다)
+const isQueued = (q: Pick<QueueItem, "status"> | undefined) => !!q && (q.status === "WAITING" || q.status === "OPENING");
+
+// 부분 환불: 환불할 품목과 수량. 없으면 남은 품목 전부.
+export type RefundSelection = { orderItemId: string; quantity: number }[];
+
+const refundOrderInclude = {
+  items: { orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }] },
+  queueItems: true,
+  shipment: { select: { status: true } },
+  couponRedemption: { select: { benefit: true, itemDiscounts: true } },
+  refunds: { select: { itemsAmount: true, refundAmount: true, rewardReturn: true, rewardRevoke: true, rewardRevokeKind: true } },
+} satisfies Prisma.OrderInclude;
+type RefundOrderRow = Prisma.OrderGetPayload<{ include: typeof refundOrderInclude }>;
+
+// 고른 품목·수량을 검사하고 이번 환불을 계산한다(미리보기·환불 공통).
+// - 같은 품목을 두 번, 주문에 없는 품목, 남은 수량을 넘는 수량, 1 미만 → invalid_refund_items
+// - 개봉 순서를 기다리거나 개봉 중인 품목(주문대기 카드 1장 = 품목 전체)은 수량 일부만 환불할 수 없다 → queued_item_partial
+function planRefund(order: RefundOrderRow, o: { fault: RefundFault | null; returnFee: number; selection?: RefundSelection }) {
+  const remaining = new Map(order.items.map((i) => [i.id, i.quantity - i.refundedQuantity]));
+  const select = new Map<string, number>();
+  if (o.selection === undefined) {
+    for (const [id, left] of remaining) if (left > 0) select.set(id, left);
+  } else {
+    for (const s of o.selection) {
+      const left = remaining.get(s.orderItemId);
+      if (left === undefined || select.has(s.orderItemId) || !Number.isSafeInteger(s.quantity) || s.quantity < 1 || s.quantity > left) {
+        return { ok: false as const, reason: "invalid_refund_items" as const };
+      }
+      select.set(s.orderItemId, s.quantity);
+    }
+  }
+  // 고른 품목이 없으면 거절. 고르지 않았는데 남은 품목이 없으면(품목 없는 주문) 지금처럼 주문 전체 환불로 처리한다
+  if (select.size === 0 && o.selection !== undefined) return { ok: false as const, reason: "invalid_refund_items" as const };
+  const queueOf = (id: string) => order.queueItems.find((x) => x.orderItemId === id);
+  for (const [id, n] of select) if (isQueued(queueOf(id)) && n < (remaining.get(id) ?? 0)) return { ok: false as const, reason: "queued_item_partial" as const };
+  const calcItems: RefundCalcItem[] = order.items.map((i) => ({
+    id: i.id,
+    unitPrice: i.unitPrice,
+    quantity: i.quantity,
+    couponDiscount: itemCouponDiscount(order.couponRedemption, i.optionId),
+    opened: isOpened(queueOf(i.id)),
+    refundedQuantity: i.refundedQuantity,
+    select: select.get(i.id) ?? 0,
+  }));
+  const history = order.refunds.reduce((a, r) => ({ itemsAmount: a.itemsAmount + r.itemsAmount, cash: a.cash + r.refundAmount, rewardReturn: a.rewardReturn + r.rewardReturn }), { itemsAmount: 0, cash: 0, rewardReturn: 0 });
+  const shipped = order.shipment !== null;
+  const step = computeRefundStep({
+    items: calcItems,
+    // 배송비 무료 쿠폰을 썼으면 구매자가 낸 배송비는 0원(shop-coupons chargedShippingFee)
+    shippingFee: chargedShippingFee(order),
+    totalAmount: order.totalAmount,
+    shipped,
+    fault: o.fault,
+    returnFee: o.returnFee,
+    rewardUsed: order.rewardUsedAmount,
+    history,
+  });
+  const openedSelected = calcItems.filter((i) => i.select > 0 && i.opened).length;
+  return { ok: true as const, calcItems, step, shipped, openedSelected, history };
+}
+
+// 주문 적립 회수(이번 몫). 적립이 기록됐으면 회수 원장(AUTO) 또는 수동 확인(MANUAL), 배송 완료 적립이 아직 기록 전이면 적립 예정액에서 뺀다(pending).
+// 앞선 부분 환불의 pending 몫은 원래 적립 총액에 더해 비율을 계산한다.
+type EarnRevokePlan = { amount: number; kind: "ledger" | "manual" | "pending" | null; earn: { buyerMemberId: string; testMode: boolean } | null };
+async function planEarnRevoke(db: Tx | PrismaClient, sellerId: string, order: RefundOrderRow, calcItems: RefundCalcItem[], isFinal: boolean): Promise<EarnRevokePlan> {
+  const revokedBefore = order.refunds.reduce((a, r) => a + r.rewardRevoke, 0);
+  const pendingBefore = order.refunds.reduce((a, r) => a + (r.rewardRevokeKind === "pending" ? r.rewardRevoke : 0), 0);
+  const earn = await db.rewardLedger.findUnique({ where: { sellerId_idempotencyKey: { sellerId, idempotencyKey: `earn:${order.id}` } }, select: { amount: true, buyerMemberId: true, testMode: true } });
+  if (earn) {
+    const amount = earnRevokeStep({ earnTotal: earn.amount + pendingBefore, items: calcItems, isFinal, revokedBefore });
+    const policy = await db.rewardPolicy.findUnique({ where: { sellerId }, select: { revokeMode: true } });
+    return { amount, kind: amount > 0 ? (policy?.revokeMode === "MANUAL" ? "manual" : "ledger") : null, earn };
+  }
+  if (order.rewardEarnTiming === "ON_DELIVERY" && (order.rewardEarnAmount ?? 0) > 0) {
+    const amount = earnRevokeStep({ earnTotal: (order.rewardEarnAmount ?? 0) + pendingBefore, items: calcItems, isFinal, revokedBefore });
+    return { amount, kind: amount > 0 ? "pending" : null, earn: null };
+  }
+  return { amount: 0, kind: null, earn: null };
+}
+
+export type RefundPreviewItem = {
+  orderItemId: string;
+  productName: string;
+  optionName: string;
+  quantity: number;
+  refundedQuantity: number;
+  // 아직 환불하지 않은 수량
+  refundableQuantity: number;
+  opened: boolean;
+  // 개봉 순서를 기다리거나 개봉 중(수량 일부만 환불할 수 없다)
+  queued: boolean;
+  // 남은 수량 전부를 환불할 때의 품목 금액(쿠폰 배분 뺀 값)
+  refundableAmount: number;
+};
 
 export type RefundPreview = {
   shipped: boolean;
@@ -520,51 +632,94 @@ export type RefundPreview = {
   chargedShippingFee: number;
   openedItems: { orderItemId: string; amount: number }[];
   // 사유 주체별 환불액. blocked: 이 사유 주체로는 환불할 수 없다(refundOrder가 opened_items_unshipped로 막는다)
-  byFault: Record<RefundFault, { refundAmount: number; returnFeeDeducted: number; blocked: boolean }>;
+  // rewardReturn: 함께 돌려주는 적립금(현금 환불액에는 들어 있지 않음). itemsAmount·shippingRefunded: 이번에 돌려받는 상품 금액·배송비
+  byFault: Record<RefundFault, { refundAmount: number; returnFeeDeducted: number; rewardReturn: number; itemsAmount: number; shippingRefunded: number; blocked: boolean }>;
+  // 부분 환불: 품목별 남은 수량, 이번 환불이 주문 전체를 끝내는지, 이미 돌려준 현금 합
+  items: RefundPreviewItem[];
+  isFinal: boolean;
+  refundedAmount: number;
+  // 회수할 주문 적립(ledger: 회수 원장, manual: 판매자 수동 확인, pending: 아직 지급 전 적립 예정액에서 뺌, null: 없음)
+  rewardRevoke: { amount: number; kind: EarnRevokePlan["kind"] };
 };
 
-// 환불 미리보기(계산만, 상태 변경 없음). refundOrder와 같은 개봉 판정·반품 배송비·computeRefund를 쓴다.
-// 결제 완료 주문만 돌려주고, 그 밖에는 null.
+// 환불 미리보기(계산만, 상태 변경 없음). refundOrder와 같은 계산(planRefund)을 쓴다. 결제 완료 주문만 돌려주고, 그 밖에는 null.
 export async function previewRefund(db: PrismaClient, ctx: TenantContext, orderId: string): Promise<RefundPreview | null> {
+  const r = await previewRefundSelection(db, ctx, orderId);
+  return r.ok ? r.value : null;
+}
+
+// 고른 품목·수량으로 미리보기(SA-023 부분 환불). 잘못 고르면 refundOrder와 같은 거부 사유.
+export async function previewRefundSelection(
+  db: PrismaClient,
+  ctx: TenantContext,
+  orderId: string,
+  selection?: RefundSelection,
+): Promise<{ ok: true; value: RefundPreview } | { ok: false; reason: "not_found" | "invalid_refund_items" | "queued_item_partial" }> {
   requireSellerRead(ctx, "ORDER_SHIPPING");
-  const order = await db.order.findFirst({
-    where: { id: orderId, sellerId: ctx.sellerId, status: "PAID" },
-    include: { items: true, queueItems: true, shipment: { select: { status: true } }, couponRedemption: { select: { benefit: true, itemDiscounts: true } } },
-  });
-  if (!order) return null;
-  const shipped = order.shipment !== null;
-  const items = order.items.map((i) => ({
-    id: i.id,
-    unitPrice: i.unitPrice,
-    quantity: i.quantity,
-    couponDiscount: itemCouponDiscount(order.couponRedemption, i.optionId),
-    opened: isOpened(order.queueItems.find((x) => x.orderItemId === i.id)),
-  }));
+  const order = await db.order.findFirst({ where: { id: orderId, sellerId: ctx.sellerId, status: "PAID" }, include: refundOrderInclude });
+  if (!order) return { ok: false, reason: "not_found" };
   const returnFee = order.returnFeeSnapshot ?? (await getShippingPolicy(db, ctx.sellerId)).returnFee;
   const byFault = {} as RefundPreview["byFault"];
+  let base: Extract<ReturnType<typeof planRefund>, { ok: true }> | null = null;
   for (const fault of ["BUYER", "SELLER"] as const) {
-    const r = computeRefund({ items, shippingFee: chargedShippingFee(order), totalAmount: order.totalAmount, shipped, fault, returnFee });
-    byFault[fault] = { ...r, blocked: fault === "BUYER" && !shipped && items.some((i) => i.opened) };
+    const p = planRefund(order, { fault, returnFee, selection });
+    if (!p.ok) return p;
+    base = p;
+    const { refundAmount, returnFeeDeducted, rewardReturn, itemsAmount, shippingRefunded } = p.step;
+    byFault[fault] = { refundAmount, returnFeeDeducted, rewardReturn, itemsAmount, shippingRefunded, blocked: fault === "BUYER" && !p.shipped && p.openedSelected > 0 };
   }
+  const plan = base!;
+  const revoke = await planEarnRevoke(db, ctx.sellerId, order, plan.calcItems, plan.step.isFinal);
   return {
-    shipped,
-    chargedShippingFee: chargedShippingFee(order),
-    openedItems: items.filter((i) => i.opened).map((i) => ({ orderItemId: i.id, amount: i.unitPrice * i.quantity - i.couponDiscount })),
-    byFault,
+    ok: true,
+    value: {
+      shipped: plan.shipped,
+      chargedShippingFee: chargedShippingFee(order),
+      openedItems: plan.calcItems.filter((i) => i.opened).map((i) => ({ orderItemId: i.id, amount: i.unitPrice * i.quantity - i.couponDiscount })),
+      byFault,
+      items: order.items.map((i, k) => {
+        const c = plan.calcItems[k];
+        const q = order.queueItems.find((x) => x.orderItemId === i.id);
+        return {
+          orderItemId: i.id,
+          productName: i.productNameSnapshot,
+          optionName: i.optionNameSnapshot,
+          quantity: i.quantity,
+          refundedQuantity: i.refundedQuantity,
+          refundableQuantity: i.quantity - i.refundedQuantity,
+          opened: c.opened,
+          queued: isQueued(q),
+          refundableAmount: itemValue(c, i.quantity) - itemValue(c, i.refundedQuantity),
+        };
+      }),
+      isFinal: plan.step.isFinal,
+      refundedAmount: plan.history.cash,
+      rewardRevoke: { amount: revoke.amount, kind: revoke.kind },
+    },
   };
 }
 
-// 결제 완료 주문 환불: 결제 완료 → 환불. 주문 품목마다
+// 결제 완료 주문 환불(부분 환불 포함): 고른 품목·수량(없으면 남은 품목 전부)을 돌려준다. 남은 품목을 모두 돌려주는 환불이면 결제 완료 → 환불로 바꾼다.
+// 이번 환불로 다 돌려준 품목마다
 // - 연결된 주문대기가 「대기」·「개봉 중」이면 자동 취소
-// - 개봉 전(대기였거나 개봉 전에 취소됨)이면 재고 복구, 개봉을 시작했거나 완료했으면 복구 안 함
-// - 재고 부족으로 차감되지 않은 주문은 복구할 것 없음
-// 주문 상태를 원자적으로 바꾸므로 같은 주문을 두 번 환불하거나 재고를 두 번 복구하지 않는다.
-// 개봉을 시작했거나 마친 품목이 있어도 환불할 수 있지만(배송 사고·판매자 판단), confirmOpened가 있어야 한다.
+// - 발송 전이고 개봉 전이면 재고 복구(품목 단위, 판매자 설정). 수량 일부만 돌려준 품목은 다 돌려줄 때 한꺼번에 복구한다(그 전에 발송·반품되면 반품 회수가 복구)
+// 판매자 주문 잠금 아래에서 주문 행을 잡고 실시간 version을 확인하므로 같은 주문을 동시에 두 번 환불하지 않는다.
+// 개봉을 시작했거나 마친 품목을 고르면 confirmOpened가 있어야 한다.
 export async function refundOrder(
   db: PrismaClient,
   ctx: TenantContext,
   orderId: string,
-  opts: { reason?: string; expectedLiveVersion: number; confirmOpened?: boolean; fault?: RefundFault; expectedRefundAmount?: number; now?: Date },
+  opts: {
+    reason?: string;
+    expectedLiveVersion: number;
+    confirmOpened?: boolean;
+    fault?: RefundFault;
+    expectedRefundAmount?: number;
+    items?: RefundSelection;
+    // 구매자 환불 요청 승인(payments/refundRequest.ts): 그 요청이 진행 중이어야 하고, 같은 트랜잭션에서 승인으로 닫는다
+    refundRequestId?: string;
+    now?: Date;
+  },
 ): Promise<QueueResult<RefundOutcome>> {
   requireSellerPermission(ctx, "ORDER_SHIPPING");
   if (!opts.reason?.trim()) return { ok: false, reason: "reason_required" };
@@ -577,61 +732,102 @@ export async function refundOrder(
     // 잠금을 잡은 뒤 판매자 시계로 찍는다(now()는 트랜잭션 시작 시각이라 기다리는 사이 켠 설정·푼 제한보다 이를 수 있고,
     // DB 시계만 쓰면 같은 밀리초에 순서가 뒤집힐 수 있다).
     const now = opts.now ?? (await sellerEventClock(tx, ctx.sellerId));
-    const moved = await tx.order.updateMany({
-      where: { id: orderId, sellerId: ctx.sellerId, status: "PAID" },
-      data: { status: "REFUNDED", refundedAt: now },
-    });
-    if (moved.count !== 1) {
-      throw new Rejected((await tx.order.count({ where: { id: orderId, sellerId: ctx.sellerId } })) ? "invalid_transition" : "not_found");
-    }
-    const order = await tx.order.findUniqueOrThrow({ where: { id: orderId }, include: { items: true, queueItems: true, shipment: { select: { status: true } }, couponRedemption: { select: { benefit: true, itemDiscounts: true } } } });
+    // 주문 행 잠금(리뷰 적립 회수 등이 이 잠금 뒤 회원 → 리뷰 → 원장 순서로 잡는다)
+    const locked = await tx.$queryRaw<{ status: string }[]>`
+      SELECT "status"::text AS "status" FROM "Order" WHERE "id" = ${orderId}::uuid AND "sellerId" = ${ctx.sellerId}::uuid FOR NO KEY UPDATE`;
+    if (locked.length === 0) throw new Rejected("not_found");
+    if (locked[0].status !== "PAID") throw new Rejected("invalid_transition");
+    const order = await tx.order.findUniqueOrThrow({ where: { id: orderId }, include: refundOrderInclude });
     // 구매 확정한 주문은 바로 환불하지 않는다. 판매자가 구매 확정을 먼저 취소해야 한다(대표님 결정 2026-10-03, orders/delivery.ts unconfirmPurchase).
     if (order.purchaseConfirmedAt) throw new Rejected("purchase_confirmed");
+    const returnFee = order.returnFeeSnapshot ?? (await getShippingPolicy(tx, ctx.sellerId)).returnFee;
+    const refundFault = opts.fault ?? null;
+    const plan = planRefund(order, { fault: refundFault, returnFee, selection: opts.items });
+    if (!plan.ok) throw new Rejected(plan.reason);
     // 발송한 주문은 상품이 구매자에게 가 있으므로 재고를 되돌리지 않는다(회수는 판매자가 MANUAL로). 배송 기록은 그대로 둔다.
-    const shippedBeforeRefund = order.shipment !== null;
-    const openedItemCount = order.items.filter((i) => isOpened(order.queueItems.find((x) => x.orderItemId === i.id))).length;
-    // 트랜잭션을 되돌리므로 주문 상태도 결제 완료로 남는다
+    const shippedBeforeRefund = plan.shipped;
+    const openedItemCount = plan.openedSelected;
     if (openedItemCount > 0 && opts.confirmOpened !== true) throw new Rejected("opened_items_present");
     // 발송했거나 개봉한 품목이 있으면 환불액이 사유 주체(구매자·판매자 사정)에 따라 달라지므로 꼭 받는다
     if ((shippedBeforeRefund || openedItemCount > 0) && !opts.fault) throw new Rejected("fault_required");
-    const refundFault = opts.fault ?? null;
-    // 발송 전 주문에 개봉 품목이 있으면 구매자 사정 환불을 막는다. 개봉 품목 값을 안 돌려주면서 상품도 안 보내게 되기 때문
-    // (부분 환불 구조가 생길 때까지 임시, MASTER 결정 2026-10-03). 판매자 사정은 전액 환불.
+    // 발송 전 주문에서 개봉한 품목을 구매자 사정으로 고르면 막는다(그 품목 값을 안 돌려주면서 상품도 안 보내게 되기 때문, MASTER 결정 2026-10-03).
+    // 개봉하지 않은 품목만 골라 부분 환불하는 것은 된다(개봉한 품목은 그대로 보낸다). 판매자 사정은 돌려준다.
     if (!shippedBeforeRefund && openedItemCount > 0 && refundFault === "BUYER") throw new Rejected("opened_items_unshipped");
-    const returnFee = order.returnFeeSnapshot ?? (await getShippingPolicy(tx, ctx.sellerId)).returnFee;
-    const { refundAmount, returnFeeDeducted } = computeRefund({
-      items: order.items.map((i) => ({
-        unitPrice: i.unitPrice,
-        quantity: i.quantity,
-        couponDiscount: itemCouponDiscount(order.couponRedemption, i.optionId),
-        opened: isOpened(order.queueItems.find((x) => x.orderItemId === i.id)),
-      })),
-      // 배송비 무료 쿠폰을 썼으면 구매자가 낸 배송비는 0원(shop-coupons chargedShippingFee)
-      shippingFee: chargedShippingFee(order),
-      totalAmount: order.totalAmount,
-      shipped: shippedBeforeRefund,
-      fault: refundFault,
-      returnFee,
-    });
-    // 화면에서 확인받은 금액과 다르면(그사이 발송·개봉 등) 아무것도 바꾸지 않고 되돌린다
+    const { refundAmount, returnFeeDeducted, rewardReturn, isFinal } = plan.step;
+    // 화면에서 확인받은 금액과 다르면(그사이 발송·개봉·다른 부분 환불 등) 아무것도 바꾸지 않고 되돌린다
     if (opts.expectedRefundAmount !== undefined && opts.expectedRefundAmount !== refundAmount) throw new Rejected("refund_amount_changed");
-    await tx.order.update({ where: { id: orderId }, data: { refundAmount, refundFault, returnFeeDeducted } });
+
+    const seq = order.refunds.length + 1;
+    // 한 번에 주문 전체를 환불하면 지금까지와 같은 멱등 키, 나눠 환불하면 환불마다 다른 키
+    const single = seq === 1 && isFinal;
+    const keySuffix = single ? orderId : `${orderId}:${seq}`;
+    const revoke = await planEarnRevoke(tx, ctx.sellerId, order, plan.calcItems, isFinal);
+    const refund = await tx.orderRefund.create({
+      data: {
+        sellerId: ctx.sellerId,
+        orderId,
+        seq,
+        fault: refundFault,
+        reason,
+        items: plan.step.lines,
+        itemsAmount: plan.step.itemsAmount,
+        shippingRefunded: plan.step.shippingRefunded,
+        refundAmount,
+        returnFeeDeducted,
+        rewardReturn,
+        rewardRevoke: revoke.amount,
+        rewardRevokeKind: revoke.kind,
+        isFinal,
+        actorType: ctx.actorType,
+        actorId: ctx.actorId,
+        createdAt: now,
+      },
+    });
+    // 구매자 환불 요청: 승인으로 한 환불이면 그 요청을, 남은 품목을 모두 돌려준 환불이면 진행 중인 요청을 승인으로 닫는다
+    const settled = await settleRefundRequestsOnRefund(tx, {
+      sellerId: ctx.sellerId,
+      orderId,
+      refundId: refund.id,
+      isFinal,
+      requestId: opts.refundRequestId,
+      now,
+      actor: { actorType: ctx.actorType, actorId: ctx.actorId },
+    });
+    if (!settled) throw new Rejected("invalid_transition");
+    for (const l of plan.step.lines) await tx.orderItem.update({ where: { id: l.orderItemId }, data: { refundedQuantity: { increment: l.quantity } } });
+    await tx.order.update({
+      where: { id: orderId },
+      data: {
+        refundAmount: plan.history.cash + refundAmount,
+        refundFault,
+        returnFeeDeducted: order.refunds.length ? { increment: returnFeeDeducted } : returnFeeDeducted,
+        ...(isFinal ? { status: "REFUNDED" as const, refundedAt: now } : {}),
+        ...(revoke.kind === "pending" ? { rewardEarnAmount: { decrement: revoke.amount } } : {}),
+      },
+    });
     // 카드 결제 주문이면 환불액만큼 PG 취소 요청을 같은 트랜잭션에 남긴다(PG 호출은 커밋 뒤, payments/service.ts)
-    await requestPaymentCancel(tx, { sellerId: ctx.sellerId, orderId, amount: refundAmount, reason, idempotencyKey: `refund:${orderId}` });
+    await requestPaymentCancel(tx, { sellerId: ctx.sellerId, orderId, amount: refundAmount, reason, idempotencyKey: `refund:${keySuffix}` });
+    // 쓴 적립금 반환(payments/rewardUse.ts): 계산한 금액(현금 환불액에서 이미 뺀 몫)
+    await returnRewardForOrder(tx, { sellerId: ctx.sellerId, orderId, amount: rewardReturn, now, reason, idempotencyKey: `use_return:${keySuffix}` });
     // 결제 금액 전부를 돌려주면 전체 취소로 보고 쓴 쿠폰을 되돌린다. 일부만 돌려주면 되돌리지 않는다(MASTER 2026-10-04).
     // 개봉한 품목을 구매자 사정으로 남기는 환불은 금액이 결제 금액과 같아도 전체 취소가 아니다(Codex 4176403238).
-    const keepsItems = refundFault === "BUYER" && openedItemCount > 0;
-    if (refundAmount === order.totalAmount && !keepsItems) await restoreOrderCoupon(tx, { sellerId: ctx.sellerId, orderId, now, reason: "refund_full" });
-    await tx.orderStatusHistory.create({
-      data: { sellerId: ctx.sellerId, orderId, fromStatus: "PAID", toStatus: "REFUNDED", actorType: ctx.actorType, actorId: ctx.actorId, reason, createdAt: now },
-    });
+    const ordered = plan.calcItems.reduce((a, i) => a + itemValue(i, i.quantity), 0);
+    const keepsItems = plan.history.itemsAmount + plan.step.itemsAmount < ordered;
+    if (isFinal && plan.history.cash + refundAmount === order.totalAmount && !keepsItems) await restoreOrderCoupon(tx, { sellerId: ctx.sellerId, orderId, now, reason: "refund_full" });
+    if (isFinal) {
+      await tx.orderStatusHistory.create({
+        data: { sellerId: ctx.sellerId, orderId, fromStatus: "PAID", toStatus: "REFUNDED", actorType: ctx.actorType, actorId: ctx.actorId, reason, createdAt: now },
+      });
+    }
 
+    // 이번 환불로 다 돌려준 품목
+    const completed = plan.calcItems.filter((i) => i.select > 0 && i.refundedQuantity + i.select >= i.quantity);
     const restockedItemIds: string[] = [];
     const restoreCandidateIds: string[] = [];
     const cancelledQueueItemIds: string[] = [];
-    for (const item of order.items) {
+    for (const item of completed) {
       const q = order.queueItems.find((x) => x.orderItemId === item.id);
-      if (q && (q.status === "WAITING" || q.status === "OPENING")) {
+      if (q && isQueued(q)) {
         await tx.queueItem.update({
           where: { id: q.id },
           data: { status: "CANCELLED", cancelledAt: now, cancelReason: `환불: ${reason}`, version: { increment: 1 } },
@@ -646,64 +842,88 @@ export async function refundOrder(
       if (q && isOpened(q)) continue;
       restoreCandidateIds.push(item.id);
     }
-    restockedItemIds.push(
-      ...(await restoreOrderStock(tx, {
-        sellerId: ctx.sellerId,
-        orderId,
-        reason: "REFUND",
-        now,
-        actor: { actorType: ctx.actorType, actorId: ctx.actorId },
-        itemIds: restoreCandidateIds,
-      })),
-    );
+    if (restoreCandidateIds.length) {
+      restockedItemIds.push(
+        ...(await restoreOrderStock(tx, {
+          sellerId: ctx.sellerId,
+          orderId,
+          reason: "REFUND",
+          now,
+          actor: { actorType: ctx.actorType, actorId: ctx.actorId },
+          itemIds: restoreCandidateIds,
+        })),
+      );
+    }
 
-    // 적립금 회수(지급 기록이 있을 때만, 한 번만). 회수 방식이 MANUAL이면 자동 기록하지 않는다.
-    const earn = await tx.rewardLedger.findUnique({ where: { sellerId_idempotencyKey: { sellerId: ctx.sellerId, idempotencyKey: `earn:${orderId}` } } });
-    const policy = earn ? await tx.rewardPolicy.findUnique({ where: { sellerId: ctx.sellerId }, select: { revokeMode: true } }) : null;
-    const rewardRevoke: RewardRevokeOutcome = !earn ? "none" : policy?.revokeMode === "MANUAL" ? "manual_review" : "revoked";
-    if (earn && rewardRevoke === "revoked") {
+    // 주문 적립 회수(이번 몫, 한 번만). 회수 방식이 MANUAL이면 자동 기록하지 않는다(수동 확인 대기). 기록 전 적립 예정액은 위에서 줄였다.
+    const rewardRevoke: RewardRevokeOutcome = revoke.kind === "ledger" ? "revoked" : revoke.kind === "manual" ? "manual_review" : "none";
+    if (revoke.kind === "ledger" && revoke.earn) {
       // 탈퇴한 회원이면 FAILED(member_withdrawn)로 남는다(잔액은 탈퇴 때 이미 소멸)
       await createPendingRewardLedger(tx, {
         sellerId: ctx.sellerId,
-        buyerMemberId: earn.buyerMemberId,
+        buyerMemberId: revoke.earn.buyerMemberId,
         orderId,
         type: "REVOKE",
-        amount: -earn.amount,
-        testMode: earn.testMode,
-        idempotencyKey: `revoke:${orderId}`,
+        amount: -revoke.amount,
+        testMode: revoke.earn.testMode,
+        idempotencyKey: `revoke:${keySuffix}`,
         createdAt: now,
       });
     }
-    // 이 주문의 상품 리뷰 적립도 같은 회수 방식으로 회수한다(주문 잠금 뒤 회원 → 리뷰 → 원장, product-reviews/service.ts)
-    const reviewRewardRevoke = await revokeReviewRewardsForOrder(tx, ctx.sellerId, orderId, now);
+    // 다 돌려준 품목의 상품 리뷰 적립도 같은 회수 방식으로 회수한다(주문 잠금 뒤 회원 → 리뷰 → 원장, product-reviews/service.ts)
+    const reviewRewardRevoke = await revokeReviewRewardsForOrder(tx, ctx.sellerId, orderId, now, isFinal ? undefined : completed.map((i) => i.id));
+    // 주문 전체 환불이면 이 주문의 진행 중인 교환·반품 신청을 닫는다(shop-returns: 반품 회수 완료분은 완료, 그 밖은 철회)
+    if (isFinal) await closeReturnsOnRefund(tx, { sellerId: ctx.sellerId, orderId, refundAmount, now, actor: { actorType: ctx.actorType, actorId: ctx.actorId } });
     await writeAudit(tx, {
       actorType: ctx.actorType,
       actorId: ctx.actorId,
       sellerId: ctx.sellerId,
-      action: "order.refund",
+      action: isFinal ? "order.refund" : "order.refund_partial",
       targetType: "Order",
       targetId: orderId,
       reason,
       before: { status: "PAID" },
       after: {
-        status: "REFUNDED",
+        status: isFinal ? "REFUNDED" : "PAID",
+        refundId: refund.id,
+        seq,
+        items: plan.step.lines,
         restockedItems: restockedItemIds.length,
         cancelledQueueItems: cancelledQueueItemIds.length,
         openedItems: openedItemCount,
         rewardRevoke,
+        rewardRevokeAmount: revoke.amount,
         reviewRewardRevoke,
         shippedBeforeRefund,
         refundAmount,
         refundFault,
         returnFeeDeducted,
+        rewardReturn,
         ...(order.shipment ? { shipmentStatus: order.shipment.status } : {}),
       },
     });
-    // 「결제 후 취소 5회 → 30일」(판매자 설정, 기본 꺼짐). 맨 앞에서 잡은 주문 생성 잠금 아래에서 센다.
-    await maybeRestrict(tx, ctx.sellerId, order.buyerMemberId, now, "paid_cancel");
-    // 끝난 날이 바뀌었으니 보관 만료일을 다시 계산하고(구매 확정 뒤 환불 포함), 탈퇴한 회원의 주문이면 분리 보관 표시를 단다(buyers/legalHold.ts)
-    await refreshOrderRetention(tx, ctx.sellerId, now, { orderId });
-    return { orderId, restockedItemIds, cancelledQueueItemIds, openedItemCount, rewardRevoke, reviewRewardRevoke, refundAmount, refundFault, returnFeeDeducted };
+    if (isFinal) {
+      // 「결제 후 취소 5회 → 30일」(판매자 설정, 기본 꺼짐). 맨 앞에서 잡은 주문 생성 잠금 아래에서 센다.
+      await maybeRestrict(tx, ctx.sellerId, order.buyerMemberId, now, "paid_cancel");
+      // 끝난 날이 바뀌었으니 보관 만료일을 다시 계산하고(구매 확정 뒤 환불 포함), 탈퇴한 회원의 주문이면 분리 보관 표시를 단다(buyers/legalHold.ts)
+      await refreshOrderRetention(tx, ctx.sellerId, now, { orderId });
+    }
+    return {
+      orderId,
+      restockedItemIds,
+      cancelledQueueItemIds,
+      openedItemCount,
+      rewardRevoke,
+      reviewRewardRevoke,
+      refundAmount,
+      refundFault,
+      returnFeeDeducted,
+      refundId: refund.id,
+      seq,
+      isFinal,
+      rewardReturn,
+      rewardRevokeAmount: revoke.amount,
+    };
   });
 }
 

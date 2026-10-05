@@ -107,6 +107,9 @@ export default function OrderListPage() {
             <h1 className="t-t3">주문</h1>
             <span className="t-l2 c-alt">결제 완료된 주문만 주문대기에 올라갑니다. 미결제 주문은 「결제 대기」로 표시됩니다.</span>
           </div>
+          <Link className="btn btn-out" href="/seller/orders/refund-requests">
+            환불 요청
+          </Link>
         </div>
 
         <div className="card" style={{ overflow: "visible" }}>
@@ -211,7 +214,7 @@ export default function OrderListPage() {
                     <th>접수 시각</th>
                     <th>구매자</th>
                     <th>상품</th>
-                    <th className="r">금액</th>
+                    <th>금액</th>
                     <th>결제</th>
                     <th>배송</th>
                     <th style={{ width: 120 }} aria-label="작업" />
@@ -227,8 +230,8 @@ export default function OrderListPage() {
                         <div className="t-c1 c-alt num">{listDate(o.createdAt)}</div>
                       </td>
                       <td className="fw6">{o.buyer.broadcastNickname}</td>
-                      <td className="ell ord-product">{itemSummaryText(o.itemSummary)}</td>
-                      <td className="r num">{won(o.totalAmount)}</td>
+                      <td className="ell ord-product col-text">{itemSummaryText(o.itemSummary)}</td>
+                      <td className="num">{won(o.totalAmount)}</td>
                       <td>
                         <span className={`bdg ${STATUS_BADGE[o.status].cls}`}>{STATUS_BADGE[o.status].label}</span>
                       </td>

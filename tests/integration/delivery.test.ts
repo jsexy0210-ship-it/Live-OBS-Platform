@@ -357,7 +357,7 @@ describe("설정 API", () => {
     expect(await (await get(cookie)).json()).toEqual({ policy: { earnTiming: "ON_DELIVERY" } });
     expect((await put(cookie, { earnTiming: "ON_PAYMENT" })).status).toBe(200);
     expect(await (await get(cookie)).json()).toEqual({ policy: { earnTiming: "ON_PAYMENT" } });
-    expect(await db.auditLog.findFirstOrThrow({ where: { action: "reward_policy.earn_timing", sellerId: seller.id } })).toMatchObject({
+    expect(await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "reward_policy.earn_timing", sellerId: seller.id } })).toMatchObject({
       before: { earnTiming: "ON_DELIVERY" },
       after: { earnTiming: "ON_PAYMENT" },
     });
@@ -408,7 +408,7 @@ describe("구매 확정 취소 뒤 환불", () => {
     expect(un.status).toBe(200);
     expect(await un.json()).toEqual({ purchaseUnconfirmedAt: expect.any(String) });
     expect(await db.order.findUniqueOrThrow({ where: { id } })).toMatchObject({ purchaseConfirmedAt: null, purchaseUnconfirmedAt: expect.any(Date) });
-    expect(await db.auditLog.findFirstOrThrow({ where: { action: "order.purchase_unconfirm", targetId: id } })).toMatchObject({
+    expect(await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "order.purchase_unconfirm", targetId: id } })).toMatchObject({
       actorId: s.owner.id,
       reason: "구매자 불량 문의",
       before: { purchaseConfirmedAt: expect.any(String) },
@@ -498,7 +498,7 @@ describe("구매 확정 취소 뒤 환불", () => {
     expect(ok.status).toBe(200);
     expect(await ok.json()).toEqual({ purchaseConfirmedAt: expect.any(String) });
     expect(await db.order.findUniqueOrThrow({ where: { id } })).toMatchObject({ purchaseConfirmedAt: expect.any(Date), purchaseUnconfirmedAt: null });
-    expect(await db.auditLog.findFirstOrThrow({ where: { action: "order.purchase_reconfirm", targetId: id } })).toMatchObject({
+    expect(await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "order.purchase_reconfirm", targetId: id } })).toMatchObject({
       actorId: s.owner.id,
       before: { purchaseUnconfirmedAt: expect.any(String) },
       after: { purchaseConfirmedAt: expect.any(String) },

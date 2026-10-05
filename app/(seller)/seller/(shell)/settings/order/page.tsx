@@ -50,6 +50,8 @@ export default function OrderSettingsPage() {
   const [deliverDays, setDeliverDays] = useState("");
   const [confirmOn, setConfirmOn] = useState(true);
   const [confirmDays, setConfirmDays] = useState("");
+  // 배송 자동 조회 단가(발송 충전 API, 대표자만 읽을 수 있다). 못 읽으면 단가 없이 안내만 한다
+  const [trackingFee, setTrackingFee] = useState<string | null>(null);
   const [showError, setShowError] = useState(false);
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -79,6 +81,14 @@ export default function OrderSettingsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+  useEffect(() => {
+    void api<{ chargingEnabled: boolean; prices: { channel: string; unitPrice: number }[] }>("/api/seller/message-balance").then((r) => {
+      if (!r.ok) return;
+      const p = r.data.prices.find((x) => x.channel === "DELIVERY_TRACKING");
+      // 충전 기능이 꺼져 있고 0원이면 아직 정해지지 않은 값이다
+      setTrackingFee(!p || (!r.data.chargingEnabled && p.unitPrice === 0) ? "[확정 전]" : p.unitPrice.toLocaleString("ko-KR"));
+    });
+  }, []);
 
   const n = parseAmount(due);
   const hours = n === null ? null : unit === "day" ? n * 24 : n;
@@ -298,7 +308,23 @@ export default function OrderSettingsPage() {
   <FormSection title="배송 완료 · 구매 확정">
                   <FormRow
                     label="자동 배송 완료"
-                    help={deliverOn ? "송장을 올린 뒤 배송 중 상태로 이 기간이 지나면 자동으로 배송 완료로 변경합니다 · 기본 7일" : "꺼 두면 배송 완료는 직접 변경합니다"}
+                    help={
+                      deliverOn ? (
+                        <>
+                          송장을 올린 뒤 배송 중 상태로 이 기간이 지나면 자동으로 배송 완료로 변경합니다 · 기본 7일
+                          <br />
+                          <span data-testid="tracking-fee">
+                            켜면 송장 1건 조회당 {trackingFee === null ? "비용이" : `${trackingFee}원이`} 발송 충전 잔액에서 차감됩니다 · 단가는 발송 충전에서 봅니다
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          꺼 두면 배송 완료는 직접 변경합니다
+                          <br />
+                          <span data-testid="tracking-fee">끄면 구매자에게 택배사 조회 페이지 링크만 보여 드리며 비용이 없습니다</span>
+                        </>
+                      )
+                    }
                   >
                     {sw("배송 중 일정 기간이 지나면 자동으로 배송 완료", deliverOn, () => setDeliverOn((v) => !v))}
                   </FormRow>

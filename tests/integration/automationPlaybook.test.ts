@@ -104,7 +104,7 @@ describe("작업서 우선 실행", () => {
     expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "playbook_version_changed", playbookActions: 0, plannerCalls: 0 });
     expect(rt.browser.performed).toHaveLength(0);
     expect(rt.obs.performed).toHaveLength(0);
-    expect(await db.automationPayment.findFirstOrThrow({ where: { job: { id: a.jobId } } })).toMatchObject({ status: "REFUND_PENDING", refundReason: "playbook_version_changed" });
+    expect(await db.automationPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { job: { id: a.jobId } } })).toMatchObject({ status: "REFUND_PENDING", refundReason: "playbook_version_changed" });
   });
 
   it("작업 조회 응답에 작업서·플랫폼 이름이 나가지 않는다", async () => {

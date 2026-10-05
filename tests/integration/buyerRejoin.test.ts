@@ -56,7 +56,7 @@ async function shop() {
   const signup = async (person: Partial<Record<keyof typeof IDV_INPUT, string>> = {}, loginId = "buyer01@example.com", nickname = "카드왕", extra: Record<string, unknown> = {}) =>
     signupWith(await verified(person, extra), loginId, nickname);
   const withdraw = async (loginId = "buyer01@example.com") => {
-    const m = await db.buyerMember.findFirstOrThrow({ where: { sellerId: seller.id, loginId, deletedAt: null } });
+    const m = await db.buyerMember.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: seller.id, loginId, deletedAt: null } });
     expect(await withdrawBuyer(db, { sellerId: seller.id, buyerMemberId: m.id }, { password: "pw-123456" })).toEqual({ ok: true });
     return m;
   };
@@ -88,7 +88,7 @@ describe("구매자 재가입 제한", () => {
     const r = await s.setPolicy({ rejoinRestrictionEnabled: true, rejoinRestrictionDays: 7 });
     expect(r.status).toBe(200);
     expect(await r.json()).toEqual({ policy: { rejoinRestrictionEnabled: true, rejoinRestrictionDays: 7 } });
-    expect(await db.auditLog.findFirstOrThrow({ where: { action: "member_policy.rejoin_restriction", sellerId: s.seller.id } })).toMatchObject({
+    expect(await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "member_policy.rejoin_restriction", sellerId: s.seller.id } })).toMatchObject({
       before: { rejoinRestrictionEnabled: false, rejoinRestrictionDays: 30 },
       after: { rejoinRestrictionEnabled: true, rejoinRestrictionDays: 7, purgedRejoinBlocks: 0 },
     });
@@ -119,7 +119,7 @@ describe("구매자 재가입 제한", () => {
     expect(blocks[0].expiresAt.getTime()).toBeLessThan(Date.now() + 7 * DAY + 1000);
     // 회원 행은 지금처럼 비식별(CI 해시도 비움)
     expect(await db.buyerMember.findUniqueOrThrow({ where: { id: m.id } })).toMatchObject({ ciHash: "", name: "탈퇴한 회원" });
-    expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.withdraw", actorId: m.id } })).toMatchObject({ after: { rejoinBlockedUntil: blocks[0].expiresAt.toISOString() } });
+    expect(await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "buyer.withdraw", actorId: m.id } })).toMatchObject({ after: { rejoinBlockedUntil: blocks[0].expiresAt.toISOString() } });
 
     const again = await s.signup({}, "buyer02@example.com", "다른닉");
     expect(again.status).toBe(BUYER_SIGNUP_STATUS.rejoin_restricted);
@@ -173,9 +173,9 @@ describe("구매자 재가입 제한", () => {
     const t = await shop();
     await t.setPolicy({ rejoinRestrictionEnabled: true, rejoinRestrictionDays: 90 });
     expect((await t.signup()).status).toBe(201);
-    const m = await db.buyerMember.findFirstOrThrow({ where: { sellerId: t.seller.id } });
+    const m = await db.buyerMember.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: t.seller.id } });
     expect(m).toMatchObject({ rejoinRestrictionDaysAgreed: 90, rejoinRetentionAgreedAt: expect.any(Date), rejoinRetentionVersion: REJOIN_RETENTION_CONSENT_VERSION });
-    expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.signup", actorId: m.id } })).toMatchObject({
+    expect(await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "buyer.signup", actorId: m.id } })).toMatchObject({
       after: { agreedRejoinRetention: true, rejoinRetentionVersion: REJOIN_RETENTION_CONSENT_VERSION, rejoinRestrictionDays: 90 },
     });
     await t.withdraw();
@@ -186,7 +186,7 @@ describe("구매자 재가입 제한", () => {
     // 끈 쇼핑몰은 동의해도 남기지 않는다
     const off = await shop();
     expect((await off.signup({}, "b@example.com", "끈곳")).status).toBe(201);
-    expect(await db.buyerMember.findFirstOrThrow({ where: { sellerId: off.seller.id } })).toMatchObject({ rejoinRestrictionDaysAgreed: null, rejoinRetentionVersion: null });
+    expect(await db.buyerMember.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: off.seller.id } })).toMatchObject({ rejoinRestrictionDaysAgreed: null, rejoinRetentionVersion: null });
   });
 
   it("보관에 동의한 경우 본인확인 시작 때 보여 준 기간·문서 버전이 지금과 다르면 409(rejoin_policy_changed·consent_outdated)로 시작하지 않고, 같으면 그 기간으로 저장한다. 끈 쇼핑몰은 보지 않는다", async () => {
@@ -207,7 +207,7 @@ describe("구매자 재가입 제한", () => {
     // 시작하지 않았으니 본인확인 기록·문자도 없다
     expect(await db.identityVerification.count({ where: { sellerId: s.seller.id } })).toBe(0);
     expect((await s.signup({}, "buyer01@example.com", "카드왕", { rejoinRestrictionDaysShown: 365 })).status).toBe(201);
-    expect((await db.buyerMember.findFirstOrThrow({ where: { sellerId: s.seller.id } })).rejoinRestrictionDaysAgreed).toBe(365);
+    expect((await db.buyerMember.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id } })).rejoinRestrictionDaysAgreed).toBe(365);
 
     const off = await shop();
     expect((await off.signup({}, "o@example.com", "끔", { rejoinRestrictionDaysShown: 999, rejoinRetentionVersion: "old" })).status).toBe(201);
@@ -228,7 +228,7 @@ describe("구매자 재가입 제한", () => {
   it("가입 때 제한이 꺼져 있었던 회원은 나중에 켠 뒤 탈퇴해도 CI 해시를 남기지 않고 바로 다시 가입된다", async () => {
     const s = await shop();
     expect((await s.signup()).status).toBe(201);
-    expect((await db.buyerMember.findFirstOrThrow({ where: { sellerId: s.seller.id } })).rejoinRestrictionDaysAgreed).toBeNull();
+    expect((await db.buyerMember.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id } })).rejoinRestrictionDaysAgreed).toBeNull();
     await s.setPolicy({ rejoinRestrictionEnabled: true, rejoinRestrictionDays: 30 });
     await s.withdraw();
     expect(await db.buyerRejoinBlock.count()).toBe(0);
@@ -239,7 +239,7 @@ describe("구매자 재가입 제한", () => {
     const s = await shop();
     await s.setPolicy({ rejoinRestrictionEnabled: true, rejoinRestrictionDays: 90 });
     expect((await s.signup()).status).toBe(201);
-    expect((await db.buyerMember.findFirstOrThrow({ where: { sellerId: s.seller.id, loginId: "buyer01@example.com" } })).rejoinRestrictionDaysAgreed).toBe(90);
+    expect((await db.buyerMember.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id, loginId: "buyer01@example.com" } })).rejoinRestrictionDaysAgreed).toBe(90);
     expect((await s.signup({ name: "김둘", birth7: "9001011", phone: "01022223333" }, "two@example.com", "둘")).status).toBe(201);
     // 가입 뒤 더 길게 바꿔도 동의한 90일까지만
     await s.setPolicy({ rejoinRestrictionEnabled: true, rejoinRestrictionDays: 180 });
@@ -287,7 +287,7 @@ describe("구매자 재가입 제한", () => {
     expect((await s.signupWith({ verificationId: "not-a-uuid", cookie: v.cookie })).status).toBe(400);
     expect((await s.signupWith({ verificationId: v.verificationId, cookie: "" })).status).toBe(400);
     expect((await s.signupWith({ verificationId: "00000000-0000-4000-8000-000000000000", cookie: v.cookie })).status).toBe(400);
-    expect((await db.buyerRejoinBlock.findMany()).map((b) => b.ciHash)).toEqual(["expired-a"]);
+    expect((await db.buyerRejoinBlock.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }] })).map((b) => b.ciHash)).toEqual(["expired-a"]);
     // 본인확인을 마친 요청에서만 지운다
     expect((await s.signupWith(v)).status).toBe(201);
     expect(await db.buyerRejoinBlock.count()).toBe(0);
@@ -343,22 +343,22 @@ describe("재가입 제한 정보 보관 동의 철회(GET·PUT /api/shop/{slug}
     const before = await get(s.seller.slug, cookie);
     expect(before.status).toBe(200);
     expect(await before.json()).toMatchObject({ agreed: true, version: REJOIN_RETENTION_CONSENT_VERSION, restrictionDays: 7, withdrawnAt: null });
-    const agreedMember = await db.buyerMember.findFirstOrThrow({ where: { sellerId: s.seller.id, deletedAt: null } });
+    const agreedMember = await db.buyerMember.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id, deletedAt: null } });
     expect(agreedMember.signupConsent).toMatchObject({ rejoinRetention: { version: REJOIN_RETENTION_CONSENT_VERSION, days: 7 } });
-    expect((await db.identityVerification.findFirstOrThrow({ where: { subjectId: agreedMember.id } })).signupConsent).toMatchObject({ rejoinRetention: { days: 7 } });
+    expect((await db.identityVerification.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { subjectId: agreedMember.id } })).signupConsent).toMatchObject({ rejoinRetention: { days: 7 } });
 
     const res = await put(s.seller.slug, { agreed: false }, cookie);
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toMatchObject({ agreed: false, agreedAt: null, version: null, restrictionDays: null });
     expect(body.withdrawnAt).toEqual(expect.any(String));
-    const m = await db.buyerMember.findFirstOrThrow({ where: { sellerId: s.seller.id, deletedAt: null } });
+    const m = await db.buyerMember.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id, deletedAt: null } });
     expect(m).toMatchObject({ rejoinRestrictionDaysAgreed: null, rejoinRetentionAgreedAt: null, rejoinRetentionVersion: null });
     // 가입 동의 기록에 복사된 보관 동의(버전·기간)도 지우고, 필수 동의 칸은 남긴다(#177 Codex P1)
     expect(m.signupConsent).toMatchObject({ rejoinRetention: null, termsVersion: expect.any(String), privacyVersion: expect.any(String) });
-    const idv = await db.identityVerification.findFirstOrThrow({ where: { subjectId: m.id } });
+    const idv = await db.identityVerification.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { subjectId: m.id } });
     expect(idv.signupConsent).toMatchObject({ rejoinRetention: null, termsVersion: expect.any(String) });
-    expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.rejoin_retention_consent.withdraw", actorId: m.id } })).toMatchObject({
+    expect(await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "buyer.rejoin_retention_consent.withdraw", actorId: m.id } })).toMatchObject({
       sellerId: s.seller.id,
       before: { agreed: true, version: REJOIN_RETENTION_CONSENT_VERSION, restrictionDays: 7 },
       after: { agreed: false },
@@ -398,7 +398,7 @@ describe("재가입 제한 정보 보관 동의 철회(GET·PUT /api/shop/{slug}
     const s = await shop();
     await s.setPolicy({ rejoinRestrictionEnabled: true, rejoinRestrictionDays: 7 });
     expect((await s.signup()).status).toBe(201);
-    const m = await db.buyerMember.findFirstOrThrow({ where: { sellerId: s.seller.id, deletedAt: null } });
+    const m = await db.buyerMember.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id, deletedAt: null } });
     // 탈퇴가 회원을 읽은 뒤(첫 트랜잭션 직전) 철회가 끝나게 한다
     let raced = false;
     const racing = new Proxy(db, {

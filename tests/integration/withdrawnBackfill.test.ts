@@ -86,7 +86,7 @@ describe("이미 탈퇴한 회원 정리 마이그레이션", () => {
     expect((await db.queueItem.findUniqueOrThrow({ where: { id: queue.id } })).nicknameSnapshot).toBe("탈퇴한 회원");
     expect((await db.hitCard.findUniqueOrThrow({ where: { id: hit.id } })).nicknameSnapshot).toBe("탈퇴한 회원");
     expect((await db.hitCard.findUniqueOrThrow({ where: { id: liveHit.id } })).nicknameSnapshot).toBe("살아있음");
-    expect((await db.buyerSession.findMany()).map((x) => x.tokenHash)).toEqual(["t-live"]);
+    expect((await db.buyerSession.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }] })).map((x) => x.tokenHash)).toEqual(["t-live"]);
     expect(await db.buyerPurchaseRestriction.count()).toBe(0);
   });
 });

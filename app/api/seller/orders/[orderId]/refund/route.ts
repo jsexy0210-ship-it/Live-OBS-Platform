@@ -3,12 +3,20 @@ import { requireSeller } from "../../../../../../lib/server/authz/guards";
 import { prisma } from "../../../../../../lib/server/db";
 import { mutation, queueRejectionStatus, readJson, sessionToken } from "../../../../../../lib/server/http/route";
 import { orderErrorBody } from "../../../../../../lib/server/orders/messages";
+import { parseRefundSelection } from "../../../../../../lib/server/payments/refundSelection";
 import { refundOrder } from "../../../../../../lib/server/queue/service";
 import { kickPaymentCancels } from "../../../../../../lib/server/payments/worker";
 
 // 화면에 바로 보여 줄 안내 문구가 있는 환불 거부 사유
-type RefundMessageCode = "fault_required" | "opened_items_present" | "opened_items_unshipped" | "purchase_confirmed";
-const REFUND_MESSAGE_CODES = new Set<string>(["fault_required", "opened_items_present", "opened_items_unshipped", "purchase_confirmed"] satisfies RefundMessageCode[]);
+type RefundMessageCode = "fault_required" | "opened_items_present" | "opened_items_unshipped" | "purchase_confirmed" | "invalid_refund_items" | "queued_item_partial";
+const REFUND_MESSAGE_CODES = new Set<string>([
+  "fault_required",
+  "opened_items_present",
+  "opened_items_unshipped",
+  "purchase_confirmed",
+  "invalid_refund_items",
+  "queued_item_partial",
+] satisfies RefundMessageCode[]);
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -18,22 +26,27 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // 구매 확정한 주문은 409 purchase_confirmed(먼저 POST …/unconfirm으로 구매 확정을 취소).
 // expectedRefundAmount: 화면에서 확인받은 환불액(필수, 0 이상 정수. 없으면 400). 서버가 계산한 금액과 다르면 409 refund_amount_changed로
 // 아무것도 바꾸지 않는다(되돌릴 수 없는 환불이라 확인한 금액으로만 실행, MASTER 결정 2026-10-03).
+// items?: [{ orderItemId, quantity }](부분 환불, 최대 100개). 없으면 남은 품목 전부. 잘못 고르면 400 invalid_refund_items,
+// 개봉 대기·개봉 중 품목의 수량 일부는 409 queued_item_partial. 남은 품목을 모두 돌려주는 환불이면 주문이 환불로 바뀐다(응답 isFinal).
 export const POST = mutation(async (req: Request, { params }: { params: Promise<{ orderId: string }> }) => {
   // 잠금 중에도 이미 받은 주문은 처리할 수 있다(대표님 결정 2026-10-02, PRODUCT_SCOPE 「잠금 중 허용 범위」).
   const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { allowUnpaid: true, feature: "ORDER_FOLLOWUP" });
   const { orderId } = await params;
   if (!UUID.test(orderId)) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  const body = await readJson<{ reason: string; expectedVersion: number; confirmOpened: boolean; fault: unknown; expectedRefundAmount: unknown }>(req);
+  const body = await readJson<{ reason: string; expectedVersion: number; confirmOpened: boolean; fault: unknown; expectedRefundAmount: unknown; items: unknown }>(req);
   if (!Number.isInteger(body.expectedVersion)) return NextResponse.json({ error: "bad_request" }, { status: 400 });
   if (body.fault != null && body.fault !== "BUYER" && body.fault !== "SELLER") return NextResponse.json({ error: "bad_request" }, { status: 400 });
   const amount = body.expectedRefundAmount;
   if (!(Number.isSafeInteger(amount) && (amount as number) >= 0)) return NextResponse.json({ error: "bad_request" }, { status: 400 });
+  const items = parseRefundSelection(body.items);
+  if (items === null) return NextResponse.json(orderErrorBody("invalid_refund_items", "formal"), { status: 400 });
   const result = await refundOrder(prisma, ctx, orderId, {
     reason: typeof body.reason === "string" ? body.reason.slice(0, 200) : undefined,
     expectedLiveVersion: body.expectedVersion as number,
     confirmOpened: body.confirmOpened === true,
     fault: body.fault ?? undefined,
     expectedRefundAmount: amount as number,
+    items,
   });
   if (!result.ok) {
     const status = queueRejectionStatus(result.reason);

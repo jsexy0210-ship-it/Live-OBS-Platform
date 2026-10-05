@@ -281,7 +281,7 @@ describe("공개·구매자 경로: 스토어 운영 권한이 없는 쇼핑몰(
       orders: await db.order.count(),
       buyers: await db.buyerMember.count(),
       idv: await db.identityVerification.count(),
-      idvSends: (await db.identityVerification.findMany({ select: { sendCount: true, otpFailCount: true, useAttemptCount: true, status: true } })).map((v) => JSON.stringify(v)).join(),
+      idvSends: (await db.identityVerification.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { sendCount: true, otpFailCount: true, useAttemptCount: true, status: true } })).map((v) => JSON.stringify(v)).join(),
       audits: await db.auditLog.count(),
     });
     const before = await counts();

@@ -6,6 +6,7 @@ import { cleanText } from "../text/clean";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 import { refreshOrderRetention } from "../buyers/legalHold";
 import { restoreOrderCoupon } from "../shop-coupons/service";
+import { returnRewardForOrder } from "../payments/rewardUse";
 
 // 무통장 입금 기한·미입금 자동 취소·자동 구매 제한(PRODUCT_SCOPE 「무통장 입금·구매 제한 기본값」, MASTER 결정).
 // - 입금 기한: 주문 시각 + 판매자 설정(기본 사용·10일, 1시간~30일, 끌 수 있음). 주문할 때 Order.paymentDueAt에 고정한다.
@@ -189,6 +190,8 @@ export async function cancelOverdueOrders(db: PrismaClient, opts: { now?: Date; 
         // 주문 때 뺀 재고(ORDER 상품)가 있으면 되돌린다(판매자 설정 restockOnCancel)
         await restoreOrderStock(tx, { sellerId: o.sellerId, orderId: o.id, reason: "CANCEL", now, actor: { actorType: "SYSTEM", actorId: null } });
         await restoreOrderCoupon(tx, { sellerId: o.sellerId, orderId: o.id, now, reason: "payment_overdue" });
+        // 쓴 적립금은 전부 돌려준다(payments/rewardUse.ts, 대표님 결정 2026-10-05)
+        await returnRewardForOrder(tx, { sellerId: o.sellerId, orderId: o.id, now, reason: "payment_overdue" });
         await writeAudit(tx, {
           actorType: "SYSTEM",
           sellerId: o.sellerId,

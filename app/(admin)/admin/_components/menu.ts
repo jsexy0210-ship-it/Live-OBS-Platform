@@ -20,10 +20,10 @@ export const ADMIN_MENU: AdminGroup[] = [
     key: "billing",
     label: "구독·요금",
     items: [
-      { label: "요금제", href: "/admin/billing/plans" },
+      { label: "요금제", href: "/admin/billing/plans", ready: true },
       { label: "구독 현황", href: "/admin/billing/subscriptions", ready: true },
       { label: "청구·결제 내역", href: "/admin/billing/invoices", ready: true },
-      { label: "환불 요청", href: "/admin/billing/refunds" },
+      { label: "환불 요청", href: "/admin/billing/refunds", ready: true },
     ],
   },
   {
@@ -38,10 +38,10 @@ export const ADMIN_MENU: AdminGroup[] = [
     key: "ops",
     label: "운영",
     items: [
-      { label: "실시간 방송", href: "/admin/ops/live" },
-      { label: "주문·오버레이 접속", href: "/admin/ops/access" },
-      { label: "적립금 실지급 파트너스", href: "/admin/ops/rewards" },
-      { label: "실시간 감시", href: "/admin/ops/monitor", perm: "system.manage" },
+      { label: "실시간 방송", href: "/admin/ops/live", ready: true },
+      { label: "주문·오버레이 접속", href: "/admin/ops/access", ready: true },
+      { label: "적립금 실지급 파트너스", href: "/admin/ops/rewards", ready: true },
+      { label: "실시간 감시", href: "/admin/ops/monitor", perm: "system.manage", ready: true },
       { label: "자동 연결 작업", href: "/admin/ops/jobs" },
     ],
   },
@@ -50,7 +50,7 @@ export const ADMIN_MENU: AdminGroup[] = [
     label: "고객지원",
     items: [
       { label: "파트너스 문의", href: "/admin/support/inquiries" },
-      { label: "공지사항", href: "/admin/support/notices" },
+      { label: "공지사항", href: "/admin/support/notices", ready: true },
       { label: "도우미 답변 자료", href: "/admin/support/assistant" },
     ],
   },
@@ -71,6 +71,7 @@ export const ADMIN_MENU: AdminGroup[] = [
       { label: "알림 채널", href: "/admin/settings/notifications", perm: "system.manage" },
       { label: "점검 모드", href: "/admin/settings/maintenance", perm: "system.manage" },
       { label: "도우미 설정", href: "/admin/settings/assistant", perm: "system.manage" },
+      { label: "발송 단가", href: "/admin/settings/messages", perm: "system.manage", ready: true },
       // 설정(MA-080대)은 최고관리자만(MASTER 결정 2026-10-04). 서버 조회 API는 platform.read지만 메뉴·주소는 막는다
       { label: "파비콘·공유 카드", href: "/admin/settings/branding", perm: "system.manage", ready: true },
     ],

@@ -192,7 +192,7 @@ describe("카드 등록·결제", () => {
       }
     })();
     expect(await registerCardAndPay(db, declining, ctx, { authKey: "auth-3" })).toEqual({ ok: false, reason: "payment_failed" });
-    expect((await db.subscriptionPayment.findFirstOrThrow({ where: { sellerId: seller.id } })).status).toBe("FAILED");
+    expect((await db.subscriptionPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: seller.id } })).status).toBe("FAILED");
     await expect(requireSeller(db, await sessionToken(owner.email))).rejects.toMatchObject({ status: 402 });
     // 다른 카드로 다시 시도할 수 있다
     expect((await registerCardAndPay(db, provider, ctx, { authKey: "auth-4" })).ok).toBe(true);
@@ -396,7 +396,7 @@ describe("이중 결제·결제 결과 유실 (MASTER 검수 P1)", () => {
     const provider = new FakeBillingProvider();
     provider.failNext = "timeout_after_charge"; // PG에서는 결제됐지만 응답 유실
     expect(await registerCardAndPay(db, provider, s.ctx, { authKey: "t1" })).toEqual({ ok: false, reason: "payment_pending" });
-    expect((await db.subscriptionPayment.findFirstOrThrow({ where: { sellerId: s.seller.id } })).status).toBe("PENDING");
+    expect((await db.subscriptionPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id } })).status).toBe("PENDING");
     // 확정 전 다시 눌러도 이중 결제하지 않는다
     expect(await registerCardAndPay(db, provider, s.ctx, { authKey: "t2" })).toEqual({ ok: false, reason: "payment_in_progress" });
     expect(await reconcileStalePayments(db, provider, { staleMs: 0 })).toMatchObject({ paid: 1, recharged: 0 });
@@ -412,7 +412,7 @@ describe("이중 결제·결제 결과 유실 (MASTER 검수 P1)", () => {
     provider.failNext = "timeout_before_charge";
     expect(await registerCardAndPay(db, provider, s.ctx, { authKey: "t3" })).toEqual({ ok: false, reason: "payment_pending" });
     expect(await reconcileStalePayments(db, provider, { staleMs: 0 })).toMatchObject({ paid: 1, recharged: 1 });
-    const pay = await db.subscriptionPayment.findFirstOrThrow({ where: { sellerId: s.seller.id } });
+    const pay = await db.subscriptionPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id } });
     expect(pay.status).toBe("PAID");
     expect(provider.charges).toEqual([expect.objectContaining({ orderId: pay.id })]);
   });
@@ -566,7 +566,7 @@ describe("HTTP: 체험하기 종료 후 열리는 화면", () => {
 describe("잠금 중 허용 범위", () => {
   it("잠긴 판매자도 이미 받은 주문은 조회·환불할 수 있고, 방송 시작(새 판매)은 402다", async () => {
     const { seller, owner } = await shop(new Date(Date.now() + DAY));
-    const grade = await db.memberGrade.findFirstOrThrow({ where: { sellerId: seller.id } });
+    const grade = await db.memberGrade.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: seller.id } });
     const buyer = await createBuyer(seller.id, grade.id);
     const product = await db.product.create({ data: { sellerId: seller.id, name: "팩", price: 5000, status: "ON_SALE" } });
     const option = await db.productOption.create({ data: { sellerId: seller.id, productId: product.id, name: "1팩", stock: 5 } });
@@ -671,7 +671,7 @@ describe("MASTER 재검수 3차 재현", () => {
     await db.sellerSubscription.update({ where: { id: sub.id }, data: { cancelAtPeriodEnd: true, nextChargeAt: end } });
     await reconcileStalePayments(db, provider, { staleMs: 0, now: new Date(end.getTime() - DAY / 4) });
     expect(provider.charges).toHaveLength(1); // 처음 결제만
-    const pending = await db.subscriptionPayment.findFirstOrThrow({ where: { sellerId: seller.id, scheduled: true } });
+    const pending = await db.subscriptionPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: seller.id, scheduled: true } });
     expect(pending).toMatchObject({ status: "FAILED", failureReason: "canceled" });
     expect((await db.sellerSubscription.findUniqueOrThrow({ where: { id: sub.id } })).currentPeriodEnd).toEqual(end);
     expect(await renewDueSubscriptions(db, provider, { now: new Date(end.getTime() + 1000) })).toMatchObject({ canceled: 1, charged: 0 });
@@ -714,6 +714,8 @@ describe("MASTER 재검수 3차 재현", () => {
     await reconcileStalePayments(db, pg, { staleMs: 0, now: new Date(end.getTime() + 2 * DAY) });
     expect(await db.sellerSubscription.findUniqueOrThrow({ where: { id: sub.id } })).toMatchObject({ status: "CANCELED", currentPeriodEnd: end });
     expect(await db.auditLog.count({ where: { sellerId: seller.id, action: "subscription.refund_required" } })).toBe(1);
+    // 마스터 관리자 환불 요청(MA-026)으로도 남는다
+    expect(await db.subscriptionRefund.count({ where: { sellerId: seller.id, source: "SYSTEM", status: "REQUESTED" } })).toBe(1);
   });
 
   it("2: 해지 예약 기간이 끝난 뒤 예약 실행보다 먼저 다시 구독하면, 기간은 지난 기간 끝이 아니라 결제한 시각부터다", async () => {

@@ -154,9 +154,10 @@ async function settleReward(tx: Tx, r: ProductReview, now: Date, orderPaid: bool
 // 이 주문 리뷰의 적립을 settleReward로 맞춘다(환불된 주문이라 원하는 금액은 0). 회수 방식은 주문 적립과 같다:
 // AUTO(기본)면 회수, MANUAL이면 주문 적립처럼 기록하지 않고 수동 확인 대상으로 둔다.
 export type ReviewRewardRevoke = { outcome: "revoked" | "manual_review" | "none"; amount: number };
-export async function revokeReviewRewardsForOrder(tx: Tx, sellerId: string, orderId: string, now: Date): Promise<ReviewRewardRevoke> {
+// orderItemIds를 주면 그 품목의 리뷰만(부분 환불에서 다 환불한 품목).
+export async function revokeReviewRewardsForOrder(tx: Tx, sellerId: string, orderId: string, now: Date, orderItemIds?: string[]): Promise<ReviewRewardRevoke> {
   const policy = await tx.rewardPolicy.findUnique({ where: { sellerId }, select: { revokeMode: true } });
-  const refs = await tx.productReview.findMany({ where: { sellerId, orderId }, select: { id: true, buyerMemberId: true, rewardRound: true }, orderBy: { id: "asc" } });
+  const refs = await tx.productReview.findMany({ where: { sellerId, orderId, ...(orderItemIds ? { orderItemId: { in: orderItemIds } } : {}) }, select: { id: true, buyerMemberId: true, rewardRound: true }, orderBy: { id: "asc" } });
   const active = await activeRewards(tx, sellerId, refs);
   if (active.size === 0) return { outcome: "none", amount: 0 };
   const total = [...active.values()].reduce((a, x) => a + x.amount, 0);

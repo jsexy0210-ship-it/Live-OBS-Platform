@@ -8,6 +8,7 @@ import { POST as reconnectRoute } from "../../app/api/automation/reconnect/route
 import { POST as refundRoute } from "../../app/api/automation/jobs/[jobId]/refund-request/route";
 import { POST as cleanupCloseRoute } from "../../app/api/automation/admin/jobs/[jobId]/cleanup/route";
 import { loginAdmin, loginSeller } from "../../lib/server/auth/login";
+import { budgetOpen, recordExternalCost } from "../../lib/server/automation/budget";
 import { AUTOMATION_CONSENT, AUTOMATION_PRICE, REINSTALL_PRICE } from "../../lib/server/automation/config";
 import { cafe24Playbook } from "../../lib/server/automation/playbooks/cafe24";
 import { validatePlaybook } from "../../lib/server/automation/playbook";
@@ -149,7 +150,7 @@ describe("자동 연결 결제와 실행 권한", () => {
     expect(r).toMatchObject({ ok: true, paymentStatus: "PENDING", jobStatus: "AWAITING_PAYMENT" });
     expect(await runOnce(db, runtime(), W)).toBe("idle");
     expect(await reconcileAutomationPayments(db, provider, { olderThanMs: 0 })).toBe(1);
-    expect((await db.automationJob.findFirstOrThrow({ where: { sellerId: s.seller.id } })).status).toBe("QUEUED");
+    expect((await db.automationJob.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id } })).status).toBe("QUEUED");
     expect(await runOnce(db, runtime(), W)).toBe("succeeded");
   });
 
@@ -167,7 +168,7 @@ describe("자동 연결 결제와 실행 권한", () => {
     provider.decline(BK);
     const r = await purchaseAutomation(db, provider, b.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP });
     expect(r).toMatchObject({ ok: false, reason: "payment_failed" });
-    expect(await db.automationJob.findFirstOrThrow({ where: { sellerId: b.seller.id } })).toMatchObject({ status: "FAILED", lastError: "payment_failed" });
+    expect(await db.automationJob.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: b.seller.id } })).toMatchObject({ status: "FAILED", lastError: "payment_failed" });
     expect(await runOnce(db, runtime(), W)).toBe("idle");
   });
 
@@ -360,6 +361,30 @@ describe("lease·fencing·잠금·동시성", () => {
     expect(await runOnce(db, runtime(), W)).toBe("failed");
     expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "cost_limit", costUsed: 10 });
   });
+
+  it("판단 모델 비용은 월 원장에 쌓이고, 월 한도에 닿으면 그 달은 판단 호출 없이 멈춘다(budget_limit)", async () => {
+    const a = await bought();
+    await db.automationJob.update({ where: { id: a.jobId }, data: { costLimit: 5, playbookId: null, playbookVersion: null } });
+    expect(await runOnce(db, runtime(), W)).toBe("failed");
+    expect(await db.externalApiCostLedger.aggregate({ _sum: { costWon: true }, where: { provider: "gemini", jobId: a.jobId } })).toMatchObject({ _sum: { costWon: 10 } });
+    expect(await db.externalApiUsage.findFirstOrThrow({ where: { provider: "gemini" } })).toMatchObject({ usedWon: 10, stoppedAt: null });
+    // 한도에 닿으면 이미 접수된 작업은 판단 모델을 부르지 않고 멈춘다
+    const b = await bought();
+    await db.automationJob.update({ where: { id: b.jobId }, data: { playbookId: null, playbookVersion: null } });
+    await recordExternalCost(db, { provider: "gemini", purpose: "test", costWon: 10_000 });
+    expect(await budgetOpen(db, "gemini")).toBe(false);
+    const rt = runtime();
+    expect(await runOnce(db, rt, W)).toBe("failed");
+    expect(await job(b.jobId)).toMatchObject({ status: "FAILED", lastError: "budget_limit", costUsed: 0, plannerCalls: 0 });
+  });
+
+  it("월 한도에 닿으면 새 구매는 결제 없이 service_paused", async () => {
+    await recordExternalCost(db, { provider: "gemini", purpose: "test", costWon: 10_000 });
+    const s = await shopWithCard();
+    const provider = new FakeBillingProvider();
+    expect(await purchaseAutomation(db, provider, s.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP })).toMatchObject({ ok: false, reason: "service_paused" });
+    expect(await db.automationPayment.count()).toBe(0);
+  });
 });
 
 describe("격리·비밀값·악성 페이지", () => {
@@ -458,7 +483,7 @@ describe("환불 요청(확정 ②)", () => {
     const failed = await bought();
     await db.automationJob.update({ where: { id: failed.jobId }, data: { status: "FAILED", startedAt: new Date(), finishedAt: new Date(), lastError: "step_action_limit:test_event_verify" } });
     expect(await requestRefund(db, failed.ctx, failed.jobId)).toMatchObject({ ok: true, job: { paymentStatus: "REFUND_PENDING" } });
-    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: failed.seller.id } })).toMatchObject({ refundReason: "failed" });
+    expect(await db.automationPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: failed.seller.id } })).toMatchObject({ refundReason: "failed" });
     expect(await requestRefund(db, failed.ctx, failed.jobId)).toEqual({ ok: false, reason: "not_refundable" });
 
     const done = await bought();
@@ -586,7 +611,7 @@ describe("재연결·재설치(확정 ②)", () => {
 
   it("같은 Idempotency-Key를 다른 요청(구매 ↔ 재설치, 다른 쇼핑몰 주소)에 다시 쓰면 409로 거부하고 예전 작업을 돌려주지 않는다", async () => {
     const s = await completed();
-    const used = await db.automationPayment.findFirstOrThrow({ where: { sellerId: s.seller.id } });
+    const used = await db.automationPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id } });
     const k = used.idempotencyKey;
     expect(await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: k, target: s.target })).toEqual({ ok: false, reason: "idempotency_key_reused" });
     expect(await reconnectAutomation(db, s.provider, s.ctx, { idempotencyKey: k, target: { ...s.target, obsPairingId: "new-pc" }, consent })).toEqual({ ok: false, reason: "idempotency_key_reused" });
@@ -1085,7 +1110,7 @@ describe("Codex 3차·정본 fc09f13 반영", () => {
     await db.automationJob.update({ where: { id: a.jobId }, data: { actionDeadlineAt: new Date(Date.now() - 1000) } });
     await reapExpired(db);
     expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "customer_action_timeout" });
-    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({
+    expect(await db.automationPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: a.seller.id } })).toMatchObject({
       status: "REFUND_PENDING",
       refundReason: "customer_action_timeout",
       amount: AUTOMATION_PRICE,
@@ -1103,7 +1128,7 @@ describe("Codex 3차·정본 fc09f13 반영", () => {
     await forgetChanges(paid.jobId);
     await db.automationJob.update({ where: { id: paid.jobId }, data: { actionDeadlineAt: new Date(Date.now() - 1000) } });
     await reapExpired(db);
-    const reinstallPayment = await db.automationPayment.findFirstOrThrow({ where: { job: { id: paid.jobId } } });
+    const reinstallPayment = await db.automationPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { job: { id: paid.jobId } } });
     expect(reinstallPayment).toMatchObject({ status: "REFUND_PENDING", refundReason: "customer_action_timeout", amount: REINSTALL_PRICE });
     // 실제 환불은 하지 않는다
     expect(await db.automationPayment.count({ where: { status: "REFUNDED" } })).toBe(0);
@@ -1150,7 +1175,7 @@ describe("정본 d6e22c4: 실행 시간 6시간 마감·시작 뒤 취소", () =
     // 재개 뒤 외부 행동 0회(바꾸기 전 상한 초과)
     expect(rt.browser.performed.length).toBe(before);
     expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "run_time_limit", leaseOwner: null, runStartedAt: null });
-    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "REFUND_PENDING", refundReason: "run_time_limit" });
+    expect(await db.automationPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: a.seller.id } })).toMatchObject({ status: "REFUND_PENDING", refundReason: "run_time_limit" });
     await purgeEndedBrowserState(db, rt);
     expect(rt.browser.saved.size).toBe(0);
     expect(rt.browser.discarded).toContain(a.jobId);
@@ -1171,7 +1196,7 @@ describe("정본 d6e22c4: 실행 시간 6시간 마감·시작 뒤 취소", () =
     await purgeEndedBrowserState(db, rt);
     expect(rt.browser.saved.size).toBe(0);
     expect(rt.obs.discarded).toContain(parked.jobId);
-    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: parked.seller.id } })).toMatchObject({ status: "PAID", refundReason: null });
+    expect(await db.automationPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: parked.seller.id } })).toMatchObject({ status: "PAID", refundReason: null });
     expect(await requestRefund(db, parked.ctx, parked.jobId)).toEqual({ ok: false, reason: "not_refundable" });
 
     // 실행 중에 취소
@@ -1191,7 +1216,7 @@ describe("정본 d6e22c4: 실행 시간 6시간 마감·시작 뒤 취소", () =
     // 취소 뒤에는 작업자의 변경 기록·행동이 fencing으로 막히므로 둘 중 하나로만 끝난다
     expect(j).toMatchObject(j.changedAt ? { status: "CLEANUP_NEEDED", lastError: "canceled", runStartedAt: null } : { status: "CANCELED", runStartedAt: null });
     expect(j.activeMsUsed).toBeGreaterThan(0);
-    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: running.seller.id } })).toMatchObject({ status: "PAID" });
+    expect(await db.automationPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: running.seller.id } })).toMatchObject({ status: "PAID" });
     expect(await requestRefund(db, running.ctx, running.jobId)).toEqual({ ok: false, reason: "not_refundable" });
   });
 });
@@ -1352,7 +1377,7 @@ describe("MASTER 요청 시험(26c2974 Codex 3건)", () => {
     expect(await runOnce(db, rt, { ...W, leaseMs: 600 })).toBe("failed");
     // 누르기 도중이라 바꾼 것이 있으므로 정리 필요로 멈추고 결제는 정리 뒤(32차)
     expect(await job(a.jobId)).toMatchObject({ status: "CLEANUP_NEEDED", lastError: "run_time_limit", customerAction: null, browserStateHeld: false });
-    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "PAID" });
+    expect(await db.automationPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: a.seller.id } })).toMatchObject({ status: "PAID" });
     expect(rt.browser.saved.size).toBe(0);
   }, 20_000);
 
@@ -1601,7 +1626,7 @@ describe("Codex 7차 반영(6325051)", () => {
     await db.automationJob.update({ where: { id: a.jobId }, data: { actionDeadlineAt: new Date(Date.now() - 1000) } });
     expect(await resumeJob(db, a.ctx, a.jobId)).toEqual({ ok: false, reason: "action_expired" });
     expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "customer_action_timeout", customerAction: null });
-    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "REFUND_PENDING", refundReason: "customer_action_timeout" });
+    expect(await db.automationPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: a.seller.id } })).toMatchObject({ status: "REFUND_PENDING", refundReason: "customer_action_timeout" });
     expect(await runOnce(db, rt, W)).toBe("idle");
   });
 
@@ -1616,9 +1641,9 @@ describe("Codex 7차 반영(6325051)", () => {
 
     expect(await reconcileAutomationPayments(db, provider, { olderThanMs: 0 })).toBe(1);
     await reconcileAutomationPayments(db, provider, { olderThanMs: 0 });
-    expect(provider.charges).toEqual([expect.objectContaining({ orderId: (await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).id, amount: AUTOMATION_PRICE })]);
+    expect(provider.charges).toEqual([expect.objectContaining({ orderId: (await db.automationPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: a.seller.id } })).id, amount: AUTOMATION_PRICE })]);
     expect(await job(r.jobId)).toMatchObject({ status: "QUEUED" });
-    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "PAID" });
+    expect(await db.automationPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: a.seller.id } })).toMatchObject({ status: "PAID" });
 
     // 결제 요청 전에 취소한 작업은 다시 보내지 않는다
     const b = await shopWithCard();
@@ -1686,12 +1711,12 @@ describe("Codex 8차 반영(748f1ff)", () => {
 
     await reconcileAutomationPayments(db, provider, { olderThanMs: 0 });
     expect(provider.charges).toHaveLength(1);
-    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "PENDING" });
+    expect(await db.automationPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: a.seller.id } })).toMatchObject({ status: "PENDING" });
     expect(await job(r.jobId)).toMatchObject({ status: "AWAITING_PAYMENT" });
 
     await reconcileAutomationPayments(db, provider, { olderThanMs: 0 });
     expect(provider.charges).toHaveLength(1);
-    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "PAID" });
+    expect(await db.automationPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: a.seller.id } })).toMatchObject({ status: "PAID" });
     expect(await job(r.jobId)).toMatchObject({ status: "QUEUED" });
   });
 
@@ -1855,7 +1880,7 @@ describe("Codex 10차 반영(38e24f1)", () => {
     // 마감 뒤에는 다시 보내지 않는다
     expect(provider.charges).toHaveLength(0);
     // PG가 닫힘을 확정해 주지 않았으므로 결제는 실패로 확정하지 않고 대사 대상으로 남긴다(37차)
-    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "PENDING" });
+    expect(await db.automationPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: a.seller.id } })).toMatchObject({ status: "PENDING" });
     expect(await job(r.jobId)).toMatchObject({ status: "FAILED", lastError: "payment_unresolved" });
     // 열린 작업 칸이 풀려 다시 살 수 있다
     expect(await purchaseAutomation(db, provider, a.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP })).toMatchObject({ ok: true, paymentStatus: "PAID" });
@@ -2094,7 +2119,7 @@ describe("MASTER 지시(4ad65d7 Codex worker.ts:81): 구매 때 작업서 버전
     expect(rt.browser.performed).toHaveLength(0);
     expect(rt.obs.performed).toHaveLength(0);
     expect(rt.planner.inputs).toHaveLength(0);
-    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "REFUND_PENDING", refundReason: "playbook_not_verified" });
+    expect(await db.automationPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: a.seller.id } })).toMatchObject({ status: "REFUND_PENDING", refundReason: "playbook_not_verified" });
   });
 });
 
@@ -2184,7 +2209,7 @@ describe("Codex 14차 반영(32fc6cd)·MASTER 되돌리기 경로", () => {
     expect(rt.obs.sources.get(a.seller.id)).toBe(0);
     expect(rt.planner.inputs).toHaveLength(0);
     expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "playbook_not_verified" });
-    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "REFUND_PENDING" });
+    expect(await db.automationPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: a.seller.id } })).toMatchObject({ status: "REFUND_PENDING" });
   });
 
   it("되돌리기 중 화면이 되돌리기 단계와 달라 판단 모델이 필요하면 판단 모델을 부르지 않고 「정리 필요」로 두고 마스터 관리자에게 알린다(환불은 정리 뒤)", async () => {
@@ -2198,7 +2223,7 @@ describe("Codex 14차 반영(32fc6cd)·MASTER 되돌리기 경로", () => {
     expect(rt.planner.inputs).toHaveLength(0);
     expect(await job(a.jobId)).toMatchObject({ status: "CLEANUP_NEEDED", leaseOwner: null });
     expect(await db.auditLog.count({ where: { action: "automation.job_cleanup_needed", targetId: a.jobId } })).toBe(1);
-    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "PAID" });
+    expect(await db.automationPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: a.seller.id } })).toMatchObject({ status: "PAID" });
     // 정리 전에는 이 작업의 보관 자료를 지우지 않는다(정리 전용 사본)
     await purgeEndedBrowserState(db, rt);
     expect(rt.browser.discarded).not.toContain(a.jobId);
@@ -2673,7 +2698,7 @@ describe("Codex 24차 반영(f466487)", () => {
     expect(rt.browser.performed).toHaveLength(0);
     expect(await job(a.jobId)).toMatchObject({ status: "CLEANUP_NEEDED", lastError: "playbook_not_verified:rollback_not_covered:display_settings" });
     expect(await db.auditLog.count({ where: { action: "automation.job_cleanup_needed", targetId: a.jobId } })).toBe(1);
-    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "PAID" });
+    expect(await db.automationPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: a.seller.id } })).toMatchObject({ status: "PAID" });
   });
 
   it("작업서 불변식: 모든 단계는 되돌리기 항목(행동 1개 이상)이 있거나 사람 정리 단계로 명시돼야 한다", () => {
@@ -2910,7 +2935,7 @@ describe("Codex 28차 반영(3a3a286): 「정리 필요」 운영자 닫기", ()
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, refundPending: true });
     expect(await job(a.jobId)).toMatchObject({ status: "FAILED" });
-    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "REFUND_PENDING", refundReason: "cleanup_done" });
+    expect(await db.automationPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: a.seller.id } })).toMatchObject({ status: "REFUND_PENDING", refundReason: "cleanup_done" });
     expect(await db.automationPayment.count({ where: { sellerId: a.seller.id, status: "REFUNDED" } })).toBe(0);
     expect(await db.auditLog.count({ where: { action: "automation.cleanup_closed", targetId: a.jobId } })).toBe(1);
     expect(await buy()).toMatchObject({ ok: true });
@@ -3068,13 +3093,13 @@ describe("Codex 32차 반영(7d8ca50)", () => {
     expect(await runOnce(db, rt, W)).toBe("failed");
     expect(await job(a.jobId)).toMatchObject({ status: "CLEANUP_NEEDED", lastError: "admin_error" });
     expect(await db.auditLog.count({ where: { action: "automation.job_cleanup_needed", targetId: a.jobId } })).toBe(1);
-    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "PAID" });
+    expect(await db.automationPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: a.seller.id } })).toMatchObject({ status: "PAID" });
     expect(await purchaseAutomation(db, new FakeBillingProvider(), a.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP })).toMatchObject({ ok: false, reason: "job_in_progress" });
     await purgeEndedBrowserState(db, rt);
     expect(rt.browser.discarded).not.toContain(a.jobId);
     expect((await close(a.jobId)).status).toBe(200);
     expect(await job(a.jobId)).toMatchObject({ status: "FAILED" });
-    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "REFUND_PENDING" });
+    expect(await db.automationPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: a.seller.id } })).toMatchObject({ status: "REFUND_PENDING" });
     await purgeEndedBrowserState(db, rt);
     expect(rt.browser.discarded).toContain(a.jobId);
   });
@@ -3090,7 +3115,7 @@ describe("Codex 32차 반영(7d8ca50)", () => {
     expect(await job(a.jobId)).toMatchObject({ status: "CLEANUP_NEEDED" });
     expect((await close(a.jobId)).status).toBe(200);
     expect(await job(a.jobId)).toMatchObject({ status: "CANCELED" });
-    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "PAID" });
+    expect(await db.automationPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: a.seller.id } })).toMatchObject({ status: "PAID" });
   });
 
   it("33차: 실행기 오류 문구가 「canceled」여도 판매자 취소가 아니면 운영자 닫기는 실패·환불 처리 대기(취소 출처는 cancelRequestedAt으로만)", async () => {
@@ -3102,7 +3127,7 @@ describe("Codex 32차 반영(7d8ca50)", () => {
     expect(await job(a.jobId)).toMatchObject({ status: "CLEANUP_NEEDED", lastError: "executor_error", cancelRequestedAt: null });
     expect((await close(a.jobId)).status).toBe(200);
     expect(await job(a.jobId)).toMatchObject({ status: "FAILED" });
-    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "REFUND_PENDING" });
+    expect(await db.automationPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: a.seller.id } })).toMatchObject({ status: "REFUND_PENDING" });
   });
 
   it("연습 도중 화면 이탈을 보면 그 즉시 기록해 준비 상태를 내린다: 연습이 끝나기 전에 들어온 구매도 거절", async () => {
@@ -3180,7 +3205,7 @@ describe("Codex 36차 반영(9cef14e)", () => {
     expect(await runOnce(db, rt, W)).toBe("idle");
     expect(rt.browser.performed.length + rt.obs.performed.length).toBe(0);
     expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "start_deadline", startedAt: null });
-    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "REFUND_PENDING", refundReason: "start_deadline" });
+    expect(await db.automationPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: a.seller.id } })).toMatchObject({ status: "REFUND_PENDING", refundReason: "start_deadline" });
     // 회수(reapExpired)도 같은 기준으로 닫는다
     const b = await bought();
     await db.automationJob.update({ where: { id: b.jobId }, data: { queuedAt: await hoursAgo(25) } });
@@ -3209,7 +3234,7 @@ describe("Codex 36차 반영(9cef14e)", () => {
     expect(await runOnce(db, rt, W)).toBe("idle");
     expect(rt.browser.performed.length).toBe(before);
     expect(await job(a.jobId)).toMatchObject({ status: "FAILED", lastError: "total_deadline" });
-    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "REFUND_PENDING" });
+    expect(await db.automationPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: a.seller.id } })).toMatchObject({ status: "REFUND_PENDING" });
   });
 
   it("재연결 대상(쇼핑몰·PC 식별자)에 제어 문자가 있거나 200자를 넘으면 결제·작업을 만들기 전에 bad_target", async () => {
@@ -3233,7 +3258,7 @@ describe("Codex 37차 반영(eab4486)", () => {
     // 3분 넘게(마감·유예 지남) 계속 조회 안 됨
     await db.automationPayment.updateMany({ where: { sellerId: a.seller.id }, data: { createdAt: ago(33), chargeFirstSubmittedAt: ago(33), chargeSubmittedAt: ago(3) } });
     await reconcileAutomationPayments(db, provider, { olderThanMs: 0 });
-    const pay = () => db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } });
+    const pay = () => db.automationPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: a.seller.id } });
     expect(await pay()).toMatchObject({ status: "PENDING" });
     expect(await job(r.jobId)).toMatchObject({ status: "FAILED", lastError: "payment_unresolved" });
     // 다시 돌아도 계속 대사 대상(알림은 24시간 전에는 없음)
@@ -3328,7 +3353,7 @@ describe("Codex 39차 반영(716073d)", () => {
     await db.automationJob.update({ where: { id: other.jobId }, data: { status: "CANCELED", finishedAt: new Date(), lastDeviationAt: new Date(), deviatedSteps: ["webhook_setup"] } });
     expect(await runOnce(db, rt, W)).toBe("failed");
     expect(await job(a.jobId)).toMatchObject({ status: "CLEANUP_NEEDED", lastError: "playbook_not_verified:rollback_unverified:shop_connect" });
-    expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "PAID" });
+    expect(await db.automationPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: a.seller.id } })).toMatchObject({ status: "PAID" });
   });
 
   it("연습은 매 회차 기준 상태에서 시작한다: 5회 연습해도 시험용 PC의 OBS 소스가 쌓이지 않는다", async () => {
@@ -3868,13 +3893,13 @@ describe("Codex 47차 반영(외부 의존 전체로 계약 확대)", () => {
       provider.hang = true;
       expect(await purchaseAutomation(db, provider, a.ctx, { idempotencyKey: newKey(), consent, shopUrl: SHOP })).toMatchObject({ ok: true, paymentStatus: "PENDING" });
       expect(await reconcileAutomationPayments(db, provider, { olderThanMs: 0 })).toBe(0);
-      expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "PENDING" });
-      expect(await db.automationJob.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "AWAITING_PAYMENT" });
+      expect(await db.automationPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: a.seller.id } })).toMatchObject({ status: "PENDING" });
+      expect(await db.automationJob.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: a.seller.id } })).toMatchObject({ status: "AWAITING_PAYMENT" });
       // 조회가 돌아오면 다음 대사가 같은 청구 id로 확인·다시 보내 확정한다(엄격 공급자: 모든 결제 호출이 callPort 안)
       provider.hang = false;
       await db.automationPayment.updateMany({ data: { lastCheckedAt: null } });
       expect(await reconcileAutomationPayments(db, provider, { olderThanMs: 0 })).toBe(1);
-      expect(await db.automationPayment.findFirstOrThrow({ where: { sellerId: a.seller.id } })).toMatchObject({ status: "PAID" });
+      expect(await db.automationPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: a.seller.id } })).toMatchObject({ status: "PAID" });
     } finally {
       limits.actionTimeoutMs = saved;
     }

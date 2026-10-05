@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ListHead, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
+import { categoryLabel, categoryOptions, type CategoryNode } from "../../../../../components/seller/ProductCategoryPicker";
 import { ErrorState, LoadingRows, Locked, NoImage, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, type Product, type ProductStatus } from "../../../../../components/seller/api";
 import { LOW_STOCK, MAX_SEARCH_LENGTH, statusBadge, textLength, totalStock, won } from "../../../../../components/seller/format";
@@ -46,7 +47,6 @@ const SORTS: { key: Sort; label: string }[] = [
 ];
 const LIMITS = [20, 50, 100];
 
-type CategoryNode = { id: string; name: string; children: CategoryNode[] };
 
 // 검색 상자에 정하는 조건. 입력 중인 값(draft)과 「검색」을 눌러 적용한 값(applied)을 따로 둔다
 type Filters = {
@@ -55,21 +55,20 @@ type Filters = {
   // 검색어 종류: name = 상품·옵션 이름(q, 50자까지), code = 상품 코드·SKU(code, 64자까지)
   mode: "name" | "code";
   text: string;
-  parentId: string;
-  childId: string;
+  categoryId: string;
   display: Display;
   deduct: Deduct;
   from: string;
   to: string;
 };
-const EMPTY: Filters = { status: "ALL", stock: null, mode: "name", text: "", parentId: "", childId: "", display: "", deduct: "", from: "", to: "" };
+const EMPTY: Filters = { status: "ALL", stock: null, mode: "name", text: "", categoryId: "", display: "", deduct: "", from: "", to: "" };
 
 const query = (f: Filters, sort: Sort, limit: number) =>
   [
     f.status === "ALL" ? "" : `status=${f.status}`,
     f.stock ? `stock=${f.stock}` : "",
     f.text ? `${f.mode === "name" ? "q" : "code"}=${encodeURIComponent(f.text)}` : "",
-    f.childId || f.parentId ? `categoryId=${f.childId || f.parentId}` : "",
+    f.categoryId ? `categoryId=${f.categoryId}` : "",
     f.display ? `display=${f.display}` : "",
     f.deduct ? `stockDeductMode=${f.deduct}` : "",
     f.from ? `createdFrom=${f.from}` : "",
@@ -179,11 +178,7 @@ export default function ProductListPage() {
 
   const canManage = can("PRODUCT_MANAGE");
   const items = state.kind === "ok" ? state.items : [];
-  const parent = cats.find((c) => c.id === draft.parentId);
-  const appliedCat = (() => {
-    const top = cats.find((c) => c.id === applied.parentId);
-    return applied.childId ? top?.children.find((c) => c.id === applied.childId)?.name : top?.name;
-  })();
+  const appliedCat = applied.categoryId ? categoryLabel(cats, applied.categoryId) : null;
   const isApplied = JSON.stringify(applied) !== JSON.stringify(EMPTY);
   // 목록 위 「총 n건」: 이어서 불러오는 목록이라 다 불러오기 전에는 「이상」
   const countUnit = state.kind === "ok" && state.next ? "건 이상" : "건";
@@ -287,24 +282,14 @@ export default function ProductListPage() {
           </SearchRow>
           {cats.length > 0 && (
             <SearchRow label="카테고리">
-              <select className="inp inp-sm" style={{ width: 180 }} aria-label="대분류" value={draft.parentId} onChange={(e) => setDraft({ ...draft, parentId: e.target.value, childId: "" })}>
+              <select className="inp inp-sm" style={{ width: 240 }} aria-label="카테고리" value={draft.categoryId} onChange={(e) => setDraft({ ...draft, categoryId: e.target.value })}>
                 <option value="">전체</option>
-                {cats.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
+                {categoryOptions(cats).map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.label}
                   </option>
                 ))}
               </select>
-              {(parent?.children.length ?? 0) > 0 && (
-                <select className="inp inp-sm" style={{ width: 180 }} aria-label="소분류" value={draft.childId} onChange={(e) => setDraft({ ...draft, childId: e.target.value })}>
-                  <option value="">하위 전체</option>
-                  {parent!.children.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              )}
             </SearchRow>
           )}
           <SearchRow label="판매 상태">{radios("판매 상태", "status", FILTERS, draft.status, (v) => setDraft({ ...draft, status: v }))}</SearchRow>
@@ -485,7 +470,7 @@ export default function ProductListPage() {
                               {p.thumbnailUrl ? <img src={p.thumbnailUrl} alt="" data-testid="product-thumb" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <NoImage />}
                             </div>
                           </td>
-                          <td>
+                          <td className="col-text">
                             <Link href={`/seller/products/${p.id}`} className="fw6 p-name" style={{ color: "inherit", textDecoration: "none" }}>
                               {p.name}
                             </Link>

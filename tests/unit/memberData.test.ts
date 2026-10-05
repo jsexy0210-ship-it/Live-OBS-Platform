@@ -28,7 +28,7 @@ describe("탈퇴 때 회원 데이터 처리 목록", () => {
   it("관계로 찾은 표에 Seller·MemberGrade(회원을 가리키는 쪽)는 들어가지 않는다", () => {
     expect(linked).not.toContain("Seller");
     expect(linked.sort()).toEqual(
-      ["BuyerAddress", "BuyerCoupon", "BuyerMember", "CartItem", "BuyerPurchaseRestriction", "BuyerSession", "HitCard", "Order", "ProductReview", "ProductReviewImage", "ProductReviewReport", "RewardBalance", "RewardExpiryNotice", "RewardLedger", "WishItem"].sort(),
+      ["BuyerAddress", "BuyerCoupon", "BuyerMember", "CartItem", "BuyerPurchaseRestriction", "BuyerSession", "HitCard", "Order", "ProductReview", "ProductReviewImage", "ProductReviewReport", "RewardBalance", "MemberGradeHistory", "MemberGradeOverride", "RefundRequest", "ReturnRequest", "ReturnRequestImage", "RewardExpiryNotice", "RewardLedger", "WishItem"].sort(),
     );
   });
 

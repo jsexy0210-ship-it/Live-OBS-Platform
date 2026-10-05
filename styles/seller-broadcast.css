@@ -93,15 +93,12 @@
   box-shadow: none;
 }
 
-/* 카페24식 표: 대기·최근 완료 */
+/* 업무용 표: 대기·최근 완료 */
 .bc-tbl td {
   vertical-align: middle;
 }
 .bc-tbl .bc-item {
   text-align: left;
-}
-.bc-live {
-  border-radius: 4px;
 }
 .bc-side {
   position: sticky;
@@ -137,7 +134,7 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   border: 1px solid var(--wds-line-normal-alternative);
-  border-radius: 4px;
+  border-radius: var(--ui-r-card);
   background: var(--wds-background-normal-normal, #fff);
 }
 .bc-sum-g .stat + .stat {
@@ -147,4 +144,17 @@
   .bc-sum-g {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  /* 2×2: 둘째 줄 첫 칸 왼쪽 선은 바깥 가장자리라 지우고, 두 줄 사이에 가로선 하나 */
+  .bc-sum-g .stat:nth-child(3) {
+    border-left: 0;
+  }
+  .bc-sum-g .stat:nth-child(n + 3) {
+    border-top: 1px solid var(--wds-line-normal-alternative);
+  }
+}
+.bc-chat {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--wds-line-normal-alternative);
+  align-items: center;
 }

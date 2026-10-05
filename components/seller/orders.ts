@@ -53,7 +53,26 @@ export type RefundPreview = {
   // 구매자가 실제로 낸 처음 배송비(배송비 무료 쿠폰이면 0). 예전 응답에는 없다.
   chargedShippingFee?: number;
   openedItems: { orderItemId: string; amount: number }[];
-  byFault: Record<RefundFault, { refundAmount: number; returnFeeDeducted: number; blocked: boolean }>;
+  // refundAmount: 현금 환불액(적립금 반환을 뺀 값), rewardReturn: 함께 적립금으로 돌려주는 금액(쓴 적립금이 없으면 0),
+  // itemsAmount·shippingRefunded: 이번에 돌려받는 상품 금액·배송비(배송비는 마지막 환불에서만)
+  byFault: Record<RefundFault, { refundAmount: number; returnFeeDeducted: number; rewardReturn: number; itemsAmount?: number; shippingRefunded?: number; blocked: boolean }>;
+  // 부분 환불(SA-023): 품목별 남은 수량, 이번 환불로 주문 전체가 끝나는지, 이미 돌려준 현금 합, 회수할 주문 적립. 예전 응답에는 없다.
+  items?: RefundPreviewItem[];
+  isFinal?: boolean;
+  refundedAmount?: number;
+  rewardRevoke?: { amount: number; kind: "ledger" | "manual" | "pending" | null };
+};
+export type RefundPreviewItem = {
+  orderItemId: string;
+  productName: string;
+  optionName: string;
+  quantity: number;
+  refundedQuantity: number;
+  refundableQuantity: number;
+  opened: boolean;
+  // 개봉 순서를 기다리거나 개봉 중: 수량 일부만 환불할 수 없다
+  queued: boolean;
+  refundableAmount: number;
 };
 
 // 결제 상태 배지. 시안 결제 배지(완료·결제 대기·환불됨)에 맞추고, 시안에 없는 취소는 「취소」로 보인다.

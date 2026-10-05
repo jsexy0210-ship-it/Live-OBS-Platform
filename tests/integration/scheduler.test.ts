@@ -21,7 +21,7 @@ describe("앱 안 정기 실행", () => {
     });
     expect(SCHEDULED_JOBS.map((j) => j.name)).toContain("buyer_rejoin_block.purge_expired");
     expect((await runScheduledJobs(db, now)).find((r) => r.name === "buyer_rejoin_block.purge_expired")).toEqual({ name: "buyer_rejoin_block.purge_expired", status: "done", count: 2 });
-    expect((await db.buyerRejoinBlock.findMany()).map((r) => r.ciHash)).toEqual(["ci-b-live"]);
+    expect((await db.buyerRejoinBlock.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }] })).map((r) => r.ciHash)).toEqual(["ci-b-live"]);
   });
 
   it("한 번 돌면 모든 쇼핑몰의 끝난 미가입 본인확인을 비식별하고(행은 남김) 3개월 지난 가입 본인확인 요청 IP를 비운다", async () => {

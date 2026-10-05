@@ -6,11 +6,12 @@
 //     <Pagination page={page} pageCount={pageCount} onChange={setPage} />
 //   </div>
 // 스타일: styles/seller.css (.au-lh · .au-lt-wrap · .pg)
-export function ListHead({ total, unit = "건", actions }: { total: number; unit?: string; actions?: React.ReactNode }) {
+// loaded: 전체 수를 주는 API가 없어 지금 불러온 행 수만 아는 경우. 「총」 대신 「불러온」으로 보여 전체 건수처럼 읽히지 않게 한다.
+export function ListHead({ total, unit = "건", loaded = false, actions }: { total: number; unit?: string; loaded?: boolean; actions?: React.ReactNode }) {
   return (
     <div className="au-lh">
       <span className="au-lh-total">
-        총 <b className="num">{total.toLocaleString("ko-KR")}</b>
+        {loaded ? "불러온" : "총"} <b className="num">{total.toLocaleString("ko-KR")}</b>
         {unit}
       </span>
       {actions && <div className="au-lh-act">{actions}</div>}

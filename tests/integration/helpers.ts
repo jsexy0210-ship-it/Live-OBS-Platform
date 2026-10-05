@@ -10,12 +10,46 @@ const url = assertTestDatabaseUrl(process.env.DATABASE_URL);
 
 export const db = new PrismaClient({ datasources: { db: { url } } });
 
-export async function resetDb(): Promise<void> {
+// 시험마다 모든 테이블을 비운다. 예전처럼 93개 테이블을 매번 TRUNCATE하면 한 번에 300~400ms가 걸려 시험 수만큼 쌓인다
+// (행이 있는 테이블만 TRUNCATE해도 외래 키로 이어진 테이블이 CASCADE로 함께 잘려 비슷하게 느리다).
+// 그래서 행이 있는 테이블만 DELETE로 비운다. 외래 키 검사(트리거)는 이 트랜잭션에서만 끈다(session_replication_role,
+// 모든 행을 지우므로 남는 참조가 없다). 테이블에 딸린 시퀀스는 전처럼 처음으로 되돌린다.
+// 권한이 없어 끌 수 없는 DB면 예전 방식(전체 TRUNCATE)으로 비운다.
+const FAST_RESET_SQL = `DO $$
+DECLARE r record; found boolean;
+BEGIN
+  SET LOCAL session_replication_role = replica;
+  FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> '_prisma_migrations' LOOP
+    EXECUTE format('SELECT EXISTS (SELECT 1 FROM public.%I)', r.tablename) INTO found;
+    IF found THEN EXECUTE format('DELETE FROM public.%I', r.tablename); END IF;
+  END LOOP;
+  FOR r IN SELECT s.relname FROM pg_class s JOIN pg_namespace n ON n.oid = s.relnamespace
+      JOIN pg_depend d ON d.objid = s.oid AND d.classid = 'pg_class'::regclass AND d.refclassid = 'pg_class'::regclass AND d.deptype IN ('a', 'i')
+      WHERE s.relkind = 'S' AND n.nspname = 'public' LOOP
+    EXECUTE format('ALTER SEQUENCE public.%I RESTART', r.relname);
+  END LOOP;
+END $$`;
+let fastReset = true;
+
+async function truncateAll() {
   const rows = await db.$queryRaw<{ tablename: string }[]>`
     SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> '_prisma_migrations'`;
   if (rows.length === 0) return;
   const list = rows.map((r) => `"public"."${r.tablename}"`).join(", ");
   await db.$executeRawUnsafe(`TRUNCATE ${list} RESTART IDENTITY CASCADE`);
+}
+
+export async function resetDb(): Promise<void> {
+  if (fastReset) {
+    try {
+      await db.$transaction([db.$executeRawUnsafe(FAST_RESET_SQL)]);
+    } catch (e) {
+      // 권한 없음(42501)만 예전 방식으로 바꾼다. 다른 오류는 그대로 드러낸다
+      if (!String((e as { meta?: { code?: string } }).meta?.code ?? e).includes("42501")) throw e;
+      fastReset = false;
+    }
+  }
+  if (!fastReset) await truncateAll();
   // 마이그레이션이 넣는 기준 데이터(플랜 행)는 다시 넣는다(운영 DB와 같은 출발점)
   await seedPlans();
 }

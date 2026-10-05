@@ -32,7 +32,7 @@ describe("마스터 로그인 (이메일+비밀번호, 2단계 인증 없음)", 
     const ctx = await requireAdmin(db, r.token, "admin.manage", at(1));
     expect(ctx.admin.id).toBe(admin.id);
     expect(await db.auditLog.count({ where: { action: "auth.admin.login", actorId: admin.id } })).toBe(1);
-    const session = await db.adminSession.findFirstOrThrow({ where: { adminId: admin.id } });
+    const session = await db.adminSession.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { adminId: admin.id } });
     expect(session.tokenHash).not.toBe(r.token);
   });
 
@@ -42,7 +42,7 @@ describe("마스터 로그인 (이메일+비밀번호, 2단계 인증 없음)", 
       ok: false,
       reason: "invalid_credentials",
     });
-    expect(await db.auditLog.findFirstOrThrow({ where: { action: "auth.admin.login_failed" } })).toMatchObject({
+    expect(await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "auth.admin.login_failed" } })).toMatchObject({
       actorId: admin.id,
       reason: "wrong_password",
       ip: "203.0.113.5",
@@ -263,7 +263,7 @@ describe("마스터 대리 조회", () => {
     const ctx = await impersonateSeller(db, adminCtx, seller.id, "문의 확인");
     expect((await getOrder(db, ctx, order.id)).id).toBe(order.id);
     expect(() => assertWritable(ctx)).toThrow("forbidden");
-    const log = await db.auditLog.findFirstOrThrow({ where: { action: "admin.impersonate.view" } });
+    const log = await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "admin.impersonate.view" } });
     expect(log).toMatchObject({ actorId: admin.id, sellerId: seller.id, reason: "문의 확인" });
   });
 

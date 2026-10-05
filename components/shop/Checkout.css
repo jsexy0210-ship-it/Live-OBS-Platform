@@ -112,3 +112,23 @@
 .co-box .cart-row + .cart-row {
   margin-top: 8px;
 }
+/* 주문 상세 결제 칸: 안내 문구·계좌 안내·버튼 사이 여백 */
+.co-box > .cart-hint,
+.co-box > .od-dl,
+.co-box > .cart-msg {
+  margin: 12px 0;
+}
+/* 주문서 적립금 칸 */
+.co-reward-have {
+  margin: 0 0 12px;
+}
+.co-reward-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.co-reward-row .inp {
+  width: 160px;
+  max-width: 100%;
+  text-align: right;
+}

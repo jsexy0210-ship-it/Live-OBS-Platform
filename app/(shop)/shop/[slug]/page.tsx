@@ -67,7 +67,7 @@ export default async function ShopHomePage({ params }: Params) {
             {products.length === 0 ? (
               <p className="shop-empty">아직 올라온 상품이 없어요.</p>
             ) : (
-              <ProductGrid products={products} label="전체 상품" />
+              <ProductGrid products={products} label="전체 상품" hrefBase={`${base}/products`} />
             )}
           </section>
         </div>

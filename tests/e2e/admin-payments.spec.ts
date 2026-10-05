@@ -52,7 +52,7 @@ async function open(page: Page, path: string) {
   await page.goto(path);
 }
 
-test("CS도 청구·결제 내역을 조회한다: 파트너스 지정·상태·구분·기간 필터, 값은 왼쪽 정렬, 코드는 이름으로 보인다", async ({ page }) => {
+test("CS도 청구·결제 내역을 조회한다: 파트너스 지정·상태·구분·기간 필터, 표 데이터는 가운데 정렬, 코드는 이름으로 보인다", async ({ page }) => {
   await open(page, `/admin/billing/invoices?sellerId=${sellerId}`);
   const rows = page.getByTestId("payment-row");
   await expect(rows).toHaveCount(3);
@@ -61,7 +61,7 @@ test("CS도 청구·결제 내역을 조회한다: 파트너스 지정·상태·
   await expect(page.locator("main")).not.toContainText("OVERLAY_ONLY");
   await expect(page.getByRole("button", { name: /환불|결제 실행|재시도/ })).toHaveCount(0);
   const align = await page.locator(".tbl td").first().evaluate((el) => getComputedStyle(el).textAlign);
-  expect(["left", "start"]).toContain(align);
+  expect(align).toBe("center"); // 표 정렬 새 규칙(2026-10-05): 글 열(.col-text)이 아니면 데이터는 가운데
 
   const search = () => page.getByRole("button", { name: "검색", exact: true }).click();
   await page.getByLabel("결제 상태").selectOption("FAILED");

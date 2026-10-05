@@ -33,8 +33,8 @@ function Changes({ before, after }: { before: unknown; after: unknown }) {
           {keys.map((k) => (
             <tr key={k}>
               <td className="fw6">{keyLabel(k)}</td>
-              <td>{valueText(k, b?.[k])}</td>
-              <td>{valueText(k, a?.[k])}</td>
+              <td className="col-text">{valueText(k, b?.[k])}</td>
+              <td className="col-text">{valueText(k, a?.[k])}</td>
             </tr>
           ))}
         </tbody>

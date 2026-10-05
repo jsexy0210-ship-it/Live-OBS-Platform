@@ -6,12 +6,13 @@ body {
 }
 /* 구매자 쇼핑몰은 모든 화면 바탕이 흰색(대표님 지시 2026-10-04). 영역 구분은 회색 바탕이 아니라 1px 선과 여백으로 한다 */
 .shop-app {
-  /* 크기 규칙(대표님 지시 2026-10-04): 입력·검색·버튼 모서리 6px, 하단 고정 바·모달 8px. 입력·검색·기본 버튼 40px, 작은 32px, 주요 버튼·하단 고정 바 48px. 글자 14px(주요 버튼 16px) */
-  --shop-r: 6px;
-  --shop-r-lg: 8px;
-  --shop-h: 40px;
-  --shop-h-sm: 32px;
-  --shop-h-lg: 48px;
+  /* 크기·모서리는 공통 토큰(styles/tokens.css --ui-*, 2026-10-05 시각 규격)을 따른다. 버튼·입력 크기 규칙은 lop.css 공통 규칙 하나뿐이다.
+     아래 --shop-* 이름은 쇼핑몰 화면 CSS가 이미 참조하므로 토큰을 가리키는 별칭으로만 남긴다 */
+  --shop-r: var(--ui-r-control);
+  --shop-r-lg: var(--ui-r-card);
+  --shop-h: var(--ui-h-default);
+  --shop-h-sm: var(--ui-h-compact);
+  --shop-h-lg: var(--ui-h-touch);
   --page: #ffffff;
   word-break: keep-all;
   overflow-wrap: anywhere;
@@ -22,52 +23,29 @@ body {
   flex-direction: column;
   background: var(--wds-background-normal-normal);
 }
-/* 일반 쇼핑몰 공통 틀: 흰 바탕·옅은 회색 구분선, 모서리 작게. 판매자 대표 색(--brand)은 강조(가격·선택 표시·버튼)에만 */
+/* 일반 쇼핑몰 공통 틀: 흰 바탕·옅은 회색 구분선. 판매자 대표 색(--brand)은 강조(가격·선택 표시·버튼)에만 */
 .shop-wrap {
   width: 1200px;
   max-width: 100%;
   margin: 0 auto;
-  padding: 0 16px;
+  padding: 0 var(--ui-gutter-mobile);
   box-sizing: border-box;
 }
+/* 아이콘 버튼: 그림 크기와 별개로 조작 영역 44px */
 .shop-app a.shop-iconbtn,
 .shop-iconbtn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex: none;
-  width: 40px;
-  height: 40px;
+  width: var(--ui-hit-min);
+  height: var(--ui-hit-min);
   padding: 0;
   border: 0;
-  border-radius: var(--shop-r);
+  border-radius: var(--ui-r-control);
   background: transparent;
   color: var(--wds-label-normal);
   cursor: pointer;
-}
-.shop-app .btn {
-  height: var(--shop-h);
-  border-radius: var(--shop-r);
-  font-size: 14px;
-}
-.shop-app .btn-sm {
-  height: var(--shop-h-sm);
-  border-radius: var(--shop-r);
-  font-size: 14px;
-}
-.shop-app .btn-lg {
-  height: var(--shop-h-lg);
-  border-radius: var(--shop-r);
-  font-size: 16px;
-}
-.shop-app .inp {
-  height: var(--shop-h);
-  border-radius: var(--shop-r);
-  font-size: 14px;
-}
-.shop-app .inp-sm {
-  height: var(--shop-h-sm);
-  border-radius: var(--shop-r);
 }
 .shop-linkbtn {
   padding: 0;
@@ -203,8 +181,12 @@ body {
   border-top: 1px solid var(--wds-line-solid-neutral);
   border-bottom: 1px solid var(--wds-line-solid-normal);
 }
+.shop-cats {
+  position: relative;
+}
 .shop-cats .shop-wrap {
   display: flex;
+  align-items: center;
   flex-wrap: wrap;
   gap: 4px 28px;
 }
@@ -220,6 +202,64 @@ body {
 .shop-app .shop-cats a[aria-current="page"] {
   color: var(--brand);
   box-shadow: inset 0 -2px 0 var(--brand);
+}
+/* 카테고리 펼침: 「전체 카테고리」 버튼·머리 줄에 마우스를 올리면 대분류별 소분류 */
+.shop-app .shop-cats-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--wds-label-normal);
+  cursor: pointer;
+}
+.shop-catpanel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  z-index: 30;
+  background: #fff;
+  border-top: 1px solid var(--wds-line-solid-neutral);
+  border-bottom: 1px solid var(--wds-line-solid-normal);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.06);
+}
+.shop-catpanel .shop-wrap {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 16px 40px;
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+.shop-catcol {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 120px;
+}
+.shop-app .shop-catcol a {
+  display: block;
+  padding: 2px 0;
+  box-shadow: none;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--wds-label-neutral);
+  text-decoration: none;
+}
+.shop-app .shop-catcol a.shop-catcol-h {
+  margin-bottom: 4px;
+  font-weight: 700;
+  color: var(--wds-label-normal);
+}
+.shop-app .shop-catcol a[aria-current="page"] {
+  color: var(--brand);
+  box-shadow: none;
 }
 .shop-app .shop-m,
 .shop-app a.shop-iconbtn.shop-m,
@@ -385,6 +425,13 @@ body {
   background: var(--wds-background-normal-alternative) center / 40% no-repeat
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23c2c4c8' stroke-width='1.2'%3E%3Crect x='3' y='5' width='18' height='14' rx='1'/%3E%3Ccircle cx='9' cy='10' r='1.6'/%3E%3Cpath d='m4 18 5-5 4 4 2-2 5 5'/%3E%3C/svg%3E");
 }
+.shop-app a.pc-photo {
+  display: block;
+}
+.shop-app a.pc-name {
+  color: var(--wds-label-normal);
+  text-decoration: none;
+}
 .pc-photo img {
   position: absolute;
   inset: 0;
@@ -506,9 +553,39 @@ body {
   color: var(--wds-label-normal);
   text-decoration: none;
 }
+.shop-app .shop-sidecat a.top {
+  font-weight: 700;
+}
 .shop-app .shop-sidecat a.sub {
   padding-left: 24px;
   color: var(--wds-label-alternative);
+}
+.shop-crumb {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--wds-label-alternative);
+}
+/* 같은 대분류의 하위 칩 */
+.shop-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0 0 16px;
+}
+.shop-app .shop-chip {
+  display: inline-block;
+  padding: 4px 12px;
+  border: 1px solid var(--wds-line-solid-normal);
+  border-radius: 16px;
+  font-size: 13px;
+  color: var(--wds-label-neutral);
+  text-decoration: none;
+}
+.shop-app .shop-chip[aria-current="page"] {
+  border-color: var(--brand);
+  color: var(--brand);
+  font-weight: 700;
 }
 .shop-app .shop-sidecat a[aria-current="page"] {
   color: var(--brand);
@@ -584,7 +661,7 @@ body {
     display: grid;
     grid-template-columns: repeat(5, 1fr);
     height: calc(var(--shop-h-lg) + env(safe-area-inset-bottom));
-    border-radius: var(--shop-r-lg) var(--shop-r-lg) 0 0;
+    border-radius: var(--ui-r-control) var(--ui-r-control) 0 0;
     padding-bottom: env(safe-area-inset-bottom);
     background: var(--wds-background-normal-normal);
     border-top: 1px solid var(--wds-line-solid-normal);
@@ -839,9 +916,9 @@ body {
   overflow: auto;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 20px 20px 16px;
-  border-radius: var(--shop-r-lg);
+  gap: var(--ui-sp-16);
+  padding: var(--ui-sp-24);
+  border-radius: var(--ui-r-modal);
   background: #fff;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
 }
@@ -858,15 +935,17 @@ body {
   font-weight: 700;
   line-height: 1.4;
 }
+/* X는 관리자 공통 모달(.modal-x)과 같은 크기: 조작 영역 44px, 모서리 8px */
 .shop-modal-x {
   flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: var(--ui-hit-min);
+  height: var(--ui-hit-min);
+  margin: calc(var(--ui-sp-12) * -1) calc(var(--ui-sp-12) * -1) 0 0;
   border: 0;
-  border-radius: 50%;
+  border-radius: var(--ui-r-control);
   background: transparent;
   color: var(--wds-label-normal);
   cursor: pointer;
