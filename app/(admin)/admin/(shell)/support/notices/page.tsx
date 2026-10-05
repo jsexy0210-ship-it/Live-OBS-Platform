@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { adminCan } from "../../../../../../lib/server/authz/permissions";
 import { ListHead, Modal, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { MAX_SEARCH_LENGTH } from "../../../../../../components/seller/format";
+import { useScrollRestore, useUrlState } from "../../../../../../lib/client/navigation";
 import { adminApi, failMessage } from "../../../_components/api";
 import { AdminTopbar, useAdmin } from "../../../_components/AdminShell";
 import { NOTICE_AUDIENCE, NOTICE_CATEGORY, NOTICE_STATUS, type Notice, type NoticeCategory, type NoticeStatus } from "../../../_components/notices";
@@ -14,6 +14,7 @@ import { day } from "../../../_components/partners";
 
 // MA-053 공지사항 목록(GET /api/admin/platform-notices, 모든 마스터 역할). 상태는 서버 조건, 분류·제목은 불러온 목록 안에서 거른다(서버에 검색 조건 없음).
 // 작성·수정·삭제 버튼은 최고관리자·CS만 보인다(support.manage).
+// 적용된 조건(상태·분류·제목)은 주소 쿼리가 기준이라 상세·작성 화면에서 돌아와도 그대로이고 스크롤도 복원한다(UX-03).
 type Filters = { status: NoticeStatus | ""; category: NoticeCategory | ""; q: string };
 const EMPTY: Filters = { status: "", category: "", q: "" };
 type Page = { items: Notice[]; nextCursor: string | null };
@@ -66,10 +67,19 @@ function DeleteDialog({ notice, onClose, onDone, onStale }: { notice: Notice; on
 function NoticeList() {
   const { me } = useAdmin();
   const canEdit = adminCan(me.role, "support.manage");
-  const router = useRouter();
-  const params = useSearchParams();
-  const [draft, setDraft] = useState<Filters>(EMPTY);
-  const [applied, setApplied] = useState<Filters>(EMPTY);
+  // saved·stale은 작성·수정 화면이 돌아올 때 붙이는 결과 표시(알림을 보이고 곧 비운다). 조건은 그대로 둔다.
+  const [url, setUrl] = useUrlState({ ...EMPTY, saved: "", stale: "" });
+  const applied = useMemo<Filters>(
+    () => ({
+      status: url.status in NOTICE_STATUS ? (url.status as NoticeStatus) : "",
+      category: url.category in NOTICE_CATEGORY ? (url.category as NoticeCategory) : "",
+      q: url.q,
+    }),
+    [url.status, url.category, url.q],
+  );
+  const [draft, setDraft] = useState<Filters>(applied);
+  useEffect(() => setDraft(applied), [applied]);
+  const apply = (f: Filters) => setUrl({ ...f, saved: "", stale: "" });
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [more, setMore] = useState(false);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
@@ -77,12 +87,11 @@ function NoticeList() {
 
   // 작성·수정 화면에서 돌아오면 주소의 결과(saved·stale)를 알림으로 바꾸고 주소를 비운다(목록이 그대로 떠 있어도 매번 처리)
   useEffect(() => {
-    const saved = params.get("saved");
-    const stale = params.get("stale");
+    const { saved, stale } = url;
     if (!saved && !stale) return;
     setToast(saved ? { text: saved === "published" ? "공지를 게시했습니다." : "임시 저장했습니다." } : { text: "다른 곳에서 먼저 수정됐습니다. 최신 내용을 확인해 주십시오.", neg: true });
-    router.replace("/admin/support/notices");
-  }, [params, router]);
+    setUrl({ saved: "", stale: "" });
+  }, [url.saved, url.stale, setUrl]);
 
   const reqId = useRef(0);
   const qs = (status: string, cursor?: string) => {
@@ -100,6 +109,7 @@ function NoticeList() {
     setState(r.ok ? { kind: "ok", items: r.data.items, next: r.data.nextCursor } : { kind: "error" });
   }, []);
   useEffect(() => void load(applied.status), [applied.status, load]);
+  useScrollRestore("admin-notices", state.kind === "ok");
 
   const loadMore = async () => {
     if (state.kind !== "ok" || !state.next) return;
@@ -115,8 +125,7 @@ function NoticeList() {
   const items = state.kind === "ok" ? state.items.filter((n) => (!applied.category || n.category === applied.category) && (!applied.q || n.title.includes(applied.q))) : [];
   const filtered = applied.status !== "" || applied.category !== "" || applied.q !== "";
   const reset = () => {
-    setDraft(EMPTY);
-    setApplied(EMPTY);
+    apply(EMPTY);
   };
 
   return (
@@ -133,7 +142,7 @@ function NoticeList() {
             )
           }
         />
-        <SearchBox onSearch={() => setApplied({ ...draft, q: draft.q.trim() })} onReset={reset} busy={state.kind === "loading"}>
+        <SearchBox onSearch={() => apply({ ...draft, q: draft.q.trim() })} onReset={reset} busy={state.kind === "loading"}>
           <SearchRow label="상태">
             <select className="inp" aria-label="상태" value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value as Filters["status"] })}>
               <option value="">전체</option>

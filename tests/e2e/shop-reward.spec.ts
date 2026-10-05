@@ -61,17 +61,17 @@ test.describe.serial("적립금 사용", () => {
     await page.getByRole("button", { name: "주문하기" }).click();
     await expect(page).toHaveURL(/\/checkout\?ids=/); // 오류가 있으면 주문하지 않는다
     // 전액 사용: 보유 적립금과 상품 금액 중 작은 값(6,000원), 배송비는 그대로 결제(배송비 계산이 끝난 뒤)
-    await expect(sum.locator(".cart-row", { hasText: "결제 예정 금액" })).toBeVisible();
+    await expect(sum.locator(".cart-row", { hasText: "최종 결제 금액" })).toBeVisible();
     await input.fill("0");
     await box.getByRole("button", { name: "전액 사용" }).click();
     await expect(input).toHaveValue("6,000");
     await expect(box.getByRole("alert")).toHaveCount(0);
     await expect(sum.locator(".cart-row", { hasText: "적립금 사용" })).toContainText("−6,000원");
     const fee = Number((await sum.locator(".cart-row", { hasText: "배송비" }).innerText()).replace(/[^0-9]/g, "") || "0");
-    await expect(sum.locator(".cart-row", { hasText: "결제 예정 금액" }).locator("b")).toHaveText(`${(fee).toLocaleString("ko-KR")}원`);
+    await expect(sum.locator(".cart-row", { hasText: "최종 결제 금액" }).locator("b")).toHaveText(`${(fee).toLocaleString("ko-KR")}원`);
     await page.screenshot({ path: "tests/e2e/screenshots/SH-005-reward-1440.png", fullPage: true });
     await page.getByRole("button", { name: "주문하기" }).click();
-    await expect(page).toHaveURL(/\/orders\/[0-9a-f-]+\?done=1$/);
+    await expect(page).toHaveURL(/\/orders\/[0-9a-f-]+\?done=1&pay=card$/);
     const orderId = page.url().match(/\/orders\/([0-9a-f-]+)\?done=1/)![1];
     expect(await orderRewardInDb(orderId)).toEqual({ rewardUsedAmount: 6000, totalAmount: fee });
     expect(await rewardBalanceInDb(SLUG, LOGIN)).toBe(26_400); // 쓴 만큼 잔액에서 빠짐
@@ -120,7 +120,7 @@ test.describe.serial("적립금 사용", () => {
     await expect(page.getByRole("region", { name: "적립금" })).toHaveCount(0);
     await page.screenshot({ path: "tests/e2e/screenshots/SH-005-reward-off-1440.png", fullPage: true });
     await page.getByRole("button", { name: "주문하기" }).click();
-    await expect(page).toHaveURL(/\/orders\/[0-9a-f-]+\?done=1$/);
+    await expect(page).toHaveURL(/\/orders\/[0-9a-f-]+\?done=1&pay=card$/);
   });
 
   test("판매자가 적립금 사용을 꺼 두면 주문서에 적립금 영역·요약 줄이 처음부터 없다", async ({ page, baseURL }) => {

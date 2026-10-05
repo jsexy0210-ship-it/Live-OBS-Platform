@@ -142,9 +142,13 @@ test("파트너스 가입 신청 → 바로 승인 → 로그인 → 비밀번�
   await page.getByLabel("이메일").fill(a.email);
   await page.getByLabel("비밀번호").fill(a.password);
   await page.getByRole("button", { name: "로그인" }).click();
-  await expect(page).toHaveURL(/\/seller\/products$/);
-  // 새 파트너는 통합 요금제·체험 없음이라 첫 결제 전까지 잠겨 있다(#185)
-  await expect(page.getByText("이용 기간이 끝나 지금은 사용할 수 없습니다")).toBeVisible();
+  await expect(page).toHaveURL(/\/seller\/subscription$/);
+  // 새 파트너는 통합 요금제·체험 없음이라 첫 결제 전까지 잠겨 있다(#185). 잠긴 상품 화면 대신 열 수 있는 첫 메뉴 「구독 · 결제」로 간다(UX-06)
+  await expect(page.getByRole("heading", { level: 1, name: "구독 · 결제" })).toBeVisible();
+  // 잠긴 파트너가 상품 화면을 열면 셸이 이용 기간 종료 안내와 요금제 안내 화면을 보인다
+  await page.goto("/seller/products");
+  await expect(page.getByText("이용 기간이 끝났습니다", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "지금 요금제에서 사용할 수 없는 기능입니다" })).toBeVisible();
   await page.context().clearCookies();
 
   // 비밀번호 찾기: 대표자 본인확인 → 새 비밀번호
@@ -206,7 +210,7 @@ test("파트너스 가입 신청 → 바로 승인 → 로그인 → 비밀번�
   await expect(page).toHaveURL(/\/seller\/login/);
   await page.getByLabel("비밀번호").fill(next);
   await page.getByRole("button", { name: "로그인" }).click();
-  await expect(page).toHaveURL(/\/seller\/products$/);
+  await expect(page).toHaveURL(/\/seller\/subscription$/);
 });
 
 // 시작 요청은 서버가 처리하게 두고 첫 응답만 끊는다(서버에서는 문자를 보내고 횟수를 쓴 상태). 다시 누르면 같은 attemptKey로 보내고
@@ -497,7 +501,7 @@ test("아이디 찾기(대표자): 본인확인하면 가입한 이메일과 쇼
   await page.getByLabel("이메일").fill(a.email);
   await page.getByLabel("비밀번호").fill(next);
   await page.getByRole("button", { name: "로그인" }).click();
-  await expect(page).toHaveURL(/\/seller\/products$/);
+  await expect(page).toHaveURL(/\/seller\/subscription$/);
 });
 
 test("직원: 로그인하면 본인확인 연결 안내가 뜨고, 나중에 할 수 있고, 연결하면 아이디 찾기에서 계정이 보인다", async ({ page }) => {
@@ -506,7 +510,7 @@ test("직원: 로그인하면 본인확인 연결 안내가 뜨고, 나중에 �
   await page.getByRole("link", { name: "로그인하기" }).click();
   await expect(page).toHaveURL(/\/seller\/login$/);
   await login(page, "대표자", a.email, a.password);
-  await expect(page).toHaveURL(/\/seller\/products$/);
+  await expect(page).toHaveURL(/\/seller\/subscription$/);
   const id = uniq();
   const s = { email: `staff-${id}@example.com`, name: `이${letters(id)}`, password: `pw-${id}-staff`, phone: randomPhone() };
   // 직원 관리는 잠긴 파트너가 쓸 수 없다: 시험 DB에 결제한 이용 기간을 넣는다

@@ -60,3 +60,33 @@ test("390 폭에서도 가로 스크롤 없이 보인다", async ({ page }) => {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 });
+
+type Onboarding = { completed: boolean; dismissed: boolean; doneCount: number; total: number };
+
+test("시작하기 띠: 온보딩이 끝나지 않았을 때만 진행 N/M을 보이고, 닫으면 서버에 저장돼 사라지고, 다시 열면 돌아온다", async ({ page }) => {
+  await open(page, "demo-owner@example.com");
+  const post = (action: string) =>
+    page.evaluate(async (a) => (await fetch("/api/seller/onboarding", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: a }) })).status, action);
+  expect(await post("reopen")).toBe(200);
+  await page.reload();
+  const state = (await page.request.get("/api/seller/onboarding").then((r) => r.json())) as Onboarding;
+  const strip = page.getByTestId("home-onboarding");
+  if (state.completed) {
+    // 모두 끝낸 계정은 띠가 없다
+    await expect(page.getByTestId("home-tasks")).toBeVisible();
+    await expect(strip).toHaveCount(0);
+    return;
+  }
+  await expect(strip).toBeVisible();
+  await expect(strip).toContainText(`${state.doneCount}/${state.total} 완료`);
+  await expect(strip.getByRole("link", { name: "이어서 하기" })).toHaveAttribute("href", "/seller/onboarding");
+  await strip.getByRole("button", { name: "닫기" }).click();
+  await expect(strip).toHaveCount(0);
+  expect(((await page.request.get("/api/seller/onboarding").then((r) => r.json())) as Onboarding).dismissed).toBe(true);
+  await page.reload();
+  await expect(page.getByTestId("home-tasks")).toBeVisible();
+  await expect(strip).toHaveCount(0);
+  expect(await post("reopen")).toBe(200);
+  await page.reload();
+  await expect(strip).toBeVisible();
+});

@@ -156,3 +156,16 @@ export async function rejectRefundRequestInDb(orderId: string, rejectReason: str
     await db.$disconnect();
   }
 }
+
+// 장바구니 가격 변경 e2e: 옵션 추가금(priceDelta)을 바꾸고 이전 값을 돌려준다(원래 값으로 되돌리는 데 쓴다)
+export async function setOptionPriceDeltaInDb(slug: string, productName: string, optionName: string, priceDelta: number) {
+  const db = open();
+  try {
+    const seller = await db.seller.findUniqueOrThrow({ where: { slug } });
+    const option = await db.productOption.findFirstOrThrow({ where: { sellerId: seller.id, deletedAt: null, name: optionName, product: { name: productName, deletedAt: null } } });
+    await db.productOption.update({ where: { id: option.id }, data: { priceDelta } });
+    return option.priceDelta;
+  } finally {
+    await db.$disconnect();
+  }
+}

@@ -54,7 +54,7 @@ test("오늘 처리할 일: 서버 숫자가 맨 위에 보이고, 누르면 조
   await page.screenshot({ path: "tests/e2e/screenshots/admin-home-1440.png", fullPage: true });
 
   await tasks.getByTestId("today-task-signupPending").click();
-  await expect(page).toHaveURL(/\/admin\/partners\?status=PENDING/);
+  await expect(page).toHaveURL(/\/admin\/partners\/applications/);
   await expect(page.getByRole("link", { name: pendingShop })).toBeVisible();
 });
 

@@ -520,6 +520,28 @@ describe("플랜별 금액·변경 미리보기(GET /api/seller/subscription/pla
     expect(missing.status).toBe(400);
     expect(await missing.json()).toEqual({ error: "amount_required" });
     expect(await planOf(s.seller.id)).toBe("OVERLAY_ONLY");
+    // 예약한 하위 변경의 취소는 결제가 없어 금액 없이도 200(화면의 「변경 취소」), 금액을 보내면 0이어야 한다
+    const up = await shop("INTEGRATED", at(-30), paying);
+    const upLogin = await loginSeller(db, { email: up.owner.email, password: PASSWORD }, {});
+    if (!upLogin.ok) throw new Error(upLogin.reason);
+    const postUp = (body: unknown) =>
+      planRoute(
+        new Request("http://localhost:3000/api/seller/subscription/plan", {
+          method: "POST",
+          headers: { "content-type": "application/json", host: "localhost:3000", origin: "http://localhost:3000", cookie: `lo_seller=${upLogin.token}` },
+          body: JSON.stringify(body),
+        }),
+      );
+    expect((await postUp({ planCode: "OVERLAY_ONLY", expectedAmount: 0 })).status).toBe(200);
+    expect((await subOf(up.seller.id)).pendingPlanId).not.toBeNull();
+    const wrong = await postUp({ planCode: "INTEGRATED", expectedAmount: 1 });
+    expect(wrong.status).toBe(409);
+    expect(await wrong.json()).toEqual({ error: "amount_changed" });
+    expect((await subOf(up.seller.id)).pendingPlanId).not.toBeNull();
+    const undo = await postUp({ planCode: "INTEGRATED" });
+    expect(undo.status).toBe(200);
+    expect(await undo.json()).toMatchObject({ ok: true, applied: "canceled_pending" });
+    expect((await subOf(up.seller.id)).pendingPlanId).toBeNull();
     const same = await post({ planCode: "OVERLAY_ONLY" });
     expect(same.status).toBe(409);
     expect(await same.json()).toEqual({ error: "same_plan" });
