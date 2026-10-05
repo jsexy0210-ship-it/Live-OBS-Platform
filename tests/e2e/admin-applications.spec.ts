@@ -54,12 +54,13 @@ test("최고관리자: 목록에 확인 필요 항목이 보이고, 상세에서
   await page.goto("/admin/partners/applications");
   const row = page.getByTestId("application-row").filter({ hasText: shops.approve });
   await expect(row).toContainText("국세청 조회 실패");
-  await row.getByRole("link", { name: "검토" }).click();
+  await row.getByRole("link", { name: "상세" }).click();
   await expect(page).toHaveURL(new RegExp(`/admin/partners/applications/${ids.approve}$`));
   await expect(page.getByRole("heading", { name: "확인 필요 항목" })).toBeVisible();
   await page.getByRole("button", { name: "승인", exact: true }).click();
   await expect(page.getByText("가입을 승인했습니다.")).toBeVisible();
-  await expect(page.getByTestId("application-processed")).toContainText("운영 중");
+  // 처리 뒤에는 목록으로 강제 복귀하지 않고 다음 신청(없으면 목록)으로 넘어간다
+  await expect(page).not.toHaveURL(new RegExp(`/admin/partners/applications/${ids.approve}$`));
   const after = await db.seller.findUnique({ where: { id: ids.approve } });
   expect(after?.status).toBe("ACTIVE");
   await page.goto("/admin/partners/applications");
@@ -72,10 +73,9 @@ test("최고관리자: 반려는 사유가 있어야 하고, 반려 사유가 DB
   await page.getByRole("button", { name: "반려", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("button", { name: "반려", exact: true })).toBeDisabled();
-  await dialog.getByLabel("반려 사유").fill("사업자 정보가 확인되지 않습니다.");
+  await dialog.getByLabel("추가 안내").fill("사업자 정보가 확인되지 않습니다.");
   await dialog.getByRole("button", { name: "반려", exact: true }).click();
   await expect(page.getByText("가입을 반려했습니다.")).toBeVisible();
-  await expect(page.getByTestId("application-processed")).toContainText("반려");
   const after = await db.seller.findUnique({ where: { id: ids.reject } });
   expect(after?.status).toBe("REJECTED");
   expect(after?.rejectedReason).toBe("사업자 정보가 확인되지 않습니다.");
