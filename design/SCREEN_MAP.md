@@ -39,18 +39,18 @@
 
 | ID | 화면 | Product Route | Design Source | Entry | Status | Artifact Version | 마지막 동기화(KST) | 비고 |
 |---|---|---|---|---|---|---|---|---|
-| AU-001 | 마스터 관리자 로그인 | /admin/login | design/project/AU-001.dc.html | AU-001.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| AU-002 | 파트너스 관리자 로그인 | /seller/login | design/project/AU-002.dc.html | AU-002.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: AU-002-M |
-| AU-003 | 비밀번호 찾기 | /seller/password-reset | design/project/AU-003.dc.html | AU-003.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| AU-004 | 새 비밀번호 입력 | /seller/password-reset (새 비밀번호) | design/project/AU-004.dc.html | AU-004.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| AU-005 | 승인 대기 안내 | /seller/pending | design/project/AU-005.dc.html | AU-005.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| AU-006 | 이용 정지 안내 | /seller/suspended | design/project/AU-006.dc.html | AU-006.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| AU-007 | 세션 만료 | /seller/login?reason=expired | design/project/AU-007.dc.html | AU-007.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
+| AU-001 | 마스터 관리자 로그인 | /admin/login | design/project/AU-001.dc.html | AU-001.dc.html | FINAL | v296 (1791239078-7381) | 2026-10-06 07:24 KST | FINAL 재확인(2026-10-06 인증 묶음) · 관리자 로그인·계정 화면 합니다체 확인 · 쉬운 말(방송 화면 · 결제 연결) · 확인 창 [취소][실행] |
+| AU-002 | 파트너스 관리자 로그인 | /seller/login | design/project/AU-002.dc.html | AU-002.dc.html | FINAL | v296 (1791239078-7381) | 2026-10-06 07:24 KST | FINAL 재확인(2026-10-06 인증 묶음) · 관리자 로그인·계정 화면 합니다체 확인 · 쉬운 말(방송 화면 · 결제 연결) · 확인 창 [취소][실행] · 회원가입 링크 → 「가입 신청」(PF-007-1) |
+| AU-003 | 비밀번호 찾기 | /seller/password-reset | design/project/AU-003.dc.html | AU-003.dc.html | FINAL | v296 (1791239078-7381) | 2026-10-06 07:24 KST | FINAL 재확인(2026-10-06 인증 묶음) · 관리자 로그인·계정 화면 합니다체 확인 · 쉬운 말(방송 화면 · 결제 연결) · 확인 창 [취소][실행] |
+| AU-004 | 새 비밀번호 입력 | /seller/password-reset (새 비밀번호) | design/project/AU-004.dc.html | AU-004.dc.html | FINAL | v296 (1791239078-7381) | 2026-10-06 07:24 KST | FINAL 재확인(2026-10-06 인증 묶음) · 관리자 로그인·계정 화면 합니다체 확인 · 쉬운 말(방송 화면 · 결제 연결) · 확인 창 [취소][실행] |
+| AU-005 | 승인 대기 안내 | /seller/pending | design/project/AU-005.dc.html | AU-005.dc.html | FINAL | v296 (1791239078-7381) | 2026-10-06 07:24 KST | FINAL 재확인(2026-10-06 인증 묶음) · 관리자 로그인·계정 화면 합니다체 확인 · 쉬운 말(방송 화면 · 결제 연결) · 확인 창 [취소][실행] |
+| AU-006 | 이용 정지 안내 | /seller/suspended | design/project/AU-006.dc.html | AU-006.dc.html | FINAL | v296 (1791239078-7381) | 2026-10-06 07:24 KST | FINAL 재확인(2026-10-06 인증 묶음) · 관리자 로그인·계정 화면 합니다체 확인 · 쉬운 말(방송 화면 · 결제 연결) · 확인 창 [취소][실행] · 셸 GNB 8개(DS-NAV) 재동기화 |
+| AU-007 | 세션 만료 | /seller/login?reason=expired | design/project/AU-007.dc.html | AU-007.dc.html | FINAL | v296 (1791239078-7381) | 2026-10-06 07:24 KST | FINAL 재확인(2026-10-06 인증 묶음) · 관리자 로그인·계정 화면 합니다체 확인 · 쉬운 말(방송 화면 · 결제 연결) · 확인 창 [취소][실행] |
 | AU-008 | 권한 없음(403) | (403 공통 컴포넌트) | design/project/AU-008.dc.html | AU-008.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| AU-009 | 페이지 없음(404) | (not-found 공통) | design/project/AU-009.dc.html | AU-009.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
+| AU-009 | 페이지 없음(404) | (not-found 공통) | design/project/AU-009.dc.html | AU-009.dc.html | FINAL | v296 (1791239078-7381) | 2026-10-06 07:24 KST | FINAL 재확인(2026-10-06 인증 묶음) · 관리자 로그인·계정 화면 합니다체 확인 · 쉬운 말(방송 화면 · 결제 연결) · 확인 창 [취소][실행] · 구매자 본문 해요체 유지 · 관리자 변형은 합니다체 문구 명시 · 방송 화면 용어 |
 | AU-010 | 점검 중 | /maintenance | design/project/AU-010.dc.html | AU-010.dc.html | FINAL | 1791213911-1437 | 2026-10-06 00:27 KST | 공개 해요체 + 관리자 변형 합니다체(MASTER 결정 2026-10-05) |
-| AU-011 | 아이디 찾기 | /seller/find-id | design/project/AU-011.dc.html | AU-011.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: AU-011-V |
-| AU-012 | 직원 첫 로그인 · 계정 연결 | /seller/identity-link | design/project/AU-012.dc.html | AU-012.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
+| AU-011 | 아이디 찾기 | /seller/find-id | design/project/AU-011.dc.html | AU-011.dc.html | FINAL | v296 (1791239078-7381) | 2026-10-06 07:24 KST | FINAL 재확인(2026-10-06 인증 묶음) · 관리자 로그인·계정 화면 합니다체 확인 · 쉬운 말(방송 화면 · 결제 연결) · 확인 창 [취소][실행] |
+| AU-012 | 직원 첫 로그인 · 계정 연결 | /seller/identity-link | design/project/AU-012.dc.html | AU-012.dc.html | FINAL | v296 (1791239078-7381) | 2026-10-06 07:24 KST | FINAL 재확인(2026-10-06 인증 묶음) · 관리자 로그인·계정 화면 합니다체 확인 · 쉬운 말(방송 화면 · 결제 연결) · 확인 창 [취소][실행] · 홈 링크 SA-002-IA |
 
 ## PF 플랫폼 소개·가입
 
