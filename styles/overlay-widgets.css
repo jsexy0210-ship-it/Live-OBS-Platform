@@ -184,3 +184,23 @@
     animation: none;
   }
 }
+
+/* 한 줄짜리 띠 위젯(쇼핑몰 정보·공지·신규 주문 알림): 시안 높이가 낮아(2~6%) 안쪽 여백을 줄이고 가로로 놓는다 */
+.ow-shop-info,
+.ow-notice,
+.ow-new-order-alert {
+  flex-direction: row;
+  align-items: center;
+  gap: 14px;
+  padding: 0 24px;
+  font-size: var(--w-fs, 24px);
+}
+.ow-shop-info .ow-text,
+.ow-notice .ow-text,
+.ow-new-order-alert .ow-text {
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ow-new-order-alert .ow-grade {
+  flex: none;
+}
