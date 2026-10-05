@@ -481,6 +481,16 @@
   --ui-gap-field: 16px;
   --ui-gap-section: 24px;
   --ui-gap-btn: 8px;
+  /* 버튼 폭(대표님 지시 2026-10-05 「버튼 Width 고정」): 같은 레벨 버튼은 그 그룹에서 가장 긴 문구가 들어가는 단계 하나로 폭을 고정한다.
+     높이(.btn·.btn-dense·.btn-sm·.btn-lg)와 따로 고른다. 이 다섯 단계 밖의 임의 폭(83·91px 등)을 쓰지 않는다 */
+  --btn-w-xs: 64px;
+  --btn-w-sm: 80px;
+  --btn-w-md: 96px;
+  --btn-w-lg: 120px;
+  --btn-w-xl: 144px;
+  /* 썸네일(상품 목록 PC 64, 휴대폰 56) */
+  --ui-thumb: 64px;
+  --ui-thumb-mobile: 56px;
   /* 표 행 높이 */
   --ui-row: 48px;
   --ui-row-compact: 40px;
