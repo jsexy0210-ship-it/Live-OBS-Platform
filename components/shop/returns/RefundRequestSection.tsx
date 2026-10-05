@@ -20,7 +20,7 @@ const REASONS: [Reason, string][] = [
   ["NOT_AS_DESCRIBED", "상품 설명과 달라요"],
   ["OTHER", "기타"],
 ];
-const STATUS_TEXT: Record<Status, string> = { REQUESTED: "취소 요청", APPROVED: "승인됐어요", REJECTED: "거절됐어요", CANCELLED: "철회했어요" };
+const STATUS_TEXT: Record<Status, string> = { REQUESTED: "취소 요청", APPROVED: "승인됐어요", REJECTED: "거절됐어요", CANCELLED: "요청을 거뒀어요" };
 const TEXT_MAX = 500;
 
 export default function RefundRequestSection({ slug, orderId, onChanged }: { slug: string; orderId: string; onChanged?: () => void }) {

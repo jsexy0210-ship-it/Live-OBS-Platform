@@ -58,7 +58,7 @@ test("PC: 주문 내역 표(열 제목 가운데·값 왼쪽)·상태 탭·결�
   const row = table.locator("tbody tr", { has: page.getByRole("link", { name: String(orderNo), exact: true }) });
   expect(await row.locator("td").nth(1).evaluate((el) => getComputedStyle(el).textAlign)).toBe("left"); // 값은 왼쪽
   await expect(row).toContainText("탑로더 25장");
-  await expect(row).toContainText("1팩 × 2");
+  await expect(row).toContainText("옵션: 1팩 · 수량 2개");
   await expect(row).toContainText("결제 전");
   await page.screenshot({ path: "tests/e2e/screenshots/SH-021-orders-1440.png" });
   // 탭: 결제 대기에는 있고 취소 · 환불에는 없다
