@@ -144,6 +144,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/shop-content/logo": "STORE_OPERATIONS",
   "seller/shop-content/logo/image": "STORE_OPERATIONS",
   "seller/broadcast/[broadcastId]": "OVERLAY",
+  "seller/broadcast/history": "OVERLAY",
   "seller/broadcast/summary": "OVERLAY",
   "seller/youtube": "OVERLAY",
   "seller/youtube/channel": "OVERLAY",
