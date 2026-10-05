@@ -53,6 +53,8 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/staff/[userId]/permissions": "ACCOUNT",
   "seller/impersonation": "BILLING", // 마스터 대리 조회 상태(읽기 전용 배너): 가드를 쓰지 않고 lo_imp 쿠키만 확인
   "seller/onboarding": "BILLING", // 시작하기·온보딩(SA-003·004): 첫 결제 전·잠김 중에도 그 단계를 이어 간다
+  "seller/me/password": "BILLING", // 내 계정(SA-120): 첫 결제 전·잠김·이용 정지 중에도 본인 비밀번호·이름은 바꾼다
+  "seller/me/name": "BILLING",
   "seller/orders": "ORDER_FOLLOWUP",
   "seller/today-tasks": "ORDER_FOLLOWUP", // 홈 「오늘 처리할 일」(SA-002): 잠금 중에도 이미 받은 주문 처리 항목은 보임
   "seller/search": "ORDER_FOLLOWUP", // 전역 검색: 이미 받은 주문·문의를 잠김·정지 중에도 찾는다
@@ -159,6 +161,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/products/options": "STORE_OPERATIONS",
   "seller/products/stock-movements": "STORE_OPERATIONS",
   "seller/reward-policy": "STORE_OPERATIONS",
+  "seller/reward-live-payout": "STORE_OPERATIONS",
   "seller/share-preview": "STORE_OPERATIONS",
   "seller/seo": "STORE_OPERATIONS",
   "seller/shipping-policy": "STORE_OPERATIONS",
@@ -206,11 +209,14 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/hit-cards": "OVERLAY",
   "seller/hit-cards/[hitCardId]": "OVERLAY",
   "seller/stats/broadcasts": "OVERLAY",
+  "seller/stats/coupons": "STORE_OPERATIONS",
   "seller/stats/hourly": "STORE_OPERATIONS",
   "seller/stats/members": "STORE_OPERATIONS",
   "seller/stats/orders": "STORE_OPERATIONS",
   "seller/stats/overview": "STORE_OPERATIONS",
   "seller/stats/products": "STORE_OPERATIONS",
+  "seller/stats/stockout": "STORE_OPERATIONS",
+  "seller/stats/wishlist": "STORE_OPERATIONS",
   "seller/stats/sales": "STORE_OPERATIONS",
 };
 
