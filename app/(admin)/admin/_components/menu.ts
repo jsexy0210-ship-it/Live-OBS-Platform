@@ -30,8 +30,8 @@ export const ADMIN_MENU: AdminGroup[] = [
     key: "settlement",
     label: "정산",
     items: [
-      { label: "PG 연결 상태", href: "/admin/settlement/pg" },
-      { label: "구독료 수납", href: "/admin/settlement/collection" },
+      { label: "PG 연결 상태", href: "/admin/settlement/pg", ready: true },
+      { label: "구독료 수납", href: "/admin/settlement/collection", ready: true },
     ],
   },
   {
