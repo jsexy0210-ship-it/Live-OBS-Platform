@@ -128,10 +128,16 @@ type Note = { id: string; body: string; author: { name: string }; createdAt: str
 const CHECK_CLS = { OK: "b-done", WARN: "b-warn", FAIL: "b-fail" } as const;
 
 // 확인 필요 건 검토 패널(정본 MA-013-OPS 「검토 사이드 패널」): 점검 결과 표 · 신청 정보 · 내부 메모, 이전/다음으로 넘기며 승인·반려·보완 요청.
-function ReviewPanel({ row, pos, total, busy, canModerate, onNav, onClose, onApprove, onReject, onSupplement, onToast }: { row: Row; pos: number; total: number; busy: boolean; canModerate: boolean; onNav: (d: number) => void; onClose: () => void; onApprove: () => void; onReject: () => void; onSupplement: () => void; onToast: (t: string, neg?: boolean) => void }) {
+function ReviewPanel({ row, pos, total, busy, canModerate, onNav, onClose, onApprove, onReject, onSupplement, onRecheck, onToast }: { row: Row; pos: number; total: number; busy: boolean; canModerate: boolean; onNav: (d: number) => void; onClose: () => void; onApprove: () => void; onReject: () => void; onSupplement: () => void; onRecheck: () => Promise<void>; onToast: (t: string, neg?: boolean) => void }) {
   const [notes, setNotes] = useState<Note[] | null>(null);
   const [memo, setMemo] = useState("");
   const [saving, setSaving] = useState(false);
+  const [rechecking, setRechecking] = useState(false);
+  const doRecheck = async () => {
+    setRechecking(true);
+    await onRecheck();
+    setRechecking(false);
+  };
   useEffect(() => {
     let live = true;
     setNotes(null);
@@ -204,7 +210,18 @@ function ReviewPanel({ row, pos, total, busy, canModerate, onNav, onClose, onApp
         <dl className="col" style={{ gap: 6, margin: 0 }}>
           <div className="row" style={{ gap: 8 }}>
             <dt className="c-alt" style={{ width: 70 }}>사업자</dt>
-            <dd style={{ margin: 0 }}>{text(row.businessNumber)}</dd>
+            <dd className="row" style={{ margin: 0, gap: 8 }}>
+              {text(row.businessNumber)}
+              {canModerate && (
+                <button className="btn btn-sm btn-out" type="button" onClick={() => void doRecheck()} disabled={rechecking || busy}>
+                  {rechecking ? "조회 중" : "국세청 다시 조회"}
+                </button>
+              )}
+            </dd>
+          </div>
+          <div className="row" style={{ gap: 8 }}>
+            <dt className="c-alt" style={{ width: 70 }}>등록증</dt>
+            <dd className="c-alt" style={{ margin: 0 }}>준비 중</dd>
           </div>
           <div className="row" style={{ gap: 8 }}>
             <dt className="c-alt" style={{ width: 70 }}>신청자</dt>
@@ -378,6 +395,16 @@ function Applications() {
     applyBulk(res.data.results, (b) => ({ done: "approved", undoUntil: b.undoableUntil ? new Date(b.undoableUntil).getTime() : undefined }), "승인", "을 승인했습니다");
   };
 
+  const recheck = async (r: Row) => {
+    const res = await adminApi<{ lookupOk: boolean; reasons: App["reasons"]; checks: App["checks"] }>(`/api/admin/sellers/${encodeURIComponent(r.id)}/recheck`, { method: "POST", json: {} });
+    if (!res.ok) {
+      if (res.status === 404 || (res.status === 409 && res.error === "not_pending")) return stale(r);
+      return setToast({ text: failMessage(res, "국세청 조회를 다시 하지 못했습니다."), neg: true });
+    }
+    const d = res.data;
+    patchRows((rs) => rs.map((x) => (x.id === r.id ? { ...x, reasons: d.reasons, checks: d.checks, state: d.reasons.length === 0 ? "CLEAR" : "REVIEW" } : x)));
+    setToast({ text: !d.lookupOk ? "국세청 조회가 아직 안 됩니다. 잠시 뒤 다시 시도해 주십시오." : d.reasons.length === 0 ? `${r.shopName}의 확인할 것이 모두 풀려 이상 없음으로 바뀌었습니다.` : "국세청 조회 결과를 갱신했습니다.", neg: !d.lookupOk });
+  };
   const queue = rows.filter((r) => !r.done && r.state === "REVIEW");
   const reviewing = queue.find((r) => r.id === reviewId) ?? null;
   const reviewPos = reviewing ? queue.indexOf(reviewing) : -1;
@@ -652,6 +679,7 @@ function Applications() {
               onApprove={() => void approve(reviewing)}
               onReject={() => setRejecting(reviewing)}
               onSupplement={() => setSupplementing(reviewing)}
+              onRecheck={() => recheck(reviewing)}
               onToast={(t, neg) => setToast({ text: t, neg })}
             />
           )}
