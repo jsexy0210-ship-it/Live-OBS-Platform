@@ -17,6 +17,7 @@
 | 화면-방송 (2) | `session_01LEN2yPC22mYAT7r16f4RJ6` | 화면-방송(`session_01EUscVzBZ5i68jWQHwNpus7`) 교체(Sonnet). 방송 화면 SA-001 계열·SA-051~055, 오버레이 OV-001·002, #212·#213. 2026-10-04 KST MASTER 생성 |
 | 화면-설정 (2) | `session_014yzgBefSGaxVp7o6eBETzb` | 화면-설정(`session_01BEoFcXM4wkW8BLX8c54YBJ`) 교체(Sonnet). #210 → #216 → #218 → #220. 2026-10-04 KST MASTER 생성 |
 | 레이아웃 전담 (3) · UI 현대화 | `session_015hHqzBD92PvX1wauiYmjyK` | 레이아웃 전담 (2) 교체(대화 41%). 대표님 지시 「전체 UI 현대화 및 디자인 시스템 통합」(2026-10-05): 공통 토큰·공통 컴포넌트·셸·모달 기반 → 대표 화면 → 관리자 전체 → 구매자·편집기 전체. 공통 파일 소유. 다른 세션 소유 화면은 파일 목록을 MASTER에 보내 잠금 회신을 받은 뒤 고친다. 화면별 적용 표 `docs/UI_STATUS.md`. 2026-10-05 KST MASTER 생성 |
+| UX 감사 전담 | `session_01GbMUeY3UxdmHvLeW5HQ7co` | 대표님 지시 「전체 UX 감사 + IA/Navigation/Back/상태보존 전수 검수」(2026-10-05). 1단계 docs/UX_AUDIT.md(Navigation Matrix·Back 표·P0~P3) → Back 원칙 docs/IA.md 반영·공통 Navigation 도우미 → P0/P1 수정(잠금 받고). 크기·정렬(P2/P3)은 레이아웃 (3). IA 재편 제안은 판단 필요로 보고. 2026-10-05 KST MASTER 생성 |
 | 화면-마스터 | `session_01JMzttsfKDXeXncJrX2VsLG` | 마스터 관리자 기능 화면(배정 `docs/SCREEN_STATUS.md`). 브랜딩 전담 (2) 소유 `app/(admin)/**` 중 해당 화면 경로만 인수(브랜딩·로그인·요금제 화면 제외, AdminShell은 레이아웃 전담). 2026-10-05 KST MASTER 생성 |
 | 화면-공개 | `session_01HfJMUwycvTKgmVctvRpGjH` | 플랫폼 소개·공개 PF 화면(`/`는 로그인 유지, 랜딩은 `/about`), 공통 404(AU-009)·점검 중(AU-010). 소유 `app/(public)/**`, `components/public/**`. 2026-10-05 KST MASTER 생성 |
 | 화면-파트너스 운영 | `session_017i9HrY4Z9if193ZLQfJQbp` | 파트너스 상품·주문·배송·문의 화면(SA-015~018·024·026~028·046·047). 새 경로와 전용 컴포넌트만 소유. 2026-10-05 KST MASTER 생성 |
