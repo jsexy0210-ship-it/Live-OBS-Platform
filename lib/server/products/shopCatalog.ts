@@ -29,7 +29,13 @@ export type ShopProductCard = {
   salePrice: number | null;
   soldOut: boolean;
   thumbnailUrl: string | null;
+  // 공개 리뷰 평균 별점(소수 1자리, 리뷰가 없으면 null)과 공개 리뷰 수
+  rating: number | null;
+  reviewCount: number;
+  // 적립 예정(가입 때 받는 기본 등급 적립률, 표시 가격 기준 원 단위 내림). 적립을 쓰지 않으면 null.
+  reward: RewardPreview | null;
 };
+type RewardPreview = { card: { rate: number; amount: number } | null; bankTransfer: { rate: number; amount: number } | null };
 
 type ListFailure = "invalid_query" | "not_found";
 
@@ -149,6 +155,7 @@ export async function shopProductList(
   const arranged = arrange(cards, await displayOptions(db, shop.id), await liveProductIds(db, shop.id), (c) => c.p.id);
   const slice = arranged.slice((page - 1) * limit, page * limit);
   const thumbs = await thumbnails(db, shop.id, shop.slug, slice.map((c) => c.p.id));
+  const extras = await cardExtras(db, shop.id, slice.map((c) => ({ id: c.p.id, shown: c.shown })), now);
   return {
     ok: true,
     value: {
@@ -160,6 +167,7 @@ export async function shopProductList(
         salePrice,
         soldOut,
         thumbnailUrl: thumbs.get(p.id) ?? null,
+        ...extras.get(p.id)!,
       })),
       total: arranged.length,
       page,
@@ -242,6 +250,7 @@ export async function shopCardsInOrder(db: PrismaClient, shop: { id: string; slu
   const now = await dbNow(db);
   const thumbs = await thumbnails(db, shop.id, shop.slug, rows.map((r) => r.id));
   const byId = new Map(rows.map((p) => [p.id, p]));
+  const extras = await cardExtras(db, shop.id, rows.map((p) => ({ id: p.id, shown: orderUnitPrice(p.price, eventOf(p), now) })), now);
   return ids.flatMap((id) => {
     const p = byId.get(id);
     if (!p) return [];
@@ -255,6 +264,7 @@ export async function shopCardsInOrder(db: PrismaClient, shop: { id: string; slu
         salePrice: shown < p.price ? shown : null,
         soldOut: p.status === "SOLD_OUT" || p.options.every((o) => o.stock <= 0),
         thumbnailUrl: thumbs.get(p.id) ?? null,
+        ...extras.get(p.id)!,
       },
     ];
   });
@@ -317,15 +327,45 @@ export async function shopProductDetail(db: PrismaClient, slug: string, productI
   };
 }
 
-async function rewardPreview(db: PrismaClient, sellerId: string, buyerGradeId: string | null, base: number, now: Date) {
+// 적립 예정 계산기: 정책·등급 적립률을 한 번 읽고, 표시 가격마다 미리보기를 낸다. 적립을 쓰지 않거나 등급이 없으면 null.
+async function rewardPreviewer(db: PrismaClient, sellerId: string, buyerGradeId: string | null, now: Date): Promise<((base: number) => RewardPreview | null) | null> {
   const policy = await db.rewardPolicy.findUnique({ where: { sellerId }, select: { rates: true, earnStartsAt: true } });
   if (!policy || (policy.earnStartsAt && policy.earnStartsAt > now)) return null;
   const gradeId =
     buyerGradeId ?? (await db.memberGrade.findFirst({ where: { sellerId }, orderBy: [{ sortOrder: "asc" }], select: { id: true } }))?.id ?? null;
   if (!gradeId) return null;
   const r = ((policy.rates && typeof policy.rates === "object" ? policy.rates : {}) as RewardRates)[gradeId];
-  const one = (rate: unknown) => (typeof rate === "number" && Number.isFinite(rate) && rate > 0 && rate <= 100 ? { rate, amount: Math.floor((base * rate) / 100) } : null);
-  const card = one(r?.card);
-  const bankTransfer = one(r?.bankTransfer);
-  return card || bankTransfer ? { card, bankTransfer } : null;
+  const valid = (rate: unknown): rate is number => typeof rate === "number" && Number.isFinite(rate) && rate > 0 && rate <= 100;
+  if (!valid(r?.card) && !valid(r?.bankTransfer)) return null;
+  const one = (rate: unknown, base: number) => (valid(rate) ? { rate, amount: Math.floor((base * rate) / 100) } : null);
+  return (base) => ({ card: one(r?.card, base), bankTransfer: one(r?.bankTransfer, base) });
+}
+
+async function rewardPreview(db: PrismaClient, sellerId: string, buyerGradeId: string | null, base: number, now: Date) {
+  return (await rewardPreviewer(db, sellerId, buyerGradeId, now))?.(base) ?? null;
+}
+
+// 상품 카드 공통 칸: 공개 리뷰 평균·수와 적립 예정. 상품 상세의 리뷰 집계(product-reviews productReviews)와 같은 조건(공개 VISIBLE, 지우지 않음)이다.
+async function cardExtras(db: PrismaClient, sellerId: string, items: { id: string; shown: number }[], now: Date) {
+  const out = new Map<string, Pick<ShopProductCard, "rating" | "reviewCount" | "reward">>();
+  if (!items.length) return out;
+  const [groups, preview] = await Promise.all([
+    db.productReview.groupBy({
+      by: ["productId"],
+      where: { sellerId, productId: { in: items.map((i) => i.id) }, status: "VISIBLE", deletedAt: null },
+      _avg: { rating: true },
+      _count: { _all: true },
+    }),
+    rewardPreviewer(db, sellerId, null, now),
+  ]);
+  const byProduct = new Map(groups.map((g) => [g.productId, g]));
+  for (const i of items) {
+    const g = byProduct.get(i.id);
+    out.set(i.id, {
+      rating: g && g._count._all > 0 ? Math.round((g._avg.rating ?? 0) * 10) / 10 : null,
+      reviewCount: g?._count._all ?? 0,
+      reward: preview ? preview(i.shown) : null,
+    });
+  }
+  return out;
 }
