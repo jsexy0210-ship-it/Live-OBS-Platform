@@ -505,6 +505,10 @@ describe("탈퇴", () => {
   });
 });
 
+beforeEach(() => {
+  process.env.BILLING_KEY_SECRET = "test-billing-key-secret-0123456789abcdef";
+});
+
 describe("교환·반품 v2: 기한·개봉·수거·검수·교환 재고 없음·무통장 환불 계좌", () => {
   it("배송 완료 7일이 지나면 단순 변심·기타는 막고, 판매자 사정 사유는 받는다(기한 표시 포함)", async () => {
     const s = await shop();
@@ -636,6 +640,10 @@ describe("교환·반품 v2: 기한·개봉·수거·검수·교환 재고 없�
     if (!r.ok) throw new Error(r.reason);
     // 구매자 응답에는 계좌가 없고 보유 여부만, 파트너스 상세에는 있다
     expect(JSON.stringify(r.request)).not.toContain("123-456-789012");
+    // DB에는 원문이 아니라 봉인된 값(v1.…)이 저장되고, 파트너스 상세에서만 풀려 보인다
+    const raw = await db.returnRequest.findUniqueOrThrow({ where: { id: r.request.id } });
+    expect(raw.refundAccountNumber).toMatch(/^v1\./);
+    expect(raw.refundAccountNumber).not.toContain("789012");
     expect(r.request.hasRefundAccount).toBe(true);
     expect(await getSellerReturn(db, s.ctx, r.request.id)).toMatchObject({ refundAccount: acct, paymentMethod: "BANK_TRANSFER" });
     await proceedToReceived(s, r.request.id);
@@ -726,5 +734,47 @@ describe("부분 반품·환불 내역", () => {
     expect(await inspectReturn(db, s.ctx, r.request.id, { result: "OK", restock: true })).toMatchObject({ ok: true, request: { restocked: true } });
     // 슬리브(전체 수량 1)만 되돌아가고 팩(2개 중 1개)은 그대로
     expect([await stock(s.oa.id), await stock(s.ob.id)]).toEqual([at[0], at[1] + 1]);
+  });
+});
+
+describe("환불 계좌번호 봉인", () => {
+  const acct = { bankName: "국민", accountHolder: "김구매", accountNumber: "123-456-789012" };
+  const bankOrder = async (s: Awaited<ReturnType<typeof shop>>) => {
+    const r = await createOrder(db, { sellerId: s.seller.id, buyerMemberId: s.buyer.id, items: [{ optionId: s.oa.id, quantity: 1 }], consent, shippingAddress: addr });
+    if (!r.ok) throw new Error(r.reason);
+    await markOrderPaid(db, { sellerId: s.seller.id, orderId: r.orderId, paymentMethod: "BANK_TRANSFER" });
+    expect((await shipOrder(db, s.ctx, r.orderId, { courier: "CJ", trackingNumber: "123456789012" })).ok).toBe(true);
+    await completeDelivery(db, s.ctx, r.orderId);
+    return r.orderId;
+  };
+
+  it("비밀키가 없으면 신청을 받지 않고 원문을 저장하지 않는다", async () => {
+    const s = await shop();
+    const id = await bankOrder(s);
+    const saved = process.env.BILLING_KEY_SECRET;
+    delete process.env.BILLING_KEY_SECRET;
+    try {
+      expect(await createReturn(db, s.scope, id, { orderId: id, kind: "RETURN", reason: "DEFECTIVE", refundAccount: acct })).toEqual({ ok: false, reason: "refund_account_unavailable" });
+    } finally {
+      process.env.BILLING_KEY_SECRET = saved;
+    }
+    expect(await db.returnRequest.count()).toBe(0);
+  });
+
+  it("다른 쇼핑몰 행으로 옮기면 풀리지 않고, 봉인 전 원문 값은 그대로 보이며, 로그 추적에는 번호가 없다", async () => {
+    const s = await shop();
+    const id = await bankOrder(s);
+    const r = await createReturn(db, s.scope, id, { orderId: id, kind: "RETURN", reason: "DEFECTIVE", refundAccount: acct });
+    if (!r.ok) throw new Error(r.reason);
+    expect(await getSellerReturn(db, s.ctx, r.request.id)).toMatchObject({ refundAccount: { accountNumber: "123-456-789012" } });
+    expect(JSON.stringify(await db.auditLog.findMany({ where: { targetId: r.request.id } }))).not.toMatch(/789012|v1\./);
+    // 봉인 전(#455 직후) 원문으로 저장된 값은 그대로 보인다
+    await db.returnRequest.update({ where: { id: r.request.id }, data: { refundAccountNumber: "111-222-333444" } });
+    expect(await getSellerReturn(db, s.ctx, r.request.id)).toMatchObject({ refundAccount: { accountNumber: "111-222-333444" } });
+    // 다른 쇼핑몰 id로 봉인된 값을 옮겨 붙이면 풀리지 않는다(null)
+    const other = await shop();
+    const sealed = (await import("../../lib/server/billing/secret")).sealBillingKey("999-888-777666", other.seller.id);
+    await db.returnRequest.update({ where: { id: r.request.id }, data: { refundAccountNumber: sealed } });
+    expect(await getSellerReturn(db, s.ctx, r.request.id)).toMatchObject({ refundAccount: { accountNumber: null } });
   });
 });
