@@ -133,12 +133,25 @@
 }
 .pd-actions .pd-wish {
   flex: none;
-  width: 48px;
+  width: 44px;
   padding: 0;
 }
 .pd-actions .pd-share {
   flex: none;
-  padding: 0 16px;
+  width: 44px;
+  padding: 0;
+  font-size: 12px;
+}
+.pd-actions .pd-cart,
+.pd-actions .pd-buy {
+  padding: 0 8px;
+}
+/* 보드 SH-003-IA: 휴대폰은 찜 · 공유 · 장바구니에 담기 · 바로 주문하기 순서(한 줄), PC는 장바구니 · 찜 · 공유 · 주문 순서 */
+@media (min-width: 768px) {
+  .pd-actions .pd-cart { order: 1; }
+  .pd-actions .pd-wish { order: 2; width: 48px; }
+  .pd-actions .pd-share { order: 3; width: 56px; font-size: 14px; }
+  .pd-actions .pd-buy { order: 4; flex: 1.6; }
 }
 .pd-msg {
   margin: 12px 0 0;
@@ -195,4 +208,27 @@
 }
 .pd-crumb a:hover {
   text-decoration: underline;
+}
+
+/* 보드 SH-003-IA(v284): 휴대폰은 하단 탭 대신 화면 아래 고정 바(찜 44 · 공유 44 · 장바구니에 담기 · 바로 주문하기, 간격 8, 안쪽 위아래 12 · 좌우 16, 위쪽 모서리 8) */
+@media (max-width: 767px) {
+  .shop-app:has(.pd-actions) .shop-tabbar {
+    display: none;
+  }
+  .shop-app:has(.pd-actions) .shop-page {
+    padding-bottom: calc(var(--shop-h-lg) + 24px + env(safe-area-inset-bottom));
+  }
+  .pd-actions {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 50;
+    margin: 0;
+    gap: 8px;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    background: var(--wds-background-normal-normal);
+    border-top: 1px solid var(--wds-line-solid-normal);
+    border-radius: var(--ui-r-control) var(--ui-r-control) 0 0;
+  }
 }
