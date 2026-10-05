@@ -207,7 +207,7 @@ describe("주문서로 넘기기", () => {
       p1(s.seller.slug),
     );
     expect(order.status).toBe(200);
-    expect(await db.orderItem.findMany({ select: { optionId: true, quantity: true } })).toEqual([{ optionId: s.a.option.id, quantity: 2 }]);
+    expect(await db.orderItem.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { optionId: true, quantity: true } })).toEqual([{ optionId: s.a.option.id, quantity: 2 }]);
     expect((await checkout(s.seller.slug, s.cookie, [id1, id2])).status).toBe(200);
   });
 

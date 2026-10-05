@@ -287,7 +287,7 @@ describe("구매자 재가입 제한", () => {
     expect((await s.signupWith({ verificationId: "not-a-uuid", cookie: v.cookie })).status).toBe(400);
     expect((await s.signupWith({ verificationId: v.verificationId, cookie: "" })).status).toBe(400);
     expect((await s.signupWith({ verificationId: "00000000-0000-4000-8000-000000000000", cookie: v.cookie })).status).toBe(400);
-    expect((await db.buyerRejoinBlock.findMany()).map((b) => b.ciHash)).toEqual(["expired-a"]);
+    expect((await db.buyerRejoinBlock.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }] })).map((b) => b.ciHash)).toEqual(["expired-a"]);
     // 본인확인을 마친 요청에서만 지운다
     expect((await s.signupWith(v)).status).toBe(201);
     expect(await db.buyerRejoinBlock.count()).toBe(0);

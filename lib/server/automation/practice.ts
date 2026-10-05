@@ -222,9 +222,9 @@ export async function runPractice(
 export async function cleanupPracticeArtifacts(db: PrismaClient, rt: Pick<AutomationRuntime, "browser" | "obs">, limit = 20): Promise<number> {
   // 정리 대기 행을 원자적으로 점유한다: 고르면서 다음 대기 시각을 점유 시간만큼 미뤄 다른 작업자가 같은 행을 집지 않게 한다.
   // 결과는 고른 시점의 대기 시각·시도 횟수가 그대로일 때만 반영한다(점유가 풀린 뒤 다른 작업자가 먼저 반영했으면 덮어쓰지 않음)
+  // 고르는 질의는 MATERIALIZED로 한 번만 돈다(purchase.ts reconcileAutomationPayments와 같은 이유: 상한을 넘겨 집지 않게)
   const claimed = await db.$queryRaw<{ id: string; cleanupScopeId: string; cleanupAttempts: number; cleanupPendingAt: Date; playbookId: string; playbookVersion: number }[]>`
-    UPDATE "AutomationPracticeRun" SET "cleanupPendingAt" = clock_timestamp() + ${`${CLEANUP_CLAIM_MS} milliseconds`}::interval
-    WHERE id IN (
+    WITH picked AS MATERIALIZED (
       SELECT id FROM "AutomationPracticeRun"
       WHERE "cleanupPendingAt" <= clock_timestamp() AND "cleanupScopeId" IS NOT NULL AND "cleanupAttempts" < ${CLEANUP_MAX_ATTEMPTS}
         AND ${quiescentSql('"AutomationPracticeRun"')}
@@ -232,7 +232,9 @@ export async function cleanupPracticeArtifacts(db: PrismaClient, rt: Pick<Automa
       LIMIT ${limit}
       FOR UPDATE SKIP LOCKED
     )
-    RETURNING id, "cleanupScopeId", "cleanupAttempts", "cleanupPendingAt", "playbookId", "playbookVersion"`;
+    UPDATE "AutomationPracticeRun" r SET "cleanupPendingAt" = clock_timestamp() + ${`${CLEANUP_CLAIM_MS} milliseconds`}::interval
+    FROM picked WHERE r.id = picked.id
+    RETURNING r.id, r."cleanupScopeId", r."cleanupAttempts", r."cleanupPendingAt", r."playbookId", r."playbookVersion"`;
   let cleaned = 0;
   for (const r of claimed) {
     const ok = await discardScope(rt, { sellerId: "practice", jobId: r.cleanupScopeId });

@@ -257,13 +257,13 @@ describe("신규 가입(이전 뒤)", () => {
     const i = await legacySeller(null);
     await db.seller.update({ where: { id: i.seller.id }, data: { planId: plans.INTEGRATED.id } });
     expect(await registerCardAndPay(db, provider, i.ctx, { authKey: "auth" })).toMatchObject({ ok: true, charged: true });
-    expect(await db.subscriptionPayment.findMany({ where: { sellerId: i.seller.id }, select: { amount: true } })).toEqual([{ amount: 179000 }]);
+    expect(await db.subscriptionPayment.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: i.seller.id }, select: { amount: true } })).toEqual([{ amount: 179000 }]);
 
     const o = await legacySeller(at(7));
     await db.seller.update({ where: { id: o.seller.id }, data: { planId: plans.OVERLAY_ONLY.id } });
     expect(await registerCardAndPay(db, provider, o.ctx, { authKey: "auth" })).toMatchObject({ ok: true, charged: false });
     await renewDueSubscriptions(db, provider, { now: at(7) });
-    expect(await db.subscriptionPayment.findMany({ where: { sellerId: o.seller.id }, select: { amount: true } })).toEqual([{ amount: 69000 }]);
+    expect(await db.subscriptionPayment.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: o.seller.id }, select: { amount: true } })).toEqual([{ amount: 69000 }]);
     expect(await db.sellerSubscription.count({ where: { planId: plans.STANDARD.id } })).toBe(0);
   });
 });

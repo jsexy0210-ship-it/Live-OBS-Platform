@@ -176,7 +176,7 @@ describe("구매자 가입 HTTP", () => {
     const pending = (await pendingStart.json()).verificationId as string;
     const now = new Date();
     for (const id of [stale.verificationId, pending]) await db.identityVerification.update({ where: { id }, data: { expiresAt: new Date(now.getTime() - 1000), subjectId: crypto.randomUUID() } });
-    const before = new Map((await db.identityVerification.findMany()).map((r) => [r.id, r]));
+    const before = new Map((await db.identityVerification.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }] })).map((r) => [r.id, r]));
     const usage = await identityUsage(db, s.seller.id);
     expect(usage).toBe(3);
 

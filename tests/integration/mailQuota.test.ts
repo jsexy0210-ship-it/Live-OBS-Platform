@@ -81,13 +81,13 @@ describe("거래 메일 제공량과 잔액 차감", () => {
     expect(await send(s.seller.id, f.sender)).toMatchObject({ status: "SENT", charged: true });
     expect((await send(s.seller.id, f.sender)).status).toBe("SKIPPED_BALANCE");
     expect(await balance(s.seller.id)).toEqual([0, 5]);
-    const debits = await db.sellerMessageLedger.findMany({ where: { sellerId: s.seller.id, type: "DEBIT" } });
+    const debits = await db.sellerMessageLedger.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id, type: "DEBIT" } });
     expect(debits.map((d) => [d.status, d.channel, d.paidAmount, d.freeAmount, d.unitPrice])).toEqual([
       ["SUCCEEDED", "MAIL_TRANSACTIONAL", 0, -10, 10],
       ["SUCCEEDED", "MAIL_TRANSACTIONAL", 0, -10, 10],
     ]);
     // 발송 기록 id를 공급자 멱등키로, 차감 키는 그 발송 기록
-    const sent = await db.mailDelivery.findMany({ where: { sellerId: s.seller.id, status: "SENT" } });
+    const sent = await db.mailDelivery.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id, status: "SENT" } });
     expect(sent.map((d) => d.id).sort()).toEqual([...f.keys].sort());
     expect(sent.filter((d) => d.ledgerId)).toHaveLength(2);
     expect(await sellerMailUsage(db, s.seller.id)).toMatchObject({ quota: 2, sent: 4, freeSent: 2, chargedSent: 2, skippedBalance: 2 });

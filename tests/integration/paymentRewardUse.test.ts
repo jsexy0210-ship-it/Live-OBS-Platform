@@ -69,7 +69,7 @@ describe("주문할 때 적립금 사용", () => {
     if (!r.ok) return;
     expect(await db.order.findUniqueOrThrow({ where: { id: r.orderId } })).toMatchObject({ rewardUsedAmount: 3000, totalAmount: 5000 });
     expect(await balanceOf(s.seller.id, s.buyer.id)).toBe(7000);
-    expect(await db.rewardLedger.findMany({ where: { orderId: r.orderId } })).toEqual([
+    expect(await db.rewardLedger.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { orderId: r.orderId } })).toEqual([
       expect.objectContaining({ type: "USE", amount: -3000, status: "SUCCEEDED", idempotencyKey: `use:${r.orderId}` }),
     ]);
     const p = await startPayment(db, new FakePaymentGateway(), { sellerId: s.seller.id, buyerMemberId: s.buyer.id, orderId: r.orderId });

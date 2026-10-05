@@ -337,7 +337,7 @@ describe("목록 페이지 넘김: 기준 상품이 그사이 바뀌어도 빠�
         deleted.push(cursor);
       }
     });
-    const alive = (await db.product.findMany({ where: { sellerId: s.seller.id, deletedAt: null }, select: { id: true } })).map((p) => p.id);
+    const alive = (await db.product.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id, deletedAt: null }, select: { id: true } })).map((p) => p.id);
     expect(alive).toHaveLength(6);
     // 첫 쪽에서 이미 받은 기준 상품 + 살아 있는 나머지 6개가 모두 한 번씩
     expect(new Set(seen)).toEqual(new Set([...alive, ...deleted]));
@@ -354,7 +354,7 @@ describe("목록 페이지 넘김: 기준 상품이 그사이 바뀌어도 빠�
         hidden.push(cursor);
       }
     });
-    const onSale = (await db.product.findMany({ where: { sellerId: s.seller.id, status: "ON_SALE" }, select: { id: true } })).map((p) => p.id);
+    const onSale = (await db.product.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id, status: "ON_SALE" }, select: { id: true } })).map((p) => p.id);
     expect(onSale).toHaveLength(6);
     expect(new Set(seen)).toEqual(new Set([...onSale, ...hidden]));
     expect(seen).toHaveLength(7);

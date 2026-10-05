@@ -137,7 +137,7 @@ describe("구매자 탈퇴", () => {
     const elsewhere = await verified(other.seller.id);
     const member = await db.buyerMember.findUniqueOrThrow({ where: { id: r.memberId } });
     expect(member.birthDate).not.toBeNull();
-    const before = new Map((await db.identityVerification.findMany()).map((v) => [v.id, v]));
+    const before = new Map((await db.identityVerification.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }] })).map((v) => [v.id, v]));
     const usage = await identityUsage(db, seller.id);
     const ipCount = () => db.identityVerification.count({ where: { sellerId: seller.id, purpose: "BUYER_SIGNUP", requestIp: "203.0.113.7" } });
     const ipBefore = await ipCount();
@@ -610,7 +610,7 @@ describe("탈퇴 회원 법정 보관 분리", () => {
 
     const before = Date.now();
     expect((await s.withdraw(PASSWORD)).status).toBe(200);
-    const rows = new Map((await db.order.findMany()).map((o) => [o.id, o]));
+    const rows = new Map((await db.order.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }] })).map((o) => [o.id, o]));
     expect(rows.get(cancelled.id)!.legalRetainUntil).toEqual(new Date("2031-09-01T01:00:00.000Z"));
     expect(rows.get(refunded.id)!.legalRetainUntil).toEqual(YEAR5(refundedAt));
     expect(rows.get(confirmed.id)!.legalRetainUntil).toEqual(new Date("2031-09-10T00:00:00.000Z"));
@@ -717,7 +717,7 @@ describe("탈퇴 회원 법정 보관 분리", () => {
     await writeAudit(db, { actorType: "BUYER", actorId: s.buyer.id, sellerId: s.seller.id, action: "order.create", targetType: "Order", targetId: crypto.randomUUID() });
     await writeAudit(db, { actorType: "SYSTEM", sellerId: s.seller.id, action: "buyer.purchase_restriction.lift", targetType: "BuyerMember", targetId: s.buyer.id });
     await writeAudit(db, { actorType: "SELLER_USER", actorId: crypto.randomUUID(), sellerId: s.seller.id, action: "product.create", targetType: "Product", targetId: crypto.randomUUID() });
-    const rows = new Map((await db.auditLog.findMany({ where: { sellerId: s.seller.id } })).map((r) => [r.action, r]));
+    const rows = new Map((await db.auditLog.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id } })).map((r) => [r.action, r]));
     const login = rows.get("auth.buyer.login")!;
     expect(login.retainUntil).toEqual(addMonths(login.createdAt, 3));
     const order = rows.get("order.create")!;

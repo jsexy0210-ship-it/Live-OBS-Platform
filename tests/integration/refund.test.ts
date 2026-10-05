@@ -257,7 +257,7 @@ describe("적립금 원장", () => {
       ok: true,
       value: { rewardRevoke: "manual_review" },
     });
-    expect((await db.rewardLedger.findMany({ where: { orderId: order.id } })).map((r) => r.type)).toEqual(["EARN"]);
+    expect((await db.rewardLedger.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { orderId: order.id } })).map((r) => r.type)).toEqual(["EARN"]);
     const audit = await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "order.refund", targetId: order.id } });
     expect(audit.after).toMatchObject({ rewardRevoke: "manual_review" });
   });

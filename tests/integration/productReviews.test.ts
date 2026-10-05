@@ -250,13 +250,13 @@ describe("공개 방식·자동 보류·적립금", () => {
     const n = 300;
     const base = 800000;
     await db.order.createMany({ data: Array.from({ length: n }, (_, i) => ({ sellerId: s.seller.id, orderNo: base + i, buyerMemberId: s.buyer.id, status: "PAID" as const, broadcastNicknameSnapshot: "닉", totalAmount: 30000, paidAt: new Date(), purchaseConfirmedAt: new Date() })) });
-    const orders = await db.order.findMany({ where: { sellerId: s.seller.id, orderNo: { gte: base } }, select: { id: true } });
+    const orders = await db.order.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id, orderNo: { gte: base } }, select: { id: true } });
     await db.shipment.createMany({ data: orders.map((o) => ({ sellerId: s.seller.id, orderId: o.id, courier: "CJ", trackingNumber: "123456789012", status: "DELIVERED" as const, shippedAt: new Date(Date.now() - 2 * DAY), deliveredAt: new Date(Date.now() - DAY) })) });
     const option = await db.productOption.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id } });
     await db.orderItem.createMany({ data: orders.map((o) => ({ sellerId: s.seller.id, orderId: o.id, productId: s.product.id, optionId: option.id, productNameSnapshot: "상품", optionNameSnapshot: "옵션", unitPrice: 30000, quantity: 1 })) });
-    const items = await db.orderItem.findMany({ where: { sellerId: s.seller.id, orderId: { in: orders.map((o) => o.id) } }, select: { id: true, orderId: true } });
+    const items = await db.orderItem.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id, orderId: { in: orders.map((o) => o.id) } }, select: { id: true, orderId: true } });
     await db.productReview.createMany({ data: items.map((it) => ({ sellerId: s.seller.id, orderId: it.orderId, orderItemId: it.id, productId: s.product.id, buyerMemberId: s.buyer.id, authorNickname: "닉", rating: 5, body: BODY, status: "VISIBLE" as const, rewardRound: 1 })) });
-    const reviews = await db.productReview.findMany({ where: { sellerId: s.seller.id }, select: { id: true, orderId: true } });
+    const reviews = await db.productReview.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id }, select: { id: true, orderId: true } });
     await db.rewardLedger.createMany({ data: reviews.map((r, i) => ({ sellerId: s.seller.id, buyerMemberId: s.buyer.id, orderId: r.orderId, type: "EARN" as const, amount: 500, testMode: true, status: i % 2 ? ("SUCCEEDED" as const) : ("PENDING" as const), idempotencyKey: `review_reward:${r.id}:1` })) });
     // 탈퇴 트랜잭션 안의 쿼리 수를 센다
     let calls = 0;
@@ -522,7 +522,7 @@ describe("권한·테넌트·공개 목록", () => {
     expect((await setPolicy({ ...s, owner: s.noPerm }, {})).status).toBe(403);
     expect((await policyGet(get("/x", s.noPerm))).status).toBe(200);
     expect((await replyPut(json("/x", "PUT", s.cs, { reply: "소중한 리뷰 감사합니다" }), p({ reviewId: r.reviewId }))).status).toBe(200);
-    expect((await db.auditLog.findMany({ where: { sellerId: s.seller.id, action: { startsWith: "review." } } })).map((a) => a.action)).toEqual(["review.reply"]);
+    expect((await db.auditLog.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id, action: { startsWith: "review." } } })).map((a) => a.action)).toEqual(["review.reply"]);
   });
 
   it("다른 쇼핑몰의 리뷰·사진은 404이고 바뀌지 않는다", async () => {

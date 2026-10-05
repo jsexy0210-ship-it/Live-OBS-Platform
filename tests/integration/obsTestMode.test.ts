@@ -80,7 +80,7 @@ describe("테스트 서버 시험 데이터 명령(scripts/seed-obs-test.mjs)", 
     const options = await db.productOption.findMany({ where: { sellerId: shop.id } });
     expect(options).toHaveLength(4);
     for (const o of options) {
-      const moves = await db.stockMovement.findMany({ where: { optionId: o.id } });
+      const moves = await db.stockMovement.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { optionId: o.id } });
       expect(moves.map((m) => [m.reason, m.note, m.delta, m.actorId])).toEqual([["MANUAL", "처음 재고", o.stock, shop.users[0].id]]);
       expect(moves[0].stockAfter).toBe(o.stock);
     }
@@ -115,7 +115,7 @@ describe("테스트 서버 시험 데이터 명령(scripts/seed-obs-test.mjs)", 
     const r = seed({ OBS_TEST_MODE: "1", ...ADMIN });
     expect(r.code).toBe(0);
     expect(r.out).not.toContain("9876");
-    expect(await db.platformAdmin.findMany({ select: { email: true, name: true, role: true, status: true } })).toEqual([
+    expect(await db.platformAdmin.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { email: true, name: true, role: true, status: true } })).toEqual([
       { email: "master", name: "최고관리자", role: "SUPER_ADMIN", status: "ACTIVE" },
     ]);
     expect((await adminLogin()).ok).toBe(true);

@@ -158,7 +158,7 @@ describe("선택 일괄 처리", () => {
     });
     expect((await db.product.findUniqueOrThrow({ where: { id: x.id } })).status).toBe("ON_SALE");
     // 이미 숨김이던 C는 로그를 남기지 않는다
-    expect(await db.auditLog.findMany({ where: { action: "product.update", sellerId: s.seller.id }, select: { targetId: true, before: true, after: true } })).toEqual([
+    expect(await db.auditLog.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "product.update", sellerId: s.seller.id }, select: { targetId: true, before: true, after: true } })).toEqual([
       { targetId: a.id, before: { status: "ON_SALE" }, after: { status: "HIDDEN", bulk: true } },
     ]);
 

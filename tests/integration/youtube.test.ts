@@ -396,7 +396,7 @@ describe("채팅 수집", () => {
       ],
     });
     expect(await purgeOldChats(db, NOW)).toBe(1);
-    expect((await db.youtubeChatMessage.findMany({ select: { messageId: true } })).map((m) => m.messageId)).toEqual(["new"]);
+    expect((await db.youtubeChatMessage.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { messageId: true } })).map((m) => m.messageId)).toEqual(["new"]);
   });
 });
 
