@@ -3,7 +3,8 @@ import "../../styles/tokens.css";
 import "../../styles/lop.css";
 import "../../styles/public.css";
 import { RetryButton } from "../../components/public/RetryButton";
-import { headers } from "next/headers";
+import { prisma } from "../../lib/server/db";
+import { getPublicMaintenance } from "../../lib/server/maintenance/service";
 
 // AU-010 점검 중. 점검 중이면 proxy.ts가 /seller·/shop 주소를 그대로 두고 이 화면을 보여 준다.
 export const metadata: Metadata = { title: "점검 중 · ONQ", robots: { index: false } };
@@ -11,23 +12,9 @@ export const dynamic = "force-dynamic";
 
 const KST = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", month: "long", day: "numeric", hour: "numeric", minute: "2-digit", hour12: false });
 
-type Status = { active: boolean; message: string; endsAt: string | null };
-
-// 공개 GET /api/maintenance. 못 읽어도 화면은 열리고 점검 중으로 보여 준다.
-async function load(): Promise<Status | null> {
-  try {
-    const h = await headers();
-    const host = h.get("host");
-    if (!host) return null;
-    const res = await fetch(`${h.get("x-forwarded-proto") ?? "http"}://${host}/api/maintenance`, { cache: "no-store" });
-    return res.ok ? ((await res.json()) as Status) : null;
-  } catch {
-    return null;
-  }
-}
-
 export default async function MaintenancePage() {
-  const m = await load();
+  // DB를 못 읽어도 화면은 열리고 점검 중으로 보여 준다
+  const m = await getPublicMaintenance(prisma).catch(() => null);
   const active = m ? m.active : true;
   return (
     <div className="app pf pf-mt" data-theme="light">
