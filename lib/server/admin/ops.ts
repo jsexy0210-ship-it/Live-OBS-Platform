@@ -135,3 +135,84 @@ export async function listLivePayoutSellers(db: PrismaClient, admin: AdminSessio
     }),
   };
 }
+
+// MA-100 실시간 감시(조회만, platform.read). 실제로 재는 값만 준다. 웹훅은 받은 기록을 따로 저장하지 않아 재지 않는다(not_measured).
+// - servers: 살아 있는 앱 인스턴스(종료 표시 없음) 수와 그중 정상(2시간 안에 정기 실행 기록이 있음)·멈춤·신호 없음(등록 뒤 기록 없음) 수.
+//   정기 실행은 한 시간마다 돌아 2시간을 기준으로 한다.
+// - jobs: 작업별 마지막 실행(모든 살아 있는 인스턴스 중 가장 늦은 것)·그때 결과·마지막 성공. 오류 문구는 최고관리자(system.manage)에게만.
+// - queue: 실행할 때가 된 자동 연결 작업 대기 수와 가장 오래 기다린 시각.
+// - paymentChecks: 결제 결과 확인을 기다리는 건수와 가장 오래된 시각(주문 결제 승인 중·구독 청구·자동 연결 결제·발송 충전).
+// - autoActions: 시스템이 스스로 한 처리(로그 추적의 SYSTEM 행) 최근 20건. 열린 장애(수집기 사건)는 incidents.
+export const SERVER_HEALTHY_MS = 2 * 3_600_000;
+
+export async function opsMonitor(db: PrismaClient, admin: AdminSessionContext) {
+  requireRead(admin);
+  const now = await dbNow(db);
+  const showErrors = adminCan(admin.admin.role, "system.manage");
+  const beats = await db.$queryRaw<{ instance: string; registeredAt: Date; job: string | null; lastRunAt: Date | null; lastStatus: string | null; lastOkAt: Date | null; lastError: string | null }[]>`
+    SELECT i."name" AS "instance", i."registeredAt", h."job", h."lastRunAt", h."lastStatus", h."lastOkAt", h."lastError"
+    FROM "OpsInstance" i LEFT JOIN "OpsHeartbeat" h ON h."instance" = i."name" AND h."generation" = i."generation"
+    WHERE i."retiredAt" IS NULL
+    ORDER BY i."name", h."job" NULLS FIRST`;
+  const byInstance = new Map<string, { lastRunAt: number | null }>();
+  for (const b of beats) {
+    const cur = byInstance.get(b.instance) ?? { lastRunAt: null };
+    if (b.lastRunAt) cur.lastRunAt = Math.max(cur.lastRunAt ?? 0, b.lastRunAt.getTime());
+    byInstance.set(b.instance, cur);
+  }
+  const servers = { total: byInstance.size, healthy: 0, stale: 0, noSignal: 0 };
+  for (const v of byInstance.values()) {
+    if (v.lastRunAt === null) servers.noSignal++;
+    else if (now.getTime() - v.lastRunAt <= SERVER_HEALTHY_MS) servers.healthy++;
+    else servers.stale++;
+  }
+  const jobMap = new Map<string, { job: string; lastRunAt: Date; lastStatus: string; lastOkAt: Date | null; lastError: string | null; instances: number }>();
+  for (const b of beats) {
+    if (!b.job || !b.lastRunAt) continue;
+    const cur = jobMap.get(b.job);
+    const okAt = cur?.lastOkAt && b.lastOkAt ? (cur.lastOkAt > b.lastOkAt ? cur.lastOkAt : b.lastOkAt) : (cur?.lastOkAt ?? b.lastOkAt);
+    if (!cur || b.lastRunAt > cur.lastRunAt) {
+      jobMap.set(b.job, { job: b.job, lastRunAt: b.lastRunAt, lastStatus: b.lastStatus ?? "no_signal", lastOkAt: okAt, lastError: b.lastError, instances: (cur?.instances ?? 0) + 1 });
+    } else {
+      cur.lastOkAt = okAt;
+      cur.instances++;
+    }
+  }
+  const jobs = [...jobMap.values()]
+    .sort((a, b) => a.job.localeCompare(b.job))
+    .map(({ lastError, ...j }) => ({ ...j, healthy: now.getTime() - j.lastRunAt.getTime() <= SERVER_HEALTHY_MS && j.lastStatus !== "failed", ...(showErrors ? { lastError } : {}) }));
+
+  const pending = async (kind: string, p: Promise<{ _count: { _all: number }; _min: { createdAt: Date | null } }>) => {
+    const r = await p;
+    return { kind, pending: r._count._all, oldestAt: r._min.createdAt };
+  };
+  const [queued, paymentChecks, autoActions, incidents] = await Promise.all([
+    db.automationJob.aggregate({ where: { status: "QUEUED", runAfter: { lte: now } }, _count: { _all: true }, _min: { queuedAt: true } }),
+    Promise.all([
+      pending("order_payment", db.payment.aggregate({ where: { status: "APPROVING" }, _count: { _all: true }, _min: { createdAt: true } })),
+      pending("subscription", db.subscriptionPayment.aggregate({ where: { status: "PENDING" }, _count: { _all: true }, _min: { createdAt: true } })),
+      pending("automation", db.automationPayment.aggregate({ where: { status: "PENDING" }, _count: { _all: true }, _min: { createdAt: true } })),
+      pending("message_charge", db.messageCharge.aggregate({ where: { status: "PENDING" }, _count: { _all: true }, _min: { createdAt: true } })),
+    ]),
+    db.auditLog.findMany({
+      where: { actorType: "SYSTEM" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 20,
+      select: { id: true, action: true, targetType: true, targetId: true, sellerId: true, createdAt: true },
+    }),
+    db.$queryRaw<{ source: string; key: string; kind: string; severity: string; message: string; occurredAt: Date }[]>`
+      SELECT DISTINCT ON ("source", "key") "source", "key", "kind", "severity", "message", "occurredAt"
+      FROM "OpsEvent" WHERE "kind" IN ('incident_open', 'incident_close')
+      ORDER BY "source", "key", "seq" DESC`,
+  ]);
+  return {
+    at: now,
+    servers,
+    jobs,
+    queue: { automationQueued: queued._count._all, oldestQueuedAt: queued._min.queuedAt },
+    paymentChecks,
+    webhooks: "not_measured" as const,
+    autoActions,
+    incidents: incidents.filter((e) => e.kind === "incident_open").map(({ kind: _k, ...e }) => e),
+  };
+}
