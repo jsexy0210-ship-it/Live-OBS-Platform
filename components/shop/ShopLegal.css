@@ -25,3 +25,12 @@
   color: inherit;
   text-decoration: underline;
 }
+.shop-foot-info a {
+  color: inherit;
+  text-decoration: underline;
+}
+.shop-foot-minor {
+  margin: 0 0 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
