@@ -277,7 +277,7 @@ async function applicationHistory(db: PrismaClient, now: Date, f: { q: string; f
   return out.map(({ biz: _b, ...r }) => r);
 }
 
-// 보완 요청(마스터 seller.moderate): 승인 대기 신청에 사유를 남기고 7일 기한을 건다. 기한(supplementDueAt)은 화면 표시용이며, 기한이 지나도 자동으로 반려하지 않는다(대표님·MASTER 결정: 자동 반려 없음, 지난 신청은 화면에 「기한 지남」으로만 보인다).
+// 보완 요청(마스터 seller.moderate): 승인 대기 신청에 사유를 남기고 7일 기한을 건다. 기한이 지나면 정기 작업이 자동 반려한다(디자인 정본 「7일 안에 보완하지 않으면 자동 반려됩니다」).
 export async function requestSupplement(db: PrismaClient, admin: AdminSessionContext, sellerId: string, rawReason: unknown, meta: Meta = {}) {
   needModerate(admin);
   const reason = typeof rawReason === "string" ? rawReason.trim() : "";
@@ -391,6 +391,22 @@ export async function undoApproval(db: PrismaClient, admin: AdminSessionContext,
     await writeAudit(tx, { actorType: "PLATFORM_ADMIN", actorId: admin.admin.id, sellerId, action: "admin.seller.approve_undo", targetType: "Seller", targetId: sellerId, before: { status: "ACTIVE" }, after: { status: "PENDING", reviewReasons: reasons, sessionsRevoked: revoked.count }, ip: meta.ip, userAgent: meta.userAgent });
     return { ok: true as const };
   });
+}
+
+// 정기 작업: 보완 기한이 지난 신청을 자동 반려한다(로그 추적 seller.supplement_expired).
+export async function rejectExpiredSupplements(tx: Prisma.TransactionClient, now: Date): Promise<number> {
+  const due = await tx.sellerApplicationReview.findMany({ where: { supplementRequestedAt: { not: null }, supplementResolvedAt: null, supplementDueAt: { lte: now } }, select: { sellerId: true } });
+  let n = 0;
+  for (const { sellerId } of due) {
+    const why = `보완 기한(${SUPPLEMENT_DAYS}일) 안에 보완하지 않아 자동 반려했습니다`;
+    const moved = await tx.seller.updateMany({ where: { id: sellerId, status: "PENDING" }, data: { status: "REJECTED", rejectedReason: why, rejectedAt: now } });
+    await tx.sellerApplicationReview.update({ where: { sellerId }, data: { supplementResolvedAt: now } });
+    if (moved.count === 1) {
+      await writeAudit(tx, { actorType: "SYSTEM", actorId: null, sellerId, action: "seller.supplement_expired", targetType: "Seller", targetId: sellerId, reason: why });
+      n++;
+    }
+  }
+  return n;
 }
 
 // 선택 반려: 같은 사유(1~200자)로 한꺼번에 반려한다. 건별 결과(한 건이 실패해도 나머지는 계속). 사유는 신청자에게 그대로 안내되는 문구다.

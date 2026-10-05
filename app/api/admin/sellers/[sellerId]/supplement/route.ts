@@ -6,7 +6,7 @@ import { APPLICATION_MESSAGES, requestSupplement } from "../../../../../../lib/s
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// 보완 요청(MA-013·014, seller.moderate). 본문 { reason(1~200자) }. 7일 기한(표시용)을 걸고 신청 상태가 「보완 요청」이 된다. 기한이 지나도 자동으로 반려하지 않는다(목록에 `dueExpired`로만 표시).
+// 보완 요청(MA-013·014, seller.moderate). 본문 { reason(1~200자) }. 7일 기한을 걸고 신청 상태가 「보완 요청」이 된다. 기한이 지나면 정기 작업이 자동 반려한다(디자인 정본, 목록에 `dueExpired` 표시).
 // 200 { ok, dueAt } · 400 reason_required · 404 not_found · 409 not_pending·already_requested
 export const POST = mutation(async (req: Request, { params }: { params: Promise<{ sellerId: string }> }) => {
   const admin = await requireAdmin(prisma, sessionToken(req, "admin"), "seller.moderate");

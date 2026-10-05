@@ -10,7 +10,7 @@ import { listApplications } from "../../../../../lib/server/sellers/applications
 // { chips: { all, clear, review, supplement, over48h, today }, kpi: { pending, needsReview, clear, supplement, over48h, receivedToday, autoApprovedToday, autoApprovedMonth, approvedToday,
 //     rejectedToday, rejectedMonth, avgHandlingHours: { thisWeek, lastWeek } }, industries: [업종 목록(필터 선택지)], total, nextCursor,
 //   applications: [{ id, slug, shopName, state(CLEAR·REVIEW·SUPPLEMENT), applicantName, applicantEmail, businessNumber, industry, receivedAt, elapsedHours, over48h,
-//     reasons: [{ code, text }], supplement: { reason, requestedAt, dueAt, dueExpired(기한 지남, 자동 반려는 없음), daysLeft, reminderCount, lastReminderAt, canRemindAt } | null }]  (tab=history이면 applications 대신
+//     reasons: [{ code, text }], supplement: { reason, requestedAt, dueAt, dueExpired(기한 지남, 정기 작업이 자동 반려), daysLeft, reminderCount, lastReminderAt, canRemindAt } | null }]  (tab=history이면 applications 대신
 //   history: [{ id, slug, shopName, result(AUTO_APPROVED·APPROVED·REJECTED), at, receivedAt, reason, industry, applicantName, undoableUntil }] }
 export async function GET(req: Request) {
   try {
