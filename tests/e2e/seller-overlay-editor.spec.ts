@@ -67,9 +67,9 @@ test("위치·크기·속성을 고쳐 저장하면 서버에 남고, 오버레�
   await expect(page.getByTestId("ove-dirty")).toHaveText("저장 안 한 변경 3개");
 
   // 되돌리기·다시 실행(Ctrl+Z · Ctrl+Shift+Z): 명예의 전당 끄기를 되돌렸다가 다시 실행
-  await page.getByRole("button", { name: "되돌리기" }).click();
+  await page.getByRole("button", { name: "방금 작업 취소" }).click();
   await expect(page.getByTestId("ove-dirty")).toHaveText("저장 안 한 변경 2개");
-  await page.getByRole("button", { name: "다시 실행" }).click();
+  await page.getByRole("button", { name: "취소한 작업 다시 하기" }).click();
   await expect(page.getByTestId("ove-dirty")).toHaveText("저장 안 한 변경 3개");
   await page.getByTestId("ove-canvas").focus();
   await page.keyboard.press("Control+z");
@@ -78,9 +78,9 @@ test("위치·크기·속성을 고쳐 저장하면 서버에 남고, 오버레�
   await expect(page.getByTestId("ove-dirty")).toHaveText("저장 안 한 변경 3개");
 
   await page.getByRole("button", { name: "저장하기" }).click();
-  await expect(toast(page)).toContainText("저장했습니다 · 방송 화면에 바로 반영됩니다");
+  await expect(toast(page)).toContainText("저장했습니다. 방송 화면이 바로 바뀝니다");
   await expect(page.getByTestId("ove-dirty")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "되돌리기" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "방금 작업 취소" })).toBeDisabled();
 
   const saved = await layout(page);
   const cur = saved.widgets.find((w) => w.id === "current")!;
@@ -125,7 +125,7 @@ test("다른 창에서 먼저 저장했으면 안내하고, 다시 불러오면 
   await other.close();
 
   await page.getByRole("button", { name: "저장하기" }).click();
-  await expect(page.getByTestId("ove-conflict")).toContainText("다른 창에서 세로 9:16 레이아웃을 먼저 저장했습니다");
+  await expect(page.getByTestId("ove-conflict")).toContainText("다른 창에서 먼저 저장해서 저장하지 못했습니다");
   await page.getByRole("button", { name: "최신 내용 불러오기" }).click();
   await expect(page.getByTestId("ove-conflict")).toHaveCount(0);
   await expect(page.getByTestId("ove-dirty")).toHaveCount(0);
@@ -140,13 +140,13 @@ test("템플릿으로 초기화(초안)하고 되돌릴 수 있으며, 내 템�
 
   // 스포트라이트형으로 초기화: 확인 창 → 초안(저장 전)으로 바뀌고, 되돌리기로 돌아간다(현재 주문 x: 줄서기형 4.4 → 스포트라이트형 43)
   await page.getByRole("button", { name: "스포트라이트형" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "초기화" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "이 템플릿으로 바꾸기" }).click();
   await expect(toast(page)).toContainText("템플릿으로 초기화했습니다");
   await expect(page.getByTestId("ove-dirty")).toBeVisible();
   expect(await currentX(page)).toBe(4.4);
-  await page.getByRole("button", { name: "되돌리기" }).click();
+  await page.getByRole("button", { name: "방금 작업 취소" }).click();
   await expect(page.getByTestId("ove-dirty")).toHaveCount(0);
-  await page.getByRole("button", { name: "다시 실행" }).click();
+  await page.getByRole("button", { name: "취소한 작업 다시 하기" }).click();
   await page.getByRole("button", { name: "저장하기" }).click();
   await expect(toast(page)).toContainText("저장했습니다");
   expect(await currentX(page)).toBe(43);
@@ -162,17 +162,17 @@ test("템플릿으로 초기화(초안)하고 되돌릴 수 있으며, 내 템�
 
   // 줄서기형으로 돌린 뒤 저장, 내 템플릿 적용 후 저장
   await page.getByRole("button", { name: "줄서기형" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "초기화" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "이 템플릿으로 바꾸기" }).click();
   await page.getByRole("button", { name: "저장하기" }).click();
   await expect.poll(() => currentX(page)).toBe(4.4);
-  await row.getByRole("button", { name: "적용" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "초기화" }).click();
+  await row.getByRole("button", { name: "이 템플릿으로 바꾸기" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "이 템플릿으로 바꾸기" }).click();
   await page.getByRole("button", { name: "저장하기" }).click();
   await expect.poll(() => currentX(page)).toBe(43);
 
   // 삭제
   await row.getByRole("button", { name: `${NAME} 삭제` }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "삭제" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "템플릿 지우기" }).click();
   await expect(page.getByTestId("ove-mine-row").filter({ hasText: NAME })).toHaveCount(0);
   await reset(page);
 });
@@ -213,7 +213,7 @@ test("끌 때 정렬 가이드선이 보이고, 실제 크기 미리보기가 �
   await expect(page.getByTestId("ove-dirty")).toBeVisible();
 
   // 실제 크기 미리보기(1배)
-  await page.getByRole("button", { name: "실제 크기 미리보기" }).click();
+  await page.getByRole("button", { name: "실제 크기로 보기" }).click();
   const pv = page.getByTestId("ove-fullpreview");
   await expect(pv).toContainText("1080×1920");
   const w = await pv.locator('[data-widget="CURRENT_ORDER"]').boundingBox();
