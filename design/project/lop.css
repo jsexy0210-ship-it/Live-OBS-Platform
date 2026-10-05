@@ -1066,3 +1066,4 @@ select.inp{cursor:pointer}
 /* 2026-10-05 현대화 기준: 글 열(.l)은 제목도 왼쪽 · 관리자 목록 썸네일 64×64 모서리 8 · 썸네일 행 88 */
 .c24 .lt th.l,.c24 .st .lt th.l{text-align:left !important}
 .c24 .lt .th{width:64px;height:64px;border-radius:8px;margin:8px 0;object-fit:cover}
+.c24 .ph2 .acts{gap:8px}
