@@ -127,14 +127,14 @@ function PartnerList() {
                   <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                     <thead>
                       <tr>
-                        <th>쇼핑몰</th>
+                        <th>파트너스 · 쇼핑몰</th>
                         <th>상태</th>
-                        <th>요금제</th>
                         <th>구독</th>
+                        <th>결제 상태</th>
                         <th>체험 종료</th>
                         <th>가입일</th>
                         <th>승인일</th>
-                        {canModerate && <th>작업</th>}
+                        <th>관리</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -154,15 +154,18 @@ function PartnerList() {
                           <td className="num">{day(s.trialEndsAt)}</td>
                           <td className="num">{day(s.createdAt)}</td>
                           <td className="num">{day(s.approvedAt)}</td>
-                          {canModerate && (
-                            <td>
-                              {(s.status === "ACTIVE" || s.status === "SUSPENDED") && (
+                          <td>
+                            <span className="row" style={{ gap: 6, justifyContent: "center" }}>
+                              <Link className="btn btn-sm btn-out" href={`/admin/partners/${s.id}`}>
+                                상세
+                              </Link>
+                              {canModerate && (s.status === "ACTIVE" || s.status === "SUSPENDED") && (
                                 <button className="btn btn-sm btn-out" type="button" onClick={() => setTarget(s)}>
                                   {s.status === "ACTIVE" ? "이용 정지" : "정지 해제"}
                                 </button>
                               )}
-                            </td>
-                          )}
+                            </span>
+                          </td>
                         </tr>
                       ))}
                     </tbody>

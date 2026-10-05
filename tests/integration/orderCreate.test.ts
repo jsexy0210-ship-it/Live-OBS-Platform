@@ -144,7 +144,7 @@ describe("HTTP: 주문 생성 API", () => {
     const cookie = await buyerCookie(s.seller.id, s.buyer.loginId);
     const noConsent = await post(s.seller.slug, { items: [{ optionId: s.option.id, quantity: 1 }], shippingAddress }, cookie);
     expect(noConsent.status).toBe(400);
-    expect(await noConsent.json()).toEqual({ error: "consent_required", message: "안내를 확인하고 동의해 주세요" });
+    expect(await noConsent.json()).toEqual({ error: "consent_required", message: "주문서 아래 안내를 읽고 체크 칸에 동의해 주세요" });
   });
 
   it("잠긴 쇼핑몰은 402와 「지금은 쇼핑몰을 이용할 수 없어요」(판매자 사정은 드러내지 않음)", async () => {

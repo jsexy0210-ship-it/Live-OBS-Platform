@@ -8,9 +8,9 @@ export const PAYMENT_MESSAGES: Record<StartRejection | "payment_not_ready" | "in
   shop_unavailable: "지금은 쇼핑몰을 이용할 수 없어요",
   not_found: "주문을 찾을 수 없어요",
   order_not_payable: "결제할 수 없는 주문이에요. 주문 상태를 확인해 주세요",
-  already_paid: "이미 결제했거나 결제가 진행 중인 주문이에요",
+  already_paid: "이미 결제한 주문이에요. 주문 내역에서 확인해 주세요",
   amount_mismatch: "주문 금액이 바뀌었어요. 주문을 다시 해 주세요",
-  invalid_request: "요청을 다시 확인해 주세요",
+  invalid_request: "입력한 내용이 맞지 않아요. 화면을 새로 열고 다시 해 주세요",
 };
 
 export const paymentErrorBody = (reason: keyof typeof PAYMENT_MESSAGES) => ({ error: reason, message: PAYMENT_MESSAGES[reason] });

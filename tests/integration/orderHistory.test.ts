@@ -1,4 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { writeAudit } from "../../lib/server/audit/log";
 import { prisma } from "../../lib/server/db";
 import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
 import { createOrder } from "../../lib/server/orders/create";
@@ -76,5 +77,24 @@ describe("주문 상세 상태 이력", () => {
     const otherOwner = await createSellerUser(other.seller.id, "OWNER");
     const otherCtx: TenantContext = { sellerId: other.seller.id, actorType: "SELLER_USER", actorId: otherOwner.id, isOwner: true, permissions: [], readOnly: false };
     expect(await getOrderHistory(db, otherCtx, s.order.id)).toEqual([]);
+  });
+
+  it("결제사가 취소를 거절하면 payment_cancel 행에 실패 코드와 사람이 읽을 사유(결제사 문구 포함)가 나온다", async () => {
+    const s = await setup();
+    await s.refund([{ orderItemId: s.item.id, quantity: 1 }]);
+    const cancel = await db.paymentCancel.findFirstOrThrow({ where: { sellerId: s.seller.id } });
+    // 거절된 취소: 상태 FAILED + 코드, 로그 추적 payment.cancel_failed(결제사 문구)
+    await db.paymentCancel.update({ where: { id: cancel.id }, data: { status: "FAILED", failureCode: "nicepay_A123" } });
+    await writeAudit(db, { actorType: "SYSTEM", sellerId: s.seller.id, action: "payment.cancel_failed", targetType: "Order", targetId: s.order.id, after: { paymentId: cancel.paymentId, amount: cancel.amount, code: "nicepay_A123", message: "취소 불가 거래" } });
+    const failed = (await getOrderHistory(db, s.ctx, s.order.id)).find((e) => e.kind === "payment_cancel");
+    expect(failed).toMatchObject({ amount: 5000, cancelStatus: "FAILED", failureCode: "nicepay_A123", note: "결제사에서 취소를 거절했습니다(취소 불가 거래)" });
+    // 결제사 문구가 기록되기 전 행(옛 기록)은 코드 문구만, 모르는 코드는 일반 문구
+    await db.auditLog.deleteMany({ where: { action: "payment.cancel_failed" } });
+    expect((await getOrderHistory(db, s.ctx, s.order.id)).find((e) => e.kind === "payment_cancel")?.note).toBe("결제사에서 취소를 거절했습니다");
+    await db.paymentCancel.update({ where: { id: cancel.id }, data: { failureCode: "over_balance" } });
+    expect((await getOrderHistory(db, s.ctx, s.order.id)).find((e) => e.kind === "payment_cancel")?.note).toBe("취소할 금액이 남은 결제 금액보다 큽니다");
+    // 성공·대기 취소는 failureCode가 없다
+    await db.paymentCancel.update({ where: { id: cancel.id }, data: { status: "REQUESTED", failureCode: null } });
+    expect((await getOrderHistory(db, s.ctx, s.order.id)).find((e) => e.kind === "payment_cancel")).toMatchObject({ cancelStatus: "REQUESTED", failureCode: null });
   });
 });
