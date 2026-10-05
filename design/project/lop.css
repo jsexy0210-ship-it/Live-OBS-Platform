@@ -1070,3 +1070,7 @@ select.inp{cursor:pointer}
 /* 2026-10-05 현대화 기준: 글 열(.l)은 제목도 왼쪽 · 관리자 목록 썸네일 64×64 모서리 8 · 썸네일 행 88 */
 .c24 .lt th.l,.c24 .st .lt th.l{text-align:left !important}
 .c24 .lt .th{width:64px;height:64px;border-radius:8px;margin:8px 0;object-fit:cover}
+.c24 .ph2 .acts{gap:8px}
+/* 관리 열 버튼 묶음: 가운데 · 사이 8 · 폭 토큰 — 폼 표 안 버튼은 입력과 같은 40 */
+.c24 .acts2{display:flex;gap:8px;justify-content:center;flex-wrap:nowrap}.c24 .acts2 .b.sm{min-width:var(--btn-w-xs);padding:0 10px}
+.c24 .ft td .b:not(.sm):not(.lg){height:var(--ui-h-dense)}

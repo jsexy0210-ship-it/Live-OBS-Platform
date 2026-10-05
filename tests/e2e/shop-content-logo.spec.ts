@@ -101,6 +101,8 @@ test.describe.serial("SA-060 쇼핑몰 로고", () => {
     await page.goto("/seller/login?next=%2Fseller%2Fsettings%2Fshop");
     await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
     await expect(page).toHaveURL(/\/seller\/settings\/shop$/);
+    // 화면이 여는 조회(로고·대표 색상)가 끝난 뒤에 쿠키를 지운다. 안 그러면 늦게 간 조회가 401을 받아 업로드보다 먼저 로그인 화면으로 간다
+    await page.waitForLoadState("networkidle");
     await context.clearCookies();
     await page.getByLabel("로고 파일").setInputFiles(file("logo.png", png(512, 512)));
     await expect(page).toHaveURL(/\/seller\/login\?next=%2Fseller%2Fsettings%2Fshop$/);
