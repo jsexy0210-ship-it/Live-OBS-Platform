@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
+import { isImpersonationToken, resolveImpersonation } from "../auth/impersonation";
 import { resolveAdminSession, resolveSellerSession, type AdminSessionContext } from "../auth/session";
 import { sellerFeatures, type Feature } from "../billing/features";
 import { sellerAccessFor } from "../billing/subscription";
@@ -38,6 +39,12 @@ export async function requireSeller(
   now?: Date,
   opts: { allowUnpaid?: boolean; feature?: SellerRouteFeature; allowSuspended?: boolean } = {},
 ): Promise<TenantContext> {
+  // 마스터 대리 조회(MA-016): 읽기 전용 컨텍스트. 구독 잠김·이용 정지·플랜 기능과 관계없이 지원을 위해 볼 수 있지만 변경은 모두 거부된다.
+  if (isImpersonationToken(token)) {
+    const imp = await resolveImpersonation(db, token, now ?? new Date());
+    if (!imp) throw unauthenticated();
+    return { sellerId: imp.seller.id, actorType: "PLATFORM_ADMIN", actorId: imp.adminId, isOwner: false, permissions: [], readOnly: true };
+  }
   const ctx = await resolveSellerSession(db, token, now ?? new Date());
   if (!ctx) throw unauthenticated();
   // 이용 정지(대표님 결정 2026-10-04 「신규만 막기」): 이미 받은 주문의 처리(ORDER_FOLLOWUP, 잠겨도 열리는 경로)와

@@ -51,6 +51,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/staff/[userId]/disable": "ACCOUNT",
   "seller/staff/[userId]/password": "ACCOUNT",
   "seller/staff/[userId]/permissions": "ACCOUNT",
+  "seller/impersonation": "BILLING", // 마스터 대리 조회 상태(읽기 전용 배너): 가드를 쓰지 않고 lo_imp 쿠키만 확인
   "seller/orders": "ORDER_FOLLOWUP",
   "seller/search": "ORDER_FOLLOWUP", // 전역 검색: 이미 받은 주문·문의를 잠김·정지 중에도 찾는다
   "seller/orders/[orderId]": "ORDER_FOLLOWUP",
