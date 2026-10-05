@@ -1,0 +1,3 @@
+.mgc{display:flex;flex-direction:column;gap:4px;padding:14px 16px;border-radius:12px;background:var(--wds-fill-alternative)}
+.mgc-t{margin:0;font-size:16px}
+.mgc-s{margin:0;font-size:14px;color:var(--wds-label-alternative)}

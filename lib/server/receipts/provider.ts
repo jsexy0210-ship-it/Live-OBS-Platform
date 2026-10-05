@@ -24,6 +24,9 @@ export function getReceiptProvider(): ReceiptProvider | null {
   return null;
 }
 
+// 철회와 겹쳐 업체에는 발행됐지만 로컬은 취소된 발행의 표시(업체 쪽에서 취소해야 한다)
+export const PROVIDER_CANCEL_NEEDED = "provider_cancel_needed";
+
 export type ProcessReceiptFailure = "not_found" | "not_pending" | "provider_not_configured" | "issuer_not_ready" | "claim_lost";
 
 // 대기(PENDING) 발행 한 건을 업체에 보낸다. 업체가 없거나 발행자 정보·인증서가 준비되지 않았으면 아무것도 바꾸지 않는다(대기 유지).
@@ -43,18 +46,28 @@ export async function processReceiptIssue(db: PrismaClient, issueId: string, pro
   if (!issuer || issuer.certStatus !== "REGISTERED") return { ok: false as const, reason: "issuer_not_ready" as const };
   const claimed = await db.receiptIssue.updateMany({ where: { id: issue.id, status: "PENDING", attempts: issue.attempts }, data: { attempts: { increment: 1 } } });
   if (claimed.count !== 1) return { ok: false as const, reason: "claim_lost" as const };
-  const result = await provider.issue({
-    issueId: issue.id,
-    kind: issue.request.kind,
-    amount: issue.amount,
-    identity: openBillingKey(issue.request.identitySealed, issue.sellerId),
-    taxInfo: (issue.request.taxInfo as ReceiptProviderInput["taxInfo"]) ?? null,
-    issuer: { businessNumber: issuer.businessNumber, companyName: issuer.companyName, representative: issuer.representative },
-  });
-  // 철회와 겹쳤으면(대기가 아니게 됨) 결과를 덮어쓰지 않는다
-  await db.receiptIssue.updateMany({
+  // 업체가 예외를 던져도(네트워크·시간 초과 등) 시도 횟수만 올린 채 대기로 남기지 않고 실패로 기록한다. 업체에서 발행됐는지 모르는 상태라 재시도는 멱등 키로 막는다.
+  let result: ReceiptProviderResult;
+  try {
+    result = await provider.issue({
+      issueId: issue.id,
+      kind: issue.request.kind,
+      amount: issue.amount,
+      identity: openBillingKey(issue.request.identitySealed, issue.sellerId),
+      taxInfo: (issue.request.taxInfo as ReceiptProviderInput["taxInfo"]) ?? null,
+      issuer: { businessNumber: issuer.businessNumber, companyName: issuer.companyName, representative: issuer.representative },
+    });
+  } catch {
+    result = { ok: false, code: "provider_error" };
+  }
+  // 철회와 겹쳤으면(대기가 아니게 됨) 결과가 철회를 덮어쓰지 않는다
+  const applied = await db.receiptIssue.updateMany({
     where: { id: issue.id, status: "PENDING" },
     data: result.ok ? { status: "ISSUED", providerKey: result.providerKey, issuedAt: new Date(), failureCode: null } : { status: "FAILED", failureCode: result.code.slice(0, 100) },
   });
+  // 업체에는 이미 발행됐는데 그 사이 철회돼 로컬은 취소인 경우: 업체 문서 번호를 남기고 업체 쪽 취소가 필요하다고 표시한다(failureCode로 목록에서 찾는다).
+  if (applied.count === 0 && result.ok) {
+    await db.receiptIssue.updateMany({ where: { id: issue.id, status: "CANCELLED" }, data: { providerKey: result.providerKey, failureCode: PROVIDER_CANCEL_NEEDED } });
+  }
   return { ok: true as const, issued: result.ok };
 }

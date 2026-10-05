@@ -484,6 +484,22 @@ body {
   font-size: 13px;
   color: var(--wds-label-assistive);
 }
+.pc-reward,
+.pc-rating {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--wds-label-alternative);
+}
+.pc-reward b {
+  font-weight: 600;
+  color: var(--brand);
+}
+.pc-rating > span:first-child {
+  color: var(--wds-status-cautionary);
+}
+.pc-rc {
+  color: var(--wds-label-assistive);
+}
 .shop-empty {
   padding: 64px 16px;
   border-top: 1px solid var(--wds-line-solid-neutral);

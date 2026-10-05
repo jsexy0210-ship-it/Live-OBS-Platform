@@ -5,8 +5,8 @@ import { prisma } from "../../lib/server/db";
 import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
 import { createOrder } from "../../lib/server/orders/create";
 import { readReceiptIssuer, saveReceiptIssuer } from "../../lib/server/receipts/issuer";
-import { processReceiptIssue, type ReceiptProvider } from "../../lib/server/receipts/provider";
-import { createReceiptRequest } from "../../lib/server/receipts/service";
+import { PROVIDER_CANCEL_NEEDED, processReceiptIssue, type ReceiptProvider } from "../../lib/server/receipts/provider";
+import { createReceiptRequest, retryReceiptIssue } from "../../lib/server/receipts/service";
 import { markOrderPaid } from "../../lib/server/queue/service";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { PASSWORD, createLoginBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
@@ -151,6 +151,22 @@ describe("발행 업체 연동 인터페이스", () => {
     expect(await issueRow(id)).toMatchObject({ status: "FAILED", failureCode: "E-1001", attempts: 1 });
   });
 
+  it("업체가 예외를 던지면 실패(provider_error)로 기록하고 파트너스가 다시 시도할 수 있다", async () => {
+    const s = await setup();
+    const id = await newIssue(s);
+    await registerIssuer(s);
+    const boom: ReceiptProvider = {
+      name: "boom",
+      issue: async () => {
+        throw new Error("network");
+      },
+    };
+    expect(await processReceiptIssue(db, id, boom)).toEqual({ ok: true, issued: false });
+    expect(await issueRow(id)).toMatchObject({ status: "FAILED", failureCode: "provider_error", attempts: 1 });
+    const requestId = (await issueRow(id)).requestId;
+    expect(await retryReceiptIssue(db, s.ctx, requestId)).toMatchObject({ ok: true, request: { issue: { status: "PENDING", failureCode: null } } });
+  });
+
   it("같은 발행을 동시에 처리해도 업체는 한 번만 부른다", async () => {
     const s = await setup();
     const id = await newIssue(s);
@@ -177,6 +193,7 @@ describe("발행 업체 연동 인터페이스", () => {
       },
     };
     await processReceiptIssue(db, id, racing);
-    expect(await issueRow(id)).toMatchObject({ status: "CANCELLED", providerKey: null });
+    // 업체에는 발행됐으므로 번호를 남기고 업체 쪽 취소가 필요하다고 표시한다
+    expect(await issueRow(id)).toMatchObject({ status: "CANCELLED", providerKey: "late", failureCode: PROVIDER_CANCEL_NEEDED });
   });
 });
