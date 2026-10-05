@@ -46,6 +46,6 @@ test("메뉴 「홈」으로도 열린다", async ({ page }) => {
 test("통합 요금제 대표자는 오버레이 홈으로 가지 않는다", async ({ page }) => {
   await login(page, "demo-owner@example.com");
   await page.goto("/seller");
-  await page.waitForURL(/\/seller\/(?!home-overlay)[a-z]/);
-  expect(page.url()).not.toContain("home-overlay");
+  await expect(page.getByTestId("home-tasks")).toBeVisible();
+  await expect(page).toHaveURL(/\/seller$/);
 });
