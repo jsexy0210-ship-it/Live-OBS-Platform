@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { FormRow, FormSection, PageHead } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
+import { SmartBackButton } from "../../../../../../components/seller/SmartBackButton";
 import { api, failMessage } from "../../../../../../components/seller/api";
 import { AUTOMATION_CONSENT, AUTOMATION_PRICE, FREE_RECONNECT_DAYS, REINSTALL_PRICE } from "../../../../../../lib/server/automation/config";
 
@@ -102,7 +103,7 @@ function Pay() {
             <button className="btn btn-lg" type="button" disabled={!all || busy || !card || !shop} onClick={() => void pay()} data-testid="pay-submit">
               {busy ? "결제 중" : `${AUTOMATION_PRICE.toLocaleString("ko-KR")}원 결제하기`}
             </button>
-            <Link className="btn btn-out btn-lg" href="/seller/automation">이전 화면으로</Link>
+            <SmartBackButton fallback="/seller/automation" className="btn btn-out btn-lg">이전 화면으로</SmartBackButton>
           </div>
         </div>
       </main>

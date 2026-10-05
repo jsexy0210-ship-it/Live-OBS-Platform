@@ -198,7 +198,7 @@ test("상품 수정: 가격·재고를 바꾸면 저장되고 목록에도 반�
   await expect(page.getByLabel("판매가")).toHaveValue("129000");
   await expect(page.getByLabel("옵션 1 재고")).toHaveValue("9");
 
-  await page.getByRole("link", { name: "취소" }).first().click();
+  await page.getByRole("button", { name: "취소" }).first().click();
   const row = page.getByTestId("product-row").filter({ hasText: "문라이트 컬렉션 박스" });
   await expect(row).toContainText("129,000원");
   await expect(row).toContainText("9");

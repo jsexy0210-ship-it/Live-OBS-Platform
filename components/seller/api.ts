@@ -54,7 +54,7 @@ export async function apiUpload<T>(path: string, file: Blob, init: { method?: "P
 
 // 마스터 대리 조회 중 허용 밖 요청(403 impersonation_read_only): 오류 화면 대신 이 안내를 보인다
 function readOnlyMessage(status: number, error: string | undefined): string | undefined {
-  return status === 403 && error === "impersonation_read_only" ? "대리 조회 중에는 볼 수 없습니다" : undefined;
+  return status === 403 && error === "impersonation_read_only" ? "대신 보기 중에는 볼 수 없습니다" : undefined;
 }
 
 // 지금 요금제에 없는 기능이라 서버가 막으면(403 plan_feature_required) 파트너스 틀(SellerShell)이 안내 화면으로 바꾸도록 알린다.

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { PageHead } from "../../../../../../components/admin-ui";
@@ -40,11 +39,6 @@ export default function MemberDetailPage() {
       <main className="main">
         <PageHead
           title={m ? (m.broadcastNickname ?? "닉네임 없음") : "회원 상세"}
-          actions={
-            <Link className="btn btn-out" href="/seller/members">
-              회원 목록
-            </Link>
-          }
         />
 
         {!m ? (

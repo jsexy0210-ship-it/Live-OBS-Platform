@@ -84,7 +84,7 @@ test("적립금 실지급 파트너스: 켠 파트너스만 켠 날짜와 남은
   await login(page);
   await page.goto("/admin/ops/rewards");
   const row = page.getByTestId("payout-row").filter({ hasText: names.pay });
-  await expect(row).toContainText("2026. 09. 01.");
+  await expect(row).toContainText("2026.09.01");
   await expect(row).toContainText("0원");
   await expect(page.getByTestId("payout-row").filter({ hasText: names.idle })).toHaveCount(0);
   await expect(page.getByTestId("pay-count")).toContainText("곳");
