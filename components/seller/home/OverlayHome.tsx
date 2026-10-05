@@ -74,12 +74,12 @@ export function OverlayHome() {
           )}
           {can("OVERLAY_EDIT") && (
             <Link className="btn btn-out" href="/seller/overlay">
-              오버레이 편집기
+              방송 화면 꾸미기
             </Link>
           )}
           {run && (
             <Link className="btn btn-out" href="/seller/youtube">
-              유튜브 연결
+              유튜브 이어 두기
             </Link>
           )}
         </div>
@@ -109,9 +109,9 @@ export function OverlayHome() {
         )}
       </section>
 
-      <section className="card pad-l" aria-label="스토어 기능 안내" data-testid="oh-upgrade">
-        <h2 className="t-t3">스토어 기능</h2>
-        <p className="t-l2 c-alt">상품·주문·고객·쿠폰은 통합 구독에서 사용할 수 있습니다. 지금 이용 중인 외부 쇼핑몰은 그대로 연동됩니다.</p>
+      <section className="card pad-l" aria-label="쇼핑몰 기능 안내" data-testid="oh-upgrade">
+        <h2 className="t-t3">쇼핑몰 기능</h2>
+        <p className="t-l2 c-alt">상품·주문·고객·쿠폰은 통합 구독에서 쓸 수 있습니다. 지금 쓰는 다른 쇼핑몰은 계속 이어서 쓸 수 있습니다.</p>
         <div>
           <Link className="btn btn-out" href="/seller/subscription">
             구독 보기

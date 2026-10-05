@@ -26,8 +26,8 @@ const CONSENT_TEXT: Record<string, string> = {
 
 // 승인 대기 사유(자동 점검에서 걸린 항목)
 const REVIEW_TEXT: Record<string, string> = {
-  business_lookup_failed: "국세청 사업자 조회를 아직 하지 못했어요",
-  business_info_mismatch: "사업자 정보가 국세청 기록과 달라요",
+  business_lookup_failed: "국세청 조회가 아직 안 끝났어요. 잠시 뒤 확인해요",
+  business_info_mismatch: "입력한 사업자 정보가 국세청 기록과 달라요. 사업자등록증을 보고 다시 확인해 주세요",
   business_not_active: "국세청에 영업 중인 사업자로 나오지 않아요",
   business_duplicate: "같은 사업자번호로 운영하거나 신청 중인 쇼핑몰이 있어요",
   mail_order_number_invalid: "통신판매업 신고번호를 확인하지 못했어요",
@@ -189,7 +189,7 @@ export default function PartnersSignupForm({ consentVersions }: { consentVersion
       setNotice({ text: failMessage(r, "public"), login: true });
       return focus("pa-notice");
     }
-    setNotice({ text: r.error === "invalid_input" ? "입력한 정보를 다시 확인해 주세요" : failMessage(r, "public", "신청하지 못했어요. 잠시 뒤 다시 시도해 주세요") });
+    setNotice({ text: r.error === "invalid_input" ? "빨간 글씨가 있는 칸을 다시 확인해 주세요" : failMessage(r, "public", "신청하지 못했어요. 잠시 뒤 다시 시도해 주세요") });
     focus("pa-notice");
   };
 
@@ -211,7 +211,7 @@ export default function PartnersSignupForm({ consentVersions }: { consentVersion
     <AuthFrame wide>
       <div className="col" style={{ gap: 4 }}>
         <h1 className="t-t3">파트너스 가입 신청</h1>
-        <span className="t-l2 c-alt">대표자 본인확인을 하고 사업자 정보를 적으면 바로 점검해요.</span>
+        <span className="t-l2 c-alt">대표자 본인 확인을 하고 사업자 정보를 적으면 바로 확인해요.</span>
       </div>
       {unavailable ? (
         <IdentityUnavailable action="가입을 신청할" tone="public" />
@@ -251,7 +251,7 @@ export default function PartnersSignupForm({ consentVersions }: { consentVersion
                 <p className="t-b2 c-neu">바로 로그인해서 쇼핑몰을 준비할 수 있어요.</p>
               ) : (
                 <>
-                  <p className="t-b2 c-neu">확인이 필요한 항목이 있어 살펴본 뒤 승인 결과를 알려 드려요. 승인 전에는 로그인할 수 없어요.</p>
+                  <p className="t-b2 c-neu">확인이 필요한 항목이 있어 살펴본 뒤 결과를 알려 드려요. 그 전에는 로그인할 수 없어요.</p>
                   {done.reviewReasons.length > 0 && (
                     <ul className="pa-reasons">
                       {done.reviewReasons.map((x) => (
@@ -408,7 +408,7 @@ export default function PartnersSignupForm({ consentVersions }: { consentVersion
                         placeholder="예: byulbit"
                         onChange={(e) => set("slug", e.target.value.toLowerCase())}
                       />
-                      {err("slug") ?? <span className="help">영문 소문자 · 숫자 · 하이픈(-) 3~30자 · 구매자가 쇼핑몰에 들어올 때 써요</span>}
+                      {err("slug") ?? <span className="help">영문 소문자·숫자·하이픈(-)으로 3~30자. 구매자가 쇼핑몰 주소창에 쓰는 이름이에요</span>}
                     </div>
                   </div>
                   <div className="row between wrap" style={{ gap: 8, paddingTop: 4 }}>
