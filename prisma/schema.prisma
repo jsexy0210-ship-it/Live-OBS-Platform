@@ -2120,6 +2120,8 @@ model CartItem {
   buyerMemberId String   @db.Uuid
   optionId      String   @db.Uuid
   quantity      Int
+  // 담거나 수량을 바꿀 때 보여 준 단가(이벤트 할인 반영). 장바구니가 지금 단가와 비교해 「가격이 바뀌었어요」를 알린다. 비교용이라 주문 금액에는 쓰지 않는다. 이전 줄은 null.
+  addedUnitPrice Int?
   createdAt     DateTime @default(now()) @db.Timestamptz(3)
   updatedAt     DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 
