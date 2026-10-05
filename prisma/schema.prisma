@@ -69,6 +69,8 @@ model Seller {
   id                       String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   slug                     String       @unique
   shopName                 String
+  // 한 줄 소개(SA-060, 40자). 쇼핑몰 홈·공유 설명 기본값. 비어 있으면 null.
+  shopTagline              String?
   // 공유 미리보기(og:title·og:description) 제목·설명. 비어 있으면 쇼핑몰 이름(제목)·없음(설명). 파트너스 쇼핑몰 설정(SHOP_SETTINGS)에서 바꾼다.
   shareTitle               String?
   shareDescription         String?
@@ -1569,6 +1571,9 @@ model SubscriptionPayment {
   refunds      SubscriptionRefund[]
 
   @@index([sellerId, createdAt])
+  // 마스터 청구·결제 내역(MA-024)의 기간 조회와 구독별 최신 청구 판정
+  @@index([createdAt])
+  @@index([subscriptionId, createdAt])
 }
 
 // 주문 단위 결제 전 동의(대표님 결정 2026-10-02): 「개봉하면 취소·환불이 안 돼요」. 동의하지 않으면 주문을 만들지 않는다.
@@ -2395,6 +2400,8 @@ model BulkJob {
   actorType         ActorType
   actorId           String?       @db.Uuid
   createdAt         DateTime      @default(now()) @db.Timestamptz(3)
+  // 확정을 시작한 시각(COMMITTING). 서버가 중간에 끊겨 멈춘 작업을 찾는 기준(shop-bulk-io/recover.ts). 옛 기록은 비어 있고 createdAt을 쓴다.
+  committingAt      DateTime?     @db.Timestamptz(3)
   committedAt       DateTime?     @db.Timestamptz(3)
   undoUntil         DateTime?     @db.Timestamptz(3)
   undoneAt          DateTime?     @db.Timestamptz(3)

@@ -453,12 +453,13 @@ export type RenewSummary = { charged: number; failed: number; canceled: number; 
 
 // nextChargeAt이 지난 구독을 처리한다. 예약 실행(인프라 승인 후 연결)에서 주기적으로 부른다.
 // 구독마다 따로 처리해 한 곳이 실패해도 나머지는 계속한다. 진행 중 청구가 있으면 건너뛴다.
-export async function renewDueSubscriptions(db: PrismaClient, provider: BillingProvider, input: { now?: Date } = {}): Promise<RenewSummary> {
+// only: 지정한 구독만 처리한다(마스터 「실패 건 재시도」, admin/billingInvoices.ts)
+export async function renewDueSubscriptions(db: PrismaClient, provider: BillingProvider, input: { now?: Date; only?: string[] } = {}): Promise<RenewSummary> {
   const now = input.now ?? (await dbNow(db));
   const summary: RenewSummary = { charged: 0, failed: 0, canceled: 0, skipped: 0, pending: 0, errors: 0 };
   const due = await db.sellerSubscription.findMany({
     // 이용 정지된 쇼핑몰은 자동결제를 멈춘다(해제되면 다음 실행부터 다시, 대표님 결정 2026-10-04)
-    where: { status: { in: ["ACTIVE", "PAST_DUE"] }, nextChargeAt: { lte: now }, seller: { status: { not: "SUSPENDED" } } },
+    where: { status: { in: ["ACTIVE", "PAST_DUE"] }, nextChargeAt: { lte: now }, seller: { status: { not: "SUSPENDED" } }, ...(input.only ? { id: { in: input.only } } : {}) },
     select: { id: true, sellerId: true },
   });
 
