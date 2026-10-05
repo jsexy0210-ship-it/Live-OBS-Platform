@@ -104,3 +104,15 @@ export async function storedChatCountInDb(slug = "demo-shop") {
     await db.$disconnect();
   }
 }
+
+// 채팅 수집 상태 시험용: 연결된 방송의 상태·채팅 수집·채팅 방 id·멈춘 이유를 직접 정한다(서버 chatStateOf 규칙)
+export async function setChatLinkState(v: { status: "UPCOMING" | "LIVE"; chatEnabled: boolean; liveChatId: string | null; chatStopReason: string | null }, slug = "demo-shop") {
+  const db = open();
+  try {
+    const { id: sellerId } = await db.seller.findUniqueOrThrow({ where: { slug }, select: { id: true } });
+    const link = await db.youtubeLiveLink.findFirstOrThrow({ where: { sellerId, status: { in: ["UPCOMING", "LIVE"] } }, select: { id: true } });
+    await db.youtubeLiveLink.update({ where: { id: link.id }, data: v });
+  } finally {
+    await db.$disconnect();
+  }
+}

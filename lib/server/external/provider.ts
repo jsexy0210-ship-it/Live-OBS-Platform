@@ -2,6 +2,13 @@ import { externalConfig, type ExternalConfig } from "./config";
 
 // 외부 쇼핑몰 OAuth 공급자 계약. 실제 호출은 호스트를 검증한 몰 id로만 만든다(주소를 받아 접속하지 않는다 = 내부 주소 접속 차단).
 export type TokenSet = { accessToken: string; refreshToken: string; accessExpiresAt: Date; refreshExpiresAt: Date | null; scopes: string | null };
+// 쇼핑몰이 준 HTTP 상태(응답 본문은 싣지 않는다). 400·401은 토큰이 이미 무효라는 뜻이라 다시 연결해야 한다.
+export class ExternalHttpError extends Error {
+  constructor(readonly status: number) {
+    super(`token_http_${status}`);
+  }
+}
+
 export interface ExternalShopProvider {
   authorizeUrl(shopKey: string, state: string): string;
   exchangeCode(shopKey: string, code: string): Promise<TokenSet>;
@@ -48,7 +55,7 @@ export class HttpExternalProvider implements ExternalShopProvider {
       signal: AbortSignal.timeout(TIMEOUT_MS),
       redirect: "error",
     });
-    if (!res.ok) throw new Error(`token_http_${res.status}`);
+    if (!res.ok) throw new ExternalHttpError(res.status);
     const b = (await res.json()) as { access_token?: string; refresh_token?: string; expires_at?: string; refresh_token_expires_at?: string; scopes?: string[] | string };
     if (!b.access_token || !b.refresh_token) throw new Error("token_bad_response");
     const exp = b.expires_at ? new Date(b.expires_at) : new Date(Date.now() + 2 * 3600_000);

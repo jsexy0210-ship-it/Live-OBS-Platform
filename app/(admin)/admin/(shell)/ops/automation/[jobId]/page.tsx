@@ -10,6 +10,7 @@ import { adminApi, failMessage } from "../../../../_components/api";
 import { AdminTopbar } from "../../../../_components/AdminShell";
 import { JOB_STATUS, PAY_STATUS } from "../../../../_components/automation";
 import { dayTime } from "../../../../_components/partners";
+import { useSmartBack } from "../../../../../../../lib/client/navigation";
 
 // MA-111 자동 연결 작업 상세. API: GET /api/automation/admin/jobs/{id}(조회만), POST …/cleanup(정리 필요 닫기, 운영 역할 이상).
 // 보드에 있고 서버에 없는 것(재시도·담당 작업 서버 바꾸기·취소 버튼, 격리·안전 표, 작업 로그 문구)은 넣지 않았다. 흐름은 상태 전이 기록으로 보인다.
@@ -41,6 +42,7 @@ const KIND: Record<string, string> = { INITIAL: "처음 연결", REINSTALL: "재
 const label = (s: string | null) => (s ? (JOB_STATUS[s]?.label ?? s) : "접수");
 
 export default function AutomationJobDetailPage() {
+  const back = useSmartBack("/admin/ops/automation");
   const { jobId } = useParams<{ jobId: string }>();
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; d: Detail }>({ kind: "loading" });
   const [note, setNote] = useState("");
@@ -85,7 +87,7 @@ export default function AutomationJobDetailPage() {
     <>
       <AdminTopbar crumb={crumb} />
       <main className="main">
-        <PageHead title={`자동 연결 작업 상세 · ${d.shopName}`} actions={<Link className="btn btn-out" href="/admin/ops/automation">목록</Link>} />
+        <PageHead title={`자동 연결 작업 상세 · ${d.shopName}`} actions={<button className="btn btn-out" type="button" onClick={back}>목록</button>} />
         <div className="col" style={{ gap: 16 }}>
           <div className="card pad col" style={{ gap: 4 }}>
             <span><b>{d.shopName}</b> · {KIND[d.kind] ?? d.kind} <span className={`bdg ${s.cls}`} data-testid="detail-status">{s.label}</span></span>

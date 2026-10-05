@@ -5,6 +5,7 @@ import { Modal, PageHead } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
+import { chatNotice, type ChatStatus } from "../../../../../components/seller/broadcast/chatStatus";
 import { kstTime } from "../../../../../components/seller/broadcast/queue";
 
 // SA-057 유튜브 연결(방송 › 연동). 채널 주소·방송 주소 연결/해제, 연결 상태, 연결한 방송의 채팅 수집 켜기·끄기.
@@ -36,7 +37,7 @@ type Usage = {
   collecting: boolean;
   stoppedReason: "seller_daily_limit" | "platform_limit" | null;
 };
-type Confirm = "channel" | "live" | "purge" | null;
+type Confirm = "channel" | "live" | "purge" | "replace" | null;
 
 const STOP_TEXT = {
   seller_daily_limit: "오늘 이 쇼핑몰의 무료 사용량을 모두 써서 채팅 수집이 멈췄습니다. 내일 자동으로 다시 시작합니다. 주문 처리와 오버레이는 그대로입니다.",
@@ -62,6 +63,9 @@ export default function YoutubePage() {
   const [liveUrl, setLiveUrl] = useState("");
   const [fieldError, setFieldError] = useState<{ channel?: string; live?: string }>({});
   const [confirm, setConfirm] = useState<Confirm>(null);
+  // 채널 바꾸기: 연결된 채널이 있을 때 새 주소를 넣는 칸을 연다(연결된 방송이 있으면 확인을 거친다)
+  const [changing, setChanging] = useState(false);
+  const [chatState, setChatState] = useState<ChatStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
   // 나중에 보낸 읽기의 응답만 반영한다
@@ -73,8 +77,9 @@ export default function YoutubePage() {
     if (n !== seq.current) return;
     setState(r.ok ? { kind: "ok", data: r.data } : { kind: "error", status: r.status, error: r.error });
     if (!r.ok) return;
-    const [st, us] = await Promise.all([api<Settings>("/api/seller/youtube/settings"), api<Usage>("/api/seller/youtube/usage")]);
+    const [st, us, cs] = await Promise.all([api<Settings>("/api/seller/youtube/settings"), api<Usage>("/api/seller/youtube/usage"), r.data.live ? api<ChatStatus>("/api/seller/youtube/live/chat-status") : Promise.resolve(null)]);
     if (n !== seq.current) return;
+    setChatState(cs && cs.ok ? cs.data : null);
     setSettings(st.ok ? st.data : null);
     setUsage(us.ok ? us.data : null);
   }, []);
@@ -89,7 +94,10 @@ export default function YoutubePage() {
     const r = await call();
     if (r.ok) {
       setToast({ text: okText });
-      if (kind === "channel") setChannelUrl("");
+      if (kind === "channel") {
+        setChannelUrl("");
+        setChanging(false);
+      }
       if (kind === "live") setLiveUrl("");
     } else {
       const text = failMessage(r, "admin");
@@ -180,19 +188,27 @@ export default function YoutubePage() {
                       <th scope="row">채널 주소</th>
                       <td>
                         <div className="au-ft-v">
-                          {data.channel ? (
-                            <span className="t-l2">
-                              <a href={data.channel.url} target="_blank" rel="noreferrer">
-                                {data.channel.title}
-                              </a>
-                            </span>
+                          {data.channel && !changing ? (
+                            <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                              <span className="t-l2">
+                                <a href={data.channel.url} target="_blank" rel="noreferrer">
+                                  {data.channel.title}
+                                </a>
+                              </span>
+                              <button className="btn btn-sm btn-out" type="button" data-testid="yt-channel-change" disabled={off} onClick={() => setChanging(true)}>
+                                채널 변경
+                              </button>
+                            </div>
                           ) : (
                             <form
                               className="row"
                               style={{ gap: 8, flexWrap: "wrap" }}
                               onSubmit={(e) => {
                                 e.preventDefault();
-                                if (channelUrl.trim() && !off) void run("channel", () => api("/api/seller/youtube/channel", { method: "PUT", body: { url: channelUrl.trim() } }), "채널을 연결했습니다");
+                                if (!channelUrl.trim() || off) return;
+                                // 채널을 바꾸면 지금 연결된 방송(과 채팅 수집)이 해제된다: 연결된 방송이 있으면 먼저 확인
+                                if (data.channel && data.live) return setConfirm("replace");
+                                void run("channel", () => api("/api/seller/youtube/channel", { method: "PUT", body: { url: channelUrl.trim() } }), data.channel ? "채널을 바꿨습니다" : "채널을 연결했습니다");
                               }}
                             >
                               <label className="sr" htmlFor="yt-channel">
@@ -200,8 +216,13 @@ export default function YoutubePage() {
                               </label>
                               <input id="yt-channel" className="inp" style={{ width: 360, maxWidth: "100%" }} placeholder="@핸들 또는 /channel/UC… 주소" value={channelUrl} disabled={off} onChange={(e) => setChannelUrl(e.target.value)} />
                               <button className="btn" type="submit" disabled={off || !channelUrl.trim()}>
-                                연결
+                                {data.channel ? "변경" : "연결"}
                               </button>
+                              {data.channel && (
+                                <button className="btn btn-out" type="button" disabled={busy} onClick={() => { setChanging(false); setChannelUrl(""); setFieldError({}); }}>
+                                  취소
+                                </button>
+                              )}
                             </form>
                           )}
                           {fieldError.channel && (
@@ -279,6 +300,11 @@ export default function YoutubePage() {
                               <span className="help" data-testid="yt-chat-notice">
                                 {data.chatNotice}
                               </span>
+                              {data.live.chatEnabled && chatNotice(chatState) && (
+                                <div className="msg msg-cau" role="status" data-testid="yt-chat-state">
+                                  <b>{chatNotice(chatState)!.title}</b> · {chatNotice(chatState)!.text}
+                                </div>
+                              )}
                             </div>
                           ) : (
                             <span className="t-c1 c-alt">연결된 방송이 있을 때 방송마다 켤 수 있습니다. 기본은 꺼짐입니다</span>
@@ -346,14 +372,16 @@ export default function YoutubePage() {
         <Modal labelId="yt-confirm-title" busy={busy} onClose={() => setConfirm(null)}>
           <div className="modal-h">
             <h2 className="modal-t" id="yt-confirm-title">
-              {confirm === "channel" ? "유튜브 연결을 해제하시겠습니까?" : confirm === "live" ? "방송 연결을 해제하시겠습니까?" : "보관 채팅을 모두 삭제하시겠습니까?"}
+              {confirm === "channel" ? "유튜브 연결을 해제하시겠습니까?" : confirm === "live" ? "방송 연결을 해제하시겠습니까?" : confirm === "replace" ? "채널을 바꾸면 지금 연결된 방송이 해제됩니다. 바꾸시겠습니까?" : "보관 채팅을 모두 삭제하시겠습니까?"}
             </h2>
             <span className="t-l2 c-alt">
               {confirm === "channel"
                 ? "새 방송을 자동으로 찾지 않습니다. 이미 시작된 방송은 그대로입니다."
                 : confirm === "live"
                   ? "이 방송의 채팅 수집이 멈춥니다. 이미 시작된 방송은 그대로입니다."
-                  : "삭제한 채팅은 되돌릴 수 없습니다. 이번 달 수집한 채팅 건수는 줄지 않습니다."}
+                  : confirm === "replace"
+                    ? "연결된 방송의 채팅 수집도 함께 멈춥니다. 방송 중에는 바꿀 수 없습니다."
+                    : "삭제한 채팅은 되돌릴 수 없습니다. 이번 달 수집한 채팅 건수는 줄지 않습니다."}
             </span>
           </div>
           <div className="modal-f">
@@ -369,10 +397,12 @@ export default function YoutubePage() {
                   ? run("unlink-channel", () => api("/api/seller/youtube/channel", { method: "DELETE" }), "유튜브 연결을 해제했습니다")
                   : confirm === "live"
                     ? run("unlink-live", () => api("/api/seller/youtube/live", { method: "DELETE" }), "방송 연결을 해제했습니다")
-                    : run("purge", () => api("/api/seller/youtube/chats", { method: "DELETE" }), "보관 채팅을 삭제했습니다"))
+                    : confirm === "replace"
+                      ? run("channel", () => api("/api/seller/youtube/channel", { method: "PUT", body: { url: channelUrl.trim() } }), "채널을 바꿨습니다")
+                      : run("purge", () => api("/api/seller/youtube/chats", { method: "DELETE" }), "보관 채팅을 삭제했습니다"))
               }
             >
-              {confirm === "purge" ? "삭제" : "해제"}
+              {confirm === "purge" ? "삭제" : confirm === "replace" ? "바꾸기" : "해제"}
             </button>
           </div>
         </Modal>
