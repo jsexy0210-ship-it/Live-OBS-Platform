@@ -78,7 +78,10 @@ export async function saveSellerLegal(db: PrismaClient, ctx: TenantContext, kind
     const current = before?.version ?? 0;
     if (b.expectedVersion !== current) return { ok: false as const, reason: "version_conflict" as const, currentVersion: current };
     const publishedAt = isPublished ? (before?.isPublished && before.publishedAt ? before.publishedAt : new Date()) : null;
-    const data = { body, effectiveOn, isPublished, publishedAt, version: current + 1 };
+    // version은 문서 내용(본문·시행일)이 실제로 바뀐 때만 올린다. 같은 내용을 다시 저장·게시해도 그대로라 이미 동의한 회원이 재동의 필요로 표시되지 않는다.
+    // 게시 여부만 바뀐 저장도 version은 그대로다(동의 대상 여부는 게시 상태로 판단). 다른 창 덮어쓰기는 expectedVersion 비교가 계속 막는다.
+    const contentChanged = !before || before.body !== body || dateText(before.effectiveOn) !== dateText(effectiveOn);
+    const data = { body, effectiveOn, isPublished, publishedAt, version: contentChanged ? current + 1 : current };
     const row = before
       ? await tx.shopLegalDoc.update({ where: { id: before.id }, data })
       : await tx.shopLegalDoc.create({ data: { sellerId: ctx.sellerId, kind, ...data } });
