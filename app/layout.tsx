@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import "../styles/wanted-sans.css";
+import { NavigationTracker } from "../lib/client/navigation/NavigationTracker";
 
 export const metadata: Metadata = {
   title: "Live OBS Platform",
@@ -15,7 +17,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <link rel="preload" href="/fonts/wanted-sans/split/WantedSansVariable.split.90.woff2" as="font" type="font/woff2" crossOrigin="" />
         <link rel="preload" href="/fonts/wanted-sans/split/WantedSansVariable.split.88.woff2" as="font" type="font/woff2" crossOrigin="" />
       </head>
-      <body>{children}</body>
+      <body>
+        <Suspense fallback={null}>
+          <NavigationTracker />
+        </Suspense>
+        {children}
+      </body>
     </html>
   );
 }
