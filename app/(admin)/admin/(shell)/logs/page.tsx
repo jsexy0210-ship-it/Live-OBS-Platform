@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../components/seller/States";
 import { adminApi } from "../../_components/api";
+import { useListFilters } from "../../_components/useListFilters";
+import { useScrollRestore } from "../../../../../lib/client/navigation";
 import { AdminTopbar } from "../../_components/AdminShell";
 import { ACTION_GROUPS, ACTOR_LABEL, actionLabel, targetLabel, type ActorType, type AuditRow } from "../../_components/auditLogs";
 import { dayTime } from "../../_components/partners";
@@ -25,10 +26,8 @@ function query(f: Filters, cursor?: string) {
 }
 
 function Logs() {
-  const sellerId = useSearchParams().get("sellerId") ?? "";
-  const empty: Filters = { action: "", actorType: "", from: "", to: "", sellerId };
-  const [draft, setDraft] = useState<Filters>(empty);
-  const [applied, setApplied] = useState<Filters>(empty);
+  const empty: Filters = { action: "", actorType: "", from: "", to: "", sellerId: "" };
+  const { applied, draft, setDraft, apply } = useListFilters<Filters>(empty);
   const [rangeError, setRangeError] = useState(false);
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [more, setMore] = useState(false);
@@ -45,16 +44,16 @@ function Logs() {
     setState(r.ok ? { kind: "ok", items: r.data.logs, next: r.data.nextCursor } : { kind: "error" });
   }, []);
   useEffect(() => void load(applied), [applied, load]);
+  useScrollRestore("admin-logs", state.kind === "ok");
 
   const search = () => {
     if (draft.from && draft.to && draft.from > draft.to) return setRangeError(true);
     setRangeError(false);
-    setApplied(draft);
+    apply(draft);
   };
   const reset = () => {
     setRangeError(false);
-    setDraft(empty);
-    setApplied(empty);
+    apply({ ...empty, sellerId: applied.sellerId });
   };
   const loadMore = async () => {
     if (state.kind !== "ok" || !state.next) return;
@@ -110,7 +109,7 @@ function Logs() {
         {applied.sellerId && (
           <div className="row" style={{ gap: 8, margin: "8px 0" }}>
             <span className="t-l2 c-alt">한 파트너스의 기록만 보고 있습니다.</span>
-            <button className="btn btn-sm btn-out" type="button" onClick={() => { setDraft({ ...draft, sellerId: "" }); setApplied({ ...applied, sellerId: "" }); }}>
+            <button className="btn btn-sm btn-out" type="button" onClick={() => apply({ ...applied, sellerId: "" })}>
               전체 보기
             </button>
           </div>
