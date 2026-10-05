@@ -204,3 +204,16 @@
 .ow-new-order-alert .ow-grade {
   flex: none;
 }
+
+/* 새 HIT 카드: 잠깐 빛나며 나타난다(움직임 줄이기 설정이면 빛만) */
+.ow-hit-new {
+  box-shadow: 0 0 0 3px var(--w-accent, #ffd23f), 0 0 36px var(--w-accent, #ffd23fcc);
+  animation: ow-hit-pop 0.8s ease-out both;
+}
+@keyframes ow-hit-pop {
+  0% { opacity: 0; transform: scale(0.9); }
+  60% { transform: scale(1.04); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ow-hit-new { animation: none; }
+}
