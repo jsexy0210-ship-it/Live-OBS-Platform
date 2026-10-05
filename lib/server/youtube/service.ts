@@ -5,6 +5,7 @@ import type { VideoInfo, YoutubeClient } from "./client";
 import { Rejected, callYoutube, discoverLive, guard, liveStatusOf } from "./call";
 import { CHAT_NOTICE } from "./chat";
 import { parseYoutubeRef } from "./parse";
+import { chatDefaultFor } from "./settings";
 import { applyVideoState } from "./sync";
 
 // 파트너스 유튜브 채널·방송 연결(API 키만, 공개 방송 읽기만). 판매자 격리: 모든 조회·변경은 ctx.sellerId 조건.
@@ -94,6 +95,7 @@ async function linkVideo(db: PrismaClient, ctx: TenantContext, v: VideoInfo, now
         status: "UPCOMING",
         scheduledStartAt: v.scheduledStartAt,
         checkedAt: now,
+        chatEnabled: await chatDefaultFor(db, ctx.sellerId),
       },
     });
   } catch (e) {

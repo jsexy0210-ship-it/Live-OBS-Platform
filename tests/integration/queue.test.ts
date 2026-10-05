@@ -345,7 +345,7 @@ describe("취소 사유", () => {
     expect(await applyQueueAction(db, s.ctx, id, "cancel", { reason: "  " })).toEqual({ ok: false, reason: "reason_required" });
     expect(await status(id)).toBe("WAITING");
     expect(await applyQueueAction(db, s.ctx, id, "cancel", { reason: "구매자 요청" })).toMatchObject({ ok: true, value: { cancelReason: "구매자 요청" } });
-    expect((await db.queueItemStatusHistory.findFirstOrThrow({ where: { queueItemId: id } })).reason).toBe("구매자 요청");
+    expect((await db.queueItemStatusHistory.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { queueItemId: id } })).reason).toBe("구매자 요청");
   });
 });
 

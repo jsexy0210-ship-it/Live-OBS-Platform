@@ -50,8 +50,8 @@ describe("발송 충전", () => {
     expect(r).toMatchObject({ ok: true, charge: { amount: 10_000, status: "PAID" } });
     expect(provider.charges).toEqual([{ orderId: r.ok ? r.charge.id : "", amount: 10_000, billingKey: BK }]);
     expect(await paid(s.seller.id)).toBe(10_000);
-    expect(await db.sellerMessageLedger.findFirstOrThrow({ where: { sellerId: s.seller.id } })).toMatchObject({ type: "CHARGE", status: "SUCCEEDED", paidAmount: 10_000, freeAmount: 0, actorId: s.owner.id });
-    expect(await db.messageCharge.findFirstOrThrow({ where: { sellerId: s.seller.id } })).toMatchObject({ noticeVersion: MESSAGE_FEE_NOTICE_VERSION, sellerUserId: s.owner.id });
+    expect(await db.sellerMessageLedger.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id } })).toMatchObject({ type: "CHARGE", status: "SUCCEEDED", paidAmount: 10_000, freeAmount: 0, actorId: s.owner.id });
+    expect(await db.messageCharge.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id } })).toMatchObject({ noticeVersion: MESSAGE_FEE_NOTICE_VERSION, sellerUserId: s.owner.id });
     expect(await db.auditLog.count({ where: { action: { in: ["seller.message_charge.request", "seller.message_charge.paid"] } } })).toBe(2);
     const again = await chargeMessageBalance(db, provider, s.ctx, { amount: 10_000, idempotencyKey: "c1" });
     expect(again).toMatchObject({ ok: true, charge: { status: "PAID" } });
@@ -115,7 +115,7 @@ describe("발송 충전", () => {
     expect(await reconcileMessageCharges(db, provider, { now })).toEqual({ paid: 1, failed: 0, pending: 1, errors: 0, truncated: false });
     expect(await paid(s.seller.id)).toBe(3_000);
     expect(await reconcileMessageCharges(db, provider, { now: new Date(Date.now() + 11 * 60_000) })).toEqual({ paid: 0, failed: 1, pending: 0, errors: 0, truncated: false });
-    expect(await db.messageCharge.findFirstOrThrow({ where: { idempotencyKey: "p2" } })).toMatchObject({ status: "FAILED", failureReason: "not_charged" });
+    expect(await db.messageCharge.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { idempotencyKey: "p2" } })).toMatchObject({ status: "FAILED", failureReason: "not_charged" });
     expect(await paid(s.seller.id)).toBe(3_000);
   });
 

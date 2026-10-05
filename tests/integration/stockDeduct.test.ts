@@ -204,7 +204,7 @@ describe("수동 재고 증감", () => {
     expect(await res.json()).toEqual({ optionId: p.optionId, stock: 7 });
     expect((await call({ delta: 2, reason: "반품 입고" })).status).toBe(200);
     expect(await stockOf(p.optionId)).toBe(9);
-    expect(await db.stockMovement.findFirstOrThrow({ where: { optionId: p.optionId, delta: -3 } })).toMatchObject({ reason: "MANUAL", note: "이벤트 증정", actorType: "SELLER_USER", actorId: s.owner.id, createdAt: expect.any(Date) });
+    expect(await db.stockMovement.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { optionId: p.optionId, delta: -3 } })).toMatchObject({ reason: "MANUAL", note: "이벤트 증정", actorType: "SELLER_USER", actorId: s.owner.id, createdAt: expect.any(Date) });
     expect(await db.auditLog.count({ where: { action: "product_option.stock_adjust", targetId: p.optionId } })).toBe(2);
 
     for (const body of [{ delta: 0, reason: "x" }, { delta: 1.5, reason: "x" }, { delta: "3", reason: "x" }, { delta: -1 }, { delta: -1, reason: "  " }, { delta: -1, reason: "가".repeat(101) }, { delta: -1, reason: "증정" + "\u0000" }]) {
@@ -346,7 +346,7 @@ describe("검수 후속(#84)", () => {
     expect(await cancelPendingOrder(db, s.ctx, id, { reason: "요청", expectedLiveVersion: await s.lv() })).toMatchObject({ ok: true });
     expect(await db.order.findUniqueOrThrow({ where: { id } })).toMatchObject({ status: "CANCELLED" });
     expect(await stockOf(ord.optionId)).toBe(INT4_MAX - 1);
-    expect(await db.orderItem.findFirstOrThrow({ where: { orderId: id } })).toMatchObject({ stockRestoredAt: null });
+    expect(await db.orderItem.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { orderId: id } })).toMatchObject({ stockRestoredAt: null });
     expect(await db.auditLog.count({ where: { action: "stock.restore_skipped" } })).toBe(1);
 
     const r = await adjustStock(db, s.ctx, ord.productId, ord.optionId, { delta: 2, reason: "입고" });
@@ -387,7 +387,7 @@ describe("검수 후속(#84)", () => {
     expect(run.failed).toEqual([ids[0]]);
     expect(run.cancelled.sort()).toEqual([ids[1], ids[2]].sort());
     expect(await db.order.findUniqueOrThrow({ where: { id: ids[0] } })).toMatchObject({ status: "PENDING_PAYMENT" });
-    expect(await db.auditLog.findFirstOrThrow({ where: { action: "order.auto_cancel_failed", targetId: ids[0] } })).toMatchObject({ reason: "simulated failure" });
+    expect(await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "order.auto_cancel_failed", targetId: ids[0] } })).toMatchObject({ reason: "simulated failure" });
     // 같은 구매자의 세 번째 자동 취소라 구매 제한도 함께 생긴다
     expect(await cancelOverdueOrders(db)).toMatchObject({ cancelled: [ids[0]], restricted: [{ buyerMemberId: s.buyer.id }], failed: [] });
   });

@@ -101,7 +101,7 @@ describe("배송비 계산", () => {
     const r = await s.order(2);
     expect(r.totalAmount).toBe(13000);
     expect(await markOrderPaid(db, { sellerId: s.seller.id, orderId: r.orderId, paymentMethod: "CARD" })).toMatchObject({ ok: true });
-    expect(await db.rewardLedger.findFirstOrThrow({ where: { orderId: r.orderId } })).toMatchObject({ type: "EARN", amount: 100 });
+    expect(await db.rewardLedger.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { orderId: r.orderId } })).toMatchObject({ type: "EARN", amount: 100 });
   });
 });
 
@@ -183,7 +183,7 @@ describe("즉시 발송 처리", () => {
     expect(fixed).toMatchObject({ courier: "HANJIN", trackingNumber: "987654321098", shippedAt: first.shippedAt });
     expect(await db.order.findUniqueOrThrow({ where: { id: s.orderId } })).toMatchObject({ status: "PAID" });
     expect(await db.auditLog.count({ where: { targetId: s.orderId, action: "order.ship" } })).toBe(1);
-    expect(await db.auditLog.findFirstOrThrow({ where: { targetId: s.orderId, action: "order.shipment.update" } })).toMatchObject({
+    expect(await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { targetId: s.orderId, action: "order.shipment.update" } })).toMatchObject({
       before: { courier: "CJ", trackingNumber: "123456789012" },
     });
   });
@@ -239,7 +239,7 @@ describe("즉시 발송 처리", () => {
     expect(await stock()).toBe(8);
     expect(await db.shipment.findUniqueOrThrow({ where: { orderId: shipped.orderId } })).toMatchObject({ status: "IN_TRANSIT" });
     expect(await db.stockMovement.count({ where: { orderId: shipped.orderId, reason: "REFUND" } })).toBe(0);
-    expect(await db.auditLog.findFirstOrThrow({ where: { action: "order.refund", targetId: shipped.orderId } })).toMatchObject({
+    expect(await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "order.refund", targetId: shipped.orderId } })).toMatchObject({
       after: { status: "REFUNDED", restockedItems: 0, shippedBeforeRefund: true, shipmentStatus: "IN_TRANSIT" },
     });
 
@@ -248,7 +248,7 @@ describe("즉시 발송 처리", () => {
     expect(await stock()).toBe(7);
     expect(await refundOrder(db, s.ctx, notShipped.orderId, { reason: "구매자 요청", expectedLiveVersion: await lv() })).toMatchObject({ ok: true });
     expect(await stock()).toBe(8);
-    expect(await db.auditLog.findFirstOrThrow({ where: { action: "order.refund", targetId: notShipped.orderId } })).toMatchObject({
+    expect(await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "order.refund", targetId: notShipped.orderId } })).toMatchObject({
       after: { shippedBeforeRefund: false },
     });
   });
@@ -375,7 +375,7 @@ describe("반품·교환 배송비(환불액)", () => {
     expect(o).toMatchObject({ totalAmount: 13000, shippingFee: 3000 });
     expect(await refund(s, o.orderId, "BUYER")).toMatchObject({ ok: true, value: { refundAmount: 7000, refundFault: "BUYER", returnFeeDeducted: 3000 } });
     expect(await db.order.findUniqueOrThrow({ where: { id: o.orderId } })).toMatchObject({ refundAmount: 7000, refundFault: "BUYER", returnFeeDeducted: 3000 });
-    expect((await db.auditLog.findFirstOrThrow({ where: { action: "order.refund", targetId: o.orderId } })).after).toMatchObject({ refundAmount: 7000, refundFault: "BUYER", returnFeeDeducted: 3000 });
+    expect((await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "order.refund", targetId: o.orderId } })).after).toMatchObject({ refundAmount: 7000, refundFault: "BUYER", returnFeeDeducted: 3000 });
   });
 
   it("처음 배송비가 0원(무료 배송)이었으면 반품 배송비를 왕복(편도 × 2)으로 뺀다", async () => {
@@ -431,7 +431,7 @@ describe("반품·교환 배송비(환불액)", () => {
     await markOrderPaid(db, { sellerId: s.seller.id, orderId: o.orderId, paymentMethod: "CARD" });
     expect(await refund(s, o.orderId)).toMatchObject({ ok: true, value: { refundAmount: 11000, returnFeeDeducted: 0 } });
     // 상품이 전부 돌아오므로 쓴 적립금 2,000원도 전부 돌려준다(현금 11,000 + 적립금 2,000 = 상품 10,000 + 배송비 3,000)
-    expect(await db.rewardLedger.findFirstOrThrow({ where: { idempotencyKey: `use_return:${o.orderId}` } })).toMatchObject({ amount: 2000, status: "SUCCEEDED" });
+    expect(await db.rewardLedger.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { idempotencyKey: `use_return:${o.orderId}` } })).toMatchObject({ amount: 2000, status: "SUCCEEDED" });
   });
 
   it("적립금을 쓴 주문을 발송 후 구매자 사정으로 반품하면 현금(상품 − 적립금 반환 − 반품 배송비)과 쓴 적립금을 나눠 돌려준다", async () => {
@@ -442,7 +442,7 @@ describe("반품·교환 배송비(환불액)", () => {
     await shipOrder(db, s.ctx, o.orderId, { courier: "CJ", trackingNumber: "123456789012" });
     // 상품 10,000원이 전부 돌아오므로 적립금 2,000원은 전부 적립금으로, 현금은 10,000 − 2,000 − 반품 배송비 3,000 = 5,000원(합 7,000원, 대표님 결정 2026-10-05)
     expect(await refund(s, o.orderId, "BUYER")).toMatchObject({ ok: true, value: { refundAmount: 5000, returnFeeDeducted: 3000 } });
-    expect(await db.rewardLedger.findFirstOrThrow({ where: { idempotencyKey: `use_return:${o.orderId}` } })).toMatchObject({ amount: 2000, status: "SUCCEEDED" });
+    expect(await db.rewardLedger.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { idempotencyKey: `use_return:${o.orderId}` } })).toMatchObject({ amount: 2000, status: "SUCCEEDED" });
   });
 
   it("반품·교환 배송비를 저장하고 그대로 돌려준다", async () => {

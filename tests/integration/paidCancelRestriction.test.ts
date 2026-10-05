@@ -62,7 +62,7 @@ describe("결제 후 취소 5회 → 30일 구매 제한", () => {
     const [r] = await s.restrictions();
     expect(r).toMatchObject({ reason: "PAID_CANCEL", liftedAt: null });
     expect(r.endsAt.getTime() - r.startsAt.getTime()).toBe(RESTRICTION_DAYS * 24 * 60 * 60 * 1000);
-    expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.purchase_restriction.create", targetId: s.buyer.id } })).toMatchObject({
+    expect(await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "buyer.purchase_restriction.create", targetId: s.buyer.id } })).toMatchObject({
       actorType: "SYSTEM",
       after: { reason: "PAID_CANCEL", paidCancels: PAID_CANCEL_LIMIT },
     });
@@ -210,7 +210,7 @@ describe("결제 후 취소 5회 → 30일 구매 제한", () => {
     expect(await s.restrictions()).toHaveLength(2);
     expect(await liftRestriction(db, s.ctx, s.buyer.id)).toMatchObject({ ok: true });
     expect((await s.restrictions()).every((r) => r.liftedAt !== null)).toBe(true);
-    expect(await db.auditLog.findFirstOrThrow({ where: { action: "buyer.purchase_restriction.lift", targetId: s.buyer.id } })).toMatchObject({ after: { lifted: 2 } });
+    expect(await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "buyer.purchase_restriction.lift", targetId: s.buyer.id } })).toMatchObject({ after: { lifted: 2 } });
     expect((await s.place()).ok).toBe(true);
   });
   it("기준 시각(켠 시각)과 같거나 늦은 시계로 들어온 환불도 기준 뒤로 기록되어 횟수에 들어간다", async () => {

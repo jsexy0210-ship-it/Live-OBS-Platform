@@ -241,7 +241,7 @@ describe("환불 → 결제 취소·부분 취소", () => {
     const s = await paidOrder();
     const r = await refundOrder(db, s.ctx, s.o.id, { reason: "구매자 요청", expectedLiveVersion: await lv(s.seller.id) });
     expect(r).toMatchObject({ ok: true, value: { refundAmount: 13000 } });
-    const c = await db.paymentCancel.findFirstOrThrow({ where: { paymentId: s.p.paymentId } });
+    const c = await db.paymentCancel.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { paymentId: s.p.paymentId } });
     expect(c).toMatchObject({ status: "REQUESTED", amount: 13000, idempotencyKey: `refund:${s.o.id}` });
     expect(s.gw.cancelCalls).toBe(0);
     expect(await processPaymentCancel(db, s.gw, c.id)).toBe("done");
@@ -262,7 +262,7 @@ describe("환불 → 결제 취소·부분 취소", () => {
     if (!r.ok) throw new Error(r.reason);
     const refund = r.value.refundAmount;
     expect(refund).toBeLessThan(13000);
-    const c = await db.paymentCancel.findFirstOrThrow({ where: { paymentId: s.p.paymentId } });
+    const c = await db.paymentCancel.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { paymentId: s.p.paymentId } });
     expect(c.amount).toBe(refund);
     expect(await processPaymentCancel(db, s.gw, c.id)).toBe("done");
     expect(await paymentOf(s.p.paymentId)).toMatchObject({ status: "PARTIAL_CANCELLED", cancelledAmount: refund });
@@ -272,7 +272,7 @@ describe("환불 → 결제 취소·부분 취소", () => {
   it("동시에 두 번 처리해도 PG 취소는 한 번", async () => {
     const s = await paidOrder();
     await refundOrder(db, s.ctx, s.o.id, { reason: "구매자 요청", expectedLiveVersion: await lv(s.seller.id) });
-    const c = await db.paymentCancel.findFirstOrThrow({ where: { paymentId: s.p.paymentId } });
+    const c = await db.paymentCancel.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { paymentId: s.p.paymentId } });
     await Promise.all([processPaymentCancel(db, s.gw, c.id), processPaymentCancel(db, s.gw, c.id), processPendingPayments(db, s.gw)]);
     expect(s.gw.cancelCalls).toBe(1);
     expect(await paymentOf(s.p.paymentId)).toMatchObject({ status: "CANCELLED", cancelledAmount: 13000 });
@@ -281,7 +281,7 @@ describe("환불 → 결제 취소·부분 취소", () => {
   it("취소 응답을 잃으면 대기로 두고, 다시 보낼 때 PG 중복 거절을 조회로 확인해 한 번만 반영한다", async () => {
     const s = await paidOrder();
     await refundOrder(db, s.ctx, s.o.id, { reason: "구매자 요청", expectedLiveVersion: await lv(s.seller.id) });
-    const c = await db.paymentCancel.findFirstOrThrow({ where: { paymentId: s.p.paymentId } });
+    const c = await db.paymentCancel.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { paymentId: s.p.paymentId } });
     // PG에서는 취소됐는데 응답도, 바로 한 조회도 실패한 경우
     s.gw.failNext = "timeout_after";
     const getPayment = s.gw.getPayment.bind(s.gw);
@@ -301,7 +301,7 @@ describe("환불 → 결제 취소·부분 취소", () => {
   it("취소 응답만 잃은 경우 바로 조회해 확인되면 한 번에 반영한다", async () => {
     const s = await paidOrder();
     await refundOrder(db, s.ctx, s.o.id, { reason: "구매자 요청", expectedLiveVersion: await lv(s.seller.id) });
-    const c = await db.paymentCancel.findFirstOrThrow({ where: { paymentId: s.p.paymentId } });
+    const c = await db.paymentCancel.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { paymentId: s.p.paymentId } });
     s.gw.failNext = "timeout_after";
     expect(await processPaymentCancel(db, s.gw, c.id)).toBe("done");
     expect(s.gw.cancelCalls).toBe(1);
@@ -311,7 +311,7 @@ describe("환불 → 결제 취소·부분 취소", () => {
   it("PG가 거절하면 실패로 남기고 로그 추적에 기록(자동으로 다시 보내지 않음)", async () => {
     const s = await paidOrder();
     await refundOrder(db, s.ctx, s.o.id, { reason: "구매자 요청", expectedLiveVersion: await lv(s.seller.id) });
-    const c = await db.paymentCancel.findFirstOrThrow({ where: { paymentId: s.p.paymentId } });
+    const c = await db.paymentCancel.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { paymentId: s.p.paymentId } });
     s.gw.failNext = "reject";
     expect(await processPaymentCancel(db, s.gw, c.id)).toBe("failed");
     expect(await db.paymentCancel.findUniqueOrThrow({ where: { id: c.id } })).toMatchObject({ status: "FAILED", failureCode: "cancel_rejected" });
@@ -467,7 +467,7 @@ describe("환불 API → 커밋 뒤 PG 취소(실제 경로, 모의 PG)", () => 
     const res = await s.refund({ expectedRefundAmount: 13000 });
     expect(res.status).toBe(200);
     expect(await paymentOf(s.p.paymentId)).toMatchObject({ status: "CANCELLED", cancelledAmount: 13000 });
-    expect(await db.paymentCancel.findFirstOrThrow({ where: { paymentId: s.p.paymentId } })).toMatchObject({ status: "DONE", amount: 13000 });
+    expect(await db.paymentCancel.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { paymentId: s.p.paymentId } })).toMatchObject({ status: "DONE", amount: 13000 });
     expect((await s.refund({ expectedRefundAmount: 13000 })).status).toBe(409);
     expect(s.gw.cancelCalls).toBe(1);
   });
@@ -495,7 +495,7 @@ describe("환불 API → 커밋 뒤 PG 취소(실제 경로, 모의 PG)", () => 
     expect((await s.refund({ expectedRefundAmount: 13000 })).status).toBe(200);
     s.gw.getPayment = getPayment;
     expect((await orderOf(s.o.id)).status).toBe("REFUNDED");
-    expect((await db.paymentCancel.findFirstOrThrow({ where: { paymentId: s.p.paymentId } })).status).toBe("REQUESTED");
+    expect((await db.paymentCancel.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { paymentId: s.p.paymentId } })).status).toBe("REQUESTED");
     expect((await paymentOf(s.p.paymentId)).cancelledAmount).toBe(0);
     expect(await runPaymentWorkerOnce(db, new Date(Date.now() + 5 * 60_000))).toEqual({ cancels: 1, reconciled: 0, failed: 0 });
     expect(await paymentOf(s.p.paymentId)).toMatchObject({ status: "CANCELLED", cancelledAmount: 13000 });
@@ -506,7 +506,7 @@ describe("환불 API → 커밋 뒤 PG 취소(실제 경로, 모의 PG)", () => 
     const s = await paidViaApi();
     s.gw.failNext = "reject";
     expect((await s.refund({ expectedRefundAmount: 13000 })).status).toBe(200);
-    expect(await db.paymentCancel.findFirstOrThrow({ where: { paymentId: s.p.paymentId } })).toMatchObject({ status: "FAILED", failureCode: "cancel_rejected" });
+    expect(await db.paymentCancel.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { paymentId: s.p.paymentId } })).toMatchObject({ status: "FAILED", failureCode: "cancel_rejected" });
     expect(await db.auditLog.count({ where: { action: "payment.cancel_failed", targetId: s.o.id } })).toBe(1);
   });
 

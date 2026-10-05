@@ -35,7 +35,7 @@ describe("적립금 3년 소멸", () => {
     expect(await db.rewardLedger.findMany({ where: { buyerMemberId: m.buyer.id, type: "EXPIRE" } })).toMatchObject([
       { amount: -700, status: "SUCCEEDED", testMode: false, orderId: null, createdAt: NOW, processedAt: NOW },
     ]);
-    expect(await db.auditLog.findFirstOrThrow({ where: { action: "reward.expire", targetId: m.buyer.id } })).toMatchObject({
+    expect(await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "reward.expire", targetId: m.buyer.id } })).toMatchObject({
       actorType: "SYSTEM",
       sellerId: m.seller.id,
       reason: "no_earn_3_years",

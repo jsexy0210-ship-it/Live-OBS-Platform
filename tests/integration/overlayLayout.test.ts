@@ -92,7 +92,7 @@ describe("레이아웃 저장·조회", () => {
     expect(r.status).toBe(200);
     const saved = await r.json();
     expect(saved).toMatchObject({ version: 1, isDefault: false, widgets: [{ id: "current", props: { accentColor: "#ff8800", glow: true } }] });
-    expect(await db.auditLog.findFirstOrThrow({ where: { action: "overlay.layout.update", sellerId: s.seller.id } })).toMatchObject({ actorId: s.owner.id, targetId: "9x16", after: { widgetCount: 1, version: 1 } });
+    expect(await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "overlay.layout.update", sellerId: s.seller.id } })).toMatchObject({ actorId: s.owner.id, targetId: "9x16", after: { widgetCount: 1, version: 1 } });
     expect((await (await get(s.cookie, "16x9")).json()).version).toBe(0);
 
     const token = await issueOverlayToken(db, s.ctx);
