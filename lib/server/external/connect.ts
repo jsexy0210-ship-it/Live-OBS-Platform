@@ -3,7 +3,7 @@ import { Prisma, type ExternalShopConnection, type PrismaClient } from "@prisma/
 import { writeAudit } from "../audit/log";
 import { notFound } from "../authz/errors";
 import { openBillingKey, sealBillingKey } from "../billing/secret";
-import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
+import { requireSellerPermission, type TenantContext } from "../tenant/context";
 import { recordExternalCost } from "../automation/budget";
 import { OAUTH_STATE_TTL_MS } from "./config";
 import { shopKeyOf, type ExternalShopProvider } from "./provider";
@@ -21,6 +21,19 @@ export async function startConnect(db: PrismaClient, provider: ExternalShopProvi
   if (!provider) return { ok: false, reason: "integration_disabled" };
   const shopKey = shopKeyOf(shopUrl);
   if (!shopKey) return { ok: false, reason: "shop_not_supported" };
+  return beginOAuth(db, provider, ctx, shopKey);
+}
+
+// 다시 연결: 이미 있는 연결의 쇼핑몰로 연결을 새로 시작한다(주소를 다시 받지 않는다). 다시 연결 필요·연결됨 상태만. 다른 파트너스의 연결은 404.
+export async function startReconnect(db: PrismaClient, provider: ExternalShopProvider | null, ctx: TenantContext, connectionId: string): Promise<StartResult> {
+  requireSellerPermission(ctx, "SHOP_SETTINGS");
+  const c = await db.externalShopConnection.findFirst({ where: { id: connectionId, sellerId: ctx.sellerId, status: { in: ["CONNECTED", "REAUTH_REQUIRED"] } } });
+  if (!c) throw notFound();
+  if (!provider) return { ok: false, reason: "integration_disabled" };
+  return beginOAuth(db, provider, ctx, c.shopKey);
+}
+
+async function beginOAuth(db: PrismaClient, provider: ExternalShopProvider, ctx: TenantContext, shopKey: string): Promise<StartResult> {
   const taken = await db.externalShopConnection.findFirst({ where: { shopKey, status: { not: "DISCONNECTED" }, NOT: { sellerId: ctx.sellerId } }, select: { id: true } });
   if (taken) return { ok: false, reason: "already_connected" };
   const state = randomBytes(32).toString("base64url");
@@ -79,8 +92,8 @@ export async function completeConnect(db: PrismaClient, provider: ExternalShopPr
 
 export type ConnectionView = { id: string; shopKey: string; status: ExternalShopConnection["status"]; connectedAt: Date; lastEventAt: Date | null };
 
+// 목록은 같은 파트너스 계정이면 누구나 본다(보기만, 토큰·웹훅 값은 없다). 바꾸기는 대표자·쇼핑몰 설정 직원만.
 export async function listConnections(db: PrismaClient, ctx: TenantContext): Promise<ConnectionView[]> {
-  requireSellerRead(ctx, "SHOP_SETTINGS");
   const rows = await db.externalShopConnection.findMany({ where: { sellerId: ctx.sellerId, status: { not: "DISCONNECTED" } }, orderBy: { createdAt: "asc" } });
   return rows.map((c) => ({ id: c.id, shopKey: c.shopKey, status: c.status, connectedAt: c.connectedAt, lastEventAt: c.lastEventAt }));
 }
