@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PageHead } from "../../../../../components/admin-ui";
+import { Modal, PageHead } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
@@ -27,7 +27,22 @@ type Status = {
   chatNotice: string;
 };
 type Load = { kind: "loading" } | { kind: "error"; status: number; error: string } | { kind: "ok"; data: Status };
-type Confirm = "channel" | "live" | null;
+type Settings = { chatDefaultEnabled: boolean };
+type Usage = {
+  month: string;
+  messages: number;
+  storedMessages: number;
+  units: { month: number; monthLimit: number; today: number; todayLimit: number };
+  collecting: boolean;
+  stoppedReason: "seller_daily_limit" | "platform_limit" | null;
+};
+type Confirm = "channel" | "live" | "purge" | null;
+
+const STOP_TEXT = {
+  seller_daily_limit: "오늘 이 쇼핑몰의 무료 사용량을 모두 써서 채팅 수집이 멈췄습니다. 내일 자동으로 다시 시작합니다. 주문 처리와 오버레이는 그대로입니다.",
+  platform_limit: "플랫폼 전체 무료 사용량이 차서 채팅 수집이 멈췄습니다. 사용량이 풀리면 자동으로 다시 시작합니다. 주문 처리와 오버레이는 그대로입니다.",
+} as const;
+const pct = (n: number, limit: number) => (limit > 0 ? Math.min(100, Math.round((n / limit) * 100)) : 0);
 
 const STATUS_TEXT: Record<Live["status"], string> = { upcoming: "예정", live: "진행 중", ended: "종료" };
 // 한국 시간 월/일 시:분
@@ -37,8 +52,11 @@ const kstDate = (iso: string) => {
 };
 
 export default function YoutubePage() {
-  const { can } = useSeller();
+  const { can, me } = useSeller();
   const allowed = can("BROADCAST_RUN");
+  // 수집 기본값·현황은 보조 정보: 못 읽으면 그 영역만 숨기고 연결 화면은 그대로 쓴다
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const [usage, setUsage] = useState<Usage | null>(null);
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [channelUrl, setChannelUrl] = useState("");
   const [liveUrl, setLiveUrl] = useState("");
@@ -54,13 +72,18 @@ export default function YoutubePage() {
     const r = await api<Status>("/api/seller/youtube");
     if (n !== seq.current) return;
     setState(r.ok ? { kind: "ok", data: r.data } : { kind: "error", status: r.status, error: r.error });
+    if (!r.ok) return;
+    const [st, us] = await Promise.all([api<Settings>("/api/seller/youtube/settings"), api<Usage>("/api/seller/youtube/usage")]);
+    if (n !== seq.current) return;
+    setSettings(st.ok ? st.data : null);
+    setUsage(us.ok ? us.data : null);
   }, []);
   useEffect(() => {
     if (allowed) void load();
   }, [allowed, load]);
 
   // 변경 공통: 결과를 서버 응답으로 확정하고(성공이든 실패든) 끝나면 다시 읽는다
-  const run = async (kind: "channel" | "live" | "chat" | "find" | "unlink-channel" | "unlink-live", call: () => ReturnType<typeof api>, okText: string) => {
+  const run = async (kind: "channel" | "live" | "chat" | "find" | "unlink-channel" | "unlink-live" | "default" | "purge", call: () => ReturnType<typeof api>, okText: string) => {
     setBusy(true);
     setFieldError({});
     const r = await call();
@@ -88,7 +111,6 @@ export default function YoutubePage() {
       <main className="main">
         <PageHead
           title="유튜브 연결"
-          path={["방송", "연동", "유튜브 연결"]}
           actions={
             allowed &&
             data?.channel && (
@@ -264,9 +286,56 @@ export default function YoutubePage() {
                         </div>
                       </td>
                     </tr>
+                    {settings && (
+                      <tr>
+                        <th scope="row">채팅 수집 기본값</th>
+                        <td>
+                          <div className="au-ft-v">
+                            <label className="row" style={{ gap: 6 }}>
+                              <input
+                                type="checkbox"
+                                data-testid="yt-default-toggle"
+                                checked={settings.chatDefaultEnabled}
+                                disabled={off}
+                                onChange={(e) => void run("default", () => api("/api/seller/youtube/settings", { method: "PUT", body: { chatDefaultEnabled: e.target.checked } }), e.target.checked ? "새 방송은 채팅 수집을 켠 채로 시작합니다" : "새 방송은 채팅 수집을 끈 채로 시작합니다")}
+                              />
+                              새로 연결하는 방송은 채팅 수집 켬으로 시작
+                            </label>
+                            <span className="help">기본은 꺼짐입니다. 이미 연결된 방송은 그대로이고, 방송마다 켜고 끌 수 있습니다.</span>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
                 <div className="msg msg-inf">공개 방송만 지원합니다. 비공개·일부 공개 방송의 채팅은 가져올 수 없습니다.</div>
+                {usage && (
+                  <div className="col" style={{ gap: 12 }} data-testid="yt-usage">
+                    <h2 className="t-hl2">수집 현황 ({usage.month})</h2>
+                    {!usage.collecting && usage.stoppedReason && (
+                      <div className="msg msg-cau" role="status" data-testid="yt-usage-stopped">
+                        {STOP_TEXT[usage.stoppedReason]}
+                      </div>
+                    )}
+                    <dl className="kv">
+                      <dt>이번 달 수집한 채팅</dt>
+                      <dd>{usage.messages.toLocaleString("ko-KR")}건</dd>
+                      <dt>보관 중인 채팅</dt>
+                      <dd>{usage.storedMessages.toLocaleString("ko-KR")}건 · 30일이 지나면 자동으로 삭제합니다</dd>
+                      <dt>오늘 무료 사용량</dt>
+                      <dd>{pct(usage.units.today, usage.units.todayLimit)}% · 넘으면 내일까지 일시 중지합니다</dd>
+                      <dt>이번 달 무료 사용량</dt>
+                      <dd>{pct(usage.units.month, usage.units.monthLimit)}%</dd>
+                    </dl>
+                    {me.isOwner && (
+                      <div>
+                        <button className="btn btn-out" type="button" data-testid="yt-purge-open" disabled={busy || usage.storedMessages === 0} onClick={() => setConfirm("purge")}>
+                          보관 채팅 지금 삭제
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </section>
             )}
           </>
@@ -274,33 +343,39 @@ export default function YoutubePage() {
       </main>
 
       {confirm && (
-        <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="yt-confirm-title">
-          <div className="modal">
-            <div className="modal-h">
-              <h2 className="t-h2" id="yt-confirm-title">
-                {confirm === "channel" ? "유튜브 연결을 해제하시겠습니까?" : "방송 연결을 해제하시겠습니까?"}
-              </h2>
-              <span className="t-l2 c-alt">{confirm === "channel" ? "새 방송을 자동으로 찾지 않습니다. 이미 시작된 방송은 그대로입니다." : "이 방송의 채팅 수집이 멈춥니다. 이미 시작된 방송은 그대로입니다."}</span>
-            </div>
-            <div className="modal-f">
-              <button className="btn btn-out" type="button" disabled={busy} onClick={() => setConfirm(null)}>
-                닫기
-              </button>
-              <button
-                className="btn btn-neg"
-                type="button"
-                disabled={busy}
-                onClick={() =>
-                  void (confirm === "channel"
-                    ? run("unlink-channel", () => api("/api/seller/youtube/channel", { method: "DELETE" }), "유튜브 연결을 해제했습니다")
-                    : run("unlink-live", () => api("/api/seller/youtube/live", { method: "DELETE" }), "방송 연결을 해제했습니다"))
-                }
-              >
-                해제
-              </button>
-            </div>
+        <Modal labelId="yt-confirm-title" busy={busy} onClose={() => setConfirm(null)}>
+          <div className="modal-h">
+            <h2 className="modal-t" id="yt-confirm-title">
+              {confirm === "channel" ? "유튜브 연결을 해제하시겠습니까?" : confirm === "live" ? "방송 연결을 해제하시겠습니까?" : "보관 채팅을 모두 삭제하시겠습니까?"}
+            </h2>
+            <span className="t-l2 c-alt">
+              {confirm === "channel"
+                ? "새 방송을 자동으로 찾지 않습니다. 이미 시작된 방송은 그대로입니다."
+                : confirm === "live"
+                  ? "이 방송의 채팅 수집이 멈춥니다. 이미 시작된 방송은 그대로입니다."
+                  : "삭제한 채팅은 되돌릴 수 없습니다. 이번 달 수집한 채팅 건수는 줄지 않습니다."}
+            </span>
           </div>
-        </div>
+          <div className="modal-f">
+            <button className="btn btn-out" type="button" disabled={busy} onClick={() => setConfirm(null)}>
+              취소
+            </button>
+            <button
+              className="btn btn-neg"
+              type="button"
+              disabled={busy}
+              onClick={() =>
+                void (confirm === "channel"
+                  ? run("unlink-channel", () => api("/api/seller/youtube/channel", { method: "DELETE" }), "유튜브 연결을 해제했습니다")
+                  : confirm === "live"
+                    ? run("unlink-live", () => api("/api/seller/youtube/live", { method: "DELETE" }), "방송 연결을 해제했습니다")
+                    : run("purge", () => api("/api/seller/youtube/chats", { method: "DELETE" }), "보관 채팅을 삭제했습니다"))
+              }
+            >
+              {confirm === "purge" ? "삭제" : "해제"}
+            </button>
+          </div>
+        </Modal>
       )}
       {toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}
     </>

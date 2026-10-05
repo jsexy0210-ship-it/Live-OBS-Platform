@@ -10,6 +10,8 @@ export async function resetYoutube(slug = "demo-shop") {
   try {
     const { id: sellerId } = await db.seller.findUniqueOrThrow({ where: { slug }, select: { id: true } });
     await db.youtubeChatMessage.deleteMany({ where: { sellerId } });
+    await db.youtubeSellerSetting.deleteMany({ where: { sellerId } });
+    await db.youtubeChatMonthly.deleteMany({ where: { sellerId } });
     await db.youtubeLiveLink.deleteMany({ where: { sellerId } });
     await db.youtubeChannelLink.deleteMany({ where: { sellerId } });
     return sellerId;
@@ -60,6 +62,44 @@ export async function attachLiveAndChat(nickname: string, alsoInWindow: string[]
     await db.youtubeChatMessage.create({
       data: { sellerId, liveLinkId: link.id, messageId: `e2e-msg-${Date.now()}`, authorChannelId: "UCe2eAuthor", authorName: nickname, text: "안녕하세요", publishedAt: new Date() },
     });
+  } finally {
+    await db.$disconnect();
+  }
+}
+
+// 채팅 수집 기본값(설정 줄이 없으면 꺼짐)
+export async function chatDefaultInDb(slug = "demo-shop") {
+  const db = open();
+  try {
+    const { id: sellerId } = await db.seller.findUniqueOrThrow({ where: { slug }, select: { id: true } });
+    return (await db.youtubeSellerSetting.findUnique({ where: { sellerId }, select: { chatDefaultEnabled: true } }))?.chatDefaultEnabled ?? false;
+  } finally {
+    await db.$disconnect();
+  }
+}
+
+// 보관 중인 채팅 n건을 만든다(연결된 방송이 있어야 한다: seedYoutube 뒤). 이번 달 수집 건수도 n으로 맞춘다
+export async function seedStoredChats(n: number, slug = "demo-shop") {
+  const db = open();
+  try {
+    const { id: sellerId } = await db.seller.findUniqueOrThrow({ where: { slug }, select: { id: true } });
+    const link = await db.youtubeLiveLink.findFirstOrThrow({ where: { sellerId, status: { in: ["UPCOMING", "LIVE"] } }, select: { id: true } });
+    const stamp = Date.now();
+    for (let i = 0; i < n; i++) {
+      await db.youtubeChatMessage.create({ data: { sellerId, liveLinkId: link.id, messageId: `e2e-purge-${stamp}-${i}`, authorChannelId: "UCe2eAuthor", authorName: `시청자${i}`, text: "안녕하세요", publishedAt: new Date() } });
+    }
+    const month = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit" }).format(new Date());
+    await db.youtubeChatMonthly.upsert({ where: { sellerId_month: { sellerId, month } }, create: { sellerId, month, messages: n }, update: { messages: n } });
+  } finally {
+    await db.$disconnect();
+  }
+}
+
+export async function storedChatCountInDb(slug = "demo-shop") {
+  const db = open();
+  try {
+    const { id: sellerId } = await db.seller.findUniqueOrThrow({ where: { slug }, select: { id: true } });
+    return await db.youtubeChatMessage.count({ where: { sellerId } });
   } finally {
     await db.$disconnect();
   }
