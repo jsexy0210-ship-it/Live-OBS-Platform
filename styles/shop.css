@@ -953,6 +953,9 @@ body {
 .signup-cta {
   padding-top: 4px;
 }
+.signup-missing {
+  margin: 8px 0 0;
+}
 
 @media (max-width: 767px) {
   .shop-main {
