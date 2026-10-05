@@ -1,11 +1,12 @@
 "use client";
 
 import "../../../../../../styles/seller-orders.css";
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import RefundModal from "../../../../../../components/seller/RefundModal";
+import { PageHead } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
+import { SmartBackButton } from "../../../../../../components/seller/SmartBackButton";
 import { LoadingRows, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
 import { won } from "../../../../../../components/seller/format";
@@ -68,9 +69,7 @@ export default function OrderDetailPage() {
                 <div className="st-ic neg">!</div>
                 <span className="t">주문을 찾을 수 없습니다</span>
                 <span className="s">삭제되었거나 다른 쇼핑몰의 주문입니다.</span>
-                <Link className="btn btn-sm btn-out" href="/seller/orders">
-                  주문 목록으로
-                </Link>
+                <SmartBackButton fallback="/seller/orders" className="btn btn-sm btn-out">주문 목록으로</SmartBackButton>
               </div>
             ) : (
               <div className="st" style={{ boxShadow: "none" }}>
@@ -105,26 +104,26 @@ export default function OrderDetailPage() {
         )}
       </Topbar>
       <main className="main">
-        <div className="ph">
-          <div className="col" style={{ gap: 6 }}>
-            <div className="row wrap" style={{ gap: 8 }}>
-              <h1 className="t-t3">
-                {nick} · {longTime(o.createdAt)} 주문
-              </h1>
+        <PageHead
+          title={
+            <>
+              {nick} · {longTime(o.createdAt)} 주문{" "}
               <span className={`bdg bdg-lg ${STATUS_BADGE[o.status].cls}`}>{detailStatusLabel(o.status)}</span>
               {o.shipment && <span className="bdg bdg-lg b-info nodot">{SHIPMENT_STATUS[o.shipment.status] ?? "발송함"}</span>}
-            </div>
-            <span className="t-l2 c-alt">{fullTime(o.createdAt)} 접수</span>
-            <div className="ord-ono-bar t-l2">
-              <span>주문번호</span>
-              <b className="num" data-testid="order-no-label">
-                {o.orderNoLabel}
-              </b>
-              <button className="btn btn-dense btn-out btn-w-xs" type="button" onClick={() => void copyOrderNo(o.orderNoLabel)}>
-                복사
-              </button>
-              <span className="t-c1 c-alt">전화 응대 · 검색 대조용</span>
-            </div>
+            </>
+          }
+        />
+        <div className="col" style={{ gap: 4, marginBottom: 16 }}>
+          <span className="t-l2 c-alt">{fullTime(o.createdAt)} 접수</span>
+          <div className="ord-ono-bar t-l2">
+            <span>주문번호</span>
+            <b className="num" data-testid="order-no-label">
+              {o.orderNoLabel}
+            </b>
+            <button className="btn btn-dense btn-out btn-w-xs" type="button" onClick={() => void copyOrderNo(o.orderNoLabel)}>
+              복사
+            </button>
+            <span className="t-c1 c-alt">전화 응대 · 검색 대조용</span>
           </div>
         </div>
 

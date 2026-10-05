@@ -174,3 +174,35 @@ test("상품 관리 권한이 없는 직원에게는 빠른 처리 칸이 보이
   await expect(page.getByRole("combobox", { name: /판매 상태/ })).toHaveCount(0);
   await expect(page.getByRole("textbox", { name: /재고$/ })).toHaveCount(0);
 });
+
+test("되돌리기: 그사이 다른 사람이 판매가·판매 상태를 또 바꿨으면 되돌리지 않고 지금 값을 보여 준다", async ({ page }) => {
+  await login(page);
+  const p = await make(page, `${PREFIX}-되돌리기충돌`, "ON_SALE", 10);
+  await page.goto(`/seller/products?q=${encodeURIComponent(PREFIX)}`);
+  const r = row(page, `${PREFIX}-되돌리기충돌`);
+  const undo = page.getByRole("button", { name: "되돌리기", exact: true });
+  const patch = (body: Record<string, unknown>) =>
+    page.evaluate(async ({ id, body }) => (await fetch(`/api/seller/products/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })).status, { id: p.id, body });
+
+  // 판매가: 2,500원으로 바꾼 뒤 다른 사람이 3,000원으로 바꿨다 → 되돌리기는 막히고 3,000원이 보인다
+  const priceButton = r.getByRole("button", { name: /가격 변경/ });
+  await priceButton.click();
+  const price = r.getByRole("textbox", { name: /가격$/ });
+  await price.fill("2500");
+  await price.press("Enter");
+  await expect(page.getByText("판매가를 2,500원으로 바꿨습니다")).toBeVisible();
+  expect(await patch({ price: 3000 })).toBe(200);
+  await undo.click();
+  await expect(page.getByText("다른 사람이 먼저 바꿔서 되돌리지 않았습니다")).toBeVisible();
+  expect((await serverProduct(page, p.id)).price).toBe(3000);
+  await expect(priceButton).toHaveText("3,000원");
+
+  // 판매 상태: 숨김으로 바꾼 뒤 다른 사람이 품절로 바꿨다 → 되돌리기는 막히고 품절이 보인다
+  await r.getByRole("combobox", { name: /판매 상태/ }).selectOption("HIDDEN");
+  await expect(page.getByText("판매 상태를 숨김(으)로 바꿨습니다")).toBeVisible();
+  expect(await patch({ status: "SOLD_OUT" })).toBe(200);
+  await undo.click();
+  await expect(page.getByText("다른 사람이 먼저 바꿔서 되돌리지 않았습니다")).toBeVisible();
+  expect((await serverProduct(page, p.id)).status).toBe("SOLD_OUT");
+  await expect(r.getByRole("combobox", { name: /판매 상태/ })).toHaveValue("SOLD_OUT");
+});

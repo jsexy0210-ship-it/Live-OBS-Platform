@@ -25,6 +25,16 @@ function sameHex(a: string, b: string) {
 const isInt = (v: unknown): v is number => typeof v === "number" && Number.isSafeInteger(v);
 const isStr = (v: unknown): v is string => typeof v === "string" && v.length > 0;
 
+// 승인 응답 card: cardName(카드사), cardNum(앞 6·끝 4만 보이는 마스킹 번호, 우리는 끝 4자리만 남김), cardQuota(할부 개월 문자열, "0" = 일시불).
+function parseCard(v: unknown) {
+  if (!v || typeof v !== "object") return null;
+  const c = v as Record<string, unknown>;
+  const name = isStr(c.cardName) ? c.cardName.slice(0, 20) : null;
+  const last4 = isStr(c.cardNum) && /\d{4}$/.test(c.cardNum) ? c.cardNum.slice(-4) : null;
+  const quota = typeof c.cardQuota === "string" && /^\d{1,2}$/.test(c.cardQuota) ? Number(c.cardQuota) : isInt(c.cardQuota) && c.cardQuota >= 0 && c.cardQuota <= 60 ? c.cardQuota : null;
+  return name || last4 || quota !== null ? { name, last4, installment: quota } : null;
+}
+
 export class NicepaySandboxGateway implements PaymentGateway {
   readonly name = "nicepay";
 
@@ -51,7 +61,8 @@ export class NicepaySandboxGateway implements PaymentGateway {
   private parsePayment(b: Record<string, unknown>): PgPayment | null {
     if (!this.validSignature(b)) return null;
     if (!isStr(b.orderId) || !STATUSES.includes(b.status as PgStatus) || !isInt(b.balanceAmt)) return null;
-    return { tid: b.tid as string, orderId: b.orderId, status: b.status as PgStatus, amount: b.amount as number, balanceAmt: b.balanceAmt };
+    const card = parseCard(b.card);
+    return { tid: b.tid as string, orderId: b.orderId, status: b.status as PgStatus, amount: b.amount as number, balanceAmt: b.balanceAmt, ...(card ? { card } : {}) };
   }
 
   private async call(method: "GET" | "POST", path: string, body?: object): Promise<PgResult<Record<string, unknown>>> {

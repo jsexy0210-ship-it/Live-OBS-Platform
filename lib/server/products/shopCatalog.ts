@@ -5,9 +5,9 @@ import { getShippingPolicy } from "../orders/shipping";
 import type { RewardRates } from "../rewards/earn";
 import { expandSearchTerm, productIdsByTerm, recordSearchTerm } from "../shop-search/service";
 import { cleanText } from "../text/clean";
-import { publicDetailBlocks } from "./detail";
+import { publicDetailBlocks, publicDetailHtml } from "./detail";
 import { eventOf, isEventActive, orderUnitPrice } from "./event";
-import { shopImageUrl } from "./images";
+import { shopImageUrl, thumbnailUrls } from "./images";
 import { LOW_STOCK_MAX, productCode } from "./manage";
 
 // 구매자 쇼핑몰 상품 목록·상세(로그인 없이, MASTER 우선순위 2026-10-04). 운영 중인 쇼핑몰(shopOpen)의 보이는 상품(판매 중·품절, 지우지 않음)만.
@@ -164,7 +164,7 @@ export async function shopProductList(
   // 인기 검색어: 구매자가 직접 한 검색(홈 진열 제외)의 첫 쪽 결과가 있을 때만 센다
   if (term && !only && page === 1 && arranged.length > 0) await recordSearchTerm(db, shop.id, term, clientIp);
   const slice = arranged.slice((page - 1) * limit, page * limit);
-  const thumbs = await thumbnails(db, shop.id, shop.slug, slice.map((c) => c.p.id));
+  const thumbs = await thumbnailUrls(db, shop.id, slice.map((c) => c.p.id), shop.slug);
   const extras = await cardExtras(db, shop.id, slice.map((c) => ({ id: c.p.id, shown: c.shown })), now, liveIds);
   return {
     ok: true,
@@ -258,7 +258,7 @@ export async function shopCardsInOrder(db: PrismaClient, shop: { id: string; slu
     },
   });
   const now = await dbNow(db);
-  const thumbs = await thumbnails(db, shop.id, shop.slug, rows.map((r) => r.id));
+  const thumbs = await thumbnailUrls(db, shop.id, rows.map((r) => r.id), shop.slug);
   const byId = new Map(rows.map((p) => [p.id, p]));
   const extras = await cardExtras(db, shop.id, rows.map((p) => ({ id: p.id, shown: orderUnitPrice(p.price, eventOf(p), now) })), now);
   return ids.flatMap((id) => {
@@ -278,15 +278,6 @@ export async function shopCardsInOrder(db: PrismaClient, shop: { id: string; slu
       },
     ];
   });
-}
-
-async function thumbnails(db: PrismaClient, sellerId: string, slug: string, ids: string[]) {
-  if (!ids.length) return new Map<string, string>();
-  const rows = await db.$queryRaw<{ id: string; productId: string; sha256: string }[]>`
-    SELECT DISTINCT ON (i."productId") i."id", i."productId", i."sha256" FROM "ProductImage" i
-    WHERE i."sellerId" = ${sellerId}::uuid AND i."productId" = ANY(${ids}::uuid[]) AND i."kind" = 'GALLERY'
-    ORDER BY i."productId", i."sortOrder", i."createdAt", i."id"`;
-  return new Map(rows.map((r) => [r.productId, shopImageUrl(slug, r)]));
 }
 
 // 상세. buyerGradeId가 있으면(로그인 회원) 그 등급, 없으면 가입 때 받는 기본 등급(가장 앞 등급)의 적립률로 적립 예정액을 보인다.
@@ -327,6 +318,7 @@ export async function shopProductDetail(db: PrismaClient, slug: string, productI
       return { id: o.id, name: o.name, price: unit, salePrice: sale < unit ? sale : null, soldOut, stockLeft: !soldOut && o.stock <= LOW_STOCK_MAX ? o.stock : null };
     }),
     detail: await publicDetailBlocks(db, shop.id, shop.slug, p.id),
+    detailHtml: await publicDetailHtml(db, shop.id, shop.slug, p.id),
     categories: p.categories
       .map((c) => c.category)
       .filter((c) => c.visible && (!c.parent || c.parent.visible))

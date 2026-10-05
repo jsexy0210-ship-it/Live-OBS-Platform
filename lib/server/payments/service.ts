@@ -191,7 +191,7 @@ async function applyPgPayment(db: PrismaClient, gw: PaymentGateway, p: Payment, 
     await fail(db, p, c.kind === "ok" ? "amount_mismatch" : "amount_mismatch_cancel_unconfirmed", ["APPROVING"]);
     return "failed";
   }
-  const moved = await db.payment.updateMany({ where: { id: p.id, status: "APPROVING" }, data: { status: "PAID", approvedAt: new Date() } });
+  const moved = await db.payment.updateMany({ where: { id: p.id, status: "APPROVING" }, data: { status: "PAID", approvedAt: new Date(), ...(pg.card ? { cardName: pg.card.name, cardLast4: pg.card.last4, cardInstallment: pg.card.installment } : {}) } });
   if (moved.count === 1)
     await writeAudit(db, { ...SYSTEM, sellerId: p.sellerId, action: "payment.approved", targetType: "Order", targetId: p.orderId, after: { paymentId: p.id, provider: p.provider, amount: p.amount } });
   return settleOrder(db, gw, await db.payment.findUniqueOrThrow({ where: { id: p.id } }));

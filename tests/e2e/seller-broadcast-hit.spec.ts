@@ -37,10 +37,10 @@ test("방송 전에는 등록할 수 없고, 방송 중 Ctrl+H로 열어 개봉 
   await expect(page.getByTestId("bc-opening")).toContainText(A);
 
   await page.locator("body").press("Control+h");
-  const dlg = page.getByRole("dialog", { name: "HIT 카드 등록" });
-  await expect(dlg.getByLabel("대상 주문")).toHaveValue(/.+/);
-  await expect(dlg.getByLabel("대상 주문").locator("option:checked")).toContainText(`${A} · 지금 개봉 중`);
-  await expect(dlg.getByRole("button", { name: "HIT 카드 등록" })).toBeDisabled();
+  const dlg = page.getByRole("dialog", { name: "HIT 카드 기록하기" });
+  await expect(dlg.getByLabel("카드를 받은 주문")).toHaveValue(/.+/);
+  await expect(dlg.getByLabel("카드를 받은 주문").locator("option:checked")).toContainText(`${A} · 지금 개봉 중`);
+  await expect(dlg.getByRole("button", { name: "HIT 카드 기록하기" })).toBeDisabled();
 
   // 입력 중 Esc: 닫지 않고 확인을 묻는다 → 계속 작성
   await dlg.getByLabel("카드명").fill(card);
@@ -48,8 +48,8 @@ test("방송 전에는 등록할 수 없고, 방송 중 Ctrl+H로 열어 개봉 
   await expect(dlg.getByRole("alert")).toContainText("저장하지 않은 변경");
   await dlg.getByRole("button", { name: "계속 작성" }).click();
 
-  await dlg.getByLabel("메모 (파트너스만)").fill("e2e 메모");
-  await dlg.getByRole("button", { name: "HIT 카드 등록" }).click();
+  await dlg.getByLabel("메모 (나만 보임)").fill("e2e 메모");
+  await dlg.getByRole("button", { name: "HIT 카드 기록하기" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
 
   // 서버에 남고 개봉 중 주문에 연결되며, 요약의 HIT 수가 1이 된다
