@@ -4,6 +4,7 @@ import { GET as sellerSearchRoute } from "../../app/api/seller/search/route";
 import { loginSeller } from "../../lib/server/auth/login";
 import { createAdminSession } from "../../lib/server/auth/session";
 import { prisma } from "../../lib/server/db";
+import { orderNoLabel } from "../../lib/server/orders/orderNoLabel";
 import { PASSWORD, createAdmin, createBuyer, createSeller, createSellerUser, db, resetDb, seedPlans } from "./helpers";
 
 // 전역 검색: 마스터는 파트너스·주문번호·결제번호·문의·작업 id(구매자 개인정보는 검색·응답 모두 없음),
@@ -60,6 +61,12 @@ describe("마스터 검색 GET /api/admin/search", () => {
     expect((await get("SLUG-라마")).sellers.map((s: { id: string }) => s.id)).toEqual([b.seller.id]);
     const ord = await get("7777", "CS");
     expect(ord.orders.map((o: { sub: string }) => o.sub).sort()).toEqual(["가나다", "라마바"]);
+    // title은 기존대로 숫자 주문번호, orderNoLabel은 따로(사람이 읽는 주문번호). 라벨로도 찾는다
+    expect(ord.orders.map((o: { title: string }) => o.title)).toEqual(["7777", "7777"]);
+    for (const o of ord.orders as { orderNoLabel: string }[]) expect(o.orderNoLabel).toMatch(/^\d{8}-7777$/);
+    const byLabel = await get(ord.orders[0].orderNoLabel, "CS");
+    expect(byLabel.orders.length).toBeGreaterThan(0);
+    expect((await get("19990101-7777", "CS")).orders).toEqual([]);
     expect((await get("TID-ABC-1")).payments).toEqual([{ id: pay.id, title: "TID-ABC-1", sub: "가나다", href: `/admin/partners/${a.seller.id}` }]);
     expect((await get("SUBPAY-1")).payments).toEqual([{ id: subPay.id, title: subPay.id, sub: "가나다", href: `/admin/billing/invoices/${subPay.id}` }]);
     expect((await get("tid-abc")).payments).toEqual([]); // 결제번호는 똑같이 맞아야 한다
@@ -100,7 +107,11 @@ describe("파트너스 검색 GET /api/seller/search", () => {
       return r.json();
     };
     expect((await get("포켓몬")).products).toEqual([{ id: a.product.id, title: "포켓몬카드 가나다", sub: "임시 저장", href: `/seller/products/${a.product.id}` }]);
-    expect((await get("7777")).orders).toEqual([{ id: a.order.id, title: "7777", sub: "결제 대기", href: `/seller/orders/${a.order.id}` }]);
+    expect((await get("7777")).orders).toEqual([{ id: a.order.id, title: "7777", sub: "결제 대기", href: `/seller/orders/${a.order.id}`, orderNoLabel: orderNoLabel(a.order.createdAt, 7777) }]);
+    // 사람이 읽는 주문번호로도 찾는다(그날 만든 그 번호만)
+    const lbl = orderNoLabel(a.order.createdAt, 7777);
+    expect((await get(lbl)).orders.map((o: { id: string }) => o.id)).toEqual([a.order.id]);
+    expect((await get(lbl.replace(/^\d{8}/, "19990101"))).orders).toEqual([]);
     expect((await get("단골")).members).toEqual([{ id: a.buyer.id, title: "단골가나다", sub: "활동", href: `/seller/members/${a.buyer.id}` }]);
     // sub는 영문 상태 코드가 아니라 화면에서 쓰는 한글 이름
     expect((await get("청구서")).inquiries).toEqual([expect.objectContaining({ title: "청구서 문의", sub: "답변 대기" })]);
