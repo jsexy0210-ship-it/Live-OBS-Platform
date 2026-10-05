@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { ConfirmProvider, useConfirm } from "../../../../components/admin-ui";
 import IdentityCheck, { IdentityDone, kstToday } from "../../../../components/seller/IdentityCheck";
 import { AuthFrame, IdentityUnavailable, Steps } from "../../../../components/seller/PartnersAuth";
 import { api, failMessage } from "../../../../components/seller/api";
@@ -49,7 +50,17 @@ const validDate = (d: string) => {
   return y >= 1900 && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === day && d <= kstToday();
 };
 
-export default function PartnersSignupForm({ consentVersions }: { consentVersions: ConsentVersions }) {
+// 로그인 전 화면이라 셸이 없으므로 확인 창 공급자를 이 화면에서 감싼다
+export default function PartnersSignupForm(props: { consentVersions: ConsentVersions }) {
+  return (
+    <ConfirmProvider>
+      <SignupForm {...props} />
+    </ConfirmProvider>
+  );
+}
+
+function SignupForm({ consentVersions }: { consentVersions: ConsentVersions }) {
+  const { confirm } = useConfirm();
   const router = useRouter();
   // 보내는 약관 버전: 서버 화면이 넘긴 값. 409 consent_outdated 본문에 지금 버전이 오면 그 값으로 바꾼다
   const [versions, setVersions] = useState(consentVersions);
@@ -139,6 +150,13 @@ export default function PartnersSignupForm({ consentVersions }: { consentVersion
       focus(`su-${Object.keys(e)[0]}`);
       return;
     }
+    const sure = await confirm({
+      tone: "shop",
+      title: "입력한 내용으로 가입을 신청할까요?",
+      body: `상호 ${f.companyName.trim()}, 쇼핑몰 주소 ${f.slug}로 신청해요. 신청한 뒤에는 쇼핑몰 주소를 바꿀 수 없어요.`,
+      confirmLabel: "신청하기",
+    });
+    if (!sure) return;
     setBusy(true);
     setNotice(null);
     const r = await api<Done>("/api/seller-signup/apply", {

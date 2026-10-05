@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
-import { FormRow, FormSection, PageHead } from "../../../../../../components/admin-ui";
+import { FormRow, FormSection, PageHead, useConfirm } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { SmartBackButton } from "../../../../../../components/seller/SmartBackButton";
 import { api, failMessage } from "../../../../../../components/seller/api";
@@ -32,7 +32,7 @@ function Pay() {
   const shop = useSearchParams().get("shop") ?? "";
   const [card, setCard] = useState<string | null | undefined>(undefined);
   const [checked, setChecked] = useState<boolean[]>(CHECKS.map(() => false));
-  const [busy, setBusy] = useState(false);
+  const { confirm } = useConfirm();
   const [problem, setProblem] = useState<{ text: string; jobId?: string } | null>(null);
   // 같은 결제를 다시 눌러도 한 번만 처리되게 화면 진입마다 키 하나를 쓴다
   const key = useRef<string>("");
@@ -44,19 +44,32 @@ function Pay() {
 
   const all = checked.every(Boolean);
   const pay = async () => {
-    setBusy(true);
     setProblem(null);
-    const r = await fetch("/api/automation/purchase", {
-      method: "POST",
-      headers: { "content-type": "application/json", "idempotency-key": key.current },
-      body: JSON.stringify({ shopUrl: shop, consent: { agreed: true, noticeVersion: AUTOMATION_CONSENT.version } }),
-      cache: "no-store",
-    })
-      .then(async (res) => ({ status: res.status, body: (await res.json().catch(() => ({}))) as { jobId?: string; error?: string; message?: string } }))
-      .catch(() => ({ status: 0, body: {} as { jobId?: string; error?: string; message?: string } }));
-    if (r.status >= 200 && r.status < 300 && r.body.jobId) return router.push(`/seller/automation/${r.body.jobId}`);
-    setBusy(false);
-    setProblem({ text: (r.body.error && REASON[r.body.error]) || r.body.message || failMessage(r, "admin"), jobId: r.body.jobId });
+    const price = AUTOMATION_PRICE.toLocaleString("ko-KR");
+    await confirm({
+      title: `${price}원을 결제하시겠습니까?`,
+      body: `등록된 카드${card ? `(${card})` : ""}로 ${price}원(부가세 포함)이 바로 결제되고 자동 설정이 시작됩니다. 시작한 뒤에는 마음이 바뀌어도 환불되지 않습니다. 결제 금액을 다시 입력해 주십시오.`,
+      confirmLabel: `${price}원 결제하기`,
+      danger: true,
+      retype: { expected: String(AUTOMATION_PRICE), label: "결제 금액" },
+      run: async () => {
+        const r = await fetch("/api/automation/purchase", {
+          method: "POST",
+          headers: { "content-type": "application/json", "idempotency-key": key.current },
+          body: JSON.stringify({ shopUrl: shop, consent: { agreed: true, noticeVersion: AUTOMATION_CONSENT.version } }),
+          cache: "no-store",
+        })
+          .then(async (res) => ({ status: res.status, body: (await res.json().catch(() => ({}))) as { jobId?: string; error?: string; message?: string } }))
+          .catch(() => ({ status: 0, body: {} as { jobId?: string; error?: string; message?: string } }));
+        if (r.status >= 200 && r.status < 300 && r.body.jobId) {
+          router.push(`/seller/automation/${r.body.jobId}`);
+          return;
+        }
+        const text = (r.body.error && REASON[r.body.error]) || r.body.message || failMessage(r, "admin");
+        setProblem({ text, jobId: r.body.jobId });
+        return text;
+      },
+    });
   };
 
   const vat = Math.round(AUTOMATION_PRICE / 11);
@@ -100,8 +113,8 @@ function Pay() {
             </div>
           )}
           <div className="row" style={{ gap: 8 }}>
-            <button className="btn btn-lg" type="button" disabled={!all || busy || !card || !shop} onClick={() => void pay()} data-testid="pay-submit">
-              {busy ? "결제 중" : `${AUTOMATION_PRICE.toLocaleString("ko-KR")}원 결제하기`}
+            <button className="btn btn-lg" type="button" disabled={!all || !card || !shop} onClick={() => void pay()} data-testid="pay-submit">
+              {`${AUTOMATION_PRICE.toLocaleString("ko-KR")}원 결제하기`}
             </button>
             <SmartBackButton fallback="/seller/automation" className="btn btn-out btn-lg">이전 화면으로</SmartBackButton>
           </div>

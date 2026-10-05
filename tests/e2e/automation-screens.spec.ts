@@ -74,6 +74,14 @@ test("파트너스: 주소 확인 → 결제 동의 5개 → 결제 → 진행 �
   await expect(submit).toBeEnabled();
   await page.screenshot({ path: "tests/e2e/screenshots/automation-sa151-1440.png", fullPage: true });
   await submit.click();
+  // 실제 결제는 확인 창에서 금액을 다시 입력해야 실행된다
+  const payDialog = page.getByRole("dialog", { name: "110,000원을 결제하시겠습니까?" });
+  await expect(payDialog).toContainText("시작한 뒤에는 마음이 바뀌어도 환불되지 않습니다");
+  const payGo = payDialog.getByRole("button", { name: "110,000원 결제하기" });
+  await expect(payGo).toBeDisabled();
+  await payDialog.getByLabel("결제 금액").fill("110,000");
+  await expect(payGo).toBeEnabled();
+  await payGo.click();
   await expect(page).toHaveURL(/\/seller\/automation\/[0-9a-f-]{36}$/);
   await expect(page.getByTestId("job-status")).toContainText("결제 확인됨");
   const job = await db.automationJob.findFirstOrThrow({ where: { sellerId } });
@@ -88,12 +96,14 @@ test("파트너스: 주소 확인 → 결제 동의 5개 → 결제 → 진행 �
   await expect(page.getByTestId("job-action")).toContainText("문자 인증을 마쳐 주십시오");
   await page.screenshot({ path: "tests/e2e/screenshots/automation-sa152-1440.png", fullPage: true });
   await page.getByRole("button", { name: "이어서 진행하기" }).click();
+  await page.getByRole("dialog", { name: "이어서 진행하시겠습니까?" }).getByRole("button", { name: "이어서 진행하기" }).click();
   await expect.poll(async () => (await db.automationJob.findUniqueOrThrow({ where: { id: job.id } })).status).toBe("QUEUED");
   // 취소 확인(시작 전)
   await page.getByRole("button", { name: "자동 설정 그만두기" }).click();
-  await expect(page.getByTestId("cancel-confirm")).toContainText("아직 연결을 시작하지 않았습니다");
-  await page.getByRole("button", { name: "계속 진행하기" }).click();
-  await expect(page.getByTestId("cancel-confirm")).toHaveCount(0);
+  const cancelDialog = page.getByRole("dialog", { name: "자동 연결을 취소하시겠습니까?" });
+  await expect(cancelDialog).toContainText("아직 연결을 시작하지 않았습니다");
+  await cancelDialog.getByRole("button", { name: "취소" }).click();
+  await expect(cancelDialog).toHaveCount(0);
   // 완료는 작동 확인 증거가 있어야 보인다(없으면 진행 화면으로 안내)
   await db.automationJob.update({ where: { id: job.id }, data: { status: "SUCCEEDED", verifiedAt: new Date(), finishedAt: new Date() } });
   await page.goto(`/seller/automation/${job.id}/done`);
