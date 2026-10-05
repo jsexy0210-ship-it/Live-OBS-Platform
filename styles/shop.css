@@ -1218,3 +1218,121 @@ body {
   margin: 0 0 16px;
   font-size: 20px;
 }
+
+/* IA ④ 상품 상세: 리뷰 */
+.pd-rv {
+  margin-top: 48px;
+}
+.pd-rv h2 {
+  margin: 0 0 16px;
+  font-size: 20px;
+}
+.pd-rv-sum {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px 48px;
+  padding: 24px 0;
+  border-top: 1px solid var(--wds-label-normal);
+  border-bottom: 1px solid var(--wds-line-solid-neutral);
+}
+.pd-rv-avg {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 140px;
+}
+.pd-rv-avg b {
+  font-size: 32px;
+  line-height: 1.1;
+}
+.pd-rv-avg span,
+.pd-rv-stars {
+  color: var(--wds-status-cautionary);
+  letter-spacing: 1px;
+}
+.pd-rv-avg small {
+  color: var(--wds-label-alternative);
+}
+.pd-rv-dist {
+  flex: 1;
+  min-width: 220px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+.pd-rv-dist li {
+  display: grid;
+  grid-template-columns: 32px 1fr 40px;
+  align-items: center;
+  gap: 8px;
+}
+.pd-rv-dist i {
+  height: 8px;
+  background: var(--wds-fill-normal);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.pd-rv-dist u {
+  display: block;
+  height: 100%;
+  background: var(--wds-status-cautionary);
+}
+.pd-rv-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pd-rv-list > li {
+  padding: 20px 0;
+  border-bottom: 1px solid var(--wds-line-solid-neutral);
+}
+.pd-rv-list p {
+  margin: 0;
+}
+.pd-rv-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: center;
+  font-size: 13px;
+  color: var(--wds-label-alternative);
+}
+.pd-rv-meta b {
+  color: var(--wds-label-normal);
+}
+.pd-rv-list .pd-rv-opt {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--wds-label-assistive);
+}
+.pd-rv-list .pd-rv-body {
+  margin-top: 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.pd-rv-list .pd-rv-imgs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.pd-rv-imgs img {
+  width: 80px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+.pd-rv-list .pd-rv-reply {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--wds-fill-normal);
+  border-radius: 6px;
+  font-size: 14px;
+}
+.pd-rv-more {
+  display: block;
+  margin: 20px auto 0;
+}
