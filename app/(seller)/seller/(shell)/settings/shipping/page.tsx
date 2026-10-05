@@ -345,7 +345,7 @@ export default function ShippingSettingsPage() {
                     </div>
                     {extras.planned.length > 0 && (
                       <div className="c-alt" style={{ margin: "4px 0 8px" }}>
-                        보관하기 <span className="t-c1">곧 열려요</span> <span className="t-l2">· 개봉한 카드를 모아 두었다가 한 번에 받아요</span>
+                        보관하기 <span className="t-c1">곧 열립니다</span> <span className="t-l2">· 개봉한 카드를 모아 두었다가 한 번에 받습니다</span>
                       </div>
                     )}
                     <table className="tbl">
