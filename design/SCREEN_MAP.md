@@ -26,8 +26,8 @@
 
 | 상태 | 수 |
 |---|---|
-| FINAL | 32 |
-| DRAFT | 146 |
+| FINAL | 33 |
+| DRAFT | 145 |
 | BLOCKED | 0 |
 | MISSING | 14 |
 | SUPERSEDED | 1 |
@@ -194,7 +194,7 @@
 | SA-113 | 내 문의 목록 | /seller/inquiries | design/project/SA-113.dc.html | SA-113.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | SA-114 | 문의 작성 | /seller/inquiries/new | design/project/SA-114.dc.html | SA-114.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | SA-115 | 문의 상세·답변 | /seller/inquiries/[id] | design/project/SA-115.dc.html | SA-115.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| SA-120 | 내 계정 | — | design/project/SA-120.dc.html | SA-120.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
+| SA-120 | 내 계정 | — | design/project/SA-120.dc.html | SA-120.dc.html | FINAL | v269 (1791212452-e01e) | 2026-10-06 00:21 KST | 현대화 기준 충족(v269) · 구현 PR #623과 일치: 계정 정보(이메일·쇼핑몰·구분·직원 본인확인) · 이름 변경 · 비밀번호 변경(8자 이상 · 다른 곳 로그아웃 선택 필수 · 429 잠금) · 후속(서버 API 없음): 연락처 · 알림 수신 · 로그인 기기 · 세션은 상태 변형에만 |
 | SA-130 | 알림 센터 | /seller/notifications | design/project/SA-130.dc.html | SA-130.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | SA-140 | 도우미 | /seller/assistant | design/project/SA-140.dc.html | SA-140.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | SA-150 | 자동 연결 안내 | /seller/automation | design/project/SA-150.dc.html | SA-150.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
