@@ -197,7 +197,7 @@ export default function AccountPage() {
                       <button className="btn btn-sm" type="submit" disabled={pwBusy || locked}>
                         비밀번호 변경
                       </button>
-                      <span className="help">변경 시 다른 기기에서 로그아웃됩니다</span>
+                      <span className="help">변경 시 다른 기기에서 로그아웃됩니다 · 5번 틀리면 15분 동안 시도할 수 없습니다</span>
                       {pwErr && (
                         <span className="err" role="alert" data-testid="account-pw-error">
                           {pwErr}
