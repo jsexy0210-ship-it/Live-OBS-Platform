@@ -20,7 +20,7 @@ export const ADMIN_MENU: AdminGroup[] = [
     key: "billing",
     label: "구독·요금",
     items: [
-      { label: "요금제", href: "/admin/billing/plans" },
+      { label: "요금제", href: "/admin/billing/plans", ready: true },
       { label: "구독 현황", href: "/admin/billing/subscriptions", ready: true },
       { label: "청구·결제 내역", href: "/admin/billing/invoices", ready: true },
       { label: "환불 요청", href: "/admin/billing/refunds" },
