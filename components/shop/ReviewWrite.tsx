@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useConfirm } from "../admin-ui/ConfirmDialog";
 import ShopState from "./ShopState";
 import { call, md, RATING_TEXT, reencodePhoto } from "./reviewShared";
 import "./Reviews.css";
@@ -14,6 +15,7 @@ const MAX_PHOTOS = 5;
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 
 export default function ReviewWrite({ slug, itemId, reviewId }: { slug: string; itemId: string | null; reviewId: string | null }) {
+  const { confirm } = useConfirm();
   const base = `/api/shop/${encodeURIComponent(slug)}/reviews`;
   const [view, setView] = useState<{ kind: "loading" } | { kind: "login" } | { kind: "closed" } | { kind: "error" } | { kind: "ok"; title: string; sub: string; reward: { text: number; photo: number } | null }>({ kind: "loading" });
   const [rating, setRating] = useState(0);
@@ -77,6 +79,8 @@ export default function ReviewWrite({ slug, itemId, reviewId }: { slug: string; 
 
   const submit = async () => {
     if (!ready) return;
+    const edit = !itemId;
+    if (!(await confirm({ tone: "shop", title: edit ? "고친 리뷰를 올릴까요?" : "리뷰를 올릴까요?", body: "방송 닉네임으로 공개돼요. 올린 뒤 7일 안에만 고칠 수 있어요.", confirmLabel: "올리기" }))) return;
     setBusy(true);
     setMsg(null);
     const payload = { rating, body, imageIds: photos.map((p) => p.id) };

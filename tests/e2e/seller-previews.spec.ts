@@ -115,10 +115,10 @@ test("주문 설정 미리보기: 입금 기한·자동 배송 완료·자동 �
 });
 
 test("공유 미리보기: 제목·설명을 저장 전에 카드에 바로 보여 준다", async ({ page }) => {
-  await open(page, "/seller/settings/share");
+  await open(page, "/seller/settings/shop");
   const card = page.getByTestId("sp-card");
-  await page.getByLabel("제목").fill("미리보기 제목");
-  await page.getByLabel("설명").fill("미리보기 설명");
+  await page.getByLabel("공유 제목").fill("미리보기 제목");
+  await page.getByLabel("공유 설명").fill("미리보기 설명");
   await expect(card).toContainText("미리보기 제목");
   await expect(card).toContainText("미리보기 설명");
 });

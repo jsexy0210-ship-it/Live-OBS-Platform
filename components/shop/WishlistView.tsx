@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { useConfirm } from "../admin-ui/ConfirmDialog";
 import MyMenu from "./MyMenu";
 import { ProductCard, type ProductCardData } from "./ProductCard";
 import { call } from "./reviewShared";
@@ -16,6 +17,7 @@ type View = { kind: "loading" } | { kind: "login" } | { kind: "error" } | { kind
 const card = (i: Item): ProductCardData => ({ id: i.productId, name: i.name, price: i.listPrice, salePrice: i.price < i.listPrice ? i.price : null, soldOut: i.status === "sold_out" });
 
 export default function WishlistView({ slug }: { slug: string }) {
+  const { confirm } = useConfirm();
   const base = `/shop/${encodeURIComponent(slug)}`;
   const api = `/api/shop/${encodeURIComponent(slug)}/wishlist`;
   const [view, setView] = useState<View>({ kind: "loading" });
@@ -94,7 +96,9 @@ export default function WishlistView({ slug }: { slug: string }) {
           ))}
         </ul>
         <div className="cart-tools">
-          <button className="btn btn-sm btn-out" type="button" disabled={busy || out.length === 0} onClick={() => void remove(out, `${out.length}개를 찜에서 뺐어요`)}>
+          <button className="btn btn-sm btn-out" type="button" disabled={busy || out.length === 0} onClick={async () => {
+              if (await confirm({ tone: "shop", title: `품절 상품 ${out.length}개를 뺄까요?`, body: "찜 목록에서만 빠져요.", confirmLabel: "빼기" })) void remove(out, `${out.length}개를 찜에서 뺐어요`);
+            }}>
             품절 상품 빼기
           </button>
           <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={() => setConfirming(true)}>

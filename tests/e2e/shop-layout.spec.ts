@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { okConfirm } from "./shopConfirm";
 
 // 구매자 쇼핑몰 공통 틀(카페24식, docs/DESIGN_PROMPT.md 「구매자 쇼핑몰(SH)」) — 운영 빌드(next start) + 데모 시드 기준.
 // PC: 맨 위 띠(로그인·회원가입·주문 조회·고객센터) → 로고·검색·장바구니 → 카테고리 가로 메뉴, 상품 격자 4열.
@@ -96,6 +97,7 @@ test.describe("PC 1440", () => {
     await expect(util.getByRole("link", { name: "내 정보" })).toBeVisible();
     await expect(util.getByRole("link", { name: "로그인", exact: true })).toHaveCount(0);
     await util.getByRole("button", { name: "로그아웃" }).click();
+    await okConfirm(page, "로그아웃");
     await expect(page).toHaveURL(new RegExp(`/shop/${SLUG}$`));
     await expect(util.getByRole("link", { name: "로그인", exact: true })).toBeVisible();
   });

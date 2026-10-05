@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { resetWishlistInDb } from "./cartDb";
+import { okConfirm } from "./shopConfirm";
 
 // SH-034 찜(운영 빌드 + 데모 시드). 데모 구매자(demo-buyer1@example.com)의 찜을 시작·끝에 비운다.
 const SLUG = "demo-shop";
@@ -51,6 +52,7 @@ test.describe.serial("로그인 구매자", () => {
     await expect(page.getByRole("status")).toContainText("찜에서 뺐어요");
     await expect(cards).toHaveCount(2);
     await page.getByRole("button", { name: "품절 상품 빼기" }).click();
+    await okConfirm(page, "빼기");
     await expect(cards).toHaveCount(1);
     await expect(page.getByRole("button", { name: "품절 상품 빼기" })).toBeDisabled();
     await page.getByRole("button", { name: "모두 비우기" }).click();
