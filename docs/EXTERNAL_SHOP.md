@@ -5,7 +5,9 @@
 ## 이 단계에서 하는 것 / 아닌 것
 - 한다: 연결 시작(1회용·만료 state, 시작한 파트너스·직원 세션에 묶음) · OAuth 콜백 · 토큰 암호화 저장(AES-256-GCM, 파트너스 id 묶음) · 해제(쇼핑몰 쪽 철회, 실패하면 「해제 대기」) · 웹훅 수신(서명 검증 후 원본 저장, 같은 본문 한 번만) · 권한(대표자·쇼핑몰 설정 직원, 요금제 「외부 연동」) · 연결 중인 쇼핑몰의 중복 연결 차단.
 - 정기 작업(`lib/server/jobs/scheduler.ts`, `external/jobs.ts`): 끝난 OAuth state 삭제(만료 1일 뒤), 웹훅 원본 30일 삭제(`WEBHOOK_RETENTION_DAYS`, 대표님 확인 대기 값), 토큰 갱신(갱신 토큰이 3일 안에 만료되거나 접근 토큰이 만료된 연결, 400·401이면 「다시 연결 필요」, 5xx·시간 초과는 다음에 다시, 잠긴 파트너스·연동 키 없음이면 호출 0건).
-- 아직 안 한다(다음 PR): 웹훅 이벤트 → 외부 주문 저장·주문대기·오버레이 표시(공식 이벤트 본문 형식 확인 필요, 주문대기 모델이 내부 주문 참조를 필수로 가져 모델 결정 필요), 누락 보정 조회(호출 한도 10분 3,000건의 70% 안전선, `CALL_SAFETY_RATIO`), 해제 대기 철회 재시도, 화면 SA-005·006.
+- 외부 주문 저장·주문대기 연결(`external/orders.ts`, 마이그레이션 `20261005110000_external_order`): `ExternalOrder`(외부 주문번호·방송 표시 이름·취소 시각만, 가짜 회원·상품 행 없음)와 `QueueItem`의 외부 참조(`externalOrderId`·`externalLineNo`). 대기열 항목은 내부 주문(`orderId`·`orderItemId`) 또는 외부 주문 중 정확히 한쪽만 채운다(DB CHECK `QueueItem_source_check`). `storeExternalOrder`(같은 연결의 같은 외부 주문번호는 한 번만, 연결됨 상태만, 입력 검증, 내부 주문과 같은 줄 순번·방송), `cancelExternalOrder`(대기 항목만 취소). 개봉 시작·완료·취소·타이머, 오버레이 주문 알림(「처음」 표시), HIT 카드가 외부 항목에서도 돈다. 재고·결제·적립금·배송은 이 쪽에서 다루지 않는다.
+  - 화면 계약(방송 화면 전담용): 대기열 항목 응답에서 외부 주문 항목은 `orderId`·`orderItemId`가 null, `externalOrderId`·`externalLineNo`가 채워진다. HIT 카드 응답의 `order`는 외부 주문에서 나온 카드면 null. 출처 배지·주문 링크 처리는 화면 쪽 몫.
+- 아직 안 한다(다음 PR): 웹훅 이벤트 본문 → `NormalizedExternalOrder` 변환(파서, 공식 이벤트 형식 확인 필요)과 취소·환불 이벤트 연결, 외부 주문 원본 보관 기간 삭제·주문대기·오버레이 표시(공식 이벤트 본문 형식 확인 필요, 주문대기 모델이 내부 주문 참조를 필수로 가져 모델 결정 필요), 누락 보정 조회(호출 한도 10분 3,000건의 70% 안전선, `CALL_SAFETY_RATIO`), 해제 대기 철회 재시도, 화면 SA-005·006.
 
 ## 설정(환경변수, 값은 저장소·문서에 적지 않는다)
 `EXTERNAL_SHOP_CLIENT_ID`, `EXTERNAL_SHOP_CLIENT_SECRET`, `EXTERNAL_SHOP_REDIRECT_URI`(https 필수), 선택 `EXTERNAL_SHOP_SCOPES`, `EXTERNAL_WEBHOOK_SIGNATURE_HEADER`. 하나라도 없으면 연동 전체가 꺼진다: 목록 `enabled:false`, 연결 시작 503, 웹훅 503. 토큰 암호화는 기존 `BILLING_KEY_SECRET`을 쓴다.
