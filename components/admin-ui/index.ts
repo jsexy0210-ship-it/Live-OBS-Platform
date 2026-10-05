@@ -4,3 +4,4 @@ export { SearchBox, SearchRow } from "./SearchBox";
 export { ListHead, Pagination } from "./ListTable";
 export { FormSection, FormRow, FormFoot } from "./FormTable";
 export { Modal } from "./Modal";
+export { useWholeDateClick } from "./useWholeDateClick";
