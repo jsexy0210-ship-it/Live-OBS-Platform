@@ -159,6 +159,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/products/options": "STORE_OPERATIONS",
   "seller/products/stock-movements": "STORE_OPERATIONS",
   "seller/reward-policy": "STORE_OPERATIONS",
+  "seller/reward-live-payout": "STORE_OPERATIONS",
   "seller/share-preview": "STORE_OPERATIONS",
   "seller/seo": "STORE_OPERATIONS",
   "seller/shipping-policy": "STORE_OPERATIONS",
