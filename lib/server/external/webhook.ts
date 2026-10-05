@@ -1,31 +1,28 @@
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 import { sellerAccessFor } from "../billing/subscription";
 import { MAX_WEBHOOK_BYTES, type ExternalConfig } from "./config";
 import { isShopKey } from "./provider";
 
-// 외부 쇼핑몰 웹훅 수신. 순서: 설정 → 크기 → 서명 검증(앱 비밀값 HMAC-SHA256, 본문 그대로) → 몰 식별 → 연결됨·구독 정상일 때만 저장.
-// 서명이 없거나 틀리면 아무것도 저장하지 않고 401. 같은 본문 재전송은 한 번만 저장(eventKey = 본문 해시).
-// 서명 방식(헤더 이름·계산식)은 공식 문서 직접 확인 전 값이다(docs/EXTERNAL_SHOP.md 「미검증」). 틀리면 모든 수신이 401이라 안전하게 실패한다.
+// 외부 쇼핑몰 웹훅 수신. 순서: 설정 → 크기 → 인증키 검증(X-API-Key 헤더) → 몰 식별 → 연결됨·구독 정상일 때만 저장.
+// 공식 문서(WebHook 안내 「인증방식」): 서명 계산 없이 개발자센터 WebHook 인증정보가 X-API-Key 헤더로 그대로 온다. 없거나 틀리면 아무것도 저장하지 않고 401.
+// 같은 본문 재전송은 한 번만 저장(eventKey = 본문 해시).
 export type IngestResult =
   | { status: 200; stored: boolean }
   | { status: 401 | 400 | 404 | 413 | 503 };
 
-export function signatureOf(secret: string, body: string): string {
-  return createHmac("sha256", secret).update(body, "utf8").digest("base64");
+// 길이가 달라도 시간 차이가 없게 해시끼리 비교한다
+function verify(expected: string, given: string | null): boolean {
+  if (!expected || !given) return false;
+  const a = createHash("sha256").update(expected, "utf8").digest();
+  const b = createHash("sha256").update(given.trim(), "utf8").digest();
+  return timingSafeEqual(a, b);
 }
 
-function verify(secret: string, body: string, given: string | null): boolean {
-  if (!given) return false;
-  const a = Buffer.from(signatureOf(secret, body));
-  const b = Buffer.from(given.trim());
-  return a.length === b.length && timingSafeEqual(a, b);
-}
-
-export async function ingestWebhook(db: PrismaClient, cfg: ExternalConfig, input: { rawBody: string; signature: string | null }): Promise<IngestResult> {
-  if (!cfg.enabled) return { status: 503 };
+export async function ingestWebhook(db: PrismaClient, cfg: ExternalConfig, input: { rawBody: string; apiKey: string | null }): Promise<IngestResult> {
+  if (!cfg.enabled || !cfg.webhookKey) return { status: 503 };
   if (Buffer.byteLength(input.rawBody, "utf8") > MAX_WEBHOOK_BYTES) return { status: 413 };
-  if (!verify(cfg.clientSecret, input.rawBody, input.signature)) return { status: 401 };
+  if (!verify(cfg.webhookKey, input.apiKey)) return { status: 401 };
   let payload: unknown;
   try {
     payload = JSON.parse(input.rawBody);

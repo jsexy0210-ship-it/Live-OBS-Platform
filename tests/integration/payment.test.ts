@@ -369,6 +369,28 @@ describe("경로", () => {
     expect(await db.payment.count()).toBe(0);
   });
 
+  it("리버스 프록시 뒤: 요청 주소가 내부 주소(0.0.0.0:3000)여도 returnUrl과 인증 뒤 이동 주소는 공개 Host 기준이다(테스트 서버 실측 회귀)", async () => {
+    const s = await buyerShop();
+    setPaymentGatewayForTest(s.gw);
+    const publicOrigin = "https://test.example.com";
+    const started = await startRoute(
+      new Request(`http://0.0.0.0:3000/api/shop/${s.seller.slug}/payments`, {
+        method: "POST",
+        headers: { "content-type": "application/json", host: "test.example.com", origin: publicOrigin, cookie: s.cookie },
+        body: JSON.stringify({ orderId: s.o.id }),
+      }),
+      { params: Promise.resolve({ slug: s.seller.slug }) },
+    );
+    expect(started.status).toBe(200);
+    const body = await started.json();
+    expect(body.returnUrl).toMatch(/^https?:\/\/test\.example\.com\/api\/payments\/nicepay\/return$/);
+    const back = await returnRoute(
+      new Request("http://0.0.0.0:3000/api/payments/nicepay/return", { method: "POST", headers: { host: "test.example.com" }, body: new URLSearchParams(s.gw.authorize(body.orderId, 13000)) }),
+    );
+    expect(back.status).toBe(303);
+    expect(back.headers.get("location")).toMatch(new RegExp(`^https?://test\\.example\\.com/shop/${s.seller.slug}/orders\\?orderId=${s.o.id}&payment=paid$`));
+  });
+
   it("결제 시작 → 인증 결과(returnUrl) → 주문 화면으로 303, 웹훅은 OK 본문", async () => {
     const s = await buyerShop();
     setPaymentGatewayForTest(s.gw);

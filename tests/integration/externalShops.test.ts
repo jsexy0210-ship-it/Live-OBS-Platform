@@ -10,14 +10,14 @@ import { externalConfig } from "../../lib/server/external/config";
 import { purgeExpiredOAuthStates, purgeOldWebhookEvents, refreshDueTokens } from "../../lib/server/external/jobs";
 import { SCHEDULED_JOBS } from "../../lib/server/jobs/scheduler";
 import { ExternalHttpError, shopKeyOf, type ExternalShopProvider, type TokenSet } from "../../lib/server/external/provider";
-import { ingestWebhook, signatureOf } from "../../lib/server/external/webhook";
+import { ingestWebhook } from "../../lib/server/external/webhook";
 import { prisma } from "../../lib/server/db";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { PASSWORD, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
-// 외부 쇼핑몰 연동 기반(SA-006 서버): 연결 시작·콜백(1회용 state·세션 묶음)·토큰 암호화·해제·웹훅 서명·중복·격리.
+// 외부 쇼핑몰 연동 기반(SA-006 서버): 연결 시작·콜백(1회용 state·세션 묶음)·토큰 암호화·해제·웹훅 인증키·중복·격리.
 // 공급자는 가짜(실제 외부 호출 없음). 설정 키는 시험용 임의값.
-const ENV = { EXTERNAL_SHOP_CLIENT_ID: "test-client", EXTERNAL_SHOP_CLIENT_SECRET: "test-secret-0123456789", EXTERNAL_SHOP_REDIRECT_URI: "https://example.test/cb" };
+const ENV = { EXTERNAL_SHOP_CLIENT_ID: "test-client", EXTERNAL_SHOP_CLIENT_SECRET: "test-secret-0123456789", EXTERNAL_SHOP_REDIRECT_URI: "https://example.test/cb", EXTERNAL_WEBHOOK_API_KEY: "test-webhook-key-0123456789" };
 const cfg = externalConfig(ENV);
 
 class FakeProvider implements ExternalShopProvider {
@@ -167,7 +167,7 @@ describe("해제", () => {
     expect(s.p.revokes).toEqual(["myshop"]);
     expect(await db.externalShopConnection.findUniqueOrThrow({ where: { id: s.id } })).toMatchObject({ status: "DISCONNECTED", accessTokenCipher: null, refreshTokenCipher: null });
     const body = JSON.stringify({ resource: { mall_id: "myshop" }, event_no: 1 });
-    expect((await ingestWebhook(db, cfg, { rawBody: body, signature: signatureOf(cfg.clientSecret, body) })).status).toBe(404);
+    expect((await ingestWebhook(db, cfg, { rawBody: body, apiKey: cfg.webhookKey })).status).toBe(404);
     expect(await db.externalWebhookEvent.count()).toBe(0);
     // 다시 해제해도 같다
     expect(await disconnect(db, s.p, s.ctx, s.id)).toEqual({ ok: true, status: "DISCONNECTED" });
@@ -180,7 +180,7 @@ describe("해제", () => {
     expect(c.accessTokenCipher).toBeNull();
     expect(openBillingKey(c.refreshTokenCipher!, s.seller.id)).toBe("RT-k");
     const body = JSON.stringify({ resource: { mall_id: "myshop" }, event_no: 2 });
-    expect((await ingestWebhook(db, cfg, { rawBody: body, signature: signatureOf(cfg.clientSecret, body) })).status).toBe(404);
+    expect((await ingestWebhook(db, cfg, { rawBody: body, apiKey: cfg.webhookKey })).status).toBe(404);
   });
   it("다른 파트너스의 연결은 해제할 수 없다(404)", async () => {
     const s = await connected();
@@ -199,42 +199,45 @@ describe("웹훅 수신", () => {
     await completeConnect(db, p, s.ctx, { state: stateOf(st.authorizeUrl), code: "k" });
     return s;
   }
-  const send = (body: string, sig: string | null) => ingestWebhook(db, cfg, { rawBody: body, signature: sig });
+  const send = (body: string, key: string | null) => ingestWebhook(db, cfg, { rawBody: body, apiKey: key });
+  const KEY = cfg.webhookKey;
   const evt = (n: number) => JSON.stringify({ resource: { mall_id: "myshop", order_id: `o-${n}` }, event_no: 90023 });
 
-  it("서명이 없거나 틀리면 401이고 아무것도 저장되지 않는다. 맞으면 저장, 같은 본문 재전송은 한 번만", async () => {
+  it("인증키가 없거나 틀리면 401이고 아무것도 저장되지 않는다. 맞으면 저장, 같은 본문 재전송은 한 번만", async () => {
     await connected();
     const body = evt(1);
     expect((await send(body, null)).status).toBe(401);
     expect((await send(body, "AAAA")).status).toBe(401);
-    expect((await send(body, signatureOf("other-secret", body))).status).toBe(401);
+    expect((await send(body, cfg.clientSecret)).status).toBe(401);
     expect(await db.externalWebhookEvent.count()).toBe(0);
-    expect(await send(body, signatureOf(cfg.clientSecret, body))).toEqual({ status: 200, stored: true });
-    expect(await send(body, signatureOf(cfg.clientSecret, body))).toEqual({ status: 200, stored: false });
-    expect(await send(evt(2), signatureOf(cfg.clientSecret, evt(2)))).toEqual({ status: 200, stored: true });
+    expect(await send(body, KEY)).toEqual({ status: 200, stored: true });
+    expect(await send(body, KEY)).toEqual({ status: 200, stored: false });
+    expect(await send(evt(2), KEY)).toEqual({ status: 200, stored: true });
     expect(await db.externalWebhookEvent.count()).toBe(2);
     expect((await db.externalShopConnection.findFirstOrThrow()).lastEventAt).not.toBeNull();
   });
-  it("본문을 바꾸면 서명이 맞지 않아 거절(위조 방지), 모르는 몰·잘못된 본문·너무 큰 본문은 저장하지 않는다", async () => {
+  it("모르는 몰·잘못된 본문·너무 큰 본문은 저장하지 않는다", async () => {
     await connected();
     const body = evt(3);
-    const sig = signatureOf(cfg.clientSecret, body);
-    expect((await send(body.replace("o-3", "o-9"), sig)).status).toBe(401);
+    expect((await send(body, null)).status).toBe(401);
     const unknown = JSON.stringify({ resource: { mall_id: "nobody" } });
-    expect((await send(unknown, signatureOf(cfg.clientSecret, unknown))).status).toBe(404);
-    expect((await send("not json", signatureOf(cfg.clientSecret, "not json"))).status).toBe(400);
+    expect((await send(unknown, KEY)).status).toBe(404);
+    expect((await send("not json", KEY)).status).toBe(400);
     const noMall = JSON.stringify({ resource: {} });
-    expect((await send(noMall, signatureOf(cfg.clientSecret, noMall))).status).toBe(400);
+    expect((await send(noMall, KEY)).status).toBe(400);
     const big = JSON.stringify({ resource: { mall_id: "myshop" }, pad: "x".repeat(300_000) });
-    expect((await send(big, signatureOf(cfg.clientSecret, big))).status).toBe(413);
+    expect((await send(big, KEY)).status).toBe(413);
     expect(await db.externalWebhookEvent.count()).toBe(0);
   });
   it("연동 키가 없으면 503, 결제 유예가 끝나 잠긴 파트너스는 저장하지 않는다", async () => {
     const s = await connected();
     const body = evt(4);
-    expect((await ingestWebhook(db, externalConfig({}), { rawBody: body, signature: signatureOf("x", body) })).status).toBe(503);
+    expect((await ingestWebhook(db, externalConfig({}), { rawBody: body, apiKey: KEY })).status).toBe(503);
+    // 인증키만 없어도 웹훅은 받지 않는다(빈 키로 통과하지 않음)
+    const noKey = externalConfig({ ...ENV, EXTERNAL_WEBHOOK_API_KEY: "" });
+    expect((await ingestWebhook(db, noKey, { rawBody: body, apiKey: "" })).status).toBe(503);
     await db.seller.update({ where: { id: s.seller.id }, data: { trialEndsAt: new Date(Date.now() - 86400_000) } });
-    expect(await send(body, signatureOf(cfg.clientSecret, body))).toEqual({ status: 200, stored: false });
+    expect(await send(body, KEY)).toEqual({ status: 200, stored: false });
     expect(await db.externalWebhookEvent.count()).toBe(0);
   });
 });

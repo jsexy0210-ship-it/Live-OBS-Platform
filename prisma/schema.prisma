@@ -127,6 +127,7 @@ model Seller {
   overlayTemplates         OverlayTemplate[]
   mailDeliveries           MailDelivery[]
   memberPolicy             SellerMemberPolicy?
+  shopSeo                  ShopSeo?
   orderNotificationPolicy  SellerOrderNotificationPolicy?
   rejoinBlocks             BuyerRejoinBlock[]
   purchaseRestrictions     BuyerPurchaseRestriction[]
@@ -175,6 +176,8 @@ model Seller {
   returnRequestItems       ReturnRequestItem[]
   returnRequestImages      ReturnRequestImage[]
   bankAccount              SellerBankAccount?
+  memberMessages           MemberMessage[]
+  memberMessageRecipients  MemberMessageRecipient[]
   subscriptionRefunds      SubscriptionRefund[]
   platformInquiries        PlatformInquiry[]
   platformInquiryMessages  PlatformInquiryMessage[]
@@ -405,6 +408,7 @@ model BuyerMember {
   returnRequestImages  ReturnRequestImage[]
   gradeOverrides       MemberGradeOverride[]
   gradeHistory         MemberGradeHistory[]
+  memberMessageRecipients MemberMessageRecipient[]
 
   @@unique([sellerId, id])
   @@index([sellerId, gradeId])
@@ -1756,6 +1760,22 @@ model SellerMemberPolicy {
   rejoinRestrictionEnabled Boolean  @default(false)
   rejoinRestrictionDays    Int      @default(30)
   updatedAt                DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+}
+
+// 쇼핑몰 검색 노출 설정(SA-067). 행이 없으면 기본값(검색 노출·사이트맵 켬, 나머지 비움). 상품별 규칙의 {상품명}·{쇼핑몰}은 공개 화면이 채운다.
+model ShopSeo {
+  sellerId                   String   @id @db.Uuid
+  searchTitle                String?
+  searchDescription          String?
+  indexingEnabled            Boolean  @default(true)
+  sitemapEnabled             Boolean  @default(true)
+  productTitleTemplate       String?
+  productDescriptionTemplate String?
+  googleVerification         String?
+  naverVerification          String?
+  updatedAt                  DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 
   seller Seller @relation(fields: [sellerId], references: [id])
 }
@@ -3587,6 +3607,84 @@ model ShopLegalDoc {
   seller Seller @relation(fields: [sellerId], references: [id])
 
   @@unique([sellerId, kind])
+}
+
+// 회원 대상 발송(SA-049, 2026-10-05). 실제 발송 채널(알림톡·문자·메일)과 충전 잔액 차감이 정해지기 전이라 「발송 기록」만 남긴다(RECORDED).
+// 광고성(AD)은 혜택·소식 수신 동의 회원만, 정보성(INFO)은 정상 회원 전체. 받는 사람 연락처는 저장하지 않는다(보낼 때 서버가 회원 행에서 읽는다).
+// 예약(SCHEDULED)은 시각이 되면 대상을 다시 계산해 받는 사람 행을 만들고 RECORDED로 바꾼다. 형식·상태 일치 CHECK는 마이그레이션 SQL.
+enum MemberMessageKind {
+  AD
+  INFO
+}
+
+// ALIMTALK_SMS=알림톡(실패 시 문자), ALIMTALK=알림톡만, MAIL=메일
+enum MemberMessageChannel {
+  ALIMTALK_SMS
+  ALIMTALK
+  MAIL
+}
+
+// ALL=전체, GRADE=등급(gradeIds), WISHED=찜한 회원(productId), BOUGHT_30D=최근 30일 구매, NOT_BOUGHT_90D=최근 90일 미구매, PRODUCT_BOUGHT=특정 상품 구매(productId), PICKED=직접 선택(memberIds)
+enum MemberMessageTarget {
+  ALL
+  GRADE
+  WISHED
+  BOUGHT_30D
+  NOT_BOUGHT_90D
+  PRODUCT_BOUGHT
+  PICKED
+}
+
+enum MemberMessageStatus {
+  SCHEDULED
+  RECORDED
+  CANCELLED
+}
+
+model MemberMessage {
+  id             String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId       String               @db.Uuid
+  title          String
+  kind           MemberMessageKind
+  channel        MemberMessageChannel
+  // 파트너스가 쓴 문구와, (광고)·쇼핑몰 이름·수신거부 문구를 붙인 최종 문구
+  body           String
+  renderedBody   String
+  targetType     MemberMessageTarget
+  targetParams   Json                 @default("{}")
+  status         MemberMessageStatus
+  scheduledAt    DateTime?            @db.Timestamptz(3)
+  recordedAt     DateTime?            @db.Timestamptz(3)
+  // 만들 때 계산한 예상 대상 수 / 기록 때 확정한 받는 사람 수와 하루 2건 한도로 뺀 수
+  estimatedCount Int
+  recipientCount Int?
+  skippedDailyCap Int                 @default(0)
+  staffId        String?              @db.Uuid
+  createdAt      DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime             @default(now()) @db.Timestamptz(3)
+
+  seller     Seller                   @relation(fields: [sellerId], references: [id])
+  recipients MemberMessageRecipient[]
+
+  @@unique([sellerId, id])
+  @@index([sellerId, createdAt(sort: Desc)])
+  @@index([status, scheduledAt])
+}
+
+// 받는 사람(기록 때 확정). 탈퇴하면 지운다(shop-member-messages, buyers/memberData.ts).
+model MemberMessageRecipient {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String   @db.Uuid
+  messageId     String   @db.Uuid
+  buyerMemberId String   @db.Uuid
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+
+  seller  Seller        @relation(fields: [sellerId], references: [id])
+  message MemberMessage @relation(fields: [sellerId, messageId], references: [sellerId, id], onDelete: Cascade)
+  member  BuyerMember   @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id], onDelete: Cascade)
+
+  @@unique([messageId, buyerMemberId])
+  @@index([sellerId, buyerMemberId, createdAt])
 }
 
 // 외부 쇼핑몰 주문(오버레이 전용 파트너스). 방송 표시에 필요한 최소 정보만 저장한다(개인정보 최소 수집, 보관 기간·삭제는 별도 확정 대기).
