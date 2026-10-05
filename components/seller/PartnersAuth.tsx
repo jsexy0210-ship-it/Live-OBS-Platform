@@ -77,10 +77,10 @@ export function IdentityUnavailable({ action, tone }: { action: string; tone: To
     <div className="st" style={{ boxShadow: "none", padding: "24px 0" }}>
       <div className="st-ic">!</div>
       <h2 className="t" id="pa-state-title" tabIndex={-1}>
-        {pub ? "본인확인 서비스 준비 중이에요" : "본인확인 서비스 준비 중입니다"}
+        {pub ? "본인확인 서비스 준비 중이에요" : "본인 확인 서비스를 준비하는 중입니다"}
       </h2>
       <span className="s">
-        {pub ? `휴대폰 본인확인을 연결하고 있어요. 준비되면 바로 ${action} 수 있어요.` : `휴대폰 본인확인을 연결하고 있습니다. 준비되면 바로 ${action} 수 있습니다.`}
+        {pub ? `휴대폰 본인확인을 연결하고 있어요. 준비되면 바로 ${action} 수 있어요.` : `본인 확인 서비스를 준비하는 중입니다. 준비가 끝나면 바로 ${action} 수 있습니다.`}
       </span>
       <Link className="btn btn-sm btn-out" href={withType("/seller/login", staff)}>
         로그인으로 돌아가기
