@@ -367,7 +367,7 @@ export const BUYER_SIGNUP_MESSAGES: Record<BuyerSignupFailure | "daily_limit_exc
   shop_unavailable: "지금은 쇼핑몰을 이용할 수 없어요",
   under_age: "만 14세 미만은 가입할 수 없어요",
   rejoin_restricted: "지금은 다시 가입할 수 없어요",
-  invalid_rejoin_consent: "재가입 제한 정보 보관 동의 값을 다시 확인해 주세요",
+  invalid_rejoin_consent: "재가입 제한 정보 보관 동의를 다시 선택해 주세요",
   consent_outdated: "약관이 바뀌었어요. 다시 확인하고 동의해 주세요",
   rejoin_policy_changed: "재가입 제한 기간이 바뀌었어요. 바뀐 내용을 확인하고 다시 동의해 주세요",
   daily_limit_exceeded: "오늘은 본인확인을 더 할 수 없어요. 내일 다시 해 주세요",
