@@ -1,0 +1,97 @@
+name: E2E nightly
+
+# 전체 e2e(start·dev·testmode 세 프로젝트)를 매일 한국 시간 새벽 3시 17분(UTC 18:17)에 main 기준으로 한 번 돌린다.
+# PR마다 도는 스모크는 ci.yml의 E2E smoke. 이 워크플로는 PR 필수 체크가 아니라 아침에 실패 여부만 본다.
+# 폐기용 DB(서비스 컨테이너)와 이 러너 안의 임시 서버 3개만 쓴다. 외부 자원·비밀값 없음(키 값은 실행마다 임의 생성).
+# 수동 실행(workflow_dispatch)도 가능하다. 자원: GitHub 호스팅 러너(공개 저장소라 무료).
+
+on:
+  schedule:
+    - cron: "17 18 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-nightly
+  cancel-in-progress: false
+
+jobs:
+  e2e-full:
+    name: E2E full
+    if: github.repository == 'jsexy0210-ship-it/Live-OBS-Platform'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: live_obs
+          POSTGRES_PASSWORD: live_obs
+          POSTGRES_DB: live_obs_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U live_obs -d live_obs_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://live_obs:live_obs@localhost:5432/live_obs_test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Install browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Test secrets and seed
+        run: |
+          set -euo pipefail
+          pw="$(openssl rand -hex 12)"
+          idkey="$(openssl rand -hex 24)"
+          bkey="$(openssl rand -hex 24)"
+          echo "::add-mask::$pw"; echo "::add-mask::$idkey"; echo "::add-mask::$bkey"
+          {
+            echo "E2E_PASSWORD=$pw"
+            echo "IDENTITY_HASH_KEY=$idkey"
+            echo "BILLING_KEY_SECRET=$bkey"
+          } >> "$GITHUB_ENV"
+          npm run db:migrate
+          DEV_SEED_PASSWORD="$pw" node scripts/dev-seed.mjs > /dev/null
+
+      - name: Build
+        run: npm run build
+
+      # start(3100): 운영 빌드 · dev(3101): 가짜 본인확인·사업자·통신판매업 조회 · testmode(3102): OBS_TEST_MODE=1 운영 빌드
+      - name: Start servers
+        run: |
+          set -euo pipefail
+          nohup npx next start -p 3100 > "$RUNNER_TEMP/start.log" 2>&1 &
+          BUSINESS_STATUS_PROVIDER=fake MAIL_ORDER_PROVIDER=fake nohup npx next dev -p 3101 > "$RUNNER_TEMP/dev.log" 2>&1 &
+          OBS_TEST_MODE=1 BILLING_PROVIDER=fake nohup npx next start -p 3102 > "$RUNNER_TEMP/testmode.log" 2>&1 &
+          for port in 3100 3101 3102; do
+            ok=false
+            for i in $(seq 1 90); do
+              if curl -sf -o /dev/null "http://localhost:$port/"; then ok=true; break; fi
+              sleep 1
+            done
+            [ "$ok" = true ] || { echo "포트 $port 서버가 90초 안에 뜨지 않았어요."; tail -n 50 "$RUNNER_TEMP"/*.log; exit 1; }
+          done
+
+      - name: E2E full
+        run: npx playwright test -c tests/e2e/playwright.config.ts
+
+      - name: Server logs on failure
+        if: failure()
+        run: |
+          for f in start dev testmode; do echo "== $f =="; tail -n 60 "$RUNNER_TEMP/$f.log" || true; done
