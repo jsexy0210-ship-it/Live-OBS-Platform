@@ -4,104 +4,247 @@ import Link from "next/link";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { adminCan } from "../../../../../lib/server/authz/permissions";
 import { PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
+import { ListHead, Pagination } from "../../../../../components/admin-ui/ListTable";
 import { ErrorState, LoadingRows, Toast } from "../../../../../components/seller/States";
 import { MAX_SEARCH_LENGTH } from "../../../../../components/seller/format";
 import { adminApi } from "../../_components/api";
 import { AdminTopbar, useAdmin } from "../../_components/AdminShell";
-import { SELLER_STATUS, SUBSCRIPTION_STATUS, PLAN_FILTER, day, type SellerRow, type SellerStatus } from "../../_components/partners";
+import { ImpersonateDialog } from "../../_components/ImpersonateDialog";
+import { DISPLAY_STATUS, PLAN_FILTER, ago, dotDay, kstDate, type DisplayStatus, type SellerListRow, type SellerListSummary, type SellerStatus } from "../../_components/partners";
 import { SuspendDialog } from "../../_components/SuspendDialog";
 import { useListFilters } from "../../_components/useListFilters";
 import { useScrollRestore } from "../../../../../lib/client/navigation";
 
-// MA-011 파트너스 목록·검색·필터(GET /api/admin/sellers, 모든 마스터 역할). 50명씩 이어서 불러온다.
-// 이용 정지·해제(MA-015)는 최고관리자·운영만 버튼이 보인다.
-const PAGE = 50;
-type Filters = { q: string; status: string; plan: string };
-const EMPTY: Filters = { q: "", status: "", plan: "" };
-type Page = { sellers: SellerRow[]; nextCursor: string | null };
-type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; items: SellerRow[]; next: string | null };
+// MA-011 파트너스 목록(GET /api/admin/sellers, 모든 마스터 역할). 정본: design/project/MA-011.dc.html(FINAL).
+// 위쪽 요약 칩 → 검색 조건 → 목록(정렬·쪽 크기·번호형 쪽 이동). 칩·정렬·쪽은 누르는 즉시 적용되고 검색 조건은 「검색」을 눌러 적용한다. 모든 조건은 주소에 남는다.
+// 이용 정지·해제(MA-015)는 최고관리자·운영, 대리 조회(MA-016)는 최고관리자·운영·고객 지원만 버튼이 보인다. 엑셀 내려받기에는 대표자 연락처가 들어 있지 않다.
+type Filters = {
+  q: string;
+  field: string;
+  state: string;
+  plan: string;
+  pg: string;
+  live: string;
+  payout: string;
+  note: string;
+  joinedFrom: string;
+  joinedTo: string;
+  active: string;
+  sort: string;
+  limit: string;
+  page: string;
+};
+const EMPTY: Filters = { q: "", field: "all", state: "", plan: "", pg: "", live: "", payout: "", note: "", joinedFrom: "", joinedTo: "", active: "", sort: "joined", limit: "20", page: "1" };
+// 「초기화」는 검색 조건만 비우고 정렬·쪽 크기는 그대로 둔다
+const SEARCH_KEYS = ["q", "field", "state", "plan", "pg", "live", "payout", "note", "joinedFrom", "joinedTo", "active"] as const;
+type Data = { sellers: SellerListRow[]; total: number; summary: SellerListSummary };
+type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; data: Data };
 
-function query(f: Filters, cursor?: string) {
-  const p = new URLSearchParams({ limit: String(PAGE) });
-  if (f.q) p.set("q", f.q);
-  if (f.status) p.set("status", f.status);
-  if (f.plan) p.set("plan", f.plan);
-  if (cursor) p.set("cursor", cursor);
+const FIELDS = [
+  ["all", "전체"],
+  ["shop", "쇼핑몰 이름"],
+  ["rep", "대표자"],
+  ["email", "이메일"],
+  ["slug", "쇼핑몰 주소"],
+  ["biz", "사업자등록번호"],
+] as const;
+const STATES: DisplayStatus[] = ["NORMAL", "TRIAL", "OVERDUE", "LOCKED", "SUSPENDED", "CLOSED"];
+const PG_STATUS = [
+  ["OK", "연결됨"],
+  ["ERROR", "오류"],
+  ["NONE", "미연결"],
+] as const;
+const ACTIVE = [
+  ["7d", "7일 안"],
+  ["30d", "30일 안"],
+  ["inactive30", "30일 넘게 없음"],
+] as const;
+const SORTS = [
+  ["activity", "최근 활동순"],
+  ["joined", "가입일순"],
+  ["orders", "주문 많은순"],
+  ["overdue", "연체 먼저"],
+] as const;
+const QUICK = [
+  ["오늘", () => [kstDate(), kstDate()]],
+  ["7일", () => [kstDate(6), kstDate()]],
+  ["1개월", () => [kstDate(0, 1), kstDate()]],
+  ["3개월", () => [kstDate(0, 3), kstDate()]],
+  ["전체", () => ["", ""]],
+] as const;
+
+function params(f: Filters, withPaging: boolean) {
+  const p = new URLSearchParams();
+  for (const k of SEARCH_KEYS) {
+    if (f[k] && !(k === "field" && (f.q === "" || f.field === "all"))) p.set(k, f[k]);
+  }
+  p.set("sort", f.sort);
+  if (withPaging) {
+    const limit = Number(f.limit);
+    p.set("limit", String(limit));
+    const offset = (Math.max(1, Number(f.page) || 1) - 1) * limit;
+    if (offset > 0) p.set("cursor", String(offset));
+    p.set("summary", "1");
+  }
   return p.toString();
 }
 
 function PartnerList() {
   const { me } = useAdmin();
   const canModerate = adminCan(me.role, "seller.moderate");
+  const canImpersonate = adminCan(me.role, "seller.impersonate");
   const { applied, draft, setDraft, apply } = useListFilters<Filters>(EMPTY);
   const [state, setState] = useState<Load>({ kind: "loading" });
-  const [more, setMore] = useState(false);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
-  const [target, setTarget] = useState<SellerRow | null>(null);
+  const [target, setTarget] = useState<SellerListRow | null>(null);
+  const [viewing, setViewing] = useState<SellerListRow | null>(null);
 
   // 조건을 빨리 바꾸면 이전 응답이 늦게 올 수 있다. 마지막으로 보낸 조건의 응답만 반영한다
   const reqId = useRef(0);
   const load = useCallback(async (f: Filters) => {
     const id = ++reqId.current;
-    setMore(false);
     setState({ kind: "loading" });
-    const r = await adminApi<Page>(`/api/admin/sellers?${query(f)}`);
+    const r = await adminApi<Data>(`/api/admin/sellers?${params(f, true)}`);
     if (id !== reqId.current) return;
-    setState(r.ok ? { kind: "ok", items: r.data.sellers, next: r.data.nextCursor } : { kind: "error" });
+    setState(r.ok ? { kind: "ok", data: r.data } : { kind: "error" });
   }, []);
   useEffect(() => void load(applied), [applied, load]);
   useScrollRestore("admin-partners", state.kind === "ok");
 
-  const loadMore = async () => {
-    if (state.kind !== "ok" || !state.next) return;
-    setMore(true);
-    const id = reqId.current;
-    const r = await adminApi<Page>(`/api/admin/sellers?${query(applied, state.next)}`);
-    if (id !== reqId.current) return;
-    setMore(false);
-    if (r.ok) setState({ kind: "ok", items: [...state.items, ...r.data.sellers], next: r.data.nextCursor });
-    else setToast({ text: "더 불러오지 못했습니다. 다시 눌러 주십시오.", neg: true });
+  // 정렬·쪽 크기를 연달아 바꿔도 앞의 변경이 사라지지 않게, 마지막으로 보낸 조건을 따로 들고 있다가 거기에 얹는다
+  const latest = useRef(applied);
+  useEffect(() => {
+    latest.current = applied;
+  }, [applied]);
+  const go = (patch: Partial<Filters>) => {
+    const next = { ...latest.current, ...patch };
+    latest.current = next;
+    apply(next);
   };
+  const set = (patch: Partial<Filters>) => go({ ...patch, page: "1" });
+  const limit = Number(applied.limit) || 20;
+  const page = Math.max(1, Number(applied.page) || 1);
+  const data = state.kind === "ok" ? state.data : null;
+  const sum = data?.summary ?? null;
+  const filtered = SEARCH_KEYS.some((k) => k !== "field" && applied[k] !== "");
+
+  const search = () => go({ ...draft, q: draft.q.trim(), sort: latest.current.sort, limit: latest.current.limit, page: "1" });
+  const reset = () => go({ ...EMPTY, sort: latest.current.sort, limit: latest.current.limit });
 
   const done = (status: SellerStatus) => {
     if (!target) return;
-    const id = target.id;
-    setState((s) => (s.kind === "ok" ? { ...s, items: s.items.map((x) => (x.id === id ? { ...x, status } : x)) } : s));
     setTarget(null);
     setToast({ text: status === "SUSPENDED" ? "이용을 정지했습니다." : "정지를 해제했습니다." });
+    void load(applied); // 표시 상태·요약 건수가 함께 바뀌므로 다시 불러온다
   };
 
-  const items = state.kind === "ok" ? state.items : [];
-  const filtered = applied.q !== "" || applied.status !== "" || applied.plan !== "";
-  const reset = () => {
-    apply(EMPTY);
-  };
+  const chips: { label: string; count: string | null; on: boolean; patch: Partial<Filters> }[] = [
+    { label: "전체", count: sum ? String(sum.total) : null, on: !applied.state && !applied.pg && !applied.live && !applied.payout, patch: { state: "", pg: "", live: "", payout: "" } },
+    { label: "정상", count: sum ? String(sum.normal) : null, on: applied.state === "NORMAL", patch: { state: "NORMAL" } },
+    { label: "체험 중", count: sum ? String(sum.trial) : null, on: applied.state === "TRIAL", patch: { state: "TRIAL" } },
+    { label: "연체", count: sum ? String(sum.overdue) : null, on: applied.state === "OVERDUE", patch: { state: "OVERDUE" } },
+    { label: "이용 정지", count: sum ? String(sum.suspended) : null, on: applied.state === "SUSPENDED", patch: { state: "SUSPENDED" } },
+    { label: "카드 결제 연결 오류 · 미연결", count: sum ? `${sum.pgError} / ${sum.pgNone}` : null, on: applied.pg === "ERROR", patch: { pg: "ERROR" } },
+    { label: "실제 지급 켜짐", count: sum ? String(sum.payoutEnabled) : null, on: applied.payout === "1", patch: { payout: "1" } },
+    { label: "지금 방송 중", count: sum ? String(sum.live) : null, on: applied.live === "1", patch: { live: "1" } },
+  ];
 
   return (
     <>
       <AdminTopbar crumb="파트너스 › 파트너스 목록" />
       <main className="main">
-        <PageHead title="파트너스 목록" />
-        <SearchBox onSearch={() => apply({ ...draft, q: draft.q.trim() })} onReset={reset} busy={state.kind === "loading"}>
+        <PageHead
+          title="파트너스 목록"
+          actions={
+            <>
+              <Link className="btn btn-out" href="/admin/partners/applications">
+                가입 신청{sum && sum.pendingApplications > 0 ? ` ${sum.pendingApplications}` : ""}
+              </Link>
+              <a className="btn btn-out" href={`/api/admin/sellers/export?${params(applied, false)}`} download>
+                엑셀 내려받기
+              </a>
+            </>
+          }
+        />
+        <div className="row" style={{ gap: 6, flexWrap: "wrap", marginBottom: 12 }} role="group" aria-label="요약">
+          {chips.map((c) => (
+            <button key={c.label} type="button" className={`btn btn-sm ${c.on ? "" : "btn-out"}`} aria-pressed={c.on} onClick={() => set(c.patch)}>
+              {c.label}
+              {c.count !== null && ` ${c.count}`}
+            </button>
+          ))}
+        </div>
+        <SearchBox onSearch={search} onReset={reset} busy={state.kind === "loading"}>
           <SearchRow label="검색어">
-            <input className="inp" type="search" aria-label="쇼핑몰 이름 · 주소" placeholder="쇼핑몰 이름 · 주소" maxLength={MAX_SEARCH_LENGTH} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
+            <select className="inp" aria-label="검색 칸" value={draft.field} onChange={(e) => setDraft({ ...draft, field: e.target.value })}>
+              {FIELDS.map(([v, l]) => (
+                <option key={v} value={v}>
+                  {l}
+                </option>
+              ))}
+            </select>
+            <input className="inp" type="search" aria-label="검색어" placeholder="검색어" maxLength={MAX_SEARCH_LENGTH} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
           </SearchRow>
           <SearchRow label="상태">
-            <select className="inp" aria-label="상태" value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>
+            <select className="inp" aria-label="상태" value={draft.state} onChange={(e) => setDraft({ ...draft, state: e.target.value })}>
               <option value="">전체</option>
-              {(Object.keys(SELLER_STATUS) as SellerStatus[]).map((s) => (
+              {STATES.map((s) => (
                 <option key={s} value={s}>
-                  {SELLER_STATUS[s].label}
+                  {DISPLAY_STATUS[s].label}
                 </option>
               ))}
             </select>
           </SearchRow>
-          <SearchRow label="요금제">
-            <select className="inp" aria-label="요금제" value={draft.plan} onChange={(e) => setDraft({ ...draft, plan: e.target.value })}>
+          <SearchRow label="구독">
+            <select className="inp" aria-label="구독" value={draft.plan} onChange={(e) => setDraft({ ...draft, plan: e.target.value })}>
               <option value="">전체</option>
               {PLAN_FILTER.map((p) => (
                 <option key={p.code} value={p.code}>
                   {p.label}
+                </option>
+              ))}
+            </select>
+          </SearchRow>
+          <SearchRow label="카드 결제 연결">
+            <select className="inp" aria-label="카드 결제 연결" value={draft.pg} onChange={(e) => setDraft({ ...draft, pg: e.target.value })}>
+              <option value="">전체</option>
+              {PG_STATUS.map(([v, l]) => (
+                <option key={v} value={v}>
+                  {l}
+                </option>
+              ))}
+            </select>
+          </SearchRow>
+          <SearchRow label="기타">
+            {(
+              [
+                ["live", "방송 중만"],
+                ["payout", "실제 지급 켜짐"],
+                ["note", "확인 필요 메모 있음"],
+              ] as const
+            ).map(([k, l]) => (
+              <label key={k} className="row" style={{ gap: 6, alignItems: "center" }}>
+                <input type="checkbox" checked={draft[k] === "1"} onChange={(e) => setDraft({ ...draft, [k]: e.target.checked ? "1" : "" })} />
+                {l}
+              </label>
+            ))}
+          </SearchRow>
+          <SearchRow label="가입일">
+            {QUICK.map(([l, range]) => (
+              <button key={l} type="button" className="btn btn-sm btn-out" onClick={() => { const [from, to] = range(); setDraft({ ...draft, joinedFrom: from, joinedTo: to }); }}>
+                {l}
+              </button>
+            ))}
+            <input className="inp" type="date" aria-label="가입일 시작" value={draft.joinedFrom} onChange={(e) => setDraft({ ...draft, joinedFrom: e.target.value })} />
+            <span>~</span>
+            <input className="inp" type="date" aria-label="가입일 끝" value={draft.joinedTo} onChange={(e) => setDraft({ ...draft, joinedTo: e.target.value })} />
+          </SearchRow>
+          <SearchRow label="최근 활동">
+            <select className="inp" aria-label="최근 활동" value={draft.active} onChange={(e) => setDraft({ ...draft, active: e.target.value })}>
+              <option value="">전체</option>
+              {ACTIVE.map(([v, l]) => (
+                <option key={v} value={v}>
+                  {l}
                 </option>
               ))}
             </select>
@@ -111,10 +254,10 @@ function PartnerList() {
         <div className="card">
           {state.kind === "loading" && <LoadingRows rows={5} />}
           {state.kind === "error" && <ErrorState title="파트너스 목록을 불러오지 못했습니다." onRetry={() => void load(applied)} />}
-          {state.kind === "ok" &&
-            (items.length === 0 ? (
+          {data &&
+            (data.sellers.length === 0 ? (
               <div className="st">
-                <span className="t">{filtered ? "조건에 맞는 파트너스가 없습니다." : "아직 가입한 파트너스가 없습니다."}</span>
+                <span className="t">{filtered ? "조건에 맞는 파트너스가 없습니다." : "등록된 파트너스가 없습니다. 가입 신청을 승인하면 여기에 표시됩니다."}</span>
                 {filtered && (
                   <button className="btn btn-sm btn-out" type="button" onClick={reset}>
                     조건 초기화
@@ -123,62 +266,89 @@ function PartnerList() {
               </div>
             ) : (
               <>
+                <ListHead
+                  total={data.total}
+                  actions={
+                    <span className="row" style={{ gap: 8 }}>
+                      <select className="inp" aria-label="정렬" value={applied.sort} onChange={(e) => set({ sort: e.target.value })}>
+                        {SORTS.map(([v, l]) => (
+                          <option key={v} value={v}>
+                            {l}
+                          </option>
+                        ))}
+                      </select>
+                      <select className="inp" aria-label="쪽 크기" value={applied.limit} onChange={(e) => set({ limit: e.target.value })}>
+                        <option value="20">20개씩</option>
+                        <option value="50">50개씩</option>
+                      </select>
+                    </span>
+                  }
+                />
                 <div style={{ overflowX: "auto" }}>
                   <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                     <thead>
                       <tr>
+                        <th>번호</th>
                         <th>파트너스 · 쇼핑몰</th>
                         <th>상태</th>
                         <th>구독</th>
-                        <th>결제 상태</th>
-                        <th>체험 종료</th>
+                        <th>카드 결제 연결</th>
+                        <th>방송</th>
+                        <th>이번 달 주문</th>
+                        <th>회원</th>
                         <th>가입일</th>
-                        <th>승인일</th>
+                        <th>최근 활동</th>
                         <th>관리</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {items.map((s) => (
-                        <tr key={s.id} data-testid="partner-row">
-                          <td>
-                            <Link className="fw6" href={`/admin/partners/${s.id}`}>
-                              {s.shopName}
-                            </Link>
-                            <span className="c-alt"> · 쇼핑몰 주소 {s.slug}</span>
-                          </td>
-                          <td>
-                            <span className={`bdg ${SELLER_STATUS[s.status].cls}`}>{SELLER_STATUS[s.status].label}</span>
-                          </td>
-                          <td>{s.plan?.name ?? "-"}</td>
-                          <td>{s.subscription ? <span className={`bdg ${SUBSCRIPTION_STATUS[s.subscription.status].cls}`}>{SUBSCRIPTION_STATUS[s.subscription.status].label}</span> : "-"}</td>
-                          <td className="num">{day(s.trialEndsAt)}</td>
-                          <td className="num">{day(s.createdAt)}</td>
-                          <td className="num">{day(s.approvedAt)}</td>
-                          <td>
-                            <span className="row" style={{ gap: 6, justifyContent: "center" }}>
-                              <Link className="btn btn-sm btn-out" href={`/admin/partners/${s.id}`}>
-                                상세
+                      {data.sellers.map((s) => {
+                        const overlayOnly = s.plan?.code === "OVERLAY_ONLY";
+                        return (
+                          <tr key={s.id} data-testid="partner-row">
+                            <td className="num">{s.seq}</td>
+                            <td>
+                              <Link className="fw6" href={`/admin/partners/${s.id}`}>
+                                {s.shopName}
                               </Link>
-                              {canModerate && (s.status === "ACTIVE" || s.status === "SUSPENDED") && (
-                                <button className="btn btn-sm btn-out" type="button" onClick={() => setTarget(s)}>
-                                  {s.status === "ACTIVE" ? "이용 정지" : "정지 해제"}
-                                </button>
-                              )}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
+                              <div className="t-c1 c-alt">
+                                {s.representativeName ? `${s.representativeName} · ` : ""}쇼핑몰 주소 {s.slug}
+                              </div>
+                            </td>
+                            <td>
+                              <span className={`bdg ${DISPLAY_STATUS[s.displayStatus].cls}`}>{DISPLAY_STATUS[s.displayStatus].label}</span>
+                            </td>
+                            <td>{s.plan?.name ?? "-"}</td>
+                            <td>{overlayOnly ? "—" : s.pg.status === "ERROR" ? <span className="bdg b-fail">오류</span> : s.pg.status === "OK" ? <span className="bdg b-done">정상</span> : <span className="bdg b-gray">미연결</span>}</td>
+                            <td>{s.live ? <span className="bdg b-live">방송 중</span> : "—"}</td>
+                            <td className="num">{s.ordersThisMonth.toLocaleString("ko-KR")}</td>
+                            <td className="num">{overlayOnly ? "—" : s.memberCount.toLocaleString("ko-KR")}</td>
+                            <td className="num">{dotDay(s.createdAt)}</td>
+                            <td>{ago(s.lastActivityAt)}</td>
+                            <td>
+                              <span className="row" style={{ gap: 6, justifyContent: "center" }}>
+                                <Link className="btn btn-sm btn-out" href={`/admin/partners/${s.id}`}>
+                                  상세
+                                </Link>
+                                {canImpersonate && s.status === "ACTIVE" && (
+                                  <button className="btn btn-sm btn-out" type="button" onClick={() => setViewing(s)}>
+                                    대신 보기
+                                  </button>
+                                )}
+                                {canModerate && (s.status === "ACTIVE" || s.status === "SUSPENDED") && (
+                                  <button className="btn btn-sm btn-out" type="button" onClick={() => setTarget(s)}>
+                                    {s.status === "ACTIVE" ? "이용 정지" : "정지 해제"}
+                                  </button>
+                                )}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
-                <div className="row" style={{ justifyContent: "space-between", padding: "12px 16px" }}>
-                  <span className="t-c1 c-alt">{state.next ? `${items.length}곳 넘게` : `${items.length}곳`}</span>
-                  {state.next && (
-                    <button className="btn btn-sm btn-out" type="button" onClick={() => void loadMore()} disabled={more}>
-                      {more ? "불러오는 중" : "더 보기"}
-                    </button>
-                  )}
-                </div>
+                <Pagination page={page} pageCount={Math.max(1, Math.ceil(data.total / limit))} onChange={(n) => go({ page: String(n) })} />
               </>
             ))}
         </div>
@@ -192,6 +362,16 @@ function PartnerList() {
             setTarget(null);
             setToast({ text: "다른 곳에서 이미 처리됐습니다. 목록을 새로 불러옵니다.", neg: true });
             void load(applied);
+          }}
+        />
+      )}
+      {viewing && (
+        <ImpersonateDialog
+          seller={viewing}
+          onClose={() => setViewing(null)}
+          onDone={(r) => {
+            setViewing(null);
+            setToast({ text: r.opened ? "대신 보기를 시작했습니다. 새 창에서 파트너스 화면을 읽기 전용으로 봅니다." : "대신 보기를 시작했습니다. 새 창이 막혀 열지 못했습니다. 파트너스 상세에서 다시 열어 주십시오." });
           }}
         />
       )}

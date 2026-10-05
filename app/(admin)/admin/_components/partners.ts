@@ -13,6 +13,44 @@ export type SellerRow = {
   approvedAt: string | null;
   createdAt: string;
 };
+// 목록 응답(GET /api/admin/sellers, MA-011): 표시 상태·번호·카드 결제 연결·방송·이번 달 주문·회원·최근 활동·실제 지급·메모 수. 연락처는 응답에 없다.
+export type DisplayStatus = "NORMAL" | "TRIAL" | "OVERDUE" | "LOCKED" | "SUSPENDED" | "CLOSED" | "PENDING" | "REJECTED";
+export type SellerListRow = SellerRow & {
+  seq: number;
+  displayStatus: DisplayStatus;
+  representativeName: string | null;
+  pg: { status: "OK" | "ERROR" | "NONE"; lastSuccessAt: string | null; lastFailureAt: string | null };
+  live: boolean;
+  ordersThisMonth: number;
+  memberCount: number;
+  lastActivityAt: string | null;
+  payoutEnabled: boolean;
+  noteCount: number;
+};
+export type SellerListSummary = {
+  total: number;
+  normal: number;
+  trial: number;
+  overdue: number;
+  locked: number;
+  suspended: number;
+  closed: number;
+  pgError: number;
+  pgNone: number;
+  payoutEnabled: number;
+  live: number;
+  pendingApplications: number;
+};
+export const DISPLAY_STATUS: Record<DisplayStatus, { label: string; cls: string }> = {
+  NORMAL: { label: "정상", cls: "b-done" },
+  TRIAL: { label: "체험 중", cls: "b-info" },
+  OVERDUE: { label: "연체", cls: "b-warn" },
+  LOCKED: { label: "이용 기간 끝", cls: "b-gray" },
+  SUSPENDED: { label: "이용 정지", cls: "b-fail" },
+  CLOSED: { label: "탈퇴", cls: "b-gray" },
+  PENDING: { label: "가입 신청 중", cls: "b-wait" },
+  REJECTED: { label: "반려", cls: "b-gray" },
+};
 export type SellerDetail = {
   id: string;
   slug: string;
@@ -69,6 +107,24 @@ export const dayTime = (iso: string | null) =>
   iso
     ? new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso))
     : "-";
+// 가입일 표시: 2026.10.06 (새 날짜 표기 규칙, 한국 시간)
+export const dotDay = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" }).replaceAll("-", ".") : "-");
+// 한국 시간 기준 오늘(YYYY-MM-DD)에서 며칠·몇 달 전 날짜
+export function kstDate(daysAgo = 0, monthsAgo = 0): string {
+  const [y, m, d] = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" }).split("-").map(Number);
+  const t = new Date(Date.UTC(y, m - 1 - monthsAgo, d - daysAgo));
+  return t.toISOString().slice(0, 10);
+}
+// 최근 활동 시각 → 「1분 전」「어제」
+export function ago(iso: string | null): string {
+  if (!iso) return "—";
+  const min = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60_000));
+  if (min < 1) return "방금";
+  if (min < 60) return `${min}분 전`;
+  if (min < 24 * 60) return `${Math.floor(min / 60)}시간 전`;
+  const d = Math.floor(min / (24 * 60));
+  return d === 1 ? "어제" : `${d}일 전`;
+}
 export const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 export const text = (v: unknown) => (typeof v === "string" && v.trim() ? v : "-");
 
