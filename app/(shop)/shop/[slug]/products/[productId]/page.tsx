@@ -9,7 +9,6 @@ import { shopOpen } from "../../../../../../lib/server/buyers/signup";
 import { prisma } from "../../../../../../lib/server/db";
 import { publicCategories } from "../../../../../../lib/server/shop-category/service";
 import { shopProductDetail } from "../../../../../../lib/server/products/shopCatalog";
-import { recordProductView } from "../../../../../../lib/server/stats/funnel";
 import { findActiveShop } from "../../_lib/shop";
 
 export const dynamic = "force-dynamic";
@@ -32,7 +31,6 @@ export default async function ShopProductPage({ params }: Props) {
   const session = await resolveBuyerSession(prisma, token, shop.id);
   const product = await shopProductDetail(prisma, shop.slug, productId, session?.member.gradeId);
   if (!product) notFound();
-  if (session) await recordProductView(prisma, { sellerId: shop.id, buyerMemberId: session.member.id }, productId); // 전환 단계 통계(로그인 회원만, 실패해도 던지지 않음)
   // 경로: 연결된 카테고리 중 트리 순서로 가장 앞선 하나(서버가 그 순서로 준다) → 「대분류 › 소분류」
   const tree = (await publicCategories(prisma, shop.slug)) ?? [];
   const first = product.categories[0];
