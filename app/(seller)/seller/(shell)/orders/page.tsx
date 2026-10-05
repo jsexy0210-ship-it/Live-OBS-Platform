@@ -21,7 +21,8 @@ const PERIODS: { key: Period; label: string; days: number }[] = [
   { key: "7d", label: "최근 7일", days: 6 },
   { key: "30d", label: "최근 30일", days: 29 },
 ];
-type Filters = { statuses: OrderStatus[]; period: Period | null; q: string };
+type Shipped = "true" | "false";
+type Filters = { statuses: OrderStatus[]; period: Period | null; q: string; shipped: Shipped | null };
 type Page = { orders: OrderRow[]; nextCursor: string | null };
 type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; items: OrderRow[]; next: string | null };
 
@@ -30,17 +31,20 @@ function query(f: Filters, cursor?: string) {
   for (const s of f.statuses) p.append("status", s);
   if (f.period) p.set("from", kstDaysAgo(PERIODS.find((x) => x.key === f.period)!.days));
   if (f.q) p.set("q", f.q);
+  if (f.shipped) p.set("shipped", f.shipped);
   if (cursor) p.set("cursor", cursor);
   return p.toString();
 }
 
 export default function OrderListPage() {
   // 검색어·기간·결제 상태는 주소(쿼리)가 기준이다. 상세에 갔다 Back으로 돌아와도 그대로 복원된다(IA Back 규칙 3항)
-  const [u, setU] = useUrlState({ q: "", period: "", status: "" });
+  const [u, setU] = useUrlState({ q: "", period: "", status: "", shipped: "" });
   const q = u.q;
   const period = PERIODS.find((p) => p.key === u.period)?.key ?? null;
   const statuses = u.status.split(",").filter((x): x is OrderStatus => STATUSES.includes(x as OrderStatus));
   const statusKey = statuses.join(",");
+  // 발송 여부는 파트너스 홈 「배송 준비」 링크(?status=PAID&shipped=false)로 들어올 때 쓴다. 화면에서는 칩으로 보이고 누르면 해제된다
+  const shipped: Shipped | null = u.shipped === "true" || u.shipped === "false" ? u.shipped : null;
   const setPeriod = (v: Period | null) => setU({ period: v ?? "" });
   const setStatuses = (v: OrderStatus[]) => setU({ status: v.join(",") });
   const [search, setSearch] = useState(q);
@@ -62,7 +66,7 @@ export default function OrderListPage() {
 
   // 필터를 빨리 바꾸면 이전 응답이 늦게 올 수 있다. 마지막으로 보낸 요청의 응답만 반영한다
   const reqId = useRef(0);
-  const filters: Filters = { statuses, period, q };
+  const filters: Filters = { statuses, period, q, shipped };
   const load = useCallback(async (f: Filters) => {
     const id = ++reqId.current;
     setState({ kind: "loading" });
@@ -70,7 +74,7 @@ export default function OrderListPage() {
     if (id !== reqId.current) return;
     setState(r.ok ? { kind: "ok", items: r.data.orders, next: r.data.nextCursor } : { kind: "error", status: r.status });
   }, []);
-  useEffect(() => void load({ statuses: statusKey ? (statusKey.split(",") as OrderStatus[]) : [], period, q }), [statusKey, period, q, load]);
+  useEffect(() => void load({ statuses: statusKey ? (statusKey.split(",") as OrderStatus[]) : [], period, q, shipped }), [statusKey, period, q, shipped, load]);
   useScrollRestore("seller-orders", state.kind === "ok");
 
   const loadMore = async () => {
@@ -99,10 +103,10 @@ export default function OrderListPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [menuOpen]);
 
-  const filtered = statuses.length > 0 || period !== null || q !== "";
+  const filtered = statuses.length > 0 || period !== null || q !== "" || shipped !== null;
   const reset = () => {
     setSearch("");
-    setU({ q: "", period: "", status: "" });
+    setU({ q: "", period: "", status: "", shipped: "" });
   };
   const statusText = statuses.length === 0 ? "전체" : statuses.length === 1 ? STATUS_BADGE[statuses[0]].label : `${STATUS_BADGE[statuses[0]].label} 외 ${statuses.length - 1}개`;
   const items = state.kind === "ok" ? state.items : [];
@@ -142,6 +146,12 @@ export default function OrderListPage() {
                 {period === p.key && <span className="x">×</span>}
               </button>
             ))}
+            {shipped && (
+              <button type="button" className="chip on" aria-pressed="true" onClick={() => setU({ shipped: "" })}>
+                {shipped === "false" ? "발송 전" : "발송함"}
+                <span className="x">×</span>
+              </button>
+            )}
             <div className="ord-menu-wrap">
               <button type="button" className={`chip${statuses.length ? " on" : ""}`} aria-haspopup="true" aria-expanded={menuOpen} onClick={openMenu}>
                 상태: {statusText} {menuOpen ? "▴" : "▾"}
