@@ -7,6 +7,7 @@ import { COOKIE_NAMES } from "../../../../../../lib/server/auth/policy";
 import { resolveBuyerSession } from "../../../../../../lib/server/auth/session";
 import { shopOpen } from "../../../../../../lib/server/buyers/signup";
 import { prisma } from "../../../../../../lib/server/db";
+import { publicCategories } from "../../../../../../lib/server/shop-category/service";
 import { shopProductDetail } from "../../../../../../lib/server/products/shopCatalog";
 import { findActiveShop } from "../../_lib/shop";
 
@@ -30,9 +31,20 @@ export default async function ShopProductPage({ params }: Props) {
   const session = await resolveBuyerSession(prisma, token, shop.id);
   const product = await shopProductDetail(prisma, shop.slug, productId, session?.member.gradeId);
   if (!product) notFound();
+  // 경로: 연결된 카테고리 중 트리 순서로 가장 앞선 하나(서버가 그 순서로 준다) → 「대분류 › 소분류」
+  const tree = (await publicCategories(prisma, shop.slug)) ?? [];
+  const first = product.categories[0];
+  const crumb = first
+    ? (() => {
+        const top = tree.find((c) => c.id === first.id);
+        if (top) return [{ id: top.id, name: top.name }];
+        const parent = tree.find((c) => c.children.some((x) => x.id === first.id));
+        return parent ? [{ id: parent.id, name: parent.name }, { id: first.id, name: first.name }] : [{ id: first.id, name: first.name }];
+      })()
+    : [];
   return (
     <div className="shop-wrap">
-      <ProductDetail slug={shop.slug} loggedIn={!!session} product={JSON.parse(JSON.stringify(product))} />
+      <ProductDetail slug={shop.slug} loggedIn={!!session} product={JSON.parse(JSON.stringify(product))} crumb={crumb} />
     </div>
   );
 }
