@@ -85,11 +85,42 @@ export async function refundableOrderIdInDb(slug: string, paymentMethod: "CARD" 
   try {
     const seller = await db.seller.findUniqueOrThrow({ where: { slug } });
     const order = await db.order.findFirstOrThrow({
-      where: { sellerId: seller.id, status: "PAID", paymentMethod, shipment: null, refunds: { none: {} }, queueItems: { none: { openingStartedAt: { not: null } } } },
+      where: { sellerId: seller.id, status: "PAID", paymentMethod, shipment: null, refunds: { none: {} }, refundRequests: { none: { status: "REQUESTED" } }, queueItems: { none: { openingStartedAt: { not: null } } } },
       orderBy: { createdAt: "desc" },
       select: { id: true },
     });
     return order.id;
+  } finally {
+    await db.$disconnect();
+  }
+}
+
+// 구매자 환불 요청을 DB에 바로 만든다(SA-023 환불 요청 처리 시험). 구매자 쪽 화면·API는 따로 시험하고, 여기서는 파트너스 처리만 본다.
+export async function createRefundRequestInDb(orderId: string, reason: "CHANGE_OF_MIND" | "OTHER", reasonText = ""): Promise<{ id: string; orderNo: number }> {
+  const db = open();
+  try {
+    const order = await db.order.findUniqueOrThrow({ where: { id: orderId }, select: { sellerId: true, buyerMemberId: true, orderNo: true } });
+    const r = await db.refundRequest.create({ data: { sellerId: order.sellerId, orderId, buyerMemberId: order.buyerMemberId, reason, reasonText }, select: { id: true } });
+    return { id: r.id, orderNo: order.orderNo };
+  } finally {
+    await db.$disconnect();
+  }
+}
+
+export async function refundRequestInDb(id: string) {
+  const db = open();
+  try {
+    const r = await db.refundRequest.findUniqueOrThrow({ where: { id }, select: { status: true, rejectReason: true, order: { select: { status: true } } } });
+    return { status: r.status, rejectReason: r.rejectReason, orderStatus: r.order.status };
+  } finally {
+    await db.$disconnect();
+  }
+}
+
+export async function deleteRefundRequestInDb(id: string) {
+  const db = open();
+  try {
+    await db.refundRequest.deleteMany({ where: { id } });
   } finally {
     await db.$disconnect();
   }
