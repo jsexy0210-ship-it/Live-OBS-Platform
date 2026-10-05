@@ -53,6 +53,19 @@ test("방송을 끝낸 뒤 이력 목록에서 찾아 상세로 들어가 요약
   const row = page.getByTestId("bh-list").locator("tr", { hasText: title });
   await expect(row).toContainText("종료");
   await expect(row.locator("td").nth(3)).toHaveText("2");
+  // 제목이 첫 열, 일시는 「2026.10.05 22:25」 형식
+  await expect(page.locator("table.tbl thead th").first()).toHaveText("제목");
+  await expect(row.locator("td").first().getByTestId("bh-link")).toHaveText(title);
+  await expect(row.locator("td").nth(1)).toHaveText(/^\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}$/);
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await page.waitForTimeout(600); // 좁은 폭에서 메뉴 서랍이 접히는 전환이 끝난 뒤 잰다
+    const doc = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, sx: window.scrollX }));
+    expect(doc.sw, `${width}px 문서 너비`).toBe(width);
+    expect(doc.sx).toBe(0);
+    if (process.env.E2E_SCREENSHOTS === "1") await page.screenshot({ path: `tests/e2e/screenshots/SA-054-date-${width}.png`, fullPage: true });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
 
   // 상세: 요약(주문 2건·HIT 1장), HIT 카드, 주문 2건
   await row.getByTestId("bh-link").click();
