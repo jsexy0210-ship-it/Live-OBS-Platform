@@ -27,8 +27,8 @@ async function makeOrder(page: Page, baseURL: string) {
   });
   expect(r.ok()).toBe(true);
   const { orderId } = (await r.json()) as { orderId: string };
-  const o = (await (await page.request.get(`/api/shop/${SLUG}/orders/${orderId}`)).json()) as { orderNo: number };
-  return { orderId, orderNo: o.orderNo };
+  const o = (await (await page.request.get(`/api/shop/${SLUG}/orders/${orderId}`)).json()) as { orderNoLabel: string };
+  return { orderId, orderNo: o.orderNoLabel };
 }
 
 test.beforeAll(() => {
@@ -55,7 +55,7 @@ test("PC: 주문 내역 표(열 제목 가운데·값 왼쪽)·상태 탭·결�
   const table = page.getByRole("table", { name: "주문 내역" });
   await expect(table.locator("thead th")).toHaveText(["주문일 · 번호", "상품 정보", "상태", "관리"]);
   expect(await table.locator("th").first().evaluate((el) => getComputedStyle(el).textAlign)).toBe("center"); // 열 제목은 가운데
-  const row = table.locator("tbody tr", { has: page.getByRole("link", { name: String(orderNo), exact: true }) });
+  const row = table.locator("tbody tr", { has: page.getByRole("link", { name: orderNo, exact: true }) });
   expect(await row.locator("td").nth(1).evaluate((el) => getComputedStyle(el).textAlign)).toBe("left"); // 값은 왼쪽
   await expect(row).toContainText("탑로더 25장");
   await expect(row).toContainText("옵션: 1팩 · 수량 2개");
@@ -63,9 +63,9 @@ test("PC: 주문 내역 표(열 제목 가운데·값 왼쪽)·상태 탭·결�
   await page.screenshot({ path: "tests/e2e/screenshots/SH-021-orders-1440.png" });
   // 탭: 결제 대기에는 있고 취소 · 환불에는 없다
   await page.getByRole("tab", { name: /^결제 전/ }).click();
-  await expect(table.getByRole("link", { name: String(orderNo), exact: true })).toBeVisible();
+  await expect(table.getByRole("link", { name: orderNo, exact: true })).toBeVisible();
   await page.getByRole("tab", { name: /^취소 · 환불/ }).click();
-  await expect(page.getByRole("link", { name: String(orderNo), exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: orderNo, exact: true })).toHaveCount(0);
   await page.getByRole("tab", { name: /^결제 전/ }).click();
   await row.getByRole("link", { name: "결제하기" }).click();
   await expect(page).toHaveURL(new RegExp(`/orders/${orderId}$`));
