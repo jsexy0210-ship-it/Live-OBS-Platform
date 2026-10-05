@@ -5,7 +5,7 @@ import { DELETE as deleteRoute } from "../../app/api/seller/external-shops/[id]/
 import { POST as webhookRoute } from "../../app/api/external/webhook/route";
 import { loginSeller } from "../../lib/server/auth/login";
 import { openBillingKey } from "../../lib/server/billing/secret";
-import { completeConnect, disconnect, startConnect } from "../../lib/server/external/connect";
+import { completeConnect, disconnect, listConnections, startConnect, startReconnect } from "../../lib/server/external/connect";
 import { externalConfig } from "../../lib/server/external/config";
 import { purgeExpiredOAuthStates, purgeOldWebhookEvents, refreshDueTokens } from "../../lib/server/external/jobs";
 import { SCHEDULED_JOBS } from "../../lib/server/jobs/scheduler";
@@ -254,7 +254,7 @@ describe("라우트", () => {
     const cookie = await cookieFor(s.user.email);
     const list = await listRoute(new Request("http://localhost:3000/api/seller/external-shops", { headers: H(cookie) }));
     expect(list.status).toBe(200);
-    expect(await list.json()).toEqual({ enabled: false, connections: [] });
+    expect(await list.json()).toEqual({ enabled: false, canManage: true, connections: [] });
     const start = await startRoute(new Request("http://localhost:3000/api/seller/external-shops", { method: "POST", headers: H(cookie), body: JSON.stringify({ shopUrl: "https://myshop.cafe24.com" }) }));
     expect(start.status).toBe(503);
     expect(JSON.stringify(await start.json())).not.toMatch(/cafe24/i);
@@ -370,5 +370,58 @@ describe("정기 작업", () => {
     expect(p.refreshes).toEqual([]);
     expect(await refreshDueTokens(db, p, new Date())).toBe(1);
     expect(p.refreshes).toEqual(["keyoff:RT-k"]);
+  });
+});
+
+describe("다시 연결·목록 권한 (SA-006)", () => {
+  async function connected(key = "myshop") {
+    const s = await shop();
+    const p = new FakeProvider();
+    const st = await startConnect(db, p, s.ctx, `https://${key}.cafe24.com`);
+    if (!st.ok) throw new Error("start");
+    const r = await completeConnect(db, p, s.ctx, { state: stateOf(st.authorizeUrl), code: "k" });
+    if (!r.ok) throw new Error("complete");
+    return { ...s, p, id: r.connectionId };
+  }
+
+  it("다시 연결: 연결됨·다시 연결 필요 상태만 새 인증을 시작하고, 다른 파트너스·해제된 연결은 404", async () => {
+    const a = await connected("shopa");
+    await db.externalShopConnection.update({ where: { id: a.id }, data: { status: "REAUTH_REQUIRED" } });
+    const r = await startReconnect(db, a.p, a.ctx, a.id);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(new URL(r.authorizeUrl).hostname).toBe("shopa.auth.test");
+    // 새 인증을 마치면 같은 연결 행이 연결됨으로 돌아온다(행이 늘지 않는다)
+    expect((await completeConnect(db, a.p, a.ctx, { state: stateOf(r.authorizeUrl), code: "again" })).ok).toBe(true);
+    expect(await db.externalShopConnection.count()).toBe(1);
+    expect(await db.externalShopConnection.findUniqueOrThrow({ where: { id: a.id } })).toMatchObject({ status: "CONNECTED" });
+    const other = await shop();
+    await expect(startReconnect(db, a.p, other.ctx, a.id)).rejects.toMatchObject({ status: 404 });
+    await db.externalShopConnection.update({ where: { id: a.id }, data: { status: "DISCONNECTED" } });
+    await expect(startReconnect(db, a.p, a.ctx, a.id)).rejects.toMatchObject({ status: 404 });
+    expect(await startReconnect(db, null, (await connected("shopb")).ctx, (await db.externalShopConnection.findFirstOrThrow({ where: { shopKey: "shopb" } })).id)).toEqual({ ok: false, reason: "integration_disabled" });
+  });
+
+  it("목록은 같은 파트너스의 권한 없는 직원도 보고(보기만), 다른 파트너스의 연결은 보이지 않는다. 라우트는 canManage를 알려 준다", async () => {
+    const a = await connected("shopa");
+    await connected("shopz");
+    const viewer = await createSellerUser(a.seller.id, { permissions: [] });
+    const viewerCtx: TenantContext = { ...a.ctx, actorId: viewer.id, isOwner: false, permissions: [] };
+    expect((await listConnections(db, viewerCtx)).map((c) => c.shopKey)).toEqual(["shopa"]);
+    await expect(startConnect(db, new FakeProvider(), viewerCtx, "https://other.cafe24.com")).rejects.toMatchObject({ status: 403 });
+    const cookie = async (email: string) => {
+      const r = await loginSeller(db, { email, password: PASSWORD }, {});
+      if (!r.ok) throw new Error(r.reason);
+      return `lo_seller=${r.token}`;
+    };
+    const H = (c: string) => ({ host: "localhost:3000", origin: "http://localhost:3000", cookie: c, "content-type": "application/json" });
+    const asViewer = await listRoute(new Request("http://localhost:3000/api/seller/external-shops", { headers: H(await cookie(viewer.email)) }));
+    expect(asViewer.status).toBe(200);
+    expect(await asViewer.json()).toMatchObject({ canManage: false, connections: [{ shopKey: "shopa" }] });
+    const asOwner = await listRoute(new Request("http://localhost:3000/api/seller/external-shops", { headers: H(await cookie(a.user.email)) }));
+    expect(await asOwner.json()).toMatchObject({ canManage: true });
+    // connectionId 형식이 틀리면 404
+    const bad = await startRoute(new Request("http://localhost:3000/api/seller/external-shops", { method: "POST", headers: H(await cookie(a.user.email)), body: JSON.stringify({ connectionId: "nope" }) }));
+    expect(bad.status).toBe(404);
   });
 });
