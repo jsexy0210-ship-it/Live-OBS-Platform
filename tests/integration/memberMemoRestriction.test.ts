@@ -111,7 +111,8 @@ describe("구매 제한 직접 걸기", () => {
     expect(await s.place()).toMatchObject({ ok: false, reason: "purchase_restricted" });
     expect(await list(s)).toEqual([expect.objectContaining({ buyerMemberId: s.buyer.id, reason: "MANUAL", note: "허위 주문 의심" })]);
     const log = await db.auditLog.findFirst({ where: { action: "buyer.purchase_restriction.create", actorType: "SELLER_USER", targetId: s.buyer.id } });
-    expect(log).toMatchObject({ actorId: s.owner.id, sellerId: s.seller.id, reason: "허위 주문 의심" });
+    expect(log).toMatchObject({ actorId: s.owner.id, sellerId: s.seller.id, reason: null, after: { reason: "MANUAL", days: 7, noteLength: 8 } });
+    expect(JSON.stringify(log)).not.toContain("허위 주문 의심");
     const lift = await liftRoute(new Request("http://localhost:3000/x", { method: "POST", headers: { ...H, cookie: s.cookie }, body: JSON.stringify({ reason: "오해 풀림" }) }), { params: Promise.resolve({ buyerMemberId: s.buyer.id }) });
     expect(lift.status).toBe(200);
     expect((await s.place()).ok).toBe(true);

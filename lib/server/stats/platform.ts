@@ -111,3 +111,58 @@ export async function platformSubscriptionStats(db: PrismaClient, admin: AdminSe
     };
   });
 }
+
+// ③ 신규 파트너스·방송 수 추이(마스터 관리자, platform.read). 숫자만, 개인정보 없음.
+// - 가입 신청 = 파트너스 계정 생성(createdAt), 승인 = 승인 시각(approvedAt) 기준. 같은 기간·단위(일·주·월, KST)로 센다
+// - 방송 수 = 그 기간에 시작한 방송(startedAt). 방송한 파트너스 = 그 기간에 방송을 시작한 서로 다른 파트너스 수
+type GrowthCounts = { signups: number; approved: number; broadcasts: number; broadcasters: number };
+
+const growthPoint = (r: Partial<GrowthCounts> | undefined): GrowthCounts => ({
+  signups: num(r?.signups),
+  approved: num(r?.approved),
+  broadcasts: num(r?.broadcasts),
+  broadcasters: num(r?.broadcasters),
+});
+
+export async function platformGrowthStats(db: PrismaClient, admin: AdminSessionContext, range: StatsRange) {
+  if (!adminCan(admin.admin.role, "platform.read")) throw forbidden();
+  return statsSnapshot(db, async (tx) => {
+    const total = async (start: Date, end: Date) => {
+      const [s, b] = await Promise.all([
+        tx.$queryRaw<{ signups: number; approved: number }[]>`
+          SELECT count(*) FILTER (WHERE "createdAt" >= ${start} AND "createdAt" < ${end})::int AS signups,
+                 count(*) FILTER (WHERE "approvedAt" >= ${start} AND "approvedAt" < ${end})::int AS approved
+          FROM "Seller"`,
+        tx.$queryRaw<{ broadcasts: number; broadcasters: number }[]>`
+          SELECT count(*)::int AS broadcasts, count(DISTINCT "sellerId")::int AS broadcasters
+          FROM "BroadcastSession" WHERE "startedAt" >= ${start} AND "startedAt" < ${end}`,
+      ]);
+      return growthPoint({ ...s[0], ...b[0] });
+    };
+    const [current, previous, signups, approved, broadcasts] = await Promise.all([
+      total(range.start, range.end),
+      total(range.prev.start, range.prev.end),
+      tx.$queryRaw<{ bucket: string; n: number }[]>`
+        WITH s AS (${bucketSeries(range.unit, range.start, range.end)}),
+        x AS (SELECT ${bucketOf(range.unit, Prisma.sql`"createdAt"`)} AS b, count(*)::int AS n FROM "Seller"
+              WHERE "createdAt" >= ${range.start} AND "createdAt" < ${range.end} GROUP BY 1)
+        SELECT to_char(s.b, 'YYYY-MM-DD') AS bucket, x.n FROM s LEFT JOIN x ON x.b = s.b ORDER BY s.b`,
+      tx.$queryRaw<{ bucket: string; n: number }[]>`
+        WITH s AS (${bucketSeries(range.unit, range.start, range.end)}),
+        x AS (SELECT ${bucketOf(range.unit, Prisma.sql`"approvedAt"`)} AS b, count(*)::int AS n FROM "Seller"
+              WHERE "approvedAt" >= ${range.start} AND "approvedAt" < ${range.end} GROUP BY 1)
+        SELECT to_char(s.b, 'YYYY-MM-DD') AS bucket, x.n FROM s LEFT JOIN x ON x.b = s.b ORDER BY s.b`,
+      tx.$queryRaw<{ bucket: string; broadcasts: number; broadcasters: number }[]>`
+        WITH s AS (${bucketSeries(range.unit, range.start, range.end)}),
+        x AS (SELECT ${bucketOf(range.unit, Prisma.sql`"startedAt"`)} AS b, count(*)::int AS broadcasts, count(DISTINCT "sellerId")::int AS broadcasters
+              FROM "BroadcastSession" WHERE "startedAt" >= ${range.start} AND "startedAt" < ${range.end} GROUP BY 1)
+        SELECT to_char(s.b, 'YYYY-MM-DD') AS bucket, x.broadcasts, x.broadcasters FROM s LEFT JOIN x ON x.b = s.b ORDER BY s.b`,
+    ]);
+    return {
+      range: { from: range.from, to: range.to, unit: range.unit, previous: { from: range.prev.from, to: range.prev.to } },
+      current,
+      previous,
+      series: signups.map((p, i) => ({ bucket: p.bucket, ...growthPoint({ signups: p.n, approved: approved[i]?.n, ...broadcasts[i] }) })),
+    };
+  });
+}

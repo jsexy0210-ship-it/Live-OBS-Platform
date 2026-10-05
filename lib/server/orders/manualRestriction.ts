@@ -37,8 +37,8 @@ export async function createManualRestriction(db: PrismaClient, ctx: TenantConte
       action: "buyer.purchase_restriction.create",
       targetType: "BuyerMember",
       targetId: buyerMemberId,
-      reason: note,
-      after: { reason: RESTRICTION_REASON_MANUAL, days, endsAt },
+      // 사유 메모는 자유 입력이라 개인정보가 섞일 수 있어(회원 메모와 같은 기준) 로그 추적에는 글자 수만 남긴다. 본문은 제한 행의 note에 있고 탈퇴 때 행과 함께 지운다.
+      after: { reason: RESTRICTION_REASON_MANUAL, days, endsAt, noteLength: note ? [...note].length : 0 },
     });
     return { ok: true as const, value: r };
   });
