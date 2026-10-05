@@ -43,7 +43,7 @@ test("채널 7종 단가가 이름으로 보이고, 단가 변경(바로·예정
   await expect(page.locator("main")).not.toContainText("MAIL_TRANSACTIONAL");
   await expect(page.locator("main")).not.toContainText("IDENTITY_VERIFICATION");
   const align = await page.locator(".tbl td").first().evaluate((el) => getComputedStyle(el).textAlign);
-  expect(["left", "start"]).toContain(align);
+  expect(align).toBe("center"); // 표 정렬 새 규칙(2026-10-05): 글 열(.col-text)이 아니면 데이터는 가운데
 
   await row(page, "단문 문자").getByRole("button", { name: "변경" }).click();
   const dialog = page.getByRole("dialog");

@@ -112,7 +112,7 @@ test("일반 계정 수정: 역할·상태를 바꾸면 목록과 DB에 반영�
   expect(row.status).toBe("SUSPENDED");
 });
 
-test("역할별 권한 표: 관리자 계정 관리는 최고관리자만 가능으로 보이고, 값은 왼쪽 정렬이다", async ({ page }) => {
+test("역할별 권한 표: 관리자 계정 관리는 최고관리자만 가능으로 보이고, 권한 이름 열(글 열)만 왼쪽 정렬이다", async ({ page }) => {
   await open(page, "/admin/accounts/roles");
   await expect(page.locator(".tbl thead th")).toHaveText(["권한", "최고관리자", "운영", "고객 지원", "조회 전용"]);
   const manage = page.getByTestId("permission-row").filter({ hasText: "관리자 계정 관리" });
