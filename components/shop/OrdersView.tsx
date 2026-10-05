@@ -25,7 +25,7 @@ type Order = {
   shipment: { courier: string; courierName: string; trackingNumber: string; status: "READY" | "IN_TRANSIT" | "DELIVERED" } | null;
 };
 type View = { kind: "loading" } | { kind: "login" } | { kind: "error" } | { kind: "ok"; orders: Order[]; next: string | null };
-type Tab = "all" | "pending" | "doing" | "done" | "cancel";
+type Tab = "all" | "pending" | "doing" | "done" | "cancel" | "refund";
 
 const PAGE = 20;
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
@@ -38,12 +38,14 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "pending", label: "결제 전" },
   { key: "doing", label: "진행 중" },
   { key: "done", label: "완료" },
-  { key: "cancel", label: "취소 · 환불" },
+  { key: "cancel", label: "취소" },
+  { key: "refund", label: "환불" },
 ];
 
 function tabOf(o: Order): Exclude<Tab, "all"> {
   if (o.status === "PENDING_PAYMENT") return "pending";
-  if (o.status === "CANCELLED" || o.status === "REFUNDED") return "cancel";
+  if (o.status === "CANCELLED") return "cancel";
+  if (o.status === "REFUNDED") return "refund";
   return o.shipment?.status === "DELIVERED" ? "done" : "doing";
 }
 function stateOf(o: Order): { label: string; tone: string } {
