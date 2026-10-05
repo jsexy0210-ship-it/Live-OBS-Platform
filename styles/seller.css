@@ -781,8 +781,8 @@ body {
 }
 .gnb-nav {
   display: flex;
+  flex: none; /* 대분류 이름이 줄거나 잘리지 않게 한다. 좁으면 쇼핑몰 이름(.gnb-shop)이 말줄임으로 먼저 줄어든다 */
   align-items: stretch;
-  min-width: 0;
 }
 .app .gnb-i {
   display: inline-flex;
@@ -831,6 +831,8 @@ body {
   min-width: 0;
 }
 .gnb-shop {
+  flex: 0 1 auto;
+  min-width: 0;
   max-width: 180px;
   padding: 0 10px;
   font-size: 12px;
