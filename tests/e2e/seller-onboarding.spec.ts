@@ -53,11 +53,11 @@ test("쇼핑몰 통합: 단계가 서버 순서·완료 상태 그대로 보이�
   await expect(page.getByTestId("ob-continue")).toHaveAttribute("href", href);
 
   // 닫기 → 단계 목록이 숨고 서버에도 닫힘, 다시 열기 → 돌아옴
-  await page.getByRole("button", { name: "시작하기 닫기" }).click();
+  await page.getByRole("button", { name: "안내 숨기기" }).click();
   await expect(page.getByText("시작하기를 닫았습니다")).toBeVisible();
   await expect(rows).toHaveCount(0);
   expect((await apiState(page)).dismissed).toBe(true);
-  await page.getByRole("button", { name: "다시 열기" }).click();
+  await page.getByRole("button", { name: "다시 보이기" }).click();
   await expect(rows).toHaveCount(s.steps.length);
   expect((await apiState(page)).dismissed).toBe(false);
 
@@ -90,5 +90,5 @@ test("오버레이 전용: 외부 쇼핑몰 연동·오버레이 설정·주소 
 test("쇼핑몰 설정 권한이 없는 직원은 체크리스트는 보지만 닫기 버튼은 없다", async ({ page }) => {
   await login(page, "demo-viewer@example.com");
   await expect(page.getByTestId("ob-step").first()).toBeVisible();
-  await expect(page.getByRole("button", { name: "시작하기 닫기" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "안내 숨기기" })).toHaveCount(0);
 });

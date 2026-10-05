@@ -55,8 +55,8 @@ export default function NewPasswordForm({ onDone, onExpired, loginHref }: Props)
     }
     if (stepOutcome(r) === "retry") {
       uncertain.current = true;
-      setNotice({ text: "새 비밀번호로 로그인해 보십시오. 되지 않으면 다시 변경해 주십시오", maybe: true });
-    } else setNotice({ text: failMessage(r, "admin", "변경하지 못했습니다. 잠시 후 다시 시도해 주십시오") });
+      setNotice({ text: "비밀번호가 바뀌었는지 확인하지 못했습니다. 방금 정한 새 비밀번호로 로그인해 보십시오. 로그인이 안 되면 다시 바꿔 주십시오", maybe: true });
+    } else setNotice({ text: failMessage(r, "admin", "변경하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 눌러 주십시오") });
     focus("pw-notice");
   };
 
@@ -65,7 +65,7 @@ export default function NewPasswordForm({ onDone, onExpired, loginHref }: Props)
       <div className="col" style={{ gap: 12 }}>
         <div id="pw-maybe" tabIndex={-1} className="msg msg-info" role="status" style={{ display: "block" }}>
           <span>
-            <b>비밀번호가 이미 변경되었을 수 있습니다.</b> 방금 정한 비밀번호로 로그인해 보십시오.
+            <b>비밀번호가 바뀌었는지 확인하지 못했습니다.</b> 방금 정한 비밀번호로 로그인해 보십시오.
           </span>
         </div>
         <Link className="btn btn-lg btn-block" href={loginHref}>

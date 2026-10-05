@@ -96,7 +96,7 @@ export default function FindIdPage() {
   };
 
   const pickedAccount = accounts.find((a) => a.accountId === picked);
-  const title = { find: "아이디 찾기", accounts: accounts.length > 0 ? "가입한 계정을 찾았습니다" : "맞는 계정이 없습니다", password: "새 비밀번호 설정", done: "비밀번호를 변경했습니다" }[step];
+  const title = { find: "이메일(아이디) 찾기", accounts: accounts.length > 0 ? "가입한 계정을 찾았습니다" : "맞는 계정이 없습니다", password: "새 비밀번호 설정", done: "비밀번호를 변경했습니다" }[step];
 
   if (step === "done") {
     return (
@@ -144,7 +144,7 @@ export default function FindIdPage() {
               {pending && verificationId && (
                 <span className="row" style={{ marginTop: 8 }}>
                   <button className="btn btn-sm" type="button" disabled={busy} onClick={() => void loadAccounts(verificationId)}>
-                    다시 확인
+                    결과 다시 확인하기
                   </button>
                 </span>
               )}
@@ -187,12 +187,12 @@ export default function FindIdPage() {
                   로그인
                 </Link>
                 <button className={`btn btn-lg btn-block btn-out${busy ? " is-loading" : ""}`} type="button" disabled={!picked || busy} onClick={() => void reset()}>
-                  {busy ? "확인 중" : "선택한 계정 비밀번호 변경"}
+                  {busy ? "확인하는 중" : "선택한 계정의 비밀번호 바꾸기"}
                 </button>
               </>
             ) : (
               <button className="btn btn-lg btn-block btn-out" type="button" onClick={() => restart(null)}>
-                본인확인 재시도
+                본인확인 다시 하기
               </button>
             ))}
           {step === "password" && (

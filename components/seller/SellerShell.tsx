@@ -2,48 +2,60 @@
 
 import Link from "next/link";
 import { GlobalSearch, NotificationBell } from "../admin-ui/GnbTools";
+import { RouteTabs, ShellNavProvider, type ShellNav } from "../admin-ui/shellNav";
 import { useWholeDateClick } from "../admin-ui/useWholeDateClick";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useLatestResponse, type ReadTicket } from "./latestResponse";
 import { api, currentNavGeneration, nextNavGeneration, PLAN_FEATURE_EVENT, type Me, type PlanFeatureEventDetail } from "./api";
 
-// 파트너스 관리자 공통 틀(업무용 관리 화면 틀, 대표님 지시 2026-10-04): 상단 고정 GNB(대분류) + 왼쪽 LNB(고른 대분류의 하위 메뉴) + 본문.
-// 메뉴 묶음은 docs/IA.md SA 「메뉴 그룹」 표를 따른다. 좁은 화면에서는 GNB가 햄버거로 접히고 LNB가 서랍으로 열린다(서랍에는 전체 메뉴).
+// 파트너스 관리자 공통 틀(업무용 관리 화면 틀, 대표님 지시 2026-10-04): 상단 고정 GNB(대분류 8개) + 왼쪽 LNB(고른 대분류의 하위 메뉴) + 본문.
+// 메뉴 구조는 확정안(2026-10-06 대표님 「그대로 진행」, docs/IA.md 「확정 메뉴 구조」·design/project/SA-LNB.dc.html)을 따른다. 좁은 화면에서는 GNB가 햄버거로 접히고 LNB가 서랍으로 열린다(서랍에는 전체 메뉴).
 // 아직 만들지 않은 화면은 메뉴에서 흐리게 두고 누를 수 없게 한다.
+// 통합 화면(같은 일을 하는 화면을 한 메뉴로 합친 것)은 항목 하나에 tabs로 기존 화면들을 묶는다. 기존 주소가 그대로 탭 주소라 링크·북마크가 끊기지 않는다.
 
 // perm: 그 권한이 있어야 메뉴가 보인다. OWNER는 대표자 전용.
 // plan: 요금제가 그 기능 권한을 줘야 메뉴가 보인다(ARCHITECTURE 4.8.0 판매자 API 분류와 같은 기준). 없으면 구독·결제처럼 항상 열린다.
 //   ANY = 기능 권한이 하나라도 있을 때(홈·직원 계정·내 계정: 통합 첫 결제 확정 전에는 닫힘)
 //   FOLLOWUP = STORE_OPERATIONS가 있거나, 오버레이 전용으로 내린 뒤에도 후속 처리할 일이 남았을 때(/me orderFollowup). 주문·배송·문의 메뉴(ORDER_FOLLOWUP 경로)
 // alt: plan이 없을 때 대신 여는 화면(그 요금제에서 쓸 수 있는 하위 화면만 보여 줄 때)
+// tabs: 통합 화면. 탭마다 perm·plan을 따로 가진다(보이는 탭이 하나도 없으면 메뉴 항목도 숨긴다). 보이는 탭이 2개 이상일 때만 탭 줄을 그린다.
+// also: 메뉴에는 없지만 이 항목을 켠 채 열리는 화면 주소(예: 시작하기). plan·perm을 따로 줄 수 있다(없으면 항목 것)
 // 하위 메뉴가 모두 숨겨진 대분류는 GNB에서도 숨긴다.
 type PlanNeed = "ANY" | "OVERLAY" | "EXTERNAL_INTEGRATION" | "STORE_OPERATIONS" | "FOLLOWUP";
-// lnbOnly: 왼쪽 메뉴에만 보이는 항목. 대분류(GNB)를 눌렀을 때 가는 첫 화면이나 로그인 뒤 기본 화면으로는 쓰지 않는다(예: 시작하기)
-type Item = { label: string; href?: string; perm?: string; plan?: PlanNeed; alt?: { plan: PlanNeed; href: string }; lnbOnly?: boolean };
+type Leaf = { label: string; href?: string; perm?: string; plan?: PlanNeed; alt?: { plan: PlanNeed; href: string } };
+type Item = Leaf & { tabs?: Leaf[]; also?: { href: string; plan?: PlanNeed; perm?: string }[] };
 type Group = { key: string; label: string; items: Item[] };
 const MENU: Group[] = [
   {
     key: "home",
     label: "홈",
-    items: [
-      { label: "홈", plan: "STORE_OPERATIONS", alt: { plan: "OVERLAY", href: "/seller/home-overlay" } },
-      { label: "시작하기", href: "/seller/onboarding", plan: "ANY", lnbOnly: true },
-    ],
+    // 시작하기(SA-003)는 메뉴에서 빠지고 홈 아래 화면이다(첫 가입 때만 홈 위 띠로 안내)
+    items: [{ label: "홈", plan: "STORE_OPERATIONS", alt: { plan: "OVERLAY", href: "/seller/home-overlay" }, also: [{ href: "/seller/onboarding", plan: "ANY" }] }],
   },
   {
     key: "broadcast",
     label: "방송",
     items: [
       { label: "방송 대시보드", href: "/seller/broadcast", perm: "BROADCAST_RUN", plan: "OVERLAY" },
-      { label: "오버레이 편집기", href: "/seller/overlay", perm: "OVERLAY_EDIT", plan: "OVERLAY" },
-      { label: "HIT 카드 이력", href: "/seller/hit-cards", perm: "BROADCAST_RUN", plan: "OVERLAY" },
-      { label: "방송 이력", href: "/seller/broadcasts", perm: "BROADCAST_RUN", plan: "OVERLAY" },
-      // 서버는 플랜 기능 EXTERNAL_INTEGRATION만 보고 보기를 열지만, 메뉴는 연결·해제 권한(SHOP_SETTINGS)이 있는 직원에게만 보인다(서버보다 넓게 열지 않는다)
-      { label: "외부 쇼핑몰 연동", href: "/seller/external-shops", perm: "SHOP_SETTINGS", plan: "EXTERNAL_INTEGRATION" },
-      { label: "유튜브 연결", href: "/seller/youtube", perm: "BROADCAST_RUN", plan: "OVERLAY" },
-      // 대표자 전용: 구매(110,000원)·재설치(33,000원)가 걸린 화면이라 서버도 대표자만 허용한다
-      { label: "자동 연결", href: "/seller/automation", perm: "OWNER", plan: "OVERLAY" },
+      { label: "방송 화면 꾸미기", href: "/seller/overlay", perm: "OVERLAY_EDIT", plan: "OVERLAY" },
+      {
+        label: "방송 기록",
+        tabs: [
+          { label: "방송별", href: "/seller/broadcasts", perm: "BROADCAST_RUN", plan: "OVERLAY" },
+          { label: "HIT 카드", href: "/seller/hit-cards", perm: "BROADCAST_RUN", plan: "OVERLAY" },
+        ],
+      },
+      {
+        label: "외부 채널 연결",
+        tabs: [
+          { label: "유튜브", href: "/seller/youtube", perm: "BROADCAST_RUN", plan: "OVERLAY" },
+          // 서버는 플랜 기능 EXTERNAL_INTEGRATION만 보고 보기를 열지만, 메뉴는 연결·해제 권한(SHOP_SETTINGS)이 있는 직원에게만 보인다(서버보다 넓게 열지 않는다)
+          { label: "외부 쇼핑몰", href: "/seller/external-shops", perm: "SHOP_SETTINGS", plan: "EXTERNAL_INTEGRATION" },
+          // 대표자 전용: 구매(110,000원)·재설치(33,000원)가 걸린 화면이라 서버도 대표자만 허용한다
+          { label: "자동 연결", href: "/seller/automation", perm: "OWNER", plan: "OVERLAY" },
+        ],
+      },
     ],
   },
   {
@@ -52,12 +64,16 @@ const MENU: Group[] = [
     items: [
       { label: "전체 주문", href: "/seller/orders", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
       { label: "입금 확인", href: "/seller/orders/deposits", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
-      // 환불 요청: 상세가 아니라 처리 대기 목록이라 주문 그룹 항목(SA-023-R)
-      { label: "환불 요청", href: "/seller/orders/refund-requests", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
-      { label: "교환 · 반품", href: "/seller/returns", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
-      { label: "배송", href: "/seller/shipping", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
-      { label: "송장 발급", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
-      { label: "송장 출력 · 추적", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
+      // 송장 발급·출력·추적 화면이 생기면 이 항목의 탭으로 더한다
+      { label: "배송 · 송장", href: "/seller/shipping", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
+      {
+        label: "취소 · 교환 · 반품",
+        tabs: [
+          // 환불 요청: 상세가 아니라 처리 대기 목록(SA-023-R)
+          { label: "취소 · 환불", href: "/seller/orders/refund-requests", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
+          { label: "교환 · 반품", href: "/seller/returns", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
+        ],
+      },
       { label: "영수증 · 세금계산서", perm: "RECEIPT_TAX", plan: "FOLLOWUP" },
     ],
   },
@@ -67,48 +83,69 @@ const MENU: Group[] = [
     items: [
       { label: "상품 목록", href: "/seller/products", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
       { label: "상품 등록", href: "/seller/products/new", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
-      { label: "재고 관리", href: "/seller/products/stock", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
-      { label: "카테고리", href: "/seller/products/categories", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
-      { label: "상품 진열", href: "/seller/products/display", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
-      { label: "재입고 알림", href: "/seller/products/restock-alerts", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
-      { label: "엑셀 일괄 등록", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
+      {
+        label: "재고",
+        tabs: [
+          { label: "재고 수정", href: "/seller/products/stock", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
+          { label: "재입고 알림", href: "/seller/products/restock-alerts", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
+        ],
+      },
+      {
+        label: "분류 · 진열",
+        tabs: [
+          { label: "카테고리", href: "/seller/products/categories", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
+          { label: "홈 진열", href: "/seller/products/display", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
+        ],
+      },
+      { label: "엑셀로 올리기 · 내려받기", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
     ],
   },
   {
     key: "member",
-    // IA 개편(2026-10-05): 고객 = 기존 회원 + 게시판(문의·리뷰). 경로(URL)는 그대로
+    // 고객 = 회원 + 적립금 + 문의·리뷰(게시판 그룹 폐지). 경로(URL)는 그대로
     label: "고객",
     items: [
       { label: "회원 목록", href: "/seller/members", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
       { label: "회원 등급", href: "/seller/member-grades", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
       { label: "구매 제한", href: "/seller/purchase-restrictions", perm: "MEMBER_POINTS", plan: "FOLLOWUP" },
-      { label: "회원 알림 발송", href: "/seller/member-messages", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
-      { label: "적립금", href: "/seller/rewards", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
-      { label: "회원별 잔액", href: "/seller/rewards/balances", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
-      // 원장 API(GET /api/seller/reward-ledger)가 ORDER_FOLLOWUP 경로라 오버레이 전용으로 내린 뒤에도 후속 확인할 수 있다
-      { label: "적립금 원장", href: "/seller/rewards/ledger", perm: "MEMBER_POINTS", plan: "FOLLOWUP" },
-      // 보기는 MEMBER_POINTS, 켜고 끄기는 대표자만(화면·서버가 막는다)
-      { label: "적립금 실시간 지급", href: "/seller/rewards/live-payout", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
-      { label: "구매자 문의", href: "/seller/buyer-inquiries", perm: "INQUIRY_REPLY", plan: "FOLLOWUP" },
-      // 상품 리뷰: 목록·집계 조회는 파트너스 계정 누구나, 답글·숨김·설정은 구매자 문의(INQUIRY_REPLY) 권한(서버에서 막음). 서버가 스토어 운영 기능을 요구한다
-      { label: "상품 리뷰", href: "/seller/reviews", plan: "STORE_OPERATIONS" },
+      { label: "회원에게 알림 보내기", href: "/seller/member-messages", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
+      {
+        label: "적립금",
+        tabs: [
+          { label: "적립 정책", href: "/seller/rewards", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
+          // 원장 API(GET /api/seller/reward-ledger)가 ORDER_FOLLOWUP 경로라 오버레이 전용으로 내린 뒤에도 후속 확인할 수 있다
+          { label: "지급 · 회수 원장", href: "/seller/rewards/ledger", perm: "MEMBER_POINTS", plan: "FOLLOWUP" },
+          { label: "회원별 잔액", href: "/seller/rewards/balances", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
+          // 보기는 MEMBER_POINTS, 켜고 끄기는 대표자만(화면·서버가 막는다)
+          { label: "실제 지급 켜기", href: "/seller/rewards/live-payout", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
+        ],
+      },
+      {
+        label: "문의 · 리뷰",
+        tabs: [
+          { label: "문의", href: "/seller/buyer-inquiries", perm: "INQUIRY_REPLY", plan: "FOLLOWUP" },
+          // 상품 리뷰: 목록·집계 조회는 파트너스 계정 누구나, 답글·숨김·설정은 구매자 문의(INQUIRY_REPLY) 권한(서버에서 막음). 서버가 스토어 운영 기능을 요구한다
+          { label: "리뷰", href: "/seller/reviews", plan: "STORE_OPERATIONS" },
+        ],
+      },
     ],
   },
   {
-    key: "store",
-    // 스토어 = 쿠폰(프로모션) + 배너·팝업(디자인) + 쇼핑몰 공지·FAQ
-    label: "스토어",
+    key: "marketing",
+    // 마케팅 = 쿠폰(프로모션) + 홈 배너·이벤트 팝업(디자인) + 쇼핑몰 공지·FAQ
+    label: "마케팅",
     items: [
       // 쿠폰: 집계 조회는 파트너스 계정 누구나, 만들기·지급은 적립금(MEMBER_POINTS) 권한(화면에서 막음)
       { label: "쿠폰", href: "/seller/coupons", plan: "STORE_OPERATIONS" },
-      { label: "배너 · 팝업", href: "/seller/banners", plan: "STORE_OPERATIONS" },
+      { label: "홈 배너", href: "/seller/banners", plan: "STORE_OPERATIONS" },
+      { label: "이벤트 팝업", href: "/seller/banners/popups", plan: "STORE_OPERATIONS" },
       // 보기는 권한 없이, 쓰기는 화면에서 SHOP_SETTINGS로 막는다
-      { label: "공지·자주 묻는 질문", href: "/seller/settings/shop-notices", plan: "STORE_OPERATIONS" },
+      { label: "쇼핑몰 공지 · 자주 묻는 질문", href: "/seller/settings/shop-notices", plan: "STORE_OPERATIONS" },
     ],
   },
   {
     key: "stats",
-    label: "분석",
+    label: "통계",
     // 오버레이 전용은 방송 통계만(매출·상품 등은 스토어 운영, MASTER 결정 2026-10-04)
     items: [{ label: "통계", href: "/seller/stats", perm: "SALES_VIEW", plan: "STORE_OPERATIONS", alt: { plan: "OVERLAY", href: "/seller/stats/broadcasts" } }],
   },
@@ -116,18 +153,26 @@ const MENU: Group[] = [
     key: "settings",
     label: "설정",
     items: [
-      { label: "쇼핑몰 정보", href: "/seller/settings/shop", plan: "STORE_OPERATIONS" },
-      { label: "주문 설정", href: "/seller/settings/order", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
-      { label: "배송 설정", href: "/seller/settings/shipping", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
-      // 회원 정책: IA 표에는 없지만 이미 있는 화면이라 쇼핑몰 설정 안에 둔다
-      { label: "회원 정책", href: "/seller/settings/member", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
-      { label: "공유 설정", href: "/seller/settings/share", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
-      { label: "법정 고지 · 약관", href: "/seller/settings/legal", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
+      // 공유 설정(파비콘·공유 카드)은 쇼핑몰 정보 안에 들어간다
+      { label: "쇼핑몰 정보", href: "/seller/settings/shop", plan: "STORE_OPERATIONS", also: [{ href: "/seller/settings/share" }] },
+      {
+        label: "주문 · 배송 설정",
+        tabs: [
+          { label: "주문 설정", href: "/seller/settings/order", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
+          { label: "배송 설정", href: "/seller/settings/shipping", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
+        ],
+      },
+      {
+        label: "약관 · 회원 정책",
+        tabs: [
+          { label: "약관", href: "/seller/settings/legal", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
+          { label: "회원 정책", href: "/seller/settings/member", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
+        ],
+      },
       { label: "검색 노출", href: "/seller/settings/seo", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
-      { label: "결제(PG) 연결", perm: "OWNER", plan: "STORE_OPERATIONS" },
       // 화면이 쓰는 GET /api/seller/message-balance가 대표자 전용이라 메뉴도 대표자에게만 보인다(서버보다 넓게 열지 않는다)
-      { label: "주문자 알림", href: "/seller/settings/order-notifications", perm: "OWNER", plan: "STORE_OPERATIONS" },
-      { label: "발송·이용 충전", href: "/seller/settings/message-balance", perm: "OWNER", plan: "ANY" },
+      { label: "알림 설정", href: "/seller/settings/order-notifications", perm: "OWNER", plan: "STORE_OPERATIONS" },
+      { label: "충전금", href: "/seller/settings/message-balance", perm: "OWNER", plan: "ANY" },
       { label: "직원 계정", href: "/seller/staff", perm: "OWNER", plan: "ANY" },
       { label: "구독 · 결제", href: "/seller/subscription", perm: "OWNER" },
       { label: "쇼핑몰 통합 전환", perm: "OWNER" },
@@ -135,15 +180,29 @@ const MENU: Group[] = [
   },
 ];
 
+// 항목의 화면들(탭이 없으면 항목 자신 하나)
+function leavesOf(item: Item): Leaf[] {
+  return item.tabs ?? [item];
+}
+
 // 주소로 바로 들어와도 요금제에 없는 화면은 안내 화면을 보인다. 메뉴 묶음과 다른 하위 화면만 따로 적는다(긴 주소가 먼저)
 const ROUTE_PLAN: [string, PlanNeed][] = [["/seller/stats/broadcasts", "OVERLAY"]];
 // 쇼핑몰 설정 하위 화면(/seller/settings/…)은 메뉴마다 따로 주소가 있어 접두어가 길게 맞는 메뉴를 고른다
-function routeNav(pathname: string): { group: Group; item: Item } | null {
-  let best: { group: Group; item: Item } | null = null;
+function routeNav(pathname: string): { group: Group; item: Item; leaf: Leaf; exactHref: boolean } | null {
+  let best: { group: Group; item: Item; leaf: Leaf; len: number } | null = null;
   for (const group of MENU)
-    for (const item of group.items)
-      if (item.href && (pathname === item.href || pathname.startsWith(`${item.href}/`)) && (!best || item.href.length > best.item.href!.length)) best = { group, item };
-  return best;
+    for (const item of group.items) {
+      const cands: { href?: string; leaf: Leaf }[] = [
+        ...leavesOf(item).map((leaf) => ({ href: leaf.href, leaf })),
+        // 메뉴에 없는 딸린 화면: plan·perm은 따로 있으면 그것, 없으면 항목 것(탭 항목이면 첫 탭 것)
+        ...(item.also ?? []).map((a) => ({ href: a.href, leaf: { ...leavesOf(item)[0], href: a.href, plan: a.plan ?? leavesOf(item)[0].plan, perm: a.perm ?? leavesOf(item)[0].perm } })),
+      ];
+      for (const { href, leaf } of cands) {
+        if (href && (pathname === href || pathname.startsWith(`${href}/`)) && (!best || href.length > best.len)) best = { group, item, leaf, len: href.length };
+      }
+    }
+  if (!best) return null;
+  return { group: best.group, item: best.item, leaf: best.leaf, exactHref: leavesOf(best.item).some((l) => l.href === pathname) };
 }
 // 상단 바 경로(「주문 › 전체 주문」처럼 대분류 › 메뉴)
 function routeCrumb(pathname: string): string {
@@ -153,7 +212,8 @@ function routeCrumb(pathname: string): string {
 }
 // FOLLOWUP은 메뉴를 숨길 때만 쓴다. 주소로 들어온 화면은 서버(ORDER_FOLLOWUP 경로는 기능 권한이 하나라도 있으면 열림)가 막는지에 따른다
 function routePlan(pathname: string): PlanNeed | undefined {
-  const need = ROUTE_PLAN.find(([p]) => pathname.startsWith(p))?.[1] ?? routeNav(pathname)?.item.plan;
+  const r = routeNav(pathname);
+  const need = ROUTE_PLAN.find(([p]) => pathname.startsWith(p))?.[1] ?? r?.leaf.plan;
   return need === "FOLLOWUP" ? "ANY" : need;
 }
 
@@ -168,27 +228,41 @@ function menuAllows(me: Pick<Me, "features" | "orderFollowup">, need?: PlanNeed)
 function canFor(me: Me, perm: string) {
   return me.isOwner || (perm !== "OWNER" && me.permissions.includes(perm));
 }
+// 보이는 메뉴 항목: href는 보이는 첫 화면, tabs는 보이는 화면들(없으면 단일 화면)
+type ShownItem = Item & { shownTabs: Leaf[] };
+type ShownGroup = { key: string; label: string; items: ShownItem[] };
 // 권한·요금제 기능이 없는 메뉴는 숨기고(alt가 열리면 그 화면으로), 안에 메뉴가 하나도 안 남은 대분류도 숨긴다
-function visibleMenu(me: Me): Group[] {
+function visibleMenu(me: Me): ShownGroup[] {
   return MENU.map((g) => ({
     ...g,
-    items: g.items.flatMap((n): Item[] => {
-      if (n.perm && !canFor(me, n.perm)) return [];
-      if (menuAllows(me, n.plan)) return [n];
-      return n.alt && menuAllows(me, n.alt.plan) ? [{ ...n, href: n.alt.href }] : [];
+    items: g.items.flatMap((n): ShownItem[] => {
+      const leaves = leavesOf(n).flatMap((l): Leaf[] => {
+        if (l.perm && !canFor(me, l.perm)) return [];
+        if (menuAllows(me, l.plan)) return [l];
+        return l.alt && menuAllows(me, l.alt.plan) ? [{ ...l, href: l.alt.href }] : [];
+      });
+      if (leaves.length === 0) return [];
+      return [{ ...n, href: leaves[0].href, shownTabs: n.tabs ? leaves : [] }];
     }),
   })).filter((g) => g.items.length > 0);
 }
 // 로그인 뒤 갈 화면: 기본 화면(href)이 요금제·권한에 없으면 만든 메뉴 중 지금 열리는 첫 메뉴.
 // 열 수 있는 메뉴가 하나도 없으면 기본 화면 그대로(UX-06)
 export function landingFor(me: Me, href: string): string {
-  const perm = routeNav(href)?.item.perm;
+  const perm = routeNav(href)?.leaf.perm;
   if (menuAllows(me, routePlan(href)) && (!perm || canFor(me, perm))) return href;
-  return visibleMenu(me).flatMap((g) => g.items).find((n) => !!n.href && !n.lnbOnly)?.href ?? href;
+  return visibleMenu(me).flatMap((g) => g.items).find((n) => !!n.href)?.href ?? href;
 }
 
 // loc: 지금 화면의 대분류 · 메뉴 이름(본문 위 경로 줄에 쓴다)
-type ShellCtx = { me: Me; trialDaysLeft: number | null; openNav: () => void; can: (perm: string) => boolean; loc: { group: string; item: string; exact: boolean } | null };
+// groupHref·itemHref: 경로 줄에서 앞 항목을 눌러 갈 주소(대분류의 첫 화면·메뉴 항목의 첫 화면)
+type ShellCtx = {
+  me: Me;
+  trialDaysLeft: number | null;
+  openNav: () => void;
+  can: (perm: string) => boolean;
+  loc: { group: string; item: string; exact: boolean; groupHref?: string; itemHref?: string } | null;
+};
 const Ctx = createContext<ShellCtx | null>(null);
 
 export function useSeller(): ShellCtx {
@@ -380,15 +454,25 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   const route = routeNav(pathname);
   const active = route && menu.some((g) => g.key === route.group.key) ? route : null;
   const shown = menu.find((g) => g.key === picked) ?? menu.find((g) => g.key === active?.group.key) ?? menu[0];
-  const loc = active ? { group: active.group.label, item: active.item.label, exact: pathname === active.item.href } : null;
+  const shownGroup = active ? menu.find((g) => g.key === active.group.key) : undefined;
+  const shownItem = shownGroup?.items.find((n) => n.label === active?.item.label);
+  const loc =
+    active && shownGroup && shownItem
+      ? { group: active.group.label, item: active.item.label, exact: active.exactHref, groupHref: shownGroup.items.find((n) => n.href)?.href, itemHref: shownItem.href }
+      : null;
+  // 화면 ←·통합 화면 탭(PageHead가 읽는다): ←는 메뉴로 바로 여는 화면이 아닐 때만, 부모는 그 화면이 속한 메뉴 화면
+  const shellNav: ShellNav = {
+    backHref: active && !active.exactHref ? (shownItem?.shownTabs.find((t) => t.href && pathname.startsWith(`${t.href}/`))?.href ?? shownItem?.href ?? null) : null,
+    tabs: shownItem && shownItem.shownTabs.length >= 2 ? shownItem.shownTabs.map((t) => ({ label: t.label, href: t.href ?? "", on: t.href === active?.leaf.href })) : [],
+  };
   const blocked = (planBlocked?.path === pathname && planBlocked.visit === currentNavGeneration()) || !menuAllows(me, routePlan(pathname));
   // 안내 화면에서 갈 수 있는 첫 화면(만든 메뉴 중 지금 열리는 것)
-  const nextNav = menu.flatMap((g) => g.items).find((n) => !!n.href && !n.lnbOnly && !pathname.startsWith(n.href));
+  const nextNav = menu.flatMap((g) => g.items).find((n) => !!n.href && !pathname.startsWith(n.href));
 
   const utilities = (
     <>
       <a className="util-i" href={`/shop/${me.shop.slug}`} target="_blank" rel="noreferrer">
-        쇼핑몰 바로가기
+        쇼핑몰 보기
       </a>
       <Link className="util-i" href="/seller/notices" onClick={leaveNav}>
         공지 · 문의
@@ -396,9 +480,9 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
       <Link className="util-i" href="/seller/assistant" onClick={leaveNav}>
         도우미
       </Link>
-      <a className="util-i off" aria-disabled="true" title="준비 중입니다">
+      <Link className="util-i" href="/seller/account" onClick={leaveNav}>
         내 계정
-      </a>
+      </Link>
       <button className="util-i util-btn" type="button" onClick={() => void logout()}>
         로그아웃
       </button>
@@ -407,6 +491,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
 
   return (
     <Ctx.Provider value={{ me, trialDaysLeft, openNav, can, loc }}>
+      <ShellNavProvider value={shellNav}>
       <div className={`cs${navOpen ? " nav-open" : ""}${me.impersonation ? " imp" : ""}`} data-readonly={me.readOnly ? "true" : undefined}>
         <header className="gnb">
           <button className="gnb-menu" type="button" aria-label="메뉴 열기" onClick={openNav}>
@@ -421,7 +506,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
           </Link>
           <nav className="gnb-nav" aria-label="주 메뉴">
             {menu.map((g) => {
-              const first = g.items.find((n) => n.href && !n.lnbOnly)?.href;
+              const first = g.items.find((n) => n.href)?.href;
               const cls = `gnb-i${g.key === shown.key ? " on" : ""}`;
               return first ? (
                 <Link key={g.key} className={cls} href={first} onClick={() => setPicked(null)}>
@@ -458,9 +543,9 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
                   n.href ? (
                     <Link
                       key={n.label}
-                      className={`lnb-i${active?.item === n ? " on" : ""}`}
+                      className={`lnb-i${active?.item.label === n.label ? " on" : ""}`}
                       href={n.href}
-                      aria-current={active?.item === n ? "page" : undefined}
+                      aria-current={active?.item.label === n.label ? "page" : undefined}
                       onClick={leaveNav}
                     >
                       {n.label}
@@ -481,6 +566,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </div>
+      </ShellNavProvider>
     </Ctx.Provider>
   );
 }
@@ -522,10 +608,16 @@ export function Topbar({ crumb, badge, children }: { crumb: string; badge?: Reac
   const { loc } = useSeller();
   const parts = crumb.split("›").map((p) => p.trim());
   const last = parts[parts.length - 1];
-  const path = loc ? [loc.group, loc.item] : parts;
-  if (loc && !loc.exact && parts.length > 2 && last !== loc.item && last !== loc.group) path.push(last);
+  // 경로 줄: 「대분류 › 메뉴 › 현재 화면」. 앞 항목은 눌러서 갈 수 있다(메뉴 구조에서 만든 경로만 링크)
+  const raw = loc
+    ? [
+        { t: loc.group, href: loc.groupHref },
+        { t: loc.item, href: loc.itemHref },
+      ]
+    : parts.map((t) => ({ t, href: undefined as string | undefined }));
+  if (loc && !loc.exact && parts.length > 2 && last !== loc.item && last !== loc.group) raw.push({ t: last, href: undefined });
   // 대분류와 메뉴 이름이 같으면(통계 › 통계) 한 번만
-  const shownPath = path.filter((p, i) => i === 0 || p !== path[i - 1]);
+  const shownPath = raw.filter((p, i) => i === 0 || p.t !== raw[i - 1].t);
   return (
     <>
       <div className="loc-bar">
@@ -533,7 +625,13 @@ export function Topbar({ crumb, badge, children }: { crumb: string; badge?: Reac
           {shownPath.map((p, i) => (
             <span key={i} className={i === shownPath.length - 1 ? "crumb-now" : undefined}>
               {i > 0 && <span className="crumb-sep" aria-hidden="true">›</span>}
-              {p}
+              {p.href && i < shownPath.length - 1 ? (
+                <Link className="crumb-link" href={p.href}>
+                  {p.t}
+                </Link>
+              ) : (
+                p.t
+              )}
             </span>
           ))}
         </span>
@@ -541,6 +639,7 @@ export function Topbar({ crumb, badge, children }: { crumb: string; badge?: Reac
         <div className="row tb-actions">{children}</div>
       </div>
       <AccessBanner />
+      <RouteTabs className="rtabs-top" />
     </>
   );
 }

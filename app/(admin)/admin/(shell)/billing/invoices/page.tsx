@@ -138,20 +138,24 @@ function Invoices() {
                   <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                     <thead>
                       <tr>
-                        <th>청구일</th>
-                        <th>쇼핑몰</th>
-                        <th>구분</th>
+                        <th>청구</th>
+                        <th>파트너스</th>
+                        <th>항목</th>
                         <th>금액</th>
-                        <th>결제 상태</th>
+                        <th>상태</th>
                         <th>이용 기간</th>
                         <th>결제일</th>
-                        <th>상세</th>
+                        <th>관리</th>
                       </tr>
                     </thead>
                     <tbody>
                       {items.map((p) => (
                         <tr key={p.id} data-testid="payment-row">
-                          <td className="num">{dayTime(p.createdAt)}</td>
+                          <td className="num">
+                            <Link className="fw6" href={`/admin/billing/invoices/${p.id}`}>
+                              {dayTime(p.createdAt)}
+                            </Link>
+                          </td>
                           <td>
                             <Link className="fw6" href={`/admin/partners/${p.seller.id}`}>
                               {p.seller.shopName}
@@ -171,7 +175,7 @@ function Invoices() {
                           <td className="num">{dayTime(p.paidAt)}</td>
                           <td>
                             <Link className="btn btn-sm btn-out" href={`/admin/billing/invoices/${p.id}`}>
-                              보기
+                              상세
                             </Link>
                           </td>
                         </tr>
