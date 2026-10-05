@@ -34,6 +34,7 @@ const PUBLIC_ERRORS = new Set([
   "lease_expired",
   "customer_action_timeout",
   "cost_limit",
+  "budget_limit",
   "reconnect_target_mismatch",
   "reconnect_target_unverified",
   "verification_missing",
