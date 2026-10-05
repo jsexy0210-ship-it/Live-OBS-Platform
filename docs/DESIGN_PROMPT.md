@@ -371,6 +371,7 @@ SH-040 쇼핑몰 정지·준비 중 안내
 - Outer Radius 12px가 네 모서리에서 끊김 없이 보이고, 검색 CTA Footer까지 같은 외곽 컨테이너로 감싼다. 이중 Border 금지.
 - 구현: inset box-shadow 외곽선 대신 실제 border(필요하면 overflow: clip) 또는 `::after` 가상요소로 외곽선을 최상위에 그린다. Focus Ring·Select Dropdown·Date Picker가 잘리지 않는지 실제 화면으로 확인한다.
 - 화면 구조는 세 층으로 나눈다: ① 외곽 프레임이 전체를 감쌈 ② 내부는 조건 Body / CTA Footer ③ 하단 목록은 List Header / Table Body.
+- 내부 위계(2026-10-05 대표님 지시 「검색영역/행동영역/결과영역 위계」): 외곽선·Radius는 유지하고 한 박스 안 요소를 같은 평면으로 두지 않는다. 검색 패널은 [Header 검색 조건(필요 시)] · [Body 조건 필드] · [Footer 검색·초기화]로, Footer는 정렬된 행동 영역처럼 보이게(충분한 여백, 필요하면 아주 약한 배경 차이 또는 상단 패딩, CTA 위 강한 1px 선으로 이중선 금지). 목록 패널은 [Header 「불러온 N건」 요약 바, 적절한 padding] · [Body 테이블]로 나누고 구분선은 얇게 한 번만. 조건 → 행동 → 결과가 한눈에 읽혀야 한다. 1440·1280·1024에서 확인하고 같은 패턴(SearchBox·ListPanel)을 쓰는 모든 화면에 공통 적용한다.
 
 ## 결과
 
