@@ -312,4 +312,6 @@ EM-101 판매자 가입 승인 안내 (플랫폼 → 판매자: 판매자 관리
 7. 저장하지 않은 변경이 있는 큰 폼(상품 등록·수정, 설정, 오버레이 편집)은 화면 ←·브라우저 Back·GNB·LNB·경로 줄·다른 링크·새로고침·탭 닫기에 같은 확인을 띄운다. 일부 경로만 막지 않는다.
 8. 권한 없음·요금제 제한·없는 대상·오류 화면에는 다음 행동(목록으로·이전 화면·구독·결제·다시 시도·홈) 중 최소 하나를 둔다.
 
+9. (2026-10-05 대표님 지시) 최상위 메뉴 화면을 뺀 모든 화면은 진입 즉시 화면 ← 버튼이 보인다. 화면마다 「들어오는 길 → 돌아가는 곳」을 전부 계산해 `docs/BACK_ROUTES.md` 경로표로 관리하고, 구현은 이 표를 따른다. 새 화면을 만들면 경로표에 같은 PR로 추가한다.
+
 공통 Navigation 도우미 사용법: `lib/client/navigation/` — `useSmartBack(parent)`(1항), `useUrlState(defaults)`·`useScrollRestore(key, ready)`(3항), `useUnsavedGuard(dirty)`·`confirmLeave`(7항), `sanitizeNext(raw, NEXT_SCOPE.*)`(6항). 앱 안 이동 기록은 루트 레이아웃의 `<NavigationTracker />`가 쌓으며, 없으면 화면 ←는 항상 부모로 replace한다.
