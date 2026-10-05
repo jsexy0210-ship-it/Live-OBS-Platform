@@ -47,7 +47,7 @@ async function login(page: Page, email: string) {
 
 async function search(page: Page, q: string) {
   await page.goto("/admin/partners");
-  await page.getByLabel("쇼핑몰 이름 · 주소").fill(q);
+  await page.getByLabel("검색어", { exact: true }).fill(q);
   await page.getByRole("button", { name: "검색", exact: true }).click();
 }
 
@@ -55,15 +55,15 @@ test("최고관리자: 검색·상태 필터로 찾고, 이용 정지는 사유�
   await login(page, emails.super);
   await search(page, run);
   await expect(page.getByTestId("partner-row")).toHaveCount(2);
-  await page.getByLabel("상태", { exact: true }).selectOption("PENDING");
+  await page.getByLabel("상태", { exact: true }).selectOption("NORMAL");
   await page.getByRole("button", { name: "검색", exact: true }).click();
   await expect(page.getByTestId("partner-row")).toHaveCount(1);
-  await expect(page.getByTestId("partner-row")).toContainText(slugB);
+  await expect(page.getByTestId("partner-row")).toContainText(slugA);
   await page.getByRole("button", { name: "초기화" }).click();
   await search(page, slugA);
   const row = page.getByTestId("partner-row");
   await expect(row).toHaveCount(1);
-  await expect(row).toContainText("운영 중");
+  await expect(row).toContainText("정상");
 
   await row.getByRole("button", { name: "이용 정지" }).click();
   const dialog = page.getByRole("dialog");
@@ -78,7 +78,7 @@ test("최고관리자: 검색·상태 필터로 찾고, 이용 정지는 사유�
 
   await row.getByRole("button", { name: "정지 해제" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "정지 해제" }).click();
-  await expect(row).toContainText("운영 중");
+  await expect(row).toContainText("정상");
   expect((await db.seller.findUniqueOrThrow({ where: { id: idA } })).status).toBe("ACTIVE");
 });
 
@@ -135,9 +135,38 @@ test("CS: 목록·상세는 볼 수 있지만 이용 정지·해제 버튼은 �
   await login(page, emails.cs);
   await search(page, slugA);
   await expect(page.getByTestId("partner-row")).toHaveCount(1);
-  await expect(page.getByRole("button", { name: /이용 정지|정지 해제/ })).toHaveCount(0);
+  await expect(page.getByTestId("partner-row").getByRole("button", { name: /이용 정지|정지 해제/ })).toHaveCount(0);
   await expect(page.locator("th", { hasText: "관리" })).toHaveCount(1);
   await page.getByRole("link", { name: nameA }).click();
   await expect(page.getByRole("heading", { name: nameA, level: 1 })).toBeVisible();
   await expect(page.getByRole("button", { name: /이용 정지|정지 해제/ })).toHaveCount(0);
+});
+
+test("목록: 요약 칩 건수가 서버 값과 같고, 칩·정렬·쪽 크기는 주소에 남으며, 엑셀 내려받기에 연락처가 없다", async ({ page }) => {
+  await login(page, emails.super);
+  await page.goto("/admin/partners");
+  const api = await (await page.request.get("/api/admin/sellers?summary=1&limit=1")).json();
+  await expect(page.getByRole("button", { name: new RegExp(`^전체 ${api.summary.total}$`) })).toBeVisible();
+  await expect(page.getByRole("button", { name: new RegExp(`^정상 ${api.summary.normal}$`) })).toBeVisible();
+
+  await page.getByRole("button", { name: /^정상 \d+$/ }).click();
+  await expect(page).toHaveURL(/state=NORMAL/);
+  await expect(page.getByRole("button", { name: /^정상 \d+$/ })).toHaveAttribute("aria-pressed", "true");
+  for (const text of await page.getByTestId("partner-row").locator("td:nth-child(3)").allInnerTexts()) expect(text).toBe("정상");
+
+  await page.getByLabel("정렬").selectOption("orders");
+  await page.getByLabel("쪽 크기").selectOption("50");
+  await expect(page).toHaveURL(/sort=orders/);
+  await expect(page).toHaveURL(/limit=50/);
+  await page.reload();
+  await expect(page.getByLabel("정렬")).toHaveValue("orders");
+
+  const href = await page.getByRole("link", { name: "엑셀 내려받기" }).or(page.locator("a", { hasText: "엑셀 내려받기" })).first().getAttribute("href");
+  expect(href).toContain("/api/admin/sellers/export");
+  const csv = await (await page.request.get(href!)).text();
+  expect(csv.charCodeAt(0)).toBe(0xfeff);
+  expect(csv).not.toContain("@example.com");
+
+  await page.getByTestId("partner-row").first().getByRole("button", { name: "대신 보기" }).click();
+  await expect(page.getByRole("dialog")).toContainText("대신 보시겠습니까");
 });
