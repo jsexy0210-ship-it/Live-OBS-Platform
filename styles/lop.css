@@ -192,8 +192,6 @@ select.inp{cursor:pointer}
 /* 공통 모달 바탕(components/admin-ui/Modal.tsx): 화면에 고정, 배경 조작 차단. is-sheet는 휴대폰 폭에서 바텀시트 */
 .ui-modal-bg{position:fixed;inset:0;z-index:var(--ui-z-modal);display:flex;align-items:center;justify-content:center;padding:var(--ui-sp-16);background:var(--wds-material-dimmer);overscroll-behavior:contain}
 .modal-t{font-size:var(--ui-fs-section);line-height:var(--ui-lh-section);font-weight:600;color:var(--wds-label-normal)}
-.modal-d{font-size:var(--ui-fs-body);line-height:var(--ui-lh-body);color:var(--wds-label-alternative)}
-.modal-body{display:flex;flex-direction:column;gap:var(--ui-gap-field);min-width:0}
 .modal-confirm{display:flex;flex-direction:column;gap:var(--ui-sp-12);padding:var(--ui-sp-16);border-radius:var(--ui-r-control);background:var(--wds-background-status-cautionary);font-size:var(--ui-fs-body);line-height:var(--ui-lh-body)}
 .modal-confirm>.modal-f{padding-top:0}
 @media (max-width:767px){
