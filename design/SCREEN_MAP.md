@@ -281,7 +281,6 @@
 | ScreenList | 화면 목록 보드 | DRAFT · 정본은 이 SCREEN_MAP |
 | SH-T · SH-T-PC | 파트너스별 테마 구조 비교 | DRAFT |
 | OV-008 | 오버레이 위젯 해부·효과 | DRAFT |
-| DS-CONFIRM | 공통 확인 창(규칙 · 관리자 6종 · 구매자 PC 2종 · 휴대폰 시트 2종) | FINAL v272 (#633 본문 기준) |
 | DS-NAV | 새 GNB · 메뉴 구조표 | PROPOSAL (대표님 확정 전, 구현 근거 아님) |
 | DS-TYPE-SCALE | 글자 · 버튼 · 간격 크기 체계 | PROPOSAL (대표님 확정 전, 구현 근거 아님) |
 
