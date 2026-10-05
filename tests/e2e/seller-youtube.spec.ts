@@ -136,3 +136,25 @@ test("방송 진행 권한이 없는 직원: 메뉴가 없고 주소로 들어�
   await expect(page.getByText("필요한 권한: 방송 진행")).toBeVisible();
   await expect(page.getByRole("link", { name: "외부 채널 연결" })).toHaveCount(0);
 });
+
+// 쉬운 말 문구(「다른 채널로 바꾸기」「지금 하는 방송 찾아서 이어 두기」 등)로 버튼·머리글이 길어졌다. 1440·1024·390폭에서 화면이 가로로 밀리지 않는지 보고 캡처를 남긴다(E2E_SCREENSHOTS=1).
+test("유튜브 이어 두기: 1440·1024·390폭에서 가로로 넘치지 않는다", async ({ page }) => {
+  await seedYoutube();
+  await login(page, "demo-owner@example.com", "/seller/youtube");
+  await expect(page.getByTestId("yt-status")).toContainText("이어짐");
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await page.waitForTimeout(600); // 좁은 폭에서 메뉴 서랍이 접히는 전환이 끝난 뒤 잰다
+    const doc = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth, sx: window.scrollX }));
+    expect(doc.sw).toBe(width);
+    expect(doc.cw).toBe(width);
+    expect(doc.sx).toBe(0);
+    for (const name of ["다른 채널로 바꾸기", "방송 이어 둔 것 풀기", "유튜브 이어 둔 것 풀기"]) {
+      const box = await page.getByRole("button", { name }).first().boundingBox();
+      expect(box, name).not.toBeNull();
+      expect(box!.x, name).toBeGreaterThanOrEqual(0);
+      expect(box!.x + box!.width, name).toBeLessThanOrEqual(width + 1);
+    }
+    if (SHOTS) await page.screenshot({ path: `tests/e2e/screenshots/SA-057-plain-${width}.png`, fullPage: true });
+  }
+});
