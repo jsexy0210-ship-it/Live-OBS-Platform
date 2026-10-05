@@ -106,4 +106,26 @@ test("휴대폰 390: 찜 · 공유 · 장바구니에 담기 · 바로 주문하
   expect(Math.round(boxes[1].w)).toBe(44);
   for (const b of boxes) expect(b.sw).toBeLessThanOrEqual(b.cw + 1); // 글자가 칸을 넘치지 않는다
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  // 화면 아래 고정 바: 아래 탭 대신 보이고, 화면 맨 아래에 붙는다(스크롤해도 그대로)
+  const bar = page.locator(".pd-actions");
+  expect(await bar.evaluate((el) => getComputedStyle(el).position)).toBe("fixed");
+  await expect(page.getByRole("navigation", { name: "바로 가기" })).toBeHidden();
+  await page.mouse.wheel(0, 1500);
+  const rect = await bar.evaluate((el) => { const r = el.getBoundingClientRect(); return { bottom: r.bottom, left: r.left, right: r.right, vh: window.innerHeight, vw: window.innerWidth }; });
+  expect(Math.round(rect.bottom)).toBe(rect.vh);
+  expect(Math.round(rect.left)).toBe(0);
+  expect(Math.round(rect.right)).toBe(rect.vw);
+  if (process.env.E2E_SCREENSHOTS === "1") await page.screenshot({ path: "tests/e2e/screenshots/SH-003-pd-bar-390.png" });
+});
+
+test("PC·태블릿: 하단 바는 고정되지 않고 상품 정보 아래에 있다", async ({ page, baseURL }) => {
+  await login(page, baseURL!);
+  const id = await productIdOf(page, "탑로더 25장");
+  for (const [w, name] of [[1024, "1024"], [1440, "1440"]] as const) {
+    await page.setViewportSize({ width: w, height: 900 });
+    await page.goto(`/shop/${SLUG}/products/${id}`);
+    expect(await page.locator(".pd-actions").evaluate((el) => getComputedStyle(el).position)).not.toBe("fixed");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    if (process.env.E2E_SCREENSHOTS === "1") await page.screenshot({ path: `tests/e2e/screenshots/SH-003-pd-bar-${name}.png` });
+  }
 });
