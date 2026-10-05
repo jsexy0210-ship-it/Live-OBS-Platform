@@ -89,7 +89,10 @@ function contentFields(w: Widget): Field[] {
     case "CURRENT_ORDER":
       return [{ key: "marquee", label: "긴 닉네임 흐르기", kind: "bool" }, flow];
     case "OPEN_TIMER":
+    case "EVENT_CARD":
       return [title];
+    case "PURCHASE_RANKING":
+      return [title, rows];
   }
 }
 const APPEAR: [string, string][] = [

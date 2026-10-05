@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { loginSeller } from "../../../../../lib/server/auth/login";
 import { loginErrorBody } from "../../../../../lib/server/auth/messages";
 import { prisma } from "../../../../../lib/server/db";
-import { isString, loginFailureStatus, mutation, readJson, requestMeta, setSessionCookie } from "../../../../../lib/server/http/route";
+import { clearImpersonationCookie, isString, loginFailureStatus, mutation, readJson, requestMeta, setSessionCookie } from "../../../../../lib/server/http/route";
 
 export const POST = mutation(async (req: Request) => {
   const body = await readJson<{ email: string; password: string; shopSlug: string; accountType?: unknown }>(req);
@@ -19,5 +19,7 @@ export const POST = mutation(async (req: Request) => {
   if (!result.ok) return NextResponse.json(loginErrorBody(result.reason), { status: loginFailureStatus(result.reason) });
   const res = NextResponse.json({ ok: true });
   setSessionCookie(res, "seller", result.token, result.expiresAt);
+  // 같은 브라우저에 마스터 대리 조회 쿠키가 남아 있으면 지운다(남기면 로그인한 뒤에도 대리 조회 화면이 우선한다)
+  clearImpersonationCookie(res);
   return res;
 });
