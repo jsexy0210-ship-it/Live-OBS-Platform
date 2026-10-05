@@ -176,7 +176,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/broadcast/history": "OVERLAY",
   "seller/broadcast/summary": "OVERLAY",
   "seller/external-shops": "EXTERNAL_INTEGRATION",
-  "seller/external-shops/callback": "EXTERNAL_INTEGRATION",
+  "seller/external-shops/oauth-done": "EXTERNAL_INTEGRATION",
   "seller/external-shops/[id]": "EXTERNAL_INTEGRATION",
   "seller/youtube": "OVERLAY",
   "seller/youtube/channel": "OVERLAY",

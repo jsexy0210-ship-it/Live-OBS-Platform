@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { GET as callbackRoute } from "../../app/api/seller/external-shops/callback/route";
+import { GET as callbackRoute } from "../../app/api/seller/external-shops/oauth-done/route";
 import { GET as listRoute, POST as startRoute } from "../../app/api/seller/external-shops/route";
 import { DELETE as deleteRoute } from "../../app/api/seller/external-shops/[id]/route";
 import { POST as webhookRoute } from "../../app/api/external/webhook/route";
@@ -252,10 +252,10 @@ describe("라우트", () => {
     const start = await startRoute(new Request("http://localhost:3000/api/seller/external-shops", { method: "POST", headers: H(cookie), body: JSON.stringify({ shopUrl: "https://myshop.cafe24.com" }) }));
     expect(start.status).toBe(503);
     expect(JSON.stringify(await start.json())).not.toMatch(/cafe24/i);
-    const cb = await callbackRoute(new Request("http://localhost:3000/api/seller/external-shops/callback?state=x&code=y", { headers: { host: "localhost:3000", cookie } }));
+    const cb = await callbackRoute(new Request("http://localhost:3000/api/seller/external-shops/oauth-done?state=x&code=y", { headers: { host: "localhost:3000", cookie } }));
     expect(cb.status).toBe(303);
     expect(cb.headers.get("location")).toBe("/seller/external-shops?error=integration_disabled");
-    const noLogin = await callbackRoute(new Request("http://localhost:3000/api/seller/external-shops/callback?state=x&code=y", { headers: { host: "localhost:3000" } }));
+    const noLogin = await callbackRoute(new Request("http://localhost:3000/api/seller/external-shops/oauth-done?state=x&code=y", { headers: { host: "localhost:3000" } }));
     expect(noLogin.headers.get("location")).toBe("/seller/external-shops?error=login_required");
     const del = await deleteRoute(new Request("http://localhost:3000/api/seller/external-shops/zzz", { method: "DELETE", headers: H(cookie) }), { params: Promise.resolve({ id: "zzz" }) });
     expect(del.status).toBe(404);
@@ -265,5 +265,9 @@ describe("라우트", () => {
     const res = await webhookRoute(new Request("http://localhost:3000/api/external/webhook", { method: "POST", body: "{}" }));
     expect(res.status).toBe(503);
     expect(await res.text()).toBe("");
+  });
+  it("웹훅 라우트: 선언한 본문 크기가 상한을 넘으면 읽기 전에 413", async () => {
+    const res = await webhookRoute(new Request("http://localhost:3000/api/external/webhook", { method: "POST", headers: { "content-length": String(300 * 1024) }, body: "{}" }));
+    expect(res.status).toBe(413);
   });
 });

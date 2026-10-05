@@ -1,6 +1,6 @@
 # 외부 쇼핑몰 연동 서버 기반 (SA-005·006, 오버레이 전용 파트너스)
 
-코드: `lib/server/external/**`, `app/api/seller/external-shops/**`, `app/api/external/webhook`, 스키마 「외부 쇼핑몰 연동」 블록(마이그레이션 `20261005081000_external_shop`). 2026-10-05 KST, MASTER 승인(월 1만 원 이내·키 없으면 꺼짐).
+코드: `lib/server/external/**`, `app/api/seller/external-shops/**`(OAuth 복귀 경로는 `…/oauth-done`: 점검 중 「callback」 이름 경로는 막지 않는다는 규칙 때문에 이름을 피했다. 이 경로는 파트너스 세션 화면 흐름이라 점검 중에는 막힌다), `app/api/external/webhook`, 스키마 「외부 쇼핑몰 연동」 블록(마이그레이션 `20261005081000_external_shop`). 2026-10-05 KST, MASTER 승인(월 1만 원 이내·키 없으면 꺼짐).
 
 ## 이 단계에서 하는 것 / 아닌 것
 - 한다: 연결 시작(1회용·만료 state, 시작한 파트너스·직원 세션에 묶음) · OAuth 콜백 · 토큰 암호화 저장(AES-256-GCM, 파트너스 id 묶음) · 해제(쇼핑몰 쪽 철회, 실패하면 「해제 대기」) · 웹훅 수신(서명 검증 후 원본 저장, 같은 본문 한 번만) · 권한(대표자·쇼핑몰 설정 직원, 요금제 「외부 연동」) · 연결 중인 쇼핑몰의 중복 연결 차단.
