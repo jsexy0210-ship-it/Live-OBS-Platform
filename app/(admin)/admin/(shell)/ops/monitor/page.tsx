@@ -7,9 +7,9 @@ import { adminApi } from "../../../_components/api";
 import { AdminTopbar } from "../../../_components/AdminShell";
 import { dayTime } from "../../../_components/partners";
 
-// MA-100 실시간 감시(GET /api/admin/ops/metrics, 최고관리자만 — 다른 역할은 셸이 권한 없음 화면으로 막는다). 30초마다 다시 읽는다.
+// MA-100 실시간 감시(GET /api/admin/ops/metrics, 최고관리자만 — 다른 역할은 셸이 권한 없음 화면으로 막는다). 10초마다 다시 읽는다.
 // 「감시 끊김」: 지표를 읽지 못하면 마지막으로 읽은 시각과 함께 알린다. 정기 실행은 신호가 1시간 주기(SCHEDULER_INTERVAL_MS)라 3시간 넘게 없으면 멈춤으로 본다.
-const REFRESH_MS = 30_000;
+const REFRESH_MS = 10_000;
 const STALE_MS = 3 * 3600_000;
 type Beat = { instance: string; job: string | null; lastRunAt: string | null; lastStatus: string; lastOkAt: string | null; lastError: string | null; registeredAt: string };
 type Open = { source: string; key: string; occurredAt: string; message: string; severity: string };
@@ -86,7 +86,7 @@ export default function OpsMonitorPage() {
               <span className={`bdg ${failed ? "b-fail" : "b-done"}`}>{failed ? "감시 끊김" : "감시 중"}</span>
               <span className="t-l2 c-alt">
                 마지막 갱신 {dayTime(lastOk)}
-                {failed ? " · 지표를 불러오지 못했습니다. 30초마다 다시 시도합니다." : " · 30초마다 새로 읽습니다."}
+                {failed ? " · 지표를 불러오지 못했습니다. 10초마다 다시 시도합니다." : " · 10초마다 새로 읽습니다."}
               </span>
             </span>
           </div>
