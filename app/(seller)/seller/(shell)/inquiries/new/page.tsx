@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { PageHead } from "../../../../../../components/admin-ui";
+import { PageHead, useConfirm } from "../../../../../../components/admin-ui";
 import { InquiryAttach, type Attached } from "../../../../../../components/seller/InquiryAttach";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { useUnsavedGuard } from "../../../../../../lib/client/navigation";
@@ -13,14 +13,13 @@ import { INQUIRY_BODY_MAX, INQUIRY_CATEGORY, INQUIRY_TITLE_MAX, type InquiryCate
 // API: POST /api/seller/platform-inquiries { category, title, body, imageIds?, noticeId? } → 201 { inquiry } · 400 invalid_* · 429 too_many_inquiries(24시간 20건).
 function Form() {
   const router = useRouter();
+  const { confirm } = useConfirm();
   const noticeId = useSearchParams().get("noticeId");
   const [category, setCategory] = useState<InquiryCategory | "">("");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [images, setImages] = useState<Attached[]>([]);
   const [noticeTitle, setNoticeTitle] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
 
   useEffect(() => {
@@ -33,17 +32,24 @@ function Form() {
   useUnsavedGuard(dirty && !sent, "작성 중인 내용이 사라집니다. 나가시겠습니까?");
 
   const send = async () => {
-    if (!ready || busy) return;
-    setBusy(true);
-    setError(null);
-    const r = await api<{ inquiry: { id: string } }>("/api/seller/platform-inquiries", {
-      method: "POST",
-      body: { category, title: title.trim(), body: body.trim(), imageIds: images.map((i) => i.id), noticeId: noticeTitle ? noticeId : undefined },
+    if (!ready) return;
+    let id = "";
+    const ok = await confirm({
+      title: "문의를 보내시겠습니까?",
+      body: "보낸 뒤에는 수정하거나 지울 수 없습니다. 답변은 「내 문의」에서 확인합니다.",
+      confirmLabel: "문의 보내기",
+      run: async () => {
+        const r = await api<{ inquiry: { id: string } }>("/api/seller/platform-inquiries", {
+          method: "POST",
+          body: { category, title: title.trim(), body: body.trim(), imageIds: images.map((i) => i.id), noticeId: noticeTitle ? noticeId : undefined },
+        });
+        if (!r.ok) return r.message ?? "문의를 보내지 못했습니다. 쓴 내용은 그대로 남아 있으니 인터넷 연결을 확인한 뒤 다시 눌러 주십시오";
+        id = r.data.inquiry.id;
+      },
     });
-    setBusy(false);
-    if (!r.ok) return setError(r.message ?? "문의를 보내지 못했습니다. 쓴 내용은 그대로 남아 있으니 인터넷 연결을 확인한 뒤 「문의 보내기」를 다시 눌러 주십시오");
+    if (!ok) return;
     setSent(true);
-    router.replace(`/seller/inquiries/${r.data.inquiry.id}`);
+    router.replace(`/seller/inquiries/${id}`);
   };
 
   return (
@@ -72,7 +78,7 @@ function Form() {
               <label htmlFor="iq-cat" className="req">
                 유형
               </label>
-              <select id="iq-cat" className="inp" value={category} disabled={busy} onChange={(e) => setCategory(e.target.value as InquiryCategory | "")}>
+              <select id="iq-cat" className="inp" value={category} onChange={(e) => setCategory(e.target.value as InquiryCategory | "")}>
                 <option value="">선택</option>
                 {Object.entries(INQUIRY_CATEGORY).map(([k, v]) => (
                   <option key={k} value={k}>
@@ -85,7 +91,7 @@ function Form() {
               <label htmlFor="iq-title" className="req">
                 제목
               </label>
-              <input id="iq-title" className="inp" maxLength={INQUIRY_TITLE_MAX} value={title} disabled={busy} onChange={(e) => setTitle(e.target.value)} />
+              <input id="iq-title" className="inp" maxLength={INQUIRY_TITLE_MAX} value={title} onChange={(e) => setTitle(e.target.value)} />
               <span className="help num">
                 {title.length}/{INQUIRY_TITLE_MAX}자
               </span>
@@ -94,23 +100,18 @@ function Form() {
               <label htmlFor="iq-body" className="req">
                 내용
               </label>
-              <textarea id="iq-body" className="inp" style={{ height: 200, padding: "10px 12px" }} maxLength={INQUIRY_BODY_MAX} value={body} disabled={busy} onChange={(e) => setBody(e.target.value)} />
+              <textarea id="iq-body" className="inp" style={{ height: 200, padding: "10px 12px" }} maxLength={INQUIRY_BODY_MAX} value={body} onChange={(e) => setBody(e.target.value)} />
               <span className="help num">
                 {body.length}/{INQUIRY_BODY_MAX}자
               </span>
             </div>
             <div className="fld">
               <span className="lbl">사진</span>
-              <InquiryAttach images={images} onChange={setImages} disabled={busy} />
+              <InquiryAttach images={images} onChange={setImages} />
             </div>
-            {error && (
-              <div className="msg msg-neg" role="alert">
-                <span>{error}</span>
-              </div>
-            )}
             <div className="row" style={{ gap: 8 }}>
-              <button className="btn" type="submit" disabled={!ready || busy}>
-                {busy ? "보내는 중" : "문의 보내기"}
+              <button className="btn" type="submit" disabled={!ready}>
+                문의 보내기
               </button>
             </div>
           </form>

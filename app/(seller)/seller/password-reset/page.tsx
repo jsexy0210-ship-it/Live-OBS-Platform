@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { ConfirmProvider } from "../../../../components/admin-ui";
 import IdentityCheck from "../../../../components/seller/IdentityCheck";
 import NewPasswordForm from "../../../../components/seller/NewPasswordForm";
 import { AuthFrame, FindSwitch, IdentityUnavailable, useStaffType, withType } from "../../../../components/seller/PartnersAuth";
@@ -18,7 +19,16 @@ const BASE = "/api/seller/password-reset";
 
 type Step = "find" | "password" | "done";
 
+// 로그인 전 화면이라 셸이 없으므로 확인 창 공급자를 이 화면에서 감싼다
 export default function PasswordResetPage() {
+  return (
+    <ConfirmProvider>
+      <PasswordResetPageInner />
+    </ConfirmProvider>
+  );
+}
+
+function PasswordResetPageInner() {
   const [step, setStep] = useState<Step>("find");
   const staff = useStaffType();
   const [unavailable, setUnavailable] = useState(false);
