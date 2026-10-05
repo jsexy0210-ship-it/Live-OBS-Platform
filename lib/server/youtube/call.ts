@@ -18,7 +18,8 @@ export type YoutubeRejection =
   | "seller_quota_exhausted"
   | "youtube_unavailable"
   | "invalid_request"
-  | "no_active_live";
+  | "no_active_live"
+  | "live_in_progress";
 
 // 파트너스 관리자 화면 문구(명사형·합니다체)
 export const YOUTUBE_MESSAGES: Record<YoutubeRejection, string> = {
@@ -37,6 +38,7 @@ export const YOUTUBE_MESSAGES: Record<YoutubeRejection, string> = {
   youtube_unavailable: "유튜브에 연결하지 못했습니다. 잠시 뒤 다시 시도해 주십시오",
   invalid_request: "요청 값을 확인해 주십시오",
   no_active_live: "연결된 방송이 없습니다. 방송을 먼저 연결해 주십시오",
+  live_in_progress: "방송을 끝낸 뒤 바꿀 수 있습니다",
 };
 
 export type YoutubeResult<T> = { ok: true; value: T } | { ok: false; reason: YoutubeRejection };
