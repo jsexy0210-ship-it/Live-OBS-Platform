@@ -27,11 +27,11 @@
 
 | 상태 | 수 |
 |---|---|
-| FINAL | 35 |
-| DRAFT | 143 |
+| FINAL | 73 |
+| DRAFT | 110 |
 | BLOCKED | 0 |
 | MISSING | 14 |
-| SUPERSEDED | 1 |
+| SUPERSEDED | 2 |
 
 소스 파일: `design/project/` 362개 (보드 339장 · canvas.json · ds/wds 2 · lop.css · ov.css · ibgen 17 · fonts/WantedSans-OFL.txt)
 
@@ -127,10 +127,10 @@
 | SA-001 | 방송 대시보드 | /seller/broadcast | design/project/SA-001.dc.html | SA-001.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: SA-001-B, SA-001-C, SA-001-DK, SA-001-E, SA-001-L, SA-001-M1, SA-001-M2, SA-001-M3, SA-001-M4, SA-001-M5, SA-001-M6 |
 | SA-002 | 파트너스 홈 | /seller | design/project/SA-002-IA.dc.html | SA-002-IA.dc.html | FINAL | 1791213911-1437 | 2026-10-06 00:27 KST | 현대화 기준 충족(c24/sh24 토큰 · 2026-10-05 이후 작성·갱신) · 변형: SA-002 (SA-002 = SUPERSEDED) |
 | SA-002-O | 오버레이 전용 홈 | /seller (오버레이 전용) | design/project/SA-002-O.dc.html | SA-002-O.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| SA-003 | 시작하기 | /seller/onboarding | design/project/SA-003.dc.html | SA-003.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| SA-004 | 온보딩 | /seller/onboarding | design/project/SA-004.dc.html | SA-004.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
+| SA-003 | 시작하기 | /seller/onboarding | design/project/SA-003.dc.html | SA-003.dc.html | FINAL | v302 (1791240973-f773) | 2026-10-06 07:56 KST | v302 MASTER 판정(2026-10-06): 구현 흐름 정본 — 맨 위 「쇼핑몰까지 쓰기 / 방송 화면만 쓰기」 갈래 선택(SA-004 흡수) · 단계 6(이용권 결제 · 쇼핑몰 정보 입력 · 상품 등록 · 주문 규칙 · 방송 화면 꾸미기 · 방송 화면 주소 복사) / 방송 화면만 3(다른 쇼핑몰 이어 쓰기 · 꾸미기 · 주소 복사) · 상태 3종(완료 · 지금 할 차례 · 기다리는 중) · 버튼 「다시 보기 / …으로」 · 진행률 · 「지금 상태」 · 도우미 열기 유지 · 변형: 방송 화면만 쓰기(체험) · 갈래 바꾸기 실패 · 닫음 토스트 |
+| SA-004 | 온보딩(SA-003에 흡수) | /seller/onboarding | design/project/SA-004.dc.html | SA-004.dc.html | SUPERSEDED | v302 (1791240973-f773) | 2026-10-06 07:56 KST | v302 SA-003에 흡수(MASTER 판정 2026-10-06): 쇼핑몰 여부는 가입 신청 때 정해지고 로그인 뒤에는 SA-003 맨 위 선택 칸에서 바꿈 · 주소 확인 · 연동 인증은 SA-006 · 대신 연결은 SA-150 · 보드는 안내만 남김 |
 | SA-005 | 쇼핑몰 통합 전환 | — | design/project/SA-005.dc.html | SA-005.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| SA-006 | 외부 쇼핑몰 연동 | /seller/external-shops | design/project/SA-006.dc.html | SA-006.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
+| SA-006 | 외부 쇼핑몰 연동 | /seller/external-shops | design/project/SA-006.dc.html | SA-006.dc.html | FINAL | v302 (1791240973-f773) | 2026-10-06 07:56 KST | v302 상태를 서버 실제 값 3종(이어짐 · 다시 이어야 함 · 끊는 중→끊어짐)으로 · 「결제 잠금으로 멈춤」 행 · 변형 제거(서버에 생기면 추가) · 열 「마지막으로 받은 주문 알림」 · 버튼 「해제 다시 요청하기」 「이 주소로 연결 시작하기」 · 해제 확인 창 [유지][연결 해제] · 「쇼핑몰 추가 연결」 변형 · 마지막 이벤트 열 유지(보드 정본) |
 | SA-010 | 상품(메뉴 그룹) | — | — | 메뉴 그룹 ID(화면 아님) | MISSING | 1791213911-1437 | 2026-10-06 00:27 KST | IA 그룹 헤더 · 보드 대상 아님 |
 | SA-011 | 상품 목록 | /seller/products | design/project/SA-011.dc.html | SA-011.dc.html | FINAL | 1791213911-1437 | 2026-10-06 00:27 KST | DS-PANEL 목록 패널 구조 적용(v243) · 변형: SA-011-DK, SA-011-M, SA-011-PRE, SA-011-S · 현대화 기준 재확인(v270): 관리 열 가로 flex 가운데 8px(열 190) · 상품명 제목 왼쪽 · 썸네일 64 |
 | SA-012 | 상품 등록·수정 | /seller/products/new · [productId] | design/project/SA-012.dc.html | SA-012.dc.html | FINAL | 1791213911-1437 | 2026-10-06 00:27 KST | 현대화 기준 충족(v270): 폼 표 안 버튼 40(입력과 같은 줄) · 표 안 보조 행동만 32 · 아이콘 버튼 정사각 32 · 하단 고정 행동 줄 · 상태 12종 · 변형: SA-012-D, SA-012-DK, SA-012-E |
@@ -190,18 +190,18 @@
 | SA-090 | 구독·결제 | /seller/subscription | design/project/SA-090.dc.html | SA-090.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: SA-090-M |
 | SA-100 | 직원 계정·권한 | /seller/staff | design/project/SA-100.dc.html | SA-100.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: SA-100-D, SA-100-M |
 | SA-110 | 공지·문의(메뉴 그룹) | — | — | 메뉴 그룹 ID(화면 아님) | MISSING | 1791213911-1437 | 2026-10-06 00:27 KST | IA 그룹 헤더 · 보드 대상 아님 |
-| SA-111 | 공지사항 목록 | /seller/notices | design/project/SA-111.dc.html | SA-111.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| SA-112 | 공지 상세 | /seller/notices/[id] | design/project/SA-112.dc.html | SA-112.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| SA-113 | 내 문의 목록 | /seller/inquiries | design/project/SA-113.dc.html | SA-113.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| SA-114 | 문의 작성 | /seller/inquiries/new | design/project/SA-114.dc.html | SA-114.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| SA-115 | 문의 상세·답변 | /seller/inquiries/[id] | design/project/SA-115.dc.html | SA-115.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
+| SA-111 | 공지사항 목록 | /seller/notices | design/project/SA-111.dc.html | SA-111.dc.html | FINAL | v302 (1791240973-f773) | 2026-10-06 07:56 KST | v302 보드 정본(MASTER 판정): 페이지 방식 20개 · 열 「올린 날」 · 「맨 위 고정」 배지 · 쉬운 말(방송 화면 · 결제 연결) · 날짜 2026.10.02 |
+| SA-112 | 공지 상세 | /seller/notices/[id] | design/project/SA-112.dc.html | SA-112.dc.html | FINAL | v302 (1791240973-f773) | 2026-10-06 07:56 KST | v302 보드 정본: 「내 방송 일정과 겹칩니까?」 제거(근거 없는 기능) · ONQ 운영팀 · 「올림」 · 삭제 안내문 구현 문구 |
+| SA-113 | 내 문의 목록 | /seller/inquiries | design/project/SA-113.dc.html | SA-113.dc.html | FINAL | v302 (1791240973-f773) | 2026-10-06 07:56 KST | v302 보드 정본: 열 「문의 종류 · 마지막 글」 · 「새 답변」 배지 · 빈 상태 「보낸 문의가 없습니다」 · 쉬운 말 · 날짜 2026.10.02 |
+| SA-114 | 문의 작성 | /seller/inquiries/new | design/project/SA-114.dc.html | SA-114.dc.html | FINAL | v302 (1791240973-f773) | 2026-10-06 07:56 KST | v302 보드 정본: 「문의 종류」 「문의 내용」 「첨부 사진」 「문의 보내기」 · 「ONQ 운영팀에 문의하기」 · 나가기 확인 변형 추가 · 쉬운 말 · 날짜 |
+| SA-115 | 문의 상세·답변 | /seller/inquiries/[id] | design/project/SA-115.dc.html | SA-115.dc.html | FINAL | v302 (1791240973-f773) | 2026-10-06 07:56 KST | v302 보드 정본: 「추가 문의 보내기」 「사진 첨부」 · 상태 「보냄」 · 종료 안내 구현 문구 · ONQ 운영팀 · 쉬운 말 · 날짜 |
 | SA-120 | 내 계정 | — | design/project/SA-120.dc.html | SA-120.dc.html | FINAL | 1791213911-1437 | 2026-10-06 00:27 KST | 현대화 기준 충족(v271) · MASTER 결정 A(정본 2열 표형 구조, 구현 #623 fc28633과 일치): 프로필 표(이름 저장) · 비밀번호 표(현재·새 8자 이상·확인 칸, 변경 시 항상 다른 기기 로그아웃) · 후속(서버 API 없음): 연락처 · 알림 수신 · 로그인 기기 · 세션은 상태 변형에만 · 상태 8종 |
 | SA-130 | 알림 센터 | /seller/notifications | design/project/SA-130.dc.html | SA-130.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | SA-140 | 도우미 | /seller/assistant | design/project/SA-140.dc.html | SA-140.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| SA-150 | 자동 연결 안내 | /seller/automation | design/project/SA-150.dc.html | SA-150.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| SA-151 | 자동 연결 결제 | /seller/automation/pay | design/project/SA-151.dc.html | SA-151.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| SA-152 | 자동 연결 진행 | /seller/automation/[jobId] | design/project/SA-152.dc.html | SA-152.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| SA-153 | 자동 연결 완료 | /seller/automation/[jobId]/done | design/project/SA-153.dc.html | SA-153.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
+| SA-150 | 자동 연결 안내 | /seller/automation | design/project/SA-150.dc.html | SA-150.dc.html | FINAL | v302 (1791240973-f773) | 2026-10-06 07:56 KST | v302 보드 정본: 금액 설정값 「N원」 · 버튼 「연결 가능한지 확인하기」 「N원 결제하고 자동 설정 시작하기」 「직접 설정하러 가기」 · 「직접 하셔야 하는 일」 · 환불 · 다시 설치의 30일 무료 · 재설치 요금은 보류(가격 결정 대표님 몫) · 흐름 띠 · 결제 요약 카드 유지 |
+| SA-151 | 자동 연결 결제 | /seller/automation/pay | design/project/SA-151.dc.html | SA-151.dc.html | FINAL | v302 (1791240973-f773) | 2026-10-06 07:56 KST | v302 보드 정본: 금액 「N원」(설정값) · 「다른 카드로 결제」 유지 · 「이전 화면으로」 · 재설치 조건 보류 표기 |
+| SA-152 | 자동 연결 진행 | /seller/automation/[jobId] | design/project/SA-152.dc.html | SA-152.dc.html | FINAL | v302 (1791240973-f773) | 2026-10-06 07:56 KST | v302 보드 정본: 「자동 설정 그만두기」 「직접 설정하러 가기」 · 환불 금액 「결제한 금액(N원)」 · 「잠시 멈추기」 · 작업 기록 시각표 유지 · 쉬운 말(방송 화면 넣기) · 날짜 |
+| SA-153 | 자동 연결 완료 | /seller/automation/[jobId]/done | design/project/SA-153.dc.html | SA-153.dc.html | FINAL | v302 (1791240973-f773) | 2026-10-06 07:56 KST | v302 보드 정본: 「방송 화면」 「방송 화면 꾸미기」 · 「무료 재설치 (보류)」 · 변형 「완료 뒤 연결 끊김 · 30일 안」 「재설치 결제 진입」은 보류 표시(가격 결정 전 구현 금지) · 날짜 |
 
 ## SH 구매자 쇼핑몰
 
