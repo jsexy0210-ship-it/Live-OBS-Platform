@@ -26,8 +26,8 @@
 
 | 상태 | 수 |
 |---|---|
-| FINAL | 33 |
-| DRAFT | 145 |
+| FINAL | 35 |
+| DRAFT | 143 |
 | BLOCKED | 0 |
 | MISSING | 14 |
 | SUPERSEDED | 1 |
@@ -75,7 +75,7 @@
 | MA-010 | 파트너스(메뉴 그룹) | — | — | 메뉴 그룹 ID(화면 아님) | MISSING | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | IA 그룹 헤더 · 보드 대상 아님 |
 | MA-011 | 파트너스 목록 | /admin/partners | design/project/MA-011.dc.html | MA-011.dc.html | FINAL | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | DS-PANEL 목록 패널 구조 적용(v243) · 변형: MA-011-PRE, MA-011-S |
 | MA-012 | 파트너스 상세 | /admin/partners/[sellerId] | design/project/MA-012-1.dc.html | MA-012-1.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: MA-012-2, MA-012-3, MA-012-4, MA-012-5, MA-012-6, MA-012-7, MA-012-8, MA-012-9 |
-| MA-013 | 가입 신청 목록 | /admin/partners/applications | design/project/MA-013-OPS.dc.html | MA-013-OPS.dc.html | FINAL | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | ADMIN_OPS_UX P1 · MA-013 정본 · 변형: MA-013 (MA-013 = SUPERSEDED) |
+| MA-013 | 가입 신청 목록 | /admin/partners/applications | design/project/MA-013-OPS.dc.html | MA-013-OPS.dc.html | FINAL | v270 (1791212662-961f) | 2026-10-06 00:24 KST | ADMIN_OPS_UX P1 · MA-013 정본 · 변형: MA-013 (MA-013 = SUPERSEDED) · 현대화 기준 재확인(v270): 글 열 제목 왼쪽 · 관리 열 가운데 8px·폭 토큰(lop.css 공통 .acts2) |
 | MA-014 | 가입 신청 상세 | /admin/partners/applications/[sellerId] | design/project/MA-014.dc.html | MA-014.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: MA-014-A, MA-014-R |
 | MA-015 | 이용 정지 / 해제 | (MA-011·012 다이얼로그) | design/project/MA-015-S.dc.html | MA-015-S.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: MA-015-U |
 | MA-016 | 파트너스 화면 대리 조회 | — | design/project/MA-016.dc.html | MA-016.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: MA-016-M |
@@ -131,8 +131,8 @@
 | SA-005 | 쇼핑몰 통합 전환 | — | design/project/SA-005.dc.html | SA-005.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | SA-006 | 외부 쇼핑몰 연동 | /seller/external-shops | design/project/SA-006.dc.html | SA-006.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | SA-010 | 상품(메뉴 그룹) | — | — | 메뉴 그룹 ID(화면 아님) | MISSING | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | IA 그룹 헤더 · 보드 대상 아님 |
-| SA-011 | 상품 목록 | /seller/products | design/project/SA-011.dc.html | SA-011.dc.html | FINAL | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | DS-PANEL 목록 패널 구조 적용(v243) · 변형: SA-011-DK, SA-011-M, SA-011-PRE, SA-011-S |
-| SA-012 | 상품 등록·수정 | /seller/products/new · [productId] | design/project/SA-012.dc.html | SA-012.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: SA-012-D, SA-012-DK, SA-012-E |
+| SA-011 | 상품 목록 | /seller/products | design/project/SA-011.dc.html | SA-011.dc.html | FINAL | v270 (1791212662-961f) | 2026-10-06 00:24 KST | DS-PANEL 목록 패널 구조 적용(v243) · 변형: SA-011-DK, SA-011-M, SA-011-PRE, SA-011-S · 현대화 기준 재확인(v270): 관리 열 가로 flex 가운데 8px(열 190) · 상품명 제목 왼쪽 · 썸네일 64 |
+| SA-012 | 상품 등록·수정 | /seller/products/new · [productId] | design/project/SA-012.dc.html | SA-012.dc.html | FINAL | v270 (1791212662-961f) | 2026-10-06 00:24 KST | 현대화 기준 충족(v270): 폼 표 안 버튼 40(입력과 같은 줄) · 표 안 보조 행동만 32 · 아이콘 버튼 정사각 32 · 하단 고정 행동 줄 · 상태 12종 · 변형: SA-012-D, SA-012-DK, SA-012-E |
 | SA-013 | 상품 상세 미리보기 | (상품 목록 미리보기) | design/project/SA-013.dc.html | SA-013.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | SA-014 | 재고 일괄 수정 | /seller/products/stock | design/project/SA-014.dc.html | SA-014.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | SA-015 | 카테고리 관리 | /seller/products/categories | design/project/SA-015.dc.html | SA-015.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
@@ -144,7 +144,7 @@
 | SA-022 | 주문 상세 | /seller/orders/[orderId] | design/project/SA-022.dc.html | SA-022.dc.html | FINAL | v266 (1791211729-2b33) | 2026-10-06 00:05 KST | 현대화 기준 충족(v266): 썸네일 64×64 · 글 열 제목 왼쪽 · 버튼 위계(목록·취소 환불 2차 · 송장 입력 1차) · 상태 변형 11종 · 모달 X 44px · v259 상단 주문번호 + 복사 버튼 · 복사 토스트 상태 |
 | SA-023 | 취소·환불 처리 | /seller/orders/refund-requests | design/project/SA-023.dc.html | SA-023.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: SA-023-R |
 | SA-024 | 현금영수증·세금계산서 | — | design/project/SA-024.dc.html | SA-024.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
-| SA-025 | 배송 | /seller/shipping | design/project/SA-025.dc.html | SA-025.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
+| SA-025 | 배송 | /seller/shipping | design/project/SA-025.dc.html | SA-025.dc.html | FINAL | v270 (1791212662-961f) | 2026-10-06 00:24 KST | 현대화 기준 충족(v270): 기간 빠른 선택 40 · 글 열 제목 왼쪽 · 행 「발송 처리」 40(택배사·송장 입력과 같은 줄) · 상태 7종 |
 | SA-026 | 입금 확인 | /seller/orders/deposits | design/project/SA-026.dc.html | SA-026.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | SA-027 | 배송·송장 발급 | — | design/project/SA-027.dc.html | SA-027.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | SA-028 | 송장 출력·추적 | — | design/project/SA-028.dc.html | SA-028.dc.html | DRAFT | v256 (1791205180-4bb0) | 2026-10-05 22:13 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
