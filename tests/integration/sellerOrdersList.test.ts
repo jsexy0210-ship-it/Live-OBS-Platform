@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { GET as listRoute } from "../../app/api/seller/orders/route";
 import { loginSeller } from "../../lib/server/auth/login";
@@ -71,8 +72,12 @@ describe("판매자 주문 목록 GET /api/seller/orders", () => {
       paidAt: order.paidAt!.toISOString(),
       buyer: { id: s.buyer.id, broadcastNickname: s.buyer.broadcastNickname },
       totalAmount: 5000,
+      paymentMethod: order.paymentMethod,
+      paymentDueAt: order.paymentDueAt ? order.paymentDueAt.toISOString() : null,
       itemSummary: { firstProductName: "부스터 팩", otherCount: 2, refundedQuantity: 0 },
       shipped: false,
+      shipment: { state: "none", courier: null, trackingNumber: null, deliveredAt: null },
+      refundRequest: { pendingCount: 0 },
       refundable: true,
     });
     await db.shipment.create({ data: { sellerId: s.seller.id, orderId: order.id, courier: "CJ", trackingNumber: "1", shippedAt: new Date() } });
@@ -225,5 +230,58 @@ describe("판매자 주문 목록 GET /api/seller/orders", () => {
     expect(id(await list(b.cookie, "?status=PAID&shipped=false"))).toEqual([otherSeller.id]);
     // 잘못된 값
     for (const bad of ["yes", "1", "TRUE", "null"]) expect((await list(a.cookie, `?shipped=${bad}`)).status, bad).toBe(400);
+  });
+
+  it("행에 결제 수단·입금 기한, 배송 상태(none·in_transit·delivered), 대기 중 환불 요청 수를 한 번에 담고 다른 판매자 환불 요청은 세지 않는다", async () => {
+    const a = await shop();
+    const b = await shop();
+    const due = new Date("2026-10-07T00:00:00Z");
+    const bank = await a.order({ status: "PENDING_PAYMENT", createdAt: new Date("2026-10-01T00:00:00Z") });
+    await db.order.update({ where: { id: bank.id }, data: { paymentMethod: "BANK_TRANSFER", paymentDueAt: due } });
+    const card = await a.order({ status: "PAID", createdAt: new Date("2026-10-02T00:00:00Z") });
+    await db.order.update({ where: { id: card.id }, data: { paymentMethod: "CARD" } });
+    const transit = await a.order({ status: "PAID", createdAt: new Date("2026-10-03T00:00:00Z") });
+    const delivered = await a.order({ status: "PAID", createdAt: new Date("2026-10-04T00:00:00Z") });
+    const ready = await a.order({ status: "PAID", createdAt: new Date("2026-10-05T00:00:00Z") });
+    const sent = new Date("2026-10-04T01:00:00Z");
+    const done = new Date("2026-10-06T01:00:00Z");
+    const ship = (orderId: string, data: { courier: string; trackingNumber: string; status: "READY" | "IN_TRANSIT" | "DELIVERED"; deliveredAt?: Date }) =>
+      db.shipment.create({ data: { sellerId: a.seller.id, orderId, shippedAt: sent, ...data } });
+    await ship(transit.id, { courier: "CJ대한통운", trackingNumber: "111", status: "IN_TRANSIT" });
+    await ship(delivered.id, { courier: "한진택배", trackingNumber: "222", status: "DELIVERED", deliveredAt: done });
+    await ship(ready.id, { courier: "미정", trackingNumber: "0", status: "READY" });
+    // 환불 요청: 처리 대기(REQUESTED)만 센다(주문당 대기 중 요청은 1건뿐이라 0 또는 1). 승인·반려·취소는 세지 않는다
+    const req = (sellerId: string, orderId: string, buyerMemberId: string, status: "REQUESTED" | "APPROVED" | "REJECTED" | "CANCELLED") =>
+      db.refundRequest.create({
+        data: { sellerId, orderId, buyerMemberId, status, reason: "CHANGE_OF_MIND", ...(status === "REJECTED" ? { rejectReason: "사용 흔적" } : {}), ...(status === "APPROVED" ? { refundId: randomUUID() } : {}) },
+      });
+    for (const st of ["APPROVED", "REJECTED", "CANCELLED", "REQUESTED"] as const) await req(a.seller.id, transit.id, a.buyer.id, st);
+    await req(a.seller.id, delivered.id, a.buyer.id, "REQUESTED");
+    const other = await b.order({ status: "PAID" });
+    await req(b.seller.id, other.id, b.buyer.id, "REQUESTED");
+
+    const rows = Object.fromEntries((await list(a.cookie)).body.orders.map((o: { id: string }) => [o.id, o]));
+    expect(rows[bank.id]).toMatchObject({ status: "PENDING_PAYMENT", paymentMethod: "BANK_TRANSFER", paymentDueAt: due.toISOString(), shipped: false });
+    expect(rows[card.id]).toMatchObject({ paymentMethod: "CARD", paymentDueAt: null });
+    const none = { state: "none", courier: null, trackingNumber: null, deliveredAt: null };
+    expect(rows[bank.id].shipment).toEqual(none);
+    expect(rows[card.id].shipment).toEqual(none);
+    expect(rows[ready.id].shipment).toEqual(none);
+    expect(rows[transit.id].shipment).toEqual({ state: "in_transit", courier: "CJ대한통운", trackingNumber: "111", deliveredAt: null });
+    expect(rows[delivered.id].shipment).toEqual({ state: "delivered", courier: "한진택배", trackingNumber: "222", deliveredAt: done.toISOString() });
+    expect(rows[transit.id].refundRequest).toEqual({ pendingCount: 1 });
+    expect(rows[delivered.id].refundRequest).toEqual({ pendingCount: 1 });
+    for (const id of [bank.id, card.id, ready.id]) expect(rows[id].refundRequest).toEqual({ pendingCount: 0 });
+    // 처리가 끝난 요청만 있는 주문은 0
+    await db.refundRequest.updateMany({ where: { orderId: transit.id, status: "REQUESTED" }, data: { status: "CANCELLED", cancelledAt: new Date() } });
+    expect((await list(a.cookie)).body.orders.find((o: { id: string }) => o.id === transit.id).refundRequest).toEqual({ pendingCount: 0 });
+    // 다른 판매자 목록에는 자기 환불 요청만 보인다
+    const bRows = (await list(b.cookie)).body.orders;
+    expect(bRows).toHaveLength(1);
+    expect(bRows[0].refundRequest).toEqual({ pendingCount: 1 });
+    // 필터·커서를 써도 같은 값이 나온다
+    expect((await list(a.cookie, "?status=PAID&shipped=true")).body.orders.map((o: { id: string; shipment: { state: string } }) => [o.id, o.shipment.state]).sort()).toEqual(
+      [[delivered.id, "delivered"], [ready.id, "none"], [transit.id, "in_transit"]].sort(),
+    );
   });
 });
