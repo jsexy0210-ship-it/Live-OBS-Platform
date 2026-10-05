@@ -203,6 +203,8 @@ export async function buyerReturnContext(db: PrismaClient, scope: BuyerScope, or
   const order = await db.order.findFirst({
     where: { id: orderId, ...scope, legalHoldAt: null },
     select: {
+      orderNo: true,
+      createdAt: true,
       status: true,
       purchaseConfirmedAt: true,
       items: { select: { id: true, productNameSnapshot: true, optionNameSnapshot: true, quantity: true, refundedQuantity: true }, orderBy: { id: "asc" } },
@@ -220,6 +222,7 @@ export async function buyerReturnContext(db: PrismaClient, scope: BuyerScope, or
   const open = await shopOpen(db, scope.sellerId);
   const blocked = !open ? "shop_unavailable" : order.status !== "PAID" || order.shipment?.status !== "DELIVERED" || order.purchaseConfirmedAt ? "not_returnable" : active ? "active_exists" : null;
   return {
+    orderNoLabel: orderNoLabel(order.createdAt, order.orderNo),
     canRequest: blocked === null,
     blocked,
     // 신청 기한(배송 완료 뒤 7일). 지났어도 불량·오배송·설명과 다름 사유는 받는다(windowOpen=false면 단순 변심·기타는 막힌다)
