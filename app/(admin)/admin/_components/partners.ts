@@ -1,3 +1,4 @@
+import { formatDate, formatDateTime } from "../../../../lib/client/format";
 // 파트너스(seller) 목록·상세 응답과 표시 문구(GET /api/admin/sellers, …/{id}, MA-011·012). 코드·DB 이름은 seller 그대로 둔다.
 export type SellerStatus = "PENDING" | "ACTIVE" | "SUSPENDED" | "REJECTED" | "CLOSED";
 export type SubscriptionStatus = "ACTIVE" | "PAST_DUE" | "CANCELED";
@@ -63,12 +64,9 @@ export const PLAN_FILTER = [
   { code: "STANDARD", label: "월 구독" },
 ] as const;
 
-export const day = (iso: string | null) =>
-  iso ? new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso)) : "-";
-export const dayTime = (iso: string | null) =>
-  iso
-    ? new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso))
-    : "-";
+// 일시·날짜는 공용 서식(lib/client/format.ts, 「2026.10.05 22:25」)을 쓴다. 값이 없으면 「-」
+export const day = (iso: string | null) => formatDate(iso, "-");
+export const dayTime = (iso: string | null) => formatDateTime(iso, "-");
 export const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 export const text = (v: unknown) => (typeof v === "string" && v.trim() ? v : "-");
 

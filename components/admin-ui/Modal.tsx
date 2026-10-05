@@ -153,7 +153,7 @@ export function Modal({
     >
       <div className={`modal${className ? ` ${className}` : ""}`} ref={box} role="dialog" aria-modal="true" aria-labelledby={labelId} aria-busy={busy || undefined}>
         {typeof children === "function" ? children(requestClose) : children}
-        {busy && (
+        {busy && busyText !== "" && (
           <p className="modal-busy" role="status">
             {busyText ?? t.busy}
           </p>
