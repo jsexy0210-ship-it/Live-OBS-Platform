@@ -94,7 +94,8 @@ export type ConnectionView = { id: string; shopKey: string; status: ExternalShop
 
 // 목록은 대표자·쇼핑몰 설정(SHOP_SETTINGS) 직원만 본다(메뉴와 같은 기준, 토큰·웹훅 값은 없다). 다른 파트너스의 연결은 보이지 않는다.
 export async function listConnections(db: PrismaClient, ctx: TenantContext): Promise<ConnectionView[]> {
-  requireSellerRead(ctx, "SHOP_SETTINGS");
+  // 마스터 대리 조회(읽기 전용)는 이 목록만 본다(토큰·웹훅 값이 없는 조회, 연결·해제는 requireSellerPermission이 계속 거부). 일반 계정은 SHOP_SETTINGS.
+  if (!ctx.readOnly) requireSellerRead(ctx, "SHOP_SETTINGS");
   const rows = await db.externalShopConnection.findMany({ where: { sellerId: ctx.sellerId, status: { not: "DISCONNECTED" } }, orderBy: { createdAt: "asc" } });
   return rows.map((c) => ({ id: c.id, shopKey: c.shopKey, status: c.status, connectedAt: c.connectedAt, lastEventAt: c.lastEventAt }));
 }
