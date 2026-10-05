@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ListHead, PageHead } from "../../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
+import { SmartBackButton } from "../../../../../../components/seller/SmartBackButton";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
 import { won } from "../../../../../../components/seller/format";
@@ -98,10 +99,7 @@ export default function BroadcastDetailPage() {
                   방송 대시보드로
                 </Link>
               )}
-              <Link className="btn btn-out" href="/seller/broadcasts">
-                목록
-              </Link>
-            </>
+              </>
           }
         />
 
@@ -120,9 +118,7 @@ export default function BroadcastDetailPage() {
             ) : state.status === 404 ? (
               <div className="st" style={{ boxShadow: "none" }} data-testid="bd-notfound">
                 <span className="t">방송을 찾을 수 없습니다</span>
-                <Link className="btn btn-sm" href="/seller/broadcasts">
-                  방송 이력
-                </Link>
+                <SmartBackButton fallback="/seller/broadcasts" className="btn btn-sm">방송 이력</SmartBackButton>
               </div>
             ) : state.status === 403 && state.error === "plan_feature_required" ? (
               <div className="st" style={{ boxShadow: "none" }}>

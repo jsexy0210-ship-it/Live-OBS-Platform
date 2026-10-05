@@ -5,6 +5,7 @@ import { apiUpload } from "../../../../../../components/seller/api";
 import { useRef, useState } from "react";
 import { normalizeLink, resolveLink } from "../../../../../../lib/server/shop-content/link";
 import "./shop-content.css";
+import { formatDateTime } from "../../../../../../lib/client/format";
 
 // 홈 배너 관리(SA-064)·이벤트 팝업 관리(SA-065)가 함께 쓰는 화면 조각. 파트너스 관리자 문구는 명사형·합니다체(2026-10-04 대표님 지시).
 
@@ -30,12 +31,7 @@ export function toKstInput(iso: string | null): string {
 }
 export const fromKstInput = (v: string): string | null => (v ? `${v}:00+09:00` : null);
 
-export function kstText(iso: string | null): string {
-  if (!iso) return "";
-  const d = new Date(new Date(iso).getTime() + 9 * 3600_000);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getUTCFullYear()}.${p(d.getUTCMonth() + 1)}.${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
-}
+export const kstText = (iso: string | null): string => formatDateTime(iso);
 
 export function periodText(startsAt: string | null, endsAt: string | null): string {
   if (!startsAt && !endsAt) return "상시";

@@ -64,7 +64,7 @@ test("방송을 끝낸 뒤 이력 목록에서 찾아 상세로 들어가 요약
   await expect(page.getByTestId("bd-hits")).toContainText(A);
   await expect(page.getByTestId("bd-orders").locator("tr")).toHaveCount(2);
   await expect(page.getByTestId("bd-orders")).toContainText(B);
-  await page.getByRole("link", { name: "목록" }).click();
+  await page.getByRole("button", { name: "뒤로" }).click();
   await expect(page).toHaveURL(/\/seller\/broadcasts$/);
 });
 
