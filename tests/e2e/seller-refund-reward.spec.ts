@@ -1,6 +1,6 @@
 import { expect, test, type Page, type PlaywrightWorkerArgs } from "@playwright/test";
 import { setOptionStockInDb } from "./cartDb";
-import { allowRewardUseInDb, deleteOrderInDb, liveVersionInDb, rewardBalanceInDb } from "./rewardDb";
+import { allowRewardUseInDb, deleteOrderInDb, liveVersionInDb, markItemOpenedInDb, rewardBalanceInDb } from "./rewardDb";
 import { submitSellerLogin } from "./sellerLogin";
 
 // SA-023 환불 창 「현금 환불 · 적립금 반환」: 실제로 적립금 1,000원을 쓴 주문(구매자 주문 → 무통장 → 입금 확인)을 파트너스 환불 창에서 열어
@@ -158,4 +158,33 @@ test("일부 상품만 환불: 수량을 골라 미리보기(현금·적립금·
   expect(r2.status()).toBe(200);
   expect(((await r2.json()) as { isFinal: boolean }).isFinal).toBe(true);
   expect(await rewardBalanceInDb(SLUG, BUYER)).toBe(5000);
+});
+
+test("일부 상품만 환불: 「개봉 확인」은 고른 상품 중 개봉한 것이 있을 때만 요구한다", async ({ page, baseURL, playwright }) => {
+  test.setTimeout(90_000);
+  await allowRewardUseInDb(SLUG, BUYER, 5000);
+  const orderId = await paidOrder(page, baseURL!, playwright, [
+    { product: "문라이트 컬렉션 박스", quantity: 1 },
+    { product: "스타라이트 부스터 박스", option: "낱개 1팩", quantity: 1 },
+  ]);
+  await markItemOpenedInDb(orderId, "스타라이트 부스터 박스");
+  await page.goto(`/seller/orders/${orderId}`);
+  await page.getByRole("button", { name: "취소 · 환불" }).click();
+  const dlg = page.getByRole("dialog", { name: "취소 · 환불 처리" });
+  const opened = dlg.getByLabel("개봉한 상품이 있는 것을 확인했습니다");
+  await dlg.getByRole("radio", { name: /파트너스 사정/ }).check();
+  await dlg.getByLabel("처리 사유").selectOption("품절 · 재고 없음");
+  // 전체 환불에는 개봉한 상품이 들어 있어 확인이 필요하다
+  await expect(opened).toBeVisible();
+  // 일부 상품만: 개봉하지 않은 상품만 고르면 확인 없이 환불할 수 있다
+  await dlg.getByRole("radio", { name: /일부 상품만/ }).check();
+  await dlg.getByRole("checkbox", { name: /문라이트 컬렉션 박스.*선택/ }).check();
+  await expect(dlg.getByTestId("refund-items-amount")).toHaveText("132,000원");
+  await expect(opened).toHaveCount(0);
+  await dlg.getByLabel("위 금액으로 환불합니다. 승인 취소 후 되돌릴 수 없습니다.").check();
+  await expect(dlg.getByRole("button", { name: /환불 실행/ })).toBeEnabled();
+  // 개봉한 상품을 고르면 확인이 나타나고, 체크해야 환불할 수 있다
+  await dlg.getByRole("checkbox", { name: /스타라이트 부스터 박스.*선택/ }).check();
+  await expect(opened).toBeVisible();
+  await expect(dlg.getByRole("button", { name: /환불 실행/ })).toBeDisabled();
 });
