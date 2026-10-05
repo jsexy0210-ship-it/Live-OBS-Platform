@@ -1,11 +1,13 @@
 import type { PrismaClient } from "@prisma/client";
+import { readdirSync } from "node:fs";
+import { join, relative, sep } from "node:path";
 import { NextRequest } from "next/server";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { GET as adminGet, PUT as adminPut } from "../../app/api/admin/settings/maintenance/route";
 import { GET as publicGet } from "../../app/api/maintenance/route";
 import { createAdminSession } from "../../lib/server/auth/session";
 import { prisma } from "../../lib/server/db";
-import { CACHE_MS, cachedMaintenance, clearMaintenanceCache, MAINTENANCE_NOTICE, MAINTENANCE_NOTICE_FORMAL } from "../../lib/server/maintenance/service";
+import { CACHE_MS, cachedMaintenance, clearMaintenanceCache, MAINTENANCE_NOTICE, MAINTENANCE_NOTICE_FORMAL, maintenanceTarget } from "../../lib/server/maintenance/service";
 import { proxy } from "../../proxy";
 import { createAdmin, db, resetDb } from "./helpers";
 
@@ -93,7 +95,7 @@ describe("점검 모드 설정", () => {
 describe("점검 중 막기(proxy)", () => {
   const BLOCKED_API = ["/api/seller/me", "/api/seller/orders/abc", "/api/seller-signup/apply", "/api/shop/shop-1/cart", "/api/automation/purchase", "/api/automation/reconnect"];
   const BLOCKED_PAGE = ["/seller", "/seller/orders", "/shop/shop-1", "/shop/shop-1/products/x"];
-  const OPEN = ["/api/admin/me", "/admin/dashboard", "/api/overlay/tok/state", "/overlay/tok", "/api/payments/nicepay/return", "/api/automation/jobs", "/api/health", "/api/notices", "/api/maintenance", "/api/plans", "/", "/pricing", "/sellers", "/shopping"];
+  const OPEN = ["/api/admin/me", "/admin/dashboard", "/api/overlay/tok/state", "/overlay/tok", "/api/payments/nicepay/return", "/api/payments/nicepay/webhook", "/api/automation/jobs", "/api/health", "/api/notices", "/api/maintenance", "/api/plans", "/", "/pricing", "/sellers", "/shopping"];
 
   it("꺼져 있으면 모두 통과. 켜면 파트너스·구매자·가입 API는 503, 화면은 /maintenance, 마스터·오버레이·결제사 알림·작업·공개 정보는 그대로", async () => {
     for (const path of [...BLOCKED_API, ...BLOCKED_PAGE, ...OPEN]) expect(await hit(path), path).toEqual({ kind: "pass" });
@@ -127,4 +129,15 @@ describe("점검 중 막기(proxy)", () => {
     const broken = { platformMaintenance: { findUnique: () => Promise.reject(new Error("db down")) } } as unknown as PrismaClient;
     expect(await cachedMaintenance(broken)).toBeNull();
   });
+
+  it("결제사 결과 알림·웹훅(콜백) 경로는 점검 중에도 막지 않는다: app/api의 모든 webhook·callback·return·notify 경로가 막는 목록 밖에 있다", () => {
+    const API = join(__dirname, "../../app/api");
+    const walk = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(dir, e.name)) : e.name === "route.ts" ? [dir] : []));
+    const paths = walk(API).map((d) => "/api/" + relative(API, d).split(sep).join("/"));
+    const callbacks = paths.filter((p) => /\/(webhook|callback|return|notify)(\/|$)/.test(p));
+    expect(callbacks).toEqual(expect.arrayContaining(["/api/payments/nicepay/webhook", "/api/payments/nicepay/return"]));
+    for (const p of callbacks) expect(maintenanceTarget(p), p).toBeNull();
+  });
 });
+
