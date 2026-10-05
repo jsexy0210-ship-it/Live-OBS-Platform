@@ -390,7 +390,7 @@ export async function shipExchange(db: PrismaClient, ctx: TenantContext, id: str
   if (!t.ok) return t;
   return sellerStep(db, ctx, id, "complete", async (tx, r, now) => {
     if (r.kind !== "EXCHANGE") return { ok: false, reason: "wrong_kind" };
-    const items = await tx.returnRequestItem.findMany({ where: { sellerId: ctx.sellerId, returnRequestId: r.id }, select: { orderItem: { select: { optionId: true, quantity: true } } } });
+    const items = await tx.returnRequestItem.findMany({ where: { sellerId: ctx.sellerId, returnRequestId: r.id }, select: { orderItemId: true, orderItem: { select: { optionId: true, quantity: true } } } });
     // 옵션 id 순서로 잠가 같은 옵션을 다루는 다른 교환·주문과 교착하지 않게 한다
     const need = new Map<string, number>();
     for (const i of items) need.set(i.orderItem.optionId, (need.get(i.orderItem.optionId) ?? 0) + i.orderItem.quantity);
@@ -399,6 +399,8 @@ export async function shipExchange(db: PrismaClient, ctx: TenantContext, id: str
       if (dec.count !== 1) throw new StockShort();
       await tx.stockMovement.create({ data: { sellerId: ctx.sellerId, optionId, delta: -qty, reason: "EXCHANGE", orderId: r.orderId, actorType: ctx.actorType as ActorType, actorId: ctx.actorId, createdAt: now } });
     }
+    // 교환 상품이 다시 나갔으니, 회수 때 되돌린 표시(stockRestoredAt)를 풀어 이 품목을 뒤에 다시 반품·환불로 회수할 때 재고를 한 번 더 되돌릴 수 있게 한다
+    await tx.orderItem.updateMany({ where: { sellerId: ctx.sellerId, id: { in: items.map((i) => i.orderItemId) }, stockRestoredAt: { not: null } }, data: { stockRestoredAt: null } });
     await tx.returnRequest.update({ where: { id: r.id }, data: { status: "COMPLETED", completedAt: now, exchangeCourier: t.courier, exchangeTrackingNumber: t.trackingNumber, updatedAt: now } });
     await sellerAudit(tx, ctx, "return.exchange_ship", r.id, { status: r.status }, { status: "COMPLETED", courier: t.courier, optionCount: need.size });
   }).catch((e) => {

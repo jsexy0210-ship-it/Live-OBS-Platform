@@ -53,7 +53,8 @@ export type RefundPreview = {
   // 구매자가 실제로 낸 처음 배송비(배송비 무료 쿠폰이면 0). 예전 응답에는 없다.
   chargedShippingFee?: number;
   openedItems: { orderItemId: string; amount: number }[];
-  byFault: Record<RefundFault, { refundAmount: number; returnFeeDeducted: number; blocked: boolean }>;
+  // refundAmount: 현금 환불액(적립금 반환을 뺀 값), rewardReturn: 함께 적립금으로 돌려주는 금액(쓴 적립금이 없으면 0)
+  byFault: Record<RefundFault, { refundAmount: number; returnFeeDeducted: number; rewardReturn: number; blocked: boolean }>;
 };
 
 // 결제 상태 배지. 시안 결제 배지(완료·결제 대기·환불됨)에 맞추고, 시안에 없는 취소는 「취소」로 보인다.

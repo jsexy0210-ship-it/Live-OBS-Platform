@@ -2,7 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { MAX_NICKNAME_LENGTH } from "../buyers/signup";
 import { cleanText } from "../text/clean";
-import { parseRewardUse, rewardUseLimit, useRewardForOrder, type RewardUseFailure } from "../payments/rewardUse";
+import { parseRewardUse, rewardUseLimit, rewardUsePrecheck, useRewardForOrder, type RewardUseFailure } from "../payments/rewardUse";
 import { recordOrderAddress } from "../buyers/addresses";
 import { eventOf, orderUnitPrice } from "../products/event";
 import { sellerHasFeature } from "../billing/features";
@@ -193,6 +193,8 @@ async function createInTransaction(
     if (!coupon.ok) return { ok: false as const, reason: coupon.reason };
     const couponDiscount = coupon.applied?.discountAmount ?? 0;
     const rewardLimit = rewardUseLimit({ itemsSubtotal, shippingFee, couponDiscount, couponIsShipping: coupon.applied?.benefit === "FREE_SHIPPING" });
+    const rewardPre = await rewardUsePrecheck(tx, { sellerId: input.sellerId, amount: rewardUse, limit: rewardLimit });
+    if (rewardPre) throw new RewardUseRejected(rewardPre);
     const totalAmount = itemsSubtotal + shippingFee - couponDiscount - rewardUse;
     if (!Number.isSafeInteger(totalAmount) || totalAmount > INT4_MAX) return { ok: false as const, reason: "invalid_amount" as const };
 
