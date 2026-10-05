@@ -14,7 +14,9 @@ import { cleanText } from "../text/clean";
 
 export const ASPECTS = ["9x16", "16x9"] as const;
 export type Aspect = (typeof ASPECTS)[number];
-export const WIDGET_TYPES = ["HALL_OF_FAME", "NOTICE", "SHOP_INFO", "CURRENT_ORDER", "QUEUE", "OPEN_TIMER", "NEW_ORDER_ALERT"] as const;
+export const WIDGET_TYPES = ["HALL_OF_FAME", "NOTICE", "SHOP_INFO", "CURRENT_ORDER", "QUEUE", "OPEN_TIMER", "NEW_ORDER_ALERT", "EVENT_CARD", "PURCHASE_RANKING"] as const;
+// 기본 템플릿 3종에 들어 있는 위젯. 이벤트 할인 카드·구매 랭킹은 판매자가 편집기에서 직접 켠다(저장된 레이아웃·기본 템플릿 수치는 그대로).
+export const BUILTIN_WIDGET_TYPES = ["HALL_OF_FAME", "NOTICE", "SHOP_INFO", "CURRENT_ORDER", "QUEUE", "OPEN_TIMER", "NEW_ORDER_ALERT"] as const;
 export type WidgetType = (typeof WIDGET_TYPES)[number];
 export const MAX_WIDGETS = 20;
 export const MAX_TEMPLATES = 20;
@@ -76,6 +78,8 @@ const EXTRA: Partial<Record<WidgetType, Record<string, Spec>>> = {
     rows: { kind: "num", min: 1, max: 10, int: true },
   },
   HALL_OF_FAME: { rows: { kind: "num", min: 1, max: 10, int: true } },
+  // 구매 랭킹: 지금 방송 구매 수량 순위(state purchaseRanking, 최대 RANKING_MAX명)에서 위에서 rows명만 보여 준다
+  PURCHASE_RANKING: { rows: { kind: "num", min: 1, max: 10, int: true } },
   // 신규 주문 알림: 첫 주문·재주문·VIP를 따로
   NEW_ORDER_ALERT: { variant: { kind: "enum", values: ALERT_VARIANTS }, durationSec: { kind: "num", min: 1, max: 30 } },
 };
