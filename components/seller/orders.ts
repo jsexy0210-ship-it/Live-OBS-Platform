@@ -1,3 +1,4 @@
+import { formatDateTime } from "../../lib/client/format";
 // 판매자 주문 화면(SA-021 목록 · SA-022 상세 · SA-023 환불) 공통 타입과 표시 규칙.
 export type OrderStatus = "PENDING_PAYMENT" | "PAID" | "CANCELLED" | "REFUNDED";
 
@@ -5,11 +6,17 @@ export type OrderStatus = "PENDING_PAYMENT" | "PAID" | "CANCELLED" | "REFUNDED";
 export type OrderRow = {
   id: string;
   orderNo: number;
+  // 사람이 읽는 주문번호(「20261002-0409」). 전화 응대·검색 대조용
+  orderNoLabel: string;
   status: OrderStatus;
   createdAt: string;
   paidAt: string | null;
   buyer: { id: string; broadcastNickname: string };
   totalAmount: number;
+  // 현금 환불 합계(없으면 0)·환불한 품목 수량·남은 금액(totalAmount − refundedAmount)
+  refundedAmount: number;
+  refundedQuantity: number;
+  remainingAmount: number;
   itemSummary: { firstProductName: string | null; otherCount: number };
   shipped: boolean;
   refundable: boolean;
@@ -21,6 +28,7 @@ export type OrderItem = { id: string; productNameSnapshot: string; optionNameSna
 export type OrderDetail = {
   id: string;
   orderNo: number;
+  orderNoLabel: string;
   status: OrderStatus;
   createdAt: string;
   paidAt: string | null;
@@ -124,6 +132,11 @@ export const STATUS_BADGE: Record<OrderStatus, { label: string; cls: string }> =
   CANCELLED: { label: "취소", cls: "b-cancel" },
   REFUNDED: { label: "환불됨", cls: "b-cancel" },
 };
+// 일부만 환불한 주문(전액 환불은 status가 REFUNDED)
+export const isPartialRefund = (o: Pick<OrderRow, "status" | "refundedAmount">) => o.refundedAmount > 0 && o.status !== "REFUNDED";
+// 목록 결제 칸 배지: 부분 환불이면 「부분 환불」(환불 계열 색), 아니면 결제 상태
+export const payBadge = (o: Pick<OrderRow, "status" | "refundedAmount">) => (isPartialRefund(o) ? { label: "부분 환불", cls: "b-cancel" } : STATUS_BADGE[o.status]);
+
 // 상세 머리 배지는 「결제 완료」(SA-022)
 export const detailStatusLabel = (s: OrderStatus) => (s === "PAID" ? "결제 완료" : STATUS_BADGE[s].label);
 
@@ -147,16 +160,9 @@ export const listDate = (iso: string) => {
   const t = kst(iso);
   return `${t.m}/${t.d}`;
 };
-// 「10월 2일 14:02」
-export const longTime = (iso: string) => {
-  const t = kst(iso);
-  return `${t.m}월 ${t.d}일 ${t.hh}:${t.mm}`;
-};
-// 「2026-10-02 14:02:10」
-export const fullTime = (iso: string) => {
-  const t = kst(iso);
-  return `${kstDate(iso)} ${t.hh}:${t.mm}:${t.ss}`;
-};
+// 「2026.10.02 14:02」(공용 일시 서식, lib/client/format.ts)
+export const longTime = (iso: string) => formatDateTime(iso);
+export const fullTime = (iso: string) => formatDateTime(iso);
 // 오늘 기준 n일 전의 한국 날짜(기간 필터 from)
 export const kstDaysAgo = (n: number, now = new Date()) => kstDate(new Date(now.getTime() - n * 86_400_000).toISOString());
 

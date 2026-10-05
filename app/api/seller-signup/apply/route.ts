@@ -45,6 +45,7 @@ export const POST = mutation(async (req: Request) => {
     companyName: str(body.companyName),
     openedOn: str(body.openedOn, 20),
     mailOrderNumber: str(body.mailOrderNumber, 100) || null,
+    industry: str(body.industry, 30) || null,
     // 문자열이 아닌 값은 그대로 거절되게 넘긴다(빈 값으로 바꿔 기본 플랜이 되지 않게)
     planCode: body.planCode == null ? null : typeof body.planCode === "string" ? body.planCode.slice(0, 40) : "invalid",
     meta: requestMeta(req),

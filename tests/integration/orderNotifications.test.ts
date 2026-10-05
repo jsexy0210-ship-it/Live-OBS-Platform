@@ -44,6 +44,8 @@ describe("입금 기한 알림 「보냈음」 기록", () => {
     const first = await claimPaymentDueSoon(db);
     expect(ids(first)).toEqual([soon.id, shortSoon.id].sort());
     expect(first[0]).toMatchObject({ sellerId: s.seller.id, buyerMemberId: s.buyer.id, totalAmount: 10000, attempts: 1 });
+    // 안내 문구용 주문번호는 화면과 같은 「yyyyMMdd-NNNN」
+    for (const n of first) expect(n.orderNoLabel).toMatch(new RegExp(`^\\d{8}-${String(n.orderNo).padStart(4, "0")}$`));
     expect(await claimPaymentDueSoon(db)).toEqual([]);
     expect(await db.orderNotification.findMany({ orderBy: { createdAt: "asc" } })).toMatchObject([
       { kind: "PAYMENT_DUE_SOON", status: "PENDING", attempts: 1 },
