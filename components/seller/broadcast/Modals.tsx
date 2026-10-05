@@ -35,13 +35,13 @@ const who = (item: QueueItem) => `${item.nicknameSnapshot} · ${item.productLabe
 export function EndBroadcastModal({ waiting, busy, blocked, onClose, onConfirm }: { waiting: number; busy: boolean; blocked: boolean; onClose: () => void; onConfirm: () => void }) {
   useEscape(busy, onClose);
   return (
-    <Frame id="bc-end-title" title="방송을 종료하시겠습니까?" sub={waiting > 0 ? `남은 대기 ${waiting}건은 다음 방송으로 넘어갑니다` : undefined}>
+    <Frame id="bc-end-title" title="방송을 끝내시겠습니까?" sub={waiting > 0 ? `남은 대기 ${waiting}건은 다음 방송으로 넘어갑니다` : undefined}>
       <div className="modal-f">
         <button className="btn btn-out" type="button" disabled={busy} onClick={onClose}>
-          닫기
+          취소
         </button>
         <button className="btn btn-neg" type="button" disabled={busy || blocked} onClick={onConfirm}>
-          방송 종료
+          방송 끝내기
         </button>
       </div>
     </Frame>
@@ -53,7 +53,7 @@ export function CancelItemModal({ item, busy, blocked, onClose, onConfirm }: { i
   const [reason, setReason] = useState("");
   const ok = reason.trim().length > 0;
   return (
-    <Frame id="bc-cancel-title" title="이 주문을 취소하시겠습니까?" sub={who(item)}>
+    <Frame id="bc-cancel-title" title="이 주문을 주문대기에서 빼시겠습니까?" sub={who(item)}>
       <form
         className="col"
         style={{ gap: 16 }}
@@ -64,17 +64,17 @@ export function CancelItemModal({ item, busy, blocked, onClose, onConfirm }: { i
       >
         <div className="fld">
           <label htmlFor="bc-cancel-reason" className="req">
-            취소 사유
+            빼는 이유
           </label>
           <input id="bc-cancel-reason" className="inp" maxLength={200} value={reason} disabled={busy} autoFocus onChange={(e) => setReason(e.target.value)} />
           <span className="help">주문대기에서만 빠집니다. 결제 취소·환불은 주문 화면에서 합니다</span>
         </div>
         <div className="modal-f">
           <button className="btn btn-out" type="button" disabled={busy} onClick={onClose}>
-            닫기
+            취소
           </button>
           <button className="btn btn-neg" type="submit" disabled={busy || blocked || !ok}>
-            주문대기 취소
+            주문대기에서 빼기
           </button>
         </div>
       </form>
@@ -97,7 +97,7 @@ export function TimerModal({ item, busy, blocked, onClose, onConfirm }: { item: 
     setSec(String(v % 60));
   };
   return (
-    <Frame id="bc-timer-title" title="타이머 설정" sub={who(item)}>
+    <Frame id="bc-timer-title" title="개봉 시간 알림을 정하시겠습니까?" sub={who(item)}>
       <form
         className="col"
         style={{ gap: 16 }}
@@ -113,7 +113,7 @@ export function TimerModal({ item, busy, blocked, onClose, onConfirm }: { item: 
             </button>
           ))}
           <button className="chip" type="button" disabled={busy} onClick={() => set(0)}>
-            끄기
+            알림 끄기
           </button>
         </div>
         <div className="row" style={{ gap: 8, alignItems: "center" }}>
@@ -128,13 +128,13 @@ export function TimerModal({ item, busy, blocked, onClose, onConfirm }: { item: 
           <input id="bc-timer-sec" className="inp num bc-timer-inp" inputMode="numeric" maxLength={2} value={sec} disabled={busy} onChange={(e) => setSec(e.target.value.trim())} />
           <span>초</span>
         </div>
-        <span className={ok ? "help" : "err"}>{ok ? (total === 0 ? "타이머를 끕니다" : `${clock(total)} 동안 카운트다운합니다`) : "0초부터 60분까지 정할 수 있습니다"}</span>
+        <span className={ok ? "help" : "err"}>{ok ? (total === 0 ? "알림을 끕니다" : `${clock(total)}부터 남은 시간을 거꾸로 셉니다`) : "0초부터 60분까지 정할 수 있습니다"}</span>
         <div className="modal-f">
           <button className="btn btn-out" type="button" disabled={busy} onClick={onClose}>
-            닫기
+            취소
           </button>
           <button className="btn" type="submit" disabled={busy || blocked || !ok}>
-            저장
+            이 시간으로 정하기
           </button>
         </div>
       </form>

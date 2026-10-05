@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { GlobalSearch, NotificationBell } from "../admin-ui/GnbTools";
+import { ConfirmProvider, useConfirm } from "../admin-ui/ConfirmDialog";
 import { RouteTabs, ShellNavProvider, type ShellNav } from "../admin-ui/shellNav";
 import { useWholeDateClick } from "../admin-ui/useWholeDateClick";
 import { usePathname, useRouter } from "next/navigation";
@@ -492,6 +493,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   return (
     <Ctx.Provider value={{ me, trialDaysLeft, openNav, can, loc }}>
       <ShellNavProvider value={shellNav}>
+      <ConfirmProvider readOnly={!!me.readOnly}>
       <div className={`cs${navOpen ? " nav-open" : ""}${me.impersonation ? " imp" : ""}`} data-readonly={me.readOnly ? "true" : undefined}>
         <header className="gnb">
           <button className="gnb-menu" type="button" aria-label="메뉴 열기" onClick={openNav}>
@@ -566,6 +568,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </div>
+      </ConfirmProvider>
       </ShellNavProvider>
     </Ctx.Provider>
   );
@@ -649,31 +652,33 @@ export function Topbar({ crumb, badge, children }: { crumb: string; badge?: Reac
 function ImpersonationBar({ shop, imp }: { shop: string; imp: NonNullable<Me["impersonation"]> }) {
   const [now, setNow] = useState(() => Date.now());
   const [ending, setEnding] = useState(false);
-  const [endFailed, setEndFailed] = useState(false);
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
   const left = Math.max(0, Math.floor((new Date(imp.expiresAt).getTime() - now) / 1000));
+  const { confirm } = useConfirm();
+  // 대리 조회 끝내기: 서버에 쓰는 행동이라 확인 창을 거친다(읽기 전용 중에도 되는 행동이라 allowReadOnly)
   const end = async () => {
     setEnding(true);
-    setEndFailed(false);
-    const r = await api("/api/admin/impersonation", { method: "DELETE" });
-    if (r.ok) window.location.assign("/admin/partners");
-    else {
-      setEnding(false);
-      setEndFailed(true);
-    }
+    const ok = await confirm({
+      title: "대신 보기를 끝내시겠습니까?",
+      body: "읽기 전용 화면이 닫히고 마스터 관리자로 돌아갑니다.",
+      confirmLabel: "끝내기",
+      allowReadOnly: true,
+      run: async () => ((await api("/api/admin/impersonation", { method: "DELETE" })).ok ? undefined : "끝내지 못했습니다. 잠시 후 다시 시도해 주십시오"),
+    });
+    if (ok) window.location.assign("/admin/partners");
+    else setEnding(false);
   };
   const mm = String(Math.floor(left / 60)).padStart(2, "0");
   const ss = String(left % 60).padStart(2, "0");
   return (
     <div className="imp-bar" role="status">
-      <b>읽기 전용 · 대리 조회</b>
+      <b>읽기 전용 · 대신 보기</b>
       <span className="imp-txt ell">
         「{shop}」 화면을 보는 중 · 운영 {imp.adminName} · 사유 {imp.reason}
       </span>
-      {endFailed && <span className="imp-err">종료하지 못했습니다</span>}
       <span className="imp-left">{left === 0 ? "시간이 끝났습니다" : `남은 시간 ${mm}:${ss}`}</span>
       <button className="btn btn-sm imp-end" type="button" disabled={ending} onClick={() => void end()}>
         종료
