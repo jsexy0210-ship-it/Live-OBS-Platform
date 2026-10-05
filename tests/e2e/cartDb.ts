@@ -29,6 +29,7 @@ export async function deleteBuyerOrdersSince(slug: string, loginId: string, sinc
     const orders = await db.order.findMany({ where: { sellerId: seller.id, buyerMemberId: buyer.id, createdAt: { gte: since } }, select: { id: true } });
     const orderId = { in: orders.map((o) => o.id) };
     await db.$transaction([
+      db.refundRequest.deleteMany({ where: { orderId } }),
       db.stockMovement.deleteMany({ where: { orderId } }),
       db.couponRedemption.deleteMany({ where: { orderId } }),
       db.orderStatusHistory.deleteMany({ where: { orderId } }),
@@ -133,6 +134,24 @@ export async function rewardBalanceInDb(slug: string, loginId: string) {
     const seller = await db.seller.findUniqueOrThrow({ where: { slug } });
     const buyer = await db.buyerMember.findFirstOrThrow({ where: { sellerId: seller.id, loginId, deletedAt: null } });
     return (await db.rewardBalance.findUnique({ where: { sellerId_buyerMemberId: { sellerId: seller.id, buyerMemberId: buyer.id } }, select: { balance: true } }))?.balance ?? 0;
+  } finally {
+    await db.$disconnect();
+  }
+}
+
+// 환불(취소) 요청 e2e: 만든 주문을 결제 완료로 바꾸고, 진행 중인 요청을 판매자가 거절한 것처럼 바꾼다
+export async function markOrderPaidInDb(orderId: string) {
+  const db = open();
+  try {
+    await db.order.update({ where: { id: orderId }, data: { status: "PAID", paidAt: new Date() } });
+  } finally {
+    await db.$disconnect();
+  }
+}
+export async function rejectRefundRequestInDb(orderId: string, rejectReason: string) {
+  const db = open();
+  try {
+    await db.refundRequest.updateMany({ where: { orderId, status: "REQUESTED" }, data: { status: "REJECTED", rejectReason, decidedAt: new Date() } });
   } finally {
     await db.$disconnect();
   }
