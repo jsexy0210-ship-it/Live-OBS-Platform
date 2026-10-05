@@ -4,7 +4,7 @@ import { prisma } from "../../../../lib/server/db";
 import { errorResponse, sessionToken } from "../../../../lib/server/http/route";
 import { listSellerOrders } from "../../../../lib/server/orders/read";
 
-// 판매자 주문 목록. 쿼리: status(여러 개), q, memberId(회원 한 명의 주문만, UUID), shipped(true|false, 발송 정보 등록 여부), from·to(KST 날짜 YYYY-MM-DD), cursor, limit(기본 50, 최대 200). ORDER_SHIPPING 권한.
+// 판매자 주문 목록. 행: { id, orderNo, status, createdAt, paidAt, buyer, totalAmount, paymentMethod, paymentDueAt, itemSummary, shipped, shipment: { state(none·in_transit·delivered), courier, trackingNumber, deliveredAt }, refundRequest: { pendingCount }, refundable }. 쿼리: status(여러 개), q, memberId(회원 한 명의 주문만, UUID), shipped(true|false, 발송 정보 등록 여부), from·to(KST 날짜 YYYY-MM-DD), cursor, limit(기본 50, 최대 200). ORDER_SHIPPING 권한.
 export async function GET(req: Request) {
   try {
     // 잠금 중에도 이미 받은 주문은 처리할 수 있다(대표님 결정 2026-10-02, PRODUCT_SCOPE 「잠금 중 허용 범위」).
