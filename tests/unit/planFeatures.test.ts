@@ -52,6 +52,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/staff/[userId]/password": "ACCOUNT",
   "seller/staff/[userId]/permissions": "ACCOUNT",
   "seller/impersonation": "BILLING", // 마스터 대리 조회 상태(읽기 전용 배너): 가드를 쓰지 않고 lo_imp 쿠키만 확인
+  "seller/onboarding": "BILLING", // 시작하기·온보딩(SA-003·004): 첫 결제 전·잠김 중에도 그 단계를 이어 간다
   "seller/orders": "ORDER_FOLLOWUP",
   "seller/today-tasks": "ORDER_FOLLOWUP", // 홈 「오늘 처리할 일」(SA-002): 잠금 중에도 이미 받은 주문 처리 항목은 보임
   "seller/search": "ORDER_FOLLOWUP", // 전역 검색: 이미 받은 주문·문의를 잠김·정지 중에도 찾는다
