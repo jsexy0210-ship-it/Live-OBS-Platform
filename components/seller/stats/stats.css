@@ -36,3 +36,23 @@
 .sts-pname{width:120px;flex:none}
 .sts-pval{width:100px;flex:none;text-align:right;white-space:nowrap}
 @media (max-width:1100px){.sts-grid{grid-template-columns:minmax(0,1fr)}}
+
+/* SA-056 카페24식 맞춤: 흰 바탕 · 1px 선 · 입력·버튼 40px · 모서리 6px · 표 제목 가운데 · 값 왼쪽 */
+.sts-tabs{margin-bottom:8px}
+.sts-period{margin-bottom:0}
+.sts-period .inp,.sts-period .btn{height:40px}
+.sts-period .inp{border-radius:6px;width:150px}
+.sts-period .btn,.sts-period .chip{border-radius:6px}
+.sts-sub-note{margin:0}
+.sts-sum{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+.sts-sum>div{display:flex;flex-direction:column;gap:4px;padding:12px;border:1px solid var(--cs-line);border-radius:6px;background:var(--cs-surface)}
+.sts-sum .l{font-size:12px;color:var(--wds-label-alternative)}
+.sts-sum .v{font-size:20px;line-height:28px;font-weight:700;font-variant-numeric:tabular-nums}
+.sts-sum .d{font-size:12px;color:var(--wds-label-alternative)}
+.sts-sec{display:flex;flex-direction:column;gap:8px}
+.sts-sec-h{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.sts-sec-h h2{margin:0;font-size:14px;font-weight:700}
+.sts-note{padding:10px 12px;border-radius:6px;background:var(--cs-th);font-size:12px;color:var(--wds-label-neutral)}
+.sts-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:1100px){.sts-cols{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:720px){.sts-period .inp{flex:1 1 130px;width:auto;min-width:130px}.sts-sec .tbl td:not(.col-text){white-space:nowrap}.sts-sum{grid-template-columns:repeat(2,minmax(0,1fr))}}

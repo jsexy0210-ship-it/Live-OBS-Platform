@@ -14,7 +14,7 @@ import { num, statsSnapshot, type StatsDb } from "./sql";
 // - 미입금 자동 취소: 기간 안 주문 중 입금 기한이 지나 시스템이 취소한 주문
 // - 방송 내역: 기간 안 결제 주문을 방송 귀속 규칙(broadcasts.ts, 조회 기간과 무관)으로 방송 매출·방송 시간 일반 주문·방송 외 주문으로 나눈다.
 //   세 칸 순매출 합 = 요약 매출. 방송 통계 탭(「기간 중 시작한 방송」 기준)과는 기준이 다르다.
-// 방문자·쿠폰·교환·반품·문의 답변·리뷰·회원 등급별은 데이터가 없어 내보내지 않는다(화면 「준비 중」).
+// 쿠폰 사용: 기간 안 결제 주문에 쓴 쿠폰 건수와 할인액(CouponRedemption). 방문자·교환·반품·문의 답변·리뷰·회원 등급별은 데이터가 없어 내보내지 않는다(화면 「준비 중」).
 
 type Extra = {
   new_net: bigint;
@@ -26,6 +26,8 @@ type Extra = {
   ship_count: number;
   ship_avg_sec: number | null;
   auto_cancelled: number;
+  coupon_count: number;
+  coupon_discount: bigint;
 };
 
 async function extras(tx: StatsDb, sid: string, start: Date, end: Date) {
@@ -62,14 +64,20 @@ async function extras(tx: StatsDb, sid: string, start: Date, end: Date) {
     ac AS (
       SELECT count(*)::int AS auto_cancelled FROM "Order"
       WHERE "sellerId" = ${sid}::uuid AND "autoCancelledAt" IS NOT NULL AND "createdAt" >= ${start} AND "createdAt" < ${end}
+    ),
+    cp AS (
+      SELECT count(*)::int AS coupon_count, coalesce(sum(r."discountAmount"::bigint), 0) AS coupon_discount
+      FROM "CouponRedemption" r JOIN o ON o.id = r."orderId"
+      WHERE r."sellerId" = ${sid}::uuid AND r."restoredAt" IS NULL
     )
-    SELECT * FROM nv, rw, sh, ac`;
+    SELECT * FROM nv, rw, sh, ac, cp`;
   return {
     newNet: num(r?.new_net),
     returningNet: num(r?.old_net),
     reward: { earned: num(r?.reward_earn), revoked: num(r?.reward_revoke), used: num(r?.reward_use), expired: num(r?.reward_expire) },
     shipping: { shipped: num(r?.ship_count), avgHours: r?.ship_avg_sec == null ? null : Math.round((r.ship_avg_sec / 3600) * 10) / 10 },
     autoCancelled: num(r?.auto_cancelled),
+    coupons: { used: num(r?.coupon_count), discount: num(r?.coupon_discount) },
   };
 }
 
@@ -169,6 +177,7 @@ export async function overviewStats(db: PrismaClient, ctx: TenantContext, range:
         newNet: current.newNet,
         returningNet: current.returningNet,
       },
+      coupons: current.coupons,
       rewards: { ...current.reward, useRate: ratio(current.reward.used, orders.current.netRevenue) },
       operations: {
         shipping: current.shipping,
@@ -179,7 +188,7 @@ export async function overviewStats(db: PrismaClient, ctx: TenantContext, range:
         refundAmount: orders.current.refundAmount,
       },
       // 데이터가 없는 지표(화면 「준비 중」)
-      unavailable: ["visitors", "coupons", "returns", "inquiries", "reviews", "memberGrades", "rewardExpiring", "broadcastViewers"],
+      unavailable: ["visitors", "returns", "inquiries", "reviews", "memberGrades", "rewardExpiring", "broadcastViewers"],
     };
   });
 }
