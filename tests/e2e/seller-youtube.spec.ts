@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { submitSellerLogin } from "./sellerLogin";
-import { chatDefaultInDb, chatEnabledInDb, resetYoutube, seedStoredChats, seedYoutube, storedChatCountInDb } from "./youtubeDb";
+import { chatDefaultInDb, chatEnabledInDb, resetYoutube, seedStoredChats, seedYoutube, setChatLinkState, storedChatCountInDb } from "./youtubeDb";
 
 // SA-057 유튜브 연결: 채널·방송 연결 상태, 연결한 방송의 채팅 수집 켜기·끄기(보관 고지 표시), 해제.
 // 실제 유튜브는 부르지 않는다: 연결은 DB에 직접 만들고, 서버는 YOUTUBE_API_KEY(아무 값)·SCHEDULER_DISABLED=1로 띄운다.
@@ -97,6 +97,27 @@ test("수집 기본값(기본 꺼짐)을 바꾸고, 이번 달 현황을 보고,
   await expect(usage).toContainText("이번 달 수집한 채팅3건");
   await expect(page.getByTestId("yt-purge-open")).toBeDisabled();
   expect(await storedChatCountInDb()).toBe(0);
+});
+
+test("채널 바꾸기: 연결된 방송이 있으면 해제된다고 먼저 확인하고, 유튜브가 채팅을 주지 않는 방송은 안내한다", async ({ page }) => {
+  await seedYoutube();
+  await setChatLinkState({ status: "LIVE", chatEnabled: true, liveChatId: null, chatStopReason: null });
+  await login(page, "demo-owner@example.com", "/seller/youtube");
+  await expect(page.getByTestId("yt-chat-state")).toContainText("이 방송은 채팅을 쓸 수 없습니다");
+
+  await page.getByTestId("yt-channel-change").click();
+  await page.getByLabel("채널 주소").fill("https://example.com/not-youtube");
+  await page.getByRole("button", { name: "변경", exact: true }).click();
+  const dlg = page.getByRole("dialog", { name: "채널을 바꾸면 지금 연결된 방송이 해제됩니다. 바꾸시겠습니까?" });
+  await expect(dlg).toBeVisible();
+  // 취소하면 아무것도 바뀌지 않는다
+  await dlg.getByRole("button", { name: "취소" }).click();
+  await expect(page.getByTestId("yt-live")).toBeVisible();
+  // 바꾸기를 누르면 서버로 가고, 잘못된 주소는 서버 안내를 보인다(연결된 방송은 그대로)
+  await page.getByRole("button", { name: "변경", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "바꾸기" }).click();
+  await expect(page.getByTestId("yt-channel-error")).toContainText("확인해 주십시오");
+  await expect(page.getByTestId("yt-live")).toBeVisible();
 });
 
 test("서비스 준비 중(서버 키 없음)이면 안내만 보이고 연결 버튼이 꺼져 있다", async ({ page }) => {
