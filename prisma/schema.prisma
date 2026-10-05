@@ -3527,6 +3527,17 @@ model AdminImpersonationSession {
   @@index([sellerId, createdAt])
 }
 
+// ───────────── 시작하기·온보딩(SA-003 · SA-004) ─────────────
+
+// 파트너스 시작하기 체크리스트의 저장 상태(쇼핑몰마다 한 줄). 단계 완료는 상품·연동·설정 같은 기존 데이터에서 그때그때 계산하고,
+// 계산할 수 없는 것(오버레이 주소를 복사했음, 체크리스트를 닫음)만 여기에 둔다.
+model SellerOnboarding {
+  sellerId           String    @id @db.Uuid
+  overlayUrlCopiedAt DateTime? @db.Timestamptz(3)
+  dismissedAt        DateTime? @db.Timestamptz(3)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(3)
+}
+
 // ───────────── 쇼핑몰별 이용약관·개인정보처리방침(구매자 화면 /shop/[슬러그]/terms·privacy) ─────────────
 
 enum ShopLegalKind {
