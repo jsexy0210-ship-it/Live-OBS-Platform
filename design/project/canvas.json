@@ -3003,6 +3003,15 @@
       "w": 1280,
       "x": 23600,
       "y": 108800
+    },
+    "MA-120.dc.html": {
+      "h": 3160,
+      "is_interactive": true,
+      "page": "p03",
+      "title": "MA-120 인프라 · 비용 (최고관리자 · 조회 전용 · 1분 자동 새로고침)",
+      "w": 1920,
+      "x": 0,
+      "y": 30500
     }
   },
   "createdOnFiles": {
@@ -4087,7 +4096,8 @@
     "DS-CONFIRM.dc.html",
     "DS-NAV.dc.html",
     "DS-TYPE-SCALE.dc.html",
-    "DS-DATEPICKER.dc.html"
+    "DS-DATEPICKER.dc.html",
+    "MA-120.dc.html"
   ],
   "pages": [
     {
