@@ -46,6 +46,7 @@ async function claimPaymentDueSoonLocked(db: Prisma.TransactionClient, opts: { n
   const due = Prisma.sql`
     SELECT o."id", o."sellerId", o."paymentDueAt" FROM "Order" o
     WHERE o."status" = 'PENDING_PAYMENT' AND o."paymentDueAt" > ${now}
+      AND COALESCE((SELECT p."dueReminderEnabled" FROM "SellerOrderPolicy" p WHERE p."sellerId" = o."sellerId"), true)
       AND o."paymentDueAt" - CASE WHEN o."paymentDueAt" - o."createdAt" > INTERVAL '1 day' THEN INTERVAL '1 day' ELSE INTERVAL '1 hour' END <= ${now}`;
   // 처음 잡는 주문: 기록이 없는 주문만 골라 한도만큼 넣는다. 기록 있는 주문을 먼저 빼야 기한이 이른 기록 있는 주문에
   // 한도가 막혀 새 주문이 계속 밀리지 않는다. ON CONFLICT는 잠금 밖에서 넣은 기록에 대한 안전장치다.

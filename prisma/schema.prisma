@@ -1680,6 +1680,10 @@ model SellerOrderPolicy {
   autoDeliverDays                Int       @default(7)
   autoConfirmEnabled             Boolean   @default(true)
   autoConfirmDays                Int       @default(7)
+  // 입금 기한 알림(기본 켜짐). 끄면 이 쇼핑몰 주문은 알림 대상에서 뺀다(orders/notifications.ts).
+  dueReminderEnabled             Boolean   @default(true)
+  // 배송 자동 조회(기본 꺼짐). 켜면 송장 1건 조회마다 발송·이용 충전금에서 차감한다(docs/COST_POLICY.md). 지금은 설정만 저장하고 유료 연동은 하지 않는다.
+  autoTrackingEnabled            Boolean   @default(false)
   // 「미입금 자동 취소 3회 → 30일 주문 막기」
   unpaidRestrictionEnabled       Boolean   @default(true)
   // 꺼져 있다가 다시 켠 시각. 이 뒤의 자동 취소만 센다(MASTER 결정).
