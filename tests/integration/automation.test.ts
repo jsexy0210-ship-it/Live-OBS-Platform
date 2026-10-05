@@ -4125,7 +4125,9 @@ describe("자동 연결 화면용 API (SA-150 주소 확인 · MA-110·111 조�
     expect(d).toMatchObject({ id: a.jobId, status: "QUEUED", payment: { status: "PAID", amount: AUTOMATION_PRICE } });
     expect(d.events.length).toBeGreaterThan(0);
     expect(JSON.stringify(d)).not.toMatch(/detail|billingKey|idempotency|fencing/);
-    expect((await adminJobRoute(new Request(`${BASE}/api/automation/admin/jobs/${a.jobId.replace(/.$/, "0")}`, { headers: ro }), params(a.jobId.replace(/.$/, "0")))).status).toBe(404);
+    // 항상 존재하지 않는 고정 id(무작위 id 끝자리를 바꾸면 같은 id가 될 수 있다)
+    const missing = "00000000-0000-4000-8000-000000000000";
+    expect((await adminJobRoute(new Request(`${BASE}/api/automation/admin/jobs/${missing}`, { headers: ro }), params(missing))).status).toBe(404);
     expect((await adminJobRoute(new Request(`${BASE}/api/automation/admin/jobs/zzz`, { headers: ro }), params("zzz"))).status).toBe(404);
     const sellerCookie = await cookieFor(a.owner.email);
     expect((await adminJobsRoute(new Request(`${BASE}/api/automation/admin/jobs`, { headers: { host: "localhost:3000", cookie: sellerCookie } }))).status).toBeGreaterThanOrEqual(401);
