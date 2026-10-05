@@ -35,6 +35,7 @@ test("대리 조회 종료는 확인 창을 거치고, 취소·Esc·X·바깥 �
   const popup = context.waitForEvent("page");
   await start.click();
   const p = await popup;
+  await p.waitForURL((u) => u.pathname.startsWith("/seller"));
   await p.waitForLoadState("load");
   await p.goto("/seller/orders");
 

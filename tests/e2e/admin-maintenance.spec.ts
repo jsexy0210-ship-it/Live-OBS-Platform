@@ -3,6 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { randomBytes } from "node:crypto";
 import { hashPassword } from "../../lib/server/auth/password";
 import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
+import { fillDateTime } from "./dateInput";
 
 // 마스터 관리자 점검 모드(MA-083): 안내 문구 필수·종료 시각 검사, 켜기·끄기(확인 창), 서버 상태·공개 상태 반영. 설정은 최고관리자만 열린다.
 // 점검을 켜면 이 서버의 파트너스·쇼핑몰이 막히므로, 시험은 끝에 반드시 끄고 DB 줄도 되돌린다. 폐기용 테스트 DB(이름이 _test로 끝남)에서만 돌린다.
@@ -41,12 +42,12 @@ test("최고관리자: 안내 문구 없이는 켤 수 없고, 켜면 점검 중
   await expect(on).toBeDisabled();
 
   await page.getByLabel("안내 문구").fill(`정기 점검 ${run}\n오전 3시까지입니다.`);
-  await page.getByLabel("시작 시각").fill("2099-01-02T10:00");
-  await page.getByLabel("종료 예정 시각").fill("2099-01-02T09:00");
+  await fillDateTime(page, "시작 시각", "2099-01-02T10:00");
+  await fillDateTime(page, "종료 예정 시각", "2099-01-02T09:00");
   await expect(page.getByText("종료 예정 시각은 시작 시각보다 뒤여야 합니다.")).toBeVisible();
   await expect(on).toBeDisabled();
-  await page.getByLabel("시작 시각").fill("");
-  await page.getByLabel("종료 예정 시각").fill("");
+  await fillDateTime(page, "시작 시각", "");
+  await fillDateTime(page, "종료 예정 시각", "");
 
   await on.click();
   await page.getByRole("dialog").getByRole("button", { name: "점검 켜기" }).click();

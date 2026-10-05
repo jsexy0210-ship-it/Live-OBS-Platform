@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { ConfirmProvider, useConfirm } from "../../../../components/admin-ui";
 import IdentityCheck from "../../../../components/seller/IdentityCheck";
 import { AuthFrame, IdentityUnavailable, safeNext } from "../../../../components/seller/PartnersAuth";
 import { api, failMessage, type ApiResult, type Me } from "../../../../components/seller/api";
@@ -21,7 +22,16 @@ type View = "form" | "relink" | "mismatch" | "done";
 // 등록 정보와 다르면(identity_mismatch) 대표자에게 정보 수정을 부탁하는 화면으로 바꾼다
 const isMismatch = (r: ApiResult<unknown>) => !r.ok && r.error === "identity_mismatch";
 
+// 로그인 전 화면이라 셸이 없으므로 확인 창 공급자를 이 화면에서 감싼다
 export default function IdentityLinkPage() {
+  return (
+    <ConfirmProvider>
+      <IdentityLinkPageInner />
+    </ConfirmProvider>
+  );
+}
+
+function IdentityLinkPageInner() {
   const router = useRouter();
   const [status, setStatus] = useState<Status | null>(null);
   const [me, setMe] = useState<Me | null>(null);
@@ -31,6 +41,8 @@ export default function IdentityLinkPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { confirm } = useConfirm();
+  const agreed = useRef<string | null>(null);
   const [focusTo, setFocusTo] = useState<{ id: string } | null>(null);
   useEffect(() => {
     if (!focusTo) return;
@@ -62,6 +74,21 @@ export default function IdentityLinkPage() {
   };
 
   const link = async (verificationId: string) => {
+    // 본인확인 직후 자동으로 연결하지 않고 한 번 묻는다(실패 뒤 다시 누를 때는 이미 답한 것으로 보고 다시 묻지 않는다)
+    if (agreed.current !== verificationId) {
+      const ok = await confirm({
+        title: "이 휴대폰으로 내 계정을 연결하시겠습니까?",
+        body: "연결하면 아이디·비밀번호를 직접 찾을 수 있습니다.",
+        cancelLabel: "나중에 하기",
+        confirmLabel: "연결하기",
+      });
+      if (!ok) {
+        setPending(verificationId);
+        setNotice("계정을 아직 연결하지 않았습니다. 연결하려면 「연결하기」를 눌러 주십시오");
+        return focus("pa-notice");
+      }
+      agreed.current = verificationId;
+    }
     setBusy(true);
     setNotice(null);
     const r = await api(`${BASE}/link`, { method: "POST", body: { verificationId } });
@@ -206,7 +233,7 @@ export default function IdentityLinkPage() {
               {pending && (
                 <span className="row" style={{ marginTop: 8 }}>
                   <button className="btn btn-sm" type="button" disabled={busy} onClick={() => void link(pending)}>
-                    결과 다시 확인하기
+                    {agreed.current === pending ? "결과 다시 확인하기" : "연결하기"}
                   </button>
                 </span>
               )}

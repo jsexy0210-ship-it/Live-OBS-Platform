@@ -186,6 +186,7 @@ test("아이디 찾기: 본인확인 대행사 연결 전이면 인증번호 받
   await page.getByLabel("본인확인 이용 약관에 모두 동의합니다").check();
   const res = page.waitForResponse((r) => r.url().endsWith("/api/seller/find-id/start"));
   await page.getByRole("button", { name: "인증번호 문자 받기" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "문자 받기" }).click();
   expect((await res).status()).toBe(503);
   await expect(page.getByRole("heading", { name: "본인 확인 서비스를 준비하는 중입니다" })).toBeVisible();
   expect(await page.locator("body").innerText()).not.toMatch(/판매자|cafe24|카페24/i);

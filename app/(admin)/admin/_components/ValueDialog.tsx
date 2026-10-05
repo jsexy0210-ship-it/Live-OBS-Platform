@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Modal } from "../../../../components/admin-ui";
 import { adminApi } from "./api";
 import { effectiveAtIso } from "./messageFees";
+import { DateTimePicker } from "../../../../components/admin-ui/DatePicker";
 
 // 숫자 하나(단가·월 제공량)를 바꾸는 확인 창. 적용 예정 시각(KST)을 비우면 바로 적용한다. 처리 중에는 닫기·취소를 막는다.
 // 공통 모달(X·Esc·바깥 클릭=취소, 값을 바꿨으면 닫기 전에 확인).
@@ -67,7 +68,7 @@ export function ValueDialog({
             </div>
             <div className="fld">
               <label htmlFor="value-at">바뀌는 시각</label>
-              <input id="value-at" className="inp" type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} disabled={busy} />
+              <DateTimePicker id="value-at" aria-label="바뀌는 시각" value={at} onChange={(v) => setAt(v)} disabled={busy} />
               <span className="t-c1 c-alt">한국 시간 기준입니다. 비워 두면 바로 적용합니다.</span>
             </div>
             {error && (

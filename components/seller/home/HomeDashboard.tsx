@@ -4,7 +4,7 @@ import "../stats/stats.css";
 import "./home.css";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PageHead } from "../../admin-ui";
+import { PageHead, useConfirm } from "../../admin-ui";
 import { Topbar, useSeller } from "../SellerShell";
 import { ErrorState, LoadingRows } from "../States";
 import { api } from "../api";
@@ -79,12 +79,19 @@ function OnboardingStrip() {
   const { can } = useSeller();
   const [part] = usePart<Onboarding>("/api/seller/onboarding", (d) => d as Onboarding);
   const [closed, setClosed] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const { confirm } = useConfirm();
   if (part.kind !== "ok" || part.data.completed || part.data.dismissed || closed) return null;
   const close = async () => {
-    const r = await api("/api/seller/onboarding", { method: "POST", body: { action: "dismiss" } });
-    if (r.ok) setClosed(true);
-    else setFailed(true);
+    const ok = await confirm({
+      title: "시작하기 안내를 숨기시겠습니까?",
+      body: "홈에서 시작하기 안내가 사라집니다. 시작하기 화면에서 다시 열 수 있습니다.",
+      confirmLabel: "숨기기",
+      run: async () => {
+        const r = await api("/api/seller/onboarding", { method: "POST", body: { action: "dismiss" } });
+        return r.ok ? undefined : "안내를 숨기지 못했습니다. 인터넷 연결을 확인한 뒤 다시 눌러 주십시오";
+      },
+    });
+    if (ok) setClosed(true);
   };
   return (
     <div className="home-onboarding" data-testid="home-onboarding">
@@ -92,7 +99,6 @@ function OnboardingStrip() {
       <span className="n">
         {part.data.doneCount}/{part.data.total} 완료
       </span>
-      {failed && <span className="e">안내를 숨기지 못했습니다. 인터넷 연결을 확인한 뒤 다시 눌러 주십시오</span>}
       <Link className="btn btn-out" href="/seller/onboarding">
         이어서 하기
       </Link>

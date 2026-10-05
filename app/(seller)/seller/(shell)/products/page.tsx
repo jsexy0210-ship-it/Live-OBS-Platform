@@ -10,6 +10,7 @@ import { categoryLabel, categoryOptions, type CategoryNode } from "../../../../.
 import { ErrorState, LoadingRows, Locked, NoImage, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, type Product, type ProductStatus } from "../../../../../components/seller/api";
 import { LOW_STOCK, MAX_SEARCH_LENGTH, statusBadge, textLength, totalStock, won } from "../../../../../components/seller/format";
+import { DatePicker } from "../../../../../components/admin-ui/DatePicker";
 
 // SA-011 상품 목록(업무용 관리 화면). 위쪽 표형 검색 상자에서 조건을 정해 「검색」을 누르면 걸러 보고, 이어서 불러온다(기본 50개씩).
 // 정렬·페이지 크기는 바꾸는 즉시 적용한다. 체크한 상품은 판매 상태 변경·삭제를 한 번에 처리한다(POST /api/seller/products/bulk).
@@ -364,9 +365,9 @@ export default function ProductListPage() {
               </button>
             </span>
             <span className="row" style={{ gap: 8 }}>
-              <input className="inp inp-sm" type="date" aria-label="등록일 시작" value={draft.from} onChange={(e) => setDraft({ ...draft, from: e.target.value })} />
+              <DatePicker className="dt-sm" aria-label="등록일 시작" value={draft.from} onChange={(v) => setDraft({ ...draft, from: v })} />
               <span aria-hidden="true">~</span>
-              <input className="inp inp-sm" type="date" aria-label="등록일 끝" value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} />
+              <DatePicker className="dt-sm" aria-label="등록일 끝" value={draft.to} onChange={(v) => setDraft({ ...draft, to: v })} />
             </span>
           </SearchRow>
           <SearchRow label="재고">

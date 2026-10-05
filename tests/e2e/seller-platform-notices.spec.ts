@@ -62,6 +62,9 @@ test("문의: 공지에서 관련 문의를 보내고, 사진을 붙이고, 답�
   await expect(page.getByAltText("첨부 사진")).toHaveCount(1);
   await expect(send).toBeEnabled();
   await send.click();
+  const sendDialog = page.getByRole("dialog", { name: "문의를 보내시겠습니까?" });
+  await expect(sendDialog).toContainText("보낸 뒤에는 수정하거나 지울 수 없습니다");
+  await sendDialog.getByRole("button", { name: "문의 보내기" }).click();
 
   await expect(page).toHaveURL(/\/seller\/inquiries\/[0-9a-f-]{36}$/);
   const id = page.url().split("/").pop()!;
@@ -93,6 +96,7 @@ test("문의: 공지에서 관련 문의를 보내고, 사진을 붙이고, 답�
   await page.goto(`/seller/inquiries/${id}`);
   await page.getByLabel("추가 문의").fill("추가로 여쭙습니다.");
   await page.getByRole("button", { name: "추가 문의 보내기" }).click();
+  await page.getByRole("dialog", { name: "추가 문의를 보내시겠습니까?" }).getByRole("button", { name: "추가 문의 보내기" }).click();
   await expect(page.getByTestId("inquiry-message")).toHaveCount(3);
   await expect(page.getByText("답변 대기")).toBeVisible();
 
@@ -144,7 +148,11 @@ test("하루 20건을 넘기면 보내지 못하고 서버 안내문이 보인�
   await page.getByLabel("제목").fill(`${E2E_PREFIX}한도 초과`);
   await page.getByLabel("내용").fill("내용");
   await page.getByRole("button", { name: "문의 보내기" }).click();
-  await expect(page.getByRole("alert").filter({ hasText: "하루 20건까지" })).toBeVisible();
+  const limitDialog = page.getByRole("dialog", { name: "문의를 보내시겠습니까?" });
+  await limitDialog.getByRole("button", { name: "문의 보내기" }).click();
+  // 서버가 거절하면 확인 창 안에 안내문을 보이고 닫지 않는다
+  await expect(limitDialog.getByRole("alert").filter({ hasText: "하루 20건까지" })).toBeVisible();
+  await limitDialog.getByRole("button", { name: "취소" }).click();
   await expect(page).toHaveURL(/\/seller\/inquiries\/new$/);
   await expect(page.getByLabel("제목")).toHaveValue(`${E2E_PREFIX}한도 초과`);
 });
