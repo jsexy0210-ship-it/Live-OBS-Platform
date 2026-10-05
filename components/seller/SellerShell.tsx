@@ -48,6 +48,8 @@ const MENU: Group[] = [
     items: [
       { label: "전체 주문", href: "/seller/orders", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
       { label: "입금 확인", href: "/seller/orders/deposits", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
+      // 환불 요청: 상세가 아니라 처리 대기 목록이라 주문 그룹 항목(SA-023-R)
+      { label: "환불 요청", href: "/seller/orders/refund-requests", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
       { label: "교환 · 반품", href: "/seller/returns", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
       { label: "배송", href: "/seller/shipping", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
       { label: "송장 발급", perm: "ORDER_SHIPPING", plan: "FOLLOWUP" },
@@ -70,7 +72,8 @@ const MENU: Group[] = [
   },
   {
     key: "member",
-    label: "회원",
+    // IA 개편(2026-10-05): 고객 = 기존 회원 + 게시판(문의·리뷰). 경로(URL)는 그대로
+    label: "고객",
     items: [
       { label: "회원 목록", href: "/seller/members", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
       { label: "회원 등급", href: "/seller/member-grades", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
@@ -79,30 +82,31 @@ const MENU: Group[] = [
       { label: "적립금", href: "/seller/rewards", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
       // 원장 API(GET /api/seller/reward-ledger)가 ORDER_FOLLOWUP 경로라 오버레이 전용으로 내린 뒤에도 후속 확인할 수 있다
       { label: "적립금 원장", href: "/seller/rewards/ledger", perm: "MEMBER_POINTS", plan: "FOLLOWUP" },
-    ],
-  },
-  {
-    key: "board",
-    label: "게시판",
-    items: [
       { label: "구매자 문의", perm: "INQUIRY_REPLY", plan: "FOLLOWUP" },
       // 상품 리뷰: 목록·집계 조회는 파트너스 계정 누구나, 답글·숨김·설정은 구매자 문의(INQUIRY_REPLY) 권한(서버에서 막음). 서버가 스토어 운영 기능을 요구한다
       { label: "상품 리뷰", href: "/seller/reviews", plan: "STORE_OPERATIONS" },
+    ],
+  },
+  {
+    key: "store",
+    // 스토어 = 쿠폰(프로모션) + 배너·팝업(디자인) + 쇼핑몰 공지·FAQ
+    label: "스토어",
+    items: [
+      // 쿠폰: 집계 조회는 파트너스 계정 누구나, 만들기·지급은 적립금(MEMBER_POINTS) 권한(화면에서 막음)
+      { label: "쿠폰", href: "/seller/coupons", plan: "STORE_OPERATIONS" },
+      { label: "배너 · 팝업", href: "/seller/banners", plan: "STORE_OPERATIONS" },
       { label: "쇼핑몰 공지 · 자주 묻는 질문", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
     ],
   },
-  // 쿠폰: 집계 조회는 파트너스 계정 누구나, 만들기·지급은 적립금(MEMBER_POINTS) 권한(화면에서 막음)
-  { key: "promotion", label: "프로모션", items: [{ label: "쿠폰", href: "/seller/coupons", plan: "STORE_OPERATIONS" }] },
-  { key: "design", label: "디자인", items: [{ label: "배너 · 팝업", href: "/seller/banners", plan: "STORE_OPERATIONS" }] },
   {
     key: "stats",
-    label: "통계",
+    label: "분석",
     // 오버레이 전용은 방송 통계만(매출·상품 등은 스토어 운영, MASTER 결정 2026-10-04)
     items: [{ label: "통계", href: "/seller/stats", perm: "SALES_VIEW", plan: "STORE_OPERATIONS", alt: { plan: "OVERLAY", href: "/seller/stats/broadcasts" } }],
   },
   {
     key: "settings",
-    label: "쇼핑몰 설정",
+    label: "설정",
     items: [
       { label: "쇼핑몰 정보", href: "/seller/settings/shop", plan: "STORE_OPERATIONS" },
       { label: "주문 설정", href: "/seller/settings/order", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
@@ -192,6 +196,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   const [failed, setFailed] = useState(false);
   const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null);
   const [navOpen, setNavOpen] = useState(false);
+  const drawerEntry = useRef(false);
   // GNB에서 고른 대분류(화면을 옮기면 지금 화면의 대분류로 돌아간다)
   const [picked, setPicked] = useState<string | null>(null);
 
@@ -269,9 +274,41 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   }, [refresh]);
 
   useEffect(() => {
+    drawerEntry.current = false;
     setNavOpen(false);
     setPicked(null);
   }, [pathname]);
+
+  // 서랍(1024 미만)을 열 때만 기록 한 칸을 얹어, Back을 누르면 페이지를 떠나지 않고 서랍부터 닫는다(전역 popstate 가로채기 없음).
+  // 링크로 이동할 때는 기록을 되돌리지 않는다(이동과 겹치지 않게).
+  const openNav = () => {
+    if (!drawerEntry.current) {
+      window.history.pushState(null, "", window.location.href);
+      drawerEntry.current = true;
+    }
+    setNavOpen(true);
+  };
+  const closeNav = () => {
+    setNavOpen(false);
+    if (drawerEntry.current) {
+      drawerEntry.current = false;
+      window.history.back();
+    }
+  };
+  const leaveNav = () => {
+    drawerEntry.current = false;
+    setNavOpen(false);
+  };
+  useEffect(() => {
+    if (!navOpen) return;
+    const onPop = () => {
+      if (!drawerEntry.current) return;
+      drawerEntry.current = false;
+      setNavOpen(false);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [navOpen]);
 
   // 화면 방문 번호: 경로가 바뀌면 화면(자식)을 그리기 전에 올린다. 자식의 첫 요청도 새 번호를 갖도록 렌더 중에 한 번만 올린다
   const visitPath = useRef<string | null>(null);
@@ -343,12 +380,12 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
       <a className="util-i" href={`/shop/${me.shop.slug}`} target="_blank" rel="noreferrer">
         쇼핑몰 바로가기
       </a>
-      <a className="util-i off" aria-disabled="true" title="준비 중입니다">
+      <Link className="util-i" href="/seller/notices" onClick={leaveNav}>
         공지 · 문의
-      </a>
-      <a className="util-i off" aria-disabled="true" title="준비 중입니다">
+      </Link>
+      <Link className="util-i" href="/seller/assistant" onClick={leaveNav}>
         도우미
-      </a>
+      </Link>
       <a className="util-i off" aria-disabled="true" title="준비 중입니다">
         내 계정
       </a>
@@ -359,10 +396,10 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <Ctx.Provider value={{ me, trialDaysLeft, openNav: () => setNavOpen(true), can, loc }}>
+    <Ctx.Provider value={{ me, trialDaysLeft, openNav, can, loc }}>
       <div className={`cs${navOpen ? " nav-open" : ""}`}>
         <header className="gnb">
-          <button className="gnb-menu" type="button" aria-label="메뉴 열기" onClick={() => setNavOpen(true)}>
+          <button className="gnb-menu" type="button" aria-label="메뉴 열기" onClick={openNav}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
               <path d="M4 7h16M4 12h16M4 17h16" />
             </svg>
@@ -411,7 +448,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
                       className={`lnb-i${active?.item === n ? " on" : ""}`}
                       href={n.href}
                       aria-current={active?.item === n ? "page" : undefined}
-                      onClick={() => setNavOpen(false)}
+                      onClick={leaveNav}
                     >
                       {n.label}
                     </Link>
@@ -425,7 +462,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
             ))}
             <div className="lnb-util">{utilities}</div>
           </aside>
-          <button className="cs-dim" type="button" aria-label="메뉴 닫기" onClick={() => setNavOpen(false)} />
+          <button className="cs-dim" type="button" aria-label="메뉴 닫기" onClick={closeNav} />
           <div className="col cs-body">
             {blocked ? <PlanFeatureRequired crumb={routeCrumb(pathname)} noFeatures={features.length === 0} next={nextNav} /> : children}
           </div>
