@@ -53,11 +53,11 @@ export async function attachLiveAndChat(nickname: string, alsoInWindow: string[]
     await db.youtubeLiveLink.update({ where: { id: link.id }, data: { broadcastSessionId: session.id } });
     // 채팅 확인은 방송 시간 안에 들어온 주문 닉네임만 본다(서버 규칙). 시험 주문은 방송 전에 만든 것이라 이 방송 안에 들어온 주문으로 맞춘다
     const item = await db.queueItem.findFirstOrThrow({ where: { sellerId, nicknameSnapshot: nickname }, select: { orderId: true } });
-    await db.order.update({ where: { id: item.orderId }, data: { createdAt: new Date(), broadcastNicknameSnapshot: nickname } });
+    await db.order.update({ where: { id: item.orderId! }, data: { createdAt: new Date(), broadcastNicknameSnapshot: nickname } });
     // 이 방송 안에 들어온 주문이지만 채팅은 없는 경우(「채팅 없음」)
     for (const n of alsoInWindow) {
       const other = await db.queueItem.findFirstOrThrow({ where: { sellerId, nicknameSnapshot: n }, select: { orderId: true } });
-      await db.order.update({ where: { id: other.orderId }, data: { createdAt: new Date(), broadcastNicknameSnapshot: n } });
+      await db.order.update({ where: { id: other.orderId! }, data: { createdAt: new Date(), broadcastNicknameSnapshot: n } });
     }
     await db.youtubeChatMessage.create({
       data: { sellerId, liveLinkId: link.id, messageId: `e2e-msg-${Date.now()}`, authorChannelId: "UCe2eAuthor", authorName: nickname, text: "안녕하세요", publishedAt: new Date() },

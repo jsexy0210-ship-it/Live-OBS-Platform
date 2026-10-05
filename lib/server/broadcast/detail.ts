@@ -24,7 +24,7 @@ export async function broadcastDetail(db: PrismaClient, ctx: TenantContext, id: 
   const at = isUuid(cursor)
     ? await db.order.findFirst({ where: { id: cursor, sellerId: ctx.sellerId, createdAt: window }, select: { id: true, createdAt: true } })
     : null;
-  const [agg, rows, hits] = await Promise.all([
+  const [agg, rows, hits, externals] = await Promise.all([
     aggregateBroadcasts(db, ctx.sellerId, [session.id]),
     db.order.findMany({
       where: {
@@ -52,7 +52,14 @@ export async function broadcastDetail(db: PrismaClient, ctx: TenantContext, id: 
       where: { sellerId: ctx.sellerId, createdAt: window },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       take: DETAIL_HIT_LIMIT,
-      select: { id: true, cardName: true, note: true, nicknameSnapshot: true, createdAt: true, queueItem: { select: { order: { select: { id: true, orderNo: true } } } } },
+      select: { id: true, cardName: true, note: true, nicknameSnapshot: true, createdAt: true, queueItem: { select: { order: { select: { id: true, orderNo: true } }, externalOrderId: true, externalOrder: { select: { connection: { select: { shopKey: true } } } } } } },
+    }),
+    // 외부 쇼핑몰 주문(내부 주문 행이 없어 위 주문 목록에 없다): 방송 시간 안에 들어온 것, 금액·결제 정보 없이 닉네임·상품·수량·취소 여부만
+    db.externalOrder.findMany({
+      where: { sellerId: ctx.sellerId, receivedAt: window },
+      orderBy: [{ receivedAt: "asc" }, { id: "asc" }],
+      take: DETAIL_HIT_LIMIT,
+      select: { id: true, buyerLabel: true, receivedAt: true, cancelledAt: true, connection: { select: { shopKey: true } }, queueItems: { orderBy: { externalLineNo: "asc" }, select: { productLabel: true, quantity: true, doneAt: true, status: true } } },
     }),
   ]);
   const page = rows.slice(0, DETAIL_ORDER_PAGE);
@@ -77,6 +84,28 @@ export async function broadcastDetail(db: PrismaClient, ctx: TenantContext, id: 
       };
     }),
     nextCursor: rows.length > DETAIL_ORDER_PAGE ? page[page.length - 1].id : null,
-    hits: hits.map((h) => ({ id: h.id, cardName: h.cardName, note: h.note, nickname: h.nicknameSnapshot, order: h.queueItem ? h.queueItem.order : null, createdAt: h.createdAt })),
+    externalOrders: externals.map((e) => {
+      const done = e.queueItems.map((q) => q.doneAt).filter((x): x is Date => !!x);
+      return {
+        id: e.id,
+        source: "EXTERNAL" as const,
+        externalShopName: e.connection.shopKey,
+        nickname: e.buyerLabel,
+        items: e.queueItems.map((q) => ({ productName: q.productLabel, quantity: q.quantity, status: q.status })),
+        createdAt: e.receivedAt,
+        cancelledAt: e.cancelledAt,
+        completedAt: done.length > 0 && done.length === e.queueItems.length ? new Date(Math.max(...done.map((x) => x.getTime()))) : null,
+      };
+    }),
+    hits: hits.map((h) => ({
+      id: h.id,
+      cardName: h.cardName,
+      note: h.note,
+      nickname: h.nicknameSnapshot,
+      order: h.queueItem ? h.queueItem.order : null,
+      source: h.queueItem ? (h.queueItem.externalOrderId ? ("EXTERNAL" as const) : ("INTERNAL" as const)) : null,
+      externalShopName: h.queueItem?.externalOrder?.connection.shopKey ?? null,
+      createdAt: h.createdAt,
+    })),
   };
 }

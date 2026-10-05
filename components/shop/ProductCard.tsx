@@ -8,6 +8,7 @@ export type ProductCardData = {
   salePrice: number | null;
   soldOut: boolean;
   thumbnailUrl?: string | null;
+  isLive?: boolean; // 지금 방송에서 주문된 상품
   // 평점·리뷰 수·예상 적립(상품 목록·홈 API가 주는 값. 없으면 그 줄을 그리지 않는다)
   rating?: number | null;
   reviewCount?: number;
@@ -34,6 +35,7 @@ export function ProductCard({ p, href, children }: { p: ProductCardData; href?: 
     <li className="pc">
       <Wrap href={href} className="pc-photo">
         {p.thumbnailUrl && <img src={p.thumbnailUrl} alt="" loading="lazy" />}
+        {p.isLive && <span className="pc-live">LIVE</span>}
         {p.soldOut && <span className="pc-out" role="img" aria-label="품절">SOLD OUT</span>}
       </Wrap>
       <Wrap href={href} className="pc-name">

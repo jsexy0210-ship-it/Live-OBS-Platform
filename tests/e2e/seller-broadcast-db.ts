@@ -129,7 +129,7 @@ export async function moveQueueOrdersToNow(nicks: readonly string[], slug = "dem
     const { id: sellerId } = await db.seller.findUniqueOrThrow({ where: { slug }, select: { id: true } });
     for (const n of nicks) {
       const item = await db.queueItem.findFirstOrThrow({ where: { sellerId, nicknameSnapshot: n }, select: { orderId: true } });
-      await db.order.update({ where: { id: item.orderId }, data: { createdAt: new Date(), broadcastNicknameSnapshot: n } });
+      await db.order.update({ where: { id: item.orderId! }, data: { createdAt: new Date(), broadcastNicknameSnapshot: n } });
     }
   } finally {
     await db.$disconnect();
