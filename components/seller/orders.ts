@@ -1,3 +1,4 @@
+import { formatDateTime } from "../../lib/client/format";
 // 판매자 주문 화면(SA-021 목록 · SA-022 상세 · SA-023 환불) 공통 타입과 표시 규칙.
 export type OrderStatus = "PENDING_PAYMENT" | "PAID" | "CANCELLED" | "REFUNDED";
 
@@ -147,16 +148,9 @@ export const listDate = (iso: string) => {
   const t = kst(iso);
   return `${t.m}/${t.d}`;
 };
-// 「10월 2일 14:02」
-export const longTime = (iso: string) => {
-  const t = kst(iso);
-  return `${t.m}월 ${t.d}일 ${t.hh}:${t.mm}`;
-};
-// 「2026-10-02 14:02:10」
-export const fullTime = (iso: string) => {
-  const t = kst(iso);
-  return `${kstDate(iso)} ${t.hh}:${t.mm}:${t.ss}`;
-};
+// 「2026.10.02 14:02」(공용 일시 서식, lib/client/format.ts)
+export const longTime = (iso: string) => formatDateTime(iso);
+export const fullTime = (iso: string) => formatDateTime(iso);
 // 오늘 기준 n일 전의 한국 날짜(기간 필터 from)
 export const kstDaysAgo = (n: number, now = new Date()) => kstDate(new Date(now.getTime() - n * 86_400_000).toISOString());
 
