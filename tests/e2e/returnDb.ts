@@ -6,7 +6,8 @@ import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
 const ORDER_NO_BASE = 920000;
 const open = () => new PrismaClient({ datasources: { db: { url: assertTestDatabaseUrl(process.env.DATABASE_URL) } } });
 
-export async function deliveredOrderInDb(slug: string, loginId: string): Promise<{ orderId: string; orderNo: number }> {
+// rewardUsed: 이 주문에서 쓴 적립금(결제 금액에서 뺀다). 환불·반품 미리보기의 적립금 반환 줄을 확인할 때 쓴다.
+export async function deliveredOrderInDb(slug: string, loginId: string, rewardUsed = 0): Promise<{ orderId: string; orderNo: number }> {
   const db = open();
   try {
     const seller = await db.seller.findUniqueOrThrow({ where: { slug } });
@@ -14,7 +15,7 @@ export async function deliveredOrderInDb(slug: string, loginId: string): Promise
     const option = await db.productOption.findFirstOrThrow({ where: { sellerId: seller.id, deletedAt: null, product: { deletedAt: null } }, include: { product: true } });
     const last = await db.order.aggregate({ where: { sellerId: seller.id, orderNo: { gte: ORDER_NO_BASE } }, _max: { orderNo: true } });
     const order = await db.order.create({
-      data: { sellerId: seller.id, orderNo: (last._max.orderNo ?? ORDER_NO_BASE) + 1, buyerMemberId: buyer.id, status: "PAID", broadcastNicknameSnapshot: buyer.broadcastNickname, totalAmount: option.product.price, paidAt: new Date() },
+      data: { sellerId: seller.id, orderNo: (last._max.orderNo ?? ORDER_NO_BASE) + 1, buyerMemberId: buyer.id, status: "PAID", broadcastNicknameSnapshot: buyer.broadcastNickname, totalAmount: option.product.price - rewardUsed, rewardUsedAmount: rewardUsed, paidAt: new Date() },
     });
     await db.orderItem.create({
       data: { sellerId: seller.id, orderId: order.id, productId: option.productId, optionId: option.id, productNameSnapshot: option.product.name, optionNameSnapshot: option.name, unitPrice: option.product.price, quantity: 1 },

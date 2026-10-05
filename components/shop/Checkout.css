@@ -118,3 +118,17 @@
 .co-box > .cart-msg {
   margin: 12px 0;
 }
+/* 주문서 적립금 칸 */
+.co-reward-have {
+  margin: 0 0 12px;
+}
+.co-reward-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.co-reward-row .inp {
+  width: 160px;
+  max-width: 100%;
+  text-align: right;
+}
