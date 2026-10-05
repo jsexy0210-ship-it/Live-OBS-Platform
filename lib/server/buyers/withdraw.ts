@@ -15,7 +15,7 @@ import { purgeSignupVerificationsForShop } from "./signup";
 import { deleteUnusedBuyerCoupons } from "../shop-coupons/service";
 import { anonymizeMemberReviews } from "../product-reviews/service";
 import { deleteMemberGradeData } from "../shop-member-grades/service";
-import { deleteUnattachedReturnImages } from "../shop-returns/hooks";
+import { clearReturnRefundAccounts, deleteUnattachedReturnImages } from "../shop-returns/hooks";
 
 // 구매자 탈퇴(ARCHITECTURE 「구매자 회원」: WITHDRAWN과 deletedAt을 같은 트랜잭션에서, 개인정보 비식별).
 // 기준(MASTER 결정 2026-10-03):
@@ -171,6 +171,8 @@ export async function withdrawBuyer(
     const reviews = await anonymizeMemberReviews(tx, { sellerId: scope.sellerId, buyerMemberId: member.id });
     // 교환·반품 신청에 붙지 않은 사진은 지운다(신청에 붙은 사진은 신청과 함께 법정 보관, shop-returns)
     await deleteUnattachedReturnImages(tx, { sellerId: scope.sellerId, buyerMemberId: member.id });
+    // 신청에 남은 무통장 환불 계좌는 비운다(shop-returns)
+    await clearReturnRefundAccounts(tx, { sellerId: scope.sellerId, buyerMemberId: member.id });
     // 회원 등급 고정 표시·변경 기록 삭제(shop-member-grades)
     await deleteMemberGradeData(tx, { sellerId: scope.sellerId, buyerMemberId: member.id });
     const sessions = await tx.buyerSession.deleteMany({ where: { buyerMemberId: member.id } });

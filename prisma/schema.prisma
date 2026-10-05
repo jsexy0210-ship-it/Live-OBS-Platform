@@ -2200,6 +2200,20 @@ enum ReturnStatus {
   CANCELLED
 }
 
+// 수거 방법(접수할 때 판매자가 정함): 택배사 수거 접수 / 구매자 직접 발송 / 수거 없음(폐기·사진 확인)
+enum ReturnPickup {
+  COURIER
+  BUYER_SHIP
+  NONE
+}
+
+// 검수 결과(회수 완료 뒤 판매자가 입력). 이상 없음일 때만 바로 환불·교환 발송, 그 밖은 반송·거절을 고른다.
+enum ReturnInspection {
+  OK
+  USED_DAMAGED
+  MISSING_PARTS
+}
+
 enum ReturnReason {
   CHANGE_OF_MIND
   DEFECTIVE
@@ -2232,6 +2246,16 @@ model ReturnRequest {
   exchangeTrackingNumber String?
   // 반품 환불 결과(환불한 금액)
   refundAmount           Int?
+  // v2: 수거 방법, 검수 결과, 교환 재고 없음 처리(재입고 뒤 발송 보류·환불 전환), 무통장 주문 환불 계좌(환불·종료 뒤 비운다)
+  pickupMethod           ReturnPickup @default(BUYER_SHIP)
+  inspectionResult       ReturnInspection?
+  inspectionNote         String?
+  inspectedAt            DateTime?    @db.Timestamptz(3)
+  exchangeHeldAt         DateTime?    @db.Timestamptz(3)
+  convertedFromExchange  Boolean      @default(false)
+  refundBankName         String?
+  refundAccountHolder    String?
+  refundAccountNumber    String?
   acceptedAt             DateTime?    @db.Timestamptz(3)
   receivedAt             DateTime?    @db.Timestamptz(3)
   completedAt            DateTime?    @db.Timestamptz(3)
