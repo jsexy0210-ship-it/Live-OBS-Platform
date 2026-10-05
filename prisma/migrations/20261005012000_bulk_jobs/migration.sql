@@ -34,3 +34,5 @@ CREATE INDEX "BulkJob_sellerId_createdAt_idx" ON "BulkJob"("sellerId", "createdA
 -- AddForeignKey
 ALTER TABLE "BulkJob" ADD CONSTRAINT "BulkJob_sellerId_fkey" FOREIGN KEY ("sellerId") REFERENCES "Seller"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
+-- 일괄 등록은 파트너스 직원·관리자만 한다(구매자 회원 id가 행위자 칸에 들어오지 않게 막는다, memberData.ts MEMBER_REFERENCE_POLICY)
+ALTER TABLE "BulkJob" ADD CONSTRAINT "BulkJob_actor_not_buyer_check" CHECK ("actorType" <> 'BUYER');
