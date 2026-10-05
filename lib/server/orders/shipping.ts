@@ -23,7 +23,17 @@ export type ShippingPolicy = {
   remoteZipRanges: ZipRange[];
   returnFee: number;
   exchangeFee: number;
+  // SA-061: 받는 방법(지금은 즉시 발송만), 발송 기한(일), 발송 처리 때 처음 고르는 택배사
+  receiveMethods: ReceiveMethod[];
+  dispatchDeadlineDays: number;
+  defaultCourier: Courier | null;
 };
+
+// 구매자가 고를 수 있는 받는 방법. 보관 후 합배송(STORAGE)은 출시 후 1차라 지금은 즉시 발송만 켤 수 있다(PRODUCT_SCOPE 「배송」).
+export const AVAILABLE_RECEIVE_METHODS = ["IMMEDIATE"] as const;
+export const PLANNED_RECEIVE_METHODS = ["STORAGE"] as const;
+export type ReceiveMethod = (typeof AVAILABLE_RECEIVE_METHODS)[number];
+export const MAX_DISPATCH_DEADLINE_DAYS = 30;
 
 // 제주(63000~63644)·울릉(40200~40240). 판매자가 바꿀 수 있다.
 export const DEFAULT_SHIPPING_POLICY: ShippingPolicy = {
@@ -37,6 +47,9 @@ export const DEFAULT_SHIPPING_POLICY: ShippingPolicy = {
   ],
   returnFee: 3000,
   exchangeFee: 6000,
+  receiveMethods: ["IMMEDIATE"],
+  dispatchDeadlineDays: 3,
+  defaultCourier: null,
 };
 
 // 판매자가 고를 수 있는 택배사. 화면에는 이름을 보여 주고 값은 코드로 받는다.
@@ -64,6 +77,12 @@ function parseZipRanges(raw: unknown): ZipRange[] | null {
   return out;
 }
 
+function parseReceiveMethods(v: unknown): ReceiveMethod[] | null {
+  if (!Array.isArray(v) || v.length === 0 || v.length > AVAILABLE_RECEIVE_METHODS.length + PLANNED_RECEIVE_METHODS.length) return null;
+  if (v.some((m) => !(AVAILABLE_RECEIVE_METHODS as readonly unknown[]).includes(m))) return null;
+  return [...new Set(v as ReceiveMethod[])];
+}
+
 // 판매자 정책 입력 검증. 잘못된 값은 null. 반품·교환 배송비를 빼고 보내면 current(지금 설정) 값을 그대로 둔다.
 export function parseShippingPolicy(raw: unknown, current: ShippingPolicy = DEFAULT_SHIPPING_POLICY): ShippingPolicy | null {
   if (!raw || typeof raw !== "object") return null;
@@ -80,7 +99,13 @@ export function parseShippingPolicy(raw: unknown, current: ShippingPolicy = DEFA
   const returnFee = b.returnFee ?? current.returnFee;
   const exchangeFee = b.exchangeFee ?? current.exchangeFee;
   if (!isFee(returnFee, MAX_FEE) || !isFee(exchangeFee, MAX_FEE)) return null;
-  return { freeShipping, baseFee: b.baseFee, freeOverAmount, remoteSurcharge: b.remoteSurcharge, remoteZipRanges, returnFee, exchangeFee };
+  // SA-061 칸도 빼면 지금 값을 둔다. 받는 방법은 켤 수 있는 값만(중복 제거, 1개 이상), 발송 기한은 1~30일, 기본 택배사는 코드나 null
+  const receiveMethods = parseReceiveMethods(b.receiveMethods ?? current.receiveMethods);
+  const dispatchDeadlineDays = b.dispatchDeadlineDays ?? current.dispatchDeadlineDays;
+  const defaultCourier = b.defaultCourier === undefined ? current.defaultCourier : b.defaultCourier;
+  if (!receiveMethods || !isFee(dispatchDeadlineDays, MAX_DISPATCH_DEADLINE_DAYS) || dispatchDeadlineDays < 1) return null;
+  if (defaultCourier !== null && !isCourier(defaultCourier)) return null;
+  return { freeShipping, baseFee: b.baseFee, freeOverAmount, remoteSurcharge: b.remoteSurcharge, remoteZipRanges, returnFee, exchangeFee, receiveMethods, dispatchDeadlineDays, defaultCourier };
 }
 
 type Db = PrismaClient | Prisma.TransactionClient;
@@ -97,6 +122,10 @@ export async function getShippingPolicy(db: Db, sellerId: string): Promise<Shipp
     remoteZipRanges: parseZipRanges(p.remoteZipRanges) ?? DEFAULT_SHIPPING_POLICY.remoteZipRanges,
     returnFee: p.returnFee,
     exchangeFee: p.exchangeFee,
+    // 저장 때 검증했지만 깨진 값이면 기본값을 쓴다
+    receiveMethods: parseReceiveMethods(p.receiveMethods) ?? DEFAULT_SHIPPING_POLICY.receiveMethods,
+    dispatchDeadlineDays: p.dispatchDeadlineDays,
+    defaultCourier: p.defaultCourier !== null && isCourier(p.defaultCourier) ? p.defaultCourier : null,
   };
 }
 

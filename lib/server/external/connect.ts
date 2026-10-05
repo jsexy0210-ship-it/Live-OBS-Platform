@@ -3,7 +3,7 @@ import { Prisma, type ExternalShopConnection, type PrismaClient } from "@prisma/
 import { writeAudit } from "../audit/log";
 import { notFound } from "../authz/errors";
 import { openBillingKey, sealBillingKey } from "../billing/secret";
-import { requireSellerPermission, type TenantContext } from "../tenant/context";
+import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 import { recordExternalCost } from "../automation/budget";
 import { OAUTH_STATE_TTL_MS } from "./config";
 import { shopKeyOf, type ExternalShopProvider } from "./provider";
@@ -92,8 +92,9 @@ export async function completeConnect(db: PrismaClient, provider: ExternalShopPr
 
 export type ConnectionView = { id: string; shopKey: string; status: ExternalShopConnection["status"]; connectedAt: Date; lastEventAt: Date | null };
 
-// 목록은 같은 파트너스 계정이면 누구나 본다(보기만, 토큰·웹훅 값은 없다). 바꾸기는 대표자·쇼핑몰 설정 직원만.
+// 목록은 대표자·쇼핑몰 설정(SHOP_SETTINGS) 직원만 본다(메뉴와 같은 기준, 토큰·웹훅 값은 없다). 다른 파트너스의 연결은 보이지 않는다.
 export async function listConnections(db: PrismaClient, ctx: TenantContext): Promise<ConnectionView[]> {
+  requireSellerRead(ctx, "SHOP_SETTINGS");
   const rows = await db.externalShopConnection.findMany({ where: { sellerId: ctx.sellerId, status: { not: "DISCONNECTED" } }, orderBy: { createdAt: "asc" } });
   return rows.map((c) => ({ id: c.id, shopKey: c.shopKey, status: c.status, connectedAt: c.connectedAt, lastEventAt: c.lastEventAt }));
 }
