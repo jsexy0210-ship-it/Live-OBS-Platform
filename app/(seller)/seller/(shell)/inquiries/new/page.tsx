@@ -1,11 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { PageHead } from "../../../../../../components/admin-ui";
 import { InquiryAttach, type Attached } from "../../../../../../components/seller/InquiryAttach";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
+import { useUnsavedGuard } from "../../../../../../lib/client/navigation";
 import { api } from "../../../../../../components/seller/api";
 import { INQUIRY_BODY_MAX, INQUIRY_CATEGORY, INQUIRY_TITLE_MAX, type InquiryCategory } from "../../../../../../components/seller/platformInquiry";
 
@@ -21,6 +21,7 @@ function Form() {
   const [noticeTitle, setNoticeTitle] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
 
   useEffect(() => {
     if (!noticeId) return;
@@ -29,6 +30,7 @@ function Form() {
 
   const ready = category !== "" && title.trim() !== "" && body.trim() !== "";
   const dirty = title !== "" || body !== "" || images.length > 0;
+  useUnsavedGuard(dirty && !sent, "작성 중인 내용이 사라집니다. 나가시겠습니까?");
 
   const send = async () => {
     if (!ready || busy) return;
@@ -40,7 +42,8 @@ function Form() {
     });
     setBusy(false);
     if (!r.ok) return setError(r.message ?? "문의를 보내지 못했습니다. 쓴 내용은 그대로 남아 있으니 인터넷 연결을 확인한 뒤 「문의 보내기」를 다시 눌러 주십시오");
-    router.push(`/seller/inquiries/${r.data.inquiry.id}`);
+    setSent(true);
+    router.replace(`/seller/inquiries/${r.data.inquiry.id}`);
   };
 
   return (
@@ -48,12 +51,8 @@ function Form() {
       <Topbar crumb="공지 · 문의" />
       <main className="main">
         <PageHead
+          back="/seller/inquiries"
           title="문의하기"
-          actions={
-            <Link className="btn btn-out" href="/seller/inquiries" onClick={(e) => dirty && !window.confirm("작성 중인 내용이 사라집니다. 나가시겠습니까?") && e.preventDefault()}>
-              내 문의
-            </Link>
-          }
         />
         <div className="card" style={{ padding: 24 }}>
           <form

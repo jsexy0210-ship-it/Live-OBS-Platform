@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import { thumbnailUrls } from "../products/images";
 import { ORDER_NOTICES } from "./messages";
 import { orderNoLabel } from "./orderNoLabel";
 import { COURIERS, isCourier } from "./shipping";
@@ -77,7 +78,9 @@ export async function listBuyerOrders(
   };
 }
 
-// 상세: 목록 항목 + 본인 배송지 + 결제 수단.
+// 상세: 목록 항목 + 본인 배송지 + 결제 수단·카드 요약 + 받는 방법 + 현금영수증 신청 + 품목별 사진·옵션 id·대기열(순번·개봉 상태).
+// 모든 조회에 쇼핑몰·본인이 걸려 있다. 대기열은 내 품목의 상태·내 앞 대기 수만 주고 다른 구매자 정보는 주지 않는다.
+// 카드는 카드사 이름·끝 4자리·할부 개월만(번호 전체·유효기간·결제사 거래 번호는 없음).
 export async function getBuyerOrder(db: PrismaClient, scope: { sellerId: string; buyerMemberId: string }, orderId: string) {
   if (!UUID.test(orderId)) return null;
   const o = await db.order.findFirst({
@@ -85,8 +88,67 @@ export async function getBuyerOrder(db: PrismaClient, scope: { sellerId: string;
     select: {
       ...summarySelect,
       paymentMethod: true,
+      fulfillmentType: true,
       shippingAddress: { select: { recipientName: true, phone: true, zipCode: true, address1: true, address2: true, memo: true } },
     },
   });
-  return o ? forBuyer(o) : null;
+  if (!o) return null;
+  const [seller, itemRows, queueRows, payment, receipt] = await Promise.all([
+    db.seller.findUnique({ where: { id: scope.sellerId }, select: { slug: true } }),
+    db.orderItem.findMany({ where: { orderId, sellerId: scope.sellerId }, select: { id: true, productId: true, optionId: true }, orderBy: { id: "asc" } }),
+    db.queueItem.findMany({
+      where: { orderId, sellerId: scope.sellerId },
+      select: { orderItemId: true, status: true, position: true, receivedAt: true, openingStartedAt: true, doneAt: true, cancelledAt: true },
+    }),
+    db.payment.findFirst({
+      where: { orderId, sellerId: scope.sellerId, status: { in: ["PAID", "PARTIAL_CANCELLED", "CANCELLED"] } },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: { cardName: true, cardLast4: true, cardInstallment: true },
+    }),
+    db.orderReceiptRequest.findFirst({
+      where: { orderId, sellerId: scope.sellerId, buyerMemberId: scope.buyerMemberId, withdrawnAt: null },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: { kind: true, createdAt: true },
+    }),
+  ]);
+  const images = await thumbnailUrls(db, scope.sellerId, [...new Set(itemRows.map((i) => i.productId))], seller?.slug);
+  // 내 앞의 대기 수: 같은 쇼핑몰의 대기(WAITING) 중 내 순서보다 앞인 것(다른 구매자 정보 없이 숫자만)
+  const waiting = queueRows.filter((q) => q.status === "WAITING");
+  const ahead = new Map<string, number>();
+  for (const q of waiting) {
+    const n = await db.queueItem.count({ where: { sellerId: scope.sellerId, status: "WAITING", position: { lt: q.position } } });
+    if (q.orderItemId) ahead.set(q.orderItemId, n);
+  }
+  const queueOf = new Map(queueRows.filter((q) => q.orderItemId).map((q) => [q.orderItemId as string, q]));
+  const view = forBuyer(o);
+  // items는 id 오름차순이라 itemRows와 같은 순서다(스냅숏 필드는 위에서, 사진·옵션 id·대기열은 여기서 붙인다)
+  const items = view.items.map((it, idx) => {
+    const row = itemRows[idx];
+    const q = row ? queueOf.get(row.id) : undefined;
+    return {
+      ...it,
+      productId: row?.productId ?? null,
+      optionId: row?.optionId ?? null,
+      imageUrl: row ? (images.get(row.productId) ?? null) : null,
+      queue: q
+        ? {
+            status: q.status,
+            waitingNumber: q.status === "WAITING" && row ? (ahead.get(row.id) ?? 0) + 1 : null,
+            receivedAt: q.receivedAt,
+            openingStartedAt: q.openingStartedAt,
+            doneAt: q.doneAt,
+            cancelledAt: q.cancelledAt,
+          }
+        : null,
+    };
+  });
+  return {
+    ...view,
+    items,
+    paymentInfo: {
+      method: o.paymentMethod,
+      card: payment && (payment.cardName || payment.cardLast4 || payment.cardInstallment !== null) ? { name: payment.cardName, last4: payment.cardLast4, installment: payment.cardInstallment } : null,
+    },
+    cashReceipt: receipt ? { requested: true, kind: receipt.kind, requestedAt: receipt.createdAt } : { requested: false, kind: null, requestedAt: null },
+  };
 }
