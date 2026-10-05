@@ -169,10 +169,10 @@ describe("파트너스 업무 알림(입금 확인 필요·결제 완료·재고
     const retOrder = await w.order({ status: "PAID", paymentMethod: "CARD", paidAt: new Date(Date.now() - 2 * HOUR) });
     const ret = await w.ret(retOrder.id);
     const b = (await feed(owner.cookie)).body;
-    expect(byKind(b, "DEPOSIT_PENDING")).toEqual([expect.objectContaining({ id: `deposit:${dep.id}`, title: `주문 ${dep.orderNo} 입금 확인 필요`, href: `/seller/orders/${dep.id}`, unread: true })]);
+    expect(byKind(b, "DEPOSIT_PENDING")).toEqual([expect.objectContaining({ id: `deposit:${dep.id}`, title: `${dep.broadcastNicknameSnapshot} 님 주문 입금 확인 필요`, href: `/seller/orders/${dep.id}`, unread: true })]);
     expect(byKind(b, "ORDER_PAID").map((i: { id: string }) => i.id).sort()).toEqual([`paid:${paid.id}`, `paid:${retOrder.id}`].sort());
     expect(byKind(b, "OUT_OF_STOCK")).toEqual([expect.objectContaining({ id: `stock:${sold.id}`, title: "포켓몬 부스터 재고 없음", href: `/seller/products/${sold.id}` })]);
-    expect(byKind(b, "RETURN_REQUESTED")).toEqual([expect.objectContaining({ id: `return:${ret.id}`, title: `주문 ${retOrder.orderNo} 반품 요청`, href: "/seller/returns" })]);
+    expect(byKind(b, "RETURN_REQUESTED")).toEqual([expect.objectContaining({ id: `return:${ret.id}`, title: `${retOrder.broadcastNicknameSnapshot} 님 주문 반품 요청`, href: "/seller/returns" })]);
     // 한 건은 한 번만 나온다(같은 id 없음)
     expect(new Set(b.items.map((i: { id: string }) => i.id)).size).toBe(b.items.length);
   });
@@ -258,7 +258,7 @@ describe("파트너스 업무 알림(입금 확인 필요·결제 완료·재고
     const owner = await login(w.seller.id, "OWNER");
     const o = await w.order({ status: "PAID", paymentMethod: "CARD", paidAt: new Date(Date.now() - 30 * HOUR) });
     await db.returnRequest.create({ data: { sellerId: w.seller.id, orderId: o.id, buyerMemberId: w.buyer.id, kind: "EXCHANGE", reason: "DEFECTIVE", createdAt: new Date(Date.now() - 20 * HOUR) } });
-    expect(byKind((await feed(owner.cookie)).body, "RETURN_REQUESTED")[0].title).toBe(`주문 ${o.orderNo} 교환 요청`);
+    expect(byKind((await feed(owner.cookie)).body, "RETURN_REQUESTED")[0].title).toBe(`${o.broadcastNicknameSnapshot} 님 주문 교환 요청`);
     // 읽음 처리 뒤에는 이전 알림이 읽음이고, 이후 생긴 것만 안 읽음
     await sellerRead(req("/api/seller/notifications/read", owner.cookie, "POST"));
     expect((await feed(owner.cookie)).body.unreadCount).toBe(0);

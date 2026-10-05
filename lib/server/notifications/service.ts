@@ -53,7 +53,7 @@ export async function listSellerNotifications(db: PrismaClient, ctx: TenantConte
           where: { sellerId: ctx.sellerId, status: "PENDING_PAYMENT", paymentMethod: "BANK_TRANSFER", legalHoldAt: null },
           orderBy: [{ createdAt: "desc" }, { id: "desc" }],
           take: PER_KIND,
-          select: { id: true, orderNo: true, createdAt: true },
+          select: { id: true, broadcastNicknameSnapshot: true, createdAt: true },
         })
       : [],
     seeOrders
@@ -61,7 +61,7 @@ export async function listSellerNotifications(db: PrismaClient, ctx: TenantConte
           where: { sellerId: ctx.sellerId, paidAt: { gte: orderSince }, legalHoldAt: null },
           orderBy: [{ paidAt: "desc" }, { id: "desc" }],
           take: PER_KIND,
-          select: { id: true, orderNo: true, paidAt: true },
+          select: { id: true, broadcastNicknameSnapshot: true, paidAt: true },
         })
       : [],
     canSee(ctx, "PRODUCT_MANAGE")
@@ -79,7 +79,7 @@ export async function listSellerNotifications(db: PrismaClient, ctx: TenantConte
           where: { sellerId: ctx.sellerId, status: "REQUESTED" },
           orderBy: [{ createdAt: "desc" }, { id: "desc" }],
           take: PER_KIND,
-          select: { id: true, kind: true, createdAt: true, order: { select: { orderNo: true } } },
+          select: { id: true, kind: true, createdAt: true, order: { select: { broadcastNicknameSnapshot: true } } },
         })
       : [],
   ]);
@@ -100,10 +100,10 @@ export async function listSellerNotifications(db: PrismaClient, ctx: TenantConte
       createdAt: q.lastAdminMessageAt!,
       unread: !q.sellerReadAt || q.lastAdminMessageAt! > q.sellerReadAt,
     })),
-    ...deposits.map((o) => ({ id: `deposit:${o.id}`, kind: "DEPOSIT_PENDING" as const, title: `주문 ${o.orderNo} 입금 확인 필요`, href: `/seller/orders/${o.id}`, createdAt: o.createdAt, unread: isUnread(o.createdAt) })),
-    ...paid.map((o) => ({ id: `paid:${o.id}`, kind: "ORDER_PAID" as const, title: `주문 ${o.orderNo} 결제 완료`, href: `/seller/orders/${o.id}`, createdAt: o.paidAt!, unread: isUnread(o.paidAt!) })),
+    ...deposits.map((o) => ({ id: `deposit:${o.id}`, kind: "DEPOSIT_PENDING" as const, title: `${o.broadcastNicknameSnapshot} 님 주문 입금 확인 필요`, href: `/seller/orders/${o.id}`, createdAt: o.createdAt, unread: isUnread(o.createdAt) })),
+    ...paid.map((o) => ({ id: `paid:${o.id}`, kind: "ORDER_PAID" as const, title: `${o.broadcastNicknameSnapshot} 님 주문 결제 완료`, href: `/seller/orders/${o.id}`, createdAt: o.paidAt!, unread: isUnread(o.paidAt!) })),
     ...stock.map((p) => ({ id: `stock:${p.id}`, kind: "OUT_OF_STOCK" as const, title: `${p.name} 재고 없음`, href: `/seller/products/${p.id}`, createdAt: p.at, unread: isUnread(p.at) })),
-    ...returns.map((r) => ({ id: `return:${r.id}`, kind: "RETURN_REQUESTED" as const, title: `주문 ${r.order.orderNo} ${r.kind === "EXCHANGE" ? "교환" : "반품"} 요청`, href: "/seller/returns", createdAt: r.createdAt, unread: isUnread(r.createdAt) })),
+    ...returns.map((r) => ({ id: `return:${r.id}`, kind: "RETURN_REQUESTED" as const, title: `${r.order.broadcastNicknameSnapshot} 님 주문 ${r.kind === "EXCHANGE" ? "교환" : "반품"} 요청`, href: "/seller/returns", createdAt: r.createdAt, unread: isUnread(r.createdAt) })),
   ]
     .sort(byNewest)
     .slice(0, LIMIT);
