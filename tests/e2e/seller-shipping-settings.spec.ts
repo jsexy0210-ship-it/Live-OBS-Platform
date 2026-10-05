@@ -110,7 +110,7 @@ test("로그인이 풀린 뒤 다른 설정 탭으로 가면 로그인으로 보
   await expect(page.getByTestId("fee-preview")).toBeVisible();
   await page.context().clearCookies();
   await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "주문 설정" }).click();
-  await expect(page).toHaveURL(/\/seller\/login\?next=%2Fseller%2Fsettings%2Forder$/);
+  await expect(page).toHaveURL(/\/seller\/login\?next=%2Fseller%2Fsettings%2Forder&reason=expired$/);
 });
 
 test("쇼핑몰 설정 권한이 없는 직원은 권한 안내를 본다", async ({ page }) => {
