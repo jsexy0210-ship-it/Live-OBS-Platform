@@ -50,7 +50,7 @@ export const ADMIN_MENU: AdminGroup[] = [
     label: "고객지원",
     items: [
       { label: "파트너스 문의", href: "/admin/support/inquiries" },
-      { label: "공지사항", href: "/admin/support/notices" },
+      { label: "공지사항", href: "/admin/support/notices", ready: true },
       { label: "도우미 답변 자료", href: "/admin/support/assistant" },
     ],
   },
