@@ -74,6 +74,8 @@ function shipmentView(s: ShipmentRow) {
   return { state: s.status === "DELIVERED" ? ("delivered" as const) : ("in_transit" as const), courier: s.courier, trackingNumber: s.trackingNumber, deliveredAt: s.deliveredAt };
 }
 
+const refundedAmountOf = (o: { status: OrderStatus; totalAmount: number; refundAmount: number | null }) => o.refundAmount ?? (o.status === "REFUNDED" ? o.totalAmount : 0);
+
 export const SELLER_ORDER_PAGE_DEFAULT = 50;
 export const SELLER_ORDER_PAGE_MAX = 200;
 const ORDER_STATUSES: readonly OrderStatus[] = ["PENDING_PAYMENT", "PAID", "CANCELLED", "REFUNDED"];
@@ -163,6 +165,7 @@ export async function listSellerOrders(db: PrismaClient, ctx: TenantContext, que
       createdAt: true,
       paidAt: true,
       totalAmount: true,
+      refundAmount: true,
       paymentMethod: true,
       paymentDueAt: true,
       buyerMember: { select: { id: true, broadcastNickname: true } },
@@ -196,6 +199,11 @@ export async function listSellerOrders(db: PrismaClient, ctx: TenantContext, que
       paidAt: o.paidAt,
       buyer: o.buyerMember,
       totalAmount: o.totalAmount,
+      // 환불 현황(주문 합계, 현금 환불은 반품 배송비·적립금 반환을 뺀 돌려준 금액). 환불이 없으면 0.
+      // 금액이 비어 있는 옛 전액 환불 주문(REFUNDED)은 합계 전부를 돌려준 것으로 본다(통계와 같은 기준).
+      refundedAmount: refundedAmountOf(o),
+      refundedQuantity: o.items.reduce((a, i) => a + i.refundedQuantity, 0),
+      remainingAmount: Math.max(o.totalAmount - refundedAmountOf(o), 0),
       // 결제 수단과 입금 기한. 무통장 입금 대기(status=PENDING_PAYMENT, paymentMethod=BANK_TRANSFER) 판별용. 결제 전이면 paymentMethod가 null일 수 있다.
       paymentMethod: o.paymentMethod,
       paymentDueAt: o.paymentDueAt,
