@@ -73,16 +73,16 @@ function PgStatusPageInner() {
               <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                 <b>나이스페이</b>
                 <span className={`bdg ${g.configured ? "ok" : "neg"}`}>{g.configured ? "연결됨" : "연결 안 됨"}</span>
-                <span className="bdg">{g.mode === "sandbox" ? "시험 모드" : "실결제"}</span>
+                <span className="bdg">{g.mode === "sandbox" ? "테스트 결제" : "실제 결제"}</span>
               </div>
               {g.configured ? (
                 <p className="t-l2 c-alt" style={{ marginTop: 8 }}>
-                  마지막 성공 {dayTime(g.lastSuccessAt)} · 마지막 실패 {dayTime(g.lastFailureAt)}
+                  마지막으로 결제된 때 {dayTime(g.lastSuccessAt)} · 마지막 실패 {dayTime(g.lastFailureAt)}
                   {g.lastFailureMessage && ` (${g.lastFailureMessage})`}
                 </p>
               ) : (
                 <p className="t-l2 c-alt" style={{ marginTop: 8 }}>
-                  결제사 연결 정보가 설정되어 있지 않습니다. <Link href="/admin/settings/policy">플랫폼 정책에서 확인</Link>해 주십시오.
+                  카드 결제 연결 정보가 아직 입력되지 않았습니다. 개발 담당에게 입력을 요청해 주십시오. <Link href="/admin/settings/policy">플랫폼 정책에서 확인</Link>해 주십시오.
                 </p>
               )}
             </div>
@@ -109,12 +109,12 @@ function PgStatusPageInner() {
                         <tr>
                           <th>파트너스</th>
                           <th>상태</th>
-                          <th>마지막 성공</th>
+                          <th>마지막으로 결제된 때</th>
                           <th>마지막 실패</th>
-                          <th>실패 사유</th>
-                          <th>24시간 실패</th>
-                          <th>취소 대기</th>
-                          <th>취소 실패</th>
+                          <th>결제 실패 이유</th>
+                          <th>최근 24시간 결제 실패</th>
+                          <th>결제 취소 대기</th>
+                          <th>결제 취소 실패</th>
                           <th>관리</th>
                         </tr>
                       </thead>

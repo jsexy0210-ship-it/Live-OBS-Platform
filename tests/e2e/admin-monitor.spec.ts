@@ -53,7 +53,7 @@ test("최고관리자: 열린 장애는 심각도와 함께 보이고 해소된 
   await expect(incident).toContainText("긴급");
   await expect(page.getByTestId("monitor-incident").filter({ hasText: `시험 지연 ${run}` })).toHaveCount(0);
   await expect(page.getByTestId("monitor-action").filter({ hasText: `e2e.auto.${run}` })).toBeVisible();
-  await expect(page.getByTestId("monitor-webhook")).toContainText("측정 안 함");
+  await expect(page.getByTestId("monitor-webhook")).toContainText("확인하지 않음");
   await expect(page.getByTestId("monitor-paycheck")).toHaveCount(4);
   // 심각도 거르기: 주의로 바꾸면 긴급 장애는 빠진다
   await page.getByRole("button", { name: "주의", exact: true }).click();

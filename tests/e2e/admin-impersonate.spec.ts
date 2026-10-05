@@ -41,28 +41,28 @@ async function login(page: Page, email: string) {
 test("CS: 사유 없이는 시작할 수 없고, 시작하면 새 창이 열리고 대리 조회 안내가 보이며, 끝내면 서버에서도 사라진다", async ({ page, context }) => {
   await login(page, emails.cs);
   await page.goto(`/admin/partners/${ids.active}`);
-  await page.getByRole("button", { name: "대리 조회", exact: true }).click();
+  await page.getByRole("button", { name: "이 파트너스 화면 대신 보기", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toContainText("읽기 전용");
-  const start = dialog.getByRole("button", { name: "대리 조회", exact: true });
+  const start = dialog.getByRole("button", { name: "대신 보기 시작", exact: true });
   await expect(start).toBeDisabled();
   await dialog.getByLabel("사유").fill("결제 문의 확인");
   const popup = context.waitForEvent("page");
   await start.click();
   const opened = await popup;
-  await expect(page.getByText("대리 조회를 시작했습니다.")).toBeVisible();
+  await expect(page.getByText("대신 보기를 시작했습니다.")).toBeVisible();
   await expect.poll(() => opened.url()).toContain("/seller");
   await opened.close();
 
   const strip = page.getByTestId("impersonation-active");
-  await expect(strip).toContainText("이 파트너스를 대리 조회 중입니다.");
+  await expect(strip).toContainText("이 파트너스 화면을 대신 보는 중입니다.");
   await expect(strip).toContainText("결제 문의 확인");
   const active = (await (await page.request.get("/api/admin/impersonation")).json()).active;
   expect(active.sellerId).toBe(ids.active);
   await page.screenshot({ path: "tests/e2e/screenshots/admin-impersonate-1440.png" });
 
-  await strip.getByRole("button", { name: "대리 조회 끝내기" }).click();
-  await expect(page.getByText("대리 조회를 끝냈습니다.")).toBeVisible();
+  await strip.getByRole("button", { name: "대신 보기 끝내기" }).click();
+  await expect(page.getByText("대신 보기를 끝냈습니다.")).toBeVisible();
   await expect(strip).toHaveCount(0);
   expect((await (await page.request.get("/api/admin/impersonation")).json()).active).toBeNull();
 });
@@ -71,10 +71,10 @@ test("조회 전용 역할과 운영·정지 상태가 아닌 쇼핑몰에는 �
   await login(page, emails.ro);
   await page.goto(`/admin/partners/${ids.active}`);
   await expect(page.getByRole("heading", { name: shop })).toBeVisible();
-  await expect(page.getByRole("button", { name: "대리 조회", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "이 파트너스 화면 대신 보기", exact: true })).toHaveCount(0);
   await page.context().clearCookies();
   await login(page, emails.cs);
   await page.goto(`/admin/partners/${ids.pending}`);
   await expect(page.getByRole("heading", { name: `대기 ${shop}` })).toBeVisible();
-  await expect(page.getByRole("button", { name: "대리 조회", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "이 파트너스 화면 대신 보기", exact: true })).toHaveCount(0);
 });

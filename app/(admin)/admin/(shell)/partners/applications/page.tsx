@@ -19,7 +19,7 @@ type Row = ReviewRow & { done?: "approved" | "rejected" };
 type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; rows: Row[] };
 const FILTERS = [
   ["all", "전체"],
-  ["review", "확인 필요"],
+  ["review", "확인할 것 있음"],
   ["today", "오늘"],
 ] as const;
 type Filter = (typeof FILTERS)[number][0];
@@ -35,7 +35,7 @@ function waited(iso: string): { label: string; hot: boolean } {
     return { label: h < 1 ? "1시간 안" : `${h}시간 전`, hot: false };
   }
   const d = Math.floor(ms / DAY);
-  return { label: `승인 대기 ${d}일째`, hot: d >= 2 };
+  return { label: `${d}일째 기다리는 중`, hot: d >= 2 };
 }
 const needsReview = (r: Row) => r.reviewReasons.length > 0;
 
@@ -91,7 +91,7 @@ function Applications() {
       return setToast({ text: `${r.shopName} 가입을 승인했습니다.` });
     }
     if (res.status === 404 || res.status === 409) return stale(r);
-    setToast({ text: failMessage(res, `${r.shopName} 승인에 실패했습니다. 행은 그대로입니다. 잠시 후 다시 시도해 주십시오.`), neg: true });
+    setToast({ text: failMessage(res, `${r.shopName} 승인을 하지 못했습니다. 목록은 바뀌지 않았습니다. 잠시 후 다시 시도해 주십시오.`), neg: true });
   };
 
   return (
@@ -124,7 +124,7 @@ function Applications() {
                         <th>쇼핑몰</th>
                         <th>사업자</th>
                         <th>신청일 · 경과</th>
-                        <th>확인</th>
+                        <th>점검 결과</th>
                         <th>관리</th>
                       </tr>
                     </thead>
@@ -139,7 +139,7 @@ function Applications() {
                               <Link className="fw6" href={`/admin/partners/applications/${r.id}`}>
                                 {r.shopName}
                               </Link>
-                              <span className="c-alt"> · {r.slug}</span>
+                              <span className="c-alt"> · 쇼핑몰 주소 {r.slug}</span>
                             </td>
                             <td className="col-text">
                               {text(r.businessInfo?.companyName) === "-" && text(r.businessInfo?.businessNumber) === "-" ? (
@@ -162,14 +162,14 @@ function Applications() {
                                 <span className={`bdg ${r.done === "approved" ? "b-done" : "b-gray"}`}>{r.done === "approved" ? "승인됨" : "반려됨"}</span>
                               ) : review ? (
                                 <>
-                                  <span className="bdg b-warn">확인 필요 {r.reviewReasons.length}</span>
+                                  <span className="bdg b-warn">확인할 것 {r.reviewReasons.length}건</span>
                                   <span className="t-c1 c-alt" style={{ display: "block" }}>
                                     {r.reviewReasons.slice(0, 2).map(reasonLabel).join(" · ")}
                                     {r.reviewReasons.length > 2 && ` 외 ${r.reviewReasons.length - 2}건`}
                                   </span>
                                 </>
                               ) : (
-                                <span className="bdg b-done">이상 없음</span>
+                                <span className="bdg b-done">확인할 것 없음</span>
                               )}
                             </td>
                             <td>
@@ -194,7 +194,7 @@ function Applications() {
                                     )}
                                     {canModerate && review && (
                                       <button className="btn btn-sm" type="button" onClick={() => setReviewing(r)} disabled={working}>
-                                        검토
+                                        확인할 내용 보기
                                       </button>
                                     )}
                                     <Link className="btn btn-sm btn-out" href={`/admin/partners/applications/${r.id}`}>
@@ -241,7 +241,7 @@ function Applications() {
             <>
               <div className="modal-h">
                 <h2 className="modal-t" id="review-title">
-                  {reviewing.shopName} 확인 필요
+                  {reviewing.shopName} 가입 신청에서 확인할 것
                 </h2>
                 <span className="t-l2 c-alt">아래 사유를 확인한 뒤 승인해 주십시오. 자세한 서류는 상세에서 볼 수 있습니다.</span>
               </div>
@@ -272,7 +272,7 @@ function Applications() {
                     void approve(r);
                   }}
                 >
-                  확인 뒤 승인
+                  확인했습니다. 승인
                 </button>
                 <button className="btn btn-out" type="button" onClick={requestClose}>
                   닫기
