@@ -21,6 +21,8 @@ import { cleanText } from "../../lib/server/text/clean";
 const NAME_MAX = 100;
 const DESC_MAX = 5000;
 const OPTION_MAX = 100;
+const TAG_MAX = 10;
+const TAG_LEN = 20;
 
 type OptRow = {
   key: number;
@@ -45,6 +47,18 @@ const STATUS_HELP: Record<ProductStatus, string> = {
   SOLD_OUT: "쇼핑몰에 「품절」로 표시되고 주문은 받지 않습니다",
   HIDDEN: "쇼핑몰에 표시되지 않습니다. 언제든 다시 판매할 수 있습니다",
   DRAFT: "아직 쇼핑몰에 표시되지 않습니다",
+};
+
+// 검색 키워드: 쉼표로 나눠 앞뒤 공백을 지우고, 빈 것과 대소문자만 다른 중복을 뺀다(서버 규칙과 같다)
+const parseTags = (text: string): string[] => {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const t of text.split(/[,，]/).map((x) => x.trim())) {
+    if (t === "" || seen.has(t.toLowerCase())) continue;
+    seen.add(t.toLowerCase());
+    out.push(t);
+  }
+  return out;
 };
 
 let seq = 0;
@@ -119,6 +133,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [price, setPrice] = useState(initial ? String(initial.price) : "");
+  const [tagsText, setTagsText] = useState((initial?.searchTags ?? []).join(", "));
   // 카테고리: 칩으로 여러 개(대분류·하위 어느 쪽이든, 최대 10개). 지정은 상품을 만든 뒤(수정은 바뀌었을 때) 따로 저장한다
   const [cats, setCats] = useState<CategoryNode[] | null>(null);
   const [categoryIds, setCategoryIds] = useState<string[]>([]);
@@ -189,6 +204,8 @@ export function ProductForm({ initial }: { initial?: Product }) {
   const topRef = useRef<HTMLDivElement>(null);
 
   const errors = validate(name, description, price, status, rows);
+  const tags = parseTags(tagsText);
+  const tagError = tags.length > TAG_MAX ? `검색 키워드는 ${TAG_MAX}개까지 입력할 수 있습니다` : tags.some((t) => textLength(t) > TAG_LEN) ? `검색 키워드는 하나에 ${TAG_LEN}자까지 입력할 수 있습니다` : null;
   const shown: Errors = showErrors ? errors : { rows: {} };
   const nameLen = textLength(name);
   const priceNum = parseAmount(price);
@@ -214,6 +231,11 @@ export function ProductForm({ initial }: { initial?: Product }) {
       : null;
 
   const checkFirst = (st: ProductStatus) => {
+    if (tagError) {
+      setShowErrors(true);
+      fail(tagError);
+      return false;
+    }
     if (detailError) {
       setShowErrors(true);
       fail(detailError);
@@ -320,6 +342,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
   const dirtyNow = base
     ? name.trim() !== base.name ||
       (description.trim() === "" ? null : description.trim()) !== (base.description ?? null) ||
+      JSON.stringify(tags) !== JSON.stringify(base.searchTags ?? []) ||
       priceNum !== base.price ||
       status !== base.status ||
       deduct !== base.stockDeductMode ||
@@ -331,6 +354,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
       detailRemoved.length > 0
     : name.trim() !== "" ||
       description.trim() !== "" ||
+      tags.length > 0 ||
       price.trim() !== "" ||
       status !== "ON_SALE" ||
       deduct !== "PAYMENT" ||
@@ -352,6 +376,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
       body: {
         name: name.trim(),
         description: description.trim() === "" ? null : description.trim(),
+        searchTags: tags,
         price: priceNum,
         status: st,
         stockDeductMode: deduct,
@@ -390,6 +415,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
     const desc = description.trim() === "" ? null : description.trim();
     if (name.trim() !== current.name) early.name = name.trim();
     if (desc !== (current.description ?? null)) early.description = desc;
+    if (JSON.stringify(tags) !== JSON.stringify(current.searchTags ?? [])) early.searchTags = tags;
     if (priceNum !== current.price) (priceNum! > current.price ? early : late).price = priceNum;
     if (status !== current.status) (status === "ON_SALE" ? late : early).status = status;
     if (deduct !== current.stockDeductMode) early.stockDeductMode = deduct;
@@ -572,6 +598,10 @@ export function ProductForm({ initial }: { initial?: Product }) {
               ) : (
                 <span className="t-l2 c-alt">{cats ? "카테고리 없음" : "불러오는 중"}</span>
               )}
+            </FormRow>
+            <FormRow label="검색 키워드" htmlFor="p-tags" help={`쉼표로 구분 · ${TAG_MAX}개까지, 하나에 ${TAG_LEN}자까지. 상품명에 없는 말로도 쇼핑몰 검색에 걸립니다`}>
+              <input id="p-tags" className={`inp${showErrors && tagError ? " is-error" : ""}`} value={tagsText} disabled={busy} placeholder="예: 선물, 한정판" onChange={(e) => setTagsText(e.target.value)} />
+              {showErrors && tagError && <span className="err">{tagError}</span>}
             </FormRow>
             <FormRow label="상품 코드" help="등록하면 판매자별 순번으로 자동 매겨집니다">
               <span className="num" data-testid="product-code">
