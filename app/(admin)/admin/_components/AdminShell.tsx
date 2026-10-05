@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { GlobalSearch, NotificationBell } from "../../../../components/admin-ui/GnbTools";
+import { ShellNavProvider, type ShellNav } from "../../../../components/admin-ui/shellNav";
 import { useWholeDateClick } from "../../../../components/admin-ui/useWholeDateClick";
 import { usePathname, useRouter } from "next/navigation";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, Fragment, useContext, useEffect, useState } from "react";
 import { adminApi, type AdminMe } from "./api";
 import { itemAllowed, routeNav, visibleAdminMenu } from "./menu";
 
@@ -12,7 +13,8 @@ import { itemAllowed, routeNav, visibleAdminMenu } from "./menu";
 // 파트너스 관리자 틀(.cs·.gnb·.lnb·.loc-bar)을 그대로 쓰고 색만 admin.css에서 마스터 청록으로 바꾼다. 좁은 화면에서는 GNB가 햄버거로 접히고 LNB가 서랍(전체 메뉴)으로 열린다.
 const ROLE_LABEL: Record<AdminMe["role"], string> = { SUPER_ADMIN: "최고관리자", OPERATIONS: "운영", CS: "고객 지원", READ_ONLY: "조회 전용" };
 
-type ShellCtx = { me: AdminMe; openNav: () => void; loc: { group: string; item: string } | null };
+// groupHref·itemHref: 경로 줄에서 앞 항목을 눌러 갈 주소(대분류의 첫 화면·메뉴 항목의 화면)
+type ShellCtx = { me: AdminMe; openNav: () => void; loc: { group: string; item: string; groupHref?: string; itemHref?: string } | null };
 const Ctx = createContext<ShellCtx | null>(null);
 
 export function useAdmin(): ShellCtx {
@@ -79,16 +81,19 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const route = routeNav(pathname);
   const active = route && menu.some((g) => g.key === route.group.key) ? route : null;
   const shown = menu.find((g) => g.key === picked) ?? menu.find((g) => g.key === active?.group.key) ?? menu[0];
-  const loc = route ? { group: route.group.label, item: route.item.label } : null;
+  const shownGroup = route ? menu.find((g) => g.key === route.group.key) : undefined;
+  const loc = route ? { group: route.group.label, item: route.item.label, groupHref: shownGroup?.items[0]?.href, itemHref: route.item.href } : null;
+  // 화면 ←(PageHead가 읽는다): 메뉴로 바로 여는 화면에는 없고, 상세·등록 같은 하위 화면에는 그 메뉴 화면이 부모
+  const shellNav: ShellNav = { backHref: route && pathname !== route.item.href ? route.item.href : null, tabs: [] };
 
   const utilities = (
     <>
       <Link className="util-i" href="/admin/notifications" onClick={() => setNavOpen(false)}>
         알림 센터
       </Link>
-      <a className="util-i off" aria-disabled="true" title="준비 중입니다">
+      <Link className="util-i" href="/admin/account" onClick={() => setNavOpen(false)}>
         내 계정
-      </a>
+      </Link>
       <button className="util-i util-btn" type="button" onClick={() => void logout()}>
         로그아웃
       </button>
@@ -97,6 +102,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
   return (
     <Ctx.Provider value={{ me, openNav: () => setNavOpen(true), loc }}>
+      <ShellNavProvider value={shellNav}>
       <div className={`cs${navOpen ? " nav-open" : ""}`}>
         <header className="gnb">
           <button className="gnb-menu" type="button" aria-label="메뉴 열기" onClick={() => setNavOpen(true)}>
@@ -135,10 +141,13 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             {menu.map((g) => (
               <section key={g.key} className={`lnb-sec${g.key === shown.key ? " on" : ""}`}>
                 <strong className="lnb-h">{g.label}</strong>
-                {g.items.map((n) => (
-                  <Link key={n.href} className={`lnb-i${active?.item === n ? " on" : ""}`} href={n.href} aria-current={active?.item === n ? "page" : undefined} onClick={() => setNavOpen(false)}>
-                    {n.label}
-                  </Link>
+                {g.items.map((n, i) => (
+                  <Fragment key={n.href}>
+                    {n.sub && n.sub !== g.items[i - 1]?.sub && <span className="lnb-sub">{n.sub}</span>}
+                    <Link className={`lnb-i${active?.item === n ? " on" : ""}`} href={n.href} aria-current={active?.item === n ? "page" : undefined} onClick={() => setNavOpen(false)}>
+                      {n.label}
+                    </Link>
+                  </Fragment>
                 ))}
               </section>
             ))}
@@ -148,6 +157,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           <div className="col cs-body">{route && !itemAllowed(me.role, route.item) ? <NoAccess /> : children}</div>
         </div>
       </div>
+      </ShellNavProvider>
     </Ctx.Provider>
   );
 }
@@ -158,8 +168,16 @@ export function AdminTopbar({ crumb, children }: { crumb: string; children?: Rea
   const parts = crumb.split("›").map((p) => p.trim());
   const last = parts[parts.length - 1];
   // 하위 화면(상세 등)이면 메뉴 경로 뒤에 crumb 마지막 칸을 덧붙인다
-  const path = loc ? (loc.group === loc.item ? [loc.item] : [loc.group, loc.item]) : parts;
-  if (loc && parts.length > 2 && last !== loc.item && last !== loc.group) path.push(last);
+  const raw = loc
+    ? loc.group === loc.item
+      ? [{ t: loc.item, href: loc.itemHref }]
+      : [
+          { t: loc.group, href: loc.groupHref },
+          { t: loc.item, href: loc.itemHref },
+        ]
+    : parts.map((t) => ({ t, href: undefined as string | undefined }));
+  if (loc && parts.length > 2 && last !== loc.item && last !== loc.group) raw.push({ t: last, href: undefined });
+  const path = raw;
   return (
     <div className="loc-bar">
       <span className="crumb ell">
@@ -170,7 +188,13 @@ export function AdminTopbar({ crumb, children }: { crumb: string; children?: Rea
                 ›
               </span>
             )}
-            {p}
+            {p.href && i < path.length - 1 ? (
+              <Link className="crumb-link" href={p.href}>
+                {p.t}
+              </Link>
+            ) : (
+              p.t
+            )}
           </span>
         ))}
       </span>
