@@ -156,6 +156,8 @@ model Seller {
   productReviews           ProductReview[]
   buyerInquiries           BuyerInquiry[]
   buyerInquiryImages       BuyerInquiryImage[]
+  shopSearchSynonyms       ShopSearchSynonym[]
+  shopSearchTerms          ShopSearchTerm[]
   productReviewImages      ProductReviewImage[]
   productReviewReports     ProductReviewReport[]
   productReviewPolicy      ProductReviewPolicy?
@@ -163,6 +165,7 @@ model Seller {
   wishItems                WishItem[]
   restockAlerts            RestockAlert[]
   shopNotices              ShopNotice[]
+  shopLegalDocs            ShopLegalDoc[]
   returnRequests           ReturnRequest[]
   memberGradePolicy        MemberGradePolicy?
   memberGradeOverrides     MemberGradeOverride[]
@@ -3476,6 +3479,8 @@ model ShopSearchSynonym {
   words     String[]
   createdAt DateTime @default(now()) @db.Timestamptz(3)
 
+  seller Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
   @@index([sellerId])
 }
 
@@ -3486,5 +3491,53 @@ model ShopSearchTerm {
   term     String
   count    Int      @default(1)
 
+  seller Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
   @@id([sellerId, day, term])
+}
+
+// ───────────── 마스터 대리 조회(MA-016) ─────────────
+
+// 마스터 관리자가 파트너스 화면을 읽기 전용으로 보는 세션(사유 필수, 30분). 파트너스 로그인 세션과 따로 둔다.
+// 쿠키 lo_imp(경로 /api/seller)로만 오고, proxy가 조회 허용 경로 밖은 막는다. 한 관리자에게 열린 세션은 하나만(새로 열면 앞의 것을 끝낸다).
+model AdminImpersonationSession {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  adminId   String    @db.Uuid
+  sellerId  String    @db.Uuid
+  tokenHash String    @unique
+  reason    String
+  ip        String?
+  userAgent String?
+  expiresAt DateTime  @db.Timestamptz(3)
+  endedAt   DateTime? @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([adminId, endedAt])
+  @@index([sellerId, createdAt])
+}
+
+// ───────────── 쇼핑몰별 이용약관·개인정보처리방침(구매자 화면 /shop/[슬러그]/terms·privacy) ─────────────
+
+enum ShopLegalKind {
+  TERMS
+  PRIVACY
+}
+
+// 파트너스가 입력한 본문만 보여 준다(기본 서식은 게시 조건이 있어 앱이 대신 게시하지 않음, docs/terms). 쇼핑몰·종류마다 한 줄.
+// isPublished가 false이면 구매자 화면은 「준비 중」 안내. version은 저장할 때마다 올라가고 다른 창 덮어쓰기를 막는다(shop-legal/service.ts).
+model ShopLegalDoc {
+  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId    String        @db.Uuid
+  kind        ShopLegalKind
+  body        String        @default("")
+  effectiveOn DateTime?     @db.Date
+  isPublished Boolean       @default(false)
+  publishedAt DateTime?     @db.Timestamptz(3)
+  version     Int           @default(0)
+  createdAt   DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime      @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+
+  @@unique([sellerId, kind])
 }

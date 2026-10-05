@@ -51,7 +51,9 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/staff/[userId]/disable": "ACCOUNT",
   "seller/staff/[userId]/password": "ACCOUNT",
   "seller/staff/[userId]/permissions": "ACCOUNT",
+  "seller/impersonation": "BILLING", // 마스터 대리 조회 상태(읽기 전용 배너): 가드를 쓰지 않고 lo_imp 쿠키만 확인
   "seller/orders": "ORDER_FOLLOWUP",
+  "seller/today-tasks": "ORDER_FOLLOWUP", // 홈 「오늘 처리할 일」(SA-002): 잠금 중에도 이미 받은 주문 처리 항목은 보임
   "seller/search": "ORDER_FOLLOWUP", // 전역 검색: 이미 받은 주문·문의를 잠김·정지 중에도 찾는다
   "seller/orders/[orderId]": "ORDER_FOLLOWUP",
   "seller/orders/[orderId]/cancel": "ORDER_FOLLOWUP",
@@ -177,6 +179,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/shop-content/images/[imageId]": "STORE_OPERATIONS",
   "seller/shop-content/logo": "STORE_OPERATIONS",
   "seller/shop-content/logo/image": "STORE_OPERATIONS",
+  "seller/shop-legal/[kind]": "STORE_OPERATIONS",
   "seller/broadcast/[broadcastId]": "OVERLAY",
   "seller/broadcast/history": "OVERLAY",
   "seller/broadcast/summary": "OVERLAY",
@@ -246,6 +249,7 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/products": "STORE_OPERATIONS", // 구매자 상품 목록(운영 중 쇼핑몰만)
   "shop/[slug]/products/[productId]": "STORE_OPERATIONS", // 구매자 상품 상세
   "shop/[slug]/products/[productId]/reviews": "STORE_OPERATIONS",
+  "shop/[slug]/live": "STORE_OPERATIONS", // 지금 방송 중(홈 띠·배지)
   "shop/[slug]/search/popular": "STORE_OPERATIONS", // 인기 검색어
   "shop/[slug]/search/suggest": "STORE_OPERATIONS", // 검색어 자동완성
   "shop/[slug]/products/[productId]/inquiries": "STORE_OPERATIONS", // 공개 상품 문의(상품 상세)
@@ -270,6 +274,7 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/notices": "STORE_OPERATIONS", // 쇼핑몰 공지(운영 중이 아니면 404)
   "shop/[slug]/notices/[noticeId]": "STORE_OPERATIONS",
   "shop/[slug]/faqs": "STORE_OPERATIONS",
+  "shop/[slug]/legal/[kind]": "STORE_OPERATIONS", // 쇼핑몰 이용약관·개인정보처리방침(운영 중이 아니면 404)
   "shop/[slug]/me/marketing-consent": "OPEN",
   "shop/[slug]/me/withdraw": "OPEN",
   "shop/[slug]/me/rewards": "OPEN", // 내 적립금 잔액(탈퇴 전 확인, #180)
@@ -298,6 +303,8 @@ const SHOP_PAGES: Record<string, "STORE_OPERATIONS" | "OPEN"> = {
   "shop/[slug]/orders/[orderId]": "OPEN", // SH-007 주문 완료·상세: 기존 주문 조회는 잠긴 쇼핑몰에서도 열림(API와 같은 기준)
   "shop/[slug]/wishlist": "OPEN", // SH-034 찜: 목록·빼기는 잠긴 쇼핑몰에서도 열림(찜하기만 API가 막음)
   "shop/[slug]/orders": "OPEN", // 주문 조회 준비 중 안내(기능 없음)
+  "shop/[slug]/terms": "STORE_OPERATIONS", // 쇼핑몰 이용약관: shopOpen으로 막고, 막히면 안내 화면
+  "shop/[slug]/privacy": "STORE_OPERATIONS", // 쇼핑몰 개인정보처리방침(같은 기준)
   "shop/[slug]/help": "STORE_OPERATIONS", // SH-030 고객센터: 공지·FAQ API가 운영 중인 쇼핑몰만 열어 줌 → shopOpen으로 막고, 막히면 안내 화면
   "shop/[slug]/help/notices/[noticeId]": "STORE_OPERATIONS", // 공지 상세(같은 기준)
   "shop/[slug]/me/notifications": "OPEN", // SH-025 알림 설정: 마케팅 수신 철회는 잠긴 쇼핑몰에서도 연다(API me/marketing-consent와 같은 기준)

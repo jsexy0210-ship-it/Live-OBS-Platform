@@ -35,6 +35,8 @@ export type ShopProductCard = {
   reviewCount: number;
   // 적립 예정(가입 때 받는 기본 등급 적립률, 표시 가격 기준 원 단위 내림). 적립을 쓰지 않으면 null.
   reward: RewardPreview | null;
+  // 지금 방송 중인 상품(진행 중 방송에서 주문된 상품, 홈 「방송 중 상품 앞으로」와 같은 기준)
+  isLive: boolean;
 };
 type RewardPreview = { card: { rate: number; amount: number } | null; bankTransfer: { rate: number; amount: number } | null };
 
@@ -68,6 +70,8 @@ export async function shopProductList(
   // 홈 진열 영역 전용(구매자 쿼리로는 받지 않음): sale = 이벤트 할인이 지금 걸린 상품만,
   // best = 최근 30일 결제 완료 판매량이 있는 상품만 판매량순(동률이면 최근 판매 순, 취소·환불 주문 제외)
   only?: "sale" | "best",
+  // 접속 IP(알면). 인기 검색어 집계의 반복 제한에 쓴다(shop-search recordSearchTerm).
+  clientIp: string | null = null,
 ): Promise<{ ok: true; value: { products: ShopProductCard[]; total: number; page: number; hasMore: boolean } } | { ok: false; reason: ListFailure }> {
   const shop = await openShop(db, slug);
   if (!shop) return { ok: false, reason: "not_found" };
@@ -155,12 +159,13 @@ export async function shopProductList(
     high: (a, b) => b.shown - a.shown || byId(a, b),
   };
   cards.sort(only === "best" ? (a, b) => sold.get(b.p.id)! - sold.get(a.p.id)! || lastSold.get(b.p.id)! - lastSold.get(a.p.id)! || byId(a, b) : cmp[sort]);
-  const arranged = arrange(cards, await displayOptions(db, shop.id), await liveProductIds(db, shop.id), (c) => c.p.id);
+  const liveIds = await liveProductIds(db, shop.id);
+  const arranged = arrange(cards, await displayOptions(db, shop.id), liveIds, (c) => c.p.id);
   // 인기 검색어: 구매자가 직접 한 검색(홈 진열 제외)의 첫 쪽 결과가 있을 때만 센다
-  if (term && !only && page === 1 && arranged.length > 0) await recordSearchTerm(db, shop.id, term);
+  if (term && !only && page === 1 && arranged.length > 0) await recordSearchTerm(db, shop.id, term, clientIp);
   const slice = arranged.slice((page - 1) * limit, page * limit);
   const thumbs = await thumbnails(db, shop.id, shop.slug, slice.map((c) => c.p.id));
-  const extras = await cardExtras(db, shop.id, slice.map((c) => ({ id: c.p.id, shown: c.shown })), now);
+  const extras = await cardExtras(db, shop.id, slice.map((c) => ({ id: c.p.id, shown: c.shown })), now, liveIds);
   return {
     ok: true,
     value: {
@@ -329,6 +334,7 @@ export async function shopProductDetail(db: PrismaClient, slug: string, productI
       .map(({ id, name }) => ({ id, name })),
     shipping: { freeShipping: shipping.freeShipping, baseFee: shipping.baseFee, freeOverAmount: shipping.freeOverAmount, remoteSurcharge: shipping.remoteSurcharge },
     reward: await rewardPreview(db, shop.id, buyerGradeId ?? null, shown, now),
+    isLive: (await liveProductIds(db, shop.id)).includes(p.id),
   };
 }
 
@@ -351,9 +357,10 @@ async function rewardPreview(db: PrismaClient, sellerId: string, buyerGradeId: s
 }
 
 // 상품 카드 공통 칸: 공개 리뷰 평균·수와 적립 예정. 상품 상세의 리뷰 집계(product-reviews productReviews)와 같은 조건(공개 VISIBLE, 지우지 않음)이다.
-async function cardExtras(db: PrismaClient, sellerId: string, items: { id: string; shown: number }[], now: Date) {
-  const out = new Map<string, Pick<ShopProductCard, "rating" | "reviewCount" | "reward">>();
+async function cardExtras(db: PrismaClient, sellerId: string, items: { id: string; shown: number }[], now: Date, liveIds?: string[]) {
+  const out = new Map<string, Pick<ShopProductCard, "rating" | "reviewCount" | "reward" | "isLive">>();
   if (!items.length) return out;
+  const live = new Set(liveIds ?? (await liveProductIds(db, sellerId)));
   const [groups, preview] = await Promise.all([
     db.productReview.groupBy({
       by: ["productId"],
@@ -370,6 +377,7 @@ async function cardExtras(db: PrismaClient, sellerId: string, items: { id: strin
       rating: g && g._count._all > 0 ? Math.round((g._avg.rating ?? 0) * 10) / 10 : null,
       reviewCount: g?._count._all ?? 0,
       reward: preview ? preview(i.shown) : null,
+      isLive: live.has(i.id),
     });
   }
   return out;

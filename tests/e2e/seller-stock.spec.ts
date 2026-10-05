@@ -608,8 +608,8 @@ test("검색을 바꿔 다시 모두 선택해 적용하면 이전 검색 결과
   await expect(page.getByTestId("sum-count")).toHaveText("1개");
   await applyAll(page);
   await expect(page.getByText("재고 1건을 변경했습니다")).toBeVisible();
-  // 3) 서버에서 다시 읽어도 탑로더는 그대로, 문라이트만 +1
-  await page.reload();
+  // 3) 서버에서 다시 읽어도 탑로더는 그대로, 문라이트만 +1(새로고침은 주소의 검색어를 그대로 복원하므로 검색 없는 주소로 다시 연다)
+  await page.goto("/seller/products/stock");
   await expect(row(page, "문라이트 컬렉션 박스").locator(".c-cur")).toContainText(String(moonBefore + 1));
   expect(await cur("탑로더 25장")).toBe(topBefore);
   // 되돌려 둔다
@@ -738,7 +738,7 @@ test("다른 검색에서 바꿔 둔 재고도 함께 적용하고, 확인 창�
   await expect(page.getByRole("dialog").getByTestId("apply-hidden")).toHaveText("화면에 안 보이는 1개 포함");
   await confirmApply(page);
   await expect(page.getByText("재고 2건을 변경했습니다")).toBeVisible();
-  await page.reload();
+  await page.goto("/seller/products/stock");
   await expect(nextInput(page, "탑로더 25장 1팩")).toHaveValue(String(top + 1));
   await expect(nextInput(page, "문라이트 컬렉션 박스 1박스")).toHaveValue(String(moon + 1));
   // 되돌려 둔다

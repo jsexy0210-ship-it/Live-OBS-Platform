@@ -88,3 +88,14 @@ test("서랍이 열린 채 Back을 누르면 페이지를 떠나지 않고 서�
   await page.goBack();
   await expect(page).not.toHaveURL(/\/seller\/products$/);
 });
+
+test("고객 그룹 「구매자 문의」는 /seller/buyer-inquiries로 연결되고 그 화면에서 켜져 있다", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await login(page, "/seller/members");
+  const link = lnb(page).getByRole("link", { name: "구매자 문의" });
+  await expect(link).toHaveAttribute("href", "/seller/buyer-inquiries");
+  await link.click();
+  await expect(page).toHaveURL(/\/seller\/buyer-inquiries$/);
+  await expect(gnb(page).getByRole("link", { name: "고객", exact: true })).toHaveClass(/\bon\b/);
+  await expect(lnb(page).getByRole("link", { name: "구매자 문의" })).toHaveAttribute("aria-current", "page");
+});
