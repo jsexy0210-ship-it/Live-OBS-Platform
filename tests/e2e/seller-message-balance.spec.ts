@@ -1,9 +1,10 @@
 import { PrismaClient } from "@prisma/client";
 import { expect, test, type Page } from "@playwright/test";
+import { sealBillingKey } from "../../lib/server/billing/secret";
 import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
 import { submitSellerLogin } from "./sellerLogin";
 
-// SA-081 발송 충전: 잔액·제공량·단가표·비용 안내·동의·잔액 부족 알림 기준·사용 내역. 카드 충전은 API가 없어 버튼이 잠겨 있다.
+// SA-081 발송 충전: 잔액·제공량·단가표·비용 안내·동의·잔액 부족 알림 기준·사용 내역. 충전: 가짜 결제 공급자(서버는 OBS_TEST_MODE=1·BILLING_KEY_SECRET, 이 프로세스에도 같은 BILLING_KEY_SECRET).
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
 const SHOTS = process.env.E2E_SCREENSHOTS === "1";
 
@@ -29,6 +30,8 @@ async function reset() {
     await db.sellerMessageLedger.deleteMany({ where: { sellerId } });
     await db.sellerMessageFeeConsent.deleteMany({ where: { sellerId } });
     await db.sellerMessageBalance.deleteMany({ where: { sellerId } });
+    await db.messageCharge.deleteMany({ where: { sellerId } });
+    await db.sellerSubscription.deleteMany({ where: { sellerId, cardLabel: "e2e-charge" } });
   });
 }
 
@@ -70,7 +73,7 @@ test("충전 기능이 꺼져 있으면 준비 중 안내를 보이고 충전·�
   // 충전 기능이 꺼져 있는 동안은 서버도 동의를 막지 않지만 화면은 체크할 수 없다(요청도 가지 않는다)
 });
 
-test("충전 기능을 켠 뒤: 단가가 보이고, 동의 체크가 저장되며, 잔액 부족 알림 기준을 바꿔 저장한다. 충전 버튼은 카드 충전 전이라 잠겨 있다", async ({ page }) => {
+test("충전 기능을 켠 뒤: 단가가 보이고, 동의 체크가 저장되며, 잔액 부족 알림 기준을 바꿔 저장한다. 동의 전에는 충전 버튼이 잠겨 있다", async ({ page }) => {
   await reset();
   await withDb(async (db) => {
     await db.platformMessageSetting.update({ where: { id: 1 }, data: { chargingEnabled: true } });
@@ -91,8 +94,8 @@ test("충전 기능을 켠 뒤: 단가가 보이고, 동의 체크가 저장되�
   await expect(page.getByText("발송 비용 안내 동의를 저장했습니다")).toBeVisible();
   await expect(page.getByText("동의 버전 2026-10-05", { exact: false })).toBeVisible();
   await expect(page.getByLabel("발송 비용 안내를 확인했고 동의합니다")).toBeDisabled();
-  await expect(page.getByText("카드 충전은 준비 중입니다")).toBeVisible();
-  await expect(page.getByTestId("charge-button")).toBeDisabled();
+  await expect(page.getByText("구독 결제 카드로 충전합니다")).toBeVisible();
+  await expect(page.getByTestId("charge-button")).toBeEnabled();
 
   // 잔액 부족 알림 기준: 잘못된 값은 막고, 바르면 저장되어 다시 열어도 그대로다
   await page.getByLabel("잔액 부족 알림 기준").fill("abc");
@@ -147,4 +150,51 @@ test("직원은 대표자 전용 안내를 보고, 충전 정보는 보이지 �
   await expect(page).toHaveURL(/\/seller\/settings\/message-balance$/);
   await expect(page.getByText("필요한 권한: 대표자", { exact: false })).toBeVisible();
   await expect(page.getByTestId("paid-balance")).toHaveCount(0);
+});
+
+test("충전: 금액은 비어 있고 틀린 금액은 막는다. 카드가 없으면 거절하고, 확인 창을 거쳐 충전하면 잔액·내역에 반영된다", async ({ page }) => {
+  await reset();
+  await withDb(async (db, sellerId) => {
+    await db.platformMessageSetting.update({ where: { id: 1 }, data: { chargingEnabled: true } });
+    const owner = await db.sellerUser.findFirstOrThrow({ where: { sellerId, isOwner: true }, select: { id: true } });
+    await db.sellerMessageFeeConsent.create({ data: { sellerId, version: "2026-10-05", sellerUserId: owner.id, consentedAt: new Date() } });
+  });
+  await open(page);
+  const amount = page.getByTestId("charge-amount");
+  await expect(amount).toHaveValue("");
+
+  await amount.fill("1500");
+  await page.getByTestId("charge-button").click();
+  await expect(page.getByText("1,000원에서 100만 원 사이, 1,000원 단위로 입력해 주십시오")).toBeVisible();
+  await expect(page.getByTestId("charge-confirm")).toHaveCount(0);
+
+  // 카드가 없으면 서버가 거절한다
+  await amount.fill("5000");
+  await page.getByTestId("charge-button").click();
+  await expect(page.getByRole("dialog")).toContainText("5,000원을 충전하시겠습니까?");
+  await page.getByTestId("charge-confirm").click();
+  await expect(page.getByText("구독 결제 카드를 먼저 등록해 주십시오")).toBeVisible();
+  await expect(page.getByTestId("paid-balance")).toHaveText("0원");
+
+  // 카드를 등록한 뒤에는 확인 창 → 충전 → 잔액·내역 반영
+  await withDb(async (db, sellerId) => {
+    const plan = await db.subscriptionPlan.findFirstOrThrow({ select: { id: true } });
+    await db.sellerSubscription.create({ data: { sellerId, planId: plan.id, cardLabel: "e2e-charge", billingKeyCipher: sealBillingKey("fake-bk-e2e", sellerId) } });
+  });
+  await amount.fill("5000");
+  await page.getByTestId("charge-button").click();
+  await page.getByRole("button", { name: "취소" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByTestId("paid-balance")).toHaveText("0원");
+  await page.getByTestId("charge-button").click();
+  const post = page.waitForResponse((r) => r.request().method() === "POST" && r.url().endsWith("/api/seller/message-balance/charges"));
+  await page.getByTestId("charge-confirm").click();
+  const res = await post;
+  expect(res.status()).toBe(200);
+  expect(res.request().postDataJSON()).toMatchObject({ amount: 5000 });
+  await expect(page.getByText("5,000원을 충전했습니다")).toBeVisible();
+  await expect(page.getByTestId("paid-balance")).toHaveText("5,000원");
+  await expect(amount).toHaveValue("");
+  await expect(page.getByTestId("ledger-row").first()).toContainText("충전");
+  await shot(page, "SA-081-charged");
 });

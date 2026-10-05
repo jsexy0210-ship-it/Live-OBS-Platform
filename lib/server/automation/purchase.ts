@@ -14,6 +14,7 @@ import {
   REINSTALL_ORDER_NAME,
   REINSTALL_PRICE,
 } from "./config";
+import { budgetOpen, PLANNER_PROVIDER } from "./budget";
 import { externalId } from "./boundary";
 import { callPort, valueOrThrow } from "./engine";
 import type { Playbook } from "./playbook";
@@ -41,7 +42,9 @@ type Failure =
   // 유료 재설치를 결제하려는 사이 무료 재연결 조건이 됐다(결제하지 않음, 무료 재연결로 다시 요청)
   | "free_reconnect_available"
   // 쇼핑몰이 바뀐 재설치인데 새 쇼핑몰 주소가 없다(이전 쇼핑몰로 설치하지 않음, 결제하지 않음)
-  | "shop_url_required";
+  | "shop_url_required"
+  // 외부 API 월 한도에 닿아 이번 달 새 구매를 받지 않는다(결제하지 않음)
+  | "service_paused";
 export type PurchaseResult =
   | { ok: true; jobId: string; kind: AutomationJob["kind"]; paymentStatus: AutomationPayment["status"] | null; jobStatus: AutomationJob["status"]; replayed: boolean }
   | { ok: false; reason: Failure; jobId?: string };
@@ -58,6 +61,7 @@ export const PURCHASE_FAILURE_STATUS: Record<Failure, number> = {
   payment_failed: 402,
   free_reconnect_available: 409,
   shop_url_required: 400,
+  service_paused: 503,
 };
 
 // 작업 확정 트랜잭션 안에서 다시 계산해 거절할 때(트랜잭션을 되돌린다)
@@ -220,6 +224,7 @@ async function buyPaidJob(db: PrismaClient, provider: BillingProvider, ctx: Tena
   if (existing) return existing;
   const playbook = await input.resolvePlaybook();
   if (!playbook) return { ok: false, reason: "shop_not_supported" };
+  if (!(await budgetOpen(db, PLANNER_PROVIDER))) return { ok: false, reason: "service_paused" };
   const problem = consentProblem(input.consent);
   if (problem) return { ok: false, reason: problem };
 

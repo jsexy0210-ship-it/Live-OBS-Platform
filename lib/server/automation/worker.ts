@@ -4,6 +4,7 @@ import type { BillingProvider } from "../billing/provider";
 import { AUTOMATION_LIMITS } from "./config";
 import { EngineAborted, ExternalReadTimeout, callPort, runRollback, runSteps, trackedWindow } from "./engine";
 import { findPlaybook } from "./playbooks";
+import { plannerBudget } from "./budget";
 import type { AutomationRuntime, JobScope } from "./ports";
 import { cleanupPracticeArtifacts, playbookReadiness } from "./practice";
 import { reconcileAutomationPayments } from "./purchase";
@@ -130,6 +131,7 @@ export async function executeJob(db: PrismaClient, rt: AutomationRuntime, { job,
         waitForUnknownTarget: job.kind === "REINSTALL",
         targetVerified: job.targetVerifiedAt !== null,
         signal: lost.signal,
+        budget: plannerBudget(db, job.id),
       },
       {
         touch: (stats) => touch(db, claim, stats, leaseMs),
