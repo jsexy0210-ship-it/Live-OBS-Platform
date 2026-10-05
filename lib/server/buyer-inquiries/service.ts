@@ -28,6 +28,8 @@ export const INQUIRY_SEARCH_MAX = 50;
 // 같은 구매자가 한 쇼핑몰에 1시간에 쓸 수 있는 문의 수
 export const INQUIRY_RATE_LIMIT = 10;
 export const INQUIRY_RATE_WINDOW_MS = 3_600_000;
+// 소비자 불만·분쟁 처리 기록 보관 기간(전자상거래법 기준 3년, MASTER 2026-10-05). 탈퇴 뒤에도 글을 이 기간까지 남기며, 기간이 지난 글의 파기 작업은 법률 검토(출시 뒤)에서 정한 뒤 이 값을 쓴다.
+export const INQUIRY_RETENTION_YEARS = 3;
 const UNATTACHED_KEEP = 10;
 
 export type BuyerInquiryFailure =
