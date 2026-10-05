@@ -41,7 +41,7 @@ export const ADMIN_MENU: AdminGroup[] = [
       { label: "실시간 방송", href: "/admin/ops/live" },
       { label: "주문·오버레이 접속", href: "/admin/ops/access" },
       { label: "적립금 실지급 파트너스", href: "/admin/ops/rewards" },
-      { label: "실시간 감시", href: "/admin/ops/monitor", perm: "system.manage" },
+      { label: "실시간 감시", href: "/admin/ops/monitor", perm: "system.manage", ready: true },
       { label: "자동 연결 작업", href: "/admin/ops/jobs" },
     ],
   },
