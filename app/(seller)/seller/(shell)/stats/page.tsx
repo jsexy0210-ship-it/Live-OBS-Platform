@@ -210,7 +210,7 @@ function Overview({ data, compare }: { data: Data; compare: boolean }) {
               {top.map((r, i) => (
                 <tr key={r.productId}>
                   <td>{i + 1}</td>
-                  <td>{r.deleted ? `${r.name} (삭제됨)` : r.name}</td>
+                  <td className="col-text">{r.deleted ? `${r.name} (삭제됨)` : r.name}</td>
                   <td>{r.quantity.toLocaleString("ko-KR")}개</td>
                   <td>{won(r.revenue)}</td>
                 </tr>
