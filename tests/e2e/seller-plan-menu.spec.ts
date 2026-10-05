@@ -34,7 +34,7 @@ const lnb = (page: Page) => page.getByRole("complementary", { name: "파트너�
 // 왼쪽 메뉴의 하위 메뉴(대분류 제목은 제외). 고르지 않은 대분류는 화면에서 접혀 있어 있는지(개수)로 확인한다
 const lnbItem = (page: Page, label: string) => lnb(page).locator(".lnb-i").filter({ hasText: new RegExp(`^${label.replace(/[()]/g, "\\$&")}$`) });
 // 스토어 운영(쇼핑몰 기능) 권한이 있어야 보이는 하위 메뉴
-const STORE_MENUS = ["상품 목록", "적립금", "쿠폰", "회원 목록", "홈 배너", "알림 설정"];
+const STORE_MENUS = ["상품 목록", "재고", "쿠폰", "회원 목록", "홈 배너", "알림 설정"];
 // 오버레이 전용에서도 보이는 하위 메뉴(오버레이 권한·기존 주문 처리·계정·구독)
 const COMMON_MENUS = ["전체 주문", "구매 제한", "방송 대시보드", "방송 화면 꾸미기", "방송 기록", "구독 · 결제", "직원 계정"];
 const overlayMe = (orderFollowup: boolean) => async (route: import("@playwright/test").Route) => {
@@ -231,7 +231,9 @@ test("오버레이 전용: 후속 처리 대상이 남아 있으면 주문·회�
   await expect(gnb(page).locator(".gnb-i")).toHaveText(["홈", "방송", "주문", "고객", "통계", "설정"]);
   await expect(lnbItem(page, "전체 주문")).toHaveCount(1);
   await expect(lnbItem(page, "구매 제한")).toHaveCount(1);
-  await expect(lnbItem(page, "구매자 문의")).toHaveCount(1);
+  // 통합 화면은 보이는 탭이 하나라도 있으면 메뉴가 남는다: 문의 · 리뷰(문의 탭), 적립금(지급·회수 원장 탭)
+  await expect(lnbItem(page, "문의 · 리뷰")).toHaveCount(1);
+  await expect(lnbItem(page, "적립금")).toHaveCount(1);
 
   await page.unroute("**/api/seller/me");
   await page.route("**/api/seller/me", overlayMe(false));

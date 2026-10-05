@@ -98,15 +98,16 @@ test("서랍이 열린 채 Back을 누르면 페이지를 떠나지 않고 서�
   await expect(page).not.toHaveURL(/\/seller\/products$/);
 });
 
-test("고객 그룹 「구매자 문의」는 /seller/buyer-inquiries로 연결되고 그 화면에서 켜져 있다", async ({ page }) => {
+test("고객 그룹 「문의 · 리뷰」는 /seller/buyer-inquiries(문의 탭)로 연결되고 그 화면에서 켜져 있다", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await login(page, "/seller/members");
-  const link = lnb(page).getByRole("link", { name: "구매자 문의" });
+  const link = lnb(page).getByRole("link", { name: "문의 · 리뷰" });
   await expect(link).toHaveAttribute("href", "/seller/buyer-inquiries");
   await link.click();
   await expect(page).toHaveURL(/\/seller\/buyer-inquiries$/);
   await expect(gnb(page).getByRole("link", { name: "고객", exact: true })).toHaveClass(/\bon\b/);
-  await expect(lnb(page).getByRole("link", { name: "구매자 문의" })).toHaveAttribute("aria-current", "page");
+  await expect(lnb(page).getByRole("link", { name: "문의 · 리뷰" })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("navigation", { name: "화면 탭" }).getByRole("link", { name: "리뷰" })).toHaveAttribute("href", "/seller/reviews");
 });
 
 test("상단 전역 검색: 상품을 찾아 이동하고, 결과가 없으면 안내하며, Esc로 닫힌다", async ({ page }) => {
@@ -143,10 +144,12 @@ test("상단 알림: 종 버튼이 열리고(목록 또는 빈 안내), 바깥�
   await expect(dialog).toHaveCount(0);
 });
 
-test("상품 그룹 「재입고 알림」은 /seller/products/restock-alerts로 연결된다", async ({ page }) => {
+test("상품 그룹 「재고」 메뉴의 탭으로 「재입고 알림」(/seller/products/restock-alerts)이 연결된다(머리를 아직 안 쓰는 재고 화면은 경로 줄 아래 탭)", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await login(page, "/seller/products");
-  await expect(lnb(page).getByRole("link", { name: "재입고 알림" })).toHaveAttribute("href", "/seller/products/restock-alerts");
+  await expect(lnb(page).getByRole("link", { name: "재고" })).toHaveAttribute("href", "/seller/products/stock");
+  await lnb(page).getByRole("link", { name: "재고" }).click();
+  await expect(page.getByRole("navigation", { name: "화면 탭" }).getByRole("link", { name: "재입고 알림" })).toHaveAttribute("href", "/seller/products/restock-alerts");
 });
 
 test("모바일(390): 검색·알림 버튼이 보이고 패널이 화면 안에 열린다", async ({ page }) => {

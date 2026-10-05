@@ -20,18 +20,18 @@ import { api, currentNavGeneration, nextNavGeneration, PLAN_FEATURE_EVENT, type 
 //   FOLLOWUP = STORE_OPERATIONS가 있거나, 오버레이 전용으로 내린 뒤에도 후속 처리할 일이 남았을 때(/me orderFollowup). 주문·배송·문의 메뉴(ORDER_FOLLOWUP 경로)
 // alt: plan이 없을 때 대신 여는 화면(그 요금제에서 쓸 수 있는 하위 화면만 보여 줄 때)
 // tabs: 통합 화면. 탭마다 perm·plan을 따로 가진다(보이는 탭이 하나도 없으면 메뉴 항목도 숨긴다). 보이는 탭이 2개 이상일 때만 탭 줄을 그린다.
-// also: 메뉴에는 없지만 이 항목을 켠 채 열리는 화면 주소(예: 시작하기)
+// also: 메뉴에는 없지만 이 항목을 켠 채 열리는 화면 주소(예: 시작하기). plan·perm을 따로 줄 수 있다(없으면 항목 것)
 // 하위 메뉴가 모두 숨겨진 대분류는 GNB에서도 숨긴다.
 type PlanNeed = "ANY" | "OVERLAY" | "EXTERNAL_INTEGRATION" | "STORE_OPERATIONS" | "FOLLOWUP";
 type Leaf = { label: string; href?: string; perm?: string; plan?: PlanNeed; alt?: { plan: PlanNeed; href: string } };
-type Item = Leaf & { tabs?: Leaf[]; also?: string[] };
+type Item = Leaf & { tabs?: Leaf[]; also?: { href: string; plan?: PlanNeed; perm?: string }[] };
 type Group = { key: string; label: string; items: Item[] };
 const MENU: Group[] = [
   {
     key: "home",
     label: "홈",
     // 시작하기(SA-003)는 메뉴에서 빠지고 홈 아래 화면이다(첫 가입 때만 홈 위 띠로 안내)
-    items: [{ label: "홈", plan: "STORE_OPERATIONS", alt: { plan: "OVERLAY", href: "/seller/home-overlay" }, also: ["/seller/onboarding"] }],
+    items: [{ label: "홈", plan: "STORE_OPERATIONS", alt: { plan: "OVERLAY", href: "/seller/home-overlay" }, also: [{ href: "/seller/onboarding", plan: "ANY" }] }],
   },
   {
     key: "broadcast",
@@ -154,7 +154,7 @@ const MENU: Group[] = [
     label: "설정",
     items: [
       // 공유 설정(파비콘·공유 카드)은 쇼핑몰 정보 안에 들어간다
-      { label: "쇼핑몰 정보", href: "/seller/settings/shop", plan: "STORE_OPERATIONS", also: ["/seller/settings/share"] },
+      { label: "쇼핑몰 정보", href: "/seller/settings/shop", plan: "STORE_OPERATIONS", also: [{ href: "/seller/settings/share" }] },
       {
         label: "주문 · 배송 설정",
         tabs: [
@@ -192,14 +192,17 @@ function routeNav(pathname: string): { group: Group; item: Item; leaf: Leaf; exa
   let best: { group: Group; item: Item; leaf: Leaf; len: number } | null = null;
   for (const group of MENU)
     for (const item of group.items) {
-      for (const leaf of leavesOf(item)) {
-        for (const href of [leaf.href, ...(item.also ?? [])]) {
-          if (href && (pathname === href || pathname.startsWith(`${href}/`)) && (!best || href.length > best.len)) best = { group, item, leaf, len: href.length };
-        }
+      const cands: { href?: string; leaf: Leaf }[] = [
+        ...leavesOf(item).map((leaf) => ({ href: leaf.href, leaf })),
+        // 메뉴에 없는 딸린 화면: plan·perm은 따로 있으면 그것, 없으면 항목 것(탭 항목이면 첫 탭 것)
+        ...(item.also ?? []).map((a) => ({ href: a.href, leaf: { ...leavesOf(item)[0], href: a.href, plan: a.plan ?? leavesOf(item)[0].plan, perm: a.perm ?? leavesOf(item)[0].perm } })),
+      ];
+      for (const { href, leaf } of cands) {
+        if (href && (pathname === href || pathname.startsWith(`${href}/`)) && (!best || href.length > best.len)) best = { group, item, leaf, len: href.length };
       }
     }
   if (!best) return null;
-  return { group: best.group, item: best.item, leaf: best.leaf, exactHref: pathname === best.leaf.href || leavesOf(best.item).some((l) => l.href === pathname) };
+  return { group: best.group, item: best.item, leaf: best.leaf, exactHref: leavesOf(best.item).some((l) => l.href === pathname) };
 }
 // 상단 바 경로(「주문 › 전체 주문」처럼 대분류 › 메뉴)
 function routeCrumb(pathname: string): string {
@@ -459,7 +462,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
       : null;
   // 화면 ←·통합 화면 탭(PageHead가 읽는다): ←는 메뉴로 바로 여는 화면이 아닐 때만, 부모는 그 화면이 속한 메뉴 화면
   const shellNav: ShellNav = {
-    backHref: active && !active.exactHref ? (active.leaf.href ?? shownItem?.href ?? null) : null,
+    backHref: active && !active.exactHref ? (shownItem?.shownTabs.find((t) => t.href && pathname.startsWith(`${t.href}/`))?.href ?? shownItem?.href ?? null) : null,
     tabs: shownItem && shownItem.shownTabs.length >= 2 ? shownItem.shownTabs.map((t) => ({ label: t.label, href: t.href ?? "", on: t.href === active?.leaf.href })) : [],
   };
   const blocked = (planBlocked?.path === pathname && planBlocked.visit === currentNavGeneration()) || !menuAllows(me, routePlan(pathname));
