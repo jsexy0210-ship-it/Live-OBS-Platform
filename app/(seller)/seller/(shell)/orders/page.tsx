@@ -50,13 +50,20 @@ export default function OrderListPage() {
   const [search, setSearch] = useState(q);
   const setUrl = useRef(setU);
   setUrl.current = setU;
+  // 이 화면이 직접 주소에 넣은 검색어(sent)는 입력 칸에 되돌려 쓰지 않는다. 입력이 이어지는 중에 늦게 반영돼도 글자가 지워지지 않게
+  const sent = useRef(q);
   useEffect(() => {
-    const t = setTimeout(() => setUrl.current({ q: search.trim() }), SEARCH_DELAY_MS);
+    const t = setTimeout(() => {
+      sent.current = search.trim();
+      setUrl.current({ q: sent.current });
+    }, SEARCH_DELAY_MS);
     return () => clearTimeout(t);
   }, [search]);
-  // 주소가 바뀌면(Back·필터 초기화) 입력 칸도 맞춘다. 입력 중인 글자는 건드리지 않는다
+  // 주소가 밖에서 바뀌면(Back·필터 초기화) 입력 칸도 맞춘다
   useEffect(() => {
-    setSearch((cur) => (cur.trim() === q ? cur : q));
+    if (q === sent.current) return;
+    sent.current = q;
+    setSearch(q);
   }, [q]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [draft, setDraft] = useState<OrderStatus[]>([]);
@@ -106,6 +113,7 @@ export default function OrderListPage() {
   const filtered = statuses.length > 0 || period !== null || q !== "" || shipped !== null;
   const reset = () => {
     setSearch("");
+    sent.current = "";
     setU({ q: "", period: "", status: "", shipped: "" });
   };
   const statusText = statuses.length === 0 ? "전체" : statuses.length === 1 ? STATUS_BADGE[statuses[0]].label : `${STATUS_BADGE[statuses[0]].label} 외 ${statuses.length - 1}개`;

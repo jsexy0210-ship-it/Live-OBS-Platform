@@ -88,7 +88,7 @@ export function GlobalSearch({ scope }: { scope: "seller" | "admin" }) {
 
   return (
     <div className="gnb-ic-wrap" ref={wrap}>
-      <button className="gnb-ic" type="button" aria-label="전체 검색" aria-expanded={open} aria-haspopup="dialog" title="전체 검색" onClick={() => setOpen((v) => !v)}>
+      <button className="gnb-ic" type="button" aria-label="빠른 찾기" aria-expanded={open} aria-haspopup="dialog" title="빠른 찾기" onClick={() => setOpen((v) => !v)}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
           <circle cx="11" cy="11" r="7" />
           <path d="M20 20l-4-4" />

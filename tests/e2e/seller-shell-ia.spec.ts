@@ -108,7 +108,7 @@ test("고객 그룹 「구매자 문의」는 /seller/buyer-inquiries로 연결�
 test("상단 전역 검색: 상품을 찾아 이동하고, 결과가 없으면 안내하며, Esc로 닫힌다", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await login(page, "/seller/members");
-  await page.getByRole("button", { name: "전체 검색", exact: true }).click();
+  await page.getByRole("button", { name: "빠른 찾기", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "전체 검색" });
   await expect(dialog.getByText("검색어를 입력해 주십시오.")).toBeVisible();
   await dialog.getByRole("searchbox").fill("탑로더");
@@ -117,12 +117,12 @@ test("상단 전역 검색: 상품을 찾아 이동하고, 결과가 없으면 �
   await hit.click();
   await expect(page).toHaveURL(/\/seller\/products\/[^/?]+$/);
   await expect(dialog).toHaveCount(0);
-  await page.getByRole("button", { name: "전체 검색", exact: true }).click();
+  await page.getByRole("button", { name: "빠른 찾기", exact: true }).click();
   await page.getByRole("dialog", { name: "전체 검색" }).getByRole("searchbox").fill("zzz없는검색어");
   await expect(page.getByText("「zzz없는검색어」 검색 결과가 없습니다.")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog", { name: "전체 검색" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "전체 검색", exact: true })).toBeFocused();
+  await expect(page.getByRole("button", { name: "빠른 찾기", exact: true })).toBeFocused();
 });
 
 test("상단 알림: 종 버튼이 열리고(목록 또는 빈 안내), 바깥을 누르면 닫힌다", async ({ page }) => {
@@ -148,7 +148,7 @@ test("상품 그룹 「재입고 알림」은 /seller/products/restock-alerts로
 test("모바일(390): 검색·알림 버튼이 보이고 패널이 화면 안에 열린다", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 800 });
   await login(page, "/seller/members");
-  await page.getByRole("button", { name: "전체 검색", exact: true }).click();
+  await page.getByRole("button", { name: "빠른 찾기", exact: true }).click();
   const box = await page.getByRole("dialog", { name: "전체 검색" }).boundingBox();
   expect(box!.x).toBeGreaterThanOrEqual(0);
   expect(box!.x + box!.width).toBeLessThanOrEqual(390);

@@ -128,8 +128,12 @@ export default function ProductListPage() {
   const key = query(applied, sort, limit);
   const appliedJson = JSON.stringify(applied);
   const [draft, setDraft] = useState<Filters>(applied);
-  // 주소가 바뀌면(Back·초기화) 입력 중인 값도 적용된 조건으로 맞춘다
+  // 주소가 밖에서 바뀌면(Back 등) 입력 중인 값도 적용된 조건으로 맞춘다. 「검색」「초기화」로 이 화면이 직접 바꾼 주소는 입력 칸을 건드리지 않는다
+  // (초기화 직후 새 검색어를 입력하는 중에 주소 변경이 늦게 반영돼도 입력이 지워지지 않게)
+  const pushed = useRef<string | null>(null);
   useEffect(() => {
+    if (pushed.current === appliedJson) return;
+    pushed.current = appliedJson;
     setDraft(JSON.parse(appliedJson) as Filters);
   }, [appliedJson]);
   const [cats, setCats] = useState<CategoryNode[]>([]);
@@ -147,10 +151,14 @@ export default function ProductListPage() {
     const next = { ...draft, text: draft.text.trim() };
     // 같은 조건으로 다시 누르면 주소가 안 바뀌므로 목록만 다시 읽는다
     if (JSON.stringify(next) === appliedJson) void load(key);
-    else setU(toUrl(next));
+    else {
+      pushed.current = JSON.stringify(next);
+      setU(toUrl(next));
+    }
   };
   const resetAll = () => {
     setDraft(EMPTY);
+    pushed.current = JSON.stringify(EMPTY);
     setU(toUrl(EMPTY));
   };
 
