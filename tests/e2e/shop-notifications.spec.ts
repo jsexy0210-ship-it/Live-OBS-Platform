@@ -35,14 +35,14 @@ test("구매자: 마케팅 정보 수신을 철회하면 바로 처리 결과가
   expect((await page.request.put(API, { data: { agreed: false }, headers: { origin: baseURL! } })).status()).toBe(200);
   await page.goto(PAGE);
   await expect(page).toHaveTitle("알림 설정 · 카드숍 별빛");
-  const sw = page.getByRole("switch", { name: "마케팅 정보 받기" });
+  const sw = page.getByRole("switch", { name: "이벤트·할인 소식 받기" });
   await expect(sw).toHaveAttribute("aria-checked", "false");
   await expect(page.getByText("새 상품 · 방송 시작 · 할인 소식을 받지 않아요")).toBeVisible();
 
   // 켜면 동의 문구를 먼저 보여 준다(바로 동의하지 않음)
   await sw.click();
   const terms = page.getByTestId("mc-terms");
-  await expect(terms).toContainText("마케팅 정보 수신 동의 (선택)");
+  await expect(terms).toContainText("이벤트·할인 소식 받기 (선택)");
   // 동의 전에 서식 전체(이용 목적·항목·보유 기간)를 보여 준다
   const doc = terms.getByTestId("mc-doc");
   await expect(doc).toContainText("카드숍 별빛은(는) 라이브 방송 시작·이벤트·할인·새 상품 소식을 보내기 위해");
@@ -68,7 +68,7 @@ test("구매자: 마케팅 정보 수신을 철회하면 바로 처리 결과가
   await reload.getByRole("button", { name: "새로고침" }).click();
   await expect(reload).toHaveCount(0);
   // 새로고침한 뒤에는 서식 전체를 다시 보고, 그 서식에 묶인 버전으로 동의한다
-  await page.getByRole("switch", { name: "마케팅 정보 받기" }).click();
+  await page.getByRole("switch", { name: "이벤트·할인 소식 받기" }).click();
   await expect(terms.getByTestId("mc-doc")).toBeVisible();
   const agreed = page.waitForResponse((r) => r.url().endsWith(API) && r.request().method() === "PUT");
   await terms.getByRole("button", { name: "동의하고 받기" }).click();
@@ -77,25 +77,25 @@ test("구매자: 마케팅 정보 수신을 철회하면 바로 처리 결과가
   const body = (await res.json()) as { agreed: boolean; version: string; currentVersion: string };
   expect(body.agreed).toBe(true);
   expect(body.version).toBe(body.currentVersion);
-  await expect(page.getByTestId("mc-result")).toHaveText(`카드숍 별빛에서 보내는 마케팅 정보 수신에 동의했어요 · 처리일 ${today()}`);
+  await expect(page.getByTestId("mc-result")).toHaveText(`카드숍 별빛에서 보내는 이벤트·할인 소식 받기에 동의했어요 · 동의한 날 ${today()}`);
   await expect(sw).toHaveAttribute("aria-checked", "true");
   await expect(terms).toHaveCount(0);
 
   // 끄면 바로 철회하고 결과(보낸 곳·처리 날짜)를 알린다
   await sw.click();
-  await expect(page.getByTestId("mc-result")).toHaveText(`카드숍 별빛에서 보내는 마케팅 정보 수신을 철회했어요 · 처리일 ${today()}`);
+  await expect(page.getByTestId("mc-result")).toHaveText(`카드숍 별빛에서 보내는 이벤트·할인 소식 받기를 그만뒀어요 · 처리한 날 ${today()}`);
   await expect(sw).toHaveAttribute("aria-checked", "false");
   await shot(page, "SH-025-withdrawn");
   // 새로 열어도 철회된 상태다
   await page.reload();
-  await expect(page.getByRole("switch", { name: "마케팅 정보 받기" })).toHaveAttribute("aria-checked", "false");
+  await expect(page.getByRole("switch", { name: "이벤트·할인 소식 받기" })).toHaveAttribute("aria-checked", "false");
 });
 
 test("구매자: 동의 응답을 놓쳐도 지금 상태를 다시 읽어 처리 결과를 보여 준다", async ({ page, baseURL }) => {
   await buyerLogin(page, baseURL!);
   expect((await page.request.put(API, { data: { agreed: false }, headers: { origin: baseURL! } })).status()).toBe(200);
   await page.goto(PAGE);
-  const sw = page.getByRole("switch", { name: "마케팅 정보 받기" });
+  const sw = page.getByRole("switch", { name: "이벤트·할인 소식 받기" });
   await sw.click();
   await page.route(
     (u) => u.pathname === API,
@@ -107,7 +107,7 @@ test("구매자: 동의 응답을 놓쳐도 지금 상태를 다시 읽어 처�
     { times: 1 },
   );
   await page.getByTestId("mc-terms").getByRole("button", { name: "동의하고 받기" }).click();
-  await expect(page.getByTestId("mc-result")).toHaveText(`카드숍 별빛에서 보내는 마케팅 정보 수신에 동의했어요 · 처리일 ${today()}`);
+  await expect(page.getByTestId("mc-result")).toHaveText(`카드숍 별빛에서 보내는 이벤트·할인 소식 받기에 동의했어요 · 동의한 날 ${today()}`);
   await expect(sw).toHaveAttribute("aria-checked", "true");
   // 끝: 철회로 돌려 둔다
   expect((await page.request.put(API, { data: { agreed: false }, headers: { origin: baseURL! } })).status()).toBe(200);
@@ -130,7 +130,7 @@ test("구매자: 서버의 동의 서식이 화면의 글과 다르면 동의를
     if (r.url().endsWith(API) && r.method() === "PUT") puts += 1;
   });
   await page.goto(PAGE);
-  await page.getByRole("switch", { name: "마케팅 정보 받기" }).click();
+  await page.getByRole("switch", { name: "이벤트·할인 소식 받기" }).click();
   await expect(page.getByTestId("mc-reload")).toContainText("새로고침이 필요해요.");
   await expect(page.getByTestId("mc-doc")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "동의하고 받기" })).toHaveCount(0);

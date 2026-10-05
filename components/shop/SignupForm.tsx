@@ -461,7 +461,7 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
           <span className="grow">{notice.text}</span>
           {(unconfirmed || resultPending) && (
             <button type="button" className="btn btn-sm btn-out" disabled={busy} onClick={unconfirmed ? retry : loadVerified}>
-              다시 시도
+              다시 불러오기
             </button>
           )}
         </div>
@@ -480,7 +480,7 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
             </span>
             {/* 요청 중이거나 가입 결과가 애매한 동안에는 본인확인 요청을 지우지 않게 막는다(같은 요청으로만 다시 시도) */}
             <button type="button" className="btn btn-sm btn-out" disabled={busy || unconfirmed !== null} onClick={() => restart(null)}>
-              다시 확인
+              본인 확인 다시 하기
             </button>
           </div>
           <div className="signup-two">
@@ -616,7 +616,7 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
                       <p>탈퇴한 회원이 정해진 기간 안에 다시 가입하지 못하게 하려고 아래 정보를 보관해요.</p>
                       <ul>
                         <li>보관 목적: 탈퇴 회원의 재가입 제한</li>
-                        <li>보관 항목: 본인확인 식별값(CI)을 바꾼 값</li>
+                        <li>보관 항목: 본인 확인 때 받은 정보를 알아볼 수 없는 값으로 바꾼 것</li>
                         <li>보관 기간: 탈퇴한 날부터 {consent.rejoinDays}일</li>
                       </ul>
                       <p>동의하지 않아도 가입할 수 있어요. 동의하지 않으면 이 정보를 보관하지 않고, 탈퇴한 뒤 다시 가입할 때 기간 제한을 받지 않아요.</p>
@@ -625,7 +625,7 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
                 )}
                 <label className="chk">
                   <input type="checkbox" className="cbx" disabled={busy} checked={agreedMarketing} onChange={(e) => setAgreedMarketing(e.target.checked)} />
-                  (선택) 마케팅 정보 수신
+                  (선택) 이벤트·할인 소식 받기
                 </label>
                 {/* 본문: docs/terms/MARKETING_CONSENT_TEMPLATE.md. 동의하기 전에 서식 전체를 볼 수 있게 한다 */}
                 <details className="signup-terms-doc">
@@ -634,7 +634,7 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
                 </details>
                 <label className="chk">
                   <input type="checkbox" className="cbx" disabled={busy} {...termsAria} checked={idvAgreed} onChange={(e) => setIdvAgreed(e.target.checked)} />
-                  본인확인 약관에 모두 동의해요
+                  위 내용에 모두 동의하고 본인 확인을 시작해요
                 </label>
                 {fieldErrors.terms && (
                   <span id="idv-terms-err" className="err" role="alert">
@@ -659,7 +659,7 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
               </button>
               {!busy && !needsReload && identityMissing.length > 0 && (
                 <p className="help signup-missing" id="idv-missing" role="status">
-                  아직 필요해요 · {identityMissing.join(" · ")}
+                  아직 입력하지 않은 것: {identityMissing.join(" · ")}
                 </p>
               )}
             </>
@@ -689,7 +689,7 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
                     aria-describedby={codeError ? "idv-code-err" : undefined}
                   />
                   <button type="button" className="btn" disabled={code.length !== 6 || busy} onClick={confirm}>
-                    확인
+                    인증번호 확인하기
                   </button>
                 </div>
                 {codeError && (
@@ -798,7 +798,7 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
             </button>
             {step === "verified" && !busy && accountMissing.length > 0 && (
               <p className="help signup-missing" id="acc-missing" role="status">
-                아직 필요해요 · {accountMissing.join(" · ")}
+                아직 입력하지 않은 것: {accountMissing.join(" · ")}
               </p>
             )}
           </div>
