@@ -2401,6 +2401,8 @@ model BulkJob {
   actorType         ActorType
   actorId           String?       @db.Uuid
   createdAt         DateTime      @default(now()) @db.Timestamptz(3)
+  // 확정을 시작한 시각(COMMITTING). 서버가 중간에 끊겨 멈춘 작업을 찾는 기준(shop-bulk-io/recover.ts). 옛 기록은 비어 있고 createdAt을 쓴다.
+  committingAt      DateTime?     @db.Timestamptz(3)
   committedAt       DateTime?     @db.Timestamptz(3)
   undoUntil         DateTime?     @db.Timestamptz(3)
   undoneAt          DateTime?     @db.Timestamptz(3)
