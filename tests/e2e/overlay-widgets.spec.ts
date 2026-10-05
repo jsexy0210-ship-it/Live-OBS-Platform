@@ -70,3 +70,49 @@ test("새로 들어온 HIT 카드만 잠깐 강조된다", async ({ page }) => {
   await expect(fresh).not.toContainText("옛 카드");
   await expect(page.locator(".ow-hit-new")).toHaveCount(0, { timeout: 12_000 });
 });
+
+// OV-007 이벤트 할인 카드 · OV-004 구매 랭킹: 공개 state의 eventCard·purchaseRanking(기반 계약, #609)을 모의 응답으로 흘려 확인한다.
+// 값이 있으면 카드(상품·할인가·정가·남은 시간)와 랭킹(rows만큼 위에서, 같은 수량은 같은 순위)이 보이고, 없으면(null·빈 배열) 위젯을 그리지 않는다.
+test("이벤트 할인 카드와 구매 랭킹이 보이고, 값이 없으면 사라진다", async ({ page }) => {
+  test.setTimeout(60_000);
+  let phase = 0;
+  const wd = [
+    { id: "ev", type: "EVENT_CARD", ...box, y: 10, h: 12, props: {} },
+    { id: "rk", type: "PURCHASE_RANKING", ...box, y: 30, h: 20, props: { rows: 3 } },
+  ];
+  const eventCard = { productName: "프리미엄 박스", price: 20000, discountedPrice: 15000, discountRate: 25, endsAt: new Date().toISOString(), remainingSeconds: 5400, badge: "오늘 마감", remainingLabel: "1시간 30분 남았어요", moreCount: 2 };
+  const ranking = [
+    { rank: 1, nickname: "별빛하늘", quantity: 5 },
+    { rank: 2, nickname: "달콤곰", quantity: 3 },
+    { rank: 2, nickname: "민트초코", quantity: 3 },
+    { rank: 4, nickname: "하루", quantity: 1 },
+  ];
+  await page.route("**/api/overlay/*/layout*", (r) => r.fulfill({ json: { aspect: "9x16", version: 1, widgets: wd } }));
+  await page.route("**/api/overlay/*/stream", (r) => r.abort());
+  await page.route("**/api/overlay/*/version", (r) => r.fulfill({ json: { version: phase + 1 } }));
+  await page.route("**/api/overlay/*/state", (r) =>
+    r.fulfill({ json: { version: phase + 1, live: true, opening: null, waiting: [], hits: [], orderEvents: [], eventCard: phase === 0 ? eventCard : null, purchaseRanking: phase === 0 ? ranking : [] } }),
+  );
+  await page.setViewportSize({ width: 1080, height: 1920 });
+  await page.goto("/overlay/mock-token");
+
+  const ev = page.locator('[data-widget="EVENT_CARD"]');
+  await expect(ev).toContainText("프리미엄 박스");
+  await expect(ev).toContainText("15,000원");
+  await expect(ev).toContainText("20,000원");
+  await expect(ev).toContainText("25%");
+  await expect(ev).toContainText("오늘 마감이에요");
+  await expect(ev).toContainText("1시간 30분 남았어요");
+  await expect(ev).toContainText("2개 더 있어요");
+  // 랭킹: rows=3만큼 위에서, 같은 수량은 같은 순위(1·2·2), 4위는 잘린다
+  const rk = page.locator('[data-widget="PURCHASE_RANKING"]');
+  await expect(rk.locator("li")).toHaveCount(3);
+  await expect(rk.locator("li").nth(1)).toContainText("달콤곰");
+  await expect(rk.locator("li").nth(2)).toContainText("민트초코");
+  await expect(rk.locator("li .ow-no")).toHaveText(["1", "2", "2"]);
+  await expect(rk).not.toContainText("하루");
+
+  phase = 1; // 이벤트가 끝나고 방송 랭킹이 비었다(15초 확인에서 읽는다)
+  await expect(ev).toHaveCount(0, { timeout: 25_000 });
+  await expect(rk).toHaveCount(0);
+});
