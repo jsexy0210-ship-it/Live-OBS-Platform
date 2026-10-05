@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { GlobalSearch, NotificationBell } from "../../../../components/admin-ui/GnbTools";
+import { ConfirmProvider } from "../../../../components/admin-ui/ConfirmDialog";
 import { ShellNavProvider, type ShellNav } from "../../../../components/admin-ui/shellNav";
 import { useWholeDateClick } from "../../../../components/admin-ui/useWholeDateClick";
 import { usePathname, useRouter } from "next/navigation";
@@ -103,6 +104,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   return (
     <Ctx.Provider value={{ me, openNav: () => setNavOpen(true), loc }}>
       <ShellNavProvider value={shellNav}>
+      <ConfirmProvider>
       <div className={`cs${navOpen ? " nav-open" : ""}`}>
         <header className="gnb">
           <button className="gnb-menu" type="button" aria-label="메뉴 열기" onClick={() => setNavOpen(true)}>
@@ -157,6 +159,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           <div className="col cs-body">{route && !itemAllowed(me.role, route.item) ? <NoAccess /> : children}</div>
         </div>
       </div>
+      </ConfirmProvider>
       </ShellNavProvider>
     </Ctx.Provider>
   );

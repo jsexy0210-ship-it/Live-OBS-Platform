@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { PageHead } from "../../../../../../components/admin-ui";
 import { InquiryAttach, type Attached } from "../../../../../../components/seller/InquiryAttach";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
+import { SmartBackButton } from "../../../../../../components/seller/SmartBackButton";
 import { ErrorState, LoadingRows } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
 import { INQUIRY_BODY_MAX, INQUIRY_CATEGORY, INQUIRY_STATUS, type InquiryCategory, type InquiryStatus } from "../../../../../../components/seller/platformInquiry";
@@ -56,12 +57,8 @@ export default function InquiryDetailPage() {
       <Topbar crumb="공지 · 문의" />
       <main className="main">
         <PageHead
+          back="/seller/inquiries"
           title="문의 내용"
-          actions={
-            <Link className="btn btn-out" href="/seller/inquiries">
-              내 문의
-            </Link>
-          }
         />
         <div className="card" style={{ padding: 24 }}>
           {state.kind === "loading" && <LoadingRows rows={4} />}
@@ -70,9 +67,7 @@ export default function InquiryDetailPage() {
               <div className="st" style={{ boxShadow: "none" }}>
                 <span className="t">문의를 찾을 수 없습니다</span>
                 <span className="s">삭제되었거나 볼 수 없는 문의입니다.</span>
-                <Link className="btn btn-sm btn-out" href="/seller/inquiries">
-                  내 문의로
-                </Link>
+                <SmartBackButton fallback="/seller/inquiries" className="btn btn-sm btn-out">내 문의로</SmartBackButton>
               </div>
             ) : (
               <ErrorState title="문의를 불러오지 못했습니다" onRetry={() => void load()} />

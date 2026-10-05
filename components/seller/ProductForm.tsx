@@ -1,7 +1,6 @@
 "use client";
 
 import "./ProductPreview.css";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { FormRow, FormSection } from "../admin-ui";
@@ -13,6 +12,7 @@ import { NoImage, Toast } from "./States";
 import { api, apiUpload, failMessage, type Product, type ProductImageInfo, type ProductOption, type ProductStatus, type StockDeductMode } from "./api";
 import { INT4_MAX, STATUS_LABEL, parseAmount, statusBadge, textLength, won } from "./format";
 import { useUnsavedGuard } from "../../lib/client/navigation";
+import { SmartBackButton } from "./SmartBackButton";
 import { cleanText } from "../../lib/server/text/clean";
 
 // SA-012 상품 등록 · SA-012-E 상품 수정. 지금 API가 받는 항목(상품명·설명·판매가·판매 상태·옵션)만 보여 준다.
@@ -397,7 +397,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
     if (images.length > 0) imgFailed = !(await syncImages(r.data.id)).ok;
     if (!imgFailed && blocks.length > 0) imgFailed = !(await syncDetail(r.data.id)).ok;
     setLeaving(true);
-    router.push(`/seller/products?toast=${catFailed || imgFailed ? "created_partial" : st === "DRAFT" ? "draft" : "created"}`);
+    router.replace(`/seller/products?toast=${catFailed || imgFailed ? "created_partial" : st === "DRAFT" ? "draft" : "created"}`);
   };
 
   // 수정: 바뀐 것만 하나씩 보낸다. 한 단계가 실패하면 거기서 멈추고, 이미 저장된 단계는 기준값에 반영해 다시 보내지 않는다.
@@ -548,9 +548,9 @@ export function ProductForm({ initial }: { initial?: Product }) {
   return (
     <>
       <Topbar crumb={`판매 › 상품 › ${crumbName}`} badge={badge && <span className={`bdg ${badge.cls}`}>{badge.label}</span>}>
-        <Link className="btn btn-sm btn-out" href="/seller/products">
+        <SmartBackButton fallback="/seller/products" className="btn btn-sm btn-out" dirty={dirtyNow && !leaving}>
           취소
-        </Link>
+        </SmartBackButton>
         {saveButtons(false)}
       </Topbar>
       <main className="main form-grid">
@@ -972,7 +972,7 @@ function DeleteDialog({ product, onClose, onHidden }: { product: Product; onClos
       setBusy(false);
       return setError(failMessage(r, "admin", "삭제하지 못했습니다"));
     }
-    router.push("/seller/products?toast=deleted");
+    router.replace("/seller/products?toast=deleted");
   };
 
   return (
