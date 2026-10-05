@@ -385,7 +385,7 @@ test("로그인이 풀린 뒤 다른 탭·화면을 열면 로그인으로 보�
   await expect(page.getByTestId("product-row").first()).toBeVisible();
   await page.context().clearCookies();
   await applyStatus(page, "숨김");
-  await expect(page).toHaveURL(/\/seller\/login\?next=%2Fseller%2Fproducts$/);
+  await expect(page).toHaveURL(/\/seller\/login\?next=%2Fseller%2Fproducts&reason=expired$/);
 });
 
 test("탭을 빨리 바꾸면 마지막으로 고른 탭 결과만 보인다", async ({ page }) => {
