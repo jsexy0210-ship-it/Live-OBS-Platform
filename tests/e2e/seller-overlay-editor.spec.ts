@@ -226,7 +226,7 @@ test("끌 때 정렬 가이드선이 보이고, 실제 크기 미리보기가 �
   await link.click();
   const dlg = page.getByRole("dialog");
   await expect(dlg).toContainText("저장하지 않은 변경 1개가 있습니다");
-  await dlg.getByRole("button", { name: "닫기" }).click();
+  await dlg.getByText("닫기", { exact: true }).click();
   await expect(page).toHaveURL(/\/seller\/overlay$/);
   await link.click();
   await page.getByRole("dialog").getByRole("button", { name: "저장하지 않고 나가기" }).click();
