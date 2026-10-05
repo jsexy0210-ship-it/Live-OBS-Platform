@@ -49,6 +49,7 @@ export default function ShopChrome({ slug, shopName, loggedIn, nickname, categor
   useEffect(() => {
     setDrawer(false);
     setPanel(false);
+    entryRef.current = false; // 링크가 아닌 이동(검색 제출 등)으로 바뀌어도 쌓아 둔 칸 표시를 되돌린다
   }, [path, category]);
   function openDrawer() {
     if (!entryRef.current) {
