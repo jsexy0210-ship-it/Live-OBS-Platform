@@ -20,7 +20,7 @@ export default function RecommendedProducts({ slug, productId }: { slug: string;
   if (products.length === 0) return null;
   return (
     <section className="pd-reco" aria-labelledby="pd-reco-h">
-      <h2 id="pd-reco-h">함께 보면 좋아요</h2>
+      <h2 id="pd-reco-h">이 상품과 함께 보는 상품</h2>
       <ProductGrid products={products} label="추천 상품" hrefBase={`/shop/${encodeURIComponent(slug)}/products`} />
     </section>
   );
