@@ -710,7 +710,7 @@ describe("직접 지급", () => {
     expect((await grantPost(json("/x", "POST", s.owner, { gradeIds: [s.grade.id] }), p({ couponId: dl.id }))).status).toBe(400);
     const other = await shop();
     expect((await grantPost(json("/x", "POST", s.owner, { gradeIds: [other.grade.id] }), p({ couponId: c.id }))).status).toBe(400);
-    const audit = await db.auditLog.findFirstOrThrow({ where: { action: "coupon.grant", targetId: c.id } });
+    const audit = await db.auditLog.findFirstOrThrow({ where: { action: "coupon.grant", targetId: c.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
     expect(audit.after).toMatchObject({ granted: 2, skipped: 0 });
   });
 });

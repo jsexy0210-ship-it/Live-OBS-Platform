@@ -71,3 +71,17 @@ export const dayTime = (iso: string | null) =>
     : "-";
 export const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 export const text = (v: unknown) => (typeof v === "string" && v.trim() ? v : "-");
+
+// 가입 신청(MA-013·014): GET /api/admin/sellers/review 응답과 「확인 필요」 사유 문구
+export type ReviewRow = { id: string; slug: string; shopName: string; businessInfo: Record<string, unknown> | null; reviewReasons: string[]; createdAt: string };
+export const REVIEW_REASON: Record<string, string> = {
+  business_lookup_failed: "국세청 조회 실패",
+  business_info_mismatch: "사업자 정보 불일치",
+  business_not_active: "휴업·폐업 사업자",
+  business_duplicate: "같은 사업자번호의 쇼핑몰 있음",
+  mail_order_number_invalid: "통신판매업 신고번호 확인 필요",
+  mail_order_lookup_failed: "통신판매업 조회 실패",
+  mail_order_not_registered: "통신판매업 등록 없음",
+  mail_order_not_active: "통신판매업 영업 상태 확인 필요",
+};
+export const reasonLabel = (code: string) => REVIEW_REASON[code] ?? "확인 필요";

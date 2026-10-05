@@ -97,6 +97,8 @@ export default function OrderView({ slug, orderId }: { slug: string; orderId: st
   const o = view.order;
   const itemsTotal = o.items.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
   const discount = o.couponRedemption && !o.couponRedemption.restoredAt ? o.couponRedemption.discountAmount : 0;
+  // 결제 금액 = 상품 + 배송비 − 쿠폰 − 적립금이므로 적립금 사용액은 차이로 구한다(주문 응답에 따로 없음)
+  const rewardUsed = Math.max(0, itemsTotal + o.shippingFee - (o.couponRedemption?.discountAmount ?? 0) - o.totalAmount);
   return wrap(
     <div className="co-main">
       {done && (
@@ -204,6 +206,12 @@ export default function OrderView({ slug, orderId }: { slug: string; orderId: st
           <span>배송비</span>
           <span>{won(o.shippingFee)}</span>
         </div>
+        {rewardUsed > 0 && (
+          <div className="cart-row">
+            <span>적립금 사용</span>
+            <span>−{won(rewardUsed)}</span>
+          </div>
+        )}
         <div className="cart-row">
           <span>결제 금액</span>
           <b>{won(o.totalAmount)}</b>
