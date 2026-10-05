@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import ShopLogo from "./ShopLogo";
 
@@ -34,7 +34,9 @@ const ICON = {
 export default function ShopChrome({ slug, shopName, loggedIn, nickname, categories = [] }: Props) {
   const base = `/shop/${encodeURIComponent(slug)}`;
   const path = usePathname() ?? "";
+  const router = useRouter();
   const [drawer, setDrawer] = useState(false);
+  const entryRef = useRef(false); // 서랍을 열 때 기록 한 칸을 쌓았는지(UX-11: Back으로 서랍부터 닫는다)
   const [panel, setPanel] = useState(false); // PC 카테고리 펼침(대분류 → 소분류)
   const closeRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLButtonElement>(null);
@@ -48,6 +50,37 @@ export default function ShopChrome({ slug, shopName, loggedIn, nickname, categor
     setDrawer(false);
     setPanel(false);
   }, [path, category]);
+  function openDrawer() {
+    if (!entryRef.current) {
+      window.history.pushState(null, "", window.location.href);
+      entryRef.current = true;
+    }
+    setDrawer(true);
+  }
+  // 닫기(X·배경·Esc): 쌓아 둔 기록 한 칸을 되돌리면 popstate가 서랍을 닫는다
+  function closeDrawer() {
+    if (entryRef.current) window.history.back();
+    else setDrawer(false);
+  }
+  useEffect(() => {
+    if (!drawer) return;
+    const onPop = () => {
+      entryRef.current = false;
+      setDrawer(false);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [drawer]);
+  // 서랍 안 링크: 쌓아 둔 칸을 대체해서 이동하면 Back 한 번에 이전 화면으로 돌아간다
+  function drawerLink(e: React.MouseEvent) {
+    const a = (e.target as HTMLElement).closest("a");
+    if (!a || !entryRef.current || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+    const href = a.getAttribute("href");
+    if (!href || !href.startsWith("/")) return;
+    e.preventDefault();
+    entryRef.current = false;
+    router.replace(href);
+  }
   // 장바구니 개수 배지: 로그인했을 때만 불러오고, 장바구니 화면이 바뀐 개수를 알려 주면(CART_COUNT_EVENT) 따라간다
   useEffect(() => {
     if (!loggedIn) return;
@@ -67,7 +100,7 @@ export default function ShopChrome({ slug, shopName, loggedIn, nickname, categor
     if (!drawer) return;
     closeRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setDrawer(false);
+      if (e.key === "Escape") closeDrawer();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -109,7 +142,7 @@ export default function ShopChrome({ slug, shopName, loggedIn, nickname, categor
         </div>
         <div className="shop-top">
           <div className="shop-wrap">
-            <button ref={menuRef} type="button" className="shop-iconbtn shop-m" aria-label="카테고리 메뉴" aria-expanded={drawer} onClick={() => setDrawer(true)}>
+            <button ref={menuRef} type="button" className="shop-iconbtn shop-m" aria-label="카테고리 메뉴" aria-expanded={drawer} onClick={openDrawer}>
               <Icon d={ICON.menu} />
             </button>
             <Link href={base} className="shop-brand">
@@ -203,8 +236,11 @@ export default function ShopChrome({ slug, shopName, loggedIn, nickname, categor
       </header>
 
       {drawer && (
-        <div className="shop-drawer-bg" onClick={() => setDrawer(false)}>
-          <div className="shop-drawer" role="dialog" aria-modal="true" aria-label="카테고리 메뉴" onClick={(e) => e.stopPropagation()}>
+        <div className="shop-drawer-bg" onClick={closeDrawer}>
+          <div className="shop-drawer" role="dialog" aria-modal="true" aria-label="카테고리 메뉴" onClick={(e) => {
+            e.stopPropagation();
+            drawerLink(e);
+          }}>
             <div className="shop-drawer-head">
               <div className="shop-drawer-account">{account}</div>
               <button
@@ -213,7 +249,7 @@ export default function ShopChrome({ slug, shopName, loggedIn, nickname, categor
                 className="shop-iconbtn"
                 aria-label="메뉴 닫기"
                 onClick={() => {
-                  setDrawer(false);
+                  closeDrawer();
                   menuRef.current?.focus();
                 }}
               >
@@ -248,7 +284,7 @@ export default function ShopChrome({ slug, shopName, loggedIn, nickname, categor
         <Link href={base} aria-current={here(base)}>
           <Icon d={ICON.home} />홈
         </Link>
-        <button type="button" aria-expanded={drawer} onClick={() => setDrawer(true)}>
+        <button type="button" aria-expanded={drawer} onClick={openDrawer}>
           <Icon d={ICON.grid} />
           카테고리
         </button>

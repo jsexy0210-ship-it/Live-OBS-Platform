@@ -40,3 +40,31 @@ test("내 정보는 허브로 그룹별 링크를 보인다", async ({ page }) =
   await page.locator("main").getByRole("link", { name: "주문 내역" }).click();
   await expect(page).toHaveURL(/\/orders$/);
 });
+
+test("휴대폰: 카테고리 서랍이 열린 채 Back하면 서랍부터 닫히고, 서랍 링크 이동 뒤 Back은 이전 화면으로 간다 (UX-11)", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 800 });
+  await page.goto(`/shop/${SLUG}`);
+  await page.goto(`/shop/${SLUG}/help`);
+  await page.getByRole("button", { name: "카테고리 메뉴" }).click();
+  await expect(page.getByRole("dialog", { name: "카테고리 메뉴" })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole("dialog", { name: "카테고리 메뉴" })).toHaveCount(0);
+  await expect(page).toHaveURL(new RegExp(`/shop/${SLUG}/help$`));
+  await page.getByRole("button", { name: "카테고리 메뉴" }).click();
+  await page.getByRole("dialog").getByRole("link", { name: "주문 조회" }).click();
+  await expect(page).toHaveURL(/\/orders/);
+  await page.goBack();
+  await expect(page).toHaveURL(new RegExp(`/shop/${SLUG}/help$`));
+});
+
+test("상품 상세 ← 버튼: 목록에서 들어오면 목록으로, 직접 들어오면 목록 화면으로 간다 (J-1)", async ({ page }) => {
+  await page.goto(`/shop/${SLUG}/products?sort=low`);
+  await page.locator("a.pc-name").first().click();
+  await expect(page).toHaveURL(/\/products\/[^/?]+$/);
+  await page.getByRole("button", { name: "목록 화면으로" }).click();
+  await expect(page).toHaveURL(new RegExp(`/shop/${SLUG}/products\\?sort=low$`));
+  const href = await page.locator("a.pc-name").first().getAttribute("href");
+  await page.goto(href!);
+  await page.getByRole("button", { name: "목록 화면으로" }).click();
+  await expect(page).toHaveURL(new RegExp(`/shop/${SLUG}/products$`));
+});

@@ -1015,3 +1015,15 @@ body {
   margin: 16px 0 0;
   text-align: center;
 }
+
+/* J-1 상세 화면 ← 버튼 */
+.shop-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 8px 4px 0;
+  border: 0;
+  background: none;
+  color: var(--wds-label-alternative);
+  cursor: pointer;
+}

@@ -1,5 +1,6 @@
 "use client";
 
+import ShopBack from "./ShopBack";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -117,6 +118,7 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
 
   return (
     <article className="pd" aria-label={p.name}>
+      <ShopBack fallback={`/shop/${encodeURIComponent(slug)}/products`} label="목록" />
       {crumb.length > 0 && (
         <nav className="pd-crumb" aria-label="상품 경로">
           <Link href={`${base}/products`}>전체 상품</Link>
