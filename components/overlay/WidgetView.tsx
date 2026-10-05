@@ -181,6 +181,8 @@ export function WidgetView({ widget: wd, data, now, editing }: { widget: Widget;
       break;
     }
   }
+  // 방송 화면에서는 내용이 없는 공지·쇼핑몰 정보 띠를 그리지 않는다(편집기에서는 자리 표시로 보인다)
+  if (!editing && ((wd.type === "NOTICE" && !str(p, "text")) || (wd.type === "SHOP_INFO" && !data.shop?.url && !str(p, "format")))) return null;
   return (
     <section className={cls} style={style as CSSProperties} aria-label={wd.type} data-widget={wd.type} data-testid={editing ? undefined : TEST_IDS[wd.type]}>
       {body}
