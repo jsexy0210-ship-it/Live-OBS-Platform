@@ -8,6 +8,7 @@ import { FormRow, FormSection } from "../admin-ui";
 import ProductDetailEditor, { type DetailBlock } from "./ProductDetailEditor";
 import ProductImages, { type SlotImage } from "./ProductImages";
 import { Topbar } from "./SellerShell";
+import ProductCategoryPicker, { type CategoryNode } from "./ProductCategoryPicker";
 import { NoImage, Toast } from "./States";
 import { api, apiUpload, failMessage, type Product, type ProductImageInfo, type ProductOption, type ProductStatus, type StockDeductMode } from "./api";
 import { INT4_MAX, STATUS_LABEL, parseAmount, statusBadge, textLength, won } from "./format";
@@ -107,15 +108,6 @@ function errorFields(e: Errors): string {
 
 // 폼이 들고 있는 이미지: 서버에 있는 것(server)과 아직 올리지 않은 새 파일(file)
 type FormImage = SlotImage & { server?: boolean; file?: File };
-// 카테고리 트리(GET /api/seller/categories). 2단까지
-type CategoryNode = {
-  id: string;
-  name: string;
-  visible: boolean;
-  sortOrder: number;
-  productCount: number;
-  children: CategoryNode[];
-};
 // 짧은 설명(시안: 한 줄 0/80). 이미 저장된 긴 설명·여러 줄 설명은 그대로 보여 주고 저장을 막지 않는다
 const SHORT_DESC_MAX = 80;
 
@@ -126,12 +118,10 @@ export function ProductForm({ initial }: { initial?: Product }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [price, setPrice] = useState(initial ? String(initial.price) : "");
-  // 카테고리: 대분류·소분류 한 쌍을 고른다(상품에는 고른 것 중 가장 아래 칸만 지정). 지정은 상품을 만든 뒤(수정은 바뀌었을 때) 따로 저장한다
+  // 카테고리: 칩으로 여러 개(대분류·하위 어느 쪽이든, 최대 10개). 지정은 상품을 만든 뒤(수정은 바뀌었을 때) 따로 저장한다
   const [cats, setCats] = useState<CategoryNode[] | null>(null);
-  const [parentId, setParentId] = useState("");
-  const [childId, setChildId] = useState("");
-  const [catBase, setCatBase] = useState<string | null>(null);
-  const categoryId = childId || parentId || null;
+  const [categoryIds, setCategoryIds] = useState<string[]>([]);
+  const [catBase, setCatBase] = useState<string[]>([]);
   const legacyDesc = !!initial?.description && (initial.description.length > SHORT_DESC_MAX || initial.description.includes("\n"));
   useEffect(() => {
     void (async () => {
@@ -140,13 +130,9 @@ export function ProductForm({ initial }: { initial?: Product }) {
       setCats(t.data.categories);
       if (!initial) return;
       const a = await api<{ categoryIds: string[] }>(`/api/seller/products/${initial.id}/categories`);
-      const id = a.ok ? a.data.categoryIds[0] : undefined;
-      if (!id) return setCatBase(null);
-      const top = t.data.categories.find((c) => c.id === id);
-      const parent = top ?? t.data.categories.find((c) => c.children.some((k) => k.id === id));
-      setParentId(parent?.id ?? "");
-      setChildId(top ? "" : id);
-      setCatBase(id);
+      const ids = a.ok ? a.data.categoryIds : [];
+      setCategoryIds(ids);
+      setCatBase(ids);
     })();
   }, [initial]);
   // 이미지(SA-012): 저장할 때 올린다. 새로 고른 파일은 file을 들고 있고(미리보기는 브라우저 주소), 서버에 있는 것은 server=true.
@@ -339,10 +325,10 @@ export function ProductForm({ initial }: { initial?: Product }) {
     if (!r.ok) return fail(failMessage(r, "admin", "상품을 등록하지 못했습니다. 입력한 내용은 그대로 있습니다"));
     // 카테고리·이미지는 상품이 만들어진 뒤에 저장한다. 실패해도 상품은 이미 등록됐으므로 목록으로 보내고 알려 준다(다시 눌러 중복 등록하지 않게)
     let catFailed = false;
-    if (categoryId) {
+    if (categoryIds.length > 0) {
       const c = await api(`/api/seller/products/${r.data.id}/categories`, {
         method: "PUT",
-        body: { categoryIds: [categoryId] },
+        body: { categoryIds },
       });
       catFailed = !c.ok;
     }
@@ -455,13 +441,13 @@ export function ProductForm({ initial }: { initial?: Product }) {
     }
 
     if (!(await patchProduct(late))) return;
-    if (categoryId !== catBase) {
+    if (JSON.stringify(categoryIds) !== JSON.stringify(catBase)) {
       const c = await api(`/api/seller/products/${current.id}/categories`, {
         method: "PUT",
-        body: { categoryIds: categoryId ? [categoryId] : [] },
+        body: { categoryIds },
       });
       if (!c.ok) return fail(failMessage(c, "admin", "카테고리를 지정하지 못했습니다"));
-      setCatBase(categoryId);
+      setCatBase(categoryIds);
     }
     const si = await syncImages(current.id);
     if (!si.ok) return fail(si.message);
@@ -545,37 +531,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
               help={cats && cats.length === 0 ? "등록된 카테고리가 없습니다. 카테고리를 만들면 여기서 고를 수 있습니다" : "쇼핑몰 상품 목록에서 이 카테고리로 찾을 수 있습니다"}
             >
               {cats && cats.length > 0 ? (
-                <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                  <select
-                    className="inp"
-                    style={{ width: 200 }}
-                    aria-label="대분류"
-                    value={parentId}
-                    onChange={(e) => {
-                      setParentId(e.target.value);
-                      setChildId("");
-                    }}
-                  >
-                    <option value="">대분류 선택</option>
-                    {cats.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                  {(cats.find((c) => c.id === parentId)?.children.length ?? 0) > 0 && (
-                    <select className="inp" style={{ width: 200 }} aria-label="소분류" value={childId} onChange={(e) => setChildId(e.target.value)}>
-                      <option value="">소분류 선택 안 함</option>
-                      {cats
-                        .find((c) => c.id === parentId)!
-                        .children.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name}
-                          </option>
-                        ))}
-                    </select>
-                  )}
-                </div>
+                <ProductCategoryPicker tree={cats} ids={categoryIds} disabled={busy} onChange={setCategoryIds} />
               ) : (
                 <span className="t-l2 c-alt">{cats ? "카테고리 없음" : "불러오는 중"}</span>
               )}
