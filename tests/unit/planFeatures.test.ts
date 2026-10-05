@@ -109,6 +109,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/categories": "STORE_OPERATIONS",
   "seller/categories/[categoryId]": "STORE_OPERATIONS",
   "seller/categories/order": "STORE_OPERATIONS",
+  "seller/categories/[categoryId]/products": "STORE_OPERATIONS",
   "seller/products/[productId]/categories": "STORE_OPERATIONS",
   "seller/products/[productId]/images": "STORE_OPERATIONS",
   "seller/products/[productId]/detail": "STORE_OPERATIONS",

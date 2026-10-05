@@ -2027,6 +2027,8 @@ model ProductCategory {
   sellerId   String   @db.Uuid
   productId  String   @db.Uuid
   categoryId String   @db.Uuid
+  // 카테고리 안 진열 순서(SA-016 카테고리별 진열). 새로 지정하면 맨 뒤.
+  sortOrder  Int      @default(0)
   createdAt  DateTime @default(now()) @db.Timestamptz(3)
 
   product  Product      @relation(fields: [sellerId, productId], references: [sellerId, id])
@@ -2248,13 +2250,22 @@ enum ShopDisplayKind {
   RECOMMENDED
   NEW
   CATEGORY
+  // 확장(MASTER 배정 2026-10-05): 방송 상품 자동(지금 방송에서 주문된 상품), 베스트(결제 완료 판매량), 할인 중(이벤트 할인), 명예의 전당(HIT 카드가 나온 상품)
+  LIVE
+  BEST
+  SALE
+  HALL_OF_FAME
 }
 
 // 쇼핑몰별 진열 설정 1행: 구매자 상품 목록의 기본 정렬(new·recommended·popular·low·high)
 model ShopDisplaySetting {
-  sellerId  String   @id @db.Uuid
-  listSort  String   @default("new")
-  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+  sellerId    String   @id @db.Uuid
+  listSort    String   @default("new")
+  // 진열 옵션(구매자 목록·홈 진열 모두): 품절 맨 뒤로, 품절 숨기기, 방송 상품 앞으로(자동 정렬 목록만)
+  soldOutLast Boolean  @default(false)
+  hideSoldOut Boolean  @default(false)
+  liveFirst   Boolean  @default(false)
+  updatedAt   DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 }
 
 // 홈 진열 영역(켜기·끄기·순서). 추천·신상품은 쇼핑몰마다 하나씩, 카테고리 영역은 카테고리를 가리킨다(카테고리를 지우면 함께 지움).
