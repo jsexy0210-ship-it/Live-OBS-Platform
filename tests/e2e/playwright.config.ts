@@ -27,9 +27,9 @@ export default defineConfig({
     timezoneId: "Asia/Seoul",
   },
   projects: [
-    { name: "start", testIgnore: /(shop-signup-flow|automation-screens|partners-auth-flow|test-mode-flow|test-mode-live|admin-refund-approve)\.spec\.ts$/ },
+    { name: "start", testIgnore: /(shop-signup-flow|automation-screens|partners-auth-flow|test-mode-flow|test-mode-live|admin-refund-approve|seller-subscription|seller-message-balance)\.spec\.ts$/ },
     { name: "dev", testMatch: /(shop-signup-flow|automation-screens|partners-auth-flow|test-mode-flow)\.spec\.ts$/, use: { baseURL: process.env.E2E_DEV_BASE_URL ?? "http://localhost:3101" } },
-    // 테스트 모드 서버(OBS_TEST_MODE=1로 띄운 운영 빌드) 전용: 같은 빌드를 npx next start -p 3102로 한 번 더 띄우고 E2E_TESTMODE_BASE_URL(기본 http://localhost:3102)로 돌린다.
-    { name: "testmode", testMatch: /(test-mode-live|admin-refund-approve)\.spec\.ts$/, use: { baseURL: process.env.E2E_TESTMODE_BASE_URL ?? "http://localhost:3102" } },
+    // 테스트 모드 서버(OBS_TEST_MODE=1·BILLING_PROVIDER=fake·BILLING_KEY_SECRET으로 띄운 운영 빌드) 전용(구독·충전은 가짜 결제 공급자가 필요해 여기서 돈다. 이 프로세스에도 같은 BILLING_KEY_SECRET이 있어야 한다): 같은 빌드를 npx next start -p 3102로 한 번 더 띄우고 E2E_TESTMODE_BASE_URL(기본 http://localhost:3102)로 돌린다.
+    { name: "testmode", testMatch: /(test-mode-live|admin-refund-approve|seller-subscription|seller-message-balance)\.spec\.ts$/, use: { baseURL: process.env.E2E_TESTMODE_BASE_URL ?? "http://localhost:3102" } },
   ],
 });

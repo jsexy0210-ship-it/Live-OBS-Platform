@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
+import { useUrlState } from "../../../../../lib/client/navigation";
 import { COURIERS } from "../../../../../lib/server/orders/shipping";
 import { StateBox, errorText, kstText, stateKind } from "../banners/_shared/ui";
 import "./returns.css";
@@ -84,7 +85,10 @@ export default function ReturnsPage() {
   const { can } = useSeller();
   const canEdit = can("ORDER_SHIPPING");
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number; error?: string } | { kind: "ok"; data: Data }>({ kind: "loading" });
-  const [tab, setTab] = useState<Tab>("all");
+  // 탭은 URL 쿼리(?status=REQUESTED 등)와 맞춘다: 파트너스 홈 「처리할 일」 링크가 접수 탭으로 바로 연다
+  const [urlState, setUrlState] = useUrlState({ status: "all" });
+  const tab: Tab = TABS.some((t) => t.key === urlState.status) ? (urlState.status as Tab) : "all";
+  const setTab = (t: Tab) => setUrlState({ status: t });
   const [openId, setOpenId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 

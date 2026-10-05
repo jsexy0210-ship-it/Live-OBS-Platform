@@ -99,10 +99,11 @@ describe("파트너스 검색 GET /api/seller/search", () => {
       expect(r.status).toBe(200);
       return r.json();
     };
-    expect((await get("포켓몬")).products).toEqual([{ id: a.product.id, title: "포켓몬카드 가나다", sub: "DRAFT", href: `/seller/products/${a.product.id}` }]);
-    expect((await get("7777")).orders).toEqual([{ id: a.order.id, title: "7777", sub: "PENDING_PAYMENT", href: `/seller/orders/${a.order.id}` }]);
-    expect((await get("단골")).members.map((m: { id: string }) => m.id)).toEqual([a.buyer.id]);
-    expect((await get("청구서")).inquiries).toHaveLength(1);
+    expect((await get("포켓몬")).products).toEqual([{ id: a.product.id, title: "포켓몬카드 가나다", sub: "임시 저장", href: `/seller/products/${a.product.id}` }]);
+    expect((await get("7777")).orders).toEqual([{ id: a.order.id, title: "7777", sub: "결제 대기", href: `/seller/orders/${a.order.id}` }]);
+    expect((await get("단골")).members).toEqual([{ id: a.buyer.id, title: "단골가나다", sub: "활동", href: `/seller/members/${a.buyer.id}` }]);
+    // sub는 영문 상태 코드가 아니라 화면에서 쓰는 한글 이름
+    expect((await get("청구서")).inquiries).toEqual([expect.objectContaining({ title: "청구서 문의", sub: "답변 대기" })]);
     // 같은 주문번호·비슷한 이름이어도 상대 쇼핑몰 결과는 서로 보이지 않는다
     expect((await get("7777", ownerB.cookie)).orders.map((o: { id: string }) => o.id)).toEqual([b.order.id]);
     expect((await get("포켓몬", ownerB.cookie)).products.map((p: { id: string }) => p.id)).toEqual([b.product.id]);
