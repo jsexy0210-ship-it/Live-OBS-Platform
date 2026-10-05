@@ -7,6 +7,7 @@ import { ListHead, Modal, PageHead } from "../../../../../../components/admin-ui
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
+import { useScrollRestore, useUrlState } from "../../../../../../lib/client/navigation";
 import { won } from "../../../../../../components/seller/format";
 import type { RefundFault, RefundPreview } from "../../../../../../components/seller/orders";
 import { kstText } from "../../banners/_shared/ui";
@@ -67,7 +68,10 @@ const PREVIEW_ERROR: Record<string, string> = {
 export default function RefundRequestsPage() {
   const { can } = useSeller();
   const canEdit = can("ORDER_SHIPPING");
-  const [tab, setTab] = useState<Status>("REQUESTED");
+  // 탭은 주소(?status=)가 기준이다. 주문 상세에 갔다 Back으로 돌아와도 그대로 복원된다(UX 감사 9.3). 틀린 값은 처리 대기로 본다
+  const [u, setU] = useUrlState({ status: "REQUESTED" });
+  const tab: Status = TABS.some((t) => t.key === u.status) ? (u.status as Status) : "REQUESTED";
+  const setTab = (t: Status) => setU({ status: t });
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [more, setMore] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -82,6 +86,8 @@ export default function RefundRequestsPage() {
     setState({ kind: "loading" });
     void load(tab);
   }, [tab, load]);
+
+  useScrollRestore("seller-refund-requests", state.kind === "ok");
 
   const loadMore = async () => {
     if (state.kind !== "ok" || !state.next) return;
@@ -188,9 +194,14 @@ export default function RefundRequestsPage() {
           canEdit={canEdit}
           onClose={() => setOpenId(null)}
           onDone={(text) => {
+            const doneId = openId;
             setOpenId(null);
             setToast({ text });
-            void load(tab);
+            // 처리한 행만 뺀다(불러온 쪽수·스크롤 유지). 탭별 건수만 새로 읽는다
+            setState((s) => (s.kind === "ok" ? { ...s, rows: s.rows.filter((r) => r.id !== doneId) } : s));
+            void api<List>(`/api/seller/refund-requests?status=${tab}`).then((r) => {
+              if (r.ok) setState((s) => (s.kind === "ok" ? { ...s, counts: r.data.counts } : s));
+            });
           }}
         />
       )}

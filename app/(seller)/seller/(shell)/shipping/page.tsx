@@ -9,6 +9,7 @@ import { api, failMessage } from "../../../../../components/seller/api";
 import { MAX_SEARCH_LENGTH } from "../../../../../components/seller/format";
 import { itemSummaryText, listDate, phoneText } from "../../../../../components/seller/orders";
 import { sendInBatches } from "../../../../../components/seller/shipping/sendInBatches";
+import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
 import { COURIERS, isCourier, type Courier } from "../../../../../lib/server/orders/shipping";
 import "../../../../../styles/seller-shipping.css";
 
@@ -54,13 +55,22 @@ function query(tab: Tab, q: string, cursor?: string) {
 }
 
 export default function ShippingPage() {
-  const [tab, setTab] = useState<Tab>("ready");
-  const [search, setSearch] = useState("");
-  const [q, setQ] = useState("");
+  // 탭·검색어는 주소(쿼리 ?tab·?q)가 기준이다. 주문 상세에 갔다 Back으로 돌아와도 그대로 복원된다(UX 감사 9.3). 틀린 탭 값은 발송 대기로 본다
+  const [u, setU] = useUrlState({ tab: "ready", q: "" });
+  const tab: Tab = TABS.some((t) => t.key === u.tab) ? (u.tab as Tab) : "ready";
+  const q = u.q;
+  const setTab = (t: Tab) => setU({ tab: t });
+  const [search, setSearch] = useState(q);
+  const setUrl = useRef(setU);
+  setUrl.current = setU;
   useEffect(() => {
-    const t = setTimeout(() => setQ(search.trim()), SEARCH_DELAY_MS);
+    const t = setTimeout(() => setUrl.current({ q: search.trim() }), SEARCH_DELAY_MS);
     return () => clearTimeout(t);
   }, [search]);
+  // 주소가 바뀌면(Back·탭 이동) 입력 칸도 맞춘다. 입력 중인 글자는 건드리지 않는다
+  useEffect(() => {
+    setSearch((cur) => (cur.trim() === q ? cur : q));
+  }, [q]);
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [more, setMore] = useState(false);
   const [courier, setCourier] = useState<Courier>("CJ");
@@ -89,6 +99,8 @@ export default function ShippingPage() {
     void load(tab, q);
   }, [tab, q, load]);
 
+  useScrollRestore("seller-shipping", state.kind === "ok");
+
   const loadMore = async () => {
     if (state.kind !== "ok" || !state.next) return;
     setMore(true);
@@ -101,16 +113,16 @@ export default function ShippingPage() {
   };
 
   // 주문별 결과를 화면에 그대로 반영한다: 실패한 주문은 그 줄에 사유를 남기고, 성공 건수만 성공으로 알린다.
-  // 성공한 주문은 다른 탭으로 옮겨 가므로 목록을 다시 읽는다(다시 읽기가 실패하면 그렇다고 알린다).
   const applyResults = async (results: Result[], verb: string) => {
     const okIds = results.filter((r) => r.ok).map((r) => r.orderId);
     const failed = results.filter((r) => !r.ok);
     setErrors(Object.fromEntries(failed.map((r) => [r.orderId, r.message ?? FAIL[r.error ?? ""] ?? "처리하지 못했습니다"])));
     setPicked(new Set(failed.map((r) => r.orderId)));
     setTracking((t) => Object.fromEntries(Object.entries(t).filter(([id]) => !okIds.includes(id))));
-    const reloaded = await load(tab, q, true);
+    // 처리한 행만 갱신한다: 성공한 주문은 다른 탭으로 옮겨 가므로 이 목록에서만 빼고, 불러온 쪽수·스크롤·검색 조건은 그대로 둔다
+    setState((s) => (s.kind === "ok" ? { ...s, items: s.items.filter((r) => !okIds.includes(r.orderId)) } : s));
     const parts = [okIds.length > 0 ? `${okIds.length}건 ${verb}` : null, failed.length > 0 ? `${failed.length}건 실패` : null].filter(Boolean).join(" · ");
-    setToast({ text: reloaded ? parts : `${parts} · 목록을 새로 불러오지 못했습니다`, neg: failed.length > 0 && okIds.length === 0 });
+    setToast({ text: parts, neg: failed.length > 0 && okIds.length === 0 });
   };
 
   const items = state.kind === "ok" ? state.items : [];

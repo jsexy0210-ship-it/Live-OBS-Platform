@@ -6,7 +6,7 @@ import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
 import { listTime } from "../../../../../components/seller/orders";
-import { useUrlState } from "../../../../../lib/client/navigation";
+import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
 import "./buyer-inquiries.css";
 
 // SA-046 구매자 문의 목록 · SA-047 문의 상세·답변(파트너스 관리자, 게시판 › 구매자 문의).
@@ -104,6 +104,7 @@ export default function BuyerInquiriesPage() {
     setCursor(r.data.nextCursor);
   };
 
+  useScrollRestore("seller-buyer-inquiries", state.kind === "ok");
   const data = state.kind === "ok" ? state.data : null;
   const seen = new Set<string>();
   const rows = data ? [...data.inquiries, ...more].filter((x) => !seen.has(x.id) && seen.add(x.id)) : [];
