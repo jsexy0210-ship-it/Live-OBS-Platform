@@ -350,3 +350,28 @@ test("PC 시계가 틀려도(1시간 빠름) 방금 완료한 주문의 되돌�
   await expect(page.getByTestId("bc-opening")).toContainText(A);
   expect((await queueStatuses())[A].status).toBe("OPENING");
 });
+
+// 휴대폰(390폭): 대기 표가 카드 밖으로 넘치거나 머리글이 겹치지 않고, 표 안에서 가로로 밀어 관리 버튼까지 닿는다.
+test("390폭: 대기 표가 카드 안에서 가로로 스크롤되고 머리글·관리 버튼이 잘리지 않는다", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await login(page, "demo-owner@example.com", "/seller/broadcast");
+  await expect(waitingNames(page)).toHaveText([A, B, C]);
+  if (SHOTS) await page.screenshot({ path: "tests/e2e/screenshots/SA-001-390.png", fullPage: true });
+  // 화면 전체는 가로로 밀리지 않는다
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+  const wrap = page.locator("section[aria-labelledby=bc-waiting-h] .au-lt-wrap");
+  const table = wrap.locator("table");
+  // 표는 영역보다 넓어 영역 안에서 스크롤된다(칸을 짜부라뜨리지 않는다)
+  const m = await wrap.evaluate((el) => ({ client: el.clientWidth, scroll: el.scrollWidth }));
+  expect(m.scroll).toBeGreaterThan(m.client);
+  // 머리글 「구매자 · 상품」이 읽히는 폭이다(옆 칸과 겹치지 않음)
+  const head = await table.locator("th", { hasText: "구매자 · 상품" }).boundingBox();
+  expect(head!.width).toBeGreaterThanOrEqual(120);
+  // 끝까지 밀면 마지막 줄의 아래로 버튼이 영역 안에 보인다
+  await wrap.evaluate((el) => (el.scrollLeft = el.scrollWidth));
+  const box = await wrap.boundingBox();
+  const btn = await page.getByRole("button", { name: `${A} 아래로` }).boundingBox();
+  expect(btn!.x).toBeGreaterThanOrEqual(box!.x);
+  expect(btn!.x + btn!.width).toBeLessThanOrEqual(box!.x + box!.width + 1);
+  await page.screenshot({ path: "tests/e2e/screenshots/SA-001-390-scrolled.png", fullPage: true });
+});
