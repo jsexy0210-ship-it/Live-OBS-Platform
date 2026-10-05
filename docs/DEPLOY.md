@@ -192,6 +192,7 @@ sudo -u obs nano /opt/obs/.env
 | `IMAGE_S3_ACCESS_KEY_ID`, `IMAGE_S3_SECRET_ACCESS_KEY` | 위와 같음 | 이 버킷 전용 S3 액세스 키. **비밀값이에요.** `.env`에만 넣고 채팅·문서·저장소에는 붙이지 않아요 |
 | `NICEPAY_CLIENT_KEY`, `NICEPAY_SECRET_KEY` | 선택(카드 결제 시험) | 나이스페이 **샌드박스** 키(테스트 서버 전용). 없으면 결제 시작이 「결제 준비 중」으로 거절돼요. **비밀값이에요.** 코드가 샌드박스 주소만 불러 운영 결제는 나가지 않아요. 운영 키는 결제대행사 계약 뒤 운영 서버에서 따로 정해요 |
 | `YOUTUBE_API_KEY` | 선택 | YouTube Data API 키(방송·실시간 채팅 조회, 무료 한도 안에서만). 없으면 YouTube 기능이 꺼져요. **비밀값이에요.** |
+| `GEMINI_API_KEY` | 선택 | 도우미(Gemini) API 키(월 1만 원 한도 안에서만, 한도·모델은 마스터 관리자 도우미 설정). 없으면 도우미는 「준비 중」이에요. 테스트 서버는 배포 때 GitHub Secret `GEMINI_API_KEY`에서 반영해요. **비밀값이에요.** |
 | `OBS_MONITOR_TLS_HOST` | 선택 | 서버 감시가 인증서 만료일을 볼 주소(obs-test는 `test.on-aircue.com`) |
 | `OBS_ALERT_URL` | 선택 | 장애 알림을 받을 주소(웹훅). 알림 채널이 정해지기 전에는 비워 둬요(기록만 남아요) |
 | `OBS_MONITOR_INTERVAL_S` | 선택 | 감시 간격(기본 15초, 1~60초. 범위 밖이거나 숫자가 아니면 감시가 시작하지 않고 로그에 이유를 남겨요) |
@@ -573,6 +574,24 @@ scripts/ops/availability.sh off
 **실패·되돌리기**: 앱 기동(`up --wait`)이나 헬스 체크가 실패했을 때, 지금 떠 있는 앱이 이번에 배포한 버전이면 앱만 직전 배포 버전으로 자동 되돌립니다(`rollback-app.sh`). 마이그레이션이 실패해 앱이 바뀌지 않았다면 되돌리지 않습니다(더 옛 버전으로 내려가는 것을 막음). DB는 되돌리지 않고, 되돌려야 하면 배포 전 백업으로 사람이 `db-restore.sh`를 실행합니다. 마이그레이션은 앞으로만 가므로 컬럼 삭제 같은 파괴적 변경은 두 번에 나눠 배포합니다(먼저 코드가 새 스키마와 옛 스키마를 모두 견디게 하고, 다음 배포에서 삭제).
 
 **운영에서 막혀 있는 것**: 장애 주입(`chaos.sh`)은 `OBS_ENVIRONMENT=test`가 없으면 거부합니다. 테스트 데이터 입력·시드(`seed-obs-test`)는 `OBS_TEST_MODE=1`이 있어야만 돌아서 운영에서는 실행되지 않습니다. 이 워크플로는 이 둘을 호출하지 않습니다.
+
+## 운영 DB 일일 오프사이트 백업
+
+운영 VM 밖(카카오 오브젝트 스토리지)에 매일 DB 백업을 보냅니다. `scripts/ops/db-offsite.sh`가 `db-backup.sh`로 새 백업을 만들고 `prod/daily/<파일명>`으로 올린 뒤 원격 크기가 같은지 확인합니다. 실패하면 0이 아닌 값으로 끝납니다. 추가 설치는 없습니다(`curl` 8.x의 SigV4 사용).
+
+대표님 콘솔·서버 작업(순서대로):
+1. 오브젝트 스토리지에 **운영 백업 전용 버킷**을 만듭니다(이미지 버킷과 분리). 버킷 수명 주기 규칙으로 30일 뒤 삭제를 설정합니다(스크립트는 지우지 않습니다).
+2. 그 버킷에만 「스토리지 편집자」를 준 전용 사용자를 만들고 S3 액세스 키를 발급합니다(테스트 키와 다른 새 키).
+3. 서버 `/opt/obs/.env`(권한 600)에 `BACKUP_S3_ENDPOINT`(`https://objectstorage.kr-central-2.kakaocloud.com`)·`BACKUP_S3_REGION`(`kr-central-2`)·`BACKUP_S3_BUCKET`·`BACKUP_S3_ACCESS_KEY_ID`·`BACKUP_S3_SECRET_ACCESS_KEY`를 직접 넣습니다. 값은 저장소·채팅에 붙이지 않습니다.
+4. 서버에서 한 번 직접 실행해 올라가는지 확인합니다: `scripts/ops/db-offsite.sh`
+5. 매일 실행 등록(예: `/etc/cron.d/obs-offsite-backup`, 한국 시간 새벽 3시 30분):
+
+```
+CRON_TZ=Asia/Seoul
+30 3 * * * obs /opt/obs/app/scripts/ops/db-offsite.sh >> /opt/obs/offsite-backup.log 2>&1
+```
+
+경로는 러너가 체크아웃한 실제 위치로 바꿉니다. 로그 마지막 줄이 「오프사이트 백업 완료」인지 확인합니다. 복구는 내려받은 `.dump`로 `db-restore.sh`를 사람이 실행합니다. 실제 카카오 버킷에는 아직 시험하지 못했습니다(운영 버킷·키가 없음). 첫 실행은 사람이 지켜봅니다.
 
 ## 다중 서버·DB 고가용성 구성안과 월 비용(산정만, 생성 금지·대표님 승인 사항)
 

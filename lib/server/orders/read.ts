@@ -68,6 +68,12 @@ export function itemSummary(items: { productNameSnapshot: string; quantity: numb
   };
 }
 
+type ShipmentRow = { status: "READY" | "IN_TRANSIT" | "DELIVERED"; courier: string; trackingNumber: string; deliveredAt: Date | null } | null;
+function shipmentView(s: ShipmentRow) {
+  if (!s || s.status === "READY") return { state: "none" as const, courier: null, trackingNumber: null, deliveredAt: null };
+  return { state: s.status === "DELIVERED" ? ("delivered" as const) : ("in_transit" as const), courier: s.courier, trackingNumber: s.trackingNumber, deliveredAt: s.deliveredAt };
+}
+
 export const SELLER_ORDER_PAGE_DEFAULT = 50;
 export const SELLER_ORDER_PAGE_MAX = 200;
 const ORDER_STATUSES: readonly OrderStatus[] = ["PENDING_PAYMENT", "PAID", "CANCELLED", "REFUNDED"];
@@ -76,6 +82,8 @@ const KST_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 export type SellerOrderListQuery = {
   status?: string[];
   q?: string | null;
+  memberId?: string | null;
+  shipped?: string | null;
   from?: string | null;
   to?: string | null;
   cursor?: string | null;
@@ -122,9 +130,14 @@ export async function listSellerOrders(db: PrismaClient, ctx: TenantContext, que
   if (query.cursor && !cursor) return { ok: false as const };
   const q = query.q?.trim() ?? "";
   if (q.length > 50) return { ok: false as const };
+  if (query.memberId && !UUID_RE.test(query.memberId)) return { ok: false as const };
+  // 송장(배송 정보) 등록 여부. 「배송 준비」 = status=PAID&shipped=false. 비어 있으면 거르지 않는다.
+  if (query.shipped && query.shipped !== "true" && query.shipped !== "false") return { ok: false as const };
 
   const searchesPii = q !== "" && canViewCustomerPii(ctx);
   const and: Prisma.OrderWhereInput[] = [{ sellerId: ctx.sellerId, legalHoldAt: null }];
+  if (query.memberId) and.push({ buyerMemberId: query.memberId });
+  if (query.shipped) and.push({ shipment: query.shipped === "true" ? { isNot: null } : { is: null } });
   if (statuses.length) and.push({ status: { in: statuses as OrderStatus[] } });
   if (from) and.push({ createdAt: { gte: from } });
   if (toStart) and.push({ createdAt: { lt: new Date(toStart.getTime() + 24 * 3600_000) } });
@@ -150,9 +163,13 @@ export async function listSellerOrders(db: PrismaClient, ctx: TenantContext, que
       createdAt: true,
       paidAt: true,
       totalAmount: true,
+      paymentMethod: true,
+      paymentDueAt: true,
       buyerMember: { select: { id: true, broadcastNickname: true } },
       items: itemSummarySelect,
-      shipment: { select: { id: true } },
+      shipment: { select: { id: true, status: true, courier: true, trackingNumber: true, deliveredAt: true } },
+      // 처리 대기 중(REQUESTED) 환불 요청 수. 한 번의 조회에서 같이 센다(주문마다 따로 묻지 않음).
+      _count: { select: { refundRequests: { where: { status: "REQUESTED" } } } },
     },
   });
   const page = rows.slice(0, take);
@@ -179,8 +196,14 @@ export async function listSellerOrders(db: PrismaClient, ctx: TenantContext, que
       paidAt: o.paidAt,
       buyer: o.buyerMember,
       totalAmount: o.totalAmount,
+      // 결제 수단과 입금 기한. 무통장 입금 대기(status=PENDING_PAYMENT, paymentMethod=BANK_TRANSFER) 판별용. 결제 전이면 paymentMethod가 null일 수 있다.
+      paymentMethod: o.paymentMethod,
+      paymentDueAt: o.paymentDueAt,
       itemSummary: itemSummary(o.items),
       shipped: o.shipment !== null,
+      // 배송 상태: none(발송 정보 없음) · in_transit(배송 중) · delivered(배송 완료). 발송 전 준비 상태(READY)는 none으로 본다.
+      shipment: shipmentView(o.shipment),
+      refundRequest: { pendingCount: o._count.refundRequests },
       // 환불 API는 결제 완료(PAID) 주문만 받는다. 발송한 주문은 사유 주체(fault)가 필요하다.
       refundable: o.status === "PAID",
     })),

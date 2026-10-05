@@ -15,8 +15,10 @@ import { purgeExpiredRejoinBlocks, recordRejoinBlock } from "./rejoin";
 import { purgeSignupVerificationsForShop } from "./signup";
 import { deleteUnusedBuyerCoupons } from "../shop-coupons/service";
 import { anonymizeMemberReviews } from "../product-reviews/service";
+import { anonymizeMemberInquiries } from "../buyer-inquiries/service";
 import { deleteMemberGradeData } from "../shop-member-grades/service";
-import { deleteUnattachedReturnImages } from "../shop-returns/hooks";
+import { deleteMemberMessageData } from "../shop-member-messages/service";
+import { clearReturnRefundAccounts, deleteUnattachedReturnImages } from "../shop-returns/hooks";
 
 // 구매자 탈퇴(ARCHITECTURE 「구매자 회원」: WITHDRAWN과 deletedAt을 같은 트랜잭션에서, 개인정보 비식별).
 // 기준(MASTER 결정 2026-10-03):
@@ -162,6 +164,7 @@ export async function withdrawBuyer(
       data: { nicknameSnapshot: WITHDRAWN_DISPLAY_NAME },
     });
     const hitCards = await tx.hitCard.updateMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id }, data: { nicknameSnapshot: WITHDRAWN_DISPLAY_NAME } });
+    const memo = await tx.memberMemo.deleteMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id } });
     const restrictions = await tx.buyerPurchaseRestriction.deleteMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id } });
     const rejoinBlockedUntil = await recordRejoinBlock(tx, scope.sellerId, { ciHash: member.ciHash, rejoinRestrictionDaysAgreed }, now);
     const addresses = await tx.buyerAddress.deleteMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id } });
@@ -172,10 +175,16 @@ export async function withdrawBuyer(
     const deletedCoupons = await deleteUnusedBuyerCoupons(tx, { sellerId: scope.sellerId, buyerMemberId: member.id });
     // 상품 리뷰는 남기고 작성자 표시만 「탈퇴 회원」으로, 신고·붙지 않은 사진은 지운다(product-reviews)
     const reviews = await anonymizeMemberReviews(tx, { sellerId: scope.sellerId, buyerMemberId: member.id });
+    // 구매자 문의는 남기고 작성자 표시만 「탈퇴한 회원」으로, 사진은 모두 지운다(buyer-inquiries)
+    const inquiries = await anonymizeMemberInquiries(tx, { sellerId: scope.sellerId, buyerMemberId: member.id });
     // 교환·반품 신청에 붙지 않은 사진은 지운다(신청에 붙은 사진은 신청과 함께 법정 보관, shop-returns)
     await deleteUnattachedReturnImages(tx, { sellerId: scope.sellerId, buyerMemberId: member.id });
+    // 신청에 남은 무통장 환불 계좌는 비운다(shop-returns)
+    await clearReturnRefundAccounts(tx, { sellerId: scope.sellerId, buyerMemberId: member.id });
     // 회원 등급 고정 표시·변경 기록 삭제(shop-member-grades)
     await deleteMemberGradeData(tx, { sellerId: scope.sellerId, buyerMemberId: member.id });
+    // 회원 대상 발송의 받는 사람 기록 삭제(shop-member-messages)
+    await deleteMemberMessageData(tx, { sellerId: scope.sellerId, buyerMemberId: member.id });
     const sessions = await tx.buyerSession.deleteMany({ where: { buyerMemberId: member.id } });
     // 적립금 소멸 안내 기록(잔액을 위에서 0으로 만들어 더 안내할 일이 없다, 개인정보 없음)
     const expiryNotices = await tx.rewardExpiryNotice.deleteMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id } });
@@ -189,7 +198,7 @@ export async function withdrawBuyer(
       targetId: member.id,
       ip: input.meta?.ip,
       userAgent: input.meta?.userAgent,
-      after: { status: "WITHDRAWN", deletedAddresses: addresses.count, deletedSessions: sessions.count, deletedRewardExpiryNotices: expiryNotices.count, anonymizedVerifications: identities, anonymizedOrders: orders.count, anonymizedQueueItems: queueItems.count, anonymizedHitCards: hitCards.count, deletedRestrictions: restrictions.count, cancelledPendingOrders: pending.length, heldOrders, rejoinBlockedUntil, ...forfeited, deletedCoupons, reviews },
+      after: { status: "WITHDRAWN", deletedAddresses: addresses.count, deletedSessions: sessions.count, deletedRewardExpiryNotices: expiryNotices.count, anonymizedVerifications: identities, anonymizedOrders: orders.count, anonymizedQueueItems: queueItems.count, anonymizedHitCards: hitCards.count, deletedRestrictions: restrictions.count, deletedMemos: memo.count, cancelledPendingOrders: pending.length, heldOrders, rejoinBlockedUntil, ...forfeited, deletedCoupons, reviews, inquiries },
     });
     // 방금 남긴 탈퇴 기록까지 포함해 기한을 단다
     await holdMemberAuditLogs(tx, scope.sellerId, member.id, now);

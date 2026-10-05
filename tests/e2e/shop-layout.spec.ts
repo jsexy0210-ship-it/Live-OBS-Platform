@@ -91,7 +91,7 @@ test.describe("PC 1440", () => {
     await page.locator("form.shop-login").getByRole("button", { name: "로그인" }).click();
     await expect(page).toHaveURL(new RegExp(`/shop/${SLUG}/me$`));
     await expect(page.getByRole("heading", { name: "내 정보" })).toBeVisible();
-    await expect(page.getByRole("navigation", { name: "내 정보 메뉴" }).getByRole("link", { name: "쿠폰함" })).toBeVisible();
+    await expect(page.locator("main").getByRole("link", { name: "내 쿠폰함" })).toBeVisible();
     const util = page.locator(".shop-util");
     await expect(util.getByRole("link", { name: "내 정보" })).toBeVisible();
     await expect(util.getByRole("link", { name: "로그인", exact: true })).toHaveCount(0);

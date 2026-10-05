@@ -1,148 +1,92 @@
-# IA 화면 대비 미구현 화면 목록 (main e4af7f37 기준, 2026-10-05 KST)
+# IA 화면 대비 구현 현황 (main ed9373a0 기준, 2026-10-05 KST)
 
-기준: `docs/IA.md`의 화면 ID. 묶음 제목 ID(MA-010·020·030·040·050·060·080, SA-010·020·030·040·045·050·110)는 화면이 아니라 메뉴 묶음이라 셈에서 뺐다. IA가 따로 적은 하위 화면 PF-007-1·SA-002-O·SH-022-R은 포함했다. EM(메일)은 대상 밖.
+기준: `docs/IA.md`의 화면 ID(IA 개편 뒤 추가된 SA-057 유튜브 연결 포함). 묶음 제목 ID(MA-010·020·030·040·050·060·080, SA-010·020·030·040·045·050·110)는 화면이 아니라 메뉴 묶음이라 셈에서 뺐다. 코드(`app/**` 화면 파일·메뉴·화면 ID 주석)를 직접 확인한 값이며 화면을 실행해 본 것은 아니다. 이전 기준(e4af7f37)은 구현 77 · 자리만 42 · 남음 47이었다.
 
 - 구현: 실제 화면·기능이 코드에 있음(부분 구현은 「부분」 표시)
-- 자리만: 「준비 중」 화면(마스터 catch-all `/admin/[...slug]` 등) 또는 「준비 중입니다」 비활성 메뉴만 있음
+- 자리만: 「준비 중」 화면(마스터 catch-all `/admin/[...slug]`) 또는 「준비 중입니다」 비활성 메뉴·링크만 있음
 - 남음: 화면·메뉴 자리 모두 없음(서버 API만 있는 경우 포함)
+- 진행 중: 열린 PR이 있는 항목(병합 전이라 위 세 가지 어디에도 반영하지 않고 따로 적는다)
 
 ## 요약
 
-| 영역 | 전체 | 구현 | 자리만 | 남음 |
-|---|---|---|---|---|
-| PF 플랫폼 소개·가입 | 10 | 2 | 0 | 8 |
-| AU 공통 인증 | 12 | 7 | 0 | 5 |
-| MA 마스터 관리자 | 39 | 13 | 19 | 7 |
-| SA 파트너스 관리자 | 68 | 28 | 25 | 15 |
-| OV OBS 오버레이 | 8 | 5 | 0 | 3 |
-| SH 구매자 쇼핑몰 | 29 | 19 | 0 | 10 |
-| 합계 | 166 | 74 | 44 | 48 |
+| 영역 | 전체 | 구현 | 자리만 | 남음 | 진행 중(미구현 중 열린 PR) |
+|---|---|---|---|---|---|
+| PF 플랫폼 소개·가입 | 10 | 10 | 0 | 0 | 0 |
+| AU 공통 인증 | 12 | 12 | 0 | 0 | 0 |
+| MA 마스터 관리자 | 39 | 36 | 3 | 0 | 1 (MA-090) |
+| SA 파트너스 관리자 | 69 | 59 | 8 | 2 | 4 (SA-002-O·018·034·120) |
+| OV OBS 오버레이 | 8 | 5 | 0 | 3 | 0 |
+| SH 구매자 쇼핑몰 | 29 | 21 | 0 | 8 | 0 |
+| 합계 | 167 | 143 | 11 | 13 | 5 |
 
-미구현(자리만 + 남음) 합계 92.
+미구현(자리만 + 남음) 합계 24. 이전 기준 대비 구현 +66, 미구현 −65(SA-057이 IA에 추가되어 전체 +1).
 
-## PF
+## 진행 중 (열린 PR)
 
-남음
-- PF-001 서비스 소개(랜딩) — `/about`에 만든다. `/`는 로그인 유지(대표님 지시 2026-10-04 「첫 화면은 로그인이다」, #232)
-- PF-002 기능 안내
-- PF-003 요금 안내
-- PF-004 자주 묻는 질문
-- PF-005 공지사항 목록
-- PF-006 공지 상세
-- PF-008 이용약관 (가입 폼에 「원문 정해지면 보기」 주석만)
-- PF-009 개인정보처리방침
+미구현 항목
+- SA-002-O 오버레이 전용 홈 — #518 (화면)
+- SA-018 엑셀 일괄 등록·내보내기 — #462 (초안·작업 중, 서버 모델·서비스만, 화면 없음)
+- SA-034 실지급 스위치 — #563 (API만, 화면은 아직)
+- SA-120 내 계정 · MA-090 내 계정 — #554 (API만, 화면은 아직)
 
-## AU
+구현 항목의 보강
+- MA-012 파트너스 상세 — #552 (방송 이력·메모·결제 연결·활동 기록 탭, 적립금 탭은 없음)
+- SA-011 상품 목록 — #564 (판매 상태·재고 빠른 처리)
+- SA-062 법정 고지·약관 — #565 (사업자 정보·고지 탭, 구매자 바닥글 법정 표시)
+- MA-002·SA-130 알림 센터 — #557 (상단 알림 종·전역 검색, 진입 링크 연결)
+- SH-004 장바구니 — #555 (가격 바뀜·재고 부족 표시)
 
-남음
-- AU-005 판매자 승인 대기 안내 (로그인 오류 문구 `seller_pending`과 가입 완료 단계 문구로만 대신함 — 판단 불확실)
-- AU-006 이용 정지 안내 (로그인 오류 문구 `seller_suspended`로만 — 판단 불확실)
-- AU-007 세션 만료 (401이면 로그인 화면으로 이동만)
-- AU-009 페이지 없음(404) (구매자용 `app/(shop)/not-found.tsx`만, 관리자·파트너스는 Next 기본 404 — 판단 불확실)
-- AU-010 점검 중
+화면이 아닌 열린 PR: #561(쿠폰 통계 API), #535(리뷰 photoOnly·인기 검색어 제외 API), #559(시험), #560(UX 감사 문서), #562(디자인 보드 요약)
 
-## MA
+## 자리만
 
-자리만 (준비 중 화면 / 비활성 링크)
-- MA-002 알림 센터 — 상단 유틸 비활성 링크
-- MA-090 내 계정 — 상단 유틸 비활성 링크
-- MA-013 가입 신청 목록 — `/admin/partners/applications` (ComingSoon. 메뉴엔 ready로 표시되어 있음)
-- MA-021 요금제 목록 — `/admin/billing/plans`
-- MA-026 환불 요청 목록 — `/admin/billing/refunds`
-- MA-031 판매자별 PG 연결 상태·오류 — `/admin/settlement/pg`
-- MA-032 구독료 수납 현황 — `/admin/settlement/collection`
-- MA-041 실시간 방송 중 판매자 — `/admin/ops/live`
-- MA-042 판매자별 주문·오버레이 접속 현황 — `/admin/ops/access`
-- MA-043 적립금 실지급 켜진 판매자 목록 — `/admin/ops/rewards`
-- MA-100 실시간 감시 — `/admin/ops/monitor`
-- MA-110 자동 연결 작업 목록 — `/admin/ops/jobs`
-- MA-051 판매자 문의 목록 — `/admin/support/inquiries`
-- MA-053 공지사항 목록 — `/admin/support/notices`
-- MA-055 도우미 답변 자료 관리 — `/admin/support/assistant`
-- MA-081 플랫폼 기본 정책 — `/admin/settings/policy`
-- MA-082 알림 채널 설정 — `/admin/settings/notifications`
-- MA-083 점검 모드 — `/admin/settings/maintenance`
-- MA-084 도우미 설정 — `/admin/settings/assistant`
+MA
+- MA-081 플랫폼 기본 정책 — `/admin/settings/policy` (메뉴만, catch-all 준비 중 화면)
+- MA-082 알림 채널 설정 — `/admin/settings/notifications` (메뉴만, catch-all 준비 중 화면)
+- MA-090 내 계정 — 상단 유틸 비활성 링크 (API #554 진행 중)
 
-남음
-- MA-014 가입 신청 상세 (승인/반려)
-- MA-016 판매자 화면 대리 조회 (서버 권한·로그 이름만 있고 화면 진입 없음)
-- MA-022 요금제 등록·수정
-- MA-027 환불 처리
-- MA-052 문의 상세·답변
-- MA-054 공지 작성·수정
-- MA-111 자동 연결 작업 상세
-
-## SA
-
-자리만 (「준비 중입니다」 비활성 메뉴, 주소 없음)
-- SA-002 판매자 홈 — 메뉴 「홈」 비활성, `/seller`는 `/seller/products`로 이동
-- SA-003 시작하기
+SA (「준비 중입니다」 비활성 메뉴·링크)
 - SA-005 쇼핑몰 통합 전환
-- SA-006 외부 쇼핑몰 연동 관리
-- SA-015 카테고리 관리 (API `/api/seller/categories`는 있음, 화면은 상품 목록 필터에서만 사용)
-- SA-016 상품 진열 (API `/api/seller/display`만)
-- SA-017 재입고 알림
-- SA-018 엑셀 일괄 등록·내보내기
-- SA-024 현금영수증·세금계산서
-- SA-026 입금 확인 (API `/api/seller/payments/deposits`만)
-- SA-027 배송·송장 발급
+- SA-018 엑셀 일괄 등록·내보내기 (#462 작업 중)
+- SA-024 현금영수증·세금계산서 (서버 신청 API는 있음, 화면 없음)
+- SA-027 송장 발급
 - SA-028 송장 출력·추적
-- SA-044 회원 등급
-- SA-046 구매자 문의 목록
-- SA-049 회원 알림 발송
-- SA-054 방송 이력
-- SA-062 법정 고지·약관
-- SA-066 쇼핑몰 공지·자주 묻는 질문 (API `/api/seller/notices`만)
 - SA-067 검색 노출
 - SA-070 결제(PG) 연결
-- SA-080 주문자 알림 설정
-- SA-111 공지사항 목록 — 상단 유틸 「공지 · 문의」 비활성
-- SA-120 내 계정 — 상단 유틸 비활성
-- SA-140 도우미 — `/seller/assistant` 만듦(API·화면, 2026-10-05). 상단 유틸 「도우미」 링크 연결은 공통 파일(SellerShell) 전담 몫
-- SA-150 자동 연결 안내
+- SA-120 내 계정 — 상단 유틸 비활성 링크 (API #554 진행 중)
 
-남음
-- SA-002-O 오버레이 전용 홈
-- SA-004 온보딩
-- SA-032 지급·회수 원장 (API `/api/seller/reward-ledger`만)
-- SA-033 회원별 잔액
-- SA-034 실지급 스위치
-- SA-047 문의 상세·답변
-- SA-055 방송 상세
-- SA-112 공지 상세
-- SA-113 내 문의 목록
-- SA-114 문의 작성
-- SA-115 문의 상세·답변 확인
-- SA-130 알림 센터 (상단 유틸에 자리도 없음)
-- SA-151 자동 연결 결제
-- SA-152 자동 연결 진행
-- SA-153 자동 연결 완료
+## 남음
 
-## OV
+SA
+- SA-002-O 오버레이 전용 홈 (#518 진행 중)
+- SA-034 실지급 스위치 (API #563 진행 중, `/seller/rewards`에 스위치 화면 없음)
 
-남음
+OV
 - OV-000 효과 명세 (공통 연출 기준 문서 성격 — 화면인지 판단 불확실)
 - OV-003 HIT 카드 강조 연출 (위젯 종류에 없음)
 - OV-007 이벤트 할인 카드 (위젯 종류에 없음)
 
-## SH
-
-자리만: 없음 (`app/(shop)/shop/[slug]/_lib/ComingSoon.tsx`는 정의만 있고 쓰는 곳 없음)
-
-남음
-- SH-009 미성년자 주문 제한 안내
-- SH-012 비밀번호 찾기 (로그인 화면에 링크 없음)
-- SH-023 내 적립금
+SH
+- SH-009 미성년자 주문 제한 안내 (주문서 안 한 줄 안내만)
+- SH-012 비밀번호 찾기 (구매자 로그인 화면에 링크 없음)
+- SH-023 내 적립금 (서버 API만)
 - SH-024 회원정보 수정
 - SH-026 내 문의
 - SH-027 배송지 관리
-- SH-031 개인정보처리방침
-- SH-032 이용약관
 - SH-040 쇼핑몰 정지·준비 중 안내 (운영 중 아닌 쇼핑몰은 404 처리)
 - SH-041 쇼핑몰 잠금
 
-## 구현 화면 (검증용)
+화면은 있으나 진입 링크가 아직 연결되지 않은 것(구현으로 셈): SA-003 시작하기 `/seller/onboarding`, SA-006 외부 쇼핑몰 연동 `/seller/external-shops`, SA-150 자동 연결 `/seller/automation` (파트너스 메뉴가 비활성 항목으로 둠 — 공통 파일 몫), MA-002 알림 센터 `/admin/notifications`·SA-130 `/seller/notifications` (상단 알림 종은 #557 진행 중).
+
+## 구현으로 옮긴 화면 (이전 기준 대비)
+
+PF: PF-001 `/about` · 002 `/features` · 003 `/pricing` · 004 `/faq` · 005 `/notices` · 006 `/notices/[noticeId]` · 008 `/terms` · 009 `/privacy`
+AU: AU-005 `/seller/pending` · AU-006 `/seller/suspended` · AU-007 로그인 화면 안 만료 안내(전용 화면 없음, 판단 불확실) · AU-009 공통·마스터·파트너스 404(`NotFoundView`) · AU-010 `/maintenance`
+MA: MA-002 `/admin/notifications` · 013 `/admin/partners/applications` · 014 `/admin/partners/applications/[sellerId]` · 016 파트너스 상세 대리 조회 · 021·022 `/admin/billing/plans` · 026·027 `/admin/billing/refunds`(+`[refundId]`) · 031 `/admin/settlement/pg` · 032 `/admin/settlement/collection` · 041 `/admin/ops/live` · 042 `/admin/ops/access` · 043 `/admin/ops/rewards` · 051·052 `/admin/support/inquiries`(+`[inquiryId]`) · 053·054 `/admin/support/notices`(+`new`·`[noticeId]`) · 055 `/admin/support/assistant` · 083 `/admin/settings/maintenance` · 084 `/admin/settings/assistant`(키 반영 전 준비 중 상태 있음) · 100 `/admin/ops/monitor` · 110·111 `/admin/ops/automation`(+`[jobId]`)
+SA: SA-001 HIT 카드 창(`HitCardModal`) · 002 홈(`HomeDashboard`) · 003·004 `/seller/onboarding` · 006 `/seller/external-shops` · 015 `/seller/products/categories` · 016 `/seller/products/display` · 026 `/seller/orders/deposits` · 032 `/seller/rewards/ledger` · 033 `/seller/rewards/balances` · 044 `/seller/member-grades` · 049 `/seller/member-messages` · 054·055 `/seller/broadcasts`(+`[broadcastId]`) · 057 `/seller/youtube` · 062 `/seller/settings/legal` · 066 `/seller/settings/shop-notices` · 080 `/seller/settings/order-notifications` · 111·112 `/seller/notices`(+`[id]`) · 113~115 `/seller/inquiries`(+`new`·`[id]`) · 130 `/seller/notifications` · 140 `/seller/assistant` · 150~153 `/seller/automation`(+`pay`·`[jobId]`·`done`)
+SH: SH-031 `/shop/[slug]/privacy` · SH-032 `/shop/[slug]/terms`
+
+## 구현 화면 (이전 기준부터 구현이던 것, 검증용)
 
 PF
 - PF-007 가입 신청 — `/seller/signup`
@@ -174,7 +118,7 @@ MA
 
 SA
 - SA-001 방송 대시보드 — `/seller/broadcast` (HIT 카드 등록 모달 없음: 코드 주석 「서버 API가 아직 없어 두지 않는다」)
-- SA-011 상품 목록 — `/seller/products`
+- SA-011 상품 목록 — `/seller/products` (빠른 처리: 판매 상태 선택·옵션 1개 상품 재고 입력을 목록에서 바로 저장. 조건은 URL 쿼리와 맞춤)
 - SA-012 상품 등록·수정 — `/seller/products/new`, `/seller/products/[productId]`
 - SA-013 상품 상세 미리보기 — 상세 편집기 안 「미리보기」 전환만(`ProductDetailEditor`) — 판단 불확실
 - SA-014 재고 일괄 수정 — `/seller/products/stock` (CSV·되돌리기 없음)
@@ -188,6 +132,9 @@ SA
 - SA-041 회원 목록 — `/seller/members`
 - SA-042 회원 상세 — `/seller/members/[memberId]` (부분: 주문 목록·메모·등급 조정·적립금 지급 없음)
 - SA-043 구매 제한 — `/seller/purchase-restrictions` (직접 막기 없음)
+- SA-017 재입고 알림 — `/seller/products/restock-alerts` (상품별 대기·발송 수 조회만. 실제 발송은 서버 미연결이라 기록만, 설정 API 없음. 메뉴 href는 레이아웃 전담 몫)
+- 검색 유사어 — `/seller/products/search-synonyms` (화면 ID 없음: IA 반영 필요. 서버 #486. 상품 등록·수정 폼의 「검색 키워드」(searchTags)도 같은 PR. 메뉴 href는 레이아웃 전담 몫)
+- SA-046 구매자 문의 목록 · SA-047 문의 상세·답변 — `/seller/buyer-inquiries` (상세는 목록 위 창. 「구매자 문의」 메뉴 href 연결은 레이아웃 전담 몫)
 - SA-048 상품 리뷰 — `/seller/reviews`
 - SA-051 오버레이 편집기 — `/seller/overlay`
 - SA-052 오버레이 주소 복사·재발급 — `/seller/overlay`
@@ -231,16 +178,17 @@ SH
 - SH-034 찜·최근 본 상품 — `/wishlist` (부분: 최근 본 상품 없음)
 
 ## 판단 불확실 모음
-- AU-005·AU-006: 전용 안내 화면 없이 로그인 오류 문구로만 → 남음으로 셈
+- AU-007: 전용 세션 만료 화면은 없고 로그인 화면이 이유를 알려 줌 → 구현으로 셈
 - AU-008: 전용 403 화면 없이 화면별 권한 없음 상태 → 구현으로 셈
-- AU-009: 구매자 404만 있음 → 남음으로 셈
 - SA-013: 편집기 안 미리보기만 → 구현으로 셈
 - SH-008: 주문 화면 안 실패 안내만 → 구현으로 셈
+- SH-009: 주문서 안 한 줄 안내(`cart-hint`)뿐이고 전용 안내 화면은 없음 → 남음으로 셈
 - OV-000: 화면이 아닌 연출 명세일 수 있음 → 남음으로 셈
 - OV-004: 명예의 전당 위젯만, 「구매 랭킹」 별도 여부 불명 → 구현으로 셈
-- 코드 주석 ID 불일치: `/seller/shipping`(주석 SA-027 → 실제 SA-025), `/seller/settings/member`(주석 SA-043 → 실제 SA-068), MA-013 메뉴 ready 표시와 실제 ComingSoon 불일치
+- MA-084·SA-140: 화면은 있으나 서버 키 반영 전 「준비 중」 상태로 보임 → 구현으로 셈
+- 코드 주석 ID 불일치(이전 기준에서 확인, 이번에 다시 확인하지 않음): `/seller/shipping`(주석 SA-027 → 실제 SA-025), `/seller/settings/member`(주석 SA-043 → 실제 SA-068)
 
-## 배정 (2026-10-05 KST MASTER, 대표님 지시 「남은 화면 알아서 배정」)
+## 배정 (2026-10-05 KST MASTER, 대표님 지시 「남은 화면 알아서 배정」 — 당시 기록, 현재 상태는 위 목록이 정본)
 
 각 세션은 열린 PR 1개 규칙을 지키며 위에서부터 진행한다. 서버 API가 없으면 화면보다 먼저 해당 기반 세션에 계약을 요청한다.
 

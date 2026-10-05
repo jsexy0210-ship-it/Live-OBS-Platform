@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
 import { ListHead, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
+import { QuickStatus, QuickStock, type QuickDone } from "../../../../../components/seller/ProductQuick";
 import { categoryLabel, categoryOptions, type CategoryNode } from "../../../../../components/seller/ProductCategoryPicker";
 import { ErrorState, LoadingRows, Locked, NoImage, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, type Product, type ProductStatus } from "../../../../../components/seller/api";
@@ -79,6 +81,10 @@ const query = (f: Filters, sort: Sort, limit: number) =>
     .filter(Boolean)
     .join("&");
 
+// 주소에 싣는 값(기본값과 같으면 쿼리에서 뺀다). 알 수 없는 값은 읽을 때 기본값으로 돌린다
+const URL_DEFAULTS = { q: "", mode: "name", status: "ALL", stock: "", categoryId: "", display: "", deduct: "", from: "", to: "", sort: "newest", limit: "50" };
+const oneOf = <T extends string>(v: string, list: readonly T[], fallback: T): T => ((list as readonly string[]).includes(v) ? (v as T) : fallback);
+
 const TOASTS: Record<string, string> = {
   created: "상품을 등록했습니다",
   draft: "임시 저장했습니다",
@@ -105,10 +111,28 @@ const isShown = (p: Product) => p.status === "ON_SALE" || p.status === "SOLD_OUT
 
 export default function ProductListPage() {
   const { can } = useSeller();
-  const [draft, setDraft] = useState<Filters>(EMPTY);
-  const [applied, setApplied] = useState<Filters>(EMPTY);
-  const [sort, setSort] = useState<Sort>("newest");
-  const [limit, setLimit] = useState(50);
+  // 적용한 조건·정렬·개수는 주소(쿼리)가 기준이다. 상세에 갔다 Back으로 돌아와도 그대로 복원된다(IA Back 규칙 3항)
+  const [u, setU] = useUrlState(URL_DEFAULTS);
+  const applied: Filters = {
+    status: oneOf(u.status, FILTERS.map((f) => f.key), "ALL"),
+    stock: u.stock === "out" || u.stock === "low" ? u.stock : null,
+    mode: oneOf(u.mode, ["name", "code"], "name"),
+    text: u.q,
+    categoryId: u.categoryId,
+    display: oneOf(u.display, DISPLAYS.map((d) => d.key), ""),
+    deduct: oneOf(u.deduct, DEDUCTS.map((d) => d.key), ""),
+    from: u.from,
+    to: u.to,
+  };
+  const sort = oneOf(u.sort, SORTS.map((x) => x.key), "newest");
+  const limit = Number(oneOf(u.limit, LIMITS.map(String), "50"));
+  const key = query(applied, sort, limit);
+  const appliedJson = JSON.stringify(applied);
+  const [draft, setDraft] = useState<Filters>(applied);
+  // 주소가 바뀌면(Back·초기화) 입력 중인 값도 적용된 조건으로 맞춘다
+  useEffect(() => {
+    setDraft(JSON.parse(appliedJson) as Filters);
+  }, [appliedJson]);
   const [cats, setCats] = useState<CategoryNode[]>([]);
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [more, setMore] = useState(false);
@@ -119,10 +143,16 @@ export default function ProductListPage() {
   // 판매 상태를 일괄로 바꾼 직후 「되돌리기」(바꾸기 전 상태별로 다시 보낸다)
   const [undo, setUndo] = useState<{ text: string; prev: { id: string; status: ProductStatus }[] } | null>(null);
 
-  const apply = () => setApplied({ ...draft, text: draft.text.trim() });
+  const toUrl = (f: Filters) => ({ q: f.text, mode: f.mode, status: f.status, stock: f.stock ?? "", categoryId: f.categoryId, display: f.display, deduct: f.deduct, from: f.from, to: f.to });
+  const apply = () => {
+    const next = { ...draft, text: draft.text.trim() };
+    // 같은 조건으로 다시 누르면 주소가 안 바뀌므로 목록만 다시 읽는다
+    if (JSON.stringify(next) === appliedJson) void load(key);
+    else setU(toUrl(next));
+  };
   const resetAll = () => {
     setDraft(EMPTY);
-    setApplied(EMPTY);
+    setU(toUrl(EMPTY));
   };
 
   // 카테고리 칸은 상품 목록이 열린 뒤 한 번만 읽는다(목록이 요금제·권한으로 막힌 화면에서 쓸데없이 요청하지 않게)
@@ -140,26 +170,28 @@ export default function ProductListPage() {
 
   // 조건을 빨리 바꾸면 이전 응답이 늦게 올 수 있다. 마지막으로 보낸 요청의 응답만 화면에 반영한다
   const reqId = useRef(0);
-  const load = useCallback(async (f: Filters, s: Sort, l: number) => {
+  const load = useCallback(async (qs: string) => {
     const id = ++reqId.current;
     setState({ kind: "loading" });
     setSelected(new Set());
-    const qs = query(f, s, l);
     const r = await api<Page>(`/api/seller/products${qs ? `?${qs}` : ""}`);
     if (id !== reqId.current) return;
     setState(r.ok ? { kind: "ok", items: r.data.products, next: r.data.nextCursor } : { kind: "error", status: r.status, message: r.message });
   }, []);
 
   useEffect(() => {
-    void load(applied, sort, limit);
-  }, [applied, sort, limit, load]);
+    void load(key);
+  }, [key, load]);
+  useScrollRestore("seller-products", listOk);
 
   // 등록·삭제 뒤 돌아오면 한 번 알려 주고 주소에서 지운다
   useEffect(() => {
     const t = new URLSearchParams(window.location.search).get("toast");
     if (t && TOASTS[t]) {
       setToast(TOASTS[t]);
-      window.history.replaceState(null, "", "/seller/products");
+      const rest = new URLSearchParams(window.location.search);
+      rest.delete("toast");
+      window.history.replaceState(null, "", rest.size ? `/seller/products?${rest}` : "/seller/products");
     }
   }, []);
 
@@ -167,8 +199,7 @@ export default function ProductListPage() {
     if (state.kind !== "ok" || !state.next) return;
     setMore(true);
     const id = reqId.current;
-    const base = query(applied, sort, limit);
-    const qs = `${base}${base ? "&" : ""}cursor=${state.next}`;
+    const qs = `${key}${key ? "&" : ""}cursor=${state.next}`;
     const r = await api<Page>(`/api/seller/products?${qs}`);
     setMore(false);
     if (id !== reqId.current) return;
@@ -193,6 +224,13 @@ export default function ProductListPage() {
 
   const skippedText = (r: BulkResult) => (r.skipped.length === 0 ? "" : ` ${r.skipped.length}개는 바꾸지 못했습니다(${[...new Set(r.skipped.map((s) => SKIP_REASON[s.reason] ?? "처리할 수 없음"))].join(" · ")})`);
 
+  // 빠른 처리(판매 상태·재고) 결과를 목록 한 줄에 반영한다. 서버 응답을 받은 뒤에만 바뀐다
+  const quickDone: QuickDone = (p, text) => {
+    setState((s) => (s.kind === "ok" ? { ...s, items: s.items.map((x) => (x.id === p.id ? { ...x, status: p.status, options: p.options } : x)) } : s));
+    if (text) setToast(text);
+  };
+  const quickFail = (text: string) => setToast(text);
+
   const bulkStatus = async (status: ProductStatus) => {
     const ids = [...selected];
     const prev = items.filter((p) => selected.has(p.id)).map((p) => ({ id: p.id, status: p.status }));
@@ -201,7 +239,7 @@ export default function ProductListPage() {
     setBulkBusy(false);
     if (!r.ok) return setToast(r.message ?? "상태를 바꾸지 못했습니다. 다시 시도해 주십시오");
     const done = new Set(r.data.updated);
-    void load(applied, sort, limit);
+    void load(key);
     setUndo({ text: `선택한 ${r.data.updated.length}개 상품을 ${STATUS_TO[status] ?? "선택한 상태로"} 바꿨습니다.${skippedText(r.data)}`, prev: prev.filter((p) => done.has(p.id) && p.status !== status) });
   };
 
@@ -218,7 +256,7 @@ export default function ProductListPage() {
       else failed += r.data.skipped.length;
     }
     setBulkBusy(false);
-    void load(applied, sort, limit);
+    void load(key);
     setToast(failed ? `되돌리지 못한 상품이 ${failed}개 있습니다` : "되돌렸습니다");
   };
 
@@ -229,7 +267,7 @@ export default function ProductListPage() {
     setBulkBusy(false);
     setConfirmDelete(false);
     if (!r.ok) return setToast(r.message ?? "삭제하지 못했습니다. 다시 시도해 주십시오");
-    void load(applied, sort, limit);
+    void load(key);
     setToast(`상품 ${r.data.updated.length}개를 삭제했습니다.${skippedText(r.data)}`);
   };
 
@@ -266,7 +304,7 @@ export default function ProductListPage() {
 
         <SearchBox label="목록 조건" onSearch={apply} onReset={resetAll}>
           <SearchRow label="검색어">
-            <select className="inp inp-sm" style={{ width: 150 }} aria-label="검색 기준" value={draft.mode} onChange={(e) => setDraft({ ...draft, mode: e.target.value as "name" | "code", text: "" })}>
+            <select className="inp inp-sm inp-w-md" aria-label="검색 기준" value={draft.mode} onChange={(e) => setDraft({ ...draft, mode: e.target.value as "name" | "code", text: "" })}>
               <option value="name">상품명 · 옵션명</option>
               <option value="code">상품 코드</option>
             </select>
@@ -282,7 +320,7 @@ export default function ProductListPage() {
           </SearchRow>
           {cats.length > 0 && (
             <SearchRow label="카테고리">
-              <select className="inp inp-sm" style={{ width: 240 }} aria-label="카테고리" value={draft.categoryId} onChange={(e) => setDraft({ ...draft, categoryId: e.target.value })}>
+              <select className="inp inp-sm inp-w-lg" aria-label="카테고리" value={draft.categoryId} onChange={(e) => setDraft({ ...draft, categoryId: e.target.value })}>
                 <option value="">전체</option>
                 {categoryOptions(cats).map((o) => (
                   <option key={o.id} value={o.id}>
@@ -296,24 +334,24 @@ export default function ProductListPage() {
           <SearchRow label="노출 상태">{radios("노출 상태", "display", DISPLAYS, draft.display, (v) => setDraft({ ...draft, display: v }))}</SearchRow>
           <SearchRow label="재고 차감">{radios("재고 차감", "deduct", DEDUCTS, draft.deduct, (v) => setDraft({ ...draft, deduct: v }))}</SearchRow>
           <SearchRow label="등록일">
-            <span className="row" style={{ gap: 4 }}>
-              <button className="btn btn-sm btn-out" type="button" onClick={() => setDraft({ ...draft, from: kstDate(), to: kstDate() })}>
+            <span className="row wrap" style={{ gap: 8 }}>
+              <button className="btn btn-dense btn-out btn-w-xs" type="button" onClick={() => setDraft({ ...draft, from: kstDate(), to: kstDate() })}>
                 오늘
               </button>
-              <button className="btn btn-sm btn-out" type="button" onClick={() => setDraft({ ...draft, from: kstDate(-6), to: kstDate() })}>
+              <button className="btn btn-dense btn-out btn-w-xs" type="button" onClick={() => setDraft({ ...draft, from: kstDate(-6), to: kstDate() })}>
                 7일
               </button>
-              <button className="btn btn-sm btn-out" type="button" onClick={() => setDraft({ ...draft, from: kstDate(0, -1), to: kstDate() })}>
+              <button className="btn btn-dense btn-out btn-w-xs" type="button" onClick={() => setDraft({ ...draft, from: kstDate(0, -1), to: kstDate() })}>
                 1개월
               </button>
-              <button className="btn btn-sm btn-out" type="button" onClick={() => setDraft({ ...draft, from: kstDate(0, -3), to: kstDate() })}>
+              <button className="btn btn-dense btn-out btn-w-xs" type="button" onClick={() => setDraft({ ...draft, from: kstDate(0, -3), to: kstDate() })}>
                 3개월
               </button>
-              <button className="btn btn-sm btn-out" type="button" onClick={() => setDraft({ ...draft, from: "", to: "" })}>
+              <button className="btn btn-dense btn-out btn-w-xs" type="button" onClick={() => setDraft({ ...draft, from: "", to: "" })}>
                 전체
               </button>
             </span>
-            <span className="row" style={{ gap: 4 }}>
+            <span className="row" style={{ gap: 8 }}>
               <input className="inp inp-sm" type="date" aria-label="등록일 시작" value={draft.from} onChange={(e) => setDraft({ ...draft, from: e.target.value })} />
               <span aria-hidden="true">~</span>
               <input className="inp inp-sm" type="date" aria-label="등록일 끝" value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} />
@@ -330,14 +368,14 @@ export default function ProductListPage() {
             unit={countUnit}
             actions={
               <>
-                <select className="inp inp-sm" style={{ width: 140 }} aria-label="정렬" value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
+                <select className="inp inp-sm inp-w-md" aria-label="정렬" value={sort} onChange={(e) => setU({ sort: e.target.value })}>
                   {SORTS.map((s) => (
                     <option key={s.key} value={s.key}>
                       {s.label}
                     </option>
                   ))}
                 </select>
-                <select className="inp inp-sm" style={{ width: 100 }} aria-label="목록 개수" value={limit} onChange={(e) => setLimit(Number(e.target.value))}>
+                <select className="inp inp-sm inp-w-sm" aria-label="목록 개수" value={limit} onChange={(e) => setU({ limit: e.target.value })}>
                   {LIMITS.map((n) => (
                     <option key={n} value={n}>
                       {n}개씩
@@ -346,13 +384,13 @@ export default function ProductListPage() {
                 </select>
                 {canManage && (
                   <>
-                    <button className="btn btn-sm btn-out" type="button" disabled={selected.size === 0 || bulkBusy} onClick={() => void bulkStatus("ON_SALE")}>
+                    <button className="btn btn-dense btn-out btn-level-bulk" type="button" disabled={selected.size === 0 || bulkBusy} onClick={() => void bulkStatus("ON_SALE")}>
                       선택 판매 중
                     </button>
-                    <button className="btn btn-sm btn-out" type="button" disabled={selected.size === 0 || bulkBusy} onClick={() => void bulkStatus("HIDDEN")}>
+                    <button className="btn btn-dense btn-out btn-level-bulk" type="button" disabled={selected.size === 0 || bulkBusy} onClick={() => void bulkStatus("HIDDEN")}>
                       선택 숨김
                     </button>
-                    <button className="btn btn-sm btn-out" type="button" style={{ color: selected.size > 0 ? "var(--neg-text)" : undefined }} disabled={selected.size === 0 || bulkBusy} onClick={() => setConfirmDelete(true)}>
+                    <button className="btn btn-dense btn-out btn-level-bulk" type="button" style={{ color: selected.size > 0 ? "var(--neg-text)" : undefined }} disabled={selected.size === 0 || bulkBusy} onClick={() => setConfirmDelete(true)}>
                       선택 삭제
                     </button>
                   </>
@@ -383,7 +421,7 @@ export default function ProductListPage() {
                   type="button"
                   onClick={() => {
                     setDraft((d) => ({ ...d, text: "" }));
-                    setApplied((a) => ({ ...a, text: "" }));
+                    setU({ q: "" });
                   }}
                 >
                   검색 지우기
@@ -393,7 +431,7 @@ export default function ProductListPage() {
                 </button>
               </div>
             ) : (
-              <ErrorState title="상품을 불러오지 못했습니다" onRetry={() => void load(applied, sort, limit)} />
+              <ErrorState title="상품을 불러오지 못했습니다" onRetry={() => void load(key)} />
             ))}
           {state.kind === "ok" && items.length === 0 && (
             <div className="st" style={{ boxShadow: "none" }}>
@@ -439,19 +477,19 @@ export default function ProductListPage() {
                   <thead>
                     <tr>
                       {canManage && (
-                        <th style={{ width: 36 }}>
+                        <th className="p-w-chk">
                           <input type="checkbox" aria-label="전체 선택" checked={allChecked} onChange={() => setSelected(allChecked ? new Set() : new Set(items.map((p) => p.id)))} />
                         </th>
                       )}
-                      <th style={{ width: 64 }}>이미지</th>
+                      <th className="p-w-img">이미지</th>
                       <th>상품명 · 코드</th>
-                      <th style={{ width: 120 }}>판매가</th>
-                      <th style={{ width: 80 }}>재고</th>
-                      <th style={{ width: 70 }}>판매</th>
-                      <th style={{ width: 70 }}>노출</th>
-                      <th style={{ width: 100 }}>상태</th>
-                      <th style={{ width: 80 }}>등록일</th>
-                      {canManage && <th style={{ width: 80 }}>관리</th>}
+                      <th className="p-w-price">판매가</th>
+                      <th className="p-w-stock">재고</th>
+                      <th className="p-w-flag">판매</th>
+                      <th className="p-w-flag">노출</th>
+                      <th className="p-w-state">상태</th>
+                      <th className="p-w-date">등록일</th>
+                      {canManage && <th className="p-w-act">관리</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -466,8 +504,8 @@ export default function ProductListPage() {
                             </td>
                           )}
                           <td>
-                            <div className="img" style={{ width: 44, height: 44, borderRadius: 8, overflow: "hidden" }} title={p.thumbnailUrl ? "대표 이미지" : "이미지 없음"}>
-                              {p.thumbnailUrl ? <img src={p.thumbnailUrl} alt="" data-testid="product-thumb" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <NoImage />}
+                            <div className="thumb" title={p.thumbnailUrl ? "대표 이미지" : "이미지 없음"}>
+                              {p.thumbnailUrl ? <img src={p.thumbnailUrl} alt="" data-testid="product-thumb" /> : <NoImage />}
                             </div>
                           </td>
                           <td className="col-text">
@@ -477,16 +515,19 @@ export default function ProductListPage() {
                             <div className="t-c1 c-alt ell">{[p.code, optionSummary(p)].filter(Boolean).join(" · ")}</div>
                           </td>
                           <td className="num">{won(p.price)}</td>
-                          <td className={`num${stock === 0 ? " c-neg fw6" : stock <= LOW_STOCK ? " c-cau fw6" : ""}`}>{stock.toLocaleString("ko-KR")}</td>
+                          <td className={`num${stock === 0 ? " c-neg fw6" : stock <= LOW_STOCK ? " c-cau fw6" : ""}`}>
+                            {canManage && p.options.length === 1 ? <QuickStock product={p} onDone={quickDone} onFail={quickFail} /> : stock.toLocaleString("ko-KR")}
+                          </td>
                           <td className="num">{(p.soldQuantity ?? 0).toLocaleString("ko-KR")}</td>
                           <td>{isShown(p) ? "노출" : "비노출"}</td>
                           <td>
                             <span className={`bdg ${b.cls}`}>{b.label}</span>
+                            {canManage && <QuickStatus product={p} onDone={quickDone} onFail={quickFail} />}
                           </td>
                           <td className="num">{shortDate(p.createdAt)}</td>
                           {canManage && (
                             <td>
-                              <Link className="btn btn-sm btn-out" href={`/seller/products/${p.id}`}>
+                              <Link className="btn btn-sm btn-out btn-level-table" href={`/seller/products/${p.id}`}>
                                 수정
                               </Link>
                             </td>
@@ -504,8 +545,8 @@ export default function ProductListPage() {
                   return (
                     <li key={p.id}>
                       <Link href={`/seller/products/${p.id}`} className="p-card" data-testid="product-card">
-                        <div className="img" style={{ width: 64, height: 64, overflow: "hidden" }} title={p.thumbnailUrl ? "대표 이미지" : "이미지 없음"}>
-                          {p.thumbnailUrl ? <img src={p.thumbnailUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <NoImage size={24} />}
+                        <div className="thumb" title={p.thumbnailUrl ? "대표 이미지" : "이미지 없음"}>
+                          {p.thumbnailUrl ? <img src={p.thumbnailUrl} alt="" /> : <NoImage size={24} />}
                         </div>
                         <div className="col grow" style={{ gap: 4 }}>
                           <span className="fw6 p-name">{p.name}</span>
@@ -523,9 +564,9 @@ export default function ProductListPage() {
                   );
                 })}
               </ul>
-              <div className="row center" style={{ padding: "12px 20px", minHeight: 56 }}>
+              <div className="row center p-more">
                 {state.next ? (
-                  <button className="btn btn-sm btn-out" type="button" onClick={() => void loadMore()} disabled={more}>
+                  <button className="btn btn-dense btn-out btn-level-secondary" type="button" onClick={() => void loadMore()} disabled={more}>
                     {more ? "불러오는 중" : "더 보기"}
                   </button>
                 ) : (

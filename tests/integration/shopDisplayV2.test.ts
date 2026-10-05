@@ -73,12 +73,12 @@ describe("새 진열 영역", () => {
     await paidOrder(s, c.options[0].id, 2, ended.id); // 끝난 방송은 방송 상품 아님
     // 30일 넘은 판매는 베스트에 넣지 않는다
     const old = await paidOrder(s, d.options[0].id, 9);
-    await db.order.update({ where: { id: old.orderId }, data: { paidAt: new Date(Date.now() - 31 * 86_400_000) } });
+    await db.order.update({ where: { id: old.orderId! }, data: { paidAt: new Date(Date.now() - 31 * 86_400_000) } });
     await db.queueItem.update({ where: { id: old.id }, data: { broadcastSessionId: null } }); // 방송 전 주문(결제 때 지금 방송에 붙은 것을 되돌림)
     // 취소된 대기열은 방송 상품이 아니다(오버레이와 같은 기준)
     const qe = await paidOrder(s, e.options[0].id, 1, live.id);
     await db.queueItem.update({ where: { id: qe.id }, data: { status: "CANCELLED" } });
-    await db.order.update({ where: { id: qe.orderId }, data: { status: "CANCELLED" } });
+    await db.order.update({ where: { id: qe.orderId! }, data: { status: "CANCELLED" } });
     await db.hitCard.create({ data: { sellerId: s.seller.id, queueItemId: qb.id, broadcastSessionId: live.id, nicknameSnapshot: "구매자", cardName: "리자몽 SAR" } });
     await db.product.update({
       where: { id: c.id },

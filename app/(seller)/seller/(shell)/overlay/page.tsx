@@ -57,6 +57,8 @@ export default function OverlayPage() {
     try {
       await navigator.clipboard.writeText(url);
       setToast({ text: "주소를 복사했습니다" });
+      // 시작하기(SA-003) 「오버레이 주소 복사」 단계를 완료로 남긴다(권한이 없거나 실패해도 복사 결과에는 영향 없음)
+      void api("/api/seller/onboarding", { method: "POST", body: { action: "overlay_url_copied" } });
     } catch {
       setToast({ text: "복사하지 못했습니다. 주소를 직접 선택해 복사해 주십시오", neg: true });
     }

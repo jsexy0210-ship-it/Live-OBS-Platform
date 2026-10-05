@@ -1,5 +1,6 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { call } from "./reviewShared";
 
@@ -34,7 +35,8 @@ function loadSdk(): Promise<Nice> {
 
 export default function OrderPay({ slug, orderId, amount, dueAt }: { slug: string; orderId: string; amount: number; dueAt: string | null }) {
   const api = `/api/shop/${encodeURIComponent(slug)}/payments`;
-  const [method, setMethod] = useState<"card" | "bank">("card");
+  // 주문서에서 고른 결제 수단(?pay=card|bank)을 미리 골라 둔다
+  const [method, setMethod] = useState<"card" | "bank">(useSearchParams().get("pay") === "bank" ? "bank" : "card");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [bank, setBank] = useState<Bank | null>(null);

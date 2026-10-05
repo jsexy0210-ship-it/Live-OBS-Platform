@@ -7,6 +7,7 @@ import { PageHead } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { CancelItemModal, EndBroadcastModal, TimerModal } from "../../../../../components/seller/broadcast/Modals";
 import { HitCardModal, type HitTarget } from "../../../../../components/seller/broadcast/HitCardModal";
+import { chatNotice, type ChatStatus } from "../../../../../components/seller/broadcast/chatStatus";
 import {
   REVERT_WINDOW_MS,
   TIMER_MAX_SECONDS,
@@ -19,6 +20,7 @@ import {
   type QueueItem,
   type Snapshot,
 } from "../../../../../components/seller/broadcast/queue";
+import { SourceBadge } from "../../../../../components/seller/broadcast/SourceBadge";
 import { won } from "../../../../../components/seller/format";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage, type ApiResult } from "../../../../../components/seller/api";
@@ -64,6 +66,7 @@ export default function BroadcastDashboardPage() {
   const sumSeq = useRef(0);
   const [yt, setYt] = useState<Yt | null>(null);
   const [chat, setChat] = useState<Map<string, ChatMatch>>(new Map());
+  const [chatState, setChatState] = useState<ChatStatus | null>(null);
   const ytSeq = useRef(0);
   const [chatBusy, setChatBusy] = useState(false);
   // 나중에 보낸 읽기의 응답만 반영한다. 실패하면 이전 값을 지워 틀린 표시를 남기지 않는다
@@ -73,12 +76,15 @@ export default function BroadcastDashboardPage() {
     if (n !== ytSeq.current) return;
     if (!r.ok || !r.data.configured) {
       setYt(null);
+      setChatState(null);
       return setChat(new Map());
     }
+    if (!r.data.live?.chatEnabled) setChatState(null);
     let map = new Map<string, ChatMatch>();
     if (r.data.live?.chatEnabled) {
-      const m = await api<Matches>("/api/seller/youtube/live/chat-matches");
+      const [m, st] = await Promise.all([api<Matches>("/api/seller/youtube/live/chat-matches"), api<ChatStatus>("/api/seller/youtube/live/chat-status")]);
       if (n !== ytSeq.current) return;
+      setChatState(st.ok ? st.data : null);
       if (m.ok) for (const o of m.data.orders) if (o.matched || !map.has(o.nickname)) map.set(o.nickname, { matched: o.matched || map.get(o.nickname)?.matched === true, lastChatAt: o.lastChatAt });
     }
     setYt(r.data);
@@ -419,6 +425,9 @@ export default function BroadcastDashboardPage() {
                     )}
                   </div>
                 )}
+                {chatOn && (
+                  <ChatStateBand status={chatState} />
+                )}
               </section>
 
               {/* 개봉 중 */}
@@ -656,6 +665,17 @@ function chatText(c: ChatMatch | undefined): string {
   return c.matched ? `채팅 확인됨${c.lastChatAt ? ` · 마지막 ${kstTime(c.lastChatAt)}` : ""}` : "채팅 없음";
 }
 
+function ChatStateBand({ status }: { status: ChatStatus | null }) {
+  const n = chatNotice(status);
+  if (!n) return null;
+  return (
+    <div className={`msg msg-${n.tone}`} role="status" style={{ marginTop: 8 }} data-testid="bc-chat-state">
+      <b>{n.title}</b> · {n.text}
+      {status?.lastCollectedAt && <span> 마지막 수집 {kstTime(status.lastCollectedAt)}</span>}
+    </div>
+  );
+}
+
 function SumTile({ label, value }: { label: string; value: string }) {
   return (
     <div className="stat">
@@ -670,7 +690,7 @@ function ItemText({ item }: { item: QueueItem }) {
     <span className="col bc-item">
       <span className="t-l1 fw6 ell">
         {item.nicknameSnapshot}
-        {item.gradeSnapshot && <span className="t-c1 c-alt fw5"> · {item.gradeSnapshot}</span>}
+        {item.gradeSnapshot && <span className="t-c1 c-alt fw5"> · {item.gradeSnapshot}</span>} <SourceBadge source={item.source} />
       </span>
       <span className="t-c1 c-alt ell">
         {item.productLabel} ×{item.quantity}

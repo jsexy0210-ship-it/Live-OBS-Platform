@@ -34,7 +34,10 @@ export default function SellerLoginPage() {
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   // 직원 탭에서 계정 찾기로 갔다가 돌아오면(?type=staff) 직원 탭으로 연다
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("type") === "staff") setTab("staff");
+    const p = new URLSearchParams(window.location.search);
+    if (p.get("type") === "staff") setTab("staff");
+    // 로그인이 풀려 이리로 온 경우(AU-007): 이유를 알려 준다
+    if (p.get("reason") === "expired") setNotice({ kind: "info", text: "로그인 시간이 지나 로그아웃되었습니다. 다시 로그인해 주십시오." });
   }, []);
 
   const ready = email.trim() !== "" && password !== "" && (!needShop || shopSlug.trim() !== "");
@@ -75,7 +78,8 @@ export default function SellerLoginPage() {
       let target = safeNext();
       if (!new URLSearchParams(window.location.search).get("next")) {
         const m = await api<Me>("/api/seller/me");
-        if (m.ok) target = landingFor(m.data, target);
+        // 이용 정지 중이면 정지 안내(AU-006)부터, 아니면 열 수 있는 첫 화면
+        if (m.ok) target = m.data.suspended ? "/seller/suspended" : landingFor(m.data, target);
       }
       // 직원은 본인확인을 연결하지 않았으면 로그인할 때마다 연결 안내(AU-012)로 먼저 보낸다. 건너뛸 수 있고, 상태를 못 읽으면 그냥 들어간다.
       // 본인확인을 실제로 할 수 없는 서버(대행사 미연결·테스트 모드 아님)에서는 띄우지 않는다: 서버가 available: true를 줄 때만
@@ -99,6 +103,10 @@ export default function SellerLoginPage() {
         text: other === "staff" ? "직원 계정입니다. 직원 탭에서 로그인해 주십시오" : "대표자 계정입니다. 대표자 탭에서 로그인해 주십시오",
         switchTo: other,
       });
+    } else if (r.error === "seller_pending") {
+      // 가입 승인 대기(AU-005): 로그인 오류 문구 대신 안내 화면
+      router.push("/seller/pending");
+      return;
     } else if (r.error === "invalid_credentials") setFieldError(text);
     else if (r.error === "shop_required") {
       setNeedShop(true);

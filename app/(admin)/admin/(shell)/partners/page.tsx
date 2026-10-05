@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { adminCan } from "../../../../../lib/server/authz/permissions";
 import { PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../components/seller/States";
@@ -10,6 +10,8 @@ import { adminApi } from "../../_components/api";
 import { AdminTopbar, useAdmin } from "../../_components/AdminShell";
 import { SELLER_STATUS, SUBSCRIPTION_STATUS, PLAN_FILTER, day, type SellerRow, type SellerStatus } from "../../_components/partners";
 import { SuspendDialog } from "../../_components/SuspendDialog";
+import { useListFilters } from "../../_components/useListFilters";
+import { useScrollRestore } from "../../../../../lib/client/navigation";
 
 // MA-011 파트너스 목록·검색·필터(GET /api/admin/sellers, 모든 마스터 역할). 50명씩 이어서 불러온다.
 // 이용 정지·해제(MA-015)는 최고관리자·운영만 버튼이 보인다.
@@ -28,11 +30,10 @@ function query(f: Filters, cursor?: string) {
   return p.toString();
 }
 
-export default function PartnerListPage() {
+function PartnerList() {
   const { me } = useAdmin();
   const canModerate = adminCan(me.role, "seller.moderate");
-  const [draft, setDraft] = useState<Filters>(EMPTY);
-  const [applied, setApplied] = useState<Filters>(EMPTY);
+  const { applied, draft, setDraft, apply } = useListFilters<Filters>(EMPTY);
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [more, setMore] = useState(false);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
@@ -49,6 +50,7 @@ export default function PartnerListPage() {
     setState(r.ok ? { kind: "ok", items: r.data.sellers, next: r.data.nextCursor } : { kind: "error" });
   }, []);
   useEffect(() => void load(applied), [applied, load]);
+  useScrollRestore("admin-partners", state.kind === "ok");
 
   const loadMore = async () => {
     if (state.kind !== "ok" || !state.next) return;
@@ -72,8 +74,7 @@ export default function PartnerListPage() {
   const items = state.kind === "ok" ? state.items : [];
   const filtered = applied.q !== "" || applied.status !== "" || applied.plan !== "";
   const reset = () => {
-    setDraft(EMPTY);
-    setApplied(EMPTY);
+    apply(EMPTY);
   };
 
   return (
@@ -81,7 +82,7 @@ export default function PartnerListPage() {
       <AdminTopbar crumb="파트너스 › 파트너스 목록" />
       <main className="main">
         <PageHead title="파트너스 목록" />
-        <SearchBox onSearch={() => setApplied({ ...draft, q: draft.q.trim() })} onReset={reset} busy={state.kind === "loading"}>
+        <SearchBox onSearch={() => apply({ ...draft, q: draft.q.trim() })} onReset={reset} busy={state.kind === "loading"}>
           <SearchRow label="검색어">
             <input className="inp" type="search" aria-label="쇼핑몰 이름 · 주소" placeholder="쇼핑몰 이름 · 주소" maxLength={MAX_SEARCH_LENGTH} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
           </SearchRow>
@@ -193,5 +194,13 @@ export default function PartnerListPage() {
       )}
       {toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}
     </>
+  );
+}
+
+export default function PartnerListPage() {
+  return (
+    <Suspense fallback={null}>
+      <PartnerList />
+    </Suspense>
   );
 }

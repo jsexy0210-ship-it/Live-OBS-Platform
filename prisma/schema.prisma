@@ -102,6 +102,7 @@ model Seller {
   plan       SubscriptionPlan? @relation(fields: [planId], references: [id])
 
   domains                  SellerDomain[]
+  adminNotes               SellerAdminNote[]
   users                    SellerUser[]
   sellerSessions           SellerSession[]
   passwordResetGrants      PasswordResetGrant[]
@@ -126,6 +127,10 @@ model Seller {
   overlayTemplates         OverlayTemplate[]
   mailDeliveries           MailDelivery[]
   memberPolicy             SellerMemberPolicy?
+  brandColor               SellerBrandColor?
+  favicon                  SellerFavicon?
+  shopSeo                  ShopSeo?
+  orderNotificationPolicy  SellerOrderNotificationPolicy?
   rejoinBlocks             BuyerRejoinBlock[]
   purchaseRestrictions     BuyerPurchaseRestriction[]
   shippingPolicy           SellerShippingPolicy?
@@ -153,6 +158,10 @@ model Seller {
   couponRedemptions        CouponRedemption[]
   logo                     SellerLogo?
   productReviews           ProductReview[]
+  buyerInquiries           BuyerInquiry[]
+  buyerInquiryImages       BuyerInquiryImage[]
+  shopSearchSynonyms       ShopSearchSynonym[]
+  shopSearchTerms          ShopSearchTerm[]
   productReviewImages      ProductReviewImage[]
   productReviewReports     ProductReviewReport[]
   productReviewPolicy      ProductReviewPolicy?
@@ -161,6 +170,7 @@ model Seller {
   restockAlerts            RestockAlert[]
   bulkJobs                 BulkJob[]
   shopNotices              ShopNotice[]
+  shopLegalDocs            ShopLegalDoc[]
   returnRequests           ReturnRequest[]
   memberGradePolicy        MemberGradePolicy?
   memberGradeOverrides     MemberGradeOverride[]
@@ -169,10 +179,15 @@ model Seller {
   returnRequestItems       ReturnRequestItem[]
   returnRequestImages      ReturnRequestImage[]
   bankAccount              SellerBankAccount?
+  memberMessages           MemberMessage[]
+  memberMessageRecipients  MemberMessageRecipient[]
   subscriptionRefunds      SubscriptionRefund[]
   platformInquiries        PlatformInquiry[]
   platformInquiryMessages  PlatformInquiryMessage[]
   platformInquiryImages    PlatformInquiryImage[]
+  externalShopConnections  ExternalShopConnection[]
+  receiptIssuer            SellerReceiptIssuer?
+  externalOrders ExternalOrder[]
 }
 
 model SellerDomain {
@@ -300,6 +315,13 @@ enum GradeSystemKey {
   VIP
 }
 
+// 등급 혜택(SA-044): 배송비 혜택 없음 / 정액 할인(shippingDiscount원, 배송비를 넘으면 0원) / 무료
+enum GradeShippingBenefit {
+  NONE
+  DISCOUNT
+  FREE
+}
+
 // 등급은 id·displayName·sortOrder로 식별한다. systemKey는 기본 5개 표시용(판매자가 추가한 등급은 null).
 model MemberGrade {
   id          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -309,6 +331,10 @@ model MemberGrade {
   systemKey   GradeSystemKey?
   // 자동 재산정 승급 기준: 최근 6개월 결제 금액이 이 값 이상이면 이 등급 이상(member-grades). 기본 등급은 항상 0.
   minAmount   Int             @default(0)
+  // 등급 혜택: 배송비(주문 견적·주문 생성이 같은 계산을 씀, shop-member-grades/benefits.ts)와 승급 쿠폰(직접 지급 방식 쿠폰 id, 승급할 때 한 번 지급. 쿠폰 존재·방식은 저장할 때 검사)
+  shippingBenefit   GradeShippingBenefit @default(NONE)
+  shippingDiscount  Int                  @default(0)
+  promotionCouponId String?              @db.Uuid
   createdAt   DateTime        @default(now()) @db.Timestamptz(3)
 
   seller  Seller        @relation(fields: [sellerId], references: [id])
@@ -364,6 +390,7 @@ model BuyerMember {
   sessions             BuyerSession[]
   orders               Order[]
   purchaseRestrictions BuyerPurchaseRestriction[]
+  memo                 MemberMemo?
   hitCards             HitCard[]
   rewardLedger         RewardLedger[]
   rewardBalances       RewardBalance[]
@@ -371,6 +398,8 @@ model BuyerMember {
   addresses            BuyerAddress[]
   coupons              BuyerCoupon[]
   productReviews       ProductReview[]
+  buyerInquiries       BuyerInquiry[]
+  buyerInquiryImages   BuyerInquiryImage[]
   productReviewImages  ProductReviewImage[]
   productReviewReports ProductReviewReport[]
   cartItems            CartItem[]
@@ -378,9 +407,11 @@ model BuyerMember {
   restockAlerts        RestockAlert[]
   returnRequests       ReturnRequest[]
   refundRequests       RefundRequest[]
+  receiptRequests      OrderReceiptRequest[]
   returnRequestImages  ReturnRequestImage[]
   gradeOverrides       MemberGradeOverride[]
   gradeHistory         MemberGradeHistory[]
+  memberMessageRecipients MemberMessageRecipient[]
 
   @@unique([sellerId, id])
   @@index([sellerId, gradeId])
@@ -537,6 +568,8 @@ model Product {
   eventStartsAt      DateTime?          @db.Timestamptz(3)
   eventEndsAt        DateTime?          @db.Timestamptz(3)
   sortOrder          Int                @default(0)
+  // 검색 태그(상품 이름 밖 키워드, 최대 10개·각 20자). 쇼핑몰 검색과 자동완성이 이름과 함께 본다.
+  searchTags         String[]           @default([])
   // 상품 코드 번호(카페24식 자동 상품 코드, MASTER 결정 2026-10-04). 판매자별 1부터 순번, 화면·API는 「P」 + 7자리(P0000001).
   // 넣을 때 0(기본)이면 DB 트리거(product_assign_code_no)가 ProductCodeCounter로 다음 번호를 매긴다. 지운 상품 번호도 다시 쓰지 않는다.
   codeNo             Int                @default(0)
@@ -553,6 +586,7 @@ model Product {
   displayItems  ShopDisplayItem[]
   wishItems     WishItem[]
   restockAlerts RestockAlert[]
+  buyerInquiries BuyerInquiry[]
 
   @@unique([sellerId, id])
   @@unique([sellerId, codeNo])
@@ -867,6 +901,28 @@ model SellerLogo {
   seller Seller @relation(fields: [sellerId], references: [id])
 }
 
+// 쇼핑몰 대표 색상(SA-060). 쇼핑몰당 1행, 없으면 플랫폼 기본 강조색. #RRGGBB 대문자. 강조색(버튼·가격)에만 쓰고 흰 바탕 대비 3:1 이상만 받는다(서버 검사).
+model SellerBrandColor {
+  sellerId  String   @id @db.Uuid
+  color     String
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+}
+
+// 쇼핑몰 파비콘 원본(SA-060). 쇼핑몰당 1개. 8비트 PNG, 정사각형 64~1024px, 256KB 이하(코드 검사). 32·180·512px 크기는 서버가 이 원본에서 그려 쓴다.
+// 없으면 로고에서 자동으로 만들고, 로고도 없으면 ONQ 기본 아이콘(화면 쪽)을 쓴다.
+model SellerFavicon {
+  sellerId  String   @id @db.Uuid
+  data      Bytes
+  byteSize  Int
+  width     Int
+  sha256    String
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+}
+
 // ───────────── 상품 리뷰 (SA-048 리뷰 관리 · SH-029 리뷰 쓰기, 2026-10-04 대표님 확정 11건 중 2) ─────────────
 // 구매자가 배송 완료된 주문 상품마다 1번 쓴다(작성 기간은 쇼핑몰 설정, 기본 30일). 답글·숨김·공개·설정은 대표자·구매자 문의(INQUIRY_REPLY) 직원.
 // 사진은 화면에서 JPEG로 다시 저장해 올리고, 서버는 JPEG·PNG 바이트를 확인한 뒤 위치 정보 등 메타데이터를 지우고 DB에 둔다(A안).
@@ -1078,6 +1134,7 @@ model Order {
   payments         Payment[]
   refunds          OrderRefund[]
   refundRequests   RefundRequest[]
+  receiptRequests  OrderReceiptRequest[]
 
   @@unique([sellerId, id])
   @@unique([sellerId, orderNo])
@@ -1173,8 +1230,12 @@ enum QueueItemStatus {
 model QueueItem {
   id                 String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   sellerId           String          @db.Uuid
-  orderId            String          @db.Uuid
-  orderItemId        String          @db.Uuid
+  // 내부 주문(orderId·orderItemId)이거나 외부 쇼핑몰 주문(externalOrderId·externalLineNo) 중 정확히 한쪽만 채운다(DB CHECK QueueItem_source_check).
+  // 외부 주문은 재고·결제·적립금·배송을 이 쪽에서 다루지 않는다(외부 쇼핑몰이 한다). 가짜 회원·상품 행을 만들지 않는다.
+  orderId            String?         @db.Uuid
+  orderItemId        String?         @db.Uuid
+  externalOrderId    String?         @db.Uuid
+  externalLineNo     Int?
   broadcastSessionId String?         @db.Uuid
   status             QueueItemStatus @default(WAITING)
   position           Int
@@ -1192,14 +1253,17 @@ model QueueItem {
   createdAt          DateTime        @default(now()) @db.Timestamptz(3)
 
   seller           Seller                   @relation(fields: [sellerId], references: [id])
-  order            Order                    @relation(fields: [sellerId, orderId], references: [sellerId, id])
-  orderItem        OrderItem                @relation(fields: [sellerId, orderItemId], references: [sellerId, id])
+  order            Order?                   @relation(fields: [sellerId, orderId], references: [sellerId, id])
+  orderItem        OrderItem?               @relation(fields: [sellerId, orderItemId], references: [sellerId, id])
+  externalOrder    ExternalOrder?           @relation(fields: [sellerId, externalOrderId], references: [sellerId, id])
   broadcastSession BroadcastSession?        @relation(fields: [sellerId, broadcastSessionId], references: [sellerId, id])
   statusHistory    QueueItemStatusHistory[]
   hitCards         HitCard[]
 
   @@unique([sellerId, id])
   @@unique([sellerId, orderItemId])
+  // 같은 외부 주문 줄은 한 번만 대기열에 오른다(웹훅 재전송·누락 보정 중복 방지)
+  @@unique([sellerId, externalOrderId, externalLineNo])
   @@index([sellerId, status, position])
   @@index([sellerId, broadcastSessionId])
 }
@@ -1536,6 +1600,12 @@ model SellerShippingPolicy {
   // 반품 배송비(편도)·교환 배송비(왕복). 구매자 사정일 때만 받는다(PRODUCT_SCOPE 「반품·교환 배송비」).
   returnFee       Int      @default(3000)
   exchangeFee     Int      @default(6000)
+  // 구매자가 고를 수 있는 받는 방법(FulfillmentType 값). 지금은 즉시 발송(IMMEDIATE)만 켤 수 있다(보관 후 합배송은 출시 후 1차).
+  receiveMethods  String[] @default(["IMMEDIATE"])
+  // 결제 확인 뒤 발송까지 안내하는 기한(일, 1~30)
+  dispatchDeadlineDays Int @default(3)
+  // 발송 처리 화면에서 처음 고르는 택배사(COURIERS 코드). 없으면 null.
+  defaultCourier  String?
   updatedAt       DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 
   seller Seller @relation(fields: [sellerId], references: [id])
@@ -1620,6 +1690,8 @@ model BuyerPurchaseRestriction {
   sellerId      String    @db.Uuid
   buyerMemberId String    @db.Uuid
   reason        String
+  // 파트너스가 직접 건 제한(reason=MANUAL)의 사유 메모(200자). 자동 제한은 비어 있다.
+  note          String?
   startsAt      DateTime  @db.Timestamptz(3)
   endsAt        DateTime  @db.Timestamptz(3)
   liftedAt      DateTime? @db.Timestamptz(3)
@@ -1629,6 +1701,38 @@ model BuyerPurchaseRestriction {
   buyerMember BuyerMember @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id])
 
   @@index([sellerId, buyerMemberId, startsAt])
+}
+
+// 파트너스가 회원 상세(SA-042)에 적는 회원 메모. 회원마다 1건(덮어쓰기), 작성자·수정 시각을 남긴다.
+// 자유 입력이라 개인정보가 섞일 수 있어 탈퇴 때 지운다(buyers/memberData.ts). 로그 추적에는 본문을 남기지 않고 글자 수만 남긴다.
+// 마스터 관리자가 파트너스 상세(MA-012)에 남기는 내부 메모. 파트너스에게는 보이지 않는다(마스터 관리자 API만 읽는다).
+// 작성자 이름은 쓴 때의 값을 남겨 계정이 바뀌어도 기록이 읽힌다. 파트너스가 정리돼도 메모는 지우지 않는다.
+model SellerAdminNote {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId   String   @db.Uuid
+  body       String
+  authorId   String   @db.Uuid
+  authorName String
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+
+  @@index([sellerId, createdAt(sort: Desc), id(sort: Desc)])
+}
+
+model MemberMemo {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String    @db.Uuid
+  buyerMemberId String    @db.Uuid
+  body          String
+  // 마지막으로 쓴 사람(파트너스 직원·대표자 id). 마스터 대리 조회는 쓰기를 못 하므로 직원만 들어간다.
+  updatedById   String?   @db.Uuid
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime  @default(now()) @db.Timestamptz(3)
+
+  buyerMember BuyerMember @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id], onDelete: Cascade)
+
+  @@unique([sellerId, buyerMemberId])
 }
 
 // 주문 알림 발송 기록(중복 발송 방지). 주문·종류마다 1행. 보내기 전에 PENDING으로 먼저 잡고(claim), 보낸 뒤 SENT·FAILED로 바꾼다.
@@ -1687,6 +1791,34 @@ model SellerMemberPolicy {
   rejoinRestrictionEnabled Boolean  @default(false)
   rejoinRestrictionDays    Int      @default(30)
   updatedAt                DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+}
+
+// 쇼핑몰 검색 노출 설정(SA-067). 행이 없으면 기본값(검색 노출·사이트맵 켬, 나머지 비움). 상품별 규칙의 {상품명}·{쇼핑몰}은 공개 화면이 채운다.
+model ShopSeo {
+  sellerId                   String   @id @db.Uuid
+  searchTitle                String?
+  searchDescription          String?
+  indexingEnabled            Boolean  @default(true)
+  sitemapEnabled             Boolean  @default(true)
+  productTitleTemplate       String?
+  productDescriptionTemplate String?
+  googleVerification         String?
+  naverVerification          String?
+  updatedAt                  DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+}
+
+// 주문자 메일 켜기·끄기(SA-080). 거래 메일 4종(주문 완료·발송·배송 완료·취소·환불), 기본은 모두 켬. 행이 없으면 모두 켠 것으로 본다.
+model SellerOrderNotificationPolicy {
+  sellerId             String   @id @db.Uuid
+  orderCompleteEnabled Boolean  @default(true)
+  shippedEnabled       Boolean  @default(true)
+  deliveredEnabled     Boolean  @default(true)
+  cancelRefundEnabled  Boolean  @default(true)
+  updatedAt            DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 
   seller Seller @relation(fields: [sellerId], references: [id])
 }
@@ -1778,6 +1910,54 @@ model SiteBranding {
   ogImageType   String?
   ogImageHash   String?
   updatedAt     DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+}
+
+// ───────────── 외부 서비스 업체 등록·비교(마스터 관리자 설정 > 외부 서비스 연동, docs/COST_POLICY.md) ─────────────
+// 분야별(PG·배송·배송조회) 업체 목록, 분야마다 「추천」 1개·「선택된 업체」 1개. 추천·가중치는 코드에 고정하지 않고 마스터 관리자가 바꾼다.
+// 요금(referenceFee)은 공개 기준 참고값(글)이며 실제 계약 조건이 아니다. 실제 외부 연동·계약은 하지 않는다.
+// features: 분야별 허용 키 목록(String), ratings: { 평가 항목 키: 0~10 } (점수는 가중치로 서버가 계산).
+// (추천·선택 업체 id, category) → ServiceVendor(id, category) 복합 외래키(분야가 다른 업체를 못 고름)와 CHECK는 마이그레이션 SQL에 있다.
+enum ServiceVendorCategory {
+  PG
+  SHIPPING
+  TRACKING
+}
+
+model ServiceVendor {
+  id           String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  category     ServiceVendorCategory
+  name         String
+  features     String[]              @default([])
+  referenceFee String?
+  memo         String?
+  ratings      Json                  @default("{}")
+  active       Boolean               @default(true)
+  createdAt    DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime              @default(now()) @updatedAt @db.Timestamptz(3)
+
+  logo ServiceVendorLogo?
+
+  @@unique([category, name])
+  @@unique([id, category])
+}
+
+// 업체 로고(PNG, 256KB 이하, 16~600px). 플랫폼 저장소(지금은 Postgres)에 보관한다. 외부 주소 직접 연결 금지.
+model ServiceVendorLogo {
+  vendorId  String   @id @db.Uuid
+  data      Bytes
+  type      String
+  hash      String
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  vendor ServiceVendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+}
+
+model ServiceVendorSetting {
+  category            ServiceVendorCategory @id
+  weights             Json
+  recommendedVendorId String?               @db.Uuid
+  selectedVendorId    String?               @db.Uuid
+  updatedAt           DateTime              @default(now()) @updatedAt @db.Timestamptz(3)
 }
 
 // ───────────── 자동 설치·연결 상품 (docs/AUTOMATION.md) ─────────────
@@ -2101,6 +2281,8 @@ model CartItem {
   buyerMemberId String   @db.Uuid
   optionId      String   @db.Uuid
   quantity      Int
+  // 담거나 수량을 바꿀 때 보여 준 단가(이벤트 할인 반영). 장바구니가 지금 단가와 비교해 「가격이 바뀌었어요」를 알린다. 비교용이라 주문 금액에는 쓰지 않는다. 이전 줄은 null.
+  addedUnitPrice Int?
   createdAt     DateTime @default(now()) @db.Timestamptz(3)
   updatedAt     DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 
@@ -2269,6 +2451,20 @@ enum ReturnStatus {
   CANCELLED
 }
 
+// 수거 방법(접수할 때 판매자가 정함): 택배사 수거 접수 / 구매자 직접 발송 / 수거 없음(폐기·사진 확인)
+enum ReturnPickup {
+  COURIER
+  BUYER_SHIP
+  NONE
+}
+
+// 검수 결과(회수 완료 뒤 판매자가 입력). 이상 없음일 때만 바로 환불·교환 발송, 그 밖은 반송·거절을 고른다.
+enum ReturnInspection {
+  OK
+  USED_DAMAGED
+  MISSING_PARTS
+}
+
 enum ReturnReason {
   CHANGE_OF_MIND
   DEFECTIVE
@@ -2301,6 +2497,16 @@ model ReturnRequest {
   exchangeTrackingNumber String?
   // 반품 환불 결과(환불한 금액)
   refundAmount           Int?
+  // v2: 수거 방법, 검수 결과, 교환 재고 없음 처리(재입고 뒤 발송 보류·환불 전환), 무통장 주문 환불 계좌(환불·종료 뒤 비운다)
+  pickupMethod           ReturnPickup @default(BUYER_SHIP)
+  inspectionResult       ReturnInspection?
+  inspectionNote         String?
+  inspectedAt            DateTime?    @db.Timestamptz(3)
+  exchangeHeldAt         DateTime?    @db.Timestamptz(3)
+  convertedFromExchange  Boolean      @default(false)
+  refundBankName         String?
+  refundAccountHolder    String?
+  refundAccountNumber    String?
   acceptedAt             DateTime?    @db.Timestamptz(3)
   receivedAt             DateTime?    @db.Timestamptz(3)
   completedAt            DateTime?    @db.Timestamptz(3)
@@ -2504,6 +2710,14 @@ enum MessageChannel {
   IDENTITY_VERIFICATION
   // 배송 자동 조회(배송 완료 자동 처리를 켠 경우)
   DELIVERY_TRACKING
+  // 송장번호 발급 API(실제 건당 비용이 드는 경우)
+  INVOICE_ISSUE
+  // 송장 라벨 생성 API
+  INVOICE_LABEL
+  // 현금영수증 발급 API
+  CASH_RECEIPT
+  // 전자세금계산서 발급 API
+  TAX_INVOICE
 }
 
 enum MessageLedgerType {
@@ -3025,6 +3239,91 @@ model RefundRequest {
   @@index([sellerId, buyerMemberId, createdAt])
 }
 
+// 현금영수증·세금계산서 신청과 발행 이력(SA-024 · SH-005·SH-022, MASTER 배정 2026-10-05, lib/server/receipts/service.ts).
+// 무통장·계좌이체 주문에 구매자가 신청하고, 파트너스(RECEIPT_TAX)가 상태를 본다. 외부 발급 연동은 아직 없어 발행은 PENDING으로 남는다(발행 업체 결정 전).
+// 주문당 진행 중(철회하지 않은) 신청은 1건(마이그레이션 SQL 부분 유니크).
+enum ReceiptKind {
+  CASH_RECEIPT_INCOME
+  CASH_RECEIPT_EXPENSE
+  TAX_INVOICE
+}
+
+enum ReceiptIssueStatus {
+  PENDING
+  // 충전금 잔액이 모자라 발급을 미룸(주문은 그대로, 충전하거나 파트너스가 다시 시도하면 대기로)
+  ON_HOLD
+  ISSUED
+  FAILED
+  CANCELLED
+}
+
+model OrderReceiptRequest {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String      @db.Uuid
+  orderId       String      @db.Uuid
+  buyerMemberId String      @db.Uuid
+  kind          ReceiptKind
+  // 휴대폰·사업자등록번호(숫자). 원문은 저장하지 않고 AES-256-GCM으로 봉인해 두며(판매자 id를 AAD로 묶음), 화면에는 뒤 4자리만 보인다.
+  identitySealed String
+  identityLast4  String
+  // 세금계산서: { companyName, representative, email }. 사업자등록번호는 identity를 쓴다.
+  taxInfo        Json?
+  withdrawnAt    DateTime?   @db.Timestamptz(3)
+  createdAt      DateTime    @default(now()) @db.Timestamptz(3)
+
+  order       Order          @relation(fields: [sellerId, orderId], references: [sellerId, id])
+  buyerMember BuyerMember    @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id])
+  issues      ReceiptIssue[]
+
+  @@unique([sellerId, id])
+  @@index([sellerId, createdAt])
+  @@index([sellerId, orderId])
+}
+
+model ReceiptIssue {
+  id         String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId   String             @db.Uuid
+  requestId  String             @db.Uuid
+  status     ReceiptIssueStatus @default(PENDING)
+  amount     Int
+  // 외부 발급 건당비를 파트너스 「발송·이용 충전금」에서 차감하는 발급인지(docs/COST_POLICY.md). 차감 연동은 발행 업체 결정 뒤.
+  chargeable Boolean            @default(true)
+  attempts   Int                @default(0)
+  failureCode String?
+  // 발행 업체가 준 문서 번호(연동 뒤)
+  providerKey String?
+  issuedAt    DateTime?         @db.Timestamptz(3)
+  cancelledAt DateTime?         @db.Timestamptz(3)
+  createdAt   DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime          @updatedAt @db.Timestamptz(3)
+
+  request OrderReceiptRequest @relation(fields: [sellerId, requestId], references: [sellerId, id])
+
+  @@index([sellerId, status, createdAt])
+  @@index([sellerId, requestId])
+}
+
+// 현금영수증·전자세금계산서를 파트너스(판매자) 명의로 발행할 때 쓰는 발행자 정보(SA-024, 대표님 결정 2026-10-05 「영수증은 파트너스 이름으로 발행」).
+// 인증서는 발행 업체 쪽에 등록하며 여기에는 등록 상태만 둔다(업체 연동 전에는 NOT_REGISTERED).
+enum ReceiptCertStatus {
+  NOT_REGISTERED
+  REGISTERED
+  EXPIRED
+}
+
+model SellerReceiptIssuer {
+  sellerId        String            @id @db.Uuid
+  businessNumber  String
+  companyName     String
+  representative  String
+  certStatus      ReceiptCertStatus @default(NOT_REGISTERED)
+  certCheckedAt   DateTime?         @db.Timestamptz(3)
+  createdAt       DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime          @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+}
+
 // ───────────── 플랫폼 문의(파트너스 → 플랫폼, SA-113·114·115 · 마스터 MA-051·052) ─────────────
 
 enum PlatformInquiryCategory {
@@ -3202,4 +3501,355 @@ model AssistantLedger {
   @@index([createdAt(sort: Desc), id(sort: Desc)])
   @@index([status, createdAt(sort: Desc)])
   @@index([month])
+}
+
+// ───── 외부 쇼핑몰 연동(SA-005·006, 오버레이 전용 판매자) ─────
+// 연결 상태: CONNECTED 연결됨 · REAUTH_REQUIRED 다시 연결 필요(토큰 만료·회수) · DISCONNECT_PENDING 해제 대기(쇼핑몰 쪽 철회 실패, 철회 재시도용 토큰 사본만 남김) · DISCONNECTED 해제됨
+enum ExternalShopStatus {
+  CONNECTED
+  REAUTH_REQUIRED
+  DISCONNECT_PENDING
+  DISCONNECTED
+}
+
+model ExternalShopConnection {
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId           String             @db.Uuid
+  // 외부 쇼핑몰 식별자(몰 id). 소문자 영숫자·하이픈, 주소로 만들지 않고 검증한 값으로만 호스트를 만든다(내부 주소 접속 차단)
+  shopKey            String
+  status             ExternalShopStatus @default(CONNECTED)
+  // OAuth 토큰은 BILLING_KEY_SECRET 기반 AES-256-GCM으로 판매자 id를 묶어 암호화해 저장한다(원문 저장·로그 금지)
+  accessTokenCipher  String?
+  refreshTokenCipher String?
+  accessExpiresAt    DateTime?          @db.Timestamptz(3)
+  refreshExpiresAt   DateTime?          @db.Timestamptz(3)
+  scopes             String?
+  connectedAt        DateTime           @default(now()) @db.Timestamptz(3)
+  lastEventAt        DateTime?          @db.Timestamptz(3)
+  disconnectedAt     DateTime?          @db.Timestamptz(3)
+  createdAt          DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime           @updatedAt @db.Timestamptz(3)
+
+  seller Seller                 @relation(fields: [sellerId], references: [id])
+  events ExternalWebhookEvent[]
+  orders ExternalOrder[]
+
+  @@unique([sellerId, id])
+  @@unique([sellerId, shopKey])
+  // 같은 외부 쇼핑몰이 두 파트너스에 동시에 붙지 않는다(연결 중 상태만, 마이그레이션 부분 유니크)
+  @@index([shopKey, status])
+}
+
+// OAuth 시작 때 만드는 1회용·만료 state(해시만 저장). 콜백은 시작한 판매자·직원 세션과 같을 때만 받는다(로그인 CSRF 방지).
+model ExternalOAuthState {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId  String    @db.Uuid
+  userId    String    @db.Uuid
+  shopKey   String
+  stateHash String    @unique
+  expiresAt DateTime  @db.Timestamptz(3)
+  usedAt    DateTime? @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([sellerId, createdAt])
+}
+
+// 받은 웹훅 원본(서명 검증을 통과한 것만). eventKey는 원본 본문 해시라 같은 이벤트 재전송은 한 번만 저장한다.
+// 개인정보가 들어 있을 수 있어 보관 기간(받은 날부터 30일, 대표님 확인 대기)과 자동 삭제는 주문 저장 PR에서 함께 넣는다.
+model ExternalWebhookEvent {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId     String    @db.Uuid
+  connectionId String    @db.Uuid
+  eventKey     String
+  payload      Json
+  receivedAt   DateTime  @default(now()) @db.Timestamptz(3)
+  processedAt  DateTime? @db.Timestamptz(3)
+
+  connection ExternalShopConnection @relation(fields: [sellerId, connectionId], references: [sellerId, id])
+
+  @@unique([connectionId, eventKey])
+  @@index([sellerId, receivedAt])
+}
+
+// ───────────── 구매자 문의(상품 문의·1:1 문의, SA-046·047) ─────────────
+// PRODUCT=상품 문의(productId 필수), GENERAL=1:1 문의. 답변은 판매자 하나(고치거나 지우면 다시 WAITING).
+enum BuyerInquiryKind {
+  PRODUCT
+  GENERAL
+}
+
+enum BuyerInquiryStatus {
+  WAITING
+  ANSWERED
+}
+
+// 구매자가 쓴 문의. 답변 전에만 구매자가 고치거나 지울 수 있다(지우면 행과 사진을 모두 지움).
+// 탈퇴하면 작성자 표시를 「탈퇴 회원」으로 바꾸고 사진은 지운다. 글은 판매자의 응대 기록으로 남긴다.
+model BuyerInquiry {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId          String             @db.Uuid
+  buyerMemberId     String             @db.Uuid
+  kind              BuyerInquiryKind
+  productId         String?            @db.Uuid
+  authorNickname    String
+  title             String
+  body              String
+  isPrivate         Boolean            @default(false)
+  status            BuyerInquiryStatus @default(WAITING)
+  answer            String?
+  answeredAt        DateTime?          @db.Timestamptz(3)
+  answeredBySellerUserId String?       @db.Uuid
+  createdAt         DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime           @default(now()) @db.Timestamptz(3)
+
+  seller      Seller              @relation(fields: [sellerId], references: [id])
+  buyerMember BuyerMember         @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id])
+  product     Product?            @relation(fields: [sellerId, productId], references: [sellerId, id])
+  images      BuyerInquiryImage[]
+
+  @@unique([sellerId, id])
+  @@index([sellerId, status, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([sellerId, buyerMemberId, createdAt(sort: Desc), id(sort: Desc)])
+}
+
+// 문의 첨부 사진. 먼저 올리고(inquiryId 없음) 문의를 보낼 때 붙인다. 붙지 않은 사진은 회원당 10장까지 두고 오래된 것부터 지운다.
+model BuyerInquiryImage {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String   @db.Uuid
+  buyerMemberId String   @db.Uuid
+  inquiryId     String?  @db.Uuid
+  data          Bytes
+  contentType   String
+  byteSize      Int
+  width         Int
+  height        Int
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+
+  seller      Seller        @relation(fields: [sellerId], references: [id])
+  buyerMember BuyerMember   @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id], onDelete: Cascade)
+  inquiry     BuyerInquiry? @relation(fields: [sellerId, inquiryId], references: [sellerId, id], onDelete: Cascade)
+
+  @@unique([sellerId, id])
+  @@index([sellerId, inquiryId])
+  @@index([sellerId, buyerMemberId, inquiryId, createdAt])
+}
+
+// ───────────── 알림 센터(MA-002 · SA-130) ─────────────
+
+// 파트너스 계정이 알림 센터를 마지막으로 본 시각. 알림은 공지·문의에서 바로 만들어 주고 따로 쌓지 않는다.
+// 공지 알림은 이 시각 이후 게시분이 안 읽음이다(문의 답변은 문의를 열면 읽음). 계정마다 한 줄.
+model SellerNotificationSeen {
+  sellerUserId String   @id @db.Uuid
+  seenAt       DateTime @db.Timestamptz(3)
+}
+
+// ───────────── 쇼핑몰 검색(유사어·인기 검색어, 기반-쇼핑몰) ─────────────
+// 유사어 묶음: 묶음 안 단어는 서로 같은 뜻으로 검색한다(예: 포켓몬·pokemon). 판매자마다 최대 50묶음, 묶음당 2~10단어.
+model ShopSearchSynonym {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId  String   @db.Uuid
+  words     String[]
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@index([sellerId])
+}
+
+// 인기 검색어 자체 집계(KST 날짜·단어별 횟수, 개인 식별 정보 없음, 무료). 8일이 지난 행은 집계할 때 지운다.
+model ShopSearchTerm {
+  sellerId String   @db.Uuid
+  day      DateTime @db.Date
+  term     String
+  count    Int      @default(1)
+
+  seller Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@id([sellerId, day, term])
+}
+
+// ───────────── 마스터 대리 조회(MA-016) ─────────────
+
+// 마스터 관리자가 파트너스 화면을 읽기 전용으로 보는 세션(사유 필수, 30분). 파트너스 로그인 세션과 따로 둔다.
+// 쿠키 lo_imp(경로 /api/seller)로만 오고, proxy가 조회 허용 경로 밖은 막는다. 한 관리자에게 열린 세션은 하나만(새로 열면 앞의 것을 끝낸다).
+model AdminImpersonationSession {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  adminId   String    @db.Uuid
+  sellerId  String    @db.Uuid
+  tokenHash String    @unique
+  reason    String
+  ip        String?
+  userAgent String?
+  expiresAt DateTime  @db.Timestamptz(3)
+  endedAt   DateTime? @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([adminId, endedAt])
+  @@index([sellerId, createdAt])
+}
+
+// ───────────── 시작하기·온보딩(SA-003 · SA-004) ─────────────
+
+// 파트너스 시작하기 체크리스트의 저장 상태(쇼핑몰마다 한 줄). 단계 완료는 상품·연동·설정 같은 기존 데이터에서 그때그때 계산하고,
+// 계산할 수 없는 것(오버레이 주소를 복사했음, 체크리스트를 닫음)만 여기에 둔다.
+model SellerOnboarding {
+  sellerId           String    @id @db.Uuid
+  overlayUrlCopiedAt DateTime? @db.Timestamptz(3)
+  dismissedAt        DateTime? @db.Timestamptz(3)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(3)
+}
+
+// ───────────── 쇼핑몰별 이용약관·개인정보처리방침(구매자 화면 /shop/[슬러그]/terms·privacy) ─────────────
+
+enum ShopLegalKind {
+  TERMS
+  PRIVACY
+}
+
+// 파트너스가 입력한 본문만 보여 준다(기본 서식은 게시 조건이 있어 앱이 대신 게시하지 않음, docs/terms). 쇼핑몰·종류마다 한 줄.
+// isPublished가 false이면 구매자 화면은 「준비 중」 안내. version은 저장할 때마다 올라가고 다른 창 덮어쓰기를 막는다(shop-legal/service.ts).
+model ShopLegalDoc {
+  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId    String        @db.Uuid
+  kind        ShopLegalKind
+  body        String        @default("")
+  effectiveOn DateTime?     @db.Date
+  isPublished Boolean       @default(false)
+  publishedAt DateTime?     @db.Timestamptz(3)
+  version     Int           @default(0)
+  createdAt   DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime      @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+
+  @@unique([sellerId, kind])
+}
+
+// 회원 대상 발송(SA-049, 2026-10-05). 실제 발송 채널(알림톡·문자·메일)과 충전 잔액 차감이 정해지기 전이라 「발송 기록」만 남긴다(RECORDED).
+// 광고성(AD)은 혜택·소식 수신 동의 회원만, 정보성(INFO)은 정상 회원 전체. 받는 사람 연락처는 저장하지 않는다(보낼 때 서버가 회원 행에서 읽는다).
+// 예약(SCHEDULED)은 시각이 되면 대상을 다시 계산해 받는 사람 행을 만들고 RECORDED로 바꾼다. 형식·상태 일치 CHECK는 마이그레이션 SQL.
+enum MemberMessageKind {
+  AD
+  INFO
+}
+
+// ALIMTALK_SMS=알림톡(실패 시 문자), ALIMTALK=알림톡만, MAIL=메일
+enum MemberMessageChannel {
+  ALIMTALK_SMS
+  ALIMTALK
+  MAIL
+}
+
+// ALL=전체, GRADE=등급(gradeIds), WISHED=찜한 회원(productId), BOUGHT_30D=최근 30일 구매, NOT_BOUGHT_90D=최근 90일 미구매, PRODUCT_BOUGHT=특정 상품 구매(productId), PICKED=직접 선택(memberIds)
+enum MemberMessageTarget {
+  ALL
+  GRADE
+  WISHED
+  BOUGHT_30D
+  NOT_BOUGHT_90D
+  PRODUCT_BOUGHT
+  PICKED
+}
+
+enum MemberMessageStatus {
+  SCHEDULED
+  RECORDED
+  CANCELLED
+}
+
+model MemberMessage {
+  id             String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId       String               @db.Uuid
+  title          String
+  kind           MemberMessageKind
+  channel        MemberMessageChannel
+  // 파트너스가 쓴 문구와, (광고)·쇼핑몰 이름·수신거부 문구를 붙인 최종 문구
+  body           String
+  renderedBody   String
+  targetType     MemberMessageTarget
+  targetParams   Json                 @default("{}")
+  status         MemberMessageStatus
+  scheduledAt    DateTime?            @db.Timestamptz(3)
+  recordedAt     DateTime?            @db.Timestamptz(3)
+  // 만들 때 계산한 예상 대상 수 / 기록 때 확정한 받는 사람 수와 하루 2건 한도로 뺀 수
+  estimatedCount Int
+  recipientCount Int?
+  skippedDailyCap Int                 @default(0)
+  staffId        String?              @db.Uuid
+  createdAt      DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime             @default(now()) @db.Timestamptz(3)
+
+  seller     Seller                   @relation(fields: [sellerId], references: [id])
+  recipients MemberMessageRecipient[]
+
+  @@unique([sellerId, id])
+  @@index([sellerId, createdAt(sort: Desc)])
+  @@index([status, scheduledAt])
+}
+
+// 받는 사람(기록 때 확정). 탈퇴하면 지운다(shop-member-messages, buyers/memberData.ts).
+model MemberMessageRecipient {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String   @db.Uuid
+  messageId     String   @db.Uuid
+  buyerMemberId String   @db.Uuid
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+
+  seller  Seller        @relation(fields: [sellerId], references: [id])
+  message MemberMessage @relation(fields: [sellerId, messageId], references: [sellerId, id], onDelete: Cascade)
+  member  BuyerMember   @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id], onDelete: Cascade)
+
+  @@unique([messageId, buyerMemberId])
+  @@index([sellerId, buyerMemberId, createdAt])
+}
+
+// 외부 쇼핑몰 주문(오버레이 전용 파트너스). 방송 표시에 필요한 최소 정보만 저장한다(개인정보 최소 수집, 보관 기간·삭제는 별도 확정 대기).
+// 내부 Order와 별개라 ONQ 회원·상품 행을 만들지 않는다. 같은 연결의 같은 외부 주문번호는 한 번만 저장한다.
+model ExternalOrder {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId        String    @db.Uuid
+  connectionId    String    @db.Uuid
+  externalOrderId String
+  // 방송에 보이는 이름(닉네임·마스킹된 이름). 없으면 「외부 주문」
+  buyerLabel      String?
+  // 취소·환불이 들어오면 취소로 바꾼다(주문 자체는 지우지 않는다)
+  cancelledAt     DateTime? @db.Timestamptz(3)
+  receivedAt      DateTime  @default(now()) @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
+
+  seller     Seller                 @relation(fields: [sellerId], references: [id])
+  connection ExternalShopConnection @relation(fields: [sellerId, connectionId], references: [sellerId, id])
+  queueItems QueueItem[]
+
+  @@unique([sellerId, id])
+  @@unique([connectionId, externalOrderId])
+  @@index([sellerId, receivedAt])
+}
+
+// ───────────── 전환 단계 통계(상품 상세 → 장바구니 → 주문 → 결제, 대표님 결정 2026-10-05 A안) ─────────────
+// 로그인한 구매자 회원의 상품 상세 조회·장바구니 담기만 일(KST) 단위로 센다(비회원·익명 쿠키 기록 없음). 주문·결제는 기존 주문 표에서 계산한다.
+// 같은 회원이 같은 상품을 같은 날 여러 번 보거나 담아도 한 번만 센다. 어느 회원인지는 일 단위 HMAC 값으로만 두고(원문 식별자 없음), 8일 뒤 지운다.
+// 일 집계는 400일 보관한다. 정리 작업은 jobs/scheduler.ts. 서비스는 lib/server/stats/funnel.ts(기록 실패가 구매자 화면을 막지 않는다).
+model ProductFunnelDaily {
+  sellerId  String   @db.Uuid
+  productId String   @db.Uuid
+  day       DateTime @db.Date
+  views     Int      @default(0)
+  cartAdds  Int      @default(0)
+
+  @@id([sellerId, productId, day])
+  @@index([sellerId, day])
+}
+
+// 중복 제거용 임시 표. kind: V(상품 상세 조회) · C(장바구니 담기). viewerHash = HMAC(서버 비밀키, 일|쇼핑몰|회원).
+model ProductFunnelSeen {
+  sellerId   String   @db.Uuid
+  productId  String   @db.Uuid
+  day        DateTime @db.Date
+  kind       String   @db.Char(1)
+  viewerHash String
+
+  @@id([sellerId, productId, day, kind, viewerHash])
+  @@index([day])
 }

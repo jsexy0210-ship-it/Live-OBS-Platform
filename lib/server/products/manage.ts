@@ -6,6 +6,7 @@ import { dbClock } from "../orders/overdue";
 import { kstDayStart } from "../orders/read";
 import { INT4_MAX } from "../orders/shipping";
 import { cleanText } from "../text/clean";
+import { parseSearchTags } from "../shop-search/service";
 import { eventFits, eventOf, eventView } from "./event";
 import { listProductImages, thumbnailUrls } from "./images";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
@@ -351,6 +352,7 @@ export async function getProduct(db: PrismaClient, ctx: TenantContext, productId
 export type NewProductInput = {
   name: string;
   description: string | null;
+  searchTags: string[];
   price: number;
   status: ProductStatus;
   sortOrder: number;
@@ -369,7 +371,9 @@ export function parseNewProduct(raw: unknown): ProductResult<NewProductInput> {
   const status = b.status ?? "DRAFT";
   const sortOrder = b.sortOrder ?? 0;
   const stockDeductMode = b.stockDeductMode ?? "PAYMENT";
+  const searchTags = parseSearchTags(b.searchTags);
   if (
+    searchTags === null ||
     description === undefined ||
     !PRODUCT_STATUSES.includes(status as ProductStatus) ||
     !isInt(sortOrder, -100000, 100000) ||
@@ -390,19 +394,19 @@ export function parseNewProduct(raw: unknown): ProductResult<NewProductInput> {
     options.push({ ...o, sortOrder: o.sortOrder ?? index });
   }
   if (status === "ON_SALE" && options.length === 0) return fail("no_sellable_option");
-  return { ok: true, value: { name, description, price, status: status as ProductStatus, sortOrder, stockDeductMode: stockDeductMode as StockDeductMode, options } };
+  return { ok: true, value: { name, description, searchTags, price, status: status as ProductStatus, sortOrder, stockDeductMode: stockDeductMode as StockDeductMode, options } };
 }
 
 export async function createProduct(db: PrismaClient, ctx: TenantContext, raw: unknown): Promise<ProductResult<Awaited<ReturnType<typeof productView>>>> {
   requireSellerPermission(ctx, "PRODUCT_MANAGE");
   const parsed = parseNewProduct(raw);
   if (!parsed.ok) return parsed;
-  const { name, description, price, status, sortOrder, stockDeductMode, options } = parsed.value;
+  const { name, description, searchTags, price, status, sortOrder, stockDeductMode, options } = parsed.value;
 
   return db.$transaction(async (tx) => {
     const now = await dbNow(tx);
     const product = await tx.product.create({
-      data: { sellerId: ctx.sellerId, name, description, price, status, sortOrder, stockDeductMode, createdAt: now },
+      data: { sellerId: ctx.sellerId, name, description, searchTags, price, status, sortOrder, stockDeductMode, createdAt: now },
     });
     for (const o of options) {
       const created = await tx.productOption.create({ data: { sellerId: ctx.sellerId, productId: product.id, ...o, createdAt: now } });
@@ -445,6 +449,11 @@ export async function updateProduct(
     const description = multiline(b.description, 5000);
     if (description === undefined) return fail("invalid_product");
     data.description = description;
+  }
+  if (b.searchTags !== undefined) {
+    const searchTags = parseSearchTags(b.searchTags);
+    if (searchTags === null) return fail("invalid_product");
+    data.searchTags = searchTags;
   }
   if (b.status !== undefined) {
     if (!PRODUCT_STATUSES.includes(b.status as ProductStatus)) return fail("invalid_product");

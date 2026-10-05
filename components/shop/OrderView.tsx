@@ -1,5 +1,6 @@
 "use client";
 
+import ShopBack from "./ShopBack";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -64,6 +65,7 @@ export default function OrderView({ slug, orderId }: { slug: string; orderId: st
 
   const wrap = (body: React.ReactNode, title = "주문 상세") => (
     <div className="shop-wrap cart-wrap">
+      <ShopBack fallback={`/shop/${encodeURIComponent(slug)}/orders`} label="주문 내역" />
       <div className="cart-head">
         <h1>{title}</h1>
         {done && (
