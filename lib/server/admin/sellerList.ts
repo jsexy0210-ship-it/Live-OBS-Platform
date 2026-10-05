@@ -49,36 +49,25 @@ const flag = (v: string | null | undefined): boolean | undefined => (v == null |
 const esc = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
 
 // 표시용 상태: 이용 정지·탈퇴는 판매자 상태, 연체는 구독 연체, 체험 중은 구독 없이 체험 기간 안, 구독이 없고 체험도 끝나면 이용 잠김, 나머지는 정상.
+// 파트너스(승인 전 신청·반려 포함 전체 쇼핑몰) 수만큼의 행에 인덱스로 한 줄씩 찾아 붙인다. 주문·결제·방송·회원 표를 통째로 GROUP BY하지 않는다(요청마다 전체 집계 금지, 검수 지적).
+// 쓰는 인덱스: Order(sellerId, paidAt)·(sellerId, createdAt) · BroadcastSession(sellerId, status)·(sellerId, startedAt) · Payment(sellerId, approvedAt)·(sellerId, status, updatedAt).
+// 회원 수는 정렬·필터에 쓰지 않으므로 화면에 나가는 쪽(최대 limit건)만 따로 센다(memberCounts).
 const metricsCte = (now: Date) => {
   const nowKst = new Date(now.getTime() + KST_MS);
   const monthStart = new Date(Date.UTC(nowKst.getUTCFullYear(), nowKst.getUTCMonth(), 1) - KST_MS);
   const dayAgo = new Date(now.getTime() - DAY_MS);
   return Prisma.sql`
-  WITH ord AS (
-    SELECT "sellerId", count(*) FILTER (WHERE "paidAt" >= ${monthStart})::int AS month_orders, max("createdAt") AS last_order FROM "Order" GROUP BY "sellerId"
-  ), mem AS (
-    SELECT "sellerId", count(*) FILTER (WHERE "status"::text <> 'WITHDRAWN')::int AS members FROM "BuyerMember" GROUP BY "sellerId"
-  ), liv AS (
-    SELECT "sellerId", bool_or("status"::text = 'LIVE') AS live, max("startedAt") AS last_start FROM "BroadcastSession" GROUP BY "sellerId"
-  ), usr AS (
-    SELECT "sellerId", max("lastLoginAt") AS last_login FROM "SellerUser" GROUP BY "sellerId"
-  ), pay AS (
-    SELECT "sellerId", max("approvedAt") AS last_ok, max("updatedAt") FILTER (WHERE "status"::text = 'FAILED') AS last_fail,
-      count(*) FILTER (WHERE "status"::text = 'FAILED' AND "updatedAt" > ${dayAgo})::int AS fail24
-    FROM "Payment" GROUP BY "sellerId"
-  ), nt AS (
-    SELECT "sellerId", count(*)::int AS notes FROM "SellerAdminNote" GROUP BY "sellerId"
-  ), m AS (
+  WITH m AS (
     SELECT se."id", se."slug", se."shopName", se."status"::text AS status, se."createdAt", se."approvedAt", se."trialEndsAt",
       se."businessInfo"->>'representativeName' AS rep_name, se."businessInfo"->>'businessNumber' AS biz_no,
       (SELECT u."email" FROM "SellerUser" u WHERE u."sellerId" = se."id" AND u."isOwner" LIMIT 1) AS owner_email,
       pl."code" AS plan_code, pl."name" AS plan_name,
       ss."status"::text AS sub_status, ss."cancelAtPeriodEnd" AS sub_cancel, ss."currentPeriodEnd" AS sub_end,
       row_number() OVER (ORDER BY se."createdAt", se."id")::int AS seq,
-      coalesce(ord.month_orders, 0) AS month_orders, coalesce(mem.members, 0) AS members, coalesce(liv.live, false) AS live,
-      greatest(usr.last_login, liv.last_start, ord.last_order) AS last_activity,
-      pay.last_ok, pay.last_fail,
-      CASE WHEN coalesce(pay.fail24, 0) > 0 AND (pay.last_ok IS NULL OR pay.last_fail > pay.last_ok) THEN 'ERROR' WHEN pay.last_ok IS NOT NULL THEN 'OK' ELSE 'NONE' END AS pg,
+      coalesce(ord.month_orders, 0) AS month_orders, coalesce(liv.live, false) AS live,
+      greatest(usr.last_login, lst.last_start, lo.last_order) AS last_activity,
+      pok.last_ok, pfl.last_fail,
+      CASE WHEN coalesce(f24.fail24, 0) > 0 AND (pok.last_ok IS NULL OR pfl.last_fail > pok.last_ok) THEN 'ERROR' WHEN pok.last_ok IS NOT NULL THEN 'OK' ELSE 'NONE' END AS pg,
       coalesce(rp."livePayoutEnabled", false) AS payout, coalesce(nt.notes, 0) AS notes,
       CASE se."status"::text
         WHEN 'CLOSED' THEN 'CLOSED' WHEN 'SUSPENDED' THEN 'SUSPENDED' WHEN 'PENDING' THEN 'PENDING' WHEN 'REJECTED' THEN 'REJECTED'
@@ -90,11 +79,26 @@ const metricsCte = (now: Date) => {
     FROM "Seller" se
     LEFT JOIN "SubscriptionPlan" pl ON pl."id" = se."planId"
     LEFT JOIN "SellerSubscription" ss ON ss."sellerId" = se."id"
-    LEFT JOIN ord ON ord."sellerId" = se."id" LEFT JOIN mem ON mem."sellerId" = se."id" LEFT JOIN liv ON liv."sellerId" = se."id"
-    LEFT JOIN usr ON usr."sellerId" = se."id" LEFT JOIN pay ON pay."sellerId" = se."id" LEFT JOIN nt ON nt."sellerId" = se."id"
+    LEFT JOIN LATERAL (SELECT count(*)::int AS month_orders FROM "Order" o WHERE o."sellerId" = se."id" AND o."paidAt" >= ${monthStart}) ord ON TRUE
+    LEFT JOIN LATERAL (SELECT TRUE AS live FROM "BroadcastSession" b WHERE b."sellerId" = se."id" AND b."status"::text = 'LIVE' LIMIT 1) liv ON TRUE
+    LEFT JOIN LATERAL (SELECT b."startedAt" AS last_start FROM "BroadcastSession" b WHERE b."sellerId" = se."id" ORDER BY b."startedAt" DESC LIMIT 1) lst ON TRUE
+    LEFT JOIN LATERAL (SELECT o."createdAt" AS last_order FROM "Order" o WHERE o."sellerId" = se."id" ORDER BY o."createdAt" DESC, o."id" DESC LIMIT 1) lo ON TRUE
+    LEFT JOIN LATERAL (SELECT max(u."lastLoginAt") AS last_login FROM "SellerUser" u WHERE u."sellerId" = se."id") usr ON TRUE
+    LEFT JOIN LATERAL (SELECT p."approvedAt" AS last_ok FROM "Payment" p WHERE p."sellerId" = se."id" AND p."approvedAt" IS NOT NULL ORDER BY p."approvedAt" DESC LIMIT 1) pok ON TRUE
+    LEFT JOIN LATERAL (SELECT p."updatedAt" AS last_fail FROM "Payment" p WHERE p."sellerId" = se."id" AND p."status"::text = 'FAILED' ORDER BY p."updatedAt" DESC LIMIT 1) pfl ON TRUE
+    LEFT JOIN LATERAL (SELECT count(*)::int AS fail24 FROM "Payment" p WHERE p."sellerId" = se."id" AND p."status"::text = 'FAILED' AND p."updatedAt" > ${dayAgo}) f24 ON TRUE
+    LEFT JOIN LATERAL (SELECT count(*)::int AS notes FROM "SellerAdminNote" n WHERE n."sellerId" = se."id") nt ON TRUE
     LEFT JOIN "RewardPolicy" rp ON rp."sellerId" = se."id"
   )`;
 };
+
+// 화면에 나가는 파트너스의 회원 수(탈퇴 제외). 전체 회원 표를 훑지 않고 해당 쇼핑몰만 센다.
+async function memberCounts(db: PrismaClient, ids: string[]) {
+  if (ids.length === 0) return new Map<string, number>();
+  const rows = await db.$queryRaw<{ sellerId: string; n: number }[]>`
+    SELECT "sellerId", count(*)::int AS n FROM "BuyerMember" WHERE "sellerId" = ANY(${ids}::uuid[]) AND "status"::text <> 'WITHDRAWN' GROUP BY "sellerId"`;
+  return new Map(rows.map((r) => [r.sellerId, r.n]));
+}
 
 type Parsed = { where: Prisma.Sql; order: Prisma.Sql; sort: (typeof SELLER_LIST_SORTS)[number]; wantSummary: boolean };
 
@@ -118,6 +122,8 @@ function parse(query: AdminSellerListQuery, now: Date): Parsed | null {
   if ((query.joinedFrom && !from) || (query.joinedTo && !to) || (from && to && from > to)) return null;
 
   const w: Prisma.Sql[] = [];
+  // 파트너스 목록은 가입이 끝난 쇼핑몰만(가입 신청 중·반려는 가입 신청 화면, 요약 total과 같은 기준). status·state를 직접 고르면 그대로 따른다.
+  if (!status && !state) w.push(Prisma.sql`status NOT IN ('PENDING', 'REJECTED')`);
   if (status) w.push(Prisma.sql`status = ${status}`);
   if (state) w.push(Prisma.sql`state = ${state}`);
   if (plan) w.push(Prisma.sql`plan_code = ${plan}`);
@@ -158,11 +164,11 @@ function parse(query: AdminSellerListQuery, now: Date): Parsed | null {
 type Row = {
   id: string; slug: string; shopName: string; status: string; createdAt: Date; approvedAt: Date | null; trialEndsAt: Date | null; rep_name: string | null;
   plan_code: string | null; plan_name: string | null; sub_status: string | null; sub_cancel: boolean | null; sub_end: Date | null;
-  seq: number; month_orders: number; members: number; live: boolean; last_activity: Date | null; last_ok: Date | null; last_fail: Date | null;
+  seq: number; month_orders: number; live: boolean; last_activity: Date | null; last_ok: Date | null; last_fail: Date | null;
   pg: "OK" | "ERROR" | "NONE"; payout: boolean; notes: number; state: string; total: number;
 };
 
-const view = (r: Row) => ({
+const view = (r: Row, members: number) => ({
   id: r.id,
   slug: r.slug,
   shopName: r.shopName,
@@ -180,7 +186,7 @@ const view = (r: Row) => ({
   pg: { status: r.pg, lastSuccessAt: r.last_ok, lastFailureAt: r.last_fail },
   live: r.live,
   ordersThisMonth: r.month_orders,
-  memberCount: r.members,
+  memberCount: members,
   // 최근 활동: 직원 마지막 로그인·방송 시작·주문 생성 중 가장 최근(없으면 null)
   lastActivityAt: r.last_activity,
   payoutEnabled: r.payout,
@@ -200,10 +206,11 @@ export async function listAdminSellers(db: PrismaClient, admin: AdminSessionCont
   const rows = await db.$queryRaw<Row[]>`${metricsCte(now)}
     SELECT *, count(*) OVER ()::int AS total FROM m ${p.where} ORDER BY ${p.order} OFFSET ${offset} LIMIT ${take + 1}`;
   const page = rows.slice(0, take);
+  const counts = await memberCounts(db, page.map((r) => r.id));
   const summary = p.wantSummary ? await sellerListSummary(db, now) : undefined;
   return {
     ok: true as const,
-    sellers: page.map(view),
+    sellers: page.map((r) => view(r, counts.get(r.id) ?? 0)),
     // 조건에 맞는 전체 수(번호형 페이지용). 쪽 이동은 cursor(= 건너뛸 개수)로 한다
     total: rows[0]?.total ?? (offset > 0 ? null : 0),
     nextCursor: rows.length > take ? String(offset + take) : null,
@@ -249,11 +256,12 @@ export async function exportAdminSellers(db: PrismaClient, admin: AdminSessionCo
   if (!p) return { ok: false as const };
   const rows = await db.$queryRaw<Row[]>`${metricsCte(now)}
     SELECT *, count(*) OVER ()::int AS total FROM m ${p.where} ORDER BY ${p.order} LIMIT ${ADMIN_SELLER_EXPORT_MAX}`;
+  const counts = await memberCounts(db, rows.map((r) => r.id));
   const head = ["번호", "쇼핑몰 이름", "쇼핑몰 주소", "상태", "구독", "결제 연결", "방송 중", "이번 달 주문", "회원 수", "가입일", "최근 활동"];
   const csv = formatCsv([
     head,
     ...rows.map((r) => [
-      String(r.seq), guardText(r.shopName), r.slug, STATE_TEXT[r.state] ?? r.state, r.plan_name ?? "", PG_TEXT[r.pg], r.live ? "방송 중" : "", String(r.month_orders), String(r.members), KST_TEXT(r.createdAt), KST_TEXT(r.last_activity),
+      String(r.seq), guardText(r.shopName), r.slug, STATE_TEXT[r.state] ?? r.state, r.plan_name ?? "", PG_TEXT[r.pg], r.live ? "방송 중" : "", String(r.month_orders), String(counts.get(r.id) ?? 0), KST_TEXT(r.createdAt), KST_TEXT(r.last_activity),
     ]),
   ]);
   await writeAudit(db, {
