@@ -4,6 +4,7 @@ import { DELETE as endRoute, GET as activeRoute } from "../../app/api/admin/impe
 import { POST as startRoute } from "../../app/api/admin/sellers/[sellerId]/impersonate/route";
 import { POST as loginRoute } from "../../app/api/seller/auth/login/route";
 import { POST as logoutRoute } from "../../app/api/seller/auth/logout/route";
+import { GET as extShopsGet, POST as extShopsPost } from "../../app/api/seller/external-shops/route";
 import { GET as meRoute } from "../../app/api/seller/me/route";
 import { GET as sellerImpRoute } from "../../app/api/seller/impersonation/route";
 import { GET as ordersRoute } from "../../app/api/seller/orders/route";
@@ -213,6 +214,28 @@ describe("대리 조회 쿠키가 남은 브라우저의 파트너스 로그인�
   });
 });
 
+describe("외부 쇼핑몰 연동 조회 GET /api/seller/external-shops (대리 조회)", () => {
+  it("대리 조회로 그 파트너스의 연결 목록만 읽고(토큰·웹훅 값 없음, canManage false), 연결 만들기는 403이며 다른 파트너스의 연결은 보이지 않는다", async () => {
+    const { seller } = await shopWithOrder("연동 몰");
+    const other = await createSeller();
+    await db.externalShopConnection.create({ data: { sellerId: seller.id, shopKey: "my-mall", accessTokenCipher: "secret-cipher-value", refreshTokenCipher: "secret-refresh-value" } });
+    await db.externalShopConnection.create({ data: { sellerId: other.seller.id, shopKey: "other-mall" } });
+    const su = await admin("SUPER_ADMIN");
+    const { imp } = await start(su.cookie, seller.id);
+    const cookie = `lo_imp=${imp}`;
+    const through = await proxy(new NextRequest(BASE + "/api/seller/external-shops", { headers: { cookie } }));
+    expect(through.headers.get("x-middleware-next")).toBe("1");
+    const r = await json(await extShopsGet(req("/api/seller/external-shops", cookie)));
+    expect(r.status).toBe(200);
+    expect(r.body.canManage).toBe(false);
+    expect(r.body.connections.map((c: { shopKey: string }) => c.shopKey)).toEqual(["my-mall"]);
+    expect(JSON.stringify(r.body)).not.toMatch(/secret-cipher-value|secret-refresh-value|Cipher/);
+    // proxy를 거치지 않고 라우트를 직접 불러도 연결 만들기는 읽기 전용이라 403
+    expect((await extShopsPost(req("/api/seller/external-shops", cookie, "POST", { shopKey: "new-mall" }))).status).toBe(403);
+    expect(await db.externalShopConnection.count({ where: { sellerId: seller.id } })).toBe(1);
+  });
+});
+
 describe("proxy 안전망(대리 조회 쿠키가 있는 /api/seller 요청)", () => {
   const hit = async (method: string, path: string, cookie?: string) => {
     const res = await proxy(new NextRequest(BASE + path, { method, headers: cookie ? { cookie } : {} }));
@@ -220,7 +243,7 @@ describe("proxy 안전망(대리 조회 쿠키가 있는 /api/seller 요청)", (
   };
   it("조회 허용 경로의 GET·HEAD만 통과하고 나머지는 403 impersonation_read_only", async () => {
     const c = "lo_imp=imp.abc";
-    for (const p of ["/api/seller/orders", "/api/seller/orders/xyz", "/api/seller/members", "/api/seller/products", "/api/seller/products/xyz", "/api/seller/stats/sales", "/api/seller/impersonation", "/api/seller/me"]) {
+    for (const p of ["/api/seller/orders", "/api/seller/orders/xyz", "/api/seller/members", "/api/seller/products", "/api/seller/products/xyz", "/api/seller/stats/sales", "/api/seller/impersonation", "/api/seller/me", "/api/seller/external-shops"]) {
       expect(await hit("GET", p, c)).toEqual({ kind: "pass" });
     }
     expect(await hit("HEAD", "/api/seller/orders", c)).toEqual({ kind: "pass" });
@@ -235,6 +258,10 @@ describe("proxy 안전망(대리 조회 쿠키가 있는 /api/seller 요청)", (
       ["GET", "/api/seller/me/password"],
       ["GET", "/api/seller/me-evil"],
       ["POST", "/api/seller/me"],
+      ["POST", "/api/seller/external-shops"],
+      ["GET", "/api/seller/external-shops/xyz"],
+      ["GET", "/api/seller/external-shops/oauth-done"],
+      ["DELETE", "/api/seller/external-shops/xyz"],
       ["POST", "/api/seller/auth/login-evil"],
       ["POST", "/api/seller/password-reset-evil/start"],
       ["POST", "/api/seller/auth/me"],

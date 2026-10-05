@@ -1,0 +1,44 @@
+/* SA-120 내 계정: 정본(design/project/SA-120.dc.html)의 2열(.two) · 소제목(.sec-t) · 표형 폼(.ft → au-ft) 구조 */
+.acc-two {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--ui-sp-16);
+  align-items: start;
+}
+@media (max-width: 1023px) {
+  .acc-two {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.acc-sec-t {
+  margin: var(--ui-sp-8) 0 0;
+  padding: var(--ui-sp-8) 0;
+  font-size: var(--ui-fs-body);
+  line-height: var(--ui-lh-body);
+  font-weight: 800;
+  border-bottom: 1px solid var(--cs-line);
+}
+.acc-two > div > .acc-sec-t:first-child {
+  margin-top: 0;
+}
+.acc-sec-t + form > .au-ft {
+  border-top: 0;
+}
+.acc-in {
+  width: 100%;
+  max-width: 184px;
+}
+.acc-two .au-ft td .help,
+.acc-two .au-ft td .err {
+  display: block;
+  margin-top: var(--ui-sp-4);
+}
+.acc-two .au-ft td .btn + .help {
+  margin-top: var(--ui-sp-8);
+}
+/* 휴대폰 폭: 공통 표형 폼이 항목명을 위로 쌓으므로 빈 항목명 칸(버튼 줄)은 숨긴다 */
+@media (max-width: 767px) {
+  .acc-two .au-ft > tbody > tr > th:empty {
+    display: none;
+  }
+}
