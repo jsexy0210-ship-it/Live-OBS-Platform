@@ -10,6 +10,7 @@ import { AdminTopbar } from "../../../_components/AdminShell";
 import { ROLE_LABEL } from "../../../_components/accounts";
 import { ACTOR_LABEL, actionLabel, asRecord, keyLabel, targetLabel, valueText, type AuditDetail } from "../../../_components/auditLogs";
 import { dayTime } from "../../../_components/partners";
+import { useSmartBack } from "../../../../../../lib/client/navigation";
 
 // MA-071 로그 추적 상세(GET /api/admin/audit-logs/{id}, 최고관리자·운영·조회 전용, 조회만): 기록 정보와 바뀐 값(바꾸기 전·후).
 type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; log: AuditDetail };
@@ -44,6 +45,7 @@ function Changes({ before, after }: { before: unknown; after: unknown }) {
 }
 
 export default function AuditDetailPage() {
+  const back = useSmartBack("/admin/logs");
   const { logId } = useParams<{ logId: string }>();
   const [state, setState] = useState<Load>({ kind: "loading" });
   const load = useCallback(async () => {
@@ -75,9 +77,7 @@ export default function AuditDetailPage() {
         <PageHead
           title={l ? actionLabel(l.action) : "로그 상세"}
           actions={
-            <Link className="btn btn-out" href="/admin/logs">
-              로그 추적
-            </Link>
+            <button className="btn btn-out" type="button" onClick={back}>로그 추적</button>
           }
         />
         {!l ? (

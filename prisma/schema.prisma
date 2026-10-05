@@ -175,6 +175,7 @@ model Seller {
   platformInquiries        PlatformInquiry[]
   platformInquiryMessages  PlatformInquiryMessage[]
   platformInquiryImages    PlatformInquiryImage[]
+  externalShopConnections  ExternalShopConnection[]
   receiptIssuer            SellerReceiptIssuer?
 }
 
@@ -544,6 +545,8 @@ model Product {
   eventStartsAt      DateTime?          @db.Timestamptz(3)
   eventEndsAt        DateTime?          @db.Timestamptz(3)
   sortOrder          Int                @default(0)
+  // 검색 태그(상품 이름 밖 키워드, 최대 10개·각 20자). 쇼핑몰 검색과 자동완성이 이름과 함께 본다.
+  searchTags         String[]           @default([])
   // 상품 코드 번호(카페24식 자동 상품 코드, MASTER 결정 2026-10-04). 판매자별 1부터 순번, 화면·API는 「P」 + 7자리(P0000001).
   // 넣을 때 0(기본)이면 DB 트리거(product_assign_code_no)가 ProductCodeCounter로 다음 번호를 매긴다. 지운 상품 번호도 다시 쓰지 않는다.
   codeNo             Int                @default(0)
@@ -3323,6 +3326,73 @@ model AssistantLedger {
   @@index([month])
 }
 
+// ───── 외부 쇼핑몰 연동(SA-005·006, 오버레이 전용 판매자) ─────
+// 연결 상태: CONNECTED 연결됨 · REAUTH_REQUIRED 다시 연결 필요(토큰 만료·회수) · DISCONNECT_PENDING 해제 대기(쇼핑몰 쪽 철회 실패, 철회 재시도용 토큰 사본만 남김) · DISCONNECTED 해제됨
+enum ExternalShopStatus {
+  CONNECTED
+  REAUTH_REQUIRED
+  DISCONNECT_PENDING
+  DISCONNECTED
+}
+
+model ExternalShopConnection {
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId           String             @db.Uuid
+  // 외부 쇼핑몰 식별자(몰 id). 소문자 영숫자·하이픈, 주소로 만들지 않고 검증한 값으로만 호스트를 만든다(내부 주소 접속 차단)
+  shopKey            String
+  status             ExternalShopStatus @default(CONNECTED)
+  // OAuth 토큰은 BILLING_KEY_SECRET 기반 AES-256-GCM으로 판매자 id를 묶어 암호화해 저장한다(원문 저장·로그 금지)
+  accessTokenCipher  String?
+  refreshTokenCipher String?
+  accessExpiresAt    DateTime?          @db.Timestamptz(3)
+  refreshExpiresAt   DateTime?          @db.Timestamptz(3)
+  scopes             String?
+  connectedAt        DateTime           @default(now()) @db.Timestamptz(3)
+  lastEventAt        DateTime?          @db.Timestamptz(3)
+  disconnectedAt     DateTime?          @db.Timestamptz(3)
+  createdAt          DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime           @updatedAt @db.Timestamptz(3)
+
+  seller Seller                 @relation(fields: [sellerId], references: [id])
+  events ExternalWebhookEvent[]
+
+  @@unique([sellerId, id])
+  @@unique([sellerId, shopKey])
+  // 같은 외부 쇼핑몰이 두 파트너스에 동시에 붙지 않는다(연결 중 상태만, 마이그레이션 부분 유니크)
+  @@index([shopKey, status])
+}
+
+// OAuth 시작 때 만드는 1회용·만료 state(해시만 저장). 콜백은 시작한 판매자·직원 세션과 같을 때만 받는다(로그인 CSRF 방지).
+model ExternalOAuthState {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId  String    @db.Uuid
+  userId    String    @db.Uuid
+  shopKey   String
+  stateHash String    @unique
+  expiresAt DateTime  @db.Timestamptz(3)
+  usedAt    DateTime? @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([sellerId, createdAt])
+}
+
+// 받은 웹훅 원본(서명 검증을 통과한 것만). eventKey는 원본 본문 해시라 같은 이벤트 재전송은 한 번만 저장한다.
+// 개인정보가 들어 있을 수 있어 보관 기간(받은 날부터 30일, 대표님 확인 대기)과 자동 삭제는 주문 저장 PR에서 함께 넣는다.
+model ExternalWebhookEvent {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId     String    @db.Uuid
+  connectionId String    @db.Uuid
+  eventKey     String
+  payload      Json
+  receivedAt   DateTime  @default(now()) @db.Timestamptz(3)
+  processedAt  DateTime? @db.Timestamptz(3)
+
+  connection ExternalShopConnection @relation(fields: [sellerId, connectionId], references: [sellerId, id])
+
+  @@unique([connectionId, eventKey])
+  @@index([sellerId, receivedAt])
+}
+
 // ───────────── 구매자 문의(상품 문의·1:1 문의, SA-046·047) ─────────────
 // PRODUCT=상품 문의(productId 필수), GENERAL=1:1 문의. 답변은 판매자 하나(고치거나 지우면 다시 WAITING).
 enum BuyerInquiryKind {
@@ -3394,4 +3464,25 @@ model BuyerInquiryImage {
 model SellerNotificationSeen {
   sellerUserId String   @id @db.Uuid
   seenAt       DateTime @db.Timestamptz(3)
+}
+
+// ───────────── 쇼핑몰 검색(유사어·인기 검색어, 기반-쇼핑몰) ─────────────
+// 유사어 묶음: 묶음 안 단어는 서로 같은 뜻으로 검색한다(예: 포켓몬·pokemon). 판매자마다 최대 50묶음, 묶음당 2~10단어.
+model ShopSearchSynonym {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId  String   @db.Uuid
+  words     String[]
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([sellerId])
+}
+
+// 인기 검색어 자체 집계(KST 날짜·단어별 횟수, 개인 식별 정보 없음, 무료). 8일이 지난 행은 집계할 때 지운다.
+model ShopSearchTerm {
+  sellerId String   @db.Uuid
+  day      DateTime @db.Date
+  term     String
+  count    Int      @default(1)
+
+  @@id([sellerId, day, term])
 }
