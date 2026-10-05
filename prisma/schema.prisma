@@ -159,6 +159,7 @@ model Seller {
   cartItems                CartItem[]
   wishItems                WishItem[]
   restockAlerts            RestockAlert[]
+  bulkJobs                 BulkJob[]
   shopNotices              ShopNotice[]
   returnRequests           ReturnRequest[]
   memberGradePolicy        MemberGradePolicy?
@@ -2168,6 +2169,44 @@ model RestockAlert {
   @@unique([buyerMemberId, productId])
   @@index([sellerId, productId, status])
   @@index([sellerId, status, notifyAt])
+}
+
+// 엑셀(CSV) 일괄 등록·내보내기 작업(SA-018). 일괄 등록은 PREVIEW(검증만, 1시간 안에 확정) → COMMITTING → COMMITTED(24시간 안에 되돌리기) → UNDONE.
+// payload는 미리보기에서 통과한 상품 입력, errors는 행별 오류(shop-bulk-io/service.ts).
+enum BulkJobKind {
+  PRODUCT_IMPORT
+}
+
+enum BulkJobStatus {
+  PREVIEW
+  COMMITTING
+  COMMITTED
+  UNDONE
+}
+
+model BulkJob {
+  id                String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId          String        @db.Uuid
+  kind              BulkJobKind
+  status            BulkJobStatus @default(PREVIEW)
+  fileName          String?
+  totalRows         Int
+  productCount      Int
+  errors            Json          @default("{}")
+  payload           Json          @default("[]")
+  createdProductIds Json          @default("[]")
+  failures          Json          @default("[]")
+  keptCount         Int           @default(0)
+  actorType         ActorType
+  actorId           String?       @db.Uuid
+  createdAt         DateTime      @default(now()) @db.Timestamptz(3)
+  committedAt       DateTime?     @db.Timestamptz(3)
+  undoUntil         DateTime?     @db.Timestamptz(3)
+  undoneAt          DateTime?     @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+
+  @@index([sellerId, createdAt])
 }
 
 enum ProductImageKind {

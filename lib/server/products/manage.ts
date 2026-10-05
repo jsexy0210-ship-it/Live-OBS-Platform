@@ -348,8 +348,18 @@ export async function getProduct(db: PrismaClient, ctx: TenantContext, productId
   return productView(db, ctx.sellerId, productId);
 }
 
-export async function createProduct(db: PrismaClient, ctx: TenantContext, raw: unknown): Promise<ProductResult<Awaited<ReturnType<typeof productView>>>> {
-  requireSellerPermission(ctx, "PRODUCT_MANAGE");
+export type NewProductInput = {
+  name: string;
+  description: string | null;
+  price: number;
+  status: ProductStatus;
+  sortOrder: number;
+  stockDeductMode: StockDeductMode;
+  options: (OptionInput & { sortOrder: number })[];
+};
+
+// 상품 등록 입력 검증(DB 접근 없음). 상품 등록과 엑셀 일괄 등록 미리보기(bulk-io)가 같은 규칙을 쓴다.
+export function parseNewProduct(raw: unknown): ProductResult<NewProductInput> {
   if (!raw || typeof raw !== "object") return fail("invalid_product");
   const b = raw as Record<string, unknown>;
   const named = productName(b.name);
@@ -380,11 +390,19 @@ export async function createProduct(db: PrismaClient, ctx: TenantContext, raw: u
     options.push({ ...o, sortOrder: o.sortOrder ?? index });
   }
   if (status === "ON_SALE" && options.length === 0) return fail("no_sellable_option");
+  return { ok: true, value: { name, description, price, status: status as ProductStatus, sortOrder, stockDeductMode: stockDeductMode as StockDeductMode, options } };
+}
+
+export async function createProduct(db: PrismaClient, ctx: TenantContext, raw: unknown): Promise<ProductResult<Awaited<ReturnType<typeof productView>>>> {
+  requireSellerPermission(ctx, "PRODUCT_MANAGE");
+  const parsed = parseNewProduct(raw);
+  if (!parsed.ok) return parsed;
+  const { name, description, price, status, sortOrder, stockDeductMode, options } = parsed.value;
 
   return db.$transaction(async (tx) => {
     const now = await dbNow(tx);
     const product = await tx.product.create({
-      data: { sellerId: ctx.sellerId, name, description, price, status: status as ProductStatus, sortOrder, stockDeductMode: stockDeductMode as StockDeductMode, createdAt: now },
+      data: { sellerId: ctx.sellerId, name, description, price, status, sortOrder, stockDeductMode, createdAt: now },
     });
     for (const o of options) {
       const created = await tx.productOption.create({ data: { sellerId: ctx.sellerId, productId: product.id, ...o, createdAt: now } });
