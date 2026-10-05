@@ -183,6 +183,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/notices": "STORE_OPERATIONS",
   "seller/platform-notices": "BILLING", // 플랫폼 공지(SA-111·112): 잠김·정지 중에도 본다
   "seller/platform-notices/[noticeId]": "BILLING",
+  "seller/platform-notices/[noticeId]/read": "BILLING",
   "seller/notifications": "BILLING", // 알림 센터(SA-130): 잠김·정지 중에도 본다
   "seller/notifications/read": "BILLING",
   "seller/assistant": "BILLING", // 도우미(SA-140): 사용법 질문, 잠김·정지 중에도 쓴다(비용은 플랫폼 월 한도·하루 한도가 막음)
