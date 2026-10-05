@@ -109,4 +109,6 @@ export function nextAdTime(d: Date): Date {
 export function renderBody(kind: MemberMessageKind, shopName: string, body: string): string {
   return kind === "AD" ? `(광고) [${shopName}] ${body}\n${OPT_OUT_TEXT}` : `[${shopName}] ${body}`;
 }
+// 광고성 최종 문구는 (광고) 표기와 무료 수신거부 문구가 모두 있어야 한다(정보통신망법). 하나라도 없으면 기록하지 않는다.
+export const adTextOk = (rendered: string) => rendered.startsWith("(광고)") && rendered.includes(OPT_OUT_TEXT);
 export const isLongMessage = (rendered: string) => [...rendered].length > LONG_MESSAGE_CHARS;

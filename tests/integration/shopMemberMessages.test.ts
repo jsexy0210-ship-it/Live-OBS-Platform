@@ -6,7 +6,7 @@ import { prisma } from "../../lib/server/db";
 import { withdrawBuyer } from "../../lib/server/buyers/withdraw";
 import { SCHEDULED_JOBS } from "../../lib/server/jobs/scheduler";
 import { cancelMessage, createMessage, getMessage, listMessages, previewMessage, processDueMemberMessages, updateMessage } from "../../lib/server/shop-member-messages/service";
-import { inAdWindow, nextAdTime, renderBody } from "../../lib/server/shop-member-messages/rules";
+import { adTextOk, inAdWindow, nextAdTime, renderBody } from "../../lib/server/shop-member-messages/rules";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { PASSWORD, createLoginBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
@@ -66,6 +66,11 @@ describe("순수 규칙: 광고성 시간(KST)·최종 문구", () => {
     expect(nextAdTime(kst("2026-11-02T22:30:00")).toISOString()).toBe(kst("2026-11-03T08:00:00").toISOString());
     expect(nextAdTime(kst("2026-11-02T03:00:00")).toISOString()).toBe(kst("2026-11-02T08:00:00").toISOString());
     expect(nextAdTime(kst("2026-11-02T12:00:00")).toISOString()).toBe(kst("2026-11-02T12:00:00").toISOString());
+  });
+  it("광고성 최종 문구에 (광고)나 무료 수신거부가 없으면 검사에서 걸린다", () => {
+    expect(adTextOk(renderBody("AD", "카드숍", "안내"))).toBe(true);
+    expect(adTextOk("[카드숍] 안내\n무료 수신거부 [수신거부 번호]")).toBe(false);
+    expect(adTextOk("(광고) [카드숍] 안내")).toBe(false);
   });
   it("광고성 문구에는 (광고)·쇼핑몰 이름·무료 수신거부가 붙고, 정보성은 쇼핑몰 이름만 붙는다", () => {
     expect(renderBody("AD", "카드숍", "안내")).toBe("(광고) [카드숍] 안내\n무료 수신거부 [수신거부 번호]");
@@ -184,6 +189,21 @@ describe("보내는 시각·광고성 시간·예약", () => {
     expect(await cancelMessage(db, s.ctx, r2.message.id)).toEqual({ ok: false, reason: "invalid_transition" });
     expect(await processDueMemberMessages(db, new Date(Date.now() + 9 * DAY))).toBe(0);
     expect((await db.memberMessage.findUniqueOrThrow({ where: { id: r2.message.id } })).status).toBe("CANCELLED");
+  });
+
+  it("수신거부 문구가 빠진 광고성 예약은 시각이 되어도 기록하지 않고 취소한다(정보성은 영향 없음)", async () => {
+    const s = await shop();
+    await s.member(true);
+    const at = new Date(Date.now() + 2 * DAY);
+    while (!inAdWindow(at)) at.setTime(at.getTime() + 3600_000);
+    const ad = await okMsg(send(s, { kind: "AD", sendMode: "SCHEDULE", scheduledAt: at.toISOString() }));
+    await db.memberMessage.update({ where: { id: ad.message.id }, data: { renderedBody: `(광고) [${s.seller.shopName}] 문구만 있음` } });
+    const info = await okMsg(send(s, { kind: "INFO", sendMode: "SCHEDULE", scheduledAt: at.toISOString() }));
+    expect(await processDueMemberMessages(db, new Date(at.getTime() + DAY))).toBe(2);
+    expect(await db.memberMessage.findUniqueOrThrow({ where: { id: ad.message.id } })).toMatchObject({ status: "CANCELLED", recipientCount: null });
+    expect(await db.memberMessageRecipient.count({ where: { messageId: ad.message.id } })).toBe(0);
+    expect(await db.memberMessage.findUniqueOrThrow({ where: { id: info.message.id } })).toMatchObject({ status: "RECORDED", recipientCount: 1 });
+    expect(await db.auditLog.count({ where: { targetId: ad.message.id, action: "member_message.cancel" } })).toBe(1);
   });
 
   it("정기 작업 목록에 예약 처리 작업이 있다", () => {

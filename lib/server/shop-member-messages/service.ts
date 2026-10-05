@@ -4,6 +4,7 @@ import { requireSellerPermission, requireSellerRead, type TenantContext } from "
 import {
   DAILY_CAP,
   RECIPIENT_MAX,
+  adTextOk,
   SCHEDULE_MAX_DAYS,
   inAdWindow,
   isLongMessage,
@@ -28,7 +29,7 @@ import {
 type Db = PrismaClient | Prisma.TransactionClient;
 type Tx = Prisma.TransactionClient;
 
-export type MessageFailure = MessageRejection | "not_found" | "invalid_transition" | "ad_time_window" | "schedule_out_of_range" | "no_recipients" | "too_many_recipients";
+export type MessageFailure = MessageRejection | "not_found" | "invalid_transition" | "ad_time_window" | "schedule_out_of_range" | "no_recipients" | "too_many_recipients" | "opt_out_missing";
 export const MESSAGE_MESSAGES: Record<string, string> = {
   invalid_title: "제목을 40자 이내로 입력해 주십시오",
   invalid_body: "문구를 500자 이내로 입력해 주십시오",
@@ -40,6 +41,7 @@ export const MESSAGE_MESSAGES: Record<string, string> = {
   schedule_out_of_range: "예약은 지금부터 30일 안의 미래 시각만 정할 수 있습니다",
   ad_time_window: "광고성 알림은 08:00 ~ 21:00에만 보낼 수 있습니다. 다음 08:00으로 바꾸거나 정보성으로 보내 주십시오",
   no_recipients: "보낼 수 있는 회원이 없습니다. 대상과 수신 동의 여부를 확인해 주십시오",
+  opt_out_missing: "광고성 문구에 (광고) 표기와 무료 수신거부 문구가 없어 기록할 수 없습니다",
   too_many_recipients: "한 번에 보낼 수 있는 회원은 10,000명까지입니다",
   not_found: "발송을 찾을 수 없습니다",
   invalid_transition: "이미 처리된 발송입니다. 화면을 새로 고쳐 주십시오",
@@ -150,7 +152,9 @@ export async function previewMessage(db: PrismaClient, ctx: TenantContext, raw: 
 // ───────────── 만들기·기록 ─────────────
 
 // 받는 사람을 확정해 기록으로 바꾼다. 호출하는 쪽이 쇼핑몰 lock과 이 발송 행 잠금을 잡은 뒤 부른다.
-async function record(tx: Tx, m: Pick<MemberMessage, "id" | "sellerId" | "kind" | "targetType" | "targetParams">, now: Date) {
+async function record(tx: Tx, m: Pick<MemberMessage, "id" | "sellerId" | "kind" | "targetType" | "targetParams" | "renderedBody">, now: Date) {
+  // 광고성 문구에 (광고)·무료 수신거부가 없으면 기록 자체를 거부한다
+  if (m.kind === "AD" && !adTextOk(m.renderedBody)) return { ok: false as const, reason: "opt_out_missing" as const };
   const target = { type: m.targetType, ...(m.targetParams as object) } as TargetSpec;
   const r = await resolveRecipients(tx, m.sellerId, m.kind, target, now);
   if (r.tooMany) return { ok: false as const, reason: "too_many_recipients" as const };
@@ -180,6 +184,8 @@ export async function createMessage(db: PrismaClient, ctx: TenantContext, raw: R
     const r = await resolveRecipients(tx, ctx.sellerId, v.kind, v.target, now);
     if (r.tooMany) return fail("too_many_recipients");
     if (r.ids.length === 0) return fail("no_recipients");
+    const renderedBody = renderBody(v.kind, await shopNameOf(tx, ctx.sellerId), v.body);
+    if (v.kind === "AD" && !adTextOk(renderedBody)) return fail("opt_out_missing");
     const created = await tx.memberMessage.create({
       data: {
         sellerId: ctx.sellerId,
@@ -187,7 +193,7 @@ export async function createMessage(db: PrismaClient, ctx: TenantContext, raw: R
         kind: v.kind,
         channel: v.channel,
         body: v.body,
-        renderedBody: renderBody(v.kind, await shopNameOf(tx, ctx.sellerId), v.body),
+        renderedBody,
         targetType: v.target.type,
         targetParams: targetParams(v.target) as Prisma.InputJsonValue,
         status: "SCHEDULED",
@@ -201,7 +207,7 @@ export async function createMessage(db: PrismaClient, ctx: TenantContext, raw: R
     let recorded: { count: number; capped: number } | null = null;
     if (time.immediate) {
       const rec = await record(tx, created, now);
-      if (!rec.ok) return fail(rec.reason);
+      if (!rec.ok) throw new RecordFailed(rec.reason); // 만든 행이 남지 않게 트랜잭션을 되돌린다
       if (rec.count === 0) throw new NothingToSend();
       recorded = rec;
     }
@@ -221,11 +227,17 @@ export async function createMessage(db: PrismaClient, ctx: TenantContext, raw: R
     return { ok: true as const, message: view(row), rescheduled: time.rescheduled };
   }).catch((e) => {
     if (e instanceof NothingToSend) return fail("no_recipients");
+    if (e instanceof RecordFailed) return fail(e.reason);
     throw e;
   });
 }
 // 하루 2건 한도로 모두 빠지면 아무것도 기록하지 않고 되돌린다
 class NothingToSend extends Error {}
+class RecordFailed extends Error {
+  constructor(readonly reason: "too_many_recipients" | "opt_out_missing") {
+    super(reason);
+  }
+}
 
 // 예약 수정: 제목·문구·채널·보내는 시각만(종류·대상은 고정). 예약일 때만.
 export async function updateMessage(db: PrismaClient, ctx: TenantContext, id: string, raw: Record<string, unknown>) {
@@ -244,6 +256,7 @@ export async function updateMessage(db: PrismaClient, ctx: TenantContext, id: st
     const time = decideTime(v, now);
     if (!time.ok) return fail(time.reason, time.suggestedAt ? { suggestedAt: time.suggestedAt } : {});
     const rendered = renderBody(m.kind, await shopNameOf(tx, ctx.sellerId), v.body);
+    if (m.kind === "AD" && !adTextOk(rendered)) return fail("opt_out_missing");
     const next = await tx.memberMessage.update({ where: { id }, data: { title: v.title, channel: v.channel, body: v.body, renderedBody: rendered, scheduledAt: time.at, updatedAt: now } });
     await audit(tx, ctx, "member_message.update", id, { title: m.title, body: m.body, scheduledAt: m.scheduledAt, channel: m.channel }, { title: v.title, renderedBody: rendered, scheduledAt: time.at, channel: v.channel });
     return { ok: true as const, message: view(next) };
@@ -274,6 +287,12 @@ export async function processDueMemberMessages(db: PrismaClient, now = new Date(
       if (!row) return 0;
       const m = await tx.memberMessage.findUniqueOrThrow({ where: { id: d.id } });
       const rec = await record(tx, m, now);
+      if (!rec.ok && rec.reason === "opt_out_missing") {
+        // 수신거부 문구가 빠진 광고성 예약은 기록하지 않고 취소한다
+        await tx.memberMessage.update({ where: { id: d.id }, data: { status: "CANCELLED", updatedAt: now } });
+        await writeAudit(tx, { actorType: "SYSTEM", actorId: null, sellerId: d.sellerId, action: "member_message.cancel", targetType: "MemberMessage", targetId: d.id, after: { status: "CANCELLED", reason: "opt_out_missing" } });
+        return 1;
+      }
       if (!rec.ok) {
         await tx.memberMessage.update({ where: { id: d.id }, data: { status: "RECORDED", recordedAt: now, recipientCount: 0, updatedAt: now } });
         return 1;
