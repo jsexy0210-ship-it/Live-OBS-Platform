@@ -2634,6 +2634,14 @@
       "x": 0,
       "y": 44620
     },
+    "SH-022-R.dc.html": {
+      "h": 3220,
+      "title": "SH-022-R 주문 상세 · 교환 · 반품 요청 시트(구현 shop-returns 기준)",
+      "w": 800,
+      "x": 880,
+      "y": 48660,
+      "page": "p04"
+    },
     "SH-022.dc.html": {
       "h": 1539,
       "is_interactive": true,
@@ -3003,14 +3011,6 @@
       "w": 800,
       "x": 0,
       "y": 48660
-    },
-    "SH-022-R.dc.html": {
-      "h": 3220,
-      "title": "SH-022-R 주문 상세 · 교환 · 반품 요청 시트(구현 shop-returns 기준)",
-      "w": 800,
-      "x": 880,
-      "y": 48660,
-      "page": "p04"
     }
   },
   "createdOnFiles": {
@@ -3863,7 +3863,6 @@
     "SH-022-PC.dc.html",
     "SH-022.dc.html",
     "SH-022-M.dc.html",
-    "SH-022-RF.dc.html",
     "SH-022-R.dc.html",
     "SH-023-PC.dc.html",
     "SH-023.dc.html",
@@ -4096,7 +4095,8 @@
     "DS-CONFIRM.dc.html",
     "DS-NAV.dc.html",
     "DS-TYPE-SCALE.dc.html",
-    "DS-DATEPICKER.dc.html"
+    "DS-DATEPICKER.dc.html",
+    "SH-022-RF.dc.html"
   ],
   "pages": [
     {
