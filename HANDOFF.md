@@ -133,7 +133,7 @@
 
 ### 기반 (4 → 5) 인계 흡수 (PR #231, 2026-10-05 KST MASTER 흡수)
 
-- 미처리 대기열(기반 (5) 배정): 환불·탈퇴 잠금 순서 교착 반례 결정적 시험(탈퇴가 회원 행을 잡은 채 환불이 판매자 주문 잠금에서 기다리는 경우), 요금제별 금액·차액 미리보기 API(`chargeFor`·proration 재사용)
+- 미처리 대기열(기반 (5) 배정): 요금제별 금액·차액 미리보기 API(`chargeFor`·proration 재사용) (교착 반례 시험은 #245로 이미 main에 있음, 2026-10-05 확인)
 - 기반 규칙: 응답 message 말투는 `lib/server/text/tone.ts`·`messageTone.test.ts`로 검사, 가격 계산은 `chargeFor` 한 곳, `customer.pii.view`는 0건 조회여도 기록, 한 시험 안에서 `resetDb` 반복 금지(`it.each` 사용)
 - 미확인: 카카오톡·다음 공유 미리보기(#199 `htmlLimitedBots`) 테스트 서버 실확인
 
