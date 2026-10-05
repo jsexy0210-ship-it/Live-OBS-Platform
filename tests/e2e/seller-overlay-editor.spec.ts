@@ -34,6 +34,7 @@ async function reset(page: Page, aspect = "9x16") {
   const r = await call(page, "/api/seller/overlay/layout/reset", "POST", { aspect, template: "queue_focus", expectedVersion: l.version });
   expect(r.status).toBe(200);
 }
+const currentX = async (page: Page) => (await layout(page)).widgets.find((w) => w.id === "current")!.x;
 const toast = (page: Page) => page.getByRole("status").filter({ has: page.locator(".toast") });
 
 test("위치·크기·속성을 고쳐 저장하면 서버에 남고, 오버레이 화면이 그 배치로 바뀐다", async ({ page, context }) => {
@@ -46,7 +47,7 @@ test("위치·크기·속성을 고쳐 저장하면 서버에 남고, 오버레�
   // 선택 → 위치 입력
   await page.getByRole("button", { name: "현재 주문", exact: true }).click();
   await expect(page.getByTestId("ove-dirty")).toHaveCount(0);
-  await page.getByLabel("세로 위치").fill("40");
+  await page.getByLabel("세로 위치").fill("60");
   await page.getByLabel("제목 색", { exact: true }).fill("#112233");
   await expect(page.getByTestId("ove-dirty")).toHaveText("저장 안 한 변경 1개");
 
@@ -61,11 +62,11 @@ test("위치·크기·속성을 고쳐 저장하면 서버에 남고, 오버레�
   expect(after!.y).toBeGreaterThan(before!.y + 20);
   await expect(page.getByTestId("ove-dirty")).toHaveText("저장 안 한 변경 2개");
 
-  // 위젯 끄기·켜기: 명예의 전당은 기본 템플릿에 없다 → 켜면 새로 생긴다
-  await page.getByLabel("명예의 전당 보이기").check();
+  // 위젯 끄기: 기본 템플릿(줄서기형)에는 명예의 전당이 보인다 → 끈다
+  await page.getByLabel("명예의 전당 보이기").uncheck();
   await expect(page.getByTestId("ove-dirty")).toHaveText("저장 안 한 변경 3개");
 
-  // 되돌리기·다시 실행(Ctrl+Z · Ctrl+Shift+Z): 명예의 전당 켜기를 되돌렸다가 다시 실행
+  // 되돌리기·다시 실행(Ctrl+Z · Ctrl+Shift+Z): 명예의 전당 끄기를 되돌렸다가 다시 실행
   await page.getByRole("button", { name: "되돌리기" }).click();
   await expect(page.getByTestId("ove-dirty")).toHaveText("저장 안 한 변경 2개");
   await page.getByRole("button", { name: "다시 실행" }).click();
@@ -83,8 +84,8 @@ test("위치·크기·속성을 고쳐 저장하면 서버에 남고, 오버레�
 
   const saved = await layout(page);
   const cur = saved.widgets.find((w) => w.id === "current")!;
-  expect(cur.y).toBe(40);
-  expect(saved.widgets.some((w) => w.type === "HALL_OF_FAME" && w.visible)).toBe(true);
+  expect(cur.y).toBe(60);
+  expect(saved.widgets.some((w) => w.type === "HALL_OF_FAME" && w.visible)).toBe(false);
   expect(saved.version).toBeGreaterThan(0);
 
   // 오버레이 화면이 저장한 배치대로(위치 %)
@@ -92,14 +93,15 @@ test("위치·크기·속성을 고쳐 저장하면 서버에 남고, 오버레�
   const ov = await context.newPage();
   await ov.setViewportSize({ width: 1080, height: 1920 });
   await ov.goto(`/overlay/${t.data.token}`);
-  await expect(ov.locator('[data-widget="HALL_OF_FAME"]')).toBeVisible();
-  await expect(ov.locator('[data-widget="HALL_OF_FAME"]')).toHaveCSS("position", "absolute");
+  await expect(ov.locator('[data-widget="CURRENT_ORDER"], [data-widget="QUEUE"], [data-widget="HALL_OF_FAME"]').first().or(ov.getByTestId("overlay-idle"))).toBeVisible();
+  await expect(ov.locator('[data-widget="HALL_OF_FAME"]')).toHaveCount(0);
 
   // 편집기에서 다시 저장하면 열려 있는 오버레이가 15초 안에 바뀐다
-  await page.getByLabel("명예의 전당 보이기").uncheck();
+  await page.getByLabel("명예의 전당 보이기").check();
   await page.getByRole("button", { name: "저장하기" }).click();
   await expect(toast(page)).toContainText("저장했습니다");
-  await expect(ov.locator('[data-widget="HALL_OF_FAME"]')).toHaveCount(0, { timeout: 25_000 });
+  await expect(ov.locator('[data-widget="HALL_OF_FAME"]')).toBeVisible({ timeout: 25_000 });
+  await expect(ov.locator('[data-widget="HALL_OF_FAME"]')).toHaveCSS("position", "absolute");
   await ov.close();
   await reset(page);
 });
@@ -136,18 +138,18 @@ test("템플릿으로 초기화(초안)하고 되돌릴 수 있으며, 내 템�
   await page.reload();
   await expect(page.getByTestId("ove-canvas")).toBeVisible();
 
-  // 스포트라이트로 초기화: 확인 창 → 초안(저장 전)으로 바뀌고, 되돌리기로 돌아간다
-  await page.getByRole("button", { name: "현재 주문·명예의 전당 강조" }).click();
+  // 스포트라이트형으로 초기화: 확인 창 → 초안(저장 전)으로 바뀌고, 되돌리기로 돌아간다(현재 주문 x: 줄서기형 4.4 → 스포트라이트형 43)
+  await page.getByRole("button", { name: "스포트라이트형" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "초기화" }).click();
   await expect(toast(page)).toContainText("템플릿으로 초기화했습니다");
   await expect(page.getByTestId("ove-dirty")).toBeVisible();
-  expect((await layout(page)).widgets.some((w) => w.type === "HALL_OF_FAME")).toBe(false);
+  expect(await currentX(page)).toBe(4.4);
   await page.getByRole("button", { name: "되돌리기" }).click();
   await expect(page.getByTestId("ove-dirty")).toHaveCount(0);
   await page.getByRole("button", { name: "다시 실행" }).click();
   await page.getByRole("button", { name: "저장하기" }).click();
   await expect(toast(page)).toContainText("저장했습니다");
-  expect((await layout(page)).widgets.some((w) => w.type === "HALL_OF_FAME" && w.visible)).toBe(true);
+  expect(await currentX(page)).toBe(43);
 
   // 내 템플릿 저장(N / 20 표시)
   await expect(page.getByTestId("ove-mine")).toContainText("내 템플릿");
@@ -158,15 +160,15 @@ test("템플릿으로 초기화(초안)하고 되돌릴 수 있으며, 내 템�
   const row = page.getByTestId("ove-mine-row").filter({ hasText: NAME });
   await expect(row).toHaveCount(1);
 
-  // 기본으로 돌린 뒤 저장, 내 템플릿 적용 후 저장
-  await page.getByRole("button", { name: "주문대기 중심" }).click();
+  // 줄서기형으로 돌린 뒤 저장, 내 템플릿 적용 후 저장
+  await page.getByRole("button", { name: "줄서기형" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "초기화" }).click();
   await page.getByRole("button", { name: "저장하기" }).click();
-  await expect.poll(async () => (await layout(page)).widgets.some((w) => w.type === "HALL_OF_FAME")).toBe(false);
+  await expect.poll(() => currentX(page)).toBe(4.4);
   await row.getByRole("button", { name: "적용" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "초기화" }).click();
   await page.getByRole("button", { name: "저장하기" }).click();
-  await expect.poll(async () => (await layout(page)).widgets.some((w) => w.type === "HALL_OF_FAME")).toBe(true);
+  await expect.poll(() => currentX(page)).toBe(43);
 
   // 삭제
   await row.getByRole("button", { name: `${NAME} 삭제` }).click();
@@ -215,7 +217,7 @@ test("끌 때 정렬 가이드선이 보이고, 실제 크기 미리보기가 �
   const pv = page.getByTestId("ove-fullpreview");
   await expect(pv).toContainText("1080×1920");
   const w = await pv.locator('[data-widget="CURRENT_ORDER"]').boundingBox();
-  expect(Math.round(w!.width)).toBe(Math.round(1080 * 0.94));
+  expect(Math.round(w!.width)).toBe(Math.round(1080 * 0.507));
   await pv.getByRole("button", { name: "닫기" }).click();
   await expect(pv).toHaveCount(0);
 
@@ -229,7 +231,7 @@ test("끌 때 정렬 가이드선이 보이고, 실제 크기 미리보기가 �
   await link.click();
   await page.getByRole("dialog").getByRole("button", { name: "저장하지 않고 나가기" }).click();
   await expect(page).not.toHaveURL(/\/seller\/overlay$/);
-  expect((await layout(page)).widgets.find((x) => x.id === "current")!.x).toBe(3);
+  expect((await layout(page)).widgets.find((x) => x.id === "current")!.x).toBe(4.4);
 
   // 저장하고 나가기: 저장된 뒤 이동
   await page.goto("/seller/overlay");

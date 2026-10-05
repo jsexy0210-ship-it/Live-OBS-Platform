@@ -133,9 +133,19 @@ export function WidgetView({ widget: wd, data, now, editing }: { widget: Widget;
     case "NOTICE":
       body = <span className={`ow-text${p.ticker ? " ow-marquee" : ""}`}>{p.ticker ? <i>{str(p, "text") ?? "공지를 입력해 주세요"}</i> : (str(p, "text") ?? "공지를 입력해 주세요")}</span>;
       break;
-    case "SHOP_INFO":
-      body = <span className="ow-text">{str(p, "format") ?? title ?? "쇼핑몰 정보"}</span>;
+    case "SHOP_INFO": {
+      const d = new Date(now || Date.now());
+      const date = d.toLocaleDateString("ko-KR", { month: "long", day: "numeric", weekday: "short", timeZone: "Asia/Seoul" });
+      const time = d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Seoul" });
+      const addr = data.shop?.url ? data.shop.url.replace(/^https?:\/\//, "") : "";
+      const text = (str(p, "format") ?? "{주소} · {날짜} {시각}")
+        .replaceAll("{이름}", data.shop?.name ?? "")
+        .replaceAll("{주소}", addr)
+        .replaceAll("{날짜}", date)
+        .replaceAll("{시각}", time);
+      body = <span className="ow-text">{text.replace(/^[\s·]+|[\s·]+$/g, "")}</span>;
       break;
+    }
     case "OPEN_TIMER": {
       const o = data.opening;
       let left: number | null = null;
@@ -152,12 +162,13 @@ export function WidgetView({ widget: wd, data, now, editing }: { widget: Widget;
       break;
     }
     case "NEW_ORDER_ALERT": {
-      const v = { first: "첫 주문", repeat: "재주문", vip: "VIP" }[String(p.variant)] ?? "";
-      const o = data.opening ?? data.waiting[0];
+      const ev = data.alert;
+      const v = ev ? { FIRST: "첫 주문", REPEAT: "재주문", VIP: "VIP" }[ev.kind] : "";
+      const product = ev ? `${ev.productLabel}${ev.moreItems > 0 ? ` 외 ${ev.moreItems}건` : ""}` : "상품";
       const text = (str(p, "format") ?? "{닉네임}님이 {상품} {수량}개를 주문했어요")
-        .replaceAll("{닉네임}", o?.nickname ?? "닉네임")
-        .replaceAll("{상품}", o?.productLabel ?? "상품")
-        .replaceAll("{수량}", String(o?.quantity ?? 1))
+        .replaceAll("{닉네임}", ev?.nickname ?? "닉네임")
+        .replaceAll("{상품}", product)
+        .replaceAll("{수량}", String(ev?.quantity ?? 1))
         .replaceAll("{등급}", v)
         .replaceAll("{카드명}", data.hits[0]?.cardName ?? "카드")
         .replaceAll("{건수}", String(data.waiting.length));
