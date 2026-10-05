@@ -37,7 +37,7 @@
 .sts-pval{width:100px;flex:none;text-align:right;white-space:nowrap}
 @media (max-width:1100px){.sts-grid{grid-template-columns:minmax(0,1fr)}}
 
-/* SA-056 카페24식 맞춤: 흰 바탕 · 1px 선 · 입력·버튼 40px · 모서리 6px · 표 제목 가운데 · 값 왼쪽 */
+/* SA-056 시안 맞춤: 흰 바탕 · 1px 선 · 입력·버튼 40px · 모서리 6px · 표 제목 가운데 · 값 왼쪽 */
 .sts-tabs{margin-bottom:8px}
 .sts-period{margin-bottom:0}
 .sts-period .inp,.sts-period .btn{height:40px}

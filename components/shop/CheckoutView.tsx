@@ -17,7 +17,7 @@ type Coupon = { couponId: string; name: string; benefitText: string; minOrderAmo
 type Consent = { version: string; text: string };
 type Data = { checkout: Checkout; addresses: Addr[]; coupons: Coupon[]; consent: Consent; balance: number | null };
 type View = { kind: "loading" } | { kind: "login" } | { kind: "noids" } | { kind: "blocked"; message: string; names: string[] } | { kind: "error"; message?: string } | { kind: "ok"; data: Data };
-type Preview = { kind: "idle" } | { kind: "loading" } | { kind: "error"; message: string } | { kind: "ok"; shippingFee: number; isRemote: boolean; total: number };
+type Preview = { kind: "idle" } | { kind: "loading" } | { kind: "error"; message: string } | { kind: "ok"; shippingFee: number; isRemote: boolean; total: number; couponDiscount: number; withAddress: boolean };
 type Form = { recipientName: string; phone: string; zipCode: string; address1: string; address2: string; memo: string };
 
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
@@ -92,24 +92,37 @@ export default function CheckoutView({ slug, memberNickname = "" }: { slug: stri
   const zip = picked ? picked.zipCode : form.zipCode.trim();
   const addr1 = picked ? picked.address1 : form.address1.trim();
   const previewItems = okData?.checkout.items;
+  const withAddress = /^\d{5}$/.test(zip) && !!addr1;
+  const [couponNotice, setCouponNotice] = useState<string | null>(null);
   useEffect(() => {
-    if (!previewItems || !/^\d{5}$/.test(zip) || !addr1) return setPreview({ kind: "idle" });
+    if (!previewItems) return setPreview({ kind: "idle" });
     let live = true;
     setPreview({ kind: "loading" });
     const t = window.setTimeout(async () => {
-      const r = await call<{ shippingFee: number; isRemote: boolean; total: number }>(`${api}/payments/shipping-preview`, { method: "POST", body: { items: previewItems, zipCode: zip, address1: addr1 } });
-      if (live) setPreview(r.ok ? { kind: "ok", shippingFee: r.data.shippingFee, isRemote: r.data.isRemote, total: r.data.total } : { kind: "error", message: r.message ?? "배송비를 계산하지 못했어요" });
+      // 서버 견적(읽기 전용): 상품 금액 + 배송비 → 쿠폰 할인. 배송지가 없으면 일반 지역 배송비 기준이라 배송비·합계는 배송지를 입력한 뒤에 보여 준다
+      const r = await call<{ shippingFee: number; isRemote: boolean; couponDiscount: number; totalAmount: number }>(`${api}/orders/quote`, {
+        method: "POST",
+        body: { items: previewItems, ...(couponId ? { couponId } : {}), ...(withAddress ? { zipCode: zip, address1: addr1 } : {}) },
+      });
+      if (!live) return;
+      if (r.ok) setPreview({ kind: "ok", shippingFee: r.data.shippingFee, isRemote: r.data.isRemote, total: r.data.totalAmount, couponDiscount: r.data.couponDiscount, withAddress });
+      else if (r.status === 409 && couponId) {
+        // 쿠폰을 쓸 수 없는 상태가 됐어요: 쿠폰만 빼고 다시 계산한다
+        setCouponNotice(r.message ?? "이 쿠폰은 지금 쓸 수 없어요");
+        setCouponId("");
+      } else setPreview({ kind: "error", message: r.message ?? "금액을 계산하지 못했어요" });
     }, 300);
     return () => {
       live = false;
       window.clearTimeout(t);
     };
-  }, [api, previewItems, zip, addr1]);
+  }, [api, previewItems, zip, addr1, withAddress, couponId]);
   const subtotal = okData?.checkout.subtotal ?? 0;
   const balance = okData?.balance ?? 0;
-  const fee = preview.kind === "ok" ? preview.shippingFee : 0;
-  // 쓸 수 있는 최대(쿠폰 할인 전 기준): 보유 적립금·상품 금액 중 작은 값, 결제 금액 1원 이상 남김, 10원 단위
-  const rewardLimit = floorUnit(Math.min(balance, subtotal, subtotal + fee - 1));
+  const fee = preview.kind === "ok" && preview.withAddress ? preview.shippingFee : 0;
+  const couponOff = preview.kind === "ok" ? preview.couponDiscount : 0;
+  // 쓸 수 있는 최대(쿠폰 할인 반영): 보유 적립금·상품 금액 중 작은 값, 결제 금액 1원 이상 남김, 10원 단위
+  const rewardLimit = floorUnit(Math.min(balance, subtotal, subtotal + fee - couponOff - 1));
   const rewardAmount = Number(rewardText.replace(/[,\s]/g, ""));
   const rewardError =
     rewardText.replace(/[,\s]/g, "") === "" || rewardAmount === 0
@@ -332,7 +345,10 @@ export default function CheckoutView({ slug, memberNickname = "" }: { slug: stri
           <label className="co-field" htmlFor="co-coupon-sel">
             <span>사용할 쿠폰</span>
           </label>
-          <select id="co-coupon-sel" className="inp" value={couponId} onChange={(e) => setCouponId(e.target.value)} disabled={coupons.length === 0}>
+          <select id="co-coupon-sel" className="inp" value={couponId} onChange={(e) => {
+              setCouponNotice(null);
+              setCouponId(e.target.value);
+            }} disabled={coupons.length === 0}>
             <option value="">{coupons.length === 0 ? "쓸 수 있는 쿠폰이 없어요" : "쿠폰을 쓰지 않아요"}</option>
             {coupons.map((c) => {
               const short = c.minOrderAmount !== null && checkout.subtotal < c.minOrderAmount;
@@ -344,7 +360,12 @@ export default function CheckoutView({ slug, memberNickname = "" }: { slug: stri
               );
             })}
           </select>
-          <span className="cart-hint">할인 금액은 주문할 때 서버가 정해요. 한 번에 한 장만 쓸 수 있어요.</span>
+          {couponNotice && (
+            <span className="co-err" role="alert">
+              {couponNotice}
+            </span>
+          )}
+          <span className="cart-hint">한 번에 한 장만 쓸 수 있어요. 할인 금액은 주문할 때 한 번 더 확인해요.</span>
         </section>
       </div>
 
@@ -356,28 +377,34 @@ export default function CheckoutView({ slug, memberNickname = "" }: { slug: stri
         <div className="cart-row">
           <span>배송비</span>
           <span>
-            {preview.kind === "ok"
-              ? `${won(preview.shippingFee)}${preview.isRemote ? " (제주·도서산간 포함)" : ""}`
-              : preview.kind === "loading"
-                ? "계산하고 있어요"
-                : preview.kind === "error"
-                  ? preview.message
-                  : "배송지를 입력하면 알려 드려요"}
+            {preview.kind === "error"
+              ? preview.message
+              : !withAddress
+                ? "배송지를 입력하면 알려 드려요"
+                : preview.kind === "ok"
+                  ? `${won(preview.shippingFee)}${preview.isRemote ? " (제주·도서산간 포함)" : ""}`
+                  : "계산하고 있어요"}
           </span>
         </div>
+        {couponOff > 0 && (
+          <div className="cart-row">
+            <span>쿠폰 할인</span>
+            <span>−{won(couponOff)}</span>
+          </div>
+        )}
         {rewardOn && rewardUse > 0 && (
           <div className="cart-row">
             <span>적립금 사용</span>
             <span>−{won(rewardUse)}</span>
           </div>
         )}
-        {preview.kind === "ok" && (
+        {preview.kind === "ok" && preview.withAddress && (
           <div className="cart-row">
             <span>결제 예정 금액</span>
             <b>{won(preview.total - (rewardOn ? rewardUse : 0))}</b>
           </div>
         )}
-        <p className="cart-hint">쿠폰 할인은 주문할 때 정해져요. 결제 예정 금액은 쿠폰 할인 전 금액이에요.</p>
+        <p className="cart-hint">결제 예정 금액은 쿠폰·적립금을 뺀 금액이에요. 주문할 때 서버가 한 번 더 계산해요.</p>
         <label className="co-check">
           <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} aria-describedby="co-consent-err" />
           <span>

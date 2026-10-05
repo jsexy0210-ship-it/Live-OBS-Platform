@@ -1,12 +1,12 @@
 "use client";
 
 import "../../../../../../styles/seller-stock.css";
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Topbar, useSeller } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
 import { INT4_MAX, MAX_SEARCH_LENGTH, parseAmount, textLength } from "../../../../../../components/seller/format";
+import { useScrollRestore, useSmartBack, useUrlState } from "../../../../../../lib/client/navigation";
 import { cleanText } from "../../../../../../lib/server/text/clean";
 
 // SA-014 재고 관리. 옵션마다 「변경 후」 재고를 적어 한 번에 적용하거나, 한 옵션을 사유와 함께 빼고 더한다.
@@ -56,8 +56,14 @@ export default function StockPage() {
   const [next, setNext] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDelta, setBulkDelta] = useState("");
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<Filter>("all");
+  // 검색어·재고 조건은 주소(쿼리)에도 실어, 상세에 갔다 Back으로 돌아와도 그대로 복원한다(IA Back 규칙 3항)
+  const [u, setU] = useUrlState({ q: "", stock: "" });
+  const goList = useSmartBack("/seller/products");
+  const [query, setQuery] = useState(u.q);
+  const [filter, setFilter] = useState<Filter>(u.stock === "low" || u.stock === "out" ? u.stock : "all");
+  const setUrl = useRef(setU);
+  setUrl.current = setU;
+  const initial = useRef({ q: u.q.trim(), f: filter });
   const [confirm, setConfirm] = useState(false);
   const [applying, setApplying] = useState(false);
   // 한 번에 적용 진행(순서대로 한 건씩 보낸다. 그사이 바뀐 재고 처리를 옵션마다 확실히 하려고 병렬로 보내지 않는다)
@@ -127,8 +133,9 @@ export default function StockPage() {
   };
 
   useEffect(() => {
-    void load("", "all", true);
+    void load(initial.current.q, initial.current.f, true);
   }, [load]);
+  useScrollRestore("seller-stock", state.kind === "ok");
 
   // 검색어를 멈추고 잠시 뒤 서버에서 다시 찾는다
   const searchQ = query.trim();
@@ -143,7 +150,10 @@ export default function StockPage() {
       firstSearch.current = false;
       return;
     }
-    const t = setTimeout(() => void load(searchQ, filterRef.current, false), SEARCH_DELAY_MS);
+    const t = setTimeout(() => {
+      setUrl.current({ q: searchQ });
+      void load(searchQ, filterRef.current, false);
+    }, SEARCH_DELAY_MS);
     return () => clearTimeout(t);
   }, [searchQ, load]);
   // 재고 조건 칩을 바꾸면 바로 서버에서 다시 거른다
@@ -153,6 +163,7 @@ export default function StockPage() {
       firstFilter.current = false;
       return;
     }
+    setUrl.current({ stock: filter === "all" ? "" : filter });
     void load(searchQRef.current, filter, false);
   }, [filter, load]);
 
@@ -278,9 +289,9 @@ export default function StockPage() {
   return (
     <>
       <Topbar crumb="판매 › 상품 › 재고 관리">
-        <Link className="btn btn-sm btn-out" href="/seller/products">
+        <button className="btn btn-sm btn-out" type="button" onClick={goList}>
           상품 목록
-        </Link>
+        </button>
         <button className="btn btn-sm" type="button" disabled={valid.length === 0 || applying} onClick={() => setConfirm(true)}>
           {applyLabel}
         </button>
@@ -339,8 +350,8 @@ export default function StockPage() {
                 </label>
                 <div className="row stock-bulk">
                   <span className="t-l2 c-alt">선택한 옵션에</span>
-                  <input className="inp inp-sm num" type="text" inputMode="numeric" placeholder="+10" value={bulkDelta} onChange={(e) => setBulkDelta(e.target.value)} aria-label="선택한 옵션에 더하거나 뺄 수량" style={{ width: 80 }} />
-                  <button className="btn btn-sm btn-out" type="button" onClick={applyBulkDelta} disabled={pending || selected.size === 0 || !parseAmount(bulkDelta)}>
+                  <input className="inp inp-sm num stock-delta" type="text" inputMode="numeric" placeholder="+10" value={bulkDelta} onChange={(e) => setBulkDelta(e.target.value)} aria-label="선택한 옵션에 더하거나 뺄 수량" />
+                  <button className="btn btn-dense btn-out btn-w-lg" type="button" onClick={applyBulkDelta} disabled={pending || selected.size === 0 || !parseAmount(bulkDelta)}>
                     한꺼번에 적기
                   </button>
                 </div>
@@ -385,21 +396,21 @@ export default function StockPage() {
                 <table className="tbl stock-table">
                   <thead>
                     <tr>
-                      <th style={{ width: 44 }}>
+                      <th className="stock-w-chk">
                         <input className="cbx" type="checkbox" checked={allVisibleSelected} onChange={toggleAll} disabled={pending} aria-label="보이는 옵션 모두 선택" />
                       </th>
                       <th>상품 · 옵션</th>
-                      <th style={{ width: 90 }}>
+                      <th className="stock-w-cur">
                         현재
                       </th>
-                      <th style={{ width: 140 }}>
+                      <th className="stock-w-next">
                         변경 후
                       </th>
-                      <th style={{ width: 80 }}>
+                      <th className="stock-w-diff">
                         차이
                       </th>
-                      <th style={{ width: 100 }}>상태</th>
-                      <th style={{ width: 204 }} />
+                      <th className="stock-w-state">상태</th>
+                      <th className="stock-w-act" />
                     </tr>
                   </thead>
                   <tbody>
@@ -464,10 +475,10 @@ export default function StockPage() {
                             <span className={`bdg ${badge.c}`}>{badge.l}</span>
                           </td>
                           <td className="c-act">
-                            <button className="btn btn-sm btn-out" type="button" onClick={() => setHistRow(r)} aria-label={`${r.productName} ${r.optionName} 이력`}>
+                            <button className="btn btn-sm btn-out btn-w-md" type="button" onClick={() => setHistRow(r)} aria-label={`${r.productName} ${r.optionName} 이력`}>
                               이력
                             </button>
-                            <button className="btn btn-sm btn-out" type="button" onClick={() => setSheet(r)} aria-label={`${r.productName} ${r.optionName} 빼기 · 더하기`}>
+                            <button className="btn btn-sm btn-out btn-w-md" type="button" onClick={() => setSheet(r)} aria-label={`${r.productName} ${r.optionName} 빼기 · 더하기`}>
                               빼기 · 더하기
                             </button>
                           </td>
@@ -478,8 +489,8 @@ export default function StockPage() {
                 </table>
               )}
               {!searchError && cursor && (
-                <div className="row center" style={{ padding: "12px 20px" }}>
-                  <button className="btn btn-sm btn-out" type="button" onClick={() => void loadMoreOptions()} disabled={loadingMore}>
+                <div className="row center stock-more">
+                  <button className="btn btn-dense btn-out btn-w-xl" type="button" onClick={() => void loadMoreOptions()} disabled={loadingMore}>
                     {loadingMore ? "불러오는 중" : "옵션 더 불러오기"}
                   </button>
                 </div>
