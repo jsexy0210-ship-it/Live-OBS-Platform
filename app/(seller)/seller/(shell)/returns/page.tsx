@@ -37,7 +37,7 @@ type Detail = Row & {
   refundAmount: number | null;
   images: { id: string; width: number; height: number }[];
   order: { status: string; totalAmount: number; shippingFee: number };
-  refundPreview: { byFault: Record<Fault, { refundAmount: number; returnFeeDeducted: number; blocked: boolean }> } | null;
+  refundPreview: { byFault: Record<Fault, { refundAmount: number; returnFeeDeducted: number; rewardReturn: number; blocked: boolean }> } | null;
   queueVersion: number | null;
 };
 
@@ -318,12 +318,25 @@ function ReturnDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit
               <div className="col" style={{ gap: 6 }}>
                 {preview ? (
                   <>
-                    <span className="t-l1 fw6 num">환불 금액 {won(preview.refundAmount)}</span>
+                    <span className="t-l1 fw6 num" data-testid="rt-cash">
+                      현금 환불 {won(preview.refundAmount)}
+                    </span>
+                    <span className="t-c1 c-alt num" data-testid="rt-reward">
+                      {preview.rewardReturn > 0 ? `적립금 반환 ${won(preview.rewardReturn)}` : "적립금 반환 0원 (사용한 적립금 없음)"}
+                    </span>
                     {preview.returnFeeDeducted > 0 && <span className="t-c1 c-alt num">반품 배송비 {won(preview.returnFeeDeducted)} 차감</span>}
+                    <span className="t-c1 c-alt">현금 환불 = 돌아오는 상품 금액 − 반품 배송비 − 적립금 반환</span>
                     {preview.blocked && <span className="err">이 사유 주체로는 환불할 수 없는 주문입니다</span>}
                   </>
                 ) : (
-                  <span className="t-l2 c-alt">환불 금액을 불러오지 못했습니다</span>
+                  <span className="col" style={{ gap: 6, alignItems: "flex-start" }}>
+                    <span className="msg msg-neg" role="alert" style={{ display: "block" }}>
+                      <b>환불 금액을 불러오지 못했습니다.</b> 잠시 뒤 다시 시도해 주십시오. 금액을 받기 전에는 환불을 진행할 수 없습니다.
+                    </span>
+                    <button className="btn btn-sm" type="button" disabled={busy} onClick={() => void load()}>
+                      다시 시도
+                    </button>
+                  </span>
                 )}
                 {confirmOpened && (
                   <label className="row t-l2" style={{ gap: 8 }}>

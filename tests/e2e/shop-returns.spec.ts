@@ -9,11 +9,13 @@ const SLUG = "demo-shop";
 const SHOT = "tests/e2e/screenshots";
 let orderId = "";
 let orderNo = 0;
+const REWARD_USED = 1000;
 
 test.beforeAll(async () => {
   if (!PASSWORD) throw new Error("E2E_PASSWORD가 없어요. dev-seed가 출력한 데모 비밀번호를 넣어 주세요");
   await clearReturnsInDb(SLUG);
-  ({ orderId, orderNo } = await deliveredOrderInDb(SLUG, "demo-buyer1@example.com"));
+  // 적립금 1,000원을 쓴 주문: 환불 미리보기에 현금 환불과 적립금 반환이 따로 나온다
+  ({ orderId, orderNo } = await deliveredOrderInDb(SLUG, "demo-buyer1@example.com", REWARD_USED));
 });
 test.afterAll(() => clearReturnsInDb(SLUG));
 
@@ -72,10 +74,26 @@ test.describe.serial("SH-022-R 교환·반품 신청 · SA-029 교환·반품 �
     await dlg.getByRole("button", { name: "접수" }).click();
     await expect(page.getByText("신청을 접수했습니다")).toBeVisible();
     await expect(dlg).toContainText("회수 중");
+    // 환불 미리보기를 못 불러오면(처음 한 번) 「다시 시도」가 보이고 환불은 막힌다. 다시 시도하면 실제 값이 나온다
+    let nulled = false;
+    await page.route(/\/api\/seller\/returns\/[0-9a-f-]{36}$/, async (route) => {
+      if (nulled || route.request().method() !== "GET") return route.continue();
+      nulled = true;
+      const res = await route.fetch();
+      await route.fulfill({ response: res, json: { ...(await res.json()), refundPreview: null } });
+    });
     await dlg.getByRole("button", { name: "회수 완료" }).click();
     await expect(dlg).toContainText("회수 완료");
+    await expect(dlg.getByRole("alert")).toContainText("환불 금액을 불러오지 못했습니다");
+    await expect(dlg.getByRole("button", { name: "환불", exact: true })).toBeDisabled();
+    await dlg.getByRole("button", { name: "다시 시도" }).click();
+    // 판매자 사정(전부 반품): 현금 환불 = 상품 금액 − 적립금 반환, 적립금 반환 = 쓴 적립금 전부
+    await expect(dlg.getByTestId("rt-reward")).toHaveText("적립금 반환 1,000원");
+    // 결제한 금액(= 상품 금액 − 쓴 적립금, 배송비 0원)만큼이 현금으로 돌아간다
+    const paid = ((await (await page.request.get(`/api/seller/orders/${orderId}`)).json()) as { totalAmount: number }).totalAmount;
+    await expect(dlg.getByTestId("rt-cash")).toHaveText(`현금 환불 ${paid.toLocaleString("ko-KR")}원`);
+    await page.screenshot({ path: `${SHOT}/sa029-reward-1440.png` });
     // 환불 금액이 보이고, 누르면 환불 상태가 된다
-    await expect(dlg).toContainText("환불 금액");
     await dlg.getByRole("button", { name: "환불", exact: true }).click();
     await expect(page.getByText("환불을 처리했습니다")).toBeVisible();
     await expect(dlg).toContainText("완료");
