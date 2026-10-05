@@ -2,15 +2,15 @@ import type { PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { MAX_NICKNAME_LENGTH } from "../buyers/signup";
 import { cleanText } from "../text/clean";
-import { parseRewardUse, rewardUseLimit, rewardUsePrecheck, useRewardForOrder, type RewardUseFailure } from "../payments/rewardUse";
+import { parseRewardUse, rewardUsePrecheck, useRewardForOrder, type RewardUseFailure } from "../payments/rewardUse";
 import { recordOrderAddress } from "../buyers/addresses";
-import { eventOf, orderUnitPrice } from "../products/event";
 import { sellerHasFeature } from "../billing/features";
 import { sellerAccessFor } from "../billing/subscription";
 import { OPENED_NO_REFUND_CONSENT } from "./consent";
 import { activeRestriction, dbClock, getOrderPolicy, lockSellerOrders } from "./overdue";
-import { computeShippingFee, getShippingPolicy, INT4_MAX, isRemoteAddress, parseShippingAddress } from "./shipping";
-import { CouponTaken, quoteOrderCoupon, useOrderCoupon, type OrderCouponFailure } from "../shop-coupons/service";
+import { INT4_MAX, parseShippingAddress } from "./shipping";
+import { priceOrder } from "./pricing";
+import { CouponTaken, useOrderCoupon, type OrderCouponFailure } from "../shop-coupons/service";
 
 // 구매자 주문 생성(결제 대기까지). 실제 PG 결제 호출은 없다.
 // - 결제 전 개봉 고지(OPENED_NO_REFUND_CONSENT) 동의 필수(체크 기본 해제, 동의 없으면 주문을 만들지 않음). 동의 시각(DB 시계)·문구 버전을 기록.
@@ -156,43 +156,11 @@ async function createInTransaction(
     });
     if (recent >= ORDER_RATE_LIMIT) return { ok: false as const, reason: "order_rate_limited" as const };
 
-    const options = await tx.productOption.findMany({
-      where: { sellerId: input.sellerId, id: { in: lines.map((l) => l.optionId) }, deletedAt: null },
-      include: { product: true },
-    });
-    if (options.length !== lines.length) return { ok: false as const, reason: "product_unavailable" as const };
-    const byId = new Map(options.map((o) => [o.id, o]));
-    for (const l of lines) {
-      const o = byId.get(l.optionId)!;
-      if (o.product.status !== "ON_SALE" || o.product.deletedAt) return { ok: false as const, reason: "product_unavailable" as const };
-      if (o.stock < l.quantity) return { ok: false as const, reason: "out_of_stock" as const };
-    }
-
-    // 금액은 서버 값으로만: 단가 = 상품 가격 + 옵션 추가금(이벤트 할인 기간이면 할인 뒤 단가), 합계 = 단가 × 수량 + 배송비 − 쿠폰 − 적립금.
+    // 금액은 서버 값으로만: 단가 = 상품 가격 + 옵션 추가금(이벤트 할인 기간이면 할인 뒤 단가), 합계 = 단가 × 수량 + 배송비 − 쿠폰 − 적립금(orders/pricing.ts).
     // 단가가 1원 미만이거나 합계가 저장 범위(INT4)를 넘으면 주문을 만들지 않는다(500 대신 invalid_amount).
-    const priced = lines.map((l) => {
-      const o = byId.get(l.optionId)!;
-      // 이벤트 할인 기간(시작 ≤ 지금 < 종료, 잠금 뒤 DB 시계)이면 할인 뒤 단가, 아니면 정가. 정가는 listUnitPrice로 남긴다.
-      const listUnitPrice = o.product.price + o.priceDelta;
-      return { line: l, option: o, listUnitPrice, unitPrice: orderUnitPrice(listUnitPrice, eventOf(o.product), now) };
-    });
-    if (priced.some((p) => p.unitPrice < 1)) return { ok: false as const, reason: "invalid_amount" as const };
-    const itemsSubtotal = priced.reduce((sum, p) => sum + p.unitPrice * p.line.quantity, 0);
-    const policy = await getShippingPolicy(tx, input.sellerId);
-    const isRemote = isRemoteAddress(address.zipCode, address.address1, policy.remoteZipRanges);
-    const shippingFee = computeShippingFee(itemsSubtotal, policy, isRemote);
-    // 쿠폰 할인(서버 계산). 배송비 무료 쿠폰도 배송비(shippingFee)는 그대로 남기고 할인 금액으로 뺀다.
-    const coupon = await quoteOrderCoupon(tx, {
-      sellerId: input.sellerId,
-      buyerMemberId: member.id,
-      couponId: input.couponId,
-      now,
-      lines: priced.map((p) => ({ key: p.option.id, productId: p.option.productId, unitPrice: p.unitPrice, listUnitPrice: p.listUnitPrice, quantity: p.line.quantity })),
-      shippingFee,
-    });
-    if (!coupon.ok) return { ok: false as const, reason: coupon.reason };
-    const couponDiscount = coupon.applied?.discountAmount ?? 0;
-    const rewardLimit = rewardUseLimit({ itemsSubtotal, shippingFee, couponDiscount, couponIsShipping: coupon.applied?.benefit === "FREE_SHIPPING" });
+    const price = await priceOrder(tx, { sellerId: input.sellerId, buyerMemberId: member.id, lines, address, couponId: input.couponId, now });
+    if (!price.ok) return { ok: false as const, reason: price.reason };
+    const { priced, policy, isRemote, itemsSubtotal, shippingFee, coupon, couponDiscount, rewardLimit } = price;
     const rewardPre = await rewardUsePrecheck(tx, { sellerId: input.sellerId, amount: rewardUse, limit: rewardLimit });
     if (rewardPre) throw new RewardUseRejected(rewardPre);
     const totalAmount = itemsSubtotal + shippingFee - couponDiscount - rewardUse;

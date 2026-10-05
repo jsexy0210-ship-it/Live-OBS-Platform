@@ -1688,6 +1688,18 @@ model SellerMemberPolicy {
   seller Seller @relation(fields: [sellerId], references: [id])
 }
 
+// 주문자 메일 켜기·끄기(SA-080). 거래 메일 4종(주문 완료·발송·배송 완료·취소·환불), 기본은 모두 켬. 행이 없으면 모두 켠 것으로 본다.
+model SellerOrderNotificationPolicy {
+  sellerId             String   @id @db.Uuid
+  orderCompleteEnabled Boolean  @default(true)
+  shippedEnabled       Boolean  @default(true)
+  deliveredEnabled     Boolean  @default(true)
+  cancelRefundEnabled  Boolean  @default(true)
+  updatedAt            DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+}
+
 // 재가입 제한 목적으로만 남기는 탈퇴 회원의 본인확인 식별값 해시. 이름·휴대폰 등 다른 정보는 두지 않는다.
 // 재가입 제한이 켜진 쇼핑몰에서 탈퇴할 때만 만들고, expiresAt이 지나거나 판매자가 제한을 끄면 지운다(buyers/rejoin.ts).
 model BuyerRejoinBlock {
@@ -3048,16 +3060,19 @@ model PlatformInquiryImage {
   @@index([sellerId, sellerUserId, messageId, createdAt])
 }
 
-// 주문자 메일 켜기·끄기(SA-080). 거래 메일 4종(주문 완료·발송·배송 완료·취소·환불), 기본은 모두 켬. 행이 없으면 모두 켠 것으로 본다.
-model SellerOrderNotificationPolicy {
-  sellerId             String   @id @db.Uuid
-  orderCompleteEnabled Boolean  @default(true)
-  shippedEnabled       Boolean  @default(true)
-  deliveredEnabled     Boolean  @default(true)
-  cancelRefundEnabled  Boolean  @default(true)
-  updatedAt            DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+// ───────────── 점검 모드(MA-083 · AU-010) ─────────────
 
-  seller Seller @relation(fields: [sellerId], references: [id])
+// 플랫폼 점검 상태. 한 줄만 둔다(id = 1, 마이그레이션 CHECK). 켜져 있고 시작 시각이 지났으면(없으면 바로) 점검 중.
+// 종료 예정 시각은 안내용이다(지나도 저절로 끄지 않음). version은 다른 창 덮어쓰기 막기.
+model PlatformMaintenance {
+  id               Int       @id @default(1)
+  enabled          Boolean   @default(false)
+  message          String    @default("")
+  startsAt         DateTime? @db.Timestamptz(3)
+  endsAt           DateTime? @db.Timestamptz(3)
+  version          Int       @default(0)
+  updatedByAdminId String?   @db.Uuid
+  updatedAt        DateTime  @default(now()) @updatedAt @db.Timestamptz(3)
 }
 
 // ───────────── 파트너스 도우미(SA-140 · MA-055 · MA-084, Gemini) ─────────────
