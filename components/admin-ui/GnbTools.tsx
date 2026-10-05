@@ -142,7 +142,15 @@ export function GlobalSearch({ scope }: { scope: "seller" | "admin" }) {
 }
 
 export function NotificationBell({ scope, allHref }: { scope: "seller" | "admin"; allHref?: string }) {
-  const kindLabel: Record<string, string> = { NOTICE: "공지", INQUIRY_REPLY: "문의 답변", INQUIRY_WAITING: "답변 대기" };
+  const kindLabel: Record<string, string> = {
+    NOTICE: "공지",
+    INQUIRY_REPLY: "문의 답변",
+    INQUIRY_WAITING: "답변 대기",
+    DEPOSIT_PENDING: "입금 확인",
+    ORDER_PAID: "결제 완료",
+    OUT_OF_STOCK: "재고 없음",
+    RETURN_REQUESTED: "교환·반품",
+  };
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error" } | { kind: "ok"; items: Notice[]; unreadCount: number }>({ kind: "loading" });
   const wrap = useRef<HTMLDivElement>(null);
