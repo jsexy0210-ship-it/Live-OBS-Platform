@@ -1,6 +1,9 @@
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import type { AdminSessionContext } from "../auth/session";
+import { monthlyLimitWon } from "./budget";
+import { publicError } from "./jobs";
+import { STEPS } from "./steps";
 import { dbNow, lockJob, lockSellerAutomation, markRefundPending, quiescent, writeJobEvent } from "./queue";
 
 // 마스터 관리자(운영 역할 이상)가 사람이 정리를 마친 「정리 필요」 작업을 닫는다: CLEANUP_NEEDED → FAILED.
@@ -48,4 +51,106 @@ export async function closeCleanupNeeded(
     });
     return { ok: true, refundPending } as const;
   });
+}
+
+// ───── 마스터 관리자 조회(MA-110 목록 · MA-111 상세). 읽기 전용, 비밀값·브라우저 상태·원문 오류는 내보내지 않는다 ─────
+
+export type AdminJobFilter = "all" | "customer" | "failed" | "done";
+const FILTER_WHERE: Record<AdminJobFilter, Prisma.AutomationJobWhereInput> = {
+  all: {},
+  customer: { status: "NEEDS_CUSTOMER" },
+  failed: { status: { in: ["FAILED", "CLEANUP_NEEDED"] } },
+  done: { status: "SUCCEEDED" },
+};
+export const isAdminJobFilter = (v: unknown): v is AdminJobFilter => typeof v === "string" && v in FILTER_WHERE;
+
+// KST 오늘 0시(DB 시계 기준 계산은 쿼리에서)
+export async function adminJobSummary(db: PrismaClient) {
+  const [running, queued, customer, done, failed, cost] = await Promise.all([
+    db.automationJob.count({ where: { status: { in: ["RUNNING", "VERIFYING"] } } }),
+    db.automationJob.count({ where: { status: "QUEUED" } }),
+    db.automationJob.count({ where: { status: "NEEDS_CUSTOMER" } }),
+    db.$queryRaw<{ n: bigint }[]>`SELECT count(*) AS n FROM "AutomationJob" WHERE status = 'SUCCEEDED' AND "finishedAt" >= date_trunc('day', now() AT TIME ZONE 'Asia/Seoul') AT TIME ZONE 'Asia/Seoul'`,
+    db.$queryRaw<{ n: bigint }[]>`SELECT count(*) AS n FROM "AutomationJob" WHERE status IN ('FAILED','CLEANUP_NEEDED') AND "updatedAt" >= date_trunc('day', now() AT TIME ZONE 'Asia/Seoul') AT TIME ZONE 'Asia/Seoul'`,
+    db.$queryRaw<{ won: bigint | null }[]>`SELECT sum("costWon") AS won FROM "ExternalApiCostLedger" WHERE "createdAt" >= date_trunc('day', now() AT TIME ZONE 'Asia/Seoul') AT TIME ZONE 'Asia/Seoul'`,
+  ]);
+  const usage = await db.$queryRaw<{ usedWon: number; limitWon: number; stoppedAt: Date | null }[]>`
+    SELECT "usedWon", "limitWon", "stoppedAt" FROM "ExternalApiUsage" WHERE provider = 'gemini' AND period = to_char(now() AT TIME ZONE 'Asia/Seoul', 'YYYY-MM')`;
+  return {
+    running,
+    queued,
+    customerWaiting: customer,
+    doneToday: Number(done[0]?.n ?? 0),
+    failedToday: Number(failed[0]?.n ?? 0),
+    costTodayWon: Number(cost[0]?.won ?? 0),
+    monthly: { usedWon: usage[0]?.usedWon ?? 0, limitWon: usage[0]?.limitWon ?? monthlyLimitWon(), stopped: usage[0]?.stoppedAt != null },
+  };
+}
+
+export async function adminJobList(db: PrismaClient, filter: AdminJobFilter) {
+  const rows = await db.automationJob.findMany({
+    where: FILTER_WHERE[filter],
+    include: { payment: { select: { status: true, amount: true } } },
+    orderBy: { createdAt: "desc" },
+    take: 100,
+  });
+  const sellers = await db.seller.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.sellerId))] } }, select: { id: true, shopName: true } });
+  const names = new Map(sellers.map((s) => [s.id, s.shopName]));
+  return rows.map((j) => ({
+    id: j.id,
+    sellerId: j.sellerId,
+    shopName: names.get(j.sellerId) ?? "",
+    shopHost: j.shopHost,
+    kind: j.kind,
+    status: j.status,
+    step: STEPS[j.stepIndex]?.key ?? null,
+    customerAction: j.customerAction,
+    paymentStatus: j.payment?.status ?? null,
+    amount: j.payment?.amount ?? 0,
+    attempts: j.attempts,
+    lastError: publicError(j.lastError),
+    startedAt: j.startedAt,
+    queuedAt: j.queuedAt,
+    createdAt: j.createdAt,
+    finishedAt: j.finishedAt,
+  }));
+}
+
+export async function adminJobDetail(db: PrismaClient, jobId: string) {
+  const j = await db.automationJob.findUnique({ where: { id: jobId }, include: { payment: true } });
+  if (!j) return null;
+  const [seller, events] = await Promise.all([
+    db.seller.findUnique({ where: { id: j.sellerId }, select: { shopName: true } }),
+    db.automationJobEvent.findMany({ where: { jobId }, orderBy: { createdAt: "asc" }, take: 200, select: { id: true, fromStatus: true, toStatus: true, detail: true, createdAt: true } }),
+  ]);
+  return {
+    id: j.id,
+    sellerId: j.sellerId,
+    shopName: seller?.shopName ?? "",
+    shopHost: j.shopHost,
+    kind: j.kind,
+    status: j.status,
+    step: STEPS[j.stepIndex]?.key ?? null,
+    stepNumber: Math.min(j.stepIndex + 1, STEPS.length),
+    stepCount: STEPS.length,
+    customerAction: j.customerAction,
+    actionDeadlineAt: j.actionDeadlineAt,
+    attempts: j.attempts,
+    maxAttempts: j.maxAttempts,
+    lastError: publicError(j.lastError),
+    plannerCalls: j.plannerCalls,
+    costUsed: j.costUsed,
+    costLimit: j.costLimit,
+    cleanupNeededAt: j.cleanupNeededAt,
+    verifiedAt: j.verifiedAt,
+    queuedAt: j.queuedAt,
+    startedAt: j.startedAt,
+    finishedAt: j.finishedAt,
+    createdAt: j.createdAt,
+    payment: j.payment
+      ? { status: j.payment.status, amount: j.payment.amount, refundReason: j.payment.refundReason, refundRequestedAt: j.payment.refundRequestedAt, refundedAt: j.payment.refundedAt }
+      : null,
+    // 기록의 detail은 내부 값이 섞일 수 있어 내보내지 않고 상태 전이만 준다
+    events: events.map((e) => ({ id: e.id, from: e.fromStatus, to: e.toStatus, at: e.createdAt })),
+  };
 }
