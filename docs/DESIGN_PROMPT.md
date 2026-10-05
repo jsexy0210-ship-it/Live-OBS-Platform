@@ -365,6 +365,13 @@ SH-040 쇼핑몰 정지·준비 중 안내
 - 실제 고객 데이터 금지, 예시 데이터는 가상의 닉네임·상품으로 작성
 ```
 
+## 외곽 컨테이너 프레임 완전성 (2026-10-05 대표님 지시)
+
+- 검색 영역(SearchBox)·FormBox·ListPanel의 외곽 Border는 내부 모든 셀보다 시각적으로 위에 있어야 한다. 좌측 「기간」 같은 Label Cell의 회색 배경이 외곽 Border·Radius를 가리거나 Radius 밖으로 삐져나오면 안 된다.
+- Outer Radius 12px가 네 모서리에서 끊김 없이 보이고, 검색 CTA Footer까지 같은 외곽 컨테이너로 감싼다. 이중 Border 금지.
+- 구현: inset box-shadow 외곽선 대신 실제 border(필요하면 overflow: clip) 또는 `::after` 가상요소로 외곽선을 최상위에 그린다. Focus Ring·Select Dropdown·Date Picker가 잘리지 않는지 실제 화면으로 확인한다.
+- 화면 구조는 세 층으로 나눈다: ① 외곽 프레임이 전체를 감쌈 ② 내부는 조건 Body / CTA Footer ③ 하단 목록은 List Header / Table Body.
+
 ## 결과
 
 - (대기)
