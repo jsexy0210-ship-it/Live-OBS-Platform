@@ -32,7 +32,7 @@ type Data = {
   };
 };
 
-const SOON = "준비 중";
+const SOON = "아직 볼 수 없습니다";
 const PRODUCT_ROWS = 5;
 const people = (n: number) => `${n.toLocaleString("ko-KR")}명`;
 const md = (d: string) => d.slice(5).replace("-", "/").replace(/^0/, "").replace("/0", "/");
@@ -41,14 +41,14 @@ const hours = (h: number | null) => (h === null ? "—" : h >= 24 ? `${Math.roun
 // 직전 기간 대비 한 줄. 비교를 끄면 줄 자체를 그리지 않는다
 function cmpLine(on: boolean, now: number | null, prev: number | null, fmt: (n: number) => string, lowerIsBetter?: boolean) {
   if (!on) return null;
-  if (now === null || prev === null) return <span className="d">직전 기간 —</span>;
-  if (prev === 0) return <span className="d">직전 기간 {fmt(0)}</span>;
+  if (now === null || prev === null) return <span className="d">바로 앞 기간 —</span>;
+  if (prev === 0) return <span className="d">바로 앞 기간 {fmt(0)}</span>;
   const r = (now - prev) / Math.abs(prev);
-  if (r === 0) return <span className="d">직전 기간과 같음</span>;
+  if (r === 0) return <span className="d">바로 앞 기간과 같습니다</span>;
   const good = lowerIsBetter ? r < 0 : r > 0;
   return (
     <span className="d">
-      직전 기간 대비{" "}
+      바로 앞 기간보다{" "}
       <b className={good ? "sts-up" : "sts-down"}>
         {r > 0 ? "▲" : "▼"} {Math.abs(r * 100).toFixed(1)}%
       </b>
@@ -80,7 +80,7 @@ export default function StatsOverviewPage() {
     const live = c.rows.reduce((a, r) => ({ orders: a.orders + r.orders, net: a.net + r.net }), { orders: 0, net: 0 });
     const rows: (string | number | null)[][] = [["일별 매출 · 주문"], ["기간", "매출", "주문 수"]];
     for (const p of data.series) rows.push([p.bucket, p.revenue, p.orders]);
-    rows.push([], ["방송 내역"], ["구분", "주문 수", "매출"], ["방송 매출", live.orders, live.net], ["방송 시간 일반 주문", c.general.orders, c.general.net], ["방송 외 주문", c.outside.orders, c.outside.net]);
+    rows.push([], ["방송 내역"], ["구분", "주문 수", "매출"], ["방송 중 들어온 주문", live.orders, live.net], ["방송이 끝난 뒤 2시간 안에 들어온 주문", c.general.orders, c.general.net], ["그 밖의 주문", c.outside.orders, c.outside.net]);
     rows.push([], ["상품 상위"], ["상품", "판매 수량", "매출", "주문 수"]);
     for (const p of data.products.top.slice(0, PRODUCT_ROWS)) rows.push([p.deleted ? `${p.name} (삭제됨)` : p.name, p.quantity, p.revenue, p.orders]);
     downloadCsv(`stats-summary_${data.range.from}_${data.range.to}.csv`, ["통계 요약", `${data.range.from} ~ ${data.range.to}`], rows);
@@ -105,9 +105,9 @@ function Overview({ data, compare }: { data: Data; compare: boolean }) {
   const best = data.series.reduce<(typeof data.series)[number] | null>((b, s) => (b === null || s.revenue > b.revenue ? s : b), null);
   const live = data.broadcasts.rows.reduce((a, r) => ({ orders: a.orders + r.orders, net: a.net + r.net }), { orders: 0, net: 0 });
   const bcast = [
-    { label: "방송 매출", ...live },
-    { label: "방송 시간 일반 주문", ...data.broadcasts.general },
-    { label: "방송 외 주문", ...data.broadcasts.outside },
+    { label: "방송 중 들어온 주문", ...live },
+    { label: "방송이 끝난 뒤 2시간 안에 들어온 주문", ...data.broadcasts.general },
+    { label: "그 밖의 주문", ...data.broadcasts.outside },
   ];
   const bTotal = bcast.reduce((a, r) => ({ orders: a.orders + r.orders, net: a.net + r.net }), { orders: 0, net: 0 });
   const share = (n: number) => (bTotal.net > 0 ? ` (${Math.round((n / bTotal.net) * 100)}%)` : "");
@@ -116,26 +116,26 @@ function Overview({ data, compare }: { data: Data; compare: boolean }) {
   return (
     <>
       <p className="sts-note">
-        매출 · 주문 · 회원 통계를 볼 수 있는 권한(매출 보기)이 있는 계정에만 보입니다. 날짜는 한국 시간 기준입니다. 직전 기간은 {md(data.range.previous.from)} ~ {md(data.range.previous.to)}입니다.
+        이 화면은 「매출 보기」를 허용받은 계정에만 보입니다. 날짜는 한국 시간 기준입니다. 비교하는 바로 앞 기간은 {md(data.range.previous.from)} ~ {md(data.range.previous.to)}입니다.
       </p>
       <div className="sts-sum">
-        <Tile label="매출 (결제 기준)" value={won(c.revenue)}>
+        <Tile label="결제된 매출" value={won(c.revenue)}>
           {cmpLine(compare, c.revenue, p.revenue, won)}
         </Tile>
         <Tile label="주문" value={count(c.orders)}>
           {cmpLine(compare, c.orders, p.orders, count)}
         </Tile>
-        <Tile label="주문당 평균" value={c.averageOrderValue === null ? "—" : won(c.averageOrderValue)}>
+        <Tile label="주문 1건당 평균 금액" value={c.averageOrderValue === null ? "—" : won(c.averageOrderValue)}>
           {cmpLine(compare, c.averageOrderValue, p.averageOrderValue, won)}
         </Tile>
-        <Tile label="취소 · 환불" value={`${count(c.excluded)}${data.operations.refundAmount > 0 ? ` · ${won(data.operations.refundAmount)}` : ""}`}>
+        <Tile label="취소·환불 건수" value={`${count(c.excluded)}${data.operations.refundAmount > 0 ? ` · ${won(data.operations.refundAmount)}` : ""}`}>
           {cmpLine(compare, c.excluded, p.excluded, count, true)}
         </Tile>
         <Tile label="신규 회원" value={people(c.signups)}>
           {cmpLine(compare, c.signups, p.signups, people)}
         </Tile>
         <Tile label="방문자" value={<Soon />}>
-          <span className="d">방문 집계 연동 뒤 제공</span>
+          <span className="d">방문자 수를 모으면 보여 드립니다</span>
         </Tile>
       </div>
 
@@ -169,7 +169,7 @@ function Overview({ data, compare }: { data: Data; compare: boolean }) {
           <tbody>
             {bcast.map((r) => (
               <tr key={r.label}>
-                <td>{r.label}</td>
+                <td className="sts-wrap">{r.label}</td>
                 <td>{count(r.orders)}</td>
                 <td>
                   {won(r.net)}
@@ -184,7 +184,7 @@ function Overview({ data, compare }: { data: Data; compare: boolean }) {
             </tr>
           </tbody>
         </table>
-        <span className="t-c1 c-alt">방송 시작 ~ 종료(방송 매출), 종료 뒤 2시간(방송 시간 일반 주문), 그 밖(방송 외 주문)으로 나눈 값이며 합계는 위 매출과 같습니다. 시청자 수는 준비 중입니다.</span>
+        <span className="t-c1 c-alt">방송 중에 들어온 주문, 방송이 끝나고 2시간 안에 들어온 주문, 그 밖의 주문으로 나눈 금액입니다. 세 가지를 더하면 위 매출과 같습니다. 시청자 수는 아직 볼 수 없습니다.</span>
       </section>
 
       <section className="sts-sec">
@@ -232,19 +232,19 @@ function Overview({ data, compare }: { data: Data; compare: boolean }) {
             <tr>
               <th scope="row">구매 회원</th>
               <td>
-                {people(data.members.buyers)} · 재구매율 {pct(data.members.repeatRate)} ({people(data.members.repeatBuyers)})
+                {people(data.members.buyers)} · 같은 사람이 다시 산 비율 {pct(data.members.repeatRate)} ({people(data.members.repeatBuyers)})
               </td>
             </tr>
             <tr>
-              <th scope="row">신규 · 기존 매출</th>
+              <th scope="row">처음 산 회원 / 이전에 산 적 있는 회원의 매출</th>
               <td>
-                신규 {won(data.members.newNet)} · 기존 {won(data.members.returningNet)}
+                처음 산 회원 {won(data.members.newNet)} · 이전에 산 회원 {won(data.members.returningNet)}
               </td>
             </tr>
             <tr>
               <th scope="row">적립금</th>
               <td>
-                지급 {won(data.rewards.earned)} · 회수 {won(data.rewards.revoked)} · 사용 {won(data.rewards.used)} (매출의 {pct(data.rewards.useRate)}) · 소멸 {won(data.rewards.expired)}
+                준 금액 {won(data.rewards.earned)} · 도로 거둔 금액 {won(data.rewards.revoked)} · 쓴 금액 {won(data.rewards.used)} (매출의 {pct(data.rewards.useRate)}) · 기간이 지나 없어진 금액 {won(data.rewards.expired)}
               </td>
             </tr>
             <tr>
@@ -254,9 +254,9 @@ function Overview({ data, compare }: { data: Data; compare: boolean }) {
               </td>
             </tr>
             <tr>
-              <th scope="row">결제 → 발송</th>
+              <th scope="row">결제부터 발송까지</th>
               <td data-testid="overview-operations">
-                평균 {hours(data.operations.shipping.avgHours)} · 발송 {count(data.operations.shipping.shipped)} · 미입금 자동 취소 {count(data.operations.autoCancelled)} ({pct(data.operations.autoCancelRate)})
+                걸린 시간 {hours(data.operations.shipping.avgHours)} · 발송 {count(data.operations.shipping.shipped)} · 입금이 없어 자동 취소된 주문 {count(data.operations.autoCancelled)} ({pct(data.operations.autoCancelRate)})
               </td>
             </tr>
             <tr>
@@ -267,7 +267,7 @@ function Overview({ data, compare }: { data: Data; compare: boolean }) {
             </tr>
           </tbody>
         </table>
-        <span className="t-c1 c-alt">신규 = 그 기간에 첫 결제한 회원 · 적립금은 처리가 끝난 시각 기준</span>
+        <span className="t-c1 c-alt">처음 산 회원 = 이 기간에 처음 결제한 회원 · 적립금은 처리가 끝난 시각 기준</span>
       </section>
     </>
   );

@@ -29,7 +29,7 @@ export default function BroadcastStatsPage() {
       ["방송", "구분", "시작(KST)", "종료(KST)", "주문 수", "결제액", "환불", "환불액", "순매출"],
       data.broadcasts.flatMap((r) => [
         [name(r), "방송 매출", kst(r.startedAt), r.endedAt ? kst(r.endedAt) : null, r.orders, r.paid, r.refunded, r.refund, r.net],
-        [name(r), "방송 시간 일반 주문", kst(r.startedAt), r.endedAt ? kst(r.endedAt) : null, r.general.orders, r.general.paid, r.general.refunded, r.general.refund, r.general.net],
+        [name(r), "방송이 끝난 뒤 2시간 안의 주문", kst(r.startedAt), r.endedAt ? kst(r.endedAt) : null, r.general.orders, r.general.paid, r.general.refunded, r.general.refund, r.general.net],
       ]),
     );
   };
@@ -46,9 +46,9 @@ export default function BroadcastStatsPage() {
             items={[
               { label: "방송 수", now: data.total.broadcasts, prev: null, fmt: (n) => `${n.toLocaleString("ko-KR")}회`, compare: false },
               { label: "방송 주문", now: data.total.orders, prev: null, fmt: count, compare: false },
-              { label: "방송 순매출", now: data.total.net, prev: null, fmt: won, compare: false },
-              { label: "방송 시간 일반 주문", now: data.general.net, prev: null, fmt: won, compare: false, note: `${count(data.general.orders)} · 순매출` },
-              { label: "시청자 → 주문 전환", now: null, prev: null, fmt: String, text: "준비 중", compare: false, note: "시청 데이터 연동 뒤 제공" },
+              { label: "방송에서 번 실제 매출", now: data.total.net, prev: null, fmt: won, compare: false },
+              { label: "방송이 끝난 뒤 2시간 안의 주문", now: data.general.net, prev: null, fmt: won, compare: false, note: `${count(data.general.orders)} · 실제 매출` },
+              { label: "시청자 중 주문한 비율", now: null, prev: null, fmt: String, text: "아직 볼 수 없습니다", compare: false, note: "시청자 수를 모으면 보여 드립니다" },
             ]}
           />
           <BarChart title="방송별 순매출" fmt={won} points={chrono.map((r) => ({ label: kst(r.startedAt).split(" ")[0], value: Math.max(0, r.net) }))} />
@@ -78,10 +78,10 @@ export default function BroadcastStatsPage() {
                       <td className="r num">{won(r.paid)}</td>
                       <td className="r num">{won(r.refund)}</td>
                       <td className="r num fw6">{won(r.net)}</td>
-                      <td className="r sts-soon">준비 중</td>
+                      <td className="r sts-soon">아직 볼 수 없습니다</td>
                     </tr>
                     <tr className={`sts-sub${r.general.orders === 0 ? " faded" : ""}`} data-testid="stats-broadcast-general">
-                      <td className="c-alt">└ 방송 시간 일반 주문</td>
+                      <td className="c-alt">└ 방송이 끝난 뒤 2시간 안의 주문</td>
                       <td />
                       <td className="r num">{count(r.general.orders)}</td>
                       <td className="r num">{won(r.general.paid)}</td>
@@ -94,7 +94,7 @@ export default function BroadcastStatsPage() {
               </tbody>
             </table>
           </div>
-          <p className="t-c1 c-alt">방송 매출은 방송 시작부터 종료까지, 방송 시간 일반 주문은 종료 뒤 2시간 안에 들어온 결제 주문입니다(주문 시각 기준). 결제가 늦거나 다음 방송에서 개봉해도 주문한 방송에 셉니다. 시청자 수와 시청자 → 주문 전환은 시청 데이터 연동 뒤 제공합니다.</p>
+          <p className="t-c1 c-alt">방송 중 들어온 주문은 방송 시작부터 종료까지, 방송이 끝난 뒤 2시간 안의 주문은 종료 뒤 2시간 안에 들어온 결제 주문입니다(주문한 시각 기준). 결제가 늦거나 다음 방송에서 개봉해도 주문한 방송에 셉니다. 시청자 수와 시청자 중 주문한 비율은 시청자 수를 모으면 보여 드립니다.</p>
         </>
       )}
     </StatsFrame>

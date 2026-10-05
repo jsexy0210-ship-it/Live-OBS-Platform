@@ -36,11 +36,13 @@ async function login(page: Page, email: string) {
 const gnb = (page: Page) => page.getByRole("navigation", { name: "주 메뉴" });
 const lnb = (page: Page) => page.getByRole("complementary", { name: "마스터 관리자 메뉴" });
 
-test("최고관리자: 로그인하면 홈으로 들어가고, GNB 8개 대분류와 청록 바탕·같은 높이의 LNB 제목 줄·경로 줄이 보인다", async ({ page }) => {
+test("최고관리자: 로그인하면 홈으로 들어가고, GNB 6개 대분류와 청록 바탕·같은 높이의 LNB 제목 줄·경로 줄이 보인다", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await login(page, emails.super);
-  await expect(gnb(page).getByRole("link")).toHaveText(["홈", "파트너스", "구독·요금", "정산", "운영", "고객지원", "관리자", "설정"]);
+  await expect(gnb(page).getByRole("link")).toHaveText(["홈", "파트너스", "요금 · 결제", "운영", "고객지원", "설정"]);
   await expect(page.getByRole("heading", { name: "통합 대시보드", level: 1 })).toBeVisible();
+  // 메뉴 이름은 「홈」, 화면 제목은 「통합 대시보드」
+  await expect(lnb(page).getByRole("link", { name: "홈", exact: true })).toHaveAttribute("aria-current", "page");
   const bg = await page.locator(".gnb").evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(bg).toBe("rgb(15, 118, 110)");
   const h = await page.evaluate(() => ({ lnb: document.querySelector(".lnb-h")!.getBoundingClientRect().height, loc: document.querySelector(".loc-bar")!.getBoundingClientRect().height }));
@@ -48,15 +50,23 @@ test("최고관리자: 로그인하면 홈으로 들어가고, GNB 8개 대분�
   expect(h.loc).toBe(48);
   await gnb(page).getByRole("link", { name: "운영" }).click();
   await expect(lnb(page).getByRole("link", { name: "실시간 감시" })).toBeVisible();
-  await gnb(page).getByRole("link", { name: "관리자" }).click();
+  await expect(lnb(page).locator(".lnb-sec.on .lnb-i")).toHaveText(["실시간 방송", "주문 · 방송 화면 접속", "실시간 감시", "자동 연결 작업"]);
+  await expect(lnb(page).getByRole("link", { name: "자동 연결 작업" })).toHaveAttribute("href", "/admin/ops/automation");
+  await gnb(page).getByRole("link", { name: "설정" }).click();
+  // 설정은 소제목 「시스템」「관리자」로 나뉜다(관리자 그룹은 설정으로 합쳐짐)
+  await expect(lnb(page).locator(".lnb-sec.on .lnb-sub")).toHaveText(["시스템", "관리자"]);
   await expect(lnb(page).getByRole("link", { name: "관리자 계정" })).toBeVisible();
+  await expect(lnb(page).getByRole("link", { name: "역할별 권한" })).toBeVisible();
   await expect(lnb(page).getByRole("link", { name: "로그 추적" })).toBeVisible();
+  await gnb(page).getByRole("link", { name: "파트너스" }).click();
+  await expect(lnb(page).locator(".lnb-sec.on .lnb-i")).toHaveText(["파트너스 목록", "가입 신청", "결제 연결 상태", "적립금 실제 지급 켠 파트너스"]);
+  await gnb(page).getByRole("link", { name: "요금 · 결제" }).click();
+  await expect(lnb(page).locator(".lnb-sec.on .lnb-i")).toHaveText(["요금제", "구독 현황", "청구 · 결제 내역", "구독료 수납", "환불 요청"]);
 });
 
-test("CS: 최고관리자 전용 메뉴(실시간 감시·관리자 계정·설정 대분류)와 로그 추적이 숨겨지고, 주소로 들어가도 권한 안내만 보인다", async ({ page }) => {
+test("CS: 최고관리자 전용 메뉴(실시간 감시·설정 대분류=시스템·관리자)와 로그 추적이 숨겨지고, 주소로 들어가도 권한 안내만 보인다", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await login(page, emails.cs);
-  await expect(gnb(page).getByRole("link", { name: "관리자" })).toHaveCount(0);
   await gnb(page).getByRole("link", { name: "운영" }).click();
   await expect(lnb(page).getByRole("link", { name: "실시간 방송" })).toBeVisible();
   await expect(lnb(page).getByRole("link", { name: "실시간 감시" })).toHaveCount(0);

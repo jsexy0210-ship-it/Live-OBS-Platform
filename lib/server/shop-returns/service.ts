@@ -57,7 +57,7 @@ export const BUYER_RETURN_MESSAGES: Record<string, string> = {
   invalid_kind: "교환 또는 반품을 골라 주세요",
   invalid_reason: "사유를 골라 주세요",
   invalid_reason_text: "자세한 사유를 입력해 주세요 (500자 이내)",
-  invalid_items: "교환할 상품을 골라 주세요",
+  invalid_items: "신청할 상품을 골라 주세요",
   invalid_images: "사진을 확인해 주세요 (5장까지)",
   invalid_courier: "택배사를 골라 주세요",
   invalid_tracking: "송장 번호를 확인해 주세요",
@@ -70,7 +70,7 @@ export const BUYER_RETURN_MESSAGES: Record<string, string> = {
   empty_file: "사진을 확인해 주세요",
   file_too_large: "사진은 5MB 이하로 올려 주세요",
   unsupported_image: "JPG, PNG, WEBP 사진만 올릴 수 있어요",
-  wrong_image_size: "사진 크기가 맞지 않아요",
+  wrong_image_size: "사진 가로·세로가 맞지 않아요. 가로·세로 100~4,000px 사진으로 올려 주세요",
   png_16bit: "사진을 다른 형식으로 올려 주세요",
   png_too_large: "사진 크기가 너무 커요",
 };

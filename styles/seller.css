@@ -1152,6 +1152,20 @@ body {
   font-size: 12px;
   color: var(--wds-label-alternative);
 }
+.lnb-sub {
+  display: block;
+  padding: 12px 20px 4px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--wds-label-alternative);
+}
+.crumb-link {
+  color: inherit;
+  text-decoration: none;
+}
+.crumb-link:hover {
+  text-decoration: underline;
+}
 .crumb-sep {
   margin: 0 6px;
   color: var(--wds-label-assistive);
@@ -1440,6 +1454,116 @@ body {
   gap: var(--ui-sp-12);
   flex-wrap: wrap;
   min-height: var(--ui-h-default);
+}
+.au-ph-l {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-sp-12);
+  min-width: 0;
+}
+/* 화면 ← 버튼(DS-NAV): 40×40·모서리 8·테두리 1·아이콘 20, 제목과 12 */
+.bk {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  box-sizing: border-box;
+  border: 1px solid var(--wds-line-normal-normal);
+  border-radius: 8px;
+  background: var(--cs-surface);
+  color: var(--wds-label-normal);
+  cursor: pointer;
+}
+.bk:hover,
+.bk:active {
+  background: #f2f4f6;
+}
+.bk:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 1px;
+}
+/* 통합 화면 탭(DS-NAV .rtabs): 머리 바로 아래, 현재 탭은 굵은 파란 글씨 */
+.au-ph-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-sp-12);
+}
+.rtabs {
+  display: flex;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--cs-line);
+}
+.rtabs a {
+  flex: none;
+  padding: 8px 16px;
+  margin-bottom: -1px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--wds-label-neutral);
+  white-space: nowrap;
+  text-decoration: none;
+}
+.rtabs a.on {
+  color: var(--wds-primary-normal);
+  font-weight: 700;
+  background: var(--cs-surface);
+  border-color: var(--cs-line);
+  padding-bottom: 9px;
+}
+/* PageHead를 아직 안 쓰는 화면은 경로 줄 아래에 탭을 대신 붙인다(PageHead 탭이 있으면 숨김) */
+.rtabs-top {
+  margin: 12px var(--ui-gutter) 0;
+}
+.cs-body:has(.au-ph-wrap) .rtabs-top {
+  display: none;
+}
+@media (max-width: 767px) {
+  .rtabs-top {
+    margin: 12px var(--ui-gutter-mobile) 0;
+  }
+  /* 휴대폰: ←가 있는 화면은 위 고정 바 56(← 44 왼쪽·제목 가운데). 경로 줄은 숨긴다.
+     머리 래퍼는 풀어(display: contents) 바가 본문 전체에서 고정되게 하고, 오른쪽 행동 버튼들은 바 아래 줄에 둔다(버튼이 여럿인 화면도 깨지지 않게) */
+  .au-ph.has-bk,
+  .au-ph-wrap:has(.au-ph.has-bk) {
+    display: contents;
+  }
+  .au-ph.has-bk .au-ph-l {
+    position: sticky;
+    top: calc(48px + var(--imp-h));
+    z-index: 30;
+    justify-content: center;
+    height: 56px;
+    margin: calc(-1 * var(--ui-sp-16)) calc(-1 * var(--ui-gutter-mobile)) 0;
+    padding: 0 var(--ui-sp-4);
+    background: var(--cs-surface);
+    box-shadow: inset 0 -1px 0 var(--cs-line);
+  }
+  .au-ph.has-bk .bk {
+    position: absolute;
+    left: var(--ui-sp-4);
+    width: 44px;
+    height: 44px;
+    border: 0;
+    background: transparent;
+  }
+  .au-ph.has-bk .au-ph-title {
+    max-width: calc(100% - 96px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 17px;
+    line-height: 24px;
+  }
+  .cs-body:has(.au-ph.has-bk) .loc-bar .crumb {
+    display: none;
+  }
+  .cs-body:has(.au-ph.has-bk) .loc-bar:not(:has(.tb-actions > *)) {
+    display: none;
+  }
 }
 .app .au-ph-title {
   min-width: 0;
