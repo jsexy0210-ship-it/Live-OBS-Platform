@@ -51,7 +51,15 @@ async function openAs(page: Page, email: string) {
   if (email === "demo-owner@example.com") await resetPolicy(page);
 }
 
-const save = (page: Page) => page.getByRole("button", { name: "저장", exact: true }).last().click();
+// 저장 앞 확인 창(DS-CONFIRM): 입력이 올바르면 창이 열리고 「저장」을 눌러야 서버에 보낸다. 입력 오류면 창 없이 오류만 보인다
+async function save(page: Page) {
+  await page.getByRole("button", { name: "저장", exact: true }).last().click();
+  const dialog = page.getByRole("dialog");
+  if (await dialog.waitFor({ state: "visible", timeout: 1500 }).then(() => true, () => false)) {
+    await expect(dialog).toContainText("주문 설정을 저장하시겠습니까?");
+    await dialog.getByRole("button", { name: "저장", exact: true }).click();
+  }
+}
 // 저장이 실제로 끝날 때까지(PUT 응답) 기다린다. 앞서 띄운 같은 알림이 남아 있어도 다음 단계로 먼저 넘어가지 않게
 async function saveOk(page: Page) {
   await Promise.all([page.waitForResponse((r) => r.request().method() === "PUT" && r.url().includes("/api/seller/order-policy") && r.ok()), save(page)]);
@@ -68,13 +76,13 @@ test("저장한 적 없는 판매자도 입금 기한이 기본 24시간으로 �
   await page.getByRole("link", { name: "설정", exact: true }).click();
   // 메뉴는 모든 직원이 볼 수 있는 첫 탭 「쇼핑몰 정보」로 들어간다(SA-060, MASTER 결정 2026-10-04)
   await expect(page).toHaveURL(/\/seller\/settings\/shop$/);
-  await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "주문 설정" }).click();
+  await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "주문 · 배송 설정" }).click();
   await expect(page).toHaveURL(/\/seller\/settings\/order$/);
-  await expect(page.getByRole("link", { name: "설정", exact: true })).toHaveClass(/\bon\b/);
+  await expect(page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "주문 · 배송 설정" })).toHaveAttribute("aria-current", "page");
   // 새 DB 첫 실행에서는 저장한 적 없는 상태(서버 기본값)를 그대로 본다. 다시 돌릴 때는 이전 실행이 남긴 값이 있을 수 있어 기본값으로 맞춘 뒤 본다
   if ((await page.getByLabel("입금 기한", { exact: true }).inputValue()) !== "24") await resetPolicy(page);
   await expect(page.getByLabel("입금 기한", { exact: true })).toHaveValue("24");
-  await expect(page.getByRole("radio", { name: "시간" })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByLabel("입금 기한 단위")).toHaveValue("hour");
   await expect(page.getByTestId("buyer-preview")).toContainText("주문 후 24시간 안에 입금");
   // 정기 실행이 연결되기 전까지는 자동 취소가 아직 돌지 않는다고 알려 준다
   await expect(page.getByTestId("auto-cancel-pending")).toContainText("아직 자동으로 취소되지 않습니다");
@@ -86,16 +94,16 @@ test("입금 기한을 3일·24시간으로 바꿔 저장하면 다시 열어도
   await expect(page.getByText("기본 24시간", { exact: false })).toBeVisible();
 
   // 일 단위: 3일 = 72시간으로 저장되고 다시 열면 3일로 보인다
-  await page.getByRole("radio", { name: "일" }).click();
+  await page.getByLabel("입금 기한 단위").selectOption("day");
   await page.getByLabel("입금 기한", { exact: true }).fill("3");
   await expect(page.getByTestId("buyer-preview")).toContainText("주문 후 3일 안에 입금");
   await saveOk(page);
   await page.reload();
   await expect(page.getByLabel("입금 기한", { exact: true })).toHaveValue("3");
-  await expect(page.getByRole("radio", { name: "일" })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByLabel("입금 기한 단위")).toHaveValue("day");
 
   // 시간 단위: 기본값인 24시간으로 되돌린다
-  await page.getByRole("radio", { name: "시간" }).click();
+  await page.getByLabel("입금 기한 단위").selectOption("hour");
   await expect(page.getByLabel("입금 기한", { exact: true })).toHaveValue("72");
   await page.getByLabel("입금 기한", { exact: true }).fill("24");
   await expect(page.getByTestId("buyer-preview")).toHaveText("주문서 · 무통장 입금: 「주문 후 24시간 안에 입금하면 주문대기에 올라가요」");
@@ -104,16 +112,16 @@ test("입금 기한을 3일·24시간으로 바꿔 저장하면 다시 열어도
 
   await page.reload();
   await expect(page.getByLabel("입금 기한", { exact: true })).toHaveValue("24");
-  await expect(page.getByRole("radio", { name: "시간" })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByLabel("입금 기한 단위")).toHaveValue("hour");
 });
 
 test("잘못된 기한은 저장하지 않고 안내한다", async ({ page }) => {
   await openAs(page, "demo-owner@example.com");
-  await page.getByRole("radio", { name: "시간" }).click();
+  await page.getByLabel("입금 기한 단위").selectOption("hour");
   await page.getByLabel("입금 기한", { exact: true }).fill("0");
   await save(page);
-  await expect(page.getByText("1 이상으로 입력해 주십시오 · 자동 취소를 끄려면 위 스위치를 꺼 주십시오")).toBeVisible();
-  await page.getByRole("radio", { name: "일" }).click();
+  await expect(page.getByText("1 이상으로 입력해 주십시오 · 자동 취소를 끄려면 위 체크를 풀어 주십시오")).toBeVisible();
+  await page.getByLabel("입금 기한 단위").selectOption("day");
   await page.getByLabel("입금 기한", { exact: true }).fill("31");
   await expect(page.getByText("입금 기한은 30일(720시간)까지 정할 수 있습니다")).toBeVisible();
   await shot(page, "SA-063-order-error");
@@ -123,25 +131,25 @@ test("잘못된 기한은 저장하지 않고 안내한다", async ({ page }) =>
 
 test("자동 취소·주문 막기를 끄면 저장되고, 다시 켤 수 있다", async ({ page }) => {
   await openAs(page, "demo-owner@example.com");
-  await page.getByRole("switch", { name: "기한이 지나면 자동 취소" }).click();
+  await page.getByRole("checkbox", { name: "기한이 지나면 자동으로 취소합니다" }).click();
   await expect(page.getByText("미입금 주문이 쌓이면 재고가 묶입니다")).toBeVisible();
-  await page.getByRole("switch", { name: "미입금으로 3번 취소되면 30일 동안 주문 막기" }).click();
-  await page.getByRole("switch", { name: "취소·반품하면 재고 되돌리기" }).click();
+  await page.getByRole("checkbox", { name: "미입금으로 3번 취소되면 30일 동안 주문 막기" }).click();
+  await page.getByRole("checkbox", { name: "취소 · 반품하면 재고 되돌리기" }).click();
   await saveOk(page);
   await shot(page, "SA-063-order-off");
 
   await page.reload();
-  await expect(page.getByRole("switch", { name: "기한이 지나면 자동 취소" })).toHaveAttribute("aria-checked", "false");
-  await expect(page.getByRole("switch", { name: "미입금으로 3번 취소되면 30일 동안 주문 막기" })).toHaveAttribute("aria-checked", "false");
-  await expect(page.getByRole("switch", { name: "취소·반품하면 재고 되돌리기" })).toHaveAttribute("aria-checked", "false");
+  await expect(page.getByRole("checkbox", { name: "기한이 지나면 자동으로 취소합니다" })).not.toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "미입금으로 3번 취소되면 30일 동안 주문 막기" })).not.toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "취소 · 반품하면 재고 되돌리기" })).not.toBeChecked();
 
-  await page.getByRole("switch", { name: "기한이 지나면 자동 취소" }).click();
-  await page.getByRole("switch", { name: "미입금으로 3번 취소되면 30일 동안 주문 막기" }).click();
-  await page.getByRole("switch", { name: "취소·반품하면 재고 되돌리기" }).click();
+  await page.getByRole("checkbox", { name: "기한이 지나면 자동으로 취소합니다" }).click();
+  await page.getByRole("checkbox", { name: "미입금으로 3번 취소되면 30일 동안 주문 막기" }).click();
+  await page.getByRole("checkbox", { name: "취소 · 반품하면 재고 되돌리기" }).click();
   await saveOk(page);
   await page.reload();
-  await expect(page.getByRole("switch", { name: "취소·반품하면 재고 되돌리기" })).toHaveAttribute("aria-checked", "true");
-  await expect(page.getByRole("switch", { name: "기한이 지나면 자동 취소" })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("checkbox", { name: "취소 · 반품하면 재고 되돌리기" })).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "기한이 지나면 자동으로 취소합니다" })).toBeChecked();
 });
 
 test("로그인이 풀린 뒤 저장하면 로그인으로 보내고, 로그아웃이 실패하면 화면에 남는다", async ({ page }) => {
@@ -153,19 +161,19 @@ test("로그인이 풀린 뒤 저장하면 로그인으로 보내고, 로그아�
   await page.unroute("**/api/seller/auth/logout");
 
   await page.context().clearCookies();
-  await page.getByRole("switch", { name: "미입금으로 3번 취소되면 30일 동안 주문 막기" }).click();
+  await page.getByRole("checkbox", { name: "미입금으로 3번 취소되면 30일 동안 주문 막기" }).click();
   await save(page);
   await expect(page).toHaveURL(/\/seller\/login\?next=%2Fseller%2Fsettings%2Forder&reason=expired$/);
 });
 
 test("자동 취소를 꺼 둔 상태에서는 숨겨진 입금 기한 값이 틀려도 저장 버튼이 켜지지 않는다", async ({ page }) => {
   await openAs(page, "demo-owner@example.com");
-  await page.getByRole("switch", { name: "기한이 지나면 자동 취소" }).click();
+  await page.getByRole("checkbox", { name: "기한이 지나면 자동으로 취소합니다" }).click();
   await saveOk(page);
   // 다시 켜서 틀린 값을 적고 끄면, 저장된 상태와 같으므로 저장 버튼은 꺼져 있다
-  await page.getByRole("switch", { name: "기한이 지나면 자동 취소" }).click();
+  await page.getByRole("checkbox", { name: "기한이 지나면 자동으로 취소합니다" }).click();
   await page.getByLabel("입금 기한", { exact: true }).fill("0");
-  await page.getByRole("switch", { name: "기한이 지나면 자동 취소" }).click();
+  await page.getByRole("checkbox", { name: "기한이 지나면 자동으로 취소합니다" }).click();
   await expect(page.getByRole("button", { name: "저장", exact: true }).last()).toBeDisabled();
   await resetPolicy(page);
 });
@@ -181,7 +189,7 @@ test("자동 배송 완료·자동 구매 확정: 기본 7일, 기간을 바꾸�
   await openAs(page, "demo-owner@example.com");
   await expect(page.getByTestId("auto-deliver-pending")).toBeVisible();
   // 기간은 주문마다 따로 저장되지 않아, 바꾸면 진행 중인 주문에도 적용된다고 알린다
-  await expect(page.getByTestId("delivery-existing")).toHaveText("기간을 바꾸면 이미 배송 중이거나 배송 완료된 주문도 바뀐 기간으로 계산합니다.");
+  await expect(page.getByTestId("delivery-existing")).toContainText("기간을 바꾸면 이미 배송 중이거나 배송 완료된 주문도 바뀐 기간으로 계산합니다");
   await expect(page.getByLabel("자동 배송 완료 기간")).toHaveValue("7");
   await expect(page.getByLabel("자동 구매 확정 기간")).toHaveValue("7");
   await expect(page.getByTestId("delivery-preview")).toContainText("배송 중 7일이 지나면 배송 완료로 바뀝니다 · 배송 완료 7일 뒤 자동으로 구매 확정됩니다");
@@ -190,9 +198,9 @@ test("자동 배송 완료·자동 구매 확정: 기본 7일, 기간을 바꾸�
   await expect(page.getByTestId("tracking-fee")).toContainText("켜면 송장 1건 조회당");
   await expect(page.getByTestId("tracking-fee")).toContainText("단가 확정 전 금액이 발송·이용 충전금에서 차감됩니다");
   await expect(page.getByTestId("tracking-fee")).not.toContainText("[확정 전]");
-  await page.getByRole("switch", { name: "배송 중 일정 기간이 지나면 자동으로 배송 완료" }).click();
+  await page.getByRole("checkbox", { name: "일정 기간이 지나면 배송 완료로 바꿉니다" }).click();
   await expect(page.getByTestId("tracking-fee")).toContainText("택배사 조회 페이지 링크만 보여 드리며 비용이 없습니다");
-  await page.getByRole("switch", { name: "배송 중 일정 기간이 지나면 자동으로 배송 완료" }).click();
+  await page.getByRole("checkbox", { name: "일정 기간이 지나면 배송 완료로 바꿉니다" }).click();
 
   // 기간 검사: 1~30일
   await page.getByLabel("자동 배송 완료 기간").fill("31");
@@ -206,17 +214,17 @@ test("자동 배송 완료·자동 구매 확정: 기본 7일, 기간을 바꾸�
 
   // 3일·끄기로 저장 → 다시 열어도 그대로
   await page.getByLabel("자동 배송 완료 기간").fill("3");
-  await page.getByRole("switch", { name: "배송 완료 뒤 일정 기간이 지나면 자동 구매 확정" }).click();
+  await page.getByRole("checkbox", { name: "배송 완료 뒤 일정 기간이 지나면 구매 확정합니다" }).click();
   await expect(page.getByLabel("자동 구매 확정 기간")).toHaveCount(0);
   await expect(page.getByTestId("delivery-preview")).toContainText("배송 중 3일이 지나면 배송 완료로 바뀝니다");
   await expect(page.getByTestId("delivery-preview")).not.toContainText("구매 확정됩니다");
   await saveOk(page);
   await page.reload();
   await expect(page.getByLabel("자동 배송 완료 기간")).toHaveValue("3");
-  await expect(page.getByRole("switch", { name: "배송 완료 뒤 일정 기간이 지나면 자동 구매 확정" })).toHaveAttribute("aria-checked", "false");
+  await expect(page.getByRole("checkbox", { name: "배송 완료 뒤 일정 기간이 지나면 구매 확정합니다" })).not.toBeChecked();
 
   // 다시 켜면 이전 기간(7일)이 그대로 있다
-  await page.getByRole("switch", { name: "배송 완료 뒤 일정 기간이 지나면 자동 구매 확정" }).click();
+  await page.getByRole("checkbox", { name: "배송 완료 뒤 일정 기간이 지나면 구매 확정합니다" }).click();
   await expect(page.getByLabel("자동 구매 확정 기간")).toHaveValue("7");
   await page.getByLabel("자동 구매 확정 기간").fill("14");
   await saveOk(page);
@@ -231,23 +239,23 @@ test("자동 배송 완료·자동 구매 확정: 기본 7일, 기간을 바꾸�
 test("자동 구매 확정을 꺼 둔 상태에서는 숨겨진 기간 값이 틀려도 저장할 수 있다", async ({ page }) => {
   await openAs(page, "demo-owner@example.com");
   await page.getByLabel("자동 구매 확정 기간").fill("99");
-  await page.getByRole("switch", { name: "배송 완료 뒤 일정 기간이 지나면 자동 구매 확정" }).click();
+  await page.getByRole("checkbox", { name: "배송 완료 뒤 일정 기간이 지나면 구매 확정합니다" }).click();
   // 꺼짐으로 바뀐 것만 저장되고, 기간은 저장된 7일 그대로 보낸다
   await saveOk(page);
   await page.reload();
-  await expect(page.getByRole("switch", { name: "배송 완료 뒤 일정 기간이 지나면 자동 구매 확정" })).toHaveAttribute("aria-checked", "false");
-  await page.getByRole("switch", { name: "배송 완료 뒤 일정 기간이 지나면 자동 구매 확정" }).click();
+  await expect(page.getByRole("checkbox", { name: "배송 완료 뒤 일정 기간이 지나면 구매 확정합니다" })).not.toBeChecked();
+  await page.getByRole("checkbox", { name: "배송 완료 뒤 일정 기간이 지나면 구매 확정합니다" }).click();
   await expect(page.getByLabel("자동 구매 확정 기간")).toHaveValue("7");
   // 켜진 상태로 되돌려 저장해 둔다
   await saveOk(page);
   await page.reload();
-  await expect(page.getByRole("switch", { name: "배송 완료 뒤 일정 기간이 지나면 자동 구매 확정" })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("checkbox", { name: "배송 완료 뒤 일정 기간이 지나면 구매 확정합니다" })).toBeChecked();
 });
 
 test("결제 후 취소 제한: 기본 꺼짐, 켜서 저장하면 다시 열어도 켜져 있고 서버에 그대로 보낸다", async ({ page }) => {
   await openAs(page, "demo-owner@example.com");
-  const sw = page.getByRole("switch", { name: "결제 후 5번 취소하면 30일 동안 주문 막기" });
-  await expect(sw).toHaveAttribute("aria-checked", "false");
+  const sw = page.getByRole("checkbox", { name: "결제 후 5번 취소하면 30일 동안 주문 막기" });
+  await expect(sw).not.toBeChecked();
   await expect(page.getByText("결제 후 구매자 사정으로 5번 취소하면 30일 동안 주문을 막습니다")).toBeVisible();
   await sw.click();
   await expect(page.getByText("켠 뒤부터 집계합니다", { exact: false })).toBeVisible();
@@ -256,10 +264,10 @@ test("결제 후 취소 제한: 기본 꺼짐, 켜서 저장하면 다시 열어
   expect((await put).postDataJSON().paidCancelRestrictionEnabled).toBe(true);
   await shot(page, "SA-063-paid-cancel-on");
   await page.reload();
-  await expect(page.getByRole("switch", { name: "결제 후 5번 취소하면 30일 동안 주문 막기" })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("checkbox", { name: "결제 후 5번 취소하면 30일 동안 주문 막기" })).toBeChecked();
   // 다시 끄면 저장되고 그대로 꺼져 있다
-  await page.getByRole("switch", { name: "결제 후 5번 취소하면 30일 동안 주문 막기" }).click();
+  await page.getByRole("checkbox", { name: "결제 후 5번 취소하면 30일 동안 주문 막기" }).click();
   await saveOk(page);
   await page.reload();
-  await expect(page.getByRole("switch", { name: "결제 후 5번 취소하면 30일 동안 주문 막기" })).toHaveAttribute("aria-checked", "false");
+  await expect(page.getByRole("checkbox", { name: "결제 후 5번 취소하면 30일 동안 주문 막기" })).not.toBeChecked();
 });
