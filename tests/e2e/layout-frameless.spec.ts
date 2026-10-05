@@ -7,6 +7,7 @@ import { submitSellerLogin } from "./sellerLogin";
 
 // 관리자 화면 바깥 테두리(대표님 지시 2026-10-05: 「외곽 프레임 제거」를 철회하고 검색 영역·카드·상태 상자의 바깥 테두리를 복구).
 // ① 검색 상자(.au-sb)·카드(.card)·상태 상자(.st, 카드 밖)·방송 요약 칸(.bc-sum-g)은 네 변 1px 테두리가 있어야 한다.
+// ③ 바깥 상자 모서리는 모두 12px(검색 영역·카드·목록·상태 상자·요약 칸 묶음, MASTER 2026-10-05).
 // ② 이중선 0건: 테두리 상자의 한 변에 안쪽 요소의 선(표 위 선·마지막 행 아래 선·안쪽 상자 테두리 등)이 1px 이내로 맞닿으면 안 된다.
 // 1440·1280·1024에서 잰다. E2E_SCREENSHOTS=1이면 화면을 tests/e2e/screenshots/ui-frames/에 남긴다.
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
@@ -24,7 +25,7 @@ test.afterAll(async () => {
   await db.$disconnect();
 });
 
-type Found = { missing: string[]; double: string[]; framed: number };
+type Found = { missing: string[]; double: string[]; radius: string[]; framed: number };
 
 async function inspect(page: Page): Promise<Found> {
   // 방송 화면은 실시간 연결이 계속 열려 있어 networkidle이 오지 않는다. 불러오기 끝 + 짧은 대기로 그린 뒤 잰다
@@ -62,13 +63,16 @@ async function inspect(page: Page): Promise<Found> {
     const frames = [...document.querySelectorAll<HTMLElement>(".main .au-sb, .main .card, .main .st, .main .bc-sum-g")].filter(
       (el) => visible(el) && !(el.classList.contains("st") && el.closest(".card") && !el.classList.contains("card")),
     );
-    const r: Found = { missing: [], double: [], framed: frames.length };
+    const r: Found = { missing: [], double: [], radius: [], framed: frames.length };
     for (const f of frames) {
       const own = lines(f);
       if (SIDES.some((s) => !own.has(s))) {
         r.missing.push(name(f));
         continue;
       }
+      // 바깥 상자 모서리는 모두 12(카드 토큰). 컨트롤만 8
+      const rad = getComputedStyle(f).borderTopLeftRadius;
+      if (rad !== "12px") r.radius.push(`${name(f)} ${rad}`);
       const fb = f.getBoundingClientRect();
       for (const d of f.querySelectorAll<HTMLElement>("*")) {
         if (!visible(d) || d.closest(CONTROLS)) continue;
@@ -86,6 +90,7 @@ async function inspect(page: Page): Promise<Found> {
     }
     r.double = [...new Set(r.double)];
     r.missing = [...new Set(r.missing)];
+    r.radius = [...new Set(r.radius)];
     return r;
   });
 }
@@ -102,6 +107,7 @@ for (const width of [1440, 1280, 1024]) {
     await expect(page).toHaveURL(/\/seller\/orders$/);
     const missing: Record<string, string[]> = {};
     const double: Record<string, string[]> = {};
+    const radius: Record<string, string[]> = {};
     let framed = 0;
     const check = async (path: string, shot: string) => {
       await page.goto(path);
@@ -109,6 +115,7 @@ for (const width of [1440, 1280, 1024]) {
       framed += r.framed;
       if (r.missing.length) missing[path] = r.missing;
       if (r.double.length) double[path] = r.double;
+      if (r.radius.length) radius[path] = r.radius;
       if (SHOTS) await page.screenshot({ path: `tests/e2e/screenshots/ui-frames/${shot}-${width}.png` });
     };
     for (const path of SELLER) await check(path, `seller${path.replace(/\//g, "-")}`);
@@ -121,6 +128,7 @@ for (const width of [1440, 1280, 1024]) {
     for (const path of ADMIN) await check(path, `admin${path.replace(/\//g, "-")}`);
     expect.soft(missing, "바깥 테두리가 없는 검색 영역·카드·상태 상자").toEqual({});
     expect.soft(double, "테두리 상자 가장자리에 맞닿은 안쪽 선(이중선)").toEqual({});
+    expect.soft(radius, "바깥 상자 모서리가 12px이 아님").toEqual({});
     // 실제로 테두리 상자를 잰 것인지(빈 화면만 보고 통과하지 않게)
     expect(framed).toBeGreaterThan(20);
   });

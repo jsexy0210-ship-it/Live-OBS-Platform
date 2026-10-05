@@ -93,15 +93,12 @@
   box-shadow: none;
 }
 
-/* 카페24식 표: 대기·최근 완료 */
+/* 업무용 표: 대기·최근 완료 */
 .bc-tbl td {
   vertical-align: middle;
 }
 .bc-tbl .bc-item {
   text-align: left;
-}
-.bc-live {
-  border-radius: 4px;
 }
 .bc-side {
   position: sticky;
@@ -137,7 +134,7 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   border: 1px solid var(--wds-line-normal-alternative);
-  border-radius: var(--ui-r-table);
+  border-radius: var(--ui-r-card);
   background: var(--wds-background-normal-normal, #fff);
 }
 .bc-sum-g .stat + .stat {
