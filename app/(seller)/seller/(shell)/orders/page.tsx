@@ -211,7 +211,7 @@ export default function OrderListPage() {
                     <th>접수 시각</th>
                     <th>구매자</th>
                     <th>상품</th>
-                    <th className="r">금액</th>
+                    <th>금액</th>
                     <th>결제</th>
                     <th>배송</th>
                     <th style={{ width: 120 }} aria-label="작업" />
@@ -227,8 +227,8 @@ export default function OrderListPage() {
                         <div className="t-c1 c-alt num">{listDate(o.createdAt)}</div>
                       </td>
                       <td className="fw6">{o.buyer.broadcastNickname}</td>
-                      <td className="ell ord-product">{itemSummaryText(o.itemSummary)}</td>
-                      <td className="r num">{won(o.totalAmount)}</td>
+                      <td className="ell ord-product col-text">{itemSummaryText(o.itemSummary)}</td>
+                      <td className="num">{won(o.totalAmount)}</td>
                       <td>
                         <span className={`bdg ${STATUS_BADGE[o.status].cls}`}>{STATUS_BADGE[o.status].label}</span>
                       </td>

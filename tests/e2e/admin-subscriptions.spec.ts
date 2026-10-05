@@ -59,7 +59,7 @@ async function open(page: Page) {
   await page.getByRole("button", { name: "검색", exact: true }).click();
 }
 
-test("CS도 구독 현황을 조회한다: 탭별로 맞는 파트너스만 보이고, 값은 왼쪽 정렬이며, 요금제 필터와 초기화가 된다", async ({ page }) => {
+test("CS도 구독 현황을 조회한다: 탭별로 맞는 파트너스만 보이고, 표 데이터는 가운데 정렬이며, 요금제 필터와 초기화가 된다", async ({ page }) => {
   await open(page);
   const rows = page.getByTestId("subscription-row");
   await expect(rows).toHaveCount(4);
@@ -79,7 +79,7 @@ test("CS도 구독 현황을 조회한다: 탭별로 맞는 파트너스만 보�
   await tab("전체").click();
   await expect(rows).toHaveCount(4);
   const align = await page.locator(".tbl td").first().evaluate((el) => getComputedStyle(el).textAlign);
-  expect(["left", "start"]).toContain(align);
+  expect(align).toBe("center"); // 표 정렬 새 규칙(2026-10-05): 글 열(.col-text)이 아니면 데이터는 가운데
 
   await page.getByLabel("요금제").selectOption("OVERLAY_ONLY");
   await page.getByRole("button", { name: "검색", exact: true }).click();

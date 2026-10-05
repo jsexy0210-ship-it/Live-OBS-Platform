@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { submitSellerLogin } from "./sellerLogin";
-import { chatEnabledInDb, resetYoutube, seedYoutube } from "./youtubeDb";
+import { chatDefaultInDb, chatEnabledInDb, resetYoutube, seedStoredChats, seedYoutube, storedChatCountInDb } from "./youtubeDb";
 
 // SA-057 유튜브 연결: 채널·방송 연결 상태, 연결한 방송의 채팅 수집 켜기·끄기(보관 고지 표시), 해제.
 // 실제 유튜브는 부르지 않는다: 연결은 DB에 직접 만들고, 서버는 YOUTUBE_API_KEY(아무 값)·SCHEDULER_DISABLED=1로 띄운다.
@@ -56,7 +56,7 @@ test("연결된 방송: 채팅 수집은 기본 꺼짐, 켜면 보관 고지가 
 
   // 방송 연결 해제: 확인 창에서 닫으면 그대로
   await page.getByRole("button", { name: "방송 연결 해제" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "닫기" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "취소" }).click();
   await expect(page.getByTestId("yt-live")).toBeVisible();
   await page.getByRole("button", { name: "방송 연결 해제" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "해제" }).click();
@@ -67,6 +67,36 @@ test("연결된 방송: 채팅 수집은 기본 꺼짐, 켜면 보관 고지가 
   await page.getByRole("button", { name: "연결 해제", exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "해제" }).click();
   await expect(page.getByTestId("yt-status")).toContainText("연결 안 됨");
+});
+
+test("수집 기본값(기본 꺼짐)을 바꾸고, 이번 달 현황을 보고, 보관 채팅을 지금 삭제한다(건수는 그대로)", async ({ page }) => {
+  await seedYoutube();
+  await seedStoredChats(3);
+  await login(page, "demo-owner@example.com", "/seller/youtube");
+  const def = page.getByTestId("yt-default-toggle");
+  await expect(def).not.toBeChecked();
+  await def.click();
+  await expect(def).toBeChecked();
+  await expect.poll(() => chatDefaultInDb()).toBe(true);
+  await def.click();
+  await expect(def).not.toBeChecked();
+  await expect.poll(() => chatDefaultInDb()).toBe(false);
+
+  // 현황: 이번 달 수집 3건, 보관 3건
+  const usage = page.getByTestId("yt-usage");
+  await expect(usage).toContainText("이번 달 수집한 채팅3건");
+  await expect(usage).toContainText("보관 중인 채팅3건");
+
+  // 지금 삭제: 취소는 그대로, 삭제하면 보관 0건·이번 달 수집 건수는 그대로
+  await page.getByTestId("yt-purge-open").click();
+  await page.getByRole("dialog", { name: "보관 채팅을 모두 삭제하시겠습니까?" }).getByRole("button", { name: "취소" }).click();
+  expect(await storedChatCountInDb()).toBe(3);
+  await page.getByTestId("yt-purge-open").click();
+  await page.getByRole("dialog", { name: "보관 채팅을 모두 삭제하시겠습니까?" }).getByRole("button", { name: "삭제" }).click();
+  await expect(usage).toContainText("보관 중인 채팅0건");
+  await expect(usage).toContainText("이번 달 수집한 채팅3건");
+  await expect(page.getByTestId("yt-purge-open")).toBeDisabled();
+  expect(await storedChatCountInDb()).toBe(0);
 });
 
 test("서비스 준비 중(서버 키 없음)이면 안내만 보이고 연결 버튼이 꺼져 있다", async ({ page }) => {

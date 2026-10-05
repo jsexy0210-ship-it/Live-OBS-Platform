@@ -408,7 +408,7 @@ async function markPaidIfPending(tx: Tx, sellerId: string, orderId: string, data
 async function loadPendingOrder(tx: Tx, sellerId: string, orderId: string) {
   const order = await tx.order.findFirst({
     where: { id: orderId, sellerId },
-    include: { items: { orderBy: { createdAt: "asc" } }, buyerMember: { include: { grade: true } }, couponRedemption: { select: { itemDiscounts: true } } },
+    include: { items: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] }, buyerMember: { include: { grade: true } }, couponRedemption: { select: { itemDiscounts: true } } },
   });
   if (!order) throw new Rejected("not_found");
   if (order.status !== "PENDING_PAYMENT") throw new Rejected("invalid_transition");
@@ -537,7 +537,7 @@ const isQueued = (q: Pick<QueueItem, "status"> | undefined) => !!q && (q.status 
 export type RefundSelection = { orderItemId: string; quantity: number }[];
 
 const refundOrderInclude = {
-  items: { orderBy: { createdAt: "asc" as const } },
+  items: { orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }] },
   queueItems: true,
   shipment: { select: { status: true } },
   couponRedemption: { select: { benefit: true, itemDiscounts: true } },

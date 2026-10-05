@@ -183,13 +183,6 @@ textarea.ove-txt {
   font-size: 12px;
   cursor: pointer;
 }
-.ove-tbl th,
-.ove-tbl td {
-  text-align: center;
-}
-.ove-tbl td:first-child {
-  text-align: left;
-}
 @media (max-width: 1100px) {
   .ove-cols {
     grid-template-columns: minmax(0, 1fr);

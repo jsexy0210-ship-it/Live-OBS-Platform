@@ -61,8 +61,8 @@ const MENU: Group[] = [
       { label: "상품 목록", href: "/seller/products", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
       { label: "상품 등록", href: "/seller/products/new", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
       { label: "재고 관리", href: "/seller/products/stock", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
-      { label: "카테고리", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
-      { label: "상품 진열", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
+      { label: "카테고리", href: "/seller/products/categories", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
+      { label: "상품 진열", href: "/seller/products/display", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
       { label: "재입고 알림", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
       { label: "엑셀 일괄 등록", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
     ],
@@ -76,6 +76,8 @@ const MENU: Group[] = [
       { label: "구매 제한", href: "/seller/purchase-restrictions", perm: "MEMBER_POINTS", plan: "FOLLOWUP" },
       { label: "회원 알림 발송", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
       { label: "적립금", href: "/seller/rewards", perm: "MEMBER_POINTS", plan: "STORE_OPERATIONS" },
+      // 원장 API(GET /api/seller/reward-ledger)가 ORDER_FOLLOWUP 경로라 오버레이 전용으로 내린 뒤에도 후속 확인할 수 있다
+      { label: "적립금 원장", href: "/seller/rewards/ledger", perm: "MEMBER_POINTS", plan: "FOLLOWUP" },
     ],
   },
   {
@@ -110,7 +112,8 @@ const MENU: Group[] = [
       { label: "법정 고지 · 약관", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
       { label: "검색 노출", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
       { label: "결제(PG) 연결", perm: "OWNER", plan: "STORE_OPERATIONS" },
-      { label: "주문자 알림", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
+      // 화면이 쓰는 GET /api/seller/message-balance가 대표자 전용이라 메뉴도 대표자에게만 보인다(서버보다 넓게 열지 않는다)
+      { label: "주문자 알림", href: "/seller/settings/order-notifications", perm: "OWNER", plan: "STORE_OPERATIONS" },
       { label: "발송 충전", href: "/seller/settings/message-balance", perm: "OWNER", plan: "ANY" },
       { label: "직원 계정", href: "/seller/staff", perm: "OWNER", plan: "ANY" },
       { label: "구독 · 결제", href: "/seller/subscription", perm: "OWNER" },

@@ -71,6 +71,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/coupons": "STORE_OPERATIONS",
   "seller/member-grades": "STORE_OPERATIONS",
   "seller/member-grades/[gradeId]": "STORE_OPERATIONS",
+  "seller/member-grades/recalc": "STORE_OPERATIONS",
   "seller/member-grades/members/[memberId]": "STORE_OPERATIONS",
   "seller/returns": "ORDER_FOLLOWUP",
   "seller/refund-requests": "ORDER_FOLLOWUP",
@@ -139,6 +140,11 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/notices": "STORE_OPERATIONS",
   "seller/platform-notices": "BILLING", // 플랫폼 공지(SA-111·112): 잠김·정지 중에도 본다
   "seller/platform-notices/[noticeId]": "BILLING",
+  "seller/platform-inquiries": "BILLING", // 플랫폼 문의(SA-113·114·115): 잠김·정지 중에도 쓴다
+  "seller/platform-inquiries/[inquiryId]": "BILLING",
+  "seller/platform-inquiries/[inquiryId]/messages": "BILLING",
+  "seller/platform-inquiries/images": "BILLING",
+  "seller/platform-inquiries/images/[imageId]": "BILLING",
   "seller/notices/[noticeId]": "STORE_OPERATIONS",
   "seller/notices/faq-order": "STORE_OPERATIONS",
   "seller/shop-content/banners": "STORE_OPERATIONS",

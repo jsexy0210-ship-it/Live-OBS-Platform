@@ -1040,9 +1040,26 @@ body {
   box-shadow: inset 0 0 0 1px var(--cs-line);
 }
 
-/* 표면: 흰 바탕 + 1px 선 */
+/* 표면: 흰 바탕 + 바깥 1px 선, 모서리 12(카드·독립 패널).
+   대표님 지시 2026-10-05 「외곽 프레임 제거」는 같은 날 대표님 지시로 철회됐다(검색 영역·카드·상태 상자 바깥 테두리 복구).
+   이중선은 만들지 않는다: 상자 가장자리에 맞닿은 표의 위·아래 선은 아래 규칙에서 지운다 */
 :where(.seller-app) .card {
   box-shadow: inset 0 0 0 1px var(--cs-line);
+}
+/* 상자 위 가장자리에 바로 붙은 표: 표 위 굵은 선을 지운다(상자 선과 겹침). 아래 가장자리에 붙은 마지막 행: 행 아래 선을 지운다 */
+:where(.seller-app) .card > .tbl:first-child,
+:where(.seller-app) .card > :first-child > .tbl:first-child {
+  border-top: 0;
+}
+:where(.seller-app) .card > .tbl:last-child > tbody > tr:last-child > td,
+:where(.seller-app) .card > :last-child > .tbl:last-child > tbody > tr:last-child > td {
+  box-shadow: none;
+}
+@media (min-width: 768px) {
+  :where(.seller-app) .card > .tbl:last-child > tbody > tr:last-child > td + td,
+  :where(.seller-app) .card > :last-child > .tbl:last-child > tbody > tr:last-child > td + td {
+    box-shadow: inset 1px 0 0 var(--cs-line);
+  }
 }
 
 /* 표: 회색 머리줄(40px), 1px 선, 일반 행 48px · .tbl-compact 40px. 머리 글자 13px, 값 14px */
@@ -1142,6 +1159,10 @@ body {
   border-radius: var(--ui-r-card);
   box-shadow: inset 0 0 0 1px var(--cs-line);
   min-height: 160px;
+}
+/* 카드 안에 든 상태 상자는 카드 선만 남긴다(이중선 방지) */
+:where(.seller-app) .card .st {
+  box-shadow: none;
 }
 :where(.seller-app) .st-ic {
   width: 40px;
@@ -1244,7 +1265,7 @@ body {
   gap: var(--ui-gap-btn);
   flex-wrap: wrap;
 }
-/* 표형 폼·검색 상자 공통 표: 왼쪽 회색 항목명 칸(14px) */
+/* 표형 폼·검색 상자 공통 표: 왼쪽 회색 항목명 칸(14px). 칸 규칙은 자기 행(> tbody > tr)에만 걸어 칸 안에 넣은 데이터 표(.tbl)로 새지 않게 한다 */
 .au-ft {
   width: 100%;
   border-collapse: collapse;
@@ -1252,7 +1273,7 @@ body {
   background: var(--cs-surface);
   border-top: 1px solid var(--cs-line-strong);
 }
-.au-ft th {
+.au-ft > tbody > tr > th {
   width: 160px;
   padding: var(--ui-sp-8) var(--ui-sp-16);
   text-align: left;
@@ -1265,7 +1286,7 @@ body {
   border-bottom: 1px solid var(--cs-line);
   border-right: 1px solid var(--cs-line);
 }
-.au-ft td {
+.au-ft > tbody > tr > td {
   padding: var(--ui-sp-8) var(--ui-sp-16);
   border-bottom: 1px solid var(--cs-line);
 }
@@ -1284,7 +1305,8 @@ body {
 .au-ft-help {
   margin: var(--ui-sp-4) 0 0;
 }
-/* 검색 상자는 dense(40px): 같은 줄의 입력·선택·버튼이 한 높이 */
+/* 검색 상자는 dense(40px): 같은 줄의 입력·선택·버튼이 한 높이. 바깥 1px 선 + 모서리 8(표 컨테이너).
+   안쪽 표형 폼의 위 굵은 선은 지워 바깥 선과 겹치지 않게 한다 */
 .au-sb {
   background: var(--cs-surface);
   box-shadow: inset 0 0 0 1px var(--cs-line);
@@ -1295,7 +1317,7 @@ body {
   background: transparent;
 }
 /* 모서리 8px 안쪽으로 회색 머리칸 모서리를 맞춘다(넘침을 숨기지 않고) */
-.au-sb .au-ft tr:first-child th {
+.au-sb .au-ft > tbody > tr:first-child > th {
   border-top-left-radius: var(--ui-r-table);
 }
 .au-sb .au-ft-v {
@@ -1359,22 +1381,22 @@ body {
 /* 휴대폰: 항목명 칸을 입력 위로 올려 한 열로 쌓는다(좁은 왼쪽 칸에 글자가 세로로 쪼개지거나 입력이 잘리지 않게) */
 @media (max-width: 767px) {
   .au-ft,
-  .au-ft tbody,
-  .au-ft tr,
-  .au-ft th,
-  .au-ft td {
+  .au-ft > tbody,
+  .au-ft > tbody > tr,
+  .au-ft > tbody > tr > th,
+  .au-ft > tbody > tr > td {
     display: block;
     width: auto;
   }
-  .au-ft th {
+  .au-ft > tbody > tr > th {
     padding: var(--ui-sp-8) var(--ui-sp-12) var(--ui-sp-4);
     border-right: 0;
     border-bottom: 0;
   }
-  .au-sb .au-ft tr:first-child th {
+  .au-sb .au-ft > tbody > tr:first-child > th {
     border-top-right-radius: var(--ui-r-table);
   }
-  .au-ft td {
+  .au-ft > tbody > tr > td {
     padding: var(--ui-sp-8) var(--ui-sp-12) var(--ui-sp-12);
   }
   .au-ft-v > .inp {

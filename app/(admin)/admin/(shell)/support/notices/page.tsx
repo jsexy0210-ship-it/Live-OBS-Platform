@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { adminCan } from "../../../../../../lib/server/authz/permissions";
-import { Modal, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
+import { ListHead, Modal, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { MAX_SEARCH_LENGTH } from "../../../../../../components/seller/format";
 import { adminApi, failMessage } from "../../../_components/api";
@@ -180,6 +180,7 @@ function NoticeList() {
               </div>
             ) : (
               <>
+                <ListHead total={items.length} loaded />
                 <div style={{ overflowX: "auto" }}>
                   <table className="tbl">
                     <thead>
@@ -198,7 +199,7 @@ function NoticeList() {
                           <td>
                             <span className={`bdg ${NOTICE_CATEGORY[n.category].cls}`}>{NOTICE_CATEGORY[n.category].label}</span>
                           </td>
-                          <td>
+                          <td className="col-text">
                             {canEdit ? (
                               <Link className="fw6" href={`/admin/support/notices/${n.id}`}>
                                 {n.title}
@@ -209,7 +210,7 @@ function NoticeList() {
                             {n.isPinned && <span className="bdg b-fail">중요</span>}
                           </td>
                           <td>{NOTICE_AUDIENCE[n.audience]}</td>
-                          <td className="num">{day(n.publishedAt)}</td>
+                          <td>{day(n.publishedAt)}</td>
                           <td>
                             <span className={`bdg ${NOTICE_STATUS[n.status].cls}`}>{NOTICE_STATUS[n.status].label}</span>
                           </td>
@@ -230,14 +231,13 @@ function NoticeList() {
                     </tbody>
                   </table>
                 </div>
-                <div className="row" style={{ justifyContent: "space-between", padding: "12px 16px" }}>
-                  <span className="t-c1 c-alt">{state.next ? `${items.length}건 넘게` : `${items.length}건`}</span>
-                  {state.next && (
+                {state.next && (
+                  <div className="row" style={{ justifyContent: "center", padding: "12px 16px" }}>
                     <button className="btn btn-sm btn-out" type="button" onClick={() => void loadMore()} disabled={more}>
                       {more ? "불러오는 중" : "더 보기"}
                     </button>
-                  )}
-                </div>
+                  </div>
+                )}
               </>
             ))}
         </div>

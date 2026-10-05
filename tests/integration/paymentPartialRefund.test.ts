@@ -95,9 +95,10 @@ describe("부분 환불", () => {
     const rest = await previewRefundSelection(db, s.ctx, s.order.id);
     expect(rest).toMatchObject({ ok: true, value: { isFinal: true, refundedAmount: 7000, byFault: { SELLER: { itemsAmount: 15000, shippingRefunded: 3000, refundAmount: 18000 } } } });
     if (!rest.ok) return;
-    expect(rest.value.items.map((i) => [i.refundedQuantity, i.refundableQuantity])).toEqual(
-      [s.itemA, s.itemB].map((i) => (i.id === s.itemB.id ? [1, 0] : [0, 3])),
-    );
+    // 두 품목은 같은 시각에 만들어져 목록 순서는 id로 정해진다. 순서 대신 품목 id로 찾아 비교한다
+    const left = (id: string) => rest.value.items.find((i) => i.orderItemId === id);
+    expect(left(s.itemA.id)).toMatchObject({ refundedQuantity: 0, refundableQuantity: 3 });
+    expect(left(s.itemB.id)).toMatchObject({ refundedQuantity: 1, refundableQuantity: 0 });
     const second = await refund(s, undefined);
     expect(second).toMatchObject({ ok: true, value: { refundAmount: 18000, isFinal: true, seq: 2 } });
     order = await db.order.findUniqueOrThrow({ where: { id: s.order.id } });

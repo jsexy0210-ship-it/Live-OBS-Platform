@@ -339,7 +339,7 @@ export default function StockPage() {
                 </label>
                 <div className="row stock-bulk">
                   <span className="t-l2 c-alt">선택한 옵션에</span>
-                  <input className="inp inp-sm num" type="text" inputMode="numeric" placeholder="+10" value={bulkDelta} onChange={(e) => setBulkDelta(e.target.value)} aria-label="선택한 옵션에 더하거나 뺄 수량" style={{ width: 80, textAlign: "right" }} />
+                  <input className="inp inp-sm num" type="text" inputMode="numeric" placeholder="+10" value={bulkDelta} onChange={(e) => setBulkDelta(e.target.value)} aria-label="선택한 옵션에 더하거나 뺄 수량" style={{ width: 80 }} />
                   <button className="btn btn-sm btn-out" type="button" onClick={applyBulkDelta} disabled={pending || selected.size === 0 || !parseAmount(bulkDelta)}>
                     한꺼번에 적기
                   </button>
@@ -389,13 +389,13 @@ export default function StockPage() {
                         <input className="cbx" type="checkbox" checked={allVisibleSelected} onChange={toggleAll} disabled={pending} aria-label="보이는 옵션 모두 선택" />
                       </th>
                       <th>상품 · 옵션</th>
-                      <th className="r" style={{ width: 90 }}>
+                      <th style={{ width: 90 }}>
                         현재
                       </th>
-                      <th className="r" style={{ width: 140 }}>
+                      <th style={{ width: 140 }}>
                         변경 후
                       </th>
-                      <th className="r" style={{ width: 80 }}>
+                      <th style={{ width: 80 }}>
                         차이
                       </th>
                       <th style={{ width: 100 }}>상태</th>
@@ -434,7 +434,7 @@ export default function StockPage() {
                               aria-label={`${r.productName} ${r.optionName} 선택`}
                             />
                           </td>
-                          <td className="c-name">
+                          <td className="c-name col-text">
                             {/* 2줄까지 보이고 넘치면 말줄임. 전체 이름은 마우스를 올리면 보인다 */}
                             <span className="fw6 clamp2" title={r.productName}>
                               {r.productName}
@@ -443,7 +443,7 @@ export default function StockPage() {
                               {r.optionName}
                             </span>
                           </td>
-                          <td className="r num c-cur">
+                          <td className="num c-cur">
                             <span className="m-lbl">현재 </span>
                             {r.stock.toLocaleString("ko-KR")}
                           </td>
@@ -457,10 +457,9 @@ export default function StockPage() {
                               aria-label={`${r.productName} ${r.optionName} 변경 후 재고`}
                               aria-invalid={!!err}
                               title={err ?? undefined}
-                              style={{ textAlign: "right" }}
                             />
                           </td>
-                          <td className={`r num c-diff ${diff > 0 ? "c-pos fw6" : diff < 0 ? "c-neg fw6" : "c-ast"}`}>{signed(diff)}</td>
+                          <td className={`num c-diff ${diff > 0 ? "c-pos fw6" : diff < 0 ? "c-neg fw6" : "c-ast"}`}>{signed(diff)}</td>
                           <td className="c-state">
                             <span className={`bdg ${badge.c}`}>{badge.l}</span>
                           </td>
@@ -704,7 +703,7 @@ function AdjustSheet({ row, onClose, onDone }: { row: Row; onClose: () => void; 
             inputMode="numeric"
             value={qty}
             onChange={(e) => setQty(e.target.value)}
-            style={{ textAlign: "right", width: 160 }}
+            style={{ width: 160 }}
             aria-invalid={!!qtyError}
           />
           {qtyError && <span className="err">{qtyError}</span>}

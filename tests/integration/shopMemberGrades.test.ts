@@ -4,7 +4,7 @@ import { loginSeller } from "../../lib/server/auth/login";
 import { prisma } from "../../lib/server/db";
 import { withdrawBuyer } from "../../lib/server/buyers/withdraw";
 import { SCHEDULED_JOBS } from "../../lib/server/jobs/scheduler";
-import { addMemberGrade, deleteMemberGrade, getMemberGrades, recalcMonthlyGrades, recalcSellerGrades, saveMemberGrades, setMemberGrade } from "../../lib/server/shop-member-grades/service";
+import { addMemberGrade, deleteMemberGrade, getMemberGrades, recalcMonthlyGrades, recalcNow, recalcSellerGrades, saveMemberGrades, setMemberGrade } from "../../lib/server/shop-member-grades/service";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { PASSWORD, createBuyer, createLoginBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
@@ -77,7 +77,7 @@ describe("저장·추가·삭제 검사", () => {
     expect(await saveMemberGrades(db, s.ctx, { autoEnabled: true })).toEqual({ ok: true });
   });
 
-  it("등급은 10개까지, 이름 중복은 막고, 삭제는 직접 만든 빈 등급만 가능하다", async () => {
+  it("등급은 10개까지, 이름 중복은 막고, 삭제하면 회원은 기본 등급으로 옮기며 기본 등급은 지울 수 없다", async () => {
     const s = await shop();
     expect(await addMemberGrade(db, s.ctx, { displayName: "골드", minAmount: 9_000_000 })).toEqual({ ok: false, reason: "duplicate_name" });
     expect(await addMemberGrade(db, s.ctx, { displayName: "낮음", minAmount: 1_000_000 })).toEqual({ ok: false, reason: "invalid_thresholds" });
@@ -86,9 +86,11 @@ describe("저장·추가·삭제 검사", () => {
     const custom = await db.memberGrade.findFirstOrThrow({ where: { sellerId: s.seller.id, displayName: "상위0" } });
     const m = await s.member(0);
     await db.buyerMember.update({ where: { id: m.id }, data: { gradeId: custom.id } });
-    expect(await deleteMemberGrade(db, s.ctx, custom.id)).toEqual({ ok: false, reason: "grade_in_use" });
-    await db.buyerMember.update({ where: { id: m.id }, data: { gradeId: s.ids[0] } });
-    expect(await deleteMemberGrade(db, s.ctx, custom.id)).toEqual({ ok: true });
+    // 회원이 있어도 지울 수 있다: 회원은 기본 등급으로 옮기고 변경 기록(GRADE_REMOVED)을 남긴다
+    expect(await deleteMemberGrade(db, s.ctx, custom.id)).toEqual({ ok: true, moved: 1 });
+    expect(await s.gradeOf(m.id)).toBe("일반");
+    expect(await db.memberGradeHistory.findFirstOrThrow({ where: { buyerMemberId: m.id } })).toMatchObject({ fromName: "상위0", toName: "일반", reason: "GRADE_REMOVED" });
+    expect(await db.memberGrade.count({ where: { id: custom.id } })).toBe(0);
     expect(await deleteMemberGrade(db, s.ctx, s.ids[0])).toEqual({ ok: false, reason: "base_grade_fixed" });
     expect(await deleteMemberGrade(db, s.ctx, "nope")).toEqual({ ok: false, reason: "not_found" });
     const other = await shop();
@@ -143,7 +145,7 @@ describe("월 1회 자동 재산정", () => {
     await s.paid(refunded.id, 900_000, DAY, "CANCELLED");
     const dormant = await s.member(3, "DORMANT"); // 정상 회원이 아니면 건너뜀
     const r = await recalcSellerGrades(db, s.seller.id, NOW);
-    expect(r).toEqual({ ran: true, promoted: 1, demoted: 1 });
+    expect(r).toEqual({ ran: true, promoted: 1, demoted: 1, unchanged: 3 });
     expect(await s.gradeOf(up.id)).toBe("골드");
     expect(await s.gradeOf(old.id)).toBe("일반");
     expect(await s.gradeOf(down.id)).toBe("실버");
@@ -173,7 +175,7 @@ describe("월 1회 자동 재산정", () => {
     const runs = await Promise.all([1, 2, 3].map(() => recalcSellerGrades(db, s.seller.id, NOW)));
     expect(runs.filter((r) => r.ran)).toHaveLength(1);
     expect(await s.gradeOf(down.id)).toBe("실버");
-    expect(await recalcSellerGrades(db, s.seller.id, new Date(NOW.getTime() + 3600_000))).toEqual({ ran: false, promoted: 0, demoted: 0 });
+    expect(await recalcSellerGrades(db, s.seller.id, new Date(NOW.getTime() + 3600_000))).toMatchObject({ ran: false, promoted: 0, demoted: 0 });
     expect(await s.gradeOf(down.id)).toBe("실버");
     const dec = new Date("2026-12-01T00:10:00+09:00");
     expect(await recalcSellerGrades(db, s.seller.id, dec)).toMatchObject({ ran: true, demoted: 1 });
@@ -183,12 +185,12 @@ describe("월 1회 자동 재산정", () => {
   it("꺼져 있거나 기준액이 올바르지 않은 쇼핑몰은 돌지 않고, 정기 작업은 이 달에 돌지 않은 쇼핑몰만 처리한다", async () => {
     const off = await shop(false);
     const m = await off.member(3);
-    expect(await recalcSellerGrades(db, off.seller.id, NOW)).toEqual({ ran: false, promoted: 0, demoted: 0 });
+    expect(await recalcSellerGrades(db, off.seller.id, NOW)).toMatchObject({ ran: false, promoted: 0, demoted: 0 });
     expect(await off.gradeOf(m.id)).toBe("골드");
     const broken = await shop();
     await db.memberGrade.update({ where: { id: broken.ids[2] }, data: { minAmount: 50_000 } }); // 새싹(100,000)보다 낮음
     const bm = await broken.member(3);
-    expect(await recalcSellerGrades(db, broken.seller.id, NOW)).toEqual({ ran: false, promoted: 0, demoted: 0 });
+    expect(await recalcSellerGrades(db, broken.seller.id, NOW)).toMatchObject({ ran: false, promoted: 0, demoted: 0 });
     expect(await broken.gradeOf(bm.id)).toBe("골드");
     expect(await db.memberGradeRun.count({ where: { sellerId: broken.seller.id } })).toBe(0);
     const ok = await shop();
@@ -254,5 +256,128 @@ describe("탈퇴", () => {
     expect(await withdrawBuyer(db, { sellerId: s.seller.id, buyerMemberId: buyer.id }, { password: PASSWORD })).toEqual({ ok: true });
     expect(await db.memberGradeOverride.count({ where: { buyerMemberId: buyer.id } })).toBe(0);
     expect(await db.memberGradeHistory.count({ where: { buyerMemberId: buyer.id } })).toBe(0);
+  });
+});
+
+describe("산정 기준·지금 재산정·고정 기간 (v2)", () => {
+  it("기간 설정(3·12개월·누적)에 따라 센다", async () => {
+    const s = await shop();
+    const m3 = await s.member(0);
+    await s.paid(m3.id, 700_000, 150 * DAY); // 5개월 전
+    const m12 = await s.member(0);
+    await s.paid(m12.id, 700_000, 300 * DAY); // 10개월 전
+    const all = await s.member(0);
+    await s.paid(all.id, 700_000, 900 * DAY); // 30개월 전
+    await saveMemberGrades(db, s.ctx, { windowMonths: 3 });
+    expect(await recalcNow(db, s.ctx, NOW)).toMatchObject({ ok: true, promoted: 0 });
+    await saveMemberGrades(db, s.ctx, { windowMonths: 12 });
+    expect(await recalcNow(db, s.ctx, NOW)).toMatchObject({ ok: true, promoted: 2 }); // 5개월·10개월 전 주문
+    expect(await s.gradeOf(m3.id)).toBe("실버");
+    expect(await s.gradeOf(m12.id)).toBe("실버");
+    expect(await s.gradeOf(all.id)).toBe("일반");
+    await saveMemberGrades(db, s.ctx, { windowMonths: 0 });
+    expect(await recalcNow(db, s.ctx, NOW)).toMatchObject({ ok: true, promoted: 1 });
+    expect(await s.gradeOf(all.id)).toBe("실버");
+    expect(await saveMemberGrades(db, s.ctx, { windowMonths: 5 })).toEqual({ ok: false, reason: "invalid_setting" });
+    expect(await saveMemberGrades(db, s.ctx, { cadence: "HOURLY" })).toEqual({ ok: false, reason: "invalid_setting" });
+    expect(await saveMemberGrades(db, s.ctx, { demotion: "FAST" })).toEqual({ ok: false, reason: "invalid_setting" });
+  });
+
+  it("강등 방식: 바로는 목표 등급까지, 없음은 내리지 않는다", async () => {
+    const s = await shop();
+    const a = await s.member(3);
+    await saveMemberGrades(db, s.ctx, { demotion: "IMMEDIATE" });
+    await recalcNow(db, s.ctx, NOW);
+    expect(await s.gradeOf(a.id)).toBe("일반");
+    const b = await s.member(3);
+    await saveMemberGrades(db, s.ctx, { demotion: "NONE" });
+    expect(await recalcNow(db, s.ctx, NOW)).toMatchObject({ demoted: 0 });
+    expect(await s.gradeOf(b.id)).toBe("골드");
+    const up = await s.member(0);
+    await s.paid(up.id, 600_000);
+    await recalcNow(db, s.ctx, NOW);
+    expect(await s.gradeOf(up.id)).toBe("실버"); // 없음이어도 승급은 한다
+  });
+
+  it("주기: 켜거나 주기를 바꾸면 그 주기를 이미 돈 것으로 기록해 바로 돌지 않고, 다음 주기에 돈다(월·주·일 키)", async () => {
+    const s = await shop(false);
+    const m = await s.member(3);
+    await saveMemberGrades(db, s.ctx, { autoEnabled: true, cadence: "WEEKLY" });
+    const wk = await db.memberGradeRun.findMany({ where: { sellerId: s.seller.id } });
+    expect(wk).toHaveLength(1);
+    expect(wk[0].monthKey).toMatch(/^\d{4}-W\d{2}$/);
+    // 저장 직후 정기 작업은 아무것도 하지 않는다
+    expect(await recalcMonthlyGrades(db, new Date())).toBe(0);
+    expect(await s.gradeOf(m.id)).toBe("골드");
+    // 다음 주에는 돈다(그 주 월요일 0시 이후)
+    const nextWeek = new Date(Date.now() + 8 * DAY);
+    expect(await recalcMonthlyGrades(db, nextWeek)).toBe(1);
+    expect(await s.gradeOf(m.id)).toBe("실버");
+    expect(await recalcMonthlyGrades(db, nextWeek)).toBe(0);
+    // 일 단위로 바꾸면 그날은 기록만 하고, 다음 날 돈다
+    await saveMemberGrades(db, s.ctx, { cadence: "DAILY" });
+    expect(await recalcMonthlyGrades(db, new Date())).toBe(0); // 바꾼 날은 기록만 했으니 돌지 않는다
+    expect(await recalcMonthlyGrades(db, new Date(nextWeek.getTime() + DAY))).toBe(1);
+    expect(await s.gradeOf(m.id)).toBe("새싹");
+    expect((await db.memberGradeRun.findMany({ where: { sellerId: s.seller.id } })).map((r) => r.monthKey).some((k) => /^\d{4}-\d{2}-\d{2}$/.test(k))).toBe(true);
+  });
+
+  it("지금 재산정: 꺼져 있어도 돌고(기록은 안 남김) 고정한 회원은 건너뛰며, 기준액이 어긋나면 막는다", async () => {
+    const s = await shop(false);
+    const m = await s.member(0);
+    await s.paid(m.id, 600_000);
+    const pinned = await s.member(0);
+    await s.paid(pinned.id, 600_000);
+    await setMemberGrade(db, s.ctx, pinned.id, { gradeId: s.ids[0], lock: true });
+    expect(await recalcNow(db, s.ctx, NOW)).toEqual({ ok: true, ran: true, promoted: 1, demoted: 0, unchanged: 1 });
+    expect(await s.gradeOf(m.id)).toBe("실버");
+    expect(await s.gradeOf(pinned.id)).toBe("일반");
+    expect(await db.memberGradeRun.count()).toBe(0);
+    expect(await db.auditLog.count({ where: { action: "member_grade.recalc_now" } })).toBe(1);
+    await db.memberGrade.update({ where: { id: s.ids[2] }, data: { minAmount: 50_000 } });
+    expect(await recalcNow(db, s.ctx, NOW)).toEqual({ ok: false, reason: "invalid_thresholds_for_run" });
+    const staff = await createSellerUser(s.seller.id, { permissions: ["PRODUCT_MANAGE"] });
+    await expect(recalcNow(db, { ...s.ctx, actorId: staff.id, isOwner: false, permissions: ["PRODUCT_MANAGE"] })).rejects.toThrow();
+  });
+
+  it("고정 기간·사유: 종료일이 지나면 자동 재산정 대상이 되고 고정이 지워진다", async () => {
+    const s = await shop();
+    const m = await s.member(0);
+    await s.paid(m.id, 600_000);
+    const day = (d: number) => new Date(NOW.getTime() + d * DAY + 9 * 3600_000).toISOString().slice(0, 10);
+    expect(await setMemberGrade(db, s.ctx, m.id, { gradeId: s.ids[0], lock: true, until: "2020-01-01" })).toEqual({ ok: false, reason: "invalid_until" });
+    expect(await setMemberGrade(db, s.ctx, m.id, { gradeId: s.ids[0], lock: true, until: "2026-02-30" })).toEqual({ ok: false, reason: "invalid_until" });
+    expect(await setMemberGrade(db, s.ctx, m.id, { gradeId: s.ids[0], lock: true, reason: "가".repeat(101) })).toEqual({ ok: false, reason: "invalid_reason" });
+    // 지금(실제 시계) 기준 미래 종료일을 넣고, 재산정 시각을 그 뒤로 옮겨 확인한다
+    const future = new Date(Date.now() + 10 * DAY + 9 * 3600_000).toISOString().slice(0, 10);
+    expect(await setMemberGrade(db, s.ctx, m.id, { gradeId: s.ids[0], lock: true, until: future, reason: "방송 단골" })).toMatchObject({ ok: true });
+    const row = await db.memberGradeOverride.findFirstOrThrow({ where: { buyerMemberId: m.id } });
+    expect(row.reason).toBe("방송 단골");
+    expect(row.until!.getTime()).toBeGreaterThan(Date.now());
+    expect(await getMemberGrades(db, s.ctx)).toMatchObject({ lockedCount: 1, locked: [{ reason: "방송 단골" }] });
+    // 종료 전에는 건너뜀
+    await recalcNow(db, s.ctx, new Date(Date.now()));
+    expect(await s.gradeOf(m.id)).toBe("일반");
+    // 종료 뒤에는 기준대로: 시각을 옮겨 호출(주문은 그 시각 기준 6개월 안)
+    const later = new Date(Date.now() + 12 * DAY);
+    await db.order.updateMany({ where: { buyerMemberId: m.id }, data: { paidAt: new Date(later.getTime() - DAY) } });
+    expect(await recalcNow(db, s.ctx, later)).toMatchObject({ promoted: 1 });
+    expect(await s.gradeOf(m.id)).toBe("실버");
+    expect(await db.memberGradeOverride.count({ where: { buyerMemberId: m.id } })).toBe(0);
+    expect(day(0)).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("등급 삭제로 옮긴 회원(휴면 포함)이 다음 재산정에서 기준 등급으로 다시 오른다", async () => {
+    const s = await shop();
+    const m = await s.member(2); // 실버
+    await s.paid(m.id, 600_000);
+    const dormant = await s.member(2, "DORMANT");
+    expect(await deleteMemberGrade(db, s.ctx, s.ids[2])).toEqual({ ok: true, moved: 2 });
+    expect(await s.gradeOf(m.id)).toBe("일반");
+    expect(await s.gradeOf(dormant.id)).toBe("일반");
+    // 남은 등급: 일반(0)·새싹(100,000)·골드(1,000,000) → 600,000원이면 새싹
+    expect(await recalcNow(db, s.ctx, NOW)).toMatchObject({ ok: true, promoted: 1 });
+    expect(await s.gradeOf(m.id)).toBe("새싹");
+    expect(await deleteMemberGrade(db, s.ctx, s.ids[0])).toEqual({ ok: false, reason: "base_grade_fixed" });
   });
 });

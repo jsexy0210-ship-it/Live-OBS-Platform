@@ -1,6 +1,5 @@
 "use client";
 
-import "../../../../../../styles/seller-orders.css";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ListHead, Modal, PageHead } from "../../../../../../components/admin-ui";
@@ -143,8 +142,8 @@ export default function DepositsPage() {
             </div>
           )}
           {state.kind === "ok" && rows.length > 0 && (
-            <div className="ord-scroll">
-              <table className="tbl ord-tbl">
+            <div className="au-lt-wrap">
+              <table className="tbl">
                 <thead>
                   <tr>
                     <th style={{ width: 36 }}>
@@ -152,7 +151,7 @@ export default function DepositsPage() {
                     </th>
                     <th>주문</th>
                     {showName && <th>입금자명</th>}
-                    <th className="r">금액</th>
+                    <th>금액</th>
                     <th>결제 방식</th>
                     <th>입금 기한</th>
                     <th>남은 시간</th>
@@ -167,14 +166,14 @@ export default function DepositsPage() {
                         <td>
                           <input className="cbx" type="checkbox" aria-label={`${o.nickname} 선택`} checked={picked.includes(o.orderId)} onChange={() => toggle(o.orderId)} />
                         </td>
-                        <td>
-                          <Link href={`/seller/orders/${o.orderId}`} className="fw6 ord-link">
+                        <td className="col-text">
+                          <Link href={`/seller/orders/${o.orderId}`} className="fw6">
                             {o.nickname}
                           </Link>
                           <div className="t-c1 c-alt num">{listTime(o.createdAt)} 주문</div>
                         </td>
                         {showName && <td>{o.depositorName ?? "-"}</td>}
-                        <td className="r num">{won(o.amount)}</td>
+                        <td className="num">{won(o.amount)}</td>
                         <td>{o.paymentMethod === "BANK_TRANSFER" ? "무통장 입금" : o.paymentMethod === "CARD" ? "카드" : "선택 전"}</td>
                         <td className="num">{o.paymentDueAt ? listTime(o.paymentDueAt) : "-"}</td>
                         <td>{left.urgent ? <b style={{ color: "var(--neg, #c0262c)" }}>{left.text}</b> : left.text}</td>
