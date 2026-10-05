@@ -45,6 +45,8 @@ export const POST = mutation(async (req: Request) => {
     companyName: str(body.companyName),
     openedOn: str(body.openedOn, 20),
     mailOrderNumber: str(body.mailOrderNumber, 100) || null,
+    // 업종(선택, 마스터 가입 신청 목록에 보인다). 문자열이 아니면 무시한다.
+    businessCategory: typeof body.businessCategory === "string" ? body.businessCategory : null,
     // 문자열이 아닌 값은 그대로 거절되게 넘긴다(빈 값으로 바꿔 기본 플랜이 되지 않게)
     planCode: body.planCode == null ? null : typeof body.planCode === "string" ? body.planCode.slice(0, 40) : "invalid",
     meta: requestMeta(req),

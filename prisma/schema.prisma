@@ -92,6 +92,13 @@ model Seller {
   // 가입 반려 사유·시각(정지 사유와 따로 둔다)
   rejectedReason           String?
   rejectedAt               DateTime?    @db.Timestamptz(3)
+  // 가입 신청서의 업종(선택 입력, 1~40자, 마스터 가입 신청 목록 표시용)
+  businessCategory         String?
+  // 보완 요청(승인 대기 중, 마스터 MA-013): 요청 시각·안내 문구·마지막 재촉 시각·재촉 횟수. 7일 안에 보완하지 않으면 자동 반려(lib/server/admin/signupApplications.ts). 승인·반려되면 그대로 남긴다(이력).
+  supplementRequestedAt    DateTime?    @db.Timestamptz(3)
+  supplementMessage        String?
+  supplementRemindedAt     DateTime?    @db.Timestamptz(3)
+  supplementReminderCount  Int          @default(0)
   // 대표자 PASS 본인인증 CI의 HMAC-SHA256 값(원문 CI는 저장하지 않음). 대표자 1명당 쇼핑몰 1개는 마이그레이션 SQL 부분 유니크.
   representativeCiHash     String?
   representativeVerifiedAt DateTime?    @db.Timestamptz(3)
@@ -190,6 +197,8 @@ model Seller {
   externalShopConnections  ExternalShopConnection[]
   receiptIssuer            SellerReceiptIssuer?
   externalOrders ExternalOrder[]
+
+  @@index([status, createdAt])
 }
 
 model SellerDomain {

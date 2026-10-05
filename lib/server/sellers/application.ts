@@ -5,6 +5,7 @@ import { normalizeEmail } from "../auth/login";
 import { hashPassword, verifyPassword } from "../auth/password";
 import { MIN_PASSWORD_LENGTH } from "../auth/passwordReset";
 import { hashToken } from "../auth/token";
+import { cleanText } from "../text/clean";
 import { dbNow } from "../billing/subscription";
 import { keyedOwnerToken, parseAttemptKey, reuseKeyedAttempt, scopedAttemptKeyHash } from "../identity/attempt";
 import type { IdentityProvider } from "../identity/provider";
@@ -134,6 +135,8 @@ export type ApplyInput = {
   // 개업일자(YYYYMMDD 또는 YYYY-MM-DD). 국세청 진위확인에 쓴다.
   openedOn: string;
   mailOrderNumber?: string | null;
+  // 업종(선택 입력, 1~40자). 마스터 가입 신청 목록(MA-013)에 보인다. 비우거나 정리 뒤 빈 값이면 저장하지 않는다.
+  businessCategory?: string | null;
   // 플랜(ONQ 1-C): OVERLAY_ONLY | INTEGRATED. 없으면 신규 가입 기본 플랜(DEFAULT_PLAN_CODE). 그 밖의 값은 invalid_input.
   // 가입 화면이 「지금 운영 중인 쇼핑몰이 있나요?」로 고르면 보낸다(ONQ 2단계).
   planCode?: string | null;
@@ -285,6 +288,7 @@ async function applyOnce(
           representativeCiHash: ciHash,
           representativeVerifiedAt: v.verifiedAt,
           reviewReasons: reasons,
+          businessCategory: cleanText(input.businessCategory, 40, "memo"),
           businessInfo: {
             businessNumber,
             companyName,

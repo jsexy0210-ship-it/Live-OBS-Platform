@@ -114,6 +114,21 @@ describe("같은 신청 동시 재시도", () => {
 });
 
 describe("자동 점검 통과 → 자동 승인", () => {
+  it("업종(선택): 앞뒤 공백을 정리해 저장하고, 비웠거나 40자를 넘기면 저장하지 않고 신청은 그대로 받는다", async () => {
+    const business = new FakeBusinessStatusProvider();
+    const save = async (ci: string, businessCategory: string | null | undefined) => {
+      const r = await applyForSeller(db, { business, mailOrder }, form(await verified(ci), { businessCategory }));
+      expect(r).toMatchObject({ ok: true });
+      if (!r.ok) throw new Error(r.reason);
+      return (await db.seller.findUniqueOrThrow({ where: { id: r.sellerId }, select: { businessCategory: true } })).businessCategory;
+    };
+    expect(await save("CI-CAT-1", "  TCG 브레이크 ")).toBe("TCG 브레이크");
+    expect(await save("CI-CAT-2", "   ")).toBeNull();
+    expect(await save("CI-CAT-3", null)).toBeNull();
+    expect(await save("CI-CAT-4", undefined)).toBeNull();
+    expect(await save("CI-CAT-5", "가".repeat(41))).toBeNull();
+  });
+
   it("플랜(ONQ 1-C): 오버레이 전용을 고르면 승인 + 7일 체험, STANDARD·모르는 값은 invalid_input이고 신청을 만들지 않는다", async () => {
     const business = new FakeBusinessStatusProvider();
     const r = await applyForSeller(db, { business, mailOrder }, form(await verified("CI-PLAN"), { planCode: "OVERLAY_ONLY" }));

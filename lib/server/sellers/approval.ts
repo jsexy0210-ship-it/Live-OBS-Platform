@@ -14,7 +14,9 @@ type Meta = { ip?: string | null; userAgent?: string | null };
 // 승인 대기가 아니면 null(동시에 두 번 불러도 한 번만 승인).
 // adminId가 null이면 가입 자동 승인이다.
 export async function activateSeller(db: Db, sellerId: string, adminId: string | null) {
-  const rows = await db.$queryRaw<{ approvedAt: Date; trialEndsAt: Date | null }[]>`
+  // old: 갱신 전 「확인 필요」 사유(승인 되돌리기 때 되살린다, admin/signupApplications.ts)
+  const rows = await db.$queryRaw<{ approvedAt: Date; trialEndsAt: Date | null; previousReasons: string[] }[]>`
+    WITH old AS (SELECT "reviewReasons" FROM "Seller" WHERE "id" = ${sellerId}::uuid)
     UPDATE "Seller" s
        SET "status" = 'ACTIVE', "approvedAt" = now(), "approvedByAdminId" = ${adminId}::uuid, "planId" = p."id",
            "trialEndsAt" = CASE WHEN p."trialDays" > 0 THEN now() + make_interval(days => p."trialDays") ELSE NULL END,
@@ -22,7 +24,7 @@ export async function activateSeller(db: Db, sellerId: string, adminId: string |
       FROM "SubscriptionPlan" p
      WHERE s."id" = ${sellerId}::uuid AND s."status" = 'PENDING'
        AND p."id" = COALESCE(s."planId", (SELECT "id" FROM "SubscriptionPlan" WHERE "code" = ${DEFAULT_PLAN_CODE}))
-     RETURNING s."approvedAt", s."trialEndsAt"`;
+     RETURNING s."approvedAt", s."trialEndsAt", (SELECT "reviewReasons" FROM old) AS "previousReasons"`;
   return rows[0] ?? null;
 }
 
@@ -41,6 +43,7 @@ export async function approveSeller(db: PrismaClient, admin: AdminSessionContext
     action: "admin.seller.approve",
     targetType: "Seller",
     targetId: sellerId,
+    before: { reviewReasons: row.previousReasons },
     after: { status: "ACTIVE", trialEndsAt: row.trialEndsAt },
     ip: meta.ip,
     userAgent: meta.userAgent,
