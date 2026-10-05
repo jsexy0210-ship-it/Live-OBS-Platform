@@ -15,6 +15,7 @@ import { SHOP_IMAGE_MESSAGES } from "../../lib/server/shop-content/image";
 import { LOGO_MESSAGES } from "../../lib/server/shop-content/logo";
 import { CONTENT_MESSAGES } from "../../lib/server/shop-content/service";
 import { COUPON_MESSAGES } from "../../lib/server/shop-coupons/rules";
+import { SHOP_LEGAL_MESSAGES } from "../../lib/server/shop-legal/service";
 import { BUYER_COUPON_MESSAGES, CODE_MESSAGES, ORDER_COUPON_MESSAGES } from "../../lib/server/shop-coupons/service";
 import { BUYER_REVIEW_MESSAGES, SELLER_REVIEW_MESSAGES } from "../../lib/server/product-reviews/service";
 
@@ -44,6 +45,8 @@ describe("문구표 말투", () => {
       ...Object.values(SELLER_REVIEW_MESSAGES),
       // 점검 모드: 마스터 관리자 문구, 파트너스 API 점검 중 기본 문구
       ...Object.values(MAINTENANCE_MESSAGES),
+      // 쇼핑몰 이용약관·개인정보처리방침 입력(파트너스 관리자)
+      ...Object.values(SHOP_LEGAL_MESSAGES),
       MAINTENANCE_NOTICE_FORMAL,
     ])
       formal(m);
