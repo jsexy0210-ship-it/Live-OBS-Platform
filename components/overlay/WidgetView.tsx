@@ -117,7 +117,7 @@ export function WidgetView({ widget: wd, data, now, editing }: { widget: Widget;
           ) : (
             <ol className="ow-list">
               {list.map((h) => (
-                <li key={h.id} className="ow-row">
+                <li key={h.id} className={`ow-row${data.freshHitIds?.includes(h.id) ? " ow-hit-new" : ""}`} data-fresh={data.freshHitIds?.includes(h.id) ? "1" : undefined}>
                   <span className="ow-tx">
                     <span className="ow-nm2">{h.cardName}</span>
                     <span className="ow-pd2">{h.nickname}</span>

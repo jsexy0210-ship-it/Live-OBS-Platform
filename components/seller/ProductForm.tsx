@@ -12,6 +12,7 @@ import ProductCategoryPicker, { type CategoryNode } from "./ProductCategoryPicke
 import { NoImage, Toast } from "./States";
 import { api, apiUpload, failMessage, type Product, type ProductImageInfo, type ProductOption, type ProductStatus, type StockDeductMode } from "./api";
 import { INT4_MAX, STATUS_LABEL, parseAmount, statusBadge, textLength, won } from "./format";
+import { useUnsavedGuard } from "../../lib/client/navigation";
 import { cleanText } from "../../lib/server/text/clean";
 
 // SA-012 상품 등록 · SA-012-E 상품 수정. 지금 API가 받는 항목(상품명·설명·판매가·판매 상태·옵션)만 보여 준다.
@@ -183,6 +184,8 @@ export function ProductForm({ initial }: { initial?: Product }) {
   const [failure, setFailure] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // 등록을 마치고 목록으로 나갈 때는 미저장 경고를 끈다
+  const [leaving, setLeaving] = useState(false);
   const topRef = useRef<HTMLDivElement>(null);
 
   const errors = validate(name, description, price, status, rows);
@@ -307,6 +310,39 @@ export function ProductForm({ initial }: { initial?: Product }) {
     return { ok: true };
   };
 
+  // 저장하지 않은 변경(UX-04): 수정은 서버에서 받은 값(base·옵션 orig·catBase·serverOrder·detailBase)과, 등록은 빈 양식과 비교한다
+  const optionsChanged = rows.some((o) => !o.id || (o.orig ? o.name.trim() !== o.orig.name || parseAmount(o.priceDelta) !== o.orig.priceDelta || parseAmount(o.stock) !== o.orig.stock : false));
+  const detailPayload = JSON.stringify(blocks.map((b) => (b.type === "text" ? { type: "text", text: b.text } : { type: "image", imageId: b.image?.id })));
+  const imagesChanged =
+    removedImages.length > 0 ||
+    images.some((i) => !i.server) ||
+    images.filter((i) => i.server).map((i) => i.id).join() !== serverOrder.current.filter((x) => !removedImages.includes(x)).join();
+  const dirtyNow = base
+    ? name.trim() !== base.name ||
+      (description.trim() === "" ? null : description.trim()) !== (base.description ?? null) ||
+      priceNum !== base.price ||
+      status !== base.status ||
+      deduct !== base.stockDeductMode ||
+      optionsChanged ||
+      removed.length > 0 ||
+      JSON.stringify(categoryIds) !== JSON.stringify(catBase) ||
+      imagesChanged ||
+      detailPayload !== detailBase.current ||
+      detailRemoved.length > 0
+    : name.trim() !== "" ||
+      description.trim() !== "" ||
+      price.trim() !== "" ||
+      status !== "ON_SALE" ||
+      deduct !== "PAYMENT" ||
+      rows.length !== 1 ||
+      rows[0].name.trim() !== "기본" ||
+      rows[0].priceDelta !== "0" ||
+      rows[0].stock !== "0" ||
+      categoryIds.length > 0 ||
+      images.length > 0 ||
+      blocks.length > 0;
+  useUnsavedGuard(dirtyNow && !leaving);
+
   const create = async (st: ProductStatus) => {
     if (!checkFirst(st)) return;
     setSaving(st === "DRAFT" ? "draft" : "save");
@@ -335,6 +371,7 @@ export function ProductForm({ initial }: { initial?: Product }) {
     let imgFailed = false;
     if (images.length > 0) imgFailed = !(await syncImages(r.data.id)).ok;
     if (!imgFailed && blocks.length > 0) imgFailed = !(await syncDetail(r.data.id)).ok;
+    setLeaving(true);
     router.push(`/seller/products?toast=${catFailed || imgFailed ? "created_partial" : st === "DRAFT" ? "draft" : "created"}`);
   };
 

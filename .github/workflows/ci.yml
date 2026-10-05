@@ -103,3 +103,96 @@ jobs:
 
       - name: Integration tests
         run: npm run test:integration
+
+  # PR용 e2e 스모크(대표님 승인 MASTER 결정 2026-10-05). 핵심 화면 몇 개만 실제 브라우저로 확인한다.
+  # 폐기용 DB(서비스 컨테이너)에 migrate → 데모 데이터 → build → next start → playwright. 외부 자원·비밀값 없음.
+  # 문서 전용 변경(docs/ 또는 루트 *.md만)이면 단계를 건너뛰고 성공으로 끝난다(필수 체크로 걸어도 막히지 않게 작업 자체는 항상 돈다).
+  # 전체 e2e는 야간 별도 워크플로로 둔다. 스모크 spec 목록은 아래 SMOKE_SPECS에서 고친다.
+  e2e-smoke:
+    name: E2E smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: live_obs
+          POSTGRES_PASSWORD: live_obs
+          POSTGRES_DB: live_obs_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U live_obs -d live_obs_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://live_obs:live_obs@localhost:5432/live_obs_test
+      SMOKE_SPECS: admin-shell layout-admin-login login-tabs admin-dashboard
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Docs-only check
+        id: gate
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          skip=false
+          if [ "$EVENT" = "pull_request" ]; then
+            files="$(git diff --name-only "origin/$BASE_REF"...HEAD)"
+            if [ -n "$files" ] && ! printf '%s\n' "$files" | grep -Evq '^(docs/|[^/]+\.md$)'; then skip=true; fi
+          fi
+          echo "skip=$skip" >> "$GITHUB_OUTPUT"
+          if [ "$skip" = true ]; then echo "문서 전용 변경이라 e2e 스모크를 건너뜁니다."; fi
+
+      - name: Node
+        if: steps.gate.outputs.skip != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install
+        if: steps.gate.outputs.skip != 'true'
+        run: npm ci --no-audit --no-fund
+
+      - name: Install browser
+        if: steps.gate.outputs.skip != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Migrate and seed test DB
+        if: steps.gate.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          pw="$(openssl rand -hex 12)"
+          echo "::add-mask::$pw"
+          echo "E2E_PASSWORD=$pw" >> "$GITHUB_ENV"
+          npm run db:migrate
+          DEV_SEED_PASSWORD="$pw" node scripts/dev-seed.mjs > /dev/null
+
+      - name: Build
+        if: steps.gate.outputs.skip != 'true'
+        run: npm run build
+
+      - name: Start app
+        if: steps.gate.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          nohup npx next start -p 3100 > "$RUNNER_TEMP/next.log" 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf -o /dev/null http://localhost:3100/ && exit 0
+            sleep 1
+          done
+          echo "앱이 60초 안에 뜨지 않았어요."; tail -n 50 "$RUNNER_TEMP/next.log"; exit 1
+
+      - name: E2E smoke
+        if: steps.gate.outputs.skip != 'true'
+        run: npx playwright test -c tests/e2e/playwright.config.ts --project=start $SMOKE_SPECS
+
+      - name: App log on failure
+        if: failure() && steps.gate.outputs.skip != 'true'
+        run: tail -n 100 "$RUNNER_TEMP/next.log" || true
