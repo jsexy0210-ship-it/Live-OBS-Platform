@@ -175,6 +175,23 @@ export async function listApplications(db: PrismaClient, admin: AdminSessionCont
   return { ok: true as const, chips, kpi, industries, applications: page, total: rows.length, nextCursor: offset + take < rows.length ? String(offset + take) : null };
 }
 
+// 자동 점검 항목별 결과(MA-013 검토 패널). 저장된 「확인 필요」 사유에서 만든다: 사유가 없으면 통과(OK), 조회 실패는 WARN, 정보가 틀리거나 상태가 이상하면 FAIL.
+// 휴대폰 본인확인은 가입 신청의 필수 절차라 신청이 있으면 완료다.
+type CheckResult = "OK" | "WARN" | "FAIL";
+function applicationChecks(reasons: string[]): { key: string; label: string; result: CheckResult; text: string }[] {
+  const has = (c: ReviewReason) => reasons.includes(c);
+  const pick = (rules: [ReviewReason, CheckResult, string][], ok: string): { result: CheckResult; text: string } => {
+    const hit = rules.find(([c]) => has(c));
+    return hit ? { result: hit[1], text: hit[2] } : { result: "OK", text: ok };
+  };
+  return [
+    { key: "identity", label: "휴대폰 본인확인 (대표자)", result: "OK", text: "완료" },
+    { key: "business_duplicate", label: "사업자 중복", ...pick([["business_duplicate", "FAIL", "있음"]], "없음") },
+    { key: "business_status", label: "국세청 사업자 상태", ...pick([["business_not_active", "FAIL", "휴업 · 폐업"], ["business_info_mismatch", "FAIL", "정보 불일치"], ["business_lookup_failed", "WARN", "조회 실패"]], "정상") },
+    { key: "mail_order", label: "통신판매업 신고번호", ...pick([["mail_order_not_registered", "FAIL", "신고 내역 없음"], ["mail_order_not_active", "FAIL", "영업 상태 이상"], ["mail_order_number_invalid", "FAIL", "번호 확인 불가"], ["mail_order_lookup_failed", "WARN", "조회 실패"]], "확인됨") },
+  ];
+}
+
 function viewApplication(p: Pending, now: Date) {
   const i = info(p.businessInfo);
   const st = stateOf(p);
@@ -192,6 +209,7 @@ function viewApplication(p: Pending, now: Date) {
     elapsedHours: Math.floor((now.getTime() - p.createdAt.getTime()) / HOUR_MS),
     over48h: st !== "SUPPLEMENT" && now.getTime() - p.createdAt.getTime() > 48 * HOUR_MS,
     reasons: p.reviewReasons.map((c) => ({ code: c, text: REVIEW_REASON_TEXT[c as ReviewReason] ?? "확인할 내용이 있습니다" })),
+    checks: applicationChecks(p.reviewReasons),
     supplement:
       st === "SUPPLEMENT" && rev
         ? {

@@ -33,6 +33,7 @@ type App = {
   elapsedHours: number;
   over48h: boolean;
   reasons: { code: string; text: string }[];
+  checks: { key: string; label: string; result: "OK" | "WARN" | "FAIL"; text: string }[];
   supplement: Supplement | null;
 };
 type Row = App & { done?: "approved" | "rejected"; undoUntil?: number };
@@ -123,6 +124,137 @@ function SupplementDialog({ row, onClose, onDone, onStale }: { row: Row; onClose
   );
 }
 
+type Note = { id: string; body: string; author: { name: string }; createdAt: string };
+const CHECK_CLS = { OK: "b-done", WARN: "b-warn", FAIL: "b-fail" } as const;
+
+// 확인 필요 건 검토 패널(정본 MA-013-OPS 「검토 사이드 패널」): 점검 결과 표 · 신청 정보 · 내부 메모, 이전/다음으로 넘기며 승인·반려·보완 요청.
+function ReviewPanel({ row, pos, total, busy, canModerate, onNav, onClose, onApprove, onReject, onSupplement, onToast }: { row: Row; pos: number; total: number; busy: boolean; canModerate: boolean; onNav: (d: number) => void; onClose: () => void; onApprove: () => void; onReject: () => void; onSupplement: () => void; onToast: (t: string, neg?: boolean) => void }) {
+  const [notes, setNotes] = useState<Note[] | null>(null);
+  const [memo, setMemo] = useState("");
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    let live = true;
+    setNotes(null);
+    setMemo("");
+    void adminApi<{ notes: Note[] }>(`/api/admin/sellers/${encodeURIComponent(row.id)}/notes?limit=3`).then((r) => live && setNotes(r.ok ? r.data.notes : []));
+    return () => {
+      live = false;
+    };
+  }, [row.id]);
+  const saveMemo = async () => {
+    const body = memo.trim();
+    if (!body || saving) return;
+    setSaving(true);
+    const r = await adminApi<{ note: Note }>(`/api/admin/sellers/${encodeURIComponent(row.id)}/notes`, { method: "POST", json: { body } });
+    setSaving(false);
+    if (!r.ok) return onToast(failMessage(r, "메모를 저장하지 못했습니다."), true);
+    setNotes((n) => [r.data.note, ...(n ?? [])].slice(0, 3));
+    setMemo("");
+    onToast("메모를 저장했습니다.");
+  };
+  return (
+    <aside className="card" style={{ flex: "0 1 480px", minWidth: 320, position: "sticky", top: 16 }} aria-label={`${row.shopName} 검토`} data-testid="review-panel">
+      <div className="row" style={{ gap: 8, padding: "12px 16px", borderBottom: "1px solid var(--wds-line-normal, #e5e5e5)", flexWrap: "wrap" }}>
+        <b>{row.shopName}</b>
+        <span className="bdg b-warn">확인 필요 {row.reasons.length}</span>
+        <span className="row" style={{ marginLeft: "auto", gap: 4 }}>
+          <button className="btn btn-sm btn-out" type="button" onClick={() => onNav(-1)} disabled={pos <= 0}>
+            ‹ 이전
+          </button>
+          <span className="t-c1 c-alt">
+            {pos + 1} / {total}
+          </span>
+          <button className="btn btn-sm btn-out" type="button" onClick={() => onNav(1)} disabled={pos >= total - 1}>
+            다음 ›
+          </button>
+          <button className="btn btn-sm btn-out" type="button" aria-label="닫기" onClick={onClose}>
+            ×
+          </button>
+        </span>
+      </div>
+      <div className="col" style={{ gap: 12, padding: 16 }}>
+        <div>
+          <ul style={{ margin: 0, paddingLeft: 18 }} data-testid="review-reasons">
+            {row.reasons.map((c) => (
+              <li key={c.code}>
+                <b>{c.text}</b>
+              </li>
+            ))}
+          </ul>
+          <span className="t-l2 c-alt">보완 요청하거나, 확인됐으면 승인해 주십시오.</span>
+        </div>
+        <table className="tbl" aria-label="자동으로 확인한 결과">
+          <thead>
+            <tr>
+              <th>자동으로 확인한 결과</th>
+              <th>결과</th>
+            </tr>
+          </thead>
+          <tbody>
+            {row.checks.map((c) => (
+              <tr key={c.key}>
+                <td className="col-text">{c.label}</td>
+                <td>
+                  <span className={`bdg ${CHECK_CLS[c.result]}`}>{c.text}</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <dl className="col" style={{ gap: 6, margin: 0 }}>
+          <div className="row" style={{ gap: 8 }}>
+            <dt className="c-alt" style={{ width: 70 }}>사업자</dt>
+            <dd style={{ margin: 0 }}>{text(row.businessNumber)}</dd>
+          </div>
+          <div className="row" style={{ gap: 8 }}>
+            <dt className="c-alt" style={{ width: 70 }}>신청자</dt>
+            <dd style={{ margin: 0 }}>{[row.applicantName, row.applicantEmail].filter(Boolean).join(" · ") || "-"} · {formatDateTime(row.receivedAt)} 접수</dd>
+          </div>
+        </dl>
+        <div className="col" style={{ gap: 6 }}>
+          <label className="lbl" htmlFor="review-memo">
+            내부 메모
+          </label>
+          {notes === null ? (
+            <span className="t-c1 c-alt">메모를 불러오는 중입니다.</span>
+          ) : (
+            notes.map((n) => (
+              <span key={n.id} className="t-l2" data-testid="review-note">
+                {n.body}
+                <span className="c-alt"> · {n.author.name} · {formatDateTime(n.createdAt)}</span>
+              </span>
+            ))
+          )}
+          {canModerate && (
+            <div className="row" style={{ gap: 6 }}>
+              <input id="review-memo" className="inp" style={{ flex: 1 }} maxLength={1000} value={memo} onChange={(e) => setMemo(e.target.value)} disabled={saving} />
+              <button className="btn btn-sm btn-out" type="button" onClick={() => void saveMemo()} disabled={saving || memo.trim() === ""}>
+                {saving ? "저장 중" : "메모 저장"}
+              </button>
+            </div>
+          )}
+        </div>
+        <Link className="t-c1" href={`/admin/partners/applications/${row.id}`}>
+          전체 상세 열기 (서류 · 처리 이력)
+        </Link>
+      </div>
+      {canModerate && (
+        <div className="row" style={{ gap: 8, padding: "12px 16px", borderTop: "1px solid var(--wds-line-normal, #e5e5e5)" }}>
+          <button className="btn" type="button" onClick={onApprove} disabled={busy}>
+            확인했습니다. 승인
+          </button>
+          <button className="btn btn-out" type="button" onClick={onReject} disabled={busy}>
+            반려
+          </button>
+          <button className="btn btn-out" type="button" onClick={onSupplement} disabled={busy}>
+            보완 요청
+          </button>
+        </div>
+      )}
+    </aside>
+  );
+}
+
 function Applications() {
   const { me } = useAdmin();
   const canModerate = adminCan(me.role, "seller.moderate");
@@ -134,7 +266,8 @@ function Applications() {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [rejecting, setRejecting] = useState<Row | null>(null);
   const [bulkRejecting, setBulkRejecting] = useState(false);
-  const [reviewing, setReviewing] = useState<Row | null>(null);
+  const [reviewId, setReviewId] = useState<string | null>(null);
+  const lastIdx = useRef(0);
   const [supplementing, setSupplementing] = useState<Row | null>(null);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -245,6 +378,14 @@ function Applications() {
     applyBulk(res.data.results, (b) => ({ done: "approved", undoUntil: b.undoableUntil ? new Date(b.undoableUntil).getTime() : undefined }), "승인", "을 승인했습니다");
   };
 
+  const queue = rows.filter((r) => !r.done && r.state === "REVIEW");
+  const reviewing = queue.find((r) => r.id === reviewId) ?? null;
+  const reviewPos = reviewing ? queue.indexOf(reviewing) : -1;
+  if (reviewPos >= 0) lastIdx.current = reviewPos;
+  // 처리한 건이 대기열에서 빠지면 패널이 다음 건으로 넘어가고, 더 없으면 닫힌다
+  useEffect(() => {
+    if (reviewId && state.kind === "ok" && !reviewing) setReviewId(queue[Math.min(lastIdx.current, queue.length - 1)]?.id ?? null);
+  });
   const open = rows.filter((r) => !r.done);
   const checkable = open.filter((r) => r.state === "CLEAR");
   const allPicked = checkable.length > 0 && checkable.every((r) => picked.has(r.id));
@@ -324,7 +465,8 @@ function Applications() {
               <input className="inp" type="search" aria-label="검색어" placeholder="검색어" maxLength={MAX_SEARCH_LENGTH} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} />
             </SearchRow>
           </SearchBox>
-          <div className="card">
+          <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+          <div className="card" style={{ flex: "1 1 560px", minWidth: 0 }}>
             {canModerate && picked.size > 0 && (
               <div className="row" style={{ gap: 8, padding: "8px 12px", background: "var(--info-bg)" }} data-testid="bulk-bar">
                 <b>{picked.size}개 선택</b>
@@ -464,7 +606,7 @@ function Applications() {
                                       </>
                                     )}
                                     {canModerate && r.state === "REVIEW" && (
-                                      <button className="btn btn-sm" type="button" onClick={() => setReviewing(r)} disabled={working}>
+                                      <button className="btn btn-sm" type="button" onClick={() => setReviewId(r.id)} disabled={working}>
                                         확인할 내용 보기
                                       </button>
                                     )}
@@ -498,6 +640,22 @@ function Applications() {
               </div>
             )}
           </div>
+          {reviewing && (
+            <ReviewPanel
+              row={reviewing}
+              pos={reviewPos}
+              total={queue.length}
+              busy={busy.has(reviewing.id)}
+              canModerate={canModerate}
+              onNav={(d) => setReviewId(queue[reviewPos + d]?.id ?? reviewing.id)}
+              onClose={() => setReviewId(null)}
+              onApprove={() => void approve(reviewing)}
+              onReject={() => setRejecting(reviewing)}
+              onSupplement={() => setSupplementing(reviewing)}
+              onToast={(t, neg) => setToast({ text: t, neg })}
+            />
+          )}
+          </div>
         </div>
       </main>
 
@@ -509,7 +667,6 @@ function Applications() {
           onDone={() => {
             const r = rejecting;
             setRejecting(null);
-            setReviewing(null);
             unpick(r.id);
             mark(r.id, { done: "rejected" });
             setToast({ text: `${r.shopName} 가입을 반려했습니다.` });
@@ -517,7 +674,6 @@ function Applications() {
           onStale={() => {
             const r = rejecting;
             setRejecting(null);
-            setReviewing(null);
             stale(r);
           }}
         />
@@ -541,7 +697,6 @@ function Applications() {
           onDone={() => {
             const r = supplementing;
             setSupplementing(null);
-            setReviewing(null);
             unpick(r.id);
             setToast({ text: `${r.shopName} 신청자에게 보완을 요청했습니다.` });
             void load(true);
@@ -549,60 +704,9 @@ function Applications() {
           onStale={() => {
             const r = supplementing;
             setSupplementing(null);
-            setReviewing(null);
             stale(r);
           }}
         />
-      )}
-      {reviewing && !rejecting && !supplementing && (
-        <Modal labelId="review-title" busy={busy.has(reviewing.id)} onClose={() => setReviewing(null)}>
-          {(requestClose) => (
-            <>
-              <div className="modal-h">
-                <h2 className="modal-t" id="review-title">
-                  {reviewing.shopName} 가입 신청에서 확인할 것
-                </h2>
-                <span className="t-l2 c-alt">아래 사유를 확인한 뒤 승인해 주십시오. 자세한 서류는 상세에서 볼 수 있습니다.</span>
-              </div>
-              <div className="col" style={{ gap: 8, padding: "0 24px" }}>
-                <ul style={{ margin: 0, paddingLeft: 18 }} data-testid="review-reasons">
-                  {reviewing.reasons.map((c) => (
-                    <li key={c.code}>{c.text}</li>
-                  ))}
-                </ul>
-                <span className="t-l2 c-alt">
-                  {reviewing.applicantName} · {text(reviewing.businessNumber)} · {formatDateTime(reviewing.receivedAt)} 접수
-                </span>
-              </div>
-              <div className="modal-f">
-                <Link className="btn btn-out" href={`/admin/partners/applications/${reviewing.id}`}>
-                  상세 열기
-                </Link>
-                <button className="btn btn-out" type="button" onClick={() => setSupplementing(reviewing)} disabled={busy.has(reviewing.id)}>
-                  보완 요청
-                </button>
-                <button className="btn btn-out" type="button" onClick={() => setRejecting(reviewing)} disabled={busy.has(reviewing.id)}>
-                  반려
-                </button>
-                <button
-                  className="btn"
-                  type="button"
-                  disabled={busy.has(reviewing.id)}
-                  onClick={() => {
-                    const r = reviewing;
-                    setReviewing(null);
-                    void approve(r);
-                  }}
-                >
-                  확인했습니다. 승인
-                </button>
-                <button className="btn btn-out" type="button" onClick={requestClose}>
-                  닫기
-                </button>
-              </div>
-            </>
-          )}
-        </Modal>
       )}
       {toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}
     </>

@@ -83,6 +83,14 @@ describe("가입 신청 목록 GET /api/admin/sellers/applications", () => {
     const by = new Map<string, any>(r.body.applications.map((a: any) => [a.shopName, a]));
     expect(by.get("확인필요몰")).toMatchObject({ state: "REVIEW", applicantName: "김철수", applicantEmail: "kim@example.com", businessNumber: "111-22-33333", over48h: true, reasons: [{ code: "business_not_active", text: "사업자 상태가 휴업 또는 폐업입니다" }], supplement: null });
     expect(by.get("이상없음몰")).toMatchObject({ state: "CLEAR", industry: "굿즈 라이브", over48h: false, reasons: [] });
+    // 점검 항목별 결과(검토 패널): 휴업 사유는 국세청 사업자 상태만 FAIL, 나머지는 통과
+    expect(by.get("확인필요몰")?.checks).toEqual([
+      { key: "identity", label: "휴대폰 본인확인 (대표자)", result: "OK", text: "완료" },
+      { key: "business_duplicate", label: "사업자 중복", result: "OK", text: "없음" },
+      { key: "business_status", label: "국세청 사업자 상태", result: "FAIL", text: "휴업 · 폐업" },
+      { key: "mail_order", label: "통신판매업 신고번호", result: "OK", text: "확인됨" },
+    ]);
+    expect(by.get("이상없음몰")?.checks.every((c: { result: string }) => c.result === "OK")).toBe(true);
     expect(by.get("보완몰")).toMatchObject({ state: "SUPPLEMENT", over48h: false, supplement: { reason: "사업자등록증 사진이 흐립니다", daysLeft: 7, reminderCount: 0 } });
 
     const ids = async (qs: string) => (await list(cookie, qs)).body.applications.map((a: any) => a.shopName);

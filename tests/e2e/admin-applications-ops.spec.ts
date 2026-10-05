@@ -40,6 +40,7 @@ test.beforeAll(async () => {
   await pending("B", 1, ["business_not_active"]); // 확인 필요, 검토 뒤 승인
   await pending("C", 2); // 이상 없음, 반려
   await pending("D", 3); // 이상 없음, 상세 이전/다음
+  await pending("E", 4); // 상세 이전/다음이 보이도록 대기 건을 하나 더 둔다(다른 시험이 남긴 건에 기대지 않는다)
 });
 test.afterAll(async () => {
   await db.$disconnect();
@@ -80,10 +81,15 @@ test("운영: 이상 없음은 목록에서 한 번에 승인되고(처리한 �
   expect((await db.seller.findUniqueOrThrow({ where: { id: ids.A } })).status).toBe("ACTIVE");
 
   await row(page, "B").getByRole("button", { name: "확인할 내용 보기" }).click();
-  const dialog = page.getByRole("dialog");
-  await expect(dialog.getByTestId("review-reasons")).toContainText("사업자 상태가 휴업 또는 폐업입니다");
+  const panel = page.getByTestId("review-panel");
+  await expect(panel.getByTestId("review-reasons")).toContainText("사업자 상태가 휴업 또는 폐업입니다");
+  await expect(panel.getByRole("row", { name: /국세청 사업자 상태.*휴업 · 폐업/ })).toBeVisible();
+  await panel.getByLabel("내부 메모").fill("재개업 증빙 확인 필요");
+  await panel.getByRole("button", { name: "메모 저장" }).click();
+  await expect(panel.getByTestId("review-note")).toContainText("재개업 증빙 확인 필요");
+  await page.screenshot({ path: "tests/e2e/screenshots/admin-applications-panel-1440.png" });
   expect((await db.seller.findUniqueOrThrow({ where: { id: ids.B } })).status).toBe("PENDING");
-  await dialog.getByRole("button", { name: "확인했습니다. 승인" }).click();
+  await panel.getByRole("button", { name: "확인했습니다. 승인" }).click();
   await expect(row(page, "B")).toContainText("승인됨");
   expect((await db.seller.findUniqueOrThrow({ where: { id: ids.B } })).status).toBe("ACTIVE");
 });
