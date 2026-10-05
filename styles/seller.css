@@ -759,8 +759,53 @@ body {
 
 /* 틀: 상단 고정 GNB(48px) + 왼쪽 LNB(200px) + 본문 */
 .cs {
+  --imp-h: 0px;
   min-height: 100vh;
-  padding-top: 48px;
+  padding-top: calc(48px + var(--imp-h));
+}
+/* 마스터 대리 조회 배너(MA-016): GNB 아래 고정 줄. 켜지면 본문·LNB가 그만큼 내려간다 */
+.cs.imp {
+  --imp-h: 36px;
+}
+.imp-bar {
+  position: fixed;
+  top: 48px;
+  left: 0;
+  right: 0;
+  z-index: 39;
+  height: var(--imp-h);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  background: #7c2d12;
+  color: #fff;
+  font-size: 12px;
+}
+.imp-bar b {
+  flex: none;
+}
+.imp-txt {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.imp-err,
+.imp-left {
+  flex: none;
+}
+/* 대리 조회 중 쓰기 버튼(제출·삭제성)은 눌러지지 않게 한다. 막는 것은 서버(403 impersonation_read_only)가 한다 */
+.cs[data-readonly="true"] .cs-body :is(button[type="submit"], .btn-neg) {
+  background: var(--wds-interaction-disable);
+  color: var(--wds-label-disable);
+  box-shadow: none;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.imp-end {
+  flex: none;
+  background: #fff;
+  color: #7c2d12;
+  min-height: 24px;
 }
 .gnb {
   position: fixed;
@@ -1030,12 +1075,12 @@ body {
 .cs-wrap {
   display: grid;
   grid-template-columns: 200px minmax(0, 1fr);
-  min-height: calc(100vh - 48px);
+  min-height: calc(100vh - 48px - var(--imp-h));
 }
 .lnb {
   position: sticky;
-  top: 48px;
-  height: calc(100vh - 48px);
+  top: calc(48px + var(--imp-h));
+  height: calc(100vh - 48px - var(--imp-h));
   overflow-y: auto;
   background: var(--cs-surface);
   box-shadow: inset -1px 0 0 var(--cs-line);
@@ -1344,7 +1389,7 @@ body {
   .lnb {
     position: fixed;
     left: 0;
-    top: 48px;
+    top: calc(48px + var(--imp-h));
     bottom: 0;
     width: 260px;
     height: auto;
@@ -1374,7 +1419,7 @@ body {
     display: block;
     position: fixed;
     /* 서랍(260px) 오른쪽만 덮는다. 서랍 아래로 겹치면 닫기 누르기가 메뉴에 가로막힌다 */
-    inset: 48px 0 0 260px;
+    inset: calc(48px + var(--imp-h)) 0 0 260px;
     z-index: 45;
     border: 0;
     background: var(--wds-material-dimmer);
