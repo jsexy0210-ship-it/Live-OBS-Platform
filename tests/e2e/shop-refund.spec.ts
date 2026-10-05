@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { deleteBuyerOrdersSince, markOrderPaidInDb, rejectRefundRequestInDb, resetCartInDb } from "./cartDb";
+import { okConfirm } from "./shopConfirm";
 
 // SH-022 주문 취소(환불) 요청(운영 빌드 + 데모 시드). 데모 구매자로 주문을 만들어 결제 완료로 바꾼 뒤 요청·거절·철회를 화면에서 확인하고 끝에 지운다.
 const SLUG = "demo-shop";
@@ -89,6 +90,7 @@ test("PC: 주문 취소 요청(품목·사유 검사) → 요청 중 표시 → 
   await expect(box).toContainText("진행 중인 요청이 끝나면 다시 요청할 수 있어요");
   // 철회
   await row.getByRole("button", { name: "취소 요청 거두기" }).click();
+  await okConfirm(page, "요청 거두기");
   await expect(box.getByRole("status")).toContainText("요청을 거뒀어요");
   await expect(box.getByTestId("refund-request").first()).toContainText("요청을 거뒀어요");
   await expect(box.getByRole("button", { name: "주문 취소 요청" })).toBeVisible();

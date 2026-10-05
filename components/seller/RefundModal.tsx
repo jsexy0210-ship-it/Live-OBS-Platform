@@ -168,7 +168,7 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
       setError({ text: failMessage(f, "admin") });
     } else if (f.status === 403) setError({ title: "이 계정은 이 일을 할 수 없습니다", text: "대표자에게 허용해 달라고 요청해 주십시오 · 필요한 권한: 주문·배송" });
     else if (f.error === "invalid_transition") setError({ text: "이미 환불했거나 지금은 환불할 수 없는 주문입니다" });
-    else if (f.error === "conflict") setError({ text: "그사이 주문대기가 변경되었습니다. 다시 눌러 주십시오" });
+    else if (f.error === "conflict") setError({ text: "그사이 주문 정보가 바뀌었습니다. 화면을 다시 연 뒤 한 번 더 눌러 주십시오" });
     else if (f.message) setError({ text: f.message });
     else setError({ title: "환불하지 못했습니다.", text: "결제는 그대로입니다. 잠시 후 다시 시도해 주십시오.", retry: true });
   };
@@ -193,7 +193,7 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
               <span className="col">
                 <span className="t-l1 fw6">{itemsInfo && itemsInfo.some((i) => i.refundedQuantity > 0) ? "남은 상품 전부 환불" : "주문 전체 환불"}</span>
                 <span className="t-c1 c-alt">
-                  {order.paymentMethod === "CARD" ? `${scope === "ALL" && canSend && amount ? `${won(amount)} · ` : ""}카드 승인 취소` : scope === "ALL" && canSend && amount ? won(amount) : "주문 전체 취소"}
+                  {order.paymentMethod === "CARD" ? `${scope === "ALL" && canSend && amount ? `${won(amount)} · ` : ""}결제한 카드로 취소` : scope === "ALL" && canSend && amount ? won(amount) : "주문 전체 취소"}
                 </span>
               </span>
             </label>
@@ -260,8 +260,8 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
                           </span>
                         </td>
                         <td>
-                          {i.opened ? <span className="bdg b-gray nodot">개봉</span> : i.queued ? <span className="bdg b-info">개봉 대기</span> : <span className="bdg b-done">개봉 전</span>}
-                          {i.queued && <span className="t-c1 c-alt"> · 전체 수량만</span>}
+                          {i.opened ? <span className="bdg b-gray nodot">개봉</span> : i.queued ? <span className="bdg b-info">개봉 순서 대기</span> : <span className="bdg b-done">개봉 전</span>}
+                          {i.queued && <span className="t-c1 c-alt"> · 일부만 환불 불가(전부 환불만 가능)</span>}
                           {i.refundedQuantity > 0 && <span className="t-c1 c-alt"> · {i.refundedQuantity}개 환불함</span>}
                         </td>
                       </tr>
@@ -277,7 +277,7 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
           <h3 className="t-hl2">사유 · 안내</h3>
           <div className="fld">
             <span className="lbl" id="fault-label">
-              사유 주체
+              누구 사정인지
             </span>
             <div className="refund-faults" role="radiogroup" aria-labelledby="fault-label">
               {FAULTS.map((f) => (
@@ -290,7 +290,7 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
                 </label>
               ))}
             </div>
-            <span className="help">구매자 사정만 결제 후 취소 횟수에 포함됩니다 · 선택하지 않으면 환불할 수 없습니다</span>
+            <span className="help">구매자 사정으로 환불하면 이 구매자의 결제 후 취소 횟수가 1회 늘어납니다. 둘 중 하나를 꼭 골라 주십시오.</span>
             {fault === "BUYER" && <span className="t-c1 c-alt">이 취소는 구매자의 결제 후 취소 횟수에 포함됩니다</span>}
           </div>
           <div className="fld">
@@ -341,7 +341,7 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
             )}
             <dt>현금 환불</dt>
             <dd className="num fw7" data-testid="refund-amount">
-              {blocked ? "—" : amount !== null ? won(amount) : fault === null ? "사유 주체를 선택하면 표시됩니다" : "금액을 확인하지 못했습니다"}
+              {blocked ? "—" : amount !== null ? won(amount) : fault === null ? "누구 사정인지 고르면 금액이 보입니다" : "금액을 확인하지 못했습니다"}
             </dd>
             {rewardReturn !== null && !blocked && (
               <>
@@ -355,14 +355,14 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
               <>
                 <dt>적립 회수</dt>
                 <dd className="num" data-testid="refund-revoke">
-                  {preview.rewardRevoke.kind === "manual" ? `${won(preview.rewardRevoke.amount)} · 수동 확인 필요` : `−${won(preview.rewardRevoke.amount)}${preview.rewardRevoke.kind === "pending" ? " · 지급 대기분 취소" : " · 지급한 적립금에서 회수"}`}
+                  {preview.rewardRevoke.kind === "manual" ? `${won(preview.rewardRevoke.amount)} · 직접 확인해 주십시오` : `−${won(preview.rewardRevoke.amount)}${preview.rewardRevoke.kind === "pending" ? " · 아직 주지 않은 적립금 취소" : " · 이미 준 적립금 되찾기"}`}
                 </dd>
               </>
             )}
             {order.paymentMethod === "CARD" && (
               <>
                 <dt>환불 수단</dt>
-                <dd>원결제 카드 승인 취소</dd>
+                <dd>결제한 카드로 취소</dd>
               </>
             )}
           </dl>
@@ -374,7 +374,7 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
           )}
           {blocked && (
             <div className="msg msg-neg" role="alert" style={{ display: "block" }}>
-              발송 전에 개봉한 상품이 있어 구매자 사정으로는 환불할 수 없습니다. 개봉한 상품을 보낸 뒤 처리해 주십시오
+              개봉한 상품이 있어 구매자 사정으로는 환불할 수 없습니다. 상품을 먼저 보낸 뒤 다시 처리해 주십시오.
             </div>
           )}
           {nothing && (
@@ -391,7 +391,7 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
           {canSend && (
             <label className="chk">
               <input className="cbx" type="checkbox" checked={agree} disabled={busy} onChange={(e) => setAgree(e.target.checked)} />
-              위 금액으로 환불합니다. 승인 취소 후 되돌릴 수 없습니다.
+              위 금액으로 환불합니다. 환불한 뒤에는 되돌릴 수 없습니다.
             </label>
           )}
           {error && (

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Topbar } from "../../../../../components/seller/SellerShell";
+import { useUrlState } from "../../../../../lib/client/navigation";
 import { Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
 import { couponAmountText, couponConditions, couponDate, type CouponView } from "../../../../../components/shop/CouponBox";
@@ -142,7 +143,10 @@ type Filter = "all" | Status;
 
 export default function CouponsPage() {
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number; error?: string } | { kind: "ok"; data: Data }>({ kind: "loading" });
-  const [filter, setFilter] = useState<Filter>("all");
+  // 상태 탭은 주소(?tab=)가 기준이다(docs/IA.md Back 규칙 3항)
+  const [urlState, setUrlState] = useUrlState({ tab: "all" });
+  const filter: Filter = urlState.tab === "live" || urlState.tab === "scheduled" || urlState.tab === "ended" ? urlState.tab : "all";
+  const setFilter = (k: Filter) => setUrlState({ tab: k });
   const [draft, setDraft] = useState<Draft | null>(null);
   const [granting, setGranting] = useState<Coupon | null>(null);
   const [stopping, setStopping] = useState<Coupon | null>(null);

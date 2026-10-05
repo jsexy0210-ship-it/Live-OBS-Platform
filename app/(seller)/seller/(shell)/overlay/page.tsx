@@ -41,7 +41,7 @@ export default function OverlayPage() {
     setConfirm(false);
     if (r.ok) {
       setIssued({ token: r.data.token, at: Date.now() });
-      return setToast({ text: "새 주소를 발급했습니다" });
+      return setToast({ text: "새 주소를 만들었습니다" });
     }
     // 불분명: 서버가 이미 새 주소를 만들고 이전 주소를 끊었을 수 있어 보이던 주소도 지운다(끊긴 주소를 OBS에 넣지 않게)
     if (r.status === 0 || r.status >= 500) {
@@ -66,12 +66,12 @@ export default function OverlayPage() {
 
   return (
     <>
-      <Topbar crumb="방송 · 오버레이 › 오버레이 편집기" />
+      <Topbar crumb="방송 › 방송 화면 꾸미기" />
       <main className="main">
         <div className="ph">
           <div className="col" style={{ gap: 4 }}>
-            <h1 className="t-t3">오버레이 편집기</h1>
-            <span className="t-l2 c-alt">OBS 「브라우저 소스」에 오버레이 주소를 넣으면 주문대기와 개봉 중인 주문이 방송 화면에 표시됩니다.</span>
+            <h1 className="t-t3">방송 화면 꾸미기</h1>
+            <span className="t-l2 c-alt">방송 프로그램(OBS)의 「브라우저 소스」 칸에 아래 주소를 붙여 넣으면 주문 순서와 개봉 중인 주문이 방송 화면에 나옵니다.</span>
           </div>
         </div>
 
@@ -86,7 +86,7 @@ export default function OverlayPage() {
         ) : fail?.kind === "plan" ? (
           <div className="card">
             <div className="st" style={{ boxShadow: "none" }}>
-              <span className="t">현재 플랜에서 제공하지 않는 기능입니다</span>
+              <span className="t">지금 이용 중인 이용권에는 이 기능이 없습니다. 구독 화면에서 이용권을 바꾸면 사용할 수 있습니다</span>
             </div>
           </div>
         ) : fail?.kind === "forbidden" ? (
@@ -99,18 +99,18 @@ export default function OverlayPage() {
               <div className="row between" style={{ gap: 12, flexWrap: "wrap" }}>
                 <div className="col" style={{ gap: 4, minWidth: 0 }}>
                   <h2 className="t-hl1" id="ovu-h">
-                    오버레이 주소
+                    방송 화면 주소
                   </h2>
-                  <span className="t-l2 c-alt">주소는 발급할 때 한 번만 보입니다. 다시 발급하면 이전 주소는 바로 끊깁니다.</span>
+                  <span className="t-l2 c-alt">주소는 만들 때 한 번만 보입니다. 새로 만들면 이전 주소는 바로 쓸 수 없게 됩니다.</span>
                 </div>
                 <button className="btn" type="button" disabled={busy} onClick={() => setConfirm(true)}>
-                  {issued ? "다시 발급" : "주소 발급"}
+                  {issued ? "주소 새로 만들기" : "주소 만들기"}
                 </button>
               </div>
 
               {fail?.kind === "unclear" && (
                 <div className="msg msg-cau" role="alert" data-testid="ovu-unclear">
-                  발급 결과를 확인하지 못했습니다. 이전 주소가 이미 끊겼을 수 있습니다. 방송 전에 다시 발급해 OBS 주소를 바꿔 주십시오.
+                  새 주소를 만들었는지 확인하지 못했습니다. 이전 주소를 쓸 수 없을 수 있으니 방송 전에 주소를 새로 만들어 방송 프로그램(OBS)에 다시 넣어 주십시오.
                 </div>
               )}
               {fail?.kind === "other" && (
@@ -122,14 +122,14 @@ export default function OverlayPage() {
               {issued && (
                 <>
                   <div className="msg msg-info" role="status">
-                    이 주소는 지금만 볼 수 있습니다. OBS에 넣은 뒤 잃어버리면 재발급해 주십시오.
+                    이 주소는 지금만 볼 수 있습니다. 방송 프로그램에 넣어 두십시오. 잃어버리면 새로 만들어 주십시오.
                   </div>
                   <ul className="ovu-list" data-testid="ovu-urls">
                     {urls(issued.token).map((u) => (
                       <li key={u.key} className="ovu-row">
                         <span className="col" style={{ gap: 2, minWidth: 0, flex: 1 }}>
                           <span className="t-l1 fw6">
-                            {u.label} <span className="t-c1 c-alt fw5">OBS 브라우저 소스 {u.size}</span>
+                            {u.label} <span className="t-c1 c-alt fw5">방송 프로그램 설정값 {u.size}</span>
                           </span>
                           <input className="inp inp-sm ovu-url" readOnly value={u.url} aria-label={`${u.label} 주소`} onFocus={(e) => e.currentTarget.select()} />
                         </span>
@@ -170,16 +170,16 @@ function IssueConfirm({ again, busy, onClose, onConfirm }: { again: boolean; bus
       <div className="modal">
         <div className="modal-h">
           <h2 className="t-h2" id="ovu-confirm-h">
-            {again ? "주소를 다시 발급하시겠습니까?" : "새 주소를 발급하시겠습니까?"}
+            {again ? "주소를 새로 만드시겠습니까?" : "새 주소를 만드시겠습니까?"}
           </h2>
-          <span className="t-l2 c-alt">{again ? "기존 OBS 주소는 바로 끊깁니다. OBS에 새 주소를 다시 넣어야 합니다." : "이전에 발급한 주소가 있으면 바로 끊깁니다. OBS에 넣은 주소도 새 주소로 바꿔야 합니다."}</span>
+          <span className="t-l2 c-alt">{again ? "기존 주소는 바로 쓸 수 없게 됩니다. 방송 프로그램(OBS)에 새 주소를 다시 넣어야 합니다." : "이전에 만든 주소가 있으면 바로 쓸 수 없게 됩니다. 방송 프로그램에 넣은 주소도 새 주소로 바꿔야 합니다."}</span>
         </div>
         <div className="modal-f">
           <button className="btn btn-out" type="button" disabled={busy} onClick={onClose}>
-            닫기
+            취소
           </button>
           <button className="btn" type="button" disabled={busy} onClick={onConfirm}>
-            발급
+            {again ? "주소 새로 만들기" : "주소 만들기"}
           </button>
         </div>
       </div>

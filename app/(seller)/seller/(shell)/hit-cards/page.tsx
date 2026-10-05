@@ -1,10 +1,11 @@
 "use client";
 
 import "../../../../../styles/seller-broadcast.css";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ListHead, Modal, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
 import { HitCardModal } from "../../../../../components/seller/broadcast/HitCardModal";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
+import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
 import { SourceBadge } from "../../../../../components/seller/broadcast/SourceBadge";
@@ -50,8 +51,10 @@ export default function HitCardsPage() {
   const { can } = useSeller();
   const allowed = can("BROADCAST_RUN");
   const [state, setState] = useState<Load>({ kind: "loading" });
-  const [draft, setDraft] = useState<Filter>(EMPTY);
-  const [applied, setApplied] = useState<Filter>(EMPTY);
+  // 조회 조건은 주소(?from=&to=)가 기준이다: 상세 → ← 에서 그대로 돌아온다(docs/IA.md Back 규칙 3항)
+  const [urlFilter, setUrlFilter] = useUrlState({ from: "", to: "" });
+  const [draft, setDraft] = useState<Filter>({ from: urlFilter.from, to: urlFilter.to });
+  const applied = useMemo<Filter>(() => ({ from: urlFilter.from, to: urlFilter.to }), [urlFilter.from, urlFilter.to]);
   const [more, setMore] = useState(false);
   const [modal, setModal] = useState<{ kind: "add" } | { kind: "delete"; card: Card } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -83,13 +86,15 @@ export default function HitCardsPage() {
   };
 
   const invalidRange = draft.from !== "" && draft.to !== "" && draft.from > draft.to;
+  useScrollRestore("seller-hit-cards", state.kind === "ok");
+
   const search = () => {
     if (invalidRange) return setToast({ text: "시작일을 끝일보다 앞 날짜로 바꿔 주십시오", neg: true });
-    setApplied({ ...draft });
+    setUrlFilter({ from: draft.from, to: draft.to });
   };
   const reset = () => {
     setDraft(EMPTY);
-    setApplied(EMPTY);
+    setUrlFilter({ from: "", to: "" });
   };
 
   const remove = async (card: Card) => {

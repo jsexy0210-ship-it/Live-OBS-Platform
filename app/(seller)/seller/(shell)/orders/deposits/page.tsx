@@ -21,10 +21,10 @@ type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "o
 type Result = { orderId: string; result: "paid" | "stock_shortage" | "already_paid" | "card_in_progress" | "not_payable" | "not_found" };
 
 const RESULT_TEXT: Record<Exclude<Result["result"], "paid">, string> = {
-  stock_shortage: "재고가 부족해 확인하지 못했습니다",
+  stock_shortage: "재고가 부족해 입금 확인을 하지 못했습니다. 재고를 늘린 뒤 다시 눌러 주십시오.",
   already_paid: "이미 입금 확인된 주문입니다",
-  card_in_progress: "카드 결제가 진행 중인 주문입니다",
-  not_payable: "입금 확인할 수 없는 주문입니다",
+  card_in_progress: "카드 결제가 진행 중입니다. 잠시 뒤 다시 확인해 주십시오.",
+  not_payable: "입금 확인을 할 수 없는 주문입니다. 주문 상세에서 상태를 확인해 주십시오.",
   not_found: "주문을 찾지 못했습니다",
 };
 
@@ -93,7 +93,7 @@ export default function DepositsPage() {
     const ok = r.data.results.filter((x) => x.result === "paid").length;
     const failed = r.data.results.find((x) => x.result !== "paid");
     const detail = failed && failed.result !== "paid" ? RESULT_TEXT[failed.result] : "";
-    if (ok > 0 && !failed) setToast({ text: `${ok}건 입금 확인 · 주문대기에 올라갔습니다` });
+    if (ok > 0 && !failed) setToast({ text: `${ok}건 입금 확인 · 주문대기(방송에서 개봉할 순서 목록)에 올라갔습니다` });
     else if (ok > 0) setToast({ text: `${ok}건 입금 확인 · ${r.data.results.length - ok}건은 확인하지 못했습니다 · ${detail}`, neg: true });
     else setToast({ text: detail, neg: true });
     void load();
@@ -117,7 +117,7 @@ export default function DepositsPage() {
             </Link>
           }
         />
-        <span className="t-c1 c-alt">통장 내역과 입금자명 · 금액이 같은지 확인한 뒤 「입금 확인」을 누릅니다. 확인하면 주문대기에 올라갑니다.</span>
+        <span className="t-c1 c-alt">통장 내역과 입금자명 · 금액이 같은지 확인한 뒤 「입금 확인」을 누릅니다. 확인하면 방송 주문대기(개봉할 순서 목록)에 올라갑니다.</span>
 
         <div className="card" style={{ overflow: "visible" }}>
           {state.kind === "ok" && (
