@@ -75,7 +75,7 @@ export type ReturnRejection =
 
 export const isUuid = (v: unknown): v is string => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 
-export type NewReturnInput = { kind: ReturnKind; reason: ReturnReason; reasonText: string; orderItemIds: string[] | null; imageIds: string[]; pickup: ReturnPickup; refundAccount: RefundAccount | null };
+export type NewReturnInput = { kind: ReturnKind; reason: ReturnReason; reasonText: string; orderItemIds: string[] | null; returnItems: { orderItemId: string; quantity: number }[] | null; imageIds: string[]; pickup: ReturnPickup; refundAccount: RefundAccount | null };
 
 // 구매자 신청 입력. 반품은 주문 전체라 품목을 받지 않고(null), 교환은 품목을 1개 이상 고른다. 사유가 「기타」면 설명이 꼭 있어야 한다.
 export function parseNewReturn(raw: Record<string, unknown>): { ok: true; v: NewReturnInput } | { ok: false; reason: ReturnRejection } {
@@ -96,6 +96,21 @@ export function parseNewReturn(raw: Record<string, unknown>): { ok: true; v: New
     if (!Array.isArray(ids) || ids.length === 0 || ids.length > 50 || !ids.every(isUuid) || new Set(ids).size !== ids.length) return { ok: false, reason: "invalid_items" };
     orderItemIds = ids as string[];
   }
+  // 반품은 주문 전체(기본) 또는 품목·수량을 골라 부분 반품(items). 교환은 품목 단위(수량 전체)
+  let returnItems: NewReturnInput["returnItems"] = null;
+  if (kind === "RETURN" && raw.items !== undefined && raw.items !== null) {
+    const arr = raw.items;
+    if (!Array.isArray(arr) || arr.length === 0 || arr.length > 50) return { ok: false, reason: "invalid_items" };
+    const out: { orderItemId: string; quantity: number }[] = [];
+    for (const x of arr) {
+      if (typeof x !== "object" || x === null) return { ok: false, reason: "invalid_items" };
+      const o = x as Record<string, unknown>;
+      if (!isUuid(o.orderItemId) || !Number.isSafeInteger(o.quantity) || (o.quantity as number) < 1 || (o.quantity as number) > 9999) return { ok: false, reason: "invalid_items" };
+      out.push({ orderItemId: o.orderItemId, quantity: o.quantity as number });
+    }
+    if (new Set(out.map((i) => i.orderItemId)).size !== out.length) return { ok: false, reason: "invalid_items" };
+    returnItems = out;
+  }
   const imgs = raw.imageIds ?? [];
   if (!Array.isArray(imgs) || imgs.length > RETURN_IMAGES_MAX || !imgs.every(isUuid) || new Set(imgs).size !== imgs.length) return { ok: false, reason: "invalid_images" };
   // 수거 희망(택배사 수거 / 직접 발송, 기본 직접 발송). 「수거 없음」은 판매자만 정한다.
@@ -109,7 +124,7 @@ export function parseNewReturn(raw: Record<string, unknown>): { ok: true; v: New
     refundAccount = parseRefundAccount(raw.refundAccount);
     if (!refundAccount) return { ok: false, reason: "invalid_refund_account" };
   }
-  return { ok: true, v: { kind, reason, reasonText, orderItemIds, imageIds: imgs as string[], pickup, refundAccount } };
+  return { ok: true, v: { kind, reason, reasonText, orderItemIds, returnItems, imageIds: imgs as string[], pickup, refundAccount } };
 }
 
 // 송장(택배사 코드 + 번호). 번호는 숫자·영문·하이픈만.

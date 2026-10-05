@@ -22,9 +22,10 @@ type Row = {
   status: Status;
   reason: Reason;
   reasonText: string;
-  items: { orderItemId: string; productName: string; optionName: string; quantity: number }[];
+  items: { orderItemId: string; productName: string; optionName: string; quantity: number; orderQuantity: number }[];
   createdAt: string;
 };
+type RefundRow = { seq: number; createdAt: string; refundAmount: number; shippingRefunded: number; returnFeeDeducted: number; rewardReturn: number; isFinal: boolean; items: { quantity: number; productName: string; optionName: string }[] };
 type Summary = { requested: number; inProgress: number; doneReturn: number; doneExchange: number; returnRate30: number | null };
 type Data = { returns: Row[]; nextCursor: string | null; counts: Partial<Record<Status, number>>; summary: Summary };
 type Pickup = "COURIER" | "BUYER_SHIP" | "NONE";
@@ -43,6 +44,8 @@ type Detail = Row & {
   inspectionNote: string | null;
   exchangeHeldAt: string | null;
   convertedFromExchange: boolean;
+  partialQuantity: boolean;
+  refunds: RefundRow[];
   paymentMethod: string | null;
   refundAccount: { bankName: string; accountHolder: string; accountNumber: string } | null;
   images: { id: string; width: number; height: number }[];
@@ -282,7 +285,7 @@ function ReturnDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit
               <span className="col" style={{ gap: 2 }}>
                 {d.items.map((i) => (
                   <span key={i.orderItemId}>
-                    {i.productName} · {i.optionName} · {i.quantity}개
+                    {i.productName} · {i.optionName} · {i.quantity}개{i.quantity < i.orderQuantity ? ` (주문 ${i.orderQuantity}개 중)` : ""}
                   </span>
                 ))}
               </span>
@@ -342,6 +345,24 @@ function ReturnDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit
                 </>
               ) : null}
             </div>
+            {d.refunds.length > 0 && (
+              <div className="col" style={{ gap: 4 }} data-testid="rt-refund-history">
+                <span className="t-l2 fw6">이 주문의 환불 내역</span>
+                {d.refunds.map((f) => (
+                  <span key={f.seq} className="t-c1 c-alt num">
+                    {kstText(f.createdAt).slice(5, 16)} · {f.items.map((i) => `${i.productName} ${i.quantity}개`).join(", ")} · 현금 {won(f.refundAmount)}
+                    {f.returnFeeDeducted > 0 ? ` · 반품 배송비 ${won(f.returnFeeDeducted)} 차감` : ""}
+                    {f.rewardReturn > 0 ? ` · 적립금 반환 ${won(f.rewardReturn)}` : ""}
+                    {f.isFinal ? " · 마지막 환불" : ""}
+                  </span>
+                ))}
+              </div>
+            )}
+            {d.partialQuantity && (
+              <div className="msg msg-info" role="status">
+                <span>일부 수량만 반품하는 품목은 재고를 자동으로 되돌리지 않습니다. 재고 조정에서 직접 맞춰 주십시오.</span>
+              </div>
+            )}
             {d.paymentMethod === "BANK_TRANSFER" && d.kind === "RETURN" && d.status !== "COMPLETED" && d.status !== "REJECTED" && d.status !== "CANCELLED" && (
               <div className="msg msg-info" role="status" data-testid="rt-account">
                 <span>
