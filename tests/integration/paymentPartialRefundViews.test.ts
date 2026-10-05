@@ -1,4 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { broadcastDetail } from "../../lib/server/broadcast/detail";
 import { prisma } from "../../lib/server/db";
 import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
 import { createOrder } from "../../lib/server/orders/create";
@@ -8,6 +9,7 @@ import { listShipments } from "../../lib/server/orders/shipments";
 import { markOrderPaid, previewRefundSelection, refundOrder, type RefundSelection } from "../../lib/server/queue/service";
 import { buyerReturnContext, createReturn } from "../../lib/server/shop-returns/service";
 import { orderStats } from "../../lib/server/stats/orders";
+import { productStats } from "../../lib/server/stats/products";
 import { parseStatsRange } from "../../lib/server/stats/range";
 import { salesStats } from "../../lib/server/stats/sales";
 import type { TenantContext } from "../../lib/server/tenant/context";
@@ -128,5 +130,26 @@ describe("부분 환불 뒤 수량 표시", () => {
     await s.refund(undefined);
     const after = await orderStats(db, s.ctx, range);
     expect(after.current).toMatchObject({ refundAmount: s.order.totalAmount, netRevenue: 0, refunded: 1 });
+  });
+
+  it("상품 통계는 부분 환불한 수량·매출을 빼고 다 돌려준 품목은 판매 없음, 방송 상세는 품목별 환불 수량과 부분 환불액을 뺀 매출", async () => {
+    const s = await setup();
+    const session = await db.broadcastSession.create({ data: { sellerId: s.seller.id, status: "LIVE", startedAt: new Date(Date.now() - 3600_000) } });
+    // setup의 주문은 방송 시작 뒤에 만들어졌다
+    await db.order.update({ where: { id: s.order.id }, data: { createdAt: new Date(Date.now() - 1800_000) } });
+    await s.refund([{ orderItemId: s.boxItem.id, quantity: 1 }]);
+    await s.refund([{ orderItemId: s.packItem.id, quantity: 1 }]);
+    const ps = await productStats(db, s.ctx, parseStatsRange({ from: today(), to: today() })!);
+    expect(ps.current).toEqual({ quantity: 2, revenue: 10000, products: 1 });
+    expect(ps.topByQuantity.map((r) => [r.name, r.quantity, r.revenue])).toEqual([["팩", 2, 10000]]);
+    expect(ps.unsold.map((u) => u.name)).toContain("박스");
+
+    const d = await broadcastDetail(db, s.ctx, session.id);
+    const o = d.orders.find((x) => x.id === s.order.id)!;
+    expect(o.items.map((i) => [i.productName, i.quantity, i.refundedQuantity]).sort()).toEqual([
+      ["박스", 1, 1],
+      ["팩", 3, 1],
+    ]);
+    expect(d.summary.sales).toBe(s.order.totalAmount - 12000);
   });
 });
