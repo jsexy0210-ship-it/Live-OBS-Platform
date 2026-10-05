@@ -187,6 +187,7 @@ describe("미입금 자동 취소", () => {
     await markOrderPaid(db, { sellerId: s.seller.id, orderId: paid, paymentMethod: "CARD" });
     await db.order.update({ where: { id: paid }, data: { paymentDueAt: new Date(now + 30 * 60 * 1000) } });
     expect((await listPaymentDueSoon(db)).map((o) => o.id)).toEqual([soon]);
+    expect((await listPaymentDueSoon(db))[0].orderNoLabel).toMatch(/^\d{8}-\d{4}$/);
   });
 });
 
