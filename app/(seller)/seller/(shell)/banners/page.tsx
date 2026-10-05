@@ -30,6 +30,7 @@ import {
   type AdminImage,
   type ContentStatus,
 } from "./_shared/ui";
+import { Modal } from "../../../../../components/admin-ui";
 
 // SA-064 홈 배너 관리(파트너스 관리자, 설정 › 배너 · 팝업). 쇼핑몰 홈 맨 위 슬라이드. 끌어서 순서 변경, PC·모바일 이미지,
 // 링크, 게시 기간, 표시 기기, 미리보기. API: /api/seller/shop-content/banners(보기는 모든 직원, 바꾸기는 대표자·「쇼핑몰 설정」 권한 직원).
@@ -267,85 +268,83 @@ function BannerEditor({ draft: initial, onClose, onSaved }: { draft: Draft; onCl
   const previewShown = previewItem.length > 0 && (device === "pc" ? d.showOnPc : d.showOnMobile);
 
   return (
-    <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="banner-edit-title">
-      <div className="modal modal-xl sc-modal">
-        <div className="modal-h">
-          <h2 className="t-h2" id="banner-edit-title">
-            {d.id ? "배너 수정" : "배너 추가"}
-          </h2>
+    <Modal labelId="banner-edit-title" className="modal-xl sc-modal" busy={saving} onClose={onClose}>
+      <div className="modal-h">
+        <h2 className="t-h2" id="banner-edit-title">
+          {d.id ? "배너 수정" : "배너 추가"}
+        </h2>
+      </div>
+      {failure && (
+        <div className="msg msg-neg" role="alert">
+          <span>
+            <b>저장할 수 없습니다.</b> {failure}
+          </span>
         </div>
-        {failure && (
-          <div className="msg msg-neg" role="alert">
-            <span>
-              <b>저장할 수 없습니다.</b> {failure}
-            </span>
+      )}
+      <div className="sc-edit">
+        <div className="col" style={{ gap: 16 }}>
+          <div className="fld">
+            <label htmlFor="banner-title" className="req">
+              제목 (대체 텍스트)
+            </label>
+            <input id="banner-title" className="inp" value={d.title} maxLength={40} onChange={(e) => set({ title: e.target.value })} placeholder="예: 10월 신상품 오픈" />
+            <span className="help">화면 낭독기와 이미지가 안 뜰 때 표시 · 40자</span>
           </div>
-        )}
-        <div className="sc-edit">
-          <div className="col" style={{ gap: 16 }}>
-            <div className="fld">
-              <label htmlFor="banner-title" className="req">
-                제목 (대체 텍스트)
-              </label>
-              <input id="banner-title" className="inp" value={d.title} maxLength={40} onChange={(e) => set({ title: e.target.value })} placeholder="예: 10월 신상품 오픈" />
-              <span className="help">화면 낭독기와 이미지가 안 뜰 때 표시 · 40자</span>
-            </div>
-            <ImagePicker onBusy={onBusy} label="PC 이미지" recommend={{ width: 1920, height: 600 }} value={d.pcImage} onChange={(v) => set({ pcImage: v })} />
-            <ImagePicker onBusy={onBusy}
-              label="모바일 이미지"
-              optional
-              recommend={{ width: 750, height: 750 }}
-              emptyHint="비우면 PC 이미지를 맞춰서 표시"
-              value={d.mobileImage}
-              onChange={(v) => set({ mobileImage: v })}
-            />
-            <LinkField value={d.linkUrl} onChange={(v) => set({ linkUrl: v })} />
-            <PeriodFields startsAt={d.startsAt} endsAt={d.endsAt} onChange={(v) => set(v)} />
-            <DeviceSeg value={d} onChange={(v) => set(v)} />
-            <div className="row between">
-              <span className="col" style={{ gap: 2 }}>
-                <span className="t-l1 fw6" id="banner-active-label">
-                  노출
-                </span>
-                <span className="t-c1 c-alt">끄면 기간과 관계없이 숨김</span>
+          <ImagePicker onBusy={onBusy} label="PC 이미지" recommend={{ width: 1920, height: 600 }} value={d.pcImage} onChange={(v) => set({ pcImage: v })} />
+          <ImagePicker onBusy={onBusy}
+            label="모바일 이미지"
+            optional
+            recommend={{ width: 750, height: 750 }}
+            emptyHint="비우면 PC 이미지를 맞춰서 표시"
+            value={d.mobileImage}
+            onChange={(v) => set({ mobileImage: v })}
+          />
+          <LinkField value={d.linkUrl} onChange={(v) => set({ linkUrl: v })} />
+          <PeriodFields startsAt={d.startsAt} endsAt={d.endsAt} onChange={(v) => set(v)} />
+          <DeviceSeg value={d} onChange={(v) => set(v)} />
+          <div className="row between">
+            <span className="col" style={{ gap: 2 }}>
+              <span className="t-l1 fw6" id="banner-active-label">
+                노출
               </span>
-              <button className={`sw${d.isActive ? " on" : ""}`} type="button" role="switch" aria-checked={d.isActive} aria-labelledby="banner-active-label" onClick={() => set({ isActive: !d.isActive })} />
-            </div>
-          </div>
-          <div className="sc-preview">
-            <div className="row between">
-              <span className="t-hl2">미리보기</span>
-              <div className="seg" role="radiogroup" aria-label="미리보기 기기">
-                {(["pc", "mobile"] as const).map((k) => (
-                  <button key={k} type="button" role="radio" aria-checked={device === k} className={device === k ? "on" : ""} onClick={() => setDevice(k)}>
-                    {k === "pc" ? "PC" : "모바일"}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className={`sc-preview-stage is-${device}`} data-testid="banner-preview">
-              {previewShown ? (
-                <PreviewFrame>
-                  <HomeBanner banners={previewItem} only={device} />
-                </PreviewFrame>
-              ) : (
-                <span className="t-c1 c-alt" style={{ alignSelf: "center" }}>
-                  {previewItem.length === 0 ? "이미지를 올리면 여기에 표시됩니다" : `${device === "pc" ? "PC" : "모바일"}에서는 표시하지 않음`}
-                </span>
-              )}
-            </div>
-            <span className="help">실제 쇼핑몰 홈 맨 위에 이 모양으로 표시됩니다 · 링크는 눌러도 이동하지 않음</span>
+              <span className="t-c1 c-alt">끄면 기간과 관계없이 숨김</span>
+            </span>
+            <button className={`sw${d.isActive ? " on" : ""}`} type="button" role="switch" aria-checked={d.isActive} aria-labelledby="banner-active-label" onClick={() => set({ isActive: !d.isActive })} />
           </div>
         </div>
-        <div className="modal-f">
-          <button className="btn btn-out" type="button" onClick={onClose} disabled={saving}>
-            취소
-          </button>
-          <button className="btn" type="button" onClick={() => void save()} disabled={!ready || saving || uploading}>
-            {saving ? "저장 중" : uploading ? "이미지 올리는 중" : "저장"}
-          </button>
+        <div className="sc-preview">
+          <div className="row between">
+            <span className="t-hl2">미리보기</span>
+            <div className="seg" role="radiogroup" aria-label="미리보기 기기">
+              {(["pc", "mobile"] as const).map((k) => (
+                <button key={k} type="button" role="radio" aria-checked={device === k} className={device === k ? "on" : ""} onClick={() => setDevice(k)}>
+                  {k === "pc" ? "PC" : "모바일"}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className={`sc-preview-stage is-${device}`} data-testid="banner-preview">
+            {previewShown ? (
+              <PreviewFrame>
+                <HomeBanner banners={previewItem} only={device} />
+              </PreviewFrame>
+            ) : (
+              <span className="t-c1 c-alt" style={{ alignSelf: "center" }}>
+                {previewItem.length === 0 ? "이미지를 올리면 여기에 표시됩니다" : `${device === "pc" ? "PC" : "모바일"}에서는 표시하지 않음`}
+              </span>
+            )}
+          </div>
+          <span className="help">실제 쇼핑몰 홈 맨 위에 이 모양으로 표시됩니다 · 링크는 눌러도 이동하지 않음</span>
         </div>
       </div>
-    </div>
+      <div className="modal-f">
+        <button className="btn btn-out" type="button" onClick={onClose} disabled={saving}>
+          취소
+        </button>
+        <button className="btn" type="button" onClick={() => void save()} disabled={!ready || saving || uploading}>
+          {saving ? "저장 중" : uploading ? "이미지 올리는 중" : "저장"}
+        </button>
+      </div>
+    </Modal>
   );
 }

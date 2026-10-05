@@ -51,7 +51,7 @@ test("대표자: 메뉴에서 들어가 HIT 카드를 등록하고, 기간으로
   // 해제: 확인 창에서 닫으면 그대로, 해제하면 사라진다
   await row.getByRole("button", { name: "해제" }).click();
   const del = page.getByRole("dialog", { name: "HIT 카드를 해제하시겠습니까?" });
-  await del.getByRole("button", { name: "닫기" }).click();
+  await del.getByText("닫기", { exact: true }).click();
   await expect(row).toBeVisible();
   await row.getByRole("button", { name: "해제" }).click();
   await page.getByRole("dialog", { name: "HIT 카드를 해제하시겠습니까?" }).getByRole("button", { name: "해제" }).click();

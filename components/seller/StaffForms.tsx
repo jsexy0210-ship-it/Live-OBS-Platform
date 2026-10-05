@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { cleanText, textLength } from "../../lib/server/text/clean";
 import { api, failMessage } from "./api";
+import { Modal } from "../admin-ui";
 
 // SA-100 직원 계정(대표자 전용)에서 쓰는 권한 고르기·수정·비밀번호 재설정·비활성화 창.
 // 권한 이름·설명은 디자인 SA-100과 같고, 키는 서버(lib/server/authz/permissions.ts STAFF_PERMISSIONS)와 같다.
@@ -130,28 +131,17 @@ export function PermissionPicker({ value, onChange, disabled }: { value: StaffPe
   );
 }
 
-// 가운데 창: 처음 칸에 포커스, Esc로 닫기(보내는 중 제외)
+// 가운데 창: 공통 Modal(처음 칸에 포커스, X·Esc·바깥 클릭으로 닫기, 보내는 중 제외)
 function Dialog({ title, labelId, busy, onClose, children, wide }: { title: string; labelId: string; busy: boolean; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    ref.current?.querySelector<HTMLElement>("input:not([disabled]), button:not([disabled])")?.focus();
-  }, []);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !busy && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [busy, onClose]);
   return (
-    <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby={labelId}>
-      <div className={`modal${wide ? " modal-lg" : ""} staff-modal`} ref={ref}>
-        <div className="modal-h">
-          <h3 className="t-hl1" id={labelId}>
-            {title}
-          </h3>
-        </div>
-        {children}
+    <Modal labelId={labelId} className={`${wide ? "modal-lg " : ""}staff-modal`} busy={busy} onClose={onClose}>
+      <div className="modal-h">
+        <h3 className="t-hl1" id={labelId}>
+          {title}
+        </h3>
       </div>
-    </div>
+      {children}
+    </Modal>
   );
 }
 

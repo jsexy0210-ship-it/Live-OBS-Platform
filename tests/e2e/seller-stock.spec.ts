@@ -558,7 +558,7 @@ test("행의 「이력」은 그 옵션의 재고 이력만 보여 준다", asyn
   expect(texts.length).toBeGreaterThan(0);
   for (const t of texts) expect(t).toContain("탑로더 25장 · 1팩");
   await shot(page, "SA-014-stock-option-history");
-  await dialog.getByRole("button", { name: "닫기" }).click();
+  await dialog.getByText("닫기", { exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 

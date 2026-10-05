@@ -5,6 +5,7 @@ import { apiUpload } from "../../../../../../components/seller/api";
 import { useRef, useState } from "react";
 import { normalizeLink, resolveLink } from "../../../../../../lib/server/shop-content/link";
 import "./shop-content.css";
+import { Modal } from "../../../../../../components/admin-ui";
 
 // 홈 배너 관리(SA-064)·이벤트 팝업 관리(SA-065)가 함께 쓰는 화면 조각. 파트너스 관리자 문구는 명사형·합니다체(2026-10-04 대표님 지시).
 
@@ -395,24 +396,22 @@ export function stateKind(status: number, error?: string): "forbidden" | "locked
 
 export function ConfirmDelete({ title, body, busy, onCancel, onConfirm }: { title: string; body: string; busy: boolean; onCancel: () => void; onConfirm: () => void }) {
   return (
-    <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="sc-del-title">
-      <div className="modal">
-        <div className="modal-h">
-          <h2 className="t-h2" id="sc-del-title">
-            {title}
-          </h2>
-          <span className="t-l2 c-alt">{body}</span>
-        </div>
-        <div className="modal-f">
-          <button className="btn btn-out" type="button" onClick={onCancel} disabled={busy}>
-            취소
-          </button>
-          <button className="btn btn-neg" type="button" onClick={onConfirm} disabled={busy}>
-            {busy ? "삭제 중" : "삭제"}
-          </button>
-        </div>
+    <Modal labelId="sc-del-title" busy={busy} onClose={onCancel}>
+      <div className="modal-h">
+        <h2 className="t-h2" id="sc-del-title">
+          {title}
+        </h2>
+        <span className="t-l2 c-alt">{body}</span>
       </div>
-    </div>
+      <div className="modal-f">
+        <button className="btn btn-out" type="button" onClick={onCancel} disabled={busy}>
+          취소
+        </button>
+        <button className="btn btn-neg" type="button" onClick={onConfirm} disabled={busy}>
+          {busy ? "삭제 중" : "삭제"}
+        </button>
+      </div>
+    </Modal>
   );
 }
 

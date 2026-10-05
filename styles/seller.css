@@ -1542,3 +1542,35 @@ body {
     flex: 1 1 100%;
   }
 }
+
+/* 공통 모달(components/admin-ui/Modal): 오른쪽 위 X 버튼. 제목 줄이 X에 가리지 않게 머리 오른쪽 여백을 둔다 */
+.modal-x-host {
+  position: relative;
+}
+.modal-x-host > .modal-h {
+  padding-right: 32px;
+}
+.modal-x {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--wds-label-neutral, #3d4047);
+  cursor: pointer;
+}
+.modal-x:hover:not(:disabled) {
+  background: var(--cs-hover, #f7f9fc);
+  color: var(--wds-label-strong, #000);
+}
+.modal-x:disabled {
+  opacity: 0.4;
+  cursor: default;
+}

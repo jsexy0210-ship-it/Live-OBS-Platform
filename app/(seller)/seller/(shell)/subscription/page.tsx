@@ -9,6 +9,7 @@ import { useLatestResponse } from "../../../../../components/seller/latestRespon
 import { canCancelSubscription, cardRegistrationCharges, isCancelScheduled, planChangeState } from "../../../../../lib/server/billing/access";
 import { PaymentHistory, type Payment } from "../../../../../components/seller/subscription/PaymentHistory";
 import "../../../../../styles/seller-settings2.css";
+import { Modal } from "../../../../../components/admin-ui";
 
 // SA-090 구독 · 결제(대표자 전용). API: GET /api/seller/subscription, POST …/card · …/plan · …/cancel, GET /api/plans(바꿀 수 있는 플랜 이름).
 // 카드 등록은 실제 결제 업체 창이 아직 없어 테스트 서버(GET /api/health의 testMode)에서만 가짜 카드로 연다(돈 이동 없음).
@@ -455,58 +456,56 @@ export default function SubscriptionPage() {
       </main>
 
       {confirm && view && (
-        <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="sub-confirm-title">
-          <div className="modal">
-            <div className="modal-h">
-              <h2 className="t-h2" id="sub-confirm-title">
-                {confirm.kind === "cancel" ? "구독을 해지하시겠습니까?" : confirm.kind === "card" ? "결제 카드를 등록하시겠습니까?" : `「${confirm.plan.name}」으로 변경하시겠습니까?`}
-              </h2>
-              <span className="t-l2 c-alt">
-                {confirm.kind === "cancel"
-                  ? endsAt
-                    ? `${DAY(endsAt)}까지 이용할 수 있고, 그 뒤에는 결제되지 않습니다.`
-                    : "바로 해지되고 더 이상 결제되지 않습니다."
-                  : confirm.kind === "card"
-                    ? confirm.note
-                    : planChangeNote(view, confirm.plan.code).text}
+        <Modal labelId="sub-confirm-title" busy={busy} onClose={() => setConfirm(null)}>
+          <div className="modal-h">
+            <h2 className="t-h2" id="sub-confirm-title">
+              {confirm.kind === "cancel" ? "구독을 해지하시겠습니까?" : confirm.kind === "card" ? "결제 카드를 등록하시겠습니까?" : `「${confirm.plan.name}」으로 변경하시겠습니까?`}
+            </h2>
+            <span className="t-l2 c-alt">
+              {confirm.kind === "cancel"
+                ? endsAt
+                  ? `${DAY(endsAt)}까지 이용할 수 있고, 그 뒤에는 결제되지 않습니다.`
+                  : "바로 해지되고 더 이상 결제되지 않습니다."
+                : confirm.kind === "card"
+                  ? confirm.note
+                  : planChangeNote(view, confirm.plan.code).text}
+            </span>
+            {confirm.kind === "plan" && (
+              <span className="t-l2 fw6" data-testid="sub-quote" role="status">
+                {confirm.changed && <>금액이 바뀌었습니다. 다시 확인해 주십시오. </>}
+                {confirm.quote.state === "loading"
+                  ? "결제 금액을 확인하고 있습니다"
+                  : confirm.quote.state === "error"
+                    ? "결제 금액을 확인하지 못했습니다. 닫고 다시 시도해 주십시오"
+                    : confirm.quote.chargeNow !== null && confirm.quote.chargeNow > 0
+                      ? `지금 결제 금액 ${won(confirm.quote.chargeNow)}`
+                      : confirm.quote.chargeNow === 0
+                        ? "지금 결제되는 금액은 없습니다"
+                        : null}
               </span>
-              {confirm.kind === "plan" && (
-                <span className="t-l2 fw6" data-testid="sub-quote" role="status">
-                  {confirm.changed && <>금액이 바뀌었습니다. 다시 확인해 주십시오. </>}
-                  {confirm.quote.state === "loading"
-                    ? "결제 금액을 확인하고 있습니다"
-                    : confirm.quote.state === "error"
-                      ? "결제 금액을 확인하지 못했습니다. 닫고 다시 시도해 주십시오"
-                      : confirm.quote.chargeNow !== null && confirm.quote.chargeNow > 0
-                        ? `지금 결제 금액 ${won(confirm.quote.chargeNow)}`
-                        : confirm.quote.chargeNow === 0
-                          ? "지금 결제되는 금액은 없습니다"
-                          : null}
-                </span>
-              )}
-            </div>
-            <div className="modal-f">
-              <button className="btn btn-out" type="button" onClick={() => setConfirm(null)} disabled={busy}>
-                취소
-              </button>
-              {confirm.kind === "cancel" ? (
-                <button className="btn btn-neg" type="button" onClick={() => void cancel()} disabled={busy}>
-                  {busy ? "해지 중" : "해지"}
-                </button>
-              ) : confirm.kind === "card" ? (
-                <button className="btn" type="button" onClick={() => void registerCard()} disabled={busy}>
-                  {busy ? "처리 중" : "등록"}
-                </button>
-              ) : (
-                <button className="btn" type="button" onClick={() => void changePlan(confirm.plan, confirm.quote.state === "ok" ? confirm.quote.chargeNow : null)}
-                  disabled={busy || confirm.quote.state !== "ok" || planChangeNote(view, confirm.plan.code).blocked}
-                >
-                  {busy ? "변경 중" : "변경"}
-                </button>
-              )}
-            </div>
+            )}
           </div>
-        </div>
+          <div className="modal-f">
+            <button className="btn btn-out" type="button" onClick={() => setConfirm(null)} disabled={busy}>
+              취소
+            </button>
+            {confirm.kind === "cancel" ? (
+              <button className="btn btn-neg" type="button" onClick={() => void cancel()} disabled={busy}>
+                {busy ? "해지 중" : "해지"}
+              </button>
+            ) : confirm.kind === "card" ? (
+              <button className="btn" type="button" onClick={() => void registerCard()} disabled={busy}>
+                {busy ? "처리 중" : "등록"}
+              </button>
+            ) : (
+              <button className="btn" type="button" onClick={() => void changePlan(confirm.plan, confirm.quote.state === "ok" ? confirm.quote.chargeNow : null)}
+                disabled={busy || confirm.quote.state !== "ok" || planChangeNote(view, confirm.plan.code).blocked}
+              >
+                {busy ? "변경 중" : "변경"}
+              </button>
+            )}
+          </div>
+        </Modal>
       )}
       {toast && <Toast text={toast} onDone={() => setToast(null)} />}
     </>

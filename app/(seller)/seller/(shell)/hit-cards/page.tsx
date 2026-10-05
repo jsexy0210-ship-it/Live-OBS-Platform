@@ -2,7 +2,7 @@
 
 import "../../../../../styles/seller-broadcast.css";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ListHead, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
+import { ListHead, PageHead, SearchBox, SearchRow, Modal } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
@@ -214,27 +214,25 @@ export default function HitCardsPage() {
 
       {modal?.kind === "add" && <AddModal busy={busy} onClose={() => setModal(null)} onSubmit={(b) => void add(b)} />}
       {modal?.kind === "delete" && (
-        <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="hit-del-title">
-          <div className="modal">
-            <div className="modal-h">
-              <h2 className="t-h2" id="hit-del-title">
-                HIT 카드를 해제하시겠습니까?
-              </h2>
-              <span className="t-l2 c-alt">
-                {modal.card.nickname} · {modal.card.cardName}
-              </span>
-            </div>
-            <span className="t-l2">오버레이에서도 바로 사라집니다.</span>
-            <div className="modal-f">
-              <button className="btn btn-out" type="button" disabled={busy} onClick={() => setModal(null)}>
-                닫기
-              </button>
-              <button className="btn btn-neg" type="button" disabled={busy} onClick={() => void remove(modal.card)}>
-                해제
-              </button>
-            </div>
+        <Modal labelId="hit-del-title" busy={busy} onClose={() => setModal(null)}>
+          <div className="modal-h">
+            <h2 className="t-h2" id="hit-del-title">
+              HIT 카드를 해제하시겠습니까?
+            </h2>
+            <span className="t-l2 c-alt">
+              {modal.card.nickname} · {modal.card.cardName}
+            </span>
           </div>
-        </div>
+          <span className="t-l2">오버레이에서도 바로 사라집니다.</span>
+          <div className="modal-f">
+            <button className="btn btn-out" type="button" disabled={busy} onClick={() => setModal(null)}>
+              닫기
+            </button>
+            <button className="btn btn-neg" type="button" disabled={busy} onClick={() => void remove(modal.card)}>
+              해제
+            </button>
+          </div>
+        </Modal>
       )}
       {toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}
     </>
@@ -245,55 +243,48 @@ function AddModal({ busy, onClose, onSubmit }: { busy: boolean; onClose: () => v
   const [cardName, setCardName] = useState("");
   const [nickname, setNickname] = useState("");
   const [note, setNote] = useState("");
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !busy && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [busy, onClose]);
   const ok = cardName.trim() !== "" && nickname.trim() !== "";
   return (
-    <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="hit-add-title">
-      <div className="modal">
-        <div className="modal-h">
-          <h2 className="t-h2" id="hit-add-title">
-            HIT 카드 등록
-          </h2>
-          <span className="t-l2 c-alt">등록하면 오버레이에 바로 나옵니다</span>
-        </div>
-        <form
-          className="col"
-          style={{ gap: 16 }}
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (ok && !busy) onSubmit({ cardName: cardName.trim(), nickname: nickname.trim(), ...(note.trim() ? { note: note.trim() } : {}) });
-          }}
-        >
-          <div className="fld">
-            <label htmlFor="hit-card-name" className="req">
-              카드 이름
-            </label>
-            <input id="hit-card-name" className="inp" maxLength={60} value={cardName} disabled={busy} autoFocus onChange={(e) => setCardName(e.target.value)} />
-          </div>
-          <div className="fld">
-            <label htmlFor="hit-nickname" className="req">
-              구매자 닉네임
-            </label>
-            <input id="hit-nickname" className="inp" maxLength={30} value={nickname} disabled={busy} onChange={(e) => setNickname(e.target.value)} />
-          </div>
-          <div className="fld">
-            <label htmlFor="hit-note">메모</label>
-            <input id="hit-note" className="inp" maxLength={200} value={note} disabled={busy} onChange={(e) => setNote(e.target.value)} />
-          </div>
-          <div className="modal-f">
-            <button className="btn btn-out" type="button" disabled={busy} onClick={onClose}>
-              닫기
-            </button>
-            <button className="btn" type="submit" disabled={busy || !ok}>
-              등록
-            </button>
-          </div>
-        </form>
+    <Modal labelId="hit-add-title" busy={busy} onClose={onClose}>
+      <div className="modal-h">
+        <h2 className="t-h2" id="hit-add-title">
+          HIT 카드 등록
+        </h2>
+        <span className="t-l2 c-alt">등록하면 오버레이에 바로 나옵니다</span>
       </div>
-    </div>
+      <form
+        className="col"
+        style={{ gap: 16 }}
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (ok && !busy) onSubmit({ cardName: cardName.trim(), nickname: nickname.trim(), ...(note.trim() ? { note: note.trim() } : {}) });
+        }}
+      >
+        <div className="fld">
+          <label htmlFor="hit-card-name" className="req">
+            카드 이름
+          </label>
+          <input id="hit-card-name" className="inp" maxLength={60} value={cardName} disabled={busy} autoFocus onChange={(e) => setCardName(e.target.value)} />
+        </div>
+        <div className="fld">
+          <label htmlFor="hit-nickname" className="req">
+            구매자 닉네임
+          </label>
+          <input id="hit-nickname" className="inp" maxLength={30} value={nickname} disabled={busy} onChange={(e) => setNickname(e.target.value)} />
+        </div>
+        <div className="fld">
+          <label htmlFor="hit-note">메모</label>
+          <input id="hit-note" className="inp" maxLength={200} value={note} disabled={busy} onChange={(e) => setNote(e.target.value)} />
+        </div>
+        <div className="modal-f">
+          <button className="btn btn-out" type="button" disabled={busy} onClick={onClose}>
+            닫기
+          </button>
+          <button className="btn" type="submit" disabled={busy || !ok}>
+            등록
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }

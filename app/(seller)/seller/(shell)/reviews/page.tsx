@@ -6,6 +6,7 @@ import { Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
 import { StateBox, errorText, kstText, stateKind } from "../banners/_shared/ui";
 import "./reviews.css";
+import { Modal } from "../../../../../components/admin-ui";
 
 // SA-048 리뷰 관리(파트너스 관리자, 판매 › 리뷰). 목록·집계·별점 분포, 리뷰 상세(사진·답글·숨기기·공개), 리뷰 설정(공개 방식·적립금·기간·금지어).
 // 조회는 파트너스 계정 누구나, 답글·숨김·공개·설정은 대표자·구매자 문의 권한 직원(서버가 canEdit으로 알려 줌). API: /api/seller/reviews.
@@ -322,115 +323,113 @@ function ReviewDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit
   };
 
   return (
-    <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="rv-detail-title">
-      <div className="modal modal-lg rv-modal">
-        <div className="modal-h">
-          <h2 className="t-h2" id="rv-detail-title">
-            {d ? `답글 · ${d.author} · ${d.productName}` : "리뷰"}
-          </h2>
+    <Modal labelId="rv-detail-title" className="modal-lg rv-modal" busy={busy} onClose={onClose}>
+      <div className="modal-h">
+        <h2 className="t-h2" id="rv-detail-title">
+          {d ? `답글 · ${d.author} · ${d.productName}` : "리뷰"}
+        </h2>
+      </div>
+      {failed && (
+        <div className="msg msg-neg" role="alert">
+          <span>{failed}</span>
         </div>
-        {failed && (
-          <div className="msg msg-neg" role="alert">
-            <span>{failed}</span>
+      )}
+      {d && (
+        <div className="col" style={{ gap: 12 }}>
+          <div className="row" style={{ gap: 8 }}>
+            <span className={`bdg ${STATUS[d.status].cls}`}>{STATUS[d.status].label}</span>
+            {d.heldLabel && <span className="t-c1 c-alt">{d.heldLabel}</span>}
+            {d.reportCount > 0 && (
+              <span className="t-c1 c-alt">
+                신고 {d.reportCount}건 ·{" "}
+                {Object.entries(d.reportReasons)
+                  .map(([k, n]) => `${reasonLabel(k as Reason)} ${n}`)
+                  .join(" · ")}
+              </span>
+            )}
           </div>
-        )}
-        {d && (
-          <div className="col" style={{ gap: 12 }}>
-            <div className="row" style={{ gap: 8 }}>
-              <span className={`bdg ${STATUS[d.status].cls}`}>{STATUS[d.status].label}</span>
-              {d.heldLabel && <span className="t-c1 c-alt">{d.heldLabel}</span>}
-              {d.reportCount > 0 && (
-                <span className="t-c1 c-alt">
-                  신고 {d.reportCount}건 ·{" "}
-                  {Object.entries(d.reportReasons)
-                    .map(([k, n]) => `${reasonLabel(k as Reason)} ${n}`)
-                    .join(" · ")}
-                </span>
-              )}
+          {d.images.length > 0 && (
+            <div className="rv-imgs">
+              {d.images.map((i) => (
+                <img key={i.id} src={i.url} alt="리뷰 사진" />
+              ))}
             </div>
-            {d.images.length > 0 && (
-              <div className="rv-imgs">
-                {d.images.map((i) => (
-                  <img key={i.id} src={i.url} alt="리뷰 사진" />
+          )}
+          <span className="rv-star">{stars(d.rating)}</span>
+          <span className="t-c1 c-alt num">
+            {kstText(d.createdAt)} · {kstText(d.orderedAt).slice(5, 10)} 주문 · 옵션 {d.optionName} ×{d.quantity}
+            {d.deliveredAt ? ` · 배송 완료 뒤 ${Math.max(0, Math.floor((new Date(d.createdAt).getTime() - new Date(d.deliveredAt).getTime()) / 86_400_000))}일` : ""}
+          </span>
+          <p className="t-l1" style={{ whiteSpace: "pre-line", margin: 0 }}>
+            {d.body}
+          </p>
+          {d.revokePending > 0 ? (
+            <span className="t-c1" style={{ color: "var(--neg-text)" }} role="status">
+              환불된 주문 · 적립금 수동 회수 필요 {won(d.revokePending)}
+            </span>
+          ) : (
+            d.rewardedAmount > 0 && <span className="t-c1 c-alt">리뷰 적립금 {won(d.rewardedAmount)} 지급</span>
+          )}
+          {d.status === "HIDDEN" && d.hiddenReason && (
+            <span className="t-c1 c-alt">
+              숨김 사유: {reasonLabel(d.hiddenReason)}
+              {d.hiddenNote ? ` · ${d.hiddenNote}` : ""}
+            </span>
+          )}
+          <div className="fld">
+            <label htmlFor="rv-reply">답글</label>
+            <textarea id="rv-reply" className="inp" style={{ minHeight: 88, padding: "10px 12px" }} value={reply} maxLength={300} disabled={!canEdit} onChange={(e) => setReply(e.target.value)} />
+            <span className="help">상품 리뷰에 「판매자」 이름으로 공개 · 300자 · 개인정보 · 연락처 기재 금지</span>
+          </div>
+          {hiding && (
+            <div className="col" style={{ gap: 8, padding: 12, borderRadius: 10, background: "var(--wds-fill-alternative)" }}>
+              <span className="t-l1 fw6">이 리뷰를 숨기시겠습니까?</span>
+              <span className="t-c1 c-alt">
+                상품 리뷰와 별점 평균에서 빠지고 작성자에게만 보입니다.{d.rewardedAmount > 0 ? ` 지급한 리뷰 적립금 ${won(d.rewardedAmount)}은 회수됩니다.` : ""} 사유는 작성자의 내 리뷰에 표시됩니다.
+              </span>
+              <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                {REASONS.map((x) => (
+                  <button key={x.key} type="button" className={`chip${reason === x.key ? " on" : ""}`} aria-pressed={reason === x.key} onClick={() => setReason(x.key)}>
+                    {x.label}
+                  </button>
                 ))}
               </div>
-            )}
-            <span className="rv-star">{stars(d.rating)}</span>
-            <span className="t-c1 c-alt num">
-              {kstText(d.createdAt)} · {kstText(d.orderedAt).slice(5, 10)} 주문 · 옵션 {d.optionName} ×{d.quantity}
-              {d.deliveredAt ? ` · 배송 완료 뒤 ${Math.max(0, Math.floor((new Date(d.createdAt).getTime() - new Date(d.deliveredAt).getTime()) / 86_400_000))}일` : ""}
-            </span>
-            <p className="t-l1" style={{ whiteSpace: "pre-line", margin: 0 }}>
-              {d.body}
-            </p>
-            {d.revokePending > 0 ? (
-              <span className="t-c1" style={{ color: "var(--neg-text)" }} role="status">
-                환불된 주문 · 적립금 수동 회수 필요 {won(d.revokePending)}
-              </span>
-            ) : (
-              d.rewardedAmount > 0 && <span className="t-c1 c-alt">리뷰 적립금 {won(d.rewardedAmount)} 지급</span>
-            )}
-            {d.status === "HIDDEN" && d.hiddenReason && (
-              <span className="t-c1 c-alt">
-                숨김 사유: {reasonLabel(d.hiddenReason)}
-                {d.hiddenNote ? ` · ${d.hiddenNote}` : ""}
-              </span>
-            )}
-            <div className="fld">
-              <label htmlFor="rv-reply">답글</label>
-              <textarea id="rv-reply" className="inp" style={{ minHeight: 88, padding: "10px 12px" }} value={reply} maxLength={300} disabled={!canEdit} onChange={(e) => setReply(e.target.value)} />
-              <span className="help">상품 리뷰에 「판매자」 이름으로 공개 · 300자 · 개인정보 · 연락처 기재 금지</span>
-            </div>
-            {hiding && (
-              <div className="col" style={{ gap: 8, padding: 12, borderRadius: 10, background: "var(--wds-fill-alternative)" }}>
-                <span className="t-l1 fw6">이 리뷰를 숨기시겠습니까?</span>
-                <span className="t-c1 c-alt">
-                  상품 리뷰와 별점 평균에서 빠지고 작성자에게만 보입니다.{d.rewardedAmount > 0 ? ` 지급한 리뷰 적립금 ${won(d.rewardedAmount)}은 회수됩니다.` : ""} 사유는 작성자의 내 리뷰에 표시됩니다.
-                </span>
-                <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
-                  {REASONS.map((x) => (
-                    <button key={x.key} type="button" className={`chip${reason === x.key ? " on" : ""}`} aria-pressed={reason === x.key} onClick={() => setReason(x.key)}>
-                      {x.label}
-                    </button>
-                  ))}
-                </div>
-                <input className="inp" aria-label="사유 설명" placeholder="사유 설명 (선택, 200자)" maxLength={200} value={note} onChange={(e) => setNote(e.target.value)} />
-                <div className="row" style={{ gap: 8, justifyContent: "flex-end" }}>
-                  <button className="btn btn-sm btn-out" type="button" onClick={() => setHiding(false)} disabled={busy}>
-                    취소
-                  </button>
-                  <button className="btn btn-sm btn-neg" type="button" disabled={!reason || busy} onClick={() => void act("hide", "POST", { reason, note: note.trim() || null }, "리뷰를 숨겼습니다")}>
-                    숨기기
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-        <div className="modal-f">
-          <button className="btn btn-out" type="button" onClick={onClose} disabled={busy}>
-            닫기
-          </button>
-          {d && canEdit && (
-            <>
-              {d.status !== "HIDDEN" && !hiding && (
-                <button className="btn btn-text" type="button" style={{ color: "var(--neg-text)" }} onClick={() => setHiding(true)}>
+              <input className="inp" aria-label="사유 설명" placeholder="사유 설명 (선택, 200자)" maxLength={200} value={note} onChange={(e) => setNote(e.target.value)} />
+              <div className="row" style={{ gap: 8, justifyContent: "flex-end" }}>
+                <button className="btn btn-sm btn-out" type="button" onClick={() => setHiding(false)} disabled={busy}>
+                  취소
+                </button>
+                <button className="btn btn-sm btn-neg" type="button" disabled={!reason || busy} onClick={() => void act("hide", "POST", { reason, note: note.trim() || null }, "리뷰를 숨겼습니다")}>
                   숨기기
                 </button>
-              )}
-              {d.status !== "VISIBLE" && (
-                <button className="btn btn-out" type="button" disabled={busy} onClick={() => void act("publish", "POST", {}, d.status === "HIDDEN" ? "다시 공개했습니다" : "리뷰를 공개했습니다")}>
-                  {d.status === "HIDDEN" ? "다시 공개" : "공개"}
-                </button>
-              )}
-              <button className="btn" type="button" disabled={busy || reply.trim() === (d.reply ?? "")} onClick={() => void act("reply", "PUT", { reply: reply.trim() || null }, reply.trim() ? "답글을 저장했습니다" : "답글을 지웠습니다")}>
-                답글 저장
-              </button>
-            </>
+              </div>
+            </div>
           )}
         </div>
+      )}
+      <div className="modal-f">
+        <button className="btn btn-out" type="button" onClick={onClose} disabled={busy}>
+          닫기
+        </button>
+        {d && canEdit && (
+          <>
+            {d.status !== "HIDDEN" && !hiding && (
+              <button className="btn btn-text" type="button" style={{ color: "var(--neg-text)" }} onClick={() => setHiding(true)}>
+                숨기기
+              </button>
+            )}
+            {d.status !== "VISIBLE" && (
+              <button className="btn btn-out" type="button" disabled={busy} onClick={() => void act("publish", "POST", {}, d.status === "HIDDEN" ? "다시 공개했습니다" : "리뷰를 공개했습니다")}>
+                {d.status === "HIDDEN" ? "다시 공개" : "공개"}
+              </button>
+            )}
+            <button className="btn" type="button" disabled={busy || reply.trim() === (d.reply ?? "")} onClick={() => void act("reply", "PUT", { reply: reply.trim() || null }, reply.trim() ? "답글을 저장했습니다" : "답글을 지웠습니다")}>
+              답글 저장
+            </button>
+          </>
+        )}
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -452,70 +451,68 @@ function PolicyDialog({ policy, canEdit, onClose, onSaved }: { policy: Policy; c
   };
 
   return (
-    <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="rv-policy-title">
-      <div className="modal modal-lg rv-modal">
-        <div className="modal-h">
-          <h2 className="t-h2" id="rv-policy-title">
-            리뷰 설정
-          </h2>
+    <Modal labelId="rv-policy-title" className="modal-lg rv-modal" busy={busy} onClose={onClose}>
+      <div className="modal-h">
+        <h2 className="t-h2" id="rv-policy-title">
+          리뷰 설정
+        </h2>
+      </div>
+      {failed && (
+        <div className="msg msg-neg" role="alert">
+          <span>{failed}</span>
         </div>
-        {failed && (
-          <div className="msg msg-neg" role="alert">
-            <span>{failed}</span>
+      )}
+      <div className="col" style={{ gap: 14 }}>
+        <div className="fld">
+          <span className="lbl" id="rv-mode-label">
+            공개 방식
+          </span>
+          <div className="seg" role="radiogroup" aria-labelledby="rv-mode-label" style={{ alignSelf: "flex-start" }}>
+            {(
+              [
+                ["IMMEDIATE", "바로 공개"],
+                ["REVIEW", "확인 뒤 공개"],
+              ] as const
+            ).map(([k, label]) => (
+              <button key={k} type="button" role="radio" aria-checked={p.publishMode === k} className={p.publishMode === k ? "on" : ""} disabled={!canEdit} onClick={() => setP({ ...p, publishMode: k })}>
+                {label}
+              </button>
+            ))}
           </div>
-        )}
-        <div className="col" style={{ gap: 14 }}>
-          <div className="fld">
-            <span className="lbl" id="rv-mode-label">
-              공개 방식
-            </span>
-            <div className="seg" role="radiogroup" aria-labelledby="rv-mode-label" style={{ alignSelf: "flex-start" }}>
-              {(
-                [
-                  ["IMMEDIATE", "바로 공개"],
-                  ["REVIEW", "확인 뒤 공개"],
-                ] as const
-              ).map(([k, label]) => (
-                <button key={k} type="button" role="radio" aria-checked={p.publishMode === k} className={p.publishMode === k ? "on" : ""} disabled={!canEdit} onClick={() => setP({ ...p, publishMode: k })}>
-                  {label}
-                </button>
-              ))}
-            </div>
-            <span className="help">{p.publishMode === "REVIEW" ? "새 리뷰는 「공개 대기」로 들어옵니다" : "연락처 · 외부 주소 · 금지어가 있으면 보류합니다"}</span>
+          <span className="help">{p.publishMode === "REVIEW" ? "새 리뷰는 「공개 대기」로 들어옵니다" : "연락처 · 외부 주소 · 금지어가 있으면 보류합니다"}</span>
+        </div>
+        <div className="row" style={{ gap: 12 }}>
+          <div className="fld grow">
+            <label htmlFor="rv-reward-text">일반 리뷰 적립금 (원)</label>
+            <input id="rv-reward-text" className="inp num" inputMode="numeric" disabled={!canEdit} value={p.rewardText} onChange={(e) => setP({ ...p, rewardText: num(e.target.value) })} />
           </div>
-          <div className="row" style={{ gap: 12 }}>
-            <div className="fld grow">
-              <label htmlFor="rv-reward-text">일반 리뷰 적립금 (원)</label>
-              <input id="rv-reward-text" className="inp num" inputMode="numeric" disabled={!canEdit} value={p.rewardText} onChange={(e) => setP({ ...p, rewardText: num(e.target.value) })} />
-            </div>
-            <div className="fld grow">
-              <label htmlFor="rv-reward-photo">사진 리뷰 적립금 (원)</label>
-              <input id="rv-reward-photo" className="inp num" inputMode="numeric" disabled={!canEdit} value={p.rewardPhoto} onChange={(e) => setP({ ...p, rewardPhoto: num(e.target.value) })} />
-            </div>
-          </div>
-          <span className="help">0원이면 지급하지 않습니다 · 공개될 때 지급, 숨김 · 삭제 때 회수 · 적립금 실지급이 꺼져 있으면 예정으로 보관</span>
-          <div className="fld">
-            <label htmlFor="rv-days">작성 가능 기간 (배송 완료 뒤 일)</label>
-            <input id="rv-days" className="inp num" inputMode="numeric" style={{ width: 120 }} disabled={!canEdit} value={p.writableDays} onChange={(e) => setP({ ...p, writableDays: num(e.target.value) })} />
-            <span className="help">주문당 상품별 1회 · 작성자는 7일 안에 고칠 수 있음</span>
-          </div>
-          <div className="fld">
-            <label htmlFor="rv-words">금지어</label>
-            <input id="rv-words" className="inp" disabled={!canEdit} placeholder="쉼표로 구분 · 20자 이하 50개까지" value={words} onChange={(e) => setWords(e.target.value)} />
-            <span className="help">연락처 · 외부 주소는 자동으로 검사합니다 · 걸리면 보류</span>
+          <div className="fld grow">
+            <label htmlFor="rv-reward-photo">사진 리뷰 적립금 (원)</label>
+            <input id="rv-reward-photo" className="inp num" inputMode="numeric" disabled={!canEdit} value={p.rewardPhoto} onChange={(e) => setP({ ...p, rewardPhoto: num(e.target.value) })} />
           </div>
         </div>
-        <div className="modal-f">
-          <button className="btn btn-out" type="button" onClick={onClose} disabled={busy}>
-            {canEdit ? "취소" : "닫기"}
-          </button>
-          {canEdit && (
-            <button className="btn" type="button" disabled={busy} onClick={() => void save()}>
-              {busy ? "저장 중" : "저장"}
-            </button>
-          )}
+        <span className="help">0원이면 지급하지 않습니다 · 공개될 때 지급, 숨김 · 삭제 때 회수 · 적립금 실지급이 꺼져 있으면 예정으로 보관</span>
+        <div className="fld">
+          <label htmlFor="rv-days">작성 가능 기간 (배송 완료 뒤 일)</label>
+          <input id="rv-days" className="inp num" inputMode="numeric" style={{ width: 120 }} disabled={!canEdit} value={p.writableDays} onChange={(e) => setP({ ...p, writableDays: num(e.target.value) })} />
+          <span className="help">주문당 상품별 1회 · 작성자는 7일 안에 고칠 수 있음</span>
+        </div>
+        <div className="fld">
+          <label htmlFor="rv-words">금지어</label>
+          <input id="rv-words" className="inp" disabled={!canEdit} placeholder="쉼표로 구분 · 20자 이하 50개까지" value={words} onChange={(e) => setWords(e.target.value)} />
+          <span className="help">연락처 · 외부 주소는 자동으로 검사합니다 · 걸리면 보류</span>
         </div>
       </div>
-    </div>
+      <div className="modal-f">
+        <button className="btn btn-out" type="button" onClick={onClose} disabled={busy}>
+          {canEdit ? "취소" : "닫기"}
+        </button>
+        {canEdit && (
+          <button className="btn" type="button" disabled={busy} onClick={() => void save()}>
+            {busy ? "저장 중" : "저장"}
+          </button>
+        )}
+      </div>
+    </Modal>
   );
 }

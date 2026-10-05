@@ -6,6 +6,7 @@ import { Topbar, useSeller } from "../../../../../components/seller/SellerShell"
 import { Locked, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
 import OverlayEditor from "../../../../../components/seller/OverlayEditor";
+import { Modal } from "../../../../../components/admin-ui";
 
 // 메뉴 「오버레이 편집기」 자리. SA-052 오버레이 주소 발급·재발급 아래에 화면 편집(SA-051, OverlayEditor)을 둔다.
 // 주소의 토큰은 서버에 해시로만 남아 지금 쓰는 주소를 다시 보여 줄 수 없다: 발급할 때 이 화면에서 한 번만 보이고,
@@ -158,29 +159,22 @@ export default function OverlayPage() {
 }
 
 function IssueConfirm({ again, busy, onClose, onConfirm }: { again: boolean; busy: boolean; onClose: () => void; onConfirm: () => void }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !busy && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [busy, onClose]);
   return (
-    <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="ovu-confirm-h">
-      <div className="modal">
-        <div className="modal-h">
-          <h2 className="t-h2" id="ovu-confirm-h">
-            {again ? "주소를 다시 발급하시겠습니까?" : "새 주소를 발급하시겠습니까?"}
-          </h2>
-          <span className="t-l2 c-alt">{again ? "기존 OBS 주소는 바로 끊깁니다. OBS에 새 주소를 다시 넣어야 합니다." : "이전에 발급한 주소가 있으면 바로 끊깁니다. OBS에 넣은 주소도 새 주소로 바꿔야 합니다."}</span>
-        </div>
-        <div className="modal-f">
-          <button className="btn btn-out" type="button" disabled={busy} onClick={onClose}>
-            닫기
-          </button>
-          <button className="btn" type="button" disabled={busy} onClick={onConfirm}>
-            발급
-          </button>
-        </div>
+    <Modal labelId="ovu-confirm-h" busy={busy} onClose={onClose}>
+      <div className="modal-h">
+        <h2 className="t-h2" id="ovu-confirm-h">
+          {again ? "주소를 다시 발급하시겠습니까?" : "새 주소를 발급하시겠습니까?"}
+        </h2>
+        <span className="t-l2 c-alt">{again ? "기존 OBS 주소는 바로 끊깁니다. OBS에 새 주소를 다시 넣어야 합니다." : "이전에 발급한 주소가 있으면 바로 끊깁니다. OBS에 넣은 주소도 새 주소로 바꿔야 합니다."}</span>
       </div>
-    </div>
+      <div className="modal-f">
+        <button className="btn btn-out" type="button" disabled={busy} onClick={onClose}>
+          닫기
+        </button>
+        <button className="btn" type="button" disabled={busy} onClick={onConfirm}>
+          발급
+        </button>
+      </div>
+    </Modal>
   );
 }

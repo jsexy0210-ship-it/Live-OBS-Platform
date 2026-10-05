@@ -56,7 +56,7 @@ test("연결된 방송: 채팅 수집은 기본 꺼짐, 켜면 보관 고지가 
 
   // 방송 연결 해제: 확인 창에서 닫으면 그대로
   await page.getByRole("button", { name: "방송 연결 해제" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "닫기" }).click();
+  await page.getByRole("dialog").getByText("닫기", { exact: true }).click();
   await expect(page.getByTestId("yt-live")).toBeVisible();
   await page.getByRole("button", { name: "방송 연결 해제" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "해제" }).click();

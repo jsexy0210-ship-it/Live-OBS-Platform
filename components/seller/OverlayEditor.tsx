@@ -7,6 +7,7 @@ import { WidgetView } from "../overlay/WidgetView";
 import { MAX_TEMPLATES, SAMPLE_DATA, SLOTS, STAGE, newWidget, slotOf, widgetLabel, type Aspect, type PropValue, type Widget } from "../overlay/layout";
 import { api, failMessage } from "./api";
 import { Toast } from "./States";
+import { Modal } from "../admin-ui";
 
 // 오버레이 편집기(SA-051): 비율(9:16·16:9)마다 위젯 7종의 위치·크기(화면 대비 %)와 속성을 정해 저장한다.
 // 저장은 expectedVersion으로: 다른 창에서 먼저 저장했으면 409 → 「다른 창에서 먼저 저장했습니다 · 다시 불러오기」.
@@ -914,48 +915,46 @@ export default function OverlayEditor() {
         </div>
       )}
       {leave !== null && (
-        <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="ove-leave-h">
-          <div className="modal">
-            <div className="modal-h">
-              <h2 className="t-h2" id="ove-leave-h">
-                저장하지 않은 변경 {changes}개가 있습니다
-              </h2>
-              <span className="t-l2 c-alt">나가면 바뀐 내용이 사라집니다.</span>
-            </div>
-            <div className="modal-f">
-              <button className="btn btn-out" type="button" onClick={() => setLeave(null)}>
-                닫기
-              </button>
-              <button
-                className="btn btn-out"
-                type="button"
-                onClick={() => {
-                  const to = leave;
-                  setLeave(null);
-                  clearHistory();
-                  setWidgets(server?.widgets ?? []);
-                  router.push(to);
-                }}
-              >
-                저장하지 않고 나가기
-              </button>
-              <button
-                className="btn"
-                type="button"
-                disabled={busy}
-                onClick={async () => {
-                  const to = leave;
-                  if (await save()) {
-                    setLeave(null);
-                    router.push(to);
-                  } else setLeave(null);
-                }}
-              >
-                저장하고 나가기
-              </button>
-            </div>
+        <Modal labelId="ove-leave-h" onClose={() => setLeave(null)}>
+          <div className="modal-h">
+            <h2 className="t-h2" id="ove-leave-h">
+              저장하지 않은 변경 {changes}개가 있습니다
+            </h2>
+            <span className="t-l2 c-alt">나가면 바뀐 내용이 사라집니다.</span>
           </div>
-        </div>
+          <div className="modal-f">
+            <button className="btn btn-out" type="button" onClick={() => setLeave(null)}>
+              닫기
+            </button>
+            <button
+              className="btn btn-out"
+              type="button"
+              onClick={() => {
+                const to = leave;
+                setLeave(null);
+                clearHistory();
+                setWidgets(server?.widgets ?? []);
+                router.push(to);
+              }}
+            >
+              저장하지 않고 나가기
+            </button>
+            <button
+              className="btn"
+              type="button"
+              disabled={busy}
+              onClick={async () => {
+                const to = leave;
+                if (await save()) {
+                  setLeave(null);
+                  router.push(to);
+                } else setLeave(null);
+              }}
+            >
+              저장하고 나가기
+            </button>
+          </div>
+        </Modal>
       )}
       {fullPreview && <FullPreview widgets={widgets} aspect={aspect} onClose={() => setFullPreview(false)} />}
       {toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}

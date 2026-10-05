@@ -8,6 +8,7 @@ import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../.
 import { api, failMessage } from "../../../../../../components/seller/api";
 import { INT4_MAX, MAX_SEARCH_LENGTH, parseAmount, textLength } from "../../../../../../components/seller/format";
 import { cleanText } from "../../../../../../lib/server/text/clean";
+import { Modal } from "../../../../../../components/admin-ui";
 
 // SA-014 재고 관리. 옵션마다 「변경 후」 재고를 적어 한 번에 적용하거나, 한 옵션을 사유와 함께 빼고 더한다.
 // - 한 번에 적용: 재고 증감 API에 화면이 본 재고(expectedStock)와 사유를 함께 보내, 그사이 주문으로 재고가 바뀌었으면 덮어쓰지 않는다.
@@ -546,49 +547,47 @@ export default function StockPage() {
       )}
 
       {confirm && (
-        <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="apply-title">
-          <div className="modal">
-            <div className="modal-h">
-              <h3 id="apply-title" className="t-hl1">
-                재고 {valid.length}건을 적용하시겠습니까?
-              </h3>
-              {hiddenCount > 0 && (
-                <p className="t-l2 fw6 c-cau" data-testid="apply-hidden">
-                  화면에 안 보이는 {hiddenCount.toLocaleString("ko-KR")}개 포함
-                </p>
-              )}
-              <p className="t-b2 c-neu">
-                쇼핑몰에 바로 반영됩니다.{invalid.length ? ` 고칠 칸 ${invalid.length}개는 빼고 적용합니다.` : ""} 그사이 주문으로 재고가 바뀐 옵션은 변경하지 않고 따로 알려 드립니다.
+        <Modal labelId="apply-title" busy={applying} onClose={() => setConfirm(false)}>
+          <div className="modal-h">
+            <h3 id="apply-title" className="t-hl1">
+              재고 {valid.length}건을 적용하시겠습니까?
+            </h3>
+            {hiddenCount > 0 && (
+              <p className="t-l2 fw6 c-cau" data-testid="apply-hidden">
+                화면에 안 보이는 {hiddenCount.toLocaleString("ko-KR")}개 포함
               </p>
-            </div>
-            <div className="fld">
-              <span className="lbl">사유</span>
-              <div className="row" style={{ gap: 6, flexWrap: "wrap" }} role="radiogroup" aria-label="한 번에 적용하는 사유">
-                {BULK_REASONS.map((r) => (
-                  <button key={r} className={`chip${bulkReason === r ? " on" : ""}`} type="button" role="radio" aria-checked={bulkReason === r} onClick={() => setBulkReason(r)}>
-                    {r}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {bulkReason === "직접 입력" && (
-              <div className="fld">
-                <label htmlFor="bulk-memo">사유 메모</label>
-                <input id="bulk-memo" className={`inp${bulkMemoError ? " is-error" : ""}`} type="text" placeholder="예: 창고 재고 맞춤" value={bulkMemo} onChange={(e) => setBulkMemo(e.target.value)} aria-invalid={!!bulkMemoError} />
-                {bulkMemoError && <span className="err">{bulkMemoError}</span>}
-              </div>
             )}
-            <span className="t-c1 c-alt">사유는 재고 이력에 함께 남습니다</span>
-            <div className="modal-f">
-              <button className="btn btn-out" type="button" onClick={() => setConfirm(false)}>
-                취소
-              </button>
-              <button className="btn" type="button" onClick={() => void applyChanges()} disabled={!bulkNoteOk}>
-                적용
-              </button>
+            <p className="t-b2 c-neu">
+              쇼핑몰에 바로 반영됩니다.{invalid.length ? ` 고칠 칸 ${invalid.length}개는 빼고 적용합니다.` : ""} 그사이 주문으로 재고가 바뀐 옵션은 변경하지 않고 따로 알려 드립니다.
+            </p>
+          </div>
+          <div className="fld">
+            <span className="lbl">사유</span>
+            <div className="row" style={{ gap: 6, flexWrap: "wrap" }} role="radiogroup" aria-label="한 번에 적용하는 사유">
+              {BULK_REASONS.map((r) => (
+                <button key={r} className={`chip${bulkReason === r ? " on" : ""}`} type="button" role="radio" aria-checked={bulkReason === r} onClick={() => setBulkReason(r)}>
+                  {r}
+                </button>
+              ))}
             </div>
           </div>
-        </div>
+          {bulkReason === "직접 입력" && (
+            <div className="fld">
+              <label htmlFor="bulk-memo">사유 메모</label>
+              <input id="bulk-memo" className={`inp${bulkMemoError ? " is-error" : ""}`} type="text" placeholder="예: 창고 재고 맞춤" value={bulkMemo} onChange={(e) => setBulkMemo(e.target.value)} aria-invalid={!!bulkMemoError} />
+              {bulkMemoError && <span className="err">{bulkMemoError}</span>}
+            </div>
+          )}
+          <span className="t-c1 c-alt">사유는 재고 이력에 함께 남습니다</span>
+          <div className="modal-f">
+            <button className="btn btn-out" type="button" onClick={() => setConfirm(false)}>
+              취소
+            </button>
+            <button className="btn" type="button" onClick={() => void applyChanges()} disabled={!bulkNoteOk}>
+              적용
+            </button>
+          </div>
+        </Modal>
       )}
       {sheet && (
         <AdjustSheet
@@ -609,24 +608,22 @@ export default function StockPage() {
         />
       )}
       {histRow && (
-        <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="opt-hist-title">
-          <div className="modal stock-hist-modal">
-            <div className="modal-h">
-              <h3 id="opt-hist-title" className="t-hl1 clamp2">
-                {histRow.productName} · {histRow.optionName}
-              </h3>
-              <p className="t-l2 c-alt">이 옵션의 재고 이력입니다 · 지금 재고 {histRow.stock.toLocaleString("ko-KR")}개</p>
-            </div>
-            <div className="stock-hist-body">
-              <StockHistory refreshKey={histKey} productId={histRow.productId} optionId={histRow.optionId} />
-            </div>
-            <div className="modal-f">
-              <button className="btn btn-out" type="button" onClick={() => setHistRow(null)}>
-                닫기
-              </button>
-            </div>
+        <Modal labelId="opt-hist-title" className="stock-hist-modal" onClose={() => setHistRow(null)}>
+          <div className="modal-h">
+            <h3 id="opt-hist-title" className="t-hl1 clamp2">
+              {histRow.productName} · {histRow.optionName}
+            </h3>
+            <p className="t-l2 c-alt">이 옵션의 재고 이력입니다 · 지금 재고 {histRow.stock.toLocaleString("ko-KR")}개</p>
           </div>
-        </div>
+          <div className="stock-hist-body">
+            <StockHistory refreshKey={histKey} productId={histRow.productId} optionId={histRow.optionId} />
+          </div>
+          <div className="modal-f">
+            <button className="btn btn-out" type="button" onClick={() => setHistRow(null)}>
+              닫기
+            </button>
+          </div>
+        </Modal>
       )}
       {toast && <Toast text={toast} onDone={() => setToast(null)} />}
     </>
@@ -674,69 +671,67 @@ function AdjustSheet({ row, onClose, onDone }: { row: Row; onClose: () => void; 
   };
 
   return (
-    <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="adj-title">
-      <div className="modal">
-        <div className="modal-h">
-          <h3 id="adj-title" className="t-hl1">
-            {row.productName} · {row.optionName}
-          </h3>
-          <p className="t-l2 c-alt">현재 재고 {row.stock.toLocaleString("ko-KR")}개</p>
+    <Modal labelId="adj-title" busy={busy} onClose={onClose}>
+      <div className="modal-h">
+        <h3 id="adj-title" className="t-hl1">
+          {row.productName} · {row.optionName}
+        </h3>
+        <p className="t-l2 c-alt">현재 재고 {row.stock.toLocaleString("ko-KR")}개</p>
+      </div>
+      {error && (
+        <div className="msg msg-neg" role="alert">
+          {error}
         </div>
-        {error && (
-          <div className="msg msg-neg" role="alert">
-            {error}
-          </div>
-        )}
-        <div className="seg" role="radiogroup" aria-label="빼기 또는 더하기" style={{ alignSelf: "flex-start" }}>
-          <button type="button" role="radio" aria-checked={mode === "minus"} className={mode === "minus" ? "on" : ""} onClick={() => setMode("minus")}>
-            빼기
-          </button>
-          <button type="button" role="radio" aria-checked={mode === "plus"} className={mode === "plus" ? "on" : ""} onClick={() => setMode("plus")}>
-            더하기
-          </button>
-        </div>
-        <div className="fld">
-          <label htmlFor="adj-qty">수량</label>
-          <input
-            id="adj-qty"
-            className={`inp num${qtyError ? " is-error" : ""}`}
-            type="text"
-            inputMode="numeric"
-            value={qty}
-            onChange={(e) => setQty(e.target.value)}
-            style={{ textAlign: "right", width: 160 }}
-            aria-invalid={!!qtyError}
-          />
-          {qtyError && <span className="err">{qtyError}</span>}
-        </div>
-        <div className="fld">
-          <span className="lbl">사유</span>
-          <div className="row" style={{ gap: 6, flexWrap: "wrap" }} role="radiogroup" aria-label="사유">
-            {REASONS.map((r) => (
-              <button key={r} className={`chip${reason === r ? " on" : ""}`} type="button" role="radio" aria-checked={reason === r} onClick={() => setReason(r)}>
-                {r}
-              </button>
-            ))}
-          </div>
-        </div>
-        {reason === "직접 입력" && (
-          <div className="fld">
-            <label htmlFor="adj-memo">사유 메모</label>
-            <input id="adj-memo" className={`inp${memoErr ? " is-error" : ""}`} type="text" placeholder="예: 추가 입고" value={memo} onChange={(e) => setMemo(e.target.value)} aria-invalid={!!memoErr} />
-            {memoErr && <span className="err">{memoErr}</span>}
-          </div>
-        )}
-        <span className="t-c1 c-alt">변경한 사람·시각과 사유가 함께 기록됩니다</span>
-        <div className="modal-f">
-          <button className="btn btn-out" type="button" onClick={onClose} disabled={busy}>
-            취소
-          </button>
-          <button className="btn" type="button" onClick={() => void submit()} disabled={!ready || busy}>
-            {busy ? "변경 중" : n && n >= 1 ? `${n.toLocaleString("ko-KR")}개 ${verb}` : verb}
-          </button>
+      )}
+      <div className="seg" role="radiogroup" aria-label="빼기 또는 더하기" style={{ alignSelf: "flex-start" }}>
+        <button type="button" role="radio" aria-checked={mode === "minus"} className={mode === "minus" ? "on" : ""} onClick={() => setMode("minus")}>
+          빼기
+        </button>
+        <button type="button" role="radio" aria-checked={mode === "plus"} className={mode === "plus" ? "on" : ""} onClick={() => setMode("plus")}>
+          더하기
+        </button>
+      </div>
+      <div className="fld">
+        <label htmlFor="adj-qty">수량</label>
+        <input
+          id="adj-qty"
+          className={`inp num${qtyError ? " is-error" : ""}`}
+          type="text"
+          inputMode="numeric"
+          value={qty}
+          onChange={(e) => setQty(e.target.value)}
+          style={{ textAlign: "right", width: 160 }}
+          aria-invalid={!!qtyError}
+        />
+        {qtyError && <span className="err">{qtyError}</span>}
+      </div>
+      <div className="fld">
+        <span className="lbl">사유</span>
+        <div className="row" style={{ gap: 6, flexWrap: "wrap" }} role="radiogroup" aria-label="사유">
+          {REASONS.map((r) => (
+            <button key={r} className={`chip${reason === r ? " on" : ""}`} type="button" role="radio" aria-checked={reason === r} onClick={() => setReason(r)}>
+              {r}
+            </button>
+          ))}
         </div>
       </div>
-    </div>
+      {reason === "직접 입력" && (
+        <div className="fld">
+          <label htmlFor="adj-memo">사유 메모</label>
+          <input id="adj-memo" className={`inp${memoErr ? " is-error" : ""}`} type="text" placeholder="예: 추가 입고" value={memo} onChange={(e) => setMemo(e.target.value)} aria-invalid={!!memoErr} />
+          {memoErr && <span className="err">{memoErr}</span>}
+        </div>
+      )}
+      <span className="t-c1 c-alt">변경한 사람·시각과 사유가 함께 기록됩니다</span>
+      <div className="modal-f">
+        <button className="btn btn-out" type="button" onClick={onClose} disabled={busy}>
+          취소
+        </button>
+        <button className="btn" type="button" onClick={() => void submit()} disabled={!ready || busy}>
+          {busy ? "변경 중" : n && n >= 1 ? `${n.toLocaleString("ko-KR")}개 ${verb}` : verb}
+        </button>
+      </div>
+    </Modal>
   );
 }
 

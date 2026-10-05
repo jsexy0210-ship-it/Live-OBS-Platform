@@ -7,6 +7,7 @@ import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../com
 import { api, failMessage } from "../../../../../components/seller/api";
 import { textLength } from "../../../../../components/seller/format";
 import { useLatestResponse } from "../../../../../components/seller/latestResponse";
+import { Modal } from "../../../../../components/admin-ui";
 
 // SA-043 구매 제한 중 「지금 주문이 막힌 구매자」 목록과 풀기(API: GET /api/seller/purchase-restrictions,
 // POST …/{buyerMemberId}/lift, 회원·적립금 권한). 자동 제한 규칙은 주문 설정 화면에 있다. 직접 막기는 API가 생기면 붙인다.
@@ -213,37 +214,35 @@ function LiftModal({ group, onClose, onDone, onGone }: { group: Group; onClose: 
   };
 
   return (
-    <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="pr-lift-title">
-      <div className="modal">
-        <div className="modal-h">
-          <h2 className="t-h2" id="pr-lift-title">
-            구매 제한을 푸시겠습니까?
-          </h2>
-          <span className="t-l2 c-alt">{group.nickname ?? "이 구매자"}님이 바로 다시 주문할 수 있습니다. 자동 제한 횟수는 지금부터 새로 셉니다.</span>
-        </div>
-        <div className="col" style={{ gap: 6, padding: "0 24px" }}>
-          <label className="lbl" htmlFor="pr-lift-reason">
-            사유 (선택)
-          </label>
-          <textarea id="pr-lift-reason" className="inp" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="예: 입금 확인 후 해제" />
-          <span className={`t-c1 ${tooLong ? "c-neg" : "c-alt"}`}>
-            {count}/{MAX_REASON}
-          </span>
-          {error && (
-            <span className="err" role="alert">
-              {error}
-            </span>
-          )}
-        </div>
-        <div className="modal-f">
-          <button className="btn btn-out" type="button" onClick={onClose} disabled={busy}>
-            취소
-          </button>
-          <button className="btn" type="button" onClick={() => void submit()} disabled={busy || tooLong}>
-            {busy ? "푸는 중" : "제한 풀기"}
-          </button>
-        </div>
+    <Modal labelId="pr-lift-title" busy={busy} onClose={onClose}>
+      <div className="modal-h">
+        <h2 className="t-h2" id="pr-lift-title">
+          구매 제한을 푸시겠습니까?
+        </h2>
+        <span className="t-l2 c-alt">{group.nickname ?? "이 구매자"}님이 바로 다시 주문할 수 있습니다. 자동 제한 횟수는 지금부터 새로 셉니다.</span>
       </div>
-    </div>
+      <div className="col" style={{ gap: 6, padding: "0 24px" }}>
+        <label className="lbl" htmlFor="pr-lift-reason">
+          사유 (선택)
+        </label>
+        <textarea id="pr-lift-reason" className="inp" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="예: 입금 확인 후 해제" />
+        <span className={`t-c1 ${tooLong ? "c-neg" : "c-alt"}`}>
+          {count}/{MAX_REASON}
+        </span>
+        {error && (
+          <span className="err" role="alert">
+            {error}
+          </span>
+        )}
+      </div>
+      <div className="modal-f">
+        <button className="btn btn-out" type="button" onClick={onClose} disabled={busy}>
+          취소
+        </button>
+        <button className="btn" type="button" onClick={() => void submit()} disabled={busy || tooLong}>
+          {busy ? "푸는 중" : "제한 풀기"}
+        </button>
+      </div>
+    </Modal>
   );
 }

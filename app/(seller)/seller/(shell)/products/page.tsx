@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ListHead, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
+import { ListHead, PageHead, SearchBox, SearchRow, Modal } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoImage, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, type Product, type ProductStatus } from "../../../../../components/seller/api";
@@ -552,24 +552,22 @@ export default function ProductListPage() {
         </div>
       </main>
       {confirmDelete && (
-        <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="bulk-del-title">
-          <div className="modal">
-            <div className="modal-h">
-              <h3 id="bulk-del-title" className="t-hl1 c-neg">
-                선택한 상품 {selected.size}개를 삭제하시겠습니까?
-              </h3>
-              <p className="t-b2 c-neu">삭제한 상품은 쇼핑몰과 주문대기에서 바로 빠집니다. 이미 들어온 주문은 그대로 처리됩니다. 삭제한 상품은 되살릴 수 없습니다.</p>
-            </div>
-            <div className="modal-f">
-              <button className="btn btn-out" type="button" onClick={() => setConfirmDelete(false)} disabled={bulkBusy}>
-                취소
-              </button>
-              <button className="btn btn-neg" type="button" onClick={() => void bulkDelete()} disabled={bulkBusy}>
-                삭제
-              </button>
-            </div>
+        <Modal labelId="bulk-del-title" busy={bulkBusy} onClose={() => setConfirmDelete(false)}>
+          <div className="modal-h">
+            <h3 id="bulk-del-title" className="t-hl1 c-neg">
+              선택한 상품 {selected.size}개를 삭제하시겠습니까?
+            </h3>
+            <p className="t-b2 c-neu">삭제한 상품은 쇼핑몰과 주문대기에서 바로 빠집니다. 이미 들어온 주문은 그대로 처리됩니다. 삭제한 상품은 되살릴 수 없습니다.</p>
           </div>
-        </div>
+          <div className="modal-f">
+            <button className="btn btn-out" type="button" onClick={() => setConfirmDelete(false)} disabled={bulkBusy}>
+              취소
+            </button>
+            <button className="btn btn-neg" type="button" onClick={() => void bulkDelete()} disabled={bulkBusy}>
+              삭제
+            </button>
+          </div>
+        </Modal>
       )}
       {undo && <UndoToast text={undo.text} canUndo={undo.prev.length > 0} onUndo={() => void undoBulk()} onDone={() => setUndo(null)} />}
       {toast && <Toast text={toast} onDone={() => setToast(null)} />}

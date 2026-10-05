@@ -50,7 +50,7 @@ test("대표자: 메뉴에서 들어가 주소를 발급·복사하면 실제 �
 
   // 확인 창에서 닫으면 발급하지 않는다
   await page.getByRole("button", { name: "주소 발급" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "닫기" }).click();
+  await page.getByRole("dialog").getByText("닫기", { exact: true }).click();
   await expect(page.getByTestId("ovu-urls")).toHaveCount(0);
 
   await issueVia(page, "주소 발급");

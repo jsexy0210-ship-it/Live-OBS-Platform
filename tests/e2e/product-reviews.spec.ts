@@ -124,7 +124,7 @@ test.describe.serial("SH-029 리뷰 쓰기 · SA-048 리뷰 관리", () => {
     await dlg.getByRole("button", { name: "상품과 무관한 내용" }).click();
     await dlg.getByRole("button", { name: "숨기기" }).last().click();
     await expect(page.getByText("리뷰를 숨겼습니다")).toBeVisible();
-    await dlg.getByRole("button", { name: "닫기" }).click();
+    await dlg.getByText("닫기", { exact: true }).click();
     await expect(page.getByTestId("review-row").first()).toContainText("숨김");
   });
 

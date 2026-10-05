@@ -4,7 +4,7 @@ import "./ProductPreview.css";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { FormRow, FormSection } from "../admin-ui";
+import { FormRow, FormSection, Modal } from "../admin-ui";
 import ProductDetailEditor, { type DetailBlock } from "./ProductDetailEditor";
 import ProductImages, { type SlotImage } from "./ProductImages";
 import { Topbar } from "./SellerShell";
@@ -953,45 +953,43 @@ function DeleteDialog({ product, onClose, onHidden }: { product: Product; onClos
   };
 
   return (
-    <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="del-title">
-      <div className="modal">
-        <div className="modal-h">
-          <h3 id="del-title" className="t-hl1 c-neg">
-            「{product.name}」{objectParticle(product.name)} 삭제하시겠습니까?
-          </h3>
-          <p className="t-b2 c-neu">쇼핑몰과 주문대기에서 바로 사라집니다. 지난 주문 기록은 남지만 상품은 되살릴 수 없습니다.</p>
-        </div>
-        {error && (
-          <div className="msg msg-neg" role="alert">
-            {error}
-          </div>
-        )}
-        <div className="col" style={{ gap: 8 }}>
-          <label className={`row choice${mode === "hide" ? " on" : ""}`} style={{ gap: 10 }}>
-            <input className="rdo" type="radio" name="del-mode" checked={mode === "hide"} onChange={() => setMode("hide")} />
-            <span className="col">
-              <span className="t-l1 fw6">숨김으로 변경 (권장)</span>
-              <span className="t-c1 c-alt">쇼핑몰에서만 사라지고 언제든 다시 판매할 수 있습니다</span>
-            </span>
-          </label>
-          <label className={`row choice${mode === "delete" ? " on" : ""}`} style={{ gap: 10 }}>
-            <input className="rdo" type="radio" name="del-mode" checked={mode === "delete"} onChange={() => setMode("delete")} />
-            <span className="col">
-              <span className="t-l1 fw6 c-neg">완전 삭제</span>
-              <span className="t-c1 c-alt">되돌릴 수 없습니다 · 상품명을 입력해 확인합니다</span>
-            </span>
-          </label>
-          {mode === "delete" && <input className="inp" type="text" placeholder={product.name} aria-label="삭제할 상품명 입력" value={typed} onChange={(e) => setTyped(e.target.value)} />}
-        </div>
-        <div className="modal-f">
-          <button className="btn btn-out" type="button" onClick={onClose} disabled={busy}>
-            취소
-          </button>
-          <button className={`btn${mode === "delete" ? " btn-neg" : ""}`} type="button" onClick={() => void run()} disabled={busy || !ok}>
-            {mode === "hide" ? "숨김으로 변경" : "삭제"}
-          </button>
-        </div>
+    <Modal labelId="del-title" busy={busy} onClose={onClose}>
+      <div className="modal-h">
+        <h3 id="del-title" className="t-hl1 c-neg">
+          「{product.name}」{objectParticle(product.name)} 삭제하시겠습니까?
+        </h3>
+        <p className="t-b2 c-neu">쇼핑몰과 주문대기에서 바로 사라집니다. 지난 주문 기록은 남지만 상품은 되살릴 수 없습니다.</p>
       </div>
-    </div>
+      {error && (
+        <div className="msg msg-neg" role="alert">
+          {error}
+        </div>
+      )}
+      <div className="col" style={{ gap: 8 }}>
+        <label className={`row choice${mode === "hide" ? " on" : ""}`} style={{ gap: 10 }}>
+          <input className="rdo" type="radio" name="del-mode" checked={mode === "hide"} onChange={() => setMode("hide")} />
+          <span className="col">
+            <span className="t-l1 fw6">숨김으로 변경 (권장)</span>
+            <span className="t-c1 c-alt">쇼핑몰에서만 사라지고 언제든 다시 판매할 수 있습니다</span>
+          </span>
+        </label>
+        <label className={`row choice${mode === "delete" ? " on" : ""}`} style={{ gap: 10 }}>
+          <input className="rdo" type="radio" name="del-mode" checked={mode === "delete"} onChange={() => setMode("delete")} />
+          <span className="col">
+            <span className="t-l1 fw6 c-neg">완전 삭제</span>
+            <span className="t-c1 c-alt">되돌릴 수 없습니다 · 상품명을 입력해 확인합니다</span>
+          </span>
+        </label>
+        {mode === "delete" && <input className="inp" type="text" placeholder={product.name} aria-label="삭제할 상품명 입력" value={typed} onChange={(e) => setTyped(e.target.value)} />}
+      </div>
+      <div className="modal-f">
+        <button className="btn btn-out" type="button" onClick={onClose} disabled={busy}>
+          취소
+        </button>
+        <button className={`btn${mode === "delete" ? " btn-neg" : ""}`} type="button" onClick={() => void run()} disabled={busy || !ok}>
+          {mode === "hide" ? "숨김으로 변경" : "삭제"}
+        </button>
+      </div>
+    </Modal>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PageHead } from "../../../../../components/admin-ui";
+import { PageHead, Modal } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
@@ -274,33 +274,31 @@ export default function YoutubePage() {
       </main>
 
       {confirm && (
-        <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="yt-confirm-title">
-          <div className="modal">
-            <div className="modal-h">
-              <h2 className="t-h2" id="yt-confirm-title">
-                {confirm === "channel" ? "유튜브 연결을 해제하시겠습니까?" : "방송 연결을 해제하시겠습니까?"}
-              </h2>
-              <span className="t-l2 c-alt">{confirm === "channel" ? "새 방송을 자동으로 찾지 않습니다. 이미 시작된 방송은 그대로입니다." : "이 방송의 채팅 수집이 멈춥니다. 이미 시작된 방송은 그대로입니다."}</span>
-            </div>
-            <div className="modal-f">
-              <button className="btn btn-out" type="button" disabled={busy} onClick={() => setConfirm(null)}>
-                닫기
-              </button>
-              <button
-                className="btn btn-neg"
-                type="button"
-                disabled={busy}
-                onClick={() =>
-                  void (confirm === "channel"
-                    ? run("unlink-channel", () => api("/api/seller/youtube/channel", { method: "DELETE" }), "유튜브 연결을 해제했습니다")
-                    : run("unlink-live", () => api("/api/seller/youtube/live", { method: "DELETE" }), "방송 연결을 해제했습니다"))
-                }
-              >
-                해제
-              </button>
-            </div>
+        <Modal labelId="yt-confirm-title" busy={busy} onClose={() => setConfirm(null)}>
+          <div className="modal-h">
+            <h2 className="t-h2" id="yt-confirm-title">
+              {confirm === "channel" ? "유튜브 연결을 해제하시겠습니까?" : "방송 연결을 해제하시겠습니까?"}
+            </h2>
+            <span className="t-l2 c-alt">{confirm === "channel" ? "새 방송을 자동으로 찾지 않습니다. 이미 시작된 방송은 그대로입니다." : "이 방송의 채팅 수집이 멈춥니다. 이미 시작된 방송은 그대로입니다."}</span>
           </div>
-        </div>
+          <div className="modal-f">
+            <button className="btn btn-out" type="button" disabled={busy} onClick={() => setConfirm(null)}>
+              닫기
+            </button>
+            <button
+              className="btn btn-neg"
+              type="button"
+              disabled={busy}
+              onClick={() =>
+                void (confirm === "channel"
+                  ? run("unlink-channel", () => api("/api/seller/youtube/channel", { method: "DELETE" }), "유튜브 연결을 해제했습니다")
+                  : run("unlink-live", () => api("/api/seller/youtube/live", { method: "DELETE" }), "방송 연결을 해제했습니다"))
+              }
+            >
+              해제
+            </button>
+          </div>
+        </Modal>
       )}
       {toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}
     </>

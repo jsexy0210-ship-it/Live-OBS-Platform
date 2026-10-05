@@ -30,6 +30,7 @@ import {
   type AdminImage,
   type ContentStatus,
 } from "../_shared/ui";
+import { Modal } from "../../../../../../components/admin-ui";
 
 // SA-065 이벤트 팝업 관리(파트너스 관리자, 설정 › 배너 · 팝업). 형태(이미지 팝업·글 팝업·상단 띠), 기간, 노출 페이지(홈·전체),
 // 표시 기기, 「보지 않기」(오늘 하루·7일·닫기만), 미리보기, 노출 순서, 복제. 같은 화면에 여러 개가 걸리면 목록 순서대로 하나씩.
@@ -316,127 +317,125 @@ function PopupEditor({ draft: initial, onClose, onSaved }: { draft: Draft; onClo
   const [hide, setHide] = useState(false);
 
   return (
-    <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="popup-edit-title">
-      <div className="modal modal-xl sc-modal">
-        <div className="modal-h">
-          <h2 className="t-h2" id="popup-edit-title">
-            {d.id ? "팝업 수정" : "팝업 추가"}
-          </h2>
+    <Modal labelId="popup-edit-title" className="modal-xl sc-modal" busy={saving} onClose={onClose}>
+      <div className="modal-h">
+        <h2 className="t-h2" id="popup-edit-title">
+          {d.id ? "팝업 수정" : "팝업 추가"}
+        </h2>
+      </div>
+      {failure && (
+        <div className="msg msg-neg" role="alert">
+          <span>
+            <b>저장할 수 없습니다.</b> {failure}
+          </span>
         </div>
-        {failure && (
-          <div className="msg msg-neg" role="alert">
-            <span>
-              <b>저장할 수 없습니다.</b> {failure}
+      )}
+      <div className="sc-edit">
+        <div className="col" style={{ gap: 16 }}>
+          <div className="fld">
+            <span className="lbl req" id="popup-kind-label">
+              형태
             </span>
-          </div>
-        )}
-        <div className="sc-edit">
-          <div className="col" style={{ gap: 16 }}>
-            <div className="fld">
-              <span className="lbl req" id="popup-kind-label">
-                형태
-              </span>
-              <div className="seg" role="radiogroup" aria-labelledby="popup-kind-label" style={{ alignSelf: "flex-start" }}>
-                {KINDS.map((k) => (
-                  <button key={k.key} type="button" role="radio" aria-checked={d.kind === k.key} className={d.kind === k.key ? "on" : ""} onClick={() => set({ kind: k.key })}>
-                    {k.label}
-                  </button>
-                ))}
-              </div>
+            <div className="seg" role="radiogroup" aria-labelledby="popup-kind-label" style={{ alignSelf: "flex-start" }}>
+              {KINDS.map((k) => (
+                <button key={k.key} type="button" role="radio" aria-checked={d.kind === k.key} className={d.kind === k.key ? "on" : ""} onClick={() => set({ kind: k.key })}>
+                  {k.label}
+                </button>
+              ))}
             </div>
-            {d.kind === "IMAGE" && <ImagePicker onBusy={onBusy} label="이미지" recommend={{ width: 600, height: 600 }} value={d.image} onChange={(v) => set({ image: v })} />}
+          </div>
+          {d.kind === "IMAGE" && <ImagePicker onBusy={onBusy} label="이미지" recommend={{ width: 600, height: 600 }} value={d.image} onChange={(v) => set({ image: v })} />}
+          <div className="fld">
+            <label htmlFor="popup-title" className="req">
+              {d.kind === "IMAGE" ? "제목 (대체 텍스트)" : d.kind === "BAR" ? "띠 문구" : "제목"}
+            </label>
+            <input id="popup-title" className="inp" value={d.title} maxLength={40} onChange={(e) => set({ title: e.target.value })} placeholder="예: 10/4 토 20시 스타라이트 브레이크" />
+            <span className="help">구매자에게 보이는 글 · 해요체 · 40자</span>
+          </div>
+          {d.kind !== "BAR" && (
             <div className="fld">
-              <label htmlFor="popup-title" className="req">
-                {d.kind === "IMAGE" ? "제목 (대체 텍스트)" : d.kind === "BAR" ? "띠 문구" : "제목"}
+              <label htmlFor="popup-body" className={d.kind === "TEXT" ? "req" : undefined}>
+                내용
               </label>
-              <input id="popup-title" className="inp" value={d.title} maxLength={40} onChange={(e) => set({ title: e.target.value })} placeholder="예: 10/4 토 20시 스타라이트 브레이크" />
-              <span className="help">구매자에게 보이는 글 · 해요체 · 40자</span>
+              <textarea id="popup-body" className="inp" style={{ height: 88, padding: "10px 12px" }} value={d.body} maxLength={200} onChange={(e) => set({ body: e.target.value })} />
+              <span className="help">구매자에게 보이는 글 · 해요체 · 200자{d.kind === "IMAGE" ? " · 비우면 이미지만" : ""}</span>
             </div>
-            {d.kind !== "BAR" && (
-              <div className="fld">
-                <label htmlFor="popup-body" className={d.kind === "TEXT" ? "req" : undefined}>
-                  내용
-                </label>
-                <textarea id="popup-body" className="inp" style={{ height: 88, padding: "10px 12px" }} value={d.body} maxLength={200} onChange={(e) => set({ body: e.target.value })} />
-                <span className="help">구매자에게 보이는 글 · 해요체 · 200자{d.kind === "IMAGE" ? " · 비우면 이미지만" : ""}</span>
-              </div>
-            )}
-            <LinkField value={d.linkUrl} onChange={(v) => set({ linkUrl: v })} />
-            {d.kind !== "BAR" && d.linkUrl.trim() && (
-              <div className="fld">
-                <label htmlFor="popup-link-label">버튼 이름</label>
-                <input id="popup-link-label" className="inp" value={d.linkLabel} maxLength={20} placeholder="자세히 보기" onChange={(e) => set({ linkLabel: e.target.value })} />
-                <span className="help">비우면 「자세히 보기」</span>
-              </div>
-            )}
-            <PeriodFields startsAt={d.startsAt} endsAt={d.endsAt} onChange={(v) => set(v)} />
-            <div className="sc-two">
-              <div className="fld">
-                <label htmlFor="popup-target">노출 페이지</label>
-                <select id="popup-target" className="inp" value={d.target} onChange={(e) => set({ target: e.target.value as Target })}>
-                  {TARGETS.map((t) => (
-                    <option key={t.key} value={t.key}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="fld">
-                <label htmlFor="popup-dismiss">다시 보지 않기</label>
-                <select id="popup-dismiss" className="inp" value={d.dismissDays} onChange={(e) => set({ dismissDays: Number(e.target.value) })}>
-                  {DISMISS.map((x) => (
-                    <option key={x.v} value={x.v}>
-                      {x.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+          )}
+          <LinkField value={d.linkUrl} onChange={(v) => set({ linkUrl: v })} />
+          {d.kind !== "BAR" && d.linkUrl.trim() && (
+            <div className="fld">
+              <label htmlFor="popup-link-label">버튼 이름</label>
+              <input id="popup-link-label" className="inp" value={d.linkLabel} maxLength={20} placeholder="자세히 보기" onChange={(e) => set({ linkLabel: e.target.value })} />
+              <span className="help">비우면 「자세히 보기」</span>
             </div>
-            <DeviceSeg value={d} onChange={(v) => set(v)} />
-            <div className="row between">
-              <span className="col" style={{ gap: 2 }}>
-                <span className="t-l1 fw6" id="popup-active-label">
-                  노출
-                </span>
-                <span className="t-c1 c-alt">끄면 기간과 관계없이 숨김</span>
-              </span>
-              <button className={`sw${d.isActive ? " on" : ""}`} type="button" role="switch" aria-checked={d.isActive} aria-labelledby="popup-active-label" onClick={() => set({ isActive: !d.isActive })} />
+          )}
+          <PeriodFields startsAt={d.startsAt} endsAt={d.endsAt} onChange={(v) => set(v)} />
+          <div className="sc-two">
+            <div className="fld">
+              <label htmlFor="popup-target">노출 페이지</label>
+              <select id="popup-target" className="inp" value={d.target} onChange={(e) => set({ target: e.target.value as Target })}>
+                {TARGETS.map((t) => (
+                  <option key={t.key} value={t.key}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="fld">
+              <label htmlFor="popup-dismiss">다시 보지 않기</label>
+              <select id="popup-dismiss" className="inp" value={d.dismissDays} onChange={(e) => set({ dismissDays: Number(e.target.value) })}>
+                {DISMISS.map((x) => (
+                  <option key={x.v} value={x.v}>
+                    {x.label}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
-          <div className="sc-preview">
-            <div className="row between">
-              <span className="t-hl2">미리보기</span>
-              <div className="seg" role="radiogroup" aria-label="미리보기 기기">
-                {(["pc", "mobile"] as const).map((k) => (
-                  <button key={k} type="button" role="radio" aria-checked={device === k} className={device === k ? "on" : ""} onClick={() => setDevice(k)}>
-                    {k === "pc" ? "PC" : "모바일"}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className={`sc-preview-stage is-${device}`} data-testid="popup-preview">
-              {!shown ? (
-                <span className="t-c1 c-alt" style={{ alignSelf: "center" }}>
-                  {device === "pc" ? "PC" : "모바일"}에서는 표시하지 않음
-                </span>
-              ) : (
-                <PreviewFrame className={d.kind === "BAR" ? "sc-pv-barwrap" : "sc-pv-popup"}>
-                  {d.kind === "BAR" ? <EventPopupBar bar={item} onClose={() => undefined} /> : <EventPopupCard popup={item} hide={hide} onHide={setHide} onClose={() => undefined} />}
-                </PreviewFrame>
-              )}
-            </div>
-            <span className="help">실제 쇼핑몰에 뜨는 모양으로 표시됩니다 · 링크는 눌러도 이동하지 않음</span>
+          <DeviceSeg value={d} onChange={(v) => set(v)} />
+          <div className="row between">
+            <span className="col" style={{ gap: 2 }}>
+              <span className="t-l1 fw6" id="popup-active-label">
+                노출
+              </span>
+              <span className="t-c1 c-alt">끄면 기간과 관계없이 숨김</span>
+            </span>
+            <button className={`sw${d.isActive ? " on" : ""}`} type="button" role="switch" aria-checked={d.isActive} aria-labelledby="popup-active-label" onClick={() => set({ isActive: !d.isActive })} />
           </div>
         </div>
-        <div className="modal-f">
-          <button className="btn btn-out" type="button" onClick={onClose} disabled={saving}>
-            취소
-          </button>
-          <button className="btn" type="button" onClick={() => void save()} disabled={!ready || saving || uploading}>
-            {saving ? "저장 중" : uploading ? "이미지 올리는 중" : "저장"}
-          </button>
+        <div className="sc-preview">
+          <div className="row between">
+            <span className="t-hl2">미리보기</span>
+            <div className="seg" role="radiogroup" aria-label="미리보기 기기">
+              {(["pc", "mobile"] as const).map((k) => (
+                <button key={k} type="button" role="radio" aria-checked={device === k} className={device === k ? "on" : ""} onClick={() => setDevice(k)}>
+                  {k === "pc" ? "PC" : "모바일"}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className={`sc-preview-stage is-${device}`} data-testid="popup-preview">
+            {!shown ? (
+              <span className="t-c1 c-alt" style={{ alignSelf: "center" }}>
+                {device === "pc" ? "PC" : "모바일"}에서는 표시하지 않음
+              </span>
+            ) : (
+              <PreviewFrame className={d.kind === "BAR" ? "sc-pv-barwrap" : "sc-pv-popup"}>
+                {d.kind === "BAR" ? <EventPopupBar bar={item} onClose={() => undefined} /> : <EventPopupCard popup={item} hide={hide} onHide={setHide} onClose={() => undefined} />}
+              </PreviewFrame>
+            )}
+          </div>
+          <span className="help">실제 쇼핑몰에 뜨는 모양으로 표시됩니다 · 링크는 눌러도 이동하지 않음</span>
         </div>
       </div>
-    </div>
+      <div className="modal-f">
+        <button className="btn btn-out" type="button" onClick={onClose} disabled={saving}>
+          취소
+        </button>
+        <button className="btn" type="button" onClick={() => void save()} disabled={!ready || saving || uploading}>
+          {saving ? "저장 중" : uploading ? "이미지 올리는 중" : "저장"}
+        </button>
+      </div>
+    </Modal>
   );
 }

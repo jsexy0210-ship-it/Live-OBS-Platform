@@ -1,41 +1,31 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Modal } from "../../admin-ui";
 import { TIMER_MAX_SECONDS, clock, type QueueItem } from "./queue";
 
-// SA-001 확인 창: 방송 종료 · 주문 취소(사유 필수) · 타이머 설정. Esc로 닫는다(처리 중에는 닫지 않는다).
+// SA-001 확인 창: 방송 종료 · 주문 취소(사유 필수) · 타이머 설정. X·Esc·바깥 클릭으로 닫는다(처리 중에는 닫지 않는다, 공통 Modal).
 // blocked: 대시보드 내용이 최신이 아님(다시 불러오기 전까지 확인 버튼을 끈다, 닫기는 된다)
 
-function useEscape(busy: boolean, onClose: () => void) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !busy && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [busy, onClose]);
-}
-
-function Frame({ id, title, sub, children }: { id: string; title: string; sub?: string; children: React.ReactNode }) {
+function Frame({ id, title, sub, busy, onClose, children }: { id: string; title: string; sub?: string; busy: boolean; onClose: () => void; children: React.ReactNode }) {
   return (
-    <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby={id}>
-      <div className="modal">
-        <div className="modal-h">
-          <h2 className="t-h2" id={id}>
-            {title}
-          </h2>
-          {sub && <span className="t-l2 c-alt">{sub}</span>}
-        </div>
-        {children}
+    <Modal labelId={id} busy={busy} onClose={onClose}>
+      <div className="modal-h">
+        <h2 className="t-h2" id={id}>
+          {title}
+        </h2>
+        {sub && <span className="t-l2 c-alt">{sub}</span>}
       </div>
-    </div>
+      {children}
+    </Modal>
   );
 }
 
 const who = (item: QueueItem) => `${item.nicknameSnapshot} · ${item.productLabel} ×${item.quantity}`;
 
 export function EndBroadcastModal({ waiting, busy, blocked, onClose, onConfirm }: { waiting: number; busy: boolean; blocked: boolean; onClose: () => void; onConfirm: () => void }) {
-  useEscape(busy, onClose);
   return (
-    <Frame id="bc-end-title" title="방송을 종료하시겠습니까?" sub={waiting > 0 ? `남은 대기 ${waiting}건은 다음 방송으로 넘어갑니다` : undefined}>
+    <Frame busy={busy} onClose={onClose} id="bc-end-title" title="방송을 종료하시겠습니까?" sub={waiting > 0 ? `남은 대기 ${waiting}건은 다음 방송으로 넘어갑니다` : undefined}>
       <div className="modal-f">
         <button className="btn btn-out" type="button" disabled={busy} onClick={onClose}>
           닫기
@@ -49,11 +39,10 @@ export function EndBroadcastModal({ waiting, busy, blocked, onClose, onConfirm }
 }
 
 export function CancelItemModal({ item, busy, blocked, onClose, onConfirm }: { item: QueueItem; busy: boolean; blocked: boolean; onClose: () => void; onConfirm: (reason: string) => void }) {
-  useEscape(busy, onClose);
   const [reason, setReason] = useState("");
   const ok = reason.trim().length > 0;
   return (
-    <Frame id="bc-cancel-title" title="이 주문을 취소하시겠습니까?" sub={who(item)}>
+    <Frame busy={busy} onClose={onClose} id="bc-cancel-title" title="이 주문을 취소하시겠습니까?" sub={who(item)}>
       <form
         className="col"
         style={{ gap: 16 }}
@@ -85,7 +74,6 @@ export function CancelItemModal({ item, busy, blocked, onClose, onConfirm }: { i
 const PRESETS = [60, 180, 300, 600];
 
 export function TimerModal({ item, busy, blocked, onClose, onConfirm }: { item: QueueItem; busy: boolean; blocked: boolean; onClose: () => void; onConfirm: (seconds: number) => void }) {
-  useEscape(busy, onClose);
   const [min, setMin] = useState(String(Math.floor(item.timerSeconds / 60)));
   const [sec, setSec] = useState(String(item.timerSeconds % 60));
   const m = /^\d{1,2}$/.test(min) ? Number(min) : NaN;
@@ -97,7 +85,7 @@ export function TimerModal({ item, busy, blocked, onClose, onConfirm }: { item: 
     setSec(String(v % 60));
   };
   return (
-    <Frame id="bc-timer-title" title="타이머 설정" sub={who(item)}>
+    <Frame busy={busy} onClose={onClose} id="bc-timer-title" title="타이머 설정" sub={who(item)}>
       <form
         className="col"
         style={{ gap: 16 }}

@@ -492,7 +492,7 @@ test("결과가 불분명한 직원 변경은 늦게 반영돼도 실패로 단�
   replay = await holdOnce((u, m) => u.pathname.endsWith("/permissions") && m === "POST");
   await dialog.getByRole("button", { name: "저장" }).click();
   await expect(dialog.getByTestId("se-unclear")).toBeVisible();
-  await dialog.getByRole("button", { name: "닫기" }).click();
+  await dialog.getByText("닫기", { exact: true }).click();
   await expect(page.getByText("이전 저장 요청이 처리되었을 수 있습니다 · 목록에서 정보와 권한을 확인해 주십시오")).toBeVisible();
   await replay();
 
@@ -504,7 +504,7 @@ test("결과가 불분명한 직원 변경은 늦게 반영돼도 실패로 단�
   await expect(dialog.getByTestId("sp-unclear")).toContainText("비밀번호가 변경되었을 수 있습니다.");
   await expect(dialog.getByRole("button", { name: "새로 정하기" })).toHaveCount(0);
   await expect(dialog.getByLabel("새 비밀번호")).toBeDisabled();
-  await dialog.getByRole("button", { name: "닫기" }).click();
+  await dialog.getByText("닫기", { exact: true }).click();
   await expect(page.getByText("이전 비밀번호 재설정 요청이 처리되었을 수 있습니다", { exact: false })).toBeVisible();
   await replay();
 

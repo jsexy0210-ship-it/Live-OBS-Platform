@@ -7,6 +7,7 @@ import { api } from "../../../../../components/seller/api";
 import { COURIERS } from "../../../../../lib/server/orders/shipping";
 import { StateBox, errorText, kstText, stateKind } from "../banners/_shared/ui";
 import "./returns.css";
+import { Modal } from "../../../../../components/admin-ui";
 
 // SA-029 교환 · 반품(파트너스 관리자, 주문 › 교환 · 반품). 신청 목록·상태별 건수, 상세(사유·사진·품목), 접수 · 거절 · 회수 완료 · 반품 환불 · 교환 발송.
 // 조회와 처리는 대표자 · 주문 배송(ORDER_SHIPPING) 권한 직원. 환불은 기존 환불을 호출한다(실제 결제 취소는 결제 연결이 담당). API: /api/seller/returns.
@@ -200,208 +201,206 @@ function ReturnDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit
   const preview = d?.fault && d.refundPreview ? d.refundPreview.byFault[d.fault] : null;
 
   return (
-    <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="rt-detail-title">
-      <div className="modal modal-lg rt-modal">
-        <div className="modal-h">
-          <h2 className="t-h2" id="rt-detail-title">
-            {d ? `${KIND[d.kind]} 신청 · 주문 ${d.orderNo}` : "교환 · 반품"}
-          </h2>
-        </div>
-        {failed && (
-          <div className="msg msg-neg" role="alert">
-            <span>{failed}</span>
-          </div>
-        )}
-        {!d && !failed && <StateBox kind="loading" what="신청" />}
-        {d && (
-          <div className="col" style={{ gap: 16, padding: "0 20px 8px" }}>
-            <div className="rt-kv t-l2">
-              <span className="c-alt">상태</span>
-              <span>
-                <span className={`bdg ${STATUS[d.status].cls}`}>{STATUS[d.status].label}</span>
-                {d.fault ? ` · ${d.fault === "BUYER" ? "구매자 사정" : "판매자 사정"}` : ""}
-              </span>
-              <span className="c-alt">신청 구매자</span>
-              <span>{d.nickname}</span>
-              <span className="c-alt">신청 시각</span>
-              <span className="num">{kstText(d.createdAt)}</span>
-              <span className="c-alt">사유</span>
-              <span>{REASON[d.reason]}</span>
-              {d.reasonText && (
-                <>
-                  <span className="c-alt">상세 사유</span>
-                  <span style={{ whiteSpace: "pre-wrap" }}>{d.reasonText}</span>
-                </>
-              )}
-              <span className="c-alt">대상 상품</span>
-              <span className="col" style={{ gap: 2 }}>
-                {d.items.map((i) => (
-                  <span key={i.orderItemId}>
-                    {i.productName} · {i.optionName} · {i.quantity}개
-                  </span>
-                ))}
-              </span>
-              {d.returnTrackingNumber && (
-                <>
-                  <span className="c-alt">회수 송장</span>
-                  <span className="num">
-                    {d.returnCourierName} {d.returnTrackingNumber}
-                  </span>
-                </>
-              )}
-              {d.rejectReason && (
-                <>
-                  <span className="c-alt">거절 사유</span>
-                  <span>{d.rejectReason}</span>
-                </>
-              )}
-              {d.exchangeTrackingNumber && (
-                <>
-                  <span className="c-alt">교환 송장</span>
-                  <span className="num">
-                    {d.exchangeCourierName} {d.exchangeTrackingNumber}
-                  </span>
-                </>
-              )}
-              {d.refundAmount !== null && (
-                <>
-                  <span className="c-alt">환불 금액</span>
-                  <span className="num">{won(d.refundAmount)}</span>
-                </>
-              )}
-              {d.status === "RECEIVED" || d.status === "COMPLETED" ? (
-                <>
-                  <span className="c-alt">재고</span>
-                  <span>{d.restocked ? "회수 상품 재고 되돌림" : "되돌리지 않음"}</span>
-                </>
-              ) : null}
-            </div>
-            {d.images.length > 0 && (
-              <div className="rt-imgs" aria-label="신청 사진">
-                {d.images.map((im) => (
-                  <a key={im.id} href={`/api/seller/returns/images/${im.id}`} target="_blank" rel="noopener noreferrer">
-                    <img src={`/api/seller/returns/images/${im.id}`} alt="신청 사진" />
-                  </a>
-                ))}
-              </div>
-            )}
-            {canEdit && d.status === "REQUESTED" && (
-              <div className="col" style={{ gap: 10 }}>
-                <div className="fld">
-                  <label htmlFor="rt-fault" className="req">
-                    사유 주체
-                  </label>
-                  <select id="rt-fault" className="inp" value={fault} onChange={(e) => setFault(e.target.value as Fault | "")}>
-                    <option value="">선택</option>
-                    <option value="BUYER">구매자 사정 (반품 배송비 차감)</option>
-                    <option value="SELLER">판매자 사정 (불량 · 오배송)</option>
-                  </select>
-                </div>
-                {rejecting && (
-                  <div className="fld">
-                    <label htmlFor="rt-reject" className="req">
-                      거절 사유
-                    </label>
-                    <textarea id="rt-reject" className="inp" style={{ height: 72, padding: "10px 12px" }} maxLength={200} value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} />
-                    <span className="help">구매자에게 보입니다 · 200자</span>
-                  </div>
-                )}
-              </div>
-            )}
-            {canEdit && d.status === "ACCEPTED" && (
-              <label className="row t-l2" style={{ gap: 8 }}>
-                <input className="cbx" type="checkbox" checked={restock} onChange={(e) => setRestock(e.target.checked)} />
-                회수한 상품 재고로 되돌리기
-              </label>
-            )}
-            {canEdit && d.status === "RECEIVED" && d.kind === "RETURN" && (
-              <div className="col" style={{ gap: 6 }}>
-                {preview ? (
-                  <>
-                    <span className="t-l1 fw6 num" data-testid="rt-cash">
-                      현금 환불 {won(preview.refundAmount)}
-                    </span>
-                    <span className="t-c1 c-alt num" data-testid="rt-reward">
-                      {preview.rewardReturn > 0 ? `적립금 반환 ${won(preview.rewardReturn)}` : "적립금 반환 0원 (사용한 적립금 없음)"}
-                    </span>
-                    {preview.returnFeeDeducted > 0 && <span className="t-c1 c-alt num">반품 배송비 {won(preview.returnFeeDeducted)} 차감</span>}
-                    <span className="t-c1 c-alt">현금 환불 = 돌아오는 상품 금액 − 반품 배송비 − 적립금 반환</span>
-                    {preview.blocked && <span className="err">이 사유 주체로는 환불할 수 없는 주문입니다</span>}
-                  </>
-                ) : (
-                  <span className="col" style={{ gap: 6, alignItems: "flex-start" }}>
-                    <span className="msg msg-neg" role="alert" style={{ display: "block" }}>
-                      <b>환불 금액을 불러오지 못했습니다.</b> 잠시 뒤 다시 시도해 주십시오. 금액을 받기 전에는 환불을 진행할 수 없습니다.
-                    </span>
-                    <button className="btn btn-sm" type="button" disabled={busy} onClick={() => void load()}>
-                      다시 시도
-                    </button>
-                  </span>
-                )}
-                {confirmOpened && (
-                  <label className="row t-l2" style={{ gap: 8 }}>
-                    <input className="cbx" type="checkbox" checked readOnly />
-                    개봉한 상품이 있는 주문임을 확인
-                  </label>
-                )}
-              </div>
-            )}
-            {canEdit && d.status === "RECEIVED" && d.kind === "EXCHANGE" && (
-              <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                <select className="inp" style={{ width: 150 }} aria-label="택배사" value={courier} onChange={(e) => setCourier(e.target.value)}>
-                  {Object.entries(COURIERS).map(([k, v]) => (
-                    <option key={k} value={k}>
-                      {v}
-                    </option>
-                  ))}
-                </select>
-                <input className="inp" style={{ flex: 1, minWidth: 160 }} aria-label="송장 번호" placeholder="교환 상품 송장 번호" maxLength={40} value={tracking} onChange={(e) => setTracking(e.target.value.replace(/[^0-9A-Za-z-]/g, ""))} />
-              </div>
-            )}
-          </div>
-        )}
-        <div className="modal-f">
-          <button className="btn btn-out" type="button" onClick={onClose} disabled={busy}>
-            닫기
-          </button>
-          {canEdit && d?.status === "REQUESTED" && (
-            <>
-              {rejecting ? (
-                <button className="btn btn-out" type="button" disabled={busy || !rejectReason.trim()} onClick={() => void act("reject", { reason: rejectReason }, "신청을 거절했습니다")}>
-                  거절 확정
-                </button>
-              ) : (
-                <button className="btn btn-out" type="button" disabled={busy} onClick={() => setRejecting(true)}>
-                  거절
-                </button>
-              )}
-              <button className="btn" type="button" disabled={busy || !fault} onClick={() => void act("accept", { fault }, "신청을 접수했습니다")}>
-                접수
-              </button>
-            </>
-          )}
-          {canEdit && d?.status === "ACCEPTED" && (
-            <button className="btn" type="button" disabled={busy} onClick={() => void act("receive", { restock }, "회수 완료로 처리했습니다")}>
-              회수 완료
-            </button>
-          )}
-          {canEdit && d?.status === "RECEIVED" && d.kind === "RETURN" && (
-            <button
-              className="btn"
-              type="button"
-              disabled={busy || !preview || preview.blocked || d.queueVersion === null}
-              onClick={() => void act("refund", { expectedVersion: d.queueVersion, expectedRefundAmount: preview!.refundAmount, confirmOpened }, "환불을 처리했습니다")}
-            >
-              {busy ? "처리 중" : "환불"}
-            </button>
-          )}
-          {canEdit && d?.status === "RECEIVED" && d.kind === "EXCHANGE" && (
-            <button className="btn" type="button" disabled={busy || tracking.trim().length < 4} onClick={() => void act("exchange", { courier, trackingNumber: tracking }, "교환 상품을 발송 처리했습니다")}>
-              교환 발송
-            </button>
-          )}
-        </div>
+    <Modal labelId="rt-detail-title" className="modal-lg rt-modal" busy={busy} onClose={onClose}>
+      <div className="modal-h">
+        <h2 className="t-h2" id="rt-detail-title">
+          {d ? `${KIND[d.kind]} 신청 · 주문 ${d.orderNo}` : "교환 · 반품"}
+        </h2>
       </div>
-    </div>
+      {failed && (
+        <div className="msg msg-neg" role="alert">
+          <span>{failed}</span>
+        </div>
+      )}
+      {!d && !failed && <StateBox kind="loading" what="신청" />}
+      {d && (
+        <div className="col" style={{ gap: 16, padding: "0 20px 8px" }}>
+          <div className="rt-kv t-l2">
+            <span className="c-alt">상태</span>
+            <span>
+              <span className={`bdg ${STATUS[d.status].cls}`}>{STATUS[d.status].label}</span>
+              {d.fault ? ` · ${d.fault === "BUYER" ? "구매자 사정" : "판매자 사정"}` : ""}
+            </span>
+            <span className="c-alt">신청 구매자</span>
+            <span>{d.nickname}</span>
+            <span className="c-alt">신청 시각</span>
+            <span className="num">{kstText(d.createdAt)}</span>
+            <span className="c-alt">사유</span>
+            <span>{REASON[d.reason]}</span>
+            {d.reasonText && (
+              <>
+                <span className="c-alt">상세 사유</span>
+                <span style={{ whiteSpace: "pre-wrap" }}>{d.reasonText}</span>
+              </>
+            )}
+            <span className="c-alt">대상 상품</span>
+            <span className="col" style={{ gap: 2 }}>
+              {d.items.map((i) => (
+                <span key={i.orderItemId}>
+                  {i.productName} · {i.optionName} · {i.quantity}개
+                </span>
+              ))}
+            </span>
+            {d.returnTrackingNumber && (
+              <>
+                <span className="c-alt">회수 송장</span>
+                <span className="num">
+                  {d.returnCourierName} {d.returnTrackingNumber}
+                </span>
+              </>
+            )}
+            {d.rejectReason && (
+              <>
+                <span className="c-alt">거절 사유</span>
+                <span>{d.rejectReason}</span>
+              </>
+            )}
+            {d.exchangeTrackingNumber && (
+              <>
+                <span className="c-alt">교환 송장</span>
+                <span className="num">
+                  {d.exchangeCourierName} {d.exchangeTrackingNumber}
+                </span>
+              </>
+            )}
+            {d.refundAmount !== null && (
+              <>
+                <span className="c-alt">환불 금액</span>
+                <span className="num">{won(d.refundAmount)}</span>
+              </>
+            )}
+            {d.status === "RECEIVED" || d.status === "COMPLETED" ? (
+              <>
+                <span className="c-alt">재고</span>
+                <span>{d.restocked ? "회수 상품 재고 되돌림" : "되돌리지 않음"}</span>
+              </>
+            ) : null}
+          </div>
+          {d.images.length > 0 && (
+            <div className="rt-imgs" aria-label="신청 사진">
+              {d.images.map((im) => (
+                <a key={im.id} href={`/api/seller/returns/images/${im.id}`} target="_blank" rel="noopener noreferrer">
+                  <img src={`/api/seller/returns/images/${im.id}`} alt="신청 사진" />
+                </a>
+              ))}
+            </div>
+          )}
+          {canEdit && d.status === "REQUESTED" && (
+            <div className="col" style={{ gap: 10 }}>
+              <div className="fld">
+                <label htmlFor="rt-fault" className="req">
+                  사유 주체
+                </label>
+                <select id="rt-fault" className="inp" value={fault} onChange={(e) => setFault(e.target.value as Fault | "")}>
+                  <option value="">선택</option>
+                  <option value="BUYER">구매자 사정 (반품 배송비 차감)</option>
+                  <option value="SELLER">판매자 사정 (불량 · 오배송)</option>
+                </select>
+              </div>
+              {rejecting && (
+                <div className="fld">
+                  <label htmlFor="rt-reject" className="req">
+                    거절 사유
+                  </label>
+                  <textarea id="rt-reject" className="inp" style={{ height: 72, padding: "10px 12px" }} maxLength={200} value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} />
+                  <span className="help">구매자에게 보입니다 · 200자</span>
+                </div>
+              )}
+            </div>
+          )}
+          {canEdit && d.status === "ACCEPTED" && (
+            <label className="row t-l2" style={{ gap: 8 }}>
+              <input className="cbx" type="checkbox" checked={restock} onChange={(e) => setRestock(e.target.checked)} />
+              회수한 상품 재고로 되돌리기
+            </label>
+          )}
+          {canEdit && d.status === "RECEIVED" && d.kind === "RETURN" && (
+            <div className="col" style={{ gap: 6 }}>
+              {preview ? (
+                <>
+                  <span className="t-l1 fw6 num" data-testid="rt-cash">
+                    현금 환불 {won(preview.refundAmount)}
+                  </span>
+                  <span className="t-c1 c-alt num" data-testid="rt-reward">
+                    {preview.rewardReturn > 0 ? `적립금 반환 ${won(preview.rewardReturn)}` : "적립금 반환 0원 (사용한 적립금 없음)"}
+                  </span>
+                  {preview.returnFeeDeducted > 0 && <span className="t-c1 c-alt num">반품 배송비 {won(preview.returnFeeDeducted)} 차감</span>}
+                  <span className="t-c1 c-alt">현금 환불 = 돌아오는 상품 금액 − 반품 배송비 − 적립금 반환</span>
+                  {preview.blocked && <span className="err">이 사유 주체로는 환불할 수 없는 주문입니다</span>}
+                </>
+              ) : (
+                <span className="col" style={{ gap: 6, alignItems: "flex-start" }}>
+                  <span className="msg msg-neg" role="alert" style={{ display: "block" }}>
+                    <b>환불 금액을 불러오지 못했습니다.</b> 잠시 뒤 다시 시도해 주십시오. 금액을 받기 전에는 환불을 진행할 수 없습니다.
+                  </span>
+                  <button className="btn btn-sm" type="button" disabled={busy} onClick={() => void load()}>
+                    다시 시도
+                  </button>
+                </span>
+              )}
+              {confirmOpened && (
+                <label className="row t-l2" style={{ gap: 8 }}>
+                  <input className="cbx" type="checkbox" checked readOnly />
+                  개봉한 상품이 있는 주문임을 확인
+                </label>
+              )}
+            </div>
+          )}
+          {canEdit && d.status === "RECEIVED" && d.kind === "EXCHANGE" && (
+            <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+              <select className="inp" style={{ width: 150 }} aria-label="택배사" value={courier} onChange={(e) => setCourier(e.target.value)}>
+                {Object.entries(COURIERS).map(([k, v]) => (
+                  <option key={k} value={k}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+              <input className="inp" style={{ flex: 1, minWidth: 160 }} aria-label="송장 번호" placeholder="교환 상품 송장 번호" maxLength={40} value={tracking} onChange={(e) => setTracking(e.target.value.replace(/[^0-9A-Za-z-]/g, ""))} />
+            </div>
+          )}
+        </div>
+      )}
+      <div className="modal-f">
+        <button className="btn btn-out" type="button" onClick={onClose} disabled={busy}>
+          닫기
+        </button>
+        {canEdit && d?.status === "REQUESTED" && (
+          <>
+            {rejecting ? (
+              <button className="btn btn-out" type="button" disabled={busy || !rejectReason.trim()} onClick={() => void act("reject", { reason: rejectReason }, "신청을 거절했습니다")}>
+                거절 확정
+              </button>
+            ) : (
+              <button className="btn btn-out" type="button" disabled={busy} onClick={() => setRejecting(true)}>
+                거절
+              </button>
+            )}
+            <button className="btn" type="button" disabled={busy || !fault} onClick={() => void act("accept", { fault }, "신청을 접수했습니다")}>
+              접수
+            </button>
+          </>
+        )}
+        {canEdit && d?.status === "ACCEPTED" && (
+          <button className="btn" type="button" disabled={busy} onClick={() => void act("receive", { restock }, "회수 완료로 처리했습니다")}>
+            회수 완료
+          </button>
+        )}
+        {canEdit && d?.status === "RECEIVED" && d.kind === "RETURN" && (
+          <button
+            className="btn"
+            type="button"
+            disabled={busy || !preview || preview.blocked || d.queueVersion === null}
+            onClick={() => void act("refund", { expectedVersion: d.queueVersion, expectedRefundAmount: preview!.refundAmount, confirmOpened }, "환불을 처리했습니다")}
+          >
+            {busy ? "처리 중" : "환불"}
+          </button>
+        )}
+        {canEdit && d?.status === "RECEIVED" && d.kind === "EXCHANGE" && (
+          <button className="btn" type="button" disabled={busy || tracking.trim().length < 4} onClick={() => void act("exchange", { courier, trackingNumber: tracking }, "교환 상품을 발송 처리했습니다")}>
+            교환 발송
+          </button>
+        )}
+      </div>
+    </Modal>
   );
 }

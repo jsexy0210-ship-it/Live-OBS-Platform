@@ -196,7 +196,7 @@ test("환불 모달: 개봉한 상품이 있으면 사유 주체를 바꿀 때�
   await expect(agree).not.toBeChecked();
   await expect(run).toBeDisabled();
   await expect(run).toHaveText("324,000원 환불 실행");
-  await dialog.getByRole("button", { name: "닫기" }).click();
+  await dialog.getByText("닫기", { exact: true }).click();
 
   // 하나뿐인 상품을 개봉했으면 구매자 사정으로는 돌려줄 금액이 0원이라 환불 버튼 대신 안내만 보인다
   dialog = await openOrder((r) => r.filter({ hasText: "민트컨디션" }).filter({ hasText: "15,000원" }));
