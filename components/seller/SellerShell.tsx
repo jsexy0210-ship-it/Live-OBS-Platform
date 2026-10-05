@@ -111,6 +111,7 @@ const MENU: Group[] = [
       { label: "검색 노출", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
       { label: "결제(PG) 연결", perm: "OWNER", plan: "STORE_OPERATIONS" },
       { label: "주문자 알림", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
+      { label: "발송 충전", href: "/seller/settings/message-balance", perm: "OWNER", plan: "ANY" },
       { label: "직원 계정", href: "/seller/staff", perm: "OWNER", plan: "ANY" },
       { label: "구독 · 결제", href: "/seller/subscription", perm: "OWNER" },
       { label: "쇼핑몰 통합 전환", perm: "OWNER" },
