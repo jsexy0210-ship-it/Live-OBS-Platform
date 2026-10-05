@@ -238,34 +238,37 @@ export default function OrderDetailPage() {
               </dl>
               {pii && <span className="t-c1 c-alt">연락처·주소는 열람 시 열람 기록이 남습니다.</span>}
             </section>
-            <section className="card pad col" style={{ gap: 12 }} data-testid="order-history">
-              <h2 className="t-hl2">상태 이력</h2>
-              {o.history.length === 0 ? (
-                <span className="t-c1 c-alt">아직 이력이 없습니다</span>
-              ) : (
-                <table className="tbl">
-                  <thead>
-                    <tr>
-                      <th style={{ width: 150 }}>시각</th>
-                      <th>상태</th>
-                      <th style={{ width: 110 }}>처리</th>
-                      <th>비고</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[...o.history].reverse().map((e, i) => (
-                      <tr key={i} data-testid="history-row">
-                        <td className="num">{fullTime(e.at)}</td>
-                        <td>{historyLabel(e)}</td>
-                        <td>{historyActor(e.actor)}</td>
-                        <td>{e.note ?? ""}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </section>
           </div>
+        </div>
+        {/* SA-022 하단 2열: 왼쪽 상태 이력(오른쪽 알림 발송은 서버 계약이 생기면 추가) */}
+        <div className="ord-detail ord-history">
+          <section className="card pad col" style={{ gap: 12 }} data-testid="order-history">
+            <h2 className="t-hl2">상태 이력</h2>
+            {o.history.length === 0 ? (
+              <span className="t-c1 c-alt">아직 이력이 없습니다</span>
+            ) : (
+              <div className="ord-hist-scroll"><table className="tbl ord-hist-tbl">
+                <thead>
+                  <tr>
+                    <th style={{ width: 150 }}>시각</th>
+                    <th>상태</th>
+                    <th style={{ width: 110 }}>처리</th>
+                    <th className="l">비고</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...o.history].reverse().map((e, i) => (
+                    <tr key={i} data-testid="history-row">
+                      <td className="num">{fullTime(e.at)}</td>
+                      <td>{historyLabel(e)}</td>
+                      <td>{historyActor(e.actor)}</td>
+                      <td>{e.note ?? ""}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table></div>
+            )}
+          </section>
         </div>
       </main>
       {refundOpen && (
