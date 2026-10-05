@@ -3945,3 +3945,26 @@ model SellerApplicationReview {
   lastReminderAt        DateTime? @db.Timestamptz(3)
   updatedAt             DateTime  @updatedAt @db.Timestamptz(3)
 }
+
+// 서버 자원 스냅숏(앱이 자기 서버를 잰 값, 정기 실행 infra_snapshot.collect가 시간마다 저장하고 35일 지난 것은 지운다).
+// 마스터 관리자(최고관리자)가 인프라 용량 화면에서 읽는다. 비밀값은 담지 않는다.
+model InfraSnapshot {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  takenAt        DateTime @db.Timestamptz(3)
+  instance       String
+  diskTotalBytes BigInt?
+  diskUsedBytes  BigInt?
+  memTotalBytes  BigInt?
+  memUsedBytes   BigInt?
+  cpuCount       Int?
+  load1          Float?
+  dbSizeBytes    BigInt?
+  dbConnections  Int?
+  dbMaxConnections Int?
+  // 백업 폴더를 읽을 수 있을 때만 값이 있다(OPS_BACKUP_DIR). 없으면 null = 못 잼.
+  backupLastAt   DateTime? @db.Timestamptz(3)
+  backupCount    Int?
+  backupBytes    BigInt?
+
+  @@index([takenAt])
+}
