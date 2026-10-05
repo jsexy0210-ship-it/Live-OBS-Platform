@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useConfirm } from "../admin-ui/ConfirmDialog";
 import { CART_COUNT_EVENT } from "./ShopChrome";
 import { call } from "./reviewShared";
-import ShopModal from "./ShopModal";
 import "./Cart.css";
 
 // SH-004 장바구니(시안 04 SH). 로그인 구매자 전용 API(/api/shop/{slug}/cart)로 목록·수량·삭제를 한다.
@@ -52,13 +52,13 @@ function writeAck(slug: string, ack: Record<string, number>) {
 }
 
 export default function CartView({ slug }: { slug: string }) {
+  const { confirm } = useConfirm();
   const base = `/shop/${encodeURIComponent(slug)}`;
   const api = `/api/shop/${encodeURIComponent(slug)}/cart`;
   const [view, setView] = useState<View>({ kind: "loading" });
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string; undo?: { optionId: string; quantity: number } } | null>(null);
-  const [confirming, setConfirming] = useState(false);
   const [ack, setAck] = useState<Record<string, number>>({});
   // 서버 견적(읽기 전용): 고른 줄의 배송비와 결제 예정 금액. 배송지가 없으면 일반 지역 기준이라 제주·도서는 주문서에서 달라질 수 있다.
   const [quote, setQuote] = useState<{ kind: "idle" } | { kind: "loading" } | { kind: "error" } | { kind: "ok"; shippingFee: number; total: number }>({ kind: "idle" });
@@ -130,6 +130,7 @@ export default function CartView({ slug }: { slug: string }) {
 
   async function removeOne(l: Line) {
     if (busy) return;
+    if (!(await confirm({ tone: "shop", title: "이 상품을 뺄까요?", body: "장바구니에서만 빠져요.", confirmLabel: "빼기" }))) return;
     setBusy(true);
     const r = await call(`${api}/${l.id}`, { method: "DELETE" });
     setMsg(r.ok ? { ok: true, text: "장바구니에서 뺐어요", undo: { optionId: l.optionId, quantity: l.quantity } } : { ok: false, text: failMsg(r, "상품을 빼지 못했어요. 잠시 뒤 다시 눌러 주세요") });
@@ -137,12 +138,12 @@ export default function CartView({ slug }: { slug: string }) {
     setBusy(false);
   }
 
-  async function removeMany(ids: string[]) {
+  async function removeMany(ids: string[], what: string) {
     if (busy || ids.length === 0) return;
+    if (!(await confirm({ tone: "shop", title: `${what} ${ids.length}개를 뺄까요?`, body: "장바구니에서만 빠져요.", confirmLabel: "빼기" }))) return;
     setBusy(true);
     const r = await call(api, { method: "DELETE", body: { itemIds: ids } });
     setMsg(r.ok ? { ok: true, text: `${ids.length}개를 장바구니에서 뺐어요` } : { ok: false, text: failMsg(r, "상품을 빼지 못했어요. 잠시 뒤 다시 눌러 주세요") });
-    setConfirming(false);
     await load(true);
     setBusy(false);
   }
@@ -246,7 +247,7 @@ export default function CartView({ slug }: { slug: string }) {
               <input type="checkbox" className="cbx" checked={allPicked} onChange={toggleAll} disabled={selectable.length === 0} />
               전체 선택 ({chosen.length}/{lines.length})
             </label>
-            <button className="btn btn-sm btn-out" type="button" disabled={busy || chosen.length === 0} onClick={() => setConfirming(true)}>
+            <button className="btn btn-sm btn-out" type="button" disabled={busy || chosen.length === 0} onClick={() => void removeMany(chosen.map((l) => l.id), "선택한 상품")}>
               선택 삭제
             </button>
           </div>
@@ -325,10 +326,10 @@ export default function CartView({ slug }: { slug: string }) {
             </tbody>
           </table>
           <div className="cart-tools">
-            <button className="btn btn-sm btn-out" type="button" disabled={busy || chosen.length === 0} onClick={() => setConfirming(true)}>
+            <button className="btn btn-sm btn-out" type="button" disabled={busy || chosen.length === 0} onClick={() => void removeMany(chosen.map((l) => l.id), "선택한 상품")}>
               선택 삭제
             </button>
-            <button className="btn btn-sm btn-out" type="button" disabled={busy || unavail.length === 0} onClick={() => void removeMany(unavail.map((l) => l.id))}>
+            <button className="btn btn-sm btn-out" type="button" disabled={busy || unavail.length === 0} onClick={() => void removeMany(unavail.map((l) => l.id), "품절 상품")}>
               품절 상품 삭제
             </button>
             <Link className="btn btn-sm btn-out cart-more" href={`${base}/products`}>
@@ -371,25 +372,6 @@ export default function CartView({ slug }: { slug: string }) {
           <p className="cart-hint">방송 중 주문은 결제가 끝난 순서대로 방송에서 상품을 열어 드려요. 품절 상품은 주문에서 자동으로 빠져요</p>
         </aside>
       </div>
-      {confirming && (
-        <ShopModal
-          title={`${chosen.length}개를 지울까요?`}
-          onClose={() => setConfirming(false)}
-          busy={busy}
-          footer={
-            <>
-              <button className="btn btn-out" type="button" disabled={busy} onClick={() => setConfirming(false)}>
-                취소
-              </button>
-              <button className="btn btn-neg" type="button" disabled={busy} onClick={() => void removeMany(chosen.map((l) => l.id))}>
-                지우기
-              </button>
-            </>
-          }
-        >
-          장바구니에서만 빠져요.
-        </ShopModal>
-      )}
     </div>
   );
 }
