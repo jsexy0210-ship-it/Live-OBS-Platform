@@ -30,7 +30,7 @@ export function Notices({ pinned, items, nextCursor, failed }: { pinned: NoticeR
           <div className="card pf-ask" data-testid="notices-failed">
             <span className="t-hl2">공지를 불러오지 못했어요</span>
             <Link className="btn btn-out" href="/notices">
-              다시 시도
+              다시 불러오기
             </Link>
           </div>
         ) : pinned.length + items.length === 0 ? (

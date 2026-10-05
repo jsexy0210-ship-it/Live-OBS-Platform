@@ -34,11 +34,11 @@ const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 const SHIP = { READY: "배송 준비 중", IN_TRANSIT: "배송 중", DELIVERED: "배송 완료" } as const;
 const PAY_NOTE: Record<string, { ok: boolean; text: string }> = {
   paid: { ok: true, text: "결제가 끝났어요." },
-  failed: { ok: false, text: "결제하지 못했어요. 다시 시도해 주세요." },
+  failed: { ok: false, text: "결제가 되지 않았어요. 아래에서 결제 방법을 골라 다시 결제해 주세요." },
   pending: { ok: true, text: "결제를 확인하고 있어요. 잠시 뒤 주문 상태가 바뀌어요." },
   cancelled: { ok: false, text: "주문이 이미 취소돼 결제 금액을 돌려 드렸어요." },
 };
-const STATUS = { PENDING_PAYMENT: "결제 대기", PAID: "결제 완료", CANCELLED: "취소됨", REFUNDED: "환불됨" } as const;
+const STATUS = { PENDING_PAYMENT: "결제 전", PAID: "결제 완료", CANCELLED: "취소했어요", REFUNDED: "환불했어요" } as const;
 // KST 날짜·시각(서버 값은 UTC ISO)
 const kst = (iso: string) => {
   const d = new Date(new Date(iso).getTime() + 9 * 3600_000);

@@ -66,7 +66,7 @@ export default function ProductInquiries({ slug, productId, loggedIn, onNeedLogi
         <p className="shop-empty">
           문의를 불러오지 못했어요.{" "}
           <button type="button" className="shop-linkbtn" onClick={() => void load()}>
-            다시 시도
+            다시 불러오기
           </button>
         </p>
       )}
@@ -82,7 +82,7 @@ export default function ProductInquiries({ slug, productId, loggedIn, onNeedLogi
                     <span className={`pd-tag${q.answered ? " is-done" : ""}`}>{q.answered ? "답변 완료" : "답변 대기"}</span>
                   </td>
                   <td className="pd-qna-main">
-                    <b>{q.isPrivate ? "🔒 비밀글입니다" : q.title}</b>
+                    <b>{q.isPrivate ? "🔒 비밀글이에요" : q.title}</b>
                     {q.isPrivate ? <p>작성자와 판매자만 볼 수 있어요</p> : q.body && <p>{q.body}</p>}
                     {q.answer && (
                       <p className="pd-qna-a">

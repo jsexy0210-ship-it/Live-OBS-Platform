@@ -56,8 +56,8 @@ test.describe.serial("SH-022-R 교환·반품 신청 · SA-029 교환·반품 �
     await expect(section.getByRole("button", { name: "교환 · 반품 신청" })).toHaveCount(0);
     await page.screenshot({ path: `${SHOT}/sh022r-requested-390.png`, fullPage: true });
     // 철회하면 다시 신청할 수 있다
-    await item.getByRole("button", { name: "신청 철회" }).click();
-    await expect(section.getByTestId("return-item").first()).toContainText("철회했어요");
+    await item.getByRole("button", { name: "신청 거두기" }).click();
+    await expect(section.getByTestId("return-item").first()).toContainText("신청을 거뒀어요");
     await expect(section.getByRole("button", { name: "교환 · 반품 신청" })).toBeVisible();
     await section.getByRole("button", { name: "교환 · 반품 신청" }).click();
     const again = page.getByRole("dialog", { name: "교환 · 반품 신청" });

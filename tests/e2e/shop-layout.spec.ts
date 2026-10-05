@@ -40,7 +40,7 @@ test.describe("PC 1440", () => {
     // 판매 중·품절만 보이고 숨김·임시 저장 상품은 보이지 않는다. 품절은 표시가 붙는다.
     const grid = page.getByRole("list", { name: "전체 상품" });
     await expect(grid.getByText("스타라이트 부스터 박스")).toBeVisible();
-    await expect(grid.locator(".pc", { hasText: "드래곤 소울 부스터" }).locator(".pc-out")).toHaveText("SOLD OUT");
+    await expect(grid.locator(".pc", { hasText: "드래곤 소울 부스터" }).locator(".pc-out")).toHaveText("품절");
     await expect(grid.locator(".pc", { hasNotText: "드래곤 소울 부스터" }).locator(".pc-out")).toHaveCount(0);
     await expect(grid.getByText("문라이트 1탄 박스")).toHaveCount(0);
     await expect(grid.getByText("카드 슬리브 100매")).toHaveCount(0);

@@ -53,13 +53,13 @@ function statusText(r: Req): string {
     case "RECEIVED":
       if (r.exchangeHeldAt) return "상품을 받았어요 · 교환 상품이 다시 들어오면 보내 드려요";
       if (r.convertedFromExchange) return "교환 상품 재고가 없어 환불로 바뀌었어요 · 처리하고 있어요";
-      return r.inspectionResult ? "상품을 받았어요 · 검수를 마치고 처리하고 있어요" : "상품을 받았어요 · 검수하고 있어요";
+      return r.inspectionResult ? "상품을 받았어요 · 확인을 마치고 환불을 준비하고 있어요" : "상품을 받았어요 · 상태를 확인하고 있어요";
     case "COMPLETED":
       return r.kind === "RETURN" ? `환불이 끝났어요${r.refundAmount !== null ? ` · ${won(r.refundAmount)}` : ""}` : `교환 상품을 보냈어요${r.exchangeTrackingNumber ? ` · ${r.exchangeCourierName} ${r.exchangeTrackingNumber}` : ""}`;
     case "REJECTED":
       return `거절됐어요${r.rejectReason ? ` · ${r.rejectReason}` : ""}`;
     case "CANCELLED":
-      return "철회했어요";
+      return "신청을 거뒀어요";
   }
 }
 
@@ -146,7 +146,7 @@ function RequestItem({ r, base, onDone }: { r: Req; base: string; onDone: (text:
     setErr(null);
     const res = await call(`${base}/${r.id}/${path}`, { method: "POST", body });
     setBusy(false);
-    if (!res.ok) return setErr(res.message ?? "처리하지 못했어요. 잠시 뒤 다시 해 주세요");
+    if (!res.ok) return setErr(res.message ?? "신청을 처리하지 못했어요. 잠시 뒤 다시 눌러 주세요");
     await onDone(done);
   };
   return (
@@ -182,7 +182,7 @@ function RequestItem({ r, base, onDone }: { r: Req; base: string; onDone: (text:
       )}
       {(r.status === "REQUESTED" || r.status === "ACCEPTED") && (
         <button className="btn btn-sm btn-out" type="button" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={() => void run("cancel", {}, "신청을 철회했어요")}>
-          신청 철회
+          신청 거두기
         </button>
       )}
       {err && (
@@ -237,11 +237,11 @@ function RequestForm({
     setBusy(true);
     const r = await call<{ image: Photo }>(`${base}/images`, { method: "POST", raw: blob });
     setBusy(false);
-    if (!r.ok) return setErr(r.message ?? "사진을 올리지 못했어요");
+    if (!r.ok) return setErr(r.message ?? "사진을 올리지 못했어요. 다른 사진으로 다시 올려 주세요");
     setPhotos((p) => [...p, r.data.image]);
   };
 
-  // 개봉한 상품은 단순 변심으로 신청할 수 없다(교환은 고른 것 중 하나라도, 반품은 전부 개봉일 때). 기한이 지나면 불량·오배송·설명과 달라요만 받는다.
+  // 포장을 뜯은 상품은 단순 변심으로 신청할 수 없다(교환은 고른 것 중 하나라도, 반품은 전부 개봉일 때). 기한이 지나면 불량·오배송·설명과 달라요만 받는다.
   const target = kind === "EXCHANGE" ? items.filter((i) => picked.includes(i.orderItemId)) : items.filter((i) => (qty[i.orderItemId] ?? 0) > 0);
   const openedHit = target.filter((i) => i.opened).length;
   const openedBlocked = openedHit > 0 && (kind === "EXCHANGE" || openedHit === target.length);
@@ -269,7 +269,7 @@ function RequestForm({
       busy={busy}
       footer={
         <button className="btn btn-block" type="button" disabled={!ready || busy} onClick={() => void submit()}>
-          {busy ? "처리 중" : "신청하기"}
+          {busy ? "신청하고 있어요" : "신청하기"}
         </button>
       }
     >
@@ -279,7 +279,7 @@ function RequestForm({
           {(["RETURN", "EXCHANGE"] as const).map((k) => (
             <label key={k} className="rtb-check">
               <input type="radio" name="rtb-kind" checked={kind === k} onChange={() => setKind(k)} />
-              {k === "RETURN" ? "반품 (돌려보낼 상품을 골라 환불)" : "교환 (골라서 같은 상품으로)"}
+              {k === "RETURN" ? "반품 (돌려보낼 상품을 골라 환불)" : "교환 (같은 상품으로 다시 받기)"}
             </label>
           ))}
         </fieldset>
@@ -303,7 +303,7 @@ function RequestForm({
                 </select>
                 <span>
                   {i.productName} · {i.optionName} (최대 {i.quantity}개)
-                  {i.opened ? " (개봉)" : ""}
+                  {i.opened ? " (포장을 뜯음)" : ""}
                 </span>
               </label>
             ))}
@@ -317,7 +317,7 @@ function RequestForm({
                 <input type="checkbox" checked={picked.includes(i.orderItemId)} onChange={(e) => setPicked((p) => (e.target.checked ? [...p, i.orderItemId] : p.filter((x) => x !== i.orderItemId)))} />
                 <span>
                   {i.productName} · {i.optionName} × {i.quantity}
-                  {i.opened ? " (개봉)" : ""}
+                  {i.opened ? " (포장을 뜯음)" : ""}
                 </span>
               </label>
             ))}
@@ -338,7 +338,7 @@ function RequestForm({
               {windowOpen ? `배송 완료 뒤 7일 안에 신청할 수 있어요 (${md(deadline)}까지)` : "신청 기간(배송 완료 뒤 7일)이 지났어요. 불량·오배송은 아직 신청할 수 있어요"}
             </span>
           )}
-          {openedBlocked && <span className="cart-opt">개봉한 상품은 단순 변심으로 신청할 수 없어요. 불량·오배송은 사유를 골라 신청해 주세요</span>}
+          {openedBlocked && <span className="cart-opt">포장을 뜯은 상품은 단순 변심으로 신청할 수 없어요. 불량·오배송은 사유를 골라 신청해 주세요</span>}
         </div>
         <fieldset>
           <legend>상품 보내는 방법</legend>
