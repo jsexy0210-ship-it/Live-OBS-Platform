@@ -101,7 +101,7 @@ test("자주 묻는 질문: 분류와 함께 추가하고, 위·아래로 순서
 
   // 추가: 맨 뒤에 붙는다
   await page.getByTestId("add-button").click();
-  await page.getByLabel("질문").fill("환불은 언제 되나요");
+  await page.getByRole("textbox", { name: /^질문/ }).fill("환불은 언제 되나요");
   await page.getByLabel("분류 (선택)").fill("환불");
   await page.getByLabel("답변").fill("승인 후 3일 안에 됩니다.");
   await page.getByTestId("notice-save").click();
