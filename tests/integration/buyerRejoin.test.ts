@@ -155,7 +155,7 @@ describe("구매자 재가입 제한", () => {
     // 불리언이 아니면 시작하지 않는다(기록 없음)
     const bad = await s.startIdv({}, { agreedRejoinRetention: "true" });
     expect(bad.status).toBe(400);
-    expect(await bad.json()).toEqual({ error: "invalid_rejoin_consent", message: "재가입 제한 정보 보관 동의 값을 다시 확인해 주세요" });
+    expect(await bad.json()).toEqual({ error: "invalid_rejoin_consent", message: "재가입 제한 정보 보관 동의를 다시 선택해 주세요" });
     expect(await db.identityVerification.count({ where: { sellerId: s.seller.id } })).toBe(0);
     // 미동의(값 없음·false): 보여 준 기간·버전이 틀려도 보지 않는다
     expect((await s.signup({}, "no1@example.com", "미동의1", { agreedRejoinRetention: undefined, rejoinRetentionVersion: "old", rejoinRestrictionDaysShown: 1 })).status).toBe(201);

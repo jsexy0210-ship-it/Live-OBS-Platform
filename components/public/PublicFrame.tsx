@@ -4,7 +4,16 @@ import "../../styles/lop.css";
 import "../../styles/public.css";
 
 // 공개 화면(PF) 공통 머리·꼬리. 디자인 PF-001 기준.
-// 플랫폼 사업자 정보는 아직 정해진 값이 없어 시안의 자리표시를 그대로 둔다(값이 정해지면 이 한 곳만 고친다).
+// 플랫폼 사업자 정보는 아직 정해진 값이 없다. 값이 없는 동안은 하단 정보 줄을 숨기고, 값이 정해지면 COMPANY에 넣는다(이 한 곳만 고친다).
+const COMPANY: { label: string; value: string | null }[] = [
+  { label: "상호", value: null },
+  { label: "대표", value: null },
+  { label: "사업자등록번호", value: null },
+  { label: "통신판매업 신고", value: null },
+  { label: "주소", value: null },
+  { label: "고객센터", value: null },
+];
+const COMPANY_ROWS = COMPANY.filter((c) => c.value);
 const NAV = [
   { href: "/features", label: "기능" },
   { href: "/pricing", label: "요금" },
@@ -57,9 +66,11 @@ export function PublicFrame({ children, active }: { children: React.ReactNode; a
             <Link href="/faq">자주 묻는 질문</Link>
           </div>
         </div>
-        <span className="t-c1 c-alt">
-          상호 [플랫폼 상호] · 대표 [플랫폼 대표자] · 사업자등록번호 [플랫폼 사업자등록번호] · 통신판매업 신고 [플랫폼 통신판매업 신고번호] · 주소 [플랫폼 주소지] · 고객센터 [플랫폼 고객센터] · © 2026 [플랫폼 상호]
-        </span>
+        {COMPANY_ROWS.length > 0 && (
+          <span className="t-c1 c-alt">
+            {COMPANY_ROWS.map((c) => `${c.label} ${c.value}`).join(" · ")} · © 2026 {COMPANY.find((c) => c.label === "상호")?.value}
+          </span>
+        )}
       </footer>
     </div>
   );
