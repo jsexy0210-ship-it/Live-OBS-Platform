@@ -15,3 +15,11 @@ test("없는 주소는 영역에 맞는 404를 보여 준다", async ({ page }) 
     await expect(page.getByText("This page could not be found")).toHaveCount(0);
   }
 });
+
+// 로그인 없이 /admin 아래 없는 주소를 열면 관리자 셸이 로그인 화면으로 보낸다(기본 영어 404가 아님).
+// 로그인한 관리자의 404(합니다체·「홈으로」)는 (admin)/not-found.tsx가 받는다.
+test("로그인 없이 관리자 아래 없는 주소는 로그인 화면이 보이고 기본 영어 404가 아니다", async ({ page }) => {
+  await page.goto("/admin/no-such-page");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("마스터 관리자");
+  await expect(page.getByText("This page could not be found")).toHaveCount(0);
+});
