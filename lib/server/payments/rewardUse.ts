@@ -83,14 +83,20 @@ export function rewardReturnAmount(o: { rewardUsedAmount: number; items?: Refund
   return raw - (raw % REWARD_USE_UNIT);
 }
 
-// 취소·환불 트랜잭션 안에서 부른다(판매자 주문 잠금 뒤). amount를 주면 그만큼(환불: queue/service computeRefund가 현금에서 뺀 몫), 없으면 전부(취소).
-// 이미 돌려줬으면(같은 멱등 키) 다시 돌려주지 않는다. 탈퇴한 회원이면 잔액에 넣지 않고 FAILED로 남긴다.
-export async function returnRewardForOrder(tx: Tx, o: { sellerId: string; orderId: string; amount?: number; now: Date; reason: string }): Promise<number> {
+// 취소·환불 트랜잭션 안에서 부른다(판매자 주문 잠금 뒤). amount를 주면 그만큼(환불: payments/refundCalc.ts가 현금에서 뺀 몫), 없으면 남은 전부(취소).
+// 이미 돌려준 합(부분 환불 포함)을 넘지 않고, 같은 멱등 키로는 다시 돌려주지 않는다. 키는 기본 use_return:{orderId},
+// 부분 환불은 환불마다 다른 키(queue/service.ts refundOrder). 탈퇴한 회원이면 잔액에 넣지 않고 FAILED로 남긴다.
+export async function returnRewardForOrder(
+  tx: Tx,
+  o: { sellerId: string; orderId: string; amount?: number; now: Date; reason: string; idempotencyKey?: string },
+): Promise<number> {
   const order = await tx.order.findFirst({ where: { id: o.orderId, sellerId: o.sellerId }, select: { buyerMemberId: true, rewardUsedAmount: true } });
   if (!order) return 0;
-  const amount = Math.min(o.amount ?? order.rewardUsedAmount, order.rewardUsedAmount);
+  const returned = await tx.rewardLedger.aggregate({ where: { sellerId: o.sellerId, orderId: o.orderId, type: "USE", amount: { gt: 0 } }, _sum: { amount: true } });
+  const left = order.rewardUsedAmount - (returned._sum.amount ?? 0);
+  const amount = Math.min(o.amount ?? left, left);
   if (amount <= 0) return 0;
-  const key = `use_return:${o.orderId}`;
+  const key = o.idempotencyKey ?? `use_return:${o.orderId}`;
   if (await tx.rewardLedger.findUnique({ where: { sellerId_idempotencyKey: { sellerId: o.sellerId, idempotencyKey: key } }, select: { id: true } })) return 0;
   const [m] = await tx.$queryRaw<{ status: string }[]>`
     SELECT "status"::text AS "status" FROM "BuyerMember" WHERE "id" = ${order.buyerMemberId}::uuid AND "sellerId" = ${o.sellerId}::uuid FOR SHARE`;

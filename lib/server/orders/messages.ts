@@ -72,7 +72,9 @@ export const ORDER_ERROR_MESSAGES = {
   // 환불
   fault_required: "구매자 사정인지 파트너스 사정인지 골라 주세요",
   opened_items_present: "개봉한 상품이 있어요. 확인한 뒤 다시 환불해 주세요",
-  opened_items_unshipped: "개봉한 상품이 있어서 지금은 환불할 수 없어요. 개봉한 상품을 보낸 뒤 나머지를 처리해 주세요",
+  opened_items_unshipped: "보내기 전 개봉한 상품은 구매자 사정으로 환불할 수 없어요. 개봉하지 않은 상품만 골라 주세요",
+  invalid_refund_items: "환불할 상품과 수량을 다시 골라 주세요",
+  queued_item_partial: "개봉을 기다리거나 개봉 중인 상품은 수량 전부를 환불해야 해요",
   purchase_confirmed: "구매 확정한 주문이에요. 구매 확정을 먼저 취소해 주세요",
   // 구매 확정 취소
   not_confirmed: "구매 확정한 주문만 확정을 취소할 수 있어요",
@@ -151,7 +153,9 @@ export const ORDER_ERROR_MESSAGES_FORMAL: Record<OrderErrorCode, string> = {
   stock_too_large: "재고는 21억 개까지 넣을 수 있습니다",
   fault_required: "구매자 사정인지 파트너스 사정인지 골라 주십시오",
   opened_items_present: "개봉한 상품이 있습니다. 확인한 뒤 다시 환불해 주십시오",
-  opened_items_unshipped: "개봉한 상품이 있어 지금은 환불할 수 없습니다. 개봉한 상품을 보낸 뒤 나머지를 처리해 주십시오",
+  opened_items_unshipped: "보내기 전 개봉한 상품은 구매자 사정으로 환불할 수 없습니다. 개봉하지 않은 상품만 골라 주십시오",
+  invalid_refund_items: "환불할 상품과 수량을 다시 골라 주십시오",
+  queued_item_partial: "개봉 대기·개봉 중인 상품은 수량 전부를 환불해야 합니다",
   purchase_confirmed: "구매 확정한 주문입니다. 구매 확정을 먼저 취소해 주십시오",
   not_confirmed: "구매 확정한 주문만 확정을 취소할 수 있습니다",
   not_unconfirmed: "구매 확정을 취소한 주문만 다시 확정할 수 있습니다",
