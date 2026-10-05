@@ -78,7 +78,7 @@ describe("상품 사진 올리기·순서·삭제", () => {
     const s = await seller();
     const p = await product(s.ctx);
     for (let i = 0; i < MAX_PRODUCT_IMAGES; i++) await upload(s.ctx, p.id, [i, i, i]);
-    expect(await uploadProductImage(db, s.ctx, p.id, png(200, 150))).toEqual({ ok: false, reason: "too_many_images" });
+    expect(await uploadProductImage(db, s.ctx, p.id, png(200, 150))).toEqual({ ok: false, reason: "image_limit" });
     const q = await product(s.ctx);
     const jpegLike = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(200)]);
     for (const [bytes, reason] of [

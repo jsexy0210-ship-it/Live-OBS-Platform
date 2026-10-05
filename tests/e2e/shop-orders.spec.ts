@@ -61,10 +61,13 @@ test("PC: 주문 내역 표(열 제목 가운데·값 왼쪽)·상태 탭·결�
   await expect(row).toContainText("옵션: 1팩 · 수량 2개");
   await expect(row).toContainText("결제 전");
   await page.screenshot({ path: "tests/e2e/screenshots/SH-021-orders-1440.png" });
-  // 탭: 결제 대기에는 있고 취소 · 환불에는 없다
+  // 탭 6개(보드 SH-021-IA): 전체 · 결제 전 · 진행 중 · 완료 · 취소 · 환불
+  const tabNames = (await page.getByRole("tab").allInnerTexts()).map((t) => t.replace(/\s*\d+$/, "").trim());
+  expect(tabNames).toEqual(["전체", "결제 전", "진행 중", "완료", "취소", "환불"]);
+  // 탭: 결제 전에는 있고 취소에는 없다
   await page.getByRole("tab", { name: /^결제 전/ }).click();
   await expect(table.getByRole("link", { name: orderNo, exact: true })).toBeVisible();
-  await page.getByRole("tab", { name: /^취소 · 환불/ }).click();
+  await page.getByRole("tab", { name: /^취소/ }).click();
   await expect(page.getByRole("link", { name: orderNo, exact: true })).toHaveCount(0);
   await page.getByRole("tab", { name: /^결제 전/ }).click();
   await row.getByRole("link", { name: "결제하기" }).click();
