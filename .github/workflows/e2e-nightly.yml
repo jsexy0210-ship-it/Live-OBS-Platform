@@ -76,7 +76,8 @@ jobs:
       - name: Start servers
         run: |
           set -euo pipefail
-          nohup npx next start -p 3100 > "$RUNNER_TEMP/start.log" 2>&1 &
+          # seller-youtube 시험은 서버에 YOUTUBE_API_KEY(아무 값)와 SCHEDULER_DISABLED=1이 있어야 한다(시험이 안내하는 조건).
+          YOUTUBE_API_KEY=e2e-dummy SCHEDULER_DISABLED=1 nohup npx next start -p 3100 > "$RUNNER_TEMP/start.log" 2>&1 &
           BUSINESS_STATUS_PROVIDER=fake MAIL_ORDER_PROVIDER=fake nohup npx next dev -p 3101 > "$RUNNER_TEMP/dev.log" 2>&1 &
           OBS_TEST_MODE=1 BILLING_PROVIDER=fake nohup npx next start -p 3102 > "$RUNNER_TEMP/testmode.log" 2>&1 &
           for port in 3100 3101 3102; do
