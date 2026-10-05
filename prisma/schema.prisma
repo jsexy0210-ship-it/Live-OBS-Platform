@@ -156,6 +156,8 @@ model Seller {
   productReviews           ProductReview[]
   buyerInquiries           BuyerInquiry[]
   buyerInquiryImages       BuyerInquiryImage[]
+  shopSearchSynonyms       ShopSearchSynonym[]
+  shopSearchTerms          ShopSearchTerm[]
   productReviewImages      ProductReviewImage[]
   productReviewReports     ProductReviewReport[]
   productReviewPolicy      ProductReviewPolicy?
@@ -3487,6 +3489,8 @@ model ShopSearchSynonym {
   words     String[]
   createdAt DateTime @default(now()) @db.Timestamptz(3)
 
+  seller Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
   @@index([sellerId])
 }
 
@@ -3496,6 +3500,8 @@ model ShopSearchTerm {
   day      DateTime @db.Date
   term     String
   count    Int      @default(1)
+
+  seller Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
 
   @@id([sellerId, day, term])
 }
