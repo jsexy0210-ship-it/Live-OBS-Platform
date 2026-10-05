@@ -1,5 +1,6 @@
 "use client";
 
+import RecommendedProducts from "./RecommendedProducts";
 import ShopBack from "./ShopBack";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -43,6 +44,7 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
   const [qty, setQty] = useState(1);
   const [photo, setPhoto] = useState(0);
   const [wished, setWished] = useState(false);
+  const [restock, setRestock] = useState(false); // 재입고 알림을 신청했는지(상품이 품절일 때만 쓴다)
   const [busy, setBusy] = useState(false);
   const [needLogin, setNeedLogin] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string; cart?: boolean } | null>(null);
@@ -62,6 +64,28 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
       live = false;
     };
   }, [api, loggedIn, p.id]);
+
+  useEffect(() => {
+    if (!loggedIn || !p.soldOut) return;
+    let live = true;
+    call<{ items: { productId: string }[] }>(`${api}/restock-alerts`).then((r) => live && r.ok && setRestock(r.data.items.some((i) => i.productId === p.id)));
+    return () => {
+      live = false;
+    };
+  }, [api, loggedIn, p.id, p.soldOut]);
+
+  async function onRestock() {
+    if (busy) return;
+    if (!loggedIn) return setNeedLogin(true);
+    setBusy(true);
+    setMsg(null);
+    const r = restock ? await call(`${api}/restock-alerts/${p.id}`, { method: "DELETE" }) : await call(`${api}/restock-alerts`, { method: "POST", body: { productId: p.id } });
+    if (r.ok || (restock && r.status === 404)) {
+      setRestock(!restock);
+      setMsg({ ok: true, text: restock ? "재입고 알림을 취소했어요" : "다시 입고되면 알려 드릴게요" });
+    } else setMsg({ ok: false, text: r.message ?? "처리하지 못했어요. 잠시 뒤 다시 해 주세요" });
+    setBusy(false);
+  }
 
   function pickOption(id: string) {
     setOptionId(id);
@@ -235,9 +259,16 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
 
           <div className="pd-actions">
             {out ? (
-              <button type="button" className="btn btn-lg btn-out" disabled>
-                품절됐어요
-              </button>
+              <>
+                <button type="button" className="btn btn-lg btn-out" disabled>
+                  품절됐어요
+                </button>
+                {p.soldOut && (
+                  <button type="button" className="btn btn-lg" aria-pressed={restock} disabled={busy} onClick={onRestock}>
+                    {restock ? "재입고 알림 취소" : "재입고 알림 받기"}
+                  </button>
+                )}
+              </>
             ) : (
               <>
                 <button type="button" className="btn btn-lg btn-out" disabled={busy} onClick={onCart}>
@@ -283,6 +314,8 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
           )
         )}
       </section>
+
+      <RecommendedProducts slug={slug} productId={p.id} />
 
       {needLogin && (
         <ShopModal

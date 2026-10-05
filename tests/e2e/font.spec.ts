@@ -70,9 +70,9 @@ test("파트너스 로그인·주문 화면, 쇼핑몰 화면, 루트(/)가 원�
   await shot(page, "FONT-shop");
 
   expect(external).toEqual([]);
-  // 어느 화면 그룹에도 속하지 않는 루트(/)도 루트 레이아웃에서 같은 서체를 쓴다
+  // 루트(/)는 로그인 화면으로 가며, 루트 레이아웃에서 같은 서체를 쓴다
   await page.goto("/");
-  await expectWantedSans(page, "main");
+  await expectWantedSans(page);
 
   expect(font.every((f) => f.status === 200 || f.status === 304)).toBe(true);
 });

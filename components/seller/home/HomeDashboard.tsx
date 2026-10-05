@@ -17,6 +17,7 @@ import { Kpis, count } from "../stats/parts";
 // API: GET /api/seller/today-tasks(항목별 권한이 없으면 서버가 뺀다), GET /api/seller/stats/overview?from=오늘&to=오늘(통계 권한),
 //      GET /api/seller/broadcast/history(방송 권한). 권한이 없거나 막힌 구역은 가짜 값 없이 구역째 감춘다.
 // 오버레이 전용 홈(SA-002-O)은 이 블록을 쓰지 않는다(화면-방송 담당). 공용 구역은 이 폴더의 컴포넌트로 가져다 쓴다.
+type Onboarding = { completed: boolean; dismissed: boolean; doneCount: number; total: number };
 type Task = { key: string; count: number; href: string };
 type Tasks = { total: number; items: Task[] };
 type Overview = {
@@ -69,6 +70,38 @@ function Section({ title, sub, actions, children }: { title: string; sub?: strin
       </div>
       {children}
     </section>
+  );
+}
+
+// 시작하기 띠: 온보딩이 끝나지 않았고 닫지 않았을 때만 보인다(GET /api/seller/onboarding). 닫기는 서버 dismiss 상태를 따르고,
+// 닫을 수 있는 건 대표자·쇼핑몰 설정 권한뿐이라 권한이 없으면 닫기 버튼을 두지 않는다. 다시 열기는 시작하기 화면에서 한다.
+function OnboardingStrip() {
+  const { can } = useSeller();
+  const [part] = usePart<Onboarding>("/api/seller/onboarding", (d) => d as Onboarding);
+  const [closed, setClosed] = useState(false);
+  const [failed, setFailed] = useState(false);
+  if (part.kind !== "ok" || part.data.completed || part.data.dismissed || closed) return null;
+  const close = async () => {
+    const r = await api("/api/seller/onboarding", { method: "POST", body: { action: "dismiss" } });
+    if (r.ok) setClosed(true);
+    else setFailed(true);
+  };
+  return (
+    <div className="home-onboarding" data-testid="home-onboarding">
+      <span className="t">시작하기</span>
+      <span className="n">
+        {part.data.doneCount}/{part.data.total} 완료
+      </span>
+      {failed && <span className="e">닫지 못했습니다. 다시 시도해 주십시오</span>}
+      <Link className="btn btn-out" href="/seller/onboarding">
+        이어서 하기
+      </Link>
+      {can("SHOP_SETTINGS") && (
+        <button type="button" className="btn btn-out" onClick={() => void close()}>
+          닫기
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -183,6 +216,7 @@ export function HomeDashboard() {
           <p className="t-l2 c-alt" style={{ margin: 0 }}>
             {me.shop.name}의 오늘 상황입니다
           </p>
+          <OnboardingStrip />
           <TodayTasks />
           <Performance />
           <Broadcasts />
