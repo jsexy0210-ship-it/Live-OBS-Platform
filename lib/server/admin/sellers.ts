@@ -1,77 +1,17 @@
-import type { Prisma, PrismaClient, SellerStatus } from "@prisma/client";
+import type { PrismaClient, SellerStatus } from "@prisma/client";
 import type { AdminSessionContext } from "../auth/session";
 import { writeAudit } from "../audit/log";
 import { forbidden } from "../authz/errors";
 import { adminCan } from "../authz/permissions";
 import { dbNow } from "../billing/subscription";
-import { decodeCursor, encodeCursor } from "../orders/read";
 
 // 마스터 관리자 파트너스 목록·상세(MA-011·012, platform.read)와 이용 정지·해제(MA-015, seller.moderate).
-// 목록은 가입 시각 내림차순 (createdAt, id) 커서. 판매자 권한으로는 이 경로에 들어올 수 없다(관리자 세션만).
-export const ADMIN_SELLER_PAGE_DEFAULT = 50;
-export const ADMIN_SELLER_PAGE_MAX = 200;
-const STATUSES: readonly SellerStatus[] = ["PENDING", "ACTIVE", "SUSPENDED", "REJECTED", "CLOSED"];
-const PLAN_CODES = ["OVERLAY_ONLY", "INTEGRATED", "STANDARD"] as const;
+// 목록·요약·내려받기는 sellerList.ts. 판매자 권한으로는 이 경로에 들어올 수 없다(관리자 세션만).
 const DAY_MS = 86_400_000;
 type Meta = { ip?: string | null; userAgent?: string | null };
 
-export type AdminSellerListQuery = { q?: string | null; status?: string | null; plan?: string | null; cursor?: string | null; limit?: string | null };
-
 function requireRead(admin: AdminSessionContext) {
   if (!adminCan(admin.admin.role, "platform.read")) throw forbidden();
-}
-
-// q: 쇼핑몰 이름·주소(slug) 부분 일치. status: 판매자 상태. plan: 판매자 플랜 코드. 잘못된 값이면 { ok: false }.
-export async function listAdminSellers(db: PrismaClient, admin: AdminSessionContext, query: AdminSellerListQuery) {
-  requireRead(admin);
-  const limit = query.limit == null || query.limit === "" ? ADMIN_SELLER_PAGE_DEFAULT : Number(query.limit);
-  if (!Number.isInteger(limit) || limit < 1) return { ok: false as const };
-  const take = Math.min(limit, ADMIN_SELLER_PAGE_MAX);
-  const cursor = query.cursor ? decodeCursor(query.cursor) : null;
-  if (query.cursor && !cursor) return { ok: false as const };
-  if (query.status && !STATUSES.includes(query.status as SellerStatus)) return { ok: false as const };
-  if (query.plan && !(PLAN_CODES as readonly string[]).includes(query.plan)) return { ok: false as const };
-  const q = query.q?.trim() ?? "";
-  if (q.length > 50) return { ok: false as const };
-
-  const and: Prisma.SellerWhereInput[] = [];
-  if (query.status) and.push({ status: query.status as SellerStatus });
-  if (query.plan) and.push({ plan: { code: query.plan } });
-  if (q) and.push({ OR: [{ shopName: { contains: q, mode: "insensitive" } }, { slug: { contains: q.toLowerCase() } }] });
-  if (cursor) and.push({ OR: [{ createdAt: { lt: cursor.createdAt } }, { createdAt: cursor.createdAt, id: { lt: cursor.id } }] });
-  const rows = await db.seller.findMany({
-    where: { AND: and },
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    take: take + 1,
-    select: {
-      id: true,
-      slug: true,
-      shopName: true,
-      status: true,
-      createdAt: true,
-      approvedAt: true,
-      trialEndsAt: true,
-      plan: { select: { code: true, name: true } },
-      subscription: { select: { status: true, cancelAtPeriodEnd: true, currentPeriodEnd: true } },
-    },
-  });
-  const page = rows.slice(0, take);
-  const last = page[page.length - 1];
-  return {
-    ok: true as const,
-    sellers: page.map((s) => ({
-      id: s.id,
-      slug: s.slug,
-      shopName: s.shopName,
-      status: s.status,
-      plan: s.plan,
-      subscription: s.subscription,
-      trialEndsAt: s.trialEndsAt,
-      approvedAt: s.approvedAt,
-      createdAt: s.createdAt,
-    })),
-    nextCursor: rows.length > take && last ? encodeCursor(last.createdAt, last.id) : null,
-  };
 }
 
 // 파트너스 상세: 기본 정보·대표자·구독·최근 30일 주문 요약. 없으면 null.
