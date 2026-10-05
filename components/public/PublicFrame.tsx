@@ -17,7 +17,7 @@ export function PublicFrame({ children }: { children: React.ReactNode }) {
     <div className="app pf" data-theme="light">
       <header className="pf-head">
         <div className="pf-head-l">
-          <Link className="logo pf-logo" href="/">
+          <Link className="logo pf-logo" href="/about">
             <span className="logo-sym" />
             <span className="logo-word" />
           </Link>
