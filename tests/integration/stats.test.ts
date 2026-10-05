@@ -627,7 +627,7 @@ describe("통계 요약 GET /api/seller/stats/overview (SA-056)", () => {
     }
 
     // 쿠폰: 기간 안 결제 주문에 쓴 1건(2000원) + 복구된 1건은 세지 않는다
-    const cp = await db.coupon.create({ data: { sellerId: s.seller.id, name: "쿠폰", issueMethod: "CODE", code: "T", benefit: "AMOUNT", value: 2000, startsAt: new Date("2026-01-01T00:00:00Z"), endsAt: new Date("2027-01-01T00:00:00Z") } });
+    const cp = await db.coupon.create({ data: { sellerId: s.seller.id, name: "쿠폰", issueMethod: "CODE", code: "STATS2000", benefit: "AMOUNT", value: 2000, startsAt: new Date("2026-01-01T00:00:00Z"), endsAt: new Date("2027-01-01T00:00:00Z") } });
     const useCoupon = async (orderId: string, buyerMemberId: string, restoredAt: Date | null) => {
       const bc = await db.buyerCoupon.create({ data: { sellerId: s.seller.id, couponId: cp.id, buyerMemberId, issuedAt: new Date("2026-09-01T00:00:00Z"), expiresAt: new Date("2027-01-01T00:00:00Z") } });
       await db.couponRedemption.create({ data: { sellerId: s.seller.id, orderId, couponId: cp.id, buyerCouponId: bc.id, benefit: "AMOUNT", discountAmount: 2000, restoredAt } });
