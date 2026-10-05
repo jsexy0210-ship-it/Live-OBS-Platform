@@ -16,6 +16,9 @@
 | 개발 전담 (화면) (3) | `session_01BwVsBQrQRL49RsUn9ejKYw` | (2)를 교체(Sonnet, 2026-10-04 대표님 지시 속도). 소유는 아래 (2)·(이전) 줄과 같음. 2026-10-04 KST MASTER 생성 |
 | 화면-방송 (2) | `session_01LEN2yPC22mYAT7r16f4RJ6` | 화면-방송(`session_01EUscVzBZ5i68jWQHwNpus7`) 교체(Sonnet). 방송 화면 SA-001 계열·SA-051~055, 오버레이 OV-001·002, #212·#213. 2026-10-04 KST MASTER 생성 |
 | 화면-설정 (2) | `session_014yzgBefSGaxVp7o6eBETzb` | 화면-설정(`session_01BEoFcXM4wkW8BLX8c54YBJ`) 교체(Sonnet). #210 → #216 → #218 → #220. 2026-10-04 KST MASTER 생성 |
+| 화면-마스터 | `session_01JMzttsfKDXeXncJrX2VsLG` | 마스터 관리자 기능 화면(배정 `docs/SCREEN_STATUS.md`). 브랜딩 전담 (2) 소유 `app/(admin)/**` 중 해당 화면 경로만 인수(브랜딩·로그인·요금제 화면 제외, AdminShell은 레이아웃 전담). 2026-10-05 KST MASTER 생성 |
+| 화면-공개 | `session_01HfJMUwycvTKgmVctvRpGjH` | 플랫폼 소개·공개 PF 화면, 공통 404(AU-009)·점검 중(AU-010). 소유 `app/page.tsx`, `app/(public)/**`, `components/public/**`. 2026-10-05 KST MASTER 생성 |
+| 화면-파트너스 운영 | `session_017i9HrY4Z9if193ZLQfJQbp` | 파트너스 상품·주문·배송·문의 화면(SA-015~018·024·026~028·046·047). 새 경로와 전용 컴포넌트만 소유. 2026-10-05 KST MASTER 생성 |
 | 레이아웃 전담 (2) | `session_01MYKP5ZFqrNQk2QsYPyGu7j` | 아래 레이아웃 전담 교체(Sonnet). 소유에 `AdminShell.tsx` 포함(마스터 관리자 카페24식 셸). 2026-10-04 KST MASTER 생성 |
 | 구매자 쇼핑몰 전담 (2) | `session_01KEhmqBBhjTGfGfHyRzEFcy` | 구매자 쇼핑몰 전담(`session_01CAXDQrc5A28LdKYCwt7eGg`) 교체(Sonnet). 대표님 지시 카페24식 쇼핑몰(`docs/DESIGN_PROMPT.md` SH). 소유: `app/(shop)/**`, `components/shop/ShopFrame.tsx`·ShopLogo·ShopState, 새 구매자 쇼핑몰 컴포넌트, `styles/shop.css`(HomeBanner·EventPopup·CouponBox와 ShopFrame 팝업·로고 줄 제외). 2026-10-04 KST MASTER 생성 |
 | 브랜딩 전담 (2) | `session_01DKz4PdvKKdvcsgoBF1MJBU` | 아래 브랜딩 전담 교체(Sonnet). `AdminShell.tsx`는 레이아웃 전담으로 넘어감. 2026-10-04 KST MASTER 생성 |
