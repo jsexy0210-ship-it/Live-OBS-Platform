@@ -154,6 +154,8 @@ model Seller {
   couponRedemptions        CouponRedemption[]
   logo                     SellerLogo?
   productReviews           ProductReview[]
+  buyerInquiries           BuyerInquiry[]
+  buyerInquiryImages       BuyerInquiryImage[]
   productReviewImages      ProductReviewImage[]
   productReviewReports     ProductReviewReport[]
   productReviewPolicy      ProductReviewPolicy?
@@ -371,6 +373,8 @@ model BuyerMember {
   addresses            BuyerAddress[]
   coupons              BuyerCoupon[]
   productReviews       ProductReview[]
+  buyerInquiries       BuyerInquiry[]
+  buyerInquiryImages   BuyerInquiryImage[]
   productReviewImages  ProductReviewImage[]
   productReviewReports ProductReviewReport[]
   cartItems            CartItem[]
@@ -553,6 +557,7 @@ model Product {
   displayItems  ShopDisplayItem[]
   wishItems     WishItem[]
   restockAlerts RestockAlert[]
+  buyerInquiries BuyerInquiry[]
 
   @@unique([sellerId, id])
   @@unique([sellerId, codeNo])
@@ -3200,6 +3205,70 @@ model AssistantLedger {
   @@index([createdAt(sort: Desc), id(sort: Desc)])
   @@index([status, createdAt(sort: Desc)])
   @@index([month])
+}
+
+// ───────────── 구매자 문의(상품 문의·1:1 문의, SA-046·047) ─────────────
+// PRODUCT=상품 문의(productId 필수), GENERAL=1:1 문의. 답변은 판매자 하나(고치거나 지우면 다시 WAITING).
+enum BuyerInquiryKind {
+  PRODUCT
+  GENERAL
+}
+
+enum BuyerInquiryStatus {
+  WAITING
+  ANSWERED
+}
+
+// 구매자가 쓴 문의. 답변 전에만 구매자가 고치거나 지울 수 있다(지우면 행과 사진을 모두 지움).
+// 탈퇴하면 작성자 표시를 「탈퇴 회원」으로 바꾸고 사진은 지운다. 글은 판매자의 응대 기록으로 남긴다.
+model BuyerInquiry {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId          String             @db.Uuid
+  buyerMemberId     String             @db.Uuid
+  kind              BuyerInquiryKind
+  productId         String?            @db.Uuid
+  authorNickname    String
+  title             String
+  body              String
+  isPrivate         Boolean            @default(false)
+  status            BuyerInquiryStatus @default(WAITING)
+  answer            String?
+  answeredAt        DateTime?          @db.Timestamptz(3)
+  answeredBySellerUserId String?       @db.Uuid
+  createdAt         DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime           @default(now()) @db.Timestamptz(3)
+
+  seller      Seller              @relation(fields: [sellerId], references: [id])
+  buyerMember BuyerMember         @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id])
+  product     Product?            @relation(fields: [sellerId, productId], references: [sellerId, id])
+  images      BuyerInquiryImage[]
+
+  @@unique([sellerId, id])
+  @@index([sellerId, status, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([sellerId, buyerMemberId, createdAt(sort: Desc), id(sort: Desc)])
+}
+
+// 문의 첨부 사진. 먼저 올리고(inquiryId 없음) 문의를 보낼 때 붙인다. 붙지 않은 사진은 회원당 10장까지 두고 오래된 것부터 지운다.
+model BuyerInquiryImage {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String   @db.Uuid
+  buyerMemberId String   @db.Uuid
+  inquiryId     String?  @db.Uuid
+  data          Bytes
+  contentType   String
+  byteSize      Int
+  width         Int
+  height        Int
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+
+  seller      Seller        @relation(fields: [sellerId], references: [id])
+  buyerMember BuyerMember   @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id], onDelete: Cascade)
+  inquiry     BuyerInquiry? @relation(fields: [sellerId, inquiryId], references: [sellerId, id], onDelete: Cascade)
+
+  @@unique([sellerId, id])
+  @@index([sellerId, inquiryId])
+  @@index([sellerId, buyerMemberId, inquiryId, createdAt])
 }
 
 // ───────────── 알림 센터(MA-002 · SA-130) ─────────────
