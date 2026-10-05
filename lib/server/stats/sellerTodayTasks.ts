@@ -9,10 +9,11 @@ import { num, statsSnapshot, type StatsDb } from "./sql";
 // 항목마다 { key, count, href }. href는 해당 목록 화면을 처리할 건만 걸러 연 주소다(화면 문구는 화면에서 붙인다).
 // 지금 목록 화면 중 쿼리로 필터를 받는 곳은 상품(stock=out·low)뿐이다. 나머지 href의 쿼리는 목록 화면이 읽도록 맞춰야 한다(PR 본문 참고).
 // - depositPending: 입금 확인을 기다리는 주문(입금 확인 화면·listPendingDeposits와 같은 기준)         ORDER_SHIPPING
-// - shipPending: 결제 완료됐지만 아직 배송 정보가 없는 즉시 발송 주문                                  ORDER_SHIPPING
+// - shipPending: 결제 완료됐지만 아직 배송 정보가 없는 주문(주문 목록 status=PAID&shipped=false와 같은 기준)   ORDER_SHIPPING
 // - returnRequested: 구매자가 요청해 아직 받지 않은 교환·반품(REQUESTED)                                ORDER_SHIPPING
 // - inquiryWaiting: 답변을 기다리는 구매자 문의(WAITING)                                               INQUIRY_REPLY, 스토어 운영 기능
-// - stockOut / stockLow: 판매 중·품절 상품 중 살아 있는 옵션 재고 합이 0 / 1~LOW_STOCK_MAX(상품 목록 재고 필터와 같은 기준)  PRODUCT_MANAGE, 스토어 운영 기능
+// - stockOut / stockLow: 판매 중·품절 상품(display=shown) 중 살아 있는 옵션 재고 합이 0 / 1~LOW_STOCK_MAX(상품 목록 stock 필터와 같은 기준)  PRODUCT_MANAGE, 스토어 운영 기능
+// 항목 숫자는 href로 연 목록의 전체 행 수와 같아야 한다(tests/integration/sellerTodayTasks.test.ts가 목록 함수와 맞춰 본다).
 // 조회 권한이 없는 항목은 목록에서 뺀다(403으로 홈 전체를 막지 않는다). 잠금 중에도 이미 받은 주문 처리 항목은 보인다.
 export const SELLER_TASK_KEYS = ["depositPending", "shipPending", "returnRequested", "inquiryWaiting", "stockOut", "stockLow"] as const;
 export type SellerTaskKey = (typeof SELLER_TASK_KEYS)[number];
@@ -22,8 +23,8 @@ const TASKS: { key: SellerTaskKey; action: SellerAction; store: boolean; href: s
   { key: "shipPending", action: "ORDER_SHIPPING", store: false, href: "/seller/orders?status=PAID&shipped=false" },
   { key: "returnRequested", action: "ORDER_SHIPPING", store: false, href: "/seller/returns?status=REQUESTED" },
   { key: "inquiryWaiting", action: "INQUIRY_REPLY", store: true, href: "/seller/buyer-inquiries?status=WAITING" },
-  { key: "stockOut", action: "PRODUCT_MANAGE", store: true, href: "/seller/products?stock=out" },
-  { key: "stockLow", action: "PRODUCT_MANAGE", store: true, href: "/seller/products?stock=low" },
+  { key: "stockOut", action: "PRODUCT_MANAGE", store: true, href: "/seller/products?stock=out&display=shown" },
+  { key: "stockLow", action: "PRODUCT_MANAGE", store: true, href: "/seller/products?stock=low&display=shown" },
 ];
 
 function readable(ctx: TenantContext, action: SellerAction) {
@@ -59,7 +60,7 @@ export async function sellerTodayTasks(db: PrismaClient, ctx: TenantContext) {
             where: { sellerId, status: "PENDING_PAYMENT", legalHoldAt: null, payments: { none: { status: { in: ["APPROVING", "PAID", "PARTIAL_CANCELLED"] } } } },
           })
         : 0,
-      has("shipPending") ? tx.order.count({ where: { sellerId, status: "PAID", fulfillmentType: "IMMEDIATE", legalHoldAt: null, shipment: { is: null } } }) : 0,
+      has("shipPending") ? tx.order.count({ where: { sellerId, status: "PAID", legalHoldAt: null, shipment: { is: null } } }) : 0,
       has("returnRequested") ? tx.returnRequest.count({ where: { sellerId, status: "REQUESTED" } }) : 0,
       has("inquiryWaiting") ? tx.buyerInquiry.count({ where: { sellerId, status: "WAITING" } }) : 0,
       has("stockOut") || has("stockLow") ? stockCounts(tx, sellerId) : { out: 0, low: 0 },
