@@ -88,3 +88,10 @@ test("마스터 상단: 전역 검색과 알림 버튼이 있고 검색 패널�
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
 });
+
+test("마스터 상단 「알림 센터」는 /admin/notifications로 연결되고 종 「모두 보기」도 같은 곳을 가리킨다", async ({ page }) => {
+  await login(page, emails.super);
+  await expect(page.locator(".util-desk").getByRole("link", { name: "알림 센터" })).toHaveAttribute("href", "/admin/notifications");
+  await page.getByRole("button", { name: /^알림/ }).click();
+  await expect(page.getByRole("dialog", { name: "알림" }).getByRole("link", { name: "모두 보기" })).toHaveAttribute("href", "/admin/notifications");
+});

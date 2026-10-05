@@ -18,8 +18,9 @@ import { api, currentNavGeneration, nextNavGeneration, PLAN_FEATURE_EVENT, type 
 //   FOLLOWUP = STORE_OPERATIONS가 있거나, 오버레이 전용으로 내린 뒤에도 후속 처리할 일이 남았을 때(/me orderFollowup). 주문·배송·문의 메뉴(ORDER_FOLLOWUP 경로)
 // alt: plan이 없을 때 대신 여는 화면(그 요금제에서 쓸 수 있는 하위 화면만 보여 줄 때)
 // 하위 메뉴가 모두 숨겨진 대분류는 GNB에서도 숨긴다.
-type PlanNeed = "ANY" | "OVERLAY" | "STORE_OPERATIONS" | "FOLLOWUP";
-type Item = { label: string; href?: string; perm?: string; plan?: PlanNeed; alt?: { plan: PlanNeed; href: string } };
+type PlanNeed = "ANY" | "OVERLAY" | "EXTERNAL_INTEGRATION" | "STORE_OPERATIONS" | "FOLLOWUP";
+// lnbOnly: 왼쪽 메뉴에만 보이는 항목. 대분류(GNB)를 눌렀을 때 가는 첫 화면이나 로그인 뒤 기본 화면으로는 쓰지 않는다(예: 시작하기)
+type Item = { label: string; href?: string; perm?: string; plan?: PlanNeed; alt?: { plan: PlanNeed; href: string }; lnbOnly?: boolean };
 type Group = { key: string; label: string; items: Item[] };
 const MENU: Group[] = [
   {
@@ -27,7 +28,7 @@ const MENU: Group[] = [
     label: "홈",
     items: [
       { label: "홈", plan: "ANY" },
-      { label: "시작하기", plan: "ANY" },
+      { label: "시작하기", href: "/seller/onboarding", plan: "ANY", lnbOnly: true },
     ],
   },
   {
@@ -38,9 +39,10 @@ const MENU: Group[] = [
       { label: "오버레이 편집기", href: "/seller/overlay", perm: "OVERLAY_EDIT", plan: "OVERLAY" },
       { label: "HIT 카드 이력", href: "/seller/hit-cards", perm: "BROADCAST_RUN", plan: "OVERLAY" },
       { label: "방송 이력", href: "/seller/broadcasts", perm: "BROADCAST_RUN", plan: "OVERLAY" },
-      { label: "외부 쇼핑몰 연동", perm: "SHOP_SETTINGS", plan: "OVERLAY" },
+      // 서버는 플랜 기능 EXTERNAL_INTEGRATION만 보고 보기를 열지만, 메뉴는 연결·해제 권한(SHOP_SETTINGS)이 있는 직원에게만 보인다(서버보다 넓게 열지 않는다)
+      { label: "외부 쇼핑몰 연동", href: "/seller/external-shops", perm: "SHOP_SETTINGS", plan: "EXTERNAL_INTEGRATION" },
       { label: "유튜브 연결", href: "/seller/youtube", perm: "BROADCAST_RUN", plan: "OVERLAY" },
-      { label: "자동 연결", perm: "SHOP_SETTINGS", plan: "OVERLAY" },
+      { label: "자동 연결", href: "/seller/automation", perm: "SHOP_SETTINGS", plan: "OVERLAY" },
     ],
   },
   {
@@ -179,7 +181,7 @@ function visibleMenu(me: Me): Group[] {
 export function landingFor(me: Me, href: string): string {
   const perm = routeNav(href)?.item.perm;
   if (menuAllows(me, routePlan(href)) && (!perm || canFor(me, perm))) return href;
-  return visibleMenu(me).flatMap((g) => g.items).find((n) => !!n.href)?.href ?? href;
+  return visibleMenu(me).flatMap((g) => g.items).find((n) => !!n.href && !n.lnbOnly)?.href ?? href;
 }
 
 // loc: 지금 화면의 대분류 · 메뉴 이름(본문 위 경로 줄에 쓴다)
@@ -378,7 +380,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
   const loc = active ? { group: active.group.label, item: active.item.label, exact: pathname === active.item.href } : null;
   const blocked = (planBlocked?.path === pathname && planBlocked.visit === currentNavGeneration()) || !menuAllows(me, routePlan(pathname));
   // 안내 화면에서 갈 수 있는 첫 화면(만든 메뉴 중 지금 열리는 것)
-  const nextNav = menu.flatMap((g) => g.items).find((n) => !!n.href && !pathname.startsWith(n.href));
+  const nextNav = menu.flatMap((g) => g.items).find((n) => !!n.href && !n.lnbOnly && !pathname.startsWith(n.href));
 
   const utilities = (
     <>
@@ -416,7 +418,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
           </Link>
           <nav className="gnb-nav" aria-label="주 메뉴">
             {menu.map((g) => {
-              const first = g.items.find((n) => n.href)?.href;
+              const first = g.items.find((n) => n.href && !n.lnbOnly)?.href;
               const cls = `gnb-i${g.key === shown.key ? " on" : ""}`;
               return first ? (
                 <Link key={g.key} className={cls} href={first} onClick={() => setPicked(null)}>

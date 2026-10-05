@@ -153,3 +153,14 @@ test("모바일(390): 검색·알림 버튼이 보이고 패널이 화면 안에
   expect(box!.x).toBeGreaterThanOrEqual(0);
   expect(box!.x + box!.width).toBeLessThanOrEqual(390);
 });
+
+test("화면이 생긴 메뉴가 연결된다: 시작하기·외부 쇼핑몰 연동·자동 연결", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await login(page, "/seller/broadcast");
+  await expect(lnb(page).getByRole("link", { name: "외부 쇼핑몰 연동" })).toHaveAttribute("href", "/seller/external-shops");
+  await expect(lnb(page).getByRole("link", { name: "자동 연결" })).toHaveAttribute("href", "/seller/automation");
+  await gnb(page).getByRole("button", { name: "홈", exact: true }).click();
+  await expect(lnb(page).getByRole("link", { name: "시작하기" })).toHaveAttribute("href", "/seller/onboarding");
+  await lnb(page).getByRole("link", { name: "시작하기" }).click();
+  await expect(page).toHaveURL(/\/seller\/onboarding$/);
+});

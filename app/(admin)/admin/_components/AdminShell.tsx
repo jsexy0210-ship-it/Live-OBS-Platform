@@ -83,6 +83,9 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
   const utilities = (
     <>
+      <Link className="util-i" href="/admin/notifications" onClick={() => setNavOpen(false)}>
+        알림 센터
+      </Link>
       <a className="util-i off" aria-disabled="true" title="준비 중입니다">
         내 계정
       </a>
@@ -118,7 +121,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               {me.name} · {ROLE_LABEL[me.role]}
             </span>
             <GlobalSearch scope="admin" />
-            <NotificationBell scope="admin" />
+            <NotificationBell scope="admin" allHref="/admin/notifications" />
             <span className="util-desk">{utilities}</span>
           </div>
         </header>
