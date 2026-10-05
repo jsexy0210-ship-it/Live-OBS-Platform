@@ -1,5 +1,6 @@
 import { Prisma, type ActorType, type PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
+import { grantPromotionCoupon, SHIPPING_DISCOUNT_MAX } from "./benefits";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 import { GRADES_MAX, isUuid, nextRank, nextRunAt, parseCadence, parseDemotion, parseGradeName, parseMinAmount, parseOverrideReason, parseUntilDate, parseWindowMonths, runKey, targetRank, thresholdsIncrease, windowStart, type Cadence, type Demotion, type GradeRejection } from "./rules";
 
@@ -11,7 +12,7 @@ import { GRADES_MAX, isUuid, nextRank, nextRunAt, parseCadence, parseDemotion, p
 type Db = PrismaClient | Prisma.TransactionClient;
 type Tx = Prisma.TransactionClient;
 
-export type GradeFailure = GradeRejection | "not_found" | "base_grade_fixed" | "member_not_active" | "invalid_thresholds_for_run";
+export type GradeFailure = GradeRejection | "invalid_benefit" | "invalid_coupon" | "not_found" | "base_grade_fixed" | "member_not_active" | "invalid_thresholds_for_run";
 export const GRADE_MESSAGES: Record<string, string> = {
   invalid_grade_name: "등급 이름을 12자 이내로 입력해 주십시오",
   invalid_min_amount: "기준 금액은 0원 이상의 정수로 입력해 주십시오",
@@ -20,6 +21,8 @@ export const GRADE_MESSAGES: Record<string, string> = {
   duplicate_name: "같은 이름의 등급이 있습니다",
   base_grade_amount: "첫 등급의 기준 금액은 0원입니다",
   invalid_body: "입력을 확인해 주십시오",
+  invalid_benefit: "배송비 혜택을 확인해 주십시오. 정액 할인은 1원 이상 100,000원 이하로 입력합니다",
+  invalid_coupon: "승급 쿠폰은 직접 지급 방식으로 만든 쿠폰만 고를 수 있습니다",
   invalid_setting: "산정 기준을 확인해 주십시오",
   invalid_until: "고정 종료일은 오늘 이후 날짜로 입력해 주십시오",
   invalid_reason: "사유는 100자 이내로 입력해 주십시오",
@@ -45,7 +48,7 @@ const activeLock = (now: Date): Prisma.MemberGradeOverrideWhereInput => ({ OR: [
 // 화면 데이터: 등급(회원 수·적립률), 산정 기준, 지난·다음 재산정, 최근 변경, 고정한 회원
 export async function getMemberGrades(db: PrismaClient, ctx: TenantContext, now = new Date()) {
   requireSellerRead(ctx, "MEMBER_POINTS");
-  const [grades, policy, lastRun, reward, history, locked, lockedCount, counts] = await Promise.all([
+  const [grades, policy, lastRun, reward, history, locked, lockedCount, counts, couponRows] = await Promise.all([
     db.memberGrade.findMany({ where: { sellerId: ctx.sellerId }, orderBy: { sortOrder: "asc" } }),
     db.memberGradePolicy.findUnique({ where: { sellerId: ctx.sellerId } }),
     db.memberGradeRun.findFirst({ where: { sellerId: ctx.sellerId }, orderBy: { ranAt: "desc" } }),
@@ -54,6 +57,8 @@ export async function getMemberGrades(db: PrismaClient, ctx: TenantContext, now 
     db.memberGradeOverride.findMany({ where: { sellerId: ctx.sellerId, ...activeLock(now) }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 50, include: { buyerMember: { select: { id: true, broadcastNickname: true, gradeId: true } } } }),
     db.memberGradeOverride.count({ where: { sellerId: ctx.sellerId, ...activeLock(now) } }),
     db.buyerMember.groupBy({ by: ["gradeId"], where: { sellerId: ctx.sellerId, deletedAt: null, status: "ACTIVE" }, _count: { _all: true } }),
+    // 승급 쿠폰으로 고를 수 있는 쿠폰: 직접 지급 방식(종료된 쿠폰은 화면에서 이름 옆에 표시)
+    db.coupon.findMany({ where: { sellerId: ctx.sellerId, issueMethod: "MANUAL" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 100, select: { id: true, name: true, isActive: true, endsAt: true } }),
   ]);
   const rates = (reward?.rates && typeof reward.rates === "object" ? reward.rates : {}) as Rates;
   const cadence = (policy?.cadence ?? "MONTHLY") as Cadence;
@@ -67,7 +72,11 @@ export async function getMemberGrades(db: PrismaClient, ctx: TenantContext, now 
       members: counts.find((c) => c.gradeId === g.id)?._count._all ?? 0,
       rewardCard: rates[g.id]?.card ?? null,
       rewardBankTransfer: rates[g.id]?.bankTransfer ?? null,
+      shippingBenefit: g.shippingBenefit,
+      shippingDiscount: g.shippingDiscount,
+      promotionCouponId: g.promotionCouponId,
     })),
+    couponOptions: couponRows.map((c) => ({ id: c.id, name: c.name, usable: c.isActive && c.endsAt > now })),
     memberTotal: counts.reduce((n, c) => n + c._count._all, 0),
     autoEnabled: policy?.autoEnabled ?? false,
     windowMonths: policy?.windowMonths ?? 6,
@@ -93,14 +102,31 @@ export async function saveMemberGrades(db: PrismaClient, ctx: TenantContext, bod
   const cadence = body.cadence === undefined ? undefined : parseCadence(body.cadence);
   const demotion = body.demotion === undefined ? undefined : parseDemotion(body.demotion);
   if (windowMonths === null || cadence === null || demotion === null) return fail("invalid_setting");
-  const edits: { id: string; displayName: string; minAmount: number }[] = [];
+  type BenefitEdit = { shippingBenefit?: "NONE" | "DISCOUNT" | "FREE"; shippingDiscount?: number; promotionCouponId?: string | null };
+  const edits: ({ id: string; displayName: string; minAmount: number } & BenefitEdit)[] = [];
   for (const g of (body.grades ?? []) as Record<string, unknown>[]) {
     const name = parseGradeName(g?.displayName);
     const amount = parseMinAmount(g?.minAmount);
     if (!isUuid(g?.id)) return fail("invalid_body");
     if (!name) return fail("invalid_grade_name");
     if (amount === null) return fail("invalid_min_amount");
-    edits.push({ id: g.id as string, displayName: name, minAmount: amount });
+    const benefit: BenefitEdit = {};
+    if (g.shippingBenefit !== undefined) {
+      if (g.shippingBenefit !== "NONE" && g.shippingBenefit !== "DISCOUNT" && g.shippingBenefit !== "FREE") return fail("invalid_benefit");
+      benefit.shippingBenefit = g.shippingBenefit;
+      if (g.shippingBenefit === "DISCOUNT") {
+        if (typeof g.shippingDiscount !== "number" || !Number.isInteger(g.shippingDiscount) || g.shippingDiscount < 1 || g.shippingDiscount > SHIPPING_DISCOUNT_MAX) return fail("invalid_benefit");
+        benefit.shippingDiscount = g.shippingDiscount;
+      } else {
+        if (g.shippingDiscount !== undefined && g.shippingDiscount !== 0 && g.shippingDiscount !== null) return fail("invalid_benefit");
+        benefit.shippingDiscount = 0;
+      }
+    } else if (g.shippingDiscount !== undefined) return fail("invalid_benefit");
+    if (g.promotionCouponId !== undefined) {
+      if (g.promotionCouponId !== null && !isUuid(g.promotionCouponId)) return fail("invalid_coupon");
+      benefit.promotionCouponId = g.promotionCouponId as string | null;
+    }
+    edits.push({ id: g.id as string, displayName: name, minAmount: amount, ...benefit });
   }
   try {
     return await db.$transaction(async (tx) => {
@@ -112,16 +138,29 @@ export async function saveMemberGrades(db: PrismaClient, ctx: TenantContext, bod
       if (edits.some((e) => !known.has(e.id)) || new Set(edits.map((e) => e.id)).size !== edits.length) return fail("not_found");
       const next = current.map((g) => {
         const e = edits.find((x) => x.id === g.id);
-        return { ...g, displayName: e?.displayName ?? g.displayName, minAmount: e?.minAmount ?? g.minAmount };
+        return {
+          ...g,
+          displayName: e?.displayName ?? g.displayName,
+          minAmount: e?.minAmount ?? g.minAmount,
+          shippingBenefit: e?.shippingBenefit ?? g.shippingBenefit,
+          shippingDiscount: e?.shippingDiscount ?? g.shippingDiscount,
+          promotionCouponId: e?.promotionCouponId === undefined ? g.promotionCouponId : e.promotionCouponId,
+        };
       });
       if (new Set(next.map((g) => g.displayName)).size !== next.length) return fail("duplicate_name");
+      // 승급 쿠폰은 이 쇼핑몰의 직접 지급 방식 쿠폰이어야 한다
+      const couponIds = [...new Set(edits.map((e) => e.promotionCouponId).filter((v): v is string => typeof v === "string"))];
+      if (couponIds.length > 0 && (await tx.coupon.count({ where: { sellerId: ctx.sellerId, id: { in: couponIds }, issueMethod: "MANUAL" } })) !== couponIds.length) return fail("invalid_coupon");
       if (next[0] && next[0].minAmount !== 0) return fail("base_grade_amount");
       const before = await tx.memberGradePolicy.findUniqueOrThrow({ where: { sellerId: ctx.sellerId } });
       const auto = body.autoEnabled ?? before.autoEnabled;
       if (auto && !thresholdsIncrease(next.map((g) => g.minAmount))) return fail("invalid_thresholds");
       // 이름을 서로 맞바꿔도 유니크 키에 걸리지 않게 임시 이름을 거친다
       for (const e of edits) await tx.memberGrade.update({ where: { id: e.id }, data: { displayName: `__tmp_${e.id}` } });
-      for (const e of edits) await tx.memberGrade.update({ where: { id: e.id }, data: { displayName: e.displayName, minAmount: e.minAmount } });
+      for (const e of edits) {
+        const { id: _id, ...data } = e;
+        await tx.memberGrade.update({ where: { id: e.id }, data });
+      }
       const now = await clockNow(tx);
       const after = {
         autoEnabled: auto,
@@ -134,7 +173,14 @@ export async function saveMemberGrades(db: PrismaClient, ctx: TenantContext, bod
         const key = runKey(after.cadence, now);
         await tx.memberGradeRun.upsert({ where: { sellerId_monthKey: { sellerId: ctx.sellerId, monthKey: key } }, create: { sellerId: ctx.sellerId, monthKey: key, ranAt: now }, update: {} });
       }
-      await audit(tx, ctx, "member_grade.update", undefined, { ...pick(before), grades: current.map((g) => [g.displayName, g.minAmount]) }, { ...after, grades: next.map((g) => [g.displayName, g.minAmount]) });
+      await audit(
+        tx,
+        ctx,
+        "member_grade.update",
+        undefined,
+        { ...pick(before), grades: current.map((g) => [g.displayName, g.minAmount, g.shippingBenefit, g.shippingDiscount, g.promotionCouponId]) },
+        { ...after, grades: next.map((g) => [g.displayName, g.minAmount, g.shippingBenefit, g.shippingDiscount, g.promotionCouponId]) },
+      );
       return { ok: true as const };
     });
   } catch (e) {
@@ -220,6 +266,8 @@ export async function setMemberGrade(db: PrismaClient, ctx: TenantContext, membe
     if (from.id !== to.id) {
       await tx.buyerMember.update({ where: { id: memberId }, data: { gradeId: to.id } });
       await tx.memberGradeHistory.create({ data: { sellerId: ctx.sellerId, buyerMemberId: memberId, fromName: from.displayName, toName: to.displayName, reason: "MANUAL", staffId: ctx.actorId } });
+      // 직접 올린 경우에도 그 등급의 승급 쿠폰을 한 장 준다(이미 받은 쿠폰은 다시 주지 않음)
+      if (to.sortOrder > from.sortOrder) await grantPromotionCoupon(tx, { sellerId: ctx.sellerId, buyerMemberId: memberId, gradeId: to.id });
     }
     if (lock) {
       // 이미 고정한 회원이면 기간·사유만 새로 정한다
@@ -232,6 +280,19 @@ export async function setMemberGrade(db: PrismaClient, ctx: TenantContext, membe
     await audit(tx, ctx, "member_grade.manual", memberId, { grade: from.displayName, locked: hadLock }, { grade: to.displayName, locked: lock, until, reason }, "BuyerMember");
     return { ok: true as const, changed: from.id !== to.id };
   });
+}
+
+// 「변동 회원 보기」: 최근 변경(승급·강등·직접 조정) 목록. kind: up(승급) / down(강등) / 없으면 전체. 최근 100건.
+export async function listGradeChanges(db: PrismaClient, ctx: TenantContext, q: { kind?: unknown } = {}) {
+  requireSellerRead(ctx, "MEMBER_POINTS");
+  const reasons = q.kind === "up" ? (["AUTO_UP"] as const) : q.kind === "down" ? (["AUTO_DOWN"] as const) : undefined;
+  const rows = await db.memberGradeHistory.findMany({
+    where: { sellerId: ctx.sellerId, ...(reasons ? { reason: { in: [...reasons] } } : {}) },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: 100,
+    include: { buyerMember: { select: { id: true, broadcastNickname: true } } },
+  });
+  return { changes: rows.map((h) => ({ id: h.id, memberId: h.buyerMember.id, nickname: h.buyerMember.broadcastNickname, fromName: h.fromName, toName: h.toName, reason: h.reason, amount: h.amount, createdAt: h.createdAt })) };
 }
 
 // 탈퇴 때: 그 회원의 고정 표시·등급 변경 기록을 지운다(개인정보는 없지만 회원에 딸린 기록이라 남기지 않는다)
@@ -306,6 +367,17 @@ export async function recalcSellerGrades(db: PrismaClient, sellerId: string, now
           else demoted++;
           await tx.memberGradeHistory.create({
             data: { sellerId, buyerMemberId: m.id, fromName: grades[cur].displayName, toName: grades[nxt].displayName, reason: nxt > cur ? "AUTO_UP" : "AUTO_DOWN", amount: amt, createdAt: now, staffId: opts.actor?.actorId ?? null },
+          });
+          // 승급이면 그 등급의 승급 쿠폰을 한 장 준다(같은 쿠폰은 다시 주지 않음). 승급·강등 알림은 발송 채널이 정해질 때까지 발송 기록만 남긴다.
+          const coupon = nxt > cur ? await grantPromotionCoupon(tx, { sellerId, buyerMemberId: m.id, gradeId: grades[nxt].id }) : "none";
+          await writeAudit(tx, {
+            actorType: "SYSTEM",
+            actorId: null,
+            sellerId,
+            action: "member_grade.notice",
+            targetType: "BuyerMember",
+            targetId: m.id,
+            after: { kind: nxt > cur ? "UP" : "DOWN", to: grades[nxt].displayName, coupon, delivered: false },
           });
         }
         if (page.length < PAGE) break;

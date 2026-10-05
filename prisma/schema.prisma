@@ -308,6 +308,13 @@ enum GradeSystemKey {
   VIP
 }
 
+// 등급 혜택(SA-044): 배송비 혜택 없음 / 정액 할인(shippingDiscount원, 배송비를 넘으면 0원) / 무료
+enum GradeShippingBenefit {
+  NONE
+  DISCOUNT
+  FREE
+}
+
 // 등급은 id·displayName·sortOrder로 식별한다. systemKey는 기본 5개 표시용(판매자가 추가한 등급은 null).
 model MemberGrade {
   id          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -317,6 +324,10 @@ model MemberGrade {
   systemKey   GradeSystemKey?
   // 자동 재산정 승급 기준: 최근 6개월 결제 금액이 이 값 이상이면 이 등급 이상(member-grades). 기본 등급은 항상 0.
   minAmount   Int             @default(0)
+  // 등급 혜택: 배송비(주문 견적·주문 생성이 같은 계산을 씀, shop-member-grades/benefits.ts)와 승급 쿠폰(직접 지급 방식 쿠폰 id, 승급할 때 한 번 지급. 쿠폰 존재·방식은 저장할 때 검사)
+  shippingBenefit   GradeShippingBenefit @default(NONE)
+  shippingDiscount  Int                  @default(0)
+  promotionCouponId String?              @db.Uuid
   createdAt   DateTime        @default(now()) @db.Timestamptz(3)
 
   seller  Seller        @relation(fields: [sellerId], references: [id])
