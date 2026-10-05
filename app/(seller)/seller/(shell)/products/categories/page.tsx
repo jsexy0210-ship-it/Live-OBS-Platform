@@ -1,6 +1,5 @@
 "use client";
 
-import "../../../../../../styles/seller-orders.css";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Modal, PageHead } from "../../../../../../components/admin-ui";
@@ -210,8 +209,8 @@ export default function CategoriesPage() {
             </div>
           )}
           {state.kind === "ok" && tree.length > 0 && (
-            <div className="ord-scroll">
-              <table className="tbl ord-tbl">
+            <div className="au-lt-wrap">
+              <table className="tbl">
                 <thead>
                   <tr>
                     <th>이름</th>
