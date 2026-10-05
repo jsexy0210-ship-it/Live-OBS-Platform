@@ -2645,3 +2645,20 @@ model OverlayTemplate {
 
   @@index([sellerId, createdAt])
 }
+
+// 파트너스 유튜브 설정(SA-057). 행이 없으면 기본값. 채팅 수집 기본값은 새로 연결하는 방송에 적용한다(기본 꺼짐).
+// 판매자는 지우지 않으므로 할당량 표처럼 sellerId만 둔다(Seller 블록은 고치지 않음, 조회·변경은 항상 ctx.sellerId 조건).
+model YoutubeSellerSetting {
+  sellerId           String   @id @db.Uuid
+  chatDefaultEnabled Boolean  @default(false)
+  updatedAt          DateTime @updatedAt @db.Timestamptz(3)
+}
+
+// 파트너스별 월 채팅 수집 건수(KST 달, "YYYY-MM"). 채팅을 지워도(30일 정리·지금 삭제) 이번 달 수집 현황이 남도록 따로 센다.
+model YoutubeChatMonthly {
+  sellerId String @db.Uuid
+  month    String
+  messages Int    @default(0)
+
+  @@id([sellerId, month])
+}
