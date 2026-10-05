@@ -1,6 +1,5 @@
 "use client";
 
-import "../../../../../../styles/seller-orders.css";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ListHead, Modal, PageHead } from "../../../../../../components/admin-ui";
@@ -143,8 +142,8 @@ export default function DepositsPage() {
             </div>
           )}
           {state.kind === "ok" && rows.length > 0 && (
-            <div className="ord-scroll">
-              <table className="tbl ord-tbl">
+            <div className="au-lt-wrap">
+              <table className="tbl">
                 <thead>
                   <tr>
                     <th style={{ width: 36 }}>
@@ -168,7 +167,7 @@ export default function DepositsPage() {
                           <input className="cbx" type="checkbox" aria-label={`${o.nickname} 선택`} checked={picked.includes(o.orderId)} onChange={() => toggle(o.orderId)} />
                         </td>
                         <td className="col-text">
-                          <Link href={`/seller/orders/${o.orderId}`} className="fw6 ord-link">
+                          <Link href={`/seller/orders/${o.orderId}`} className="fw6">
                             {o.nickname}
                           </Link>
                           <div className="t-c1 c-alt num">{listTime(o.createdAt)} 주문</div>
