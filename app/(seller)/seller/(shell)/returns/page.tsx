@@ -47,7 +47,7 @@ type Detail = Row & {
   partialQuantity: boolean;
   refunds: RefundRow[];
   paymentMethod: string | null;
-  refundAccount: { bankName: string; accountHolder: string; accountNumber: string } | null;
+  refundAccount: { bankName: string; accountHolder: string; accountNumber: string | null } | null;
   images: { id: string; width: number; height: number }[];
   order: { status: string; totalAmount: number; shippingFee: number };
   refundPreview: { byFault: Record<Fault, { refundAmount: number; returnFeeDeducted: number; rewardReturn: number; blocked: boolean }> } | null;
@@ -367,7 +367,7 @@ function ReturnDetail({ id, canEdit, onClose, onChanged }: { id: string; canEdit
               <div className="msg msg-info" role="status" data-testid="rt-account">
                 <span>
                   무통장 입금 주문입니다 · 구매자가 입력한 환불 계좌로 보냅니다
-                  {d.refundAccount ? ` · 예금주 ${d.refundAccount.accountHolder} · ${d.refundAccount.bankName} ${d.refundAccount.accountNumber}` : " · 환불 계좌가 없습니다"} · 계좌 확인 뒤 「환불」
+                  {d.refundAccount ? ` · 예금주 ${d.refundAccount.accountHolder} · ${d.refundAccount.bankName} ${d.refundAccount.accountNumber ?? "(계좌번호를 불러오지 못했습니다. 구매자에게 다시 확인해 주십시오)"}` : " · 환불 계좌가 없습니다"} · 계좌 확인 뒤 「환불」
                 </span>
               </div>
             )}
