@@ -46,6 +46,12 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
   const quote = preview && fault ? preview.byFault[fault] : null;
   const same = preview && preview.byFault.BUYER.refundAmount === preview.byFault.SELLER.refundAmount ? preview.byFault.SELLER.refundAmount : null;
   const amount = quote ? quote.refundAmount : fault === null ? same : null;
+  // 함께 적립금으로 돌려주는 금액(고르기 전에는 두 사유 주체가 같을 때만)
+  const rewardReturn = quote
+    ? (quote.rewardReturn ?? null)
+    : preview && fault === null && preview.byFault.BUYER.rewardReturn === preview.byFault.SELLER.rewardReturn
+      ? (preview.byFault.SELLER.rewardReturn ?? null)
+      : null;
   const blocked = quote?.blocked === true;
   const nothing = quote !== null && !blocked && quote.refundAmount === 0;
   // 구매자 사정이면 빼는 항목(개봉한 상품, 발송했으면 처음 배송비·반품 배송비). 금액은 서버 계산(quote)이 기준이다
@@ -196,10 +202,18 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
                 <dd className="num c-neg">−{won(d.amount)}</dd>
               </Fragment>
             ))}
-            <dt>환불 금액</dt>
+            <dt>현금 환불</dt>
             <dd className="num fw7" data-testid="refund-amount">
               {blocked ? "—" : amount !== null ? won(amount) : fault === null ? "사유 주체를 선택하면 표시됩니다" : "금액을 확인하지 못했습니다"}
             </dd>
+            {rewardReturn !== null && !blocked && (
+              <>
+                <dt>적립금 반환</dt>
+                <dd className="num" data-testid="refund-reward">
+                  {rewardReturn > 0 ? `${won(rewardReturn)} · 적립금으로 반환` : "0원 (사용한 적립금 없음)"}
+                </dd>
+              </>
+            )}
             {order.paymentMethod === "CARD" && (
               <>
                 <dt>환불 수단</dt>
@@ -207,6 +221,9 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
               </>
             )}
           </dl>
+          {rewardReturn !== null && rewardReturn > 0 && !blocked && (
+            <span className="t-c1 c-alt">현금 환불 = 취소 상품 금액 − 적립금 반환 · 쓴 적립금은 취소 상품 금액 비율만큼 10원 단위 내림으로 돌려줍니다</span>
+          )}
           {blocked && (
             <div className="msg msg-neg" role="alert" style={{ display: "block" }}>
               발송 전에 개봉한 상품이 있어 구매자 사정으로는 환불할 수 없습니다. 개봉한 상품을 보낸 뒤 처리해 주십시오
