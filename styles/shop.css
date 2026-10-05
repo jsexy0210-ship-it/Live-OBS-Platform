@@ -536,6 +536,116 @@ body {
 .shop-searchbox .btn {
   border-radius: var(--shop-r);
 }
+/* IA ⑥ 검색: 자동완성 · 최근·인기 검색어 */
+.shop-sb-field {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+.shop-sb-field .inp {
+  width: 100%;
+}
+.shop-sb-list {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  top: 100%;
+  margin: 4px 0 0;
+  padding: 4px 0;
+  list-style: none;
+  background: #fff;
+  border: 1px solid var(--wds-line-solid-neutral);
+  border-radius: var(--shop-r);
+}
+.shop-sb-list button {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.shop-sb-list button span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shop-sb-list button em {
+  flex: none;
+  margin-left: 8px;
+  white-space: nowrap;
+}
+.shop-sb-list [aria-selected="true"] button,
+.shop-sb-list button:hover {
+  background: var(--wds-fill-normal);
+}
+.shop-sb-list em {
+  font-style: normal;
+  font-size: 12px;
+  color: var(--wds-label-assistive);
+}
+.shop-sb-help {
+  display: grid;
+  gap: 24px;
+}
+.shop-sb-help h2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+.shop-sb-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.shop-sb-chips li {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--wds-line-solid-neutral);
+  border-radius: 16px;
+  padding: 0 4px 0 12px;
+}
+.shop-app .shop-sb-chips a {
+  color: var(--wds-label-normal);
+  text-decoration: none;
+}
+.shop-sb-chips button {
+  border: 0;
+  background: none;
+  padding: 4px 8px;
+  cursor: pointer;
+  color: var(--wds-label-alternative);
+}
+.shop-sb-pop {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.shop-app .shop-sb-pop a {
+  display: flex;
+  gap: 8px;
+  padding: 6px 0;
+  color: var(--wds-label-normal);
+  text-decoration: none;
+}
+.shop-sb-pop i {
+  font-style: normal;
+  font-weight: 700;
+  color: var(--brand);
+  width: 16px;
+}
 
 /* 상품 목록: 왼쪽 카테고리(PC) + 오른쪽 목록 */
 .shop-plist {
