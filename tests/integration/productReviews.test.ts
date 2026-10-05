@@ -19,6 +19,7 @@ import { refundOrder } from "../../lib/server/queue/service";
 import { withdrawBuyer } from "../../lib/server/buyers/withdraw";
 import { prisma } from "../../lib/server/db";
 import { hasImageMetadata } from "../../lib/server/product-reviews/image";
+import { jpeg, webp } from "../unit/productImageFormatsFixtures";
 import { fakeJpeg } from "../unit/reviewFixtures";
 import { PASSWORD, createLoginBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
@@ -226,7 +227,7 @@ describe("공개 방식·자동 보류·적립금", () => {
     expect(await withdrawBuyer(db, { sellerId: s.seller.id, buyerMemberId: s.buyer.id }, { password: PASSWORD })).toEqual({ ok: true });
     expect((await publishPost(json("/x", "POST", s.owner, {}), p({ reviewId: r.reviewId }))).status).toBe(200);
     expect(await sellerReward(s, r.reviewId)).toEqual([0, 0]);
-    const audit = await db.auditLog.findFirstOrThrow({ where: { action: "review.publish", targetId: r.reviewId } });
+    const audit = await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "review.publish", targetId: r.reviewId } });
     expect((audit.after as { grantedReward: number }).grantedReward).toBe(0);
     expect((await hidePost(json("/x", "POST", s.cs, { reason: "OTHER" }), p({ reviewId: r.reviewId }))).status).toBe(200);
     expect(await ledger(s)).toEqual([]);
@@ -249,13 +250,13 @@ describe("공개 방식·자동 보류·적립금", () => {
     const n = 300;
     const base = 800000;
     await db.order.createMany({ data: Array.from({ length: n }, (_, i) => ({ sellerId: s.seller.id, orderNo: base + i, buyerMemberId: s.buyer.id, status: "PAID" as const, broadcastNicknameSnapshot: "닉", totalAmount: 30000, paidAt: new Date(), purchaseConfirmedAt: new Date() })) });
-    const orders = await db.order.findMany({ where: { sellerId: s.seller.id, orderNo: { gte: base } }, select: { id: true } });
+    const orders = await db.order.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id, orderNo: { gte: base } }, select: { id: true } });
     await db.shipment.createMany({ data: orders.map((o) => ({ sellerId: s.seller.id, orderId: o.id, courier: "CJ", trackingNumber: "123456789012", status: "DELIVERED" as const, shippedAt: new Date(Date.now() - 2 * DAY), deliveredAt: new Date(Date.now() - DAY) })) });
-    const option = await db.productOption.findFirstOrThrow({ where: { sellerId: s.seller.id } });
+    const option = await db.productOption.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id } });
     await db.orderItem.createMany({ data: orders.map((o) => ({ sellerId: s.seller.id, orderId: o.id, productId: s.product.id, optionId: option.id, productNameSnapshot: "상품", optionNameSnapshot: "옵션", unitPrice: 30000, quantity: 1 })) });
-    const items = await db.orderItem.findMany({ where: { sellerId: s.seller.id, orderId: { in: orders.map((o) => o.id) } }, select: { id: true, orderId: true } });
+    const items = await db.orderItem.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id, orderId: { in: orders.map((o) => o.id) } }, select: { id: true, orderId: true } });
     await db.productReview.createMany({ data: items.map((it) => ({ sellerId: s.seller.id, orderId: it.orderId, orderItemId: it.id, productId: s.product.id, buyerMemberId: s.buyer.id, authorNickname: "닉", rating: 5, body: BODY, status: "VISIBLE" as const, rewardRound: 1 })) });
-    const reviews = await db.productReview.findMany({ where: { sellerId: s.seller.id }, select: { id: true, orderId: true } });
+    const reviews = await db.productReview.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id }, select: { id: true, orderId: true } });
     await db.rewardLedger.createMany({ data: reviews.map((r, i) => ({ sellerId: s.seller.id, buyerMemberId: s.buyer.id, orderId: r.orderId, type: "EARN" as const, amount: 500, testMode: true, status: i % 2 ? ("SUCCEEDED" as const) : ("PENDING" as const), idempotencyKey: `review_reward:${r.id}:1` })) });
     // 탈퇴 트랜잭션 안의 쿼리 수를 센다
     let calls = 0;
@@ -521,7 +522,7 @@ describe("권한·테넌트·공개 목록", () => {
     expect((await setPolicy({ ...s, owner: s.noPerm }, {})).status).toBe(403);
     expect((await policyGet(get("/x", s.noPerm))).status).toBe(200);
     expect((await replyPut(json("/x", "PUT", s.cs, { reply: "소중한 리뷰 감사합니다" }), p({ reviewId: r.reviewId }))).status).toBe(200);
-    expect((await db.auditLog.findMany({ where: { sellerId: s.seller.id, action: { startsWith: "review." } } })).map((a) => a.action)).toEqual(["review.reply"]);
+    expect((await db.auditLog.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: s.seller.id, action: { startsWith: "review." } } })).map((a) => a.action)).toEqual(["review.reply"]);
   });
 
   it("다른 쇼핑몰의 리뷰·사진은 404이고 바뀌지 않는다", async () => {
@@ -694,11 +695,11 @@ describe("환불과 리뷰 적립", () => {
     await created(s, b.id);
     const rb = await refund(s, b.orderId);
     expect(rb.ok && rb.value.reviewRewardRevoke).toEqual({ outcome: "manual_review", amount: 500 });
-    const audit = await db.auditLog.findFirstOrThrow({ where: { action: "order.refund", targetId: b.orderId } });
+    const audit = await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "order.refund", targetId: b.orderId } });
     expect((audit.after as { reviewRewardRevoke: unknown }).reviewRewardRevoke).toEqual({ outcome: "manual_review", amount: 500 });
     // SA-048 목록·상세에 「적립금 수동 회수 필요」 금액이 나온다(자동 회수된 건은 0)
     const lst = (await (await sellerList(get("/x", s.owner))).json()) as { reviews: { id: string; revokePending: number }[] };
-    const mine = await db.productReview.findFirstOrThrow({ where: { orderId: b.orderId } });
+    const mine = await db.productReview.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { orderId: b.orderId } });
     expect(lst.reviews.find((x) => x.id === mine.id)?.revokePending).toBe(500);
     expect(lst.reviews.filter((x) => x.id !== mine.id).every((x) => x.revokePending === 0)).toBe(true);
     const det = ((await (await sellerDetailGet(get("/x", s.owner), p({ reviewId: mine.id }))).json()) as { review: { revokePending: number } }).review;
@@ -926,6 +927,32 @@ describe("사진·잠긴 쇼핑몰·탈퇴", () => {
     expect((await upload(s, Buffer.from("not an image"))).status).toBe(400);
   });
 
+  it("휴대폰 사진: GPS EXIF가 든 JPG(1MB 넘음)와 WEBP는 올라가고 저장본에 EXIF가 없다. 5MB를 넘으면 413, 지원하지 않는 형식은 400", async () => {
+    const s = await shop();
+    const big = jpeg(3000, 2000, { exif: true, comment: true, xmp: true, trailer: Buffer.alloc(2 * 1024 * 1024, 7) });
+    expect(big.length).toBeGreaterThan(1024 * 1024);
+    const r1 = await upload(s, big);
+    expect(r1.status).toBe(201);
+    const id1 = ((await r1.json()) as { image: { id: string } }).image.id;
+    const row1 = await db.productReviewImage.findUniqueOrThrow({ where: { id: id1 } });
+    expect([row1.contentType, row1.width, row1.height]).toEqual(["image/jpeg", 3000, 2000]);
+    expect(hasImageMetadata(Buffer.from(row1.data))).toBe(false);
+    expect(Buffer.from(row1.data).includes(Buffer.from("GPSLatitude"))).toBe(false);
+    const r2 = await upload(s, webp(800, 600, { exif: true }));
+    expect(r2.status).toBe(201);
+    const id2 = ((await r2.json()) as { image: { id: string } }).image.id;
+    const row2 = await db.productReviewImage.findUniqueOrThrow({ where: { id: id2 } });
+    expect([row2.contentType, hasImageMetadata(Buffer.from(row2.data))]).toEqual(["image/webp", false]);
+    const served = await myImageGet(get("/x", s.b1), p({ slug: s.slug, imageId: id2 }));
+    expect(served.headers.get("content-type")).toBe("image/webp");
+    // 5MB 초과는 끝까지 받지 않고 413, 다른 형식(GIF)은 400
+    expect((await upload(s, Buffer.alloc(5 * 1024 * 1024 + 1, 1))).status).toBe(413);
+    expect((await upload(s, Buffer.from("GIF89a" + "x".repeat(200)))).status).toBe(400);
+    // 올린 사진은 리뷰에 붙여 쓸 수 있다
+    const w = await created(s, (await s.delivered()).id, { rating: 5, body: BODY, imageIds: [id1, id2] });
+    expect(w.res.status).toBe(201);
+  });
+
   it("이용이 막힌 쇼핑몰은 쓰기·고치기·지우기·사진·신고 402(Codex 4176709637), 내 리뷰는 읽을 수 있다", async () => {
     const s = await shop();
     const r = await created(s, (await s.delivered()).id);
@@ -952,7 +979,7 @@ describe("사진·잠긴 쇼핑몰·탈퇴", () => {
     expect((await db.productReview.findUniqueOrThrow({ where: { id: r.reviewId } })).authorNickname).toBe("탈퇴 회원");
     expect(await db.productReviewReport.count({ where: { buyerMemberId: s.buyer.id } })).toBe(1);
     expect(await db.productReviewImage.count({ where: { buyerMemberId: s.buyer.id, reviewId: null } })).toBe(0);
-    const audit = await db.auditLog.findFirstOrThrow({ where: { action: "buyer.withdraw", actorId: s.buyer.id } });
+    const audit = await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "buyer.withdraw", actorId: s.buyer.id } });
     expect((audit.after as { reviews: { reviews: number } }).reviews.reviews).toBe(1);
   });
 });

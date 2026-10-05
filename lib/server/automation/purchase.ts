@@ -471,16 +471,19 @@ export async function reconcileAutomationPayments(db: PrismaClient, provider: Bi
   // 고르기와 점유를 한 문장으로: 확인 간격이 지난 PENDING 청구를 확인한 지 오래된 순(처음이면 먼저)·id 순으로 50건 골라
   // 확인 시각을 남기고 그 행만 돌려준다(다른 작업자가 잠근 행은 건너뜀). 여러 작업자가 동시에 돌아도 같은 청구는 한 작업자만 PG에 묻고,
   // 오류가 난 건도 다음 회차에는 뒤로 간다.
+  // 고르는 질의는 MATERIALIZED로 한 번만 돈다. 「WHERE id IN (… LIMIT … FOR UPDATE SKIP LOCKED)」는 실행 계획에 따라 하위 질의가 다시 돌며
+  // 이미 바꾼 행을 건너뛰고 다음 행을 집어 50건을 넘길 수 있다.
   const stale = await db.$queryRaw<{ id: string; sellerId: string }[]>`
-    UPDATE "AutomationPayment" SET "lastCheckedAt" = clock_timestamp()
-    WHERE id IN (
+    WITH picked AS MATERIALIZED (
       SELECT id FROM "AutomationPayment"
       WHERE status = 'PENDING' AND "createdAt" <= ${cutoff} AND ("lastCheckedAt" IS NULL OR "lastCheckedAt" <= ${cutoff})
       ORDER BY "lastCheckedAt" ASC NULLS FIRST, id ASC
       LIMIT 50
       FOR UPDATE SKIP LOCKED
     )
-    RETURNING id, "sellerId"`;
+    UPDATE "AutomationPayment" p SET "lastCheckedAt" = clock_timestamp()
+    FROM picked WHERE p.id = picked.id
+    RETURNING p.id, p."sellerId"`;
   let settled = 0;
   for (const p of stale) {
     // 한 건 조회가 실패해도 나머지는 계속 확인한다

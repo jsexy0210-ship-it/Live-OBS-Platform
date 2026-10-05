@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { textLength } from "../../../../lib/server/text/clean";
+import { Modal } from "../../../../components/admin-ui/Modal";
 import { adminApi } from "./api";
 import type { SellerStatus } from "./partners";
 
@@ -51,17 +52,18 @@ export function SuspendDialog({
   };
 
   return (
-    <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="suspend-title">
-      <div className="modal">
+    <Modal labelId="suspend-title" busy={busy} dirty={reason !== ""} onClose={onClose}>
+      {(requestClose) => (
+        <>
         <div className="modal-h">
-          <h2 className="t-h2" id="suspend-title">
+          <h2 className="modal-t" id="suspend-title">
             {suspend ? "이용을 정지하시겠습니까?" : "이용 정지를 해제하시겠습니까?"}
           </h2>
           <span className="t-l2 c-alt">
             {suspend ? `${seller.shopName}의 파트너스 로그인과 쇼핑몰 이용이 바로 막힙니다.` : `${seller.shopName}이(가) 바로 다시 이용할 수 있습니다.`}
           </span>
         </div>
-        <div className="col" style={{ gap: 6, padding: "0 24px" }}>
+        <div className="col" style={{ gap: 6 }}>
           <label className="lbl" htmlFor="suspend-reason">
             {suspend ? "사유" : "사유 (선택)"}
           </label>
@@ -76,14 +78,15 @@ export function SuspendDialog({
           )}
         </div>
         <div className="modal-f">
-          <button className="btn btn-out" type="button" onClick={onClose} disabled={busy}>
+          <button className="btn btn-out" type="button" onClick={requestClose} disabled={busy}>
             취소
           </button>
           <button className="btn" type="button" onClick={() => void submit()} disabled={busy || tooLong || missing}>
             {busy ? "처리 중" : suspend ? "이용 정지" : "정지 해제"}
           </button>
         </div>
-      </div>
-    </div>
+        </>
+      )}
+    </Modal>
   );
 }

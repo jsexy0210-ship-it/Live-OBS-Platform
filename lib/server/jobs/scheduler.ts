@@ -2,6 +2,9 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { purgeOldRecoveryVerifications } from "../auth/accountRecovery";
 import { purgeExpiredRejoinBlocks } from "../buyers/rejoin";
 import { purgeOldSignupVerificationIps, purgeUnfinishedSignupVerifications } from "../buyers/signup";
+import { prisma } from "../db";
+import { MESSAGE_JOB_NAME, runMessageJobs } from "../messaging/jobs";
+import { recalcMonthlyGrades } from "../shop-member-grades/service";
 import { markInstanceRetired, purgeOldOpsEvents, purgeRetiredHeartbeats, recordHeartbeat, registerInstance } from "../ops/metrics";
 
 // 앱 안 정기 실행(MASTER 결정 2026-10-03: 외부 cron 대신). instrumentation.ts register(nodejs 런타임)에서 startScheduler를 부른다.
@@ -26,6 +29,10 @@ export const SCHEDULED_JOBS: ScheduledJob[] = [
   { name: "ops_heartbeat.purge_retired", run: (tx, now) => purgeRetiredHeartbeats(tx, now) },
   // 받은 지 30일 지난 감시 사건 지우기((source, key)별 마지막 열림·닫힘은 남김, ops/metrics.ts)
   { name: "ops_event.purge_old", run: (tx, now) => purgeOldOpsEvents(tx, now) },
+  // 발송 충전 대조·멈춘 예약 정리(messaging/jobs.ts). 이 작업이 최근에 성공해야 충전 기능을 켤 수 있다.
+  { name: MESSAGE_JOB_NAME, run: (_tx, now) => runMessageJobs(prisma, now) },
+  // 회원 등급 자동 재산정: 켠 쇼핑몰만, 쇼핑몰마다 달(KST)에 한 번(shop-member-grades)
+  { name: "member_grade.recalc_monthly", run: (_tx, now) => recalcMonthlyGrades(prisma, now) },
 ];
 
 export const SCHEDULER_INTERVAL_MS = 3600_000;

@@ -148,7 +148,7 @@ describe("판매자 비밀번호 찾기 (대표자 휴대폰 본인확인)", () 
       await db.sellerUser.update({ where: { id: owner.id }, data: { isOwner: true } });
       await passwordUnchanged(owner.email);
       // 대표자가 아니게 되면 직원 기준(연결 CI)으로 보는데, 연결 CI가 없어 거부된다
-      expect((await db.auditLog.findFirstOrThrow({ where: { action: "auth.seller.password_reset.failed", reason: "staff_not_linked" } })).actorId).toBe(owner.id);
+      expect((await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "auth.seller.password_reset.failed", reason: "staff_not_linked" } })).actorId).toBe(owner.id);
     });
 
     it("그사이 계정이 비활성화되면 거부", async () => {
@@ -185,7 +185,7 @@ describe("판매자 비밀번호 찾기 (대표자 휴대폰 본인확인)", () 
     const { seller, owner } = await shop();
     const { grant } = await grantFor(owner.email, seller.slug, "SOMEONE-ELSE");
     expect(grant).toEqual({ ok: false, reason: "reset_not_allowed" });
-    expect((await db.auditLog.findFirstOrThrow({ where: { action: "auth.seller.password_reset.failed" } })).reason).toBe("ci_mismatch");
+    expect((await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "auth.seller.password_reset.failed" } })).reason).toBe("ci_mismatch");
     expect(await db.passwordResetGrant.count()).toBe(0);
   });
 
@@ -193,7 +193,7 @@ describe("판매자 비밀번호 찾기 (대표자 휴대폰 본인확인)", () 
     const { seller, manager } = await shop();
     const { grant } = await grantFor(manager.email, seller.slug, "REP-CI");
     expect(grant).toEqual({ ok: false, reason: "reset_not_allowed" });
-    expect((await db.auditLog.findFirstOrThrow({ where: { action: "auth.seller.password_reset.failed" } })).reason).toBe("staff_not_linked");
+    expect((await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "auth.seller.password_reset.failed" } })).reason).toBe("staff_not_linked");
   });
 
   it("없는 계정도 시작 응답 모양이 같고, 결과는 같은 거부", async () => {
@@ -310,7 +310,7 @@ describe("비밀번호 찾기 시작 횟수 (쇼핑몰당 하루 10회, KST 자�
       reason: "reset_limit_exceeded",
     });
     expect(await db.identityVerification.count({ where: { sellerId: seller.id } })).toBe(10);
-    expect(await db.auditLog.findFirstOrThrow({ where: { action: "auth.seller.password_reset.limited" } })).toMatchObject({
+    expect(await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "auth.seller.password_reset.limited" } })).toMatchObject({
       sellerId: seller.id,
       reason: "reset_limit_exceeded",
     });

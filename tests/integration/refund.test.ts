@@ -99,7 +99,7 @@ describe("환불: 개봉 전 품목만 재고 복구, 연결된 대기·개봉 �
       await refundOrder(db, s.ctx, order.id, { reason: "요청", expectedLiveVersion: await lv(s.ctx.sellerId), confirmOpened: true, fault: "SELLER" }),
     ).toMatchObject({ ok: true, value: { restockedItemIds: [], cancelledQueueItemIds: [], openedItemCount: 1 } });
     expect(await queueStatus(queueItemIds[0])).toBe("DONE");
-    const audit = await db.auditLog.findFirstOrThrow({ where: { action: "order.refund", targetId: order.id } });
+    const audit = await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "order.refund", targetId: order.id } });
     expect(audit.after).toMatchObject({ status: "REFUNDED", openedItems: 1 });
     expect(await stockOf(options[0].id)).toBe(9);
   });
@@ -118,8 +118,9 @@ describe("환불: 개봉 전 품목만 재고 복구, 연결된 대기·개봉 �
     await db.sellerShippingPolicy.create({ data: { sellerId: s.seller.id, returnFee: 0 } });
     await ship(s.ctx, p.order.id);
     const res = await refundOrder(db, s.ctx, p.order.id, { reason: "요청", expectedLiveVersion: await lv(s.ctx.sellerId), confirmOpened: true, fault: "BUYER" });
-    // 개봉하지 않은 품목 5,000원이지만 돈으로는 실제 결제액 4,000원까지만 돌려준다
-    expect(res).toMatchObject({ ok: true, value: { refundAmount: 4000, openedItemCount: 1 } });
+    // 돌아오는 품목 5,000원 = 적립금 반환 6,000 × 5,000 ÷ 10,000 = 3,000원 + 현금 2,000원(대표님 결정 2026-10-05, 검수 #346).
+    // 현금은 실제 결제액 4,000원을 넘지 않는다.
+    expect(res).toMatchObject({ ok: true, value: { refundAmount: 2000, openedItemCount: 1 } });
   });
 
   it("발송 전에 개봉한 품목이 있으면 구매자 사정 환불은 409(opened_items_unshipped)이고 아무것도 바뀌지 않는다, 판매자 사정은 전액", async () => {
@@ -213,9 +214,9 @@ describe("화면이 본 상태(version) 확인", () => {
     const s = await setup();
     const { order } = await s.pendingOrder([[10, 1]]);
     expect(await cancelPendingOrder(db, s.ctx, order.id, { reason: "  입금 안 함  ", expectedLiveVersion: await lv(s.ctx.sellerId) })).toMatchObject({ ok: true });
-    const hist = await db.orderStatusHistory.findFirstOrThrow({ where: { orderId: order.id, toStatus: "CANCELLED" } });
+    const hist = await db.orderStatusHistory.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { orderId: order.id, toStatus: "CANCELLED" } });
     expect(hist.reason).toBe("입금 안 함");
-    const audit = await db.auditLog.findFirstOrThrow({ where: { action: "order.cancel", targetId: order.id } });
+    const audit = await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "order.cancel", targetId: order.id } });
     expect(audit).toMatchObject({ reason: "입금 안 함", before: { status: "PENDING_PAYMENT" }, after: { status: "CANCELLED" } });
   });
 });
@@ -230,7 +231,7 @@ describe("적립금 원장", () => {
     const s = await setup();
     await withPolicy(s);
     const { order } = await s.paid([[10, 1]], "BANK_TRANSFER");
-    const earn = await db.rewardLedger.findFirstOrThrow({ where: { orderId: order.id } });
+    const earn = await db.rewardLedger.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { orderId: order.id } });
     // 상품 금액 5,000원 × 계좌이체 3% (주문 totalAmount 10,000원은 기준이 아님)
     expect(earn).toMatchObject({ type: "EARN", amount: 150, status: "PENDING", testMode: true, idempotencyKey: `earn:${order.id}` });
     expect(await db.rewardBalance.count()).toBe(0);
@@ -256,8 +257,8 @@ describe("적립금 원장", () => {
       ok: true,
       value: { rewardRevoke: "manual_review" },
     });
-    expect((await db.rewardLedger.findMany({ where: { orderId: order.id } })).map((r) => r.type)).toEqual(["EARN"]);
-    const audit = await db.auditLog.findFirstOrThrow({ where: { action: "order.refund", targetId: order.id } });
+    expect((await db.rewardLedger.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { orderId: order.id } })).map((r) => r.type)).toEqual(["EARN"]);
+    const audit = await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { action: "order.refund", targetId: order.id } });
     expect(audit.after).toMatchObject({ rewardRevoke: "manual_review" });
   });
 
@@ -269,7 +270,7 @@ describe("적립금 원장", () => {
     const r = await markOrderPaid(db, { sellerId: s.seller.id, orderId: order.id });
     expect(r.ok).toBe(true);
     expect((await db.order.findUniqueOrThrow({ where: { id: order.id } })).paymentMethod).toBe("BANK_TRANSFER");
-    expect((await db.rewardLedger.findFirstOrThrow({ where: { orderId: order.id } })).amount).toBe(150);
+    expect((await db.rewardLedger.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { orderId: order.id } })).amount).toBe(150);
   });
 
   it("적립 기준액 = 할인 후 상품 금액(단가×수량), 배송비도 적립금 사용액도 빼지 않는다(대표님 결정)", async () => {
@@ -280,7 +281,7 @@ describe("적립금 원장", () => {
     await db.order.update({ where: { id: order.id }, data: { rewardUsedAmount: 2000 } });
     expect((await markOrderPaid(db, { sellerId: s.seller.id, orderId: order.id, paymentMethod: "BANK_TRANSFER" })).ok).toBe(true);
     // 기준액 10,000원 × 3% = 300원 (적립금 사용액을 빼면 240, totalAmount를 기준으로 쓰면 330)
-    expect((await db.rewardLedger.findFirstOrThrow({ where: { orderId: order.id } })).amount).toBe(300);
+    expect((await db.rewardLedger.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { orderId: order.id } })).amount).toBe(300);
   });
 
   it("정책이 없거나 재고 부족이면 기록하지 않는다", async () => {

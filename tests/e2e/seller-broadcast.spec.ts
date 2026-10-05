@@ -32,7 +32,7 @@ async function login(page: Page, email: string, next: string) {
   await submitSellerLogin(page, email, PASSWORD);
 }
 
-const waitingNames = (page: Page) => page.getByTestId("bc-waiting").locator("li .t-l1");
+const waitingNames = (page: Page) => page.getByTestId("bc-waiting").locator("tr .t-l1");
 const toast = (page: Page) => page.getByRole("status").filter({ has: page.locator(".toast") });
 
 test("대표자: 방송 시작부터 개봉·타이머·완료·되돌리기·취소·종료까지 실제로 처리된다", async ({ page }) => {
@@ -57,6 +57,8 @@ test("대표자: 방송 시작부터 개봉·타이머·완료·되돌리기·�
   await page.getByRole("button", { name: "방송 시작" }).click();
   await expect(page.getByTestId("bc-live-badge")).toBeVisible();
   await expect(page.getByTestId("bc-title")).toHaveText("e2e 라이브");
+  await expect(page.getByTestId("bc-summary")).toContainText("지금 방송");
+  await expect(page.getByTestId("bc-summary")).toContainText("완료 / 취소");
   await expect(page.getByRole("heading", { name: /^대기 3건/ })).toBeVisible();
 
   // 개봉 시작(버튼) → A 개봉 중
@@ -76,7 +78,7 @@ test("대표자: 방송 시작부터 개봉·타이머·완료·되돌리기·�
   // 단축키 Ctrl+Enter: 개봉 완료 → 최근 완료에 A, 10초 안 되돌리기
   await page.keyboard.press("Control+Enter");
   await expect(toast(page)).toContainText("개봉을 완료했습니다");
-  const done = page.getByTestId("bc-done").locator("li", { hasText: A });
+  const done = page.getByTestId("bc-done").locator("tr", { hasText: A });
   await expect(done).toBeVisible();
   await done.getByRole("button", { name: "되돌리기" }).click();
   await expect(opening).toContainText(A);
@@ -86,7 +88,7 @@ test("대표자: 방송 시작부터 개봉·타이머·완료·되돌리기·�
   await expect(page.getByTestId("bc-opening")).toHaveCount(0);
 
   // 대기 타이머 설정(창): C에 3분
-  const rowC = page.getByTestId("bc-waiting").locator("li", { hasText: C });
+  const rowC = page.getByTestId("bc-waiting").locator("tr", { hasText: C });
   await rowC.getByRole("button", { name: "타이머" }).click();
   const timer = page.getByRole("dialog", { name: "타이머 설정" });
   await timer.getByRole("button", { name: "3분" }).click();
@@ -220,7 +222,7 @@ test("변경 전에 보낸 읽기가 변경 성공 뒤에 도착하면 반영하
 test("되돌리기는 지금 방송에서 완료한 주문에만 보인다(방송을 바꾼 뒤 10초 안이어도 이전 방송 주문은 없음)", async ({ page }) => {
   await openFirst(page);
   await page.keyboard.press("Control+Enter");
-  const done = page.getByTestId("bc-done").locator("li", { hasText: A });
+  const done = page.getByTestId("bc-done").locator("tr", { hasText: A });
   await expect(done.getByRole("button", { name: "되돌리기" })).toBeVisible();
   await page.getByRole("button", { name: "방송 종료" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "방송 종료" }).click();
@@ -343,7 +345,7 @@ test("PC 시계가 틀려도(1시간 빠름) 방금 완료한 주문의 되돌�
   await page.clock.setSystemTime(new Date(Date.now() + 3600_000));
   await openFirst(page);
   await page.keyboard.press("Control+Enter");
-  const done = page.getByTestId("bc-done").locator("li", { hasText: A });
+  const done = page.getByTestId("bc-done").locator("tr", { hasText: A });
   await done.getByRole("button", { name: "되돌리기" }).click();
   await expect(page.getByTestId("bc-opening")).toContainText(A);
   expect((await queueStatuses())[A].status).toBe("OPENING");

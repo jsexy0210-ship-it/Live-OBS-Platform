@@ -9,6 +9,7 @@ import { ErrorState, LoadingRows, Toast } from "../../../../../../components/sel
 import { adminApi } from "../../../_components/api";
 import { AdminTopbar, useAdmin } from "../../../_components/AdminShell";
 import { SELLER_STATUS, SUBSCRIPTION_STATUS, day, dayTime, text, won, type SellerDetail, type SellerStatus } from "../../../_components/partners";
+import { MessageBalanceSection } from "../../../_components/MessageBalanceSection";
 import { SuspendDialog } from "../../../_components/SuspendDialog";
 
 // MA-012 파트너스 상세(GET /api/admin/sellers/{id}, 모든 마스터 역할): 기본 정보·대표자·사업자·구독·최근 30일 주문.
@@ -68,6 +69,11 @@ export default function PartnerDetailPage() {
                 <button className="btn btn-out" type="button" onClick={() => setDialog(true)}>
                   {s.status === "ACTIVE" ? "이용 정지" : "정지 해제"}
                 </button>
+              )}
+              {s && (
+                <Link className="btn btn-out" href={`/admin/billing/invoices?sellerId=${s.id}`}>
+                  청구·결제 내역
+                </Link>
               )}
               <Link className="btn btn-out" href="/admin/partners">
                 파트너스 목록
@@ -160,6 +166,7 @@ export default function PartnerDetailPage() {
                   : [["상태", "구독 없음"]]
               }
             />
+            <MessageBalanceSection sellerId={s.id} />
           </div>
         )}
       </main>

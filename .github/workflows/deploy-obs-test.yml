@@ -55,6 +55,12 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
 
+      # 디스크가 모자라면 빌드 도중 죽지 않게 여기서 먼저 멈춘다(docs/DEPLOY.md 「디스크 정리」).
+      - name: Check disk space
+        env:
+          OBS_MIN_FREE_GB: "5"
+        run: scripts/ops/disk-cleanup.sh --check
+
       # 서버 감시가 배포 중 거짓 장애 알림을 내지 않게 배포 진행 표시를 둔다(docs/DEPLOY.md 「서버 감시」).
       # 표시가 실패해도 배포는 막지 않는다: flock이 없거나 표시를 못 만들면 경고만 남긴다.
       - name: Mark deploying (monitor)
@@ -219,6 +225,12 @@ jobs:
           line="$(TZ=Asia/Seoul date '+%F %T KST') sha=$GITHUB_SHA run=$GITHUB_RUN_ID actor=$GITHUB_ACTOR"
           echo "$line" >> /opt/obs/deploy-history.log
           { echo "### obs-test 배포 완료"; echo; echo "- 커밋: \`$GITHUB_SHA\`"; echo "- 시각: $(TZ=Asia/Seoul date '+%F %T') KST"; } >> "$GITHUB_STEP_SUMMARY"
+
+      # 배포가 성공한 뒤에만 오래된 백업·이미지·캐시·러너 로그를 정리한다. 정리가 실패해도 배포 결과는 바꾸지 않는다.
+      - name: Clean up disk
+        if: success()
+        continue-on-error: true
+        run: scripts/ops/disk-cleanup.sh --apply
 
       - name: Show status on failure
         if: failure()

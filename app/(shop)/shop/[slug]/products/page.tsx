@@ -1,43 +1,87 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import ShopState from "../../../../../components/shop/ShopState";
 import { shopOpen } from "../../../../../lib/server/buyers/signup";
 import { prisma } from "../../../../../lib/server/db";
-import { sortKey } from "../_lib/catalog";
+import { publicCategories } from "../../../../../lib/server/shop-category/service";
+import { categoryParam, sortKey } from "../_lib/catalog";
 import ProductListing, { pageNumber } from "../_lib/ProductListing";
 import { findActiveShop } from "../_lib/shop";
 
 export const dynamic = "force-dynamic";
 
-type Props = { params: Promise<{ slug: string }>; searchParams: Promise<{ sort?: string; page?: string }> };
+type Props = { params: Promise<{ slug: string }>; searchParams: Promise<{ category?: string; sort?: string; page?: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const shop = await findActiveShop((await params).slug);
   return { title: shop ? `전체 상품 · ${shop.shopName}` : "전체 상품" };
 }
 
-// SH-002 상품 목록(전체 상품). 상품 분류(카테고리)가 생기면 분류별 목록을 더한다.
+// SH-002 상품 목록: 왼쪽 카테고리(PC)·제목·정렬·격자. ?category=분류 id(대분류는 하위 분류 상품까지), 보이지 않거나 없는 분류는 404.
 export default async function ShopProductsPage({ params, searchParams }: Props) {
   const shop = await findActiveShop((await params).slug);
   if (!shop) notFound();
   const sp = await searchParams;
   const open = await shopOpen(prisma, shop.id);
+  if (!open) return <ShopState title="지금은 쇼핑몰을 이용할 수 없어요" body="쇼핑몰이 다시 문을 열면 이용할 수 있어요." />;
+  const base = `/shop/${encodeURIComponent(shop.slug)}`;
+  const categories = (await publicCategories(prisma, shop.slug)) ?? [];
+  const categoryId = categoryParam(sp.category);
+  // 2단 트리: 대분류(parent 없음)와 소분류. 현재 분류의 대분류와 경로(대분류 › 소분류)를 구한다
+  const top = categories.find((c) => c.id === categoryId) ?? null;
+  const parent = top ? null : categories.find((c) => c.children.some((x) => x.id === categoryId)) ?? null;
+  const sibling = parent?.children.find((x) => x.id === categoryId) ?? null;
+  const current = top ?? sibling;
+  if (categoryId && !current) notFound();
+  const group = top ?? parent; // 칩으로 보여 줄 묶음(대분류와 그 소분류)
+  const crumb = parent && sibling ? `${parent.name} › ${sibling.name}` : undefined;
+  const chipLink = (id: string | null, label: string, on: boolean) => (
+    <Link key={id ?? "all"} className="shop-chip" href={id ? `${base}/products?category=${id}` : `${base}/products`} aria-current={on ? "page" : undefined}>
+      {label}
+    </Link>
+  );
+  const chips =
+    group && group.children.length > 0 ? (
+      <nav className="shop-chips" aria-label={`${group.name} 하위 카테고리`}>
+        {chipLink(group.id, "전체", current?.id === group.id)}
+        {group.children.map((x) => chipLink(x.id, x.name, current?.id === x.id))}
+      </nav>
+    ) : null;
+  const list = (
+    <ProductListing
+      slug={shop.slug}
+      title={current?.name ?? "전체 상품"}
+      crumb={crumb}
+      chips={chips}
+      path={`${base}/products`}
+      sort={sortKey(sp.sort)}
+      page={pageNumber(sp.page)}
+      categoryId={current?.id}
+      empty={current ? "이 분류에는 아직 상품이 없어요." : "아직 올라온 상품이 없어요."}
+    />
+  );
   return (
-    <>
-      {!open ? (
-        <ShopState title="지금은 쇼핑몰을 이용할 수 없어요" body="쇼핑몰이 다시 문을 열면 이용할 수 있어요." />
-      ) : (
-        <div className="shop-wrap">
-          <ProductListing
-            sellerId={shop.id}
-            title="전체 상품"
-            path={`/shop/${encodeURIComponent(shop.slug)}/products`}
-            sort={sortKey(sp.sort)}
-            page={pageNumber(sp.page)}
-            empty="아직 올라온 상품이 없어요."
-          />
-        </div>
-      )}
-    </>
+    <div className="shop-wrap shop-plist">
+      <aside className="shop-sidecat" aria-label="카테고리">
+        <p className="shop-sidecat-h">전체 카테고리</p>
+        <Link href={`${base}/products`} aria-current={!current ? "page" : undefined}>
+          전체
+        </Link>
+        {categories.map((c) => (
+          <div key={c.id}>
+            <Link className="top" href={`${base}/products?category=${c.id}`} aria-current={current?.id === c.id ? "page" : undefined}>
+              {c.name}
+            </Link>
+            {c.children.map((x) => (
+              <Link key={x.id} className="sub" href={`${base}/products?category=${x.id}`} aria-current={current?.id === x.id ? "page" : undefined}>
+                {x.name}
+              </Link>
+            ))}
+          </div>
+        ))}
+      </aside>
+      <div className="shop-plist-main">{list}</div>
+    </div>
   );
 }

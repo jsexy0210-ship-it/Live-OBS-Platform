@@ -92,3 +92,65 @@
   color: #fff;
   box-shadow: none;
 }
+
+/* 카페24식 표: 대기·최근 완료 */
+.bc-tbl td {
+  vertical-align: middle;
+}
+.bc-tbl .bc-item {
+  text-align: left;
+}
+.bc-live {
+  border-radius: 4px;
+}
+.bc-side {
+  position: sticky;
+  top: 16px;
+}
+.bc-side .bc-keys {
+  position: static;
+}
+@media (max-width: 900px) {
+  .bc-side {
+    position: static;
+  }
+}
+.bc-tbl {
+  table-layout: fixed;
+}
+.bc-tbl td {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  overflow: hidden;
+}
+.bc-tbl th,
+.bc-tbl td.num {
+  white-space: nowrap;
+}
+.bc-tbl .bc-acts {
+  flex-wrap: nowrap;
+}
+.bc-sum-t {
+  margin-bottom: 4px;
+}
+.bc-sum-g {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border: 1px solid var(--wds-line-normal-alternative);
+  border-radius: 4px;
+  background: var(--wds-background-normal-normal, #fff);
+}
+.bc-sum-g .stat + .stat {
+  border-left: 1px solid var(--wds-line-normal-alternative);
+}
+@media (max-width: 600px) {
+  .bc-sum-g {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.bc-chat {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--wds-line-normal-alternative);
+  align-items: center;
+}

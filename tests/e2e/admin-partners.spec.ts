@@ -101,8 +101,8 @@ test("상세: 기본 정보·대표자·사업자·구독·최근 30일 주문�
   expect(["left", "start"]).toContain(await align("dl.kv dd"));
   await page.goto("/admin/partners");
   expect(["left", "start"]).toContain(await align(".tbl td"));
-  await page.goto("/admin/partners/applications");
-  await expect(page.getByTestId("admin-coming-soon")).toBeVisible();
+  await page.goto("/admin/partners/applications"); // 상세 [sellerId]가 아니라 가입 신청 목록(MA-013)
+  await expect(page.getByRole("heading", { name: "가입 신청" })).toBeVisible();
 });
 
 test("정지 처리 중에는 닫을 수 없고, 서버 403·409는 안내가 보인다", async ({ page }) => {

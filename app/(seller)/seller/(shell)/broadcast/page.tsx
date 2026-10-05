@@ -1,9 +1,12 @@
 "use client";
 
 import "../../../../../styles/seller-broadcast.css";
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PageHead } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { CancelItemModal, EndBroadcastModal, TimerModal } from "../../../../../components/seller/broadcast/Modals";
+import { HitCardModal, type HitTarget } from "../../../../../components/seller/broadcast/HitCardModal";
 import {
   REVERT_WINDOW_MS,
   TIMER_MAX_SECONDS,
@@ -16,6 +19,7 @@ import {
   type QueueItem,
   type Snapshot,
 } from "../../../../../components/seller/broadcast/queue";
+import { won } from "../../../../../components/seller/format";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage, type ApiResult } from "../../../../../components/seller/api";
 import { useLatestResponse } from "../../../../../components/seller/latestResponse";
@@ -28,7 +32,18 @@ import { useLatestResponse } from "../../../../../components/seller/latestRespon
 // API: GET /api/seller/queue·queue/version·stream, POST queue/{id}/{start|complete|revert|cancel|timer}·queue/reorder·broadcast/start·broadcast/end
 
 type Load = { kind: "loading" } | { kind: "error"; status: number; error: string } | { kind: "ok"; snap: Snapshot };
-type Modal = { kind: "end"; sessionId: string } | { kind: "cancel"; item: QueueItem } | { kind: "timer"; item: QueueItem } | null;
+// 위쪽 요약: GET /api/seller/broadcast/summary(지금 방송, 없으면 오늘 마지막 방송). 못 읽어도 대시보드는 그대로 쓴다(칸에 「-」)
+type Summary = {
+  broadcast: { id: string; title: string | null; status: "live" | "ended"; startedAt: string; endedAt: string | null } | null;
+  summary: { orders: number; paidOrders: number; sales: number; completed: number; cancelled: number; hits: number };
+};
+// 유튜브 채팅 수집(GET /api/seller/youtube · …/live/chat-matches · PUT …/live/chat). 보조 정보라 못 읽으면 토글·「채팅」 열을 숨긴다(표시만, 주문·순서·개봉에 영향 없음)
+type Yt = { configured: boolean; live: { chatEnabled: boolean } | null; chatNotice: string };
+type ChatMatch = { matched: boolean; lastChatAt: string | null };
+type Matches = { orders: { nickname: string; matched: boolean; lastChatAt: string | null }[] };
+const CHAT_POLL_MS = 30_000;
+
+type Modal = { kind: "hit" } | { kind: "chat-on" } | { kind: "end"; sessionId: string } | { kind: "cancel"; item: QueueItem } | { kind: "timer"; item: QueueItem } | null;
 
 const POLL_MS = 15_000;
 
@@ -45,6 +60,30 @@ export default function BroadcastDashboardPage() {
   const [stale, setStale] = useState(false);
   const [title, setTitle] = useState("");
   const [now, setNow] = useState(() => Date.now());
+  const [sum, setSum] = useState<Summary | null>(null);
+  const sumSeq = useRef(0);
+  const [yt, setYt] = useState<Yt | null>(null);
+  const [chat, setChat] = useState<Map<string, ChatMatch>>(new Map());
+  const ytSeq = useRef(0);
+  const [chatBusy, setChatBusy] = useState(false);
+  // 나중에 보낸 읽기의 응답만 반영한다. 실패하면 이전 값을 지워 틀린 표시를 남기지 않는다
+  const loadYoutube = useCallback(async () => {
+    const n = ++ytSeq.current;
+    const r = await api<Yt>("/api/seller/youtube");
+    if (n !== ytSeq.current) return;
+    if (!r.ok || !r.data.configured) {
+      setYt(null);
+      return setChat(new Map());
+    }
+    let map = new Map<string, ChatMatch>();
+    if (r.data.live?.chatEnabled) {
+      const m = await api<Matches>("/api/seller/youtube/live/chat-matches");
+      if (n !== ytSeq.current) return;
+      if (m.ok) for (const o of m.data.orders) if (o.matched || !map.has(o.nickname)) map.set(o.nickname, { matched: o.matched || map.get(o.nickname)?.matched === true, lastChatAt: o.lastChatAt });
+    }
+    setYt(r.data);
+    setChat(map);
+  }, []);
 
   // 다시 읽기 반영 규칙(latestResponse.ts): 나중에 보낸 요청의 성공만 반영하고, 실패가 앞선 성공을 버리지 않는다
   const reads = useLatestResponse();
@@ -77,7 +116,13 @@ export default function BroadcastDashboardPage() {
     // 변경 전에 보낸 읽기가 늦게 왔으면 버린다(변경 뒤 다시 읽기가 반영한다. 그 읽기가 실패했으면 낡음 안내가 남는다)
     if (verdict !== "apply") return;
     applySnap(r.data);
-  }, [reads, applySnap]);
+    // 요약은 보조 정보: 늦게 온 옛 응답은 버리고, 실패하면 이전 값을 지워 틀린 숫자를 남기지 않는다
+    const n = ++sumSeq.current;
+    void api<Summary>("/api/seller/broadcast/summary").then((s) => {
+      if (n === sumSeq.current) setSum(s.ok ? s.data : null);
+    });
+    void loadYoutube();
+  }, [reads, applySnap, loadYoutube]);
 
   // 처음 읽기 + 실시간 채널 + 15초 확인
   useEffect(() => {
@@ -106,6 +151,23 @@ export default function BroadcastDashboardPage() {
       clearInterval(poll);
     };
   }, [allowed, load]);
+
+  // 채팅 수집 중에는 채팅이 계속 들어오므로 주문대기 version과 상관없이 주기적으로 다시 읽는다
+  const chatOn = !!yt?.live?.chatEnabled;
+  useEffect(() => {
+    if (!allowed || !chatOn) return;
+    const t = setInterval(() => void loadYoutube(), CHAT_POLL_MS);
+    return () => clearInterval(t);
+  }, [allowed, chatOn, loadYoutube]);
+
+  const setChatEnabled = async (enabled: boolean) => {
+    setChatBusy(true);
+    const r = await api<{ chatEnabled: boolean }>("/api/seller/youtube/live/chat", { method: "PUT", body: { enabled } });
+    setChatBusy(false);
+    setModal(null);
+    setToast(r.ok ? { text: enabled ? "채팅 수집을 켰습니다" : "채팅 수집을 껐습니다" } : { text: failMessage(r, "admin"), neg: true });
+    await loadYoutube();
+  };
 
   // 타이머·되돌리기 표시용 시계
   useEffect(() => {
@@ -166,6 +228,12 @@ export default function BroadcastDashboardPage() {
   const waiting = snap ? (live ? snap.waiting : snap.beforeBroadcast) : [];
   const next = waiting[0] ?? null;
 
+  // HIT 카드 등록 대상: 지금 개봉 중(기본) → 방금 완료한 주문들
+  const hitTargets: HitTarget[] = [
+    ...(opening ? [{ queueItemId: opening.id, label: `${opening.nicknameSnapshot} · 지금 개봉 중` }] : []),
+    ...(snap?.recentDone ?? []).slice(0, 5).map((d) => ({ queueItemId: d.id, label: `${d.nicknameSnapshot} · 방금 완료 (${kstTime(d.receivedAt)} 접수)` })),
+  ];
+
   const act = async (item: QueueItem, action: "start" | "complete" | "revert", okText: string) => {
     const r = await mutate(`/api/seller/queue/${item.id}/${action}`, { expectedVersion: item.version }, okText);
     if (r.ok && action === "complete") doneSeenAt.current.set(item.id, performance.now());
@@ -202,6 +270,9 @@ export default function BroadcastDashboardPage() {
       e.preventDefault();
       if (opening) void act(opening, "complete", "개봉을 완료했습니다");
       else if (live && next) void act(next, "start", "개봉을 시작했습니다");
+    } else if ((e.key === "h" || e.key === "H") && live) {
+      e.preventDefault();
+      setModal({ kind: "hit" });
     } else if (e.key === "ArrowUp" && opening) {
       e.preventDefault();
       void setTimer(opening, Math.min(TIMER_MAX_SECONDS, opening.timerSeconds + TIMER_STEP));
@@ -229,12 +300,22 @@ export default function BroadcastDashboardPage() {
         }
       />
       <main className="main">
-        <div className="ph">
-          <div className="col" style={{ gap: 4 }}>
-            <h1 className="t-t3">방송 대시보드</h1>
-            <span className="t-l2 c-alt">결제된 주문이 들어온 순서대로 쌓입니다. 개봉 상태는 오버레이에 바로 반영됩니다.</span>
-          </div>
-        </div>
+        <PageHead
+          title="방송 대시보드"
+          path={["방송", "방송 대시보드"]}
+          actions={
+            <>
+              {allowed && (
+                <button className="btn" type="button" data-testid="bc-hit-open" disabled={!live || locked} title={live ? undefined : "방송 중에만 등록할 수 있습니다"} onClick={() => setModal({ kind: "hit" })}>
+                  HIT 카드 등록 <span className="kbd">Ctrl+H</span>
+                </button>
+              )}
+              <Link className="btn btn-out" href="/seller/overlay">
+                오버레이 주소
+              </Link>
+            </>
+          }
+        />
 
         {!allowed ? (
           <div className="card">
@@ -267,6 +348,16 @@ export default function BroadcastDashboardPage() {
                   </button>
                 </div>
               )}
+
+              <section className="bc-sum" aria-label="방송 요약" data-testid="bc-summary">
+                <div className="bc-sum-t t-c1 c-alt">{sum?.broadcast ? (sum.broadcast.status === "live" ? "지금 방송" : "오늘 마지막 방송") : "오늘 방송 없음"}</div>
+                <div className="bc-sum-g">
+                  <SumTile label="주문" value={sum ? `${sum.summary.orders.toLocaleString("ko-KR")}건` : "-"} />
+                  <SumTile label="매출" value={sum ? won(sum.summary.sales) : "-"} />
+                  <SumTile label="완료 / 취소" value={sum ? `${sum.summary.completed} / ${sum.summary.cancelled}` : "-"} />
+                  <SumTile label="HIT" value={sum ? `${sum.summary.hits}장` : "-"} />
+                </div>
+              </section>
 
               {/* 방송 시작·종료 */}
               <section className="card pad bc-live" aria-label="방송 상태">
@@ -301,6 +392,32 @@ export default function BroadcastDashboardPage() {
                       방송 시작
                     </button>
                   </form>
+                )}
+                {yt && (
+                  <div className="row bc-chat" style={{ gap: 8, flexWrap: "wrap" }} data-testid="bc-chat-bar">
+                    {yt.live ? (
+                      <>
+                        <label className="row" style={{ gap: 6 }}>
+                          <input
+                            type="checkbox"
+                            data-testid="bc-chat-toggle"
+                            checked={yt.live.chatEnabled}
+                            disabled={chatBusy}
+                            onChange={(e) => (e.target.checked ? setModal({ kind: "chat-on" }) : void setChatEnabled(false))}
+                          />
+                          유튜브 채팅 수집
+                        </label>
+                        <span className="t-c1 c-alt">{yt.live.chatEnabled ? "켬 · 주문대기에 채팅 확인 여부를 표시만 합니다" : "끔 · 기본은 끔입니다"}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="t-c1 c-alt">유튜브 방송을 연결하면 채팅을 모을 수 있습니다</span>
+                        <Link className="btn btn-sm btn-out" href="/seller/youtube">
+                          유튜브 연결
+                        </Link>
+                      </>
+                    )}
+                  </div>
                 )}
               </section>
 
@@ -343,29 +460,57 @@ export default function BroadcastDashboardPage() {
                 {waiting.length === 0 ? (
                   <span className="t-l2 c-alt">대기 중인 주문이 없습니다</span>
                 ) : (
-                  <ol className="bc-list" data-testid="bc-waiting">
-                    {waiting.map((w, i) => (
-                      <li key={w.id} className="bc-row">
-                        <span className="bc-no num">{i + 1}</span>
-                        <ItemText item={w} />
-                        <span className="row bc-acts">
-                          {w.timerSeconds > 0 && <span className="t-c1 c-alt num">⏱ {clock(w.timerSeconds)}</span>}
-                          <button className="btn btn-sm btn-ghost" type="button" aria-label={`${w.nicknameSnapshot} 위로`} disabled={locked || i === 0} onClick={() => move(i, -1)}>
-                            ↑
-                          </button>
-                          <button className="btn btn-sm btn-ghost" type="button" aria-label={`${w.nicknameSnapshot} 아래로`} disabled={locked || i === waiting.length - 1} onClick={() => move(i, 1)}>
-                            ↓
-                          </button>
-                          <button className="btn btn-sm btn-out" type="button" disabled={locked} onClick={() => setModal({ kind: "timer", item: w })}>
-                            타이머
-                          </button>
-                          <button className="btn btn-sm btn-out" type="button" disabled={locked} onClick={() => setModal({ kind: "cancel", item: w })}>
-                            취소
-                          </button>
-                        </span>
-                      </li>
-                    ))}
-                  </ol>
+                  <div className="au-lt-wrap">
+                    <table className="tbl bc-tbl">
+                      <thead>
+                        <tr>
+                          <th style={{ width: 48 }}>순서</th>
+                          <th style={{ width: 80 }}>접수</th>
+                          <th>구매자 · 상품</th>
+                          {chatOn && (
+                            <th style={{ width: 150 }} data-testid="bc-chat-head">
+                              채팅
+                            </th>
+                          )}
+                          <th style={{ width: 70 }}>타이머</th>
+                          <th style={{ width: 240 }}>관리</th>
+                        </tr>
+                      </thead>
+                      <tbody data-testid="bc-waiting">
+                        {waiting.map((w, i) => (
+                          <tr key={w.id}>
+                            <td className="num">{i + 1}</td>
+                            <td className="num">{kstTime(w.receivedAt)}</td>
+                            <td>
+                              <ItemText item={w} />
+                            </td>
+                            {chatOn && (
+                              <td className="t-c1" data-testid="bc-chat-cell">
+                                {chatText(chat.get(w.nicknameSnapshot))}
+                              </td>
+                            )}
+                            <td className="num">{w.timerSeconds > 0 ? clock(w.timerSeconds) : "-"}</td>
+                            <td>
+                              <span className="row bc-acts">
+                                <button className="btn btn-sm btn-ghost" type="button" aria-label={`${w.nicknameSnapshot} 위로`} disabled={locked || i === 0} onClick={() => move(i, -1)}>
+                                  ↑
+                                </button>
+                                <button className="btn btn-sm btn-ghost" type="button" aria-label={`${w.nicknameSnapshot} 아래로`} disabled={locked || i === waiting.length - 1} onClick={() => move(i, 1)}>
+                                  ↓
+                                </button>
+                                <button className="btn btn-sm btn-out" type="button" disabled={locked} onClick={() => setModal({ kind: "timer", item: w })}>
+                                  타이머
+                                </button>
+                                <button className="btn btn-sm btn-out" type="button" disabled={locked} onClick={() => setModal({ kind: "cancel", item: w })}>
+                                  취소
+                                </button>
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </section>
 
@@ -377,31 +522,57 @@ export default function BroadcastDashboardPage() {
                 {snap.recentDone.length === 0 ? (
                   <span className="t-l2 c-alt">완료한 주문이 없습니다</span>
                 ) : (
-                  <ul className="bc-list" data-testid="bc-done">
-                    {snap.recentDone.map((d) => {
-                      const seenAt = doneSeenAt.current.get(d.id);
-                      const canRevert = live && d.broadcastSessionId === live.id && !opening && seenAt !== undefined && performance.now() - seenAt < REVERT_WINDOW_MS;
-                      return (
-                        <li key={d.id} className="bc-row">
-                          <span className="bdg b-done">완료</span>
-                          <ItemText item={d} />
-                          <span className="row bc-acts">
-                            {d.doneAt && <span className="t-c1 c-alt num">{kstTime(d.doneAt)}</span>}
-                            {canRevert && (
-                              <button className="btn btn-sm btn-out" type="button" disabled={locked} onClick={() => void act(d, "revert", "완료를 되돌렸습니다")}>
-                                되돌리기
-                              </button>
-                            )}
-                          </span>
-                        </li>
-                      );
-                    })}
-                  </ul>
+                  <div className="au-lt-wrap">
+                    <table className="tbl bc-tbl">
+                      <thead>
+                        <tr>
+                          <th style={{ width: 70 }}>시각</th>
+                          <th>구매자 · 상품</th>
+                          <th style={{ width: 70 }}>결과</th>
+                          <th style={{ width: 90 }}>관리</th>
+                        </tr>
+                      </thead>
+                      <tbody data-testid="bc-done">
+                        {snap.recentDone.map((d) => {
+                          const seenAt = doneSeenAt.current.get(d.id);
+                          const canRevert = live && d.broadcastSessionId === live.id && !opening && seenAt !== undefined && performance.now() - seenAt < REVERT_WINDOW_MS;
+                          return (
+                            <tr key={d.id}>
+                              <td className="num">{d.doneAt ? kstTime(d.doneAt) : "-"}</td>
+                              <td>
+                                <ItemText item={d} />
+                              </td>
+                              <td>
+                                <span className="bdg b-done">완료</span>
+                              </td>
+                              <td>
+                                {canRevert && (
+                                  <button className="btn btn-sm btn-out" type="button" disabled={locked} onClick={() => void act(d, "revert", "완료를 되돌렸습니다")}>
+                                    되돌리기
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </section>
             </div>
 
-            <aside className="card pad col bc-keys" style={{ gap: 10 }} aria-labelledby="bc-keys-h">
+            <aside className="col bc-side" style={{ gap: 16 }}>
+            <section className="card pad col" style={{ gap: 10 }} aria-labelledby="bc-ov-h">
+              <h2 className="t-hl2" id="bc-ov-h">
+                오버레이
+              </h2>
+              <span className="t-c1 c-alt">OBS 브라우저 소스에 넣는 주소는 발급할 때 한 번만 보입니다. 잃어버리면 다시 발급해 주십시오.</span>
+              <Link className="btn btn-sm btn-out" href="/seller/overlay">
+                오버레이 주소 발급
+              </Link>
+            </section>
+            <section className="card pad col bc-keys" style={{ gap: 10 }} aria-labelledby="bc-keys-h">
               <h2 className="t-hl2" id="bc-keys-h">
                 단축키
               </h2>
@@ -409,6 +580,10 @@ export default function BroadcastDashboardPage() {
                 <dt>개봉 시작 · 완료</dt>
                 <dd>
                   <span className="kbd">Ctrl+Enter</span>
+                </dd>
+                <dt>HIT 카드 등록</dt>
+                <dd>
+                  <span className="kbd">Ctrl+H</span>
                 </dd>
                 <dt>타이머 +30초</dt>
                 <dd>
@@ -420,6 +595,7 @@ export default function BroadcastDashboardPage() {
                 </dd>
               </dl>
               <span className="t-c1 c-alt">입력칸에 글자를 입력하는 중에는 단축키가 동작하지 않습니다</span>
+            </section>
             </aside>
           </div>
         )}
@@ -435,9 +611,57 @@ export default function BroadcastDashboardPage() {
         />
       )}
       {modal?.kind === "cancel" && <CancelItemModal item={modal.item} busy={busy} blocked={stale} onClose={() => setModal(null)} onConfirm={(reason) => void cancel(modal.item, reason)} />}
+      {modal?.kind === "hit" && (
+        <HitCardModal
+          targets={hitTargets}
+          onClose={() => setModal(null)}
+          onDone={() => {
+            setModal(null);
+            setToast({ text: "HIT 카드를 등록했습니다. 오버레이에 바로 나옵니다" });
+            void load();
+          }}
+        />
+      )}
+      {modal?.kind === "chat-on" && yt && (
+        <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="bc-chat-title">
+          <div className="modal">
+            <div className="modal-h">
+              <h2 className="t-h2" id="bc-chat-title">
+                유튜브 채팅 수집을 켜시겠습니까?
+              </h2>
+              <span className="t-l2 c-alt" data-testid="bc-chat-notice">
+                {yt.chatNotice}
+              </span>
+            </div>
+            <div className="modal-f">
+              <button className="btn btn-out" type="button" disabled={chatBusy} onClick={() => setModal(null)}>
+                닫기
+              </button>
+              <button className="btn" type="button" disabled={chatBusy} onClick={() => void setChatEnabled(true)}>
+                켜기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {modal?.kind === "timer" && <TimerModal item={modal.item} busy={busy} blocked={stale} onClose={() => setModal(null)} onConfirm={(s) => void setTimer(modal.item, s)} />}
       {toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}
     </>
+  );
+}
+
+// 서버는 방송 시간 안에 들어온 주문만 채팅과 맞춰 본다. 그 밖(방송 전 주문)은 확인 대상이 아니라 「-」로 두어 「채팅 없음」으로 오해하지 않게 한다
+function chatText(c: ChatMatch | undefined): string {
+  if (!c) return "-";
+  return c.matched ? `채팅 확인됨${c.lastChatAt ? ` · 마지막 ${kstTime(c.lastChatAt)}` : ""}` : "채팅 없음";
+}
+
+function SumTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="stat">
+      <span className="t-l2 c-alt">{label}</span>
+      <span className="v">{value}</span>
+    </div>
   );
 }
 
@@ -449,7 +673,7 @@ function ItemText({ item }: { item: QueueItem }) {
         {item.gradeSnapshot && <span className="t-c1 c-alt fw5"> · {item.gradeSnapshot}</span>}
       </span>
       <span className="t-c1 c-alt ell">
-        {item.productLabel} ×{item.quantity} · {kstTime(item.receivedAt)} 결제
+        {item.productLabel} ×{item.quantity}
       </span>
     </span>
   );

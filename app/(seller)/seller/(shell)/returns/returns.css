@@ -1,0 +1,8 @@
+/* SA-029 교환 · 반품 */
+.rt-row{display:grid;grid-template-columns:minmax(0,1.1fr) 72px minmax(0,2fr) 110px 90px;gap:12px;align-items:start;padding:14px 16px;box-shadow:inset 0 -1px 0 var(--wds-line-normal-alternative);cursor:pointer}
+.rt-row:hover{background:var(--wds-fill-alternative)}
+.rt-modal{max-height:calc(100vh - 40px);overflow:auto}
+.rt-imgs{display:flex;gap:8px;flex-wrap:wrap}
+.rt-imgs img{width:96px;height:96px;object-fit:cover;border-radius:10px;background:var(--wds-fill-normal)}
+.rt-kv{display:grid;grid-template-columns:96px minmax(0,1fr);gap:6px 12px}
+@media (max-width:767px){.rt-row{grid-template-columns:minmax(0,1fr) auto}.rt-row>.rt-hide-m{display:none}.rt-kv{grid-template-columns:80px minmax(0,1fr)}}

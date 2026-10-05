@@ -113,13 +113,13 @@ test("로그인하면 맨 위 띠 오른쪽에 닉네임 님이 보인다", asyn
   await expect(page.locator(".shop-util").getByRole("link", { name: "내 정보" })).toBeVisible();
 });
 
-test("크기 규칙: 입력·검색 40px, 주요 버튼·하단 고정 바 48px, 모서리 6px·8px", async ({ page }) => {
+test("크기 규칙(2026-10-05 시각 규격): 입력·검색 44px, 주요 버튼·하단 고정 바 48px, 모서리 8px", async ({ page }) => {
   const box = (sel: string) => page.locator(sel).first().evaluate((el) => ({ h: Math.round(el.getBoundingClientRect().height), r: getComputedStyle(el).borderTopLeftRadius }));
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/shop/${SLUG}/login`);
-  expect(await box(".shop-search")).toEqual({ h: 40, r: "6px" });
-  expect(await box(".shop-card .inp")).toEqual({ h: 40, r: "6px" });
-  expect(await box(".shop-card .btn-lg")).toEqual({ h: 48, r: "6px" }); // 주요 버튼(로그인)은 48px
+  expect(await box(".shop-search")).toEqual({ h: 44, r: "8px" });
+  expect(await box(".shop-card .inp")).toEqual({ h: 44, r: "8px" });
+  expect(await box(".shop-card .btn-lg")).toEqual({ h: 48, r: "8px" }); // 주요 버튼(로그인)은 48px
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/shop/${SLUG}`);
   const bar = await page.locator(".shop-tabbar").evaluate((el) => ({ h: Math.round(el.getBoundingClientRect().height), r: getComputedStyle(el).borderTopLeftRadius }));
@@ -203,7 +203,7 @@ test.describe("휴대폰 390", () => {
       expect(await noSideScroll(page)).toBe(true);
     }
     await page.goto(`/shop/${SLUG}/checkout`);
-    await expect(page.getByRole("heading", { name: "주문서는 준비 중이에요" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "주문서", level: 1 })).toBeVisible();
     await page.goto(`/shop/${SLUG}/cart`);
     await expect(page.getByRole("heading", { name: "장바구니", level: 1 })).toBeVisible();
     await expect(page.getByRole("navigation", { name: "바로 가기" }).getByRole("link", { name: "장바구니" })).toHaveAttribute("aria-current", "page");

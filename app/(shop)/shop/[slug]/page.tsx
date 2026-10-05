@@ -4,11 +4,13 @@ import { notFound } from "next/navigation";
 import EventPopup from "../../../../components/shop/EventPopup";
 import HomeBanner from "../../../../components/shop/HomeBanner";
 import { ProductGrid } from "../../../../components/shop/ProductCard";
+import { kstDate } from "../../../../components/shop/kstDate";
 import ShopState from "../../../../components/shop/ShopState";
 import { shopOpen } from "../../../../lib/server/buyers/signup";
 import { prisma } from "../../../../lib/server/db";
+import { shopProductList } from "../../../../lib/server/products/shopCatalog";
 import { visibleShopContent } from "../../../../lib/server/shop-content/service";
-import { shopProducts } from "./_lib/catalog";
+import { publicNotices } from "../../../../lib/server/shop-notice/service";
 
 export const dynamic = "force-dynamic";
 
@@ -34,20 +36,29 @@ export default async function ShopHomePage({ params }: Params) {
   const shop = await findShop(slug);
   if (!shop) notFound();
   const content = (await shopOpen(prisma, shop.id)) ? await visibleShopContent(prisma, slug, "home") : null;
-  const products = content ? await shopProducts(shop.id) : [];
+  const listed = content ? await shopProductList(prisma, slug, { sort: "recommended", limit: String(HOME_COUNT) }) : null;
+  const products = listed?.ok ? listed.value.products : [];
   const base = `/shop/${encodeURIComponent(slug)}`;
+  const pinned = content ? (await publicNotices(prisma, slug, null))?.pinned ?? null : null; // 홈 머리 아래 고정 공지 띠
   return (
     <>
       {!content ? (
         <ShopState title="지금은 쇼핑몰을 이용할 수 없어요" body="쇼핑몰이 다시 문을 열면 이용할 수 있어요." />
       ) : (
         <div className="shop-wrap">
+          {pinned && (
+            <div className="shop-ntc">
+              <b>공지</b>
+              <Link href={`${base}/help/notices/${pinned.id}`}>{pinned.title}</Link>
+              <span>{kstDate(pinned.createdAt)}</span>
+            </div>
+          )}
           <EventPopup popups={content.popups} />
           <HomeBanner banners={content.banners} />
           <section className="shop-sec" aria-labelledby="home-products">
             <div className="shop-sec-head">
               <h2 id="home-products">전체 상품</h2>
-              {products.length > HOME_COUNT && (
+              {listed?.ok && listed.value.hasMore && (
                 <Link className="shop-more" href={`${base}/products`}>
                   더 보기
                 </Link>
@@ -56,7 +67,7 @@ export default async function ShopHomePage({ params }: Params) {
             {products.length === 0 ? (
               <p className="shop-empty">아직 올라온 상품이 없어요.</p>
             ) : (
-              <ProductGrid products={products.slice(0, HOME_COUNT)} label="전체 상품" />
+              <ProductGrid products={products} label="전체 상품" hrefBase={`${base}/products`} />
             )}
           </section>
         </div>
