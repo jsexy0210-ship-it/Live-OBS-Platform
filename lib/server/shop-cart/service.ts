@@ -4,6 +4,7 @@ import { MAX_LINE_QUANTITY, MAX_ORDER_LINES } from "../orders/create";
 import { dbClock } from "../orders/overdue";
 import { eventOf, orderUnitPrice } from "../products/event";
 import { LOW_STOCK_MAX } from "../products/manage";
+import { recordCartAddForOption } from "../stats/funnel";
 
 // 구매자 장바구니(SH-004, 로그인 회원만). 규칙:
 // - 옵션마다 한 줄. 같은 옵션을 다시 담으면 수량을 더한다. 회원당 MAX_CART_ITEMS줄, 줄당 1~MAX_LINE_QUANTITY개(주문 한도와 같게).
@@ -158,7 +159,7 @@ export async function addToCart(db: PrismaClient, s: CartScope, input: { optionI
   if (!isId(input.optionId) || !isQuantity(quantity)) return { ok: false, reason: "invalid_cart_item" };
   const optionId = input.optionId;
   if (!(await shopOpen(db, s.sellerId))) return { ok: false, reason: "shop_unavailable" };
-  return db.$transaction(async (tx): Promise<Result<{ id: string; quantity: number; count: number }>> => {
+  const added = await db.$transaction(async (tx): Promise<Result<{ id: string; quantity: number; count: number }>> => {
     if (!(await lockActive(tx, s))) return { ok: false, reason: "cart_item_not_found" };
     const option = await sellableOption(tx, s, optionId);
     if (!option.ok) return option;
@@ -175,6 +176,8 @@ export async function addToCart(db: PrismaClient, s: CartScope, input: { optionI
     }
     return { ok: true, value: { id, quantity: next, count: await tx.cartItem.count({ where: { sellerId: s.sellerId, buyerMemberId: s.buyerMemberId } }) } };
   });
+  if (added.ok) await recordCartAddForOption(db, s, optionId); // 전환 단계 통계(stats/funnel.ts): 실패해도 던지지 않는다
+  return added;
 }
 
 // 수량 바꾸기. 본문: { quantity }(1~99). 늘릴 때만 판매 상태·재고를 본다(줄이기는 품절이어도 된다).

@@ -44,13 +44,13 @@ function orderIdsOf(payload: unknown): { eventNo: number; ids: string[]; paidHin
   return { eventNo, ids, paidHint: typeof paid === "string" ? paid : null };
 }
 
-const toNormalized = (o: { orderId: string; buyerName: string | null; items: { productName: string; optionValue: string | null; quantity: number }[] }): NormalizedExternalOrder => ({
+export const toNormalized = (o: { orderId: string; buyerName: string | null; items: { productName: string; optionValue: string | null; quantity: number }[] }): NormalizedExternalOrder => ({
   externalOrderId: o.orderId,
   buyerLabel: maskBuyerName(o.buyerName),
   lines: o.items.map((i) => ({ productLabel: (i.optionValue ? `${i.productName} (${i.optionValue})` : i.productName).slice(0, 100), quantity: i.quantity })),
 });
 
-type Api = ExternalOrderApi & Pick<ExternalShopProvider, "refresh">;
+export type Api = ExternalOrderApi & Pick<ExternalShopProvider, "refresh">;
 
 // connectionId를 주면 그 연결의 이벤트만(웹훅 수신 직후), 없으면 전체(정기 작업).
 export async function processWebhookEvents(
@@ -127,7 +127,7 @@ export async function processWebhookEvents(
 }
 
 // 접근 토큰(복호화). 곧 만료되거나 없으면 갱신하고, 갱신할 수 없으면 null.
-async function accessTokenOf(db: PrismaClient, api: Api, connectionId: string, sellerId: string, now: Date): Promise<string | null> {
+export async function accessTokenOf(db: PrismaClient, api: Api, connectionId: string, sellerId: string, now: Date): Promise<string | null> {
   const read = () => db.externalShopConnection.findUnique({ where: { id: connectionId }, select: { status: true, accessTokenCipher: true, accessExpiresAt: true } });
   let c = await read();
   if (!c || c.status !== "CONNECTED") return null;
