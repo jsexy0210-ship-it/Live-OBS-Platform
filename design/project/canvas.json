@@ -1472,10 +1472,10 @@
       "y": 3441
     },
     "SA-012.dc.html": {
-      "h": 4800,
+      "h": 4400,
       "is_interactive": true,
       "page": "p02",
-      "title": "SA-012 상품 등록 (카페24식 1차 · 2열 표형 폼 · 이미지 업로드 칸 · 하단 고정 저장 · 현대화 기준 · 이미지 5장 썸네일 지정 · 상세 설명 에디터)",
+      "title": "SA-012 상품 등록 (카페24식 1차 · 2열 표형 폼 · 이미지 업로드 칸 · 하단 고정 저장 · 현대화 기준)",
       "w": 1440,
       "x": 3040,
       "y": 3441
@@ -2972,14 +2972,6 @@
       "x": 0,
       "y": 2860
     },
-    "DS-CONFIRM.dc.html": {
-      "h": 2500,
-      "is_interactive": true,
-      "title": "DS-CONFIRM 공통 확인 창 (규칙 · 관리자 6종 · 구매자 PC 2종 · 휴대폰 시트 2종 · 대표님 지시 2026-10-06)",
-      "w": 1280,
-      "x": 19400,
-      "y": 108800
-    },
     "DS-NAV.dc.html": {
       "h": 5000,
       "is_interactive": true,
@@ -4076,7 +4068,6 @@
     "MA-086.dc.html",
     "OG-001.dc.html",
     "OG-002.dc.html",
-    "DS-CONFIRM.dc.html",
     "DS-NAV.dc.html",
     "DS-TYPE-SCALE.dc.html"
   ],
