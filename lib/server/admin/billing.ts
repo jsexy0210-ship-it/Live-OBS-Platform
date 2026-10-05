@@ -5,6 +5,7 @@ import { adminCan } from "../authz/permissions";
 import type { SellerAccess } from "../billing/access";
 import { dbNow } from "../billing/subscription";
 import { decodeCursor, encodeCursor, kstDayStart } from "../orders/read";
+import { effectiveMailQuota } from "../mail/quota";
 
 // 마스터 관리자 구독 현황(MA-023)·청구·결제 내역(MA-024)·청구 상세(MA-025). 조회만 한다(결제 실행·환불 없음). platform.read.
 export const ADMIN_BILLING_PAGE_DEFAULT = 50;
@@ -194,4 +195,30 @@ export async function getAdminPayment(db: PrismaClient, admin: AdminSessionConte
   if (!p) return null;
   const { targetPlan, ...rest } = p;
   return { ...rest, targetPlanCode: targetPlan?.code ?? null };
+}
+
+// 요금제 목록(MA-021·022, 마스터 관리자 전 역할 조회). 판매가·정가·체험 일수·체험 한도·월 거래 메일 제공량.
+// 메일 제공량은 적용 예정일이 지났으면 새 값이 지금 값이고, 아직이면 next로 준다(발송 설정 GET /api/admin/message-settings와 같은 기준).
+export async function listAdminPlans(db: PrismaClient, admin: AdminSessionContext) {
+  if (!adminCan(admin.admin.role, "platform.read")) throw forbidden();
+  const now = await dbNow(db);
+  const plans = await db.subscriptionPlan.findMany({ orderBy: { code: "asc" } });
+  return {
+    plans: plans.map((p) => {
+      const pending = p.nextMailQuota !== null && !!p.nextMailQuotaAt && p.nextMailQuotaAt > now;
+      return {
+        code: p.code,
+        name: p.name,
+        listPrice: p.listPrice,
+        salePrice: p.salePrice,
+        trialDays: p.trialDays,
+        trialMessageLimit: p.trialMessageLimit,
+        trialIdentityLimit: p.trialIdentityLimit,
+        trialStorageMb: p.trialStorageMb,
+        mailMonthlyQuota: effectiveMailQuota(p, now),
+        next: pending ? { mailMonthlyQuota: p.nextMailQuota!, effectiveAt: p.nextMailQuotaAt! } : null,
+        updatedAt: p.updatedAt,
+      };
+    }),
+  };
 }

@@ -169,11 +169,13 @@ export async function buyerReturnContext(db: PrismaClient, scope: BuyerScope, or
     select: {
       status: true,
       purchaseConfirmedAt: true,
-      items: { select: { id: true, productNameSnapshot: true, optionNameSnapshot: true, quantity: true }, orderBy: { id: "asc" } },
+      items: { select: { id: true, productNameSnapshot: true, optionNameSnapshot: true, quantity: true, refundedQuantity: true }, orderBy: { id: "asc" } },
       shipment: { select: { status: true } },
     },
   });
   if (!order) return null;
+  // 부분 환불로 다 돌려준 품목은 신청할 수 없고, 수량은 남은 수량(quantity − refundedQuantity)
+  const returnable = order.items.filter((i) => i.refundedQuantity < i.quantity);
   const requests = await db.returnRequest.findMany({ where: { sellerId: scope.sellerId, orderId }, include: viewInclude, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
   const active = requests.find((r) => ACTIVE_STATUSES.includes(r.status)) ?? null;
   const open = await shopOpen(db, scope.sellerId);
@@ -181,7 +183,7 @@ export async function buyerReturnContext(db: PrismaClient, scope: BuyerScope, or
   return {
     canRequest: blocked === null,
     blocked,
-    items: order.items.map((i) => ({ orderItemId: i.id, productName: i.productNameSnapshot, optionName: i.optionNameSnapshot, quantity: i.quantity })),
+    items: returnable.map((i) => ({ orderItemId: i.id, productName: i.productNameSnapshot, optionName: i.optionNameSnapshot, quantity: i.quantity - i.refundedQuantity })),
     requests: requests.map(view),
   };
 }
@@ -202,7 +204,10 @@ export async function createReturn(db: PrismaClient, scope: BuyerScope, orderId:
       const shipment = await tx.shipment.findUnique({ where: { orderId }, select: { status: true } });
       if (locked.status !== "PAID" || shipment?.status !== "DELIVERED" || locked.purchaseConfirmedAt) return { ok: false as const, reason: "not_returnable" as const };
       if ((await tx.returnRequest.count({ where: { sellerId: scope.sellerId, orderId, status: { in: [...ACTIVE_STATUSES] } } })) > 0) return { ok: false as const, reason: "active_exists" as const };
-      const orderItems = await tx.orderItem.findMany({ where: { sellerId: scope.sellerId, orderId }, select: { id: true, quantity: true } });
+      // 부분 환불로 다 돌려준 품목은 빼고, 신청 수량은 남은 수량
+      const orderItems = (await tx.orderItem.findMany({ where: { sellerId: scope.sellerId, orderId }, select: { id: true, quantity: true, refundedQuantity: true } }))
+        .filter((i) => i.refundedQuantity < i.quantity)
+        .map((i) => ({ id: i.id, quantity: i.quantity - i.refundedQuantity }));
       const picked = input.kind === "RETURN" ? orderItems : orderItems.filter((i) => input.orderItemIds!.includes(i.id));
       if (picked.length === 0 || (input.kind === "EXCHANGE" && picked.length !== input.orderItemIds!.length)) return { ok: false as const, reason: "invalid_items" as const };
       const imgs = input.imageIds.length
@@ -390,10 +395,10 @@ export async function shipExchange(db: PrismaClient, ctx: TenantContext, id: str
   if (!t.ok) return t;
   return sellerStep(db, ctx, id, "complete", async (tx, r, now) => {
     if (r.kind !== "EXCHANGE") return { ok: false, reason: "wrong_kind" };
-    const items = await tx.returnRequestItem.findMany({ where: { sellerId: ctx.sellerId, returnRequestId: r.id }, select: { orderItemId: true, orderItem: { select: { optionId: true, quantity: true } } } });
-    // 옵션 id 순서로 잠가 같은 옵션을 다루는 다른 교환·주문과 교착하지 않게 한다
+    const items = await tx.returnRequestItem.findMany({ where: { sellerId: ctx.sellerId, returnRequestId: r.id }, select: { orderItemId: true, quantity: true, orderItem: { select: { optionId: true } } } });
+    // 옵션 id 순서로 잠가 같은 옵션을 다루는 다른 교환·주문과 교착하지 않게 한다. 수량은 신청 수량(부분 환불한 수량을 뺀 값)
     const need = new Map<string, number>();
-    for (const i of items) need.set(i.orderItem.optionId, (need.get(i.orderItem.optionId) ?? 0) + i.orderItem.quantity);
+    for (const i of items) need.set(i.orderItem.optionId, (need.get(i.orderItem.optionId) ?? 0) + i.quantity);
     for (const [optionId, qty] of [...need.entries()].sort(([a], [b]) => (a < b ? -1 : 1))) {
       const dec = await tx.productOption.updateMany({ where: { id: optionId, sellerId: ctx.sellerId, stock: { gte: qty } }, data: { stock: { decrement: qty } } });
       if (dec.count !== 1) throw new StockShort();

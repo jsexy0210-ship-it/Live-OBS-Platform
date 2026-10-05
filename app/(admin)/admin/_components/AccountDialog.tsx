@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Modal } from "../../../../components/admin-ui/Modal";
 import { adminApi } from "./api";
 import { ASSIGNABLE_ROLES, MIN_PASSWORD, ROLE_LABEL, type AdminAccount, type AdminRoleCode, type AdminStatus } from "./accounts";
 
@@ -26,6 +27,9 @@ export function AccountDialog({ account, onClose, onDone }: { account: AdminAcco
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const dirty = editing
+    ? name !== account.name || (!protectedAccount && (role !== account.role || status !== account.status))
+    : email !== "" || name !== "" || password !== "" || role !== "READ_ONLY";
   const ready = name.trim() !== "" && name.trim().length <= 50 && (editing || (email.trim() !== "" && password.length >= MIN_PASSWORD));
 
   const submit = async (e: React.FormEvent) => {
@@ -49,14 +53,15 @@ export function AccountDialog({ account, onClose, onDone }: { account: AdminAcco
   };
 
   return (
-    <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="account-title">
-      <form className="modal" onSubmit={submit} noValidate>
+    <Modal labelId="account-title" busy={busy} dirty={dirty} onClose={onClose}>
+      {(requestClose) => (
+      <form className="col" style={{ gap: 16 }} onSubmit={submit} noValidate>
         <div className="modal-h">
-          <h2 className="t-h2" id="account-title">
+          <h2 className="modal-t" id="account-title">
             {editing ? "관리자 계정 수정" : "관리자 계정 추가"}
           </h2>
         </div>
-        <div className="col" style={{ gap: 14, padding: "0 24px" }}>
+        <div className="col" style={{ gap: 14, }}>
           {!editing && (
             <div className="fld">
               <label htmlFor="account-email">이메일</label>
@@ -115,7 +120,7 @@ export function AccountDialog({ account, onClose, onDone }: { account: AdminAcco
           )}
         </div>
         <div className="modal-f">
-          <button className="btn btn-out" type="button" onClick={onClose} disabled={busy}>
+          <button className="btn btn-out" type="button" onClick={requestClose} disabled={busy}>
             취소
           </button>
           <button className="btn" type="submit" disabled={!ready || busy}>
@@ -123,6 +128,7 @@ export function AccountDialog({ account, onClose, onDone }: { account: AdminAcco
           </button>
         </div>
       </form>
-    </div>
+      )}
+    </Modal>
   );
 }

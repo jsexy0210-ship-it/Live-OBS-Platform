@@ -28,8 +28,9 @@ export type VideoInfo = {
 };
 
 export type ChatMessage = { messageId: string; authorChannelId: string; authorName: string; text: string; publishedAt: Date };
-// ended: 채팅이 끝났거나 꺼짐·없음(liveChatEnded·liveChatDisabled·liveChatNotFound). 받으면 그 방송의 수집을 멈춘다.
-export type ChatPage = { messages: ChatMessage[]; nextPageToken: string | null; pollingIntervalMillis: number | null; ended: boolean };
+// ended: 채팅이 끝났거나 꺼짐·없음·비공개. 받으면 그 방송의 수집을 멈추고 endReason을 남긴다.
+export type ChatEndReason = "chat_ended" | "chat_disabled" | "chat_not_found" | "chat_forbidden";
+export type ChatPage = { messages: ChatMessage[]; nextPageToken: string | null; pollingIntervalMillis: number | null; ended: boolean; endReason?: ChatEndReason };
 
 // 할당량 초과(403 quotaExceeded·dailyLimitExceeded). 받으면 그날 호출을 멈춘다.
 export class YoutubeQuotaError extends Error {
@@ -51,7 +52,12 @@ export type YoutubeClient = {
   chatMessages(liveChatId: string, pageToken: string | null): Promise<ChatPage>;
 };
 
-const CHAT_ENDED = new Set(["liveChatEnded", "liveChatDisabled", "liveChatNotFound", "forbidden"]);
+const CHAT_ENDED: Record<string, ChatEndReason> = {
+  liveChatEnded: "chat_ended",
+  liveChatDisabled: "chat_disabled",
+  liveChatNotFound: "chat_not_found",
+  forbidden: "chat_forbidden",
+};
 
 type Fetch = (url: string, init?: RequestInit) => Promise<Response>;
 
@@ -122,7 +128,9 @@ export function createYoutubeClient(apiKey: string, fetchImpl: Fetch = fetch, ti
       try {
         r = await get("liveChatMessages.list", { liveChatId, part: "snippet,authorDetails", maxResults: "2000", ...(pageToken ? { pageToken } : {}) });
       } catch (e) {
-        if (e instanceof YoutubeApiError && CHAT_ENDED.has(e.reason)) return { messages: [], nextPageToken: null, pollingIntervalMillis: null, ended: true };
+        if (e instanceof YoutubeApiError && Object.hasOwn(CHAT_ENDED, e.reason)) {
+          return { messages: [], nextPageToken: null, pollingIntervalMillis: null, ended: true, endReason: CHAT_ENDED[e.reason] };
+        }
         throw e;
       }
       const messages = (r.items ?? []).flatMap((raw) => {

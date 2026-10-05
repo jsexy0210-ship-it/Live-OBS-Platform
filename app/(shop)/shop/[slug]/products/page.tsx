@@ -28,20 +28,39 @@ export default async function ShopProductsPage({ params, searchParams }: Props) 
   const base = `/shop/${encodeURIComponent(shop.slug)}`;
   const categories = (await publicCategories(prisma, shop.slug)) ?? [];
   const categoryId = categoryParam(sp.category);
-  const current = categoryId ? categories.flatMap((c) => [{ ...c, parent: null as string | null }, ...c.children.map((x) => ({ ...x, children: [], parent: c.id as string | null }))]).find((c) => c.id === categoryId) : null;
+  // 2단 트리: 대분류(parent 없음)와 소분류. 현재 분류의 대분류와 경로(대분류 › 소분류)를 구한다
+  const top = categories.find((c) => c.id === categoryId) ?? null;
+  const parent = top ? null : categories.find((c) => c.children.some((x) => x.id === categoryId)) ?? null;
+  const sibling = parent?.children.find((x) => x.id === categoryId) ?? null;
+  const current = top ?? sibling;
   if (categoryId && !current) notFound();
+  const group = top ?? parent; // 칩으로 보여 줄 묶음(대분류와 그 소분류)
+  const crumb = parent && sibling ? `${parent.name} › ${sibling.name}` : undefined;
+  const chipLink = (id: string | null, label: string, on: boolean) => (
+    <Link key={id ?? "all"} className="shop-chip" href={id ? `${base}/products?category=${id}` : `${base}/products`} aria-current={on ? "page" : undefined}>
+      {label}
+    </Link>
+  );
+  const chips =
+    group && group.children.length > 0 ? (
+      <nav className="shop-chips" aria-label={`${group.name} 하위 카테고리`}>
+        {chipLink(group.id, "전체", current?.id === group.id)}
+        {group.children.map((x) => chipLink(x.id, x.name, current?.id === x.id))}
+      </nav>
+    ) : null;
   const list = (
     <ProductListing
-    slug={shop.slug}
-    title={current?.name ?? "전체 상품"}
-    path={`${base}/products`}
-    sort={sortKey(sp.sort)}
-    page={pageNumber(sp.page)}
-    categoryId={current?.id}
-    empty={current ? "이 분류에는 아직 상품이 없어요." : "아직 올라온 상품이 없어요."}
-  />
+      slug={shop.slug}
+      title={current?.name ?? "전체 상품"}
+      crumb={crumb}
+      chips={chips}
+      path={`${base}/products`}
+      sort={sortKey(sp.sort)}
+      page={pageNumber(sp.page)}
+      categoryId={current?.id}
+      empty={current ? "이 분류에는 아직 상품이 없어요." : "아직 올라온 상품이 없어요."}
+    />
   );
-  const expanded = current ? (current.parent ?? current.id) : null; // 펼쳐 보일 대분류
   return (
     <div className="shop-wrap shop-plist">
       <aside className="shop-sidecat" aria-label="카테고리">
@@ -51,15 +70,14 @@ export default async function ShopProductsPage({ params, searchParams }: Props) 
         </Link>
         {categories.map((c) => (
           <div key={c.id}>
-            <Link href={`${base}/products?category=${c.id}`} aria-current={current?.id === c.id ? "page" : undefined}>
+            <Link className="top" href={`${base}/products?category=${c.id}`} aria-current={current?.id === c.id ? "page" : undefined}>
               {c.name}
             </Link>
-            {expanded === c.id &&
-              c.children.map((x) => (
-                <Link key={x.id} className="sub" href={`${base}/products?category=${x.id}`} aria-current={current?.id === x.id ? "page" : undefined}>
-                  {x.name}
-                </Link>
-              ))}
+            {c.children.map((x) => (
+              <Link key={x.id} className="sub" href={`${base}/products?category=${x.id}`} aria-current={current?.id === x.id ? "page" : undefined}>
+                {x.name}
+              </Link>
+            ))}
           </div>
         ))}
       </aside>

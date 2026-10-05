@@ -21,7 +21,9 @@ export async function getOrder(db: PrismaClient, ctx: TenantContext, orderId: st
   });
   if (!order) throw notFound();
 
-  const { buyerMember, shippingAddress, ...rest } = order;
+  const { buyerMember, shippingAddress, ...orderRest } = order;
+  // 품목마다 보낼 수량(수량 − 부분 환불한 수량). 화면은 refundedQuantity로 「부분 환불 n개」를 보여 준다.
+  const rest = { ...orderRest, items: order.items.map((i) => ({ ...i, shipQuantity: i.quantity - i.refundedQuantity })) };
   if (!canViewCustomerPii(ctx)) {
     // 배송지도 개인정보라 도서산간 여부(배송비 근거)만 남긴다
     return {
@@ -52,6 +54,18 @@ export async function listOrders(
     orderBy: { createdAt: "desc" },
     take: Math.min(opts.take ?? 50, 200),
   });
+}
+
+// 목록의 품목 요약. 부분 환불로 다 돌려준 품목은 빼고(남은 품목이 없는 환불 주문은 전부로) 첫 상품 이름과 나머지 품목 수, 환불한 수량 합을 준다.
+export const itemSummarySelect = { select: { productNameSnapshot: true, quantity: true, refundedQuantity: true }, orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }] };
+export function itemSummary(items: { productNameSnapshot: string; quantity: number; refundedQuantity: number }[]) {
+  const left = items.filter((i) => i.refundedQuantity < i.quantity);
+  const shown = left.length ? left : items;
+  return {
+    firstProductName: shown[0]?.productNameSnapshot ?? null,
+    otherCount: Math.max(shown.length - 1, 0),
+    refundedQuantity: items.reduce((a, i) => a + i.refundedQuantity, 0),
+  };
 }
 
 export const SELLER_ORDER_PAGE_DEFAULT = 50;
@@ -137,8 +151,7 @@ export async function listSellerOrders(db: PrismaClient, ctx: TenantContext, que
       paidAt: true,
       totalAmount: true,
       buyerMember: { select: { id: true, broadcastNickname: true } },
-      items: { select: { productNameSnapshot: true }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: 1 },
-      _count: { select: { items: true } },
+      items: itemSummarySelect,
       shipment: { select: { id: true } },
     },
   });
@@ -166,7 +179,7 @@ export async function listSellerOrders(db: PrismaClient, ctx: TenantContext, que
       paidAt: o.paidAt,
       buyer: o.buyerMember,
       totalAmount: o.totalAmount,
-      itemSummary: { firstProductName: o.items[0]?.productNameSnapshot ?? null, otherCount: Math.max(o._count.items - 1, 0) },
+      itemSummary: itemSummary(o.items),
       shipped: o.shipment !== null,
       // 환불 API는 결제 완료(PAID) 주문만 받는다. 발송한 주문은 사유 주체(fault)가 필요하다.
       refundable: o.status === "PAID",
