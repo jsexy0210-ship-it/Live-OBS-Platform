@@ -100,6 +100,19 @@
 | 구매자 모달 | `components/shop/ShopModal.tsx` | 모서리·X 크기만 토큰으로 맞춤. 포커스 가둠·배경 스크롤 차단·미저장 확인은 공통 모달로 전환할 때(4단계) |
 | 셸 | `components/seller/SellerShell.tsx`, `app/(admin)/admin/_components/AdminShell.tsx` | 대기(열린 PR이 메뉴 줄을 고치는 중이라 1단계에서 제외) |
 
+## 모달 전환 담당(공통 Modal)
+
+| 모달 | 파일 | 담당 |
+|---|---|---|
+| 발송 단가 변경 창 | `app/(admin)/admin/_components/ValueDialog.tsx` | 완료(1단계, #372) |
+| 정지·계정·충전 확인·무상 지급 창 | `app/(admin)/admin/_components/*`, 발송 단가 화면 | 소유 세션 전환(브랜딩 전담 (2)) |
+| 환불 창 | `components/seller/RefundModal.tsx` | 소유 세션 전환(개발 전담 (화면) (3)) |
+| HIT 카드 등록 창 | `app/(seller)/seller/(shell)/hit-cards/page.tsx` | 소유 세션 전환(화면-방송 (2)) |
+| 방송 대시보드 모달 | `components/seller/broadcast/Modals.tsx` | 레이아웃 전담 2단계(잠금 승인) |
+| 오버레이 편집기 모달 | `components/seller/OverlayEditor.tsx` | 레이아웃 전담 2단계(잠금 승인) |
+| 그 밖의 파트너스 모달 | `feat/admin-modal` 전환분(레이아웃 (2) 인계) | 레이아웃 전담 3단계(화면별 잠금 뒤) |
+| 구매자 모달 | `components/shop/ShopModal.tsx` | 레이아웃 전담 4단계(잠금 뒤) |
+
 ## 알려진 문제(1단계에서 확인, 고치지 않음)
 
 - 보조 글자색 `--wds-label-assistive`(관리자 `#9ca1aa`)는 흰 바탕 대비 2.6:1로 4.5:1에 못 미친다. 자리 표시(placeholder)·준비 중 메뉴에 쓰인다. 준비 중 메뉴는 비활성 표시라 대비 기준 예외지만, 안내 문구에 쓰인 곳은 2·3단계에서 화면마다 바꾼다(기존 문제).
