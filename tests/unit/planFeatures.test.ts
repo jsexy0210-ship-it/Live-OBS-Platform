@@ -309,6 +309,7 @@ const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/me/withdraw": "OPEN",
   "shop/[slug]/me/rewards": "OPEN", // 내 적립금 잔액(탈퇴 전 확인, #180)
   "shop/[slug]/me/rejoin-retention-consent": "OPEN", // 재가입 제한 정보 보관 동의 철회(언제든, #177)
+  "shop/[slug]/me/legal-consent": "OPEN", // 내가 동의한 약관 버전과 지금 쇼핑몰 약관 버전 비교(표시용 플래그, 잠긴 쇼핑몰에서도 열림)
   "overlay/[token]/state": "OVERLAY",
   "overlay/[token]/layout": "OVERLAY",
   "overlay/[token]/version": "OVERLAY",

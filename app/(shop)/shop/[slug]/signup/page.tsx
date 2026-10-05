@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import SignupForm from "../../../../../components/shop/SignupForm";
 import ShopState from "../../../../../components/shop/ShopState";
-import { SIGNUP_CONSENT_VERSIONS } from "../../../../../lib/server/buyers/consent";
+import { SIGNUP_CONSENT_VERSIONS, currentConsentDocs } from "../../../../../lib/server/buyers/consent";
 import { rejoinDaysToAgree } from "../../../../../lib/server/buyers/rejoin";
 import { shopOpen } from "../../../../../lib/server/buyers/signup";
 import { prisma } from "../../../../../lib/server/db";
@@ -31,9 +31,10 @@ export default async function ShopSignupPage({ params }: Params) {
   const open = await shopOpen(prisma, shop.id);
   const identityReady = identityProvider() !== null;
   // 가입 필수 동의 문서 버전과 재가입 제한 기간(켠 쇼핑몰만). 화면은 본인확인 전에 동의를 받아 함께 보낸다.
+  const docs = await currentConsentDocs(prisma, shop.id);
   const consent = {
-    termsVersion: SIGNUP_CONSENT_VERSIONS.terms,
-    privacyVersion: SIGNUP_CONSENT_VERSIONS.privacy,
+    termsVersion: docs.terms.version,
+    privacyVersion: docs.privacy.version,
     rejoinRetentionVersion: SIGNUP_CONSENT_VERSIONS.rejoinRetention,
     marketingVersion: SIGNUP_CONSENT_VERSIONS.marketing,
     rejoinDays: await rejoinDaysToAgree(prisma, shop.id),
