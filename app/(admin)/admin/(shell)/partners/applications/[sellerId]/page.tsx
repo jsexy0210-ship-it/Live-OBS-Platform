@@ -1,21 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { adminCan } from "../../../../../../../lib/server/authz/permissions";
-import { textLength } from "../../../../../../../lib/server/text/clean";
-import { Modal, PageHead } from "../../../../../../../components/admin-ui";
+import { PageHead } from "../../../../../../../components/admin-ui";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../../components/seller/States";
 import { adminApi, failMessage } from "../../../../_components/api";
 import { AdminTopbar, useAdmin } from "../../../../_components/AdminShell";
 import { SELLER_STATUS, day, dayTime, reasonLabel, text, type ReviewRow, type SellerDetail } from "../../../../_components/partners";
-import { MAX_REASON } from "../../../../_components/SuspendDialog";
+import { RejectApplicationDialog } from "../../../../_components/RejectApplicationDialog";
+import { setFlash, takeFlash } from "../../../../_components/flash";
 import { useSmartBack } from "../../../../../../../lib/client/navigation";
 
 // MA-014 가입 신청 상세: 신청 내용(GET /api/admin/sellers/{id})과 확인 필요 항목(GET …/review)을 보고 승인·반려한다.
 // 승인·반려는 최고관리자·운영만 보인다. 반려는 사유 필수(1~200자). 이미 처리됐으면(409) 최신 상태로 다시 읽는다.
-type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; seller: SellerDetail; reasons: string[] };
+// 대기 중인 신청 순서(서버가 주는 오래 기다린 순)로 [이전] N/M [다음]을 보이고, 승인·반려한 뒤에는 목록으로 돌아가지 않고 다음 건으로 넘어간다(없으면 목록).
+type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; seller: SellerDetail; reasons: string[]; queue: string[] };
 
 function Info({ title, id, rows }: { title: string; id: string; rows: [string, React.ReactNode][] }) {
   return (
@@ -35,62 +36,9 @@ function Info({ title, id, rows }: { title: string; id: string; rows: [string, R
   );
 }
 
-function RejectDialog({ id, shopName, onClose, onDone, onStale }: { id: string; shopName: string; onClose: () => void; onDone: () => void; onStale: () => void }) {
-  const [reason, setReason] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const count = textLength(reason);
-  const invalid = count === 0 || count > MAX_REASON;
-  const submit = async () => {
-    if (busy || invalid) return;
-    setBusy(true);
-    setError(null);
-    const r = await adminApi(`/api/admin/sellers/${id}/reject`, { method: "POST", json: { reason: reason.trim() } });
-    setBusy(false);
-    if (r.ok) return onDone();
-    if (r.status === 404 || r.status === 409) return onStale();
-    setError(r.error === "reason_required" ? "사유를 1자 이상 200자 이하로 입력해 주십시오." : failMessage(r, "처리하지 못했습니다. 잠시 후 다시 시도해 주십시오."));
-  };
-  return (
-    <Modal labelId="reject-title" busy={busy} dirty={count > 0} onClose={onClose}>
-      {(requestClose) => (
-        <>
-          <div className="modal-h">
-            <h2 className="modal-t" id="reject-title">
-              가입을 반려하시겠습니까?
-            </h2>
-            <span className="t-l2 c-alt">{shopName}의 가입 신청이 반려되며, 같은 대표자가 다시 신청할 수 있습니다.</span>
-          </div>
-          <div className="col" style={{ gap: 6, padding: "0 24px" }}>
-            <label className="lbl" htmlFor="reject-reason">
-              반려 사유
-            </label>
-            <textarea id="reject-reason" className="inp" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} disabled={busy} />
-            <span className={`t-c1 ${count > MAX_REASON ? "c-neg" : "c-alt"}`}>
-              {count}/{MAX_REASON}
-            </span>
-            {error && (
-              <span className="err" role="alert">
-                {error}
-              </span>
-            )}
-          </div>
-          <div className="modal-f">
-            <button className="btn btn-out" type="button" onClick={requestClose} disabled={busy}>
-              취소
-            </button>
-            <button className="btn" type="button" onClick={() => void submit()} disabled={busy || invalid}>
-              {busy ? "처리 중" : "반려"}
-            </button>
-          </div>
-        </>
-      )}
-    </Modal>
-  );
-}
-
 export default function ApplicationDetailPage() {
   const back = useSmartBack("/admin/partners/applications");
+  const router = useRouter();
   const { sellerId } = useParams<{ sellerId: string }>();
   const { me } = useAdmin();
   const canModerate = adminCan(me.role, "seller.moderate");
@@ -107,14 +55,30 @@ export default function ApplicationDetailPage() {
     ]);
     if (!d.ok) return setState({ kind: "error", status: d.status });
     const reasons = rv.ok ? (rv.data.sellers.find((x) => x.id === sellerId)?.reviewReasons ?? []) : [];
-    setState({ kind: "ok", seller: d.data.seller, reasons });
+    setState({ kind: "ok", seller: d.data.seller, reasons, queue: rv.ok ? rv.data.sellers.map((x) => x.id) : [] });
   }, [sellerId]);
   useEffect(() => void load(), [load]);
+  // 이전 건에서 승인·반려하고 넘어왔다면 그 결과 안내를 이어서 보인다
+  useEffect(() => {
+    const m = takeFlash();
+    if (m) setToast({ text: m });
+  }, [sellerId]);
 
   const stale = () => {
     setReject(false);
     setToast({ text: "다른 곳에서 이미 처리됐습니다. 최신 상태를 불러옵니다.", neg: true });
     void load();
+  };
+  const queue = state.kind === "ok" ? state.queue : [];
+  const pos = queue.indexOf(sellerId);
+  const go = (id: string | undefined) => id && router.replace(`/admin/partners/applications/${id}`);
+  // 처리한 건을 뺀 순서에서 같은 자리의 다음 건(마지막이었다면 앞 건), 없으면 목록
+  const goNext = (message: string) => {
+    setFlash(message);
+    const rest = queue.filter((x) => x !== sellerId);
+    const next = rest[pos] ?? rest[rest.length - 1];
+    if (next) go(next);
+    else router.replace("/admin/partners/applications");
   };
   const approve = async () => {
     if (approving) return;
@@ -122,8 +86,7 @@ export default function ApplicationDetailPage() {
     const r = await adminApi(`/api/admin/sellers/${encodeURIComponent(sellerId)}/approve`, { method: "POST", json: {} });
     setApproving(false);
     if (r.ok) {
-      setToast({ text: "가입을 승인했습니다." });
-      return void load();
+      return goNext("가입을 승인했습니다.");
     }
     if (r.status === 404 || r.status === 409) return stale();
     setToast({ text: failMessage(r, "승인하지 못했습니다. 잠시 후 다시 시도해 주십시오."), neg: true });
@@ -150,6 +113,19 @@ export default function ApplicationDetailPage() {
                     {approving ? "처리 중" : "승인"}
                   </button>
                 </>
+              )}
+              {pos >= 0 && queue.length > 1 && (
+                <span className="row" style={{ gap: 4, alignItems: "center" }} data-testid="application-nav">
+                  <button className="btn btn-out" type="button" onClick={() => go(queue[pos - 1])} disabled={pos === 0}>
+                    이전
+                  </button>
+                  <span className="t-l2 c-alt">
+                    {pos + 1} / {queue.length}
+                  </span>
+                  <button className="btn btn-out" type="button" onClick={() => go(queue[pos + 1])} disabled={pos === queue.length - 1}>
+                    다음
+                  </button>
+                </span>
               )}
               <button className="btn btn-out" type="button" onClick={back}>가입 신청 목록</button>
             </>
@@ -236,14 +212,13 @@ export default function ApplicationDetailPage() {
         )}
       </main>
       {reject && s && (
-        <RejectDialog
+        <RejectApplicationDialog
           id={s.id}
           shopName={s.shopName}
           onClose={() => setReject(false)}
           onDone={() => {
             setReject(false);
-            setToast({ text: "가입을 반려했습니다." });
-            void load();
+            goNext("가입을 반려했습니다.");
           }}
           onStale={stale}
         />

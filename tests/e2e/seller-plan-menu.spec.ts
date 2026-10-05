@@ -70,7 +70,7 @@ test("오버레이 전용은 쇼핑몰 기능 메뉴를 숨기고, 오버레이�
   await shot(page, "plan-menu-overlay");
 });
 
-test("로그인 뒤 기본 화면: 통합은 지금처럼 상품, 오버레이 전용은 안내 화면 대신 열 수 있는 첫 메뉴(방송 대시보드)", async ({ page }) => {
+test("로그인 뒤 기본 화면: 통합은 지금처럼 상품, 오버레이 전용은 안내 화면 대신 오버레이 홈", async ({ page }) => {
   await page.goto("/seller/login");
   await submitSellerLogin(page, INTEGRATED, PASSWORD);
   await expect(page).toHaveURL(/\/seller\/products$/);
@@ -78,7 +78,7 @@ test("로그인 뒤 기본 화면: 통합은 지금처럼 상품, 오버레이 �
 
   await page.goto("/seller/login");
   await submitSellerLogin(page, OVERLAY, PASSWORD);
-  await expect(page).toHaveURL(/\/seller\/broadcast$/);
+  await expect(page).toHaveURL(/\/seller\/home-overlay$/);
   await expect(page.getByTestId("plan-feature-required")).toHaveCount(0);
   await shot(page, "plan-overlay-landing");
 
@@ -110,9 +110,9 @@ test("오버레이 전용이 쇼핑몰 기능 주소로 바로 들어오면 안�
   await expect(page.getByText("상품 등록")).toHaveCount(0);
   await shot(page, "plan-feature-required");
 
-  // 열 수 있는 첫 메뉴(방송 대시보드)로 보낸다
-  await guide.getByRole("link", { name: "방송 대시보드 화면으로 이동" }).click();
-  await expect(page).toHaveURL(/\/seller\/broadcast$/);
+  // 열 수 있는 첫 메뉴(홈 = 오버레이 홈)로 보낸다
+  await guide.getByRole("link", { name: "홈 화면으로 이동" }).click();
+  await expect(page).toHaveURL(/\/seller\/home-overlay$/);
   await expect(page.getByTestId("plan-feature-required")).toHaveCount(0);
 });
 

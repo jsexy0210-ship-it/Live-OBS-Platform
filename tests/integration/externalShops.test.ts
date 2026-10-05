@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET as callbackRoute } from "../../app/api/seller/external-shops/oauth-done/route";
 import { GET as listRoute, POST as startRoute } from "../../app/api/seller/external-shops/route";
 import { DELETE as deleteRoute } from "../../app/api/seller/external-shops/[id]/route";
@@ -14,6 +14,9 @@ import { ingestWebhook } from "../../lib/server/external/webhook";
 import { prisma } from "../../lib/server/db";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { PASSWORD, createSeller, createSellerUser, db, resetDb } from "./helpers";
+
+const afterCalls: (() => unknown)[] = [];
+vi.mock("next/server", async (orig) => ({ ...(await orig<typeof import("next/server")>()), after: (fn: () => unknown) => void afterCalls.push(fn) }));
 
 // 외부 쇼핑몰 연동 기반(SA-006 서버): 연결 시작·콜백(1회용 state·세션 묶음)·토큰 암호화·해제·웹훅 인증키·중복·격리.
 // 공급자는 가짜(실제 외부 호출 없음). 설정 키는 시험용 임의값.
@@ -167,7 +170,7 @@ describe("해제", () => {
     expect(s.p.revokes).toEqual(["myshop"]);
     expect(await db.externalShopConnection.findUniqueOrThrow({ where: { id: s.id } })).toMatchObject({ status: "DISCONNECTED", accessTokenCipher: null, refreshTokenCipher: null });
     const body = JSON.stringify({ resource: { mall_id: "myshop" }, event_no: 1 });
-    expect((await ingestWebhook(db, cfg, { rawBody: body, apiKey: cfg.webhookKey })).status).toBe(404);
+    expect(await ingestWebhook(db, cfg, { rawBody: body, apiKey: cfg.webhookKey })).toEqual({ status: 200, stored: false, ignored: "unknown_shop" });
     expect(await db.externalWebhookEvent.count()).toBe(0);
     // 다시 해제해도 같다
     expect(await disconnect(db, s.p, s.ctx, s.id)).toEqual({ ok: true, status: "DISCONNECTED" });
@@ -180,7 +183,8 @@ describe("해제", () => {
     expect(c.accessTokenCipher).toBeNull();
     expect(openBillingKey(c.refreshTokenCipher!, s.seller.id)).toBe("RT-k");
     const body = JSON.stringify({ resource: { mall_id: "myshop" }, event_no: 2 });
-    expect((await ingestWebhook(db, cfg, { rawBody: body, apiKey: cfg.webhookKey })).status).toBe(404);
+    expect(await ingestWebhook(db, cfg, { rawBody: body, apiKey: cfg.webhookKey })).toEqual({ status: 200, stored: false, ignored: "unknown_shop" });
+    expect(await db.externalWebhookEvent.count()).toBe(0);
   });
   it("다른 파트너스의 연결은 해제할 수 없다(404)", async () => {
     const s = await connected();
@@ -209,6 +213,10 @@ describe("웹훅 수신", () => {
     expect((await send(body, null)).status).toBe(401);
     expect((await send(body, "AAAA")).status).toBe(401);
     expect((await send(body, cfg.clientSecret)).status).toBe(401);
+    // 값 앞뒤 공백·감싼 따옴표·Bearer 접두어는 같은 값으로 본다. 대소문자 다른 값·일부만 맞는 값은 거절
+    for (const ok of [` ${KEY} `, `"${KEY}"`, `'${KEY}'`, `Bearer ${KEY}`]) expect((await send(body, ok)).status).toBe(200);
+    for (const bad of [KEY.toUpperCase(), KEY.slice(0, -1), `${KEY}x`, "", "Bearer "]) expect((await send(body, bad)).status).toBe(401);
+    await db.externalWebhookEvent.deleteMany();
     expect(await db.externalWebhookEvent.count()).toBe(0);
     expect(await send(body, KEY)).toEqual({ status: 200, stored: true });
     expect(await send(body, KEY)).toEqual({ status: 200, stored: false });
@@ -221,7 +229,7 @@ describe("웹훅 수신", () => {
     const body = evt(3);
     expect((await send(body, null)).status).toBe(401);
     const unknown = JSON.stringify({ resource: { mall_id: "nobody" } });
-    expect((await send(unknown, KEY)).status).toBe(404);
+    expect(await send(unknown, KEY)).toEqual({ status: 200, stored: false, ignored: "unknown_shop" }); // 인증 통과 + 연결 안 된 몰 = 200, 저장 안 함
     expect((await send("not json", KEY)).status).toBe(400);
     const noMall = JSON.stringify({ resource: {} });
     expect((await send(noMall, KEY)).status).toBe(400);
@@ -405,12 +413,16 @@ describe("다시 연결·목록 권한 (SA-006)", () => {
     expect(await startReconnect(db, null, (await connected("shopb")).ctx, (await db.externalShopConnection.findFirstOrThrow({ where: { shopKey: "shopb" } })).id)).toEqual({ ok: false, reason: "integration_disabled" });
   });
 
-  it("목록은 같은 파트너스의 권한 없는 직원도 보고(보기만), 다른 파트너스의 연결은 보이지 않는다. 라우트는 canManage를 알려 준다", async () => {
+  it("목록은 대표자·쇼핑몰 설정(SHOP_SETTINGS) 직원만 본다(권한 없는 직원은 403), 다른 파트너스의 연결은 보이지 않는다. 라우트는 canManage를 알려 준다", async () => {
     const a = await connected("shopa");
     await connected("shopz");
     const viewer = await createSellerUser(a.seller.id, { permissions: [] });
     const viewerCtx: TenantContext = { ...a.ctx, actorId: viewer.id, isOwner: false, permissions: [] };
-    expect((await listConnections(db, viewerCtx)).map((c) => c.shopKey)).toEqual(["shopa"]);
+    await expect(listConnections(db, viewerCtx)).rejects.toMatchObject({ status: 403 });
+    const staff = await createSellerUser(a.seller.id, { permissions: ["SHOP_SETTINGS"] });
+    const staffCtx: TenantContext = { ...a.ctx, actorId: staff.id, isOwner: false, permissions: ["SHOP_SETTINGS"] };
+    expect((await listConnections(db, staffCtx)).map((c) => c.shopKey)).toEqual(["shopa"]);
+    expect((await listConnections(db, a.ctx)).map((c) => c.shopKey)).toEqual(["shopa"]);
     await expect(startConnect(db, new FakeProvider(), viewerCtx, "https://other.cafe24.com")).rejects.toMatchObject({ status: 403 });
     const cookie = async (email: string) => {
       const r = await loginSeller(db, { email, password: PASSWORD }, {});
@@ -419,12 +431,52 @@ describe("다시 연결·목록 권한 (SA-006)", () => {
     };
     const H = (c: string) => ({ host: "localhost:3000", origin: "http://localhost:3000", cookie: c, "content-type": "application/json" });
     const asViewer = await listRoute(new Request("http://localhost:3000/api/seller/external-shops", { headers: H(await cookie(viewer.email)) }));
-    expect(asViewer.status).toBe(200);
-    expect(await asViewer.json()).toMatchObject({ canManage: false, connections: [{ shopKey: "shopa" }] });
+    expect(asViewer.status).toBe(403);
+    expect(JSON.stringify(await asViewer.json())).not.toContain("shopa");
+    const asStaff = await listRoute(new Request("http://localhost:3000/api/seller/external-shops", { headers: H(await cookie(staff.email)) }));
+    expect(asStaff.status).toBe(200);
+    expect(await asStaff.json()).toMatchObject({ canManage: true, connections: [{ shopKey: "shopa" }] });
     const asOwner = await listRoute(new Request("http://localhost:3000/api/seller/external-shops", { headers: H(await cookie(a.user.email)) }));
     expect(await asOwner.json()).toMatchObject({ canManage: true });
     // connectionId 형식이 틀리면 404
     const bad = await startRoute(new Request("http://localhost:3000/api/seller/external-shops", { method: "POST", headers: H(await cookie(a.user.email)), body: JSON.stringify({ connectionId: "nope" }) }));
     expect(bad.status).toBe(404);
+  });
+});
+
+describe("웹훅 경로", () => {
+  it("저장된 새 이벤트만 응답 뒤 처리를 예약하고(중복·인증 실패는 예약하지 않음) 응답 본문은 비어 있다", async () => {
+    const saved = { ...process.env };
+    Object.assign(process.env, ENV);
+    try {
+      const s = await shop();
+      const p = new FakeProvider();
+      const st = await startConnect(db, p, s.ctx, "https://myshop.cafe24.com");
+      if (!st.ok) throw new Error("start");
+      await completeConnect(db, p, s.ctx, { state: stateOf(st.authorizeUrl), code: "k" });
+      afterCalls.length = 0;
+      const body = JSON.stringify({ event_no: 90001, resource: { mall_id: "myshop", order_id: "x1" } });
+      const post = (key: string | null) => webhookRoute(new Request("http://localhost:3000/api/external/webhook", { method: "POST", headers: key ? { "x-api-key": key } : {}, body }));
+      expect((await post(null)).status).toBe(401);
+      expect((await post("wrong")).status).toBe(401);
+      expect(afterCalls).toHaveLength(0);
+      const ok = await post(ENV.EXTERNAL_WEBHOOK_API_KEY);
+      expect(ok.status).toBe(200);
+      expect(await ok.text()).toBe("");
+      expect(afterCalls).toHaveLength(1);
+      expect((await post(ENV.EXTERNAL_WEBHOOK_API_KEY)).status).toBe(200);
+      expect(afterCalls).toHaveLength(1);
+      // 쇼핑몰 개발자센터의 WebHook TEST 샘플(연결 안 된 몰): 인증키가 맞으면 200이고 저장·처리 예약은 없다. 인증키가 틀리면 여전히 401
+      const before = await db.externalWebhookEvent.count();
+      const sample = JSON.stringify({ event_no: 90023, resource: { mall_id: "cafe24bestshop", order_id: "20200717-0029236" } });
+      const sampleRes = await webhookRoute(new Request("http://localhost:3000/api/external/webhook", { method: "POST", headers: { "x-api-key": ENV.EXTERNAL_WEBHOOK_API_KEY }, body: sample }));
+      expect(sampleRes.status).toBe(200);
+      expect(await db.externalWebhookEvent.count()).toBe(before);
+      expect(afterCalls).toHaveLength(1);
+      expect((await webhookRoute(new Request("http://localhost:3000/api/external/webhook", { method: "POST", headers: { "x-api-key": "wrong" }, body: sample }))).status).toBe(401);
+      await afterCalls[0](); // 예약된 처리가 오류 없이 끝난다(공급자 키가 있으면 처리 대상이 아닌 이벤트는 닫힘)
+    } finally {
+      process.env = saved;
+    }
   });
 });

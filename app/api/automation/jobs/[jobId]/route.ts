@@ -10,7 +10,7 @@ import { isJobId } from "../../../../../lib/server/automation/ids";
 export async function GET(req: Request, { params }: { params: Promise<{ jobId: string }> }) {
   try {
     const { jobId } = await params;
-    const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { allowUnpaid: true });
+    const ctx = await requireSeller(prisma, sessionToken(req, "seller"), undefined, { allowUnpaid: true, feature: "OVERLAY" });
     if (!isJobId(jobId)) return NextResponse.json({ error: "not_found" }, { status: 404 });
     return noStore(NextResponse.json(await getJob(prisma, ctx, jobId)));
   } catch (e) {

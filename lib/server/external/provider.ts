@@ -17,6 +17,46 @@ export interface ExternalShopProvider {
   revoke(shopKey: string, token: string): Promise<"ok" | "retry">;
 }
 
+// 주문 조회 결과(공식 문서: GET /orders/{order_id}?embed=items,buyer). 필요한 필드만 뽑는다. 응답 원문은 보관하지 않는다.
+export type ExternalOrderData = {
+  orderId: string;
+  paid: boolean;
+  canceled: boolean;
+  buyerName: string | null;
+  // 결제 시각(payment_date). 모르면 null
+  paidAt?: Date | null;
+  items: { productName: string; optionValue: string | null; quantity: number }[];
+};
+// 주문 목록 조회 조건(공식 문서: GET /orders). 날짜는 KST 기준 YYYY-MM-DD, 한 번에 3개월 이내.
+export type ExternalOrderListQuery = { startDate: string; endDate: string; dateType: "pay_date" | "cancel_date"; limit: number; offset: number };
+export interface ExternalOrderApi {
+  // null: 주문이 없음(404·422). 401은 ExternalHttpError(401), 429·5xx·시간 초과는 그대로 던져 다시 시도하게 한다.
+  fetchOrder(shopKey: string, accessToken: string, orderId: string): Promise<ExternalOrderData | null>;
+  // 누락 보정용 목록 조회(한 쪽에 최대 limit건). 오류는 fetchOrder와 같다.
+  listOrders(shopKey: string, accessToken: string, q: ExternalOrderListQuery): Promise<ExternalOrderData[]>;
+}
+
+type RawOrder = { order_id?: unknown; paid?: unknown; canceled?: unknown; payment_date?: unknown; billing_name?: unknown; buyer?: { name?: unknown } | null; items?: unknown };
+const str = (v: unknown) => (typeof v === "string" && v.trim() ? v : null);
+// 쇼핑몰 응답 한 건에서 필요한 값만 뽑는다(수량이 잘못된 품목은 뺀다). 주문번호가 없으면 null.
+function toOrderData(o: RawOrder | null | undefined): ExternalOrderData | null {
+  if (!o || typeof o.order_id !== "string") return null;
+  const items = Array.isArray(o.items) ? (o.items as Record<string, unknown>[]) : [];
+  const paidAt = typeof o.payment_date === "string" ? new Date(o.payment_date) : null;
+  return {
+    orderId: o.order_id,
+    paid: o.paid === "T",
+    canceled: o.canceled === "T",
+    buyerName: str(o.buyer?.name) ?? str(o.billing_name),
+    paidAt: paidAt && !Number.isNaN(paidAt.getTime()) ? paidAt : null,
+    items: items.flatMap((i) => {
+      const productName = str(i.product_name);
+      const quantity = typeof i.quantity === "number" ? i.quantity : Number.NaN;
+      return productName && Number.isInteger(quantity) && quantity >= 1 ? [{ productName, optionValue: str(i.option_value), quantity }] : [];
+    }),
+  };
+}
+
 const SHOP_KEY = /^[a-z0-9][a-z0-9-]{1,40}$/;
 export const isShopKey = (v: unknown): v is string => typeof v === "string" && SHOP_KEY.test(v);
 
@@ -36,8 +76,8 @@ export function shopKeyOf(shopUrl: unknown): string | null {
 
 const TIMEOUT_MS = 10_000;
 
-// 실제 공급자. 엔드포인트 경로는 공식 문서 직접 확인 전 값이다(「미검증」). 호출 실패 때 응답 본문은 오류에 싣지 않는다(토큰·개인정보 유입 방지).
-export class HttpExternalProvider implements ExternalShopProvider {
+// 실제 공급자. OAuth·주문 조회 경로는 공식 문서로 확인했다(철회 경로만 미확인, docs/EXTERNAL_SHOP.md). 호출 실패 때 응답 본문은 오류에 싣지 않는다(토큰·개인정보 유입 방지).
+export class HttpExternalProvider implements ExternalShopProvider, ExternalOrderApi {
   constructor(private readonly cfg: ExternalConfig) {}
   private base = (shopKey: string) => {
     if (!isShopKey(shopKey)) throw new Error("bad_shop_key");
@@ -74,6 +114,30 @@ export class HttpExternalProvider implements ExternalShopProvider {
   refresh(shopKey: string, refreshToken: string) {
     return this.token(shopKey, { grant_type: "refresh_token", refresh_token: refreshToken });
   }
+  async fetchOrder(shopKey: string, accessToken: string, orderId: string): Promise<ExternalOrderData | null> {
+    if (!isShopKey(shopKey) || !/^[0-9A-Za-z_-]{1,60}$/.test(orderId)) throw new Error("bad_input");
+    const res = await fetch(`https://${shopKey}.cafe24api.com/api/v2/admin/orders/${encodeURIComponent(orderId)}?embed=items,buyer`, {
+      headers: { authorization: `Bearer ${accessToken}`, accept: "application/json" },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+      redirect: "error",
+    });
+    if (res.status === 404 || res.status === 422) return null;
+    if (!res.ok) throw new ExternalHttpError(res.status);
+    return toOrderData(((await res.json()) as { order?: RawOrder }).order);
+  }
+  async listOrders(shopKey: string, accessToken: string, q: ExternalOrderListQuery): Promise<ExternalOrderData[]> {
+    const day = /^\d{4}-\d{2}-\d{2}$/;
+    if (!isShopKey(shopKey) || !day.test(q.startDate) || !day.test(q.endDate) || !Number.isInteger(q.limit) || q.limit < 1 || q.limit > 1000 || !Number.isInteger(q.offset) || q.offset < 0) throw new Error("bad_input");
+    const qs = new URLSearchParams({ start_date: q.startDate, end_date: q.endDate, date_type: q.dateType, embed: "items,buyer", limit: String(q.limit), offset: String(q.offset) });
+    const res = await fetch(`https://${shopKey}.cafe24api.com/api/v2/admin/orders?${qs}`, {
+      headers: { authorization: `Bearer ${accessToken}`, accept: "application/json" },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+      redirect: "error",
+    });
+    if (!res.ok) throw new ExternalHttpError(res.status);
+    const b = (await res.json()) as { orders?: unknown };
+    return (Array.isArray(b.orders) ? (b.orders as RawOrder[]) : []).flatMap((o) => toOrderData(o) ?? []);
+  }
   async revoke(shopKey: string, token: string): Promise<"ok" | "retry"> {
     try {
       const res = await fetch(`${this.base(shopKey)}/revoke`, {
@@ -92,7 +156,7 @@ export class HttpExternalProvider implements ExternalShopProvider {
 }
 
 // 설정 키가 없으면 null(연동 꺼짐)
-export function externalProvider(env: Record<string, string | undefined> = process.env): ExternalShopProvider | null {
+export function externalProvider(env: Record<string, string | undefined> = process.env): (ExternalShopProvider & ExternalOrderApi) | null {
   const cfg = externalConfig(env);
   return cfg.enabled ? new HttpExternalProvider(cfg) : null;
 }

@@ -71,9 +71,13 @@ describe("현금영수증·세금계산서 신청", () => {
     const r = await createReceiptRequest(db, s.scope, s.bankOrder, { ...income, orderId: s.bankOrder });
     if (!r.ok) throw new Error(r.reason);
     expect(r.request).toMatchObject({ kind: "CASH_RECEIPT_INCOME", identityLast4: "6789", withdrawnAt: null, taxInfo: null, issue: { status: "PENDING", amount: 10000, attempts: 0, chargeable: true } });
-    expect(JSON.stringify(r.request)).not.toContain("2345");
+    // 응답에는 번호 원문·봉인 값이 없고 뒤 4자리만 있다. 무작위 UUID·시각에 숫자가 우연히 들어가도 흔들리지 않게 키 집합과 번호 필드 값으로 확인한다.
+    expect(Object.keys(r.request).sort()).toEqual(["createdAt", "id", "identityLast4", "issue", "kind", "orderId", "taxInfo", "withdrawnAt"]);
+    expect(r.request.identityLast4).toBe("6789");
+    const { id: _id, orderId: _orderId, createdAt: _createdAt, issue, ...fields } = r.request;
+    expect(JSON.stringify({ ...fields, issue: { status: issue?.status, amount: issue?.amount } })).not.toMatch(/2345|01023456789|010-2345-6789/);
     const row = await db.orderReceiptRequest.findUniqueOrThrow({ where: { id: r.request.id } });
-    expect(row.identitySealed).not.toContain("0102345");
+    expect(row.identitySealed).not.toContain("01023456789");
     expect(openBillingKey(row.identitySealed, s.seller.id)).toBe("01023456789");
     expect(await db.auditLog.count({ where: { action: "buyer_receipt_request.create", targetId: r.request.id, actorId: s.buyer.id } })).toBe(1);
 

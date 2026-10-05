@@ -3,6 +3,7 @@ import { resolveBuyerSession } from "../../../../../../lib/server/auth/session";
 import { prisma } from "../../../../../../lib/server/db";
 import { sessionToken } from "../../../../../../lib/server/http/route";
 import { shopProductDetail } from "../../../../../../lib/server/products/shopCatalog";
+import { recordProductView } from "../../../../../../lib/server/stats/funnel";
 
 // 구매자 상품 상세(로그인 없이 읽음). 사진·옵션(가격·할인가·품절·적을 때 남은 수)·상세 블록·카테고리·배송비 정책·적립 예정(로그인 회원은 그 등급,
 // 아니면 기본 등급 적립률로 표시 가격 기준). 운영 중이 아닌 쇼핑몰·보이지 않는 상품(판매 대기·숨김·삭제)은 404.
@@ -13,5 +14,6 @@ export async function GET(req: Request, ctx: { params: Promise<{ slug: string; p
   const session = shop ? await resolveBuyerSession(prisma, sessionToken(req, "buyer"), shop.id) : null;
   const product = await shopProductDetail(prisma, slug, productId, session?.member.gradeId);
   if (!product) return NextResponse.json({ error: "not_found" }, { status: 404, headers: { "cache-control": "no-store" } });
+  if (shop && session) await recordProductView(prisma, { sellerId: shop.id, buyerMemberId: session.member.id }, productId); // 전환 단계 통계(로그인 회원만, 실패해도 던지지 않음)
   return NextResponse.json({ product }, { headers: { "cache-control": "private, no-store" } });
 }

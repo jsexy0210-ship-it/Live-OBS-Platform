@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
+import { ACCOUNT_MESSAGES } from "../../lib/server/auth/account";
 import { BUYER_LOGIN_ERROR_MESSAGES, LOGIN_ERROR_MESSAGES, loginErrorBody } from "../../lib/server/auth/messages";
 import { RECOVERY_LIMIT_MESSAGE } from "../../lib/server/auth/recoveryFlow";
 import { MEMBER_POLICY_MESSAGES } from "../../lib/server/buyers/rejoin";
@@ -49,6 +50,8 @@ describe("문구표 말투", () => {
       // 쇼핑몰 이용약관·개인정보처리방침 입력(파트너스 관리자)
       ...Object.values(SHOP_LEGAL_MESSAGES),
       ...Object.values(SHOP_LEGAL_NOTICE_MESSAGES),
+      // 내 계정(비밀번호·이름) 파트너스·마스터 관리자
+      ...Object.values(ACCOUNT_MESSAGES),
       MAINTENANCE_NOTICE_FORMAL,
     ])
       formal(m);
