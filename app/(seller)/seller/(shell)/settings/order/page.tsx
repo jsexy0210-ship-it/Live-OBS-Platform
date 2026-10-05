@@ -50,7 +50,7 @@ export default function OrderSettingsPage() {
   const [deliverDays, setDeliverDays] = useState("");
   const [confirmOn, setConfirmOn] = useState(true);
   const [confirmDays, setConfirmDays] = useState("");
-  // 배송 자동 조회 단가(발송 충전 API, 대표자만 읽을 수 있다). 못 읽으면 단가 없이 안내만 하고, 정해지기 전이면 빈 문자열이다
+  // 배송 자동 조회 단가(발송·이용 충전 API, 대표자만 읽을 수 있다). 못 읽으면 단가 없이 안내만 하고, 정해지기 전이면 빈 문자열이다
   const [trackingFee, setTrackingFee] = useState<string | null>(null);
   const [showError, setShowError] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -314,7 +314,7 @@ export default function OrderSettingsPage() {
                           송장을 올린 뒤 배송 중 상태로 이 기간이 지나면 자동으로 배송 완료로 변경합니다 · 기본 7일
                           <br />
                           <span data-testid="tracking-fee">
-                            켜면 송장 1건 조회당 {trackingFee === null ? "비용이" : trackingFee === "" ? "단가 확정 전 금액이" : `${trackingFee}원이`} 발송 충전 잔액에서 차감됩니다 · 단가는 발송 충전에서 봅니다
+                            켜면 송장 1건 조회당 {trackingFee === null ? "비용이" : trackingFee === "" ? "단가 확정 전 금액이" : `${trackingFee}원이`} 발송·이용 충전금에서 차감됩니다 · 단가는 발송·이용 충전에서 봅니다
                           </span>
                         </>
                       ) : (

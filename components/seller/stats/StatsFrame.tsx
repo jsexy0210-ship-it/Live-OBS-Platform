@@ -4,6 +4,7 @@ import "./stats.css";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PageHead } from "../../admin-ui";
 import { Topbar, planAllows, useSeller } from "../SellerShell";
 import { LoadingRows } from "../States";
 import { api } from "../api";
@@ -21,7 +22,7 @@ export const STATS_TABS = [
 ] as const;
 
 export type Unit = "day" | "week" | "month";
-export type Period = { preset: Preset | "custom"; from: string; to: string; unit: Unit };
+export type Period = { preset: Preset | "custom"; from: string; to: string; unit: Unit; compare: boolean };
 type Preset = "today" | "7d" | "30d" | "month";
 const MAX_DAYS = 366;
 const DAY_MS = 86_400_000;
@@ -31,10 +32,10 @@ const shift = (d: string, days: number) => new Date(new Date(`${d}T00:00:00Z`).g
 const daysBetween = (a: string, b: string) => Math.round((new Date(`${b}T00:00:00Z`).getTime() - new Date(`${a}T00:00:00Z`).getTime()) / DAY_MS) + 1;
 
 // 이번 달: 그달 1일(KST)부터 오늘까지(MASTER 결정 2026-10-04)
-function presetPeriod(preset: Preset, unit: Unit): Period {
+function presetPeriod(preset: Preset, unit: Unit, compare = true): Period {
   const to = kstToday();
   const from = preset === "today" ? to : preset === "month" ? `${to.slice(0, 8)}01` : shift(to, preset === "7d" ? -6 : -29);
-  return { preset, to, from, unit };
+  return { preset, to, from, unit, compare };
 }
 
 export type Load<T> = { kind: "loading" } | { kind: "error"; status: number; error: string } | { kind: "ok"; data: T };
@@ -59,11 +60,11 @@ export function usePeriod() {
   return useState<Period>(() => presetPeriod("7d", "day"));
 }
 
-export function StatsFrame({ title, heading, sub, period, setPeriod, onDownload, download, units = true, children }: {
+export function StatsFrame({ title, heading, sub, period, setPeriod, onDownload, download, units = true, comparable, children }: {
   title: string;
   // 제목을 따로 줄 때(요약은 「통계」). 없으면 「{title} 통계」
   heading?: string;
-  // 내려받기 버튼 자리를 화면이 직접 그릴 때(요약의 표 고르기)
+  // 내려받기 버튼 자리를 화면이 직접 그릴 때
   download?: React.ReactNode;
   sub: string;
   period: Period;
@@ -71,23 +72,26 @@ export function StatsFrame({ title, heading, sub, period, setPeriod, onDownload,
   onDownload?: () => void;
   // 묶음 단위(일·주·월) 선택을 보일지. 기간 합계만 보는 화면(상품·방송)은 끈다
   units?: boolean;
+  // 「직전 기간과 비교」 선택을 보일지(비교 값을 그리는 화면만)
+  comparable?: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
   const { me } = useSeller();
   const [draft, setDraft] = useState({ from: period.from, to: period.to });
   const [rangeError, setRangeError] = useState<string | null>(null);
-  const applyCustom = () => {
-    if (!draft.from || !draft.to) return setRangeError("시작일과 종료일 입력이 필요합니다");
+  // 직접 입력한 날짜를 「조회」로 적용한다. 프리셋 칩은 누르는 즉시 조회한다
+  const apply = () => {
+    if (!draft.from || !draft.to) return setRangeError("시작일과 종료일을 입력해 주십시오");
     if (draft.to < draft.from) return setRangeError("종료일은 시작일 이후여야 합니다");
-    if (daysBetween(draft.from, draft.to) > MAX_DAYS) return setRangeError(`직접 선택은 최대 12개월까지 가능합니다 · 선택: ${draft.from} ~ ${draft.to}`);
+    if (daysBetween(draft.from, draft.to) > MAX_DAYS) return setRangeError("직접 입력은 최대 12개월까지 가능합니다");
     setRangeError(null);
     setPeriod({ ...period, preset: "custom", from: draft.from, to: draft.to });
   };
   const presets = [
     { key: "today", label: "오늘" },
-    { key: "7d", label: "최근 7일" },
-    { key: "30d", label: "최근 30일" },
+    { key: "7d", label: "7일" },
+    { key: "30d", label: "30일" },
     { key: "month", label: "이번 달" },
   ] as const;
   const unitOptions: { key: Unit; label: string }[] = [
@@ -98,70 +102,78 @@ export function StatsFrame({ title, heading, sub, period, setPeriod, onDownload,
 
   return (
     <>
-      <Topbar crumb={heading ? `홈 › ${heading}` : `통계 › ${title}`} />
+      <Topbar crumb={`통계 › ${title}`} />
       <main className="main">
-        <div className="ph">
-          <div className="col" style={{ gap: 4 }}>
-            <h1 className="t-t3">{heading ?? `${title} 통계`}</h1>
-            <span className="t-l2 c-alt">{sub}</span>
-          </div>
-          {download}
-          {onDownload && (
-            <button className="btn btn-sm btn-out" type="button" onClick={onDownload}>
-              엑셀(CSV) 내려받기
-            </button>
-          )}
-        </div>
-        <nav className="tabs" aria-label="통계 종류">
+        <PageHead title={heading ?? `통계 · ${title}`} actions={download ?? (onDownload && <button className="btn btn-out" type="button" onClick={onDownload}>엑셀 내려받기</button>)} />
+        <nav className="tabs sts-tabs" aria-label="통계 종류">
           {STATS_TABS.filter((t) => planAllows(me.features, t.plan)).map((t) => (
             <Link key={t.href} href={t.href} className={`tab${(t.href === "/seller/stats" ? pathname === t.href : pathname.startsWith(t.href)) ? " on" : ""}`}>
               {t.label}
             </Link>
           ))}
         </nav>
-        <div className="card">
-          <div className="sts-bar">
-            {presets.map((x) => (
-              <button
-                key={x.key}
-                type="button"
-                className={`chip${period.preset === x.key ? " on" : ""}`}
-                aria-pressed={period.preset === x.key}
-                onClick={() => {
-                  const next = presetPeriod(x.key, period.unit);
-                  setDraft({ from: next.from, to: next.to });
-                  setRangeError(null);
-                  setPeriod(next);
-                }}
-              >
-                {x.label}
-              </button>
-            ))}
-            <div className="sts-range">
-              <input className="inp inp-sm" type="date" aria-label="시작일" value={draft.from} max={draft.to || undefined} onChange={(e) => setDraft({ ...draft, from: e.target.value })} />
-              <span className="c-alt">~</span>
-              <input className="inp inp-sm" type="date" aria-label="종료일" value={draft.to} min={draft.from || undefined} onChange={(e) => setDraft({ ...draft, to: e.target.value })} />
-              <button className={`btn btn-sm${period.preset === "custom" ? "" : " btn-out"}`} type="button" onClick={applyCustom}>
-                직접 선택
-              </button>
-            </div>
-            <span className="grow" />
-            {units && (
-              <div className="seg" role="group" aria-label="묶음 단위">
-                {unitOptions.map((u) => (
-                  <button key={u.key} type="button" className={period.unit === u.key ? "on" : ""} aria-pressed={period.unit === u.key} onClick={() => setPeriod({ ...period, unit: u.key })}>
-                    {u.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          {rangeError && (
-            <div className="err" role="alert" style={{ padding: "0 20px 12px" }}>
-              {rangeError}
-            </div>
-          )}
-        </div>
+        <form
+          className="sts-period"
+          onSubmit={(e) => {
+            e.preventDefault();
+            apply();
+          }}
+        >
+          <table className="au-ft">
+            <tbody>
+              <tr>
+                <th scope="row">기간</th>
+                <td>
+                  <div className="au-ft-v">
+                    {presets.map((x) => (
+                      <button
+                        key={x.key}
+                        type="button"
+                        className={`chip${period.preset === x.key ? " on" : ""}`}
+                        aria-pressed={period.preset === x.key}
+                        onClick={() => {
+                          const next = presetPeriod(x.key, period.unit);
+                          setDraft({ from: next.from, to: next.to });
+                          setRangeError(null);
+                          setPeriod({ ...next, compare: period.compare });
+                        }}
+                      >
+                        {x.label}
+                      </button>
+                    ))}
+                    <input className="inp" type="date" aria-label="시작일" value={draft.from} max={draft.to || undefined} onChange={(e) => setDraft({ ...draft, from: e.target.value })} />
+                    <span className="c-alt">~</span>
+                    <input className="inp" type="date" aria-label="종료일" value={draft.to} min={draft.from || undefined} onChange={(e) => setDraft({ ...draft, to: e.target.value })} />
+                    {comparable && (
+                      <label className="chk t-l2">
+                        <input className="cbx" type="checkbox" checked={period.compare} onChange={(e) => setPeriod({ ...period, compare: e.target.checked })} />
+                        직전 기간과 비교
+                      </label>
+                    )}
+                    <button className="btn" type="submit">
+                      조회
+                    </button>
+                    {units && (
+                      <div className="seg" role="group" aria-label="묶음 단위">
+                        {unitOptions.map((u) => (
+                          <button key={u.key} type="button" className={period.unit === u.key ? "on" : ""} aria-pressed={period.unit === u.key} onClick={() => setPeriod({ ...period, unit: u.key })}>
+                            {u.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {rangeError && (
+                    <p className="err au-ft-help" role="alert">
+                      {rangeError}
+                    </p>
+                  )}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </form>
+        <p className="t-c1 c-alt sts-sub-note">{sub}</p>
         {children}
       </main>
     </>
@@ -187,7 +199,7 @@ export function StatsState<T>({ state, onRetry }: { state: Load<T>; onRetry: () 
         : state.status === 402
           ? ["이용 기간이 끝나 통계를 볼 수 없습니다", "구독 후 다시 이용할 수 있습니다"]
           : state.status === 400
-            ? ["조회할 수 없는 기간입니다", "직접 선택은 최대 12개월까지 가능합니다"]
+            ? ["조회할 수 없는 기간입니다", "직접 입력은 최대 12개월까지 가능합니다"]
             : ["통계를 불러오지 못했습니다", "잠시 뒤 다시 시도해 주십시오"];
   return (
     <div className="card">

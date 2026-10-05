@@ -4,7 +4,7 @@ import { assertTestDatabaseUrl } from "../../lib/server/testDbGuard";
 import { kstMonth } from "../../lib/server/mail/quota";
 import { submitSellerLogin } from "./sellerLogin";
 
-// SA-080 주문자 알림 중 「이번 달 제공량 사용 현황 · 발송 충전 잔액」 요약(GET /api/seller/message-balance).
+// SA-080 주문자 알림 중 「이번 달 제공량 사용 현황 · 발송·이용 충전금」 요약(GET /api/seller/message-balance).
 const PASSWORD = process.env.E2E_PASSWORD ?? "";
 
 test.beforeAll(() => {
@@ -49,7 +49,7 @@ test("제공량 여유: 이번 달 사용량·잔액·알림 기준이 보이고
   await expect(page.getByTestId("threshold")).toHaveText("잔액이 1,000원 아래로 내려가면 알립니다");
   await expect(page.getByTestId("skipped-note")).toHaveCount(0);
   await expect(page.getByTestId("exhausted-note")).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "발송 충전" }).first()).toHaveAttribute("href", "/seller/settings/message-balance");
+  await expect(page.getByRole("link", { name: "발송·이용 충전" }).first()).toHaveAttribute("href", "/seller/settings/message-balance");
 });
 
 test("잔액 부족 미발송이 있으면 보내지 못한 건수를 알리고, 거래 메일 제공량을 다 쓰면 소진 안내를 보인다", async ({ page }) => {
