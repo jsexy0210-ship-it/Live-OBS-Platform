@@ -58,7 +58,8 @@ test("AU-007 세션 만료: 로그인이 풀린 채 화면을 열면 로그인�
   await submitSellerLogin(page, OWNER, PASSWORD);
   await page.waitForURL((u) => u.pathname !== "/seller/login");
   await page.context().clearCookies();
-  await page.goto("/seller/broadcast");
+  // 열자마자 클라이언트가 로그인으로 보내므로 이동이 끝나길 기다리지 않는다
+  await page.goto("/seller/broadcast", { waitUntil: "commit" });
   await expect(page).toHaveURL(/\/seller\/login\?next=%2Fseller%2Fbroadcast/);
   await expect(page.getByText("로그인이 풀렸습니다. 다시 로그인해 주십시오")).toBeVisible();
   await submitSellerLogin(page, OWNER, PASSWORD);
