@@ -6,7 +6,8 @@ import { orderErrorBody } from "../../../../lib/server/orders/messages";
 import { readOrderPolicy, updateOrderPolicy } from "../../../../lib/server/orders/overdue";
 
 // 판매자 주문 정책(SHOP_SETTINGS). 본문: { autoCancelEnabled, paymentDueHours(1~720), unpaidRestrictionEnabled,
-// paidCancelRestrictionEnabled?, restockOnCancel?, autoDeliverEnabled?, autoDeliverDays?(1~30), autoConfirmEnabled?, autoConfirmDays?(1~30) }. ?는 빼면 지금 값 유지.
+// paidCancelRestrictionEnabled?, restockOnCancel?, autoDeliverEnabled?, autoDeliverDays?(1~30), autoConfirmEnabled?, autoConfirmDays?(1~30),
+// dueReminderEnabled?(입금 기한 알림, 기본 켜짐), autoTrackingEnabled?(배송 자동 조회, 기본 꺼짐·켜면 건당 발송·이용 충전금 차감) }. ?는 빼면 지금 값 유지.
 // 바꾼 입금 기한은 다음 주문부터.
 export async function GET(req: Request) {
   try {

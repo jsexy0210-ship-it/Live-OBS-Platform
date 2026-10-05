@@ -10,6 +10,7 @@ import { OPENED_NO_REFUND_CONSENT } from "../../lib/server/orders/consent";
 import { createOrder, ORDER_RATE_LIMIT } from "../../lib/server/orders/create";
 import { ORDER_ERROR_MESSAGES, ORDER_ERROR_MESSAGES_FORMAL, ORDER_NOTICES, purchaseRestrictedMessage } from "../../lib/server/orders/messages";
 import { cancelOverdueOrders, liftRestriction, listPaymentDueSoon } from "../../lib/server/orders/overdue";
+import { claimPaymentDueSoon } from "../../lib/server/orders/notifications";
 import { markOrderPaid } from "../../lib/server/queue/service";
 import type { TenantContext } from "../../lib/server/tenant/context";
 import { PASSWORD, createLoginBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
@@ -100,6 +101,8 @@ describe("입금 기한", () => {
       autoDeliverDays: 7,
       autoConfirmEnabled: true,
       autoConfirmDays: 7,
+      dueReminderEnabled: true,
+      autoTrackingEnabled: false,
     });
     const ok = { autoCancelEnabled: true, paymentDueHours: 240, unpaidRestrictionEnabled: true };
     for (const body of [
@@ -110,6 +113,8 @@ describe("입금 기한", () => {
       { autoCancelEnabled: true, paymentDueHours: 24 },
       { paymentDueHours: 24, unpaidRestrictionEnabled: true },
       { ...ok, autoCancelEnabled: "false" },
+      { ...ok, dueReminderEnabled: "true" },
+      { ...ok, autoTrackingEnabled: 1 },
     ]) {
       const r = await policyPut(new Request("http://localhost:3000/api/seller/order-policy", { method: "PUT", headers: { ...H, cookie: c }, body: JSON.stringify(body) }));
       expect(r.status, JSON.stringify(body)).toBe(400);
@@ -123,6 +128,23 @@ describe("입금 기한", () => {
       const res = await policyPut(new Request("http://localhost:3000/api/seller/order-policy", { method: "PUT", headers: { ...H, cookie: c }, body: JSON.stringify({ ...ok, paymentDueHours: h }) }));
       expect(res.status, String(h)).toBe(200);
     }
+    // 입금 기한 알림·배송 자동 조회: 저장하고, 빼면 지금 값 유지
+    const put = (body: unknown) => policyPut(new Request("http://localhost:3000/api/seller/order-policy", { method: "PUT", headers: { ...H, cookie: c }, body: JSON.stringify(body) }));
+    const on = await (await put({ ...ok, dueReminderEnabled: false, autoTrackingEnabled: true })).json();
+    expect([on.policy.dueReminderEnabled, on.policy.autoTrackingEnabled]).toEqual([false, true]);
+    const kept = await (await put(ok)).json();
+    expect([kept.policy.dueReminderEnabled, kept.policy.autoTrackingEnabled]).toEqual([false, true]);
+  });
+
+  it("입금 기한 알림을 끈 쇼핑몰 주문은 알림 대상에서 빠지고, 다른 쇼핑몰은 그대로다", async () => {
+    const off = await shop();
+    const on = await shop();
+    const a = await off.order();
+    const b = await on.order();
+    for (const id of [a, b]) await db.order.update({ where: { id }, data: { paymentDueAt: new Date(Date.now() + 30 * 60 * 1000) } });
+    await db.sellerOrderPolicy.create({ data: { sellerId: off.seller.id, dueReminderEnabled: false } });
+    expect((await listPaymentDueSoon(db)).map((o) => o.id)).toEqual([b]);
+    expect((await claimPaymentDueSoon(db)).map((o) => o.orderId)).toEqual([b]);
   });
 });
 

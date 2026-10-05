@@ -10,6 +10,7 @@ import { useScrollRestore } from "../../../../../lib/client/navigation";
 import { AdminTopbar } from "../../_components/AdminShell";
 import { ACTION_GROUPS, ACTOR_LABEL, actionLabel, targetLabel, type ActorType, type AuditRow } from "../../_components/auditLogs";
 import { dayTime } from "../../_components/partners";
+import { DatePicker } from "../../../../../components/admin-ui/DatePicker";
 
 // MA-070 로그 추적(GET /api/admin/audit-logs, 최고관리자·운영·조회 전용, 조회만). 종류·행위자·기간(KST 날짜) 필터, 파트너스 지정(?sellerId=).
 // 50건씩 이어서 불러온다. 바뀐 값은 상세(MA-071)에서만 본다.
@@ -96,9 +97,9 @@ function Logs() {
             </select>
           </SearchRow>
           <SearchRow label="기록 기간">
-            <input className="inp" type="date" aria-label="기록 시작일" value={draft.from} onChange={(e) => setDraft({ ...draft, from: e.target.value })} />
+            <DatePicker aria-label="기록 시작일" value={draft.from} onChange={(v) => setDraft({ ...draft, from: v })} />
             <span aria-hidden="true">~</span>
-            <input className="inp" type="date" aria-label="기록 종료일" value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} />
+            <DatePicker aria-label="기록 종료일" value={draft.to} onChange={(v) => setDraft({ ...draft, to: v })} />
             {rangeError && (
               <span className="err" role="alert">
                 시작일이 종료일보다 늦습니다.

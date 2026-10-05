@@ -300,7 +300,7 @@ test("권한이 하나도 없는 직원에게는 권한이 필요한 메뉴가 �
   await page.goto("/seller/products");
   await expect(page.getByText("이 계정은 이 일을 할 수 없습니다")).toBeVisible();
   const side = page.getByRole("complementary", { name: "파트너스 메뉴" });
-  for (const hidden of ["방송 대시보드", "상품", "주문", "입금 확인", "배송", "영수증 · 세금계산서", "적립금", "회원 목록", "구매 제한", "구매자 문의", "오버레이 편집기", "HIT 카드 이력", "방송 이력", "결제(PG) 연결", "주문자 알림", "구독 · 결제", "직원 계정"]) {
+  for (const hidden of ["방송 대시보드", "상품", "주문", "입금 확인", "배송 · 송장", "영수증 · 세금계산서", "적립금", "회원 목록", "구매 제한", "방송 화면 꾸미기", "방송 기록", "알림 설정", "구독 · 결제", "직원 계정"]) {
     await expect(side.getByText(hidden, { exact: true })).toHaveCount(0);
   }
   // 「게시판」 대분류는 권한 없이 볼 수 있는 상품 리뷰(서버도 조회는 파트너스 계정 누구나) 때문에 남지만, 구매자 문의 메뉴는 없다
@@ -326,9 +326,9 @@ test("상품 권한이 없는 직원은 권한 안내를 본다", async ({ page 
   await expect(side.getByText("상품", { exact: true })).toHaveCount(0);
   await expect(side.getByText("직원 계정", { exact: true })).toHaveCount(0);
   await shot(page, "SA-011-no-permission");
-  // 「배송」은 상단 대분류 「주문」 아래 왼쪽 메뉴에 있다
+  // 「배송 · 송장」은 상단 대분류 「주문」 아래 왼쪽 메뉴에 있다
   await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "주문", exact: true }).click();
-  await expect(side.getByText("배송", { exact: true })).toBeVisible();
+  await expect(side.getByText("배송 · 송장", { exact: true })).toBeVisible();
 });
 
 test("휴대폰 폭(390)에서는 메뉴가 서랍으로 열리고 상품이 카드로 보인다", async ({ page }) => {
