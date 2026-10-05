@@ -18,6 +18,10 @@ async function login(page: Page) {
   await expect(page.getByRole("heading", { level: 1, name: "내 계정" })).toBeVisible();
 }
 
+// 서버에 쓰는 행동은 확인 창을 거친다
+const sureName = (page: Page) => page.getByRole("dialog", { name: "이름을 저장하시겠습니까?" }).getByRole("button", { name: "저장" }).click();
+const surePassword = (page: Page) => page.getByRole("dialog", { name: "비밀번호를 변경하시겠습니까?" }).getByRole("button", { name: "비밀번호 변경" }).click();
+
 test("내 정보가 보이고, 이름을 바꾸면 저장되며 다시 열어도 유지된다(원래대로 되돌림)", async ({ page }) => {
   await login(page);
   await expect(page.getByTestId("account-info")).toContainText("demo-owner@example.com");
@@ -27,6 +31,7 @@ test("내 정보가 보이고, 이름을 바꾸면 저장되며 다시 열어도
   const save = page.getByTestId("account-name-form").getByRole("button", { name: "저장" });
   await input.fill("  계정시험 이름 ");
   await save.click();
+  await sureName(page);
   await expect(page.getByText("프로필을 저장했습니다")).toBeVisible();
   await expect(input).toHaveValue("계정시험 이름");
   await page.reload();
@@ -36,6 +41,7 @@ test("내 정보가 보이고, 이름을 바꾸면 저장되며 다시 열어도
   await expect(page.getByText("이름을 입력해 주십시오")).toBeVisible();
   await page.getByLabel("이름").fill(original);
   await save.click();
+  await sureName(page);
   await expect(page.getByText("프로필을 저장했습니다")).toBeVisible();
 });
 
@@ -54,11 +60,13 @@ test("비밀번호 변경: 확인 칸이 다르면 막고, 현재 비밀번호�
   await form.getByLabel("새 비밀번호 확인").fill(TEMP_PASSWORD);
   await form.getByLabel("현재 비밀번호").fill("틀린-비밀번호-0000");
   await submit.click();
+  await surePassword(page);
   await expect(page.getByTestId("account-cur-error")).toBeVisible();
   await expect(page.getByTestId("account-cur-error")).not.toBeEmpty();
 
   await form.getByLabel("현재 비밀번호").fill(PASSWORD);
   await submit.click();
+  await surePassword(page);
   await expect(page.getByText("비밀번호를 변경했습니다")).toBeVisible();
   await expect(form.getByLabel("현재 비밀번호")).toHaveValue("");
 
@@ -67,7 +75,8 @@ test("비밀번호 변경: 확인 칸이 다르면 막고, 현재 비밀번호�
   await form.getByLabel("새 비밀번호", { exact: true }).fill(PASSWORD);
   await form.getByLabel("새 비밀번호 확인").fill(PASSWORD);
   // 앞 변경의 안내 문구가 아직 떠 있을 수 있어, 응답으로 되돌림이 끝난 것을 확인한다
-  const [res] = await Promise.all([page.waitForResponse((r) => r.url().endsWith("/api/seller/me/password") && r.request().method() === "POST"), submit.click()]);
+  await submit.click();
+  const [res] = await Promise.all([page.waitForResponse((r) => r.url().endsWith("/api/seller/me/password") && r.request().method() === "POST"), surePassword(page)]);
   expect(res.status()).toBe(200);
 });
 
@@ -87,6 +96,7 @@ test("시도 제한(429)이면 서버 문구와 남은 시간을 보이고 입�
   await form.getByLabel("새 비밀번호", { exact: true }).fill("새-비밀번호-5678");
   await form.getByLabel("새 비밀번호 확인").fill("새-비밀번호-5678");
   await form.getByRole("button", { name: "비밀번호 변경" }).click();
+  await surePassword(page);
   await expect(page.getByTestId("account-pw-error")).toContainText("시도가 너무 많습니다");
   await expect(page.getByTestId("account-pw-wait")).toContainText("초 뒤에 다시 시도");
   await expect(form.getByLabel("현재 비밀번호")).toBeDisabled();

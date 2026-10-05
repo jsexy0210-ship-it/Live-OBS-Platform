@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { useConfirm } from "../admin-ui/ConfirmDialog";
 import { api, failMessage } from "./api";
 import { stepOutcome } from "./stepFailure";
 
@@ -17,6 +18,7 @@ export default function NewPasswordForm({ onDone, onExpired, loginHref }: Props)
   const uncertain = useRef(false);
   const [maybeChanged, setMaybeChanged] = useState(false);
   const [busy, setBusy] = useState(false);
+  const { confirm } = useConfirm();
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
   const [pwError, setPwError] = useState<string | null>(null);
@@ -39,6 +41,8 @@ export default function NewPasswordForm({ onDone, onExpired, loginHref }: Props)
     setPwError(a);
     setPw2Error(b);
     if (a || b) return focus(a ? "pw-new" : "pw-again");
+    const ok = await confirm({ title: "비밀번호를 바꾸시겠습니까?", body: "바꾸면 다른 기기의 로그인이 모두 풀립니다.", confirmLabel: "비밀번호 변경", danger: true });
+    if (!ok) return;
     setBusy(true);
     setNotice(null);
     const r = await api("/api/seller/password-reset/complete", { method: "POST", body: { newPassword: pw } });

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { COURIERS } from "../../../lib/server/orders/shipping";
+import { useConfirm } from "../../admin-ui/ConfirmDialog";
 import ShopModal from "../ShopModal";
 import { call, md, reencodePhoto } from "../reviewShared";
 import "./returns.css";
@@ -137,6 +138,7 @@ export default function ReturnSection({ slug, orderId }: { slug: string; orderId
 }
 
 function RequestItem({ r, base, onDone }: { r: Req; base: string; onDone: (text: string) => void | Promise<void> }) {
+  const { confirm } = useConfirm();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [courier, setCourier] = useState("CJ");
@@ -148,6 +150,15 @@ function RequestItem({ r, base, onDone }: { r: Req; base: string; onDone: (text:
     setBusy(false);
     if (!res.ok) return setErr(res.message ?? "신청을 처리하지 못했어요. 잠시 뒤 다시 눌러 주세요");
     await onDone(done);
+  };
+  const askShip = async () => {
+    const courierName = COURIERS[courier as keyof typeof COURIERS] ?? courier;
+    const ok = await confirm({ tone: "shop", title: "보낸 송장을 남길까요?", body: `${courierName} ${tracking.trim()}를 판매자에게 알려요.`, confirmLabel: "남기기" });
+    if (ok) await run("ship-back", { courier, trackingNumber: tracking }, "송장을 남겼어요");
+  };
+  const askCancel = async () => {
+    const ok = await confirm({ tone: "shop", title: "신청을 거둘까요?", body: "교환·반품 신청이 끝나요. 다시 하려면 새로 신청해야 해요.", confirmLabel: "신청 거두기", cancelLabel: "아니요" });
+    if (ok) await run("cancel", {}, "신청을 철회했어요");
   };
   return (
     <div className="rtb-item" data-testid="return-item">
@@ -173,7 +184,7 @@ function RequestItem({ r, base, onDone }: { r: Req; base: string; onDone: (text:
                 ))}
               </select>
               <input className="inp" style={{ flex: 1, minWidth: 140 }} aria-label="송장 번호" placeholder="보낸 송장 번호" maxLength={40} value={tracking} onChange={(e) => setTracking(e.target.value.replace(/[^0-9A-Za-z-]/g, ""))} />
-              <button className="btn btn-sm" type="button" disabled={busy || tracking.trim().length < 4} onClick={() => void run("ship-back", { courier, trackingNumber: tracking }, "송장을 남겼어요")}>
+              <button className="btn btn-sm" type="button" disabled={busy || tracking.trim().length < 4} onClick={() => void askShip()}>
                 송장 저장
               </button>
             </>
@@ -181,7 +192,7 @@ function RequestItem({ r, base, onDone }: { r: Req; base: string; onDone: (text:
         </div>
       )}
       {(r.status === "REQUESTED" || r.status === "ACCEPTED") && (
-        <button className="btn btn-sm btn-out" type="button" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={() => void run("cancel", {}, "신청을 철회했어요")}>
+        <button className="btn btn-sm btn-out" type="button" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={() => void askCancel()}>
           신청 거두기
         </button>
       )}
@@ -217,6 +228,7 @@ function RequestForm({
   onClose: () => void;
   onDone: () => void | Promise<void>;
 }) {
+  const { confirm } = useConfirm();
   const [kind, setKind] = useState<Kind>("RETURN");
   const [picked, setPicked] = useState<string[]>([]);
   // 반품: 상품별로 돌려보낼 수량(0이면 제외). 처음에는 전부
@@ -251,6 +263,10 @@ function RequestForm({
   const whole = items.every((i) => (qty[i.orderItemId] ?? 0) === i.quantity);
   const submit = async () => {
     if (!ready || busy) return;
+    const what = kind === "RETURN" ? "반품" : "교환";
+    const count = kind === "EXCHANGE" ? picked.length : target.length;
+    const ok = await confirm({ tone: "shop", title: `${what}을 신청할까요?`, body: `상품 ${count}종을 ${what}으로 신청해요. 판매자가 확인하면 알려 드려요.`, confirmLabel: "신청하기" });
+    if (!ok) return;
     setBusy(true);
     setErr(null);
     const r = await call(base, {

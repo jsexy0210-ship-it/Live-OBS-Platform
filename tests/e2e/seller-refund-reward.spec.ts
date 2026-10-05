@@ -95,7 +95,7 @@ test("적립금을 쓴 주문의 환불 창: 현금 환불과 적립금 반환�
   await dlg.getByRole("radio", { name: /파트너스 사정/ }).check();
   await expect(dlg.getByTestId("refund-reward")).toHaveText("1,000원 · 적립금으로 반환");
   await dlg.getByLabel("처리 사유").selectOption("품절 · 재고 없음");
-  await dlg.getByLabel("위 금액으로 환불합니다. 승인 취소 후 되돌릴 수 없습니다.").check();
+  await dlg.getByLabel("위 금액으로 환불합니다. 환불한 뒤에는 되돌릴 수 없습니다.").check();
   await page.screenshot({ path: "tests/e2e/screenshots/SA-023-reward-1440.png" });
   const refund = page.waitForResponse((r) => r.url().endsWith("/refund") && r.request().method() === "POST");
   await dlg.getByRole("button", { name: /환불 실행/ }).click();
@@ -133,7 +133,7 @@ test("일부 상품만 환불: 수량을 골라 미리보기(현금·적립금·
   await expect(dlg.getByTestId("refund-shipping")).toHaveText("마지막 환불에서 돌려줍니다");
   await expect(dlg.getByTestId("refund-final")).toContainText("주문은 결제 완료로 남고");
   await page.screenshot({ path: "tests/e2e/screenshots/SA-023-partial-1440.png" });
-  await dlg.getByLabel("위 금액으로 환불합니다. 승인 취소 후 되돌릴 수 없습니다.").check();
+  await dlg.getByLabel("위 금액으로 환불합니다. 환불한 뒤에는 되돌릴 수 없습니다.").check();
   const first = page.waitForResponse((r) => r.url().endsWith("/refund") && r.request().method() === "POST");
   await dlg.getByRole("button", { name: /환불 실행/ }).click();
   const r1 = await first;
@@ -153,7 +153,7 @@ test("일부 상품만 환불: 수량을 골라 미리보기(현금·적립금·
   await expect(dlg.getByTestId("refund-reward")).toHaveText("50원 · 적립금으로 반환");
   const rest = paid - 131_050;
   await expect(dlg.getByTestId("refund-amount")).toHaveText(`${rest.toLocaleString("ko-KR")}원`);
-  await dlg.getByLabel("위 금액으로 환불합니다. 승인 취소 후 되돌릴 수 없습니다.").check();
+  await dlg.getByLabel("위 금액으로 환불합니다. 환불한 뒤에는 되돌릴 수 없습니다.").check();
   const last = page.waitForResponse((r) => r.url().endsWith("/refund") && r.request().method() === "POST");
   await dlg.getByRole("button", { name: /환불 실행/ }).click();
   const r2 = await last;
@@ -183,7 +183,7 @@ test("일부 상품만 환불: 「개봉 확인」은 고른 상품 중 개봉�
   await dlg.getByRole("checkbox", { name: /문라이트 컬렉션 박스.*선택/ }).check();
   await expect(dlg.getByTestId("refund-items-amount")).toHaveText("132,000원");
   await expect(opened).toHaveCount(0);
-  await dlg.getByLabel("위 금액으로 환불합니다. 승인 취소 후 되돌릴 수 없습니다.").check();
+  await dlg.getByLabel("위 금액으로 환불합니다. 환불한 뒤에는 되돌릴 수 없습니다.").check();
   await expect(dlg.getByRole("button", { name: /환불 실행/ })).toBeEnabled();
   // 개봉한 상품을 고르면 확인이 나타나고, 체크해야 환불할 수 있다
   await dlg.getByRole("checkbox", { name: /스타라이트 부스터 박스.*선택/ }).check();

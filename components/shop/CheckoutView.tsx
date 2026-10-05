@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { useConfirm } from "../admin-ui/ConfirmDialog";
 import { CART_COUNT_EVENT } from "./ShopChrome";
 import { call } from "./reviewShared";
 import "./Cart.css";
@@ -39,6 +40,7 @@ function check(f: Form) {
 }
 
 export default function CheckoutView({ slug, memberNickname = "" }: { slug: string; memberNickname?: string }) {
+  const { confirm } = useConfirm();
   const base = `/shop/${encodeURIComponent(slug)}`;
   const api = `/api/shop/${encodeURIComponent(slug)}`;
   const router = useRouter();
@@ -188,6 +190,20 @@ export default function CheckoutView({ slug, memberNickname = "" }: { slug: stri
   const addrOk = addrId !== NEW || Object.keys(errors).length === 0;
   const rewardOn = okData?.balance !== null && !rewardGone;
   const canSubmit = addrOk && nickOk && !rewardError && agreed && !busy;
+
+  // 주문하기: 재고·쿠폰·적립금을 쓰는 되돌리기 어려운 행동이라 확인 창을 거친다(DS-CONFIRM 구매자)
+  async function askSubmit() {
+    setTried(true);
+    if (!canSubmit) return;
+    const finalTotal = preview.kind === "ok" ? preview.total - (rewardOn ? rewardUse : 0) : null;
+    const ok = await confirm({
+      tone: "shop",
+      title: "주문할까요?",
+      body: `${checkout.lines.length}개 상품${finalTotal !== null ? `, 최종 ${won(finalTotal)}` : ""}을 주문해요. 쿠폰·적립금이 이 주문에 쓰여요. 결제는 다음 화면에서 해요.`,
+      confirmLabel: "주문하기",
+    });
+    if (ok) void submit();
+  }
 
   async function submit() {
     setTried(true);
@@ -457,7 +473,7 @@ export default function CheckoutView({ slug, memberNickname = "" }: { slug: stri
             {error}
           </p>
         )}
-        <button className="btn btn-lg btn-block" type="button" disabled={busy} aria-busy={busy} onClick={() => void submit()}>
+        <button className="btn btn-lg btn-block" type="button" disabled={busy} aria-busy={busy} onClick={() => void askSubmit()}>
           {busy ? "주문하고 있어요" : "주문하기"}
         </button>
         <p className="cart-hint">주문하면 먼저 접수돼요. 아직 결제는 되지 않아요. 다음 화면에서 고른 방법으로 결제해 주세요.</p>

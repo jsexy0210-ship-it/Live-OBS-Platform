@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { deleteBuyerOrdersSince, resetCartInDb } from "./cartDb";
+import { okConfirm } from "./shopConfirm";
 
 // SH-007 결제(운영 빌드 + 데모 시드). 결제 서버는 호출만 막아(route) 화면 약속을 확인한다. 만든 주문은 끝에 지운다.
 const SLUG = "demo-shop";
@@ -50,6 +51,7 @@ test("결제 대기 주문: 카드가 기본, 금액 확인 버튼, 결제 준�
   // 카드: 결제 준비 중이면 안내가 그대로 보인다
   await page.route("**/api/shop/*/payments", (route) => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "payment_not_ready", message: "결제 준비 중이에요. 잠시 후 다시 시도해 주세요" }) }));
   await box.getByRole("button", { name: /결제하기$/ }).click();
+  await okConfirm(page, "결제하기");
   await expect(box.getByRole("alert")).toContainText("결제 준비 중이에요");
 
   // 무통장: 계좌 안내
@@ -58,6 +60,7 @@ test("결제 대기 주문: 카드가 기본, 금액 확인 버튼, 결제 준�
   );
   await box.getByRole("radio", { name: "무통장 입금" }).check();
   await box.getByRole("button", { name: "무통장 입금 안내 받기" }).click();
+  await okConfirm(page, "입금 안내 받기");
   const info = box.getByRole("group", { name: "입금 계좌 안내" }).or(box.locator("dl.od-dl"));
   await expect(info).toContainText("시험은행");
   await expect(info).toContainText("123-456-789012");

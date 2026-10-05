@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { PageHead } from "../../../../../../components/admin-ui";
+import { PageHead, useConfirm } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Toast } from "../../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../../components/seller/api";
@@ -29,8 +29,7 @@ export default function AutomationProgressPage() {
   const { jobId } = useParams<{ jobId: string }>();
   const router = useRouter();
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; job: Job }>({ kind: "loading" });
-  const [busy, setBusy] = useState(false);
-  const [confirmCancel, setConfirmCancel] = useState(false);
+  const { confirm } = useConfirm();
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
 
   const load = useCallback(async () => {
@@ -45,15 +44,18 @@ export default function AutomationProgressPage() {
     return () => clearInterval(t);
   }, [load]);
 
-  const act = async (path: string, ok: string) => {
-    setBusy(true);
-    const r = await api<unknown>(`/api/automation/jobs/${jobId}/${path}`, { method: "POST" });
-    setBusy(false);
-    setConfirmCancel(false);
-    if (!r.ok) {
-      setToast({ text: failMessage(r, "admin", "처리하지 못했습니다. 잠시 후 다시 시도해 주십시오"), neg: true });
-      return void load();
-    }
+  // 서버에 쓰는 행동은 모두 공용 확인 창을 거친다
+  const act = async (path: string, ok: string, ask: { title: string; body: string; confirmLabel: string; danger?: boolean }) => {
+    const done = await confirm({
+      ...ask,
+      run: async () => {
+        const r = await api<unknown>(`/api/automation/jobs/${jobId}/${path}`, { method: "POST" });
+        if (r.ok) return;
+        void load();
+        return failMessage(r, "admin", "처리하지 못했습니다. 잠시 후 다시 시도해 주십시오");
+      },
+    });
+    if (!done) return;
     setToast({ text: ok });
     await load();
   };
@@ -82,7 +84,7 @@ export default function AutomationProgressPage() {
       <main className="main">
         <PageHead
           title="자동 연결 진행"
-          actions={cancelable && <button className="btn btn-out" type="button" disabled={busy} onClick={() => setConfirmCancel(true)}>자동 설정 그만두기</button>}
+          actions={cancelable && <button className="btn btn-out" type="button" onClick={() => void act("cancel", "자동 연결을 취소했습니다", { title: "자동 연결을 취소하시겠습니까?", body: j.status === "QUEUED" ? "아직 연결을 시작하지 않았습니다. 취소한 뒤 환불을 요청할 수 있습니다." : "진행을 멈추고 지금까지 바꾼 설정을 되돌립니다. 설정을 시작한 뒤라 환불되지 않습니다 · 결제 전에 동의하신 내용입니다.", confirmLabel: "그만두기", danger: true })}>자동 설정 그만두기</button>}
         />
         <div className="col" style={{ gap: 16 }}>
           <div className={`msg ${j.status === "NEEDS_CUSTOMER" ? "msg-cau" : terminal ? "msg-neg" : "msg-info"}`} role="status" data-testid="job-status">
@@ -107,7 +109,7 @@ export default function AutomationProgressPage() {
               <span className="t-c1 c-alt">
                 아이디 · 비밀번호는 저장하지 않습니다{j.actionDeadlineAt ? ` · ${stamp(j.actionDeadlineAt)}까지 확인해 주십시오` : ""} · 마친 뒤 이어서 진행하기를 누르면 자동으로 이어 갑니다
               </span>
-              <div><button className="btn" type="button" disabled={busy} onClick={() => void act("resume", "이어서 진행합니다")}>이어서 진행하기</button></div>
+              <div><button className="btn" type="button" onClick={() => void act("resume", "이어서 진행합니다", { title: "이어서 진행하시겠습니까?", body: "직접 해 주실 일을 마쳤다면 자동 설정을 다시 시작합니다.", confirmLabel: "이어서 진행하기" })}>이어서 진행하기</button></div>
             </section>
           )}
           {(j.status === "QUEUED" || j.status === "AWAITING_PAYMENT") && <div className="msg msg-info" role="note"><span><b>{j.status === "QUEUED" ? "순서를 기다리고 있습니다" : "결제를 확인하고 있습니다"}</b> · 창을 닫아도 진행됩니다 · 결제가 확인되기 전에는 작업이 시작되지 않습니다</span></div>}
@@ -124,27 +126,13 @@ export default function AutomationProgressPage() {
                     : "직접 설정은 무료로 계속 할 수 있습니다"}
               </span>
               <div className="row" style={{ gap: 8 }}>
-                {refundable && <button className="btn" type="button" disabled={busy} onClick={() => void act("refund-request", "환불을 요청했습니다")}>{AUTOMATION_PRICE.toLocaleString("ko-KR")}원 환불 요청하기</button>}
+                {refundable && <button className="btn" type="button" onClick={() => void act("refund-request", "환불을 요청했습니다", { title: `${AUTOMATION_PRICE.toLocaleString("ko-KR")}원 환불을 요청하시겠습니까?`, body: "결제한 카드로 환불되며 카드사 기준 3~5영업일 걸립니다. 요청한 뒤에는 되돌릴 수 없습니다.", confirmLabel: "환불 요청하기", danger: true })}>{AUTOMATION_PRICE.toLocaleString("ko-KR")}원 환불 요청하기</button>}
                 <Link className="btn btn-out" href="/seller/automation">자동 설정 다시 하기</Link>
                 <Link className="btn btn-out" href="/seller">직접 설정하러 가기</Link>
               </div>
             </section>
           )}
         </div>
-        {confirmCancel && (
-          <div className="msg msg-cau" role="alertdialog" aria-label="자동 연결 취소 확인" style={{ marginTop: 16 }} data-testid="cancel-confirm">
-            <span>
-              <b>자동 연결을 취소하시겠습니까?</b>{" "}
-              {j.status === "QUEUED"
-                ? "아직 연결을 시작하지 않았습니다. 취소한 뒤 환불을 요청할 수 있습니다."
-                : "진행을 멈추고 지금까지 바꾼 설정을 되돌립니다. 설정을 시작한 뒤라 환불되지 않습니다 · 결제 전에 동의하신 내용입니다."}
-            </span>
-            <span className="row" style={{ gap: 8 }}>
-              <button className="btn" type="button" disabled={busy} onClick={() => void act("cancel", "자동 연결을 취소했습니다")}>그만두기</button>
-              <button className="btn btn-out" type="button" onClick={() => setConfirmCancel(false)}>계속 진행하기</button>
-            </span>
-          </div>
-        )}
         {toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}
       </main>
     </>

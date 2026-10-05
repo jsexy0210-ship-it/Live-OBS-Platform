@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ListHead, PageHead, SearchBox, SearchRow } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
+import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
 import { won } from "../../../../../components/seller/format";
@@ -32,8 +33,10 @@ export default function BroadcastHistoryPage() {
   const { can } = useSeller();
   const allowed = can("BROADCAST_RUN");
   const [state, setState] = useState<Load>({ kind: "loading" });
-  const [draft, setDraft] = useState<Filter>(EMPTY);
-  const [applied, setApplied] = useState<Filter>(EMPTY);
+  // 조회 조건은 주소(?from=&to=)가 기준이다: 상세 → ← 에서 그대로 돌아온다(docs/IA.md Back 규칙 3항)
+  const [urlFilter, setUrlFilter] = useUrlState({ from: "", to: "" });
+  const [draft, setDraft] = useState<Filter>({ from: urlFilter.from, to: urlFilter.to });
+  const applied = useMemo<Filter>(() => ({ from: urlFilter.from, to: urlFilter.to }), [urlFilter.from, urlFilter.to]);
   const [more, setMore] = useState(false);
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
   // 조건이 바뀌면 마지막으로 보낸 조건의 응답만 반영한다
@@ -61,13 +64,15 @@ export default function BroadcastHistoryPage() {
     setState({ kind: "ok", items: [...state.items, ...r.data.items.filter((c) => !state.items.some((o) => o.id === c.id))], next: r.data.nextCursor });
   };
 
+  useScrollRestore("seller-broadcasts", state.kind === "ok");
+
   const search = () => {
     if (draft.from && draft.to && draft.from > draft.to) return setToast({ text: "시작일을 끝일보다 앞 날짜로 바꿔 주십시오", neg: true });
-    setApplied({ ...draft });
+    setUrlFilter({ from: draft.from, to: draft.to });
   };
   const reset = () => {
     setDraft(EMPTY);
-    setApplied(EMPTY);
+    setUrlFilter({ from: "", to: "" });
   };
   const items = state.kind === "ok" ? state.items : [];
 

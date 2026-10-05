@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { PageHead } from "../../../../../components/admin-ui";
+import { PageHead, useConfirm } from "../../../../../components/admin-ui";
 import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
@@ -48,9 +48,7 @@ export default function ExternalShopsPage() {
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; status: number } | { kind: "ok"; data: Data }>({ kind: "loading" });
   const [adding, setAdding] = useState(false);
   const [url, setUrl] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
-  const [confirm, setConfirm] = useState<Conn | null>(null);
+  const { confirm } = useConfirm();
   const [toast, setToast] = useState<{ text: string; neg?: boolean } | null>(null);
 
   const load = useCallback(async () => {
@@ -67,24 +65,30 @@ export default function ExternalShopsPage() {
   }, [load]);
 
   // 인증 주소를 받으면 그 화면으로 이동한다(쇼핑몰 관리자 로그인·앱 권한 승인은 그쪽에서 한다)
-  const begin = async (body: { shopUrl: string } | { connectionId: string }) => {
-    setBusy(true);
-    setProblem(null);
-    const r = await api<{ authorizeUrl: string }>("/api/seller/external-shops", { method: "POST", body });
-    if (!r.ok) {
-      setBusy(false);
-      return setProblem(r.message ?? failMessage(r, "admin"));
-    }
-    window.location.assign(r.data.authorizeUrl);
+  const begin = async (body: { shopUrl: string } | { connectionId: string }, ask: { title: string; body: string; confirmLabel: string }) => {
+    await confirm({
+      ...ask,
+      run: async () => {
+        const r = await api<{ authorizeUrl: string }>("/api/seller/external-shops", { method: "POST", body });
+        if (!r.ok) return r.message ?? failMessage(r, "admin");
+        window.location.assign(r.data.authorizeUrl);
+      },
+    });
   };
 
-  const disconnect = async (c: Conn) => {
-    setBusy(true);
-    const r = await api<{ status: Status }>(`/api/seller/external-shops/${c.id}`, { method: "DELETE" });
-    setBusy(false);
-    setConfirm(null);
-    if (!r.ok) return setToast({ text: failMessage(r, "admin", "해제하지 못했습니다. 잠시 후 다시 시도해 주십시오"), neg: true });
-    setToast({ text: r.data.status === "DISCONNECTED" ? "연결을 해제했습니다 · 주문 이벤트를 더 받지 않습니다" : "연결을 끊고 있습니다 · 쇼핑몰 응답을 기다리는 중입니다" });
+  const disconnect = async (c: Conn, ask: { title: string; body: string; confirmLabel: string }) => {
+    let status: Status | undefined;
+    const ok = await confirm({
+      ...ask,
+      danger: true,
+      run: async () => {
+        const r = await api<{ status: Status }>(`/api/seller/external-shops/${c.id}`, { method: "DELETE" });
+        if (!r.ok) return failMessage(r, "admin", "해제하지 못했습니다. 잠시 후 다시 시도해 주십시오");
+        status = r.data.status;
+      },
+    });
+    if (!ok) return;
+    setToast({ text: status === "DISCONNECTED" ? "연결을 해제했습니다 · 주문 이벤트를 더 받지 않습니다" : "연결을 끊고 있습니다 · 쇼핑몰 응답을 기다리는 중입니다" });
     await load();
   };
 
@@ -117,11 +121,10 @@ export default function ExternalShopsPage() {
                 <section className="card pad col" style={{ gap: 8 }} data-testid="external-add">
                   <label htmlFor="ext-url"><b>쇼핑몰 주소</b></label>
                   <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                    <input id="ext-url" className="inp" style={{ minWidth: 320 }} type="text" inputMode="url" placeholder="운영 중인 쇼핑몰 주소" value={url} onChange={(e) => { setUrl(e.target.value); setProblem(null); }} />
-                    <button className="btn" type="button" disabled={busy || !url.trim()} onClick={() => void begin({ shopUrl: url.trim() })}>이 주소로 연결 시작하기</button>
+                    <input id="ext-url" className="inp" style={{ minWidth: 320 }} type="text" inputMode="url" placeholder="운영 중인 쇼핑몰 주소" value={url} onChange={(e) => setUrl(e.target.value)} />
+                    <button className="btn" type="button" disabled={!url.trim()} onClick={() => void begin({ shopUrl: url.trim() }, { title: "이 쇼핑몰을 연결하시겠습니까?", body: `${url.trim()}의 쇼핑몰 관리자 로그인 화면으로 이동합니다. 로그인하고 앱 설치를 허용하면 연결됩니다.`, confirmLabel: "연결 시작하기" })}>이 주소로 연결 시작하기</button>
                   </div>
                   <span className="t-c1 c-alt">주소로 연결할 수 있는지 자동으로 확인합니다 · 연결할 수 있으면 관리자 로그인과 앱 설치 승인으로 이어집니다</span>
-                  {problem && <div className="msg msg-neg" role="alert" data-testid="external-problem"><span>{problem}</span></div>}
                 </section>
               )}
               {d.connections.length === 0 ? (
@@ -144,9 +147,9 @@ export default function ExternalShopsPage() {
                             <td>{ago(c.lastEventAt)}</td>
                             <td style={{ whiteSpace: "nowrap" }}>{date(c.connectedAt)}</td>
                             <td>
-                              {d.canManage && d.enabled && c.status === "REAUTH_REQUIRED" && <button className="btn btn-sm" type="button" disabled={busy} onClick={() => void begin({ connectionId: c.id })}>다시 연결</button>}{" "}
-                              {d.canManage && c.status === "DISCONNECT_PENDING" && <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={() => void disconnect(c)}>해제 다시 요청하기</button>}
-                              {d.canManage && (c.status === "CONNECTED" || c.status === "REAUTH_REQUIRED") && <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={() => setConfirm(c)}>연결 해제</button>}
+                              {d.canManage && d.enabled && c.status === "REAUTH_REQUIRED" && <button className="btn btn-sm" type="button" onClick={() => void begin({ connectionId: c.id }, { title: `${c.shopKey} 연결을 다시 하시겠습니까?`, body: "쇼핑몰 관리자 화면으로 이동해 앱 허용을 다시 받습니다.", confirmLabel: "다시 연결하기" })}>다시 연결</button>}{" "}
+                              {d.canManage && c.status === "DISCONNECT_PENDING" && <button className="btn btn-sm btn-out" type="button" onClick={() => void disconnect(c, { title: "연결 해제를 다시 요청하시겠습니까?", body: `${c.shopKey}의 주문 알림이 더 들어오지 않습니다.`, confirmLabel: "해제 다시 요청하기" })}>해제 다시 요청하기</button>}
+                              {d.canManage && (c.status === "CONNECTED" || c.status === "REAUTH_REQUIRED") && <button className="btn btn-sm btn-out" type="button" onClick={() => void disconnect(c, { title: `${c.shopKey} 연결을 해제하시겠습니까?`, body: "해제하면 이 쇼핑몰의 주문 이벤트가 더 들어오지 않습니다. 이미 받은 주문과 기록은 그대로 남습니다. 다시 쓰려면 주소를 넣고 새로 연결합니다.", confirmLabel: "연결 해제" })}>연결 해제</button>}
                             </td>
                           </tr>
                         ))}
@@ -155,20 +158,10 @@ export default function ExternalShopsPage() {
                   </div>
                 </section>
               )}
-              {problem && !adding && <div className="msg msg-neg" role="alert"><span>{problem}</span></div>}
               <span className="t-c1 c-alt">다시 연결 필요: 쇼핑몰 관리자에서 앱 권한이 바뀌거나 만료되면 생깁니다 · 해제 대기: 쇼핑몰 응답이 늦어 연결을 끊는 중입니다 · 그동안 주문은 받지 않습니다</span>
             </>
           )}
         </div>
-        {confirm && (
-          <div className="msg msg-cau" role="alertdialog" aria-label="연결 해제 확인" style={{ marginTop: 16 }} data-testid="external-confirm">
-            <span><b>{confirm.shopKey} 연결을 해제하시겠습니까?</b> 해제하면 이 쇼핑몰의 주문 이벤트가 더 들어오지 않습니다. 이미 받은 주문과 기록은 그대로 남습니다. 다시 쓰려면 주소를 넣고 새로 연결합니다.</span>
-            <span className="row" style={{ gap: 8 }}>
-              <button className="btn" type="button" disabled={busy} onClick={() => void disconnect(confirm)}>연결 해제</button>
-              <button className="btn btn-out" type="button" onClick={() => setConfirm(null)}>유지</button>
-            </span>
-          </div>
-        )}
         {toast && <Toast text={toast.text} neg={toast.neg} onDone={() => setToast(null)} />}
       </main>
     </>

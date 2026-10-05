@@ -20,7 +20,7 @@ type Load = { kind: "loading" } | { kind: "error"; status: number } | { kind: "o
 const SHIPMENT_STATUS: Record<string, string> = { IN_TRANSIT: "배송 중", DELIVERED: "배송 완료" };
 const FAULT_LABEL = { BUYER: "구매자 사정", SELLER: "파트너스 사정" } as const;
 // 송장의 택배사는 코드(CJ·HANJIN …)로 저장된다. 화면 이름으로 바꾸고, 모르는 값은 그대로 보인다.
-const courierName = (c: string) => (isCourier(c) ? COURIERS[c] : c);
+const courierName = (c: string) => (isCourier(c) ? COURIERS[c] : "택배사 확인 필요");
 
 export default function OrderDetailPage() {
   const { orderId } = useParams<{ orderId: string }>();
@@ -123,7 +123,7 @@ export default function OrderDetailPage() {
             <button className="btn btn-dense btn-out btn-w-xs" type="button" onClick={() => void copyOrderNo(o.orderNoLabel)}>
               복사
             </button>
-            <span className="t-c1 c-alt">전화 응대 · 검색 대조용</span>
+            <span className="t-c1 c-alt">구매자 문의에 답하거나 주문을 찾을 때만 씁니다</span>
           </div>
         </div>
 
@@ -136,7 +136,7 @@ export default function OrderDetailPage() {
                   <div className="col grow">
                     <span className="t-l1 fw6">{i.productNameSnapshot}</span>
                     <span className="t-c1 c-alt">
-                      옵션 {i.optionNameSnapshot} · 수량 {i.quantity}
+                      선택 항목 {i.optionNameSnapshot} · 수량 {i.quantity}개
                     </span>
                   </div>
                   <span className="t-l1 num fw6">{won(i.unitPrice * i.quantity)}</span>
@@ -184,7 +184,7 @@ export default function OrderDetailPage() {
                     </dd>
                     {o.refundFault && (
                       <>
-                        <dt>사유 주체</dt>
+                        <dt>누구 사정인지</dt>
                         <dd>{FAULT_LABEL[o.refundFault]}</dd>
                       </>
                     )}
@@ -215,7 +215,7 @@ export default function OrderDetailPage() {
                 <dt>회원</dt>
                 <dd>{nick}</dd>
               </dl>
-              {!pii && <span className="t-c1 c-alt">닉네임과 주문 내용만 표시됩니다</span>}
+              {!pii && <span className="t-c1 c-alt">개인정보를 볼 수 있는 사람이 아니어서 닉네임과 주문 내용만 보입니다. 필요하면 대표자에게 허용을 요청해 주십시오.</span>}
             </section>
             <section className="card pad col" style={{ gap: 12 }}>
               <h2 className="t-hl2">배송</h2>
@@ -240,8 +240,8 @@ export default function OrderDetailPage() {
                 )}
                 {addr?.isRemote && (
                   <>
-                    <dt>도서산간</dt>
-                    <dd>추가 배송비 지역입니다</dd>
+                    <dt>섬·산간 지역</dt>
+                    <dd>섬·산간 지역이라 추가 배송비가 붙습니다.</dd>
                   </>
                 )}
                 <dt>송장</dt>
@@ -253,7 +253,7 @@ export default function OrderDetailPage() {
                   </>
                 )}
               </dl>
-              {pii && <span className="t-c1 c-alt">연락처·주소는 열람 시 열람 기록이 남습니다.</span>}
+              {pii && <span className="t-c1 c-alt">연락처와 주소를 보면 누가 언제 봤는지 기록됩니다.</span>}
             </section>
           </div>
         </div>
