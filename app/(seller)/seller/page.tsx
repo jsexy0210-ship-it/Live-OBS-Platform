@@ -17,7 +17,7 @@ export default function SellerIndex() {
     let live = true;
     void api<Me>("/api/seller/me").then((r) => {
       if (!live) return;
-      if (r.ok) router.replace(landingFor(r.data, "/seller/products"));
+      if (r.ok) router.replace(!r.data.features.includes("STORE_OPERATIONS") && r.data.features.includes("OVERLAY") ? "/seller/home-overlay" : landingFor(r.data, "/seller/products"));
       else setFailed(true);
     });
     return () => {
