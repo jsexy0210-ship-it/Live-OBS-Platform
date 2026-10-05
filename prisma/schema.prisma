@@ -197,6 +197,9 @@ model SellerDomain {
   certStatus  String?
   // 자동 해지로 연결을 푼 시각(비활성). 다시 구독하면 되살린다.
   suspendedAt DateTime? @db.Timestamptz(3)
+  // 소유 확인 값: 도메인 DNS에 _onq-verify TXT 레코드로 넣게 한다(SA-060 도메인 연결). 마지막 확인 시각은 연속 확인(DNS 조회) 제한용.
+  verifyToken   String    @default(dbgenerated("replace((gen_random_uuid())::text, '-', '')"))
+  lastCheckedAt DateTime? @db.Timestamptz(3)
   createdAt   DateTime  @default(now()) @db.Timestamptz(3)
 
   seller Seller @relation(fields: [sellerId], references: [id])
