@@ -184,6 +184,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
 // 라우트에 있고, 동작은 tests/integration/planFeatures.test.ts가 경로마다 확인한다.
 const PUBLIC_ROUTES: Record<string, "STORE_OPERATIONS" | "OVERLAY" | "OPEN"> = {
   "shop/[slug]/orders": "STORE_OPERATIONS", // POST만 막음, GET(내 주문)은 열림
+  "shop/[slug]/orders/quote": "STORE_OPERATIONS", // 주문서 견적(읽기 전용)은 shopOpen으로 막음
   "shop/[slug]/order-consent": "STORE_OPERATIONS",
   "shop/[slug]/signup": "STORE_OPERATIONS",
   "shop/[slug]/signup/verification": "STORE_OPERATIONS",
