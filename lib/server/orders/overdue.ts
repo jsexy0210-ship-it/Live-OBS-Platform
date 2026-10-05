@@ -7,6 +7,7 @@ import { requireSellerPermission, requireSellerRead, type TenantContext } from "
 import { refreshOrderRetention } from "../buyers/legalHold";
 import { restoreOrderCoupon } from "../shop-coupons/service";
 import { returnRewardForOrder } from "../payments/rewardUse";
+import { orderNoLabel } from "./orderNoLabel";
 
 // 무통장 입금 기한·미입금 자동 취소·자동 구매 제한(PRODUCT_SCOPE 「무통장 입금·구매 제한 기본값」, MASTER 결정).
 // - 입금 기한: 주문 시각 + 판매자 설정(기본 사용·10일, 1시간~30일, 끌 수 있음). 주문할 때 Order.paymentDueAt에 고정한다.
@@ -231,11 +232,13 @@ export async function cancelOverdueOrders(db: PrismaClient, opts: { now?: Date; 
 // 실제로 보낼 때는 중복 발송을 막도록 orders/notifications.ts claimPaymentDueSoon으로 잡는다.
 export async function listPaymentDueSoon(db: PrismaClient, opts: { now?: Date } = {}) {
   const now = opts.now ?? (await dbNow(db));
-  return db.$queryRaw<{ id: string; sellerId: string; buyerMemberId: string; orderNo: number; totalAmount: number; paymentDueAt: Date }[]>`
-    SELECT "id", "sellerId", "buyerMemberId", "orderNo", "totalAmount", "paymentDueAt" FROM "Order"
+  const rows = await db.$queryRaw<{ id: string; sellerId: string; buyerMemberId: string; orderNo: number; createdAt: Date; totalAmount: number; paymentDueAt: Date }[]>`
+    SELECT "id", "sellerId", "buyerMemberId", "orderNo", "createdAt", "totalAmount", "paymentDueAt" FROM "Order"
     WHERE "status" = 'PENDING_PAYMENT' AND "paymentDueAt" > ${now}
       AND "paymentDueAt" - CASE WHEN "paymentDueAt" - "createdAt" > INTERVAL '1 day' THEN INTERVAL '1 day' ELSE INTERVAL '1 hour' END <= ${now}
     ORDER BY "paymentDueAt" ASC`;
+  // 안내 문구에 쓰는 주문번호는 화면과 같은 orderNoLabel(「20261005-0004」)이다.
+  return rows.map(({ createdAt, ...r }) => ({ ...r, orderNoLabel: orderNoLabel(createdAt, r.orderNo) }));
 }
 
 // 판매자: 지금 걸려 있는 구매 제한 목록(MEMBER_POINTS). 최근 200건까지라, 회원 한 명의 제한은 buyerMemberId로 걸러 받는다(UUID가 아니면 null).

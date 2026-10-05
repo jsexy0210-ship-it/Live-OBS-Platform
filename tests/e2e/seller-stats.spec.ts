@@ -40,29 +40,28 @@ test("주문 통계: 기간·단위를 바꾸면 다시 집계하고, 화면 숫
   await expect(page.getByRole("heading", { name: "통계 · 주문" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "통계", exact: true })).toHaveAttribute("href", "/seller/stats");
 
-  const r30 = statsResponse(page, "orders");
-  await page.getByRole("button", { name: "30일", exact: true }).click();
-  const body = await (await r30).json();
+  await expect(page.getByRole("button", { name: "1개월", exact: true })).toHaveAttribute("aria-pressed", "true");
+  const body = await (await first).json();
   expect(body.current.orders).toBeGreaterThan(0);
   await expect(kpi(page, "주문 수")).toHaveText(`${body.current.orders.toLocaleString("ko-KR")}건`);
-  await expect(kpi(page, "결제액")).toHaveText(won(body.current.revenue));
-  await expect(kpi(page, "순매출")).toHaveText(won(body.current.netRevenue));
+  await expect(kpi(page, "결제 금액")).toHaveText(won(body.current.revenue));
+  await expect(kpi(page, "실제 매출")).toHaveText(won(body.current.netRevenue));
   await expect(page.getByTestId("stats-table").locator("tbody tr")).toHaveCount(30);
   await shot(page, "stats-orders");
 
   const week = statsResponse(page, "orders", "unit=week");
-  await page.getByRole("group", { name: "묶음 단위" }).getByRole("button", { name: "주" }).click();
+  await page.getByRole("group", { name: "합계를 나누는 단위" }).getByRole("button", { name: "주" }).click();
   const w = await (await week).json();
   await expect(page.getByTestId("stats-table").locator("tbody tr")).toHaveCount(w.series.length);
   // 주 단위로 묶어도 기간 합계는 같다
   expect(w.current).toEqual(body.current);
 
   const download = page.waitForEvent("download");
-  await page.getByRole("button", { name: "엑셀 내려받기" }).click();
+  await page.getByRole("button", { name: "엑셀 파일로 받기" }).click();
   const file = await download;
   expect(file.suggestedFilename()).toMatch(/^order-stats_\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}\.csv$/);
   const csv = readFileSync((await file.path())!, "utf8");
-  expect(csv.startsWith("﻿기간,주문 수,결제 주문,결제액,취소,환불,환불액,순매출")).toBe(true);
+  expect(csv.startsWith("﻿기간,주문 수,결제 주문,결제 금액,취소,환불,환불 금액,실제 매출")).toBe(true);
   expect(csv.trim().split("\r\n")).toHaveLength(w.series.length + 1);
 });
 
@@ -70,12 +69,12 @@ test("직접 선택: 1년을 넘는 기간은 막고, 맞는 기간은 그 기�
   await login(page, "demo-owner@example.com", "/seller/stats/orders");
   await page.getByLabel("시작일").fill("2025-01-01");
   await page.getByLabel("종료일").fill("2026-01-02");
-  await page.getByRole("button", { name: "조회" }).click();
-  await expect(page.getByRole("alert").filter({ hasText: "직접 입력은" })).toHaveText("직접 입력은 최대 12개월까지 가능합니다");
+  await page.getByRole("button", { name: "기간 보기" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "최대 12개월" })).toHaveText("날짜를 직접 정할 때는 최대 12개월까지 볼 수 있습니다. 기간을 줄여 주십시오");
   const r = statsResponse(page, "orders", "from=2020-01-01");
   await page.getByLabel("시작일").fill("2020-01-01");
   await page.getByLabel("종료일").fill("2020-01-31");
-  await page.getByRole("button", { name: "조회" }).click();
+  await page.getByRole("button", { name: "기간 보기" }).click();
   expect((await r).status()).toBe(200);
   await expect(page.getByText("선택한 기간에 주문이 없습니다")).toBeVisible();
   await shot(page, "stats-orders-empty");
@@ -90,11 +89,10 @@ test("매출 통계: 매출 구성·결제 수단별을 API 값으로 보여 준
   const first = statsResponse(page, "sales");
   await login(page, "demo-owner@example.com", "/seller/stats/sales");
   await first;
-  const r30 = statsResponse(page, "sales");
-  await page.getByRole("button", { name: "30일", exact: true }).click();
-  const body = await (await r30).json();
-  await expect(kpi(page, "결제액")).toHaveText(won(body.current.paid));
-  await expect(kpi(page, "순매출")).toHaveText(won(body.current.net));
+  await expect(page.getByRole("button", { name: "1개월", exact: true })).toHaveAttribute("aria-pressed", "true");
+  const body = await (await first).json();
+  await expect(kpi(page, "결제 금액")).toHaveText(won(body.current.paid));
+  await expect(kpi(page, "실제 매출(환불 뺀 금액)")).toHaveText(won(body.current.net));
   await expect(page.getByTestId("stats-methods").locator("tbody tr")).toHaveCount(body.byMethod.length);
   await expect(page.getByTestId("stats-breakdown")).toContainText(won(body.current.gross));
   await shot(page, "stats-sales");
@@ -106,7 +104,7 @@ test("통계 권한이 없는 직원은 메뉴가 없고, 주소로 들어와도
   const r = statsResponse(page, "orders");
   await page.goto("/seller/stats/orders");
   expect((await r).status()).toBe(403);
-  await expect(page.getByText("통계 조회 권한이 필요합니다")).toBeVisible();
+  await expect(page.getByText("통계를 볼 수 없는 계정입니다")).toBeVisible();
   await shot(page, "stats-forbidden");
 });
 
@@ -114,9 +112,8 @@ test("상품 통계: 상위 상품·안 팔린 상품을 API 값으로 보여 �
   const first = statsResponse(page, "products");
   await login(page, "demo-owner@example.com", "/seller/stats/products");
   await first;
-  const r30 = statsResponse(page, "products");
-  await page.getByRole("button", { name: "30일", exact: true }).click();
-  const body = await (await r30).json();
+  await expect(page.getByRole("button", { name: "1개월", exact: true })).toHaveAttribute("aria-pressed", "true");
+  const body = await (await first).json();
   await expect(kpi(page, "상품 매출")).toHaveText(won(body.current.revenue));
   if (body.top.length > 0) {
     await expect(page.getByTestId("stats-top").locator("tbody tr")).toHaveCount(body.top.length);
@@ -124,7 +121,7 @@ test("상품 통계: 상위 상품·안 팔린 상품을 API 값으로 보여 �
   }
   await expect(page.getByTestId("stats-unsold").locator("tbody tr")).toHaveCount(body.unsold.length);
   // 상품·방송 통계는 기간 합계만 보여 묶음 단위가 없다
-  await expect(page.getByRole("group", { name: "묶음 단위" })).toHaveCount(0);
+  await expect(page.getByRole("group", { name: "합계를 나누는 단위" })).toHaveCount(0);
   await shot(page, "stats-products");
 });
 
@@ -132,9 +129,8 @@ test("회원 통계: 신규 가입·구매 회원·재구매율을 API 값으로
   const first = statsResponse(page, "members");
   await login(page, "demo-owner@example.com", "/seller/stats/members");
   await first;
-  const r30 = statsResponse(page, "members");
-  await page.getByRole("button", { name: "30일", exact: true }).click();
-  const body = await (await r30).json();
+  await expect(page.getByRole("button", { name: "1개월", exact: true })).toHaveAttribute("aria-pressed", "true");
+  const body = await (await first).json();
   await expect(kpi(page, "신규 가입")).toHaveText(`${body.current.signups.toLocaleString("ko-KR")}명`);
   await expect(kpi(page, "구매 회원")).toHaveText(`${body.current.buyers.toLocaleString("ko-KR")}명`);
   await expect(page.getByTestId("stats-table").locator("tbody tr")).toHaveCount(30);
@@ -163,12 +159,11 @@ test("통계 요약(SA-056): 요약 지표·방송 내역·상품 상위·회원
   await first;
   await expect(page.getByRole("heading", { name: "통계 · 요약" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "통계 종류" }).getByRole("link", { name: "요약" })).toHaveClass(/on/);
-  const r30 = statsResponse(page, "overview");
-  await page.getByRole("button", { name: "30일", exact: true }).click();
-  const body = await (await r30).json();
-  await expect(kpi(page, "매출 (결제 기준)")).toHaveText(won(body.summary.current.revenue));
+  await expect(page.getByRole("button", { name: "1개월", exact: true })).toHaveAttribute("aria-pressed", "true");
+  const body = await (await first).json();
+  await expect(kpi(page, "결제된 매출")).toHaveText(won(body.summary.current.revenue));
   await expect(kpi(page, "주문")).toHaveText(`${body.summary.current.orders.toLocaleString("ko-KR")}건`);
-  await expect(kpi(page, "방문자")).toHaveText("준비 중");
+  await expect(kpi(page, "방문자")).toHaveText("아직 볼 수 없습니다");
   // 방송 매출 · 방송 시간 일반 주문 · 방송 외 주문 · 합계(= 요약 매출)
   const bt = page.getByTestId("overview-broadcasts");
   await expect(bt.locator("tbody tr")).toHaveCount(4);
@@ -176,17 +171,17 @@ test("통계 요약(SA-056): 요약 지표·방송 내역·상품 상위·회원
   await expect(page.getByTestId("overview-rewards")).toContainText(won(body.rewards.earned));
   await expect(page.getByTestId("overview-rewards")).toContainText("쿠폰 사용");
   // 비교(기본 켬): 비교하는 칸 5개(매출·주문·주문당 평균·취소·환불·신규 회원)에 직전 기간 줄이 있고, 끄면 없다
-  const cmpLines = page.getByTestId("stats-kpi").locator(".d").filter({ hasText: "직전 기간" });
+  const cmpLines = page.getByTestId("stats-kpi").locator(".d").filter({ hasText: "바로 앞 기간" });
   await expect(cmpLines).toHaveCount(5);
-  await page.getByLabel("직전 기간과 비교").uncheck();
+  await page.getByLabel("바로 앞 기간과 비교").uncheck();
   await expect(cmpLines).toHaveCount(0);
-  await page.getByLabel("직전 기간과 비교").check();
+  await page.getByLabel("바로 앞 기간과 비교").check();
   if (body.products.top.length > 0) await expect(page.getByTestId("overview-products").locator("tbody tr").first()).toContainText(body.products.top[0].name);
   await shot(page, "stats-overview");
   const download = page.waitForEvent("download");
-  await page.getByRole("button", { name: "엑셀 내려받기" }).click();
+  await page.getByRole("button", { name: "엑셀 파일로 받기" }).click();
   const file = await download;
   expect(file.suggestedFilename()).toMatch(/^stats-summary_\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}\.csv$/);
   const csv = readFileSync((await file.path())!, "utf8");
-  for (const h of ["일별 매출", "방송 내역", "방송 외 주문", "상품 상위"]) expect(csv).toContain(h);
+  for (const h of ["일별 매출", "방송 내역", "그 밖의 주문", "상품 상위"]) expect(csv).toContain(h);
 });
