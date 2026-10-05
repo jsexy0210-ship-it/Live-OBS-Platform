@@ -273,7 +273,7 @@
 |---|---|---|
 | Brand1·2·3 | 브랜드 제안(초안) | DRAFT |
 | DS1~DS6 | 디자인 시스템 설명 보드(DS6 = 카페24식 공통 틀) | DRAFT · DS6 참고 · DS1~5 초안 |
-| DS-NAV | 새 GNB · 메뉴 구조표(제안) — 파트너스 GNB 10→8 · LNB 50→34, 마스터 8→6 · 28→24, 구매자 이름 2곳, 통폐합 전후 대응표 · 원칙 5(대표님 지시 2026-10-05 · docs/IA.md 「GNB·위계 현대화」 PR #637) | PROPOSAL v275 (1791213911-1437) · MASTER 확인 전 · `design/project/DS-NAV.dc.html` |
+| DS-NAV | 새 GNB · 메뉴 구조표(제안) — 파트너스 GNB 10→8 · LNB 50→34, 마스터 8→6 · 28→24, 구매자 이름 2곳, 통폐합 전후 대응표 · 원칙 5(대표님 지시 2026-10-05 · docs/IA.md 「GNB·위계 현대화」 PR #637) · 화면 ← 버튼(Back) 규격 6항·시안 5(대표님 지시 「화면 진입 시 Back 기능도 없다」, 경로는 docs/BACK_ROUTES.md) | PROPOSAL v277 (1791214556-96c1) · MASTER 확인 전 · `design/project/DS-NAV.dc.html` |
 | DS-TYPE-SCALE | 글자 · 버튼 · 간격 · 모서리 · 아이콘 · 표 · 일시 표기 크기 체계 한 장(시각 규격 2026-10-05 + 일시 2026.10.05 22:25) | PROPOSAL v275 (1791213911-1437) · MASTER 확인 전 · `design/project/DS-TYPE-SCALE.dc.html` |
 | IA1·IA2·IA3 | 정보구조도 보드 | DRAFT · 정본은 docs/IA.md |
 | Handoff | 개발 이관 목록 보드 | DRAFT |
