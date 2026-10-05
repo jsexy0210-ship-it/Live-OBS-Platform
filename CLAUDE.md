@@ -45,6 +45,7 @@
 - UI 작업을 시작할 때 ① `design/SCREEN_MAP.md` ② 대상 화면의 FINAL 소스 ③ 관련 공통 컴포넌트 소스(`design/project/lop.css` · DS-PANEL · DS-ROW-ACTION · SA-LNB · SH-CARD-IA) ④ `docs/IA.md` ⑤ production 소스 순으로 확인한다. **FINAL 확인 없이 UI 구현을 시작하지 않는다.** DRAFT · BLOCKED로 보고된 화면은 임의로 구현하지 않고 MASTER에 묻는다.
 - 새 화면·큰 UI 변경은 디자인 소스 수정 → 디자인 PR 병합 → 개발 PR 순서다. 단순 구현 오류(정본과 다른 간격·문구·크기)는 정본 기준으로 바로 고친다. 스크린샷은 검수 증거로만 쓴다.
 - 디자인 전담은 캔버스를 고칠 때마다 `design/project`를 같은 내용으로 동기화하는 PR을 낸다(캔버스 버전은 커밋 메시지와 `design/CHANGELOG.md`에). 커밋 규칙: `design(project): SA-011 …` / `design(system): …`.
+- **모든 세션은 언제나 디자인 정본 최신 버전을 본다** (2026-10-06 대표님 지시 「디자인과 개발은 싱크가 맞아야 한다」). 캔버스를 저장하면 같은 작업 흐름에서 바로 `design/project` 동기화 PR을 올리고, 검수 전담은 디자인 동기화 PR을 다른 PR보다 먼저 병합한다. `design/DESIGN_SOURCE.md`의 캔버스 버전이 캔버스 최신 버전과 다르면 그 차이는 결함이다. 개발 세션은 UI 작업을 시작하기 전에 최신 main을 받아 `design/` 버전을 확인한다.
 - 디자인 소스는 production 코드에서 import하지 않는다. `design/`은 타입 검사·린트·Next 빌드·Docker 이미지에서 제외한다. 검사: `npm run design:check`(SCREEN_MAP 경로 · IA 누락).
 
 ## 제품 원칙
