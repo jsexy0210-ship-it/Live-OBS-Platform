@@ -32,7 +32,7 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
   const [reason, setReason] = useState("");
   const [agree, setAgree] = useState(false);
   // 서버가 「개봉한 상품이 있어요」라고 하면 확인을 받은 뒤 confirmOpened로 다시 보낸다
-  const [needOpened, setNeedOpened] = useState(!!order.refundPreview?.openedItems.length);
+  const [openedAsk, setOpenedAsk] = useState(false);
   const [openedOk, setOpenedOk] = useState(false);
   const [busy, setBusy] = useState(false);
   // 환불 범위: 주문 전체(남은 상품 전부) 또는 일부 상품만(품목별 수량). 예전 응답처럼 품목 정보가 없으면 전체만
@@ -97,6 +97,9 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
         ]
       : [];
   const noPick = scope === "PART" && (selection?.length ?? 0) === 0;
+  // 개봉 확인은 이번에 환불하는 상품 중 개봉한 것이 있을 때만(전체 환불은 주문의 개봉 품목, 일부는 고른 품목). 서버가 요구하면(opened_items_present) 항상
+  const selectedOpened = (selection ?? []).some((sel) => itemsInfo?.find((i) => i.orderItemId === sel.orderItemId)?.opened);
+  const needOpened = openedAsk || (scope === "ALL" ? (preview?.openedItems.length ?? 0) > 0 : selectedOpened);
   const canSend = !blocked && !nothing && !noPick;
   const ready = fault !== null && reason !== "" && agree && canSend && !previewing && (scope === "ALL" || preview !== null) && (!needOpened || openedOk) && !busy;
   const first = order.items[0];
@@ -155,14 +158,13 @@ export default function RefundModal({ order, onClose, onDone }: { order: OrderDe
     if ("changed" in r) {
       setPreview(r.changed);
       setQueueVersion(r.version);
-      if (r.changed?.openedItems.length) setNeedOpened(true);
       setAgree(false);
       setError({ text: r.changed ? "그사이 환불 금액이 변경되었습니다. 금액을 다시 확인해 주십시오" : "이미 환불했거나 지금은 환불할 수 없는 주문입니다" });
       return;
     }
     const f = r.fail;
     if (f.error === "opened_items_present") {
-      setNeedOpened(true);
+      setOpenedAsk(true);
       setError({ text: failMessage(f, "admin") });
     } else if (f.status === 403) setError({ title: "이 기능은 권한이 필요합니다", text: "대표자에게 요청해 주십시오 · 필요한 권한: 주문·배송" });
     else if (f.error === "invalid_transition") setError({ text: "이미 환불했거나 지금은 환불할 수 없는 주문입니다" });
