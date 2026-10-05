@@ -3,7 +3,7 @@
 | 항목 | 값 |
 |---|---|
 | Artifact | https://claude.ai/artifact/YYGXZ3u4QvjQpEMUHnN4tS (Claude Design 캔버스 「ONQ (OnAirCue) 전체 화면 디자인」) |
-| 동기화한 버전 | v256 · version id `1791205180-4bb0` |
+| 동기화한 버전 | v256 · version id `1791205180-4bb0` (전체) · 부분 동기화 v259 `1791210454-9e4c`: SA-021 · SA-021-OPS · SA-022 · canvas.json |
 | 동기화 시각 | 2026-10-05 22:20 KST |
 | 디자인 전담 세션 | 디자인 전담 (4) `session_01QUUqmD2DDwArxHsUqMyA7Y` (`HANDOFF.md` 세션 표) |
 | Git 경로 | `design/project/` (캔버스 `project/`와 1:1, 파일명·상대 경로 보존) |
