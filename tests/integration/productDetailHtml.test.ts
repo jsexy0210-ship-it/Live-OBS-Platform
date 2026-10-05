@@ -90,6 +90,18 @@ describe("에디터 HTML 저장", () => {
     expect(r.html).toContain(`/images/${own.id}`);
   });
 
+  it("글자색·배경색(#hex·rgb)은 저장·읽기에 남고, url()·var() 같은 값은 지운다", async () => {
+    const s = await seller();
+    const p = await product(s.ctx);
+    const r = await save(s.ctx, p.id, { html: '<p><span style="color:#E00;background-color:rgb(255, 255, 0)">강조</span> <span style="color:url(https://evil.example/x)">나쁨</span> <span style="background-color:var(--x)">변수</span></p>' });
+    expect(r.html).toContain('<span style="color:#e00;background-color:rgb(255,255,0)">강조</span>');
+    expect(r.html).not.toMatch(/url\(|var\(|evil\.example/);
+    expect(r.html).toContain("나쁨");
+    expect(r.sanitized?.removedCount).toBe(2 + 2); // 지운 선언 2개 + 스타일이 남지 않은 span 2개
+    expect((await stored(p.id)).html).toContain("color:#e00");
+    expect((await getProductDetail(db, s.ctx, p.id)).html).toBe(r.html);
+  });
+
   it("예전 글·사진 블록과 호환: html을 저장하면 블록은 비우고, 블록으로 저장하면 html을 지운다. 둘 다/둘 다 없음은 거절", async () => {
     const s = await seller();
     const p = await product(s.ctx);
