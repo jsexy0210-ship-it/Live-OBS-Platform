@@ -41,7 +41,7 @@ export default function RolesPage() {
                 <tbody>
                   {state.table.permissions.map((p) => (
                     <tr key={p.permission} data-testid="permission-row">
-                      <td className="fw6">{PERMISSION_LABEL[p.permission] ?? "기타 권한"}</td>
+                      <td className="fw6 col-text">{PERMISSION_LABEL[p.permission] ?? "기타 권한"}</td>
                       {state.table.roles.map((r) => (
                         <td key={r}>{p.roles.includes(r) ? "가능" : "-"}</td>
                       ))}

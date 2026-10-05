@@ -470,7 +470,7 @@ export default function ProductListPage() {
                               {p.thumbnailUrl ? <img src={p.thumbnailUrl} alt="" data-testid="product-thumb" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <NoImage />}
                             </div>
                           </td>
-                          <td>
+                          <td className="col-text">
                             <Link href={`/seller/products/${p.id}`} className="fw6 p-name" style={{ color: "inherit", textDecoration: "none" }}>
                               {p.name}
                             </Link>

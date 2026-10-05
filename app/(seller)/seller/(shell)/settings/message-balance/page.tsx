@@ -252,7 +252,7 @@ export default function MessageBalancePage() {
                         <tr key={k}>
                           <td>{k}</td>
                           <td>{cost}</td>
-                          <td>{basis}</td>
+                          <td className="col-text">{basis}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -376,7 +376,7 @@ export default function MessageBalancePage() {
                                 {TYPE[e.type]}
                                 {STATUS[e.status] ? ` · ${STATUS[e.status]}` : ""}
                               </td>
-                              <td>{[e.channel ? CHANNEL[e.channel] : null, e.reason].filter(Boolean).join(" · ") || "-"}</td>
+                              <td className="col-text">{[e.channel ? CHANNEL[e.channel] : null, e.reason].filter(Boolean).join(" · ") || "-"}</td>
                               <td className="num">{e.quantity === null ? "-" : `${e.quantity.toLocaleString("ko-KR")}건`}</td>
                               <td className="num">{signed(e.paidAmount)}</td>
                               <td className="num">{signed(e.freeAmount)}</td>

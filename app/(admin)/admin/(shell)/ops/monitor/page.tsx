@@ -145,7 +145,7 @@ export default function OpsMonitorPage() {
                             <td>
                               <span className={`bdg ${sev(e.severity).cls}`}>{sev(e.severity).label}</span>
                             </td>
-                            <td>{e.message}</td>
+                            <td className="col-text">{e.message}</td>
                             <td className="c-alt">{e.key}</td>
                             <td className="num">{dayTime(e.occurredAt)}</td>
                           </tr>
@@ -189,7 +189,7 @@ export default function OpsMonitorPage() {
                               </td>
                               <td className="num">{dayTime(b.lastRunAt)}</td>
                               <td className="num">{dayTime(b.lastOkAt)}</td>
-                              <td className="c-alt">{b.lastError ?? "-"}</td>
+                              <td className="c-alt col-text">{b.lastError ?? "-"}</td>
                             </tr>
                           );
                         })}
@@ -226,7 +226,7 @@ export default function OpsMonitorPage() {
                             <td>
                               <span className={`bdg ${sev(e.severity).cls}`}>{sev(e.severity).label}</span>
                             </td>
-                            <td>{e.message}</td>
+                            <td className="col-text">{e.message}</td>
                           </tr>
                         ))}
                       </tbody>

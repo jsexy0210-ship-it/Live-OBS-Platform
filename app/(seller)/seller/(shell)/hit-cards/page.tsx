@@ -170,15 +170,15 @@ export default function HitCardsPage() {
                           {items.map((c) => (
                             <tr key={c.id}>
                               <td className="num">{kstDate(c.createdAt)}</td>
-                              <td>
+                              <td className="col-text">
                                 <span className="col bc-item">
                                   <span className="t-l1 fw6 ell">{c.cardName}</span>
                                   {c.note && <span className="t-c1 c-alt ell">{c.note}</span>}
                                 </span>
                               </td>
                               <td className="ell">{c.nickname}</td>
-                              <td className="ell">{c.order ? `${c.order.orderNo} · ${c.order.productLabel}` : "-"}</td>
-                              <td className="ell">{c.broadcast ? c.broadcast.title || "제목 없는 방송" : "-"}</td>
+                              <td className="ell col-text">{c.order ? `${c.order.orderNo} · ${c.order.productLabel}` : "-"}</td>
+                              <td className="ell col-text">{c.broadcast ? c.broadcast.title || "제목 없는 방송" : "-"}</td>
                               <td>
                                 <button className="btn btn-sm btn-out" type="button" onClick={() => setModal({ kind: "delete", card: c })}>
                                   해제

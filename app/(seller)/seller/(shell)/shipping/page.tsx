@@ -245,7 +245,7 @@ export default function ShippingPage() {
                               <input className="cbx" type="checkbox" aria-label={`주문 ${r.orderNo} 선택`} checked={picked.has(r.orderId)} onChange={() => toggle(r.orderId)} />
                             </td>
                           )}
-                          <td>
+                          <td className="col-text">
                             <div className="col" style={{ gap: 2 }}>
                               <Link className="fw6" href={`/seller/orders/${r.orderId}`}>
                                 {r.buyer.broadcastNickname ?? "닉네임 없음"}
@@ -258,7 +258,7 @@ export default function ShippingPage() {
                               </span>
                             </div>
                           </td>
-                          <td className="ship-rcpt">
+                          <td className="ship-rcpt col-text">
                             <Recipient a={r.shippingAddress} />
                           </td>
                           <td>

@@ -198,7 +198,7 @@ function NoticeList() {
                           <td>
                             <span className={`bdg ${NOTICE_CATEGORY[n.category].cls}`}>{NOTICE_CATEGORY[n.category].label}</span>
                           </td>
-                          <td>
+                          <td className="col-text">
                             {canEdit ? (
                               <Link className="fw6" href={`/admin/support/notices/${n.id}`}>
                                 {n.title}

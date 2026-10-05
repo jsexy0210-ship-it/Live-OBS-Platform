@@ -268,9 +268,9 @@ export default function CouponsPage() {
                       <th>쿠폰 · 발급 방식</th>
                       <th>혜택 · 조건</th>
                       <th>사용 기간</th>
-                      <th className="r">발급</th>
-                      <th className="r">사용 (비율)</th>
-                      <th className="r">할인 총액</th>
+                      <th>발급</th>
+                      <th>사용 (비율)</th>
+                      <th>할인 총액</th>
                       <th>상태</th>
                       {editable && <th />}
                     </tr>
@@ -278,7 +278,7 @@ export default function CouponsPage() {
                   <tbody>
                     {shown.map((c) => (
                       <tr key={c.id} data-testid="coupon-row" className={c.status === "ended" ? "faded" : undefined}>
-                        <td>
+                        <td className="col-text">
                           <div className="col" style={{ gap: 2 }}>
                             <span className="fw6">{c.name}</span>
                             <span className="t-c1 c-alt">
@@ -287,7 +287,7 @@ export default function CouponsPage() {
                             </span>
                           </div>
                         </td>
-                        <td>
+                        <td className="col-text">
                           <div className="col" style={{ gap: 2 }}>
                             <span>{c.benefitText}</span>
                             <span className="t-c1 c-alt">{conditionText(c)}</span>
@@ -301,16 +301,16 @@ export default function CouponsPage() {
                             {c.validDays !== null && <span className="t-c1 c-alt">받은 뒤 {c.validDays}일</span>}
                           </div>
                         </td>
-                        <td className="r num">
+                        <td className="num">
                           {c.issuedCount.toLocaleString("ko-KR")}
                           {c.issueLimit !== null && ` / ${c.issueLimit.toLocaleString("ko-KR")}`}
                           {c.soldOut && <span className="t-c1 c-alt"> · 소진</span>}
                         </td>
-                        <td className="r num">
+                        <td className="num">
                           {c.used.toLocaleString("ko-KR")}
                           {c.issuedCount > 0 && <span className="c-alt"> ({Math.round((c.used / c.issuedCount) * 100)}%)</span>}
                         </td>
-                        <td className="r num">{won(c.discountTotal)}</td>
+                        <td className="num">{won(c.discountTotal)}</td>
                         <td>
                           <span className={`bdg ${STATUS[c.status].cls}`}>{STATUS[c.status].label}</span>
                         </td>
