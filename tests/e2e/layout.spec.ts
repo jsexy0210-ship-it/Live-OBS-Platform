@@ -29,7 +29,7 @@ test("대분류를 누르면 왼쪽 메뉴가 그 대분류의 하위 메뉴로 
   await login(page, "demo-owner@example.com", "/seller/products");
 
   // 대표자는 대분류 9개를 모두 본다
-  await expect(gnb(page).locator(".gnb-i")).toHaveText(["홈", "방송", "주문", "상품", "회원", "게시판", "프로모션", "디자인", "통계", "쇼핑몰 설정"]);
+  await expect(gnb(page).locator(".gnb-i")).toHaveText(["홈", "방송", "주문", "상품", "고객", "스토어", "분석", "설정"]);
   await expect(gnb(page).getByRole("link", { name: "상품", exact: true })).toHaveClass(/\bon\b/);
   await expect(lnb(page).locator(".lnb-sec.on .lnb-h")).toHaveText("상품");
   await expect(lnb(page).getByRole("link", { name: "상품 목록" })).toBeVisible();
@@ -50,11 +50,11 @@ test("대분류를 누르면 왼쪽 메뉴가 그 대분류의 하위 메뉴로 
   await expect(lnb(page).getByText("입금 확인")).toBeVisible();
 
   // 쇼핑몰 설정: 첫 메뉴(쇼핑몰 정보)로 들어가고, 하위 메뉴 이동 시 대분류 표시가 유지된다
-  await gnb(page).getByRole("link", { name: "쇼핑몰 설정" }).click();
+  await gnb(page).getByRole("link", { name: "설정", exact: true }).click();
   await expect(page).toHaveURL(/\/seller\/settings\/shop$/);
   await lnb(page).getByRole("link", { name: "직원 계정" }).click();
   await expect(page).toHaveURL(/\/seller\/staff$/);
-  await expect(gnb(page).getByRole("link", { name: "쇼핑몰 설정" })).toHaveClass(/\bon\b/);
+  await expect(gnb(page).getByRole("link", { name: "설정", exact: true })).toHaveClass(/\bon\b/);
   await expect(lnb(page).getByRole("link", { name: "직원 계정" })).toHaveAttribute("aria-current", "page");
 
   // 상단 유틸
@@ -102,8 +102,8 @@ test("권한 없는 직원에게는 메뉴와, 하위 메뉴가 모두 숨겨진
   await page.setViewportSize({ width: 1440, height: 900 });
   // 상품 권한만 있는 직원(상품 리뷰·쿠폰은 권한 없이 조회라 게시판·프로모션 대분류는 남는다)
   await login(page, "demo-staff@example.com", "/seller/products");
-  await expect(gnb(page).locator(".gnb-i")).toHaveText(["홈", "상품", "게시판", "프로모션", "디자인", "쇼핑몰 설정"]);
-  await gnb(page).getByRole("link", { name: "쇼핑몰 설정" }).click();
+  await expect(gnb(page).locator(".gnb-i")).toHaveText(["홈", "상품", "고객", "스토어", "설정"]);
+  await gnb(page).getByRole("link", { name: "설정", exact: true }).click();
   await expect(page).toHaveURL(/\/seller\/settings\/shop$/);
   // 대표자 전용·설정 권한 메뉴는 숨는다
   await expect(lnb(page).locator(".lnb-sec.on .lnb-i")).toHaveText(["쇼핑몰 정보"]);
@@ -121,7 +121,7 @@ test("모바일 폭에서는 GNB가 햄버거로 접히고 서랍에 전체 메�
   await page.getByRole("button", { name: "메뉴 열기" }).click();
   // 서랍에는 모든 대분류와 하위 메뉴, 상단 유틸이 함께 있다
   await expect(drawerLink).toBeInViewport();
-  await expect(lnb(page).locator(".lnb-h")).toHaveText(["홈", "방송", "주문", "상품", "회원", "게시판", "프로모션", "디자인", "통계", "쇼핑몰 설정"]);
+  await expect(lnb(page).locator(".lnb-h")).toHaveText(["홈", "방송", "주문", "상품", "고객", "스토어", "분석", "설정"]);
   await expect(lnb(page).getByRole("button", { name: "로그아웃" })).toBeVisible();
   await page.getByRole("button", { name: "메뉴 닫기" }).click();
   await expect(drawerLink).not.toBeInViewport();
