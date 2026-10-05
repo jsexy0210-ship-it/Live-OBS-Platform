@@ -71,16 +71,24 @@ test("채널 7종 단가가 이름으로 보이고, 단가 변경(바로·예정
   expect(saved.pendingUnitPrice).toBe(20);
 });
 
-test("플랫폼 메일 한도 저장과 충전 스위치: 확인 창을 거치고, 서버가 거절하면 안내하며 상태는 그대로다", async ({ page }) => {
+const JOB = "message.reconcile_and_release";
+
+test("플랫폼 메일 한도 저장과 충전 스위치: 확인 창을 거치고, 서버가 거절하면 안내하며 상태는 그대로고, 정기 작업이 돌면 켜고 끌 수 있다", async ({ page }) => {
+  // 충전 켜기는 발송 충전 정기 작업이 최근에 성공했어야 한다. 서버의 스케줄러가 돌았는지에 기대지 않도록 시험이 직접 정한다
+  await db.platformMessageSetting.upsert({ where: { id: 1 }, create: { id: 1, chargingEnabled: false }, update: { chargingEnabled: false } });
+  await db.opsHeartbeat.deleteMany({ where: { job: JOB } });
   await open(page, superEmail);
   await expect(page.getByTestId("charging-state")).toHaveText("꺼짐");
-  await page.getByLabel("하루 한도").fill("150");
-  await page.getByLabel("월 한도").fill("4000");
+  // 같은 시험 DB로 다시 돌려도 값이 달라지도록 실행마다 다른 한도를 쓴다(저장 뒤 다시 읽기가 끝난 것을 값으로 확인하려고)
+  const day = 200 + (parseInt(run, 16) % 700);
+  const month = day * 30;
+  await page.getByLabel("하루 한도").fill(String(day));
+  await page.getByLabel("월 한도").fill(String(month));
   await page.getByRole("button", { name: "한도 저장" }).click();
-  await expect(page.getByTestId("usage-today")).toContainText("/ 150통");
-  await expect(page.getByTestId("usage-month")).toContainText("/ 4,000통");
+  await expect(page.getByTestId("usage-today")).toContainText(`/ ${day.toLocaleString("ko-KR")}통`);
+  await expect(page.getByTestId("usage-month")).toContainText(`/ ${month.toLocaleString("ko-KR")}통`);
   const s = await db.platformMessageSetting.findUniqueOrThrow({ where: { id: 1 } });
-  expect([s.platformDailyLimit, s.platformMonthlyLimit]).toEqual([150, 4000]);
+  expect([s.platformDailyLimit, s.platformMonthlyLimit]).toEqual([day, month]);
 
   await page.getByLabel("하루 한도").fill("abc");
   await page.getByRole("button", { name: "한도 저장" }).click();
@@ -101,6 +109,25 @@ test("플랫폼 메일 한도 저장과 충전 스위치: 확인 창을 거치�
   await dialog.getByRole("button", { name: "취소" }).click();
   await expect(page.getByTestId("charging-state")).toHaveText("꺼짐");
   expect((await db.platformMessageSetting.findUniqueOrThrow({ where: { id: 1 } })).chargingEnabled).toBe(false);
+
+  // 정기 작업이 최근에 성공했다고 남기면 켜진다. 끄기는 언제든 된다
+  const now = new Date();
+  await db.opsHeartbeat.create({ data: { instance: `e2e-${run}`, generation: "g", job: JOB, lastRunAt: now, lastStatus: "done", lastOkAt: now } });
+  try {
+    await page.getByRole("button", { name: "충전 켜기" }).click();
+    await dialog.getByRole("button", { name: "충전 켜기" }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByTestId("charging-state")).toHaveText("켜짐");
+    expect((await db.platformMessageSetting.findUniqueOrThrow({ where: { id: 1 } })).chargingEnabled).toBe(true);
+    await page.getByRole("button", { name: "충전 끄기" }).click();
+    await expect(dialog.getByRole("heading", { name: "충전을 끄시겠습니까?" })).toBeVisible();
+    await dialog.getByRole("button", { name: "충전 끄기" }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByTestId("charging-state")).toHaveText("꺼짐");
+    expect((await db.platformMessageSetting.findUniqueOrThrow({ where: { id: 1 } })).chargingEnabled).toBe(false);
+  } finally {
+    await db.opsHeartbeat.deleteMany({ where: { instance: `e2e-${run}` } });
+  }
 });
 
 test("CS는 메뉴가 없고 주소로 들어와도 권한 안내만 본다", async ({ page }) => {
