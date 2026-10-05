@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { writeAudit } from "../audit/log";
 import { shopOpen } from "../buyers/signup";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
+import { viewFavicon } from "../seller-settings/shopFavicon";
 import { cleanText } from "../text/clean";
 
 // 쇼핑몰 공유 미리보기(SA-060, PRODUCT_SCOPE 「쇼핑몰 파비콘·공유 미리보기」). MASTER 결정 2026-10-04(대기열 4번 C안):
@@ -57,8 +58,9 @@ export type ShareMeta = {
   title: string;
   description: string | null;
   image: { url: string; width: 1200; height: 630 };
-  // 쇼핑몰 파비콘. 업로드 전에는 null(화면의 ONQ 기본 아이콘을 쓴다).
-  favicon: null;
+  // 쇼핑몰 파비콘(SA-060). 올린 파비콘, 없으면 로고에서 자동으로 만든 것. 둘 다 없으면 null(화면의 ONQ 기본 아이콘을 쓴다).
+  // url = 탭 아이콘 32px, appleUrl = 홈 화면 아이콘 180px, largeUrl = 512px.
+  favicon: { url: string; appleUrl: string; largeUrl: string; type: "image/png" } | null;
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -72,11 +74,12 @@ export async function shopShareMeta(db: PrismaClient, slug: string, productId?: 
     productId && UUID.test(productId)
       ? await db.product.findFirst({ where: { id: productId, sellerId: shop.id, deletedAt: null, status: { in: ["ON_SALE", "SOLD_OUT"] } }, select: { name: true } })
       : null;
+  const icon = await viewFavicon(db, shop.id, shop.slug);
   return {
     title: product?.name ?? shop.shareTitle ?? shop.shopName,
     description: shop.shareDescription,
     image: { url: `/api/shop/${encodeURIComponent(shop.slug)}/og.png?v=${cardVersion(shop.shopName)}`, width: 1200, height: 630 },
-    favicon: null,
+    favicon: icon.urls ? { url: icon.urls[32], appleUrl: icon.urls[180], largeUrl: icon.urls[512], type: "image/png" } : null,
   };
 }
 

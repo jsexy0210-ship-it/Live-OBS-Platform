@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireSeller } from "../../../../../lib/server/authz/guards";
 import { prisma } from "../../../../../lib/server/db";
 import { errorResponse, sessionToken } from "../../../../../lib/server/http/route";
+import { getOrderHistory } from "../../../../../lib/server/orders/history";
 import { getOrder } from "../../../../../lib/server/orders/read";
 import { getRefundVersion } from "../../../../../lib/server/queue/read";
 import { previewRefund } from "../../../../../lib/server/queue/service";
@@ -18,7 +19,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ orderId:
     // refundPreview: 결제 완료 주문의 사유 주체별 환불액(계산만). 환불 화면이 확인 전에 실제 금액과 뺀 항목을 보여 준다
     const order = await getOrder(prisma, ctx, orderId);
     const queueVersion = await getRefundVersion(prisma, ctx);
-    return NextResponse.json({ ...order, queueVersion, refundPreview: await previewRefund(prisma, ctx, orderId) });
+    // history: 상태 이력(시각 오름차순: 상태 변경·결제 승인·일부 환불·결제 취소, 처리자는 역할·이름만). lib/server/orders/history.ts
+    const history = await getOrderHistory(prisma, ctx, orderId);
+    return NextResponse.json({ ...order, queueVersion, refundPreview: await previewRefund(prisma, ctx, orderId), history });
   } catch (e) {
     return errorResponse(e);
   }

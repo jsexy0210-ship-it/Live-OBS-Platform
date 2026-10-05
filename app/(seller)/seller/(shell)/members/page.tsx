@@ -6,11 +6,14 @@ import { PageHead } from "../../../../../components/admin-ui";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
+import { useScrollRestore, useUrlState } from "../../../../../lib/client/navigation";
 import { MAX_SEARCH_LENGTH } from "../../../../../components/seller/format";
 import { MEMBER_STATUS, memberDay, phoneText, type MemberRow, type MemberStatus } from "../../../../../components/seller/members/types";
 
 // SA-041 회원 목록·검색(GET /api/seller/members, 회원·적립금 권한). 50명씩 이어서 불러온다.
 // 검색은 방송 닉네임, 개인정보 열람 권한이 있으면 이름·휴대폰 끝 4자리도 찾는다(서버가 권한에 따라 정함).
+// 상태 보존(IA Back 규칙 3항, UX 감사): 상태 필터는 주소(?status=)가 기준이고, 검색어는 개인정보(이름·휴대폰)일 수 있어
+// 개인정보 열람 권한이 있으면 주소에 넣지 않고 history state에, 없으면(닉네임뿐) 주소(?q=)에 둔다. 상세 → Back에서 조건과 스크롤이 복원된다.
 const PAGE = 50;
 const SEARCH_DELAY_MS = 300;
 type Page = { members: MemberRow[]; nextCursor: string | null };
@@ -25,14 +28,52 @@ function query(f: Filters, cursor?: string) {
   return p.toString();
 }
 
+// 개인정보일 수 있는 검색어를 담는 history state 칸. Next가 쓰는 값은 그대로 두고 이 칸만 더한다
+const STATE_KEY = "memberSearch";
+const readState = (): string => {
+  const v = (window.history.state as Record<string, unknown> | null)?.[STATE_KEY];
+  return typeof v === "string" ? v : "";
+};
+const writeState = (q: string) => {
+  window.history.replaceState({ ...(window.history.state as object | null), [STATE_KEY]: q }, "");
+};
+
 export default function MemberListPage() {
-  const [search, setSearch] = useState("");
-  const [q, setQ] = useState("");
+  const { can } = useSeller();
+  const piiSearch = can("CUSTOMER_PII_VIEW");
+  const [u, setU] = useUrlState({ q: "", status: "" });
+  const status: MemberStatus | null = u.status === "ACTIVE" || u.status === "DORMANT" ? u.status : null;
+  // 검색어: 개인정보 열람 권한이 있으면 history state(주소에 남기지 않음), 없으면 주소 쿼리
+  const [stateQ, setStateQ] = useState("");
+  // 처음 그릴 때(서버 렌더 뒤) history state의 검색어를 읽은 다음에 조회한다(조건 없이 한 번 받았다 다시 받지 않게)
+  const [restored, setRestored] = useState(false);
   useEffect(() => {
-    const t = setTimeout(() => setQ(search.trim()), SEARCH_DELAY_MS);
+    if (piiSearch) setStateQ(readState());
+    setRestored(true);
+  }, [piiSearch]);
+  const q = piiSearch ? stateQ : u.q;
+  // 필터를 바꾸면 Next가 history 항목을 새 값으로 바꿔 검색어 칸이 지워지므로, 주소가 바뀔 때마다 다시 적어 둔다
+  useEffect(() => {
+    if (piiSearch && restored && readState() !== stateQ) writeState(stateQ);
+  }, [piiSearch, restored, stateQ, u.status]);
+  const [search, setSearch] = useState(q);
+  const setUrl = useRef(setU);
+  setUrl.current = setU;
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const next = search.trim();
+      if (piiSearch) {
+        writeState(next);
+        setStateQ(next);
+      } else setUrl.current({ q: next });
+    }, SEARCH_DELAY_MS);
     return () => clearTimeout(t);
-  }, [search]);
-  const [status, setStatus] = useState<MemberStatus | null>(null);
+  }, [search, piiSearch]);
+  // Back·조건 초기화로 조건이 바뀌면 입력 칸도 맞춘다. 입력 중인 글자는 건드리지 않는다
+  useEffect(() => {
+    setSearch((cur) => (cur.trim() === q ? cur : q));
+  }, [q]);
+  const setStatus = (v: MemberStatus | null) => setU({ status: v ?? "" });
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [more, setMore] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -48,7 +89,10 @@ export default function MemberListPage() {
     if (id !== reqId.current) return;
     setState(r.ok ? { kind: "ok", items: r.data.members, next: r.data.nextCursor } : { kind: "error", status: r.status });
   }, []);
-  useEffect(() => void load({ q, status }), [q, status, load]);
+  useEffect(() => {
+    if (restored) void load({ q, status });
+  }, [q, status, load, restored]);
+  useScrollRestore("seller-members", state.kind === "ok");
 
   const loadMore = async () => {
     if (state.kind !== "ok" || !state.next) return;
@@ -62,7 +106,6 @@ export default function MemberListPage() {
   };
 
   // 이름·휴대폰 끝자리 검색은 개인정보 열람 권한이 있을 때만 서버가 찾는다
-  const { can } = useSeller();
   const searchHint = can("CUSTOMER_PII_VIEW") ? "닉네임 · 이름 · 휴대폰 끝자리" : "방송 닉네임";
   const items = state.kind === "ok" ? state.items : [];
   const filtered = q !== "" || status !== null;
@@ -108,8 +151,11 @@ export default function MemberListPage() {
                     type="button"
                     onClick={() => {
                       setSearch("");
-                      setQ("");
-                      setStatus(null);
+                      if (piiSearch) {
+                        writeState("");
+                        setStateQ("");
+                        setU({ status: "" });
+                      } else setU({ q: "", status: "" });
                     }}
                   >
                     조건 초기화

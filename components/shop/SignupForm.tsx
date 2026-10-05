@@ -114,6 +114,7 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
   // 계정
   const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
+  const [password2, setPassword2] = useState("");
   const [nickname, setNickname] = useState("");
   const [agreedTerms, setAgreedTerms] = useState(false);
   const [agreedPrivacy, setAgreedPrivacy] = useState(false);
@@ -144,7 +145,23 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
   const consentReady = agreedTerms && agreedPrivacy && idvAgreed;
   const identityReady = name.trim() !== "" && birth.length === 8 && gender !== null && carrier !== "" && phone.length >= 10 && consentReady;
   const nicknameTooLong = textLength(nickname) > MAX_NICKNAME_LENGTH;
-  const accountReady = loginId.trim() !== "" && password !== "" && nickname.trim() !== "" && !nicknameTooLong;
+  const passwordMismatch = password2 !== "" && password !== password2;
+  const accountReady = loginId.trim() !== "" && password !== "" && password === password2 && nickname.trim() !== "" && !nicknameTooLong;
+  // 버튼이 잠겨 있을 때 무엇이 남았는지 알려 준다(「인증번호 받기」「가입하기」가 왜 안 눌리는지)
+  const identityMissing = [
+    name.trim() === "" && "이름",
+    birth.length !== 8 && "생년월일 8자리",
+    gender === null && "성별",
+    carrier === "" && "통신사",
+    phone.length < 10 && "휴대폰번호",
+    !consentReady && "필수 약관 동의",
+  ].filter((x): x is string => !!x);
+  const accountMissing = [
+    loginId.trim() === "" && "아이디",
+    password === "" && "비밀번호",
+    password !== "" && password !== password2 && "비밀번호 확인",
+    (nickname.trim() === "" || nicknameTooLong) && "방송 닉네임",
+  ].filter((x): x is string => !!x);
 
   // 처음부터 다시: 입력한 인적사항은 두고 본인확인 요청만 버린다
   const restart = (n: Notice | null) => {
@@ -640,6 +657,11 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
               <button className={`btn btn-lg btn-block${busy ? " is-loading" : ""}`} type="submit" disabled={!identityReady || busy || needsReload}>
                 {busy ? "인증번호를 보내고 있어요" : "인증번호 받기"}
               </button>
+              {!busy && !needsReload && identityMissing.length > 0 && (
+                <p className="help signup-missing" id="idv-missing" role="status">
+                  아직 필요해요 · {identityMissing.join(" · ")}
+                </p>
+              )}
             </>
           ) : (
             <div className="col" style={{ gap: 8 }}>
@@ -733,6 +755,24 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
             )}
           </div>
           <div className="fld">
+            <label htmlFor="acc-pw2">비밀번호 확인</label>
+            <input
+              id="acc-pw2"
+              className={`inp${passwordMismatch ? " is-error" : ""}`}
+              type="password"
+              autoComplete="new-password"
+              value={password2}
+              onChange={(e) => setPassword2(e.target.value)}
+              aria-invalid={passwordMismatch}
+              aria-describedby={passwordMismatch ? "acc-pw2-err" : undefined}
+            />
+            {passwordMismatch && (
+              <span id="acc-pw2-err" className="err" role="alert">
+                비밀번호가 서로 달라요
+              </span>
+            )}
+          </div>
+          <div className="fld">
             <label htmlFor="acc-nick">방송 닉네임</label>
             <input
               id="acc-nick"
@@ -756,6 +796,11 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
             <button className={`btn btn-lg btn-block${busy && step === "verified" ? " is-loading" : ""}`} type="submit" disabled={!accountReady || busy}>
               {busy && step === "verified" ? "가입하고 있어요" : "가입하기"}
             </button>
+            {step === "verified" && !busy && accountMissing.length > 0 && (
+              <p className="help signup-missing" id="acc-missing" role="status">
+                아직 필요해요 · {accountMissing.join(" · ")}
+              </p>
+            )}
           </div>
         </fieldset>
       </form>

@@ -7,6 +7,7 @@ import { HitCardModal } from "../../../../../components/seller/broadcast/HitCard
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
+import { SourceBadge } from "../../../../../components/seller/broadcast/SourceBadge";
 import { kstTime } from "../../../../../components/seller/broadcast/queue";
 
 // SA-053 HIT 카드 이력(방송 중 등록한 당첨 카드). 조회·등록·해제.
@@ -20,6 +21,8 @@ type Card = {
   nickname: string;
   broadcast: { id: string; title: string | null } | null;
   order: { id: string; orderNo: string; productLabel: string } | null;
+  // 외부 쇼핑몰 주문에서 나온 카드는 order가 없고 source가 "EXTERNAL"(직접 입력 카드는 null)
+  source?: "INTERNAL" | "EXTERNAL" | null;
   createdAt: string;
 };
 type Page = { items: Card[]; nextCursor: string | null };
@@ -177,7 +180,7 @@ export default function HitCardsPage() {
                                 </span>
                               </td>
                               <td className="ell">{c.nickname}</td>
-                              <td className="ell col-text">{c.order ? `${c.order.orderNo} · ${c.order.productLabel}` : "-"}</td>
+                              <td className="ell col-text">{c.order ? `${c.order.orderNo} · ${c.order.productLabel}` : c.source === "EXTERNAL" ? <SourceBadge source={c.source} /> : "-"}</td>
                               <td className="ell col-text">{c.broadcast ? c.broadcast.title || "제목 없는 방송" : "-"}</td>
                               <td>
                                 <button className="btn btn-sm btn-out" type="button" onClick={() => setModal({ kind: "delete", card: c })}>

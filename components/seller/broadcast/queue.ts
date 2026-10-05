@@ -15,6 +15,8 @@ export type QueueItem = {
   doneAt: string | null;
   version: number;
   broadcastSessionId: string | null;
+  // 스냅샷에만 있다(개봉·완료·취소 같은 동작 응답에는 없다). 외부 쇼핑몰 주문이면 "EXTERNAL"
+  source?: "INTERNAL" | "EXTERNAL";
 };
 export type Snapshot = {
   version: number;

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import SearchBox from "../../../../../components/shop/SearchBox";
 import ShopState from "../../../../../components/shop/ShopState";
 import { shopOpen } from "../../../../../lib/server/buyers/signup";
 import { prisma } from "../../../../../lib/server/db";
@@ -16,7 +17,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return { title: shop ? `상품 검색 · ${shop.shopName}` : "상품 검색" };
 }
 
-// SH-002 상품 검색: 상품 이름에 검색어가 들어간 상품(판매 중·품절). 검색어는 50자까지.
+// SH-002 상품 검색: 상품 이름·검색 태그·유사어로 찾은 상품(판매 중·품절). 검색어는 50자까지. 입력 칸은 자동완성·최근·인기 검색어(SearchBox).
 export default async function ShopSearchPage({ params, searchParams }: Props) {
   const shop = await findActiveShop((await params).slug);
   if (!shop) notFound();
@@ -30,12 +31,7 @@ export default async function ShopSearchPage({ params, searchParams }: Props) {
         <ShopState title="지금은 쇼핑몰을 이용할 수 없어요" body="쇼핑몰이 다시 문을 열면 이용할 수 있어요." />
       ) : (
         <div className="shop-wrap">
-          <form className="shop-searchbox" role="search" action={path}>
-            <input className="inp" type="search" name="q" defaultValue={q} maxLength={50} placeholder="상품 이름으로 찾아보세요" aria-label="검색어" />
-            <button type="submit" className="btn">
-              검색
-            </button>
-          </form>
+          <SearchBox slug={shop.slug} q={q} path={path} />
           {q && (
             <ProductListing
               slug={shop.slug}
