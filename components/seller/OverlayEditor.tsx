@@ -851,7 +851,7 @@ export default function OverlayEditor() {
             )}
             {templates?.mine.map((m) => (
               <tr key={m.id} data-testid="ove-mine-row">
-                <td>{m.name}</td>
+                <td className="col-text">{m.name}</td>
                 <td>{new Date(m.createdAt).toLocaleDateString("ko-KR")}</td>
                 <td>
                   <span className="row" style={{ gap: 6, justifyContent: "center" }}>

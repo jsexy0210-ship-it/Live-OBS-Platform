@@ -158,7 +158,7 @@ export default function PurchaseRestrictionsPage() {
                   <tbody>
                     {groups.map((g) => (
                       <tr key={g.buyerMemberId} data-testid="restriction-row">
-                        <td>
+                        <td className="col-text">
                           <div className="col" style={{ gap: 2 }}>
                             <span className="fw6">{g.nickname ?? <span className="c-alt">닉네임 없음</span>}</span>
                             <span className="t-c1">{g.reasons.map((r) => REASON[r] ?? "기타").join(" · ")}</span>
@@ -167,7 +167,7 @@ export default function PurchaseRestrictionsPage() {
                             </span>
                           </div>
                         </td>
-                        <td className="r" style={{ whiteSpace: "nowrap" }}>
+                        <td style={{ whiteSpace: "nowrap" }}>
                           <button className="btn btn-sm btn-out" type="button" onClick={() => setLifting(g)}>
                             제한 풀기
                           </button>

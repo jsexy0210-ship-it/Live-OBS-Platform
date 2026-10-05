@@ -61,7 +61,7 @@ const MENU: Group[] = [
       { label: "상품 목록", href: "/seller/products", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
       { label: "상품 등록", href: "/seller/products/new", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
       { label: "재고 관리", href: "/seller/products/stock", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
-      { label: "카테고리", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
+      { label: "카테고리", href: "/seller/products/categories", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
       { label: "상품 진열", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
       { label: "재입고 알림", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
       { label: "엑셀 일괄 등록", perm: "PRODUCT_MANAGE", plan: "STORE_OPERATIONS" },
@@ -110,7 +110,8 @@ const MENU: Group[] = [
       { label: "법정 고지 · 약관", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
       { label: "검색 노출", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
       { label: "결제(PG) 연결", perm: "OWNER", plan: "STORE_OPERATIONS" },
-      { label: "주문자 알림", perm: "SHOP_SETTINGS", plan: "STORE_OPERATIONS" },
+      // 화면이 쓰는 GET /api/seller/message-balance가 대표자 전용이라 메뉴도 대표자에게만 보인다(서버보다 넓게 열지 않는다)
+      { label: "주문자 알림", href: "/seller/settings/order-notifications", perm: "OWNER", plan: "STORE_OPERATIONS" },
       { label: "발송 충전", href: "/seller/settings/message-balance", perm: "OWNER", plan: "ANY" },
       { label: "직원 계정", href: "/seller/staff", perm: "OWNER", plan: "ANY" },
       { label: "구독 · 결제", href: "/seller/subscription", perm: "OWNER" },

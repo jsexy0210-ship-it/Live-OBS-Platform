@@ -58,7 +58,7 @@ export default function PartnerApplications() {
                         </td>
                         <td>{text(s.businessInfo?.companyName)}</td>
                         <td>{text(s.businessInfo?.businessNumber)}</td>
-                        <td>
+                        <td className="col-text">
                           {s.reviewReasons.length === 0 ? (
                             "-"
                           ) : (

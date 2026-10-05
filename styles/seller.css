@@ -1244,7 +1244,7 @@ body {
   gap: var(--ui-gap-btn);
   flex-wrap: wrap;
 }
-/* 표형 폼·검색 상자 공통 표: 왼쪽 회색 항목명 칸(14px) */
+/* 표형 폼·검색 상자 공통 표: 왼쪽 회색 항목명 칸(14px). 칸 규칙은 자기 행(> tbody > tr)에만 걸어 칸 안에 넣은 데이터 표(.tbl)로 새지 않게 한다 */
 .au-ft {
   width: 100%;
   border-collapse: collapse;
@@ -1252,7 +1252,7 @@ body {
   background: var(--cs-surface);
   border-top: 1px solid var(--cs-line-strong);
 }
-.au-ft th {
+.au-ft > tbody > tr > th {
   width: 160px;
   padding: var(--ui-sp-8) var(--ui-sp-16);
   text-align: left;
@@ -1265,7 +1265,7 @@ body {
   border-bottom: 1px solid var(--cs-line);
   border-right: 1px solid var(--cs-line);
 }
-.au-ft td {
+.au-ft > tbody > tr > td {
   padding: var(--ui-sp-8) var(--ui-sp-16);
   border-bottom: 1px solid var(--cs-line);
 }
@@ -1295,7 +1295,7 @@ body {
   background: transparent;
 }
 /* 모서리 8px 안쪽으로 회색 머리칸 모서리를 맞춘다(넘침을 숨기지 않고) */
-.au-sb .au-ft tr:first-child th {
+.au-sb .au-ft > tbody > tr:first-child > th {
   border-top-left-radius: var(--ui-r-table);
 }
 .au-sb .au-ft-v {
@@ -1359,22 +1359,22 @@ body {
 /* 휴대폰: 항목명 칸을 입력 위로 올려 한 열로 쌓는다(좁은 왼쪽 칸에 글자가 세로로 쪼개지거나 입력이 잘리지 않게) */
 @media (max-width: 767px) {
   .au-ft,
-  .au-ft tbody,
-  .au-ft tr,
-  .au-ft th,
-  .au-ft td {
+  .au-ft > tbody,
+  .au-ft > tbody > tr,
+  .au-ft > tbody > tr > th,
+  .au-ft > tbody > tr > td {
     display: block;
     width: auto;
   }
-  .au-ft th {
+  .au-ft > tbody > tr > th {
     padding: var(--ui-sp-8) var(--ui-sp-12) var(--ui-sp-4);
     border-right: 0;
     border-bottom: 0;
   }
-  .au-sb .au-ft tr:first-child th {
+  .au-sb .au-ft > tbody > tr:first-child > th {
     border-top-right-radius: var(--ui-r-table);
   }
-  .au-ft td {
+  .au-ft > tbody > tr > td {
     padding: var(--ui-sp-8) var(--ui-sp-12) var(--ui-sp-12);
   }
   .au-ft-v > .inp {

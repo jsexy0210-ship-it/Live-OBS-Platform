@@ -40,7 +40,7 @@ export function PaymentHistory({ payments }: { payments: Payment[] }) {
               <tr>
                 <th>청구일</th>
                 <th>이용 기간</th>
-                <th className="r">금액</th>
+                <th>금액</th>
                 <th>상태</th>
                 <th>영수증</th>
               </tr>
@@ -52,7 +52,7 @@ export function PaymentHistory({ payments }: { payments: Payment[] }) {
                   <tr key={p.id} data-testid="sub-payment">
                     <td className="num">{DAY(p.paidAt ?? p.createdAt)}</td>
                     <td className="num">{p.periodStart ? `${DAY(p.periodStart)} ~ ${DAY(p.periodEnd)}` : "-"}</td>
-                    <td className="num r">{won(p.amount)}</td>
+                    <td className="num">{won(p.amount)}</td>
                     <td>
                       <span className={`bdg ${STATUS[p.status].cls}`}>{STATUS[p.status].label}</span>
                     </td>

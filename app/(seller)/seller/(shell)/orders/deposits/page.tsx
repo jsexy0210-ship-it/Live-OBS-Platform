@@ -166,7 +166,7 @@ export default function DepositsPage() {
                         <td>
                           <input className="cbx" type="checkbox" aria-label={`${o.nickname} 선택`} checked={picked.includes(o.orderId)} onChange={() => toggle(o.orderId)} />
                         </td>
-                        <td>
+                        <td className="col-text">
                           <Link href={`/seller/orders/${o.orderId}`} className="fw6">
                             {o.nickname}
                           </Link>
