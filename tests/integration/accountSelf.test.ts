@@ -111,6 +111,100 @@ describe("파트너스 내 비밀번호 POST /api/seller/me/password", () => {
   });
 });
 
+describe("현재 비밀번호 시도 횟수 제한(15분 5번)", () => {
+  const WRONG = "틀린-비밀번호-1";
+  const sellerTry = (cookie: string, current: string) => pw(cookie, { currentPassword: current, newPassword: NEW_PW, signOutOthers: false });
+  const failedLogs = (action: string) => db.auditLog.findMany({ where: { action }, orderBy: { createdAt: "asc" } });
+
+  it("파트너스: 5번 틀리면 그다음은 429(맞는 비밀번호도 막음)이고 Retry-After가 붙는다. 막힌 시도는 비밀번호를 바꾸지 않고 로그에 남는다", async () => {
+    const { user } = await shopOwner();
+    const cookie = await sellerLogin(user.email);
+    for (let i = 0; i < 5; i++) expect((await sellerTry(cookie, WRONG)).body.error).toBe("wrong_password");
+    const res = await sellerPwRoute(req("/api/seller/me/password", cookie, "POST", { currentPassword: PASSWORD, newPassword: NEW_PW, signOutOthers: false }));
+    expect(res.status).toBe(429);
+    const body = await res.json();
+    expect(body).toMatchObject({ error: "rate_limited", message: expect.stringContaining("잠시") });
+    expect(body.retryAfterSeconds).toBeGreaterThan(0);
+    expect(body.retryAfterSeconds).toBeLessThanOrEqual(900);
+    expect(res.headers.get("retry-after")).toBe(String(body.retryAfterSeconds));
+    // 막힌 동안 맞는 비밀번호로도 바뀌지 않고, 새 비밀번호로 로그인되지 않는다
+    expect((await db.sellerUser.findUniqueOrThrow({ where: { id: user.id } })).passwordHash).toBe(user.passwordHash);
+    expect((await loginSeller(db, { email: user.email, password: NEW_PW }, {})).ok).toBe(false);
+    expect(await failedLogs("auth.seller.password_change_failed")).toHaveLength(5);
+    const blocked = await failedLogs("auth.seller.password_change_blocked");
+    expect(blocked).toHaveLength(1);
+    expect(blocked[0].after).toMatchObject({ reason: "rate_limited" });
+    expect(JSON.stringify(blocked)).not.toContain(PASSWORD);
+    // 막힌 시도는 실패 횟수를 늘리지 않는다(계속 두드려도 15분 기준이 밀리지 않음)
+    await sellerTry(cookie, WRONG);
+    expect(await failedLogs("auth.seller.password_change_failed")).toHaveLength(5);
+  });
+
+  it("4번 틀린 뒤 성공하면 초기화되어 다시 5번까지 틀릴 수 있다", async () => {
+    const { user } = await shopOwner();
+    const cookie = await sellerLogin(user.email);
+    for (let i = 0; i < 4; i++) await sellerTry(cookie, WRONG);
+    expect((await sellerTry(cookie, PASSWORD)).status).toBe(200);
+    const next = await sellerLogin(user.email, NEW_PW);
+    for (let i = 0; i < 5; i++) expect((await pw(next, { currentPassword: WRONG, newPassword: "other-password-77", signOutOthers: false })).body.error).toBe("wrong_password");
+    expect((await pw(next, { currentPassword: NEW_PW, newPassword: "other-password-77", signOutOthers: false })).status).toBe(429);
+  });
+
+  it("15분이 지난 실패는 세지 않아 다시 시도할 수 있다", async () => {
+    const { user } = await shopOwner();
+    const cookie = await sellerLogin(user.email);
+    for (let i = 0; i < 5; i++) await sellerTry(cookie, WRONG);
+    expect((await sellerTry(cookie, PASSWORD)).status).toBe(429);
+    await db.auditLog.updateMany({ where: { action: "auth.seller.password_change_failed" }, data: { createdAt: new Date(Date.now() - 16 * 60_000) } });
+    expect((await sellerTry(cookie, PASSWORD)).status).toBe(200);
+  });
+
+  it("계정마다 따로 센다(같은 쇼핑몰 다른 직원·다른 쇼핑몰은 영향 없음)", async () => {
+    const { seller, user } = await shopOwner();
+    const staff = await createSellerUser(seller.id, { permissions: [] });
+    const other = await shopOwner();
+    const mine = await sellerLogin(user.email);
+    for (let i = 0; i < 5; i++) await sellerTry(mine, WRONG);
+    expect((await sellerTry(mine, PASSWORD)).status).toBe(429);
+    for (const u of [staff, other.user]) {
+      const c = await sellerLogin(u.email);
+      expect((await sellerTry(c, WRONG)).body.error).toBe("wrong_password");
+    }
+  });
+
+  it("동시에 틀린 시도를 보내도 5번을 넘겨 확인하지 않는다", async () => {
+    const { user } = await shopOwner();
+    const cookie = await sellerLogin(user.email);
+    const results = await Promise.all(Array.from({ length: 12 }, () => sellerTry(cookie, WRONG)));
+    expect(results.filter((r) => r.status === 400)).toHaveLength(5);
+    expect(results.filter((r) => r.status === 429)).toHaveLength(7);
+    expect(await failedLogs("auth.seller.password_change_failed")).toHaveLength(5);
+  });
+
+  it("마스터 관리자도 같은 제한(최고관리자 포함)이고 다른 관리자는 영향 없다", async () => {
+    const a = await createAdmin("SUPER_ADMIN");
+    const b = await createAdmin("CS");
+    const login = async (email: string) => {
+      const r = await loginAdmin(db, { email, password: PASSWORD }, {});
+      if (!r.ok) throw new Error(r.reason);
+      return `lo_admin=${r.token}`;
+    };
+    const ca = await login(a.email);
+    const call = (c: string, current: string) => adminPwRoute(req("/api/admin/me/password", c, "POST", { currentPassword: current, newPassword: NEW_PW, signOutOthers: false }));
+    for (let i = 0; i < 5; i++) expect((await call(ca, WRONG)).status).toBe(400);
+    const blocked = await call(ca, PASSWORD);
+    expect(blocked.status).toBe(429);
+    expect((await blocked.json()).error).toBe("rate_limited");
+    expect(blocked.headers.get("retry-after")).not.toBeNull();
+    expect((await db.platformAdmin.findUniqueOrThrow({ where: { id: a.id } })).passwordHash).toBe(a.passwordHash);
+    expect(await db.auditLog.count({ where: { action: "auth.admin.password_change_blocked" } })).toBe(1);
+    expect((await call(await login(b.email), WRONG)).status).toBe(400);
+    // 성공하면 초기화
+    await db.auditLog.updateMany({ where: { action: "auth.admin.password_change_failed" }, data: { createdAt: new Date(Date.now() - 16 * 60_000) } });
+    expect((await call(ca, PASSWORD)).status).toBe(200);
+  });
+});
+
 describe("동시 변경(확인한 뒤 다른 곳에서 먼저 바꾼 경우)", () => {
   it("파트너스: 확인과 저장 사이에 비밀번호가 바뀌면 덮어쓰지 않고 changed_elsewhere", async () => {
     const { seller, user } = await shopOwner();
