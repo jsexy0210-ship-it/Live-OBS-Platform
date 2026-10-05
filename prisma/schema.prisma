@@ -1304,11 +1304,13 @@ model RewardBalance {
 // ───────────── 오버레이·감사 로그 ─────────────
 
 model OverlayToken {
-  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerId  String    @db.Uuid
-  tokenHash String    @unique
-  createdAt DateTime  @default(now()) @db.Timestamptz(3)
-  revokedAt DateTime? @db.Timestamptz(3)
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId   String    @db.Uuid
+  tokenHash  String    @unique
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  revokedAt  DateTime? @db.Timestamptz(3)
+  // 오버레이 주소로 마지막 접속한 시각(1분에 한 번만 갱신, 마스터 관리자 운영 현황 MA-041·042)
+  lastSeenAt DateTime? @db.Timestamptz(3)
 
   seller Seller @relation(fields: [sellerId], references: [id])
 
