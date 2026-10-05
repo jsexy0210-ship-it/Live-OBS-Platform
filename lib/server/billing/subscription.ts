@@ -333,6 +333,13 @@ export async function settlePayment(
         after: { amount: payment.amount, scheduled: payment.scheduled, canceledSubscription: true },
         reason: result.ok ? "paid_after_cancel" : result.reason.slice(0, 200),
       });
+      // 결제된 건은 마스터 관리자 환불 요청(MA-026)으로 남긴다(처리는 사람이 승인해야 한다)
+      if (result.ok && payment.amount > 0) {
+        await tx.subscriptionRefund.createMany({
+          data: [{ sellerId: payment.sellerId, paymentId: payment.id, amount: payment.amount, source: "SYSTEM", reason: "paid_after_cancel", createdAt: now }],
+          skipDuplicates: true,
+        });
+      }
       return { nextChargeAt: null };
     }
     // 런칭가 청구가 처음 확정되면(해지 뒤 확정돼 환불 대상인 청구는 빼고) 계정에 런칭 할인 사용을 남긴다(대표님 결정 2026-10-04)

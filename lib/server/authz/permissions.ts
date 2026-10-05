@@ -7,6 +7,8 @@ export const ADMIN_PERMISSIONS = {
   "billing.manage": ["SUPER_ADMIN", "OPERATIONS"],
   // 구독 가격 변경은 최고관리자(대표님)만(MASTER 결정 2026-10-03)
   "billing.price": ["SUPER_ADMIN"],
+  // 구독 환불 승인(결제 취소 요청)은 최고관리자만(MASTER 결정 2026-10-05). 요청 만들기·반려는 billing.manage
+  "billing.refund": ["SUPER_ADMIN"],
   "support.manage": ["SUPER_ADMIN", "CS"],
   "seller.impersonate": ["SUPER_ADMIN", "OPERATIONS", "CS"],
   "admin.manage": ["SUPER_ADMIN"],

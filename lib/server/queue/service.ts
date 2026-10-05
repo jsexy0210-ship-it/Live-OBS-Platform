@@ -536,7 +536,7 @@ const isQueued = (q: Pick<QueueItem, "status"> | undefined) => !!q && (q.status 
 export type RefundSelection = { orderItemId: string; quantity: number }[];
 
 const refundOrderInclude = {
-  items: { orderBy: { createdAt: "asc" as const } },
+  items: { orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }] },
   queueItems: true,
   shipment: { select: { status: true } },
   couponRedemption: { select: { benefit: true, itemDiscounts: true } },
