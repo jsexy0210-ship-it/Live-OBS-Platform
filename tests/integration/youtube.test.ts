@@ -154,6 +154,28 @@ describe("채널·방송 연결", () => {
     expect((await youtubeStatus(db, a.ctx, true)).live).toMatchObject({ videoId: VID_A });
   });
 
+  it("채널을 바꾸면 예정 방송 연결은 해제되고, 방송 중이면 바꾸지 못한다(같은 채널 재연결은 그대로)", async () => {
+    const s = await shop();
+    const yt = fakeYoutube();
+    await connectChannel(db, s.ctx, yt.client, CH_A, NOW);
+    yt.video(VID_A, CH_A);
+    await connectLive(db, s.ctx, yt.client, VID_A, NOW);
+    await db.youtubeLiveLink.updateMany({ where: { sellerId: s.seller.id }, data: { chatEnabled: true } });
+    // 같은 채널 다시 연결: 방송 연결 유지
+    await connectChannel(db, s.ctx, yt.client, CH_A, NOW);
+    expect((await youtubeStatus(db, s.ctx, true)).live).toMatchObject({ videoId: VID_A });
+    // 방송 중이면 거부, 채널·방송 연결 모두 그대로
+    await db.youtubeLiveLink.updateMany({ where: { sellerId: s.seller.id }, data: { status: "LIVE" } });
+    expect(await connectChannel(db, s.ctx, yt.client, CH_B, NOW)).toEqual({ ok: false, reason: "live_in_progress" });
+    expect((await db.youtubeChannelLink.findUniqueOrThrow({ where: { sellerId: s.seller.id } })).channelId).toBe(CH_A);
+    expect((await db.youtubeLiveLink.findFirstOrThrow({ where: { sellerId: s.seller.id } })).status).toBe("LIVE");
+    // 예정 상태면 바꾸고 이전 방송 연결(채팅 수집 포함)은 해제
+    await db.youtubeLiveLink.updateMany({ where: { sellerId: s.seller.id }, data: { status: "UPCOMING" } });
+    expect(await connectChannel(db, s.ctx, yt.client, CH_B, NOW)).toEqual({ ok: true, value: { channelId: CH_B, title: "shopb" } });
+    expect((await db.youtubeLiveLink.findFirstOrThrow({ where: { sellerId: s.seller.id } })).status).toBe("UNLINKED");
+    expect((await youtubeStatus(db, s.ctx, true)).live).toBeNull();
+  });
+
   it("지금 방송 찾기: 채널 최근 업로드에서 진행 중을 먼저 고른다", async () => {
     const s = await shop();
     const yt = fakeYoutube();

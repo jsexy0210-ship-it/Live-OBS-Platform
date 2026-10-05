@@ -49,7 +49,7 @@ export type Monitor = {
   autoActions: { id: string; action: string; targetType: string | null; targetId: string | null; sellerId: string | null; createdAt: string }[];
   incidents: { source: string; key: string; severity: string; message: string; occurredAt: string }[];
 };
-export const PAYMENT_CHECK: Record<string, string> = { order_payment: "주문 결제 승인", subscription: "구독 청구", automation: "자동 연결 결제", message_charge: "발송 충전" };
+export const PAYMENT_CHECK: Record<string, string> = { order_payment: "주문 결제 승인", subscription: "구독 청구", automation: "자동 연결 결제", message_charge: "발송·이용 충전" };
 
 // 몇 시간 몇 분째(방송 시간 표시)
 export function elapsed(fromIso: string, now: number): string {

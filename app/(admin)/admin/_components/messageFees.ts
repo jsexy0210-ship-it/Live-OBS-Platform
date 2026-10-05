@@ -1,6 +1,6 @@
 // 발송 비용 설정(GET·PUT /api/admin/message-settings, POST /api/admin/message-prices/{channel}, POST /api/admin/plans/{code}/mail-quota, MA-086·MA-022) 응답과 표시 문구.
 // 화면에는 채널·요금제 코드를 쓰지 않고 이름으로 보인다(코드성 표기 금지).
-export type MessageChannel = "MAIL_TRANSACTIONAL" | "MAIL_BULK" | "SMS" | "LMS" | "ALIMTALK" | "IDENTITY_VERIFICATION" | "DELIVERY_TRACKING";
+export type MessageChannel = "MAIL_TRANSACTIONAL" | "MAIL_BULK" | "SMS" | "LMS" | "ALIMTALK" | "IDENTITY_VERIFICATION" | "DELIVERY_TRACKING" | "INVOICE_ISSUE" | "INVOICE_LABEL" | "CASH_RECEIPT" | "TAX_INVOICE";
 export type ChannelPrice = { channel: MessageChannel; unitPrice: number; next: { unitPrice: number; effectiveAt: string } | null };
 export type PlanQuota = { code: string; name: string; mailMonthlyQuota: number; next: { mailMonthlyQuota: number; effectiveAt: string } | null };
 export type AdminPlan = {
@@ -36,6 +36,10 @@ export const CHANNEL_LABEL: Record<MessageChannel, string> = {
   ALIMTALK: "알림톡",
   IDENTITY_VERIFICATION: "구매자 본인인증",
   DELIVERY_TRACKING: "배송 자동 조회",
+  INVOICE_ISSUE: "송장 발급",
+  INVOICE_LABEL: "송장 라벨",
+  CASH_RECEIPT: "현금영수증",
+  TAX_INVOICE: "전자세금계산서",
 };
 export const UNIT_PRICE_MAX = 100_000;
 export const MAIL_QUOTA_MAX_UI = 10_000_000;

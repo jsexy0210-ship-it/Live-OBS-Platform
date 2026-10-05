@@ -50,7 +50,7 @@ test("대표자: 메뉴에서 직원 계정으로 들어가 목록을 보고, �
   await login(page, "demo-owner@example.com", PASSWORD, "/seller/products");
   await expect(page).toHaveURL(/\/seller\/products$/);
   // 상단 대분류 「쇼핑몰 설정」 → 왼쪽 메뉴 「직원 계정」
-  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "쇼핑몰 설정" }).click();
+  await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "설정", exact: true }).click();
   await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "직원 계정" }).click();
   await expect(page).toHaveURL(/\/seller\/staff$/);
   await expect(page.getByRole("heading", { name: /직원 계정/ })).toBeVisible();

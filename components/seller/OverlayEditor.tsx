@@ -1,8 +1,8 @@
 "use client";
 
 import "./OverlayEditor.css";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useUnsavedGuard } from "../../lib/client/navigation";
 import { WidgetView } from "../overlay/WidgetView";
 import { MAX_TEMPLATES, SAMPLE_DATA, SLOTS, STAGE, newWidget, slotOf, widgetLabel, type Aspect, type PropValue, type Widget } from "../overlay/layout";
 import { api, failMessage } from "./api";
@@ -248,9 +248,7 @@ export default function OverlayEditor() {
     bump((n) => n + 1);
   };
   const [lines, setLines] = useState<{ v: Guide[]; h: Guide[] }>({ v: [], h: [] });
-  const [leave, setLeave] = useState<string | null>(null);
   const [fullPreview, setFullPreview] = useState(false);
-  const router = useRouter();
   const [otherCount, setOtherCount] = useState(0);
   const [full, setFull] = useState(false);
 
@@ -288,12 +286,8 @@ export default function OverlayEditor() {
     n += server.widgets.filter((w) => !widgets.some((x) => x.id === w.id)).length;
     return n;
   })();
-  useEffect(() => {
-    if (changes === 0) return;
-    const f = (e: BeforeUnloadEvent) => e.preventDefault();
-    window.addEventListener("beforeunload", f);
-    return () => window.removeEventListener("beforeunload", f);
-  }, [changes]);
+  // 저장 안 한 변경이 있으면 새로고침·탭 닫기·메뉴(앱 안 링크) 이동·브라우저 Back에 같은 확인(공통 미저장 가드, docs/IA.md 「Back · 상태 보존 규칙」 7항)
+  useUnsavedGuard(changes > 0, `저장하지 않은 변경 ${changes}개가 있습니다. 나가면 바뀐 내용이 사라집니다. 나가시겠습니까?`);
 
   const patch = (id: string, p: Partial<Widget>) => {
     mark(`patch:${id}:${Object.keys(p).join()}:${Date.now()}`);
@@ -492,22 +486,6 @@ export default function OverlayEditor() {
     const w = widgets.find((x) => x.id === sel);
     if (w) setBoxMarked(w.id, { x: w.x + (k[0]! * px * 100) / SW, y: w.y + (k[1]! * px * 100) / SH }, "key");
   };
-
-  // 저장 안 한 변경이 있을 때 앱 안 링크로 나가면 확인 창(새로고침·탭 닫기는 beforeunload)
-  useEffect(() => {
-    if (changes === 0) return;
-    const f = (e: MouseEvent) => {
-      const a = (e.target as HTMLElement).closest?.("a[href]") as HTMLAnchorElement | null;
-      if (!a || a.target === "_blank" || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
-      const url = new URL(a.href, window.location.href);
-      if (url.origin !== window.location.origin || (url.pathname === window.location.pathname && url.search === window.location.search)) return;
-      e.preventDefault();
-      e.stopPropagation();
-      setLeave(url.pathname + url.search + url.hash);
-    };
-    document.addEventListener("click", f, true);
-    return () => document.removeEventListener("click", f, true);
-  }, [changes]);
 
   // Ctrl+Z 되돌리기 · Ctrl+Shift+Z(또는 Ctrl+Y) 다시 실행. 글자를 입력하는 칸에서는 브라우저 기본 동작을 둔다
   const undoRef = useRef({ undo, redo });
@@ -911,50 +889,6 @@ export default function OverlayEditor() {
               </button>
             </div>
           </form>
-        </div>
-      )}
-      {leave !== null && (
-        <div className="dim dim-fixed" role="dialog" aria-modal="true" aria-labelledby="ove-leave-h">
-          <div className="modal">
-            <div className="modal-h">
-              <h2 className="t-h2" id="ove-leave-h">
-                저장하지 않은 변경 {changes}개가 있습니다
-              </h2>
-              <span className="t-l2 c-alt">나가면 바뀐 내용이 사라집니다.</span>
-            </div>
-            <div className="modal-f">
-              <button className="btn btn-out" type="button" onClick={() => setLeave(null)}>
-                닫기
-              </button>
-              <button
-                className="btn btn-out"
-                type="button"
-                onClick={() => {
-                  const to = leave;
-                  setLeave(null);
-                  clearHistory();
-                  setWidgets(server?.widgets ?? []);
-                  router.push(to);
-                }}
-              >
-                저장하지 않고 나가기
-              </button>
-              <button
-                className="btn"
-                type="button"
-                disabled={busy}
-                onClick={async () => {
-                  const to = leave;
-                  if (await save()) {
-                    setLeave(null);
-                    router.push(to);
-                  } else setLeave(null);
-                }}
-              >
-                저장하고 나가기
-              </button>
-            </div>
-          </div>
         </div>
       )}
       {fullPreview && <FullPreview widgets={widgets} aspect={aspect} onClose={() => setFullPreview(false)} />}

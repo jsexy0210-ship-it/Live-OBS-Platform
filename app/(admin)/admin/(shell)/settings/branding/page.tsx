@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { textLength } from "../../../../../../lib/server/text/clean";
+import { PageHead } from "../../../../../../components/admin-ui";
+import { Modal } from "../../../../../../components/admin-ui/Modal";
 import { AdminTopbar } from "../../../_components/AdminShell";
 import { adminApi, failMessage } from "../../../_components/api";
 
@@ -73,19 +75,15 @@ export default function BrandingSettingsPage() {
     <>
       <AdminTopbar crumb="사이트 설정 › 파비콘 · 공유 카드" />
       <main className="main">
-        <div className="ph">
-          <div className="col" style={{ gap: 6 }}>
-            <h1 className="t-t3">파비콘 · 공유 카드</h1>
-            <span className="t-l2 c-alt">브라우저 탭 아이콘과 링크 공유 시 표시되는 카드를 설정합니다.</span>
-          </div>
-        </div>
-        <nav className="tabs" role="tablist" aria-label="적용할 화면">
+        <PageHead title="파비콘 · 공유 카드" />
+        <span className="t-l2 c-alt">마스터 관리자와 파트너스 관리자에 각각 넣습니다. 대상을 고른 뒤 바꿔 주십시오.</span>
+        <div className="seg" role="radiogroup" aria-label="적용할 화면" style={{ alignSelf: "flex-start" }}>
           {TABS.map((t) => (
-            <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} className={`tab${tab === t.key ? " on" : ""}`} onClick={() => setTab(t.key)}>
+            <button key={t.key} type="button" role="radio" aria-checked={tab === t.key} className={tab === t.key ? "on" : ""} onClick={() => setTab(t.key)}>
               {t.label}
             </button>
           ))}
-        </nav>
+        </div>
         {state.kind === "loading" && (
           <div className="card st" style={{ boxShadow: "none" }} aria-busy="true">
             <span className="spin" />
@@ -132,6 +130,7 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
   const [faviconError, setFaviconError] = useState<string | null>(null);
   const [faviconBusy, setFaviconBusy] = useState(false);
   const faviconInput = useRef<HTMLInputElement>(null);
+  const [confirmReset, setConfirmReset] = useState(false);
   // 공유 카드
   const [title, setTitle] = useState(branding.title ?? "");
   const [description, setDescription] = useState(branding.description ?? "");
@@ -199,6 +198,7 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
     setFaviconError(null);
     const r = await adminApi<{ branding: Branding }>(`/api/admin/branding/${t}/favicon`, { method: "DELETE" });
     setFaviconBusy(false);
+    setConfirmReset(false);
     if (!r.ok) return setFaviconError(failMessage(r, "기본값으로 되돌리지 못했습니다. 잠시 후 다시 시도해 주십시오."));
     onSaved(r.data.branding, "기본 파비콘으로 되돌렸습니다.");
   };
@@ -317,7 +317,7 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
                 ) : (
                   <>
                     {branding.favicon && (
-                      <button className="btn btn-sm btn-ghost" type="button" disabled={faviconBusy} onClick={() => void resetFavicon()}>
+                      <button className="btn btn-sm btn-ghost" type="button" disabled={faviconBusy} onClick={() => setConfirmReset(true)}>
                         기본값으로 되돌리기
                       </button>
                     )}
@@ -468,6 +468,28 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
           </button>
         )}
       </aside>
+      {confirmReset && (
+        <Modal labelId="favicon-reset-title" busy={faviconBusy} onClose={() => setConfirmReset(false)}>
+          {(requestClose) => (
+            <div className="col" style={{ gap: 16 }}>
+              <div className="modal-h">
+                <h2 className="modal-t" id="favicon-reset-title">
+                  기본 아이콘으로 되돌리시겠습니까?
+                </h2>
+              </div>
+              <p>올린 파비콘을 지우고 ONQ 기본 아이콘으로 바꿉니다. 브라우저에 남은 이전 아이콘은 새로고침 뒤 바뀝니다.</p>
+              <div className="modal-f">
+                <button className="btn btn-out" type="button" onClick={requestClose} disabled={faviconBusy}>
+                  취소
+                </button>
+                <button className="btn" type="button" onClick={() => void resetFavicon()} disabled={faviconBusy}>
+                  {faviconBusy ? "처리 중" : "되돌리기"}
+                </button>
+              </div>
+            </div>
+          )}
+        </Modal>
+      )}
     </div>
   );
 }

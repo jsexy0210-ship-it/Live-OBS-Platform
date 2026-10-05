@@ -574,6 +574,24 @@ scripts/ops/availability.sh off
 
 **운영에서 막혀 있는 것**: 장애 주입(`chaos.sh`)은 `OBS_ENVIRONMENT=test`가 없으면 거부합니다. 테스트 데이터 입력·시드(`seed-obs-test`)는 `OBS_TEST_MODE=1`이 있어야만 돌아서 운영에서는 실행되지 않습니다. 이 워크플로는 이 둘을 호출하지 않습니다.
 
+## 운영 DB 일일 오프사이트 백업
+
+운영 VM 밖(카카오 오브젝트 스토리지)에 매일 DB 백업을 보냅니다. `scripts/ops/db-offsite.sh`가 `db-backup.sh`로 새 백업을 만들고 `prod/daily/<파일명>`으로 올린 뒤 원격 크기가 같은지 확인합니다. 실패하면 0이 아닌 값으로 끝납니다. 추가 설치는 없습니다(`curl` 8.x의 SigV4 사용).
+
+대표님 콘솔·서버 작업(순서대로):
+1. 오브젝트 스토리지에 **운영 백업 전용 버킷**을 만듭니다(이미지 버킷과 분리). 버킷 수명 주기 규칙으로 30일 뒤 삭제를 설정합니다(스크립트는 지우지 않습니다).
+2. 그 버킷에만 「스토리지 편집자」를 준 전용 사용자를 만들고 S3 액세스 키를 발급합니다(테스트 키와 다른 새 키).
+3. 서버 `/opt/obs/.env`(권한 600)에 `BACKUP_S3_ENDPOINT`(`https://objectstorage.kr-central-2.kakaocloud.com`)·`BACKUP_S3_REGION`(`kr-central-2`)·`BACKUP_S3_BUCKET`·`BACKUP_S3_ACCESS_KEY_ID`·`BACKUP_S3_SECRET_ACCESS_KEY`를 직접 넣습니다. 값은 저장소·채팅에 붙이지 않습니다.
+4. 서버에서 한 번 직접 실행해 올라가는지 확인합니다: `scripts/ops/db-offsite.sh`
+5. 매일 실행 등록(예: `/etc/cron.d/obs-offsite-backup`, 한국 시간 새벽 3시 30분):
+
+```
+CRON_TZ=Asia/Seoul
+30 3 * * * obs /opt/obs/app/scripts/ops/db-offsite.sh >> /opt/obs/offsite-backup.log 2>&1
+```
+
+경로는 러너가 체크아웃한 실제 위치로 바꿉니다. 로그 마지막 줄이 「오프사이트 백업 완료」인지 확인합니다. 복구는 내려받은 `.dump`로 `db-restore.sh`를 사람이 실행합니다. 실제 카카오 버킷에는 아직 시험하지 못했습니다(운영 버킷·키가 없음). 첫 실행은 사람이 지켜봅니다.
+
 ## 다중 서버·DB 고가용성 구성안과 월 비용(산정만, 생성 금지·대표님 승인 사항)
 
 지금 obs-test는 VM 1대에 앱·DB·프록시가 함께 있어요. 호스트·DB 장애에도 버티려면 아래가 필요해요. **아무것도 만들지 않았고, 만들려면 대표님 승인이 필요해요.**
