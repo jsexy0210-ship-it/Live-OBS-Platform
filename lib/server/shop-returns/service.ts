@@ -1,12 +1,13 @@
+import { cleanText } from "../text/clean";
 import { Prisma, type ActorType, type PrismaClient, type RefundFault, type ReturnKind, type ReturnReason, type ReturnStatus } from "@prisma/client";
 import { writeAudit } from "../audit/log";
 import { shopOpen } from "../buyers/signup";
 import { checkReviewImage, type ReviewImageRejection } from "../product-reviews/image";
 import { getRefundVersion } from "../queue/read";
-import { previewRefund, refundOrder } from "../queue/service";
+import { previewRefundSelection, refundOrder, type RefundSelection } from "../queue/service";
 import { restoreOrderStock } from "../products/stock";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
-import { ACTIVE_STATUSES, courierName, DEFAULT_FAULT, isUuid, parseFault, parseNewReturn, parseRejectReason, parseTracking, TRANSITIONS, type ReturnRejection } from "./rules";
+import { ACTIVE_STATUSES, CLEAR_ACCOUNT, courierName, DEFAULT_FAULT, INSPECTION_NOTE_MAX, isUuid, parseFault, parseInspection, parseNewReturn, parsePickup, parseRejectReason, parseTracking, returnDeadline, TRANSITIONS, withinReturnWindow, type ReturnRejection } from "./rules";
 import { returnImageStore } from "./store";
 
 // 교환·반품(SA-029 파트너스 · SH-022-R 구매자, 2026-10-04 대표님 지시).
@@ -35,7 +36,13 @@ export type ReturnFailure =
   | "invalid_transition"
   | "fault_required"
   | "insufficient_stock"
-  | "wrong_kind";
+  | "wrong_kind"
+  | "period_expired"
+  | "opened_blocked"
+  | "refund_account_required"
+  | "inspection_required"
+  | "inspection_not_ok"
+  | "inspection_locked";
 
 // 구매자 화면 안내(해요체) / 파트너스 화면 안내(합니다체)
 export const BUYER_RETURN_MESSAGES: Record<string, string> = {
@@ -51,6 +58,11 @@ export const BUYER_RETURN_MESSAGES: Record<string, string> = {
   invalid_images: "사진을 확인해 주세요 (5장까지)",
   invalid_courier: "택배사를 골라 주세요",
   invalid_tracking: "송장 번호를 확인해 주세요",
+  invalid_pickup: "수거 방법을 확인해 주세요",
+  invalid_refund_account: "환불 계좌(은행·예금주·계좌번호)를 확인해 주세요",
+  refund_account_required: "환불받을 계좌를 입력해 주세요",
+  period_expired: "배송 완료 뒤 7일이 지나 신청할 수 없어요. 불량·오배송은 판매자에게 문의해 주세요",
+  opened_blocked: "개봉한 상품은 단순 변심으로 교환·반품할 수 없어요. 불량·오배송은 판매자에게 문의해 주세요",
   empty_file: "사진을 확인해 주세요",
   file_too_large: "사진은 5MB 이하로 올려 주세요",
   unsupported_image: "JPG, PNG, WEBP 사진만 올릴 수 있어요",
@@ -69,6 +81,11 @@ export const SELLER_RETURN_MESSAGES: Record<string, string> = {
   invalid_tracking: "송장 번호를 확인해 주십시오",
   insufficient_stock: "교환 상품의 재고가 부족합니다",
   wrong_kind: "이 신청에서는 할 수 없는 처리입니다",
+  invalid_pickup: "수거 방법을 골라 주십시오",
+  invalid_inspection: "검수 결과를 골라 주십시오",
+  inspection_required: "검수 결과를 먼저 입력해 주십시오",
+  inspection_not_ok: "검수에서 문제가 확인된 건은 반송·거절로 처리해 주십시오",
+  inspection_locked: "재고를 이미 되돌려 검수 결과를 바꿀 수 없습니다",
 };
 
 async function clockNow(db: Db): Promise<Date> {
@@ -88,6 +105,12 @@ async function lockRequest(tx: Tx, sellerId: string, id: string) {
     SELECT "id", "orderId", "kind"::text AS "kind", "status"::text AS "status", "reason"::text AS "reason", "fault"::text AS "fault", "buyerMemberId" FROM "ReturnRequest"
     WHERE "id" = ${id}::uuid AND "sellerId" = ${sellerId}::uuid FOR UPDATE`;
   return r as (typeof r & { kind: ReturnKind; status: ReturnStatus; reason: ReturnReason; fault: RefundFault | null }) | undefined;
+}
+
+// 개봉을 시작했거나 마친 주문 품목(주문대기가 개봉 중·완료). 환불 계산(queue/service.ts isOpened)과 같은 기준이다.
+async function openedOrderItemIds(db: Db, sellerId: string, orderId: string): Promise<Set<string>> {
+  const q = await db.queueItem.findMany({ where: { sellerId, orderId }, select: { orderItemId: true, openingStartedAt: true, status: true } });
+  return new Set(q.filter((x) => x.openingStartedAt !== null || x.status === "OPENING" || x.status === "DONE").map((x) => x.orderItemId));
 }
 
 const viewInclude = {
@@ -114,6 +137,13 @@ function view(r: Row) {
     exchangeTrackingNumber: r.exchangeTrackingNumber,
     restocked: r.restocked,
     refundAmount: r.refundAmount,
+    pickupMethod: r.pickupMethod,
+    inspectionResult: r.inspectionResult,
+    inspectionNote: r.inspectionNote,
+    inspectedAt: r.inspectedAt,
+    exchangeHeldAt: r.exchangeHeldAt,
+    convertedFromExchange: r.convertedFromExchange,
+    hasRefundAccount: r.refundAccountNumber !== null,
     createdAt: r.createdAt,
     acceptedAt: r.acceptedAt,
     receivedAt: r.receivedAt,
@@ -170,10 +200,13 @@ export async function buyerReturnContext(db: PrismaClient, scope: BuyerScope, or
       status: true,
       purchaseConfirmedAt: true,
       items: { select: { id: true, productNameSnapshot: true, optionNameSnapshot: true, quantity: true, refundedQuantity: true }, orderBy: { id: "asc" } },
-      shipment: { select: { status: true } },
+      paymentMethod: true,
+      shipment: { select: { status: true, deliveredAt: true } },
     },
   });
   if (!order) return null;
+  const opened = await openedOrderItemIds(db, scope.sellerId, orderId);
+  const deliveredAt = order.shipment?.deliveredAt ?? null;
   // 부분 환불로 다 돌려준 품목은 신청할 수 없고, 수량은 남은 수량(quantity − refundedQuantity)
   const returnable = order.items.filter((i) => i.refundedQuantity < i.quantity);
   const requests = await db.returnRequest.findMany({ where: { sellerId: scope.sellerId, orderId }, include: viewInclude, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
@@ -183,7 +216,11 @@ export async function buyerReturnContext(db: PrismaClient, scope: BuyerScope, or
   return {
     canRequest: blocked === null,
     blocked,
-    items: returnable.map((i) => ({ orderItemId: i.id, productName: i.productNameSnapshot, optionName: i.optionNameSnapshot, quantity: i.quantity - i.refundedQuantity })),
+    // 신청 기한(배송 완료 뒤 7일). 지났어도 불량·오배송·설명과 다름 사유는 받는다(windowOpen=false면 단순 변심·기타는 막힌다)
+    deadline: returnDeadline(deliveredAt),
+    windowOpen: withinReturnWindow(deliveredAt, new Date(), "CHANGE_OF_MIND"),
+    needsRefundAccount: order.paymentMethod === "BANK_TRANSFER",
+    items: returnable.map((i) => ({ orderItemId: i.id, productName: i.productNameSnapshot, optionName: i.optionNameSnapshot, quantity: i.quantity - i.refundedQuantity, opened: opened.has(i.id) })),
     requests: requests.map(view),
   };
 }
@@ -201,8 +238,9 @@ export async function createReturn(db: PrismaClient, scope: BuyerScope, orderId:
       const [member] = await tx.$queryRaw<{ id: string }[]>`
         SELECT "id" FROM "BuyerMember" WHERE "id" = ${scope.buyerMemberId}::uuid AND "sellerId" = ${scope.sellerId}::uuid AND "status" = 'ACTIVE' AND "deletedAt" IS NULL FOR SHARE`;
       if (!member) return { ok: false as const, reason: "shop_unavailable" as const };
-      const shipment = await tx.shipment.findUnique({ where: { orderId }, select: { status: true } });
+      const shipment = await tx.shipment.findUnique({ where: { orderId }, select: { status: true, deliveredAt: true } });
       if (locked.status !== "PAID" || shipment?.status !== "DELIVERED" || locked.purchaseConfirmedAt) return { ok: false as const, reason: "not_returnable" as const };
+      if (!withinReturnWindow(shipment.deliveredAt, await clockNow(tx), input.reason)) return { ok: false as const, reason: "period_expired" as const };
       if ((await tx.returnRequest.count({ where: { sellerId: scope.sellerId, orderId, status: { in: [...ACTIVE_STATUSES] } } })) > 0) return { ok: false as const, reason: "active_exists" as const };
       // 부분 환불로 다 돌려준 품목은 빼고, 신청 수량은 남은 수량
       const orderItems = (await tx.orderItem.findMany({ where: { sellerId: scope.sellerId, orderId }, select: { id: true, quantity: true, refundedQuantity: true } }))
@@ -210,6 +248,15 @@ export async function createReturn(db: PrismaClient, scope: BuyerScope, orderId:
         .map((i) => ({ id: i.id, quantity: i.quantity - i.refundedQuantity }));
       const picked = input.kind === "RETURN" ? orderItems : orderItems.filter((i) => input.orderItemIds!.includes(i.id));
       if (picked.length === 0 || (input.kind === "EXCHANGE" && picked.length !== input.orderItemIds!.length)) return { ok: false as const, reason: "invalid_items" as const };
+      // 개봉한 상품은 단순 변심으로 신청할 수 없다. 교환은 고른 품목 중 하나라도, 반품은 모든 품목이 개봉이면 막는다(일부만 개봉한 반품은 개봉분을 뺀 금액으로 환불).
+      if (input.reason === "CHANGE_OF_MIND") {
+        const opened = await openedOrderItemIds(tx, scope.sellerId, orderId);
+        const hits = picked.filter((i) => opened.has(i.id)).length;
+        if (hits > 0 && (input.kind === "EXCHANGE" || hits === picked.length)) return { ok: false as const, reason: "opened_blocked" as const };
+      }
+      // 무통장 입금 주문은 환불 계좌가 있어야 신청할 수 있다
+      const paid = await tx.order.findUniqueOrThrow({ where: { id: orderId }, select: { paymentMethod: true } });
+      if (paid.paymentMethod === "BANK_TRANSFER" && !input.refundAccount) return { ok: false as const, reason: "refund_account_required" as const };
       const imgs = input.imageIds.length
         ? await tx.returnRequestImage.findMany({ where: { id: { in: input.imageIds }, ...scope, returnRequestId: null }, select: { id: true } })
         : [];
@@ -222,6 +269,10 @@ export async function createReturn(db: PrismaClient, scope: BuyerScope, orderId:
           kind: input.kind,
           reason: input.reason,
           reasonText: input.reasonText,
+          pickupMethod: input.pickup,
+          ...(paid.paymentMethod === "BANK_TRANSFER" && input.refundAccount
+            ? { refundBankName: input.refundAccount.bankName, refundAccountHolder: input.refundAccount.accountHolder, refundAccountNumber: input.refundAccount.accountNumber }
+            : {}),
         },
         select: { id: true },
       });
@@ -242,7 +293,7 @@ export async function createReturn(db: PrismaClient, scope: BuyerScope, orderId:
 // 구매자 철회: 신청·접수 단계만(회수가 끝났거나 닫힌 신청은 못 함)
 export async function buyerCancelReturn(db: PrismaClient, scope: BuyerScope, id: string, meta: AuditMeta = {}) {
   return buyerStep(db, scope, id, "cancel", meta, async (tx, r, now) => {
-    await tx.returnRequest.update({ where: { id: r.id }, data: { status: "CANCELLED", cancelledAt: now, updatedAt: now } });
+    await tx.returnRequest.update({ where: { id: r.id }, data: { status: "CANCELLED", cancelledAt: now, updatedAt: now, ...CLEAR_ACCOUNT } });
     await buyerAudit(tx, scope, meta, "buyer_return.cancel", r.id, { from: r.status });
   });
 }
@@ -303,10 +354,35 @@ export async function listSellerReturns(db: PrismaClient, ctx: TenantContext, q:
   });
   const page = rows.slice(0, PAGE);
   const counts = await db.returnRequest.groupBy({ by: ["status"], where: { sellerId: ctx.sellerId }, _count: { _all: true } });
+  const summary = await returnSummary(db, ctx.sellerId);
   return {
+    summary,
     returns: page.map((r) => ({ ...view(r), orderNo: r.order.orderNo, nickname: r.order.broadcastNicknameSnapshot })),
     nextCursor: rows.length > PAGE ? page[page.length - 1].id : null,
     counts: Object.fromEntries(counts.map((c) => [c.status, c._count._all])) as Partial<Record<ReturnStatus, number>>,
+  };
+}
+
+// 요약 카드(SA-029): 접수 대기, 수거·검수 중, 이번 달(KST) 완료 반품·교환, 최근 30일 반품률(철회·거절을 뺀 반품 신청 ÷ 배송 완료 주문)
+async function returnSummary(db: PrismaClient, sellerId: string) {
+  const [row] = await db.$queryRaw<{ requested: bigint; inProgress: bigint; doneReturn: bigint; doneExchange: bigint; returns30: bigint; delivered30: bigint }[]>`
+    SELECT
+      (SELECT count(*) FROM "ReturnRequest" WHERE "sellerId" = ${sellerId}::uuid AND "status" = 'REQUESTED') AS "requested",
+      (SELECT count(*) FROM "ReturnRequest" WHERE "sellerId" = ${sellerId}::uuid AND "status" IN ('ACCEPTED', 'RECEIVED')) AS "inProgress",
+      (SELECT count(*) FROM "ReturnRequest" WHERE "sellerId" = ${sellerId}::uuid AND "status" = 'COMPLETED' AND "kind" = 'RETURN'
+         AND date_trunc('month', "completedAt" AT TIME ZONE 'Asia/Seoul') = date_trunc('month', now() AT TIME ZONE 'Asia/Seoul')) AS "doneReturn",
+      (SELECT count(*) FROM "ReturnRequest" WHERE "sellerId" = ${sellerId}::uuid AND "status" = 'COMPLETED' AND "kind" = 'EXCHANGE'
+         AND date_trunc('month', "completedAt" AT TIME ZONE 'Asia/Seoul') = date_trunc('month', now() AT TIME ZONE 'Asia/Seoul')) AS "doneExchange",
+      (SELECT count(*) FROM "ReturnRequest" WHERE "sellerId" = ${sellerId}::uuid AND "kind" = 'RETURN' AND "convertedFromExchange" = false AND "status" NOT IN ('CANCELLED', 'REJECTED') AND "createdAt" >= now() - interval '30 days') AS "returns30",
+      (SELECT count(*) FROM "Shipment" WHERE "sellerId" = ${sellerId}::uuid AND "status" = 'DELIVERED' AND "deliveredAt" >= now() - interval '30 days') AS "delivered30"`;
+  const delivered = Number(row.delivered30);
+  return {
+    requested: Number(row.requested),
+    inProgress: Number(row.inProgress),
+    doneReturn: Number(row.doneReturn),
+    doneExchange: Number(row.doneExchange),
+    // 소수 첫째 자리(%). 배송 완료 주문이 없으면 null
+    returnRate30: delivered === 0 ? null : Math.round((Number(row.returns30) / delivered) * 1000) / 10,
   };
 }
 
@@ -316,19 +392,26 @@ export async function getSellerReturn(db: PrismaClient, ctx: TenantContext, id: 
   if (!isUuid(id)) return null;
   const r = await db.returnRequest.findFirst({
     where: { id, sellerId: ctx.sellerId },
-    include: { ...viewInclude, order: { select: { orderNo: true, status: true, totalAmount: true, shippingFee: true, broadcastNicknameSnapshot: true, purchaseConfirmedAt: true, shipment: { select: { courier: true, trackingNumber: true, deliveredAt: true } } } } },
+    include: { ...viewInclude, order: { select: { orderNo: true, status: true, totalAmount: true, shippingFee: true, paymentMethod: true, broadcastNicknameSnapshot: true, purchaseConfirmedAt: true, shipment: { select: { courier: true, trackingNumber: true, deliveredAt: true } } } } },
   });
   if (!r) return null;
   const refundable = r.kind === "RETURN" && (r.status === "ACCEPTED" || r.status === "RECEIVED");
+  // 교환에서 환불로 바뀐 신청은 신청한 품목만 환불한다
+  const preview = refundable ? await previewRefundSelection(db, ctx, r.orderId, r.convertedFromExchange ? requestSelection(r.items) : undefined) : null;
   return {
     ...view(r),
+    // 무통장 환불 계좌(환불·종료 뒤 비워진다). 파트너스만 본다
+    refundAccount: r.refundAccountNumber ? { bankName: r.refundBankName, accountHolder: r.refundAccountHolder, accountNumber: r.refundAccountNumber } : null,
+    paymentMethod: r.order.paymentMethod,
     orderNo: r.order.orderNo,
     nickname: r.order.broadcastNicknameSnapshot,
     order: { status: r.order.status, totalAmount: r.order.totalAmount, shippingFee: r.order.shippingFee, purchaseConfirmed: r.order.purchaseConfirmedAt !== null, shipment: r.order.shipment },
-    refundPreview: refundable ? await previewRefund(db, ctx, r.orderId) : null,
+    refundPreview: preview?.ok ? preview.value : null,
     queueVersion: refundable ? await getRefundVersion(db, ctx) : null,
   };
 }
+
+const requestSelection = (items: { orderItemId: string; quantity: number }[]): RefundSelection => items.map((i) => ({ orderItemId: i.orderItemId, quantity: i.quantity }));
 
 type Step = (tx: Tx, r: NonNullable<Awaited<ReturnType<typeof lockRequest>>>, now: Date, order: NonNullable<Awaited<ReturnType<typeof lockOrder>>>) => Promise<{ ok: false; reason: ReturnFailure } | void>;
 
@@ -355,13 +438,16 @@ const sellerAudit = (tx: Tx, ctx: TenantContext, action: string, id: string, bef
   writeAudit(tx, { actorType: ctx.actorType as ActorType, actorId: ctx.actorId, sellerId: ctx.sellerId, action, targetType: "ReturnRequest", targetId: id, before, after, reason });
 
 // 접수: 신청 → 접수. 사유 주체를 정한다(구매자 사정이면 반품 배송비를 받는다). 사유가 「기타」면 꼭 보내야 한다.
-export async function acceptReturn(db: PrismaClient, ctx: TenantContext, id: string, body: { fault?: unknown }) {
+export async function acceptReturn(db: PrismaClient, ctx: TenantContext, id: string, body: { fault?: unknown; pickup?: unknown }) {
   if (body.fault !== undefined && body.fault !== null && parseFault(body.fault) === null) return { ok: false as const, reason: "invalid_fault" as const };
+  // 수거 방법: 보내지 않으면 구매자가 신청 때 고른 희망을 그대로 쓴다
+  const pickup = body.pickup === undefined || body.pickup === null ? null : parsePickup(body.pickup);
+  if (body.pickup !== undefined && body.pickup !== null && !pickup) return { ok: false as const, reason: "invalid_pickup" as const };
   return sellerStep(db, ctx, id, "accept", async (tx, r, now) => {
     const fault = parseFault(body.fault) ?? DEFAULT_FAULT[r.reason];
     if (!fault) return { ok: false, reason: "fault_required" };
-    await tx.returnRequest.update({ where: { id: r.id }, data: { status: "ACCEPTED", acceptedAt: now, fault, updatedAt: now } });
-    await sellerAudit(tx, ctx, "return.accept", r.id, { status: r.status }, { status: "ACCEPTED", fault });
+    await tx.returnRequest.update({ where: { id: r.id }, data: { status: "ACCEPTED", acceptedAt: now, fault, updatedAt: now, ...(pickup ? { pickupMethod: pickup } : {}) } });
+    await sellerAudit(tx, ctx, "return.accept", r.id, { status: r.status }, { status: "ACCEPTED", fault, pickup: pickup ?? undefined });
   });
 }
 
@@ -370,22 +456,77 @@ export async function rejectReturn(db: PrismaClient, ctx: TenantContext, id: str
   const reason = parseRejectReason(body.reason);
   if (!reason) return { ok: false as const, reason: "invalid_reject_reason" as const };
   return sellerStep(db, ctx, id, "reject", async (tx, r, now) => {
-    await tx.returnRequest.update({ where: { id: r.id }, data: { status: "REJECTED", rejectedAt: now, rejectReason: reason, updatedAt: now } });
+    await tx.returnRequest.update({ where: { id: r.id }, data: { status: "REJECTED", rejectedAt: now, rejectReason: reason, updatedAt: now, ...CLEAR_ACCOUNT } });
     await sellerAudit(tx, ctx, "return.reject", r.id, { status: r.status }, { status: "REJECTED" }, reason);
   });
 }
 
-// 회수 완료: 접수 → 회수 완료. restock이면 이 신청의 품목 재고를 되돌린다(판매자 설정 「취소·반품 때 재고 복구」가 꺼져 있으면 되돌리지 않는다).
-export async function receiveReturn(db: PrismaClient, ctx: TenantContext, id: string, body: { restock?: unknown }) {
+// 입고 확인: 접수 → 회수 완료(검수 중). 재고는 여기서 되돌리지 않는다. 검수에서 이상 없음이 나온 뒤에만 되돌린다(inspectReturn restock).
+export async function receiveReturn(db: PrismaClient, ctx: TenantContext, id: string, _body: Record<string, unknown> = {}) {
   return sellerStep(db, ctx, id, "receive", async (tx, r, now) => {
+    await tx.returnRequest.update({ where: { id: r.id }, data: { status: "RECEIVED", receivedAt: now, updatedAt: now } });
+    await sellerAudit(tx, ctx, "return.receive", r.id, { status: r.status }, { status: "RECEIVED" });
+  });
+}
+
+// 검수 결과 입력: 회수 완료(검수 중) 단계에서. 이상 없음이어야 환불·교환 발송으로 넘어가고, 그 밖은 반송·거절(rejectInspected)을 고른다. 다시 입력해 고칠 수 있다.
+// restock: 이상 없음일 때만 이 신청의 품목 재고를 되돌린다(판매자 설정 「취소·반품 때 재고 복구」가 꺼져 있으면 되돌리지 않는다). 되돌린 뒤에는 검수 결과를 문제 있음으로 바꿀 수 없다(재고가 이미 늘어 있어서).
+export async function inspectReturn(db: PrismaClient, ctx: TenantContext, id: string, body: { result?: unknown; note?: unknown; restock?: unknown }) {
+  const result = parseInspection(body.result);
+  if (!result) return { ok: false as const, reason: "invalid_inspection" as const };
+  let note: string | null = null;
+  if (body.note !== undefined && body.note !== null && body.note !== "") {
+    note = cleanText(body.note, INSPECTION_NOTE_MAX, "memo");
+    if (note === null) return { ok: false as const, reason: "invalid_inspection" as const };
+  }
+  return sellerStep(db, ctx, id, "inspect", async (tx, r, now) => {
+    const cur = await tx.returnRequest.findUniqueOrThrow({ where: { id: r.id }, select: { restocked: true } });
+    if (cur.restocked && result !== "OK") return { ok: false, reason: "inspection_locked" };
     let restockedItems = 0;
-    if (body.restock === true) {
+    if (result === "OK" && body.restock === true && !cur.restocked) {
       const items = await tx.returnRequestItem.findMany({ where: { sellerId: ctx.sellerId, returnRequestId: r.id }, select: { orderItemId: true } });
       const restored = await restoreOrderStock(tx, { sellerId: ctx.sellerId, orderId: r.orderId, reason: "REFUND", now, actor: { actorType: ctx.actorType as ActorType, actorId: ctx.actorId }, itemIds: items.map((i) => i.orderItemId) });
       restockedItems = restored.length;
     }
-    await tx.returnRequest.update({ where: { id: r.id }, data: { status: "RECEIVED", receivedAt: now, restocked: restockedItems > 0, updatedAt: now } });
-    await sellerAudit(tx, ctx, "return.receive", r.id, { status: r.status }, { status: "RECEIVED", restockedItems });
+    await tx.returnRequest.update({ where: { id: r.id }, data: { inspectionResult: result, inspectionNote: note, inspectedAt: now, updatedAt: now, ...(restockedItems > 0 ? { restocked: true } : {}) } });
+    await sellerAudit(tx, ctx, "return.inspect", r.id, { status: r.status }, { result, restockedItems }, note ?? undefined);
+  });
+}
+
+// 검수에서 문제가 확인된 건 반송·거절: 검수 결과가 이상 없음이 아닐 때만. 사유 필수(구매자에게 보인다). 실제 반송은 판매자가 따로 한다.
+export async function rejectInspectedReturn(db: PrismaClient, ctx: TenantContext, id: string, body: { reason?: unknown }) {
+  const reason = parseRejectReason(body.reason);
+  if (!reason) return { ok: false as const, reason: "invalid_reject_reason" as const };
+  return sellerStep(db, ctx, id, "rejectInspected", async (tx, r, now) => {
+    const cur = await tx.returnRequest.findUniqueOrThrow({ where: { id: r.id }, select: { inspectionResult: true } });
+    if (cur.inspectionResult === null) return { ok: false, reason: "inspection_required" };
+    if (cur.inspectionResult === "OK") return { ok: false, reason: "wrong_kind" };
+    await tx.returnRequest.update({ where: { id: r.id }, data: { status: "REJECTED", rejectedAt: now, rejectReason: reason, updatedAt: now, ...CLEAR_ACCOUNT } });
+    await sellerAudit(tx, ctx, "return.reject_inspected", r.id, { status: r.status }, { status: "REJECTED", inspection: cur.inspectionResult }, reason);
+  });
+}
+
+// 교환 재고 없음 처리 ①재입고 뒤 발송: 보류 표시만 남기고 단계는 그대로(재고가 들어오면 교환 발송). 교환만, 검수 이상 없음 뒤.
+export async function holdExchange(db: PrismaClient, ctx: TenantContext, id: string) {
+  return sellerStep(db, ctx, id, "hold", async (tx, r, now) => {
+    if (r.kind !== "EXCHANGE") return { ok: false, reason: "wrong_kind" };
+    const cur = await tx.returnRequest.findUniqueOrThrow({ where: { id: r.id }, select: { inspectionResult: true } });
+    if (cur.inspectionResult !== "OK") return { ok: false, reason: cur.inspectionResult === null ? "inspection_required" : "inspection_not_ok" };
+    await tx.returnRequest.update({ where: { id: r.id }, data: { exchangeHeldAt: now, updatedAt: now } });
+    await sellerAudit(tx, ctx, "return.exchange_hold", r.id, { status: r.status }, { heldAt: now.toISOString() });
+  });
+}
+
+// 교환 재고 없음 처리 ②환불로 전환: 교환 신청을 반품(신청한 품목만 환불)으로 바꾼다. 환불 금액은 반품 환불 화면에서 확인받고 실행한다.
+// 환불은 사유 주체(접수 때 정함)를 따른다. 무통장 주문이면 신청 때 받은 환불 계좌가 필요하다.
+export async function convertExchangeToRefund(db: PrismaClient, ctx: TenantContext, id: string) {
+  return sellerStep(db, ctx, id, "convert", async (tx, r, now) => {
+    if (r.kind !== "EXCHANGE") return { ok: false, reason: "wrong_kind" };
+    const cur = await tx.returnRequest.findUniqueOrThrow({ where: { id: r.id }, select: { inspectionResult: true, refundAccountNumber: true, order: { select: { paymentMethod: true } } } });
+    if (cur.inspectionResult !== "OK") return { ok: false, reason: cur.inspectionResult === null ? "inspection_required" : "inspection_not_ok" };
+    if (cur.order.paymentMethod === "BANK_TRANSFER" && !cur.refundAccountNumber) return { ok: false, reason: "refund_account_required" };
+    await tx.returnRequest.update({ where: { id: r.id }, data: { kind: "RETURN", convertedFromExchange: true, exchangeHeldAt: null, updatedAt: now } });
+    await sellerAudit(tx, ctx, "return.exchange_to_refund", r.id, { kind: "EXCHANGE" }, { kind: "RETURN" });
   });
 }
 
@@ -395,6 +536,8 @@ export async function shipExchange(db: PrismaClient, ctx: TenantContext, id: str
   if (!t.ok) return t;
   return sellerStep(db, ctx, id, "complete", async (tx, r, now) => {
     if (r.kind !== "EXCHANGE") return { ok: false, reason: "wrong_kind" };
+    const insp = await tx.returnRequest.findUniqueOrThrow({ where: { id: r.id }, select: { inspectionResult: true } });
+    if (insp.inspectionResult !== "OK") return { ok: false, reason: insp.inspectionResult === null ? "inspection_required" : "inspection_not_ok" };
     const items = await tx.returnRequestItem.findMany({ where: { sellerId: ctx.sellerId, returnRequestId: r.id }, select: { orderItemId: true, quantity: true, orderItem: { select: { optionId: true } } } });
     // 옵션 id 순서로 잠가 같은 옵션을 다루는 다른 교환·주문과 교착하지 않게 한다. 수량은 신청 수량(부분 환불한 수량을 뺀 값)
     const need = new Map<string, number>();
@@ -406,7 +549,7 @@ export async function shipExchange(db: PrismaClient, ctx: TenantContext, id: str
     }
     // 교환 상품이 다시 나갔으니, 회수 때 되돌린 표시(stockRestoredAt)를 풀어 이 품목을 뒤에 다시 반품·환불로 회수할 때 재고를 한 번 더 되돌릴 수 있게 한다
     await tx.orderItem.updateMany({ where: { sellerId: ctx.sellerId, id: { in: items.map((i) => i.orderItemId) }, stockRestoredAt: { not: null } }, data: { stockRestoredAt: null } });
-    await tx.returnRequest.update({ where: { id: r.id }, data: { status: "COMPLETED", completedAt: now, exchangeCourier: t.courier, exchangeTrackingNumber: t.trackingNumber, updatedAt: now } });
+    await tx.returnRequest.update({ where: { id: r.id }, data: { status: "COMPLETED", completedAt: now, exchangeCourier: t.courier, exchangeTrackingNumber: t.trackingNumber, exchangeHeldAt: null, updatedAt: now } });
     await sellerAudit(tx, ctx, "return.exchange_ship", r.id, { status: r.status }, { status: "COMPLETED", courier: t.courier, optionCount: need.size });
   }).catch((e) => {
     if (e instanceof StockShort) return { ok: false as const, reason: "insufficient_stock" as const };
@@ -425,11 +568,18 @@ export async function refundReturn(
 ) {
   requireSellerPermission(ctx, "ORDER_SHIPPING");
   if (!isUuid(id)) return { ok: false as const, reason: "not_found" as const };
-  const r = await db.returnRequest.findFirst({ where: { id, sellerId: ctx.sellerId }, select: { orderId: true, kind: true, status: true, fault: true } });
+  const r = await db.returnRequest.findFirst({
+    where: { id, sellerId: ctx.sellerId },
+    select: { orderId: true, kind: true, status: true, fault: true, inspectionResult: true, convertedFromExchange: true, refundAccountNumber: true, order: { select: { paymentMethod: true } }, items: { select: { orderItemId: true, quantity: true } } },
+  });
   if (!r) return { ok: false as const, reason: "not_found" as const };
   if (r.kind !== "RETURN") return { ok: false as const, reason: "wrong_kind" as const };
   if (r.status !== "RECEIVED" || !r.fault) return { ok: false as const, reason: "invalid_transition" as const };
+  if (r.inspectionResult === null) return { ok: false as const, reason: "inspection_required" as const };
+  if (r.inspectionResult !== "OK") return { ok: false as const, reason: "inspection_not_ok" as const };
+  if (r.order.paymentMethod === "BANK_TRANSFER" && !r.refundAccountNumber) return { ok: false as const, reason: "refund_account_required" as const };
   const out = await refundOrder(db, ctx, r.orderId, {
+    ...(r.convertedFromExchange ? { items: requestSelection(r.items) } : {}),
     reason: "반품 환불",
     expectedLiveVersion: body.expectedVersion,
     confirmOpened: body.confirmOpened === true,
@@ -437,6 +587,8 @@ export async function refundReturn(
     expectedRefundAmount: body.expectedRefundAmount,
   });
   if (!out.ok) return { ok: false as const, reason: out.reason, refund: true as const };
+  // 전체 환불이 아니면(환불로 전환한 부분 환불) 환불 트랜잭션의 자동 닫기가 돌지 않으므로 여기서 완료로 닫는다(이미 닫혔으면 건드리지 않는다)
+  await db.returnRequest.updateMany({ where: { id, sellerId: ctx.sellerId, status: "RECEIVED" }, data: { status: "COMPLETED", completedAt: new Date(), refundAmount: out.value.refundAmount, updatedAt: new Date(), ...CLEAR_ACCOUNT } });
   const row = await db.returnRequest.findUniqueOrThrow({ where: { id }, include: viewInclude });
   return { ok: true as const, request: view(row), refund: out.value, version: out.version };
 }
