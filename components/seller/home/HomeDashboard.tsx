@@ -3,7 +3,7 @@
 import "../stats/stats.css";
 import "./home.css";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { PageHead } from "../../admin-ui";
 import { Topbar, useSeller } from "../SellerShell";
 import { ErrorState, LoadingRows } from "../States";
@@ -37,22 +37,24 @@ const BROADCAST_ROWS = 3;
 
 type Part<T> = { kind: "loading" } | { kind: "hidden" } | { kind: "error" } | { kind: "ok"; data: T };
 
-function usePart<T>(path: string, pick: (raw: never) => T, deps: unknown[] = []): [Part<T>, () => void] {
+// pick은 모듈 안의 고정 함수만 넘긴다(렌더마다 바뀌는 함수를 넘기지 않음). 값은 ref에 두어 의존 배열에는 path만 쓴다.
+function usePart<T>(path: string, pick: (raw: never) => T): [Part<T>, () => void] {
   const [state, setState] = useState<Part<T>>({ kind: "loading" });
   const [n, setN] = useState(0);
+  const pickRef = useRef(pick);
+  pickRef.current = pick;
   useEffect(() => {
     let live = true;
     setState({ kind: "loading" });
     void api<never>(path).then((r) => {
       if (!live) return;
-      if (r.ok) setState({ kind: "ok", data: pick(r.data) });
+      if (r.ok) setState({ kind: "ok", data: pickRef.current(r.data) });
       else setState({ kind: r.status === 403 || r.status === 402 ? "hidden" : "error" });
     });
     return () => {
       live = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path, n, ...deps]);
+  }, [path, n]);
   return [state, useCallback(() => setN((v) => v + 1), [])];
 }
 
