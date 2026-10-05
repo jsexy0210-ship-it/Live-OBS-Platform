@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { DELETE as endRoute, GET as activeRoute } from "../../app/api/admin/impersonation/route";
 import { POST as startRoute } from "../../app/api/admin/sellers/[sellerId]/impersonate/route";
+import { GET as meRoute } from "../../app/api/seller/me/route";
 import { GET as sellerImpRoute } from "../../app/api/seller/impersonation/route";
 import { GET as ordersRoute } from "../../app/api/seller/orders/route";
 import { GET as orderOne } from "../../app/api/seller/orders/[orderId]/route";
@@ -152,6 +153,30 @@ describe("대리 조회 중 파트너스 API", () => {
   });
 });
 
+describe("화면 틀이 읽는 내 정보 GET /api/seller/me (대리 조회)", () => {
+  it("proxy를 통과해 200으로 열리고, 어느 쇼핑몰을 누가 왜 보는지 내려준다. 다른 쇼핑몰 파트너스 로그인 쿠키가 같이 있어도 대리 조회 쇼핑몰이 우선이다", async () => {
+    const { seller } = await shopWithOrder("시험 결제몰");
+    const other = await createSeller();
+    const su = await admin("SUPER_ADMIN");
+    const { imp } = await start(su.cookie, seller.id, { reason: "결제 문의 확인" });
+    const cookie = `lo_imp=${imp}`;
+    const through = await proxy(new NextRequest(BASE + "/api/seller/me", { headers: { cookie } }));
+    expect(through.headers.get("x-middleware-next")).toBe("1");
+    const r = await json(await meRoute(req("/api/seller/me", cookie)));
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ sellerId: seller.id, isOwner: false, readOnly: true, shop: { name: "시험 결제몰" }, impersonation: { reason: "결제 문의 확인" } });
+    expect(r.body.permissions.sort()).toEqual(["MEMBER_POINTS", "ORDER_SHIPPING", "PRODUCT_MANAGE", "SALES_VIEW"]);
+    expect(r.body.impersonation.adminName).toBe(r.body.user.name);
+    // 다른 쇼핑몰의 파트너스 세션 쿠키가 같이 와도 대리 조회 쇼핑몰이 우선
+    const both = await json(await meRoute(req("/api/seller/me", `lo_seller=${"x".repeat(20)}; ${cookie}`)));
+    expect(both.body.sellerId).toBe(seller.id);
+    expect(other.seller.id).not.toBe(seller.id);
+    // 끝내면 401
+    await endRoute(req("/api/admin/impersonation", su.cookie, "DELETE"));
+    expect((await meRoute(req("/api/seller/me", cookie))).status).toBe(401);
+  });
+});
+
 describe("proxy 안전망(대리 조회 쿠키가 있는 /api/seller 요청)", () => {
   const hit = async (method: string, path: string, cookie?: string) => {
     const res = await proxy(new NextRequest(BASE + path, { method, headers: cookie ? { cookie } : {} }));
@@ -159,7 +184,7 @@ describe("proxy 안전망(대리 조회 쿠키가 있는 /api/seller 요청)", (
   };
   it("조회 허용 경로의 GET·HEAD만 통과하고 나머지는 403 impersonation_read_only", async () => {
     const c = "lo_imp=imp.abc";
-    for (const p of ["/api/seller/orders", "/api/seller/orders/xyz", "/api/seller/members", "/api/seller/products", "/api/seller/products/xyz", "/api/seller/stats/sales", "/api/seller/impersonation"]) {
+    for (const p of ["/api/seller/orders", "/api/seller/orders/xyz", "/api/seller/members", "/api/seller/products", "/api/seller/products/xyz", "/api/seller/stats/sales", "/api/seller/impersonation", "/api/seller/me"]) {
       expect(await hit("GET", p, c)).toEqual({ kind: "pass" });
     }
     expect(await hit("HEAD", "/api/seller/orders", c)).toEqual({ kind: "pass" });
@@ -171,6 +196,9 @@ describe("proxy 안전망(대리 조회 쿠키가 있는 /api/seller 요청)", (
       ["GET", "/api/seller/subscription"],
       ["GET", "/api/seller/notifications"],
       ["GET", "/api/seller/orders-evil"],
+      ["GET", "/api/seller/me/password"],
+      ["GET", "/api/seller/me-evil"],
+      ["POST", "/api/seller/me"],
       ["POST", "/api/seller/auth/login"],
     ] as const) {
       expect(await hit(m, p, c)).toMatchObject({ kind: "blocked", status: 403, body: { error: "impersonation_read_only" } });

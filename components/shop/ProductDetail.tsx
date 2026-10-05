@@ -1,8 +1,14 @@
 "use client";
 
+import CouponRow from "./CouponRow";
+import DetailTabs from "./DetailTabs";
+import LiveNotice from "./LiveNotice";
+import ProductInquiries from "./ProductInquiries";
 import ProductReviews from "./ProductReviews";
+import RecentProducts from "./RecentProducts";
 import RecommendedProducts from "./RecommendedProducts";
 import ShopBack from "./ShopBack";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -14,7 +20,7 @@ import "./Cart.css";
 import "./ProductDetail.css";
 
 // SH-003 상품 상세(시안 04 SH). 값은 공개 상품 상세 조회(shopProductDetail)를 그대로 받는다.
-// 장바구니·찜은 로그인한 구매자만: 로그인 전이면 「로그인이 필요해요」 창. 「바로 구매」는 장바구니에 담은 줄만 골라 주문서로 보낸다(주문 바로 만들기 API가 없음).
+// 장바구니·찜은 로그인한 구매자만: 로그인 전이면 「로그인이 필요해요」 창. 「구매하기」는 장바구니에 담은 줄만 골라 주문서로 보낸다(주문 바로 만들기 API가 없음).
 type Option = { id: string; name: string; price: number; salePrice: number | null; soldOut: boolean; stockLeft: number | null };
 type Block = { type: "text"; text: string } | { type: "image"; imageId: string; url: string; width: number; height: number };
 export type ShopProduct = {
@@ -134,6 +140,21 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
     setBusy(false);
   }
 
+  async function onShare() {
+    const url = window.location.href;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: p.name, url });
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      setMsg({ ok: true, text: "상품 주소를 복사했어요" });
+    } catch (e) {
+      // 공유 창을 닫은 것은 오류가 아니다
+      if (!(e instanceof DOMException && e.name === "AbortError")) setMsg({ ok: false, text: "공유하지 못했어요. 주소 줄에서 복사해 주세요" });
+    }
+  }
+
   const here = `${base}/products/${p.id}`;
   const ship = p.shipping.freeShipping
     ? "무료"
@@ -144,6 +165,7 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
 
   return (
     <article className="pd" aria-label={p.name}>
+      {p.isLive && <LiveNotice slug={slug} />}
       <ShopBack fallback={`/shop/${encodeURIComponent(slug)}/products`} label="목록" />
       {crumb.length > 0 && (
         <nav className="pd-crumb" aria-label="상품 경로">
@@ -159,16 +181,14 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
       <div className="pd-top">
         <div className="pd-gallery">
           <div className="pd-hero">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            {hero && <img src={hero.url} alt={p.name} />}
+            {hero && <Image src={hero.url} alt={p.name} width={hero.width} height={hero.height} unoptimized priority />}
             {p.soldOut && <span className="pc-out" role="img" aria-label="품절">SOLD OUT</span>}
           </div>
           {p.images.length > 1 && (
             <div className="pd-thumbs" role="group" aria-label="상품 사진">
               {p.images.map((im, i) => (
                 <button key={im.id} type="button" aria-label={`사진 ${i + 1}`} aria-current={i === photo ? "true" : undefined} onClick={() => setPhoto(i)}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={im.url} alt="" />
+                  <Image src={im.url} alt="" width={im.width} height={im.height} unoptimized />
                 </button>
               ))}
             </div>
@@ -176,12 +196,6 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
         </div>
 
         <div className="pd-info">
-          {p.isLive && (
-            <p className="pd-live" role="status">
-              <span className="live-dot" aria-hidden="true" />
-              이 상품이 지금 방송 중이에요
-            </p>
-          )}
           <h1>{p.name}</h1>
           {p.description && <p className="pd-desc">{p.description}</p>}
           <table className="pd-form">
@@ -203,9 +217,10 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
                   )}
                 </td>
               </tr>
+              <CouponRow slug={slug} loggedIn={loggedIn} />
               {reward && (
                 <tr>
-                  <th scope="row">적립금</th>
+                  <th scope="row">예상 적립</th>
                   <td>{reward}</td>
                 </tr>
               )}
@@ -225,9 +240,14 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
                       </option>
                     ))}
                   </select>
-                  {option?.stockLeft != null && <span className="pd-hint">{option.stockLeft}개 남았어요</span>}
                 </td>
               </tr>
+              {option?.stockLeft != null && (
+                <tr>
+                  <th scope="row">재고</th>
+                  <td>{option.stockLeft}개 남았어요</td>
+                </tr>
+              )}
               <tr>
                 <th scope="row">수량</th>
                 <td>
@@ -271,18 +291,21 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
                 )}
               </>
             ) : (
-              <>
-                <button type="button" className="btn btn-lg btn-out" disabled={busy} onClick={onCart}>
-                  장바구니
-                </button>
-                <button type="button" className="btn btn-lg" disabled={busy} onClick={onBuy}>
-                  바로 구매
-                </button>
-              </>
+              <button type="button" className="btn btn-lg btn-out" disabled={busy} onClick={onCart}>
+                장바구니
+              </button>
             )}
             <button type="button" className="btn btn-lg btn-out pd-wish" aria-pressed={wished} aria-label={wished ? "찜 빼기" : "찜하기"} disabled={busy} onClick={onWish}>
               {wished ? "♥" : "♡"}
             </button>
+            <button type="button" className="btn btn-lg btn-out pd-share" onClick={() => void onShare()}>
+              공유
+            </button>
+            {!out && (
+              <button type="button" className="btn btn-lg" disabled={busy} onClick={onBuy}>
+                구매하기
+              </button>
+            )}
           </div>
           {msg && (
             <p className={msg.ok ? "pd-msg" : "pd-msg pd-err"} role="status">
@@ -298,7 +321,9 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
         </div>
       </div>
 
-      <section className="pd-detail" aria-label="상세 정보">
+      <DetailTabs />
+
+      <section className="pd-detail" id="pd-info" aria-label="상세 정보">
         <h2>상세 정보</h2>
         {p.detail.length === 0 ? (
           <p className="shop-empty">상세 정보가 아직 없어요.</p>
@@ -309,8 +334,7 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
                 {b.text}
               </p>
             ) : (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img key={i} className="pd-dimg" src={b.url} width={b.width} height={b.height} alt="" loading="lazy" />
+              <Image key={i} className="pd-dimg" src={b.url} width={b.width} height={b.height} alt="" unoptimized />
             ),
           )
         )}
@@ -318,7 +342,11 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
 
       <ProductReviews slug={slug} productId={p.id} />
 
+      <ProductInquiries slug={slug} productId={p.id} loggedIn={loggedIn} onNeedLogin={() => setNeedLogin(true)} />
+
       <RecommendedProducts slug={slug} productId={p.id} />
+
+      <RecentProducts slug={slug} current={{ id: p.id, name: p.name, price: p.price, salePrice: p.salePrice, soldOut: p.soldOut, thumbnailUrl: p.images[0]?.url ?? null }} />
 
       {needLogin && (
         <ShopModal

@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { GET as popularRoute } from "../../app/api/shop/[slug]/search/popular/route";
 import { GET as suggestRoute } from "../../app/api/shop/[slug]/search/suggest/route";
 import { GET as listRoute } from "../../app/api/shop/[slug]/products/route";
+import { DELETE as blockedDelete, GET as blockedGet, POST as blockedPost } from "../../app/api/seller/shop-search/blocked-terms/route";
 import { GET as synonymsGet, PUT as synonymsPut } from "../../app/api/seller/shop-search/synonyms/route";
 import { loginSeller } from "../../lib/server/auth/login";
 import { prisma } from "../../lib/server/db";
@@ -322,5 +323,85 @@ describe("유사어 동시 저장·외래키(검수 후속)", () => {
     await db.$executeRaw`INSERT INTO "ShopSearchTerm" ("sellerId","day","term","count") VALUES (${s.seller.id}::uuid, now()::date, 'x1', 1)`;
     const fk = await db.$queryRaw<{ confdeltype: string }[]>`SELECT confdeltype FROM pg_constraint WHERE conname IN ('ShopSearchSynonym_sellerId_fkey','ShopSearchTerm_sellerId_fkey')`;
     expect(fk.map((r) => r.confdeltype)).toEqual(["c", "c"]); // ON DELETE CASCADE
+  });
+});
+
+describe("인기 검색어 제외 단어", () => {
+  const hdr = (cookie: string) => ({ ...H, "content-type": "application/json", cookie });
+  const addBlocked = async (cookie: string, term: unknown) => {
+    const res = await blockedPost(new Request(`${BASE}/x`, { method: "POST", headers: hdr(cookie), body: JSON.stringify({ term }) }));
+    return { status: res.status, body: (await res.json()) as Record<string, any> };
+  };
+  const delBlocked = async (cookie: string, term: string) => {
+    const res = await blockedDelete(new Request(`${BASE}/x?term=${encodeURIComponent(term)}`, { method: "DELETE", headers: hdr(cookie) }));
+    return { status: res.status, body: (await res.json()) as Record<string, any> };
+  };
+  const listBlocked = async (cookie: string) => (await (await blockedGet(new Request(`${BASE}/x`, { headers: hdr(cookie) }))).json()) as { terms: { term: string }[]; canEdit: boolean };
+
+  it("제외 단어가 들어 있는 검색어는 인기 검색어에서 빠지고, 지우면 다시 보이며, 검색 자체는 그대로 된다", async () => {
+    const s = await shop();
+    await s.make("부스터 박스");
+    await s.make("스킨 비속어 카드");
+    await search(s, "부스터");
+    await search(s, "비속어");
+    expect((await popular(s.slug)).terms!.sort()).toEqual(["부스터", "비속어"]);
+    expect((await addBlocked(s.owner, "비속")).status).toBe(201);
+    expect((await popular(s.slug)).terms).toEqual(["부스터"]); // 이미 쌓인 집계도 바로 가려진다
+    expect((await search(s, "비속어")).names).toEqual(["스킨 비속어 카드"]); // 검색은 그대로
+    expect((await delBlocked(s.owner, "비속")).status).toBe(200);
+    expect((await popular(s.slug)).terms!.sort()).toEqual(["부스터", "비속어"]);
+  });
+
+  it("제외된 단어는 새로 세지 않고, 자동완성의 인기 검색어 칸에서도 빠지지만 상품 이름 칸은 그대로다", async () => {
+    const s = await shop();
+    await s.make("포켓몬 카드");
+    await addBlocked(s.owner, "포켓몬 카드");
+    await search(s, "포켓몬 카드");
+    expect(await db.shopSearchTerm.count({ where: { sellerId: s.seller.id } })).toBe(0);
+    const r = await suggest(s.slug, "포켓");
+    expect(r.list).toEqual([{ text: "포켓몬 카드", kind: "product" }]);
+  });
+
+  it("대소문자·공백을 정리해 저장하고, 같은 단어를 다시 넣어도 하나이며, 잘못된 값은 400이다", async () => {
+    const s = await shop();
+    expect((await addBlocked(s.owner, "  BAD  Word ")).body.term).toBe("bad word");
+    expect((await addBlocked(s.owner, "bad word")).status).toBe(201);
+    expect((await listBlocked(s.owner)).terms.map((t) => t.term)).toEqual(["bad word"]);
+    for (const bad of ["", "a", "가".repeat(21), 123, null, undefined]) {
+      const r = await addBlocked(s.owner, bad);
+      expect([r.status, r.body.error]).toEqual([400, "invalid_term"]);
+    }
+    expect((await delBlocked(s.owner, "없는단어")).body.error).toBe("term_not_found");
+    expect((await delBlocked(s.owner, "x")).body.error).toBe("invalid_term");
+  });
+
+  it("최대 100개까지(동시 추가도 넘지 않음)이고, 권한·판매자 격리가 지켜진다", async () => {
+    const s = await shop();
+    const other = await shop();
+    await db.shopSearchBlockedTerm.createMany({ data: Array.from({ length: 98 }, (_, i) => ({ sellerId: s.seller.id, term: `금지${String(i).padStart(2, "0")}` })) });
+    const rs = await Promise.all(Array.from({ length: 6 }, (_, i) => addBlocked(s.owner, `신규단어${i}`)));
+    expect(rs.filter((r) => r.status === 201)).toHaveLength(2);
+    expect(rs.filter((r) => r.status === 400).every((r) => r.body.error === "too_many_terms")).toBe(true);
+    expect(await db.shopSearchBlockedTerm.count({ where: { sellerId: s.seller.id } })).toBe(100);
+    // 권한: 상품 관리 직원만 쓰고 다른 직원은 조회만
+    expect((await addBlocked(other.noPerm, "권한없음")).status).toBe(403);
+    expect((await addBlocked(other.productStaff, "직원추가")).status).toBe(201);
+    expect((await listBlocked(other.noPerm)).canEdit).toBe(false);
+    expect((await delBlocked(other.noPerm, "직원추가")).status).toBe(403);
+    // 격리: 다른 쇼핑몰의 제외 단어는 이 쇼핑몰에 영향이 없고 삭제도 못 한다
+    await s.make("직원추가 상품");
+    await search(s, "직원추가");
+    expect((await popular(s.slug)).terms).toEqual(["직원추가"]);
+    expect((await delBlocked(s.owner, "직원추가")).body.error).toBe("term_not_found");
+    expect((await listBlocked(other.owner)).terms.map((t) => t.term)).toEqual(["직원추가"]);
+  });
+
+  it("추가·삭제가 로그 추적에 남는다", async () => {
+    const s = await shop();
+    await addBlocked(s.owner, "비속어");
+    await addBlocked(s.owner, "비속어"); // 이미 있으면 새 기록 없음
+    await delBlocked(s.owner, "비속어");
+    const logs = await db.auditLog.findMany({ where: { sellerId: s.seller.id, action: { startsWith: "shop_search.blocked_term" } }, orderBy: { createdAt: "asc" } });
+    expect(logs.map((l) => l.action)).toEqual(["shop_search.blocked_term.add", "shop_search.blocked_term.remove"]);
   });
 });

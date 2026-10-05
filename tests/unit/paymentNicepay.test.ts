@@ -44,7 +44,9 @@ describe("나이스페이 어댑터(샌드박스)", () => {
   });
 
   it("resultCode가 0000이 아니면 거절(rejected)", async () => {
-    expect(await gateway(() => json({ resultCode: "3011", resultMsg: "카드 거절" })).gw.approve({ tid: "T1", amount: 13000 })).toEqual({ kind: "rejected", code: "nicepay_3011" });
+    // 거절 문구(resultMsg)는 진단용으로 함께 돌려준다(100자까지, 없으면 생략)
+    expect(await gateway(() => json({ resultCode: "3011", resultMsg: "카드 거절" })).gw.approve({ tid: "T1", amount: 13000 })).toEqual({ kind: "rejected", code: "nicepay_3011", message: "카드 거절" });
+    expect(await gateway(() => json({ resultCode: "3011" })).gw.approve({ tid: "T1", amount: 13000 })).toEqual({ kind: "rejected", code: "nicepay_3011" });
   });
 
   it("타임아웃은 결과 모름(unknown)", async () => {
@@ -78,7 +80,9 @@ describe("나이스페이 어댑터(샌드박스)", () => {
     expect(gw.verifyAuthResult({ ...auth, signature: sig.toUpperCase() })).toBe(true);
     expect(gw.verifyAuthResult({ ...auth, amount: "100", signature: sig })).toBe(false);
     expect(gw.verifyAuthResult({ ...auth, clientId: "other", signature: sha256Hex(`ATother13000${SECRET}`) })).toBe(false);
-    expect(gw.verifyWebhook(paidBody())).toEqual({ tid: "T1" });
+    expect(gw.verifyWebhook(paidBody())).toEqual({ tid: "T1", status: "paid" });
+    // 모르는 status는 종류로 남기지 않는다(서명이 맞아도 본문 값을 그대로 믿지 않음)
+    expect(gw.verifyWebhook({ ...paidBody(), status: "weird" })).toEqual({ tid: "T1" });
     expect(gw.verifyWebhook({ ...paidBody(), amount: 1 })).toBeNull();
     expect(gw.verifyWebhook("x")).toBeNull();
   });

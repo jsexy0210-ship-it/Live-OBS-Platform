@@ -29,7 +29,7 @@ const make = (page: Page, name: string, status: string, stock: number | null) =>
 const serverProduct = (page: Page, id: string) =>
   page.evaluate(async (id) => {
     const p = await (await fetch(`/api/seller/products/${id}`)).json();
-    return { status: p.status as string, stock: (p.options?.[0]?.stock ?? null) as number | null };
+    return { status: p.status as string, price: p.price as number, stock: (p.options?.[0]?.stock ?? null) as number | null };
   }, id);
 const row = (page: Page, name: string) => page.getByTestId("product-row").filter({ hasText: name });
 
@@ -66,7 +66,7 @@ test("재고를 목록에서 바꾸면 서버에 반영되고, 그사이 바뀌�
   await login(page);
   const p = await make(page, `${PREFIX}-재고`, "ON_SALE", 10);
   await page.goto(`/seller/products?q=${encodeURIComponent(PREFIX)}`);
-  const input = row(page, `${PREFIX}-재고`).getByRole("textbox", { name: /재고/ });
+  const input = row(page, `${PREFIX}-재고`).getByRole("textbox", { name: /재고$/ });
   await expect(input).toHaveValue("10");
   await input.fill("7");
   expect((await serverProduct(page, p.id)).stock).toBe(10);
@@ -92,6 +92,66 @@ test("재고를 목록에서 바꾸면 서버에 반영되고, 그사이 바뀌�
   expect((await serverProduct(page, p.id)).stock).toBe(3);
 });
 
+test("판매가를 목록에서 바꾸고, 판매가·판매 상태·재고 변경은 토스트의 되돌리기로 원래 값을 되찾는다", async ({ page }) => {
+  await login(page);
+  const p = await make(page, `${PREFIX}-되돌리기`, "ON_SALE", 10);
+  await page.goto(`/seller/products?q=${encodeURIComponent(PREFIX)}`);
+  const r = row(page, `${PREFIX}-되돌리기`);
+  const undo = page.getByRole("button", { name: "되돌리기", exact: true });
+
+  // 판매가
+  const priceButton = r.getByRole("button", { name: /가격 변경/ });
+  await expect(priceButton).toHaveText("1,000원");
+  await priceButton.click();
+  const price = r.getByRole("textbox", { name: /가격$/ });
+  await expect(price).toHaveValue("1000");
+  await price.fill("2500");
+  await price.press("Enter");
+  await expect(page.getByText("판매가를 2,500원으로 바꿨습니다")).toBeVisible();
+  expect((await serverProduct(page, p.id)).price).toBe(2500);
+  await undo.click();
+  await expect(page.getByText("판매가를 되돌렸습니다")).toBeVisible();
+  expect((await serverProduct(page, p.id)).price).toBe(1000);
+  await expect(priceButton).toHaveText("1,000원");
+  // 0원 같은 값은 서버에 보내지 않고 원래 값으로 되돌린다
+  await priceButton.click();
+  await price.fill("0");
+  await price.press("Enter");
+  await expect(page.getByText("판매가는 1원 이상의 숫자로 입력해 주십시오")).toBeVisible();
+  await expect(priceButton).toHaveText("1,000원");
+  expect((await serverProduct(page, p.id)).price).toBe(1000);
+
+  // 판매 상태
+  await r.getByRole("combobox", { name: /판매 상태/ }).selectOption("SOLD_OUT");
+  await expect(page.getByText("판매 상태를 품절(으)로 바꿨습니다")).toBeVisible();
+  expect((await serverProduct(page, p.id)).status).toBe("SOLD_OUT");
+  await undo.click();
+  await expect(page.getByText("판매 상태를 되돌렸습니다")).toBeVisible();
+  expect((await serverProduct(page, p.id)).status).toBe("ON_SALE");
+  await expect(r.getByRole("combobox", { name: /판매 상태/ })).toHaveValue("ON_SALE");
+
+  // 재고: 되돌리기 전에 다른 곳에서 재고가 또 바뀌었으면 되돌리지 않고 알린다
+  const stock = r.getByRole("textbox", { name: /재고$/ });
+  await stock.fill("7");
+  await stock.press("Enter");
+  await expect(page.getByText("재고를 7개로 바꿨습니다")).toBeVisible();
+  await page.evaluate(async ({ id, optionId }) => {
+    await fetch(`/api/seller/products/${id}/options/${optionId}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ stock: 4, expectedStock: 7 }) });
+  }, { id: p.id, optionId: p.optionId });
+  await undo.click();
+  await expect(page.getByText("그사이 재고가 변경되어 되돌리지 않았습니다")).toBeVisible();
+  expect((await serverProduct(page, p.id)).stock).toBe(4);
+  // 바뀌지 않았으면 직전 값으로 돌아간다(여기서는 4)
+  await expect(stock).toHaveValue("4");
+  await stock.fill("9");
+  await stock.press("Enter");
+  await expect(page.getByText("재고를 9개로 바꿨습니다")).toBeVisible();
+  await undo.click();
+  await expect(page.getByText("재고를 되돌렸습니다")).toBeVisible();
+  expect((await serverProduct(page, p.id)).stock).toBe(4);
+  await expect(stock).toHaveValue("4");
+});
+
 test("목록 조건 쿼리: ?stock=out·?display=shown으로 열면 그 조건으로 걸러 보인다", async ({ page }) => {
   await login(page);
   await make(page, `${PREFIX}-재고없음`, "ON_SALE", 0);
@@ -112,5 +172,5 @@ test("상품 관리 권한이 없는 직원에게는 빠른 처리 칸이 보이
   await page.goto(`/seller/products?q=${encodeURIComponent(PREFIX)}`);
   // 상품 목록 권한이 없으면 안내 화면이라 행이 없고, 있어도 입력 칸이 없다
   await expect(page.getByRole("combobox", { name: /판매 상태/ })).toHaveCount(0);
-  await expect(page.getByRole("textbox", { name: /재고/ })).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: /재고$/ })).toHaveCount(0);
 });

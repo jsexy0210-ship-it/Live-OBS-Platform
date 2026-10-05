@@ -19,13 +19,17 @@ export const IMPERSONATION_TTL_MS = 30 * 60_000;
 export const REASON_MAX = 200;
 // 대리 조회로 열리는 파트너스 API(조회 권한 표 IMPERSONATION_READ_ACTIONS와 맞춘다). 이 밖은 proxy가 403으로 막는다.
 export const IMPERSONATION_API_PREFIXES = ["/api/seller/orders", "/api/seller/members", "/api/seller/products", "/api/seller/stats", "/api/seller/impersonation"] as const;
+// 파트너스 화면 틀(SellerShell)이 처음에 읽는 내 정보. 하위 경로(/me/password 등)는 열지 않는 정확 일치만 허용한다.
+export const IMPERSONATION_API_EXACT = ["/api/seller/me"] as const;
+// 대리 조회에서 화면 틀이 메뉴를 고르는 데만 쓰는 권한 표시(IMPERSONATION_READ_ACTIONS 중 화면 권한). 서버 권한은 이 값과 무관하게 readOnly 컨텍스트가 정한다.
+export const IMPERSONATION_VIEW_PERMISSIONS = ["ORDER_SHIPPING", "PRODUCT_MANAGE", "MEMBER_POINTS", "SALES_VIEW"] as const;
 
 export const isImpersonationToken = (t: string | undefined): t is string => !!t && t.startsWith(IMPERSONATION_PREFIX);
 
 // proxy가 쓴다: 대리 조회 쿠키가 있는 요청이 이 경로·방식이면 통과
 export function impersonationRequestAllowed(method: string, pathname: string): boolean {
   if (method !== "GET" && method !== "HEAD") return false;
-  return IMPERSONATION_API_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+  return (IMPERSONATION_API_EXACT as readonly string[]).includes(pathname) || IMPERSONATION_API_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
 type Meta = { ip?: string | null; userAgent?: string | null };
