@@ -1,4 +1,4 @@
-# 쉬운 말 · 확인 창 · 표 규칙 전수 감사 (2026-10-06 KST)
+# 쉬운 말 · 확인 창 · 표 규칙 · 일시 · 날짜 입력 · 필터 기본값 전수 감사 (2026-10-06 KST)
 
 대표님 지시(2026-10-06, 문서 PR #627 `docs/DESIGN_PROMPT.md` 「쉬운 말」「확인 창 필수」「표 클릭 제목 열 위치」「표 겹침·정렬 전수 수정」) 전수 감사입니다. **이 문서는 감사 결과만 담으며 화면 코드는 고치지 않았습니다.** 고치는 일은 아래 소유 세션이 합니다.
 
@@ -8,29 +8,39 @@
 - ② 확인 창 필수: 저장·삭제·변경·상태 변경·일괄 처리인데 확인 창 없이 바로 서버로 가는 곳(조회·검색·필터·정렬·이동 제외)
 - ③ 표 클릭 제목 열: 눌러서 들어가는 제목·이름 열이 맨 왼쪽 첫 열(체크 칸 다음)·왼쪽 정렬이 아닌 곳(상품 열 제외)
 - ④ 표 겹침·가운데 정렬 누락
+- ⑤ 일시 표시(PR #630): 모든 일시는 `2026.10.05 22:25`(연월일+시분)
+- ⑥ 기본 날짜 입력(PR #631·#632): 브라우저 기본 `type=date`·`datetime-local` 사용처(공용 날짜 선택 부품으로 교체 대상)
+- ⑦ 검색 필터 기본값: 기간 최근 1개월·선택 상자 전체·정렬 최신순·20개가 아닌 곳
+- 공용 함수·부품 교체(일시 서식 함수, 날짜 선택, 필터 기본값 부품)는 레이아웃 (5)가 하므로 ⑤⑥⑦ 표에는 화면·현재 상태만 적었습니다.
 
 - **①②는 코드 점검**(영역별 4개 묶음으로 화면 파일·컴포넌트를 읽고 문구·변경 호출(POST·PUT·PATCH·DELETE)을 찾음, 약 300개 파일). 화면을 눌러 본 것이 아니라 코드에 있는 문구와 흐름 기준입니다. 서버가 내려 주는 오류 `message`는 구매자·인증 일부만 확인했습니다.
 - **③④는 화면 측정**: 최신 main(`e373f4ce`) 빌드 + 폐기 DB 데모 시드에서 로그인해 메뉴·첫 상세 화면 약 100개를 1440·390 폭으로 열고 표의 첫 열·링크 열·정렬·칸 넘침·겹침을 측정했습니다. 시드에 데이터가 없는 목록, 표(table)가 아닌 카드·행 목록(리뷰·문의·공지 등), 오류·빈 화면 상태, 시험 서버(`test.on-aircue.com`, 비밀번호를 받지 못함)는 **미확인**입니다.
 
 ## 2. 요약 (소유 세션별 건수)
 
-| 소유 세션 | ① 쉬운 말 | ② 확인 창 | ③ 제목 열 | ④ 표 겹침·정렬 | 비고 |
-|---|---|---|---|---|---|
-| 레이아웃 전담 (5) (`session_017WgBx8FtCk7jBgmCL4id5V`) | 16 | 2 | 0 | 0 |  |
-| 화면-마스터 (2) (`session_01745GgCnQxQhtnpCd5Pv88w`) | 69 | 28 | 7 | 3 |  |
-| 화면-파트너스 운영 (3) (`session_016P8zSbRmKFuuWC9krz69jq`) | 46 | 25 | 1 | 6 |  |
-| 쇼핑몰 운영 전담 (2) (`session_01WDkrYfwDz7o3oD8f2PeSvP`) | 15 | 16 | 2 | 1 | 보관 상태 — MASTER 재배정 필요 |
-| 화면-설정 (2) (`session_014yzgBefSGaxVp7o6eBETzb`) | 42 | 20 | 1 | 2 |  |
-| 화면-방송 (2) (`session_01LEN2yPC22mYAT7r16f4RJ6`) | 34 | 19 | 1 | 4 |  |
-| 통계 전담 (2) (`session_01GPhc7Kd9oq7YFPv4Tar4ZX`) | 11 | 1 | 0 | 0 | 보관 상태 — MASTER 재배정 필요 |
-| 도우미 전담 (2) (`session_01179Trx8rmw3gteLPm2YqPm`) | 1 | 1 | 0 | 0 |  |
-| 개발 전담 (화면) (3) (`session_01BwVsBQrQRL49RsUn9ejKYw`) | 32 | 20 | 0 | 0 |  |
-| 구매자 쇼핑몰 전담 (2) (`session_01KEhmqBBhjTGfGfHyRzEFcy`) | 32 | 29 | 0 | 0 |  |
-| 화면-공개 (2) (`session_01VWVPemvkt3eicZ8fDRLSAR`) | 9 | 0 | 0 | 0 | 보관 상태 — MASTER 재배정 필요 |
-| 개발 전담 (기반) (6) (`session_014TjcA8RirjWptikziBwasM`) | 11 | 0 | 0 | 0 | 서버 응답 문구 |
-| **합계** | **318** | **161** | **12** | **16** | |
+| 소유 세션 | ① 쉬운 말 | ② 확인 창 | ③ 제목 열 | ④ 표 겹침·정렬 | ⑤ 일시 | ⑥ 날짜 입력 | ⑦ 필터 기본값 | 비고 |
+|---|---|---|---|---|---|---|---|---|
+| 레이아웃 전담 (5) (`session_017WgBx8FtCk7jBgmCL4id5V`) | 16 | 2 | 0 | 0 | 18 | 2 | 8 |  |
+| 화면-마스터 (2) (`session_01745GgCnQxQhtnpCd5Pv88w`) | 69 | 28 | 5 | 3 | 31 | 5 | 15 |  |
+| 화면-파트너스 운영 (3) (`session_016P8zSbRmKFuuWC9krz69jq`) | 46 | 25 | 0 | 6 | 13 | 2 | 8 |  |
+| 쇼핑몰 운영 전담 (2) (`session_01WDkrYfwDz7o3oD8f2PeSvP`) | 15 | 16 | 1 | 1 | 11 | 5 | 3 | 보관 상태 — MASTER 재배정 필요 |
+| 화면-설정 (2) (`session_014yzgBefSGaxVp7o6eBETzb`) | 42 | 20 | 0 | 2 | 9 | 1 | 3 |  |
+| 화면-방송 (2) (`session_01LEN2yPC22mYAT7r16f4RJ6`) | 34 | 19 | 1 | 4 | 4 | 2 | 2 |  |
+| 통계 전담 (2) (`session_01GPhc7Kd9oq7YFPv4Tar4ZX`) | 11 | 1 | 0 | 0 | 3 | 1 | 1 | 보관 상태 — MASTER 재배정 필요 |
+| 도우미 전담 (2) (`session_01179Trx8rmw3gteLPm2YqPm`) | 1 | 1 | 0 | 0 | 0 | 0 | 0 |  |
+| 개발 전담 (화면) (3) (`session_01BwVsBQrQRL49RsUn9ejKYw`) | 32 | 20 | 0 | 0 | 6 | 0 | 0 |  |
+| 구매자 쇼핑몰 전담 (2) (`session_01KEhmqBBhjTGfGfHyRzEFcy`) | 32 | 29 | 0 | 0 | 5 | 0 | 3 |  |
+| 화면-공개 (2) (`session_01VWVPemvkt3eicZ8fDRLSAR`) | 9 | 0 | 0 | 0 | 3 | 0 | 0 | 보관 상태 — MASTER 재배정 필요 |
+| 개발 전담 (기반) (6) (`session_014TjcA8RirjWptikziBwasM`) | 11 | 0 | 0 | 0 | 0 | 0 | 0 | 서버 응답 문구 |
+| **합계** | **318** | **161** | **7** | **16** | **103** | **18** | **43** | |
 
 ※ 같은 문제가 반복되는 곳은 표에서 「외 N곳」으로 묶었습니다(파일:줄 모두 적음). 실제 고칠 곳은 건수보다 많습니다.
+
+### ⑤⑥⑦ 주요 발견(코드 점검, 화면 실행 아님)
+
+- ⑤ 기준 `2026.10.05 22:25`와 같은 곳은 파트너스 관리자의 `kstText` 사용처뿐입니다. 연도 없는 `10/5 22:25`는 방송 이력·HIT·직원·구매자 주문 등, 점+공백 `2026. 10. 05. 22:25`는 마스터 관리자 전체와 적립금, 날짜만 나오는 형식은 `2026. 10. 05.`·`2026년 10월 5일`·`2026-10-05` 등 여러 가지입니다. 「N분 전」 상대 표현 1곳, `toLocaleDateString` 1곳, `10.05` 같은 약식도 있습니다. 같은 서식 함수가 파일마다 복제돼 있습니다(`stamp` 5개·`kst` 4개·`kstDate` 6개·`DAY` 5개). 화면에서 시각이 의미 없는 값(생년월일·기간 날짜 등)은 표에 「날짜 전용」으로 표시했습니다.
+- ⑥ `type="date"` 입력 21곳, `type="datetime-local"` 9곳(`time`·`month`는 없음).
+- ⑦ 기간 필터가 빈 값으로 시작하거나 초기화되는 곳: 마스터 청구·결제 내역, 구독료 수납 현황(비우면 오늘 하루), 로그 추적, 파트너스 상세 방송 이력 탭, 파트너스 상품 목록·구매자 문의·HIT 카드 이력·방송 이력·주문 목록. 통계 기본 기간은 7일, 마스터 대시보드는 30일입니다. 첫 탭이 「전체」가 아닌 업무 큐(환불 요청·파트너스 문의·배송 등)는 업무 큐 의도인지 대표님 판단이 필요합니다. 페이지 크기는 50이 대부분이고 재고 200·구매자 상품 목록 24입니다. 선택 상자는 모두 「전체」로 시작해 어긋난 곳이 없습니다.
 
 ## 3. 적용 순서 · 의존
 
@@ -43,7 +53,8 @@
 - 「주문대기」: `DESIGN_PROMPT.md`가 정한 공식 용어인데 쉬운 말 기준에는 어렵다는 지적이 있습니다. 유지할지 정해 주십시오(안: 「방송 주문 목록」).
 - 「HIT 카드」·「플랜(이용권)」 등 대체어: 확정 뒤 한 번에 바꿉니다(안: 「당첨 카드」, 「이용권」).
 - 방송 중 빠른 조작에 확인 창을 붙일지: 「확인 창 필수 — 예외 없음」과 방송 진행 속도가 충돌합니다. 권고: 방송 중 개봉 시작·완료는 예외로 두고 취소·되돌리기·방송 종료만 확인.
-- 주문 표의 클릭 제목 열: 새 규칙은 「주문번호」를 첫 열 왼쪽 정렬로 두라고 하고, 기존 「표 정렬」 규칙은 주문번호를 가운데로 둡니다. 어느 쪽인지 디자인 확정이 필요합니다.
+- **결정(MASTER, 대표님 확정): 클릭 제목 열은 맨 왼쪽 첫 열**에 두고, 글자 정렬은 **기존 표 규칙**(기본 가운데, 읽어야 하는 글·회원명+부가정보 등 `.col-text` 열만 왼쪽)을 따릅니다. 그래서 ③은 **위치**만 봅니다(정렬 어긋남은 ④). 주문번호는 첫 열·가운데입니다.
+- **쉬운 말 문구 처리 규칙(PR #637 `docs/DESIGN_PROMPT.md`)**: 쉬운 말 문구는 코드를 먼저 고치고, 디자인 보드 반영이 필요한 문구는 PR 본문의 「디자인 문구 반영 대기」 목록에 적어 디자인 전담에 넘깁니다. 코드 PR이 디자인 반영을 기다리지 않습니다.
 - 「판매자」 표기가 파트너스 관리자 화면에 남은 곳: 발송 비용 안내문 본문 3곳과 정본 `docs/terms/SELLER_MESSAGE_FEE_NOTICE.md`, 반품 「판매자 사정」(`returns/page.tsx`), 상품 폼 「판매자별 순번」(`ProductForm.tsx`), 마스터 자동 연결 상세(`ops/automation/[jobId]/page.tsx:100`). 파트너스 관리자 화면에서는 「파트너스」로 씁니다.
 - 메뉴 이름과 화면 제목 불일치(「배송 설정」/「배송비 정책」, 「공유 설정」/「공유 미리보기」), 검색 노출 화면 안내문이 없는 기능(공유 설정의 이미지·파비콘 올리기)을 가리킴, 알림 화면 안내문이 실제 알림 종류(입금 확인·결제 완료·재고 없음·반품 요청)를 다 말하지 않음.
 - 동작 이상: 마스터 메뉴 「자동 연결 작업」 주소가 틀려 「준비 중입니다」가 뜸(`app/(admin)/admin/_components/menu.ts:45`, 실제 화면은 `/admin/ops/automation`), 마스터 상단 「내 계정」이 눌리지 않음(`AdminShell.tsx:89`, 내 계정 화면은 이미 있음).
@@ -80,6 +91,49 @@
 |---|---|---|---|---|---|---|
 | (ID 없음) | 모든 화면 상단 | 「로그아웃」 | 누르면 바로 POST /api/admin/auth/logout | 제목 「로그아웃하시겠습니까?」 / 「이 기기에서 마스터 관리자 로그인이 끝납니다.」 / [취소] [로그아웃] | 보통 | app/(admin)/admin/_components/AdminShell.tsx:52-57,92-94 |
 | (ID 없음) | 상단 「로그아웃」 | 누르면 바로 POST /api/seller/auth/logout | 「로그아웃하시겠습니까?」/「다시 로그인해야 이 화면을 쓸 수 있습니다」/[취소][로그아웃] | 보통 | components/seller/SellerShell.tsx:351,353,403 |
+
+**⑤ 일시 표시 (18)**
+
+| 화면ID | 경로 | 항목 | 현재 형식 | 서식 출처 | 파일:줄 |
+|---|---|---|---|---|---|
+| (기준) | 파트너스 공용 | 모든 `kstText` 사용처 | `2026.10.05 22:25` **[일치]** (한 자리 0 채움, 24시간, KST) | 공용 `kstText(iso)` (배너 화면 `_shared/ui.tsx` 안에 있음 — 공용 위치가 아님) | `app/(seller)/seller/(shell)/banners/_shared/ui.tsx:33` |
+| SA-021 외 | 파트너스 주문 계열 | 주문 목록 첫 줄 시각 | 오늘이면 `22:25`, 아니면 `10/5 22:25` (연도 없음, 오늘 분기) | 공용 `listTime(iso)` | 정의 `components/seller/orders.ts:100` |
+| SA-042 | 회원 상세 주문 목록 | 주문 일시 · 주문일 | `22:25`/`10/5 22:25` + `10/5` | `listTime`, `listDate` | `components/seller/members/MemberOrders.tsx:72, 73` |
+| SA-023 | 환불 처리 모달 | 「닉네임 · 10월 5일 22:25 주문」 | `10월 5일 22:25` | `longTime` | `components/seller/RefundModal.tsx:184` |
+| MA-001 외 | 마스터 관리자 공용 | 모든 `dayTime` 사용처 | `2026. 10. 05. 22:25` (점+공백, 끝 점 없음 — 기준과 다름) | 공용 `dayTime(iso)`=`Intl.DateTimeFormat("ko-KR",…hour12:false)` | 정의 `app/(admin)/admin/_components/partners.ts:68` |
+| MA-012 | 파트너스 상세 탭(방송 이력·활동 기록·PG) | 방송 시작·종료 · 활동 기록 · 마지막 성공/실패 | 〃 | `dayTime` | `app/(admin)/admin/_components/PartnerTabs.tsx:113, 114, 246, 320, 322` |
+| MA 공용 | 마스터 관리자 공용 | 모든 `day` 사용처(날짜만) | `2026. 10. 05.` (끝 점 있음) | 공용 `day(iso)`=`Intl…year/month/day 2-digit` | 정의 `partners.ts:66` |
+| SA-033·034·032 외 | 적립금·충전금 화면 | 모든 `stamp`(파일마다 복제된 동일 함수 4개) | `2026. 10. 05. 22:25` (점+공백) | 각 파일 안 `stamp`=`Intl ko-KR year/month/day 2-digit + hour12:false` | `rewards/ledger/page.tsx:36`, `rewards/balances/page.tsx:27`, `rewards/live-payout/page.tsx:16`, `components/seller/members/MemberRewards.tsx:26` |
+| SA-042 | 회원 상세 적립금 내역 | 일시 | 〃 | 파일 안 `stamp` | `components/seller/members/MemberRewards.tsx:85` |
+| SA-090 | 구독 결제 내역 | 결제일(`paidAt ?? createdAt`) [일시 필요] · 이용 기간 [날짜 전용] | `2026. 10. 05.` | 파일 안 `DAY`(위와 별개 복제, 형식도 다름) | 정의 `components/seller/subscription/PaymentHistory.tsx:21`; 사용 `:53, :54` |
+| SA-051 | 오버레이 편집기(내 템플릿) | 만든 날짜 [일시 필요] | `2026. 10. 5.` (브라우저 시간대·로케일, KST 고정 아님) | `toLocaleDateString("ko-KR")` | `components/seller/OverlayEditor.tsx:836` |
+| SA-130·MA-002 | 상단 알림 팝오버(GNB) | 알림 시각 | `10. 05. 22:25` (연도 없음, 점+공백) | 파일 안 `kst` | 정의 `components/admin-ui/GnbTools.tsx:52`; 사용 `:222` |
+| SH-005~007 | 결제 진행(무통장 안내) | 「결제 기한 …까지예요」 | `10/5 22:25` | 파일 안 `kst`(복제) | 정의 `components/shop/OrderPay.tsx:20`; 사용 `:103` |
+| SH-003 | 상품 상세 리뷰 | 리뷰 작성일 | `2026.10.05` (날짜만, 기준과 같은 점 구분이나 시각 없음) [일시 필요 후보] | 파일 안 `kstDate` | 정의 `components/shop/ProductReviews.tsx:23`; 사용 `:95` |
+| SH-025 | 마케팅 수신 동의 | 「처리일 …」 | `2026년 10월 5일` (날짜만) [일시 필요 후보] | 파일 안 `kstDate`(`Intl`) | 정의 `components/shop/MarketingConsent.tsx:32`; 사용 `:62, 64` |
+| SH-031·032 | 쇼핑몰 약관·처리방침 | 시행일 [날짜 전용] | `2026년 10월 5일` | 인라인 `replace` | `components/shop/ShopLegal.tsx:17` |
+| SH-005 | 주문 오류 안내(서버가 글자로 내려줌) | 「11월 2일 오후 3시 5분부터 다시 주문할 수 있어요」 | `11월 2일 오후 3시 5분` (연도 없음, 오전/오후 12시간) | 서버 `purchaseRestrictedMessage` | `lib/server/orders/messages.ts:175-188` |
+| (참고) | 구매자 화면 | `EventPopup` 「오늘 하루 보지 않기」 | 날짜는 저장값(`2026-10-05` ISO)만 쓰고 화면에는 안 보임 — 표시 아님 | — | `components/shop/EventPopup.tsx:32, 40, 49` |
+
+**⑥ 기본 날짜 입력 (2)**
+
+| 화면ID | 경로 | 입력 | type | 용도 | 파일:줄 |
+|---|---|---|---|---|---|
+| MA-021·086 | 단가·제공량 변경 대화상자 | 적용 예정 시각 | datetime-local | 적용 예약 시각 | `app/(admin)/admin/_components/ValueDialog.tsx:70` |
+| SA-042·044 | 회원 상세 등급 수동 변경 | 고정 종료일 | date | 등급 고정 종료일 | `components/seller/members/MemberGradeAdjust.tsx:76` |
+
+**⑦ 검색 필터 기본값 (8)**
+
+| 화면ID | 경로 | 필터 | 현재 초기값/초기화 값 | 기준 값 | 파일:줄 |
+|---|---|---|---|---|---|
+| MA-011 | 〃 | 기간 | 기간 필터 없음 (상태·요금제·검색어만, 상태·요금제는 「전체」=일치) | 최근 1개월 | `partners/page.tsx:19-20` |
+| MA-024 | 〃 | 페이지 크기 | 50 | 20 | `billing/invoices/page.tsx:16, 22` |
+| MA-026 | 〃 | 페이지 크기 | 서버 기본값 의존 (`limit` 미전송, 서버 50) | 20 | `billing/refunds/page.tsx:27-29`, `lib/server/admin/subscriptionRefunds.ts:23` |
+| MA-070 | 〃 | 페이지 크기 | 50 | 20 | `logs/page.tsx:16, 22` |
+| SA-021 | 〃 | 결제 상태 | 선택 없음(= 전체, 다중 선택 메뉴 「전체」 체크) = 일치 · 페이지 20 = 일치 · 정렬 UI 없음(서버 최신순) | — | `orders/page.tsx:15, 42-46` |
+| SA-011 | 〃 | 페이지 크기 | 기본 50 (`limit: "50"`, 선택지 20·50·100) / 초기화해도 크기는 안 바뀜 | 20 | `products/page.tsx:50, 85, 128, 390` |
+| SA-011 | 〃 | 정렬 | 기본 `newest`(최근 등록순) = 일치 · 초기화로 안 바뀜 | 최신순 | `products/page.tsx:43-48, 85` |
+| SA-035 · SA-100 · SA-043 · SA-017 · SA-006 · SA-111 · SA-113 · SA-130 · SA-066 · SA-044 | 쿠폰·직원·구매 제한·재입고 알림·외부 쇼핑몰·공지·내 문의·알림·쇼핑몰 공지·등급 변동 | 필터 없는 목록 | 기간·상태 필터 없음(쿠폰은 상태 칩 「전체」=일치). 페이지는 모두 `limit` 미전송이며 서버 기본값 의존(값 미확인: 알림 30 `lib/server/notifications/service.ts:23`, 내 문의 20 `platform-inquiries/service.ts:27`) | 기간 최근 1개월 해당 시 / 20 | `coupons/page.tsx:144`, `staff/page.tsx:61`, `purchase-restrictions/page.tsx:54`, `products/restock-alerts/page.tsx:22`, `external-shops/page.tsx`, `notices/page.tsx:23`, `inquiries/page.tsx:24`, `notifications/page.tsx:32` |
 
 ### 화면-마스터 (2) — `session_01745GgCnQxQhtnpCd5Pv88w`
 
@@ -190,17 +244,15 @@
 | MA-012 | /admin/partners/[id] | 「대리 조회 끝내기」 | 누르면 바로 DELETE /api/admin/impersonation | 제목 「대신 보기를 끝내시겠습니까?」 / 「{쇼핑몰} 화면을 더 이상 볼 수 없습니다. 필요하면 사유를 쓰고 다시 시작해야 합니다.」 / [취소] [대신 보기 끝내기] | 보통 | app/(admin)/admin/(shell)/partners/[sellerId]/page.tsx:70-80,144-146 |
 | MA-012 | /admin/partners/[id] 메모 탭 | 「메모 남기기」 | 누르면 바로 POST …/sellers/{id}/notes(메모 삭제는 확인 창이 있음) | 제목 「메모를 남기시겠습니까?」 / 「관리자끼리만 보이고 파트너스에게는 보이지 않습니다.」 / [취소] [메모 남기기] | 보통 | app/(admin)/admin/_components/PartnerTabs.tsx:174-186,227-229 |
 
-**③ 클릭 제목 열 (7)**
+**③ 클릭 제목 열 (5)**
 
 | 화면ID | 경로 | 열 | 현재 | 고칠 안 |
 |---|---|---|---|---|
-| MA-023 | /admin/billing/subscriptions | 쇼핑몰 | 맨 왼쪽 첫 열이지만 가운데 정렬 | 왼쪽 정렬(공통 표 규칙의 제목 열 클래스) |
-| MA-011 | /admin/partners | 쇼핑몰 | 맨 왼쪽 첫 열이지만 가운데 정렬 | 왼쪽 정렬 |
-| MA-070 | /admin/logs | 쇼핑몰(링크) | 링크가 5번째 열, 첫 열은 「기록 시각」 | 눌러서 들어가는 열을 맨 왼쪽으로(예: 「쇼핑몰」을 첫 열로, 「상세」는 유지) — 로그 표는 시각 중심이라 판단 필요 |
-| MA-042 | /admin/ops/access | 파트너스 | 파트너스 이름은 글자뿐이고 링크는 오른쪽 「관리」 열 | 파트너스 이름 열을 첫 열 왼쪽 정렬 링크로 |
+| MA-070 | /admin/logs | 쇼핑몰(링크) | 링크가 5번째 열, 첫 열은 「기록 시각」 | 눌러서 들어가는 열(쇼핑몰)을 맨 왼쪽 첫 열로 — 로그 표는 시각 중심이라 판단 필요 |
+| MA-042 | /admin/ops/access | 파트너스 | 파트너스 이름은 글자뿐이고 링크는 오른쪽 「관리」 열 | 파트너스 이름 열을 첫 열 링크로 |
 | MA-041 | /admin/ops/live | 파트너스 | 같음 | 같음 |
 | MA-043 | /admin/ops/rewards | 파트너스 | 같음 | 같음 |
-| MA-001 | /admin(대시보드 순위 표) | 쇼핑몰 | 링크 열이 2번째(첫 열은 「순위」) | 순위 열이 순번이면 허용, 아니면 이름 열을 첫 열로 — 판단 필요 |
+| MA-001 | /admin(대시보드 순위 표) | 쇼핑몰 | 링크 열이 2번째(첫 열은 「순위」) | 순위가 순번이면 허용, 아니면 이름 열을 첫 열로 — 판단 필요 |
 
 **④ 표 겹침·정렬 (3)**
 
@@ -209,6 +261,72 @@
 | MA-013 | /admin/partners/applications (1440) | 「확인」 열(「이상 없음」·「확인 필요」 배지)이 왼쪽 정렬 | 배지 열은 가운데 |
 | MA-023 | /admin/billing/subscriptions (390) | 화면 가로 스크롤(너비 485 > 390) | 넘치는 칸 줄바꿈·말줄임 |
 | (표 공통) | /admin, accounts, accounts/roles, billing/plans(1440도), subscriptions, logs, ops/access, ops/live, ops/rewards, partners, partners/applications, settings/messages (390) | 표가 칸 안에서 가로 스크롤(카드형 아님) | ADMIN_OPS_UX 원칙 10(모바일 카드형)에 따라 카드형 전환 — 공통 부품 PR 뒤 |
+
+**⑤ 일시 표시 (31)**
+
+| 화면ID | 경로 | 항목 | 현재 형식 | 서식 출처 | 파일:줄 |
+|---|---|---|---|---|---|
+| MA-001 | /admin | 「… 기준」 | `2026. 10. 05. 22:25` | `dayTime` | `(shell)/page.tsx:302` |
+| MA-002 | /admin/notifications | 시각 | 〃 | `dayTime` | `notifications/page.tsx:74` |
+| MA-012 | /admin/partners/[sellerId] | 대리 조회 만료 · 마지막 주문 · 최근 로그인 · 다음 결제 · 연체 유예 | 〃 | `dayTime` | `partners/[sellerId]/page.tsx:140, 167, 199, 222, 226` |
+| MA-014 | /admin/partners/applications/[sellerId] | 신청일 · 점검 시각 | 〃 | `dayTime` | `partners/applications/[sellerId]/page.tsx:185, 208` |
+| MA-021 | /admin/billing/plans | 변경 예정 적용 시각 | 〃 | `dayTime` | `billing/plans/page.tsx:80` |
+| MA-023 | /admin/billing/subscriptions | 다음 결제 · 유예 | 〃 | `dayTime` | `billing/subscriptions/page.tsx:169, 173` |
+| MA-024 | /admin/billing/invoices | 청구일 · 결제일 | 〃 | `dayTime` | `billing/invoices/page.tsx:154, 171` |
+| MA-025 | /admin/billing/invoices/[paymentId] | 청구일 · 결제일 | 〃 | `dayTime` | `billing/invoices/[paymentId]/page.tsx:84, 85` |
+| MA-026 | /admin/billing/refunds | 요청 시각 | 〃 | `dayTime` | `billing/refunds/page.tsx:97` |
+| MA-027 | /admin/billing/refunds/[refundId] | 요청 · 처리 시각 · 환불 시각 · 결제일 | 〃 | `dayTime` | `billing/refunds/[refundId]/page.tsx:180, 201, 202, 211` |
+| MA-031 | /admin/settlement/pg | 마지막 성공/실패 | 〃 | `dayTime` | `settlement/pg/page.tsx:80, 130, 131` |
+| MA-042 | /admin/ops/access | 오버레이 마지막 접속 | 〃 | `dayTime` | `ops/access/page.tsx:127` |
+| MA-100 | /admin/ops/monitor | 가장 오래된 대기 · 장애 발생 · 자동 조치 · 점검 대기 · 작업 마지막 실행/성공 | 〃 | `dayTime` | `ops/monitor/page.tsx:71, 116, 153, 183, 219, 220` |
+| MA-110·111 | /admin/ops/automation, /[jobId] | 작업 시작 · 접수 · 단계 기록 · 환불 요청 · 테스트 표시 확인 | 〃 | `dayTime` | `ops/automation/page.tsx:103`, `ops/automation/[jobId]/page.tsx:94, 112, 121, 123` |
+| MA-051·052 | /admin/support/inquiries, /[inquiryId] | 마지막 글 · 작성 · 종료 · 메시지별 | 〃 | `dayTime` | `support/inquiries/page.tsx:116`, `support/inquiries/[inquiryId]/page.tsx:134, 140, 147` |
+| MA-055 | /admin/support/assistant | 자료 수정 시각 · 질문 시각 | 〃 | `dayTime` | `support/assistant/page.tsx:107, 140` |
+| MA-061 | /admin/accounts | 마지막 로그인 · 생성 | 〃 | `dayTime` | `accounts/page.tsx:74, 75` |
+| MA-070·071 | /admin/logs, /admin/logs/[logId] | 기록 시각 | 〃 | `dayTime` | `logs/page.tsx:149`, `logs/[logId]/page.tsx:63` |
+| MA-083 | /admin/settings/maintenance | 마지막으로 바꾼 시각 | 〃 | `dayTime` | `settings/maintenance/page.tsx:116` |
+| MA-086 | /admin/settings/messages | 변경 예정 적용 시각 | 〃 | `dayTime` | `settings/messages/page.tsx:124` |
+| MA-011 | /admin/partners | 체험 종료 [날짜 전용] · 가입일 [날짜 전용] · 승인일 [일시 필요] | `2026. 10. 05.` | `day` | `partners/page.tsx:154, 155, 156` |
+| MA-012 | /admin/partners/[sellerId] | 반려일 · 가입일 [날짜 전용] · 승인일 · 체험 종료 [날짜 전용] · 서비스 종료일 [날짜 전용] · 현재 이용 기간 시작~끝 [날짜 전용] | `2026. 10. 05.` | `day` | `partners/[sellerId]/page.tsx:184, 186, 187, 188, 189, 221` |
+| MA-013·014 | /admin/partners/applications(+/[sellerId]) | 접수일 [일시 필요] · 반려일 [일시 필요] | `2026. 10. 05.` | `day` | `partners/applications/page.tsx:155, 255`, `partners/applications/[sellerId]/page.tsx:186` |
+| MA-023 | /admin/billing/subscriptions | 체험 종료 · 현재 기간 끝 [날짜 전용] | `2026. 10. 05.` | `day` | `billing/subscriptions/page.tsx:167, 168` |
+| MA-024·025 | /admin/billing/invoices(+/[paymentId]) | 이용 기간 시작~끝 [날짜 전용] | `2026. 10. 05. ~ 2026. 10. 05.` | `day` | `billing/invoices/page.tsx:169`, `billing/invoices/[paymentId]/page.tsx:83` |
+| MA-026·027 | /admin/billing/refunds(+/[refundId]) | 청구 이용 기간 [날짜 전용] | 〃 | `day` | `billing/refunds/page.tsx:102`, `billing/refunds/[refundId]/page.tsx:209` |
+| MA-043 | /admin/ops/rewards | 실지급 켠 날 [일시 필요] | `2026. 10. 05.` | `day` | `ops/rewards/page.tsx:78` |
+| MA-053 | /admin/support/notices | 게시일 [일시 필요] | `2026. 10. 05.` | `day` | `support/notices/page.tsx:222` |
+| MA-041·100 | /admin/ops/monitor, /admin/ops/live | 「마지막 갱신」 | `22:25:10` (시각만, 초 포함) | 공용 `clock(ms)` | 정의 `app/(admin)/admin/_components/ops.ts:86`; `ops/monitor/page.tsx:47`, `ops/live/page.tsx:30` |
+| MA-041 | /admin/ops/live | 방송 경과 시간 | `1시간 5분` / `5분` (경과 시간, 일시 아님) | `elapsed()` | `ops.ts:55`; `ops/live/page.tsx:91` |
+| MA-032 | /admin/settlement/collection | 「기준입니다」 기간 · 일별 표 날짜 [날짜 전용] | `2026-10-05` (ISO 하이픈, 서버가 준 문자열 그대로) | 직접 출력 | `settlement/collection/page.tsx:85, 119` |
+
+**⑥ 기본 날짜 입력 (5)**
+
+| 화면ID | 경로 | 입력 | type | 용도 | 파일:줄 |
+|---|---|---|---|---|---|
+| MA-032 | /admin/settlement/collection | 시작일 / 종료일 | date ×2 | 기간 검색 | `app/(admin)/admin/(shell)/settlement/collection/page.tsx:65, 67` |
+| MA-024 | /admin/billing/invoices | 청구 시작일 / 청구 종료일 | date ×2 | 기간 검색 | `billing/invoices/page.tsx:103, 105` |
+| MA-070 | /admin/logs | 기록 시작일 / 기록 종료일 | date ×2 | 기간 검색 | `logs/page.tsx:99, 101` |
+| MA-012 | /admin/partners/[sellerId] 방송 이력 탭 | 방송 시작일 부터 / 까지 | date ×2 | 기간 검색 | `app/(admin)/admin/_components/PartnerTabs.tsx:70, 72` |
+| MA-083 | /admin/settings/maintenance | 시작 시각 / 종료 예정 시각 | datetime-local ×2 | 점검 예약 시각 | `settings/maintenance/page.tsx:139, 144` |
+
+**⑦ 검색 필터 기본값 (15)**
+
+| 화면ID | 경로 | 필터 | 현재 초기값/초기화 값 | 기준 값 | 파일:줄 |
+|---|---|---|---|---|---|
+| MA-011 | /admin/partners | 페이지 크기 | 50 (`PAGE`, `limit=50` 전송) / 초기화 후도 50 | 20 | `app/(admin)/admin/(shell)/partners/page.tsx:18, 25` |
+| MA-013 | /admin/partners/applications | 정렬 / 페이지 | 「오래 기다린 순」(서버, 오래된 순) · 칩 「전체」=일치 · limit 미전송(서버 전체) | 최신순 / 20 | `partners/applications/page.tsx:12, 45, 54` |
+| MA-023 | /admin/billing/subscriptions | 페이지 크기 | 50 / 초기화 후 50 (`EMPTY`는 access·q·plan만, 플랜 「전체」=일치) | 20 | `billing/subscriptions/page.tsx:41, 45, 42, 87` |
+| MA-024 | /admin/billing/invoices | 청구 기간 시작/종료 | `from:""`, `to:""` (빈 값) / 초기화도 `from:""`,`to:""` — 비우면 서버 조건 없음(코드로 추정) | 최근 1개월 | `billing/invoices/page.tsx:29, 54-56, 103, 105` |
+| MA-026 | /admin/billing/refunds | 상태 탭 | 「요청」(`"REQUESTED"`) — 「전체」 탭 아님 (대기 처리용 큐) | 전체 (업무 큐 의도면 판단 필요) | `billing/refunds/page.tsx:19` |
+| MA-031 | /admin/settlement/pg | 페이지 크기 | 50 | 20 | `settlement/pg/page.tsx:26, 28` |
+| MA-032 | /admin/settlement/collection | 기간 시작/종료 | `from:""`, `to:""` / 초기화 `apply({from:"",to:""})` — 비우면 서버가 「오늘 하루」로 처리(주석 `page.tsx:12`) | 최근 1개월 | `settlement/collection/page.tsx:12, 27, 61` |
+| MA-051 | /admin/support/inquiries | 상태 탭 | 「OPEN」(미답변 쪽) — 「전체」 아님 / 페이지 서버 50 (`limit` 미전송) | 전체 / 20 (업무 큐 의도면 판단 필요) | `support/inquiries/page.tsx:20, 22`, `lib/server/platform-inquiries/service.ts:28` |
+| MA-053 | /admin/support/notices | 페이지 크기 · 기간 | `limit` 미전송(서버 기본) · 기간 필터 없음 (상태·분류 「전체」=일치) | 20 · 최근 1개월 | `support/notices/page.tsx:19, 97-102` |
+| MA-055 | /admin/support/assistant | 질문 기록 필터 | 「답하지 못한 질문만」 `useState(true)` — 전체 아님 | 전체 | `support/assistant/page.tsx:23` |
+| MA-070 | /admin/logs | 기록 기간 시작/종료 | `from:""`, `to:""` / 초기화 `{...empty, sellerId: 유지}` — 빈 값 | 최근 1개월 | `logs/page.tsx:29, 54-56, 99, 101` |
+| MA-012 | /admin/partners/[sellerId] 방송 이력 탭 | 방송 시작일 부터/까지 | `{from:"",to:""}` / 초기화 `{from:"",to:""}` — 빈 값 (서버 조건 없음, 코드로 추정) · 페이지 `limit` 미전송 | 최근 1개월 / 20 | `app/(admin)/admin/_components/PartnerTabs.tsx:36-37, 75-79` |
+| MA-042 | /admin/ops/access | 페이지 | 서버 50 (`ACTIVITY_PAGE_SIZE`, `limit` 미전송) | 20 | `ops/access/page.tsx:29`, `lib/server/admin/ops.ts:14` |
+| MA-110 | /admin/ops/automation | 칩 | 「전체」(=일치) · 기간·페이지 지정 없음 | — | `ops/automation/page.tsx:37` |
+| MA-001 | /admin 대시보드 | 통계 기간 | 30일(`useState(30)`, 선택 7/30/90) — 「최근 1개월」과 근사(30일 ≠ 달력 1개월) | 최근 1개월 | `(shell)/page.tsx:140, 282` |
 
 ### 화면-파트너스 운영 (3) — `session_016P8zSbRmKFuuWC9krz69jq`
 
@@ -293,12 +411,6 @@
 | SA-047 | /seller/buyer-inquiries | 「답변 저장」 | 누르면 바로 PUT …/inquiries/{id}/answer (구매자에게 공개) | 「답변을 저장하시겠습니까?」 / 구매자에게 답변이 보이고 문의가 「답변 완료」가 됩니다. / [취소] [답변 저장] | 보통 | app/(seller)/seller/(shell)/buyer-inquiries/page.tsx:243, :299 |
 | SA-047 | /seller/buyer-inquiries | 「답변 지우기」 | 누르면 바로 PUT …/answer {answer:null} | 「답변을 지우시겠습니까?」 / 구매자에게 보이던 답변이 사라지고 문의가 「답변 대기」로 돌아갑니다. / [취소] [답변 지우기](위험 색) | 위험 | app/(seller)/seller/(shell)/buyer-inquiries/page.tsx:243, :294 |
 
-**③ 클릭 제목 열 (1)**
-
-| 화면ID | 경로 | 열 | 현재 | 고칠 안 |
-|---|---|---|---|---|
-| SA-021 | /seller/orders | (접수 시각 열이 링크) | 눌러서 들어가는 열이 「접수 시각」이고 가운데 정렬(주문번호·제목 열 없음) | 첫 열을 「주문번호 · 접수 시각」 왼쪽 정렬 링크로 — 주문번호는 새 규칙에서 클릭 제목 열 목록에 있음. 기존 「표 정렬」 규칙(주문번호 가운데)과 충돌하므로 디자인 확정 필요 |
-
 **④ 표 겹침·정렬 (6)**
 
 | 화면ID | 경로 | 현재 | 고칠 안 |
@@ -309,6 +421,44 @@
 | SA-014 | /seller/products/stock (390) | 「현재」「차이」「상태」 열이 왼쪽 정렬이고 「차이」 칸이 표 밖으로 나감 | 가운데 정렬 규칙 적용, 칸 폭 조정 |
 | SA-026 | /seller/orders/deposits (390) | 표가 가로 스크롤 | 모바일 카드형 |
 | SA-016 | /seller/products/display (390) | 표가 가로 스크롤 | 모바일 카드형 |
+
+**⑤ 일시 표시 (13)**
+
+| 화면ID | 경로 | 항목 | 현재 형식 | 서식 출처 | 파일:줄 |
+|---|---|---|---|---|---|
+| SA-029 | /seller/orders/refund-requests | 요청 시각 · 요청/처리/취소 상세 | `2026.10.05 22:25` **[일치]** | `kstText` | `orders/refund-requests/page.tsx:155, 309, 339, 345` |
+| SA-029 | /seller/returns | 상세 신청 일시 | `2026.10.05 22:25` **[일치]** | `kstText` | `returns/page.tsx:280` |
+| SA-021 | /seller/orders | 주문 일시(첫 줄 `listTime`, 둘째 줄 `listDate`) | `22:25` 또는 `10/5 22:25` + 둘째 줄 `10/5` | `listTime`, `listDate` | `orders/page.tsx:257, 259` |
+| SA-026 | /seller/orders/deposits | 주문 시각(「… 주문」) · 입금 기한 | `10/5 22:25` / 오늘이면 `22:25` | `listTime` | `orders/deposits/page.tsx:176, 181` |
+| SA-017 | /seller/products/restock-alerts | 다음 발송 예정 · 마지막 발송 | `10/5 22:25` / 오늘이면 `22:25` | `listTime` | `products/restock-alerts/page.tsx:82, 83` |
+| SA-046 | /seller/buyer-inquiries | 작성일 열 · 상세 헤더 · 「~ 답변」 | `10/5 22:25` / 오늘이면 `22:25` (열 이름 「작성일」인데 시각 포함) | `listTime` | `buyer-inquiries/page.tsx:200, 260, 285` |
+| SA-025 | /seller/shipping | 「주문번호 … · 날짜」 | `10/5` (일시여야 하면 **[일시 필요]**) | `listDate` | `shipping/page.tsx:269` |
+| SA-022 | /seller/orders/[orderId] | 머리 「닉네임 · 10월 5일 22:25 주문」, 브레드크럼 `22:25` | `10월 5일 22:25` (연도 없음, 한글 월일) | 공용 `longTime` | 정의 `orders.ts:107`; `orders/[orderId]/page.tsx:87, 103` |
+| SA-022 | /seller/orders/[orderId] | 접수 · 결제 · 환불 · 취소 · 발송 시각 | `2026-10-05 22:25:10` (하이픈, 초 포함) | 공용 `fullTime` | 정의 `orders.ts:113`; `orders/[orderId]/page.tsx:108, 160, 166, 185, 235` |
+| SA-014 | /seller/products/stock | 재고 이력 「담당자 · 시각」 | 올해: `10. 5. 22:25`, 올해가 아니면 `2025. 10. 5. 22:25` (연도 조건부, 한 자리 `5`) | 파일 안 `when()` + `Intl` 두 개 | 정의 `products/stock/page.tsx:768-777`; 사용 `:835` |
+| SA-043 | /seller/purchase-restrictions | 제한 기간 시작~끝 [날짜 전용 — 시각이 의미 있으면 일시 필요, 판단 필요] | `2026. 10. 05. ~ 2026. 10. 05.` | 파일 안 `DAY` | 정의 `purchase-restrictions/page.tsx:21`; 사용 `:166` |
+| SA-011 | /seller/products | 등록일 열 [일시 필요] | `10/05` (연도 없음, 월일 2자리 슬래시) | 파일 안 `shortDate` | 정의 `products/page.tsx:102`; 사용 `:539` |
+| SA-029 | /seller/returns | 목록 신청일 · 상세 환불 내역 | `10.05` / `10.05 22:25` (연도 없음) | `kstText(...).slice(5,10)` / `.slice(5,16)` | `returns/page.tsx:178, 358` |
+
+**⑥ 기본 날짜 입력 (2)**
+
+| 화면ID | 경로 | 입력 | type | 용도 | 파일:줄 |
+|---|---|---|---|---|---|
+| SA-046 | /seller/buyer-inquiries | 작성일 시작 / 끝 | date ×2 | 기간 검색 | `buyer-inquiries/page.tsx:145, 147` |
+| SA-011 | /seller/products | 등록일 시작 / 끝 | date ×2 | 등록일 기간 검색 | `products/page.tsx:367, 369` |
+
+**⑦ 검색 필터 기본값 (8)**
+
+| 화면ID | 경로 | 필터 | 현재 초기값/초기화 값 | 기준 값 | 파일:줄 |
+|---|---|---|---|---|---|
+| SA-021 | /seller/orders | 기간 | 선택 없음(`period: null`, `useUrlState` 기본 `""`) / 「필터 초기화」도 `period:""` — 전체 기간. 칩은 오늘·7일·30일만 있고 「1개월」 없음 | 최근 1개월 | `app/(seller)/seller/(shell)/orders/page.tsx:17-21, 41, 114-118` |
+| SA-011 | /seller/products | 등록일 시작/끝 | `from:""`, `to:""` / `resetAll`→`EMPTY` 빈 값 (오늘·7일·1개월·3개월 빠른 버튼은 있음, 기본 선택 없음) | 최근 1개월 | `products/page.tsx:85, 150, 160-164, 350-359` |
+| SA-014 | /seller/products/stock | 페이지 크기 | 200 (`OPTION_PAGE`) | 20 | `products/stock/page.tsx:36` |
+| SA-025 | /seller/shipping | 상태 탭 | 「ready」(배송 준비) — 「전체」 아님 · 페이지 50 | 전체(업무 큐 의도면 판단 필요) / 20 | `shipping/page.tsx:26, 59` |
+| SA-029 | /seller/returns | 페이지 | 서버 전체(`limit` 미전송, 서버 기본 미확인) · 탭 「all」=일치 | 20 | `returns/page.tsx:89, 96` |
+| SA-029 | /seller/orders/refund-requests | 상태 탭 | 「REQUESTED」(요청) — 「전체」 아님 · `limit` 미전송 | 전체(업무 큐 의도면 판단 필요) / 20 | `orders/refund-requests/page.tsx:72, 81` |
+| SA-046 | /seller/buyer-inquiries | 작성일 시작/끝 | `from:""`, `to:""` / 초기화 `{...EMPTY, status 유지}` — 빈 값 · 종류 「전체」=일치 · 페이지 서버 30 (`SELLER_INQUIRY_PAGE`) | 최근 1개월 / 20 | `buyer-inquiries/page.tsx:52, 133-136`, `lib/server/buyer-inquiries/service.ts:26` |
+| SA-026 | /seller/orders/deposits | 페이지 | 20 = 일치 (필터 없음) | — | `orders/deposits/page.tsx:18` |
 
 ### 쇼핑몰 운영 전담 (2) — `session_01WDkrYfwDz7o3oD8f2PeSvP` (보관 상태 — MASTER 재배정 필요)
 
@@ -353,11 +503,10 @@
 | SA-065 | /seller/banners/popups | 순서 바꾸기(▲ ▼·끌어서 놓기) | 누르는 즉시 PUT …/popups/reorder | 「팝업 순서를 바꾸시겠습니까?」 / 쇼핑몰에 뜨는 팝업의 우선순위가 바로 바뀝니다. / [취소] [순서 바꾸기] | 위험 | app/(seller)/seller/(shell)/banners/popups/page.tsx:135-141, :197-204 |
 | SA-065 | /seller/banners/popups | 「저장」(팝업 추가·수정) | 누르면 바로 POST …/popups 또는 PUT …/{id} | 「팝업을 저장하시겠습니까?」 / 「{제목}」이 쇼핑몰에 바로 반영됩니다. / [취소] [저장] | 위험 | app/(seller)/seller/(shell)/banners/popups/page.tsx:294-297, :435 |
 
-**③ 클릭 제목 열 (2)**
+**③ 클릭 제목 열 (1)**
 
 | 화면ID | 경로 | 열 | 현재 | 고칠 안 |
 |---|---|---|---|---|
-| SA-041 | /seller/members | 방송 닉네임 | 맨 왼쪽 첫 열이지만 가운데 정렬 | 왼쪽 정렬(회원명) |
 | SA-042 | /seller/members/[memberId] 주문 표 | (「상세」 링크 열) | 제목 열 없이 맨 오른쪽 「상세」만 링크 | 주문 번호·상품을 첫 열 링크로 |
 
 **④ 표 겹침·정렬 (1)**
@@ -365,6 +514,40 @@
 | 화면ID | 경로 | 현재 | 고칠 안 |
 |---|---|---|---|
 | SA-041·042 | /seller/members(+상세) (390) | 표가 가로 스크롤 | 모바일 카드형 |
+
+**⑤ 일시 표시 (11)**
+
+| 화면ID | 경로 | 항목 | 현재 형식 | 서식 출처 | 파일:줄 |
+|---|---|---|---|---|---|
+| SA-044 | /seller/member-grades | 다음 자동 재산정 · 등급 변동 이력(두 곳) | `2026.10.05 22:25` **[일치]** | `kstText` | `member-grades/page.tsx:183, 386, 413` |
+| SA-048 | /seller/reviews | 상세 작성 일시 | `2026.10.05 22:25` **[일치]** (같은 줄 「주문」 날짜는 ⑤-3) | `kstText` | `reviews/page.tsx:367` |
+| SA-035 | /seller/coupons | 사용 기간 시작~종료 · 저장 안내 「~부터 발급」 | `2026.10.05 22:25 ~ 2026.10.06 22:25` **[일치]** | `kstText` | `coupons/page.tsx:299, 482` |
+| SA-049 | /seller/member-messages | 상세 「예약 ~」 | `2026.10.05 22:25` **[일치]** | `kstText` | `member-messages/page.tsx:274` |
+| SA-064·065 | /seller/banners, /seller/banners/popups | 게시 기간 `periodText`(상시/~부터/~까지/~) | `2026.10.05 22:25 ~ …` **[일치]** | `periodText`→`kstText` | `banners/page.tsx:190`, `banners/popups/page.tsx:218`, `_shared/ui.tsx:40-44` |
+| 파트너스 공용 | components/seller/members/types.ts | 모든 `memberDay` 사용처(날짜만) | `2026. 10. 05.` | 공용 `memberDay(iso)` | 정의 `components/seller/members/types.ts:21` |
+| SA-041 | /seller/members | 가입일 [날짜 전용] · 마지막 접속 [일시 필요] | `2026. 10. 05.` | `memberDay` | `members/page.tsx:197, 198` |
+| SA-042 | /seller/members/[memberId] | 가입일 [날짜 전용] · 마지막 접속 [일시 필요] · 메모 「마지막 저장」 [일시 필요] · 구매 제한 시작/끝 [날짜 전용, 시각 의미 있는지 판단 필요] | `2026. 10. 05.` | `memberDay` | `members/[memberId]/page.tsx:107, 109`, `components/seller/members/MemberMemo.tsx:76`, `components/seller/members/MemberRestriction.tsx:96, 98` |
+| SA-048 | /seller/reviews | 목록 작성일 · 상세 「주문」 날짜 [일시 필요] | `10.05` (점 구분, 연도 없음) | `kstText(...).slice(5, 10)` | `reviews/page.tsx:231, 367` |
+| SA-049 | /seller/member-messages | 목록 시각 · 예약 완료 안내 · 「~으로 바꾸기」 · 예약 미리보기 · 「~에 N명」 | `10.05 22:25` (연도 없음) | `kstText(...).slice(5, 16)` | `member-messages/page.tsx:191, 434, 447, 564, 586` |
+| SA-044 | /seller/member-grades | 「~까지 고정」 | `10/05` (연도 없음, 슬래시) | 파일 안 `kstDay`=`kstText(…).slice(5,10).replace(".", "/")` | 정의 `member-grades/page.tsx:75`; 사용 `:359` |
+
+**⑥ 기본 날짜 입력 (5)**
+
+| 화면ID | 경로 | 입력 | type | 용도 | 파일:줄 |
+|---|---|---|---|---|---|
+| SA-035 | /seller/coupons 쿠폰 편집 | 사용 시작 / 사용 종료 | datetime-local ×2 | 쿠폰 사용 기간 | `coupons/page.tsx:590, 592` |
+| SA-049 | /seller/member-messages 예약 메시지 수정 | 예약 시각 | datetime-local | 예약 시각 변경 | `member-messages/page.tsx:345` |
+| SA-049 | /seller/member-messages 새 메시지 | 예약 시각 (KST) | datetime-local | 발송 예약 시각 | `member-messages/page.tsx:550` |
+| SA-064·065 | /seller/banners, /seller/banners/popups (공용 `PeriodFields`) | 시작 시각 / 종료 시각 | datetime-local ×2 | 게시 기간 | `banners/_shared/ui.tsx:53, 55` |
+| SA-044 | /seller/member-grades 회원 고정 | 「닉네임 고정 종료일」 | date | 등급 고정 종료일 | `member-grades/page.tsx:546` |
+
+**⑦ 검색 필터 기본값 (3)**
+
+| 화면ID | 경로 | 필터 | 현재 초기값/초기화 값 | 기준 값 | 파일:줄 |
+|---|---|---|---|---|---|
+| SA-041 | /seller/members | 페이지 크기 | 50 (`PAGE`) · 상태 「전체」=일치 · 기간 필터 없음 | 20 | `members/page.tsx:17, 24` |
+| SA-048 | /seller/reviews | 페이지 · 기간 | 서버 50 (`SELLER_PAGE`, `limit` 미전송) · 기간 필터 없음 · 탭 「all」·별점 「별점 전체」=일치 | 20 · 최근 1개월 | `reviews/page.tsx:95`, `lib/server/product-reviews/service.ts:178` |
+| SA-064 · SA-065 | /seller/banners, /popups | 목록 상한 | 서버가 배너 10 · 팝업 20 개까지만 허용(페이지가 아니라 등록 상한) | 해당 없음 | `lib/server/shop-content/service.ts:13-14` |
 
 ### 화면-설정 (2) — `session_014yzgBefSGaxVp7o6eBETzb`
 
@@ -440,18 +623,40 @@
 | SA-100 | /seller/staff | 수정 창 「저장」 (이름·휴대폰·권한 변경) | 입력 창에서 누르면 바로 PATCH /staff/{id} 와 POST /staff/{id}/permissions (확인 질문 없음. 권한은 즉시 적용, 휴대폰을 바꾸면 본인확인 연결이 풀림) | 「{이름} 직원 정보를 바꾸시겠습니까?」/「바뀌는 업무 허용: {추가/해제 목록}. 휴대폰 번호를 바꾸면 직원이 본인 확인을 다시 해야 합니다. 바로 적용됩니다」/[취소][변경 내용 저장] | 위험(권한 변경) | components/seller/StaffForms.tsx:236,241,252,350 |
 | SA-100 | /seller/staff | 권한 묶음 「방송만」「운영 전체」 | 화면 안에서 체크만 바꿈(서버 호출 없음) → 대상 아님 | (표 제외 대상) | - | components/seller/StaffForms.tsx:35,103 |
 
-**③ 클릭 제목 열 (1)**
-
-| 화면ID | 경로 | 열 | 현재 | 고칠 안 |
-|---|---|---|---|---|
-| SA-033 | /seller/rewards/balances | 회원 | 맨 왼쪽 첫 열이지만 가운데 정렬 | 왼쪽 정렬(회원명) |
-
 **④ 표 겹침·정렬 (2)**
 
 | 화면ID | 경로 | 현재 | 고칠 안 |
 |---|---|---|---|
 | SA-033 | /seller/rewards/balances (390) | 표가 가로 스크롤 | 모바일 카드형 |
 | SA-100 | /seller/staff (390) | 표가 가로 스크롤 | 모바일 카드형 |
+
+**⑤ 일시 표시 (9)**
+
+| 화면ID | 경로 | 항목 | 현재 형식 | 서식 출처 | 파일:줄 |
+|---|---|---|---|---|---|
+| SA-032 | /seller/rewards/ledger | 일시 열 | `2026. 10. 05. 22:25` | 파일 안 `stamp` | `rewards/ledger/page.tsx:131` |
+| SA-033 | /seller/rewards/balances | 최근 변동 | 〃 | 파일 안 `stamp` | `rewards/balances/page.tsx:140` |
+| SA-034 | /seller/rewards/live-payout | 마지막 변경 일시 | 〃 | 파일 안 `stamp` | `rewards/live-payout/page.tsx:85` |
+| SA-081 | /seller/settings/message-balance | 충전금 내역 일시 · 동의 저장 시각 | `10. 05. 22:25` (연도 없음, 점+공백, 월·일 2자리) | 파일 안 `stamp`(연도 빠진 Intl) | 정의 `settings/message-balance/page.tsx:62`; 사용 `:373, :449` |
+| SA-090 | /seller/subscription | 체험 종료 · 이용 기간 · 다음 결제 · 유예 · 해지 안내 · 변경 예정 · 플랜 변경 안내 | `2026년 10월 5일` (한글 날짜) | 파일 안 `DAY` | 정의 `subscription/page.tsx:41`; 사용 `:233, 246, 328, 335, 343, 350, 356, 367, 467` |
+| SA-081 | /seller/settings/message-balance | 「~부터 단가가 바뀝니다」 | `2026년 10월 5일` | 파일 안 `day` | 정의 `message-balance/page.tsx:64`; 사용 `:254` |
+| SA-066 | /seller/settings/shop-notices | 등록일 / 수정일(FAQ) [일시 필요] | `2026. 10. 05.` | 파일 안 `day` | 정의 `settings/shop-notices/page.tsx:26`; 사용 `:183` |
+| SA-100 | /seller/staff | 마지막 로그인 | `10/5 22:25` / `없음` | 파일 안 `kstShort` | 정의 `staff/page.tsx:39`; 사용 `:196` |
+| SA-062 | /seller/settings/legal | 「시행일 …」 [날짜 전용] | `2026년 10월 5일` | 파일 안 `korDate` | 정의 `settings/legal/page.tsx:35`; 사용 `:134` |
+
+**⑥ 기본 날짜 입력 (1)**
+
+| 화면ID | 경로 | 입력 | type | 용도 | 파일:줄 |
+|---|---|---|---|---|---|
+| SA-062 | /seller/settings/legal | 「약관·처리방침 시행일」 | date | 시행일 입력 | `settings/legal/page.tsx:143` |
+
+**⑦ 검색 필터 기본값 (3)**
+
+| 화면ID | 경로 | 필터 | 현재 초기값/초기화 값 | 기준 값 | 파일:줄 |
+|---|---|---|---|---|---|
+| SA-032 | /seller/rewards/ledger | 페이지 크기 | 50 · 상태 「전체」=일치 · 기간 필터 없음 | 20 | `rewards/ledger/page.tsx:29, 42, 49` |
+| SA-033 | /seller/rewards/balances | 페이지 크기 | 50 · 검색어 빈 값(검색어는 빈 값이 정상) | 20 | `rewards/balances/page.tsx:26, 33` |
+| SA-081 | /seller/settings/message-balance | 충전금 내역 페이지 | 50 (`limit=50`) | 20 | `settings/message-balance/page.tsx:91, 102` |
 
 ### 화면-방송 (2) — `session_01LEN2yPC22mYAT7r16f4RJ6`
 
@@ -522,16 +727,39 @@
 
 | 화면ID | 경로 | 열 | 현재 | 고칠 안 |
 |---|---|---|---|---|
-| SA-054 | /seller/broadcasts | 제목 | 링크 열이 2번째(첫 열은 「일시」) | 제목을 첫 열 왼쪽으로, 일시는 뒤로 |
+| SA-054 | /seller/broadcasts | 제목 | 링크 열이 2번째(첫 열은 「일시」) | 제목을 첫 열로, 일시는 뒤로 |
 
 **④ 표 겹침·정렬 (4)**
 
 | 화면ID | 경로 | 현재 | 고칠 안 |
 |---|---|---|---|
-| SA-001 | /seller/broadcast (390) | 「대기」 표: 머리글 「구매자 · 상품」이 겹쳐 글자가 뭉개지고 행 관리 버튼(↑ ↓ …)이 카드 오른쪽에서 잘림(캡처 `docs/design-gap/SA-001-live-orders-390.png`) | 칸 폭 재배분 또는 카드형으로 전환(버튼 2개 + 더보기) |
+| SA-001 | /seller/broadcast (390) | **처리됨(PR #580 병합, 표를 카드 안 가로 스크롤로) — 화면-방송 (2) 확인.** 감사 때 관찰: 「대기」 표: 머리글 「구매자 · 상품」이 겹쳐 글자가 뭉개지고 행 관리 버튼(↑ ↓ …)이 카드 오른쪽에서 잘림(캡처 `docs/design-gap/SA-001-live-orders-390.png`) | 칸 폭 재배분 또는 카드형으로 전환(버튼 2개 + 더보기) |
 | SA-001 | /seller/broadcast (1440·390) | 「구매자 · 상품」·「결과」 칸 내용이 칸 폭보다 길어 잘림(자동 측정) | 말줄임(…) + 툴팁, 최소 높이 유지 |
 | SA-057 | /seller/youtube (390) | 화면 가로 스크롤(너비 404 > 390) | 넘치는 요소를 줄바꿈·폭 제한 |
 | SA-054·055 | /seller/broadcasts(+상세) (390) | 표가 칸 안에서 가로 스크롤 | 모바일 카드형 또는 열 줄이기 |
+
+**⑤ 일시 표시 (4)**
+
+| 화면ID | 경로 | 항목 | 현재 형식 | 서식 출처 | 파일:줄 |
+|---|---|---|---|---|---|
+| SA-054·055·002·002-O | /seller/broadcasts, /seller/broadcasts/[id], /seller (홈) | 방송 시작 · 종료 · HIT 이력 · 주문 · 완료 시각 | `10/5 22:25` (연도 없음) | 공용 `kstDate`(방송 이력용) = `월/일 + kstTime` | 정의 `components/seller/broadcast/history.ts:7`; `broadcasts/page.tsx:135`, `broadcasts/[broadcastId]/page.tsx:156, 198, 238, 252, 293`, `components/seller/home/OverlayHome.tsx:102`, `components/seller/home/HomeDashboard.tsx:195` |
+| SA-001 | /seller/broadcast | 방송 시작 · 접수 · 완료 · 마지막 채팅 · 마지막 수집 · 「방금 완료」 | `22:25` (시각만, 날짜 없음) | 공용 `kstTime` | 정의 `components/seller/broadcast/queue.ts:60`; `broadcast/page.tsx:240, 379, 492, 550, 665, 674` |
+| SA-053 | /seller/hit-cards | 일시 열 | `10/5 22:25` (연도 없음) | 파일 안 `kstDate`(직접 문자열, `broadcast/history.ts`의 같은 이름 함수와 중복) | 정의 `hit-cards/page.tsx:43`; 사용 `:175` |
+| (ID 없음) | /seller/youtube | 「채널 … · 연결 시각 연결」 | `10/5 22:25` | 파일 안 `kstDate`(직접 문자열) | 정의 `youtube/page.tsx:50`; 사용 `:175` |
+
+**⑥ 기본 날짜 입력 (2)**
+
+| 화면ID | 경로 | 입력 | type | 용도 | 파일:줄 |
+|---|---|---|---|---|---|
+| SA-054 | /seller/broadcasts | 시작일 / 종료일 | date ×2 | 기간 검색 | `app/(seller)/seller/(shell)/broadcasts/page.tsx:87, 89` |
+| SA-053 | /seller/hit-cards | 시작일 / 종료일 | date ×2 | 기간 검색 | `hit-cards/page.tsx:131, 133` |
+
+**⑦ 검색 필터 기본값 (2)**
+
+| 화면ID | 경로 | 필터 | 현재 초기값/초기화 값 | 기준 값 | 파일:줄 |
+|---|---|---|---|---|---|
+| SA-053 | /seller/hit-cards | 기간 시작/끝 | `EMPTY={from:"",to:""}` / 초기화 `EMPTY` — 빈 값 · 페이지 서버 50 | 최근 1개월 / 20 | `hit-cards/page.tsx:32, 112-115, 131`, `lib/server/broadcast/hitCards.ts:21` |
+| SA-054 | /seller/broadcasts | 기간 시작/끝 | `EMPTY={from:"",to:""}` / 초기화 `EMPTY` — 빈 값 · 페이지 서버 50 | 최근 1개월 / 20 | `broadcasts/page.tsx:21, 34-35, 87`, `lib/server/broadcast/history.ts:10` |
 
 ### 통계 전담 (2) — `session_01GPhc7Kd9oq7YFPv4Tar4ZX` (보관 상태 — MASTER 재배정 필요)
 
@@ -556,6 +784,26 @@
 | 화면ID | 경로 | 행동 | 현재 동작 | 확인 창 문구 안 | 위험도 | 파일:줄 |
 |---|---|---|---|---|---|---|
 | SA-056 | /seller/stats/* | 엑셀 내려받기 | 서버 변경 없음(화면 자료를 CSV로 내려받음) → 확인 창 불필요 | (대상 아님: 조회·내보내기) | - | components/seller/stats/StatsFrame.tsx:107; app/(seller)/seller/(shell)/stats/page.tsx:77 |
+
+**⑤ 일시 표시 (3)**
+
+| 화면ID | 경로 | 항목 | 현재 형식 | 서식 출처 | 파일:줄 |
+|---|---|---|---|---|---|
+| SA-056 | /seller/stats/broadcasts | 방송 시작 열 · 방송 제목 없을 때 이름 「10.5 22:25 방송」 · 막대 라벨 `10.5` · 엑셀 시작/종료(KST) | `10.5 22:25` (점 구분, 연도 없음) | 파일 안 `kst` | 정의 `stats/broadcasts/page.tsx:14`; 사용 `:16, 31, 32, 54, 76` |
+| SA-056, MA-001 | /seller/stats/* , /admin 대시보드 | 그래프·표 구간 라벨(집계 구간, 일시 아님 [날짜 전용]) | 일 `10.5`, 주 `10.5 주`, 월 `2026.10`(한 자리 월은 `2026.9`) | 공용 `bucketLabel` | 정의 `components/seller/stats/parts.tsx:46`; 사용 `stats/page.tsx:104, 147`, `stats/sales/page.tsx:52, 134`, `stats/orders/page.tsx:52, 70`, `stats/members/page.tsx:40, 54`, `(admin)/(shell)/page.tsx:155` |
+| SA-056 | /seller/stats | 「직접 선택」 기간 안내 · CSV 파일명 | `2026-10-05 ~ 2026-10-05` (ISO 하이픈) [날짜 전용] | API 응답 `range.from/to` 그대로 | `stats/page.tsx:86` 등 CSV 머리말; 화면 입력 `StatsFrame.tsx:144` |
+
+**⑥ 기본 날짜 입력 (1)**
+
+| 화면ID | 경로 | 입력 | type | 용도 | 파일:줄 |
+|---|---|---|---|---|---|
+| SA-056 | /seller/stats 전체(요약·주문·매출·상품·회원·방송) | 시작일 / 종료일 | date ×2 | 통계 기간 선택(직접 입력) | `components/seller/stats/StatsFrame.tsx:144, 146` |
+
+**⑦ 검색 필터 기본값 (1)**
+
+| 화면ID | 경로 | 필터 | 현재 초기값/초기화 값 | 기준 값 | 파일:줄 |
+|---|---|---|---|---|---|
+| SA-056 | /seller/stats 전체 | 기간 | 기본 7일(`presetPeriod("7d","day")`, 묶음 단위 일, 직전 기간 비교 켬) / 프리셋 칩 오늘·7일·30일·이번 달 — 「1개월」 칩 없음 | 최근 1개월 | `components/seller/stats/StatsFrame.tsx:35, 60, 91-96` |
 
 ### 도우미 전담 (2) — `session_01179Trx8rmw3gteLPm2YqPm`
 
@@ -635,6 +883,17 @@
 | AU-012 | /seller/identity-link | 본인확인 완료 직후 계정 연결 | 본인확인을 마치면 클릭 없이 자동으로 POST /me/identity/link (직원 계정에 휴대폰이 연결됨) | 「이 휴대폰으로 내 계정을 연결하시겠습니까?」/「연결하면 아이디·비밀번호를 직접 찾을 수 있습니다」/[나중에 하기][연결하기] | 보통 | app/(seller)/seller/(shell)/identity-link/page.tsx:64,67 |
 | AU-002 | /seller/login | 로그인 | POST /api/seller/auth/login — 본인이 직접 하는 로그인이라 확인 창 불필요(대상 아님) | (대상 아님) | - | app/(seller)/seller/(shell)/login/page.tsx:71 |
 
+**⑤ 일시 표시 (6)**
+
+| 화면ID | 경로 | 항목 | 현재 형식 | 서식 출처 | 파일:줄 |
+|---|---|---|---|---|---|
+| SA-130 | /seller/notifications | 시각 열 | `2026.10.05 22:25` **[일치]** | `kstText` | `notifications/page.tsx:90` |
+| SA-113·115 | /seller/inquiries, /seller/inquiries/[id] | 마지막 글 · 작성 · 종료 · 메시지별 시각 | `2026.10.05 22:25` **[일치]** | `kstText` | `inquiries/page.tsx:93`, `inquiries/[id]/page.tsx:91, 92, 107` |
+| SA-111·112 | /seller/notices, /seller/notices/[id] | 게시일 열 · 「게시 …」 | `2026.10.05 22:25` **[일치]** | `kstText` | `notices/page.tsx:88`, `notices/[id]/page.tsx:67` |
+| SA-150~153 | /seller/automation, /[jobId], /[jobId]/done | 시작 · 확인 기한 · 완료 시각 | `10. 5. 22:25` (연도 없음, 월·일 한 자리 `5`, 점+공백) | 공용 `stamp(iso)` | 정의 `components/seller/automation/common.ts:51`; `automation/page.tsx:71`, `automation/[jobId]/page.tsx:90, 108`, `automation/[jobId]/done/page.tsx:53` |
+| SA-006 | /seller/external-shops | 연결일 [일시 필요] | `2026-10-05` (하이픈) | 파일 안 `date`=`Intl sv-SE` | 정의 `external-shops/page.tsx:37`; 사용 `:145` |
+| SA-006 | /seller/external-shops | 마지막 이벤트 | 「방금 전」 「N분 전」 「N시간 전」 「N일 전」 (상대 표현) | 파일 안 `ago()` | 정의 `external-shops/page.tsx:38-45`; 사용 `:144` |
+
 ### 구매자 쇼핑몰 전담 (2) — `session_01KEhmqBBhjTGfGfHyRzEFcy`
 
 **① 쉬운 말 (32)**
@@ -708,6 +967,24 @@
 | SH-011 | 회원가입 | 「인증번호 받기」「인증번호 다시 받기」「확인」(인증번호) | 누르면 바로 POST /signup/verification, /resend, /confirm(문자 발송·본인 확인) | 「인증번호를 받을까요?」 / 「{010-****-1234}로 문자를 보내요. 하루에 받을 수 있는 횟수가 정해져 있어요.」 / [취소] [받기] (「확인」은 확인 창 불필요) | 가벼운 쇼핑 행동 | components/shop/SignupForm.tsx:658 → 227, 703 → 271, 692 → 296·328 |
 | AU(구매자 로그인) | /shop/[slug]/login | 「로그인」 | 누르면 바로 POST /auth/login. 정보를 바꾸지 않는 인증이라 확인 창 불필요 권고 | (확인 창 없음 권고) | 가벼운 쇼핑 행동 | components/shop/LoginForm.tsx:59 → 25 |
 
+**⑤ 일시 표시 (5)**
+
+| 화면ID | 경로 | 항목 | 현재 형식 | 서식 출처 | 파일:줄 |
+|---|---|---|---|---|---|
+| SH-021 | /shop/[slug]/orders | 주문 시각 · 「~까지 결제」 | `10/5 22:25` (연도 없음) | 파일 안 `kst` | 정의 `components/shop/OrdersView.tsx:30`; 사용 `:140, 161` |
+| SH-022 | /shop/[slug]/orders/[orderId] | 주문 일시 · 결제 기한 | `10/5 22:25` | 파일 안 `kst`(OrdersView와 복제) | 정의 `components/shop/OrderView.tsx:42`; 사용 `:132, 137` |
+| SH-001·030 | /shop/[slug] 홈(고정 공지), /help, /help/notices/[id], 상품 상세 문의 | 공지 · 문의 날짜 · 이벤트 할인 「~까지」 | `10/5` (연도 없음, 날짜만) [일시 필요 후보] | 공용 `kstDate`(`components/shop/kstDate.ts`) | 정의 `components/shop/kstDate.ts:2`; 사용 `app/(shop)/shop/[slug]/page.tsx:53`, `components/shop/HelpView.tsx:77`, `components/shop/NoticeView.tsx:46`, `components/shop/ProductInquiries.tsx:94`, `components/shop/ProductDetail.tsx:213` |
+| SH-028 | /shop/[slug]/coupons, 파트너스 쿠폰 미리보기 | 「N/N 사용」 「~에 기간 지남」 「~부터」 「~까지」 | `10/5` (연도 없음) | 공용 `couponDate`(`Intl` 후 `/`로 치환) | 정의 `components/shop/CouponBox.tsx:30`; 사용 `:55, 57, 59, 60, 231`, 파트너스 `coupons/page.tsx:673` |
+| SH-011 | /shop/[slug]/signup | 재가입 가능일 안내 [날짜 전용] | `11월 2일` (연도 없음) | 파일 안 `kstDate`(`Intl formatToParts`) | 정의 `components/shop/SignupForm.tsx:38`; 사용 `:398` |
+
+**⑦ 검색 필터 기본값 (3)**
+
+| 화면ID | 경로 | 필터 | 현재 초기값/초기화 값 | 기준 값 | 파일:줄 |
+|---|---|---|---|---|---|
+| SH-002 | /shop/[slug]/products, /search | 정렬 · 페이지 크기 | 정렬 `new`(최신순) = 일치 · 페이지 24개(`PAGE_SIZE=24`) | 최신순 · 20 (격자 열 수 배수라 24인지 판단 필요) | `app/(shop)/shop/[slug]/_lib/ProductListing.tsx:8`, `_lib/catalog.ts:5` |
+| SH-021 | /shop/[slug]/orders | 페이지 · 탭 | 20 = 일치 · 탭 「전체」 = 일치 | — | `components/shop/OrdersView.tsx:28, 60` |
+| SH-028 | /shop/[slug]/coupons | 탭 · 페이지 | 기본 탭 「usable」(쓸 수 있는 쿠폰) · 50개씩 더 보기 | 전체 / 20 (구매자 화면이라 판단 필요) | `components/shop/CouponBox.tsx:25, 95` |
+
 ### 화면-공개 (2) — `session_01VWVPemvkt3eicZ8fDRLSAR` (보관 상태 — MASTER 재배정 필요)
 
 **① 쉬운 말 (9)**
@@ -723,6 +1000,14 @@
 | PF-004/PF-005 공통 틀 | 모든 공개 화면 하단 | 「상호 [플랫폼 상호] · 대표 [플랫폼 대표자] · 사업자등록번호 [플랫폼 사업자등록번호] …」 | 코드값(자리표시자 노출) | 정해진 값으로 채우거나, 정해지기 전에는 이 줄을 숨겨요 | components/public/PublicFrame.tsx:61 |
 | PF-005 이용약관 | /terms | 「[확정 전]」이 본문 곳곳에 그대로 보임(`{{…}}` → 「[확정 전]」 치환), 「시행 전 초안이에요」 | 코드값(자리표시자 노출) | 확정 전 항목은 「정해지는 대로 알려 드려요」로 표기하거나 확정한 뒤 공개 | components/public/Terms.tsx:6, 38 |
 | PF-003 요금 | /pricing | 「{p.name}로 시작하기」 (플랜 이름 받침에 따라 조사 어색) | 뜻 둘(조사) | {p.name} 요금제로 시작하기 | components/public/Pricing.tsx:50 |
+
+**⑤ 일시 표시 (3)**
+
+| 화면ID | 경로 | 항목 | 현재 형식 | 서식 출처 | 파일:줄 |
+|---|---|---|---|---|---|
+| AU-010 | /maintenance | 「점검 종료 예정 …」 | `10월 5일 22:25` (연도 없음, 한글) | 파일 안 `Intl.DateTimeFormat` | `app/maintenance/page.tsx:15, 35` |
+| PF-005·006 | /notices, /notices/[id] | 공지 게시일 | `2026년 10월 5일` [일시 필요 후보] | 공용 `noticeDate` | 정의 `components/public/noticeView.ts:9-10`; 사용 `components/public/Notices.tsx:18`, `components/public/NoticeDetail.tsx:14` |
+| SH-029 | 내 리뷰·리뷰 쓰기·반품/환불 목록 | 작성일 · 답글일 · 「~까지 쓸 수 있어요」 · 주문/배송일 · 신청일 | `10/5` (연도 없음) | 공용 `md`(`reviewShared.ts`) | 정의 `components/shop/reviewShared.ts:4`; 사용 `components/shop/ReviewMine.tsx:118, 153, 168`, `components/shop/ReviewWrite.tsx:33`, `components/shop/returns/ReturnSection.tsx:106, 158, 338`, `components/shop/returns/RefundRequestSection.tsx:68` |
 
 ### 개발 전담 (기반) (6) — `session_014TjcA8RirjWptikziBwasM` (서버 응답 문구)
 
@@ -748,5 +1033,6 @@
 - 표(table)가 아닌 목록(리뷰·문의·공지·카드 격자)의 제목 열 위치·겹침, 모달 안 표
 - 구매자 화면의 표 규칙(구매자 화면은 표가 적어 측정 제외)
 - 서버가 내려 주는 오류 `message` 대부분, 구매자 메일·알림톡 문구
+- ⑤⑥⑦은 코드만 읽고 현재 형식을 Node `Intl`로 계산한 값이라 브라우저에 따라 다를 수 있으며(예: `hour12:false`의 24시 표기), `limit`을 보내지 않는 목록의 서버 기본 페이지 크기·기간을 비웠을 때 서버 처리는 일부 「미확인」입니다. 구매자 주문 메일·서버 알림 본문의 날짜 문장은 전수 점검하지 못했습니다
 - 키보드 동선·접근성은 이번 범위가 아님
 
