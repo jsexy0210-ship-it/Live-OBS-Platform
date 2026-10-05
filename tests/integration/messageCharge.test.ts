@@ -278,7 +278,7 @@ describe("정기 작업 처리 시간 예산(스케줄러 60초 제한 안에서
     const s = await shop();
     // 공급자에는 결제가 있고 조회가 느린(건당 60ms) 상황
     const provider = new FakeBillingProvider();
-    const slow = { ...provider, charge: provider.charge.bind(provider), issueBillingKey: provider.issueBillingKey.bind(provider), name: provider.name,
+    const slow = { ...provider, charge: provider.charge.bind(provider), issueBillingKey: provider.issueBillingKey.bind(provider), name: provider.name, cancelPayment: provider.cancelPayment.bind(provider),
       getPayment: async (id: string) => { await new Promise((r) => setTimeout(r, 60)); return provider.getPayment(id); } };
     for (let i = 0; i < 5; i++) {
       provider.failNext = "timeout_after_charge";

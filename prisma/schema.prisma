@@ -167,6 +167,7 @@ model Seller {
   returnRequestItems       ReturnRequestItem[]
   returnRequestImages      ReturnRequestImage[]
   bankAccount              SellerBankAccount?
+  subscriptionRefunds      SubscriptionRefund[]
 }
 
 model SellerDomain {
@@ -1485,6 +1486,7 @@ model SubscriptionPayment {
   seller       Seller             @relation(fields: [sellerId], references: [id])
   subscription SellerSubscription @relation(fields: [sellerId, subscriptionId], references: [sellerId, id])
   targetPlan   SubscriptionPlan?  @relation("PaymentTargetPlan", fields: [targetPlanId], references: [id])
+  refunds      SubscriptionRefund[]
 
   @@index([sellerId, createdAt])
 }
@@ -2725,6 +2727,51 @@ model YoutubeChatMonthly {
   messages Int    @default(0)
 
   @@id([sellerId, month])
+}
+
+// ───────────── 구독 환불 요청·처리(MA-026·027) ─────────────
+
+// SYSTEM: 해지 뒤 확정된 결제 등 시스템이 환불 대상으로 남긴 것. ADMIN: 마스터 관리자가 직접 만든 요청(법이 요구하는 환불 등)
+enum SubscriptionRefundSource {
+  SYSTEM
+  ADMIN
+}
+
+// 요청 → (승인하면) 처리 중 → 환불됨 / 실패(다시 승인할 수 있음). 반려하면 끝.
+enum SubscriptionRefundStatus {
+  REQUESTED
+  PROCESSING
+  REFUNDED
+  FAILED
+  REJECTED
+}
+
+// 구독 결제 환불. 결제당 진행 중이거나 끝난 환불(REQUESTED·PROCESSING·REFUNDED)은 하나만(마이그레이션 SQL 부분 유니크).
+// 결제 공급자 취소는 환불 id를 멱등키로 보낸다(같은 환불을 다시 승인해도 한 번만 취소). 지금 공급자는 시험용 가짜뿐이라 실제 돈은 오가지 않는다.
+model SubscriptionRefund {
+  id                 String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId           String                   @db.Uuid
+  paymentId          String                   @db.Uuid
+  amount             Int
+  source             SubscriptionRefundSource
+  // 사유 코드(시스템: paid_after_cancel) 또는 마스터 관리자가 적은 사유
+  reason             String
+  status             SubscriptionRefundStatus @default(REQUESTED)
+  requestedByAdminId String?                  @db.Uuid
+  decidedByAdminId   String?                  @db.Uuid
+  decisionNote       String?
+  providerRefundId   String?
+  failureReason      String?
+  version            Int                      @default(0)
+  createdAt          DateTime                 @default(now()) @db.Timestamptz(3)
+  decidedAt          DateTime?                @db.Timestamptz(3)
+  refundedAt         DateTime?                @db.Timestamptz(3)
+
+  seller  Seller              @relation(fields: [sellerId], references: [id])
+  payment SubscriptionPayment @relation(fields: [paymentId], references: [id])
+
+  @@index([status, createdAt])
+  @@index([sellerId, createdAt])
 }
 
 // 환불 1건(부분 환불 포함, queue/service.ts refundOrder). 한 주문에 여러 번 생길 수 있고 seq는 주문 안 순번(1부터).
