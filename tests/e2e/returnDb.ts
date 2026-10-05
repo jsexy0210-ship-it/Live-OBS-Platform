@@ -50,6 +50,7 @@ export async function clearReturnsInDb(slug: string) {
     await db.stockMovement.deleteMany({ where: { orderId: { in: ids } } });
     await db.rewardLedger.deleteMany({ where: { sellerId: seller.id, orderId: { in: ids } } });
     await db.shipment.deleteMany({ where: { orderId: { in: ids } } });
+    await db.orderRefund.deleteMany({ where: { orderId: { in: ids } } });
     await db.orderItem.deleteMany({ where: { orderId: { in: ids } } });
     await db.order.deleteMany({ where: { id: { in: ids } } });
   } finally {
