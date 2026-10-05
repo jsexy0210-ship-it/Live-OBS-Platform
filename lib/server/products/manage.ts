@@ -36,6 +36,8 @@ export type ProductFailure =
   | "too_many_options"
   | "no_sellable_option"
   | "stock_conflict"
+  | "price_conflict" // 화면이 본 판매가(expectedPrice)와 지금 판매가가 다름
+  | "status_conflict" // 화면이 본 판매 상태(expectedStatus)와 지금 판매 상태가 다름
   | "event_price_too_low"; // 이벤트 할인이 걸린 상품의 가격·옵션 추가금을 바꿔 할인 뒤 단가가 1원 미만이 됨
 
 // 상품명은 공백 포함 100자(코드포인트, 대표님 결정 2026-10-03). 글자 검사는 통과하는데 길기만 하면 따로 알려 준다.
@@ -46,7 +48,8 @@ function productName(v: unknown): { ok: true; name: string } | { ok: false; reas
   return { ok: false, reason: line(v, Number.MAX_SAFE_INTEGER) ? "product_name_too_long" : "invalid_product" };
 }
 const STOCK_DEDUCT_MODES: readonly StockDeductMode[] = ["ORDER", "PAYMENT"];
-export type ProductResult<T> = { ok: true; value: T } | { ok: false; reason: ProductFailure };
+// 충돌(price_conflict·status_conflict)이면 지금 값(currentPrice·currentStatus)도 함께 준다.
+export type ProductResult<T> = { ok: true; value: T } | { ok: false; reason: ProductFailure; currentPrice?: number; currentStatus?: ProductStatus };
 
 type Tx = Prisma.TransactionClient;
 const fail = (reason: ProductFailure) => ({ ok: false as const, reason });
@@ -468,9 +471,16 @@ export async function updateProduct(
     data.price = b.price;
   }
   if (Object.keys(data).length === 0) return fail("invalid_product");
+  // 낙관적 잠금(선택): 화면이 본 판매가·판매 상태. 지금 값과 다르면(그사이 다른 화면·직원이 바꿈) 바꾸지 않고 409로 지금 값을 돌려준다.
+  const expectedPrice = b.expectedPrice;
+  const expectedStatus = b.expectedStatus;
+  if (expectedPrice !== undefined && !isInt(expectedPrice, 1, INT4_MAX)) return fail("invalid_price");
+  if (expectedStatus !== undefined && !PRODUCT_STATUSES.includes(expectedStatus as ProductStatus)) return fail("invalid_product");
 
   return db.$transaction(async (tx) => {
     const before = await lockProduct(tx, ctx.sellerId, productId);
+    if (expectedPrice !== undefined && before.price !== expectedPrice) return { ok: false as const, reason: "price_conflict" as const, currentPrice: before.price };
+    if (expectedStatus !== undefined && before.status !== expectedStatus) return { ok: false as const, reason: "status_conflict" as const, currentStatus: before.status };
     const options = await liveOptions(tx, ctx.sellerId, productId);
     const price = (data.price as number | undefined) ?? before.price;
     if (options.some((o) => !unitOk(price, o.priceDelta))) return fail("invalid_price");

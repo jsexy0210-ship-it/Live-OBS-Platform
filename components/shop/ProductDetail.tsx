@@ -290,11 +290,7 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
                   </button>
                 )}
               </>
-            ) : (
-              <button type="button" className="btn btn-lg btn-out" disabled={busy} onClick={onCart}>
-                장바구니
-              </button>
-            )}
+            ) : null}
             <button type="button" className="btn btn-lg btn-out pd-wish" aria-pressed={wished} aria-label={wished ? "찜 빼기" : "찜하기"} disabled={busy} onClick={onWish}>
               {wished ? "♥" : "♡"}
             </button>
@@ -302,9 +298,14 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
               공유
             </button>
             {!out && (
-              <button type="button" className="btn btn-lg" disabled={busy} onClick={onBuy}>
-                구매하기
-              </button>
+              <>
+                <button type="button" className="btn btn-lg btn-out pd-cart" disabled={busy} onClick={onCart}>
+                  장바구니에 담기
+                </button>
+                <button type="button" className="btn btn-lg pd-buy" disabled={busy} onClick={onBuy}>
+                  바로 주문하기
+                </button>
+              </>
             )}
           </div>
           {msg && (

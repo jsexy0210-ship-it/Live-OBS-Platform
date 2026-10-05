@@ -69,7 +69,7 @@ export default function InquiriesPage() {
               <table className="tbl">
                 <thead>
                   <tr>
-                    <th style={{ width: 110 }}>유형</th>
+                    <th style={{ width: 110 }}>문의 종류</th>
                     <th>제목</th>
                     <th style={{ width: 100 }}>작성자</th>
                     <th style={{ width: 110 }}>상태</th>

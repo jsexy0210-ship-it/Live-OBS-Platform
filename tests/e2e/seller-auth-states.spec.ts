@@ -28,8 +28,8 @@ test("AU-005 승인 대기: 로그인하면 오류 문구 대신 승인 대기 �
   await submitSellerLogin(page, OWNER, PASSWORD);
   await expect(page).toHaveURL(/\/seller\/pending$/);
   const box = page.getByTestId("seller-pending");
-  await expect(box).toContainText("가입 승인을 기다리고 있습니다");
-  await expect(box).toContainText("승인되기 전에는 로그인할 수 없습니다");
+  await expect(box).toContainText("가입 신청을 확인하고 있습니다");
+  await expect(box).toContainText("그 전에는 로그인할 수 없습니다");
   await box.getByRole("link", { name: "로그인 화면으로" }).click();
   await expect(page).toHaveURL(/\/seller\/login$/);
 });

@@ -507,7 +507,7 @@ export type OrderCouponFailure = "coupon_unavailable" | "coupon_zero_total" | Co
 export const ORDER_COUPON_MESSAGES: Record<OrderCouponFailure, string> = {
   coupon_unavailable: "쓸 수 없는 쿠폰이에요. 쿠폰함에서 확인해 주세요",
   coupon_not_applicable: "이 주문에는 쓸 수 없는 쿠폰이에요",
-  coupon_min_order: "쿠폰 최소 주문 금액을 채우지 못했어요",
+  coupon_min_order: "주문 금액이 쿠폰을 쓸 수 있는 최소 금액보다 적어요. 상품을 더 담거나 다른 쿠폰을 골라 주세요",
   // 결제 금액이 0원이 되는 쿠폰은 당분간 받지 않는다(MASTER 2026-10-04 보수적 기본값, 대표님 확정 대기)
   coupon_zero_total: "이 주문에는 쿠폰을 쓸 수 없어요. 결제 금액이 0원이 돼요",
 };

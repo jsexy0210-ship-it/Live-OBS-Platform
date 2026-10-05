@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { dbNow } from "../billing/subscription";
+import { orderNoLabel } from "./orderNoLabel";
 
 // 주문 알림 「보냈음」 기록(중복 발송 방지). 발송 연동(알림톡·문자)은 비용·외부 키가 필요해 아직 없다.
 // 발송하는 쪽은 claim으로 보낼 주문을 먼저 잡고(OrderNotification PENDING), 보낸 뒤 잡을 때 받은 값(시도 번호 포함)으로
@@ -22,6 +23,8 @@ export type ClaimedNotification = {
   sellerId: string;
   buyerMemberId: string;
   orderNo: number;
+  // 안내 문구에 쓰는 주문번호(「20261005-0004」, 화면과 같음). 문구에는 orderNo·orderId·「#12」 표기를 쓰지 않는다.
+  orderNoLabel: string;
   totalAmount: number;
   paymentDueAt: Date;
   attempts: number;
@@ -71,7 +74,7 @@ async function claimPaymentDueSoonLocked(db: Prisma.TransactionClient, opts: { n
   if (ids.length === 0) return [];
   const rows = await db.orderNotification.findMany({
     where: { id: { in: ids } },
-    include: { order: { select: { buyerMemberId: true, orderNo: true, totalAmount: true, paymentDueAt: true } } },
+    include: { order: { select: { buyerMemberId: true, orderNo: true, createdAt: true, totalAmount: true, paymentDueAt: true } } },
   });
   return rows
     .map((n) => ({
@@ -81,6 +84,7 @@ async function claimPaymentDueSoonLocked(db: Prisma.TransactionClient, opts: { n
       sellerId: n.sellerId,
       buyerMemberId: n.order.buyerMemberId,
       orderNo: n.order.orderNo,
+      orderNoLabel: orderNoLabel(n.order.createdAt, n.order.orderNo),
       totalAmount: n.order.totalAmount,
       paymentDueAt: n.order.paymentDueAt!,
       attempts: n.attempts,

@@ -75,7 +75,7 @@ test.describe.serial("적립금 사용", () => {
     const orderId = page.url().match(/\/orders\/([0-9a-f-]+)\?done=1/)![1];
     expect(await orderRewardInDb(orderId)).toEqual({ rewardUsedAmount: 6000, totalAmount: fee });
     expect(await rewardBalanceInDb(SLUG, LOGIN)).toBe(26_400); // 쓴 만큼 잔액에서 빠짐
-    const pay = page.getByRole("region", { name: "결제 금액" });
+    const pay = page.getByRole("region", { name: "결제 정보" });
     await expect(pay.locator(".cart-row", { hasText: "적립금 사용" })).toContainText("−6,000원");
     await expect(pay.locator(".cart-row", { hasText: "결제 금액" }).locator("b")).toHaveText(`${fee.toLocaleString("ko-KR")}원`);
     await page.screenshot({ path: "tests/e2e/screenshots/SH-007-reward-1440.png", fullPage: true });
