@@ -161,7 +161,7 @@ export default function MaintenancePage() {
                     {m.enabled ? (
                       <>
                         <button className="btn" type="button" onClick={() => void put(true)} disabled={busy || invalid}>
-                          {busy ? "저장 중" : "변경 저장"}
+                          {busy ? "저장 중" : "점검 안내 변경 저장"}
                         </button>
                         <button className="btn btn-out" type="button" onClick={() => setConfirm("off")} disabled={busy}>
                           점검 끄기

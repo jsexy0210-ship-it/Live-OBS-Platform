@@ -86,7 +86,7 @@ export default function RefundsPage() {
                           <th>청구</th>
                           <th>요청 금액</th>
                           <th>사유</th>
-                          <th>출처</th>
+                          <th>요청한 곳</th>
                           <th>상태</th>
                           <th>관리</th>
                         </tr>
@@ -109,7 +109,7 @@ export default function RefundsPage() {
                             </td>
                             <td>
                               <Link className="btn btn-sm btn-out" href={`/admin/billing/refunds/${r.id}`}>
-                                {r.status === "REQUESTED" || r.status === "FAILED" || r.status === "PROCESSING" ? "처리" : "보기"}
+                                {r.status === "REQUESTED" || r.status === "FAILED" || r.status === "PROCESSING" ? "환불 처리하기" : "보기"}
                               </Link>
                             </td>
                           </tr>

@@ -68,13 +68,13 @@ export default function AssistantSettingsPage() {
                 <span className={`bdg ${d.settings.enabled ? "b-done" : "b-gray"}`} data-testid="assistant-state">{d.settings.enabled ? "켜짐" : "꺼짐"}</span>
                 {canEdit && (
                   <button className="btn btn-out" type="button" disabled={busy} onClick={() => void put({ enabled: !d.settings.enabled }, d.settings.enabled ? "껐습니다." : "켰습니다.")}>
-                    {d.settings.enabled ? "끄기" : "켜기"}
+                    {d.settings.enabled ? "도우미 끄기" : "도우미 켜기"}
                   </button>
                 )}
               </div>
               <dl className="kv">
-                <dt>API 키</dt>
-                <dd>{d.keyConfigured ? "설정됨" : "설정되지 않음 (서버 환경변수. 없으면 파트너스에게 「준비 중」으로 보입니다)"}</dd>
+                <dt>도우미 연결 키</dt>
+                <dd>{d.keyConfigured ? "설정됨" : "아직 입력되지 않았습니다. 개발 담당이 입력하기 전에는 파트너스 화면에 「준비 중」으로 보입니다."}</dd>
                 <dt>파트너스 화면</dt>
                 <dd>{d.available ? "사용 가능" : "준비 중"}</dd>
                 <dt>{d.month} 사용</dt>
@@ -84,17 +84,17 @@ export default function AssistantSettingsPage() {
               </dl>
             </section>
             <section className="card pad-l col" style={{ gap: 12 }} aria-labelledby="ast-cfg">
-              <h2 className="t-hl1" id="ast-cfg">모델·한도</h2>
+              <h2 className="t-hl1" id="ast-cfg">AI 종류·한도</h2>
               <span className="t-c1 c-alt">모델 이름과 단가는 공식 문서를 확인해 입력합니다. 단가는 100만 토큰당 원입니다. 가장 저렴한 모델 예시는 gemini-2.5-flash-lite(입력 $0.10·출력 $0.40, 2026-10-05 공식 문서 기준)이며, 1,450원/$로 환산하면 입력 145원·출력 580원입니다. 월 한도에 닿으면 도우미 호출이 바로 멈춥니다.</span>
               <form className="col" style={{ gap: 10, maxWidth: 420 }} onSubmit={save}>
-                {([["model", "모델 이름", "text"], ["inputWonPerMTok", "입력 단가(100만 토큰당 원)", "numeric"], ["outputWonPerMTok", "출력 단가(100만 토큰당 원)", "numeric"], ["monthlyBudgetWon", "월 한도(원, 플랫폼 전체)", "numeric"], ["sellerDailyLimit", "파트너스별 하루 질문 수", "numeric"]] as const).map(([k, label, mode]) => (
+                {([["model", "AI 종류", "text"], ["inputWonPerMTok", "질문 글자 비용(100만 글자당 원)", "numeric"], ["outputWonPerMTok", "답변 글자 비용(100만 글자당 원)", "numeric"], ["monthlyBudgetWon", "한 달 사용 한도(원, 전체 합계)", "numeric"], ["sellerDailyLimit", "파트너스별 하루 질문 수", "numeric"]] as const).map(([k, label, mode]) => (
                   <label className="col" style={{ gap: 4 }} key={k}>
                     <span className="t-c1">{label}</span>
                     <input className="inp" inputMode={mode === "numeric" ? "numeric" : undefined} value={f[k]} placeholder={PH[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} disabled={!canEdit || busy} />
                   </label>
                 ))}
                 {error && <span className="t-c1" role="alert" style={{ color: "var(--neg-text, #c00)" }}>{error}</span>}
-                {canEdit ? <button className="btn btn-pri" type="submit" disabled={busy}>저장</button> : <span className="t-c1 c-alt">최고관리자만 바꿀 수 있습니다.</span>}
+                {canEdit ? <button className="btn btn-pri" type="submit" disabled={busy}>도우미 설정 저장</button> : <span className="t-c1 c-alt">최고관리자만 바꿀 수 있습니다.</span>}
               </form>
             </section>
           </div>

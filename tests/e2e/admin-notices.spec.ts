@@ -41,7 +41,7 @@ test("최고관리자: 제목·본문 없이는 저장되지 않고, 게시·임
   await page.goto("/admin/support/notices");
   await page.getByRole("link", { name: "공지 작성" }).first().click();
   await expect(page).toHaveURL(/\/notices\/new$/);
-  await page.getByRole("button", { name: "게시", exact: true }).click();
+  await page.getByRole("button", { name: "지금 게시하기", exact: true }).click();
   await expect(page.getByText("제목을 입력해 주십시오.")).toBeVisible();
   await expect(page.getByText("내용을 입력해 주십시오.")).toBeVisible();
 
@@ -49,7 +49,7 @@ test("최고관리자: 제목·본문 없이는 저장되지 않고, 게시·임
   await page.getByLabel("제목").fill(t.a);
   await page.getByLabel("본문").fill("새벽 점검이 있습니다.");
   await expect(page.getByTestId("notice-preview")).toContainText(t.a);
-  await page.getByRole("button", { name: "게시", exact: true }).click();
+  await page.getByRole("button", { name: "지금 게시하기", exact: true }).click();
   await expect(page.getByText("공지를 게시했습니다.")).toBeVisible();
   const row = page.getByTestId("notice-row").filter({ hasText: t.a });
   await expect(row).toContainText("게시 중");
@@ -60,7 +60,7 @@ test("최고관리자: 제목·본문 없이는 저장되지 않고, 게시·임
   await expect(page).toHaveURL(/\/notices\/new$/);
   await page.getByLabel("제목").fill(t.draft);
   await page.getByLabel("본문").fill("초안");
-  await page.getByRole("button", { name: "임시 저장" }).click();
+  await page.getByRole("button", { name: "임시 저장하기" }).click();
   await expect(page.getByText("임시 저장했습니다.")).toBeVisible();
   await page.getByLabel("상태", { exact: true }).selectOption("draft");
   await page.getByRole("button", { name: "검색", exact: true }).click();
@@ -77,14 +77,14 @@ test("최고관리자: 수정하면 반영되고, 다른 곳에서 먼저 고쳤
   await page.getByLabel("제목").fill(`${t.a} 수정`);
   // 다른 관리자가 먼저 고친 상황: 버전을 올려 둔다
   await db.platformNotice.updateMany({ where: { title: t.a }, data: { version: { increment: 1 } } });
-  await page.getByRole("button", { name: "게시", exact: true }).click();
+  await page.getByRole("button", { name: "지금 게시하기", exact: true }).click();
   await expect(page.getByText("다른 곳에서 먼저 수정됐습니다.")).toBeVisible();
   expect((await db.platformNotice.findFirst({ where: { title: t.a } }))?.title).toBe(t.a);
 
   await page.getByTestId("notice-row").filter({ hasText: t.a }).getByRole("link", { name: "수정" }).click();
   await expect(page).toHaveURL(/\/notices\/[0-9a-f-]{36}$/);
   await page.getByLabel("제목").fill(`${t.a} 수정`);
-  await page.getByRole("button", { name: "게시", exact: true }).click();
+  await page.getByRole("button", { name: "지금 게시하기", exact: true }).click();
   await expect(page.getByTestId("notice-row").filter({ hasText: `${t.a} 수정` })).toHaveCount(1);
 
   await page.getByTestId("notice-row").filter({ hasText: t.draft }).getByRole("button", { name: "삭제" }).click();

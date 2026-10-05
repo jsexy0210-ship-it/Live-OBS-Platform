@@ -33,7 +33,7 @@ function RejectModal({ refund, onClose, onDone, onStale }: { refund: Refund; onC
     setBusy(false);
     if (r.ok) return onDone(r.data.refund);
     if (r.status === 409 || r.status === 404) return onStale();
-    setError(r.message ?? failMessage(r, "처리하지 못했습니다. 잠시 후 다시 시도해 주십시오."));
+    setError(r.message ?? failMessage(r, "환불 처리를 하지 못했습니다. 잠시 후 다시 시도해 주십시오."));
   };
   return (
     <Modal labelId="refund-reject-title" busy={busy} dirty={count > 0} onClose={onClose}>
@@ -132,8 +132,8 @@ export default function RefundDetailPage() {
         next.status === "REFUNDED"
           ? { text: `${won(next.amount)}을 환불했습니다.` }
           : next.status === "FAILED"
-            ? { text: "결제 취소에 실패했습니다. 실패 사유를 확인해 주십시오.", neg: true }
-            : { text: "결제 취소 요청을 보냈습니다. 결과를 확인하지 못했습니다. 다시 승인하면 같은 환불로 한 번만 처리합니다.", neg: true },
+            ? { text: "카드 결제 취소가 안 됐습니다. 아래 이유를 확인한 뒤 「다시 승인」을 눌러 주십시오.", neg: true }
+            : { text: "취소 요청은 보냈지만 결과를 아직 모릅니다. 「다시 승인」을 눌러도 같은 환불은 한 번만 처리됩니다.", neg: true },
       );
       return;
     }
@@ -181,7 +181,7 @@ export default function RefundDetailPage() {
             </div>
             {rf.status === "FAILED" && rf.failureReason && (
               <div className="card pad c-neg" role="alert" data-testid="refund-failure">
-                결제 취소에 실패했습니다. {rf.failureReason}
+                카드 결제 취소가 안 됐습니다. 이유: {rf.failureReason}. 잠시 뒤 「다시 승인」을 눌러 주십시오.
               </div>
             )}
             {rf.status === "PROCESSING" && (
@@ -194,10 +194,10 @@ export default function RefundDetailPage() {
               id="refund-request"
               rows={[
                 ["파트너스", <Link key="s" className="fw6" href={`/admin/partners/${rf.sellerId}`}>{rf.shopName}</Link>],
-                ["출처", REFUND_SOURCE[rf.source]],
+                ["요청한 곳", REFUND_SOURCE[rf.source]],
                 ["사유", refundReason(rf.reason)],
                 ["요청 금액", <b key="a">{won(rf.amount)}</b>],
-                ...(rf.decisionNote ? ([["처리 의견", rf.decisionNote]] as [string, React.ReactNode][]) : []),
+                ...(rf.decisionNote ? ([["처리 메모", rf.decisionNote]] as [string, React.ReactNode][]) : []),
                 ...(rf.decidedAt ? ([["처리 시각", dayTime(rf.decidedAt)]] as [string, React.ReactNode][]) : []),
                 ...(rf.refundedAt ? ([["환불 시각", dayTime(rf.refundedAt)]] as [string, React.ReactNode][]) : []),
               ]}
@@ -221,10 +221,10 @@ export default function RefundDetailPage() {
                 {canApprove ? (
                   <>
                     <div className="card pad" role="note">
-                      승인하면 결제 공급자에 결제 취소를 바로 요청합니다. 요청한 뒤에는 되돌릴 수 없습니다.
+                      승인하면 카드 결제 취소를 바로 요청합니다. 요청한 뒤에는 되돌릴 수 없습니다.
                     </div>
                     <label className="lbl" htmlFor="refund-approve-note">
-                      처리 의견 (선택)
+                      처리 메모 (선택)
                     </label>
                     <input id="refund-approve-note" className="inp" maxLength={MAX_NOTE} value={approveNote} onChange={(e) => setApproveNote(e.target.value)} disabled={approving} />
                     <label className="chk">
@@ -233,7 +233,7 @@ export default function RefundDetailPage() {
                     </label>
                     <div className="row" style={{ gap: 8 }}>
                       <button className="btn" type="button" onClick={() => void approve(rf)} disabled={!confirmed || approving}>
-                        {approving ? "처리 중" : rf.status === "FAILED" || rf.status === "PROCESSING" ? "다시 승인 · 환불 실행" : "승인 · 환불 실행"}
+                        {approving ? "처리 중" : rf.status === "FAILED" || rf.status === "PROCESSING" ? "다시 승인하고 카드 결제 취소" : "환불 승인하고 카드 결제 취소"}
                       </button>
                       {canReject && rf.status !== "PROCESSING" && (
                         <button className="btn btn-out" type="button" onClick={() => setReject(true)} disabled={approving}>
