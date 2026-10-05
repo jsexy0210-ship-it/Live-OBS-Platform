@@ -407,7 +407,7 @@ async function markPaidIfPending(tx: Tx, sellerId: string, orderId: string, data
 async function loadPendingOrder(tx: Tx, sellerId: string, orderId: string) {
   const order = await tx.order.findFirst({
     where: { id: orderId, sellerId },
-    include: { items: { orderBy: { createdAt: "asc" } }, buyerMember: { include: { grade: true } }, couponRedemption: { select: { itemDiscounts: true } } },
+    include: { items: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] }, buyerMember: { include: { grade: true } }, couponRedemption: { select: { itemDiscounts: true } } },
   });
   if (!order) throw new Rejected("not_found");
   if (order.status !== "PENDING_PAYMENT") throw new Rejected("invalid_transition");

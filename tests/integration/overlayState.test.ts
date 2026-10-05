@@ -26,7 +26,18 @@ async function shop() {
     const { order, item } = await createPaidOrderItem(seller.id, buyerId);
     for (let i = 0; i < extra; i++) {
       await db.orderItem.create({
-        data: { sellerId: seller.id, orderId: order.id, productId: item.productId, optionId: item.optionId, productNameSnapshot: "추가 팩", optionNameSnapshot: "", unitPrice: 5000, quantity: 2 },
+        // 첫 품목보다 늦은 시각으로 넣어 주문대기 순서(대표 품목)가 첫 품목으로 정해지게 한다(같은 시각이면 id 순서라 흔들림)
+        data: {
+          sellerId: seller.id,
+          orderId: order.id,
+          productId: item.productId,
+          optionId: item.optionId,
+          productNameSnapshot: "추가 팩",
+          optionNameSnapshot: "",
+          unitPrice: 5000,
+          quantity: 2,
+          createdAt: new Date(item.createdAt.getTime() + 1000 * (i + 1)),
+        },
       });
     }
     await db.order.update({ where: { id: order.id }, data: { status: "PENDING_PAYMENT", paidAt: null, broadcastNicknameSnapshot: nickname } });
