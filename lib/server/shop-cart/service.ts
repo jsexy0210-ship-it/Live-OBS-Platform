@@ -3,11 +3,13 @@ import { shopOpen } from "../buyers/signup";
 import { MAX_LINE_QUANTITY, MAX_ORDER_LINES } from "../orders/create";
 import { dbClock } from "../orders/overdue";
 import { eventOf, orderUnitPrice } from "../products/event";
+import { LOW_STOCK_MAX } from "../products/manage";
 
 // 구매자 장바구니(SH-004, 로그인 회원만). 규칙:
 // - 옵션마다 한 줄. 같은 옵션을 다시 담으면 수량을 더한다. 회원당 MAX_CART_ITEMS줄, 줄당 1~MAX_LINE_QUANTITY개(주문 한도와 같게).
 // - 담기·수량 변경은 판매 중(ON_SALE) 상품의 지운 적 없는 옵션만, 재고 안에서만. 쇼핑몰이 잠기면 막는다(목록·삭제는 연다).
-// - 가격·재고·판매 상태는 저장하지 않고 볼 때마다 지금 값으로 계산한다(이벤트 할인은 DB 시계로 판단, 주문과 같은 계산).
+// - 가격·재고·판매 상태는 볼 때마다 지금 값으로 계산한다(이벤트 할인은 DB 시계로 판단, 주문과 같은 계산). 저장하는 것은 담을 때 보여 준 단가(addedUnitPrice) 하나뿐이고,
+//   지금 단가와 다르면 priceChange로 알린다(표시용, 주문 금액에는 쓰지 않는다). 수량을 바꾸면 그때 보여 준 지금 단가로 새로 맞춘다.
 // - 쓰기는 회원별 잠금(lockBuyerCart) 아래에서 회원이 아직 활성인지 다시 보고 한다. 탈퇴도 같은 잠금을 잡고 장바구니를 지운다.
 // - 모든 조회·쓰기는 sellerId + buyerMemberId로 묶는다(다른 쇼핑몰·다른 회원 줄은 없는 것으로 본다).
 
@@ -52,6 +54,12 @@ export type CartLine = {
   lineTotal: number;
   stock: number;
   status: CartLineStatus;
+  // 담은 뒤 단가가 바뀐 줄: from(담을 때)·to(지금)·diff(to − from)·direction. 안 바뀌었거나 이전 줄(담을 때 단가 없음)이면 null.
+  priceChange: { from: number; to: number; diff: number; direction: "up" | "down" } | null;
+  // 재고 표시: maxQuantity(지금 담을 수 있는 최대 수량, 살 수 없으면 0), shortage(재고보다 많이 담긴 수량, 없으면 0), stockLeft(재고가 적을 때만 남은 수, 아니면 null)
+  maxQuantity: number;
+  shortage: number;
+  stockLeft: number | null;
 };
 
 export const lockBuyerCart = (tx: Tx, s: CartScope) => tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`buyer_cart:${s.sellerId}:${s.buyerMemberId}`}))`;
@@ -67,6 +75,7 @@ const isId = (v: unknown): v is string => typeof v === "string" && UUID.test(v);
 const lineSelect = {
   id: true,
   quantity: true,
+  addedUnitPrice: true,
   option: {
     select: {
       id: true,
@@ -95,7 +104,26 @@ function toLine(r: Row, now: Date): CartLine {
         : o.stock < r.quantity
           ? "not_enough_stock"
           : "available";
-  return { id: r.id, productId: p.id, optionId: o.id, productName: p.name, optionName: o.name, quantity: r.quantity, unitPrice, listUnitPrice, lineTotal: unitPrice * r.quantity, stock: Math.max(o.stock, 0), status };
+  const stock = Math.max(o.stock, 0);
+  const sellable = status === "available" || status === "not_enough_stock";
+  const priceChange = r.addedUnitPrice !== null && r.addedUnitPrice !== unitPrice ? { from: r.addedUnitPrice, to: unitPrice, diff: unitPrice - r.addedUnitPrice, direction: unitPrice > r.addedUnitPrice ? ("up" as const) : ("down" as const) } : null;
+  return {
+    id: r.id,
+    productId: p.id,
+    optionId: o.id,
+    productName: p.name,
+    optionName: o.name,
+    quantity: r.quantity,
+    unitPrice,
+    listUnitPrice,
+    lineTotal: unitPrice * r.quantity,
+    stock,
+    status,
+    priceChange,
+    maxQuantity: sellable ? Math.min(stock, MAX_LINE_QUANTITY) : 0,
+    shortage: sellable ? Math.max(0, r.quantity - stock) : 0,
+    stockLeft: sellable && stock <= LOW_STOCK_MAX ? stock : null,
+  };
 }
 
 async function rows(db: Db, s: CartScope, ids?: string[]) {
@@ -110,18 +138,18 @@ async function rows(db: Db, s: CartScope, ids?: string[]) {
 export async function listCart(db: PrismaClient, s: CartScope) {
   const now = await dbClock(db);
   const items = (await rows(db, s)).map((r) => toLine(r, now));
-  return { items, count: items.length, subtotal: items.filter((i) => i.status === "available").reduce((sum, i) => sum + i.lineTotal, 0) };
+  return { items, count: items.length, priceChangedCount: items.filter((i) => i.priceChange).length, subtotal: items.filter((i) => i.status === "available").reduce((sum, i) => sum + i.lineTotal, 0) };
 }
 
 // 머리 배지용 개수(담긴 줄 수)
 export const countCart = (db: PrismaClient, s: CartScope) => db.cartItem.count({ where: { sellerId: s.sellerId, buyerMemberId: s.buyerMemberId } });
 
 // 담을 수 있는 옵션인지와 재고(같은 쇼핑몰, 지운 적 없는 옵션, 판매 중 상품)
-async function sellableOption(tx: Tx, s: CartScope, optionId: string): Promise<Result<{ stock: number }>> {
-  const o = await tx.productOption.findFirst({ where: { id: optionId, sellerId: s.sellerId }, select: { stock: true, deletedAt: true, product: { select: { status: true, deletedAt: true } } } });
+async function sellableOption(tx: Tx, s: CartScope, optionId: string): Promise<Result<{ stock: number; unitPrice: number }>> {
+  const o = await tx.productOption.findFirst({ where: { id: optionId, sellerId: s.sellerId }, select: { stock: true, priceDelta: true, deletedAt: true, product: { select: { status: true, deletedAt: true, price: true, eventDiscountType: true, eventDiscountValue: true, eventStartsAt: true, eventEndsAt: true } } } });
   if (!o || o.deletedAt || o.product.deletedAt || o.product.status === "DRAFT" || o.product.status === "HIDDEN") return { ok: false, reason: "product_unavailable" };
   if (o.product.status === "SOLD_OUT" || o.stock < 1) return { ok: false, reason: "out_of_stock" };
-  return { ok: true, value: { stock: o.stock } };
+  return { ok: true, value: { stock: o.stock, unitPrice: orderUnitPrice(o.product.price + o.priceDelta, eventOf(o.product), await dbClock(tx)) } };
 }
 
 // 담기. 본문: { optionId, quantity }. 이미 담긴 옵션이면 수량을 더한다. 응답: 담은 줄 id와 담긴 줄 수.
@@ -140,10 +168,10 @@ export async function addToCart(db: PrismaClient, s: CartScope, input: { optionI
     if (next > option.value.stock) return { ok: false, reason: "out_of_stock" };
     let id: string;
     if (existing) {
-      id = (await tx.cartItem.update({ where: { id: existing.id }, data: { quantity: next }, select: { id: true } })).id;
+      id = (await tx.cartItem.update({ where: { id: existing.id }, data: { quantity: next, addedUnitPrice: option.value.unitPrice }, select: { id: true } })).id;
     } else {
       if ((await tx.cartItem.count({ where: { sellerId: s.sellerId, buyerMemberId: s.buyerMemberId } })) >= MAX_CART_ITEMS) return { ok: false, reason: "cart_full" };
-      id = (await tx.cartItem.create({ data: { sellerId: s.sellerId, buyerMemberId: s.buyerMemberId, optionId, quantity: next }, select: { id: true } })).id;
+      id = (await tx.cartItem.create({ data: { sellerId: s.sellerId, buyerMemberId: s.buyerMemberId, optionId, quantity: next, addedUnitPrice: option.value.unitPrice }, select: { id: true } })).id;
     }
     return { ok: true, value: { id, quantity: next, count: await tx.cartItem.count({ where: { sellerId: s.sellerId, buyerMemberId: s.buyerMemberId } }) } };
   });
@@ -159,12 +187,13 @@ export async function updateCartItem(db: PrismaClient, s: CartScope, itemId: str
     if (!(await lockActive(tx, s))) return { ok: false, reason: "cart_item_not_found" };
     const item = await tx.cartItem.findFirst({ where: { id: itemId, sellerId: s.sellerId, buyerMemberId: s.buyerMemberId }, select: { id: true, quantity: true, optionId: true } });
     if (!item) return { ok: false, reason: "cart_item_not_found" };
+    const option = await sellableOption(tx, s, item.optionId);
     if (quantity > item.quantity) {
-      const option = await sellableOption(tx, s, item.optionId);
       if (!option.ok) return option;
       if (quantity > option.value.stock) return { ok: false, reason: "out_of_stock" };
     }
-    await tx.cartItem.update({ where: { id: item.id }, data: { quantity } });
+    // 수량을 바꾼 때 보여 준 지금 단가로 비교 기준을 새로 맞춘다(살 수 없는 줄이면 그대로 둔다)
+    await tx.cartItem.update({ where: { id: item.id }, data: { quantity, ...(option.ok ? { addedUnitPrice: option.value.unitPrice } : {}) } });
     return { ok: true, value: { id: item.id, quantity } };
   });
 }

@@ -166,3 +166,52 @@ export async function platformGrowthStats(db: PrismaClient, admin: AdminSessionC
     };
   });
 }
+
+// ④ 상위 5 파트너스(마스터 관리자, platform.read). 기간 안 주문(주문 시각 기준)의 순매출(결제액 − 환불액) 순. 같은 순매출이면 쇼핑몰 id 순.
+// 플랫폼 전체 순매출 대비 비중(share)을 함께 준다. 쇼핑몰 이름·주소 이름(slug)과 숫자만, 구매자·사업자 정보 없음.
+const TOP_LIMIT = 5;
+type TopRow = { seller_id: string; shop_name: string; slug: string; orders: number; paid: number; revenue: bigint; refund_amount: bigint };
+
+export async function platformTopSellers(db: PrismaClient, admin: AdminSessionContext, range: StatsRange) {
+  if (!adminCan(admin.admin.role, "platform.read")) throw forbidden();
+  return statsSnapshot(db, async (tx) => {
+    const [rows, totals] = await Promise.all([
+      tx.$queryRaw<TopRow[]>`
+        SELECT s.id AS seller_id, s."shopName" AS shop_name, s.slug,
+               count(*)::int AS orders,
+               count(*) FILTER (WHERE o."paidAt" IS NOT NULL)::int AS paid,
+               coalesce(sum(o."totalAmount"::bigint) FILTER (WHERE o."paidAt" IS NOT NULL), 0) AS revenue,
+               coalesce(sum((CASE WHEN o.status = 'REFUNDED' THEN coalesce(o."refundAmount", o."totalAmount") ELSE coalesce(o."refundAmount", 0) END)::bigint), 0) AS refund_amount
+        FROM "Order" o JOIN "Seller" s ON s.id = o."sellerId"
+        WHERE o."createdAt" >= ${range.start} AND o."createdAt" < ${range.end}
+        GROUP BY s.id, s."shopName", s.slug
+        HAVING count(*) FILTER (WHERE o."paidAt" IS NOT NULL) > 0
+        ORDER BY (coalesce(sum(o."totalAmount"::bigint) FILTER (WHERE o."paidAt" IS NOT NULL), 0)
+                  - coalesce(sum((CASE WHEN o.status = 'REFUNDED' THEN coalesce(o."refundAmount", o."totalAmount") ELSE coalesce(o."refundAmount", 0) END)::bigint), 0)) DESC, s.id
+        LIMIT ${TOP_LIMIT}`,
+      tx.$queryRaw<AggRow[]>`SELECT ${AGG} FROM "Order" WHERE "createdAt" >= ${range.start} AND "createdAt" < ${range.end}`,
+    ]);
+    const platformNet = toPoint(totals[0]).netRevenue;
+    return {
+      range: { from: range.from, to: range.to },
+      platformNetRevenue: platformNet,
+      rows: rows.map((r, i) => {
+        const revenue = num(r.revenue);
+        const refundAmount = num(r.refund_amount);
+        const netRevenue = revenue - refundAmount;
+        return {
+          rank: i + 1,
+          sellerId: r.seller_id,
+          shopName: r.shop_name,
+          slug: r.slug,
+          orders: num(r.orders),
+          paidOrders: num(r.paid),
+          revenue,
+          refundAmount,
+          netRevenue,
+          share: ratio(netRevenue, platformNet),
+        };
+      }),
+    };
+  });
+}

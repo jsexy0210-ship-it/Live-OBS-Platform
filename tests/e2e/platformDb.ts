@@ -55,6 +55,20 @@ export async function adminReplyInDb(inquiryId: string, body: string, close = fa
   }
 }
 
+// 하루 한도(쇼핑몰당 24시간 20건)를 채운다. cleanupPlatformE2eInDb가 지운다.
+export async function fillInquiryLimitInDb(count: number) {
+  const db = open();
+  try {
+    const seller = await db.seller.findUniqueOrThrow({ where: { slug: "demo-shop" } });
+    const owner = await db.sellerUser.findFirstOrThrow({ where: { sellerId: seller.id, isOwner: true }, select: { id: true } });
+    await db.platformInquiry.createMany({
+      data: Array.from({ length: count }, (_, i) => ({ sellerId: seller.id, createdBySellerUserId: owner.id, category: "OTHER" as const, title: `${E2E_PREFIX}한도 ${i}` })),
+    });
+  } finally {
+    await db.$disconnect();
+  }
+}
+
 export async function cleanupPlatformE2eInDb() {
   const db = open();
   try {
