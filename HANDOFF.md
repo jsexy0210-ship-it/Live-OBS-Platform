@@ -7,11 +7,12 @@
 | 세션 | ID | 담당 |
 |---|---|---|
 | Live-OBS-Platform MASTER (2) | `session_018xa8SC5evpEFNVcQBwcN5t` | 대표님 지시 전달 · 세션 배정·교체 · 상태 문서 관리(2026-10-04 대표님 지시로 검수·병합은 검수 전담에 넘김). 2026-10-02 17:21 KST 교체 생성 |
-| 검수 전담 (2) | `session_017wDPPy8EXzNu5zkAP2uu6R` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01MHJsYfiTFZ8VWkM3xVF7wM`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
+| 검수 전담 (3) | `session_01FX4H9fYuFRUBq4EEXRqeXq` | 2026-10-05 23:15 KST MASTER 생성(Sonnet 5.5). `session_017wDPPy8EXzNu5zkAP2uu6R`(검수 전담 (2))를 컨텍스트 78%로 교체. 역할·소유는 전임 행과 같음 |
+| 검수 전담 (2) | `session_017wDPPy8EXzNu5zkAP2uu6R` | (교체됨 → `session_01FX4H9fYuFRUBq4EEXRqeXq`, 2026-10-05)  2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01MHJsYfiTFZ8VWkM3xVF7wM`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | 개발 전담 (기반) (6) | `session_014TjcA8RirjWptikziBwasM` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01N4xJrEzQvUuRHB8QzcQcKE`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | 개발 전담 (기반-상품) (2) | `session_01Cr44KBNsnx39N7sPjPurpx` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_018WsyHpKDofgW5DEiS4tUoA`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | 개발 전담 (기반-쇼핑몰) (2) | `session_01DGVUmLcp7u4NTNbERqjkHj` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01GnUdkmvAEWEVA3Yh3wbB5a`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
-| 개발 전담 (기반-설정) (2) | `session_01VWSSGv5DNryPJeTT6xd9zX` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01EUBERBNF6aDTDawpJF4gkf`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
+| 개발 전담 (기반-설정) (2) | `session_01VWSSGv5DNryPJeTT6xd9zX` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01EUBERBNF6aDTDawpJF4gkf`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 — 2026-10-05 23:20 KST 배정분 전부 병합(#440·#553·#563·#571·#582·#592·#601·#606·#608), 열린 PR 0, 보관 |
 | 개발 전담 (기반-유튜브) (2) | `session_01NnpcVX7ZtjRk8oBEM6fMj8` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01H4tkcKx7B9mokLRDNuBNYP`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | 레이아웃 전담 (4) · UI 현대화 | `session_01E7X37SDuT7CyPd67Yonm4k` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_015hHqzBD92PvX1wauiYmjyK`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | UX 감사 전담 (2) | `session_01MHWWLyxFsh9VRU33s3g4DQ` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01GbMUeY3UxdmHvLeW5HQ7co`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
@@ -157,6 +158,8 @@
 
 - **휴대폰 본인확인은 모든 개발과 디자인 정본 동기화를 마친 뒤 진행한다** (2026-10-05 22:20 KST 대표님 지시). 그때까지 본인확인 대행사 연동·실호출 시험을 하지 않는다. **결제(PG, 나이스페이) 시험은 계속 진행하고 화면 연계(주문 상세·주문 내역·파트너스 주문·마스터 결제 목록 반영)를 지속 확인한다** (같은 날 22:25 KST 대표님 지시로 PG 보류를 철회)
 - **Codex(chatgpt-codex-connector) 보안 리뷰는 중지하고 차후 일괄 진행한다** (2026-10-05 22:30 KST 대표님 지시). 설정은 저장소 밖(Codex 설정)이라 대표님이 끈다. 그때까지 PR의 Codex 한도·보안 리뷰 안내 글은 처리 대상이 아니며, 병합 판단은 CI·검수 전담 검토로 한다. 일괄 보안 리뷰는 대표님 지시 때 진행
+- 쇼핑몰 자체 도메인: 판매자 도메인 등록·소유 확인 서버(#606)까지만. 대표님이 Cloudflare에 `shops.on-aircue.com` A 레코드(DNS only, 시험 서버 IP)를 추가함(2026-10-05 23:15 KST). 인증서 자동 발급·호스트별 쇼핑몰 라우팅(proxy.ts)은 미구축(인프라 변경, 대표님 승인·비용 확인 필요). 운영 서버가 생기면 IP 변경
+- 기반-설정 (2) 인계(2026-10-05): ① 주문 메일 4종 발송 코드가 생기면 보내기 전 `lib/server/seller-settings/orderNotificationPolicy.ts` isOrderMailEnabled 호출 ② 쇼핑몰 layout에 meta.favicon ?? DEFAULT_FAVICON, 공개 화면에 readBrandColorOf·readShopSeoOf 적용은 화면 담당(미적용) ③ 외부 서비스 업체 시드는 요금·기능·점수 비움(마스터 입력) ④ 스키마 수정 때 prisma format 금지, 새 DB 적용 뒤 `prisma migrate diff --exit-code`로 차이 없음 확인 ⑤ 발송 후 구매자 사정 부분 환불을 여러 번 하면 건마다 편도 반품 배송비 공제(문서 미명시) ⑥ 교환 배송비는 설정만 있고 교환 처리 코드 없음
 - 쇼핑몰 검색: 인기 검색어 반복 제한이 서버 메모리라 서버 1대 기준(증설 시 DB 기반으로). 이름·태그 검색은 상품 수천 개 넘는 쇼핑몰에서 trigram 인덱스 검토
 - 쇼핑몰 「방송 중」(#520)은 파트너스가 시작한 방송 세션 기준이라 유튜브만 켜져 있으면 live=false
 - 구매자 문의 글 3년 보관 뒤 파기 작업 없음(상수만, 법률 검토 뒤)

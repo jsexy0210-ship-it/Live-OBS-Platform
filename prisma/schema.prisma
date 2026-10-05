@@ -162,6 +162,7 @@ model Seller {
   buyerInquiryImages       BuyerInquiryImage[]
   shopSearchSynonyms       ShopSearchSynonym[]
   shopSearchTerms          ShopSearchTerm[]
+  shopSearchBlockedTerms   ShopSearchBlockedTerm[]
   productReviewImages      ProductReviewImage[]
   productReviewReports     ProductReviewReport[]
   productReviewPolicy      ProductReviewPolicy?
@@ -170,6 +171,7 @@ model Seller {
   restockAlerts            RestockAlert[]
   shopNotices              ShopNotice[]
   shopLegalDocs            ShopLegalDoc[]
+  shopLegalNotice          ShopLegalNotice?
   returnRequests           ReturnRequest[]
   memberGradePolicy        MemberGradePolicy?
   memberGradeOverrides     MemberGradeOverride[]
@@ -197,6 +199,9 @@ model SellerDomain {
   certStatus  String?
   // 자동 해지로 연결을 푼 시각(비활성). 다시 구독하면 되살린다.
   suspendedAt DateTime? @db.Timestamptz(3)
+  // 소유 확인 값: 도메인 DNS에 _onq-verify TXT 레코드로 넣게 한다(SA-060 도메인 연결). 마지막 확인 시각은 연속 확인(DNS 조회) 제한용.
+  verifyToken   String    @default(dbgenerated("replace((gen_random_uuid())::text, '-'::text, ''::text)"))
+  lastCheckedAt DateTime? @db.Timestamptz(3)
   createdAt   DateTime  @default(now()) @db.Timestamptz(3)
 
   seller Seller @relation(fields: [sellerId], references: [id])
@@ -1934,7 +1939,9 @@ model ServiceVendor {
   createdAt    DateTime              @default(now()) @db.Timestamptz(3)
   updatedAt    DateTime              @default(now()) @updatedAt @db.Timestamptz(3)
 
-  logo ServiceVendorLogo?
+  logo          ServiceVendorLogo?
+  recommendedIn ServiceVendorSetting[] @relation("ServiceVendorRecommended")
+  selectedIn    ServiceVendorSetting[] @relation("ServiceVendorSelected")
 
   @@unique([category, name])
   @@unique([id, category])
@@ -1957,6 +1964,10 @@ model ServiceVendorSetting {
   recommendedVendorId String?               @db.Uuid
   selectedVendorId    String?               @db.Uuid
   updatedAt           DateTime              @default(now()) @updatedAt @db.Timestamptz(3)
+
+  // 추천·선택 업체는 같은 분야의 업체만(복합 외래키 (업체 id, 분야) → ServiceVendor(id, category), 마이그레이션 20261005042000_service_vendors의 SQL과 같음)
+  recommendedVendor ServiceVendor? @relation("ServiceVendorRecommended", fields: [recommendedVendorId, category], references: [id, category], onDelete: Restrict, map: "ServiceVendorSetting_recommended_fkey")
+  selectedVendor    ServiceVendor? @relation("ServiceVendorSelected", fields: [selectedVendorId, category], references: [id, category], onDelete: Restrict, map: "ServiceVendorSetting_selected_fkey")
 }
 
 // ───────────── 자동 설치·연결 상품 (docs/AUTOMATION.md) ─────────────
@@ -3687,6 +3698,17 @@ model ShopLegalDoc {
   @@unique([sellerId, kind])
 }
 
+// 인기 검색어·자동완성에서 뺄 단어(파트너스가 정함, 소문자로 접은 값). 검색어에 이 단어가 들어 있으면 보이지 않는다(검색 자체는 그대로 된다). 쇼핑몰마다 최대 100개.
+model ShopSearchBlockedTerm {
+  sellerId  String   @db.Uuid
+  term      String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@id([sellerId, term])
+}
+
 // 회원 대상 발송(SA-049, 2026-10-05). 실제 발송 채널(알림톡·문자·메일)과 충전 잔액 차감이 정해지기 전이라 「발송 기록」만 남긴다(RECORDED).
 // 광고성(AD)은 혜택·소식 수신 동의 회원만, 정보성(INFO)은 정상 회원 전체. 받는 사람 연락처는 저장하지 않는다(보낼 때 서버가 회원 행에서 읽는다).
 // 예약(SCHEDULED)은 시각이 되면 대상을 다시 계산해 받는 사람 행을 만들고 RECORDED로 바꾼다. 형식·상태 일치 CHECK는 마이그레이션 SQL.
@@ -3813,4 +3835,34 @@ model ProductFunnelSeen {
 
   @@id([sellerId, productId, day, kind, viewerHash])
   @@index([day])
+}
+
+// ───────────── 쇼핑몰 바닥글 법정 표시(SA-062 사업자 정보·고지) ─────────────
+
+enum ShopEscrowKind {
+  NONE
+  ESCROW
+  INSURANCE
+}
+
+// 쇼핑몰 바닥글에 보이는 사업자 정보·고지 중 파트너스가 입력하는 값(쇼핑몰당 한 줄). 상호·대표자·사업자등록번호·통신판매업 신고번호는
+// 입점 신청 때 받은 검증 값(Seller.businessInfo)을 그대로 읽어 보여 주고 여기서 바꾸지 않는다. 입력한 항목만 구매자 화면에 보인다.
+// escrowKind: 구매안전서비스 가입 종류(없음·에스크로·소비자피해보상보험). 가입 정보는 파트너스가 쓴 그대로 표시한다(법률 문구를 앱이 짓지 않음).
+// minorNotice: 미성년자 구매 안내 글(파트너스 입력). version은 저장할 때마다 올라가고 다른 창 덮어쓰기를 막는다(shop-legal/notice.ts).
+model ShopLegalNotice {
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId       String         @unique @db.Uuid
+  address        String         @default("")
+  csPhone        String         @default("")
+  csEmail        String         @default("")
+  csHours        String         @default("")
+  escrowKind     ShopEscrowKind @default(NONE)
+  escrowProvider String         @default("")
+  escrowUrl      String         @default("")
+  minorNotice    String         @default("")
+  version        Int            @default(0)
+  createdAt      DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime       @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
 }

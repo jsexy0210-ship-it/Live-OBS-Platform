@@ -1,6 +1,6 @@
 // 오버레이 레이아웃 화면 쪽 공용 정의(편집기 SA-051 · 오버레이 OV-001/002). 서버 계약은 lib/server/overlay/layout.ts와 같다.
 export type Aspect = "9x16" | "16x9";
-export type WidgetType = "HALL_OF_FAME" | "NOTICE" | "SHOP_INFO" | "CURRENT_ORDER" | "QUEUE" | "OPEN_TIMER" | "NEW_ORDER_ALERT";
+export type WidgetType = "HALL_OF_FAME" | "NOTICE" | "SHOP_INFO" | "CURRENT_ORDER" | "QUEUE" | "OPEN_TIMER" | "NEW_ORDER_ALERT" | "EVENT_CARD" | "PURCHASE_RANKING";
 export type PropValue = string | number | boolean;
 export type Widget = { id: string; type: WidgetType; visible: boolean; x: number; y: number; w: number; h: number; z: number; props: Record<string, PropValue> };
 
@@ -16,6 +16,8 @@ export const SLOTS: Slot[] = [
   { key: "NOTICE", type: "NOTICE", label: "공지" },
   { key: "SHOP_INFO", type: "SHOP_INFO", label: "쇼핑몰 정보" },
   { key: "OPEN_TIMER", type: "OPEN_TIMER", label: "개봉 타이머" },
+  { key: "EVENT_CARD", type: "EVENT_CARD", label: "이벤트 할인 카드" },
+  { key: "PURCHASE_RANKING", type: "PURCHASE_RANKING", label: "구매 랭킹" },
   { key: "NEW_ORDER_ALERT:first", type: "NEW_ORDER_ALERT", variant: "first", label: "신규 주문 알림 · 첫 주문" },
   { key: "NEW_ORDER_ALERT:repeat", type: "NEW_ORDER_ALERT", variant: "repeat", label: "신규 주문 알림 · 재주문" },
   { key: "NEW_ORDER_ALERT:vip", type: "NEW_ORDER_ALERT", variant: "vip", label: "신규 주문 알림 · VIP" },
@@ -33,6 +35,8 @@ const DEFAULT_BOX: Record<Aspect, Record<WidgetType, [number, number, number, nu
     SHOP_INFO: [3, 32, 94, 4],
     OPEN_TIMER: [70, 2, 27, 6],
     NEW_ORDER_ALERT: [3, 20, 94, 10],
+    EVENT_CARD: [3, 32, 94, 8],
+    PURCHASE_RANKING: [50, 13, 47, 18],
   },
   "16x9": {
     CURRENT_ORDER: [2, 4, 26, 18],
@@ -42,6 +46,8 @@ const DEFAULT_BOX: Record<Aspect, Record<WidgetType, [number, number, number, nu
     SHOP_INFO: [2, 88, 26, 8],
     OPEN_TIMER: [72, 84, 26, 12],
     NEW_ORDER_ALERT: [2, 30, 26, 14],
+    EVENT_CARD: [72, 56, 26, 14],
+    PURCHASE_RANKING: [72, 4, 26, 40],
   },
 };
 export function newWidget(slot: Slot, aspect: Aspect, widgets: Widget[]): Widget {
