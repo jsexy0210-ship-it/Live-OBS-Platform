@@ -110,3 +110,14 @@ export async function bumpLiveVersion(slug = "demo-shop") {
     await db.$disconnect();
   }
 }
+
+// e2e가 만든 HIT 카드(카드명이 「e2e-」로 시작)를 지운다. 카드가 방송을 가리키면 방송 정리가 막히므로 방송 정리 전에 부른다.
+export async function purgeE2eHitCards(slug = "demo-shop") {
+  const db = open();
+  try {
+    const { id: sellerId } = await db.seller.findUniqueOrThrow({ where: { slug }, select: { id: true } });
+    await db.hitCard.deleteMany({ where: { sellerId, cardName: { startsWith: "e2e-" } } });
+  } finally {
+    await db.$disconnect();
+  }
+}
