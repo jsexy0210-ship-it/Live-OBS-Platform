@@ -1099,3 +1099,12 @@ body {
   font-weight: 600;
   color: var(--wds-status-negative);
 }
+
+/* IA ④ 상품 상세: 추천 상품 */
+.pd-reco {
+  margin-top: 48px;
+}
+.pd-reco h2 {
+  margin: 0 0 16px;
+  font-size: 20px;
+}

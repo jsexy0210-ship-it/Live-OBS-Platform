@@ -51,7 +51,7 @@ const cardSelect = {
   nicknameSnapshot: true,
   createdAt: true,
   broadcastSession: { select: { id: true, title: true } },
-  queueItem: { select: { id: true, productLabel: true, order: { select: { id: true, orderNo: true } } } },
+  queueItem: { select: { id: true, productLabel: true, order: { select: { id: true, orderNo: true } }, externalOrderId: true, externalOrder: { select: { connection: { select: { shopKey: true } } } } } },
 } satisfies Prisma.HitCardSelect;
 type CardRow = Prisma.HitCardGetPayload<{ select: typeof cardSelect }>;
 
@@ -63,6 +63,9 @@ const view = (r: CardRow) => ({
   broadcast: r.broadcastSession ? { id: r.broadcastSession.id, title: r.broadcastSession.title } : null,
   // 외부 쇼핑몰 주문에서 나온 HIT는 내부 주문이 없어 order가 null이다(닉네임·상품은 queueItem 기준)
   order: r.queueItem?.order ? { id: r.queueItem.order.id, orderNo: r.queueItem.order.orderNo, productLabel: r.queueItem.productLabel } : null,
+  // 출처: 외부 쇼핑몰 주문에서 나온 카드면 EXTERNAL(externalShopName은 지금은 몰 ID). 직접 입력한 카드는 queueItem이 없어 null
+  source: r.queueItem ? (r.queueItem.externalOrderId ? ("EXTERNAL" as const) : ("INTERNAL" as const)) : null,
+  externalShopName: r.queueItem?.externalOrder?.connection.shopKey ?? null,
   createdAt: r.createdAt,
 });
 
