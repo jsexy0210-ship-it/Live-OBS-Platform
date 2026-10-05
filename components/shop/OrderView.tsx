@@ -17,6 +17,7 @@ import "./Checkout.css";
 type Order = {
   id: string;
   orderNo: number;
+  orderNoLabel: string;
   status: "PENDING_PAYMENT" | "PAID" | "CANCELLED" | "REFUNDED";
   totalAmount: number;
   shippingFee: number;
@@ -122,7 +123,7 @@ export default function OrderView({ slug, orderId }: { slug: string; orderId: st
         <dl className="od-dl">
           <div>
             <dt>주문 번호</dt>
-            <dd>{o.orderNo}</dd>
+            <dd>{o.orderNoLabel}</dd>
           </div>
           <div>
             <dt>주문 상태</dt>

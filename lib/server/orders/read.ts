@@ -77,6 +77,8 @@ function shipmentView(s: ShipmentRow) {
 
 const refundedAmountOf = (o: { status: OrderStatus; totalAmount: number; refundAmount: number | null }) => o.refundAmount ?? (o.status === "REFUNDED" ? o.totalAmount : 0);
 
+const rewardReturnedOf = (o: { refunds: { rewardReturn: number }[] }) => o.refunds.reduce((a, r) => a + r.rewardReturn, 0);
+
 export const SELLER_ORDER_PAGE_DEFAULT = 50;
 export const SELLER_ORDER_PAGE_MAX = 200;
 const ORDER_STATUSES: readonly OrderStatus[] = ["PENDING_PAYMENT", "PAID", "CANCELLED", "REFUNDED"];
@@ -175,6 +177,7 @@ export async function listSellerOrders(db: PrismaClient, ctx: TenantContext, que
       buyerMember: { select: { id: true, broadcastNickname: true } },
       items: itemSummarySelect,
       shipment: { select: { id: true, status: true, courier: true, trackingNumber: true, deliveredAt: true } },
+      refunds: { select: { rewardReturn: true } },
       // 처리 대기 중(REQUESTED) 환불 요청 수. 한 번의 조회에서 같이 센다(주문마다 따로 묻지 않음).
       _count: { select: { refundRequests: { where: { status: "REQUESTED" } } } },
     },
@@ -206,9 +209,11 @@ export async function listSellerOrders(db: PrismaClient, ctx: TenantContext, que
       totalAmount: o.totalAmount,
       // 환불 현황(주문 합계, 현금 환불은 반품 배송비·적립금 반환을 뺀 돌려준 금액). 환불이 없으면 0.
       // 금액이 비어 있는 옛 전액 환불 주문(REFUNDED)은 합계 전부를 돌려준 것으로 본다(통계와 같은 기준).
+      // 화면 표기: refundedAmount = 「환불한 금액(현금)」, rewardReturned = 「돌려준 적립금」(환불 때 함께 돌려준 적립금 합계, 현금에는 들어 있지 않음).
       refundedAmount: refundedAmountOf(o),
+      rewardReturned: rewardReturnedOf(o),
       refundedQuantity: o.items.reduce((a, i) => a + i.refundedQuantity, 0),
-      remainingAmount: Math.max(o.totalAmount - refundedAmountOf(o), 0),
+      remainingAmount: Math.max(o.totalAmount - refundedAmountOf(o) - rewardReturnedOf(o), 0),
       // 결제 수단과 입금 기한. 무통장 입금 대기(status=PENDING_PAYMENT, paymentMethod=BANK_TRANSFER) 판별용. 결제 전이면 paymentMethod가 null일 수 있다.
       paymentMethod: o.paymentMethod,
       paymentDueAt: o.paymentDueAt,
