@@ -102,6 +102,7 @@ model Seller {
   plan       SubscriptionPlan? @relation(fields: [planId], references: [id])
 
   domains                  SellerDomain[]
+  adminNotes               SellerAdminNote[]
   users                    SellerUser[]
   sellerSessions           SellerSession[]
   passwordResetGrants      PasswordResetGrant[]
@@ -1672,6 +1673,21 @@ model BuyerPurchaseRestriction {
 
 // 파트너스가 회원 상세(SA-042)에 적는 회원 메모. 회원마다 1건(덮어쓰기), 작성자·수정 시각을 남긴다.
 // 자유 입력이라 개인정보가 섞일 수 있어 탈퇴 때 지운다(buyers/memberData.ts). 로그 추적에는 본문을 남기지 않고 글자 수만 남긴다.
+// 마스터 관리자가 파트너스 상세(MA-012)에 남기는 내부 메모. 파트너스에게는 보이지 않는다(마스터 관리자 API만 읽는다).
+// 작성자 이름은 쓴 때의 값을 남겨 계정이 바뀌어도 기록이 읽힌다. 파트너스가 정리돼도 메모는 지우지 않는다.
+model SellerAdminNote {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId   String   @db.Uuid
+  body       String
+  authorId   String   @db.Uuid
+  authorName String
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+
+  @@index([sellerId, createdAt(sort: Desc), id(sort: Desc)])
+}
+
 model MemberMemo {
   id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   sellerId      String    @db.Uuid
