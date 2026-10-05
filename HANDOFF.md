@@ -18,7 +18,8 @@
 | UX 감사 전담 (2) | `session_01MHWWLyxFsh9VRU33s3g4DQ` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01GbMUeY3UxdmHvLeW5HQ7co`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | 화면-마스터 (2) | `session_01745GgCnQxQhtnpCd5Pv88w` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01JMzttsfKDXeXncJrX2VsLG`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | 화면-공개 (2) | `session_01VWVPemvkt3eicZ8fDRLSAR` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01HfJMUwycvTKgmVctvRpGjH`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
-| 화면-파트너스 운영 (2) | `session_01JFxmyNJFB2Ztwv2jUtQSCr` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_017i9HrY4Z9if193ZLQfJQbp`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
+| 화면-파트너스 운영 (3) | `session_016P8zSbRmKFuuWC9krz69jq` | 2026-10-05 23:50 KST MASTER 생성(Sonnet 5.5). (2) `session_01JFxmyNJFB2Ztwv2jUtQSCr`를 컨텍스트 76%로 교체. 역할·소유는 전임 행과 같음 |
+| 화면-파트너스 운영 (2) | `session_01JFxmyNJFB2Ztwv2jUtQSCr` | (교체됨 → `session_016P8zSbRmKFuuWC9krz69jq`, 2026-10-05)  2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_017i9HrY4Z9if193ZLQfJQbp`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | 쇼핑몰 운영 전담 (2) | `session_01WDkrYfwDz7o3oD8f2PeSvP` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_01AKkKsTJjMHv2KaJLHh8u1y`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 — 2026-10-05 23:45 KST 인계분(#455·#481·#500·#525·#547) 전부 병합, 열린 PR 0, 보관. 남은 것: 실제 발송 채널(대표님 결정) 뒤 SA-049 발송 기록을 발송에 연결 |
 | 통계 전담 (2) | `session_01GPhc7Kd9oq7YFPv4Tar4ZX` | 2026-10-05 대표님 지시 「전체 세션 효율 모델로 즉시 교체」로 `session_013CH4KbJKN2cpDNBKtipGYL`를 Sonnet 5.5로 교체. 역할·소유는 전임 행과 같음 |
 | 디자인 전담 (4) · Fable | `session_01QUUqmD2DDwArxHsUqMyA7Y` | 2026-10-05 대표님 지시 「디자인은 다 fable로 바꿔서 빨리 진행해」로 디자인 전담 (3)(`session_019Eb1gYYx6hQzm3VDbKmKmM`, Sonnet)을 Fable 5.1로 교체. 역할·소유는 전임 행과 같음. 첫 배정: docs/ADMIN_OPS_UX.md P1 보드 |
