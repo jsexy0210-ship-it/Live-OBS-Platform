@@ -37,7 +37,7 @@ export default function SellerLoginPage() {
     const p = new URLSearchParams(window.location.search);
     if (p.get("type") === "staff") setTab("staff");
     // 로그인이 풀려 이리로 온 경우(AU-007): 이유를 알려 준다
-    if (p.get("reason") === "expired") setNotice({ kind: "info", text: "로그인이 풀렸습니다. 다시 로그인해 주십시오" });
+    if (p.get("reason") === "expired") setNotice({ kind: "info", text: "로그인 시간이 지나 로그아웃되었습니다. 다시 로그인해 주십시오." });
   }, []);
 
   const ready = email.trim() !== "" && password !== "" && (!needShop || shopSlug.trim() !== "");
