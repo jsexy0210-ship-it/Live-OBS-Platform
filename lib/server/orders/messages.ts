@@ -4,11 +4,11 @@ import type { MessageTone } from "../text/tone";
 // 문구는 여기 한 곳에서만 고친다. 구매자 쇼핑몰 API는 해요체(아래 표), 파트너스 관리자 API는 합니다체(ORDER_ERROR_MESSAGES_FORMAL).
 export const ORDER_ERROR_MESSAGES = {
   shop_unavailable: "지금은 쇼핑몰을 이용할 수 없어요",
-  consent_required: "안내를 확인하고 동의해 주세요",
+  consent_required: "주문서 아래 안내를 읽고 체크 칸에 동의해 주세요",
   consent_outdated: "안내가 바뀌었어요. 다시 확인하고 동의해 주세요",
   invalid_items: "담은 상품을 다시 확인해 주세요",
   product_unavailable: "지금은 살 수 없는 상품이 있어요",
-  out_of_stock: "재고가 부족해요",
+  out_of_stock: "남은 수량이 모자라요. 수량을 줄이거나 장바구니를 확인해 주세요",
   reward_use_not_supported: "적립금은 아직 쓸 수 없어요",
   invalid_reward_use: "적립금은 1,000원부터 10원 단위로 쓸 수 있어요",
   reward_use_unavailable: "이 쇼핑몰은 지금 적립금을 쓸 수 없어요",
