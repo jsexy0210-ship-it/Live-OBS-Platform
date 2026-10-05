@@ -14,7 +14,7 @@
 
 | 화면 | 경로 | 화면 ID | 1단계 공통 규격 | 화면별 정리 | PC·모바일 확인 |
 |---|---|---|---|---|---|
-| 마스터 관리자 로그인 | `/admin/login` | AU-001 | 자동 반영 | 대기 | 확인(1440·390) |
+| 마스터 관리자 로그인 ★ | `/admin/login` | AU-001 | 자동 반영 | 완료(2단계: 인증 카드 공통 여백·제목 20/28·항목 간격 16, 오류 상태·키보드 시험) | 확인(360·390·768·1024·1280·1440·1920, e2e layout-admin-login) |
 | 대시보드 | `/admin` | MA | 자동 반영 | 대기 | 미확인 |
 | 관리자 계정 | `/admin/accounts` | MA | 자동 반영 | 대기 | 미확인 |
 | 역할 | `/admin/accounts/roles` | MA | 자동 반영 | 대기 | 미확인 |
@@ -35,7 +35,7 @@
 
 | 화면 | 경로 | 화면 ID | 1단계 공통 규격 | 화면별 정리 | PC·모바일 확인 |
 |---|---|---|---|---|---|
-| 파트너스 로그인 | `/seller/login` | AU-002 | 자동 반영 | 대기 | 확인(1440·390) |
+| 파트너스 로그인 | `/seller/login` | AU-002 | 자동 반영(인증 카드 공통 여백·제목은 2단계에서 함께 바뀜) | 대기 | 확인(1440·390) |
 | 아이디 찾기 | `/seller/find-id` | AU-011 | 자동 반영 | 대기 | 미확인 |
 | 비밀번호 찾기 | `/seller/password-reset` | AU-003·004 | 자동 반영 | 대기 | 미확인 |
 | 본인확인 연결 | `/seller/identity-link` | AU-012 | 자동 반영 | 대기 | 미확인 |
@@ -99,6 +99,19 @@
 | 공통 모달 | `components/admin-ui/Modal.tsx` | 1단계 기반 완료. 화면별 모달 약 23곳 전환은 2~4단계 |
 | 구매자 모달 | `components/shop/ShopModal.tsx` | 모서리·X 크기만 토큰으로 맞춤. 포커스 가둠·배경 스크롤 차단·미저장 확인은 공통 모달로 전환할 때(4단계) |
 | 셸 | `components/seller/SellerShell.tsx`, `app/(admin)/admin/_components/AdminShell.tsx` | 대기(열린 PR이 메뉴 줄을 고치는 중이라 1단계에서 제외) |
+
+## 모달 전환 담당(공통 Modal)
+
+| 모달 | 파일 | 담당 |
+|---|---|---|
+| 발송 단가 변경 창 | `app/(admin)/admin/_components/ValueDialog.tsx` | 완료(1단계, #372) |
+| 정지·계정·충전 확인·무상 지급 창 | `app/(admin)/admin/_components/*`, 발송 단가 화면 | 소유 세션 전환(브랜딩 전담 (2)) |
+| 환불 창 | `components/seller/RefundModal.tsx` | 소유 세션 전환(개발 전담 (화면) (3)) |
+| HIT 카드 등록 창 | `app/(seller)/seller/(shell)/hit-cards/page.tsx` | 소유 세션 전환(화면-방송 (2)) |
+| 방송 대시보드 모달 | `components/seller/broadcast/Modals.tsx` | 레이아웃 전담 2단계(잠금 승인) |
+| 오버레이 편집기 모달 | `components/seller/OverlayEditor.tsx` | 레이아웃 전담 2단계(잠금 승인) |
+| 그 밖의 파트너스 모달 | `feat/admin-modal` 전환분(레이아웃 (2) 인계) | 레이아웃 전담 3단계(화면별 잠금 뒤) |
+| 구매자 모달 | `components/shop/ShopModal.tsx` | 레이아웃 전담 4단계(잠금 뒤) |
 
 ## 알려진 문제(1단계에서 확인, 고치지 않음)
 
