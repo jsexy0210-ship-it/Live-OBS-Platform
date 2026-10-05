@@ -9,6 +9,7 @@ import { ErrorState, LoadingRows, Toast } from "../../../../components/seller/St
 import { adminApi, failMessage } from "./api";
 import { useAdmin } from "./AdminShell";
 import { dayTime, won } from "./partners";
+import { DatePicker } from "../../../../components/admin-ui/DatePicker";
 
 // 파트너스 상세(MA-012)의 탭 내용: 방송 이력·메모·결제 연결(PG)·활동 기록. 모두 서버가 주는 값만 보인다.
 export const PARTNER_TABS = [
@@ -67,9 +68,9 @@ export function PartnerBroadcasts({ sellerId }: { sellerId: string }) {
   return (
     <section className="card pad-l col" style={{ gap: 14 }} aria-label="방송 이력" data-testid="tab-broadcasts">
       <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <input className="inp" type="date" aria-label="방송 시작일 부터" value={draft.from} onChange={(e) => setDraft({ ...draft, from: e.target.value })} />
+        <DatePicker aria-label="방송 시작일 부터" value={draft.from} onChange={(v) => setDraft({ ...draft, from: v })} />
         <span aria-hidden="true">~</span>
-        <input className="inp" type="date" aria-label="방송 시작일 까지" value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} />
+        <DatePicker aria-label="방송 시작일 까지" value={draft.to} onChange={(v) => setDraft({ ...draft, to: v })} />
         <button className="btn btn-sm" type="button" disabled={rangeError} onClick={() => setApplied(draft)}>
           조회
         </button>

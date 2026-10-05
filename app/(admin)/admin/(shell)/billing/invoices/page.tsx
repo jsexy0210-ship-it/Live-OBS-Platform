@@ -10,6 +10,7 @@ import { useScrollRestore } from "../../../../../../lib/client/navigation";
 import { AdminTopbar } from "../../../_components/AdminShell";
 import { day, dayTime, won } from "../../../_components/partners";
 import { PAYMENT_KIND, PAYMENT_STATUS, planLabel, type PaymentKind, type PaymentRow, type PaymentStatus } from "../../../_components/payments";
+import { DatePicker } from "../../../../../../components/admin-ui/DatePicker";
 
 // MA-024 청구·결제 내역(GET /api/admin/payments, 모든 마스터 역할, 조회만). 상태·구분·청구 기간(KST 날짜) 필터, 파트너스 지정(?sellerId=).
 // 50건씩 이어서 불러온다. 결제 실행·환불은 이 화면에 없다.
@@ -100,9 +101,9 @@ function Invoices() {
             </select>
           </SearchRow>
           <SearchRow label="청구 기간">
-            <input className="inp" type="date" aria-label="청구 시작일" value={draft.from} onChange={(e) => setDraft({ ...draft, from: e.target.value })} />
+            <DatePicker aria-label="청구 시작일" value={draft.from} onChange={(v) => setDraft({ ...draft, from: v })} />
             <span aria-hidden="true">~</span>
-            <input className="inp" type="date" aria-label="청구 종료일" value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} />
+            <DatePicker aria-label="청구 종료일" value={draft.to} onChange={(v) => setDraft({ ...draft, to: v })} />
             {rangeError && (
               <span className="err" role="alert">
                 시작일이 종료일보다 늦습니다.

@@ -96,6 +96,59 @@ describe("PG 연결 상태 GET /api/admin/pg-status", () => {
     for (const bad of ["?limit=0", "?cursor=x", `?q=${"가".repeat(51)}`]) expect((await get(pgStatusRoute, `/api/admin/pg-status${bad}`, await adminCookie())).status, bad).toBe(400);
   });
 
+  it("쇼핑몰별 인덱스 조회로 바꾼 집계가 전체를 훑는 참조 계산과 같다(여러 쇼핑몰·같은 시각 실패·취소 상태·정렬·검색·쪽 이동·게이트웨이 요약)", async () => {
+    setPaymentGatewayForTest(new FakePaymentGateway());
+    const now = Date.now();
+    // 같은 시각 실패 두 건(마지막 실패 코드는 id가 큰 쪽), 성공만·실패만·섞인·결제 없음, 24시간 안팎 실패, 취소 상태 섞임
+    const tie = new Date(now - 3 * HOUR);
+    const shops = [
+      await shopWithPayments("참조A", [{ status: "FAILED", at: tie, code: "pg_failed" }, { status: "FAILED", at: tie, code: "pg_expired" }, { status: "PAID", at: new Date(now - 9 * HOUR) }], ["REQUESTED", "REQUESTED", "FAILED"]),
+      await shopWithPayments("참조B", [{ status: "PAID", at: new Date(now - 1 * HOUR) }, { status: "PAID", at: new Date(now - 7 * HOUR) }], ["DONE"]),
+      await shopWithPayments("참조C", [{ status: "FAILED", at: new Date(now - 26 * HOUR), code: "nicepay_3095" }, { status: "FAILED", at: new Date(now - 2 * HOUR), code: "approve_timeout" }]),
+      await shopWithPayments("참조D", [{ status: "FAILED", at: tie, code: "duplicate_payment" }, { status: "PAID", at: new Date(now - 30 * HOUR) }], ["FAILED", "FAILED"]),
+    ];
+    await createSeller(); // 결제 없음
+    // 참조: 전체 결제·취소를 읽어 쇼핑몰마다 자바스크립트로 계산
+    const pays = await db.payment.findMany({ select: { id: true, sellerId: true, status: true, approvedAt: true, updatedAt: true, failureCode: true } });
+    const cancels = await db.paymentCancel.findMany({ select: { sellerId: true, status: true } });
+    const cmpFail = (a: { updatedAt: Date; id: string }, b: { updatedAt: Date; id: string }) => b.updatedAt.getTime() - a.updatedAt.getTime() || (a.id < b.id ? 1 : -1);
+    const failed = pays.filter((x) => x.status === "FAILED").sort(cmpFail);
+    const sellers = await db.seller.findMany({ where: { id: { in: shops.map((x) => x.id) } }, select: { id: true, shopName: true, slug: true, status: true } });
+    const ref = sellers
+      .map((se) => {
+        const mine = pays.filter((x) => x.sellerId === se.id);
+        const fails = mine.filter((x) => x.status === "FAILED").sort(cmpFail);
+        const oks = mine.map((x) => x.approvedAt).filter((x): x is Date => !!x).sort((a, b) => b.getTime() - a.getTime());
+        return {
+          id: se.id,
+          lastSuccessAt: oks[0]?.toISOString() ?? null,
+          lastFailureAt: fails[0]?.updatedAt.toISOString() ?? null,
+          lastFailureCode: fails[0]?.failureCode ?? null,
+          failures24h: fails.filter((x) => x.updatedAt.getTime() > now - 24 * HOUR).length,
+          cancelsPending: cancels.filter((c) => c.sellerId === se.id && c.status === "REQUESTED").length,
+          cancelsFailed: cancels.filter((c) => c.sellerId === se.id && c.status === "FAILED").length,
+        };
+      })
+      .sort((a, b) => {
+        const f = (x: string | null) => (x ? Date.parse(x) : -Infinity);
+        return f(b.lastFailureAt) - f(a.lastFailureAt) || f(b.lastSuccessAt) - f(a.lastSuccessAt) || (a.id < b.id ? -1 : 1);
+      });
+    const body = await (await get(pgStatusRoute, "/api/admin/pg-status?limit=200", await adminCookie())).json();
+    type Row = { seller: { id: string }; lastSuccessAt: string | null; lastFailureAt: string | null; lastFailureCode: string | null; failures24h: number; cancelsPending: number; cancelsFailed: number };
+    expect((body.sellers as Row[]).map((r) => ({ id: r.seller.id, lastSuccessAt: r.lastSuccessAt, lastFailureAt: r.lastFailureAt, lastFailureCode: r.lastFailureCode, failures24h: r.failures24h, cancelsPending: r.cancelsPending, cancelsFailed: r.cancelsFailed }))).toEqual(ref);
+    // 같은 시각 실패는 id가 큰 쪽의 코드
+    const tied = failed.filter((x) => x.updatedAt.getTime() === tie.getTime() && x.sellerId === shops[0].id).sort((a, b) => (a.id < b.id ? 1 : -1));
+    expect(body.sellers.find((r: Row) => r.seller.id === shops[0].id).lastFailureCode).toBe(tied[0].failureCode);
+    // 게이트웨이 요약(전체 마지막 성공·마지막 실패와 그 코드)
+    const okAll = pays.map((x) => x.approvedAt).filter((x): x is Date => !!x).sort((a, b) => b.getTime() - a.getTime())[0];
+    expect(body.gateway).toMatchObject({ lastSuccessAt: okAll.toISOString(), lastFailureAt: failed[0].updatedAt.toISOString(), lastFailureCode: failed[0].failureCode });
+    // 쪽 이동은 같은 순서로 이어진다
+    const p1 = await (await get(pgStatusRoute, "/api/admin/pg-status?limit=3", await adminCookie())).json();
+    const p2 = await (await get(pgStatusRoute, `/api/admin/pg-status?limit=3&cursor=${p1.nextCursor}`, await adminCookie())).json();
+    expect([...p1.sellers, ...p2.sellers].map((r: Row) => r.seller.id)).toEqual(ref.map((r) => r.id));
+    expect(p2.nextCursor).toBeNull();
+  });
+
   it("키가 없으면 configured: false이고 키 값은 어디에도 내려주지 않는다. 모든 마스터 역할이 보고, 파트너스 세션은 막힌다", async () => {
     const prev = { c: process.env.NICEPAY_CLIENT_KEY, s: process.env.NICEPAY_SECRET_KEY };
     try {

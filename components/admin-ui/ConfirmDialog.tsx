@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Modal } from "./Modal";
-import { confirmButtonWidth, retypeMatches } from "./confirmUtil";
+import { confirmButtonWidth, retypeMatches, type RetypeMode } from "./confirmUtil";
 
 // 공통 확인 창(DS-CONFIRM 정본, 대표님 지시 2026-10-06): 서버에 쓰는 모든 행동(저장·삭제·변경·상태 변경·일괄 처리) 앞에 띄운다. 읽기·이동·필터는 띄우지 않는다.
 // 구성: 제목 한 줄(관리자 「~하시겠습니까?」·구매자 「~할까요?」) → 본문 1~2줄(바뀌는 대상·결과·건너뛰는 것) → [취소][실행 이름]. 실행 이름은 「확인」이 아니라 행동 그대로(저장·삭제·5건 변경·환불).
@@ -28,7 +28,8 @@ export type ConfirmOptions = {
   confirmLabel: string;
   cancelLabel?: string;
   danger?: boolean;
-  retype?: { expected: string; label?: string };
+  // mode: amount(기본, 쉼표·「원」 무시) · text(이름, 공백만 무시)
+  retype?: { expected: string; label?: string; mode?: RetypeMode };
   tone?: "admin" | "shop";
   run?: () => Promise<void | string>;
   allowReadOnly?: boolean;
@@ -55,7 +56,7 @@ export function ConfirmDialog({ opts, onResult }: { opts: ConfirmOptions; onResu
   );
   const cancelLabel = opts.cancelLabel ?? t.cancel;
   const width = confirmButtonWidth(cancelLabel, opts.confirmLabel);
-  const ready = !opts.retype || retypeMatches(typed, opts.retype.expected);
+  const ready = !opts.retype || retypeMatches(typed, opts.retype.expected, opts.retype.mode);
 
   const go = async () => {
     if (busy || !ready) return;
@@ -119,14 +120,16 @@ type Pending = { opts: ConfirmOptions; resolve: (ok: boolean) => void };
 type Api = { confirm: (opts: ConfirmOptions) => Promise<boolean>; readOnly: boolean };
 const Ctx = createContext<Api | null>(null);
 
-export function ConfirmProvider({ readOnly = false, children }: { readOnly?: boolean; children: React.ReactNode }) {
+// defaultTone: 이 틀 안의 확인 창 말투 기본값(구매자 쇼핑몰은 "shop" = 해요체·휴대폰 바텀시트). 호출에서 tone으로 바꿀 수 있다
+export function ConfirmProvider({ readOnly = false, defaultTone = "admin", children }: { readOnly?: boolean; defaultTone?: "admin" | "shop"; children: React.ReactNode }) {
   const [pending, setPending] = useState<Pending | null>(null);
   const [notice, setNotice] = useState<"admin" | "shop" | null>(null);
   const openRef = useRef(false);
   openRef.current = !!pending || !!notice;
 
   const confirm = useCallback(
-    (opts: ConfirmOptions) => {
+    (raw: ConfirmOptions) => {
+      const opts: ConfirmOptions = { tone: defaultTone, ...raw };
       // 창을 겹쳐 열지 않는다
       if (openRef.current) return Promise.resolve(false);
       if (readOnly && !opts.allowReadOnly) {
@@ -135,7 +138,7 @@ export function ConfirmProvider({ readOnly = false, children }: { readOnly?: boo
       }
       return new Promise<boolean>((resolve) => setPending({ opts, resolve }));
     },
-    [readOnly],
+    [readOnly, defaultTone],
   );
   const api = useMemo(() => ({ confirm, readOnly }), [confirm, readOnly]);
   const finish = (ok: boolean) => {
