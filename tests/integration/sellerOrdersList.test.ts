@@ -180,4 +180,18 @@ describe("판매자 주문 목록 GET /api/seller/orders", () => {
     await db.seller.update({ where: { id: s.seller.id }, data: { trialEndsAt: new Date("2000-01-01T00:00:00Z") } });
     expect((await list(s.cookie)).body.orders).toHaveLength(1);
   });
+
+  it("memberId로 회원 한 명의 주문만 주고, 잘못된 값은 400, 다른 판매자 회원 id는 빈 목록이다", async () => {
+    const a = await shop();
+    const b = await shop();
+    const other = await createBuyer(a.seller.id, a.grade.id);
+    const mine = await a.order({ createdAt: new Date("2026-10-01T01:00:00Z") });
+    await db.order.create({ data: { sellerId: a.seller.id, orderNo: 99, buyerMemberId: other.id, broadcastNicknameSnapshot: "다른회원", totalAmount: 1, status: "PAID" } });
+    await b.order();
+    const r = await list(a.cookie, `?memberId=${a.buyer.id}`);
+    expect(r.body.orders.map((o: { id: string }) => o.id)).toEqual([mine.id]);
+    expect(r.body.orders[0].buyer.id).toBe(a.buyer.id);
+    expect((await list(a.cookie, `?memberId=${b.buyer.id}`)).body.orders).toEqual([]);
+    expect((await list(a.cookie, "?memberId=abc")).status).toBe(400);
+  });
 });

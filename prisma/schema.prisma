@@ -154,6 +154,8 @@ model Seller {
   couponRedemptions        CouponRedemption[]
   logo                     SellerLogo?
   productReviews           ProductReview[]
+  buyerInquiries           BuyerInquiry[]
+  buyerInquiryImages       BuyerInquiryImage[]
   productReviewImages      ProductReviewImage[]
   productReviewReports     ProductReviewReport[]
   productReviewPolicy      ProductReviewPolicy?
@@ -173,6 +175,7 @@ model Seller {
   platformInquiries        PlatformInquiry[]
   platformInquiryMessages  PlatformInquiryMessage[]
   platformInquiryImages    PlatformInquiryImage[]
+  externalShopConnections  ExternalShopConnection[]
 }
 
 model SellerDomain {
@@ -364,6 +367,7 @@ model BuyerMember {
   sessions             BuyerSession[]
   orders               Order[]
   purchaseRestrictions BuyerPurchaseRestriction[]
+  memo                 MemberMemo?
   hitCards             HitCard[]
   rewardLedger         RewardLedger[]
   rewardBalances       RewardBalance[]
@@ -371,6 +375,8 @@ model BuyerMember {
   addresses            BuyerAddress[]
   coupons              BuyerCoupon[]
   productReviews       ProductReview[]
+  buyerInquiries       BuyerInquiry[]
+  buyerInquiryImages   BuyerInquiryImage[]
   productReviewImages  ProductReviewImage[]
   productReviewReports ProductReviewReport[]
   cartItems            CartItem[]
@@ -378,6 +384,7 @@ model BuyerMember {
   restockAlerts        RestockAlert[]
   returnRequests       ReturnRequest[]
   refundRequests       RefundRequest[]
+  receiptRequests      OrderReceiptRequest[]
   returnRequestImages  ReturnRequestImage[]
   gradeOverrides       MemberGradeOverride[]
   gradeHistory         MemberGradeHistory[]
@@ -537,6 +544,8 @@ model Product {
   eventStartsAt      DateTime?          @db.Timestamptz(3)
   eventEndsAt        DateTime?          @db.Timestamptz(3)
   sortOrder          Int                @default(0)
+  // 검색 태그(상품 이름 밖 키워드, 최대 10개·각 20자). 쇼핑몰 검색과 자동완성이 이름과 함께 본다.
+  searchTags         String[]           @default([])
   // 상품 코드 번호(카페24식 자동 상품 코드, MASTER 결정 2026-10-04). 판매자별 1부터 순번, 화면·API는 「P」 + 7자리(P0000001).
   // 넣을 때 0(기본)이면 DB 트리거(product_assign_code_no)가 ProductCodeCounter로 다음 번호를 매긴다. 지운 상품 번호도 다시 쓰지 않는다.
   codeNo             Int                @default(0)
@@ -553,6 +562,7 @@ model Product {
   displayItems  ShopDisplayItem[]
   wishItems     WishItem[]
   restockAlerts RestockAlert[]
+  buyerInquiries BuyerInquiry[]
 
   @@unique([sellerId, id])
   @@unique([sellerId, codeNo])
@@ -1078,6 +1088,7 @@ model Order {
   payments         Payment[]
   refunds          OrderRefund[]
   refundRequests   RefundRequest[]
+  receiptRequests  OrderReceiptRequest[]
 
   @@unique([sellerId, id])
   @@unique([sellerId, orderNo])
@@ -1620,6 +1631,8 @@ model BuyerPurchaseRestriction {
   sellerId      String    @db.Uuid
   buyerMemberId String    @db.Uuid
   reason        String
+  // 파트너스가 직접 건 제한(reason=MANUAL)의 사유 메모(200자). 자동 제한은 비어 있다.
+  note          String?
   startsAt      DateTime  @db.Timestamptz(3)
   endsAt        DateTime  @db.Timestamptz(3)
   liftedAt      DateTime? @db.Timestamptz(3)
@@ -1629,6 +1642,23 @@ model BuyerPurchaseRestriction {
   buyerMember BuyerMember @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id])
 
   @@index([sellerId, buyerMemberId, startsAt])
+}
+
+// 파트너스가 회원 상세(SA-042)에 적는 회원 메모. 회원마다 1건(덮어쓰기), 작성자·수정 시각을 남긴다.
+// 자유 입력이라 개인정보가 섞일 수 있어 탈퇴 때 지운다(buyers/memberData.ts). 로그 추적에는 본문을 남기지 않고 글자 수만 남긴다.
+model MemberMemo {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String    @db.Uuid
+  buyerMemberId String    @db.Uuid
+  body          String
+  // 마지막으로 쓴 사람(파트너스 직원·대표자 id). 마스터 대리 조회는 쓰기를 못 하므로 직원만 들어간다.
+  updatedById   String?   @db.Uuid
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime  @default(now()) @db.Timestamptz(3)
+
+  buyerMember BuyerMember @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id], onDelete: Cascade)
+
+  @@unique([sellerId, buyerMemberId])
 }
 
 // 주문 알림 발송 기록(중복 발송 방지). 주문·종류마다 1행. 보내기 전에 PENDING으로 먼저 잡고(claim), 보낸 뒤 SENT·FAILED로 바꾼다.
@@ -2243,6 +2273,20 @@ enum ReturnStatus {
   CANCELLED
 }
 
+// 수거 방법(접수할 때 판매자가 정함): 택배사 수거 접수 / 구매자 직접 발송 / 수거 없음(폐기·사진 확인)
+enum ReturnPickup {
+  COURIER
+  BUYER_SHIP
+  NONE
+}
+
+// 검수 결과(회수 완료 뒤 판매자가 입력). 이상 없음일 때만 바로 환불·교환 발송, 그 밖은 반송·거절을 고른다.
+enum ReturnInspection {
+  OK
+  USED_DAMAGED
+  MISSING_PARTS
+}
+
 enum ReturnReason {
   CHANGE_OF_MIND
   DEFECTIVE
@@ -2275,6 +2319,16 @@ model ReturnRequest {
   exchangeTrackingNumber String?
   // 반품 환불 결과(환불한 금액)
   refundAmount           Int?
+  // v2: 수거 방법, 검수 결과, 교환 재고 없음 처리(재입고 뒤 발송 보류·환불 전환), 무통장 주문 환불 계좌(환불·종료 뒤 비운다)
+  pickupMethod           ReturnPickup @default(BUYER_SHIP)
+  inspectionResult       ReturnInspection?
+  inspectionNote         String?
+  inspectedAt            DateTime?    @db.Timestamptz(3)
+  exchangeHeldAt         DateTime?    @db.Timestamptz(3)
+  convertedFromExchange  Boolean      @default(false)
+  refundBankName         String?
+  refundAccountHolder    String?
+  refundAccountNumber    String?
   acceptedAt             DateTime?    @db.Timestamptz(3)
   receivedAt             DateTime?    @db.Timestamptz(3)
   completedAt            DateTime?    @db.Timestamptz(3)
@@ -2478,6 +2532,14 @@ enum MessageChannel {
   IDENTITY_VERIFICATION
   // 배송 자동 조회(배송 완료 자동 처리를 켠 경우)
   DELIVERY_TRACKING
+  // 송장번호 발급 API(실제 건당 비용이 드는 경우)
+  INVOICE_ISSUE
+  // 송장 라벨 생성 API
+  INVOICE_LABEL
+  // 현금영수증 발급 API
+  CASH_RECEIPT
+  // 전자세금계산서 발급 API
+  TAX_INVOICE
 }
 
 enum MessageLedgerType {
@@ -2999,6 +3061,70 @@ model RefundRequest {
   @@index([sellerId, buyerMemberId, createdAt])
 }
 
+// 현금영수증·세금계산서 신청과 발행 이력(SA-024 · SH-005·SH-022, MASTER 배정 2026-10-05, lib/server/receipts/service.ts).
+// 무통장·계좌이체 주문에 구매자가 신청하고, 파트너스(RECEIPT_TAX)가 상태를 본다. 외부 발급 연동은 아직 없어 발행은 PENDING으로 남는다(발행 업체 결정 전).
+// 주문당 진행 중(철회하지 않은) 신청은 1건(마이그레이션 SQL 부분 유니크).
+enum ReceiptKind {
+  CASH_RECEIPT_INCOME
+  CASH_RECEIPT_EXPENSE
+  TAX_INVOICE
+}
+
+enum ReceiptIssueStatus {
+  PENDING
+  // 충전금 잔액이 모자라 발급을 미룸(주문은 그대로, 충전하거나 파트너스가 다시 시도하면 대기로)
+  ON_HOLD
+  ISSUED
+  FAILED
+  CANCELLED
+}
+
+model OrderReceiptRequest {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String      @db.Uuid
+  orderId       String      @db.Uuid
+  buyerMemberId String      @db.Uuid
+  kind          ReceiptKind
+  // 휴대폰·사업자등록번호(숫자). 원문은 저장하지 않고 AES-256-GCM으로 봉인해 두며(판매자 id를 AAD로 묶음), 화면에는 뒤 4자리만 보인다.
+  identitySealed String
+  identityLast4  String
+  // 세금계산서: { companyName, representative, email }. 사업자등록번호는 identity를 쓴다.
+  taxInfo        Json?
+  withdrawnAt    DateTime?   @db.Timestamptz(3)
+  createdAt      DateTime    @default(now()) @db.Timestamptz(3)
+
+  order       Order          @relation(fields: [sellerId, orderId], references: [sellerId, id])
+  buyerMember BuyerMember    @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id])
+  issues      ReceiptIssue[]
+
+  @@unique([sellerId, id])
+  @@index([sellerId, createdAt])
+  @@index([sellerId, orderId])
+}
+
+model ReceiptIssue {
+  id         String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId   String             @db.Uuid
+  requestId  String             @db.Uuid
+  status     ReceiptIssueStatus @default(PENDING)
+  amount     Int
+  // 외부 발급 건당비를 파트너스 「발송·이용 충전금」에서 차감하는 발급인지(docs/COST_POLICY.md). 차감 연동은 발행 업체 결정 뒤.
+  chargeable Boolean            @default(true)
+  attempts   Int                @default(0)
+  failureCode String?
+  // 발행 업체가 준 문서 번호(연동 뒤)
+  providerKey String?
+  issuedAt    DateTime?         @db.Timestamptz(3)
+  cancelledAt DateTime?         @db.Timestamptz(3)
+  createdAt   DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime          @updatedAt @db.Timestamptz(3)
+
+  request OrderReceiptRequest @relation(fields: [sellerId, requestId], references: [sellerId, id])
+
+  @@index([sellerId, status, createdAt])
+  @@index([sellerId, requestId])
+}
+
 // ───────────── 플랫폼 문의(파트너스 → 플랫폼, SA-113·114·115 · 마스터 MA-051·052) ─────────────
 
 enum PlatformInquiryCategory {
@@ -3178,6 +3304,137 @@ model AssistantLedger {
   @@index([month])
 }
 
+// ───── 외부 쇼핑몰 연동(SA-005·006, 오버레이 전용 판매자) ─────
+// 연결 상태: CONNECTED 연결됨 · REAUTH_REQUIRED 다시 연결 필요(토큰 만료·회수) · DISCONNECT_PENDING 해제 대기(쇼핑몰 쪽 철회 실패, 철회 재시도용 토큰 사본만 남김) · DISCONNECTED 해제됨
+enum ExternalShopStatus {
+  CONNECTED
+  REAUTH_REQUIRED
+  DISCONNECT_PENDING
+  DISCONNECTED
+}
+
+model ExternalShopConnection {
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId           String             @db.Uuid
+  // 외부 쇼핑몰 식별자(몰 id). 소문자 영숫자·하이픈, 주소로 만들지 않고 검증한 값으로만 호스트를 만든다(내부 주소 접속 차단)
+  shopKey            String
+  status             ExternalShopStatus @default(CONNECTED)
+  // OAuth 토큰은 BILLING_KEY_SECRET 기반 AES-256-GCM으로 판매자 id를 묶어 암호화해 저장한다(원문 저장·로그 금지)
+  accessTokenCipher  String?
+  refreshTokenCipher String?
+  accessExpiresAt    DateTime?          @db.Timestamptz(3)
+  refreshExpiresAt   DateTime?          @db.Timestamptz(3)
+  scopes             String?
+  connectedAt        DateTime           @default(now()) @db.Timestamptz(3)
+  lastEventAt        DateTime?          @db.Timestamptz(3)
+  disconnectedAt     DateTime?          @db.Timestamptz(3)
+  createdAt          DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime           @updatedAt @db.Timestamptz(3)
+
+  seller Seller                 @relation(fields: [sellerId], references: [id])
+  events ExternalWebhookEvent[]
+
+  @@unique([sellerId, id])
+  @@unique([sellerId, shopKey])
+  // 같은 외부 쇼핑몰이 두 파트너스에 동시에 붙지 않는다(연결 중 상태만, 마이그레이션 부분 유니크)
+  @@index([shopKey, status])
+}
+
+// OAuth 시작 때 만드는 1회용·만료 state(해시만 저장). 콜백은 시작한 판매자·직원 세션과 같을 때만 받는다(로그인 CSRF 방지).
+model ExternalOAuthState {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId  String    @db.Uuid
+  userId    String    @db.Uuid
+  shopKey   String
+  stateHash String    @unique
+  expiresAt DateTime  @db.Timestamptz(3)
+  usedAt    DateTime? @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([sellerId, createdAt])
+}
+
+// 받은 웹훅 원본(서명 검증을 통과한 것만). eventKey는 원본 본문 해시라 같은 이벤트 재전송은 한 번만 저장한다.
+// 개인정보가 들어 있을 수 있어 보관 기간(받은 날부터 30일, 대표님 확인 대기)과 자동 삭제는 주문 저장 PR에서 함께 넣는다.
+model ExternalWebhookEvent {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId     String    @db.Uuid
+  connectionId String    @db.Uuid
+  eventKey     String
+  payload      Json
+  receivedAt   DateTime  @default(now()) @db.Timestamptz(3)
+  processedAt  DateTime? @db.Timestamptz(3)
+
+  connection ExternalShopConnection @relation(fields: [sellerId, connectionId], references: [sellerId, id])
+
+  @@unique([connectionId, eventKey])
+  @@index([sellerId, receivedAt])
+}
+
+// ───────────── 구매자 문의(상품 문의·1:1 문의, SA-046·047) ─────────────
+// PRODUCT=상품 문의(productId 필수), GENERAL=1:1 문의. 답변은 판매자 하나(고치거나 지우면 다시 WAITING).
+enum BuyerInquiryKind {
+  PRODUCT
+  GENERAL
+}
+
+enum BuyerInquiryStatus {
+  WAITING
+  ANSWERED
+}
+
+// 구매자가 쓴 문의. 답변 전에만 구매자가 고치거나 지울 수 있다(지우면 행과 사진을 모두 지움).
+// 탈퇴하면 작성자 표시를 「탈퇴 회원」으로 바꾸고 사진은 지운다. 글은 판매자의 응대 기록으로 남긴다.
+model BuyerInquiry {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId          String             @db.Uuid
+  buyerMemberId     String             @db.Uuid
+  kind              BuyerInquiryKind
+  productId         String?            @db.Uuid
+  authorNickname    String
+  title             String
+  body              String
+  isPrivate         Boolean            @default(false)
+  status            BuyerInquiryStatus @default(WAITING)
+  answer            String?
+  answeredAt        DateTime?          @db.Timestamptz(3)
+  answeredBySellerUserId String?       @db.Uuid
+  createdAt         DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime           @default(now()) @db.Timestamptz(3)
+
+  seller      Seller              @relation(fields: [sellerId], references: [id])
+  buyerMember BuyerMember         @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id])
+  product     Product?            @relation(fields: [sellerId, productId], references: [sellerId, id])
+  images      BuyerInquiryImage[]
+
+  @@unique([sellerId, id])
+  @@index([sellerId, status, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([sellerId, buyerMemberId, createdAt(sort: Desc), id(sort: Desc)])
+}
+
+// 문의 첨부 사진. 먼저 올리고(inquiryId 없음) 문의를 보낼 때 붙인다. 붙지 않은 사진은 회원당 10장까지 두고 오래된 것부터 지운다.
+model BuyerInquiryImage {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String   @db.Uuid
+  buyerMemberId String   @db.Uuid
+  inquiryId     String?  @db.Uuid
+  data          Bytes
+  contentType   String
+  byteSize      Int
+  width         Int
+  height        Int
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+
+  seller      Seller        @relation(fields: [sellerId], references: [id])
+  buyerMember BuyerMember   @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id], onDelete: Cascade)
+  inquiry     BuyerInquiry? @relation(fields: [sellerId, inquiryId], references: [sellerId, id], onDelete: Cascade)
+
+  @@unique([sellerId, id])
+  @@index([sellerId, inquiryId])
+  @@index([sellerId, buyerMemberId, inquiryId, createdAt])
+}
+
 // ───────────── 알림 센터(MA-002 · SA-130) ─────────────
 
 // 파트너스 계정이 알림 센터를 마지막으로 본 시각. 알림은 공지·문의에서 바로 만들어 주고 따로 쌓지 않는다.
@@ -3185,4 +3442,25 @@ model AssistantLedger {
 model SellerNotificationSeen {
   sellerUserId String   @id @db.Uuid
   seenAt       DateTime @db.Timestamptz(3)
+}
+
+// ───────────── 쇼핑몰 검색(유사어·인기 검색어, 기반-쇼핑몰) ─────────────
+// 유사어 묶음: 묶음 안 단어는 서로 같은 뜻으로 검색한다(예: 포켓몬·pokemon). 판매자마다 최대 50묶음, 묶음당 2~10단어.
+model ShopSearchSynonym {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId  String   @db.Uuid
+  words     String[]
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([sellerId])
+}
+
+// 인기 검색어 자체 집계(KST 날짜·단어별 횟수, 개인 식별 정보 없음, 무료). 8일이 지난 행은 집계할 때 지운다.
+model ShopSearchTerm {
+  sellerId String   @db.Uuid
+  day      DateTime @db.Date
+  term     String
+  count    Int      @default(1)
+
+  @@id([sellerId, day, term])
 }

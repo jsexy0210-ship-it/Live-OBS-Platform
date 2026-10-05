@@ -8,11 +8,11 @@ import { api, failMessage } from "../../../../../../components/seller/api";
 import { parseAmount, won } from "../../../../../../components/seller/format";
 import { MESSAGE_FEE_NOTICE } from "../../../../../../components/seller/messageFeeNotice";
 
-// SA-081 발송 충전(대표자 전용). API: GET·PUT /api/seller/message-balance, POST …/consent, GET …/ledger.
+// SA-081 발송·이용 충전(대표자 전용). API: GET·PUT /api/seller/message-balance, POST …/consent, GET …/ledger.
 // 충전: POST …/charges(구독 결제 카드). 금액은 비워 두고 시작하며 확인 창을 거친다. 충전 스위치가 꺼져 있으면 잠근다. 유료 잔액 환불 API는 아직 없다.
 // 비용 안내 문구는 docs/terms/SELLER_MESSAGE_FEE_NOTICE.md 서식 그대로(components/seller/messageFeeNotice.ts).
 
-type Channel = "MAIL_TRANSACTIONAL" | "MAIL_BULK" | "SMS" | "LMS" | "ALIMTALK" | "IDENTITY_VERIFICATION" | "DELIVERY_TRACKING";
+type Channel = "MAIL_TRANSACTIONAL" | "MAIL_BULK" | "SMS" | "LMS" | "ALIMTALK" | "IDENTITY_VERIFICATION" | "DELIVERY_TRACKING" | "INVOICE_ISSUE" | "INVOICE_LABEL" | "CASH_RECEIPT" | "TAX_INVOICE";
 type Balance = {
   paidBalance: number;
   freeBalance: number;
@@ -52,6 +52,10 @@ const CHANNEL: Record<Channel, string> = {
   ALIMTALK: "알림톡",
   IDENTITY_VERIFICATION: "구매자 본인인증",
   DELIVERY_TRACKING: "배송 자동 조회",
+  INVOICE_ISSUE: "송장 발급",
+  INVOICE_LABEL: "송장 라벨",
+  CASH_RECEIPT: "현금영수증",
+  TAX_INVOICE: "전자세금계산서",
 };
 const TYPE: Record<Entry["type"], string> = { CHARGE: "충전", GRANT: "무상 지급", DEBIT: "차감", REFUND: "환불" };
 const STATUS: Record<Entry["status"], string> = { PENDING: "처리 중", SUCCEEDED: "", REVERSED: "복원" };
@@ -104,13 +108,13 @@ export default function MessageBalancePage() {
   if (state.kind !== "ok") {
     return (
       <>
-        <Topbar crumb="설정 › 쇼핑몰 설정 › 발송 충전" />
+        <Topbar crumb="설정 › 쇼핑몰 설정 › 발송·이용 충전" />
         <main className="main">
-          <PageHead title="발송 충전" />
+          <PageHead title="발송·이용 충전" />
           <div className="card">
             {state.kind === "loading" && <LoadingRows rows={5} />}
             {state.kind === "error" &&
-              (state.status === 403 ? <NoPermission need="대표자" /> : state.status === 402 ? <Locked /> : <ErrorState title="발송 충전 정보를 불러오지 못했습니다" onRetry={() => void load()} />)}
+              (state.status === 403 ? <NoPermission need="대표자" /> : state.status === 402 ? <Locked /> : <ErrorState title="발송·이용 충전 정보를 불러오지 못했습니다" onRetry={() => void load()} />)}
           </div>
         </main>
       </>
@@ -139,20 +143,22 @@ export default function MessageBalancePage() {
       .replace(/\{\{[^}]+\}\}/g, TBD);
   const rows: [string, string, string][] = [
     ["주문·배송 안내 메일(거래 메일)", "구독 플랜에 포함", fill("플랜별 월 제공량 {{월 거래 메일 제공량}}통까지 무료입니다. 남은 제공량은 다음 달로 넘어가지 않습니다.")],
-    ["제공량을 넘은 거래 메일", "충전 잔액에서 차감", fill("1통당 {{거래 메일 단가}}원")],
-    ["광고·공지 대량 메일", "충전 잔액에서 차감", fill("1통당 {{대량 메일 단가}}원")],
-    ["문자(SMS·LMS)", "충전 잔액에서 차감", fill("1건당 {{문자 단가}}원(긴 문자는 {{LMS 단가}}원)")],
-    ["알림톡", "충전 잔액에서 차감", fill("1건당 {{알림톡 단가}}원")],
+    ["제공량을 넘은 거래 메일", "발송·이용 충전금에서 차감", fill("1통당 {{거래 메일 단가}}원")],
+    ["광고·공지 대량 메일", "발송·이용 충전금에서 차감", fill("1통당 {{대량 메일 단가}}원")],
+    ["문자(SMS·LMS)", "발송·이용 충전금에서 차감", fill("1건당 {{문자 단가}}원(긴 문자는 {{LMS 단가}}원)")],
+    ["알림톡", "발송·이용 충전금에서 차감", fill("1건당 {{알림톡 단가}}원")],
     [
       "구매자 휴대폰 본인인증",
-      "충전 잔액에서 차감",
+      "발송·이용 충전금에서 차감",
       fill("쇼핑몰 가입·찾기에서 본인인증을 켠 경우 1건당 {{본인인증 단가}}원. 끄면 비용이 없습니다. 인증에 실패한 건은 차감하지 않습니다."),
     ],
     [
       "배송 자동 조회",
-      "충전 잔액에서 차감",
+      "발송·이용 충전금에서 차감",
       fill("「배송 완료 자동 처리」를 켠 경우 송장 1건 조회당 {{배송 조회 단가}}원. 끄면 구매자에게 택배사 조회 페이지 링크만 보여 드리며 비용이 없습니다."),
     ],
+    ["송장 발급·송장 라벨 API", "발송·이용 충전금에서 차감", "외부 업체가 건당 요금을 받는 경우에만 건당 차감합니다. 송장번호 직접 입력과 송장 관리 화면은 비용이 없습니다."],
+    ["현금영수증·전자세금계산서 API", "발송·이용 충전금에서 차감", "외부 업체가 건당 요금을 받는 경우에만 건당 차감합니다."],
   ];
 
   const consented = !!b.consent;
@@ -231,9 +237,9 @@ export default function MessageBalancePage() {
 
   return (
     <>
-      <Topbar crumb="설정 › 쇼핑몰 설정 › 발송 충전" />
+      <Topbar crumb="설정 › 쇼핑몰 설정 › 발송·이용 충전" />
       <main className="main">
-        <PageHead title="발송 충전" />
+        <PageHead title="발송·이용 충전" />
 
         {!b.chargingEnabled && (
           <div className="msg msg-cau" role="note" data-testid="charging-off" style={{ marginBottom: 16 }}>
@@ -256,7 +262,7 @@ export default function MessageBalancePage() {
         )}
         {b.lowBalance && (
           <div className="msg msg-cau" role="status" style={{ marginBottom: 16 }}>
-            <span>발송 충전 잔액이 {won(b.lowBalanceThreshold)} 아래로 내려갔습니다.</span>
+            <span>발송·이용 충전금이 {won(b.lowBalanceThreshold)} 아래로 내려갔습니다.</span>
           </div>
         )}
 
@@ -319,7 +325,7 @@ export default function MessageBalancePage() {
 
         <div style={{ marginTop: 32 }}>
           <FormSection title="충전">
-            <FormRow label="충전 금액" help="선불 · 충전 잔액에서만 차감합니다">
+            <FormRow label="충전 금액" help="선불 · 발송·이용 충전금에서만 차감합니다">
               <input
                 className={`inp num${amountError ? " is-error" : ""}`}
                 type="text"
@@ -387,6 +393,9 @@ export default function MessageBalancePage() {
               충전하기
             </button>
           </div>
+          <p className="help" style={{ marginTop: 16 }} data-testid="charge-targets">
+            차감 대상: 제공량을 넘은 거래 메일 · 대량 메일 · 문자 · 알림톡 · 구매자 본인확인 · 배송 자동조회 · 송장 발급·라벨 API · 현금영수증 API · 전자세금계산서 API. 잔액이 없으면 해당 기능만 멈추고 주문 처리는 계속됩니다. 후불 청구는 없습니다.
+          </p>
           <p className="help" style={{ textAlign: "center" }}>
             {!b.chargingEnabled ? "충전 기능 준비 중" : consented ? "구독 결제 카드로 충전합니다 · 누르면 확인 창이 열립니다" : "동의에 체크하면 충전할 수 있습니다"}
           </p>

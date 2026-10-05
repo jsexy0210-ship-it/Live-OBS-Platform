@@ -53,7 +53,7 @@ const head = async (page: Page, path: string) => {
 
 test("최고관리자가 파트너스 관리자 파비콘·공유 카드를 바꾸면 파트너스 화면 head에만 반영된다", async ({ page, request }) => {
   await login(page, superEmail);
-  await page.getByRole("tab", { name: "파트너스 관리자" }).click();
+  await page.getByRole("radio", { name: "파트너스 관리자" }).click();
 
   // SVG(스크립트 위험)는 안내만 보이고 바뀌지 않는다
   await page.getByLabel("파비콘 파일").setInputFiles({ name: "icon.png", mimeType: "image/png", buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>') });
@@ -118,8 +118,11 @@ test("최고관리자가 파트너스 관리자 파비콘·공유 카드를 바�
 
   // 「기본값으로 되돌리기」 뒤에는 파트너스 화면도 기본 아이콘으로 돌아오고, 그 주소가 실제 PNG를 준다
   await page.goto("/admin/settings/branding");
-  await page.getByRole("tab", { name: "파트너스 관리자" }).click();
+  await page.getByRole("radio", { name: "파트너스 관리자" }).click();
   await page.getByRole("button", { name: "기본값으로 되돌리기" }).click();
+  const confirm = page.getByRole("dialog", { name: "기본 아이콘으로 되돌리시겠습니까?" });
+  await expect(confirm).toContainText("브라우저에 남은 이전 아이콘은 새로고침 뒤 바뀝니다");
+  await confirm.getByRole("button", { name: "되돌리기" }).click();
   await expect(page.getByText("기본 파비콘으로 되돌렸습니다.")).toBeVisible();
   const reset = await head(page, "/seller/login");
   expect(reset.icons).toEqual(["/branding/onq-32.png"]);
@@ -257,7 +260,7 @@ test("마스터 관리자 로고 색은 파트너스 관리자 로고 색과 다
 
 test("저장 전 입력값이 미리보기에 바로 반영된다(제목·설명·카드 이미지·파비콘, 대표님 지시 2026-10-04)", async ({ page }) => {
   await login(page, superEmail);
-  await page.getByRole("tab", { name: "파트너스 관리자" }).click();
+  await page.getByRole("radio", { name: "파트너스 관리자" }).click();
   const card = page.getByLabel("공유 카드 미리보기");
   const image = page.getByAltText("공유 카드 이미지 미리보기");
   const icon = page.getByAltText("파비콘 미리보기");
@@ -322,6 +325,14 @@ test("마스터 관리자 기본 파비콘은 틸이고, 올린 파비콘이 있
   expect(uploaded.icons).toEqual([expect.stringMatching(/^\/api\/branding\/admin\/favicon\?v=[0-9a-f]{12}$/)]);
   await page.goto("/admin/settings/branding");
   await page.getByRole("button", { name: "기본값으로 되돌리기" }).click();
+  // 확인 창에서 취소하면 올린 파비콘이 그대로 남는다
+  const confirm = page.getByRole("dialog", { name: "기본 아이콘으로 되돌리시겠습니까?" });
+  await confirm.getByRole("button", { name: "취소" }).click();
+  await expect(confirm).toHaveCount(0);
+  expect((await head(page, "/admin/login")).icons).toEqual([expect.stringMatching(/^\/api\/branding\/admin\/favicon\?v=[0-9a-f]{12}$/)]);
+  await page.goto("/admin/settings/branding");
+  await page.getByRole("button", { name: "기본값으로 되돌리기" }).click();
+  await page.getByRole("dialog", { name: "기본 아이콘으로 되돌리시겠습니까?" }).getByRole("button", { name: "되돌리기" }).click();
   await expect(page.getByText("기본 파비콘으로 되돌렸습니다.")).toBeVisible();
   expect((await head(page, "/admin/login")).icons).toEqual(["/branding/onq-admin-32.png"]);
 });

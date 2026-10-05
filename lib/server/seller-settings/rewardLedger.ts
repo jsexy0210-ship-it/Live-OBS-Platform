@@ -6,9 +6,10 @@ import { requireSellerRead, type TenantContext } from "../tenant/context";
 // 항상 ctx.sellerId 범위만 본다. 탈퇴 회원의 줄은 닉네임이 「탈퇴회원-…」으로 바뀐 채 남는다(buyers/withdraw.ts).
 export const REWARD_LEDGER_PAGE_DEFAULT = 50;
 export const REWARD_LEDGER_PAGE_MAX = 200;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const STATUSES: readonly RewardLedgerStatus[] = ["PENDING", "SUCCEEDED", "FAILED"];
 
-export type RewardLedgerQuery = { status?: string | null; cursor?: string | null; limit?: string | null };
+export type RewardLedgerQuery = { status?: string | null; memberId?: string | null; cursor?: string | null; limit?: string | null };
 
 const SELECT = {
   id: true,
@@ -32,9 +33,11 @@ export async function listRewardLedger(db: PrismaClient, ctx: TenantContext, que
   const cursor = query.cursor ? decodeCursor(query.cursor) : null;
   if (query.cursor && !cursor) return { ok: false as const };
   if (query.status && !STATUSES.includes(query.status as RewardLedgerStatus)) return { ok: false as const };
+  if (query.memberId && !UUID_RE.test(query.memberId)) return { ok: false as const };
 
   const and: Prisma.RewardLedgerWhereInput[] = [{ sellerId: ctx.sellerId }];
   if (query.status) and.push({ status: query.status as RewardLedgerStatus });
+  if (query.memberId) and.push({ buyerMemberId: query.memberId });
   if (cursor) and.push({ OR: [{ createdAt: { lt: cursor.createdAt } }, { createdAt: cursor.createdAt, id: { lt: cursor.id } }] });
 
   const rows = await db.rewardLedger.findMany({ where: { AND: and }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: take + 1, select: SELECT });

@@ -17,11 +17,15 @@ import {
   buyerReturnContext,
   buyerReturnImage,
   buyerShipBack,
+  convertExchangeToRefund,
   createReturn,
   getSellerReturn,
+  holdExchange,
+  inspectReturn,
   listSellerReturns,
   receiveReturn,
   refundReturn,
+  rejectInspectedReturn,
   rejectReturn,
   sellerReturnImage,
   shipExchange,
@@ -83,7 +87,8 @@ const lv = async (sellerId: string) => (await db.seller.findUniqueOrThrow({ wher
 const status = async (id: string) => (await db.returnRequest.findUniqueOrThrow({ where: { id } })).status;
 const proceedToReceived = async (s: Awaited<ReturnType<typeof shop>>, id: string, restock = false) => {
   expect(await acceptReturn(db, s.ctx, id, {})).toMatchObject({ ok: true });
-  expect(await receiveReturn(db, s.ctx, id, { restock })).toMatchObject({ ok: true });
+  expect(await receiveReturn(db, s.ctx, id, {})).toMatchObject({ ok: true });
+  expect(await inspectReturn(db, s.ctx, id, { result: "OK", restock })).toMatchObject({ ok: true });
 };
 
 describe("신청 자격", () => {
@@ -210,7 +215,7 @@ describe("처리 흐름과 상태 전이", () => {
 });
 
 describe("재고", () => {
-  it("회수 완료에서 재고 되돌리기를 고르면 한 번만 되돌리고, 안 고르면 그대로이며, 뒤이은 환불이 다시 되돌리지 않는다", async () => {
+  it("검수 이상 없음에서 재고 되돌리기를 고르면 한 번만 되돌리고, 안 고르면 그대로이며, 뒤이은 환불이 다시 되돌리지 않는다", async () => {
     const s = await shop();
     const before = [await stock(s.oa.id), await stock(s.ob.id)];
     const id = await s.delivered();
@@ -242,6 +247,31 @@ describe("재고", () => {
     await proceedToReceived(s, req.id, true);
     expect(await stock(s.oa.id)).toBe(at);
     expect(await db.returnRequest.findUniqueOrThrow({ where: { id: req.id } })).toMatchObject({ restocked: false });
+  });
+
+  it("재고는 입고 확인에서 되돌리지 않고 검수 이상 없음 뒤에만 되돌린다. 되돌린 뒤에는 문제 있음으로 바꿀 수 없고, 문제 있음 거절은 재고를 늘리지 않는다", async () => {
+    const s = await shop();
+    const id = await s.delivered();
+    const at = [await stock(s.oa.id), await stock(s.ob.id)];
+    const req = await s.ret(id);
+    await acceptReturn(db, s.ctx, req.id, {});
+    // restock을 보내도 입고 확인은 재고를 건드리지 않는다
+    await receiveReturn(db, s.ctx, req.id, { restock: true });
+    expect([await stock(s.oa.id), await stock(s.ob.id)]).toEqual(at);
+    // 문제 있음 검수는 restock을 보내도 되돌리지 않고, 반송·거절 뒤에도 재고는 처음 값
+    expect(await inspectReturn(db, s.ctx, req.id, { result: "USED_DAMAGED", restock: true })).toMatchObject({ ok: true, request: { restocked: false } });
+    expect(await rejectInspectedReturn(db, s.ctx, req.id, { reason: "봉인 훼손" })).toMatchObject({ ok: true });
+    expect([await stock(s.oa.id), await stock(s.ob.id)]).toEqual(at);
+    expect(await db.stockMovement.count({ where: { orderId: id, reason: "REFUND" } })).toBe(0);
+    // 이상 없음 + 되돌리기 뒤에는 검수를 문제 있음으로 바꿀 수 없다
+    const id2 = await s.delivered();
+    const mid = [await stock(s.oa.id), await stock(s.ob.id)];
+    const r2 = await s.ret(id2);
+    await proceedToReceived(s, r2.id, true);
+    expect([await stock(s.oa.id), await stock(s.ob.id)]).toEqual([mid[0] + 2, mid[1] + 1]);
+    expect(await inspectReturn(db, s.ctx, r2.id, { result: "MISSING_PARTS" })).toEqual({ ok: false, reason: "inspection_locked" });
+    expect(await inspectReturn(db, s.ctx, r2.id, { result: "OK", restock: true })).toMatchObject({ ok: true });
+    expect([await stock(s.oa.id), await stock(s.ob.id)]).toEqual([mid[0] + 2, mid[1] + 1]);
   });
 
   it("교환 발송은 교환 품목의 재고를 빼고, 재고가 모자라면 아무것도 바꾸지 않는다", async () => {
@@ -320,7 +350,7 @@ describe("반품 환불 연결", () => {
     const r = await refundReturn(db, s.ctx, req.id, { expectedVersion: p.queueVersion, expectedRefundAmount: p.amount });
     expect(r).toMatchObject({ ok: true, request: { status: "COMPLETED", refundAmount: 16000 }, refund: { refundAmount: 16000, refundFault: "SELLER" } });
     expect(await db.order.findUniqueOrThrow({ where: { id } })).toMatchObject({ status: "REFUNDED", refundAmount: 16000, refundFault: "SELLER" });
-    expect((await db.auditLog.findMany({ where: { targetId: req.id }, orderBy: { createdAt: "asc" } })).map((a) => a.action)).toEqual(["buyer_return.create", "return.accept", "return.receive", "return.refund"]);
+    expect((await db.auditLog.findMany({ where: { targetId: req.id }, orderBy: { createdAt: "asc" } })).map((a) => a.action)).toEqual(["buyer_return.create", "return.accept", "return.receive", "return.inspect", "return.refund"]);
     expect(await refundReturn(db, s.ctx, req.id, { expectedVersion: await lv(s.seller.id), expectedRefundAmount: 16000 })).toEqual({ ok: false, reason: "invalid_transition" });
   });
 
@@ -465,9 +495,236 @@ describe("탈퇴", () => {
     const req = await s.ret(id, { imageIds: [a.image.id] });
     await acceptReturn(db, s.ctx, req.id, {});
     await buyerCancelReturn(db, s.scope, req.id);
+    // 환불 전에 탈퇴해 계좌가 남은 경우도 탈퇴 때 비운다
+    await db.returnRequest.update({ where: { id: req.id }, data: { refundBankName: "국민", refundAccountHolder: "김구매", refundAccountNumber: "123-456-789012" } });
     expect(await withdrawBuyer(db, s.scope, { password: PASSWORD })).toEqual({ ok: true });
+    expect(await db.returnRequest.findUniqueOrThrow({ where: { id: req.id } })).toMatchObject({ refundBankName: null, refundAccountHolder: null, refundAccountNumber: null });
     expect(await db.returnRequestImage.findUnique({ where: { id: b.image.id } })).toBeNull();
     expect(await db.returnRequestImage.findUnique({ where: { id: a.image.id } })).not.toBeNull();
     expect(await db.returnRequest.count({ where: { id: req.id } })).toBe(1);
+  });
+});
+
+describe("교환·반품 v2: 기한·개봉·수거·검수·교환 재고 없음·무통장 환불 계좌", () => {
+  it("배송 완료 7일이 지나면 단순 변심·기타는 막고, 판매자 사정 사유는 받는다(기한 표시 포함)", async () => {
+    const s = await shop();
+    const id = await s.delivered();
+    expect(await buyerReturnContext(db, s.scope, id)).toMatchObject({ windowOpen: true });
+    await db.shipment.update({ where: { orderId: id }, data: { deliveredAt: new Date(Date.now() - 8 * DAY) } });
+    expect(await buyerReturnContext(db, s.scope, id)).toMatchObject({ windowOpen: false });
+    expect(await createReturn(db, s.scope, id, { orderId: id, kind: "RETURN", reason: "CHANGE_OF_MIND" })).toEqual({ ok: false, reason: "period_expired" });
+    expect(await createReturn(db, s.scope, id, { orderId: id, kind: "RETURN", reason: "OTHER", reasonText: "그냥" })).toEqual({ ok: false, reason: "period_expired" });
+    expect(await createReturn(db, s.scope, id, { orderId: id, kind: "RETURN", reason: "DEFECTIVE" })).toMatchObject({ ok: true });
+    const id2 = await s.delivered();
+    await db.shipment.update({ where: { orderId: id2 }, data: { deliveredAt: new Date(Date.now() - 6 * DAY) } });
+    expect(await createReturn(db, s.scope, id2, { orderId: id2, kind: "RETURN", reason: "CHANGE_OF_MIND" })).toMatchObject({ ok: true });
+  });
+
+  it("개봉한 상품은 단순 변심으로 신청할 수 없고(교환은 하나라도, 반품은 전부 개봉일 때), 불량 사유는 받는다", async () => {
+    const s = await shop();
+    const id = await s.delivered();
+    const its = await s.items(id);
+    const q = await db.queueItem.findMany({ where: { orderId: id } });
+    expect(q.length).toBeGreaterThan(0);
+    await db.queueItem.updateMany({ where: { orderItemId: its[0].id }, data: { openingStartedAt: new Date() } });
+    expect((await buyerReturnContext(db, s.scope, id))?.items.map((i) => i.opened).sort()).toEqual([false, true]);
+    expect(await createReturn(db, s.scope, id, { orderId: id, kind: "EXCHANGE", reason: "CHANGE_OF_MIND", orderItemIds: [its[0].id] })).toEqual({ ok: false, reason: "opened_blocked" });
+    // 일부만 개봉한 반품은 신청되고(환불은 개봉분을 뺀다), 불량 교환은 개봉해도 받는다
+    const cancel = await createReturn(db, s.scope, id, { orderId: id, kind: "RETURN", reason: "CHANGE_OF_MIND" });
+    expect(cancel).toMatchObject({ ok: true });
+    if (cancel.ok) await buyerCancelReturn(db, s.scope, cancel.request.id);
+    expect(await createReturn(db, s.scope, id, { orderId: id, kind: "EXCHANGE", reason: "DEFECTIVE", orderItemIds: [its[0].id] })).toMatchObject({ ok: true });
+    const id2 = await s.delivered();
+    await db.queueItem.updateMany({ where: { orderId: id2 }, data: { openingStartedAt: new Date() } });
+    expect(await createReturn(db, s.scope, id2, { orderId: id2, kind: "RETURN", reason: "CHANGE_OF_MIND" })).toEqual({ ok: false, reason: "opened_blocked" });
+  });
+
+  it("수거 방법: 구매자 희망을 저장하고 접수할 때 판매자가 바꾼다(잘못된 값은 거절)", async () => {
+    const s = await shop();
+    const id = await s.delivered();
+    expect(await createReturn(db, s.scope, id, { orderId: id, kind: "RETURN", reason: "DEFECTIVE", pickup: "NONE" })).toEqual({ ok: false, reason: "invalid_pickup" });
+    const r = await createReturn(db, s.scope, id, { orderId: id, kind: "RETURN", reason: "DEFECTIVE", pickup: "COURIER" });
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.request.pickupMethod).toBe("COURIER");
+    expect(await acceptReturn(db, s.ctx, r.request.id, { pickup: "SPACESHIP" })).toEqual({ ok: false, reason: "invalid_pickup" });
+    expect(await acceptReturn(db, s.ctx, r.request.id, { pickup: "NONE" })).toMatchObject({ ok: true, request: { pickupMethod: "NONE", status: "ACCEPTED" } });
+  });
+
+  it("검수 전에는 환불·교환 발송을 못 하고, 문제가 있으면 반송·거절만 된다(이상 없음이면 거절 불가)", async () => {
+    const s = await shop();
+    const id = await s.delivered();
+    const req = await s.ret(id);
+    expect(await inspectReturn(db, s.ctx, req.id, { result: "OK" })).toEqual({ ok: false, reason: "invalid_transition" });
+    await acceptReturn(db, s.ctx, req.id, {});
+    await receiveReturn(db, s.ctx, req.id, {});
+    const v = await lv(s.seller.id);
+    expect(await refundReturn(db, s.ctx, req.id, { expectedVersion: v, expectedRefundAmount: 16000 })).toEqual({ ok: false, reason: "inspection_required" });
+    expect(await rejectInspectedReturn(db, s.ctx, req.id, { reason: "봉인 훼손" })).toEqual({ ok: false, reason: "inspection_required" });
+    expect(await inspectReturn(db, s.ctx, req.id, { result: "BROKEN" })).toEqual({ ok: false, reason: "invalid_inspection" });
+    expect(await inspectReturn(db, s.ctx, req.id, { result: "USED_DAMAGED", note: "봉인 훼손" })).toMatchObject({ ok: true, request: { inspectionResult: "USED_DAMAGED", inspectionNote: "봉인 훼손" } });
+    expect(await refundReturn(db, s.ctx, req.id, { expectedVersion: v, expectedRefundAmount: 16000 })).toEqual({ ok: false, reason: "inspection_not_ok" });
+    expect(await rejectInspectedReturn(db, s.ctx, req.id, { reason: "" })).toEqual({ ok: false, reason: "invalid_reject_reason" });
+    expect(await rejectInspectedReturn(db, s.ctx, req.id, { reason: "봉인 훼손 확인으로 반송합니다" })).toMatchObject({ ok: true, request: { status: "REJECTED", rejectReason: "봉인 훼손 확인으로 반송합니다" } });
+    // 이상 없음은 거절할 수 없다
+    const id2 = await s.delivered();
+    const r2 = await s.ret(id2);
+    await proceedToReceived(s, r2.id);
+    expect(await rejectInspectedReturn(db, s.ctx, r2.id, { reason: "그냥" })).toEqual({ ok: false, reason: "wrong_kind" });
+    // 직원 권한 없는 사용자는 검수도 못 한다
+    const staff = await createSellerUser(s.seller.id, { permissions: ["PRODUCT_MANAGE"] });
+    const sctx: TenantContext = { ...s.ctx, actorId: staff.id, isOwner: false, permissions: ["PRODUCT_MANAGE"] };
+    await expect(inspectReturn(db, sctx, r2.id, { result: "OK" })).rejects.toThrow();
+    await expect(holdExchange(db, sctx, r2.id)).rejects.toThrow();
+    await expect(convertExchangeToRefund(db, sctx, r2.id)).rejects.toThrow();
+  });
+
+  it("교환 재고 없음: 검수 전엔 처리 못 하고, 재입고 뒤 발송으로 보류했다가 보내면 보류가 풀린다", async () => {
+    const s = await shop();
+    const id = await s.delivered();
+    const its = await s.items(id);
+    const req = await s.exch(id, [its[0].id]);
+    await acceptReturn(db, s.ctx, req.id, {});
+    await receiveReturn(db, s.ctx, req.id, {});
+    expect(await holdExchange(db, s.ctx, req.id)).toEqual({ ok: false, reason: "inspection_required" });
+    expect(await shipExchange(db, s.ctx, req.id, { courier: "CJ", trackingNumber: "123456789012" })).toEqual({ ok: false, reason: "inspection_required" });
+    await inspectReturn(db, s.ctx, req.id, { result: "OK" });
+    await db.productOption.update({ where: { id: its[0].optionId }, data: { stock: 0 } });
+    expect(await shipExchange(db, s.ctx, req.id, { courier: "CJ", trackingNumber: "123456789012" })).toEqual({ ok: false, reason: "insufficient_stock" });
+    expect(await holdExchange(db, s.ctx, req.id)).toMatchObject({ ok: true, request: { status: "RECEIVED" } });
+    expect((await db.returnRequest.findUniqueOrThrow({ where: { id: req.id } })).exchangeHeldAt).not.toBeNull();
+    await db.productOption.update({ where: { id: its[0].optionId }, data: { stock: 10 } });
+    expect(await shipExchange(db, s.ctx, req.id, { courier: "CJ", trackingNumber: "123456789012" })).toMatchObject({ ok: true, request: { status: "COMPLETED", exchangeHeldAt: null } });
+  });
+
+  it("교환 재고 없음: 환불로 전환하면 신청한 품목만 환불하고 신청이 완료로 닫힌다(반품은 전환 불가)", async () => {
+    const s = await shop();
+    const id = await s.delivered();
+    const its = await s.items(id); // 부스터 팩(5,000×2), 슬리브(3,000×1)
+    const pack = its.find((i) => i.productNameSnapshot === "부스터 팩")!;
+    const req = await s.exch(id, [pack.id]);
+    await proceedToReceived(s, req.id);
+    expect(await convertExchangeToRefund(db, s.ctx, req.id)).toMatchObject({ ok: true, request: { kind: "RETURN", convertedFromExchange: true } });
+    const ret = await s.ret(await s.delivered());
+    await proceedToReceived(s, ret.id);
+    expect(await convertExchangeToRefund(db, s.ctx, ret.id)).toEqual({ ok: false, reason: "wrong_kind" });
+    const p = await getSellerReturn(db, s.ctx, req.id);
+    // 부스터 팩 10,000원만(판매자 사정: 상품만, 배송비는 전체 환불이 아니라 돌려주지 않음)
+    expect(p?.refundPreview?.byFault.SELLER.itemsAmount).toBe(10000);
+    const r = await refundReturn(db, s.ctx, req.id, { expectedVersion: p!.queueVersion!, expectedRefundAmount: p!.refundPreview!.byFault.SELLER.refundAmount });
+    expect(r).toMatchObject({ ok: true, request: { status: "COMPLETED", convertedFromExchange: true } });
+    expect(await db.order.findUniqueOrThrow({ where: { id } })).toMatchObject({ status: "PAID" });
+    expect((await db.orderItem.findUniqueOrThrow({ where: { id: pack.id } })).refundedQuantity).toBe(2);
+    expect((await db.orderItem.findUniqueOrThrow({ where: { id: its.find((i) => i.id !== pack.id)!.id } })).refundedQuantity).toBe(0);
+  });
+
+  it("무통장 입금 주문은 환불 계좌 없이 신청할 수 없고, 계좌는 파트너스만 보며 환불·종료 뒤 비워진다", async () => {
+    const s = await shop();
+    const mk = async () => {
+      const r = await createOrder(db, { sellerId: s.seller.id, buyerMemberId: s.buyer.id, items: [{ optionId: s.oa.id, quantity: 1 }], consent, shippingAddress: addr });
+      if (!r.ok) throw new Error(r.reason);
+      await markOrderPaid(db, { sellerId: s.seller.id, orderId: r.orderId, paymentMethod: "BANK_TRANSFER" });
+      expect((await shipOrder(db, s.ctx, r.orderId, { courier: "CJ", trackingNumber: "123456789012" })).ok).toBe(true);
+      await completeDelivery(db, s.ctx, r.orderId);
+      return r.orderId;
+    };
+    const id = await mk();
+    expect(await buyerReturnContext(db, s.scope, id)).toMatchObject({ needsRefundAccount: true });
+    expect(await createReturn(db, s.scope, id, { orderId: id, kind: "RETURN", reason: "DEFECTIVE" })).toEqual({ ok: false, reason: "refund_account_required" });
+    expect(await createReturn(db, s.scope, id, { orderId: id, kind: "RETURN", reason: "DEFECTIVE", refundAccount: { bankName: "국민", accountHolder: "김구매", accountNumber: "12" } })).toEqual({ ok: false, reason: "invalid_refund_account" });
+    const acct = { bankName: "국민", accountHolder: "김구매", accountNumber: "123-456-789012" };
+    const r = await createReturn(db, s.scope, id, { orderId: id, kind: "RETURN", reason: "DEFECTIVE", refundAccount: acct });
+    if (!r.ok) throw new Error(r.reason);
+    // 구매자 응답에는 계좌가 없고 보유 여부만, 파트너스 상세에는 있다
+    expect(JSON.stringify(r.request)).not.toContain("123-456-789012");
+    expect(r.request.hasRefundAccount).toBe(true);
+    expect(await getSellerReturn(db, s.ctx, r.request.id)).toMatchObject({ refundAccount: acct, paymentMethod: "BANK_TRANSFER" });
+    await proceedToReceived(s, r.request.id);
+    const p = await getSellerReturn(db, s.ctx, r.request.id);
+    expect(await refundReturn(db, s.ctx, r.request.id, { expectedVersion: p!.queueVersion!, expectedRefundAmount: p!.refundPreview!.byFault.SELLER.refundAmount })).toMatchObject({ ok: true, request: { status: "COMPLETED", hasRefundAccount: false } });
+    expect(await getSellerReturn(db, s.ctx, r.request.id)).toMatchObject({ refundAccount: null });
+    // 카드 주문은 계좌를 받지 않는다(보내도 저장하지 않는다)
+    const card = await s.delivered();
+    const cr = await createReturn(db, s.scope, card, { orderId: card, kind: "RETURN", reason: "DEFECTIVE", refundAccount: acct });
+    expect(cr).toMatchObject({ ok: true, request: { hasRefundAccount: false } });
+    // 철회하면 계좌를 비운다
+    const id3 = await mk();
+    const r3 = await createReturn(db, s.scope, id3, { orderId: id3, kind: "RETURN", reason: "DEFECTIVE", refundAccount: acct });
+    if (!r3.ok) throw new Error(r3.reason);
+    expect(await buyerCancelReturn(db, s.scope, r3.request.id)).toMatchObject({ ok: true, request: { hasRefundAccount: false } });
+  });
+
+  it("요약 카드: 접수 대기·수거 검수 중·이번 달 완료·30일 반품률", async () => {
+    const s = await shop();
+    const a = await s.delivered();
+    const b = await s.delivered();
+    await s.delivered();
+    const ra = await s.ret(a);
+    const rb = await s.ret(b);
+    await acceptReturn(db, s.ctx, rb.id, {});
+    let sum = (await listSellerReturns(db, s.ctx)).summary;
+    expect(sum).toMatchObject({ requested: 1, inProgress: 1, doneReturn: 0, doneExchange: 0, returnRate30: 66.7 });
+    await receiveReturn(db, s.ctx, rb.id, {});
+    await inspectReturn(db, s.ctx, rb.id, { result: "OK" });
+    const p = await getSellerReturn(db, s.ctx, rb.id);
+    await refundReturn(db, s.ctx, rb.id, { expectedVersion: p!.queueVersion!, expectedRefundAmount: p!.refundPreview!.byFault.SELLER.refundAmount });
+    sum = (await listSellerReturns(db, s.ctx)).summary;
+    expect(sum).toMatchObject({ requested: 1, inProgress: 0, doneReturn: 1 });
+    expect(ra.id).toBeTruthy();
+  });
+});
+
+describe("부분 반품·환불 내역", () => {
+  it("품목·수량을 골라 반품 신청하고(남은 수량 안에서만), 환불은 신청 품목만 하며 주문은 결제 완료로 남는다", async () => {
+    const s = await shop();
+    const id = await s.delivered();
+    // 대기 중인 주문대기가 있으면 일부 수량 환불이 막힌다(queued_item_partial). 주문대기 없는 주문으로 만든다.
+    await db.queueItem.deleteMany({ where: { orderId: id } });
+    const its = await s.items(id);
+    const pack = its.find((i) => i.productNameSnapshot === "부스터 팩")!; // 5,000 × 2
+    const bad = async (items: unknown) => ((await createReturn(db, s.scope, id, { orderId: id, kind: "RETURN", reason: "DEFECTIVE", items })) as { reason?: string }).reason;
+    expect(await bad([])).toBe("invalid_items");
+    expect(await bad([{ orderItemId: pack.id, quantity: 3 }])).toBe("invalid_items");
+    expect(await bad([{ orderItemId: pack.id, quantity: 0 }])).toBe("invalid_items");
+    expect(await bad([{ orderItemId: pack.id, quantity: 1 }, { orderItemId: pack.id, quantity: 1 }])).toBe("invalid_items");
+    expect(await bad([{ orderItemId: "00000000-0000-4000-8000-000000000000", quantity: 1 }])).toBe("invalid_items");
+    expect(await db.returnRequest.count()).toBe(0);
+    const r = await createReturn(db, s.scope, id, { orderId: id, kind: "RETURN", reason: "DEFECTIVE", items: [{ orderItemId: pack.id, quantity: 1 }] });
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.request.items).toMatchObject([{ orderItemId: pack.id, quantity: 1, orderQuantity: 2 }]);
+    await proceedToReceived(s, r.request.id);
+    const p = await getSellerReturn(db, s.ctx, r.request.id);
+    expect(p?.partialQuantity).toBe(true);
+    expect(p?.refundPreview?.byFault.SELLER).toMatchObject({ itemsAmount: 5000 });
+    const done = await refundReturn(db, s.ctx, r.request.id, { expectedVersion: p!.queueVersion!, expectedRefundAmount: p!.refundPreview!.byFault.SELLER.refundAmount });
+    expect(done).toMatchObject({ ok: true, request: { status: "COMPLETED", refundAmount: p!.refundPreview!.byFault.SELLER.refundAmount } });
+    expect(await db.order.findUniqueOrThrow({ where: { id } })).toMatchObject({ status: "PAID" });
+    expect((await db.orderItem.findUniqueOrThrow({ where: { id: pack.id } })).refundedQuantity).toBe(1);
+    // 환불 내역: 파트너스 상세와 구매자 화면 모두 한 건, 품목·수량이 보인다
+    const after = await getSellerReturn(db, s.ctx, r.request.id);
+    expect(after?.refunds).toMatchObject([{ seq: 1, isFinal: false, items: [{ quantity: 1, productName: "부스터 팩" }] }]);
+    const ctx = await buyerReturnContext(db, s.scope, id);
+    expect(ctx?.refunds).toMatchObject([{ seq: 1, items: [{ quantity: 1, productName: "부스터 팩" }] }]);
+    expect(JSON.stringify(ctx?.refunds)).not.toContain("actorId");
+    // 닫혔으니 남은 수량(팩 1 + 슬리브 1)으로 다시 신청할 수 있고, 남은 수량을 넘으면 거절
+    expect(ctx).toMatchObject({ canRequest: true });
+    expect(ctx?.items.map((i) => i.quantity).sort()).toEqual([1, 1]);
+    expect(await createReturn(db, s.scope, id, { orderId: id, kind: "RETURN", reason: "DEFECTIVE", items: [{ orderItemId: pack.id, quantity: 2 }] })).toEqual({ ok: false, reason: "invalid_items" });
+    expect(await createReturn(db, s.scope, id, { orderId: id, kind: "RETURN", reason: "DEFECTIVE" })).toMatchObject({ ok: true });
+  });
+
+  it("일부 수량만 반품한 품목은 검수 재고 되돌리기를 하지 않고, 전체 수량 품목만 되돌린다", async () => {
+    const s = await shop();
+    const id = await s.delivered();
+    const its = await s.items(id);
+    const pack = its.find((i) => i.productNameSnapshot === "부스터 팩")!;
+    const sleeve = its.find((i) => i.productNameSnapshot === "슬리브")!;
+    const at = [await stock(s.oa.id), await stock(s.ob.id)];
+    const r = await createReturn(db, s.scope, id, { orderId: id, kind: "RETURN", reason: "DEFECTIVE", items: [{ orderItemId: pack.id, quantity: 1 }, { orderItemId: sleeve.id, quantity: 1 }] });
+    if (!r.ok) throw new Error(r.reason);
+    await acceptReturn(db, s.ctx, r.request.id, {});
+    await receiveReturn(db, s.ctx, r.request.id, {});
+    expect(await inspectReturn(db, s.ctx, r.request.id, { result: "OK", restock: true })).toMatchObject({ ok: true, request: { restocked: true } });
+    // 슬리브(전체 수량 1)만 되돌아가고 팩(2개 중 1개)은 그대로
+    expect([await stock(s.oa.id), await stock(s.ob.id)]).toEqual([at[0], at[1] + 1]);
   });
 });

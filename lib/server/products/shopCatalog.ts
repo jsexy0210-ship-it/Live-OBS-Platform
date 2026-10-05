@@ -3,6 +3,7 @@ import { dbNow } from "../billing/subscription";
 import { shopOpen } from "../buyers/signup";
 import { getShippingPolicy } from "../orders/shipping";
 import type { RewardRates } from "../rewards/earn";
+import { expandSearchTerm, productIdsByTerm, recordSearchTerm } from "../shop-search/service";
 import { cleanText } from "../text/clean";
 import { publicDetailBlocks } from "./detail";
 import { eventOf, isEventActive, orderUnitPrice } from "./event";
@@ -29,7 +30,13 @@ export type ShopProductCard = {
   salePrice: number | null;
   soldOut: boolean;
   thumbnailUrl: string | null;
+  // 공개 리뷰 평균 별점(소수 1자리, 리뷰가 없으면 null)과 공개 리뷰 수
+  rating: number | null;
+  reviewCount: number;
+  // 적립 예정(가입 때 받는 기본 등급 적립률, 표시 가격 기준 원 단위 내림). 적립을 쓰지 않으면 null.
+  reward: RewardPreview | null;
 };
+type RewardPreview = { card: { rate: number; amount: number } | null; bankTransfer: { rate: number; amount: number } | null };
 
 type ListFailure = "invalid_query" | "not_found";
 
@@ -77,12 +84,14 @@ export async function shopProductList(
     categoryIds = await visibleCategoryIds(db, shop.id, q.categoryId);
     if (!categoryIds) return { ok: false, reason: "not_found" };
   }
+  // 검색어는 판매자 유사어 묶음으로 넓히고, 상품 이름 또는 검색 태그에 들어 있으면 찾는다(shop-search, % _ 는 글자 그대로)
+  const matchedIds = term ? await productIdsByTerm(db, shop.id, await expandSearchTerm(db, shop.id, term)) : null;
   const rows = await db.product.findMany({
     where: {
       sellerId: shop.id,
       deletedAt: null,
       status: { in: [...VISIBLE] },
-      ...(term ? { name: { contains: term, mode: "insensitive" as const } } : {}),
+      ...(matchedIds ? { id: { in: matchedIds } } : {}),
       ...(categoryIds ? { categories: { some: { categoryId: { in: categoryIds } } } } : {}),
     },
     select: {
@@ -147,8 +156,11 @@ export async function shopProductList(
   };
   cards.sort(only === "best" ? (a, b) => sold.get(b.p.id)! - sold.get(a.p.id)! || lastSold.get(b.p.id)! - lastSold.get(a.p.id)! || byId(a, b) : cmp[sort]);
   const arranged = arrange(cards, await displayOptions(db, shop.id), await liveProductIds(db, shop.id), (c) => c.p.id);
+  // 인기 검색어: 구매자가 직접 한 검색(홈 진열 제외)의 첫 쪽 결과가 있을 때만 센다
+  if (term && !only && page === 1 && arranged.length > 0) await recordSearchTerm(db, shop.id, term);
   const slice = arranged.slice((page - 1) * limit, page * limit);
   const thumbs = await thumbnails(db, shop.id, shop.slug, slice.map((c) => c.p.id));
+  const extras = await cardExtras(db, shop.id, slice.map((c) => ({ id: c.p.id, shown: c.shown })), now);
   return {
     ok: true,
     value: {
@@ -160,6 +172,7 @@ export async function shopProductList(
         salePrice,
         soldOut,
         thumbnailUrl: thumbs.get(p.id) ?? null,
+        ...extras.get(p.id)!,
       })),
       total: arranged.length,
       page,
@@ -242,6 +255,7 @@ export async function shopCardsInOrder(db: PrismaClient, shop: { id: string; slu
   const now = await dbNow(db);
   const thumbs = await thumbnails(db, shop.id, shop.slug, rows.map((r) => r.id));
   const byId = new Map(rows.map((p) => [p.id, p]));
+  const extras = await cardExtras(db, shop.id, rows.map((p) => ({ id: p.id, shown: orderUnitPrice(p.price, eventOf(p), now) })), now);
   return ids.flatMap((id) => {
     const p = byId.get(id);
     if (!p) return [];
@@ -255,6 +269,7 @@ export async function shopCardsInOrder(db: PrismaClient, shop: { id: string; slu
         salePrice: shown < p.price ? shown : null,
         soldOut: p.status === "SOLD_OUT" || p.options.every((o) => o.stock <= 0),
         thumbnailUrl: thumbs.get(p.id) ?? null,
+        ...extras.get(p.id)!,
       },
     ];
   });
@@ -317,15 +332,105 @@ export async function shopProductDetail(db: PrismaClient, slug: string, productI
   };
 }
 
-async function rewardPreview(db: PrismaClient, sellerId: string, buyerGradeId: string | null, base: number, now: Date) {
+// 적립 예정 계산기: 정책·등급 적립률을 한 번 읽고, 표시 가격마다 미리보기를 낸다. 적립을 쓰지 않거나 등급이 없으면 null.
+async function rewardPreviewer(db: PrismaClient, sellerId: string, buyerGradeId: string | null, now: Date): Promise<((base: number) => RewardPreview | null) | null> {
   const policy = await db.rewardPolicy.findUnique({ where: { sellerId }, select: { rates: true, earnStartsAt: true } });
   if (!policy || (policy.earnStartsAt && policy.earnStartsAt > now)) return null;
   const gradeId =
     buyerGradeId ?? (await db.memberGrade.findFirst({ where: { sellerId }, orderBy: [{ sortOrder: "asc" }], select: { id: true } }))?.id ?? null;
   if (!gradeId) return null;
   const r = ((policy.rates && typeof policy.rates === "object" ? policy.rates : {}) as RewardRates)[gradeId];
-  const one = (rate: unknown) => (typeof rate === "number" && Number.isFinite(rate) && rate > 0 && rate <= 100 ? { rate, amount: Math.floor((base * rate) / 100) } : null);
-  const card = one(r?.card);
-  const bankTransfer = one(r?.bankTransfer);
-  return card || bankTransfer ? { card, bankTransfer } : null;
+  const valid = (rate: unknown): rate is number => typeof rate === "number" && Number.isFinite(rate) && rate > 0 && rate <= 100;
+  if (!valid(r?.card) && !valid(r?.bankTransfer)) return null;
+  const one = (rate: unknown, base: number) => (valid(rate) ? { rate, amount: Math.floor((base * rate) / 100) } : null);
+  return (base) => ({ card: one(r?.card, base), bankTransfer: one(r?.bankTransfer, base) });
+}
+
+async function rewardPreview(db: PrismaClient, sellerId: string, buyerGradeId: string | null, base: number, now: Date) {
+  return (await rewardPreviewer(db, sellerId, buyerGradeId, now))?.(base) ?? null;
+}
+
+// 상품 카드 공통 칸: 공개 리뷰 평균·수와 적립 예정. 상품 상세의 리뷰 집계(product-reviews productReviews)와 같은 조건(공개 VISIBLE, 지우지 않음)이다.
+async function cardExtras(db: PrismaClient, sellerId: string, items: { id: string; shown: number }[], now: Date) {
+  const out = new Map<string, Pick<ShopProductCard, "rating" | "reviewCount" | "reward">>();
+  if (!items.length) return out;
+  const [groups, preview] = await Promise.all([
+    db.productReview.groupBy({
+      by: ["productId"],
+      where: { sellerId, productId: { in: items.map((i) => i.id) }, status: "VISIBLE", deletedAt: null },
+      _avg: { rating: true },
+      _count: { _all: true },
+    }),
+    rewardPreviewer(db, sellerId, null, now),
+  ]);
+  const byProduct = new Map(groups.map((g) => [g.productId, g]));
+  for (const i of items) {
+    const g = byProduct.get(i.id);
+    out.set(i.id, {
+      rating: g && g._count._all > 0 ? Math.round((g._avg.rating ?? 0) * 10) / 10 : null,
+      reviewCount: g?._count._all ?? 0,
+      reward: preview ? preview(i.shown) : null,
+    });
+  }
+  return out;
+}
+
+// ───────── 추천 상품(상품 상세 「함께 보면 좋은 상품」, AI 없이) ─────────
+// 순서: 운영자 지정(ShopDisplayItem, 지정 순서) → 같은 카테고리 최근 30일 판매량순 → 같은 카테고리 최신순 → 쇼핑몰 전체 최근 30일 판매량순 → 전체 최신순.
+// 앞 단계에서 이미 뽑은 상품은 빼고 자기 자신은 넣지 않는다. 보이는 상품(판매 중·품절, 지우지 않음)만이고, 품절은 맨 뒤로 보내며 판매자가 「품절 숨기기」를 켰으면 뺀다.
+// reason: pick(운영자 지정) | category(같은 카테고리) | best(전체 판매량) | new(전체 최신).
+export const RECOMMEND_DEFAULT = 8;
+export const RECOMMEND_MAX = 20;
+export type RecommendReason = "pick" | "category" | "best" | "new";
+
+async function salesLast30d(db: PrismaClient, sellerId: string, ids: string[] | null, now: Date, limit: number) {
+  const since = new Date(now.getTime() - BEST_WINDOW_MS);
+  const rows = ids
+    ? await db.$queryRaw<{ productId: string; sold: bigint }[]>`
+        SELECT oi."productId", SUM(oi."quantity")::bigint AS "sold" FROM "OrderItem" oi
+        JOIN "Order" od ON od."sellerId" = oi."sellerId" AND od."id" = oi."orderId"
+        WHERE oi."sellerId" = ${sellerId}::uuid AND od."status" = 'PAID' AND od."paidAt" >= ${since} AND oi."productId" = ANY(${ids}::uuid[])
+        GROUP BY oi."productId" ORDER BY "sold" DESC, oi."productId" LIMIT ${limit}`
+    : await db.$queryRaw<{ productId: string; sold: bigint }[]>`
+        SELECT oi."productId", SUM(oi."quantity")::bigint AS "sold" FROM "OrderItem" oi
+        JOIN "Order" od ON od."sellerId" = oi."sellerId" AND od."id" = oi."orderId"
+        WHERE oi."sellerId" = ${sellerId}::uuid AND od."status" = 'PAID' AND od."paidAt" >= ${since}
+        GROUP BY oi."productId" ORDER BY "sold" DESC, oi."productId" LIMIT ${limit}`;
+  return rows.map((r) => r.productId);
+}
+
+export async function shopRecommendations(db: PrismaClient, slug: string, productId: string, rawLimit?: unknown) {
+  const limit = parseInt10(rawLimit, RECOMMEND_DEFAULT, 1, RECOMMEND_MAX);
+  if (limit === null) return { ok: false as const, reason: "invalid_query" as const };
+  if (!UUID.test(productId)) return { ok: false as const, reason: "not_found" as const };
+  const shop = await openShop(db, slug);
+  if (!shop) return { ok: false as const, reason: "not_found" as const };
+  const visible = { sellerId: shop.id, deletedAt: null, status: { in: [...VISIBLE] } };
+  if (!(await db.product.findFirst({ where: { ...visible, id: productId }, select: { id: true } }))) return { ok: false as const, reason: "not_found" as const };
+  const now = await dbNow(db);
+  // 후보를 한도의 2배까지 모은다(지워졌거나 숨겨진 상품·품절 숨기기로 빠질 몫)
+  const want = limit * 2;
+  const picked = new Map<string, RecommendReason>();
+  const add = (ids: string[], reason: RecommendReason) => {
+    for (const id of ids) if (id !== productId && !picked.has(id) && picked.size < want) picked.set(id, reason);
+  };
+  const designated = await db.shopDisplayItem.findMany({ where: { sellerId: shop.id, product: { ...visible } }, orderBy: [{ sortOrder: "asc" }, { productId: "asc" }], select: { productId: true }, take: want });
+  add(designated.map((d) => d.productId), "pick");
+  const mine = await db.productCategory.findMany({ where: { sellerId: shop.id, productId }, select: { categoryId: true } });
+  if (mine.length && picked.size < want) {
+    const sameRows = await db.productCategory.findMany({
+      where: { sellerId: shop.id, categoryId: { in: mine.map((c) => c.categoryId) }, productId: { not: productId }, product: { ...visible } },
+      select: { productId: true, product: { select: { createdAt: true } } },
+    });
+    const same = [...new Map(sameRows.map((r) => [r.productId, r.product.createdAt.getTime()])).entries()];
+    const bySales = await salesLast30d(db, shop.id, same.map(([id]) => id), now, want);
+    add(bySales, "category");
+    add(same.sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).map(([id]) => id), "category");
+  }
+  if (picked.size < want) add(await salesLast30d(db, shop.id, null, now, want), "best");
+  if (picked.size < want) add((await db.product.findMany({ where: { ...visible, id: { not: productId } }, orderBy: [{ createdAt: "desc" }, { id: "asc" }], select: { id: true }, take: want })).map((p) => p.id), "new");
+  const cards = await shopCardsInOrder(db, shop, [...picked.keys()]);
+  const opts = await displayOptions(db, shop.id);
+  const shown = arrange(cards, { soldOutLast: true, hideSoldOut: opts.hideSoldOut, liveFirst: false }, null, (c) => c.id).slice(0, limit);
+  return { ok: true as const, value: { products: shown.map((c) => ({ ...c, reason: picked.get(c.id)! })) } };
 }
