@@ -43,6 +43,13 @@ async function shot(page: Page, name: string) {
 
 const isPut = (r: { request(): { method(): string }; url(): string }) => r.request().method() === "PUT" && r.url().endsWith("/api/seller/brand-color");
 const chip = (page: Page, name: string | RegExp) => page.getByRole("radio", { name });
+// 칩을 누르면 확인 창(DS-CONFIRM)이 열리고 「바꾸기」를 눌러야 서버에 보낸다
+async function pick(page: Page, name: string | RegExp) {
+  await chip(page, name).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("대표 색상을 바꾸시겠습니까?");
+  await dialog.getByRole("button", { name: "바꾸기", exact: true }).click();
+}
 
 test.afterAll(reset);
 
@@ -56,11 +63,11 @@ test("대표 색상: 칩 8개, 처음에는 기본색이 골라져 있고 흰 �
 
   // 다른 색: 바로 저장(PUT 한 번), 안내와 선택 표시가 바뀐다
   const put = page.waitForResponse(isPut);
-  await chip(page, "#0F766E").click();
+  await pick(page, "#0F766E");
   const res = await put;
   expect(res.status()).toBe(200);
   expect(res.request().postDataJSON()).toEqual({ color: "#0F766E" });
-  await expect(page.getByText("대표 색상을 바꿨습니다 · 쇼핑몰에 바로 반영")).toBeVisible();
+  await expect(page.getByText("대표 색상을 바꿨습니다 · 쇼핑몰에 바로 반영됩니다")).toBeVisible();
   await expect(chip(page, "#0F766E")).toBeChecked();
   await expect(chip(page, "#5B3DF6 (기본색)")).not.toBeChecked();
 
@@ -69,7 +76,7 @@ test("대표 색상: 칩 8개, 처음에는 기본색이 골라져 있고 흰 �
 
   // 같은 칩을 다시 눌러도 보내지 않고, 기본색 칩은 null로 지운다
   const clear = page.waitForResponse(isPut);
-  await chip(page, "#5B3DF6 (기본색)").click();
+  await pick(page, "#5B3DF6 (기본색)");
   expect((await clear).request().postDataJSON()).toEqual({ color: null });
   await expect(chip(page, "#5B3DF6 (기본색)")).toBeChecked();
   await page.reload();
@@ -83,7 +90,7 @@ test("시안 밖의 저장된 색은 끝에 칩 하나로 보이고 선택되어
   await expect(page.getByTestId("brand-chip")).toHaveCount(9);
   await expect(chip(page, "#123456")).toBeChecked();
   const put = page.waitForResponse(isPut);
-  await chip(page, "#2A62D9").click();
+  await pick(page, "#2A62D9");
   expect((await put).request().postDataJSON()).toEqual({ color: "#2A62D9" });
   await expect(page.getByTestId("brand-chip")).toHaveCount(8);
 });
