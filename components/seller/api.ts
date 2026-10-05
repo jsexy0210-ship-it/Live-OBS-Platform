@@ -131,6 +131,8 @@ export type Product = {
   soldQuantity?: number;
   name: string;
   description: string | null;
+  // 쇼핑몰 검색에 걸리는 키워드(최대 10개, 각 20자). 서버 응답에 있다
+  searchTags?: string[];
   price: number;
   status: ProductStatus;
   stockDeductMode: StockDeductMode;

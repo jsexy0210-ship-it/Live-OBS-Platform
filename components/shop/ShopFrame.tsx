@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { cookies } from "next/headers";
 import { COOKIE_NAMES } from "../../lib/server/auth/policy";
 import { resolveBuyerSession } from "../../lib/server/auth/session";
@@ -5,6 +6,7 @@ import { prisma } from "../../lib/server/db";
 import { publicCategories } from "../../lib/server/shop-category/service";
 import { EventPopupForPage } from "./EventPopup";
 import ShopChrome from "./ShopChrome";
+import "./ShopLegal.css";
 
 type BusinessInfo = { companyName?: unknown; representativeName?: unknown; businessNumber?: unknown; mailOrderNumber?: unknown };
 
@@ -54,6 +56,10 @@ export default async function ShopFrame({ slug, shopName, children }: { slug: st
               ))}
             </dl>
           )}
+          <p className="shop-foot-links">
+            <Link href={`/shop/${encodeURIComponent(slug)}/terms`}>이용약관</Link>
+            <Link href={`/shop/${encodeURIComponent(slug)}/privacy`}>개인정보처리방침</Link>
+          </p>
           <p className="shop-foot-by">
             <span className="logo-word" />로 운영하는 쇼핑몰이에요
           </p>
