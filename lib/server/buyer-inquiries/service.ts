@@ -332,3 +332,39 @@ export async function answerInquiry(db: PrismaClient, ctx: TenantContext, id: st
     return { ok: true as const };
   });
 }
+
+// ───────── 공개 상품 문의(상품 상세용, 로그인 없이) ─────────
+export const PUBLIC_INQUIRY_PAGE = 20;
+export const SECRET_INQUIRY_TITLE = "비밀글입니다";
+// 작성자 표시: 첫 글자만 남기고 가린다(「홍***」). 탈퇴 표시는 그대로.
+export const maskAuthor = (nick: string) => (nick === WITHDRAWN_DISPLAY_NAME ? nick : `${[...nick][0] ?? ""}***`);
+
+// 그 상품의 상품 문의 목록. 비공개 글은 제목을 「비밀글입니다」로 바꾸고 내용·답변·사진은 주지 않으며 답변 여부만 보인다.
+// 공개 글은 제목·내용·답변을 주고 사진은 주지 않는다(문의 사진은 작성자와 파트너스만 본다). 운영 중이 아닌 쇼핑몰·보이지 않는 상품은 null(404).
+export async function publicProductInquiries(db: PrismaClient, slug: string, productId: string, cursor?: string | null) {
+  const seller = await db.seller.findUnique({ where: { slug: slug.slice(0, 60) }, select: { id: true } });
+  if (!seller || !isUuid(productId) || !(await shopOpen(db, seller.id))) return null;
+  if (!(await db.product.findFirst({ where: { id: productId, sellerId: seller.id, ...SHOP_VISIBLE_PRODUCT }, select: { id: true } }))) return null;
+  const base = { sellerId: seller.id, productId, kind: "PRODUCT" as const };
+  const at = isUuid(cursor) ? await db.buyerInquiry.findFirst({ where: { ...base, id: cursor }, select: { createdAt: true, id: true } }) : null;
+  const [total, rows] = await Promise.all([
+    db.buyerInquiry.count({ where: base }),
+    db.buyerInquiry.findMany({ where: { ...base, ...afterCursor(at) }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: PUBLIC_INQUIRY_PAGE + 1 }),
+  ]);
+  const page = rows.slice(0, PUBLIC_INQUIRY_PAGE);
+  return {
+    total,
+    inquiries: page.map((r) => ({
+      id: r.id,
+      isPrivate: r.isPrivate,
+      author: maskAuthor(r.authorNickname),
+      title: r.isPrivate ? SECRET_INQUIRY_TITLE : r.title,
+      body: r.isPrivate ? null : r.body,
+      answered: r.status === "ANSWERED",
+      answer: r.isPrivate ? null : r.answer,
+      answeredAt: r.isPrivate ? null : r.answeredAt,
+      createdAt: r.createdAt,
+    })),
+    nextCursor: rows.length > PUBLIC_INQUIRY_PAGE ? page[page.length - 1].id : null,
+  };
+}
