@@ -45,6 +45,41 @@ test("PC: 머리 카테고리 → 분류 목록(하위 분류 상품 포함)·�
   await expect(page.locator(".pc").first()).toBeVisible();
 });
 
+test("PC: 전체 카테고리 펼침(대분류·소분류)·하위 칩·경로, 상품 상세 경로", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/shop/${SLUG}/products`);
+  const nav = page.locator(".shop-cats");
+  await expect(page.locator("#shop-catpanel")).toHaveCount(0);
+  await nav.getByRole("button", { name: "전체 카테고리" }).click();
+  const panel = page.locator("#shop-catpanel");
+  await expect(panel.getByRole("link", { name: "부스터 박스", exact: true })).toBeVisible(); // 대분류 제목
+  await expect(panel.getByRole("link", { name: "프리미엄" })).toBeVisible(); // 소분류
+  await expect(panel.getByRole("link", { name: "비공개 분류" })).toHaveCount(0);
+  if (SHOT) await page.screenshot({ path: "tests/e2e/screenshots/SH-001-catpanel-1440.png" });
+  await panel.getByRole("link", { name: "프리미엄" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: /^프리미엄 1개$/ })).toBeVisible();
+  await expect(page.locator("#shop-catpanel")).toHaveCount(0); // 이동하면 닫힘
+  await expect(page.locator(".shop-crumb")).toHaveText("부스터 박스 › 프리미엄"); // 경로
+  const chips = page.getByRole("navigation", { name: "부스터 박스 하위 카테고리" });
+  await expect(chips.getByRole("link", { name: "전체" })).toBeVisible();
+  await expect(chips.getByRole("link", { name: "프리미엄" })).toHaveAttribute("aria-current", "page");
+  await chips.getByRole("link", { name: "전체" }).click(); // 대분류로(하위 분류 상품 포함)
+  await expect(page.getByRole("heading", { level: 1, name: /^부스터 박스 2개$/ })).toBeVisible();
+  await expect(page.locator(".shop-crumb")).toHaveCount(0);
+  // 하위 분류가 없는 대분류는 칩이 없다
+  await page.getByRole("complementary", { name: "카테고리" }).getByRole("link", { name: "팩", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1, name: /^팩 1개$/ })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: /하위 카테고리/ })).toHaveCount(0);
+  if (SHOT) await page.screenshot({ path: "tests/e2e/screenshots/SH-002-tree-1440.png" });
+  // 상품 상세 경로: 소분류에 묶인 상품은 「전체 상품 › 대분류 › 소분류」
+  await page.goto(`/shop/${SLUG}/products`);
+  await page.getByRole("list", { name: "전체 상품" }).getByRole("link", { name: "문라이트 컬렉션 박스" }).first().click();
+  const crumb = page.getByRole("navigation", { name: "상품 경로" });
+  await expect(crumb).toHaveText("전체 상품 › 부스터 박스 › 프리미엄");
+  await crumb.getByRole("link", { name: "부스터 박스" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: /^부스터 박스 2개$/ })).toBeVisible();
+});
+
 test("보이지 않는 분류·없는 분류는 404", async ({ page }) => {
   const hidden = await page.request.get(`/shop/${SLUG}/products?category=00000000-0000-4000-8000-000000000000`);
   expect(hidden.status()).toBe(404);
