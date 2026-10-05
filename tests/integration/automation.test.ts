@@ -6,6 +6,9 @@ import { GET as jobsRoute } from "../../app/api/automation/jobs/route";
 import { POST as purchaseRoute } from "../../app/api/automation/purchase/route";
 import { POST as reconnectRoute } from "../../app/api/automation/reconnect/route";
 import { POST as refundRoute } from "../../app/api/automation/jobs/[jobId]/refund-request/route";
+import { POST as checkRoute } from "../../app/api/automation/check/route";
+import { GET as adminJobsRoute } from "../../app/api/automation/admin/jobs/route";
+import { GET as adminJobRoute } from "../../app/api/automation/admin/jobs/[jobId]/route";
 import { POST as cleanupCloseRoute } from "../../app/api/automation/admin/jobs/[jobId]/cleanup/route";
 import { loginAdmin, loginSeller } from "../../lib/server/auth/login";
 import { budgetOpen, recordExternalCost } from "../../lib/server/automation/budget";
@@ -4077,5 +4080,56 @@ describe("검수 전담 반영: 옛 소유자의 늦은 기록이 새 소유자�
     // 강제 상한(시작 + 상한 + 여유)이 지나면 풀린다
     await db.automationJob.update({ where: { id: a.jobId }, data: { lastActionStartedAt: new Date(Date.now() - 3 * 60_000) } });
     expect(await purgeEndedBrowserState(db, runtime())).toBe(1);
+  });
+});
+
+describe("자동 연결 화면용 API (SA-150 주소 확인 · MA-110·111 조회)", () => {
+  const BASE = "http://localhost:3000";
+  const check = (cookie: string, shopUrl: unknown) =>
+    checkRoute(new Request(`${BASE}/api/automation/check`, { method: "POST", headers: H(cookie, { "content-type": "application/json" }), body: JSON.stringify({ shopUrl }) }));
+  const adminHeaders = async (role: "SUPER_ADMIN" | "READ_ONLY") => {
+    const admin = await createAdmin(role);
+    const r = await loginAdmin(db, adminCredentials(admin), {});
+    if (!r.ok) throw new Error(r.reason);
+    return { host: "localhost:3000", cookie: `lo_admin=${r.token}` };
+  };
+
+  it("주소 확인: 지원 쇼핑몰은 supported, 지원 밖은 결제 전에 막고, 월 한도에 닿으면 paused", async () => {
+    const s = await shopWithCard();
+    const cookie = await cookieFor(s.owner.email);
+    expect(await (await check(cookie, SHOP)).json()).toEqual({ supported: true, paused: false });
+    expect(await (await check(cookie, "https://unknown-shop.example.com")).json()).toMatchObject({ supported: false });
+    await recordExternalCost(db, { provider: "gemini", purpose: "test", costWon: 10_000 });
+    expect(await (await check(cookie, SHOP)).json()).toEqual({ supported: true, paused: true });
+    expect(await db.automationJob.count()).toBe(0);
+    // 로그인 없이는 거부
+    expect((await check("", SHOP)).status).toBe(401);
+  });
+
+  it("마스터 목록·상세: 조회 전용 관리자도 볼 수 있고 파트너스 세션은 막히며, 내부 값은 내보내지 않는다", async () => {
+    const a = await bought();
+    await db.externalApiCostLedger.create({ data: { provider: "gemini", period: "2026-10", purpose: "t", costWon: 7 } });
+    const ro = await adminHeaders("READ_ONLY");
+    const list = await adminJobsRoute(new Request(`${BASE}/api/automation/admin/jobs?filter=all`, { headers: ro }));
+    expect(list.status).toBe(200);
+    const body = await list.json();
+    expect(body.jobs).toHaveLength(1);
+    expect(body.jobs[0]).toMatchObject({ id: a.jobId, status: "QUEUED", paymentStatus: "PAID", amount: AUTOMATION_PRICE });
+    expect(body.summary).toMatchObject({ queued: 1, running: 0 });
+    expect(JSON.stringify(body)).not.toMatch(/billingKey|idempotency|leaseOwner|requestFingerprint/);
+    expect((await adminJobsRoute(new Request(`${BASE}/api/automation/admin/jobs?filter=x`, { headers: ro }))).status).toBe(400);
+    expect((await adminJobsRoute(new Request(`${BASE}/api/automation/admin/jobs?filter=done`, { headers: ro }))).status).toBe(200);
+    const detail = await adminJobRoute(new Request(`${BASE}/api/automation/admin/jobs/${a.jobId}`, { headers: ro }), params(a.jobId));
+    expect(detail.status).toBe(200);
+    const d = await detail.json();
+    expect(d).toMatchObject({ id: a.jobId, status: "QUEUED", payment: { status: "PAID", amount: AUTOMATION_PRICE } });
+    expect(d.events.length).toBeGreaterThan(0);
+    expect(JSON.stringify(d)).not.toMatch(/detail|billingKey|idempotency|fencing/);
+    // 항상 존재하지 않는 고정 id(무작위 id 끝자리를 바꾸면 같은 id가 될 수 있다)
+    const missing = "00000000-0000-4000-8000-000000000000";
+    expect((await adminJobRoute(new Request(`${BASE}/api/automation/admin/jobs/${missing}`, { headers: ro }), params(missing))).status).toBe(404);
+    expect((await adminJobRoute(new Request(`${BASE}/api/automation/admin/jobs/zzz`, { headers: ro }), params("zzz"))).status).toBe(404);
+    const sellerCookie = await cookieFor(a.owner.email);
+    expect((await adminJobsRoute(new Request(`${BASE}/api/automation/admin/jobs`, { headers: { host: "localhost:3000", cookie: sellerCookie } }))).status).toBeGreaterThanOrEqual(401);
   });
 });

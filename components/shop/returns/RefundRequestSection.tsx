@@ -67,7 +67,7 @@ export default function RefundRequestSection({ slug, orderId, onChanged }: { slu
             </b>
             <span className="cart-opt">{md(r.createdAt)}</span>
           </div>
-          {r.status === "REQUESTED" && <span className="cart-opt">판매자가 확인하면 바로 환불돼요 (보통 10분 안)</span>}
+          {r.status === "REQUESTED" && <span className="cart-opt">판매자가 확인하면 바로 환불돼요</span>}
           {r.reason === "OTHER" && r.reasonText && <span className="cart-opt">{r.reasonText}</span>}
           {r.status === "REJECTED" && r.rejectReason && <span>거절 사유 · {r.rejectReason}</span>}
           {r.status === "REQUESTED" && (
@@ -97,7 +97,7 @@ export default function RefundRequestSection({ slug, orderId, onChanged }: { slu
           onClose={() => setForm(false)}
           onDone={async () => {
             setForm(false);
-            setMsg({ ok: true, text: "요청했어요. 판매자가 확인하면 알려 드릴게요" });
+            setMsg({ ok: true, text: "요청했어요. 주문 상세에서 결과를 확인할 수 있어요" });
             await load();
             onChanged?.();
           }}

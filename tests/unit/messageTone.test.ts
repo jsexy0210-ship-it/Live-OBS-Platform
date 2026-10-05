@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { BUYER_LOGIN_ERROR_MESSAGES, LOGIN_ERROR_MESSAGES, loginErrorBody } from "../../lib/server/auth/messages";
 import { RECOVERY_LIMIT_MESSAGE } from "../../lib/server/auth/recoveryFlow";
 import { MEMBER_POLICY_MESSAGES } from "../../lib/server/buyers/rejoin";
+import { MAINTENANCE_MESSAGES, MAINTENANCE_NOTICE, MAINTENANCE_NOTICE_FORMAL } from "../../lib/server/maintenance/service";
 import { START_IN_PROGRESS_MESSAGE, START_IN_PROGRESS_MESSAGE_FORMAL } from "../../lib/server/identity/attempt";
 import { purposeTone } from "../../lib/server/identity/http";
 import { IDENTITY_ERROR_MESSAGES, identityErrorBody } from "../../lib/server/identity/messages";
@@ -41,6 +42,9 @@ describe("문구표 말투", () => {
       // 쿠폰·리뷰 파트너스 관리자 문구
       ...Object.values(COUPON_MESSAGES),
       ...Object.values(SELLER_REVIEW_MESSAGES),
+      // 점검 모드: 마스터 관리자 문구, 파트너스 API 점검 중 기본 문구
+      ...Object.values(MAINTENANCE_MESSAGES),
+      MAINTENANCE_NOTICE_FORMAL,
     ])
       formal(m);
     for (const m of [
@@ -53,6 +57,7 @@ describe("문구표 말투", () => {
       ...Object.values(CODE_MESSAGES),
       ...Object.values(ORDER_COUPON_MESSAGES),
       ...Object.values(BUYER_REVIEW_MESSAGES),
+      MAINTENANCE_NOTICE,
     ])
       friendly(m);
     // 두 벌은 같은 사유를 모두 가진다

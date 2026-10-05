@@ -13,6 +13,7 @@
   --wds-fill-normal:#716c6414; --wds-fill-strong:#716c6429; --wds-fill-alternative:#716c640d;
   --wds-inverse-primary:#8f78ff; --wds-inverse-background:#171615; --wds-inverse-label:#f6f4f0;
   --ui-line-input:#86817a; --ui-focus:var(--wds-primary-normal);
+  --ui-chevron:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%236b707a' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
   --info-bg:#eeeaff; --page:var(--wds-background-normal-alternative); --surface:var(--wds-background-elevated-normal);
   font-family:"Wanted Sans Variable","Wanted Sans","Pretendard JP","Apple SD Gothic Neo",sans-serif;
   color:var(--wds-label-normal); background:var(--page); font-size:14px; line-height:1.43; letter-spacing:.0145em;
@@ -30,6 +31,7 @@
 
   --pos-text:#1ed45a; --neg-text:#ff6363; --cau-text:#ffa938; --info-bg:#3385ff1f;
   --ui-line-input:#8a847a;
+  --ui-chevron:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23aeb0b6' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
 }
 .app *,.app *::before,.app *::after{box-sizing:border-box}
 .app a{color:var(--wds-primary-normal)} .app a:hover{color:var(--wds-primary-heavy)}
@@ -85,6 +87,16 @@
 .btn.is-focus,.btn:focus-visible,.chip:focus-visible,.tab:focus-visible,.icon-btn:focus-visible,.seg>button:focus-visible,.pg>:focus-visible,.modal-x:focus-visible{outline:var(--ui-focus-w) solid var(--ui-focus);outline-offset:2px}
 /* 처리 중: 폭과 배치는 그대로, 눌림만 막는다(aria-busy) */
 .btn.is-loading,.btn[aria-busy="true"]{opacity:.72;cursor:progress}
+/* 버튼 폭(높이와 따로): 같은 레벨·같은 그룹은 같은 폭 하나. 처리 중 문구도 이 폭 안에서 바뀌어 배치가 흔들리지 않는다.
+   레벨 기본값: Primary 120 · Secondary 96 · Toolbar/일괄 96 · 표 안 작은 행동 64. 그룹의 가장 긴 문구가 안 들어가면 .btn-w-*로 한 단계 올린다 */
+.btn-w-xs,.btn-level-table{width:var(--btn-w-xs);flex:0 0 var(--btn-w-xs);padding-inline:var(--ui-sp-8)}
+.btn-w-sm{width:var(--btn-w-sm);flex:0 0 var(--btn-w-sm);padding-inline:var(--ui-sp-8)}
+.btn-w-md,.btn-level-secondary,.btn-level-bulk{width:var(--btn-w-md);flex:0 0 var(--btn-w-md);padding-inline:var(--ui-sp-8)}
+.btn-w-lg,.btn-level-primary{width:var(--btn-w-lg);flex:0 0 var(--btn-w-lg);padding-inline:var(--ui-sp-8)}
+.btn-w-xl{width:var(--btn-w-xl);flex:0 0 var(--btn-w-xl);padding-inline:var(--ui-sp-8)}
+/* 썸네일: PC 64·휴대폰 56, 모서리 8, 비율 유지(cover). 이미지 없음 자리도 같은 크기 */
+.thumb{display:flex;align-items:center;justify-content:center;flex:none;width:var(--ui-thumb);height:var(--ui-thumb);border-radius:var(--ui-r-control);overflow:hidden;background:var(--wds-fill-normal);color:var(--wds-label-assistive)}
+.thumb>img{display:block;width:100%;height:100%;object-fit:cover}
 .icon-btn{width:var(--ui-h-dense);height:var(--ui-h-dense);padding:0;border-radius:var(--ui-r-control);border:0;background:transparent;color:var(--wds-label-neutral);display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
 .kbd{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 6px;border-radius:6px;font:600 12px/1 inherit;font-family:inherit;background:var(--wds-fill-normal);color:var(--wds-label-neutral);box-shadow:inset 0 -1px 0 var(--wds-line-normal-neutral)}
 /* 입력 */
@@ -99,7 +111,11 @@
 .inp[readonly]{background:var(--wds-fill-alternative)}
 .inp::placeholder{color:var(--wds-label-assistive)}
 textarea.inp{min-height:96px;padding:var(--ui-sp-12);resize:vertical}
-select.inp{cursor:pointer}
+/* Select: 네이티브 화살표 대신 공통 화살표 하나(오른쪽 테두리에서 14px 안쪽, 세로 가운데). 글자는 화살표 자리(오른쪽 40px)를 침범하지 않는다.
+   화살표는 배경 그림이라 Select 어디를 눌러도 열린다. 색은 테마별 --ui-chevron(아래 .app·다크) */
+select.inp{cursor:pointer;-webkit-appearance:none;appearance:none;padding-left:14px;padding-right:40px;
+  background-image:var(--ui-chevron);background-repeat:no-repeat;background-position:right 14px center;background-size:16px 16px;text-overflow:ellipsis}
+select.inp[multiple]{padding-right:var(--ui-sp-12);background-image:none}
 .inp-sm{min-height:var(--ui-h-dense)}
 .inp.is-error,.inp[aria-invalid="true"]{box-shadow:inset 0 0 0 var(--ui-focus-w) var(--neg-text)}
 .inp:disabled,.inp.is-disabled{background:var(--wds-interaction-disable);color:var(--wds-label-disable);box-shadow:none}
@@ -149,10 +165,19 @@ select.inp{cursor:pointer}
 .tbl{width:100%;border-collapse:collapse;font-size:var(--ui-fs-body);line-height:var(--ui-lh-body)}
 .tbl th{text-align:center;font-size:var(--ui-fs-dense);font-weight:600;color:var(--wds-label-neutral);padding:var(--ui-sp-8) var(--ui-sp-12);height:var(--ui-row-compact);background:var(--wds-background-normal-alternative);box-shadow:inset 0 -1px 0 var(--wds-line-normal-neutral);white-space:nowrap}
 .tbl td{padding:var(--ui-sp-12);height:var(--ui-row);box-shadow:inset 0 -1px 0 var(--wds-line-normal-alternative);vertical-align:middle;text-align:center}
-.tbl td.col-text,.tbl td.col-product,.tbl td.col-title,.tbl td.col-desc{text-align:left}
+.tbl td:is(.col-text,.col-product,.col-title,.col-desc,.col-description,.col-address){text-align:left}
+/* 글 열은 제목도 왼쪽(대표님 지시 2026-10-05 「관리자 전체 UI 전수 검수」 9). 데이터 칸에 붙인 클래스를 보고 같은 열의 제목을 고른다(화면마다 th에 따로 붙이지 않게) */
+.tbl:has(>tbody>tr>td:nth-child(1):is(.col-text,.col-product,.col-title,.col-desc,.col-description,.col-address))>thead>tr>th:nth-child(1),
+.tbl:has(>tbody>tr>td:nth-child(2):is(.col-text,.col-product,.col-title,.col-desc,.col-description,.col-address))>thead>tr>th:nth-child(2),
+.tbl:has(>tbody>tr>td:nth-child(3):is(.col-text,.col-product,.col-title,.col-desc,.col-description,.col-address))>thead>tr>th:nth-child(3),
+.tbl:has(>tbody>tr>td:nth-child(4):is(.col-text,.col-product,.col-title,.col-desc,.col-description,.col-address))>thead>tr>th:nth-child(4),
+.tbl:has(>tbody>tr>td:nth-child(5):is(.col-text,.col-product,.col-title,.col-desc,.col-description,.col-address))>thead>tr>th:nth-child(5),
+.tbl:has(>tbody>tr>td:nth-child(6):is(.col-text,.col-product,.col-title,.col-desc,.col-description,.col-address))>thead>tr>th:nth-child(6),
+.tbl:has(>tbody>tr>td:nth-child(7):is(.col-text,.col-product,.col-title,.col-desc,.col-description,.col-address))>thead>tr>th:nth-child(7),
+.tbl:has(>tbody>tr>td:nth-child(8):is(.col-text,.col-product,.col-title,.col-desc,.col-description,.col-address))>thead>tr>th:nth-child(8){text-align:left}
 /* 칸 안을 flex로 묶은 값(.row·.col)도 같은 중심축에 둔다. 왼쪽 예외 칸은 왼쪽 시작 */
 .tbl td>.row{justify-content:center}.tbl td>.col{align-items:center}
-.tbl td:is(.col-text,.col-product,.col-title,.col-desc)>.row{justify-content:flex-start}.tbl td:is(.col-text,.col-product,.col-title,.col-desc)>.col{align-items:flex-start}
+.tbl td:is(.col-text,.col-product,.col-title,.col-desc,.col-description,.col-address)>.row{justify-content:flex-start}.tbl td:is(.col-text,.col-product,.col-title,.col-desc,.col-description,.col-address)>.col{align-items:flex-start}
 /* 관리 열: 버튼 묶음을 칸 가운데, 사이 8px */
 .cell-actions{display:flex;justify-content:center;align-items:center;gap:var(--ui-sp-8);flex-wrap:wrap}
 .tbl td.num,.tbl td.r{white-space:nowrap}.tbl tr.sel td{background:var(--info-bg)}.tbl tr.faded td{color:var(--wds-label-assistive)}
@@ -312,6 +337,7 @@ select.inp{cursor:pointer}
   .inp,.btn{min-height:var(--ui-h-touch)}
   .inp{font-size:var(--ui-fs-touch);line-height:var(--ui-lh-touch)}
   .btn-sm,.btn-dense,.inp-sm,.icon-btn,.pg>a,.pg>span{min-height:var(--ui-hit-min);min-width:var(--ui-hit-min)}
+  .thumb{width:var(--ui-thumb-mobile);height:var(--ui-thumb-mobile)}
   .btn-xl{min-height:var(--ui-h-broadcast)}
   .modal{max-width:calc(100% - 32px);padding:var(--ui-sp-16)}
   .modal-h{padding-right:var(--ui-sp-48)}
