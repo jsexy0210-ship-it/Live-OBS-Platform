@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { useConfirm } from "../admin-ui/ConfirmDialog";
 import { api, failMessage } from "../seller/api";
 import { textLength } from "../seller/format";
 import MarketingConsentDoc, { MARKETING_DOC_VERSION } from "./MarketingConsentDoc";
@@ -70,6 +71,7 @@ function toBirth7(birth: string, gender: "M" | "F", foreigner: boolean): string 
 const phoneText = (p: string) => (p.length === 11 ? `${p.slice(0, 3)}-${p.slice(3, 7)}-${p.slice(7)}` : `${p.slice(0, 3)}-${p.slice(3, 6)}-${p.slice(6)}`);
 
 export default function SignupForm({ slug, shopName, consent }: { slug: string; shopName: string; consent: SignupConsentInfo }) {
+  const { confirm: askConfirm } = useConfirm();
   const base = `/api/shop/${encodeURIComponent(slug)}/signup`;
   const [step, setStep] = useState<Step>("identity");
   const [unavailable, setUnavailable] = useState(false);
@@ -342,6 +344,7 @@ export default function SignupForm({ slug, shopName, consent }: { slug: string; 
   const signup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!verificationId || !accountReady || busy) return;
+    if (!(await askConfirm({ tone: "shop", title: "가입할까요?", body: `${shopName}에 ${nickname.trim()} 닉네임으로 가입해요.`, confirmLabel: "가입하기" }))) return;
     setBusy(true);
     setNotice(null);
     setFieldErrors({});
