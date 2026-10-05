@@ -52,6 +52,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/staff/[userId]/password": "ACCOUNT",
   "seller/staff/[userId]/permissions": "ACCOUNT",
   "seller/orders": "ORDER_FOLLOWUP",
+  "seller/search": "ORDER_FOLLOWUP", // 전역 검색: 이미 받은 주문·문의를 잠김·정지 중에도 찾는다
   "seller/orders/[orderId]": "ORDER_FOLLOWUP",
   "seller/orders/[orderId]/cancel": "ORDER_FOLLOWUP",
   "seller/orders/[orderId]/deliver": "ORDER_FOLLOWUP",
