@@ -33,10 +33,11 @@ export function NavigationTracker() {
   const here = pathname + (search ? `?${search}` : "");
   listen();
   useEffect(() => {
+    if (pathname.startsWith("/overlay")) return; // 방송 오버레이 화면은 기록하지 않는다
     const kind = popped ? "pop" : (nextKind ?? "push");
     popped = false;
     nextKind = null;
     stack = onNavigate(stack, here, kind);
-  }, [here]);
+  }, [here, pathname]);
   return null;
 }
