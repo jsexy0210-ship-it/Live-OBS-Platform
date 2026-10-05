@@ -8,8 +8,7 @@ import { useUrlState } from "../../../../lib/client/navigation";
 export function useListFilters<T extends Record<string, string>>(empty: T) {
   const [url, setUrl] = useUrlState(empty);
   const key = JSON.stringify(url);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const applied = useMemo(() => url, [key]);
+  const applied = useMemo(() => JSON.parse(key) as T, [key]);
   const [draft, setDraft] = useState<T>(applied);
   useEffect(() => setDraft(applied), [applied]);
   return { applied, draft, setDraft, apply: (next: T) => setUrl(next) } as const;
