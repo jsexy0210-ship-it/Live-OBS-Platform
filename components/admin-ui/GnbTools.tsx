@@ -141,7 +141,7 @@ export function GlobalSearch({ scope }: { scope: "seller" | "admin" }) {
   );
 }
 
-export function NotificationBell({ scope }: { scope: "seller" | "admin" }) {
+export function NotificationBell({ scope, allHref }: { scope: "seller" | "admin"; allHref?: string }) {
   const kindLabel: Record<string, string> = { NOTICE: "공지", INQUIRY_REPLY: "문의 답변", INQUIRY_WAITING: "답변 대기" };
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error" } | { kind: "ok"; items: Notice[]; unreadCount: number }>({ kind: "loading" });
@@ -215,6 +215,11 @@ export function NotificationBell({ scope }: { scope: "seller" | "admin" }) {
                 </Link>
               ))}
           </div>
+          {allHref && (
+            <Link className="gnb-pop-all" href={allHref} onClick={close}>
+              모두 보기
+            </Link>
+          )}
         </div>
       )}
     </div>

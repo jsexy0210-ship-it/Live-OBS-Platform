@@ -434,7 +434,7 @@ export function SellerShell({ children }: { children: React.ReactNode }) {
               {me.shop.name}
             </span>
             <GlobalSearch scope="seller" />
-            <NotificationBell scope="seller" />
+            <NotificationBell scope="seller" allHref="/seller/notifications" />
             <span className="util-desk">{utilities}</span>
           </div>
         </header>

@@ -134,6 +134,7 @@ test("상단 알림: 종 버튼이 열리고(목록 또는 빈 안내), 바깥�
   const dialog = page.getByRole("dialog", { name: "알림" });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText(/새 알림이 없습니다|공지|문의 답변/).first()).toBeVisible();
+  await expect(dialog.getByRole("link", { name: "모두 보기" })).toHaveAttribute("href", "/seller/notifications");
   await page.mouse.click(300, 600);
   await expect(dialog).toHaveCount(0);
 });
