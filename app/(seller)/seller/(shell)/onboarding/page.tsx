@@ -16,15 +16,15 @@ type Data = { track: "INTEGRATED" | "OVERLAY_ONLY" | null; planCode: string | nu
 type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; data: Data };
 
 const STEP: Record<string, { title: string; desc: string; go: string }> = {
-  subscription: { title: "구독 결제", desc: "구독료를 결제하면 쇼핑몰과 방송 기능을 쓸 수 있습니다.", go: "구독 · 결제로" },
+  subscription: { title: "이용권 결제", desc: "이용권 요금을 결제하면 쇼핑몰과 방송 기능을 쓸 수 있습니다.", go: "구독 · 결제로" },
   shop_info: { title: "쇼핑몰 정보 입력", desc: "구매자에게 보이는 공유 문구를 입력합니다.", go: "쇼핑몰 정보로" },
   products: { title: "상품 등록", desc: "판매할 상품을 한 개 이상 등록합니다.", go: "상품 등록으로" },
-  order_policy: { title: "주문 설정", desc: "입금 기한·자동 취소 같은 주문 정책을 저장합니다.", go: "주문 설정으로" },
-  overlay: { title: "오버레이 설정", desc: "방송 화면에 보일 오버레이 배치를 저장합니다.", go: "오버레이 편집기로" },
-  overlay_url: { title: "오버레이 주소 복사", desc: "오버레이 편집기에서 주소를 발급해 복사한 뒤 OBS 「브라우저 소스」에 넣습니다.", go: "오버레이 편집기로" },
-  external_shop: { title: "외부 쇼핑몰 연동", desc: "운영 중인 쇼핑몰의 주소를 확인하고 연동합니다.", go: "외부 쇼핑몰 연동으로" },
+  order_policy: { title: "주문 규칙", desc: "입금해야 하는 시간과 자동 취소 같은 주문 규칙을 저장합니다.", go: "주문 설정으로" },
+  overlay: { title: "방송 화면 꾸미기", desc: "방송 화면에 보일 배치를 저장합니다.", go: "방송 화면 꾸미기로" },
+  overlay_url: { title: "방송 화면 주소 복사", desc: "방송 화면 꾸미기에서 주소를 만들어 복사한 뒤, 방송 프로그램(OBS)의 「브라우저 소스」 칸에 붙여 넣습니다.", go: "방송 화면 꾸미기로" },
+  external_shop: { title: "다른 쇼핑몰 이어 쓰기", desc: "운영 중인 쇼핑몰의 주소를 확인하고 이어 둡니다.", go: "다른 쇼핑몰 이어 쓰기로" },
 };
-const TRACK: Record<"INTEGRATED" | "OVERLAY_ONLY", string> = { INTEGRATED: "쇼핑몰 통합", OVERLAY_ONLY: "오버레이 전용" };
+const TRACK: Record<"INTEGRATED" | "OVERLAY_ONLY", string> = { INTEGRATED: "쇼핑몰까지 쓰기", OVERLAY_ONLY: "방송 화면만 쓰기" };
 
 function trialLeft(iso: string | null): string | null {
   if (!iso) return null;
@@ -51,7 +51,7 @@ export default function OnboardingPage() {
     setBusy(true);
     const r = await api("/api/seller/onboarding", { method: "POST", body: { action } });
     setBusy(false);
-    if (!r.ok) return setToast({ text: r.message ?? "처리하지 못했습니다. 잠시 후 다시 시도해 주십시오", neg: true });
+    if (!r.ok) return setToast({ text: r.message ?? "안내를 바꾸지 못했습니다. 인터넷 연결을 확인한 뒤 다시 눌러 주십시오", neg: true });
     await load();
   };
 
@@ -116,7 +116,7 @@ export default function OnboardingPage() {
                 <span>시작하기를 닫았습니다. 필요하면 다시 열 수 있습니다.</span>
                 {canClose && (
                   <button className="btn btn-sm" type="button" disabled={busy} onClick={() => void act("reopen")}>
-                    다시 열기
+                    다시 보이기
                   </button>
                 )}
               </div>
@@ -124,12 +124,12 @@ export default function OnboardingPage() {
               <section className="card" aria-label="시작 단계">
                 <ol style={{ listStyle: "none", margin: 0, padding: 0 }}>
                   {d.steps.map((s, i) => {
-                    const info = STEP[s.key] ?? { title: s.key, desc: "", go: "이동" };
+                    const info = STEP[s.key] ?? { title: "확인할 일", desc: "", go: "이동" };
                     const isCurrent = s.key === d.currentStep;
                     return (
                       <li key={s.key} data-testid="ob-step" data-key={s.key} data-done={s.done ? "true" : "false"} data-current={isCurrent ? "true" : "false"} className="row" style={{ gap: 14, padding: "16px 20px", alignItems: "center", borderTop: i === 0 ? "none" : "1px solid var(--wds-line-normal-alternative)", background: isCurrent ? "var(--wds-fill-alternative)" : undefined }}>
                         <span className={`bdg ${s.done ? "b-done" : isCurrent ? "b-info" : "b-gray nodot"}`} style={{ minWidth: 64, justifyContent: "center" }}>
-                          {s.done ? "완료" : isCurrent ? "진행 차례" : "대기"}
+                          {s.done ? "완료" : isCurrent ? "지금 할 차례" : "기다리는 중"}
                         </span>
                         <div className="col" style={{ gap: 2, flex: 1, minWidth: 0 }}>
                           <span className="t-l1 fw6">{i + 1}. {info.title}</span>
@@ -148,7 +148,7 @@ export default function OnboardingPage() {
             {!d.dismissed && canClose && (
               <div className="row">
                 <button className="btn btn-sm btn-text" type="button" disabled={busy} onClick={() => void act("dismiss")}>
-                  시작하기 닫기
+                  안내 숨기기
                 </button>
               </div>
             )}
