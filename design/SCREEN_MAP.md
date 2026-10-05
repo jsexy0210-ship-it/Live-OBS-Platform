@@ -125,7 +125,7 @@
 | ID | 화면 | Product Route | Design Source | Entry | Status | Artifact Version | 마지막 동기화(KST) | 비고 |
 |---|---|---|---|---|---|---|---|---|
 | SA-001 | 방송 대시보드 | /seller/broadcast | design/project/SA-001.dc.html | SA-001.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 · 변형: SA-001-B, SA-001-C, SA-001-DK, SA-001-E, SA-001-L, SA-001-M1, SA-001-M2, SA-001-M3, SA-001-M4, SA-001-M5, SA-001-M6 |
-| SA-002 | 파트너스 홈 | /seller | design/project/SA-002-IA.dc.html | SA-002-IA.dc.html | FINAL | 1791213911-1437 | 2026-10-06 00:27 KST | 현대화 기준 충족(c24/sh24 토큰 · 2026-10-05 이후 작성·갱신) · 변형: SA-002 (SA-002 = SUPERSEDED) |
+| SA-002 | 파트너스 홈 | /seller | design/project/SA-002-IA.dc.html | SA-002-IA.dc.html | FINAL | v300 (1791239970-91e4) | 2026-10-06 07:39 KST | 현대화 기준 충족(c24/sh24 토큰 · 2026-10-05 이후 작성·갱신) · 변형: SA-002 (SA-002 = SUPERSEDED) · 쉬운 말 반영(#655): 처리할 일 항목 「입금 확인 필요」 등 · 지표 「결제된 매출」「주문 1건당 평균 금액」「취소·환불 건수」 |
 | SA-002-O | 오버레이 전용 홈 | /seller (오버레이 전용) | design/project/SA-002-O.dc.html | SA-002-O.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | SA-003 | 시작하기 | /seller/onboarding | design/project/SA-003.dc.html | SA-003.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
 | SA-004 | 온보딩 | /seller/onboarding | design/project/SA-004.dc.html | SA-004.dc.html | DRAFT | 1791213911-1437 | 2026-10-06 00:27 KST | c24/sh24 틀 적용 · 현대화 기준(버튼 폭 고정 · Select 화살표 · 날짜 전체 클릭 · 목록 Header/Body 분리 · 빠른 처리) 전수 확인 전 |
