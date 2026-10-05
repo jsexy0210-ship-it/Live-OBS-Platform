@@ -73,7 +73,7 @@ export default function BrandingSettingsPage() {
 
   return (
     <>
-      <AdminTopbar crumb="사이트 설정 › 파비콘 · 공유 카드" />
+      <AdminTopbar crumb="설정 › 파비콘·공유 카드" />
       <main className="main">
         <PageHead title="파비콘 · 공유 카드" />
         <span className="t-l2 c-alt">마스터 관리자와 파트너스 관리자에 각각 넣습니다. 대상을 고른 뒤 바꿔 주십시오.</span>
@@ -274,9 +274,9 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
         <section className="card pad col" style={{ gap: 14 }} aria-labelledby={`fav-${t}`}>
           <div className="col" style={{ gap: 4 }}>
             <h2 className="t-hl2" id={`fav-${t}`}>
-              파비콘
+              탭 아이콘(파비콘)
             </h2>
-            <span className="t-c1 c-alt">PNG 파일만 올릴 수 있습니다. 256KB까지 업로드할 수 있으며 512×512 등 정사각형 이미지를 권장합니다.</span>
+            <span className="t-c1 c-alt">PNG 파일만 올릴 수 있습니다. 용량은 256KB 이하이고, 가로와 세로가 같은 그림(예: 512×512)이 좋습니다.</span>
           </div>
           <div className="row" style={{ gap: 16, flexWrap: "wrap" }}>
             <div className="row" style={{ gap: 12 }}>
@@ -340,7 +340,7 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
         <section className="card pad col" style={{ gap: 16 }} aria-labelledby={`og-${t}`}>
           <div className="col" style={{ gap: 4 }}>
             <h2 className="t-hl2" id={`og-${t}`}>
-              공유 카드
+              공유 미리보기 카드
             </h2>
             <span className="t-c1 c-alt">메신저나 SNS에 주소를 붙여 넣으면 이 카드가 표시됩니다.</span>
           </div>
@@ -383,7 +383,7 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
             <span className="t-l2 fw6" id={`mode-${t}`}>
               카드 이미지
             </span>
-            <span className="t-c1 c-alt">PNG 파일만 올릴 수 있습니다. 카드 이미지 크기는 1200×630이며 2MB까지 업로드할 수 있습니다.</span>
+            <span className="t-c1 c-alt">PNG 파일만 올릴 수 있습니다. 카드 그림은 가로 1200, 세로 630 크기로 만들어 주십시오. 용량은 2MB 이하입니다.</span>
             <div className="seg" role="radiogroup" aria-labelledby={`mode-${t}`} style={{ alignSelf: "flex-start" }}>
               {(
                 [
@@ -409,7 +409,7 @@ function TargetForm({ branding, canEdit, onSaved }: { branding: Branding; canEdi
             </div>
             {mode === "uploaded" && (
               <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                <span className="t-c1 c-alt">1200×630 크기 PNG 파일을 선택해 주십시오.</span>
+                <span className="t-c1 c-alt">가로 1200, 세로 630 크기의 PNG 파일을 선택해 주십시오.</span>
                 {canEdit && (
                   <>
                     <input

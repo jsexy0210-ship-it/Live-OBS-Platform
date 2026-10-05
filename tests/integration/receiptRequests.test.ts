@@ -83,7 +83,7 @@ describe("현금영수증·세금계산서 신청", () => {
 
     const list = await listSellerReceiptRequests(db, s.ctx);
     expect(list.requests).toHaveLength(1);
-    expect(list.requests[0]).toMatchObject({ id: r.request.id, totalAmount: 10000, issue: { status: "PENDING" } });
+    expect(list.requests[0]).toMatchObject({ id: r.request.id, orderNoLabel: expect.stringMatching(/^\d{8}-\d{4,}$/), totalAmount: 10000, issue: { status: "PENDING" } });
     expect(list.counts).toEqual({ PENDING: 1 });
     expect((await listSellerReceiptRequests(db, s.ctx, { status: "FAILED" })).requests).toEqual([]);
 

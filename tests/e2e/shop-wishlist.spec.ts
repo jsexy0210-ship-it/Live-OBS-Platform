@@ -38,7 +38,7 @@ test.describe.serial("로그인 구매자", () => {
     await expect(page.getByRole("heading", { name: /^찜 3$/ })).toBeVisible();
     const cards = page.getByRole("list", { name: "찜한 상품" }).locator(".pc");
     await expect(cards).toHaveCount(3);
-    await expect(cards.filter({ hasText: "드래곤 소울 부스터" }).locator(".pc-out")).toHaveText("SOLD OUT");
+    await expect(cards.filter({ hasText: "드래곤 소울 부스터" }).locator(".pc-out")).toHaveText("품절");
     await expect(cards.filter({ hasText: "스타라이트 부스터 박스" }).locator(".pc-out")).toHaveCount(0);
     await page.screenshot({ path: "tests/e2e/screenshots/SH-034-wishlist-1440.png", fullPage: true });
   });

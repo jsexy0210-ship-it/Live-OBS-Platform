@@ -56,7 +56,7 @@ test("최고관리자: 목록에 확인 필요 항목이 보이고, 상세에서
   await expect(row).toContainText("국세청 조회 실패");
   await row.getByRole("link", { name: "상세" }).click();
   await expect(page).toHaveURL(new RegExp(`/admin/partners/applications/${ids.approve}$`));
-  await expect(page.getByRole("heading", { name: "확인 필요 항목" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "확인할 것" })).toBeVisible();
   await page.getByRole("button", { name: "승인", exact: true }).click();
   await expect(page.getByText("가입을 승인했습니다.")).toBeVisible();
   // 처리 뒤에는 목록으로 강제 복귀하지 않고 다음 신청(없으면 목록)으로 넘어간다
@@ -85,7 +85,7 @@ test("상담(CS): 신청 내용은 볼 수 있지만 승인·반려 버튼은 �
   const s = await db.seller.create({ data: { slug: `ap-cs-${run}`, shopName: `상담용몰 ${run}`, status: "PENDING", reviewReasons: ["business_not_active"] } });
   await login(page, emails.cs);
   await page.goto(`/admin/partners/applications/${s.id}`);
-  await expect(page.getByRole("heading", { name: "확인 필요 항목" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "확인할 것" })).toBeVisible();
   await expect(page.getByText("휴업·폐업 사업자")).toBeVisible();
   await expect(page.getByRole("button", { name: "승인", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "반려", exact: true })).toHaveCount(0);

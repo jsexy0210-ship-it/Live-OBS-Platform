@@ -65,7 +65,7 @@ test("결제 대기 주문: 카드가 기본, 금액 확인 버튼, 결제 준�
   // 결제 창이 끝난 뒤 서버가 보내는 주소는 주문 상세로 이어지고 결과 안내가 나온다
   await page.goto(`/shop/${SLUG}/orders?orderId=${orderId}&payment=failed`);
   await expect(page).toHaveURL(new RegExp(`/orders/${orderId}\\?payment=failed$`));
-  await expect(page.getByRole("status")).toContainText("결제하지 못했어요");
+  await expect(page.getByRole("status")).toContainText("결제가 되지 않았어요");
   await page.goto(`/shop/${SLUG}/orders?orderId=${orderId}&payment=pending`);
   await expect(page.getByRole("status")).toContainText("결제를 확인하고 있어요");
 });

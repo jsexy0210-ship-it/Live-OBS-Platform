@@ -900,6 +900,10 @@ select.inp{cursor:pointer}
 .c24 .plist .lt td .sub{font-size:13px;line-height:18px;margin-top:8px}
 .c24 .cfm .f{gap:8px}.c24 .cfm .f .b{min-width:var(--btn-w-md)}
 .c24 .b.neg{min-width:inherit}
+/* 2026-10-06 공통 확인 창 DS-CONFIRM: 위험 실행 버튼은 채운 위험 색 · 구매자 위험 버튼 · 확인 창 버튼 사이 8 */
+.c24 .b.neg.pri{background:#c0262c;border-color:#c0262c;color:#fff}
+.sh24 .btn.neg{color:#c0262c;border-color:#e3a7a9}.sh24 .btn.neg.p{background:#c0262c;border-color:#c0262c;color:#fff}
+.sh24 .cfm .f{gap:8px}
 .c24 .seg>button{height:40px}
 .c24 .col>.b+.b{margin-left:0}
 /* ===== 규격 확정본 반영 (PR #433 docs/DESIGN_PROMPT.md · 레이아웃 전담 (3) 2026-10-05) · 전/모바일 비교 보드 제외 ===== */

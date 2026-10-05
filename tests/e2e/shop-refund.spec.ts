@@ -63,7 +63,7 @@ test("PC: 주문 취소 요청(품목·사유 검사) → 요청 중 표시 → 
   await page.screenshot({ path: "tests/e2e/screenshots/SH-022-refund-1440.png", fullPage: true });
   await box.getByRole("button", { name: "주문 취소 요청" }).click();
   const dlg = page.getByRole("dialog", { name: "주문을 취소할까요?" });
-  await expect(dlg).toContainText("개봉 전까지만 취소할 수 있어요");
+  await expect(dlg).toContainText("방송에서 상품을 열기 전까지만 취소할 수 있어요");
   await expect(dlg.getByRole("checkbox", { name: /탑로더 25장/ })).toBeChecked(); // 기본은 남은 품목 전부
   await expect(dlg.getByRole("checkbox", { name: /문라이트 컬렉션 박스/ })).toBeChecked();
   await expect(dlg.getByLabel("사유")).toHaveValue("CHANGE_OF_MIND"); // 기본 사유
@@ -88,9 +88,9 @@ test("PC: 주문 취소 요청(품목·사유 검사) → 요청 중 표시 → 
   await expect(box.getByRole("button", { name: "주문 취소 요청" })).toHaveCount(0); // 진행 중인 요청이 있으면 다시 못 함
   await expect(box).toContainText("진행 중인 요청이 끝나면 다시 요청할 수 있어요");
   // 철회
-  await row.getByRole("button", { name: "요청 철회" }).click();
-  await expect(box.getByRole("status")).toContainText("요청을 철회했어요");
-  await expect(box.getByTestId("refund-request").first()).toContainText("철회했어요");
+  await row.getByRole("button", { name: "취소 요청 거두기" }).click();
+  await expect(box.getByRole("status")).toContainText("요청을 거뒀어요");
+  await expect(box.getByTestId("refund-request").first()).toContainText("요청을 거뒀어요");
   await expect(box.getByRole("button", { name: "주문 취소 요청" })).toBeVisible();
   // 다시 요청 → 판매자가 거절하면 사유가 보인다
   await box.getByRole("button", { name: "주문 취소 요청" }).click();

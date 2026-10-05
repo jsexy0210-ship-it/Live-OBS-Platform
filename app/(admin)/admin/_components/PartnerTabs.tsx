@@ -15,8 +15,8 @@ export const PARTNER_TABS = [
   ["info", "기본 정보"],
   ["broadcasts", "방송 이력"],
   ["notes", "메모"],
-  ["pg", "결제 연결"],
-  ["activity", "활동 기록"],
+  ["pg", "카드 결제 연결"],
+  ["activity", "활동 기록(로그 추적)"],
 ] as const;
 export type PartnerTab = (typeof PARTNER_TABS)[number][0];
 
@@ -316,17 +316,17 @@ export function PartnerPg({ sellerId, slug }: { sellerId: string; slug: string }
       {state.kind === "ok" &&
         (state.row ? (
           <dl className="kv">
-            <dt>마지막 성공</dt>
+            <dt>마지막으로 결제된 때</dt>
             <dd>{dayTime(state.row.lastSuccessAt)}</dd>
             <dt>마지막 실패</dt>
             <dd>{dayTime(state.row.lastFailureAt)}</dd>
-            <dt>실패 사유</dt>
+            <dt>결제 실패 이유</dt>
             <dd>{state.row.lastFailureMessage ?? "-"}</dd>
-            <dt>24시간 실패</dt>
+            <dt>최근 24시간 결제 실패</dt>
             <dd data-testid="pg-failures">{state.row.failures24h.toLocaleString("ko-KR")}건</dd>
-            <dt>취소 대기</dt>
+            <dt>결제 취소 대기</dt>
             <dd>{state.row.cancelsPending.toLocaleString("ko-KR")}건</dd>
-            <dt>취소 실패</dt>
+            <dt>결제 취소 실패</dt>
             <dd>{state.row.cancelsFailed.toLocaleString("ko-KR")}건</dd>
           </dl>
         ) : (

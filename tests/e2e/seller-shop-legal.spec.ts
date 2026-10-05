@@ -125,8 +125,8 @@ test("사업자 정보·고지: 검사 오류가 칸 가까이에 보이고, 저
   await expect(foot).not.toContainText("이메일"); // 입력하지 않은 항목은 줄을 뺀다
   await expect(foot).toContainText("호스팅 제공");
   await expect(foot.getByRole("link", { name: "확인하기" })).toHaveAttribute("href", "https://www.ftc.go.kr/bizCommPop.do?wrkr_no=1234567890");
-  await expect(foot.getByRole("link", { name: "에스크로 가입 · 시험결제" })).toHaveAttribute("href", "https://pay.example.com/escrow");
-  await expect(foot.getByRole("link", { name: "에스크로 가입 · 시험결제" })).toHaveAttribute("target", "_blank");
+  await expect(foot.getByRole("link", { name: "에스크로 가입(결제한 돈을 안전하게 보관해 주는 서비스) · 시험결제" })).toHaveAttribute("href", "https://pay.example.com/escrow");
+  await expect(foot.getByRole("link", { name: "에스크로 가입(결제한 돈을 안전하게 보관해 주는 서비스) · 시험결제" })).toHaveAttribute("target", "_blank");
   await expect(buyer.getByTestId("shop-foot-minor")).toContainText("법정대리인 동의가 필요해요.");
   // 기존 검증 값 4개는 그대로 보인다
   await expect(foot).toContainText("별빛상사");

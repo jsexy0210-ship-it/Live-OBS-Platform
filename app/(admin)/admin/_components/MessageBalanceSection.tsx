@@ -51,9 +51,9 @@ function GrantDialog({ sellerId, onClose, onDone }: { sellerId: string; onClose:
       <form className="col" style={{ gap: 16 }} onSubmit={submit} noValidate>
         <div className="modal-h">
           <h2 className="modal-t" id="grant-title">
-            무상 잔액 지급
+            무료로 잔액 넣기
           </h2>
-          <span className="t-l2 c-alt">이벤트·보상용으로 지급하며 환불 대상이 아닙니다. 유료 잔액보다 나중에 차감됩니다.</span>
+          <span className="t-l2 c-alt">이벤트·보상으로 넣는 잔액입니다. 환불되지 않습니다. 돈 낸 잔액을 먼저 쓰고, 이 잔액은 나중에 씁니다.</span>
         </div>
         <div className="col" style={{ gap: 14, }}>
           <div className="fld">
@@ -82,7 +82,7 @@ function GrantDialog({ sellerId, onClose, onDone }: { sellerId: string; onClose:
             취소
           </button>
           <button className="btn" type="submit" disabled={!valid || busy}>
-            {busy ? "지급 중" : "지급"}
+            {busy ? "넣는 중" : "잔액 넣기"}
           </button>
         </div>
       </form>
@@ -111,16 +111,16 @@ export function MessageBalanceSection({ sellerId }: { sellerId: string }) {
       <section className="card pad-l col" style={{ gap: 14 }} aria-labelledby="partner-balance">
         <div className="row" style={{ justifyContent: "space-between" }}>
           <h2 className="t-hl1" id="partner-balance">
-            발송 잔액
+            메일·문자 충전 잔액
           </h2>
           {canGrant && d && (
             <button className="btn btn-sm btn-out" type="button" onClick={() => setDialog(true)}>
-              무상 지급
+              무료로 넣어 주기
             </button>
           )}
         </div>
         {state.kind === "loading" && <LoadingRows rows={2} />}
-        {state.kind === "error" && <ErrorState title="발송 잔액을 불러오지 못했습니다." onRetry={() => void load()} />}
+        {state.kind === "error" && <ErrorState title="메일·문자 충전 잔액을 불러오지 못했습니다." onRetry={() => void load()} />}
         {d && (
           <dl className="kv">
             <dt>잔액 합계</dt>
@@ -138,7 +138,7 @@ export function MessageBalanceSection({ sellerId }: { sellerId: string }) {
             <dd>{cnt(d.mail.quota)}</dd>
             <dt>{d.mail.month} 보낸 메일</dt>
             <dd data-testid="balance-mail">
-              {cnt(d.mail.sent)} (무료 {cnt(d.mail.freeSent)} · 차감 {cnt(d.mail.chargedSent)})
+              {cnt(d.mail.sent)} (무료 {cnt(d.mail.freeSent)} · 잔액에서 빠진 {cnt(d.mail.chargedSent)})
             </dd>
             <dt>잔액 부족으로 못 보낸 메일</dt>
             <dd>{cnt(d.mail.skippedBalance)}</dd>
@@ -151,7 +151,7 @@ export function MessageBalanceSection({ sellerId }: { sellerId: string }) {
           onClose={() => setDialog(false)}
           onDone={(existing) => {
             setDialog(false);
-            setToast(existing ? "이미 지급된 요청입니다." : "무상 잔액을 지급했습니다.");
+            setToast(existing ? "같은 요청이 이미 처리되어 다시 넣지 않았습니다." : "무료 잔액을 넣었습니다.");
             void load();
           }}
         />

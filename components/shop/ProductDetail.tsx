@@ -90,7 +90,7 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
     if (r.ok || (restock && r.status === 404)) {
       setRestock(!restock);
       setMsg({ ok: true, text: restock ? "재입고 알림을 취소했어요" : "다시 입고되면 알려 드릴게요" });
-    } else setMsg({ ok: false, text: r.message ?? "처리하지 못했어요. 잠시 뒤 다시 해 주세요" });
+    } else setMsg({ ok: false, text: r.message ?? "재입고 알림을 바꾸지 못했어요. 잠시 뒤 다시 눌러 주세요" });
     setBusy(false);
   }
 
@@ -182,7 +182,7 @@ export default function ProductDetail({ slug, loggedIn, product: p, crumb = [] }
         <div className="pd-gallery">
           <div className="pd-hero">
             {hero && <Image src={hero.url} alt={p.name} width={hero.width} height={hero.height} unoptimized priority />}
-            {p.soldOut && <span className="pc-out" role="img" aria-label="품절">SOLD OUT</span>}
+            {p.soldOut && <span className="pc-out" role="img" aria-label="품절">품절</span>}
           </div>
           {p.images.length > 1 && (
             <div className="pd-thumbs" role="group" aria-label="상품 사진">

@@ -8,7 +8,7 @@ import { ASSIGNABLE_ROLES, MIN_PASSWORD, ROLE_LABEL, type AdminAccount, type Adm
 // 관리자 계정 추가·수정 창(MA-062). 수정에서 최고관리자 계정은 이름만 바꿀 수 있어 역할·상태 칸을 아예 그리지 않는다.
 // 처리 중에는 닫기·취소를 막는다. 서버가 거절하면 이유를 안내한다.
 const ERROR: Record<string, string> = {
-  invalid_input: "입력한 내용을 확인해 주십시오.",
+  invalid_input: "이메일 형식과 이름(50자 이하)을 확인해 주십시오.",
   weak_password: `비밀번호는 ${MIN_PASSWORD}자 이상 입력해 주십시오.`,
   email_taken: "이미 사용 중인 이메일입니다.",
   super_admin_protected: "최고관리자의 역할과 상태는 바꿀 수 없습니다.",
