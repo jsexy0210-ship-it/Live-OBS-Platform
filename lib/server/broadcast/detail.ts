@@ -44,7 +44,7 @@ export async function broadcastDetail(db: PrismaClient, ctx: TenantContext, id: 
         refundAmount: true,
         createdAt: true,
         paidAt: true,
-        items: { select: { productNameSnapshot: true, optionNameSnapshot: true, quantity: true, unitPrice: true }, orderBy: { id: "asc" } },
+        items: { select: { productNameSnapshot: true, optionNameSnapshot: true, quantity: true, unitPrice: true, refundedQuantity: true }, orderBy: { id: "asc" } },
         queueItems: { select: { doneAt: true } },
       },
     }),
@@ -66,7 +66,8 @@ export async function broadcastDetail(db: PrismaClient, ctx: TenantContext, id: 
         id: o.id,
         orderNo: o.orderNo,
         nickname: o.broadcastNicknameSnapshot,
-        items: o.items.map((i) => ({ productName: i.productNameSnapshot, optionName: i.optionNameSnapshot, quantity: i.quantity, unitPrice: i.unitPrice })),
+        // refundedQuantity: 부분 환불로 돌려준 수량(화면 「부분 환불 n개」)
+        items: o.items.map((i) => ({ productName: i.productNameSnapshot, optionName: i.optionNameSnapshot, quantity: i.quantity, unitPrice: i.unitPrice, refundedQuantity: i.refundedQuantity })),
         totalAmount: o.totalAmount,
         refundAmount: o.refundAmount,
         status: o.status,
