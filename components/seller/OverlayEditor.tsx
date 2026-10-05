@@ -47,9 +47,9 @@ const colorFields: Field[] = [
   color("accentColor", "강조 색"),
   color("borderColor", "테두리 색"),
   color("titleBgColor", "제목 배경"),
-  { key: "titleBgOpacity", label: "제목 배경 투명도", kind: "num", min: 0, max: 1, step: 0.05 },
+  { key: "titleBgOpacity", label: "제목 배경 진하기", kind: "num", min: 0, max: 1, step: 0.05 },
   color("cardBgColor", "카드 배경"),
-  { key: "cardBgOpacity", label: "카드 배경 투명도", kind: "num", min: 0, max: 1, step: 0.05 },
+  { key: "cardBgOpacity", label: "카드 배경 진하기", kind: "num", min: 0, max: 1, step: 0.05 },
 ];
 const queueColors: Field[] = [
   color("openTitleColor", "오픈 제목 색"),
@@ -76,10 +76,10 @@ function contentFields(w: Widget): Field[] {
     case "NOTICE":
       return [{ key: "text", label: "공지 글", kind: "text", max: 200, lines: true }, { key: "ticker", label: "옆으로 흐르기", kind: "bool" }, flow];
     case "SHOP_INFO":
-      return [title, { key: "format", label: "문구 틀", kind: "text", max: 100 }];
+      return [title, { key: "format", label: "문구 모양", kind: "text", max: 100 }];
     case "NEW_ORDER_ALERT":
       return [
-        { key: "format", label: "문구 틀", kind: "text", max: 100 },
+        { key: "format", label: "문구 모양", kind: "text", max: 100 },
         { key: "durationSec", label: "표시 시간", kind: "num", min: 1, max: 30, step: 1, unit: "초" },
       ];
     case "QUEUE":
@@ -185,7 +185,7 @@ function ConfirmDialog({ text, detail, ok, onOk, onClose }: { text: string; deta
         </div>
         <div className="modal-f">
           <button className="btn btn-out" type="button" onClick={onClose}>
-            닫기
+            취소
           </button>
           <button className="btn" type="button" onClick={onOk}>
             {ok}
@@ -527,15 +527,15 @@ export default function OverlayEditor() {
       return false;
     }
     apply(r.data);
-    setToast({ text: "저장했습니다 · 방송 화면에 바로 반영됩니다" });
+    setToast({ text: "저장했습니다. 방송 화면이 바로 바뀝니다" });
     return true;
   };
   // 템플릿으로 초기화: 지금 비율의 배치만 템플릿 값으로 바꾼다(저장하기 전까지는 초안이라 되돌리기로 가져올 수 있다)
   const askReset = (list: Widget[], name: string) =>
     setConfirm({
-      text: `「${name}」 템플릿 기본값으로 되돌리시겠습니까?`,
-      detail: `${aspect === "9x16" ? "세로 9:16" : "가로 16:9"} 레이아웃의 위치 · 크기 · 색 · 효과가 모두 처음으로 돌아갑니다 · 다른 비율은 그대로입니다 · 되돌리기로 다시 가져올 수 있습니다.`,
-      ok: "초기화",
+      text: `「${name}」 템플릿으로 바꾸시겠습니까?`,
+      detail: `${aspect === "9x16" ? "세로 9:16" : "가로 16:9"} 비율의 위치·크기·색·효과가 이 템플릿 값으로 바뀝니다. 다른 비율은 그대로입니다. 저장하기 전까지는 「방금 작업 취소」로 되돌릴 수 있습니다.`,
+      ok: "이 템플릿으로 바꾸기",
       run: () => {
         mark(`reset:${Date.now()}`);
         setWidgets(list);
@@ -567,7 +567,7 @@ export default function OverlayEditor() {
   };
   const switchAspect = (a: Aspect) => {
     if (a === aspect) return;
-    if (changes > 0) return setConfirm({ text: `저장 안 한 변경 ${changes}개가 사라집니다. 비율을 바꾸시겠습니까?`, ok: "바꾸기", run: () => setAspect(a) });
+    if (changes > 0) return setConfirm({ text: `저장 안 한 변경 ${changes}개가 사라집니다. 비율을 바꾸시겠습니까?`, ok: "비율 바꾸기", run: () => setAspect(a) });
     setAspect(a);
   };
 
@@ -589,7 +589,7 @@ export default function OverlayEditor() {
   if (state === "error" && !server)
     return (
       <div className="card pad col" style={{ gap: 10 }} role="alert">
-        <span className="t-l2">편집기를 불러오지 못했습니다. 잠시 후 다시 시도해 주십시오.</span>
+        <span className="t-l2">편집기를 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 「다시 시도」를 눌러 주십시오.</span>
         <button className="btn btn-out" type="button" style={{ alignSelf: "flex-start" }} onClick={() => void load(aspect)}>
           다시 시도
         </button>
@@ -602,7 +602,7 @@ export default function OverlayEditor() {
         <div className="row between" style={{ gap: 12, flexWrap: "wrap" }}>
           <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
             <h2 className="t-hl1" id="ove-h">
-              화면 편집
+              방송 화면 꾸미기
             </h2>
             {changes > 0 && (
               <span className="ove-tag" data-testid="ove-dirty">
@@ -612,22 +612,22 @@ export default function OverlayEditor() {
           </div>
           <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
             <button className="btn btn-out" type="button" disabled={widgets.length === 0} onClick={() => setFullPreview(true)}>
-              실제 크기 미리보기
+              실제 크기로 보기
             </button>
             <button className="btn btn-out" type="button" onClick={() => document.getElementById("ovu-h")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
-              오버레이 주소
+              방송 화면 주소
             </button>
             <button className="btn btn-out" type="button" title="Ctrl+Z" disabled={hist.current.past.length === 0} onClick={undo}>
-              되돌리기
+              방금 작업 취소
             </button>
             <button className="btn btn-out" type="button" title="Ctrl+Shift+Z" disabled={hist.current.future.length === 0} onClick={redo}>
-              다시 실행
+              취소한 작업 다시 하기
             </button>
             <button className="btn btn-out" type="button" disabled={busy || widgets.length === 0 || total >= MAX_TEMPLATES} onClick={() => setTplName("")}>
-              내 템플릿으로 저장
+              지금 배치를 내 템플릿으로 저장
             </button>
             <button className="btn" type="button" disabled={busy || changes === 0} onClick={() => void save()}>
-              저장하기
+              방송 화면에 저장하기
             </button>
           </div>
         </div>
@@ -635,12 +635,12 @@ export default function OverlayEditor() {
         {conflict && (
           <div className="msg msg-neg row between" role="alert" data-testid="ove-conflict" style={{ gap: 8, flexWrap: "wrap" }}>
             <span className="col" style={{ gap: 2 }}>
-              <b>다른 창에서 {aspect === "9x16" ? "세로 9:16" : "가로 16:9"} 레이아웃을 먼저 저장했습니다</b>
-              <span>최신 내용을 불러온 뒤 다시 바꿔 주십시오 · 지금 바꾼 내용은 내 템플릿으로 남겨 둘 수 있습니다</span>
+              <b>다른 창에서 먼저 저장해서 저장하지 못했습니다</b>
+              <span>「최신 내용 불러오기」를 누른 뒤 다시 바꿔 주십시오. 지금 바꾼 내용은 「내 템플릿으로 저장」으로 남겨 둘 수 있습니다.</span>
             </span>
             <span className="row" style={{ gap: 6 }}>
               <button className="btn btn-sm btn-out" type="button" disabled={total >= MAX_TEMPLATES} onClick={() => setTplName("")}>
-                내 변경을 템플릿으로 저장
+                내 템플릿으로 저장
               </button>
               <button className="btn btn-sm" type="button" onClick={() => void load(aspect)}>
                 최신 내용 불러오기
@@ -658,18 +658,18 @@ export default function OverlayEditor() {
             ))}
           </div>
           <label className="chk">
-            <input type="checkbox" checked={snap} onChange={(e) => setSnap(e.target.checked)} /> 격자 스냅
+            <input type="checkbox" checked={snap} onChange={(e) => setSnap(e.target.checked)} /> 칸 맞추기(눈금에 붙이기)
           </label>
           {aspect === "9x16" && (
             <label className="chk">
-              <input type="checkbox" checked={guides} onChange={(e) => setGuides(e.target.checked)} /> 가림 가이드
+              <input type="checkbox" checked={guides} onChange={(e) => setGuides(e.target.checked)} /> 가려지는 곳 표시
             </label>
           )}
         </div>
 
         <div className="ove-cols">
           <div className="ove-list col" style={{ gap: 6 }}>
-            <span className="t-l1 fw6">위젯</span>
+            <span className="t-l1 fw6">꾸미는 칸(글상자·카드)</span>
             <span className="t-c1 c-alt">위가 앞에 보입니다</span>
             <ul className="ove-slots" data-testid="ove-slots">
               {listOrder.map((s) => {
@@ -704,7 +704,7 @@ export default function OverlayEditor() {
               ref={canvas}
               tabIndex={0}
               role="application"
-              aria-label="오버레이 배치 화면. 위젯을 고른 뒤 방향키로 1px, Shift와 함께 10px씩 옮깁니다"
+              aria-label="미리보기 화면입니다. 칸을 고른 뒤 방향키로 한 칸씩, Shift와 함께 누르면 열 칸씩 옮깁니다"
               data-testid="ove-canvas"
               style={{ width: SW * scale, height: SH * scale }}
               onKeyDown={onKey}
@@ -750,18 +750,18 @@ export default function OverlayEditor() {
                 ))}
             </div>
             <span className="t-c1 c-alt">
-              {SW}×{SH} 기준 · 끌어서 옮기고 모서리로 크기를 바꿉니다 · Shift 모서리는 비율 유지
+              {SW}×{SH} 기준 · 끌어서 옮기고 모서리를 끌어 크기를 바꿉니다. Shift를 누르고 모서리를 끌면 가로세로 비율이 그대로입니다
             </span>
           </div>
 
           <div className="ove-props col" style={{ gap: 10 }} data-testid="ove-props">
             {!selected ? (
-              <span className="t-l2 c-alt">배치 화면이나 왼쪽 목록에서 위젯을 선택해 주십시오.</span>
+              <span className="t-l2 c-alt">미리보기 화면이나 왼쪽 목록에서 칸을 선택해 주십시오.</span>
             ) : (
               <>
                 <span className="t-l1 fw6">{widgetLabel(selected)}</span>
                 <fieldset className="ove-fs">
-                  <legend>위치 · 크기 (%)</legend>
+                  <legend>위치와 크기(화면 대비 %)</legend>
                   {(["x", "y", "w", "h"] as const).map((k) => (
                     <label key={k} className="ove-fr">
                       <span>{{ x: "가로 위치", y: "세로 위치", w: "너비", h: "높이" }[k]}</span>
@@ -837,15 +837,15 @@ export default function OverlayEditor() {
                 <td>
                   <span className="row" style={{ gap: 6, justifyContent: "center" }}>
                     <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={() => askReset(m.widgets, m.name)}>
-                      적용
+                      이 템플릿으로 바꾸기
                     </button>
                     <button
                       className="btn btn-sm btn-out"
                       type="button"
-                      aria-label={`${m.name} 삭제`}
-                      onClick={() => setConfirm({ text: `「${m.name}」 템플릿을 지우시겠습니까?`, ok: "삭제", run: () => void removeTemplate(m) })}
+                      aria-label={`${m.name} 지우기`}
+                      onClick={() => setConfirm({ text: `「${m.name}」 템플릿을 지우시겠습니까?`, ok: "템플릿 지우기", run: () => void removeTemplate(m) })}
                     >
-                      삭제
+                      템플릿 지우기
                     </button>
                   </span>
                 </td>
@@ -885,7 +885,7 @@ export default function OverlayEditor() {
             </div>
             <div className="modal-f">
               <button className="btn btn-out" type="button" onClick={() => setTplName(null)}>
-                닫기
+                취소
               </button>
               <button className="btn" type="submit" disabled={busy || !tplName.trim()}>
                 저장
@@ -903,8 +903,8 @@ export default function OverlayEditor() {
 function PropRow({ f, w, onSet }: { f: Field; w: Widget; onSet: (v: PropValue | null) => void }) {
   const cur = w.props[f.key];
   const reset = cur !== undefined && (
-    <button className="ove-clear" type="button" aria-label={`${f.label} 기본값으로`} onClick={() => onSet(null)}>
-      기본
+    <button className="ove-clear" type="button" aria-label={`${f.label} 처음 값으로`} onClick={() => onSet(null)}>
+      처음 값으로
     </button>
   );
   return (
@@ -966,10 +966,10 @@ function FullPreview({ widgets, aspect, onClose }: { widgets: Widget[]; aspect: 
     return () => window.removeEventListener("keydown", k);
   }, [onClose]);
   return (
-    <div className="dim dim-fixed ove-full" role="dialog" aria-modal="true" aria-label="실제 크기 미리보기" data-testid="ove-fullpreview">
+    <div className="dim dim-fixed ove-full" role="dialog" aria-modal="true" aria-label="실제 크기로 보기" data-testid="ove-fullpreview">
       <div className="ove-full-bar">
         <span className="t-l1 fw6">
-          실제 크기 미리보기 · {w}×{h}
+          실제 크기로 보기 · {w}×{h}
         </span>
         <button className="btn btn-sm" type="button" autoFocus onClick={onClose}>
           닫기
