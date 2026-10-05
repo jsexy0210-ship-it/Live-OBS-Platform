@@ -33,8 +33,8 @@ const toast = (page: Page) => page.getByRole("status").filter({ has: page.locato
 async function issueVia(page: Page, button: string) {
   await page.getByRole("button", { name: button }).click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog).toContainText(button === "다시 발급" ? "기존 OBS 주소는 바로 끊깁니다" : "이전에 발급한 주소가 있으면 바로 끊깁니다");
-  await dialog.getByRole("button", { name: "발급" }).click();
+  await expect(dialog).toContainText(button === "주소 새로 만들기" ? "기존 주소는 바로 쓸 수 없게 됩니다" : "이전에 만든 주소가 있으면 바로 쓸 수 없게 됩니다");
+  await dialog.getByRole("button", { name: button, exact: true }).click();
   await expect(dialog).toHaveCount(0);
 }
 
@@ -42,24 +42,24 @@ test("대표자: 메뉴에서 들어가 주소를 발급·복사하면 실제 �
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await login(page, "demo-owner@example.com", "/seller/products");
   await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "방송", exact: true }).click();
-  await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "오버레이 편집기" }).click();
+  await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "방송 화면 꾸미기" }).click();
   await expect(page).toHaveURL(/\/seller\/overlay$/);
   await expect(page.getByTestId("ove")).toBeVisible();
   await expect(page.getByTestId("ovu-urls")).toHaveCount(0);
   await shot(page, "SA-052-empty");
 
   // 확인 창에서 닫으면 발급하지 않는다
-  await page.getByRole("button", { name: "주소 발급" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "닫기" }).click();
+  await page.getByRole("button", { name: "주소 만들기" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "취소" }).click();
   await expect(page.getByTestId("ovu-urls")).toHaveCount(0);
 
-  await issueVia(page, "주소 발급");
-  await expect(toast(page)).toContainText("새 주소를 발급했습니다");
+  await issueVia(page, "주소 만들기");
+  await expect(toast(page)).toContainText("새 주소를 만들었습니다");
   const port = page.getByLabel("세로 9:16 주소");
   const first = await port.inputValue();
   expect(first).toMatch(/\/overlay\/[^/?]+$/);
   await expect(page.getByLabel("가로 16:9 주소")).toHaveValue(`${first}?ratio=16x9`);
-  await expect(page.getByText("이 주소는 지금만 볼 수 있습니다. OBS에 넣은 뒤 잃어버리면 재발급해 주십시오.")).toBeVisible();
+  await expect(page.getByText("이 주소는 지금만 볼 수 있습니다. 방송 프로그램에 넣어 두십시오. 잃어버리면 새로 만들어 주십시오.")).toBeVisible();
   await shot(page, "SA-052-issued");
 
   // 복사
@@ -75,7 +75,7 @@ test("대표자: 메뉴에서 들어가 주소를 발급·복사하면 실제 �
   await expect(ov.getByTestId("overlay-idle").or(ov.getByTestId("overlay-queue"))).toBeVisible();
 
   // 다시 발급 → 새 주소, 이전 주소는 끊김
-  await issueVia(page, "다시 발급");
+  await issueVia(page, "주소 새로 만들기");
   await expect(port).not.toHaveValue(first);
   const second = await port.inputValue();
   await ov.goto(first);
@@ -89,29 +89,29 @@ test("대표자: 메뉴에서 들어가 주소를 발급·복사하면 실제 �
 test("발급 결과가 불분명하면 주소를 보이지 않고 이전 주소가 끊겼을 수 있다고 알린다", async ({ page }) => {
   await login(page, "demo-owner@example.com", "/seller/overlay");
   await page.route("**/api/seller/overlay/token", (r) => r.abort("connectionreset"));
-  await issueVia(page, "주소 발급");
-  await expect(page.getByTestId("ovu-unclear")).toContainText("발급 결과를 확인하지 못했습니다");
+  await issueVia(page, "주소 만들기");
+  await expect(page.getByTestId("ovu-unclear")).toContainText("새 주소를 만들었는지 확인하지 못했습니다");
   await expect(page.getByTestId("ovu-urls")).toHaveCount(0);
 });
 
 test("오버레이 편집 권한이 없는 직원: 메뉴가 없고 주소로 들어와도 화면이 없다", async ({ page }) => {
   await login(page, "demo-none@example.com", "/seller/overlay");
   await expect(page.getByText("필요한 권한: 오버레이 편집")).toBeVisible();
-  await expect(page.getByRole("link", { name: "오버레이 편집기" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "주소 발급" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "방송 화면 꾸미기" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "주소 만들기" })).toHaveCount(0);
 });
 
 test("이미 주소를 보던 중 재발급 결과가 불분명하면 이전 주소도 지운다(서버가 이미 끊었을 수 있음)", async ({ page }) => {
   await login(page, "demo-owner@example.com", "/seller/overlay");
-  await issueVia(page, "주소 발급");
+  await issueVia(page, "주소 만들기");
   await expect(page.getByTestId("ovu-urls")).toBeVisible();
   // 요청은 서버에 닿아 실제로 재발급되지만 응답은 5xx로 받는다
   await page.route("**/api/seller/overlay/token", async (r) => {
     await r.fetch();
     await r.fulfill({ status: 502, body: "{}" });
   });
-  await issueVia(page, "다시 발급");
-  await expect(page.getByTestId("ovu-unclear")).toContainText("이전 주소가 이미 끊겼을 수 있습니다");
+  await issueVia(page, "주소 새로 만들기");
+  await expect(page.getByTestId("ovu-unclear")).toContainText("이전 주소를 쓸 수 없을 수 있으니");
   await expect(page.getByTestId("ovu-urls")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "주소 복사" })).toHaveCount(0);
 });

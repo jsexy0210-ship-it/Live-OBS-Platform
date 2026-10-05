@@ -43,7 +43,7 @@ async function login(page: Page) {
 test("파트너스 목록: 검색어가 주소에 남고, 상세 → 「파트너스 목록」·Back·새로고침에서 그대로 돌아온다", async ({ page }) => {
   await login(page);
   await page.goto("/admin/partners");
-  await page.getByLabel("쇼핑몰 이름 · 주소").fill(run);
+  await page.getByLabel("검색어", { exact: true }).fill(run);
   await page.getByRole("button", { name: "검색" }).click();
   await expect(page).toHaveURL(new RegExp(`q=${run}`));
   await expect(page.getByRole("link", { name: shop })).toBeVisible();
@@ -51,9 +51,9 @@ test("파트너스 목록: 검색어가 주소에 남고, 상세 → 「파트�
   await expect(page).toHaveURL(new RegExp(`/admin/partners/${ids.seller}`));
   await page.getByRole("button", { name: "파트너스 목록" }).click();
   await expect(page).toHaveURL(new RegExp(`/admin/partners\\?q=${run}`));
-  await expect(page.getByLabel("쇼핑몰 이름 · 주소")).toHaveValue(run);
+  await expect(page.getByLabel("검색어", { exact: true })).toHaveValue(run);
   await page.reload();
-  await expect(page.getByLabel("쇼핑몰 이름 · 주소")).toHaveValue(run);
+  await expect(page.getByLabel("검색어", { exact: true })).toHaveValue(run);
   await expect(page.getByRole("link", { name: shop })).toBeVisible();
   await page.getByRole("button", { name: "초기화" }).click();
   await expect(page).toHaveURL(/\/admin\/partners$/);

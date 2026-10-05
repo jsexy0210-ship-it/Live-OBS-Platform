@@ -17,12 +17,12 @@ async function adminCookie(role: Role = "READ_ONLY") {
 }
 const list = (cookie: string, qs = "") => listRoute(new Request(`http://localhost:3000/api/admin/sellers${qs}`, { headers: { ...H, cookie } }));
 const exp = (cookie: string, qs = "") => exportRoute(new Request(`http://localhost:3000/api/admin/sellers/export${qs}`, { headers: { ...H, cookie } }));
-type Item = { id: string; displayStatus: string; seq: number; pg: { status: string }; live: boolean; ordersThisMonth: number; memberCount: number; lastActivityAt: string | null; payoutEnabled: boolean; noteCount: number; representativeName: string | null };
+type Item = { id: string; shopName: string; displayStatus: string; seq: number; pg: { status: string }; live: boolean; ordersThisMonth: number; memberCount: number; lastActivityAt: string | null; payoutEnabled: boolean; noteCount: number; representativeName: string | null };
 const body = async (r: Response) => (await r.json()) as { sellers: Item[]; total: number; nextCursor: string | null; summary?: Record<string, number> };
 const ids = async (r: Response) => (await body(r)).sellers.map((s) => s.id);
 const DAY = 86_400_000;
 
-async function shop(over: { shopName?: string; status?: "ACTIVE" | "SUSPENDED" | "CLOSED" | "PENDING"; trial?: number | null; sub?: "ACTIVE" | "PAST_DUE" | "CANCELED" | null; rep?: string; biz?: string; createdAt?: Date } = {}) {
+async function shop(over: { shopName?: string; status?: "ACTIVE" | "SUSPENDED" | "CLOSED" | "PENDING" | "REJECTED"; trial?: number | null; sub?: "ACTIVE" | "PAST_DUE" | "CANCELED" | null; rep?: string; biz?: string; createdAt?: Date } = {}) {
   const plans = await seedPlans();
   const { seller, grade } = await createSeller();
   await db.seller.update({
@@ -54,6 +54,7 @@ describe("파트너스 목록 요약·추가 열", () => {
     const suspended = await shop({ status: "SUSPENDED", shopName: "정지몰" });
     const closed = await shop({ status: "CLOSED", shopName: "탈퇴몰" });
     await shop({ status: "PENDING", shopName: "신청중몰" });
+    await shop({ status: "REJECTED", shopName: "반려몰" });
 
     const buyer = await createBuyer(normal.seller.id, normal.grade.id);
     await createBuyer(normal.seller.id, normal.grade.id);
@@ -68,7 +69,14 @@ describe("파트너스 목록 요약·추가 열", () => {
 
     const r = await body(await list(cookie, "?summary=1&limit=100"));
     expect(r.summary).toEqual({ total: 6, normal: 1, trial: 1, overdue: 1, locked: 1, suspended: 1, closed: 1, pgError: 0, pgNone: 4, payoutEnabled: 1, live: 1, pendingApplications: 1 });
-    expect(r.total).toBe(7);
+    // 기본 목록은 가입이 끝난 쇼핑몰만이라 목록 total과 요약 total이 같다(가입 신청 중·반려 제외)
+    expect(r.total).toBe(6);
+    expect(r.total).toBe(r.summary!.total);
+    expect(r.sellers.map((s) => s.shopName)).not.toContain("신청중몰");
+    expect(r.sellers.map((s) => s.shopName)).not.toContain("반려몰");
+    // 상태·표시 상태를 직접 고르면 그 조건 그대로(가입 신청 중·반려도 조회할 수 있다)
+    expect((await body(await list(cookie, "?status=PENDING"))).sellers.map((s) => s.shopName)).toEqual(["신청중몰"]);
+    expect((await body(await list(cookie, "?status=REJECTED"))).sellers.map((s) => s.shopName)).toEqual(["반려몰"]);
     const by = new Map(r.sellers.map((s) => [s.id, s]));
     expect(by.get(normal.seller.id)).toMatchObject({ displayStatus: "NORMAL", live: true, ordersThisMonth: 2, memberCount: 2, payoutEnabled: true, noteCount: 1, pg: { status: "NONE" } });
     expect(by.get(normal.seller.id)!.lastActivityAt).toBeTruthy();
@@ -78,7 +86,7 @@ describe("파트너스 목록 요약·추가 열", () => {
     expect(by.get(suspended.seller.id)!.displayStatus).toBe("SUSPENDED");
     expect(by.get(closed.seller.id)!.displayStatus).toBe("CLOSED");
     // 번호는 가입 순서(오래된 것이 1)
-    expect([...r.sellers].sort((a, b) => a.seq - b.seq).map((s) => s.seq)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect([...r.sellers].sort((a, b) => a.seq - b.seq).map((s) => s.seq)).toEqual([1, 2, 3, 4, 5, 6]);
     // 요약은 summary=1일 때만
     expect((await body(await list(cookie, "?limit=1"))).summary).toBeUndefined();
   });
