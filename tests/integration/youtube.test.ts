@@ -7,9 +7,10 @@ import { prisma } from "../../lib/server/db";
 import { GET as settingsGet, PUT as settingsPut } from "../../app/api/seller/youtube/settings/route";
 import { GET as usageRoute } from "../../app/api/seller/youtube/usage/route";
 import { DELETE as chatsDelete } from "../../app/api/seller/youtube/chats/route";
+import { GET as chatStatusRoute } from "../../app/api/seller/youtube/live/chat-status/route";
 import { GET as matchesRoute } from "../../app/api/seller/youtube/live/chat-matches/route";
 import { PUT as chatRoute } from "../../app/api/seller/youtube/live/chat/route";
-import { CHAT_NOTICE, collectChats, purgeOldChats } from "../../lib/server/youtube/chat";
+import { CHAT_NOTICE, chatStatus, collectChats, purgeOldChats } from "../../lib/server/youtube/chat";
 import { YoutubeQuotaError, type ChannelInfo, type ChatPage, type VideoInfo, type YoutubeClient } from "../../lib/server/youtube/client";
 import { quotaDay, reserveQuota } from "../../lib/server/youtube/quota";
 import { chatUsage } from "../../lib/server/youtube/settings";
@@ -531,5 +532,57 @@ describe("유튜브 설정·수집 현황·보관 채팅 삭제", () => {
     const log = await db.auditLog.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: a.seller.id, action: "youtube.chat.purge" } });
     expect(log.after).toEqual({ deleted: 2 });
     expect(await chatUsage(db, a.ctx, NOW)).toMatchObject({ messages: 2, storedMessages: 0 });
+  });
+});
+
+describe("채팅 수집 상태(방송 대시보드 띠)", () => {
+  it("꺼짐 → 수집 중(마지막 수집 시각) → 비공개 → 방송 종료, 연결이 없으면 null", async () => {
+    const none = await shop();
+    expect(await chatStatus(db, none.ctx, NOW)).toEqual({ link: null, state: null, reason: null, lastCollectedAt: null });
+
+    const s = await liveShop();
+    expect(await chatStatus(db, s.ctx, NOW)).toMatchObject({ link: { videoId: VID_A, status: "live" }, state: "off", reason: "chat_off", lastCollectedAt: null });
+    await putChat(s.cookie, true);
+    s.yt.chatPages.push({ messages: [msg("s1", "a")], nextPageToken: "x", pollingIntervalMillis: 3_000, ended: false });
+    await collectChats(db, s.yt.client, NOW);
+    expect(await chatStatus(db, s.ctx, NOW)).toEqual({
+      link: { id: s.link.id, videoId: VID_A, broadcastSessionId: s.link.broadcastSessionId, status: "live" },
+      state: "collecting",
+      reason: null,
+      lastCollectedAt: NOW,
+    });
+
+    // 비공개(forbidden)로 막히면 unavailable, 마지막 수집 시각은 남는다
+    const later = new Date(NOW.getTime() + 60_000);
+    s.yt.chatPages.push({ messages: [], nextPageToken: null, pollingIntervalMillis: null, ended: true, endReason: "chat_forbidden" });
+    await collectChats(db, s.yt.client, later);
+    expect(await chatStatus(db, s.ctx, later)).toMatchObject({ state: "unavailable", reason: "chat_forbidden", lastCollectedAt: NOW });
+
+    // 방송이 끝나면 ended
+    s.yt.end(VID_A);
+    await syncYoutube(db, s.yt.client, later);
+    expect(await chatStatus(db, s.ctx, later)).toMatchObject({ link: { status: "ended" }, state: "ended", reason: "broadcast_ended" });
+
+    // 라우트: 권한·형태
+    const res = await chatStatusRoute(new Request(BASE + "/api/seller/youtube/live/chat-status", { headers: hdr(s.cookie) }));
+    expect(await res.json()).toMatchObject({ state: "ended", reason: "broadcast_ended" });
+    expect((await chatStatusRoute(new Request(BASE + "/api/seller/youtube/live/chat-status", { headers: hdr(await cookieOf(s.other.email)) }))).status).toBe(403);
+  });
+
+  it("유튜브 일시 오류·판매자 한도는 일시 중지, 다른 판매자 상태는 따로", async () => {
+    const s = await liveShop();
+    await putChat(s.cookie, true);
+    s.yt.client.chatMessages = async () => {
+      throw new (await import("../../lib/server/youtube/client")).YoutubeApiError(500, "backendError");
+    };
+    await collectChats(db, s.yt.client, NOW);
+    expect(await chatStatus(db, s.ctx, NOW)).toMatchObject({ state: "paused", reason: "youtube_error" });
+
+    await db.youtubeQuotaUsage.update({ where: { day_scope: { day: quotaDay(NOW), scope: s.seller.id } }, data: { units: 3_000 } });
+    expect(await chatStatus(db, s.ctx, NOW)).toMatchObject({ state: "paused", reason: "seller_daily_limit" });
+
+    const b = await liveShop();
+    await putChat(b.cookie, true);
+    expect(await chatStatus(db, b.ctx, NOW)).toMatchObject({ link: { id: b.link.id }, state: "collecting" });
   });
 });

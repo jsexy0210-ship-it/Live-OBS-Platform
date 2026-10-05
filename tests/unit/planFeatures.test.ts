@@ -151,6 +151,7 @@ const SELLER_ROUTES: Record<string, string | null> = {
   "seller/youtube/live/find": "OVERLAY",
   "seller/youtube/live/chat": "OVERLAY",
   "seller/youtube/live/chat-matches": "OVERLAY",
+  "seller/youtube/live/chat-status": "OVERLAY",
   "seller/youtube/settings": "OVERLAY",
   "seller/youtube/usage": "OVERLAY",
   "seller/youtube/chats": "OVERLAY",

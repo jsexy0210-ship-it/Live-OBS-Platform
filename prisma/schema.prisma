@@ -2541,6 +2541,9 @@ model YoutubeLiveLink {
   chatPageToken      String?
   chatNextPollAt     DateTime?         @db.Timestamptz(3)
   chatIntervalMs     Int?
+  // 마지막으로 채팅을 받아 온 시각, 수집이 멈춘 이유(chat_ended·chat_disabled·chat_not_found·chat_forbidden·youtube_error). chat.ts chatStatus 참고.
+  chatLastPolledAt   DateTime?         @db.Timestamptz(3)
+  chatStopReason     String?
   createdAt          DateTime          @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime          @updatedAt @db.Timestamptz(3)
 
