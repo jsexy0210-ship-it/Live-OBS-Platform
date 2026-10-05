@@ -1,12 +1,12 @@
 // 외부 쇼핑몰 연동 설정(환경변수로만). 키가 없으면 연동 기능 전체가 꺼진다(「준비 중」).
-// 아래 값 중 scope 이름·서명 헤더 이름은 공식 문서를 직접 확인하지 못한 값이라 환경변수로 바꿀 수 있게 두었다(docs/EXTERNAL_SHOP.md 「미검증」).
+// scope 이름은 환경변수로 바꿀 수 있게 두었다(공식 문서 확인 결과는 docs/EXTERNAL_SHOP.md).
 export type ExternalConfig = {
   enabled: boolean;
   clientId: string;
   clientSecret: string;
   redirectUri: string;
   scopes: string;
-  signatureHeader: string;
+  webhookKey: string;
 };
 
 export function externalConfig(env: Record<string, string | undefined> = process.env): ExternalConfig {
@@ -19,7 +19,7 @@ export function externalConfig(env: Record<string, string | undefined> = process
     clientSecret,
     redirectUri,
     scopes: env.EXTERNAL_SHOP_SCOPES?.trim() || "mall.read_order",
-    signatureHeader: (env.EXTERNAL_WEBHOOK_SIGNATURE_HEADER?.trim() || "x-cafe24-hmac-sha256").toLowerCase(),
+    webhookKey: env.EXTERNAL_WEBHOOK_API_KEY?.trim() ?? "",
   };
 }
 
