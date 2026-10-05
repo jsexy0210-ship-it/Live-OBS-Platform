@@ -25,19 +25,19 @@ test("연결 전: 연결 안 됨, 잘못된 채널 주소는 서버 안내를 �
   await resetYoutube();
   await login(page, "demo-owner@example.com", "/seller/products");
   await page.getByRole("navigation", { name: "주 메뉴" }).getByRole("link", { name: "방송", exact: true }).click();
-  await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "유튜브 연결" }).click();
+  await page.getByRole("complementary", { name: "파트너스 메뉴" }).getByRole("link", { name: "외부 채널 연결" }).click();
   await expect(page).toHaveURL(/\/seller\/youtube$/);
-  await expect(page.getByTestId("yt-status")).toContainText("연결 안 됨");
+  await expect(page.getByTestId("yt-status")).toContainText("이어지지 않음");
   await expect(page.getByTestId("yt-chat-toggle")).toHaveCount(0);
   await page.getByLabel("채널 주소").fill("https://example.com/not-youtube");
-  await page.getByRole("button", { name: "연결", exact: true }).first().click();
+  await page.getByRole("button", { name: "채널 이어 두기", exact: true }).first().click();
   await expect(page.getByTestId("yt-channel-error")).toContainText("확인해 주십시오");
 });
 
 test("연결된 방송: 채팅 수집은 기본 꺼짐, 켜면 보관 고지가 보이고 서버에 저장되며, 해제하면 사라진다", async ({ page }) => {
   await seedYoutube();
   await login(page, "demo-owner@example.com", "/seller/youtube");
-  await expect(page.getByTestId("yt-status")).toContainText("연결됨");
+  await expect(page.getByTestId("yt-status")).toContainText("이어짐");
   await expect(page.getByTestId("yt-status")).toContainText("e2e 채널");
   await expect(page.getByTestId("yt-live")).toContainText("e2e 라이브");
   const toggle = page.getByTestId("yt-chat-toggle");
@@ -55,18 +55,18 @@ test("연결된 방송: 채팅 수집은 기본 꺼짐, 켜면 보관 고지가 
   await expect.poll(() => chatEnabledInDb()).toBe(false);
 
   // 방송 연결 해제: 확인 창에서 닫으면 그대로
-  await page.getByRole("button", { name: "방송 연결 해제" }).click();
+  await page.getByRole("button", { name: "방송 이어 둔 것 풀기" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "취소" }).click();
   await expect(page.getByTestId("yt-live")).toBeVisible();
-  await page.getByRole("button", { name: "방송 연결 해제" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "해제" }).click();
+  await page.getByRole("button", { name: "방송 이어 둔 것 풀기" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "이어 둔 것 풀기" }).click();
   await expect(page.getByTestId("yt-live")).toHaveCount(0);
   expect(await chatEnabledInDb()).toBe(null);
 
   // 채널 연결 해제
-  await page.getByRole("button", { name: "연결 해제", exact: true }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "해제" }).click();
-  await expect(page.getByTestId("yt-status")).toContainText("연결 안 됨");
+  await page.getByRole("button", { name: "유튜브 이어 둔 것 풀기", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "이어 둔 것 풀기" }).click();
+  await expect(page.getByTestId("yt-status")).toContainText("이어지지 않음");
 });
 
 test("수집 기본값(기본 꺼짐)을 바꾸고, 이번 달 현황을 보고, 보관 채팅을 지금 삭제한다(건수는 그대로)", async ({ page }) => {
@@ -84,17 +84,17 @@ test("수집 기본값(기본 꺼짐)을 바꾸고, 이번 달 현황을 보고,
 
   // 현황: 이번 달 수집 3건, 보관 3건
   const usage = page.getByTestId("yt-usage");
-  await expect(usage).toContainText("이번 달 수집한 채팅3건");
-  await expect(usage).toContainText("보관 중인 채팅3건");
+  await expect(usage).toContainText("이번 달 가져온 채팅3건");
+  await expect(usage).toContainText("저장해 둔 채팅3건");
 
   // 지금 삭제: 취소는 그대로, 삭제하면 보관 0건·이번 달 수집 건수는 그대로
   await page.getByTestId("yt-purge-open").click();
-  await page.getByRole("dialog", { name: "보관 채팅을 모두 삭제하시겠습니까?" }).getByRole("button", { name: "취소" }).click();
+  await page.getByRole("dialog", { name: "저장해 둔 채팅을 모두 지우시겠습니까?" }).getByRole("button", { name: "취소" }).click();
   expect(await storedChatCountInDb()).toBe(3);
   await page.getByTestId("yt-purge-open").click();
-  await page.getByRole("dialog", { name: "보관 채팅을 모두 삭제하시겠습니까?" }).getByRole("button", { name: "삭제" }).click();
-  await expect(usage).toContainText("보관 중인 채팅0건");
-  await expect(usage).toContainText("이번 달 수집한 채팅3건");
+  await page.getByRole("dialog", { name: "저장해 둔 채팅을 모두 지우시겠습니까?" }).getByRole("button", { name: "채팅 지우기" }).click();
+  await expect(usage).toContainText("저장해 둔 채팅0건");
+  await expect(usage).toContainText("이번 달 가져온 채팅3건");
   await expect(page.getByTestId("yt-purge-open")).toBeDisabled();
   expect(await storedChatCountInDb()).toBe(0);
 });
@@ -107,15 +107,15 @@ test("채널 바꾸기: 연결된 방송이 있으면 해제된다고 먼저 확
 
   await page.getByTestId("yt-channel-change").click();
   await page.getByLabel("채널 주소").fill("https://example.com/not-youtube");
-  await page.getByRole("button", { name: "변경", exact: true }).click();
-  const dlg = page.getByRole("dialog", { name: "채널을 바꾸면 지금 연결된 방송이 해제됩니다. 바꾸시겠습니까?" });
+  await page.getByRole("button", { name: "채널 바꾸기", exact: true }).click();
+  const dlg = page.getByRole("dialog", { name: "채널을 바꾸면 지금 이어 둔 방송이 풀립니다. 바꾸시겠습니까?" });
   await expect(dlg).toBeVisible();
   // 취소하면 아무것도 바뀌지 않는다
   await dlg.getByRole("button", { name: "취소" }).click();
   await expect(page.getByTestId("yt-live")).toBeVisible();
   // 바꾸기를 누르면 서버로 가고, 잘못된 주소는 서버 안내를 보인다(연결된 방송은 그대로)
-  await page.getByRole("button", { name: "변경", exact: true }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "바꾸기" }).click();
+  await page.getByRole("button", { name: "채널 바꾸기", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "채널 바꾸기" }).click();
   await expect(page.getByTestId("yt-channel-error")).toContainText("확인해 주십시오");
   await expect(page.getByTestId("yt-live")).toBeVisible();
 });
@@ -126,13 +126,13 @@ test("서비스 준비 중(서버 키 없음)이면 안내만 보이고 연결 �
     route.fulfill({ json: { configured: false, channel: null, live: null, chatNotice: "x" } }),
   );
   await page.goto("/seller/youtube");
-  await expect(page.getByTestId("yt-not-ready")).toContainText("유튜브 연결을 준비하고 있습니다");
-  await expect(page.getByTestId("yt-status")).toContainText("서비스 준비 중");
+  await expect(page.getByTestId("yt-not-ready")).toContainText("유튜브 연결은 아직 준비 중입니다");
+  await expect(page.getByTestId("yt-status")).toContainText("준비 중");
   await expect(page.getByLabel("채널 주소")).toBeDisabled();
 });
 
 test("방송 진행 권한이 없는 직원: 메뉴가 없고 주소로 들어와도 화면이 없다", async ({ page }) => {
   await login(page, "demo-none@example.com", "/seller/youtube");
   await expect(page.getByText("필요한 권한: 방송 진행")).toBeVisible();
-  await expect(page.getByRole("link", { name: "유튜브 연결" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "외부 채널 연결" })).toHaveCount(0);
 });

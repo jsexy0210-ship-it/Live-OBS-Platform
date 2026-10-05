@@ -92,7 +92,7 @@ test("채팅 수집이 멈추거나 받을 수 없는 방송이면 대시보드 
   // 유튜브 일시 오류(paused): 1분 뒤 자동 재시도 안내
   await setChatLinkState({ status: "LIVE", chatEnabled: true, liveChatId: "e2e-chat", chatStopReason: "youtube_error" });
   await page.reload();
-  await expect(page.getByTestId("bc-chat-state")).toContainText("채팅 수집 일시 중지");
+  await expect(page.getByTestId("bc-chat-state")).toContainText("채팅 가져오기 잠시 멈춤");
 
   // 수집 중이면 띠가 없다. 어느 경우에도 개봉 시작은 막히지 않는다
   await setChatLinkState({ status: "LIVE", chatEnabled: true, liveChatId: "e2e-chat", chatStopReason: null });
