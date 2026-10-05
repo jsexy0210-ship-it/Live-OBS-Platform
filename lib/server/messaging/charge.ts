@@ -121,8 +121,9 @@ async function resolvePending(db: PrismaClient, provider: BillingProvider, charg
   return c;
 }
 
-// 응답이 끊긴 충전 대조(정기 실행 연결은 인프라 승인 대기). 1분 넘게 PENDING인 충전을 오래된 순으로 limit건.
-export async function reconcileMessageCharges(db: PrismaClient, provider: BillingProvider, opts: { now?: Date; limit?: number } = {}) {
+// 응답이 끊긴 충전 대조(messaging/jobs.ts 정기 작업). 1분 넘게 PENDING인 충전을 오래된 순으로 limit건.
+// deadline(실제 시계 ms)을 넘기면 다음 건을 시작하지 않고 멈춘다(truncated). 남은 건은 다음 실행이 오래된 순으로 이어서 처리한다.
+export async function reconcileMessageCharges(db: PrismaClient, provider: BillingProvider, opts: { now?: Date; limit?: number; deadline?: number } = {}) {
   const now = opts.now ?? (await dbNow(db));
   const rows = await db.messageCharge.findMany({
     where: { status: "PENDING", createdAt: { lte: new Date(now.getTime() - RECONCILE_AFTER_MS) } },
@@ -130,8 +131,12 @@ export async function reconcileMessageCharges(db: PrismaClient, provider: Billin
     take: Math.min(Math.max(opts.limit ?? 100, 1), 500),
     select: { id: true },
   });
-  const summary = { paid: 0, failed: 0, pending: 0, errors: 0 };
+  const summary = { paid: 0, failed: 0, pending: 0, errors: 0, truncated: false };
   for (const r of rows) {
+    if (opts.deadline !== undefined && Date.now() >= opts.deadline) {
+      summary.truncated = true;
+      break;
+    }
     try {
       const c = await resolvePending(db, provider, r.id, now);
       summary[c.status === "PAID" ? "paid" : c.status === "FAILED" ? "failed" : "pending"]++;

@@ -86,11 +86,12 @@ describe("주문 생성", () => {
     expect(await db.order.count()).toBe(0);
   });
 
-  it("적립금 사용 요청은 무시하지 않고 거부한다(사용 방식 미정)", async () => {
+  it("적립금을 쓸 수 없는 쇼핑몰(실지급 스위치 꺼짐·정책 없음)이면 사용 요청을 무시하지 않고 거부한다(대표님 결정 2026-10-05, 사용 규칙은 paymentRewardUse.test.ts)", async () => {
     const s = await shop();
     expect(
       await createOrder(db, { shippingAddress, sellerId: s.seller.id, buyerMemberId: s.buyer.id, items: [{ optionId: s.option.id, quantity: 1 }], consent, rewardUseAmount: 1000 }),
-    ).toEqual({ ok: false, reason: "reward_use_not_supported" });
+    ).toEqual({ ok: false, reason: "reward_use_unavailable" });
+    expect(await db.order.count()).toBe(0);
   });
 
   it("동시에 주문해도 주문 번호가 겹치지 않는다", async () => {

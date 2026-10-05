@@ -122,6 +122,8 @@ model Seller {
   messageLedger            SellerMessageLedger[]
   messageFeeConsents       SellerMessageFeeConsent[]
   messageCharges           MessageCharge[]
+  overlayLayouts           OverlayLayout[]
+  overlayTemplates         OverlayTemplate[]
   mailDeliveries           MailDelivery[]
   memberPolicy             SellerMemberPolicy?
   rejoinBlocks             BuyerRejoinBlock[]
@@ -2611,4 +2613,35 @@ model SellerBankAccount {
   updatedAt     DateTime @updatedAt @db.Timestamptz(3)
 
   seller Seller @relation(fields: [sellerId], references: [id])
+}
+
+// 오버레이 레이아웃(SA-051 편집기, OV-001·002, lib/server/overlay/layout.ts). 판매자·화면 비율(9x16·16x9)마다 1행.
+// widgets는 서버가 허용 목록으로 검사한 위젯 배열(위치·크기는 화면 대비 %). version은 저장할 때마다 1씩 올리고, 저장 요청의
+// expectedVersion과 다르면 거절한다(두 창에서 고칠 때 덮어쓰기 방지). 없으면 기본 템플릿(queue_focus)으로 본다.
+model OverlayLayout {
+  sellerId    String   @db.Uuid
+  aspect      String
+  templateKey String
+  widgets     Json
+  version     Int      @default(1)
+  updatedById String?  @db.Uuid
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@id([sellerId, aspect])
+}
+
+// 「내 템플릿으로 저장」(판매자당 최대 20개). 기본 템플릿 3종은 코드에 있다(layout.ts BUILTIN_TEMPLATES).
+model OverlayTemplate {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId  String   @db.Uuid
+  name      String
+  aspect    String
+  widgets   Json
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@index([sellerId, createdAt])
 }

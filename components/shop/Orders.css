@@ -1,0 +1,148 @@
+/* 주문 내역(OrdersView.tsx): 표 머리글은 가운데, 값은 왼쪽. 휴대폰은 한 건씩 쌓는다 */
+.ol-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--wds-line-solid-neutral);
+}
+.ol-tabs button {
+  padding: 10px 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  color: var(--wds-label-alternative);
+  cursor: pointer;
+  box-shadow: inset 0 -2px 0 transparent;
+}
+.ol-tabs button[aria-selected="true"] {
+  font-weight: 700;
+  color: var(--wds-label-normal);
+  box-shadow: inset 0 -2px 0 var(--wds-label-normal);
+}
+.ol-tabs span {
+  color: var(--brand);
+}
+.ol-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  border-top: 1px solid var(--wds-label-normal);
+  font-size: 14px;
+}
+.ol-tbl th {
+  height: 40px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--wds-line-solid-neutral);
+  font-weight: 600;
+  text-align: center;
+}
+.ol-tbl td {
+  padding: 12px;
+  border-bottom: 1px solid var(--wds-line-solid-neutral);
+  text-align: left;
+  vertical-align: top;
+}
+.ol-tbl .ol-date {
+  width: 140px;
+}
+.ol-tbl .ol-state {
+  width: 160px;
+}
+.ol-tbl .ol-act {
+  width: 120px;
+}
+.ol-date b,
+.ol-date a,
+.ol-state > .cart-opt,
+.ol-act > .btn {
+  display: block;
+}
+.ol-date a {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--wds-label-alternative);
+}
+.ol-items ul {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ol-items li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+}
+.ol-items li > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.ol-total {
+  margin: 6px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--wds-line-solid-alternative);
+  font-size: 13px;
+  color: var(--wds-label-alternative);
+}
+.ol-tag {
+  display: inline-block;
+  margin-bottom: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.ol-y {
+  background: #fff4d6;
+  color: #8a5a00;
+}
+.ol-bl {
+  background: #e8f0ff;
+  color: #1d4ed8;
+}
+.ol-gr {
+  background: #e3f6ea;
+  color: #12713a;
+}
+.ol-g {
+  background: #f1f2f4;
+  color: #5a5f66;
+}
+.ol-act > .btn + .btn {
+  margin-top: 4px;
+}
+@media (max-width: 767px) {
+  .ol-tbl thead {
+    display: none;
+  }
+  .ol-tbl,
+  .ol-tbl tbody {
+    display: block;
+  }
+  .ol-tbl tr {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--wds-line-solid-neutral);
+  }
+  .ol-tbl td {
+    width: auto !important;
+    padding: 0;
+    border: 0;
+  }
+  .ol-act {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .ol-act > .btn + .btn {
+    margin-top: 0;
+  }
+}

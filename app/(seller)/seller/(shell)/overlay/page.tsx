@@ -5,8 +5,9 @@ import { useEffect, useState } from "react";
 import { Topbar, useSeller } from "../../../../../components/seller/SellerShell";
 import { Locked, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api, failMessage } from "../../../../../components/seller/api";
+import OverlayEditor from "../../../../../components/seller/OverlayEditor";
 
-// 메뉴 「오버레이 편집기」 자리. 지금은 SA-052 오버레이 주소 발급·재발급만 있고, 편집(SA-051)은 설정 저장 API가 생기면 붙인다.
+// 메뉴 「오버레이 편집기」 자리. SA-052 오버레이 주소 발급·재발급 아래에 화면 편집(SA-051, OverlayEditor)을 둔다.
 // 주소의 토큰은 서버에 해시로만 남아 지금 쓰는 주소를 다시 보여 줄 수 없다: 발급할 때 이 화면에서 한 번만 보이고,
 // 다시 발급하면 이전 주소는 바로 끊긴다(OBS에 넣은 주소도 바꿔야 한다).
 // 결과가 불분명하면(연결 끊김·서버 오류) 발급됐는지 알 수 없으므로 성공으로 보이지 않고, 이전 주소가 끊겼을 수 있다고 알린다.
@@ -145,14 +146,7 @@ export default function OverlayPage() {
               )}
             </section>
 
-            <section className="card pad col" style={{ gap: 6 }} aria-labelledby="ovu-edit-h">
-              <h2 className="t-hl1" id="ovu-edit-h">
-                화면 편집
-              </h2>
-              <span className="t-l2 c-alt" data-testid="ovu-edit-soon">
-                준비 중입니다. 지금은 기본 템플릿(현재 주문 카드 · 주문대기)으로 표시됩니다.
-              </span>
-            </section>
+            <OverlayEditor />
           </div>
         )}
       </main>
