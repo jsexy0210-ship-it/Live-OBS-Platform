@@ -41,10 +41,10 @@ test("회원 상세: 직접 진입 → 「회원 목록」은 부모로 replace(
 test("통계 하위 화면: 기간은 주소에 남고 ←는 통계 요약으로, 직접 진입도 같다", async ({ page }) => {
   await login(page, "/seller/stats/orders");
   await expect(page).toHaveURL(/\/seller\/stats\/orders$/);
-  await page.getByRole("button", { name: "30일", exact: true }).click();
-  await expect(page).toHaveURL(/\/seller\/stats\/orders\?preset=30d$/);
+  await page.getByRole("button", { name: "7일", exact: true }).click();
+  await expect(page).toHaveURL(/\/seller\/stats\/orders\?preset=7d$/);
   await page.reload();
-  await expect(page.getByRole("button", { name: "30일", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "7일", exact: true })).toHaveAttribute("aria-pressed", "true");
   // 직접 진입(이 영역의 이전 화면이 없음) → 부모로 replace
   await page.getByRole("button", { name: "뒤로" }).click();
   await expect(page).toHaveURL(/\/seller\/stats$/);
