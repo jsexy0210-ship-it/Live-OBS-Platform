@@ -84,12 +84,23 @@ describe("부분 환불 뒤 수량 표시", () => {
     const list = await listSellerOrders(db, s.ctx, {});
     if (!list.ok) throw new Error("list");
     expect(list.orders.find((o) => o.id === s.order.id)?.itemSummary).toEqual({ firstProductName: "팩", otherCount: 0, refundedQuantity: 2 });
+    // 실제 환불 흐름 뒤 목록 행의 환불 현황: 현금 환불 합계는 주문의 refundAmount, 남은 금액은 합계에서 뺀 값
+    const partial = await db.order.findUniqueOrThrow({ where: { id: s.order.id } });
+    expect(partial.refundAmount).toBeGreaterThan(0);
+    expect(list.orders.find((o) => o.id === s.order.id)).toMatchObject({
+      status: "PAID",
+      refundedAmount: partial.refundAmount,
+      refundedQuantity: 2,
+      remainingAmount: partial.totalAmount - partial.refundAmount!,
+    });
     await s.refund(undefined);
     expect(await shipmentRow(s)).toBeNull();
     // 전부 환불된 주문의 목록 요약은 모든 품목으로 보여 준다
     const after = await listSellerOrders(db, s.ctx, {});
     if (!after.ok) throw new Error("list");
     expect(after.orders.find((o) => o.id === s.order.id)?.itemSummary).toEqual({ firstProductName: expect.stringMatching(/^(박스|팩)$/), otherCount: 1, refundedQuantity: 4 });
+    const done = await db.order.findUniqueOrThrow({ where: { id: s.order.id } });
+    expect(after.orders.find((o) => o.id === s.order.id)).toMatchObject({ status: "REFUNDED", refundedAmount: done.refundAmount, refundedQuantity: 4, remainingAmount: done.totalAmount - done.refundAmount! });
   });
 
   it("파트너스 주문 상세는 품목마다 환불한 수량과 보낼 수량, 구매자 주문 상세는 환불한 수량을 준다", async () => {
