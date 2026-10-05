@@ -70,6 +70,8 @@ export async function shopProductList(
   // 홈 진열 영역 전용(구매자 쿼리로는 받지 않음): sale = 이벤트 할인이 지금 걸린 상품만,
   // best = 최근 30일 결제 완료 판매량이 있는 상품만 판매량순(동률이면 최근 판매 순, 취소·환불 주문 제외)
   only?: "sale" | "best",
+  // 접속 IP(알면). 인기 검색어 집계의 반복 제한에 쓴다(shop-search recordSearchTerm).
+  clientIp: string | null = null,
 ): Promise<{ ok: true; value: { products: ShopProductCard[]; total: number; page: number; hasMore: boolean } } | { ok: false; reason: ListFailure }> {
   const shop = await openShop(db, slug);
   if (!shop) return { ok: false, reason: "not_found" };
@@ -160,7 +162,7 @@ export async function shopProductList(
   const liveIds = await liveProductIds(db, shop.id);
   const arranged = arrange(cards, await displayOptions(db, shop.id), liveIds, (c) => c.p.id);
   // 인기 검색어: 구매자가 직접 한 검색(홈 진열 제외)의 첫 쪽 결과가 있을 때만 센다
-  if (term && !only && page === 1 && arranged.length > 0) await recordSearchTerm(db, shop.id, term);
+  if (term && !only && page === 1 && arranged.length > 0) await recordSearchTerm(db, shop.id, term, clientIp);
   const slice = arranged.slice((page - 1) * limit, page * limit);
   const thumbs = await thumbnails(db, shop.id, shop.slug, slice.map((c) => c.p.id));
   const extras = await cardExtras(db, shop.id, slice.map((c) => ({ id: c.p.id, shown: c.shown })), now, liveIds);
