@@ -8,7 +8,7 @@ import { Topbar } from "../../../../../components/seller/SellerShell";
 import { ErrorState, LoadingRows, NoPermission, Toast } from "../../../../../components/seller/States";
 import { api } from "../../../../../components/seller/api";
 import { MAX_SEARCH_LENGTH, won } from "../../../../../components/seller/format";
-import { STATUS_BADGE, itemSummaryText, kstDaysAgo, listDate, listTime, type OrderRow, type OrderStatus } from "../../../../../components/seller/orders";
+import { STATUS_BADGE, itemSummaryText, kstDaysAgo, listTime, payBadge, type OrderRow, type OrderStatus } from "../../../../../components/seller/orders";
 
 // SA-021 판매자 주문 목록. 결제 상태·기간·검색으로 걸러 보고, 20건씩 이어서 불러온다(GET /api/seller/orders).
 // 환불할 수 있는 주문(refundable)만 「환불 처리」 버튼이 있고, 발송 여부(shipped)는 「배송」 열에 따로 보인다.
@@ -256,13 +256,16 @@ export default function OrderListPage() {
                         <Link href={`/seller/orders/${o.id}`} className="fw6 num ord-link">
                           {listTime(o.createdAt)}
                         </Link>
-                        <div className="t-c1 c-alt num">{listDate(o.createdAt)}</div>
+                        <div className="ord-ono num">{o.orderNoLabel}</div>
                       </td>
                       <td className="fw6">{o.buyer.broadcastNickname}</td>
                       <td className="ell ord-product col-text">{itemSummaryText(o.itemSummary)}</td>
-                      <td className="num">{won(o.totalAmount)}</td>
+                      <td className="num">
+                        {won(o.totalAmount)}
+                        {o.refundedAmount > 0 && <div className="ord-rf c-neg">환불 {won(o.refundedAmount)}</div>}
+                      </td>
                       <td>
-                        <span className={`bdg ${STATUS_BADGE[o.status].cls}`}>{STATUS_BADGE[o.status].label}</span>
+                        <span className={`bdg ${payBadge(o).cls}`}>{payBadge(o).label}</span>
                       </td>
                       <td>{o.shipped ? <span className="bdg b-info nodot">발송함</span> : <span className="c-alt">—</span>}</td>
                       <td>
