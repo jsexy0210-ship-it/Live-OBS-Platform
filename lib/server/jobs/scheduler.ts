@@ -3,6 +3,8 @@ import { purgeOldRecoveryVerifications } from "../auth/accountRecovery";
 import { purgeExpiredRejoinBlocks } from "../buyers/rejoin";
 import { purgeOldSignupVerificationIps, purgeUnfinishedSignupVerifications } from "../buyers/signup";
 import { prisma } from "../db";
+import { purgeExpiredOAuthStates, purgeOldWebhookEvents, refreshDueTokens } from "../external/jobs";
+import { externalProvider } from "../external/provider";
 import { MESSAGE_JOB_NAME, runMessageJobs } from "../messaging/jobs";
 import { recalcMonthlyGrades } from "../shop-member-grades/service";
 import { markInstanceRetired, purgeOldOpsEvents, purgeRetiredHeartbeats, recordHeartbeat, registerInstance } from "../ops/metrics";
@@ -31,6 +33,10 @@ export const SCHEDULED_JOBS: ScheduledJob[] = [
   { name: "ops_event.purge_old", run: (tx, now) => purgeOldOpsEvents(tx, now) },
   // 발송 충전 대조·멈춘 예약 정리(messaging/jobs.ts). 이 작업이 최근에 성공해야 충전 기능을 켤 수 있다.
   { name: MESSAGE_JOB_NAME, run: (_tx, now) => runMessageJobs(prisma, now) },
+  // 외부 쇼핑몰 연동(external/jobs.ts): 끝난 OAuth 시작 기록 삭제, 웹훅 원본 30일 삭제, 곧 만료되는 토큰 갱신(연동 키가 없으면 갱신은 건너뜀)
+  { name: "external_oauth_state.purge", run: (tx, now) => purgeExpiredOAuthStates(tx, now) },
+  { name: "external_webhook_event.purge_old", run: (tx, now) => purgeOldWebhookEvents(tx, now) },
+  { name: "external_shop.refresh_tokens", run: (_tx, now) => refreshDueTokens(prisma, externalProvider(), now) },
   // 회원 등급 자동 재산정: 켠 쇼핑몰만, 쇼핑몰마다 달(KST)에 한 번(shop-member-grades)
   { name: "member_grade.recalc_monthly", run: (_tx, now) => recalcMonthlyGrades(prisma, now) },
 ];

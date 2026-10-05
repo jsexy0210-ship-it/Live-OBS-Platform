@@ -176,6 +176,7 @@ model Seller {
   platformInquiryMessages  PlatformInquiryMessage[]
   platformInquiryImages    PlatformInquiryImage[]
   externalShopConnections  ExternalShopConnection[]
+  receiptIssuer            SellerReceiptIssuer?
 }
 
 model SellerDomain {
@@ -2143,6 +2144,8 @@ model CartItem {
   buyerMemberId String   @db.Uuid
   optionId      String   @db.Uuid
   quantity      Int
+  // 담거나 수량을 바꿀 때 보여 준 단가(이벤트 할인 반영). 장바구니가 지금 단가와 비교해 「가격이 바뀌었어요」를 알린다. 비교용이라 주문 금액에는 쓰지 않는다. 이전 줄은 null.
+  addedUnitPrice Int?
   createdAt     DateTime @default(now()) @db.Timestamptz(3)
   updatedAt     DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 
@@ -3123,6 +3126,27 @@ model ReceiptIssue {
 
   @@index([sellerId, status, createdAt])
   @@index([sellerId, requestId])
+}
+
+// 현금영수증·전자세금계산서를 파트너스(판매자) 명의로 발행할 때 쓰는 발행자 정보(SA-024, 대표님 결정 2026-10-05 「영수증은 파트너스 이름으로 발행」).
+// 인증서는 발행 업체 쪽에 등록하며 여기에는 등록 상태만 둔다(업체 연동 전에는 NOT_REGISTERED).
+enum ReceiptCertStatus {
+  NOT_REGISTERED
+  REGISTERED
+  EXPIRED
+}
+
+model SellerReceiptIssuer {
+  sellerId        String            @id @db.Uuid
+  businessNumber  String
+  companyName     String
+  representative  String
+  certStatus      ReceiptCertStatus @default(NOT_REGISTERED)
+  certCheckedAt   DateTime?         @db.Timestamptz(3)
+  createdAt       DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime          @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
 }
 
 // ───────────── 플랫폼 문의(파트너스 → 플랫폼, SA-113·114·115 · 마스터 MA-051·052) ─────────────
