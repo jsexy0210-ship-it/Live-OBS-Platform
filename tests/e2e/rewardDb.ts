@@ -47,6 +47,7 @@ export async function deleteOrderInDb(orderId: string) {
     const where = { orderId };
     await db.$transaction([
       db.paymentCancel.deleteMany({ where: { payment: { orderId } } }),
+      db.orderRefund.deleteMany({ where }),
       db.payment.deleteMany({ where }),
       db.queueItemStatusHistory.deleteMany({ where: { queueItem: { orderId } } }),
       db.hitCard.deleteMany({ where: { queueItem: { orderId } } }),
