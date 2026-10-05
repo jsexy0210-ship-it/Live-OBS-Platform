@@ -78,3 +78,19 @@ export async function markItemOpenedInDb(orderId: string, productName: string) {
     await db.$disconnect();
   }
 }
+
+// 환불 e2e가 앞선 시험이 남긴 주문(개봉·무통장 등)에 좌우되지 않게, 발송 전·개봉 전·환불 이력 없는 결제 완료 주문 중 최근 건을 결제 수단별로 고른다.
+export async function refundableOrderIdInDb(slug: string, paymentMethod: "CARD" | "BANK_TRANSFER"): Promise<string> {
+  const db = open();
+  try {
+    const seller = await db.seller.findUniqueOrThrow({ where: { slug } });
+    const order = await db.order.findFirstOrThrow({
+      where: { sellerId: seller.id, status: "PAID", paymentMethod, shipment: null, refunds: { none: {} }, queueItems: { none: { openingStartedAt: { not: null } } } },
+      orderBy: { createdAt: "desc" },
+      select: { id: true },
+    });
+    return order.id;
+  } finally {
+    await db.$disconnect();
+  }
+}
