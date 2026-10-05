@@ -64,7 +64,7 @@ test("장바구니 → 주문서(검사·동의) → 주문(결제 대기) → �
   const sum = page.getByRole("complementary", { name: "주문 금액" });
   await expect(sum.locator(".cart-row", { hasText: "배송비" })).toContainText("원");
   const fee = Number((await sum.locator(".cart-row", { hasText: "배송비" }).innerText()).replace(/[^0-9]/g, "").replace(/^$/, "0"));
-  await expect(sum.locator(".cart-row", { hasText: "결제 예정 금액" }).locator("b")).toHaveText(`${(subtotal + fee).toLocaleString("ko-KR")}원`);
+  await expect(sum.locator(".cart-row", { hasText: "최종 결제 금액" }).locator("b")).toHaveText(`${(subtotal + fee).toLocaleString("ko-KR")}원`);
   await page.getByLabel("우편번호").fill("63000");
   await page.getByLabel("주소", { exact: true }).fill("제주특별자치도 제주시 테스트로 1");
   await expect(sum.locator(".cart-row", { hasText: "배송비" })).toContainText("제주·도서산간 포함");
@@ -78,7 +78,7 @@ test("장바구니 → 주문서(검사·동의) → 주문(결제 대기) → �
   await page.getByRole("checkbox", { name: /\(필수\)/ }).check();
   await page.getByRole("button", { name: "주문하기" }).click();
 
-  await expect(page).toHaveURL(/\/orders\/[0-9a-f-]+\?done=1$/);
+  await expect(page).toHaveURL(/\/orders\/[0-9a-f-]+\?done=1&pay=card$/);
   await expect(page.getByRole("heading", { name: "주문 완료", level: 1 })).toBeVisible();
   expect(await orderNicknameInDb(page.url().match(/\/orders\/([0-9a-f-]+)\?done=1/)![1])).toBe("시험닉");
   await expect(page.locator(".shop-util-who")).toHaveText(`${memberNick} 님`); // 회원 닉네임은 그대로
