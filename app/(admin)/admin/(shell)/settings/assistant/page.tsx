@@ -9,6 +9,7 @@ import { AdminTopbar, useAdmin } from "../../../_components/AdminShell";
 
 // MA-084 도우미 설정. API: GET·PUT /api/admin/assistant/settings. 바꾸기는 최고관리자만(월 한도 포함, 로그 추적).
 // 모델 이름·단가는 공식 문서를 보고 직접 입력한다(코드에 고정한 값 없음). 켜려면 모델·단가가 필요하고, GEMINI_API_KEY가 서버에 없으면 켜도 「준비 중」이다.
+const PH: Record<string, string> = { model: "예: gemini-2.5-flash-lite", inputWonPerMTok: "예: 145", outputWonPerMTok: "예: 580", monthlyBudgetWon: "예: 10000", sellerDailyLimit: "예: 20" };
 type S = { enabled: boolean; model: string; inputWonPerMTok: number; outputWonPerMTok: number; monthlyBudgetWon: number; sellerDailyLimit: number };
 type Data = { settings: S; version: number; keyConfigured: boolean; available: boolean; month: string; usedMilliWon: number; calls: Record<string, number> };
 type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; d: Data };
@@ -84,12 +85,12 @@ export default function AssistantSettingsPage() {
             </section>
             <section className="card pad-l col" style={{ gap: 12 }} aria-labelledby="ast-cfg">
               <h2 className="t-hl1" id="ast-cfg">모델·한도</h2>
-              <span className="t-c1 c-alt">모델 이름과 단가는 공식 문서를 확인해 입력합니다. 단가는 100만 토큰당 원입니다. 월 한도에 닿으면 도우미 호출이 바로 멈춥니다.</span>
+              <span className="t-c1 c-alt">모델 이름과 단가는 공식 문서를 확인해 입력합니다. 단가는 100만 토큰당 원입니다. 가장 저렴한 모델 예시는 gemini-2.5-flash-lite(입력 $0.10·출력 $0.40, 2026-10-05 공식 문서 기준)이며, 1,450원/$로 환산하면 입력 145원·출력 580원입니다. 월 한도에 닿으면 도우미 호출이 바로 멈춥니다.</span>
               <form className="col" style={{ gap: 10, maxWidth: 420 }} onSubmit={save}>
                 {([["model", "모델 이름", "text"], ["inputWonPerMTok", "입력 단가(100만 토큰당 원)", "numeric"], ["outputWonPerMTok", "출력 단가(100만 토큰당 원)", "numeric"], ["monthlyBudgetWon", "월 한도(원, 플랫폼 전체)", "numeric"], ["sellerDailyLimit", "파트너스별 하루 질문 수", "numeric"]] as const).map(([k, label, mode]) => (
                   <label className="col" style={{ gap: 4 }} key={k}>
                     <span className="t-c1">{label}</span>
-                    <input className="inp" inputMode={mode === "numeric" ? "numeric" : undefined} value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} disabled={!canEdit || busy} />
+                    <input className="inp" inputMode={mode === "numeric" ? "numeric" : undefined} value={f[k]} placeholder={PH[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} disabled={!canEdit || busy} />
                   </label>
                 ))}
                 {error && <span className="t-c1" role="alert" style={{ color: "var(--neg-text, #c00)" }}>{error}</span>}
