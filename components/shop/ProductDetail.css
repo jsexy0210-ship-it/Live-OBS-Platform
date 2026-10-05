@@ -180,3 +180,15 @@
     width: 72px;
   }
 }
+.pd-crumb {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: var(--wds-label-alternative);
+}
+.pd-crumb a {
+  color: inherit;
+  text-decoration: none;
+}
+.pd-crumb a:hover {
+  text-decoration: underline;
+}

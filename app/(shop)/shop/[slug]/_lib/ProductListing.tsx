@@ -17,6 +17,8 @@ export default async function ProductListing(props: {
   page: number;
   q?: string;
   categoryId?: string;
+  crumb?: string; // 소분류일 때 「대분류 › 소분류」
+  chips?: React.ReactNode; // 같은 대분류의 하위 칩
   empty: string;
 }) {
   const ask = (page: number) => shopProductList(prisma, props.slug, { categoryId: props.categoryId, q: props.q, sort: props.sort, page: String(page), limit: String(PAGE_SIZE) });
@@ -41,6 +43,7 @@ export default async function ProductListing(props: {
   };
   return (
     <section className="shop-sec" aria-labelledby="list-title">
+      {props.crumb && <p className="shop-crumb">{props.crumb}</p>}
       <div className="shop-sec-head">
         <h1 id="list-title">
           {props.title} <span className="t-l2 c-alt">{total.toLocaleString("ko-KR")}개</span>
@@ -55,6 +58,7 @@ export default async function ProductListing(props: {
           </nav>
         )}
       </div>
+      {props.chips}
       {products.length === 0 ? <p className="shop-empty">{props.empty}</p> : <ProductGrid products={products} label={props.title} hrefBase={`/shop/${encodeURIComponent(props.slug)}/products`} />}
       {pages > 1 && (
         <nav className="shop-pager" aria-label="쪽 이동">
