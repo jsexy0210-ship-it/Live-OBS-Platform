@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ListHead, PageHead, SearchBox, SearchRow } from "../../../../../../components/admin-ui";
 import { Topbar } from "../../../../../../components/seller/SellerShell";
+import { useScrollRestore, useUrlState } from "../../../../../../lib/client/navigation";
 import { ErrorState, LoadingRows, Locked, NoPermission, Toast } from "../../../../../../components/seller/States";
 import { api } from "../../../../../../components/seller/api";
 import { won } from "../../../../../../components/seller/format";
@@ -46,8 +47,10 @@ function query(status: Status | "", cursor?: string) {
 }
 
 export default function RewardLedgerPage() {
-  const [filter, setFilter] = useState<Status | "">("");
-  const [applied, setApplied] = useState<Status | "">("");
+  // 처리 상태 조건은 주소(?status=)가 기준이다(상세·다른 화면 → ← 에서 그대로 돌아온다, docs/IA.md Back 규칙 3항)
+  const [urlState, setUrlState] = useUrlState({ status: "" });
+  const applied: Status | "" = urlState.status in STATUS ? (urlState.status as Status) : "";
+  const [filter, setFilter] = useState<Status | "">(applied);
   const [state, setState] = useState<Load>({ kind: "loading" });
   const [more, setMore] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -63,6 +66,7 @@ export default function RewardLedgerPage() {
     setState(r.ok ? { kind: "ok", entries: r.data.entries, next: r.data.nextCursor } : { kind: "error", status: r.status });
   }, []);
   useEffect(() => void load(applied), [applied, load]);
+  useScrollRestore("seller-reward-ledger", state.kind === "ok");
 
   const loadMore = async () => {
     if (state.kind !== "ok" || !state.next) return;
@@ -84,10 +88,10 @@ export default function RewardLedgerPage() {
         <PageHead title="적립금 지급·회수 원장" />
 
         <SearchBox
-          onSearch={() => setApplied(filter)}
+          onSearch={() => setUrlState({ status: filter })}
           onReset={() => {
             setFilter("");
-            setApplied("");
+            setUrlState({ status: "" });
           }}
         >
           <SearchRow label="처리 상태">
