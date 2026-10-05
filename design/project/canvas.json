@@ -2971,14 +2971,6 @@
       "w": 2600,
       "x": 0,
       "y": 2860
-    },
-    "DS-CONFIRM.dc.html": {
-      "h": 2500,
-      "is_interactive": true,
-      "title": "DS-CONFIRM 공통 확인 창 (규칙 · 관리자 6종 · 구매자 PC 2종 · 휴대폰 시트 2종 · 대표님 지시 2026-10-06)",
-      "w": 1280,
-      "x": 19400,
-      "y": 108800
     }
   },
   "createdOnFiles": {
@@ -4059,8 +4051,7 @@
     "MA-085-M.dc.html",
     "MA-086.dc.html",
     "OG-001.dc.html",
-    "OG-002.dc.html",
-    "DS-CONFIRM.dc.html"
+    "OG-002.dc.html"
   ],
   "pages": [
     {
