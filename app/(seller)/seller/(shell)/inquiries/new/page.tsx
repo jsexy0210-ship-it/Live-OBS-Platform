@@ -42,7 +42,7 @@ function Form() {
       body: { category, title: title.trim(), body: body.trim(), imageIds: images.map((i) => i.id), noticeId: noticeTitle ? noticeId : undefined },
     });
     setBusy(false);
-    if (!r.ok) return setError(r.message ?? "문의를 보내지 못했습니다. 잠시 후 다시 시도해 주십시오");
+    if (!r.ok) return setError(r.message ?? "문의를 보내지 못했습니다. 쓴 내용은 그대로 남아 있으니 인터넷 연결을 확인한 뒤 「문의 보내기」를 다시 눌러 주십시오");
     setSent(true);
     router.replace(`/seller/inquiries/${r.data.inquiry.id}`);
   };

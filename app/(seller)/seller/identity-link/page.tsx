@@ -83,7 +83,7 @@ export default function IdentityLinkPage() {
         return focus("il-title");
       }
       setPending(verificationId);
-      setNotice("연결 결과를 확인하지 못했습니다. 다시 눌러 주십시오");
+      setNotice("확인하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 눌러 주십시오");
       return focus("pa-notice");
     }
     if (isMismatch(r)) return toMismatch();
@@ -96,7 +96,7 @@ export default function IdentityLinkPage() {
     }
     // 결과를 아직 받는 중이거나 그 밖의 거절: 본인확인을 버리지 않고 안내만 한다
     setPending(verificationId);
-    setNotice(r.error === "verification_pending" ? "본인확인 결과를 확인하고 있습니다. 잠시 후 다시 눌러 주십시오" : failMessage(r, "admin", "연결하지 못했습니다. 잠시 후 다시 시도해 주십시오"));
+    setNotice(r.error === "verification_pending" ? "본인 확인 결과를 기다리는 중입니다. 잠시 뒤 다시 눌러 주십시오" : failMessage(r, "admin", "확인하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 눌러 주십시오"));
     focus("pa-notice");
   };
 
@@ -140,9 +140,9 @@ export default function IdentityLinkPage() {
     <AuthFrame>
       <div className="col" style={{ gap: 4 }}>
         <h1 className="t-t3" id="il-title" tabIndex={-1}>
-          본인확인으로 계정 연결
+          휴대폰 확인으로 내 계정 확인하기
         </h1>
-        <span className="t-l2 c-alt">처음 로그인할 때 한 번만 합니다. 대표자가 등록한 직원 정보와 맞는지 휴대폰 본인확인으로 확인합니다.</span>
+        <span className="t-l2 c-alt">처음 로그인할 때 한 번만 합니다. 대표자가 등록한 직원 정보와 내 휴대폰 정보가 같은지 확인합니다.</span>
       </div>
       {me && (
         <div className="col il-info t-l2" data-testid="il-account">
@@ -174,7 +174,7 @@ export default function IdentityLinkPage() {
         <div className="col" style={{ gap: 10 }}>
           <div id="il-state" tabIndex={-1} className="msg msg-cau" role="alert" style={{ display: "block" }}>
             <span>
-              <b>대표자가 등록한 직원 정보와 맞지 않습니다.</b> 이름이나 휴대폰 번호가 다릅니다. 대표자에게 정보 수정을 요청해 주십시오
+              <b>대표자가 등록한 정보와 다릅니다.</b> 이름이나 휴대폰 번호가 다릅니다. 대표자에게 정보를 고쳐 달라고 요청해 주십시오
             </span>
           </div>
           <span className="t-c1 c-alt">본인확인 결과는 저장하지 않았습니다 · 로그인 · 업무는 그대로입니다 · 수정되면 다음 로그인 때 다시 연결합니다</span>
@@ -191,7 +191,7 @@ export default function IdentityLinkPage() {
           </div>
           <div className="row" style={{ gap: 8 }}>
             <button className="btn btn-sm" type="button" onClick={() => setView("form")}>
-              본인확인 재시도
+              휴대폰 확인 다시 하기
             </button>
             <button className="btn btn-sm btn-out" type="button" onClick={later}>
               나중에 하기
@@ -206,7 +206,7 @@ export default function IdentityLinkPage() {
               {pending && (
                 <span className="row" style={{ marginTop: 8 }}>
                   <button className="btn btn-sm" type="button" disabled={busy} onClick={() => void link(pending)}>
-                    다시 확인
+                    결과 다시 확인하기
                   </button>
                 </span>
               )}

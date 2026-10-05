@@ -16,14 +16,14 @@ import { AUTOMATION_PRICE } from "../../../../../../lib/server/automation/config
 const STEPS = ["shop_connect", "webhook_setup", "obs_overlay_install", "display_settings", "test_event_verify"];
 const TAG: Record<string, { label: string; cls: string }> = {
   AWAITING_PAYMENT: { label: "결제 확인 중", cls: "b-wait" },
-  QUEUED: { label: "대기 중", cls: "b-wait" },
-  RUNNING: { label: "실행 중", cls: "b-live" },
-  VERIFYING: { label: "검증 중", cls: "b-live" },
-  NEEDS_CUSTOMER: { label: "고객 확인 필요", cls: "b-warn" },
+  QUEUED: { label: "순서 기다리는 중", cls: "b-wait" },
+  RUNNING: { label: "설정하는 중", cls: "b-live" },
+  VERIFYING: { label: "확인하는 중", cls: "b-live" },
+  NEEDS_CUSTOMER: { label: "직접 해 주셔야 함", cls: "b-warn" },
   SUCCEEDED: { label: "완료", cls: "b-done" },
   FAILED: { label: "실패", cls: "b-fail" },
-  CANCELED: { label: "취소", cls: "b-gray" },
-  CLEANUP_NEEDED: { label: "정리 중", cls: "b-warn" },
+  CANCELED: { label: "취소됨", cls: "b-gray" },
+  CLEANUP_NEEDED: { label: "되돌리는 중", cls: "b-warn" },
 };
 
 export default function AutomationProgressPage() {
@@ -85,8 +85,8 @@ export default function AutomationProgressPage() {
           title="자동 연결 진행"
           actions={
             <>
-              <SmartBackButton fallback="/seller/automation">자동 연결</SmartBackButton>
-              {cancelable && <button className="btn btn-out" type="button" disabled={busy} onClick={() => setConfirmCancel(true)}>연결 취소하기</button>}
+              <SmartBackButton fallback="/seller/automation">이전 화면으로</SmartBackButton>
+              {cancelable && <button className="btn btn-out" type="button" disabled={busy} onClick={() => setConfirmCancel(true)}>자동 설정 그만두기</button>}
             </>
           }
         />
@@ -118,21 +118,21 @@ export default function AutomationProgressPage() {
           )}
           {(j.status === "QUEUED" || j.status === "AWAITING_PAYMENT") && <div className="msg msg-info" role="note"><span><b>{j.status === "QUEUED" ? "순서를 기다리고 있습니다" : "결제를 확인하고 있습니다"}</b> · 창을 닫아도 진행됩니다 · 결제가 확인되기 전에는 작업이 시작되지 않습니다</span></div>}
           {j.status === "VERIFYING" && <div className="msg msg-info" role="note"><span><b>테스트 주문 이벤트를 보냈습니다</b> · OBS 오버레이에 「테스트 주문」이 보이는지 확인하고 있습니다</span></div>}
-          {j.status === "CLEANUP_NEEDED" && <div className="msg msg-cau" role="note"><span><b>바꾼 설정을 정리하고 있습니다.</b> 담당자가 정리를 마치면 결과를 알려 드립니다</span></div>}
+          {j.status === "CLEANUP_NEEDED" && <div className="msg msg-cau" role="note"><span><b>바꾼 설정을 원래대로 되돌리고 있습니다.</b> 끝나면 알려 드립니다</span></div>}
           {terminal && (
             <section className="card pad col" style={{ gap: 8 }} data-testid="job-ended">
               {j.status === "FAILED" ? <b>{errorText(j.lastError) || "자동 연결을 끝내지 못했습니다"}</b> : <b>자동 연결을 취소했습니다</b>}
               <span className="t-c1 c-alt">
                 {j.paymentStatus === "REFUND_PENDING" || j.paymentStatus === "REFUNDED"
-                  ? `${AUTOMATION_PRICE.toLocaleString("ko-KR")}원은 결제한 카드로 환불됩니다 · 카드사 기준 3~5영업일 · 직접 설정은 무료로 계속 할 수 있습니다`
+                  ? `${AUTOMATION_PRICE.toLocaleString("ko-KR")}원은 결제한 카드로 환불됩니다 · 카드사 기준 3~5일(주말·공휴일 제외) · 직접 설정은 무료로 계속 할 수 있습니다`
                   : j.status === "CANCELED" && j.paymentStatus === "PAID" && !refundable
-                    ? "연결을 시작한 뒤라 환불되지 않습니다 · 결제 전에 동의하신 내용입니다"
+                    ? "설정을 시작한 뒤라 환불되지 않습니다 · 결제 전에 동의하신 내용입니다"
                     : "직접 설정은 무료로 계속 할 수 있습니다"}
               </span>
               <div className="row" style={{ gap: 8 }}>
-                {refundable && <button className="btn" type="button" disabled={busy} onClick={() => void act("refund-request", "환불을 요청했습니다")}>환불 요청</button>}
-                <Link className="btn btn-out" href="/seller/automation">자동 연결 다시 하기</Link>
-                <Link className="btn btn-out" href="/seller">직접 설정 시작</Link>
+                {refundable && <button className="btn" type="button" disabled={busy} onClick={() => void act("refund-request", "환불을 요청했습니다")}>{AUTOMATION_PRICE.toLocaleString("ko-KR")}원 환불 요청하기</button>}
+                <Link className="btn btn-out" href="/seller/automation">자동 설정 다시 하기</Link>
+                <Link className="btn btn-out" href="/seller">직접 설정하러 가기</Link>
               </div>
             </section>
           )}
@@ -143,11 +143,11 @@ export default function AutomationProgressPage() {
               <b>자동 연결을 취소하시겠습니까?</b>{" "}
               {j.status === "QUEUED"
                 ? "아직 연결을 시작하지 않았습니다. 취소한 뒤 환불을 요청할 수 있습니다."
-                : "진행을 멈추고 지금까지 바꾼 설정을 되돌립니다. 연결을 시작한 뒤라 환불되지 않습니다 · 결제 전에 동의하신 내용입니다."}
+                : "진행을 멈추고 지금까지 바꾼 설정을 되돌립니다. 설정을 시작한 뒤라 환불되지 않습니다 · 결제 전에 동의하신 내용입니다."}
             </span>
             <span className="row" style={{ gap: 8 }}>
-              <button className="btn" type="button" disabled={busy} onClick={() => void act("cancel", "자동 연결을 취소했습니다")}>취소하기</button>
-              <button className="btn btn-out" type="button" onClick={() => setConfirmCancel(false)}>계속 진행</button>
+              <button className="btn" type="button" disabled={busy} onClick={() => void act("cancel", "자동 연결을 취소했습니다")}>그만두기</button>
+              <button className="btn btn-out" type="button" onClick={() => setConfirmCancel(false)}>계속 진행하기</button>
             </span>
           </div>
         )}

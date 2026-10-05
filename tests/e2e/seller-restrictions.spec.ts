@@ -143,7 +143,7 @@ test("요금제에 없는 기능(403 plan_feature_required)이면 권한 안내�
   await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
   await expect(page.getByText("지금 요금제에서 사용할 수 없는 기능입니다", { exact: false }).first()).toBeVisible();
   await expect(page.getByText("필요한 권한", { exact: false })).toHaveCount(0);
-  await expect(page.getByText("이 기능은 권한이 필요합니다")).toHaveCount(0);
+  await expect(page.getByText("이 계정은 이 일을 할 수 없습니다")).toHaveCount(0);
 });
 
 test("목록이 200건에 닿으면 최근 200건까지만 표시한다고 안내한다", async ({ page }) => {

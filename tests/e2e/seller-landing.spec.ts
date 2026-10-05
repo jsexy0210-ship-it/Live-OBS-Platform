@@ -24,7 +24,7 @@ test("대표자: 로그인 직후는 상품 목록으로 가고, /seller는 파�
 test("배송 담당 직원(주문·배송 권한만): 권한 없는 상품 목록이 아니라 주문 화면으로 간다", async ({ page }) => {
   await loginAs(page, "demo-viewer@example.com");
   await expect(page).toHaveURL(/\/seller\/orders$/);
-  await expect(page.getByText("이 기능은 권한이 필요합니다")).toHaveCount(0);
+  await expect(page.getByText("이 계정은 이 일을 할 수 없습니다")).toHaveCount(0);
   // /seller는 홈이고, 읽을 수 있는 처리할 일(입금 확인·배송 준비·반품 요청)만 보인다
   await page.goto("/seller");
   await expect(page).toHaveURL(/\/seller$/);
@@ -39,11 +39,11 @@ test("상품 담당 직원: 상품 목록으로 간다", async ({ page }) => {
 test("권한이 하나도 없는 직원: 막힌 상품 목록 대신 열 수 있는 첫 메뉴(상품 리뷰)로 간다", async ({ page }) => {
   await loginAs(page, "demo-none@example.com");
   await expect(page).toHaveURL(/\/seller\/reviews$/);
-  await expect(page.getByText("이 기능은 권한이 필요합니다")).toHaveCount(0);
+  await expect(page.getByText("이 계정은 이 일을 할 수 없습니다")).toHaveCount(0);
   // /seller는 홈이고, 읽을 수 있는 항목이 없으면 빈 안내를 보인다
   await page.goto("/seller");
   await expect(page).toHaveURL(/\/seller$/);
-  await expect(page.getByText("확인할 수 있는 처리할 일이 없습니다")).toBeVisible();
+  await expect(page.getByText("오늘 처리할 일이 없습니다")).toBeVisible();
 });
 
 test("가려는 주소(next)가 있으면 그대로 간다", async ({ page }) => {

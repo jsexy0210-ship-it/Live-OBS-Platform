@@ -24,8 +24,8 @@ type Fail = { status: number; error: string; message?: string; body?: Record<str
 // 서버가 문구를 주지 않는 하루 한도 응답(429)
 const LIMIT_MESSAGES: Record<Tone, Record<string, string>> = {
   admin: {
-    daily_limit_exceeded: "오늘은 본인확인을 더 할 수 없습니다. 내일 다시 시도해 주십시오",
-    reset_limit_exceeded: "오늘은 비밀번호 찾기를 더 할 수 없습니다. 내일 다시 시도해 주십시오",
+    daily_limit_exceeded: "오늘은 본인확인을 더 할 수 없습니다. 내일 다시 눌러 주십시오",
+    reset_limit_exceeded: "오늘은 비밀번호 찾기를 더 할 수 없습니다. 내일 다시 눌러 주십시오",
   },
   public: {
     daily_limit_exceeded: "오늘은 본인확인을 더 할 수 없어요. 내일 다시 해 주세요",
@@ -42,7 +42,7 @@ const TEXT = {
     codeResent: "인증번호를 다시 보냈습니다",
     help: "본인 명의의 휴대폰으로 인증해 주십시오.",
     carrierPick: "선택해 주십시오",
-    agree: "본인확인 약관에 모두 동의합니다",
+    agree: "본인확인 이용 약관에 모두 동의합니다",
     sending: "인증번호 보내는 중",
     done: "본인확인을 마쳤습니다",
   },
@@ -52,7 +52,7 @@ const TEXT = {
     codeResent: "인증번호를 다시 보냈어요",
     help: "본인 명의의 휴대폰으로 인증해 주세요.",
     carrierPick: "골라 주세요",
-    agree: "본인확인 약관에 모두 동의해요",
+    agree: "본인확인 이용 약관에 모두 동의해요",
     sending: "인증번호를 보내고 있어요",
     done: "본인확인을 마쳤어요",
   },
@@ -317,7 +317,7 @@ export default function IdentityCheck({ label, start, scope = "", base, blocked 
               {T.agree}
             </label>
             <button className={`btn btn-block${busy ? " is-loading" : ""}`} type="submit" disabled={!ready || busy}>
-              {busy ? T.sending : "인증번호 받기"}
+              {busy ? T.sending : "인증번호 문자 받기"}
             </button>
           </>
         ) : (
@@ -346,7 +346,7 @@ export default function IdentityCheck({ label, start, scope = "", base, blocked 
                   aria-describedby={codeError ? "idv-code-err" : undefined}
                 />
                 <button type="button" className="btn" disabled={code.length !== 6 || busy} onClick={() => void confirm()}>
-                  확인
+                  인증번호 확인하기
                 </button>
               </div>
               {codeError && (
@@ -360,7 +360,7 @@ export default function IdentityCheck({ label, start, scope = "", base, blocked 
                 인증번호 다시 받기
               </button>
               <button type="button" className="btn btn-sm btn-text" disabled={busy} onClick={() => restart(null)}>
-                정보 다시 입력
+                정보 다시 쓰기
               </button>
             </div>
           </div>
@@ -394,7 +394,7 @@ export function IdentityDone({
         </span>
         {onAgain && (
           <button type="button" className="btn btn-sm btn-out" disabled={disabled} onClick={onAgain}>
-            다시 확인
+            본인확인 다시 하기
           </button>
         )}
       </div>

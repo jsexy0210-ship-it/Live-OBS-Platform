@@ -43,7 +43,7 @@ export default function InquiryDetailPage() {
     setBusy(false);
     if (!r.ok) {
       if (r.error === "inquiry_closed") void load();
-      return setError(r.message ?? "보내지 못했습니다. 잠시 후 다시 시도해 주십시오");
+      return setError(r.message ?? "추가 문의를 보내지 못했습니다. 쓴 내용은 그대로 남아 있으니 다시 눌러 주십시오");
     }
     setBody("");
     setImages([]);

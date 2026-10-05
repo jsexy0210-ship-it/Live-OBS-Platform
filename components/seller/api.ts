@@ -79,9 +79,9 @@ const FAIL_TEXT: Record<Tone, { network: string; expired: string; forbidden: str
   admin: {
     network: "연결이 끊겼습니다. 인터넷 연결을 확인해 주십시오",
     expired: "이용 기간이 끝나 지금은 할 수 없습니다. 구독하면 바로 다시 사용할 수 있습니다",
-    forbidden: "이 기능은 권한이 필요합니다. 대표자에게 요청해 주십시오",
-    notFound: "찾을 수 없습니다. 이미 삭제되었을 수 있습니다",
-    retry: "잠시 후 다시 시도해 주십시오",
+    forbidden: "이 계정은 이 일을 할 수 없습니다. 대표자에게 허용해 달라고 요청해 주십시오",
+    notFound: "찾을 수 없습니다. 이미 지워졌을 수 있습니다. 목록으로 돌아가 확인해 주십시오",
+    retry: "처리하지 못했습니다. 잠시 뒤 다시 눌러 주십시오. 계속되면 문의해 주십시오",
   },
   public: {
     network: "연결이 끊겼어요. 인터넷 연결을 확인해 주세요",

@@ -61,7 +61,7 @@ export default function NoticeDetailPage() {
                   {state.notice.title}
                 </h2>
                 <span className="t-l2 c-alt num">
-                  게시 {kstText(state.notice.publishedAt)} · 발송 {state.notice.channels.map((c) => CHANNEL[c] ?? c).join(" · ")}
+                  올린 날 {kstText(state.notice.publishedAt)} · 보인 곳: {state.notice.channels.map((c) => CHANNEL[c] ?? "기타").join(" · ")}
                 </span>
               </div>
               <div className="t-b1" style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }} data-testid="notice-body">
@@ -69,7 +69,7 @@ export default function NoticeDetailPage() {
               </div>
               <div className="row" style={{ gap: 8 }}>
                 <Link className="btn btn-out" href={`/seller/inquiries/new?noticeId=${state.notice.id}`}>
-                  관련 문의하기
+                  이 공지로 문의하기
                 </Link>
               </div>
             </article>
