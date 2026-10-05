@@ -44,9 +44,9 @@ function CollectionPageInner() {
         { label: "결제 완료", value: `${s.paid}건 · ${won(s.paidAmount)}`, testId: "paid" },
         { label: "결제 실패", value: `${s.failed}건 · ${won(s.failedAmount)}`, testId: "failed" },
         { label: "결제 대기", value: `${s.pending}건`, testId: "pending" },
-        { label: "재시도 중", value: `${s.retrying}건`, testId: "retrying" },
+        { label: "결제 다시 시도 중", value: `${s.retrying}건`, testId: "retrying" },
         { label: "연체", value: `${s.pastDue}곳`, testId: "pastDue" },
-        { label: "유예", value: `${s.grace}곳`, testId: "grace" },
+        { label: "결제 기다려 주는 중", value: `${s.grace}곳`, testId: "grace" },
       ]
     : [];
 
@@ -97,7 +97,7 @@ function CollectionPageInner() {
                   청구·결제 내역
                 </Link>
                 <Link className="btn btn-sm btn-out" href="/admin/billing/subscriptions">
-                  구독 현황(연체·유예)
+                  구독 현황(결제 못 한 곳·기다려 주는 곳)
                 </Link>
               </div>
               <div className="card">

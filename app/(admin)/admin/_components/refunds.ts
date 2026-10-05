@@ -25,13 +25,13 @@ export type Refund = {
 export type RefundCounts = Record<RefundStatus, number>;
 
 export const REFUND_STATUS: Record<RefundStatus, { label: string; cls: string }> = {
-  REQUESTED: { label: "승인 대기", cls: "b-warn" },
+  REQUESTED: { label: "처리 대기", cls: "b-warn" },
   PROCESSING: { label: "처리 중", cls: "b-info" },
   REFUNDED: { label: "환불 완료", cls: "b-done" },
   FAILED: { label: "환불 실패", cls: "b-fail" },
   REJECTED: { label: "거절", cls: "b-gray" },
 };
 export const REFUND_TABS: (RefundStatus | "")[] = ["", "REQUESTED", "PROCESSING", "FAILED", "REFUNDED", "REJECTED"];
-export const REFUND_SOURCE = { SYSTEM: "시스템", ADMIN: "관리자" } as const;
+export const REFUND_SOURCE = { SYSTEM: "자동 요청", ADMIN: "관리자 요청" } as const;
 // 시스템이 만든 요청의 사유 코드는 화면 문구로 바꾼다(코드성 표기 금지)
 export const refundReason = (r: string) => (r === "paid_after_cancel" ? "해지 뒤 결제됨" : r);

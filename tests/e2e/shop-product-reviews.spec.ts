@@ -74,6 +74,6 @@ test("불러오지 못하면 이 영역에서만 안내하고 다시 시도할 �
   await expect(sec.getByText("리뷰를 불러오지 못했어요")).toBeVisible();
   await expect(page.getByRole("heading", { name: "탑로더 25장", level: 1 })).toBeVisible(); // 상세는 그대로
   fail = false;
-  await sec.getByRole("button", { name: "다시 시도" }).click();
+  await sec.getByRole("button", { name: "다시 불러오기" }).click();
   await expect(sec.getByText("아직 리뷰가 없어요")).toBeVisible();
 });

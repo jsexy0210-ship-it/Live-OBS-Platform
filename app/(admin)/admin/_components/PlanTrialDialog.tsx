@@ -51,7 +51,7 @@ export function PlanTrialDialog({ plan, onClose, onDone }: { plan: AdminPlan; on
                   <input id={`trial-${f.key}`} className="inp" type="text" inputMode="numeric" value={v[f.key]} onChange={(e) => setV({ ...v, [f.key]: e.target.value })} disabled={busy} />
                   <span>{f.unit}</span>
                 </div>
-                {!ok(f.key) && <span className="t-c1 c-neg">0 이상 {TRIAL_LIMIT_MAX.toLocaleString("ko-KR")} 이하의 정수로 입력해 주십시오.</span>}
+                {!ok(f.key) && <span className="t-c1 c-neg">0 이상 {TRIAL_LIMIT_MAX.toLocaleString("ko-KR")} 이하 숫자만 입력해 주십시오.</span>}
               </div>
             ))}
             <span className="t-c1 c-alt">체험하기 중인 파트너스에만 적용됩니다. 바로 적용됩니다.</span>

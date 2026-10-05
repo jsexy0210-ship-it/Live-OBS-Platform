@@ -36,7 +36,7 @@ export function ProductCard({ p, href, children }: { p: ProductCardData; href?: 
       <Wrap href={href} className="pc-photo">
         {p.thumbnailUrl && <img src={p.thumbnailUrl} alt="" loading="lazy" />}
         {p.isLive && <span className="pc-live">LIVE</span>}
-        {p.soldOut && <span className="pc-out" role="img" aria-label="품절">SOLD OUT</span>}
+        {p.soldOut && <span className="pc-out" role="img" aria-label="품절">품절</span>}
       </Wrap>
       <Wrap href={href} className="pc-name">
         {p.name}

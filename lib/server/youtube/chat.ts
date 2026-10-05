@@ -5,6 +5,7 @@ import { Rejected, callYoutube, guard } from "./call";
 import type { YoutubeClient } from "./client";
 import { addMonthlyChats } from "./settings";
 import { QUOTA_ALL, QUOTA_CHAT_RATIO, QUOTA_WARN_RATIO, quotaDay, quotaLimits, quotaUsage, type QuotaLimits } from "./quota";
+import { orderNoLabel } from "../orders/orderNoLabel";
 
 // 유튜브 채팅 수집(MASTER 승인 2026-10-05, 무료 할당량 안에서만).
 // - 기본 꺼짐. 파트너스가 방송(진행 중 연결)마다 켠 LIVE 연결만 수집한다. 켜지 않으면 할당량을 쓰지 않는다.
@@ -135,7 +136,7 @@ export async function chatMatches(db: PrismaClient, ctx: TenantContext, broadcas
     }
     const rows = orders.map((o) => {
       const at = lastChat.get(normalizeNickname(o.broadcastNicknameSnapshot)) ?? null;
-      return { orderId: o.id, orderNo: o.orderNo, status: o.status, nickname: o.broadcastNicknameSnapshot, orderedAt: o.createdAt, matched: !!at, lastChatAt: at };
+      return { orderId: o.id, orderNo: o.orderNo, orderNoLabel: orderNoLabel(o.createdAt, o.orderNo), status: o.status, nickname: o.broadcastNicknameSnapshot, orderedAt: o.createdAt, matched: !!at, lastChatAt: at };
     });
     return {
       broadcast: { id: b.id, title: b.title, startedAt: b.startedAt, endedAt: b.endedAt, videoId: link.videoId },

@@ -3,11 +3,11 @@
 | 항목 | 값 |
 |---|---|
 | Artifact | https://claude.ai/artifact/YYGXZ3u4QvjQpEMUHnN4tS (Claude Design 캔버스 「ONQ (OnAirCue) 전체 화면 디자인」) |
-| 동기화한 버전 | v256 · version id `1791205180-4bb0` (전체) · 부분 동기화 v266 `1791211729-2b33`: SA-021 · SA-021-OPS · SA-022 · lop.css · canvas.json(다른 세션의 v260~265 저장 포함) |
-| 동기화 시각 | 2026-10-05 22:20 KST |
+| 동기화한 버전 | `1791213911-1437` (v271 `1791212943-9f5c` 이후 캔버스 전체 재동기화: 보드 342장 크기 대조 일치) · 부분 동기화 v279 `1791215615-5ed1`(GNB·LNB 셸 · ← 버튼 · 통합 탭 · 이용권: SA/MA/SH/PF 보드 + lop.css + canvas.json 높이) |
+| 동기화 시각 | 2026-10-06 01:15 KST |
 | 디자인 전담 세션 | 디자인 전담 (4) `session_01QUUqmD2DDwArxHsUqMyA7Y` (`HANDOFF.md` 세션 표) |
 | Git 경로 | `design/project/` (캔버스 `project/`와 1:1, 파일명·상대 경로 보존) |
-| 소스 파일 수 | 362 (보드 339장 · canvas.json · ds/wds 2 · lop.css · ov.css · ibgen 17 · fonts/WantedSans-OFL.txt) |
+| 소스 파일 수 | 365 (보드 342장 · canvas.json · ds/wds 2 · lop.css · ov.css · ibgen 17 · fonts/WantedSans-OFL.txt) |
 
 ## 정본 우선순위
 

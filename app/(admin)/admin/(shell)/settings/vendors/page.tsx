@@ -113,7 +113,7 @@ export default function VendorsPage() {
             canEdit && board ? (
               <>
                 <button className="btn btn-out" type="button" onClick={() => open({ kind: "weights" })}>
-                  점수 가중치 편집
+                  점수 비중 바꾸기
                 </button>
                 <button className="btn" type="button" onClick={() => open({ kind: "form", vendor: null })}>
                   업체 등록
@@ -163,7 +163,7 @@ export default function VendorsPage() {
                   <div className="col" style={{ gap: 4 }}>
                     {board.featureKeys.map((k) => (
                       <div key={k} className="row" style={{ justifyContent: "space-between" }}>
-                        <span className="c-alt">{FEATURE_LABEL[k] ?? k}</span>
+                        <span className="c-alt">{FEATURE_LABEL[k] ?? "이름 없는 항목"}</span>
                         <span>{v.features.includes(k) ? "지원" : "—"}</span>
                       </div>
                     ))}
@@ -172,7 +172,7 @@ export default function VendorsPage() {
                       <span>{v.referenceFee ?? "확정 전"}</span>
                     </div>
                     <div className="row" style={{ justifyContent: "space-between" }}>
-                      <span className="c-alt">ONQ 점수</span>
+                      <span className="c-alt">종합 점수</span>
                       <b>{v.score === null ? `평가 중 ${v.ratedCount}/${board.criteria.length}` : `${v.score}점`}</b>
                     </div>
                   </div>
@@ -184,7 +184,7 @@ export default function VendorsPage() {
                     {canEdit && (
                       <>
                         <button className="btn btn-sm" type="button" disabled={v.selected || !v.active || busy} onClick={() => open({ kind: "select", vendor: v })}>
-                          {v.selected ? "선택됨" : "선택"}
+                          {v.selected ? "사용 중" : "사용 업체로 선택"}
                         </button>
                         {!v.recommended && v.active && (
                           <button className="btn btn-sm btn-out" type="button" disabled={busy} onClick={() => open({ kind: "recommend", vendor: v })}>
@@ -217,13 +217,13 @@ export default function VendorsPage() {
               ))}
             </div>
           )}
-          {canEdit && <p className="c-alt t-l2">로고: PNG · 256KB 이하 · 가로·세로 16~600px · 업체 공식 배포본만 올려 주십시오. 로고가 없으면 업체명 첫 글자가 보입니다.</p>}
+          {canEdit && <p className="c-alt t-l2">로고 파일: PNG, 용량 256KB 이하, 가로·세로 16~600 사이. 업체가 공식으로 배포한 로고만 올려 주십시오. 로고가 없으면 업체 이름 첫 글자가 보입니다.</p>}
           {board && shown.length > 0 && compare && (
             <div className="card" style={{ overflowX: "auto" }}>
               <table className="tbl" style={{ whiteSpace: "nowrap" }}>
                 <thead>
                   <tr>
-                    <th>항목 (가중치)</th>
+                    <th>평가 항목(비중)</th>
                     {shown.map((v) => (
                       <th key={v.id}>{v.name}</th>
                     ))}
@@ -242,7 +242,7 @@ export default function VendorsPage() {
                   ))}
                   <tr>
                     <td>
-                      <b>ONQ 점수</b>
+                      <b>종합 점수</b>
                     </td>
                     {shown.map((v) => (
                       <td key={v.id}>
@@ -262,8 +262,8 @@ export default function VendorsPage() {
         <ConfirmDialog
           id="vendor-select"
           title={`${VENDOR_CATEGORY_LABEL[cat]} 업체를 ${dialog.vendor.name}(으)로 바꾸시겠습니까?`}
-          body="선택해도 업체 계약과 유료 연동은 대표님 승인 뒤에 시작합니다. 파트너스 화면에는 업체 이름 없이 기능만 보입니다. 결제는 플랫폼 결제대행사 키 하나로 받습니다."
-          action="선택"
+          body="선택해도 업체 계약과 유료 연동은 대표님 승인 뒤에 시작합니다. 파트너스 화면에는 업체 이름 없이 기능만 보입니다. 결제는 ONQ가 계약한 결제대행사 한 곳으로 받습니다."
+          action="사용 업체로 선택"
           busy={busy}
           error={error}
           onClose={() => setDialog(null)}
@@ -354,7 +354,7 @@ function WeightsDialog(p: { board: VendorBoard; busy: boolean; error: string | n
         <div className="col" style={{ gap: 16 }}>
           <div className="modal-h">
             <h2 className="modal-t" id="vendor-weights">
-              점수 가중치 편집 · {VENDOR_CATEGORY_LABEL[cat]}
+              점수 비중 바꾸기 · {VENDOR_CATEGORY_LABEL[cat]}
             </h2>
           </div>
           {p.board.criteria.map((c) => (
@@ -441,7 +441,7 @@ function VendorFormDialog(p: { board: VendorBoard; vendor: Vendor | null; busy: 
             {p.board.featureKeys.map((k) => (
               <label key={k} className="row" style={{ gap: 8, alignItems: "center" }}>
                 <input type="checkbox" checked={features.includes(k)} onChange={(e) => setFeatures(e.target.checked ? [...features, k] : features.filter((x) => x !== k))} />
-                {FEATURE_LABEL[k] ?? k}
+                {FEATURE_LABEL[k] ?? "이름 없는 항목"}
               </label>
             ))}
           </fieldset>

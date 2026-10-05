@@ -58,9 +58,9 @@ test("목록: 승인 대기 탭에 요청이 보이고, 시스템이 만든 요�
   await page.goto("/admin/billing/refunds");
   const auto = page.getByTestId("refund-row").filter({ hasText: shop("auto") });
   await expect(auto).toContainText("해지 뒤 결제됨");
-  await expect(auto).toContainText("시스템");
-  await expect(auto).toContainText("승인 대기");
-  await expect(page.getByRole("button", { name: /^승인 대기 \d+$/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(auto).toContainText("자동 요청");
+  await expect(auto).toContainText("처리 대기");
+  await expect(page.getByRole("button", { name: /^처리 대기 \d+$/ })).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: /^환불 완료/ }).click();
   await expect(page.getByTestId("refund-row").filter({ hasText: shop("auto") })).toHaveCount(0);
   await page.screenshot({ path: "tests/e2e/screenshots/admin-refunds-1440.png" });
@@ -69,10 +69,10 @@ test("목록: 승인 대기 탭에 요청이 보이고, 시스템이 만든 요�
 test("최고관리자: 거절은 사유가 있어야 하고, 거절하면 상태와 DB에 반영된다. 승인 영역은 확인 체크 전에는 막혀 있다", async ({ page }) => {
   await login(page, emails.super);
   await page.goto(`/admin/billing/refunds/${ids.rej}`);
-  await expect(page.getByTestId("refund-status")).toContainText("승인 대기");
-  await expect(page.getByRole("button", { name: "승인 · 환불 실행" })).toBeDisabled();
+  await expect(page.getByTestId("refund-status")).toContainText("처리 대기");
+  await expect(page.getByRole("button", { name: "환불 승인하고 카드 결제 취소" })).toBeDisabled();
   await page.getByLabel("내용을 확인했고 환불을 승인합니다").check();
-  await expect(page.getByRole("button", { name: "승인 · 환불 실행" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "환불 승인하고 카드 결제 취소" })).toBeEnabled();
   await page.getByRole("button", { name: "거절", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("button", { name: "거절", exact: true })).toBeDisabled();
@@ -99,7 +99,7 @@ test("운영 담당: 거절은 할 수 있지만 승인은 못 한다(최고관�
 test("CS: 목록·상세는 볼 수 있지만 승인·거절 버튼이 없다", async ({ page }) => {
   await login(page, emails.cs);
   await page.goto(`/admin/billing/refunds/${ids.auto}`);
-  await expect(page.getByTestId("refund-status")).toContainText("승인 대기");
+  await expect(page.getByTestId("refund-status")).toContainText("처리 대기");
   await expect(page.getByText("승인은 최고관리자만 할 수 있습니다.")).toBeVisible();
   await expect(page.getByRole("button", { name: "거절", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /환불 실행/ })).toHaveCount(0);

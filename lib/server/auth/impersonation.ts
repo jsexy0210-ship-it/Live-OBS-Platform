@@ -20,7 +20,8 @@ export const REASON_MAX = 200;
 // 대리 조회로 열리는 파트너스 API(조회 권한 표 IMPERSONATION_READ_ACTIONS와 맞춘다). 이 밖은 proxy가 403으로 막는다.
 export const IMPERSONATION_API_PREFIXES = ["/api/seller/orders", "/api/seller/members", "/api/seller/products", "/api/seller/stats", "/api/seller/impersonation"] as const;
 // 파트너스 화면 틀(SellerShell)이 처음에 읽는 내 정보. 하위 경로(/me/password 등)는 열지 않는 정확 일치만 허용한다.
-export const IMPERSONATION_API_EXACT = ["/api/seller/me"] as const;
+// 외부 쇼핑몰 연동 조회(GET /api/seller/external-shops 목록만, 하위 경로 [id]·oauth-done은 열지 않는다)도 같은 정확 일치.
+export const IMPERSONATION_API_EXACT = ["/api/seller/me", "/api/seller/external-shops"] as const;
 // 로그인 전 흐름(로그인·로그아웃·비밀번호 재설정·아이디 찾기)은 세션 없이 자격 증명으로 동작하므로, 같은 브라우저에 대리 조회 쿠키가 남아 있어도 proxy가 막지 않는다.
 // (로그인 성공·로그아웃 때 라우트가 대리 조회 쿠키를 지워 대리 조회가 파트너스 로그인을 가리지 않게 한다)
 export const IMPERSONATION_PUBLIC_PREFIXES = ["/api/seller/auth/login", "/api/seller/auth/logout", "/api/seller/password-reset", "/api/seller/find-id"] as const;

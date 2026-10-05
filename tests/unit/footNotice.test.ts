@@ -10,7 +10,7 @@ describe("noticeRows", () => {
     expect(noticeRows(null, EMPTY)).toEqual([{ label: "호스팅 제공", value: HOSTING_PROVIDER }]);
   });
 
-  it("입력한 항목만 순서대로: 주소 → 고객센터(전화·운영시간) → 이메일 → 사업자정보 확인 → 호스팅 → 구매안전서비스", () => {
+  it("입력한 항목만 순서대로: 주소 → 고객센터(전화·운영시간) → 이메일 → 사업자정보 확인 → 호스팅 → 구매 안전 서비스", () => {
     const rows = noticeRows("1234567890", { ...EMPTY, address: "서울", csPhone: "1588-1234", csHours: "평일 10~17시", csEmail: "cs@example.com", escrowKind: "insurance", escrowProvider: "보험사", escrowUrl: "https://ins.example.com/x" });
     expect(rows).toEqual([
       { label: "주소", value: "서울" },
@@ -18,15 +18,15 @@ describe("noticeRows", () => {
       { label: "이메일", value: "cs@example.com" },
       { label: "사업자정보", value: "확인하기", href: BIZ_INFO_URL + "1234567890" },
       { label: "호스팅 제공", value: HOSTING_PROVIDER },
-      { label: "구매안전서비스", value: "소비자피해보상보험 가입 · 보험사", href: "https://ins.example.com/x" },
+      { label: "구매 안전 서비스", value: "소비자피해보상보험 가입 · 보험사", href: "https://ins.example.com/x" },
     ]);
   });
 
-  it("고객센터는 전화나 운영시간 중 하나만 있어도 보이고, 구매안전서비스는 가입 종류와 업체가 모두 있어야 보인다", () => {
+  it("고객센터는 전화나 운영시간 중 하나만 있어도 보이고, 구매 안전 서비스는 가입 종류와 업체가 모두 있어야 보인다", () => {
     expect(noticeRows(null, { ...EMPTY, csHours: "평일 10~17시" })[0]).toEqual({ label: "고객센터", value: "평일 10~17시" });
-    expect(noticeRows(null, { ...EMPTY, escrowKind: "escrow", escrowProvider: "" }).some((r) => r.label === "구매안전서비스")).toBe(false);
-    expect(noticeRows(null, { ...EMPTY, escrowKind: "none", escrowProvider: "시험결제", escrowUrl: "https://a.example.com" }).some((r) => r.label === "구매안전서비스")).toBe(false);
-    expect(noticeRows(null, { ...EMPTY, escrowKind: "escrow", escrowProvider: "시험결제" }).find((r) => r.label === "구매안전서비스")).toEqual({ label: "구매안전서비스", value: "에스크로 가입 · 시험결제", href: undefined });
+    expect(noticeRows(null, { ...EMPTY, escrowKind: "escrow", escrowProvider: "" }).some((r) => r.label === "구매 안전 서비스")).toBe(false);
+    expect(noticeRows(null, { ...EMPTY, escrowKind: "none", escrowProvider: "시험결제", escrowUrl: "https://a.example.com" }).some((r) => r.label === "구매 안전 서비스")).toBe(false);
+    expect(noticeRows(null, { ...EMPTY, escrowKind: "escrow", escrowProvider: "시험결제" }).find((r) => r.label === "구매 안전 서비스")).toEqual({ label: "구매 안전 서비스", value: "에스크로 가입(결제한 돈을 안전하게 보관해 주는 서비스) · 시험결제", href: undefined });
   });
 });
 

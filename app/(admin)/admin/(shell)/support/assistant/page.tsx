@@ -55,9 +55,9 @@ export default function AssistantDocsPage() {
     void loadDocs();
   };
   const remove = async (d: Doc) => {
-    if (!window.confirm("이 자료를 지우시겠습니까?")) return;
+    if (!window.confirm(`「${d.title}」을(를) 지우시겠습니까?`)) return;
     const r = await adminApi(`/api/admin/assistant/docs/${d.id}?expectedVersion=${d.version}`, { method: "DELETE" });
-    setToast(r.ok ? "지웠습니다." : r.message ?? "지우지 못했습니다.");
+    setToast(r.ok ? "자료를 지웠습니다." : r.message ?? "자료를 지우지 못했습니다. 잠시 후 다시 시도해 주십시오.");
     void loadDocs();
   };
 
@@ -78,14 +78,14 @@ export default function AssistantDocsPage() {
                 </button>
               )}
             </div>
-            <span className="t-c1 c-alt">공개 자료만 넣어 주십시오. 파트너스 개인정보·주문 데이터는 넣지 않습니다. 게시한 자료만 답변 근거로 쓰입니다.</span>
+            <span className="t-c1 c-alt">공개해도 되는 자료만 넣어 주십시오. 파트너스 개인정보와 주문 정보는 넣지 마십시오. 「게시」를 켠 자료만 도우미가 답할 때 씁니다.</span>
             {draft && (
               <form className="col" style={{ gap: 10 }} onSubmit={save}>
                 <input className="inp" aria-label="제목" placeholder="제목" maxLength={100} value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} disabled={busy} />
                 <textarea className="inp" aria-label="내용" placeholder="내용(4,000자까지)" rows={10} maxLength={4000} value={draft.body} onChange={(e) => setDraft({ ...draft, body: e.target.value })} disabled={busy} />
                 <label className="chk">
                   <input type="checkbox" checked={draft.published} onChange={(e) => setDraft({ ...draft, published: e.target.checked })} disabled={busy} />
-                  게시
+                  도우미 답변에 사용(게시)
                 </label>
                 {error && <span className="t-c1" role="alert" style={{ color: "var(--neg-text, #c00)" }}>{error}</span>}
                 <div className="row" style={{ gap: 8 }}>

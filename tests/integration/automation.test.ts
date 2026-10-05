@@ -745,7 +745,8 @@ describe("Codex 리뷰 반영", () => {
 
   it("외부 호출이 lease보다 오래 걸려도 heartbeat가 따로 연장해 회수되지 않는다", async () => {
     const a = await bought();
-    const rt = { ...runtime(), browser: new FakeBrowserExecutor(80), obs: new FakeObsBridge(80) };
+    // 시간 여유: lease 1,000ms·heartbeat 약 330ms 간격이라 CI에서 타이머·DB가 600ms 넘게 늦어지기 전에는 회수되지 않는다(예전 lease 300ms는 200ms만 늦어도 회수되어 fenced로 갈렸다)
+    const rt = { ...runtime(), browser: new FakeBrowserExecutor(160), obs: new FakeObsBridge(160) };
     rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장 · 로그아웃";
     let running = true;
     let reaped = 0;
@@ -756,13 +757,14 @@ describe("Codex 리뷰 반영", () => {
       }
     })();
     const t0 = Date.now();
-    expect(await runOnce(db, rt, { ...W, leaseMs: 300 })).toBe("succeeded");
+    expect(await runOnce(db, rt, { ...W, leaseMs: 1000 })).toBe("succeeded");
     running = false;
     await reaper;
-    expect(Date.now() - t0).toBeGreaterThan(600);
+    // 작업이 lease(1,000ms)의 두 배 넘게 걸렸는데도(heartbeat가 연장하지 않으면 회수됐을 시간) 한 번도 회수되지 않았다
+    expect(Date.now() - t0).toBeGreaterThan(2000);
     expect(reaped).toBe(0);
     expect(await job(a.jobId)).toMatchObject({ status: "SUCCEEDED", attempts: 0 });
-  });
+  }, 30_000);
 
   it("실행 중 취소되면 heartbeat가 자리를 잃은 것을 알아채고 다음 외부 행동 전에 멈춘다", async () => {
     const a = await bought();
@@ -837,7 +839,14 @@ describe("Codex 리뷰 반영", () => {
     expect(r.kind).toBe("succeeded");
     expect(Math.max(...nextIndexes)).toBe(4);
     expect(await job(a.jobId)).toMatchObject({ status: "VERIFYING", stepIndex: 4, verifiedAt: null });
-    await new Promise((res) => setTimeout(res, 250));
+    // 고정 시간(250ms)을 자는 대신 DB 시계가 lease 만료를 말할 때까지 기다린다(CI에서 늦게 끝난 쓰기가 lease를 더 늘려도 안정적)
+    const deadline = Date.now() + 10_000;
+    for (;;) {
+      const [{ expired }] = await db.$queryRaw<{ expired: boolean }[]>`SELECT "leaseExpiresAt" <= clock_timestamp() AS expired FROM "AutomationJob" WHERE id = ${a.jobId}::uuid`;
+      if (expired) break;
+      if (Date.now() > deadline) throw new Error("lease가 10초 안에 끝나지 않았다");
+      await new Promise((res) => setTimeout(res, 25));
+    }
     expect((await reapExpired(db, () => 0)).requeued).toBe(1);
     await db.automationJob.update({ where: { id: a.jobId }, data: { runAfter: new Date(Date.now() - 1000) } });
     expect(await runOnce(db, runtime(), W)).toBe("succeeded");
@@ -1371,18 +1380,21 @@ describe("Codex 5차 반영", () => {
 describe("MASTER 요청 시험(26c2974 Codex 3건)", () => {
   it("외부 행동 도중 실행 시간 6시간을 넘기면 그 결과(고객 대기)를 기록하지 않고 끝낸다(바꾼 것이 있으면 정리 필요·결제 보류)", async () => {
     const a = await bought();
-    const rt = { ...runtime(), browser: new FakeBrowserExecutor(500), obs: new FakeObsBridge(0) };
+    const STEP = 1500; // 외부 행동 1번의 시간(ms)
+    const rt = { ...runtime(), browser: new FakeBrowserExecutor(STEP), obs: new FakeObsBridge(0) };
     rt.browser.pageText = () => "앱 설치 · 설치 완료 · 주문 알림 · 저장 · 로그아웃";
     rt.browser.outcome = (_s, action) => (action.type === "click" ? { kind: "needs_customer", action: "LOGIN" } : undefined);
-    // 이동(관찰 500 + 실행 500) 뒤 클릭 직전 기록(약 1.5초)까지는 상한 안, 클릭 실행(약 1.5~2.0초) 도중 상한을 넘는다
-    await db.automationJob.update({ where: { id: a.jobId }, data: { activeMsUsed: 6 * 60 * 60_000 - 1800 } });
-    // lease는 DB 응답이 잠깐 늦어도 끊기지 않을 만큼(heartbeat 200ms 간격) 둔다. 너무 짧으면 상한 초과 전에 lease가 끊겨 fenced로 갈린다.
-    expect(await runOnce(db, rt, { ...W, leaseMs: 600 })).toBe("failed");
+    // 이동(관찰 + 실행) 뒤 클릭 직전 기록(약 3×STEP)까지는 상한 안, 클릭 실행(약 3~4×STEP) 도중 상한을 넘는다.
+    // 상한을 그 구간의 한가운데(3.5×STEP)에 두어 앞뒤로 STEP/2(750ms)씩 여유가 있다: 타이머·DB가 그만큼 늦어져도 같은 결과다
+    // (예전 여유는 300/200ms라 CI에서 늦으면 클릭 기록 전에 상한이 넘어 FAILED로 갈렸다).
+    await db.automationJob.update({ where: { id: a.jobId }, data: { activeMsUsed: 6 * 60 * 60_000 - Math.round(3.5 * STEP) } });
+    // lease는 DB 응답이 늦어도 끊기지 않을 만큼(heartbeat 300ms 간격, 600ms까지 늦어도 됨) 둔다. 너무 짧으면 상한 초과 전에 lease가 끊겨 fenced로 갈린다.
+    expect(await runOnce(db, rt, { ...W, leaseMs: 900 })).toBe("failed");
     // 누르기 도중이라 바꾼 것이 있으므로 정리 필요로 멈추고 결제는 정리 뒤(32차)
     expect(await job(a.jobId)).toMatchObject({ status: "CLEANUP_NEEDED", lastError: "run_time_limit", customerAction: null, browserStateHeld: false });
     expect(await db.automationPayment.findFirstOrThrow({ orderBy: [{ createdAt: "asc" }, { id: "asc" }], where: { sellerId: a.seller.id } })).toMatchObject({ status: "PAID" });
     expect(rt.browser.saved.size).toBe(0);
-  }, 20_000);
+  }, 30_000);
 
   it("heartbeat 갱신이 DB 오류로 실패하면 그 뒤 외부 행동은 0회(진행 중이던 1회만 끝남)", async () => {
     const a = await bought();

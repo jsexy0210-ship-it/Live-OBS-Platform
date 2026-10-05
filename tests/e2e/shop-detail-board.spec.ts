@@ -43,13 +43,13 @@ test("상품 문의: 쓰기(공개·비공개) → 목록·탭 개수 → 지우
   await expect(qna.getByText("답변 대기").first()).toBeVisible();
   await expect(page.getByRole("navigation", { name: "상품 상세 메뉴" }).getByRole("link", { name: /상품 문의/ })).toContainText("1");
 
-  // 비공개로 남기면 목록에는 「비밀글입니다」만 보인다
+  // 비공개로 남기면 목록에는 「비밀글이에요」만 보인다
   await qna.getByRole("button", { name: "문의하기" }).click();
   await dlg.getByLabel("제목").fill("비밀 문의");
   await dlg.getByLabel("내용").fill("개인 정보가 들어 있어요");
   await dlg.getByLabel(/비공개로 남겨요/).check();
   await dlg.getByRole("button", { name: "문의 남기기" }).click();
-  await expect(qna.getByText("🔒 비밀글입니다")).toBeVisible();
+  await expect(qna.getByText("🔒 비밀글이에요")).toBeVisible();
   await expect(qna.getByText("개인 정보가 들어 있어요")).toHaveCount(0);
 
   // 정리: 내 문의를 지운다(답변이 없어 지울 수 있다)

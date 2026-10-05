@@ -39,7 +39,7 @@ const row = (page: Page, label: string) => page.getByTestId("price-row").filter(
 test("채널 11종 단가가 이름으로 보이고, 단가 변경(바로·예정)과 입력 검사가 된다", async ({ page }) => {
   await open(page, superEmail);
   await expect(page.getByTestId("price-row")).toHaveCount(11);
-  await expect(row(page, "거래 메일(월 제공량 초과분)")).toBeVisible();
+  await expect(row(page, "주문·배송 안내 메일(무료 수량을 넘은 것)")).toBeVisible();
   await expect(page.locator("main")).not.toContainText("MAIL_TRANSACTIONAL");
   await expect(page.locator("main")).not.toContainText("IDENTITY_VERIFICATION");
   const align = await page.locator(".tbl td").first().evaluate((el) => getComputedStyle(el).textAlign);
@@ -59,7 +59,7 @@ test("채널 11종 단가가 이름으로 보이고, 단가 변경(바로·예�
   const future = new Date(Date.now() + 3 * 86_400_000 + 9 * 3_600_000).toISOString().slice(0, 16);
   await row(page, "단문 문자").getByRole("button", { name: "변경" }).click();
   await dialog.getByLabel("단가").fill("20");
-  await dialog.getByLabel("적용 예정 시각").fill(future);
+  await dialog.getByLabel("바뀌는 시각").fill(future);
   await dialog.getByRole("button", { name: "저장" }).click();
   await expect(dialog).toHaveCount(0);
   const sms = row(page, "단문 문자");
@@ -92,18 +92,18 @@ test("플랫폼 메일 한도 저장과 충전 스위치: 확인 창을 거치�
 
   await page.getByLabel("하루 한도").fill("abc");
   await page.getByRole("button", { name: "한도 저장" }).click();
-  await expect(page.locator(".err[role=alert]")).toHaveText("한도는 0 이상의 정수로 입력해 주십시오.");
+  await expect(page.locator(".err[role=alert]")).toHaveText("한도는 0 이상의 숫자로 입력해 주십시오.");
 
-  await page.getByRole("button", { name: "충전 켜기" }).click();
+  await page.getByRole("button", { name: "선불 충전 사용 켜기" }).click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog.getByRole("heading", { name: "충전을 켜시겠습니까?" })).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "선불 충전 사용을 켜시겠습니까?" })).toBeVisible();
   await dialog.getByRole("button", { name: "취소" }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByTestId("charging-state")).toHaveText("꺼짐");
 
   // 정기 작업이 돌지 않는 시험 DB에서는 켜기가 거절된다(409)
-  await page.getByRole("button", { name: "충전 켜기" }).click();
-  await dialog.getByRole("button", { name: "충전 켜기" }).click();
+  await page.getByRole("button", { name: "선불 충전 사용 켜기" }).click();
+  await dialog.getByRole("button", { name: "선불 충전 사용 켜기" }).click();
   await expect(dialog.getByRole("alert")).toHaveText("발송·이용 충전 정기 작업이 아직 돌지 않아 충전을 켤 수 없습니다");
   await expect(dialog.getByRole("button", { name: "취소" })).toBeEnabled();
   await dialog.getByRole("button", { name: "취소" }).click();
@@ -114,14 +114,14 @@ test("플랫폼 메일 한도 저장과 충전 스위치: 확인 창을 거치�
   const now = new Date();
   await db.opsHeartbeat.create({ data: { instance: `e2e-${run}`, generation: "g", job: JOB, lastRunAt: now, lastStatus: "done", lastOkAt: now } });
   try {
-    await page.getByRole("button", { name: "충전 켜기" }).click();
-    await dialog.getByRole("button", { name: "충전 켜기" }).click();
+    await page.getByRole("button", { name: "선불 충전 사용 켜기" }).click();
+    await dialog.getByRole("button", { name: "선불 충전 사용 켜기" }).click();
     await expect(dialog).toHaveCount(0);
     await expect(page.getByTestId("charging-state")).toHaveText("켜짐");
     expect((await db.platformMessageSetting.findUniqueOrThrow({ where: { id: 1 } })).chargingEnabled).toBe(true);
-    await page.getByRole("button", { name: "충전 끄기" }).click();
-    await expect(dialog.getByRole("heading", { name: "충전을 끄시겠습니까?" })).toBeVisible();
-    await dialog.getByRole("button", { name: "충전 끄기" }).click();
+    await page.getByRole("button", { name: "선불 충전 사용 끄기" }).click();
+    await expect(dialog.getByRole("heading", { name: "선불 충전 사용을 끄시겠습니까?" })).toBeVisible();
+    await dialog.getByRole("button", { name: "선불 충전 사용 끄기" }).click();
     await expect(dialog).toHaveCount(0);
     await expect(page.getByTestId("charging-state")).toHaveText("꺼짐");
     expect((await db.platformMessageSetting.findUniqueOrThrow({ where: { id: 1 } })).chargingEnabled).toBe(false);

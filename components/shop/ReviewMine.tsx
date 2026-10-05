@@ -89,7 +89,7 @@ export default function ReviewMine({ slug }: { slug: string }) {
       <section className="card shop-card col" style={{ gap: 12 }}>
         <span className="t-l1">내 리뷰를 불러오지 못했어요</span>
         <button className="btn btn-sm" type="button" style={{ alignSelf: "flex-start" }} onClick={() => void load()}>
-          다시 시도
+          다시 불러오기
         </button>
       </section>
     );

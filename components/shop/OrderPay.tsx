@@ -71,7 +71,7 @@ export default function OrderPay({ slug, orderId, amount, dueAt }: { slug: strin
         goodsName,
         returnUrl,
         fnError: (e: { errorMsg?: string } | undefined) => {
-          setError(e?.errorMsg ? `결제 창을 열지 못했어요. ${e.errorMsg}` : "결제 창을 열지 못했어요. 잠시 뒤 다시 해 주세요");
+          setError(e?.errorMsg ? `결제 창을 열지 못했어요. 잠시 뒤 다시 눌러 주세요. 계속 안 되면 판매자에게 문의해 주세요` : "결제 창을 열지 못했어요. 잠시 뒤 다시 눌러 주세요. 계속 안 되면 판매자에게 문의해 주세요");
           setBusy(false);
         },
       });

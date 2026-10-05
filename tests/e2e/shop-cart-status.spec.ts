@@ -45,7 +45,7 @@ test("담은 뒤 가격이 바뀌면 안내가 뜨고, 확인하면 숨고, 또 
   const tag = page.locator(".cart-price-tag");
   await expect(tag).toContainText("담은 뒤 가격이 올랐어요");
   await expect(page.getByText(/담은 뒤 가격이 바뀐 상품이 1개 있어요/)).toBeVisible();
-  await tag.getByRole("button", { name: "확인" }).click();
+  await tag.getByRole("button", { name: "바뀐 가격 확인했어요" }).click();
   await expect(page.locator(".cart-price-tag")).toHaveCount(0);
   await page.reload();
   await expect(page.locator(".cart-price-tag")).toHaveCount(0); // 이 기기에 기억
