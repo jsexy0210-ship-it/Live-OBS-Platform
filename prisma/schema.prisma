@@ -118,6 +118,13 @@ model Seller {
   orderItems               OrderItem[]
   orderConsents            OrderConsent[]
   orderPolicy              SellerOrderPolicy?
+  messageBalance           SellerMessageBalance?
+  messageLedger            SellerMessageLedger[]
+  messageFeeConsents       SellerMessageFeeConsent[]
+  messageCharges           MessageCharge[]
+  overlayLayouts           OverlayLayout[]
+  overlayTemplates         OverlayTemplate[]
+  mailDeliveries           MailDelivery[]
   memberPolicy             SellerMemberPolicy?
   rejoinBlocks             BuyerRejoinBlock[]
   purchaseRestrictions     BuyerPurchaseRestriction[]
@@ -126,6 +133,8 @@ model Seller {
   shipments                Shipment[]
   orderStatusHistories     OrderStatusHistory[]
   broadcastSessions        BroadcastSession[]
+  youtubeChannel           YoutubeChannelLink?
+  youtubeLives             YoutubeLiveLink[]
   queueItems               QueueItem[]
   queueItemStatusHistories QueueItemStatusHistory[]
   hitCards                 HitCard[]
@@ -147,6 +156,13 @@ model Seller {
   productReviewImages      ProductReviewImage[]
   productReviewReports     ProductReviewReport[]
   productReviewPolicy      ProductReviewPolicy?
+  cartItems                CartItem[]
+  wishItems                WishItem[]
+  shopNotices              ShopNotice[]
+  returnRequests           ReturnRequest[]
+  returnRequestItems       ReturnRequestItem[]
+  returnRequestImages      ReturnRequestImage[]
+  bankAccount              SellerBankAccount?
 }
 
 model SellerDomain {
@@ -345,6 +361,10 @@ model BuyerMember {
   productReviews       ProductReview[]
   productReviewImages  ProductReviewImage[]
   productReviewReports ProductReviewReport[]
+  cartItems            CartItem[]
+  wishItems            WishItem[]
+  returnRequests       ReturnRequest[]
+  returnRequestImages  ReturnRequestImage[]
 
   @@unique([sellerId, id])
   @@index([sellerId, gradeId])
@@ -501,6 +521,9 @@ model Product {
   eventStartsAt      DateTime?          @db.Timestamptz(3)
   eventEndsAt        DateTime?          @db.Timestamptz(3)
   sortOrder          Int                @default(0)
+  // 상품 코드 번호(카페24식 자동 상품 코드, MASTER 결정 2026-10-04). 판매자별 1부터 순번, 화면·API는 「P」 + 7자리(P0000001).
+  // 넣을 때 0(기본)이면 DB 트리거(product_assign_code_no)가 ProductCodeCounter로 다음 번호를 매긴다. 지운 상품 번호도 다시 쓰지 않는다.
+  codeNo             Int                @default(0)
   createdAt          DateTime           @default(now()) @db.Timestamptz(3)
   deletedAt          DateTime?          @db.Timestamptz(3)
 
@@ -509,17 +532,31 @@ model Product {
   options    ProductOption[]
   orderItems OrderItem[]
   reviews    ProductReview[]
+  categories ProductCategory[]
+  detail     ProductDetail?
+  displayItems ShopDisplayItem[]
+  wishItems  WishItem[]
 
   @@unique([sellerId, id])
+  @@unique([sellerId, codeNo])
 }
 
+// 상품 사진(PR-A, 2026-10-04 대표님 지시). 첫 번째(sortOrder 0)가 대표 사진(썸네일). 상품당 10장(lib/server/products/images.ts).
+// 바이트는 공통 저장소(lib/server/storage, storageKey)에 두고 여기에는 형식·크기·해시만 둔다(저장 방식이 바뀌어도 이 표는 그대로).
 model ProductImage {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerId   String   @db.Uuid
-  productId  String   @db.Uuid
-  storageKey String
-  sortOrder  Int      @default(0)
-  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId    String   @db.Uuid
+  productId   String   @db.Uuid
+  storageKey  String   @unique
+  contentType String
+  byteSize    Int
+  width       Int
+  height      Int
+  sha256      String
+  // GALLERY: 상품 사진(10장, 첫 장이 대표), DETAIL: 상세 페이지 블록에 쓰는 사진(30장, ProductDetail.blocks가 가리킴)
+  kind        ProductImageKind @default(GALLERY)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
 
   seller  Seller  @relation(fields: [sellerId], references: [id])
   product Product @relation(fields: [sellerId, productId], references: [sellerId, id])
@@ -545,6 +582,7 @@ model ProductOption {
   product        Product         @relation(fields: [sellerId, productId], references: [sellerId, id])
   stockMovements StockMovement[]
   orderItems     OrderItem[]
+  cartItems      CartItem[]
 
   @@unique([sellerId, id])
   @@index([sellerId, productId])
@@ -555,6 +593,8 @@ enum StockMovementReason {
   CANCEL
   REFUND
   MANUAL
+  // 교환 상품을 다시 보낼 때 뺀 재고(교환·반품, shop-returns)
+  EXCHANGE
 }
 
 enum ActorType {
@@ -928,6 +968,8 @@ model ProductReviewReport {
   createdAt     DateTime            @default(now()) @db.Timestamptz(3)
   // 판매자가 확인해 공개한 시각. 현재 신고 수·보류 판정·사유 집계는 resolvedAt이 비어 있는 신고로만 계산한다
   resolvedAt    DateTime?           @db.Timestamptz(3)
+  // 신고자가 스스로 철회한 시각. 철회한 신고는 미확인 신고 수·사유 집계에서 빠지지만 행은 남는다(같은 리뷰를 다시 신고할 수 없다). 리뷰 상태는 바꾸지 않는다
+  withdrawnAt   DateTime?           @db.Timestamptz(3)
 
   seller      Seller        @relation(fields: [sellerId], references: [id])
   review      ProductReview @relation(fields: [sellerId, reviewId], references: [sellerId, id], onDelete: Cascade)
@@ -1015,6 +1057,8 @@ model Order {
   notifications   OrderNotification[]
   couponRedemption CouponRedemption?
   productReviews   ProductReview[]
+  returnRequests   ReturnRequest[]
+  payments         Payment[]
 
   @@unique([sellerId, id])
   @@unique([sellerId, orderNo])
@@ -1049,6 +1093,7 @@ model OrderItem {
   option     ProductOption @relation(fields: [sellerId, optionId], references: [sellerId, id])
   queueItems QueueItem[]
   review     ProductReview?
+  returnItems ReturnRequestItem[]
 
   @@unique([sellerId, id])
   @@index([sellerId, orderId])
@@ -1090,6 +1135,7 @@ model BroadcastSession {
   seller     Seller      @relation(fields: [sellerId], references: [id])
   queueItems QueueItem[]
   hitCards   HitCard[]
+  youtubeLives YoutubeLiveLink[]
 
   @@unique([sellerId, id])
   @@index([sellerId, status])
@@ -1310,6 +1356,11 @@ model SubscriptionPlan {
   trialStorageMb     Int      @default(1024)
   // 마스터 승인 시각부터의 체험 일수(오버레이 전용 7, 통합 0 = 체험 없음, ARCHITECTURE 4.8.0)
   trialDays          Int      @default(0)
+  // 월 거래 메일 제공량(통, KST 달 기준, 대표님 결정 2026-10-05). 넘는 거래 메일은 발송 충전 잔액에서 차감한다.
+  // 최고관리자만 바꾸고(billing.price), 적용 예정일을 두면 그때부터 새 값(next*). lib/server/mail/quota.ts
+  mailMonthlyQuota   Int       @default(100)
+  nextMailQuota      Int?
+  nextMailQuotaAt    DateTime? @db.Timestamptz(3)
   createdAt          DateTime @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime @updatedAt @db.Timestamptz(3)
 
@@ -1948,4 +1999,649 @@ model AutomationShopRevocation {
   revokedAt DateTime @db.Timestamptz(3)
 
   @@id([sellerId, shopKey])
+}
+
+// 쇼핑몰 카테고리(SA-015, 2026-10-04 대표님 지시). 2단까지: 대분류(parentId 없음) 아래 소분류. 순서는 같은 부모 안에서 sortOrder.
+// visible=false면 구매자 쇼핑몰에 보이지 않는다(대분류를 끄면 그 아래 소분류도 안 보인다). 삭제는 행을 지운다(지난 주문이 참조하지 않음).
+// 판매자 격리: 부모·상품 연결은 (sellerId, id) 복합 키로만 잇는다. 값 범위는 lib/server/shop-category/rules.ts.
+model ShopCategory {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId  String   @db.Uuid
+  parentId  String?  @db.Uuid
+  name      String
+  visible   Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  parent   ShopCategory?     @relation("ShopCategoryTree", fields: [sellerId, parentId], references: [sellerId, id], onDelete: Restrict)
+  children ShopCategory[]    @relation("ShopCategoryTree")
+  products ProductCategory[]
+  displaySections ShopDisplaySection[]
+
+  @@unique([sellerId, id])
+  @@index([sellerId, parentId, sortOrder])
+}
+
+// 상품 ↔ 카테고리(여러 개 지정 가능). 카테고리를 지우면 연결도 지운다.
+model ProductCategory {
+  sellerId   String   @db.Uuid
+  productId  String   @db.Uuid
+  categoryId String   @db.Uuid
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  product  Product      @relation(fields: [sellerId, productId], references: [sellerId, id])
+  category ShopCategory @relation(fields: [sellerId, categoryId], references: [sellerId, id], onDelete: Cascade)
+
+  @@id([productId, categoryId])
+  @@index([sellerId, categoryId])
+}
+
+// 판매자별 마지막 상품 코드 번호(Product.codeNo). DB 트리거 product_assign_code_no만 올린다(행 잠금으로 판매자별 줄 세움).
+model ProductCodeCounter {
+  sellerId String @id @db.Uuid
+  lastNo   Int
+}
+
+// 구매자 장바구니(SH-004, 로그인 회원만). 옵션마다 한 줄(같은 옵션을 다시 담으면 수량을 더한다). 회원당 50줄, 줄당 1~99개.
+// 가격·재고·판매 상태는 담을 때 저장하지 않고 볼 때마다 지금 값으로 계산한다(shop-cart/service.ts). 회원 탈퇴 때 지운다.
+model CartItem {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String   @db.Uuid
+  buyerMemberId String   @db.Uuid
+  optionId      String   @db.Uuid
+  quantity      Int
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller        @relation(fields: [sellerId], references: [id])
+  member BuyerMember   @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id], onDelete: Cascade)
+  option ProductOption @relation(fields: [sellerId, optionId], references: [sellerId, id])
+
+  @@unique([buyerMemberId, optionId])
+  @@index([sellerId, buyerMemberId])
+  @@index([sellerId, optionId])
+}
+
+// 공통 이미지 저장소의 DB 드라이버 표(IMAGE_STORAGE=db, 대표님 결정 2026-10-04: 오브젝트 스토리지로 옮길 수 있게 하되 지금은 DB).
+// lib/server/storage/db.ts만 읽고 쓴다. storageKey = "db:" + id. 형식·크기·해시 CHECK는 마이그레이션 20261004250000_product_images.
+model StoredImage {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId    String   @db.Uuid
+  data        Bytes
+  contentType String
+  byteSize    Int
+  sha256      String
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([sellerId])
+}
+
+// 구매자 찜(SH-034, 로그인 회원만). 상품마다 한 줄, 회원당 200개. 가격·판매 상태는 볼 때마다 지금 값(shop-wish/service.ts). 회원 탈퇴 때 지운다.
+model WishItem {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String   @db.Uuid
+  buyerMemberId String   @db.Uuid
+  productId     String   @db.Uuid
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+
+  seller  Seller      @relation(fields: [sellerId], references: [id])
+  member  BuyerMember @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id], onDelete: Cascade)
+  product Product     @relation(fields: [sellerId, productId], references: [sellerId, id])
+
+  @@unique([buyerMemberId, productId])
+  @@index([sellerId, buyerMemberId, createdAt])
+  @@index([sellerId, productId])
+}
+
+enum ProductImageKind {
+  GALLERY
+  DETAIL
+}
+
+// 상품 상세 페이지(PR-B, 2026-10-04 대표님 지시). 카페24처럼 글·사진 블록을 순서대로 둔다. HTML은 저장하지 않는다.
+// blocks: [{ type: "text", text } | { type: "image", imageId }] 최대 30개. 검사·모양은 lib/server/products/detail.ts.
+model ProductDetail {
+  productId String   @id @db.Uuid
+  sellerId  String   @db.Uuid
+  blocks    Json
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  product Product @relation(fields: [sellerId, productId], references: [sellerId, id])
+
+  @@unique([sellerId, productId])
+}
+
+enum ShopNoticeKind {
+  NOTICE
+  FAQ
+}
+
+// 쇼핑몰 공지·자주 묻는 질문(SA-066 관리, SH-030 구매자 조회). 공지는 최신순, 질문은 sortOrder순(분류 category는 질문만).
+// 홈 띠 고정 공지는 쇼핑몰당 1개(부분 유니크 인덱스 ShopNotice_one_pinned_per_seller, 마이그레이션 SQL). 바꿀 때마다 로그 추적(shop-notice/service.ts).
+model ShopNotice {
+  id          String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId    String         @db.Uuid
+  kind        ShopNoticeKind
+  title       String
+  body        String
+  category    String?
+  isPinned    Boolean        @default(false)
+  isPublished Boolean        @default(true)
+  sortOrder   Int            @default(0)
+  createdAt   DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime       @default(now()) @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+
+  @@index([sellerId, kind, createdAt])
+}
+
+// ───────────── 교환·반품(shop-returns, SA-029 · SH-022-R) ─────────────
+
+enum ReturnKind {
+  RETURN
+  EXCHANGE
+}
+
+// 신청 → 접수 → 회수 완료 → 완료(반품은 환불 연결, 교환은 교환 발송). 신청 단계에서 거절하거나 구매자가 철회할 수 있다.
+enum ReturnStatus {
+  REQUESTED
+  ACCEPTED
+  RECEIVED
+  COMPLETED
+  REJECTED
+  CANCELLED
+}
+
+enum ReturnReason {
+  CHANGE_OF_MIND
+  DEFECTIVE
+  WRONG_ITEM
+  NOT_AS_DESCRIBED
+  OTHER
+}
+
+// 교환·반품 신청(주문당 진행 중인 신청은 1건: 부분 유니크 인덱스 ReturnRequest_one_active_per_order, 마이그레이션 SQL).
+// 반품은 주문 전체, 교환은 품목 단위(품목의 수량 전체). 환불은 기존 환불(refundOrder)을 부르고 실제 PG 취소는 결제 연결이 맡는다.
+model ReturnRequest {
+  id                     String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId               String       @db.Uuid
+  orderId                String       @db.Uuid
+  buyerMemberId          String       @db.Uuid
+  kind                   ReturnKind
+  status                 ReturnStatus @default(REQUESTED)
+  reason                 ReturnReason
+  reasonText             String       @default("")
+  // 접수할 때 판매자가 정한 사유 주체(구매자 사정이면 반품 배송비를 받는다)
+  fault                  RefundFault?
+  rejectReason           String?
+  // 구매자가 돌려보낸 송장
+  returnCourier          String?
+  returnTrackingNumber   String?
+  // 회수 완료 때 재고를 되돌렸는지
+  restocked              Boolean      @default(false)
+  // 교환 발송 송장
+  exchangeCourier        String?
+  exchangeTrackingNumber String?
+  // 반품 환불 결과(환불한 금액)
+  refundAmount           Int?
+  acceptedAt             DateTime?    @db.Timestamptz(3)
+  receivedAt             DateTime?    @db.Timestamptz(3)
+  completedAt            DateTime?    @db.Timestamptz(3)
+  rejectedAt             DateTime?    @db.Timestamptz(3)
+  cancelledAt            DateTime?    @db.Timestamptz(3)
+  createdAt              DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime     @default(now()) @db.Timestamptz(3)
+
+  seller      Seller               @relation(fields: [sellerId], references: [id])
+  order       Order                @relation(fields: [sellerId, orderId], references: [sellerId, id])
+  buyerMember BuyerMember          @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id])
+  items       ReturnRequestItem[]
+  images      ReturnRequestImage[]
+
+  @@unique([sellerId, id])
+  @@index([sellerId, status, createdAt])
+  @@index([sellerId, orderId])
+  @@index([sellerId, buyerMemberId, createdAt])
+}
+
+model ReturnRequestItem {
+  id              String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId        String @db.Uuid
+  returnRequestId String @db.Uuid
+  orderItemId     String @db.Uuid
+  quantity        Int
+
+  seller        Seller        @relation(fields: [sellerId], references: [id])
+  returnRequest ReturnRequest @relation(fields: [sellerId, returnRequestId], references: [sellerId, id], onDelete: Cascade)
+  orderItem     OrderItem     @relation(fields: [sellerId, orderItemId], references: [sellerId, id])
+
+  @@unique([returnRequestId, orderItemId])
+  @@index([sellerId, orderItemId])
+}
+
+// 신청 사진. 먼저 올리고(returnRequestId 없음) 신청할 때 붙인다. 붙지 않은 사진은 회원당 10장까지 두고 오래된 것부터 지운다.
+model ReturnRequestImage {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId        String   @db.Uuid
+  buyerMemberId   String   @db.Uuid
+  returnRequestId String?  @db.Uuid
+  data            Bytes
+  contentType     String
+  byteSize        Int
+  width           Int
+  height          Int
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+
+  seller        Seller         @relation(fields: [sellerId], references: [id])
+  buyerMember   BuyerMember    @relation(fields: [sellerId, buyerMemberId], references: [sellerId, id], onDelete: Cascade)
+  returnRequest ReturnRequest? @relation(fields: [sellerId, returnRequestId], references: [sellerId, id], onDelete: Cascade)
+
+  @@unique([sellerId, id])
+  @@index([sellerId, returnRequestId])
+  @@index([sellerId, buyerMemberId, returnRequestId])
+}
+
+// 상품 진열(SA-016, 2026-10-04 대표님 지시). 값 범위·검사는 lib/server/shop-display/service.ts.
+enum ShopDisplayKind {
+  RECOMMENDED
+  NEW
+  CATEGORY
+}
+
+// 쇼핑몰별 진열 설정 1행: 구매자 상품 목록의 기본 정렬(new·recommended·popular·low·high)
+model ShopDisplaySetting {
+  sellerId  String   @id @db.Uuid
+  listSort  String   @default("new")
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+}
+
+// 홈 진열 영역(켜기·끄기·순서). 추천·신상품은 쇼핑몰마다 하나씩, 카테고리 영역은 카테고리를 가리킨다(카테고리를 지우면 함께 지움).
+model ShopDisplaySection {
+  id         String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId   String          @db.Uuid
+  kind       ShopDisplayKind
+  categoryId String?         @db.Uuid
+  title      String
+  visible    Boolean         @default(true)
+  itemCount  Int             @default(8)
+  sortOrder  Int             @default(0)
+
+  category ShopCategory? @relation(fields: [sellerId, categoryId], references: [sellerId, id], onDelete: Cascade)
+
+  @@index([sellerId, sortOrder])
+}
+
+// 추천 상품(최대 20개, 순서대로). 상품을 지워도 행은 남고 구매자 화면에서는 빠진다.
+model ShopDisplayItem {
+  sellerId  String @db.Uuid
+  productId String @db.Uuid
+  sortOrder Int
+
+  product Product @relation(fields: [sellerId, productId], references: [sellerId, id])
+
+  @@id([sellerId, productId])
+  @@index([sellerId, sortOrder])
+}
+
+// ───────────── 구매자 주문 결제(PG, 기반-결제. 대표님 결정 2026-10-05: 나이스페이 테스트(샌드박스) 결제) ─────────────
+// 결제 시도 1건 = Payment 1행. id를 PG 주문번호(orderId)로 넘긴다(시도마다 고유).
+// 같은 주문은 승인 중·결제 완료·취소된 결제가 하나만 있을 수 있다(마이그레이션의 부분 유니크 인덱스, 두 번 승인 금지).
+enum PaymentStatus {
+  READY
+  APPROVING
+  PAID
+  FAILED
+  CANCELLED
+  PARTIAL_CANCELLED
+}
+
+enum PaymentCancelStatus {
+  REQUESTED
+  DONE
+  FAILED
+}
+
+model Payment {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId        String        @db.Uuid
+  orderId         String        @db.Uuid
+  provider        String
+  method          PaymentMethod
+  status          PaymentStatus @default(READY)
+  // 결제 시작 때 서버가 다시 계산한 주문 금액. 승인·인증 결과의 금액이 이 값과 다르면 승인하지 않는다.
+  amount          Int
+  // 취소 완료(DONE)된 금액 합
+  cancelledAmount Int           @default(0)
+  // PG 거래 번호(인증 뒤 받음)
+  pgTid           String?       @unique
+  failureCode     String?
+  approvedAt      DateTime?     @db.Timestamptz(3)
+  cancelledAt     DateTime?     @db.Timestamptz(3)
+  createdAt       DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime      @updatedAt @db.Timestamptz(3)
+
+  order   Order           @relation(fields: [sellerId, orderId], references: [sellerId, id])
+  cancels PaymentCancel[]
+
+  @@unique([sellerId, id])
+  @@index([sellerId, orderId])
+  @@index([status, updatedAt])
+}
+
+// 결제 취소 요청(환불과 같은 트랜잭션에서 남기고, PG 호출은 커밋 뒤 processPaymentCancel이 한다). id를 PG 취소 주문번호로 넘긴다.
+model PaymentCancel {
+  id             String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId       String              @db.Uuid
+  paymentId      String              @db.Uuid
+  amount         Int
+  reason         String
+  // 같은 사유로 두 번 취소하지 않게(예: refund:{orderId})
+  idempotencyKey String
+  status         PaymentCancelStatus @default(REQUESTED)
+  pgCancelledTid String?
+  failureCode    String?
+  attempts       Int                 @default(0)
+  lastTriedAt    DateTime?           @db.Timestamptz(3)
+  doneAt         DateTime?           @db.Timestamptz(3)
+  createdAt      DateTime            @default(now()) @db.Timestamptz(3)
+
+  payment Payment @relation(fields: [sellerId, paymentId], references: [sellerId, id])
+
+  @@unique([paymentId, idempotencyKey])
+  @@index([status, lastTriedAt])
+}
+
+// 발송 충전 잔액(대표님 결정 2026-10-05, docs/terms/SELLER_MESSAGE_FEE_NOTICE.md, lib/server/messaging/balance.ts).
+// 파트너스당 1행. 유료(직접 충전, 환불 대상)와 무상(이벤트·보상, 환불 안 함)을 나눠 두고 둘 다 음수가 될 수 없다.
+model SellerMessageBalance {
+  sellerId            String   @id @db.Uuid
+  paidBalance         Int      @default(0)
+  freeBalance         Int      @default(0)
+  // 잔액(유료 + 무상)이 이 금액(원) 아래로 내려가면 알린다. 0이면 알리지 않는다.
+  lowBalanceThreshold Int      @default(0)
+  updatedAt           DateTime @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+}
+
+// 비용이 드는 발송·조회 채널(서식 1절)
+enum MessageChannel {
+  // 월 제공량을 넘은 거래 메일
+  MAIL_TRANSACTIONAL
+  // 광고·공지 대량 메일
+  MAIL_BULK
+  SMS
+  LMS
+  ALIMTALK
+  // 구매자 휴대폰 본인인증(쇼핑몰에서 켠 경우)
+  IDENTITY_VERIFICATION
+  // 배송 자동 조회(배송 완료 자동 처리를 켠 경우)
+  DELIVERY_TRACKING
+}
+
+enum MessageLedgerType {
+  // 유료 충전(+유료)
+  CHARGE
+  // 무상 지급(+무상)
+  GRANT
+  // 발송 차감(−). 보내기 전에 잡아 두고(PENDING) 성공하면 SUCCEEDED, 실패하면 되돌린다(REVERSED).
+  DEBIT
+  // 유료 잔액 환불(−유료)
+  REFUND
+}
+
+enum MessageLedgerStatus {
+  PENDING
+  SUCCEEDED
+  REVERSED
+}
+
+// 발송 충전 원장. paidAmount·freeAmount는 잔액 변화(차감은 음수). 같은 요청 키(idempotencyKey)는 되돌린 것을 빼고 한 건만(부분 유니크, 마이그레이션).
+model SellerMessageLedger {
+  id             String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId       String              @db.Uuid
+  type           MessageLedgerType
+  status         MessageLedgerStatus
+  channel        MessageChannel?
+  quantity       Int                 @default(1)
+  unitPrice      Int?
+  paidAmount     Int
+  freeAmount     Int
+  idempotencyKey String
+  reason         String?
+  actorType      ActorType
+  actorId        String?             @db.Uuid
+  createdAt      DateTime            @default(now()) @db.Timestamptz(3)
+  finishedAt     DateTime?           @db.Timestamptz(3)
+
+  seller         Seller         @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  mailDeliveries MailDelivery[]
+
+  @@index([sellerId, createdAt])
+}
+
+// 발송 비용 안내 동의(서식 7절). 첫 충전 전에 받고, 서식 버전이 바뀌면 다시 받는다.
+model SellerMessageFeeConsent {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId     String   @db.Uuid
+  version      String
+  sellerUserId String   @db.Uuid
+  consentedAt  DateTime @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@unique([sellerId, version])
+}
+
+// 채널별 단가(원, 기본 0원). 바꿀 때 적용 예정일을 두면 그때부터 새 단가(pending*). 최고관리자만(billing.price).
+model MessageChannelPrice {
+  channel            MessageChannel @id
+  unitPrice          Int            @default(0)
+  pendingUnitPrice   Int?
+  pendingEffectiveAt DateTime?      @db.Timestamptz(3)
+  updatedAt          DateTime       @updatedAt @db.Timestamptz(3)
+}
+
+// 플랫폼 발송 설정(한 행, id = 1). 충전 기능 스위치(서식 값·법률 검토 전에는 꺼 둠)와 플랫폼 메일 무료 한도(메일 서비스 하루·월).
+model PlatformMessageSetting {
+  id                   Int      @id @default(1)
+  chargingEnabled      Boolean  @default(false)
+  platformDailyLimit   Int      @default(100)
+  platformMonthlyLimit Int      @default(3000)
+  updatedAt            DateTime @updatedAt @db.Timestamptz(3)
+}
+
+enum MailDeliveryStatus {
+  // 보내는 중(한도 계산에 넣는다)
+  PENDING
+  SENT
+  // 보내지 못함(한도에서 빼고, 차감했으면 되돌린다)
+  FAILED
+  // 제공량을 넘었는데 충전 잔액이 모자라 보내지 않음(잔액 부족 미발송)
+  SKIPPED_BALANCE
+  // 플랫폼 전체 무료 한도에 걸려 보내지 않음
+  SKIPPED_PLATFORM_LIMIT
+}
+
+// 메일 발송 기록(한 통에 한 행). 받는 사람 주소·내용은 남기지 않는다. sellerId가 없으면 플랫폼이 보낸 메일(플랫폼 한도에만 센다).
+// month는 KST 달(YYYY-MM). charged는 제공량 밖이라 충전 잔액에서 차감한(또는 하려던) 통, ledgerId는 그 차감.
+model MailDelivery {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId          String?            @db.Uuid
+  kind              String
+  bulk              Boolean            @default(false)
+  refId             String?
+  month             String
+  status            MailDeliveryStatus
+  charged           Boolean            @default(false)
+  ledgerId          String?            @db.Uuid
+  providerMessageId String?
+  createdAt         DateTime           @default(now()) @db.Timestamptz(3)
+  finishedAt        DateTime?          @db.Timestamptz(3)
+
+  seller Seller?              @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  ledger SellerMessageLedger? @relation(fields: [ledgerId], references: [id])
+
+  @@index([sellerId, month, status])
+  @@index([createdAt, status])
+}
+
+// 유튜브 연동(YouTube Data API v3, API 키만·공개 방송 읽기만). 규칙·할당량은 lib/server/youtube/.
+// 판매자 채널 연결(판매자당 1개). uploadsPlaylistId로 새 방송을 찾는다(search.list 100단위는 쓰지 않음).
+model YoutubeChannelLink {
+  sellerId          String    @id @db.Uuid
+  channelId         String
+  title             String
+  uploadsPlaylistId String
+  connectedAt       DateTime  @default(now()) @db.Timestamptz(3)
+  // 마지막으로 새 방송을 찾아본 시각(자동 찾기 간격 계산)
+  checkedAt         DateTime? @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+}
+
+enum YoutubeLiveStatus {
+  UPCOMING
+  LIVE
+  ENDED
+  UNLINKED
+}
+
+// 판매자 방송 영상 연결. 진행 중 연결(UPCOMING·LIVE)은 판매자당 1개(마이그레이션 SQL 부분 유니크 인덱스).
+// broadcastSessionId는 유튜브가 진행으로 바뀔 때 자동 시작했거나 이미 켜져 있던 방송.
+model YoutubeLiveLink {
+  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId           String            @db.Uuid
+  videoId            String
+  title              String
+  status             YoutubeLiveStatus @default(UPCOMING)
+  liveChatId         String?
+  scheduledStartAt   DateTime?         @db.Timestamptz(3)
+  actualStartAt      DateTime?         @db.Timestamptz(3)
+  actualEndAt        DateTime?         @db.Timestamptz(3)
+  broadcastSessionId String?           @db.Uuid
+  // 이 연결이 방송을 자동으로 시작했는지(수동으로 켜 둔 방송에 붙었으면 false)
+  autoStarted        Boolean           @default(false)
+  checkedAt          DateTime?         @db.Timestamptz(3)
+  // 채팅 수집(기본 꺼짐, 파트너스가 방송마다 켠다). 다음 조회 시각·간격·페이지 토큰은 sync.ts가 관리한다.
+  chatEnabled        Boolean           @default(false)
+  chatPageToken      String?
+  chatNextPollAt     DateTime?         @db.Timestamptz(3)
+  chatIntervalMs     Int?
+  createdAt          DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime          @updatedAt @db.Timestamptz(3)
+
+  seller       Seller               @relation(fields: [sellerId], references: [id])
+  broadcast    BroadcastSession?    @relation(fields: [sellerId, broadcastSessionId], references: [sellerId, id])
+  chatMessages YoutubeChatMessage[]
+
+  @@unique([sellerId, id])
+  @@index([status])
+  @@index([sellerId, createdAt])
+}
+
+// 수집한 유튜브 채팅(주문 닉네임 확인용). 표시 이름·본문 앞 200자만, 30일 지나면 지운다(lib/server/youtube/chat.ts).
+// 같은 메시지는 판매자마다 유튜브 메시지 id로 한 번만 저장한다(같은 방송을 두 판매자가 연결해도 각자 저장).
+model YoutubeChatMessage {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId        String   @db.Uuid
+  liveLinkId      String   @db.Uuid
+  messageId       String
+  authorChannelId String
+  authorName      String
+  text            String
+  publishedAt     DateTime @db.Timestamptz(3)
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+
+  liveLink YoutubeLiveLink @relation(fields: [sellerId, liveLinkId], references: [sellerId, id])
+
+  @@unique([sellerId, messageId])
+  @@index([sellerId, liveLinkId, publishedAt])
+  @@index([createdAt])
+}
+
+// 하루 할당량 사용(태평양 시각 날짜 기준, 구글 할당량 초기화와 같음). scope는 "all"(전체 합) 또는 판매자 id.
+model YoutubeQuotaUsage {
+  day   String
+  scope String
+  units Int    @default(0)
+
+  @@id([day, scope])
+}
+
+enum MessageChargeStatus {
+  // 결제 요청 전·응답 기다림(응답이 끊기면 대조로 확정)
+  PENDING
+  PAID
+  FAILED
+}
+
+// 발송 충전 결제(구독 카드 빌링키로 결제, 테스트 모드 공급자만, lib/server/messaging/charge.ts). id를 PG 주문 번호로 넘긴다.
+// 결제가 확정되면 같은 트랜잭션에서 유료 잔액을 늘리고 원장 CHARGE(키 charge:{id})를 남긴다.
+model MessageCharge {
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId          String              @db.Uuid
+  sellerUserId      String              @db.Uuid
+  amount            Int
+  status            MessageChargeStatus @default(PENDING)
+  // 같은 충전 요청을 두 번 보내도 한 번만 결제
+  idempotencyKey    String
+  // 충전 때 동의한 안내 서식 버전
+  noticeVersion     String
+  providerPaymentId String?
+  receiptUrl        String?
+  failureReason     String?
+  createdAt         DateTime            @default(now()) @db.Timestamptz(3)
+  finishedAt        DateTime?           @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@unique([sellerId, idempotencyKey])
+  @@index([status, createdAt])
+}
+
+// 무통장 입금 계좌(판매자당 1행, 기반-결제 2단계). 구매자가 무통장 입금을 고르면 이 계좌를 안내한다.
+// 계좌번호는 구매자에게 보여 주는 값이라 암호화하지 않지만, 로그 추적에는 끝 4자리만 남긴다.
+model SellerBankAccount {
+  sellerId      String   @id @db.Uuid
+  bankName      String
+  accountNumber String
+  accountHolder String
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id])
+}
+
+// 오버레이 레이아웃(SA-051 편집기, OV-001·002, lib/server/overlay/layout.ts). 판매자·화면 비율(9x16·16x9)마다 1행.
+// widgets는 서버가 허용 목록으로 검사한 위젯 배열(위치·크기는 화면 대비 %). version은 저장할 때마다 1씩 올리고, 저장 요청의
+// expectedVersion과 다르면 거절한다(두 창에서 고칠 때 덮어쓰기 방지). 없으면 기본 템플릿(queue_focus)으로 본다.
+model OverlayLayout {
+  sellerId    String   @db.Uuid
+  aspect      String
+  templateKey String
+  widgets     Json
+  version     Int      @default(1)
+  updatedById String?  @db.Uuid
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@id([sellerId, aspect])
+}
+
+// 「내 템플릿으로 저장」(판매자당 최대 20개). 기본 템플릿 3종은 코드에 있다(layout.ts BUILTIN_TEMPLATES).
+model OverlayTemplate {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId  String   @db.Uuid
+  name      String
+  aspect    String
+  widgets   Json
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  seller Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@index([sellerId, createdAt])
 }

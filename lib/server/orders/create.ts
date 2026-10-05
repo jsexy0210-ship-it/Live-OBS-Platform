@@ -1,5 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 import { writeAudit } from "../audit/log";
+import { MAX_NICKNAME_LENGTH } from "../buyers/signup";
+import { cleanText } from "../text/clean";
 import { recordOrderAddress } from "../buyers/addresses";
 import { eventOf, orderUnitPrice } from "../products/event";
 import { sellerHasFeature } from "../billing/features";
@@ -34,6 +36,8 @@ export type CreateOrderInput = {
   shippingAddress: unknown;
   saveAddress?: unknown;
   couponId?: unknown;
+  // 이 주문에만 쓰는 방송 닉네임(선택, 1~20자). 비우면 회원 방송 닉네임. 회원 닉네임 자체는 바꾸지 않는다(MASTER 결정 2026-10-05).
+  orderNickname?: unknown;
   meta?: { ip?: string | null; userAgent?: string | null };
 };
 
@@ -46,6 +50,7 @@ export type CreateOrderFailure =
   | "out_of_stock"
   | "reward_use_not_supported"
   | "invalid_shipping_address"
+  | "invalid_order_nickname" // 주문 닉네임이 1~20자가 아니거나 쓸 수 없는 글자
   | "invalid_amount" // 단가 1원 미만(음수 추가금 등)·합계가 정수 범위를 넘음
   | "purchase_restricted" // 미입금 자동 취소가 쌓여 주문이 막힌 구매자(overdue.ts)
   | OrderCouponFailure // 쿠폰을 쓸 수 없음·적용 상품 없음·최소 주문 금액 미달(shop-coupons)
@@ -73,6 +78,14 @@ function parseItems(raw: unknown): Line[] | null {
   return lines;
 }
 
+// 주문 닉네임: 없거나 빈 값(공백만 포함)이면 null(회원 닉네임 사용), 가입 닉네임과 같은 글자 검사(앞뒤 공백 제거·제어문자 등 금지, 20자)를 통과하면 그 값, 아니면 false.
+export function parseOrderNickname(raw: unknown): string | null | false {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== "string") return false;
+  if (raw.trim() === "") return null;
+  return cleanText(raw, MAX_NICKNAME_LENGTH) ?? false;
+}
+
 export async function createOrder(db: PrismaClient, input: CreateOrderInput): Promise<CreateOrderResult> {
   // 판매자: 운영 중이고 잠기지 않았고 스토어 운영 기능 권한이 있어야 한다(이용 판단은 DB 시계, ARCHITECTURE 4.8.0)
   const seller = await db.seller.findUnique({ where: { id: input.sellerId }, select: { status: true } });
@@ -92,9 +105,11 @@ export async function createOrder(db: PrismaClient, input: CreateOrderInput): Pr
   const address = parseShippingAddress(input.shippingAddress);
   if (!address) return { ok: false, reason: "invalid_shipping_address" };
   if (input.saveAddress !== undefined && typeof input.saveAddress !== "boolean") return { ok: false, reason: "invalid_shipping_address" };
+  const orderNickname = parseOrderNickname(input.orderNickname);
+  if (orderNickname === false) return { ok: false, reason: "invalid_order_nickname" };
 
   try {
-    return await createInTransaction(db, input, lines, address);
+    return await createInTransaction(db, input, lines, address, orderNickname);
   } catch (e) {
     if (e instanceof OutOfStockAtOrder) return { ok: false, reason: "out_of_stock" };
     if (e instanceof CouponTaken) return { ok: false, reason: "coupon_unavailable" };
@@ -109,6 +124,7 @@ async function createInTransaction(
   input: CreateOrderInput,
   lines: Line[],
   address: NonNullable<ReturnType<typeof parseShippingAddress>>,
+  orderNickname: string | null,
 ): Promise<CreateOrderResult> {
   return db.$transaction(async (tx) => {
     // 같은 판매자의 주문 번호를 한 줄로 매긴다
@@ -178,7 +194,7 @@ async function createInTransaction(
         orderNo,
         buyerMemberId: member.id,
         status: "PENDING_PAYMENT",
-        broadcastNicknameSnapshot: member.broadcastNickname,
+        broadcastNicknameSnapshot: orderNickname ?? member.broadcastNickname,
         totalAmount,
         shippingFee,
         returnFeeSnapshot: policy.returnFee,

@@ -49,7 +49,7 @@ test("발급한 주소가 열리고 방송·개봉 변화가 바로 반영되며
   // 방송 시작 → 대기 3건이 순서대로
   expect((await call(page, "/api/seller/broadcast/start", "POST", { title: "오버레이 e2e" })).status).toBe(200);
   const queue = ov.getByTestId("overlay-queue");
-  await expect(queue.locator(".ovl-q-nm")).toHaveText([A, B, C], { timeout: 5000 });
+  await expect(queue.locator(".ow-nm2")).toHaveText([A, B, C], { timeout: 5000 });
   await expect(ov.getByTestId("overlay-idle")).toHaveCount(0);
 
   // 개봉 시작 → 현재 주문 카드에 A, 대기에서 빠짐
@@ -57,7 +57,7 @@ test("발급한 주소가 열리고 방송·개봉 변화가 바로 반영되며
   const first = snap.data.waiting.find((w) => w.nicknameSnapshot === A)!;
   expect((await call(page, `/api/seller/queue/${first.id}/start`, "POST", { expectedVersion: first.version })).status).toBe(200);
   await expect(ov.getByTestId("overlay-opening")).toContainText(A, { timeout: 5000 });
-  await expect(queue.locator(".ovl-q-nm")).toHaveText([B, C]);
+  await expect(queue.locator(".ow-nm2")).toHaveText([B, C]);
   if (SHOTS) await ov.screenshot({ path: "tests/e2e/screenshots/OV-001-1080x1920.png", omitBackground: true });
 
   // 가로형도 같은 상태
@@ -65,7 +65,7 @@ test("발급한 주소가 열리고 방송·개봉 변화가 바로 반영되며
   await land.setViewportSize({ width: 1920, height: 1080 });
   await land.goto(`/overlay/${token}?ratio=16x9`);
   await expect(land.getByTestId("overlay-opening")).toContainText(A);
-  await expect(land.getByTestId("overlay-queue").locator(".ovl-q-nm")).toHaveText([B, C]);
+  await expect(land.getByTestId("overlay-queue").locator(".ow-nm2")).toHaveText([B, C]);
   if (SHOTS) await land.screenshot({ path: "tests/e2e/screenshots/OV-002-1920x1080.png", omitBackground: true });
   await land.close();
 
@@ -85,7 +85,7 @@ test("발급한 주소가 열리고 방송·개봉 변화가 바로 반영되며
 
 test("없는 토큰 주소는 주문을 보여 주지 않고 주소 확인 안내만 보인다", async ({ page }) => {
   await page.goto("/overlay/not-a-real-token");
-  await expect(page.getByTestId("overlay-gone")).toHaveText("오버레이 주소가 바뀌었어요. 파트너스 관리자에서 새 주소를 넣어 주세요");
+  await expect(page.getByTestId("overlay-gone")).toHaveText("지금은 오버레이를 보여 드릴 수 없어요. 파트너스 관리자에서 주소를 확인해 주세요");
   await expect(page.getByTestId("overlay-queue")).toHaveCount(0);
 });
 

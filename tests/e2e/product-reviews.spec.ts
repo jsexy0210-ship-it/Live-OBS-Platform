@@ -66,6 +66,8 @@ test.describe.serial("SH-029 리뷰 쓰기 · SA-048 리뷰 관리", () => {
     await expect(page.getByRole("button", { name: "리뷰 올리기" })).toBeDisabled();
     await page.getByRole("radio", { name: "5점" }).click();
     await expect(page.getByText("아주 좋아요")).toBeVisible();
+    await expect(page.getByText("JPG·PNG·WEBP, 한 장에 5MB까지 올릴 수 있어요")).toBeVisible();
+    await expect(page.getByLabel("리뷰 사진")).toHaveAttribute("accept", "image/jpeg,image/png,image/webp");
 
     const original = await phonePhoto(page);
     expect(original.includes(Buffer.from("GPSLatitude"))).toBe(true);
@@ -106,7 +108,7 @@ test.describe.serial("SH-029 리뷰 쓰기 · SA-048 리뷰 관리", () => {
     await page.goto(`/seller/login?next=${encodeURIComponent("/seller/reviews")}`);
     await submitSellerLogin(page, "demo-owner@example.com", PASSWORD);
     await expect(page).toHaveURL(/\/seller\/reviews$/);
-    await expect(page.getByRole("link", { name: "리뷰", exact: true })).toHaveClass(/on/);
+    await expect(page.getByRole("link", { name: "상품 리뷰", exact: true })).toHaveClass(/on/);
     const row = page.getByTestId("review-row").first();
     await expect(row).toContainText("브레이크 때 뽑힌 카드");
     await shots(page, "sa048-list");
@@ -152,6 +154,7 @@ test.describe.serial("SH-029 리뷰 쓰기 · SA-048 리뷰 관리", () => {
       let dlg = await open();
       const x = dlg.getByRole("button", { name: "닫기" });
       await expect(x).toBeVisible();
+      expect(await dlg.evaluate((el) => getComputedStyle(el).borderRadius)).toBe("8px");
       const [box, xb] = [await dlg.boundingBox(), await x.boundingBox()];
       expect(xb!.x + xb!.width).toBeGreaterThan(box!.x + box!.width - 24);
       expect(xb!.y).toBeLessThan(box!.y + 24);

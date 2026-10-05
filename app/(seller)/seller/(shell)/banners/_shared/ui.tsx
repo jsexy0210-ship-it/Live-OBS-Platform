@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { apiUpload } from "../../../../../../components/seller/api";
 import { useRef, useState } from "react";
+import { normalizeLink, resolveLink } from "../../../../../../lib/server/shop-content/link";
 import "./shop-content.css";
 
 // 홈 배너 관리(SA-064)·이벤트 팝업 관리(SA-065)가 함께 쓰는 화면 조각. 파트너스 관리자 문구는 명사형·합니다체(2026-10-04 대표님 지시).
@@ -417,3 +418,18 @@ export function ConfirmDelete({ title, body, busy, onCancel, onConfirm }: { titl
 
 export const errorText = (r: { status: number; message?: string }, fallback: string) =>
   r.message ?? (r.status === 0 ? "연결이 끊겼습니다. 인터넷 연결을 확인해 주십시오" : r.status === 403 ? "변경 권한이 없습니다" : r.status === 402 ? "이용 기간이 끝나 변경할 수 없습니다" : fallback);
+
+// 미리보기 링크: 입력값을 구매자 화면과 같은 규칙으로 바꾼다(잘못된 값은 링크 없음).
+export function previewLink(slug: string, raw: string) {
+  const n = normalizeLink(raw);
+  return n.ok ? resolveLink(slug, n.value) : null;
+}
+
+// 미리보기 안에서는 링크를 눌러도 이동하지 않는다.
+export function PreviewFrame({ children, ...rest }: { children: React.ReactNode } & React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div {...rest} onClickCapture={(e) => (e.target as HTMLElement).closest("a") && e.preventDefault()}>
+      {children}
+    </div>
+  );
+}

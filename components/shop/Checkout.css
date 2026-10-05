@@ -1,0 +1,120 @@
+/* 주문서(CheckoutView.tsx). 표·값은 왼쪽 정렬, 크기 규칙은 styles/shop.css 토큰 */
+.co-main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.co-box {
+  padding: 16px;
+  border: 1px solid var(--wds-line-solid-normal);
+  border-radius: var(--shop-r);
+}
+.co-box h2 {
+  margin: 0 0 12px;
+  font-size: 16px;
+}
+.co-box h2 span {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--wds-label-alternative);
+}
+.co-lines {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.co-lines li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--wds-line-solid-neutral);
+}
+.co-lines li:first-child {
+  border-top: 0;
+}
+.co-lines li > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.co-radios {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.co-radio {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+.co-radio > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.co-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.co-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.co-field label,
+.co-field > span {
+  font-size: 13px;
+  font-weight: 600;
+}
+.co-err {
+  font-size: 12px;
+  color: var(--wds-status-negative);
+}
+.co-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.co-check input {
+  margin-top: 3px;
+}
+.od-dl {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+}
+.od-dl > div {
+  display: flex;
+  gap: 16px;
+}
+.od-dl dt {
+  width: 80px;
+  flex: none;
+  color: var(--wds-label-alternative);
+}
+.od-dl dd {
+  margin: 0;
+}
+.od-p {
+  margin: 0 0 4px;
+}
+.co-box .cart-row + .cart-row {
+  margin-top: 8px;
+}
+/* 주문 상세 결제 칸: 안내 문구·계좌 안내·버튼 사이 여백 */
+.co-box > .cart-hint,
+.co-box > .od-dl,
+.co-box > .cart-msg {
+  margin: 12px 0;
+}

@@ -1,0 +1,206 @@
+/* 오버레이 위젯(OV-001·OV-002). 부모(무대)가 position:relative, 실제 픽셀 크기 기준. 색·크기는 속성에서 오는 CSS 변수로 덮는다 */
+.ow {
+  position: absolute;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px 26px;
+  overflow: hidden;
+  min-width: 0;
+  color: var(--w-body, #fff);
+  font-size: var(--w-fs, 30px);
+  font-weight: var(--w-fw, 700);
+  border-radius: var(--w-radius, 24px);
+  background: var(--w-card-bg, #0f0f10e6);
+  box-shadow: 0 0 0 2px var(--w-border, #ffffff1f);
+}
+.ow-current-order {
+  background: var(--w-card-bg, #5b3df6f0);
+  box-shadow: 0 0 0 3px var(--w-border, #fff);
+  justify-content: center;
+}
+.ow-glow {
+  box-shadow: 0 0 0 3px var(--w-border, #fff), 0 0 48px var(--w-accent, #ff9200aa);
+}
+.ow-h {
+  align-self: flex-start;
+  padding: 2px 12px;
+  border-radius: 10px;
+  font-size: 0.8em;
+  font-weight: 700;
+  color: var(--w-title, #ffffffb3);
+  background: var(--w-title-bg, transparent);
+}
+.ow-grade {
+  align-self: flex-start;
+  padding: 4px 12px;
+  border-radius: 10px;
+  background: var(--w-accent, #fff);
+  color: #4a2fd9;
+  font-size: 0.7em;
+  font-weight: 800;
+}
+.ow-nm {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 2em;
+  font-weight: 800;
+  line-height: 1.15;
+  color: var(--w-nick, #fff);
+}
+.ow-nm > i {
+  font-style: normal;
+}
+.ow-pd {
+  font-size: 1.1em;
+  font-weight: 600;
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ow-empty {
+  font-size: 0.9em;
+  opacity: 0.7;
+}
+.ow-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  overflow: hidden;
+}
+.ow-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 14px;
+  border-radius: 14px;
+  background: #ffffff14;
+  min-width: 0;
+}
+.ow-no {
+  flex: none;
+  width: 1.5em;
+  height: 1.5em;
+  border-radius: 10px;
+  background: #ffffff1f;
+  color: var(--w-q-wait-idx, inherit);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8em;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.ow-tx {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.ow-nm2 {
+  font-size: 1em;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--w-q-wait-nick, var(--w-nick, inherit));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ow-pd2 {
+  font-size: 0.75em;
+  font-weight: 500;
+  color: var(--w-q-wait-prod, inherit);
+  opacity: 0.8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ow-text {
+  display: block;
+  font-size: 1em;
+  white-space: pre-line;
+  overflow: hidden;
+}
+.ow-timer {
+  font-size: 2em;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--w-accent, #fff);
+}
+.ow-marquee > i {
+  display: inline-block;
+  padding-left: 100%;
+  animation: ow-flow var(--w-flow, 20s) linear infinite;
+}
+@keyframes ow-flow {
+  to {
+    transform: translateX(-100%);
+  }
+}
+.ow-ap-fade {
+  animation: ow-fade var(--w-appear, 0.7s) both;
+}
+.ow-ap-up {
+  animation: ow-up var(--w-appear, 0.7s) both;
+}
+.ow-ap-left {
+  animation: ow-left var(--w-appear, 0.7s) both;
+}
+.ow-ap-flip {
+  animation: ow-flip var(--w-appear, 0.7s) both;
+}
+@keyframes ow-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes ow-up {
+  from {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+}
+@keyframes ow-left {
+  from {
+    opacity: 0;
+    transform: translateX(-60px);
+  }
+}
+@keyframes ow-flip {
+  from {
+    opacity: 0;
+    transform: perspective(600px) rotateX(70deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ow-marquee > i,
+  .ow[class*="ow-ap-"] {
+    animation: none;
+  }
+}
+
+/* 한 줄짜리 띠 위젯(쇼핑몰 정보·공지·신규 주문 알림): 시안 높이가 낮아(2~6%) 안쪽 여백을 줄이고 가로로 놓는다 */
+.ow-shop-info,
+.ow-notice,
+.ow-new-order-alert {
+  flex-direction: row;
+  align-items: center;
+  gap: 14px;
+  padding: 0 24px;
+  font-size: var(--w-fs, 24px);
+}
+.ow-shop-info .ow-text,
+.ow-notice .ow-text,
+.ow-new-order-alert .ow-text {
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ow-new-order-alert .ow-grade {
+  flex: none;
+}

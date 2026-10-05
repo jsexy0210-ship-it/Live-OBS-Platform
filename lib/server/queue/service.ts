@@ -7,10 +7,12 @@ import { earnQuote } from "../rewards/earn";
 import { createPendingRewardLedger } from "../rewards/ledger";
 import { requireSellerPermission, requireSellerRead, type TenantContext } from "../tenant/context";
 import { restoreOrderStock } from "../products/stock";
+import { closeReturnsOnRefund } from "../shop-returns/hooks";
 import { checkTransition, isCompletePermutation, isValidTimer, type QueueAction, type QueueRejection } from "./rules";
 import { refreshOrderRetention } from "../buyers/legalHold";
 import { chargedShippingFee, itemCouponDiscount, restoreOrderCoupon } from "../shop-coupons/service";
 import { revokeReviewRewardsForOrder, type ReviewRewardRevoke } from "../product-reviews/service";
+import { requestPaymentCancel } from "../payments/service";
 
 type Tx = Prisma.TransactionClient;
 
@@ -207,7 +209,7 @@ export async function startBroadcast(
       }
       await writeAudit(tx, {
         actorType: ctx.actorType,
-        actorId: ctx.actorId,
+        actorId: ctx.actorType === "SYSTEM" ? null : ctx.actorId,
         sellerId: ctx.sellerId,
         action: "broadcast.start",
         targetType: "BroadcastSession",
@@ -251,7 +253,7 @@ export async function endBroadcast(
     await tx.broadcastSession.update({ where: { id: live.id }, data: { status: "ENDED", endedAt: now } });
     await writeAudit(tx, {
       actorType: ctx.actorType,
-      actorId: ctx.actorId,
+      actorId: ctx.actorType === "SYSTEM" ? null : ctx.actorId,
       sellerId: ctx.sellerId,
       action: "broadcast.end",
       targetType: "BroadcastSession",
@@ -615,6 +617,8 @@ export async function refundOrder(
     // 화면에서 확인받은 금액과 다르면(그사이 발송·개봉 등) 아무것도 바꾸지 않고 되돌린다
     if (opts.expectedRefundAmount !== undefined && opts.expectedRefundAmount !== refundAmount) throw new Rejected("refund_amount_changed");
     await tx.order.update({ where: { id: orderId }, data: { refundAmount, refundFault, returnFeeDeducted } });
+    // 카드 결제 주문이면 환불액만큼 PG 취소 요청을 같은 트랜잭션에 남긴다(PG 호출은 커밋 뒤, payments/service.ts)
+    await requestPaymentCancel(tx, { sellerId: ctx.sellerId, orderId, amount: refundAmount, reason, idempotencyKey: `refund:${orderId}` });
     // 결제 금액 전부를 돌려주면 전체 취소로 보고 쓴 쿠폰을 되돌린다. 일부만 돌려주면 되돌리지 않는다(MASTER 2026-10-04).
     // 개봉한 품목을 구매자 사정으로 남기는 환불은 금액이 결제 금액과 같아도 전체 취소가 아니다(Codex 4176403238).
     const keepsItems = refundFault === "BUYER" && openedItemCount > 0;
@@ -673,6 +677,8 @@ export async function refundOrder(
     }
     // 이 주문의 상품 리뷰 적립도 같은 회수 방식으로 회수한다(주문 잠금 뒤 회원 → 리뷰 → 원장, product-reviews/service.ts)
     const reviewRewardRevoke = await revokeReviewRewardsForOrder(tx, ctx.sellerId, orderId, now);
+    // 이 주문의 진행 중인 교환·반품 신청을 닫는다(shop-returns: 반품 회수 완료분은 완료, 그 밖은 철회)
+    await closeReturnsOnRefund(tx, { sellerId: ctx.sellerId, orderId, refundAmount, now, actor: { actorType: ctx.actorType, actorId: ctx.actorId } });
     await writeAudit(tx, {
       actorType: ctx.actorType,
       actorId: ctx.actorId,

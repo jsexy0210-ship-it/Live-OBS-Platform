@@ -9,7 +9,13 @@ import { getShippingPolicy, isCourier, parseShippingPolicy, type ShippingPolicy 
 
 export type ShipFailure = "not_found" | "invalid_shipment" | "not_shippable";
 export type ShipResult =
-  | { ok: true; shipment: { courier: string; trackingNumber: string; status: string; shippedAt: Date } }
+  // mode: 처음 발송(shipped) 또는 이미 배송 중이던 송장을 바꿈(updated, previous = 바꾸기 전 택배사·송장번호)
+  | {
+      ok: true;
+      shipment: { courier: string; trackingNumber: string; status: string; shippedAt: Date };
+      mode: "shipped" | "updated";
+      previous: { courier: string; trackingNumber: string } | null;
+    }
   | { ok: false; reason: ShipFailure };
 
 export function parseTrackingNumber(v: unknown): string | null {
@@ -60,6 +66,8 @@ export async function shipOrder(
     return {
       ok: true as const,
       shipment: { courier: shipment.courier, trackingNumber: shipment.trackingNumber, status: shipment.status, shippedAt: shipment.shippedAt },
+      mode: before?.status === "IN_TRANSIT" ? ("updated" as const) : ("shipped" as const),
+      previous: before?.status === "IN_TRANSIT" ? { courier: before.courier, trackingNumber: before.trackingNumber } : null,
     };
   });
 }

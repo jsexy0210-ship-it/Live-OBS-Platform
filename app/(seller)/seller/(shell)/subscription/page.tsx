@@ -32,6 +32,10 @@ type View = {
   payments: Payment[];
 };
 type Plan = { code: string; name: string };
+// 미리보기(GET …/plan/preview)의 플랜별 변경 결과. chargeNow는 지금 바로 낼 금액(원)이다.
+type PlanPreview = { plans: { planCode: string; change: { ok: true; chargeNow: number } | { ok: false; reason: string } }[] };
+// 확인 창의 금액: 미리보기를 읽는 중 · 읽음(chargeNow가 없으면 서버가 사유로 거절할 변경) · 읽지 못함
+type Quote = { state: "loading" } | { state: "ok"; chargeNow: number | null } | { state: "error" };
 type PlanChange = { ok: true; applied: "now" | "next_payment" | "canceled_pending"; charged: number; planCode: string; effectiveAt: string | null; remainingDays?: number | null };
 
 const DAY = (iso: string | null) =>
@@ -123,7 +127,7 @@ export default function SubscriptionPage() {
   const [failure, setFailure] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [confirm, setConfirm] = useState<{ kind: "plan"; plan: Plan } | { kind: "cancel" } | { kind: "card"; note: string } | null>(null);
+  const [confirm, setConfirm] = useState<{ kind: "plan"; plan: Plan; quote: Quote; changed?: boolean } | { kind: "cancel" } | { kind: "card"; note: string } | null>(null);
   const reads = useLatestResponse();
 
   // 변경 뒤 다시 읽기에도 쓴다: 처음이 아니면 불러오는 화면을 띄우지 않고, 다시 읽기가 실패하면 지금 화면을 두고 알린다
@@ -190,9 +194,27 @@ export default function SubscriptionPage() {
       await reread(r.data.charged ? "카드를 등록하고 결제했습니다" : "결제 카드를 등록했습니다");
     });
 
-  const changePlan = (plan: Plan) =>
+  // 확인 창을 열 때와 금액이 바뀌었을 때 미리보기를 읽어 지금 낼 금액을 확인 창에 보인다
+  const quotePlan = async (plan: Plan, changed = false) => {
+    setConfirm({ kind: "plan", plan, quote: { state: "loading" }, changed });
+    const r = await api<PlanPreview>("/api/seller/subscription/plan/preview");
+    const change = r.ok ? r.data.plans.find((x) => x.planCode === plan.code)?.change : undefined;
+    const quote: Quote = !r.ok || !change ? { state: "error" } : { state: "ok", chargeNow: change.ok ? change.chargeNow : null };
+    // 그사이 창을 닫았거나 다른 플랜으로 바뀌었으면 덮지 않는다
+    setConfirm((c) => (c && c.kind === "plan" && c.plan.code === plan.code ? { kind: "plan", plan, quote, changed } : c));
+  };
+
+  const changePlan = (plan: Plan, expectedAmount: number | null) =>
     run(async () => {
-      const r = await api<PlanChange | { error: string }>("/api/seller/subscription/plan", { method: "POST", body: { planCode: plan.code } });
+      const r = await api<PlanChange | { error: string }>("/api/seller/subscription/plan", {
+        method: "POST",
+        body: expectedAmount === null ? { planCode: plan.code } : { planCode: plan.code, expectedAmount },
+      });
+      // 확인받은 금액과 지금 낼 금액이 달라졌다: 아무것도 바뀌지 않았으니 창을 두고 새 금액을 다시 보여 준다
+      if (!r.ok && r.error === "amount_changed") {
+        await Promise.all([quotePlan(plan, true), reread(null)]);
+        return;
+      }
       setConfirm(null);
       if (!r.ok) {
         setFailure(PLAN_FAIL[r.error] ?? failMessage(r, "admin"));
@@ -349,7 +371,7 @@ export default function SubscriptionPage() {
                         className="btn btn-sm btn-out"
                         type="button"
                         disabled={busy}
-                        onClick={() => void changePlan(plans.find((p) => p.code === current) ?? { code: current, name: view.plan?.name ?? "" })}
+                        onClick={() => void changePlan(plans.find((p) => p.code === current) ?? { code: current, name: view.plan?.name ?? "" }, null)}
                       >
                         변경 취소
                       </button>
@@ -399,7 +421,7 @@ export default function SubscriptionPage() {
                         {on ? (
                           <span className="bdg b-info nodot">이용 중</span>
                         ) : (
-                          <button className="btn btn-sm btn-out" type="button" disabled={busy || canceling || pendingPlan?.code === p.code} onClick={() => setConfirm({ kind: "plan", plan: p })}>
+                          <button className="btn btn-sm btn-out" type="button" disabled={busy || canceling || pendingPlan?.code === p.code} onClick={() => void quotePlan(p)}>
                             {pendingPlan?.code === p.code ? "변경 예정" : "변경"}
                           </button>
                         )}
@@ -448,6 +470,20 @@ export default function SubscriptionPage() {
                     ? confirm.note
                     : planChangeNote(view, confirm.plan.code).text}
               </span>
+              {confirm.kind === "plan" && (
+                <span className="t-l2 fw6" data-testid="sub-quote" role="status">
+                  {confirm.changed && <>금액이 바뀌었습니다. 다시 확인해 주십시오. </>}
+                  {confirm.quote.state === "loading"
+                    ? "결제 금액을 확인하고 있습니다"
+                    : confirm.quote.state === "error"
+                      ? "결제 금액을 확인하지 못했습니다. 닫고 다시 시도해 주십시오"
+                      : confirm.quote.chargeNow !== null && confirm.quote.chargeNow > 0
+                        ? `지금 결제 금액 ${won(confirm.quote.chargeNow)}`
+                        : confirm.quote.chargeNow === 0
+                          ? "지금 결제되는 금액은 없습니다"
+                          : null}
+                </span>
+              )}
             </div>
             <div className="modal-f">
               <button className="btn btn-out" type="button" onClick={() => setConfirm(null)} disabled={busy}>
@@ -462,7 +498,9 @@ export default function SubscriptionPage() {
                   {busy ? "처리 중" : "등록"}
                 </button>
               ) : (
-                <button className="btn" type="button" onClick={() => void changePlan(confirm.plan)} disabled={busy || planChangeNote(view, confirm.plan.code).blocked}>
+                <button className="btn" type="button" onClick={() => void changePlan(confirm.plan, confirm.quote.state === "ok" ? confirm.quote.chargeNow : null)}
+                  disabled={busy || confirm.quote.state !== "ok" || planChangeNote(view, confirm.plan.code).blocked}
+                >
                   {busy ? "변경 중" : "변경"}
                 </button>
               )}

@@ -1,0 +1,235 @@
+/* 장바구니(CartView.tsx). 표는 열 제목 가운데·값 왼쪽(대표님 지시). 크기 규칙은 styles/shop.css 토큰을 따른다 */
+.cart-wrap {
+  padding-bottom: 24px;
+}
+.cart-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 16px;
+}
+.cart-head h1 {
+  margin: 0;
+  font-size: 22px;
+}
+.cart-steps {
+  display: flex;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  color: var(--wds-label-alternative);
+}
+.cart-steps li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cart-steps i {
+  font-style: normal;
+  font-weight: 700;
+}
+.cart-steps li[aria-current="step"] {
+  color: var(--wds-label-normal);
+  font-weight: 700;
+}
+.cart-two {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 24px;
+  align-items: start;
+}
+.cart-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  border-top: 1px solid var(--wds-label-normal);
+  font-size: 14px;
+}
+.cart-tbl th {
+  height: 40px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--wds-line-solid-neutral);
+  font-weight: 600;
+  text-align: center;
+}
+.cart-tbl td {
+  padding: 12px;
+  border-bottom: 1px solid var(--wds-line-solid-neutral);
+  text-align: left;
+  vertical-align: middle;
+}
+.cart-tbl .c-chk {
+  width: 44px;
+}
+.cart-tbl .c-qty {
+  width: 140px;
+}
+.cart-tbl .c-price {
+  width: 120px;
+}
+.cart-tbl .c-del {
+  width: 80px;
+}
+.cart-tbl tr.is-out td {
+  color: var(--wds-label-alternative);
+}
+.cart-tbl .c-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cart-opt {
+  font-size: 12px;
+  color: var(--wds-label-alternative);
+}
+.cart-tag {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--wds-status-negative);
+}
+.cart-qty {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--wds-line-solid-normal);
+  border-radius: var(--shop-r);
+}
+.cart-qty button {
+  width: var(--shop-h-sm);
+  height: var(--shop-h-sm);
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+.cart-qty button:disabled {
+  color: var(--wds-label-disable);
+  cursor: not-allowed;
+}
+.cart-qty span {
+  min-width: 32px;
+  text-align: center;
+}
+.cart-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-top: 12px;
+}
+.cart-tools .cart-more {
+  margin-left: auto;
+}
+.cart-sum {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--wds-line-solid-normal);
+  border-radius: var(--shop-r);
+}
+.cart-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.cart-row b {
+  font-size: 18px;
+}
+.cart-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--wds-label-alternative);
+}
+.cart-msg {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: var(--shop-r);
+  background: var(--wds-background-normal-alternative);
+  font-size: 13px;
+}
+.cart-msg.is-err {
+  color: var(--wds-status-negative);
+}
+.cart-msg .shop-linkbtn {
+  margin-left: 8px;
+  font-weight: 700;
+  text-decoration: underline;
+}
+.cart-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 48px 0;
+  border-top: 1px solid var(--wds-line-solid-neutral);
+}
+.cart-empty h2,
+.cart-empty p {
+  margin: 0;
+}
+@media (max-width: 767px) {
+  .cart-two {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .cart-tbl thead {
+    display: none;
+  }
+  .cart-tbl,
+  .cart-tbl tbody {
+    display: block;
+  }
+  .cart-tbl tr {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+    gap: 8px 12px;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--wds-line-solid-neutral);
+  }
+  .cart-tbl td {
+    padding: 0;
+    border: 0;
+    width: auto;
+  }
+  .cart-tbl .c-chk {
+    grid-area: 1 / 1;
+    width: auto;
+  }
+  .cart-tbl .c-info {
+    grid-area: 1 / 2;
+  }
+  .cart-tbl .c-del {
+    grid-area: 1 / 3;
+    width: auto;
+  }
+  .cart-tbl .c-qty {
+    grid-area: 2 / 2;
+    width: auto;
+  }
+  .cart-tbl .c-price {
+    grid-area: 2 / 3;
+    width: auto;
+  }
+  .cart-sum {
+    position: sticky;
+    bottom: calc(var(--shop-h-lg) + env(safe-area-inset-bottom) + 8px);
+    background: #fff;
+  }
+  .cart-hint {
+    display: none;
+  }
+}
+.wl-tab {
+  margin: 0 0 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--wds-line-solid-neutral);
+  font-size: 16px;
+}
+.wl-tab span {
+  color: var(--brand);
+}
+.pc .btn {
+  margin-top: 8px;
+}

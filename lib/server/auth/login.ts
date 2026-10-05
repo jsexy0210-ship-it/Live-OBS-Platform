@@ -110,7 +110,7 @@ export async function loginSeller(
   }
   const sellerBlock: Partial<Record<string, LoginFailure>> = {
     PENDING: "seller_pending",
-    SUSPENDED: "seller_suspended",
+    // 이용 정지는 로그인을 막지 않는다(이미 받은 주문 처리는 계속, 가드가 나머지를 막음, 대표님 결정 2026-10-04)
     REJECTED: "seller_closed",
     CLOSED: "seller_closed",
   };

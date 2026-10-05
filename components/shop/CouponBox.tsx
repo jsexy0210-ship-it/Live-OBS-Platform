@@ -6,7 +6,7 @@ import "./CouponBox.css";
 
 // SH-028 내 쿠폰함. 코드 등록(방송 채팅·문자로 받은 코드), 쓸 수 있어요 · 받을 수 있어요 · 지난 쿠폰 탭.
 // 쿠폰은 주문서에서 고르면 서버가 할인 금액을 계산한다(주문당 1장). API: /api/shop/{slug}/coupons.
-type Coupon = {
+export type CouponView = {
   couponId: string;
   name: string;
   benefit: "AMOUNT" | "RATE" | "FREE_SHIPPING";
@@ -20,17 +20,17 @@ type Coupon = {
   endsAt: string;
   validDays: number | null;
 };
-type Mine = Coupon & { issuedAt: string; expiresAt: string; usedAt: string | null; state: "usable" | "upcoming" | "used" | "expired" };
-type Box = { usable: Mine[]; claimable: Coupon[]; claimableMore: boolean; past: Mine[]; now: string; shopOpen: boolean };
+type Mine = CouponView & { issuedAt: string; expiresAt: string; usedAt: string | null; state: "usable" | "upcoming" | "used" | "expired" };
+type Box = { usable: Mine[]; claimable: CouponView[]; claimableMore: boolean; past: Mine[]; now: string; shopOpen: boolean };
 const PAGE = 50;
 type Tab = "usable" | "claimable" | "past";
 
 const DAY = 86_400_000;
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
-const md = (iso: string) => new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", month: "numeric", day: "numeric" }).format(new Date(iso)).replace(/\.\s?/g, "/").replace(/\/$/, "");
-const amountText = (c: Coupon) => (c.benefit === "FREE_SHIPPING" ? "배송비 무료" : c.benefit === "AMOUNT" ? won(c.value ?? 0) : `${c.value}%`);
+export const couponDate = (iso: string) => new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", month: "numeric", day: "numeric" }).format(new Date(iso)).replace(/\.\s?/g, "/").replace(/\/$/, "");
+export const couponAmountText = (c: CouponView) => (c.benefit === "FREE_SHIPPING" ? "배송비 무료" : c.benefit === "AMOUNT" ? won(c.value ?? 0) : `${c.value}%`);
 
-function conditions(c: Coupon): string {
+export function couponConditions(c: CouponView): string {
   const parts: string[] = [];
   if (c.benefit === "RATE" && c.maxDiscount) parts.push(`최대 ${won(c.maxDiscount)} 할인`);
   parts.push(c.minOrderAmount > 0 ? `${won(c.minOrderAmount)} 이상 주문` : "금액 조건 없음");
@@ -45,19 +45,19 @@ function MineItem({ c, now }: { c: Mine; now: number }) {
   return (
     <li className={`cb-item${past ? " is-past" : ""}`}>
       <div className="cb-amt">
-        <span className="t-h2 fw7">{amountText(c)}</span>
+        <span className="t-h2 fw7">{couponAmountText(c)}</span>
       </div>
       <div className="cb-body">
         <span className="t-b2 fw6">{c.name}</span>
-        <span className="t-l2 c-alt">{conditions(c)}</span>
+        <span className="t-l2 c-alt">{couponConditions(c)}</span>
         <span className="t-c1 c-alt">
           {c.state === "used" && c.usedAt
-            ? `${md(c.usedAt)} 사용`
+            ? `${couponDate(c.usedAt)} 사용`
             : c.state === "expired"
-              ? `${md(c.expiresAt)} 기간 지남`
+              ? `${couponDate(c.expiresAt)} 기간 지남`
               : c.state === "upcoming"
-                ? `${md(c.startsAt)}부터 쓸 수 있어요`
-                : `${md(c.expiresAt)}까지 · ${left}일 남았어요`}
+                ? `${couponDate(c.startsAt)}부터 쓸 수 있어요`
+                : `${couponDate(c.expiresAt)}까지 · ${left}일 남았어요`}
         </span>
       </div>
       <div className="cb-side">
@@ -223,12 +223,12 @@ export default function CouponBox({ slug }: { slug: string }) {
             {box.claimable.map((c) => (
               <li key={c.couponId} className="cb-item">
                 <div className="cb-amt">
-                  <span className="t-h2 fw7">{amountText(c)}</span>
+                  <span className="t-h2 fw7">{couponAmountText(c)}</span>
                 </div>
                 <div className="cb-body">
                   <span className="t-b2 fw6">{c.name}</span>
-                  <span className="t-l2 c-alt">{conditions(c)}</span>
-                  <span className="t-c1 c-alt">{c.validDays ? `받은 날부터 ${c.validDays}일` : `${md(c.endsAt)}까지`}</span>
+                  <span className="t-l2 c-alt">{couponConditions(c)}</span>
+                  <span className="t-c1 c-alt">{c.validDays ? `받은 날부터 ${c.validDays}일` : `${couponDate(c.endsAt)}까지`}</span>
                 </div>
                 <div className="cb-side">
                   <button className="btn btn-sm" type="button" disabled={busy !== null} onClick={() => void take(c.couponId, `${base}/${c.couponId}/download`, {})}>

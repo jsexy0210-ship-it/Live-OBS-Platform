@@ -62,7 +62,8 @@ async function lockReview(tx: Tx, sellerId: string, id: string): Promise<Product
 }
 
 // 판매자가 아직 확인하지 않은 신고 수(판매자가 공개하면 그때까지의 신고에 resolvedAt을 남긴다)
-const openReportCount = (db: Db, sellerId: string, reviewId: string) => db.productReviewReport.count({ where: { sellerId, reviewId, resolvedAt: null } });
+// (판매자가 확인했거나 신고자가 철회한 신고는 세지 않는다)
+const openReportCount = (db: Db, sellerId: string, reviewId: string) => db.productReviewReport.count({ where: { sellerId, reviewId, resolvedAt: null, withdrawnAt: null } });
 
 // 주문 행 공유 잠금. 결제 완료(PAID)인지 돌려준다(잠근 뒤의 상태).
 async function lockOrderPaid(tx: Tx, sellerId: string, orderId: string): Promise<boolean> {
@@ -204,7 +205,7 @@ export async function listSellerReviews(db: PrismaClient, ctx: TenantContext, q:
         product: { select: { name: true } },
         buyerMember: { select: { status: true, grade: { select: { displayName: true } } } },
         order: { select: { status: true } },
-        _count: { select: { images: true, reports: { where: { resolvedAt: null } } } },
+        _count: { select: { images: true, reports: { where: { resolvedAt: null, withdrawnAt: null } } } },
       },
     }),
     db.productReview.aggregate({ where: { sellerId: ctx.sellerId, deletedAt: null, status: "VISIBLE" }, _avg: { rating: true }, _count: { _all: true } }),
@@ -266,7 +267,7 @@ export async function getSellerReview(db: PrismaClient, ctx: TenantContext, id: 
       orderItem: { select: { optionNameSnapshot: true, quantity: true } },
       order: { select: { orderNo: true, status: true, createdAt: true, shipment: { select: { deliveredAt: true } } } },
       images: { select: { id: true, width: true, height: true }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
-      reports: { where: { resolvedAt: null }, select: { reason: true } },
+      reports: { where: { resolvedAt: null, withdrawnAt: null }, select: { reason: true } },
     },
   });
   if (!r) throw notFound();
@@ -400,9 +401,9 @@ export const BUYER_REVIEW_MESSAGES: Record<BuyerReviewFailure, string> = {
   invalid_body: "리뷰를 10자 이상 1,000자 안에서 써 주세요",
   invalid_images: "사진을 다시 골라 주세요",
   empty_file: "빈 파일은 올릴 수 없어요",
-  file_too_large: "사진은 1MB까지 올릴 수 있어요",
-  unsupported_image: "JPEG·PNG 사진만 올릴 수 있어요",
-  wrong_image_size: "사진은 긴 변 1,600px까지 올릴 수 있어요",
+  file_too_large: "사진은 한 장에 5MB까지 올릴 수 있어요",
+  unsupported_image: "JPG·PNG·WEBP 사진만 올릴 수 있어요",
+  wrong_image_size: "사진은 가로·세로 100~4,000px 안에서 올릴 수 있어요",
   png_16bit: "이 사진은 올릴 수 없어요. 다른 사진을 골라 주세요",
   png_too_large: "이 사진은 올릴 수 없어요. 다른 사진을 골라 주세요",
   shop_unavailable: "지금은 쇼핑몰을 이용할 수 없어요",
@@ -712,6 +713,24 @@ export async function reportReview(db: PrismaClient, scope: BuyerScope, id: stri
     if (isUniqueViolation(e)) return { ok: false, reason: "already_reported" };
     throw e;
   }
+}
+
+// 내 신고 철회(구매자가 자기 신고만). 철회한 신고는 미확인 신고 수·사유 집계에서 빠지고 행은 남는다. 리뷰 상태(신고 보류·적립)는 바꾸지 않는다:
+// 보류 해제와 적립 복구는 판매자가 공개할 때만 한다(MASTER 결정). 잠금 순서는 신고와 같다(회원 → 주문 → 리뷰).
+export async function withdrawReport(db: PrismaClient, scope: BuyerScope, id: string, meta: AuditMeta = {}): Promise<Result<{ openReports: number }>> {
+  if (!isUuid(id)) throw notFound();
+  if (!(await shopOpen(db, scope.sellerId))) return { ok: false, reason: "shop_unavailable" };
+  return db.$transaction(async (tx) => {
+    const locked = await lockReviewChain(tx, scope.sellerId, id, scope.buyerMemberId);
+    if (!locked) throw notFound();
+    const now = await lockedNow(tx);
+    // 아직 판매자가 확인하지 않았고 철회하지 않은 내 신고만 철회할 수 있다(없으면 404)
+    const { count } = await tx.productReviewReport.updateMany({ where: { sellerId: scope.sellerId, reviewId: id, buyerMemberId: scope.buyerMemberId, resolvedAt: null, withdrawnAt: null }, data: { withdrawnAt: now } });
+    if (count === 0) throw notFound();
+    const openReports = await openReportCount(tx, scope.sellerId, id);
+    await buyerAudit(tx, scope, meta, "buyer_review.report_withdraw", id, { openReports });
+    return { ok: true as const, openReports };
+  });
 }
 
 // 상품의 공개 리뷰(상품 상세에 끼울 목록): 평균·분포와 최근 순 목록. 운영 중이 아닌 쇼핑몰은 null.

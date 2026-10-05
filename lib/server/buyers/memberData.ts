@@ -8,8 +8,12 @@ export type MemberDataPolicy = "delete" | "anonymize" | "retain_legal";
 export const MEMBER_DATA_POLICY: Record<string, { policy: MemberDataPolicy; note: string }> = {
   BuyerMember: { policy: "anonymize", note: "이름·휴대폰·닉네임·아이디·CI 해시·생년월일·비밀번호·마케팅 동의(시각·문서 버전·철회 시각)·가입 동의 기록(signupConsent)·재가입 제한 보관 동의 스냅숏 비식별, WITHDRAWN·deletedAt" },
   BuyerAddress: { policy: "delete", note: "저장 배송지" },
+  CartItem: { policy: "delete", note: "장바구니(shop-cart)" },
+  WishItem: { policy: "delete", note: "찜(shop-wish)" },
   ProductReview: { policy: "anonymize", note: "상품 리뷰는 남기고 작성자 표시를 「탈퇴 회원」으로(product-reviews anonymizeMemberReviews). 리뷰에 붙은 사진은 리뷰와 함께 남는다" },
   ProductReviewImage: { policy: "delete", note: "리뷰에 붙지 않은 사진은 지운다. 리뷰에 붙은 사진은 리뷰와 함께 남는다(리뷰는 비식별)" },
+  ReturnRequest: { policy: "retain_legal", note: "교환·반품 신청(청약철회·분쟁 처리 기록, 주문과 같은 법정 보관). 신청 사유·사진은 주문과 함께 남고 보관 기간 뒤 주문 파기와 함께 지운다" },
+  ReturnRequestImage: { policy: "retain_legal", note: "신청에 붙은 사진은 신청과 함께 법정 보관. 신청에 붙지 않은 사진은 탈퇴 때 지운다" },
   ProductReviewReport: { policy: "anonymize", note: "리뷰 신고 기록은 남긴다(보류는 판매자만 풀어야 해서 신고 사실이 필요). 신고자는 비식별된 탈퇴 회원 행으로만 이어진다" },
   BuyerCoupon: { policy: "delete", note: "받은 쿠폰. 쓰지 않은 쿠폰은 지우고, 주문에 쓴(쓴 뒤 전체 취소로 되돌린) 쿠폰은 주문 할인 기록(CouponRedemption)과 이어져 주문과 함께 남긴다(shop-coupons)" },
   BuyerSession: { policy: "delete", note: "로그인 세션" },
@@ -32,6 +36,7 @@ export const MEMBER_REFERENCE_POLICY: Record<string, { policy: MemberDataPolicy;
   "StockMovement.actorId": { policy: "retain_legal", note: "actorType=BUYER 행(주문으로 생긴 재고 증감). 거래 기록" },
   "OrderStatusHistory.actorId": { policy: "retain_legal", note: "actorType=BUYER 행(구매자 취소 등). 거래 기록" },
   "QueueItemStatusHistory.actorId": { policy: "retain_legal", note: "actorType=BUYER 행. 주문 이행 기록" },
+  "SellerMessageLedger.actorId": { policy: "retain_legal", note: "구매자 행 없음(DB CHECK로 actorType BUYER 금지, 행위자는 시스템·파트너스 직원·관리자). 발송 충전 원장" },
 };
 
 // 탈퇴 회원이 행위자·대상인 감사 로그의 행동 종류별 보관(대표님 결정 2026-10-03, PRODUCT_SCOPE 「구매자 탈퇴·재가입」).
@@ -41,6 +46,7 @@ export const MEMBER_REFERENCE_POLICY: Record<string, { policy: MemberDataPolicy;
 export type MemberAuditRetention = "transaction" | "non_transaction";
 export const MEMBER_AUDIT_RETENTION_PREFIX: Record<string, MemberAuditRetention> = {
   "order.": "transaction", // 주문 생성·결제·취소·자동 취소·환불·재고 부족·구매 확정·배송
+  "buyer_return.": "transaction", // 교환·반품 신청·철회·송장(청약철회 기록 5년)
 };
 export const MEMBER_AUDIT_RETENTION: Record<string, MemberAuditRetention> = {
   "auth.buyer.login": "non_transaction",
@@ -61,7 +67,9 @@ export const MEMBER_AUDIT_RETENTION: Record<string, MemberAuditRetention> = {
   "buyer_review.update": "non_transaction",
   "buyer_review.delete": "non_transaction",
   "buyer_review.report": "non_transaction",
+  "buyer_review.report_withdraw": "non_transaction",
   "buyer_review.image_upload": "non_transaction",
+  "buyer_return.image_upload": "non_transaction", // 신청 전 사진 올리기(신청에 붙은 사진은 신청과 함께 보관)
   // 마케팅 수신 동의 철회·다시 동의(회원 정보 수정과 같은 분류)
   "buyer.marketing_consent.withdraw": "non_transaction",
   "buyer.marketing_consent.agree": "non_transaction",

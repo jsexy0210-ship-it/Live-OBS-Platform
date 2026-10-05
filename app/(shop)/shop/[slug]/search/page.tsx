@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import ShopFrame from "../../../../../components/shop/ShopFrame";
 import ShopState from "../../../../../components/shop/ShopState";
 import { shopOpen } from "../../../../../lib/server/buyers/signup";
 import { prisma } from "../../../../../lib/server/db";
@@ -26,7 +25,7 @@ export default async function ShopSearchPage({ params, searchParams }: Props) {
   const open = await shopOpen(prisma, shop.id);
   const path = `/shop/${encodeURIComponent(shop.slug)}/search`;
   return (
-    <ShopFrame slug={shop.slug} shopName={shop.shopName}>
+    <>
       {!open ? (
         <ShopState title="지금은 쇼핑몰을 이용할 수 없어요" body="쇼핑몰이 다시 문을 열면 이용할 수 있어요." />
       ) : (
@@ -39,7 +38,7 @@ export default async function ShopSearchPage({ params, searchParams }: Props) {
           </form>
           {q && (
             <ProductListing
-              sellerId={shop.id}
+              slug={shop.slug}
               title={`‘${q}’ 검색 결과`}
               path={path}
               q={q}
@@ -50,6 +49,6 @@ export default async function ShopSearchPage({ params, searchParams }: Props) {
           )}
         </div>
       )}
-    </ShopFrame>
+    </>
   );
 }

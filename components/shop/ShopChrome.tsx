@@ -1,11 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import ShopLogo from "./ShopLogo";
 
-type Props = { slug: string; shopName: string; loggedIn: boolean };
+export const CART_COUNT_EVENT = "shop-cart-count";
+const badge = (n: number) => (n > 0 ? <b className="shop-badge" aria-hidden="true">{n > 99 ? "99+" : n}</b> : null);
+const cartLabel = (n: number) => (n > 0 ? `장바구니 (${n}개)` : "장바구니");
+
+type Category = { id: string; name: string; children: { id: string; name: string }[] };
+type Props = { slug: string; shopName: string; loggedIn: boolean; nickname?: string | null; categories?: Category[] };
 
 function Icon({ d }: { d: string }) {
   return (
@@ -22,18 +27,38 @@ const ICON = {
   grid: "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z",
   user: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm-8 8c1-4 4.5-6 8-6s7 2 8 6",
   close: "M6 6l12 12M18 6 6 18",
+  heart: "M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.6-7 10-7 10z",
 };
 
-// 구매자 쇼핑몰 머리(띠·로고·검색·장바구니·카테고리)와 휴대폰 카테고리 서랍·아래 고정 바. 상품 분류(카테고리)가 생기면 「전체 상품」 뒤에 붙인다.
-export default function ShopChrome({ slug, shopName, loggedIn }: Props) {
+// 구매자 쇼핑몰 머리(띠·로고·검색·장바구니·카테고리)와 휴대폰 카테고리 서랍·아래 고정 바. 「전체 상품」 뒤에 쇼핑몰의 대분류 카테고리를 붙이고, 서랍에는 소분류까지 보인다.
+export default function ShopChrome({ slug, shopName, loggedIn, nickname, categories = [] }: Props) {
   const base = `/shop/${encodeURIComponent(slug)}`;
   const path = usePathname() ?? "";
   const [drawer, setDrawer] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLButtonElement>(null);
+  const [cartCount, setCartCount] = useState(0);
+  const category = useSearchParams().get("category");
   const here = (href: string) => (path === href ? ("page" as const) : undefined);
+  // 카테고리 링크는 /products?category=id. 그 분류(또는 하위 분류)를 보고 있으면 현재 위치로 표시한다.
+  const inCat = (c: Category) => path === `${base}/products` && !!category && (category === c.id || c.children.some((x) => x.id === category));
 
   useEffect(() => setDrawer(false), [path]);
+  // 장바구니 개수 배지: 로그인했을 때만 불러오고, 장바구니 화면이 바뀐 개수를 알려 주면(CART_COUNT_EVENT) 따라간다
+  useEffect(() => {
+    if (!loggedIn) return;
+    let live = true;
+    fetch(`/api/shop/${encodeURIComponent(slug)}/cart/count`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { count?: number } | null) => live && typeof d?.count === "number" && setCartCount(d.count))
+      .catch(() => null);
+    const on = (e: Event) => setCartCount((e as CustomEvent<number>).detail);
+    window.addEventListener(CART_COUNT_EVENT, on);
+    return () => {
+      live = false;
+      window.removeEventListener(CART_COUNT_EVENT, on);
+    };
+  }, [loggedIn, slug]);
   useEffect(() => {
     if (!drawer) return;
     closeRef.current?.focus();
@@ -62,7 +87,10 @@ export default function ShopChrome({ slug, shopName, loggedIn }: Props) {
       <Link href={`${base}/signup`}>회원가입</Link>
     </>
   );
-  const cats = [{ href: `${base}/products`, label: "전체 상품" }];
+  const cats = [
+    { href: `${base}/products`, label: "전체 상품", current: path === `${base}/products` && !category },
+    ...categories.map((c) => ({ href: `${base}/products?category=${c.id}`, label: c.name, current: inCat(c), sub: c.children })),
+  ];
 
   return (
     <>
@@ -72,6 +100,7 @@ export default function ShopChrome({ slug, shopName, loggedIn }: Props) {
             {account}
             <Link href={`${base}/orders`}>주문 조회</Link>
             <Link href={`${base}/help`}>고객센터</Link>
+            {loggedIn && nickname && <span className="shop-util-who">{nickname} 님</span>}
           </div>
         </div>
         <div className="shop-top">
@@ -85,26 +114,55 @@ export default function ShopChrome({ slug, shopName, loggedIn }: Props) {
             </Link>
             <form className="shop-search shop-pc" role="search" action={`${base}/search`}>
               <input type="search" name="q" maxLength={50} placeholder="상품 검색" aria-label="상품 검색" />
-              <button type="submit" className="shop-iconbtn" aria-label="검색">
-                <Icon d={ICON.search} />
+              <button type="submit" className="shop-search-btn">
+                검색
               </button>
             </form>
             <Link href={`${base}/search`} className="shop-iconbtn shop-m" aria-label="검색">
               <Icon d={ICON.search} />
             </Link>
-            <Link href={`${base}/cart`} className="shop-iconbtn shop-cart" aria-label="장바구니">
+            <Link href={`${base}/cart`} className="shop-iconbtn shop-cart shop-m" aria-label={cartLabel(cartCount)}>
               <Icon d={ICON.cart} />
+              {badge(cartCount)}
             </Link>
+            <div className="shop-hics shop-pc">
+              <Link href={`${base}/wishlist`} className="shop-hic">
+                <span className="shop-hic-ico">
+                  <Icon d={ICON.heart} />
+                </span>
+                찜
+              </Link>
+              <Link href={`${base}/cart`} className="shop-hic">
+                <span className="shop-hic-ico">
+                  <Icon d={ICON.cart} />
+                  {badge(cartCount)}
+                </span>
+                {cartLabel(cartCount)}
+              </Link>
+              <Link href={loggedIn ? `${base}/me` : `${base}/login`} className="shop-hic">
+                <Icon d={ICON.user} />내 정보
+              </Link>
+            </div>
           </div>
         </div>
         <nav className="shop-cats" aria-label="카테고리">
           <div className="shop-wrap">
             {cats.map((c) => (
-              <Link key={c.href} href={c.href} aria-current={here(c.href)}>
+              <Link key={c.href} href={c.href} aria-current={c.current ? "page" : undefined}>
                 {c.label}
               </Link>
             ))}
           </div>
+        </nav>
+        <nav className="shop-mcat" aria-label="메뉴 탭">
+          <Link href={base} aria-current={here(base)}>
+            홈
+          </Link>
+          {cats.map((c) => (
+            <Link key={c.href} href={c.href} aria-current={c.current ? "page" : undefined}>
+              {c.label}
+            </Link>
+          ))}
         </nav>
       </header>
 
@@ -129,9 +187,17 @@ export default function ShopChrome({ slug, shopName, loggedIn }: Props) {
             <p className="shop-drawer-title">카테고리</p>
             <nav className="shop-drawer-list" aria-label="카테고리">
               {cats.map((c) => (
-                <Link key={c.href} href={c.href} aria-current={here(c.href)}>
-                  {c.label}
-                </Link>
+                <div key={c.href}>
+                  <Link href={c.href} aria-current={c.current ? "page" : undefined}>
+                    {c.label}
+                  </Link>
+                  {"sub" in c &&
+                    c.sub.map((x) => (
+                      <Link key={x.id} className="shop-drawer-child" href={`${base}/products?category=${x.id}`} aria-current={category === x.id ? "page" : undefined}>
+                        {x.name}
+                      </Link>
+                    ))}
+                </div>
               ))}
             </nav>
             <nav className="shop-drawer-list shop-drawer-sub" aria-label="쇼핑 도움">
@@ -155,8 +221,11 @@ export default function ShopChrome({ slug, shopName, loggedIn }: Props) {
           검색
         </Link>
         <Link href={`${base}/cart`} aria-current={here(`${base}/cart`)}>
-          <Icon d={ICON.cart} />
-          장바구니
+          <span className="shop-hic-ico">
+            <Icon d={ICON.cart} />
+            {badge(cartCount)}
+          </span>
+          {cartLabel(cartCount)}
         </Link>
         <Link href={loggedIn ? `${base}/me` : `${base}/login`} aria-current={here(`${base}/me`)}>
           <Icon d={ICON.user} />내 정보

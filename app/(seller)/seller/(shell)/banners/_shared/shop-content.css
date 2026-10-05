@@ -207,3 +207,12 @@
   background: var(--brand);
   color: var(--brand-ink);
 }
+.sc-pv-popup .ep {
+  width: 100%;
+  max-width: 300px;
+}
+.sc-pv-barwrap {
+  align-self: flex-start;
+  border-radius: 10px;
+  overflow: hidden;
+}

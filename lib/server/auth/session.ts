@@ -113,7 +113,9 @@ export async function resolveSellerSession(
   if (!s) return null;
   const broadcast = await sellerBroadcastActivity(db, s.sellerId);
   if (!isSessionActive("seller", s, now, broadcast)) return null;
-  if (s.sellerUser.status !== "ACTIVE" || s.seller.status !== "ACTIVE") return null;
+  // 이용 정지(SUSPENDED)된 쇼핑몰도 세션은 살린다: 이미 받은 주문의 배송·환불은 계속 처리한다(대표님 결정 2026-10-04 「신규만 막기」).
+  // 그 밖의 판매자 API는 가드(requireSeller)가 막는다.
+  if (s.sellerUser.status !== "ACTIVE" || (s.seller.status !== "ACTIVE" && s.seller.status !== "SUSPENDED")) return null;
   // 세션을 만든 뒤 비밀번호가 바뀌었으면 무효
   if (s.credentialVersion !== s.sellerUser.credentialVersion) return null;
   await touch(db, "seller", s.id, s.lastSeenAt, now);

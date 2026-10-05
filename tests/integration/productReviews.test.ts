@@ -7,7 +7,7 @@ import { GET as sellerImageGet } from "../../app/api/seller/reviews/images/[imag
 import { GET as policyGet, PUT as policyPut } from "../../app/api/seller/reviews/policy/route";
 import { GET as sellerList } from "../../app/api/seller/reviews/route";
 import { GET as productReviewsGet } from "../../app/api/shop/[slug]/products/[productId]/reviews/route";
-import { POST as reportPost } from "../../app/api/shop/[slug]/reviews/[reviewId]/report/route";
+import { DELETE as reportDelete, POST as reportPost } from "../../app/api/shop/[slug]/reviews/[reviewId]/report/route";
 import { DELETE as reviewDelete, GET as reviewGet, PUT as reviewPut } from "../../app/api/shop/[slug]/reviews/[reviewId]/route";
 import { GET as myImageGet } from "../../app/api/shop/[slug]/reviews/images/[imageId]/route";
 import { POST as imagePost } from "../../app/api/shop/[slug]/reviews/images/route";
@@ -19,6 +19,7 @@ import { refundOrder } from "../../lib/server/queue/service";
 import { withdrawBuyer } from "../../lib/server/buyers/withdraw";
 import { prisma } from "../../lib/server/db";
 import { hasImageMetadata } from "../../lib/server/product-reviews/image";
+import { jpeg, webp } from "../unit/productImageFormatsFixtures";
 import { fakeJpeg } from "../unit/reviewFixtures";
 import { PASSWORD, createLoginBuyer, createSeller, createSellerUser, db, resetDb } from "./helpers";
 
@@ -392,6 +393,54 @@ describe("고치기·지우기·신고", () => {
     expect(sum.summary.autoHeld).toBe(1);
     const pub = (await (await productReviewsGet(get("/x"), p({ slug: s.slug, productId: s.product.id }))).json()) as { total: number; reviews: unknown[] };
     expect([pub.total, pub.reviews.length]).toEqual([0, 0]);
+  });
+
+  it("신고 철회: 내 신고만 철회돼 미확인 신고 수·사유 집계에서 빠지고, 리뷰 상태·적립은 그대로이며 다시 신고할 수 없다", async () => {
+    const s = await shop();
+    await setPolicy(s, { rewardText: 500 });
+    const r = await created(s, (await s.delivered()).id);
+    const reporters: { cookie: string }[] = [];
+    for (const reason of ["AD", "ABUSE", "OFF_TOPIC"]) {
+      const m = await createLoginBuyer(s.seller.id, s.grade.id);
+      const cookie = await buyerCookie(s.seller.id, m.loginId!);
+      reporters.push({ cookie });
+      await reportPost(json("/x", "POST", cookie, { reason }), p({ slug: s.slug, reviewId: r.reviewId }));
+    }
+    const del = (cookie: string) => reportDelete(json("/x", "DELETE", cookie), p({ slug: s.slug, reviewId: r.reviewId }));
+    const detail = async () => ((await (await sellerDetailGet(get("/x", s.owner), p({ reviewId: r.reviewId }))).json()) as { review: { status: string; reportCount: number; reportReasons: Record<string, number> } }).review;
+    // 3건으로 보류된 상태에서 한 명이 철회하면 수는 줄지만 보류·적립은 그대로(판매자가 공개할 때만 풀린다)
+    expect((await detail()).status).toBe("HELD");
+    const ledgerBefore = (await ledger(s)).map((x) => [x.type, x.amount]);
+    const w = await del(reporters[0].cookie);
+    expect([w.status, ((await w.json()) as { openReports: number }).openReports]).toEqual([200, 2]);
+    const d = await detail();
+    expect([d.status, d.reportCount, d.reportReasons]).toEqual(["HELD", 2, { ABUSE: 1, OFF_TOPIC: 1 }]);
+    expect((await ledger(s)).map((x) => [x.type, x.amount])).toEqual(ledgerBefore);
+    expect((await reviewPut(json("/x", "PUT", s.b1, { rating: 5, body: "신고 보류 중 글만 고쳐요. 카드 상태는 좋았어요" }), p({ slug: s.slug, reviewId: r.reviewId }))).status).toBe(200);
+    expect((await detail()).status).toBe("HELD");
+    // 철회는 한 번만(두 번째는 404), 신고하지 않은 사람은 철회할 것이 없다(404), 작성자도 마찬가지(404)
+    expect((await del(reporters[0].cookie)).status).toBe(404);
+    const stranger = await createLoginBuyer(s.seller.id, s.grade.id);
+    expect((await del(await buyerCookie(s.seller.id, stranger.loginId!))).status).toBe(404);
+    expect((await del(s.b1)).status).toBe(404);
+    expect(await db.productReviewReport.count({ where: { reviewId: r.reviewId } })).toBe(3);
+    // 판매자가 공개하면 그때 풀리고 적립이 다시 나간다. 공개로 확인 처리된 신고는 철회할 수 없다(404)
+    expect((await publishPost(json("/x", "POST", s.owner, {}), p({ reviewId: r.reviewId }))).status).toBe(200);
+    expect((await detail()).status).toBe("VISIBLE");
+    expect((await ledger(s)).map((x) => x.amount)).toEqual([500, -500, 500]);
+    expect((await del(reporters[1].cookie)).status).toBe(404);
+  });
+
+  it("공개 리뷰의 신고를 철회하면 신고 수가 줄고, 같은 사람이 다시 신고할 수 없다(409)", async () => {
+    const s = await shop();
+    const r = await created(s, (await s.delivered()).id);
+    const rep1 = () => reportPost(json("/x", "POST", s.b2, { reason: "AD" }), p({ slug: s.slug, reviewId: r.reviewId }));
+    expect((await rep1()).status).toBe(201);
+    const w = await reportDelete(json("/x", "DELETE", s.b2), p({ slug: s.slug, reviewId: r.reviewId }));
+    expect([w.status, ((await w.json()) as { openReports: number }).openReports]).toEqual([200, 0]);
+    expect((await rep1()).status).toBe(409);
+    const d = ((await (await sellerDetailGet(get("/x", s.owner), p({ reviewId: r.reviewId }))).json()) as { review: { status: string; reportCount: number } }).review;
+    expect([d.status, d.reportCount]).toEqual(["VISIBLE", 0]);
   });
 
   it("판매자가 공개하면 옛 신고는 확인 처리돼, 새 신고 1건 뒤 신고 수와 사유 합계가 모두 1(Codex 4177057980)", async () => {
@@ -876,6 +925,32 @@ describe("사진·잠긴 쇼핑몰·탈퇴", () => {
     for (let i = 0; i < 11; i++) await upload(s, fakeJpeg(100 + i, 100));
     expect(await db.productReviewImage.count({ where: { buyerMemberId: s.buyer.id, reviewId: null } })).toBe(10);
     expect((await upload(s, Buffer.from("not an image"))).status).toBe(400);
+  });
+
+  it("휴대폰 사진: GPS EXIF가 든 JPG(1MB 넘음)와 WEBP는 올라가고 저장본에 EXIF가 없다. 5MB를 넘으면 413, 지원하지 않는 형식은 400", async () => {
+    const s = await shop();
+    const big = jpeg(3000, 2000, { exif: true, comment: true, xmp: true, trailer: Buffer.alloc(2 * 1024 * 1024, 7) });
+    expect(big.length).toBeGreaterThan(1024 * 1024);
+    const r1 = await upload(s, big);
+    expect(r1.status).toBe(201);
+    const id1 = ((await r1.json()) as { image: { id: string } }).image.id;
+    const row1 = await db.productReviewImage.findUniqueOrThrow({ where: { id: id1 } });
+    expect([row1.contentType, row1.width, row1.height]).toEqual(["image/jpeg", 3000, 2000]);
+    expect(hasImageMetadata(Buffer.from(row1.data))).toBe(false);
+    expect(Buffer.from(row1.data).includes(Buffer.from("GPSLatitude"))).toBe(false);
+    const r2 = await upload(s, webp(800, 600, { exif: true }));
+    expect(r2.status).toBe(201);
+    const id2 = ((await r2.json()) as { image: { id: string } }).image.id;
+    const row2 = await db.productReviewImage.findUniqueOrThrow({ where: { id: id2 } });
+    expect([row2.contentType, hasImageMetadata(Buffer.from(row2.data))]).toEqual(["image/webp", false]);
+    const served = await myImageGet(get("/x", s.b1), p({ slug: s.slug, imageId: id2 }));
+    expect(served.headers.get("content-type")).toBe("image/webp");
+    // 5MB 초과는 끝까지 받지 않고 413, 다른 형식(GIF)은 400
+    expect((await upload(s, Buffer.alloc(5 * 1024 * 1024 + 1, 1))).status).toBe(413);
+    expect((await upload(s, Buffer.from("GIF89a" + "x".repeat(200)))).status).toBe(400);
+    // 올린 사진은 리뷰에 붙여 쓸 수 있다
+    const w = await created(s, (await s.delivered()).id, { rating: 5, body: BODY, imageIds: [id1, id2] });
+    expect(w.res.status).toBe(201);
   });
 
   it("이용이 막힌 쇼핑몰은 쓰기·고치기·지우기·사진·신고 402(Codex 4176709637), 내 리뷰는 읽을 수 있다", async () => {

@@ -29,6 +29,10 @@ test.describe("PC 1440", () => {
     await expect(page.locator(".shop-name")).toHaveText("카드숍 별빛");
     await expect(page.getByRole("search").getByLabel("상품 검색")).toBeVisible();
     await expect(page.getByRole("link", { name: "장바구니" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "내 정보" })).toBeVisible();
+    await expect(page.getByRole("search").getByRole("button", { name: "검색" })).toHaveText("검색");
+    expect(await page.getByRole("search").evaluate((el) => Math.round(el.getBoundingClientRect().width))).toBe(400);
+    await expect(page.locator(".shop-util-who")).toHaveCount(0);
     await expect(page.getByRole("navigation", { name: "카테고리" }).getByRole("link", { name: "전체 상품" })).toBeVisible();
     await expect(page.getByRole("navigation", { name: "바로 가기" })).toBeHidden();
     await expect(page.getByRole("button", { name: "카테고리 메뉴" })).toBeHidden();
@@ -97,6 +101,43 @@ test.describe("PC 1440", () => {
   });
 });
 
+test("로그인하면 맨 위 띠 오른쪽에 닉네임 님이 보인다", async ({ page, baseURL }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const r = await page.request.post(`/api/shop/${SLUG}/auth/login`, { data: { loginId: "demo-buyer1@example.com", password: PASSWORD }, headers: { origin: baseURL! } });
+  expect(r.status()).toBe(200);
+  await page.goto(`/shop/${SLUG}`);
+  const who = page.locator(".shop-util-who");
+  await expect(who).toHaveText(/ 님$/);
+  const [w, bar] = [await who.boundingBox(), await page.locator(".shop-util .shop-wrap").boundingBox()];
+  expect(w!.x + w!.width).toBeGreaterThan(bar!.x + bar!.width - 24);
+  await expect(page.locator(".shop-util").getByRole("link", { name: "내 정보" })).toBeVisible();
+});
+
+test("크기 규칙: 입력·검색 40px, 주요 버튼·하단 고정 바 48px, 모서리 6px·8px", async ({ page }) => {
+  const box = (sel: string) => page.locator(sel).first().evaluate((el) => ({ h: Math.round(el.getBoundingClientRect().height), r: getComputedStyle(el).borderTopLeftRadius }));
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/shop/${SLUG}/login`);
+  expect(await box(".shop-search")).toEqual({ h: 40, r: "6px" });
+  expect(await box(".shop-card .inp")).toEqual({ h: 40, r: "6px" });
+  expect(await box(".shop-card .btn-lg")).toEqual({ h: 48, r: "6px" }); // 주요 버튼(로그인)은 48px
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/shop/${SLUG}`);
+  const bar = await page.locator(".shop-tabbar").evaluate((el) => ({ h: Math.round(el.getBoundingClientRect().height), r: getComputedStyle(el).borderTopLeftRadius }));
+  expect(bar).toEqual({ h: 48, r: "8px" });
+});
+
+test("구매자 쇼핑몰 모든 화면의 바탕은 흰색이다(회색 바탕 없음)", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const white = "rgb(255, 255, 255)";
+  for (const path of ["", "/products", "/search", "/signup", "/login", "/cart", "/orders", "/help"]) {
+    await page.goto(`/shop/${SLUG}${path}`);
+    for (const sel of ["body", ".shop-app", ".shop-page", ".shop-util", ".shop-foot"]) {
+      const bg = await page.locator(sel).first().evaluate((el) => getComputedStyle(el).backgroundColor);
+      expect(bg, `${path || "/"} ${sel}`).toBe(white);
+    }
+  }
+});
+
 test.describe("태블릿 900", () => {
   test.use({ viewport: { width: 900, height: 1000 } });
 
@@ -118,6 +159,9 @@ test.describe("휴대폰 390", () => {
     await expect(page.getByRole("search")).toBeHidden();
     await expect(page.locator(".shop-name")).toBeVisible();
     const top = page.locator(".shop-top");
+    const mcat = page.getByRole("navigation", { name: "메뉴 탭" });
+    await expect(mcat.getByRole("link", { name: "홈" })).toHaveAttribute("aria-current", "page");
+    await expect(mcat.getByRole("link", { name: "전체 상품" })).toBeVisible();
     await expect(top.getByRole("link", { name: "검색" })).toBeVisible();
     await expect(top.getByRole("link", { name: "장바구니" })).toBeVisible();
 
@@ -158,8 +202,10 @@ test.describe("휴대폰 390", () => {
       await expect(page.getByRole("navigation", { name: "바로 가기" })).toBeVisible();
       expect(await noSideScroll(page)).toBe(true);
     }
+    await page.goto(`/shop/${SLUG}/checkout`);
+    await expect(page.getByRole("heading", { name: "주문서", level: 1 })).toBeVisible();
     await page.goto(`/shop/${SLUG}/cart`);
-    await expect(page.getByRole("heading", { name: "장바구니는 준비 중이에요" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "장바구니", level: 1 })).toBeVisible();
     await expect(page.getByRole("navigation", { name: "바로 가기" }).getByRole("link", { name: "장바구니" })).toHaveAttribute("aria-current", "page");
   });
 });

@@ -185,6 +185,11 @@ sudo -u obs nano /opt/obs/.env
 | `MAIL_ORDER_PROVIDER`, `FTC_MAIL_ORDER_API_KEY` | 선택 | 통신판매업 점검 |
 | `PORTONE_API_SECRET`, `PORTONE_STORE_ID`, `PORTONE_IDENTITY_CHANNEL_KEY` | 선택 | 휴대폰 본인확인. 없으면 가입 본인확인은 503 「준비 중」 |
 | `OBS_ENVIRONMENT` | 필수(obs-test) | **`test`**. 장애 주입·가용성 프로파일·무중단 배포 스크립트는 이 줄이 있을 때만 돌아요. 운영 서버에는 넣지 않아요 |
+| `IMAGE_STORAGE` | 선택 | 이미지 저장 위치. 비우면 지금처럼 DB에 저장해요. `kakao`면 카카오 Object Storage 버킷에 저장해요(드라이버 `lib/server/storage/kakao.ts`는 들어 있지만, **과금이 생기므로 전환은 보류 중이에요(2026-10-04 대표님 지시). `kakao`로 바꾸지 마세요.**). 아래 「이미지 서버(카카오 Object Storage)」 |
+| `IMAGE_S3_ENDPOINT` | `IMAGE_STORAGE=kakao`일 때 | 버킷의 S3 호환 주소(비밀이 아니에요) |
+| `IMAGE_S3_REGION` | 위와 같음 | 리전(`kr-central-2`) |
+| `IMAGE_S3_BUCKET` | 위와 같음 | 버킷 이름(`live-obs-platform`) |
+| `IMAGE_S3_ACCESS_KEY_ID`, `IMAGE_S3_SECRET_ACCESS_KEY` | 위와 같음 | 이 버킷 전용 S3 액세스 키. **비밀값이에요.** `.env`에만 넣고 채팅·문서·저장소에는 붙이지 않아요 |
 | `OBS_MONITOR_TLS_HOST` | 선택 | 서버 감시가 인증서 만료일을 볼 주소(obs-test는 `test.on-aircue.com`) |
 | `OBS_ALERT_URL` | 선택 | 장애 알림을 받을 주소(웹훅). 알림 채널이 정해지기 전에는 비워 둬요(기록만 남아요) |
 | `OBS_MONITOR_INTERVAL_S` | 선택 | 감시 간격(기본 15초, 1~60초. 범위 밖이거나 숫자가 아니면 감시가 시작하지 않고 로그에 이유를 남겨요) |
@@ -229,6 +234,56 @@ $C up -d --wait         # 같은 버전 그대로, 앱·마이그레이션이 �
    - Required reviewers: **대표님** (실행할 때마다 승인 한 번)
 
 GitHub Secrets·Variables는 이 방식에서 필요 없어요(비밀값은 서버 `.env`에만).
+
+## 이미지 서버(카카오 Object Storage) — 대표님 조치
+
+2026-10-05 대표님이 만든 버킷: 이름 `live-obs-platform`, 리전 `kr-central-2`, Standard, 기본 암호화(서비스 관리형 키), 퍼블릭 액세스 차단, CORS 미적용, 수명 주기 정책 없음. 지금 앱은 이미지를 DB에 저장해요. 버킷에 저장하는 코드(드라이버)는 후속 PR로 올라오고, 아래 조치가 끝나기 전에는 아무것도 바뀌지 않아요.
+
+원칙:
+- **퍼블릭 차단은 그대로 둬요.** 버킷을 공개로 바꾸지 않아요.
+- 이미지는 **서버를 거쳐** 내려가요(권한 검사를 그대로 유지). 필요하면 **짧은 서명 URL**(수십~수백 초)로 바꿔요. 어느 쪽을 쓸지는 드라이버 PR에서 정해요.
+- 수명 주기 정책(자동 삭제)은 넣지 않아요. 이미지가 의도치 않게 지워질 수 있어요.
+
+공식 문서는 검색으로 확인했어요([S3 API 사용](https://docs.kakaocloud.com/en/tutorial/storage/object-storage-s3-api), [버킷 권한 관리](https://docs.kakaocloud.com/en/service/bss/object-storage/how-to-guides/object-storage-manage-permission), [버킷 CORS 정책](https://docs.kakaocloud.com/service/bss/object-storage/how-to-guides/object-storage-cors)). 이 세션에서는 문서 페이지를 직접 열지 못했어요. **콘솔 화면의 메뉴 이름이 아래와 다르면 화면이 우선이고, 다른 점을 알려 주세요.**
+
+### A. 이 버킷 전용 사용자 만들기(최소 권한)
+
+권한은 **버킷 단위로만** 줄 수 있어요(파일·폴더 단위는 안 돼요). 그래서 이 버킷만 쓰는 전용 사용자를 만들고, 그 사용자의 S3 액세스 키를 서버에 넣는 게 원칙이에요. 대표님 본인 계정의 키는 프로젝트 전체 권한이 따라와서 권고하지 않아요. **테스트 서버(obs-test)는 지금 등록된 키로 진행하고(2026-10-05 대표님 결정), 운영 서버로 가기 전에 전용 사용자 키로 교체해요.** 아래 「운영 전환 때」에 같은 항목이 있어요.
+
+1. 콘솔 → IAM에서 서버 전용 사용자를 만들어요(예: `obs-image-app`). 프로젝트 역할은 **주지 않거나 가장 낮은 것**만 줘요.
+2. 콘솔 → Object Storage → 버킷 `live-obs-platform` → 권한(버킷 권한 관리) → 사용자 추가 → 위 사용자에 **스토리지 편집자**를 줘요. 읽기·쓰기·삭제가 필요해요(삭제는 이미지 교체·삭제에 써요).
+3. 확인할 것(문서만으로는 못 정했어요): ⓐ 프로젝트 역할이 없는 사용자도 S3 액세스 키를 만들 수 있는지, ⓑ 스토리지 편집자에 객체 삭제가 포함되는지. 안 되면 가장 좁은 대안(서비스 계정 또는 프로젝트 역할 최소)을 골라 알려 주세요. 선택지를 정리해 드릴게요.
+
+### B. S3 액세스 키 발급(위 사용자로 로그인한 상태에서)
+
+1. 콘솔 로그인(버킷이 있는 프로젝트 선택).
+2. 오른쪽 위 **프로필 아이콘 → 자격 증명**.
+3. **S3 액세스 키** 탭 → **S3 액세스 키 생성** → 이름 입력(예: `obs-test-image`) → **생성**.
+4. 나온 **액세스 키**와 **보안 액세스 키**를 복사해 **GitHub 저장소 Secrets**에만 넣어요: 저장소 → Settings → Secrets and variables → Actions → `KAKAO_S3_ACCESS_KEY`(액세스 키), `KAKAO_S3_SECRET_KEY`(보안 액세스 키). 2026-10-05에 대표님이 등록하셨어요. 서버 `.env`에는 직접 넣지 않아요(아래 C). **보안 액세스 키는 이 화면에서만 볼 수 있다고 가정**하고, 놓치면 새로 만들어요.
+5. 프로젝트당 키는 **최대 2개**예요. 서버용 1개만 쓰고, 나머지 1개는 교체용으로 비워 둬요.
+
+### C. 서버 `.env`에는 배포 워크플로가 넣어요
+
+위 「4. 서버 `.env`」 표의 `IMAGE_STORAGE`, `IMAGE_S3_ENDPOINT`, `IMAGE_S3_REGION`, `IMAGE_S3_BUCKET`, `IMAGE_S3_ACCESS_KEY_ID`, `IMAGE_S3_SECRET_ACCESS_KEY`예요. **Deploy obs-test 워크플로의 `Sync image storage env` 단계**가 배포 때마다 GitHub Secrets 값과 고정값(엔드포인트 `https://objectstorage.kr-central-2.kakaocloud.com`, 리전 `kr-central-2`, 버킷 `live-obs-platform`)을 `/opt/obs/.env`에 반영해요. 직접 입력하지 않아도 돼요.
+
+- 값은 로그에 나오지 않아요. `.env`의 다른 줄은 그대로 두고, 임시 파일에 만든 뒤 한 번에 바꿔요.
+- **`IMAGE_STORAGE`는 없을 때만 `db`로 넣어요.** 이미 있으면 덮어쓰지 않아요. 그래서 처음에는 키만 들어가고 이미지는 계속 DB에 저장돼요. **카카오로 바꾸는 일은 이 단계가 하지 않아요.** 드라이버가 병합되고 이전을 승인한 뒤, 서버 `.env`의 `IMAGE_STORAGE`를 `kakao`로 직접 바꾸고 재배포해요.
+- Secret이 비어 있거나 `.env`에 그대로 쓸 수 없는 문자가 있으면 경고만 남기고 키를 넣지 않아요. 이 단계가 실패해도 배포는 막지 않아요.
+- **버킷 연결 확인(선택)**: 배포를 실행할 때 `check_image_bucket`을 켜면 배포 뒤 버킷 목록 조회를 **딱 한 번**(쓰기 없음) 해요. 성공이면 로그에 「목록 조회 성공」, 실패면 HTTP 코드와 오류 코드(예: `SignatureDoesNotMatch`, `AccessDenied`)가 나와요. 실패해도 배포 결과는 바뀌지 않아요.
+- `.env`를 바꾼 뒤에는 재배포(또는 `up -d`)해야 앱에 반영돼요.
+
+### D. 요금 확인
+
+콘솔의 Object Storage 요금 안내에서 **Standard 저장 용량(GB·월), 요청 수, 외부 전송량** 단가를 확인해 주세요. 이 문서에는 단가를 적지 않았어요(공식 단가를 직접 확인하지 못했어요). 이미지 수와 크기는 DB → 버킷 이전 스크립트가 건수·총 용량을 먼저 보여 줄 거예요. 그 숫자로 월 요금을 어림할 수 있어요.
+
+### E. CORS(지금은 적용하지 않아요)
+
+이미지를 **서버 경유로 보여 주거나 서명 URL을 `<img>`로 읽는 데는 CORS가 필요 없어요.** 브라우저가 서명 URL로 버킷에 **직접 업로드**(PUT)할 때만 필요해요. 그때는 허용 출처를 `https://test.on-aircue.com` 하나로, 메서드는 `PUT`만, 필요한 헤더만 열도록 제안드릴게요. 적용은 대표님 승인 뒤에만 해요.
+
+### 하지 않는 것
+
+- 버킷 공개 전환, 키를 저장소·채팅·로그에 붙이기, 수명 주기 정책 추가, 대표님 본인 계정 키 사용.
+- DB → 버킷 이전 실행: 스크립트와 계획이 올라온 뒤 대표님 승인 뒤에만 해요(테스트 서버 먼저, 되돌릴 수 있게).
 
 ## 서버 명령 준비
 
@@ -303,6 +358,31 @@ $C start obs-web-app
   cd /opt/obs/src && C="docker compose -p obs-web -f deploy/docker-compose.yml --env-file /opt/obs/.env"
   $C exec -T obs-web-db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT count(*) FROM \"Seller\""'
   ```
+
+## 디스크 정리
+
+테스트 서버 디스크가 가득 차 배포가 빌드 도중 죽은 일(run 37214718838)을 막기 위한 장치입니다. 스크립트: `scripts/ops/disk-cleanup.sh`.
+
+| 시점 | 동작 |
+| --- | --- |
+| 배포 시작(Checkout 직후) | 도커 이미지·백업·러너 폴더 디스크의 남은 용량이 5GB 미만이면 배포를 멈추고 정리 방법을 안내합니다. |
+| 배포 성공 뒤 | 아래 기준으로 오래된 것만 정리합니다. 정리가 실패해도 배포 결과는 바뀌지 않습니다. |
+
+정리 기준(환경변수로 조정, 서버 값은 모두 추정치이므로 실제 사용량을 본 뒤 조정):
+
+- DB 백업: 배포 전 자동 백업(`obs-<날짜>-<시각>-before-<커밋7자리>.dump`)만 최근 10개(`OBS_BACKUP_KEEP`) 남기고 지웁니다. 수동·복원 안전 백업은 지우지 않고 개수만 알립니다. 24시간 넘은 `.part` 부분 파일은 지웁니다.
+- 도커 이미지: `deploy-history.log`의 최근 5개 버전(`OBS_IMAGE_KEEP`)과 실행 중인 이미지는 남기고, 나머지 `obs-web-app`·`obs-web-migrate` 버전 태그를 지웁니다. 배포 기록을 읽지 못하면 앱 이미지는 지우지 않습니다. 이름 없는 이미지와 24시간 넘게 안 쓴 빌드 캐시(`OBS_BUILDER_KEEP_H`)도 지웁니다.
+- 러너 `_diag` 로그: 14일(`OBS_DIAG_KEEP_DAYS`) 넘은 것만 지웁니다.
+- 볼륨·컨테이너·`docker system prune`은 쓰지 않습니다(DB 데이터 보호).
+
+서버에서 직접 확인·실행:
+
+```bash
+cd /opt/obs/src && scripts/ops/disk-cleanup.sh          # 지울 목록만 보기
+cd /opt/obs/src && scripts/ops/disk-cleanup.sh --apply  # 실제 정리
+```
+
+롤백은 남긴 5개 버전 안에서만 이미지 재빌드 없이 됩니다. 컨테이너 로그(json-file)는 서비스마다 10MB×3개까지만 남깁니다(`deploy/docker-compose.yml`의 `x-logging`). 컨테이너가 새로 만들어질 때 적용되므로 다음 배포부터 반영됩니다.
 
 ## 롤백
 
@@ -504,5 +584,6 @@ scripts/ops/availability.sh off
 
 - 하위 주소 전체를 한 번에 받는 와일드카드 인증서(`*.on-aircue.com`)는 Let's Encrypt DNS 인증이 필요해요. Caddy에 Cloudflare DNS 플러그인과 Cloudflare DNS API 토큰(해당 영역 DNS 편집 권한만)이 있어야 해요. 토큰은 비밀값이라 서버 `.env`에만 둬요.
 - 운영 전환 계획을 세울 때 함께 정해요: Caddy 이미지(플러그인 포함), 운영 DNS 레코드, 주황 구름 사용 여부.
+- **이미지 버킷 키를 전용 사용자 키로 교체해요**(운영 서버 전환 전 필수). 테스트 서버는 대표님 계정에서 발급한 키로 시작해서 프로젝트 전체 권한이 따라와요. 위 「이미지 서버」 A·B 순서로 전용 사용자를 만들고 버킷 `live-obs-platform`에만 「스토리지 편집자」를 준 뒤, 새 S3 액세스 키로 GitHub Secrets `KAKAO_S3_ACCESS_KEY`·`KAKAO_S3_SECRET_KEY`를 바꾸고 배포해요(`check_image_bucket`을 켜서 연결 확인). 확인된 뒤 옛 키는 콘솔에서 삭제해요. 운영 서버용 버킷·키를 테스트와 따로 둘지도 이때 정해요.
 
 배포 워크플로의 health check는 서버 안에서 `http://127.0.0.1`로 부르고, Caddyfile에 이 주소를 따로 두어서 사이트 주소를 바꿔도 그대로 동작해요.

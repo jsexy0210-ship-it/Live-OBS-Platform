@@ -27,6 +27,14 @@ async function login(page: Page, email = "demo-owner@example.com", next = "/sell
 }
 
 const rows = (page: Page) => page.getByTestId("order-row");
+
+// 실제 환불 시험은 시드의 발송 전 결제 주문(배송 「—」)을 환불해 하나씩 쓴다(실행마다 몇 건). 같은 DB로 여러 번 돌려 다 쓰면
+// 환불할 주문이 없어 시간 초과로만 보이므로, 이유를 알려 주며 바로 실패한다. 폐기용 DB를 새로 만들면(migrate deploy → dev-seed) 다시 채워진다.
+async function preShipTarget(page: Page) {
+  const target = rows(page).filter({ has: page.locator("td:nth-child(6)", { hasText: "—" }) }).first();
+  await expect(target, "발송 전 결제 완료 주문이 없습니다. 이전 실행이 환불로 모두 썼습니다. 폐기용 DB를 새로 만들어 다시 돌려 주십시오").toBeVisible();
+  return target;
+}
 const listResponse = (page: Page, has?: string) =>
   page.waitForResponse((r) => r.url().includes("/api/seller/orders?") && r.request().method() === "GET" && (!has || r.url().includes(has)));
 
@@ -255,7 +263,7 @@ test("실제 환불: 판매자 사정으로 환불하면 완료 알림이 뜨고
   await page.getByRole("button", { name: "적용" }).click();
   await expect(rows(page).first()).toBeVisible();
   // 발송 전 주문(배송 「—」)을 고른다
-  const target = rows(page).filter({ has: page.locator("td:nth-child(6)", { hasText: "—" }) }).first();
+  const target = await preShipTarget(page);
   await target.getByRole("link", { name: "환불 처리" }).click();
   const dialog = page.getByRole("dialog", { name: "취소 · 환불 처리" });
   await dialog.getByRole("radio", { name: /파트너스 사정/ }).check();
@@ -313,7 +321,7 @@ test("주문·배송 권한만 있는 직원(방송 진행 권한 없음)도 실
   await page.getByRole("group", { name: "결제 상태" }).getByLabel("완료").check();
   await page.getByRole("button", { name: "적용" }).click();
   await expect(rows(page).first().locator(".bdg").first()).toHaveText("완료");
-  const target = rows(page).filter({ has: page.locator("td:nth-child(6)", { hasText: "—" }) }).first();
+  const target = await preShipTarget(page);
   await target.getByRole("link", { name: "환불 처리" }).click();
   const dialog = page.getByRole("dialog", { name: "취소 · 환불 처리" });
   await dialog.getByRole("radio", { name: /파트너스 사정/ }).check();

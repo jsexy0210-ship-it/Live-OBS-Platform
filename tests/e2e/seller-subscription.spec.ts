@@ -258,14 +258,66 @@ test("결제한 기간 중 상위 변경: 남은 기간 차액을 바로 결제�
 
   await integratedCard(page).getByRole("button", { name: "변경" }).click();
   await expect(page.getByRole("dialog")).toContainText("남은 이용 기간의 차액을 등록한 카드로 바로 결제합니다.");
+  // 미리보기의 지금 낼 금액이 확인 창에 보이고, 변경 요청에 expectedAmount로 함께 간다
+  await expect(page.getByTestId("sub-quote")).toContainText("지금 결제 금액");
+  const quoted = Number(((await page.getByTestId("sub-quote").textContent()) ?? "").replace(/[^0-9]/g, ""));
+  expect(quoted).toBeGreaterThan(0);
   const plan = post(page, "/api/seller/subscription/plan");
   await page.getByRole("dialog").getByRole("button", { name: "변경", exact: true }).click();
-  const body = await (await plan).json();
+  const planRes = await plan;
+  expect(planRes.request().postDataJSON()).toEqual({ planCode: "INTEGRATED", expectedAmount: quoted });
+  const body = await planRes.json();
   expect(body).toMatchObject({ ok: true, applied: "now", planCode: "INTEGRATED" });
+  expect(body.charged).toBe(quoted);
   expect(body.charged).toBeGreaterThan(0);
   await expect(page.getByText(`「쇼핑몰 통합」으로 변경했습니다 · 차액 ${body.charged.toLocaleString("ko-KR")}원 결제`)).toBeVisible();
   await expect(page.getByTestId("sub-payment")).toHaveCount(2);
   await expect(integratedCard(page).getByText("이용 중")).toBeVisible();
+});
+
+test("확인한 금액과 지금 낼 금액이 달라지면(409 amount_changed) 아무것도 바꾸지 않고 새 금액을 다시 보여 준다", async ({ page }) => {
+  await resetSubscription();
+  await useOverlayPlan();
+  await ownerOpens(page);
+  await page.getByRole("button", { name: "테스트 카드 등록" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "등록" }).click();
+  await expect(page.getByTestId("sub-status")).toHaveText("이용 중");
+
+  // 첫 변경 요청은 서버가 금액이 바뀌었다고 거절한다(아무것도 바뀌지 않음). 그 뒤 미리보기는 다른 금액을 준다.
+  let posts = 0;
+  const sent: unknown[] = [];
+  await page.route("**/api/seller/subscription/plan", async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    sent.push(route.request().postDataJSON());
+    if (++posts === 1) return route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ error: "amount_changed" }) });
+    return route.continue();
+  });
+  let previews = 0;
+  await page.route("**/api/seller/subscription/plan/preview", async (route) => {
+    const res = await route.fetch();
+    const data = await res.json();
+    if (++previews >= 2) for (const p of data.plans) if (p.change?.ok && p.change.chargeNow > 0) p.change.chargeNow += 1000;
+    await route.fulfill({ response: res, json: data });
+  });
+
+  await integratedCard(page).getByRole("button", { name: "변경" }).click();
+  const quote = page.getByTestId("sub-quote");
+  await expect(quote).toContainText("지금 결제 금액");
+  const first = Number(((await quote.textContent()) ?? "").replace(/[^0-9]/g, ""));
+  await page.getByRole("dialog").getByRole("button", { name: "변경", exact: true }).click();
+
+  // 창이 닫히지 않고, 금액이 바뀌었다는 안내와 새 금액이 보인다. 아직 변경되지 않았다.
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(quote).toContainText("금액이 바뀌었습니다. 다시 확인해 주십시오.");
+  await expect.poll(async () => Number(((await quote.textContent()) ?? "").replace(/[^0-9]/g, ""))).toBe(first + 1000);
+  await expect(page.getByTestId("sub-payment")).toHaveCount(1);
+  expect(await withDb((db, sellerId) => db.sellerSubscription.findUniqueOrThrow({ where: { sellerId }, select: { plan: { select: { code: true } } } }))).toMatchObject({ plan: { code: "OVERLAY_ONLY" } });
+
+  // 새 금액으로 다시 확인하면 그 금액을 expectedAmount로 보낸다
+  await page.getByRole("dialog").getByRole("button", { name: "변경", exact: true }).click();
+  await expect.poll(() => sent.length).toBe(2);
+  expect(sent[0]).toEqual({ planCode: "INTEGRATED", expectedAmount: first });
+  expect(sent[1]).toEqual({ planCode: "INTEGRATED", expectedAmount: first + 1000 });
 });
 
 test("체험 중 상위 변경: 카드가 없으면 막고, 카드를 등록하면 새 플랜 요금을 바로 결제한다", async ({ page }) => {

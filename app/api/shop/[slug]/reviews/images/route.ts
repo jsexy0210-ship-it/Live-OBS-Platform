@@ -6,8 +6,8 @@ import { mutation, noStore, requestMeta } from "../../../../../../lib/server/htt
 import { REVIEW_IMAGE_MAX_BYTES } from "../../../../../../lib/server/product-reviews/image";
 import { BUYER_REVIEW_MESSAGES, uploadReviewImage } from "../../../../../../lib/server/product-reviews/service";
 
-// 리뷰 사진 올리기. 본문은 파일 바이트 그대로(화면이 JPEG로 다시 저장해 보냄). 1MB를 넘으면 끝까지 받지 않고 413.
-// 서버가 JPEG·PNG 구조를 확인하고 위치 정보 등 메타데이터를 지운 뒤 저장한다. 응답 { image: { id, width, height, url } }.
+// 리뷰 사진 올리기. 본문은 파일 바이트 그대로(화면이 줄여 JPEG로 보냄). 5MB를 넘으면 끝까지 받지 않고 413.
+// 서버가 JPG·PNG·WEBP 구조를 확인하고(상품 사진과 같은 검사) 위치 정보 등 메타데이터를 지운 뒤 저장한다. 응답 { image: { id, width, height, url } }.
 export const POST = mutation(async (req: Request, { params }: { params: Promise<{ slug: string }> }) => {
   const { slug } = await params;
   const b = await buyerScope(req, slug);

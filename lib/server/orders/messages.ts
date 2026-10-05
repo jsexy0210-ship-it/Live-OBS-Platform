@@ -12,6 +12,7 @@ export const ORDER_ERROR_MESSAGES = {
   reward_use_not_supported: "적립금은 아직 쓸 수 없어요",
   invalid_amount: "주문 금액을 계산할 수 없어요. 판매자에게 문의해 주세요",
   invalid_shipping_address: "받는 분, 연락처, 주소를 다시 확인해 주세요",
+  invalid_order_nickname: "주문 닉네임은 20자까지, 글자와 숫자로 써 주세요",
   invalid_shipment: "택배사와 송장번호를 다시 확인해 주세요",
   not_shippable: "결제가 끝난 주문만 발송할 수 있어요",
   not_deliverable: "배송 중인 주문만 배송 완료로 바꿀 수 있어요",
@@ -40,6 +41,20 @@ export const ORDER_ERROR_MESSAGES = {
   invalid_limit: "한 번에 볼 개수는 1~200개로 정해 주세요",
   invalid_stock_filter: "재고 조건을 다시 확인해 주세요",
   invalid_search: "검색어는 50자까지, 쓸 수 있는 글자로 입력해 주세요",
+  invalid_sort: "정렬 기준을 다시 확인해 주세요",
+  invalid_date_range: "기간을 다시 확인해 주세요. 시작일이 종료일보다 늦을 수 없어요",
+  invalid_code: "상품 코드는 64자까지, 쓸 수 있는 글자로 입력해 주세요",
+  invalid_stock_deduct_mode: "재고 차감 시점을 다시 확인해 주세요",
+  invalid_display: "노출 상태를 다시 확인해 주세요",
+  invalid_bulk: "처리할 상품(1~200개)과 작업을 다시 확인해 주세요",
+  invalid_category: "카테고리를 다시 확인해 주세요. 이름은 30자까지, 2단까지 만들 수 있어요",
+  too_many_categories: "카테고리는 300개까지 만들 수 있어요",
+  category_has_children: "아래 카테고리를 먼저 지워 주세요",
+  invalid_category_order: "카테고리 목록이 바뀌었어요. 새로 불러온 뒤 다시 정해 주세요",
+  too_many_product_categories: "상품 하나에 카테고리는 10개까지 지정할 수 있어요",
+  invalid_detail: "상세 페이지를 다시 확인해 주세요. 글은 2000자까지, 블록은 30개까지예요",
+  invalid_query: "검색 조건을 다시 확인해 주세요",
+  invalid_display_settings: "진열 설정을 다시 확인해 주세요",
   // 무통장 입금·구매 제한
   purchase_restricted: "입금하지 않은 주문이 쌓여서 지금은 주문할 수 없어요. 판매자에게 문의해 주세요",
   order_rate_limited: "잠시 뒤 다시 주문해 주세요",
@@ -57,6 +72,7 @@ export const ORDER_ERROR_MESSAGES = {
   purchase_confirmed: "구매 확정한 주문이에요. 구매 확정을 먼저 취소해 주세요",
   // 구매 확정 취소
   not_confirmed: "구매 확정한 주문만 확정을 취소할 수 있어요",
+  not_unconfirmed: "구매 확정을 취소한 주문만 다시 확정할 수 있어요",
 } as const;
 
 // 구매자 주문 화면 안내 문구(해요체)
@@ -77,6 +93,7 @@ export const ORDER_ERROR_MESSAGES_FORMAL: Record<OrderErrorCode, string> = {
   reward_use_not_supported: "적립금은 아직 쓸 수 없습니다",
   invalid_amount: "주문 금액을 계산할 수 없습니다. 상품 가격과 배송비 설정을 확인해 주십시오",
   invalid_shipping_address: "받는 분, 연락처, 주소를 다시 확인해 주십시오",
+  invalid_order_nickname: "주문 닉네임은 20자까지, 글자와 숫자로 써 주십시오",
   invalid_shipment: "택배사와 송장번호를 다시 확인해 주십시오",
   not_shippable: "결제가 끝난 주문만 발송할 수 있습니다",
   not_deliverable: "배송 중인 주문만 배송 완료로 바꿀 수 있습니다",
@@ -102,6 +119,20 @@ export const ORDER_ERROR_MESSAGES_FORMAL: Record<OrderErrorCode, string> = {
   invalid_limit: "한 번에 볼 개수는 1~200개로 정해 주십시오",
   invalid_stock_filter: "재고 조건을 다시 확인해 주십시오",
   invalid_search: "검색어는 50자까지, 쓸 수 있는 글자로 입력해 주십시오",
+  invalid_sort: "정렬 기준을 다시 확인해 주십시오",
+  invalid_date_range: "기간을 다시 확인해 주십시오. 시작일이 종료일보다 늦을 수 없습니다",
+  invalid_code: "상품 코드는 64자까지, 쓸 수 있는 글자로 입력해 주십시오",
+  invalid_stock_deduct_mode: "재고 차감 시점을 다시 확인해 주십시오",
+  invalid_display: "노출 상태를 다시 확인해 주십시오",
+  invalid_bulk: "처리할 상품(1~200개)과 작업을 다시 확인해 주십시오",
+  invalid_category: "카테고리를 다시 확인해 주십시오. 이름은 30자까지, 2단까지 만들 수 있습니다",
+  too_many_categories: "카테고리는 300개까지 만들 수 있습니다",
+  category_has_children: "하위 카테고리를 먼저 삭제해 주십시오",
+  invalid_category_order: "카테고리 목록이 바뀌었습니다. 새로 불러온 뒤 다시 정해 주십시오",
+  too_many_product_categories: "상품 하나에 카테고리는 10개까지 지정할 수 있습니다",
+  invalid_detail: "상세 페이지를 다시 확인해 주십시오. 글은 2000자까지, 블록은 30개까지입니다",
+  invalid_query: "검색 조건을 다시 확인해 주십시오",
+  invalid_display_settings: "진열 설정을 다시 확인해 주십시오. 영역은 10개, 추천 상품은 20개까지입니다",
   purchase_restricted: "입금하지 않은 주문이 쌓여 지금은 주문할 수 없습니다",
   order_rate_limited: "잠시 뒤 다시 주문해 주십시오",
   invalid_order_policy: "자동 취소 기간은 1시간에서 30일, 자동 배송 완료·구매 확정은 1일에서 30일 사이로 정해 주십시오",
@@ -115,6 +146,7 @@ export const ORDER_ERROR_MESSAGES_FORMAL: Record<OrderErrorCode, string> = {
   opened_items_unshipped: "개봉한 상품이 있어 지금은 환불할 수 없습니다. 개봉한 상품을 보낸 뒤 나머지를 처리해 주십시오",
   purchase_confirmed: "구매 확정한 주문입니다. 구매 확정을 먼저 취소해 주십시오",
   not_confirmed: "구매 확정한 주문만 확정을 취소할 수 있습니다",
+  not_unconfirmed: "구매 확정을 취소한 주문만 다시 확정할 수 있습니다",
 };
 
 export const orderErrorBody = (code: OrderErrorCode, tone: MessageTone = "friendly") => ({

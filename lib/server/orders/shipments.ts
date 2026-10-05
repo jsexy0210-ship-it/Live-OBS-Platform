@@ -5,6 +5,9 @@ import { completeDelivery } from "./delivery";
 import { orderErrorBody } from "./messages";
 import { decodeCursor, encodeCursor, kstDayStart, SELLER_ORDER_PAGE_DEFAULT, SELLER_ORDER_PAGE_MAX } from "./read";
 import { shipOrder } from "./ship";
+import { SHIPMENT_BATCH_MAX } from "./shipping";
+
+export { SHIPMENT_BATCH_MAX };
 
 // 파트너스 배송 처리(ORDER_SHIPPING). 상태 전이는 기존 규칙을 그대로 쓴다: 발송·송장 수정은 shipOrder(ship.ts), 배송 완료는 completeDelivery(delivery.ts).
 // 여기서는 탭별 목록과, 여러 주문을 한 번에 보내는 묶음 처리(주문마다 따로 처리하고 결과를 주문별로 돌려줌)만 더한다.
@@ -12,7 +15,6 @@ import { shipOrder } from "./ship";
 //     in_transit = 배송 중(결제 완료 주문), delivered = 배송 완료. 법정 보관으로 분리한 주문(legalHoldAt)은 없는 주문이다.
 export const SHIPMENT_TABS = ["ready", "in_transit", "delivered"] as const;
 export type ShipmentTab = (typeof SHIPMENT_TABS)[number];
-export const SHIPMENT_BATCH_MAX = 100;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const TAB_WHERE: Record<ShipmentTab, Prisma.OrderWhereInput> = {
@@ -26,10 +28,24 @@ const TAB_WHERE: Record<ShipmentTab, Prisma.OrderWhereInput> = {
 export const DATE_BASIS = { ready: "orderedAt", in_transit: "shippedAt", delivered: "deliveredAt" } as const satisfies Record<ShipmentTab, string>;
 const dateWhere = (tab: ShipmentTab, range: Prisma.DateTimeFilter): Prisma.OrderWhereInput =>
   tab === "ready" ? { createdAt: range } : { shipment: { is: tab === "in_transit" ? { shippedAt: range } : { deliveredAt: range } } };
+// 정렬도 같은 기준 시각 내림차순(같으면 주문 id 내림차순). 커서는 (기준 시각, 주문 id).
+const sortAt = (tab: ShipmentTab, o: { createdAt: Date; shipment: { shippedAt: Date; deliveredAt: Date | null } | null }) =>
+  tab === "ready" ? o.createdAt : tab === "in_transit" ? o.shipment!.shippedAt : o.shipment!.deliveredAt!;
+const ORDER_BY: Record<ShipmentTab, Prisma.OrderOrderByWithRelationInput[]> = {
+  ready: [{ createdAt: "desc" }, { id: "desc" }],
+  in_transit: [{ shipment: { shippedAt: "desc" } }, { id: "desc" }],
+  delivered: [{ shipment: { deliveredAt: "desc" } }, { id: "desc" }],
+};
+const afterCursor = (tab: ShipmentTab, c: { createdAt: Date; id: string }): Prisma.OrderWhereInput => {
+  const before = (at: Prisma.DateTimeFilter) => dateWhere(tab, at);
+  return { OR: [before({ lt: c.createdAt }), { AND: [before({ equals: c.createdAt }), { id: { lt: c.id } }] }] };
+};
+// 기간은 최대 366일(통계와 같음). 시작일이 종료일보다 늦으면 잘못된 요청.
+export const SHIPMENT_RANGE_MAX_DAYS = 366;
 
 export type ShipmentListQuery = { tab?: string | null; q?: string | null; from?: string | null; to?: string | null; cursor?: string | null; limit?: string | null };
 
-// 탭별 목록(주문 시각 내림차순, (createdAt, id) 커서). q: 주문번호(숫자 전체 일치)·방송 닉네임·송장번호, 받는 분 이름은 개인정보 권한이 있을 때만.
+// 탭별 목록(탭의 기준 시각 내림차순: 발송 대기 = 주문 시각, 배송 중 = 발송 시각, 배송 완료 = 배송 완료 시각, (기준 시각, id) 커서). q: 주문번호(숫자 전체 일치)·방송 닉네임·송장번호, 받는 분 이름은 개인정보 권한이 있을 때만.
 // 받는 분 이름·연락처·주소는 CUSTOMER_PII_VIEW가 있을 때만 넣고, 넣었으면 customer.pii.view(주문 id·건수만)를 남긴다. 잘못된 값이면 { ok: false }.
 export async function listShipments(db: PrismaClient, ctx: TenantContext, query: ShipmentListQuery) {
   requireSellerRead(ctx, "ORDER_SHIPPING");
@@ -41,6 +57,7 @@ export async function listShipments(db: PrismaClient, ctx: TenantContext, query:
   const from = query.from ? kstDayStart(query.from) : null;
   const toStart = query.to ? kstDayStart(query.to) : null;
   if ((query.from && !from) || (query.to && !toStart)) return { ok: false as const };
+  if (from && toStart && (toStart < from || toStart.getTime() - from.getTime() >= SHIPMENT_RANGE_MAX_DAYS * 24 * 3600_000)) return { ok: false as const };
   const cursor = query.cursor ? decodeCursor(query.cursor) : null;
   if (query.cursor && !cursor) return { ok: false as const };
   const q = query.q?.trim() ?? "";
@@ -60,11 +77,11 @@ export async function listShipments(db: PrismaClient, ctx: TenantContext, query:
     if (searchesPii) or.push({ shippingAddress: { recipientName: { contains: q, mode: "insensitive" } } });
     and.push({ OR: or });
   }
-  if (cursor) and.push({ OR: [{ createdAt: { lt: cursor.createdAt } }, { createdAt: cursor.createdAt, id: { lt: cursor.id } }] });
+  if (cursor) and.push(afterCursor(tab, cursor));
 
   const rows = await db.order.findMany({
     where: { AND: and },
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    orderBy: ORDER_BY[tab],
     take: take + 1,
     select: {
       id: true,
@@ -108,7 +125,7 @@ export async function listShipments(db: PrismaClient, ctx: TenantContext, query:
       // 배송지도 개인정보라 권한이 없으면 도서산간 여부만 남긴다(orders/read.ts getOrder와 같은 기준)
       shippingAddress: o.shippingAddress ? (pii ? o.shippingAddress : { isRemote: o.shippingAddress.isRemote }) : null,
     })),
-    nextCursor: rows.length > take && last ? encodeCursor(last.createdAt, last.id) : null,
+    nextCursor: rows.length > take && last ? encodeCursor(sortAt(tab, last), last.id) : null,
   };
 }
 
@@ -123,6 +140,7 @@ function batchIds(ids: unknown[]): string[] | null {
 type BatchResult = { orderId: string; ok: true; [k: string]: unknown } | { orderId: string; ok: false; error: string; message?: string };
 
 // 송장 입력·일괄 입력. 본문 items: [{ orderId, courier, trackingNumber }]. 주문마다 shipOrder로 따로 처리한다(한 건이 실패해도 나머지는 처리).
+// 결과 mode: 처음 발송(shipped)·이미 배송 중인 송장 바꿈(updated, previous = 바꾸기 전 택배사·송장번호).
 export async function shipOrders(db: PrismaClient, ctx: TenantContext, items: unknown): Promise<{ ok: true; results: BatchResult[] } | { ok: false }> {
   requireSellerPermission(ctx, "ORDER_SHIPPING");
   if (!Array.isArray(items) || items.some((i) => typeof i !== "object" || i === null)) return { ok: false };
@@ -132,7 +150,7 @@ export async function shipOrders(db: PrismaClient, ctx: TenantContext, items: un
   for (const i of rows) {
     const orderId = i.orderId as string;
     const r = await shipOrder(db, ctx, orderId, { courier: i.courier, trackingNumber: i.trackingNumber });
-    if (r.ok) results.push({ orderId, ok: true, shipment: r.shipment });
+    if (r.ok) results.push({ orderId, ok: true, mode: r.mode, previous: r.previous, shipment: r.shipment });
     else results.push(r.reason === "not_found" ? { orderId, ok: false, error: "not_found" } : { orderId, ok: false, ...orderErrorBody(r.reason, "formal") });
   }
   return { ok: true, results };

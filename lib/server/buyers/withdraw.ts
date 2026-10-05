@@ -6,12 +6,15 @@ import { hashPassword, verifyPassword } from "../auth/password";
 import { lockSellerOrders } from "../orders/overdue";
 import { cancelPendingOrderInTx } from "../queue/service";
 import { lockBuyerAddresses } from "./addresses";
+import { clearCart, lockBuyerCart } from "../shop-cart/service";
+import { clearWish, lockBuyerWish } from "../shop-wish/service";
 import { holdMemberAuditLogs, refreshOrderRetention } from "./legalHold";
 import { WITHDRAWN_DISPLAY_NAME } from "./memberData";
 import { purgeExpiredRejoinBlocks, recordRejoinBlock } from "./rejoin";
 import { purgeSignupVerificationsForShop } from "./signup";
 import { deleteUnusedBuyerCoupons } from "../shop-coupons/service";
 import { anonymizeMemberReviews } from "../product-reviews/service";
+import { deleteUnattachedReturnImages } from "../shop-returns/hooks";
 
 // 구매자 탈퇴(ARCHITECTURE 「구매자 회원」: WITHDRAWN과 deletedAt을 같은 트랜잭션에서, 개인정보 비식별).
 // 기준(MASTER 결정 2026-10-03):
@@ -100,6 +103,9 @@ export async function withdrawBuyer(
     const { rejoinRestrictionDaysAgreed } = await tx.buyerMember.findUniqueOrThrow({ where: { id: member.id }, select: { rejoinRestrictionDaysAgreed: true } });
     // 배송지 저장·수정과 같은 잠금을 잡아, 겹쳐 저장된 배송지가 탈퇴 뒤에 남지 않게 한다
     await lockBuyerAddresses(tx, scope);
+    // 장바구니 담기·수량 변경과 같은 잠금을 잡아, 겹쳐 담긴 줄이 탈퇴 뒤에 남지 않게 한다(shop-cart)
+    await lockBuyerCart(tx, scope);
+    await lockBuyerWish(tx, scope);
     const busy = await tx.order.count({
       where: {
         sellerId: scope.sellerId,
@@ -156,10 +162,14 @@ export async function withdrawBuyer(
     const restrictions = await tx.buyerPurchaseRestriction.deleteMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id } });
     const rejoinBlockedUntil = await recordRejoinBlock(tx, scope.sellerId, { ciHash: member.ciHash, rejoinRestrictionDaysAgreed }, now);
     const addresses = await tx.buyerAddress.deleteMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id } });
+    await clearCart(tx, { sellerId: scope.sellerId, buyerMemberId: member.id });
+    await clearWish(tx, { sellerId: scope.sellerId, buyerMemberId: member.id });
     // 쓰지 않은 쿠폰 삭제(결제 대기 주문을 위에서 취소해 되돌린 쿠폰은 주문 기록과 이어져 남는다, shop-coupons)
     const deletedCoupons = await deleteUnusedBuyerCoupons(tx, { sellerId: scope.sellerId, buyerMemberId: member.id });
     // 상품 리뷰는 남기고 작성자 표시만 「탈퇴 회원」으로, 신고·붙지 않은 사진은 지운다(product-reviews)
     const reviews = await anonymizeMemberReviews(tx, { sellerId: scope.sellerId, buyerMemberId: member.id });
+    // 교환·반품 신청에 붙지 않은 사진은 지운다(신청에 붙은 사진은 신청과 함께 법정 보관, shop-returns)
+    await deleteUnattachedReturnImages(tx, { sellerId: scope.sellerId, buyerMemberId: member.id });
     const sessions = await tx.buyerSession.deleteMany({ where: { buyerMemberId: member.id } });
     // 적립금 소멸 안내 기록(잔액을 위에서 0으로 만들어 더 안내할 일이 없다, 개인정보 없음)
     const expiryNotices = await tx.rewardExpiryNotice.deleteMany({ where: { sellerId: scope.sellerId, buyerMemberId: member.id } });
